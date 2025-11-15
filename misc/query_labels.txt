@@ -52,6 +52,7 @@ normandy invasion
 train station
 power station
 Power Plant
+tanker aircraft
 attack aircraft
 fighter aircraft
 bomber aircraft

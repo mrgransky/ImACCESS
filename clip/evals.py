@@ -28,7 +28,8 @@ def compute_multilabel_validation_loss(
 		
 		all_class_texts = clip.tokenize(class_names).to(device, non_blocking=True)
 		with torch.no_grad():
-			all_class_embeds = model.encode_text(all_class_texts)
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				all_class_embeds = model.encode_text(all_class_texts)
 			all_class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
 	
 	with torch.no_grad():
@@ -101,9 +102,7 @@ def compute_multilabel_inbatch_metrics(
 				
 				del batch_class_texts, batch_embeds
 				torch.cuda.empty_cache()
-
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
-
 	if verbose:
 		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
 
@@ -367,7 +366,10 @@ def compute_direct_in_batch_metrics(
 						txt2img_topk_accuracy[k] += correct_topk
 				
 				# Cosine similarity between matched pairs
-				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				with torch.amp.autocast(
+					device_type=device.type, 
+					enabled=torch.cuda.is_available(),
+				):
 					image_embeds = model.encode_image(images)
 					text_embeds = model.encode_text(tokenized_labels)
 				
@@ -932,15 +934,37 @@ def get_validation_metrics(
 	
 	# Step 3: Compute text embeddings
 	if verbose:
-		print("Computing text embeddings...")
-	text_inputs = clip.tokenize(class_names).to(device)
-	with torch.autocast(
-		device_type=device.type,
-		enabled=torch.cuda.is_available(),
-	):
-		class_text_embeds = model.encode_text(text_inputs)
-		class_text_embeds = torch.nn.functional.normalize(class_text_embeds.float(), dim=-1)
+		print(f"Computing {n_classes} text embeddings...")
 
+	text_batch_size = validation_loader.batch_size
+	if verbose:
+		print(f"Pre-encoding {n_classes} classes in batch_size: {text_batch_size}")
+	class_text_embeds = []
+	model.eval()
+	with torch.no_grad():
+		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			for i in tqdm(range(0, n_classes, text_batch_size), desc="Pre-encoding class texts"):
+				end_idx = min(i + text_batch_size, n_classes)
+				batch_class_names = class_names[i:end_idx]
+								
+				batch_class_texts = clip.tokenize(batch_class_names).to(device)
+				batch_embeds = model.encode_text(batch_class_texts)
+				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
+				class_text_embeds.append(batch_embeds.cpu())  # Move to CPU immediately to save GPU memory
+				
+				del batch_class_texts, batch_embeds
+				torch.cuda.empty_cache()
+	class_text_embeds = torch.cat(class_text_embeds, dim=0).to(device)
+	if verbose:
+		print(f"class_text_embeds: {type(class_text_embeds)} {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
+
+	# text_inputs = clip.tokenize(class_names).to(device)
+	# with torch.autocast(
+	# 	device_type=device.type,
+	# 	enabled=torch.cuda.is_available(),
+	# ):
+	# 	class_text_embeds = model.encode_text(text_inputs)
+	# class_text_embeds = torch.nn.functional.normalize(class_text_embeds.float(), dim=-1)
 	if verbose:
 		print(f"Text embeddings: {type(class_text_embeds)} {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
 
@@ -1094,7 +1118,10 @@ def compute_full_set_metrics_from_cache(
 		
 		# Compute cosine similarity between matched pairs
 		cos_sim = _compute_matched_cosine_similarity(
-				device_image_embeds, device_class_text_embeds, labels, is_multi_label
+			device_image_embeds, 
+			device_class_text_embeds, 
+			labels, 
+			is_multi_label
 		)
 		
 		# Additional multi-label metrics

@@ -900,180 +900,180 @@ def build_model_from_config(
 	)
 	return model.eval()
 
-def _detect_dataset_type(validation_loader: DataLoader, verbose: bool = True) -> Dict:
-		"""
-		Detect whether the dataset is single-label or multi-label by inspecting the DataLoader.
+# def _detect_dataset_type(validation_loader: DataLoader, verbose: bool = True) -> Dict:
+# 		"""
+# 		Detect whether the dataset is single-label or multi-label by inspecting the DataLoader.
 		
-		Args:
-				validation_loader: DataLoader to inspect
-				verbose: Whether to print detection details
+# 		Args:
+# 				validation_loader: DataLoader to inspect
+# 				verbose: Whether to print detection details
 				
-		Returns:
-				Dictionary containing dataset information
-		"""
+# 		Returns:
+# 				Dictionary containing dataset information
+# 		"""
 		
-		if verbose:
-				print("🔍 Detecting dataset type...")
+# 		if verbose:
+# 				print("🔍 Detecting dataset type...")
 		
-		# Get dataset reference
-		dataset = validation_loader.dataset
-		dataset_name = "Unknown"
+# 		# Get dataset reference
+# 		dataset = validation_loader.dataset
+# 		dataset_name = "Unknown"
 		
-		# Try to get dataset name
-		try:
-				if hasattr(dataset, 'dataset') and hasattr(dataset.dataset, '__class__'):
-						dataset_name = dataset.dataset.__class__.__name__
-				elif hasattr(dataset, 'dataset_name'):
-						dataset_name = dataset.dataset_name
-				elif hasattr(dataset, '__class__'):
-						dataset_name = dataset.__class__.__name__
-		except:
-				pass
+# 		# Try to get dataset name
+# 		try:
+# 				if hasattr(dataset, 'dataset') and hasattr(dataset.dataset, '__class__'):
+# 						dataset_name = dataset.dataset.__class__.__name__
+# 				elif hasattr(dataset, 'dataset_name'):
+# 						dataset_name = dataset.dataset_name
+# 				elif hasattr(dataset, '__class__'):
+# 						dataset_name = dataset.__class__.__name__
+# 		except:
+# 				pass
 		
-		# Method 1: Check for multi-label specific attributes
-		is_multilabel = False
-		detection_method = "unknown"
+# 		# Method 1: Check for multi-label specific attributes
+# 		is_multilabel = False
+# 		detection_method = "unknown"
 		
-		# Check for explicit multi-label indicators
-		if hasattr(dataset, 'label_dict') and dataset.label_dict is not None:
-				is_multilabel = True
-				detection_method = "label_dict_attribute"
-		elif 'MultiLabel' in dataset_name:
-				is_multilabel = True
-				detection_method = "class_name_pattern"
-		elif hasattr(dataset, '_num_classes') and not hasattr(dataset, 'labels_int'):
-				is_multilabel = True
-				detection_method = "_num_classes_without_labels_int"
+# 		# Check for explicit multi-label indicators
+# 		if hasattr(dataset, 'label_dict') and dataset.label_dict is not None:
+# 				is_multilabel = True
+# 				detection_method = "label_dict_attribute"
+# 		elif 'MultiLabel' in dataset_name:
+# 				is_multilabel = True
+# 				detection_method = "class_name_pattern"
+# 		elif hasattr(dataset, '_num_classes') and not hasattr(dataset, 'labels_int'):
+# 				is_multilabel = True
+# 				detection_method = "_num_classes_without_labels_int"
 		
-		# Method 2: Inspect a sample from the DataLoader
-		try:
-				sample_batch = next(iter(validation_loader))
+# 		# Method 2: Inspect a sample from the DataLoader
+# 		try:
+# 				sample_batch = next(iter(validation_loader))
 				
-				if len(sample_batch) >= 3:
-						# Check the shape of the third element (labels)
-						labels = sample_batch[2]
+# 				if len(sample_batch) >= 3:
+# 						# Check the shape of the third element (labels)
+# 						labels = sample_batch[2]
 						
-						if len(labels.shape) == 2:  # [batch_size, num_classes]
-								is_multilabel = True
-								if detection_method == "unknown":
-										detection_method = "label_tensor_shape_2d"
-						elif len(labels.shape) == 1:  # [batch_size]
-								is_multilabel = False
-								if detection_method == "unknown":
-										detection_method = "label_tensor_shape_1d"
+# 						if len(labels.shape) == 2:  # [batch_size, num_classes]
+# 								is_multilabel = True
+# 								if detection_method == "unknown":
+# 										detection_method = "label_tensor_shape_2d"
+# 						elif len(labels.shape) == 1:  # [batch_size]
+# 								is_multilabel = False
+# 								if detection_method == "unknown":
+# 										detection_method = "label_tensor_shape_1d"
 				
-				sample_shapes = {
-						f"element_{i}": tuple(elem.shape) if hasattr(elem, 'shape') else type(elem)
-						for i, elem in enumerate(sample_batch)
-				}
+# 				sample_shapes = {
+# 						f"element_{i}": tuple(elem.shape) if hasattr(elem, 'shape') else type(elem)
+# 						for i, elem in enumerate(sample_batch)
+# 				}
 				
-		except Exception as e:
-				if verbose:
-						print(f"   ⚠️  Could not inspect sample batch: {e}")
-				sample_shapes = "unavailable"
+# 		except Exception as e:
+# 				if verbose:
+# 						print(f"   ⚠️  Could not inspect sample batch: {e}")
+# 				sample_shapes = "unavailable"
 		
-		# Method 3: Check for unique_labels vs labels_int
-		if detection_method == "unknown":
-				if hasattr(dataset, 'unique_labels') and not hasattr(dataset, 'labels_int'):
-						is_multilabel = True
-						detection_method = "unique_labels_without_labels_int"
-				elif hasattr(dataset, 'labels_int'):
-						is_multilabel = False
-						detection_method = "labels_int_attribute"
+# 		# Method 3: Check for unique_labels vs labels_int
+# 		if detection_method == "unknown":
+# 				if hasattr(dataset, 'unique_labels') and not hasattr(dataset, 'labels_int'):
+# 						is_multilabel = True
+# 						detection_method = "unique_labels_without_labels_int"
+# 				elif hasattr(dataset, 'labels_int'):
+# 						is_multilabel = False
+# 						detection_method = "labels_int_attribute"
 		
-		dataset_info = {
-				'is_multilabel': is_multilabel,
-				'dataset_name': dataset_name,
-				'detection_method': detection_method,
-				'sample_shapes': sample_shapes
-		}
+# 		dataset_info = {
+# 				'is_multilabel': is_multilabel,
+# 				'dataset_name': dataset_name,
+# 				'detection_method': detection_method,
+# 				'sample_shapes': sample_shapes
+# 		}
 		
-		if verbose:
-				print(f"   📊 Dataset: {dataset_name}")
-				print(f"   🏷️  Type: {'Multi-label' if is_multilabel else 'Single-label'}")
-				print(f"   🔧 Detection method: {detection_method}")
-				if sample_shapes != "unavailable":
-						print(f"   📐 Sample shapes: {sample_shapes}")
+# 		if verbose:
+# 				print(f"   📊 Dataset: {dataset_name}")
+# 				print(f"   🏷️  Type: {'Multi-label' if is_multilabel else 'Single-label'}")
+# 				print(f"   🔧 Detection method: {detection_method}")
+# 				if sample_shapes != "unavailable":
+# 						print(f"   📐 Sample shapes: {sample_shapes}")
 		
-		return dataset_info
+# 		return dataset_info
 
-def _extract_class_names(validation_loader: DataLoader, dataset_info: Dict, verbose: bool = True) -> List[str]:
-		"""
-		Extract class names from the dataset.
+# def _extract_class_names(validation_loader: DataLoader, dataset_info: Dict, verbose: bool = True) -> List[str]:
+# 		"""
+# 		Extract class names from the dataset.
 		
-		Args:
-				validation_loader: DataLoader to extract class names from
-				dataset_info: Dataset information from _detect_dataset_type
-				verbose: Whether to print extraction details
+# 		Args:
+# 				validation_loader: DataLoader to extract class names from
+# 				dataset_info: Dataset information from _detect_dataset_type
+# 				verbose: Whether to print extraction details
 				
-		Returns:
-				List of class names
+# 		Returns:
+# 				List of class names
 				
-		Raises:
-				ValueError: If class names cannot be extracted
-		"""
+# 		Raises:
+# 				ValueError: If class names cannot be extracted
+# 		"""
 		
-		if verbose:
-				print("📝 Extracting class names...")
+# 		if verbose:
+# 				print("📝 Extracting class names...")
 		
-		dataset = validation_loader.dataset
-		class_names = None
-		extraction_method = "unknown"
+# 		dataset = validation_loader.dataset
+# 		class_names = None
+# 		extraction_method = "unknown"
 		
-		# Method 1: Check for unique_labels (common in multi-label datasets)
-		if hasattr(dataset, 'unique_labels') and dataset.unique_labels is not None:
-				class_names = list(dataset.unique_labels)
-				extraction_method = "unique_labels_attribute"
+# 		# Method 1: Check for unique_labels (common in multi-label datasets)
+# 		if hasattr(dataset, 'unique_labels') and dataset.unique_labels is not None:
+# 				class_names = list(dataset.unique_labels)
+# 				extraction_method = "unique_labels_attribute"
 		
-		# Method 2: Check for classes attribute in nested dataset
-		elif hasattr(dataset, 'dataset') and hasattr(dataset.dataset, 'classes'):
-				class_names = list(dataset.dataset.classes)
-				extraction_method = "nested_dataset_classes"
+# 		# Method 2: Check for classes attribute in nested dataset
+# 		elif hasattr(dataset, 'dataset') and hasattr(dataset.dataset, 'classes'):
+# 				class_names = list(dataset.dataset.classes)
+# 				extraction_method = "nested_dataset_classes"
 		
-		# Method 3: Check for classes attribute directly
-		elif hasattr(dataset, 'classes'):
-				class_names = list(dataset.classes)
-				extraction_method = "direct_classes_attribute"
+# 		# Method 3: Check for classes attribute directly
+# 		elif hasattr(dataset, 'classes'):
+# 				class_names = list(dataset.classes)
+# 				extraction_method = "direct_classes_attribute"
 		
-		# Method 4: For multi-label, try to extract from label_dict
-		elif dataset_info['is_multilabel'] and hasattr(dataset, 'label_dict'):
-				if dataset.label_dict is not None:
-						# Sort by value to maintain consistent ordering
-						class_names = [k for k, v in sorted(dataset.label_dict.items(), key=lambda x: x[1])]
-						extraction_method = "label_dict_keys"
+# 		# Method 4: For multi-label, try to extract from label_dict
+# 		elif dataset_info['is_multilabel'] and hasattr(dataset, 'label_dict'):
+# 				if dataset.label_dict is not None:
+# 						# Sort by value to maintain consistent ordering
+# 						class_names = [k for k, v in sorted(dataset.label_dict.items(), key=lambda x: x[1])]
+# 						extraction_method = "label_dict_keys"
 		
-		# Method 5: Try to infer from data_frame if available
-		elif hasattr(dataset, 'data_frame') and hasattr(dataset.data_frame, 'columns'):
-				# Look for label-related columns
-				label_cols = [col for col in dataset.data_frame.columns if 'label' in col.lower()]
-				if label_cols:
-						# This is a fallback - might need manual verification
-						class_names = label_cols
-						extraction_method = "dataframe_label_columns"
+# 		# Method 5: Try to infer from data_frame if available
+# 		elif hasattr(dataset, 'data_frame') and hasattr(dataset.data_frame, 'columns'):
+# 				# Look for label-related columns
+# 				label_cols = [col for col in dataset.data_frame.columns if 'label' in col.lower()]
+# 				if label_cols:
+# 						# This is a fallback - might need manual verification
+# 						class_names = label_cols
+# 						extraction_method = "dataframe_label_columns"
 		
-		if class_names is None:
-				raise ValueError(
-						f"Could not extract class names from dataset '{dataset_info['dataset_name']}'. "
-						f"Please ensure the dataset has one of the following attributes: "
-						f"'unique_labels', 'classes', 'dataset.classes', or 'label_dict'"
-				)
+# 		if class_names is None:
+# 				raise ValueError(
+# 						f"Could not extract class names from dataset '{dataset_info['dataset_name']}'. "
+# 						f"Please ensure the dataset has one of the following attributes: "
+# 						f"'unique_labels', 'classes', 'dataset.classes', or 'label_dict'"
+# 				)
 		
-		# Validate class names
-		if not isinstance(class_names, (list, tuple)):
-				raise ValueError(f"Class names must be a list or tuple, got {type(class_names)}")
+# 		# Validate class names
+# 		if not isinstance(class_names, (list, tuple)):
+# 				raise ValueError(f"Class names must be a list or tuple, got {type(class_names)}")
 		
-		if len(class_names) == 0:
-				raise ValueError("No class names found - empty class list")
+# 		if len(class_names) == 0:
+# 				raise ValueError("No class names found - empty class list")
 		
-		# Convert to strings if necessary
-		class_names = [str(name) for name in class_names]
+# 		# Convert to strings if necessary
+# 		class_names = [str(name) for name in class_names]
 		
-		if verbose:
-				print(f"   ✅ Extracted {len(class_names)} classes using method: {extraction_method}")
-				if len(class_names) <= 10:
-						print(f"   📋 Classes: {class_names}")
-				else:
-						print(f"   📋 Classes (first 5): {class_names[:5]}...")
-						print(f"   📋 Classes (last 5): ...{class_names[-5:]}")
+# 		if verbose:
+# 				print(f"   ✅ Extracted {len(class_names)} classes using method: {extraction_method}")
+# 				if len(class_names) <= 10:
+# 						print(f"   📋 Classes: {class_names}")
+# 				else:
+# 						print(f"   📋 Classes (first 5): {class_names[:5]}...")
+# 						print(f"   📋 Classes (last 5): ...{class_names[-5:]}")
 		
-		return class_names
+# 		return class_names

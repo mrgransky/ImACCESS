@@ -117,6 +117,9 @@ def main():
 	original_stderr = sys.stderr
 	log_file = None
 
+	if not args.finetune_strategy:
+		raise ValueError("finetune_strategy must be specified (example: -fts lora)")
+
 	if args.finetune_strategy == "progressive":
 		assert args.min_phases_before_stopping is not None, "min_phases_before_stopping must be specified for progressive finetuning (example: -mphbs 3)"
 		assert args.min_epochs_per_phase is not None, "min_epochs_per_phase must be specified for progressive finetuning (example: -mepph 5)"

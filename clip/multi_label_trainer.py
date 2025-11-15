@@ -286,7 +286,7 @@ def full_finetune_multi_label(
 			num_batches += 1
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\t\tBatch [{bidx + 1}/{len(train_loader)}] "
+					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
 					f"Total Loss: {batch_loss_total:.6f} "
 					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
 				)
@@ -1425,7 +1425,7 @@ def lora_finetune_multi_label(
 			
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\t\tBatch [{bidx + 1}/{len(train_loader)}] "
+					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
 					f"Total Loss: {batch_loss_total:.6f} "
 					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
 				)
@@ -2030,7 +2030,7 @@ def lora_plus_finetune_multi_label(
 			
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\t\tBatch [{bidx + 1}/{len(train_loader)}] "
+					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
 					f"Total Loss: {batch_loss_total:.6f} "
 					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
 				)
@@ -2585,7 +2585,7 @@ def ia3_finetune_multi_label(
 			
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\t\tBatch [{bidx + 1}/{len(train_loader)}] "
+					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
 					f"Total Loss: {batch_loss_total:.6f} "
 					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
 				)
@@ -3143,7 +3143,7 @@ def vera_finetune_multi_label(
 			
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\t\tBatch [{bidx + 1}/{len(train_loader)}] "
+					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
 					f"Total Loss: {batch_loss_total:.6f} "
 					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
 				)
@@ -3623,7 +3623,6 @@ def dora_finetune_multi_label(
 			label_vectors = label_vectors.to(device, non_blocking=True)
 
 			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-				# Compute multi-label contrastive loss
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
 					model=model,
 					images=images,
@@ -3647,7 +3646,11 @@ def dora_finetune_multi_label(
 			scheduler.step()
 			
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-				print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f} (I2T: {loss_i2t.item():.7f}, T2I: {loss_t2i.item():.7f})")
+				print(
+					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
+					f"Loss: {total_loss.item():.7f} "
+					f"(I2T: {loss_i2t.item():.7f}, T2I: {loss_t2i.item():.7f})"
+				)
 			
 			epoch_loss += total_loss.item()
 			epoch_i2t_loss += loss_i2t.item()
@@ -4191,7 +4194,11 @@ def clip_adapter_finetune_multi_label(
 			scheduler.step()
 			
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-				print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f} (I2T: {loss_i2t.item():.7f}, T2I: {loss_t2i.item():.7f})")
+				print(
+					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
+					f"Loss: {total_loss.item():.7f} "
+					f"(I2T: {loss_i2t.item():.7f}, T2I: {loss_t2i.item():.7f})"
+				)
 			
 			epoch_loss += total_loss.item()
 			epoch_i2t_loss += loss_i2t.item()
@@ -4920,7 +4927,11 @@ def tip_adapter_finetune_multi_label(
 			scheduler.step()
 			
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-				print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f} (I2T: {loss_i2t.item():.7f}, T2I: {loss_t2i.item():.7f})")
+				print(
+					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
+					f"Loss: {total_loss.item():.7f} "
+					f"(I2T: {loss_i2t.item():.7f}, T2I: {loss_t2i.item():.7f})"
+				)
 			
 			epoch_loss += total_loss.item()
 			epoch_i2t_loss += loss_i2t.item()
@@ -5455,7 +5466,10 @@ def probe_finetune_multi_label(
 						num_batches += 1
 						
 						if bidx % print_every == 0 or bidx + 1 == len(data_loader):
-								print(f"\t\tBatch [{bidx + 1}/{len(data_loader)}] Loss: {batch_loss_total:.6f}")
+							print(
+								f"\t\tBatch [{bidx + 1:04d}/{len(data_loader)}] "
+								f"Loss: {batch_loss_total:.6f}"
+							)
 				
 				# Calculate average losses
 				avg_total_loss = epoch_loss_total / num_batches if num_batches > 0 else 0.0

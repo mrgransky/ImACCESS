@@ -312,6 +312,7 @@ def parse_tuple(s):
 def basic_clean(txt):
 	# 0) Remove the specific placeholder strings (case-sensitive)
 	txt = txt.replace('[No caption entered]', '')
+	txt = txt.replace('Partial view of ', '')
 	txt = txt.replace('History: [none entered]', '')
 	txt = txt.replace('Original Caption:', '')
 	txt = txt.replace('Original caption: ', '')
@@ -352,7 +353,10 @@ def basic_clean(txt):
 	# 6) remove all double quotes
 	txt = txt.replace("''", "")
 
-	# 7) remove more multiple space
+	# 7) remove 
+	txt = re.sub(r'-{2,}', '', txt)
+
+	# 8) remove more multiple space
 	txt = re.sub("\s\s+" , " ", txt)
 
 	return txt
@@ -579,7 +583,7 @@ def get_multi_label_stratified_split(
 	unique_labels = mlb.classes_
 	if len(unique_labels) == 0:
 		raise ValueError("No unique labels found after processing. Cannot perform stratification.")
-	print(f">> Found {len(unique_labels)} unique labels:\n{unique_labels.tolist()[:25]}") # Show first 10
+	print(f">> Found {len(unique_labels)} unique labels:\n{unique_labels.tolist()[:50]}")
 	
 	# --- 4. Perform Iterative Stratification ---
 	print(">> Multi-label stratification using Iterative Stratification")
@@ -623,14 +627,6 @@ def get_multi_label_stratified_split(
 		raise ValueError("Train or validation set is empty after splitting. Adjust val_split_pct or check data.")
 	print(f"\n>> Original Filtered Data: {df_filtered.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
 
-	print("\nTrain Label Distribution (Top 20):")
-	train_label_counts = Counter([label for labels in train_df[label_col] for label in labels])
-	train_label_df = pd.DataFrame(train_label_counts.items(), columns=['Label', 'Count']).sort_values(by='Count', ascending=False)
-	print(train_label_df.head(20).to_string())
-	print("\nValidation Label Distribution (Top 20):")
-	val_label_counts = Counter([label for labels in val_df[label_col] for label in labels])
-	val_label_df = pd.DataFrame(val_label_counts.items(), columns=['Label', 'Count']).sort_values(by='Count', ascending=False)
-	print(val_label_df.head(20).to_string())
 	print(f"Stratified Splitting Elapsed Time: {time.time()-t_st:.3f} sec".center(160, "-"))
 	
 	# Save train/val splits
