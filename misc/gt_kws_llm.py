@@ -161,54 +161,66 @@ def _load_llm_(
 	# 	trust_remote_code=True,
 	# 	cache_dir=cache_directory[USER],
 	# )
+
+	# Load tokenizer with proper handling for Mistral-3 models
 	tokenizer = None
 	try:
-		tokenizer = tfs.AutoTokenizer.from_pretrained(
-			model_id,
-			use_fast=True,
-			trust_remote_code=True,
-			cache_dir=cache_directory[USER],
-		)
-	except KeyError as exc:
-		if verbose:
-			print(
-				"[WARN] AutoTokenizer mapping missing for this config. "
-				"Falling back to concrete tokenizer classes with trust_remote_code=True."
-			)
-		fallback_exc = None
-		candidate_tokenizer_classes = [
-			getattr(tfs, "LlamaTokenizer", None),
-			getattr(tfs, "LlamaTokenizerFast", None),
-			getattr(tfs, "MistralTokenizer", None),
-			getattr(tfs, "MistralTokenizerFast", None),
-		]
-		for TokCls in candidate_tokenizer_classes:
-			if TokCls is None:
-				continue
-			try:
-				tokenizer = TokCls.from_pretrained(
+			# First try the standard approach
+			tokenizer = tfs.AutoTokenizer.from_pretrained(
 					model_id,
-					use_fast=False,          # fast tokenizers usually rely on the mapping
+					use_fast=True,
 					trust_remote_code=True,
 					cache_dir=cache_directory[USER],
-				)
-				if verbose:
-					print(
-						f"[INFO] Successfully loaded tokenizer via fallback class {TokCls.__name__}")
-				break
-			except Exception as e:
-				fallback_exc = e
-				if verbose:
-					print(f"[DEBUG] Fallback with `{TokCls.__name__}` failed: {e}")
-		# If none of the candidates succeeded, raise a clear error.
-		if tokenizer is None:
-			raise RuntimeError(
-				f"Failed to load a tokenizer for '{model_id}'. The original error was: {exc}. "
-				f"The fallback attempts also failed with: {fallback_exc}" if fallback_exc is not None else "None of the fallback attempts succeeded."
-			) from fallback_exc
-	except Exception as other_exc:
-		# Any other unexpected exception – re‑raise with context.
-		raise RuntimeError(f"Unexpected error while loading tokenizer for '{model_id}': {other_exc}") from other_exc
+			)
+	except Exception as exc:
+			if verbose:
+					print(f"[WARN] AutoTokenizer failed: {exc}")
+			# For Mistral-3 models, try specific tokenizer classes
+			try:
+					if "mistral" in model_id.lower():
+							from transformers import MistralTokenizer, MistralTokenizerFast
+							for TokCls in [MistralTokenizerFast, MistralTokenizer]:
+									try:
+											tokenizer = TokCls.from_pretrained(
+													model_id,
+													use_fast=False,
+													trust_remote_code=True,
+													cache_dir=cache_directory[USER],
+											)
+											if verbose:
+													print(f"[INFO] Successfully loaded {TokCls.__name__}")
+											break
+									except Exception as e:
+											if verbose:
+													print(f"[DEBUG] {TokCls.__name__} failed: {e}")
+											continue
+					else:
+							# Fallback for other models
+							for TokCls in [tfs.LlamaTokenizer, tfs.LlamaTokenizerFast]:
+									try:
+											tokenizer = TokCls.from_pretrained(
+													model_id,
+													use_fast=False,
+													trust_remote_code=True,
+													cache_dir=cache_directory[USER],
+											)
+											if verbose:
+													print(f"[INFO] Successfully loaded {TokCls.__name__}")
+											break
+									except Exception as e:
+											if verbose:
+													print(f"[DEBUG] {TokCls.__name__} failed: {e}")
+											continue
+			except Exception as fallback_exc:
+					raise RuntimeError(
+							f"Failed to load tokenizer for '{model_id}'. Original error: {exc}. "
+							f"Fallback attempts also failed: {fallback_exc}"
+					) from fallback_exc
+	if tokenizer is None:
+			raise RuntimeError(f"Failed to load tokenizer for '{model_id}'")
+
+
+
 
 	# Ensure a pad token exists (some chat models omit it)
 	if tokenizer.pad_token is None:
