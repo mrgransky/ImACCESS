@@ -155,12 +155,44 @@ def _load_llm_(
 			print(f"   • Config object type  : {type(quantization_config).__name__}")
 			print()
 	
-	tokenizer = tfs.AutoTokenizer.from_pretrained(
-		model_id,
-		use_fast=True,
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
-	)
+	# tokenizer = tfs.AutoTokenizer.from_pretrained(
+	# 	model_id,
+	# 	use_fast=True,
+	# 	trust_remote_code=True,
+	# 	cache_dir=cache_directory[USER],
+	# )
+
+
+	try:
+		tokenizer = tfs.AutoTokenizer.from_pretrained(
+			model_id,
+			use_fast=True,
+			trust_remote_code=True,
+			cache_dir=cache_directory[USER],
+		)
+	except KeyError as exc:
+		# This is the exact error you observed:
+		#   KeyError: <class 'transformers.models.mistral3.configuration_mistral3.Mistral3Config'>
+		# Fall back to the generic tokenizer loader.
+		if verbose:
+			print(
+				"[WARN] AutoTokenizer mapping missing for this config. "
+				"Falling back to generic AutoTokenizer with trust_remote_code=True."
+			)
+		try:
+			tokenizer = tfs.AutoTokenizer.from_pretrained(
+				model_id,
+				use_fast=False,          # fast tokenizers rely on the mapping as well
+				trust_remote_code=True,
+				cache_dir=cache_directory[USER],
+			)
+		except Exception as fallback_exc:
+			raise RuntimeError(
+				f"Failed to load a tokenizer for '{model_id}'. The original error was: {exc}. "
+				f"The fallback attempt also failed with: {fallback_exc}"
+			) from fallback_exc
+
+
 	# Ensure a pad token exists (some chat models omit it)
 	if tokenizer.pad_token is None:
 		tokenizer.pad_token = tokenizer.eos_token
