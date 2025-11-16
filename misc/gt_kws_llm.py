@@ -215,20 +215,11 @@ def _load_llm_(
 
 	model = model_cls.from_pretrained(model_id, **model_kwargs)
 
-	# model = torch.compile(
-	# 	model,
-	# 	mode="reduce-overhead", # reducing Python overhead and CUDA kernel launch latency
-	# 	fullgraph=True, # compile the entire model into a single graph
-	# )
-
-
 	if verbose:
-		print(f"\n[INFO] {model.__class__.__name__} {type(model)}")
+		print(f"\n[MODEL] {model.__class__.__name__} {type(model)}")
 		first_param = next(model.parameters())
 		print(f"   • First parameter dtype:	{first_param.dtype}")
-
 		# Parameter count + rough FP16 memory estimate
-
 		total_params = sum(p.numel() for p in model.parameters())
 		approx_fp16_gb = total_params * 2 / (1024 ** 3)
 		print("\n[MODEL] Parameter statistics")
@@ -237,9 +228,9 @@ def _load_llm_(
 
 		if hasattr(model, "hf_device_map"):
 			dm = model.hf_device_map
-			print(f"[INFO] Final device map (model.hf_device_map): {dm}")
+			print(f"   • Final device map (model.hf_device_map): {dm}")
 		else:
-			print(f"[INFO] No `hf_device_map` attribute – model lives on a single device: {device}")
+			print(f"   • No `hf_device_map` attribute – model lives on a single device: {device}")
 		print()
 	
 	if not use_quantization:
