@@ -169,7 +169,7 @@ def _load_llm_(
 			trust_remote_code=True,
 			cache_dir=cache_directory[USER],
 		)
-	except KeyError as exc:   # <-- missing entry in TOKENIZER_MAPPING
+	except KeyError as exc:
 		if verbose:
 			print(
 				"[WARN] AutoTokenizer mapping missing for this config. "
@@ -183,35 +183,32 @@ def _load_llm_(
 			getattr(tfs, "MistralTokenizerFast", None),
 		]
 		for TokCls in candidate_tokenizer_classes:
-				if TokCls is None:
-						continue
-				try:
-						tokenizer = TokCls.from_pretrained(
-								model_id,
-								use_fast=False,          # fast tokenizers usually rely on the mapping
-								trust_remote_code=True,
-								cache_dir=cache_directory[USER],
-						)
-						if verbose:
-								print(f"[INFO] Successfully loaded tokenizer via fallback class "
-											f"`{TokCls.__name__}`")
-						break
-				except Exception as e:
-						fallback_exc = e
-						if verbose:
-								print(f"[DEBUG] Fallback with `{TokCls.__name__}` failed: {e}")
+			if TokCls is None:
+				continue
+			try:
+				tokenizer = TokCls.from_pretrained(
+					model_id,
+					use_fast=False,          # fast tokenizers usually rely on the mapping
+					trust_remote_code=True,
+					cache_dir=cache_directory[USER],
+				)
+				if verbose:
+					print(
+						f"[INFO] Successfully loaded tokenizer via fallback class {TokCls.__name__}")
+				break
+			except Exception as e:
+				fallback_exc = e
+				if verbose:
+					print(f"[DEBUG] Fallback with `{TokCls.__name__}` failed: {e}")
 		# If none of the candidates succeeded, raise a clear error.
-		if tokenizer is None:   # type: ignore[unreachable]  # noqa: F821
-				raise RuntimeError(
-						f"Failed to load a tokenizer for '{model_id}'. The original error was: {exc}. "
-						f"The fallback attempts also failed with: {fallback_exc}"
-				) from fallback_exc
+		if tokenizer is None:
+			raise RuntimeError(
+				f"Failed to load a tokenizer for '{model_id}'. The original error was: {exc}. "
+				f"The fallback attempts also failed with: {fallback_exc}" if fallback_exc is not None else "None of the fallback attempts succeeded."
+			) from fallback_exc
 	except Exception as other_exc:
 		# Any other unexpected exception – re‑raise with context.
-		raise RuntimeError(
-			f"Unexpected error while loading tokenizer for '{model_id}': {other_exc}"
-		) from other_exc
-
+		raise RuntimeError(f"Unexpected error while loading tokenizer for '{model_id}': {other_exc}") from other_exc
 
 	# Ensure a pad token exists (some chat models omit it)
 	if tokenizer.pad_token is None:
