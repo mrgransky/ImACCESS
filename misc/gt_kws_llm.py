@@ -162,62 +162,74 @@ def _load_llm_(
 	# 	cache_dir=cache_directory[USER],
 	# )
 
-	# Load tokenizer with proper handling for Mistral-3 models
+	# Replace the entire tokenizer loading section with this:
 	tokenizer = None
 	try:
-			# First try the standard approach
 			tokenizer = tfs.AutoTokenizer.from_pretrained(
 					model_id,
 					use_fast=True,
 					trust_remote_code=True,
 					cache_dir=cache_directory[USER],
 			)
-	except Exception as exc:
+	except (KeyError, ValueError, OSError) as exc:
 			if verbose:
 					print(f"[WARN] AutoTokenizer failed: {exc}")
-			# For Mistral-3 models, try specific tokenizer classes
-			try:
-					if "mistral" in model_id.lower():
-							from transformers import MistralTokenizer, MistralTokenizerFast
-							for TokCls in [MistralTokenizerFast, MistralTokenizer]:
-									try:
-											tokenizer = TokCls.from_pretrained(
-													model_id,
-													use_fast=False,
-													trust_remote_code=True,
-													cache_dir=cache_directory[USER],
-											)
-											if verbose:
-													print(f"[INFO] Successfully loaded {TokCls.__name__}")
-											break
-									except Exception as e:
-											if verbose:
-													print(f"[DEBUG] {TokCls.__name__} failed: {e}")
-											continue
-					else:
-							# Fallback for other models
-							for TokCls in [tfs.LlamaTokenizer, tfs.LlamaTokenizerFast]:
-									try:
-											tokenizer = TokCls.from_pretrained(
-													model_id,
-													use_fast=False,
-													trust_remote_code=True,
-													cache_dir=cache_directory[USER],
-											)
-											if verbose:
-													print(f"[INFO] Successfully loaded {TokCls.__name__}")
-											break
-									except Exception as e:
-											if verbose:
-													print(f"[DEBUG] {TokCls.__name__} failed: {e}")
-											continue
-			except Exception as fallback_exc:
-					raise RuntimeError(
-							f"Failed to load tokenizer for '{model_id}'. Original error: {exc}. "
-							f"Fallback attempts also failed: {fallback_exc}"
-					) from fallback_exc
-	if tokenizer is None:
-			raise RuntimeError(f"Failed to load tokenizer for '{model_id}'")
+					print("[INFO] Trying specific tokenizer classes...")
+			
+			fallback_exc = None
+			candidate_tokenizer_classes = [
+					getattr(tfs, "MistralTokenizer", None),
+					getattr(tfs, "MistralTokenizerFast", None),
+					getattr(tfs, "LlamaTokenizer", None),  # Mistral often uses Llama tokenizer
+					getattr(tfs, "LlamaTokenizerFast", None),
+			]
+			
+			# Remove None values from candidate list
+			candidate_tokenizer_classes = [cls for cls in candidate_tokenizer_classes if cls is not None]
+			
+			for TokCls in candidate_tokenizer_classes:
+					try:
+							if verbose:
+									print(f"[DEBUG] Trying {TokCls.__name__}...")
+							
+							# For newer models, we need to be more careful about the tokenizer file
+							tokenizer = TokCls.from_pretrained(
+									model_id,
+									trust_remote_code=True,
+									cache_dir=cache_directory[USER],
+							)
+							
+							if verbose:
+									print(f"[SUCCESS] Loaded tokenizer using {TokCls.__name__}")
+							break
+							
+					except Exception as e:
+							fallback_exc = e
+							if verbose:
+									print(f"[DEBUG] {TokCls.__name__} failed: {e}")
+							continue
+			
+			# If all specific classes failed, try one more approach
+			if tokenizer is None:
+					if verbose:
+							print("[INFO] All specific tokenizer classes failed, trying AutoTokenizer with use_fast=False...")
+					try:
+							tokenizer = tfs.AutoTokenizer.from_pretrained(
+									model_id,
+									use_fast=False,  # Force slow tokenizer
+									trust_remote_code=True,
+									cache_dir=cache_directory[USER],
+							)
+							if verbose:
+									print("[SUCCESS] Loaded tokenizer using AutoTokenizer with use_fast=False")
+					except Exception as final_exc:
+							raise RuntimeError(
+									f"Failed to load tokenizer for '{model_id}'. "
+									f"AutoTokenizer error: {exc}. "
+									f"Fallback errors: {fallback_exc}. "
+									f"Final attempt error: {final_exc}"
+							) from final_exc
+
 
 
 
