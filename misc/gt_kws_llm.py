@@ -12,6 +12,7 @@ from utils import *
 # better models:
 # model_id = "Qwen/Qwen3-4B-Instruct-2507"
 # model_id = "mistralai/Mistral-7B-Instruct-v0.3"
+# model_id = "mistralai/Mistral-Large-Instruct-2411"
 # model_id = "microsoft/Phi-4-mini-instruct"
 # model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
 # model_id = "NousResearch/Hermes-2-Pro-Mistral-7B"
@@ -230,6 +231,7 @@ def _load_llm_(
 
 		total_params = sum(p.numel() for p in model.parameters())
 		approx_fp16_gb = total_params * 2 / (1024 ** 3)
+		print("\n[MODEL] Parameter statistics")
 		print(f"   • Total parameters			: {total_params:,}")
 		print(f"   • Approx. fp16 RAM			: {approx_fp16_gb:.2f} GiB (if stored as fp16)")
 
@@ -280,8 +282,13 @@ def get_prompt(tokenizer: tfs.PreTrainedTokenizer, description: str, max_kws: in
 	)
 	return text
 
-def parse_llm_response(model_id: str, input_prompt: str, raw_llm_response: str, max_kws: int, verbose: bool = False):
-
+def parse_llm_response(
+	model_id: str, 
+	input_prompt: str, 
+	raw_llm_response: str, 
+	max_kws: int, 
+	verbose: bool = False
+):
 	llm_response: Optional[str] = None
 
 	# response differs significantly between models
@@ -531,7 +538,7 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 		inst_matches = list(re.finditer(r'\[\s*/?\s*INST\s*\]', text))
 		
 		if verbose:
-				print(f"Found {len(inst_matches)} INST tags total")
+			print(f"Found {len(inst_matches)} INST tags total")
 		
 		# Look for content between [/INST] tags where lists typically appear
 		list_candidates = []
