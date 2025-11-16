@@ -161,7 +161,7 @@ def _load_llm_(
 	# 	trust_remote_code=True,
 	# 	cache_dir=cache_directory[USER],
 	# )
-
+	tokenizer = None
 	try:
 		tokenizer = tfs.AutoTokenizer.from_pretrained(
 			model_id,
