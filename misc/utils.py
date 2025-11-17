@@ -407,6 +407,7 @@ def basic_clean(txt):
 		r'Original caption:',
 		r'The original finding aid described this photograph as:',
 		r'The original finding aid described this as:',
+		r'The following information was provided by digitizing partner Fold3:',
 		r'Original caption on envelope: ',
 		r"The photographer's notes indicate",
 		r"This photograph shows",
