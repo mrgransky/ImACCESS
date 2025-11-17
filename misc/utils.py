@@ -392,8 +392,8 @@ def basic_clean(txt):
 	# This safely protects: don't → don__APOSTROPHE__t, John's → John__APOSTROPHE__s
 	# Step 2: Remove known junk/phrase patterns
 	junk_phrases = [
-		r'\[No caption entered\]', 
-		r'Partial view of ', 
+		r'\[No caption entered\]',
+		r'Partial view of ',
 		r'History: \[none entered\]',
 		r'Date Month: \[Blank\]',
 		r'Date Day: \[Blank\]',
@@ -401,22 +401,26 @@ def basic_clean(txt):
 		r'Subcategory: \[BLANK\]',
 		r'\[blank\]',
 		r'\[arrow symbol\]',
-		r'Original caption:', 
-		r'The original finding aid described this as: ',
+		r'This item is a photo depicting ',
+		r'This is a photograph of ',
+		r'Original caption:',
+		r'The original finding aid described this photograph as:',
+		r'The original finding aid described this as:',
 		r'Original caption on envelope: ',
-		r"The photographer's notes indicate", 
+		r"The photographer's notes indicate",
 		r"This photograph shows",
 		r'The picture shows',
-		r'The photograph shows', 
+		r'The photograph shows',
 		r'The image shows',
 		r'Photograph of ',
 		r'Photographn of ',
-		r'Image of ', 
+		r'Image of ',
 		r'Portrait of ',
-		r'Photograph: ', 
-		r'Image: ', 
+		r'Photograph: ',
+		r'Image: ',
+		r'This image depicts ',
 		r'Description: ',
-		r'File Record', 
+		r'File Record',
 		r'\[No title entered\]',
 		r'Original Title: Miscellaneous',
 		r'Other Projects',
@@ -425,7 +429,7 @@ def basic_clean(txt):
 	]
 
 	for pattern in junk_phrases:
-		txt = re.sub(pattern, '', txt, flags=re.IGNORECASE)
+		txt = re.sub(pattern, ' ', txt, flags=re.IGNORECASE)
 
 	# === REMOVE ARCHIVAL METADATA KEY-VALUE PAIRS (NARA/USAF style) ===
 	metadata_patterns = [
@@ -442,7 +446,7 @@ def basic_clean(txt):
 	]
 
 	for pattern in metadata_patterns:
-		txt = re.sub(pattern, '', txt, flags=re.IGNORECASE)
+		txt = re.sub(pattern, ' ', txt, flags=re.IGNORECASE)
 
 	# Also catch any remaining lines that are ALL CAPS + colon + value (common in archives)
 	txt = re.sub(r'(?m)^[A-Z\s&]{5,}:.*$', '', txt)
@@ -467,10 +471,10 @@ def basic_clean(txt):
 	txt = txt.replace('""', '"').replace('"', '')
 
 	# Step 5: Remove hashtags and other noise
-	txt = txt.replace('#', '')
-	txt = re.sub(r'-{2,}', '', txt)   # multiple dashes
-	txt = re.sub(r'\.{2,}', '', txt)  # ellipses ...
-	txt = re.sub(r'[\[\]]', '', txt)  # square brackets
+	txt = txt.replace('#', ' ')
+	txt = re.sub(r'-{2,}', ' ', txt)   # multiple dashes
+	txt = re.sub(r'\.{2,}', ' ', txt)  # ellipses ...
+	txt = re.sub(r'[\[\]]', ' ', txt)  # square brackets
 
 	# Step 6: Collapse all whitespace
 	txt = re.sub(r'\s+', ' ', txt)
