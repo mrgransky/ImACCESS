@@ -403,6 +403,7 @@ def basic_clean(txt):
 		r'\[arrow symbol\]',
 		r'This item is a photo depicting ',
 		r'This is a photograph of ',
+		r'Country: Unknown',
 		r'Original caption:',
 		r'The original finding aid described this photograph as:',
 		r'The original finding aid described this as:',
