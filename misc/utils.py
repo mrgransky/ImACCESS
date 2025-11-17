@@ -403,6 +403,7 @@ def basic_clean(txt):
 		'[arrow symbol]',
 		'Original Caption:', 
 		'Original caption: ', 
+		'The original finding aid described this as: ',
 		'Original caption on envelope: ',
 		"The photographer's notes indicate", 
 		"This photograph shows",
@@ -416,6 +417,7 @@ def basic_clean(txt):
 		'Portrait of ',
 		'Photograph: ', 
 		'Image: ', 
+		'Description: ',
 		'File Record', 
 		'[No title entered]', 
 		'[No description entered]'
