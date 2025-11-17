@@ -392,39 +392,40 @@ def basic_clean(txt):
 	# This safely protects: don't → don__APOSTROPHE__t, John's → John__APOSTROPHE__s
 	# Step 2: Remove known junk/phrase patterns
 	junk_phrases = [
-		'[No caption entered]', 
-		'Partial view of ', 
-		'History: [none entered]',
-		'Date Month: [Blank]',
-		'Date Day: [Blank]',
-		'Date Year: [Blank]',
-		'Subcategory: [BLANK]',
-		'[blank]',
-		'[arrow symbol]',
-		'Original Caption:', 
-		'Original caption: ', 
-		'The original finding aid described this as: ',
-		'Original caption on envelope: ',
-		"The photographer's notes indicate", 
-		"This photograph shows",
-		"This image shows", 
-		'The picture shows',
-		'The photograph shows', 
-		'The image shows',
-		'Photograph of ',
-		'Photographn of ',
-		'Image of ', 
-		'Portrait of ',
-		'Photograph: ', 
-		'Image: ', 
-		'Description: ',
-		'File Record', 
-		'[No title entered]', 
-		'[No description entered]'
+		r'\[No caption entered\]', 
+		r'Partial view of ', 
+		r'History: \[none entered\]',
+		r'Date Month: \[Blank\]',
+		r'Date Day: \[Blank\]',
+		r'Date Year: \[Blank\]',
+		r'Subcategory: \[BLANK\]',
+		r'\[blank\]',
+		r'\[arrow symbol\]',
+		r'Original caption:', 
+		r'The original finding aid described this as: ',
+		r'Original caption on envelope: ',
+		r"The photographer's notes indicate", 
+		r"This photograph shows",
+		r'The picture shows',
+		r'The photograph shows', 
+		r'The image shows',
+		r'Photograph of ',
+		r'Photographn of ',
+		r'Image of ', 
+		r'Portrait of ',
+		r'Photograph: ', 
+		r'Image: ', 
+		r'Description: ',
+		r'File Record', 
+		r'\[No title entered\]',
+		r'Original Title: Miscellaneous',
+		r'Other Projects',
+		r'Other Project ',
+		r'\[No description entered\]'
 	]
 
-	for phrase in junk_phrases:
-		txt = txt.replace(phrase, '')
+	for pattern in junk_phrases:
+		txt = re.sub(pattern, '', txt, flags=re.IGNORECASE)
 
 	# === REMOVE ARCHIVAL METADATA KEY-VALUE PAIRS (NARA/USAF style) ===
 	metadata_patterns = [

@@ -1299,15 +1299,18 @@ def get_llm_based_labels_debug(
 		)
 		if 'enriched_document_description' not in df.columns:
 			raise ValueError("CSV file must have 'enriched_document_description' column")
+		if verbose: print(f"Loading descriptions from {csv_file} ...")
 		descriptions = df['enriched_document_description'].tolist()
-		if verbose:
-			print(f"Loaded {len(descriptions)} descriptions from {csv_file}")
 	elif description:
 		descriptions = [description]
-		if verbose:
-			print(f"Loaded 1 description")
 	else:
 		raise ValueError("Either csv_file or description must be provided")
+	
+	if verbose: 
+		print(f"{'-'*100}\nLoaded {len(descriptions)} description(s)")
+		for i, desc in enumerate(descriptions):
+			print(f"{i+1}. {desc}")
+		print(f"{'-'*100}")
 
 	tokenizer, model = _load_llm_(
 		model_id=model_id, 
@@ -1319,16 +1322,21 @@ def get_llm_based_labels_debug(
 	all_keywords = list()
 	for i, desc in tqdm(enumerate(descriptions), total=len(descriptions), desc="Processing descriptions"):
 		if verbose: print(f"Processing description {i+1}/{len(descriptions)}: {desc}")
-		kws = query_local_llm(
-			model=model, 
-			tokenizer=tokenizer, 
-			text=desc,
-			device= device,
-			max_generated_tks=max_generated_tks,
-			max_kws=min(max_kws, len(desc.split())),
-			verbose=verbose,
-		)
-		all_keywords.append(kws)
+		if pd.notna(desc) and str(desc).strip():
+			desc_str = str(desc).strip()
+			kws = query_local_llm(
+				model=model, 
+				tokenizer=tokenizer, 
+				text=desc_str,
+				device= device,
+				max_generated_tks=max_generated_tks,
+				max_kws=min(max_kws, len(desc_str.split())),
+				verbose=verbose,
+			)
+			all_keywords.append(kws)
+		else:
+			if verbose: print(f"Skipping empty description {i+1}/{len(descriptions)}")
+			all_keywords.append(None)
 
 	if csv_file:
 		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
@@ -1687,7 +1695,7 @@ def main():
 			use_quantization=args.use_quantization,
 			verbose=args.verbose,
 		)
-	else:
+	elif args.csv_file:
 		keywords = get_llm_based_labels_opt(
 			model_id=args.model_id, 
 			device=args.device, 
@@ -1698,8 +1706,11 @@ def main():
 			use_quantization=args.use_quantization,
 			verbose=args.verbose,
 		)
+	else:
+		print("Either --csv_file or --description must be provided")
+		return
 
-	if args.verbose:
+	if args.verbose and keywords:
 		print(f"{len(keywords)} Extracted keywords")
 		for i, kw in enumerate(keywords):
 			print(f"{i:03d} {kw}")
