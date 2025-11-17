@@ -309,7 +309,7 @@ def parse_tuple(s):
 	except (ValueError, SyntaxError):
 		raise argparse.ArgumentTypeError(f"Invalid tuple format: {s}")
 
-def basic_clean(txt):
+def basic_clean_(txt):
 	# 0) Remove the specific placeholder strings (case-sensitive)
 	txt = txt.replace('[No caption entered]', '')
 	txt = txt.replace('Partial view of ', '')
@@ -355,9 +355,111 @@ def basic_clean(txt):
 
 	# 7) remove 
 	txt = re.sub(r'-{2,}', '', txt)
+	txt = re.sub(r'\.{2,}', '', txt)
+	# txt = re.sub(r"[\[\]\(\)]", "", txt) # both [] and ()
+	txt = re.sub(r"[\[\]]", "", txt) # only []
 
 	# 8) remove more multiple space
 	txt = re.sub("\s\s+" , " ", txt)
+
+	return txt
+
+import re
+
+def clean_single_quotes(text):
+		# Protect possessives and contractions first
+		text = re.sub(r"(\w)'(\w)", r"\1__APOSTROPHE__\2", text)
+		
+		# Remove anything that looks like quotation marks
+		text = re.sub(r'''\s*'\s*''', " ", text)
+		text = re.sub(r"^'\s*|\s*'$", " ", text)
+		
+		# Remove leftover single quotes
+		text = re.sub(r"'", "", text)
+		
+		# Restore real apostrophes
+		text = text.replace("__APOSTROPHE__", "'")
+		
+		# Clean spaces
+		return re.sub(r'\s+', ' ', text).strip()
+
+def basic_clean(txt):
+	if not txt or not isinstance(txt, str):
+		return ""
+			
+	# Step 1: PROTECT real apostrophes FIRST (most important!)
+	txt = re.sub(r"(\w)'(\w)", r"\1__APOSTROPHE__\2", txt)
+	# This safely protects: don't → don__APOSTROPHE__t, John's → John__APOSTROPHE__s
+	# Step 2: Remove known junk/phrase patterns
+	junk_phrases = [
+		'[No caption entered]', 
+		'Partial view of ', 
+		'History: [none entered]',
+		'Date Month: [Blank]',
+		'Date Day: [Blank]',
+		'Date Year: [Blank]',
+		'Subcategory: [BLANK]',
+		'[blank]',
+		'[arrow symbol]',
+		'Original Caption:', 
+		'Original caption: ', 
+		'Original caption on envelope: ',
+		"The photographer's notes indicate", 
+		"This photograph shows",
+		"This image shows", 
+		'The picture shows',
+		'The photograph shows', 
+		'The image shows',
+		'Photograph of ',
+		'Photographn of ',
+		'Image of ', 
+		'Portrait of ',
+		'Photograph: ', 
+		'Image: ', 
+		'File Record', 
+		'[No title entered]', 
+		'[No description entered]'
+	]
+
+	for phrase in junk_phrases:
+		txt = txt.replace(phrase, '')
+
+	# === REMOVE DOCUMENT SERIAL NUMBERS / ARCHIVE IDs ===
+	# Common trailing IDs in parentheses
+	txt = re.sub(r'\s*\([^()]*\b(?:number|no\.?|photo|negative|item|record|file|usaf|usaaf|nara|gp-|aal-)[^()]*\)\s*$', '', txt, flags=re.IGNORECASE)
+	txt = re.sub(r'\s*\([^()]*[A-Za-z]{0,4}\d{5,}[A-Za-z]?\)\s*$', '', txt)   # B25604AC, 123456, etc.
+	txt = re.sub(r'\s*\([^()]*\d{5,}[A-Za-z]?\)\s*$', '', txt)              # pure long numbers
+	
+	# Also catch them anywhere if they contain trigger words
+	txt = re.sub(r'\s*\([^()]*\b(?:number|no\.?|photo|negative|item|record|file)[^()]*\)', ' ', txt, flags=re.IGNORECASE)
+
+	# Step 3: Handle newlines/tabs → space
+	txt = txt.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ')
+
+	# Step 4: Remove quotation marks (single and double)
+	# First: remove 'quoted text' style (with possible spaces)
+	txt = re.sub(r'''\s*'\s*''', ' ', txt)
+	txt = re.sub(r"^'\s*|\s*'$", ' ', txt)
+	# Then double quotes
+	txt = txt.replace('""', '"').replace('"', '')
+
+	# Step 5: Remove hashtags and other noise
+	txt = txt.replace('#', '')
+	txt = re.sub(r'-{2,}', '', txt)   # multiple dashes
+	txt = re.sub(r'\.{2,}', '', txt)  # ellipses ...
+	txt = re.sub(r'[\[\]]', '', txt)  # square brackets
+
+	# Step 6: Collapse all whitespace
+	txt = re.sub(r'\s+', ' ', txt)
+
+	# Step 7: Remove any stray leftover single quotes (should be none, but safe)
+	txt = txt.replace("'", "")
+
+	# Step 8: RESTORE real apostrophes
+	txt = txt.replace("__APOSTROPHE__", "'")
+
+	# Final cleanup
+	txt = txt.strip()
 
 	return txt
 

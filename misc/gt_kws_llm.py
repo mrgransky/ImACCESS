@@ -12,7 +12,7 @@ from utils import *
 # better models:
 # model_id = "Qwen/Qwen3-4B-Instruct-2507"
 # model_id = "mistralai/Mistral-7B-Instruct-v0.3"
-# model_id = "mistralai/Mistral-Large-Instruct-2411"
+# model_id = "mistralai/Mixtral-8x7B-Instruct-v0.1"
 # model_id = "microsoft/Phi-4-mini-instruct"
 # model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
 # model_id = "NousResearch/Hermes-2-Pro-Mistral-7B"
@@ -67,30 +67,6 @@ Given the description below, extract up to {k} most prominent, factual and disti
 [/INST]
 """
 
-# LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
-# Act as a meticulous historical archivist specializing in 20th century documentation.
-# Given the description below, extract the most prominent, factual and distinct **KEYWORDS** that appear in the text.
-
-# {description}
-
-# **CRITICAL RULES**:
-# - Extract **ONLY keywords that actually appear** in the description above.
-# - Return **AT MOST {k} keywords** - fewer is acceptable if the description is short or lacks distinct concepts.
-# - **OUTPUT FORMAT IS CRITICAL**: return **ONLY** a clean, valid and parsable **Python LIST**.
-# - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
-# - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "May 25th", "July 10").
-# - **STRICTLY EXCLUDE** vague, generic, or historical keywords not present in the description.
-# - **STRICTLY EXCLUDE** special characters, stopwords, meaningless, repeating or synonym-duplicate keywords.
-# - **DO NOT invent or infer keywords** that are not explicitly mentioned in the description.
-# - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
-
-# **INVALID EXAMPLES**:
-# - ❌ Airplane, Mechanic, Lockheed, Airport, Dallas
-# - ❌ 1. Airplane 2. Mechanic 3. Lockheed
-# - ❌ - Airplane - Mechanic - Lockheed
-# [/INST]
-# """
-
 def _load_llm_(
 		model_id: str,
 		device: Union[str, torch.device],
@@ -122,7 +98,7 @@ def _load_llm_(
 	
 	model_cls = None
 	if config.architectures:
-		cls_name = config.architectures[0]          # first entry listed by the repo
+		cls_name = config.architectures[0]  # first entry listed by the repo
 		if hasattr(tfs, cls_name):
 			model_cls = getattr(tfs, cls_name)
 	if model_cls is None:
@@ -155,80 +131,71 @@ def _load_llm_(
 			print(f"   • Config object type  : {type(quantization_config).__name__}")
 			print()
 	
-	# tokenizer = tfs.AutoTokenizer.from_pretrained(
-	# 	model_id,
-	# 	use_fast=True,
-	# 	trust_remote_code=True,
-	# 	cache_dir=cache_directory[USER],
-	# )
-
 	# Replace the entire tokenizer loading section with this:
 	tokenizer = None
 	try:
-			tokenizer = tfs.AutoTokenizer.from_pretrained(
+		tokenizer = tfs.AutoTokenizer.from_pretrained(
+			model_id,
+			use_fast=True,
+			trust_remote_code=True,
+			cache_dir=cache_directory[USER],
+		)
+	except (KeyError, ValueError, OSError) as exc:
+		if verbose:
+			print(f"[WARN] AutoTokenizer failed: {exc}")
+			print("[INFO] Trying specific tokenizer classes...")
+		
+		fallback_exc = None
+		candidate_tokenizer_classes = [
+			getattr(tfs, "MistralTokenizer", None),
+			getattr(tfs, "MistralTokenizerFast", None),
+			getattr(tfs, "LlamaTokenizer", None),  # Mistral often uses Llama tokenizer
+			getattr(tfs, "LlamaTokenizerFast", None),
+		]
+		
+		# Remove None values from candidate list
+		candidate_tokenizer_classes = [cls for cls in candidate_tokenizer_classes if cls is not None]
+		
+		for TokCls in candidate_tokenizer_classes:
+			try:
+				if verbose:
+					print(f"[DEBUG] Trying {TokCls.__name__}...")
+				
+				# For newer models, we need to be more careful about the tokenizer file
+				tokenizer = TokCls.from_pretrained(
 					model_id,
-					use_fast=True,
 					trust_remote_code=True,
 					cache_dir=cache_directory[USER],
-			)
-	except (KeyError, ValueError, OSError) as exc:
+				)
+				
+				if verbose:
+					print(f"[SUCCESS] Loaded tokenizer using {TokCls.__name__}")
+				break
+			except Exception as e:
+				fallback_exc = e
+				if verbose:
+					print(f"[DEBUG] {TokCls.__name__} failed: {e}")
+				continue
+		# If all specific classes failed, try one more approach
+		if tokenizer is None:
 			if verbose:
-					print(f"[WARN] AutoTokenizer failed: {exc}")
-					print("[INFO] Trying specific tokenizer classes...")
-			
-			fallback_exc = None
-			candidate_tokenizer_classes = [
-					getattr(tfs, "MistralTokenizer", None),
-					getattr(tfs, "MistralTokenizerFast", None),
-					getattr(tfs, "LlamaTokenizer", None),  # Mistral often uses Llama tokenizer
-					getattr(tfs, "LlamaTokenizerFast", None),
-			]
-			
-			# Remove None values from candidate list
-			candidate_tokenizer_classes = [cls for cls in candidate_tokenizer_classes if cls is not None]
-			
-			for TokCls in candidate_tokenizer_classes:
-					try:
-							if verbose:
-									print(f"[DEBUG] Trying {TokCls.__name__}...")
-							
-							# For newer models, we need to be more careful about the tokenizer file
-							tokenizer = TokCls.from_pretrained(
-									model_id,
-									trust_remote_code=True,
-									cache_dir=cache_directory[USER],
-							)
-							
-							if verbose:
-									print(f"[SUCCESS] Loaded tokenizer using {TokCls.__name__}")
-							break
-							
-					except Exception as e:
-							fallback_exc = e
-							if verbose:
-									print(f"[DEBUG] {TokCls.__name__} failed: {e}")
-							continue
-			
-			# If all specific classes failed, try one more approach
-			if tokenizer is None:
-					if verbose:
-							print("[INFO] All specific tokenizer classes failed, trying AutoTokenizer with use_fast=False...")
-					try:
-							tokenizer = tfs.AutoTokenizer.from_pretrained(
-									model_id,
-									use_fast=False,  # Force slow tokenizer
-									trust_remote_code=True,
-									cache_dir=cache_directory[USER],
-							)
-							if verbose:
-									print("[SUCCESS] Loaded tokenizer using AutoTokenizer with use_fast=False")
-					except Exception as final_exc:
-							raise RuntimeError(
-									f"Failed to load tokenizer for '{model_id}'. "
-									f"AutoTokenizer error: {exc}. "
-									f"Fallback errors: {fallback_exc}. "
-									f"Final attempt error: {final_exc}"
-							) from final_exc
+				print("[INFO] All specific tokenizer classes failed, trying AutoTokenizer with use_fast=False...")
+			try:
+				tokenizer = tfs.AutoTokenizer.from_pretrained(
+					model_id,
+					use_fast=False,  # Force slow tokenizer
+					trust_remote_code=True,
+					cache_dir=cache_directory[USER],
+				)
+				if verbose:
+					print("[SUCCESS] Loaded tokenizer using AutoTokenizer with use_fast=False")
+			except Exception as final_exc:
+				raise RuntimeError(
+					f"Failed to load tokenizer for '{model_id}'. "
+					f"AutoTokenizer error: {exc}. "
+					f"Fallback errors: {fallback_exc}. "
+					f"Final attempt error: {final_exc}"
+				) from final_exc
 
 
 
