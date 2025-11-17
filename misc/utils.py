@@ -426,6 +426,26 @@ def basic_clean(txt):
 	for phrase in junk_phrases:
 		txt = txt.replace(phrase, '')
 
+	# === REMOVE ARCHIVAL METADATA KEY-VALUE PAIRS (NARA/USAF style) ===
+	metadata_patterns = [
+		# r'\bCategory\s*:\s*.+?(?=\n|$)',                     # Category: Aircraft, Ground
+		# r'\bSubcategory\s*:\s*.+?(?=\n|$)',                  # Subcategory: Consolidated
+		# r'\bSubjects\s*:\s*.+?(?=\n|$)',                     # Subjects: BURMA & INDIA,RECREATION
+		# r'\bWar Theater(?: Number)?\s*:\s*.+?(?=\n|$)',      # War Theater Number: 20
+		# r'\bWar Theater\s*:\s*.+?(?=\n|$)',                  # War Theater: Burma-India
+		# r'\bPlace\s*:\s*.+?(?=\n|$)',                        # Place: Burma-India
+		# r'\bPhoto Series\s*:\s*.+?(?=\n|$)',                 # Photo Series: WWII
+		r'\bUS Air Force Reference Number\s*:\s*[A-Z0-9]+',  # US Air Force Reference Number: 74399AC
+		r'\bReference Number\s*:\s*[A-Z0-9]+',               # fallback
+		# r'\bDate\s+(?:Month|Day|Year)\s*:\s*\[.*?\]',        # Date Month: [Blank]
+	]
+
+	for pattern in metadata_patterns:
+		txt = re.sub(pattern, '', txt, flags=re.IGNORECASE)
+
+	# Also catch any remaining lines that are ALL CAPS + colon + value (common in archives)
+	txt = re.sub(r'(?m)^[A-Z\s&]{5,}:.*$', '', txt)
+
 	# === REMOVE DOCUMENT SERIAL NUMBERS / ARCHIVE IDs ===
 	# Common trailing IDs in parentheses
 	txt = re.sub(r'\s*\([^()]*\b(?:number|no\.?|photo|negative|item|record|file|usaf|usaaf|nara|gp-|aal-)[^()]*\)\s*$', '', txt, flags=re.IGNORECASE)
