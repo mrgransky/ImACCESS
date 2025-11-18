@@ -2389,7 +2389,7 @@ def plot_text_to_images_merged(
 			# Compute similarities between text query and all images
 			with torch.no_grad():
 					text_features = model.encode_text(tokenized_query)
-					text_features = F.normalize(text_features, dim=-1).to(torch.float32)
+					text_features = torch.nn.functional.normalize(text_features, dim=-1).to(torch.float32)
 					all_image_embeddings = all_image_embeddings.to(torch.float32)
 					similarities = (100.0 * text_features @ all_image_embeddings.T).softmax(dim=-1)
 					
@@ -2560,7 +2560,7 @@ def plot_text_to_images(
 		
 		with torch.no_grad():
 			text_features = model.encode_text(tokenized_query).to(torch.float32)
-			text_features = F.normalize(text_features, dim=-1)
+			text_features = torch.nn.functional.normalize(text_features, dim=-1)
 			similarities = (100.0 * text_features @ all_image_embeddings.T).softmax(dim=-1)
 			effective_topk = min(topk, len(all_image_embeddings))
 			topk_scores, topk_indices = torch.topk(similarities.squeeze(), effective_topk)
