@@ -11,7 +11,8 @@ from historyXN_dataset_loader import (
 	get_multi_label_dataloaders, 
 	get_preprocess
 )
-from model import get_lora_clip, get_probe_clip
+from peft import get_injected_peft_clip
+from probe import get_probe_clip
 from pretrain import pretrain_single_label, pretrain_multi_label
 from evals import evaluate_best_model
 import visualize as viz
@@ -28,7 +29,7 @@ import visualize as viz
 # ################ Local ################ 
 # All fine-tuned models (head, torso, tail) 
 # Single-label:
-# $ python inference.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_single_label.csv -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_12_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_8_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_30_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_bs_8_best_model_last_phase_2_flr_8.8e-06_fwd_0.011085376063548084.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_12_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_bs_8_best_model.pth -dt single_label
+# $ python inference.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_single_label.csv -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_12_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_8_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_30_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_bs_8_best_model_last_phase_2_flr_8.8e-06_fwd_0.011085376063548084.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_12_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_bs_8_best_model.pth
 
 # Multi-label:
 # $ python inference.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/full_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_dropout_0.0_lr_1.0e-05_wd_1.0e-02_temp_0.07_bs_16_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/progressive_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_temp_0.07_bs_16_best_model_last_phase_1_flr_5.6e-06_fwd_0.010306122448979592.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/lora_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_temp_0.07_bs_16_best_model.pth
@@ -596,13 +597,18 @@ def main():
 	for ft_name, ft_path in finetuned_checkpoint_paths.items():
 		if ft_path and os.path.exists(ft_path):
 			print(f"Loading {ft_name} model from {ft_path}", end="...")
-			model, _ = clip.load(name=args.model_architecture, device=args.device, download_root=get_model_directory(path=args.dataset_dir))
+			model, _ = clip.load(
+				name=args.model_architecture, 
+				device=args.device, 
+				download_root=get_model_directory(path=DATASET_DIRECTORY)
+			)
 			if ft_name == "lora":
-				lora_model = get_lora_clip(
+				lora_model = get_injected_peft_clip(
 					clip_model=model, 
-					lora_rank=args.lora_rank, 
-					lora_alpha=args.lora_alpha, 
-					lora_dropout=args.lora_dropout, 
+					method=ft_name,
+					rank=args.lora_rank, 
+					alpha=args.lora_alpha, 
+					dropout=args.lora_dropout, 
 					verbose=False,
 				)
 				lora_model.to(args.device)

@@ -705,4 +705,3 @@ def get_probe_clip(
 				print("=" * 80)
 		
 		return probe
-
