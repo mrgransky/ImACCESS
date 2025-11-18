@@ -469,23 +469,26 @@ def main():
 
 	models_to_plot["pretrained"] = pretrained_model
 
-	if args.dataset_type == "multi_label":
+	if dataset_type == "multi_label":
 		train_loader, validation_loader = get_multi_label_dataloaders(
-			dataset_dir=args.dataset_dir,
+			metadata_fpth=args.metadata_csv,
 			batch_size=args.batch_size,
 			num_workers=args.num_workers,
 			input_resolution=model_config["image_resolution"],
 		)
 		criterion = torch.nn.BCEWithLogitsLoss()
-	else:
+	elif dataset_type == "single_label":
 		train_loader, validation_loader = get_single_label_dataloaders(
-			dataset_dir=args.dataset_dir,
+			metadata_fpth=args.metadata_csv,
 			batch_size=args.batch_size,
 			num_workers=args.num_workers,
 			input_resolution=model_config["image_resolution"],
 		)
 		criterion = torch.nn.CrossEntropyLoss()
-	print(f">> dataset: {args.dataset_type} => criterion: {criterion.__class__.__name__}")
+	else:
+		raise ValueError(f"Invalid dataset type: {dataset_type}")
+
+	print(f">> dataset: {dataset_type} => criterion: {criterion.__class__.__name__}")
 	print_loader_info(loader=train_loader, batch_size=args.batch_size)
 	print_loader_info(loader=validation_loader, batch_size=args.batch_size)
 
@@ -517,7 +520,7 @@ def main():
 
 
 	customized_preprocess = get_preprocess(
-		dataset_dir=args.dataset_dir, 
+		dataset_dir=DATASET_DIRECTORY, 
 		input_resolution=model_config["image_resolution"],
 	)
 
@@ -540,11 +543,11 @@ def main():
 	print("="*80 + "\n")
 	if args.query_image is None or args.query_label is None:
 		print("Selecting samples from validation set...")
-		if args.dataset_type == "multi_label":
+		if dataset_type == "multi_label":
 			i2t_samples, t2i_samples = get_multi_label_head_torso_tail_samples(
-				metadata_path=os.path.join(args.dataset_dir, "metadata_multi_label_multimodal.csv"),
-				metadata_train_path=os.path.join(args.dataset_dir, "metadata_multi_label_multimodal_train.csv"),
-				metadata_val_path=os.path.join(args.dataset_dir, "metadata_multi_label_multimodal_val.csv"),
+				metadata_path=args.metadata_csv,
+				metadata_train_path=args.metadata_csv.replace('.csv', '_train.csv'),
+				metadata_val_path=args.metadata_csv.replace('.csv', '_val.csv'),
 				num_samples_per_segment=2,
 			)
 			if i2t_samples and t2i_samples:
@@ -554,9 +557,9 @@ def main():
 				raise ValueError("No multi-label samples selected!")
 		else:
 			i2t_samples, t2i_samples = get_single_label_head_torso_tail_samples(
-				metadata_path=os.path.join(args.dataset_dir, "metadata_single_label.csv"),
-				metadata_train_path=os.path.join(args.dataset_dir, "metadata_single_label_train.csv"),
-				metadata_val_path=os.path.join(args.dataset_dir, "metadata_single_label_val.csv"),
+				metadata_path=args.metadata_csv,
+				metadata_train_path=args.metadata_csv.replace('.csv', '_train.csv'),
+				metadata_val_path=args.metadata_csv.replace('.csv', '_val.csv'),
 				num_samples_per_segment=5,
 				save_path=os.path.join(RESULT_DIRECTORY, "head_torso_tail_grid.png"),
 			)
@@ -831,7 +834,7 @@ def main():
 	print(f"Long-Tail Performance Analysis".center(160, " "))
 	
 	# This analysis is only for single-label datasets as designed
-	if args.dataset_type == 'single_label':
+	if dataset_type == 'single_label':
 		try:
 			# 1. Get the validation dataset object
 			validation_dataset = validation_loader.dataset
@@ -858,7 +861,7 @@ def main():
 			viz.calculate_and_plot_long_tail_performance(
 				all_model_similarities=all_t2i_similarities,
 				validation_dataset=validation_dataset,
-				metadata_path=os.path.join(args.dataset_dir, "metadata_single_label.csv"),
+				metadata_path=args.metadata_csv,
 				save_path=long_tail_plot_path,
 				top_k=10 # Corresponds to Recall@10
 			)
