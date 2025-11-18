@@ -104,7 +104,7 @@ def _compute_image_embeddings_multilabel(
 			with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
 				with torch.no_grad():
 					image_embeds = model.encode_image(images)
-			image_embeds = F.normalize(image_embeds.float(), dim=-1)
+			image_embeds = torch.nn.functional.normalize(image_embeds.float(), dim=-1)
 			# Move to CPU immediately to free GPU memory
 			all_image_embeds.append(image_embeds.cpu())
 			all_labels.append(labels.cpu())
@@ -123,7 +123,7 @@ def _compute_image_embeddings_multilabel(
 				with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
 					with torch.no_grad():
 						chunk_embeds = model.encode_image(img_chunk)
-				chunk_embeds = F.normalize(chunk_embeds.float(), dim=-1)
+				chunk_embeds = torch.nn.functional.normalize(chunk_embeds.float(), dim=-1)
 				all_image_embeds.append(chunk_embeds.cpu())
 				all_labels.append(label_chunk.cpu())
 				processed_samples += img_chunk.size(0)
@@ -185,7 +185,7 @@ def pretrain_multilabel(
 	all_class_texts = clip.tokenize(class_names).to(device, non_blocking=True)
 	with torch.no_grad():
 		all_class_embeds = model.encode_text(all_class_texts)
-		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+		all_class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
 	
 	# Clear cache before similarity computation
 	torch.cuda.empty_cache()
@@ -533,7 +533,7 @@ def main():
 	test_texts = clip.tokenize(test_labels).to(args.device)
 	with torch.no_grad():
 		text_embeds = pretrained_model.encode_text(test_texts)
-		text_embeds = F.normalize(text_embeds, dim=-1)
+		text_embeds = torch.nn.functional.normalize(text_embeds, dim=-1)
 			
 	print(f"Text embeddings shape: {text_embeds.shape}")
 	print(f"Text embeddings norm: {text_embeds.norm(dim=-1)}")  # Should be ~1.0
@@ -674,7 +674,7 @@ def main():
 	for strategy, (emb, _) in embeddings_cache.items():
 		if strategy != "pretrained":
 			# Compute cosine similarity between embeddings
-			similarity = F.cosine_similarity(pretrained_emb.flatten(), emb.flatten(), dim=0)
+			similarity = torch.nn.functional.cosine_similarity(pretrained_emb.flatten(), emb.flatten(), dim=0)
 			print(f"{strategy} vs pretrained similarity: {similarity:.4f}")
 			# Linear probe should have similarity ≈ 1.0, others should be < 1.0
 
@@ -843,7 +843,7 @@ def main():
 			text_tokens = clip.tokenize(class_names).to(args.device)
 			with torch.no_grad():
 				text_embeds = models_to_plot['pretrained'].encode_text(text_tokens).float()
-				text_embeds = F.normalize(text_embeds, dim=-1)
+				text_embeds = torch.nn.functional.normalize(text_embeds, dim=-1)
 			# 3. Compute T2I similarity matrices for all models using the cached image embeddings
 			all_t2i_similarities = {}
 			for strategy, (image_embeds, _) in embeddings_cache.items():
