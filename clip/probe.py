@@ -1,3 +1,7 @@
+import torch
+from typing import Tuple, Union, List, Optional, Dict
+
+
 class SingleLabelLinearProbe(torch.nn.Module):
 		def __init__(
 				self, 
