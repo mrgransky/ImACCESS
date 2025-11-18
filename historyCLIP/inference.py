@@ -463,6 +463,7 @@ def main():
 			args.progressive_checkpoint,
 			args.probe_checkpoint,
 		]
+		if checkpoint is not None
 	):
 		raise ValueError(f"Checkpoint path does not match the assigned model architecture!")
 
