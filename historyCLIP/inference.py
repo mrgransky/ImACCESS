@@ -6,13 +6,14 @@ CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
 sys.path.insert(0, CLIP_DIR)
 
 from utils import *
-from historical_dataset_loader import (
+from historyXN_dataset_loader import (
 	get_single_label_dataloaders, 
 	get_multi_label_dataloaders, 
 	get_preprocess
 )
 from model import get_lora_clip, get_probe_clip
-from trainer import pretrain, evaluate_best_model
+from pretrain import pretrain_single_label, pretrain_multi_label
+from evals import evaluate_best_model
 import visualize as viz
 
 # "https://pbs.twimg.com/media/GowwFwkbQAAaMs-?format=jpg"
@@ -22,22 +23,22 @@ import visualize as viz
 # https://pbs.twimg.com/media/GowwFwkbQAAaMs-?format=jpg
 
 # # run in local for all fine-tuned models with image and label:
-# $ python inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/ -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/full_ViT-B-32_AdamW_CosineAnnealingLR_CrossEntropyLoss_GradScaler_ieps_63_aeps_12_do_0.0_lr_5.0e-06_wd_1.0e-02_bs_16_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/lora_ViT-B-32_AdamW_CosineAnnealingLR_CrossEntropyLoss_GradScaler_ieps_63_aeps_11_lr_5.0e-05_wd_1.0e-02_bs_32_lor_16_loa_32.0_lod_0.05_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04.pth -prgcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/progressive_ViT-B-32_ieps_105_aeps_34_do_0.0_ilr_3.0e-04_iwd_1.0e-02_bs_128_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04_mepph_5_mphb4stp_3_tph_8_fph_3_flr_1.5e-05_fwd_1.5e-02.pth -prbcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/linear_probe_ViT-B-32_AdamW_CosineAnnealingLR_CrossEntropyLoss_GradScaler_ieps_63_aeps_61_lr_1.0e-05_wd_1.0e-02_bs_8_hdim_None_pdo_None_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04.pth 
+# $ python inference.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/ -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/full_ViT-B-32_AdamW_CosineAnnealingLR_CrossEntropyLoss_GradScaler_ieps_63_aeps_12_do_0.0_lr_5.0e-06_wd_1.0e-02_bs_16_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/lora_ViT-B-32_AdamW_CosineAnnealingLR_CrossEntropyLoss_GradScaler_ieps_63_aeps_11_lr_5.0e-05_wd_1.0e-02_bs_32_lor_16_loa_32.0_lod_0.05_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04.pth -prgcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/progressive_ViT-B-32_ieps_105_aeps_34_do_0.0_ilr_3.0e-04_iwd_1.0e-02_bs_128_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04_mepph_5_mphb4stp_3_tph_8_fph_3_flr_1.5e-05_fwd_1.5e-02.pth -prbcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/linear_probe_ViT-B-32_AdamW_CosineAnnealingLR_CrossEntropyLoss_GradScaler_ieps_63_aeps_61_lr_1.0e-05_wd_1.0e-02_bs_8_hdim_None_pdo_None_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04.pth 
 
 # ################ Local ################ 
 # All fine-tuned models (head, torso, tail) 
 # Single-label:
-# $ python inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_12_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_8_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_30_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_bs_8_best_model_last_phase_2_flr_8.8e-06_fwd_0.011085376063548084.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_12_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_bs_8_best_model.pth -dt single_label
+# $ python inference.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_single_label.csv -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_12_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_8_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_30_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_bs_8_best_model_last_phase_2_flr_8.8e-06_fwd_0.011085376063548084.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_12_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_bs_8_best_model.pth -dt single_label
 
 # Multi-label:
-# $ python inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -dt multi_label -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/full_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_dropout_0.0_lr_1.0e-05_wd_1.0e-02_temp_0.07_bs_16_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/progressive_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_temp_0.07_bs_16_best_model_last_phase_1_flr_5.6e-06_fwd_0.010306122448979592.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/lora_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_temp_0.07_bs_16_best_model.pth
+# $ python inference.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/full_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_dropout_0.0_lr_1.0e-05_wd_1.0e-02_temp_0.07_bs_16_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/progressive_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_temp_0.07_bs_16_best_model_last_phase_1_flr_5.6e-06_fwd_0.010306122448979592.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/lora_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_temp_0.07_bs_16_best_model.pth
 # ################ Local ################ 
 
 # # Pouta:
-# $ nohup python -u inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -nw 32 --device "cuda:2" -k 5 -bs 256 -fcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_23_dropout_0.1_lr_5.0e-06_wd_1.0e-02_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_84_dropout_0.1_ilr_5.0e-06_iwd_1.0e-02_bs_64_best_model_last_phase_3_flr_2.3e-06_fwd_0.012021761646381529.pth -lcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_26_lr_5.0e-06_wd_1.0e-02_lor_64_loa_128.0_lod_0.05_bs_64_best_model.pth > /media/volume/ImACCESS/trash/history_clip_inference.txt &
+# $ nohup python -u inference.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -nw 32 --device "cuda:2" -k 5 -bs 256 -fcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_23_dropout_0.1_lr_5.0e-06_wd_1.0e-02_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_84_dropout_0.1_ilr_5.0e-06_iwd_1.0e-02_bs_64_best_model_last_phase_3_flr_2.3e-06_fwd_0.012021761646381529.pth -lcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_26_lr_5.0e-06_wd_1.0e-02_lor_64_loa_128.0_lod_0.05_bs_64_best_model.pth > /media/volume/ImACCESS/trash/history_clip_inference.txt &
 
 # Puhti:
-# $ python inference.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -fcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/full_ViT-L-14-336px_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_9_do_0.2_lr_2.0e-05_wd_5.0e-02_bs_32_mep_4_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth -lcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/lora_ViT-L-14-336px_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_13_lr_2.0e-05_wd_5.0e-02_lor_64_loa_128.0_lod_0.1_bs_32_mep_10_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth -prgcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/progressive_ViT-L-14-336px_ieps_101_aeps_38_do_0.0_ilr_2.0e-05_iwd_5.0e-02_bs_32_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04_mepph_3_mphb4stp_3_fph_4_flr_1.3e-05_fwd_5.5e-02.pth -prbcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/linear_probe_ViT-L-14-336px_AdamW_CosineAnnealingLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_60_lr_2.0e-05_wd_5.0e-02_bs_32_hdim_None_pdo_0.1_mep_3_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth -a 'ViT-L/14@336px' -bs 512
+# $ python inference.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -fcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/full_ViT-L-14-336px_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_9_do_0.2_lr_2.0e-05_wd_5.0e-02_bs_32_mep_4_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth -lcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/lora_ViT-L-14-336px_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_13_lr_2.0e-05_wd_5.0e-02_lor_64_loa_128.0_lod_0.1_bs_32_mep_10_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth -prgcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/progressive_ViT-L-14-336px_ieps_101_aeps_38_do_0.0_ilr_2.0e-05_iwd_5.0e-02_bs_32_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04_mepph_3_mphb4stp_3_fph_4_flr_1.3e-05_fwd_5.5e-02.pth -prbcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/linear_probe_ViT-L-14-336px_AdamW_CosineAnnealingLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_60_lr_2.0e-05_wd_5.0e-02_bs_32_hdim_None_pdo_0.1_mep_3_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth -a 'ViT-L/14@336px' -bs 512
 
 def _compute_similarities_chunked(
 		image_embeds: torch.Tensor,
@@ -374,8 +375,7 @@ def _compute_multilabel_t2i_correctness(
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="Evaluate CLIP for Historical Archives Dataset [Inference]")
-	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
-	parser.add_argument('--dataset_type', '-dt', type=str, choices=['single_label', 'multi_label'], default='single_label', help='Dataset type (single_label/multi_label)')
+	parser.add_argument('--metadata_csv', '-csv', type=str, required=True, help='Metadata CSV file')
 	parser.add_argument('--model_architecture', '-a', type=str, required=True, help='CLIP architecture')
 	parser.add_argument('--batch_size', '-bs', type=int, default=16, help='Batch size for training')
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
@@ -396,11 +396,15 @@ def main():
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
-	args.dataset_dir = os.path.normpath(args.dataset_dir)
 	print_args_table(args=args, parser=parser)
 	set_seeds(seed=42)
-	RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{args.dataset_type}", f"inference")
+	DATASET_DIRECTORY = os.path.dirname(args.metadata_csv)
+	dataset_name = os.path.basename(DATASET_DIRECTORY)
+	dataset_type = "single_label" if "single_label" in args.metadata_csv else "multi_label"
+
+	RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{dataset_type}", f"inference")
 	CACHES_DIRECTORY = os.path.join(RESULT_DIRECTORY, "caches")
+
 	os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 	os.makedirs(CACHES_DIRECTORY, exist_ok=True)
 
@@ -440,7 +444,7 @@ def main():
 	pretrained_model, pretrained_preprocess = clip.load(
 		name=args.model_architecture,
 		device=args.device,
-		download_root=get_model_directory(path=args.dataset_dir),
+		download_root=get_model_directory(path=DATASET_DIRECTORY),
 	)
 	pretrained_model = pretrained_model.float() # Convert model parameters to FP32
 	pretrained_model_name = pretrained_model.__class__.__name__ # CLIP
@@ -768,10 +772,10 @@ def main():
 	print(f">> Computing metrics for pretrained {args.model_architecture}...")
 	pretrained_img2txt_dict = {args.model_architecture: {}}
 	pretrained_txt2img_dict = {args.model_architecture: {}}
-	if args.dataset_type == "multi_label":
+	if dataset_type == "multi_label":
 		# max_eval_samples = min(500, len(validation_loader.dataset))
 		max_eval_samples = len(validation_loader.dataset)
-		pretrained_img2txt, pretrained_txt2img = pretrain_multilabel(
+		pretrained_img2txt, pretrained_txt2img = pretrain_multi_label(
 			model=pretrained_model,
 			validation_loader=validation_loader,
 			device=args.device,
@@ -784,8 +788,8 @@ def main():
 		)
 		pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
 		pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
-	else:
-		pretrained_img2txt, pretrained_txt2img = pretrain(
+	elif dataset_type == "single_label":
+		pretrained_img2txt, pretrained_txt2img = pretrain_single_label(
 			model=pretrained_model,
 			validation_loader=validation_loader,
 			results_dir=RESULT_DIRECTORY,
@@ -797,6 +801,8 @@ def main():
 		)
 		pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
 		pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
+	else:
+		raise ValueError(f"Invalid dataset type: {dataset_type}")
 	print(f">> Pretrained model metrics computed successfully. [for Quantitative Analysis]")
 
 	viz.plot_retrieval_metrics(

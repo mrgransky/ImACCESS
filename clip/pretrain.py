@@ -1,10 +1,10 @@
 from utils import *
 from evals import get_validation_metrics
 
-def pretrain_multilabel():
+def pretrain_multi_label():
 	pass
 
-def pretrain(
+def pretrain_single_label(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
 		device: torch.device,
