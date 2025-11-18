@@ -1021,13 +1021,8 @@ def main():
 
 	if len(finetune_strategies) == 0:
 		raise ValueError("Please provide at least one checkpoint for comparison!")
+	print(f"[Quantitative Analysis] Available finetune strategies: {finetune_strategies}!")
 
-	print(f">> Available finetune strategies: {finetune_strategies} [for Quantitative Analysis]")
-
-
-
-
-	print(f">> Computing metrics for pretrained {args.model_architecture}...")
 	pretrained_img2txt_dict = {args.model_architecture: {}}
 	pretrained_txt2img_dict = {args.model_architecture: {}}
 	if dataset_type == "multi_label":
@@ -1061,11 +1056,10 @@ def main():
 		pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
 	else:
 		raise ValueError(f"Invalid dataset type: {dataset_type}")
-	print(f">> Pretrained model metrics computed successfully. [for Quantitative Analysis]")
-
-
-
-
+	print(f"[Quantitative Analysis] Pretrained model metrics computed successfully!")
+	
+	if args.verbose:
+		print(f"[Quantitative Analysis] Plotting Retrieval Metrics")
 	viz.plot_retrieval_metrics(
 		dataset_name=validation_loader.name,
 		pretrained_img2txt_dict=pretrained_img2txt_dict,
@@ -1077,9 +1071,6 @@ def main():
 		topK_values=args.topK_values,
 		results_dir=RESULT_DIRECTORY,
 	)
-
-
-
 	####################################### Quantitative Analysis #######################################
 
 
