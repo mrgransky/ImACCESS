@@ -33,7 +33,7 @@ import visualize as viz
 # ################ Local ################ 
 
 # # Pouta:
-# $ python inference.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_single_label.csv -a 'ViT-B/32' -fcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_23_dropout_0.1_lr_5.0e-06_wd_1.0e-02_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_84_dropout_0.1_ilr_5.0e-06_iwd_1.0e-02_bs_64_best_model_last_phase_3_flr_2.3e-06_fwd_0.012021761646381529.pth -lcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_26_lr_5.0e-06_wd_1.0e-02_lor_64_loa_128.0_lod_0.05_bs_64_best_model.pth 
+# $ python inference.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_single_label.csv -a 'ViT-B/32' -fcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/full_ViT-B-32_ieps_63_aeps_12_do_0.0_lr_1.0e-05_wd_1.0e-02_bs_32_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04.pth -lcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/lora_ViT-B-32_ieps_63_aeps_8_lr_1.0e-05_wd_1.0e-02_bs_4_lor_16_loa_32.0_lod_0.05_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04.pth -prgcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/progressive_ViT-B-32_ieps_63_aeps_37_do_0.0_ilr_1.0e-05_iwd_1.0e-02_bs_32_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04_mepph_5_mphb4stp_3_tph_8_fph_3_flr_6.3e-08_fwd_1.5e-02.pth
 
 # $ nohup python -u inference.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -nw 32 --device "cuda:2" -k 5 -bs 256 -fcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_23_dropout_0.1_lr_5.0e-06_wd_1.0e-02_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_84_dropout_0.1_ilr_5.0e-06_iwd_1.0e-02_bs_64_best_model_last_phase_3_flr_2.3e-06_fwd_0.012021761646381529.pth -lcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_26_lr_5.0e-06_wd_1.0e-02_lor_64_loa_128.0_lod_0.05_bs_64_best_model.pth > /media/volume/ImACCESS/trash/history_clip_inference.txt & 
 
@@ -397,6 +397,7 @@ def main():
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
 	print_args_table(args=args, parser=parser)
+	print(args)
 	set_seeds(seed=42)
 	DATASET_DIRECTORY = os.path.dirname(args.metadata_csv)
 	dataset_name = os.path.basename(DATASET_DIRECTORY)
