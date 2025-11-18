@@ -336,8 +336,8 @@ def compute_embedding_drift(
 		imgs = next(iter(val_subset)) # torch.Size([batch_size, channels, height, width ])
 		imgs = imgs.to(device)
 		new_embeds = model.encode_image(imgs)
-		new_embeds = F.normalize(new_embeds, dim=-1)
-		drift = F.cosine_similarity(new_embeds, pretrained_embeds[:new_embeds.size(0)].to(device), dim=-1)
+		new_embeds = torch.nn.functional.normalize(new_embeds, dim=-1)
+		drift = torch.nn.functional.cosine_similarity(new_embeds, pretrained_embeds[:new_embeds.size(0)].to(device), dim=-1)
 		mean_drift = 1 - drift.mean().item()
 	# print(f"[DEBUG] Embedding Drift | Phase {phase} | Epoch {epoch}: {mean_drift}")
 	return mean_drift
@@ -421,4 +421,3 @@ def handle_phase_transition(
 	new_lr = optimizer.param_groups[0]['lr'] * 1.0  # 0% reduction (no change)
 	new_wd = optimizer.param_groups[0]['weight_decay'] * 1.15  # 15% increase
 	return next_phase, new_lr, new_wd
-

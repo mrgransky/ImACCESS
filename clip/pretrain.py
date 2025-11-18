@@ -1,4 +1,5 @@
 from utils import *
+from evals import get_validation_metrics
 
 def pretrain_multilabel():
 	pass
@@ -24,10 +25,12 @@ def pretrain(
 	if verbose:
 		print(f"Pretrain Evaluation {dataset_name} {model_name} - {model_arch} {device}".center(170, "-"))
 
+	criterion = torch.nn.CrossEntropyLoss()
+
 	validation_results = get_validation_metrics(
 		model=model,
 		validation_loader=validation_loader,
-		criterion=torch.nn.CrossEntropyLoss(),
+		criterion=criterion,
 		device=device,
 		topK_values=topk_values,
 		cache_dir=cache_dir,

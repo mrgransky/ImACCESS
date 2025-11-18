@@ -515,7 +515,7 @@ def progressive_finetune_single_label(
 		"loss_analyzer": os.path.join(results_dir, f"{file_base_name}_loss_analyzer.png"),
 	}
 
-	training_history = collect_progressive_training_history(
+	training_history = viz.collect_progressive_training_history(
 		training_losses=training_losses,
 		in_batch_metrics_all_epochs=in_batch_loss_acc_metrics_all_epochs,
 		learning_rates=learning_rates_history,
@@ -529,13 +529,13 @@ def progressive_finetune_single_label(
 		best_epoch=early_stopping.best_epoch if hasattr(early_stopping, 'best_epoch') else None
 	)
 
-	plot_phase_transition_analysis(
+	viz.plot_phase_transition_analysis(
 		training_history=training_history,
 		file_path=plot_paths["phase_analysis"],
 	)
 
 	print(phases_history, total_num_phases)
-	plot_unfreeze_heatmap(
+	viz.plot_unfreeze_heatmap(
 		unfreeze_schedule=unfreeze_schedule,
 		layer_groups=get_layer_groups(model),
 		max_phase=total_num_phases,
@@ -553,12 +553,12 @@ def progressive_finetune_single_label(
 	signals = analyzer.get_training_signals()
 	print(f"\nEMA signal summary: {signals}\n")
 
-	plot_phase_transition_analysis_individual(
+	viz.plot_phase_transition_analysis_individual(
 		training_history=training_history,
 		file_path=plot_paths["phase_analysis"],
 	)
 
-	plot_loss_accuracy_metrics(
+	viz.plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
 		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
@@ -573,14 +573,14 @@ def progressive_finetune_single_label(
 		full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
 	)
 
-	plot_retrieval_metrics_per_epoch(
+	viz.plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
 		image_to_text_metrics_list=img2txt_metrics_all_epochs,
 		text_to_image_metrics_list=txt2img_metrics_all_epochs,
 		fname=plot_paths["retrieval_per_epoch"],
 	)
 
-	plot_retrieval_metrics_best_model(
+	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=final_img2txt_metrics,
 		text_to_image_metrics=final_txt2img_metrics,
