@@ -40,6 +40,90 @@ import visualize as viz
 # Puhti:
 # $ python inference.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -fcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/full_ViT-L-14-336px_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_9_do_0.2_lr_2.0e-05_wd_5.0e-02_bs_32_mep_4_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth -lcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/lora_ViT-L-14-336px_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_13_lr_2.0e-05_wd_5.0e-02_lor_64_loa_128.0_lod_0.1_bs_32_mep_10_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth -prgcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/progressive_ViT-L-14-336px_ieps_101_aeps_38_do_0.0_ilr_2.0e-05_iwd_5.0e-02_bs_32_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04_mepph_3_mphb4stp_3_fph_4_flr_1.3e-05_fwd_5.5e-02.pth -prbcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/linear_probe_ViT-L-14-336px_AdamW_CosineAnnealingLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_60_lr_2.0e-05_wd_5.0e-02_bs_32_hdim_None_pdo_0.1_mep_3_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth -a 'ViT-L/14@336px' -bs 512
 
+def compute_model_embeddings(
+	strategy: str,
+	model: torch.nn.Module,
+	loader: DataLoader,
+	device: Union[str, torch.device],
+	cache_dir: str,
+	lora_rank: int=None,
+	lora_alpha: float=None,
+	lora_dropout: float=None
+):
+	"""
+	Compute embeddings for different types of fine-tuned models.
+	This function now properly handles:
+	- Regular CLIP models (pretrained, full, progressive)
+	- LoRA models 
+	- Linear probe models
+	"""
+	model.eval()
+	embeddings = []
+	paths = []
+	dataset_name = getattr(loader, 'name', 'unknown_dataset')
+	
+	cache_file_name = (
+		f"{dataset_name}_"
+		f"{strategy}_"
+		f"{model.__class__.__name__}_"
+		f"{re.sub(r'[/@]', '_', model.name)}_"
+	)
+
+	if strategy == "lora" and lora_rank is not None and lora_alpha is not None and lora_dropout is not None:
+		cache_file_name += (
+			f"lora_rank_{lora_rank}_"
+			f"lora_alpha_{lora_alpha}_"
+			f"lora_dropout_{lora_dropout}_"
+		)
+	cache_file_name += "embeddings.pt"
+	cache_file = os.path.join(cache_dir, cache_file_name)
+	
+	if os.path.exists(cache_file):
+		data = torch.load(f=cache_file, map_location=device, mmap=True)
+		return data['embeddings'], data['image_paths']
+	
+	# Determine how to extract embeddings based on model type
+	def get_image_embeddings(model, images):
+		"""Extract image embeddings handling different model types"""
+		
+		# Check if this is a linear probe model
+		if hasattr(model, 'clip_model') and hasattr(model, 'probe'):
+			# This is a linear probe - use the frozen CLIP encoder
+			# This will show that linear probe produces same embeddings as pretrained
+			return model.clip_model.encode_image(images)
+				
+		# Check if this is a standard CLIP model (pretrained, full, progressive, LoRA)
+		elif hasattr(model, 'encode_image'):
+			# This is a regular CLIP model (could be modified by LoRA, full, progressive)
+			return model.encode_image(images)
+				
+		# Handle wrapper classes or other custom model types
+		elif hasattr(model, 'visual') and hasattr(model.visual, '__call__'):
+			# Fallback: try to use visual encoder directly
+			return model.visual(images)
+				
+		else:
+			raise AttributeError(
+				f"Model of type {type(model)} doesn't have a recognizable image encoding method. "
+				f"Expected 'encode_image' method or 'clip_model.encode_image' for probe models."
+			)
+	
+	for batch_idx, (images, _, _) in enumerate(tqdm(loader, desc=f"Processing {strategy}")):
+		images = images.to(device, non_blocking=True)
+
+		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			# Use the appropriate embedding extraction method
+			features = get_image_embeddings(model, images)
+			features /= features.norm(dim=-1, keepdim=True)
+
+		embeddings.append(features.cpu())
+		paths.extend([f"batch_{batch_idx}_img_{i}" for i in range(len(images))])
+	
+	embeddings = torch.cat(embeddings, dim=0)
+	torch.save({'embeddings': embeddings, 'image_paths': paths}, cache_file)
+
+	return embeddings.to(device), paths
+
 def _compute_similarities_chunked(
 		image_embeds: torch.Tensor,
 		class_embeds: torch.Tensor,
@@ -393,6 +477,8 @@ def main():
 	parser.add_argument('--topK_values', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--temperature', '-t', type=float, default=0.07, help='Temperature for evaluation')
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
+	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
+
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
@@ -531,13 +617,17 @@ def main():
 	# Test text encoding with pretrained model
 	test_labels = ['railroad', 'cannon', 'mountain']
 	test_texts = clip.tokenize(test_labels).to(args.device)
-	with torch.no_grad():
+	with torch.no_grad(), torch.amp.autocast(device_type=args.device.type, enabled=torch.cuda.is_available()):
 		text_embeds = pretrained_model.encode_text(test_texts)
 		text_embeds = torch.nn.functional.normalize(text_embeds, dim=-1)
-			
-	print(f"Text embeddings shape: {text_embeds.shape}")
-	print(f"Text embeddings norm: {text_embeds.norm(dim=-1)}")  # Should be ~1.0
-	print(f"Text similarity matrix:\n{torch.mm(text_embeds, text_embeds.T)}")  # Should show reasonable similarities
+
+	if text_embeds.isnan().any():
+		raise ValueError("NaNs in text embeddings!")	
+
+	if verbose:
+		print(f"Text embeddings shape: {text_embeds.shape}")
+		print(f"Text embeddings norm: {text_embeds.norm(dim=-1)}") # ~1.0
+		print(f"Text similarity matrix:\n{torch.mm(text_embeds, text_embeds.T)}")  # Should show reasonable similarities
 
 	# Systematic selection of samples from validation set: Head, Torso, Tail
 	print("="*80 + "\n")
@@ -651,8 +741,8 @@ def main():
 	print(f">> {len(fine_tuned_models)} Fine-tuned Models loaded in {time.time() - ft_start:.1f} sec")
 	models_to_plot.update(fine_tuned_models)
 
-	print(f"Computing {len(models_to_plot)} {type(models_to_plot)}  Model(s) Embeddings".center(160, "-"))
-
+	if verbose:
+		print(f"Computing {len(models_to_plot)} {type(models_to_plot)}  Model(s) Embeddings".center(160, "-"))
 	mdl_emb_start = time.time()
 	embeddings_cache = {}
 	for strategy, model in models_to_plot.items():
@@ -667,16 +757,17 @@ def main():
 			lora_dropout=args.lora_dropout if strategy == "lora" else None,
 		)
 		embeddings_cache[strategy] = (embeddings, paths)
-	print(f"Model Embeddings computed in {time.time() - mdl_emb_start:.1f} sec".center(160, " "))
+	if verbose:
+		print(f"Model Embeddings computed in {time.time() - mdl_emb_start:.1f} sec".center(160, " "))
+		print("\nEmbedding Similarity Analysis:")
 
-	print("\nEmbedding Similarity Analysis:")
 	pretrained_emb = embeddings_cache["pretrained"][0]
 	for strategy, (emb, _) in embeddings_cache.items():
 		if strategy != "pretrained":
 			# Compute cosine similarity between embeddings
 			similarity = torch.nn.functional.cosine_similarity(pretrained_emb.flatten(), emb.flatten(), dim=0)
 			print(f"{strategy} vs pretrained similarity: {similarity:.4f}")
-			# Linear probe should have similarity ≈ 1.0, others should be < 1.0
+			# probe should have similarity ≈ 1.0 (as it's just a linear transformation), others should be < 1.0
 
 	print(f"Evaluating {len(fine_tuned_models)} Fine-tuned Models".center(160, "-"))
 	ft_eval_start = time.time()
@@ -693,7 +784,7 @@ def main():
 				device=args.device,
 				cache_dir=CACHES_DIRECTORY,
 				topk_values=args.topK_values,
-				verbose=True,
+				verbose=args.verbose,
 				clean_cache=False,
 				embeddings_cache=embeddings_cache[ft_name],
 				max_in_batch_samples=None, # get_max_samples(batch_size=args.batch_size, N=10, device=args.device),
@@ -752,17 +843,6 @@ def main():
 			cache_dir=CACHES_DIRECTORY,
 			embeddings_cache=embeddings_cache,
 		)
-		# viz.plot_text_to_images_merged(
-		# 	models=models_to_plot,
-		# 	validation_loader=validation_loader,
-		# 	preprocess=customized_preprocess,
-		# 	query_text=query_label,
-		# 	topk=args.topK,
-		# 	device=args.device,
-		# 	results_dir=RESULT_DIRECTORY,
-		# 	cache_dir=CACHES_DIRECTORY,
-		# 	embeddings_cache=embeddings_cache,
-		# )
 	####################################### Qualitative Analysis #######################################
 
 	####################################### Quantitative Analysis #######################################
@@ -792,7 +872,7 @@ def main():
 			results_dir=RESULT_DIRECTORY,
 			cache_dir=CACHES_DIRECTORY,
 			topk_values=args.topK_values,
-			verbose=True,
+			verbose=args.verbose,
 			max_samples=max_eval_samples,
 			temperature=args.temperature,
 		)
@@ -806,7 +886,7 @@ def main():
 			cache_dir=CACHES_DIRECTORY,
 			device=args.device,
 			topk_values=args.topK_values,
-			verbose=False,
+			verbose=args.verbose,
 			embeddings_cache=embeddings_cache["pretrained"],
 		)
 		pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
