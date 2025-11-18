@@ -157,10 +157,10 @@ def _compute_similarities_chunked(
 	return similarities.to(device, non_blocking=True)
 
 def _compute_image_embeddings_multilabel(
-		model, 
-		validation_loader, 
-		device, 
-		verbose,
+		model: torch.nn.Module,
+		validation_loader: DataLoader,
+		device: Union[str, torch.device],
+		verbose: bool = False,
 		max_samples: int = None
 	):
 	all_image_embeds = []
@@ -217,8 +217,10 @@ def _compute_image_embeddings_multilabel(
 			torch.cuda.empty_cache()	
 	all_image_embeds = torch.cat(all_image_embeds, dim=0)
 	all_labels = torch.cat(all_labels, dim=0)
+	
 	if verbose:
 		print(f"Processed {processed_samples} samples, embedding shape: {all_image_embeds.shape}")
+	
 	return all_image_embeds.to(device, non_blocking=True), all_labels.to(device, non_blocking=True)
 
 def pretrain_multilabel(
@@ -261,7 +263,7 @@ def pretrain_multilabel(
 		model,
 		validation_loader,
 		device,
-		verbose,
+		verbose=verbose,
 		max_samples=max_samples,
 	)
 	
@@ -624,7 +626,7 @@ def main():
 	if text_embeds.isnan().any():
 		raise ValueError("NaNs in text embeddings!")	
 
-	if verbose:
+	if args.verbose:
 		print(f"Text embeddings shape: {text_embeds.shape}")
 		print(f"Text embeddings norm: {text_embeds.norm(dim=-1)}") # ~1.0
 		print(f"Text similarity matrix:\n{torch.mm(text_embeds, text_embeds.T)}")  # Should show reasonable similarities
@@ -703,7 +705,7 @@ def main():
 					rank=args.lora_rank, 
 					alpha=args.lora_alpha, 
 					dropout=args.lora_dropout, 
-					verbose=False,
+					verbose=args.verbose,
 				)
 				lora_model.to(args.device)
 				lora_model = lora_model.float()
@@ -719,7 +721,7 @@ def main():
 					# hidden_dim=args.probe_hidden_dim, # Optional: creates MLP probe
 					dropout=args.probe_dropout,
 					zero_shot_init=False, # doesn't matter
-					verbose=False,
+					verbose=args.verbose,
 				)
 				probe_model.to(args.device)
 				probe_model = probe_model.float()
@@ -741,7 +743,7 @@ def main():
 	print(f">> {len(fine_tuned_models)} Fine-tuned Models loaded in {time.time() - ft_start:.1f} sec")
 	models_to_plot.update(fine_tuned_models)
 
-	if verbose:
+	if args.verbose:
 		print(f"Computing {len(models_to_plot)} {type(models_to_plot)}  Model(s) Embeddings".center(160, "-"))
 	mdl_emb_start = time.time()
 	embeddings_cache = {}
@@ -757,7 +759,7 @@ def main():
 			lora_dropout=args.lora_dropout if strategy == "lora" else None,
 		)
 		embeddings_cache[strategy] = (embeddings, paths)
-	if verbose:
+	if args.verbose:
 		print(f"Model Embeddings computed in {time.time() - mdl_emb_start:.1f} sec".center(160, " "))
 		print("\nEmbedding Similarity Analysis:")
 
