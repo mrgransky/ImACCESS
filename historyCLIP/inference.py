@@ -932,7 +932,7 @@ def main():
 			# probe should have similarity ≈ 1.0 (as it's just a linear transformation), others should be < 1.0
 
 	if args.verbose:
-	print(f"\nEvaluating {len(fine_tuned_models)} Fine-tuned Models: {list(fine_tuned_models.keys())}")
+		print(f"\nEvaluating {len(fine_tuned_models)} Fine-tuned Models: {list(fine_tuned_models.keys())}")
 	ft_eval_start = time.time()
 	for ft_name, ft_path in finetuned_checkpoint_paths.items():
 		if ft_name in fine_tuned_models:
