@@ -908,13 +908,13 @@ def get_validation_metrics(
 	
 	if not cache_loaded:
 		if verbose:
-			print("Computing embeddings from scratch [takes a while]")
+			print("Computing embeddings from scratch [takes a while] ...")
 		t0 = time.time()
 		all_image_embeds, all_labels = _compute_image_embeddings(
 			model=model, 
 			validation_loader=validation_loader, 
 			device=device,
-			verbose=verbose, # too much verbosity
+			verbose=verbose,
 		)
 		if verbose:
 			print(f"Elapsed: {time.time() - t0:.1f} s")
@@ -923,20 +923,13 @@ def get_validation_metrics(
 		if not is_training:
 			try:
 				os.makedirs(cache_dir, exist_ok=True)
-				torch.save({
-					'image_embeds': all_image_embeds.cpu(),
-					'labels': all_labels.cpu()
-				}, cache_file)
+				torch.save({'image_embeds': all_image_embeds.cpu(), 'labels': all_labels.cpu()}, cache_file)
 				if verbose:
 					print(f"Saved embeddings to cache: {cache_file}")
 			except Exception as e:
-				if verbose:
-					print(f"Cache saving failed: {e}")
+				print(f"Cache saving failed: {e}")
 	
 	# Step 3: Compute text embeddings
-	if verbose:
-		print(f"Computing {n_classes} text embeddings...")
-
 	text_batch_size = validation_loader.batch_size
 	if verbose:
 		print(f"Pre-encoding {n_classes} classes in batch_size: {text_batch_size}")
@@ -958,16 +951,6 @@ def get_validation_metrics(
 	class_text_embeds = torch.cat(class_text_embeds, dim=0).to(device)
 	if verbose:
 		print(f"class_text_embeds: {type(class_text_embeds)} {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
-
-	# text_inputs = clip.tokenize(class_names).to(device)
-	# with torch.autocast(
-	# 	device_type=device.type,
-	# 	enabled=torch.cuda.is_available(),
-	# ):
-	# 	class_text_embeds = model.encode_text(text_inputs)
-	# class_text_embeds = torch.nn.functional.normalize(class_text_embeds.float(), dim=-1)
-	if verbose:
-		print(f"Text embeddings: {type(class_text_embeds)} {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
 
 	# Move to device and ensure proper types
 	device_image_embeds = all_image_embeds.to(device).float()

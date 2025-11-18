@@ -24,7 +24,7 @@ import visualize as viz
 # https://pbs.twimg.com/media/GowwFwkbQAAaMs-?format=jpg
 
 # # run in local for all fine-tuned models with image and label:
-# $ python inference.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/ -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/full_ViT-B-32_AdamW_CosineAnnealingLR_CrossEntropyLoss_GradScaler_ieps_63_aeps_12_do_0.0_lr_5.0e-06_wd_1.0e-02_bs_16_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/lora_ViT-B-32_AdamW_CosineAnnealingLR_CrossEntropyLoss_GradScaler_ieps_63_aeps_11_lr_5.0e-05_wd_1.0e-02_bs_32_lor_16_loa_32.0_lod_0.05_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04.pth -prgcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/progressive_ViT-B-32_ieps_105_aeps_34_do_0.0_ilr_3.0e-04_iwd_1.0e-02_bs_128_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04_mepph_5_mphb4stp_3_tph_8_fph_3_flr_1.5e-05_fwd_1.5e-02.pth -prbcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/linear_probe_ViT-B-32_AdamW_CosineAnnealingLR_CrossEntropyLoss_GradScaler_ieps_63_aeps_61_lr_1.0e-05_wd_1.0e-02_bs_8_hdim_None_pdo_None_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04.pth 
+# $ python inference.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_single_label.csv -a 'ViT-B/32' -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/full_ViT-B-32_ieps_63_aeps_8_do_0.0_lr_1.0e-05_wd_1.0e-02_bs_2_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/lora_ViT-B-32_ieps_63_aeps_8_lr_1.0e-05_wd_1.0e-02_bs_2_lor_16_loa_32.0_lod_0.1_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04.pth -prgcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/single_label/progressive_ViT-B-32_ieps_63_aeps_40_do_0.0_ilr_3.0e-04_iwd_1.0e-02_bs_16_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_5.0_st_1.0e-04_pit_1.0e-04_mepph_5_mphb4stp_3_tph_8_fph_3_flr_2.3e-06_fwd_1.5e-02.pth -v
 
 # ################ Local ################ 
 # All fine-tuned models (head, torso, tail) 
@@ -672,7 +672,6 @@ def main():
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
-
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
 	print_args_table(args=args, parser=parser)
@@ -961,7 +960,8 @@ def main():
 	print(f"{len(fine_tuned_models)} Fine-tuned Models evaluated in {time.time() - ft_eval_start:.5f} sec")
 
 	####################################### Qualitative Analysis #######################################
-	print(f"Qualitative Analysis".center(160, " "))
+	if args.verbose:
+		print(f"Qualitative Analysis".center(160, " "))
 	for query_image in QUERY_IMAGES:
 		viz.plot_image_to_texts_pretrained(
 			best_pretrained_model=pretrained_model,
@@ -1007,8 +1007,6 @@ def main():
 	####################################### Qualitative Analysis #######################################
 
 	####################################### Quantitative Analysis #######################################
-	if args.verbose:
-		print(f"Quantitative Analysis".center(160, " "))
 	finetune_strategies = []
 	if args.full_checkpoint is not None:
 		finetune_strategies.append("full")
@@ -1021,7 +1019,9 @@ def main():
 
 	if len(finetune_strategies) == 0:
 		raise ValueError("Please provide at least one checkpoint for comparison!")
-	print(f"[Quantitative Analysis] Available finetune strategies: {finetune_strategies}!")
+
+	if args.verbose:
+		print(f"Quantitative Analysis for {len(finetune_strategies)} Finetune strategies: {finetune_strategies}".center(160, " "))
 
 	pretrained_img2txt_dict = {args.model_architecture: {}}
 	pretrained_txt2img_dict = {args.model_architecture: {}}
@@ -1056,10 +1056,7 @@ def main():
 		pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
 	else:
 		raise ValueError(f"Invalid dataset type: {dataset_type}")
-	print(f"[Quantitative Analysis] Pretrained model metrics computed successfully!")
 	
-	if args.verbose:
-		print(f"[Quantitative Analysis] Plotting Retrieval Metrics")
 	viz.plot_retrieval_metrics(
 		dataset_name=validation_loader.name,
 		pretrained_img2txt_dict=pretrained_img2txt_dict,
@@ -1070,6 +1067,7 @@ def main():
 		finetune_strategies=finetune_strategies,
 		topK_values=args.topK_values,
 		results_dir=RESULT_DIRECTORY,
+		verbose=args.verbose,
 	)
 	####################################### Quantitative Analysis #######################################
 

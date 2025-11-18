@@ -2807,6 +2807,7 @@ def plot_retrieval_metrics(
 		topK_values: list,
 		figure_size=(11, 10),
 		DPI: int = 250,
+		verbose: bool = False,
 	):
 	metrics = ["mP", "mAP", "Recall"]
 	if model_name not in finetuned_img2txt_dict.keys():
@@ -2820,7 +2821,8 @@ def plot_retrieval_metrics(
 		return
 	
 	# Validate finetune_strategies
-	print(f"{len(finetune_strategies)} Finetune strategies: {finetune_strategies}")
+	if verbose:
+		print(f"Plotting Retrieval Metrics for {model_name} with {len(finetune_strategies)} Finetune strategies: {finetune_strategies}")
 
 	if not finetune_strategies:
 		print("WARNING: No valid finetune strategies provided. Skipping...")

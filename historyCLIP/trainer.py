@@ -8,7 +8,6 @@ sys.path.insert(0, CLIP_DIR)
 from utils import *
 from single_label_trainer import *
 from multi_label_trainer import *
-from pretrain import pretrain, pretrain_multilabel
 
 import visualize as viz
 from historyXN_dataset_loader import get_single_label_dataloaders, get_multi_label_dataloaders
