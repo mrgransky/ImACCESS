@@ -877,7 +877,7 @@ def get_validation_metrics(
 		all_labels = _prepare_labels_tensor(validation_loader, num_samples, n_classes, device)
 		cache_loaded = True
 		if verbose:
-			print("Using provided embeddings cache")
+			print(f"Embeddings cache loaded from provided embeddings_cache: {type(embeddings_cache)}")
 	
 	# Try to load from file cache
 	elif not is_training and os.path.exists(cache_file) and not force_recompute:

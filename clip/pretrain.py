@@ -36,12 +36,13 @@ def pretrain_single_label(
 		device=device,
 		topK_values=topk_values,
 		cache_dir=cache_dir,
-		verbose=True,
+		verbose=verbose,
 		embeddings_cache=embeddings_cache,
 		is_training=False,
 		model_hash=get_model_hash(model),
 	)
 	if verbose:
+		print(f"Pretrain Evaluation Results: {dataset_name} {model_name} - {model_arch} {device}")
 		print(json.dumps(validation_results, indent=2, ensure_ascii=False))
 
 	retrieval_metrics = {

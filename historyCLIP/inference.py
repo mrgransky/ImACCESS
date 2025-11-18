@@ -904,8 +904,7 @@ def main():
 	models_to_plot.update(fine_tuned_models)
 
 	if args.verbose:
-		print(f"Computing {len(models_to_plot)} {type(models_to_plot)}  Model(s) Embeddings".center(160, "-"))
-	mdl_emb_start = time.time()
+		print(f"Computing {len(models_to_plot)} {type(models_to_plot)} Model(s) Embeddings".center(100, "-"))
 	embeddings_cache = {}
 	for strategy, model in models_to_plot.items():
 		embeddings, paths = compute_model_embeddings(
@@ -919,16 +918,15 @@ def main():
 			lora_dropout=args.lora_dropout if strategy == "lora" else None,
 		)
 		embeddings_cache[strategy] = (embeddings, paths)
-	if args.verbose:
-		print(f"Model Embeddings computed in {time.time() - mdl_emb_start:.1f} sec".center(160, " "))
-		print("\nEmbedding Similarity Analysis:")
 
+	if args.verbose:
+		print(f"\n{len(embeddings_cache)} Embedding Similarity Analysis: {list(embeddings_cache.keys())}")
 	pretrained_emb = embeddings_cache["pretrained"][0]
 	for strategy, (emb, _) in embeddings_cache.items():
 		if strategy != "pretrained":
 			# Compute cosine similarity between embeddings
 			similarity = torch.nn.functional.cosine_similarity(pretrained_emb.flatten(), emb.flatten(), dim=0)
-			print(f"{strategy} vs pretrained similarity: {similarity:.4f}")
+			print(f"{strategy} vs pretrained: {similarity:.4f}")
 			# probe should have similarity ≈ 1.0 (as it's just a linear transformation), others should be < 1.0
 
 	if args.verbose:
@@ -936,7 +934,7 @@ def main():
 	ft_eval_start = time.time()
 	for ft_name, ft_path in finetuned_checkpoint_paths.items():
 		if ft_name in fine_tuned_models:
-			print(f"<<>> Evaluating {ft_name}")
+			print(f"<<>> Evaluating: {ft_name}")
 			evaluation_results = evaluate_best_model(
 				model=fine_tuned_models[ft_name],
 				validation_loader=validation_loader,
@@ -960,7 +958,7 @@ def main():
 			)
 			finetuned_img2txt_dict[args.model_architecture][ft_name] = evaluation_results["img2txt_metrics"]
 			finetuned_txt2img_dict[args.model_architecture][ft_name] = evaluation_results["txt2img_metrics"]
-	print(f"{len(fine_tuned_models)} Fine-tuned Models evaluated in {time.time() - ft_eval_start:.5f} sec".center(160, "-"))
+	print(f"{len(fine_tuned_models)} Fine-tuned Models evaluated in {time.time() - ft_eval_start:.5f} sec")
 
 	####################################### Qualitative Analysis #######################################
 	print(f"Qualitative Analysis".center(160, " "))
@@ -1009,6 +1007,8 @@ def main():
 	####################################### Qualitative Analysis #######################################
 
 	####################################### Quantitative Analysis #######################################
+	if args.verbose:
+		print(f"Quantitative Analysis".center(160, " "))
 	finetune_strategies = []
 	if args.full_checkpoint is not None:
 		finetune_strategies.append("full")
@@ -1018,9 +1018,14 @@ def main():
 		finetune_strategies.append("progressive")
 	if args.probe_checkpoint is not None:
 		finetune_strategies.append("probe")
+
 	if len(finetune_strategies) == 0:
 		raise ValueError("Please provide at least one checkpoint for comparison!")
-	print(f">> All available finetune strategies: {finetune_strategies}")
+
+	print(f">> Available finetune strategies: {finetune_strategies} [for Quantitative Analysis]")
+
+
+
 
 	print(f">> Computing metrics for pretrained {args.model_architecture}...")
 	pretrained_img2txt_dict = {args.model_architecture: {}}
@@ -1058,6 +1063,9 @@ def main():
 		raise ValueError(f"Invalid dataset type: {dataset_type}")
 	print(f">> Pretrained model metrics computed successfully. [for Quantitative Analysis]")
 
+
+
+
 	viz.plot_retrieval_metrics(
 		dataset_name=validation_loader.name,
 		pretrained_img2txt_dict=pretrained_img2txt_dict,
@@ -1069,6 +1077,8 @@ def main():
 		topK_values=args.topK_values,
 		results_dir=RESULT_DIRECTORY,
 	)
+
+
 
 	####################################### Quantitative Analysis #######################################
 
