@@ -730,7 +730,8 @@ def compute_retrieval_metrics_from_similarity(
 		except Exception as e:
 			if verbose:
 				print(f"Cache saving failed: {e}")
-	
+	if verbose:
+		print(json.dumps(metrics, ensure_ascii=False, indent=2))
 	return metrics
 
 def compute_multilabel_correctness(
@@ -1009,16 +1010,16 @@ def get_validation_metrics(
 		chunk_size=chunk_size
 	)
 	if verbose:
-		print(f"Full-set metrics: {full_metrics}")
+		print(json.dumps(full_metrics, ensure_ascii=False, indent=2))
 	
 	# Step 6: Compute retrieval metrics
-	if verbose:
-		print("Computing retrieval metrics...")
-	
 	cache_key_base = f"{dataset_name}_{finetune_strategy}_{model_class_name}_{model_arch_name.replace('/', '_')}"
 	if lora_params:
 		cache_key_base += f"_lora_r{lora_params['lora_rank']}_a{lora_params['lora_alpha']}_d{lora_params['lora_dropout']}"
 	
+	if verbose:
+		print("Computing image-to-text and text-to-image retrieval metrics...")
+
 	img2txt_metrics = compute_retrieval_metrics_from_similarity(
 		similarity_matrix=i2t_similarity,
 		query_labels=device_labels,
