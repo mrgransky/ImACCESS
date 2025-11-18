@@ -1,5 +1,6 @@
 from utils import *
 from evals import get_validation_metrics
+import visualize as viz
 
 def pretrain_multi_label():
 	pass
@@ -55,7 +56,7 @@ def pretrain_single_label(
 		print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
 
 	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{dataset_name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt_txt2img.png")
-	plot_retrieval_metrics_best_model(
+	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=img2txt_metrics,
 		text_to_image_metrics=txt2img_metrics,
