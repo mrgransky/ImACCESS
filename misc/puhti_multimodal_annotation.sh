@@ -12,7 +12,7 @@
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
 #SBATCH --array=0-4
-#SBATCH --gres=gpu:v100:1,nvme:100
+#SBATCH --gres=gpu:v100:2,nvme:100
 
 set -euo pipefail
 
@@ -40,14 +40,14 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
-VLN_BATCH_SIZES=(64 48 48 48 96)
-LLM_BATCH_SIZES=(24 24 24 24 24)
+LLM_BATCH_SIZES=(48 32 48 48 96)
+VLM_BATCH_SIZES=(32 32 24 24 24)
 
 python -u multimodal_annotation.py \
   --csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv \
   --num_workers $SLURM_CPUS_PER_TASK \
   --llm_batch_size ${LLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
-  --vlm_batch_size ${VLN_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
+  --vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
   --llm_model_id "Qwen/Qwen3-4B-Instruct-2507" \
   --vlm_model_id "Qwen/Qwen3-VL-8B-Instruct" \
   --max_generated_tks 64 \

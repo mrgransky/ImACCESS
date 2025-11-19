@@ -1042,8 +1042,9 @@ def main():
 		pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
 		pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
 	elif dataset_type == "single_label":
-		pretrained_img2txt, pretrained_txt2img = pretrain_single_label(
+		pretrained_img2txt, pretrained_txt2img, linear_probe_accuracy = pretrain_single_label(
 			model=pretrained_model,
+			train_loader=train_loader,
 			validation_loader=validation_loader,
 			results_dir=RESULT_DIRECTORY,
 			cache_dir=CACHES_DIRECTORY,
