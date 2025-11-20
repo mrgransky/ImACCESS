@@ -703,40 +703,41 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 		processed = []
 		seen = set()
 		for kw in keywords:
-				if not kw:
-						continue
-				# 1️⃣ Drop very short tokens (already in place)
-				if len(kw) < 2:
-						if verbose: print(f"Skipping short keyword: {kw} (len={len(kw)})")
-						continue
-				# 2️⃣ Normalise whitespace
-				cleaned = re.sub(r'\s+', ' ', kw.strip())
-				# 3️⃣ Drop stop‑words
-				if cleaned.lower() in STOPWORDS:
-						if verbose: print(f"Skipping stopword: {cleaned}")
-						continue
-				# 4️⃣ **NEW** – reject anything that contains a digit OR a non‑alphabetic character
-				#    (we keep letters, spaces and apostrophes only)
-				if re.search(r'[\d]', cleaned):
-						if verbose: print(f"Skipping numeric keyword: {cleaned}")
-						continue
-				if re.search(r'[^A-Za-z\'\s]', cleaned):
-						if verbose: print(f"Skipping non‑alpha keyword: {cleaned}")
-						continue
-				# 5️⃣ Drop pure‑numeric strings (kept for completeness)
-				if re.fullmatch(r'\d+', cleaned):
-						if verbose: print(f"Skipping numeric keyword: {cleaned}")
-						continue
-				# 6️⃣ Deduplicate (case‑insensitive)
-				normalized = cleaned.lower()
-				if normalized in seen:
-						if verbose: print(f"Skipping duplicate keyword: {cleaned}")
-						continue
-				seen.add(normalized)
-				processed.append(cleaned)
-				if len(processed) >= max_kws:
-						if verbose: print(f"Reached max keywords: {processed}")
-						break
+			if not kw:
+				if verbose: print(f"Skipping empty keyword: <{kw}>") 
+				continue
+			# 1️⃣ Drop very short tokens (already in place)
+			if len(kw) < 2:
+				if verbose: print(f"Skipping short keyword: {kw} (len={len(kw)})") 
+				continue
+			# 2️⃣ Normalise whitespace
+			cleaned = re.sub(r'\s+', ' ', kw.strip())
+			# 3️⃣ Drop stop‑words
+			if cleaned.lower() in STOPWORDS:
+				if verbose: print(f"Skipping stopword: {cleaned}")
+				continue
+			# 4️⃣ reject anything that contains a digit OR a non‑alphabetic character
+			#    (we keep letters, spaces and apostrophes only)
+			if re.search(r'[\d]', cleaned):
+				if verbose: print(f"Skipping numeric keyword: {cleaned}")
+				continue
+			if re.search(r'[^A-Za-z\'\s]', cleaned):
+				if verbose: print(f"Skipping non‑alpha keyword: {cleaned}")
+				continue
+			# 5️⃣ Drop pure‑numeric strings
+			if re.fullmatch(r'\d+', cleaned):
+				if verbose: print(f"Skipping pure-numeric keyword: {cleaned}")
+				continue
+			# 6️⃣ Deduplicate (case‑insensitive)
+			normalized = cleaned.lower()
+			if normalized in seen:
+				if verbose: print(f"Skipping duplicate keyword: {cleaned}")
+				continue
+			seen.add(normalized)
+			processed.append(cleaned)
+			if len(processed) >= max_kws:
+				if verbose: print(f"Reached max keywords: {processed}")
+				break
 		return processed
 
 	if verbose:
