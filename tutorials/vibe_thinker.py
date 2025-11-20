@@ -7,10 +7,17 @@ class VibeThinker:
 				self.model = AutoModelForCausalLM.from_pretrained(
 						self.model_path,
 						low_cpu_mem_usage=True,
-						torch_dtype="bfloat16",
+						dtype="bfloat16",
 						device_map="auto"
 				)
 				self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, trust_remote_code=True)
+				# Ensure a pad token exists (some chat models omit it)
+				if tokenizer.pad_token is None:
+					tokenizer.pad_token = tokenizer.eos_token
+					tokenizer.pad_token_id = tokenizer.eos_token_id
+				
+				if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
+					tokenizer.padding_side = "left"
 
 		def infer_text(self, prompt):
 				messages = [
