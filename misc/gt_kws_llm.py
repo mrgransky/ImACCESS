@@ -722,7 +722,7 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 				continue
 
 			# Check for standalone numbers or numeric-only words (exclude these)
-			if re.fullmatch(r'\d+', cleaned):
+			if re.fullmatch(r'\d', cleaned):
 				if verbose: print(f"Skipping numeric keyword: {cleaned}")
 				continue
 			
