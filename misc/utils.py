@@ -384,7 +384,6 @@ def clean_single_quotes(text):
 def basic_clean(txt):
 	if not txt or not isinstance(txt, str):
 		return ""
-			
 	# Step 1: PROTECT real apostrophes FIRST (most important!)
 	txt = re.sub(r"(\w)'(\w)", r"\1__APOSTROPHE__\2", txt)
 	# This safely protects: don't → don__APOSTROPHE__t, John's → John__APOSTROPHE__s
