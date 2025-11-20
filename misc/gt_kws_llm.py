@@ -59,9 +59,10 @@ Given the description below, extract up to {k} most prominent, factual and disti
 - Extract **ONLY keywords that actually appear** in the description above.
 - Return **AT MOST {k} keywords** - fewer is acceptable if the description is short or lacks distinct concepts.
 - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
-- **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
+- **STRICTLY EXCLUDE ALL NUMERICAL CONTENT**: No numbers, numerical values, measurements, units, dimensions, or quantitative terms.
+- **ABSOLUTELY NO** additional explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
 - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "May 25th", "July 10").
-- **STRICTLY EXCLUDE** vague, generic, or historical keywords.
+- **STRICTLY EXCLUDE** vague, generic or ambiguous keywords.
 - **STRICTLY EXCLUDE** special characters, stopwords, meaningless, repeating or synonym-duplicate keywords.
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]
