@@ -43,13 +43,11 @@ FIGURE_SIZE = (12, 9)
 DPI = 350
 
 meaningless_words_fpth = os.path.join(project_dir, 'misc', 'meaningless_words.txt')
-# STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
 STOPWORDS = list()
 with open(meaningless_words_fpth, 'r') as file_:
 	customized_meaningless_words=[line.strip().lower() for line in file_]
 STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
-print(STOPWORDS, type(STOPWORDS))
 
 headers = {
 	'Content-type': 'application/json',

@@ -123,10 +123,7 @@ except LookupError:
 		# raise_on_error=True,
 	)
 
-# STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
-STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
 
-print(f"Successfully loaded {len(STOPWORDS)} stopwords")
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
@@ -397,6 +394,7 @@ def basic_clean(txt):
 		r'Date Year: \[Blank\]',
 		r'Subcategory: \[BLANK\]',
 		r'\[blank\]',
+		r'\[sic\]',
 		r'\[arrow symbol\]',
 		r'This item is a photo depicting ',
 		r"This item is a photograph depicting ",
@@ -405,18 +403,21 @@ def basic_clean(txt):
 		r'Country: Unknown',
 		r'Original caption:',
 		r'Caption: ',
+		r'Law Title taken from similar image in this series.',
 		r'The original finding aid described this photograph as:',
 		r'The original finding aid described this as:',
 		r'The original finding aid described this item as:',
-		f"The following geographic information is associated with this record:",
-		f"This photograph is of ",
+		r"The following geographic information is associated with this record:",
+		r"This photograph is of ",
+		r'This image is part of ',
+		r'According to Shaffer: ',
 		r'The following information was provided by digitizing partner Fold3:',
 		r'Original caption on envelope: ',
 		r"The photographer's notes indicate",
 		r"This photograph shows",
 		r"Placeholder",
-		f"No description",
-		f"Unknown",
+		r"No description",
+		r"Unknown",
 		r'The picture shows',
 		r'The photograph shows',
 		r"This photo shows ",
@@ -458,7 +459,7 @@ def basic_clean(txt):
 		# r'\bDate\s+(?:Month|Day|Year)\s*:\s*\[.*?\]',        # Date Month: [Blank]
 		r'^(Image\s[A-Z]|[a-zA-Z]\s[A-Z])', 										# Image A
 		r'(?i)^Project\s+.*?\s-\s',
-		r'(?i)(?:Series of |Group of |Collection of )(\d+\s*\w+)'
+		r'(?i)(?:Series of |a series of |Group of |Collection of )(\d+\s*\w+)'
 	]
 
 	for pattern in metadata_patterns:

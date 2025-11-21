@@ -49,6 +49,16 @@ EXP_BACKOFF = 2	# seconds ** attempt
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
 
+# STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
+STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
+# custom_stopwords_list = requests.get("https://raw.githubusercontent.com/stopwords-iso/stopwords-en/refs/heads/master/stopwords-en.txt").content
+# stopwords = set(custom_stopwords_list.decode().splitlines())
+with open('meaningless_words.txt', 'r') as file_:
+	custom_stopwords_list=[line.strip().lower() for line in file_]
+stopwords = set(custom_stopwords_list)
+STOPWORDS.update(stopwords)
+print(f"Successfully loaded {len(STOPWORDS)} stopwords")
+
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 Act as a meticulous historical archivist specializing in 20th century documentation.
 Given the description below, extract up to {k} most prominent, factual and distinct **KEYWORDS** that appear in the text.
@@ -59,11 +69,11 @@ Given the description below, extract up to {k} most prominent, factual and disti
 - Extract **ONLY keywords that actually appear** in the description above.
 - Return **AT MOST {k} keywords** - fewer is acceptable if the description is short or lacks distinct concepts.
 - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
-- **STRICTLY EXCLUDE ALL NUMERICAL CONTENT**: No numbers, numerical values, measurements, units, dimensions, or quantitative terms.
+- **STRICTLY EXCLUDE ALL NUMERICAL CONTENT**: No numbers, numerical values, measurements, units, or quantitative terms.
+- **STRICTLY EXCLUDE** vague, generic, meaningless or ambiguous keywords.
+- **ABSOLUTELY NO** synonymous, duplicate or misspelled keywords.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
 - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "May 25th", "July 10").
-- **STRICTLY EXCLUDE** vague, generic or ambiguous keywords.
-- **STRICTLY EXCLUDE** special characters, stopwords, meaningless, duplicate or synonym keywords.
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]
 """
@@ -717,9 +727,9 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 			if re.search(r'[\d]', cleaned):
 				if verbose: print(f"Skipping numeric keyword: {cleaned}")
 				continue
-			if re.search(r'[^A-Za-z\'\s]', cleaned):
-				if verbose: print(f"Skipping non‑alpha keyword: {cleaned}")
-				continue
+			# if re.search(r'[^A-Za-z\'\s]', cleaned):
+			# 	if verbose: print(f"Skipping non‑alpha keyword: {cleaned}")
+			# 	continue
 			# 5️⃣ Drop pure‑numeric strings
 			if re.fullmatch(r'\d+', cleaned):
 				if verbose: print(f"Skipping pure-numeric keyword: {cleaned}")
@@ -753,7 +763,7 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 	list_content = _extract_clean_list_content(llm_response)
 	
 	if verbose:
-			print(f"\nExtracted list content: {list_content}")
+		print(f"\nExtracted list content: {list_content}")
 	
 	# Strategy 2: If no clean list found, try direct extraction from content after first [/INST]
 	if not list_content and inst_tags:
@@ -801,8 +811,7 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 		if verbose:
 			print(f"\nFinal processed keywords: {final_keywords}")
 		
-		return final_keywords if final_keywords else None
-			
+		return final_keywords if final_keywords else None		
 	except Exception as e:
 		if verbose:
 			print(f"\nError parsing the list: {e}")
