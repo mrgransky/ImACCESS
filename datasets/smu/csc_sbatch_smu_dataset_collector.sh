@@ -7,10 +7,10 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=6G
-#SBATCH --partition=large
-#SBATCH --time=0-05:00:00
+#SBATCH --partition=small
+#SBATCH --time=0-08:00:00
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
