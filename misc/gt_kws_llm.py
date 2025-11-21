@@ -1510,7 +1510,7 @@ def get_llm_based_labels_opt(
 					pad_token_id=tokenizer.pad_token_id,
 					eos_token_id=tokenizer.eos_token_id,
 				)
-				if verbose: print(f"Batch[{batch_num}]")
+				if verbose: print(f"\nBatch[{batch_num}]")
 
 				# Generate response
 				with torch.no_grad():
@@ -1522,7 +1522,7 @@ def get_llm_based_labels_opt(
 						outputs = model.generate(**gen_kwargs)
 
 				decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-				if verbose: print(f"Batch[{batch_num}] decoded responses: {type(decoded)} {len(decoded)}")
+				if verbose: print(f"\nBatch[{batch_num}] decoded responses: {type(decoded)} {len(decoded)}")
 
 				# Parse each response
 				for i, text_out in enumerate(decoded):
