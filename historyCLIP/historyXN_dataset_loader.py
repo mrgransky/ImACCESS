@@ -272,7 +272,7 @@ def get_multi_label_datasets(metadata_fpth: str):
 			filepath_or_buffer=metadata_train_fpth, 
 			on_bad_lines='skip',
 			dtype=dtypes, 
-			low_memory=True,
+			low_memory=False,
 	)
 	
 	print(f"Loading multi-label validation dataset: {metadata_val_fpth}")
@@ -280,7 +280,7 @@ def get_multi_label_datasets(metadata_fpth: str):
 			filepath_or_buffer=metadata_val_fpth,
 			on_bad_lines='skip',
 			dtype=dtypes, 
-			low_memory=True,
+			low_memory=False,
 	)
 	
 	# Create label mapping from all unique labels in the dataset
