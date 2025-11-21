@@ -459,7 +459,10 @@ def basic_clean(txt):
 		# r'\bDate\s+(?:Month|Day|Year)\s*:\s*\[.*?\]',        # Date Month: [Blank]
 		r'^(Image\s[A-Z]|[a-zA-Z]\s[A-Z])', 										# Image A
 		r'(?i)^Project\s+.*?\s-\s',
-		r'(?i)(?:Series of |a series of |Group of |Collection of )(\d+\s*\w+)'
+		r'(?i)(?:Series of |a series of |Group of |Collection of )(\d+\s*\w+)',
+		r'No\.\s\d+',                                        # No. 123
+		r'Vol\.\s\d+',                                        # Vol. 5,
+		r'issue\s\d+'																				 # issue 1
 	]
 
 	for pattern in metadata_patterns:

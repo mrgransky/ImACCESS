@@ -269,28 +269,30 @@ def get_multi_label_datasets(metadata_fpth: str):
 
 	print(f"Loading multi-label training dataset: {metadata_train_fpth}")
 	df_train = pd.read_csv(
-			filepath_or_buffer=metadata_train_fpth, 
-			on_bad_lines='skip',
-			dtype=dtypes, 
-			low_memory=False,
+		filepath_or_buffer=metadata_train_fpth, 
+		on_bad_lines='skip',
+		dtype=dtypes, 
+		low_memory=False,
 	)
+	print(f"TRAIN {type(df_train)}: {list(df_train.columns)} {df_train.shape}")
 	
 	print(f"Loading multi-label validation dataset: {metadata_val_fpth}")
 	df_val = pd.read_csv(
-			filepath_or_buffer=metadata_val_fpth,
-			on_bad_lines='skip',
-			dtype=dtypes, 
-			low_memory=False,
-	)
-	
+		filepath_or_buffer=metadata_val_fpth,
+		on_bad_lines='skip',
+		dtype=dtypes, 
+		low_memory=False,
+	)	
+	print(f"VAL {type(df_val)}: {list(df_val.columns)} {df_val.shape}")
+
 	# Create label mapping from all unique labels in the dataset
 	all_labels = set()
 	for labels_str in df['multimodal_labels']:
-			try:
-					labels = ast.literal_eval(labels_str)
-					all_labels.update(labels)
-			except (ValueError, SyntaxError):
-					continue
+		try:
+			labels = ast.literal_eval(labels_str)
+			all_labels.update(labels)
+		except (ValueError, SyntaxError):
+			continue
 	
 	# Convert to sorted list for deterministic ordering
 	all_labels = sorted(all_labels)
