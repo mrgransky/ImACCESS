@@ -383,6 +383,7 @@ def basic_clean(txt):
 		r'\[No title entered\]',
 		r'Original Title: ',
 		r'Miscellaneous',
+		r'index to ',
 		r'- Types -',
 		r'Other Projects',
 		r'Other Project ',
