@@ -113,7 +113,7 @@ def merge_datasets(ddir: str, val_split_pct: float=0.35, seed: int=42, head_thre
 			merged_df=merged_single_label_df,
 			FIGURE_SIZE=(15, 8),
 			DPI=400,
-			fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_grouped_bar_chart.png")
+			fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_grouped_bar_chart_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png")
 	)
 
 	# Stratified train/val split
@@ -138,7 +138,7 @@ def merge_datasets(ddir: str, val_split_pct: float=0.35, seed: int=42, head_thre
 		val_df=single_label_val_df,
 		dataset_name=dataset_name,
 		VAL_SPLIT_PCT=val_split_pct,
-		fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_train_val_label_dist.png"),
+		fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_train_val_label_dist_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png"),
 		FIGURE_SIZE=(15, 8),
 		DPI=400,
 	)
@@ -150,7 +150,7 @@ def merge_datasets(ddir: str, val_split_pct: float=0.35, seed: int=42, head_thre
 	)
 	plot_long_tailed_distribution(
 		df=merged_single_label_df,
-		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_long_tailed_dist.png"),
+		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_long_tailed_dist_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png"),
 		head_threshold=head_threshold,
 		tail_threshold=tail_threshold,
 	)
@@ -158,7 +158,7 @@ def merge_datasets(ddir: str, val_split_pct: float=0.35, seed: int=42, head_thre
 		metadata_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'),
 		metadata_train_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'),
 		metadata_val_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'),
-		save_path=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_head_torso_tail_samples.png"),
+		save_path=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_head_torso_tail_samples_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png"),
 		head_threshold=head_threshold,
 		tail_threshold=tail_threshold,
 	)
