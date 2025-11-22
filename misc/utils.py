@@ -306,61 +306,6 @@ def parse_tuple(s):
 	except (ValueError, SyntaxError):
 		raise argparse.ArgumentTypeError(f"Invalid tuple format: {s}")
 
-def basic_clean_(txt):
-	# 0) Remove the specific placeholder strings (case-sensitive)
-	txt = txt.replace('[No caption entered]', '')
-	txt = txt.replace('Partial view of ', '')
-	txt = txt.replace('History: [none entered]', '')
-	txt = txt.replace('Original Caption:', '')
-	txt = txt.replace('Original caption: ', '')
-	txt = txt.replace('Original caption on envelope: ', '')
-	txt = txt.replace("The photographer's notes indicate", "")
-	txt = txt.replace("This photograph shows", "")
-	txt = txt.replace("This image shows", "")
-	txt = txt.replace('Photograph of ', '')
-	txt = txt.replace('Image of ', '')
-	txt = txt.replace('Portrait of ', '')
-	txt = txt.replace('Photograph: ', '')
-	txt = txt.replace('Image: ', '')
-	txt = txt.replace('File Record', '')
-	txt = txt.replace('The picture shows', '')
-	txt = txt.replace('The photograph shows', '')
-	txt = txt.replace('The image shows', '')
-	txt = txt.replace('[No title entered]', '') # haven't seen this one yet
-	txt = txt.replace('[No description entered]', '') # haven't seen this one yet
-
-	# 1) turn any kind of newline/tab into a single space
-	txt = txt.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ')
-
-	# 2) collapse multiple spaces -> single space
-	txt = " ".join(txt.split())
-
-	# 3) strip surrounding whitespace
-	txt = txt.strip()
-
-	# 4a) drop double‑quotes that were doubled in the CSV
-	txt = txt.replace('""', '"')
-
-	# 4b) remove all double quotes
-	txt = txt.replace('"', '')
-
-	# 5) remove all hashtags
-	txt = txt.replace("#", "")
-
-	# 6) remove all double quotes
-	txt = txt.replace("''", "")
-
-	# 7) remove 
-	txt = re.sub(r'-{2,}', '', txt)
-	txt = re.sub(r'\.{2,}', '', txt)
-	# txt = re.sub(r"[\[\]\(\)]", "", txt) # both [] and ()
-	txt = re.sub(r"[\[\]]", "", txt) # only []
-
-	# 8) remove more multiple space
-	txt = re.sub("\s\s+" , " ", txt)
-
-	return txt
-
 def clean_single_quotes(text):
 		# Protect possessives and contractions first
 		text = re.sub(r"(\w)'(\w)", r"\1__APOSTROPHE__\2", text)
