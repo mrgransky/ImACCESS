@@ -76,6 +76,8 @@ def merge_datasets(ddir: str, val_split_pct: float=0.35, seed: int=42, head_thre
 	print(f"Merged shape: {merged_single_label_df.shape}, Columns: {list(merged_single_label_df.columns)}")
 	num_unique_labels = merged_single_label_df['label'].nunique()
 	print(f"Unique labels in merged dataset: {num_unique_labels}")
+	for label, count in merged_single_label_df['label'].value_counts().items():
+		print(f"  - {label}: {count}")
 	
 	# Save merged CSVs
 	print(f"Saving merged single-label dataset to {HISTORY_XN_DIRECTORY} ...")
