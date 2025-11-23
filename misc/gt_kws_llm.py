@@ -89,7 +89,6 @@ def _load_llm_(
 		
 	if verbose:
 		print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
-		print(f"[INFO] CUDA available?       : {torch.cuda.is_available()}")
 		if torch.cuda.is_available():
 			cur = torch.cuda.current_device()
 			print(f"[INFO] Current CUDA device   : {cur} ({torch.cuda.get_device_name(cur)})")
