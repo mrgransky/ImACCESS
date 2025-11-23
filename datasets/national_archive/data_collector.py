@@ -196,10 +196,6 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 		raw_doc_date = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
 		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
-
-		# doc_title = clean_(text=record.get('title'), sw=STOPWORDS)
-		# doc_description = clean_(text=record.get('scopeAndContentNote'), sw=STOPWORDS) if record.get('scopeAndContentNote') else None
-
 		doc_title = record.get('title')
 		doc_description = record.get('scopeAndContentNote', None)
 
@@ -290,9 +286,8 @@ def main():
 	with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		all_label_tags = [line.strip() for line in file_]
 
-	print(type(all_label_tags), len(all_label_tags))
+	print(f"{len(all_label_tags)} {type(all_label_tags)} lables are being processed...")
 
-	print(f"{len(all_label_tags)} lables are being processed...")
 	labels_with_ZERO_result = list()
 	dfs = []
 	for qi, qv in enumerate(all_label_tags):

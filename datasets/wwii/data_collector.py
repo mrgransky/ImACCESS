@@ -65,11 +65,6 @@ def extract_year(text):
 	match = YEAR_PATTERN.search(str(text))
 	return match.group(1) if match else None
 
-def clean_(text):
-	seen = set()
-	words = re.findall(r'\b[a-zA-Z0-9][a-zA-Z0-9\-]*\b', text.lower())
-	return " ".join([w for w in words if len(w) > 1 and not (w in seen or seen.add(w))])
-
 def extract_url_info(url:str)-> Dict:
 	parsed_url = urlparse(url)
 	base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/gallery" # Extract the base URL

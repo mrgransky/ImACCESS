@@ -254,7 +254,6 @@ Minesweeper vessel
 Minesweeper ship
 Ceremony
 Celebration
-Kriegsmarine
 ussr
 blitz
 banishment

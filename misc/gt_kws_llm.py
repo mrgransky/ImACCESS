@@ -69,6 +69,7 @@ Given the description below, extract up to {k} most prominent, factual and disti
 - Extract **ONLY keywords that actually appear** in the description above.
 - Return **AT MOST {k} keywords** - fewer is acceptable if the description is short or lacks distinct concepts.
 - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
+- **PRIORITIZE MEANINGFUL PHRASES**: Prefer multi-word n-grams (2-3 words), whenever possible, over single terms if they capture more specific meaning.
 - **STRICTLY EXCLUDE ALL NUMERICAL CONTENT**: No numbers, numerical values, measurements, units, or quantitative terms.
 - **STRICTLY EXCLUDE** vague, generic, meaningless or ambiguous keywords.
 - **ABSOLUTELY NO** synonymous, duplicate or misspelled keywords.
@@ -724,9 +725,9 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 				continue
 			# 4️⃣ reject anything that contains a digit OR a non‑alphabetic character
 			#    (we keep letters, spaces and apostrophes only)
-			if re.search(r'[\d]', cleaned):
-				if verbose: print(f"Skipping numeric keyword: {cleaned}")
-				continue
+			# if re.search(r'[\d]', cleaned):
+			# 	if verbose: print(f"Skipping numeric keyword: {cleaned}")
+			# 	continue
 			# if re.search(r'[^A-Za-z\'\s]', cleaned):
 			# 	if verbose: print(f"Skipping non‑alpha keyword: {cleaned}")
 			# 	continue

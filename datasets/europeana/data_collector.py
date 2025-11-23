@@ -9,13 +9,6 @@ sys.path.insert(0, project_dir) # add project directory to sys.path
 from misc.utils import *
 from misc.visualize import *
 
-# import fasttext
-# FastText_Language_Identification = "lid.176.bin"
-# if FastText_Language_Identification not in os.listdir():
-# 	url = f"https://dl.fbaipublicfiles.com/fasttext/supervised-models/{FastText_Language_Identification}"
-# 	urllib.request.urlretrieve(url, FastText_Language_Identification)
-# detector_model = fasttext.load_model(FastText_Language_Identification)
-
 from mediapipe.tasks import python
 language_detector = "language_detector.tflite"
 if language_detector not in os.listdir():
@@ -68,7 +61,7 @@ with open(meaningless_words_fpth, 'r') as file_:
 	customized_meaningless_words=[line.strip().lower() for line in file_]
 STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
-# print(STOPWORDS, type(STOPWORDS))
+
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
 headers = {
 	'Content-type': 'application/json',
@@ -234,16 +227,16 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 
 		description_en = " ".join(doc.get("dcDescriptionLangAware", {}).get("en", [])) if doc.get("dcDescriptionLangAware", {}).get("en", []) else None
 		print(f"description_en: {description_en}")
-
-		# enriched_document_description = (title_en or '') + " " + (description_en or '')
-		# enriched_document_description = enriched_document_description.lstrip() if len(enriched_document_description) > 1 else None
-		# print(f"enriched_document_description: {enriched_document_description}")
-		# print(f"-"*50)
 	
 		raw_enriched_document_description = " ".join(filter(None, [title_en, description_en])).strip()
-		print(f"\nraw_enriched_document_description:\n{raw_enriched_document_description}\n")
+
+		if not raw_enriched_document_description:
+			print(f"\nraw_enriched_document_description:\n{raw_enriched_document_description}\n")
+
 		enriched_document_description = basic_clean(txt=raw_enriched_document_description)
-		print(f"\nenriched_document_description:\n{enriched_document_description}\n")
+
+		if not enriched_document_description:
+			print(f"\nenriched_document_description:\n{enriched_document_description}\n")
 
 
 		if (
@@ -284,10 +277,12 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 @measure_execution_time
 def main():
 	set_seeds(seed=args.seed, debug=False)
+
 	with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		all_label_tags = list(set([line.strip() for line in file_]))
-	print(type(all_label_tags), len(all_label_tags))
-	print(f"{len(all_label_tags)} lables are being processed...")
+
+	print(f"{len(all_label_tags)} {type(all_label_tags)} lables are being processed...")
+
 	dfs = []
 	for qi, qv in enumerate(all_label_tags):
 		print(f"\nQ[{qi+1}/{len(all_label_tags)}]: {qv}")

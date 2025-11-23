@@ -469,10 +469,10 @@ def clean_(text:str, sw:list):
 	words = nltk.tokenize.word_tokenize(text) # Tokenize the text into words
 	# Filter out stopwords and words with fewer than 3 characters
 	words = [
-		word.lower() 
-		for word in words 
-		if word.lower() not in sw
-		and len(word) >= 2
+		word.lower()
+		for word in words
+		if len(word) >= 2
+		# and word.lower() not in sw
 	]
 	text = ' '.join(words) # Join the words back into a string
 	text = re.sub(r'\boriginal caption\b', ' ', text)

@@ -195,8 +195,6 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 		doc_link = doc.get("itemLink") # /singleitem/collection/ryr/id/2479
 		doc_page_url = f"{SMU_BASE_URL}/collection/{doc.get('collectionAlias')}/id/{doc.get('itemId')}"
 		doc_img_link = f"{SMU_BASE_URL}/api/singleitem/image/{doc_collection}/{doc_id}/default.jpg"
-
-		# doc_title = clean_(text=doc.get("title"), sw=STOPWORDS)# doc.get("title")
 		doc_title = doc.get("title")
 		doc_detailed_metadata = scrape_item_metadata(doc_url=doc_page_url)
 		doc_description = doc_detailed_metadata.get("description", None)
@@ -294,8 +292,8 @@ def scrape_item_metadata(doc_url: str) -> Dict:
 def main():
 	with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		all_label_tags = list(set([line.strip() for line in file_]))
-	print(type(all_label_tags), len(all_label_tags))
-	print(f"{len(all_label_tags)} Query phrases are being processed, please be patient...")
+
+	print(f"{len(all_label_tags)} {type(all_label_tags)} Query phrases are being processed, please be patient...")
 
 	dfs = []
 	for qi, qv in enumerate(all_label_tags):
