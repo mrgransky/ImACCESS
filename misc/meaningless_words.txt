@@ -25,6 +25,8 @@ over
 above
 under
 near
+surrounded
+surrounded by
 unknown
 underneath
 beneath
