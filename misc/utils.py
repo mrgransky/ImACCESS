@@ -357,6 +357,7 @@ def basic_clean(txt):
 		r'This image is part of ',
 		r'This image is one of ',
 		r'According to Shaffer: ',
+		r'View from atop ',
 		r'The following information was provided by digitizing partner Fold3:',
 		r'Original caption on envelope: ',
 		r"The photographer's notes indicate",
@@ -405,7 +406,7 @@ def basic_clean(txt):
 		r'\bUS Air Force Reference Number\s*:\s*[A-Z0-9]+',  # US Air Force Reference Number: 74399AC
 		r'\bReference Number\s*:\s*[A-Z0-9]+',               # fallback
 		# r'\bDate\s+(?:Month|Day|Year)\s*:\s*\[.*?\]',        # Date Month: [Blank]
-		r'^(Image\s[A-Z]|[a-zA-Z]\s[A-Z])', 										# Image A
+		r'^(Image\s+[A-Z]\b|[A-Z]\s+[A-Z]\b)', # Image A
 		r'(?i)^Project\s+.*?\s-\s',
 		r'(?i)(?:Series of |a series of |Group of |Collection of )(\d+\s*\w+)',
 		r'No\.\s\d+',                                        # No. 123
@@ -441,7 +442,7 @@ def basic_clean(txt):
 	# Step 5: Remove hashtags and other noise
 	txt = txt.replace('#', ' ')
 	txt = re.sub(r'-{2,}', ' ', txt)   # multiple dashes
-	txt = re.sub(r'\.{2,}', ' ', txt)  # ellipses ...
+	txt = re.sub(r'\.{2,}', '.', txt)  # ellipses ...
 	txt = re.sub(r'[\[\]]', ' ', txt)  # square brackets
 
 	# Step 6: Collapse all whitespace

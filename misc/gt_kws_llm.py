@@ -747,8 +747,8 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 		return processed
 
 	if verbose:
-		print(f"\n>> Extracting listed response from model: {model_id}")
-		print(f"LLM response (repr):\n{repr(llm_response)}\n")
+		# print(f"LLM response (repr):\n{repr(llm_response)}\n")
+		print(f"{model_id} LLM response:\n{(llm_response)}\n")
 	
 	# INST tag detection
 	inst_tags = []

@@ -246,7 +246,7 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 		else:
 			first_digital_object_url = None
 
-		raw_enriched_document_description = " ".join(filter(None, [doc_title, doc_description])).strip()
+		raw_enriched_document_description = ". ".join(filter(None, [doc_title, doc_description])).strip()
 		print(f"\nraw_enriched_document_description:\n{raw_enriched_document_description}\n")
 		enriched_document_description = basic_clean(txt=raw_enriched_document_description)
 		print(f"\nenriched_document_description:\n{enriched_document_description}\n")

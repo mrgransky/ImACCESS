@@ -194,7 +194,7 @@ def get_dframe(
 				print(f"Failed to download {img_url}: {e}")
 				continue
 
-		enriched_document_description = " ".join(filter(None, [doc_title, doc_description])).strip()
+		enriched_document_description = ". ".join(filter(None, [doc_title, doc_description])).strip()
 		print(f"enriched_document_description: {enriched_document_description}")
 
 		row = {

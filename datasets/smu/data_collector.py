@@ -206,7 +206,7 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 			cleaned_keyword_list = [kw for kw in keyword_list if kw not in REDUNDANT_KEYWORDS] # Exclude redundant terms
 			doc_cleaned_keywords = "; ".join(cleaned_keyword_list) if cleaned_keyword_list else None # Join the cleaned keywords back into a string
 
-		raw_enriched_document_description = " ".join(filter(None, [doc_title, doc_cleaned_keywords, doc_description])).strip()
+		raw_enriched_document_description = ". ".join(filter(None, [doc_title, doc_description, doc_cleaned_keywords])).strip()
 		print(f"\nraw_enriched_document_description:\n{raw_enriched_document_description}\n")
 		enriched_document_description = basic_clean(txt=raw_enriched_document_description)
 		print(f"\nenriched_document_description:\n{enriched_document_description}\n")

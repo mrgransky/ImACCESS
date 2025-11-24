@@ -223,12 +223,12 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 				break
 			else:
 				title_en = None
-		print(f"title_en: {title_en}")
+		# print(f"title_en: {title_en}")
 
 		description_en = " ".join(doc.get("dcDescriptionLangAware", {}).get("en", [])) if doc.get("dcDescriptionLangAware", {}).get("en", []) else None
-		print(f"description_en: {description_en}")
+		# print(f"description_en: {description_en}")
 	
-		raw_enriched_document_description = " ".join(filter(None, [title_en, description_en])).strip()
+		raw_enriched_document_description = ". ".join(filter(None, [title_en, description_en])).strip()
 
 		if not raw_enriched_document_description:
 			print(f"\nraw_enriched_document_description:\n{raw_enriched_document_description}\n")
