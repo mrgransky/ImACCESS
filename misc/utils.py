@@ -360,6 +360,8 @@ def basic_clean(txt):
 		r'View from atop ',
 		r'The following information was provided by digitizing partner Fold3:',
 		r'Original caption on envelope: ',
+		r'Photo album with photo',
+		r'Photographs from '
 		r"The photographer's notes indicate",
 		r"This photograph shows",
 		r"Placeholder",

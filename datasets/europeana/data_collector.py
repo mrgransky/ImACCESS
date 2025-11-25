@@ -9,9 +9,12 @@ sys.path.insert(0, project_dir) # add project directory to sys.path
 from misc.utils import *
 from misc.visualize import *
 
+
+# MediaPipe Language Detector: Not good for short texts:
 from mediapipe.tasks import python
 language_detector = "language_detector.tflite"
 if language_detector not in os.listdir():
+	print(f"Downloading {language_detector}...")
 	url = f"https://storage.googleapis.com/mediapipe-models/language_detector/language_detector/float32/1/{language_detector}"
 	urllib.request.urlretrieve(url, language_detector)
 print("Running mediapipe Language Detector on CPU...")
@@ -19,28 +22,20 @@ base_options = python.BaseOptions(model_asset_path=language_detector)
 options = python.text.LanguageDetectorOptions(base_options=base_options)
 detector_model = python.text.LanguageDetector.create_from_options(options)
 
+
+# FastText: Good for short texts:
+import fasttext
+FastText_Language_Identification = "lid.176.bin"
+if FastText_Language_Identification not in os.listdir():
+	print(f"Downloading {FastText_Language_Identification}...")
+	url = f"https://dl.fbaipublicfiles.com/fasttext/supervised-models/{FastText_Language_Identification}"
+	urllib.request.urlretrieve(url, FastText_Language_Identification)
+print("Loading FastText Language Identification Model...")
+ft_model = fasttext.load_model(FastText_Language_Identification)
+
 dataset_name: str = "europeana".upper()
 # europeana_api_key: str = "api2demo"
 # europeana_api_key: str = "nLbaXYaiH"
-
-parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")
-parser.add_argument('--api_key', '-ak', type=str, required=True, choices=["api2demo", "nLbaXYaiH"], help='Europeana API Key (choose from valid options)')
-parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
-parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help='Dataset DIR')
-parser.add_argument('--end_date', '-edt', type=str, default="1970-12-31", help='Dataset DIR')
-parser.add_argument('--num_workers', '-nw', type=int, default=12, help='Number of CPUs')
-parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_size')
-parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
-parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
-parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='Validation Split Percentage')
-parser.add_argument('--enable_thumbnailing', action='store_true', help='Enable image thumbnailing')
-parser.add_argument('--thumbnail_size', type=parse_tuple, default=(1000, 1000), help='Thumbnail size (width, height) in pixels')
-parser.add_argument('--large_image_threshold_mb', type=float, default=1.0, help='Large image threshold in MB')
-parser.add_argument('--seed', '-s', type=int, default=42, help='Random seed')
-
-args, unknown = parser.parse_known_args()
-args.dataset_dir = os.path.normpath(args.dataset_dir)
-print_args_table(args=args, parser=parser)
 
 # run in local laptop:
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs -ak api2demo
@@ -48,11 +43,6 @@ print_args_table(args=args, parser=parser)
 
 # run in Pouta:
 # $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -ak api2demo -nw 40 -bs 128 --img_mean_std --enable_thumbnailing > /media/volume/ImACCESS/trash/europeana_dl.out &
-
-START_DATE = args.start_date
-END_DATE = args.end_date
-FIGURE_SIZE = (12, 9)
-DPI = 350
 
 meaningless_words_fpth = os.path.join(project_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
@@ -71,42 +61,13 @@ headers = {
 	'Pragma': 'no-cache',
 }
 
-DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
-IMAGE_DIRECTORY = os.path.join(DATASET_DIRECTORY, "images")
-HITs_DIR = os.path.join(DATASET_DIRECTORY, "hits")
-OUTPUT_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
-os.makedirs(DATASET_DIRECTORY, exist_ok=True)
-os.makedirs(IMAGE_DIRECTORY, exist_ok=True)
-os.makedirs(HITs_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
-
-img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
-img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
-
-# def is_english(text: str, detector_model, confidence_threshold: float = 0.7) -> bool:
-# 	""" using fasttext """
-# 	if not text or not text.strip():
-# 		return False
-	
-# 	try:
-# 		# Clean text for better detection
-# 		cleaned_text = text.strip().replace('\n', ' ').replace('\r', ' ')
-		
-# 		# Predict language
-# 		predictions = detector_model.predict(cleaned_text, k=1)
-# 		detected_lang = predictions[0][0].replace('__label__', '')
-# 		confidence = predictions[1][0]
-		
-# 		# Check if English with sufficient confidence
-# 		is_en = detected_lang == 'en' and confidence >= confidence_threshold
-		
-# 		return is_en
-# 	except Exception as e:
-# 		print(f"Language detection error for text '{text}'\n{e}")
-# 		return False
-
-def is_english(text: str, detector_model, confidence_threshold: float = 0.3) -> bool:
-	""" using MediaPipe """
+def is_english(
+		text: str, 
+		detector_model: fasttext.FastText._FastText=ft_model,
+		confidence_threshold: float = 0.5,
+		verbose: bool = True,
+	) -> bool:
+	"""Detects if text is in English using fasttext """
 	if not text or not text.strip():
 		return False
 	
@@ -114,15 +75,44 @@ def is_english(text: str, detector_model, confidence_threshold: float = 0.3) -> 
 		# Clean text for better detection
 		cleaned_text = text.strip().replace('\n', ' ').replace('\r', ' ')
 		
-		# Detect language
-		detection_result = detector_model.detect(cleaned_text)
-		top_detection = detection_result.detections[0]
-		is_en = (top_detection.language_code == 'en' and top_detection.probability >= confidence_threshold)
-		return is_en
+		# Predict language
+		predictions = detector_model.predict(cleaned_text, k=1)
+		if verbose: print(f"Predictions: {predictions}")
+		detected_lang = predictions[0][0].replace('__label__', '')
+		confidence = predictions[1][0]
 		
+		# Check if English with sufficient confidence
+		is_en = detected_lang == 'en' and confidence >= confidence_threshold
+		
+		return is_en
 	except Exception as e:
-		print(f"Language detection error: {text}\n{e}")
+		print(f"Language detection error for text: '{text}'\n{e}")
 		return False
+
+# def is_english(
+# 		text: str, 
+# 		detector_model: python.text.LanguageDetector=detector_model,
+# 		confidence_threshold: float = 0.3,
+# 		verbose: bool = True,
+# 	) -> bool:
+# 	""" Detects if text is in English using MediaPipe """
+# 	if not text or not text.strip():
+# 		return False
+	
+# 	try:
+# 		# Clean text for better detection
+# 		cleaned_text = text.strip().replace('\n', ' ').replace('\r', ' ')
+		
+# 		# Detect language
+# 		detection_result = detector_model.detect(cleaned_text)
+# 		if verbose: print(f"Detection result: {detection_result}")
+# 		top_detection = detection_result.detections[0]
+# 		is_en = (top_detection.language_code == 'en' and top_detection.probability >= confidence_threshold)
+# 		return is_en
+		
+# 	except Exception as e:
+# 		print(f"Language detection error: {text}\n{e}")
+# 		return False
 
 def get_europeana_date_or_year(doc_date, doc_year):
 	if doc_year is not None:
@@ -273,7 +263,40 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 
 @measure_execution_time
 def main():
+	parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")
+	parser.add_argument('--api_key', '-ak', type=str, required=True, choices=["api2demo", "nLbaXYaiH"], help='Europeana API Key (choose from valid options)')
+	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
+	parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help='Dataset DIR')
+	parser.add_argument('--end_date', '-edt', type=str, default="1970-12-31", help='Dataset DIR')
+	parser.add_argument('--num_workers', '-nw', type=int, default=12, help='Number of CPUs')
+	parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_size')
+	parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
+	parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
+	parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='Validation Split Percentage')
+	parser.add_argument('--enable_thumbnailing', action='store_true', help='Enable image thumbnailing')
+	parser.add_argument('--thumbnail_size', type=parse_tuple, default=(1000, 1000), help='Thumbnail size (width, height) in pixels')
+	parser.add_argument('--large_image_threshold_mb', type=float, default=1.0, help='Large image threshold in MB')
+	parser.add_argument('--seed', '-s', type=int, default=42, help='Random seed')
+
+	args, unknown = parser.parse_known_args()
+	args.dataset_dir = os.path.normpath(args.dataset_dir)
+	print_args_table(args=args, parser=parser)
+
 	set_seeds(seed=args.seed, debug=False)
+
+	DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{args.start_date}_{args.end_date}")
+	IMAGE_DIRECTORY = os.path.join(DATASET_DIRECTORY, "images")
+	HITs_DIR = os.path.join(DATASET_DIRECTORY, "hits")
+	OUTPUT_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
+	os.makedirs(DATASET_DIRECTORY, exist_ok=True)
+	os.makedirs(IMAGE_DIRECTORY, exist_ok=True)
+	os.makedirs(HITs_DIR, exist_ok=True)
+	os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
+
+	img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
+	img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
+
+
 
 	with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		all_label_tags = list(set([line.strip() for line in file_]))
@@ -286,8 +309,8 @@ def main():
 		qv = clean_(text=qv, sw=STOPWORDS)
 		label_all_hits = get_data(
 			europeana_api_key=args.api_key,
-			start_date=START_DATE,
-			end_date=END_DATE,
+			start_date=args.start_date,
+			end_date=args.end_date,
 			label=qv,
 		)
 		if label_all_hits:
@@ -296,7 +319,7 @@ def main():
 				repl="_", 
 				string=qv,
 			)
-			df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_{START_DATE}_{END_DATE}.gz")
+			df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_{args.start_date}_{args.end_date}.gz")
 			try:
 				df = load_pickle(fpath=df_fpth)
 			except Exception as e:
