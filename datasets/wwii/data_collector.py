@@ -691,7 +691,7 @@ def main():
 		print(f"Failed to write Excel file: {e}")
 
 	unique_labels = wwii_df['label'].unique()
-	print(f"Unique labels:\n{unique_labels}")
+	print(f"{len(unique_labels)} Unique labels: {unique_labels}")
 
 	print(wwii_df['label'].value_counts())
 
