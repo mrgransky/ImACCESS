@@ -475,7 +475,7 @@ def main():
 				df=df,
 				fpth=plot_label_distribution_fname,
 				FIGURE_SIZE=(14, 8),
-				DPI=DPI,
+				DPI=250,
 				label_column='label',
 			)
 
@@ -501,7 +501,7 @@ def main():
 				VAL_SPLIT_PCT=args.val_split_pct,
 				fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_{version_name}_stratified_label_distribution_train_val_{args.val_split_pct}_pct.png'),
 				FIGURE_SIZE=(14, 8),
-				DPI=DPI,
+				DPI=250,
 			)
 		
 		# Year distribution plot

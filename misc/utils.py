@@ -360,12 +360,12 @@ def basic_clean(txt):
 		r'The following information was provided by digitizing partner Fold3:',
 		r'Original caption on envelope: ',
 		r'Photo album with photo',
-		r'Photographs from '
+		r'Photographs from ',
 		r"The photographer's notes indicate",
 		r"This photograph shows",
 		r"Placeholder",
 		r"No description",
-		r"Unknown",
+		r'Text on the card: ',
 		r'The picture shows',
 		r'The photograph shows',
 		r"This photo shows ",
@@ -439,9 +439,12 @@ def basic_clean(txt):
 	txt = re.sub(r"^'\s*|\s*'$", ' ', txt)
 	# Then double quotes
 	txt = txt.replace('""', '"').replace('"', '')
+	txt = txt.replace("”", " ")
+	txt = txt.replace("“", " ")
 
 	# Step 5: Remove hashtags and other noise
 	txt = txt.replace('#', ' ')
+
 	txt = re.sub(r'-{2,}', ' ', txt)   # multiple dashes
 	txt = re.sub(r'\.{2,}', '.', txt)  # ellipses ...
 	txt = re.sub(r'[\[\]]', ' ', txt)  # square brackets
