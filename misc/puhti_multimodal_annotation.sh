@@ -50,7 +50,7 @@ python -u multimodal_annotation.py \
   --vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
   --llm_model_id "Qwen/Qwen3-4B-Instruct-2507" \
   --vlm_model_id "Qwen/Qwen3-VL-8B-Instruct" \
-  --max_generated_tks 64 \
+  --max_generated_tks 128 \
   --max_keywords 5 \
   --verbose \
   # --use_quantization \
