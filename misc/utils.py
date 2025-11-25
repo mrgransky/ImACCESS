@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import nltk
 from tqdm import tqdm
 import warnings
-import urllib.request
+import urllib
 import argparse
 import umap
 from sklearn.decomposition import PCA
@@ -36,14 +36,12 @@ import hashlib
 from torch.cuda import get_device_properties, memory_allocated
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
-import urllib3
 import huggingface_hub
 from dataclasses import dataclass
 import io
 import pprint
 import math
 import unicodedata
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
@@ -80,7 +78,7 @@ from requests.exceptions import RequestException
 import torchvision.transforms as T
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
 from functools import cache, partial
-from urllib.parse import urlparse, unquote, quote_plus, urljoin
+# from urllib.parse import urlparse, unquote, quote_plus, urljoin
 from sklearn.model_selection import train_test_split
 from skmultilearn.model_selection import iterative_train_test_split, IterativeStratification
 from tqdm import tqdm
@@ -973,7 +971,7 @@ def get_synchronized_df_img(
 	return df_cleaned
 
 def get_extension(url: str="www.example.com/some_/path/to/file.jpg"):
-	parsed_url = urlparse(url)
+	parsed_url = urllib.parse.urlparse(url)
 	path = parsed_url.path
 	_, extension = os.path.splitext(path)
 	# return extension[1:].lower() # Remove the leading dot from the extension ['jpg', 'png', 'jpeg', 'txt', 'mov']
