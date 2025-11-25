@@ -28,11 +28,28 @@ from typing import Tuple, Union, List, Dict, Any, Optional
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
 dtypes = {
-	'doc_id': str, 'id': str, 'label': str, 'title': str,
-	'description': str, 'img_url': str, 'enriched_document_description': str,
-	'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
-	'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
-	'user_query': str, 'country': str,
+	'doc_id': str, 
+	'id': str, 
+	'label': str, 
+	'title': str,
+	'description': str, 
+	'img_url': str, 
+	'enriched_document_description': str,
+	'raw_doc_date': str, 
+	'doc_year': float, 
+	'doc_url': str,
+	'img_path': str, 
+	'doc_date': str, 
+	'dataset': str, 
+	'date': str,
+	'user_query': str, 
+	'country': str,
+}
+
+segment_colors = {
+	'Head': "#009670e4",
+	'Torso': "#d4ae02",
+	'Tail': "#ee4747",
 }
 
 pd.set_option('display.max_columns', None)
@@ -3967,7 +3984,7 @@ def plot_single_labeled_head_torso_tail_samples(
 		title_h=26,  # Text area height at top of each tile ("GT: ...")
 		left_gutter=40,  # gutter for rotated row labels
 		bg_color="#ffffff",
-		scale_factor=3.5  # Parameter to scale the entire figure
+		scale_factor=5.0  # Parameter to scale the entire figure
 	):
 
 	print(f"Analyzing Label Distribution from {metadata_path}")
@@ -3987,7 +4004,6 @@ def plot_single_labeled_head_torso_tail_samples(
 	labels_in_val = set(df_val['label'].unique().tolist())
 
 	print(f"Total unique labels: FULL: {len(label_counts_full)} | TRAIN: {len(labels_in_train)} | VAL: {len(labels_in_val)}")
-
 
 	head_labels = label_counts_full[label_counts_full > head_threshold].index.tolist()
 	tail_labels = label_counts_full[label_counts_full < tail_threshold].index.tolist()
@@ -4041,13 +4057,8 @@ def plot_single_labeled_head_torso_tail_samples(
 			except Exception:
 				return ImageFont.load_default()
 	
-	title_font = load_font("DejaVuSansMono.ttf", 17)
-	row_font = load_font("DejaVuSans-Bold.ttf", 15)
-	segment_colors = {
-		'Head': "#009670e4",
-		'Torso': "#d4ae02",
-		'Tail': "#ee4747",
-	}
+	title_font = load_font("DejaVuSansMono.ttf", 22)
+	row_font = load_font("DejaVuSans-Bold.ttf", 20)
 	
 	# Helper to paste one tile at exact position with no gaps
 	def paste_tile(img_path, label, x0, y0):
@@ -4163,9 +4174,9 @@ def plot_single_labeled_head_torso_tail_samples(
 		composite.paste(text_rot, (tx, ty), text_rot)
 	
 	# Save the composite image
-	composite.save(save_path.replace(".png", ".jpg"), "JPEG", quality=100, dpi=(200, 200))
+	composite.save(save_path.replace(".png", ".jpg"), "JPEG", quality=100, dpi=(250, 250))
 	
-	print(f"Saved 3x3 sample grid to: {save_path}")
+	print(f"\nSaved 3x3 sample grid to: {save_path}\n")
 	
 	# Also return queries similar to before (now organized by segment)
 	# Flatten i2t for backward compatibility if needed

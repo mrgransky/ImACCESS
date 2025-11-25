@@ -367,6 +367,8 @@ def basic_clean(txt):
 		r"No description",
 		r'Text on the card: ',
 		r'The picture shows',
+		r'The photo was taken ',
+		r'In the picture are ',
 		r'The photograph shows',
 		r"This photo shows ",
 		r'This image shows ',
@@ -412,7 +414,8 @@ def basic_clean(txt):
 		r'(?i)(?:Series of |a series of |Group of |Collection of )(\d+\s*\w+)',
 		r'No\.\s\d+',                                        # No. 123
 		r'Vol\.\s\d+',                                        # Vol. 5,
-		r'issue\s\d+'																				 # issue 1
+		r'issue\s\d+',																				 # issue 1
+		r'part\s\d+',																				 # part 1
 	]
 
 	for pattern in metadata_patterns:
@@ -423,7 +426,7 @@ def basic_clean(txt):
 
 	# === REMOVE DOCUMENT SERIAL NUMBERS / ARCHIVE IDs ===
 	# Common trailing IDs in parentheses
-	txt = re.sub(r'\s*\([^()]*\b(?:number|no\.?|photo|negative|item|record|file|usaf|usaaf|nara|gp-|aal-)[^()]*\)\s*$', '', txt, flags=re.IGNORECASE)
+	txt = re.sub(r'\s*\([^()]*\b(?:number|no\.?|photo|negative|item|record|file|usaf|usaaf|nara|gp-|aal-)[^()]*\)\s*$', '', txt, flags=re.IGNORECASE) # (color photo)
 	txt = re.sub(r'\s*\([^()]*[A-Za-z]{0,4}\d{5,}[A-Za-z]?\)\s*$', '', txt)   # B25604AC, 123456, etc.
 	txt = re.sub(r'\s*\([^()]*\d{5,}[A-Za-z]?\)\s*$', '', txt)              # pure long numbers
 	

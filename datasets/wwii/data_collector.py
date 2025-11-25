@@ -57,7 +57,7 @@ img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
 FIGURE_SIZE = (12, 9)
-DPI = 350
+DPI = 250
 # Define regex pattern for WWII years: 1939–1945
 YEAR_PATTERN = re.compile(r'\b(19[3][9]|[1][9]4[0-5])\b')
 
@@ -66,7 +66,7 @@ def extract_year(text):
 	return match.group(1) if match else None
 
 def extract_url_info(url:str)-> Dict:
-	parsed_url = urlparse(url)
+	parsed_url = urllib.parse.urlparse(url)
 	base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/gallery" # Extract the base URL
 	path_components = parsed_url.path.strip('/').split('/') # Split the path into components		
 
@@ -77,12 +77,12 @@ def extract_url_info(url:str)-> Dict:
 
 	# Decode URL-encoded characters (if any)
 	if main_label:
-		main_label = unquote(main_label)
+		main_label = urllib.parse.unquote(main_label)
 		main_label = re.sub(r'[^a-zA-Z\s]', ' ', main_label) # Remove special characters and digits
 		main_label = re.sub(r'\s+', ' ', main_label)  # Remove extra whitespace
 
 	if type_:
-		type_ = unquote(type_)
+		type_ = urllib.parse.unquote(type_)
 
 	return {
 		"base_url": base_url,
@@ -127,13 +127,14 @@ def get_dframe(
 		print(f"Failed to retrieve doc_url or parse content: {e}")
 		return None
 
-	parts = [
-		header,
-		# (doc_url_info.get("country") or "").strip(),
-		(doc_url_info.get("main_label") or "").strip(),
-		(doc_url_info.get("type") or "").strip(),
-	]
-	header = " ".join(filter(None, parts))
+	# parts = [
+	# 	header,
+	# 	# (doc_url_info.get("country") or "").strip(),
+	# 	(doc_url_info.get("main_label") or "").strip(),
+	# 	# (doc_url_info.get("type") or "").strip(),
+	# ]
+	# header = " ".join(filter(None, parts))
+
 	print(f"Doc header:\n{header}")
 
 	# Extract caption as doc_description
@@ -148,6 +149,7 @@ def get_dframe(
 		doc_description = header + " " + doc_description
 	elif not doc_description.strip():
 		doc_description = header
+
 	print(f"\nDoc Description:\n{doc_description}\n")
 	
 	print(f"Found {len(hits)} Document(s) => Extracting information [might take a while]")
@@ -164,7 +166,7 @@ def get_dframe(
 		img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url) # Remove the thumbnail size from the end of the URL
 		filename = os.path.basename(img_url)
 		img_fpath = os.path.join(IMAGE_DIR, filename)
-		specific_doc_url = urljoin(doc_url, parent_a.get('href')) if parent_a and parent_a.get('href') else doc_url
+		specific_doc_url = urllib.parse.urljoin(doc_url, parent_a.get('href')) if parent_a and parent_a.get('href') else doc_url
 
 		# Attempt to extract date from multiple sources
 		date_sources = [
@@ -194,8 +196,12 @@ def get_dframe(
 				print(f"Failed to download {img_url}: {e}")
 				continue
 
-		enriched_document_description = ". ".join(filter(None, [doc_title, doc_description])).strip()
-		print(f"enriched_document_description: {enriched_document_description}")
+		raw_enriched_document_description = ". ".join(filter(None, [doc_title, doc_description])).strip()
+		print(f"\nraw_enriched_document_description:\n{raw_enriched_document_description}")
+
+		enriched_document_description = basic_clean(txt=raw_enriched_document_description)
+		print(f"\nenriched_document_description:\n{enriched_document_description}\n")
+
 
 		row = {
 			'id': filename,
