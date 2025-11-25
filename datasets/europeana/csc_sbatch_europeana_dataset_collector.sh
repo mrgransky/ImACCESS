@@ -7,7 +7,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=20
 #SBATCH --mem=16G
 #SBATCH --partition=small
 #SBATCH --time=1-00:00:00
@@ -33,7 +33,7 @@ st_dt="1900-01-01"
 end_dt="1970-12-31"
 
 python -u data_collector.py \
-	--api_key api2demo \
+	--api_key nLbaXYaiH \
 	--dataset_dir $ddir \
 	--start_date  $st_dt \
 	--end_date  $end_dt \

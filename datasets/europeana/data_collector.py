@@ -215,29 +215,26 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 		raw_doc_date = doc.get("edmTimespanLabel")
 		doc_year = doc.get("year")[0] if (doc.get("year") and doc.get("year")[0]) else None
 		doc_url = f"https://www.europeana.eu/en/item{europeana_id}" # doc.get("guid")
-		print(f"-"*50)
-		print(f'{doc.get("title")}: {[is_english(text=title, detector_model=detector_model) for title in doc.get("title") if title]}')
+
+		print(f'Raw title(s): {doc.get("title")}: {[is_english(text=title, detector_model=detector_model) for title in doc.get("title") if title]}')
 		for title in doc.get("title"):
 			if title and is_english(text=title, detector_model=detector_model):
 				title_en = title
 				break
 			else:
 				title_en = None
-		# print(f"title_en: {title_en}")
+		print(f"title_en: {title_en}")
 
 		description_en = " ".join(doc.get("dcDescriptionLangAware", {}).get("en", [])) if doc.get("dcDescriptionLangAware", {}).get("en", []) else None
-		# print(f"description_en: {description_en}")
+		print(f"description_en:\n{description_en}")
 	
 		raw_enriched_document_description = ". ".join(filter(None, [title_en, description_en])).strip()
 
-		if not raw_enriched_document_description:
-			print(f"\nraw_enriched_document_description:\n{raw_enriched_document_description}\n")
+		print(f"raw_enriched_document_description:\n{raw_enriched_document_description}\n")
 
 		enriched_document_description = basic_clean(txt=raw_enriched_document_description)
 
-		if not enriched_document_description:
-			print(f"\nenriched_document_description:\n{enriched_document_description}\n")
-
+		print(f"enriched_document_description:\n{enriched_document_description}\n")
 
 		if (
 			image_url 
@@ -269,9 +266,9 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 	# Filter the DataFrame based on the validity check
 	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
 
-	print()
-	print(f"DF: {df.shape} {list(df.columns)}")
-	print(f"Elapsed_t: {time.time()-df_st_time:.1f} sec".center(160, "-"))
+	print(f"DF: {type(df)} {df.shape} {list(df.columns)}")
+	print(f"Elapsed_t: {time.time()-df_st_time:.2f} sec".center(180, "-"))
+
 	return df
 
 @measure_execution_time
