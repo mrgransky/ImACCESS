@@ -18,7 +18,8 @@ import matplotlib.pyplot as plt
 import nltk
 from tqdm import tqdm
 import warnings
-import urllib
+import urllib.request
+import urllib.parse
 import argparse
 import umap
 from sklearn.decomposition import PCA
