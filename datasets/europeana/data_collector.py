@@ -9,12 +9,11 @@ sys.path.insert(0, project_dir) # add project directory to sys.path
 from misc.utils import *
 from misc.visualize import *
 
-
 # MediaPipe Language Detector: Not good for short texts:
 from mediapipe.tasks import python
 language_detector = "language_detector.tflite"
 if language_detector not in os.listdir():
-	print(f"Downloading {language_detector}...")
+	print(f"Downloading {language_detector} [takes a while]...")
 	url = f"https://storage.googleapis.com/mediapipe-models/language_detector/language_detector/float32/1/{language_detector}"
 	urllib.request.urlretrieve(url, language_detector)
 print("Running mediapipe Language Detector on CPU...")
@@ -22,12 +21,11 @@ base_options = python.BaseOptions(model_asset_path=language_detector)
 options = python.text.LanguageDetectorOptions(base_options=base_options)
 detector_model = python.text.LanguageDetector.create_from_options(options)
 
-
 # FastText: Good for short texts:
 import fasttext
 FastText_Language_Identification = "lid.176.bin"
 if FastText_Language_Identification not in os.listdir():
-	print(f"Downloading {FastText_Language_Identification}...")
+	print(f"Downloading {FastText_Language_Identification} [takes	a while]...")
 	url = f"https://dl.fbaipublicfiles.com/fasttext/supervised-models/{FastText_Language_Identification}"
 	urllib.request.urlretrieve(url, FastText_Language_Identification)
 print("Loading FastText Language Identification Model...")
@@ -62,12 +60,14 @@ headers = {
 }
 
 def is_english(
-		text: str, 
-		detector_model: fasttext.FastText._FastText=ft_model,
-		confidence_threshold: float = 0.5,
-		verbose: bool = True,
-	) -> bool:
-	"""Detects if text is in English using fasttext """
+	text: str, 
+	detector_model: fasttext.FastText._FastText=ft_model,
+	confidence_threshold: float = 0.25,
+	verbose: bool = False,
+) -> bool:
+	"""
+		Detects if text is in English using fasttext 
+	"""
 	if not text or not text.strip():
 		return False
 	
@@ -132,10 +132,10 @@ def get_europeana_date_or_year(doc_date, doc_year):
 				return year_match.group(0)
 	return None
 
-def get_data(europeana_api_key: str, start_date: str, end_date: str, label: str):
+def get_data(europeana_api_key: str, start_date: str, end_date: str, hits_dir: str, image_dir: str, label: str):
 	t0 = time.time()
 	label_processed = re.sub(" ", "_", label)
-	label_all_hits_fpth = os.path.join(HITs_DIR, f"results_query_{label_processed}_{start_date}_{end_date}.gz")
+	label_all_hits_fpth = os.path.join(hits_dir, f"results_query_{label_processed}_{start_date}_{end_date}.gz")
 	try:
 		label_all_hits = load_pickle(fpath=label_all_hits_fpth)
 	except Exception as e:
@@ -186,7 +186,7 @@ def get_data(europeana_api_key: str, start_date: str, end_date: str, label: str)
 	print(f"Total hit(s): {len(label_all_hits)} {type(label_all_hits)} for query: « {label} » found in {time.time()-t0:.2f} sec")
 	return label_all_hits
 
-def get_dframe(label: str="query", docs: List=[Dict]):
+def get_dframe(label: str, image_dir: str, start_date: str, end_date: str, docs: List=[Dict]):
 	print(f"Analyzing {len(docs)} {type(docs)} document(s) for label: « {label} » might take a while...")
 	df_st_time = time.time()
 	data = []
@@ -198,17 +198,16 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 
 		doc_title = ' '.join(doc_title_list) if doc_title_list else None
 		doc_description = " ".join(doc_description_list) if doc_description_list else None
+		pDate = doc.get("edmTimespanLabel")[0].get("def") if (doc.get("edmTimespanLabel") and doc.get("edmTimespanLabel")[0].get("def")) else None
 
 		image_url = doc.get("edmIsShownBy")[0]
-
-		pDate = doc.get("edmTimespanLabel")[0].get("def") if (doc.get("edmTimespanLabel") and doc.get("edmTimespanLabel")[0].get("def")) else None
 		raw_doc_date = doc.get("edmTimespanLabel")
 		doc_year = doc.get("year")[0] if (doc.get("year") and doc.get("year")[0]) else None
 		doc_url = f"https://www.europeana.eu/en/item{europeana_id}" # doc.get("guid")
 
-		print(f'Raw title(s): {doc.get("title")}: {[is_english(text=title, detector_model=detector_model) for title in doc.get("title") if title]}')
+		print(f'Raw title(s): {doc.get("title")}: {[is_english(text=title) for title in doc.get("title") if title]}')
 		for title in doc.get("title"):
-			if title and is_english(text=title, detector_model=detector_model):
+			if title and is_english(text=title):
 				title_en = title
 				break
 			else:
@@ -245,7 +244,7 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 			'raw_doc_date': raw_doc_date,
 			'doc_year': doc_year,
 			'country': doc.get("country")[0],
-			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(doc_id) + '.jpg')}"
+			'img_path': f"{os.path.join(image_dir, str(doc_id) + '.jpg')}"
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
@@ -254,7 +253,7 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 	df['doc_date'] = df.apply(lambda row: get_europeana_date_or_year(row['raw_doc_date'], row['doc_year']), axis=1)
 
 	# Filter the DataFrame based on the validity check
-	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
+	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=start_date, end_date=end_date))]
 
 	print(f"DF: {type(df)} {df.shape} {list(df.columns)}")
 	print(f"Elapsed_t: {time.time()-df_st_time:.2f} sec".center(180, "-"))
@@ -296,8 +295,6 @@ def main():
 	img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 	img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
-
-
 	with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		all_label_tags = list(set([line.strip() for line in file_]))
 
@@ -311,6 +308,8 @@ def main():
 			europeana_api_key=args.api_key,
 			start_date=args.start_date,
 			end_date=args.end_date,
+			hits_dir=HITs_DIR,
+			image_dir=IMAGE_DIRECTORY,
 			label=qv,
 		)
 		if label_all_hits:
@@ -326,6 +325,9 @@ def main():
 				df = get_dframe(
 					label=qv,
 					docs=label_all_hits,
+					image_dir=IMAGE_DIRECTORY,
+					start_date=args.start_date,
+					end_date=args.end_date,
 				)
 				save_pickle(pkl=df, fname=df_fpth)
 			if df is not None:
