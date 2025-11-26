@@ -444,7 +444,8 @@ def basic_clean(txt):
 	txt = txt.replace('""', '"').replace('"', '')
 	txt = txt.replace("”", " ")
 	txt = txt.replace("“", " ")
-
+	txt = txt.replace("„", " ")
+	
 	# Step 5: Remove hashtags and other noise
 	txt = txt.replace('#', ' ')
 

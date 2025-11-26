@@ -74,7 +74,7 @@ Given the description below, extract up to {k} most prominent, factual and disti
 - **STRICTLY EXCLUDE** vague, generic, meaningless or ambiguous keywords.
 - **ABSOLUTELY NO** synonymous, duplicate or misspelled keywords.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
-- **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "May 25th", "July 10").
+- **ABSOLUTELY NO TEMPORAL EXPRESSIONS** such as date, time, time period, season, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "18th of july 1936", "May 25th", "July 10").
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]
 """
