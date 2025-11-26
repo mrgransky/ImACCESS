@@ -77,7 +77,11 @@ def is_english(
 		
 		# Predict language
 		predictions = detector_model.predict(cleaned_text, k=1)
-		if verbose: print(f"Predictions: {predictions}")
+		if verbose:
+			print(f"\nchecking if text is in English:")
+			print(f"{cleaned_text}") 
+			print(f"Predictions: {predictions}")
+			print(f"-"*70)
 		detected_lang = predictions[0][0].replace('__label__', '')
 		confidence = predictions[1][0]
 		
@@ -207,19 +211,25 @@ def get_dframe(label: str, image_dir: str, start_date: str, end_date: str, docs:
 
 		print(f'Raw title(s): {doc.get("title")}: {[is_english(text=title) for title in doc.get("title") if title]}')
 		for title in doc.get("title"):
-			if title and is_english(text=title) and title not in STOPWORDS:
+			if title and is_english(text=title) and title.lower() not in STOPWORDS:
 				title_en = title
 				break
 			else:
 				title_en = None
 		print(f"title_en: {title_en}")
 
-		description_en = " ".join(doc.get("dcDescriptionLangAware", {}).get("en", [])) if doc.get("dcDescriptionLangAware", {}).get("en", []) else None
+		description_doc = " ".join(doc.get("dcDescriptionLangAware", {}).get("en", [])) if doc.get("dcDescriptionLangAware", {}).get("en", []) else None
+		if is_english(text=description_doc, verbose=True):
+			description_en = description_doc
+		else:
+			description_en = None
 		print(f"description_en:\n{description_en}")
 	
 		raw_enriched_document_description = ". ".join(filter(None, [title_en, description_en])).strip()
+		
 
 		print(f"raw_enriched_document_description:\n{raw_enriched_document_description}\n")
+
 
 		enriched_document_description = basic_clean(txt=raw_enriched_document_description)
 

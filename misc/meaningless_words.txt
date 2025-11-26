@@ -28,6 +28,7 @@ near
 surrounded
 surrounded by
 unknown
+undetermined
 underneath
 beneath
 between
@@ -624,7 +625,6 @@ obtained
 obviously
 often
 okay
-old
 older
 oldest
 omitted
@@ -1007,6 +1007,7 @@ photograph
 photographs
 photo
 image
+album
 published
 awers
 avers

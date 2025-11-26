@@ -122,8 +122,6 @@ except LookupError:
 		# raise_on_error=True,
 	)
 
-
-
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 
@@ -340,6 +338,7 @@ def basic_clean(txt):
 		r'\[blank\]',
 		r'\[sic\]',
 		r'\[arrow symbol\]',
+		r'Phot. of ',
 		r'Group photo of ',
 		r'This item is a photo depicting ',
 		r"This item is a photograph depicting ",
@@ -351,10 +350,15 @@ def basic_clean(txt):
 		r'Portrait of ',
 		r'Original caption:',
 		r'Caption: ',
+		r'Electronic ed.',
+		r'DFG project: worldviews (2015-2017),',
+		r'record author: Deutsche Fotothek/SLUB Dresden (DF)',
 		r'Law Title taken from similar image in this series.',
 		r'The original finding aid described this photograph as:',
 		r'The original finding aid described this as:',
 		r'The original finding aid described this item as:',
+		r'press image',
+		r'press photograph',
 		r"The following geographic information is associated with this record:",
 		r"This photograph is of ",
 		r'This image is part of ',
@@ -386,7 +390,7 @@ def basic_clean(txt):
 		r'In the photograph ',
 		r'In the photo ',
 		r'The photo shows ',
-		r'photo black and white',
+		r'black and white',
 		r'A photograph obtained by ',
 		r'The photo is accompanied by a typescript with a description',
 		r'Image of ',
@@ -404,6 +408,8 @@ def basic_clean(txt):
 		r'- Types -',
 		r'Other Projects',
 		r'Other Project ',
+		r'view from ',
+		r'view over ',
 		r'\[No description entered\]'
 	]
 
@@ -425,10 +431,12 @@ def basic_clean(txt):
 		r'^(Image\s+[A-Z]\b|[A-Z]\s+[A-Z]\b)', # Image A
 		r'(?i)^Project\s+.*?\s-\s',
 		r'(?i)(?:Series of |a series of |Group of |Collection of )(\d+\s*\w+)',
+		r'Part of the documentary ensemble:\s\w+',
 		r'no\.\s*\d+(?:-\d+)?', # no. 123, no. 123-125
 		r'Vol\.\s\d+',                                        # Vol. 5,
 		r'issue\s\d+',																				 # issue 1
 		r'part\s\d+',																				 # part 1
+		r'picture\s\d+\.',																		 # picture 125.
 	]
 
 	for pattern in metadata_patterns:
@@ -437,14 +445,20 @@ def basic_clean(txt):
 	# Also catch any remaining lines that are ALL CAPS + colon + value (common in archives)
 	txt = re.sub(r'(?m)^[A-Z\s&]{5,}:.*$', '', txt)
 
-	# === REMOVE DOCUMENT SERIAL NUMBERS / ARCHIVE IDs ===
-	# Common trailing IDs in parentheses
-	# txt = re.sub(r'\s*\([^()]*\b(?:number|no\.?|photo|negative|item|record|file|usaf|usaaf|nara|gp-|aal-)[^()]*\)\s*$', '', txt, flags=re.IGNORECASE) # (color photo)
-	txt = re.sub(r'\s*\([^()]*[A-Za-z]{0,4}\d{5,}[A-Za-z]?\)\s*$', '', txt)   # B25604AC, 123456, etc.
-	txt = re.sub(r'\s*\([^()]*\d{5,}[A-Za-z]?\)\s*$', '', txt)              # pure long numbers
+	txt = re.sub(r'\\\s*[nrt]', ' ', txt, flags=re.IGNORECASE) # \n, \r, \t
+	txt = re.sub(r'\\+', ' ', txt) # remove any stray back‑slashes (e.g. "\ -")
+
+	# # === REMOVE DOCUMENT SERIAL NUMBERS / ARCHIVE IDs ===
+	# # Common trailing IDs in parentheses
+	# # txt = re.sub(r'\s*\([^()]*\b(?:number|no\.?|photo|negative|item|record|file|usaf|usaaf|nara|gp-|aal-)[^()]*\)\s*$', '', txt, flags=re.IGNORECASE) # (color photo)
+	# # txt = re.sub(r'\s*\([^()]*[A-Za-z]{0,4}\d{5,}[A-Za-z]?\)\s*$', '', txt)   # B25604AC, 123456, etc.
+	# # Only delete parentheses that consist of *just* an ID (optional 0‑4 letters + 5+ digits)
+	# txt = re.sub(r'\s*$$\s*[A-Za-z]{0,4}\d{5,}[A-Za-z]?\s*$$\s*', ' ', txt)
+
+	# txt = re.sub(r'\s*\([^()]*\d{5,}[A-Za-z]?\)\s*$', '', txt)              # pure long numbers
 	
-	# Also catch them anywhere if they contain trigger words
-	txt = re.sub(r'\s*\([^()]*\b(?:number|no\.?|photo|negative|item|record|file)[^()]*\)', ' ', txt, flags=re.IGNORECASE)
+	# # Also catch them anywhere if they contain trigger words
+	# txt = re.sub(r'\s*\([^()]*\b(?:number|no\.?|photo|negative|item|record|file)[^()]*\)', ' ', txt, flags=re.IGNORECASE)
 
 	# Step 3: Handle newlines/tabs → space
 	txt = txt.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ')
@@ -458,7 +472,7 @@ def basic_clean(txt):
 	txt = txt.replace("”", " ")
 	txt = txt.replace("“", " ")
 	txt = txt.replace("„", " ")
-	txt = txt.replace("’", " ")
+	# txt = txt.replace("’", " ") # apostrophe
 	txt = txt.replace("‘", " ")
 	
 	# Step 5: Remove hashtags and other noise
@@ -467,6 +481,8 @@ def basic_clean(txt):
 	txt = re.sub(r'-{2,}', ' ', txt)   # multiple dashes
 	txt = re.sub(r'\.{2,}', '.', txt)  # ellipses ...
 	txt = re.sub(r'[\[\]]', ' ', txt)  # square brackets
+	txt = re.sub(r'[\{\}]', ' ', txt)  # curly braces
+	txt = re.sub(r'[\(\)]', ' ', txt)  # parentheses
 
 	# Step 6: Collapse all whitespace
 	txt = re.sub(r'\s+', ' ', txt)
