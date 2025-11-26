@@ -61,13 +61,13 @@ print(f"Successfully loaded {len(STOPWORDS)} stopwords")
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 Act as a meticulous historical archivist specializing in 20th century documentation.
-Given the description below, extract up to {k} most prominent, factual and distinct **KEYWORDS** that appear in the text.
+Given the description below, extract up to {k} most salient, factual and distinct **KEYWORDS** that appear in the text.
 
 {description}
 
 **CRITICAL RULES**:
-- Extract **ONLY keywords that actually appear** in the description above.
-- Return ONLY self-contained, grammatically complete phrases.
+- Extract **ONLY** self-contained and grammatically complete phrases that actually appear in the description.
+- NEVER produce incomplete fragments that end with a preposition.
 - Return **AT MOST {k} keywords** - fewer is acceptable if the description is short or lacks distinct concepts.
 - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
 - **PRIORITIZE MEANINGFUL PHRASES**: Prefer multi-word n-grams (2-3 words), whenever possible, over single terms if they capture more specific meaning.
