@@ -169,6 +169,8 @@ half track
 ground forces
 infantry weapon
 explosive weapon
+Higgins boat
+landing craft
 V-E Day
 V-J Day
 anti tank
@@ -261,3 +263,4 @@ aviator
 pilot
 landmine
 marines
+watercraft

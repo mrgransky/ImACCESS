@@ -376,6 +376,7 @@ def basic_clean(txt):
 		r'Photograph Showing ',
 		r'Photograph of ',
 		r'This Photo Of ',
+		r'Photo Of ',
 		r'Photographn of ',
 		r'Image of ',
 		r'Portrait of ',
@@ -445,6 +446,7 @@ def basic_clean(txt):
 	txt = txt.replace("”", " ")
 	txt = txt.replace("“", " ")
 	txt = txt.replace("„", " ")
+	txt = txt.replace("’", " ")
 	
 	# Step 5: Remove hashtags and other noise
 	txt = txt.replace('#', ' ')

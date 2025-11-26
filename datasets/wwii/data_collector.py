@@ -119,6 +119,7 @@ def get_dframe(
 	df_st_time = time.time()
 	try:
 		response = requests.get(doc_url)
+		response.raise_for_status()
 		soup = BeautifulSoup(response.text, 'html.parser')
 		hits = soup.find_all('img', class_='attachment-thumbnail')
 		descriptions = soup.find_all("p")
@@ -151,17 +152,78 @@ def get_dframe(
 		doc_description = header
 
 	print(f"\nDoc Description:\n{doc_description}\n")
-	
+
+	caption_map = {}
+	for p in soup.find_all('p', class_='wp-caption-text gallery-caption'):
+		cid = p.get('id')
+		if cid:
+			caption_text = p.get_text(strip=True)
+			if caption_text:
+				caption_map[cid] = caption_text	
+	print(f"{len(caption_map)} Caption Map(s):\n{json.dumps(caption_map, indent=4, ensure_ascii=False)}")
 	print(f"Found {len(hits)} Document(s) => Extracting information [might take a while]")
 	data = []
 	for idoc, vdoc in enumerate(hits):
+		print(idoc)
+		print(vdoc)
 		img_tag = vdoc
 		img_url = img_tag.get('data-src')
 		if not img_url:
 			continue
 		parent_a = img_tag.find_parent('a')
-		doc_title = img_tag.get("alt")
-		doc_title = doc_title if doc_title != "Folder Icon" else None
+		print(f"doc_url: {parent_a.get('href')}")
+
+		try:
+			doc_doc_url = parent_a.get('href')
+			response = requests.get(doc_doc_url)
+			response.raise_for_status()
+			soup = BeautifulSoup(response.text, 'html.parser')
+			header_el = soup.find('h2', class_="entry-title")
+			caption_el = soup.find('div', class_='entry-caption')
+			local_header = header_el.get_text(strip=True) if header_el else ""
+			local_caption = caption_el.get_text(strip=True) if caption_el else ""
+		except Exception as e:
+			print(f"Failed to extract doc_url: {e}")
+			continue
+		doc_cap_x0 = local_caption if local_caption else None
+		doc_header_x0 = local_header if local_header else None
+		print(f"doc_header (0th try): {doc_header_x0}")
+		print(f"doc_caption(0th try): {doc_cap_x0}")
+		print("-"*50)
+
+		# join doc_title_x0 and doc_cap_x0 if they're not the same
+		if doc_header_x0 and doc_cap_x0 and doc_header_x0 != doc_cap_x0:
+			doc_title_x0 = ". ".join(filter(None, [doc_header_x0, doc_cap_x0]))
+		else:
+			doc_title_x0 = doc_header_x0 or doc_cap_x0
+		print(f"doc_title(0th try): {doc_title_x0}")
+
+		doc_title_x1 = img_tag.get("alt")
+		doc_title_x1 = doc_title_x1 if doc_title_x1 != "Folder Icon" else None
+		print(f"doc_title(1st try): {doc_title_x1}")
+		
+		doc_title_x2 = None
+		aria_id = img_tag.get("aria-describedby")
+		if aria_id:
+			caption_title = caption_map.get(aria_id)
+			if caption_title:
+				doc_title_x2 = caption_title
+
+		print(f"doc_title(2nd try): {doc_title_x2}")
+
+		# Select the most complete title or combine if they're truly different
+		titles = [doc_title_x0, doc_cap_x0, doc_title_x1, doc_title_x2]
+		valid_titles = [t for t in titles if t]
+		
+		if len(valid_titles) == 1:
+			doc_title = valid_titles[0]
+		elif len(valid_titles) > 1:
+			# Find the longest title (most descriptive)
+			doc_title = max(valid_titles, key=len)
+		else:
+			doc_title = None
+
+		print(f"doc_title(final)  : {doc_title}")
 		img_url = img_url.replace("_cache/", "")
 		img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url) # Remove the thumbnail size from the end of the URL
 		filename = os.path.basename(img_url)
