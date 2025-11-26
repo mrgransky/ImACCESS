@@ -413,7 +413,7 @@ def basic_clean(txt):
 		r'^(Image\s+[A-Z]\b|[A-Z]\s+[A-Z]\b)', # Image A
 		r'(?i)^Project\s+.*?\s-\s',
 		r'(?i)(?:Series of |a series of |Group of |Collection of )(\d+\s*\w+)',
-		r'No\.\s\d+',                                        # No. 123
+		r'no\.\s*\d+(?:-\d+)?', # no. 123, no. 123-125
 		r'Vol\.\s\d+',                                        # Vol. 5,
 		r'issue\s\d+',																				 # issue 1
 		r'part\s\d+',																				 # part 1

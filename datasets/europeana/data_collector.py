@@ -62,7 +62,7 @@ headers = {
 def is_english(
 	text: str, 
 	detector_model: fasttext.FastText._FastText=ft_model,
-	confidence_threshold: float = 0.25,
+	confidence_threshold: float = 0.1,
 	verbose: bool = False,
 ) -> bool:
 	"""
