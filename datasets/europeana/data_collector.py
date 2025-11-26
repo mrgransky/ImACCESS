@@ -44,7 +44,7 @@ dataset_name: str = "europeana".upper()
 
 meaningless_words_fpth = os.path.join(project_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
-STOPWORDS = list()
+STOPWORDS = nltk.corpus.stopwords.words('english')
 with open(meaningless_words_fpth, 'r') as file_:
 	customized_meaningless_words=[line.strip().lower() for line in file_]
 STOPWORDS.extend(customized_meaningless_words)
@@ -207,7 +207,7 @@ def get_dframe(label: str, image_dir: str, start_date: str, end_date: str, docs:
 
 		print(f'Raw title(s): {doc.get("title")}: {[is_english(text=title) for title in doc.get("title") if title]}')
 		for title in doc.get("title"):
-			if title and is_english(text=title):
+			if title and is_english(text=title) and title not in STOPWORDS:
 				title_en = title
 				break
 			else:

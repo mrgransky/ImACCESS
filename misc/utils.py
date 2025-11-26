@@ -340,11 +340,15 @@ def basic_clean(txt):
 		r'\[blank\]',
 		r'\[sic\]',
 		r'\[arrow symbol\]',
+		r'Group photo of ',
 		r'This item is a photo depicting ',
 		r"This item is a photograph depicting ",
 		r"This photograph depicts ",
+		r'Photography presents ',
+		r'color photo',
 		r'This is a photograph of ',
 		r'Country: Unknown',
+		r'Portrait of ',
 		r'Original caption:',
 		r'Caption: ',
 		r'Law Title taken from similar image in this series.',
@@ -357,6 +361,7 @@ def basic_clean(txt):
 		r'This image is one of ',
 		r'According to Shaffer: ',
 		r'View from atop ',
+		r'Pictures of ',
 		r'The following information was provided by digitizing partner Fold3:',
 		r'Original caption on envelope: ',
 		r'Photo album with photo',
@@ -378,7 +383,12 @@ def basic_clean(txt):
 		r'This Photo Of ',
 		r'Photo Of ',
 		r'Photographn of ',
-		r'A photograph obtained by ,',
+		r'In the photograph ',
+		r'In the photo ',
+		r'The photo shows ',
+		r'photo black and white',
+		r'A photograph obtained by ',
+		r'The photo is accompanied by a typescript with a description',
 		r'Image of ',
 		r'Portrait of ',
 		r'Photograph: ',
@@ -429,7 +439,7 @@ def basic_clean(txt):
 
 	# === REMOVE DOCUMENT SERIAL NUMBERS / ARCHIVE IDs ===
 	# Common trailing IDs in parentheses
-	txt = re.sub(r'\s*\([^()]*\b(?:number|no\.?|photo|negative|item|record|file|usaf|usaaf|nara|gp-|aal-)[^()]*\)\s*$', '', txt, flags=re.IGNORECASE) # (color photo)
+	# txt = re.sub(r'\s*\([^()]*\b(?:number|no\.?|photo|negative|item|record|file|usaf|usaaf|nara|gp-|aal-)[^()]*\)\s*$', '', txt, flags=re.IGNORECASE) # (color photo)
 	txt = re.sub(r'\s*\([^()]*[A-Za-z]{0,4}\d{5,}[A-Za-z]?\)\s*$', '', txt)   # B25604AC, 123456, etc.
 	txt = re.sub(r'\s*\([^()]*\d{5,}[A-Za-z]?\)\s*$', '', txt)              # pure long numbers
 	
@@ -449,6 +459,7 @@ def basic_clean(txt):
 	txt = txt.replace("“", " ")
 	txt = txt.replace("„", " ")
 	txt = txt.replace("’", " ")
+	txt = txt.replace("‘", " ")
 	
 	# Step 5: Remove hashtags and other noise
 	txt = txt.replace('#', ' ')

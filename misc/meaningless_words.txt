@@ -1008,3 +1008,5 @@ photographs
 photo
 image
 published
+awers
+avers
