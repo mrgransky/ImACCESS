@@ -71,7 +71,7 @@ You can use the context to help you decide which keywords are most salient.
 - NEVER produce incomplete fragments that end with a preposition.
 - Return **AT MOST {k} keywords** - fewer is acceptable if the description is short or lacks distinct concepts.
 - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
-- **PRIORITIZE MEANINGFUL PHRASES**: Prefer multi-word n-grams (NOUN PHRASES and NAMED ENTITIES), whenever possible, over single terms if they capture more distinctive meaning.
+- **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
 - **STRICTLY EXCLUDE ALL NUMERICAL CONTENT**: No numbers, numerical values, measurements, units, or quantitative terms.
 - **STRICTLY EXCLUDE** vague, generic, meaningless or ambiguous keywords.
 - **ABSOLUTELY NO** synonymous, duplicate or misspelled keywords.
