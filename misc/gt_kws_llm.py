@@ -67,6 +67,7 @@ Given the description below, extract up to {k} most prominent, factual and disti
 
 **CRITICAL RULES**:
 - Extract **ONLY keywords that actually appear** in the description above.
+- Return ONLY self-contained, grammatically complete phrases.
 - Return **AT MOST {k} keywords** - fewer is acceptable if the description is short or lacks distinct concepts.
 - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
 - **PRIORITIZE MEANINGFUL PHRASES**: Prefer multi-word n-grams (2-3 words), whenever possible, over single terms if they capture more specific meaning.
