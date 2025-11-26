@@ -75,10 +75,13 @@ Given the description below, extract up to {k} most salient, factual and distinc
 - **STRICTLY EXCLUDE** vague, generic, meaningless or ambiguous keywords.
 - **ABSOLUTELY NO** synonymous, duplicate or misspelled keywords.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
-- **ABSOLUTELY NO TEMPORAL EXPRESSIONS** such as date, time, time period, season, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "18th of july 1936", "May 25th", "July 10").
+- **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: any time-related phrases such as dates, seasons, decades, centuries is STRICTLY FORBIDDEN.
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]
 """
+
+# - **ABSOLUTELY NO TEMPORAL EXPRESSIONS** such as date, time, time period, season, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "18th of july 1936", "May 25th", "July 10").
+
 
 def _load_llm_(
 		model_id: str,
