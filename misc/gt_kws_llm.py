@@ -60,8 +60,9 @@ STOPWORDS.update(stopwords)
 print(f"Successfully loaded {len(STOPWORDS)} stopwords")
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
-Act as a meticulous historical archivist specializing in 20th century documentation.
-Given the description below, extract up to {k} most salient, factual and distinct **KEYWORDS** that appear in the text.
+You are a professional historical archivist.
+Given the description below, extract up to {k} most prominent, factual and distinct **KEYWORDS** that appear in the text. 
+You can use the context to help you decide which keywords are most salient.
 
 {description}
 
@@ -70,7 +71,7 @@ Given the description below, extract up to {k} most salient, factual and distinc
 - NEVER produce incomplete fragments that end with a preposition.
 - Return **AT MOST {k} keywords** - fewer is acceptable if the description is short or lacks distinct concepts.
 - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
-- **PRIORITIZE MEANINGFUL PHRASES**: Prefer multi-word n-grams (2-3 words), whenever possible, over single terms if they capture more specific meaning.
+- **PRIORITIZE MEANINGFUL PHRASES**: Prefer multi-word n-grams (NOUN PHRASES and NAMED ENTITIES), whenever possible, over single terms if they capture more distinctive meaning.
 - **STRICTLY EXCLUDE ALL NUMERICAL CONTENT**: No numbers, numerical values, measurements, units, or quantitative terms.
 - **STRICTLY EXCLUDE** vague, generic, meaningless or ambiguous keywords.
 - **ABSOLUTELY NO** synonymous, duplicate or misspelled keywords.
@@ -79,7 +80,7 @@ Given the description below, extract up to {k} most salient, factual and distinc
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]
 """
-
+# Act as a meticulous historical archivist specializing in 20th century documentation.
 # - **ABSOLUTELY NO TEMPORAL EXPRESSIONS** such as date, time, time period, season, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "18th of july 1936", "May 25th", "July 10").
 
 
