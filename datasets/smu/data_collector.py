@@ -115,7 +115,7 @@ def get_doc_year(raw_doc_date):
 	else:
 		return None
 
-def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
+def get_data(start_date: str="1900-01-01", end_date: str="1970-12-31", query: str="world war"):
 	t0 = time.time()
 	START_DATE = re.sub("-", "", start_date) # modified date: 19140101
 	END_DATE = re.sub("-", "", end_date) # modiifed date: 19140102
@@ -174,18 +174,19 @@ def check_url_status(url: str) -> bool:
 		return False
 
 def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
-	query_all_hits = get_data(
-		start_date=args.start_date,
-		end_date=args.end_date,
+	doc_hits = get_data(
+		start_date=start_date,
+		end_date=end_date,
 		query=query.lower()
 	)
-	if query_all_hits is None:
+	if doc_hits is None:
 		return
-	docs = query_all_hits
-	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
+
+	print(f"Analyzing {len(doc_hits)} {type(doc_hits)} document(s) for query: « {query} » might take a while...")
+
 	df_st_time = time.time()
 	data = []
-	for doc_idx, doc in enumerate(docs):
+	for doc_idx, doc in enumerate(doc_hits):
 		doc_date = doc.get("metadataFields")[3].get("value")
 		doc_type = doc.get('filetype')
 		doc_link = doc.get("itemLink") # /singleitem/collection/ryr/id/2479
@@ -378,6 +379,7 @@ def main():
 			'id': 'first',
 			'title': 'first',
 			'description': 'first',
+			'keywords': 'first',
 			'user_query': lambda x: list(set(x)),  # Combine user_query into a list with unique elements
 			'raw_doc_date': 'first',
 			'doc_url': 'first',
