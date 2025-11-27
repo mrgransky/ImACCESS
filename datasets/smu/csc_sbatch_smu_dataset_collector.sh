@@ -10,7 +10,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=6G
 #SBATCH --partition=small
-#SBATCH --time=0-08:00:00
+#SBATCH --time=0-10:00:00
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
