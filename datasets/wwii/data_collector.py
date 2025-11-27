@@ -721,7 +721,7 @@ def main():
 				doc_idx=i, 
 				doc_url=k, 
 				user_query=v,
-			) for i, (k, v) in enumerate(URLs.items()[:5])
+			) for i, (k, v) in enumerate(URLs.items())
 		]
 		dfs = [df for df in dfs if df is not None]
 		save_pickle(pkl=dfs, fname=dfs_fname,)
