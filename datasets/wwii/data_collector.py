@@ -707,7 +707,9 @@ def main():
 		f"{base_url}/germany/units/grossdeutschland/" : "military unit",
 		f"{base_url}/germany/units/sturmgeschutz_brigade_244/" : "military unit",
 		}
+	
 	dfs_fname = os.path.join(HITs_DIR, f"{dataset_name}_{len(URLs)}_dfs.gz")
+	
 	try:
 		dfs = load_pickle(fpath=dfs_fname,)
 		print(f"Loaded {len(dfs)} dfs from {os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_dfs.gz')}")
@@ -719,50 +721,52 @@ def main():
 				doc_idx=i, 
 				doc_url=k, 
 				user_query=v,
-			) for i, (k, v) in enumerate(URLs.items())
+			) for i, (k, v) in enumerate(URLs.items()[:5])
 		]
 		dfs = [df for df in dfs if df is not None]
 		save_pickle(pkl=dfs, fname=dfs_fname,)
 		print(f"Saved {len(dfs)} dfs to {dfs_fname}")
-	print(f"Filtered {len(dfs)} dfs")
 
-	print(f"Concatenating {len(dfs)} dfs...")
+	total_searched_labels = len(dfs)
+	print(f"Concatinating {total_searched_labels} x {type(dfs[0])} dfs...")
 	wwii_df = pd.concat(dfs, ignore_index=True)
-	print(f"{type(wwii_df)} {wwii_df.shape}, {list(wwii_df.columns)}")
+	print(f"wwii_df {type(wwii_df)} {wwii_df.shape}, {list(wwii_df.columns)}")
 
 	# 1: multi label:
-	print(f"Saving multi-label dataset...")
+	multi_label_synched_df = wwii_df.copy()
+	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
 	dfname_multi_label = "metadata_multi_label.csv"
-	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_multi_label), index=False)
+	print(f"Saving {dfname_multi_label}...")
+	multi_label_final_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_multi_label), index=False)
 	try:
-		wwii_df.to_excel(os.path.join(DATASET_DIRECTORY, dfname_multi_label.replace('.csv', '.xlsx')), index=False)
+		multi_label_final_df.to_excel(os.path.join(DATASET_DIRECTORY, dfname_multi_label.replace('.csv', '.xlsx')), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
 	# 2: single label:
 	# a) drop None from labels:
-	wwii_df = wwii_df.dropna(subset=['label'])
-	print(f"Found {wwii_df['label'].isna().sum()} None labels / {wwii_df.shape[0]} total samples")
+	print(f"Checking for None labels... {wwii_df['label'].isna().sum()} None labels / {wwii_df.shape[0]} total samples")
+	single_label_final_df = wwii_df.dropna(subset=['label'])
 	# b) save
-	print(f"Saving single-label dataset...")
 	dfname_single_label = "metadata_single_label.csv"
-	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_single_label), index=False)
+	print(f"Saving {dfname_single_label}...")
+	single_label_final_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_single_label), index=False)
 	try:
-		wwii_df.to_excel(os.path.join(DATASET_DIRECTORY, dfname_single_label.replace('.csv', '.xlsx')), index=False)
+		single_label_final_df.to_excel(os.path.join(DATASET_DIRECTORY, dfname_single_label.replace('.csv', '.xlsx')), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	unique_labels = wwii_df['label'].unique()
+	unique_labels = single_label_final_df['label'].unique()
 	print(f"{len(unique_labels)} Unique labels: {unique_labels}")
 
-	print(wwii_df['label'].value_counts())
+	print(single_label_final_df['label'].value_counts())
 
 	label_dirstribution_fname = os.path.join(
 		OUTPUT_DIRECTORY, 
 		f"{dataset_name}_single_label_distribution_{wwii_df.shape[0]}_x_{unique_labels.shape[0]}.png"
 	)
 	plot_label_distribution(
-		df=wwii_df,
+		df=single_label_final_df,
 		fpth=label_dirstribution_fname,
 		FIGURE_SIZE=(14, 8),
 		DPI=260,
@@ -771,7 +775,7 @@ def main():
 
 	# stratified splitting [single-label]:
 	train_df, val_df = get_stratified_split(
-		df=wwii_df, 
+		df=single_label_final_df, 
 		val_split_pct=args.val_split_pct,
 		label_col='label',
 	)

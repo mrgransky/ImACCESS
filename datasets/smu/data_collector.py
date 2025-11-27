@@ -6,7 +6,7 @@ project_dir = os.path.dirname(parent_dir)
 sys.path.insert(0, project_dir)
 
 from misc.utils import *
-from misc.visualize import *
+import misc.visualize as viz
 
 # local:
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 --img_mean_std
@@ -186,13 +186,12 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 	df_st_time = time.time()
 	data = []
 	for doc_idx, doc in enumerate(docs):
-		# print(type(doc.get("title")), doc.get("title"))
 		doc_date = doc.get("metadataFields")[3].get("value")
 		doc_type = doc.get('filetype')
+		doc_link = doc.get("itemLink") # /singleitem/collection/ryr/id/2479
 		doc_collection = doc.get("collectionAlias")
 		doc_id = doc.get("itemId")
 		doc_combined_identifier = f'{doc_collection}_{doc_id}' # agr_19
-		doc_link = doc.get("itemLink") # /singleitem/collection/ryr/id/2479
 		doc_page_url = f"{SMU_BASE_URL}/collection/{doc.get('collectionAlias')}/id/{doc.get('itemId')}"
 		doc_img_link = f"{SMU_BASE_URL}/api/singleitem/image/{doc_collection}/{doc_id}/default.jpg"
 		doc_title = doc.get("title")
@@ -205,11 +204,7 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 			keyword_list = [kw.strip() for kw in doc_raw_keywords.split(";") if kw.strip()] # Split the keywords into a list
 			cleaned_keyword_list = [kw for kw in keyword_list if kw not in REDUNDANT_KEYWORDS] # Exclude redundant terms
 			doc_cleaned_keywords = "; ".join(cleaned_keyword_list) if cleaned_keyword_list else None # Join the cleaned keywords back into a string
-
-		raw_enriched_document_description = ". ".join(filter(None, [doc_title, doc_description, doc_cleaned_keywords])).strip()
-		print(f"\nraw_enriched_document_description:\n{raw_enriched_document_description}\n")
-		enriched_document_description = basic_clean(txt=raw_enriched_document_description)
-		print(f"\nenriched_document_description:\n{enriched_document_description}\n")
+			print(f"doc_cleaned_keywords: {doc_cleaned_keywords}")
 
 		row = {
 			'id': doc_combined_identifier,
@@ -218,7 +213,6 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 			'title': doc_title,
 			'description': doc_description,
 			'keywords': doc_cleaned_keywords,
-			'enriched_document_description': enriched_document_description,
 			'raw_doc_date': doc_date,
 			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(doc_combined_identifier) + '.jpg')}",
 			'img_url': doc_img_link
@@ -229,10 +223,20 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 	df['doc_date'] = df.apply(lambda row: get_doc_year(row['raw_doc_date']), axis=1)
 
 	# Filter the DataFrame based on the validity check
-	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=start_date, end_date=end_date))]
+	df = df[
+		df['doc_date'].apply(
+			lambda x: is_valid_date(
+				date=x, 
+				start_date=start_date, 
+				end_date=end_date
+			)
+		)
+	]
 
-	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
+	print(f"DF: {type(df)} {df.shape} Elapsed_t: {time.time()-df_st_time:.1f} sec")
+
 	save_pickle(pkl=df, fname=df_file_path)
+
 	return df
 
 @retry(
@@ -291,13 +295,12 @@ def scrape_item_metadata(doc_url: str) -> Dict:
 @measure_execution_time
 def main():
 	with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
-		all_label_tags = list(set([line.strip() for line in file_]))
-
-	print(f"{len(all_label_tags)} {type(all_label_tags)} Query phrases are being processed, please be patient...")
+		search_labels = list(dict.fromkeys(line.strip() for line in file_))
+	print(f"Total of {len(search_labels)} {type(search_labels)} Query phrases are being processed, please be patient...")
 
 	dfs = []
-	for qi, qv in enumerate(all_label_tags):
-		print(f"\nQ[{qi+1}/{len(all_label_tags)}]: {qv}")
+	for qi, qv in enumerate(search_labels):
+		print(f"\nQ[{qi+1}/{len(search_labels)}]: {qv}")
 		qv = clean_(text=qv, sw=STOPWORDS)
 		qv_processed = re.sub(" ", "_", qv)
 		df_fpth = os.path.join(HITS_DIRECTORY, f"df_query_{qv_processed}_{args.start_date}_{args.end_date}.gz")
@@ -314,9 +317,11 @@ def main():
 		if df is not None:
 			dfs.append(df)
 
-	print(f"Concatinating {len(dfs)} dfs")
+	total_searched_labels = len(dfs)
+	print(f">> Concatinating {total_searched_labels} x {type(dfs[0])} dfs ...")
+
 	df_merged_raw = pd.concat(dfs, ignore_index=True)
-	print(f"Concatinated dfs: {df_merged_raw.shape}")
+	print(f">> Concatinated dfs: {df_merged_raw.shape}")
 
 	print(f">> Replacing labels with super classes")
 	json_file_path = os.path.join(project_dir, 'misc', 'super_labels.json')
@@ -331,6 +336,7 @@ def main():
 	df_merged_raw['label'] = df_merged_raw['user_query'].replace(replacement_dict)
 	print(f">> Found {df_merged_raw['img_url'].isna().sum()} None img_url / {df_merged_raw.shape[0]} total samples")
 	df_merged_raw = df_merged_raw.dropna(subset=['img_url'])
+	print(f">> After dropping None img_url: {df_merged_raw.shape}")
 
 	############################## Dropping duplicated img_url ##############################
 	# print(f"img_url with duplicate: {df_merged_raw['img_url'].duplicated().sum()}")
@@ -373,87 +379,42 @@ def main():
 			'title': 'first',
 			'description': 'first',
 			'user_query': lambda x: list(set(x)),  # Combine user_query into a list with unique elements
-			'enriched_document_description': 'first',
 			'raw_doc_date': 'first',
 			'doc_url': 'first',
 			'img_path': 'first',
 			'doc_date': 'first'
 		}
 	).reset_index()
-	grouped['label'] = grouped['user_query'].apply(lambda x: replacement_dict.get(x[0], x[0]))
-
+	print(f"Grouped: {grouped.shape}")
+	
 	# Map user_query to labels using replacement_dict
 	grouped['label'] = grouped['user_query'].apply(lambda x: replacement_dict.get(x[0], x[0]))
-	print(f"Multi-label dataset shape: {grouped.shape}")
-	grouped.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_multi_label_raw.csv"), index=False)
+	print(f"Multi-label dataset {type(grouped)} {grouped.shape} {list(grouped.columns)}")
+	############################## aggregating user_query to list ##############################
 
-	try:
-		grouped.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_multi_label_raw.xlsx"), index=False)
-	except Exception as e:
-		print(f"Failed to write Excel file: {e}")
-
-	print(f"\n2. Processing images (using multi-label dataset as reference)...")
-	multi_label_final_df = get_synchronized_df_img(
+	print(f"\n2. Image synchronization (using multi-label dataset as reference)...")
+	synched_fpath = os.path.join(DATASET_DIRECTORY, f"synched_x_{total_searched_labels}_searched_labels_metadata_multi_label.csv")
+	multi_label_synched_df = get_synchronized_df_img(
 		df=grouped,
-		image_dir=IMAGE_DIRECTORY,
+		synched_fpath=synched_fpath,
 		nw=args.num_workers,
 		enable_thumbnailing=args.enable_thumbnailing,
 		thumbnail_size=args.thumbnail_size,
 		large_image_threshold_mb=args.large_image_threshold_mb,
 	)
-	############################## aggregating user_query to list ##############################
+	
+	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
 
-	# label_dirstribution_fname = os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_label_distribution_nIMGs_{smu_df.shape[0]}.png")
-	# plot_label_distribution(
-	# 	df=smu_df,
-	# 	fpth=label_dirstribution_fname,
-	# )
+	print("Saving final multi-label dataset...")
 
-	# smu_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
-	# try:
-	# 	smu_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
-	# except Exception as e:
-	# 	print(f"Failed to write Excel file: {e}")
-
-	# # stratified splitting:
-	# train_df, val_df = get_stratified_split(df=smu_df, val_split_pct=args.val_split_pct,)
-	# train_df.to_csv(os.path.join(DATASET_DIRECTORY, 'metadata_train.csv'), index=False)
-	# val_df.to_csv(os.path.join(DATASET_DIRECTORY, 'metadata_val.csv'), index=False)
-
-	# plot_train_val_label_distribution(
-	# 	train_df=train_df,
-	# 	val_df=val_df,
-	# 	dataset_name=dataset_name,
-	# 	OUTPUT_DIRECTORY=OUTPUT_DIRECTORY,
-	# 	VAL_SPLIT_PCT=args.val_split_pct,
-	# 	fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_simple_random_split_stratified_label_distribution_train_val_{args.val_split_pct}_pct.png'),
-	# 	FIGURE_SIZE=(14, 8),
-	# 	DPI=DPI,
-	# )
-
-	# plot_year_distribution(
-	# 	df=smu_df,
-	# 	dname=dataset_name,
-	# 	fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_year_distribution_{smu_df.shape[0]}_samples.png"),
-	# 	BINs=args.historgram_bin,
-	# )
-
-	# if args.img_mean_std:
-	# 	try:
-	# 		img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
-	# 	except Exception as e:
-	# 		print(f"{e}")
-	# 		img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
-	# 			source=os.path.join(DATASET_DIRECTORY, "images"),
-	# 			num_workers=args.num_workers,
-	# 			batch_size=args.batch_size,
-	# 			img_rgb_mean_fpth=img_rgb_mean_fpth,
-	# 			img_rgb_std_fpth=img_rgb_std_fpth,
-	# 		)
-	# 	print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
+	multi_label_final_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv"), index=False)
+	try:
+		multi_label_final_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_multi_label.xlsx"), index=False)
+	except Exception as e:
+		print(f"Failed to write final multi-label Excel file: {e}")
 
 	print("\n3. Creating SINGLE-LABEL version (from successfully downloaded images)...")
-	single_label_final_df = multi_label_final_df.copy()
+	single_label_final_df = multi_label_synched_df.copy()
 	single_label_columns_to_keep = [
 		col 
 		for col in single_label_final_df.columns 
@@ -462,15 +423,7 @@ def main():
 	single_label_final_df = single_label_final_df[single_label_columns_to_keep].copy()
 	
 	print(f"Single-label dataset shape: {single_label_final_df.shape}")
-	
-	# Save single-label raw metadata (before image sync)
-	single_label_raw_df = grouped[single_label_columns_to_keep].copy()
-	single_label_raw_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_single_label_raw.csv"), index=False)
-	try:
-		single_label_raw_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_single_label_raw.xlsx"), index=False)
-	except Exception as e:
-		print(f"Failed to write single-label Excel file: {e}")
-	
+		
 	print("\nSaving final single-label dataset...")
 	single_label_final_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_single_label.csv"), index=False)
 	try:
@@ -478,84 +431,18 @@ def main():
 	except Exception as e:
 		print(f"Failed to write final single-label Excel file: {e}")
 	
-	print("Saving final multi-label dataset...")
-	multi_label_final_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv"), index=False)
-	try:
-		multi_label_final_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_multi_label.xlsx"), index=False)
-	except Exception as e:
-		print(f"Failed to write final multi-label Excel file: {e}")
-	
-	def process_dataset_version(df, version_name, is_multi_label=False):
-		"""Process a dataset version with visualizations and splits"""
-		print(f"\n--- Processing {version_name} dataset ---")
-		
-		if is_multi_label:
-			# For multi-label, we need special handling
-			plot_label_distribution_fname = os.path.join(
-				OUTPUT_DIRECTORY, 
-				f"{dataset_name}_{version_name}_label_distribution_{df.shape[0]}_x_{df.shape[1]}.png"
-			)
-			# You might want to create a special multi-label visualization here
-			print(f"Multi-label visualization needs special handling - skipping for now")
-		else:
-			# Single-label visualization
-			plot_label_distribution_fname = os.path.join(
-				OUTPUT_DIRECTORY, 
-				f"{dataset_name}_{version_name}_label_distribution_{df.shape[0]}_x_{df.shape[1]}.png"
-			)
-			plot_label_distribution(
-				df=df,
-				fpth=plot_label_distribution_fname,
-				FIGURE_SIZE=(14, 8),
-				DPI=DPI,
-				label_column='label',
-			)
-
-		if not is_multi_label:
-			# Single-label stratified split
-			train_df, val_df = get_stratified_split(
-				df=df, 
-				val_split_pct=args.val_split_pct,
-				label_col='label'
-			)
-			print(f"Train/val split for {version_name} dataset complete!")
-			print(f"Full dataset: {df.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
-			train_df.to_csv(os.path.join(DATASET_DIRECTORY, f'metadata_{version_name}_train.csv'), index=False)
-			val_df.to_csv(os.path.join(DATASET_DIRECTORY, f'metadata_{version_name}_val.csv'), index=False)
-		else:
-			print(f"Multi-label stratified split not implemented yet!")
-		
-		# Train/val distribution plot
-		if not is_multi_label:  # Only for single-label for now
-			plot_train_val_label_distribution(
-				train_df=train_df,
-				val_df=val_df,
-				dataset_name=f"{dataset_name}_{version_name}",
-				VAL_SPLIT_PCT=args.val_split_pct,
-				fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_{version_name}_stratified_label_distribution_train_val_{args.val_split_pct}_pct.png'),
-				FIGURE_SIZE=(14, 8),
-				DPI=DPI,
-			)
-		
-		# Year distribution plot
-		plot_year_distribution(
-			df=df,
-			dname=f"{dataset_name}_{version_name}",
-			fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_{version_name}_year_distribution_{df.shape[0]}_samples.png"),
-			BINs=args.historgram_bin,
-		)
-		print(f"{version_name} dataset processing complete!")
-		
-	process_dataset_version(
+	post_process(
 		df=single_label_final_df, 
-		version_name="single_label", 
-		is_multi_label=False
+		dataset_type="single_label", 
+		is_multi_label=False,
+		output_dir=OUTPUT_DIRECTORY,
 	)
 	
-	process_dataset_version(
+	post_process(
 		df=multi_label_final_df, 
-		version_name="multi_label", 
-		is_multi_label=True
+		dataset_type="multi_label", 
+		is_multi_label=True,
+		output_dir=OUTPUT_DIRECTORY,
 	)
 
 	if args.img_mean_std:

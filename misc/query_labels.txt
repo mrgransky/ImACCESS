@@ -1,4 +1,7 @@
-Pearl Harbor attack
+armored fighting vehicle
+naval aircraft factory
+naval air station
+naval air base
 armored personnel carrier
 infantry fighting vehicle
 allied air attack
@@ -6,13 +9,12 @@ anti personnel mine
 anti-personnel mine
 self propelled gun
 self propelled artillery
-armored fighting vehicle
-naval aircraft factory
-naval air station
-naval air base
 water based aircraft
 air force personnel
 air force commander
+Pearl Harbor attack
+Treaty of Versailles
+Battle of the Bulge
 special forces commander
 theater commander
 group commander
@@ -122,12 +124,10 @@ military personnel
 military ship
 military boat
 military parade
-Battle of the Bulge
 Medical aid
 Medical service
 first aid
 Coast Guard
-Treaty of Versailles
 hospital base
 hospital ship
 hospital train

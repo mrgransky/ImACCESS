@@ -59,7 +59,6 @@ warnings.filterwarnings(
 	message="invalid escape sequence"
 )
 
-
 from skimage.filters.rank import entropy
 from skimage.morphology import disk
 from skimage.measure import shannon_entropy
@@ -97,7 +96,7 @@ from natsort import natsorted
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import warnings
-# logging.basicConfig(level=logging.INFO)
+import misc.visualize as viz  # For visualizations
 
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
@@ -159,6 +158,80 @@ dtypes = {
 	'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
 	'user_query': str,
 }
+
+def post_process(
+	df: pd.DataFrame, 
+	dataset_type: str, 
+	output_dir: str, 
+	is_multi_label: bool=False, 
+	figure_size: tuple=(14, 8), 
+	dpi: int=250, 
+	historgram_bins: int=50, 
+	val_split_pct: float=0.35
+):
+	print(f"\n--- Processing {dataset_type} dataset ---")
+
+	dataset_dir = os.path.dirname(output_dir)
+	dataset_name = os.path.basename(dataset_dir)
+	print(f"OUTPUT_DIR: {output_dir}")
+	print(f"DATASET_DIR: {dataset_dir}")
+	print(f"DATASET_NAME: {dataset_name}")
+
+	if is_multi_label:
+		# For multi-label, we need special handling
+		plot_label_distribution_fname = os.path.join(
+			output_dir, 
+			f"{dataset_name}_{dataset_type}_label_distribution_{df.shape[0]}_x_{df.shape[1]}.png"
+		)
+		# You might want to create a special multi-label visualization here
+		print(f"Multi-label visualization needs special handling - skipping for now")
+
+	else:
+		# Single-label visualization
+		plot_label_distribution_fname = os.path.join(
+			output_dir, 
+			f"{dataset_name}_{dataset_type}_label_distribution_{df.shape[0]}_x_{df.shape[1]}.png"
+		)
+		viz.plot_label_distribution(
+			df=df,
+			fpth=plot_label_distribution_fname,
+			FIGURE_SIZE=figure_size,
+			DPI=dpi,
+			label_column='label',
+		)
+	if not is_multi_label:
+		# Single-label stratified split
+		train_df, val_df = get_stratified_split(
+			df=df, 
+			val_split_pct=val_split_pct,
+			label_col='label'
+		)
+		# Save train/val splits
+		train_df.to_csv(os.path.join(dataset_dir, f'metadata_{dataset_type}_train.csv'), index=False)
+		val_df.to_csv(os.path.join(dataset_dir, f'metadata_{dataset_type}_val.csv'), index=False)
+	else:
+		print(f"Multi-label stratified split not implemented yet!")
+	
+	# Train/val distribution plot
+	if not is_multi_label:  # Only for single-label for now
+		viz.plot_train_val_label_distribution(
+			train_df=train_df,
+			val_df=val_df,
+			dataset_name=f"{dataset_name}_{dataset_type}",
+			VAL_SPLIT_PCT=val_split_pct,
+			fname=os.path.join(output_dir, f'{dataset_name}_{dataset_type}_stratified_label_distribution_train_val_{val_split_pct}_pct.png'),
+			FIGURE_SIZE=figure_size,
+			DPI=dpi,
+		)
+	
+	# Year distribution plot
+	viz.plot_year_distribution(
+		df=df,
+		dname=f"{dataset_name}_{dataset_type}",
+		fpth=os.path.join(output_dir, f"{dataset_name}_{dataset_type}_year_distribution_{df.shape[0]}_samples.png"),
+		BINs=historgram_bins,
+	)
+	print(f"{dataset_type} dataset processing complete!")
 
 def monitor_memory_usage():
 	"""Monitor memory usage and return True if memory is critical"""
@@ -320,7 +393,55 @@ def clean_single_quotes(text):
 		# Clean spaces
 		return re.sub(r'\s+', ' ', text).strip()
 
-def basic_clean(txt):
+def get_enriched_description(df: pd.DataFrame):
+	t0 = time.time()
+	print(f"\nAdding enriched_document_description to {df.shape} {type(df)}...")
+	print(list(df.columns))
+
+	# check if title and description are in df.columns:
+	if "title" not in df.columns:
+		raise ValueError("title column not found in df")
+	if "description" not in df.columns:
+		raise ValueError("description column not found in df")
+
+	# check if how many empty(Nones) exist in title and description:
+	print(f"Number of empty title: {df['title'].isna().sum()}")
+	print(f"Number of empty description: {df['description'].isna().sum()}")
+
+	# safety check:
+	if "enriched_document_description" in df.columns:
+		df = df.drop(columns=['enriched_document_description'])
+
+	df_enriched = df.copy()
+	df_enriched['enriched_document_description'] = df.apply(
+		lambda row: ". ".join(
+			filter(
+				None, 
+				[
+					str(row['title']) if pd.notna(row['title']) else None, 
+					str(row['description']) if pd.notna(row['description']) else None
+				]
+			)
+		),
+		axis=1
+	)
+	# apply basic_clean:
+	df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(basic_clean)
+
+	print(
+		f"Number of empty enriched_document_description: "
+		f"{df_enriched['enriched_document_description'].isna().sum()} "
+		f"out of {df_enriched.shape[0]} total samples "
+		f"({df_enriched['enriched_document_description'].isna().sum()/df_enriched.shape[0]*100:.2f}%) "
+	)
+
+	print(f"{type(df_enriched)} {df_enriched.shape} {list(df_enriched.columns)}")
+
+	print(f"enriched_document_description added. Elapsed_t: {time.time()-t0:.1f} sec")
+
+	return df_enriched
+
+def basic_clean(txt: str):
 	if not txt or not isinstance(txt, str):
 		return ""
 	# Step 1: PROTECT real apostrophes FIRST (most important!)
@@ -328,6 +449,9 @@ def basic_clean(txt):
 	# This safely protects: don't → don__APOSTROPHE__t, John's → John__APOSTROPHE__s
 	# Step 2: Remove known junk/phrase patterns
 	junk_phrases = [
+		r'Original caption on envelope: ',
+		r'Original caption:',
+		r'Caption: ',
 		r'\[No caption entered\]',
 		r'Partial view of ',
 		r'History: \[none entered\]',
@@ -345,11 +469,10 @@ def basic_clean(txt):
 		r"This photograph depicts ",
 		r'Photography presents ',
 		r'color photo',
+		r'Colored photo',
 		r'This is a photograph of ',
 		r'Country: Unknown',
 		r'Portrait of ',
-		r'Original caption:',
-		r'Caption: ',
 		r'Electronic ed.',
 		r'DFG project: worldviews (2015-2017),',
 		r'record author: Deutsche Fotothek/SLUB Dresden (DF)',
@@ -367,16 +490,17 @@ def basic_clean(txt):
 		r'View from atop ',
 		r'Pictures of ',
 		r'The following information was provided by digitizing partner Fold3:',
-		r'Original caption on envelope: ',
 		r'Photo album with photo',
 		r'Photographs from ',
 		r"The photographer's notes indicate",
 		r"This photograph shows",
+		r"This photograph is ",
 		r"Placeholder",
 		r"No description",
 		r'Text on the card: ',
 		r'The picture shows',
 		r'The photo was taken ',
+		r'Photograph taken ',
 		r'In the picture are ',
 		r'The photograph shows',
 		r"This photo shows ",
@@ -410,6 +534,7 @@ def basic_clean(txt):
 		r'Other Project ',
 		r'view from ',
 		r'view over ',
+		r'full view of ',
 		r'\[No description entered\]'
 	]
 
@@ -515,32 +640,36 @@ def clean_(text:str, sw:list):
 		# and word.lower() not in sw
 	]
 	text = ' '.join(words) # Join the words back into a string
-	text = re.sub(r'\boriginal caption\b', ' ', text)
-	text = re.sub(r'\bphoto shows\b', ' ', text)
-	text = re.sub(r'\bfile record\b', ' ', text)
-	text = re.sub(r'\boriginal field number\b', ' ', text)
+	text = re.sub(r'\boriginal caption\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\bphoto shows\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\bfile record\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\boriginal field number\b', ' ', text, flags=re.IGNORECASE)
 	# text = re.sub(r'\bdate taken\b', ' ', text)
 	# text = re.sub(r'\bdate\b', ' ', text)
 	# text = re.sub(r'\bdistrict\b', ' ', text)
-	text = re.sub(r'\bobtained\b', ' ', text)
-	text = re.sub(r'\bfile record\b', ' ', text)
-	text = re.sub(r'\bcaption\b', ' ', text)
-	text = re.sub(r'\bunidentified\b', ' ', text)
-	text = re.sub(r'\bunnumbered\b', ' ', text)
-	text = re.sub(r'\buntitled\b', ' ', text)
-	text = re.sub(r'\bfotografie\b', ' ', text)
-	text = re.sub(r'\bfotografen\b', ' ', text)
-	text = re.sub(r'\bphotograph\b', ' ', text)
-	text = re.sub(r'\bphotographer\b', ' ', text)
-	text = re.sub(r'\bphotography\b', ' ', text)
-	text = re.sub(r'\bfotoalbum\b', ' ', text)
-	text = re.sub(r'\bphoto\b', ' ', text)
-	text = re.sub(r'\bgallery\b', ' ', text)
-	text = re.sub(r"\bpart \d+\b|\bpart\b", " ", text)
-	text = re.sub(r'\bfoto\b', ' ', text)
-	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
+	text = re.sub(r'\bobtained\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\bfile record\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\bcaption\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\bunidentified\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\bunnumbered\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\buntitled\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\bfotografie\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\bfotografen\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\bphotograph\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\bphotographer\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\bphotography\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\bfotoalbum\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\bphoto\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\bgallery\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r"\bpart \d+\b|\bpart\b", " ", text, flags=re.IGNORECASE)
+	text = re.sub(r'\bfoto\b', ' ', text, flags=re.IGNORECASE)
+	text = re.sub(r'\s+', ' ', text, flags=re.IGNORECASE)
+	text = text.strip() # Normalize whitespace
+
+
 	if len(text) == 0:
 		return None
+
 	return text
 
 def print_gpu_memory():
@@ -959,19 +1088,30 @@ def download_image(
 	return False
 
 def get_synchronized_df_img(
-		df:pd.DataFrame, 
-		image_dir:str, 
+		df: pd.DataFrame, 
+		synched_fpath: str,
 		nw: int,
 		thumbnail_size: tuple=(1000, 1000),
 		large_image_threshold_mb: float=2.0,
 		enable_thumbnailing: bool=False,
 	):
+	# synched_fpath = os.path.join(os.path.dirname(image_dir), "metadata_multi_label_synched.csv")
+	image_dir = os.path.join(os.path.dirname(synched_fpath), "images")
+	if os.path.exists(synched_fpath):
+		print(f"Found existing synchronized dataset at {synched_fpath}. Loading...")
+		return pd.read_csv(
+			filepath_or_buffer=synched_fpath,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
+
 	print(f"Synchronizing {df.shape[0]} images using {nw} CPUs...")
 	if enable_thumbnailing:
 		print(f"Image processing enabled: images > {large_image_threshold_mb} MB will be thumbnailed to {thumbnail_size}.")
 	else:
 		print("Image processing disabled: raw images will be downloaded as is.")
-
+	print(f"Saving synchronized images to {image_dir}...")
 	successful_rows = [] # List to keep track of successful downloads
 	with requests.Session() as session:
 		with ThreadPoolExecutor(max_workers=nw) as executor:
@@ -998,16 +1138,27 @@ def get_synchronized_df_img(
 						successful_rows.append(original_df_idx) # Keep track of successfully downloaded rows
 				except Exception as e:
 					print(f"Unexpected error: {e} for {original_df_idx}")
-	print(f"Total successful downloads: {len(successful_rows)}/{df.shape[0]}.")
+
+	print(f"<<>> Total successful image downloads: {len(successful_rows)}/{df.shape[0]}")
 
 	print(f"cleaning {type(df)} {df.shape} with {len(successful_rows)} succeeded downloaded images [functional URL]...")
-	df_cleaned = df.loc[successful_rows].copy() # keep only the successfully downloaded rows
-	print(f"df_cleaned: {df_cleaned.shape}")
+
+	syched_df = df.loc[successful_rows].copy() # keep only the successfully downloaded rows
+	print(f"syched_df: {type(syched_df)} {syched_df.shape} {list(syched_df.columns)}")
 
 	actual_files_in_dir = [f for f in os.listdir(image_dir) if os.path.isfile(os.path.join(image_dir, f))]
 	img_dir_size = sum(os.path.getsize(os.path.join(image_dir, f)) for f in actual_files_in_dir) * 1e-9  # GB
-	print(f"{image_dir} contains {len(actual_files_in_dir)} file(s) with total size: {img_dir_size:.2f} GB")
-	return df_cleaned
+
+	print(f"Dir: {image_dir} contains {len(actual_files_in_dir)} file(s) | total size: {img_dir_size:.1f} GB")
+
+	print(f"Saving synchronized dataset to {synched_fpath}...")
+	syched_df.to_csv(synched_fpath, index=False)
+	try:
+		syched_df.to_excel(synched_fpath.replace('.csv', '.xlsx'), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
+
+	return syched_df
 
 def get_extension(url: str="www.example.com/some_/path/to/file.jpg"):
 	parsed_url = urllib.parse.urlparse(url)
