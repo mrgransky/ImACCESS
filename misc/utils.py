@@ -448,6 +448,7 @@ def basic_clean(txt: str):
 	txt = re.sub(r"(\w)'(\w)", r"\1__APOSTROPHE__\2", txt)
 	# This safely protects: don't → don__APOSTROPHE__t, John's → John__APOSTROPHE__s
 	# Step 2: Remove known junk/phrase patterns
+
 	junk_phrases = [
 		r'Original caption on envelope: ',
 		r'Original caption:',
@@ -535,6 +536,8 @@ def basic_clean(txt: str):
 		r'view from ',
 		r'view over ',
 		r'full view of ',
+		r"The photographer's notes from this negative series indicate that ",
+		r'The photographer’s notes from this negative series indicate ',
 		r'\[No description entered\]'
 	]
 
