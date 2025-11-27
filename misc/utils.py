@@ -96,7 +96,14 @@ from natsort import natsorted
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import warnings
-import misc.visualize as viz  # For visualizations
+
+try:
+	import misc.visualize as viz  # For visualizations
+except ImportError:
+	try:
+		import visualize as viz  # For visualizations when running from misc/ directory
+	except ImportError:
+		viz = None  # Fallback if visualize module is not available
 
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
@@ -450,6 +457,7 @@ def basic_clean(txt: str):
 	# Step 2: Remove known junk/phrase patterns
 
 	junk_phrases = [
+		r"Steinheimer envelope note",
 		r'Original caption on envelope: ',
 		r'Original caption:',
 		r'Caption: ',
@@ -460,6 +468,7 @@ def basic_clean(txt: str):
 		r'Date Day: \[Blank\]',
 		r'Date Year: \[Blank\]',
 		r'Subcategory: \[BLANK\]',
+		r"This is an image of ",
 		r'\[blank\]',
 		r'\[sic\]',
 		r'\[arrow symbol\]',
@@ -471,6 +480,8 @@ def basic_clean(txt: str):
 		r'Photography presents ',
 		r'color photo',
 		r'Colored photo',
+		r"color copies",
+		r"slide copy",
 		r'This is a photograph of ',
 		r'Country: Unknown',
 		r'Portrait of ',
@@ -565,6 +576,7 @@ def basic_clean(txt: str):
 		r'issue\s\d+',																				 # issue 1
 		r'part\s\d+',																				 # part 1
 		r'picture\s\d+\.',																		 # picture 125.
+		r'This image is one of a series of\s\d+\snegatives showing\s',
 	]
 
 	for pattern in metadata_patterns:

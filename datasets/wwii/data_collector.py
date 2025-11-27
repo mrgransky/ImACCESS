@@ -136,9 +136,8 @@ def get_dframe(
 	# ]
 	# header = " ".join(filter(None, parts))
 
-	print(f"Doc header:\n{header}")
+	print(f"\nDoc header:\n{header}")
 
-	# Extract caption as doc_description
 	caption_element = soup.find('div', class_='entry-caption')
 	if caption_element:
 		doc_description = caption_element.get_text(strip=True)
@@ -161,6 +160,7 @@ def get_dframe(
 			if caption_text:
 				caption_map[cid] = caption_text	
 	print(f"{len(caption_map)} Caption Map(s):\n{json.dumps(caption_map, indent=4, ensure_ascii=False)}")
+
 	print(f"Found {len(hits)} Document(s) => Extracting information [might take a while]")
 	data = []
 	for idoc, vdoc in enumerate(hits):
@@ -171,7 +171,7 @@ def get_dframe(
 		if not img_url:
 			continue
 		parent_a = img_tag.find_parent('a')
-		print(f"doc_url: {parent_a.get('href')}")
+		# print(f"doc_url: {parent_a.get('href')}")
 
 		try:
 			doc_doc_url = parent_a.get('href')
@@ -222,8 +222,8 @@ def get_dframe(
 			doc_title = max(valid_titles, key=len)
 		else:
 			doc_title = None
-
 		print(f"doc_title(final)  : {doc_title}")
+
 		img_url = img_url.replace("_cache/", "")
 		img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url) # Remove the thumbnail size from the end of the URL
 		filename = os.path.basename(img_url)
@@ -258,12 +258,11 @@ def get_dframe(
 				print(f"Failed to download {img_url}: {e}")
 				continue
 
-		raw_enriched_document_description = ". ".join(filter(None, [doc_title, doc_description])).strip()
-		print(f"\nraw_enriched_document_description:\n{raw_enriched_document_description}")
+		# raw_enriched_document_description = ". ".join(filter(None, [doc_title, doc_description])).strip()
+		# print(f"\nraw_enriched_document_description:\n{raw_enriched_document_description}")
 
-		enriched_document_description = basic_clean(txt=raw_enriched_document_description)
-		print(f"\nenriched_document_description:\n{enriched_document_description}\n")
-
+		# enriched_document_description = basic_clean(txt=raw_enriched_document_description)
+		# print(f"\nenriched_document_description:\n{enriched_document_description}\n")
 
 		row = {
 			'id': filename,
@@ -276,13 +275,16 @@ def get_dframe(
 			'user_query': [user_query] if user_query else None,
 			'label': user_query if user_query else None,
 			'img_path': img_fpath,
-			'enriched_document_description': enriched_document_description,
+			# 'enriched_document_description': enriched_document_description,
 		}
 		data.append(row)
+		print("="*120)
 
 	df = pd.DataFrame(data)
 	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
+
 	save_pickle(pkl=df, fname=df_fpth)
+
 	return df
 
 @measure_execution_time
