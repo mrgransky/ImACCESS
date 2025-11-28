@@ -186,7 +186,7 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 
 	df_st_time = time.time()
 	data = []
-	for doc_idx, doc in enumerate(doc_hits):
+	for _, doc in enumerate(doc_hits):
 		doc_date = doc.get("metadataFields")[3].get("value")
 		doc_type = doc.get('filetype')
 		doc_link = doc.get("itemLink") # /singleitem/collection/ryr/id/2479
@@ -203,7 +203,11 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 		doc_cleaned_keywords = None
 		if doc_raw_keywords:
 			keyword_list = [kw.strip() for kw in doc_raw_keywords.split(";") if kw.strip()] # Split the keywords into a list
-			cleaned_keyword_list = [kw for kw in keyword_list if kw not in REDUNDANT_KEYWORDS] # Exclude redundant terms
+			cleaned_keyword_list = [
+				kw 
+				for kw in keyword_list 
+				if kw not in REDUNDANT_KEYWORDS and len(kw) > 2
+			] # Exclude redundant terms
 			doc_cleaned_keywords = "; ".join(cleaned_keyword_list) if cleaned_keyword_list else None # Join the cleaned keywords back into a string
 			print(f"doc_cleaned_keywords: {doc_cleaned_keywords}")
 
