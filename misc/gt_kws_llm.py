@@ -80,9 +80,6 @@ You can use the context to help you decide which keywords are most salient.
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]
 """
-# Act as a meticulous historical archivist specializing in 20th century documentation.
-# - **ABSOLUTELY NO TEMPORAL EXPRESSIONS** such as date, time, time period, season, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "18th of july 1936", "May 25th", "July 10").
-
 
 def _load_llm_(
 		model_id: str,
