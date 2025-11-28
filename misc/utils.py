@@ -425,17 +425,17 @@ def get_enriched_description(df: pd.DataFrame):
 			filter(
 				None, 
 				[
-					str(row['title']) if pd.notna(row['title']) and str(row['title']).strip() else None, 
-					str(row['description']) if pd.notna(row['description']) and str(row['description']).strip() else None,
-					str(row['keywords']) if 'keywords' in df.columns and pd.notna(row['keywords']) and str(row['keywords']).strip() else None
+					basic_clean(str(row['title'])) if pd.notna(row['title']) and str(row['title']).strip() else None, 
+					basic_clean(str(row['description'])) if pd.notna(row['description']) and str(row['description']).strip() else None,
+					basic_clean(str(row['keywords'])) if 'keywords' in df.columns and pd.notna(row['keywords']) and str(row['keywords']).strip() else None
 				]
 			)
 		),
 		axis=1
 	)
-	# Apply basic_clean and ensure proper ending
+	# Ensure proper ending
 	df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
-		lambda x: basic_clean(x).rstrip('.') + '.' if basic_clean(x) and not basic_clean(x).endswith('.') else basic_clean(x)
+		lambda x: x.rstrip('.') + '.' if x and not x.endswith('.') else x
 	)
 
 	print(
@@ -461,10 +461,13 @@ def basic_clean(txt: str):
 
 	junk_phrases = [
 		r'full view of ',
+		r"rear view of ",
+		r"general view from ",
 		r"general view of ",
+		r"general view ",
 		r"this is a view of ",
 		r'partial view of ',
-		r"This photograph is a view of ",
+		r"this photograph is a view of ",
 		r"Steinheimer note",
 		r'Original caption on envelope: ',
 		r'Original caption:',
@@ -506,6 +509,7 @@ def basic_clean(txt: str):
 		r'This image is one of ',
 		r'According to Shaffer: ',
 		r'View from atop ',
+		r'View across ',
 		r'Pictures of ',
 		r'The following information was provided by digitizing partner Fold3:',
 		r'Photo album with photo',
@@ -585,11 +589,11 @@ def basic_clean(txt: str):
 		r"^\bView of\s", # View of powerhouse
 	]
 
-	for pattern in metadata_patterns:
-		txt = re.sub(pattern, '   ', txt, flags=re.IGNORECASE)
-
 	for pattern in junk_phrases:
 		txt = re.sub(pattern, ' ', txt, flags=re.IGNORECASE)
+
+	for pattern in metadata_patterns:
+		txt = re.sub(pattern, '   ', txt, flags=re.IGNORECASE)
 
 	# Also catch any remaining lines that are ALL CAPS + colon + value (common in archives)
 	txt = re.sub(r'(?m)^[A-Z\s&]{5,}:.*$', '', txt)
