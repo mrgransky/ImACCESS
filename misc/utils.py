@@ -425,16 +425,18 @@ def get_enriched_description(df: pd.DataFrame):
 			filter(
 				None, 
 				[
-					str(row['title']) if pd.notna(row['title']) else None, 
-					str(row['description']) if pd.notna(row['description']) else None,
-					str(row['keywords']) if 'keywords' in df.columns and pd.notna(row['keywords']) else None
+					str(row['title']) if pd.notna(row['title']) and str(row['title']).strip() else None, 
+					str(row['description']) if pd.notna(row['description']) and str(row['description']).strip() else None,
+					str(row['keywords']) if 'keywords' in df.columns and pd.notna(row['keywords']) and str(row['keywords']).strip() else None
 				]
 			)
 		),
 		axis=1
 	)
-	# apply basic_clean:
-	df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(basic_clean)
+	# Apply basic_clean and ensure proper ending
+	df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
+		lambda x: basic_clean(x).rstrip('.') + '.' if basic_clean(x) and not basic_clean(x).endswith('.') else basic_clean(x)
+	)
 
 	print(
 		f"Number of empty enriched_document_description: "
@@ -462,6 +464,7 @@ def basic_clean(txt: str):
 		r"general view of ",
 		r"this is a view of ",
 		r'partial view of ',
+		r"This photograph is a view of ",
 		r"Steinheimer note",
 		r'Original caption on envelope: ',
 		r'Original caption:',
