@@ -458,12 +458,15 @@ def basic_clean(txt: str):
 	# Step 2: Remove known junk/phrase patterns
 
 	junk_phrases = [
+		r'full view of ',
+		r"general view of ",
+		r"this is a view of ",
+		r'partial view of ',
 		r"Steinheimer note",
 		r'Original caption on envelope: ',
 		r'Original caption:',
 		r'Caption: ',
 		r'\[No caption entered\]',
-		r'Partial view of ',
 		r'History: \[none entered\]',
 		r'Date Month: \[Blank\]',
 		r'Date Day: \[Blank\]',
@@ -546,7 +549,6 @@ def basic_clean(txt: str):
 		r'Other Project ',
 		r'view from ',
 		r'view over ',
-		r'full view of ',
 		r'Note on negative envelope',
 		r"The photographer's notes from this negative series indicate that ",
 		r'The photographer’s notes from this negative series indicate ',
@@ -577,6 +579,7 @@ def basic_clean(txt: str):
 		r'picture\s\d+\.',																		 # picture 125.
 		r'This image is one of a series of\s\d+\snegatives showing\s',
 		r'Steinheimer\s\w+\snote',
+		r"^\bView of\s", # View of powerhouse
 	]
 
 	for pattern in metadata_patterns:

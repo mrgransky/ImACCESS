@@ -615,6 +615,9 @@ noted
 nothing
 notwithstanding
 novel
+general
+view
+views
 now
 nowhere
 null
