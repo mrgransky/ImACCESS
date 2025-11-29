@@ -9,17 +9,17 @@ sys.path.insert(0, project_dir) # add project directory to sys.path
 from misc.utils import *
 from misc.visualize import *
 
-# MediaPipe Language Detector: Not good for short texts:
-from mediapipe.tasks import python
-language_detector = "language_detector.tflite"
-if language_detector not in os.listdir():
-	print(f"Downloading {language_detector} [takes a while]...")
-	url = f"https://storage.googleapis.com/mediapipe-models/language_detector/language_detector/float32/1/{language_detector}"
-	urllib.request.urlretrieve(url, language_detector)
-print("Running mediapipe Language Detector on CPU...")
-base_options = python.BaseOptions(model_asset_path=language_detector)
-options = python.text.LanguageDetectorOptions(base_options=base_options)
-detector_model = python.text.LanguageDetector.create_from_options(options)
+# # MediaPipe Language Detector: Not good for short texts:
+# from mediapipe.tasks import python
+# language_detector = "language_detector.tflite"
+# if language_detector not in os.listdir():
+# 	print(f"Downloading {language_detector} [takes a while]...")
+# 	url = f"https://storage.googleapis.com/mediapipe-models/language_detector/language_detector/float32/1/{language_detector}"
+# 	urllib.request.urlretrieve(url, language_detector)
+# print("Running mediapipe Language Detector on CPU...")
+# base_options = python.BaseOptions(model_asset_path=language_detector)
+# options = python.text.LanguageDetectorOptions(base_options=base_options)
+# detector_model = python.text.LanguageDetector.create_from_options(options)
 
 # FastText: Good for short texts:
 import fasttext
