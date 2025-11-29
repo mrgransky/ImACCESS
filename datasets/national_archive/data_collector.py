@@ -357,13 +357,13 @@ def main():
 	grouped = df_merged_raw.groupby('img_url').agg(
 		{
 			'id': 'first',
-			'title': 'first',
-			'description': 'first',
+			'doc_url': 'first',
+			'img_path': 'first',
 			'user_query': lambda x: list(set(x)),  # Combine user_query into a list with unique elements
 			'raw_doc_date': 'first',
-			'doc_url': 'first',
 			'doc_date': 'first',
-			'img_path': 'first',
+			'title': 'first',
+			'description': 'first',
 		}
 	).reset_index()
 	grouped['label'] = grouped['user_query'].apply(lambda x: replacement_dict.get(x[0], x[0]))

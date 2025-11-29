@@ -412,8 +412,16 @@ def get_enriched_description(df: pd.DataFrame):
 		raise ValueError("description column not found in df")
 
 	# check if how many empty(Nones) exist in title and description:
-	print(f"Number of empty title: {df['title'].isna().sum()}")
-	print(f"Number of empty description: {df['description'].isna().sum()}")
+	print(
+		f"Number of empty title: {df['title'].isna().sum()}"
+		f"out of {df.shape[0]} total samples "
+		f"({df['title'].isna().sum()/df.shape[0]*100:.2f}%) "
+	)
+	print(
+		f"Number of empty description: {df['description'].isna().sum()}"
+		f"out of {df.shape[0]} total samples "
+		f"({df['description'].isna().sum()/df.shape[0]*100:.2f}%) "
+	)
 
 	# safety check:
 	if "enriched_document_description" in df.columns:
@@ -436,6 +444,11 @@ def get_enriched_description(df: pd.DataFrame):
 	# Ensure proper ending
 	df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
 		lambda x: x.rstrip('.') + '.' if x and not x.endswith('.') else x
+	)
+
+	# length = 0 => None
+	df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
+		lambda x: x if x and x.strip() and x.strip() != '.' else None
 	)
 
 	print(
@@ -472,6 +485,7 @@ def basic_clean(txt: str):
 		r'Original caption on envelope: ',
 		r'Original caption:',
 		r'Caption: ',
+		r"In the photo, ",
 		r'\[No caption entered\]',
 		r'History: \[none entered\]',
 		r'Date Month: \[Blank\]',
@@ -483,6 +497,7 @@ def basic_clean(txt: str):
 		r'\[sic\]',
 		r'\[arrow symbol\]',
 		r'Phot. of ',
+		r'as seen from below',
 		r'This item is a photo depicting ',
 		r"This item is a photograph depicting ",
 		r"This photograph depicts ",
@@ -531,7 +546,7 @@ def basic_clean(txt: str):
 		r'Photograph Showing ',
 		r'Photograph of ',
 		r'This Photo Of ',
-		r'Photo Of ',
+		r"A B/W photo of ",
 		r'Photographn of ',
 		r'In the photograph ',
 		r'In the photo ',
@@ -549,9 +564,9 @@ def basic_clean(txt: str):
 		r'File Record',
 		r'\[No title entered\]',
 		r'Original Title: ',
-		r'Miscellaneous',
 		r'index to ',
 		r'- Types -',
+		r'- Miscellaneous',
 		r'Other Projects',
 		r'Other Project ',
 		r'view from ',
@@ -587,6 +602,12 @@ def basic_clean(txt: str):
 		r'This image is one of a series of\s\d+\snegatives showing\s',
 		r'Steinheimer\s\w+\snote',
 		r"^\bView of\s", # View of powerhouse
+		r"one\sof\sthe\s\w+\sphotographs\sof the\sinventory\sunit\s\d+\/\w\.",
+		r"general\sview",
+		r"U.S.\sAir\sForce\sNumber\s\w\d+\w+",
+		r"^(\d+)\s-\s",
+		r'\d+-\w+-\d+\w-\d+',
+		r'AS\d+-\d+-\d+\s-\s'
 	]
 
 	for pattern in junk_phrases:
@@ -1022,12 +1043,13 @@ def download_image(
 		session, 
 		image_dir, 
 		total_rows,
-		retries=2, 
+		retries=1, 
 		backoff_factor=0.5,
-		download_timeout=20,
+		download_timeout=15,
 		enable_thumbnailing: bool = False,
 		thumbnail_size: tuple = (500, 500),
 		large_image_threshold_mb: float = 2.0,
+		verbose: bool = False,
 	):
 	t0 = time.time()
 	rIdx = row.name
@@ -1045,14 +1067,14 @@ def download_image(
 					img_path=image_path, 
 					target_size=thumbnail_size, 
 					large_image_threshold_mb=large_image_threshold_mb, 
-					verbose=True
+					verbose=verbose
 				):
-					print(f"Existing image {image_path} valid but re-processing failed. Re-downloading...")
+					if verbose: print(f"Existing image {image_path} valid but re-processing failed. Re-downloading...")
 				else:
-					print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150} (Skipping existing & processed) {time.time()-t0:.1f} s")
+					if verbose: print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150} (Skipping existing & processed) {time.time()-t0:.1f} s")
 					return True
 			else:
-				print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150} (Skipping existing raw) {time.time()-t0:.1f} s")
+				if verbose: print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150} (Skipping existing raw) {time.time()-t0:.1f} s")
 				return True
 		except (IOError, SyntaxError, Image.DecompressionBombError) as e:
 			print(f"Existing image {image_path} is invalid: {e}, re-downloading...")
@@ -1093,10 +1115,10 @@ def download_image(
 				img_path=image_path, 
 				target_size=thumbnail_size, 
 				large_image_threshold_mb=large_image_threshold_mb, 
-				verbose=True
+				verbose=verbose
 			):
 				raise ValueError(f"Failed to process image {image_id} after download.")
-			print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150}{time.time()-t0:.1f} s")
+			if verbose: print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150}{time.time()-t0:.1f} s")
 			return True
 		except (SyntaxError, Image.DecompressionBombError, ValueError) as e:
 			print(f"[{rIdx}/{total_rows}] Downloaded image {image_id} is invalid: {e}")
@@ -1108,10 +1130,10 @@ def download_image(
 
 	# --- Step 3: Clean up if failed ---
 	if os.path.exists(image_path):
-		print(f"removing broken img: {image_path}")
+		if verbose: print(f"removing broken img: {image_path}")
 		os.remove(image_path)
 	
-	print(f"[{rIdx}/{total_rows}] Failed downloading {image_id} after {retries} attempts.")
+	if verbose: print(f"[{rIdx}/{total_rows}] Failed downloading {image_id} after {retries} attempts.")
 
 	return False
 

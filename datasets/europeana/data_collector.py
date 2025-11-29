@@ -21,15 +21,15 @@ from misc.visualize import *
 # options = python.text.LanguageDetectorOptions(base_options=base_options)
 # detector_model = python.text.LanguageDetector.create_from_options(options)
 
-# FastText: Good for short texts:
-import fasttext
-FastText_Language_Identification = "lid.176.bin"
-if FastText_Language_Identification not in os.listdir():
-	print(f"Downloading {FastText_Language_Identification} [takes	a while]...")
-	url = f"https://dl.fbaipublicfiles.com/fasttext/supervised-models/{FastText_Language_Identification}"
-	urllib.request.urlretrieve(url, FastText_Language_Identification)
-print("Loading FastText Language Identification Model...")
-ft_model = fasttext.load_model(FastText_Language_Identification)
+# # FastText: Good for short texts:
+# import fasttext
+# FastText_Language_Identification = "lid.176.bin"
+# if FastText_Language_Identification not in os.listdir():
+# 	print(f"Downloading {FastText_Language_Identification} [takes	a while]...")
+# 	url = f"https://dl.fbaipublicfiles.com/fasttext/supervised-models/{FastText_Language_Identification}"
+# 	urllib.request.urlretrieve(url, FastText_Language_Identification)
+# print("Loading FastText Language Identification Model...")
+# ft_model = fasttext.load_model(FastText_Language_Identification)
 
 dataset_name: str = "europeana".upper()
 # europeana_api_key: str = "api2demo"
@@ -59,40 +59,117 @@ headers = {
 	'Pragma': 'no-cache',
 }
 
+# Install: pip install lingua-language-detector
+from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
+
+print("Initializing Lingua Language Detector...")
+
+# OPTIMIZATION 1: Restrict the languages. 
+# Since this is Europeana/Western data, we only check against common European languages.
+# This DRASTICALLY improves accuracy on short text.
+languages_to_check = [
+	IsoCode639_1.EN, # English
+	IsoCode639_1.DE, # German
+	IsoCode639_1.FR, # French
+	IsoCode639_1.ES, # Spanish
+	IsoCode639_1.IT, # Italian
+	IsoCode639_1.NL, # Dutch
+	IsoCode639_1.PT, # Portuguese
+	IsoCode639_1.SV, # Swedish
+	IsoCode639_1.FI, # Finnish
+	IsoCode639_1.DA, # Danish
+	IsoCode639_1.NB, # Norwegian Bokmål
+	IsoCode639_1.NN, # Norwegian Nynorsk
+	IsoCode639_1.PL, # Polish
+	IsoCode639_1.RU, # Russian
+	IsoCode639_1.HU, # Hungarian
+	IsoCode639_1.CS, # Czech
+	IsoCode639_1.SK, # Slovak
+	IsoCode639_1.EL, # Greek
+	IsoCode639_1.BG, # Bulgarian
+	IsoCode639_1.RO, # Romanian
+]
+
+detector = (
+	LanguageDetectorBuilder
+	.from_iso_codes_639_1(*languages_to_check)
+	.with_preloaded_language_models()
+	.build()
+)
 
 def is_english(
-	text: str, 
-	detector_model: fasttext.FastText._FastText=ft_model,
-	confidence_threshold: float = 0.4,
+	text: str,
+	confidence_threshold: float = 0.15, # We can now use a safer, higher threshold
 	verbose: bool = False,
 ) -> bool:
-	"""
-		Detects if text is in English using fasttext 
-	"""
-	if not text or not text.strip():
+	if not text or not str(text).strip():
 		return False
-	
+	if verbose: print(f"Checking if text is in English:\n{text}\n")
 	try:
-		# Clean text for better detection
-		cleaned_text = text.strip().replace('\n', ' ').replace('\r', ' ')
+		cleaned_text = " ".join(str(text).split())
 		
-		# Predict language
-		predictions = detector_model.predict(cleaned_text, k=1)
+		# if cleaned_text.isnumeric():
+		# 	return False
+
+		results = detector.compute_language_confidence_values(cleaned_text)
+		
 		if verbose:
-			print(f"\nchecking if text is in English:")
-			print(f"{cleaned_text}") 
-			print(f"Predictions: {predictions}")
-			print(f"-"*70)
-		detected_lang = predictions[0][0].replace('__label__', '')
-		confidence = predictions[1][0]
+			print(f"All detected languages:")
+			for res in results:
+				print(f"{res.language.name:<15}{res.value}")
 		
-		# Check if English with sufficient confidence
-		is_en = detected_lang == 'en' and confidence >= confidence_threshold
+		if not results:
+			return False
 		
-		return is_en
-	except Exception as e:
-		print(f"Language detection error for text: '{text}'\n{e}")
+		for res in results:
+			if res.language == Language.ENGLISH:
+				score = res.value
+								
+				if verbose:
+					print(f"Is English({score} > Confidence threshold: {confidence_threshold}): {score > confidence_threshold}")
+
+				if score > confidence_threshold:
+					return True
+
+				return False
 		return False
+	except Exception as e:
+		if verbose: print(f"Error: {e}")
+		return False
+
+# def is_english(
+# 	text: str, 
+# 	detector_model: fasttext.FastText._FastText=ft_model,
+# 	confidence_threshold: float = 0.4,
+# 	verbose: bool = False,
+# ) -> bool:
+# 	"""
+# 		Detects if text is in English using fasttext 
+# 	"""
+# 	if not text or not text.strip():
+# 		return False
+	
+# 	try:
+# 		# Clean text for better detection
+# 		cleaned_text = " ".join(text.split())
+		
+# 		# Predict language
+# 		predictions = detector_model.predict(cleaned_text, k=1)
+# 		if verbose:
+# 			print(f"\nchecking if text is in English:")
+# 			print(f"{cleaned_text}") 
+# 			print(f"Predictions: {predictions}")
+# 			print(f"-"*70)
+# 		detected_lang = predictions[0][0].replace('__label__', '')
+# 		confidence = predictions[1][0]
+		
+# 		# Check if English with sufficient confidence
+# 		is_en = detected_lang == 'en' and confidence >= confidence_threshold
+		
+# 		return is_en
+# 	except Exception as e:
+# 		print(f"Language detection error for text: '{text}'\n{e}")
+# 		return False
 
 # def is_english(
 # 		text: str, 
@@ -527,7 +604,7 @@ def test():
 				print(f"\nidx: {item_idx}: {list(item.keys())}")
 				print(item.get("id"))
 				print(f"-"*50)
-				print(f'{item.get("title")}: {[is_english(text=title, detector_model=detector_model) for title in item.get("title") if title]}')
+				print(f'{item.get("title")}: {[is_english(text=title) for title in item.get("title") if title]}')
 				for title in item.get("title"):
 					if title and is_english(text=title, detector_model=detector_model):
 						title_en = title
