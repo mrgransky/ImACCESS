@@ -303,12 +303,6 @@ def get_dframe(label: str, image_dir: str, start_date: str, end_date: str, docs:
 			description_en = None
 		print(f"description_en:\n{description_en}")
 	
-		# raw_enriched_document_description = ". ".join(filter(None, [title_en, description_en])).strip()
-		# print(f"raw_enriched_document_description:\n{raw_enriched_document_description}\n")
-
-		# enriched_document_description = basic_clean(txt=raw_enriched_document_description)
-		# print(f"enriched_document_description:\n{enriched_document_description}\n")
-
 		if (
 			image_url 
 			and (image_url.endswith('.jpg') or image_url.endswith('.jpeg'))
@@ -321,15 +315,14 @@ def get_dframe(label: str, image_dir: str, start_date: str, end_date: str, docs:
 			'doc_id': europeana_id,
 			'id': doc_id,
 			'user_query': label,
-			'title': title_en,
-			'description': description_en,
-			# 'enriched_document_description': enriched_document_description,
 			'img_url': image_url,
 			"doc_url": doc_url,
 			'raw_doc_date': raw_doc_date,
 			'doc_year': doc_year,
 			'country': doc.get("country")[0],
-			'img_path': f"{os.path.join(image_dir, str(doc_id) + '.jpg')}"
+			'img_path': f"{os.path.join(image_dir, str(doc_id) + '.jpg')}",
+			'title': title_en,
+			'description': description_en
 		}
 		data.append(row)
 
@@ -471,16 +464,16 @@ def main():
 	grouped = df_merged_raw.groupby('img_url').agg(
 		{
 			'id': 'first',
+			'img_path': 'first',
 			'doc_id': 'first',
-			'title': 'first',
-			'description': 'first',
 			'user_query': lambda x: list(set(x)),  # Combine user_query into a list with unique elements
 			'raw_doc_date': 'first',
 			'doc_year': 'first',
 			'doc_url': 'first',
-			'img_path': 'first',
 			'doc_date': 'first',
 			'country': 'first',
+			'title': 'first',
+			'description': 'first',
 		}
 	).reset_index()
 

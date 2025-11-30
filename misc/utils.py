@@ -577,7 +577,6 @@ def basic_clean(txt: str):
 		r'\[No description entered\]'
 	]
 
-
 	# === REMOVE ARCHIVAL METADATA KEY-VALUE PAIRS (NARA/USAF style) ===
 	metadata_patterns = [
 		# r'\bCategory\s*:\s*.+?(?=\n|$)',                     # Category: Aircraft, Ground
@@ -601,6 +600,7 @@ def basic_clean(txt: str):
 		r'picture\s\d+\.',																		 # picture 125.
 		r'This image is one of a series of\s\d+\snegatives showing\s',
 		r'Steinheimer\s\w+\snote',
+		r"Steinheimer\s\w+\s\w+\snote",
 		r"^\bView of\s", # View of powerhouse
 		r"one\sof\sthe\s\w+\sphotographs\sof the\sinventory\sunit\s\d+\/\w\.",
 		r"general\sview",
