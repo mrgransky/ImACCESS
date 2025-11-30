@@ -156,22 +156,13 @@ def get_data(start_date: str="1900-01-01", end_date: str="1970-12-31", query: st
 					break
 				pg += 1
 			else:
-				print(f"Failed to retrieve data: status_code: {response.status_code}")
+				print(f"<!> Failed to retrieve data: status_code: {response.status_code}")
 				break
 		if len(query_all_hits) == 0:
 			return
 		save_pickle(pkl=query_all_hits, fname=query_all_hits_fpth)
 	print(f"Total hit(s): {len(query_all_hits)} {type(query_all_hits)} for query: « {query} » found in {time.time()-t0:.2f} sec")
 	return query_all_hits
-
-def check_url_status(url: str) -> bool:
-	try:
-		response = requests.head(url, timeout=50)
-		# Return True only if the status code is 200 (OK)
-		return response.status_code == 200
-	except (requests.RequestException, Exception) as e:
-		print(f"Error accessing URL {url}: {e}")
-		return False
 
 def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 	doc_hits = get_data(
@@ -209,7 +200,7 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 				if kw not in REDUNDANT_KEYWORDS and len(kw) > 2
 			] # Exclude redundant terms
 			doc_cleaned_keywords = "; ".join(cleaned_keyword_list) if cleaned_keyword_list else None # Join the cleaned keywords back into a string
-			print(f"doc_cleaned_keywords: {doc_cleaned_keywords}")
+			# print(f"doc_cleaned_keywords: {doc_cleaned_keywords}")
 
 		row = {
 			'id': doc_combined_identifier,
