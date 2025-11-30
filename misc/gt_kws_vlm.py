@@ -1299,8 +1299,9 @@ def get_vlm_based_labels_opt(
 
 					if single_inputs.pixel_values.numel() == 0:
 						raise ValueError(f"Pixel values of {img} are empty: {single_inputs.pixel_values.shape}")
-					if verbose:
-						print(f"\n[INPUT] Pixel: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
+
+					# if verbose:
+					# 	print(f"\n[INPUT] Pixel: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
 
 					# Generate response
 					with torch.no_grad():

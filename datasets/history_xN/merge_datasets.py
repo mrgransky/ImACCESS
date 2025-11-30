@@ -93,8 +93,8 @@ def merge_datasets(
 	print(f"merged_single_label_df: {type(merged_single_label_df)} {merged_single_label_df.shape}\n{list(merged_single_label_df.columns)}")
 	# print(merged_single_label_df.head())
 
-	print(f"Saving merged single-label dataset to {HISTORY_XN_DIRECTORY} ...")
 	merged_single_label_df_fpath = os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv')
+	print(f"Saving merged single-label dataset to: {merged_single_label_df_fpath}")
 	merged_single_label_df.to_csv(merged_single_label_df_fpath, index=False)
 
 	# Load and merge multi-label dataframes
@@ -125,8 +125,8 @@ def merge_datasets(
 	if "enriched_document_description" not in merged_multi_label_df.columns:
 		raise ValueError("enriched_document_description column not found in merged_multi_label_df")
 
-	print(f"Saving merged multi-label dataset to {HISTORY_XN_DIRECTORY} ...")
 	merged_multi_label_df_fpath = merged_single_label_df_fpath.replace('single', 'multi')
+	print(f"Saving merged multi-label dataset to: {merged_multi_label_df_fpath}")
 	merged_multi_label_df.to_csv(merged_multi_label_df_fpath, index=False)
 	try:
 		merged_single_label_df.to_excel(merged_single_label_df_fpath.replace('.csv', '.xlsx'), index=False)
