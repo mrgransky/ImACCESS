@@ -37,6 +37,7 @@ python -u merge_datasets.py \
   --num_workers $SLURM_CPUS_PER_TASK \
   --head_threshold 5000 \
   --tail_threshold 1000 \
+  --img_mean_std \
   --val_split_pct 0.35 \
   --bins 60 \
   --batch_size 256 \

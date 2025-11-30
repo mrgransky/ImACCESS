@@ -124,8 +124,12 @@ def get_multimodal_annotation(
 		dtype=dtypes,
 		low_memory=False,
 	)
+	if verbose:
+		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
+
 	if 'img_path' not in df.columns:
 		raise ValueError("CSV file must have 'img_path' column")
+
 	if 'enriched_document_description' not in df.columns:
 		raise ValueError("CSV file must have 'enriched_document_description' column")
 
