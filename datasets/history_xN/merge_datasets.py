@@ -74,7 +74,7 @@ def merge_datasets(
 			print(f"  Warning: {single_label_path} not found, skipping.")
 			continue
 		try:
-			df = pd.read_csv(filepath_or_buffer=single_label_path, on_bad_lines='skip', low_memory=False,)
+			df = pd.read_csv(filepath_or_buffer=single_label_path, on_bad_lines='skip', low_memory=False, dtype=dtypes,)
 			df['dataset'] = dataset
 			single_label_dfs.append(df)
 		except Exception as e:
@@ -91,7 +91,7 @@ def merge_datasets(
 		print(f"  - {label}: {count}")
 	
 	print(f"merged_single_label_df: {type(merged_single_label_df)} {merged_single_label_df.shape}\n{list(merged_single_label_df.columns)}")
-	print(merged_single_label_df.head())
+	# print(merged_single_label_df.head())
 
 	print(f"Saving merged single-label dataset to {HISTORY_XN_DIRECTORY} ...")
 	merged_single_label_df_fpath = os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv')
@@ -108,7 +108,7 @@ def merge_datasets(
 			print(f"  Warning: {multi_label_path} not found, skipping.")
 			continue
 		try:
-			df = pd.read_csv(filepath_or_buffer=multi_label_path, on_bad_lines='skip', low_memory=False,)
+			df = pd.read_csv(filepath_or_buffer=multi_label_path, on_bad_lines='skip', low_memory=False, dtype=dtypes,)
 			df['dataset'] = dataset
 			multi_label_dfs.append(df)
 		except Exception as e:
@@ -120,7 +120,7 @@ def merge_datasets(
 	print(f"Merging {len(multi_label_dfs)} dataset(s) into '{dataset_name}'...")
 	merged_multi_label_df = pd.concat(multi_label_dfs, ignore_index=True)	
 	print(f"merged_multi_label_df: {type(merged_multi_label_df)} {merged_multi_label_df.shape}\n{list(merged_multi_label_df.columns)}")
-	print(merged_multi_label_df.head())
+	# print(merged_multi_label_df.head())
 
 	if "enriched_document_description" not in merged_multi_label_df.columns:
 		raise ValueError("enriched_document_description column not found in merged_multi_label_df")
@@ -143,16 +143,16 @@ def merge_datasets(
 		label_column='label',
 	)
 	plot_label_distribution_pie_chart(
-			df=merged_single_label_df,
-			fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_pie_chart_{merged_single_label_df.shape[0]}_samples.png"),
-			figure_size=(7, 11),
-			DPI=300,
+		df=merged_single_label_df,
+		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_pie_chart_{merged_single_label_df.shape[0]}_samples.png"),
+		figure_size=(7, 11),
+		DPI=300,
 	)
 	plot_grouped_bar_chart(
-			merged_df=merged_single_label_df,
-			FIGURE_SIZE=(15, 8),
-			DPI=300,
-			fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_grouped_bar_chart_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png")
+		merged_df=merged_single_label_df,
+		FIGURE_SIZE=(15, 8),
+		DPI=300,
+		fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_grouped_bar_chart_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png")
 	)
 
 	# Stratified train/val split
