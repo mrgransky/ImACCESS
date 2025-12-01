@@ -571,6 +571,7 @@ def basic_clean(txt: str):
 		r'Other Project ',
 		r'view from ',
 		r'view over ',
+		r"captured ",
 		r'Note on negative envelope',
 		r"The photographer's notes from this negative series indicate that ",
 		r'The photographer’s notes from this negative series indicate ',
@@ -607,7 +608,10 @@ def basic_clean(txt: str):
 		r"U.S.\sAir\sForce\sNumber\s\w\d+\w+",
 		r"^(\d+)\s-\s",
 		r'\d+-\w+-\d+\w-\d+',
-		r'AS\d+-\d+-\d+\s-\s'
+		r'AS\d+-\d+-\d+\s-\s',
+		r"color\sphoto\s\d+",
+		# r'\s\+(?!\d)[A-Za-z0-9]+', # remove +B09 but not +123
+		r'\s\+(?!\d)[A-Za-z0-9]+[.,]?', # remove +B09. but not +123
 	]
 
 	for pattern in junk_phrases:
@@ -649,8 +653,8 @@ def basic_clean(txt: str):
 	# txt = txt.replace("’", " ") # apostrophe
 	txt = txt.replace("‘", " ")
 	
-	# Step 5: Remove hashtags and other noise
 	txt = txt.replace('#', ' ')
+	txt = txt.replace(',', ' ') # test if needed!
 
 	txt = re.sub(r'-{2,}', ' ', txt)   # multiple dashes
 	txt = re.sub(r'\.{2,}', '.', txt)  # ellipses ...

@@ -448,13 +448,13 @@ hereby
 herein
 heres
 hereupon
-herse"
+herse
 hes
 hid
 high
 higher
 highest
-himse"
+himse
 hither
 homepage
 hopefully
@@ -504,7 +504,7 @@ it'll
 it's
 itd
 itll
-itse"
+itse
 ive
 join
 keep
@@ -577,9 +577,10 @@ must
 must've
 mustn't
 mustnt
-myse"
+myse
 name
 namely
+named
 nay
 nearly
 necessarily
