@@ -74,7 +74,7 @@ You can use the context to help you decide which keywords are most salient.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
 - **STRICTLY EXCLUDE ALL NUMERICAL CONTENT**: No numbers, numerical values, measurements, units, or quantitative terms.
 - **STRICTLY EXCLUDE** vague, generic, meaningless or ambiguous keywords.
-- **ABSOLUTELY NO** synonymous, duplicate or misspelled keywords.
+- **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
 - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: any time-related phrases such as dates, seasons, decades, centuries is STRICTLY FORBIDDEN.
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
