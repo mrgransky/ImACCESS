@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# run_all_data_collectors.sh
+# how to run:
+# nohup bash run_all_data_collectors.sh > logs/all_data_collectors.out &
+
 # Script to run all dataset collectors for ImACCESS project
 # Author: ImACCESS Team, Tampere University
 # Date: 2024-2025
@@ -104,12 +106,12 @@ main() {
     # Collection configuration
     # Format: "dataset_name|collector_path|arguments"
     COLLECTORS=(
-        "Europeana|${BASE_DIR}/europeana/data_collector.py|-ddir ${DATASET_DIR} -sdt 1900-01-01 -edt 1970-12-31 -nw 12 --img_mean_std --enable_thumbnailing"
+        "Europeana|${BASE_DIR}/europeana/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --enable_thumbnailing"
         "National_Archive|${BASE_DIR}/national_archive/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --enable_thumbnailing"
-        "SA_Kuva|${BASE_DIR}/sa_kuva/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --enable_thumbnailing"
+        # "SA_Kuva|${BASE_DIR}/sa_kuva/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --enable_thumbnailing"
         "SMU|${BASE_DIR}/smu/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --enable_thumbnailing"
         "WWII|${BASE_DIR}/wwii/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --enable_thumbnailing"
-        "WW_Vehicles|${BASE_DIR}/ww_vehicles/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --enable_thumbnailing"
+        # "WW_Vehicles|${BASE_DIR}/ww_vehicles/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --enable_thumbnailing"
     )
     
     print_status "Total datasets to collect: ${#COLLECTORS[@]}"

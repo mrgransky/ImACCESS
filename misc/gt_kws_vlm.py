@@ -37,10 +37,12 @@ from utils import *
 
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
+# Act as a meticulous historical archivist specializing in 20th century documentation.
 
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
-VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
+VLM_INSTRUCTION_TEMPLATE = """
+You are a professional historical archivist.
 Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object, or event.
 
 **CRITICAL RULES**:
