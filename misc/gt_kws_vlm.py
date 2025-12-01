@@ -43,6 +43,7 @@ EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 VLM_INSTRUCTION_TEMPLATE = """You are a professional historical archivist.
 Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object, or event.
+
 **CRITICAL RULES**:
 - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
 - **ZERO HALLUCINATION POLICY**: You should not invent or infer specifics that lack clear verification from the visual content. When in doubt, omit rather than fabricate.
