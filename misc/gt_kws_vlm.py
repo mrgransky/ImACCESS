@@ -41,8 +41,7 @@ huggingface_hub.login(token=hf_tk)
 
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
-VLM_INSTRUCTION_TEMPLATE = """
-You are a professional historical archivist.
+VLM_INSTRUCTION_TEMPLATE = """You are a professional historical archivist.
 Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object, or event.
 
 **CRITICAL RULES**:
@@ -54,8 +53,7 @@ Identify up to {k} most prominent, factual and distinct **KEYWORDS** that captur
 - **STRICTLY EXCLUDE** image quality, type, format, or style as keywords.
 - Exclude numerical words, special characters, stopwords, or abbreviations.
 - Exclude meaningless, repeating or synonym-duplicate keywords.
-- The parsable **Python LIST** must be the **VERY LAST THING** in your response.
-"""
+- The parsable **Python LIST** must be the **VERY LAST THING** in your response."""
 
 def _load_vlm_(
 		model_id: str,
