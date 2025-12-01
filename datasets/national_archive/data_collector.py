@@ -23,6 +23,7 @@ parser.add_argument('--enable_thumbnailing', action='store_true', help='Enable i
 parser.add_argument('--thumbnail_size', type=parse_tuple, default=(1000, 1000), help='Thumbnail size (width, height) in pixels')
 parser.add_argument('--large_image_threshold_mb', type=float, default=1.0, help='Large image threshold in MB')
 
+
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 args.dataset_dir = os.path.normpath(args.dataset_dir)

@@ -589,8 +589,7 @@ def basic_clean(txt: str):
 		# r'\bPhoto Series\s*:\s*.+?(?=\n|$)',                 # Photo Series: WWII
 		r'\bUS Air Force Reference Number\s*:\s*[A-Z0-9]+',  # US Air Force Reference Number: 74399AC
 		r'\bReference Number\s*:\s*[A-Z0-9]+',               # fallback
-		# r'\bDate\s+(?:Month|Day|Year)\s*:\s*\[.*?\]',        # Date Month: [Blank]
-		r'^(Image\s+[A-Z]\b|[A-Z]\s+[A-Z]\b)', # Image A
+		r'^Image\s+[A-Z]\b',  # Image A (only removes "Image A", "Image B", etc.)
 		r'(?i)^Project\s+.*?\s-\s',
 		r'(?i)(?:Series of |a series of |Group of |Collection of )(\d+\s*\w+)',
 		r'Part of the documentary ensemble:\s\w+',

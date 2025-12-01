@@ -26,7 +26,7 @@ from visualize import perform_multilabel_eda
 # $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 32 -llm_bs 12 -dv "cuda:2" -nw 40 > /media/volume/ImACCESS/trash/multimodal_annotation_h4.txt &
 # $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 64 -llm_bs 12 -dv "cuda:3" > /media/volume/ImACCESS/trash/multimodal_annotation_smu.txt &
 
-def post_process(labels_list: List[List[str]]) -> List[List[str]]:
+def _post_process_(labels_list: List[List[str]]) -> List[List[str]]:
 	if not labels_list:
 		return labels_list
 
@@ -52,14 +52,14 @@ def post_process(labels_list: List[List[str]]) -> List[List[str]]:
 		else:
 			result.append(labels)
 
-	# Remove quotes only from string items, not from lists
+	# Remove quotes and parentheses from string items and lists
 	processed_result = []
 	for item in result:
 		if isinstance(item, str):
-			processed_result.append(item.strip('"').strip("'"))
+			processed_result.append(item.strip('"').strip("'").strip('()'))
 		elif isinstance(item, list):
 			# Apply strip to each string element in the list
-			processed_item = [elem.strip('"').strip("'") if isinstance(elem, str) else elem for elem in item]
+			processed_item = [elem.strip('"').strip("'").strip('()') if isinstance(elem, str) else elem for elem in item]
 			processed_result.append(processed_item)
 		else:
 			processed_result.append(item)
@@ -216,9 +216,9 @@ def get_multimodal_annotation(
 	torch.cuda.empty_cache()
 
 	# Apply lowercase conversion
-	llm_based_labels = post_process(llm_based_labels)
-	vlm_based_labels = post_process(vlm_based_labels)
-	multimodal_labels = post_process(multimodal_labels)
+	llm_based_labels = _post_process_(llm_based_labels)
+	vlm_based_labels = _post_process_(vlm_based_labels)
+	multimodal_labels = _post_process_(multimodal_labels)
 
 	df['llm_based_labels'] = llm_based_labels
 	df['vlm_based_labels'] = vlm_based_labels
