@@ -1683,6 +1683,7 @@ def main():
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
 
 	args = parser.parse_args()
+	set_seeds(seed=42, debug=args.debug)
 	args.device = torch.device(args.device)
 	print(args)
 
