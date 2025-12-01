@@ -37,22 +37,20 @@ from utils import *
 
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
-# Act as a meticulous historical archivist specializing in 20th century documentation.
 
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
-VLM_INSTRUCTION_TEMPLATE = """You are a professional historical archivist.
-Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object, or event.
-
+VLM_INSTRUCTION_TEMPLATE = """You function as a historical archivist whose expertise lies in the 20th century.
+Identify no more than {k} highly prominent, factual, and distinct **KEYWORDS** that capture the primary actions, objects, or occurrences in the image.
 **CRITICAL RULES**:
 - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
 - **ZERO HALLUCINATION POLICY**: You should not invent or infer specifics that lack clear verification from the visual content. When in doubt, omit rather than fabricate.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
-- **STRICTLY EXCLUDE TEMPORAL KEYWORDS** such as dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases.
-- **STRICTLY EXCLUDE** vague, generic, or historical keywords.
 - **STRICTLY EXCLUDE** image quality, type, format, or style as keywords.
+- **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: any time-related phrases such as dates, seasons, decades, centuries is STRICTLY FORBIDDEN.
+- **STRICTLY EXCLUDE** vague, generic, or historical keywords.
 - Exclude numerical words, special characters, stopwords, or abbreviations.
-- Exclude meaningless, repeating or synonym-duplicate keywords.
+- **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response."""
 
 def _load_vlm_(
