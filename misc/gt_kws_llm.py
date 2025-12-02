@@ -68,6 +68,7 @@ Given the image caption below, extract no more than {k} highly prominent, factua
 **CRITICAL RULES**:
 - Return **ONLY** a clean, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is expected if the text is either short or lacks distinct concepts.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
+- **ZERO HALLUCINATION POLICY**: Do not invent or infer specifics that lack clear verification from the caption. When in doubt, omit rather than fabricate.
 - **STRICTLY EXCLUDE NUMERICAL CONTENT** such as numbers, numerical values, measurements, units, or quantitative terms.
 - **STRICTLY EXCLUDE MEDIA DESCRIPTORS** such as generic photography, image, picture, or media terms.
 - **STRICTLY EXCLUDE TEMPORAL EXPRESSIONS** such as specific times, calendar dates, seasonal periods, or extended historical eras.
