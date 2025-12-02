@@ -45,7 +45,8 @@ Identify no more than {k} highly prominent, factual, and distinct **KEYWORDS** t
 **CRITICAL RULES**:
 - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
 - **ZERO HALLUCINATION POLICY**: You should not invent or infer specifics that lack clear verification from the visual content. When in doubt, omit rather than fabricate.
-- **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
+- **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
+- **ABSOLUTELY NO** additional explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the Python list.
 - **STRICTLY EXCLUDE** image quality, type, format, or style as keywords.
 - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: any time-related phrases such as dates, seasons, decades, centuries is STRICTLY FORBIDDEN.
 - **STRICTLY EXCLUDE** vague, generic, or historical keywords.
@@ -1374,7 +1375,7 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=12, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
-	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=256, help="Batch size for processing")
+	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=128, help="Batch size for processing")
 	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
