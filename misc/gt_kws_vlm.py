@@ -511,7 +511,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 			print(f"[DEBUG] After temporal filter: {items}")
 		result = dedupe_preserve_order(items, limit=5)
 		if result:
-			if verbose: print(f"\n[INFO] ✓ Final parsed keywords (from numbered singletons): {result}\n")
+			if verbose: print(f"[FINAL] parsed keywords (from numbered singletons): {result}\n")
 			return result
 		else:
 			if verbose: print(f"[DEBUG] No valid items after deduplication")
@@ -521,7 +521,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 		# Pick the longest as primary
 		primary = max(all_matches, key=len)
 		if verbose:
-			print(f"\n[DEBUG] Selected primary list (longest, {len(primary)} chars): {repr(primary[:200])}{'...' if len(primary) > 200 else ''}")
+			print(f"[DEBUG] Selected primary list (longest, {len(primary)} chars): {repr(primary[:200])}{'...' if len(primary) > 200 else ''}")
 		# If it's a numbered list inside a single pair of brackets
 		if re.search(r"\d+\s*[\.\)]\s*", primary):
 			if verbose: print(f"[DEBUG] Primary contains numbered format (e.g., '1. item')")
@@ -533,13 +533,13 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 			if verbose: print(f"[DEBUG] After temporal filter: {items}")
 			result = dedupe_preserve_order(items, limit=5)
 			if result:
-				if verbose: print(f"\n[INFO] ✓ Final parsed keywords (numbered list): {result}\n")
+				if verbose: print(f"[FINAL] parsed keywords (numbered list): {result}\n")
 				return result
 			else:
 				if verbose: print(f"[DEBUG] No valid items after deduplication")
 		
 		# Try literal_eval for proper lists (may fail if apostrophes unescaped)
-		if verbose: print(f"\n[DEBUG] Attempting ast.literal_eval on primary...")
+		if verbose: print(f"[DEBUG] Attempting ast.literal_eval on primary...")
 		try:
 			parsed = ast.literal_eval(primary)
 			if verbose: print(f"[DEBUG] ✓ ast.literal_eval succeeded: {parsed}")
@@ -551,7 +551,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 				if verbose: print(f"[DEBUG] After temporal filter: {items}")
 				result = dedupe_preserve_order(items, limit=5)
 				if result:
-					if verbose: print(f"\n[INFO] ✓ Final parsed keywords (literal list): {result}\n")
+					if verbose: print(f"\n[FINAL] parsed keywords (literal list): {result}\n")
 					return result
 				else:
 					if verbose: print(f"[DEBUG] No valid items after deduplication")
@@ -567,7 +567,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 			if verbose: print(f"[DEBUG] After temporal filter: {items}")
 			result = dedupe_preserve_order(items, limit=5)
 			if result:
-				if verbose: print(f"\n[INFO] ✓ Final parsed keywords (relaxed primary): {result}\n")
+				if verbose: print(f"[FINAL] parsed keywords (relaxed primary): {result}\n")
 				return result
 			else:
 				if verbose: print(f"[DEBUG] No valid items after deduplication")
@@ -576,7 +576,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 	if verbose: print(f"\n[DEBUG] Attempting recovery from 'assistant' block...")
 	after_assistant = response.split("assistant")[-1].strip()
 	if verbose:
-		print(f"[DEBUG] Content after 'assistant' ({len(after_assistant)} chars): {repr(after_assistant[:200])}{'...' if len(after_assistant) > 200 else ''}")
+		print(f"[DEBUG] Content after 'assistant' ({len(after_assistant)} chars): {repr(after_assistant)}")
 	
 	idx = after_assistant.find("[")
 	if idx != -1:
@@ -596,7 +596,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 		if verbose: print(f"[DEBUG] After temporal filter: {items}")
 		result = dedupe_preserve_order(items, limit=5)
 		if result:
-			if verbose: print(f"\n[INFO] ✓ Final parsed keywords (recovered blob): {result}\n")
+			if verbose: print(f"[FINAL] parsed keywords (recovered blob): {result}\n")
 			return result
 		else:
 			if verbose: print(f"[DEBUG] No valid items after deduplication")
@@ -604,7 +604,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 		if verbose: print(f"[DEBUG] No '[' found in content after 'assistant'")
 	
 	# 3) Last resort: comma-split after assistant
-	if verbose: print(f"\n[DEBUG] Last resort: comma-splitting after 'assistant'...")
+	if verbose: print(f"[DEBUG] Last resort: comma-splitting after 'assistant'...")
 	comma_parts = [clean_item_text(x) for x in after_assistant.split(",") if x.strip()]
 	if verbose: print(f"[DEBUG] Comma split produced {len(comma_parts)} parts: {comma_parts}")
 	comma_parts = [i for i in comma_parts if i and not is_temporal(i)]
@@ -612,7 +612,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 	
 	if len(comma_parts) > 1:
 		result = dedupe_preserve_order(comma_parts, limit=5)
-		if verbose: print(f"\n[INFO] ✓ Final last-resort keywords: {result}\n")
+		if verbose: print(f"\n[FINAL] last-resort keywords: {result}\n")
 		return result
 	else:
 		if verbose: print(f"[DEBUG] Not enough comma parts ({len(comma_parts)} <= 1)")

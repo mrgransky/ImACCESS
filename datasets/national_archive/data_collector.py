@@ -50,6 +50,7 @@ STOPWORDS = set(STOPWORDS)
 # print(STOPWORDS, type(STOPWORDS))
 useless_collection_terms = [
 	"History of Langley Field",
+	"Airplanes - Instruments",
 	"Awards",
 	"Presentations",
 	"Cartoon", 
