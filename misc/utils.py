@@ -575,6 +575,7 @@ def basic_clean(txt: str):
 		r'view from ',
 		r'view over ',
 		r"captured ",
+		r"unidentified location",
 		r'Note on negative envelope',
 		r"The photographer's notes from this negative series indicate that ",
 		r'The photographer’s notes from this negative series indicate ',

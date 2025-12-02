@@ -61,8 +61,7 @@ print(f"Successfully loaded {len(STOPWORDS)} stopwords")
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 You function as a historical archivist whose expertise lies in the 20th century.
-Given the description below, extract up to {k} most prominent, factual and distinct **KEYWORDS** that appear in the text. 
-You can use the context to help you decide which keywords are most salient.
+Given the description below, extract no more than {k} highly prominent, factual and distinct **KEYWORDS** that convey the primary actions, objects, or occurrences in the text. 
 
 {description}
 
