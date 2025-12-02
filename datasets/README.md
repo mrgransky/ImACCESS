@@ -59,23 +59,23 @@ ImACCESS/
 
 Make the collection script executable:
 ```bash
-chmod +x datasets/run_all_data_collectors.sh
+chmod +x datasets/download_history_x4.sh
 ```
 
 Run all data collectors (default output: `~/datasets/WW_DATASETs`):
 ```bash
 cd datasets
-./run_all_data_collectors.sh
+./download_history_x4.sh
 ```
 
 Or specify a custom output directory:
 ```bash
-./run_all_data_collectors.sh -d /path/to/your/dataset/directory
+./download_history_x4.sh -d /path/to/your/dataset/directory
 ```
 
 For help and options:
 ```bash
-./run_all_data_collectors.sh -h
+./download_history_x4.sh -h
 ```
 
 #### 5. Monitor Progress
@@ -197,7 +197,7 @@ sbatch narvi_sbatch_europeana_dataset_collector.sh
 **2. Out of Memory**
 ```bash
 # Reduce number of workers
-./run_all_data_collectors.sh -d ~/datasets -nw 4
+./download_history_x4.sh -d ~/datasets -nw 4
 ```
 
 **3. Disk Space Issues**

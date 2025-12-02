@@ -1,16 +1,19 @@
 #!/bin/bash
 
-#SBATCH --account=project_2009043
-#SBATCH --job-name=na_dataset_collection
+#SBATCH --account=project_2004072
+#SBATCH --job-name=WW_DATASETs_collection
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=24G
+#SBATCH --mem=16G
+#SBATCH --array=0-3
 #SBATCH --partition=small
-#SBATCH --time=00-13:00:00
+#SBATCH --time=1-00:00:00
+
+set -euo pipefail
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
@@ -28,19 +31,39 @@ echo "nTASKS/CORE: $SLURM_NTASKS_PER_CORE, nTASKS/NODE: $SLURM_NTASKS_PER_NODE"
 echo "THREADS/CORE: $SLURM_THREADS_PER_CORE"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
-ddir="/scratch/project_2004072/ImACCESS/WW_DATASETs"
-st_dt="1900-01-01"
-end_dt="1970-12-31"
 
-python -u data_collector.py \
-	--dataset_dir $ddir \
-	--start_date  $st_dt \
-	--end_date  $end_dt \
-	--batch_size 128 \
-	--num_workers $SLURM_CPUS_PER_TASK \
-	--historgram_bin 60 \
-	--img_mean_std \
-	--enable_thumbnailing \
+DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs"
+
+DATASETS=(
+	"national_archive"
+	"europeana"
+	"smu"
+	"wwii"
+)
+
+CURRENT_DATASET="${DATASETS[$SLURM_ARRAY_TASK_ID]}"
+echo "Current dataset: $CURRENT_DATASET"
+
+cd "$CURRENT_DATASET"
+echo "Changed to directory: $PWD"
+
+# Build the python command with conditional API key
+PYTHON_CMD="python -u data_collector.py \
+--dataset_dir $DATASET_DIR \
+--num_workers $SLURM_CPUS_PER_TASK \
+--batch_size 256 \
+--historgram_bin 60 \
+--img_mean_std \
+--enable_thumbnailing"
+
+# Add API key only for Europeana dataset (array task 1)
+if [ "$SLURM_ARRAY_TASK_ID" -eq 1 ]; then
+	PYTHON_CMD="$PYTHON_CMD --api_key api2demo"
+	echo "Adding Europeana API key"
+fi
+
+echo "Executing: $PYTHON_CMD"
+eval $PYTHON_CMD
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

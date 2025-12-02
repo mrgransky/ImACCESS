@@ -12,6 +12,8 @@
 #SBATCH --partition=small
 #SBATCH --time=1-00:00:00
 
+set -euo pipefail
+
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
 txt="$user began Slurm job: `date`"
