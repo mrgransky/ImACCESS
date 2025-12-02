@@ -470,6 +470,8 @@ def basic_clean(txt: str):
 	# Step 1: PROTECT real apostrophes FIRST (most important!)
 	txt = re.sub(r"(\w)'(\w)", r"\1__APOSTROPHE__\2", txt)
 	# This safely protects: don't → don__APOSTROPHE__t, John's → John__APOSTROPHE__s
+	txt = txt.replace(',', ' ') # test if needed!
+
 	# Step 2: Remove known junk/phrase patterns
 
 	junk_phrases = [
@@ -610,7 +612,7 @@ def basic_clean(txt: str):
 		r'\d+-\w+-\d+\w-\d+',
 		r'AS\d+-\d+-\d+\s-\s',
 		r"color\sphoto\s\d+",
-		# r'\s\+(?!\d)[A-Za-z0-9]+', # remove +B09 but not +123
+		# r'(?:^|[,\s])\+(?!\d)[A-Za-z0-9]+[.,]?', # remove +B09. but not +123
 		r'\s\+(?!\d)[A-Za-z0-9]+[.,]?', # remove +B09. but not +123
 	]
 
