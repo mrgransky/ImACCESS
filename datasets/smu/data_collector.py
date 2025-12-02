@@ -141,7 +141,14 @@ def get_data(start_date: str="1900-01-01", end_date: str="1970-12-31", query: st
 			# with forbiddden document formats:
 			query_url = f"{SMU_BASE_URL}/api/search/searchterm/{FORBIDDEN_DOCUMENT_FORMATS}!{query}!image!{START_DATE}-{END_DATE}/field/all!all!type!date/mode/none!exact!exact!exact/conn/and!and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}/page/{pg}"
 			loop_st = time.time()
-			response = requests.get(query_url)
+
+			try:
+				response = requests.get(query_url, headers=headers)
+				response.raise_for_status()
+			except requests.exceptions.HTTPError as e:
+				print(f"\n<!> Error accessing URL {query_url}\n{e}\n{response.status_code}")
+				break
+
 			if response.status_code == 200:
 				data = response.json()
 				if 'items' in data:
@@ -161,7 +168,9 @@ def get_data(start_date: str="1900-01-01", end_date: str="1970-12-31", query: st
 		if len(query_all_hits) == 0:
 			return
 		save_pickle(pkl=query_all_hits, fname=query_all_hits_fpth)
+
 	print(f"Total hit(s): {len(query_all_hits)} {type(query_all_hits)} for query: « {query} » found in {time.time()-t0:.2f} sec")
+
 	return query_all_hits
 
 def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
@@ -495,7 +504,7 @@ def test_on_search_(query="shovel", start_date="1900-01-01", end_date="1970-12-3
 	query_url = f"{SMU_BASE_URL}/api/search/searchterm/{FORBIDDEN_DOCUMENT_FORMATS}!{query}!image!{START_DATE}-{END_DATE}/field/all!all!type!date/mode/none!exact!exact!exact/conn/and!and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}"
 	print(query_url)
 	# Send a GET request to the API
-	response = requests.get(query_url)
+	response = requests.get(query_url, headers=headers)
 	print(response.status_code)
 	print(type(response), response)
 	print(response.headers['Content-Type']) # must be 'application/json'
