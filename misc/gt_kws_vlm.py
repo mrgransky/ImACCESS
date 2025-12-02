@@ -45,7 +45,7 @@ Identify no more than {k} highly prominent, factual, and distinct **KEYWORDS** t
 You can use the image context to help you decide which keywords are most salient.
 
 **CRITICAL RULES**:
-- Return **ONLY** a clean, valid, and parsable **Python LIST** with a maximum of {k} keywords - fewer is acceptable if the image is quite simple.
+- Return **ONLY** a clean, valid, and parsable **Python LIST** with a maximum of {k} keywords - fewer is acceptable only if the image is too simple.
 - **ZERO HALLUCINATION POLICY**: Do not invent or infer specifics that lack clear verification from the visual content. When in doubt, omit rather than fabricate.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.

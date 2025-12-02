@@ -473,6 +473,7 @@ def basic_clean(txt: str):
 	# Step 2: Remove known junk/phrase patterns
 
 	junk_phrases = [
+		r"another view of ",
 		r'full view of ',
 		r"rear view of ",
 		r"general view from ",
