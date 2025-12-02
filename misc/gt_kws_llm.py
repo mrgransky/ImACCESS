@@ -63,20 +63,20 @@ LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 You function as a historical archivist whose expertise lies in the 20th century.
 Given the image caption below, extract no more than {k} highly prominent, factual and distinct **KEYWORDS** that convey the primary actions, objects, or occurrences.
 
-Caption: {caption}
+{caption}
 
 STRICT RULES — follow exactly:
 - Extract **ONLY** self-contained and grammatically complete phrases that actually appear in the text.
 - AVOID incomplete fragments that start or end with prepositions or conjunctions.
-- Return **AT MOST {k} keywords** - fewer is expected if the caption is either short, simple or lacks distinct concepts.
-- **STRICTLY EXCLUDE ALL MEDIA DESCRIPTORS**: Absolutely NO generic photography, image, picture, or media terms.
+- Return **AT MOST {k} keywords** - fewer is expected if the text is either short, simple or lacks distinct concepts.
+- **STRICTLY EXCLUDE ALL MEDIA DESCRIPTORS**: any generic photography, image, picture, or media terms are strictly forbidden.
 - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
 - **STRICTLY EXCLUDE ALL NUMERICAL CONTENT**: No numbers, numerical values, measurements, units, or quantitative terms.
 - **STRICTLY EXCLUDE** vague, generic, meaningless or ambiguous keywords.
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
-- **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: any time-related phrases such as dates, seasons, decades, centuries is STRICTLY FORBIDDEN.
+- **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: It is strictly forbidden to use any language that indicates specific times, such as calendar dates, seasonal periods, or extended historical eras.
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]
 """
