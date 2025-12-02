@@ -66,17 +66,15 @@ Given the image caption below, extract no more than {k} highly prominent, factua
 {caption}
 
 STRICT RULES — follow exactly:
+- Return **ONLY** a clean, valid and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is expected if the text is either short, simple or lacks distinct concepts.
 - Extract **ONLY** self-contained and grammatically complete phrases that actually appear in the text.
 - AVOID incomplete fragments that start or end with prepositions or conjunctions.
-- Return **AT MOST {k} keywords** - fewer is expected if the text is either short, simple or lacks distinct concepts.
-- **STRICTLY EXCLUDE ALL MEDIA DESCRIPTORS**: any generic photography, image, picture, or media terms are strictly forbidden.
-- Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
-- **STRICTLY EXCLUDE ALL NUMERICAL CONTENT**: No numbers, numerical values, measurements, units, or quantitative terms.
-- **STRICTLY EXCLUDE** vague, generic, meaningless or ambiguous keywords.
+- **STRICTLY EXCLUDE NUMERICAL CONTENT** such as numbers, numerical values, measurements, units, or quantitative terms.
+- **STRICTLY EXCLUDE MEDIA DESCRIPTORS** such as generic photography, image, picture, or media terms.
+- **STRICTLY EXCLUDE TEMPORAL EXPRESSIONS** such as specific times, calendar dates, seasonal periods, or extended historical eras.
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
-- **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: It is strictly forbidden to use any language that indicates specific times, such as calendar dates, seasonal periods, or extended historical eras.
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]
 """
