@@ -612,7 +612,8 @@ def basic_clean(txt: str):
 		r'AS\d+-\d+-\d+\s-\s',
 		r"color\sphoto\s\d+",
 		r'(?:^|[,\s])\+(?!\d)[A-Za-z0-9]+[.,]?', # remove +B09. but not +123
-		# r'\s\+(?!\d)[A-Za-z0-9]+[.,]?', # remove +B09. but not +123
+		r"\sW\.Nr\.\s\d+\s\d+\s", # W.Nr. 4920 3000
+		r"\sW\.Nr\.\s\d+\s", # W.Nr. 4920
 	]
 
 	for pattern in junk_phrases:
