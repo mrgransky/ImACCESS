@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # how to run:
-# nohup bash run_all_data_collectors.sh > logs/all_data_collectors.out &
+# nohup bash download_history_x4.sh > logs/all_data_collectors.out &
 
 # Script to run all dataset collectors for ImACCESS project
 # Author: ImACCESS Team, Tampere University
@@ -55,7 +55,7 @@ run_collector() {
 	print_status "Running: python $collector_path $args"
 	print_status "Log file: $log_file"
 	
-	if python "$collector_path" $args 2>&1 | tee "$log_file"; then
+	if python -u "$collector_path" $args 2>&1 | tee "$log_file"; then
 		print_success "Completed: ${dataset_name}"
 		return 0
 	else
@@ -147,7 +147,7 @@ main() {
 	print_status "Output directory: ${DATASET_DIR}"
 	print_status "Running dataset merger => History_xN ..."
 
-	python "${BASE_DIR}/history_xN/merge_datasets.py" -ddir "${DATASET_DIR}"	
+	python -u "${BASE_DIR}/history_xN/merge_datasets.py" -ddir "${DATASET_DIR}"	
 	# # Optional: Run merge script if available
 	# if [ -f "${BASE_DIR}/history_xN/merge_datasets.py" ]; then
 	# 	echo ""

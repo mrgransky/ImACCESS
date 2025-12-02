@@ -66,7 +66,7 @@ Given the image caption below, extract no more than {k} highly prominent, factua
 {caption}
 
 STRICT RULES — follow exactly:
-- Return **ONLY** a clean, valid and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is expected if the text is either short, simple or lacks distinct concepts.
+- Return **ONLY** a clean, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is expected if the text is either short or lacks distinct concepts.
 - Extract **ONLY** self-contained and grammatically complete phrases that actually appear in the text.
 - AVOID incomplete fragments that start or end with prepositions or conjunctions.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
