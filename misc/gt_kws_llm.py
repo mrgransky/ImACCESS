@@ -61,14 +61,14 @@ print(f"Successfully loaded {len(STOPWORDS)} stopwords")
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 You function as a historical archivist whose expertise lies in the 20th century.
-Given the description below, extract no more than {k} highly prominent, factual and distinct **KEYWORDS** that convey the primary actions, objects, or occurrences.
+Given the caption below, extract no more than {k} highly prominent, factual and distinct **KEYWORDS** that convey the primary actions, objects, or occurrences.
 
-{description}
+{caption}
 
 **CRITICAL RULES**:
-- Extract **ONLY** self-contained and grammatically complete phrases that actually appear in the description.
+- Extract **ONLY** self-contained and grammatically complete phrases that actually appear in the caption.
 - NEVER produce incomplete fragments that end with a preposition.
-- Return **AT MOST {k} keywords** - fewer is expected if the description is either short, simple or lacks distinct concepts.
+- Return **AT MOST {k} keywords** - fewer is expected if the caption is either short, simple or lacks distinct concepts.
 - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
 - **STRICTLY EXCLUDE ALL NUMERICAL CONTENT**: No numbers, numerical values, measurements, units, or quantitative terms.
@@ -312,7 +312,7 @@ def _load_llm_(
 def get_prompt(tokenizer: tfs.PreTrainedTokenizer, description: str, max_kws: int):
 	messages = [
 		{"role": "system", "content": "You are a helpful assistant."},
-		{"role": "user", "content": LLM_INSTRUCTION_TEMPLATE.format(k=max_kws, description=description.strip())},
+		{"role": "user", "content": LLM_INSTRUCTION_TEMPLATE.format(k=max_kws, caption=description.strip())},
 	]
 	text = tokenizer.apply_chat_template(
 		messages,
@@ -1464,7 +1464,11 @@ def get_llm_based_labels_opt(
 			unique_prompts.append(None)
 		else:
 			if verbose: print(f"Generating prompt for text with len={len(s.split()):<10}max_kws={min(max_kws, len(s.split()))}")
-			prompt = get_prompt(tokenizer=tokenizer, description=s, max_kws=min(max_kws, len(s.split())))
+			prompt = get_prompt(
+				tokenizer=tokenizer, 
+				description=s, 
+				max_kws=min(max_kws, len(s.split()))
+			)
 			unique_prompts.append(prompt)
 
 	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
