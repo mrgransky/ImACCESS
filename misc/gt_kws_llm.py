@@ -61,19 +61,19 @@ print(f"Successfully loaded {len(STOPWORDS)} stopwords")
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 You function as a historical archivist whose expertise lies in the 20th century.
-Given the image caption below, extract no more than {k} highly prominent, factual and distinct **KEYWORDS** that convey the primary actions, objects, or occurrences.
+Given the caption below, extract no more than {k} highly prominent, factual, and distinct **KEYWORDS** that convey the primary actions, objects, or occurrences.
 
 {caption}
 
 **CRITICAL RULES**:
 - Return **ONLY** a clean, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is expected if the text is either short or lacks distinct concepts.
+- Extracted KEYWORDS must be self-contained and grammatically complete phrases that actually appear in the text. Do not invent or fabricate any specifics.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
-- **ZERO HALLUCINATION POLICY**: Do not invent or infer specifics that lack clear verification from the caption. When in doubt, omit rather than fabricate.
 - **STRICTLY EXCLUDE NUMERICAL CONTENT** such as numbers, numerical values, measurements, units, or quantitative terms.
 - **STRICTLY EXCLUDE MEDIA DESCRIPTORS** such as generic photography, image, picture, or media terms.
 - **STRICTLY EXCLUDE TEMPORAL EXPRESSIONS** such as specific times, calendar dates, seasonal periods, or extended historical eras.
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
-- **ABSOLUTELY NO** additional explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
+- **ABSOLUTELY NO** explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
 - **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]
