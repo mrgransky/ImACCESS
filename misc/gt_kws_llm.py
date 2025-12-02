@@ -68,7 +68,7 @@ Given the description below, extract no more than {k} highly prominent, factual 
 **CRITICAL RULES**:
 - Extract **ONLY** self-contained and grammatically complete phrases that actually appear in the description.
 - NEVER produce incomplete fragments that end with a preposition.
-- Return **AT MOST {k} keywords** - fewer is acceptable only if the description is either short or simple.
+- Return **AT MOST {k} keywords** - fewer is expected if the description is either short, simple or lacks distinct concepts.
 - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
 - **STRICTLY EXCLUDE ALL NUMERICAL CONTENT**: No numbers, numerical values, measurements, units, or quantitative terms.

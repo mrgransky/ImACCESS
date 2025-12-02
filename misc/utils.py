@@ -511,7 +511,6 @@ def basic_clean(txt: str):
 		r"slide copy",
 		r'This is a photograph of ',
 		r'Country: Unknown',
-		r'Portrait of ',
 		r'Electronic ed.',
 		r'DFG project: worldviews (2015-2017),',
 		r'record author: Deutsche Fotothek/SLUB Dresden (DF)',
