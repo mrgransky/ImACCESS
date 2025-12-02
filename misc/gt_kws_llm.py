@@ -65,15 +65,15 @@ Given the image caption below, extract no more than {k} highly prominent, factua
 
 {caption}
 
-STRICT RULES — follow exactly:
+**CRITICAL RULES**:
 - Return **ONLY** a clean, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is expected if the text is either short or lacks distinct concepts.
-- Avoid keywords that start or end with prepositions or conjunctions.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
 - **STRICTLY EXCLUDE NUMERICAL CONTENT** such as numbers, numerical values, measurements, units, or quantitative terms.
 - **STRICTLY EXCLUDE MEDIA DESCRIPTORS** such as generic photography, image, picture, or media terms.
 - **STRICTLY EXCLUDE TEMPORAL EXPRESSIONS** such as specific times, calendar dates, seasonal periods, or extended historical eras.
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
+- **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]
 """
