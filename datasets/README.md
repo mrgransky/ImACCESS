@@ -162,7 +162,7 @@ python datasets/europeana/data_collector.py \
 
 ## Running on HPC Clusters
 
-For running on High-Performance Computing clusters (Mahti, Puhti, Narvi), use the provided SLURM batch scripts:
+For running on High-Performance Computing clusters (Mahti, Puhti), use the provided SLURM batch scripts:
 
 ### Puhti (CSC, Finland)
 ```bash
@@ -174,12 +174,6 @@ sbatch puhti_sbatch_europeana_dataset_collector.sh
 ```bash
 cd datasets/europeana
 sbatch mahti_sbatch_europeana_dataset_collector.sh
-```
-
-### Narvi (Tampere University)
-```bash
-cd datasets/europeana
-sbatch narvi_sbatch_europeana_dataset_collector.sh
 ```
 
 ---
