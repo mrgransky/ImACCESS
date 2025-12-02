@@ -37,14 +37,16 @@ from utils import *
 
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
-# - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
 
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 VLM_INSTRUCTION_TEMPLATE = """You function as a historical archivist whose expertise lies in the 20th century.
 Identify no more than {k} highly prominent, factual, and distinct **KEYWORDS** that capture the primary actions, objects, or occurrences in the image.
+You can use the image context to help you decide which keywords are most salient.
+
 **CRITICAL RULES**:
-- **ZERO HALLUCINATION POLICY**: You should not invent or infer specifics that lack clear verification from the visual content. When in doubt, omit rather than fabricate.
+- Return **ONLY** a clean, valid, and parsable **Python LIST** with a maximum of {k} keywords - fewer is acceptable if the image is quite simple.
+- **ZERO HALLUCINATION POLICY**: Do not invent or infer specifics that lack clear verification from the visual content. When in doubt, omit rather than fabricate.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
 - **STRICTLY EXCLUDE** image quality, type, format, or style as keywords.
