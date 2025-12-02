@@ -413,14 +413,14 @@ def get_enriched_description(df: pd.DataFrame):
 
 	# check if how many empty(Nones) exist in title and description:
 	print(
-		f"Number of empty title: {df['title'].isna().sum()}"
+		f"Number of empty title: {df['title'].isna().sum()} "
 		f"out of {df.shape[0]} total samples "
-		f"({df['title'].isna().sum()/df.shape[0]*100:.2f}%) "
+		f"({df['title'].isna().sum()/df.shape[0]*100:.2f}%)"
 	)
 	print(
-		f"Number of empty description: {df['description'].isna().sum()}"
+		f"Number of empty description: {df['description'].isna().sum()} "
 		f"out of {df.shape[0]} total samples "
-		f"({df['description'].isna().sum()/df.shape[0]*100:.2f}%) "
+		f"({df['description'].isna().sum()/df.shape[0]*100:.2f}%)"
 	)
 
 	# safety check:
