@@ -366,10 +366,10 @@ def parse_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
 		raise NotImplementedError(f"VLM response parsing not implemented for {model_id}")
 
 def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:		
-	if verbose:
-		print(f"\n[DEBUG] Raw Qwen VLM response:")
-		print(f"{response}")
-		print(f"\n")
+	# if verbose:
+	# 	print(f"\n[DEBUG] Raw Qwen VLM response:")
+	# 	print(f"{response}")
+	# 	print(f"\n")
 	
 	# Temporal patterns to filter out
 	TEMPORAL_PATTERNS = [
