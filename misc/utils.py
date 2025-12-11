@@ -146,7 +146,7 @@ os.environ["HF_HUB_CACHE"] = cache_directory[USER]
 os.environ["HF_DATASETS_CACHE"] = cache_directory[USER]
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 # Set environment variable for memory optimization
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+# os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 os.environ['TORCH_USE_CUDA_DSA'] = '1'  # Enables device-side assertions (as suggested in error)
 # Verify environment variables

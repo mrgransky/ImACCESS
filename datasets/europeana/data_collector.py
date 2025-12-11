@@ -245,6 +245,8 @@ def get_data(europeana_api_key: str, start_date: str, end_date: str, hits_dir: s
 				europeana_api_base_url,
 				params=params,
 				headers=headers,
+				verify=False, # Try disabling SSL verification if that's the issue
+				timeout=30, # Timeout in seconds
 			)
 			if response.status_code == 200:
 				data = response.json()
