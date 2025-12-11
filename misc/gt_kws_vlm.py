@@ -358,6 +358,10 @@ def prepare_prompts_and_images(
 	return valid_paths, unique_prompts
 
 def parse_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
+	if verbose: 
+		print(f"[DEBUG] Parsing VLM response for {model_id}")
+		print(f"[RESPONSE]\n{raw_response}\n")
+	
 	if "Qwen" in model_id:
 		return _qwen_vlm_(raw_response, verbose=verbose)
 	elif "llava" in model_id:
@@ -366,10 +370,10 @@ def parse_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
 		raise NotImplementedError(f"VLM response parsing not implemented for {model_id}")
 
 def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:		
-	# if verbose:
-	# 	print(f"\n[DEBUG] Raw Qwen VLM response:")
-	# 	print(f"{response}")
-	# 	print(f"\n")
+	if verbose:
+		print(f"\n[DEBUG] Raw Qwen VLM response:")
+		print(f"{response}")
+		print(f"\n")
 	
 	# Temporal patterns to filter out
 	TEMPORAL_PATTERNS = [
@@ -468,11 +472,11 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 				out.append(x)
 				seen.add(x)
 				if verbose: print(f"[DEBUG] Item {idx} '{x}' added (unique)")
+				if len(out) >= limit:
+					if verbose: print(f"[DEBUG] Reached limit of {limit}, stopping")
+					break
 			elif x in seen:
 				if verbose: print(f"[DEBUG] Item {idx} '{x}' skipped (duplicate)")
-			if len(out) >= limit:
-				if verbose: print(f"[DEBUG] Reached limit of {limit}, stopping")
-				break
 
 		if verbose: print(f"[DEBUG] dedupe_preserve_order output ({len(out)} items): {out}")
 		return out
@@ -486,7 +490,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 	if verbose:
 		print(f"[DEBUG] Regex r\"\\[[^\\[\\]]+\\]\" found {len(all_matches)} balanced lists")
 		for idx, m in enumerate(all_matches):
-			print(f"[DEBUG]   Match {idx}: {repr(m)}")
+			print(f"[DEBUG] Match {idx}: {repr(m)}")
 	
 	# Detect numbered singletons like [1. thing] repeated across lines
 	numbered_singletons = []
@@ -498,7 +502,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 				print(f"[DEBUG] Match {idx} is a numbered singleton: {repr(inner)}")
 	
 	if verbose:
-			print(f"\n[DEBUG] Numbered singleton segments: {len(numbered_singletons)}")
+			print(f"[DEBUG] Numbered singleton segments: {len(numbered_singletons)}")
 	
 	if numbered_singletons and len(numbered_singletons) >= max(2, len(all_matches)//2):
 		if verbose:
@@ -522,7 +526,31 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 		primary = max(all_matches, key=len)
 		if verbose:
 			print(f"[DEBUG] Selected primary list (longest, {len(primary)} chars): {repr(primary)}")
-		# If it's a numbered list inside a single pair of brackets
+		
+		# Try literal_eval FIRST for proper lists (handles commas in items correctly)
+		if verbose: print(f"[DEBUG] Attempting ast.literal_eval on primary...")
+		try:
+			parsed = ast.literal_eval(primary)
+			if verbose: print(f"[DEBUG] ✓ ast.literal_eval succeeded: {parsed}")
+			if isinstance(parsed, list):
+				if verbose: print(f"[DEBUG] Parsed result is a list with {len(parsed)} items")
+				items = [clean_item_text(str(k)) for k in parsed if isinstance(k, (str, int, float))]
+				if verbose: print(f"[DEBUG] After cleaning: {items}")
+				items = [i for i in items if i and not is_temporal(i)]
+				if verbose: print(f"[DEBUG] After temporal filter: {items}")
+				result = dedupe_preserve_order(items, limit=5)
+				if result:
+					if verbose: print(f"[FINAL] parsed keywords (literal list): {result}\n")
+					return result
+				else:
+					if verbose: print(f"[DEBUG] No valid items after deduplication")
+			else:
+				if verbose: print(f"[DEBUG] Parsed result is not a list: {type(parsed)}")
+		except Exception as e:
+			if verbose: print(f"[ERROR] ast.literal_eval failed: {type(e).__name__}: {e}")
+			if verbose: print(f"[DEBUG] Falling back to numbered format check...")
+		
+		# ONLY if literal_eval fails, check for numbered format
 		if re.search(r"\d+\s*[\.\)]\s*", primary):
 			if verbose: print(f"[DEBUG] Primary contains numbered format (e.g., '1. item')")
 			cleaned = re.sub(r"^\s*\[|\]\s*$", "", primary)
@@ -538,42 +566,18 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 			else:
 				if verbose: print(f"[DEBUG] No valid items after deduplication")
 		
-		# Try literal_eval for proper lists (may fail if apostrophes unescaped)
-		if verbose: print(f"[DEBUG] Attempting ast.literal_eval on primary...")
-		
-		try:
-			parsed = ast.literal_eval(primary)
-			if verbose: print(f"[DEBUG] ✓ ast.literal_eval succeeded: {parsed}")
-			if isinstance(parsed, list):
-				if verbose: print(f"[DEBUG] Parsed result is a list with {len(parsed)} items")
-				items = [clean_item_text(str(k)) for k in parsed if isinstance(k, (str, int, float))]
-				if verbose: print(f"[DEBUG] After cleaning: {items}")
-				items = [i for i in items if i and not is_temporal(i)]
-				if verbose: print(f"[DEBUG] After temporal filter: {items}")
-				result = dedupe_preserve_order(items, limit=5)
-				if result:
-					if verbose: print(f"\n[FINAL] parsed keywords (literal list): {result}\n")
-					return result
-				else:
-					if verbose: print(f"[DEBUG] No valid items after deduplication")
-			else:
-				if verbose: print(f"[DEBUG] Parsed result is not a list: {type(parsed)}")
-		except Exception as e:
-			if verbose: 
-				print(f"[ERROR] ast.literal_eval failed: {type(e).__name__}: {e}")
-				print(f"[DEBUG] Falling back to relaxed split...")
-			
-			# Unescaped apostrophes or minor issues: relaxed split
-			items = split_items_relaxed(primary)
-			if verbose: print(f"[DEBUG] Relaxed split returned {len(items)} items: {items}")
-			items = [i for i in items if i and not is_temporal(i)]
-			if verbose: print(f"[DEBUG] After temporal filter: {items}")
-			result = dedupe_preserve_order(items, limit=5)
-			if result:
-				if verbose: print(f"[FINAL] parsed keywords (relaxed primary): {result}\n")
-				return result
-			else:
-				if verbose: print(f"[DEBUG] No valid items after deduplication")
+		# If numbered format didn't work, try relaxed split
+		if verbose: print(f"[DEBUG] Falling back to relaxed split...")
+		items = split_items_relaxed(primary)
+		if verbose: print(f"[DEBUG] Relaxed split returned {len(items)} items: {items}")
+		items = [i for i in items if i and not is_temporal(i)]
+		if verbose: print(f"[DEBUG] After temporal filter: {items}")
+		result = dedupe_preserve_order(items, limit=5)
+		if result:
+			if verbose: print(f"[FINAL] parsed keywords (relaxed primary): {result}\n")
+			return result
+		else:
+			if verbose: print(f"[DEBUG] No valid items after deduplication")
 	
 	# 2) If no balanced list found (truncated/unbalanced case): recover from 'assistant' block
 	if verbose: print(f"\n[DEBUG] Attempting recovery from 'assistant' block...")
@@ -619,6 +623,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 		return result
 	else:
 		if verbose: print(f"[DEBUG] Not enough comma parts ({len(comma_parts)} <= 1)")
+	
 	if verbose: print(f"[ERROR] Unable to parse any keywords from VLM output.\n")
 	return None
 
@@ -691,7 +696,7 @@ def get_vlm_based_labels_single(
 		max_kws: int,
 		use_quantization: bool = False,
 		verbose: bool = False,
-	):
+):
 
 	# ========== Load image ==========
 	if verbose:
@@ -700,7 +705,7 @@ def get_vlm_based_labels_single(
 	try:
 		img = Image.open(image_path)
 	except Exception as e:
-		if verbose: print(f"[ERROR] Failed local open: {e} retry via URL")
+		if verbose: print(f"{e}\n=> retry via URL")
 		try:
 			r = requests.get(image_path, timeout=10)
 			r.raise_for_status()
@@ -712,12 +717,13 @@ def get_vlm_based_labels_single(
 	img = img.convert("RGB")
 
 	if verbose:
+		print(f"\n[IMAGE] {image_path}")
+		print(f"[IMAGE] {type(img)} {img.size} {img.mode}")
+
 		arr = np.array(img)
-		print(f"[IMAGE] Type: {type(img)} Size: {img.size} Mode: {img.mode}")
-		print(f"[IMAGE] Shape: {arr.shape} Dtype: {arr.dtype} Min/Max: {arr.min()}/{arr.max()}")
-		print(f"[IMAGE] NaN: {np.isnan(arr).any()} Inf: {np.isinf(arr).any()} Size: {arr.nbytes/(1024**2):.2f}MB")
-		print(f"[IMAGE] {image_path}")
-		print()
+		print(
+			f"[IMAGE] {type(arr)} {arr.shape} {arr.dtype} (Min, Max): ({arr.min()}, {arr.max()}) "
+			f"NaN: {np.isnan(arr).any()} Inf: {np.isinf(arr).any()} Size: {arr.nbytes/(1024**2):.1f} MB\n")
 
 	if img.size[0] == 0 or img.size[1] == 0:
 		if verbose: print("[ERROR] Invalid image size")
@@ -784,7 +790,7 @@ def get_vlm_based_labels_single(
 
 	# Decode response
 	response = processor.decode(outputs[0], skip_special_tokens=True)
-	
+
 	# ========== Parse the response ==========
 	try:
 		parsed = parse_vlm_response(
@@ -792,12 +798,10 @@ def get_vlm_based_labels_single(
 			raw_response=response,
 			verbose=verbose,
 		)
-		if verbose and parsed:
-			print(f"✅ Parsed keywords: {parsed}")
+		if verbose and parsed: print(f"✅ Parsed keywords: {parsed}")
 	except Exception as e:
-		if verbose:
-			print(f"⚠️ Parsing error for image {image_path} {e}")
-			return None
+		if verbose: print(f"⚠️ Parsing error for image {image_path} {e}")
+		return None
 
 	return [parsed]
 
@@ -1265,7 +1269,7 @@ def get_vlm_based_labels_opt(
 			if verbose: print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
 
 			for i, resp in enumerate(decoded):
-				if verbose: print(f"{i}\n{resp}\n")
+				if verbose: print(f"[batch {b}] response index: {i}")
 				try:
 					parsed = parse_vlm_response(model_id=model_id, raw_response=resp, verbose=verbose)
 					results[idxs[i]] = parsed
@@ -1277,6 +1281,7 @@ def get_vlm_based_labels_opt(
 			gc.collect()
 			if verbose:
 				print(f"\tFalling back to sequential processing for {len(valid_pairs)} images in this batch.")
+
 			# fallback: process each image sequentially
 			for i, img in tqdm(valid_pairs, desc="Processing batch images [sequential]", ncols=100):
 				try:
