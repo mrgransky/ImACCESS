@@ -241,15 +241,22 @@ def get_data(europeana_api_key: str, start_date: str, end_date: str, hits_dir: s
 		while True:
 			loop_st = time.time()
 			params["start"] = start
-			response = requests.get(
-				europeana_api_base_url,
-				params=params,
-				headers=headers,
-				verify=False, # Try disabling SSL verification if that's the issue
-				timeout=30, # Timeout in seconds
-			)
+			try:
+				response = requests.get(
+					url=europeana_api_base_url,
+					params=params,
+					headers=headers,
+					# verify=False, # Try disabling SSL verification if that's the issue
+					# timeout=30, # Timeout in seconds
+				)
+				response.raise_for_status()
+			except Exception as e:
+				print(f"<!> {e}")
+				break
+
 			if response.status_code == 200:
 				data = response.json()
+
 				if 'items' in data:
 					# Extract the 'items' field
 					hits = data['items']
@@ -258,6 +265,7 @@ def get_data(europeana_api_key: str, start_date: str, end_date: str, hits_dir: s
 					label_all_hits.extend(hits)
 					# print(json.dumps(label_all_hits, indent=2, ensure_ascii=False))
 					print(f"start: {start}:\tFound: {len(hits)} {type(hits)}\t{len(label_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
+
 				if len(label_all_hits) >= total_hits:
 					break
 				start += params.get("rows")

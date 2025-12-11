@@ -139,13 +139,19 @@ def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", label: st
 		while True:
 			loop_st = time.time()
 			params["page"] = page
-			response = requests.get(
-				na_api_base_url,
-				params=params,
-				headers=headers,
-				verify=False, # Try disabling SSL verification if that's the issue
-				timeout=30, # Timeout in seconds
-			)
+			try:
+				response = requests.get(
+					url=na_api_base_url,
+					params=params,
+					headers=headers,
+					# verify=False, # Try disabling SSL verification if that's the issue
+					# timeout=30, # Timeout in seconds
+				)
+				response.raise_for_status()
+			except Exception as e:
+				print(f"<!> {e}")
+				break
+
 			if response.status_code == 200:
 				data = response.json()
 				hits = data.get('body').get('hits').get('hits')

@@ -144,15 +144,14 @@ def get_data(start_date: str="1900-01-01", end_date: str="1970-12-31", query: st
 
 			try:
 				response = requests.get(
-					query_url, 
+					url=query_url, 
 					headers=headers,
-					verify=False, # Try disabling SSL verification if that's the issue
-					timeout=30, # Timeout in seconds
+					# verify=False, # Try disabling SSL verification if that's the issue
+					# timeout=30, # Timeout in seconds
 				)
 				response.raise_for_status()
-			# except requests.exceptions.HTTPError as e:
 			except Exception as e:
-				print(f"\n<!> Error accessing URL {query_url}\n{e}\n{response.status_code}")
+				print(f"<!> {e}")
 				break
 
 			if response.status_code == 200:
