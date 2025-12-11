@@ -521,12 +521,12 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 		# Pick the longest as primary
 		primary = max(all_matches, key=len)
 		if verbose:
-			print(f"[DEBUG] Selected primary list (longest, {len(primary)} chars): {repr(primary[:200])}{'...' if len(primary) > 200 else ''}")
+			print(f"[DEBUG] Selected primary list (longest, {len(primary)} chars): {repr(primary)}")
 		# If it's a numbered list inside a single pair of brackets
 		if re.search(r"\d+\s*[\.\)]\s*", primary):
 			if verbose: print(f"[DEBUG] Primary contains numbered format (e.g., '1. item')")
 			cleaned = re.sub(r"^\s*\[|\]\s*$", "", primary)
-			if verbose: print(f"[DEBUG] After removing outer brackets: {repr(cleaned[:200])}")
+			if verbose: print(f"[DEBUG] After removing outer brackets: {repr(cleaned)}")
 			parts = [clean_item_text(p) for p in cleaned.split(",")]
 			if verbose: print(f"[DEBUG] Split into {len(parts)} parts: {parts}")
 			items = [p for p in parts if p and not is_temporal(p)]
@@ -540,6 +540,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 		
 		# Try literal_eval for proper lists (may fail if apostrophes unescaped)
 		if verbose: print(f"[DEBUG] Attempting ast.literal_eval on primary...")
+		
 		try:
 			parsed = ast.literal_eval(primary)
 			if verbose: print(f"[DEBUG] ✓ ast.literal_eval succeeded: {parsed}")
@@ -558,8 +559,10 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 			else:
 				if verbose: print(f"[DEBUG] Parsed result is not a list: {type(parsed)}")
 		except Exception as e:
-			if verbose: print(f"[ERROR] ast.literal_eval failed: {type(e).__name__}: {e}")
-			if verbose: print(f"[DEBUG] Falling back to relaxed split...")
+			if verbose: 
+				print(f"[ERROR] ast.literal_eval failed: {type(e).__name__}: {e}")
+				print(f"[DEBUG] Falling back to relaxed split...")
+			
 			# Unescaped apostrophes or minor issues: relaxed split
 			items = split_items_relaxed(primary)
 			if verbose: print(f"[DEBUG] Relaxed split returned {len(items)} items: {items}")
@@ -589,7 +592,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 		if open_count > close_count:
 			if verbose: print(f"[DEBUG] Unbalanced brackets detected, adding ']'")
 			blob = blob + "]"
-		if verbose: print(f"[DEBUG] Recovered blob: {repr(blob[:200])}{'...' if len(blob) > 200 else ''}")
+		if verbose: print(f"[DEBUG] Recovered blob: {repr(blob)}")
 		items = split_items_relaxed(blob)
 		if verbose: print(f"[DEBUG] Relaxed split returned {len(items)} items: {items}")
 		items = [i for i in items if i and not is_temporal(i)]
