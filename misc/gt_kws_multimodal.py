@@ -27,7 +27,7 @@ from visualize import perform_multilabel_eda
 # $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 32 -llm_bs 12 -dv "cuda:2" -nw 40 > /media/volume/ImACCESS/trash/multimodal_annotation_h4.txt &
 # $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 64 -llm_bs 12 -dv "cuda:3" > /media/volume/ImACCESS/trash/multimodal_annotation_smu.txt &
 
-def _post_process_(labels_list: List[List[str]]) -> List[List[str]]:
+def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[List[str]]:
 	"""
 	Cleans, normalizes, and lemmatizes label lists.
 	1. Handles parsing (str -> list).
@@ -35,52 +35,127 @@ def _post_process_(labels_list: List[List[str]]) -> List[List[str]]:
 	3. Lemmatizes (e.g., "trains" -> "train").
 	4. Deduplicates within the sample (post-lemmatization).
 	"""
+	if verbose:
+		print(f"\n{'='*80}")
+		print(f"[_post_process_] Starting post-processing")
+		print(f"[_post_process_] Input type: {type(labels_list)}")
+		print(f"[_post_process_] Input length: {len(labels_list) if labels_list else 0}")
+		print(f"{'='*80}\n")
+	
 	if not labels_list:
+		if verbose:
+			print("[_post_process_] Empty input, returning as-is")
 		return labels_list
 
 	lemmatizer = nltk.stem.WordNetLemmatizer()
 	processed_batch = []
 
-	for labels in labels_list:
+	for idx, labels in enumerate(labels_list):
+		if verbose:
+			print(f"\n{'-'*60}")
+			print(f"[Sample {idx+1}/{len(labels_list)}]")
+			print(f"  Input type: {type(labels)}")
+			print(f"  Input value: {labels}")
+		
 		# --- 1. Standardization: Ensure we have a list of strings ---
 		current_items = []
 		if labels is None:
+			if verbose:
+				print(f"  → None detected, appending None to output")
 			processed_batch.append(None)
 			continue
 		elif isinstance(labels, list):
 			current_items = labels
+			if verbose:
+				print(f"  → Already a list with {len(current_items)} items")
 		elif isinstance(labels, str):
+			if verbose:
+				print(f"  → String detected, attempting to parse...")
 			try:
 				parsed = ast.literal_eval(labels)
 				if isinstance(parsed, list):
 					current_items = parsed
+					if verbose:
+						print(f"  → Successfully parsed to list with {len(current_items)} items")
 				else:
 					current_items = [str(parsed)]
-			except:
+					if verbose:
+						print(f"  → Parsed to non-list type ({type(parsed)}), wrapping in list")
+			except Exception as e:
 				current_items = [labels] # Fallback for non-list strings
+				if verbose:
+					print(f"  → Parse failed ({type(e).__name__}), treating as single-item list")
 		else:
 			# Numeric or other types
 			current_items = [str(labels)]
+			if verbose:
+				print(f"  → Non-standard type ({type(labels)}), converting to string and wrapping")
+
+		if verbose:
+			print(f"  Current items after standardization: {current_items}")
 
 		# --- 2. Normalization & Lemmatization ---
 		clean_set = set() # Use set for automatic deduplication
-		for item in current_items:
-			if not item: continue
+		
+		if verbose:
+			print(f"  Processing {len(current_items)} items...")
+		
+		for item_idx, item in enumerate(current_items):
+			if verbose:
+				print(f"    [{item_idx+1}] Original: {repr(item)} (type: {type(item).__name__})")
+			
+			if not item:
+				if verbose:
+					print(f"        → Empty/falsy, skipping")
+				continue
 			
 			# String conversion & basic cleanup
 			s = str(item).strip().lower()
-			s = s.strip('"').strip("'").strip('()').strip('[]')
+			if verbose:
+				print(f"        → After str/strip/lower: {repr(s)}")
 			
-			if not s: continue
+			s = s.strip('"').strip("'").strip('()').strip('[]')
+			if verbose:
+				print(f"        → After quote/bracket removal: {repr(s)}")
+			
+			if not s:
+				if verbose:
+					print(f"        → Empty after cleanup, skipping")
+				continue
 
 			# Lemmatize (noun-based by default)
 			# This converts 'soldiers' -> 'soldier', 'factories' -> 'factory'
 			lemma = lemmatizer.lemmatize(s)
 			
-			clean_set.add(lemma)
+			if verbose:
+				if lemma != s:
+					print(f"        → Lemmatized: {repr(s)} → {repr(lemma)}")
+				else:
+					print(f"        → Lemmatized: {repr(lemma)} (unchanged)")
+			
+			if lemma in clean_set:
+				if verbose:
+					print(f"        → Duplicate detected, skipping")
+			else:
+				clean_set.add(lemma)
+				if verbose:
+					print(f"        → Added to clean set")
 
 		# Convert back to list
-		processed_batch.append(list(clean_set))
+		result = list(clean_set)
+		processed_batch.append(result)
+		
+		if verbose:
+			print(f"  Final output for sample {idx+1}: {result}")
+			print(f"  Items: {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
+	
+	if verbose:
+		print(f"\n{'='*80}")
+		print(f"[_post_process_] Completed post-processing")
+		print(f"[_post_process_] Output length: {len(processed_batch)}")
+		print(f"[_post_process_] None values: {sum(1 for x in processed_batch if x is None)}")
+		print(f"[_post_process_] Empty lists: {sum(1 for x in processed_batch if x is not None and len(x) == 0)}")
+		print(f"{'='*80}\n")
 	
 	return processed_batch
 
