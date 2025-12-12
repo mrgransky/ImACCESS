@@ -369,7 +369,112 @@ def parse_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
 	else:
 		raise NotImplementedError(f"VLM response parsing not implemented for {model_id}")
 
-def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:		
+def _qwen_vlm_(response: str, verbose: bool = False) -> Optional[List[str]]:
+	"""
+	Extract keywords from VLM response.
+	Assumes VLM returns a Python list like: ["keyword1", "keyword2", ...]
+	"""
+	
+	if not isinstance(response, str):
+		if verbose:
+			print("[ERROR] VLM output is not a string.")
+		return None
+	
+	if verbose:
+		print(f"\n[DEBUG] Raw Qwen VLM response:")
+		print(f"{response}")
+		print()
+	
+	# Step 1: Find all balanced bracket expressions [...] in the response
+	list_pattern = r"\[[^\[\]]+\]"
+	matches = re.findall(list_pattern, response, re.DOTALL)
+	
+	if verbose:
+		print(f"[DEBUG] Found {len(matches)} list-like pattern(s)")
+		for i, m in enumerate(matches):
+			print(f"[DEBUG]   Match {i}: {m}")
+		print()
+	
+	if not matches:
+		if verbose:
+			print("[ERROR] No list pattern found in response")
+		return None
+	
+	# Step 2: Pick the longest match (most likely to be the main list)
+	primary = max(matches, key=len)
+	
+	if verbose:
+		print(f"[DEBUG] Selected primary list ({len(primary)} chars):")
+		print(f"[DEBUG]   {primary}")
+		print()
+	
+	# Step 3: Try to parse it as a Python literal
+	try:
+		parsed = ast.literal_eval(primary)
+		if verbose:
+			print(f"[DEBUG] ✓ ast.literal_eval succeeded")
+			print(f"[DEBUG]   Type: {type(parsed)}")
+			print(f"[DEBUG]   Content: {parsed}")
+			print()
+	except Exception as e:
+		if verbose:
+			print(f"[ERROR] ast.literal_eval failed: {type(e).__name__}: {e}")
+		return None
+	
+	# Step 4: Validate it's a list
+	if not isinstance(parsed, list):
+		if verbose:
+			print(f"[ERROR] Parsed result is not a list (got {type(parsed)})")
+		return None
+	
+	# Step 5: Convert all items to strings and clean
+	keywords = []
+	for i, item in enumerate(parsed):
+		# Convert to string
+		s = str(item).strip()
+		
+		if verbose:
+			print(f"[DEBUG] Item {i}: {repr(item)} -> {repr(s)}")
+		
+		# Skip empty strings
+		if not s:
+			if verbose:
+				print(f"[DEBUG]   → Skipped (empty)")
+			continue
+		
+		keywords.append(s)
+		
+		if verbose:
+			print(f"[DEBUG]   → Added")
+	
+	if verbose:
+		print()
+		print(f"[DEBUG] Extracted {len(keywords)} keyword(s): {keywords}")
+		print()
+	
+	# Step 6: Remove duplicates while preserving order
+	seen = set()
+	unique_keywords = []
+	
+	for i, kw in enumerate(keywords):
+		if kw not in seen:
+			unique_keywords.append(kw)
+			seen.add(kw)
+			if verbose:
+				print(f"[DEBUG] Dedup {i}: '{kw}' → kept (unique)")
+		else:
+			if verbose:
+				print(f"[DEBUG] Dedup {i}: '{kw}' → skipped (duplicate)")
+	
+	if verbose:
+		print()
+		print(f"[FINAL] Returning {len(unique_keywords)} unique keyword(s): {unique_keywords}")
+		print()
+	
+	return unique_keywords if unique_keywords else None
+
+def _qwen_vlm_old(response: str, verbose: bool=False) -> Optional[List[str]]:		
+
 	if verbose:
 		print(f"\n[DEBUG] Raw Qwen VLM response:")
 		print(f"{response}")
@@ -391,7 +496,8 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 		ss = s.lower()
 		for p in TEMPORAL_PATTERNS:
 			if re.search(p, ss):
-				if verbose: print(f"[DEBUG] Temporal filter matched '{s}' with pattern '{p}'")
+				if verbose: 
+					print(f"[DEBUG] Temporal filter matched '{s}' with pattern '{p}'")
 				return True
 		return False
 	
@@ -480,10 +586,6 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 
 		if verbose: print(f"[DEBUG] dedupe_preserve_order output ({len(out)} items): {out}")
 		return out
-
-	if not isinstance(response, str):
-		if verbose: print("[ERROR] VLM output is not a string.")
-		return None
 	
 	# 1) Try to capture balanced lists
 	all_matches = re.findall(r"\[[^\[\]]+\]", response, re.DOTALL)
@@ -1384,7 +1486,7 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=12, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
-	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=128, help="Batch size for processing")
+	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=256, help="Batch size for processing")
 	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")

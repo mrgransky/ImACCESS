@@ -604,6 +604,7 @@ nine
 ninety
 no-one
 nobody
+no.
 non
 none
 nonetheless
