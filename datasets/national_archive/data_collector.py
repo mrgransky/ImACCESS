@@ -28,7 +28,7 @@ args.dataset_dir = os.path.normpath(args.dataset_dir)
 print_args_table(args=args, parser=parser)
 
 # run in local laptop:
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 16 --img_mean_std --enable_thumbnailing > logs/na_image_download.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 16 --img_mean_std --enable_thumbnailing > logs/na_dataset_collection.out &
 
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 12 --img_mean_std --enable_thumbnailing
