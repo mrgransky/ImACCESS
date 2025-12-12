@@ -40,7 +40,7 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
-LLM_BATCH_SIZES=(48 32 32 48 64)
+LLM_BATCH_SIZES=(32 32 32 48 48)
 VLM_BATCH_SIZES=(32 32 24 24 24)
 
 python -u gt_kws_multimodal.py \
@@ -50,7 +50,7 @@ python -u gt_kws_multimodal.py \
   --vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
   --llm_model_id "Qwen/Qwen3-4B-Instruct-2507" \
   --vlm_model_id "Qwen/Qwen3-VL-8B-Instruct" \
-  --max_generated_tks 256 \
+  --max_generated_tks 192 \
   --max_keywords 5 \
   --verbose \
   # --use_quantization \
