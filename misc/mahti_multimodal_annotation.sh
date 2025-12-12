@@ -40,8 +40,8 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
-LLM_BATCH_SIZES=(32 32 32 32 48)
-VLM_BATCH_SIZES=(64 64 96 96 96)
+LLM_BATCH_SIZES=(32 32 32 32 32)
+VLM_BATCH_SIZES=(48 48 64 64 64)
 
 python -u gt_kws_multimodal.py \
   --csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv \

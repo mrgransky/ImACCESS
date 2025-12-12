@@ -326,6 +326,10 @@ def parse_llm_response(
 	max_kws: int, 
 	verbose: bool = False
 ):
+	if verbose: 
+		print(f"[DEBUG] Parsing LLM response for {model_id}")
+		print(f"[RESPONSE]\n{raw_llm_response}\n")
+
 	llm_response: Optional[str] = None
 
 	# response differs significantly between models
@@ -746,7 +750,6 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 		return processed
 
 	if verbose:
-		# print(f"LLM response (repr):\n{repr(llm_response)}\n")
 		print(f"\n{model_id} LLM response:\n{(llm_response)}\n")
 	
 	# INST tag detection
@@ -758,23 +761,24 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 		print(f"Found {len(inst_tags)} normalized INST tags:")
 		for tag, start, end in inst_tags:
 			print(f" Tag: '{tag}', position: {start}-{end}")
+
 	# Strategy 1: Extract clean list content (main approach)
 	list_content = _extract_clean_list_content(llm_response)
 	
 	if verbose:
-		print(f"\nExtracted list content: {list_content}")
+		print(f"Extracted list content: {list_content}")
 	
 	# Strategy 2: If no clean list found, try direct extraction from content after first [/INST]
 	if not list_content and inst_tags:
 		if verbose:
-			print("\n=== FALLBACK TO DIRECT EXTRACTION ===")
+			print("FALLBACK TO DIRECT EXTRACTION".center(100, "="))
 		
 		# Get content after the first [/INST] tag
 		first_inst_end = inst_tags[0].end()
 		response_content = llm_response[first_inst_end:].strip()
 		
 		if verbose:
-			print(f"Content after first [/INST]: '{response_content[:300]}...'")
+			print(f"Content after first [/INST]: {response_content}")
 		
 		# Look for the first proper Python list
 		python_list_patterns = [
@@ -808,13 +812,14 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 		final_keywords = _postprocess_keywords(keywords_list)
 		
 		if verbose:
-			print(f"\nFinal processed keywords: {final_keywords}")
+			print(f"Final processed keywords: {final_keywords}\n")
 		
 		return final_keywords if final_keywords else None		
 	except Exception as e:
 		if verbose:
-			print(f"\nError parsing the list: {e}")
+			print(f"<!> Error parsing the list: {e}")
 			print(f"Problematic string: '{list_content}'")
+
 		return None
 
 def _nousresearch_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = False):
@@ -1488,11 +1493,14 @@ def get_llm_based_labels_opt(
 		batches.append((batch_indices, batch_prompts))
 	
 	for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing (textual) batches", ncols=100)):
+		if verbose:
+			print(f"Batch [{batch_num + 1}/{total_batches}]")
+		
 		for attempt in range(max_retries + 1):
-			try:
-				if attempt > 0 and verbose:
-					print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for batch {batch_num + 1}")
+			if attempt > 0 and verbose:
+				print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for batch {batch_num + 1}")
 
+			try:
 				tokenized = tokenizer(
 					batch_prompts,
 					return_tensors="pt",
@@ -1513,8 +1521,8 @@ def get_llm_based_labels_opt(
 					pad_token_id=tokenizer.pad_token_id,
 					eos_token_id=tokenizer.eos_token_id,
 				)
-				if verbose:
-					print(f"\nBatch[{batch_num}]")
+				# if verbose:
+				# 	print(f"\nBatch[{batch_num}]")
 
 				# Generate response
 				with torch.no_grad():
