@@ -349,9 +349,9 @@ def get_multimodal_annotation(
 	torch.cuda.empty_cache()
 
 	# Apply lowercase conversion
-	llm_based_labels = _post_process_(llm_based_labels)
-	vlm_based_labels = _post_process_(vlm_based_labels)
-	multimodal_labels = _post_process_(multimodal_labels)
+	llm_based_labels = _post_process_(label_list=llm_based_labels, verbose=verbose)
+	vlm_based_labels = _post_process_(label_list=vlm_based_labels, verbose=verbose)
+	multimodal_labels = _post_process_(label_list=multimodal_labels, verbose=verbose)
 
 	df['llm_based_labels'] = llm_based_labels
 	df['vlm_based_labels'] = vlm_based_labels
