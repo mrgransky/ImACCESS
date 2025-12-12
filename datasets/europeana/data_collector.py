@@ -99,7 +99,7 @@ detector = (
 
 def is_english(
 	text: str,
-	confidence_threshold: float = 0.15, # We can now use a safer, higher threshold
+	confidence_threshold: float = 0.1, # We can now use a safer, higher threshold
 	verbose: bool = False,
 ) -> bool:
 	if not text or not str(text).strip():

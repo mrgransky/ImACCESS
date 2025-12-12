@@ -1063,6 +1063,15 @@ def download_image(
 	image_id = row['id']
 	image_path = os.path.join(image_dir, f"{image_id}.jpg")
 
+	headers = {
+		'Content-type': 'application/json',
+		'Accept': 'application/json; text/plain; */*',
+		'Cache-Control': 'no-cache',
+		'Connection': 'keep-alive',
+		'Pragma': 'no-cache',
+	}
+
+
 	# --- Step 1: Check if image already exists ---
 	if os.path.exists(image_path):
 		try:
@@ -1094,12 +1103,21 @@ def download_image(
 	while attempt < retries:
 		try:
 			# Try with SSL verification
-			response = session.get(image_url, timeout=download_timeout)
+			response = session.get(
+				url=image_url, 
+				headers=headers,
+				timeout=download_timeout,
+			)
 			response.raise_for_status()
 		except requests.exceptions.SSLError as ssl_err:
 			print(f"[{rIdx}/{total_rows}] SSL error. Retrying without verification: {ssl_err}")
 			try:
-				response = session.get(image_url, timeout=download_timeout, verify=False)
+				response = session.get(
+					url=image_url,
+					headers=headers,
+					timeout=download_timeout, 
+					verify=False,
+				)
 				response.raise_for_status()
 			except Exception as fallback_err:
 				print(f"[{rIdx}/{total_rows}] Retry without verification failed: {fallback_err}")
@@ -1150,6 +1168,7 @@ def get_synchronized_df_img(
 		thumbnail_size: tuple=(1000, 1000),
 		large_image_threshold_mb: float=2.0,
 		enable_thumbnailing: bool=False,
+		TIMEOUT: int=30,
 	):
 	# synched_fpath = os.path.join(os.path.dirname(image_dir), "metadata_multi_label_synched.csv")
 	image_dir = os.path.join(os.path.dirname(synched_fpath), "images")
@@ -1180,7 +1199,7 @@ def get_synchronized_df_img(
 					total_rows=df.shape[0],
 					retries=2, 
 					backoff_factor=0.5,
-					download_timeout=20,
+					download_timeout=TIMEOUT,
 					enable_thumbnailing=enable_thumbnailing,
 					thumbnail_size=thumbnail_size,
 					large_image_threshold_mb=large_image_threshold_mb,
@@ -1279,6 +1298,7 @@ def get_mean_std_rgb_img_multiprocessing(
 		batch_size: int,
 		img_rgb_mean_fpth: str,
 		img_rgb_std_fpth: str,
+		TIMEOUT :int=30,
 	) -> Tuple[List[float], List[float]]:
 	
 	if os.path.exists(img_rgb_mean_fpth) and os.path.exists(img_rgb_std_fpth):
@@ -1315,7 +1335,7 @@ def get_mean_std_rgb_img_multiprocessing(
 		# Process results with timeout handling
 		for future in tqdm(as_completed(futures), total=len(futures), desc="Processing Batches"):
 			try:
-				result = future.result(timeout=30)  # Increase timeout for slow I/O
+				result = future.result(timeout=TIMEOUT)  # Increase timeout for slow I/O
 				if result:
 					partial_sum, partial_sum_sq, partial_count = result
 					if partial_count > 0:
@@ -1338,14 +1358,14 @@ def get_mean_std_rgb_img_multiprocessing(
 	
 	return mean, std
 
-def check_url_status(url: str, TIMEOUT:int=50) -> bool:
-	try:
-		response = requests.head(url, timeout=TIMEOUT)
-		# Return True only if the status code is 200 (OK)
-		return response.status_code == 200
-	except (requests.RequestException, Exception) as e:
-		print(f"Error accessing URL {url}: {e}")
-		return False
+# def check_url_status(url: str, TIMEOUT :int=30) -> bool:
+# 	try:
+# 		response = requests.head(url, timeout=TIMEOUT)
+# 		# Return True only if the status code is 200 (OK)
+# 		return response.status_code == 200
+# 	except (requests.RequestException, Exception) as e:
+# 		print(f"Error accessing URL {url}: {e}")
+# 		return False
 
 def save_pickle(pkl, fname:str):
 	print(f"\nSaving {type(pkl)}\n{fname}")

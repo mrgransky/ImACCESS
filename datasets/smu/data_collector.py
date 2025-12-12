@@ -170,8 +170,10 @@ def get_data(start_date: str="1900-01-01", end_date: str="1970-12-31", query: st
 			else:
 				print(f"<!> Failed to retrieve data: status_code: {response.status_code}")
 				break
+
 		if len(query_all_hits) == 0:
 			return
+
 		save_pickle(pkl=query_all_hits, fname=query_all_hits_fpth)
 
 	print(f"Total hit(s): {len(query_all_hits)} {type(query_all_hits)} for query: « {query} » found in {time.time()-t0:.2f} sec")
