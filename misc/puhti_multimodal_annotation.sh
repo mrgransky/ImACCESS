@@ -43,7 +43,7 @@ DATASETS=(
 LLM_BATCH_SIZES=(48 32 48 48 64)
 VLM_BATCH_SIZES=(32 32 24 24 24)
 
-python -u multimodal_annotation.py \
+python -u gt_kws_multimodal.py \
   --csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv \
   --num_workers $SLURM_CPUS_PER_TASK \
   --llm_batch_size ${LLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \

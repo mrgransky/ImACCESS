@@ -27,6 +27,63 @@ from visualize import perform_multilabel_eda
 # $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 64 -llm_bs 12 -dv "cuda:3" > /media/volume/ImACCESS/trash/multimodal_annotation_smu.txt &
 
 def _post_process_(labels_list: List[List[str]]) -> List[List[str]]:
+	"""
+	Cleans, normalizes, and lemmatizes label lists.
+	1. Handles parsing (str -> list).
+	2. Lowercases and strips quotes/brackets.
+	3. Lemmatizes (e.g., "trains" -> "train").
+	4. Deduplicates within the sample (post-lemmatization).
+	"""
+	if not labels_list:
+		return labels_list
+
+	lemmatizer = nltk.stem.WordNetLemmatizer()
+	processed_batch = []
+
+	for labels in labels_list:
+		# --- 1. Standardization: Ensure we have a list of strings ---
+		current_items = []
+		if labels is None:
+			processed_batch.append(None)
+			continue
+		elif isinstance(labels, list):
+			current_items = labels
+		elif isinstance(labels, str):
+			try:
+				parsed = ast.literal_eval(labels)
+				if isinstance(parsed, list):
+					current_items = parsed
+				else:
+					current_items = [str(parsed)]
+			except:
+				current_items = [labels] # Fallback for non-list strings
+		else:
+			# Numeric or other types
+			current_items = [str(labels)]
+
+		# --- 2. Normalization & Lemmatization ---
+		clean_set = set() # Use set for automatic deduplication
+		for item in current_items:
+			if not item: continue
+			
+			# String conversion & basic cleanup
+			s = str(item).strip().lower()
+			s = s.strip('"').strip("'").strip('()').strip('[]')
+			
+			if not s: continue
+
+			# Lemmatize (noun-based by default)
+			# This converts 'soldiers' -> 'soldier', 'factories' -> 'factory'
+			lemma = lemmatizer.lemmatize(s)
+			
+			clean_set.add(lemma)
+
+		# Convert back to list
+		processed_batch.append(list(clean_set))
+	
+	return processed_batch
+
+def _post_process_old(labels_list: List[List[str]]) -> List[List[str]]:
 	if not labels_list:
 		return labels_list
 
