@@ -75,6 +75,7 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - **ABSOLUTELY NO** explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
 - **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
+- Exclude meaningless abbreviations, numerical words, special characters, or stopwords.
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""
 
@@ -748,9 +749,6 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 				if verbose: print(f"Reached max keywords: {processed}")
 				break
 		return processed
-
-	if verbose:
-		print(f"\n{model_id} LLM response:\n{(llm_response)}\n")
 	
 	# INST tag detection
 	inst_tags = []
@@ -1521,8 +1519,6 @@ def get_llm_based_labels_opt(
 					pad_token_id=tokenizer.pad_token_id,
 					eos_token_id=tokenizer.eos_token_id,
 				)
-				# if verbose:
-				# 	print(f"\nBatch[{batch_num}]")
 
 				# Generate response
 				with torch.no_grad():
@@ -1541,7 +1537,7 @@ def get_llm_based_labels_opt(
 				# Parse each response
 				for i, text_out in enumerate(decoded):
 					if verbose:
-						print(f"Batch[{batch_num}] response index: {i}")
+						print(f"Batch[{batch_num}/{total_batches}] response index: {i}/{len(decoded)}")
 					idx = batch_indices[i]
 					try:
 						parsed = parse_llm_response(

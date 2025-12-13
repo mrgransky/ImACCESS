@@ -375,12 +375,7 @@ def _qwen_vlm_(response: str, verbose: bool = False) -> Optional[List[str]]:
 		if verbose:
 			print("[ERROR] VLM output is not a string.")
 		return None
-	
-	if verbose:
-		print(f"\n[DEBUG] Raw Qwen VLM response:")
-		print(f"{response}")
-		print()
-	
+		
 	# Step 1: Find all balanced bracket expressions [...] in the response
 	list_pattern = r"\[[^\[\]]+\]"
 	matches = re.findall(list_pattern, response, re.DOTALL)
