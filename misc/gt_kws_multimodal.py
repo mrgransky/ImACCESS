@@ -291,6 +291,7 @@ def get_multimodal_annotation(
 			batch_size=llm_batch_size,
 			max_generated_tks=max_generated_tks,
 			max_kws=max_keywords,
+			num_workers=num_workers,
 			use_quantization=use_quantization,
 			verbose=verbose,
 		)

@@ -1053,14 +1053,7 @@ def get_vlm_based_labels_opt(
 						return None
 
 		with ThreadPoolExecutor(max_workers=num_workers) as ex:
-				verified = list(
-						tqdm(
-								ex.map(verify, uniq_inputs),
-								total=len(uniq_inputs),
-								desc="Verifying images",
-								ncols=100,
-						)
-				)
+			verified = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc="Verifying images", ncols=100,))
 
 		valid_indices = [i for i, v in enumerate(verified) if v is not None]
 		total_batches = math.ceil(len(valid_indices) / batch_size)
@@ -1068,8 +1061,8 @@ def get_vlm_based_labels_opt(
 		results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
 
 		if verbose:
-				print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
-				print(f"[INFO] Memory[in-use]: {process.memory_info().rss / (1024**3):.2f} GB")
+			print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
+			print(f"[INFO] Memory[in-use]: {process.memory_info().rss / (1024**3):.2f} GB")
 
 		# ========== Helper: parallel parsing for one batch ==========
 		def _parse_batch_parallel(
