@@ -973,8 +973,6 @@ def get_vlm_based_labels_opt(
 			- Maps results back to original order and writes *_vlm_keywords.csv / .xlsx
 		"""
 
-		from concurrent.futures import ThreadPoolExecutor, as_completed
-
 		process = psutil.Process()
 		t0 = time.time()
 

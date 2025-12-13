@@ -1381,8 +1381,6 @@ def get_llm_based_labels_opt(
 			- Saves results back to <csv_file>_llm_keywords.csv and .xlsx
 		"""
 
-		from concurrent.futures import ThreadPoolExecutor, as_completed  # local import to keep function self-contained
-
 		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
 
 		# ──────────────────────────────────────────────────────────────────────────────
