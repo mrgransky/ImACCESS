@@ -1043,14 +1043,14 @@ def get_vlm_based_labels_opt(
 				orig_to_uniq = list(range(n_total))
 
 		def verify(p: Optional[str]) -> Optional[str]:
-				if p is None or not os.path.exists(p):
-						return None
-				try:
-						with Image.open(p) as im:
-								im.verify()
-						return p
-				except Exception:
-						return None
+			if p is None or not os.path.exists(p):
+				return None
+			try:
+				with Image.open(p) as im:
+					im.verify()
+				return p
+			except Exception:
+				return None
 
 		with ThreadPoolExecutor(max_workers=num_workers) as ex:
 			verified = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc="Verifying images", ncols=100,))
@@ -1095,11 +1095,7 @@ def get_vlm_based_labels_opt(
 				if not decoded_responses:
 					return out
 
-				# max_workers = min(len(decoded_responses), 8)
-				max_workers = num_workers
-				if verbose_:
-					print(f"\n[batch {b}] Parsing batch with {max_workers} workers\n")
-				with ThreadPoolExecutor(max_workers=max_workers) as ex:
+				with ThreadPoolExecutor(max_workers=num_workers) as ex:
 					futures = {ex.submit(_parse_one, i): i for i in range(len(decoded_responses))}
 					for fut in as_completed(futures):
 						uniq_index, parsed = fut.result()

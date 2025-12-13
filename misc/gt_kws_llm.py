@@ -1537,17 +1537,8 @@ def get_llm_based_labels_opt(
 					print(f"⚠️ Parsing error for batch index {idx}: {e}")
 				return idx, None
 		
-		# Choose a reasonable number of workers
-		# max_workers = min(len(decoded_batch), 8) if decoded_batch else 1
-		# max_workers = min(len(decoded_batch), number_of_workers)
-		max_workers = num_workers
-		if verbose_:
-			print(f"\nParsing batch with {max_workers} workers\n")
 
-		if max_workers <= 0:
-			return results_dict
-
-		with ThreadPoolExecutor(max_workers=max_workers) as executor:
+		with ThreadPoolExecutor(max_workers=num_workers) as executor:
 			futures = {executor.submit(_parse_one, i): i for i in range(len(decoded_batch))}
 			for future in as_completed(futures):
 				idx, parsed = future.result()
@@ -1606,7 +1597,6 @@ def get_llm_based_labels_opt(
 					batch_prompts=batch_prompts,
 					model_id_=model_id,
 					max_kws_=max_kws,
-					number_of_workers=num_workers,
 					verbose_=verbose,
 				)
 				# Assign results back to unique_results
