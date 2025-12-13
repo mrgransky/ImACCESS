@@ -899,282 +899,282 @@ def _nousresearch_llm_response(model_id: str, input_prompt: str, llm_response: s
 						return None
 
 def _llama_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = True):
-    def _normalize_text(s: str) -> str:
-        """Normalize text for comparison (case folding, unicode normalization)."""
-        s = unicodedata.normalize("NFKD", s or "")
-        s = "".join(ch for ch in s if not unicodedata.combining(ch))
-        return s.lower()
+		def _normalize_text(s: str) -> str:
+				"""Normalize text for comparison (case folding, unicode normalization)."""
+				s = unicodedata.normalize("NFKD", s or "")
+				s = "".join(ch for ch in s if not unicodedata.combining(ch))
+				return s.lower()
 
-    def _token_clean(s: str) -> str:
-        """Clean and normalize whitespace."""
-        return re.sub(r"\s+", " ", (s or "").strip())
+		def _token_clean(s: str) -> str:
+				"""Clean and normalize whitespace."""
+				return re.sub(r"\s+", " ", (s or "").strip())
 
-    def _has_letter(s: str) -> bool:
-        """Check if string contains letters."""
-        return bool(re.search(r"[A-Za-z]", s or ""))
+		def _has_letter(s: str) -> bool:
+				"""Check if string contains letters."""
+				return bool(re.search(r"[A-Za-z]", s or ""))
 
-    def _is_punct_only(s: str) -> bool:
-        """Check if string contains only punctuation."""
-        return bool(s) and bool(re.fullmatch(r"[\W_]+", s))
+		def _is_punct_only(s: str) -> bool:
+				"""Check if string contains only punctuation."""
+				return bool(s) and bool(re.fullmatch(r"[\W_]+", s))
 
-    def _looks_like_abbrev(s: str) -> bool:
-        """Heuristic to detect real abbreviations, not normal capitalized words."""
-        # Skip if it's a normal multi-word phrase
-        if ' ' in s:
-            return False
-            
-        # Real abbreviation patterns
-        if re.search(r"[.&/]", s):
-            return True
-            
-        # Very short ALL-CAPS (2-3 chars) like "USA", "UK", "SP"
-        if len(s) <= 3 and s.isalpha() and s.isupper():
-            return True
-            
-        # Mixed case words are not abbreviations
-        if not s.isupper():
-            return False
-            
-        # For longer ALL-CAPS words, only flag if they look like acronyms
-        # (all caps with no vowels or very short)
-        if len(s) >= 4 and s.isupper():
-            # Check if it has vowels - if no vowels, likely acronym
-            if not re.search(r'[AEIOUaeiou]', s):
-                return True
-            # Otherwise, it's probably just a capitalized normal word
-            return False
-            
-        return False
+		def _looks_like_abbrev(s: str) -> bool:
+				"""Heuristic to detect real abbreviations, not normal capitalized words."""
+				# Skip if it's a normal multi-word phrase
+				if ' ' in s:
+						return False
+						
+				# Real abbreviation patterns
+				if re.search(r"[.&/]", s):
+						return True
+						
+				# Very short ALL-CAPS (2-3 chars) like "USA", "UK", "SP"
+				if len(s) <= 3 and s.isalpha() and s.isupper():
+						return True
+						
+				# Mixed case words are not abbreviations
+				if not s.isupper():
+						return False
+						
+				# For longer ALL-CAPS words, only flag if they look like acronyms
+				# (all caps with no vowels or very short)
+				if len(s) >= 4 and s.isupper():
+						# Check if it has vowels - if no vowels, likely acronym
+						if not re.search(r'[AEIOUaeiou]', s):
+								return True
+						# Otherwise, it's probably just a capitalized normal word
+						return False
+						
+				return False
 
-    # Temporal words to exclude
-    TEMPORAL_WORDS = {
-        "morning", "evening", "night", "noon", "midnight", "today", "yesterday", "tomorrow",
-        "spring", "summer", "autumn", "fall", "winter", "weekend", "weekday",
-        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
-        "january", "february", "march", "april", "may", "june", "july", "august", 
-        "september", "october", "november", "december", "century", "centuries", 
-        "year", "years", "month", "months", "day", "days", "decade", "decades", "time", "times"
-    }
+		# Temporal words to exclude
+		TEMPORAL_WORDS = {
+				"morning", "evening", "night", "noon", "midnight", "today", "yesterday", "tomorrow",
+				"spring", "summer", "autumn", "fall", "winter", "weekend", "weekday",
+				"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+				"january", "february", "march", "april", "may", "june", "july", "august", 
+				"september", "october", "november", "december", "century", "centuries", 
+				"year", "years", "month", "months", "day", "days", "decade", "decades", "time", "times"
+		}
 
-    def _is_temporal_word(s: str) -> bool:
-        """Check if word is temporal."""
-        return _normalize_text(s) in TEMPORAL_WORDS
+		def _is_temporal_word(s: str) -> bool:
+				"""Check if word is temporal."""
+				return _normalize_text(s) in TEMPORAL_WORDS
 
-    def _is_valid_form(s: str) -> bool:
-        """Validate keyword form."""
-        if not s:
-            return False
-        if len(s) < 2:
-            return False
-        if _is_punct_only(s):
-            return False
-        if re.search(r"\d", s):
-            return False
-        if not _has_letter(s):
-            return False
-        if _is_temporal_word(s):
-            return False
-            
-        tokens = [t for t in re.split(r"\s+", s) if t]
-        if tokens and all(_normalize_text(t) in STOPWORDS for t in tokens):
-            return False
-            
-        if _looks_like_abbrev(s):
-            return False
-            
-        return True
+		def _is_valid_form(s: str) -> bool:
+				"""Validate keyword form."""
+				if not s:
+						return False
+				if len(s) < 2:
+						return False
+				if _is_punct_only(s):
+						return False
+				if re.search(r"\d", s):
+						return False
+				if not _has_letter(s):
+						return False
+				if _is_temporal_word(s):
+						return False
+						
+				tokens = [t for t in re.split(r"\s+", s) if t]
+				if tokens and all(_normalize_text(t) in STOPWORDS for t in tokens):
+						return False
+						
+				if _looks_like_abbrev(s):
+						return False
+						
+				return True
 
-    def _appears_in_description(candidate: str, description_text: str) -> bool:
-        """Check if keyword appears in original description with flexible matching."""
-        if not description_text:
-            return True
-            
-        cand_norm = _normalize_text(candidate)
-        desc_norm = _normalize_text(description_text)
-        
-        # Direct substring match
-        if cand_norm in desc_norm:
-            return True
-            
-        # Word-level matching for multi-word keywords
-        cand_words = cand_norm.split()
-        desc_words = desc_norm.split()
-        
-        # Check if all words in candidate appear in description
-        if all(any(cand_word in desc_word for desc_word in desc_words) for cand_word in cand_words):
-            return True
-            
-        # Check for partial matches
-        for desc_word in desc_words:
-            if any(cand_word in desc_word for cand_word in cand_words):
-                return True
-                
-        return False
+		def _appears_in_description(candidate: str, description_text: str) -> bool:
+				"""Check if keyword appears in original description with flexible matching."""
+				if not description_text:
+						return True
+						
+				cand_norm = _normalize_text(candidate)
+				desc_norm = _normalize_text(description_text)
+				
+				# Direct substring match
+				if cand_norm in desc_norm:
+						return True
+						
+				# Word-level matching for multi-word keywords
+				cand_words = cand_norm.split()
+				desc_words = desc_norm.split()
+				
+				# Check if all words in candidate appear in description
+				if all(any(cand_word in desc_word for desc_word in desc_words) for cand_word in cand_words):
+						return True
+						
+				# Check for partial matches
+				for desc_word in desc_words:
+						if any(cand_word in desc_word for cand_word in cand_words):
+								return True
+								
+				return False
 
-    # ---------- Response Extraction Utilities ----------
-    def _after_last_inst(text: str) -> str:
-        """Extract content after last [/INST] tag."""
-        matches = list(re.finditer(r"\[/INST\]", text or ""))
-        if not matches:
-            return (text or "").strip()
-        return text[matches[-1].end():].strip()
+		# ---------- Response Extraction Utilities ----------
+		def _after_last_inst(text: str) -> str:
+				"""Extract content after last [/INST] tag."""
+				matches = list(re.finditer(r"\[/INST\]", text or ""))
+				if not matches:
+						return (text or "").strip()
+				return text[matches[-1].end():].strip()
 
-    def _before_last_inst(text: str) -> str:
-        """Extract content before last [/INST] tag."""
-        matches = list(re.finditer(r"\[/INST\]", text or ""))
-        if not matches:
-            return (text or "").strip()
-        return text[:matches[-1].start()].strip()
+		def _before_last_inst(text: str) -> str:
+				"""Extract content before last [/INST] tag."""
+				matches = list(re.finditer(r"\[/INST\]", text or ""))
+				if not matches:
+						return (text or "").strip()
+				return text[:matches[-1].start()].strip()
 
-    def _strip_codeblocks(s: str) -> str:
-        """Remove code blocks from text."""
-        s = re.sub(r"```.*?```", "", s or "", flags=re.DOTALL)
-        s = re.sub(r"`[^`]*`", "", s)
-        return s
+		def _strip_codeblocks(s: str) -> str:
+				"""Remove code blocks from text."""
+				s = re.sub(r"```.*?```", "", s or "", flags=re.DOTALL)
+				s = re.sub(r"`[^`]*`", "", s)
+				return s
 
-    # ---------- Parsing Strategies ----------
-    def _parse_python_lists(s: str):
-        """Find and parse Python list literals."""
-        pattern = r"\[\s*(?:(['\"])(?:(?:(?!\1).)*)\1\s*(?:,\s*(['\"])(?:(?:(?!\2).)*)\2\s*)*)?\]"
-        for m in re.finditer(pattern, s or "", flags=re.DOTALL):
-            yield s[m.start():m.end()]
+		# ---------- Parsing Strategies ----------
+		def _parse_python_lists(s: str):
+				"""Find and parse Python list literals."""
+				pattern = r"\[\s*(?:(['\"])(?:(?:(?!\1).)*)\1\s*(?:,\s*(['\"])(?:(?:(?!\2).)*)\2\s*)*)?\]"
+				for m in re.finditer(pattern, s or "", flags=re.DOTALL):
+						yield s[m.start():m.end()]
 
-    def _parse_bullet_lists(s: str) -> List[str]:
-        """Parse various bullet list formats."""
-        items = []
-        for line in (s or "").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            
-            # Match various bullet formats: -, *, •, numbers
-            bullet_match = re.match(r"^([-*•\u2022\u2023\u2043]|\d+[\.\)])\s+(.+)", line)
-            if bullet_match:
-                item = bullet_match.group(2).strip()
-                # Clean up any trailing explanations
-                item = re.sub(r"\s*[-–—].*$", "", item)
-                item = re.sub(r"\s*[.:].*$", "", item)
-                # Remove markdown formatting
-                item = re.sub(r"\*\*", "", item)
-                item = re.sub(r"\*", "", item)
-                if item and len(item) > 1:
-                    items.append(item)
-        return items
+		def _parse_bullet_lists(s: str) -> List[str]:
+				"""Parse various bullet list formats."""
+				items = []
+				for line in (s or "").splitlines():
+						line = line.strip()
+						if not line:
+								continue
+						
+						# Match various bullet formats: -, *, •, numbers
+						bullet_match = re.match(r"^([-*•\u2022\u2023\u2043]|\d+[\.\)])\s+(.+)", line)
+						if bullet_match:
+								item = bullet_match.group(2).strip()
+								# Clean up any trailing explanations
+								item = re.sub(r"\s*[-–—].*$", "", item)
+								item = re.sub(r"\s*[.:].*$", "", item)
+								# Remove markdown formatting
+								item = re.sub(r"\*\*", "", item)
+								item = re.sub(r"\*", "", item)
+								if item and len(item) > 1:
+										items.append(item)
+				return items
 
-    def _postprocess_keywords(candidates: List[str], description_text: str) -> List[str]:
-        """Post-process and validate keywords."""
-        out = []
-        seen = set()
-        
-        for kw in candidates:
-            kw = _token_clean(kw)
-            
-            if not _is_valid_form(kw):
-                continue
-            if not _appears_in_description(kw, description_text):
-                continue
-            
-            key = _normalize_text(kw)
-            if key in seen:
-                continue
-                
-            seen.add(key)
-            out.append(kw)
-            
-            if len(out) >= max_kws:
-                break
-                
-        return out
+		def _postprocess_keywords(candidates: List[str], description_text: str) -> List[str]:
+				"""Post-process and validate keywords."""
+				out = []
+				seen = set()
+				
+				for kw in candidates:
+						kw = _token_clean(kw)
+						
+						if not _is_valid_form(kw):
+								continue
+						if not _appears_in_description(kw, description_text):
+								continue
+						
+						key = _normalize_text(kw)
+						if key in seen:
+								continue
+								
+						seen.add(key)
+						out.append(kw)
+						
+						if len(out) >= max_kws:
+								break
+								
+				return out
 
-    def _extract_description(text: str) -> str:
-        """Extract the original description from prompt."""
-        pre = _before_last_inst(text or "")
-        
-        # Try to find the description before rules
-        patterns = [
-            r"Given the description below[^:\n]*[:\n]\s*(.*?)\n\s*\*\*Rules",
-            r"Given the description below[^:\n]*[:\n]\s*(.*)",
-        ]
-        
-        for pat in patterns:
-            m = re.search(pat, pre, flags=re.DOTALL | re.IGNORECASE)
-            if m:
-                candidate = m.group(1).strip()
-                if len(candidate) >= 15:
-                    return candidate
-        
-        # Fallback: take last paragraph before rules
-        parts = re.split(r"\*\*Rules\*\*", pre, flags=re.IGNORECASE)
-        head = parts[0] if parts else pre
-        paras = [p.strip() for p in re.split(r"\n{2,}", head) if p.strip()]
-        if paras:
-            return paras[-1]
-            
-        return ""
+		def _extract_description(text: str) -> str:
+				"""Extract the original description from prompt."""
+				pre = _before_last_inst(text or "")
+				
+				# Try to find the description before rules
+				patterns = [
+						r"Given the description below[^:\n]*[:\n]\s*(.*?)\n\s*\*\*Rules",
+						r"Given the description below[^:\n]*[:\n]\s*(.*)",
+				]
+				
+				for pat in patterns:
+						m = re.search(pat, pre, flags=re.DOTALL | re.IGNORECASE)
+						if m:
+								candidate = m.group(1).strip()
+								if len(candidate) >= 15:
+										return candidate
+				
+				# Fallback: take last paragraph before rules
+				parts = re.split(r"\*\*Rules\*\*", pre, flags=re.IGNORECASE)
+				head = parts[0] if parts else pre
+				paras = [p.strip() for p in re.split(r"\n{2,}", head) if p.strip()]
+				if paras:
+						return paras[-1]
+						
+				return ""
 
-    # ---------- Main Parsing Logic ----------
-    if verbose:
-        print("=" * 100)
-        print(f"Processing Llama response from: {model_id}")
-        print("=" * 100)
+		# ---------- Main Parsing Logic ----------
+		if verbose:
+				print("=" * 100)
+				print(f"Processing Llama response from: {model_id}")
+				print("=" * 100)
 
-    # Extract description for validation
-    desc_for_validation = input_prompt or ""
-    if (not desc_for_validation) or ("[INST]" in desc_for_validation) or ("**Rules**" in desc_for_validation):
-        extracted_desc = _extract_description(llm_response or "")
-        if extracted_desc:
-            desc_for_validation = extracted_desc
-            if verbose:
-                print(f"Recovered description: {desc_for_validation}")
-        else:
-            if verbose:
-                print("Using provided description as-is.")
+		# Extract description for validation
+		desc_for_validation = input_prompt or ""
+		if (not desc_for_validation) or ("[INST]" in desc_for_validation) or ("**Rules**" in desc_for_validation):
+				extracted_desc = _extract_description(llm_response or "")
+				if extracted_desc:
+						desc_for_validation = extracted_desc
+						if verbose:
+								print(f"Recovered description: {desc_for_validation}")
+				else:
+						if verbose:
+								print("Using provided description as-is.")
 
-    # Get content after last [/INST] tag
-    content_after = _after_last_inst(llm_response or "")
-    if verbose:
-        print(f"Content after [/INST]: {repr(content_after[:200])}...")
+		# Get content after last [/INST] tag
+		content_after = _after_last_inst(llm_response or "")
+		if verbose:
+				print(f"Content after [/INST]: {repr(content_after[:200])}...")
 
-    # Clean content
-    content_clean = _strip_codeblocks(content_after)
+		# Clean content
+		content_clean = _strip_codeblocks(content_after)
 
-    # Strategy 1: Python List Literals
-    if verbose:
-        print("\n[STRATEGY 1] Searching for Python lists...")
-    
-    list_candidates = list(_parse_python_lists(content_after))
-    for list_str in reversed(list_candidates):
-        try:
-            cleaned = list_str.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
-            parsed = ast.literal_eval(cleaned)
-            if isinstance(parsed, list) and all(isinstance(x, str) for x in parsed):
-                result = _postprocess_keywords(parsed, desc_for_validation)
-                if result:
-                    if verbose:
-                        print(f"✓ Found Python list: {result}")
-                    return result
-        except Exception as e:
-            if verbose:
-                print(f"  List parse failed: {e}")
+		# Strategy 1: Python List Literals
+		if verbose:
+				print("\n[STRATEGY 1] Searching for Python lists...")
+		
+		list_candidates = list(_parse_python_lists(content_after))
+		for list_str in reversed(list_candidates):
+				try:
+						cleaned = list_str.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
+						parsed = ast.literal_eval(cleaned)
+						if isinstance(parsed, list) and all(isinstance(x, str) for x in parsed):
+								result = _postprocess_keywords(parsed, desc_for_validation)
+								if result:
+										if verbose:
+												print(f"✓ Found Python list: {result}")
+										return result
+				except Exception as e:
+						if verbose:
+								print(f"  List parse failed: {e}")
 
-    # Strategy 2: Bullet Lists
-    if verbose:
-        print("\n[STRATEGY 2] Searching for bullet lists...")
-    
-    bullets = _parse_bullet_lists(content_clean)
-    if bullets:
-        if verbose:
-            print(f"  Found {len(bullets)} bullet items")
-        result = _postprocess_keywords(bullets, desc_for_validation)
-        if result:
-            if verbose:
-                print(f"✓ Extracted from bullets: {result}")
-            return result
+		# Strategy 2: Bullet Lists
+		if verbose:
+				print("\n[STRATEGY 2] Searching for bullet lists...")
+		
+		bullets = _parse_bullet_lists(content_clean)
+		if bullets:
+				if verbose:
+						print(f"  Found {len(bullets)} bullet items")
+				result = _postprocess_keywords(bullets, desc_for_validation)
+				if result:
+						if verbose:
+								print(f"✓ Extracted from bullets: {result}")
+						return result
 
-    if verbose:
-        print("\n❌ No valid keywords extracted")
-    
-    return None
+		if verbose:
+				print("\n❌ No valid keywords extracted")
+		
+		return None
 
 def query_local_llm(
 		model: tfs.PreTrainedModel,
@@ -1361,6 +1361,425 @@ def get_llm_based_labels_debug(
 	return all_keywords
 
 def get_llm_based_labels_opt(
+				model_id: str,
+				device: str,
+				batch_size: int,
+				max_generated_tks: int,
+				max_kws: int,
+				csv_file: str,
+				do_dedup: bool = True,
+				max_retries: int = 2,
+				use_quantization: bool = False,
+				verbose: bool = False,
+) -> List[Optional[List[str]]]:
+		"""
+		Optimized LLM keyword extraction:
+			- Batch generation with retries
+			- Optional deduplication of identical inputs
+			- Parallel parsing of LLM responses per batch using ThreadPoolExecutor
+			- Per-item fallback via query_local_llm for failed parses
+			- Saves results back to <csv_file>_llm_keywords.csv and .xlsx
+		"""
+
+		from concurrent.futures import ThreadPoolExecutor, as_completed  # local import to keep function self-contained
+
+		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
+
+		# ──────────────────────────────────────────────────────────────────────────────
+		# Reuse existing results if present
+		# ──────────────────────────────────────────────────────────────────────────────
+		if os.path.exists(output_csv):
+				if verbose:
+						print(f"Found existing results at {output_csv}...")
+				df = pd.read_csv(
+						filepath_or_buffer=output_csv,
+						on_bad_lines='skip',
+						dtype=dtypes,
+						low_memory=False,
+				)
+				if 'llm_keywords' in df.columns:
+						if verbose:
+								print(f"[EXISTING] Found existing LLM keywords in {output_csv}")
+						return df['llm_keywords'].tolist()
+
+		if verbose:
+				print(f"\n{'=' * 100}")
+				print(f"[INIT] Starting OPTIMIZED batch LLM processing")
+				print(f"[INIT] Model: {model_id}")
+				print(f"[INIT] Batch size: {batch_size}")
+				print(f"[INIT] Device: {device}")
+				print(f"{'=' * 100}\n")
+
+		st_t = time.time()
+
+		# ──────────────────────────────────────────────────────────────────────────────
+		# Load input CSV
+		# ──────────────────────────────────────────────────────────────────────────────
+		try:
+				df = pd.read_csv(
+						filepath_or_buffer=csv_file,
+						on_bad_lines='skip',
+						dtype=dtypes,
+						low_memory=False,
+				)
+		except pd.errors.ParserError as e:
+				if verbose:
+						print(f"CSV parsing error, trying with python engine: {e}")
+				df = pd.read_csv(
+						filepath_or_buffer=csv_file,
+						on_bad_lines='skip',
+						dtype=dtypes,
+						engine='python',
+				)
+
+		if 'enriched_document_description' not in df.columns:
+				raise ValueError("CSV file must have 'enriched_document_description' column")
+
+		descriptions = df['enriched_document_description'].tolist()
+		if verbose:
+				print(f"Loaded {len(descriptions)} descriptions")
+
+		inputs = descriptions
+		if len(inputs) == 0:
+				return None
+
+		# ──────────────────────────────────────────────────────────────────────────────
+		# Load tokenizer and model
+		# ──────────────────────────────────────────────────────────────────────────────
+		tokenizer, model = _load_llm_(
+				model_id=model_id,
+				device=device,
+				use_quantization=use_quantization,
+				verbose=verbose,
+		)
+
+		if verbose:
+				valid_count = sum(
+						1 for x in inputs
+						if x is not None and str(x).strip() not in ("", "nan", "None")
+				)
+				null_count = len(inputs) - valid_count
+				print(f"📊 Input stats: {type(inputs)} {len(inputs)} total, {valid_count} valid, {null_count} null")
+
+		# ──────────────────────────────────────────────────────────────────────────────
+		# NULL-SAFE DEDUPLICATION
+		# ──────────────────────────────────────────────────────────────────────────────
+		if do_dedup:
+				unique_map: Dict[str, int] = {}
+				unique_inputs: List[Optional[str]] = []
+				original_to_unique_idx: List[int] = []
+
+				for s in inputs:
+						if s is None or str(s).strip() in ("", "nan", "None"):
+								key = "__NULL__"
+						else:
+								key = str(s).strip()
+
+						if key in unique_map:
+								original_to_unique_idx.append(unique_map[key])
+						else:
+								idx = len(unique_inputs)
+								unique_map[key] = idx
+								unique_inputs.append(None if key == "__NULL__" else key)
+								original_to_unique_idx.append(idx)
+		else:
+				unique_inputs = []
+				for s in inputs:
+						if s is None or str(s).strip() in ("", "nan", "None"):
+								unique_inputs.append(None)
+						else:
+								unique_inputs.append(str(s).strip())
+				original_to_unique_idx = list(range(len(unique_inputs)))
+
+		# ──────────────────────────────────────────────────────────────────────────────
+		# Build prompts
+		# ──────────────────────────────────────────────────────────────────────────────
+		unique_prompts: List[Optional[str]] = []
+		for s in unique_inputs:
+				if s is None:
+						unique_prompts.append(None)
+				else:
+						if verbose:
+								print(f"Generating prompt for text with len={len(s.split()):<10}max_kws={min(max_kws, len(s.split()))}")
+						prompt = get_prompt(
+								tokenizer=tokenizer,
+								description=s,
+								max_kws=min(max_kws, len(s.split())),
+						)
+						unique_prompts.append(prompt)
+
+		unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
+		valid_indices = [i for i, p in enumerate(unique_prompts) if p is not None]
+
+		if not valid_indices:
+				if verbose:
+						print(f" <!> No valid prompts found after deduplication => exiting")
+				return None
+
+		total_batches = math.ceil(len(valid_indices) / batch_size)
+		if verbose:
+				print(f"Processing {len(valid_indices)} unique prompts "
+							f"in batches of {batch_size} samples => {total_batches} batches")
+
+		# ──────────────────────────────────────────────────────────────────────────────
+		# Helper: Parallel parsing of a single batch
+		# ──────────────────────────────────────────────────────────────────────────────
+		def _parse_batch_parallel(
+				decoded_batch: List[str],
+				batch_indices: List[int],
+				batch_prompts: List[str],
+				model_id_: str,
+				max_kws_: int,
+				verbose_: bool,
+		) -> Dict[int, Optional[List[str]]]:
+				"""
+				Parse a batch of decoded responses in parallel and return a dict:
+						{unique_index: parsed_keywords_or_None}
+				"""
+				results_dict: Dict[int, Optional[List[str]]] = {}
+
+				def _parse_one(local_i: int) -> Tuple[int, Optional[List[str]]]:
+						idx = batch_indices[local_i]
+						try:
+								parsed = parse_llm_response(
+										model_id=model_id_,
+										input_prompt=batch_prompts[local_i],
+										raw_llm_response=decoded_batch[local_i],
+										max_kws=max_kws_,
+										# Turn off verbose inside threads to avoid log spam / contention
+										verbose=False,
+								)
+								return idx, parsed
+						except Exception as e:
+								if verbose_:
+										print(f"⚠️ Parsing error for batch index {idx}: {e}")
+								return idx, None
+
+				# Choose a reasonable number of workers
+				max_workers = min(len(decoded_batch), 8) if decoded_batch else 1
+				if max_workers <= 0:
+						return results_dict
+
+				with ThreadPoolExecutor(max_workers=max_workers) as executor:
+						futures = {
+								executor.submit(_parse_one, i): i for i in range(len(decoded_batch))
+						}
+						for future in as_completed(futures):
+								idx, parsed = future.result()
+								results_dict[idx] = parsed
+
+				return results_dict
+
+		# ──────────────────────────────────────────────────────────────────────────────
+		# Batching: generate + parse
+		# ──────────────────────────────────────────────────────────────────────────────
+		batches: List[Tuple[List[int], List[str]]] = []
+		for i in range(0, len(valid_indices), batch_size):
+				batch_indices = valid_indices[i:i + batch_size]
+				batch_prompts = [unique_prompts[idx] for idx in batch_indices]
+				batches.append((batch_indices, batch_prompts))
+
+		for batch_num, (batch_indices, batch_prompts) in enumerate(
+				tqdm(batches, desc="Processing (textual) batches", ncols=100)
+		):
+				# if verbose:
+				# 		print(f"Batch [{batch_num + 1}/{total_batches}]")
+
+				# Retry whole batch on failure (e.g., OOM or generation error)
+				for attempt in range(max_retries + 1):
+						if attempt > 0 and verbose:
+								print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for batch {batch_num + 1}")
+
+						try:
+								tokenized = tokenizer(
+										batch_prompts,
+										return_tensors="pt",
+										truncation=True,
+										max_length=4096,
+										padding=True,
+								)
+								if device != 'cpu':
+										tokenized = {k: v.to(device) for k, v in tokenized.items()}
+
+								gen_kwargs = dict(
+										input_ids=tokenized.get("input_ids"),
+										attention_mask=tokenized["attention_mask"],
+										max_new_tokens=max_generated_tks,
+										do_sample=TEMPERATURE > 0.0,
+										temperature=TEMPERATURE,
+										top_p=TOP_P,
+										pad_token_id=tokenizer.pad_token_id,
+										eos_token_id=tokenizer.eos_token_id,
+								)
+
+								# Generate response
+								with torch.no_grad():
+										with torch.amp.autocast(
+												device_type=device.type,
+												enabled=torch.cuda.is_available(),
+												dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+										):
+												outputs = model.generate(**gen_kwargs)
+
+								decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+
+								# if verbose:
+								#     print(f"\nBatch[{batch_num}] decoded responses: {type(decoded)} {len(decoded)}")
+
+								# ──────────────────────────────────────────────────────────────
+								# NEW: Parallel parsing per batch
+								# ──────────────────────────────────────────────────────────────
+								parsed_dict = _parse_batch_parallel(
+										decoded_batch=decoded,
+										batch_indices=batch_indices,
+										batch_prompts=batch_prompts,
+										model_id_=model_id,
+										max_kws_=max_kws,
+										verbose_=verbose,
+								)
+
+								# Assign results back to unique_results
+								for idx, parsed in parsed_dict.items():
+										unique_results[idx] = parsed
+
+								# Successful batch => break out of retry loop
+								break
+
+						except Exception as e:
+								print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed:\n{e}")
+								if attempt < max_retries:
+										sleep_time = EXP_BACKOFF ** attempt
+										print(f"⏳ Waiting {sleep_time}s before retry...")
+										time.sleep(sleep_time)
+										if torch.cuda.is_available():
+												torch.cuda.empty_cache()
+								else:
+										print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
+										for idx in batch_indices:
+												unique_results[idx] = None
+
+				# Clean up batch tensors immediately after use
+				try:
+						del tokenized
+				except NameError:
+						pass
+				try:
+						del outputs
+				except NameError:
+						pass
+				try:
+						del decoded
+				except NameError:
+						pass
+
+				# Memory management - clear cache every 25 batches
+				if batch_num % 25 == 0 and torch.cuda.is_available():
+						torch.cuda.empty_cache()
+						gc.collect()
+
+		# ──────────────────────────────────────────────────────────────────────────────
+		# HYBRID FALLBACK: Retry failed items individually with query_local_llm
+		# ──────────────────────────────────────────────────────────────────────────────
+		failed_indices = [
+				i
+				for i, result in enumerate(unique_results)
+				if result is None and unique_inputs[i] is not None
+		]
+
+		if failed_indices and verbose:
+				print(f"🔄 Retrying {len(failed_indices)} failed items individually using query_local_llm [sequential processing]...")
+
+		for idx in failed_indices:
+				desc = unique_inputs[idx]
+				if verbose:
+						print(f"🔄 Retrying individual item {idx}:\n{desc}")
+				try:
+						individual_result = query_local_llm(
+								model=model,
+								tokenizer=tokenizer,
+								text=desc,
+								device=device,
+								max_generated_tks=max_generated_tks,
+								max_kws=min(max_kws, len(desc.split())),
+								verbose=verbose,
+						)
+						unique_results[idx] = individual_result
+						if verbose and individual_result:
+								print(f"✅ Individual retry successful: {individual_result}")
+						elif verbose:
+								print(f"❌ Individual retry failed for item {idx}")
+				except Exception as e:
+						if verbose:
+								print(f"💥 Individual retry error for item {idx}: {e}")
+						unique_results[idx] = None
+
+		# ──────────────────────────────────────────────────────────────────────────────
+		# Map unique_results back to original order
+		# ──────────────────────────────────────────────────────────────────────────────
+		results: List[Optional[List[str]]] = []
+		for orig_i, uniq_idx in tqdm(
+				enumerate(original_to_unique_idx),
+				desc="Mapping results",
+				ncols=150,
+		):
+				results.append(unique_results[uniq_idx])
+
+		# ──────────────────────────────────────────────────────────────────────────────
+		# Stats
+		# ──────────────────────────────────────────────────────────────────────────────
+		if verbose:
+				stats_start = time.time()
+				n_ok = 0
+				n_null = 0
+
+				for inp, res in zip(inputs, results):
+						if res is not None:
+								n_ok += 1
+						if inp is None or str(inp).strip() in ("", "nan", "None"):
+								n_null += 1
+
+				total_results = len(results)
+				valid_inputs_count = total_results - n_null
+				n_failed = valid_inputs_count - n_ok
+				success_rate = (n_ok / valid_inputs_count) * 100 if valid_inputs_count > 0 else 0
+
+				print(
+						f"[STATS] {n_ok}/{valid_inputs_count} successful ({success_rate:.1f}%) "
+						f"{n_null} null inputs {n_failed} failed "
+						f"Elapsed_t: {time.time() - stats_start:.2f}s"
+				)
+
+		# ──────────────────────────────────────────────────────────────────────────────
+		# Cleanup model and tokenizer
+		# ──────────────────────────────────────────────────────────────────────────────
+		if verbose:
+				print(f"Cleaning up model and tokenizer...")
+		del model, tokenizer
+		if torch.cuda.is_available():
+				torch.cuda.empty_cache()
+
+		# ──────────────────────────────────────────────────────────────────────────────
+		# Save results
+		# ──────────────────────────────────────────────────────────────────────────────
+		if csv_file:
+				output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
+				if verbose:
+						print(f"Saving results to {output_csv}...")
+				df['llm_keywords'] = results
+				df.to_csv(output_csv, index=False)
+				try:
+						df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+				except Exception as e:
+						print(f"Failed to write Excel file: {e}")
+				if verbose:
+						print(f"Saved {len(results)} keywords to {output_csv} {df.shape} {list(df.columns)}")
+
+		if verbose:
+				print(f"Total LLM-based keyword extraction time: {time.time() - st_t:.1f} sec")
+
+		return results
+
+def get_llm_based_labels_opt_old(
 		model_id: str,
 		device: str,
 		batch_size: int,
