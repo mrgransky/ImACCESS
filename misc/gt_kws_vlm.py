@@ -1078,29 +1078,32 @@ def get_vlm_based_labels_opt(
 				out: Dict[int, Optional[List[str]]] = {}
 
 				def _parse_one(local_idx: int) -> Tuple[int, Optional[List[str]]]:
-						uniq_index = batch_indices[local_idx]
-						resp = decoded_responses[local_idx]
-						try:
-								parsed = parse_vlm_response(
-										model_id=model_id_,
-										raw_response=resp,
-										verbose=False,  # keep parallel logs quiet
-								)
-								return uniq_index, parsed
-						except Exception as e:
-								if verbose_:
-										print(f"⚠️ Parsing error for unique index {uniq_index}: {e}")
-								return uniq_index, None
+					uniq_index = batch_indices[local_idx]
+					resp = decoded_responses[local_idx]
+					try:
+						parsed = parse_vlm_response(
+							model_id=model_id_,
+							raw_response=resp,
+							verbose=verbose_,  # keep parallel logs quiet
+						)
+						return uniq_index, parsed
+					except Exception as e:
+						if verbose_:
+							print(f"⚠️ Parsing error for unique index {uniq_index}: {e}")
+						return uniq_index, None
 
 				if not decoded_responses:
-						return out
+					return out
 
-				max_workers = min(len(decoded_responses), 8)
+				# max_workers = min(len(decoded_responses), 8)
+				max_workers = num_workers
+				if verbose_:
+					print(f"\n[batch {b}] Parsing batch with {max_workers} workers\n")
 				with ThreadPoolExecutor(max_workers=max_workers) as ex:
-						futures = {ex.submit(_parse_one, i): i for i in range(len(decoded_responses))}
-						for fut in as_completed(futures):
-								uniq_index, parsed = fut.result()
-								out[uniq_index] = parsed
+					futures = {ex.submit(_parse_one, i): i for i in range(len(decoded_responses))}
+					for fut in as_completed(futures):
+						uniq_index, parsed = fut.result()
+						out[uniq_index] = parsed
 
 				return out
 
@@ -1109,15 +1112,15 @@ def get_vlm_based_labels_opt(
 				batch_indices = valid_indices[b * batch_size:(b + 1) * batch_size]
 
 				def load_img(p: str) -> Optional[Image.Image]:
-						try:
-								with Image.open(p).convert("RGB") as im:
-										im.thumbnail((IMG_MAX_RES, IMG_MAX_RES))
-										return im.copy()
-						except Exception:
-								return None
+					try:
+						with Image.open(p).convert("RGB") as im:
+							im.thumbnail((IMG_MAX_RES, IMG_MAX_RES))
+							return im.copy()
+					except Exception:
+						return None
 
 				with ThreadPoolExecutor(max_workers=num_workers) as ex:
-						imgs = list(ex.map(load_img, [verified[i] for i in batch_indices]))
+					imgs = list(ex.map(load_img, [verified[i] for i in batch_indices]))
 
 				valid_pairs = [(i, img) for i, img in zip(batch_indices, imgs) if img is not None]
 				if not valid_pairs:

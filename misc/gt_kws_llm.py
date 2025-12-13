@@ -1512,7 +1512,6 @@ def get_llm_based_labels_opt(
 		decoded_batch: List[str],
 		batch_indices: List[int],
 		batch_prompts: List[str],
-		number_of_workers: int,
 		model_id_: str,
 		max_kws_: int,
 		verbose_: bool,
@@ -1541,7 +1540,7 @@ def get_llm_based_labels_opt(
 		# Choose a reasonable number of workers
 		# max_workers = min(len(decoded_batch), 8) if decoded_batch else 1
 		# max_workers = min(len(decoded_batch), number_of_workers)
-		max_workers = number_of_workers
+		max_workers = num_workers
 		if verbose_:
 			print(f"\nParsing batch with {max_workers} workers\n")
 
