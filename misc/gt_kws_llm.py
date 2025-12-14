@@ -46,8 +46,6 @@ TOP_P = 0.9
 MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 
-print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
-huggingface_hub.login(token=hf_tk)
 
 # STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
 STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
@@ -1747,11 +1745,19 @@ def main():
 	args.device = torch.device(args.device)
 	print(args)
 
-	if torch.cuda.is_available():
+	try:
+		print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
+		huggingface_hub.login(token=hf_tk)
+	except Exception as e:
+		print(f"Failed to login to HuggingFace Hub: {e}")
+		raise e
+
+	if args.verbose and torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(args.device)
-		total_mem = torch.cuda.get_device_properties(args.device).total_memory / (1024**3)  # Convert to GB
-		if args.verbose:
-			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+		total_mem = torch.cuda.get_device_properties(args.device).total_memory / (1024**3) # GB
+		print(f"Available GPU(s) = {torch.cuda.device_count()}")
+		print(f"GPU: {gpu_name} {total_mem:.2f} GB VRAM")
+		print(f"\t• CUDA: {torch.version.cuda} Compute Capability: {torch.cuda.get_device_capability(args.device)}")
 
 	if args.debug or args.description:
 		keywords = get_llm_based_labels_debug(

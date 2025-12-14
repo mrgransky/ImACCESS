@@ -1299,12 +1299,20 @@ def main():
 	args.device = torch.device(args.device)
 	print(args)
 
+	try:
+		print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
+		huggingface_hub.login(token=hf_tk)
+	except Exception as e:
+		print(f"Failed to login to HuggingFace Hub: {e}")
+		raise e
+
 	if args.verbose and torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(args.device)
 		total_mem = torch.cuda.get_device_properties(args.device).total_memory / (1024**3) # GB
 		print(f"Available GPU(s) = {torch.cuda.device_count()}")
 		print(f"GPU: {gpu_name} {total_mem:.2f} GB VRAM")
 		print(f"\t• CUDA: {torch.version.cuda} Compute Capability: {torch.cuda.get_device_capability(args.device)}")
+
 
 	if args.image_path:
 		keywords = get_vlm_based_labels_single(
