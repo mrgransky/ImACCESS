@@ -159,46 +159,6 @@ def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[
 	
 	return processed_batch
 
-def _post_process_old(labels_list: List[List[str]]) -> List[List[str]]:
-	if not labels_list:
-		return labels_list
-
-	result = []
-	for labels in labels_list:
-		if labels is None:
-			result.append(None)
-		elif isinstance(labels, list):
-			# Convert each label to lowercase
-			lowercase_labels = [label.lower() if isinstance(label, str) else label for label in labels]
-			result.append(lowercase_labels)
-		elif isinstance(labels, str):
-			try:
-				# Parse string representation of list and convert to lowercase
-				parsed_labels = ast.literal_eval(labels)
-				if isinstance(parsed_labels, list):
-					lowercase_labels = [label.lower() if isinstance(label, str) else label for label in parsed_labels]
-					result.append(lowercase_labels)
-				else:
-					result.append(labels.lower())
-			except:
-				result.append(labels.lower())
-		else:
-			result.append(labels)
-
-	# Remove quotes and parentheses from string items and lists
-	processed_result = []
-	for item in result:
-		if isinstance(item, str):
-			processed_result.append(item.strip('"').strip("'").strip('()'))
-		elif isinstance(item, list):
-			# Apply strip to each string element in the list
-			processed_item = [elem.strip('"').strip("'").strip('()') if isinstance(elem, str) else elem for elem in item]
-			processed_result.append(processed_item)
-		else:
-			processed_result.append(item)
-	
-	return processed_result
-
 def merge_labels(
 		llm_based_labels: List[List[str]], 
 		vlm_based_labels: List[List[str]], 
