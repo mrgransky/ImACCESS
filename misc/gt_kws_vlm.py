@@ -1112,7 +1112,8 @@ def get_vlm_based_labels_opt(
 						with Image.open(p).convert("RGB") as im:
 							im.thumbnail((IMG_MAX_RES, IMG_MAX_RES))
 							return im.copy()
-					except Exception:
+					except Exception as e:
+						print(f"Error loading image {p}: {e}")
 						return None
 
 				with ThreadPoolExecutor(max_workers=num_workers) as ex:
@@ -1187,7 +1188,7 @@ def get_vlm_based_labels_opt(
 						if verbose:
 								print(f"\tFalling back to sequential processing for {len(valid_pairs)} images in this batch.")
 
-						# Fallback: process each image sequentially
+						# process each image sequentially
 						for uniq_idx, img in tqdm(valid_pairs, desc="Processing batch images [sequential]", ncols=100):
 								try:
 										single_message = [
@@ -1230,7 +1231,7 @@ def get_vlm_based_labels_opt(
 												verbose=verbose,
 										)
 								except Exception as e_fallback:
-										print(f"\n[fallback ❌] image {uniq_idx}:\n{e_fallback}\n")
+										print(f"\n[Fallback ❌] image {uniq_idx}:\n{e_fallback}\n")
 										results[uniq_idx] = None
 
 				# Clean up batch tensors immediately after use
@@ -1265,16 +1266,16 @@ def get_vlm_based_labels_opt(
 		# Save results
 		df.to_csv(out_csv, index=False)
 		try:
-				df.to_excel(out_csv.replace('.csv', '.xlsx'), index=False)
+			df.to_excel(out_csv.replace('.csv', '.xlsx'), index=False)
 		except Exception as e:
-				print(f"Failed to write Excel file: {e}")
+			print(f"Failed to write Excel file: {e}")
 
 		elapsed = time.time() - t0
 		if verbose:
-				n_ok = sum(1 for r in final if r)
-				print(f"[STATS] ✅ Success {n_ok}/{len(final)}")
-				print(f"[TIME] {elapsed/3600:.2f}h | avg {len(final)/elapsed:.2f}/s")
-				print(f"[SAVE] Results written to: {out_csv}")
+			n_ok = sum(1 for r in final if r)
+			print(f"[STATS] ✅ Success {n_ok}/{len(final)}")
+			print(f"[TIME] {elapsed/3600:.2f}h | avg {len(final)/elapsed:.2f}/s")
+			print(f"[SAVE] Results written to: {out_csv}")
 
 		return final
 

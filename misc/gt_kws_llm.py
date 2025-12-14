@@ -22,7 +22,7 @@ from utils import *
 # model_id = "Qwen/Qwen3-30B-A3B-Instruct-2507"
 
 # not useful for instruction tuning:
-# model_id = "microsoft/DialoGPT-large"  # Fallback if you can't run Hermes
+# model_id = "microsoft/DialoGPT-large"
 # model_id = "gpt2-xl"
 
 if not hasattr(tfs.utils, "LossKwargs"):
@@ -370,7 +370,7 @@ def _google_llm_response(model_id: str, input_prompt: str, llm_response: str, ma
 				print(f"Found potential list: '{final_list_str}'")
 		else:
 				print("Error: Could not find a valid list in the response.")
-				# Fallback: attempt to extract comma-separated keywords
+				# attempt to extract comma-separated keywords
 				match = re.search(r"([\w\s\-]+(?:,\s*[\w\s\-]+){2,})", llm_response, re.DOTALL)
 				if match:
 						keywords = [kw.strip() for kw in match.group(1).split(',')]
@@ -497,7 +497,7 @@ def _microsoft_llm_response(model_id: str, input_prompt: str, llm_response: str,
 				print(f"Error parsing the list with JSON: {e}")
 				print(f"Problematic string: {cleaned_string}")
 				
-				# Fallback: try ast.literal_eval if JSON fails
+				# try ast.literal_eval if JSON fails
 				try:
 						import ast
 						keywords_list = ast.literal_eval(final_list_str)
@@ -623,7 +623,7 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 			print(f"Found {len(list_candidates)} list candidates between INST tags")
 		
 		if not list_candidates:
-			# Fallback: search the entire response but skip example lists and photo titles
+			# search the entire response but skip example lists and photo titles
 			if verbose:
 				print("No lists found between INST tags, searching entire response...")
 			
@@ -839,7 +839,7 @@ def _nousresearch_llm_response(model_id: str, input_prompt: str, llm_response: s
 				print(f"Found potential list: '{potential_list}'")
 		else:
 				print("Error: Could not find any complete list patterns after [/INST].")
-				# Fallback: try any three-item list
+				# try any three-item list
 				list_match = re.search(
 						r"\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\]",
 						cleaned_response, re.DOTALL
