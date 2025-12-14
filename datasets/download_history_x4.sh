@@ -7,7 +7,7 @@
 # Author: ImACCESS Team, Tampere University
 # Date: 2024-2025
 
-set -e # Exit on error
+set -euo pipefail
 
 # Color codes for output
 RED='\033[0;31m'
