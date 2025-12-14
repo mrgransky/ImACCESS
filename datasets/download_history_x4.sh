@@ -76,8 +76,12 @@ main() {
 	BASE_DIR="${SCRIPT_DIR}"
 	
 	# Default dataset directory (can be overridden with -d flag)
-	DATASET_DIR="${HOME}/datasets/WW_DATASETs"
-	
+	if [[ "$(hostname)" == "gpu-vm" ]] || [[ "$USER" == "ubuntu" ]]; then
+		DATASET_DIR="/media/volume/ImACCESS/datasets/WW_DATASETs"
+	else
+		DATASET_DIR="${HOME}/datasets/WW_DATASETs"
+	fi
+
 	# Parse command line arguments
 	while getopts "d:h" opt; do
 		case $opt in
@@ -86,7 +90,7 @@ main() {
 				;;
 			h)
 				echo "Usage: $0 [-d DATASET_DIR] [-h]"
-				echo "  -d DATASET_DIR  Specify the output directory for datasets (default: ~/datasets/WW_DATASETs)"
+				echo "  -d DATASET_DIR  Specify the output directory for datasets (default: ~/datasets/WW_DATASETs or /media/volume/ImACCESS/datasets/WW_DATASETs)"
 				echo "  -h              Show this help message"
 				exit 0
 				;;
