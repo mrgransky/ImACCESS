@@ -1,7 +1,7 @@
 from utils import *
 from gt_kws_vlm import get_vlm_based_labels_opt, get_vlm_based_labels_debug
 from gt_kws_llm import get_llm_based_labels_opt, get_llm_based_labels_debug
-from visualize import perform_multilabel_eda
+import visualize as viz
 
 # LLM models:
 # model_id = "Qwen/Qwen3-4B-Instruct-2507"
@@ -324,22 +324,17 @@ def get_multimodal_annotation(
 	
 	output_csv = csv_file.replace(".csv", "_multimodal.csv")
 
-	# ==================================================================================
-	# Decide: parallel (multi-GPU) vs sequential
-	# ==================================================================================
 	use_parallel = (
 		device.type == "cuda"
 		and torch.cuda.is_available()
-		and torch.cuda.device_count() >= 2
+		and torch.cuda.device_count() > 1
 	)
 
 	if verbose:
 		print(f"[INFO] device = {device}, cuda devices = {torch.cuda.device_count() if torch.cuda.is_available() else 0}")
 		print(f"[INFO] Parallel LLM+VLM: {'ENABLED' if use_parallel else 'DISABLED'}")
 
-	# ----------------------------------------------------------------------------------
 	# Parallel branch: two GPUs → run LLM and VLM in separate processes, on different GPUs
-	# ----------------------------------------------------------------------------------
 	if use_parallel:
 		# Base GPU index from the provided device (e.g. cuda:2)
 		base_idx = device.index if device.index is not None else 0
@@ -351,25 +346,36 @@ def get_multimodal_annotation(
 		if verbose:
 			print(f"[PARALLEL] LLM on {llm_device_str}, VLM on {vlm_device_str}")
 		
-		from time import time
-		t0 = time()
 		llm_based_labels = None
 		vlm_based_labels = None
 		
-		# Prepare arguments for worker functions
 		llm_args = (
-			llm_model_id, llm_device_str, csv_file, llm_batch_size,
-			max_generated_tks, max_keywords, num_workers,
-			use_quantization, verbose, debug
+			llm_model_id, 
+			llm_device_str, 
+			csv_file, 
+			llm_batch_size,
+			max_generated_tks, 
+			max_keywords, 
+			num_workers,
+			use_quantization, 
+			verbose, 
+			debug
 		)
 		
 		vlm_args = (
-			vlm_model_id, vlm_device_str, csv_file, vlm_batch_size,
-			max_generated_tks, max_keywords, num_workers,
-			use_quantization, verbose, debug
+			vlm_model_id, 
+			vlm_device_str, 
+			csv_file, 
+			vlm_batch_size,
+			max_generated_tks, 
+			max_keywords, 
+			num_workers,
+			use_quantization, 
+			verbose, 
+			debug
 		)
 		
-		# We only have two heavy tasks, so max_workers=2 is optimal here
+		# two heavy tasks
 		with ProcessPoolExecutor(max_workers=2) as ex:
 			futures = {
 				ex.submit(_run_llm_pipeline, *llm_args): "llm",
@@ -391,13 +397,7 @@ def get_multimodal_annotation(
 				except Exception as e:
 					print(f"[PARALLEL] ❌ {task_name.upper()} worker failed: {e}")
 					raise
-		
-		if verbose:
-			print(f"[PARALLEL] Total LLM+VLM time: {time() - t0:.2f}s")
-	
-	# ----------------------------------------------------------------------------------
 	# Sequential branch: single GPU or CPU-only → keep your current behavior
-	# ----------------------------------------------------------------------------------
 	else:
 		# Textual-based annotation using LLMs
 		if debug:
@@ -462,9 +462,7 @@ def get_multimodal_annotation(
 		if torch.cuda.is_available():
 			torch.cuda.empty_cache()
 
-	# ==================================================================================
-	# Merge, post-process, save, and split (unchanged)
-	# ==================================================================================
+	# Merge, post-process, save, and split
 	if len(llm_based_labels) != len(vlm_based_labels):
 		raise ValueError("LLM and VLM based labels must have same length")
 
@@ -490,6 +488,10 @@ def get_multimodal_annotation(
 	df['llm_based_labels'] = llm_based_labels
 	df['vlm_based_labels'] = vlm_based_labels
 	df['multimodal_labels'] = multimodal_labels
+
+	if verbose:
+		print(f"Saving {type(df)} {df.shape} {list(df.columns)} to {output_csv}")
+
 	df.to_csv(output_csv, index=False)
 
 	try:
@@ -500,7 +502,7 @@ def get_multimodal_annotation(
 	if verbose:
 		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
 
-	perform_multilabel_eda(
+	viz.perform_multilabel_eda(
 		data_path=output_csv,
 		label_column='multimodal_labels'
 	)
@@ -511,150 +513,6 @@ def get_multimodal_annotation(
 		label_col='multimodal_labels'
 	)
 	
-	return multimodal_labels
-
-def get_multimodal_annotation_old(
-		csv_file: str,
-		llm_model_id: str,
-		vlm_model_id: str,
-		device: str,
-		num_workers: int,
-		llm_batch_size: int,
-		vlm_batch_size: int,
-		max_generated_tks: int,
-		max_keywords: int,
-		use_quantization: bool = False,
-		verbose: bool = False,
-		debug: bool = False,
-	):
-
-	df = pd.read_csv(
-		filepath_or_buffer=csv_file,
-		on_bad_lines='skip',
-		dtype=dtypes,
-		low_memory=False,
-	)
-	if verbose:
-		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
-
-	if 'img_path' not in df.columns:
-		raise ValueError("CSV file must have 'img_path' column")
-
-	if 'enriched_document_description' not in df.columns:
-		raise ValueError("CSV file must have 'enriched_document_description' column")
-
-	if verbose:
-		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
-
-	output_csv = csv_file.replace(".csv", "_multimodal.csv")
-
-	# Textual-based annotation using LLMs
-	if debug:
-		llm_based_labels = get_llm_based_labels_debug(
-			model_id=llm_model_id,
-			device=device,
-			csv_file=csv_file,
-			batch_size=llm_batch_size,
-			max_generated_tks=max_generated_tks,
-			max_kws=max_keywords,
-			use_quantization=use_quantization,
-			verbose=verbose,
-		)
-	else:
-		llm_based_labels = get_llm_based_labels_opt(
-			model_id=llm_model_id,
-			device=device,
-			csv_file=csv_file,
-			batch_size=llm_batch_size,
-			max_generated_tks=max_generated_tks,
-			max_kws=max_keywords,
-			num_workers=num_workers,
-			use_quantization=use_quantization,
-			verbose=verbose,
-		)
-
-	if verbose:
-		print(f"Extracted {len(llm_based_labels)} LLM-based {type(llm_based_labels)} labels")
-		print("="*120)
-
-	# clear memory
-	torch.cuda.empty_cache()
-
-	# Visual-based annotation using VLMs
-	if debug:
-		vlm_based_labels = get_vlm_based_labels_debug(
-			model_id=vlm_model_id,
-			device=device,
-			csv_file=csv_file,
-			batch_size=vlm_batch_size,
-			max_kws=max_keywords,
-			max_generated_tks=max_generated_tks,
-			use_quantization=use_quantization,
-			verbose=verbose,
-		)
-	else:
-		vlm_based_labels = get_vlm_based_labels_opt(
-			model_id=vlm_model_id,
-			device=device,
-			csv_file=csv_file,
-			num_workers=num_workers,
-			batch_size=vlm_batch_size,
-			max_kws=max_keywords,
-			max_generated_tks=max_generated_tks,
-			use_quantization=use_quantization,
-			verbose=verbose,
-		)
-	if verbose:
-		print(f"Extracted {len(vlm_based_labels)} VLM-based {type(vlm_based_labels)} labels")
-
-	# clear memory
-	torch.cuda.empty_cache()
-
-	# Combine textual and visual annotations
-	if len(llm_based_labels) != len(vlm_based_labels):
-		raise ValueError("LLM and VLM based labels must have same length")
-
-	if verbose:
-		print(f"Combining {len(llm_based_labels)} {type(llm_based_labels)} LLM- and {len(vlm_based_labels)} {type(vlm_based_labels)} VLM-based labels...")
-	multimodal_labels = merge_labels(
-		llm_based_labels=llm_based_labels, 
-		vlm_based_labels=vlm_based_labels,
-	)
-	if verbose:
-		print(f"Combined {len(multimodal_labels)} {type(multimodal_labels)} multimodal labels")
-
-	# clear memory
-	torch.cuda.empty_cache()
-
-	# Apply lowercase conversion
-	llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
-	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
-	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=verbose)
-
-	df['llm_based_labels'] = llm_based_labels
-	df['vlm_based_labels'] = vlm_based_labels
-	df['multimodal_labels'] = multimodal_labels
-
-	df.to_csv(output_csv, index=False)
-	try:
-		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-	except Exception as e:
-		print(f"Failed to write Excel file: {e}")
-
-	if verbose:
-		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
-
-	perform_multilabel_eda(
-		data_path=output_csv, 
-		label_column='multimodal_labels'
-	)
-
-	train_df, val_df = get_multi_label_stratified_split(
-		csv_file=output_csv,
-		val_split_pct=0.35,
-		label_col='multimodal_labels'
-	)
-
 	return multimodal_labels
 
 @measure_execution_time

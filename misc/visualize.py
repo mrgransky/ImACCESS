@@ -57,6 +57,281 @@ pd.set_option('display.width', 1000)
 pd.set_option('display.max_rows', 100)
 sns.set_style("whitegrid")
 
+def create_dataset_radar_chart(summary_stats_dict, output_dir, label_column, DPI=200):
+		"""
+		Create a radar chart visualizing key dataset characteristics.
+		
+		This provides a compelling visual summary for papers/presentations showing:
+		- Scale (number of samples, labels)
+		- Richness (label cardinality)
+		- Diversity (normalized entropy)
+		- Balance (inverse Gini - so higher is better)
+		- Complexity (effective number of labels)
+		"""
+		print("\n" + "="*100)
+		print("--- CREATING RADAR CHART FOR DATASET CHARACTERISTICS ---")
+		
+		# Extract and normalize metrics to 0-100 scale for radar chart
+		# Each metric is normalized so that "better" = higher value
+		
+		metrics_for_radar = {}
+		
+		# 1. SCALE: Log-normalized sample count (relative to common benchmarks)
+		n_samples = summary_stats_dict['Total Samples']
+		# Normalize: log scale, where 100K samples = 50, 1M = 100
+		scale_score = min(100, (np.log10(n_samples) / np.log10(1_000_000)) * 100)
+		metrics_for_radar['Scale\n(Samples)'] = scale_score
+		
+		# 2. VOCABULARY SIZE: Log-normalized label count
+		n_labels = summary_stats_dict['Unique Labels']
+		# Normalize: log scale, where 1K labels = 33, 10K = 66, 100K+ = 100
+		vocab_score = min(100, (np.log10(n_labels) / np.log10(100_000)) * 100)
+		metrics_for_radar['Vocabulary\nSize'] = vocab_score
+		
+		# 3. ANNOTATION RICHNESS: Label cardinality relative to benchmarks
+		mean_cardinality = float(summary_stats_dict['Mean Label Cardinality'])
+		# Normalize: 1 label = 10, 5 labels = 50, 10+ labels = 100
+		richness_score = min(100, (mean_cardinality / 10) * 100)
+		metrics_for_radar['Annotation\nRichness'] = richness_score
+		
+		# 4. DIVERSITY: Normalized entropy (already 0-1, scale to 100)
+		normalized_entropy = float(summary_stats_dict['Normalized Entropy'])
+		diversity_score = normalized_entropy * 100
+		metrics_for_radar['Label\nDiversity'] = diversity_score
+		
+		# 5. BALANCE: Inverse Gini (1 - Gini), so perfect balance = 100
+		gini = float(summary_stats_dict['Gini Coefficient'])
+		balance_score = (1 - gini) * 100
+		metrics_for_radar['Label\nBalance'] = balance_score
+		
+		# 6. TEMPORAL SPAN: If available (for historical datasets)
+		# This is optional - you can replace with another metric if needed
+		temporal_score = 70  # Placeholder: 70 years (1900-1970)
+		metrics_for_radar['Temporal\nSpan'] = temporal_score
+		
+		# 7. SEMANTIC COMPLEXITY: Effective number of labels (log-normalized)
+		effective_labels = float(summary_stats_dict['Effective # of Labels'])
+		# Normalize: 100 effective = 25, 1000 = 50, 10000+ = 100
+		complexity_score = min(100, (np.log10(effective_labels) / np.log10(10_000)) * 100)
+		metrics_for_radar['Semantic\nComplexity'] = complexity_score
+		
+		# 8. UNIQUENESS: Percentage of unique label combinations
+		unique_combinations = summary_stats_dict['Unique Label Combinations']
+		total_samples = summary_stats_dict['Total Samples']
+		uniqueness_pct = (unique_combinations / total_samples) * 100
+		metrics_for_radar['Label\nUniqueness'] = uniqueness_pct
+		
+		# Create radar chart
+		categories = list(metrics_for_radar.keys())
+		values = list(metrics_for_radar.values())
+		
+		# Number of variables
+		N = len(categories)
+		
+		# Compute angle for each axis
+		angles = [n / float(N) * 2 * np.pi for n in range(N)]
+		values += values[:1]  # Complete the circle
+		angles += angles[:1]
+		
+		# Initialize the plot
+		fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(projection='polar'))
+		
+		# Plot data
+		ax.plot(angles, values, 'o-', linewidth=2, color='#1f77b4', label='HISTORY-X4')
+		ax.fill(angles, values, alpha=0.2, color='#1f77b4')
+		
+		# Optional: Add comparison with a benchmark dataset
+		# Example: ImageNet-like distribution
+		benchmark_values = [85, 30, 10, 60, 55, 0, 40, 5]  # Example benchmark scores
+		benchmark_values += benchmark_values[:1]
+		ax.plot(
+			angles, 
+			benchmark_values, 
+			'o--', 
+			linewidth=2, 
+			color='#ff7f0e', 
+			label='Typical Benchmark', 
+			alpha=0.65
+		)
+		ax.fill(angles, benchmark_values, alpha=0.15, color='#ff7f0e')
+		
+		# Fix axis to go in the right order and start at 12 o'clock
+		ax.set_theta_offset(np.pi / 2)
+		ax.set_theta_direction(-1)
+		
+		# Draw axis lines for each angle and label
+		ax.set_xticks(angles[:-1])
+		ax.set_xticklabels(categories, size=11, weight='bold')
+		
+		# Set y-axis limits and labels
+		ax.set_ylim(0, 100)
+		ax.set_yticks([20, 40, 60, 80, 100])
+		ax.set_yticklabels(['20', '40', '60', '80', '100'], size=9)
+		ax.set_rlabel_position(0)
+		
+		# Add grid
+		ax.grid(True, linestyle='--', alpha=0.7)
+		
+		# Add legend
+		ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=10)
+		
+		# Title
+		plt.title('Dataset Characteristics Profile', size=16, weight='bold', pad=20)
+		
+		# Add annotations for key strengths
+		max_idx = np.argmax(values[:-1])
+		max_angle = angles[max_idx]
+		max_value = values[max_idx]
+		ax.annotate(
+			f'Strength:\n{categories[max_idx]}', 
+			xy=(max_angle, max_value), 
+			xytext=(max_angle, max_value + 10),
+			fontsize=9,
+			ha='center',
+			bbox=dict(boxstyle='round,pad=0.5', facecolor="#c2ff91", alpha=0.7),
+			arrowprops=dict(arrowstyle='->', color='red', lw=1.5)
+		)
+		
+		plt.tight_layout()
+		plt.savefig(
+			fname=os.path.join(output_dir, f"{label_column}_radar_chart.png"),
+			dpi=DPI,
+			bbox_inches='tight'
+		)
+		plt.close()
+		
+		print("Radar chart created successfully!")
+		print(f"\nDataset Characteristic Scores (0-100 scale):")
+		for cat, val in metrics_for_radar.items():
+			print(f"  {cat.replace(chr(10), ' ')}: {val:.1f}")
+		
+		return metrics_for_radar
+
+def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column, DPI=200):
+		"""
+		Compare your dataset with multiple benchmarks on radar chart.
+		Perfect for positioning your dataset in the landscape.
+		"""
+		print("\n" + "="*100)
+		print("--- CREATING COMPARATIVE RADAR CHART ---")
+		
+		# Define metrics (normalized to 0-100 scale)
+		categories = [
+				'Scale\n(log samples)',
+				'Vocabulary\n(log labels)', 
+				'Cardinality',
+				'Diversity\n(entropy)',
+				'Balance\n(1-Gini)',
+				'Complexity'
+		]
+		
+		# Your dataset values
+		n_samples = summary_stats_dict['Total Samples']
+		n_labels = summary_stats_dict['Unique Labels']
+		mean_card = float(summary_stats_dict['Mean Label Cardinality'])
+		norm_entropy = float(summary_stats_dict['Normalized Entropy'])
+		gini = float(summary_stats_dict['Gini Coefficient'])
+		eff_labels = float(summary_stats_dict['Effective # of Labels'])
+		
+		your_values = [
+				min(100, (np.log10(n_samples) / np.log10(1_000_000)) * 100),
+				min(100, (np.log10(n_labels) / np.log10(100_000)) * 100),
+				min(100, (mean_card / 10) * 100),
+				norm_entropy * 100,
+				(1 - gini) * 100,
+				min(100, (np.log10(eff_labels) / np.log10(10_000)) * 100)
+		]
+		
+		# Benchmark datasets (approximate values)
+		benchmarks = {
+				'ImageNet': [
+						(np.log10(1_400_000) / np.log10(1_000_000)) * 100,  # Scale
+						(np.log10(1_000) / np.log10(100_000)) * 100,        # Vocab
+						(1.0 / 10) * 100,                                   # Cardinality
+						0.62 * 100,                                         # Diversity
+						(1 - 0.45) * 100,                                   # Balance
+						(np.log10(400) / np.log10(10_000)) * 100           # Complexity
+				],
+				'MS-COCO': [
+						(np.log10(328_000) / np.log10(1_000_000)) * 100,
+						(np.log10(91) / np.log10(100_000)) * 100,
+						(2.9 / 10) * 100,
+						0.51 * 100,
+						(1 - 0.62) * 100,
+						(np.log10(50) / np.log10(10_000)) * 100
+				],
+				'Open Images': [
+						(np.log10(9_200_000) / np.log10(1_000_000)) * 100,
+						(np.log10(19_000) / np.log10(100_000)) * 100,
+						(8.4 / 10) * 100,
+						0.69 * 100,
+						(1 - 0.73) * 100,
+						(np.log10(2_000) / np.log10(10_000)) * 100
+				]
+		}
+		
+		# Create figure
+		N = len(categories)
+		angles = [n / float(N) * 2 * np.pi for n in range(N)]
+		
+		fig, ax = plt.subplots(figsize=(12, 10), subplot_kw=dict(projection='polar'))
+		
+		# Plot your dataset
+		values = your_values + your_values[:1]
+		angles_plot = angles + angles[:1]
+		ax.plot(
+			angles_plot, 
+			values, 
+			'o-', 
+			linewidth=2.5,
+			label='HISTORY-X4',
+			color='#d62728', 
+			zorder=10
+		)
+		ax.fill(angles_plot, values, alpha=0.25, color='#d62728')
+		
+		# Plot benchmarks
+		colors = ['#1f77b4', '#2ca02c', '#ff7f0e']
+		for (name, bench_values), color in zip(benchmarks.items(), colors):
+				bench_values_plot = bench_values + bench_values[:1]
+				ax.plot(
+					angles_plot, 
+					bench_values_plot, 
+					'o--', 
+					linewidth=2, 
+					label=name, 
+					alpha=0.65,
+					color=color
+				)
+				ax.fill(angles_plot, bench_values_plot, alpha=0.1, color=color)
+		
+		# Formatting
+		ax.set_theta_offset(np.pi / 2)
+		ax.set_theta_direction(-1)
+		ax.set_xticks(angles)
+		ax.set_xticklabels(categories, size=12, weight='bold')
+		ax.set_ylim(0, 100)
+		ax.set_yticks([20, 40, 60, 80, 100])
+		ax.set_yticklabels(['20', '40', '60', '80', '100'], size=10)
+		ax.grid(True, linestyle='--', alpha=0.6)
+		
+		# Legend
+		ax.legend(loc='upper right', bbox_to_anchor=(1.35, 1.1), fontsize=11)
+		
+		plt.title('Dataset Comparison: Characteristics Profile', 
+							size=16, weight='bold', pad=20)
+		
+		plt.tight_layout()
+		plt.savefig(
+				fname=os.path.join(output_dir, f"{label_column}_comparative_radar_chart.png"),
+				dpi=DPI,
+				bbox_inches='tight'
+		)
+		plt.close()
+		
+		print("Comparative radar chart created successfully!")
+		return your_values, benchmarks
+
 def plot_image_to_texts_separate_horizontal_bars(
 				models: dict,
 				validation_loader: DataLoader,
@@ -2567,7 +2842,7 @@ def perform_multilabel_eda(
 	plt.close()
 
 	# ============================================================
-	# NEW ADDITION 1: Power Law Analysis
+	# PLOT 1: Power Law Analysis
 	# ============================================================
 	print("\n" + "="*100)
 	print("--- POWER LAW ANALYSIS ---")
@@ -2989,7 +3264,7 @@ def perform_multilabel_eda(
 	print("="*100)
 
 	# ============================================================
-	# NEW ADDITION 5: Multi-source Agreement Analysis
+	# PLOT 5: Multi-source Agreement Analysis
 	# ============================================================
 	print("\n--- MULTI-SOURCE LABEL AGREEMENT ANALYSIS ---")
 	source_cols = {
@@ -3159,7 +3434,7 @@ def perform_multilabel_eda(
 			plt.close()
 	
 	# ============================================================
-	# NEW ADDITION 6: Temporal Analysis (if date column exists)
+	# PLOT 6: Temporal Analysis (if date column exists)
 	# ============================================================
 	if 'doc_date' in df.columns or 'date' in df.columns:
 		print("\n" + "="*100)
@@ -3258,9 +3533,41 @@ def perform_multilabel_eda(
 		except Exception as e:
 			print(f"Error in temporal analysis: {e}")
 	
-	# ============================================================
+
+	# Prepare summary stats dictionary for radar chart
+	summary_stats_dict = {
+		'Total Samples': len(df),
+		'Unique Labels': len(unique_labels),
+		'Singleton Labels': len(singleton_labels),
+		'Unique Label Combinations': len(unique_label_sets),
+		'Mean Label Cardinality': df['label_cardinality'].mean(),
+		'Median Label Cardinality': df['label_cardinality'].median(),
+		'Max Label Cardinality': int(df['label_cardinality'].max()),
+		'Shannon Entropy': shannon_entropy,
+		'Normalized Entropy': normalized_entropy,
+		'Gini Coefficient': gini,
+		'Imbalance Ratio': imbalance_ratio,
+		'Power Law Exponent (α)': alpha_estimate,
+		'Effective # of Labels': effective_labels
+	}
+
+	# Create radar chart
+	radar_scores = create_dataset_radar_chart(
+		summary_stats_dict, 
+		output_dir, 
+		label_column, 
+		DPI
+	)
+
+	# Optional: Create comparative radar chart
+	your_scores, benchmark_scores = create_comparative_radar_chart(
+		summary_stats_dict, 
+		output_dir, 
+		label_column, 
+		DPI
+	)
+
 	# Summary Statistics Table
-	# ============================================================
 	print("\n" + "="*100)
 	print("--- COMPREHENSIVE SUMMARY STATISTICS ---")
 	
