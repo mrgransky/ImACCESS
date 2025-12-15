@@ -212,24 +212,18 @@ def create_dataset_radar_chart(summary_stats_dict, output_dir, label_column, DPI
 		return metrics_for_radar
 
 def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column, DPI=200):
-		"""
-		Compare your dataset with multiple benchmarks on radar chart.
-		Perfect for positioning your dataset in the landscape.
-		"""
-		print("\n" + "="*100)
 		print("--- CREATING COMPARATIVE RADAR CHART ---")
 		
 		# Define metrics (normalized to 0-100 scale)
 		categories = [
-				'Scale',
-				'Vocabulary Size', 
-				'Cardinality',
-				'Diversity (entropy)',
-				'Balance\n(1-Gini)',
-				'Semantic\nComplexity'
+			'Scale',
+			'Vocabulary\nSize', 
+			'Annotation\nRichness',
+			'Diversity\n(entropy)',
+			'Balance\n(1-Gini)',
+			'Semantic\nComplexity'
 		]
 		
-		# Your dataset values
 		dataset_name = summary_stats_dict['Name']
 		n_samples = summary_stats_dict['Total Samples']
 		n_labels = summary_stats_dict['Unique Labels']
@@ -238,7 +232,7 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 		gini = float(summary_stats_dict['Gini Coefficient'])
 		eff_labels = float(summary_stats_dict['Effective # of Labels'])
 		
-		your_values = [
+		dataset_values = [
 				min(100, (np.log10(n_samples) / np.log10(1_000_000)) * 100),
 				min(100, (np.log10(n_labels) / np.log10(100_000)) * 100),
 				min(100, (mean_card / 10) * 100),
@@ -252,7 +246,7 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 		# # (diversity, balance, complexity) are approximate
 		benchmarks = {
 			'ImageNet': {
-				'color': '#1f77b4',
+				'color': "#004094",
 				'samples': 1_281_167,      # EXACT
 				'labels': 1_000,            # EXACT
 				'cardinality': 1.0,         # EXACT
@@ -261,7 +255,7 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 				'effective_labels': 400,    # CONSERVATIVE ESTIMATE
 			},
 			'MS-COCO': {
-				'color': '#2ca02c',
+				'color': "#ce7500",
 				'samples': 328_000,         # EXACT (all splits)
 				'labels': 91,               # EXACT (2017 version)
 				'cardinality': 2.9,         # EXACT (Lin+ ECCV'14)
@@ -270,7 +264,7 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 				'effective_labels': 50,     # CONSERVATIVE ESTIMATE
 			},
 			'Open Images': {
-				'color': '#ff7f0e',
+				'color': "#009e08",
 				'samples': 9_178_275,       # EXACT (V6)
 				'labels': 19_000,           # EXACT (rounded from 19,958)
 				'cardinality': 8.4,         # EXACT (Kuznetsova+ IJCV'20)
@@ -285,21 +279,21 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 		N = len(categories)
 		angles = [n / float(N) * 2 * np.pi for n in range(N)]
 		
-		fig, ax = plt.subplots(figsize=(12, 11), subplot_kw=dict(projection='polar'))
+		fig, ax = plt.subplots(figsize=(11, 11), subplot_kw=dict(projection='polar'))
 		
-		# Plot your dataset
-		values = your_values + your_values[:1]
+		# Plot dataset values
+		values = dataset_values + dataset_values[:1]
 		angles_plot = angles + angles[:1]
 		ax.plot(
 			angles_plot, 
 			values, 
 			'o-', 
-			linewidth=3,
+			linewidth=2.5,
 			label=dataset_name,
 			color='#d62728', 
 			zorder=10
 		)
-		ax.fill(angles_plot, values, alpha=0.25, color='#d62728')
+		ax.fill(angles_plot, values, alpha=0.2, color="#fc5f5f")
 		
 		for k,v in benchmarks.items():
 			print(f"{k} {v}")
@@ -316,36 +310,75 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 				angles_plot, 
 				bench_values_plot, 
 				'o--', 
-				linewidth=2, 
+				linewidth=1.5, 
 				label=k, 
-				alpha=0.6,
+				alpha=0.5,
 				color=v['color']
 			)
-			ax.fill(angles_plot, bench_values_plot, alpha=0.15, color=v['color'])
+			ax.fill(angles_plot, bench_values_plot, alpha=0.1, color=v['color'])
 		
-		# Formatting
-		ax.set_theta_offset(np.pi / 2)
-		ax.set_theta_direction(-1)
-		ax.set_xticks(angles)
-		ax.set_xticklabels(categories, size=10, weight='bold')
+		
+
+		# After creating the plot, before setting labels
+		ax.set_theta_offset(np.pi / 2)  # Start at 12 o'clock
+		ax.set_theta_direction(-1)  # Clockwise
+		ax.set_xticks(angles)  # Set ticks at each angle
+
+		# Manually set labels
+		# ax.set_xticklabels(categories, size=10, weight='bold', va='center', ha='center')
+
+		# SMART LABEL POSITIONING with angle-dependent offsets
+		for angle, label in zip(angles, categories):
+			# Convert angle to degrees for easier understanding
+			angle_deg = np.degrees(angle)
+			if angle_deg == 0 or angle_deg == 90 or angle_deg == 180 or angle_deg == 360:  # Special case for 'Scale' to avoid overlap
+				offset = 1.0
+			elif 0 < angle_deg < 90:  # Special case for 'Vocab Size' to avoid overlap
+				offset = 1.1
+			elif 91 < angle_deg < 180:  # Special case for 'Annotation Richness' to avoid overlap
+				offset = 1.15
+			elif 181 < angle_deg < 270:  # Special case for 'Diversity' to avoid overlap
+				offset = 1.12
+			elif 271 < angle_deg < 360:  # Special case for 'Balance' to avoid overlap
+				offset = 1.15
+			else:
+				print(f"<!> {angle_deg} => Default offset: 1.0")
+				offset = 1.0
+			print(f"Angle: {repr(angle_deg)}, Label: {label} => offset: {offset}")
+			
+			# Place label at calculated position
+			ax.text(
+				angle, 
+				105 * offset,
+				label, 
+				size=16, 
+				weight='bold', 
+				ha="center", 
+				va="center",
+				rotation_mode='anchor'
+			)
+
+		# Remove default labels since we're placing custom ones
+		ax.set_xticklabels([])
+
+		# Rest remains the same
 		ax.set_ylim(0, 100)
 		ax.set_yticks([20, 40, 60, 80, 100])
-		ax.set_yticklabels(['20', '40', '60', '80', '100'], size=10)
-		ax.grid(True, linestyle='--', alpha=0.6)
-		
-		# Legend
+		ax.set_yticklabels(['20', '40', '60', '80', '100'], size=10, zorder=100)
+		ax.grid(True, linestyle='--', alpha=0.9)
+
 		ax.legend(
 			loc='upper right', 
-			fontsize=12, 
+			fontsize=11, 
 			frameon=False, 
 			fancybox=True, 
 			shadow=True, 
 			edgecolor='black', 
 			facecolor='white',
-			bbox_to_anchor=(1.1, 1.05)
+			bbox_to_anchor=(1.09, 1.04) # Move legend outside the plot
 		)
 		
-		plt.title('Dataset Comparison: Characteristics Profile', size=14, weight='bold', pad=20)
+		# plt.title('Multi-Dimensional Dataset Characteristics: A Comparative View', size=11, weight='bold', pad=25)
 		
 		plt.tight_layout()
 		plt.savefig(
@@ -356,7 +389,7 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 		plt.close()
 		
 		print("Comparative radar chart created successfully!")
-		return your_values, benchmarks
+		return dataset_values, benchmarks
 
 def plot_image_to_texts_separate_horizontal_bars(
 				models: dict,
