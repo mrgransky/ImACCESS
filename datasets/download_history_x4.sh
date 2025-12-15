@@ -152,16 +152,6 @@ main() {
 	print_status "Running dataset merger => History_xN ..."
 
 	python -u "${BASE_DIR}/history_xN/merge_datasets.py" -ddir "${DATASET_DIR}"	
-	# # Optional: Run merge script if available
-	# if [ -f "${BASE_DIR}/history_xN/merge_datasets.py" ]; then
-	# 	echo ""
-	# 	read -p "Do you want to merge the datasets now? (y/N): " -n 1 -r
-	# 	echo
-	# 	if [[ $REPLY =~ ^[Yy]$ ]]; then
-	# 		print_status "Running dataset merger..."
-	# 		python "${BASE_DIR}/history_xN/merge_datasets.py" -ddir "${DATASET_DIR}"
-	# 	fi
-	# fi
 	print_success "Pipeline execution completed!"
 }
 
