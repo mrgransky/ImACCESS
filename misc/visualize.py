@@ -333,13 +333,13 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 			angle_deg = np.degrees(angle)
 			if angle_deg == 0 or angle_deg == 90 or angle_deg == 180 or angle_deg == 360:  # Special case for 'Scale' to avoid overlap
 				offset = 1.0
-			elif 0 < angle_deg < 90:  # Special case for 'Vocab Size' to avoid overlap
+			elif 0 < angle_deg < 90: # first quadrant (CW)
 				offset = 1.1
-			elif 91 < angle_deg < 180:  # Special case for 'Annotation Richness' to avoid overlap
+			elif 91 < angle_deg < 180:  # second quadrant (CW)
 				offset = 1.15
-			elif 181 < angle_deg < 270:  # Special case for 'Diversity' to avoid overlap
+			elif 181 < angle_deg < 270:  # third quadrant (CW)
 				offset = 1.12
-			elif 271 < angle_deg < 360:  # Special case for 'Balance' to avoid overlap
+			elif 271 < angle_deg < 360:  # fourth quadrant (CW)
 				offset = 1.15
 			else:
 				print(f"<!> {angle_deg} => Default offset: 1.0")
