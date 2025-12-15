@@ -90,7 +90,7 @@ def create_dataset_radar_chart(summary_stats_dict, output_dir, label_column, DPI
 		n_labels = summary_stats_dict['Unique Labels']
 		# Normalize: log scale, where 1K labels = 33, 10K = 66, 100K+ = 100
 		vocab_score = min(100, (np.log10(n_labels) / np.log10(100_000)) * 100)
-		metrics_for_radar['Vocabulary\nSize'] = vocab_score
+		metrics_for_radar['Vocabulary Size'] = vocab_score
 		
 		# 3. ANNOTATION RICHNESS: Label cardinality relative to benchmarks
 		mean_cardinality = float(summary_stats_dict['Mean Label Cardinality'])
@@ -221,12 +221,12 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 		
 		# Define metrics (normalized to 0-100 scale)
 		categories = [
-				'Scale (log samples)',
-				'Vocabulary (log labels)', 
+				'Scale',
+				'Vocabulary Size', 
 				'Cardinality',
 				'Diversity (entropy)',
 				'Balance\n(1-Gini)',
-				'Complexity'
+				'Semantic\nComplexity'
 		]
 		
 		# Your dataset values
