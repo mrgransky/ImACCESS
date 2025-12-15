@@ -46,7 +46,6 @@ TOP_P = 0.9
 MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 
-
 # STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
 STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
 # custom_stopwords_list = requests.get("https://raw.githubusercontent.com/stopwords-iso/stopwords-en/refs/heads/master/stopwords-en.txt").content
@@ -67,7 +66,7 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - Return **ONLY** a clean, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is expected if the text is either short or lacks distinct concepts.
 - Extracted KEYWORDS must be self-contained and grammatically complete phrases that actually appear in the text. Do not invent or fabricate any specifics.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
-- **STRICTLY EXCLUDE NUMERICAL CONTENT** such as numbers, numerical values, measurements, units, or quantitative terms.
+- **STRICTLY EXCLUDE NUMERICAL CONTENT** such as measurements, units, or quantitative terms.
 - **STRICTLY EXCLUDE MEDIA DESCRIPTORS** such as generic photography, image, picture, or media terms.
 - **STRICTLY EXCLUDE TEMPORAL EXPRESSIONS** such as specific times, calendar dates, seasonal periods, or extended historical eras.
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
@@ -1290,15 +1289,15 @@ def query_local_llm(
 	return keywords
 
 def get_llm_based_labels_debug(
-		model_id: str, 
-		device: str, 
-		max_generated_tks: int,
-		max_kws: int,
-		csv_file: str=None,
-		description: str=None,
-		use_quantization: bool = False,
-		verbose: bool = False,
-	) -> List[List[str]]:
+	model_id: str, 
+	device: str, 
+	max_generated_tks: int,
+	max_kws: int,
+	csv_file: str=None,
+	description: str=None,
+	use_quantization: bool = False,
+	verbose: bool = False,
+) -> List[List[str]]:
 
 	if csv_file and description:
 		raise ValueError("Only one of csv_file or description must be provided")
@@ -1764,8 +1763,8 @@ def main():
 		)
 	elif args.csv_file:
 		keywords = get_llm_based_labels_opt(
-			model_id=args.model_id, 
-			device=args.device, 
+			model_id=args.model_id,
+			device=args.device,
 			batch_size=args.batch_size,
 			max_generated_tks=args.max_generated_tks,
 			max_kws=args.max_keywords,

@@ -508,6 +508,7 @@ def basic_clean(txt: str):
 		r'color photo',
 		r'Colored photo',
 		r"color copies",
+		r"photo in color",
 		r"slide copy",
 		r'Country: Unknown',
 		r'Electronic ed.',
