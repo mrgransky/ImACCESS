@@ -79,6 +79,13 @@ def _load_vlm_(
 		else:
 			print("[INFO] Running on CPU only")
 
+	print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
+	try:
+		huggingface_hub.login(token=hf_tk)
+	except Exception as e:
+		print(f"<!> Failed to login to HuggingFace Hub: {e}")
+		raise e
+
 	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True,)
 
 	if verbose:
@@ -1298,13 +1305,6 @@ def main():
 	set_seeds(seed=42, debug=args.debug)
 	args.device = torch.device(args.device)
 	print(args)
-
-	try:
-		print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
-		huggingface_hub.login(token=hf_tk)
-	except Exception as e:
-		print(f"Failed to login to HuggingFace Hub: {e}")
-		raise e
 
 	if args.verbose and torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(args.device)

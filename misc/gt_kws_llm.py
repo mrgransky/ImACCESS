@@ -98,6 +98,13 @@ def _load_llm_(
 		else:
 			print("[INFO] Running on CPU only")
 
+	print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
+	try:
+		huggingface_hub.login(token=hf_tk)
+	except Exception as e:
+		print(f"<!> Failed to login to HuggingFace Hub: {e}")
+		raise e
+
 	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True,)
 	if verbose:
 		print(f"[INFO] {model_id} Config")
@@ -1667,16 +1674,12 @@ def get_llm_based_labels_opt(
 				print(f"💥 Individual retry error for item {idx}: {e}")
 			unique_results[idx] = None
 
-	
 	# Map unique_results back to original order
-	
 	results: List[Optional[List[str]]] = []
 	for orig_i, uniq_idx in tqdm(enumerate(original_to_unique_idx), desc="Mapping results", ncols=150,):
 		results.append(unique_results[uniq_idx])
 	
-	
 	# Stats
-	
 	if verbose:
 		stats_start = time.time()
 		n_ok = 0
@@ -1696,9 +1699,7 @@ def get_llm_based_labels_opt(
 			f"Elapsed_t: {time.time() - stats_start:.2f}s"
 		)
 	
-	
 	# Cleanup model and tokenizer
-	
 	if verbose:
 		print(f"Cleaning up model and tokenizer...")
 	del model, tokenizer
@@ -1707,7 +1708,6 @@ def get_llm_based_labels_opt(
 	
 	
 	# Save results
-	
 	if csv_file:
 		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
 		if verbose:
@@ -1743,13 +1743,6 @@ def main():
 	set_seeds(seed=42, debug=args.debug)
 	args.device = torch.device(args.device)
 	print(args)
-
-	try:
-		print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
-		huggingface_hub.login(token=hf_tk)
-	except Exception as e:
-		print(f"Failed to login to HuggingFace Hub: {e}")
-		raise e
 
 	if args.verbose and torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(args.device)
