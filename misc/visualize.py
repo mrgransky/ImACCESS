@@ -11,6 +11,7 @@ import seaborn as sns
 import inspect
 import time
 import random
+import json
 from collections import Counter
 from sklearn.preprocessing import MultiLabelBinarizer
 import os # For checking file existence
@@ -75,6 +76,9 @@ def create_dataset_radar_chart(summary_stats_dict, output_dir, label_column, DPI
 		# Each metric is normalized so that "better" = higher value
 		
 		metrics_for_radar = {}
+
+		# 0. dataset name:
+		dataset_name = summary_stats_dict['Name']
 		
 		# 1. SCALE: Log-normalized sample count (relative to common benchmarks)
 		n_samples = summary_stats_dict['Total Samples']
@@ -134,10 +138,10 @@ def create_dataset_radar_chart(summary_stats_dict, output_dir, label_column, DPI
 		angles += angles[:1]
 		
 		# Initialize the plot
-		fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(projection='polar'))
+		fig, ax = plt.subplots(figsize=(14, 14), subplot_kw=dict(projection='polar'))
 		
 		# Plot data
-		ax.plot(angles, values, 'o-', linewidth=2, color='#1f77b4', label='HISTORY-X4')
+		ax.plot(angles, values, 'o-', linewidth=2, color='#1f77b4', label=dataset_name)
 		ax.fill(angles, values, alpha=0.2, color='#1f77b4')
 		
 		# Optional: Add comparison with a benchmark dataset
@@ -151,7 +155,7 @@ def create_dataset_radar_chart(summary_stats_dict, output_dir, label_column, DPI
 			linewidth=2, 
 			color='#ff7f0e', 
 			label='Typical Benchmark', 
-			alpha=0.65
+			alpha=0.6
 		)
 		ax.fill(angles, benchmark_values, alpha=0.15, color='#ff7f0e')
 		
@@ -188,7 +192,7 @@ def create_dataset_radar_chart(summary_stats_dict, output_dir, label_column, DPI
 			xytext=(max_angle, max_value + 10),
 			fontsize=9,
 			ha='center',
-			bbox=dict(boxstyle='round,pad=0.5', facecolor="#c2ff91", alpha=0.7),
+			bbox=dict(boxstyle='round,pad=0.5', facecolor="#c2ff91", alpha=0.5),
 			arrowprops=dict(arrowstyle='->', color='red', lw=1.5)
 		)
 		
@@ -217,15 +221,16 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 		
 		# Define metrics (normalized to 0-100 scale)
 		categories = [
-				'Scale\n(log samples)',
-				'Vocabulary\n(log labels)', 
+				'Scale (log samples)',
+				'Vocabulary (log labels)', 
 				'Cardinality',
-				'Diversity\n(entropy)',
+				'Diversity (entropy)',
 				'Balance\n(1-Gini)',
 				'Complexity'
 		]
 		
 		# Your dataset values
+		dataset_name = summary_stats_dict['Name']
 		n_samples = summary_stats_dict['Total Samples']
 		n_labels = summary_stats_dict['Unique Labels']
 		mean_card = float(summary_stats_dict['Mean Label Cardinality'])
@@ -242,39 +247,45 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 				min(100, (np.log10(eff_labels) / np.log10(10_000)) * 100)
 		]
 		
-		# Benchmark datasets (approximate values)
+		# # Benchmark datasets
+		# # (scale, vocabulary, cardinality) are 100% defensible
+		# # (diversity, balance, complexity) are approximate
 		benchmarks = {
-				'ImageNet': [
-						(np.log10(1_400_000) / np.log10(1_000_000)) * 100,  # Scale
-						(np.log10(1_000) / np.log10(100_000)) * 100,        # Vocab
-						(1.0 / 10) * 100,                                   # Cardinality
-						0.62 * 100,                                         # Diversity
-						(1 - 0.45) * 100,                                   # Balance
-						(np.log10(400) / np.log10(10_000)) * 100           # Complexity
-				],
-				'MS-COCO': [
-						(np.log10(328_000) / np.log10(1_000_000)) * 100,
-						(np.log10(91) / np.log10(100_000)) * 100,
-						(2.9 / 10) * 100,
-						0.51 * 100,
-						(1 - 0.62) * 100,
-						(np.log10(50) / np.log10(10_000)) * 100
-				],
-				'Open Images': [
-						(np.log10(9_200_000) / np.log10(1_000_000)) * 100,
-						(np.log10(19_000) / np.log10(100_000)) * 100,
-						(8.4 / 10) * 100,
-						0.69 * 100,
-						(1 - 0.73) * 100,
-						(np.log10(2_000) / np.log10(10_000)) * 100
-				]
+			'ImageNet': {
+				'color': '#1f77b4',
+				'samples': 1_281_167,      # EXACT
+				'labels': 1_000,            # EXACT
+				'cardinality': 1.0,         # EXACT
+				'norm_entropy': 0.62,       # REASONABLE ESTIMATE
+				'gini': 0.45,               # REASONABLE ESTIMATE
+				'effective_labels': 400,    # CONSERVATIVE ESTIMATE
+			},
+			'MS-COCO': {
+				'color': '#2ca02c',
+				'samples': 328_000,         # EXACT (all splits)
+				'labels': 91,               # EXACT (2017 version)
+				'cardinality': 2.9,         # EXACT (Lin+ ECCV'14)
+				'norm_entropy': 0.51,       # REASONABLE ESTIMATE
+				'gini': 0.62,               # REASONABLE ESTIMATE
+				'effective_labels': 50,     # CONSERVATIVE ESTIMATE
+			},
+			'Open Images': {
+				'color': '#ff7f0e',
+				'samples': 9_178_275,       # EXACT (V6)
+				'labels': 19_000,           # EXACT (rounded from 19,958)
+				'cardinality': 8.4,         # EXACT (Kuznetsova+ IJCV'20)
+				'norm_entropy': 0.69,       # REASONABLE ESTIMATE
+				'gini': 0.73,               # REASONABLE ESTIMATE
+				'effective_labels': 2_000,  # CONSERVATIVE ESTIMATE
+			}
 		}
-		
+		print(json.dumps(benchmarks, indent=2, ensure_ascii=False))
+
 		# Create figure
 		N = len(categories)
 		angles = [n / float(N) * 2 * np.pi for n in range(N)]
 		
-		fig, ax = plt.subplots(figsize=(12, 10), subplot_kw=dict(projection='polar'))
+		fig, ax = plt.subplots(figsize=(12, 11), subplot_kw=dict(projection='polar'))
 		
 		# Plot your dataset
 		values = your_values + your_values[:1]
@@ -283,49 +294,64 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 			angles_plot, 
 			values, 
 			'o-', 
-			linewidth=2.5,
-			label='HISTORY-X4',
+			linewidth=3,
+			label=dataset_name,
 			color='#d62728', 
 			zorder=10
 		)
 		ax.fill(angles_plot, values, alpha=0.25, color='#d62728')
 		
-		# Plot benchmarks
-		colors = ['#1f77b4', '#2ca02c', '#ff7f0e']
-		for (name, bench_values), color in zip(benchmarks.items(), colors):
-				bench_values_plot = bench_values + bench_values[:1]
-				ax.plot(
-					angles_plot, 
-					bench_values_plot, 
-					'o--', 
-					linewidth=2, 
-					label=name, 
-					alpha=0.65,
-					color=color
-				)
-				ax.fill(angles_plot, bench_values_plot, alpha=0.1, color=color)
+		for k,v in benchmarks.items():
+			print(f"{k} {v}")
+			bench_values = [
+				min(100, (np.log10(v['samples']) / np.log10(1_000_000)) * 100),
+				min(100, (np.log10(v['labels']) / np.log10(100_000)) * 100),
+				min(100, (v['cardinality'] / 10) * 100),
+				v['norm_entropy'] * 100,
+				(1 - v['gini']) * 100,
+				min(100, (np.log10(v['effective_labels']) / np.log10(10_000)) * 100)
+			]
+			bench_values_plot = bench_values + bench_values[:1]
+			ax.plot(
+				angles_plot, 
+				bench_values_plot, 
+				'o--', 
+				linewidth=2, 
+				label=k, 
+				alpha=0.6,
+				color=v['color']
+			)
+			ax.fill(angles_plot, bench_values_plot, alpha=0.15, color=v['color'])
 		
 		# Formatting
 		ax.set_theta_offset(np.pi / 2)
 		ax.set_theta_direction(-1)
 		ax.set_xticks(angles)
-		ax.set_xticklabels(categories, size=12, weight='bold')
+		ax.set_xticklabels(categories, size=10, weight='bold')
 		ax.set_ylim(0, 100)
 		ax.set_yticks([20, 40, 60, 80, 100])
 		ax.set_yticklabels(['20', '40', '60', '80', '100'], size=10)
 		ax.grid(True, linestyle='--', alpha=0.6)
 		
 		# Legend
-		ax.legend(loc='upper right', bbox_to_anchor=(1.35, 1.1), fontsize=11)
+		ax.legend(
+			loc='upper right', 
+			fontsize=12, 
+			frameon=False, 
+			fancybox=True, 
+			shadow=True, 
+			edgecolor='black', 
+			facecolor='white',
+			bbox_to_anchor=(1.1, 1.05)
+		)
 		
-		plt.title('Dataset Comparison: Characteristics Profile', 
-							size=16, weight='bold', pad=20)
+		plt.title('Dataset Comparison: Characteristics Profile', size=14, weight='bold', pad=20)
 		
 		plt.tight_layout()
 		plt.savefig(
-				fname=os.path.join(output_dir, f"{label_column}_comparative_radar_chart.png"),
-				dpi=DPI,
-				bbox_inches='tight'
+			fname=os.path.join(output_dir, f"{label_column}_comparative_radar_chart.png"),
+			dpi=DPI,
+			bbox_inches='tight'
 		)
 		plt.close()
 		
@@ -2701,6 +2727,7 @@ def perform_multilabel_eda(
 	print(f">> Enhanced Multi-label EDA for {data_path} (column: {label_column})")
 	eda_st = time.time()
 	dataset_dir = os.path.dirname(data_path)
+	dataset_name = os.path.basename(dataset_dir)
 	output_dir = os.path.join(dataset_dir, "outputs")
 	os.makedirs(output_dir, exist_ok=True)
 
@@ -3536,6 +3563,7 @@ def perform_multilabel_eda(
 
 	# Prepare summary stats dictionary for radar chart
 	summary_stats_dict = {
+		'Name': dataset_name,
 		'Total Samples': len(df),
 		'Unique Labels': len(unique_labels),
 		'Singleton Labels': len(singleton_labels),
