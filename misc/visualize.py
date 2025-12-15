@@ -2751,7 +2751,11 @@ def perform_multilabel_eda(
 	print(df.isnull().sum())
 	print("-" * 40 + "\n")
 
-	label_columns_to_parse = [label_column, 'textual_based_labels', 'visual_based_labels']
+	label_columns_to_parse = [
+		label_column, 
+		'llm_based_labels', 
+		'vlm_based_labels'
+	]
 	processed_dfs = {}
 	df_for_parsing_and_filtering = df.copy()
 	
@@ -3295,8 +3299,8 @@ def perform_multilabel_eda(
 	# ============================================================
 	print("\n--- MULTI-SOURCE LABEL AGREEMENT ANALYSIS ---")
 	source_cols = {
-		'textual_based': 'textual_based_labels',
-		'visual_based': 'visual_based_labels',
+		'textual_based': 'llm_based_labels',
+		'visual_based': 'vlm_based_labels',
 		'multimodal': 'multimodal_labels'
 	}
 	
@@ -3329,8 +3333,8 @@ def perform_multilabel_eda(
 	unique_to_visual = visual_set - (text_set | multimodal_set)
 	unique_to_multimodal = multimodal_set - (text_set | visual_set)
 	
-	print(f"\nLabels unique to textual_based_labels: {len(unique_to_text)}")
-	print(f"Labels unique to visual_based_labels: {len(unique_to_visual)}")
+	print(f"\nLabels unique to llm_based_labels: {len(unique_to_text)}")
+	print(f"Labels unique to vlm_based_labels: {len(unique_to_visual)}")
 	print(f"Labels unique to multimodal_labels: {len(unique_to_multimodal)}")
 	
 	# Calculate agreement metrics if we have sample-level data
@@ -3338,8 +3342,8 @@ def perform_multilabel_eda(
 		print("\n--- Sample-Level Agreement Metrics ---")
 		
 		# Find common samples across all three sources
-		common_indices = set(processed_dfs['textual_based_labels'].index) & \
-						 set(processed_dfs['visual_based_labels'].index) & \
+		common_indices = set(processed_dfs['llm_based_labels'].index) & \
+						 set(processed_dfs['vlm_based_labels'].index) & \
 						 set(processed_dfs['multimodal_labels'].index)
 		
 		if len(common_indices) > 0:
@@ -3349,8 +3353,8 @@ def perform_multilabel_eda(
 			no_agreement = 0
 			
 			for idx in common_indices:
-				text_labels = set(processed_dfs['textual_based_labels'].loc[idx, 'textual_based_labels'])
-				visual_labels = set(processed_dfs['visual_based_labels'].loc[idx, 'visual_based_labels'])
+				text_labels = set(processed_dfs['llm_based_labels'].loc[idx, 'llm_based_labels'])
+				visual_labels = set(processed_dfs['vlm_based_labels'].loc[idx, 'vlm_based_labels'])
 				multi_labels = set(processed_dfs['multimodal_labels'].loc[idx, 'multimodal_labels'])
 				
 				# Calculate pairwise Jaccard similarities
@@ -3381,8 +3385,12 @@ def perform_multilabel_eda(
 			# Agreement score distribution
 			ax = axes[0, 0]
 			ax.hist(agreement_scores, bins=50, color='skyblue', edgecolor='black')
-			ax.axvline(np.mean(agreement_scores), color='red', linestyle='--', 
-						 label=f'Mean: {np.mean(agreement_scores):.3f}')
+			ax.axvline(
+				np.mean(agreement_scores), 
+				color='red', 
+				linestyle='--', 
+				label=f'Mean: {np.mean(agreement_scores):.3f}'
+			)
 			ax.set_xlabel('Average Jaccard Agreement Score')
 			ax.set_ylabel('Number of Samples')
 			ax.set_title('Distribution of Multi-Source Agreement Scores')
@@ -3398,8 +3406,13 @@ def perform_multilabel_eda(
 			ax.set_ylabel('Number of Samples')
 			ax.set_title('Sample-Level Agreement Categories')
 			for i, (cat, count) in enumerate(zip(categories, counts)):
-				ax.text(i, count, f'{count}\n({count/len(common_indices)*100:.1f}%)', 
-						ha='center', va='bottom')
+				ax.text(
+					i, 
+					count, 
+					f'{count} ({count/len(common_indices)*100:.1f}%)', 
+					ha='center', 
+					va='bottom'
+				)
 			ax.grid(axis='y', alpha=0.3)
 			
 			# Venn diagram data
@@ -3449,7 +3462,7 @@ def perform_multilabel_eda(
 			ax.set_ylabel('Number of Unique Labels')
 			ax.set_title('Label Space Coverage by Source')
 			for i, (labels, pct) in enumerate(zip(coverage_df['Unique Labels'], coverage_df['Coverage %'])):
-				ax.text(i, labels, f'{labels}\n({pct:.1f}%)', ha='center', va='bottom')
+				ax.text(i, labels, f'{labels} ({pct:.1f}%)', ha='center', va='bottom')
 			ax.grid(axis='y', alpha=0.3)
 			
 			plt.tight_layout()
