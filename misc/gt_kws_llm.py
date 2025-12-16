@@ -739,9 +739,9 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 			# 	if verbose: print(f"Skipping non‑alpha keyword: {cleaned}")
 			# 	continue
 			# 5️⃣ Drop pure‑numeric strings
-			if re.fullmatch(r'\d+', cleaned):
-				if verbose: print(f"Skipping pure-numeric keyword: {cleaned}")
-				continue
+			# if re.fullmatch(r'\d+', cleaned):
+			# 	if verbose: print(f"Skipping pure-numeric keyword: {cleaned}")
+			# 	continue
 			# 6️⃣ Deduplicate (case‑insensitive)
 			normalized = cleaned.lower()
 			if normalized in seen:
