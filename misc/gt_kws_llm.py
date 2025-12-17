@@ -518,61 +518,7 @@ def _microsoft_llm_response(model_id: str, input_prompt: str, llm_response: str,
 				print(f"An unexpected error occurred: {e}")
 				return None
 
-def _mistral_llm_response_old(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = False):
-	# Split the response by lines and look for the list pattern
-	lines = llm_response.strip().split('\n')
-	
-	# Look for a line that starts with [ and ends with ] (the model's output)
-	list_line = None
-	for line in lines:
-		line = line.strip()
-		if line.startswith('[') and line.endswith(']'):
-			list_line = line
-			break
-	
-	if not list_line:
-		print("Error: Could not find a list in the Mistral response.")
-		return None
-			
-	print(f"Found list line: {list_line}")
-	# Clean the string
-	cleaned_string = list_line.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
-	
-	if cleaned_string == "[]":
-		print("Model returned an empty list.")
-		return []
-	try:
-		keywords_list = ast.literal_eval(cleaned_string)
-		
-		if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
-			print("Error: Extracted string is not a valid list of strings.")
-			return None
-				
-		# Process keywords to remove numbers and enforce rules
-		processed_keywords = []
-		for keyword in keywords_list:
-			# Remove numbers and special characters
-			cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
-			cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)  # Collapse spaces
-			
-			if cleaned_keyword and cleaned_keyword not in processed_keywords:
-				processed_keywords.append(cleaned_keyword)
-		
-		if len(processed_keywords) > max_kws:
-			processed_keywords = processed_keywords[:max_kws]
-				
-		if not processed_keywords:
-			print("Error: No valid keywords found after processing.")
-			return None
-				
-		print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
-		return processed_keywords
-			
-	except Exception as e:
-		print(f"Error parsing the list: {e}")
-		return None
-
-def _mistral_llm_response(
+def _mistral_llm_response_old(
 		model_id: str,
 		input_prompt: str,
 		llm_response: str,
@@ -610,17 +556,17 @@ def _mistral_llm_response(
 				return None
 		
 		# Step 2: Normalize quotes
-		# Create the mapping table once (ideally outside a loop)
-		quote_map = str.maketrans({
-			'“': '"', 
-			'”': '"', 
-			'‘': "'", 
-			'’': "'"
-		})
+		# Create the mapping table once (ideally outside the loop) to avoid re-creating it for each iteration
+		quote_map = str.maketrans(
+			{
+				'“': '"', 
+				'”': '"', 
+				'‘': "'", 
+				'’': "'"
+			}
+		)
 		# clean the string in one go
 		cleaned_string = list_line.translate(quote_map)
-
-
 
 		if verbose:
 				print(f"[DEBUG] After quote normalization: {cleaned_string}")
@@ -712,6 +658,215 @@ def _mistral_llm_response(
 				print(f"\n[SUCCESS] Extracted {len(processed_keywords)} keyword(s): {processed_keywords}\n")
 		
 		return processed_keywords
+
+def _mistral_llm_response(
+		model_id: str,
+		input_prompt: str,
+		llm_response: str,
+		max_kws: int,
+		verbose: bool = False
+) -> Optional[List[str]]:
+		"""
+		Extract and clean keywords from Mistral LLM response.
+
+		Returns:
+				List[str]: Cleaned keywords, or None if extraction fails
+		"""
+
+		# ------------------------------------------------------------------
+		# Helper: remove redundant subphrases like "Division" if
+		# "motorized Troops Division" is also present.
+		# Only removes single-token keywords that appear as a whole token
+		# inside another, longer keyword.
+		# ------------------------------------------------------------------
+		def dedupe_redundant_subphrases(keywords: List[str], verbose: bool = False) -> List[str]:
+				if not keywords:
+						return keywords
+
+				lowered = [k.lower() for k in keywords]
+				keep: List[str] = []
+
+				if verbose:
+						print("\n[DEBUG] Running dedupe_redundant_subphrases()")
+						print(f"[DEBUG]   Input keywords: {keywords}")
+
+				for i, (kw, kw_l) in enumerate(zip(keywords, lowered)):
+						tokens = kw_l.split()
+						redundant = False
+
+						# Only consider single-token keywords for now
+						if len(tokens) == 1:
+								for j, other_l in enumerate(lowered):
+										if j == i:
+												continue
+										other_tokens = other_l.split()
+										# If this single token appears as a whole token
+										# inside another, longer keyword, treat as redundant.
+										if kw_l in other_tokens and len(other_tokens) > 1:
+												redundant = True
+												if verbose:
+														print(f"[DEBUG]   '{kw}' → REJECTED as redundant (sub-token of '{keywords[j]}')")
+												break
+
+						if not redundant:
+								keep.append(kw)
+
+				if verbose:
+						print(f"[DEBUG]   Output keywords after redundancy dedupe: {keep}\n")
+
+				return keep
+
+		# ------------------------------------------------------------------
+		# Step 1: Find the list line
+		# ------------------------------------------------------------------
+		lines = llm_response.strip().split('\n')
+
+		if verbose:
+				print(f"[DEBUG] Split response into {len(lines)} lines")
+
+		list_line = None
+		for i, line in enumerate(lines):
+				line_stripped = line.strip()
+				if line_stripped.startswith('[') and line_stripped.endswith(']'):
+						list_line = line_stripped
+						if verbose:
+								print(f"[DEBUG] Found list at line {i}: {list_line}")
+						break
+
+		if not list_line:
+				if verbose:
+						print("[ERROR] Could not find a list pattern [...] in response")
+						print("[DEBUG] Last few lines inspected:")
+						for j, line in enumerate(lines[-5:]):  # show last 5 lines
+								print(f"  {j}: {repr(line[:100])}")
+				return None
+
+		# ------------------------------------------------------------------
+		# Step 2: Normalize quotes
+		# ------------------------------------------------------------------
+		quote_map = str.maketrans(
+				{
+						'“': '"',
+						'”': '"',
+						'‘': "'",
+						'’': "'",
+				}
+		)
+		cleaned_string = list_line.translate(quote_map)
+
+		if verbose:
+				print(f"[DEBUG] After quote normalization: {cleaned_string}")
+
+		# ------------------------------------------------------------------
+		# Step 3: Handle empty list
+		# ------------------------------------------------------------------
+		if cleaned_string == "[]":
+				if verbose:
+						print("[INFO] Model returned empty list []")
+				return []
+
+		# ------------------------------------------------------------------
+		# Step 4: Parse with ast.literal_eval
+		# ------------------------------------------------------------------
+		try:
+				keywords_list = ast.literal_eval(cleaned_string)
+				if verbose:
+						print(f"[DEBUG] ✓ ast.literal_eval succeeded")
+						print(f"[DEBUG]   Type: {type(keywords_list)}")
+						print(f"[DEBUG]   Raw content: {keywords_list}")
+		except Exception as e:
+				if verbose:
+						print(f"[ERROR] ast.literal_eval failed: {type(e).__name__}: {e}")
+						print(f"[DEBUG] Failed string: {cleaned_string}")
+				return None
+
+		# ------------------------------------------------------------------
+		# Step 5: Validate it's a list of strings
+		# ------------------------------------------------------------------
+		if not isinstance(keywords_list, list):
+				if verbose:
+						print(f"[ERROR] Parsed result is not a list (got {type(keywords_list)})")
+				return None
+
+		if not all(isinstance(item, str) for item in keywords_list):
+				if verbose:
+						print(f"[ERROR] List contains non-string items")
+						print(f"[DEBUG] Item types: {[type(x) for x in keywords_list]}")
+				return None
+
+		if verbose:
+				print(f"[DEBUG] Validated as list of {len(keywords_list)} strings")
+
+		# ------------------------------------------------------------------
+		# Step 6: Process keywords (numeric filter, cleaning, dedupe)
+		# ------------------------------------------------------------------
+		processed_keywords: List[str] = []
+
+		for i, keyword in enumerate(keywords_list):
+				original = keyword
+
+				# Remove standalone numbers or keywords that are ONLY digits/special chars
+				# But preserve keywords like "MG 42" or "B-17"
+				if re.fullmatch(r'[\d\s\-#]+', keyword.strip()):
+						if verbose:
+								print(f"[DEBUG] Item {i}: '{original}' → REJECTED (purely numeric/special)")
+						continue
+
+				# Remove leading/trailing digits/#/whitespace and collapse internal whitespace
+				cleaned_keyword = re.sub(r'^[\d#\s]+|[\d#\s]+$', '', keyword)
+				cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword).strip()
+
+				# Minimum length check
+				if len(cleaned_keyword) < 2:
+						if verbose:
+								print(f"[DEBUG] Item {i}: '{original}' → '{cleaned_keyword}' → REJECTED (too short)")
+						continue
+
+				# Check for duplicates (case-insensitive)
+				if cleaned_keyword.lower() in [k.lower() for k in processed_keywords]:
+						if verbose:
+								print(f"[DEBUG] Item {i}: '{original}' → '{cleaned_keyword}' → REJECTED (duplicate)")
+						continue
+
+				processed_keywords.append(cleaned_keyword)
+
+				if verbose:
+						if original != cleaned_keyword:
+								print(f"[DEBUG] Item {i}: '{original}' → '{cleaned_keyword}' → KEPT (cleaned)")
+						else:
+								print(f"[DEBUG] Item {i}: '{original}' → KEPT (unchanged)")
+
+				# Early stop if we've reached max_kws
+				if len(processed_keywords) >= max_kws:
+						if verbose:
+								print(f"[DEBUG] Reached max_kws={max_kws}, stopping further processing")
+						break
+
+		# ------------------------------------------------------------------
+		# Step 7: Redundancy reduction (subphrase dedupe)
+		# ------------------------------------------------------------------
+		if not processed_keywords:
+				if verbose:
+						print("[ERROR] No valid keywords remaining after initial processing")
+				return None
+
+		if verbose:
+				print(f"\n[DEBUG] Keywords before redundancy dedupe: {processed_keywords}")
+
+		deduped_keywords = dedupe_redundant_subphrases(processed_keywords, verbose=verbose)
+
+		# Safety: enforce max_kws again after dedupe (though it shouldn't increase)
+		final_keywords = deduped_keywords[:max_kws]
+
+		if not final_keywords:
+				if verbose:
+						print("[ERROR] No valid keywords remaining after redundancy dedupe")
+				return None
+
+		if verbose:
+				print(f"\n[SUCCESS] Extracted {len(final_keywords)} keyword(s): {final_keywords}\n")
+
+		return final_keywords
 
 def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = False) -> Optional[List[str]]:
 	def _extract_clean_list_content(text: str) -> Optional[str]:
