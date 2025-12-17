@@ -281,7 +281,7 @@ def _load_llm_(
 		print(f"   • Total parameters: {total_params:,}")
 		print(f"   • Approx. fp16 RAM: {approx_fp16_gb:.2f} GiB (if stored as fp16)")
 		print(f"   • Approx. fp8 RAM: {approx_fp8_gb:.2f} GiB (if stored as fp8)")
-		print(f"   • Actual RAM     : {getsizeof(model) / (1024 ** 3):.2f} GiB (actual size in memory)")
+		print(f"   • Actual RAM     : {sys.getsizeof(model) / (1024 ** 3):.2f} GiB (actual size in memory)")
 
 		if hasattr(model, "hf_device_map"):
 			dm = model.hf_device_map
