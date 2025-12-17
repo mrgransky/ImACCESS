@@ -65,7 +65,7 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 
 **CRITICAL RULES**:
 - Return **ONLY** a clean, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is expected if the text is either short or lacks distinct concepts.
-- Extracted KEYWORDS must be self-contained and grammatically complete phrases that actually appear in the text. Do not invent or fabricate any specifics.
+- Extracted **KEYWORDS** must be self-contained and grammatically complete phrases that actually appear in the text. **DO NOT** invent or fabricate any specifics.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
 - **STRICTLY EXCLUDE NUMERICAL CONTENT** such as measurements, units, or quantitative terms.
 - **STRICTLY EXCLUDE MEDIA DESCRIPTORS** such as generic photography, image, picture, or media terms.
