@@ -326,11 +326,12 @@ def get_multimodal_annotation(
 	
 	output_csv = csv_file.replace(".csv", "_multimodal.csv")
 
-	use_parallel = (
-		device.type == "cuda"
-		and torch.cuda.is_available()
-		and torch.cuda.device_count() > 1
-	)
+	# use_parallel = (
+	# 	device.type == "cuda"
+	# 	and torch.cuda.is_available()
+	# 	and torch.cuda.device_count() > 1
+	# )
+	use_parallel = False
 	if verbose:
 		print(f"[INFO] device: {device}, cuda devices: {torch.cuda.device_count() if torch.cuda.is_available() else 0}, num_workers: {num_workers}")
 		print(f"[INFO] Parallel LLM+VLM: {'ENABLED' if use_parallel else 'DISABLED'}")

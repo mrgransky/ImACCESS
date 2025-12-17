@@ -77,7 +77,7 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""
 
-def _load_llm_(
+def _load_llm_old(
 		model_id: str,
 		device: Union[str, torch.device],
 		use_quantization: bool = False,
@@ -313,6 +313,265 @@ def _load_llm_(
 				cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
 				print(f"   • Parameters on GPU	: {gpu_params}")
 				print(f"   • Parameters on CPU	: {cpu_params}")
+
+	model.eval()
+		
+	return tokenizer, model
+
+def _load_llm_(
+		model_id: str,
+		device: Union[str, torch.device],
+		use_quantization: bool = False,
+		quantization_bits: int = 8,
+		verbose: bool = False,
+) -> Tuple[tfs.PreTrainedTokenizerBase, torch.nn.Module]:
+		
+	if verbose:
+		print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
+		if torch.cuda.is_available():
+			cur = torch.cuda.current_device()
+			print(f"[INFO] Current CUDA device   : {cur} ({torch.cuda.get_device_name(cur)})")
+			major, minor = torch.cuda.get_device_capability(cur)
+			print(f"[INFO] Compute capability    : {major}.{minor}")
+			print(f"[INFO] BF16 support?         : {torch.cuda.is_bf16_supported()}")
+			print(f"[INFO] CUDA memory allocated: {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+			print(f"[INFO] CUDA memory reserved : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
+		else:
+			print("[INFO] Running on CPU only")
+
+	print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
+	try:
+		huggingface_hub.login(token=hf_tk)
+	except Exception as e:
+		print(f"<!> Failed to login to HuggingFace Hub: {e}")
+		raise e
+
+	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+	if verbose:
+		print(f"[INFO] {model_id} Config")
+		print(f"   • model_type      : {config.model_type}")
+		print(f"   • architectures   : {config.architectures}")
+		print(f"   • dtype (if set)  : {config.dtype}")
+	
+	model_cls = None
+	if config.architectures:
+		cls_name = config.architectures[0]
+		if hasattr(tfs, cls_name):
+			model_cls = getattr(tfs, cls_name)
+	if model_cls is None:
+		raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
+	
+	if verbose:
+		print(f"[INFO] Resolved model class → {model_cls.__name__}\n")
+	
+	# ========== Quantization config ==========
+	quantization_config = None
+	if use_quantization:
+		if quantization_bits == 8:
+			quantization_config = tfs.BitsAndBytesConfig(
+				load_in_8bit=True,
+				bnb_8bit_compute_dtype=torch.float16,
+				llm_int8_enable_fp32_cpu_offload=True,
+			)
+		elif quantization_bits == 4:
+			quantization_config = tfs.BitsAndBytesConfig(
+				load_in_4bit=True,
+				bnb_4bit_quant_type="nf4",
+				bnb_4bit_compute_dtype=torch.bfloat16,
+				bnb_4bit_use_double_quant=True,
+			)
+		else:
+			raise ValueError("quantization_bits must be 4 or 8")
+		
+		if verbose:
+			print("[INFO] Quantization enabled")
+			print(f"   • Bits                : {quantization_bits}")
+			print(f"   • Config object type  : {type(quantization_config).__name__}")
+			print()
+	
+	# ========== Tokenizer loading ==========
+	tokenizer = None
+	try:
+		tokenizer = tfs.AutoTokenizer.from_pretrained(
+			model_id,
+			use_fast=True,
+			trust_remote_code=True,
+			cache_dir=cache_directory[USER],
+		)
+	except (KeyError, ValueError, OSError) as exc:
+		if verbose:
+			print(f"[WARN] AutoTokenizer failed: {exc}")
+			print("[INFO] Trying specific tokenizer classes...")
+		
+		fallback_exc = None
+		candidate_tokenizer_classes = [
+			getattr(tfs, "MistralTokenizer", None),
+			getattr(tfs, "MistralTokenizerFast", None),
+			getattr(tfs, "LlamaTokenizer", None),
+			getattr(tfs, "LlamaTokenizerFast", None),
+		]
+		
+		candidate_tokenizer_classes = [cls for cls in candidate_tokenizer_classes if cls is not None]
+		
+		for TokCls in candidate_tokenizer_classes:
+			try:
+				if verbose:
+					print(f"[DEBUG] Trying {TokCls.__name__}...")
+				
+				tokenizer = TokCls.from_pretrained(
+					model_id,
+					trust_remote_code=True,
+					cache_dir=cache_directory[USER],
+				)
+				
+				if verbose:
+					print(f"[SUCCESS] Loaded tokenizer using {TokCls.__name__}")
+				break
+			except Exception as e:
+				fallback_exc = e
+				if verbose:
+					print(f"[DEBUG] {TokCls.__name__} failed: {e}")
+				continue
+
+		if tokenizer is None:
+			if verbose:
+				print("[INFO] All specific tokenizer classes failed, trying AutoTokenizer with use_fast=False...")
+			try:
+				tokenizer = tfs.AutoTokenizer.from_pretrained(
+					model_id,
+					use_fast=False,
+					trust_remote_code=True,
+					cache_dir=cache_directory[USER],
+				)
+				if verbose:
+					print("[SUCCESS] Loaded tokenizer using AutoTokenizer with use_fast=False")
+			except Exception as final_exc:
+				raise RuntimeError(
+					f"Failed to load tokenizer for '{model_id}'. "
+					f"AutoTokenizer error: {exc}. "
+					f"Fallback errors: {fallback_exc}. "
+					f"Final attempt error: {final_exc}"
+				) from final_exc
+
+	if tokenizer.pad_token is None:
+		tokenizer.pad_token = tokenizer.eos_token
+		tokenizer.pad_token_id = tokenizer.eos_token_id
+	
+	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
+		tokenizer.padding_side = "left"
+
+	if verbose:
+		print(f"[TOKENIZER] {tokenizer.__class__.__name__} {type(tokenizer)}")
+		print(f"\t• vocab size      {len(tokenizer):>20}")
+		print(f"\t• pad token       {tokenizer.pad_token:>20}")
+		print(f"\t• pad token id    {tokenizer.pad_token_id:>20}")
+		print(f"\t• eos token       {tokenizer.eos_token:>20}")
+		print(f"\t• eos token id    {tokenizer.eos_token_id:>20}")
+		print(f"\t• padding side    {tokenizer.padding_side:>20}")
+	
+	# ========== Decide device placement strategy ==========
+	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
+	use_device_map_auto = False
+
+	if use_quantization:
+		# Quantization always uses device_map="auto"
+		use_device_map_auto = True
+		if verbose:
+			print(f"[DEVICE STRATEGY] Quantization enabled → using device_map='auto'")
+	elif n_gpus > 1:
+		# Multiple GPUs available and no quantization → use device_map="auto" to spread model
+		use_device_map_auto = True
+		if verbose:
+			print(f"[DEVICE STRATEGY] {n_gpus} GPUs detected → using device_map='auto' to distribute model")
+	else:
+		# Single GPU or CPU → manual placement
+		use_device_map_auto = False
+		if verbose:
+			print(f"[DEVICE STRATEGY] Single device ({device}) → manual .to(device)")
+
+	# ========== Model loading kwargs ==========
+	model_kwargs: Dict[str, Any] = {
+		"low_cpu_mem_usage": True,
+		"trust_remote_code": True,
+		"cache_dir": cache_directory[USER],
+	}
+
+	if use_device_map_auto:
+		model_kwargs["device_map"] = "auto"
+		if use_quantization:
+			model_kwargs["quantization_config"] = quantization_config
+		else:
+			# Full precision with multi-GPU
+			model_kwargs["torch_dtype"] = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+	else:
+		# Single device: set dtype, will call .to(device) later
+		model_kwargs["torch_dtype"] = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+	
+	if verbose:
+		print(f"[INFO] {model_cls.__name__} loading kwargs")
+		for k, v in model_kwargs.items():
+			if k == "quantization_config":
+				print(f"   • {k}: {type(v).__name__}")
+			else:
+				print(f"   • {k}: {v}")
+		print()
+	
+	if verbose and torch.cuda.is_available():
+		cur = torch.cuda.current_device()
+		print("[DEBUG] CUDA memory BEFORE model load")
+		print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+		print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
+
+	if verbose:
+		print(f"[INFO] Calling pretrained {model_cls.__name__} {model_id} ...")
+
+	model = model_cls.from_pretrained(model_id, **model_kwargs)
+
+	if verbose:
+		print(f"\n[MODEL] {model.__class__.__name__} {type(model)}")
+		first_param = next(model.parameters())
+		print(f"\t• First parameter dtype: {first_param.dtype}")
+
+		total_params = sum(p.numel() for p in model.parameters())
+		approx_fp16_gb = total_params * 2 / (1024 ** 3)
+		approx_fp8_gb = total_params * 1 / (1024 ** 3)
+
+		print("\n[MODEL] Parameter statistics")
+		print(f"• Total parameters:   {total_params:>25,}")
+		print(f"• Approx. fp16 RAM:   {approx_fp16_gb:>25.2f} GiB (if stored as fp16)")
+		print(f"• Approx. fp8 RAM:    {approx_fp8_gb:>25.2f} GiB (if stored as fp8)")
+
+		if hasattr(model, "hf_device_map"):
+			dm = model.hf_device_map
+			print(f"• Final device map (model.hf_device_map):\n{json.dumps(dm, indent=2, ensure_ascii=False)}")
+		else:
+			print(f"• No `hf_device_map` attribute – model lives on a single device: {device}")
+		print()
+	
+	# ========== Manual placement if not using device_map="auto" ==========
+	if not use_device_map_auto:
+		if verbose:
+			print(f"[INFO] Moving model to {device} (manual placement)")
+
+		try:
+			model = model.to(device)
+		except Exception as e:
+			print(e)
+			sys.exit(1)
+
+		if verbose and torch.cuda.is_available():
+			cur = torch.cuda.current_device()
+			print("[DEBUG] CUDA memory AFTER model.to()")
+			print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+			print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
+	else:
+		if verbose:
+			print("[INFO] Model placement handled by device_map='auto'")
+			if torch.cuda.is_available():
+				gpu_params = sum(1 for p in model.parameters() if p.device.type == "cuda")
+				cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
+				print(f"   • Parameters on GPU : {gpu_params}")
+				print(f"   • Parameters on CPU : {cpu_params}")
 
 	model.eval()
 		
