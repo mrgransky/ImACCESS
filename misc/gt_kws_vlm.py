@@ -22,7 +22,8 @@ from utils import *
 # Qwen/Qwen3-VL-2B-Instruct
 # Qwen/Qwen3-VL-4B-Instruct
 # Qwen/Qwen3-VL-8B-Instruct # only fits Puhti and Mahti
-# Qwen/Qwen3-VL-32B-Instruct
+# Qwen/Qwen3-VL-32B-Instruct # multiple gpus required
+# Qwen/Qwen3-VL-30B-A3B-Instruct # multiple gpus required
 
 # does not fit into VRAM:
 # model_id = "llava-hf/llava-v1.6-34b-hf"
@@ -561,7 +562,7 @@ def _load_vlm_(
 
 		if hasattr(model, "hf_device_map"):
 			dm = model.hf_device_map
-			print(f"[INFO] device_map='auto' (model.hf_device_map): {dm}")
+			print(f"[INFO] device_map='auto' (model.hf_device_map):\n{json.dumps(dm, indent=2, ensure_ascii=False)}")
 		else:
 			print(f"[INFO] No `hf_device_map` attribute => model resides on a single device: {device}")
 
