@@ -610,8 +610,18 @@ def _mistral_llm_response(
 				return None
 		
 		# Step 2: Normalize quotes
-		cleaned_string = list_line.replace(""", '"').replace(""", '"').replace("'", "'").replace("'", "'")
-		
+		# Create the mapping table once (ideally outside a loop)
+		quote_map = str.maketrans({
+			'“': '"', 
+			'”': '"', 
+			'‘': "'", 
+			'’': "'"
+		})
+		# clean the string in one go
+		cleaned_string = list_line.translate(quote_map)
+
+
+
 		if verbose:
 				print(f"[DEBUG] After quote normalization: {cleaned_string}")
 		
