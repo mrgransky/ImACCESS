@@ -7,12 +7,12 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=64
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=48G
 #SBATCH --array=0-4
 #SBATCH --partition=gpusmall
 #SBATCH --time=01-12:00:00
-#SBATCH --gres=gpu:a100:2,nvme:250
+#SBATCH --gres=gpu:a100:4,nvme:250
 
 set -euo pipefail
 
@@ -47,7 +47,7 @@ LLM_MODELS=(
   "Qwen/Qwen3-4B-Instruct-2507" # HISTORY_X4
   "Qwen/Qwen3-4B-Instruct-2507" # NATIONAL_ARCHIVE_1900-01-01_1970-12-31
   "Qwen/Qwen3-4B-Instruct-2507" # EUROPEANA_1900-01-01_1970-12-31
-  "mistralai/Mistral-7B-Instruct-v0.3" # WWII_1939-09-01_1945-09-02
+  "Qwen/Qwen3-4B-Instruct-2507" # WWII_1939-09-01_1945-09-02
   "Qwen/Qwen3-4B-Instruct-2507" # SMU_1900-01-01_1970-12-31
 )
 
