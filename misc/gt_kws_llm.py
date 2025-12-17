@@ -16,6 +16,7 @@ from utils import *
 # model_id = "microsoft/Phi-4-mini-instruct"
 # model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
 # model_id = "NousResearch/Hermes-2-Pro-Mistral-7B"
+# model_id = "allenai/Olmo-3-7B-Instruct"
 # model_id = "google/flan-t5-xxl"
 
 # does not fit into VRAM:
@@ -517,63 +518,198 @@ def _microsoft_llm_response(model_id: str, input_prompt: str, llm_response: str,
 				print(f"An unexpected error occurred: {e}")
 				return None
 
-def _mistral_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = False):
-		print(f"Handling Mistral response model_id: {model_id}...")
+def _mistral_llm_response_old(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = False):
+	# Split the response by lines and look for the list pattern
+	lines = llm_response.strip().split('\n')
+	
+	# Look for a line that starts with [ and ends with ] (the model's output)
+	list_line = None
+	for line in lines:
+		line = line.strip()
+		if line.startswith('[') and line.endswith(']'):
+			list_line = line
+			break
+	
+	if not list_line:
+		print("Error: Could not find a list in the Mistral response.")
+		return None
+			
+	print(f"Found list line: {list_line}")
+	# Clean the string
+	cleaned_string = list_line.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+	
+	if cleaned_string == "[]":
+		print("Model returned an empty list.")
+		return []
+	try:
+		keywords_list = ast.literal_eval(cleaned_string)
 		
-		# Split the response by lines and look for the list pattern
-		lines = llm_response.strip().split('\n')
-		
-		# Look for a line that starts with [ and ends with ] (the model's output)
-		list_line = None
-		for line in lines:
-				line = line.strip()
-				if line.startswith('[') and line.endswith(']'):
-						list_line = line
-						break
-		
-		if not list_line:
-				print("Error: Could not find a list in the Mistral response.")
-				return None
+		if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
+			print("Error: Extracted string is not a valid list of strings.")
+			return None
 				
-		print(f"Found list line: {list_line}")
+		# Process keywords to remove numbers and enforce rules
+		processed_keywords = []
+		for keyword in keywords_list:
+			# Remove numbers and special characters
+			cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+			cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)  # Collapse spaces
+			
+			if cleaned_keyword and cleaned_keyword not in processed_keywords:
+				processed_keywords.append(cleaned_keyword)
+		
+		if len(processed_keywords) > max_kws:
+			processed_keywords = processed_keywords[:max_kws]
+				
+		if not processed_keywords:
+			print("Error: No valid keywords found after processing.")
+			return None
+				
+		print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+		return processed_keywords
+			
+	except Exception as e:
+		print(f"Error parsing the list: {e}")
+		return None
 
-		# Clean the string
-		cleaned_string = list_line.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
-		
-		if cleaned_string == "[]":
-				print("Model returned an empty list.")
-				return []
-
-		try:
-				keywords_list = ast.literal_eval(cleaned_string)
-				
-				if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
-						print("Error: Extracted string is not a valid list of strings.")
-						return None
-						
-				# Process keywords to remove numbers and enforce rules
-				processed_keywords = []
-				for keyword in keywords_list:
-						# Remove numbers and special characters
-						cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
-						cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)  # Collapse spaces
-						
-						if cleaned_keyword and cleaned_keyword not in processed_keywords:
-								processed_keywords.append(cleaned_keyword)
-				
-				if len(processed_keywords) > max_kws:
-						processed_keywords = processed_keywords[:max_kws]
-						
-				if not processed_keywords:
-						print("Error: No valid keywords found after processing.")
-						return None
-						
-				print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
-				return processed_keywords
-				
-		except Exception as e:
-				print(f"Error parsing the list: {e}")
-				return None
+def _mistral_llm_response(
+    model_id: str,
+    input_prompt: str,
+    llm_response: str,
+    max_kws: int,
+    verbose: bool = False
+) -> Optional[List[str]]:
+    """
+    Extract and clean keywords from Mistral LLM response.
+    
+    Returns:
+        List[str]: Cleaned keywords, or None if extraction fails
+    """
+    
+    if verbose:
+        print(f"\n{'='*100}")
+        print(f"[DEBUG] _mistral_llm_response called")
+        print(f"[DEBUG]   model_id: {model_id}")
+        print(f"[DEBUG]   max_kws: {max_kws}")
+        print(f"[DEBUG]   response length: {len(llm_response)} chars")
+        print(f"{'='*100}\n")
+    
+    # Step 1: Find the list line
+    lines = llm_response.strip().split('\n')
+    
+    if verbose:
+        print(f"[DEBUG] Split response into {len(lines)} lines")
+    
+    list_line = None
+    for i, line in enumerate(lines):
+        line_stripped = line.strip()
+        if line_stripped.startswith('[') and line_stripped.endswith(']'):
+            list_line = line_stripped
+            if verbose:
+                print(f"[DEBUG] Found list at line {i}: {list_line}")
+            break
+    
+    if not list_line:
+        if verbose:
+            print("[ERROR] Could not find a list pattern [...]  in response")
+            print("[DEBUG] Searched lines:")
+            for i, line in enumerate(lines[-5:]):  # show last 5 lines
+                print(f"  {i}: {repr(line[:100])}")
+        return None
+    
+    # Step 2: Normalize quotes
+    cleaned_string = list_line.replace(""", '"').replace(""", '"').replace("'", "'").replace("'", "'")
+    
+    if verbose:
+        print(f"[DEBUG] After quote normalization: {cleaned_string}")
+    
+    # Step 3: Handle empty list
+    if cleaned_string == "[]":
+        if verbose:
+            print("[INFO] Model returned empty list []")
+        return []
+    
+    # Step 4: Parse with ast.literal_eval
+    try:
+        keywords_list = ast.literal_eval(cleaned_string)
+        if verbose:
+            print(f"[DEBUG] ✓ ast.literal_eval succeeded")
+            print(f"[DEBUG]   Type: {type(keywords_list)}")
+            print(f"[DEBUG]   Raw content: {keywords_list}")
+    except Exception as e:
+        if verbose:
+            print(f"[ERROR] ast.literal_eval failed: {type(e).__name__}: {e}")
+            print(f"[DEBUG] Failed string: {cleaned_string}")
+        return None
+    
+    # Step 5: Validate it's a list of strings
+    if not isinstance(keywords_list, list):
+        if verbose:
+            print(f"[ERROR] Parsed result is not a list (got {type(keywords_list)})")
+        return None
+    
+    if not all(isinstance(item, str) for item in keywords_list):
+        if verbose:
+            print(f"[ERROR] List contains non-string items")
+            print(f"[DEBUG] Item types: {[type(x) for x in keywords_list]}")
+        return None
+    
+    if verbose:
+        print(f"[DEBUG] Validated as list of {len(keywords_list)} strings")
+    
+    # Step 6: Process keywords
+    processed_keywords = []
+    
+    for i, keyword in enumerate(keywords_list):
+        original = keyword
+        
+        # Remove standalone numbers or keywords that are ONLY digits/special chars
+        # But preserve keywords like "MG 42" or "B-17"
+        if re.fullmatch(r'[\d\s\-#]+', keyword.strip()):
+            if verbose:
+                print(f"[DEBUG] Item {i}: '{original}' → REJECTED (purely numeric/special)")
+            continue
+        
+        # Remove leading/trailing special chars and collapse whitespace
+        cleaned_keyword = re.sub(r'^[\d#\s]+|[\d#\s]+$', '', keyword)  # strip leading/trailing digits
+        cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword).strip()
+        
+        # Minimum length check
+        if len(cleaned_keyword) < 2:
+            if verbose:
+                print(f"[DEBUG] Item {i}: '{original}' → '{cleaned_keyword}' → REJECTED (too short)")
+            continue
+        
+        # Check for duplicates (case-insensitive)
+        if cleaned_keyword.lower() in [k.lower() for k in processed_keywords]:
+            if verbose:
+                print(f"[DEBUG] Item {i}: '{original}' → '{cleaned_keyword}' → REJECTED (duplicate)")
+            continue
+        
+        processed_keywords.append(cleaned_keyword)
+        
+        if verbose:
+            if original != cleaned_keyword:
+                print(f"[DEBUG] Item {i}: '{original}' → '{cleaned_keyword}' → KEPT (cleaned)")
+            else:
+                print(f"[DEBUG] Item {i}: '{original}' → KEPT (unchanged)")
+        
+        # Stop if we've reached max
+        if len(processed_keywords) >= max_kws:
+            if verbose:
+                print(f"[DEBUG] Reached max_kws={max_kws}, stopping")
+            break
+    
+    # Step 7: Final validation
+    if not processed_keywords:
+        if verbose:
+            print("[ERROR] No valid keywords remaining after processing")
+        return None
+    
+    if verbose:
+        print(f"\n[SUCCESS] Extracted {len(processed_keywords)} keyword(s): {processed_keywords}\n")
+    
+    return processed_keywords
 
 def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = False) -> Optional[List[str]]:
 	def _extract_clean_list_content(text: str) -> Optional[str]:
