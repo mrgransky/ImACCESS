@@ -17,10 +17,10 @@ import visualize as viz
 # model_id = "Qwen/Qwen2.5-VL-7B-Instruct" # only fits Puhti and Mahti
 
 # how to run [local]:
-# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -q -v -vlm_bs 2 -llm_bs 2 -nw 18
-# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -q -v -vlm_bs 4 -llm_bs 2 -nw 18 > logs/multimodal_annotation_smu.txt & 
-# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -q -v -vlm_bs 4 -llm_bs 2 > logs/multimodal_annotation_eu.txt & 
-# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -q -v -vlm_bs 2 -llm_bs 2 > logs/multimodal_annotation_wwii.txt & 
+# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct"-v -vlm_bs 2 -llm_bs 2 -llm_q -vlm_q -nw 18 
+# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 4 -llm_bs 2 -vlm_q -llm_q -nw 18 -v > logs/multimodal_annotation_smu.txt & 
+# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct"-v -vlm_bs 4 -llm_bs 2 > logs/multimodal_annotation_eu.txt & 
+# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct"-v -vlm_bs 2 -llm_bs 2 > logs/multimodal_annotation_wwii.txt & 
 
 # how to run [Pouta]:
 # $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 64 -llm_bs 12 -dv "cuda:1" -nw 32 -v > /media/volume/ImACCESS/trash/multimodal_annotation_na.txt &
@@ -316,7 +316,7 @@ def get_multimodal_annotation(
 	)
 	
 	if verbose:
-		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
+		print(f"<> FULL Dataset: {type(df)} {df.shape}\n{list(df.columns)}")
 	
 	if 'img_path' not in df.columns:
 		raise ValueError("CSV file must have 'img_path' column")
@@ -331,9 +331,8 @@ def get_multimodal_annotation(
 		and torch.cuda.is_available()
 		and torch.cuda.device_count() > 1
 	)
-
 	if verbose:
-		print(f"[INFO] device = {device}, cuda devices = {torch.cuda.device_count() if torch.cuda.is_available() else 0}")
+		print(f"[INFO] device: {device}, cuda devices: {torch.cuda.device_count() if torch.cuda.is_available() else 0}, num_workers: {num_workers}")
 		print(f"[INFO] Parallel LLM+VLM: {'ENABLED' if use_parallel else 'DISABLED'}")
 
 	# Parallel branch: two GPUs → run LLM and VLM in separate processes, on different GPUs
@@ -352,28 +351,28 @@ def get_multimodal_annotation(
 		vlm_based_labels = None
 		
 		llm_args = (
-			llm_model_id, 
-			llm_device_str, 
-			csv_file, 
+			llm_model_id,
+			llm_device_str,
+			csv_file,
 			llm_batch_size,
-			max_generated_tks, 
-			max_keywords, 
+			max_generated_tks,
+			max_keywords,
 			num_workers,
-			use_llm_quantization, 
-			verbose, 
+			use_llm_quantization,
+			verbose,
 			debug
 		)
 		
 		vlm_args = (
-			vlm_model_id, 
-			vlm_device_str, 
-			csv_file, 
+			vlm_model_id,
+			vlm_device_str,
+			csv_file,
 			vlm_batch_size,
-			max_generated_tks, 
-			max_keywords, 
+			max_generated_tks,
+			max_keywords,
 			num_workers,
-			use_vlm_quantization, 
-			verbose, 
+			use_vlm_quantization,
+			verbose,
 			debug
 		)
 		
