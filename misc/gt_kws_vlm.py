@@ -508,7 +508,7 @@ def _load_vlm_(
 		"trust_remote_code": True,
 		"cache_dir": cache_directory[USER],
 		"attn_implementation": attn_impl,
-		"torch_dtype": dtype,
+		"dtype": dtype,
 	}
 
 	if use_device_map_auto:

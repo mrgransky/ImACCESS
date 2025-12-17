@@ -502,10 +502,10 @@ def _load_llm_(
 			model_kwargs["quantization_config"] = quantization_config
 		else:
 			# Full precision with multi-GPU
-			model_kwargs["torch_dtype"] = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+			model_kwargs["dtype"] = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
 	else:
 		# Single device: set dtype, will call .to(device) later
-		model_kwargs["torch_dtype"] = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+		model_kwargs["dtype"] = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
 	
 	if verbose:
 		print(f"[INFO] {model_cls.__name__} loading kwargs")
