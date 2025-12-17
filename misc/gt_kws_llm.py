@@ -278,16 +278,16 @@ def _load_llm_(
 		approx_fp8_gb = total_params * 1 / (1024 ** 3)
 
 		print("\n[MODEL] Parameter statistics")
-		print(f"\t• Total parameters:{total_params:>25,}")
-		print(f"\t• Approx. fp16 RAM:{approx_fp16_gb:>25.2f} GiB (if stored as fp16)")
-		print(f"\t• Approx. fp8 RAM:	{approx_fp8_gb:>25.2f} GiB (if stored as fp8)")
-		print(f"\t• Actual RAM: 			{sys.getsizeof(model) / (1024 ** 3)} (actual size in memory)")
+		print(f"• Total parameters:{total_params:>25,}")
+		print(f"• Approx. fp16 RAM:{approx_fp16_gb:>25.2f} GiB (if stored as fp16)")
+		print(f"• Approx. fp8 RAM:	{approx_fp8_gb:>25.2f} GiB (if stored as fp8)")
+		print(f"• Actual RAM: 			{sys.getsizeof(model) / (1024 ** 3)} (actual size in memory)")
 
 		if hasattr(model, "hf_device_map"):
 			dm = model.hf_device_map
-			print(f"\t• Final device map (model.hf_device_map): {dm}")
+			print(f"• Final device map (model.hf_device_map):\n{json.dumps(dm, indent=2, ensure_ascii=False)}")
 		else:
-			print(f"\t• No `hf_device_map` attribute – model lives on a single device: {device}")
+			print(f"• No `hf_device_map` attribute – model lives on a single device: {device}")
 		print()
 	
 	if not use_quantization:
