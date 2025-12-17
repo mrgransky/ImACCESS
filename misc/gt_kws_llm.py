@@ -656,6 +656,7 @@ def _mistral_llm_response(
 		if verbose:
 				print(f"[DEBUG] Validated as list of {len(keywords_list)} strings")
 
+
 		# ------------------------------------------------------------------
 		# Step 6: Process keywords (numeric filter, cleaning, dedupe)
 		# ------------------------------------------------------------------
@@ -664,16 +665,16 @@ def _mistral_llm_response(
 		for i, keyword in enumerate(keywords_list):
 				original = keyword
 
-				# Remove standalone numbers or keywords that are ONLY digits/special chars
-				# But preserve keywords like "MG 42" or "B-17"
+				# Reject keywords that are ONLY digits/special chars
+				# But preserve keywords like "MG 42", "StuG III", "3rd Infantry"
 				if re.fullmatch(r'[\d\s\-#]+', keyword.strip()):
 						if verbose:
 								print(f"[DEBUG] Item {i}: '{original}' → REJECTED (purely numeric/special)")
 						continue
 
-				# Remove leading/trailing digits/#/whitespace and collapse internal whitespace
-				cleaned_keyword = re.sub(r'^[\d#\s]+|[\d#\s]+$', '', keyword)
-				cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword).strip()
+				# Clean: collapse whitespace, strip leading/trailing whitespace
+				# Do NOT strip digits that are part of the keyword
+				cleaned_keyword = re.sub(r'\s+', ' ', keyword).strip()
 
 				# Minimum length check
 				if len(cleaned_keyword) < 2:
@@ -700,6 +701,8 @@ def _mistral_llm_response(
 						if verbose:
 								print(f"[DEBUG] Reached max_kws={max_kws}, stopping further processing")
 						break
+
+
 
 		# ------------------------------------------------------------------
 		# Step 7: Redundancy reduction (subphrase dedupe)
