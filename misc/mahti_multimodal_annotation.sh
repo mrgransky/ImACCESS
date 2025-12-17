@@ -28,6 +28,7 @@ echo "JOBname: $SLURM_JOB_NAME, ID: $SLURM_JOB_ID, WRK_DIR: $SLURM_SUBMIT_DIR"
 echo "nNODES: $SLURM_NNODES, NODELIST: $SLURM_JOB_NODELIST, NODE_ID: $SLURM_NODEID"
 echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_NPROCS"
 echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
+echo "GPUs: $SLURM_GPUS_ON_NODE, GRES: $SLURM_JOB_GRES"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
@@ -40,8 +41,28 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
-LLM_BATCH_SIZES=(24 24 48 64 96)
-VLM_BATCH_SIZES=(32 32 32 32 48)
+# Base batch sizes (per GPU)
+BASE_LLM_BATCH_SIZES=(24 24 48 64 96)
+BASE_VLM_BATCH_SIZES=(32 32 32 32 48)
+
+# Extract number of GPUs from GRES allocation
+NUM_GPUS=$(echo "$SLURM_JOB_GRES" | grep -o 'gpu:[^:]*:[0-9]*' | cut -d':' -f3)
+if [[ -z "$NUM_GPUS" ]]; then
+    NUM_GPUS=1  # Fallback to 1 if parsing fails
+fi
+
+echo "Detected $NUM_GPUS GPUs, scaling batch sizes accordingly"
+
+# Scale batch sizes by number of GPUs
+LLM_BATCH_SIZES=()
+VLM_BATCH_SIZES=()
+for i in "${!BASE_LLM_BATCH_SIZES[@]}"; do
+    LLM_BATCH_SIZES[$i]=$((${BASE_LLM_BATCH_SIZES[$i]} * NUM_GPUS))
+    VLM_BATCH_SIZES[$i]=$((${BASE_VLM_BATCH_SIZES[$i]} * NUM_GPUS))
+done
+
+echo "Scaled LLM batch sizes: ${LLM_BATCH_SIZES[@]}"
+echo "Scaled VLM batch sizes: ${VLM_BATCH_SIZES[@]}"
 
 LLM_MODELS=(
   "Qwen/Qwen3-4B-Instruct-2507" # HISTORY_X4
