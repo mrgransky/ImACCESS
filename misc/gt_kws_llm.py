@@ -1898,6 +1898,8 @@ def main():
 	args = parser.parse_args()
 	set_seeds(seed=42, debug=args.debug)
 	args.device = torch.device(args.device)
+	args.num_workers = min(args.num_workers, os.cpu_count())
+
 	print(args)
 
 	if args.verbose and torch.cuda.is_available():

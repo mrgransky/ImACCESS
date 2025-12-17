@@ -535,7 +535,9 @@ def main():
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
 	args = parser.parse_args()
 	args.device = torch.device(args.device)
+	args.num_workers = min(args.num_workers, os.cpu_count())
 	print(args)
+
 	multimodal_labels = get_multimodal_annotation(
 		csv_file=args.csv_file,
 		llm_model_id=args.llm_model_id,
