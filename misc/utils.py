@@ -166,6 +166,110 @@ dtypes = {
 	'user_query': str,
 }
 
+# Install: pip install lingua-language-detector
+from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
+
+print("Initializing Lingua Language Detector...")
+
+# This DRASTICALLY improves accuracy on short text.
+languages_to_check = [
+	IsoCode639_1.EN, # English
+	IsoCode639_1.DE, # German
+	IsoCode639_1.FR, # French
+	IsoCode639_1.ES, # Spanish
+	IsoCode639_1.IT, # Italian
+	# IsoCode639_1.NL, # Dutch
+	IsoCode639_1.PT, # Portuguese
+	IsoCode639_1.SV, # Swedish
+	IsoCode639_1.FI, # Finnish
+	IsoCode639_1.DA, # Danish
+	IsoCode639_1.NB, # Norwegian Bokmål
+	IsoCode639_1.NN, # Norwegian Nynorsk
+	IsoCode639_1.PL, # Polish
+	IsoCode639_1.RU, # Russian
+	IsoCode639_1.HU, # Hungarian
+	IsoCode639_1.CS, # Czech
+	IsoCode639_1.SK, # Slovak
+	IsoCode639_1.EL, # Greek
+	IsoCode639_1.BG, # Bulgarian
+	IsoCode639_1.RO, # Romanian
+]
+
+# Preload the shortlisted detector
+detector_shortlist = (
+	LanguageDetectorBuilder
+	.from_iso_codes_639_1(*languages_to_check)
+	.with_preloaded_language_models()
+	.build()
+)
+
+# Preload the full detector (all languages)
+detector_all = (
+	LanguageDetectorBuilder
+	.from_all_languages()
+	.with_preloaded_language_models()
+	.build()
+)
+
+def is_english(
+		text: str,
+		confidence_threshold: float = 0.1,
+		use_shortlist: bool = True,  # New parameter
+		verbose: bool = False,
+) -> bool:
+		"""
+		Check if the given text is in English.
+		
+		Args:
+				text: The text to check
+				confidence_threshold: Minimum confidence score to consider text as English
+				use_shortlist: If True, use shortlisted European languages for detection.
+											If False, use all available languages.
+				verbose: Print detailed detection information
+		
+		Returns:
+				True if text is detected as English with confidence above threshold
+		"""
+		if not text or not str(text).strip():
+				return False
+		
+		# Select detector based on use_shortlist flag
+		detector = detector_shortlist if use_shortlist else detector_all
+		
+		if verbose:
+				detector_type = "shortlisted languages" if use_shortlist else "all languages"
+				print(f"Checking if text is in English (using {detector_type}):\n{text}\n")
+		
+		try:
+				cleaned_text = " ".join(str(text).split())
+				results = detector.compute_language_confidence_values(cleaned_text)
+				
+				if verbose:
+						print(f"All detected languages:")
+						for res in results:
+								print(f"  {res.language.name:<15} {res.value:.4f}")
+				
+				if not results:
+						return False
+				
+				for res in results:
+						if res.language == Language.ENGLISH:
+								score = res.value
+								if verbose:
+										print(f"\nEnglish confidence: {score:.4f}")
+										print(f"Threshold: {confidence_threshold}")
+										print(f"Is English: {score > confidence_threshold}")
+								
+								if score > confidence_threshold:
+										return True
+				
+				return False
+		
+		except Exception as e:
+				if verbose:
+						print(f"Error: {e}")
+				return False
+
 def post_process(
 	df: pd.DataFrame, 
 	dataset_type: str, 
@@ -400,10 +504,11 @@ def clean_single_quotes(text):
 		# Clean spaces
 		return re.sub(r'\s+', ' ', text).strip()
 
-def get_enriched_description(df: pd.DataFrame):
+def get_enriched_description(df: pd.DataFrame, check_english: bool=False, verbose: bool=False):
 	t0 = time.time()
-	print(f"\nAdding enriched_document_description to {df.shape} {type(df)}...")
-	print(list(df.columns))
+	if verbose:
+		print(f"\nAdding enriched_document_description to {df.shape} {type(df)}...")
+		print(list(df.columns))
 
 	# check if title and description are in df.columns:
 	if "title" not in df.columns:
@@ -412,22 +517,22 @@ def get_enriched_description(df: pd.DataFrame):
 		raise ValueError("description column not found in df")
 
 	# check if how many empty(Nones) exist in title and description:
-	print(
-		f"Number of empty title: {df['title'].isna().sum()} "
-		f"out of {df.shape[0]} total samples "
-		f"({df['title'].isna().sum()/df.shape[0]*100:.2f}%)"
-	)
-	print(
-		f"Number of empty description: {df['description'].isna().sum()} "
-		f"out of {df.shape[0]} total samples "
-		f"({df['description'].isna().sum()/df.shape[0]*100:.2f}%)"
-	)
+	if verbose:
+		print(f"Number of empty title: {df['title'].isna().sum()} "
+			f"out of {df.shape[0]} total samples "
+			f"({df['title'].isna().sum()/df.shape[0]*100:.2f}%)"
+		)
+		print(f"Number of empty description: {df['description'].isna().sum()} "
+			f"out of {df.shape[0]} total samples "
+			f"({df['description'].isna().sum()/df.shape[0]*100:.2f}%)"
+		)
 
 	# safety check:
 	if "enriched_document_description" in df.columns:
 		df = df.drop(columns=['enriched_document_description'])
 
 	df_enriched = df.copy()
+	
 	df_enriched['enriched_document_description'] = df.apply(
 		lambda row: ". ".join(
 			filter(
@@ -441,6 +546,7 @@ def get_enriched_description(df: pd.DataFrame):
 		),
 		axis=1
 	)
+	
 	# Ensure proper ending
 	df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
 		lambda x: x.rstrip('.') + '.' if x and not x.endswith('.') else x
@@ -451,16 +557,21 @@ def get_enriched_description(df: pd.DataFrame):
 		lambda x: x if x and x.strip() and x.strip() != '.' else None
 	)
 
-	print(
-		f"Number of empty enriched_document_description: "
-		f"{df_enriched['enriched_document_description'].isna().sum()} "
-		f"out of {df_enriched.shape[0]} total samples "
-		f"({df_enriched['enriched_document_description'].isna().sum()/df_enriched.shape[0]*100:.2f}%) "
-	)
+	# exclude texts that are not English:
+	if check_english:
+		df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
+			lambda x: x if is_english(text=x, confidence_threshold=0.01, use_shortlist=True, verbose=verbose) else None
+		)
 
-	print(f"{type(df_enriched)} {df_enriched.shape} {list(df_enriched.columns)}")
-
-	print(f"enriched_document_description added. Elapsed_t: {time.time()-t0:.1f} sec")
+	if verbose:
+		print(
+			f"Number of empty enriched_document_description: "
+			f"{df_enriched['enriched_document_description'].isna().sum()} "
+			f"out of {df_enriched.shape[0]} total samples "
+			f"({df_enriched['enriched_document_description'].isna().sum()/df_enriched.shape[0]*100:.2f}%) "
+		)
+		print(f"{type(df_enriched)} {df_enriched.shape} {list(df_enriched.columns)}")
+		print(f"enriched_document_description added. Elapsed_t: {time.time()-t0:.1f} sec")
 
 	return df_enriched
 

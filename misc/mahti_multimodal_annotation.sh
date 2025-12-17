@@ -43,12 +43,20 @@ DATASETS=(
 LLM_BATCH_SIZES=(24 24 48 64 96)
 VLM_BATCH_SIZES=(32 32 32 32 48)
 
+LLM_MODELS=(
+  "Qwen/Qwen3-4B-Instruct-2507" # HISTORY_X4
+  "Qwen/Qwen3-4B-Instruct-2507" # NATIONAL_ARCHIVE_1900-01-01_1970-12-31
+  "Qwen/Qwen3-4B-Instruct-2507" # EUROPEANA_1900-01-01_1970-12-31
+  "mistralai/Mistral-7B-Instruct-v0.3" # WWII_1939-09-01_1945-09-02
+  "Qwen/Qwen3-4B-Instruct-2507" # SMU_1900-01-01_1970-12-31
+)
+
 python -u gt_kws_multimodal.py \
   --csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv \
   --num_workers $SLURM_CPUS_PER_TASK \
   --llm_batch_size ${LLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
   --vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
-  --llm_model_id "Qwen/Qwen3-4B-Instruct-2507" \
+  --llm_model_id ${LLM_MODELS[$SLURM_ARRAY_TASK_ID]} \
   --vlm_model_id "Qwen/Qwen3-VL-8B-Instruct" \
   --max_generated_tks 192 \
   --max_keywords 5 \

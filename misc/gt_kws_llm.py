@@ -656,7 +656,6 @@ def _mistral_llm_response(
 		if verbose:
 				print(f"[DEBUG] Validated as list of {len(keywords_list)} strings")
 
-
 		# ------------------------------------------------------------------
 		# Step 6: Process keywords (numeric filter, cleaning, dedupe)
 		# ------------------------------------------------------------------
@@ -701,8 +700,6 @@ def _mistral_llm_response(
 						if verbose:
 								print(f"[DEBUG] Reached max_kws={max_kws}, stopping further processing")
 						break
-
-
 
 		# ------------------------------------------------------------------
 		# Step 7: Redundancy reduction (subphrase dedupe)

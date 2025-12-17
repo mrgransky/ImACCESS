@@ -736,7 +736,7 @@ def main():
 
 	# 1: multi label:
 	multi_label_synched_df = wwii_df.copy()
-	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
+	multi_label_final_df = get_enriched_description(df=multi_label_synched_df, check_english=True, verbose=True)
 	dfname_multi_label = "metadata_multi_label.csv"
 	print(f"Saving {dfname_multi_label}...")
 	multi_label_final_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_multi_label), index=False)
