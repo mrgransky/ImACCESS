@@ -61,7 +61,8 @@ python -u gt_kws_multimodal.py \
   --max_generated_tks 192 \
   --max_keywords 5 \
   --verbose \
-  # --use_quantization \
+  # --use_llm_quantization \
+  # --use_vlm_quantization \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
