@@ -1,18 +1,18 @@
 #!/bin/bash
 
 #SBATCH --account=project_2014707
-#SBATCH --job-name=multimodal_annotation
+#SBATCH --job-name=multimodal_annotation_test
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
-#SBATCH --mem=48G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=10G
 #SBATCH --array=0-4
-#SBATCH --partition=gpumedium
-#SBATCH --time=01-12:00:00
-#SBATCH --gres=gpu:a100:4,nvme:250
+#SBATCH --partition=gpusmall
+#SBATCH --time=00-02:00:00
+#SBATCH --gres=gpu:a100:2,nvme:250
 
 set -euo pipefail
 
