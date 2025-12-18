@@ -4,17 +4,18 @@ from gt_kws_llm import get_llm_based_labels_opt, get_llm_based_labels_debug
 import visualize as viz
 
 # LLM models:
-# model_id = "Qwen/Qwen3-4B-Instruct-2507"
-# model_id = "mistralai/Mistral-7B-Instruct-v0.3"
-# model_id = "microsoft/Phi-4-mini-instruct"
-# model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
-# model_id = "NousResearch/Hermes-2-Pro-Mistral-7B"
-# model_id = "google/flan-t5-xxl"
+# Qwen/Qwen3-4B-Instruct-2507
+# Qwen/Qwen3-30B-A3B-Instruct-2507 # multi-gpu required
+# mistralai/Mistral-7B-Instruct-v0.3
+# microsoft/Phi-4-mini-instruct
+# NousResearch/Hermes-2-Pro-Llama-3-8B  # Best for structured output
+# NousResearch/Hermes-2-Pro-Mistral-7B
+# google/flan-t5-xxl
 
 # VLM models:
-# model_id = "llava-hf/llava-v1.6-vicuna-13b-hf"
-# model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
-# model_id = "Qwen/Qwen2.5-VL-7B-Instruct" # only fits Puhti and Mahti
+# llava-hf/llava-v1.6-vicuna-13b-hf
+# Qwen/Qwen2.5-VL-3B-Instruct
+# Qwen/Qwen2.5-VL-7B-Instruct # only fits Puhti and Mahti
 
 # how to run [local]:
 # $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct"-v -vlm_bs 2 -llm_bs 2 -llm_q -vlm_q -nw 18 

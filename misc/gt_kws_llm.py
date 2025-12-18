@@ -20,7 +20,7 @@ from utils import *
 # model_id = "google/flan-t5-xxl"
 
 # does not fit into VRAM:
-# model_id = "Qwen/Qwen3-30B-A3B-Instruct-2507"
+# Qwen/Qwen3-30B-A3B-Instruct-2507 # multi-gpu required
 
 # not useful for instruction tuning:
 # model_id = "microsoft/DialoGPT-large"
