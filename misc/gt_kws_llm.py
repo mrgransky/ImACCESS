@@ -278,8 +278,8 @@ def _load_llm_(
 	if verbose and torch.cuda.is_available():
 		cur = torch.cuda.current_device()
 		print("[DEBUG] CUDA memory BEFORE model load")
-		print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-		print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
+		print(f"• allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+		print(f"• reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
 
 	if verbose:
 		print(f"[INFO] Calling pretrained {model_cls.__name__} {model_id} ...")
@@ -289,16 +289,16 @@ def _load_llm_(
 	if verbose:
 		print(f"\n[MODEL] {model.__class__.__name__} {type(model)}")
 		first_param = next(model.parameters())
-		print(f"\t• First parameter dtype: {first_param.dtype}")
+		print(f"• First parameter dtype: {first_param.dtype}")
 
 		total_params = sum(p.numel() for p in model.parameters())
 		approx_fp16_gb = total_params * 2 / (1024 ** 3)
 		approx_fp8_gb = total_params * 1 / (1024 ** 3)
 
 		print("\n[MODEL] Parameter statistics")
-		print(f"• Total parameters:   {total_params:>25,}")
-		print(f"• Approx. fp16 RAM:   {approx_fp16_gb:>25.2f} GiB (if stored as fp16)")
-		print(f"• Approx. fp8 RAM:    {approx_fp8_gb:>25.2f} GiB (if stored as fp8)")
+		print(f"• Total parameters: {total_params:,}")
+		print(f"• Approx. fp16 RAM: {approx_fp16_gb:.2f} GiB (if stored as fp16)")
+		print(f"• Approx. fp8 RAM:  {approx_fp8_gb:.2f} GiB (if stored as fp8)")
 
 		if hasattr(model, "hf_device_map"):
 			dm = model.hf_device_map
