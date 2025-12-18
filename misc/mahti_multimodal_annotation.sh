@@ -28,7 +28,7 @@ echo "JOBname: $SLURM_JOB_NAME, ID: $SLURM_JOB_ID, WRK_DIR: $SLURM_SUBMIT_DIR"
 echo "nNODES: $SLURM_NNODES, NODELIST: $SLURM_JOB_NODELIST, NODE_ID: $SLURM_NODEID"
 echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_NPROCS"
 echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
-echo "GPU(s): $SLURM_GPUS_ON_NODE, GRES: $SLURM_JOB_GRES"
+echo "GPU(s): $SLURM_GPUS_ON_NODE"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
@@ -46,7 +46,7 @@ BASE_LLM_BATCH_SIZES=(4 4 8 8 8)
 BASE_VLM_BATCH_SIZES=(2 2 4 4 4)
 
 # Extract GPU count more simply (format: "gpu:type:count")
-NUM_GPUS="${SLURM_JOB_GRES##*:}"  # Get everything after the last colon
+NUM_GPUS="${SLURM_GPUS_ON_NODE##*:}"  # Get everything after the last colon
 
 # Validate it's a number, fallback to 1
 if ! [[ "$NUM_GPUS" =~ ^[0-9]+$ ]]; then
