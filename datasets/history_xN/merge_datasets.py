@@ -133,10 +133,10 @@ def merge_datasets(
 	print(f"Chunking merged multi-label dataset...")
 	# Calculate optimal chunk size (aim for ~10-50MB per chunk)
 	estimated_mb_per_row = merged_multi_label_df.memory_usage(deep=True).sum() / (1024**2) / len(merged_multi_label_df)
-	target_chunk_mb = 10  # Target 10MB per chunk
+	target_chunk_mb = 4  # Target 4MB per chunk
 	optimal_chunk_size = max(1000, min(50000, int(target_chunk_mb / estimated_mb_per_row)))
 	total_num_chunks = (len(merged_multi_label_df) + optimal_chunk_size - 1) // optimal_chunk_size
-	print(f"Saving {len(merged_multi_label_df)} rows in {total_num_chunks} chunks of ~{optimal_chunk_size} rows each (estimated_mb_per_row: {estimated_mb_per_row:.2f}MB)...")
+	print(f"Saving {len(merged_multi_label_df)} rows in {total_num_chunks} chunks of ~{optimal_chunk_size} rows each (estimated_mb_per_row: {estimated_mb_per_row} MB)...")
 	# Save in chunks
 	for i in range(total_num_chunks):
 		start_idx = i * optimal_chunk_size
