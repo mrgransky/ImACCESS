@@ -40,6 +40,7 @@ python -u merge_datasets.py \
   --img_mean_std \
   --val_split_pct 0.35 \
   --bins 60 \
+  --target_chunk_mb 6 \
   --batch_size 128 \
 
 

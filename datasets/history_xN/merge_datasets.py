@@ -52,6 +52,7 @@ def merge_datasets(
 		bins: int=60, 
 		num_workers: int=16, 
 		batch_size: int=64,
+		target_chunk_mb: int=6,  # Target X MB per chunk
 		img_mean_std: bool=False,
 	):
 	datasets = get_dataset(ddir=ddir)
@@ -133,7 +134,7 @@ def merge_datasets(
 	print(f"Chunking merged multi-label dataset...")
 	# Calculate optimal chunk size (aim for ~10-50MB per chunk)
 	estimated_mb_per_row = merged_multi_label_df.memory_usage(deep=True).sum() / (1024**2) / len(merged_multi_label_df)
-	target_chunk_mb = 4  # Target 4MB per chunk
+	
 	optimal_chunk_size = max(1000, min(50000, int(target_chunk_mb / estimated_mb_per_row)))
 	total_num_chunks = (len(merged_multi_label_df) + optimal_chunk_size - 1) // optimal_chunk_size
 	print(f"Saving {len(merged_multi_label_df)} rows in {total_num_chunks} chunks of ~{optimal_chunk_size} rows each (estimated_mb_per_row: {estimated_mb_per_row} MB)...")
@@ -247,6 +248,7 @@ def main():
 	parser.add_argument('--tail_threshold', type=int, default=1000, help='Threshold for tail class in long-tail analysis (default: 1000)')
 	parser.add_argument('--num_workers', type=int, default=4, help='Number of workers for image stats computation (default: min(16, cpu_count))')
 	parser.add_argument('--batch_size', type=int, default=16, help='Batch size for computing image statistics (default: 64)')
+	parser.add_argument('--target_chunk_mb', type=int, default=10, help='Target chunk size in MB (default: 10)')
 	parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 	args = parser.parse_args()
@@ -264,6 +266,7 @@ def main():
 		bins=args.bins, 
 		num_workers=args.num_workers, 
 		batch_size=args.batch_size,
+		target_chunk_mb=args.target_chunk_mb,
 		img_mean_std=args.img_mean_std,
 	)
 
