@@ -94,7 +94,7 @@ VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 # if we have chunks for HISTORY_X4:
 # Must count the number of chunks and change the --array=0-4 accordingly <<<
 python -u gt_kws_multimodal.py \
-	--csv_file /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_{$SLURM_ARRAY_TASK_ID}.csv \
+	--csv_file /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv \
 	--num_workers $SLURM_CPUS_PER_TASK \
 	--llm_batch_size 64 \
 	--vlm_batch_size 64 \
