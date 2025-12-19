@@ -98,7 +98,8 @@ def _load_llm_(
 		else:
 			print("[INFO] Running on CPU only")
 
-	print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
+	if verbose:
+		print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 	try:
 		huggingface_hub.login(token=hf_tk)
 	except Exception as e:

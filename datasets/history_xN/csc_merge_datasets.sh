@@ -8,9 +8,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --mem=64G
 #SBATCH --partition=interactive
-#SBATCH --time=0-05:00:00
+#SBATCH --time=0-08:00:00
 
 set -euo pipefail
 
@@ -40,8 +40,8 @@ python -u merge_datasets.py \
   --img_mean_std \
   --val_split_pct 0.35 \
   --bins 60 \
-  --target_chunk_mb 8 \
-  --batch_size 128 \
+  --target_chunk_mb 6 \
+  --batch_size 256 \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

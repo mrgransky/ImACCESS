@@ -36,9 +36,6 @@ from utils import *
 # # model_id = "utter-project/EuroVLM-1.7B-Preview"
 # # model_id = "OpenGVLab/InternVL-Chat-V1-2"
 
-print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
-huggingface_hub.login(token=hf_tk)
-
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 VLM_INSTRUCTION_TEMPLATE = """You function as a historical archivist whose expertise lies in the 20th century.
@@ -92,7 +89,8 @@ def _load_vlm_(
 			print("[INFO] Running on CPU only")
 
 	# ========== HuggingFace login ==========
-	print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
+	if verbose:
+		print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 	try:
 		huggingface_hub.login(token=hf_tk)
 	except Exception as e:

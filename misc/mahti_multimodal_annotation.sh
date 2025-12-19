@@ -41,6 +41,10 @@ VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 # LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 # VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 
+echo "SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
+echo "LLM_MODEL: $LLM_MODEL"
+echo "VLM_MODEL: $VLM_MODEL"
+
 # if we have all datasets, separate job for each dataset
 # >>>>>>>>>>>>>>>>>>> don't forget: #SBATCH --array=0-4 <<<<<<<<<<<<<<<<<<<<<<<<<<
 # # Base batch sizes (per GPU)

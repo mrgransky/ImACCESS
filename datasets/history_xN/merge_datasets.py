@@ -10,7 +10,7 @@ from misc.visualize import *
 
 # how to run:
 # $ python merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs
-# $ nohup python -u merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs > logs/history_xN_merged_datasets.out &
+# $ nohup python -u merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs --target_chunk_mb 8 > logs/history_xN_merged_datasets.out &
 
 # run in pouta:
 # $ nohup python -u merge_datasets.py > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
@@ -52,7 +52,7 @@ def merge_datasets(
 		bins: int=60, 
 		num_workers: int=16, 
 		batch_size: int=64,
-		target_chunk_mb: int=6,  # Target X MB per chunk
+		target_chunk_mb: int=6, # Target X MB per chunk
 		img_mean_std: bool=False,
 	):
 	datasets = get_dataset(ddir=ddir)
