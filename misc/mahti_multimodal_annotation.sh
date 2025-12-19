@@ -96,13 +96,13 @@ VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 python -u gt_kws_multimodal.py \
 	--csv_file /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv \
 	--num_workers $SLURM_CPUS_PER_TASK \
-	--llm_batch_size 64 \
+	--llm_batch_size 48 \
 	--vlm_batch_size 64 \
 	--llm_model_id $LLM_MODEL \
 	--vlm_model_id $VLM_MODEL \
 	--max_generated_tks 256 \
 	--max_keywords 5 \
-	--verbose \
+	# --verbose \
 	# --use_llm_quantization \
 	# --use_vlm_quantization \
 

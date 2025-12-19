@@ -77,13 +77,12 @@ def _load_vlm_(
 	"""
 
 	# ========== Version and CUDA info ==========
+	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
 	if verbose:
 		print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
-		print(f"[INFO] CUDA available?        : {torch.cuda.is_available()}")
+		print(f"[INFO] CUDA available?        : {torch.cuda.is_available()} {n_gpus} GPU(s) available: {[torch.cuda.get_device_name(i) for i in range(n_gpus)]}")
 
 		if torch.cuda.is_available():
-			cur = torch.cuda.current_device()
-			print(f"[INFO] Current CUDA device    : {cur} ({torch.cuda.get_device_name(cur)})")
 			major, minor = torch.cuda.get_device_capability(cur)
 			print(f"[INFO] Compute capability     : {major}.{minor}")
 			print(f"[INFO] BF16 support?          : {torch.cuda.is_bf16_supported()}")
@@ -267,7 +266,6 @@ def _load_vlm_(
 		"attn_implementation": attn_impl,
 		"dtype": dtype,
 	}
-	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
 	model_kwargs["device_map"] = "auto"
 	if use_quantization:
 		model_kwargs["quantization_config"] = quantization_config
@@ -581,7 +579,6 @@ def get_vlm_based_labels_single(
 	# load model and processor
 	processor, model = _load_vlm_(
 		model_id=model_id, 
-		# device=device,
 		use_quantization=use_quantization,
 		verbose=verbose
 	)
@@ -712,7 +709,6 @@ def get_vlm_based_labels_debug(
 	model_start = time.time()
 	processor, model = _load_vlm_(
 		model_id=model_id, 
-		# device=device,
 		use_quantization=use_quantization,
 		verbose=verbose
 	)
@@ -1018,7 +1014,6 @@ def get_vlm_based_labels_opt(
 		# ========== Load model ==========
 		processor, model = _load_vlm_(
 			model_id=model_id,
-			# device=device,
 			use_quantization=use_quantization,
 			verbose=verbose,
 		)
