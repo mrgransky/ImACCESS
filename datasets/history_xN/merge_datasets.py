@@ -119,6 +119,7 @@ def merge_datasets(
 
 	print(f"Merging {len(multi_label_dfs)} dataset(s) into '{dataset_name}'...")
 	merged_multi_label_df = pd.concat(multi_label_dfs, ignore_index=True)	
+
 	print(f"merged_multi_label_df: {type(merged_multi_label_df)} {merged_multi_label_df.shape}\n{list(merged_multi_label_df.columns)}")
 	# print(merged_multi_label_df.head())
 
@@ -128,6 +129,23 @@ def merge_datasets(
 	merged_multi_label_df_fpath = merged_single_label_df_fpath.replace('single', 'multi')
 	print(f"Saving merged multi-label dataset to: {merged_multi_label_df_fpath}")
 	merged_multi_label_df.to_csv(merged_multi_label_df_fpath, index=False)
+
+	print(f"Chunking merged multi-label dataset...")
+	# Calculate optimal chunk size (aim for ~10-50MB per chunk)
+	estimated_mb_per_row = merged_multi_label_df.memory_usage(deep=True).sum() / (1024**2) / len(merged_multi_label_df)
+	target_chunk_mb = 10  # Target 10MB per chunk
+	optimal_chunk_size = max(1000, min(50000, int(target_chunk_mb / estimated_mb_per_row)))
+	total_num_chunks = (len(merged_multi_label_df) + optimal_chunk_size - 1) // optimal_chunk_size
+	print(f"Saving {len(merged_multi_label_df)} rows in {total_num_chunks} chunks of ~{optimal_chunk_size} rows each...")
+	# Save in chunks
+	for i in range(total_num_chunks):
+		start_idx = i * optimal_chunk_size
+		end_idx = min((i + 1) * optimal_chunk_size, len(merged_multi_label_df))
+		chunk_df = merged_multi_label_df.iloc[start_idx:end_idx]
+		chunk_filename = f"{merged_multi_label_df_fpath}_chunk_{i}.csv"
+		chunk_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, chunk_filename), index=False)
+		print(f"  Saved chunk {i+1}/{total_num_chunks}: {chunk_df.shape[0]} rows -> {chunk_filename}")
+	
 	try:
 		merged_single_label_df.to_excel(merged_single_label_df_fpath.replace('.csv', '.xlsx'), index=False)
 		merged_multi_label_df.to_excel(merged_multi_label_df_fpath.replace('.csv', '.xlsx'), index=False)

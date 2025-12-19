@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2014707
-#SBATCH --job-name=multimodal_annotation_test
+#SBATCH --job-name=multimodal_annotation
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -9,10 +9,10 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=10G
-#SBATCH --array=0-4
-#SBATCH --partition=gpusmall
-#SBATCH --time=00-02:00:00
-#SBATCH --gres=gpu:a100:2,nvme:250
+#SBATCH --array=0-3
+#SBATCH --partition=gpumedium
+#SBATCH --time=01-12:00:00
+#SBATCH --gres=gpu:a100:4,nvme:250
 
 set -euo pipefail
 
@@ -34,7 +34,7 @@ echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
 DATASETS=(
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
+	# /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
@@ -42,8 +42,8 @@ DATASETS=(
 )
 
 # Base batch sizes (per GPU)
-BASE_LLM_BATCH_SIZES=(4 4 8 8 8)
-BASE_VLM_BATCH_SIZES=(2 2 4 4 4)
+BASE_LLM_BATCH_SIZES=(8 8 16 16 16)
+BASE_VLM_BATCH_SIZES=(4 4 8 8 8)
 
 # Extract GPU count more simply (format: "gpu:type:count")
 NUM_GPUS="${SLURM_GPUS_ON_NODE##*:}"  # Get everything after the last colon

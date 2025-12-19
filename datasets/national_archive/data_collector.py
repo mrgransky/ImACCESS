@@ -253,21 +253,22 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 		else:
 			first_digital_object_url = None
 
-		# raw_enriched_document_description = ". ".join(filter(None, [doc_title, doc_description])).strip()
-		# print(f"\nraw_enriched_document_description:\n{raw_enriched_document_description}\n")
-		# enriched_document_description = basic_clean(txt=raw_enriched_document_description)
-		# print(f"\nenriched_document_description:\n{enriched_document_description}\n")
+		doc_title = re.sub(r'\s+', ' ', doc_title).strip() if doc_title else None
+		doc_description = re.sub(r'\s+', ' ', doc_description).strip() if doc_description else None
+
+		print(f"doc_title: {doc_title}")
+		print(f"doc_description: {doc_description}")
+		print()
 
 		row = {
 			'id': na_identifier,
+			'doc_url': f"https://catalog.archives.gov/id/{na_identifier}",
+			'img_url': first_digital_object_url,
+			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(na_identifier) + '.jpg')}",
+			'raw_doc_date': raw_doc_date,
 			'user_query': query,
 			'title': doc_title,
 			'description': doc_description,
-			'img_url': first_digital_object_url,
-			# 'enriched_document_description': enriched_document_description,
-			'raw_doc_date': raw_doc_date,
-			'doc_url': f"https://catalog.archives.gov/id/{na_identifier}",
-			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(na_identifier) + '.jpg')}"
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
@@ -393,8 +394,9 @@ def main():
 	)
 	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
 
-	print("Saving final multi-label dataset...")
+	print(f"Saving full multi-label {type(multi_label_final_df)} {multi_label_final_df.shape} {list(multi_label_final_df.columns)}")
 	multi_label_final_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv"), index=False)
+
 	try:
 		multi_label_final_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_multi_label.xlsx"), index=False)
 	except Exception as e:
