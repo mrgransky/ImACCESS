@@ -137,7 +137,7 @@ def merge_datasets(
 	
 	optimal_chunk_size = max(1000, min(50000, int(target_chunk_mb / estimated_mb_per_row)))
 	total_num_chunks = (len(merged_multi_label_df) + optimal_chunk_size - 1) // optimal_chunk_size
-	print(f"Saving {len(merged_multi_label_df)} rows in {total_num_chunks} chunks of ~{optimal_chunk_size} rows each (estimated_mb_per_row: {estimated_mb_per_row} MB)...")
+	print(f"Saving {len(merged_multi_label_df)} rows in {total_num_chunks} chunks of ~{optimal_chunk_size} rows each (estimated_mb_per_row: {estimated_mb_per_row:.3f} MB)...")
 	# Save in chunks
 	for i in range(total_num_chunks):
 		start_idx = i * optimal_chunk_size

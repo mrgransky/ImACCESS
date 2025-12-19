@@ -59,7 +59,6 @@ Identify no more than {k} highly prominent, factual, and distinct **KEYWORDS** t
 
 def _load_vlm_(
 		model_id: str,
-		device: str,
 		use_quantization: bool = False,
 		quantization_bits: int = 8,
 		verbose: bool = False,
@@ -69,7 +68,6 @@ def _load_vlm_(
 	
 	Args:
 		model_id: HuggingFace model identifier
-		device: Target device (e.g., 'cuda:0', 'cpu')
 		use_quantization: Whether to use quantization
 		quantization_bits: Quantization bits (4 or 8)
 		verbose: Enable verbose logging
@@ -78,7 +76,7 @@ def _load_vlm_(
 		Tuple of (processor, model)
 	"""
 
-	# ========== Version and device info ==========
+	# ========== Version and CUDA info ==========
 	if verbose:
 		print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
 		print(f"[INFO] CUDA available?        : {torch.cuda.is_available()}")
@@ -124,20 +122,17 @@ def _load_vlm_(
 		raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
 
 	# ========== Optimal dtype selection ==========
-	def _optimal_dtype(m_id: str, dev: str) -> torch.dtype:
+	def _optimal_dtype(m_id: str) -> torch.dtype:
 		"""
-		Select optimal dtype for the given model and device.
+		Select optimal dtype for the given model.
 		
 		Qwen3-VL MoE models have dtype issues with bfloat16 in the router,
 		so we force float16 for them.
 		"""
-		# Normalize device to string
-		dev_str = str(dev)
 		
 		bf16_ok = (
 			torch.cuda.is_available()
 			and torch.cuda.is_bf16_supported()
-			and dev_str.startswith("cuda")
 		)
 		
 		m_id_lower = m_id.lower()
@@ -161,7 +156,7 @@ def _load_vlm_(
 		# Default: bf16 if available, else fp16
 		return torch.bfloat16 if bf16_ok else torch.float16
 
-	dtype = _optimal_dtype(model_id, device)
+	dtype = _optimal_dtype(model_id)
 
 	if verbose:
 		print("[INFO] Dtype selection")
@@ -169,7 +164,7 @@ def _load_vlm_(
 		print(f"   • Chosen torch dtype             : {dtype}")
 
 	# ========== Optimal attention implementation ==========
-	def _optimal_attn_impl(m_id: str, dev: str) -> str:
+	def _optimal_attn_impl(m_id: str) -> str:
 		"""
 		Select optimal attention implementation.
 		
@@ -178,7 +173,7 @@ def _load_vlm_(
 		- flash_attn package installed
 		- Compute capability >= 8.0 (Ampere or newer)
 		"""
-		if not torch.cuda.is_available() or str(dev).startswith("cpu"):
+		if not torch.cuda.is_available():
 			return "eager"
 		
 		try:
@@ -198,7 +193,7 @@ def _load_vlm_(
 
 		return "eager"
 	
-	attn_impl = _optimal_attn_impl(model_id, device)
+	attn_impl = _optimal_attn_impl(model_id)
 
 	if verbose:
 		print("[INFO] Attention implementation")
@@ -263,23 +258,7 @@ def _load_vlm_(
 		print(f"   • tokenizer eos token     : {tokenizer.eos_token}")
 		print(f"   • tokenizer padding side  : {tokenizer.padding_side}")
 	
-	# ========== Decide device placement strategy ==========
-	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
-	use_device_map_auto = False
-
-	if use_quantization:
-		use_device_map_auto = True
-		if verbose:
-			print(f"[DEVICE STRATEGY] Quantization enabled → using device_map='auto'")
-	elif n_gpus > 1:
-		use_device_map_auto = True
-		if verbose:
-			print(f"[DEVICE STRATEGY] {n_gpus} GPUs detected → using device_map='auto' to distribute model")
-	else:
-		use_device_map_auto = False
-		if verbose:
-			print(f"[DEVICE STRATEGY] Single device ({device}) → manual .to(device)")
-
+	
 	# ========== Model loading kwargs ==========
 	model_kwargs: Dict[str, Any] = {
 		"low_cpu_mem_usage": True,
@@ -288,14 +267,14 @@ def _load_vlm_(
 		"attn_implementation": attn_impl,
 		"dtype": dtype,
 	}
-
-	if use_device_map_auto:
-		model_kwargs["device_map"] = "auto"
-		if use_quantization:
-			model_kwargs["quantization_config"] = quantization_config
+	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
+	model_kwargs["device_map"] = "auto"
+	if use_quantization:
+		model_kwargs["quantization_config"] = quantization_config
 
 	if verbose:
 		print(f"[INFO] {model_cls.__name__} loading kwargs")
+		print(f"   • {n_gpus} GPU(s)")
 		for k, v in model_kwargs.items():
 			if k == "quantization_config":
 				print(f"   • {k}: {type(v).__name__}")
@@ -305,7 +284,7 @@ def _load_vlm_(
 
 	if verbose and torch.cuda.is_available():
 		cur = torch.cuda.current_device()
-		print("[DEBUG] CUDA memory BEFORE model load")
+		print(f"[DEBUG] cuda:{cur} memory BEFORE model load")
 		print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
 		print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
 
@@ -319,27 +298,6 @@ def _load_vlm_(
 		if verbose:
 			print(f"[ERROR] Error loading model: {e}")
 		raise e
-
-	# ========== Compilation (skip if using device_map="auto") ==========
-	if verbose:
-		print("[INFO] Compilation")
-	
-	if not use_device_map_auto:
-		# Only compile when using single device placement
-		try:
-			model = torch.compile(
-				model,
-				mode="reduce-overhead",
-				fullgraph=True,
-			)
-			if verbose:
-				print("   • torch.compile applied successfully")
-		except Exception as e:
-			if verbose:
-				print(f"   • torch.compile failed (continuing without): {e}")
-	else:
-		if verbose:
-			print("   • Skipping torch.compile (device_map='auto' is in use)")
 	
 	model.eval()
 
@@ -356,34 +314,19 @@ def _load_vlm_(
 		if hasattr(model, "hf_device_map"):
 			dm = model.hf_device_map
 			print(f"[INFO] device_map='auto' (model.hf_device_map):\n{json.dumps(dm, indent=2, ensure_ascii=False)}")
-		else:
-			print(f"[INFO] No `hf_device_map` attribute => model resides on a single device: {device}")
+		# else:
+		# 	print(f"[INFO] No `hf_device_map` attribute => model resides on a single device: {device}")
 
 		if hasattr(model, 'generation_config'):
 			print(f"{model.generation_config}")
 
-	# ========== Manual placement if not using device_map="auto" ==========
-	if not use_device_map_auto:
-		if verbose:
-			print(f"[INFO] Moving {model.__class__.__name__} to {device} (manual placement)")
-		try:
-			model.to(device)
-		except Exception as e:
-			print(f"[ERROR] Failed to move model to {device}: {e}")
-			sys.exit(1)
-		if verbose and torch.cuda.is_available():
-			cur = torch.cuda.current_device()
-			print("[DEBUG] CUDA memory AFTER model.to()")
-			print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-			print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
-	else:
-		if verbose:
-			print(f"[INFO] Model placement handled by device_map='auto'")
-			if torch.cuda.is_available():
-				gpu_params = sum(1 for p in model.parameters() if p.device.type == "cuda")
-				cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
-				print(f"   • Parameters on GPU  : {gpu_params}")
-				print(f"   • Parameters on CPU  : {cpu_params}\n")
+	if verbose:
+		print(f"[INFO] Model placement handled by device_map='auto'")
+		if torch.cuda.is_available():
+			gpu_params = sum(1 for p in model.parameters() if p.device.type == "cuda")
+			cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
+			print(f"   • Parameters on GPU  : {gpu_params}")
+			print(f"   • Parameters on CPU  : {cpu_params}\n")
 
 	return processor, model
 
@@ -638,7 +581,7 @@ def get_vlm_based_labels_single(
 	# load model and processor
 	processor, model = _load_vlm_(
 		model_id=model_id, 
-		device=device,
+		# device=device,
 		use_quantization=use_quantization,
 		verbose=verbose
 	)
@@ -769,7 +712,7 @@ def get_vlm_based_labels_debug(
 	model_start = time.time()
 	processor, model = _load_vlm_(
 		model_id=model_id, 
-		device=device,
+		# device=device,
 		use_quantization=use_quantization,
 		verbose=verbose
 	)
@@ -1074,10 +1017,10 @@ def get_vlm_based_labels_opt(
 
 		# ========== Load model ==========
 		processor, model = _load_vlm_(
-				model_id=model_id,
-				device=device,
-				use_quantization=use_quantization,
-				verbose=verbose,
+			model_id=model_id,
+			# device=device,
+			use_quantization=use_quantization,
+			verbose=verbose,
 		)
 		if verbose and torch.cuda.is_available():
 				print(f"[MODEL] Loaded {model_id} | {device} | {torch.cuda.get_device_name(device)}")
