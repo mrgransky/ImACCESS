@@ -7,9 +7,9 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=10G
-#SBATCH --array=0-3
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=32G
+#SBATCH --array=0-4
 #SBATCH --partition=gpumedium
 #SBATCH --time=01-12:00:00
 #SBATCH --gres=gpu:a100:4,nvme:250
@@ -33,48 +33,74 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
-DATASETS=(
-	# /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
-)
+# SMALL MODELS:
+LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
+VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 
-# Base batch sizes (per GPU)
-BASE_LLM_BATCH_SIZES=(8 8 16 16 16)
-BASE_VLM_BATCH_SIZES=(4 4 8 8 8)
+# # LARGE MODELS:
+# LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
+# VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 
-# Extract GPU count more simply (format: "gpu:type:count")
-NUM_GPUS="${SLURM_GPUS_ON_NODE##*:}"  # Get everything after the last colon
+# if we have all datasets, separate job for each dataset
+# >>>>>>>>>>>>>>>>>>> don't forget: #SBATCH --array=0-4 <<<<<<<<<<<<<<<<<<<<<<<<<<
+# # Base batch sizes (per GPU)
+# BASE_LLM_BATCH_SIZES=(8 8 16 16 16)
+# BASE_VLM_BATCH_SIZES=(4 4 8 8 8)
 
-# Validate it's a number, fallback to 1
-if ! [[ "$NUM_GPUS" =~ ^[0-9]+$ ]]; then
-	echo "Warning: Could not parse GPU count from GRES, using 1"
-	NUM_GPUS=1
-fi
+# # Extract GPU count more simply (format: "gpu:type:count")
+# NUM_GPUS="${SLURM_GPUS_ON_NODE##*:}"  # Get everything after the last colon
 
-echo "Detected $NUM_GPUS GPUs, scaling batch sizes accordingly"
+# # Validate it's a number, fallback to 1
+# if ! [[ "$NUM_GPUS" =~ ^[0-9]+$ ]]; then
+# 	echo "Warning: Could not parse GPU count from GRES, using 1"
+# 	NUM_GPUS=1
+# fi
 
-# Scale batch sizes by number of GPUs
-LLM_BATCH_SIZES=()
-VLM_BATCH_SIZES=()
-for i in "${!BASE_LLM_BATCH_SIZES[@]}"; do
-	LLM_BATCH_SIZES[$i]=$((BASE_LLM_BATCH_SIZES[i] * NUM_GPUS))
-	VLM_BATCH_SIZES[$i]=$((BASE_VLM_BATCH_SIZES[i] * NUM_GPUS))
-done
+# echo "Detected $NUM_GPUS GPUs, scaling batch sizes accordingly"
 
-echo "Scaled LLM batch sizes: ${LLM_BATCH_SIZES[@]}"
-echo "Scaled VLM batch sizes: ${VLM_BATCH_SIZES[@]}"
+# # Scale batch sizes by number of GPUs
+# LLM_BATCH_SIZES=()
+# VLM_BATCH_SIZES=()
+# for i in "${!BASE_LLM_BATCH_SIZES[@]}"; do
+# 	LLM_BATCH_SIZES[$i]=$((BASE_LLM_BATCH_SIZES[i] * NUM_GPUS))
+# 	VLM_BATCH_SIZES[$i]=$((BASE_VLM_BATCH_SIZES[i] * NUM_GPUS))
+# done
 
+# echo "Scaled LLM batch sizes: ${LLM_BATCH_SIZES[@]}"
+# echo "Scaled VLM batch sizes: ${VLM_BATCH_SIZES[@]}"
+
+# DATASETS=(
+# 	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
+# 	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
+# 	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
+# 	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
+# 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
+# )
+
+# python -u gt_kws_multimodal.py \
+# 	--csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv \
+# 	--num_workers $SLURM_CPUS_PER_TASK \
+# 	--llm_batch_size ${LLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
+# 	--vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
+# 	--llm_model_id "Qwen/Qwen3-30B-A3B-Instruct-2507" \
+# 	--vlm_model_id "Qwen/Qwen3-VL-32B-Instruct" \
+# 	--max_generated_tks 192 \
+# 	--max_keywords 5 \
+# 	--verbose \
+# 	# --use_llm_quantization \
+# 	# --use_vlm_quantization \
+
+
+# if we have chunks for HISTORY_X4:
+# Must count the number of chunks and change the --array=0-4 accordingly <<<
 python -u gt_kws_multimodal.py \
-	--csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv \
+	--csv_file /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_{$SLURM_ARRAY_TASK_ID}.csv \
 	--num_workers $SLURM_CPUS_PER_TASK \
-	--llm_batch_size ${LLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
-	--vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
-	--llm_model_id "Qwen/Qwen3-30B-A3B-Instruct-2507" \
-	--vlm_model_id "Qwen/Qwen3-VL-32B-Instruct" \
-	--max_generated_tks 192 \
+	--llm_batch_size 64 \
+	--vlm_batch_size 64 \
+	--llm_model_id $LLM_MODEL \
+	--vlm_model_id $VLM_MODEL \
+	--max_generated_tks 256 \
 	--max_keywords 5 \
 	--verbose \
 	# --use_llm_quantization \
