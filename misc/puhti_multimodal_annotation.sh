@@ -33,6 +33,13 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
+# SMALL MODELS:
+LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
+VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
+
+# # LARGE MODELS:
+# LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
+# VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 
 # if we have all datasets, separate job for each dataset
 # >>>>>>>>>>>>>>>>>>> don't forget: #SBATCH --array=0-4 <<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -92,8 +99,8 @@ python -u gt_kws_multimodal.py \
 	--num_workers $SLURM_CPUS_PER_TASK \
 	--llm_batch_size 32 \
 	--vlm_batch_size 32 \
-	--llm_model_id "Qwen/Qwen3-30B-A3B-Instruct-2507" \
-	--vlm_model_id "Qwen/Qwen3-VL-32B-Instruct" \
+	--llm_model_id $LLM_MODEL \
+	--vlm_model_id $VLM_MODEL \
 	--max_generated_tks 256 \
 	--max_keywords 5 \
 	--verbose \
