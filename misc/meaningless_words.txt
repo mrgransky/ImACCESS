@@ -362,8 +362,6 @@ everywhere
 exactly
 example
 except
-face
-faces
 fact
 facts
 fairly

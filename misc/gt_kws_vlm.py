@@ -80,6 +80,7 @@ def _load_vlm_(
 		print(f"[INFO] CUDA available?        : {torch.cuda.is_available()} {n_gpus} GPU(s) available: {[torch.cuda.get_device_name(i) for i in range(n_gpus)]}")
 
 		if torch.cuda.is_available():
+			cur = torch.cuda.current_device()
 			major, minor = torch.cuda.get_device_capability(cur)
 			print(f"[INFO] Compute capability     : {major}.{minor}")
 			print(f"[INFO] BF16 support?          : {torch.cuda.is_bf16_supported()}")

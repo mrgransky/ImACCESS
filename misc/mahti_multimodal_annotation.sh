@@ -41,10 +41,6 @@ VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 # LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 # VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 
-echo "SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
-echo "LLM_MODEL: $LLM_MODEL"
-echo "VLM_MODEL: $VLM_MODEL"
-
 # if we have all datasets, separate job for each dataset
 # >>>>>>>>>>>>>>>>>>> don't forget: #SBATCH --array=0-4 <<<<<<<<<<<<<<<<<<<<<<<<<<
 # # Base batch sizes (per GPU)
@@ -97,11 +93,15 @@ echo "VLM_MODEL: $VLM_MODEL"
 
 # if we have chunks for HISTORY_X4:
 # Must count the number of chunks and change the --array=0-4 accordingly <<<
+csv_file="/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv"
+echo "Running on $csv_file"
+echo "LLM_MODEL: $LLM_MODEL"
+echo "VLM_MODEL: $VLM_MODEL"
 python -u gt_kws_multimodal.py \
-	--csv_file /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv \
+	--csv_file $csv_file \
 	--num_workers $SLURM_CPUS_PER_TASK \
 	--llm_batch_size 48 \
-	--vlm_batch_size 64 \
+	--vlm_batch_size 96 \
 	--llm_model_id $LLM_MODEL \
 	--vlm_model_id $VLM_MODEL \
 	--max_generated_tks 256 \
