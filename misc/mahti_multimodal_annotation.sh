@@ -45,7 +45,6 @@ VLM_BATCH_SIZE=96
 # LLM_BATCH_SIZE=32
 # VLM_BATCH_SIZE=64
 
-
 # if we have all datasets, separate job for each dataset
 # >>>>>>>>>>>>>>>>>>> don't forget: #SBATCH --array=0-4 <<<<<<<<<<<<<<<<<<<<<<<<<<
 # # Base batch sizes (per GPU)
