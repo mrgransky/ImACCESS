@@ -36,10 +36,14 @@ echo "${stars// /*}"
 # SMALL MODELS:
 LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
 VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
+LLM_BATCH_SIZE=24
+VLM_BATCH_SIZE=32
 
 # # LARGE MODELS:
 # LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 # VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
+# LLM_BATCH_SIZE=16
+# VLM_BATCH_SIZE=24
 
 # if we have all datasets, separate job for each dataset
 # >>>>>>>>>>>>>>>>>>> don't forget: #SBATCH --array=0-4 <<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -97,13 +101,13 @@ VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 python -u gt_kws_multimodal.py \
 	--csv_file /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv \
 	--num_workers $SLURM_CPUS_PER_TASK \
-	--llm_batch_size 24 \
-	--vlm_batch_size 32 \
+	--llm_batch_size $LLM_BATCH_SIZE \
+	--vlm_batch_size $VLM_BATCH_SIZE \
 	--llm_model_id $LLM_MODEL \
 	--vlm_model_id $VLM_MODEL \
 	--max_generated_tks 256 \
 	--max_keywords 5 \
-	--verbose \
+	# --verbose \
 	# --use_llm_quantization \
 	# --use_vlm_quantization \
 

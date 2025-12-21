@@ -7,12 +7,12 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
+#SBATCH --cpus-per-task=20
 #SBATCH --mem=32G
 #SBATCH --array=0-40
-#SBATCH --partition=gpusmall
+#SBATCH --partition=gpumedium
 #SBATCH --time=01-12:00:00
-#SBATCH --gres=gpu:a100:2,nvme:250
+#SBATCH --gres=gpu:a100:4,nvme:250
 
 set -euo pipefail
 
@@ -36,10 +36,15 @@ echo "${stars// /*}"
 # SMALL MODELS:
 LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
 VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
+LLM_BATCH_SIZE=48
+VLM_BATCH_SIZE=96
 
 # # LARGE MODELS:
 # LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 # VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
+# LLM_BATCH_SIZE=32
+# VLM_BATCH_SIZE=64
+
 
 # if we have all datasets, separate job for each dataset
 # >>>>>>>>>>>>>>>>>>> don't forget: #SBATCH --array=0-4 <<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -100,8 +105,8 @@ echo "VLM_MODEL: $VLM_MODEL"
 python -u gt_kws_multimodal.py \
 	--csv_file $csv_file \
 	--num_workers $SLURM_CPUS_PER_TASK \
-	--llm_batch_size 48 \
-	--vlm_batch_size 96 \
+	--llm_batch_size $LLM_BATCH_SIZE \
+	--vlm_batch_size $VLM_BATCH_SIZE \
 	--llm_model_id $LLM_MODEL \
 	--vlm_model_id $VLM_MODEL \
 	--max_generated_tks 256 \

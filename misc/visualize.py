@@ -198,7 +198,7 @@ def create_dataset_radar_chart(summary_stats_dict, output_dir, label_column, DPI
 		
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{label_column}_radar_chart.png"),
+			fname=os.path.join(output_dir, f"{dataset_name}_radar_chart.png"),
 			dpi=DPI,
 			bbox_inches='tight'
 		)
@@ -382,7 +382,7 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 		
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{label_column}_comparative_radar_chart.png"),
+			fname=os.path.join(output_dir, f"{dataset_name}_comparative_radar_chart.png"),
 			dpi=DPI,
 			bbox_inches='tight'
 		)
@@ -2757,6 +2757,7 @@ def perform_multilabel_eda(
 	8. Multi-view consistency metrics
 	9. Statistical significance tests
 	"""
+	
 	print(f">> Enhanced Multi-label EDA for {data_path} (column: {label_column})")
 	eda_st = time.time()
 	dataset_dir = os.path.dirname(data_path)
@@ -2764,19 +2765,21 @@ def perform_multilabel_eda(
 	output_dir = os.path.join(dataset_dir, "outputs")
 	os.makedirs(output_dir, exist_ok=True)
 
+	dataset_name = os.path.basename(data_path).replace(".csv", "")
+
 	if not os.path.exists(data_path):
-			print(f"Error: Dataset not found at '{data_path}'. Please check the path.")
-			return
+		print(f"Error: Dataset not found at '{data_path}'. Please check the path.")
+		return
 	try:
-			df = pd.read_csv(
-					filepath_or_buffer=data_path,
-					on_bad_lines='skip',
-					low_memory=False,
-			)
-			print(f"Dataset {type(df)} loaded successfully. Shape: {df.shape}\n")
+		df = pd.read_csv(
+			filepath_or_buffer=data_path,
+			on_bad_lines='skip',
+			low_memory=False,
+		)
+		print(f"Dataset {type(df)} loaded successfully. Shape: {df.shape}\n")
 	except Exception as e:
-			print(f"Error loading dataset from '{data_path}': {e}")
-			return
+		print(f"Error loading dataset from '{data_path}': {e}")
+		return
 
 	print("--- Basic DataFrame Info ---")
 	df.info()
@@ -2856,7 +2859,7 @@ def perform_multilabel_eda(
 	plt.grid(axis='y', linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"{label_column}_label_cardinality_distribution.png"),
+		fname=os.path.join(output_dir, f"{dataset_name}_label_cardinality_distribution.png"),
 		dpi=DPI,
 		bbox_inches='tight',
 	)
@@ -2884,7 +2887,7 @@ def perform_multilabel_eda(
 	plt.ylabel('Label')
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"{label_column}_top_{n_top_labels_plot}_most_frequent_labels.png"),
+		fname=os.path.join(output_dir, f"{dataset_name}_top_{n_top_labels_plot}_most_frequent_labels.png"),
 		dpi=DPI,
 		bbox_inches='tight',
 	)
@@ -2899,7 +2902,7 @@ def perform_multilabel_eda(
 	plt.grid(axis='y', linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"{label_column}_all_label_frequencies_distribution.png"),
+		fname=os.path.join(output_dir, f"{dataset_name}_all_label_frequencies_distribution.png"),
 		dpi=DPI,
 		bbox_inches='tight',
 	)
@@ -2943,7 +2946,7 @@ def perform_multilabel_eda(
 	
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"{label_column}_power_law_analysis.png"),
+		fname=os.path.join(output_dir, f"{dataset_name}_power_law_analysis.png"),
 		dpi=DPI,
 		bbox_inches='tight',
 	)
@@ -3012,7 +3015,7 @@ def perform_multilabel_eda(
 	
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"{label_column}_diversity_metrics.png"),
+		fname=os.path.join(output_dir, f"{dataset_name}_diversity_metrics.png"),
 		dpi=DPI,
 		bbox_inches='tight',
 	)
@@ -3121,7 +3124,7 @@ def perform_multilabel_eda(
 	
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"{label_column}_imbalance_analysis.png"),
+		fname=os.path.join(output_dir, f"{dataset_name}_imbalance_analysis.png"),
 		dpi=DPI,
 		bbox_inches='tight',
 	)
@@ -3147,9 +3150,9 @@ def perform_multilabel_eda(
 			plt.ylabel('Label Combination')
 			plt.tight_layout()
 			plt.savefig(
-					fname=os.path.join(output_dir, f"{label_column}_top_unique_label_combinations.png"),
-					dpi=DPI,
-					bbox_inches='tight',
+				fname=os.path.join(output_dir, f"{dataset_name}_top_unique_label_combinations.png"),
+				dpi=DPI,
+				bbox_inches='tight',
 			)
 			plt.close()
 	
@@ -3232,7 +3235,7 @@ def perform_multilabel_eda(
 		ax_dendro.tick_params(axis='x', rotation=90)
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{label_column}_dendrogram.png"),
+			fname=os.path.join(output_dir, f"{dataset_name}_dendrogram.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
@@ -3254,7 +3257,7 @@ def perform_multilabel_eda(
 		ax_heatmap.set_title(f'Jaccard Similarity Matrix')
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{label_column}_jaccard_similarity.png"),
+			fname=os.path.join(output_dir, f"{dataset_name}_jaccard_similarity.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
@@ -3276,7 +3279,7 @@ def perform_multilabel_eda(
 		ax_cooc.set_title(f'Label Co-occurrence Matrix (Absolute Counts)')
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{label_column}_cooccurrence_matrix.png"),
+			fname=os.path.join(output_dir, f"{dataset_name}_cooccurrence_matrix.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
@@ -3317,7 +3320,7 @@ def perform_multilabel_eda(
 		ax_network.set_title(f'Label Co-occurrence Network (Jaccard > {threshold})')
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{label_column}_network_visualization.png"),
+			fname=os.path.join(output_dir, f"{dataset_name}_network_visualization.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
@@ -3500,7 +3503,7 @@ def perform_multilabel_eda(
 			
 			plt.tight_layout()
 			plt.savefig(
-				fname=os.path.join(output_dir, f"{label_column}_agreement_analysis.png"),
+				fname=os.path.join(output_dir, f"{dataset_name}_agreement_analysis.png"),
 				dpi=DPI,
 				bbox_inches='tight',
 			)
@@ -3593,7 +3596,7 @@ def perform_multilabel_eda(
 				
 				plt.tight_layout()
 				plt.savefig(
-					fname=os.path.join(output_dir, f"{label_column}_temporal_analysis.png"),
+					fname=os.path.join(output_dir, f"{dataset_name}_temporal_analysis.png"),
 					dpi=DPI,
 					bbox_inches='tight',
 				)
@@ -3683,7 +3686,7 @@ def perform_multilabel_eda(
 	
 	# Save summary to CSV
 	summary_df.to_csv(
-		os.path.join(output_dir, f"{label_column}_summary_statistics.csv"),
+		os.path.join(output_dir, f"{dataset_name}_summary_statistics.csv"),
 		index=False
 	)
 	
