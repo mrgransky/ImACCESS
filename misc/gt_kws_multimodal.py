@@ -436,7 +436,8 @@ def get_multimodal_annotation(
 			print("=" * 120)
 		
 		if torch.cuda.is_available():
-			print(f"[DEBUG] Clearing CUDA memory BEFORE running VLM pipeline...")
+			if verbose:
+				print(f"[DEBUG] Clearing CUDA memory BEFORE running VLM pipeline...")
 			gc.collect()
 			torch.cuda.empty_cache()
 		

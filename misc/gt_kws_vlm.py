@@ -44,7 +44,7 @@ Identify no more than {k} highly prominent, factual, and distinct **KEYWORDS** t
 **CRITICAL RULES**:
 - Return **ONLY** a clean, valid, and parsable **Python LIST** with a maximum of {k} keywords - fewer is acceptable only if the image is too simple.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
-- **ZERO HALLUCINATION POLICY**: Do not invent or infer specifics that lack clear verification from the visual content. When in doubt, omit rather than fabricate.
+- **ZERO HALLUCINATION POLICY**: Do not invent or infer specifics that lack clear verification from the visual content. If you are uncertain, in doubt, or unsure, omit the keyword rather than guessing.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
 - **ABSOLUTELY NO** TEXT EXTRACTION / OCR: Do NOT read, transcribe, quote, paraphrase, or use any visible text from the image (including captions, labels, dates, signage, stamped annotations, handwritten notes, or serial numbers).
 - **STRICTLY EXCLUDE** image quality, type, format, or style as keywords.
@@ -960,332 +960,292 @@ def get_vlm_based_labels_debug(
 	return results
 
 def get_vlm_based_labels_opt(
-				model_id: str,
-				device: str,
-				batch_size: int,
-				num_workers: int,
-				max_generated_tks: int,
-				max_kws: int,
-				csv_file: str,
-				do_dedup: bool = True,
-				use_quantization: bool = False,
-				verbose: bool = False,
+	model_id: str,
+	device: str,
+	batch_size: int,
+	num_workers: int,
+	max_generated_tks: int,
+	max_kws: int,
+	csv_file: str,
+	do_dedup: bool = True,
+	use_quantization: bool = False,
+	verbose: bool = False,
 ):
-		"""
-		Optimised VLM-based keyword extraction:
+	"""
+	Optimised VLM-based keyword extraction:
+		- Verifies/filters image paths
+		- Deduplicates per-image if requested
+		- Batches images and generates responses with a VLM
+		- NEW: Parses VLM responses in parallel per batch via ThreadPoolExecutor
+		- Falls back to sequential per-image processing on batch failure
+		- Maps results back to original order and writes *_vlm_keywords.csv / .xlsx
+	"""
+	process = psutil.Process()
+	t0 = time.time()
+	# ========== Check existing results ==========
+	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
+	num_workers = min(4, num_workers)
+	if verbose:
+		print(f"[INIT] Starting OPTIMIZED batch VLM processing with {num_workers} workers")
 
-			- Verifies/filters image paths
-			- Deduplicates per-image if requested
-			- Batches images and generates responses with a VLM
-			- NEW: Parses VLM responses in parallel per batch via ThreadPoolExecutor
-			- Falls back to sequential per-image processing on batch failure
-			- Maps results back to original order and writes *_vlm_keywords.csv / .xlsx
-		"""
-
-		process = psutil.Process()
-		t0 = time.time()
-
-		# ========== Check existing results ==========
-		output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
-		if os.path.exists(output_csv):
-				if verbose:
-						print(f"[EXISTING] Found existing results at {output_csv}")
-				df = pd.read_csv(
-						filepath_or_buffer=output_csv,
-						on_bad_lines='skip',
-						dtype=dtypes,
-						low_memory=False,
-				)
-				if 'vlm_keywords' in df.columns:
-						if verbose:
-								print(f"[EXISTING] Found existing results! {type(df)} {df.shape} {list(df.columns)}")
-						return df['vlm_keywords'].tolist()
-
-		# ========== Load data ==========
-		load_start = time.time()
-		df = pd.read_csv(csv_file, on_bad_lines="skip", low_memory=False)
-		if "img_path" not in df.columns:
-				raise ValueError("CSV file must have 'img_path' column")
-
-		image_paths = [p if isinstance(p, str) and os.path.exists(p) else None for p in df["img_path"]]
-		n_total = len(image_paths)
+	if os.path.exists(output_csv):
 		if verbose:
-				print(f"[DATA] Loaded {len(image_paths)} image paths from CSV ({time.time() - load_start:.2f}s)")
-
-		# ========== Load model ==========
-		processor, model = _load_vlm_(
-			model_id=model_id,
-			use_quantization=use_quantization,
-			verbose=verbose,
+			print(f"[EXISTING] Found existing results at {output_csv}")
+		df = pd.read_csv(
+			filepath_or_buffer=output_csv,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
 		)
-		if verbose and torch.cuda.is_available():
-				print(f"[MODEL] Loaded {model_id} | {device} | {torch.cuda.get_device_name(device)}")
+		if 'vlm_keywords' in df.columns:
+			if verbose:
+				print(f"[EXISTING] Found existing results! {type(df)} {df.shape} {list(df.columns)}")
+			return df['vlm_keywords'].tolist()
+	
+	# ========== Load data ==========
+	load_start = time.time()
+	df = pd.read_csv(csv_file, on_bad_lines="skip", low_memory=False)
+	if "img_path" not in df.columns:
+			raise ValueError("CSV file must have 'img_path' column")
+	image_paths = [p if isinstance(p, str) and os.path.exists(p) else None for p in df["img_path"]]
+	n_total = len(image_paths)
+	if verbose:
+			print(f"[DATA] Loaded {len(image_paths)} image paths from CSV ({time.time() - load_start:.2f}s)")
+	# ========== Load model ==========
+	processor, model = _load_vlm_(
+		model_id=model_id,
+		use_quantization=use_quantization,
+		verbose=verbose,
+	)
+	if verbose and torch.cuda.is_available():
+			print(f"[MODEL] Loaded {model_id} | {device} | {torch.cuda.get_device_name(device)}")
+	# ========== Prepare generation kwargs ==========
+	gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True)
+	if hasattr(model, "generation_config"):
+			gen_config = model.generation_config
+			gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
+			gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
+	else:
+			gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
+	if verbose:
+			print(f"\n[GEN CONFIG] Using generation parameters:")
+			for k, v in gen_kwargs.items():
+					print(f"   • {k}: {v}")
+	# ========== Prepare inputs (dedup + verification) ==========
+	if do_dedup:
+			uniq_map: Dict[str, int] = {}
+			uniq_inputs: List[Optional[str]] = []
+			orig_to_uniq: List[int] = []
+			for path in image_paths:
+					key = str(path) if path else "__NULL__"
+					if key not in uniq_map:
+							uniq_map[key] = len(uniq_inputs)
+							uniq_inputs.append(path if path else None)
+					orig_to_uniq.append(uniq_map[key])
+	else:
+			uniq_inputs = image_paths
+			orig_to_uniq = list(range(n_total))
+	def verify(p: Optional[str]) -> Optional[str]:
+		if p is None or not os.path.exists(p):
+			return None
+		try:
+			with Image.open(p) as im:
+				im.verify()
+			return p
+		except Exception:
+			return None
+	with ThreadPoolExecutor(max_workers=num_workers) as ex:
+		verified = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc="Verifying images", ncols=100,))
+	valid_indices = [i for i, v in enumerate(verified) if v is not None]
+	total_batches = math.ceil(len(valid_indices) / batch_size)
+	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
+	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
+	if verbose:
+		print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
+		print(f"[INFO] Memory[in-use]: {process.memory_info().rss / (1024**3):.2f} GB")
+	# ========== Helper: parallel parsing for one batch ==========
+	def _parse_batch_parallel(
+			decoded_responses: List[str],
+			batch_indices: List[int],
+			model_id_: str,
+			verbose_: bool,
+	) -> Dict[int, Optional[List[str]]]:
+			"""
+			Parse a list of decoded VLM responses in parallel.
+			Returns a mapping: {unique_index: parsed_keywords_or_None}
+			"""
+			out: Dict[int, Optional[List[str]]] = {}
+			def _parse_one(local_idx: int) -> Tuple[int, Optional[List[str]]]:
+				uniq_index = batch_indices[local_idx]
+				resp = decoded_responses[local_idx]
+				try:
+					parsed = parse_vlm_response(
+						model_id=model_id_,
+						raw_response=resp,
+						verbose=verbose_,  # keep parallel logs quiet
+					)
+					return uniq_index, parsed
+				except Exception as e:
+					if verbose_:
+						print(f"⚠️ Parsing error for unique index {uniq_index}: {e}")
+					return uniq_index, None
+			if not decoded_responses:
+				return out
+			with ThreadPoolExecutor(max_workers=num_workers) as ex:
+				futures = {ex.submit(_parse_one, i): i for i in range(len(decoded_responses))}
+				for fut in as_completed(futures):
+					uniq_index, parsed = fut.result()
+					out[uniq_index] = parsed
+			return out
+	
+	# ========== Process batches ==========
+	for b in tqdm(range(total_batches), desc="Processing (visual) batches", ncols=100):
+		batch_indices = valid_indices[b * batch_size:(b + 1) * batch_size]
 
-		# ========== Prepare generation kwargs ==========
-		gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True)
-		if hasattr(model, "generation_config"):
-				gen_config = model.generation_config
-				gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
-				gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
-		else:
-				gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
-		if verbose:
-				print(f"\n[GEN CONFIG] Using generation parameters:")
-				for k, v in gen_kwargs.items():
-						print(f"   • {k}: {v}")
-
-		# ========== Prepare inputs (dedup + verification) ==========
-		if do_dedup:
-				uniq_map: Dict[str, int] = {}
-				uniq_inputs: List[Optional[str]] = []
-				orig_to_uniq: List[int] = []
-
-				for path in image_paths:
-						key = str(path) if path else "__NULL__"
-						if key not in uniq_map:
-								uniq_map[key] = len(uniq_inputs)
-								uniq_inputs.append(path if path else None)
-						orig_to_uniq.append(uniq_map[key])
-		else:
-				uniq_inputs = image_paths
-				orig_to_uniq = list(range(n_total))
-
-		def verify(p: Optional[str]) -> Optional[str]:
-			if p is None or not os.path.exists(p):
-				return None
+		def load_img(p: str) -> Optional[Image.Image]:
 			try:
-				with Image.open(p) as im:
-					im.verify()
-				return p
-			except Exception:
+				with Image.open(p).convert("RGB") as im:
+					im.thumbnail((IMG_MAX_RES, IMG_MAX_RES))
+					return im.copy()
+			except Exception as e:
+				print(f"Error loading image {p}: {e}")
 				return None
 
 		with ThreadPoolExecutor(max_workers=num_workers) as ex:
-			verified = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc="Verifying images", ncols=100,))
+			imgs = list(ex.map(load_img, [verified[i] for i in batch_indices]))
 
-		valid_indices = [i for i, v in enumerate(verified) if v is not None]
-		total_batches = math.ceil(len(valid_indices) / batch_size)
-		base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
-		results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
-
-		if verbose:
-			print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
-			print(f"[INFO] Memory[in-use]: {process.memory_info().rss / (1024**3):.2f} GB")
-
-		# ========== Helper: parallel parsing for one batch ==========
-		def _parse_batch_parallel(
-				decoded_responses: List[str],
-				batch_indices: List[int],
-				model_id_: str,
-				verbose_: bool,
-		) -> Dict[int, Optional[List[str]]]:
-				"""
-				Parse a list of decoded VLM responses in parallel.
-				Returns a mapping: {unique_index: parsed_keywords_or_None}
-				"""
-				out: Dict[int, Optional[List[str]]] = {}
-
-				def _parse_one(local_idx: int) -> Tuple[int, Optional[List[str]]]:
-					uniq_index = batch_indices[local_idx]
-					resp = decoded_responses[local_idx]
-					try:
-						parsed = parse_vlm_response(
-							model_id=model_id_,
-							raw_response=resp,
-							verbose=verbose_,  # keep parallel logs quiet
-						)
-						return uniq_index, parsed
-					except Exception as e:
-						if verbose_:
-							print(f"⚠️ Parsing error for unique index {uniq_index}: {e}")
-						return uniq_index, None
-
-				if not decoded_responses:
-					return out
-
-				with ThreadPoolExecutor(max_workers=num_workers) as ex:
-					futures = {ex.submit(_parse_one, i): i for i in range(len(decoded_responses))}
-					for fut in as_completed(futures):
-						uniq_index, parsed = fut.result()
-						out[uniq_index] = parsed
-
-				return out
-
-		# ========== Process batches ==========
-		for b in tqdm(range(total_batches), desc="Processing (visual) batches", ncols=100):
-				batch_indices = valid_indices[b * batch_size:(b + 1) * batch_size]
-
-				def load_img(p: str) -> Optional[Image.Image]:
-					try:
-						with Image.open(p).convert("RGB") as im:
-							im.thumbnail((IMG_MAX_RES, IMG_MAX_RES))
-							return im.copy()
-					except Exception as e:
-						print(f"Error loading image {p}: {e}")
-						return None
-
-				with ThreadPoolExecutor(max_workers=num_workers) as ex:
-					imgs = list(ex.map(load_img, [verified[i] for i in batch_indices]))
-
-				valid_pairs = [(i, img) for i, img in zip(batch_indices, imgs) if img is not None]
-				if not valid_pairs:
-						if verbose:
-								print(f" [batch {b}]: No valid images in batch => skipping")
-						continue
-
-				# Build per-sample messages
-				messages = [
-						[
-								{
-										"role": "user",
-										"content": [
-												{"type": "text", "text": base_prompt},
-												{"type": "image", "image": img},
-										],
-								}
-						]
-						for _, img in valid_pairs
-				]
-
-				try:
-						# Build chat templates and process batch
-						chat_texts = [
-								processor.apply_chat_template(
-										m, tokenize=False, add_generation_prompt=True
-								)
-								for m in messages
-						]
-
-						inputs = processor(
-								text=chat_texts,
-								images=[img for _, img in valid_pairs],
-								return_tensors="pt",
-								padding=True,
-						).to(model.device)
-
-						# Generate response
-						with torch.no_grad():
-								with torch.amp.autocast(
-										device_type=device.type,
-										enabled=torch.cuda.is_available(),
-										dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-								):
-										outputs = model.generate(**inputs, **gen_kwargs)
-
-						decoded = processor.batch_decode(outputs, skip_special_tokens=True)
-
-						# if verbose:
-						#     print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
-
-						# NEW: parallel parsing for this batch
-						parsed_dict = _parse_batch_parallel(
-								decoded_responses=decoded,
-								batch_indices=[i for i, _ in valid_pairs],
-								model_id_=model_id,
-								verbose_=verbose,
-						)
-
-						for uniq_idx, parsed in parsed_dict.items():
-								results[uniq_idx] = parsed
-
-				except Exception as e_batch:
-						print(f"\n[BATCH {b}]: {e_batch}\n")
-						if torch.cuda.is_available():
-								torch.cuda.empty_cache()
-						gc.collect()
-						if verbose:
-								print(f"\tFalling back to sequential processing for {len(valid_pairs)} images in this batch.")
-
-						# process each image sequentially
-						for uniq_idx, img in tqdm(valid_pairs, desc="Processing batch images [sequential]", ncols=100):
-								try:
-										single_message = [
-												{
-														"role": "user",
-														"content": [
-																{"type": "text", "text": base_prompt},
-																{"type": "image", "image": img},
-														],
-												}
-										]
-										chat = processor.apply_chat_template(
-												single_message,
-												tokenize=False,
-												add_generation_prompt=True,
-										)
-										single_inputs = processor(
-												text=[chat],
-												images=[img],
-												return_tensors="pt",
-										).to(model.device)
-
-										if single_inputs.pixel_values.numel() == 0:
-												raise ValueError(
-														f"Pixel values of {uniq_idx} are empty: {single_inputs.pixel_values.shape}"
-												)
-
-										with torch.no_grad():
-												with torch.amp.autocast(
-														device_type=device.type,
-														enabled=torch.cuda.is_available(),
-														dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-												):
-														out = model.generate(**single_inputs, **gen_kwargs)
-
-										decoded_single = processor.decode(out[0], skip_special_tokens=True)
-										results[uniq_idx] = parse_vlm_response(
-												model_id=model_id,
-												raw_response=decoded_single,
-												verbose=verbose,
-										)
-								except Exception as e_fallback:
-										print(f"\n[Fallback ❌] image {uniq_idx}:\n{e_fallback}\n")
-										results[uniq_idx] = None
-
-				# Clean up batch tensors immediately after use
-				for name in ("inputs", "outputs", "decoded"):
-						if name in locals():
-								try:
-										del locals()[name]
-								except Exception:
-										pass
-
-				# if verbose and torch.cuda.is_available():
-				# 		print(f"[MEM] Batch {b}: {process.memory_info().rss / (1024**3):.2f}GB in-use")
-				# 		print(f"[MEM] Batch {b}: {torch.cuda.memory_allocated() / (1024**3):.2f}GB allocated, "
-				# 					f"{torch.cuda.memory_reserved() / (1024**3):.2f}GB reserved")
-				# 		print("deleted inputs, outputs, decoded")
-
-				# Periodic memory cleanup (every 10 batches)
-				if b % 10 == 0:
-						if torch.cuda.is_available():
-								torch.cuda.empty_cache()
-						gc.collect()
-						# if verbose and torch.cuda.is_available():
-						# 		mem_allocated = torch.cuda.memory_allocated() / (1024**3)
-						# 		mem_reserved = torch.cuda.memory_reserved() / (1024**3)
-						# 		print(f"[MEM] Batch {b}: {mem_allocated:.2f}GB allocated, {mem_reserved:.2f}GB reserved")
-
-		# ========== Map back to original ordering ==========
-		final = [results[i] for i in orig_to_uniq]
-		out_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
-		df["vlm_keywords"] = final
-
-		# Save results
-		df.to_csv(out_csv, index=False)
+		valid_pairs = [(i, img) for i, img in zip(batch_indices, imgs) if img is not None]
+		
+		if not valid_pairs:
+			if verbose:
+				print(f" [batch {b}]: No valid images in batch => skipping")
+			continue
+		# Build per-sample messages
+		messages = [
+			[
+				{
+					"role": "user",
+					"content": [
+						{"type": "text", "text": base_prompt},
+						{"type": "image", "image": img},
+					],
+				}
+			]
+			for _, img in valid_pairs
+		]
+		
 		try:
-			df.to_excel(out_csv.replace('.csv', '.xlsx'), index=False)
-		except Exception as e:
-			print(f"Failed to write Excel file: {e}")
-
-		elapsed = time.time() - t0
-		if verbose:
-			n_ok = sum(1 for r in final if r)
-			print(f"[STATS] ✅ Success {n_ok}/{len(final)}")
-			print(f"[TIME] {elapsed/3600:.2f}h | avg {len(final)/elapsed:.2f}/s")
-			print(f"[SAVE] Results written to: {out_csv}")
-
-		return final
+			# Build chat templates and process batch
+			chat_texts = [
+				processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
+				for m in messages
+			]
+			inputs = processor(
+				text=chat_texts,
+				images=[img for _, img in valid_pairs],
+				return_tensors="pt",
+				padding=True,
+			).to(model.device)
+			
+			# Generate response
+			with torch.no_grad():
+				with torch.amp.autocast(
+					device_type=device.type,
+					enabled=torch.cuda.is_available(),
+					dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+				):
+					outputs = model.generate(**inputs, **gen_kwargs)
+			
+			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
+			
+			# parallel parsing for this batch
+			parsed_dict = _parse_batch_parallel(
+				decoded_responses=decoded,
+				batch_indices=[i for i, _ in valid_pairs],
+				model_id_=model_id,
+				verbose_=verbose,
+			)
+			for uniq_idx, parsed in parsed_dict.items():
+				results[uniq_idx] = parsed
+		except Exception as e_batch:
+			print(f"\n[BATCH {b}]: {e_batch}\n")
+			print(f"Cleaning up after batch failure...")
+			if torch.cuda.is_available():
+				torch.cuda.empty_cache()
+			gc.collect()
+			if verbose:
+				print(f"\tFalling back to sequential processing for {len(valid_pairs)} images in this batch.")
+			# process each image sequentially
+			for uniq_idx, img in tqdm(valid_pairs, desc="Processing batch images [sequential]", ncols=100):
+				try:
+					single_message = [
+						{
+							"role": "user",
+							"content": [
+								{"type": "text", "text": base_prompt},
+								{"type": "image", "image": img},
+							],
+						}
+					]
+					chat = processor.apply_chat_template(
+						single_message,
+						tokenize=False,
+						add_generation_prompt=True,
+					)
+					single_inputs = processor(
+						text=[chat],
+						images=[img],
+						return_tensors="pt",
+					).to(model.device)
+					if single_inputs.pixel_values.numel() == 0:
+						raise ValueError(f"Pixel values of {uniq_idx} are empty: {single_inputs.pixel_values.shape}")
+					with torch.no_grad():
+						with torch.amp.autocast(
+							device_type=device.type,
+							enabled=torch.cuda.is_available(),
+							dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+						):
+							out = model.generate(**single_inputs, **gen_kwargs)
+					decoded_single = processor.decode(out[0], skip_special_tokens=True)
+					results[uniq_idx] = parse_vlm_response(
+						model_id=model_id,
+						raw_response=decoded_single,
+						verbose=verbose,
+					)
+				except Exception as e_fallback:
+					print(f"\n[Fallback ❌] image {uniq_idx}:\n{e_fallback}\n")
+					results[uniq_idx] = None
+		
+		# Clean up batch tensors immediately after use
+		for name in ("inputs", "outputs", "decoded"):
+			if name in locals():
+				try:
+					del locals()[name]
+				except Exception:
+					pass
+		# Periodic memory cleanup (every 10 batches)
+		if b % 10 == 0:
+			if torch.cuda.is_available():
+				torch.cuda.empty_cache()
+			gc.collect()
+	
+	# ========== Map back to original ordering ==========
+	final = [results[i] for i in orig_to_uniq]
+	out_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
+	df["vlm_keywords"] = final
+	# Save results
+	df.to_csv(out_csv, index=False)
+	try:
+		df.to_excel(out_csv.replace('.csv', '.xlsx'), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
+	elapsed = time.time() - t0
+	if verbose:
+		n_ok = sum(1 for r in final if r)
+		print(f"[STATS] ✅ Success {n_ok}/{len(final)}")
+		print(f"[TIME] {elapsed/3600:.2f}h | avg {len(final)/elapsed:.2f}/s")
+		print(f"[SAVE] Results written to: {out_csv}")
+	return final
 
 @measure_execution_time
 def main():
