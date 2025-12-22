@@ -1105,7 +1105,7 @@ def get_vlm_based_labels_opt(
 		def load_img(p: str) -> Optional[Image.Image]:
 			try:
 				with Image.open(p).convert("RGB") as im:
-					im.thumbnail((IMG_MAX_RES, IMG_MAX_RES))
+					# im.thumbnail((IMG_MAX_RES, IMG_MAX_RES)) # already done in preprocessing
 					return im.copy()
 			except Exception as e:
 				print(f"Error loading image {p}: {e}")
