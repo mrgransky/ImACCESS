@@ -984,7 +984,7 @@ def get_vlm_based_labels_opt(
 	t0 = time.time()
 	# ========== Check existing results ==========
 	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
-	num_workers = min(4, num_workers)
+	num_workers = min(2, num_workers)
 	if verbose:
 		print(f"[INIT] Starting OPTIMIZED batch VLM processing with {num_workers} workers")
 
