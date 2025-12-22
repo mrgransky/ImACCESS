@@ -180,7 +180,7 @@ def _load_vlm_(
 			flash_ok = major >= 8
 		except Exception as e:
 			if verbose:
-				print(f"[INFO] Flash Attention not available: {e}")
+				print(f"[ERROR] Flash Attention: {type(e).__name__}\n{e}")
 			flash_ok = False
 		
 		if flash_ok:
@@ -194,8 +194,7 @@ def _load_vlm_(
 	attn_impl = _optimal_attn_impl(model_id)
 
 	if verbose:
-		print("[INFO] Attention implementation")
-		print(f"   • Selected implementation : {attn_impl}\n")
+		print(f"[INFO] Attention implementation: {attn_impl}")
 
 	# ========== Quantization config ==========
 	quantization_config = None
@@ -256,7 +255,6 @@ def _load_vlm_(
 		print(f"   • tokenizer eos token     : {tokenizer.eos_token}")
 		print(f"   • tokenizer padding side  : {tokenizer.padding_side}")
 	
-	
 	# ========== Model loading kwargs ==========
 	model_kwargs: Dict[str, Any] = {
 		"low_cpu_mem_usage": True,
@@ -309,8 +307,7 @@ def _load_vlm_(
 		approx_fp8_gb = total_params * 1 / (1024 ** 3)
 
 		print(f"\t• Total parameters: {total_params:,}")
-		print(f"\t• Approx. fp16 RAM: {approx_fp16_gb:.2f} GiB (if stored as fp16)")
-		print(f"\t• Approx. fp8 RAM:  {approx_fp8_gb:.2f} GiB (if stored as fp8)")
+		print(f"\t• Approx. fp16 RAM: {approx_fp16_gb:.2f} GiB (if stored as fp16) | Approx. fp8 RAM:  {approx_fp8_gb:.2f} GiB (if stored as fp8)")
 
 		if hasattr(model, "hf_device_map"):
 			dm = model.hf_device_map
