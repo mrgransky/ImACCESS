@@ -18,7 +18,7 @@ import visualize as viz
 # Qwen/Qwen2.5-VL-7B-Instruct # only fits Puhti and Mahti
 
 # how to run [local]:
-# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -v -vlm_bs 2 -llm_bs 2 -llm_q -nw 18 
+# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -v -vlm_bs 2 -llm_bs 2 -llm_q -vlm_q -nw 18 
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 4 -llm_bs 2 -vlm_q -llm_q -nw 18 -v > logs/multimodal_annotation_smu.txt & 
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct"-v -vlm_bs 4 -llm_bs 2 > logs/multimodal_annotation_eu.txt & 
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct"-v -vlm_bs 2 -llm_bs 2 > logs/multimodal_annotation_wwii.txt & 
@@ -435,7 +435,7 @@ def get_multimodal_annotation(
 			print("=" * 120)
 		
 		if torch.cuda.is_available():
-			print(f"[DEBUG] CUDA memory BEFORE VLM")
+			print(f"[DEBUG] Clearing CUDA memory BEFORE running VLM pipeline...")
 			gc.collect()
 			torch.cuda.empty_cache()
 		
