@@ -23,27 +23,27 @@ ch="#"
 echo -e "${txt//?/$ch}\n${txt}\n${txt//?/$ch}"
 echo "${stars// /*}"
 echo "CPUS/NODE: $SLURM_JOB_CPUS_PER_NODE, MEM/NODE(--mem): $SLURM_MEM_PER_NODE"
-echo "HOST: $SLURM_SUBMIT_HOST @ $SLURM_JOB_ACCOUNT, CLUSTER: $SLURM_CLUSTER_NAME, Partition: $SLURM_JOB_PARTITION"
+echo "HOST: $SLURM_SUBMIT_HOST @ $SLURM_JOB_ACCOUNT, CLUSTER: $SLURM_CLUSTER_NAME"
 echo "JOBname: $SLURM_JOB_NAME, ID: $SLURM_JOB_ID, WRK_DIR: $SLURM_SUBMIT_DIR"
 echo "nNODES: $SLURM_NNODES, NODELIST: $SLURM_JOB_NODELIST, NODE_ID: $SLURM_NODEID"
 echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_NPROCS"
 echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
-echo "GPU(s): $SLURM_GPUS_ON_NODE"
+echo "GPU(s): $SLURM_GPUS_ON_NODE Partition: $SLURM_JOB_PARTITION"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
-# SMALL MODELS:
-LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
-VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
-LLM_BATCH_SIZE=48
-VLM_BATCH_SIZE=96
+# # SMALL MODELS:
+# LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
+# VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
+# LLM_BATCH_SIZE=48
+# VLM_BATCH_SIZE=96
 
-# # LARGE MODELS:
-# LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
-# VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
-# LLM_BATCH_SIZE=32
-# VLM_BATCH_SIZE=64
+# LARGE MODELS:
+LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
+VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
+LLM_BATCH_SIZE=32
+VLM_BATCH_SIZE=64
 
 # if we have all datasets, separate job for each dataset
 # >>>>>>>>>>>>>>>>>>> don't forget: #SBATCH --array=0-4 <<<<<<<<<<<<<<<<<<<<<<<<<<
