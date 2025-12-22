@@ -36,14 +36,14 @@ echo "${stars// /*}"
 # # SMALL MODELS:
 # LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
 # VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
-# LLM_BATCH_SIZE=48
-# VLM_BATCH_SIZE=96
+# LLM_BATCH_SIZE=96
+# VLM_BATCH_SIZE=48
 
 # LARGE MODELS:
 LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
-LLM_BATCH_SIZE=32
-VLM_BATCH_SIZE=64
+LLM_BATCH_SIZE=48
+VLM_BATCH_SIZE=32
 
 # if we have all datasets, separate job for each dataset
 # >>>>>>>>>>>>>>>>>>> don't forget: #SBATCH --array=0-4 <<<<<<<<<<<<<<<<<<<<<<<<<<

@@ -78,18 +78,18 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 [/INST]"""
 
 def _load_llm_(
-		model_id: str,
-		device: Union[str, torch.device],
-		use_quantization: bool = False,
-		quantization_bits: int = 8,
-		verbose: bool = False,
+	model_id: str,
+	use_quantization: bool = False,
+	quantization_bits: int = 8,
+	verbose: bool = False,
 ) -> Tuple[tfs.PreTrainedTokenizerBase, torch.nn.Module]:
-		
+	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
+
 	if verbose:
 		print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
+		print(f"[INFO] CUDA available?        : {torch.cuda.is_available()} {n_gpus} GPU(s) available: {[torch.cuda.get_device_name(i) for i in range(n_gpus)]}")
 		if torch.cuda.is_available():
 			cur = torch.cuda.current_device()
-			print(f"[INFO] Current CUDA device   : {cur} ({torch.cuda.get_device_name(cur)})")
 			major, minor = torch.cuda.get_device_capability(cur)
 			print(f"[INFO] Compute capability    : {major}.{minor}")
 			print(f"[INFO] BF16 support?         : {torch.cuda.is_bf16_supported()}")
@@ -229,44 +229,17 @@ def _load_llm_(
 		print(f"\t• eos token id    {tokenizer.eos_token_id:>20}")
 		print(f"\t• padding side    {tokenizer.padding_side:>20}")
 	
-	# ========== Decide device placement strategy ==========
-	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
-	use_device_map_auto = False
-
-	if use_quantization:
-		# Quantization always uses device_map="auto"
-		use_device_map_auto = True
-		if verbose:
-			print(f"[DEVICE STRATEGY] Quantization enabled → using device_map='auto'")
-	elif n_gpus > 1:
-		# Multiple GPUs available and no quantization → use device_map="auto" to spread model
-		use_device_map_auto = True
-		if verbose:
-			print(f"[DEVICE STRATEGY] {n_gpus} GPUs detected → using device_map='auto' to distribute model")
-	else:
-		# Single GPU or CPU → manual placement
-		use_device_map_auto = False
-		if verbose:
-			print(f"[DEVICE STRATEGY] Single device ({device}) → manual .to(device)")
-
 	# ========== Model loading kwargs ==========
 	model_kwargs: Dict[str, Any] = {
 		"low_cpu_mem_usage": True,
 		"trust_remote_code": True,
 		"cache_dir": cache_directory[USER],
+		"device_map": "auto",
+		"dtype": torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 	}
+	if use_quantization:
+		model_kwargs["quantization_config"] = quantization_config
 
-	if use_device_map_auto:
-		model_kwargs["device_map"] = "auto"
-		if use_quantization:
-			model_kwargs["quantization_config"] = quantization_config
-		else:
-			# Full precision with multi-GPU
-			model_kwargs["dtype"] = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-	else:
-		# Single device: set dtype, will call .to(device) later
-		model_kwargs["dtype"] = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-	
 	if verbose:
 		print(f"[INFO] {model_cls.__name__} loading kwargs")
 		for k, v in model_kwargs.items():
@@ -279,62 +252,51 @@ def _load_llm_(
 	if verbose and torch.cuda.is_available():
 		cur = torch.cuda.current_device()
 		print("[DEBUG] CUDA memory BEFORE model load")
-		print(f"• allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-		print(f"• reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
+		print(f"\t• allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+		print(f"\t• reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
 
 	if verbose:
 		print(f"[INFO] Calling pretrained {model_cls.__name__} {model_id} ...")
 
-	model = model_cls.from_pretrained(model_id, **model_kwargs)
+	try:
+		model = model_cls.from_pretrained(model_id, **model_kwargs)
+	except Exception as e:
+		if verbose:
+			print(f"[ERROR] Error loading model: {e}")
+		raise e
+
+	model.eval()
 
 	if verbose:
 		print(f"\n[MODEL] {model.__class__.__name__} {type(model)}")
 		first_param = next(model.parameters())
-		print(f"• First parameter dtype: {first_param.dtype}")
+		print(f"\t• First parameter dtype: {first_param.dtype}")
 
 		total_params = sum(p.numel() for p in model.parameters())
 		approx_fp16_gb = total_params * 2 / (1024 ** 3)
 		approx_fp8_gb = total_params * 1 / (1024 ** 3)
 
 		print("\n[MODEL] Parameter statistics")
-		print(f"• Total parameters: {total_params:,}")
-		print(f"• Approx. fp16 RAM: {approx_fp16_gb:.2f} GiB (if stored as fp16)")
-		print(f"• Approx. fp8 RAM:  {approx_fp8_gb:.2f} GiB (if stored as fp8)")
+		print(f"\t• Total parameters: {total_params:,}")
+		print(f"\t• Approx. fp16 RAM: {approx_fp16_gb:.2f} GiB (if stored as fp16)")
+		print(f"\t• Approx. fp8 RAM:  {approx_fp8_gb:.2f} GiB (if stored as fp8)")
 
 		if hasattr(model, "hf_device_map"):
 			dm = model.hf_device_map
-			print(f"• Final device map (model.hf_device_map):\n{json.dumps(dm, indent=2, ensure_ascii=False)}")
-		else:
-			print(f"• No `hf_device_map` attribute – model lives on a single device: {device}")
-		print()
-	
-	# ========== Manual placement if not using device_map="auto" ==========
-	if not use_device_map_auto:
-		if verbose:
-			print(f"[INFO] Moving model to {device} (manual placement)")
+			print(f"[INFO] device_map='auto' (model.hf_device_map):\n{json.dumps(dm, indent=2, ensure_ascii=False)}")
 
-		try:
-			model = model.to(device)
-		except Exception as e:
-			print(e)
-			sys.exit(1)
+		if hasattr(model, 'generation_config'):
+			print(f"{model.generation_config}")
 
-		if verbose and torch.cuda.is_available():
-			cur = torch.cuda.current_device()
-			print("[DEBUG] CUDA memory AFTER model.to()")
-			print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-			print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
-	else:
-		if verbose:
-			print("[INFO] Model placement handled by device_map='auto'")
-			if torch.cuda.is_available():
-				gpu_params = sum(1 for p in model.parameters() if p.device.type == "cuda")
-				cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
-				print(f"   • Parameters on GPU : {gpu_params}")
-				print(f"   • Parameters on CPU : {cpu_params}")
+	# ========== Model info ==========
+	if verbose:
+		print("[INFO] Model placement handled by device_map='auto'")
+		if torch.cuda.is_available():
+			gpu_params = sum(1 for p in model.parameters() if p.device.type == "cuda")
+			cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
+			print(f"   • Parameters on GPU : {gpu_params}")
+			print(f"   • Parameters on CPU : {cpu_params}")
 
-	model.eval()
-		
 	return tokenizer, model
 
 def get_prompt(tokenizer: tfs.PreTrainedTokenizer, description: str, max_kws: int):
@@ -1502,7 +1464,7 @@ def get_llm_based_labels_debug(
 
 	tokenizer, model = _load_llm_(
 		model_id=model_id, 
-		device=device,
+		# device=device,
 		use_quantization=use_quantization,
 		verbose=verbose
 	)
@@ -1617,7 +1579,7 @@ def get_llm_based_labels_opt(
 	
 	tokenizer, model = _load_llm_(
 			model_id=model_id,
-			device=device,
+			# device=device,
 			use_quantization=use_quantization,
 			verbose=verbose,
 	)

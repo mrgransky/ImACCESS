@@ -1,4 +1,5 @@
 from utils import *
+import visualize as viz
 
 def merge_csv_files(dataset_dir, verbose: bool = False):
 	output_fpath = os.path.join(dataset_dir, "metadata_multi_label_multimodal.csv")
@@ -33,6 +34,17 @@ def merge_csv_files(dataset_dir, verbose: bool = False):
 	if verbose:
 		print(f"Saved merged CSV file to {output_fpath}")
 
+	viz.perform_multilabel_eda(
+		data_path=output_csv,
+		label_column='multimodal_labels'
+	)
+
+	train_df, val_df = get_multi_label_stratified_split(
+		csv_file=output_csv,
+		val_split_pct=0.35,
+		label_col='multimodal_labels'
+	)
+	
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description='Merge CSV files')
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Directory containing CSV files')

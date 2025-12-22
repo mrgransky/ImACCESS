@@ -264,8 +264,8 @@ def _load_vlm_(
 		"cache_dir": cache_directory[USER],
 		"attn_implementation": attn_impl,
 		"dtype": dtype,
+		"device_map": "auto",
 	}
-	model_kwargs["device_map"] = "auto"
 	if use_quantization:
 		model_kwargs["quantization_config"] = quantization_config
 
@@ -282,8 +282,8 @@ def _load_vlm_(
 	if verbose and torch.cuda.is_available():
 		cur = torch.cuda.current_device()
 		print(f"[DEBUG] cuda:{cur} memory BEFORE model load")
-		print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-		print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
+		print(f"\t• allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+		print(f"\t• reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
 
 	# ========== Load model ==========
 	if verbose:
@@ -300,19 +300,21 @@ def _load_vlm_(
 
 	# ========== Model info ==========
 	if verbose:
-		print(f"\n[INFO] {model.__class__.__name__} {type(model)}")
+		print(f"\n[MODEL] {model.__class__.__name__} {type(model)}")
 		first_param = next(model.parameters())
-		print(f"   • First parameter dtype: {first_param.dtype}")
+		print(f"\t• First parameter dtype: {first_param.dtype}")
+
 		total_params = sum(p.numel() for p in model.parameters())
 		approx_fp16_gb = total_params * 2 / (1024 ** 3)
-		print(f"   • Total parameters    : {total_params:,}")
-		print(f"   • Approx. fp16 RAM    : {approx_fp16_gb:.2f} GiB (if stored as fp16)")
+		approx_fp8_gb = total_params * 1 / (1024 ** 3)
+
+		print(f"\t• Total parameters: {total_params:,}")
+		print(f"\t• Approx. fp16 RAM: {approx_fp16_gb:.2f} GiB (if stored as fp16)")
+		print(f"\t• Approx. fp8 RAM:  {approx_fp8_gb:.2f} GiB (if stored as fp8)")
 
 		if hasattr(model, "hf_device_map"):
 			dm = model.hf_device_map
 			print(f"[INFO] device_map='auto' (model.hf_device_map):\n{json.dumps(dm, indent=2, ensure_ascii=False)}")
-		# else:
-		# 	print(f"[INFO] No `hf_device_map` attribute => model resides on a single device: {device}")
 
 		if hasattr(model, 'generation_config'):
 			print(f"{model.generation_config}")
