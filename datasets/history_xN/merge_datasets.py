@@ -8,15 +8,12 @@ sys.path.insert(0, project_dir)
 from misc.utils import *
 from misc.visualize import *
 
-# how to run:
+# how to run [local]:
 # $ python merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs
 # $ nohup python -u merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs --target_chunk_mb 8 > logs/history_xN_merged_datasets.out &
 
-# run in pouta:
-# $ nohup python -u merge_datasets.py > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
-
-# run in puhti:
-# $ nohup python -u merge_datasets.py > /scratch/project_2004072/ImACCESS/trash/history_xN_merged_datasets.out &
+# run in Pouta:
+# $ nohup python -u merge_datasets.py -ddir /media/volume/ImACCESS/dataset/WW_DATASETs --img_mean_std --target_chunk_mb 8 > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
 
 def get_dataset(ddir: str):
 	# Patterns to match dataset directories
@@ -35,11 +32,11 @@ def get_dataset(ddir: str):
 
 	print("\nAVAILABLE DATASET SUMMARY")
 	print("-"*100)
-	for dataset in datasets:
-		print(f">> {dataset}")
+	for i, dataset in enumerate(datasets):
+		print(f"Dataset[{i}]: {dataset}")
 		for file in sorted(os.listdir(dataset)):
 			if file.endswith(('.csv')):
-				print(f"\t- {file}")
+				print(f"\t {file}")
 	
 	return datasets
 
@@ -80,6 +77,7 @@ def merge_datasets(
 			single_label_dfs.append(df)
 		except Exception as e:
 			print(f"  Error loading {single_label_path}: {e}")
+		print(f"\tLoaded {type(df)} {df.shape} from {single_label_path}")
 	if not single_label_dfs:
 		raise RuntimeError("No valid datasets found. Exiting.")
 	
@@ -114,7 +112,7 @@ def merge_datasets(
 			multi_label_dfs.append(df)
 		except Exception as e:
 			print(f"  Error loading {multi_label_path}: {e}")
-
+		print(f"\tLoaded {type(df)} {df.shape} from {multi_label_path}")
 	if not multi_label_dfs:
 		raise RuntimeError("No valid datasets found. Exiting.")
 

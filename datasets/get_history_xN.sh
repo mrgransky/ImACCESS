@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # how to run:
-# nohup bash download_history_x4.sh > logs/all_data_collectors.out &
+# nohup bash get_history_xN.sh > logs/all_data_collectors.out &
 
 # Script to run all dataset collectors for ImACCESS project
 # Author: ImACCESS Team, Tampere University
@@ -151,7 +151,7 @@ main() {
 	print_status "Output directory: ${DATASET_DIR}"
 	print_status "Running dataset merger => History_xN ..."
 
-	python -u "${BASE_DIR}/history_xN/merge_datasets.py" -ddir "${DATASET_DIR}"	
+	python -u "${BASE_DIR}/history_xN/merge_datasets.py" -ddir "${DATASET_DIR}"	--img_mean_std --target_chunk_mb 8
 	print_success "Pipeline execution completed!"
 }
 
