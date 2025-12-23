@@ -1126,6 +1126,9 @@ def get_vlm_based_labels_opt(
 		
 		if not valid_pairs:
 			continue
+		else:
+			if verbose:
+				print(f"\n[BATCH {b}] Processing {len(valid_pairs)} valid images...")
 
 		# Prepare inputs
 		messages = [
@@ -1186,7 +1189,7 @@ def get_vlm_based_labels_opt(
 			gc.collect()
 		
 		if verbose: 
-			print(f"\n[batch {b}] Deleting tensors (if any)...")
+			print(f"\n[BATCH {b}] Deleting tensors (if any)...")
 		try:
 			del inputs
 		except NameError:
