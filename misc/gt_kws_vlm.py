@@ -995,7 +995,7 @@ def get_vlm_based_labels_opt(
 	image_paths = [p if isinstance(p, str) and os.path.exists(p) else None for p in df["img_path"]]
 	n_total = len(image_paths)
 	if verbose:
-		print(f"[DATA] Loaded {len(image_paths)} image paths from CSV ({time.time() - load_start:.2f}s)")
+		print(f"[DATA] Loaded {n_total} image paths from CSV ({time.time() - load_start:.2f}s)")
 
 	# ========== Load model ==========
 	processor, model = _load_vlm_(
@@ -1015,6 +1015,7 @@ def get_vlm_based_labels_opt(
 		gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
 	else:
 		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
+
 	if verbose:
 		print(f"\n[GEN CONFIG] Using generation parameters:")
 		for k, v in gen_kwargs.items():
@@ -1031,6 +1032,7 @@ def get_vlm_based_labels_opt(
 			orig_to_uniq.append(uniq_map[key])
 	else:
 		uniq_inputs, orig_to_uniq = image_paths, list(range(n_total))
+
 	def verify(p):
 		if p is None or not os.path.exists(p):
 			return None
@@ -1042,7 +1044,7 @@ def get_vlm_based_labels_opt(
 			return None
 
 	with ThreadPoolExecutor(max_workers=num_workers) as ex:
-		verified = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc="Verifying images", ncols=100))
+		verified = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc="Verify images", ncols=100))
 
 	valid_indices = [i for i, v in enumerate(verified) if v is not None]
 	total_batches = math.ceil(len(valid_indices) / batch_size)
@@ -1071,8 +1073,11 @@ def get_vlm_based_labels_opt(
 
 		if not valid_pairs:
 			if verbose:
-				print(f" [batch {b}]: No valid images in batch => skipping")
+				print(f"\n\t[batch {b}]: No valid images in batch => skipping")
 			continue
+		else:
+			if verbose:
+				print(f"\n\t[batch {b}]: {len(valid_pairs)} valid images in batch")
 
 		# Build messages
 		messages = [
@@ -1123,13 +1128,15 @@ def get_vlm_based_labels_opt(
 					results[idxs[i]] = None
 		except Exception as e_batch:
 			print(f"\n[BATCH {b}]: {e_batch}\n")
-			torch.cuda.empty_cache()
+			# Clean up after batch failure
+			if torch.cuda.is_available():
+				torch.cuda.empty_cache()
 			gc.collect()
 			if verbose:
 				print(f"\tFalling back to sequential processing for {len(valid_pairs)} images in this batch.")
 
 			# fallback: process each image sequentially
-			for i, img in tqdm(valid_pairs, desc="Processing batch images [sequential]", ncols=100):
+			for i, img in tqdm(valid_pairs, desc="Processing batch images [Sequential]", ncols=100):
 				try:
 					single_message = [
 						{
@@ -1154,9 +1161,6 @@ def get_vlm_based_labels_opt(
 					if single_inputs.pixel_values.numel() == 0:
 						raise ValueError(f"Pixel values of {img} are empty: {single_inputs.pixel_values.shape}")
 
-					# if verbose:
-					# 	print(f"\n[INPUT] Pixel: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
-
 					# Generate response
 					with torch.no_grad():
 						with torch.amp.autocast(
@@ -1174,6 +1178,8 @@ def get_vlm_based_labels_opt(
 					results[i] = None
 
 		# Clean up batch tensors immediately after use
+		if verbose: 
+			print(f"\n[batch {b}] Deleting batch tensors...")
 		try:
 			del inputs
 		except NameError:
@@ -1192,8 +1198,8 @@ def get_vlm_based_labels_opt(
 			print(f"[MEM] Batch {b}: {torch.cuda.memory_allocated() / (1024**3):.2f}GB allocated, {torch.cuda.memory_reserved() / (1024**3):.2f}GB reserved")
 			print(f"deleted inputs, outputs, decoded")
 		
-		# Periodic memory cleanup (every 10 batches)
-		if b % 10 == 0:
+		# Periodic memory cleanup (every b batches)
+		if b % 5 == 0:
 			torch.cuda.empty_cache()
 			gc.collect()
 			if verbose:
