@@ -487,8 +487,11 @@ def get_multimodal_annotation(
 	if verbose:
 		print(f"Combined {len(multimodal_labels)} multimodal labels")
 	
+	if verbose:
+		print(f"Clearing CUDA memory before post-processing...")
 	if torch.cuda.is_available():
 		torch.cuda.empty_cache()
+	gc.collect()
 
 	# Post-process
 	llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
@@ -522,7 +525,13 @@ def get_multimodal_annotation(
 		val_split_pct=0.35,
 		label_col='multimodal_labels'
 	)
-	
+
+	if verbose:
+		print(f"Clearing CUDA memory after post-processing...")
+	if torch.cuda.is_available():
+		torch.cuda.empty_cache()
+	gc.collect()
+
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="Multimodal (LLM + VLM) annotation for Historical Archives Dataset")

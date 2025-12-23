@@ -319,10 +319,24 @@ def _load_vlm_(
 	if verbose:
 		print(f"[INFO] Model placement handled by device_map='auto'")
 		if torch.cuda.is_available():
-			gpu_params = sum(1 for p in model.parameters() if p.device.type == "cuda")
-			cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
-			print(f"   • Parameters on GPU  : {gpu_params}")
-			print(f"   • Parameters on CPU  : {cpu_params}\n")
+			# Count parameters per GPU device
+			gpu_param_counts = {}
+			cpu_params = 0
+			
+			for p in model.parameters():
+				if p.device.type == "cuda":
+					gpu_id = p.device.index
+					gpu_param_counts[gpu_id] = gpu_param_counts.get(gpu_id, 0) + 1
+				elif p.device.type == "cpu":
+					cpu_params += 1
+			
+			# Display per-GPU parameter counts
+			for gpu_id in sorted(gpu_param_counts.keys()):
+				print(f"   • Parameters on GPU {gpu_id}: {gpu_param_counts[gpu_id]}")
+			
+			print(f"   • Parameters on CPU  : {cpu_params}")
+			print(f"   • Total GPU devices used: {len(gpu_param_counts)}")
+			print()
 
 	return processor, model
 
@@ -1077,7 +1091,7 @@ def get_vlm_based_labels_opt(
 			continue
 		else:
 			if verbose:
-				print(f"\n\t[batch {b}]: {len(valid_pairs)} valid images in batch")
+				print(f"\n[batch {b}]: {len(valid_pairs)} valid images in batch")
 
 		# Build messages
 		messages = [
@@ -1092,13 +1106,20 @@ def get_vlm_based_labels_opt(
 			]
 			for _, img in valid_pairs
 		]
+		if verbose:
+			print(f"\n[batch {b}] Building chat templates for {len(messages)} messages...")
 		try:
 			# Apply chat template for each message in the batch
 			chat_texts = [
 				processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
 				for m in messages
 			]
+			if verbose:
+				print(f"\n[batch {b}] Chat templates built: {type(chat_texts)} {len(chat_texts)}")
+
 			# pass both texts [txt1, txt2, ...] & images [img1, img2, ...]
+			if verbose:
+				print(f"\n[batch {b}] Processing batch inputs & sending them to {model.device}...")
 			inputs = processor(
 				text=chat_texts,
 				images=[img for _, img in valid_pairs],
@@ -1107,6 +1128,8 @@ def get_vlm_based_labels_opt(
 			).to(model.device)
 
 			# Generate response
+			if verbose: 
+				print(f"\n[batch {b}] Generating responses...")
 			with torch.no_grad():
 				with torch.amp.autocast(
 					device_type=device.type, 
@@ -1117,7 +1140,8 @@ def get_vlm_based_labels_opt(
 
 			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
 
-			if verbose: print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
+			if verbose: 
+				print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
 
 			for i, resp in enumerate(decoded):
 				if verbose: print(f"[batch {b}] response index: {i}")
@@ -1193,19 +1217,24 @@ def get_vlm_based_labels_opt(
 		except NameError:
 			pass
 
+		mem_allocated = torch.cuda.memory_allocated() / (1024**3) # current memory
+		mem_reserved = torch.cuda.memory_reserved() / (1024**3) # max memory
+		in_use_mem = process.memory_info().rss / (1024**3) # in-use memory
+		mem_usage_pct = (mem_allocated / mem_reserved) * 100 if mem_reserved > 0 else 0
 		if verbose:
-			print(f"[MEM] Batch {b}: {process.memory_info().rss / (1024**3):.2f}GB in-use")
-			print(f"[MEM] Batch {b}: {torch.cuda.memory_allocated() / (1024**3):.2f}GB allocated, {torch.cuda.memory_reserved() / (1024**3):.2f}GB reserved")
-			print(f"deleted inputs, outputs, decoded")
+			print(f"[MEM] Batch {b}: {in_use_mem:.2f}GB in-use, {mem_allocated:.2f}GB allocated, {mem_reserved:.2f}GB reserved")
+			print(f"[MEM] Batch {b}: {mem_usage_pct:.2f}% memory usage(allocated/reserved)")
 		
-		# Periodic memory cleanup (every b batches)
-		if b % 5 == 0:
-			torch.cuda.empty_cache()
-			gc.collect()
+		# Periodic memory cleanup
+		if b % 10 == 0 or mem_usage_pct > 70:
+			if torch.cuda.is_available():
+				torch.cuda.empty_cache()
+				gc.collect()
 			if verbose:
 				mem_allocated = torch.cuda.memory_allocated() / (1024**3)
 				mem_reserved = torch.cuda.memory_reserved() / (1024**3)
-				print(f"[MEM] Batch {b}: {mem_allocated:.2f}GB allocated, {mem_reserved:.2f}GB reserved")
+				in_use_mem = process.memory_info().rss / (1024**3)
+				print(f"Cleaned up memory after batch Batch {b}: {in_use_mem:.2f}GB in-use, {mem_allocated:.2f}GB allocated, {mem_reserved:.2f}GB reserved")
 
 	final = [results[i] for i in orig_to_uniq]
 	out_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
