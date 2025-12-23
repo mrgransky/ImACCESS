@@ -3,22 +3,23 @@ import visualize as viz
 
 def merge_csv_files(dataset_dir, verbose: bool = False):
 	output_fpath = os.path.join(dataset_dir, "metadata_multi_label_multimodal.csv")
-	if verbose:
-		for file in glob.glob(os.path.join(dataset_dir, 'metadata_multi_label_chunk_*_multimodal.csv')):
-			print(f"  {file}")
-		print(f"Merging CSV files in {dataset_dir} to {output_fpath}...")
-
 	# Get a list of all CSV files in the input directory
 	csv_files = glob.glob(os.path.join(dataset_dir, 'metadata_multi_label_chunk_*_multimodal.csv'))
+	# sort the list of CSV files based on the chunk number
+	csv_files.sort(key=lambda f: int(f.split('_')[-2].split('-')[1]))
+
 	if verbose:
 		print(f"Found {len(csv_files)} CSV files to merge:")
+		for i, file in enumerate(csv_files):
+			print(f"\t{i+1:02d}: {file}")
+		print(f"Merging CSV files in {dataset_dir} to {output_fpath}...")
 
 	# Initialize an empty DataFrame
 	df = pd.DataFrame()
 
 	# Iterate over the CSV files and concatenate them
 	for file in csv_files:
-		temp_df = pd.read_csv(file)
+		temp_df = pd.read_csv(filepath_or_buffer=file, on_bad_lines='skip', dtype=dtypes, low_memory=False,)
 		df = pd.concat([df, temp_df], ignore_index=True)
 
 	if verbose:
