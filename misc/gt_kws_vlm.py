@@ -972,30 +972,17 @@ def get_vlm_based_labels_debug(
 	return results
 
 def _load_and_verify_image(path: Optional[str]) -> Optional[Image.Image]:
-	"""
-	Worker function to load and verify an image.
-	Runs in a separate process to bypass the GIL.
-	"""
 	if path is None or not os.path.exists(path):
 		return None
 	try:
 		with Image.open(path).convert("RGB") as im:
-			im.load()  # Load pixel data into memory
+			im.load()
 			return im.copy()
-		# # Quick verify without loading full pixel data if possible, 
-		# # but PIL requires open for verify. We just open and convert.
-		# with Image.open(path) as im:
-		# 	im.verify()  # Verify it's a valid image file
-		# # Re-open for actual processing (verify closes the file)
-		# with Image.open(path).convert("RGB") as im:
-		# 	# Optional: resize here if you want to offload that CPU work to the pool
-		# 	# im.thumbnail((IMG_MAX_RES, IMG_MAX_RES)) 
-		# 	return im.copy()
 	except Exception as e:
-		# print(f"Worker Error: {e}") # Uncomment for debugging worker issues
+		print(f"Worker Error: {e}")
 		return None
 
-def get_vlm_based_labels_opt(
+def get_vlm_based_labels_opt_old(
 	model_id: str,
 	device: str,
 	batch_size: int,
@@ -1039,22 +1026,18 @@ def get_vlm_based_labels_opt(
 	df = pd.read_csv(csv_file, on_bad_lines="skip", low_memory=False)
 	if "img_path" not in df.columns:
 		raise ValueError("CSV file must have 'img_path' column")
-	
 	image_paths = [p if isinstance(p, str) and os.path.exists(p) else None for p in df["img_path"]]
 	n_total = len(image_paths)
 	if verbose:
 		print(f"[DATA] Loaded {n_total} image paths from CSV ({time.time() - load_start:.2f}s)")
 	
 	# ========== Load Model ==========
-	# Assuming _load_vlm_ is a helper you have
 	processor, model = _load_vlm_(
 		model_id=model_id,
 		use_quantization=use_quantization,
 		verbose=verbose,
 	)
 	
-	if verbose and torch.cuda.is_available():
-		print(f"[MODEL] Loaded {model_id} | {device} | {torch.cuda.get_device_name(device)}")
 	# ========== Prepare Generation Config ==========
 	gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True)
 	if hasattr(model, "generation_config"):
@@ -1081,6 +1064,7 @@ def get_vlm_based_labels_opt(
 	else:
 		uniq_inputs = image_paths
 		orig_to_uniq = list(range(n_total))
+
 	# Initialize ProcessPoolExecutor ONCE
 	# Using processes bypasses the GIL for image loading (CPU intensive)
 	# Limit workers to physical cores if possible, but allow user override.
@@ -1216,6 +1200,216 @@ def get_vlm_based_labels_opt(
 		print(f"[TIME] Total {elapsed/60:.2f}m | Avg {len(final)/elapsed:.2f} items/s")
 		print(f"[SAVE] Results saved to {out_csv}")
 
+	return final
+
+def _prefetch_worker(
+	batch_indices_list: List[List[int]],
+	uniq_inputs: List[Optional[str]],
+	executor: ProcessPoolExecutor,
+	queue: queue.Queue,
+	verbose: bool = False
+):
+	"""
+	Producer function running in a background thread.
+	Iterates through all batches, uses the ProcessPool to load them,
+	and puts them in the queue.
+	"""
+	try:
+		for batch_indices in batch_indices_list:
+			# 1. Prepare paths for this batch
+			batch_paths = [uniq_inputs[i] for i in batch_indices]
+			
+			# 2. Load images in parallel using the Process Pool
+			# This blocks the THREAD, but the GPU (Main Thread) is working meanwhile
+			loaded_images = list(executor.map(_load_and_verify_image, batch_paths))
+			
+			# 3. Put results in Queue (Blocking if queue is full to prevent RAM explosion)
+			queue.put((batch_indices, loaded_images))
+			
+			if verbose:
+				print(f"[Prefetcher] Loaded batch starting at index {batch_indices[0]}")
+	except Exception as e:
+		print(f"\n[PREFETCH ERROR] {e}\n")
+	finally:
+		# Signal end of work
+		queue.put(None)
+
+def get_vlm_based_labels_opt(
+		model_id: str,
+		device: str,
+		batch_size: int,
+		num_workers: int,
+		max_generated_tks: int,
+		max_kws: int,
+		csv_file: str,
+		do_dedup: bool = True,
+		use_quantization: bool = False,
+		verbose: bool = False,
+):
+	t0 = time.time()
+	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
+	
+	# 1. Check Existing
+	if verbose:
+			print(f"[INIT] Starting PREFETCHED batch VLM processing (CPU Overlap)")
+	if os.path.exists(output_csv):
+		try:
+			df = pd.read_csv(output_csv, on_bad_lines='skip', dtype=dtypes, low_memory=False)
+			if 'vlm_keywords' in df.columns:
+				return df['vlm_keywords'].tolist()
+		except Exception:
+			pass
+	# 2. Load Data
+	df = pd.read_csv(csv_file, on_bad_lines="skip", low_memory=False)
+	if "img_path" not in df.columns:
+		raise ValueError("CSV file must have 'img_path' column")
+	image_paths = [p if isinstance(p, str) and os.path.exists(p) else None for p in df["img_path"]]
+	
+	# 3. Load Model
+	processor, model = _load_vlm_(model_id, use_quantization, verbose)
+	
+	# 4. Prepare Generation Config
+	gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True)
+	if hasattr(model, "generation_config"):
+		cfg = model.generation_config
+		gen_kwargs["temperature"] = getattr(cfg, "temperature", 1e-6)
+		gen_kwargs["do_sample"] = getattr(cfg, "do_sample", True)
+	else:
+		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
+	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
+	# 5. Deduplication
+	if do_dedup:
+		uniq_map: Dict[str, int] = {}
+		uniq_inputs: List[Optional[str]] = []
+		orig_to_uniq: List[int] = []
+		for path in image_paths:
+			key = str(path) if path else "__NULL__"
+			if key not in uniq_map:
+				uniq_map[key] = len(uniq_inputs)
+				uniq_inputs.append(path)
+			orig_to_uniq.append(uniq_map[key])
+	else:
+		uniq_inputs = image_paths
+		orig_to_uniq = list(range(len(image_paths)))
+	# 6. Prepare Batch Indices for Prefetching
+	# We calculate slices upfront so the producer knows exactly what to load
+	total_batches = math.ceil(len(uniq_inputs) / batch_size)
+	batch_indices_list = [
+		list(range(b * batch_size, min((b + 1) * batch_size, len(uniq_inputs))))
+		for b in range(total_batches)
+	]
+	
+	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
+	# 7. Initialize Overlapping Pipeline (Producer-Consumer)
+	# GPU almost never waits, and RAM usage is still minimal
+	prefetch_queue = queue.Queue(maxsize=2)
+	
+	# Initialize Process Pool (Global Workers)
+	# This stays alive throughout the entire loop
+	if verbose:
+		print(f"[POOL] Initializing ProcessPool with {num_workers} workers for I/O overlap...")
+	
+	load_executor = ProcessPoolExecutor(max_workers=num_workers)
+	
+	# Start Producer Thread
+	producer_thread = threading.Thread(
+		target=_prefetch_worker,
+		args=(batch_indices_list, uniq_inputs, load_executor, prefetch_queue, verbose)
+	)
+	producer_thread.start()
+	# 8. Consumer Loop (Main Thread - GPU)
+	# This loop pulls from queue. If prefetch is fast, data is ready instantly.
+	if verbose:
+		print("[GPU] Starting inference loop (Consumer)...")
+	for _ in tqdm(range(total_batches), desc="Processing Batches", ncols=100):
+		# Block until a batch is ready
+		data = prefetch_queue.get()
+		if data is None: break # End of stream
+		
+		batch_indices, loaded_images = data
+		
+		# Filter valid images
+		valid_pairs = [
+			(idx, img) 
+			for idx, img in zip(batch_indices, loaded_images) 
+			if img is not None
+		]
+		
+		if not valid_pairs:
+			continue
+
+		# Prepare inputs
+		messages = [
+			[
+				{
+					"role": "user", 
+					"content":
+					[
+						{
+							"type": "text", 
+							"text": base_prompt
+						}, 
+						{
+							"type": "image", 
+							"image": img
+						}
+					]
+				}
+			]
+			for _, img in valid_pairs
+		]
+
+		try:
+			chat_texts = [
+				processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True) 
+				for m in messages
+			]
+			inputs = processor(
+				text=chat_texts, 
+				images=[img for _, img in valid_pairs], 
+				return_tensors="pt", 
+				padding=True
+			).to(model.device)
+			
+			# GPU Inference
+			with torch.no_grad():
+				with torch.amp.autocast(
+					device_type=device.type,
+					enabled=torch.cuda.is_available(),
+					dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+				):
+					outputs = model.generate(**inputs, **gen_kwargs)
+			
+			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
+			# Parse
+			for i, raw_resp in enumerate(decoded):
+				uniq_idx = valid_pairs[i][0]
+				try:
+					results[uniq_idx] = parse_vlm_response(model_id, raw_resp, verbose=False)
+				except Exception as e:
+					if verbose: 
+						print(f"Parse error {uniq_idx}: {e}")
+					results[uniq_idx] = None
+		except Exception as e:
+			print(f"\n[BATCH Error]: {e}")
+			torch.cuda.empty_cache()
+			gc.collect()
+		
+		# Cleanup GPU tensors
+		del inputs, outputs, decoded, messages, chat_texts, valid_pairs
+
+	# Cleanup
+	producer_thread.join()
+	load_executor.shutdown(wait=True)
+
+	# Save
+	final = [results[i] for i in orig_to_uniq]
+	df["vlm_keywords"] = final
+	df.to_csv(output_csv, index=False)
+	
+	if verbose:
+		print(f"[DONE] Saved results to {output_csv}")
+		print(f"[TIME] Total: {time.time() - t0:.2f}s")
 	return final
 
 @measure_execution_time
