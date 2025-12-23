@@ -12,7 +12,7 @@ def merge_csv_files(dataset_dir, verbose: bool = False):
 		print(f"Found {len(csv_files)} CSV files to merge:")
 		for i, file in enumerate(csv_files):
 			print(f"\t{i+1:02d}: {file}")
-		print(f"Merging CSV files in {dataset_dir} to {output_fpath}...")
+		print(f"Merging {len(csv_files)} CSV files to {output_fpath}...")
 
 	# Initialize an empty DataFrame
 	df = pd.DataFrame()

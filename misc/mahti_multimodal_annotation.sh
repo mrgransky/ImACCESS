@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=32G
+#SBATCH --mem=48G
 #SBATCH --array=0-40
 #SBATCH --partition=gpumedium
 #SBATCH --time=01-12:00:00
@@ -33,17 +33,17 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
-# SMALL MODELS:
-LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
-VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
-LLM_BATCH_SIZE=96
-VLM_BATCH_SIZE=48
+# # SMALL MODELS:
+# LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
+# VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
+# LLM_BATCH_SIZE=96
+# VLM_BATCH_SIZE=48
 
-# # LARGE MODELS:
-# LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
-# VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
-# LLM_BATCH_SIZE=48
-# VLM_BATCH_SIZE=32
+# LARGE MODELS:
+LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
+VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
+LLM_BATCH_SIZE=48
+VLM_BATCH_SIZE=32
 
 # if we have all datasets, separate job for each dataset
 # >>>>>>>>>>>>>>>>>>> don't forget: #SBATCH --array=0-4 <<<<<<<<<<<<<<<<<<<<<<<<<<
