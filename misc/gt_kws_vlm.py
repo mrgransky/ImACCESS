@@ -1015,16 +1015,16 @@ def _prefetch_worker(
 		queue.put(None)
 
 def get_vlm_based_labels_opt(
-		model_id: str,
-		device: str,
-		batch_size: int,
-		num_workers: int,
-		max_generated_tks: int,
-		max_kws: int,
-		csv_file: str,
-		do_dedup: bool = True,
-		use_quantization: bool = False,
-		verbose: bool = False,
+	model_id: str,
+	device: str,
+	batch_size: int,
+	num_workers: int,
+	max_generated_tks: int,
+	max_kws: int,
+	csv_file: str,
+	do_dedup: bool = True,
+	use_quantization: bool = False,
+	verbose: bool = False,
 ):
 	t0 = time.time()
 	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
