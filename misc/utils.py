@@ -149,11 +149,12 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 # os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 os.environ['TORCH_USE_CUDA_DSA'] = '1'  # Enables device-side assertions (as suggested in error)
-# Verify environment variables
-print(f"HF_HOME: {os.environ['HF_HOME']}")
-print(f"TRANSFORMERS_CACHE: {os.environ['TRANSFORMERS_CACHE']}")
-print(f"HF_HUB_CACHE: {os.environ['HF_HUB_CACHE']}")
-print(f"HF_DATASETS_CACHE: {os.environ['HF_DATASETS_CACHE']}")
+
+# # Verify environment variables
+# print(f"HF_HOME: {os.environ['HF_HOME']}")
+# print(f"TRANSFORMERS_CACHE: {os.environ['TRANSFORMERS_CACHE']}")
+# print(f"HF_HUB_CACHE: {os.environ['HF_HUB_CACHE']}")
+# print(f"HF_DATASETS_CACHE: {os.environ['HF_DATASETS_CACHE']}")
 
 import transformers as tfs
 # tfs.logging.set_verbosity_info()
@@ -169,7 +170,7 @@ dtypes = {
 # Install: pip install lingua-language-detector
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
 
-print("Initializing Lingua Language Detector...")
+# print("Initializing Lingua Language Detector...")
 
 # This DRASTICALLY improves accuracy on short text.
 languages_to_check = [
