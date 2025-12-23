@@ -1084,7 +1084,10 @@ def get_vlm_based_labels_opt(
 
 	# 7. Initialize Overlapping Pipeline (Producer-Consumer)
 	# GPU almost never waits, and RAM usage is still minimal
-	prefetch_queue = queue.Queue(maxsize=2 if torch.cuda.device_count()>1 else 1)
+	max_size = 2 if torch.cuda.device_count()>1 else 1
+	if verbose:
+		print(f"[QUEUE] Initializing queue with maxsize {max_size}...")
+	prefetch_queue = queue.Queue(maxsize=max_size)
 	
 	# Initialize Process Pool (Global Workers)
 	# This stays alive throughout the entire loop
