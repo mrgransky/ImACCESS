@@ -1007,7 +1007,7 @@ def _prefetch_worker(
 			queue.put((batch_indices, loaded_images))
 			
 			if verbose:
-				print(f"[Prefetcher] Loaded batch starting at index {batch_indices[0]}")
+				print(f"\n[Prefetcher] Loaded batch starting at index {batch_indices[0]}")
 	except Exception as e:
 		print(f"\n[PREFETCH ERROR] {e}\n")
 	finally:
@@ -1109,10 +1109,11 @@ def get_vlm_based_labels_opt(
 	# This loop pulls from queue. If prefetch is fast, data is ready instantly.
 	if verbose:
 		print("[GPU] Starting inference loop (Consumer)...")
-	for _ in tqdm(range(total_batches), desc="Processing Batches", ncols=100):
+	for b in tqdm(range(total_batches), desc="Processing (VISUAL) batches", ncols=100):
 		# Block until a batch is ready
 		data = prefetch_queue.get()
-		if data is None: break # End of stream
+		if data is None:
+			break # End of stream
 		
 		batch_indices, loaded_images = data
 		
@@ -1169,6 +1170,7 @@ def get_vlm_based_labels_opt(
 					outputs = model.generate(**inputs, **gen_kwargs)
 			
 			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
+
 			# Parse
 			for i, raw_resp in enumerate(decoded):
 				uniq_idx = valid_pairs[i][0]
@@ -1179,12 +1181,56 @@ def get_vlm_based_labels_opt(
 						print(f"Parse error {uniq_idx}: {e}")
 					results[uniq_idx] = None
 		except Exception as e:
-			print(f"\n[BATCH Error]: {e}")
+			print(f"\n[BATCH {b} Error]\n{e}")
 			torch.cuda.empty_cache()
 			gc.collect()
 		
-		# Cleanup GPU tensors
-		del inputs, outputs, decoded, messages, chat_texts, valid_pairs
+		if verbose: 
+			print(f"\n[batch {b}] Deleting tensors (if any)...")
+		try:
+			del inputs
+		except NameError:
+			pass
+		try:
+			del outputs  
+		except NameError:
+			pass
+		try:
+			del decoded
+		except NameError:
+			pass
+		try:
+			del messages
+		except NameError:
+			pass
+		try:
+			del chat_texts
+		except NameError:
+			pass
+		try:
+			del valid_pairs
+		except NameError:
+			pass
+
+		# in_use_mem = process.memory_info().rss / (1024**3) # in-use System RAM (CPU)
+		device_idx = torch.cuda.current_device()
+		mem_total = torch.cuda.get_device_properties(device_idx).total_memory / (1024**3) 
+		mem_allocated = torch.cuda.memory_allocated(device_idx) / (1024**3)
+		mem_reserved = torch.cuda.memory_reserved(device_idx) / (1024**3)	
+		mem_usage_pct = (mem_reserved / mem_total) * 100 if mem_total > 0 else 0
+		if verbose:
+			print(
+				f"[MEM] Batch {b} (GPU {device_idx}): {mem_usage_pct:.2f}% usage. "
+				f"{mem_allocated:.2f}GB alloc / {mem_reserved:.2f}GB reserved (Total: {mem_total:.1f}GB)"
+			)
+		cleanup_threshold = 90
+		if mem_usage_pct > cleanup_threshold: 
+			print(f"[WARN] High memory usage ({mem_usage_pct:.1f}%). Clearing cache...")
+			torch.cuda.empty_cache()
+			gc.collect()
+
+
+
 
 	# Cleanup
 	producer_thread.join()
