@@ -3,6 +3,7 @@ import visualize as viz
 
 def merge_csv_files(dataset_dir, verbose: bool = False):
 	output_fpath = os.path.join(dataset_dir, "metadata_multi_label_multimodal.csv")
+
 	if verbose:
 		for file in glob.glob(os.path.join(dataset_dir, 'metadata_multi_label_chunk_*_multimodal.csv')):
 			print(f"  {file}")
@@ -35,12 +36,12 @@ def merge_csv_files(dataset_dir, verbose: bool = False):
 		print(f"Saved merged CSV file to {output_fpath}")
 
 	viz.perform_multilabel_eda(
-		data_path=output_csv,
+		data_path=output_fpath,
 		label_column='multimodal_labels'
 	)
 
 	train_df, val_df = get_multi_label_stratified_split(
-		csv_file=output_csv,
+		csv_file=output_fpath,
 		val_split_pct=0.35,
 		label_col='multimodal_labels'
 	)
