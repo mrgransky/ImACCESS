@@ -3,7 +3,6 @@ import visualize as viz
 
 def merge_csv_files(dataset_dir, verbose: bool = False):
 	output_fpath = os.path.join(dataset_dir, "metadata_multi_label_multimodal.csv")
-
 	if verbose:
 		for file in glob.glob(os.path.join(dataset_dir, 'metadata_multi_label_chunk_*_multimodal.csv')):
 			print(f"  {file}")
@@ -50,7 +49,7 @@ if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description='Merge CSV files')
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Directory containing CSV files')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
-	args.dataset_dir = os.path.normpath(args.dataset_dir)
 	args = parser.parse_args()
+	args.dataset_dir = os.path.normpath(args.dataset_dir)
 	print(args)
 	merge_csv_files(dataset_dir=args.dataset_dir, verbose=args.verbose)
