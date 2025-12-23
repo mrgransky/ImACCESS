@@ -1081,9 +1081,10 @@ def get_vlm_based_labels_opt(
 	]
 	
 	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
+
 	# 7. Initialize Overlapping Pipeline (Producer-Consumer)
 	# GPU almost never waits, and RAM usage is still minimal
-	prefetch_queue = queue.Queue(maxsize=2)
+	prefetch_queue = queue.Queue(maxsize=2 if torch.cuda.device_count()>1 else 1)
 	
 	# Initialize Process Pool (Global Workers)
 	# This stays alive throughout the entire loop
@@ -1215,7 +1216,6 @@ def get_vlm_based_labels_opt(
 		except NameError:
 			pass
 
-		# in_use_mem = process.memory_info().rss / (1024**3) # in-use System RAM (CPU)
 		for device_idx in range(torch.cuda.device_count()):
 			mem_total = torch.cuda.get_device_properties(device_idx).total_memory / (1024**3) 
 			mem_allocated = torch.cuda.memory_allocated(device_idx) / (1024**3)
@@ -1231,9 +1231,6 @@ def get_vlm_based_labels_opt(
 				print(f"[WARN] High memory usage ({mem_usage_pct:.1f}%). Clearing cache...")
 				torch.cuda.empty_cache()
 				gc.collect()
-
-
-
 
 	# Cleanup
 	producer_thread.join()
