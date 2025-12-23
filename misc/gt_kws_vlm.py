@@ -1128,7 +1128,7 @@ def get_vlm_based_labels_opt(
 
 			# Generate response
 			if verbose: 
-				print(f"\n[batch {b}] Generating responses...")
+				print(f"\n[batch {b}] Generating responses ({len(valid_pairs)} images) [Might take a while]...")
 			with torch.no_grad():
 				with torch.amp.autocast(
 					device_type=device.type, 
@@ -1136,6 +1136,9 @@ def get_vlm_based_labels_opt(
 					dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 				):
 					outputs = model.generate(**inputs, **gen_kwargs)
+
+			if verbose: 
+				print(f"\n[batch {b}] Decoding responses...")
 
 			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
 
