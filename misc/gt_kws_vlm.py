@@ -36,6 +36,7 @@ from utils import *
 # # model_id = "utter-project/EuroVLM-1.7B-Preview"
 # # model_id = "OpenGVLab/InternVL-Chat-V1-2"
 
+process = psutil.Process(os.getpid())
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 VLM_INSTRUCTION_TEMPLATE = """You function as a historical archivist whose expertise lies in the 20th century.
@@ -971,19 +972,17 @@ def get_vlm_based_labels_debug(
 	return results
 
 def get_vlm_based_labels_opt(
-		model_id: str,
-		device: str,
-		batch_size: int,
-		num_workers: int,
-		max_generated_tks: int,
-		max_kws: int,
-		csv_file: str,
-		do_dedup: bool = True,
-		use_quantization: bool = False,
-		verbose: bool = False,
-	):
-
-	process = psutil.Process()
+	model_id: str,
+	device: str,
+	batch_size: int,
+	num_workers: int,
+	max_generated_tks: int,
+	max_kws: int,
+	csv_file: str,
+	do_dedup: bool = True,
+	use_quantization: bool = False,
+	verbose: bool = False,
+):
 	t0 = time.time()
 
 	# ========== Check existing results ==========
@@ -1067,7 +1066,7 @@ def get_vlm_based_labels_opt(
 
 	if verbose:
 		print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
-		print(f"[INFO] Memory[in-use]: {process.memory_info().rss / (1024**3):.2f} GB")
+		print(f"[INFO] SYS Memory (CPU RAM) [in-use]: {process.memory_info().rss / (1024**3):.2f} GB")
 
 	# ========== Process batches ==========
 	for b in tqdm(range(total_batches), desc="Processing (visual) batches", ncols=100):
@@ -1160,7 +1159,7 @@ def get_vlm_based_labels_opt(
 				print(f"\tFalling back to sequential processing for {len(valid_pairs)} images in this batch.")
 
 			# fallback: process each image sequentially
-			for i, img in tqdm(valid_pairs, desc="Processing batch images [Sequential]", ncols=100):
+			for idx_count, (i, img) in enumerate(tqdm(valid_pairs, desc="Processing batch images [Sequential]", ncols=100)):
 				try:
 					single_message = [
 						{
@@ -1196,7 +1195,13 @@ def get_vlm_based_labels_opt(
 
 					decoded = processor.decode(out[0], skip_special_tokens=True)
 					results[i] = parse_vlm_response(model_id=model_id, raw_response=decoded)
-
+					if verbose: 
+						print(f"[fallback ✅] image {i}: {results[i]}")
+					#  Clean up every 5 images during fallback to prevent fragmentation
+					if idx_count % 5 == 0:
+						if torch.cuda.is_available():
+							torch.cuda.empty_cache()
+						gc.collect()
 				except Exception as e_fallback:
 					print(f"\n[fallback ❌] image {i}:\n{e_fallback}\n")
 					results[i] = None
@@ -1217,24 +1222,22 @@ def get_vlm_based_labels_opt(
 		except NameError:
 			pass
 
-		mem_allocated = torch.cuda.memory_allocated() / (1024**3) # current memory
-		mem_reserved = torch.cuda.memory_reserved() / (1024**3) # max memory
-		in_use_mem = process.memory_info().rss / (1024**3) # in-use memory
-		mem_usage_pct = (mem_allocated / mem_reserved) * 100 if mem_reserved > 0 else 0
+		# in_use_mem = process.memory_info().rss / (1024**3) # in-use System RAM (CPU)
+		device_idx = torch.cuda.current_device()
+		mem_total = torch.cuda.get_device_properties(device_idx).total_memory / (1024**3) 
+		mem_allocated = torch.cuda.memory_allocated(device_idx) / (1024**3)
+		mem_reserved = torch.cuda.memory_reserved(device_idx) / (1024**3)	
+		mem_usage_pct = (mem_reserved / mem_total) * 100 if mem_total > 0 else 0
 		if verbose:
-			print(f"[MEM] Batch {b}: {in_use_mem:.2f}GB in-use, {mem_allocated:.2f}GB allocated, {mem_reserved:.2f}GB reserved")
-			print(f"[MEM] Batch {b}: {mem_usage_pct:.2f}% memory usage(allocated/reserved)")
-		
-		# Periodic memory cleanup
-		if b % 10 == 0 or mem_usage_pct > 70:
-			if torch.cuda.is_available():
-				torch.cuda.empty_cache()
-				gc.collect()
-			if verbose:
-				mem_allocated = torch.cuda.memory_allocated() / (1024**3)
-				mem_reserved = torch.cuda.memory_reserved() / (1024**3)
-				in_use_mem = process.memory_info().rss / (1024**3)
-				print(f"Cleaned up memory after batch Batch {b}: {in_use_mem:.2f}GB in-use, {mem_allocated:.2f}GB allocated, {mem_reserved:.2f}GB reserved")
+			print(
+				f"[MEM] Batch {b} (GPU {device_idx}): {mem_usage_pct:.2f}% usage. "
+				f"{mem_allocated:.2f}GB alloc / {mem_reserved:.2f}GB reserved (Total: {mem_total:.1f}GB)"
+			)
+		cleanup_threshold = 90
+		if mem_usage_pct > cleanup_threshold: 
+			print(f"[WARN] High memory usage ({mem_usage_pct:.1f}%). Clearing cache...")
+			torch.cuda.empty_cache()
+			gc.collect()
 
 	final = [results[i] for i in orig_to_uniq]
 	out_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
