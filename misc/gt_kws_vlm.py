@@ -1008,13 +1008,14 @@ def get_vlm_based_labels_opt(
 	verbose: bool = False,
 ):
 	t0 = time.time()
-	
+	num_workers = min(os.cpu_count(), num_workers)
+
 	# ========== Configuration & Checks ==========
 	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 	if verbose:
 		print(f"[INIT] Starting OPTIMIZED batch VLM processing with {num_workers} WORKERS (Processes)")
 		print(f"[INIT] Using ProcessPool for CPU-bound Image Loading")
-	
+
 	# Check existing results
 	if os.path.exists(output_csv):
 		if verbose:
@@ -1031,8 +1032,8 @@ def get_vlm_based_labels_opt(
 					print(f"[EXISTING] Loaded existing results.")
 				return df['vlm_keywords'].tolist()
 		except Exception as e:
-				print(f"[WARN] Failed to load existing CSV: {e}. Re-processing.")
-	
+			print(f"[WARN] Failed to load existing CSV: {e}. Re-processing.")
+
 	# ========== Load Data ==========
 	load_start = time.time()
 	df = pd.read_csv(csv_file, on_bad_lines="skip", low_memory=False)

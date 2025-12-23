@@ -55,7 +55,7 @@ with open('meaningless_words.txt', 'r') as file_:
 	custom_stopwords_list=[line.strip().lower() for line in file_]
 stopwords = set(custom_stopwords_list)
 STOPWORDS.update(stopwords)
-print(f"Successfully loaded {len(STOPWORDS)} stopwords")
+# print(f"Successfully loaded {len(STOPWORDS)} stopwords")
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 You function as a historical archivist whose expertise lies in the 20th century.
