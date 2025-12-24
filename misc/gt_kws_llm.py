@@ -1003,7 +1003,7 @@ def _qwen_llm_response(
 	
 	if verbose:
 		print(f"[STEP 1] Found [/INST] at position {inst_end_pos}")
-		print(f"[STEP 1] Content after [/INST]:\n{response_content[:200]}...\n")
+		print(f"[STEP 1] Content after [/INST]:\n{response_content}")
 	
 	# Step 2: Extract the Python list (first occurrence)
 	# Matches: ['item1', 'item2'] or ["item1", "item2"]
