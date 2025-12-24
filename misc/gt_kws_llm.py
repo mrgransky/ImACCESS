@@ -1006,20 +1006,32 @@ def _qwen_llm_response(
 		print(f"[STEP 1] Content after [/INST]:\n{response_content}")
 	
 	# Step 2: Extract the Python list (first occurrence)
-	# Matches: ['item1', 'item2'] or ["item1", "item2"]
-	list_pattern = r'\[(?:\s*["\'][^"\']*["\'](?:\s*,\s*["\'][^"\']*["\'])*\s*)\]'
-	list_match = re.search(list_pattern, response_content)
+	# Matches: ['item1', "item's 2"] with proper quote pairing (single/double)
+	list_patterns = [
+			# Pattern 1: Double-quoted strings (can contain single quotes/apostrophes)
+			r'\[\s*"[^"]*"(?:\s*,\s*"[^"]*")*\s*\]',
+			# Pattern 2: Single-quoted strings (can contain double quotes)
+			r"\[\s*'[^']*'(?:\s*,\s*'[^']*')*\s*\]",
+		]
+		
+	list_str = None
+	for pattern in list_patterns:
+		list_match = re.search(pattern, response_content)
+		if list_match:
+			list_str = list_match.group(0)
+			if verbose:
+				print(f"[STEP 2] Matched with pattern: {pattern[:50]}...")
+			break
 	
-	if not list_match:
+	if not list_str:
 		if verbose:
 			print("[ERROR] No Python list found in response content")
+			print(f"[DEBUG] Response content: {response_content[:200]}")
 		return None
 	
-	list_str = list_match.group(0)
-	
 	if verbose:
-		print(f"[STEP 2] Extracted list string: {list_str}\n")
-	
+		print(f"[STEP 2] Extracted list string: {list_str}\n")	
+
 	# Step 3: Parse the list
 	try:
 		keywords_list = ast.literal_eval(list_str)
