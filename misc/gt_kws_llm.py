@@ -1767,6 +1767,7 @@ def get_llm_based_labels_opt(
 			pass
 		
 		# memory management
+		need_cleanup = False
 		for device_idx in range(torch.cuda.device_count()):
 			mem_total = torch.cuda.get_device_properties(device_idx).total_memory / (1024**3) 
 			mem_allocated = torch.cuda.memory_allocated(device_idx) / (1024**3)

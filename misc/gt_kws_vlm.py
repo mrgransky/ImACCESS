@@ -617,7 +617,7 @@ def get_vlm_based_labels_single(
 		text=chat_prompt,
 		padding=True,
 		return_tensors="pt"
-	).to(model.device)
+	)#.to(model.device)
 
 	if verbose:
 		print(f"[INPUT] Pixel: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
@@ -832,7 +832,7 @@ def get_vlm_based_labels_debug(
 					text=chat_prompt,
 					padding=True,
 					return_tensors="pt"
-				).to(model.device)
+				)#.to(model.device)
 
 				if verbose:
 					print(f"[INPUT] Pixel: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
@@ -1171,7 +1171,7 @@ def get_vlm_based_labels_opt(
 				images=[img for _, img in valid_pairs],
 				return_tensors="pt",
 				padding=True,
-			).to(model.device)
+			)#.to(model.device)
 			
 			# Generate response
 			with torch.no_grad():
@@ -1227,7 +1227,7 @@ def get_vlm_based_labels_opt(
 						text=[chat],
 						images=[img],
 						return_tensors="pt",
-					).to(model.device)
+					)#.to(model.device)
 					if single_inputs.pixel_values.numel() == 0:
 						raise ValueError(f"Pixel values of {uniq_idx} are empty: {single_inputs.pixel_values.shape}")
 					with torch.no_grad():
@@ -1265,6 +1265,7 @@ def get_vlm_based_labels_opt(
 			pass
 
 		# memory management
+		need_cleanup = False
 		for device_idx in range(torch.cuda.device_count()):
 			mem_total = torch.cuda.get_device_properties(device_idx).total_memory / (1024**3) 
 			mem_allocated = torch.cuda.memory_allocated(device_idx) / (1024**3)
