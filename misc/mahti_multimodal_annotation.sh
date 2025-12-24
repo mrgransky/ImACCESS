@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=48G
+#SBATCH --mem=128G
 #SBATCH --array=0-40
 #SBATCH --partition=gpumedium
 #SBATCH --time=01-12:00:00
@@ -42,7 +42,7 @@ echo "${stars// /*}"
 # LARGE MODELS:
 LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
-LLM_BATCH_SIZE=48
+LLM_BATCH_SIZE=32
 VLM_BATCH_SIZE=32
 
 # if we have all datasets, separate job for each dataset

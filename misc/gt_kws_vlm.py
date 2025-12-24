@@ -1191,7 +1191,7 @@ def get_vlm_based_labels_opt(
 						print(f"Parse error {uniq_idx}: {e}")
 					results[uniq_idx] = None
 		except Exception as e:
-			print(f"\n[BATCH {b} Error]\n{e}")
+			print(f"<!> [BATCH {b} Error(No Keywords Generated!)]\n{e}")
 			torch.cuda.empty_cache()
 			gc.collect()
 		
