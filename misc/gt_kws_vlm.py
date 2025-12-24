@@ -219,16 +219,26 @@ def _load_vlm_(
 		m_id_lower = m_id.lower()
 		
 		# Method 1: Known model patterns (most reliable for common models)
-		if "32b" in m_id_lower or "33b" in m_id_lower:
+		if "72b" in m_id_lower:
+			return 135.0, "model_id_pattern_72b"
+		elif "32b" in m_id_lower or "33b" in m_id_lower:
 			return 62.0, "model_id_pattern_32b"
 		elif "13b" in m_id_lower:
 			return 25.0, "model_id_pattern_13b"
+		elif "8b" in m_id_lower:
+			return 15.0, "model_id_pattern_8b"
 		elif "7b" in m_id_lower:
 			return 13.0, "model_id_pattern_7b"
 		elif "3b" in m_id_lower:
 			return 6.0, "model_id_pattern_3b"
+		elif "2b" in m_id_lower:  # <-- ADD THIS
+			return 4.0, "model_id_pattern_2b"
 		elif "1.5b" in m_id_lower:
 			return 3.0, "model_id_pattern_1.5b"
+		elif "1b" in m_id_lower:
+			return 2.0, "model_id_pattern_1b"
+		elif "0.5b" in m_id_lower or "500m" in m_id_lower:
+			return 1.0, "model_id_pattern_500m"
 		
 		# Method 2: Check config attributes
 		if hasattr(cfg, 'num_parameters'):
@@ -250,9 +260,9 @@ def _load_vlm_(
 			size_gb = (params * 2) / (1024 ** 3)
 			return size_gb, "config_architecture_estimate"
 		
-		# Method 4: Default fallback
-		return 15.0, "default_fallback"
-	
+		# Method 4: Default fallback - conservative estimate
+		return 10.0, "default_fallback"  # Changed from 15.0 to 10.0
+
 	estimated_size_gb, estimation_method = estimate_model_size_gb(config, model_id)
 	
 	if verbose:
