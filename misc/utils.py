@@ -640,6 +640,7 @@ def basic_clean(txt: str):
 		r"The photographer's notes from this negative series indicate that ",
 		r"The following geographic information is associated with this record:",
 		r'The following information was provided by digitizing partner Fold3:',
+		r'It was subsequently published in conjunction with an article.',
 		r'press image',
 		r'press photograph',
 		r"This photograph is of ",

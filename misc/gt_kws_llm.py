@@ -1614,7 +1614,7 @@ def query_local_llm(
 		return None
 
 	if verbose:
-		print(f"\nLLM response:\n{raw_llm_response}")
+		# print(f"\nLLM response:\n{raw_llm_response}")
 		output_tokens = get_conversation_token_breakdown(raw_llm_response, model_id)
 		print(f"\n>> Output tokens: {output_tokens}")
 	
