@@ -173,7 +173,7 @@ def _load_vlm_(
 			flash_ok = major >= 8
 		except Exception as e:
 			if verbose:
-				print(f"[WARN] Flash Attention check failed: {type(e).__name__}")
+				print(f"[ERROR] Flash Attention check failed: {type(e).__name__}\n{e}")
 		
 		if flash_ok:
 			m_id_lower = m_id.lower()
