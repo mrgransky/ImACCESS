@@ -945,11 +945,9 @@ def _qwen_llm_response(
 		"""
 		
 		if verbose:
-				print(f"\n{'='*80}")
-				print(f"[_qwen_llm_response] Starting parse for model: {model_id}")
-				print(f"[_qwen_llm_response] Max keywords: {max_kws}")
-				print(f"[_qwen_llm_response] Response length: {len(llm_response)} chars")
-				print(f"{'='*80}\n")
+			print(f"[_qwen_llm_response] Starting parse for model: {model_id}")
+			print(f"[_qwen_llm_response] Max keywords: {max_kws}")
+			print(f"[_qwen_llm_response] Response length: {len(llm_response)} chars")
 		
 		# Step 1: Find the [/INST] tag
 		inst_end_match = re.search(r'\[/INST\]', llm_response)
@@ -1059,11 +1057,9 @@ def _qwen_llm_response(
 		
 		# Step 5: Return results
 		if verbose:
-				print(f"\n{'='*80}")
-				print(f"[RESULT] Final keywords ({len(processed)}/{len(keywords_list)} kept):")
-				for i, kw in enumerate(processed, 1):
-						print(f"  [{i}] {kw}")
-				print(f"{'='*80}\n")
+			print(f"[RESULT] Final keywords ({len(processed)}/{len(keywords_list)} kept):")
+			for i, kw in enumerate(processed, 1):
+				print(f"  [{i}] {kw}")
 		
 		return processed if processed else None
 
