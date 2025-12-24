@@ -1563,11 +1563,11 @@ def get_llm_based_labels_opt(
 			dtype=dtypes,
 			engine='python',
 		)
+
 	if 'enriched_document_description' not in df.columns:
 		raise ValueError("CSV file must have 'enriched_document_description' column")
 	
 	descriptions = df['enriched_document_description'].tolist()
-	
 	if verbose:
 		print(f"Loaded {len(descriptions)} descriptions")
 	
@@ -1683,11 +1683,14 @@ def get_llm_based_labels_opt(
 
 	# Batching: generate + parse
 	batches: List[Tuple[List[int], List[str]]] = []
-	for i in range(0, len(valid_indices), batch_size):
+	for i in tqdm(range(0, len(valid_indices), batch_size), desc="Batching prompts", ncols=100):
 		batch_indices = valid_indices[i:i + batch_size]
 		batch_prompts = [unique_prompts[idx] for idx in batch_indices]
 		batches.append((batch_indices, batch_prompts))
 	
+	if verbose:
+		print(f"Batched {len(batches)} prompts into {len(batches)} batches of {batch_size} samples")
+
 	for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing (textual) batches", ncols=100)):
 		# Retry whole batch on failure (e.g., OOM or generation error)
 		for attempt in range(max_retries + 1):
@@ -1775,7 +1778,7 @@ def get_llm_based_labels_opt(
 			mem_usage_pct = (mem_reserved / mem_total) * 100 if mem_total > 0 else 0
 			if verbose:
 				print(
-					f"[MEM] Batch {b} (GPU {device_idx}): {mem_usage_pct:.2f}% usage: "
+					f"[MEM] BATCH {batch_num} (GPU {device_idx}): {mem_usage_pct:.2f}% usage: "
 					f"{mem_allocated:.2f}GB alloc / {mem_reserved:.2f}GB reserved (Total: {mem_total:.1f}GB)"
 				)
 			cleanup_threshold = 90
