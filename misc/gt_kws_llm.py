@@ -71,7 +71,7 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - **STRICTLY EXCLUDE MEDIA DESCRIPTORS** such as generic photography, image, picture, or media terms.
 - **STRICTLY EXCLUDE TEMPORAL EXPRESSIONS** such as specific times, calendar dates, seasonal periods, or extended historical eras.
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
-- **STRICTLY EXCLUDE ALL** explanatory texts, code blocks, punctuations, tags, or thoughts before or after the **Python LIST**.
+- **STRICTLY EXCLUDE ALL** explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
 - **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
 - Exclude meaningless abbreviations, numerical words, special characters, or stopwords.
 - The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response.
@@ -985,11 +985,6 @@ def _qwen_llm_response(
 	max_kws: int, 
 	verbose: bool = False
 ) -> Optional[List[str]]:
-	if verbose:
-		print(f"[_qwen_llm_response] Starting parse for model: {model_id}")
-		print(f"[_qwen_llm_response] Max keywords: {max_kws}")
-		print(f"[_qwen_llm_response] Response length: {len(llm_response)} chars")
-	
 	# Step 1: Find the [/INST] tag
 	inst_end_match = re.search(r'\[/INST\]', llm_response)
 	
