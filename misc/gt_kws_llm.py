@@ -1609,17 +1609,8 @@ def get_llm_based_labels_opt(
 	use_quantization: bool = False,
 	verbose: bool = False,
 ) -> List[Optional[List[str]]]:
-	"""
-	Optimized LLM keyword extraction:
-		- Batch generation with retries
-		- Optional deduplication of identical inputs
-		- Parallel parsing of LLM responses per batch using ThreadPoolExecutor
-		- Per-item fallback via query_local_llm for failed parses
-		- Saves results back to <csv_file>_llm_keywords.csv and .xlsx
-	"""
-	num_workers = min(os.cpu_count(), num_workers)
+
 	output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
-		
 	if os.path.exists(output_csv):
 		if verbose:
 			print(f"[EXISTING] Found existing results at {output_csv}")
@@ -1634,6 +1625,7 @@ def get_llm_based_labels_opt(
 				print(f"[EXISTING] Found existing LLM keywords! {type(df)} {df.shape} {list(df.columns)}")
 			return df['llm_keywords'].tolist()
 	
+	num_workers = min(os.cpu_count(), num_workers)
 	if verbose:
 		print(f"[INIT] Starting OPTIMIZED batch LLM processing with {num_workers} workers")
 		print(f"[INIT] Model: {model_id}")
