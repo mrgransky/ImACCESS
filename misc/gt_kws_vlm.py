@@ -280,28 +280,43 @@ def _load_vlm_(
 					device_map="auto", 
 					max_memory=max_memory_single
 				)
+				# --- CRITICAL CHECK: Prevent Disk Offloading ---
+				if "disk" in model.hf_device_map.values():
+					if verbose:
+						print(f"[WARN] Model too large for GPU 0. Layers offloaded to DISK. Unacceptable for speed.")
+						print(f"[WARN] Deleting and retrying with Multi-GPU strategy...")
+						del model
+						torch.cuda.empty_cache()
+						raise RuntimeError("Model required disk offload")
 				if verbose:
 					print("[SUCCESS] Model loaded on Single GPU (Fastest).")
 			except RuntimeError as e:
-				# Check if it's an OOM error
-				if "out of memory" in str(e).lower() or "cuda out of memory" in str(e).lower():
+				# Check if it's an OOM error OR our manual disk-offload error
+				if "out of memory" in str(e).lower() or "cuda out of memory" in str(e).lower() or "disk offload" in str(e).lower():
 					if verbose:
-						print(f"[WARN] Single GPU OOM. Retrying with Multi-GPU strategy...")
+						if "disk offload" not in str(e).lower():
+							print(f"[WARN] Single GPU OOM. Retrying with Multi-GPU strategy...")
 						print(f"   • Multi-GPU Limits: {max_memory_multi}")
 					
 					# Clean cache before retry
 					torch.cuda.empty_cache()
 					
 					# ATTEMPT 2: Multi GPU
-					model = model_cls.from_pretrained(
-						model_id, 
-						**base_model_kwargs, 
-						device_map="auto", 
-						max_memory=max_memory_multi
-					)
-					if verbose:
-						print("[SUCCESS] Model loaded on Multi-GPU (Pipeline Parallel).")
+					try:
+						model = model_cls.from_pretrained(
+							model_id, 
+							**base_model_kwargs, 
+							device_map="auto", 
+							max_memory=max_memory_multi
+						)
+						if verbose:
+							print("[SUCCESS] Model loaded on Multi-GPU (Pipeline Parallel).")
+					except Exception as e2:
+						if verbose:
+							print(f"[ERROR] Multi-GPU loading failed: {e2}")
+						raise e2
 				else:
+					# If it's not an OOM or Disk error, raise it immediately
 					raise e
 		else:
 			# CPU Fallback
