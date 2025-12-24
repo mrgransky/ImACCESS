@@ -231,7 +231,7 @@ def _load_vlm_(
 			return 13.0, "model_id_pattern_7b"
 		elif "3b" in m_id_lower:
 			return 6.0, "model_id_pattern_3b"
-		elif "2b" in m_id_lower:  # <-- ADD THIS
+		elif "2b" in m_id_lower:
 			return 4.0, "model_id_pattern_2b"
 		elif "1.5b" in m_id_lower:
 			return 3.0, "model_id_pattern_1.5b"
