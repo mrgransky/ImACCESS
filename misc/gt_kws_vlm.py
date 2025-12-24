@@ -978,8 +978,7 @@ def _load_and_verify_image(path: Optional[str]) -> Optional[Image.Image]:
 		with Image.open(path).convert("RGB") as im:
 			im.load()
 			return im.copy()
-	except Exception as e:
-		print(f"Worker Error: {e}")
+	except Exception:
 		return None
 
 def _prefetch_worker(
@@ -987,7 +986,6 @@ def _prefetch_worker(
 	uniq_inputs: List[Optional[str]],
 	executor: ProcessPoolExecutor,
 	queue: queue.Queue,
-	verbose: bool = False
 ):
 	"""
 	Producer function running in a background thread.
@@ -1006,12 +1004,9 @@ def _prefetch_worker(
 			# 3. Put results in Queue (Blocking if queue is full to prevent RAM explosion)
 			queue.put((batch_indices, loaded_images))
 			
-			if verbose:
-				print(f"\n[Prefetcher] Loaded batch starting at index {batch_indices[0]}")
 	except Exception as e:
 		print(f"\n[PREFETCH ERROR] {e}\n")
 	finally:
-		# Signal end of work
 		queue.put(None)
 
 def get_vlm_based_labels_opt(
@@ -1084,7 +1079,7 @@ def get_vlm_based_labels_opt(
 
 	# 7. Initialize Overlapping Pipeline (Producer-Consumer)
 	# GPU almost never waits, and RAM usage is still minimal
-	max_size = 2 if torch.cuda.device_count()>1 else 1
+	max_size = 2 # if torch.cuda.device_count()>1 else 1
 	if verbose:
 		print(f"[QUEUE] Initializing queue with maxsize {max_size}...")
 	prefetch_queue = queue.Queue(maxsize=max_size)
@@ -1104,7 +1099,6 @@ def get_vlm_based_labels_opt(
 			uniq_inputs, 
 			load_executor, 
 			prefetch_queue, 
-			verbose
 		)
 	)
 	producer_thread.start()
@@ -1235,9 +1229,11 @@ def get_vlm_based_labels_opt(
 				torch.cuda.empty_cache()
 				gc.collect()
 
-	# Cleanup
-	producer_thread.join()
-	load_executor.shutdown(wait=True)
+	producer_thread.join(timeout=30)
+	if producer_thread.is_alive():
+		if verbose:
+			print("[WARN] Producer thread did not terminate within 30s. Forcing termination...")
+		load_executor.shutdown(wait=True, cancel_futures=True)
 
 	# Save
 	final = [results[i] for i in orig_to_uniq]
