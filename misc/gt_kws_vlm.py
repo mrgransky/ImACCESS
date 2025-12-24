@@ -112,7 +112,7 @@ def _load_vlm_(
 	# ========== Load config ==========
 	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True)
 	if verbose:
-		print("[INFO] Config summary")
+		print(f"[INFO] {model_id} Config summary")
 		print(f"   • model_type        : {config.model_type}")
 		print(f"   • architectures     : {config.architectures}")
 		print(f"   • dtype (if set)    : {config.dtype}")
@@ -156,7 +156,7 @@ def _load_vlm_(
 	dtype = _optimal_dtype(model_id)
 	
 	if verbose:
-		print("[INFO] Dtype selection")
+		print(f"[INFO] {model_id} Dtype selection")
 		print(f"   • BF16 supported on this device? : {torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False}")
 		print(f"   • Chosen torch dtype             : {dtype}")
 	
@@ -184,7 +184,8 @@ def _load_vlm_(
 	
 	attn_impl = _optimal_attn_impl(model_id)
 	if verbose:
-			print(f"[INFO] Attention implementation: {attn_impl}")
+		print(f"[INFO] {model_id} Attention implementation: {attn_impl}")
+	
 	# ========== Quantization config ==========
 	quantization_config = None
 	if use_quantization:
@@ -205,7 +206,7 @@ def _load_vlm_(
 			raise ValueError(f"quantization_bits must be 4 or 8, got {quantization_bits}")
 		
 		if verbose:
-			print("[INFO] Quantisation enabled")
+			print(f"[INFO] {model_id} Quantisation enabled")
 			print(f"   • Bits                : {quantization_bits}")
 			print(f"   • Config object type  : {type(quantization_config).__name__}")
 	
@@ -217,7 +218,7 @@ def _load_vlm_(
 		cache_dir=cache_directory[USER],
 	)
 	if verbose:
-		print(f"[INFO] Processor: {processor.__class__.__name__}")
+		print(f"[INFO] {model_id} Processor: {processor.__class__.__name__}")
 	
 	# Extract tokenizer
 	if hasattr(processor, "tokenizer"):
@@ -316,7 +317,7 @@ def _load_vlm_(
 	
 	# ========== Model Info & Verification ==========
 	if verbose:
-		print(f"\n[MODEL] {model.__class__.__name__}")
+		print(f"\n[MODEL] {model_id} {model.__class__.__name__}")
 		try:
 			first_param = next(model.parameters())
 			print(f"\t• First parameter dtype: {first_param.dtype}")
@@ -344,6 +345,7 @@ def _load_vlm_(
 			for gpu_id in sorted(gpu_param_counts.keys()):
 				print(f"   • Parameters on GPU {gpu_id}: {gpu_param_counts[gpu_id]}")
 			print(f"   • Parameters on CPU  : {cpu_params}")
+
 	return processor, model
 
 def _load_vlm_old(
