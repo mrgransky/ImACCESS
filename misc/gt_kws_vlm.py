@@ -1207,7 +1207,7 @@ def get_vlm_based_labels_opt(
 			if verbose:
 				print(f"\tFalling back to SEQUENTIAL processing for {len(valid_pairs)} images in this batch.")
 			# process each image sequentially
-			for uniq_idx, img in tqdm(valid_pairs, desc="Processing batch images [sequential]", ncols=100):
+			for uniq_idx, img in tqdm(valid_pairs, desc="Processing batch images [SEQUENTIAL]", ncols=100):
 				try:
 					single_message = [
 						{
@@ -1264,7 +1264,7 @@ def get_vlm_based_labels_opt(
 		except NameError:
 			pass
 
-
+		# memory management
 		for device_idx in range(torch.cuda.device_count()):
 			mem_total = torch.cuda.get_device_properties(device_idx).total_memory / (1024**3) 
 			mem_allocated = torch.cuda.memory_allocated(device_idx) / (1024**3)
