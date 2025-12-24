@@ -75,6 +75,8 @@ def _load_vlm_(
 	Returns:
 		Tuple of (processor, model)
 	"""
+	if verbose:
+		print(f"[MODEL] Loading {model_id}...")
 
 	# ========== Version and CUDA info ==========
 	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
