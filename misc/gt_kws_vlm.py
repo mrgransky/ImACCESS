@@ -56,320 +56,345 @@ Identify no more than {k} highly prominent, factual, and distinct **KEYWORDS** t
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response."""
 
 def _load_vlm_(
-				model_id: str,
-				use_quantization: bool = False,
-				quantization_bits: int = 8,
-				verbose: bool = False,
+	model_id: str,
+	use_quantization: bool = False,
+	quantization_bits: int = 8,
+	verbose: bool = False,
 ) -> Tuple[tfs.PreTrainedTokenizerBase, torch.nn.Module]:
-		"""
-		Load a Vision-Language Model (VLM) with optimal settings.
-		
-		Implements a dynamic device strategy:
-		1. Attempts to load on a single GPU (GPU 0) for maximum speed.
-		2. Validates that NO layers were offloaded to disk.
-		3. Falls back to multi-GPU (Pipeline Parallelism) if OOM or disk-offload occurs.
-		
-		Args:
-				model_id: HuggingFace model identifier
-				use_quantization: Whether to use quantization
-				quantization_bits: Quantization bits (4 or 8)
-				verbose: Enable verbose logging
-		
-		Returns:
-				Tuple of (processor, model)
-		"""
+	"""
+	Load a Vision-Language Model (VLM) with optimal settings.
+	
+	Implements intelligent device strategy:
+	1. For small models (<30GB): Single GPU for speed
+	2. For large models (>=30GB): Multi-GPU distribution
+	3. Avoids disk offloading at all costs
+	
+	Args:
+		model_id: HuggingFace model identifier
+		use_quantization: Whether to use quantization
+		quantization_bits: Quantization bits (4 or 8)
+		verbose: Enable verbose logging
+	
+	Returns:
+		Tuple of (processor, model)
+	"""
 
-		# ========== Version and CUDA info ==========
-		n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
-		if verbose:
-				print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
-				print(f"[INFO] CUDA available?        : {torch.cuda.is_available()} {n_gpus} GPU(s) available: {[torch.cuda.get_device_name(i) for i in range(n_gpus)]}")
-
-				if torch.cuda.is_available():
-						cur = torch.cuda.current_device()
-						major, minor = torch.cuda.get_device_capability(cur)
-						print(f"[INFO] Compute capability     : {major}.{minor}")
-						print(f"[INFO] BF16 support?          : {torch.cuda.is_bf16_supported()}")
-						print(f"[INFO] CUDA memory allocated  : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-						print(f"[INFO] CUDA memory reserved   : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
-				else:
-						print("[INFO] Running on CPU only")
-
-		# ========== HuggingFace login ==========
-		try:
-				if verbose: print(f"[INFO] Logging in to HuggingFace Hub...")
-				huggingface_hub.login(token=hf_tk)
-		except Exception as e:
-				print(f"<!> Failed to login to HuggingFace Hub: {e}")
-
-		# ========== Load config ==========
-		config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True)
-
-		if verbose:
-				print("[INFO] Config summary")
-				print(f"   • model_type        : {config.model_type}")
-				print(f"   • architectures     : {config.architectures}")
-				print(f"   • dtype (if set)    : {config.dtype}")
-				print()
-
-		# ========== Determine model class ==========
-		model_cls = None
-		if config.architectures:
-				cls_name = config.architectures[0]
-				if hasattr(tfs, cls_name):
-						model_cls = getattr(tfs, cls_name)
-		
-		if model_cls is None:
-				raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
-
-		# ========== Optimal dtype selection ==========
-		def _optimal_dtype(m_id: str) -> torch.dtype:
-				"""Select optimal dtype, forcing float16 for Qwen3-VL MoE if needed."""
-				bf16_ok = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
-				m_id_lower = m_id.lower()
-				
-				# Qwen3-VL MoE: force float16 to avoid scatter() dtype mismatch
-				if "qwen3-vl" in m_id_lower or "qwen3_vl" in m_id_lower:
-						return torch.float16
-				
-				# Other Qwen models: bf16 if available
-				if "qwen" in m_id_lower:
-						return torch.bfloat16 if bf16_ok else torch.float16
-				
-				# LLaVA: float16
-				if "llava" in m_id_lower:
-						return torch.float16
-				
-				# Falcon: bf16 if available
-				if "falcon" in m_id_lower:
-						return torch.bfloat16 if bf16_ok else torch.float16
-				
-				# Default: bf16 if available, else fp16
-				return torch.bfloat16 if bf16_ok else torch.float16
-
-		dtype = _optimal_dtype(model_id)
-
-		if verbose:
-				print("[INFO] Dtype selection")
-				print(f"   • BF16 supported on this device? : {torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False}")
-				print(f"   • Chosen torch dtype             : {dtype}")
-
-		# ========== Optimal attention implementation ==========
-		def _optimal_attn_impl(m_id: str) -> str:
-				"""Select Flash Attention 2 if available, else eager."""
-				if not torch.cuda.is_available():
-						return "eager"
-				
-				flash_ok = False
-				try:
-						import flash_attn
-						major, _ = torch.cuda.get_device_capability()
-						flash_ok = major >= 8
-				except Exception as e:
-						if verbose:
-								print(f"[WARN] Flash Attention check failed: {type(e).__name__}")
-				
-				if flash_ok:
-						m_id_lower = m_id.lower()
-						if "qwen" in m_id_lower or "llava" in m_id_lower:
-								return "flash_attention_2"
-						return "flash_attention_2"
-
-				return "eager"
-		
-		attn_impl = _optimal_attn_impl(model_id)
-		if verbose:
-				print(f"[INFO] Attention implementation: {attn_impl}")
-
-		# ========== Quantization config ==========
-		quantization_config = None
-		if use_quantization:
-				if quantization_bits == 8:
-						quantization_config = tfs.BitsAndBytesConfig(
-								load_in_8bit=True,
-								bnb_8bit_compute_dtype=torch.bfloat16,
-								llm_int8_enable_fp32_cpu_offload=True,
-						)
-				elif quantization_bits == 4:
-						quantization_config = tfs.BitsAndBytesConfig(
-								load_in_4bit=True,
-								bnb_4bit_quant_type="nf4",
-								bnb_4bit_compute_dtype=torch.bfloat16,
-								bnb_4bit_use_double_quant=True,
-						)
-				else:
-						raise ValueError("quantization_bits must be 4 or 8")
-				
-				if verbose:
-						print("[INFO] Quantisation enabled")
-						print(f"   • Bits                : {quantization_bits}")
-						print(f"   • Config object type  : {type(quantization_config).__name__}")
-
-		# ========== Processor loading ==========
-		processor = tfs.AutoProcessor.from_pretrained(
-				model_id,
-				use_fast=True,
-				trust_remote_code=True,
-				cache_dir=cache_directory[USER],
-		)
-
-		if verbose:
-				print(f"[INFO] Processor: {processor.__class__.__name__}")
-		
-		# Extract tokenizer
-		if hasattr(processor, "tokenizer"):
-				tokenizer = processor.tokenizer
-		elif hasattr(processor, "text_tokenizer"):
-				tokenizer = processor.text_tokenizer
+	# ========== Version and CUDA info ==========
+	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
+	if verbose:
+		print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
+		print(f"[INFO] CUDA available?        : {torch.cuda.is_available()} {n_gpus} GPU(s) available: {[torch.cuda.get_device_name(i) for i in range(n_gpus)]}")
+		if torch.cuda.is_available():
+			cur = torch.cuda.current_device()
+			major, minor = torch.cuda.get_device_capability(cur)
+			print(f"[INFO] Compute capability     : {major}.{minor}")
+			print(f"[INFO] BF16 support?          : {torch.cuda.is_bf16_supported()}")
+			print(f"[INFO] CUDA memory allocated  : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+			print(f"[INFO] CUDA memory reserved   : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
 		else:
-				raise ValueError("Unable to locate tokenizer in processor")
-
-		if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
-				tokenizer.padding_side = "left"
-
-		# ========== Dynamic Device Strategy ==========
-		max_memory_single = {}
-		max_memory_multi = {}
-		vram_buffer_gb = 4  # Reserve 4GB for activations/inputs on GPU 0
-		
-		if n_gpus > 0:
-				# Strategy A: Single GPU (Fastest)
-				props_0 = torch.cuda.get_device_properties(0)
-				total_0 = props_0.total_memory / (1024**3)
-				max_memory_single[0] = f"{max(0, total_0 - vram_buffer_gb):.0f}GB"
-				
-				# Strategy B: Multi GPU (Balanced/Fill)
-				for i in range(n_gpus):
-						props_i = torch.cuda.get_device_properties(i)
-						total_i = props_i.total_memory / (1024**3)
-						
-						# Reserve buffer only on the first GPU (entry point)
-						usable = total_i - vram_buffer_gb if i == 0 else total_i
-						max_memory_multi[i] = f"{max(0, usable):.0f}GB"
-
-		# ========== Base Model Loading Kwargs ==========
-		base_model_kwargs: Dict[str, Any] = {
-				"low_cpu_mem_usage": True,
-				"trust_remote_code": True,
-				"cache_dir": cache_directory[USER],
-				"attn_implementation": attn_impl,
-				"dtype": dtype,
-		}
-		
-		if use_quantization:
-				base_model_kwargs["quantization_config"] = quantization_config
-
-		if verbose and torch.cuda.is_available():
-				print(f"\n[INFO] {model_cls.__name__} loading strategy:")
-				if n_gpus > 0:
-						print(f"   • Attempting Single-GPU (GPU 0) for speed. Limit: {max_memory_single[0]}")
-				else:
-						print(f"   • No GPUs detected. Loading on CPU.")
-
-		# ========== Load Model (Try Single -> Fallback Multi) ==========
-		model = None
-		try:
-				if n_gpus > 0:
-						# ATTEMPT 1: Single GPU
-						try:
-								model = model_cls.from_pretrained(
-										model_id, 
-										**base_model_kwargs, 
-										device_map="auto", 
-										max_memory=max_memory_single
-								)
-								
-								# --- CRITICAL CHECK: Prevent Disk Offloading ---
-								if "disk" in model.hf_device_map.values():
-										if verbose:
-												print(f"[WARN] Model too large for GPU 0. Layers offloaded to DISK. Unacceptable for speed.")
-												print(f"[WARN] Deleting and retrying with Multi-GPU strategy...")
-										del model
-										torch.cuda.empty_cache()
-										# Manually raise an error to jump to fallback logic
-										raise RuntimeError("Model required disk offload")
-										
-								if verbose:
-										print("[SUCCESS] Model loaded on Single GPU (Fastest).")
-										
-						except RuntimeError as e:
-								# Check if it's an OOM error OR our manual disk-offload error
-								if "out of memory" in str(e).lower() or "cuda out of memory" in str(e).lower() or "disk offload" in str(e).lower():
-										if verbose:
-												if "disk" not in str(e).lower():
-														print(f"[WARN] Single GPU OOM. Retrying with Multi-GPU strategy...")
-												print(f"   • Multi-GPU Limits: {max_memory_multi}")
-										
-										# Clean cache before retry
-										torch.cuda.empty_cache()
-										
-										# ATTEMPT 2: Multi GPU
-										try:
-												model = model_cls.from_pretrained(
-														model_id, 
-														**base_model_kwargs, 
-														device_map="auto", 
-														max_memory=max_memory_multi
-												)
-												if verbose:
-														print("[SUCCESS] Model loaded on Multi-GPU (Pipeline Parallel).")
-										except Exception as e2:
-												print(f"[ERROR] Failed to load model on Multi-GPU as well: {e2}")
-												raise e2
-								else:
-										# If it's not an OOM or Disk error, raise it immediately
-										raise e
-				else:
-						# CPU Fallback
-						model = model_cls.from_pretrained(model_id, **base_model_kwargs)
-						if verbose:
-								print("[SUCCESS] Model loaded on CPU.")
-
-		except Exception as e:
-				if verbose:
-						print(f"[ERROR] Critical error loading model: {e}")
-				raise e
-		
-		model.eval()
-
-		# ========== Model Info & Verification ==========
+			print("[INFO] Running on CPU only")
+	
+	# ========== HuggingFace login ==========
+	try:
 		if verbose:
-				print(f"\n[MODEL] {model.__class__.__name__}")
-				try:
-						first_param = next(model.parameters())
-						print(f"\t• First parameter dtype: {first_param.dtype}")
-						print(f"\t• First parameter device: {first_param.device}")
-				except StopIteration:
-						pass 
+			print(f"[INFO] Logging in to HuggingFace Hub...")
+		huggingface_hub.login(token=hf_tk)
+	except Exception as e:
+		print(f"<!> Failed to login to HuggingFace Hub: {e}")
+		raise e
+	
+	# ========== Load config ==========
+	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+	if verbose:
+		print(f"[INFO] {model_id} Config summary")
+		print(f"   • model_type        : {config.model_type}")
+		print(f"   • architectures     : {config.architectures}")
+		print(f"   • dtype (if set)    : {config.dtype}")
+		print()
+	
+	# ========== Determine model class ==========
+	model_cls = None
+	if config.architectures:
+		cls_name = config.architectures[0]
+		if hasattr(tfs, cls_name):
+			model_cls = getattr(tfs, cls_name)
+	
+	if model_cls is None:
+		raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
+	
+	# ========== Optimal dtype selection ==========
+	def _optimal_dtype(m_id: str) -> torch.dtype:
+		"""Select optimal dtype, forcing float16 for Qwen3-VL MoE if needed."""
+		bf16_ok = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+		m_id_lower = m_id.lower()
+		
+		# Qwen3-VL MoE: force float16 to avoid scatter() dtype mismatch
+		if "qwen3-vl" in m_id_lower or "qwen3_vl" in m_id_lower:
+			return torch.float16
+		
+		# Other Qwen models: bf16 if available
+		if "qwen" in m_id_lower:
+			return torch.bfloat16 if bf16_ok else torch.float16
+		
+		# LLaVA: float16
+		if "llava" in m_id_lower:
+			return torch.float16
+		
+		# Falcon: bf16 if available
+		if "falcon" in m_id_lower:
+			return torch.bfloat16 if bf16_ok else torch.float16
+		
+		# Default: bf16 if available, else fp16
+		return torch.bfloat16 if bf16_ok else torch.float16
+	
+	dtype = _optimal_dtype(model_id)
+	
+	if verbose:
+		print(f"[INFO] {model_id} Dtype selection")
+		print(f"   • BF16 supported on this device? : {torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False}")
+		print(f"   • Chosen torch dtype             : {dtype}")
+	
+	# ========== Optimal attention implementation ==========
+	def _optimal_attn_impl(m_id: str) -> str:
+		"""Select Flash Attention 2 if available, else eager."""
+		if not torch.cuda.is_available():
+			return "eager"
+		
+		flash_ok = False
+		try:
+			import flash_attn
+			major, _ = torch.cuda.get_device_capability()
+			flash_ok = major >= 8
+		except Exception as e:
+			if verbose:
+				print(f"[WARN] Flash Attention unavailable: {type(e).__name__}")
+		
+		if flash_ok:
+			return "flash_attention_2"
+		return "eager"
+	
+	attn_impl = _optimal_attn_impl(model_id)
+	if verbose:
+		print(f"[INFO] {model_id} Attention implementation: {attn_impl}")
+	
+	# ========== Quantization config ==========
+	quantization_config = None
+	if use_quantization:
+		if quantization_bits == 8:
+			quantization_config = tfs.BitsAndBytesConfig(
+				load_in_8bit=True,
+				bnb_8bit_compute_dtype=torch.bfloat16,
+				llm_int8_enable_fp32_cpu_offload=False,  # Changed to False - we want GPU only
+			)
+		elif quantization_bits == 4:
+			quantization_config = tfs.BitsAndBytesConfig(
+				load_in_4bit=True,
+				bnb_4bit_quant_type="nf4",
+				bnb_4bit_compute_dtype=torch.bfloat16,
+				bnb_4bit_use_double_quant=True,
+			)
+		else:
+			raise ValueError(f"quantization_bits must be 4 or 8, got {quantization_bits}")
+		
+		if verbose:
+			print(f"[INFO] {model_id} Quantisation enabled")
+			print(f"   • Bits                : {quantization_bits}")
+			print(f"   • Config object type  : {type(quantization_config).__name__}")
+	
+	# ========== Processor loading ==========
+	processor = tfs.AutoProcessor.from_pretrained(
+		model_id,
+		use_fast=True,
+		trust_remote_code=True,
+		cache_dir=cache_directory[USER],
+	)
+	if verbose:
+		print(f"[INFO] {model_id} Processor: {processor.__class__.__name__}")
+	
+	# Extract tokenizer
+	if hasattr(processor, "tokenizer"):
+		tokenizer = processor.tokenizer
+	elif hasattr(processor, "text_tokenizer"):
+		tokenizer = processor.text_tokenizer
+	else:
+		raise ValueError("Unable to locate tokenizer in processor")
+	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
+		tokenizer.padding_side = "left"
+	
+	# ========== Estimate model size ==========
+	# Rough estimation based on parameter count from config
+	def estimate_model_size_gb(cfg) -> float:
+		"""Estimate model size in GB (fp16)."""
+		# Try to get num_parameters from config
+		if hasattr(cfg, 'num_parameters'):
+			params = cfg.num_parameters
+		else:
+			# Rough estimate for common architectures
+			# This is a fallback - actual size will be determined during loading
+			params = 7_000_000_000  # 7B default
+		
+		# fp16 = 2 bytes per parameter
+		return (params * 2) / (1024 ** 3)
+	
+	estimated_size_gb = estimate_model_size_gb(config)
+	if verbose:
+		print(f"[INFO] Estimated model size: ~{estimated_size_gb:.1f} GB (fp16)")
+	
+	# ========== Dynamic Device Strategy ==========
+	# Strategy: Intelligently choose between single-GPU and multi-GPU based on model size
+	max_memory = {}
+	vram_buffer_gb = 4  # Reserve for activations
+	
+	if n_gpus > 0:
+		total_vram_available = 0
+		gpu_vram = []
+		
+		for i in range(n_gpus):
+			props = torch.cuda.get_device_properties(i)
+			vram_gb = props.total_memory / (1024**3)
+			gpu_vram.append(vram_gb)
+			total_vram_available += vram_gb
+		
+		# Decision: Single GPU vs Multi GPU
+		# Use single GPU only if model fits comfortably (with 20% safety margin)
+		use_single_gpu = estimated_size_gb < (gpu_vram[0] - vram_buffer_gb) * 0.8
+		
+		if use_single_gpu and n_gpus == 1:
+			# Single GPU system - use it
+			max_memory[0] = f"{max(0, gpu_vram[0] - vram_buffer_gb):.0f}GB"
+			strategy_desc = f"Single GPU (GPU 0 only, limit: {max_memory[0]})"
+		
+		elif use_single_gpu and n_gpus > 1:
+			# Multi-GPU system but model is small - still use single GPU for speed
+			max_memory[0] = f"{max(0, gpu_vram[0] - vram_buffer_gb):.0f}GB"
+			strategy_desc = f"Single GPU optimization (model <{gpu_vram[0] - vram_buffer_gb:.0f}GB, limit: {max_memory[0]})"
+		
+		else:
+			# Large model - distribute across all GPUs
+			# CRITICAL: Do NOT limit total VRAM artificially
+			# Let accelerate use all available GPUs
+			for i in range(n_gpus):
+				# Only reserve buffer on GPU 0 (where input/output happens)
+				buffer = vram_buffer_gb if i == 0 else 2  # Smaller buffer on other GPUs
+				max_memory[i] = f"{max(0, gpu_vram[i] - buffer):.0f}GB"
+			
+			total_usable = sum(float(v.replace('GB', '')) for v in max_memory.values())
+			strategy_desc = f"Multi-GPU distribution ({n_gpus} GPUs, total: {total_usable:.0f}GB)"
+			
+			if verbose:
+				print(f"[INFO] Model too large for single GPU - using multi-GPU strategy")
+				print(f"   • Estimated model size: {estimated_size_gb:.1f} GB")
+				print(f"   • GPU 0 capacity: {gpu_vram[0]:.1f} GB")
+				print(f"   • Total VRAM available: {total_vram_available:.1f} GB")
+	else:
+		strategy_desc = "CPU (no GPUs available)"
+	
+	if verbose:
+		print(f"\n[INFO] Loading strategy: {strategy_desc}")
+		if max_memory:
+			print(f"   • Max memory limits:")
+			for gpu_id, limit in max_memory.items():
+				print(f"      - GPU {gpu_id}: {limit}")
+	
+	# ========== Base Model Loading Kwargs ==========
+	base_model_kwargs: Dict[str, Any] = {
+		"low_cpu_mem_usage": True,
+		"trust_remote_code": True,
+		"cache_dir": cache_directory[USER],
+		"attn_implementation": attn_impl,
+		"torch_dtype": dtype,  # Changed from "dtype" to "torch_dtype" for clarity
+	}
+	
+	if use_quantization:
+		base_model_kwargs["quantization_config"] = quantization_config
+	
+	# ========== Load Model ==========
+	model = None
+	try:
+		if n_gpus > 0:
+			# GPU loading with proper device_map
+			model = model_cls.from_pretrained(
+				model_id,
+				**base_model_kwargs,
+				device_map="auto",
+				max_memory=max_memory,
+			)
+			
+			if verbose:
+				print(f"[SUCCESS] Model loaded successfully")
+		else:
+			# CPU fallback
+			model = model_cls.from_pretrained(
+				model_id,
+				**base_model_kwargs,
+			)
+			if verbose:
+				print("[SUCCESS] Model loaded on CPU")
+	
+	except Exception as e:
+		if verbose:
+			print(f"[ERROR] Failed to load model: {e}")
+		raise e
+	
+	model.eval()
+	
+	# ========== Model Info & Verification ==========
+	if verbose:
+		print(f"\n[MODEL] {model_id} {model.__class__.__name__}")
+		try:
+			first_param = next(model.parameters())
+			print(f"   • First parameter dtype: {first_param.dtype}")
+			print(f"   • First parameter device: {first_param.device}")
+		except StopIteration:
+			pass
+		
+		total_params = sum(p.numel() for p in model.parameters())
+		approx_fp16_gb = total_params * 2 / (1024 ** 3)
+		print(f"   • Total parameters: {total_params:,}")
+		print(f"   • Actual model size (fp16): {approx_fp16_gb:.2f} GB")
+		
+		if hasattr(model, "hf_device_map"):
+			dm = model.hf_device_map
+			
+			# Check for disk offloading
+			disk_layers = [k for k, v in dm.items() if v == "disk"]
+			cpu_layers = [k for k, v in dm.items() if v == "cpu"]
+			
+			if disk_layers:
+				print(f"\n[CRITICAL WARNING] {len(disk_layers)} layers offloaded to DISK!")
+				print(f"   This will cause SEVERE performance degradation (100-1000x slower)")
+				print(f"   Consider using quantization or reducing model size")
+				print(f"   Disk layers: {disk_layers[:5]}{'...' if len(disk_layers) > 5 else ''}")
+			
+			if cpu_layers:
+				print(f"\n[WARNING] {len(cpu_layers)} layers on CPU")
+				print(f"   This will reduce performance")
+			
+			# Count GPU distribution
+			gpu_counts = {}
+			for layer_name, device in dm.items():
+				if isinstance(device, int):
+					gpu_counts[device] = gpu_counts.get(device, 0) + 1
+			
+			if gpu_counts:
+				print(f"\n[INFO] GPU Distribution:")
+				for gpu_id in sorted(gpu_counts.keys()):
+					print(f"   • GPU {gpu_id}: {gpu_counts[gpu_id]} layers")
+			
+			# Show abbreviated device map (not full one)
+			print(f"\n[INFO] Device map summary (showing first/last layers):")
+			items = list(dm.items())
+			if len(items) <= 20:
+				for k, v in items:
+					print(f"   {k}: {v}")
+			else:
+				for k, v in items[:10]:
+					print(f"   {k}: {v}")
+				print(f"   ... ({len(items) - 20} layers omitted) ...")
+				for k, v in items[-10:]:
+					print(f"   {k}: {v}")
 
-				total_params = sum(p.numel() for p in model.parameters())
-				approx_fp16_gb = total_params * 2 / (1024 ** 3)
-				print(f"\t• Total parameters: {total_params:,}")
-				print(f"\t• Approx. fp16 RAM: {approx_fp16_gb:.2f} GiB")
-
-				if hasattr(model, "hf_device_map"):
-						dm = model.hf_device_map
-						# Check for disk again in final logs
-						if "disk" in dm.values():
-								print("[WARN] WARNING: Final device_map contains 'disk'. Inference will be VERY SLOW.")
-								
-						print(f"[INFO] Final device_map:\n{json.dumps(dm, indent=2, ensure_ascii=False)}")
-						
-						# Count usage
-						gpu_param_counts = {}
-						cpu_params = 0
-						for p in model.parameters():
-								if p.device.type == "cuda":
-										gpu_id = p.device.index
-										gpu_param_counts[gpu_id] = gpu_param_counts.get(gpu_id, 0) + 1
-								elif p.device.type == "cpu":
-										cpu_params += 1
-						
-						for gpu_id in sorted(gpu_param_counts.keys()):
-								print(f"   • Parameters on GPU {gpu_id}: {gpu_param_counts[gpu_id]}")
-						print(f"   • Parameters on CPU  : {cpu_params}")
-
-		return processor, model
+	return processor, model
 
 def _load_vlm__(
 	model_id: str,
