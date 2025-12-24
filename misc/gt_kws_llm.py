@@ -933,135 +933,129 @@ def _mistral_llm_response(
 		return final_keywords
 
 def _qwen_llm_response(
-		model_id: str, 
-		input_prompt: str, 
-		llm_response: str, 
-		max_kws: int, 
-		verbose: bool = False
+	model_id: str, 
+	input_prompt: str, 
+	llm_response: str, 
+	max_kws: int, 
+	verbose: bool = False
 ) -> Optional[List[str]]:
-		"""
-		Simplified parser for Qwen LLM responses.
-		Expects a Python list after [/INST] tag.
-		"""
+	if verbose:
+		print(f"[_qwen_llm_response] Starting parse for model: {model_id}")
+		print(f"[_qwen_llm_response] Max keywords: {max_kws}")
+		print(f"[_qwen_llm_response] Response length: {len(llm_response)} chars")
+	
+	# Step 1: Find the [/INST] tag
+	inst_end_match = re.search(r'\[/INST\]', llm_response)
+	
+	if not inst_end_match:
+		if verbose:
+			print("[ERROR] No [/INST] tag found in response")
+		return None
+	
+	inst_end_pos = inst_end_match.end()
+	response_content = llm_response[inst_end_pos:].strip()
+	
+	if verbose:
+		print(f"[STEP 1] Found [/INST] at position {inst_end_pos}")
+		print(f"[STEP 1] Content after [/INST]:\n{response_content[:200]}...\n")
+	
+	# Step 2: Extract the Python list (first occurrence)
+	# Matches: ['item1', 'item2'] or ["item1", "item2"]
+	list_pattern = r'\[(?:\s*["\'][^"\']*["\'](?:\s*,\s*["\'][^"\']*["\'])*\s*)\]'
+	list_match = re.search(list_pattern, response_content)
+	
+	if not list_match:
+		if verbose:
+			print("[ERROR] No Python list found in response content")
+		return None
+	
+	list_str = list_match.group(0)
+	
+	if verbose:
+		print(f"[STEP 2] Extracted list string: {list_str}\n")
+	
+	# Step 3: Parse the list
+	try:
+		keywords_list = ast.literal_eval(list_str)
+		
+		if not isinstance(keywords_list, list):
+			if verbose:
+				print(f"[ERROR] Parsed result is not a list: {type(keywords_list)}")
+			return None
 		
 		if verbose:
-			print(f"[_qwen_llm_response] Starting parse for model: {model_id}")
-			print(f"[_qwen_llm_response] Max keywords: {max_kws}")
-			print(f"[_qwen_llm_response] Response length: {len(llm_response)} chars")
+			print(f"[STEP 3] Successfully parsed list with {len(keywords_list)} items:")
+			for i, kw in enumerate(keywords_list, 1):
+				print(f"  [{i}] {repr(kw)}")
+			print()
+	except Exception as e:
+		if verbose:
+			print(f"[ERROR] Failed to parse list: {e}")
+			print(f"[ERROR] Problematic string: {list_str}")
+		return None
+	
+	# Step 4: Post-process keywords
+	if verbose:
+		print(f"[STEP 4] Post-processing keywords (max={max_kws})...")
+	
+	processed = []
+	seen = set()
+	
+	for idx, kw in enumerate(keywords_list, 1):
+		if verbose:
+			print(f"\n  Processing [{idx}/{len(keywords_list)}]: {repr(kw)}")
 		
-		# Step 1: Find the [/INST] tag
-		inst_end_match = re.search(r'\[/INST\]', llm_response)
+		# Check if empty
+		if not kw or not str(kw).strip():
+			if verbose:
+				print(f"    ✗ Skipped: empty/whitespace")
+			continue
 		
-		if not inst_end_match:
-				if verbose:
-						print("[ERROR] No [/INST] tag found in response")
-				return None
-		
-		inst_end_pos = inst_end_match.end()
-		response_content = llm_response[inst_end_pos:].strip()
+		# Normalize
+		cleaned = re.sub(r'\s+', ' ', str(kw).strip())
 		
 		if verbose:
-				print(f"[STEP 1] Found [/INST] at position {inst_end_pos}")
-				print(f"[STEP 1] Content after [/INST]:\n{response_content[:200]}...\n")
+			print(f"    → Cleaned: {repr(cleaned)}")
 		
-		# Step 2: Extract the Python list (first occurrence)
-		# Matches: ['item1', 'item2'] or ["item1", "item2"]
-		list_pattern = r'\[(?:\s*["\'][^"\']*["\'](?:\s*,\s*["\'][^"\']*["\'])*\s*)\]'
-		list_match = re.search(list_pattern, response_content)
+		# Check length
+		if len(cleaned) < 2:
+			if verbose:
+				print(f"    ✗ Skipped: too short (len={len(cleaned)})")
+			continue
 		
-		if not list_match:
-				if verbose:
-						print("[ERROR] No Python list found in response content")
-				return None
+		# Check stopwords
+		if cleaned.lower() in STOPWORDS:
+			if verbose:
+				print(f"    ✗ Skipped: stopword")
+			continue
 		
-		list_str = list_match.group(0)
+		# Check for duplicates (case-insensitive)
+		normalized = cleaned.lower()
+		if normalized in seen:
+			if verbose:
+				print(f"    ✗ Skipped: duplicate")
+			continue
+		
+		# Accept keyword
+		seen.add(normalized)
+		processed.append(cleaned)
 		
 		if verbose:
-				print(f"[STEP 2] Extracted list string: {list_str}\n")
+			print(f"    ✓ Accepted (total: {len(processed)})")
 		
-		# Step 3: Parse the list
-		try:
-				keywords_list = ast.literal_eval(list_str)
-				
-				if not isinstance(keywords_list, list):
-						if verbose:
-								print(f"[ERROR] Parsed result is not a list: {type(keywords_list)}")
-						return None
-				
-				if verbose:
-						print(f"[STEP 3] Successfully parsed list with {len(keywords_list)} items:")
-						for i, kw in enumerate(keywords_list, 1):
-								print(f"  [{i}] {repr(kw)}")
-						print()
-				
-		except Exception as e:
-				if verbose:
-						print(f"[ERROR] Failed to parse list: {e}")
-						print(f"[ERROR] Problematic string: {list_str}")
-				return None
-		
-		# Step 4: Post-process keywords
-		if verbose:
-				print(f"[STEP 4] Post-processing keywords (max={max_kws})...")
-		
-		processed = []
-		seen = set()
-		
-		for idx, kw in enumerate(keywords_list, 1):
-				if verbose:
-						print(f"\n  Processing [{idx}/{len(keywords_list)}]: {repr(kw)}")
-				
-				# Check if empty
-				if not kw or not str(kw).strip():
-						if verbose:
-								print(f"    ✗ Skipped: empty/whitespace")
-						continue
-				
-				# Normalize
-				cleaned = re.sub(r'\s+', ' ', str(kw).strip())
-				
-				if verbose:
-						print(f"    → Cleaned: {repr(cleaned)}")
-				
-				# Check length
-				if len(cleaned) < 2:
-						if verbose:
-								print(f"    ✗ Skipped: too short (len={len(cleaned)})")
-						continue
-				
-				# Check stopwords
-				if cleaned.lower() in STOPWORDS:
-						if verbose:
-								print(f"    ✗ Skipped: stopword")
-						continue
-				
-				# Check for duplicates (case-insensitive)
-				normalized = cleaned.lower()
-				if normalized in seen:
-						if verbose:
-								print(f"    ✗ Skipped: duplicate")
-						continue
-				
-				# Accept keyword
-				seen.add(normalized)
-				processed.append(cleaned)
-				
-				if verbose:
-						print(f"    ✓ Accepted (total: {len(processed)})")
-				
-				# Check max limit
-				if len(processed) >= max_kws:
-						if verbose:
-								print(f"\n  [LIMIT] Reached max_kws={max_kws}, stopping")
-						break
-		
-		# Step 5: Return results
-		if verbose:
-			print(f"[RESULT] Final keywords ({len(processed)}/{len(keywords_list)} kept):")
-			for i, kw in enumerate(processed, 1):
-				print(f"  [{i}] {kw}")
-		
-		return processed if processed else None
+		# Check max limit
+		if len(processed) >= max_kws:
+			if verbose:
+				print(f"\n  [LIMIT] Reached max_kws={max_kws}, stopping")
+			break
+	
+	# Step 5: Return results
+	if verbose:
+		print(f"[RESULT] Final keywords ({len(processed)}/{len(keywords_list)} kept):")
+		for i, kw in enumerate(processed, 1):
+			print(f"  [{i}] {kw}")
+	
+	return processed if processed else None
 
 def _nousresearch_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = False):
 		print(f"Handling NousResearch response model_id: {model_id}...")
