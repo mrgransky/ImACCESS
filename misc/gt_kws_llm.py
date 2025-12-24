@@ -157,6 +157,18 @@ def _load_llm_(
 		"""
 		m_id_lower = m_id.lower()
 		
+		# CRITICAL: Check for MoE models FIRST (before general patterns)
+		# MoE models have pattern like "30B-A3B" where 30B is total, A3B is activated
+		if "moe" in m_id_lower or "-a" in m_id_lower:
+			# Extract total parameter count (the first number)
+			import re
+			# Look for patterns like "30b", "56b", "72b" before any "-a"
+			match = re.search(r'(\d+\.?\d*)b(?=-a|\s|$)', m_id_lower)
+			if match:
+				size_b = float(match.group(1))
+				size_gb = size_b * 2  # Rough fp16 estimate
+				return size_gb, f"moe_pattern_{size_b}b"
+		
 		# Method 1: Known model patterns (most reliable for common models)
 		if "405b" in m_id_lower:
 			return 750.0, "model_id_pattern_405b"
@@ -168,6 +180,8 @@ def _load_llm_(
 			return 63.0, "model_id_pattern_34b"
 		elif "32b" in m_id_lower or "33b" in m_id_lower:
 			return 62.0, "model_id_pattern_32b"
+		elif "30b" in m_id_lower:  # ADD THIS for 30B models
+			return 56.0, "model_id_pattern_30b"
 		elif "13b" in m_id_lower or "14b" in m_id_lower:
 			return 25.0, "model_id_pattern_13b"
 		elif "8b" in m_id_lower:
@@ -196,14 +210,24 @@ def _load_llm_(
 			layers = cfg.num_hidden_layers
 			vocab_size = getattr(cfg, 'vocab_size', 32000)
 			
+			# For MoE models, multiply by number of experts if available
+			num_experts = getattr(cfg, 'num_experts', 1)
+			expert_multiplier = max(1, num_experts / 8)  # Rough heuristic
+			
 			# Rough formula for transformers
-			params = (12 * layers * hidden * hidden) + (vocab_size * hidden * 2)
+			params = (12 * layers * hidden * hidden * expert_multiplier) + (vocab_size * hidden * 2)
 			size_gb = (params * 2) / (1024 ** 3)
-			return size_gb, "config_architecture_estimate"
+			
+			method = "config_architecture_estimate"
+			if num_experts > 1:
+				method = f"config_moe_estimate_{num_experts}experts"
+			
+			return size_gb, method
 		
 		# Method 4: Default fallback
 		return 10.0, "default_fallback"
-	
+
+
 	estimated_size_gb, estimation_method = estimate_model_size_gb(config, model_id)
 	
 	if verbose:
