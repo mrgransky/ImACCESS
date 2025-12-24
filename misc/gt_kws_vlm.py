@@ -1140,11 +1140,11 @@ def get_vlm_based_labels_opt(
 		
 		if not valid_pairs:
 			if verbose:
-				print(f" [batch {b}]: No valid images in batch => skipping")
+				print(f"\n[BATCH {b}]: No valid images in batch => skipping")
 			continue
 		else:
 			if verbose:
-				print(f" [batch {b}]: {len(valid_pairs)} valid images in batch")
+				print(f"\n[BATCH {b}] contains {len(valid_pairs)} valid images.")
 
 		# Build per-sample messages
 		messages = [
@@ -1183,7 +1183,10 @@ def get_vlm_based_labels_opt(
 					outputs = model.generate(**inputs, **gen_kwargs)
 			
 			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
-			
+
+			if verbose:
+				print(f"\n[BATCH {b}] Decoded responses: {type(decoded)} {len(decoded)}")
+
 			# parallel parsing for this batch
 			parsed_dict = _parse_batch_parallel(
 				decoded_responses=decoded,

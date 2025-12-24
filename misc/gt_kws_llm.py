@@ -1578,18 +1578,17 @@ def get_llm_based_labels_opt(
 	# Load tokenizer and model
 	
 	tokenizer, model = _load_llm_(
-			model_id=model_id,
-			# device=device,
-			use_quantization=use_quantization,
-			verbose=verbose,
+		model_id=model_id,
+		use_quantization=use_quantization,
+		verbose=verbose,
 	)
 	if verbose:
-			valid_count = sum(
-					1 for x in inputs
-					if x is not None and str(x).strip() not in ("", "nan", "None")
-			)
-			null_count = len(inputs) - valid_count
-			print(f"📊 Input stats: {type(inputs)} {len(inputs)} total, {valid_count} valid, {null_count} null")
+		valid_count = sum(
+			1 for x in inputs
+			if x is not None and str(x).strip() not in ("", "nan", "None")
+		)
+		null_count = len(inputs) - valid_count
+		print(f"📊 Input stats: {type(inputs)} {len(inputs)} total, {valid_count} valid, {null_count} null")
 	
 	# NULL-SAFE DEDUPLICATION
 	
@@ -1648,7 +1647,7 @@ def get_llm_based_labels_opt(
 			f"in batches of {batch_size} samples => {total_batches} batches"
 		)
 	
-	# Helper: Parallel parsing of a single batch
+	# Parallel parsing of a single batch
 	def _parse_batch_parallel(
 		decoded_batch: List[str],
 		batch_indices: List[int],
@@ -1657,11 +1656,8 @@ def get_llm_based_labels_opt(
 		max_kws_: int,
 		verbose_: bool,
 	) -> Dict[int, Optional[List[str]]]:
-		"""
-		Parse a batch of decoded responses in parallel and return a dict:
-			{unique_index: parsed_keywords_or_None}
-		"""
 		results_dict: Dict[int, Optional[List[str]]] = {}
+		
 		def _parse_one(local_i: int) -> Tuple[int, Optional[List[str]]]:
 			idx = batch_indices[local_i]
 			try:
@@ -1670,7 +1666,7 @@ def get_llm_based_labels_opt(
 					input_prompt=batch_prompts[local_i],
 					raw_llm_response=decoded_batch[local_i],
 					max_kws=max_kws_,
-					verbose=verbose_, # keep parallel logs quiet
+					verbose=verbose_,
 				)
 				return idx, parsed
 			except Exception as e:
@@ -1678,7 +1674,6 @@ def get_llm_based_labels_opt(
 					print(f"⚠️ Parsing error for batch index {idx}: {e}")
 				return idx, None
 		
-
 		with ThreadPoolExecutor(max_workers=num_workers) as executor:
 			futures = {executor.submit(_parse_one, i): i for i in range(len(decoded_batch))}
 			for future in as_completed(futures):
