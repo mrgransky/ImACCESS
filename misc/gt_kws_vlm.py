@@ -257,6 +257,28 @@ def _load_vlm_(
 		print(f"   • tokenizer padding side  : {tokenizer.padding_side}")
 	
 	# ========== Model loading kwargs ==========
+	# Dynamic Device Map Strategy
+	max_memory = {}
+	vram_buffer_gb = 4  # Reserve 4GB on GPU 0 for inputs/activations
+	
+	for i in range(n_gpus):
+		props = torch.cuda.get_device_properties(i)
+		total_mem_gb = props.total_memory / (1024**3)
+		
+		if i == 0:
+			# Constrain GPU 0 to leave space for batch processing/activations
+			# If the model fits, it stays here. If not, it spills to GPU 1.
+			usable_mem = max(0, total_mem_gb - vram_buffer_gb)
+			max_memory[i] = f"{usable_mem:.0f}GB"
+		else:
+			# Other GPUs can be filled to the max
+			max_memory[i] = f"{total_mem_gb:.0f}GB"
+	
+	if verbose:
+		print(f"[INFO] Dynamic Device Strategy (Fill GPU 0 first):")
+		for gpu_id, mem_limit in max_memory.items():
+			print(f"   • GPU {gpu_id} Limit: {mem_limit}")	
+
 	model_kwargs: Dict[str, Any] = {
 		"low_cpu_mem_usage": True,
 		"trust_remote_code": True,
@@ -264,6 +286,7 @@ def _load_vlm_(
 		"attn_implementation": attn_impl,
 		"dtype": dtype,
 		"device_map": "auto",
+		"max_memory": max_memory,
 	}
 	if use_quantization:
 		model_kwargs["quantization_config"] = quantization_config
