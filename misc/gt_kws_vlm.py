@@ -677,11 +677,14 @@ def get_vlm_based_labels_debug(
 		verbose: bool = False,
 	) -> List[Optional[List[str]]]:
 
+	# ========== Initialize =========
+	num_workers = min(os.cpu_count(), num_workers)
 	if verbose:
 		print(f"\n{'='*100}")
 		print(f"[INIT] VLM-based keyword generation [DEBUG MODE]")
 		print(f"[INIT] Model: {model_id}")
 		print(f"[INIT] Device: {device}")
+		print(f"[INIT] Num workers: {num_workers}")
 		print(f"{'='*100}\n")
 	st_t = time.time()
 	
@@ -1021,7 +1024,6 @@ def get_vlm_based_labels_opt(
 	use_quantization: bool = False,
 	verbose: bool = False,
 ):
-	t0 = time.time()
 	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 	
 	# 1. Check Existing
@@ -1035,12 +1037,19 @@ def get_vlm_based_labels_opt(
 		except Exception:
 			pass
 
+	t0 = time.time()
+	num_workers = min(os.cpu_count(), num_workers)
+
 	# 2. Load Data
+	if verbose:
+		print(f"[DATA] Loading data from {csv_file}...")
 	df = pd.read_csv(csv_file, on_bad_lines="skip", low_memory=False)
 	if "img_path" not in df.columns:
 		raise ValueError("CSV file must have 'img_path' column")
 	image_paths = [p if isinstance(p, str) and os.path.exists(p) else None for p in df["img_path"]]
-	
+	if verbose:
+		print(f"[DATA] Loaded {len(image_paths)} image paths from CSV ({time.time() - t0:.2f}s)")
+
 	# 3. Load Model
 	processor, model = _load_vlm_(model_id, use_quantization, verbose)
 	
@@ -1235,7 +1244,6 @@ def get_vlm_based_labels_opt(
 			print("[WARN] Producer thread did not terminate within 30s. Forcing termination...")
 		load_executor.shutdown(wait=True, cancel_futures=True)
 
-	# Save
 	final = [results[i] for i in orig_to_uniq]
 	df["vlm_keywords"] = final
 
