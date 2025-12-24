@@ -84,69 +84,74 @@ def _load_vlm_(
 	Returns:
 			Tuple of (processor, model)
 	"""
+
 	# ========== Version and CUDA info ==========
 	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
 	if verbose:
-			print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
-			print(f"[INFO] CUDA available?        : {torch.cuda.is_available()} {n_gpus} GPU(s) available: {[torch.cuda.get_device_name(i) for i in range(n_gpus)]}")
-			if torch.cuda.is_available():
-					cur = torch.cuda.current_device()
-					major, minor = torch.cuda.get_device_capability(cur)
-					print(f"[INFO] Compute capability     : {major}.{minor}")
-					print(f"[INFO] BF16 support?          : {torch.cuda.is_bf16_supported()}")
-					print(f"[INFO] CUDA memory allocated  : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-					print(f"[INFO] CUDA memory reserved   : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
-			else:
-					print("[INFO] Running on CPU only")
+		print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
+		print(f"[INFO] CUDA available?        : {torch.cuda.is_available()} {n_gpus} GPU(s) available: {[torch.cuda.get_device_name(i) for i in range(n_gpus)]}")
+		if torch.cuda.is_available():
+			cur = torch.cuda.current_device()
+			major, minor = torch.cuda.get_device_capability(cur)
+			print(f"[INFO] Compute capability     : {major}.{minor}")
+			print(f"[INFO] BF16 support?          : {torch.cuda.is_bf16_supported()}")
+			print(f"[INFO] CUDA memory allocated  : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+			print(f"[INFO] CUDA memory reserved   : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
+		else:
+			print("[INFO] Running on CPU only")
+	
 	# ========== HuggingFace login ==========
-	# Assuming hf_tk and cache_directory are defined globally or passed in context
 	try:
-			if verbose: print(f"[INFO] Logging in to HuggingFace Hub...")
-			huggingface_hub.login(token=hf_tk)
+		if verbose:
+			print(f"[INFO] Logging in to HuggingFace Hub...")
+		huggingface_hub.login(token=hf_tk)
 	except Exception as e:
-			print(f"<!> Failed to login to HuggingFace Hub: {e}")
-			# raise e  # Optional: Decide if login failure should crash the script
+		print(f"<!> Failed to login to HuggingFace Hub: {e}")
+		raise e  # Optional: Decide if login failure should crash the script
+	
 	# ========== Load config ==========
 	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True)
 	if verbose:
-			print("[INFO] Config summary")
-			print(f"   • model_type        : {config.model_type}")
-			print(f"   • architectures     : {config.architectures}")
-			print(f"   • dtype (if set)    : {config.dtype}")
-			print()
+		print("[INFO] Config summary")
+		print(f"   • model_type        : {config.model_type}")
+		print(f"   • architectures     : {config.architectures}")
+		print(f"   • dtype (if set)    : {config.dtype}")
+		print()
+	
 	# ========== Determine model class ==========
 	model_cls = None
 	if config.architectures:
-			cls_name = config.architectures[0]
-			if hasattr(tfs, cls_name):
-					model_cls = getattr(tfs, cls_name)
+		cls_name = config.architectures[0]
+		if hasattr(tfs, cls_name):
+			model_cls = getattr(tfs, cls_name)
 	
 	if model_cls is None:
-			raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
+		raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
+	
 	# ========== Optimal dtype selection ==========
 	def _optimal_dtype(m_id: str) -> torch.dtype:
-			"""Select optimal dtype, forcing float16 for Qwen3-VL MoE if needed."""
-			bf16_ok = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
-			m_id_lower = m_id.lower()
-			
-			# Qwen3-VL MoE: force float16 to avoid scatter() dtype mismatch
-			if "qwen3-vl" in m_id_lower or "qwen3_vl" in m_id_lower:
-					return torch.float16
-			
-			# Other Qwen models: bf16 if available
-			if "qwen" in m_id_lower:
-					return torch.bfloat16 if bf16_ok else torch.float16
-			
-			# LLaVA: float16
-			if "llava" in m_id_lower:
-					return torch.float16
-			
-			# Falcon: bf16 if available
-			if "falcon" in m_id_lower:
-					return torch.bfloat16 if bf16_ok else torch.float16
-			
-			# Default: bf16 if available, else fp16
+		"""Select optimal dtype, forcing float16 for Qwen3-VL MoE if needed."""
+		bf16_ok = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+		m_id_lower = m_id.lower()
+		
+		# Qwen3-VL MoE: force float16 to avoid scatter() dtype mismatch
+		if "qwen3-vl" in m_id_lower or "qwen3_vl" in m_id_lower:
+			return torch.float16
+		
+		# Other Qwen models: bf16 if available
+		if "qwen" in m_id_lower:
 			return torch.bfloat16 if bf16_ok else torch.float16
+		
+		# LLaVA: float16
+		if "llava" in m_id_lower:
+			return torch.float16
+		
+		# Falcon: bf16 if available
+		if "falcon" in m_id_lower:
+			return torch.bfloat16 if bf16_ok else torch.float16
+		
+		# Default: bf16 if available, else fp16
+		return torch.bfloat16 if bf16_ok else torch.float16
 	
 	dtype = _optimal_dtype(model_id)
 	
