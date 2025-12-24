@@ -74,7 +74,7 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - **STRICTLY EXCLUDE ALL** explanatory texts, code blocks, punctuations, tags, or thoughts before or after the **Python LIST**.
 - **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
 - Exclude meaningless abbreviations, numerical words, special characters, or stopwords.
-- The parsable **Python LIST** must be the **VERY LAST THING** in your response.
+- The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""
 
 def _load_llm_(
