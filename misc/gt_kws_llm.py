@@ -1617,28 +1617,29 @@ def get_llm_based_labels_opt(
 		- Per-item fallback via query_local_llm for failed parses
 		- Saves results back to <csv_file>_llm_keywords.csv and .xlsx
 	"""
+	num_workers = min(os.cpu_count(), num_workers)
 	output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
 		
 	if os.path.exists(output_csv):
+		if verbose:
+			print(f"[EXISTING] Found existing results at {output_csv}")
+		df = pd.read_csv(
+			filepath_or_buffer=output_csv,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
+		if 'llm_keywords' in df.columns:
 			if verbose:
-					print(f"Found existing results at {output_csv}...")
-			df = pd.read_csv(
-					filepath_or_buffer=output_csv,
-					on_bad_lines='skip',
-					dtype=dtypes,
-					low_memory=False,
-			)
-			if 'llm_keywords' in df.columns:
-					if verbose:
-							print(f"[EXISTING] Found existing LLM keywords in {output_csv}")
-					return df['llm_keywords'].tolist()
+				print(f"[EXISTING] Found existing LLM keywords! {type(df)} {df.shape} {list(df.columns)}")
+			return df['llm_keywords'].tolist()
+	
 	if verbose:
-			print(f"\n{'=' * 100}")
-			print(f"[INIT] Starting OPTIMIZED batch LLM processing")
-			print(f"[INIT] Model: {model_id}")
-			print(f"[INIT] Batch size: {batch_size}")
-			print(f"[INIT] Device: {device}")
-			print(f"{'=' * 100}\n")
+		print(f"[INIT] Starting OPTIMIZED batch LLM processing with {num_workers} workers")
+		print(f"[INIT] Model: {model_id}")
+		print(f"[INIT] Batch size: {batch_size}")
+		print(f"[INIT] Device: {device}")
+
 	st_t = time.time()
 		
 	try:
@@ -1663,7 +1664,7 @@ def get_llm_based_labels_opt(
 	
 	descriptions = df['enriched_document_description'].tolist()
 	if verbose:
-		print(f"Loaded {len(descriptions)} descriptions")
+		print(f"<> Loaded {type(df)} {df.shape} with {len(descriptions)} descriptions")
 	
 	inputs = descriptions
 	if len(inputs) == 0:
