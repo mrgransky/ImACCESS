@@ -1274,9 +1274,12 @@ def get_vlm_based_labels_opt(
 				)
 			cleanup_threshold = 90
 			if mem_usage_pct > cleanup_threshold: 
-				print(f"[WARN] High memory usage ({mem_usage_pct:.1f}%). Clearing cache...")
-				torch.cuda.empty_cache()
-				gc.collect()
+				need_cleanup = True
+
+		if need_cleanup:
+			print(f"[WARN] High memory usage ({mem_usage_pct:.1f}%). Clearing cache...")
+			torch.cuda.empty_cache() # clears all GPUs
+			gc.collect()
 
 	# ========== Map back to original ordering ==========
 	final = [results[i] for i in orig_to_uniq]
