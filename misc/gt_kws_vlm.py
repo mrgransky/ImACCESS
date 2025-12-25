@@ -1278,7 +1278,7 @@ def get_vlm_based_labels_opt(
 		batch_paths = [verified_paths[i] for i in batch_indices]
 
 		with ThreadPoolExecutor(max_workers=num_workers) as ex:
-			batch_imgs = list(ex.map(load_img, batch_paths))
+			batch_imgs = list(ex.map(_load_, batch_paths))
 		
 		valid_pairs = [
 			(i, img)
@@ -1454,6 +1454,18 @@ def get_vlm_based_labels_opt(
 			pass
 		try:
 			del decoded
+		except NameError:
+			pass
+		try:
+			del batch_paths
+		except NameError:
+			pass
+		try:
+			del batch_imgs
+		except NameError:
+			pass
+		try:
+			del valid_pairs
 		except NameError:
 			pass
 
