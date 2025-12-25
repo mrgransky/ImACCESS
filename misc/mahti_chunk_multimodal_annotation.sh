@@ -1,18 +1,18 @@
 #!/bin/bash
 
 #SBATCH --account=project_2014707
-#SBATCH --job-name=chunks_mm_annot
+#SBATCH --job-name=chunked_mm_annot
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=64
+#SBATCH --mem=96G
 #SBATCH --array=0-40
-#SBATCH --partition=gpumedium
+#SBATCH --partition=gpusmall
 #SBATCH --time=01-12:00:00
-#SBATCH --gres=gpu:a100:4,nvme:250
+#SBATCH --gres=gpu:a100:2,nvme:250
 
 set -euo pipefail
 
@@ -33,7 +33,7 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
-# SMALL MODELS:
+# # SMALL MODELS:
 # LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
 # VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 # LLM_BATCH_SIZE=96
@@ -45,12 +45,12 @@ VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 LLM_BATCH_SIZE=24
 VLM_BATCH_SIZE=16
 
-csv_file="/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv"
-echo "Running on $csv_file"
-echo "LLM_MODEL: $LLM_MODEL"
-echo "VLM_MODEL: $VLM_MODEL"
+DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
+CSV_FILE=${DATASET_DIRECTORY}/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv
+echo "Running (chunked) Multimodal Annotation on $CSV_FILE using $LLM_MODEL and $VLM_MODEL"
+
 python -u gt_kws_multimodal.py \
-	--csv_file $csv_file \
+	--csv_file $CSV_FILE \
 	--num_workers $SLURM_CPUS_PER_TASK \
 	--llm_batch_size $LLM_BATCH_SIZE \
 	--vlm_batch_size $VLM_BATCH_SIZE \
