@@ -328,7 +328,7 @@ def _load_vlm_(
 			max_memory[0] = f"{max(1, single_gpu_capacity):.0f}GB"
 			strategy_desc = f"Single GPU (GPU 0, limit: {max_memory[0]})"
 		else:
-			# Multi-GPU distribution
+			# Multi-GPU distribution [Model Parallelism]
 			for i in range(n_gpus):
 				# Smaller buffer on secondary GPUs
 				if gpu_vram[i] < 10:
@@ -342,7 +342,7 @@ def _load_vlm_(
 				max_memory[i] = f"{max(1, gpu_vram[i] - buffer):.0f}GB"
 			
 			total_usable = sum(float(v.replace('GB', '')) for v in max_memory.values())
-			strategy_desc = f"Multi-GPU ({n_gpus} GPUs, {total_usable:.0f}GB total)"
+			strategy_desc = f"<> too large for a single GPU => Multi-GPU [Model Parallelism] ({n_gpus} GPUs, {total_usable:.0f}GB total)"
 			
 			if verbose:
 				print(f"[INFO] Using multi-GPU strategy:")
