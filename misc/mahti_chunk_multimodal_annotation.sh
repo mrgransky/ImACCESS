@@ -38,12 +38,14 @@ echo "${stars// /*}"
 # VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 # LLM_BATCH_SIZE=96
 # VLM_BATCH_SIZE=48
+# MAX_GENERATED_TOKENS=256
 
 # LARGE MODELS:
 LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 LLM_BATCH_SIZE=24
 VLM_BATCH_SIZE=16
+MAX_GENERATED_TOKENS=256
 
 DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 CSV_FILE=${DATASET_DIRECTORY}/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv
@@ -56,7 +58,7 @@ python -u gt_kws_multimodal.py \
 	--vlm_batch_size $VLM_BATCH_SIZE \
 	--llm_model_id $LLM_MODEL \
 	--vlm_model_id $VLM_MODEL \
-	--max_generated_tks 256 \
+	--max_generated_tks $MAX_GENERATED_TOKENS \
 	--max_keywords 5 \
 	--verbose \
 	# --use_llm_quantization \

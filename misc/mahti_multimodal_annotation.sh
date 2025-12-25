@@ -39,6 +39,7 @@ echo "${stars// /*}"
 # # Base batch sizes (per GPU)
 # BASE_LLM_BATCH_SIZES=(8 8 16 16 24)
 # BASE_VLM_BATCH_SIZES=(8 8 12 12 16)
+# MAX_GENERATED_TOKENS=256
 
 # LARGE MODELS:
 LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
@@ -46,6 +47,7 @@ VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 # Base batch sizes (per GPU)
 BASE_LLM_BATCH_SIZES=(6 6 12 12 16)
 BASE_VLM_BATCH_SIZES=(4 4 8 8 8)
+MAX_GENERATED_TOKENS=256
 
 # Extract GPU count more simply (format: "gpu:type:count")
 NUM_GPUS="${SLURM_GPUS_ON_NODE##*:}"  # Get everything after the last colon
@@ -88,7 +90,7 @@ python -u gt_kws_multimodal.py \
 	--vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
 	--llm_model_id $LLM_MODEL \
 	--vlm_model_id $VLM_MODEL \
-	--max_generated_tks 192 \
+	--max_generated_tks $MAX_GENERATED_TOKENS \
 	--max_keywords 5 \
 	--verbose \
 	# --use_llm_quantization \
