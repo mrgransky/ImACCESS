@@ -1911,6 +1911,7 @@ def get_llm_based_labels_opt(
 		
 		# memory management
 		need_cleanup = False
+		memory_consumed_percent = 0
 		for device_idx in range(torch.cuda.device_count()):
 			mem_total = torch.cuda.get_device_properties(device_idx).total_memory / (1024**3) 
 			mem_allocated = torch.cuda.memory_allocated(device_idx) / (1024**3)
@@ -1924,9 +1925,10 @@ def get_llm_based_labels_opt(
 			cleanup_threshold = 90
 			if mem_usage_pct > cleanup_threshold: 
 				need_cleanup = True
+				memory_consumed_percent += mem_usage_pct
 
 		if need_cleanup:
-			print(f"[WARN] High memory usage ({mem_usage_pct:.1f}%). Clearing cache...")
+			print(f"[WARN] High memory usage ({memory_consumed_percent:.1f}%). Clearing cache...")
 			torch.cuda.empty_cache() # clears all GPUs
 			gc.collect()
 
