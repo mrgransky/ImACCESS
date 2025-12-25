@@ -7,12 +7,12 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
+#SBATCH --cpus-per-task=40
 #SBATCH --mem=64G
-#SBATCH --partition=gpu
+#SBATCH --partition=gpumedium
 #SBATCH --time=03-00:00:00
 #SBATCH --array=0-1
-#SBATCH --gres=gpu:v100:1,nvme:100
+#SBATCH --gres=gpu:v100:4,nvme:200
 
 set -euo pipefail
 
@@ -35,7 +35,7 @@ echo "${stars// /*}"
 
 # Determine number of GPUs from GRES allocation
 GPU_GRES="${SLURM_GPUS_ON_NODE%%,*}"  # Extract "gpu:v100:4" part
-NUM_GPUS="${GPU_GRES##*:}"        		# Extract "4" from gpu part
+NUM_GPUS="${GPU_GRES##*:}"        # Extract "4" from gpu part
 
 # Validate GPU count
 if ! [[ "$NUM_GPUS" =~ ^[0-9]+$ ]]; then

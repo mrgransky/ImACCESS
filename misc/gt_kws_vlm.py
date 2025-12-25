@@ -1122,13 +1122,6 @@ def get_vlm_based_labels_opt(
 ):
 	t0 = time.time()
 
-	# df, uniq_inputs, orig_to_uniq, valid_indices = get_vlm_inputs(
-	# 	csv_file=csv_file,
-	# 	do_dedup=do_dedup,
-	# 	num_workers=num_workers,
-	# 	verbose=verbose,
-	# )
-
 	# ========== Check existing results ==========
 	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 	num_workers = min(os.cpu_count(), num_workers)
@@ -1191,13 +1184,28 @@ def get_vlm_based_labels_opt(
 		except Exception:
 			return None
 
+	def _load_(p: str) -> Optional[Image.Image]:
+		try:
+			with Image.open(p) as im:
+				im = im.convert("RGB")
+				# If already pre-resized in data collection, no need for thumbnail here
+				# im.thumbnail((IMG_MAX_RES, IMG_MAX_RES))
+				return im.copy()
+		except Exception as e:
+			print(f"Error loading image {p}: {e}")
+			return None
+
+
+
 	with ThreadPoolExecutor(max_workers=num_workers) as ex:
 		verified_paths = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc="Verifying images", ncols=100,))
 	
 	valid_indices = [i for i, v in enumerate(verified_paths) if v is not None]
-	valid_imgs = [Image.open(p).convert("RGB") for p in verified_paths if p is not None]
-	print(len(valid_imgs), len(valid_indices), len(verified_paths))
-	print(type(valid_imgs[0]), valid_imgs[0].size, valid_imgs[0].mode)
+
+	# # MEMORY INTENSIVE! (DO NOT USE)
+	# valid_imgs = [Image.open(p).convert("RGB") for p in verified_paths if p is not None]
+	# print(len(valid_imgs), len(valid_indices), len(verified_paths))
+	# print(type(valid_imgs[0]), valid_imgs[0].size, valid_imgs[0].mode)
 
 	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
 	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
@@ -1226,7 +1234,6 @@ def get_vlm_based_labels_opt(
 		for k, v in gen_kwargs.items():
 			print(f"   • {k}: {v}")
 	
-
 	def _parse_batch_parallel(
 		decoded_responses: List[str],
 		batch_indices: List[int],
@@ -1268,10 +1275,16 @@ def get_vlm_based_labels_opt(
 	# ========== Process batches ==========
 	for b in tqdm(range(total_batches), desc="Processing (visual) batches(PARALLEL OPTIMIZED)", ncols=100):
 		batch_indices = valid_indices[b * batch_size:(b + 1) * batch_size]
+		batch_paths = [verified_paths[i] for i in batch_indices]
+
+		with ThreadPoolExecutor(max_workers=num_workers) as ex:
+			batch_imgs = list(ex.map(load_img, batch_paths))
+		
 		valid_pairs = [
 			(i, img)
-			for i, img in zip(batch_indices, [valid_imgs[i] for i in batch_indices])
+			for i, img in zip(batch_indices, batch_imgs) if img is not None
 		]
+		
 		if not valid_pairs:
 			if verbose:
 				print(f"\n[BATCH {b}]: No valid images in batch => skipping")
