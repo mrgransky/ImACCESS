@@ -1356,18 +1356,23 @@ def get_vlm_based_labels_opt(
 							],
 						}
 					]
+					if verbose:
+						print(f"\n[Fallback] Processing image {uniq_idx}: {type(img)} {img.size}...")
 					chat = processor.apply_chat_template(
 						single_message,
 						tokenize=False,
 						add_generation_prompt=True,
 					)
+					if verbose:
 					single_inputs = processor(
 						text=[chat],
 						images=[img],
 						return_tensors="pt",
 					).to(next(model.parameters()).device)
+
 					if single_inputs.pixel_values.numel() == 0:
 						raise ValueError(f"Pixel values of {uniq_idx} are empty: {single_inputs.pixel_values.shape}")
+
 					with torch.no_grad():
 						with torch.amp.autocast(
 							device_type=device.type,
@@ -1375,14 +1380,19 @@ def get_vlm_based_labels_opt(
 							dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 						):
 							out = model.generate(**single_inputs, **gen_kwargs)
+
 					decoded_single = processor.decode(out[0], skip_special_tokens=True)
+
+					if verbose:
+						print(f"\n[✅ Sequential Fallback ✅] image {uniq_idx}:\n{type(decoded_single)} {len(decoded_single)}\n")
+
 					results[uniq_idx] = parse_vlm_response(
 						model_id=model_id,
 						raw_response=decoded_single,
 						verbose=verbose,
 					)
 				except Exception as e_fallback:
-					print(f"\n[Fallback ❌] image {uniq_idx}:\n{e_fallback}\n")
+					print(f"\n[❌ Sequential Fallback ❌] image {uniq_idx}:\n{e_fallback}\nNo keywords extracted.\n")
 					results[uniq_idx] = None
 		
 
