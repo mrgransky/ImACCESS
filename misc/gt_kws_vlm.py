@@ -1,3 +1,4 @@
+from re import I
 from utils import *
 
 # llama:
@@ -55,6 +56,95 @@ Identify no more than {k} highly prominent, factual, and distinct **KEYWORDS** t
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response."""
 
+def get_vlm_inputs(
+	csv_file: str,
+	do_dedup: bool,
+	num_workers: int,
+	verbose: bool,
+) -> Tuple[pd.DataFrame, List[Optional[str]], List[int], List[int]]:
+	"""
+	Load and prepare inputs for VLM processing.
+	
+	Returns:
+			df: Original dataframe
+			uniq_inputs: List of unique image paths (deduplicated)
+			orig_to_uniq: Mapping from original indices to unique indices
+			valid_indices: Indices of verified images in uniq_inputs
+	"""
+	if verbose:
+			print(f"[PREP] Loading data from {csv_file}...")
+	
+	# Load CSV
+	df = pd.read_csv(
+			filepath_or_buffer=csv_file,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+	)
+	
+	if "img_path" not in df.columns:
+			raise ValueError(f"CSV must have 'img_path' column, found: {df.columns}")
+	
+	image_paths = [
+			p if isinstance(p, str) and os.path.exists(p) else None 
+			for p in df["img_path"]
+	]
+	
+	# Deduplication
+	if do_dedup:
+			if verbose:
+					print(f"[PREP] Deduplicating {len(image_paths)} paths...")
+			
+			uniq_map: Dict[str, int] = {}
+			uniq_inputs: List[Optional[str]] = []
+			orig_to_uniq: List[int] = []
+			
+			for path in image_paths:
+					key = str(path) if path else "__NULL__"
+					if key not in uniq_map:
+							uniq_map[key] = len(uniq_inputs)
+							uniq_inputs.append(path if path else None)
+					orig_to_uniq.append(uniq_map[key])
+			
+			if verbose:
+					print(f"[PREP] Reduced to {len(uniq_inputs)} unique images")
+	else:
+			uniq_inputs = image_paths
+			orig_to_uniq = list(range(len(image_paths)))
+	
+	# Verify images in parallel
+	if verbose:
+			print(f"[PREP] Verifying images with {num_workers} workers...")
+	
+	def verify_image(p: Optional[str]) -> Optional[str]:
+			"""Verify image can be opened."""
+			if p is None or not os.path.exists(p):
+					return None
+			try:
+					with Image.open(p) as im:
+							im.verify()
+					return p
+			except Exception:
+					return None
+	
+	with ThreadPoolExecutor(max_workers=num_workers) as ex:
+		verified = list(
+			tqdm(
+				ex.map(verify_image, uniq_inputs),
+				total=len(uniq_inputs),
+				desc="Verifying images",
+				ncols=100,
+			)
+		)
+	
+	# Get indices of valid images
+	valid_indices = [i for i, v in enumerate(verified) if v is not None]
+	
+	if verbose:
+		print(f"[PREP] {len(valid_indices)} valid images out of {len(uniq_inputs)}")
+	
+	return df, uniq_inputs, orig_to_uniq, valid_indices
+
 def _load_vlm_(
 	model_id: str,
 	use_quantization: bool = False,
@@ -83,6 +173,7 @@ def _load_vlm_(
 		Tuple of (processor, model)
 	"""
 	if verbose:
+		print(f"\n{'='*110}")
 		print(f"[MODEL] Loading {model_id}...")
 
 	# ========== Version and CUDA info ==========
@@ -219,26 +310,24 @@ def _load_vlm_(
 	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
 		tokenizer.padding_side = "left"
 	
-	# ========== model size estimation ==========
-	def get_estimated_gb_size(m_id: str) -> tuple[float, str]:
+	def get_estimated_gb_size(m_id: str) -> float:
 		info = huggingface_hub.model_info(m_id, token=hf_tk)
-		if verbose:
-			print(info)
+		# if verbose:
+		# 	print(info)
 		try:
 			if hasattr(info, "safetensors") and info.safetensors:
 				total_bytes = info.safetensors.total
 				if total_bytes > 0:
 					size_gb = total_bytes / (1024 ** 3)
-					return size_gb, "hub_safetensors_actual"
+					return size_gb
 		except Exception as e:
 			print(f"<!> Failed to estimate model size from safetensors: {e}")
 			raise e
 
-	estimated_size_gb, estimation_method = get_estimated_gb_size(model_id)
+	estimated_size_gb = get_estimated_gb_size(model_id)
 	
 	if verbose:
 		print(f"[INFO] Estimated model size: ~{estimated_size_gb:.1f} GB (fp16)")
-		print(f"   • Estimation method: {estimation_method}")
 	
 	# ========== Dynamic Device Strategy with Adaptive VRAM Buffering ==========
 	max_memory = {}
@@ -370,6 +459,7 @@ def _load_vlm_(
 	model.eval()
 	
 	# ========== Model Info & Verification ==========
+
 	if verbose:
 		print(f"\n[MODEL] {model_id} {model.__class__.__name__}")
 		try:
@@ -442,6 +532,8 @@ def _load_vlm_(
 						print(f"   {k}: {v}")
 			elif not disk_layers and not cpu_layers:
 				print(f"\n✅ All layers on GPU - optimal performance!")
+		print(f"[MODEL] Loading of {model_id} complete!")
+		print(f"{'='*110}\n")
 
 	return processor, model
 
@@ -1030,6 +1122,13 @@ def get_vlm_based_labels_opt(
 ):
 	t0 = time.time()
 
+	# df, uniq_inputs, orig_to_uniq, valid_indices = get_vlm_inputs(
+	# 	csv_file=csv_file,
+	# 	do_dedup=do_dedup,
+	# 	num_workers=num_workers,
+	# 	verbose=verbose,
+	# )
+
 	# ========== Check existing results ==========
 	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 	num_workers = min(os.cpu_count(), num_workers)
@@ -1053,7 +1152,7 @@ def get_vlm_based_labels_opt(
 
 	# ========== Load data ==========
 	if verbose:
-		print(f"[DATA] Loading data from {csv_file}...")
+		print(f"[PREP] Loading data from {csv_file}...")
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
 		on_bad_lines='skip',
@@ -1066,26 +1165,7 @@ def get_vlm_based_labels_opt(
 	n_total = len(image_paths)
 	if verbose:
 		print(f"[DATA] Loaded {type(df)} {df.shape} with {n_total} image paths from CSV ({time.time() - t0:.2f}s)")
-	
-	processor, model = _load_vlm_(
-		model_id=model_id,
-		use_quantization=use_quantization,
-		verbose=verbose,
-	)
 
-	# ========== Prepare generation kwargs ==========
-	gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True)
-	if hasattr(model, "generation_config"):
-		gen_config = model.generation_config
-		gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
-		gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
-	else:
-		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
-	if verbose:
-		print(f"\n[GEN CONFIG] Using generation parameters:")
-		for k, v in gen_kwargs.items():
-			print(f"   • {k}: {v}")
-	
 	# ========== Prepare inputs (dedup + verification) ==========
 	if do_dedup:
 		uniq_map: Dict[str, int] = {}
@@ -1112,17 +1192,41 @@ def get_vlm_based_labels_opt(
 			return None
 
 	with ThreadPoolExecutor(max_workers=num_workers) as ex:
-		verified = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc="Verifying images", ncols=100,))
+		verified_paths = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc="Verifying images", ncols=100,))
 	
-	valid_indices = [i for i, v in enumerate(verified) if v is not None]
-	total_batches = math.ceil(len(valid_indices) / batch_size)
+	valid_indices = [i for i, v in enumerate(verified_paths) if v is not None]
+	valid_imgs = [Image.open(p).convert("RGB") for p in verified_paths if p is not None]
+	print(len(valid_imgs), len(valid_indices), len(verified_paths))
+	print(type(valid_imgs[0]), valid_imgs[0].size, valid_imgs[0].mode)
+
 	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
 	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
 
+	total_batches = math.ceil(len(valid_indices) / batch_size)
 	if verbose:
 		print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
 
-	# ========== parallel parsing for one batch ==========
+	# ========== Load model ==========
+	processor, model = _load_vlm_(
+		model_id=model_id,
+		use_quantization=use_quantization,
+		verbose=verbose,
+	)
+
+	# ========== Prepare generation kwargs ==========
+	gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True)
+	if hasattr(model, "generation_config"):
+		gen_config = model.generation_config
+		gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
+		gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
+	else:
+		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
+	if verbose:
+		print(f"\n[GEN CONFIG] Using generation parameters:")
+		for k, v in gen_kwargs.items():
+			print(f"   • {k}: {v}")
+	
+
 	def _parse_batch_parallel(
 		decoded_responses: List[str],
 		batch_indices: List[int],
@@ -1164,21 +1268,12 @@ def get_vlm_based_labels_opt(
 	# ========== Process batches ==========
 	for b in tqdm(range(total_batches), desc="Processing (visual) batches(PARALLEL OPTIMIZED)", ncols=100):
 		batch_indices = valid_indices[b * batch_size:(b + 1) * batch_size]
+		print(batch_indices)
+		valid_pairs = [
+			(i, img)
+			for i, img in zip(batch_indices, [valid_imgs[i] for i in batch_indices])
+		]
 
-		def load_img(p: str) -> Optional[Image.Image]:
-			try:
-				with Image.open(p).convert("RGB") as im:
-					# im.thumbnail((IMG_MAX_RES, IMG_MAX_RES)) # already done in preprocessing
-					return im.copy()
-			except Exception as e:
-				print(f"Error loading image {p}: {e}")
-				return None
-
-		with ThreadPoolExecutor(max_workers=num_workers) as ex:
-			imgs = list(ex.map(load_img, [verified[i] for i in batch_indices]))
-
-		valid_pairs = [(i, img) for i, img in zip(batch_indices, imgs) if img is not None]
-		
 		if not valid_pairs:
 			if verbose:
 				print(f"\n[BATCH {b}]: No valid images in batch => skipping")
@@ -1416,7 +1511,6 @@ def main():
 		print(f"Available GPU(s) = {torch.cuda.device_count()}")
 		print(f"GPU: {gpu_name} {total_mem:.2f} GB VRAM")
 		print(f"\t• CUDA: {torch.version.cuda} Compute Capability: {torch.cuda.get_device_capability(args.device)}")
-
 
 	if args.image_path:
 		keywords = get_vlm_based_labels_single(
