@@ -34,12 +34,12 @@ echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
 # Determine number of GPUs from GRES allocation
-GPU_GRES="${SLURM_JOB_GRES%%,*}"  # Extract "gpu:a100:4" part
+GPU_GRES="${SLURM_GPUS_ON_NODE%%,*}"  # Extract "gpu:a100:4" part
 NUM_GPUS="${GPU_GRES##*:}"        # Extract "4" from gpu part
 
 # Validate GPU count
 if ! [[ "$NUM_GPUS" =~ ^[0-9]+$ ]]; then
-	echo "Warning: Could not parse GPU count from '$SLURM_JOB_GRES', defaulting to 1"
+	echo "Warning: Could not parse GPU count from '$SLURM_GPUS_ON_NODE', defaulting to 1"
 	NUM_GPUS=1
 fi
 
