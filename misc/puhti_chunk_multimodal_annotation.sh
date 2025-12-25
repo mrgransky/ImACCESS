@@ -33,19 +33,38 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
-# SMALL MODELS:
-LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
-VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
-LLM_BATCH_SIZE=24
-VLM_BATCH_SIZE=16
-MAX_GENERATED_TOKENS=256
+# Determine number of GPUs from GRES allocation
+GPU_GRES="${SLURM_JOB_GRES%%,*}"  # Extract "gpu:v100:4" part
+NUM_GPUS="${GPU_GRES##*:}"        # Extract "4" from gpu part
 
-# # LARGE MODELS:
-# LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
-# VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
-# LLM_BATCH_SIZE=16
-# VLM_BATCH_SIZE=24
-# MAX_GENERATED_TOKENS=128
+# Validate GPU count
+if ! [[ "$NUM_GPUS" =~ ^[0-9]+$ ]]; then
+	echo "Warning: Could not parse GPU count from '$SLURM_JOB_GRES', defaulting to 1"
+	NUM_GPUS=1
+fi
+
+echo "Detected $NUM_GPUS GPU(s) for this job"
+
+# Select model configuration based on GPU count
+if [ "$NUM_GPUS" -gt 1 ]; then
+	echo "Using LARGE models (multi-GPU configuration)"
+	LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
+	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
+	LLM_BATCH_SIZE=16
+	VLM_BATCH_SIZE=24
+	MAX_GENERATED_TOKENS=128
+else
+	echo "Using SMALL models (single-GPU configuration)"
+	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
+	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
+	LLM_BATCH_SIZE=24
+	VLM_BATCH_SIZE=16
+	MAX_GENERATED_TOKENS=256
+fi
+
+echo "LLM Model: $LLM_MODEL (batch size: $LLM_BATCH_SIZE)"
+echo "VLM Model: $VLM_MODEL (batch size: $VLM_BATCH_SIZE)"
+echo "Max generated tokens: $MAX_GENERATED_TOKENS"
 
 DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 CSV_FILE=${DATASET_DIRECTORY}/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv

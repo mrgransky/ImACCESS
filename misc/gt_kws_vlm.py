@@ -219,56 +219,22 @@ def _load_vlm_(
 	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
 		tokenizer.padding_side = "left"
 	
-	# ========== Improved model size estimation ==========
-	def estimate_model_size_gb(cfg, m_id: str) -> tuple[float, str]:
-		"""
-		Estimate model size in GB (fp16) using multiple heuristics.
-		Returns: (size_gb, method_used)
-		"""
-		m_id_lower = m_id.lower()
-		
-		# Method 1: Known model patterns (most reliable for common models)
-		if "72b" in m_id_lower:
-			return 135.0, "model_id_pattern_72b"
-		elif "32b" in m_id_lower or "33b" in m_id_lower:
-			return 62.0, "model_id_pattern_32b"
-		elif "13b" in m_id_lower:
-			return 25.0, "model_id_pattern_13b"
-		elif "8b" in m_id_lower:
-			return 15.0, "model_id_pattern_8b"
-		elif "7b" in m_id_lower:
-			return 13.0, "model_id_pattern_7b"
-		elif "3b" in m_id_lower:
-			return 6.0, "model_id_pattern_3b"
-		elif "2b" in m_id_lower:
-			return 4.0, "model_id_pattern_2b"
-		elif "1.5b" in m_id_lower:
-			return 3.0, "model_id_pattern_1.5b"
-		elif "1b" in m_id_lower:
-			return 2.0, "model_id_pattern_1b"
-		elif "0.5b" in m_id_lower or "500m" in m_id_lower:
-			return 1.0, "model_id_pattern_500m"
-		
-		# Method 2: Check config attributes
-		if hasattr(cfg, 'num_parameters'):
-			params = cfg.num_parameters
-			return (params * 2) / (1024 ** 3), "config_num_parameters"
-		
-		# Method 3: Estimate from hidden size and num layers
-		if hasattr(cfg, 'hidden_size') and hasattr(cfg, 'num_hidden_layers'):
-			hidden = cfg.hidden_size
-			layers = cfg.num_hidden_layers
-			vocab_size = getattr(cfg, 'vocab_size', 32000)
-			
-			# Estimate parameters
-			params = (12 * layers * hidden * hidden) + (vocab_size * hidden * 2)
-			size_gb = (params * 2) / (1024 ** 3)
-			return size_gb, "config_architecture_estimate"
-		
-		# Method 4: Default fallback
-		return 10.0, "default_fallback"
+	# ========== model size estimation ==========
+	def get_estimated_gb_size(m_id: str) -> tuple[float, str]:
+		info = huggingface_hub.model_info(m_id, token=hf_tk)
+		if verbose:
+			print(info)
+		try:
+			if hasattr(info, "safetensors") and info.safetensors:
+				total_bytes = info.safetensors.total
+				if total_bytes > 0:
+					size_gb = total_bytes / (1024 ** 3)
+					return size_gb, "hub_safetensors_actual"
+		except Exception as e:
+			print(f"<!> Failed to estimate model size from safetensors: {e}")
+			raise e
 
-	estimated_size_gb, estimation_method = estimate_model_size_gb(config, model_id)
+	estimated_size_gb, estimation_method = get_estimated_gb_size(model_id)
 	
 	if verbose:
 		print(f"[INFO] Estimated model size: ~{estimated_size_gb:.1f} GB (fp16)")
