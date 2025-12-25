@@ -1,15 +1,15 @@
 #!/bin/bash
 
 #SBATCH --account=project_2014707
-#SBATCH --job-name=multimodal_annotation
+#SBATCH --job-name=chunks_mm_annot
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=40
-#SBATCH --mem=96G
-#SBATCH --array=0-4
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=64G
+#SBATCH --array=0-40
 #SBATCH --partition=gpumedium
 #SBATCH --time=01-12:00:00
 #SBATCH --gres=gpu:a100:4,nvme:250
@@ -33,62 +33,30 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
-# # SMALL MODELS:
+# SMALL MODELS:
 # LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
 # VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
-# # Base batch sizes (per GPU)
-# BASE_LLM_BATCH_SIZES=(8 8 16 16 24)
-# BASE_VLM_BATCH_SIZES=(8 8 12 12 16)
+# LLM_BATCH_SIZE=96
+# VLM_BATCH_SIZE=48
 
 # LARGE MODELS:
 LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
-# Base batch sizes (per GPU)
-BASE_LLM_BATCH_SIZES=(6 6 12 12 16)
-BASE_VLM_BATCH_SIZES=(4 4 8 8 8)
+LLM_BATCH_SIZE=24
+VLM_BATCH_SIZE=16
 
-# Extract GPU count more simply (format: "gpu:type:count")
-NUM_GPUS="${SLURM_GPUS_ON_NODE##*:}"  # Get everything after the last colon
-
-# Validate it's a number, fallback to 1
-if ! [[ "$NUM_GPUS" =~ ^[0-9]+$ ]]; then
-	echo "Warning: Could not parse GPU count from GRES, using 1"
-	NUM_GPUS=1
-fi
-
-echo "Detected $NUM_GPUS GPUs, scaling batch sizes accordingly"
-
-# Scale batch sizes by number of GPUs
-LLM_BATCH_SIZES=()
-VLM_BATCH_SIZES=()
-for i in "${!BASE_LLM_BATCH_SIZES[@]}"; do
-	LLM_BATCH_SIZES[$i]=$((BASE_LLM_BATCH_SIZES[i] * NUM_GPUS))
-	VLM_BATCH_SIZES[$i]=$((BASE_VLM_BATCH_SIZES[i] * NUM_GPUS))
-done
-
-echo "Scaled LLM batch sizes: ${LLM_BATCH_SIZES[@]}"
-echo "Scaled VLM batch sizes: ${VLM_BATCH_SIZES[@]}"
-
-DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
-DATASETS=(
-	${DATASET_DIRECTORY}/HISTORY_X4
-	${DATASET_DIRECTORY}/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
-	${DATASET_DIRECTORY}/EUROPEANA_1900-01-01_1970-12-31
-	${DATASET_DIRECTORY}/WWII_1939-09-01_1945-09-02
-	${DATASET_DIRECTORY}/SMU_1900-01-01_1970-12-31
-)
-CSV_FILE=${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv
-
-echo "Running Multimodal Annotation on $CSV_FILE using $LLM_MODEL and $VLM_MODEL"
-
+csv_file="/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv"
+echo "Running on $csv_file"
+echo "LLM_MODEL: $LLM_MODEL"
+echo "VLM_MODEL: $VLM_MODEL"
 python -u gt_kws_multimodal.py \
-	--csv_file $CSV_FILE \
+	--csv_file $csv_file \
 	--num_workers $SLURM_CPUS_PER_TASK \
-	--llm_batch_size ${LLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
-	--vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
+	--llm_batch_size $LLM_BATCH_SIZE \
+	--vlm_batch_size $VLM_BATCH_SIZE \
 	--llm_model_id $LLM_MODEL \
 	--vlm_model_id $VLM_MODEL \
-	--max_generated_tks 192 \
+	--max_generated_tks 256 \
 	--max_keywords 5 \
 	--verbose \
 	# --use_llm_quantization \
