@@ -750,7 +750,7 @@ def get_vlm_based_labels_single(
 		add_generation_prompt=True,
 	)
 	
-	single_inputs = processor(
+	input_single = processor(
 		images=img,
 		text=chat_prompt,
 		padding=True,
@@ -758,10 +758,10 @@ def get_vlm_based_labels_single(
 	).to(next(model.parameters()).device)
 
 	if verbose:
-		print(f"[INPUT] Pixel: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
+		print(f"[INPUT] Pixel: {input_single.pixel_values.shape} {input_single.pixel_values.dtype} {input_single.pixel_values.device}")
 
-	if single_inputs.pixel_values.numel() == 0:
-		raise ValueError(f"Pixel values of {image_path} are empty: {single_inputs.pixel_values.shape}")
+	if input_single.pixel_values.numel() == 0:
+		raise ValueError(f"Pixel values of {image_path} are empty: {input_single.pixel_values.shape}")
 
 	gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True,)
 	# Use model’s built-in defaults unless the user overrides
@@ -783,7 +783,7 @@ def get_vlm_based_labels_single(
 			enabled=torch.cuda.is_available(), 
 			dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 		):
-			outputs = model.generate(**single_inputs, **gen_kwargs)	
+			outputs = model.generate(**input_single, **gen_kwargs)	
 
 	# Decode response
 	response = processor.decode(outputs[0], skip_special_tokens=True)
@@ -964,7 +964,7 @@ def get_vlm_based_labels_debug(
 					add_generation_prompt=True,
 				)
 				
-				single_inputs = processor(
+				input_single = processor(
 					images=img,
 					text=chat_prompt,
 					padding=True,
@@ -972,10 +972,10 @@ def get_vlm_based_labels_debug(
 				).to(next(model.parameters()).device)
 
 				if verbose:
-					print(f"[INPUT] Pixel: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
+					print(f"[INPUT] Pixel: {input_single.pixel_values.shape} {input_single.pixel_values.dtype} {input_single.pixel_values.device}")
 
-				if single_inputs.pixel_values.numel() == 0:
-					raise ValueError(f"Pixel values of {img_path} are empty: {single_inputs.pixel_values.shape}")
+				if input_single.pixel_values.numel() == 0:
+					raise ValueError(f"Pixel values of {img_path} are empty: {input_single.pixel_values.shape}")
 				
 				gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True,)
 				# Use model’s built-in defaults unless the user overrides
@@ -997,7 +997,7 @@ def get_vlm_based_labels_debug(
 						enabled=torch.cuda.is_available(), 
 						dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 					):
-						outputs = model.generate(**single_inputs, **gen_kwargs)
+						outputs = model.generate(**input_single, **gen_kwargs)
 				
 				# Decode response
 				response = processor.decode(outputs[0], skip_special_tokens=True)
@@ -1038,8 +1038,8 @@ def get_vlm_based_labels_debug(
 					unique_results[idx] = None
 		
 		# Clean up after each image
-		if 'single_inputs' in locals():
-			del single_inputs
+		if 'input_single' in locals():
+			del input_single
 		if 'outputs' in locals():
 			del outputs
 		if 'response' in locals():
@@ -1358,20 +1358,24 @@ def get_vlm_based_labels_opt(
 					]
 					if verbose:
 						print(f"\n[Fallback] Processing image {uniq_idx}: {type(img)} {img.size}...")
-					chat = processor.apply_chat_template(
+					chat_single = processor.apply_chat_template(
 						single_message,
 						tokenize=False,
 						add_generation_prompt=True,
 					)
-					if verbose:
-					single_inputs = processor(
-						text=[chat],
+
+					input_single = processor(
+						text=[chat_single],
 						images=[img],
 						return_tensors="pt",
+						padding=True,
 					).to(next(model.parameters()).device)
+					
+					if verbose:
+						print(f"[INPUT] Pixel: {input_single.pixel_values.shape} {input_single.pixel_values.dtype} {input_single.pixel_values.device}")
 
-					if single_inputs.pixel_values.numel() == 0:
-						raise ValueError(f"Pixel values of {uniq_idx} are empty: {single_inputs.pixel_values.shape}")
+					if input_single.pixel_values.numel() == 0:
+						raise ValueError(f"Pixel values of {uniq_idx} are empty: {input_single.pixel_values.shape}")
 
 					with torch.no_grad():
 						with torch.amp.autocast(
@@ -1379,9 +1383,9 @@ def get_vlm_based_labels_opt(
 							enabled=torch.cuda.is_available(),
 							dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 						):
-							out = model.generate(**single_inputs, **gen_kwargs)
+							out_single = model.generate(**input_single, **gen_kwargs)
 
-					decoded_single = processor.decode(out[0], skip_special_tokens=True)
+					decoded_single = processor.decode(out_single[0], skip_special_tokens=True)
 
 					if verbose:
 						print(f"\n[✅ Sequential Fallback ✅] image {uniq_idx}:\n{type(decoded_single)} {len(decoded_single)}\n")
@@ -1392,9 +1396,36 @@ def get_vlm_based_labels_opt(
 						verbose=verbose,
 					)
 				except Exception as e_fallback:
-					print(f"\n[❌ Sequential Fallback ❌] image {uniq_idx}:\n{e_fallback}\nNo keywords extracted.\n")
+					print(f"\n[❌ Sequential Fallback ❌] image {uniq_idx}:\n{e_fallback}\nNO keywords extracted.\n")
 					results[uniq_idx] = None
-		
+				
+				if verbose:
+					print(f"\n[BATCH {b} Sequential Fallback] Deleting sequential fallback tensors for image: {uniq_idx}...")
+				try:
+					del single_message
+				except NameError:
+					pass
+				try:
+					del chat_single
+				except NameError:
+					pass
+				try:
+					del input_single
+				except NameError:
+					pass
+				try:
+					del out_single
+				except NameError:
+					pass
+				try:
+					del decoded_single
+				except NameError:
+					pass
+				if verbose:
+					print(f"\n[BATCH {b} Sequential Fallback] Clearing cache for image: {uniq_idx}...")
+				if torch.cuda.is_available():
+					torch.cuda.empty_cache()
+				gc.collect()
 
 		# Clean up batch tensors immediately after use
 		if verbose: 
