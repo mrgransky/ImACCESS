@@ -1487,7 +1487,7 @@ def get_vlm_based_labels_opt(
 
 @measure_execution_time
 def main():
-	parser = argparse.ArgumentParser(description="VLLM-based keyword extraction for Historical Archives Dataset")
+	parser = argparse.ArgumentParser(description="VLLM-instruct-based keyword annotation for Historical Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, default=None, help="Path to the metadata CSV file")
 	parser.add_argument("--image_path", '-i', type=str, default=None, help="img path [or URL]")
 	parser.add_argument("--model_id", '-vlm', type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace Vision-Language model ID")

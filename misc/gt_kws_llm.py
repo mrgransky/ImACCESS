@@ -2020,7 +2020,7 @@ def get_llm_based_labels_opt(
 
 @measure_execution_time
 def main():
-	parser = argparse.ArgumentParser(description="Textual-label annotation for Historical Archives Dataset using instruction-tuned LLMs")
+	parser = argparse.ArgumentParser(description="LLM-instruct-based keyword annotation for Historical Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, help="Path to the metadata CSV file")
 	parser.add_argument("--model_id", '-llm', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace model ID")
 	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
@@ -2032,7 +2032,6 @@ def main():
 	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
-
 	args = parser.parse_args()
 	set_seeds(seed=42, debug=args.debug)
 	args.device = torch.device(args.device)
