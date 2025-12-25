@@ -1268,12 +1268,10 @@ def get_vlm_based_labels_opt(
 	# ========== Process batches ==========
 	for b in tqdm(range(total_batches), desc="Processing (visual) batches(PARALLEL OPTIMIZED)", ncols=100):
 		batch_indices = valid_indices[b * batch_size:(b + 1) * batch_size]
-		print(batch_indices)
 		valid_pairs = [
 			(i, img)
 			for i, img in zip(batch_indices, [valid_imgs[i] for i in batch_indices])
 		]
-
 		if not valid_pairs:
 			if verbose:
 				print(f"\n[BATCH {b}]: No valid images in batch => skipping")
@@ -1344,20 +1342,23 @@ def get_vlm_based_labels_opt(
 
 			if verbose:
 				print(f"\tFalling back to SEQUENTIAL processing for {len(valid_pairs)} images in this batch.")
+
 			# process each image sequentially
 			for uniq_idx, img in tqdm(valid_pairs, desc="Processing batch images [SEQUENTIAL]", ncols=100):
+				if verbose:
+					print(f"\n[Fallback] Processing image {uniq_idx}: {type(img)} {img.size}\n")
+
+				single_message = [
+					{
+						"role": "user",
+						"content": [
+							{"type": "text", "text": base_prompt},
+							{"type": "image", "image": img},
+						],
+					}
+				]
+
 				try:
-					single_message = [
-						{
-							"role": "user",
-							"content": [
-								{"type": "text", "text": base_prompt},
-								{"type": "image", "image": img},
-							],
-						}
-					]
-					if verbose:
-						print(f"\n[Fallback] Processing image {uniq_idx}: {type(img)} {img.size}...")
 					chat_single = processor.apply_chat_template(
 						single_message,
 						tokenize=False,
