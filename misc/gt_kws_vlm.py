@@ -397,7 +397,7 @@ def _load_vlm_(
 				max_memory[i] = f"{max(1, gpu_vram[i] - buffer):.0f}GB"
 			
 			total_usable = sum(float(v.replace('GB', '')) for v in max_memory.values())
-			strategy_desc = f"<> too large for a single GPU => Multi-GPU [Model Parallelism] ({n_gpus} GPUs, {total_usable:.0f}GB total)"
+			strategy_desc = f"<> too large to fit {model_id} in a single GPU => Multi-GPU [Model Parallelism] ({n_gpus} Available GPUs, {total_usable:.0f}GB total)"
 			
 			if verbose:
 				print(f"[INFO] Using multi-GPU strategy:")

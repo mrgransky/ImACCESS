@@ -61,7 +61,6 @@ else
 	MAX_GENERATED_TOKENS=256
 fi
 
-
 # Scale batch sizes by number of GPUs
 LLM_BATCH_SIZES=()
 VLM_BATCH_SIZES=()

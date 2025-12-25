@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
-#SBATCH --mem=96G
+#SBATCH --mem=64G
 #SBATCH --array=0-40
 #SBATCH --partition=gpusmall
 #SBATCH --time=01-12:00:00
@@ -47,14 +47,14 @@ echo "Detected $NUM_GPUS GPU(s) for this job"
 
 # Select model configuration based on GPU count
 if [ "$NUM_GPUS" -gt 1 ]; then
-	echo "Using LARGE models (multi-GPU configuration)"
+	echo "LARGE models (multi-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 	LLM_BATCH_SIZE=16
 	VLM_BATCH_SIZE=24
 	MAX_GENERATED_TOKENS=256
 else
-	echo "Using SMALL models (single-GPU configuration)"
+	echo "SMALL models (single-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
 	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 	LLM_BATCH_SIZE=24
