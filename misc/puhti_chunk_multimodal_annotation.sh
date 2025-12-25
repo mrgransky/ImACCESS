@@ -12,7 +12,7 @@
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
 #SBATCH --array=0-54
-#SBATCH --gres=gpu:v100:4,nvme:100
+#SBATCH --gres=gpu:v100:1,nvme:100
 
 set -euo pipefail
 
@@ -47,18 +47,18 @@ echo "Detected $NUM_GPUS GPU(s) for this job"
 
 # Select model configuration based on GPU count
 if [ "$NUM_GPUS" -gt 1 ]; then
-	echo "Using LARGE models (multi-GPU configuration)"
+	echo "LARGE models (multi-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
-	LLM_BATCH_SIZE=16
-	VLM_BATCH_SIZE=24
+	LLM_BATCH_SIZE=12
+	VLM_BATCH_SIZE=8
 	MAX_GENERATED_TOKENS=128
 else
-	echo "Using SMALL models (single-GPU configuration)"
+	echo "SMALL models (single-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
 	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 	LLM_BATCH_SIZE=24
-	VLM_BATCH_SIZE=16
+	VLM_BATCH_SIZE=12
 	MAX_GENERATED_TOKENS=256
 fi
 

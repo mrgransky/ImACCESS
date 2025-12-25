@@ -33,22 +33,6 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
-# # SMALL MODELS:
-# LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
-# VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
-# # Base batch sizes (per GPU)
-# BASE_LLM_BATCH_SIZES=(8 8 16 16 24)
-# BASE_VLM_BATCH_SIZES=(8 8 12 12 16)
-# MAX_GENERATED_TOKENS=256
-
-# LARGE MODELS:
-LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
-VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
-# Base batch sizes (per GPU)
-BASE_LLM_BATCH_SIZES=(6 6 12 12 16)
-BASE_VLM_BATCH_SIZES=(4 4 8 8 8)
-MAX_GENERATED_TOKENS=256
-
 # Extract GPU count more simply (format: "gpu:type:count")
 NUM_GPUS="${SLURM_GPUS_ON_NODE##*:}"  # Get everything after the last colon
 
@@ -58,7 +42,25 @@ if ! [[ "$NUM_GPUS" =~ ^[0-9]+$ ]]; then
 	NUM_GPUS=1
 fi
 
-echo "Detected $NUM_GPUS GPUs, scaling batch sizes accordingly"
+echo "Detected $NUM_GPUS GPUs, selecting model configuration"
+
+# Select model configuration based on GPU count
+if [ "$NUM_GPUS" -gt 1 ]; then
+	echo "Using LARGE models (multi-GPU configuration)"
+	LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
+	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
+	BASE_LLM_BATCH_SIZES=(6 6 12 12 16)
+	BASE_VLM_BATCH_SIZES=(4 4 8 8 8)
+	MAX_GENERATED_TOKENS=256
+else
+	echo "Using SMALL models (single-GPU configuration)"
+	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
+	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
+	BASE_LLM_BATCH_SIZES=(8 8 16 16 24)
+	BASE_VLM_BATCH_SIZES=(6 6 12 12 16)
+	MAX_GENERATED_TOKENS=256
+fi
+
 
 # Scale batch sizes by number of GPUs
 LLM_BATCH_SIZES=()
@@ -70,6 +72,7 @@ done
 
 echo "Scaled LLM batch sizes: ${LLM_BATCH_SIZES[@]}"
 echo "Scaled VLM batch sizes: ${VLM_BATCH_SIZES[@]}"
+echo "Max generated tokens: $MAX_GENERATED_TOKENS"
 
 DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 DATASETS=(
