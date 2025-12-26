@@ -110,12 +110,12 @@ main() {
 	# Collection configuration
 	# Format: "dataset_name|collector_path|arguments"
 	COLLECTORS=(
-		"Europeana|${BASE_DIR}/europeana/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --enable_thumbnailing --api_key api2demo"
-		"National_Archive|${BASE_DIR}/national_archive/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --enable_thumbnailing"
-		"SMU|${BASE_DIR}/smu/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --enable_thumbnailing"
-		"WWII|${BASE_DIR}/wwii/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --enable_thumbnailing"
-		# "SA_Kuva|${BASE_DIR}/sa_kuva/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --enable_thumbnailing"
-		# "WW_Vehicles|${BASE_DIR}/ww_vehicles/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --enable_thumbnailing"
+		"National_Archive|${BASE_DIR}/national_archive/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size "(800,800)""
+		"Europeana|${BASE_DIR}/europeana/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size "(800,800)" --api_key api2demo"
+		"SMU|${BASE_DIR}/smu/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size "(800,800)""
+		"WWII|${BASE_DIR}/wwii/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size "(800,800)""
+		# "SA_Kuva|${BASE_DIR}/sa_kuva/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --thumbnail_size "(800,800)""
+		# "WW_Vehicles|${BASE_DIR}/ww_vehicles/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --thumbnail_size "(800,800)""
 	)
 	
 	print_status "Total datasets to collect: ${#COLLECTORS[@]}"

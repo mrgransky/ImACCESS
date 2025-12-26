@@ -8,11 +8,11 @@ from misc.utils import *
 from misc.visualize import *
 
 # how to run in local:
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std > logs/wwii_image_download.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std > logs/wwii_dataset_collection.out &
 
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 24 --img_mean_std > /media/volume/ImACCESS/trash/wwii_data_collection.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 24 --img_mean_std > /media/volume/ImACCESS/trash/wwii_dataset_collection.out &
 
 dataset_name = "WWII".upper()
 parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")
@@ -24,10 +24,14 @@ parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_si
 parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='Validation Split Percentage')
+parser.add_argument('--thumbnail_size', type=parse_tuple, default=None, help='Thumbnail size (width, height) in pixels')
+parser.add_argument('--seed', '-s', type=int, default=42, help='Random seed')
+parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
 args, unknown = parser.parse_known_args()
 args.dataset_dir = os.path.normpath(args.dataset_dir)
 print_args_table(args=args, parser=parser)
+set_seeds(seed=args.seed, debug=False)
 
 meaningless_words_fpth = os.path.join(project_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
@@ -247,7 +251,8 @@ def get_dframe(
 				if year:
 					extracted_year = year
 					break
-
+		# without thumbnail: 
+		#TODO: thumbnailing is required!
 		if not os.path.exists(img_fpath):
 			try:
 				img_response = requests.get(img_url)
@@ -257,12 +262,6 @@ def get_dframe(
 			except Exception as e:
 				print(f"Failed to download {img_url}: {e}")
 				continue
-
-		# raw_enriched_document_description = ". ".join(filter(None, [doc_title, doc_description])).strip()
-		# print(f"\nraw_enriched_document_description:\n{raw_enriched_document_description}")
-
-		# enriched_document_description = basic_clean(txt=raw_enriched_document_description)
-		# print(f"\nenriched_document_description:\n{enriched_document_description}\n")
 
 		row = {
 			'id': filename,

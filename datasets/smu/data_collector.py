@@ -10,10 +10,10 @@ import misc.visualize as viz
 
 # local:
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 --img_mean_std
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 16 -bs 128 --img_mean_std --enable_thumbnailing > logs/smu_dataset_collection.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 16 -bs 128 --img_mean_std --thumbnail_size "(800,800)" > logs/smu_dataset_collection.out &
 
 # run in Pouta:
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 40 -bs 256 --img_mean_std --enable_thumbnailing > /media/volume/ImACCESS/trash/smu_data_collection.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 40 -bs 256 --img_mean_std --thumbnail_size "(800,800)" > /media/volume/ImACCESS/trash/smu_data_collection.out &
 
 dataset_name = "smu".upper()
 parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")
@@ -25,13 +25,16 @@ parser.add_argument('--batch_size', '-bs', type=int, default=512, help='batch_si
 parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='Validation Split Percentage')
-parser.add_argument('--enable_thumbnailing', action='store_true', help='Enable image thumbnailing')
-parser.add_argument('--thumbnail_size', type=parse_tuple, default=(1000, 1000), help='Thumbnail size (width, height) in pixels')
-parser.add_argument('--large_image_threshold_mb', type=float, default=1.0, help='Large image threshold in MB')
+parser.add_argument('--thumbnail_size', type=parse_tuple, default=None, help='Thumbnail size (width, height) in pixels')
+# parser.add_argument('--enable_thumbnailing', action='store_true', help='Enable image thumbnailing')
+# parser.add_argument('--large_image_threshold_mb', type=float, default=1.0, help='Large image threshold in MB')
+parser.add_argument('--seed', '-s', type=int, default=42, help='Random seed')
+parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
 args, unknown = parser.parse_known_args()
 args.dataset_dir = os.path.normpath(args.dataset_dir)
 print_args_table(args=args, parser=parser)
+set_seeds(seed=args.seed, debug=False)
 
 SMU_BASE_URL:str = "https://digitalcollections.smu.edu/digital"
 CUSTOMIZED_COLLECTIONS: list = [
@@ -411,9 +414,10 @@ def main():
 		df=grouped,
 		synched_fpath=synched_fpath,
 		nw=args.num_workers,
-		enable_thumbnailing=args.enable_thumbnailing,
 		thumbnail_size=args.thumbnail_size,
-		large_image_threshold_mb=args.large_image_threshold_mb,
+		# enable_thumbnailing=args.enable_thumbnailing,
+		# large_image_threshold_mb=args.large_image_threshold_mb,
+		verbose=args.verbose,
 	)
 	
 	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)

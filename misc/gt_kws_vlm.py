@@ -1359,7 +1359,7 @@ def get_vlm_based_labels_opt(
 			# process each image sequentially
 			for uniq_idx, img in tqdm(valid_pairs, desc="Processing batch images [SEQUENTIAL]", ncols=100):
 				if verbose:
-					print(f"\n[Fallback] Processing image {uniq_idx}: {type(img)} {img.size}\n")
+					print(f"\n[Fallback] Processing image {uniq_idx}: {type(img)} {img.size} {img.mode}\n")
 
 				single_message = [
 					{

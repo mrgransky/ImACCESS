@@ -1075,283 +1075,6 @@ def get_multi_label_stratified_split(
 	print(f"Saved train/val splits to {train_path} and {val_path}")
 	return train_df, val_df
 
-def _process_image_for_storage(
-		img_path: str,
-		target_size: tuple,
-		large_image_threshold_mb: float,
-		verbose: bool=False
-	) -> bool:
-	if not os.path.exists(img_path):
-		if verbose:
-			print(f"Image file not found for processing: {img_path}")
-		return False
-
-	file_size_bytes = os.path.getsize(img_path)
-	large_image_threshold_bytes = large_image_threshold_mb * 1024 * 1024
-
-	# If image is already small, just convert to JPEG and return
-	if file_size_bytes <= large_image_threshold_bytes:
-		if verbose:
-			print(f"\timage size: {file_size_bytes / 1024 / 1024:.2f} <= (threshold: {large_image_threshold_mb} MB) => stored unchanged.")
-		return True
-
-	if not isinstance(target_size, (tuple, list)) or len(target_size) != 2:
-		if verbose:
-			print(f"Invalid target_size: {target_size}. Must be a tuple/list of 2 integers.")
-		raise ValueError(f"Invalid target_size: {target_size}. Must be a tuple/list of 2 integers.")
-
-	try:
-		target_size = (int(target_size[0]), int(target_size[1]))
-	except (ValueError, TypeError) as e:
-		if verbose:
-			print(f"Invalid target_size: {target_size}. Must be a tuple/list of 2 integers. Error: {e}")
-		raise ValueError(f"Invalid target_size: {target_size}. Must be a tuple/list of 2 integers.") from e
-
-	try:
-		with Image.open(img_path) as img:
-			img = img.convert("RGB")
-			original_size = img.size
-			if file_size_bytes > large_image_threshold_bytes:
-				# Only thumbnail if current dimensions are larger than target size
-				if img.size[0] > target_size[0] or img.size[1] > target_size[1]:
-					if verbose:
-						print(
-							f"\tCreating thumbnail"
-							f"(Original dimensions: {original_size[0]}x{original_size[1]}, "
-							f"File size: {file_size_bytes / 1024 / 1024:.2f} MB) "
-							f"=> Target size: {target_size})"
-						)
-					img.thumbnail(target_size, resample=Image.Resampling.LANCZOS)
-					action_taken = "Thumbnailed"
-				else:
-					if verbose:
-						print(f"Large image {os.path.basename(img_path)} within target_size {target_size}. Converting to JPEG.")
-					action_taken = "only JPEG-ified"
-			img.save(
-				fp=img_path, # Overwrite the original file
-				format="JPEG",
-				quality=100,
-				optimize=True,
-				progressive=True,
-			)
-			new_file_size_bytes = os.path.getsize(img_path)
-			if verbose:
-				print(
-					f"\t{action_taken}"
-					f"(New size: {img.size[0]}x{img.size[1]}, "
-					f"New file size: {new_file_size_bytes / 1024 / 1024:.2f} MB)."
-				)
-		with Image.open(img_path) as img:
-			img.verify()
-		return True
-	except (IOError, SyntaxError, Image.DecompressionBombError) as e:
-		if verbose:
-			print(f"Error processing image {img_path} for thumbnail/optimization: {e}")
-		if os.path.exists(img_path):
-			os.remove(img_path)
-		return False
-	except Exception as e:
-		if verbose:
-			print(f"An unexpected error occurred during image processing for {img_path}: {e}")
-		if os.path.exists(img_path):
-			try:
-				os.remove(img_path)
-			except OSError as remove_error:
-				print(f"Failed to remove corrupted image {img_path}: {remove_error}")
-			os.remove(img_path)
-		return False
-
-def download_image(
-		row,
-		session, 
-		image_dir, 
-		total_rows,
-		retries=1, 
-		backoff_factor=0.5,
-		download_timeout=15,
-		enable_thumbnailing: bool = False,
-		thumbnail_size: tuple = (500, 500),
-		large_image_threshold_mb: float = 2.0,
-		verbose: bool = False,
-	):
-	t0 = time.time()
-	rIdx = row.name
-	image_url = row['img_url']
-	image_id = row['id']
-	image_path = os.path.join(image_dir, f"{image_id}.jpg")
-
-	headers = {
-		'Content-type': 'application/json',
-		'Accept': 'application/json; text/plain; */*',
-		'Cache-Control': 'no-cache',
-		'Connection': 'keep-alive',
-		'Pragma': 'no-cache',
-	}
-
-
-	# --- Step 1: Check if image already exists ---
-	if os.path.exists(image_path):
-		try:
-			with Image.open(image_path) as img:
-				img.verify()
-			if enable_thumbnailing:
-				if not _process_image_for_storage(
-					img_path=image_path, 
-					target_size=thumbnail_size, 
-					large_image_threshold_mb=large_image_threshold_mb, 
-					verbose=verbose
-				):
-					if verbose: print(f"Existing image {image_path} valid but re-processing failed. Re-downloading...")
-				else:
-					if verbose: print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150} (Skipping existing & processed) {time.time()-t0:.1f} s")
-					return True
-			else:
-				if verbose: print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150} (Skipping existing raw) {time.time()-t0:.1f} s")
-				return True
-		except (IOError, SyntaxError, Image.DecompressionBombError) as e:
-			print(f"Existing image {image_path} is invalid: {e}, re-downloading...")
-			os.remove(image_path)
-		except Exception as e:
-			print(f"Unexpected error checking {image_path}: {e}")
-			os.remove(image_path)
-
-	# --- Step 2: Attempt download ---
-	attempt = 0
-	while attempt < retries:
-		try:
-			# Try with SSL verification
-			response = session.get(
-				url=image_url, 
-				headers=headers,
-				timeout=download_timeout,
-			)
-			response.raise_for_status()
-		except requests.exceptions.SSLError as ssl_err:
-			print(f"[{rIdx}/{total_rows}] SSL error. Retrying without verification: {ssl_err}")
-			try:
-				response = session.get(
-					url=image_url,
-					headers=headers,
-					timeout=download_timeout, 
-					verify=False,
-				)
-				response.raise_for_status()
-			except Exception as fallback_err:
-				print(f"[{rIdx}/{total_rows}] Retry without verification failed: {fallback_err}")
-				attempt += 1
-				time.sleep(backoff_factor * (2 ** attempt))
-				continue  # Retry loop
-		except (RequestException, IOError) as e:
-			attempt += 1
-			print(f"<!> [{rIdx}/{total_rows}] {e}, retrying ({attempt}/{retries})")
-			time.sleep(backoff_factor * (2 ** attempt))
-			continue
-
-		try:
-			with open(image_path, 'wb') as f:
-				f.write(response.content)
-			with Image.open(image_path) as img:
-				img.verify()
-			if not _process_image_for_storage(
-				img_path=image_path, 
-				target_size=thumbnail_size, 
-				large_image_threshold_mb=large_image_threshold_mb, 
-				verbose=verbose
-			):
-				raise ValueError(f"Failed to process image {image_id} after download.")
-			if verbose: print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150}{time.time()-t0:.1f} s")
-			return True
-		except (SyntaxError, Image.DecompressionBombError, ValueError) as e:
-			print(f"[{rIdx}/{total_rows}] Downloaded image {image_id} is invalid: {e}")
-			break
-		except Exception as e:
-			print(f"[{rIdx}/{total_rows}] Unexpected error after download: {e}")
-			attempt += 1
-			time.sleep(backoff_factor * (2 ** attempt))
-
-	# --- Step 3: Clean up if failed ---
-	if os.path.exists(image_path):
-		if verbose: print(f"removing broken img: {image_path}")
-		os.remove(image_path)
-	
-	if verbose: print(f"[{rIdx}/{total_rows}] Failed downloading {image_id} after {retries} attempts.")
-
-	return False
-
-def get_synchronized_df_img(
-		df: pd.DataFrame, 
-		synched_fpath: str,
-		nw: int,
-		thumbnail_size: tuple=(1000, 1000),
-		large_image_threshold_mb: float=2.0,
-		enable_thumbnailing: bool=False,
-		TIMEOUT: int=30,
-	):
-	# synched_fpath = os.path.join(os.path.dirname(image_dir), "metadata_multi_label_synched.csv")
-	image_dir = os.path.join(os.path.dirname(synched_fpath), "images")
-	if os.path.exists(synched_fpath):
-		print(f"Found existing synchronized dataset at {synched_fpath}. Loading...")
-		return pd.read_csv(
-			filepath_or_buffer=synched_fpath,
-			on_bad_lines='skip',
-			dtype=dtypes,
-			low_memory=False,
-		)
-
-	print(f"Synchronizing {df.shape[0]} images using {nw} CPUs...")
-	if enable_thumbnailing:
-		print(f"Image processing enabled: images > {large_image_threshold_mb} MB will be thumbnailed to {thumbnail_size}.")
-	else:
-		print("Image processing disabled: raw images will be downloaded as is.")
-	print(f"Saving synchronized images to {image_dir}...")
-	successful_rows = [] # List to keep track of successful downloads
-	with requests.Session() as session:
-		with ThreadPoolExecutor(max_workers=nw) as executor:
-			futures = {
-				executor.submit(
-					download_image, 
-					row=row, 
-					session=session, 
-					image_dir=image_dir, 
-					total_rows=df.shape[0],
-					retries=2, 
-					backoff_factor=0.5,
-					download_timeout=TIMEOUT,
-					enable_thumbnailing=enable_thumbnailing,
-					thumbnail_size=thumbnail_size,
-					large_image_threshold_mb=large_image_threshold_mb,
-				): idx for idx, row in df.iterrows()
-			}
-			for future in as_completed(futures):
-				original_df_idx = futures[future]
-				try:
-					success = future.result() # (True/False) from download_image
-					if success:
-						successful_rows.append(original_df_idx) # Keep track of successfully downloaded rows
-				except Exception as e:
-					print(f"Unexpected error: {e} for {original_df_idx}")
-
-	print(f"<<>> Total successful image downloads: {len(successful_rows)}/{df.shape[0]}")
-
-	print(f"cleaning {type(df)} {df.shape} with {len(successful_rows)} succeeded downloaded images [functional URL]...")
-
-	syched_df = df.loc[successful_rows].copy() # keep only the successfully downloaded rows
-	print(f"syched_df: {type(syched_df)} {syched_df.shape} {list(syched_df.columns)}")
-
-	actual_files_in_dir = [f for f in os.listdir(image_dir) if os.path.isfile(os.path.join(image_dir, f))]
-	img_dir_size = sum(os.path.getsize(os.path.join(image_dir, f)) for f in actual_files_in_dir) * 1e-9  # GB
-
-	print(f"Dir: {image_dir} contains {len(actual_files_in_dir)} file(s) | total size: {img_dir_size:.1f} GB")
-
-	print(f"Saving synchronized dataset to {synched_fpath}...")
-	syched_df.to_csv(synched_fpath, index=False)
-	try:
-		syched_df.to_excel(synched_fpath.replace('.csv', '.xlsx'), index=False)
-	except Exception as e:
-		print(f"Failed to write Excel file: {e}")
-
-	return syched_df
-
 def get_extension(url: str="www.example.com/some_/path/to/file.jpg"):
 	parsed_url = urllib.parse.urlparse(url)
 	path = parsed_url.path
@@ -1393,6 +1116,320 @@ def get_ip_info():
 		print("-"*170)
 	except requests.exceptions.RequestException as e:
 		print(f"Error: {e}")
+
+def _process_image_for_storage(
+		img_path: str,
+		thumbnail_size: tuple = None,  # None = no resize, (W, H) = resize to this
+		verbose: bool = False
+) -> bool:
+		"""
+		Process and optimize an image:
+		- Convert to RGB and JPEG format
+		- Optionally thumbnail to target size (preserving aspect ratio)
+		- Apply optimization
+		
+		Args:
+				img_path: Path to image file (will be overwritten)
+				thumbnail_size: Target size (width, height) or None to keep original dimensions
+				verbose: Print processing details
+		
+		Returns:
+				True if successful, False otherwise
+		"""
+		if not os.path.exists(img_path):
+				if verbose:
+						print(f"Image file not found: {img_path}")
+				return False
+
+		try:
+				original_size_bytes = os.path.getsize(img_path)
+				
+				with Image.open(img_path) as img:
+						img = img.convert("RGB")
+						original_dimensions = img.size
+						
+						# Thumbnail if size is specified and image is larger
+						action = "Converted to JPEG"
+						if thumbnail_size is not None:
+								if not isinstance(thumbnail_size, (tuple, list)) or len(thumbnail_size) != 2:
+										raise ValueError(f"thumbnail_size must be a tuple of 2 integers, got: {thumbnail_size}")
+								
+								target_w, target_h = int(thumbnail_size[0]), int(thumbnail_size[1])
+								
+								if img.size[0] > target_w or img.size[1] > target_h:
+										img.thumbnail((target_w, target_h), resample=Image.Resampling.LANCZOS)
+										action = f"Thumbnailed to ≤{target_w}×{target_h}"
+						
+						# Always save as optimized JPEG
+						img.save(
+								fp=img_path,
+								format="JPEG",
+								quality=95,
+								optimize=True,
+								progressive=True,
+						)
+				
+				# Verify the saved image
+				with Image.open(img_path) as img:
+						img.verify()
+				
+				if verbose:
+						new_size_bytes = os.path.getsize(img_path)
+						print(
+								f"{action}: {original_dimensions} ({original_size_bytes / 1024 / 1024:.2f} MB) "
+								f"→ {img.size if thumbnail_size else original_dimensions} "
+								f"({new_size_bytes / 1024 / 1024:.2f} MB)"
+						)
+				
+				return True
+				
+		except (IOError, SyntaxError, Image.DecompressionBombError) as e:
+				if verbose:
+						print(f"Error processing {img_path}: {e}")
+				if os.path.exists(img_path):
+						os.remove(img_path)
+				return False
+		except Exception as e:
+				if verbose:
+						print(f"Unexpected error processing {img_path}: {e}")
+				if os.path.exists(img_path):
+						os.remove(img_path)
+				return False
+
+def download_image(
+		row,
+		session, 
+		image_dir, 
+		total_rows,
+		retries: int = 2, 
+		backoff_factor: float = 0.5,
+		download_timeout: int = 15,
+		thumbnail_size: tuple = None,  # None = no thumbnailing
+		verbose: bool = False,
+):
+	"""
+	Download and process an image from a URL.
+	
+	Args:
+			row: DataFrame row containing 'img_url' and 'id'
+			session: requests.Session object
+			image_dir: Directory to save images
+			total_rows: Total number of rows (for progress display)
+			retries: Number of download retry attempts
+			backoff_factor: Exponential backoff factor for retries
+			download_timeout: Download timeout in seconds
+			thumbnail_size: Target size (width, height) or None for original size
+			verbose: Print detailed progress
+	
+	Returns:
+			True if successful, False otherwise
+	"""
+	t0 = time.time()
+	rIdx = row.name
+	image_url = row['img_url']
+	image_id = row['id']
+	image_path = os.path.join(image_dir, f"{image_id}.jpg")
+
+	headers = {
+		'Content-type': 'application/json',
+		'Accept': 'application/json; text/plain; */*',
+		'Cache-Control': 'no-cache',
+		'Connection': 'keep-alive',
+		'Pragma': 'no-cache',
+	}
+
+	# --- Step 1: Check if image already exists ---
+	if os.path.exists(image_path):
+		try:
+			with Image.open(image_path) as img:
+				img.verify()
+			
+			# Re-process if thumbnailing settings have changed
+			if not _process_image_for_storage(
+				img_path=image_path, 
+				thumbnail_size=thumbnail_size,
+				verbose=verbose
+			):
+				if verbose:
+					print(f"Existing image {image_path} failed re-processing. Re-downloading...")
+			else:
+				if verbose:
+					mode = "thumbnailed" if thumbnail_size else "original"
+					print(f"{rIdx:<10}/{total_rows:<10} {image_id:<100} (Existing, {mode}) {time.time()-t0:.1f}s")
+				return True							
+		except (IOError, SyntaxError, Image.DecompressionBombError) as e:
+			print(f"Existing image {image_path} is invalid: {e}, re-downloading...")
+			os.remove(image_path)
+		except Exception as e:
+			print(f"Unexpected error checking {image_path}: {e}")
+			os.remove(image_path)
+
+	# --- Step 2: Attempt download ---
+	attempt = 0
+	while attempt < retries:
+		try:
+			# Try with SSL verification
+			response = session.get(
+				url=image_url, 
+				headers=headers,
+				timeout=download_timeout,
+			)
+			response.raise_for_status()
+		except requests.exceptions.SSLError as ssl_err:
+			print(f"[{rIdx}/{total_rows}] SSL error. Retrying without verification: {ssl_err}")
+			try:
+				response = session.get(
+					url=image_url,
+					headers=headers,
+					timeout=download_timeout, 
+					verify=False,
+				)
+				response.raise_for_status()
+			except Exception as fallback_err:
+				print(f"[{rIdx}/{total_rows}] Retry without verification failed: {fallback_err}")
+				attempt += 1
+				time.sleep(backoff_factor * (2 ** attempt))
+				continue
+						
+		except (RequestException, IOError) as e:
+			attempt += 1
+			print(f"[{rIdx}/{total_rows}] {e} retry {attempt}/{retries}")
+			time.sleep(backoff_factor * (2 ** attempt))
+			continue
+		# Download successful, now process the image
+		try:
+			with open(image_path, 'wb') as f:
+				f.write(response.content)
+			
+			with Image.open(image_path) as img:
+				img.verify()
+			
+			# Process and optimize the image
+			if not _process_image_for_storage(
+				img_path=image_path, 
+				thumbnail_size=thumbnail_size,
+				verbose=verbose
+			):
+				raise ValueError(f"Failed to process image {image_id} after download.")
+			
+			if verbose:
+				mode = f"thumbnailed to {thumbnail_size}" if thumbnail_size else "original"
+				print(f"{rIdx:<10}/{total_rows:<10} {image_id:<100} ({mode}) {time.time()-t0:.1f}s")
+			
+			return True
+		except (SyntaxError, Image.DecompressionBombError, ValueError) as e:
+				print(f"[{rIdx}/{total_rows}] Downloaded image {image_id} is invalid: {e}")
+				break
+		except Exception as e:
+				print(f"[{rIdx}/{total_rows}] Unexpected error after download: {e}")
+				attempt += 1
+				time.sleep(backoff_factor * (2 ** attempt))
+
+	# --- Step 3: Clean up if failed ---
+	if os.path.exists(image_path):
+		if verbose:
+			print(f"Removing broken image: {image_path}")
+		os.remove(image_path)
+	
+	if verbose:
+		print(f"[{rIdx}/{total_rows}] Failed downloading {image_id} after {retries} attempts.")
+	return False
+
+def get_synchronized_df_img(
+	df: pd.DataFrame, 
+	synched_fpath: str,
+	nw: int,
+	thumbnail_size: tuple = None,  # None = keep original, (W, H) = resize
+	timeout: int = 30,
+	verbose: bool = False,
+):
+		"""
+		Download and synchronize images with DataFrame.
+		
+		Args:
+				df: DataFrame with 'img_url' and 'id' columns
+				synched_fpath: Path to save synchronized CSV
+				nw: Number of worker threads
+				thumbnail_size: Target size (width, height) or None to keep original dimensions
+				timeout: Download timeout in seconds
+		
+		Returns:
+				DataFrame containing only rows with successfully downloaded images
+		"""
+		image_dir = os.path.join(os.path.dirname(synched_fpath), "images")
+		os.makedirs(image_dir, exist_ok=True)
+		
+		# Check if synchronized dataset already exists
+		if os.path.exists(synched_fpath):
+				print(f"Found existing synchronized dataset at {synched_fpath}. Loading...")
+				return pd.read_csv(
+						filepath_or_buffer=synched_fpath,
+						on_bad_lines='skip',
+						dtype=dtypes,
+						low_memory=False,
+				)
+
+		print(f"Synchronizing {df.shape[0]} images using {nw} workers...")
+		
+		if thumbnail_size is not None:
+			print(f"Thumbnailing enabled: Images will be resized to ≤{thumbnail_size[0]}×{thumbnail_size[1]} (aspect ratio preserved)")
+		else:
+			print("Thumbnailing disabled: Original image dimensions will be preserved")
+		
+		print(f"Output directory: {image_dir}")
+		
+		successful_rows = []
+		
+		with requests.Session() as session:
+				with ThreadPoolExecutor(max_workers=nw) as executor:
+						futures = {
+								executor.submit(
+									download_image, 
+									row=row, 
+									session=session, 
+									image_dir=image_dir, 
+									total_rows=df.shape[0],
+									retries=2, 
+									backoff_factor=0.5,
+									download_timeout=timeout,
+									thumbnail_size=thumbnail_size,
+									verbose=verbose,
+								): idx for idx, row in df.iterrows()
+						}
+						
+						for future in as_completed(futures):
+								original_df_idx = futures[future]
+								try:
+										success = future.result()
+										if success:
+												successful_rows.append(original_df_idx)
+								except Exception as e:
+										print(f"Unexpected error for row {original_df_idx}: {e}")
+
+		print(f"Successfully downloaded: {len(successful_rows)}/{df.shape[0]} images")
+
+		# Create synchronized DataFrame
+		synched_df = df.loc[successful_rows].copy()
+		print(f"Synchronized DataFrame: {synched_df.shape}")
+
+		# Calculate directory statistics
+		actual_files = [f for f in os.listdir(image_dir) if os.path.isfile(os.path.join(image_dir, f))]
+		img_dir_size_gb = sum(os.path.getsize(os.path.join(image_dir, f)) for f in actual_files) * 1e-9
+
+		print(f"Directory: {image_dir}")
+		print(f"  Files: {len(actual_files)}")
+		print(f"  Total size: {img_dir_size_gb:.1f} GB")
+
+		# Save synchronized dataset
+		print(f"Saving synchronized dataset to {synched_fpath}...")
+		synched_df.to_csv(synched_fpath, index=False)
+		
+		try:
+			synched_df.to_excel(synched_fpath.replace('.csv', '.xlsx'), index=False)
+		except Exception as e:
+			print(f"Failed to write Excel file: {e}")
+
+		return synched_df
 
 def process_rgb_image(image_path: str, transform: T.Compose):
 	# logging.info(f"Processing: {image_path}")
@@ -1474,15 +1511,6 @@ def get_mean_std_rgb_img_multiprocessing(
 	save_pickle(std, img_rgb_std_fpth)
 	
 	return mean, std
-
-# def check_url_status(url: str, TIMEOUT :int=30) -> bool:
-# 	try:
-# 		response = requests.head(url, timeout=TIMEOUT)
-# 		# Return True only if the status code is 200 (OK)
-# 		return response.status_code == 200
-# 	except (requests.RequestException, Exception) as e:
-# 		print(f"Error accessing URL {url}: {e}")
-# 		return False
 
 def save_pickle(pkl, fname:str):
 	print(f"\nSaving {type(pkl)}\n{fname}")
