@@ -4,8 +4,9 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 project_dir = os.path.dirname(parent_dir)
 sys.path.insert(0, project_dir)
+
 from misc.utils import *
-from misc.visualize import *
+import misc.visualize as viz
 
 # how to run in local:
 # $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std --thumbnail_size 800,800 -v > logs/wwii_dataset_collection.out &
