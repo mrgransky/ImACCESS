@@ -25,6 +25,7 @@ parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
 args, unknown = parser.parse_known_args()
 args.dataset_dir = os.path.normpath(args.dataset_dir)
+print(args)
 print_args_table(args=args, parser=parser)
 set_seeds(seed=args.seed, debug=False)
 # run in local laptop:

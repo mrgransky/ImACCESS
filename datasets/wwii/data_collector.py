@@ -30,6 +30,7 @@ parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
 args, unknown = parser.parse_known_args()
 args.dataset_dir = os.path.normpath(args.dataset_dir)
+print(args)
 print_args_table(args=args, parser=parser)
 set_seeds(seed=args.seed, debug=False)
 
@@ -65,6 +66,36 @@ DPI = 250
 # Define regex pattern for WWII years: 1939–1945
 YEAR_PATTERN = re.compile(r'\b(19[3][9]|[1][9]4[0-5])\b')
 
+def _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose):
+    """Helper function to download, verify, and process an image."""
+    try:
+        img_response = requests.get(img_url)
+        img_response.raise_for_status()
+        
+        with open(img_fpath, 'wb') as f:
+            f.write(img_response.content)
+        
+        with Image.open(img_fpath) as img:
+            img.verify()
+        
+        # Process and optimize the image
+        if not _process_image_for_storage(
+            img_path=img_fpath, 
+            thumbnail_size=thumbnail_size, 
+            verbose=verbose
+        ):
+            if verbose:
+                print(f"Failed to process image {img_fpath}")
+            return False
+        
+        if verbose:
+            print(f"{img_fpath} downloaded and processed successfully")
+        return True
+        
+    except Exception as e:
+        print(f"Failed to download {img_url}: {e}")
+        return False
+
 def extract_year(text):
 	match = YEAR_PATTERN.search(str(text))
 	return match.group(1) if match else None
@@ -96,12 +127,14 @@ def extract_url_info(url:str)-> Dict:
 	}
 
 def get_dframe(
-		doc_idx: int,
-		doc_url: str, 
-		user_query: str,
-	) -> pd.DataFrame:
+	doc_idx: int,
+	doc_url: str, 
+	user_query: str,
+	thumbnail_size: tuple=None,
+	verbose: bool=False,
+) -> pd.DataFrame:
 
-	print(f">> Extracting DF for user_query[{doc_idx}]: « {user_query} » from {doc_url}")
+	print(f">> Extracting DF for user_query[{doc_idx}]: « {user_query} » from {doc_url} with thumbnail_size={thumbnail_size}")
 	
 	content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}"
 	hash_digest = hashlib.md5(content_to_hash.encode('utf-8')).hexdigest()
@@ -251,17 +284,92 @@ def get_dframe(
 				if year:
 					extracted_year = year
 					break
-		# without thumbnail: 
-		#TODO: thumbnailing is required!
+
+		# Downloading & processing Images
 		if not os.path.exists(img_fpath):
-			try:
-				img_response = requests.get(img_url)
-				img_response.raise_for_status()
-				with open(img_fpath, 'wb') as f:
-					f.write(img_response.content)
-			except Exception as e:
-				print(f"Failed to download {img_url}: {e}")
+			# Fresh download
+			if not _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose):
 				continue
+		else:
+			# Image already exists - try re-processing
+			if not _process_image_for_storage(
+				img_path=img_fpath, 
+				thumbnail_size=thumbnail_size, 
+				verbose=verbose
+			):
+				if verbose:
+					print(f"Existing image {img_fpath} failed re-processing. Attempting re-download...")
+				os.remove(img_fpath)
+				
+				# Re-download
+				if not _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose):
+					continue
+			else:
+				if verbose:
+					print(f"Existing image {img_fpath} re-processed successfully")
+
+		# if not os.path.exists(img_fpath):
+		# 	# Download image
+		# 	try:
+		# 		img_response = requests.get(img_url)
+		# 		img_response.raise_for_status()
+		# 		with open(img_fpath, 'wb') as f:
+		# 			f.write(img_response.content)
+		# 		with Image.open(img_fpath) as img:
+		# 			img.verify()
+		# 		# Process and optimize the image
+		# 		if not _process_image_for_storage(
+		# 			img_path=img_fpath, 
+		# 			thumbnail_size=thumbnail_size, 
+		# 			verbose=verbose
+		# 		):
+		# 			if verbose:
+		# 				print(f"Failed to process image {img_fpath} after download.")
+		# 			continue
+		# 		else:
+		# 			if verbose:
+		# 				print(f"{img_fpath} downloaded and processed successfully")
+		# 	except Exception as e:
+		# 		print(f"Failed to download {img_url}: {e}")
+		# 		continue
+		# else:
+		# 	# Image already exists - re-process if needed
+		# 	if not _process_image_for_storage(
+		# 		img_path=img_fpath, 
+		# 		thumbnail_size=thumbnail_size, 
+		# 		verbose=verbose
+		# 	):
+		# 		if verbose:
+		# 			print(f"Existing image {img_fpath} failed re-processing. Attempting re-download...")
+		# 		os.remove(img_fpath)
+				
+		# 		# Re-download the image
+		# 		try:
+		# 			img_response = requests.get(img_url)
+		# 			img_response.raise_for_status()
+		# 			with open(img_fpath, 'wb') as f:
+		# 				f.write(img_response.content)
+		# 			with Image.open(img_fpath) as img:
+		# 				img.verify()
+					
+		# 			# Try processing again after fresh download
+		# 			if not _process_image_for_storage(
+		# 				img_path=img_fpath, 
+		# 				thumbnail_size=thumbnail_size, 
+		# 				verbose=verbose
+		# 			):
+		# 				if verbose:
+		# 					print(f"Failed to process re-downloaded image {img_fpath}.")
+		# 				continue
+		# 			else:
+		# 				if verbose:
+		# 					print(f"Re-downloaded and processed {img_fpath} successfully")
+		# 		except Exception as e:
+		# 			print(f"Failed to re-download {img_url}: {e}")
+		# 			continue
+		# 	else:
+		# 		if verbose:
+		# 			print(f"Existing image {img_fpath} re-processed successfully")
 
 		row = {
 			'id': filename,
@@ -274,7 +382,6 @@ def get_dframe(
 			'user_query': [user_query] if user_query else None,
 			'label': user_query if user_query else None,
 			'img_path': img_fpath,
-			# 'enriched_document_description': enriched_document_description,
 		}
 		data.append(row)
 		print("="*120)

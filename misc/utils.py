@@ -1118,83 +1118,82 @@ def get_ip_info():
 		print(f"Error: {e}")
 
 def _process_image_for_storage(
-		img_path: str,
-		thumbnail_size: tuple = None,  # None = no resize, (W, H) = resize to this
-		verbose: bool = False
+	img_path: str,
+	thumbnail_size: tuple = None,  # None = no resize, (W, H) = resize to this
+	verbose: bool = False
 ) -> bool:
-		"""
-		Process and optimize an image:
-		- Convert to RGB and JPEG format
-		- Optionally thumbnail to target size (preserving aspect ratio)
-		- Apply optimization
-		
-		Args:
-				img_path: Path to image file (will be overwritten)
-				thumbnail_size: Target size (width, height) or None to keep original dimensions
-				verbose: Print processing details
-		
-		Returns:
-				True if successful, False otherwise
-		"""
-		if not os.path.exists(img_path):
-				if verbose:
-						print(f"Image file not found: {img_path}")
-				return False
+	"""
+	Process and optimize an image:
+	- Convert to RGB and JPEG format
+	- Optionally thumbnail to target size (preserving aspect ratio)
+	- Apply optimization
+	
+	Args:
+			img_path: Path to image file (will be overwritten)
+			thumbnail_size: Target size (width, height) or None to keep original dimensions
+			verbose: Print processing details
+	
+	Returns:
+			True if successful, False otherwise
+	"""
+	if not os.path.exists(img_path):
+		if verbose:
+			print(f"Image file not found: {img_path}")
+		return False
 
-		try:
-				original_size_bytes = os.path.getsize(img_path)
+	try:
+		original_size_bytes = os.path.getsize(img_path)
+		
+		with Image.open(img_path) as img:
+			img = img.convert("RGB")
+			original_dimensions = img.size
+			
+			# Thumbnail if size is specified and image is larger
+			action = "Converted to JPEG"
+			if thumbnail_size is not None:
+				if not isinstance(thumbnail_size, (tuple, list)) or len(thumbnail_size) != 2:
+					raise ValueError(f"thumbnail_size must be a tuple of 2 integers, got: {thumbnail_size}")
 				
-				with Image.open(img_path) as img:
-						img = img.convert("RGB")
-						original_dimensions = img.size
-						
-						# Thumbnail if size is specified and image is larger
-						action = "Converted to JPEG"
-						if thumbnail_size is not None:
-								if not isinstance(thumbnail_size, (tuple, list)) or len(thumbnail_size) != 2:
-										raise ValueError(f"thumbnail_size must be a tuple of 2 integers, got: {thumbnail_size}")
-								
-								target_w, target_h = int(thumbnail_size[0]), int(thumbnail_size[1])
-								
-								if img.size[0] > target_w or img.size[1] > target_h:
-										img.thumbnail((target_w, target_h), resample=Image.Resampling.LANCZOS)
-										action = f"Thumbnailed to ≤{target_w}×{target_h}"
-						
-						# Always save as optimized JPEG
-						img.save(
-								fp=img_path,
-								format="JPEG",
-								quality=95,
-								optimize=True,
-								progressive=True,
-						)
+				target_w, target_h = int(thumbnail_size[0]), int(thumbnail_size[1])
 				
-				# Verify the saved image
-				with Image.open(img_path) as img:
-						img.verify()
-				
-				if verbose:
-						new_size_bytes = os.path.getsize(img_path)
-						print(
-								f"{action}: {original_dimensions} ({original_size_bytes / 1024 / 1024:.2f} MB) "
-								f"→ {img.size if thumbnail_size else original_dimensions} "
-								f"({new_size_bytes / 1024 / 1024:.2f} MB)"
-						)
-				
-				return True
-				
-		except (IOError, SyntaxError, Image.DecompressionBombError) as e:
-				if verbose:
-						print(f"Error processing {img_path}: {e}")
-				if os.path.exists(img_path):
-						os.remove(img_path)
-				return False
-		except Exception as e:
-				if verbose:
-						print(f"Unexpected error processing {img_path}: {e}")
-				if os.path.exists(img_path):
-						os.remove(img_path)
-				return False
+				if img.size[0] > target_w or img.size[1] > target_h:
+					img.thumbnail((target_w, target_h), resample=Image.Resampling.LANCZOS)
+					action = f"Thumbnailed to ≤{target_w}×{target_h}"
+			
+			# Always save as optimized JPEG
+			img.save(
+				fp=img_path,
+				format="JPEG",
+				quality=99,
+				optimize=True,
+				progressive=True,
+			)
+		
+		# Verify the saved image
+		with Image.open(img_path) as img:
+			img.verify()
+		
+		if verbose:
+			new_size_bytes = os.path.getsize(img_path)
+			print(
+				f"{action}: {original_dimensions} ({original_size_bytes / 1024 / 1024:.2f} MB) "
+				f"→ {img.size if thumbnail_size else original_dimensions} "
+				f"({new_size_bytes / 1024 / 1024:.2f} MB)"
+			)
+		
+		return True
+	except (IOError, SyntaxError, Image.DecompressionBombError) as e:
+		if verbose:
+			print(f"Error processing {img_path}: {e}")
+		if os.path.exists(img_path):
+			os.remove(img_path)
+		return False
+	except Exception as e:
+		if verbose:
+			print(f"Unexpected error processing {img_path}: {e}")
+		if os.path.exists(img_path):
+			os.remove(img_path)
+		return False
 
 def download_image(
 		row,
@@ -1296,6 +1295,7 @@ def download_image(
 			print(f"[{rIdx}/{total_rows}] {e} retry {attempt}/{retries}")
 			time.sleep(backoff_factor * (2 ** attempt))
 			continue
+
 		# Download successful, now process the image
 		try:
 			with open(image_path, 'wb') as f:
@@ -1318,12 +1318,12 @@ def download_image(
 			
 			return True
 		except (SyntaxError, Image.DecompressionBombError, ValueError) as e:
-				print(f"[{rIdx}/{total_rows}] Downloaded image {image_id} is invalid: {e}")
-				break
+			print(f"[{rIdx}/{total_rows}] Downloaded image {image_id} is invalid: {e}")
+			break
 		except Exception as e:
-				print(f"[{rIdx}/{total_rows}] Unexpected error after download: {e}")
-				attempt += 1
-				time.sleep(backoff_factor * (2 ** attempt))
+			print(f"[{rIdx}/{total_rows}] {e}")
+			attempt += 1
+			time.sleep(backoff_factor * (2 ** attempt))
 
 	# --- Step 3: Clean up if failed ---
 	if os.path.exists(image_path):
@@ -1361,13 +1361,13 @@ def get_synchronized_df_img(
 		
 		# Check if synchronized dataset already exists
 		if os.path.exists(synched_fpath):
-				print(f"Found existing synchronized dataset at {synched_fpath}. Loading...")
-				return pd.read_csv(
-						filepath_or_buffer=synched_fpath,
-						on_bad_lines='skip',
-						dtype=dtypes,
-						low_memory=False,
-				)
+			print(f"Found existing synchronized dataset at {synched_fpath}. Loading...")
+			return pd.read_csv(
+				filepath_or_buffer=synched_fpath,
+				on_bad_lines='skip',
+				dtype=dtypes,
+				low_memory=False,
+			)
 
 		print(f"Synchronizing {df.shape[0]} images using {nw} workers...")
 		

@@ -26,13 +26,12 @@ parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histo
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='Validation Split Percentage')
 parser.add_argument('--thumbnail_size', type=parse_tuple, default=None, help='Thumbnail size (width, height) in pixels')
-# parser.add_argument('--enable_thumbnailing', action='store_true', help='Enable image thumbnailing')
-# parser.add_argument('--large_image_threshold_mb', type=float, default=1.0, help='Large image threshold in MB')
 parser.add_argument('--seed', '-s', type=int, default=42, help='Random seed')
 parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
 args, unknown = parser.parse_known_args()
 args.dataset_dir = os.path.normpath(args.dataset_dir)
+print(args)
 print_args_table(args=args, parser=parser)
 set_seeds(seed=args.seed, debug=False)
 
@@ -415,8 +414,6 @@ def main():
 		synched_fpath=synched_fpath,
 		nw=args.num_workers,
 		thumbnail_size=args.thumbnail_size,
-		# enable_thumbnailing=args.enable_thumbnailing,
-		# large_image_threshold_mb=args.large_image_threshold_mb,
 		verbose=args.verbose,
 	)
 	

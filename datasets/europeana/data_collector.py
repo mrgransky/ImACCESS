@@ -37,10 +37,10 @@ dataset_name: str = "europeana".upper()
 
 # run in local laptop:
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs -ak api2demo
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -ak api2demo -nw 16 -bs 128 --img_mean_std --thumbnail_size "(800,800)" -v > logs/europeana_img_dl.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -ak api2demo -nw 16 -bs 128 --img_mean_std --thumbnail_size 800,800 -v > logs/europeana_dataset_collection.out &
 
 # run in Pouta:
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -ak api2demo -nw 40 -bs 128 --img_mean_std --thumbnail_size "(800,800)" -v > /media/volume/ImACCESS/trash/europeana_dl.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -ak api2demo -nw 40 -bs 128 --img_mean_std --thumbnail_size 800,800 -v > /media/volume/ImACCESS/trash/europeana_dataset_collection.out &
 
 meaningless_words_fpth = os.path.join(project_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
@@ -284,13 +284,12 @@ def main():
 	parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 	parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='Validation Split Percentage')
 	parser.add_argument('--thumbnail_size', type=parse_tuple, default=None, help='Thumbnail size (width, height) in pixels')
-	# parser.add_argument('--enable_thumbnailing', action='store_true', help='Enable image thumbnailing')
-	# parser.add_argument('--large_image_threshold_mb', type=float, default=1.0, help='Large image threshold in MB')
 	parser.add_argument('--seed', '-s', type=int, default=42, help='Random seed')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
 	args, unknown = parser.parse_known_args()
 	args.dataset_dir = os.path.normpath(args.dataset_dir)
+	print(args)
 	print_args_table(args=args, parser=parser)
 
 	set_seeds(seed=args.seed, debug=False)
@@ -310,9 +309,7 @@ def main():
 	with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		search_labels = list(dict.fromkeys(line.strip() for line in file_))
 
-	print(f"Total of {len(search_labels)} {type(search_labels)} lables are being processed...")
-	for qv in search_labels[:5]:
-		print(f"Q: {qv}")
+	print(f"Total of {len(search_labels)} {type(search_labels)} lables are being processed")
 
 	dfs = []
 	for qi, qv in enumerate(search_labels):
