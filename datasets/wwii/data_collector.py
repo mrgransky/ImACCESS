@@ -8,11 +8,11 @@ from misc.utils import *
 from misc.visualize import *
 
 # how to run in local:
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std > logs/wwii_dataset_collection.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std --thumbnail_size 800,800 -v > logs/wwii_dataset_collection.out &
 
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 24 --img_mean_std > /media/volume/ImACCESS/trash/wwii_dataset_collection.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 24 --img_mean_std --thumbnail_size 800,800 -v > /media/volume/ImACCESS/trash/wwii_dataset_collection.out &
 
 dataset_name = "WWII".upper()
 parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")
@@ -67,34 +67,33 @@ DPI = 250
 YEAR_PATTERN = re.compile(r'\b(19[3][9]|[1][9]4[0-5])\b')
 
 def _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose):
-    """Helper function to download, verify, and process an image."""
-    try:
-        img_response = requests.get(img_url)
-        img_response.raise_for_status()
-        
-        with open(img_fpath, 'wb') as f:
-            f.write(img_response.content)
-        
-        with Image.open(img_fpath) as img:
-            img.verify()
-        
-        # Process and optimize the image
-        if not _process_image_for_storage(
-            img_path=img_fpath, 
-            thumbnail_size=thumbnail_size, 
-            verbose=verbose
-        ):
-            if verbose:
-                print(f"Failed to process image {img_fpath}")
-            return False
-        
-        if verbose:
-            print(f"{img_fpath} downloaded and processed successfully")
-        return True
-        
-    except Exception as e:
-        print(f"Failed to download {img_url}: {e}")
-        return False
+	"""download, verify, and process an image"""
+	try:
+		img_response = requests.get(img_url)
+		img_response.raise_for_status()
+		
+		with open(img_fpath, 'wb') as f:
+			f.write(img_response.content)
+		
+		with Image.open(img_fpath) as img:
+			img.verify()
+		
+		# Process and optimize the image
+		if not _process_image_for_storage(
+			img_path=img_fpath, 
+			thumbnail_size=thumbnail_size, 
+			verbose=verbose
+		):
+			if verbose:
+				print(f"Failed to process image {img_fpath}")
+			return False
+		
+		if verbose:
+			print(f"{img_fpath} downloaded and processed successfully")
+		return True
+	except Exception as e:
+		print(f"Failed to download {img_url}: {e}")
+		return False
 
 def extract_year(text):
 	match = YEAR_PATTERN.search(str(text))
