@@ -1117,7 +1117,7 @@ def get_ip_info():
 	except requests.exceptions.RequestException as e:
 		print(f"Error: {e}")
 
-def _process_image_for_storage(
+def process_image_for_storage(
 	img_path: str,
 	thumbnail_size: tuple = None,  # None = no resize, (W, H) = resize to this
 	verbose: bool = False
@@ -1244,7 +1244,7 @@ def download_image(
 				img.verify()
 			
 			# Re-process if thumbnailing settings have changed
-			if not _process_image_for_storage(
+			if not process_image_for_storage(
 				img_path=image_path, 
 				thumbnail_size=thumbnail_size,
 				verbose=verbose
@@ -1305,7 +1305,7 @@ def download_image(
 				img.verify()
 			
 			# Process and optimize the image
-			if not _process_image_for_storage(
+			if not process_image_for_storage(
 				img_path=image_path, 
 				thumbnail_size=thumbnail_size,
 				verbose=verbose

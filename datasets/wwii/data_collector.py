@@ -80,7 +80,7 @@ def _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose):
 			img.verify()
 		
 		# Process and optimize the image
-		if not _process_image_for_storage(
+		if not process_image_for_storage(
 			img_path=img_fpath, 
 			thumbnail_size=thumbnail_size, 
 			verbose=verbose
@@ -292,7 +292,7 @@ def get_dframe(
 				continue
 		else:
 			# Image already exists - try re-processing
-			if not _process_image_for_storage(
+			if not process_image_for_storage(
 				img_path=img_fpath, 
 				thumbnail_size=thumbnail_size, 
 				verbose=verbose
@@ -318,7 +318,7 @@ def get_dframe(
 		# 		with Image.open(img_fpath) as img:
 		# 			img.verify()
 		# 		# Process and optimize the image
-		# 		if not _process_image_for_storage(
+		# 		if not process_image_for_storage(
 		# 			img_path=img_fpath, 
 		# 			thumbnail_size=thumbnail_size, 
 		# 			verbose=verbose
@@ -334,7 +334,7 @@ def get_dframe(
 		# 		continue
 		# else:
 		# 	# Image already exists - re-process if needed
-		# 	if not _process_image_for_storage(
+		# 	if not process_image_for_storage(
 		# 		img_path=img_fpath, 
 		# 		thumbnail_size=thumbnail_size, 
 		# 		verbose=verbose
@@ -353,7 +353,7 @@ def get_dframe(
 		# 				img.verify()
 					
 		# 			# Try processing again after fresh download
-		# 			if not _process_image_for_storage(
+		# 			if not process_image_for_storage(
 		# 				img_path=img_fpath, 
 		# 				thumbnail_size=thumbnail_size, 
 		# 				verbose=verbose
