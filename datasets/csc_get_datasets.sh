@@ -33,9 +33,9 @@ echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 
 DATASETS=(
+	"smu"
 	"europeana"
 	"national_archive"
-	"smu"
 	"wwii"
 )
 
@@ -55,10 +55,10 @@ PYTHON_CMD="python -u data_collector.py \
 --thumbnail_size 800,800 \
 --verbose"
 
-# Add API key only for Europeana dataset (array task 1)
-if [ "$SLURM_ARRAY_TASK_ID" -eq 1 ]; then
-	PYTHON_CMD="$PYTHON_CMD --api_key nLbaXYaiH"
-	echo "Adding Europeana API key"
+# Add API key only for Europeana dataset
+if [ "$CURRENT_DATASET" = "europeana" ]; then
+    PYTHON_CMD="$PYTHON_CMD --api_key nLbaXYaiH"
+    echo "Adding Europeana API key"
 fi
 
 echo "Executing: $PYTHON_CMD"
