@@ -53,7 +53,7 @@ PYTHON_CMD="python -u data_collector.py \
 --historgram_bin 60 \
 --img_mean_std \
 --thumbnail_size 800,800 \
---verbose
+--verbose"
 
 # Add API key only for Europeana dataset (array task 1)
 if [ "$SLURM_ARRAY_TASK_ID" -eq 1 ]; then
