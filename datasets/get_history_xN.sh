@@ -110,8 +110,8 @@ main() {
 	# Collection configuration
 	# Format: "dataset_name|collector_path|arguments"
 	COLLECTORS=(
-		"WWII|${BASE_DIR}/wwii/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 800,800 --verbose"
 		"SMU|${BASE_DIR}/smu/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 800,800 --verbose"
+		"WWII|${BASE_DIR}/wwii/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 800,800 --verbose"
 		"National_Archive|${BASE_DIR}/national_archive/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 800,800 --verbose"
 		"Europeana|${BASE_DIR}/europeana/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 800,800 --api_key api2demo --verbose"
 		# "SA_Kuva|${BASE_DIR}/sa_kuva/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --thumbnail_size 800,800"

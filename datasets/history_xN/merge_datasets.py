@@ -248,6 +248,7 @@ def main():
 	parser.add_argument('--batch_size', type=int, default=16, help='Batch size for computing image statistics (default: 64)')
 	parser.add_argument('--target_chunk_mb', type=int, default=10, help='Target chunk size in MB (default: 10)')
 	parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
+	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
 	args = parser.parse_args()
 	print(args)
