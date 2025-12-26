@@ -9,7 +9,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
 #SBATCH --mem=24G
-#SBATCH --array=0-3
+#SBATCH --array=0-1
 #SBATCH --partition=small
 #SBATCH --time=0-08:00:00
 
@@ -57,8 +57,8 @@ PYTHON_CMD="python -u data_collector.py \
 
 # Add API key only for Europeana dataset
 if [ "$CURRENT_DATASET" = "europeana" ]; then
-    PYTHON_CMD="$PYTHON_CMD --api_key nLbaXYaiH"
-    echo "Adding Europeana API key"
+	PYTHON_CMD="$PYTHON_CMD --api_key nLbaXYaiH"
+	echo "Adding Europeana API key"
 fi
 
 echo "Executing: $PYTHON_CMD"
