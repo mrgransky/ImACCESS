@@ -873,7 +873,7 @@ def main():
 		OUTPUT_DIRECTORY, 
 		f"{dataset_name}_single_label_distribution_{wwii_df.shape[0]}_x_{unique_labels.shape[0]}.png"
 	)
-	plot_label_distribution(
+	viz.plot_label_distribution(
 		df=single_label_final_df,
 		fpth=label_dirstribution_fname,
 		FIGURE_SIZE=(14, 8),
@@ -893,7 +893,7 @@ def main():
 	train_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_single_label.replace('.csv', '_train.csv')), index=False)
 	val_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_single_label.replace('.csv', '_val.csv')), index=False)
 
-	plot_train_val_label_distribution(
+	viz.plot_train_val_label_distribution(
 		train_df=train_df,
 		val_df=val_df,
 		dataset_name=dataset_name,
