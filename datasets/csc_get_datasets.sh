@@ -57,7 +57,7 @@ PYTHON_CMD="python -u data_collector.py \
 
 # Add API key only for Europeana dataset (array task 1)
 if [ "$SLURM_ARRAY_TASK_ID" -eq 1 ]; then
-	PYTHON_CMD="$PYTHON_CMD --api_key api2demo"
+	PYTHON_CMD="$PYTHON_CMD --api_key nLbaXYaiH"
 	echo "Adding Europeana API key"
 fi
 
