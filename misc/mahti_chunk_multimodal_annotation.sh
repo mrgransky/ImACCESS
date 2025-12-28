@@ -9,7 +9,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
 #SBATCH --mem=64G
-#SBATCH --array=0-40
+#SBATCH --array=0-26
 #SBATCH --partition=gpusmall
 #SBATCH --time=01-12:00:00
 #SBATCH --gres=gpu:a100:2,nvme:250
