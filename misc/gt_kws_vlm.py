@@ -56,95 +56,6 @@ Identify no more than {k} highly prominent, factual, and distinct **KEYWORDS** t
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response."""
 
-def get_vlm_inputs(
-	csv_file: str,
-	do_dedup: bool,
-	num_workers: int,
-	verbose: bool,
-) -> Tuple[pd.DataFrame, List[Optional[str]], List[int], List[int]]:
-	"""
-	Load and prepare inputs for VLM processing.
-	
-	Returns:
-			df: Original dataframe
-			uniq_inputs: List of unique image paths (deduplicated)
-			orig_to_uniq: Mapping from original indices to unique indices
-			valid_indices: Indices of verified images in uniq_inputs
-	"""
-	if verbose:
-			print(f"[PREP] Loading data from {csv_file}...")
-	
-	# Load CSV
-	df = pd.read_csv(
-			filepath_or_buffer=csv_file,
-			on_bad_lines='skip',
-			dtype=dtypes,
-			low_memory=False,
-	)
-	
-	if "img_path" not in df.columns:
-			raise ValueError(f"CSV must have 'img_path' column, found: {df.columns}")
-	
-	image_paths = [
-			p if isinstance(p, str) and os.path.exists(p) else None 
-			for p in df["img_path"]
-	]
-	
-	# Deduplication
-	if do_dedup:
-			if verbose:
-					print(f"[PREP] Deduplicating {len(image_paths)} paths...")
-			
-			uniq_map: Dict[str, int] = {}
-			uniq_inputs: List[Optional[str]] = []
-			orig_to_uniq: List[int] = []
-			
-			for path in image_paths:
-					key = str(path) if path else "__NULL__"
-					if key not in uniq_map:
-							uniq_map[key] = len(uniq_inputs)
-							uniq_inputs.append(path if path else None)
-					orig_to_uniq.append(uniq_map[key])
-			
-			if verbose:
-					print(f"[PREP] Reduced to {len(uniq_inputs)} unique images")
-	else:
-			uniq_inputs = image_paths
-			orig_to_uniq = list(range(len(image_paths)))
-	
-	# Verify images in parallel
-	if verbose:
-			print(f"[PREP] Verifying images with {num_workers} workers...")
-	
-	def verify_image(p: Optional[str]) -> Optional[str]:
-			"""Verify image can be opened."""
-			if p is None or not os.path.exists(p):
-					return None
-			try:
-					with Image.open(p) as im:
-							im.verify()
-					return p
-			except Exception:
-					return None
-	
-	with ThreadPoolExecutor(max_workers=num_workers) as ex:
-		verified = list(
-			tqdm(
-				ex.map(verify_image, uniq_inputs),
-				total=len(uniq_inputs),
-				desc="Verifying images",
-				ncols=100,
-			)
-		)
-	
-	# Get indices of valid images
-	valid_indices = [i for i, v in enumerate(verified) if v is not None]
-	
-	if verbose:
-		print(f"[PREP] {len(valid_indices)} valid images out of {len(uniq_inputs)}")
-	
-	return df, uniq_inputs, orig_to_uniq, valid_indices
-
 def _load_vlm_(
 	model_id: str,
 	use_quantization: bool = False,
@@ -1108,7 +1019,7 @@ def get_vlm_based_labels_debug(
 
 	return results
 
-def get_vlm_based_labels_opt(
+def get_vlm_based_labels(
 	model_id: str,
 	device: str,
 	batch_size: int,
@@ -1116,9 +1027,9 @@ def get_vlm_based_labels_opt(
 	max_generated_tks: int,
 	max_kws: int,
 	csv_file: str,
-	do_dedup: bool = True,
-	use_quantization: bool = False,
-	verbose: bool = False,
+	do_dedup: bool=True,
+	use_quantization: bool=False,
+	verbose: bool=False,
 ):
 	t0 = time.time()
 
@@ -1560,7 +1471,7 @@ def main():
 			verbose=args.verbose,
 		)
 	else:
-		keywords = get_vlm_based_labels_opt(
+		keywords = get_vlm_based_labels(
 			model_id=args.model_id,
 			device=args.device,
 			csv_file=args.csv_file,

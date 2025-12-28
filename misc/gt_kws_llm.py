@@ -1649,7 +1649,7 @@ def get_llm_based_labels_debug(
 
 	return all_keywords
 
-def get_llm_based_labels_opt(
+def get_llm_based_labels(
 	model_id: str,
 	device: str,
 	batch_size: int,
@@ -2058,7 +2058,7 @@ def main():
 			verbose=args.verbose,
 		)
 	elif args.csv_file:
-		keywords = get_llm_based_labels_opt(
+		keywords = get_llm_based_labels(
 			model_id=args.model_id,
 			device=args.device,
 			batch_size=args.batch_size,

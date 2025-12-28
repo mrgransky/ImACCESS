@@ -101,7 +101,6 @@ elif [ "$SLURM_ARRAY_TASK_ID" -eq 1 ]; then
 			--verbose
 			# --use_quantization \
 			# --debug \
-
 else
 	echo "ERROR: Unexpected array task ID: $SLURM_ARRAY_TASK_ID"
 	exit 1

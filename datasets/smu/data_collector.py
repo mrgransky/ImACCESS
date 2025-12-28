@@ -10,7 +10,7 @@ import misc.visualize as viz
 
 # local:
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 --img_mean_std
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 16 -bs 128 --img_mean_std --thumbnail_size "(800,800)" > logs/smu_dataset_collection.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 16 -bs 128 --img_mean_std --thumbnail_size 800,800 > logs/smu_dataset_collection.out &
 
 # run in Pouta:
 # $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 40 -bs 256 --img_mean_std --thumbnail_size "(800,800)" > /media/volume/ImACCESS/trash/smu_data_collection.out &
