@@ -1487,9 +1487,7 @@ def query_local_llm(
 	model_id = getattr(model.config, '_name_or_path', None)
 	if model_id is None:
 		model_id = getattr(model, 'name_or_path', 'unknown_model')
-	if verbose: print(f"Model ID: {model_id}")
 
-	# ⏱️ TOKENIZATION TIMING
 	tokenization_start = time.time()
 	try:
 		inputs = tokenizer(
@@ -1527,9 +1525,10 @@ def query_local_llm(
 					use_cache=True,
 				)
 		generation_time = time.time() - generation_start
-		if verbose: print(f"⏱️ Model generation: {generation_time:.5f}s")
+		
+		if verbose:
+			print(f"Model generation: {generation_time:.5f}s")
 
-		# ⏱️ DECODING TIMING
 		decoding_start = time.time()
 		raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
 		decoding_time = time.time() - decoding_start
@@ -1552,7 +1551,7 @@ def query_local_llm(
 		verbose=verbose,
 	)
 	parsing_time = time.time() - parsing_start
-	if verbose: print(f"⏱️ Response parsing: {parsing_time:.5f}s")
+	if verbose: print(f"Response parsing: {parsing_time:.5f}s")
 
 	# ⏱️ FILTERING TIMING
 	filtering_start = time.time()
@@ -1569,7 +1568,7 @@ def query_local_llm(
 	if verbose: print(f"⏱️ Keyword filtering: {filtering_time:.5f}s")
 
 	total_time = time.time() - start_time
-	if verbose: print(f"⏱️ TOTAL execution time: {total_time:.2f}s")
+	if verbose: print(f"TOTAL execution time: {total_time:.2f}s")
 	
 	return keywords
 
@@ -1947,7 +1946,7 @@ def get_llm_based_labels(
 	for idx in failed_indices:
 		desc = unique_inputs[idx]
 		if verbose:
-			print(f"🔄 Retrying individual item {idx}:\n{desc}")
+			print(f"Retrying individual item {idx}:\n{desc}\n")
 		try:
 			individual_result = query_local_llm(
 				model=model,
