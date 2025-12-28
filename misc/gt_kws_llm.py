@@ -1962,7 +1962,7 @@ def get_llm_based_labels(
 			if verbose and individual_result:
 				print(f"✅ Individual retry successful: {individual_result}")
 			elif verbose:
-				print(f"❌ Individual retry failed for item {idx}")
+				print(f"❌ Individual retry failed for item {idx}:\n{desc}\n")
 		except Exception as e:
 			if verbose:
 				print(f"💥 Individual retry error for item {idx}: {e}")
@@ -2013,7 +2013,7 @@ def get_llm_based_labels(
 		except Exception as e:
 			print(f"Failed to write Excel file: {e}")
 		if verbose:
-			print(f"Saved {len(results)} keywords to {output_csv} {df.shape} {list(df.columns)}")
+			print(f"Saved {len(results)} keywords to {output_csv} {df.shape}\n{list(df.columns)}")
 	if verbose:
 		print(f"Total LLM-based keyword extraction time: {time.time() - st_t:.1f} sec")
 	return results
