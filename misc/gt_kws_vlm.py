@@ -1234,6 +1234,8 @@ def get_vlm_based_labels(
 			).to(next(model.parameters()).device)
 			
 			# Generate response
+			if verbose:
+				print(f"\n[BATCH {b}] Generating responses({len(valid_pairs)} images) [takes a while]...")
 			with torch.no_grad():
 				with torch.amp.autocast(
 					device_type=device.type,
@@ -1243,7 +1245,6 @@ def get_vlm_based_labels(
 					outputs = model.generate(**inputs, **gen_kwargs)
 			
 			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
-
 			if verbose:
 				print(f"\n[BATCH {b}] Decoded responses: {type(decoded)} {len(decoded)}")
 
@@ -1259,16 +1260,15 @@ def get_vlm_based_labels(
 		except Exception as e_batch:
 			print(f"\n[BATCH {b}]: {e_batch}\n")
 
-			print(f"Cleaning up after batch failure...")
+			if verbose:
+				print(f"Cleaning up after batch failure...")
 			if torch.cuda.is_available():
 				torch.cuda.empty_cache()
 			gc.collect()
 
 			if verbose:
 				print(f"\tFalling back to SEQUENTIAL processing for {len(valid_pairs)} images in this batch.")
-
-			# process each image sequentially
-			for uniq_idx, img in tqdm(valid_pairs, desc="Processing batch images [SEQUENTIAL]", ncols=100):
+			for uniq_idx, img in tqdm(valid_pairs, desc="Processing batch images [SEQUENTIAL]", ncols=150):
 				if verbose:
 					print(f"\n[Fallback] Processing image {uniq_idx}: {type(img)} {img.size} {img.mode}\n")
 
@@ -1346,8 +1346,10 @@ def get_vlm_based_labels(
 					del decoded_single
 				except NameError:
 					pass
+				
 				if verbose:
 					print(f"\n[BATCH {b} Sequential Fallback] Clearing cache for image: {uniq_idx}...")
+				
 				if torch.cuda.is_available():
 					torch.cuda.empty_cache()
 				gc.collect()
