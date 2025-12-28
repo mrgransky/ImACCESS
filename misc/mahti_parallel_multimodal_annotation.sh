@@ -12,7 +12,7 @@
 #SBATCH --partition=gpumedium
 #SBATCH --time=01-12:00:00
 #SBATCH --array=0-1
-#SBATCH --gres=gpu:a100:4,nvme:200
+#SBATCH --gres=gpu:a100:1,nvme:200
 
 set -euo pipefail
 
@@ -58,7 +58,7 @@ else
 	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
 	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 	LLM_BATCH_SIZE=24
-	VLM_BATCH_SIZE=8
+	VLM_BATCH_SIZE=12
 	MAX_GENERATED_TOKENS=256
 fi
 

@@ -12,7 +12,7 @@
 #SBATCH --array=0-26
 #SBATCH --partition=gpusmall
 #SBATCH --time=01-12:00:00
-#SBATCH --gres=gpu:a100:2,nvme:250
+#SBATCH --gres=gpu:a100:4,nvme:250
 
 set -euo pipefail
 
@@ -57,7 +57,7 @@ else
 	echo "SMALL models (single-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
 	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
-	LLM_BATCH_SIZE=24
+	LLM_BATCH_SIZE=32
 	VLM_BATCH_SIZE=16
 	MAX_GENERATED_TOKENS=256
 fi

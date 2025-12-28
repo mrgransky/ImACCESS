@@ -1,5 +1,5 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
 import scipy.stats as stats
 from scipy.stats import gaussian_kde, t
 from scipy import stats
@@ -279,7 +279,7 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 		N = len(categories)
 		angles = [n / float(N) * 2 * np.pi for n in range(N)]
 		
-		fig, ax = plt.subplots(figsize=(11, 11), subplot_kw=dict(projection='polar'))
+		fig, ax = plt.subplots(figsize=(12, 12), subplot_kw=dict(projection='polar'))
 		
 		# Plot dataset values
 		values = dataset_values + dataset_values[:1]
@@ -317,8 +317,6 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 			)
 			ax.fill(angles_plot, bench_values_plot, alpha=0.1, color=v['color'])
 		
-		
-
 		# After creating the plot, before setting labels
 		ax.set_theta_offset(np.pi / 2)  # Start at 12 o'clock
 		ax.set_theta_direction(-1)  # Clockwise
@@ -2737,12 +2735,12 @@ def plot_loss_accuracy_metrics(
 		plt.close(fig)
 
 def perform_multilabel_eda(
-		data_path: str,
-		label_column: str = 'multimodal_labels',
-		n_top_labels_plot: int = 30,
-		n_top_labels_co_occurrence: int = 15,
-		DPI: int = 200,
-	):
+	data_path: str,
+	label_column: str,
+	n_top_labels_plot: int=30,
+	n_top_labels_co_occurrence: int=15,
+	DPI: int=200,
+):
 	"""
 	Enhanced Multi-label EDA with additional research-oriented analyses.
 	
@@ -2761,11 +2759,10 @@ def perform_multilabel_eda(
 	print(f">> Enhanced Multi-label EDA for {data_path} (column: {label_column})")
 	eda_st = time.time()
 	dataset_dir = os.path.dirname(data_path)
-	dataset_name = os.path.basename(dataset_dir)
 	output_dir = os.path.join(dataset_dir, "outputs")
 	os.makedirs(output_dir, exist_ok=True)
 
-	dataset_name = os.path.basename(data_path).replace(".csv", "")
+	dataset_name = os.path.basename(os.path.dirname(data_path))
 
 	if not os.path.exists(data_path):
 		print(f"Error: Dataset not found at '{data_path}'. Please check the path.")
@@ -3141,20 +3138,20 @@ def perform_multilabel_eda(
 	print(unique_label_sets_df.head(10))
 	
 	if len(unique_label_sets) > 0:
-			plt.figure(figsize=(12, 8))
-			top_n_combinations = unique_label_sets_df.head(min(20, len(unique_label_sets))).copy()
-			top_n_combinations['Label Set String'] = top_n_combinations['Label Set'].apply(lambda x: ', '.join(x))
-			sns.barplot(x='Count', y='Label Set String', data=top_n_combinations, palette='magma')
-			plt.title(f'Top {len(top_n_combinations)} Most Frequent Unique Label Combinations')
-			plt.xlabel('Number of Samples')
-			plt.ylabel('Label Combination')
-			plt.tight_layout()
-			plt.savefig(
-				fname=os.path.join(output_dir, f"{dataset_name}_top_unique_label_combinations.png"),
-				dpi=DPI,
-				bbox_inches='tight',
-			)
-			plt.close()
+		plt.figure(figsize=(12, 8))
+		top_n_combinations = unique_label_sets_df.head(min(20, len(unique_label_sets))).copy()
+		top_n_combinations['Label Set String'] = top_n_combinations['Label Set'].apply(lambda x: ', '.join(x))
+		sns.barplot(x='Count', y='Label Set String', data=top_n_combinations, palette='magma')
+		plt.title(f'Top {len(top_n_combinations)} Most Frequent Unique Label Combinations')
+		plt.xlabel('Number of Samples')
+		plt.ylabel('Label Combination')
+		plt.tight_layout()
+		plt.savefig(
+			fname=os.path.join(output_dir, f"{dataset_name}_top_unique_label_combinations.png"),
+			dpi=DPI,
+			bbox_inches='tight',
+		)
+		plt.close()
 	
 	print("="*100)
 	
@@ -3379,8 +3376,8 @@ def perform_multilabel_eda(
 		
 		# Find common samples across all three sources
 		common_indices = set(processed_dfs['llm_based_labels'].index) & \
-						 set(processed_dfs['vlm_based_labels'].index) & \
-						 set(processed_dfs['multimodal_labels'].index)
+			set(processed_dfs['vlm_based_labels'].index) & \
+			set(processed_dfs['multimodal_labels'].index)
 		
 		if len(common_indices) > 0:
 			agreement_scores = []
@@ -3509,9 +3506,7 @@ def perform_multilabel_eda(
 			)
 			plt.close()
 	
-	# ============================================================
 	# PLOT 6: Temporal Analysis (if date column exists)
-	# ============================================================
 	if 'doc_date' in df.columns or 'date' in df.columns:
 		print("\n" + "="*100)
 		print("--- TEMPORAL ANALYSIS ---")
@@ -3637,7 +3632,7 @@ def perform_multilabel_eda(
 	)
 
 	# Optional: Create comparative radar chart
-	your_scores, benchmark_scores = create_comparative_radar_chart(
+	scores, benchmark_scores = create_comparative_radar_chart(
 		summary_stats_dict, 
 		output_dir, 
 		label_column, 
