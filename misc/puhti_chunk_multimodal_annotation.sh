@@ -11,7 +11,7 @@
 #SBATCH --mem=64G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
-#SBATCH --array=0-54
+#SBATCH --array=0-32
 #SBATCH --gres=gpu:v100:1,nvme:100
 
 set -euo pipefail
@@ -43,7 +43,7 @@ if ! [[ "$NUM_GPUS" =~ ^[0-9]+$ ]]; then
 	NUM_GPUS=1
 fi
 
-echo "Detected $NUM_GPUS GPU(s) for this job"
+echo "Detected $NUM_GPUS GPU(s) for job: $SLURM_JOB_ID with array task: $SLURM_ARRAY_TASK_ID"
 
 # Select model configuration based on GPU count
 if [ "$NUM_GPUS" -gt 1 ]; then
