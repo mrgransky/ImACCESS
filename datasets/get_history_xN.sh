@@ -110,12 +110,12 @@ main() {
 	# Collection configuration
 	# Format: "dataset_name|collector_path|arguments"
 	COLLECTORS=(
-		"SMU|${BASE_DIR}/smu/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 800,800 --verbose"
-		"WWII|${BASE_DIR}/wwii/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 800,800 --verbose"
-		"National_Archive|${BASE_DIR}/national_archive/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 800,800 --verbose"
-		"Europeana|${BASE_DIR}/europeana/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 800,800 --api_key api2demo --verbose"
-		# "SA_Kuva|${BASE_DIR}/sa_kuva/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --thumbnail_size 800,800"
-		# "WW_Vehicles|${BASE_DIR}/ww_vehicles/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --thumbnail_size 800,800"
+		"SMU|${BASE_DIR}/smu/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 512,512 --verbose"
+		"WWII|${BASE_DIR}/wwii/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 512,512 --verbose"
+		"National_Archive|${BASE_DIR}/national_archive/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 512,512 --verbose"
+		"Europeana|${BASE_DIR}/europeana/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 512,512 --api_key api2demo --verbose"
+		# "SA_Kuva|${BASE_DIR}/sa_kuva/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --thumbnail_size 512,512"
+		# "WW_Vehicles|${BASE_DIR}/ww_vehicles/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --thumbnail_size 512,512"
 	)
 	
 	print_status "Total datasets to collect: ${#COLLECTORS[@]}"
