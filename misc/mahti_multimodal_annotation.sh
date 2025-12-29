@@ -51,7 +51,7 @@ if [ "$NUM_GPUS" -gt 1 ]; then
 	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 	BASE_LLM_BATCH_SIZES=(6 6 12 12 16)
 	BASE_VLM_BATCH_SIZES=(4 4 8 8 8)
-	MAX_GENERATED_TOKENS=256
+	MAX_GENERATED_TOKENS=128
 else
 	echo "Using SMALL models (single-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
