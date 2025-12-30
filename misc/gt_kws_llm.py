@@ -267,7 +267,7 @@ def _load_llm_(
 			# if not attr.startswith("__"):
 			# 	print(f"   • {attr}: {getattr(tokenizer, attr)}")
 
-		print(f"   • vocab size        : {len(tokenizer):>20,} {tokenizer.get("vocab_size", None)}")
+		print(f"   • vocab size        : {len(tokenizer):>20,} {tokenizer.vocab_size}")
 		print(f"   • pad token         : {tokenizer.pad_token:>20}")
 		print(f"   • pad token id      : {tokenizer.pad_token_id:>20}")
 		print(f"   • eos token         : {tokenizer.eos_token:>20}")
