@@ -429,8 +429,6 @@ def _load_llm_(
 		for attr in dir(model):
 			print(f"{attr}")
 
-	if verbose:
-		print(f"\n[MODEL] {model_id} {model.__class__.__name__}")
 		print(f"\n[DEBUG] Model generate signature: {inspect.signature(model.generate)}")
 
 		custom_methods = [m for m in dir(model) if 'generate' in m.lower()]
