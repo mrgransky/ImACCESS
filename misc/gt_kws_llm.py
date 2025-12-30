@@ -412,16 +412,14 @@ def _load_llm_(
 				print(f"   • {k}: {v}")
 			else:
 				print(f"   • {k}: {v}")
-		print()
-	
-	if verbose and torch.cuda.is_available():
-		cur = torch.cuda.current_device()
-		print("[DEBUG] CUDA memory BEFORE model load")
-		print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-		print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
 
-	if verbose:
-		print(f"[INFO] Loading {model_cls.__name__} from {model_id}...")
+		print()
+
+		if torch.cuda.is_available():
+			cur = torch.cuda.current_device()
+			print("[DEBUG] CUDA memory BEFORE model load")
+			print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+			print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
 
 	try:
 		if use_auto_model:
