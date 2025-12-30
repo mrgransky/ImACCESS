@@ -1466,7 +1466,7 @@ def query_local_llm(
 				dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 			):
 				outputs = model.generate(
-					inputs=inputs['input_ids'],
+					inputs['input_ids'],
 					attention_mask=inputs['attention_mask'],
 					max_new_tokens=max_generated_tks,
 					temperature=TEMPERATURE,
@@ -1799,7 +1799,6 @@ def get_llm_based_labels(
 					tokenized = {k: v.to(device) for k, v in tokenized.items()}
 
 				gen_kwargs = dict(
-					# input_ids=tokenized.get("input_ids"),
 					inputs=tokenized.get("input_ids"),
 					attention_mask=tokenized.get("attention_mask"),
 					max_new_tokens=max_generated_tks,
