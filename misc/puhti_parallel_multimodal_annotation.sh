@@ -98,7 +98,7 @@ elif [ "$SLURM_ARRAY_TASK_ID" -eq 1 ]; then
 			--batch_size "$VLM_BATCH_SIZE" \
 			--max_generated_tks "$MAX_GENERATED_TOKENS" \
 			--max_keywords 5 \
-			--verbose
+			# --verbose
 			# --use_quantization \
 			# --debug \
 

@@ -37,10 +37,10 @@ dataset_name: str = "europeana".upper()
 
 # run in local laptop:
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs -ak api2demo
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -ak api2demo -nw 16 -bs 128 --img_mean_std --thumbnail_size 800,800 -v > logs/europeana_dataset_collection.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -ak api2demo -nw 16 -bs 128 --img_mean_std --thumbnail_size 512,512 -v > logs/europeana_dataset_collection.out &
 
 # run in Pouta:
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -ak api2demo -nw 40 -bs 128 --img_mean_std --thumbnail_size 800,800 -v > /media/volume/ImACCESS/trash/europeana_dataset_collection.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -ak api2demo -nw 40 -bs 128 --img_mean_std --thumbnail_size 512,512 -v > /media/volume/ImACCESS/trash/europeana_dataset_collection.out &
 
 meaningless_words_fpth = os.path.join(project_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())

@@ -94,7 +94,7 @@ python -u gt_kws_multimodal.py \
   --vlm_model_id $VLM_MODEL \
   --max_generated_tks $MAX_GENERATED_TOKENS \
   --max_keywords 5 \
-  --verbose \
+  # --verbose \
   # --use_llm_quantization \
   # --use_vlm_quantization \
 
