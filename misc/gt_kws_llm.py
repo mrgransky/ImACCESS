@@ -142,16 +142,6 @@ def _load_llm_(
 	
 	# ========== Determine model class ==========
 	model_cls = None
-	# if config.architectures:
-	# 	cls_name = config.architectures[0]
-	# 	if hasattr(tfs, cls_name):
-	# 		model_cls = getattr(tfs, cls_name)
-	
-	# if model_cls is None:
-	# 	raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
-	
-	# if verbose:
-	# 	print(f"[INFO] Resolved model class → {model_cls.__name__}\n")
 	use_auto_model = False
 	
 	if config.architectures:
@@ -172,24 +162,6 @@ def _load_llm_(
 		if verbose:
 			print(f"[INFO] No architecture specified in config")
 			print(f"[INFO] Will use AutoModelForCausalLM\n")
-
-	def get_estimated_gb_size(m_id: str) -> float:
-		info = huggingface_hub.model_info(m_id, token=hf_tk)
-		# if verbose:
-		# 	print(info)
-		try:
-			if hasattr(info, "safetensors") and info.safetensors:
-				total_bytes = info.safetensors.total
-				if total_bytes > 0:
-					size_gb = total_bytes / (1024 ** 3)
-					return size_gb
-		except Exception as e:
-			print(f"<!> Failed to estimate model size from safetensors: {e}")
-			raise e
-
-	estimated_size_gb = get_estimated_gb_size(model_id)
-	if verbose:
-		print(f"[INFO] Estimated model size: ~{estimated_size_gb:.1f} GB (fp16)")
 
 	# ========== Quantization config ==========
 	quantization_config = None
@@ -288,7 +260,12 @@ def _load_llm_(
 		tokenizer.padding_side = "left"
 
 	if verbose:
+		# print all tokenizer attributes
 		print(f"[TOKENIZER] {tokenizer.__class__.__name__}")
+		for attr in dir(tokenizer):
+			if not attr.startswith("__"):
+				print(f"   • {attr}: {getattr(tokenizer, attr)}")
+
 		print(f"   • vocab size        : {len(tokenizer):>20,}")
 		print(f"   • pad token         : {tokenizer.pad_token:>20}")
 		print(f"   • pad token id      : {tokenizer.pad_token_id:>20}")
@@ -298,6 +275,23 @@ def _load_llm_(
 		print()
 	
 	# ========== Dynamic Device Strategy with Adaptive VRAM Buffering ==========
+	def get_estimated_gb_size(m_id: str) -> float:
+		info = huggingface_hub.model_info(m_id, token=hf_tk)
+		try:
+			if hasattr(info, "safetensors") and info.safetensors:
+				total_bytes = info.safetensors.total
+				if total_bytes > 0:
+					size_gb = total_bytes / (1024 ** 3)
+					return size_gb
+		except Exception as e:
+			print(f"<!> Failed to estimate model size from safetensors: {e}")
+			raise e
+
+	estimated_size_gb = get_estimated_gb_size(model_id)
+	if verbose:
+		print(f"[INFO] Estimated model size: ~{estimated_size_gb:.1f} GB (fp16)")
+
+	# ========== Model loading kwargs ==========
 	max_memory = {}
 	
 	if n_gpus > 0:
@@ -1458,9 +1452,9 @@ def query_local_llm(
 			inputs.pop("token_type_ids")
 		
 		tokenization_time = time.time() - tokenization_start
-		if verbose: print(f"⏱️ Tokenization: {tokenization_time:.5f}s")
+		if verbose: 
+			print(f"Tokenization: {tokenization_time:.5f}s")
 
-		# ⏱️ MODEL GENERATION TIMING
 		generation_start = time.time()
 		with torch.no_grad():
 			with torch.amp.autocast(
@@ -1485,9 +1479,9 @@ def query_local_llm(
 
 		decoding_start = time.time()
 		raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-		decoding_time = time.time() - decoding_start
-		if verbose: print(f"⏱️ Decoding: {decoding_time:.5f}s")
-
+		
+		if verbose: 
+			print(f"Decoding: {time.time() - decoding_start:.5f}s")
 	except Exception as e:
 		print(f"<!> Error {e}")
 		return None
@@ -1557,14 +1551,14 @@ def get_llm_based_labels_debug(
 		raise ValueError("Either csv_file or description must be provided")
 	
 	if verbose: 
-		print(f"{'-'*100}\nLoaded {len(descriptions)} description(s)")
-		for i, desc in enumerate(descriptions):
-			print(f"{i+1}. {desc}")
-		print(f"{'-'*100}")
+		print(f"{'-'*100}\nLoaded {len(descriptions)} {type(descriptions)} description(s)")
+
+	if len(descriptions) == 0:
+		print("No descriptions to process. Exiting...")
+		return None
 
 	tokenizer, model = _load_llm_(
 		model_id=model_id, 
-		# device=device,
 		use_quantization=use_quantization,
 		verbose=verbose
 	)
@@ -1799,6 +1793,7 @@ def get_llm_based_labels(
 				)
 				if device != 'cpu':
 					tokenized = {k: v.to(device) for k, v in tokenized.items()}
+
 				gen_kwargs = dict(
 					input_ids=tokenized.get("input_ids"),
 					attention_mask=tokenized["attention_mask"],
@@ -1818,8 +1813,6 @@ def get_llm_based_labels(
 					):
 						outputs = model.generate(**gen_kwargs)
 				decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-				# if verbose:
-				#     print(f"\nBatch[{batch_num}] decoded responses: {type(decoded)} {len(decoded)}")
 				
 				# Parallel parsing per batch
 				parsed_dict = _parse_batch_parallel(
@@ -1884,8 +1877,6 @@ def get_llm_based_labels(
 			print(f"[WARN] High memory usage ({memory_consumed_percent:.1f}%). Clearing cache...")
 			torch.cuda.empty_cache() # clears all GPUs
 			gc.collect()
-
-
 
 	# HYBRID FALLBACK: Retry failed items individually with query_local_llm
 	failed_indices = [
@@ -1986,18 +1977,12 @@ def main():
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
 	args = parser.parse_args()
+
 	set_seeds(seed=42, debug=args.debug)
 	args.device = torch.device(args.device)
 	args.num_workers = min(args.num_workers, os.cpu_count())
 
 	print(args)
-
-	if args.verbose and torch.cuda.is_available():
-		gpu_name = torch.cuda.get_device_name(args.device)
-		total_mem = torch.cuda.get_device_properties(args.device).total_memory / (1024**3) # GB
-		print(f"Available GPU(s) = {torch.cuda.device_count()}")
-		print(f"GPU: {gpu_name} {total_mem:.2f} GB VRAM")
-		print(f"\t• CUDA: {torch.version.cuda} Compute Capability: {torch.cuda.get_device_capability(args.device)}")
 
 	if args.debug or args.description:
 		keywords = get_llm_based_labels_debug(
