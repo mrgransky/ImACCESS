@@ -263,11 +263,11 @@ def _load_llm_(
 		# print all tokenizer attributes
 		print(f"[TOKENIZER] {tokenizer.__class__.__name__}")
 		for attr in dir(tokenizer):
-			print(f"{attr}")
+			print(f"{attr:<30}{getattr(tokenizer, attr)}")
 			# if not attr.startswith("__"):
 			# 	print(f"   • {attr}: {getattr(tokenizer, attr)}")
 
-		print(f"   • vocab size        : {len(tokenizer):>20,}")
+		print(f"   • vocab size        : {len(tokenizer):>20,} {tokenizer.get("vocab_size", None)}")
 		print(f"   • pad token         : {tokenizer.pad_token:>20}")
 		print(f"   • pad token id      : {tokenizer.pad_token_id:>20}")
 		print(f"   • eos token         : {tokenizer.eos_token:>20}")
