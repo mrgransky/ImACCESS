@@ -1467,8 +1467,6 @@ def query_local_llm(
 			):
 				outputs = model.generate(
 					**inputs,
-					# inputs['input_ids'],
-					# attention_mask=inputs['attention_mask'],
 					max_new_tokens=max_generated_tks,
 					temperature=TEMPERATURE,
 					top_p=TOP_P,
@@ -1801,8 +1799,6 @@ def get_llm_based_labels(
 
 				gen_kwargs = dict(
 					**tokenized,
-					# inputs=tokenized.get("input_ids"),
-					# attention_mask=tokenized.get("attention_mask"),
 					max_new_tokens=max_generated_tks,
 					do_sample=TEMPERATURE > 0.0,
 					temperature=TEMPERATURE,
