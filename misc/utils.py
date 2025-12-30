@@ -1314,7 +1314,7 @@ def download_image(
 				raise ValueError(f"Failed to process image {image_id} after download.")
 			
 			if verbose:
-				mode = f"thumbnailed to {thumbnail_size}" if thumbnail_size else "original"
+				mode = f"Thumbnailed, new size: {img.size}" if thumbnail_size else "original"
 				print(f"{rIdx:<10}/{total_rows:<10} {image_id:<100} ({mode}) {time.time()-t0:.1f}s")
 			
 			return True
