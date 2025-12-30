@@ -265,11 +265,7 @@ def _load_llm_(
 		for attr in dir(tokenizer):
 			print(f"{attr}")
 
-		print(f"   • vocab size        : {len(tokenizer):>20,} {tokenizer.vocab_size}")
-		print(f"   • pad token         : {tokenizer.pad_token:>20}")
-		print(f"   • pad token id      : {tokenizer.pad_token_id:>20}")
-		print(f"   • eos token         : {tokenizer.eos_token:>20}")
-		print(f"   • eos token id      : {tokenizer.eos_token_id:>20}")
+		print(f"   • vocab size        : {tokenizer.vocab_size:>20,}")
 		print(f"   • padding side      : {tokenizer.padding_side:>20}")
 		print()
 	
@@ -427,6 +423,12 @@ def _load_llm_(
 	model.eval()
 
 	# ========== Model Info & Verification ==========
+	if verbose:
+		# print all model attributes
+		print(f"[MODEL] {model_id} {model.__class__.__name__}")
+		for attr in dir(model):
+			print(f"{attr}")
+
 	if verbose:
 		print(f"\n[MODEL] {model_id} {model.__class__.__name__}")
 		try:
