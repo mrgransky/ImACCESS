@@ -1448,25 +1448,26 @@ def process_rgb_image(image_path: str, transform: T.Compose):
 		return torch.zeros(3, dtype=torch.float32), torch.zeros(3, dtype=torch.float32), 0
 
 def get_mean_std_rgb_img_multiprocessing(
-		source: Union[str, list],
-		num_workers: int,
-		batch_size: int,
-		img_rgb_mean_fpth: str,
-		img_rgb_std_fpth: str,
-		TIMEOUT :int=30,
-	) -> Tuple[List[float], List[float]]:
-	
+	source: Union[str, list],
+	num_workers: int,
+	batch_size: int,
+	img_rgb_mean_fpth: str,
+	img_rgb_std_fpth: str,
+	TIMEOUT :int=30,
+	verbose: bool = False,
+) -> Tuple[List[float], List[float]]:
 	if os.path.exists(img_rgb_mean_fpth) and os.path.exists(img_rgb_std_fpth):
 		return load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth)
 
 	# Validate input and prepare image paths
 	if isinstance(source, str):
-		# image_paths = [os.path.join(source, f) for f in os.listdir(source) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
 		image_paths = [os.path.join(source, f) for f in os.listdir(source)]
 	else:
 		image_paths = source
+
 	if not image_paths:
 		raise ValueError("No valid images found in the provided source.")	
+
 	total_images = len(image_paths)
 
 	# Dynamically adjust batch_size based on system resources
@@ -1474,13 +1475,16 @@ def get_mean_std_rgb_img_multiprocessing(
 	max_batch_size = max(1, int((available_memory * 0.8) // 0.3))  # 0.3GB per batch heuristic
 	num_workers = min(num_workers, os.cpu_count(), max(1, int(available_memory // 2)))  # Rough heuristic
 	batch_size = min(batch_size, max_batch_size, total_images)
+	
+	if verbose:
+		print(f"Computing mean and std for {total_images} images using {num_workers} CPUs and {batch_size} batch size...")
 
-	print(f"Computing mean and std for {total_images} images using {num_workers} CPUs and {batch_size} batch size...")
 	# Use ThreadPoolExecutor for I/O-bound tasks (reading images from disk)
 	transform = T.Compose([T.ToTensor()])
 	sum_ = torch.zeros(3, dtype=torch.float64)
 	sum_of_squares = torch.zeros(3, dtype=torch.float64)
 	count = 0
+
 	with ThreadPoolExecutor(max_workers=num_workers) as executor:  # Switch to threads for I/O
 		futures = []
 		for i in range(0, total_images, batch_size):
@@ -1500,6 +1504,7 @@ def get_mean_std_rgb_img_multiprocessing(
 			except Exception as e:
 				logging.error(f"Batch failed: {e}")
 				continue
+	
 	if count == 0:
 		raise RuntimeError("All images failed processing. Check input data.")
 	
@@ -1507,7 +1512,10 @@ def get_mean_std_rgb_img_multiprocessing(
 	mean = (sum_ / count).tolist()
 	std = (torch.sqrt((sum_of_squares / count) - (sum_ / count) ** 2)).tolist()
 	
-	# Save results
+	if verbose:
+		print(f"Mean: {mean} | Std: {std}")
+		print(f"Saving mean and std to {img_rgb_mean_fpth} and {img_rgb_std_fpth}...")
+
 	save_pickle(mean, img_rgb_mean_fpth)
 	save_pickle(std, img_rgb_std_fpth)
 	

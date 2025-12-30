@@ -420,8 +420,6 @@ def main():
 		synched_fpath=synched_fpath,
 		nw=args.num_workers,
 		thumbnail_size=args.thumbnail_size,
-		# enable_thumbnailing=args.enable_thumbnailing,
-		# large_image_threshold_mb=args.large_image_threshold_mb,
 		verbose=args.verbose,
 	)
 
@@ -478,8 +476,8 @@ def main():
 				batch_size=args.batch_size,
 				img_rgb_mean_fpth=img_rgb_mean_fpth,
 				img_rgb_std_fpth=img_rgb_std_fpth,
+				verbose=args.verbose,
 			)
-		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
 
 	print("\nDATASET CREATION SUMMARY\n")
 	print("-"*100)

@@ -926,8 +926,8 @@ def main():
 				batch_size=args.batch_size,
 				img_rgb_mean_fpth=img_rgb_mean_fpth,
 				img_rgb_std_fpth=img_rgb_std_fpth,
+				verbose=args.verbose,
 			)
-		print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
 
 if __name__ == '__main__':
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))

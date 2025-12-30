@@ -447,8 +447,8 @@ def main():
 				batch_size=args.batch_size,
 				img_rgb_mean_fpth=img_rgb_mean_fpth,
 				img_rgb_std_fpth=img_rgb_std_fpth,
+				verbose=args.verbose,
 			)
-		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
 
 	print("\nDATASET CREATION SUMMARY\n")
 	print("-"*100)
