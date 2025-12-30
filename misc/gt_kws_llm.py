@@ -424,7 +424,6 @@ def _load_llm_(
 
 	# ========== Model Info & Verification ==========
 	if verbose:
-		# print all model attributes
 		print(f"[MODEL] {model_id} {model.__class__.__name__}")
 		for attr in dir(model):
 			print(f"{attr}")
@@ -433,6 +432,7 @@ def _load_llm_(
 
 		custom_methods = [m for m in dir(model) if 'generate' in m.lower()]
 		print(f"\n[DEBUG] Available generate methods: {custom_methods}")
+
 		try:
 			first_param = next(model.parameters())
 			print(f"   • First parameter dtype: {first_param.dtype}")
