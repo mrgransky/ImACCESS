@@ -52,7 +52,7 @@ PYTHON_CMD="python -u data_collector.py \
 --batch_size 256 \
 --historgram_bin 60 \
 --img_mean_std \
---thumbnail_size 512,512 \
+--thumbnail_size 800,800 \
 --verbose"
 
 # Add API key only for Europeana dataset

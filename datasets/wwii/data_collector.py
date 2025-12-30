@@ -9,11 +9,11 @@ from misc.utils import *
 import misc.visualize as viz
 
 # how to run in local:
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std --thumbnail_size 512,512 -v > logs/wwii_dataset_collection.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std --thumbnail_size 800,800 -v > logs/wwii_dataset_collection.out &
 
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 24 --img_mean_std --thumbnail_size 512,512 -v > /media/volume/ImACCESS/trash/wwii_dataset_collection.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 24 --img_mean_std --thumbnail_size 800,800 -v > /media/volume/ImACCESS/trash/wwii_dataset_collection.out &
 
 dataset_name = "WWII".upper()
 parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")
@@ -67,7 +67,12 @@ DPI = 250
 # Define regex pattern for WWII years: 1939–1945
 YEAR_PATTERN = re.compile(r'\b(19[3][9]|[1][9]4[0-5])\b')
 
-def _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose):
+def _download_and_process_image(
+	img_url:str, 
+	img_fpath:str, 
+	thumbnail_size:tuple=None, 
+	verbose:bool=False,
+):
 	"""download, verify, and process an image"""
 	try:
 		img_response = requests.get(img_url)
@@ -816,6 +821,9 @@ def main():
 		f"{base_url}/germany/units/sturmgeschutz_brigade_244/" : "military unit",
 		}
 	
+	# # slice[:5] URLs [JUST FOR TESTING]:
+	# URLs = {k:v for i, (k, v) in enumerate(URLs.items()) if i < 5}
+
 	dfs_fname = os.path.join(HITs_DIR, f"{dataset_name}_{len(URLs)}_dfs.gz")
 	
 	try:
@@ -829,6 +837,8 @@ def main():
 				doc_idx=i, 
 				doc_url=k, 
 				user_query=v,
+				thumbnail_size=args.thumbnail_size,
+				verbose=args.verbose,
 			) for i, (k, v) in enumerate(URLs.items())
 		]
 		dfs = [df for df in dfs if df is not None]
