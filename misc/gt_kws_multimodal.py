@@ -25,7 +25,7 @@ import visualize as viz
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_q -vlm_bs 2 -llm_bs 2 -nw 20 -v > logs/multimodal_annotation_smu.txt & 
 
 # how to run [Pouta]:
-# $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-8B-Instruct" -vlm_bs 4 -llm_bs 16 -nw 54 > /media/volume/ImACCESS/trash/multimodal_annotation_h4.txt &
+# $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 8 -llm_bs 16 -nw 54 -v > /media/volume/ImACCESS/trash/multimodal_annotation_h4.txt &
 # $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/datasets/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 16 -llm_bs 16 -nw 32 -v > /media/volume/ImACCESS/trash/multimodal_annotation_na.txt &
 # $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 32 -llm_bs 16 -nw 54 -v > /media/volume/ImACCESS/trash/multimodal_annotation_eu.txt &
 # $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-8B-Instruct" -vlm_bs 12 -llm_bs 24 -nw 54 -v > /media/volume/ImACCESS/trash/multimodal_annotation_smu.txt &
@@ -313,7 +313,11 @@ def get_multimodal_annotation(
 	# Ensure we have a torch.device
 	if not isinstance(device, torch.device):
 		device = torch.device(device)
-	
+
+	t0 = time.time()
+	# ========== Load data ==========
+	if verbose:
+		print(f"[PREP] Loading data from {csv_file}...")
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
 		on_bad_lines='skip',
@@ -321,15 +325,16 @@ def get_multimodal_annotation(
 		low_memory=False,
 	)
 	
-	if verbose:
-		print(f"<> FULL Dataset: {type(df)} {df.shape}\n{list(df.columns)}")
-	
 	if 'img_path' not in df.columns:
 		raise ValueError("CSV file must have 'img_path' column")
 	
 	if 'enriched_document_description' not in df.columns:
 		raise ValueError("CSV file must have 'enriched_document_description' column")
 	
+	if verbose:
+		print(f"<> {type(df)} {df.shape} loaded in {time.time() - t0:.2f}s")
+
+	# Check if we already have the output file	
 	output_csv = csv_file.replace(".csv", "_multimodal.csv")
 
 	# use_parallel = (

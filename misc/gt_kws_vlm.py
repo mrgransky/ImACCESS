@@ -1106,8 +1106,6 @@ def get_vlm_based_labels(
 			print(f"Error loading image {p}: {e}")
 			return None
 
-
-
 	with ThreadPoolExecutor(max_workers=num_workers) as ex:
 		verified_paths = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc="Verifying images", ncols=100,))
 	
