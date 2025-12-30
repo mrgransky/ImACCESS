@@ -1454,10 +1454,11 @@ def query_local_llm(
 		if "token_type_ids" in inputs and not hasattr(model.config, "type_vocab_size"):
 			inputs.pop("token_type_ids")
 
-		print(type(inputs), len(inputs))
+		if verbose:
+			print(type(inputs), len(inputs), list(inputs.keys()))
 
-		token_ids = inputs.get("input_ids", None) 
-		print(type(token_ids), token_ids.shape, token_ids.dtype, token_ids.device)
+			token_ids = inputs.get("input_ids", None) 
+			print(type(token_ids), token_ids.shape, token_ids.dtype, token_ids.device)
 
 		tokenization_time = time.time() - tokenization_start
 		if verbose: 

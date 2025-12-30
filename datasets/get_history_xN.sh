@@ -149,6 +149,7 @@ main() {
 	echo ""
 	print_status "All dataset collection tasks completed!"
 	print_status "Output directory: ${DATASET_DIR}"
+
 	print_status "Running dataset merger => History_xN ..."
 
 	python -u "${BASE_DIR}/history_xN/merge_datasets.py" -ddir "${DATASET_DIR}"	--img_mean_std --target_chunk_mb 8
