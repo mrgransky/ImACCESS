@@ -142,17 +142,39 @@ def _load_llm_(
 	
 	# ========== Determine model class ==========
 	model_cls = None
+	# if config.architectures:
+	# 	cls_name = config.architectures[0]
+	# 	if hasattr(tfs, cls_name):
+	# 		model_cls = getattr(tfs, cls_name)
+	
+	# if model_cls is None:
+	# 	raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
+	
+	# if verbose:
+	# 	print(f"[INFO] Resolved model class → {model_cls.__name__}\n")
+	use_auto_model = False
+	
 	if config.architectures:
 		cls_name = config.architectures[0]
 		if hasattr(tfs, cls_name):
 			model_cls = getattr(tfs, cls_name)
-	
-	if model_cls is None:
-		raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
-	
-	if verbose:
-		print(f"[INFO] Resolved model class → {model_cls.__name__}\n")
-	
+			if verbose:
+				print(f"[INFO] Resolved model class from transformers → {model_cls.__name__}\n")
+		else:
+			# Custom architecture - will use AutoModelForCausalLM
+			use_auto_model = True
+			if verbose:
+				print(f"[INFO] Custom architecture detected: {cls_name}")
+				print(f"[INFO] Will use AutoModelForCausalLM with trust_remote_code=True\n")
+	else:
+		# No architecture specified - use AutoModelForCausalLM
+		use_auto_model = True
+		if verbose:
+			print(f"[INFO] No architecture specified in config")
+			print(f"[INFO] Will use AutoModelForCausalLM\n")
+
+
+
 	# # ========== Improved model size estimation ==========
 	# def estimate_model_size_gb(cfg, m_id: str) -> tuple[float, str]:
 	# 	"""
@@ -256,7 +278,6 @@ def _load_llm_(
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	if verbose:
 		print(f"[INFO] Estimated model size: ~{estimated_size_gb:.1f} GB (fp16)")
-
 
 	# ========== Quantization config ==========
 	quantization_config = None
@@ -490,7 +511,10 @@ def _load_llm_(
 		print(f"[INFO] Loading {model_cls.__name__} from {model_id}...")
 
 	try:
-		model = model_cls.from_pretrained(model_id, **model_kwargs)
+		if use_auto_model:
+			model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+		else:
+			model = model_cls.from_pretrained(model_id, **model_kwargs)
 	except Exception as e:
 		if verbose:
 			print(f"[ERROR] Error loading model: {e}")
