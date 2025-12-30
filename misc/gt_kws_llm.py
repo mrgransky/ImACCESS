@@ -1454,6 +1454,8 @@ def query_local_llm(
 		if "token_type_ids" in inputs and not hasattr(model.config, "type_vocab_size"):
 			inputs.pop("token_type_ids")
 
+		print(type(inputs), len(inputs))
+
 		token_ids = inputs.get("input_ids", None) 
 		print(type(token_ids), token_ids.shape, token_ids.dtype, token_ids.device)
 
