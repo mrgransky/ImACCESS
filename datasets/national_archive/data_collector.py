@@ -435,14 +435,14 @@ def main():
 		output_dir=OUTPUT_DIRECTORY,
 	)
 
-	if args.img_mean_std:
+	if args.img_mean_std and os.listdir(IMAGE_DIRECTORY):
 		try:
 			img_rgb_mean = load_pickle(fpath=img_rgb_mean_fpth) 
 			img_rgb_std = load_pickle(fpath=img_rgb_std_fpth)
 		except Exception as e:
 			print(f"{e}")
 			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
-				source=os.path.join(DATASET_DIRECTORY, "images"), 
+				source=IMAGE_DIRECTORY, 
 				num_workers=args.num_workers,
 				batch_size=args.batch_size,
 				img_rgb_mean_fpth=img_rgb_mean_fpth,

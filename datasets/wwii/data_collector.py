@@ -51,7 +51,7 @@ os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DA
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
 
 os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
-IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
+IMAGE_DIRECTORY = os.path.join(DATASET_DIRECTORY, "images")
 
 os.makedirs(os.path.join(DATASET_DIRECTORY, "hits"), exist_ok=True)
 HITs_DIR = os.path.join(DATASET_DIRECTORY, "hits")
@@ -269,7 +269,7 @@ def get_dframe(
 		img_url = img_url.replace("_cache/", "")
 		img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url) # Remove the thumbnail size from the end of the URL
 		filename = os.path.basename(img_url)
-		img_fpath = os.path.join(IMAGE_DIR, filename)
+		img_fpath = os.path.join(IMAGE_DIRECTORY, filename)
 		specific_doc_url = urllib.parse.urljoin(doc_url, parent_a.get('href')) if parent_a and parent_a.get('href') else doc_url
 
 		# Attempt to extract date from multiple sources
@@ -914,14 +914,14 @@ def main():
 		label_column='label',
 	)
 
-	if args.img_mean_std:
+	if args.img_mean_std and os.listdir(IMAGE_DIRECTORY):
 		try:
 			img_rgb_mean = load_pickle(fpath=img_rgb_mean_fpth)
 			img_rgb_std = load_pickle(fpath=img_rgb_std_fpth)
 		except Exception as e:
 			print(f"{e}")
 			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
-				source=os.path.join(DATASET_DIRECTORY, "images"), 
+				source=IMAGE_DIRECTORY, 
 				num_workers=args.num_workers,
 				batch_size=args.batch_size,
 				img_rgb_mean_fpth=img_rgb_mean_fpth,

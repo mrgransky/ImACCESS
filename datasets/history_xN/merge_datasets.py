@@ -196,20 +196,23 @@ def merge_datasets(
 		VAL_SPLIT_PCT=val_split_pct,
 		fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_train_val_label_dist_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png"),
 		FIGURE_SIZE=(15, 8),
-		DPI=400,
+		DPI=250,
 	)
+
 	plot_year_distribution(
 		df=merged_single_label_df,
 		dname=dataset_name,
 		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_year_dist_{merged_single_label_df.shape[0]}_samples.png"),
 		BINs=bins,
 	)
+
 	plot_long_tailed_distribution(
 		df=merged_single_label_df,
 		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_long_tailed_dist_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png"),
 		head_threshold=head_threshold,
 		tail_threshold=tail_threshold,
 	)
+
 	plot_single_labeled_head_torso_tail_samples(
 		metadata_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'),
 		metadata_train_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'),
@@ -225,6 +228,7 @@ def merge_datasets(
 		img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
 		all_image_paths = merged_single_label_df['img_path'].tolist()
 		num_workers = min(num_workers, multiprocessing.cpu_count())
+
 		mean, std = get_mean_std_rgb_img_multiprocessing(
 			source=all_image_paths,
 			num_workers=num_workers,

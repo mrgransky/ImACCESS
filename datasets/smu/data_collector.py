@@ -337,18 +337,18 @@ def main():
 	df_merged_raw = pd.concat(dfs, ignore_index=True)
 	print(f">> Concatinated dfs: {df_merged_raw.shape}")
 
-	print(f">> Replacing labels with super classes")
+	print(f"<!> Replacing labels with super classes")
 	json_file_path = os.path.join(project_dir, 'misc', 'super_labels.json')
 	if os.path.exists(json_file_path):
 		with open(json_file_path, 'r') as file_:
 			replacement_dict = json.load(file_)
 	else:
-		print(f"Error: {json_file_path} does not exist.")
+		print(f"<!> Error: {json_file_path} does not exist.")
 
 	print(f">> Pre-processing raw merged {type(df_merged_raw)} {df_merged_raw.shape}")
 	print(f">> Merging user_query to label with umbrella terms from {json_file_path}")
 	df_merged_raw['label'] = df_merged_raw['user_query'].replace(replacement_dict)
-	print(f">> Found {df_merged_raw['img_url'].isna().sum()} None img_url / {df_merged_raw.shape[0]} total samples")
+	print(f">> Found {df_merged_raw['img_url'].isna().sum()} None img_url / {df_merged_raw.shape[0]} total samples...")
 	df_merged_raw = df_merged_raw.dropna(subset=['img_url'])
 	print(f">> After dropping None img_url: {df_merged_raw.shape}")
 
@@ -459,14 +459,14 @@ def main():
 		output_dir=OUTPUT_DIRECTORY,
 	)
 
-	if args.img_mean_std:
+	if args.img_mean_std and os.listdir(IMAGE_DIRECTORY):
 		try:
 			img_rgb_mean = load_pickle(fpath=img_rgb_mean_fpth) 
 			img_rgb_std = load_pickle(fpath=img_rgb_std_fpth)
 		except Exception as e:
 			print(f"{e}")
 			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
-				source=os.path.join(DATASET_DIRECTORY, "images"), 
+				source=IMAGE_DIRECTORY, 
 				num_workers=args.num_workers,
 				batch_size=args.batch_size,
 				img_rgb_mean_fpth=img_rgb_mean_fpth,
