@@ -38,6 +38,8 @@ python -u data_collector.py \
 	--num_workers $SLURM_CPUS_PER_TASK \
 	--historgram_bin 60 \
 	--img_mean_std \
+	--thumbnail_size 512,512 \
+	--verbose
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

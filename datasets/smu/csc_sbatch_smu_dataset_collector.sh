@@ -10,7 +10,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=6G
 #SBATCH --partition=small
-#SBATCH --time=0-10:00:00
+#SBATCH --time=0-05:00:00
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
@@ -40,7 +40,8 @@ python -u data_collector.py \
 	--batch_size 256 \
 	--historgram_bin 60 \
 	--img_mean_std \
-	--enable_thumbnailing \
+	--thumbnail_size 512,512 \
+	--verbose
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
