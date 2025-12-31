@@ -9,27 +9,6 @@ sys.path.insert(0, project_dir) # add project directory to sys.path
 from misc.utils import *
 from misc.visualize import *
 
-# # MediaPipe Language Detector: Not good for short texts:
-# from mediapipe.tasks import python
-# language_detector = "language_detector.tflite"
-# if language_detector not in os.listdir():
-# 	print(f"Downloading {language_detector} [takes a while]...")
-# 	url = f"https://storage.googleapis.com/mediapipe-models/language_detector/language_detector/float32/1/{language_detector}"
-# 	urllib.request.urlretrieve(url, language_detector)
-# print("Running mediapipe Language Detector on CPU...")
-# base_options = python.BaseOptions(model_asset_path=language_detector)
-# options = python.text.LanguageDetectorOptions(base_options=base_options)
-# detector_model = python.text.LanguageDetector.create_from_options(options)
-
-# # FastText: Good for short texts:
-# import fasttext
-# FastText_Language_Identification = "lid.176.bin"
-# if FastText_Language_Identification not in os.listdir():
-# 	print(f"Downloading {FastText_Language_Identification} [takes	a while]...")
-# 	url = f"https://dl.fbaipublicfiles.com/fasttext/supervised-models/{FastText_Language_Identification}"
-# 	urllib.request.urlretrieve(url, FastText_Language_Identification)
-# print("Loading FastText Language Identification Model...")
-# ft_model = fasttext.load_model(FastText_Language_Identification)
 
 dataset_name: str = "europeana".upper()
 # europeana_api_key: str = "api2demo"
@@ -58,65 +37,6 @@ headers = {
 	'Connection': 'keep-alive',
 	'Pragma': 'no-cache',
 }
-
-# def is_english(
-# 	text: str, 
-# 	detector_model: fasttext.FastText._FastText=ft_model,
-# 	confidence_threshold: float = 0.4,
-# 	verbose: bool = False,
-# ) -> bool:
-# 	"""
-# 		Detects if text is in English using fasttext 
-# 	"""
-# 	if not text or not text.strip():
-# 		return False
-	
-# 	try:
-# 		# Clean text for better detection
-# 		cleaned_text = " ".join(text.split())
-		
-# 		# Predict language
-# 		predictions = detector_model.predict(cleaned_text, k=1)
-# 		if verbose:
-# 			print(f"\nchecking if text is in English:")
-# 			print(f"{cleaned_text}") 
-# 			print(f"Predictions: {predictions}")
-# 			print(f"-"*70)
-# 		detected_lang = predictions[0][0].replace('__label__', '')
-# 		confidence = predictions[1][0]
-		
-# 		# Check if English with sufficient confidence
-# 		is_en = detected_lang == 'en' and confidence >= confidence_threshold
-		
-# 		return is_en
-# 	except Exception as e:
-# 		print(f"Language detection error for text: '{text}'\n{e}")
-# 		return False
-
-# def is_english(
-# 		text: str, 
-# 		detector_model: python.text.LanguageDetector=detector_model,
-# 		confidence_threshold: float = 0.3,
-# 		verbose: bool = True,
-# 	) -> bool:
-# 	""" Detects if text is in English using MediaPipe """
-# 	if not text or not text.strip():
-# 		return False
-	
-# 	try:
-# 		# Clean text for better detection
-# 		cleaned_text = text.strip().replace('\n', ' ').replace('\r', ' ')
-		
-# 		# Detect language
-# 		detection_result = detector_model.detect(cleaned_text)
-# 		if verbose: print(f"Detection result: {detection_result}")
-# 		top_detection = detection_result.detections[0]
-# 		is_en = (top_detection.language_code == 'en' and top_detection.probability >= confidence_threshold)
-# 		return is_en
-		
-# 	except Exception as e:
-# 		print(f"Language detection error: {text}\n{e}")
-# 		return False
 
 def get_europeana_date_or_year(doc_date, doc_year):
 	if doc_year is not None:
@@ -200,12 +120,29 @@ def get_data(europeana_api_key: str, start_date: str, end_date: str, hits_dir: s
 	print(f"Total hit(s): {len(label_all_hits)} {type(label_all_hits)} for query: « {label} » found in {time.time()-t0:.2f} sec")
 	return label_all_hits
 
-def get_dframe(label: str, image_dir: str, start_date: str, end_date: str, docs: List=[Dict]):
+def get_dframe(
+	label: str, 
+	image_dir: str, 
+	start_date: str, 
+	end_date: str, 
+	docs: List=[Dict], 
+	verbose: bool=False
+):
 	print(f"Analyzing {len(docs)} {type(docs)} document(s) for label: « {label} » might take a while...")
 	df_st_time = time.time()
 	data = []
 	for doc_idx, doc in enumerate(docs):
+		if verbose:
+			print(f"doc: {doc_idx} {type(doc)} {list(doc.keys())}")
+			for k, v in doc.items():
+				print(f"{k}: {v}")
+				print("-"*50)
 		europeana_id = doc.get("id")
+		doc_categories = doc.get("edmConcept", []) # edmConcept: ['http://data.europeana.eu/concept/43', 'http://data.europeana.eu/concept/17', 'http://data.europeana.eu/concept/48']
+		if doc_categories and 'http://data.europeana.eu/concept/43' in doc_categories: # map document
+			# ignore map documents
+			continue
+
 		doc_id = re.sub("/", "SLASH", europeana_id)
 		doc_title_list = doc.get("title") # ["title1", "title2", "title3", ...]
 		doc_description_list = doc.get("dcDescription" )# ["desc1", "desc2", "desc3", ...]
@@ -339,6 +276,7 @@ def main():
 					image_dir=IMAGE_DIRECTORY,
 					start_date=args.start_date,
 					end_date=args.end_date,
+					verbose=args.verbose,
 				)
 				save_pickle(pkl=df, fname=df_fpth)
 			if df is not None:
