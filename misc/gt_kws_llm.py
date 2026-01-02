@@ -781,9 +781,8 @@ def query_local_llm(
 		verbose=verbose,
 	)
 	parsing_time = time.time() - parsing_start
-	if verbose: print(f"Response parsing: {parsing_time:.5f}s")
+	if verbose: print(f"Response parsing elapsed time: {parsing_time:.5f}s")
 
-	# ⏱️ FILTERING TIMING
 	filtering_start = time.time()
 	if keywords:
 		filtered_keywords = [
@@ -795,7 +794,7 @@ def query_local_llm(
 			return None
 		keywords = filtered_keywords
 	filtering_time = time.time() - filtering_start
-	if verbose: print(f"⏱️ Keyword filtering: {filtering_time:.5f}s")
+	if verbose: print(f"Keyword filtering elapsed time: {filtering_time:.5f}s")
 
 	total_time = time.time() - start_time
 	if verbose: print(f"TOTAL execution time: {total_time:.2f}s")
