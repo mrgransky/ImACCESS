@@ -69,7 +69,7 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - Extracted **KEYWORDS** must be self-contained and grammatically complete phrases that explicitly appear in the text. If you are uncertain, in doubt, or unsure, omit the keyword rather than guessing.
 - **STRICTLY EXCLUDE NUMERICAL CONTENT** such as measurements, units, or quantitative terms.
 - **STRICTLY EXCLUDE MEDIA DESCRIPTORS** such as generic photography, image, picture, or media terms.
-- **STRICTLY EXCLUDE TEMPORAL EXPRESSIONS** such as specific times, calendar dates, seasonal periods, or extended historical eras.
+- **STRICTLY EXCLUDE TEMPORAL EXPRESSIONS** such as dates, times, hours, minutes, calendar references, time periods, seasons, months, days, years, decades, centuries, or ANY time-related content.
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - **STRICTLY EXCLUDE ALL** explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
 - **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
