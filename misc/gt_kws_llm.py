@@ -67,11 +67,11 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - Return **ONLY** a clean, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is expected if the text is either short or lacks distinct concepts.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey more distinct meanings.
 - Extracted **KEYWORDS** must be self-contained and grammatically complete phrases that explicitly appear in the text. If you are uncertain, in doubt, or unsure, omit the keyword rather than guessing.
-- **STRICTLY EXCLUDE NUMERICAL CONTENT** such as measurements, units, or quantitative terms.
-- **STRICTLY EXCLUDE MEDIA DESCRIPTORS** such as generic photography, image, picture, or media terms.
-- **ABSOLUTELY NO** dates, times, hours, minutes, calendar references, time periods, seasons, months, days, years, decades, centuries, or ANY time-related content.
-- **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - **STRICTLY EXCLUDE ALL** explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
+- **ABSOLUTELY NO** measurements, units, or quantitative keywords.
+- **ABSOLUTELY NO** generic photography, image, picture, or media keywords.
+- **ABSOLUTELY NO** dates, times, hours, minutes, calendar references, time periods, seasons, months, days, years, decades, centuries, or ANY time-related keywords.
+- **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
 - Exclude meaningless abbreviations, numerical words, special characters, or stopwords.
 - The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response.
