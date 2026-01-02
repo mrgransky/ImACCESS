@@ -133,15 +133,17 @@ def get_dframe(
 	data = []
 	for doc_idx, doc in enumerate(docs):
 		if verbose:
-			print(f"doc: {doc_idx} {type(doc)} {list(doc.keys())}")
+			print(f"\ndoc: {doc_idx} {type(doc)} {list(doc.keys())}")
 			for k, v in doc.items():
 				print(f"{k}: {v}")
-				print("-"*50)
+			print("-"*50)
 		europeana_id = doc.get("id")
-		doc_categories = doc.get("edmConcept", []) # edmConcept: ['http://data.europeana.eu/concept/43', 'http://data.europeana.eu/concept/17', 'http://data.europeana.eu/concept/48']
-		if doc_categories and 'http://data.europeana.eu/concept/43' in doc_categories: # map document
-			# ignore map documents
-			continue
+		# doc_categories = doc.get("edmConcept", []) # edmConcept: ['http://data.europeana.eu/concept/43', 'http://data.europeana.eu/concept/17', 'http://data.europeana.eu/concept/48']
+		# if doc_categories and 'http://data.europeana.eu/concept/43' in doc_categories: # map document
+		# 	# ignore map documents
+		# 	if verbose:
+		# 		print(f"IGNORING MAP DOCUMENT: {europeana_id}")
+		# 	continue
 
 		doc_id = re.sub("/", "SLASH", europeana_id)
 		doc_title_list = doc.get("title") # ["title1", "title2", "title3", ...]
@@ -156,9 +158,8 @@ def get_dframe(
 		doc_year = doc.get("year")[0] if (doc.get("year") and doc.get("year")[0]) else None
 		doc_url = f"https://www.europeana.eu/en/item{europeana_id}" # doc.get("guid")
 
-		print(f'Raw title(s): {doc.get("title")}: {[is_english(text=title) for title in doc.get("title") if title]}')
 		for title in doc.get("title"):
-			if title and is_english(text=title) and title.lower() not in STOPWORDS:
+			if title and is_english(text=title, confidence_threshold=0.03, verbose=verbose) and title.lower() not in STOPWORDS:
 				title_en = title
 				break
 			else:
@@ -166,12 +167,29 @@ def get_dframe(
 		print(f"title_en: {title_en}")
 
 		description_doc = " ".join(doc.get("dcDescriptionLangAware", {}).get("en", [])) if doc.get("dcDescriptionLangAware", {}).get("en", []) else None
-		if is_english(text=description_doc, verbose=True):
+		if description_doc and is_english(text=description_doc, confidence_threshold=0.03, verbose=verbose):
 			description_en = description_doc
 		else:
 			description_en = None
 		print(f"description_en:\n{description_en}")
 	
+		# scrape doc.get("link") => leads to json => example api link: link: https://api.europeana.eu/record/76/jlm_item_164633.json?wskey=api2demo
+		if verbose:
+			print(f"scaping api link: {doc.get('link')}")
+		try:
+			response = requests.get(
+				url=doc.get("link"),
+				headers=headers,
+				# verify=False, # Try disabling SSL verification if that's the issue
+				# timeout=30, # Timeout in seconds
+			)
+			response.raise_for_status()
+			doc_json = response.json()
+			print(json.dumps(doc_json, indent=2, ensure_ascii=False))
+		except Exception as e:
+			print(f"<!> {e}")
+			continue
+
 		if (
 			image_url 
 			and (image_url.endswith('.jpg') or image_url.endswith('.jpeg'))
@@ -466,9 +484,8 @@ def test():
 				print(f"\nidx: {item_idx}: {list(item.keys())}")
 				print(item.get("id"))
 				print(f"-"*50)
-				print(f'{item.get("title")}: {[is_english(text=title) for title in item.get("title") if title]}')
 				for title in item.get("title"):
-					if title and is_english(text=title, detector_model=detector_model):
+					if title and is_english(text=title) and title.lower() not in STOPWORDS:
 						title_en = title
 						break
 					else:

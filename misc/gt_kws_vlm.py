@@ -312,11 +312,11 @@ def _load_vlm_(
 			
 			if verbose:
 				print(f"[INFO] Using multi-GPU strategy:")
-				print(f"   • Estimated model size: {estimated_size_gb:.1f} GB (fp16)")
+				print(f"• Estimated model size: {estimated_size_gb:.1f} GB (fp16)")
 				if use_quantization:
-					print(f"   • Adjusted for quantization: {adjusted_size:.1f} GB")
-				print(f"   • Single GPU capacity: {single_gpu_capacity:.1f} GB")
-				print(f"   • Total VRAM: {total_vram_available:.1f} GB")
+					print(f"• Adjusted for quantization: {adjusted_size:.1f} GB")
+				print(f"• Single GPU capacity: {single_gpu_capacity:.1f} GB")
+				print(f"• Total VRAM: {total_vram_available:.1f} GB")
 				if force_multi_gpu:
 					print(f"   • Reason: force_multi_gpu=True")
 	else:
@@ -351,17 +351,11 @@ def _load_vlm_(
 				device_map="auto",
 				max_memory=max_memory,
 			)
-			
-			if verbose:
-				print(f"[SUCCESS] Model loaded successfully")
 		else:
 			model = model_cls.from_pretrained(
 				model_id,
 				**base_model_kwargs,
-			)
-			if verbose:
-				print("[SUCCESS] Model loaded on CPU")
-	
+			)	
 	except Exception as e:
 		if verbose:
 			print(f"[ERROR] Failed to load model: {e}")
@@ -370,7 +364,6 @@ def _load_vlm_(
 	model.eval()
 	
 	# ========== Model Info & Verification ==========
-
 	if verbose:
 		print(f"\n[MODEL] {model_id} {model.__class__.__name__}")
 		try:

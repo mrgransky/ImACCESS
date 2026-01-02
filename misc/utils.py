@@ -217,63 +217,62 @@ detector_all = (
 )
 
 def is_english(
-		text: str,
-		confidence_threshold: float = 0.1,
-		use_shortlist: bool = True,  # New parameter
-		verbose: bool = False,
+	text: str,
+	confidence_threshold: float = 0.05,
+	use_shortlist: bool = True,  # New parameter
+	verbose: bool = False,
 ) -> bool:
-		"""
-		Check if the given text is in English.
-		
-		Args:
-				text: The text to check
-				confidence_threshold: Minimum confidence score to consider text as English
-				use_shortlist: If True, use shortlisted European languages for detection.
-											If False, use all available languages.
-				verbose: Print detailed detection information
-		
-		Returns:
-				True if text is detected as English with confidence above threshold
-		"""
-		if not text or not str(text).strip():
-				return False
-		
-		# Select detector based on use_shortlist flag
-		detector = detector_shortlist if use_shortlist else detector_all
+	"""
+	Check if the given text is in English.
+	
+	Args:
+			text: The text to check
+			confidence_threshold: Minimum confidence score to consider text as English
+			use_shortlist: If True, use shortlisted European languages for detection.
+										If False, use all available languages.
+			verbose: Print detailed detection information
+	
+	Returns:
+			True if text is detected as English with confidence above threshold
+	"""
+	if not text or not str(text).strip():
+			return False
+	
+	# Select detector based on use_shortlist flag
+	detector = detector_shortlist if use_shortlist else detector_all
+	
+	if verbose:
+		detector_type = "shortlisted languages" if use_shortlist else "all languages"
+		print(f"Checking if text is in English (using {detector_type}):\n{text}\n")
+	
+	try:
+		cleaned_text = " ".join(str(text).split())
+		results = detector.compute_language_confidence_values(cleaned_text)
 		
 		if verbose:
-				detector_type = "shortlisted languages" if use_shortlist else "all languages"
-				print(f"Checking if text is in English (using {detector_type}):\n{text}\n")
+			print(f"All detected languages:")
+			for res in results:
+				print(f"  {res.language.name:<15} {res.value:.4f}")
 		
-		try:
-				cleaned_text = " ".join(str(text).split())
-				results = detector.compute_language_confidence_values(cleaned_text)
-				
-				if verbose:
-						print(f"All detected languages:")
-						for res in results:
-								print(f"  {res.language.name:<15} {res.value:.4f}")
-				
-				if not results:
-						return False
-				
-				for res in results:
-						if res.language == Language.ENGLISH:
-								score = res.value
-								if verbose:
-										print(f"\nEnglish confidence: {score:.4f}")
-										print(f"Threshold: {confidence_threshold}")
-										print(f"Is English: {score > confidence_threshold}")
-								
-								if score > confidence_threshold:
-										return True
-				
-				return False
+		if not results:
+			return False
 		
-		except Exception as e:
+		for res in results:
+			if res.language == Language.ENGLISH:
+				score = res.value
 				if verbose:
-						print(f"Error: {e}")
-				return False
+					print(f"\nEnglish confidence: {score:.4f}")
+					print(f"Threshold: {confidence_threshold}")
+					print(f"Is English: {score > confidence_threshold}")
+				
+				if score > confidence_threshold:
+					return True
+		
+		return False
+	except Exception as e:
+		if verbose:
+			print(f"Error: {e}")
+		return False
 
 def post_process(
 	df: pd.DataFrame, 
