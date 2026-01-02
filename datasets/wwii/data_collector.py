@@ -304,7 +304,9 @@ def get_dframe(
 			):
 				if verbose:
 					print(f"Existing image {img_fpath} failed re-processing. Attempting re-download...")
-				os.remove(img_fpath)
+				# Remove the existing image
+				if os.path.exists(img_fpath):
+					os.remove(img_fpath)
 				
 				# Re-download
 				if not _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose):
@@ -313,68 +315,6 @@ def get_dframe(
 				if verbose:
 					print(f"Existing image {img_fpath} re-processed successfully")
 
-		# if not os.path.exists(img_fpath):
-		# 	# Download image
-		# 	try:
-		# 		img_response = requests.get(img_url)
-		# 		img_response.raise_for_status()
-		# 		with open(img_fpath, 'wb') as f:
-		# 			f.write(img_response.content)
-		# 		with Image.open(img_fpath) as img:
-		# 			img.verify()
-		# 		# Process and optimize the image
-		# 		if not process_image_for_storage(
-		# 			img_path=img_fpath, 
-		# 			thumbnail_size=thumbnail_size, 
-		# 			verbose=verbose
-		# 		):
-		# 			if verbose:
-		# 				print(f"Failed to process image {img_fpath} after download.")
-		# 			continue
-		# 		else:
-		# 			if verbose:
-		# 				print(f"{img_fpath} downloaded and processed successfully")
-		# 	except Exception as e:
-		# 		print(f"Failed to download {img_url}: {e}")
-		# 		continue
-		# else:
-		# 	# Image already exists - re-process if needed
-		# 	if not process_image_for_storage(
-		# 		img_path=img_fpath, 
-		# 		thumbnail_size=thumbnail_size, 
-		# 		verbose=verbose
-		# 	):
-		# 		if verbose:
-		# 			print(f"Existing image {img_fpath} failed re-processing. Attempting re-download...")
-		# 		os.remove(img_fpath)
-				
-		# 		# Re-download the image
-		# 		try:
-		# 			img_response = requests.get(img_url)
-		# 			img_response.raise_for_status()
-		# 			with open(img_fpath, 'wb') as f:
-		# 				f.write(img_response.content)
-		# 			with Image.open(img_fpath) as img:
-		# 				img.verify()
-					
-		# 			# Try processing again after fresh download
-		# 			if not process_image_for_storage(
-		# 				img_path=img_fpath, 
-		# 				thumbnail_size=thumbnail_size, 
-		# 				verbose=verbose
-		# 			):
-		# 				if verbose:
-		# 					print(f"Failed to process re-downloaded image {img_fpath}.")
-		# 				continue
-		# 			else:
-		# 				if verbose:
-		# 					print(f"Re-downloaded and processed {img_fpath} successfully")
-		# 		except Exception as e:
-		# 			print(f"Failed to re-download {img_url}: {e}")
-		# 			continue
-		# 	else:
-		# 		if verbose:
-		# 			print(f"Existing image {img_fpath} re-processed successfully")
 
 		row = {
 			'id': filename,
