@@ -302,10 +302,10 @@ def get_dframe(
 				thumbnail_size=thumbnail_size, 
 				verbose=verbose
 			):
-				if verbose:
-					print(f"Existing image {img_fpath} failed re-processing. Attempting re-download...")
 				# Remove the existing image
 				if os.path.exists(img_fpath):
+					if verbose:
+						print(f"Existing image {img_fpath} failed re-processing. Attempting re-download...")
 					os.remove(img_fpath)
 				
 				# Re-download
