@@ -183,7 +183,6 @@ def is_desired(collections, useless_terms):
 	return True
 
 def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
-
 	qv_processed = re.sub(
 		pattern=" ", 
 		repl="_", 
