@@ -558,7 +558,7 @@ def parse_llm_response(
 
 	return llm_response
 
-def _qwen_llm_response_(
+def _qwen_llm_response_old(
 	model_id: str, 
 	input_prompt: str, 
 	llm_response: str, 
