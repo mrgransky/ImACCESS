@@ -740,11 +740,36 @@ def _qwen_llm_response(
 	list_str = response_content[start_bracket:end_bracket + 1]
 	
 	if verbose:
-		print(f"[STEP 2] Extracted list string: {list_str}\n")
+		print(f"[STEP 2] Extracted list string: {list_str}")
+		print(f"[STEP 2] Raw bytes: {list_str.encode('unicode_escape').decode('ascii')}\n")
+	
+	# Step 2.5: Normalize quotes (smart quotes → straight quotes)
+	# This handles Unicode quotes that ast.literal_eval can't parse
+	normalized_list_str = list_str
+	
+	# Replace smart/curly quotes with straight quotes
+	quote_replacements = {
+		'\u2018': "'",  # ' (left single quotation mark)
+		'\u2019': "'",  # ' (right single quotation mark)
+		'\u201c': '"',  # " (left double quotation mark)
+		'\u201d': '"',  # " (right double quotation mark)
+		'\u201a': "'",  # ‚ (single low-9 quotation mark)
+		'\u201e': '"',  # „ (double low-9 quotation mark)
+		'\u2039': "'",  # ‹ (single left-pointing angle quotation mark)
+		'\u203a': "'",  # › (single right-pointing angle quotation mark)
+		'\u00ab': '"',  # « (left-pointing double angle quotation mark)
+		'\u00bb': '"',  # » (right-pointing double angle quotation mark)
+	}
+	
+	for smart_quote, straight_quote in quote_replacements.items():
+		normalized_list_str = normalized_list_str.replace(smart_quote, straight_quote)
+	
+	if verbose and normalized_list_str != list_str:
+		print(f"[STEP 2.5] Normalized quotes: {normalized_list_str}\n")
 
 	# Step 3: Parse the list
 	try:
-		keywords_list = ast.literal_eval(list_str)
+		keywords_list = ast.literal_eval(normalized_list_str)
 		
 		if not isinstance(keywords_list, list):
 			if verbose:
@@ -759,7 +784,8 @@ def _qwen_llm_response(
 	except Exception as e:
 		if verbose:
 			print(f"[ERROR] Failed to parse list: {e}")
-			print(f"[ERROR] Problematic string: {list_str}")
+			print(f"[ERROR] Problematic string: {normalized_list_str}")
+			print(f"[ERROR] Original string: {list_str}")
 		return None
 	
 	# Step 4: Post-process keywords
@@ -779,8 +805,12 @@ def _qwen_llm_response(
 				print(f"    ✗ Skipped: empty/whitespace")
 			continue
 		
-		# Normalize
+		# Normalize whitespace and quotes in the keyword itself
 		cleaned = re.sub(r'\s+', ' ', str(kw).strip())
+		
+		# Normalize quotes in the keyword content too
+		for smart_quote, straight_quote in quote_replacements.items():
+			cleaned = cleaned.replace(smart_quote, straight_quote)
 		
 		if verbose:
 			print(f"    → Cleaned: {repr(cleaned)}")
