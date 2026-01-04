@@ -691,14 +691,14 @@ def _qwen_llm_response(
 	return processed if processed else None
 
 def query_local_llm(
-		model: tfs.PreTrainedModel,
-		tokenizer: tfs.PreTrainedTokenizer, 
-		text: str, 
-		device: str,
-		max_generated_tks: int,
-		max_kws: int,
-		verbose: bool = False,
-	) -> List[str]:
+	model: tfs.PreTrainedModel,
+	tokenizer: tfs.PreTrainedTokenizer, 
+	text: str, 
+	device: str,
+	max_generated_tks: int,
+	max_kws: int,
+	verbose: bool = False,
+) -> List[str]:
 
 	start_time = time.time()
 	
@@ -780,8 +780,9 @@ def query_local_llm(
 		max_kws=max_kws,
 		verbose=verbose,
 	)
-	parsing_time = time.time() - parsing_start
-	if verbose: print(f"Response parsing elapsed time: {parsing_time:.5f}s")
+	
+	if verbose: 
+		print(f"Response parsing elapsed time: {time.time() - parsing_start:.5f}s")
 
 	filtering_start = time.time()
 	if keywords:
@@ -794,10 +795,9 @@ def query_local_llm(
 			return None
 		keywords = filtered_keywords
 	filtering_time = time.time() - filtering_start
-	if verbose: print(f"Keyword filtering elapsed time: {filtering_time:.5f}s")
-
-	total_time = time.time() - start_time
-	if verbose: print(f"TOTAL execution time: {total_time:.2f}s")
+	if verbose: 
+		print(f"Keyword filtering elapsed time: {filtering_time:.5f}s")
+		print(f"TOTAL execution time: {time.time() - start_time:.2f}s")
 	
 	return keywords
 
