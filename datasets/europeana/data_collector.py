@@ -173,22 +173,22 @@ def get_dframe(
 			description_en = None
 		print(f"description_en:\n{description_en}")
 	
-		# scrape doc.get("link") => leads to json => example api link: link: https://api.europeana.eu/record/76/jlm_item_164633.json?wskey=api2demo
-		if verbose:
-			print(f"scaping api link: {doc.get('link')}")
-		try:
-			response = requests.get(
-				url=doc.get("link"),
-				headers=headers,
-				# verify=False, # Try disabling SSL verification if that's the issue
-				# timeout=30, # Timeout in seconds
-			)
-			response.raise_for_status()
-			doc_json = response.json()
-			print(json.dumps(doc_json, indent=2, ensure_ascii=False))
-		except Exception as e:
-			print(f"<!> {e}")
-			continue
+		# # scrape doc.get("link") => leads to json => example api link: link: https://api.europeana.eu/record/76/jlm_item_164633.json?wskey=api2demo
+		# if verbose:
+		# 	print(f"scaping api link: {doc.get('link')}")
+		# try:
+		# 	response = requests.get(
+		# 		url=doc.get("link"),
+		# 		headers=headers,
+		# 		# verify=False, # Try disabling SSL verification if that's the issue
+		# 		# timeout=30, # Timeout in seconds
+		# 	)
+		# 	response.raise_for_status()
+		# 	doc_json = response.json()
+		# 	print(json.dumps(doc_json, indent=2, ensure_ascii=False))
+		# except Exception as e:
+		# 	print(f"<!> {e}")
+		# 	continue
 
 		if (
 			image_url 

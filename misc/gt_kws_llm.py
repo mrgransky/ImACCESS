@@ -558,7 +558,7 @@ def parse_llm_response(
 
 	return llm_response
 
-def _qwen_llm_response(
+def _qwen_llm_response_(
 	model_id: str, 
 	input_prompt: str, 
 	llm_response: str, 
@@ -606,6 +606,141 @@ def _qwen_llm_response(
 	
 	if verbose:
 		print(f"[STEP 2] Extracted list string: {list_str}\n")	
+
+	# Step 3: Parse the list
+	try:
+		keywords_list = ast.literal_eval(list_str)
+		
+		if not isinstance(keywords_list, list):
+			if verbose:
+				print(f"[ERROR] Parsed result is not a list: {type(keywords_list)}")
+			return None
+		
+		if verbose:
+			print(f"[STEP 3] Successfully parsed list with {len(keywords_list)} items:")
+			for i, kw in enumerate(keywords_list, 1):
+				print(f"  [{i}] {repr(kw)}")
+			print()
+	except Exception as e:
+		if verbose:
+			print(f"[ERROR] Failed to parse list: {e}")
+			print(f"[ERROR] Problematic string: {list_str}")
+		return None
+	
+	# Step 4: Post-process keywords
+	if verbose:
+		print(f"[STEP 4] Post-processing keywords (max={max_kws})...")
+	
+	processed = []
+	seen = set()
+	
+	for idx, kw in enumerate(keywords_list, 1):
+		if verbose:
+			print(f"\n  Processing [{idx}/{len(keywords_list)}]: {repr(kw)}")
+		
+		# Check if empty
+		if not kw or not str(kw).strip():
+			if verbose:
+				print(f"    ✗ Skipped: empty/whitespace")
+			continue
+		
+		# Normalize
+		cleaned = re.sub(r'\s+', ' ', str(kw).strip())
+		
+		if verbose:
+			print(f"    → Cleaned: {repr(cleaned)}")
+		
+		# Check length
+		if len(cleaned) < 2:
+			if verbose:
+				print(f"    ✗ Skipped: too short (len={len(cleaned)})")
+			continue
+		
+		# Check stopwords
+		if cleaned.lower() in STOPWORDS:
+			if verbose:
+				print(f"    ✗ Skipped: stopword")
+			continue
+		
+		# Check for duplicates (case-insensitive)
+		normalized = cleaned.lower()
+		if normalized in seen:
+			if verbose:
+				print(f"    ✗ Skipped: duplicate")
+			continue
+		
+		# Accept keyword
+		seen.add(normalized)
+		processed.append(cleaned)
+		
+		if verbose:
+			print(f"    ✓ Accepted (total: {len(processed)})")
+		
+		# Check max limit
+		if len(processed) >= max_kws:
+			if verbose:
+				print(f"\n  [LIMIT] Reached max_kws={max_kws}, stopping")
+			break
+	
+	# Step 5: Return results
+	if verbose:
+		print(f"[RESULT] Final keywords ({len(processed)}/{len(keywords_list)} kept):")
+		for i, kw in enumerate(processed, 1):
+			print(f"  [{i}] {kw}")
+	
+	return processed if processed else None
+
+def _qwen_llm_response(
+	model_id: str, 
+	input_prompt: str, 
+	llm_response: str, 
+	max_kws: int, 
+	verbose: bool = False
+) -> Optional[List[str]]:
+	# Step 1: Find the [/INST] tag
+	inst_end_match = re.search(r'\[/INST\]', llm_response)
+	
+	if not inst_end_match:
+		if verbose:
+			print("[ERROR] No [/INST] tag found in response")
+		return None
+	
+	inst_end_pos = inst_end_match.end()
+	response_content = llm_response[inst_end_pos:].strip()
+	
+	if verbose:
+		print(f"[STEP 1] Found [/INST] at position {inst_end_pos}")
+		print(f"[STEP 1] Content after [/INST]:\n{response_content}")
+	
+	# Step 2: Extract the Python list
+	# Strategy: Find the first '[' and matching ']', then try to parse
+	start_bracket = response_content.find('[')
+	if start_bracket == -1:
+		if verbose:
+			print("[ERROR] No opening bracket '[' found")
+		return None
+	
+	# Find the matching closing bracket
+	bracket_count = 0
+	end_bracket = -1
+	for i in range(start_bracket, len(response_content)):
+		if response_content[i] == '[':
+			bracket_count += 1
+		elif response_content[i] == ']':
+			bracket_count -= 1
+			if bracket_count == 0:
+				end_bracket = i
+				break
+	
+	if end_bracket == -1:
+		if verbose:
+			print("[ERROR] No matching closing bracket ']' found")
+		return None
+	
+	list_str = response_content[start_bracket:end_bracket + 1]
+	
+	if verbose:
+		print(f"[STEP 2] Extracted list string: {list_str}\n")
 
 	# Step 3: Parse the list
 	try:
@@ -1185,9 +1320,9 @@ def get_llm_based_labels(
 			)
 			unique_results[idx] = individual_result
 			if verbose and individual_result:
-				print(f"✅ Individual retry successful: {individual_result}")
+				print(f"OK: Individual retry successful: {individual_result}")
 			elif verbose:
-				print(f"❌ Individual retry failed for item {idx}:\n{desc}\n")
+				print(f"<!> Individual retry FAILED for item {idx}:\n{desc}\n")
 		except Exception as e:
 			if verbose:
 				print(f"💥 Individual retry error for item {idx}: {e}")
