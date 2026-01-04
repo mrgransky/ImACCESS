@@ -713,7 +713,6 @@ def _qwen_llm_response(
 		print(f"[STEP 1] Content after [/INST]:\n{response_content}")
 	
 	# Step 2: Extract the Python list
-	# Strategy: Find the first '[' and matching ']', then try to parse
 	start_bracket = response_content.find('[')
 	if start_bracket == -1:
 		if verbose:
@@ -741,31 +740,62 @@ def _qwen_llm_response(
 	
 	if verbose:
 		print(f"[STEP 2] Extracted list string: {list_str}")
-		print(f"[STEP 2] Raw bytes: {list_str.encode('unicode_escape').decode('ascii')}\n")
+		# Show actual character codes for debugging
+		apostrophe_chars = [c for c in list_str if ord(c) > 127 or c == "'"]
+		if apostrophe_chars:
+			print(f"[STEP 2] Special characters found: {[(c, hex(ord(c))) for c in set(apostrophe_chars)]}")
 	
-	# Step 2.5: Normalize quotes (smart quotes → straight quotes)
-	# This handles Unicode quotes that ast.literal_eval can't parse
+	# Step 2.5: Aggressive quote normalization
 	normalized_list_str = list_str
 	
-	# Replace smart/curly quotes with straight quotes
-	quote_replacements = {
-		'\u2018': "'",  # ' (left single quotation mark)
-		'\u2019': "'",  # ' (right single quotation mark)
-		'\u201c': '"',  # " (left double quotation mark)
-		'\u201d': '"',  # " (right double quotation mark)
-		'\u201a': "'",  # ‚ (single low-9 quotation mark)
-		'\u201e': '"',  # „ (double low-9 quotation mark)
-		'\u2039': "'",  # ‹ (single left-pointing angle quotation mark)
-		'\u203a': "'",  # › (single right-pointing angle quotation mark)
-		'\u00ab': '"',  # « (left-pointing double angle quotation mark)
-		'\u00bb': '"',  # » (right-pointing double angle quotation mark)
-	}
+	# Method 1: Replace all "apostrophe-like" characters with standard apostrophe
+	# This includes all Unicode characters that look like quotes
+	import unicodedata
 	
-	for smart_quote, straight_quote in quote_replacements.items():
-		normalized_list_str = normalized_list_str.replace(smart_quote, straight_quote)
+	# First, try to normalize Unicode (NFKD = compatibility decomposition)
+	normalized_list_str = unicodedata.normalize('NFKD', normalized_list_str)
+	
+	# Then replace all quote-like characters
+	quote_chars = [
+		'\u0027',  # ' (standard apostrophe)
+		'\u2018',  # ' (left single quotation mark)
+		'\u2019',  # ' (right single quotation mark)
+		'\u201a',  # ‚ (single low-9 quotation mark)
+		'\u201b',  # ‛ (single high-reversed-9 quotation mark)
+		'\u2039',  # ‹ (single left-pointing angle quotation mark)
+		'\u203a',  # › (single right-pointing angle quotation mark)
+		'\u0060',  # ` (grave accent)
+		'\u00b4',  # ´ (acute accent)
+		'\u02b9',  # ʹ (modifier letter prime)
+		'\u02bc',  # ʼ (modifier letter apostrophe)
+		'\u02c8',  # ˈ (modifier letter vertical line)
+		'\u0301',  # ́  (combining acute accent)
+		'\u2032',  # ′ (prime)
+	]
+	
+	double_quote_chars = [
+		'\u0022',  # " (standard double quote)
+		'\u201c',  # " (left double quotation mark)
+		'\u201d',  # " (right double quotation mark)
+		'\u201e',  # „ (double low-9 quotation mark)
+		'\u201f',  # ‟ (double high-reversed-9 quotation mark)
+		'\u00ab',  # « (left-pointing double angle quotation mark)
+		'\u00bb',  # » (right-pointing double angle quotation mark)
+		'\u2033',  # ″ (double prime)
+	]
+	
+	# Replace all quote-like chars with standard quotes
+	for char in quote_chars:
+		normalized_list_str = normalized_list_str.replace(char, "'")
+	
+	for char in double_quote_chars:
+		normalized_list_str = normalized_list_str.replace(char, '"')
 	
 	if verbose and normalized_list_str != list_str:
-		print(f"[STEP 2.5] Normalized quotes: {normalized_list_str}\n")
+		print(f"[STEP 2.5] Normalized quotes")
+		print(f"[STEP 2.5] Result: {normalized_list_str}\n")
+	elif verbose:
+		print(f"[STEP 2.5] No quote normalization needed\n")
 
 	# Step 3: Parse the list
 	try:
@@ -784,9 +814,24 @@ def _qwen_llm_response(
 	except Exception as e:
 		if verbose:
 			print(f"[ERROR] Failed to parse list: {e}")
-			print(f"[ERROR] Problematic string: {normalized_list_str}")
-			print(f"[ERROR] Original string: {list_str}")
-		return None
+			print(f"[ERROR] Problematic string: {repr(normalized_list_str)}")
+			print(f"[ERROR] Trying manual parsing as fallback...")
+		
+		# Fallback: Manual parsing using regex
+		try:
+			# Extract all quoted strings
+			pattern = r"['\"]([^'\"]*)['\"]"
+			matches = re.findall(pattern, normalized_list_str)
+			if matches:
+				keywords_list = matches
+				if verbose:
+					print(f"[FALLBACK] Extracted {len(keywords_list)} items via regex")
+			else:
+				return None
+		except Exception as e2:
+			if verbose:
+				print(f"[ERROR] Fallback also failed: {e2}")
+			return None
 	
 	# Step 4: Post-process keywords
 	if verbose:
@@ -805,12 +850,8 @@ def _qwen_llm_response(
 				print(f"    ✗ Skipped: empty/whitespace")
 			continue
 		
-		# Normalize whitespace and quotes in the keyword itself
+		# Normalize whitespace
 		cleaned = re.sub(r'\s+', ' ', str(kw).strip())
-		
-		# Normalize quotes in the keyword content too
-		for smart_quote, straight_quote in quote_replacements.items():
-			cleaned = cleaned.replace(smart_quote, straight_quote)
 		
 		if verbose:
 			print(f"    → Cleaned: {repr(cleaned)}")
