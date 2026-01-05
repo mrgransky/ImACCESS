@@ -250,6 +250,13 @@ def merge_datasets(
 				verbose=verbose,
 			)
 
+	if verbose:
+		print(f"Files created in {HISTORY_XN_DIRECTORY}:")
+		for file in sorted(os.listdir(HISTORY_XN_DIRECTORY)):
+			if file.endswith(('.csv', '.xlsx')):
+				print(f"\t{file}")
+
+
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="Merge multiple WW datasets into a single consolidated dataset with train/val splits and visualizations.")
