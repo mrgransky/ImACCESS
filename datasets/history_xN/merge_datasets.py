@@ -64,7 +64,8 @@ def merge_datasets(
 	os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
 	# Load and merge single-label dataframes
-	print("\nLoading and merging single-label datasets...")
+	if verbose:
+		print("\nLoading and merging single-label datasets...")
 	single_label_dfs = []
 	for i, dataset_path in enumerate(datasets):
 		print(f"Reading Dataset[{i}]: {dataset_path}")
@@ -146,7 +147,8 @@ def merge_datasets(
 			chunk_df = merged_multi_label_df.iloc[start_idx:end_idx]
 			chunk_df_fpth = merged_multi_label_df_fpath.replace('.csv', f'_chunk_{i}.csv')
 			chunk_df.to_csv(chunk_df_fpth, index=False)
-			print(f"  Saved chunk {i+1}/{total_num_chunks}: {chunk_df.shape[0]} rows -> {chunk_df_fpth}")
+			if verbose:
+				print(f"  Saved chunk {i+1}/{total_num_chunks}: {chunk_df.shape[0]} rows -> {chunk_df_fpth}")
 	
 	try:
 		merged_single_label_df.to_excel(merged_single_label_df_fpath.replace('.csv', '.xlsx'), index=False)
@@ -154,7 +156,8 @@ def merge_datasets(
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 	
-	print("\nGenerating label distribution plots...")
+	if verbose:
+		print("\nGenerating label distribution plots...")
 	plot_label_distribution(
 		df=merged_single_label_df,
 		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_{num_unique_labels}_labels_dist.png"),
@@ -176,7 +179,8 @@ def merge_datasets(
 	)
 
 	# Stratified train/val split
-	print("Stratified Splitting".center(150, "-"))
+	if verbose:
+		print("Stratified Splitting".center(150, "-"))
 	single_label_train_df, single_label_val_df = train_test_split(
 		merged_single_label_df,
 		test_size=val_split_pct,
@@ -187,10 +191,11 @@ def merge_datasets(
 	single_label_train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'), index=False)
 	single_label_val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'), index=False)
 	
-	print("Labels per dataset in train split:")
-	print(single_label_train_df.groupby('dataset')['label'].nunique())
-	print("Labels per dataset in val split:")
-	print(single_label_val_df.groupby('dataset')['label'].nunique())
+	if verbose:
+		print("Labels per dataset in train split:")
+		print(single_label_train_df.groupby('dataset')['label'].nunique())
+		print("Labels per dataset in val split:")
+		print(single_label_val_df.groupby('dataset')['label'].nunique())
 	
 	plot_train_val_label_distribution(
 		train_df=single_label_train_df,
@@ -235,7 +240,7 @@ def merge_datasets(
 			print(f"<!> {e}")
 			num_workers = min(num_workers, multiprocessing.cpu_count())
 			if verbose:
-			print(f"Computing RGB mean and std across all images with {num_workers} workers (this may take a while)...")
+				print(f"Computing RGB mean and std across all images with {num_workers} workers (this may take a while)...")
 			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
 				source=all_image_paths,
 				num_workers=num_workers,
