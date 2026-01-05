@@ -19,7 +19,7 @@ parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_si
 parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='Validation Split Percentage')
-parser.add_argument('--thumbnail_size', type=parse_tuple, default=None, help='Thumbnail size (width, height) in pixels')
+parser.add_argument('--thumbnail_size', type=parse_tuple, default=None, help='Thumbnail size (width, height) in pixels (None = no thumbnailing)')
 parser.add_argument('--seed', '-s', type=int, default=42, help='Random seed')
 parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
@@ -28,6 +28,7 @@ args.dataset_dir = os.path.normpath(args.dataset_dir)
 print(args)
 print_args_table(args=args, parser=parser)
 set_seeds(seed=args.seed, debug=False)
+
 # run in local laptop:
 # $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 16 --img_mean_std --thumbnail_size 512,512 -v > logs/na_dataset_collection.out &
 

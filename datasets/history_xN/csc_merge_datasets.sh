@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=history_Xn_dataset
+#SBATCH --job-name=Hx_N_without_chunking
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -37,12 +37,12 @@ python -u merge_datasets.py \
   --num_workers $SLURM_CPUS_PER_TASK \
   --head_threshold 5000 \
   --tail_threshold 1000 \
-  --img_mean_std \
   --val_split_pct 0.35 \
   --bins 60 \
-  --target_chunk_mb 10 \
   --batch_size 256 \
-  --verbose
+  --verbose \
+  --img_mean_std \
+  # --target_chunk_mb 10 \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

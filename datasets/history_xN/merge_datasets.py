@@ -1,4 +1,5 @@
 import os
+from pickle import NONE
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
@@ -46,11 +47,12 @@ def merge_datasets(
 	seed: int=42, 
 	head_threshold: int=5000, 
 	tail_threshold: int=1000, 
-	bins: int=60, 
-	num_workers: int=16, 
+	bins: int=60,
+	num_workers: int=16,
 	batch_size: int=64,
-	target_chunk_mb: int=6, # Target X MB per chunk
+	target_chunk_mb: int=None,
 	img_mean_std: bool=False,
+	verbose: bool=False,
 ):
 	datasets = get_dataset(ddir=ddir)
 
@@ -129,21 +131,22 @@ def merge_datasets(
 	print(f"Saving merged multi-label dataset to: {merged_multi_label_df_fpath}")
 	merged_multi_label_df.to_csv(merged_multi_label_df_fpath, index=False)
 
-	print(f"Chunking merged multi-label dataset to {target_chunk_mb} MB...")
-	# Calculate optimal chunk size
-	estimated_mb_per_row = merged_multi_label_df.memory_usage(deep=True).sum() / (1024**2) / len(merged_multi_label_df)
-	
-	optimal_chunk_size = max(1000, min(50000, int(target_chunk_mb / estimated_mb_per_row)))
-	total_num_chunks = (len(merged_multi_label_df) + optimal_chunk_size - 1) // optimal_chunk_size
-	print(f"Saving {len(merged_multi_label_df)} rows in {total_num_chunks} chunks of ~{optimal_chunk_size} rows each (estimated_mb_per_row: {estimated_mb_per_row:.3f} MB)...")
-	# Save in chunks
-	for i in range(total_num_chunks):
-		start_idx = i * optimal_chunk_size
-		end_idx = min((i + 1) * optimal_chunk_size, len(merged_multi_label_df))
-		chunk_df = merged_multi_label_df.iloc[start_idx:end_idx]
-		chunk_df_fpth = merged_multi_label_df_fpath.replace('.csv', f'_chunk_{i}.csv')
-		chunk_df.to_csv(chunk_df_fpth, index=False)
-		print(f"  Saved chunk {i+1}/{total_num_chunks}: {chunk_df.shape[0]} rows -> {chunk_df_fpth}")
+	if target_chunk_mb is not None:
+		print(f"Chunking merged multi-label dataset to {target_chunk_mb} MB...")
+		# Calculate optimal chunk size
+		estimated_mb_per_row = merged_multi_label_df.memory_usage(deep=True).sum() / (1024**2) / len(merged_multi_label_df)
+		
+		optimal_chunk_size = max(1000, min(50000, int(target_chunk_mb / estimated_mb_per_row)))
+		total_num_chunks = (len(merged_multi_label_df) + optimal_chunk_size - 1) // optimal_chunk_size
+		print(f"Saving {len(merged_multi_label_df)} rows in {total_num_chunks} chunks of ~{optimal_chunk_size} rows each (estimated_mb_per_row: {estimated_mb_per_row:.3f} MB)...")
+		# Save in chunks
+		for i in range(total_num_chunks):
+			start_idx = i * optimal_chunk_size
+			end_idx = min((i + 1) * optimal_chunk_size, len(merged_multi_label_df))
+			chunk_df = merged_multi_label_df.iloc[start_idx:end_idx]
+			chunk_df_fpth = merged_multi_label_df_fpath.replace('.csv', f'_chunk_{i}.csv')
+			chunk_df.to_csv(chunk_df_fpth, index=False)
+			print(f"  Saved chunk {i+1}/{total_num_chunks}: {chunk_df.shape[0]} rows -> {chunk_df_fpth}")
 	
 	try:
 		merged_single_label_df.to_excel(merged_single_label_df_fpath.replace('.csv', '.xlsx'), index=False)
@@ -223,21 +226,24 @@ def merge_datasets(
 	)
 
 	if img_mean_std:
-		print("Computing RGB mean and std across all images (this may take a while)...")
+		all_image_paths = merged_single_label_df['img_path'].tolist()
 		img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
 		img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
-		all_image_paths = merged_single_label_df['img_path'].tolist()
-		num_workers = min(num_workers, multiprocessing.cpu_count())
-
-		mean, std = get_mean_std_rgb_img_multiprocessing(
-			source=all_image_paths,
-			num_workers=num_workers,
-			batch_size=batch_size,
-			img_rgb_mean_fpth=img_rgb_mean_fpth,
-			img_rgb_std_fpth=img_rgb_std_fpth,
-		)
-		print(f"Image statistics computed: Mean={mean}, Std={std}")
-	print(f"{dataset_name} successfully merged and saved to: {HISTORY_XN_DIRECTORY}")
+		try:
+			img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
+		except Exception as e:
+			print(f"<!> {e}")
+			num_workers = min(num_workers, multiprocessing.cpu_count())
+			if verbose:
+			print(f"Computing RGB mean and std across all images with {num_workers} workers (this may take a while)...")
+			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
+				source=all_image_paths,
+				num_workers=num_workers,
+				batch_size=batch_size,
+				img_rgb_mean_fpth=img_rgb_mean_fpth,
+				img_rgb_std_fpth=img_rgb_std_fpth,
+				verbose=verbose,
+			)
 
 @measure_execution_time
 def main():
@@ -250,7 +256,7 @@ def main():
 	parser.add_argument('--tail_threshold', type=int, default=1000, help='Threshold for tail class in long-tail analysis (default: 1000)')
 	parser.add_argument('--num_workers', type=int, default=4, help='Number of workers for image stats computation (default: min(16, cpu_count))')
 	parser.add_argument('--batch_size', type=int, default=16, help='Batch size for computing image statistics (default: 64)')
-	parser.add_argument('--target_chunk_mb', type=int, default=10, help='Target chunk size in MB (default: 10)')
+	parser.add_argument('--target_chunk_mb', type=int, default=None, help='Target chunk size in MB (None = no chunking)')
 	parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
@@ -271,6 +277,7 @@ def main():
 		batch_size=args.batch_size,
 		target_chunk_mb=args.target_chunk_mb,
 		img_mean_std=args.img_mean_std,
+		verbose=args.verbose,
 	)
 
 if __name__ == "__main__":
