@@ -389,8 +389,6 @@ def main():
 		synched_fpath=synched_fpath,
 		nw=args.num_workers,
 		thumbnail_size=args.thumbnail_size,
-		# enable_thumbnailing=args.enable_thumbnailing,
-		# large_image_threshold_mb=args.large_image_threshold_mb,
 		verbose=args.verbose,
 	)
 	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
