@@ -1175,7 +1175,7 @@ def get_vlm_based_labels(
 		return out
 	
 	# ========== Process batches ==========
-	for b in tqdm(range(total_batches), desc="Processing (visual) batches(PARALLEL OPTIMIZED)", ncols=100):
+	for b in tqdm(range(total_batches), desc="Processing (visual) batches", ncols=120):
 		batch_indices = valid_indices[b * batch_size:(b + 1) * batch_size]
 		batch_paths = [verified_paths[i] for i in batch_indices]
 
