@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --account=project_2009043
+#SBATCH --account=project_2014707
 #SBATCH --job-name=Hx_N_without_chunking
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
