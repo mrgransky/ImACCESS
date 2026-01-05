@@ -1197,32 +1197,30 @@ def process_image_for_storage(
 		return False
 
 def download_image(
-		row,
-		session, 
-		image_dir, 
-		total_rows,
-		retries: int = 2, 
-		backoff_factor: float = 0.5,
-		download_timeout: int = 15,
-		thumbnail_size: tuple = None,  # None = no thumbnailing
-		verbose: bool = False,
+	row,
+	session, 
+	image_dir, 
+	total_rows,
+	retries: int = 2, 
+	backoff_factor: float = 0.5,
+	download_timeout: int = 15,
+	thumbnail_size: tuple = None,  # None = no thumbnailing
+	verbose: bool = False,
 ):
 	"""
 	Download and process an image from a URL.
-	
 	Args:
-			row: DataFrame row containing 'img_url' and 'id'
-			session: requests.Session object
-			image_dir: Directory to save images
-			total_rows: Total number of rows (for progress display)
-			retries: Number of download retry attempts
-			backoff_factor: Exponential backoff factor for retries
-			download_timeout: Download timeout in seconds
-			thumbnail_size: Target size (width, height) or None for original size
-			verbose: Print detailed progress
-	
+		row: DataFrame row containing 'img_url' and 'id'
+		session: requests.Session object
+		image_dir: Directory to save images
+		total_rows: Total number of rows (for progress display)
+		retries: Number of download retry attempts
+		backoff_factor: Exponential backoff factor for retries
+		download_timeout: Download timeout in seconds
+		thumbnail_size: Target size (width, height) or None for original size
+		verbose: Print detailed progress
 	Returns:
-			True if successful, False otherwise
+		True if successful, False otherwise
 	"""
 	t0 = time.time()
 	rIdx = row.name
@@ -1314,7 +1312,7 @@ def download_image(
 				raise ValueError(f"Failed to process image {image_id} after download.")
 			
 			if verbose:
-				mode = f"Thumbnailed, new size: {img.size}" if thumbnail_size else "original"
+				mode = f"Thumbnailed" if thumbnail_size else "Original"
 				print(f"{rIdx:<10}/{total_rows:<10} {image_id:<100} ({mode}) {time.time()-t0:.1f}s")
 			
 			return True

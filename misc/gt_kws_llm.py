@@ -1342,7 +1342,7 @@ def get_llm_based_labels(
 				print(f"<!> Individual retry FAILED for item {idx}:\n{desc}\n")
 		except Exception as e:
 			if verbose:
-				print(f"💥 Individual retry error for item {idx}: {e}")
+				print(f"Individual retry error for item {idx}: {e}")
 			unique_results[idx] = None
 
 	# Map unique_results back to original order

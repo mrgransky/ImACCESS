@@ -50,7 +50,7 @@ if [ "$NUM_GPUS" -gt 1 ]; then
 	echo "LARGE models (multi-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
-	LLM_BATCH_SIZE=12
+	LLM_BATCH_SIZE=16
 	VLM_BATCH_SIZE=12
 	MAX_GENERATED_TOKENS=128
 else
@@ -62,8 +62,6 @@ else
 	MAX_GENERATED_TOKENS=256
 fi
 
-echo "$LLM_MODEL (batch size: $LLM_BATCH_SIZE)"
-echo "$VLM_MODEL (batch size: $VLM_BATCH_SIZE)"
 echo "Max generated tokens: $MAX_GENERATED_TOKENS"
 
 DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
@@ -98,7 +96,7 @@ elif [ "$SLURM_ARRAY_TASK_ID" -eq 1 ]; then
 			--batch_size "$VLM_BATCH_SIZE" \
 			--max_generated_tks "$MAX_GENERATED_TOKENS" \
 			--max_keywords 5 \
-			# --verbose
+			--verbose
 			# --use_quantization \
 			# --debug \
 
