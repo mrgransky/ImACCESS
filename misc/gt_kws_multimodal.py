@@ -204,98 +204,6 @@ def merge_labels(
 
 	return multimodal_labels
 
-def _run_llm_pipeline(
-	llm_model_id: str,
-	dev_str: str,
-	csv_file: str,
-	llm_batch_size: int,
-	max_generated_tks: int,
-	max_keywords: int,
-	num_workers: int,
-	use_quantization: bool,
-	verbose: bool,
-	debug: bool,
-):
-	"""Run the LLM-based annotation pipeline on a given device string."""
-	dev = torch.device(dev_str)
-	if verbose:
-		print(f"[LLM] Using device: {dev}")
-	
-	if debug:
-		labels = get_llm_based_labels_debug(
-			model_id=llm_model_id,
-			device=dev,
-			csv_file=csv_file,
-			batch_size=llm_batch_size,
-			max_generated_tks=max_generated_tks,
-			max_kws=max_keywords,
-			use_quantization=use_quantization,
-			verbose=verbose,
-		)
-	else:
-		labels = get_llm_based_labels(
-			model_id=llm_model_id,
-			device=dev,
-			csv_file=csv_file,
-			batch_size=llm_batch_size,
-			max_generated_tks=max_generated_tks,
-			max_kws=max_keywords,
-			num_workers=num_workers,
-			use_quantization=use_quantization,
-			verbose=verbose,
-		)
-	
-	if torch.cuda.is_available():
-		torch.cuda.empty_cache()
-	
-	return labels
-
-def _run_vlm_pipeline(
-	vlm_model_id: str,
-	dev_str: str,
-	csv_file: str,
-	vlm_batch_size: int,
-	max_generated_tks: int,
-	max_keywords: int,
-	num_workers: int,
-	use_quantization: bool,
-	verbose: bool,
-	debug: bool,
-):
-	"""Run the VLM-based annotation pipeline on a given device string."""
-	dev = torch.device(dev_str)
-	if verbose:
-		print(f"[VLM] Using device: {dev}")
-	
-	if debug:
-		vlm_labels = get_vlm_based_labels_debug(
-			model_id=vlm_model_id,
-			device=dev,
-			num_workers=num_workers,
-			max_generated_tks=max_generated_tks,
-			max_kws=max_keywords,
-			csv_file=csv_file,
-			use_quantization=use_quantization,
-			verbose=verbose,
-		)
-	else:
-		vlm_labels = get_vlm_based_labels(
-			model_id=vlm_model_id,
-			device=dev,
-			csv_file=csv_file,
-			num_workers=num_workers,
-			batch_size=vlm_batch_size,
-			max_kws=max_keywords,
-			max_generated_tks=max_generated_tks,
-			use_quantization=use_quantization,
-			verbose=verbose,
-		)
-	
-	if torch.cuda.is_available():
-		torch.cuda.empty_cache()
-	
-	return vlm_labels
-
 def get_multimodal_annotation(
 	csv_file: str,
 	llm_model_id: str,
@@ -310,7 +218,6 @@ def get_multimodal_annotation(
 	use_llm_quantization: bool = False,
 	use_vlm_quantization: bool = False,
 	verbose: bool = False,
-	debug: bool = False,
 ):
 	# Ensure we have a torch.device
 	if not isinstance(device, torch.device):
@@ -463,12 +370,12 @@ def main():
 	parser.add_argument("--use_vlm_quantization", '-vlm_q', action='store_true', help="Use quantization for VLM")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
-	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
 	args = parser.parse_args()
 	args.device = torch.device(args.device)
 	args.num_workers = min(args.num_workers, os.cpu_count())
-	print(args)
-	print_args_table(args=args, parser=parser)
+	if args.verbose:
+		print(args)
+		print_args_table(args=args, parser=parser)
 
 	multimodal_labels = get_multimodal_annotation(
 		csv_file=args.csv_file,
@@ -484,7 +391,6 @@ def main():
 		use_llm_quantization=args.use_llm_quantization,
 		use_vlm_quantization=args.use_vlm_quantization,
 		verbose=args.verbose,
-		debug=args.debug,
 	)
 
 if __name__ == "__main__":

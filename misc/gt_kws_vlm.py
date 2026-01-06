@@ -1030,19 +1030,32 @@ def get_vlm_based_labels(
 	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 	num_workers = min(os.cpu_count(), num_workers)
 
-	if os.path.exists(output_csv):
-		if verbose:
-			print(f"[EXISTING] Found existing results at {output_csv}")
+	try:
 		df = pd.read_csv(
 			filepath_or_buffer=output_csv,
 			on_bad_lines='skip',
 			dtype=dtypes,
 			low_memory=False,
+			usecols = ['vlm_keywords'],
 		)
-		if 'vlm_keywords' in df.columns:
-			if verbose:
-				print(f"[EXISTING] Found existing results! {type(df)} {df.shape} {list(df.columns)}")
-			return df['vlm_keywords'].tolist()
+		return df['vlm_keywords'].tolist()
+	except Exception as e:
+		print(f"<!> {e} Generating from scratch...")
+		df = None
+
+	# if os.path.exists(output_csv):
+	# 	if verbose:
+	# 		print(f"[EXISTING] Found existing results at {output_csv}")
+	# 	df = pd.read_csv(
+	# 		filepath_or_buffer=output_csv,
+	# 		on_bad_lines='skip',
+	# 		dtype=dtypes,
+	# 		low_memory=False,
+	# 	)
+	# 	if 'vlm_keywords' in df.columns:
+	# 		if verbose:
+	# 			print(f"[EXISTING] Found existing results! {type(df)} {df.shape} {list(df.columns)}")
+	# 		return df['vlm_keywords'].tolist()
 	
 	if verbose:
 		print(f"[INIT] Starting PARALLEL OPTIMIZED batch VLM processing with {num_workers} workers")
@@ -1050,14 +1063,26 @@ def get_vlm_based_labels(
 	# ========== Load data ==========
 	if verbose:
 		print(f"[PREP] Loading data from {csv_file}...")
-	df = pd.read_csv(
-		filepath_or_buffer=csv_file,
-		on_bad_lines='skip',
-		dtype=dtypes,
-		low_memory=False,
-	)
-	if "img_path" not in df.columns:
-		raise ValueError(f"CSV file must have 'img_path' column, found: {df.columns}")
+	# df = pd.read_csv(
+	# 	filepath_or_buffer=csv_file,
+	# 	on_bad_lines='skip',
+	# 	dtype=dtypes,
+	# 	low_memory=False,
+	# )
+	# if "img_path" not in df.columns:
+	# 	raise ValueError(f"CSV file must have 'img_path' column, found: {df.columns}")
+
+	try:
+		df = pd.read_csv(
+			filepath_or_buffer=csv_file,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+			usecols = ['img_path'],
+		)
+	except Exception as e:
+		raise ValueError(f"Error loading CSV file: {e}")
+
 	image_paths = [p if isinstance(p, str) and os.path.exists(p) else None for p in df["img_path"]]
 	n_total = len(image_paths)
 	if verbose:

@@ -1044,19 +1044,31 @@ def get_llm_based_labels(
 ) -> List[Optional[List[str]]]:
 
 	output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
-	if os.path.exists(output_csv):
-		if verbose:
-			print(f"[EXISTING] Found existing results at {output_csv}")
+	try:
 		df = pd.read_csv(
 			filepath_or_buffer=output_csv,
 			on_bad_lines='skip',
 			dtype=dtypes,
 			low_memory=False,
+			usecols = ['llm_keywords'],
 		)
-		if 'llm_keywords' in df.columns:
-			if verbose:
-				print(f"[EXISTING] Found existing LLM keywords! {type(df)} {df.shape} {list(df.columns)}")
-			return df['llm_keywords'].tolist()
+		return df['llm_keywords'].tolist()
+	except Exception as e:
+		print(f"<!> {e} Generating from scratch...")
+
+	# if os.path.exists(output_csv):
+	# 	if verbose:
+	# 		print(f"[EXISTING] Found existing results at {output_csv}")
+	# 	df = pd.read_csv(
+	# 		filepath_or_buffer=output_csv,
+	# 		on_bad_lines='skip',
+	# 		dtype=dtypes,
+	# 		low_memory=False,
+	# 	)
+	# 	if 'llm_keywords' in df.columns:
+	# 		if verbose:
+	# 			print(f"[EXISTING] Found existing LLM keywords! {type(df)} {df.shape} {list(df.columns)}")
+	# 		return df['llm_keywords'].tolist()
 	
 	num_workers = min(os.cpu_count(), num_workers)
 	if verbose:
@@ -1066,26 +1078,38 @@ def get_llm_based_labels(
 		print(f"[INIT] Device: {device}")
 
 	st_t = time.time()
-		
+
+	# ========== Load data ==========
 	try:
 		df = pd.read_csv(
 			filepath_or_buffer=csv_file,
 			on_bad_lines='skip',
 			dtype=dtypes,
 			low_memory=False,
+			usecols = ['enriched_document_description'],
 		)
-	except pd.errors.ParserError as e:
-		if verbose:
-			print(f"CSV parsing error, trying with python engine: {e}")
-		df = pd.read_csv(
-			filepath_or_buffer=csv_file,
-			on_bad_lines='skip',
-			dtype=dtypes,
-			engine='python',
-		)
+	except Exception as e:
+		raise ValueError(f"Error loading CSV file: {e}")
 
-	if 'enriched_document_description' not in df.columns:
-		raise ValueError("CSV file must have 'enriched_document_description' column")
+	# try:
+	# 	df = pd.read_csv(
+	# 		filepath_or_buffer=csv_file,
+	# 		on_bad_lines='skip',
+	# 		dtype=dtypes,
+	# 		low_memory=False,
+	# 	)
+	# except pd.errors.ParserError as e:
+	# 	if verbose:
+	# 		print(f"CSV parsing error, trying with python engine: {e}")
+	# 	df = pd.read_csv(
+	# 		filepath_or_buffer=csv_file,
+	# 		on_bad_lines='skip',
+	# 		dtype=dtypes,
+	# 		engine='python',
+	# 	)
+
+	# if 'enriched_document_description' not in df.columns:
+	# 	raise ValueError("CSV file must have 'enriched_document_description' column")
 	
 	descriptions = df['enriched_document_description'].tolist()
 	if verbose:
