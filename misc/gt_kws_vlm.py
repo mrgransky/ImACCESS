@@ -1392,7 +1392,7 @@ def get_vlm_based_labels(
 				memory_consumed_percent += mem_usage_pct
 
 		if need_cleanup:
-			print(f"[WARN] High memory usage ({memory_consumed_percent:.1f}%). Clearing cache...")
+			print(f"\n[WARN] High memory usage ({memory_consumed_percent:.1f}%) => Clearing cache...")
 			torch.cuda.empty_cache() # clears all GPUs
 			gc.collect()
 
