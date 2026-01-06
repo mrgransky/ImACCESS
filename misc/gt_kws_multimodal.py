@@ -268,14 +268,11 @@ def get_multimodal_annotation(
 		use_quantization=use_vlm_quantization,
 		verbose=verbose,
 	)
-	
 	if verbose:
-		print(f"Extracted {len(vlm_based_labels)} VLM-based {type(vlm_based_labels)} labels")
-		print("=" * 120)
+		print(f"[DONE] Extracted {len(vlm_based_labels)} VLM-based {type(vlm_based_labels)} labels")
 	if torch.cuda.is_available():
 		if verbose:
-			print(f"[DEBUG] Clearing CUDA memory BEFORE running pipeline...")
-			print("=" * 120)
+			print(f"[MEMORY] Clearing CUDA memory BEFORE running next pipeline...")
 		gc.collect()
 		torch.cuda.empty_cache()
 		
@@ -291,17 +288,12 @@ def get_multimodal_annotation(
 		use_quantization=use_llm_quantization,
 		verbose=verbose,
 	)
-	
 	if verbose:
-		print(f"Extracted {len(llm_based_labels)} LLM-based {type(llm_based_labels)} labels")
-		print("=" * 120)
-		
+		print(f"[DONE] Extracted {len(llm_based_labels)} LLM-based {type(llm_based_labels)} labels")		
 	if torch.cuda.is_available():
 		if verbose:
-			print(f"[DEBUG] Clearing CUDA memory BEFORE merging labels...")
-			print("=" * 120)
+			print(f"[MEMORY] Clearing CUDA memory BEFORE merging labels...")
 		torch.cuda.empty_cache()
-
 
 	# Merge, post-process, save, and split
 	if len(llm_based_labels) != len(vlm_based_labels):
@@ -335,9 +327,8 @@ def get_multimodal_annotation(
 		on_bad_lines='skip',
 		dtype=dtypes,
 		low_memory=False,
-		usecols = ['img_path', 'enriched_document_description'],
+		usecols = ['doc_url','img_path', 'enriched_document_description'],
 	)
-
 
 	df['llm_based_labels'] = llm_based_labels
 	df['vlm_based_labels'] = vlm_based_labels
