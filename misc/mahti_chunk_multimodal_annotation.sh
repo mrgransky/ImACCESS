@@ -35,7 +35,7 @@ echo "${stars// /*}"
 
 # Determine number of GPUs from GRES allocation
 GPU_GRES="${SLURM_GPUS_ON_NODE%%,*}"  # Extract "gpu:a100:4" part
-NUM_GPUS="${GPU_GRES##*:}"        # Extract "4" from gpu part
+NUM_GPUS="${GPU_GRES##*:}"        		# Extract "4" from gpu part
 
 # Validate GPU count
 if ! [[ "$NUM_GPUS" =~ ^[0-9]+$ ]]; then
@@ -69,7 +69,7 @@ echo "VLM Model: $VLM_MODEL (batch size: $VLM_BATCH_SIZE) max generated tokens: 
 
 DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 CSV_FILE=${DATASET_DIRECTORY}/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv
-echo "Running (chunked) Multimodal Annotation on $CSV_FILE using $LLM_MODEL and $VLM_MODEL"
+echo "Running (chunked) Multimodal Annotation on $CSV_FILE"
 
 python -u gt_kws_multimodal.py \
 	--csv_file $CSV_FILE \

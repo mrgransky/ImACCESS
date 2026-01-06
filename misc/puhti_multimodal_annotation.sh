@@ -46,19 +46,21 @@ echo "Detected $NUM_GPUS GPUs, selecting model configuration"
 
 # Select model configuration based on GPU count
 if [ "$NUM_GPUS" -gt 1 ]; then
-	echo "Using LARGE models (multi-GPU configuration)"
+	echo "LARGE models (multi-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
-	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
   BASE_LLM_BATCH_SIZES=(6 6 12 12 16)
+	LLM_MAX_GENERATED_TOKENS=128
+	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
   BASE_VLM_BATCH_SIZES=(4 4 8 8 8)
-	MAX_GENERATED_TOKENS=128
+	VLM_MAX_GENERATED_TOKENS=128
 else
-	echo "Using SMALL models (single-GPU configuration)"
+	echo "SMALL models (single-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
-	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
   BASE_LLM_BATCH_SIZES=(8 8 16 16 24)
+	LLM_MAX_GENERATED_TOKENS=256
+	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
   BASE_VLM_BATCH_SIZES=(6 6 12 12 16)
-	MAX_GENERATED_TOKENS=256
+	VLM_MAX_GENERATED_TOKENS=128
 fi
 
 # Scale batch sizes by number of GPUs
@@ -69,9 +71,6 @@ for i in "${!BASE_LLM_BATCH_SIZES[@]}"; do
 	VLM_BATCH_SIZES[$i]=$((BASE_VLM_BATCH_SIZES[i] * NUM_GPUS))
 done
 
-echo "Scaled LLM batch sizes: ${LLM_BATCH_SIZES[@]}"
-echo "Scaled VLM batch sizes: ${VLM_BATCH_SIZES[@]}"
-echo "Max generated tokens: $MAX_GENERATED_TOKENS"
 
 DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 DATASETS=(
@@ -83,16 +82,19 @@ DATASETS=(
 )
 CSV_FILE=${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv
 
-echo "Running Multimodal Annotation on $CSV_FILE using $LLM_MODEL and $VLM_MODEL"
+echo "Running Multimodal Annotation on $CSV_FILE"
+echo "Scaled LLM batch sizes: ${LLM_BATCH_SIZES[@]} max generated tokens: $LLM_MAX_GENERATED_TOKENS"
+echo "Scaled VLM batch sizes: ${VLM_BATCH_SIZES[@]} max generated tokens: $VLM_MAX_GENERATED_TOKENS"
 
 python -u gt_kws_multimodal.py \
   --csv_file $CSV_FILE \
   --num_workers $SLURM_CPUS_PER_TASK \
-  --llm_batch_size ${LLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
-  --vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
   --llm_model_id $LLM_MODEL \
+  --llm_batch_size ${LLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
+  --llm_max_generated_tks $LLM_MAX_GENERATED_TOKENS \
   --vlm_model_id $VLM_MODEL \
-  --max_generated_tks $MAX_GENERATED_TOKENS \
+  --vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
+	--vlm_max_generated_tks $VLM_MAX_GENERATED_TOKENS \
   --max_keywords 5 \
   # --verbose \
   # --use_llm_quantization \
