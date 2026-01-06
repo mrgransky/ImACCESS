@@ -1060,9 +1060,6 @@ def get_llm_based_labels(
 	num_workers = min(os.cpu_count(), num_workers)
 	if verbose:
 		print(f"[INIT] Starting OPTIMIZED batch LLM processing with {num_workers} workers")
-		print(f"[INIT] Model: {model_id}")
-		print(f"[INIT] Batch size: {batch_size}")
-		print(f"[INIT] Device: {device}")
 
 	st_t = time.time()
 

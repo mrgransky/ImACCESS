@@ -1043,7 +1043,7 @@ def get_vlm_based_labels(
 		print(f"<!> {e} Generating from scratch...")
 	
 	# num_workers = min(os.cpu_count(), num_workers)
-	num_workers = min(4, num_workers)
+	num_workers = min(2, num_workers)
 	if verbose:
 		print(f"[INIT] Starting PARALLEL OPTIMIZED batch VLM processing with {num_workers} workers")
 
