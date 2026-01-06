@@ -49,22 +49,23 @@ echo "Detected $NUM_GPUS GPU(s) for job: $SLURM_JOB_ID with array task: $SLURM_A
 if [ "$NUM_GPUS" -gt 1 ]; then
 	echo "LARGE models (multi-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
-	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 	LLM_BATCH_SIZE=16
+	LLM_MAX_GEN_TKs=128
+	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 	VLM_BATCH_SIZE=24
-	MAX_GENERATED_TOKENS=128
+	VLM_MAX_GEN_TKs=128
 else
 	echo "SMALL models (single-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
-	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 	LLM_BATCH_SIZE=32
+	LLM_MAX_GEN_TKs=256
+	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 	VLM_BATCH_SIZE=24
-	MAX_GENERATED_TOKENS=256
+	VLM_MAX_GEN_TKs=256
 fi
 
-echo "LLM Model: $LLM_MODEL (batch size: $LLM_BATCH_SIZE)"
-echo "VLM Model: $VLM_MODEL (batch size: $VLM_BATCH_SIZE)"
-echo "Max generated tokens: $MAX_GENERATED_TOKENS"
+echo "LLM Model: $LLM_MODEL (batch size: $LLM_BATCH_SIZE) max generated tokens: $LLM_MAX_GEN_TKs"
+echo "VLM Model: $VLM_MODEL (batch size: $VLM_BATCH_SIZE) max generated tokens: $VLM_MAX_GEN_TKs"
 
 DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 CSV_FILE=${DATASET_DIRECTORY}/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv
@@ -72,12 +73,13 @@ echo "Running (chunked) Multimodal Annotation on $CSV_FILE using $LLM_MODEL and 
 
 python -u gt_kws_multimodal.py \
 	--csv_file $CSV_FILE \
-	--num_workers $SLURM_CPUS_PER_TASK \
-	--llm_batch_size $LLM_BATCH_SIZE \
-	--vlm_batch_size $VLM_BATCH_SIZE \
 	--llm_model_id $LLM_MODEL \
+	--llm_batch_size $LLM_BATCH_SIZE \
+	--llm_max_generated_tks $LLM_MAX_GEN_TKs \
 	--vlm_model_id $VLM_MODEL \
-	--max_generated_tks $MAX_GENERATED_TOKENS \
+	--vlm_batch_size $VLM_BATCH_SIZE \
+	--vlm_max_generated_tks $VLM_MAX_GEN_TKs \
+	--num_workers $SLURM_CPUS_PER_TASK \
 	--max_keywords 5 \
 	--verbose \
 	# --use_llm_quantization \

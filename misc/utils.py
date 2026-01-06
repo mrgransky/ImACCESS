@@ -390,9 +390,6 @@ def get_conversation_token_breakdown(text: str, model_name: str = "bert-base-unc
 	return parts
 
 def debug_llm_info(model, tokenizer, device):
-	# ------------------------------------------------------------------
-	# 1️⃣ Runtime / environment
-	# ------------------------------------------------------------------
 	print("\n=== Runtime / Environment ===")
 	print(f"Python version      : {sys.version.split()[0]}")
 	print(f"PyTorch version     : {torch.__version__}")
@@ -406,9 +403,6 @@ def debug_llm_info(model, tokenizer, device):
 						f"{torch.cuda.get_device_properties(0).total_memory // (1024**2)} MB / "
 						f"{torch.cuda.memory_allocated(0) // (1024**2)} MB")
 	print(f"Requested device   : {device}")
-	# ------------------------------------------------------------------
-	# 2️⃣ Model overview
-	# ------------------------------------------------------------------
 	print("\n=== Model Overview ===")
 	print(f"Model class        : {model.__class__.__name__}")
 	# Config (pretty‑print all fields)
@@ -592,6 +586,10 @@ def basic_clean(txt: str):
 	junk_phrases = [
 		r"this is a general view of ",
 		r"this is a view of ",
+		r'View from atop ',
+		r"another view of ",
+		r'full view of ',
+		r"rear view of ",
 		r'partial view of ',
 		r"general view from ",
 		r"general view of ",
@@ -632,7 +630,6 @@ def basic_clean(txt: str):
 		r'This image is part of ',
 		r'This image is one of ',
 		r'According to Shaffer: ',
-		r'View from atop ',
 		r'Photo album with photo',
 		r'Photographs from ',
 		r"The photographer's notes indicate ",
@@ -659,9 +656,6 @@ def basic_clean(txt: str):
 		r'Text on the back',
 		r"A B/W photo of ",
 		r'black and white',
-		r"another view of ",
-		r'full view of ',
-		r"rear view of ",
 		r'Photograph of ',
 		r'Photographn of ',
 		r'In the photo ',

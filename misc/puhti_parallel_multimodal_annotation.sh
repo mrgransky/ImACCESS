@@ -49,20 +49,20 @@ echo "Detected $NUM_GPUS GPU(s) for this job"
 if [ "$NUM_GPUS" -gt 1 ]; then
 	echo "LARGE models (multi-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
-	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 	LLM_BATCH_SIZE=16
+	LLM_MAX_GEN_TKs=128
+	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 	VLM_BATCH_SIZE=12
-	MAX_GENERATED_TOKENS=128
+	VLM_MAX_GEN_TKs=128
 else
 	echo "SMALL models (single-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
-	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 	LLM_BATCH_SIZE=32
+	LLM_MAX_GEN_TKs=256
+	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 	VLM_BATCH_SIZE=24
-	MAX_GENERATED_TOKENS=256
+	VLM_MAX_GEN_TKs=192
 fi
-
-echo "Max generated tokens: $MAX_GENERATED_TOKENS"
 
 DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 CSV_FILE=${DATASET_DIRECTORY}/HISTORY_X4/metadata_multi_label.csv
@@ -72,14 +72,14 @@ echo "CSV file: $CSV_FILE"
 if [ "$SLURM_ARRAY_TASK_ID" -eq 0 ]; then
 	echo "=== Array Task $SLURM_ARRAY_TASK_ID: Running LLM-based keyword extraction ==="
 	echo "Script: gt_kws_llm.py"
-	echo "LLM: $LLM_MODEL"
+	echo "LLM: $LLM_MODEL (batch size: $LLM_BATCH_SIZE) max generated tokens: $LLM_MAX_GEN_TKs"
 	
 	python -u gt_kws_llm.py \
 			--csv_file "$CSV_FILE" \
 			--model_id "$LLM_MODEL" \
 			--num_workers "$SLURM_CPUS_PER_TASK" \
 			--batch_size "$LLM_BATCH_SIZE" \
-			--max_generated_tks "$MAX_GENERATED_TOKENS" \
+			--max_generated_tks "$LLM_MAX_GEN_TKs" \
 			--max_keywords 5 \
 			--verbose
 			# --use_quantization \
@@ -87,14 +87,14 @@ if [ "$SLURM_ARRAY_TASK_ID" -eq 0 ]; then
 elif [ "$SLURM_ARRAY_TASK_ID" -eq 1 ]; then
 	echo "=== Array Task $SLURM_ARRAY_TASK_ID: Running VLM-based keyword extraction ==="
 	echo "Script: gt_kws_vlm.py"
-	echo "VLM: $VLM_MODEL"
+	echo "VLM: $VLM_MODEL (batch size: $VLM_BATCH_SIZE) max generated tokens: $VLM_MAX_GEN_TKs"
 	
 	python -u gt_kws_vlm.py \
 			--csv_file "$CSV_FILE" \
 			--model_id "$VLM_MODEL" \
 			--num_workers "$SLURM_CPUS_PER_TASK" \
 			--batch_size "$VLM_BATCH_SIZE" \
-			--max_generated_tks "$MAX_GENERATED_TOKENS" \
+			--max_generated_tks "$VLM_MAX_GEN_TKs" \
 			--max_keywords 5 \
 			--verbose
 			# --use_quantization \
