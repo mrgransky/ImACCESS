@@ -1037,6 +1037,7 @@ def get_llm_based_labels(
 	max_kws: int,
 	csv_file: str,
 	num_workers: int,
+	mem_cleanup_th: int=95,
 	do_dedup: bool = True,
 	max_retries: int = 2,
 	use_quantization: bool = False,
@@ -1055,20 +1056,6 @@ def get_llm_based_labels(
 		return df['llm_keywords'].tolist()
 	except Exception as e:
 		print(f"<!> {e} Generating from scratch...")
-
-	# if os.path.exists(output_csv):
-	# 	if verbose:
-	# 		print(f"[EXISTING] Found existing results at {output_csv}")
-	# 	df = pd.read_csv(
-	# 		filepath_or_buffer=output_csv,
-	# 		on_bad_lines='skip',
-	# 		dtype=dtypes,
-	# 		low_memory=False,
-	# 	)
-	# 	if 'llm_keywords' in df.columns:
-	# 		if verbose:
-	# 			print(f"[EXISTING] Found existing LLM keywords! {type(df)} {df.shape} {list(df.columns)}")
-	# 		return df['llm_keywords'].tolist()
 	
 	num_workers = min(os.cpu_count(), num_workers)
 	if verbose:
@@ -1090,26 +1077,6 @@ def get_llm_based_labels(
 		)
 	except Exception as e:
 		raise ValueError(f"Error loading CSV file: {e}")
-
-	# try:
-	# 	df = pd.read_csv(
-	# 		filepath_or_buffer=csv_file,
-	# 		on_bad_lines='skip',
-	# 		dtype=dtypes,
-	# 		low_memory=False,
-	# 	)
-	# except pd.errors.ParserError as e:
-	# 	if verbose:
-	# 		print(f"CSV parsing error, trying with python engine: {e}")
-	# 	df = pd.read_csv(
-	# 		filepath_or_buffer=csv_file,
-	# 		on_bad_lines='skip',
-	# 		dtype=dtypes,
-	# 		engine='python',
-	# 	)
-
-	# if 'enriched_document_description' not in df.columns:
-	# 	raise ValueError("CSV file must have 'enriched_document_description' column")
 	
 	descriptions = df['enriched_document_description'].tolist()
 	if verbose:
@@ -1325,13 +1292,12 @@ def get_llm_based_labels(
 					f"[MEM] BATCH {batch_num} (GPU {device_idx}): {mem_usage_pct:.2f}% usage: "
 					f"{mem_allocated:.2f}GB alloc / {mem_reserved:.2f}GB reserved (Total: {mem_total:.1f}GB)"
 				)
-			cleanup_threshold = 90
-			if mem_usage_pct > cleanup_threshold: 
+			if mem_usage_pct > mem_cleanup_th: 
 				need_cleanup = True
 				memory_consumed_percent += mem_usage_pct
 
 		if need_cleanup:
-			print(f"[WARN] High memory usage ({memory_consumed_percent:.1f}%). Clearing cache...")
+			print(f"[WARN] High memory usage ({memory_consumed_percent:.1f}% > {mem_cleanup_th}%) => Clearing cache...")
 			torch.cuda.empty_cache() # clears all GPUs
 			gc.collect()
 

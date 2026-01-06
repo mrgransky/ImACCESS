@@ -1020,6 +1020,7 @@ def get_vlm_based_labels(
 	max_generated_tks: int,
 	max_kws: int,
 	csv_file: str,
+	mem_cleanup_th: int=95,
 	do_dedup: bool=True,
 	use_quantization: bool=False,
 	verbose: bool=False,
@@ -1041,21 +1042,6 @@ def get_vlm_based_labels(
 		return df['vlm_keywords'].tolist()
 	except Exception as e:
 		print(f"<!> {e} Generating from scratch...")
-		df = None
-
-	# if os.path.exists(output_csv):
-	# 	if verbose:
-	# 		print(f"[EXISTING] Found existing results at {output_csv}")
-	# 	df = pd.read_csv(
-	# 		filepath_or_buffer=output_csv,
-	# 		on_bad_lines='skip',
-	# 		dtype=dtypes,
-	# 		low_memory=False,
-	# 	)
-	# 	if 'vlm_keywords' in df.columns:
-	# 		if verbose:
-	# 			print(f"[EXISTING] Found existing results! {type(df)} {df.shape} {list(df.columns)}")
-	# 		return df['vlm_keywords'].tolist()
 	
 	if verbose:
 		print(f"[INIT] Starting PARALLEL OPTIMIZED batch VLM processing with {num_workers} workers")
@@ -1063,15 +1049,6 @@ def get_vlm_based_labels(
 	# ========== Load data ==========
 	if verbose:
 		print(f"[PREP] Loading data from {csv_file}...")
-	# df = pd.read_csv(
-	# 	filepath_or_buffer=csv_file,
-	# 	on_bad_lines='skip',
-	# 	dtype=dtypes,
-	# 	low_memory=False,
-	# )
-	# if "img_path" not in df.columns:
-	# 	raise ValueError(f"CSV file must have 'img_path' column, found: {df.columns}")
-
 	try:
 		df = pd.read_csv(
 			filepath_or_buffer=csv_file,
@@ -1411,13 +1388,12 @@ def get_vlm_based_labels(
 					f"[MEM] Batch {b} (GPU {device_idx}): {mem_usage_pct:.2f}% usage: "
 					f"{mem_allocated:.2f}GB alloc / {mem_reserved:.2f}GB reserved (Total: {mem_total:.1f}GB)"
 				)
-			cleanup_threshold = 90
-			if mem_usage_pct > cleanup_threshold: 
+			if mem_usage_pct > mem_cleanup_th: 
 				need_cleanup = True
 				memory_consumed_percent += mem_usage_pct
 
 		if need_cleanup:
-			print(f"\n[WARN] High memory usage ({memory_consumed_percent:.1f}%) => Clearing cache...")
+			print(f"\n[WARN] High memory usage ({memory_consumed_percent:.1f}% > {mem_cleanup_th}%) => Clearing cache...")
 			torch.cuda.empty_cache() # clears all GPUs
 			gc.collect()
 
