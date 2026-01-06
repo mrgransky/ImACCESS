@@ -47,20 +47,21 @@ import pprint
 import math
 import unicodedata
 
-warnings.filterwarnings('ignore', category=UserWarning)
-warnings.filterwarnings('ignore', category=DeprecationWarning)
-warnings.filterwarnings('ignore', category=FutureWarning)
-warnings.filterwarnings(
-	"ignore",
-	message=".*flash_attn.*",
-	category=UserWarning,
-	module="transformers"
-)
-warnings.filterwarnings(
-	'ignore', 
-	category=DeprecationWarning, 
-	message="invalid escape sequence"
-)
+warnings.filterwarnings('ignore')
+# warnings.filterwarnings('ignore', category=UserWarning)
+# warnings.filterwarnings('ignore', category=DeprecationWarning)
+# warnings.filterwarnings('ignore', category=FutureWarning)
+# warnings.filterwarnings(
+# 	"ignore",
+# 	message=".*flash_attn.*",
+# 	category=UserWarning,
+# 	module="transformers"
+# )
+# warnings.filterwarnings(
+# 	'ignore', 
+# 	category=DeprecationWarning, 
+# 	message="invalid escape sequence"
+# )
 
 from skimage.filters.rank import entropy
 from skimage.morphology import disk

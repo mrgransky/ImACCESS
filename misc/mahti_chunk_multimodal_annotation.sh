@@ -60,8 +60,8 @@ else
 	LLM_BATCH_SIZE=32
 	LLM_MAX_GEN_TKs=256
 	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
-	VLM_BATCH_SIZE=32
-	VLM_MAX_GEN_TKs=192
+	VLM_BATCH_SIZE=48
+	VLM_MAX_GEN_TKs=128
 fi
 
 echo "LLM Model: $LLM_MODEL (batch size: $LLM_BATCH_SIZE) max generated tokens: $LLM_MAX_GEN_TKs"
