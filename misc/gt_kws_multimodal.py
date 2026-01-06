@@ -32,7 +32,7 @@ import visualize as viz
 
 # How to run [Mahti/Puhti]
 # $ srun -J gpu_interactive_test --account=project_2014707 --partition=gputest --gres=gpu:a100:4 --time=0-00:15:00 --mem=64G --cpus-per-task=40 --pty /bin/bash -i
-# $ python gt_kws_multimodal.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-8B-Instruct" -vlm_bs 32 -llm_bs 96 -vlm_max_gen_tks 192 -llm_max_gen_tks 128 -nw 40 -v
+# $ python gt_kws_multimodal.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-8B-Instruct" -vlm_bs 32 -llm_bs 96 -vlm_mgt 192 -llm_mgt 128 -nw 40 -v
 
 def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[List[str]]:
 	"""
