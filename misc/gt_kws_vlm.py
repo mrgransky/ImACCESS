@@ -1228,7 +1228,7 @@ def get_vlm_based_labels(
 			
 			# Generate response
 			if verbose:
-				print(f"\n[BATCH {b}] Generating responses({len(valid_pairs)} images) [takes a while]...")
+				print(f"\n[BATCH {b}] Generating responses for {len(valid_pairs)} images [takes a while]...")
 			with torch.no_grad():
 				with torch.amp.autocast(
 					device_type=device.type,
