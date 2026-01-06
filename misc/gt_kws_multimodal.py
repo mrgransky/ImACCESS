@@ -224,27 +224,38 @@ def get_multimodal_annotation(
 		device = torch.device(device)
 
 	t0 = time.time()
-	# ========== Load data ==========
-	if verbose:
-		print(f"[PREP] Loading data from {csv_file}...")
-	df = pd.read_csv(
-		filepath_or_buffer=csv_file,
-		on_bad_lines='skip',
-		dtype=dtypes,
-		low_memory=False,
-	)
+	# # ========== Load data ==========
+	# if verbose:
+	# 	print(f"[PREP] Loading data from {csv_file}...")
+	# df = pd.read_csv(
+	# 	filepath_or_buffer=csv_file,
+	# 	on_bad_lines='skip',
+	# 	dtype=dtypes,
+	# 	low_memory=False,
+	# )
 	
-	if 'img_path' not in df.columns:
-		raise ValueError("CSV file must have 'img_path' column")
+	# if 'img_path' not in df.columns:
+	# 	raise ValueError("CSV file must have 'img_path' column")
 	
-	if 'enriched_document_description' not in df.columns:
-		raise ValueError("CSV file must have 'enriched_document_description' column")
+	# if 'enriched_document_description' not in df.columns:
+	# 	raise ValueError("CSV file must have 'enriched_document_description' column")
 	
-	if verbose:
-		print(f"<> {type(df)} {df.shape} loaded in {time.time() - t0:.2f}s")
+	# if verbose:
+	# 	print(f"<> {type(df)} {df.shape} loaded in {time.time() - t0:.2f}s")
 
 	# Check if we already have the output file	
 	output_csv = csv_file.replace(".csv", "_multimodal.csv")
+	try:
+		df = pd.read_csv(
+			filepath_or_buffer=output_csv,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+			usecols = ['multimodal_labels'],
+		)
+		return df['multimodal_labels'].tolist()
+	except Exception as e:
+		print(f"<!> {e} Generating from scratch...")
 
 	vlm_based_labels = get_vlm_based_labels(
 		csv_file=csv_file,
@@ -270,9 +281,9 @@ def get_multimodal_annotation(
 		
 	# Textual-based annotation using LLMs
 	llm_based_labels = get_llm_based_labels(
+		csv_file=csv_file,
 		model_id=llm_model_id,
 		device=device,
-		csv_file=csv_file,
 		batch_size=llm_batch_size,
 		max_generated_tks=llm_max_generated_tks,
 		max_kws=max_keywords,
@@ -290,8 +301,6 @@ def get_multimodal_annotation(
 			print(f"[DEBUG] Clearing CUDA memory BEFORE merging labels...")
 			print("=" * 120)
 		torch.cuda.empty_cache()
-
-
 
 
 	# Merge, post-process, save, and split
@@ -320,6 +329,16 @@ def get_multimodal_annotation(
 	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
 	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=verbose)
 	
+	# load df
+	df = pd.read_csv(
+		filepath_or_buffer=csv_file,
+		on_bad_lines='skip',
+		dtype=dtypes,
+		low_memory=False,
+		usecols = ['img_path', 'enriched_document_description'],
+	)
+
+
 	df['llm_based_labels'] = llm_based_labels
 	df['vlm_based_labels'] = vlm_based_labels
 	df['multimodal_labels'] = multimodal_labels
@@ -353,6 +372,8 @@ def get_multimodal_annotation(
 	if torch.cuda.is_available():
 		torch.cuda.empty_cache()
 	gc.collect()
+
+	return multimodal_labels
 
 @measure_execution_time
 def main():
