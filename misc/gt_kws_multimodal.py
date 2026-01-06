@@ -339,127 +339,53 @@ def get_multimodal_annotation(
 	# Check if we already have the output file	
 	output_csv = csv_file.replace(".csv", "_multimodal.csv")
 
-	# use_parallel = (
-	# 	device.type == "cuda"
-	# 	and torch.cuda.is_available()
-	# 	and torch.cuda.device_count() > 1
-	# )
-	use_parallel = False
+	vlm_based_labels = get_vlm_based_labels(
+		csv_file=csv_file,
+		model_id=vlm_model_id,
+		device=device,
+		num_workers=num_workers,
+		batch_size=vlm_batch_size,
+		max_kws=max_keywords,
+		max_generated_tks=vlm_max_generated_tks,
+		use_quantization=use_vlm_quantization,
+		verbose=verbose,
+	)
+	
 	if verbose:
-		print(f"[INFO] device: {device}, cuda devices: {torch.cuda.device_count() if torch.cuda.is_available() else 0}, num_workers: {num_workers}")
-		print(f"[INFO] Parallel LLM+VLM: {'ENABLED' if use_parallel else 'DISABLED'}")
-
-	# Parallel branch: two GPUs → run LLM and VLM in separate processes, on different GPUs
-	if use_parallel:
-		# Base GPU index from the provided device (e.g. cuda:2)
-		base_idx = device.index if device.index is not None else 0
-		num_gpus = torch.cuda.device_count()
-		other_idx = (base_idx + 1) % num_gpus
-		llm_device_str = f"cuda:{base_idx}"
-		vlm_device_str = f"cuda:{other_idx}"
-		
+		print(f"Extracted {len(vlm_based_labels)} VLM-based {type(vlm_based_labels)} labels")
+		print("=" * 120)
+	if torch.cuda.is_available():
 		if verbose:
-			print(f"[PARALLEL] LLM on {llm_device_str}, VLM on {vlm_device_str}")
-		
-		llm_based_labels = None
-		vlm_based_labels = None
-		
-		llm_args = (
-			llm_model_id,
-			llm_device_str,
-			csv_file,
-			llm_batch_size,
-			max_generated_tks,
-			max_keywords,
-			num_workers,
-			use_llm_quantization,
-			verbose,
-			debug
-		)
-		
-		vlm_args = (
-			vlm_model_id,
-			vlm_device_str,
-			csv_file,
-			vlm_batch_size,
-			max_generated_tks,
-			max_keywords,
-			num_workers,
-			use_vlm_quantization,
-			verbose,
-			debug
-		)
-		
-		# two heavy tasks
-		with ProcessPoolExecutor(max_workers=2) as ex:
-			futures = {
-				ex.submit(_run_llm_pipeline, *llm_args): "llm",
-				ex.submit(_run_vlm_pipeline, *vlm_args): "vlm",
-			}
-			
-			for fut in as_completed(futures):
-				task_name = futures[fut]
-				try:
-					result = fut.result()
-					if task_name == "llm":
-						llm_based_labels = result
-						if verbose:
-							print(f"[PARALLEL] ✅ LLM pipeline finished: {len(llm_based_labels)} labels")
-					else:
-						vlm_based_labels = result
-						if verbose:
-							print(f"[PARALLEL] ✅ VLM pipeline finished: {len(vlm_based_labels)} labels")
-				except Exception as e:
-					print(f"[PARALLEL] ❌ {task_name.upper()} worker failed: {e}")
-					raise
-	# Sequential branch: single GPU or CPU-only → keep your current behavior
-	else:
-		# Visual-based annotation using VLMs
-		vlm_based_labels = get_vlm_based_labels(
-			model_id=vlm_model_id,
-			device=device,
-			csv_file=csv_file,
-			num_workers=num_workers,
-			batch_size=vlm_batch_size,
-			max_kws=max_keywords,
-			max_generated_tks=vlm_max_generated_tks,
-			use_quantization=use_vlm_quantization,
-			verbose=verbose,
-		)
-		
-		if verbose:
-			print(f"Extracted {len(vlm_based_labels)} VLM-based {type(vlm_based_labels)} labels")
+			print(f"[DEBUG] Clearing CUDA memory BEFORE running pipeline...")
 			print("=" * 120)
-
-		if torch.cuda.is_available():
-			if verbose:
-				print(f"[DEBUG] Clearing CUDA memory BEFORE running pipeline...")
-				print("=" * 120)
-			gc.collect()
-			torch.cuda.empty_cache()
-			
-		# Textual-based annotation using LLMs
-		llm_based_labels = get_llm_based_labels(
-			model_id=llm_model_id,
-			device=device,
-			csv_file=csv_file,
-			batch_size=llm_batch_size,
-			max_generated_tks=llm_max_generated_tks,
-			max_kws=max_keywords,
-			num_workers=num_workers,
-			use_quantization=use_llm_quantization,
-			verbose=verbose,
-		)
+		gc.collect()
+		torch.cuda.empty_cache()
 		
+	# Textual-based annotation using LLMs
+	llm_based_labels = get_llm_based_labels(
+		model_id=llm_model_id,
+		device=device,
+		csv_file=csv_file,
+		batch_size=llm_batch_size,
+		max_generated_tks=llm_max_generated_tks,
+		max_kws=max_keywords,
+		num_workers=num_workers,
+		use_quantization=use_llm_quantization,
+		verbose=verbose,
+	)
+	
+	if verbose:
+		print(f"Extracted {len(llm_based_labels)} LLM-based {type(llm_based_labels)} labels")
+		print("=" * 120)
+		
+	if torch.cuda.is_available():
 		if verbose:
-			print(f"Extracted {len(llm_based_labels)} LLM-based {type(llm_based_labels)} labels")
+			print(f"[DEBUG] Clearing CUDA memory BEFORE merging labels...")
 			print("=" * 120)
-			
-		if torch.cuda.is_available():
-			if verbose:
-				print(f"[DEBUG] Clearing CUDA memory BEFORE merging labels...")
-				print("=" * 120)
-			torch.cuda.empty_cache()
+		torch.cuda.empty_cache()
+
+
+
 
 	# Merge, post-process, save, and split
 	if len(llm_based_labels) != len(vlm_based_labels):
