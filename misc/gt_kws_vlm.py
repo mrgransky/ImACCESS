@@ -1049,7 +1049,7 @@ def get_vlm_based_labels(
 
 	# ========== Load data ==========
 	if verbose:
-		print(f"[PREP] Loading data from {csv_file}...")
+		print(f"[PREP] Loading data (col: img_path) from {csv_file}...")
 	try:
 		df = pd.read_csv(
 			filepath_or_buffer=csv_file,

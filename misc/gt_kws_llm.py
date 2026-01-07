@@ -1064,6 +1064,8 @@ def get_llm_based_labels(
 	st_t = time.time()
 
 	# ========== Load data ==========
+	if verbose:
+		print(f"[PREP] Loading data (col: enriched_document_description) from {csv_file}...")
 	try:
 		df = pd.read_csv(
 			filepath_or_buffer=csv_file,
@@ -1077,7 +1079,7 @@ def get_llm_based_labels(
 	
 	descriptions = df['enriched_document_description'].tolist()
 	if verbose:
-		print(f"<> Loaded {type(df)} {df.shape} with {len(descriptions)} descriptions")
+		print(f"[INFO] Loaded {type(df)} {df.shape} with {len(descriptions)} descriptions")
 	
 	inputs = descriptions
 	if len(inputs) == 0:
