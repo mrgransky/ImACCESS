@@ -1042,11 +1042,6 @@ def get_vlm_based_labels(
 	except Exception as e:
 		print(f"<!> {e} Generating from scratch...")
 	
-	# num_workers = min(os.cpu_count(), num_workers)
-	num_workers = min(4, num_workers)
-	if verbose:
-		print(f"[INIT] Starting PARALLEL OPTIMIZED batch VLM processing with {num_workers} workers")
-
 	# ========== Load data ==========
 	if verbose:
 		print(f"[PREP] Loading data (col: img_path) from {csv_file}...")
@@ -1103,14 +1098,18 @@ def get_vlm_based_labels(
 			return None
 
 	with ThreadPoolExecutor(max_workers=num_workers) as ex:
-		verified_paths = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc="Verifying images", ncols=100,))
-	
+		verified_paths = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc=f"parallel image verification (nw={num_workers})"))
 	valid_indices = [i for i, v in enumerate(verified_paths) if v is not None]
 
 	# # MEMORY INTENSIVE! (DO NOT USE)
 	# valid_imgs = [Image.open(p).convert("RGB") for p in verified_paths if p is not None]
 	# print(len(valid_imgs), len(valid_indices), len(verified_paths))
 	# print(type(valid_imgs[0]), valid_imgs[0].size, valid_imgs[0].mode)
+
+	# num_workers = min(os.cpu_count(), num_workers)
+	num_workers = min(4, num_workers)
+	if verbose:
+		print(f"[INIT] Starting PARALLEL OPTIMIZED batch VLM processing with {num_workers} workers")
 
 	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
 	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
