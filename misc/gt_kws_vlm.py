@@ -1081,7 +1081,7 @@ def get_vlm_based_labels(
 		print(f"[INIT] Deduplication: {len(uniq_inputs)} unique images")
 	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
 
-	def verify(p: Optional[str]) -> Optional[str]:
+	def verify_(p: Optional[str]) -> Optional[str]:
 		if p is None or not os.path.exists(p):
 			return None
 		try:
@@ -1091,19 +1091,44 @@ def get_vlm_based_labels(
 		except Exception:
 			return None
 
-	def _load_(p: str) -> Optional[Image.Image]:
-		try:
-			with Image.open(p) as im:
-				im = im.convert("RGB")
-				# If already pre-resized in data collection, no need for thumbnail here
-				# im.thumbnail((IMG_MAX_RES, IMG_MAX_RES))
-				return im.copy()
-		except Exception as e:
-			print(f"Error loading image {p}: {e}")
+	def verify(p):
+			"""Memory-mapped verification for maximum speed"""
+			if p is None or not os.path.exists(p):
+					return None
+			
+			try:
+					size = os.path.getsize(p)
+					if size < 12:  # Too small to be a valid image
+							return None
+					
+					with open(p, 'rb') as f:
+							# Memory map the first part of the file
+							import mmap
+							with mmap.mmap(f.fileno(), min(size, 4096), access=mmap.ACCESS_READ) as mm:
+									header = mm.read(12)
+									
+									# Check common formats without PIL
+									if header[:3] == b'\xff\xd8\xff':  # JPEG
+											return p
+									if header[:8] == b'\x89PNG\r\n\x1a\n':  # PNG
+											return p
+									if header[:6] in [b'GIF87a', b'GIF89a']:  # GIF
+											return p
+									if header[:2] == b'BM':  # BMP
+											return p
+									if header[:4] == b'II*\x00' or header[:4] == b'MM\x00*':  # TIFF
+											return p
+									
+									# Fallback to PIL for other formats
+									with Image.open(p) as im:
+											im.verify()
+									return p
+			except Exception:
+					return None
 			return None
 
 	with ThreadPoolExecutor(max_workers=num_workers) as ex:
-		verified_paths = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc=f"parallel image verification (nw={num_workers})"))
+		verified_paths = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc=f"parallel image verification (nw: {num_workers})"))
 	valid_indices = [i for i, v in enumerate(verified_paths) if v is not None]
 
 	# # MEMORY INTENSIVE! (DO NOT USE)
@@ -1142,7 +1167,6 @@ def get_vlm_based_labels(
 		Returns a mapping: {unique_index: parsed_keywords_or_None}
 		"""
 		out: Dict[int, Optional[List[str]]] = {}
-
 		def _parse_one(local_idx: int) -> Tuple[int, Optional[List[str]]]:
 			uniq_index = batch_indices[local_idx]
 			resp = decoded_responses[local_idx]
@@ -1157,19 +1181,27 @@ def get_vlm_based_labels(
 				if verbose_:
 					print(f"⚠️ Parsing error for unique index {uniq_index}: {e}")
 				return uniq_index, None
-
 		if not decoded_responses:
 			return out
-
 		with ThreadPoolExecutor(max_workers=num_workers) as ex:
 			futures = {ex.submit(_parse_one, i): i for i in range(len(decoded_responses))}
 			for fut in as_completed(futures):
 				uniq_index, parsed = fut.result()
 				out[uniq_index] = parsed
-
 		return out
 	
 	# ========== Process batches ==========
+	def _load_(p: str) -> Optional[Image.Image]:
+		try:
+			with Image.open(p) as im:
+				im = im.convert("RGB")
+				# If already pre-resized in data collection, no need for thumbnail here
+				# im.thumbnail((IMG_MAX_RES, IMG_MAX_RES))
+				return im.copy()
+		except Exception as e:
+			print(f"Error loading image {p}: {e}")
+			return None
+
 	# num_workers = min(os.cpu_count(), num_workers)
 	num_workers = min(4, num_workers)
 	if verbose:
