@@ -1092,6 +1092,25 @@ def get_vlm_based_labels(
 			return None
 
 	def verify(p):
+		"""Optimized for JPEG-only datasets"""
+		if p is None or not os.path.exists(p):
+				return None
+		try:
+				# JPEG minimum: SOI (FFD8) + minimal segment + EOI (FFD9) ≈ 100+ bytes
+				size = os.path.getsize(p)
+				if size < 100:
+						return None
+				
+				with open(p, 'rb') as f:
+						header = f.read(3)
+						if header == b'\xff\xd8\xff':  # Valid JPEG SOI marker
+								return p
+				return None
+		except __Exception__:
+				return None
+
+
+	def verify__(p):
 		"""Memory-mapped verification for maximum speed"""
 		if p is None or not os.path.exists(p):
 			return None
