@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2014707
-#SBATCH --job-name=HISTORY_xN
+#SBATCH --job-name=history_xN
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
