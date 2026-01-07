@@ -1437,13 +1437,6 @@ def main():
 	args.num_workers = min(args.num_workers, os.cpu_count())
 	print(args)
 
-	if args.verbose and torch.cuda.is_available():
-		gpu_name = torch.cuda.get_device_name(args.device)
-		total_mem = torch.cuda.get_device_properties(args.device).total_memory / (1024**3) # GB
-		print(f"Available GPU(s) = {torch.cuda.device_count()}")
-		print(f"GPU: {gpu_name} {total_mem:.2f} GB VRAM")
-		print(f"\t• CUDA: {torch.version.cuda} Compute Capability: {torch.cuda.get_device_capability(args.device)}")
-
 	if args.image_path:
 		keywords = get_vlm_based_labels_single(
 			model_id=args.model_id,
@@ -1479,9 +1472,9 @@ def main():
 		)
 
 	if args.verbose and keywords:
-		print(f"{len(keywords)} Extracted keywords")
-		for i, kw in enumerate(keywords):
-			print(f"{i:06d}. {kw}")
+		print(f"{len(keywords)} {type(keywords)} Extracted keywords")
+		# for i, kw in enumerate(keywords):
+		# 	print(f"{i:06d}. {kw}")
 
 if __name__ == "__main__":
 	main()
