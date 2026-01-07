@@ -1029,6 +1029,7 @@ def get_vlm_based_labels(
 
 	# ========== Check existing results ==========
 	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
+	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
 
 	try:
 		df = pd.read_csv(
@@ -1076,6 +1077,10 @@ def get_vlm_based_labels(
 		uniq_inputs = image_paths
 		orig_to_uniq = list(range(n_total))
 	
+	if verbose:
+		print(f"[INIT] Deduplication: {len(uniq_inputs)} unique images")
+	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
+
 	def verify(p: Optional[str]) -> Optional[str]:
 		if p is None or not os.path.exists(p):
 			return None
@@ -1105,18 +1110,6 @@ def get_vlm_based_labels(
 	# valid_imgs = [Image.open(p).convert("RGB") for p in verified_paths if p is not None]
 	# print(len(valid_imgs), len(valid_indices), len(verified_paths))
 	# print(type(valid_imgs[0]), valid_imgs[0].size, valid_imgs[0].mode)
-
-	# num_workers = min(os.cpu_count(), num_workers)
-	num_workers = min(4, num_workers)
-	if verbose:
-		print(f"[INIT] Starting PARALLEL OPTIMIZED batch VLM processing with {num_workers} workers")
-
-	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
-	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
-
-	total_batches = math.ceil(len(valid_indices) / batch_size)
-	if verbose:
-		print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
 
 	# ========== Load model ==========
 	processor, model = _load_vlm_(
@@ -1177,6 +1170,15 @@ def get_vlm_based_labels(
 		return out
 	
 	# ========== Process batches ==========
+	# num_workers = min(os.cpu_count(), num_workers)
+	num_workers = min(4, num_workers)
+	if verbose:
+		print(f"[INIT] BATCHED PARALLEL OPTIMIZED VLM processing with {num_workers} workers")
+
+	total_batches = math.ceil(len(valid_indices) / batch_size)
+	if verbose:
+		print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
+
 	for b in tqdm(range(total_batches), desc="Processing (visual) batches", ncols=120):
 		batch_indices = valid_indices[b * batch_size:(b + 1) * batch_size]
 		batch_paths = [verified_paths[i] for i in batch_indices]
