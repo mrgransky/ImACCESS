@@ -657,7 +657,6 @@ def basic_clean(txt: str):
 		r'Text on the back',
 		r"A B/W photo of ",
 		r'black and white',
-		r'Photograph of ',
 		r'Photographn of ',
 		r'In the photo ',
 		r'\[No title entered\]',

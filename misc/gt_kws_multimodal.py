@@ -293,7 +293,7 @@ def get_multimodal_annotation(
 		torch.cuda.empty_cache()
 	gc.collect()
 
-	# Post-process
+	# Post-process only multimodal labels
 	# llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
 	# vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
 	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=verbose)
