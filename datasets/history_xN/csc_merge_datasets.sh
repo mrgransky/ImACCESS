@@ -42,7 +42,7 @@ python -u merge_datasets.py \
   --batch_size 256 \
   --verbose \
   --img_mean_std \
-  --target_chunk_mb 10 \
+  --target_chunk_mb 15 \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
