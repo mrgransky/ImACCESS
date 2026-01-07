@@ -294,8 +294,8 @@ def get_multimodal_annotation(
 	gc.collect()
 
 	# Post-process
-	llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
-	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
+	# llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
+	# vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
 	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=verbose)
 	
 	# load df
