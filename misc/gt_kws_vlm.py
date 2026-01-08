@@ -271,23 +271,22 @@ def _load_vlm_(
 		# Rule of thumb: need X.Xx model size for inference (2x for training)
 		INFERENCE_OVERHEAD_MULTIPLIER = 1.5
 		required_vram = adjusted_size * INFERENCE_OVERHEAD_MULTIPLIER
+		usable_vram = total_vram_available - (n_gpus * vram_buffer_gb)
 
 		if verbose:
 			print(f"\n[VRAM CHECK] Pre-flight validation:")
-			print(f"\t• Model size (weights):            {adjusted_size:.1f} GB")
-			print(f"\t• Estimated total (with overhead): {required_vram:.1f} GB ({INFERENCE_OVERHEAD_MULTIPLIER}x model size)")
-			print(f"\t• Available VRAM (total):          {total_vram_available:.1f} GB")
-			print(f"\t• Available VRAM (usable):         {total_vram_available - (n_gpus * vram_buffer_gb):.1f} GB")
+			print(f"\t• Estimated Model size (fp16): {adjusted_size:.1f} GB (with {INFERENCE_OVERHEAD_MULTIPLIER}x overhead): {required_vram:.1f} GB")
+			print(f"\t• Available VRAM (total):      {total_vram_available:.1f} GB")
+			print(f"\t• Available VRAM (usable):     {usable_vram:.1f} GB ({n_gpus}x GPUs, {vram_buffer_gb:.1f} GB buffer per GPU)")
 
 		# Check if model will fit
-		usable_vram = total_vram_available - (n_gpus * vram_buffer_gb)
 
 		if required_vram > usable_vram:
 			print("\n" + "="*80)
 			print("❌ INSUFFICIENT VRAM ERROR")
 			print("="*80)
 			print(f"\nModel: {model_id}")
-			print(f"Model size: {adjusted_size:.1f} GB")
+			print(f"Estimated Model size: {adjusted_size:.1f} GB")
 			print(f"Required VRAM (with overhead): {required_vram:.1f} GB")
 			print(f"Available VRAM: {usable_vram:.1f} GB ({n_gpus}x GPUs)")
 			print(f"\nDeficit: {required_vram - usable_vram:.1f} GB SHORT")
@@ -380,7 +379,7 @@ def _load_vlm_(
 				print(f"• Single GPU capacity: {single_gpu_capacity:.1f} GB")
 				print(f"• Total VRAM: {total_vram_available:.1f} GB")
 				if force_multi_gpu:
-					print(f"   • Reason: force_multi_gpu=True")
+					print(f"• Reason: force_multi_gpu=True")
 	else:
 		strategy_desc = "CPU (no GPUs)"
 	
