@@ -356,8 +356,10 @@ def _load_vlm_(
 		# Decision: Single GPU vs Multi GPU
 		single_gpu_capacity = gpu_vram[0] - vram_buffer_gb
 		if verbose:
-			print(f"   • Single GPU capacity: {single_gpu_capacity:.1f} GB")
-		is_large_model = estimated_size_gb >= 20
+			print(f"   • Single GPU capacity: {single_gpu_capacity:.1f} GB (GPU VRAM: {gpu_vram[0]:.1f} GB - {vram_buffer_gb:.1f} GB buffer)")
+		is_large_model = adjusted_size >= 20
+		if verbose:
+			print(f"   • is {model_id} Large? ({adjusted_size:.1f} > 20GB) : {is_large_model}")
 		use_single_gpu = (
 			not force_multi_gpu and
 			not is_large_model and  # Don't use single GPU for large models
