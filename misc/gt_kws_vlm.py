@@ -385,11 +385,11 @@ def _load_vlm_(
 		strategy_desc = "CPU (no GPUs)"
 	
 	if verbose:
-		print(f"\n[INFO] Loading strategy: {strategy_desc}")
+		print(f"\n[INFO] {strategy_desc}")
 		if max_memory:
-			print(f"   • Max memory per GPU:")
+			print(f"Max memory per GPU:")
 			for gpu_id, limit in max_memory.items():
-				print(f"      - GPU {gpu_id}: {limit}")
+				print(f"\tGPU {gpu_id}: {limit}")
 	
 	# ========== Base Model Loading Kwargs ==========
 	base_model_kwargs: Dict[str, Any] = {
