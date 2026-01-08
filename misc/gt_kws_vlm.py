@@ -359,7 +359,8 @@ def _load_vlm_(
 		use_single_gpu = (
 			not force_multi_gpu and
 			adjusted_size < single_gpu_capacity * 0.8 and  # 80% safety margin
-			(n_gpus == 1 or adjusted_size < 20)
+			(n_gpus == 1 or adjusted_size < 20) and
+			adjusted_size < 20  # Force multi-GPU for models >20GB even when quantized
 		)
 		
 		if use_single_gpu:

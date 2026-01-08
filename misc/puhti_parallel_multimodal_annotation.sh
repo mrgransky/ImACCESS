@@ -52,16 +52,20 @@ if [ "$NUM_GPUS" -gt 1 ]; then
 	LLM_BATCH_SIZE=16
 	LLM_MAX_GEN_TKs=128
 	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
+	VLM_QUANTIZATION="--use_vlm_quantization"  # Enable
 	VLM_BATCH_SIZE=12
 	VLM_MAX_GEN_TKs=128
+	LLM_QUANTIZATION="--use_llm_quantization"  # Enable
 else
 	echo "SMALL models (single-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
 	LLM_BATCH_SIZE=48
 	LLM_MAX_GEN_TKs=256
+	LLM_QUANTIZATION=""  # Disable
 	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 	VLM_BATCH_SIZE=32
 	VLM_MAX_GEN_TKs=128
+	VLM_QUANTIZATION=""  # Disable
 fi
 
 DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
