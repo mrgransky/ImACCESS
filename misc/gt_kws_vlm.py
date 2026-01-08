@@ -129,27 +129,10 @@ def _load_vlm_(
 	
 	if model_cls is None:
 		raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
-	
-	# ========== Optimal dtype selection ==========
-	def _optimal_dtype(m_id: str) -> torch.dtype:
-		bf16_ok = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
-		# m_id_lower = m_id.lower()
-		# if "qwen3-vl" in m_id_lower or "qwen3_vl" in m_id_lower:
-		# 	return torch.float16
-		# if "qwen" in m_id_lower:
-		# 	return torch.bfloat16 if bf16_ok else torch.float16
-		# if "llava" in m_id_lower:
-		# 	return torch.float16
-		# if "falcon" in m_id_lower:
-		# 	return torch.bfloat16 if bf16_ok else torch.float16		
-		return torch.bfloat16 if bf16_ok else torch.float16
-	
-	dtype = _optimal_dtype(model_id)
-	
+		
+	dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
 	if verbose:
-		print(f"[INFO] {model_id} Dtype selection")
-		print(f"\t• BF16 supported on this device? : {torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False}")
-		print(f"\t• Chosen torch dtype             : {dtype}")
+		print(f"[INFO] {model_id} Dtype selection: {dtype}")
 	
 	# ========== Optimal attention implementation ==========
 	def _optimal_attn_impl(m_id: str) -> str:
@@ -236,7 +219,7 @@ def _load_vlm_(
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	
 	if verbose:
-		print(f"[INFO] Estimated model size: ~{estimated_size_gb:.1f} GB (fp16)")
+		print(f"[INFO] Estimated model size: {estimated_size_gb:.2f} GB (fp16)")
 	
 	# ========== Dynamic Device Strategy with Adaptive VRAM Buffering ==========
 	max_memory = {}
@@ -248,22 +231,24 @@ def _load_vlm_(
 		for i in range(n_gpus):
 			props = torch.cuda.get_device_properties(i)
 			if verbose:
-				print(f"[INFO] GPU {i}: {props}")
+				print(f"GPU {i}: {props}")
 			vram_gb = props.total_memory / (1024**3)
 			gpu_vram.append(vram_gb)
 			total_vram_available += vram_gb
 		
 		# ADAPTIVE BUFFER: Scale based on GPU size
-		# Small GPUs (<10GB): 1GB buffer
+		# Small GPUs (<10GB): 0.7GB buffer
 		# Medium GPUs (10-20GB): 2GB buffer
 		# Large GPUs (>20GB): 4GB buffer
 		if gpu_vram[0] < 10:
-			vram_buffer_gb = 1.0
+			vram_buffer_gb = 0.7
 		elif gpu_vram[0] < 20:
 			vram_buffer_gb = 2.0
 		else:
 			vram_buffer_gb = 4.0
-		
+		if verbose:
+			print(f"[INFO] VRAM buffer: {vram_buffer_gb:.2f}GB")
+
 		# For quantization, reduce buffer further
 		if use_quantization:
 			vram_buffer_gb = max(0.5, vram_buffer_gb * 0.5)
@@ -283,16 +268,16 @@ def _load_vlm_(
 		
 		# ========== PRE-FLIGHT VRAM VALIDATION ==========
 		# Account for overhead: model weights + activations + gradients + overhead
-		# Rule of thumb: need 1.5x model size for inference (2x for training)
+		# Rule of thumb: need X.Xx model size for inference (2x for training)
 		INFERENCE_OVERHEAD_MULTIPLIER = 1.5
 		required_vram = adjusted_size * INFERENCE_OVERHEAD_MULTIPLIER
 
 		if verbose:
 			print(f"\n[VRAM CHECK] Pre-flight validation:")
-			print(f"   • Model size (weights):            {adjusted_size:.1f} GB")
-			print(f"   • Estimated total (with overhead): {required_vram:.1f} GB")
-			print(f"   • Available VRAM (total):          {total_vram_available:.1f} GB")
-			print(f"   • Available VRAM (usable):         {total_vram_available - (n_gpus * vram_buffer_gb):.1f} GB")
+			print(f"\t• Model size (weights):            {adjusted_size:.1f} GB")
+			print(f"\t• Estimated total (with overhead): {required_vram:.1f} GB ({INFERENCE_OVERHEAD_MULTIPLIER}x model size)")
+			print(f"\t• Available VRAM (total):          {total_vram_available:.1f} GB")
+			print(f"\t• Available VRAM (usable):         {total_vram_available - (n_gpus * vram_buffer_gb):.1f} GB")
 
 		# Check if model will fit
 		usable_vram = total_vram_available - (n_gpus * vram_buffer_gb)
@@ -346,7 +331,7 @@ def _load_vlm_(
 			
 			# Raise error
 			raise RuntimeError(
-				f"Model requires {required_vram:.1f} GB but only {usable_vram:.1f} GB available. "
+				f"Model requires {required_vram:.2f} GB but only {usable_vram:.2f} GB available. "
 				f"Enable quantization or use larger GPU."
 			)
 
@@ -385,7 +370,7 @@ def _load_vlm_(
 				max_memory[i] = f"{max(1, gpu_vram[i] - buffer):.0f}GB"
 			
 			total_usable = sum(float(v.replace('GB', '')) for v in max_memory.values())
-			strategy_desc = f"{model_id} is too large ({adjusted_size:.2f} GB) to fit in a single GPU({single_gpu_capacity:.2f} GB) => Multi-GPU [Model Parallelism] ({n_gpus} Available GPUs, {total_usable:.0f}GB total)"
+			strategy_desc = f"{model_id} is too large ({adjusted_size:.2f} GB) to fit in a single GPU ({single_gpu_capacity:.2f} GB) => Multi-GPU [Model Parallelism] ({n_gpus} Available GPUs, {total_usable:.0f}GB total)"
 			
 			if verbose:
 				print(f"[INFO] Using multi-GPU strategy:")
