@@ -1177,7 +1177,6 @@ def get_vlm_based_labels(
 			print(f"Error loading image {p}: {e}")
 			return None
 
-	# num_workers = min(os.cpu_count(), num_workers)
 	num_workers = min(8, num_workers)
 	if verbose:
 		print(f"[INIT] BATCHED PARALLEL OPTIMIZED VLM processing with {num_workers} workers")
