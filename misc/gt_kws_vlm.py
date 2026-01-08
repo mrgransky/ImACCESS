@@ -85,7 +85,7 @@ def _load_vlm_(
 	"""
 	if verbose:
 		print(f"\n{'='*110}")
-		print(f"[MODEL] Loading {model_id}...")
+		print(f"[MODEL] Loading {model_id} on cache_dir: {cache_directory.get(USER)}")
 
 	# ========== Version and CUDA info ==========
 	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
