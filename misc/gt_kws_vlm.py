@@ -1081,15 +1081,10 @@ def get_vlm_based_labels(
 		print(f"[INIT] Deduplication: {len(uniq_inputs)} unique images")
 	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
 
-	def verify(p):
-		"""Optimized for JPEG-only datasets"""
+	def verify(p: str):
 		if p is None or not os.path.exists(p):
 			return None
 		try:
-			# JPEG minimum: SOI (FFD8) + minimal segment + EOI (FFD9) ≈ 100+ bytes
-			# size = os.path.getsize(p)
-			# if size < 100: # Too small to be a valid JPEG (100 bytes [0.1 KB])
-			# 	return None
 			with open(p, 'rb') as f:
 				header = f.read(3)
 				if header == b'\xff\xd8\xff':  # Valid JPEG SOI marker
@@ -1099,7 +1094,13 @@ def get_vlm_based_labels(
 			return None
 
 	with ThreadPoolExecutor(max_workers=num_workers) as ex:
-		verified_paths = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc=f"parallel image verification (nw: {num_workers})"))
+		verified_paths = list(
+			tqdm(
+				ex.map(verify, uniq_inputs), 
+				total=len(uniq_inputs), 
+				desc=f"parallel image verification (nw: {num_workers})"
+			)
+		)
 	valid_indices = [i for i, v in enumerate(verified_paths) if v is not None]
 
 	if verbose:
@@ -1177,7 +1178,7 @@ def get_vlm_based_labels(
 			return None
 
 	# num_workers = min(os.cpu_count(), num_workers)
-	num_workers = min(4, num_workers)
+	num_workers = min(8, num_workers)
 	if verbose:
 		print(f"[INIT] BATCHED PARALLEL OPTIMIZED VLM processing with {num_workers} workers")
 
