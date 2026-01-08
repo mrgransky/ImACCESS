@@ -52,17 +52,21 @@ if [ "$NUM_GPUS" -gt 1 ]; then
 	LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 	LLM_BATCH_SIZE=16
 	LLM_MAX_GEN_TKs=128
+	LLM_QUANTIZATION="--use_llm_quantization"  # ← Enable
 	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 	VLM_BATCH_SIZE=24
 	VLM_MAX_GEN_TKs=128
+	VLM_QUANTIZATION="--use_vlm_quantization"  # ← Enable
 else
 	echo "SMALL models (single-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
 	LLM_BATCH_SIZE=32
 	LLM_MAX_GEN_TKs=256
+	LLM_QUANTIZATION=""  # ← Disable
 	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 	VLM_BATCH_SIZE=24
 	VLM_MAX_GEN_TKs=128
+	VLM_QUANTIZATION=""  # ← Disable
 fi
 
 echo "LLM Model: $LLM_MODEL (batch size: $LLM_BATCH_SIZE) max generated tokens: $LLM_MAX_GEN_TKs"
@@ -83,8 +87,8 @@ python -u gt_kws_multimodal.py \
 	--num_workers $SLURM_CPUS_PER_TASK \
 	--max_keywords 5 \
 	--verbose \
-	# --use_llm_quantization \
-	# --use_vlm_quantization \
+	$LLM_QUANTIZATION \
+	$VLM_QUANTIZATION \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
