@@ -13,40 +13,58 @@
 
 set -euo pipefail
 
-user=$(whoami)
-stars=$(printf '%*s' 100 '')
-txt="$user began Slurm job: $(date)"
-ch="#"
-echo -e "${txt//?/$ch}\n${txt}\n${txt//?/$ch}"
-echo "${stars// /*}"
-echo "HOST: $SLURM_SUBMIT_HOST @ $SLURM_JOB_ACCOUNT, CLUSTER: $SLURM_CLUSTER_NAME"
-echo "Using $SLURM_SUBMIT_HOST conda virtual env from tykky module..."
-echo "JOBname: $SLURM_JOB_NAME, ID: $SLURM_JOB_ID, WRK_DIR: $SLURM_SUBMIT_DIR"
-echo "CPUS/NODE: $SLURM_JOB_CPUS_PER_NODE, MEM/NODE(--mem): $SLURM_MEM_PER_NODE"
-echo "nNODES: $SLURM_NNODES, NODELIST: $SLURM_JOB_NODELIST, NODE_ID: $SLURM_NODEID"
-echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_NPROCS"
-echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
+echo "=========================================="
+echo "Cluster: $SLURM_CLUSTER_NAME"
 echo "Node: $SLURM_NODELIST"
-echo "GPU(s): ${SLURM_GPUS_ON_NODE:-0}, Partition: $SLURM_JOB_PARTITION"
-echo "TMPDIR (local storage): $TMPDIR"
-echo "${stars// /*}"
+echo "Job ID: $SLURM_JOB_ID"
+echo "=========================================="
 
-# Show storage info
-echo "Local storage information:"
-df -h "$TMPDIR"
-du -sh "$TMPDIR" 2>/dev/null || echo "TMPDIR empty or inaccessible"
+echo -e "\n=== Environment Variables ==="
+echo "TMPDIR: ${TMPDIR:-NOT SET}"
+echo "LOCAL_SCRATCH: ${LOCAL_SCRATCH:-NOT SET}"
 
-echo "${stars// /*}"
+echo -e "\n=== Checking /tmp ==="
+df -h /tmp
+ls -la /tmp/ | head -20
 
-# Set cache locations to TMPDIR (fast local storage)
-export HF_HOME="$TMPDIR/hf_cache"
-export TRANSFORMERS_CACHE="$TMPDIR/hf_cache"
-export HF_DATASETS_CACHE="$TMPDIR/hf_cache"
+echo -e "\n=== Checking for /local_scratch ==="
+if [ -d "/local_scratch" ]; then
+    df -h /local_scratch
+    ls -la /local_scratch/ | head -20
+else
+    echo "/local_scratch does not exist"
+fi
 
-echo "Cache locations set:"
-echo "  HF_HOME: $HF_HOME"
-echo "  TRANSFORMERS_CACHE: $TRANSFORMERS_CACHE"
-echo "${stars// /*}"
+echo -e "\n=== Checking for /nvme ==="
+if [ -d "/nvme" ]; then
+    df -h /nvme
+    ls -la /nvme/ | head -20
+else
+    echo "/nvme does not exist"
+fi
 
-# Your Python script here
-# python your_script.py --args
+echo -e "\n=== All mounted filesystems ==="
+df -h | grep -E "(Filesystem|nvme|local|tmp|scratch)"
+
+echo -e "\n=== NVMe devices ==="
+lsblk | grep -i nvme || echo "No NVMe devices visible"
+
+echo -e "\n=== I/O Performance Tests ==="
+echo "Testing /tmp:"
+dd if=/dev/zero of=/tmp/test_${SLURM_JOB_ID}.bin bs=1M count=100 2>&1 | tail -1
+rm -f /tmp/test_${SLURM_JOB_ID}.bin
+
+echo -e "\nTesting /scratch:"
+dd if=/dev/zero of=/scratch/project_2004072/test_${SLURM_JOB_ID}.bin bs=1M count=100 2>&1 | tail -1
+rm -f /scratch/project_2004072/test_${SLURM_JOB_ID}.bin
+
+if [ -d "/local_scratch" ]; then
+    echo -e "\nTesting /local_scratch:"
+    mkdir -p /local_scratch/$SLURM_JOB_ID
+    dd if=/dev/zero of=/local_scratch/$SLURM_JOB_ID/test.bin bs=1M count=100 2>&1 | tail -1
+    rm -f /local_scratch/$SLURM_JOB_ID/test.bin
+fi
+
+echo -e "\n=========================================="
+echo "Diagnostic complete"
+echo "=========================================="
