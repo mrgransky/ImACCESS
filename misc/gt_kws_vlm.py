@@ -132,27 +132,24 @@ def _load_vlm_(
 	
 	# ========== Optimal dtype selection ==========
 	def _optimal_dtype(m_id: str) -> torch.dtype:
-		"""Select optimal dtype, forcing float16 for Qwen3-VL MoE if needed."""
 		bf16_ok = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
-		m_id_lower = m_id.lower()
-		
-		if "qwen3-vl" in m_id_lower or "qwen3_vl" in m_id_lower:
-			return torch.float16
-		if "qwen" in m_id_lower:
-			return torch.bfloat16 if bf16_ok else torch.float16
-		if "llava" in m_id_lower:
-			return torch.float16
-		if "falcon" in m_id_lower:
-			return torch.bfloat16 if bf16_ok else torch.float16
-		
+		# m_id_lower = m_id.lower()
+		# if "qwen3-vl" in m_id_lower or "qwen3_vl" in m_id_lower:
+		# 	return torch.float16
+		# if "qwen" in m_id_lower:
+		# 	return torch.bfloat16 if bf16_ok else torch.float16
+		# if "llava" in m_id_lower:
+		# 	return torch.float16
+		# if "falcon" in m_id_lower:
+		# 	return torch.bfloat16 if bf16_ok else torch.float16		
 		return torch.bfloat16 if bf16_ok else torch.float16
 	
 	dtype = _optimal_dtype(model_id)
 	
 	if verbose:
 		print(f"[INFO] {model_id} Dtype selection")
-		print(f"   • BF16 supported on this device? : {torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False}")
-		print(f"   • Chosen torch dtype             : {dtype}")
+		print(f"\t• BF16 supported on this device? : {torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False}")
+		print(f"\t• Chosen torch dtype             : {dtype}")
 	
 	# ========== Optimal attention implementation ==========
 	def _optimal_attn_impl(m_id: str) -> str:
@@ -183,8 +180,8 @@ def _load_vlm_(
 		if quantization_bits == 8:
 			quantization_config = tfs.BitsAndBytesConfig(
 				load_in_8bit=True,
-				bnb_8bit_compute_dtype=torch.bfloat16,
-				llm_int8_enable_fp32_cpu_offload=False,
+				bnb_8bit_compute_dtype=dtype,
+				llm_int8_enable_fp32_cpu_offload=False, # avoid offloading to CPU
 			)
 		elif quantization_bits == 4:
 			quantization_config = tfs.BitsAndBytesConfig(
@@ -197,9 +194,9 @@ def _load_vlm_(
 			raise ValueError(f"quantization_bits must be 4 or 8, got {quantization_bits}")
 		
 		if verbose:
-			print(f"[INFO] {model_id} Quantisation enabled")
-			print(f"   • Bits                : {quantization_bits}")
-			print(f"   • Config object type  : {type(quantization_config).__name__}")
+			print(f"[INFO] {model_id} Quantization enabled")
+			print(f"\t• Bits                : {quantization_bits}")
+			print(f"\t• Config object type  : {type(quantization_config).__name__}")
 	
 	# ========== Processor loading ==========
 	processor = tfs.AutoProcessor.from_pretrained(
@@ -207,6 +204,7 @@ def _load_vlm_(
 		use_fast=True,
 		trust_remote_code=True,
 		cache_dir=cache_directory[USER],
+		quantization_config=quantization_config,
 	)
 	if verbose:
 		print(f"[INFO] {model_id} Processor: {processor.__class__.__name__}")
