@@ -22,10 +22,10 @@
 *.tgz
 *.html
 *.tflite
+*.ipynb
 
 logs/
 models/
-backups/
 
 # Django
 wgui/db.sqlite3
