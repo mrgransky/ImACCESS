@@ -357,8 +357,8 @@ def main():
 	args.device = torch.device(args.device)
 	args.num_workers = min(args.num_workers, os.cpu_count())
 	if args.verbose:
-		print(args)
 		print_args_table(args=args, parser=parser)
+		print(args)
 
 	multimodal_labels = get_multimodal_annotation(
 		csv_file=args.csv_file,
