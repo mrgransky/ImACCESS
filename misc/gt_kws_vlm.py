@@ -336,7 +336,7 @@ def _load_vlm_(
 			)
 
 		if verbose:
-			print(f"   ✅ VRAM check PASSED: Model will fit!")
+			print(f"[VRAM] PASSED: Model will fit!")
 
 		# Decision: Single GPU vs Multi GPU
 		single_gpu_capacity = gpu_vram[0] - vram_buffer_gb
