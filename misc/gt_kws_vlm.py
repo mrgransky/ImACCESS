@@ -247,6 +247,8 @@ def _load_vlm_(
 		
 		for i in range(n_gpus):
 			props = torch.cuda.get_device_properties(i)
+			if verbose:
+				print(f"[INFO] GPU {i}: {props}")
 			vram_gb = props.total_memory / (1024**3)
 			gpu_vram.append(vram_gb)
 			total_vram_available += vram_gb
