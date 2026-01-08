@@ -18,7 +18,7 @@ import visualize as viz
 # Qwen/Qwen2.5-VL-7B-Instruct # only fits Puhti and Mahti
 
 # how to run [local] interactive:
-# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -vlm_bs 4 -llm_bs 2 -llm_q -nw 20 
+# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -vlm_bs 4 -llm_bs 2 -llm_q -nw 20 -v
 # with nohup:
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_q -vlm_bs 2 -llm_bs 2 -nw 20 -v > logs/multimodal_annotation_smu.txt & 
 
@@ -34,7 +34,7 @@ import visualize as viz
 # $ python gt_kws_multimodal.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-8B-Instruct" -vlm_bs 32 -llm_bs 96 -vlm_mgt 128 -llm_mgt 128 -nw 40 -v
 
 # large models:
-# $ python gt_kws_multimodal.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -vlm "Qwen/Qwen3-VL-32B-Instruct" -vlm_bs 32 -llm_bs 96 -vlm_mgt 128 -llm_mgt 128 -nw 40 -v
+# $ python gt_kws_multimodal.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -vlm "Qwen/Qwen3-VL-32B-Instruct" -vlm_bs 32 -llm_bs 96 -vlm_mgt 128 -llm_mgt 128 -nw 40 -v
 
 def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[List[str]]:
 	"""

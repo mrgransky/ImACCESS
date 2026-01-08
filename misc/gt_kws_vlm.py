@@ -284,6 +284,78 @@ def _load_vlm_(
 			if verbose:
 				print(f"[INFO] Adjusted size for {quantization_bits}-bit quantization: {adjusted_size:.1f} GB")
 		
+		# ========== PRE-FLIGHT VRAM VALIDATION ==========
+		# Account for overhead: model weights + activations + gradients + overhead
+		# Rule of thumb: need 1.5x model size for inference (2x for training)
+		INFERENCE_OVERHEAD_MULTIPLIER = 1.5
+		required_vram = adjusted_size * INFERENCE_OVERHEAD_MULTIPLIER
+
+		if verbose:
+			print(f"\n[VRAM CHECK] Pre-flight validation:")
+			print(f"   • Model size (weights):            {adjusted_size:.1f} GB")
+			print(f"   • Estimated total (with overhead): {required_vram:.1f} GB")
+			print(f"   • Available VRAM (total):          {total_vram_available:.1f} GB")
+			print(f"   • Available VRAM (usable):         {total_vram_available - (n_gpus * vram_buffer_gb):.1f} GB")
+
+		# Check if model will fit
+		usable_vram = total_vram_available - (n_gpus * vram_buffer_gb)
+
+		if required_vram > usable_vram:
+			print("\n" + "="*80)
+			print("❌ INSUFFICIENT VRAM ERROR")
+			print("="*80)
+			print(f"\nModel: {model_id}")
+			print(f"Model size: {adjusted_size:.1f} GB")
+			print(f"Required VRAM (with overhead): {required_vram:.1f} GB")
+			print(f"Available VRAM: {usable_vram:.1f} GB ({n_gpus}x GPUs)")
+			print(f"\nDeficit: {required_vram - usable_vram:.1f} GB SHORT")
+			print("\nSOLUTIONS:")
+			
+			if not use_quantization:
+				print("\n1. ✅ ENABLE QUANTIZATION (Recommended):")
+				print("   use_quantization=True, quantization_bits=8")
+				quant8_size = estimated_size_gb * 0.5
+				quant8_required = quant8_size * INFERENCE_OVERHEAD_MULTIPLIER
+				quant8_fits = "✅ YES" if quant8_required < usable_vram else "❌ NO, try 4-bit"
+				print(f"   → Reduces size to ~{quant8_size:.1f} GB")
+				print(f"   → Required VRAM: ~{quant8_required:.1f} GB")
+				print(f"   → Will fit: {quant8_fits}")
+				
+				print("\n2. ⚠️  ENABLE 4-BIT QUANTIZATION (More aggressive):")
+				print("   use_quantization=True, quantization_bits=4")
+				quant4_size = estimated_size_gb * 0.25
+				quant4_required = quant4_size * INFERENCE_OVERHEAD_MULTIPLIER
+				print(f"   → Reduces size to ~{quant4_size:.1f} GB")
+				print(f"   → Required VRAM: ~{quant4_required:.1f} GB")
+				print(f"   → Will fit: ✅ YES")
+			else:
+				if quantization_bits == 8:
+					print("\n1. ⚠️  TRY 4-BIT QUANTIZATION:")
+					print("   quantization_bits=4")
+					quant4_size = estimated_size_gb * 0.25
+					quant4_required = quant4_size * INFERENCE_OVERHEAD_MULTIPLIER
+					print(f"   → Reduces size to ~{quant4_size:.1f} GB")
+					print(f"   → Required VRAM: ~{quant4_required:.1f} GB")
+				
+				print("\n2. 🔄 USE LARGER GPU:")
+				print("   • A100 80GB available")
+				print("   • Switch to Mahti gpusmall partition")
+				
+				print("\n3. 📉 USE SMALLER MODEL:")
+				print("   • Qwen3-VL-8B-Instruct (~16 GB)")
+				print("   • Qwen2.5-VL-7B-Instruct (~14 GB)")
+			
+			print("\n" + "="*80 + "\n")
+			
+			# Raise error
+			raise RuntimeError(
+				f"Model requires {required_vram:.1f} GB but only {usable_vram:.1f} GB available. "
+				f"Enable quantization or use larger GPU."
+			)
+
+		if verbose:
+			print(f"   ✅ VRAM check PASSED: Model will fit!")
+
 		use_single_gpu = (
 			not force_multi_gpu and
 			adjusted_size < single_gpu_capacity * 0.8 and  # 80% safety margin
