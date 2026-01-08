@@ -1081,74 +1081,29 @@ def get_vlm_based_labels(
 		print(f"[INIT] Deduplication: {len(uniq_inputs)} unique images")
 	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
 
-	def verify_(p: Optional[str]) -> Optional[str]:
-		if p is None or not os.path.exists(p):
-			return None
-		try:
-			with Image.open(p) as im:
-				im.verify()
-			return p
-		except Exception:
-			return None
-
 	def verify(p):
 		"""Optimized for JPEG-only datasets"""
 		if p is None or not os.path.exists(p):
-				return None
-		try:
-				# JPEG minimum: SOI (FFD8) + minimal segment + EOI (FFD9) ≈ 100+ bytes
-				size = os.path.getsize(p)
-				if size < 100:
-						return None
-				
-				with open(p, 'rb') as f:
-						header = f.read(3)
-						if header == b'\xff\xd8\xff':  # Valid JPEG SOI marker
-								return p
-				return None
-		except __Exception__:
-				return None
-
-
-	def verify__(p):
-		"""Memory-mapped verification for maximum speed"""
-		if p is None or not os.path.exists(p):
 			return None
-		
 		try:
-			size = os.path.getsize(p)
-			if size < 12:  # Too small to be a valid image
-				return None
-			
+			# JPEG minimum: SOI (FFD8) + minimal segment + EOI (FFD9) ≈ 100+ bytes
+			# size = os.path.getsize(p)
+			# if size < 100: # Too small to be a valid JPEG (100 bytes [0.1 KB])
+			# 	return None
 			with open(p, 'rb') as f:
-				# Memory map the first part of the file
-				import mmap
-				with mmap.mmap(f.fileno(), min(size, 4096), access=mmap.ACCESS_READ) as mm:
-					header = mm.read(12)
-					
-					# Check common formats without PIL
-					if header[:3] == b'\xff\xd8\xff':  # JPEG
-						return p
-					if header[:8] == b'\x89PNG\r\n\x1a\n':  # PNG
-						return p
-					if header[:6] in [b'GIF87a', b'GIF89a']:  # GIF
-						return p
-					if header[:2] == b'BM':  # BMP
-						return p
-					if header[:4] == b'II*\x00' or header[:4] == b'MM\x00*':  # TIFF
-						return p
-					
-					# Fallback to PIL for other formats
-					with Image.open(p) as im:
-						im.verify()
+				header = f.read(3)
+				if header == b'\xff\xd8\xff':  # Valid JPEG SOI marker
 					return p
+			return None
 		except Exception:
-				return None
-		return None
+			return None
 
 	with ThreadPoolExecutor(max_workers=num_workers) as ex:
 		verified_paths = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc=f"parallel image verification (nw: {num_workers})"))
 	valid_indices = [i for i, v in enumerate(verified_paths) if v is not None]
+
+	if verbose:
+		print(f"[INIT] Verification: {len(valid_indices)} verified images")
 
 	# # MEMORY INTENSIVE! (DO NOT USE)
 	# valid_imgs = [Image.open(p).convert("RGB") for p in verified_paths if p is not None]
