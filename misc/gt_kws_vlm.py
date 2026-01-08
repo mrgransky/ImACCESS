@@ -269,10 +269,7 @@ def _load_vlm_(
 			vram_buffer_gb = max(0.5, vram_buffer_gb * 0.5)
 			if verbose:
 				print(f"[INFO] Quantization enabled - reducing VRAM buffer to {vram_buffer_gb:.1f}GB")
-		
-		# Decision: Single GPU vs Multi GPU
-		single_gpu_capacity = gpu_vram[0] - vram_buffer_gb
-		
+				
 		# Adjust estimated size for quantization
 		adjusted_size = estimated_size_gb
 		if use_quantization:
@@ -356,11 +353,16 @@ def _load_vlm_(
 		if verbose:
 			print(f"   ✅ VRAM check PASSED: Model will fit!")
 
+		# Decision: Single GPU vs Multi GPU
+		single_gpu_capacity = gpu_vram[0] - vram_buffer_gb
+		if verbose:
+			print(f"   • Single GPU capacity: {single_gpu_capacity:.1f} GB")
+		is_large_model = estimated_size_gb >= 20
 		use_single_gpu = (
 			not force_multi_gpu and
+			not is_large_model and  # Don't use single GPU for large models
 			adjusted_size < single_gpu_capacity * 0.8 and  # 80% safety margin
-			(n_gpus == 1 or adjusted_size < 20) and
-			adjusted_size < 20  # Force multi-GPU for models >20GB even when quantized
+			(n_gpus == 1 or adjusted_size < 20)
 		)
 		
 		if use_single_gpu:
