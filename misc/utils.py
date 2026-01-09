@@ -390,6 +390,38 @@ def get_conversation_token_breakdown(text: str, model_name: str = "bert-base-unc
 	
 	return parts
 
+def get_token_breakdown(
+	inputs,  # The actual inputs tensor from processor
+	outputs,  # The generated outputs tensor
+) -> dict:
+	"""
+	Token counting from actual model tensors.
+	
+	Args:
+		inputs: Output from processor() containing input_ids
+		outputs: Output from model.generate() 
+	
+	Returns:
+			dict with token counts
+	"""
+	input_length = inputs.input_ids.shape[1]
+	output_length = outputs.shape[1]
+	generated_length = output_length - input_length
+	
+	breakdown = {
+			'input_tokens': input_length,
+			'generated_tokens': generated_length,
+			'total_tokens': output_length,
+	}
+	
+	print(f"[TOKEN BREAKDOWN]")
+	print(f"   • Input tokens:      {breakdown['input_tokens']}")
+	print(f"   • Generated tokens:  {breakdown['generated_tokens']}")
+	print(f"   • Total tokens:      {breakdown['total_tokens']}")
+	print(f"   • Generation ratio:  {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
+	
+	return breakdown
+
 def debug_llm_info(model, tokenizer, device):
 	print("\n=== Runtime / Environment ===")
 	print(f"Python version      : {sys.version.split()[0]}")

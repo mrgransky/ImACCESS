@@ -1295,6 +1295,7 @@ def get_vlm_based_labels(
 			
 			if verbose:
 				print(f"\n[BATCH {b}] Generating responses for {len(valid_pairs)} images [takes a while]...")
+
 			tt = time.time()
 			with torch.no_grad():
 				with torch.amp.autocast(
@@ -1303,9 +1304,15 @@ def get_vlm_based_labels(
 					dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 				):
 					outputs = model.generate(**inputs, **gen_kwargs)
-			
+			generation_time = time.time() - tt
+
 			if verbose: 
-				print(f"\n[BATCH {b}] Generated responses in {time.time() - tt:.2f}s. Decoding responses...")
+				print(f"\n[BATCH {b}]")
+				breakdown = get_token_breakdown(inputs, outputs, verbose=verbose)
+				print(f"   • Generation time:   {generation_time:.2f}s")
+				print(f"   • Generation ratio:  {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
+				print(f"   • Time per token:    {generation_time / breakdown['generated_tokens']:.3f}s")
+				print(f"   • Tokens per second: {breakdown['generated_tokens'] / generation_time:.1f}")
 
 			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
 

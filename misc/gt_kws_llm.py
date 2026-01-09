@@ -1098,7 +1098,7 @@ def get_llm_based_labels(
 			if x is not None and str(x).strip() not in ("", "nan", "None")
 		)
 		null_count = len(inputs) - valid_count
-		print(f"📊 Input stats: {type(inputs)} {len(inputs)} total, {valid_count} valid, {null_count} null")
+		print(f"Input stats: {type(inputs)} {len(inputs)} total, {valid_count} valid, {null_count} null")
 	
 	# NULL-SAFE DEDUPLICATION
 	
@@ -1235,6 +1235,7 @@ def get_llm_based_labels(
 						dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 					):
 						outputs = model.generate(**gen_kwargs)
+
 				decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 				
 				# Parallel parsing per batch
