@@ -1453,8 +1453,38 @@ def benchmark_max_tokens(
 							return_tensors="pt",
 							padding=True,
 						).to(next(model.parameters()).device)
-						
+						if verbose:
+							print(f"\n[DEBUG] Batch {i//batch_size}: {inputs.input_ids.shape}")
+							print(f"[DEBUG] Input tensor info BEFORE dtype conversion:")
+							print(f"  • Input keys: {list(inputs.keys())}")
+							for key, tensor in inputs.items():
+								if torch.is_tensor(tensor):
+									print(f"\n  • {key}:")
+									print(f"    - Shape: {tensor.shape}")
+									print(f"    - Dtype: {tensor.dtype}")
+									print(f"    - Device: {tensor.device}")
+									print(f"    Is floating point: {tensor.dtype.is_floating_point}")
+									print(f"    Is integer: {tensor.dtype in [torch.int64, torch.int32, torch.int16, torch.int8, torch.uint8]}")
+									print(f"    Min: {tensor.min().item() if tensor.numel() > 0 else 'N/A'}")
+									print(f"    Max: {tensor.max().item() if tensor.numel() > 0 else 'N/A'}")
+									print(f"    Mean: {tensor.float().mean().item() if tensor.numel() > 0 else 'N/A'}")
 						input_length = inputs.input_ids.shape[1]  # Prompt length
+
+						model_dtype = next(model.parameters()).dtype
+						dtype_changes = []
+						for key in inputs.keys():
+							if torch.is_tensor(inputs[key]):
+								original_dtype = inputs[key].dtype
+								original_shape = inputs[key].shape
+								is_floating = inputs[key].dtype.is_floating_point
+								if is_floating:
+									inputs[key] = inputs[key].to(model_dtype)
+									new_dtype = inputs[key].dtype
+									if original_dtype != new_dtype:
+										dtype_changes.append((key, str(original_dtype), str(new_dtype), original_shape))
+								else:
+									dtype_changes.append((key, str(original_dtype), "UNCHANGED (not floating)", original_shape))
+
 
 						# # Ensure all input tensors are in the correct dtype
 						# if hasattr(inputs, 'pixel_values'):
