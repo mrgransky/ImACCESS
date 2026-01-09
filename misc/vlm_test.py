@@ -1934,7 +1934,7 @@ def benchmark_max_tokens(
     model_id: str = "Qwen/Qwen3-VL-2B-Instruct",
     sample_size: int = 31,
     token_limits: List[int] = [32, 64, 96, 128, 192, 256],
-    use_quantization: bool = True,
+    use_quantization: bool = False,
     batch_size: int = 8,
     verbose: bool = True,
 ):
