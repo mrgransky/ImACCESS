@@ -1713,6 +1713,221 @@ def get_vlm_based_labels_new(
 		
 		return final
 
+
+def benchmark_max_tokens(
+		csv_file: str,
+		model_id: str = "Qwen/Qwen3-VL-8B-Instruct",
+		sample_size: int = 100,  # Small dataset for quick testing
+		token_limits: List[int] = [32, 64, 96, 128, 192, 256],
+		use_quantization: bool = True,
+		batch_size: int = 16,  # Smaller for faster iteration
+		verbose: bool = True,
+):
+		"""
+		Benchmark different max_new_tokens values to find optimal quality/speed trade-off.
+		
+		Returns:
+				DataFrame with columns: [max_tokens, avg_time_per_image, avg_keywords, 
+																 avg_output_length, quality_metrics]
+		"""
+		import random
+		
+		print(f"{'='*80}")
+		print(f"BENCHMARKING max_new_tokens")
+		print(f"{'='*80}\n")
+		
+		# Load sample data
+		df = pd.read_csv(csv_file, on_bad_lines='skip', dtype=dtypes, low_memory=False)
+		
+		# Random sample for testing
+		if len(df) > sample_size:
+				sample_indices = random.sample(range(len(df)), sample_size)
+				df_sample = df.iloc[sample_indices].copy()
+		else:
+				df_sample = df.copy()
+		
+		print(f"[SAMPLE] Testing on {len(df_sample)} images")
+		print(f"[MODELS] {model_id}")
+		print(f"[TOKENS] Testing: {token_limits}\n")
+		
+		# Load model once (reuse for all tests)
+		processor, model = _load_vlm_(
+				model_id=model_id,
+				use_quantization=use_quantization,
+				verbose=False,
+		)
+		
+		results_summary = []
+		
+		for max_tokens in token_limits:
+				print(f"\n{'='*80}")
+				print(f"TESTING max_new_tokens = {max_tokens}")
+				print(f"{'='*80}")
+				
+				gen_kwargs = {
+						'max_new_tokens': max_tokens,
+						'use_cache': True,
+						'eos_token_id': processor.tokenizer.eos_token_id,
+						'pad_token_id': processor.tokenizer.pad_token_id,
+				}
+				
+				if hasattr(model, "generation_config"):
+						gen_config = model.generation_config
+						gen_kwargs["temperature"] = getattr(gen_config, "temperature", 0.7)
+						gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
+				
+				# Process sample
+				t0 = time.time()
+				results = []
+				output_lengths = []
+				actual_tokens_used = []
+				
+				# Process in small batches
+				for i in tqdm(range(0, len(df_sample), batch_size), desc=f"max_tokens={max_tokens}"):
+						batch_df = df_sample.iloc[i:i+batch_size]
+						batch_paths = batch_df['img_path'].tolist()
+						
+						# Load images
+						batch_imgs = []
+						valid_indices = []
+						for idx, path in enumerate(batch_paths):
+								if isinstance(path, str) and os.path.exists(path):
+										try:
+												img = Image.open(path).convert("RGB")
+												batch_imgs.append(img)
+												valid_indices.append(idx)
+										except:
+												pass
+						
+						if not batch_imgs:
+								continue
+						
+						# Build messages
+						messages = [
+								[{
+										"role": "user",
+										"content": [
+												{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE.format(k=5)},
+												{"type": "image", "image": img},
+										],
+								}]
+								for img in batch_imgs
+						]
+						
+						# Generate
+						chat_texts = [
+								processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
+								for m in messages
+						]
+						
+						inputs = processor(
+								text=chat_texts,
+								images=batch_imgs,
+								return_tensors="pt",
+								padding=True,
+						).to(next(model.parameters()).device)
+						
+						with torch.no_grad():
+								with torch.amp.autocast(
+										device_type='cuda',
+										enabled=torch.cuda.is_available(),
+										dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+								):
+										outputs = model.generate(**inputs, **gen_kwargs)
+						
+						decoded = processor.batch_decode(outputs, skip_special_tokens=True)
+						
+						# Analyze outputs
+						for resp in decoded:
+								output_lengths.append(len(resp))
+								
+								# Count actual tokens generated (approximate)
+								tokens = processor.tokenizer.encode(resp)
+								actual_tokens_used.append(len(tokens))
+								
+								# Parse keywords
+								try:
+										keywords = parse_vlm_response(
+												model_id=model_id,
+												raw_response=resp,
+												verbose=False,
+										)
+										results.append(keywords)
+								except:
+										results.append(None)
+						
+						# Cleanup
+						del inputs, outputs, decoded
+						if torch.cuda.is_available():
+								torch.cuda.empty_cache()
+				
+				elapsed = time.time() - t0
+				
+				# Calculate metrics
+				avg_time_per_image = elapsed / len(results) if results else 0
+				avg_keywords = sum(len(r) if r else 0 for r in results) / len(results) if results else 0
+				avg_output_length = sum(output_lengths) / len(output_lengths) if output_lengths else 0
+				avg_tokens_used = sum(actual_tokens_used) / len(actual_tokens_used) if actual_tokens_used else 0
+				token_utilization = (avg_tokens_used / max_tokens * 100) if max_tokens > 0 else 0
+				success_rate = sum(1 for r in results if r) / len(results) * 100 if results else 0
+				
+				# Store results
+				summary = {
+						'max_tokens': max_tokens,
+						'total_time': elapsed,
+						'avg_time_per_image': avg_time_per_image,
+						'avg_keywords': avg_keywords,
+						'avg_output_chars': avg_output_length,
+						'avg_tokens_used': avg_tokens_used,
+						'token_utilization_%': token_utilization,
+						'success_rate_%': success_rate,
+						'images_processed': len(results),
+				}
+				results_summary.append(summary)
+				
+				# Print summary
+				print(f"\n[RESULTS] max_new_tokens = {max_tokens}")
+				print(f"   • Total time:           {elapsed:.1f}s")
+				print(f"   • Avg time/image:       {avg_time_per_image:.2f}s")
+				print(f"   • Avg keywords:         {avg_keywords:.1f}")
+				print(f"   • Avg output length:    {avg_output_length:.0f} chars")
+				print(f"   • Avg tokens used:      {avg_tokens_used:.0f} / {max_tokens} ({token_utilization:.1f}%)")
+				print(f"   • Success rate:         {success_rate:.1f}%")
+				
+				# Show sample outputs
+				num_sample_results = 10
+				if verbose and results:
+						print(f"\n[SAMPLES] First {num_sample_results} outputs:")
+						for i, r in enumerate(results[:num_sample_results]):
+								print(f"   {i+1}. {r}")
+		
+		# Create comparison DataFrame
+		df_results = pd.DataFrame(results_summary)
+		
+		print(f"\n{'='*80}")
+		print(f"BENCHMARK SUMMARY")
+		print(f"{'='*80}\n")
+		print(df_results.to_string(index=False))
+		
+		# Calculate efficiency score (quality / time)
+		df_results['efficiency_score'] = (
+				df_results['avg_keywords'] * df_results['success_rate_%'] / 100
+		) / df_results['avg_time_per_image']
+		
+		print(f"\n{'='*80}")
+		print(f"EFFICIENCY RANKING (higher = better quality/speed trade-off)")
+		print(f"{'='*80}\n")
+		print(df_results[['max_tokens', 'efficiency_score', 'avg_time_per_image', 'avg_keywords']]
+					.sort_values('efficiency_score', ascending=False)
+					.to_string(index=False))
+		
+		# Save results
+		output_file = csv_file.replace('.csv', '_token_benchmark.csv')
+		df_results.to_csv(output_file, index=False)
+		print(f"\n[SAVED] Benchmark results: {output_file}\n")
+		
+		return df_results
+
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="VLLM-instruct-based keyword annotation for Historical Dataset")
@@ -1733,6 +1948,17 @@ def main():
 	args.device = torch.device(args.device)
 	args.num_workers = min(args.num_workers, os.cpu_count())
 	print(args)
+
+	benchmark_results = benchmark_max_tokens(
+		csv_file=args.csv_file,
+		model_id=args.model_id,
+		sample_size=100,  # Test on 100 images
+		token_limits=[32, 64, 96, 128, 192, 256],
+		# use_quantization=True,
+		batch_size=args.batch_size,
+		verbose=args.verbose,
+	)
+	return
 
 	if args.image_path:
 		keywords = get_vlm_based_labels_single(
