@@ -1456,10 +1456,9 @@ def benchmark_max_tokens(
 						
 						input_length = inputs.input_ids.shape[1]  # Prompt length
 
-						# cast pixel values to model dtype
-						model_dtype = next(model.parameters()).dtype
+						# Ensure all input tensors are in the correct dtype
 						if hasattr(inputs, 'pixel_values'):
-							inputs.pixel_values = inputs.pixel_values.to(model_dtype)
+							inputs.pixel_values = inputs.pixel_values.to(next(model.parameters()).dtype)
 						
 						with torch.no_grad():
 							with torch.amp.autocast(
