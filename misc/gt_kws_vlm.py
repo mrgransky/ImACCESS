@@ -215,8 +215,6 @@ def _load_vlm_(
 	
 	def get_estimated_gb_size(m_id: str) -> float:
 		info = huggingface_hub.model_info(m_id, token=hf_tk)
-		# if verbose:
-		# 	print(info)
 		try:
 			if hasattr(info, "safetensors") and info.safetensors:
 				total_bytes = info.safetensors.total
@@ -230,7 +228,7 @@ def _load_vlm_(
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	
 	if verbose:
-		print(f"[INFO] Estimated model size: {estimated_size_gb:.2f} GB (fp16)")
+		print(f"[INFO] {model_id} Estimated size: {estimated_size_gb:.2f} GB (fp16)")
 	
 	# ========== Dynamic Device Strategy with Adaptive VRAM Buffering ==========
 	max_memory = {}
@@ -1095,7 +1093,6 @@ def get_vlm_based_labels(
 	verbose: bool=False,
 ):
 	t0 = time.time()
-
 	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
 
@@ -1120,7 +1117,7 @@ def get_vlm_based_labels(
 			on_bad_lines='skip',
 			dtype=dtypes,
 			low_memory=False,
-			usecols = ['img_path'],
+			usecols = ['doc_url', 'img_path'],
 		)
 	except Exception as e:
 		raise ValueError(f"Error loading CSV file: {e}")
@@ -1325,7 +1322,7 @@ def get_vlm_based_labels(
 			# for uniq_idx, parsed in parsed_dict.items():
 			# 	results[uniq_idx] = parsed
 
-			# Parse (sequential is fine - not the bottleneck!)
+			# Sequential parsing
 			for (idx, _), resp in zip(valid_pairs, decoded):
 				try:
 					results[idx] = parse_vlm_response(
@@ -1343,7 +1340,6 @@ def get_vlm_based_labels(
 				del inputs, outputs, decoded, valid_pairs, messages, chat_texts
 			except NameError:
 				pass
-
 
 		except Exception as e_batch:
 			print(f"\n[BATCH {b}]: {e_batch}\n")

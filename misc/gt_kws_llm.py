@@ -1072,7 +1072,7 @@ def get_llm_based_labels(
 			on_bad_lines='skip',
 			dtype=dtypes,
 			low_memory=False,
-			usecols = ['enriched_document_description'],
+			usecols = ['doc_url', 'enriched_document_description'],
 		)
 	except Exception as e:
 		raise ValueError(f"Error loading CSV file: {e}")
