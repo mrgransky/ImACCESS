@@ -1448,20 +1448,24 @@ def benchmark_max_tokens(
 						]
 						
 						inputs = processor(
-								text=chat_texts,
-								images=batch_imgs,
-								return_tensors="pt",
-								padding=True,
+							text=chat_texts,
+							images=batch_imgs,
+							return_tensors="pt",
+							padding=True,
 						).to(next(model.parameters()).device)
 						
 						input_length = inputs.input_ids.shape[1]  # Prompt length
 
-						# Ensure all input tensors are in the correct dtype
-						if hasattr(inputs, 'pixel_values'):
-							if verbose:
-								print(f"\n[DEBUG] Casting pixel values to {next(model.parameters()).dtype}...")
-							inputs.pixel_values = inputs.pixel_values.to(next(model.parameters()).dtype)
-						
+						# # Ensure all input tensors are in the correct dtype
+						# if hasattr(inputs, 'pixel_values'):
+						# 	if verbose:
+						# 		print(f"\n[DEBUG] Casting pixel values to {next(model.parameters()).dtype}...")
+						# 	inputs.pixel_values = inputs.pixel_values.to(next(model.parameters()).dtype)
+
+						for key in inputs.keys():
+							if torch.is_tensor(inputs[key]):
+								inputs[key] = inputs[key].to(next(model.parameters()).dtype)
+
 						with torch.no_grad():
 							with torch.amp.autocast(
 								device_type='cuda',
