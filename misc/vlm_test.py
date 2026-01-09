@@ -1576,7 +1576,6 @@ def benchmark_max_tokens(
 		df_results = pd.DataFrame(results_summary)
 		
 		print(f"BENCHMARK SUMMARY")
-
 		print(df_results.to_string(index=False))
 		
 		return df_results
