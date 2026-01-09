@@ -1719,7 +1719,7 @@ def benchmark_max_tokens_(
 		model_id: str = "Qwen/Qwen3-VL-8B-Instruct",
 		sample_size: int = 100,  # Small dataset for quick testing
 		token_limits: List[int] = [32, 64, 96, 128, 192, 256],
-		use_quantization: bool = True,
+		use_quantization: bool = False,
 		batch_size: int = 16,  # Smaller for faster iteration
 		verbose: bool = True,
 ):
@@ -2143,7 +2143,7 @@ def main():
 		model_id=args.model_id,
 		sample_size=100,  # Test on 100 images
 		token_limits=[32, 64, 96, 128, 192, 256],
-		# use_quantization=True,
+		use_quantization=args.use_quantization,
 		batch_size=args.batch_size,
 		verbose=args.verbose,
 	)
