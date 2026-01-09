@@ -1307,15 +1307,10 @@ def get_vlm_based_labels(
 				pass
 		except Exception as e_batch:
 			print(f"\n[BATCH {b}]: {e_batch}\n")
-			# Clean up after batch failure
-			if torch.cuda.is_available():
-				torch.cuda.empty_cache()
-			gc.collect()
 
 			if verbose:
 				print(f"\tFalling back to sequential processing for {len(valid_pairs)} images in this batch.")
 
-			# fallback: process each image sequentially
 			for idx_count, (i, img) in enumerate(tqdm(valid_pairs, desc="Processing batch images [Sequential]", ncols=100)):
 				try:
 					single_message = [
@@ -1362,38 +1357,6 @@ def get_vlm_based_labels(
 				except Exception as e_fallback:
 					print(f"\n[fallback ❌] image {i}:\n{e_fallback}\n")
 					results[i] = None
-
-		# # Clean up batch tensors immediately after use
-		# if verbose: 
-		# 	print(f"\n[batch {b}] Deleting batch tensors...")
-		# try:
-		# 	del inputs
-		# except NameError:
-		# 	pass
-		# try:
-		# 	del outputs  
-		# except NameError:
-		# 	pass
-		# try:
-		# 	del decoded
-		# except NameError:
-		# 	pass
-		# try:
-		# 	del batch_paths
-		# except NameError:
-		# 	pass
-		# try:
-		# 	del batch_imgs
-		# except NameError:
-		# 	pass
-		# try:
-		# 	del valid_pairs
-		# except NameError:
-		# 	pass
-		# try:
-		# 	del chat_texts
-		# except NameError:
-		# 	pass
 
 		# memory management
 		need_cleanup = False
