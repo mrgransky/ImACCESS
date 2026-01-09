@@ -1239,15 +1239,14 @@ def get_vlm_based_labels(
 
 			# pass both texts [txt1, txt2, ...] & images [img1, img2, ...]
 			if verbose:
-				print(f"\n[batch {b}] Processing batch inputs & sending them to {model.device}...")
+				print(f"\n[batch {b}] Processing batch inputs & sending them to {next(model.parameters()).device}...")
 			inputs = processor(
 				text=chat_texts,
 				images=[img for _, img in valid_pairs],
 				return_tensors="pt",
 				padding=True,
-			).to(model.device)
+			).to(next(model.parameters()).device)
 
-			# Generate response
 			if verbose: 
 				print(f"\n[batch {b}] Generating responses for {len(valid_pairs)} images sequentially [Might take a while]...")
 			with torch.no_grad():
@@ -1309,7 +1308,7 @@ def get_vlm_based_labels(
 						text=[chat],
 						images=[img],
 						return_tensors="pt",
-					).to(model.device)
+					).to(next(model.parameters()).device)
 
 					if single_inputs.pixel_values.numel() == 0:
 						raise ValueError(f"Pixel values of {img} are empty: {single_inputs.pixel_values.shape}")

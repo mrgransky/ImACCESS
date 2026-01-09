@@ -1301,6 +1301,7 @@ def get_vlm_based_labels(
 					outputs = model.generate(**inputs, **gen_kwargs)
 			
 			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
+
 			if verbose:
 				print(f"\n[BATCH {b}] Decoded responses: {type(decoded)} {len(decoded)}")
 
