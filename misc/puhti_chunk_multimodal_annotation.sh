@@ -55,7 +55,7 @@ if [ "$NUM_GPUS" -gt 1 ]; then
 	# LLM_QUANTIZATION="--use_llm_quantization"  # Enable
 	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
 	VLM_BATCH_SIZE=28
-	VLM_MAX_GEN_TKs=128
+	VLM_MAX_GEN_TKs=64
 	# VLM_QUANTIZATION="--use_vlm_quantization"  # Enable
 else
 	echo "SMALL models (single-GPU configuration)"
@@ -65,7 +65,7 @@ else
 	# LLM_QUANTIZATION="--use_llm_quantization"  # Enable
 	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 	VLM_BATCH_SIZE=24
-	VLM_MAX_GEN_TKs=128
+	VLM_MAX_GEN_TKs=64
 	# VLM_QUANTIZATION="--use_vlm_quantization"  # Enable
 fi
 

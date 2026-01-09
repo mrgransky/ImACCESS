@@ -1174,7 +1174,13 @@ def get_vlm_based_labels(
 		verbose=verbose,
 	)
 	# ========== Prepare generation kwargs ==========
-	gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True)
+	gen_kwargs = dict(
+		max_new_tokens=max_generated_tks, 
+		use_cache=True,
+		eos_token_id=processor.tokenizer.eos_token_id,
+		pad_token_id=processor.tokenizer.pad_token_id,
+	)
+	
 	if hasattr(model, "generation_config"):
 		gen_config = model.generation_config
 		gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
@@ -1249,7 +1255,8 @@ def get_vlm_based_labels(
 		
 		valid_pairs = [
 			(i, img)
-			for i, img in zip(batch_indices, batch_imgs) if img is not None
+			for i, img in zip(batch_indices, batch_imgs)
+			if img
 		]
 		
 		if not valid_pairs:
@@ -1289,9 +1296,9 @@ def get_vlm_based_labels(
 				padding=True,
 			).to(next(model.parameters()).device)
 			
-			# Generate response
 			if verbose:
 				print(f"\n[BATCH {b}] Generating responses for {len(valid_pairs)} images [takes a while]...")
+			tt = time.time()
 			with torch.no_grad():
 				with torch.amp.autocast(
 					device_type=device.type,
@@ -1300,20 +1307,44 @@ def get_vlm_based_labels(
 				):
 					outputs = model.generate(**inputs, **gen_kwargs)
 			
+			if verbose: 
+				print(f"\n[BATCH {b}] Generated responses in {time.time() - tt:.2f}s. Decoding responses...")
+
 			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
 
 			if verbose:
-				print(f"\n[BATCH {b}] Decoded responses: {type(decoded)} {len(decoded)}")
+				print(f"\n[BATCH {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
 
-			# parallel parsing for this batch
-			parsed_dict = _parse_batch_parallel(
-				decoded_responses=decoded,
-				batch_indices=[i for i, _ in valid_pairs],
-				model_id_=model_id,
-				verbose_=verbose,
-			)
-			for uniq_idx, parsed in parsed_dict.items():
-				results[uniq_idx] = parsed
+			# # Parallel parsing for this batch
+			# parsed_dict = _parse_batch_parallel(
+			# 	decoded_responses=decoded,
+			# 	batch_indices=[i for i, _ in valid_pairs],
+			# 	model_id_=model_id,
+			# 	verbose_=verbose,
+			# )
+			# for uniq_idx, parsed in parsed_dict.items():
+			# 	results[uniq_idx] = parsed
+
+			# Parse (sequential is fine - not the bottleneck!)
+			for (idx, _), resp in zip(valid_pairs, decoded):
+				try:
+					results[idx] = parse_vlm_response(
+						model_id=model_id,
+						raw_response=resp,
+						verbose=False,  # Don't spam verbose logs
+					)
+				except Exception as e:
+					if verbose:
+						print(f"[WARN] Parse error for idx {idx}: {e}")
+					results[idx] = None
+
+			# Clean up batch tensors immediately after use
+			try:
+				del inputs, outputs, decoded, valid_pairs, messages, chat_texts
+			except NameError:
+				pass
+
+
 		except Exception as e_batch:
 			print(f"\n[BATCH {b}]: {e_batch}\n")
 
@@ -1410,38 +1441,6 @@ def get_vlm_based_labels(
 				if torch.cuda.is_available():
 					torch.cuda.empty_cache()
 				gc.collect()
-
-		# Clean up batch tensors immediately after use
-		if verbose: 
-			print(f"\n[batch {b}] Deleting batch tensors...")
-		try:
-			del inputs
-		except NameError:
-			pass
-		try:
-			del outputs  
-		except NameError:
-			pass
-		try:
-			del decoded
-		except NameError:
-			pass
-		try:
-			del batch_paths
-		except NameError:
-			pass
-		try:
-			del batch_imgs
-		except NameError:
-			pass
-		try:
-			del valid_pairs
-		except NameError:
-			pass
-		try:
-			del chat_texts
-		except NameError:
-			pass
 
 		# memory management
 		need_cleanup = False
