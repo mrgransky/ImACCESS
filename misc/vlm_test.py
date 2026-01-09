@@ -1425,7 +1425,7 @@ def benchmark_max_tokens(
 		processor, model = _load_vlm_(
 				model_id=model_id,
 				use_quantization=use_quantization,
-				verbose=False,
+				verbose=verbose,
 		)
 		
 		results_summary = []
