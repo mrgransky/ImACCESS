@@ -1300,19 +1300,11 @@ def get_vlm_based_labels(
 						print(f"[WARN] Parse error for idx {idx}: {e}")
 					results[idx] = None
 
-			# for i, resp in enumerate(decoded):
-			# 	if verbose: 
-			# 		print(f"[batch {b}] response index: {i}")
-			# 	try:
-			# 		parsed = parse_vlm_response(
-			# 			model_id=model_id, 
-			# 			raw_response=resp, 
-			# 			verbose=verbose
-			# 		)
-			# 		results[idxs[i]] = parsed
-			# 	except Exception:
-			# 		results[idxs[i]] = None
-		
+			# Clean up batch tensors immediately after use
+			try:
+				del inputs, outputs, decoded, valid_pairs, messages, chat_texts
+			except NameError:
+				pass
 		except Exception as e_batch:
 			print(f"\n[BATCH {b}]: {e_batch}\n")
 			# Clean up after batch failure
@@ -1371,37 +1363,37 @@ def get_vlm_based_labels(
 					print(f"\n[fallback ❌] image {i}:\n{e_fallback}\n")
 					results[i] = None
 
-		# Clean up batch tensors immediately after use
-		if verbose: 
-			print(f"\n[batch {b}] Deleting batch tensors...")
-		try:
-			del inputs
-		except NameError:
-			pass
-		try:
-			del outputs  
-		except NameError:
-			pass
-		try:
-			del decoded
-		except NameError:
-			pass
-		try:
-			del batch_paths
-		except NameError:
-			pass
-		try:
-			del batch_imgs
-		except NameError:
-			pass
-		try:
-			del valid_pairs
-		except NameError:
-			pass
-		try:
-			del chat_texts
-		except NameError:
-			pass
+		# # Clean up batch tensors immediately after use
+		# if verbose: 
+		# 	print(f"\n[batch {b}] Deleting batch tensors...")
+		# try:
+		# 	del inputs
+		# except NameError:
+		# 	pass
+		# try:
+		# 	del outputs  
+		# except NameError:
+		# 	pass
+		# try:
+		# 	del decoded
+		# except NameError:
+		# 	pass
+		# try:
+		# 	del batch_paths
+		# except NameError:
+		# 	pass
+		# try:
+		# 	del batch_imgs
+		# except NameError:
+		# 	pass
+		# try:
+		# 	del valid_pairs
+		# except NameError:
+		# 	pass
+		# try:
+		# 	del chat_texts
+		# except NameError:
+		# 	pass
 
 		# memory management
 		need_cleanup = False
