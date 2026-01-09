@@ -41,7 +41,7 @@ from utils import *
 # python vlm_test.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3-VL-2B-Instruct" -bs 10 -nw 18 -v
 
 # puhti/mahti:
-# python vlm_test.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -vlm "Qwen/Qwen3-VL-2B-Instruct" -bs 48 -nw 40 -v
+# python vlm_test.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -vlm "Qwen/Qwen3-VL-8B-Instruct" -bs 48 -nw 40 -v
 
 process = psutil.Process(os.getpid())
 EXP_BACKOFF = 2  # seconds
@@ -1089,7 +1089,7 @@ def get_vlm_based_labels_debug(
 
 	return results
 
-def get_vlm_based_labels_(
+def get_vlm_based_labels(
 	model_id: str,
 	device: str,
 	batch_size: int,
@@ -1254,6 +1254,7 @@ def get_vlm_based_labels_(
 
 			if verbose: 
 				print(f"\n[batch {b}] Generating responses for {len(valid_pairs)} images sequentially [Might take a while]...")
+			tt = time.time()
 			with torch.no_grad():
 				with torch.amp.autocast(
 					device_type=device.type, 
@@ -1263,25 +1264,39 @@ def get_vlm_based_labels_(
 					outputs = model.generate(**inputs, **gen_kwargs)
 
 			if verbose: 
-				print(f"\n[batch {b}] Decoding responses...")
+				print(f"\n[batch {b}] Generated responses in {time.time() - tt:.2f}s. Decoding responses...")
 
 			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
 
 			if verbose: 
 				print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
 
-			for i, resp in enumerate(decoded):
-				if verbose: 
-					print(f"[batch {b}] response index: {i}")
+			# Parse (sequential is fine - not the bottleneck!)
+			for (idx, _), resp in zip(valid_pairs, decoded):
 				try:
-					parsed = parse_vlm_response(
-						model_id=model_id, 
-						raw_response=resp, 
-						verbose=verbose
+					results[idx] = parse_vlm_response(
+						model_id=model_id,
+						raw_response=resp,
+						verbose=False,  # Don't spam verbose logs
 					)
-					results[idxs[i]] = parsed
-				except Exception:
-					results[idxs[i]] = None
+				except Exception as e:
+					if verbose:
+						print(f"[WARN] Parse error for idx {idx}: {e}")
+					results[idx] = None
+
+			# for i, resp in enumerate(decoded):
+			# 	if verbose: 
+			# 		print(f"[batch {b}] response index: {i}")
+			# 	try:
+			# 		parsed = parse_vlm_response(
+			# 			model_id=model_id, 
+			# 			raw_response=resp, 
+			# 			verbose=verbose
+			# 		)
+			# 		results[idxs[i]] = parsed
+			# 	except Exception:
+			# 		results[idxs[i]] = None
+		
 		except Exception as e_batch:
 			print(f"\n[BATCH {b}]: {e_batch}\n")
 			# Clean up after batch failure
@@ -1413,7 +1428,7 @@ def get_vlm_based_labels_(
 		print(f"[SAVE] Results written to: {out_csv}")
 	return final
 
-def get_vlm_based_labels(
+def get_vlm_based_labels_new(
 		model_id: str,
 		device: str,
 		batch_size: int,
@@ -1701,17 +1716,16 @@ def get_vlm_based_labels(
 										gc.collect()
 		
 		# ========== Map back to original ordering ==========
-		final = [results[i] for i in orig_to_uniq]
-		
-		# ========== Save results ==========
+		final = [results[i] for i in orig_to_uniq]		
 		df["vlm_keywords"] = final
+
 		df.to_csv(output_csv, index=False)
 		
 		try:
-				df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
 		except Exception as e:
-				if verbose:
-						print(f"[WARN] Excel export failed: {e}")
+			if verbose:
+				print(f"[WARN] Excel export failed: {e}")
 		
 		# ========== Stats ==========
 		elapsed = time.time() - t0

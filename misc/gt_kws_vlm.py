@@ -1467,12 +1467,11 @@ def get_vlm_based_labels(
 
 	# ========== Map back to original ordering ==========
 	final = [results[i] for i in orig_to_uniq]
-	out_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 	df["vlm_keywords"] = final
-	# Save results
-	df.to_csv(out_csv, index=False)
+
+	df.to_csv(output_csv, index=False)
 	try:
-		df.to_excel(out_csv.replace('.csv', '.xlsx'), index=False)
+		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 	elapsed = time.time() - t0
@@ -1480,7 +1479,7 @@ def get_vlm_based_labels(
 		n_ok = sum(1 for r in final if r)
 		print(f"[STATS] ✅ Success {n_ok}/{len(final)}")
 		print(f"[TIME] {elapsed/3600:.2f}h | avg {len(final)/elapsed:.2f}/s")
-		print(f"[SAVE] Results written to: {out_csv}")
+		print(f"[SAVE] Results written to: {output_csv}")
 	return final
 
 @measure_execution_time
