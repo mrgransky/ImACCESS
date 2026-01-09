@@ -1308,7 +1308,7 @@ def get_vlm_based_labels(
 
 			if verbose: 
 				print(f"\n[BATCH {b}]")
-				breakdown = get_token_breakdown(inputs, outputs, verbose=verbose)
+				breakdown = get_token_breakdown(inputs, outputs)
 				print(f"   • Generation time:   {generation_time:.2f}s")
 				print(f"   • Generation ratio:  {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
 				print(f"   • Time per token:    {generation_time / breakdown['generated_tokens']:.3f}s")

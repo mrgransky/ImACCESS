@@ -391,8 +391,8 @@ def get_conversation_token_breakdown(text: str, model_name: str = "bert-base-unc
 	return parts
 
 def get_token_breakdown(
-	inputs,  # The actual inputs tensor from processor
-	outputs,  # The generated outputs tensor
+	inputs,  # actual inputs tensor from processor
+	outputs, # generated outputs tensor
 ) -> dict:
 	"""
 	Token counting from actual model tensors.
@@ -402,7 +402,7 @@ def get_token_breakdown(
 		outputs: Output from model.generate() 
 	
 	Returns:
-			dict with token counts
+		dict with token counts
 	"""
 	input_length = inputs.input_ids.shape[1]
 	output_length = outputs.shape[1]
