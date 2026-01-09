@@ -409,9 +409,9 @@ def get_token_breakdown(
 	generated_length = output_length - input_length
 	
 	breakdown = {
-			'input_tokens': input_length,
-			'generated_tokens': generated_length,
-			'total_tokens': output_length,
+		'input_tokens': input_length,
+		'generated_tokens': generated_length,
+		'total_tokens': output_length,
 	}
 	
 	print(f"[TOKEN BREAKDOWN]")

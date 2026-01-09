@@ -1189,40 +1189,6 @@ def get_vlm_based_labels(
 		for k, v in gen_kwargs.items():
 			print(f"   • {k}: {v}")
 	
-	def _parse_batch_parallel(
-		decoded_responses: List[str],
-		batch_indices: List[int],
-		model_id_: str,
-		verbose_: bool,
-	) -> Dict[int, Optional[List[str]]]:
-		"""
-		Parse a list of decoded VLM responses in parallel.
-		Returns a mapping: {unique_index: parsed_keywords_or_None}
-		"""
-		out: Dict[int, Optional[List[str]]] = {}
-		def _parse_one(local_idx: int) -> Tuple[int, Optional[List[str]]]:
-			uniq_index = batch_indices[local_idx]
-			resp = decoded_responses[local_idx]
-			try:
-				parsed = parse_vlm_response(
-					model_id=model_id_,
-					raw_response=resp,
-					verbose=verbose_,
-				)
-				return uniq_index, parsed
-			except Exception as e:
-				if verbose_:
-					print(f"⚠️ Parsing error for unique index {uniq_index}: {e}")
-				return uniq_index, None
-		if not decoded_responses:
-			return out
-		with ThreadPoolExecutor(max_workers=num_workers) as ex:
-			futures = {ex.submit(_parse_one, i): i for i in range(len(decoded_responses))}
-			for fut in as_completed(futures):
-				uniq_index, parsed = fut.result()
-				out[uniq_index] = parsed
-		return out
-	
 	# ========== Process batches ==========
 	def _load_(p: str) -> Optional[Image.Image]:
 		try:
@@ -1319,23 +1285,13 @@ def get_vlm_based_labels(
 			if verbose:
 				print(f"\n[BATCH {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
 
-			# # Parallel parsing for this batch
-			# parsed_dict = _parse_batch_parallel(
-			# 	decoded_responses=decoded,
-			# 	batch_indices=[i for i, _ in valid_pairs],
-			# 	model_id_=model_id,
-			# 	verbose_=verbose,
-			# )
-			# for uniq_idx, parsed in parsed_dict.items():
-			# 	results[uniq_idx] = parsed
-
 			# Sequential parsing
 			for (idx, _), resp in zip(valid_pairs, decoded):
 				try:
 					results[idx] = parse_vlm_response(
 						model_id=model_id,
 						raw_response=resp,
-						verbose=False,  # Don't spam verbose logs
+						verbose=verbose,
 					)
 				except Exception as e:
 					if verbose:
