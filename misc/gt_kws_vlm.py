@@ -1262,8 +1262,8 @@ def get_vlm_based_labels(
 			if verbose:
 				print(f"\n[BATCH {b}] Generating responses for {len(valid_pairs)} images [takes a while]...")
 
+			# Generate response
 			tt = time.time()
-			# ========== Generate response ==========
 			with torch.no_grad():
 				outputs = model.generate(**inputs, **gen_kwargs)
 			generation_time = time.time() - tt
