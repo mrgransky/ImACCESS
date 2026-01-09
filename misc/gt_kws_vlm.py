@@ -1259,22 +1259,13 @@ def get_vlm_based_labels(
 				padding=True,
 			).to(next(model.parameters()).device)
 
-			if hasattr(inputs, 'pixel_values'):
-				if verbose:
-					print(f"\n[BATCH {b}] Casting pixel values dtype to {next(model.parameters()).dtype}! current: {inputs.pixel_values.dtype}")
-				inputs.pixel_values = inputs.pixel_values.to(next(model.parameters()).dtype)
-
 			if verbose:
 				print(f"\n[BATCH {b}] Generating responses for {len(valid_pairs)} images [takes a while]...")
 
 			tt = time.time()
+			# ========== Generate response ==========
 			with torch.no_grad():
-				with torch.amp.autocast(
-					device_type=device.type,
-					enabled=torch.cuda.is_available(),
-					dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-				):
-					outputs = model.generate(**inputs, **gen_kwargs)
+				outputs = model.generate(**inputs, **gen_kwargs)
 			generation_time = time.time() - tt
 
 			if verbose: 
