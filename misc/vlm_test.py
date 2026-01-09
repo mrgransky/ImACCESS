@@ -200,6 +200,8 @@ def _load_vlm_(
 			print(f"\t• Config object type  : {type(quantization_config).__name__}")
 	
 	# ========== Processor loading ==========
+	if verbose:
+		print(f"[INFO] {model_id} Loading processor...")
 	processor = tfs.AutoProcessor.from_pretrained(
 		model_id,
 		use_fast=True,
@@ -209,8 +211,12 @@ def _load_vlm_(
 	)
 	if verbose:
 		print(f"[INFO] {model_id} Processor: {processor.__class__.__name__}")
+		print(processor)
+		print()
 	
 	# Extract tokenizer
+	if verbose:
+		print(f"[INFO] {model_id} Extracting tokenizer...")
 	if hasattr(processor, "tokenizer"):
 		tokenizer = processor.tokenizer
 	elif hasattr(processor, "text_tokenizer"):
@@ -220,6 +226,11 @@ def _load_vlm_(
 	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
 		tokenizer.padding_side = "left"
 	
+	if verbose:
+		print(f"[INFO] {model_id} Tokenizer: {tokenizer.__class__.__name__}")
+		print(tokenizer)
+		print()
+
 	def get_estimated_gb_size(m_id: str) -> float:
 		info = huggingface_hub.model_info(m_id, token=hf_tk)
 		# if verbose:
@@ -237,7 +248,7 @@ def _load_vlm_(
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	
 	if verbose:
-		print(f"[INFO] Estimated model size: {estimated_size_gb:.2f} GB (fp16)")
+		print(f"[INFO] {model_id} Estimated model size: {estimated_size_gb:.2f} GB (fp16)")
 	
 	# ========== Dynamic Device Strategy with Adaptive VRAM Buffering ==========
 	max_memory = {}
@@ -1173,7 +1184,12 @@ def get_vlm_based_labels(
 		verbose=verbose
 	)
 	# ========== Prepare generation kwargs ==========
-	gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True,)
+	gen_kwargs = dict(
+		max_new_tokens=max_generated_tks, 
+		use_cache=True,
+		eos_token_id=processor.tokenizer.eos_token_id,
+		pad_token_id=processor.tokenizer.pad_token_id,
+	)
 	# Use model’s built-in defaults unless the user overrides
 	if hasattr(model, "generation_config"):
 		gen_config = model.generation_config
@@ -1183,7 +1199,7 @@ def get_vlm_based_labels(
 		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
 
 	if verbose:
-		print(f"\n[GEN CONFIG] Using generation parameters:")
+		print(f"\n[GEN CONFIG] {model_id} parameters:")
 		for k, v in gen_kwargs.items():
 			print(f"   • {k}: {v}")
 
@@ -1253,7 +1269,7 @@ def get_vlm_based_labels(
 			).to(next(model.parameters()).device)
 
 			if verbose: 
-				print(f"\n[batch {b}] Generating responses for {len(valid_pairs)} images sequentially [Might take a while]...")
+				print(f"\n[batch {b}] Generating responses for {len(valid_pairs)} images [takes a while]...")
 			tt = time.time()
 			with torch.no_grad():
 				with torch.amp.autocast(
