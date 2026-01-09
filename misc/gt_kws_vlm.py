@@ -1437,6 +1437,10 @@ def get_vlm_based_labels(
 			del valid_pairs
 		except NameError:
 			pass
+		try:
+			del chat_texts
+		except NameError:
+			pass
 
 		# memory management
 		need_cleanup = False
