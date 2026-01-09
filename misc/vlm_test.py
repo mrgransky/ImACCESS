@@ -1,41 +1,4 @@
-from re import I
 from utils import *
-
-# llama:
-# model_id = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
-
-# LLAVA 1.5x collection:
-# model_id = "llava-hf/llava-1.5-7b-hf"
-# model_id = "llava-hf/llava-1.5-13b-hf"
-# model_id =  "llava-hf/bakLlava-v1-hf"
-
-# LLaVa-NeXT (1.6x) collection:
-# model_id = "llava-hf/llava-v1.6-mistral-7b-hf"
-# model_id = "llava-hf/llava-v1.6-vicuna-7b-hf"
-# model_id = "llava-hf/llava-v1.6-vicuna-13b-hf"
-# model_id = "llava-hf/llama3-llava-next-8b-hf"
-
-# Qwen 2.5x VL collection:
-# model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
-# model_id = "Qwen/Qwen2.5-VL-7B-Instruct" # only fits Puhti and Mahti
-
-# Qwen 3 VL collection:
-# Qwen/Qwen3-VL-2B-Instruct
-# Qwen/Qwen3-VL-4B-Instruct
-# Qwen/Qwen3-VL-8B-Instruct # only fits Puhti and Mahti
-# Qwen/Qwen3-VL-32B-Instruct # multiple gpus required
-# Qwen/Qwen3-VL-30B-A3B-Instruct # multiple gpus required
-
-# does not fit into VRAM:
-# model_id = "llava-hf/llava-v1.6-34b-hf"
-# model_id = "llava-hf/llava-next-72b-hf"
-# model_id = "llava-hf/llava-next-110b-hf"
-# model_id = "Qwen/Qwen2.5-VL-72B-Instruct"
-
-# debugging required:
-# # model_id = "tiiuae/falcon-11B-vlm"
-# # model_id = "utter-project/EuroVLM-1.7B-Preview"
-# # model_id = "OpenGVLab/InternVL-Chat-V1-2"
 
 # local:
 # python vlm_test.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3-VL-2B-Instruct" -bs 10 -nw 18 -v
@@ -1492,6 +1455,11 @@ def benchmark_max_tokens(
 						).to(next(model.parameters()).device)
 						
 						input_length = inputs.input_ids.shape[1]  # Prompt length
+
+						# cast pixel values to model dtype
+						model_dtype = next(model.parameters()).dtype
+						if hasattr(inputs, 'pixel_values'):
+							inputs.pixel_values = inputs.pixel_values.to(model_dtype)
 						
 						with torch.no_grad():
 							with torch.amp.autocast(
