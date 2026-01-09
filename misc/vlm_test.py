@@ -1616,23 +1616,6 @@ def benchmark_max_tokens(
 								verbose=verbose,
 				)
 				
-				# ========== DEBUG: Print model dtype info ==========
-				if verbose:
-						print(f"\n{'='*80}")
-						print(f"[DEBUG] Model dtype information:")
-						model_dtype = next(model.parameters()).dtype
-						print(f"  • Model dtype (from first parameter): {model_dtype}")
-						print(f"  • Model dtype string: {str(model_dtype)}")
-						print(f"  • Model is bfloat16: {model_dtype == torch.bfloat16}")
-						print(f"  • Model is float16: {model_dtype == torch.float16}")
-						print(f"  • Model is float32: {model_dtype == torch.float32}")
-						
-						# Print first few parameters to verify
-						print(f"\n  • First 5 parameter dtypes:")
-						for i, (name, param) in enumerate(list(model.named_parameters())[:5]):
-								print(f"    {i+1}. {name[:50]:<50} dtype: {param.dtype} device: {param.device}")
-						print(f"{'='*80}\n")
-				
 				results_summary = []
 				
 				for max_tokens in token_limits:
@@ -1696,90 +1679,20 @@ def benchmark_max_tokens(
 																padding=True,
 												).to(next(model.parameters()).device)
 												
-												# ========== DEBUG: Print input tensor info BEFORE conversion ==========
-												if verbose and i == 0:  # Only for first batch
-														print(f"\n{'='*80}")
-														print(f"[DEBUG] Input tensor info BEFORE dtype conversion:")
-														print(f"  • Input keys: {list(inputs.keys())}")
-														for key, tensor in inputs.items():
-																if torch.is_tensor(tensor):
-																		print(f"\n  • {key}:")
-																		print(f"    Shape: {tensor.shape}")
-																		print(f"    Dtype: {tensor.dtype}")
-																		print(f"    Device: {tensor.device}")
-																		print(f"    Is floating point: {tensor.dtype.is_floating_point}")
-																		print(f"    Is integer: {tensor.dtype in [torch.int64, torch.int32, torch.int16, torch.int8, torch.uint8]}")
-																		print(f"    Min: {tensor.min().item() if tensor.numel() > 0 else 'N/A'}")
-																		print(f"    Max: {tensor.max().item() if tensor.numel() > 0 else 'N/A'}")
-																		print(f"    Mean: {tensor.float().mean().item() if tensor.numel() > 0 else 'N/A'}")
-														
-														# Get model dtype again to confirm
-														model_dtype = next(model.parameters()).dtype
-														print(f"\n  • Model dtype (re-check): {model_dtype}")
-														print(f"{'='*80}")
-												
 												input_length = inputs.input_ids.shape[1]  # Prompt length
 												
-												# FIX: Convert only floating-point tensors to model dtype
-												# Keep integer tensors (like input_ids) as Long/Int
+												# FIX: Try WITHOUT autocast and with explicit dtype handling
+												# Disable autocast and handle dtypes manually
 												model_dtype = next(model.parameters()).dtype
 												
-												# ========== DEBUG: Track dtype changes ==========
-												dtype_changes = []
 												for key in inputs.keys():
 														if torch.is_tensor(inputs[key]):
-																original_dtype = inputs[key].dtype
-																original_shape = inputs[key].shape
-																is_floating = inputs[key].dtype.is_floating_point
-																
-																if is_floating:
+																if inputs[key].dtype.is_floating_point:
 																		inputs[key] = inputs[key].to(model_dtype)
-																		new_dtype = inputs[key].dtype
-																		if original_dtype != new_dtype:
-																				dtype_changes.append((key, str(original_dtype), str(new_dtype), original_shape))
-																else:
-																		dtype_changes.append((key, str(original_dtype), "UNCHANGED (not floating)", original_shape))
-												
-												# ========== DEBUG: Print dtype conversion summary ==========
-												if verbose and i == 0 and dtype_changes:
-														print(f"\n{'='*80}")
-														print(f"[DEBUG] Dtype conversion summary (batch {i}):")
-														print(f"  • Model dtype: {model_dtype}")
-														print(f"  • Number of tensors: {len(dtype_changes)}")
-														for key, old_dtype, new_dtype, shape in dtype_changes:
-																change_str = f"{old_dtype} → {new_dtype}" if new_dtype != "UNCHANGED (not floating)" else f"{old_dtype} (kept as is)"
-																print(f"    - {key:<20} {str(shape):<30} {change_str}")
-														print(f"{'='*80}")
-												
-												# ========== DEBUG: Print input tensor info AFTER conversion ==========
-												if verbose and i == 0:
-														print(f"\n{'='*80}")
-														print(f"[DEBUG] Input tensor info AFTER dtype conversion:")
-														for key, tensor in inputs.items():
-																if torch.is_tensor(tensor):
-																		print(f"\n  • {key}:")
-																		print(f"    Shape: {tensor.shape}")
-																		print(f"    Dtype: {tensor.dtype}")
-																		print(f"    Device: {tensor.device}")
-														print(f"{'='*80}\n")
 												
 												with torch.no_grad():
-														with torch.amp.autocast(
-																device_type='cuda',
-																enabled=torch.cuda.is_available(),
-																dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-														):
-																# ========== DEBUG: Print autocast context info ==========
-																if verbose and i == 0:
-																		print(f"\n{'='*80}")
-																		print(f"[DEBUG] Autocast context:")
-																		print(f"  • Device type: cuda")
-																		print(f"  • Enabled: {torch.cuda.is_available()}")
-																		print(f"  • Autocast dtype: {torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16}")
-																		print(f"  • CUDA bf16 supported: {torch.cuda.is_bf16_supported()}")
-																		print(f"{'='*80}\n")
-																
-																outputs = model.generate(**inputs, **gen_kwargs)
+														# Try WITHOUT autocast
+														outputs = model.generate(**inputs, **gen_kwargs)
 												
 												output_length = outputs.shape[1]  # Full length
 												tokens_generated = output_length - input_length  # ← ACTUAL new tokens
