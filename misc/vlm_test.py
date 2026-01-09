@@ -1520,15 +1520,15 @@ def benchmark_max_tokens(
 						
 						# Parse keywords
 						for resp in decoded:
-								try:
-										keywords = parse_vlm_response(
-												model_id=model_id,
-												raw_response=resp,
-												verbose=False,
-										)
-										results.append(keywords)
-								except:
-										results.append(None)
+							try:
+									keywords = parse_vlm_response(
+										model_id=model_id,
+										raw_response=resp,
+										verbose=False,
+									)
+									results.append(keywords)
+							except:
+								results.append(None)
 						
 						# Cleanup
 						del inputs, outputs, decoded
@@ -1546,14 +1546,14 @@ def benchmark_max_tokens(
 				
 				# Store results
 				summary = {
-						'max_tokens': max_tokens,
-						'total_time': elapsed,
-						'avg_time_per_image': avg_time_per_image,
-						'avg_keywords': avg_keywords,
-						'avg_tokens_generated': avg_tokens_generated,  # ← Fixed!
-						'token_utilization_%': token_utilization,
-						'success_rate_%': success_rate,
-						'images_processed': len(results),
+					'max_tokens': max_tokens,
+					'total_time': elapsed,
+					'avg_time_per_image': avg_time_per_image,
+					'avg_keywords': avg_keywords,
+					'avg_tokens_generated': avg_tokens_generated,
+					'token_utilization_%': token_utilization,
+					'success_rate_%': success_rate,
+					'images_processed': len(results),
 				}
 				results_summary.append(summary)
 				
@@ -1567,17 +1567,16 @@ def benchmark_max_tokens(
 				
 				# Show sample outputs
 				if verbose and results:
-						num_samples = min(10, len(results))
-						print(f"\n[SAMPLES] First {num_samples} outputs:")
-						for i, r in enumerate(results[:num_samples]):
-								print(f"   {i+1}. {r}")
+					num_samples = min(10, len(results))
+					print(f"\n[SAMPLES] First {num_samples} outputs:")
+					for i, r in enumerate(results[:num_samples]):
+						print(f"   {i+1}. {r}")
 		
 		# Create comparison DataFrame
 		df_results = pd.DataFrame(results_summary)
 		
-		print(f"\n{'='*80}")
-		print(f"CORRECTED BENCHMARK SUMMARY")
-		print(f"{'='*80}\n")
+		print(f"BENCHMARK SUMMARY")
+
 		print(df_results.to_string(index=False))
 		
 		return df_results
