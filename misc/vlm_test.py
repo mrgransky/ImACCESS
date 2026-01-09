@@ -1464,7 +1464,8 @@ def benchmark_max_tokens(
 
 						for key in inputs.keys():
 							if torch.is_tensor(inputs[key]):
-								inputs[key] = inputs[key].to(next(model.parameters()).dtype)
+								if inputs[key].dtype.is_floating_point:
+									inputs[key] = inputs[key].to(next(model.parameters()).dtype)
 
 						with torch.no_grad():
 							with torch.amp.autocast(
