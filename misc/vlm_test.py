@@ -1493,27 +1493,27 @@ def benchmark_max_tokens(
 						input_length = inputs.input_ids.shape[1]  # Prompt length
 						
 						with torch.no_grad():
-								with torch.amp.autocast(
-										device_type='cuda',
-										enabled=torch.cuda.is_available(),
-										dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-								):
-										outputs = model.generate(**inputs, **gen_kwargs)
+							with torch.amp.autocast(
+								device_type='cuda',
+								enabled=torch.cuda.is_available(),
+								dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+							):
+								outputs = model.generate(**inputs, **gen_kwargs)
 						
 						output_length = outputs.shape[1]  # Full length
 						tokens_generated = output_length - input_length  # ← ACTUAL new tokens
 						
 						# Store per-sample token count
 						for _ in range(len(batch_imgs)):
-								tokens_generated_list.append(tokens_generated)
+							tokens_generated_list.append(tokens_generated)
 						
 						if verbose and i == 0:
-								print(f"\n[DEBUG] First batch:")
-								print(f"  Input length:  {input_length} tokens")
-								print(f"  Output length: {output_length} tokens")
-								print(f"  Generated:     {tokens_generated} NEW tokens")
-								print(f"  max_new_tokens: {max_tokens}")
-								print(f"  Ratio: {tokens_generated / max_tokens * 100:.1f}%")
+							print(f"\n[DEBUG] First batch:")
+							print(f"  Input length:  {input_length} tokens")
+							print(f"  Output length: {output_length} tokens")
+							print(f"  Generated:     {tokens_generated} NEW tokens")
+							print(f"  max_new_tokens: {max_tokens}")
+							print(f"  Ratio: {tokens_generated / max_tokens * 100:.1f}%")
 						
 						# Decode
 						decoded = processor.batch_decode(outputs, skip_special_tokens=True)
