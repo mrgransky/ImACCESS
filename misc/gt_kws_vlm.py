@@ -1261,7 +1261,7 @@ def get_vlm_based_labels(
 
 			if hasattr(inputs, 'pixel_values'):
 				if verbose:
-					print(f"\n[BATCH {b}] Casting pixel values to {next(model.parameters()).dtype}...")
+					print(f"\n[BATCH {b}] Casting pixel values dtype to {next(model.parameters()).dtype}! current: {inputs.pixel_values.dtype}")
 				inputs.pixel_values = inputs.pixel_values.to(next(model.parameters()).dtype)
 
 			if verbose:
