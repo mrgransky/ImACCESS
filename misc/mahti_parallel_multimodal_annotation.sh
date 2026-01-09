@@ -71,7 +71,6 @@ echo "CSV file: $CSV_FILE"
 # Run different scripts based on array task ID
 if [ "$SLURM_ARRAY_TASK_ID" -eq 0 ]; then
 	echo "=== Array Task $SLURM_ARRAY_TASK_ID: Running LLM-based keyword extraction ==="
-	echo "Script: gt_kws_llm.py"
 	echo "LLM: $LLM_MODEL (batch size: $LLM_BATCH_SIZE) max generated tokens: $LLM_MAX_GEN_TKs"
 	
 	python -u gt_kws_llm.py \

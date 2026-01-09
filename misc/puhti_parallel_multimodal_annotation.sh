@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=64G
+#SBATCH --mem=48G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
 #SBATCH --array=0-1
@@ -51,28 +51,27 @@ if [ "$NUM_GPUS" -gt 1 ]; then
 	LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 	LLM_BATCH_SIZE=16
 	LLM_MAX_GEN_TKs=128
+	# LLM_QUANTIZATION="--use_llm_quantization"  # Enable
 	VLM_MODEL="Qwen/Qwen3-VL-32B-Instruct"
-	VLM_QUANTIZATION="--use_vlm_quantization"  # Enable
 	VLM_BATCH_SIZE=12
 	VLM_MAX_GEN_TKs=128
-	LLM_QUANTIZATION="--use_llm_quantization"  # Enable
+	# VLM_QUANTIZATION="--use_vlm_quantization"  # Enable
 else
 	echo "SMALL models (single-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
-	LLM_BATCH_SIZE=48
+	LLM_BATCH_SIZE=52
 	LLM_MAX_GEN_TKs=256
-	LLM_QUANTIZATION=""  # Disable
+	# LLM_QUANTIZATION=""  # Disable
 	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 	VLM_BATCH_SIZE=32
 	VLM_MAX_GEN_TKs=128
-	VLM_QUANTIZATION=""  # Disable
+	# VLM_QUANTIZATION=""  # Disable
 fi
 
 DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 CSV_FILE=${DATASET_DIRECTORY}/HISTORY_X4/metadata_multi_label.csv
 echo "CSV file: $CSV_FILE"
 
-# Run different scripts based on array task ID
 if [ "$SLURM_ARRAY_TASK_ID" -eq 0 ]; then
 	echo "=== Array Task $SLURM_ARRAY_TASK_ID: Running LLM-based keyword extraction ==="
 	echo "Script: gt_kws_llm.py"
@@ -85,9 +84,8 @@ if [ "$SLURM_ARRAY_TASK_ID" -eq 0 ]; then
 			--batch_size "$LLM_BATCH_SIZE" \
 			--max_generated_tks "$LLM_MAX_GEN_TKs" \
 			--max_keywords 5 \
-			--verbose
-			# --use_quantization \
-			# --debug \
+			--verbose \
+			# $LLM_QUANTIZATION \
 elif [ "$SLURM_ARRAY_TASK_ID" -eq 1 ]; then
 	echo "=== Array Task $SLURM_ARRAY_TASK_ID: Running VLM-based keyword extraction ==="
 	echo "Script: gt_kws_vlm.py"
@@ -100,9 +98,8 @@ elif [ "$SLURM_ARRAY_TASK_ID" -eq 1 ]; then
 			--batch_size "$VLM_BATCH_SIZE" \
 			--max_generated_tks "$VLM_MAX_GEN_TKs" \
 			--max_keywords 5 \
-			--verbose
-			# --use_quantization \
-			# --debug \
+			--verbose \
+			# $VLM_QUANTIZATION \
 
 else
 	echo "ERROR: Unexpected array task ID: $SLURM_ARRAY_TASK_ID"

@@ -1133,8 +1133,8 @@ def get_llm_based_labels(
 		if s is None:
 			unique_prompts.append(None)
 		else:
-			if verbose:
-				print(f"Generating prompt for text with len={len(s.split()):<10}max_kws={min(max_kws, len(s.split()))}")
+			# if verbose:
+			# 	print(f"Generating prompt for text with len={len(s.split()):<10}max_kws={min(max_kws, len(s.split()))}")
 			prompt = get_prompt(
 				tokenizer=tokenizer,
 				description=s,
