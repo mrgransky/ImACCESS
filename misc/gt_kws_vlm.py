@@ -751,9 +751,10 @@ def get_vlm_based_labels_single(
 		print(json.dumps(gen_kwargs, indent=2, ensure_ascii=False))
 
 	# ========== Generate response ==========
+	tt = time.time()
 	with torch.no_grad():
 		outputs = model.generate(**input_single, **gen_kwargs)
-
+	generation_time = time.time() - tt
 
 	if verbose:
 		print(f"\n[RESPONSE] Generated response: {outputs}")
