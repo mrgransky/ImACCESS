@@ -754,6 +754,15 @@ def get_vlm_based_labels_single(
 	with torch.no_grad():
 		outputs = model.generate(**input_single, **gen_kwargs)
 
+
+	if verbose:
+		print(f"\n[RESPONSE] Generated response: {outputs}")
+		breakdown = get_token_breakdown(inputs, outputs)
+		print(f"   • Generation time:   {generation_time:.2f}s")
+		print(f"   • Generation ratio:  {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
+		print(f"   • Time per token:    {generation_time / breakdown['generated_tokens']:.3f}s")
+		print(f"   • Tokens per second: {breakdown['generated_tokens'] / generation_time:.1f}")
+
 	# Decode response
 	response = processor.decode(outputs[0], skip_special_tokens=True)
 
@@ -956,17 +965,12 @@ def get_vlm_based_labels_debug(
 					gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
 				if verbose:
 					print(f"\n[GEN CONFIG] Using generation parameters:")
-					for k, v in gen_kwargs.items():
-						print(f"   • {k}: {v}")
+					print(json.dumps(gen_kwargs, indent=2, ensure_ascii=False))
 
 				# ========== Generate response ==========
+				gen_start = time.time()
 				with torch.no_grad():
-					with torch.amp.autocast(
-						device_type=device.type, 
-						enabled=torch.cuda.is_available(), 
-						dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-					):
-						outputs = model.generate(**input_single, **gen_kwargs)
+					outputs = model.generate(**input_single, **gen_kwargs)
 				
 				# Decode response
 				response = processor.decode(outputs[0], skip_special_tokens=True)
@@ -1346,17 +1350,12 @@ def get_vlm_based_labels(
 						raise ValueError(f"Pixel values of {uniq_idx} are empty: {input_single.pixel_values.shape}")
 
 					with torch.no_grad():
-						with torch.amp.autocast(
-							device_type=device.type,
-							enabled=torch.cuda.is_available(),
-							dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-						):
-							out_single = model.generate(**input_single, **gen_kwargs)
+						out_single = model.generate(**input_single, **gen_kwargs)
 
 					decoded_single = processor.decode(out_single[0], skip_special_tokens=True)
 
 					if verbose:
-						print(f"\n[✅ Sequential Fallback ✅] image {uniq_idx}:\n{type(decoded_single)} {len(decoded_single)}\n")
+						print(f"\n[Sequential Fallback] image {uniq_idx}:\n{type(decoded_single)} {len(decoded_single)}\n")
 
 					results[uniq_idx] = parse_vlm_response(
 						model_id=model_id,
@@ -1364,35 +1363,18 @@ def get_vlm_based_labels(
 						verbose=verbose,
 					)
 				except Exception as e_fallback:
-					print(f"\n[❌ Sequential Fallback ❌] image {uniq_idx}:\n{e_fallback}\nNO keywords extracted.\n")
+					print(f"\n[Sequential Fallback] image {uniq_idx}:\n{e_fallback}\nNO keywords extracted.\n")
 					results[uniq_idx] = None
 				
 				if verbose:
 					print(f"\n[BATCH {b} Sequential Fallback] Deleting sequential fallback tensors for image: {uniq_idx}...")
 				try:
-					del single_message
-				except NameError:
-					pass
-				try:
-					del chat_single
-				except NameError:
-					pass
-				try:
-					del input_single
-				except NameError:
-					pass
-				try:
-					del out_single
-				except NameError:
-					pass
-				try:
-					del decoded_single
+					del single_message, chat_single, input_single, out_single, decoded_single
 				except NameError:
 					pass
 				
 				if verbose:
 					print(f"\n[BATCH {b} Sequential Fallback] Clearing cache for image: {uniq_idx}...")
-				
 				if torch.cuda.is_available():
 					torch.cuda.empty_cache()
 				gc.collect()

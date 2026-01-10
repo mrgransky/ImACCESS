@@ -219,7 +219,6 @@ aircraft
 soldier
 Infantry
 Animal
-plane
 aeroplane
 airplane
 rationing
