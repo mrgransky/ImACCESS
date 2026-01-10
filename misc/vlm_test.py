@@ -1394,141 +1394,140 @@ def benchmark_max_tokens(
 	results_summary = []
 	
 	for max_tokens in token_limits:
-			print(f"TESTING max_new_tokens = {max_tokens}")
+		print(f"TESTING max_new_tokens = {max_tokens}")
+		
+		gen_kwargs = {
+			'max_new_tokens': max_tokens,
+			'use_cache': True,
+			'eos_token_id': processor.tokenizer.eos_token_id,
+			'pad_token_id': processor.tokenizer.pad_token_id,
+		}
+		
+		if hasattr(model, "generation_config"):
+			gen_config = model.generation_config
+			gen_kwargs["temperature"] = getattr(gen_config, "temperature", 0.7)
+			gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
+		
+		# Process sample
+		t0 = time.time()
+		results = []
+		tokens_generated_list = []  # ← Track ACTUAL generated tokens
+		
+		for i in tqdm(range(0, len(df_sample), batch_size), desc=f"max_tokens={max_tokens}"):
+			batch_df = df_sample.iloc[i:i+batch_size]
+			batch_paths = batch_df['img_path'].tolist()
 			
-			gen_kwargs = {
-					'max_new_tokens': max_tokens,
-					'use_cache': True,
-					'eos_token_id': processor.tokenizer.eos_token_id,
-					'pad_token_id': processor.tokenizer.pad_token_id,
-			}
+			# Load images
+			batch_imgs = []
+			for path in batch_paths:
+					if isinstance(path, str) and os.path.exists(path):
+							try:
+									batch_imgs.append(Image.open(path).convert("RGB"))
+							except:
+									pass
 			
-			if hasattr(model, "generation_config"):
-					gen_config = model.generation_config
-					gen_kwargs["temperature"] = getattr(gen_config, "temperature", 0.7)
-					gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
+			if not batch_imgs:
+					continue
 			
-			# Process sample
-			t0 = time.time()
-			results = []
-			tokens_generated_list = []  # ← Track ACTUAL generated tokens
+			# Build messages
+			messages = [
+					[{
+							"role": "user",
+							"content": [
+									{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE.format(k=5)},
+									{"type": "image", "image": img},
+							],
+					}]
+					for img in batch_imgs
+			]
 			
-			for i in tqdm(range(0, len(df_sample), batch_size), desc=f"max_tokens={max_tokens}"):
-					batch_df = df_sample.iloc[i:i+batch_size]
-					batch_paths = batch_df['img_path'].tolist()
-					
-					# Load images
-					batch_imgs = []
-					for path in batch_paths:
-							if isinstance(path, str) and os.path.exists(path):
-									try:
-											batch_imgs.append(Image.open(path).convert("RGB"))
-									except:
-											pass
-					
-					if not batch_imgs:
-							continue
-					
-					# Build messages
-					messages = [
-							[{
-									"role": "user",
-									"content": [
-											{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE.format(k=5)},
-											{"type": "image", "image": img},
-									],
-							}]
-							for img in batch_imgs
-					]
-					
-					# Generate
-					chat_texts = [
-							processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
-							for m in messages
-					]
-					
-					inputs = processor(
-						text=chat_texts,
-						images=batch_imgs,
-						return_tensors="pt",
-						padding=True,
-					).to(next(model.parameters()).device)
-					input_length = inputs.input_ids.shape[1]  # Prompt length
-
-					with torch.no_grad():
-						outputs = model.generate(**inputs, **gen_kwargs)
-					
-					output_length = outputs.shape[1]  # Full length
-					tokens_generated = output_length - input_length  # ← ACTUAL new tokens
-					
-					# Store per-sample token count
-					for _ in range(len(batch_imgs)):
-						tokens_generated_list.append(tokens_generated)
-					
-					if verbose and i == 0:
-						print(f"\n[DEBUG] First batch:")
-						print(f"  Input length:  {input_length} tokens")
-						print(f"  Output length: {output_length} tokens")
-						print(f"  Generated:     {tokens_generated} NEW tokens")
-						print(f"  max_new_tokens: {max_tokens}")
-						print(f"  Ratio: {tokens_generated / max_tokens * 100:.1f}%")
-					
-					# Decode
-					decoded = processor.batch_decode(outputs, skip_special_tokens=True)
-					
-					# Parse keywords
-					for resp in decoded:
-						try:
-								keywords = parse_vlm_response(
-									model_id=model_id,
-									raw_response=resp,
-									verbose=False,
-								)
-								results.append(keywords)
-						except:
-							results.append(None)
-					
-					# Cleanup
-					del inputs, outputs, decoded
-					if torch.cuda.is_available():
-							torch.cuda.empty_cache()
+			# Generate
+			chat_texts = [
+					processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
+					for m in messages
+			]
 			
-			elapsed = time.time() - t0
+			inputs = processor(
+				text=chat_texts,
+				images=batch_imgs,
+				return_tensors="pt",
+				padding=True,
+			).to(next(model.parameters()).device)
+			input_length = inputs.input_ids.shape[1]  # Prompt length
+			with torch.no_grad():
+				outputs = model.generate(**inputs, **gen_kwargs)
 			
-			# Calculate metrics
-			avg_time_per_image = elapsed / len(results) if results else 0
-			avg_keywords = sum(len(r) if r else 0 for r in results) / len(results) if results else 0
-			avg_tokens_generated = sum(tokens_generated_list) / len(tokens_generated_list) if tokens_generated_list else 0
-			token_utilization = (avg_tokens_generated / max_tokens * 100) if max_tokens > 0 else 0
-			success_rate = sum(1 for r in results if r) / len(results) * 100 if results else 0
+			output_length = outputs.shape[1]  # Full length
+			tokens_generated = output_length - input_length  # ← ACTUAL new tokens
 			
-			# Store results
-			summary = {
-				'max_tokens': max_tokens,
-				'total_time': elapsed,
-				'avg_time_per_image': avg_time_per_image,
-				'avg_keywords': avg_keywords,
-				'avg_tokens_generated': avg_tokens_generated,
-				'token_utilization_%': token_utilization,
-				'success_rate_%': success_rate,
-				'images_processed': len(results),
-			}
-			results_summary.append(summary)
+			# Store per-sample token count
+			for _ in range(len(batch_imgs)):
+				tokens_generated_list.append(tokens_generated)
 			
-			# Print summary
-			print(f"\n[RESULTS] max_new_tokens = {max_tokens}")
-			print(f"   • Total time:           {elapsed:.1f}s")
-			print(f"   • Avg time/image:       {avg_time_per_image:.2f}s")
-			print(f"   • Avg keywords:         {avg_keywords:.1f}")
-			print(f"   • Avg tokens generated: {avg_tokens_generated:.0f} / {max_tokens} ({token_utilization:.1f}%)")
-			print(f"   • Success rate:         {success_rate:.1f}%")
+			if verbose and i == 0:
+				print(f"\n[DEBUG] First batch:")
+				print(f"  Input length:  {input_length} tokens")
+				print(f"  Output length: {output_length} tokens")
+				print(f"  Generated:     {tokens_generated} NEW tokens")
+				print(f"  max_new_tokens: {max_tokens}")
+				print(f"  Ratio: {tokens_generated / max_tokens * 100:.1f}%")
 			
-			# Show sample outputs
-			if verbose and results:
-				num_samples = min(10, len(results))
-				print(f"\n[SAMPLES] First {num_samples} outputs:")
-				for i, r in enumerate(results[:num_samples]):
-					print(f"   {i+1}. {r}")
+			# Decode
+			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
+			
+			# Parse keywords
+			for resp in decoded:
+				try:
+					keywords = parse_vlm_response(
+						model_id=model_id,
+						raw_response=resp,
+						verbose=False,
+					)
+					results.append(keywords)
+				except:
+					results.append(None)
+			
+			# Cleanup
+			del inputs, outputs, decoded
+			if torch.cuda.is_available():
+				torch.cuda.empty_cache()
+		
+		elapsed = time.time() - t0
+		
+		# Calculate metrics
+		avg_time_per_image = elapsed / len(results) if results else 0
+		avg_keywords = sum(len(r) if r else 0 for r in results) / len(results) if results else 0
+		avg_tokens_generated = sum(tokens_generated_list) / len(tokens_generated_list) if tokens_generated_list else 0
+		token_utilization = (avg_tokens_generated / max_tokens * 100) if max_tokens > 0 else 0
+		success_rate = sum(1 for r in results if r) / len(results) * 100 if results else 0
+		
+		# Store results
+		summary = {
+			'max_tokens': max_tokens,
+			'total_time': elapsed,
+			'avg_time_per_image': avg_time_per_image,
+			'avg_keywords': avg_keywords,
+			'avg_tokens_generated': avg_tokens_generated,
+			'token_utilization_%': token_utilization,
+			'success_rate_%': success_rate,
+			'images_processed': len(results),
+		}
+		results_summary.append(summary)
+		
+		# Print summary
+		print(f"\n[RESULTS] max_new_tokens = {max_tokens}")
+		print(f"   • Total time:           {elapsed:.1f}s")
+		print(f"   • Avg time/image:       {avg_time_per_image:.2f}s")
+		print(f"   • Avg keywords:         {avg_keywords:.1f}")
+		print(f"   • Avg tokens generated: {avg_tokens_generated:.0f} / {max_tokens} ({token_utilization:.1f}%)")
+		print(f"   • Success rate:         {success_rate:.1f}%")
+		
+		# Show sample outputs
+		if verbose and results:
+			num_samples = min(10, len(results))
+			print(f"\n[SAMPLES] First {num_samples} outputs:")
+			for i, r in enumerate(results[:num_samples]):
+				print(f"   {i+1}. {r}")
 	
 	# Create comparison DataFrame
 	df_results = pd.DataFrame(results_summary)

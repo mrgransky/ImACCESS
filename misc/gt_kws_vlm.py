@@ -23,7 +23,7 @@ from utils import *
 # Qwen/Qwen3-VL-4B-Instruct
 # Qwen/Qwen3-VL-8B-Instruct # only fits Puhti and Mahti
 # Qwen/Qwen3-VL-32B-Instruct # multiple gpus required
-# Qwen/Qwen3-VL-30B-A3B-Instruct # multiple gpus and quantization required
+# Qwen/Qwen3-VL-30B-A3B-Instruct # multiple gpus required
 
 # does not fit into VRAM:
 # model_id = "llava-hf/llava-v1.6-34b-hf"
