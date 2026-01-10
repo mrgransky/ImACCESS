@@ -758,7 +758,7 @@ def get_vlm_based_labels_single(
 
 	if verbose:
 		print(f"\n[RESPONSE] Generated response: {outputs}")
-		breakdown = get_token_breakdown(inputs, outputs)
+		breakdown = get_token_breakdown(input_single, outputs)
 		print(f"   • Generation time:   {generation_time:.2f}s")
 		print(f"   • Generation ratio:  {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
 		print(f"   • Time per token:    {generation_time / breakdown['generated_tokens']:.3f}s")
