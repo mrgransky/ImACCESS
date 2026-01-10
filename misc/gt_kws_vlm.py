@@ -732,7 +732,12 @@ def get_vlm_based_labels_single(
 	if input_single.pixel_values.numel() == 0:
 		raise ValueError(f"Pixel values of {image_path} are empty: {input_single.pixel_values.shape}")
 
-	gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True,)
+	gen_kwargs = dict(
+		max_new_tokens=max_generated_tks, 
+		use_cache=True,
+		eos_token_id=processor.tokenizer.eos_token_id,
+		pad_token_id=processor.tokenizer.pad_token_id,
+	)
 	# Use model’s built-in defaults unless the user overrides
 	if hasattr(model, "generation_config"):
 		gen_config = model.generation_config
@@ -747,12 +752,7 @@ def get_vlm_based_labels_single(
 
 	# ========== Generate response ==========
 	with torch.no_grad():
-		with torch.amp.autocast(
-			device_type=device.type, 
-			enabled=torch.cuda.is_available(), 
-			dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-		):
-			outputs = model.generate(**input_single, **gen_kwargs)	
+		outputs = model.generate(**input_single, **gen_kwargs)
 
 	# Decode response
 	response = processor.decode(outputs[0], skip_special_tokens=True)
