@@ -35,8 +35,8 @@ DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 DATASETS=(
 	"smu"
 	"europeana"
-	"national_archive"
 	"wwii"
+	"national_archive"
 )
 
 CURRENT_DATASET="${DATASETS[$SLURM_ARRAY_TASK_ID]}"
