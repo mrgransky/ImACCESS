@@ -1407,7 +1407,7 @@ def main():
 	args.device = torch.device(args.device)
 	args.num_workers = min(args.num_workers, os.cpu_count())
 
-	if verbose:
+	if args.verbose:
 		print_args_table(args=args, parser=parser)
 		print(args)
 
