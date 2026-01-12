@@ -19,7 +19,6 @@ from utils import *
 # model_id = "allenai/Olmo-3-7B-Instruct"
 # model_id = "google/flan-t5-xxl"
 
-# does not fit into VRAM:
 # Qwen/Qwen3-30B-A3B-Instruct-2507 # multi-gpu required
 
 # not useful for instruction tuning:
@@ -1027,6 +1026,9 @@ def get_llm_based_labels_debug(
 			print(f"Saved {len(all_keywords)} keywords to {output_csv}")
 			print(f"Done! dataframe: {df.shape} {list(df.columns)}")
 
+	if verbose and description:
+		print(f"Keywords: {all_keywords}")
+
 	return all_keywords
 
 def get_llm_based_labels(
@@ -1405,7 +1407,9 @@ def main():
 	args.device = torch.device(args.device)
 	args.num_workers = min(args.num_workers, os.cpu_count())
 
-	print(args)
+	if verbose:
+		print_args_table(args=args, parser=parser)
+		print(args)
 
 	if args.debug or args.description:
 		keywords = get_llm_based_labels_debug(
@@ -1436,8 +1440,6 @@ def main():
 
 	if args.verbose and keywords:
 		print(f"{len(keywords)} {type(keywords)} Extracted keywords")
-		# for i, kw in enumerate(keywords):
-		# 	print(f"{i:03d} {kw}")
 
 if __name__ == "__main__":
 	main()
