@@ -659,6 +659,7 @@ def basic_clean(txt: str):
 		r"WBP Digitization Studio",
 		r'Note on negative envelope',
 		r'DFG project: worldviews (2015-2017),',
+		r'Description: Imagery taken during the ',
 		r'record author: Deutsche Fotothek/SLUB Dresden (DF)',
 		r'Law Title taken from similar image in this series.',
 		r'The original finding aid described this photograph as:',
@@ -673,6 +674,7 @@ def basic_clean(txt: str):
 		r'It was subsequently published in conjunction with an article.',
 		r'Type: C-N (Color Negative) C-P (Color Print) ',
 		r'Original caption: Photograph Of ',
+		r"Captured Japanese Photograph of ",
 		r'This is a photograph from ',
 		r'Photograph Relating to ',
 		r"This photograph is of ",
@@ -694,6 +696,7 @@ def basic_clean(txt: str):
 		r'Text on the card: ',
 		r'The picture shows ',
 		r'The photo was taken ',
+		r"View is of ",
 		r'Photograph taken ',
 		r'Original caption:',
 		r'Caption: ',
@@ -740,7 +743,6 @@ def basic_clean(txt: str):
 		r'Description: ',
 		r'- Types -',
 		r'- Miscellaneous',
-		r"Captured Japanese Photograph of ",
 	]
 
 	# === REMOVE ARCHIVAL METADATA KEY-VALUE PAIRS (NARA/USAF style) ===
