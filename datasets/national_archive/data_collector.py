@@ -393,12 +393,11 @@ def main():
 		verbose=args.verbose,
 	)
 	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
-
-	print(f"Saving full multi-label {type(multi_label_final_df)} {multi_label_final_df.shape} {list(multi_label_final_df.columns)}")
-	multi_label_final_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv"), index=False)
-
+	print(f"Saving full MULTI-LABEL dataset: {type(multi_label_final_df)} {multi_label_final_df.shape} {list(multi_label_final_df.columns)}")
+	multi_label_fpath = os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv")
+	multi_label_final_df.to_csv(multi_label_fpath, index=False)
 	try:
-		multi_label_final_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_multi_label.xlsx"), index=False)
+		multi_label_final_df.to_excel(multi_label_fpath.replace('.csv', '.xlsx'), index=False)
 	except Exception as e:
 		print(f"Failed to write final multi-label Excel file: {e}")
 
@@ -411,11 +410,11 @@ def main():
 	]
 	single_label_final_df = single_label_final_df[single_label_columns_to_keep].copy()
 	print(f"Single-label dataset: {type(single_label_final_df)} {single_label_final_df.shape} {list(single_label_final_df.columns)}")
-	
-	print("\nSaving final single-label dataset...")
-	single_label_final_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_single_label.csv"), index=False)
+	single_label_fpath = multi_label_fpath.replace('multi_label', 'single_label')
+	print(f"\nSaving final SINGLE-LABEL dataset in {single_label_fpath}...")
+	single_label_final_df.to_csv(single_label_fpath, index=False)
 	try:
-		single_label_final_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_single_label.xlsx"), index=False)
+		single_label_final_df.to_excel(single_label_fpath.replace('.csv', '.xlsx'), index=False)
 	except Exception as e:
 		print(f"Failed to write final single-label Excel file: {e}")
 	

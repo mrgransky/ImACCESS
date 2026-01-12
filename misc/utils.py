@@ -793,14 +793,14 @@ def basic_clean(txt: str):
 	txt = re.sub(r"^'\s*|\s*'$", ' ', txt)
 	# Then double quotes
 	txt = txt.replace('""', '"').replace('"', '')
-	txt = txt.replace("”", " ")
-	txt = txt.replace("“", " ")
-	txt = txt.replace("„", " ")
-	# txt = txt.replace("’", " ") # apostrophe
-	txt = txt.replace("‘", " ")
+	# txt = txt.replace("”", " ") # right double quotation mark (unicode: \u201d)
+	# txt = txt.replace("“", " ") # left double quotation mark (unicode: \u201c)
+	# txt = txt.replace("„", " ") # low double quotation mark (unicode: \u201e)	
+	# txt = re.sub(r'["“”„]', ' ', txt) # all double quotes
+	txt = txt.replace("‘", " ") # left single quotation mark (unicode: \u2018)	
 	
 	txt = txt.replace('#', ' ')
-	txt = txt.replace(',', ' ') # test if needed!
+	txt = txt.replace(',', ' ') # 
 
 	txt = re.sub(r'-{2,}', ' ', txt)   # multiple dashes
 	txt = re.sub(r'\.{2,}', '.', txt)  # ellipses ...
@@ -1368,93 +1368,87 @@ def get_synchronized_df_img(
 	timeout: int = 30,
 	verbose: bool = False,
 ):
-		"""
-		Download and synchronize images with DataFrame.
-		
-		Args:
-				df: DataFrame with 'img_url' and 'id' columns
-				synched_fpath: Path to save synchronized CSV
-				nw: Number of worker threads
-				thumbnail_size: Target size (width, height) or None to keep original dimensions
-				timeout: Download timeout in seconds
-		
-		Returns:
-				DataFrame containing only rows with successfully downloaded images
-		"""
-		image_dir = os.path.join(os.path.dirname(synched_fpath), "images")
-		os.makedirs(image_dir, exist_ok=True)
-		
-		# Check if synchronized dataset already exists
-		if os.path.exists(synched_fpath):
-			print(f"Found existing synchronized dataset at {synched_fpath}. Loading...")
-			return pd.read_csv(
-				filepath_or_buffer=synched_fpath,
-				on_bad_lines='skip',
-				dtype=dtypes,
-				low_memory=False,
-			)
+	"""
+	Download and synchronize images with DataFrame.
+	
+	Args:
+			df: DataFrame with 'img_url' and 'id' columns
+			synched_fpath: Path to save synchronized CSV
+			nw: Number of worker threads
+			thumbnail_size: Target size (width, height) or None to keep original dimensions
+			timeout: Download timeout in seconds
+	
+	Returns:
+			DataFrame containing only rows with successfully downloaded images
+	"""
+	image_dir = os.path.join(os.path.dirname(synched_fpath), "images")
+	os.makedirs(image_dir, exist_ok=True)
+	
+	# Check if synchronized dataset already exists
+	if os.path.exists(synched_fpath):
+		print(f"Found existing synchronized dataset at {synched_fpath}. Loading...")
+		return pd.read_csv(
+			filepath_or_buffer=synched_fpath,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
+	print(f"Synchronizing {df.shape[0]} images using {nw} workers...")
+	
+	if thumbnail_size is not None:
+		print(f"Thumbnailing enabled: Images will be resized to ≤{thumbnail_size[0]}×{thumbnail_size[1]} (aspect ratio preserved)")
+	else:
+		print("Thumbnailing disabled: Original image dimensions will be preserved")
+	
+	print(f"Output directory: {image_dir}")
+	
+	successful_rows = []
+	
+	with requests.Session() as session:
+		with ThreadPoolExecutor(max_workers=nw) as executor:
+			futures = {
+				executor.submit(
+					download_image, 
+					row=row, 
+					session=session, 
+					image_dir=image_dir, 
+					total_rows=df.shape[0],
+					retries=2, 
+					backoff_factor=0.5,
+					download_timeout=timeout,
+					thumbnail_size=thumbnail_size,
+					verbose=verbose,
+				): idx for idx, row in df.iterrows()
+			}
+			
+			for future in as_completed(futures):
+				original_df_idx = futures[future]
+				try:
+					success = future.result()
+					if success:
+						successful_rows.append(original_df_idx)
+				except Exception as e:
+					print(f"Unexpected error for row {original_df_idx}: {e}")
 
-		print(f"Synchronizing {df.shape[0]} images using {nw} workers...")
-		
-		if thumbnail_size is not None:
-			print(f"Thumbnailing enabled: Images will be resized to ≤{thumbnail_size[0]}×{thumbnail_size[1]} (aspect ratio preserved)")
-		else:
-			print("Thumbnailing disabled: Original image dimensions will be preserved")
-		
-		print(f"Output directory: {image_dir}")
-		
-		successful_rows = []
-		
-		with requests.Session() as session:
-				with ThreadPoolExecutor(max_workers=nw) as executor:
-						futures = {
-								executor.submit(
-									download_image, 
-									row=row, 
-									session=session, 
-									image_dir=image_dir, 
-									total_rows=df.shape[0],
-									retries=2, 
-									backoff_factor=0.5,
-									download_timeout=timeout,
-									thumbnail_size=thumbnail_size,
-									verbose=verbose,
-								): idx for idx, row in df.iterrows()
-						}
-						
-						for future in as_completed(futures):
-								original_df_idx = futures[future]
-								try:
-										success = future.result()
-										if success:
-												successful_rows.append(original_df_idx)
-								except Exception as e:
-										print(f"Unexpected error for row {original_df_idx}: {e}")
-
-		print(f"Successfully downloaded: {len(successful_rows)}/{df.shape[0]} images")
-
-		# Create synchronized DataFrame
-		synched_df = df.loc[successful_rows].copy()
-		print(f"Synchronized DataFrame: {synched_df.shape}")
-
-		# Calculate directory statistics
-		actual_files = [f for f in os.listdir(image_dir) if os.path.isfile(os.path.join(image_dir, f))]
-		img_dir_size_gb = sum(os.path.getsize(os.path.join(image_dir, f)) for f in actual_files) * 1e-9
-
-		print(f"Directory: {image_dir}")
-		print(f"  Files: {len(actual_files)}")
-		print(f"  Total size: {img_dir_size_gb:.1f} GB")
-
-		# Save synchronized dataset
-		print(f"Saving synchronized dataset to {synched_fpath}...")
-		synched_df.to_csv(synched_fpath, index=False)
-		
-		try:
-			synched_df.to_excel(synched_fpath.replace('.csv', '.xlsx'), index=False)
-		except Exception as e:
-			print(f"Failed to write Excel file: {e}")
-
-		return synched_df
+	print(f"Successfully downloaded: {len(successful_rows)}/{df.shape[0]} images")
+	# Create synchronized DataFrame
+	synched_df = df.loc[successful_rows].copy()
+	print(f"Synchronized DataFrame: {synched_df.shape}")
+	# Calculate directory statistics
+	actual_files = [f for f in os.listdir(image_dir) if os.path.isfile(os.path.join(image_dir, f))]
+	img_dir_size_gb = sum(os.path.getsize(os.path.join(image_dir, f)) for f in actual_files) * 1e-9
+	print(f"Directory: {image_dir}")
+	print(f"  Files: {len(actual_files)}")
+	print(f"  Total size: {img_dir_size_gb:.1f} GB")
+	# Save synchronized dataset
+	print(f"Saving synchronized dataset to {synched_fpath}...")
+	synched_df.to_csv(synched_fpath, index=False)
+	
+	try:
+		synched_df.to_excel(synched_fpath.replace('.csv', '.xlsx'), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
+	return synched_df
 
 def process_rgb_image(image_path: str, transform: T.Compose):
 	# logging.info(f"Processing: {image_path}")

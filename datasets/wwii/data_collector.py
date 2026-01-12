@@ -793,11 +793,11 @@ def main():
 	# 1: multi label:
 	multi_label_synched_df = wwii_df.copy()
 	multi_label_final_df = get_enriched_description(df=multi_label_synched_df, check_english=True, verbose=True)
-	dfname_multi_label = "metadata_multi_label.csv"
-	print(f"Saving {dfname_multi_label}...")
-	multi_label_final_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_multi_label), index=False)
+	multi_label_fpath = os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv")
+	print(f"Saving {multi_label_fpath}...")
+	multi_label_final_df.to_csv(multi_label_fpath, index=False)
 	try:
-		multi_label_final_df.to_excel(os.path.join(DATASET_DIRECTORY, dfname_multi_label.replace('.csv', '.xlsx')), index=False)
+		multi_label_final_df.to_excel(multi_label_fpath.replace('.csv', '.xlsx'), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
@@ -806,11 +806,11 @@ def main():
 	print(f"Checking for None labels... {wwii_df['label'].isna().sum()} None labels / {wwii_df.shape[0]} total samples")
 	single_label_final_df = wwii_df.dropna(subset=['label'])
 	# b) save
-	dfname_single_label = "metadata_single_label.csv"
-	print(f"Saving {dfname_single_label}...")
-	single_label_final_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_single_label), index=False)
+	single_label_fpath = multi_label_fpath.replace('multi_label', 'single_label')
+	print(f"Saving SINGLE-LABEL dataset in {single_label_fpath}...")
+	single_label_final_df.to_csv(single_label_fpath, index=False)
 	try:
-		single_label_final_df.to_excel(os.path.join(DATASET_DIRECTORY, dfname_single_label.replace('.csv', '.xlsx')), index=False)
+		single_label_final_df.to_excel(single_label_fpath.replace('.csv', '.xlsx'), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
@@ -840,8 +840,8 @@ def main():
 	print(f"Train/val split for {dataset_name} dataset complete!")
 	print(f"Full dataset: {wwii_df.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
 
-	train_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_single_label.replace('.csv', '_train.csv')), index=False)
-	val_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_single_label.replace('.csv', '_val.csv')), index=False)
+	train_df.to_csv(os.path.join(DATASET_DIRECTORY, single_label_fpath.replace('.csv', '_train.csv')), index=False)
+	val_df.to_csv(os.path.join(DATASET_DIRECTORY, single_label_fpath.replace('.csv', '_val.csv')), index=False)
 
 	viz.plot_train_val_label_distribution(
 		train_df=train_df,
