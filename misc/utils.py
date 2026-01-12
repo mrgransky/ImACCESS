@@ -617,16 +617,24 @@ def basic_clean(txt: str):
 	# Step 2: Remove known junk/phrase patterns
 
 	junk_phrases = [
+		r'view from upstream side of ',
 		r"this is a general view of ",
 		r"this is a view of ",
+		r"close up view of ",
 		r'View from atop ',
 		r"another view of ",
 		r'full view of ',
 		r"rear view of ",
+		r"front view of ",
+		r"Street View of ",
+		r"night view of ",
 		r'partial view of ',
-		r"general view from ",
 		r"general view of ",
+		r"panoramic view of ",
+		r"downstream view of ",
+		r"general view from ",
 		r"this photograph is a view of ",
+		r"View of bottom, showing ",
 		r"Steinheimer note",
 		r'Original caption on envelope: ',
 		r"In the photo, ",
@@ -642,6 +650,8 @@ def basic_clean(txt: str):
 		r'as seen from below',
 		r'This item is a photo depicting ',
 		r"This item is a photograph depicting ",
+		r"This item consists of a photograph of ",
+		r"This photograph includes the following: ",
 		r"This photograph depicts ",
 		r'This is a photograph of ',
 		r'Photography presents ',
@@ -653,12 +663,17 @@ def basic_clean(txt: str):
 		r'The original finding aid described this photograph as:',
 		r'The original finding aid described this as:',
 		r'The original finding aid described this item as:',
+		r'The original database describes this as:',
 		r'The photographer’s notes from this negative series indicate ',
 		r'The photo is accompanied by a typescript with a description',
 		r"The photographer's notes from this negative series indicate that ",
 		r"The following geographic information is associated with this record:",
 		r'The following information was provided by digitizing partner Fold3:',
 		r'It was subsequently published in conjunction with an article.',
+		r'Type: C-N (Color Negative) C-P (Color Print) ',
+		r'Original caption: Photograph Of ',
+		r'This is a photograph from ',
+		r'Photograph Relating to ',
 		r"This photograph is of ",
 		r'This image is part of ',
 		r'This image is one of ',
@@ -691,6 +706,7 @@ def basic_clean(txt: str):
 		r'black and white',
 		r'Photographn of ',
 		r'In the photo ',
+		r"Photographer:; ",
 		r'\[No title entered\]',
 		r'\[No description entered\]',
 		r'\[No caption entered\]',
@@ -698,9 +714,10 @@ def basic_clean(txt: str):
 		r'Other Projects',
 		r'Other Project ',
 		r"general view ",
-		r'view from ',
 		r'View across ',
 		r'view over ',
+		r"Unknown Male",
+		r"Unknown Female",
 		r'Pictures of ',
 		r'index to ',
 		r'Phot. of ',
@@ -721,7 +738,7 @@ def basic_clean(txt: str):
 		r'Description: ',
 		r'- Types -',
 		r'- Miscellaneous',
-		r"captured ",
+		r"Captured Japanese Photograph of ",
 	]
 
 	# === REMOVE ARCHIVAL METADATA KEY-VALUE PAIRS (NARA/USAF style) ===
@@ -748,6 +765,9 @@ def basic_clean(txt: str):
 		r'Steinheimer\s\w+\snote',
 		r"Steinheimer\s\w+\s\w+\snote",
 		r"^\bView of\s", # View of powerhouse
+		r"^\bPhotograph of\s", # Photograph of powerhouse
+		r"^\bPhotographs of\s", # Photographs of Admiral Chester
+		r"^Unknown$", # when the whole string is exactly “Unknown”
 		r"one\sof\sthe\s\w+\sphotographs\sof the\sinventory\sunit\s\d+\/\w\.",
 		r"general\sview",
 		r"U.S.\sAir\sForce\sNumber\s\w\d+\w+",
@@ -793,14 +813,12 @@ def basic_clean(txt: str):
 	txt = re.sub(r"^'\s*|\s*'$", ' ', txt)
 	# Then double quotes
 	txt = txt.replace('""', '"').replace('"', '')
-	# txt = txt.replace("”", " ") # right double quotation mark (unicode: \u201d)
-	# txt = txt.replace("“", " ") # left double quotation mark (unicode: \u201c)
-	# txt = txt.replace("„", " ") # low double quotation mark (unicode: \u201e)	
+	txt = txt.replace("„", " ") # low double quotation mark (unicode: \u201e)	
 	# txt = re.sub(r'["“”„]', ' ', txt) # all double quotes
 	txt = txt.replace("‘", " ") # left single quotation mark (unicode: \u2018)	
 	
 	txt = txt.replace('#', ' ')
-	txt = txt.replace(',', ' ') # 
+	# txt = txt.replace(',', ' ')
 
 	txt = re.sub(r'-{2,}', ' ', txt)   # multiple dashes
 	txt = re.sub(r'\.{2,}', '.', txt)  # ellipses ...
