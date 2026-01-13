@@ -2803,16 +2803,15 @@ def analyze_top_labels_per_source(
 		print(f"Singleton labels: {len(source_singletons)} ({len(source_singletons) / len(source_unique) * 100:.2f}%)")
 		
 		# Print top-N
-		topN = min(60, n_top_labels_plot)
-		print(f"\nTop-{topN} most frequent labels:")
-		print(source_counts_df.head(topN).to_string(index=False))
+		print(f"\nTop-{n_top_labels_plot} most frequent labels:")
+		print(source_counts_df.head(n_top_labels_plot).to_string(index=False))
 		
 		# Create individual visualization for this source
 		plt.figure(figsize=(14, 12))
-		plot_data = source_counts_df.head(topN)
+		plot_data = source_counts_df.head(n_top_labels_plot)
 		sns.barplot(x='Count', y='Label', data=plot_data, palette='viridis')
 		plt.title(
-			f'Top {topN} Most Frequent Labels: {source_name}', 
+			f'Top-{n_top_labels_plot} Most Frequent Labels: {source_name}', 
 			fontsize=11, 
 			weight='bold'
 		)
@@ -3023,7 +3022,7 @@ def analyze_top_labels_per_source(
 def perform_multilabel_eda(
 	data_path: str,
 	label_column: str,
-	n_top_labels_plot: int=50,
+	n_top_labels_plot: int=70,
 	n_top_labels_co_occurrence: int=15,
 	DPI: int=200,
 ):
