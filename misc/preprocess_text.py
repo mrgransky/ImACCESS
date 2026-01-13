@@ -1,5 +1,107 @@
 import pandas as pd
 import re
+import json
+
+# Install: pip install lingua-language-detector
+from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
+
+# This DRASTICALLY improves accuracy on short text.
+languages_to_check = [
+	IsoCode639_1.EN, # English
+	IsoCode639_1.DE, # German
+	IsoCode639_1.FR, # French
+	IsoCode639_1.ES, # Spanish
+	IsoCode639_1.IT, # Italian
+	# IsoCode639_1.NL, # Dutch
+	IsoCode639_1.PT, # Portuguese
+	IsoCode639_1.SV, # Swedish
+	IsoCode639_1.FI, # Finnish
+	IsoCode639_1.DA, # Danish
+	IsoCode639_1.NB, # Norwegian Bokmål
+	IsoCode639_1.NN, # Norwegian Nynorsk
+	IsoCode639_1.PL, # Polish
+	IsoCode639_1.RU, # Russian
+	IsoCode639_1.HU, # Hungarian
+	IsoCode639_1.CS, # Czech
+	IsoCode639_1.SK, # Slovak
+	IsoCode639_1.EL, # Greek
+	IsoCode639_1.BG, # Bulgarian
+	IsoCode639_1.RO, # Romanian
+]
+
+# Preload the shortlisted detector
+detector_shortlist = (
+	LanguageDetectorBuilder
+	.from_iso_codes_639_1(*languages_to_check)
+	.with_preloaded_language_models()
+	.build()
+)
+
+# Preload the full detector (all languages)
+detector_all = (
+	LanguageDetectorBuilder
+	.from_all_languages()
+	.with_preloaded_language_models()
+	.build()
+)
+
+def is_english(
+	text: str,
+	confidence_threshold: float = 0.05,
+	use_shortlist: bool = True,  # New parameter
+	verbose: bool = False,
+) -> bool:
+	"""
+	Check if the given text is in English.
+	
+	Args:
+			text: The text to check
+			confidence_threshold: Minimum confidence score to consider text as English
+			use_shortlist: If True, use shortlisted European languages for detection.
+										If False, use all available languages.
+			verbose: Print detailed detection information
+	
+	Returns:
+			True if text is detected as English with confidence above threshold
+	"""
+	if not text or not str(text).strip():
+			return False
+	
+	# Select detector based on use_shortlist flag
+	detector = detector_shortlist if use_shortlist else detector_all
+	
+	if verbose:
+		detector_type = "shortlisted languages" if use_shortlist else "all languages"
+		print(f"Checking if text is in English (using {detector_type}):\n{text}\n")
+	
+	try:
+		cleaned_text = " ".join(str(text).split())
+		results = detector.compute_language_confidence_values(cleaned_text)
+		
+		if verbose:
+			print(f"All detected languages:")
+			for res in results:
+				print(f"  {res.language.name:<15} {res.value:.4f}")
+		
+		if not results:
+			return False
+		
+		for res in results:
+			if res.language == Language.ENGLISH:
+				score = res.value
+				if verbose:
+					print(f"\nEnglish confidence: {score:.4f}")
+					print(f"Threshold: {confidence_threshold}")
+					print(f"Is English: {score > confidence_threshold}")
+				
+				if score > confidence_threshold:
+					return True
+		
+		return False
+	except Exception as e:
+		if verbose:
+			print(f"Error: {e}")
+		return False
 
 def basic_clean(txt: str):
 		if not txt or not isinstance(txt, str):
@@ -285,7 +387,7 @@ def basic_clean(txt: str):
 		
 		return txt
 
-def get_enriched_description(df: pd.DataFrame, check_english: bool=False, min_length: int=20, verbose: bool=False):
+def get_enriched_description(df: pd.DataFrame, check_english: bool=False, min_length: int=10, verbose: bool=False):
 	if verbose:
 		print(f"\nAdding enriched_document_description to {df.shape} {type(df)}...")
 		print(list(df.columns))
@@ -363,103 +465,103 @@ def get_enriched_description(df: pd.DataFrame, check_english: bool=False, min_le
 	return df_enriched
 
 def validate_cleaning_quality(df: pd.DataFrame, text_column: str = 'enriched_document_description', top_n: int = 100):
-    """
-    Improved validation that distinguishes between:
-    - Metadata artifacts (BAD)
-    - Natural language patterns (GOOD)
-    """
-    from collections import Counter
-    from nltk import ngrams
-    from nltk.tokenize import word_tokenize
-    
-    print(f"Analyzing {len(df)} samples for cleaning quality...")
-    
-    all_text = ' '.join(df[text_column].dropna().astype(str).tolist())
-    tokens = word_tokenize(all_text.lower())
-    
-    results = {
-        'total_samples': len(df),
-        'warnings': [],
-        'informational': [],  # NEW: Non-problematic patterns
-        'recommendations': [],
-        'suspicious_patterns': {}
-    }
-    
-    # === 1. Check for metadata field names (ACTUAL PROBLEMS) ===
-    metadata_indicators = [
-        'category:', 'subcategory:', 'subjects:', 'war theater:', 'photo series:',
-        'property number:', 'reference number:', 'photographer:', 'history:',
-        'original caption:', 'description:', 'project:', 'credit:',
-    ]
-    
-    found_metadata = []
-    for indicator in metadata_indicators:
-        count = all_text.lower().count(indicator)
-        if count > len(df) * 0.01:  # Appears in >1% of samples
-            found_metadata.append((indicator, count))
-            results['warnings'].append(f"⚠️ Found '{indicator}' {count} times ({count/len(df)*100:.1f}% of samples)")
-    
-    if found_metadata:
-        results['suspicious_patterns']['metadata_fields'] = found_metadata
-    
-    # === 2. Bigram analysis - FILTER OUT NATURAL LANGUAGE ===
-    bigrams = list(ngrams(tokens, 2))
-    bigram_freq = Counter(bigrams)
-    top_bigrams = bigram_freq.most_common(top_n)
-    
-    # Define natural English stopword bigrams (NOT problems)
-    natural_bigrams = {
-        'of the', 'in the', 'at the', 'on the', 'to the', 'for the',
-        'from the', 'by the', 'with the', 'as the', 'is the', 'was the',
-        'and the', 'or the', 'that the', 'this the', 'which the',
-    }
-    
-    suspicious_bigrams = []
-    informational_bigrams = []
-    
-    for bigram, count in top_bigrams[:50]:
-        phrase = ' '.join(bigram)
-        frequency_pct = (count / len(df)) * 100
-        
-        # Skip natural language patterns
-        if phrase in natural_bigrams:
-            if frequency_pct > 5:
-                informational_bigrams.append((phrase, count, frequency_pct, "Natural English"))
-            continue
-        
-        # Flag entity names separately (informational, not problems)
-        if any(word[0].isupper() for word in bigram):  # Contains capitalized words
-            if frequency_pct > 5:
-                informational_bigrams.append((phrase, count, frequency_pct, "Entity/Place name"))
-            continue
-        
-        # Now flag actual suspicious patterns
-        if frequency_pct > 8:  # Raised threshold for non-natural patterns
-            suspicious_bigrams.append((phrase, count, frequency_pct))
-    
-    if suspicious_bigrams:
-        results['suspicious_patterns']['frequent_bigrams'] = suspicious_bigrams
-        print("\n⚠️ Suspiciously frequent bigrams (non-natural, appear in >8% of samples):")
-        for phrase, count, pct in suspicious_bigrams:
-            print(f"   '{phrase}': {count} times ({pct:.1f}%)")
-    
-    if informational_bigrams:
-        print("\n✅ Informational patterns (expected in historical dataset):")
-        for phrase, count, pct, reason in informational_bigrams[:10]:
-            print(f"   '{phrase}': {count} times ({pct:.1f}%) - {reason}")
-    
-    # === 3. Generate smart recommendations ===
-    if not results['warnings']:
-        results['recommendations'].append("✅ Text appears well-cleaned!")
-        results['recommendations'].append("📊 Frequent patterns are natural language or entity names")
-    else:
-        results['recommendations'].append(f"❌ Found {len(results['warnings'])} potential issues")
-        results['recommendations'].append("🔧 Consider adding these patterns to basic_clean():")
-        
-        for indicator, count in found_metadata:
-            results['recommendations'].append(f"   r'\\b{re.escape(indicator)}\\b'")
-    
-    return results
+		"""
+		Improved validation that distinguishes between:
+		- Metadata artifacts (BAD)
+		- Natural language patterns (GOOD)
+		"""
+		from collections import Counter
+		from nltk import ngrams
+		from nltk.tokenize import word_tokenize
+		
+		print(f"Analyzing {len(df)} samples for cleaning quality...")
+		
+		all_text = ' '.join(df[text_column].dropna().astype(str).tolist())
+		tokens = word_tokenize(all_text.lower())
+		
+		results = {
+				'total_samples': len(df),
+				'warnings': [],
+				'informational': [],  # NEW: Non-problematic patterns
+				'recommendations': [],
+				'suspicious_patterns': {}
+		}
+		
+		# === 1. Check for metadata field names (ACTUAL PROBLEMS) ===
+		metadata_indicators = [
+				'category:', 'subcategory:', 'subjects:', 'war theater:', 'photo series:',
+				'property number:', 'reference number:', 'photographer:', 'history:',
+				'original caption:', 'description:', 'project:', 'credit:',
+		]
+		
+		found_metadata = []
+		for indicator in metadata_indicators:
+				count = all_text.lower().count(indicator)
+				if count > len(df) * 0.01:  # Appears in >1% of samples
+						found_metadata.append((indicator, count))
+						results['warnings'].append(f"⚠️ Found '{indicator}' {count} times ({count/len(df)*100:.1f}% of samples)")
+		
+		if found_metadata:
+				results['suspicious_patterns']['metadata_fields'] = found_metadata
+		
+		# === 2. Bigram analysis - FILTER OUT NATURAL LANGUAGE ===
+		bigrams = list(ngrams(tokens, 2))
+		bigram_freq = Counter(bigrams)
+		top_bigrams = bigram_freq.most_common(top_n)
+		
+		# Define natural English stopword bigrams (NOT problems)
+		natural_bigrams = {
+				'of the', 'in the', 'at the', 'on the', 'to the', 'for the',
+				'from the', 'by the', 'with the', 'as the', 'is the', 'was the',
+				'and the', 'or the', 'that the', 'this the', 'which the',
+		}
+		
+		suspicious_bigrams = []
+		informational_bigrams = []
+		
+		for bigram, count in top_bigrams[:50]:
+				phrase = ' '.join(bigram)
+				frequency_pct = (count / len(df)) * 100
+				
+				# Skip natural language patterns
+				if phrase in natural_bigrams:
+						if frequency_pct > 5:
+								informational_bigrams.append((phrase, count, frequency_pct, "Natural English"))
+						continue
+				
+				# Flag entity names separately (informational, not problems)
+				if any(word[0].isupper() for word in bigram):  # Contains capitalized words
+						if frequency_pct > 5:
+								informational_bigrams.append((phrase, count, frequency_pct, "Entity/Place name"))
+						continue
+				
+				# Now flag actual suspicious patterns
+				if frequency_pct > 8:  # Raised threshold for non-natural patterns
+						suspicious_bigrams.append((phrase, count, frequency_pct))
+		
+		if suspicious_bigrams:
+				results['suspicious_patterns']['frequent_bigrams'] = suspicious_bigrams
+				print("\n⚠️ Suspiciously frequent bigrams (non-natural, appear in >8% of samples):")
+				for phrase, count, pct in suspicious_bigrams:
+						print(f"   '{phrase}': {count} times ({pct:.1f}%)")
+		
+		if informational_bigrams:
+				print("\n✅ Informational patterns (expected in historical dataset):")
+				for phrase, count, pct, reason in informational_bigrams[:10]:
+						print(f"   '{phrase}': {count} times ({pct:.1f}%) - {reason}")
+		
+		# === 3. Generate smart recommendations ===
+		if not results['warnings']:
+				results['recommendations'].append("✅ Text appears well-cleaned!")
+				results['recommendations'].append("📊 Frequent patterns are natural language or entity names")
+		else:
+				results['recommendations'].append(f"❌ Found {len(results['warnings'])} potential issues")
+				results['recommendations'].append("🔧 Consider adding these patterns to basic_clean():")
+				
+				for indicator, count in found_metadata:
+						results['recommendations'].append(f"   r'\\b{re.escape(indicator)}\\b'")
+		
+		return results
 
 def detect_outlier_samples(df: pd.DataFrame, text_column: str = 'enriched_document_description'):
 		"""
@@ -502,8 +604,16 @@ def detect_outlier_samples(df: pd.DataFrame, text_column: str = 'enriched_docume
 						print(f"   Normal range: {lower_bound:.3f} - {upper_bound:.3f}")
 						print(f"   Sample outliers:")
 						for idx in outlier_indices[:3]:
-								print(f"      [{idx}] {col}={df_analysis.loc[idx, col]:.3f}")
-								print(f"          Text preview: {df_analysis.loc[idx, text_column][:150]}...")
+								if idx in df_analysis.index:
+										col_value = df_analysis.loc[idx, col]
+										text_value = df_analysis.loc[idx, text_column]
+										if col_value is not None and text_value is not None and isinstance(text_value, str):
+												print(f"      [{idx}] {col}={col_value:.3f}")
+												print(f"          Text preview: {text_value[:150]}...")
+										else:
+												print(f"      [{idx}] {col}={col_value if col_value is not None else 'N/A'} - [No valid text]")
+								else:
+										print(f"      [{idx}] [Index not found]")
 		
 		return outliers, df_analysis
 
@@ -611,7 +721,15 @@ def sample_based_quality_check(df: pd.DataFrame, text_column: str = 'enriched_do
 								# Show example
 								if indices:
 										example_idx = indices[0]
-										print(f"      Example [{example_idx}]: {df.loc[example_idx, text_column][:200]}...")
+										# Check if index exists in dataframe
+										if example_idx in df.index:
+												example_text = df.loc[example_idx, text_column]
+												if example_text is not None and isinstance(example_text, str):
+														print(f"      Example [{example_idx}]: {example_text[:200]}...")
+												else:
+														print(f"      Example [{example_idx}]: [No valid text content]")
+										else:
+												print(f"      Example [{example_idx}]: [Index not found in DataFrame]")
 										print()
 		
 		return issues_found
@@ -628,8 +746,11 @@ def compare_cleaning_versions(df: pd.DataFrame, before_col: str = 'description',
 		sample_df = df.sample(n=n_samples, random_state=42)
 		
 		for idx, row in sample_df.iterrows():
-				before = str(row[before_col])[:300]
-				after = str(row[after_col])[:300]
+				before_val = row.get(before_col)
+				after_val = row.get(after_col)
+				
+				before = str(before_val)[:300] if before_val is not None else "[No content]"
+				after = str(after_val)[:300] if after_val is not None else "[No content]"
 				
 				print(f"\nSample #{idx}:")
 				print("-"*120)
@@ -640,67 +761,63 @@ def compare_cleaning_versions(df: pd.DataFrame, before_col: str = 'description',
 				print("-"*120)
 
 def validate_text_cleaning_pipeline(df: pd.DataFrame, text_column: str = 'enriched_document_description'):
-		"""
-		Complete validation pipeline - run this before LLM extraction.
-		"""
-		print("="*80)
-		print("TEXT CLEANING QUALITY VALIDATION PIPELINE")
-		print("="*80)
-		
-		# Step 1: N-gram analysis
-		print("\n[1/5] Running N-gram frequency analysis...")
-		validation_results = validate_cleaning_quality(df, text_column)
-		
-		# Step 2: Outlier detection
-		print("\n[2/5] Detecting statistical outliers...")
-		outliers, stats_df = detect_outlier_samples(df, text_column)
-		
-		# Step 3: Repeated substring search
-		print("\n[3/5] Searching for repeated substrings...")
-		repeated_patterns = find_repeated_substrings(df, text_column, min_length=15, min_frequency=50)
-		
-		# Step 4: Sample-based quality check
-		print("\n[4/5] Running sample-based quality checks...")
-		quality_issues = sample_based_quality_check(df, text_column, sample_size=200)
-		
-		# Step 5: Generate cleaning recommendations
-		print("\n[5/5] Generating recommendations...")
-		
-		recommendations = []
-		
-		# Based on n-gram analysis
-		if 'frequent_bigrams' in validation_results.get('suspicious_patterns', {}):
-				recommendations.append("\n📝 Recommended additions to basic_clean() based on bigrams:")
-				for phrase, count, pct in validation_results['suspicious_patterns']['frequent_bigrams'][:10]:
-						recommendations.append(f"   r'\\b{phrase}\\b',  # Appears in {pct:.1f}% of samples")
-		
-		# Based on repeated substrings
-		if repeated_patterns:
-				recommendations.append("\n📝 Recommended additions based on repeated substrings:")
-				for substring, count in repeated_patterns[:5]:
-						frequency_pct = (count / len(df)) * 100
-						# Clean the substring for use in regex
-						cleaned = re.escape(substring.strip())
-						recommendations.append(f"   r'{cleaned}',  # Appears {count} times ({frequency_pct:.1f}%)")
-		
-		# Final summary
-		print("\n" + "="*80)
-		print("VALIDATION SUMMARY")
-		print("="*80)
-		
-		if not validation_results['warnings'] and not quality_issues:
-				print("✅ Text cleaning quality is GOOD - safe to proceed with LLM extraction")
-		else:
-				print("⚠️ Text cleaning quality needs improvement")
-				print(f"\nFound {len(validation_results['warnings'])} warnings")
-				print("\nRecommended actions:")
-				for rec in recommendations:
-						print(rec)
-		
-		return {
-				'validation_results': validation_results,
-				'outliers': outliers,
-				'repeated_patterns': repeated_patterns,
-				'quality_issues': quality_issues,
-				'recommendations': recommendations
-		}
+	print("\nTEXT CLEANING QUALITY VALIDATION PIPELINE\n")
+	
+	# Step 1: N-gram analysis
+	print("\n[1/5] Running N-gram frequency analysis...")
+	validation_results = validate_cleaning_quality(df, text_column)
+	
+	# Step 2: Outlier detection
+	print("\n[2/5] Detecting statistical outliers...")
+	outliers, stats_df = detect_outlier_samples(df, text_column)
+	
+	# Step 3: Repeated substring search
+	print("\n[3/5] Searching for repeated substrings...")
+	repeated_patterns = find_repeated_substrings(df, text_column, min_length=15, min_frequency=50)
+	
+	# Step 4: Sample-based quality check
+	print("\n[4/5] Running sample-based quality checks...")
+	quality_issues = sample_based_quality_check(df, text_column, sample_size=200)
+	
+	# Step 5: Generate cleaning recommendations
+	print("\n[5/5] Generating recommendations...")
+	
+	recommendations = []
+	
+	# Based on n-gram analysis
+	if 'frequent_bigrams' in validation_results.get('suspicious_patterns', {}):
+		recommendations.append("\n📝 Recommended additions to basic_clean() based on bigrams:")
+		for phrase, count, pct in validation_results['suspicious_patterns']['frequent_bigrams'][:10]:
+			recommendations.append(f"   r'\\b{phrase}\\b',  # Appears in {pct:.1f}% of samples")
+	
+	# Based on repeated substrings
+	if repeated_patterns:
+		recommendations.append("\n📝 Recommended additions based on repeated substrings:")
+		for substring, count in repeated_patterns[:5]:
+			frequency_pct = (count / len(df)) * 100
+			# Clean the substring for use in regex
+			cleaned = re.escape(substring.strip())
+			recommendations.append(f"   r'{cleaned}',  # Appears {count} times ({frequency_pct:.1f}%)")
+	
+	print("\nVALIDATION SUMMARY\n")
+	
+	if not validation_results['warnings'] and not quality_issues:
+		print("✅ Text cleaning quality is GOOD - safe to proceed with LLM extraction")
+	else:
+		print("⚠️ Text cleaning quality needs improvement")
+		print(f"\nFound {len(validation_results['warnings'])} warnings")
+		print("\nRecommended actions:")
+		for rec in recommendations:
+			print(rec)
+	
+	results = {
+		'validation_results': validation_results,
+		'outliers': outliers,
+		'repeated_patterns': repeated_patterns,
+		'quality_issues': quality_issues,
+		'recommendations': recommendations
+	}
+
+	print(json.dumps(results, indent=2, ensure_ascii=False))
+
+	return results

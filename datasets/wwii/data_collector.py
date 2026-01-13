@@ -794,7 +794,7 @@ def main():
 	# 1: multi label:
 	multi_label_synched_df = wwii_df.copy()
 	multi_label_final_df = get_enriched_description(df=multi_label_synched_df, check_english=True, verbose=True)
-	validate_text_cleaning_pipeline(df=multi_label_final_df, text_col='enriched_document_description')
+	validate_text_cleaning_pipeline(df=multi_label_final_df, text_column='enriched_document_description')
 
 	multi_label_fpath = os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv")
 	print(f"Saving {multi_label_fpath}...")

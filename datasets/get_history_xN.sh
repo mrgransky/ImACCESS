@@ -111,9 +111,9 @@ main() {
 	# Format: "dataset_name|collector_path|arguments"
 	COLLECTORS=(
 		"SMU|${BASE_DIR}/smu/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 512,512 --verbose"
-		"WWII|${BASE_DIR}/wwii/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 512,512 --verbose"
-		"National_Archive|${BASE_DIR}/national_archive/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 512,512 --verbose"
-		"Europeana|${BASE_DIR}/europeana/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 512,512 --api_key api2demo --verbose"
+		"WWII|${BASE_DIR}/wwii/data_collector.py|-ddir ${DATASET_DIR} -nw 8 --img_mean_std --thumbnail_size 512,512 --verbose"
+		"National_Archive|${BASE_DIR}/national_archive/data_collector.py|-ddir ${DATASET_DIR} -nw 4 --img_mean_std --thumbnail_size 512,512 --verbose"
+		"Europeana|${BASE_DIR}/europeana/data_collector.py|-ddir ${DATASET_DIR} -nw 8 --img_mean_std --thumbnail_size 512,512 --api_key api2demo --verbose"
 		# "SA_Kuva|${BASE_DIR}/sa_kuva/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --thumbnail_size 512,512"
 		# "WW_Vehicles|${BASE_DIR}/ww_vehicles/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --thumbnail_size 512,512"
 	)
@@ -152,7 +152,7 @@ main() {
 
 	print_status "Running dataset merger => History_xN ..."
 
-	python -u "${BASE_DIR}/history_xN/merge_datasets.py" -ddir "${DATASET_DIR}"	--img_mean_std --target_chunk_mb 8
+	python -u "${BASE_DIR}/history_xN/merge_datasets.py" -ddir "${DATASET_DIR}"	--img_mean_std --target_chunk_mb 13 -nw 4 -v
 	print_success "Pipeline execution completed!"
 }
 

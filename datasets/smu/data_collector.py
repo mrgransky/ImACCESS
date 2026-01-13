@@ -419,7 +419,7 @@ def main():
 	)
 	
 	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
-	validate_text_cleaning_pipeline(df=multi_label_final_df, text_col='enriched_document_description')
+	validate_text_cleaning_pipeline(df=multi_label_final_df, text_column='enriched_document_description')
 	print(f"multi_label_final_df: {type(multi_label_final_df)} {multi_label_final_df.shape} {list(multi_label_final_df.columns)}")
 	multi_label_fpath = os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv")
 	print(f"Saving final MULTI-LABEL dataset in {multi_label_fpath}...")

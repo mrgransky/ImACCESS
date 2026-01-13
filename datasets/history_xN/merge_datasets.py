@@ -256,7 +256,6 @@ def merge_datasets(
 			if file.endswith(('.csv', '.xlsx')):
 				print(f"\t{file}")
 
-
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="Merge multiple WW datasets into a single consolidated dataset with train/val splits and visualizations.")
@@ -266,16 +265,19 @@ def main():
 	parser.add_argument('--val_split_pct', type=float, default=0.35, help='Validation split percentage (default: 0.35)')
 	parser.add_argument('--head_threshold', type=int, default=5000, help='Threshold for head class in long-tail analysis (default: 5000)')
 	parser.add_argument('--tail_threshold', type=int, default=1000, help='Threshold for tail class in long-tail analysis (default: 1000)')
-	parser.add_argument('--num_workers', type=int, default=4, help='Number of workers for image stats computation (default: min(16, cpu_count))')
+	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of workers for image stats computation (default: min(16, cpu_count))')
 	parser.add_argument('--batch_size', type=int, default=16, help='Batch size for computing image statistics (default: 64)')
 	parser.add_argument('--target_chunk_mb', type=int, default=None, help='Target chunk size in MB (None = no chunking)')
 	parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
 	args = parser.parse_args()
-	print(args)
-	
 	args.dataset_dir = os.path.normpath(args.dataset_dir)
+
+	if args.verbose:
+		print_args_table(args=args, parser=parser)
+		print(args)
+	
 	set_seeds(seed=args.seed)
 
 	merge_datasets(
