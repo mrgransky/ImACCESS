@@ -3047,11 +3047,9 @@ def perform_multilabel_eda(
 		print(f"Error loading dataset from '{data_path}': {e}")
 		return
 
-	print("--- Basic DataFrame Info ---")
-	df.info()
+	print(df.info(verbose=True, memory_usage="deep"))
 	print("\n--- Missing Values ---")
 	print(df.isnull().sum())
-	print("-" * 40 + "\n")
 
 	label_columns_to_parse = [
 		label_column, 
