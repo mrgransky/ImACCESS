@@ -1007,10 +1007,10 @@ def get_stratified_split(
 	return train_df, val_df
 
 def get_multi_label_stratified_split(
-		csv_file: str,
-		val_split_pct: float,
-		label_col: str='multimodal_labels',
-	) -> Tuple[pd.DataFrame, pd.DataFrame]:
+	csv_file: str,
+	val_split_pct: float,
+	label_col: str='multimodal_labels',
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
 	print(f"\n>> Stratified Splitting [Multi-label dataset]")
 	t_st = time.time()
@@ -1022,7 +1022,7 @@ def get_multi_label_stratified_split(
 	)
 	df_copy = df.copy()
 
-	# --- 1. Robust Label Parsing using ast.literal_eval ---
+	# 1. Robust Label Parsing using ast.literal_eval
 	print(f"Parsing '{label_col}' column...")
 	if label_col not in df_copy.columns:
 		raise ValueError(f"Label column '{label_col}' not found in the DataFrame.")
