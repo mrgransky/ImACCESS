@@ -19,7 +19,12 @@ def merge_csv_files(dataset_dir, verbose: bool = False):
 
 	# Iterate over the CSV files and concatenate them
 	for file in csv_files:
-		temp_df = pd.read_csv(filepath_or_buffer=file, on_bad_lines='skip', dtype=dtypes, low_memory=False,)
+		temp_df = pd.read_csv(
+			filepath_or_buffer=file, 
+			on_bad_lines='skip', 
+			dtype=dtypes, 
+			low_memory=False,
+		)
 		df = pd.concat([df, temp_df], ignore_index=True)
 
 	if verbose:

@@ -297,9 +297,8 @@ def get_multimodal_annotation(
 	# Post-process only multimodal labels
 	# llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
 	# vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
-	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=verbose)
+	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=False)
 	
-	# load df
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
 		on_bad_lines='skip',

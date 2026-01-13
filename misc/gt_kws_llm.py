@@ -1383,8 +1383,10 @@ def get_llm_based_labels(
 			print(f"Failed to write Excel file: {e}")
 		if verbose:
 			print(f"Saved {len(results)} keywords to {output_csv} {df.shape}\n{list(df.columns)}")
+
 	if verbose:
 		print(f"Total LLM-based keyword extraction time: {time.time() - st_t:.1f} sec")
+
 	return results
 
 @measure_execution_time
