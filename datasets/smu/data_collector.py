@@ -7,6 +7,7 @@ sys.path.insert(0, project_dir)
 
 from misc.utils import *
 import misc.visualize as viz
+from misc.preprocess_text import get_enriched_description, validate_text_cleaning_pipeline
 
 # local:
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 --img_mean_std
@@ -418,6 +419,7 @@ def main():
 	)
 	
 	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
+	validate_text_cleaning_pipeline(df=multi_label_final_df, text_col='enriched_document_description')
 	print(f"multi_label_final_df: {type(multi_label_final_df)} {multi_label_final_df.shape} {list(multi_label_final_df.columns)}")
 	multi_label_fpath = os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv")
 	print(f"Saving final MULTI-LABEL dataset in {multi_label_fpath}...")

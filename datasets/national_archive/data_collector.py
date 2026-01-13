@@ -8,6 +8,7 @@ sys.path.insert(0, project_dir) # add project directory to sys.path
 
 from misc.utils import *
 from misc.visualize import *
+from misc.preprocess_text import validate_text_cleaning_pipeline, get_enriched_description
 
 dataset_name = "NATIONAL_ARCHIVE".upper()
 parser = argparse.ArgumentParser(description=f"U.S. National Archive Dataset")
@@ -393,6 +394,13 @@ def main():
 		verbose=args.verbose,
 	)
 	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
+
+	# === MAIN USAGE ===
+	results = validate_text_cleaning_pipeline(
+		df=multi_label_final_df,
+		text_column='enriched_document_description'
+	)
+
 	print(f"Saving full MULTI-LABEL dataset: {type(multi_label_final_df)} {multi_label_final_df.shape} {list(multi_label_final_df.columns)}")
 	multi_label_fpath = os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv")
 	multi_label_final_df.to_csv(multi_label_fpath, index=False)

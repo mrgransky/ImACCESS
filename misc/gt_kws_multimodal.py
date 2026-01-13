@@ -60,10 +60,18 @@ def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[
 	processed_batch = []
 
 	for idx, labels in enumerate(labels_list):
+		if labels is None:
+			processed_batch.append(None)
+			continue
+		
+		if isinstance(labels, float) and math.isnan(labels):
+			processed_batch.append(None)
+			continue
+
 		if verbose:
 			print(f"\n[Sample {idx+1}/{len(labels_list)}]")
-			print(f"{len(labels)} {type(labels)} {labels}")
-		
+			print(f"{len(labels)} {type(labels)} {type(labels).__name__} {labels}")
+
 		# --- 1. Standardization: Ensure we have a list of strings ---
 		current_items = []
 		if labels is None:
@@ -295,8 +303,8 @@ def get_multimodal_annotation(
 	gc.collect()
 
 	# Post-process only multimodal labels
-	# llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
-	# vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
+	llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
+	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
 	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=False)
 	
 	df = pd.read_csv(

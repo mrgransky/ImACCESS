@@ -8,7 +8,7 @@ print(os.listdir(project_dir))
 sys.path.insert(0, project_dir) # add project directory to sys.path
 from misc.utils import *
 from misc.visualize import *
-
+from misc.preprocess_text import get_enriched_description, validate_text_cleaning_pipeline
 
 dataset_name: str = "europeana".upper()
 # europeana_api_key: str = "api2demo"
@@ -381,6 +381,7 @@ def main():
 	)
 
 	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
+	validate_text_cleaning_pipeline(df=multi_label_final_df, text_col='enriched_document_description')
 
 	print("Saving final MULTI-LABEL dataset...")
 	print(f"multi_label_final_df: {type(multi_label_final_df)} {multi_label_final_df.shape} {list(multi_label_final_df.columns)}")

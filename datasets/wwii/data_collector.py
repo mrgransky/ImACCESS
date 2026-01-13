@@ -7,6 +7,7 @@ sys.path.insert(0, project_dir)
 
 from misc.utils import *
 import misc.visualize as viz
+from misc.preprocess_text import get_enriched_description, validate_text_cleaning_pipeline
 
 # how to run in local:
 # $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std --thumbnail_size 512,512 -v > logs/wwii_dataset_collection.out &
@@ -793,6 +794,8 @@ def main():
 	# 1: multi label:
 	multi_label_synched_df = wwii_df.copy()
 	multi_label_final_df = get_enriched_description(df=multi_label_synched_df, check_english=True, verbose=True)
+	validate_text_cleaning_pipeline(df=multi_label_final_df, text_col='enriched_document_description')
+
 	multi_label_fpath = os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv")
 	print(f"Saving {multi_label_fpath}...")
 	multi_label_final_df.to_csv(multi_label_fpath, index=False)
