@@ -2803,17 +2803,21 @@ def analyze_top_labels_per_source(
 		print(f"Singleton labels: {len(source_singletons)} ({len(source_singletons) / len(source_unique) * 100:.2f}%)")
 		
 		# Print top-N
-		print(f"\nTop {min(20, n_top_labels_plot)} labels:")
-		print(source_counts_df.head(20).to_string(index=False))
+		topN = min(60, n_top_labels_plot)
+		print(f"\nTop-{topN} most frequent labels:")
+		print(source_counts_df.head(topN).to_string(index=False))
 		
 		# Create individual visualization for this source
-		plt.figure(figsize=(14, 11))
-		plot_data = source_counts_df.head(n_top_labels_plot)
+		plt.figure(figsize=(14, 12))
+		plot_data = source_counts_df.head(topN)
 		sns.barplot(x='Count', y='Label', data=plot_data, palette='viridis')
-		plt.title(f'Top {n_top_labels_plot} Most Frequent Labels: {source_name}', 
-				  fontsize=14, weight='bold')
-		plt.xlabel('Number of Samples', fontsize=12)
-		plt.ylabel('Label', fontsize=12)
+		plt.title(
+			f'Top {topN} Most Frequent Labels: {source_name}', 
+			fontsize=11, 
+			weight='bold'
+		)
+		plt.xlabel('Number of Samples', fontsize=10)
+		plt.ylabel('Label', fontsize=10)
 		plt.tight_layout()
 		plt.savefig(
 			fname=os.path.join(output_dir, f"{file_name}_top_{n_top_labels_plot}_frequent_labels_{col_name}.png"),

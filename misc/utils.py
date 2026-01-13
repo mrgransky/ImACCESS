@@ -750,10 +750,10 @@ def basic_clean(txt: str):
 		# r'\bCategory\s*:\s*.+?(?=\n|$)',                     # Category: Aircraft, Ground
 		# r'\bSubcategory\s*:\s*.+?(?=\n|$)',                  # Subcategory: Consolidated
 		# r'\bSubjects\s*:\s*.+?(?=\n|$)',                     # Subjects: BURMA & INDIA,RECREATION
-		# r'\bWar Theater(?: Number)?\s*:\s*.+?(?=\n|$)',      # War Theater Number: 20
 		# r'\bWar Theater\s*:\s*.+?(?=\n|$)',                  # War Theater: Burma-India
 		# r'\bPlace\s*:\s*.+?(?=\n|$)',                        # Place: Burma-India
-		# r'\bPhoto Series\s*:\s*.+?(?=\n|$)',                 # Photo Series: WWII
+		r'\bWar Theater(?: Number)?\s*:\s*.+?(?=\n|$)',      # War Theater Number: 20
+		r'\bPhoto Series\s*:\s*.+?(?=\n|$)',                 # Photo Series: WWII
 		r'\bUS Air Force Reference Number\s*:\s*[A-Z0-9]+',  # US Air Force Reference Number: 74399AC
 		r'\bReference Number\s*:\s*[A-Z0-9]+',               # fallback
 		r'^Image\s+[A-Z]\b',  # Image A (only removes "Image A", "Image B", etc.)
@@ -784,11 +784,11 @@ def basic_clean(txt: str):
 		r"\sW\.Nr\.\s\d+\s", # W.Nr. 4920
 	]
 
-	for pattern in junk_phrases:
-		txt = re.sub(pattern, ' ', txt, flags=re.IGNORECASE)
-
 	for pattern in metadata_patterns:
 		txt = re.sub(pattern, '   ', txt, flags=re.IGNORECASE)
+
+	for pattern in junk_phrases:
+		txt = re.sub(pattern, ' ', txt, flags=re.IGNORECASE)
 
 	# Also catch any remaining lines that are ALL CAPS + colon + value (common in archives)
 	txt = re.sub(r'(?m)^[A-Z\s&]{5,}:.*$', '', txt)
@@ -1090,7 +1090,7 @@ def get_multi_label_stratified_split(
 	# #################################################################################################
 
 	#################################################################################################
-	print(f">> IterativeStratification dataset: {df_filtered.shape}...")
+	print(f">> IterativeStratification dataset: {df_filtered.shape} [takes time for large datasets]...")
 	stratifier = IterativeStratification(
 		n_splits=2,
 		order=1 if len(df_filtered) > int(1e5) else 2,  # Lower order = faster (default is 2)
@@ -1113,7 +1113,7 @@ def get_multi_label_stratified_split(
 		raise ValueError("Train or validation set is empty after splitting. Adjust val_split_pct or check data.")
 	print(f"\n>> Original Filtered Data: {df_filtered.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
 
-	print(f"Stratified Splitting Elapsed Time: {time.time()-t_st:.3f} sec".center(160, "-"))
+	print(f"Stratified Splitting Elapsed Time: {time.time()-t_st:.3f} sec")
 	
 	# Save train/val splits
 	train_path = csv_file.replace('.csv', '_train.csv')
