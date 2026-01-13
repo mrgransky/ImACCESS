@@ -1011,7 +1011,6 @@ def get_multi_label_stratified_split(
 	val_split_pct: float,
 	label_col: str='multimodal_labels',
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-
 	print(f"\n>> Stratified Splitting [Multi-label dataset]")
 	t_st = time.time()
 	df = pd.read_csv(

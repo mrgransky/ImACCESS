@@ -4,7 +4,7 @@ import visualize as viz
 
 # how to run:
 # Puhti/Mahti:
-# srun -J interactive_cpu --account=project_2009043 --partition=small --time=00-03:15:00 --mem=73G --ntasks=1 --cpus-per-task=20 --pty /bin/bash -i
+# srun -J interactive_cpu --account=project_2009043 --partition=large --time=00-05:15:00 --mem=128G --ntasks=1 --cpus-per-task=20 --pty /bin/bash -i
 # $ python gt_kws_multimodal_merge.py --dataset_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 --verbose
 
 def merge_csv_files(dataset_dir, verbose: bool = False):
@@ -62,6 +62,11 @@ if __name__ == "__main__":
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Directory containing CSV files')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
 	args = parser.parse_args()
+	set_seeds(seed=42)
+
 	args.dataset_dir = os.path.normpath(args.dataset_dir)
-	print(args)
+	if args.verbose:
+		print(args)
+		print_args_table(args=args, parser=parser)
+
 	merge_csv_files(dataset_dir=args.dataset_dir, verbose=args.verbose)
