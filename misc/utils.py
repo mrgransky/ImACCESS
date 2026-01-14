@@ -1,21 +1,16 @@
-import json
-import numpy as np
-import pandas as pd
 import re
 import os
 import sys
 import time
+import json
+import numpy as np
+import pandas as pd
 import torch
+import threading
+import queue
 import pickle
 import multiprocessing
 from collections import Counter, defaultdict
-# import faiss
-
-import threading
-import queue
-
-from langdetect import detect, DetectorFactory
-from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from sklearn.preprocessing import normalize, MultiLabelBinarizer
 import matplotlib.pyplot as plt
 import nltk
@@ -24,14 +19,11 @@ import warnings
 import urllib.request
 import urllib.parse
 import argparse
-# import umap
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import seaborn as sns
-from wordcloud import WordCloud
 from typing import Tuple, Union, List, Dict, Any, Optional, Callable, TypedDict
 import certifi
-import hdbscan
 import networkx as nx
 from sklearn.metrics import silhouette_score
 from scipy.cluster.hierarchy import dendrogram, linkage
@@ -41,27 +33,26 @@ from torch.cuda import get_device_properties, memory_allocated
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 import huggingface_hub
-from dataclasses import dataclass
 import io
 import pprint
 import math
 import unicodedata
+import requests
+import dill
+import gzip
+import random
+import datetime
+import logging
+import glob
+import psutil  # For memory usage monitoring
+import tabulate
+import ast
+import httpx
+import gc
+import joblib
+import inspect
 
 warnings.filterwarnings('ignore')
-# warnings.filterwarnings('ignore', category=UserWarning)
-# warnings.filterwarnings('ignore', category=DeprecationWarning)
-# warnings.filterwarnings('ignore', category=FutureWarning)
-# warnings.filterwarnings(
-# 	"ignore",
-# 	message=".*flash_attn.*",
-# 	category=UserWarning,
-# 	module="transformers"
-# )
-# warnings.filterwarnings(
-# 	'ignore', 
-# 	category=DeprecationWarning, 
-# 	message="invalid escape sequence"
-# )
 
 from skimage.filters.rank import entropy
 from skimage.morphology import disk
@@ -69,12 +60,7 @@ from skimage.measure import shannon_entropy
 from skimage.transform import resize
 from joblib import Parallel, delayed
 from scipy.sparse import csr_matrix
-import requests
-import dill
-import gzip
-import random
-import datetime
-import logging
+
 from bs4 import BeautifulSoup
 from multiprocessing import Pool
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, TimeoutError
@@ -87,14 +73,6 @@ from sklearn.model_selection import train_test_split
 from skmultilearn.model_selection import iterative_train_test_split, IterativeStratification
 from tqdm import tqdm
 from datetime import timedelta
-import glob
-import psutil  # For memory usage monitoring
-import tabulate
-import ast
-import httpx
-import gc
-import joblib
-import inspect
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from natsort import natsorted
