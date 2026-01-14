@@ -24,7 +24,7 @@ import warnings
 import urllib.request
 import urllib.parse
 import argparse
-import umap
+# import umap
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import seaborn as sns
