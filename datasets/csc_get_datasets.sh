@@ -31,6 +31,8 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 
 DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs"
+# Ensure the dataset directory exists:
+mkdir -p "$DATASET_DIR"
 
 DATASETS=(
 	"smu"
