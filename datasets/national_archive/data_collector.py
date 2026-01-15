@@ -107,73 +107,150 @@ def get_doc_year(text, raw_doc_date):
 	else:
 		return None
 
-def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", label: str="world war"):
+def get_data(
+	start_date: str = "1914-01-01", 
+	end_date: str = "1914-01-02", 
+	label: str = "world war",
+	max_retries: int = 3,
+	retry_delay: int = 5,
+) -> Optional[List[Dict]]:
 	t0 = time.time()
 	label_processed = re.sub(" ", "_", label)
-	label_all_hits_fpth = os.path.join(HITs_DIR, f"results_query_{label_processed}_{start_date}_{end_date}.gz")
+	label_all_hits_fpth = os.path.join(
+		HITs_DIR, 
+		f"results_query_{label_processed}_{start_date}_{end_date}.gz"
+	)
+	
 	try:
 		label_all_hits = load_pickle(fpath=label_all_hits_fpth)
+		return label_all_hits
 	except Exception as e:
-		# print(f"{e}")
 		print(f"Collecting all docs of National Archive for label: « {label} » ... it might take a while..")
-		headers = {
-			'Content-type': 'application/json',
-			'Accept': 'application/json; text/plain; */*',
-			'Cache-Control': 'no-cache',
-			'Connection': 'keep-alive',
-			'Pragma': 'no-cache',
-		}
-		params = {
-			"limit": 100,
-			"availableOnline": "true",
-			"dataSource": "description",
-			"endDate": end_date,
-			"levelOfDescription": "item",
-			"objectType": "jpg,png",
-			"q": label,
-			"startDate": start_date,
-			"typeOfMaterials": "Photographs and other Graphic Materials",
-			"abbreviated": "true",
-			"debug": "true",
-			"datesAgg": "TRUE"
-		}
-		label_all_hits = []
-		page = 1
-		while True:
-			loop_st = time.time()
-			params["page"] = page
+	
+	headers = {
+		'Content-type': 'application/json',
+		'Accept': 'application/json; text/plain; */*',
+		'Cache-Control': 'no-cache',
+		'Connection': 'keep-alive',
+		'Pragma': 'no-cache',
+	}
+	
+	params = {
+		"limit": 100,
+		"availableOnline": "true",
+		"dataSource": "description",
+		"endDate": end_date,
+		"levelOfDescription": "item",
+		"objectType": "jpg,png",
+		"q": label,
+		"startDate": start_date,
+		"typeOfMaterials": "Photographs and other Graphic Materials",
+		"abbreviated": "true",
+		"debug": "true",
+		"datesAgg": "TRUE"
+	}
+	
+	label_all_hits = []
+	page = 1
+	consecutive_failures = 0
+	max_consecutive_failures = 5  # Stop after 5 consecutive failures
+	
+	while True:
+		loop_st = time.time()
+		params["page"] = page
+		
+		# Retry logic for each page
+		for attempt in range(max_retries):
 			try:
 				response = requests.get(
 					url=na_api_base_url,
 					params=params,
 					headers=headers,
-					# verify=False, # Try disabling SSL verification if that's the issue
-					# timeout=30, # Timeout in seconds
+					timeout=30,
 				)
-				response.raise_for_status()
-			except Exception as e:
-				print(f"<!> {e}")
+				response.raise_for_status()  # Raises HTTPError for 4xx/5xx
+				
+				# Check if response is actually JSON
+				content_type = response.headers.get('Content-Type', '')
+				if 'application/json' not in content_type:
+					raise ValueError(f"Expected JSON, got Content-Type: {content_type}")
+				
+				# Try parsing JSON
+				try:
+					data = response.json()
+				except json.JSONDecodeError as e:
+					# Log the actual response for debugging
+					print(f"<!> JSONDecodeError on page {page}, attempt {attempt + 1}/{max_retries}")
+					print(f"    Response status: {response.status_code}")
+					print(f"    Response headers: {dict(response.headers)}")
+					print(f"    Response text (first 500 chars): {response.text[:500]}")
+					raise  # Re-raise to trigger retry
+				
+				# Successfully got valid JSON
 				break
-
-			if response.status_code == 200:
-				data = response.json()
-				hits = data.get('body').get('hits').get('hits')
-				# print(len(hits), type(hits))
-				# print(hits[0].keys())
-				# print(json.dumps(hits[0], indent=2, ensure_ascii=False))
-				label_all_hits.extend(hits)
-				total_hits = data.get('body').get("hits").get('total').get('value')
-				print(f"Page: {page}:\tFound: {len(hits)} {type(hits)}\t{len(label_all_hits)}/{total_hits}\t{time.time()-loop_st:.1f} sec")
-				if len(label_all_hits) >= total_hits:
-					break
-				page += 1
-			else:
-				print(f"Failed to retrieve data: status_code: {response.status_code}")
+			except (requests.exceptions.RequestException, ValueError, json.JSONDecodeError) as e:
+				print(f"<!> Error on page {page}, attempt {attempt + 1}/{max_retries}: {e}")
+				
+				if attempt < max_retries - 1:
+					wait_time = retry_delay * (attempt + 1)  # Exponential backoff
+					print(f"    Retrying in {wait_time}s...")
+					time.sleep(wait_time)
+				else:
+					print(f"<!> Failed after {max_retries} attempts on page {page}")
+					consecutive_failures += 1
+					
+					if consecutive_failures >= max_consecutive_failures:
+						print(f"<!> Too many consecutive failures ({consecutive_failures}). Stopping.")
+						# Save partial results
+						if label_all_hits:
+							partial_path = label_all_hits_fpth.replace('.gz', f'_PARTIAL_{len(label_all_hits)}.gz')
+							save_pickle(pkl=label_all_hits, fname=partial_path)
+						return label_all_hits if label_all_hits else None
+					# Skip this page and continue
+					page += 1
+					continue
+		else:
+			# This executes if the for loop completes without break (all retries failed)
+			continue
+		
+		# Process successful response
+		try:
+			hits = data.get('body', {}).get('hits', {}).get('hits', [])
+			total_hits = data.get('body', {}).get('hits', {}).get('total', {}).get('value', 0)
+			
+			if not hits:
+				print(f"Page {page}: No hits returned (might be end of results)")
 				break
-		if len(label_all_hits) == 0:
-			return
-		save_pickle(pkl=label_all_hits, fname=label_all_hits_fpth)
-	print(f"Total hit(s): {len(label_all_hits)} {type(label_all_hits)} for label: « {label} » found in {time.time()-t0:.2f} sec")
+			
+			label_all_hits.extend(hits)
+			consecutive_failures = 0  # Reset on success
+			
+			elapsed = time.time() - loop_st
+			print(f"Page: {page}:\tFound: {len(hits)} hits\t{len(label_all_hits)}/{total_hits}\t{elapsed:.1f} sec")
+			
+			if len(label_all_hits) >= total_hits:
+				print(f"Collected all {total_hits} hits")
+				break
+			
+			page += 1
+			
+			time.sleep(0.5) # between requests (avoid rate limiting)
+		except (KeyError, AttributeError, TypeError) as e:
+			print(f"<!> Error parsing response structure on page {page}: {e}")
+			print(f"    Response keys: {data.keys() if isinstance(data, dict) else 'Not a dict'}")
+			consecutive_failures += 1
+			page += 1
+			continue
+	
+	if not label_all_hits:
+		print(f"No hits collected for label: « {label} »")
+		return None
+	
+	save_pickle(pkl=label_all_hits, fname=label_all_hits_fpth)
+	
+	total_time = time.time() - t0
+	print(f"Total: {len(label_all_hits)} hits for « {label} » in {total_time:.2f} sec")
+	
 	return label_all_hits
 
 def is_desired(collections, useless_terms):
