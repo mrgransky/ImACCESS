@@ -82,6 +82,9 @@ main() {
 		DATASET_DIR="${HOME}/datasets/WW_DATASETs"
 	fi
 
+	# Ensure the dataset directory exists:
+	mkdir -p "$DATASET_DIR"
+
 	# Parse command line arguments
 	while getopts "d:h" opt; do
 		case $opt in
