@@ -531,8 +531,8 @@ def basic_clean(txt: str):
 		r"^\bPhotographs+\s+of+\s+", # Photographs of Admiral Chester
 	]
 
-	for pattern in metadata_patterns:
-		txt = re.sub(pattern, '   ', txt, flags=re.IGNORECASE)
+	for pattern in junk_phrases:
+		txt = re.sub(pattern, ' ', txt, flags=re.IGNORECASE)
 
 	# === REMOVE ARCHIVAL METADATA KEY-VALUE PAIRS (NARA/USAF style) ===
 	metadata_patterns = [
@@ -574,8 +574,8 @@ def basic_clean(txt: str):
 		r'\bWorld War 2\b',
 	]
 
-	for pattern in junk_phrases:
-		txt = re.sub(pattern, ' ', txt, flags=re.IGNORECASE)
+	for pattern in metadata_patterns:
+		txt = re.sub(pattern, '   ', txt, flags=re.IGNORECASE)
 
 	# Also catch any remaining lines that are ALL CAPS + colon + value (common in archives)
 	txt = re.sub(r'(?m)^[A-Z\s&]{5,}:.*$', '', txt)
