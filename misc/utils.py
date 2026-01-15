@@ -15,7 +15,6 @@ from sklearn.preprocessing import normalize, MultiLabelBinarizer
 import matplotlib.pyplot as plt
 import nltk
 from tqdm import tqdm
-import warnings
 import urllib.request
 import urllib.parse
 import argparse
@@ -51,6 +50,8 @@ import httpx
 import gc
 import joblib
 import inspect
+import warnings
+import traceback
 
 warnings.filterwarnings('ignore')
 

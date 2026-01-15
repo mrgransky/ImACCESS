@@ -159,6 +159,7 @@ def _load_vlm_(
 		except Exception as e:
 			if verbose:
 				print(f"[WARN] Flash Attention unavailable: {type(e).__name__}")
+			traceback.print_exc()
 		
 		if flash_ok:
 			return "flash_attention_2"
