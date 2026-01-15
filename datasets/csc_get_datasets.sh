@@ -7,11 +7,11 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
-#SBATCH --mem=96G
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=64G
 #SBATCH --array=0-3
-#SBATCH --partition=small
-#SBATCH --time=0-23:00:00
+#SBATCH --partition=large
+#SBATCH --time=1-12:00:00
 
 set -euo pipefail
 
@@ -21,14 +21,14 @@ txt="$user began Slurm job: `date`"
 ch="#"
 echo -e "${txt//?/$ch}\n${txt}\n${txt//?/$ch}"
 echo "${stars// /*}"
+echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
+echo "$SLURM_JOB_ACCOUNT, CLUSTER: $SLURM_CLUSTER_NAME, Partition: $SLURM_JOB_PARTITION"
 echo "CPUS/NODE: $SLURM_JOB_CPUS_PER_NODE, MEM/NODE(--mem): $SLURM_MEM_PER_NODE"
-echo "HOST: $SLURM_SUBMIT_HOST @ $SLURM_JOB_ACCOUNT, CLUSTER: $SLURM_CLUSTER_NAME, Partition: $SLURM_JOB_PARTITION"
 echo "JOBname: $SLURM_JOB_NAME, ID: $SLURM_JOB_ID, WRK_DIR: $SLURM_SUBMIT_DIR"
 echo "nNODES: $SLURM_NNODES, NODELIST: $SLURM_JOB_NODELIST, NODE_ID: $SLURM_NODEID"
 echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_NPROCS"
 echo "THREADS/CORE: $SLURM_THREADS_PER_CORE"
 echo "${stars// /*}"
-echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 
 DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 # Ensure the dataset directory exists:

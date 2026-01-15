@@ -1000,7 +1000,7 @@ def compare_cleaning_versions(df: pd.DataFrame, before_col: str = 'description',
 				print("-"*120)
 
 def validate_text_cleaning_pipeline(df: pd.DataFrame, text_column: str = 'enriched_document_description'):
-	print("\nTEXT CLEANING QUALITY VALIDATION PIPELINE\n")
+	print("\nTEXT CLEANING QUALITY VALIDATION PIPELINE")
 	
 	# Step 1: N-gram analysis
 	print("\n[1/5] Running N-gram frequency analysis...")
