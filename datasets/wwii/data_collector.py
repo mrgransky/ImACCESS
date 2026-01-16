@@ -148,6 +148,17 @@ def get_dframe(
 
 	if os.path.exists(df_fpth):
 		df = load_pickle(fpath=df_fpth)
+		if verbose:
+			print(f"Loaded {df_fpth} | {df.shape} | {type(df)} | {df.columns}")
+			print(df.head())
+
+		# check if image exists in df['img_path'] if not download and process it
+		for img_idx, img_path in enumerate(df['img_path'].tolist()):
+			if not os.path.exists(img_path):
+				if verbose:
+					print(f"Image[{img_idx}] {img_path} not found, downloading...")
+				_download_and_process_image(df['img_url'][img_idx], img_path, thumbnail_size, verbose)
+
 		return df
 
 	doc_url_info = extract_url_info(doc_url)
@@ -783,8 +794,8 @@ def main():
 			) for i, (k, v) in enumerate(URLs.items())
 		]
 		dfs = [df for df in dfs if df is not None]
-		save_pickle(pkl=dfs, fname=dfs_fname,)
-		print(f"Saved {len(dfs)} dfs to {dfs_fname}")
+		# save_pickle(pkl=dfs, fname=dfs_fname,)
+		# print(f"Saved {len(dfs)} dfs to {dfs_fname}")
 
 	total_searched_labels = len(dfs)
 	print(f"Concatinating {total_searched_labels} x {type(dfs[0])} dfs...")
