@@ -44,15 +44,15 @@ def get_dataset(ddir: str):
 
 def merge_datasets(
 	ddir: str, 
-	val_split_pct: float=0.35, 
-	seed: int=42, 
-	head_threshold: int=5000, 
-	tail_threshold: int=1000, 
-	bins: int=60,
 	num_workers: int=16,
 	batch_size: int=64,
-	target_chunk_mb: int=None,
+	bins: int=60,
+	head_threshold: int=5000, 
+	tail_threshold: int=1000, 
 	img_mean_std: bool=False,
+	target_chunk_mb: int=None,
+	val_split_pct: float=0.35, 
+	seed: int=42,
 	verbose: bool=False,
 ):
 	datasets = get_dataset(ddir=ddir)
@@ -80,7 +80,12 @@ def merge_datasets(
 			continue
 	
 		try:
-			df = pd.read_csv(filepath_or_buffer=single_label_path, on_bad_lines='skip', low_memory=False, dtype=dtypes,)
+			df = pd.read_csv(
+				filepath_or_buffer=single_label_path, 
+				on_bad_lines='skip', 
+				low_memory=False, 
+				dtype=dtypes,
+			)
 			df['dataset'] = dataset
 			single_label_dfs.append(df)
 		except Exception as e:
@@ -109,70 +114,6 @@ def merge_datasets(
 	print(f"Saving merged single-label dataset to: {merged_single_label_df_fpath}")
 	merged_single_label_df.to_csv(merged_single_label_df_fpath, index=False)
 
-	# 2. Load and merge multi-label dataframes
-	if verbose:
-		print("\nLoading and merging multi-label datasets...")
-	multi_label_dfs = []
-	for i, dataset_path in enumerate(datasets):
-		print(f"Reading Dataset[{i}]: {dataset_path}")
-		dataset = os.path.basename(dataset_path)
-		multi_label_path = os.path.join(dataset_path, 'metadata_multi_label.csv')
-		if not os.path.exists(multi_label_path):
-			print(f"  Warning: {multi_label_path} not found, skipping.")
-			continue
-		try:
-			df = pd.read_csv(filepath_or_buffer=multi_label_path, on_bad_lines='skip', low_memory=False, dtype=dtypes,)
-			df['dataset'] = dataset
-			multi_label_dfs.append(df)
-		except Exception as e:
-			print(f"  Error loading {multi_label_path}: {e}")
-		print(f"\tLoaded {type(df)} {df.shape} from {multi_label_path}")
-	if not multi_label_dfs:
-		raise RuntimeError("No valid datasets found. Exiting.")
-
-	print(f"Merging {len(multi_label_dfs)} dataset(s) into '{dataset_name}'...")
-	merged_multi_label_df = pd.concat(multi_label_dfs, ignore_index=True)	
-
-	# 2.1 Inspect merged multi-label dataframe
-	print(f"merged_multi_label_df: {type(merged_multi_label_df)} {merged_multi_label_df.shape}\n{list(merged_multi_label_df.columns)}")
-	# print(merged_multi_label_df.head())
-	
-	# 2.2 Add enriched_document_description column to merged_multi_label_df
-	merged_multi_label_df = get_enriched_description(df=merged_multi_label_df, check_english=True, verbose=verbose)
-
-	if "enriched_document_description" not in merged_multi_label_df.columns:
-		raise ValueError("enriched_document_description column not found in merged_multi_label_df")
-
-	# 2.3 Save merged multi-label dataframe
-	merged_multi_label_df_fpath = merged_single_label_df_fpath.replace('single', 'multi')
-	print(f"Saving merged multi-label dataset to: {merged_multi_label_df_fpath}")
-	merged_multi_label_df.to_csv(merged_multi_label_df_fpath, index=False)
-
-	# 2.4 Chunk merged multi-label dataframe
-	if target_chunk_mb is not None:
-		print(f"Chunking merged multi-label dataset to {target_chunk_mb} MB...")
-		# Calculate optimal chunk size
-		estimated_mb_per_row = merged_multi_label_df.memory_usage(deep=True).sum() / (1024**2) / len(merged_multi_label_df)
-		
-		optimal_chunk_size = max(1000, min(50000, int(target_chunk_mb / estimated_mb_per_row)))
-		total_num_chunks = (len(merged_multi_label_df) + optimal_chunk_size - 1) // optimal_chunk_size
-		print(f"Saving {len(merged_multi_label_df)} rows in {total_num_chunks} chunks of ~{optimal_chunk_size} rows each (estimated_mb_per_row: {estimated_mb_per_row:.3f} MB)...")
-		# Save in chunks
-		for i in range(total_num_chunks):
-			start_idx = i * optimal_chunk_size
-			end_idx = min((i + 1) * optimal_chunk_size, len(merged_multi_label_df))
-			chunk_df = merged_multi_label_df.iloc[start_idx:end_idx]
-			chunk_df_fpth = merged_multi_label_df_fpath.replace('.csv', f'_chunk_{i}.csv')
-			chunk_df.to_csv(chunk_df_fpth, index=False)
-			if verbose:
-				print(f"  Saved chunk {i+1}/{total_num_chunks}: {chunk_df.shape[0]} rows -> {chunk_df_fpth}")
-	
-	try:
-		merged_single_label_df.to_excel(merged_single_label_df_fpath.replace('.csv', '.xlsx'), index=False)
-		merged_multi_label_df.to_excel(merged_multi_label_df_fpath.replace('.csv', '.xlsx'), index=False)
-	except Exception as e:
-		print(f"Failed to write Excel file: {e}")
-	
 	if verbose:
 		print("\nGenerating label distribution plots...")
 	plot_label_distribution(
@@ -247,6 +188,81 @@ def merge_datasets(
 		tail_threshold=tail_threshold,
 	)
 
+	del merged_single_label_df, single_label_dfs, df
+
+	# 2. Load and merge multi-label dataframes
+	if verbose:
+		print("\nLoading and merging multi-label datasets...")
+	multi_label_dfs = []
+	for i, dataset_path in enumerate(datasets):
+		if verbose:
+			print(f"Reading Dataset[{i}]: {dataset_path}")
+	
+		dataset = os.path.basename(dataset_path)
+		multi_label_path = os.path.join(dataset_path, 'metadata_multi_label.csv')
+
+		if not os.path.exists(multi_label_path):
+			print(f"[WARN] {multi_label_path} not found, skipping.")
+			continue
+
+		try:
+			df = pd.read_csv(filepath_or_buffer=multi_label_path, on_bad_lines='skip', low_memory=False, dtype=dtypes,)
+			df['dataset'] = dataset
+			multi_label_dfs.append(df)
+		except Exception as e:
+			print(f"<!> Failed to load {multi_label_path}: {e}")
+	
+		if verbose:
+			print(f"\tLoaded {type(df)} {df.shape} from {multi_label_path}")
+
+	if not multi_label_dfs:
+		raise RuntimeError("No valid datasets found. Exiting.")
+
+	if verbose:
+		print(f"Merging {len(multi_label_dfs)} dataset(s) into '{dataset_name}'...")
+
+	merged_multi_label_df = pd.concat(multi_label_dfs, ignore_index=True)	
+
+	# 2.1 Inspect merged multi-label dataframe
+	print(f"merged_multi_label_df: {type(merged_multi_label_df)} {merged_multi_label_df.shape}\n{list(merged_multi_label_df.columns)}")
+	# print(merged_multi_label_df.head())
+	
+	# 2.2 Add enriched_document_description column to merged_multi_label_df
+	merged_multi_label_df = get_enriched_description(df=merged_multi_label_df, check_english=True, verbose=verbose)
+
+	if "enriched_document_description" not in merged_multi_label_df.columns:
+		raise ValueError("enriched_document_description column not found in merged_multi_label_df")
+
+	# 2.3 Save merged multi-label dataframe
+	merged_multi_label_df_fpath = merged_single_label_df_fpath.replace('single', 'multi')
+	print(f"Saving merged multi-label dataset to: {merged_multi_label_df_fpath}")
+	merged_multi_label_df.to_csv(merged_multi_label_df_fpath, index=False)
+
+	# 2.4 Chunk merged multi-label dataframe
+	if target_chunk_mb is not None:
+		print(f"Chunking merged multi-label dataset to {target_chunk_mb} MB...")
+		# Calculate optimal chunk size
+		estimated_mb_per_row = merged_multi_label_df.memory_usage(deep=True).sum() / (1024**2) / len(merged_multi_label_df)
+		
+		optimal_chunk_size = max(1000, min(50000, int(target_chunk_mb / estimated_mb_per_row)))
+		total_num_chunks = (len(merged_multi_label_df) + optimal_chunk_size - 1) // optimal_chunk_size
+		print(f"Saving {len(merged_multi_label_df)} rows in {total_num_chunks} chunks of ~{optimal_chunk_size} rows each (estimated_mb_per_row: {estimated_mb_per_row:.3f} MB)...")
+		# Save in chunks
+		for i in range(total_num_chunks):
+			start_idx = i * optimal_chunk_size
+			end_idx = min((i + 1) * optimal_chunk_size, len(merged_multi_label_df))
+			chunk_df = merged_multi_label_df.iloc[start_idx:end_idx]
+			chunk_df_fpth = merged_multi_label_df_fpath.replace('.csv', f'_chunk_{i}.csv')
+			chunk_df.to_csv(chunk_df_fpth, index=False)
+			if verbose:
+				print(f"  Saved chunk {i+1}/{total_num_chunks}: {chunk_df.shape[0]} rows -> {chunk_df_fpth}")
+	
+	# 2.5 Save merged single-label and multi-label dataframes as Excel files
+	try:
+		merged_multi_label_df.to_excel(merged_multi_label_df_fpath.replace('.csv', '.xlsx'), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
+	
 	if img_mean_std:
 		all_image_paths = merged_single_label_df['img_path'].tolist()
 		img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
@@ -277,7 +293,6 @@ def merge_datasets(
 def main():
 	parser = argparse.ArgumentParser(description="Merge multiple WW datasets into a single consolidated dataset with train/val splits and visualizations.")
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset root directory')
-	parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility (default: 42)')
 	parser.add_argument('--bins', type=int, default=60, help='Number of bins for year distribution histogram (default: 60)')
 	parser.add_argument('--val_split_pct', type=float, default=0.35, help='Validation split percentage (default: 0.35)')
 	parser.add_argument('--head_threshold', type=int, default=5000, help='Threshold for head class in long-tail analysis (default: 5000)')
@@ -290,17 +305,15 @@ def main():
 
 	args = parser.parse_args()
 	args.dataset_dir = os.path.normpath(args.dataset_dir)
+	set_seeds(seed=42)
 
 	if args.verbose:
 		print_args_table(args=args, parser=parser)
 		print(args)
 	
-	set_seeds(seed=args.seed)
-
 	merge_datasets(
 		ddir=args.dataset_dir, 
-		val_split_pct=args.val_split_pct, 
-		seed=args.seed, 
+		val_split_pct=args.val_split_pct,
 		head_threshold=args.head_threshold, 
 		tail_threshold=args.tail_threshold, 
 		bins=args.bins, 
