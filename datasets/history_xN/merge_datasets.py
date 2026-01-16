@@ -264,7 +264,6 @@ def merge_datasets(
 		print(f"Failed to write Excel file: {e}")
 	
 	if img_mean_std:
-		all_image_paths = merged_single_label_df['img_path'].tolist()
 		img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
 		img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
 		try:
@@ -272,10 +271,12 @@ def merge_datasets(
 		except Exception as e:
 			print(f"<!> {e}")
 			num_workers = min(num_workers, multiprocessing.cpu_count())
+
 			if verbose:
 				print(f"Computing RGB mean and std across all images with {num_workers} workers (this may take a while)...")
+
 			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
-				source=all_image_paths,
+				source=merged_multi_label_df['img_path'].tolist(),
 				num_workers=num_workers,
 				batch_size=batch_size,
 				img_rgb_mean_fpth=img_rgb_mean_fpth,
