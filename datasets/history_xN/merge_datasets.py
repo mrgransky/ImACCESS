@@ -8,13 +8,14 @@ sys.path.insert(0, project_dir)
 
 from misc.utils import *
 from misc.visualize import *
+from misc.preprocess_text import get_enriched_description
 
 # how to run [local]:
 # $ python merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs
-# $ nohup python -u merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs --target_chunk_mb 8 > logs/history_xN_merged_datasets.out &
+# $ nohup python -u merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs --target_chunk_mb 8 -v > logs/history_xN_merged_datasets.out &
 
 # run in Pouta:
-# $ nohup python -u merge_datasets.py -ddir /media/volume/ImACCESS/dataset/WW_DATASETs --img_mean_std --target_chunk_mb 8 > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
+# $ nohup python -u merge_datasets.py -ddir /media/volume/ImACCESS/dataset/WW_DATASETs --img_mean_std --target_chunk_mb 8 -v > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
 
 def get_dataset(ddir: str):
 	# Patterns to match dataset directories
@@ -63,28 +64,37 @@ def merge_datasets(
 	os.makedirs(HISTORY_XN_DIRECTORY, exist_ok=True)
 	os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
-	# Load and merge single-label dataframes
+	# 1. Load and merge single-label dataframes
 	if verbose:
 		print("\nLoading and merging single-label datasets...")
 	single_label_dfs = []
 	for i, dataset_path in enumerate(datasets):
-		print(f"Reading Dataset[{i}]: {dataset_path}")
+		if verbose:
+			print(f"Reading Dataset[{i}]: {dataset_path}")
+	
 		dataset = os.path.basename(dataset_path)
 		single_label_path = os.path.join(dataset_path, 'metadata_single_label.csv')
+	
 		if not os.path.exists(single_label_path):
 			print(f"  Warning: {single_label_path} not found, skipping.")
 			continue
+	
 		try:
 			df = pd.read_csv(filepath_or_buffer=single_label_path, on_bad_lines='skip', low_memory=False, dtype=dtypes,)
 			df['dataset'] = dataset
 			single_label_dfs.append(df)
 		except Exception as e:
 			print(f"  Error loading {single_label_path}: {e}")
-		print(f"\tLoaded {type(df)} {df.shape} from {single_label_path}")
+	
+		if verbose:
+			print(f"\tLoaded {type(df)} {df.shape} from {single_label_path}")
+	
 	if not single_label_dfs:
 		raise RuntimeError("No valid datasets found. Exiting.")
 	
-	print(f"Merging {len(single_label_dfs)} dataset(s) into '{dataset_name}'...")
+	if verbose:
+		print(f"Merging {len(single_label_dfs)} dataset(s) into '{dataset_name}'...")
+	
 	merged_single_label_df = pd.concat(single_label_dfs, ignore_index=True)
 	print(f"Merged single-label df {type(merged_single_label_df)} {merged_single_label_df.shape} {list(merged_single_label_df.columns)}")
 	num_unique_labels = merged_single_label_df['label'].nunique()
@@ -99,8 +109,9 @@ def merge_datasets(
 	print(f"Saving merged single-label dataset to: {merged_single_label_df_fpath}")
 	merged_single_label_df.to_csv(merged_single_label_df_fpath, index=False)
 
-	# Load and merge multi-label dataframes
-	print("\nLoading and merging multi-label datasets...")
+	# 2. Load and merge multi-label dataframes
+	if verbose:
+		print("\nLoading and merging multi-label datasets...")
 	multi_label_dfs = []
 	for i, dataset_path in enumerate(datasets):
 		print(f"Reading Dataset[{i}]: {dataset_path}")
@@ -122,16 +133,22 @@ def merge_datasets(
 	print(f"Merging {len(multi_label_dfs)} dataset(s) into '{dataset_name}'...")
 	merged_multi_label_df = pd.concat(multi_label_dfs, ignore_index=True)	
 
+	# 2.1 Inspect merged multi-label dataframe
 	print(f"merged_multi_label_df: {type(merged_multi_label_df)} {merged_multi_label_df.shape}\n{list(merged_multi_label_df.columns)}")
 	# print(merged_multi_label_df.head())
+	
+	# 2.2 Add enriched_document_description column to merged_multi_label_df
+	merged_multi_label_df = get_enriched_description(df=merged_multi_label_df, check_english=True, verbose=verbose)
 
 	if "enriched_document_description" not in merged_multi_label_df.columns:
 		raise ValueError("enriched_document_description column not found in merged_multi_label_df")
 
+	# 2.3 Save merged multi-label dataframe
 	merged_multi_label_df_fpath = merged_single_label_df_fpath.replace('single', 'multi')
 	print(f"Saving merged multi-label dataset to: {merged_multi_label_df_fpath}")
 	merged_multi_label_df.to_csv(merged_multi_label_df_fpath, index=False)
 
+	# 2.4 Chunk merged multi-label dataframe
 	if target_chunk_mb is not None:
 		print(f"Chunking merged multi-label dataset to {target_chunk_mb} MB...")
 		# Calculate optimal chunk size

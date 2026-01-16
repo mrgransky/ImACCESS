@@ -48,7 +48,7 @@ detector_all = (
 def is_english(
 	text: str,
 	confidence_threshold: float = 0.05,
-	use_shortlist: bool = True,  # New parameter
+	use_shortlist: bool = True,  # use shortlist of European languages for detection
 	verbose: bool = False,
 ) -> bool:
 	"""
@@ -366,8 +366,10 @@ def get_enriched_description(df: pd.DataFrame, check_english: bool=False, min_le
 			f"({df['description'].isna().sum()/df.shape[0]*100:.2f}%)"
 		)
 
-	# safety check:
+	# safety check if enriched_document_description already exists in df.columns:
 	if "enriched_document_description" in df.columns:
+		if verbose:
+			print("enriched_document_description column already exists. Dropping it...")
 		df = df.drop(columns=['enriched_document_description'])
 
 	df_enriched = df.copy()
