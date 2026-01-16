@@ -69,38 +69,55 @@ DPI = 250
 YEAR_PATTERN = re.compile(r'\b(19[3][9]|[1][9]4[0-5])\b')
 
 def _download_and_process_image(
-	img_url:str, 
-	img_fpath:str, 
-	thumbnail_size:tuple=None, 
-	verbose:bool=False,
-):
-	"""download, verify, and process an image"""
-	try:
-		img_response = requests.get(img_url)
-		img_response.raise_for_status()
-		
-		with open(img_fpath, 'wb') as f:
-			f.write(img_response.content)
-		
-		with Image.open(img_fpath) as img:
-			img.verify()
-		
-		# Process and optimize the image
-		if not process_image_for_storage(
-			img_path=img_fpath, 
-			thumbnail_size=thumbnail_size, 
-			verbose=verbose
-		):
-			if verbose:
-				print(f"Failed to process image {img_fpath}")
-			return False
-		
-		if verbose:
-			print(f"{img_fpath} downloaded and processed successfully")
-		return True
-	except Exception as e:
-		print(f"Failed to download {img_url}: {e}")
-		return False
+	img_url: str,
+	img_fpath: str,
+	thumbnail_size: tuple = None,
+	timeout: float = 10.0,
+	max_retries: int = 3,
+	verbose: bool = False,
+) -> bool:
+		"""download, verify, and process an image with retries + timeout"""
+		for attempt in range(1, max_retries + 1):
+				try:
+						resp = requests.get(img_url, timeout=timeout)
+						resp.raise_for_status()
+
+						with open(img_fpath, "wb") as f:
+								f.write(resp.content)
+
+						with Image.open(img_fpath) as img:
+								img.verify()
+
+						if not process_image_for_storage(
+								img_path=img_fpath,
+								thumbnail_size=thumbnail_size,
+								verbose=verbose,
+						):
+								if verbose:
+										print(f"Failed to process image {img_fpath}")
+								return False
+
+						if verbose:
+								print(f"{img_fpath} downloaded and processed successfully")
+						return True
+
+				except Exception as e:
+						if verbose:
+								print(
+										f"[Attempt {attempt}/{max_retries}] Failed to download {img_url}: {e}"
+								)
+						# Remove partially written file if any
+						if os.path.exists(img_fpath):
+								try:
+										os.remove(img_fpath)
+								except OSError:
+										pass
+
+						if attempt == max_retries:
+								# Give up
+								return False
+						# Small backoff before retrying
+						time.sleep(1.0)
 
 def extract_year(text):
 	match = YEAR_PATTERN.search(str(text))
@@ -148,16 +165,63 @@ def get_dframe(
 
 	if os.path.exists(df_fpth):
 		df = load_pickle(fpath=df_fpth)
-		if verbose:
-			print(f"Loaded {df_fpth} | {df.shape} | {type(df)} | {df.columns}")
-			print(df.head())
+		# if verbose:
+		# 	print(f"Loaded {df_fpth} | {df.shape} | {type(df)} | {df.columns}")
+		# 	print(df.head())
 
-		# check if image exists in df['img_path'] if not download and process it
+		# # check if image exists in df['img_path'] if not download and process it
+
+		# sequential:
 		for img_idx, img_path in enumerate(df['img_path'].tolist()):
 			if not os.path.exists(img_path):
 				if verbose:
 					print(f"Image[{img_idx}] {img_path} not found, downloading...")
-				_download_and_process_image(df['img_url'][img_idx], img_path, thumbnail_size, verbose)
+				_download_and_process_image(
+					img_url=df['img_url'][img_idx], 
+					img_fpath=img_path, 
+					thumbnail_size=thumbnail_size, 
+					verbose=verbose,
+				)
+
+		# # parallelize the above for loop:
+		# missing_indices = [i for i, path in enumerate(df['img_path'].tolist()) if not os.path.exists(path)]
+
+		# if missing_indices:
+		# 		if verbose:
+		# 				print(f"Found {len(missing_indices)} missing images. Downloading in parallel...")
+
+		# 		def download_task(idx: int):
+		# 				img_path = df['img_path'].iloc[idx]
+		# 				img_url = df['img_url'].iloc[idx]
+		# 				success = _download_and_process_image(
+		# 						img_url=img_url,
+		# 						img_fpath=img_path,
+		# 						thumbnail_size=thumbnail_size,
+		# 						verbose=False,   # keep per-image logs quiet here
+		# 				)
+		# 				return idx, img_url, success
+
+		# 		max_workers = min(8, len(missing_indices))
+		# 		from concurrent.futures import ThreadPoolExecutor, as_completed
+		# 		from tqdm import tqdm
+
+		# 		failed = []
+		# 		with ThreadPoolExecutor(max_workers=max_workers) as ex:
+		# 				futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
+		# 				for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading missing images", ncols=100):
+		# 						idx, url, ok = fut.result()
+		# 						if not ok:
+		# 								failed.append((idx, url))
+
+		# 		if failed and verbose:
+		# 				print(f"⚠️ Failed to download {len(failed)} images.")
+		# 				for i, (idx, url) in enumerate(failed[:10]):
+		# 						print(f"   [{idx}] {url}")
+		# 				if len(failed) > 10:
+		# 						print(f"   ... and {len(failed) - 10} more")
+
+
+
 
 		return df
 
