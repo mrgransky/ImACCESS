@@ -168,62 +168,26 @@ def _load_llm_(
 	if verbose:
 		print(f"[INFO] {model_id} Dtype selection: {dtype}")
 
-	# # ========== Optimal attention implementation ==========
-	# def _optimal_attn_impl(m_id: str) -> str:
-	# 	"""Select Flash Attention 2 if available, else eager."""
-	# 	if not torch.cuda.is_available():
-	# 		return "eager"
-		
-	# 	flash_ok = False
-	# 	try:
-	# 		import flash_attn
-	# 		major, _ = torch.cuda.get_device_capability()
-	# 		flash_ok = major >= 8  # Flash Attention 2 requires Ampere (SM 8.0) or newer
-	# 	except Exception as e:
-	# 		if verbose:
-	# 			print(f"[WARN] Flash Attention unavailable: {type(e).__name__}")
-	# 			traceback.print_exc()
-		
-	# 	if flash_ok:
-	# 		return "flash_attention_2"
-	# 	return "eager"
-	
+	# ========== Optimal attention implementation ==========
 	def _optimal_attn_impl(m_id: str) -> str:
-		"""Select best available attention implementation."""
+		"""Select Flash Attention 2 if available, else eager."""
 		if not torch.cuda.is_available():
 			return "eager"
 		
-		major, minor = torch.cuda.get_device_capability()
-		compute_cap = major + minor / 10
+		flash_ok = False
+		try:
+			import flash_attn
+			major, _ = torch.cuda.get_device_capability()
+			flash_ok = major >= 8  # Flash Attention 2 requires Ampere (SM 8.0) or newer
+		except Exception as e:
+			if verbose:
+				print(f"[WARN] Flash Attention unavailable: {type(e).__name__}")
+				traceback.print_exc()
 		
-		# Try Flash Attention 2 (requires Ampere or newer)
-		if compute_cap >= 8.0:
-			try:
-				import flash_attn
-				if verbose:
-					print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
-				return "flash_attention_2"
-			except ImportError:
-				if verbose:
-					print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
-		
-		# Try Flash Attention 1 (requires Turing/Volta or newer)
-		if compute_cap >= 7.0:
-			try:
-				import flash_attn
-				# Check if FA1 is available (some packages only have FA2)
-				if hasattr(flash_attn, 'flash_attn_func'):
-					if verbose:
-						print(f"[INFO] Flash Attention 1 available (compute {compute_cap})")
-					return "flash_attention_2"  # transformers uses same key for both
-			except ImportError:
-				pass
-		
-		if verbose:
-			print(f"[INFO] Flash Attention unavailable (compute {compute_cap} < 7.0 or not installed)")
-		
+		if flash_ok:
+			return "flash_attention_2"
 		return "eager"
-
+	
 
 	attn_impl = _optimal_attn_impl(model_id)
 	if verbose:
