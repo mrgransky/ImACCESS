@@ -168,27 +168,6 @@ def _load_llm_(
 	if verbose:
 		print(f"[INFO] {model_id} Dtype selection: {dtype}")
 
-	# # ========== Optimal attention implementation ==========
-	# def _optimal_attn_impl(m_id: str) -> str:
-	# 	"""Select Flash Attention 2 if available, else eager."""
-	# 	if not torch.cuda.is_available():
-	# 		return "eager"
-		
-	# 	flash_ok = False
-	# 	try:
-	# 		import flash_attn
-	# 		major, _ = torch.cuda.get_device_capability()
-	# 		flash_ok = major >= 8  # Flash Attention 2 requires Ampere (SM 8.0) or newer
-	# 	except Exception as e:
-	# 		if verbose:
-	# 			print(f"[WARN] Flash Attention unavailable: {type(e).__name__}")
-	# 			traceback.print_exc()
-		
-	# 	if flash_ok:
-	# 		return "flash_attention_2"
-	# 	return "eager"
-	
-
 	def _optimal_attn_impl(m_id: str) -> str:
 		"""Select best available attention implementation."""
 		if not torch.cuda.is_available():
@@ -221,9 +200,6 @@ def _load_llm_(
 			print(f"[INFO] Using eager attention (compute {compute_cap})")
 		
 		return "eager"
-
-
-
 
 	attn_impl = _optimal_attn_impl(model_id)
 	if verbose:
