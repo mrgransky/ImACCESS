@@ -168,26 +168,62 @@ def _load_llm_(
 	if verbose:
 		print(f"[INFO] {model_id} Dtype selection: {dtype}")
 
-	# ========== Optimal attention implementation ==========
+	# # ========== Optimal attention implementation ==========
+	# def _optimal_attn_impl(m_id: str) -> str:
+	# 	"""Select Flash Attention 2 if available, else eager."""
+	# 	if not torch.cuda.is_available():
+	# 		return "eager"
+		
+	# 	flash_ok = False
+	# 	try:
+	# 		import flash_attn
+	# 		major, _ = torch.cuda.get_device_capability()
+	# 		flash_ok = major >= 8  # Flash Attention 2 requires Ampere (SM 8.0) or newer
+	# 	except Exception as e:
+	# 		if verbose:
+	# 			print(f"[WARN] Flash Attention unavailable: {type(e).__name__}")
+	# 			traceback.print_exc()
+		
+	# 	if flash_ok:
+	# 		return "flash_attention_2"
+	# 	return "eager"
+	
+
 	def _optimal_attn_impl(m_id: str) -> str:
-		"""Select Flash Attention 2 if available, else eager."""
+		"""Select best available attention implementation."""
 		if not torch.cuda.is_available():
 			return "eager"
 		
-		flash_ok = False
-		try:
-			import flash_attn
-			major, _ = torch.cuda.get_device_capability()
-			flash_ok = major >= 8  # Flash Attention 2 requires Ampere (SM 8.0) or newer
-		except Exception as e:
-			if verbose:
-				print(f"[WARN] Flash Attention unavailable: {type(e).__name__}")
-				traceback.print_exc()
+		major, minor = torch.cuda.get_device_capability()
+		compute_cap = major + minor / 10
 		
-		if flash_ok:
-			return "flash_attention_2"
+		# Flash Attention 2 requires Ampere or newer (compute >= 8.0)
+		if compute_cap >= 8.0:
+			try:
+				import flash_attn
+				if verbose:
+					print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
+				return "flash_attention_2"
+			except ImportError:
+				if verbose:
+					print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
+		
+		# For older GPUs (Volta/Turing), use SDPA (PyTorch native, faster than eager)
+		if compute_cap >= 7.0:
+			# Check if PyTorch version supports SDPA
+			torch_version = tuple(int(x) for x in torch.__version__.split('.')[:2])
+			if torch_version >= (2, 0):
+				if verbose:
+					print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
+				return "sdpa"
+		
+		if verbose:
+			print(f"[INFO] Using eager attention (compute {compute_cap})")
+		
 		return "eager"
-	
+
+
+
 
 	attn_impl = _optimal_attn_impl(model_id)
 	if verbose:
