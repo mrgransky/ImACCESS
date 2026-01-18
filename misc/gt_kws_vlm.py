@@ -147,7 +147,7 @@ def _load_vlm_(
 	
 	# ========== Optimal attention implementation ==========
 	def _optimal_attn_impl(m_id: str) -> str:
-		"""Select Flash Attention 2 if available, else eager."""
+		"""Select Flash Attention 2 if available, else SDPA if available, else eager."""
 		if not torch.cuda.is_available():
 			return "eager"
 		
@@ -163,6 +163,11 @@ def _load_vlm_(
 		
 		if flash_ok:
 			return "flash_attention_2"
+
+		# torch >= 2.0.0 has SDPA
+		if torch.__version__ >= "2.0.0":
+			return "sdpa"
+
 		return "eager"
 	
 	attn_impl = _optimal_attn_impl(model_id)
