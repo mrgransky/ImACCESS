@@ -76,6 +76,444 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""
 
+# def _load_llm_(
+# 	model_id: str,
+# 	use_quantization: bool = False,
+# 	quantization_bits: int = 8,
+# 	force_multi_gpu: bool = False,
+# 	verbose: bool = False,
+# ) -> Tuple[tfs.PreTrainedTokenizerBase, torch.nn.Module]:
+# 	"""
+# 	Load a Large Language Model with optimal device placement.
+	
+# 	Implements intelligent device strategy:
+# 	1. For small models (<20GB): Single GPU for speed
+# 	2. For large models (>=20GB): Multi-GPU distribution
+# 	3. Adaptive VRAM buffering based on GPU size
+# 	4. Quantization-aware memory allocation
+# 	5. Avoids disk offloading at all costs
+	
+# 	Args:
+# 		model_id: HuggingFace model identifier
+# 		use_quantization: Whether to use quantization
+# 		quantization_bits: Quantization bits (4 or 8)
+# 		force_multi_gpu: Force multi-GPU distribution (for large models)
+# 		verbose: Enable verbose logging
+	
+# 	Returns:
+# 		Tuple of (tokenizer, model)
+# 	"""
+# 	if verbose:
+# 		print(f"[MODEL] Loading {model_id}...")
+
+# 	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
+
+# 	if verbose:
+# 		print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
+# 		print(f"[INFO] CUDA available?        : {torch.cuda.is_available()} {n_gpus} GPU(s) available: {[torch.cuda.get_device_name(i) for i in range(n_gpus)]}")
+# 		if torch.cuda.is_available():
+# 			cur = torch.cuda.current_device()
+# 			major, minor = torch.cuda.get_device_capability(cur)
+# 			print(f"[INFO] Compute capability     : {major}.{minor}")
+# 			print(f"[INFO] BF16 support?          : {torch.cuda.is_bf16_supported()}")
+# 			print(f"[INFO] CUDA memory allocated  : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+# 			print(f"[INFO] CUDA memory reserved   : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
+# 		else:
+# 			print("[INFO] Running on CPU only")
+
+# 	# ========== HuggingFace login ==========
+# 	try:
+# 		if verbose:
+# 			print(f"[INFO] Logging in to HuggingFace Hub...")
+# 		huggingface_hub.login(token=hf_tk)
+# 	except Exception as e:
+# 		print(f"<!> Failed to login to HuggingFace Hub: {e}")
+# 		raise e
+
+# 	# ========== Load config ==========
+# 	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+# 	if verbose:
+# 		print(f"[INFO] {model_id} Config summary")
+# 		print(f"   • model_type        : {config.model_type}")
+# 		print(f"   • architectures     : {config.architectures}")
+# 		print(f"   • dtype (if set)    : {config.dtype}")
+# 		print()
+	
+# 	# ========== Determine model class ==========
+# 	model_cls = None
+# 	use_auto_model = False
+	
+# 	if config.architectures:
+# 		cls_name = config.architectures[0]
+# 		if hasattr(tfs, cls_name):
+# 			model_cls = getattr(tfs, cls_name)
+# 			if verbose:
+# 				print(f"[INFO] Resolved model class from transformers → {model_cls.__name__}\n")
+# 		else:
+# 			# Custom architecture - will use AutoModelForCausalLM
+# 			use_auto_model = True
+# 			if verbose:
+# 				print(f"[INFO] Custom architecture detected: {cls_name}")
+# 				print(f"[INFO] Will use AutoModelForCausalLM with trust_remote_code=True\n")
+# 	else:
+# 		# No architecture specified - use AutoModelForCausalLM
+# 		use_auto_model = True
+# 		if verbose:
+# 			print(f"[INFO] No architecture specified in config")
+# 			print(f"[INFO] Will use AutoModelForCausalLM\n")
+
+# 	# ========== Quantization config ==========
+# 	quantization_config = None
+# 	if use_quantization:
+# 		if quantization_bits == 8:
+# 			quantization_config = tfs.BitsAndBytesConfig(
+# 				load_in_8bit=True,
+# 				bnb_8bit_compute_dtype=torch.bfloat16,
+# 				llm_int8_enable_fp32_cpu_offload=False,
+# 			)
+# 		elif quantization_bits == 4:
+# 			quantization_config = tfs.BitsAndBytesConfig(
+# 				load_in_4bit=True,
+# 				bnb_4bit_quant_type="nf4",
+# 				bnb_4bit_compute_dtype=torch.bfloat16,
+# 				bnb_4bit_use_double_quant=True,
+# 			)
+# 		else:
+# 			raise ValueError("quantization_bits must be 4 or 8")
+		
+# 		if verbose:
+# 			print(f"[INFO] Quantization enabled")
+# 			print(f"   • Bits                : {quantization_bits}")
+# 			print(f"   • Config object type  : {type(quantization_config).__name__}")
+# 			print()
+	
+# 	# ========== Tokenizer loading ==========
+# 	tokenizer = None
+# 	try:
+# 		tokenizer = tfs.AutoTokenizer.from_pretrained(
+# 			model_id,
+# 			use_fast=True,
+# 			trust_remote_code=True,
+# 			cache_dir=cache_directory[USER],
+# 		)
+# 	except (KeyError, ValueError, OSError) as exc:
+# 		if verbose:
+# 			print(f"[WARN] AutoTokenizer failed: {exc}")
+# 			print("[INFO] Trying specific tokenizer classes...")
+		
+# 		fallback_exc = None
+# 		candidate_tokenizer_classes = [
+# 			getattr(tfs, "MistralTokenizer", None),
+# 			getattr(tfs, "MistralTokenizerFast", None),
+# 			getattr(tfs, "LlamaTokenizer", None),
+# 			getattr(tfs, "LlamaTokenizerFast", None),
+# 		]
+		
+# 		candidate_tokenizer_classes = [cls for cls in candidate_tokenizer_classes if cls is not None]
+		
+# 		for TokCls in candidate_tokenizer_classes:
+# 			try:
+# 				if verbose:
+# 					print(f"[DEBUG] Trying {TokCls.__name__}...")
+				
+# 				tokenizer = TokCls.from_pretrained(
+# 					model_id,
+# 					trust_remote_code=True,
+# 					cache_dir=cache_directory[USER],
+# 				)
+				
+# 				if verbose:
+# 					print(f"[SUCCESS] Loaded tokenizer using {TokCls.__name__}")
+# 				break
+# 			except Exception as e:
+# 				fallback_exc = e
+# 				if verbose:
+# 					print(f"[DEBUG] {TokCls.__name__} failed: {e}")
+# 				continue
+
+# 		if tokenizer is None:
+# 			if verbose:
+# 				print("[INFO] All specific tokenizer classes failed, trying AutoTokenizer with use_fast=False...")
+# 			try:
+# 				tokenizer = tfs.AutoTokenizer.from_pretrained(
+# 					model_id,
+# 					use_fast=False,
+# 					trust_remote_code=True,
+# 					cache_dir=cache_directory[USER],
+# 				)
+# 				if verbose:
+# 					print("[SUCCESS] Loaded tokenizer using AutoTokenizer with use_fast=False")
+# 			except Exception as final_exc:
+# 				raise RuntimeError(
+# 					f"Failed to load tokenizer for '{model_id}'. "
+# 					f"AutoTokenizer error: {exc}. "
+# 					f"Fallback errors: {fallback_exc}. "
+# 					f"Final attempt error: {final_exc}"
+# 				) from final_exc
+
+# 	if tokenizer.pad_token is None:
+# 		tokenizer.pad_token = tokenizer.eos_token
+# 		tokenizer.pad_token_id = tokenizer.eos_token_id
+	
+# 	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
+# 		tokenizer.padding_side = "left"
+
+# 	if verbose:
+# 		# print all tokenizer attributes
+# 		print(f"[TOKENIZER] {tokenizer.__class__.__name__}")
+# 		for attr in dir(tokenizer):
+# 			print(f"{attr}")
+
+# 		print(f"   • vocab size        : {tokenizer.vocab_size:>20,}")
+# 		print(f"   • padding side      : {tokenizer.padding_side:>20}")
+# 		print()
+	
+# 	# ========== Dynamic Device Strategy with Adaptive VRAM Buffering ==========
+# 	def get_estimated_gb_size(m_id: str) -> float:
+# 		info = huggingface_hub.model_info(m_id, token=hf_tk)
+# 		try:
+# 			if hasattr(info, "safetensors") and info.safetensors:
+# 				total_bytes = info.safetensors.total
+# 				if total_bytes > 0:
+# 					size_gb = total_bytes / (1024 ** 3)
+# 					return size_gb
+# 		except Exception as e:
+# 			print(f"<!> Failed to estimate model size from safetensors: {e}")
+# 			raise e
+
+# 	estimated_size_gb = get_estimated_gb_size(model_id)
+# 	if verbose:
+# 		print(f"[INFO] Estimated model size: ~{estimated_size_gb:.1f} GB (fp16)")
+
+# 	# ========== Model loading kwargs ==========
+# 	max_memory = {}
+	
+# 	if n_gpus > 0:
+# 		total_vram_available = 0
+# 		gpu_vram = []
+		
+# 		for i in range(n_gpus):
+# 			props = torch.cuda.get_device_properties(i)
+# 			vram_gb = props.total_memory / (1024**3)
+# 			gpu_vram.append(vram_gb)
+# 			total_vram_available += vram_gb
+		
+# 		# ADAPTIVE BUFFER: Scale based on GPU size
+# 		# Small GPUs (<10GB): 1GB buffer
+# 		# Medium GPUs (10-20GB): 2GB buffer
+# 		# Large GPUs (>20GB): 4GB buffer
+# 		if gpu_vram[0] < 10:
+# 			vram_buffer_gb = 1.0  # Small GPU (6GB, 8GB)
+# 		elif gpu_vram[0] < 20:
+# 			vram_buffer_gb = 2.0  # Medium GPU (16GB)
+# 		else:
+# 			vram_buffer_gb = 4.0  # Large GPU (32GB, 40GB)
+		
+# 		# For quantization, we need even less buffer (quantized models are memory efficient)
+# 		if use_quantization:
+# 			vram_buffer_gb = max(0.5, vram_buffer_gb * 0.5)  # Half the buffer for quantized
+# 			if verbose:
+# 				print(f"[INFO] Quantization enabled - reducing VRAM buffer to {vram_buffer_gb:.1f}GB")
+		
+# 		# Decision: Single GPU vs Multi GPU
+# 		single_gpu_capacity = gpu_vram[0] - vram_buffer_gb
+		
+# 		# Adjust estimated size for quantization
+# 		adjusted_size = estimated_size_gb
+# 		if use_quantization:
+# 			if quantization_bits == 8:
+# 				adjusted_size = estimated_size_gb * 0.5  # 8-bit is ~50% of fp16
+# 			elif quantization_bits == 4:
+# 				adjusted_size = estimated_size_gb * 0.25  # 4-bit is ~25% of fp16
+			
+# 			if verbose:
+# 				print(f"[INFO] Adjusted size for {quantization_bits}-bit quantization: {adjusted_size:.1f} GB")
+		
+# 		use_single_gpu = (
+# 			not force_multi_gpu and
+# 			adjusted_size < single_gpu_capacity * 0.8 and  # 80% safety margin
+# 			(n_gpus == 1 or adjusted_size < 20)
+# 		)
+		
+# 		if use_single_gpu:
+# 			max_memory[0] = f"{max(1, single_gpu_capacity):.0f}GB"  # At least 1GB
+# 			strategy_desc = f"Single GPU (GPU 0, limit: {max_memory[0]})"
+# 		else:
+# 			# Multi-GPU distribution
+# 			for i in range(n_gpus):
+# 				# Smaller buffer on secondary GPUs
+# 				if gpu_vram[i] < 10:
+# 					buffer = vram_buffer_gb if i == 0 else 0.5
+# 				else:
+# 					buffer = vram_buffer_gb if i == 0 else 2
+				
+# 				if use_quantization:
+# 					buffer = buffer * 0.5  # Even smaller for quantized
+				
+# 				max_memory[i] = f"{max(1, gpu_vram[i] - buffer):.0f}GB"
+			
+# 			total_usable = sum(float(v.replace('GB', '')) for v in max_memory.values())
+# 			strategy_desc = f"Multi-GPU ({n_gpus} GPUs, {total_usable:.0f}GB total)"
+			
+# 			if verbose:
+# 				print(f"[INFO] Using multi-GPU strategy:")
+# 				print(f"   • Estimated model size: {estimated_size_gb:.1f} GB (fp16)")
+# 				if use_quantization:
+# 					print(f"   • Adjusted for quantization: {adjusted_size:.1f} GB")
+# 				print(f"   • Single GPU capacity: {single_gpu_capacity:.1f} GB")
+# 				print(f"   • Total VRAM: {total_vram_available:.1f} GB")
+# 				if force_multi_gpu:
+# 					print(f"   • Reason: force_multi_gpu=True")
+# 	else:
+# 		strategy_desc = "CPU (no GPUs)"
+	
+# 	if verbose:
+# 		print(f"[INFO] Loading strategy: {strategy_desc}")
+# 		if max_memory:
+# 			print(f"   • Max memory per GPU:")
+# 			for gpu_id, limit in max_memory.items():
+# 				print(f"      - GPU {gpu_id}: {limit}")
+# 		print()
+	
+# 	# ========== Model loading kwargs ==========
+# 	model_kwargs: Dict[str, Any] = {
+# 		"low_cpu_mem_usage": True,
+# 		"trust_remote_code": True,
+# 		"cache_dir": cache_directory[USER],
+# 		"dtype": torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+# 	}
+	
+# 	if use_quantization:
+# 		model_kwargs["quantization_config"] = quantization_config
+	
+# 	if n_gpus > 0:
+# 		model_kwargs["device_map"] = "auto"
+# 		model_kwargs["max_memory"] = max_memory
+
+# 	if verbose:
+# 		model_loader_name = "AutoModelForCausalLM" if use_auto_model else model_cls.__name__
+# 		print(f"[INFO] Model loading kwargs for {model_loader_name}:")
+# 		for k, v in model_kwargs.items():
+# 			if k == "quantization_config":
+# 				print(f"   • {k}: {type(v).__name__}")
+# 			elif k == "max_memory":
+# 				print(f"   • {k}: {v}")
+# 			else:
+# 				print(f"   • {k}: {v}")
+
+# 		print()
+
+# 		if torch.cuda.is_available():
+# 			cur = torch.cuda.current_device()
+# 			print("[DEBUG] CUDA memory BEFORE model load")
+# 			print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+# 			print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
+
+# 	try:
+# 		if use_auto_model:
+# 			model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+# 		else:
+# 			model = model_cls.from_pretrained(model_id, **model_kwargs)
+# 	except Exception as e:
+# 		if verbose:
+# 			print(f"[ERROR] Error loading model: {e}")
+# 		raise e
+
+# 	model.eval()
+
+# 	# ========== Model Info & Verification ==========
+# 	if verbose:
+# 		print(f"[MODEL] {model_id} {model.__class__.__name__}")
+# 		for attr in dir(model):
+# 			print(f"{attr}")
+
+# 		print(f"\n[DEBUG] Model generate signature: {inspect.signature(model.generate)}")
+
+# 		custom_methods = [m for m in dir(model) if 'generate' in m.lower()]
+# 		print(f"\n[DEBUG] Available generate methods: {custom_methods}")
+
+# 		try:
+# 			first_param = next(model.parameters())
+# 			print(f"   • First parameter dtype: {first_param.dtype}")
+# 			print(f"   • First parameter device: {first_param.device}")
+# 		except StopIteration:
+# 			pass
+
+# 		total_params = sum(p.numel() for p in model.parameters())
+# 		approx_fp16_gb = total_params * 2 / (1024 ** 3)
+# 		approx_fp8_gb = total_params * 1 / (1024 ** 3)
+# 		approx_fp4_gb = total_params * 0.5 / (1024 ** 3)
+
+# 		print(f"   • Total parameters: {total_params:,}")
+# 		print(f"   • Actual model size (fp16): {approx_fp16_gb:.2f} GB")
+# 		if use_quantization:
+# 			if quantization_bits == 8:
+# 				print(f"   • Actual model size (int8): {approx_fp8_gb:.2f} GB")
+# 			elif quantization_bits == 4:
+# 				print(f"   • Actual model size (int4): {approx_fp4_gb:.2f} GB")
+		
+# 		# Validate estimation
+# 		estimation_error = abs(estimated_size_gb - approx_fp16_gb) / approx_fp16_gb * 100
+# 		if estimation_error > 50:
+# 			print(f"   ⚠️  WARNING: Size estimation was off by {estimation_error:.0f}%!")
+# 			print(f"      Estimated: {estimated_size_gb:.1f} GB, Actual: {approx_fp16_gb:.1f} GB")
+
+# 		if hasattr(model, "hf_device_map"):
+# 			dm = model.hf_device_map
+			
+# 			# Check for disk offloading
+# 			disk_layers = [k for k, v in dm.items() if v == "disk"]
+# 			cpu_layers = [k for k, v in dm.items() if v == "cpu"]
+			
+# 			if disk_layers:
+# 				print(f"\n{'='*70}")
+# 				print(f"❌ CRITICAL WARNING: {len(disk_layers)} layers on DISK!")
+# 				print(f"{'='*70}")
+# 				print(f"This will cause 100-1000x slowdown!")
+# 				print(f"\nSOLUTIONS:")
+# 				print(f"  1. Use quantization: use_quantization=True, quantization_bits=8")
+# 				print(f"  2. Force multi-GPU: force_multi_gpu=True")
+# 				print(f"  3. Use smaller model variant")
+# 				print(f"  4. Use 4-bit quantization for even more memory savings")
+# 				print(f"{'='*70}\n")
+			
+# 			if cpu_layers:
+# 				print(f"\n⚠️  WARNING: {len(cpu_layers)} layers on CPU (slower than GPU)")
+			
+# 			# Count GPU distribution
+# 			gpu_counts = {}
+# 			for layer_name, device in dm.items():
+# 				if isinstance(device, int):
+# 					gpu_counts[device] = gpu_counts.get(device, 0) + 1
+			
+# 			if gpu_counts:
+# 				print(f"\n[INFO] GPU Distribution:")
+# 				total_gpu_layers = sum(gpu_counts.values())
+# 				for gpu_id in sorted(gpu_counts.keys()):
+# 					count = gpu_counts[gpu_id]
+# 					pct = count / total_gpu_layers * 100 if total_gpu_layers > 0 else 0
+# 					print(f"   • GPU {gpu_id}: {count} layers ({pct:.1f}%)")
+			
+# 			# Show abbreviated device map for large models
+# 			if not disk_layers and not cpu_layers:
+# 				print(f"\n✅ All layers on GPU - optimal performance!")
+# 			elif not disk_layers:
+# 				print(f"\n[INFO] Device map summary:")
+# 				items = list(dm.items())
+# 				for k, v in items:
+# 					print(f"   {k}: {v}")
+
+# 		if hasattr(model, 'generation_config'):
+# 			print(f"\n[GENERATION CONFIG]")
+# 			gen_cfg = model.generation_config
+# 			print(f"   • max_length: {getattr(gen_cfg, 'max_length', 'N/A')}")
+# 			print(f"   • temperature: {getattr(gen_cfg, 'temperature', 'N/A')}")
+# 			print(f"   • top_p: {getattr(gen_cfg, 'top_p', 'N/A')}")
+# 			print(f"   • top_k: {getattr(gen_cfg, 'top_k', 'N/A')}")
+# 			print(f"   • do_sample: {getattr(gen_cfg, 'do_sample', 'N/A')}")
+
+# 	return tokenizer, model
+
 def _load_llm_(
 	model_id: str,
 	use_quantization: bool = False,
@@ -104,10 +542,11 @@ def _load_llm_(
 		Tuple of (tokenizer, model)
 	"""
 	if verbose:
-		print(f"[MODEL] Loading {model_id}...")
+		print(f"\n{'='*110}")
+		print(f"[MODEL] Loading {model_id} on cache_dir: {cache_directory.get(USER)}")
 
+	# ========== Version and CUDA info ==========
 	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
-
 	if verbose:
 		print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
 		print(f"[INFO] CUDA available?        : {torch.cuda.is_available()} {n_gpus} GPU(s) available: {[torch.cuda.get_device_name(i) for i in range(n_gpus)]}")
@@ -162,14 +601,43 @@ def _load_llm_(
 			print(f"[INFO] No architecture specified in config")
 			print(f"[INFO] Will use AutoModelForCausalLM\n")
 
+	# ========== Dtype selection ==========
+	dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
+	if verbose:
+		print(f"[INFO] {model_id} Dtype selection: {dtype}")
+
+	# ========== Optimal attention implementation ==========
+	def _optimal_attn_impl(m_id: str) -> str:
+		"""Select Flash Attention 2 if available, else eager."""
+		if not torch.cuda.is_available():
+			return "eager"
+		
+		flash_ok = False
+		try:
+			import flash_attn
+			major, _ = torch.cuda.get_device_capability()
+			flash_ok = major >= 8  # Flash Attention 2 requires Ampere (SM 8.0) or newer
+		except Exception as e:
+			if verbose:
+				print(f"[WARN] Flash Attention unavailable: {type(e).__name__}")
+				traceback.print_exc()
+		
+		if flash_ok:
+			return "flash_attention_2"
+		return "eager"
+	
+	attn_impl = _optimal_attn_impl(model_id)
+	if verbose:
+		print(f"[INFO] {model_id} Attention implementation: {attn_impl}")
+
 	# ========== Quantization config ==========
 	quantization_config = None
 	if use_quantization:
 		if quantization_bits == 8:
 			quantization_config = tfs.BitsAndBytesConfig(
 				load_in_8bit=True,
-				bnb_8bit_compute_dtype=torch.bfloat16,
-				llm_int8_enable_fp32_cpu_offload=False,
+				bnb_8bit_compute_dtype=dtype,
+				llm_int8_enable_fp32_cpu_offload=False,  # avoid offloading to CPU
 			)
 		elif quantization_bits == 4:
 			quantization_config = tfs.BitsAndBytesConfig(
@@ -179,13 +647,12 @@ def _load_llm_(
 				bnb_4bit_use_double_quant=True,
 			)
 		else:
-			raise ValueError("quantization_bits must be 4 or 8")
+			raise ValueError(f"quantization_bits must be 4 or 8, got {quantization_bits}")
 		
 		if verbose:
-			print(f"[INFO] Quantization enabled")
-			print(f"   • Bits                : {quantization_bits}")
-			print(f"   • Config object type  : {type(quantization_config).__name__}")
-			print()
+			print(f"[INFO] {model_id} Quantization enabled")
+			print(f"\t• Bits                : {quantization_bits}")
+			print(f"\t• Config object type  : {type(quantization_config).__name__}")
 	
 	# ========== Tokenizer loading ==========
 	tokenizer = None
@@ -259,11 +726,7 @@ def _load_llm_(
 		tokenizer.padding_side = "left"
 
 	if verbose:
-		# print all tokenizer attributes
 		print(f"[TOKENIZER] {tokenizer.__class__.__name__}")
-		for attr in dir(tokenizer):
-			print(f"{attr}")
-
 		print(f"   • vocab size        : {tokenizer.vocab_size:>20,}")
 		print(f"   • padding side      : {tokenizer.padding_side:>20}")
 		print()
@@ -282,10 +745,10 @@ def _load_llm_(
 			raise e
 
 	estimated_size_gb = get_estimated_gb_size(model_id)
+	
 	if verbose:
-		print(f"[INFO] Estimated model size: ~{estimated_size_gb:.1f} GB (fp16)")
-
-	# ========== Model loading kwargs ==========
+		print(f"[INFO] {model_id} Estimated size: {estimated_size_gb:.2f} GB (fp16)")
+	
 	max_memory = {}
 	
 	if n_gpus > 0:
@@ -294,93 +757,164 @@ def _load_llm_(
 		
 		for i in range(n_gpus):
 			props = torch.cuda.get_device_properties(i)
+			if verbose:
+				print(f"GPU {i}: {props}")
 			vram_gb = props.total_memory / (1024**3)
 			gpu_vram.append(vram_gb)
 			total_vram_available += vram_gb
 		
 		# ADAPTIVE BUFFER: Scale based on GPU size
-		# Small GPUs (<10GB): 1GB buffer
-		# Medium GPUs (10-20GB): 2GB buffer
-		# Large GPUs (>20GB): 4GB buffer
 		if gpu_vram[0] < 10:
-			vram_buffer_gb = 1.0  # Small GPU (6GB, 8GB)
+			vram_buffer_gb = 0.7
 		elif gpu_vram[0] < 20:
-			vram_buffer_gb = 2.0  # Medium GPU (16GB)
+			vram_buffer_gb = 2.0
 		else:
-			vram_buffer_gb = 4.0  # Large GPU (32GB, 40GB)
-		
-		# For quantization, we need even less buffer (quantized models are memory efficient)
+			vram_buffer_gb = 4.0
+		if verbose:
+			print(f"[INFO] VRAM buffer: {vram_buffer_gb:.2f} GB")
+
+		# For quantization, reduce buffer further
 		if use_quantization:
-			vram_buffer_gb = max(0.5, vram_buffer_gb * 0.5)  # Half the buffer for quantized
+			vram_buffer_gb = max(0.5, vram_buffer_gb * 0.5)
 			if verbose:
-				print(f"[INFO] Quantization enabled - reducing VRAM buffer to {vram_buffer_gb:.1f}GB")
-		
-		# Decision: Single GPU vs Multi GPU
-		single_gpu_capacity = gpu_vram[0] - vram_buffer_gb
-		
+				print(f"[INFO] Quantization enabled - reducing VRAM buffer to {vram_buffer_gb:.1f} GB")
+				
 		# Adjust estimated size for quantization
 		adjusted_size = estimated_size_gb
 		if use_quantization:
 			if quantization_bits == 8:
-				adjusted_size = estimated_size_gb * 0.5  # 8-bit is ~50% of fp16
+				adjusted_size = estimated_size_gb * 0.5
 			elif quantization_bits == 4:
-				adjusted_size = estimated_size_gb * 0.25  # 4-bit is ~25% of fp16
+				adjusted_size = estimated_size_gb * 0.25
 			
 			if verbose:
 				print(f"[INFO] Adjusted size for {quantization_bits}-bit quantization: {adjusted_size:.1f} GB")
 		
+		# ========== PRE-FLIGHT VRAM VALIDATION ==========
+		INFERENCE_OVERHEAD_MULTIPLIER = 1.5
+		required_vram = adjusted_size * INFERENCE_OVERHEAD_MULTIPLIER
+		usable_vram = total_vram_available - (n_gpus * vram_buffer_gb)
+
+		if verbose:
+			print(f"\n[VRAM CHECK] Pre-flight validation:")
+			print(f"\t• Estimated Model size (fp16): {adjusted_size:.1f} GB (with {INFERENCE_OVERHEAD_MULTIPLIER}x overhead): {required_vram:.1f} GB")
+			print(f"\t• Available VRAM (total):      {total_vram_available:.1f} GB")
+			print(f"\t• Available VRAM (usable):     {usable_vram:.1f} GB ({n_gpus}x GPU(s), {vram_buffer_gb:.1f} GB buffer per GPU)")
+
+		# Check if model will fit
+		if required_vram > usable_vram:
+			print("\n" + "="*80)
+			print("❌ INSUFFICIENT VRAM ERROR")
+			print("="*80)
+			print(f"\nModel: {model_id}")
+			print(f"Estimated Model size: {adjusted_size:.1f} GB")
+			print(f"Required VRAM (with overhead): {required_vram:.1f} GB")
+			print(f"Available VRAM: {usable_vram:.1f} GB ({n_gpus}x GPUs)")
+			print(f"\nDeficit: {required_vram - usable_vram:.1f} GB SHORT")
+			print("\nSOLUTIONS:")
+			
+			if not use_quantization:
+				print("\n1. ✅ ENABLE QUANTIZATION (Recommended):")
+				print("   use_quantization=True, quantization_bits=8")
+				quant8_size = estimated_size_gb * 0.5
+				quant8_required = quant8_size * INFERENCE_OVERHEAD_MULTIPLIER
+				quant8_fits = "✅ YES" if quant8_required < usable_vram else "❌ NO, try 4-bit"
+				print(f"   → Reduces size to ~{quant8_size:.1f} GB")
+				print(f"   → Required VRAM: ~{quant8_required:.1f} GB")
+				print(f"   → Will fit: {quant8_fits}")
+				
+				print("\n2. ⚠️  ENABLE 4-BIT QUANTIZATION (More aggressive):")
+				print("   use_quantization=True, quantization_bits=4")
+				quant4_size = estimated_size_gb * 0.25
+				quant4_required = quant4_size * INFERENCE_OVERHEAD_MULTIPLIER
+				print(f"   → Reduces size to ~{quant4_size:.1f} GB")
+				print(f"   → Required VRAM: ~{quant4_required:.1f} GB")
+				print(f"   → Will fit: ✅ YES")
+			else:
+				if quantization_bits == 8:
+					print("\n1. ⚠️  TRY 4-BIT QUANTIZATION:")
+					print("   quantization_bits=4")
+					quant4_size = estimated_size_gb * 0.25
+					quant4_required = quant4_size * INFERENCE_OVERHEAD_MULTIPLIER
+					print(f"   → Reduces size to ~{quant4_size:.1f} GB")
+					print(f"   → Required VRAM: ~{quant4_required:.1f} GB")
+				
+				print("\n2. 🔄 USE LARGER GPU:")
+				print("   • A100 80GB available")
+				print("   • Switch to Mahti gpusmall partition")
+				
+				print("\n3. 📉 USE SMALLER MODEL:")
+				print("   • Consider smaller model variants")
+			
+			print("\n" + "="*80 + "\n")
+			
+			raise RuntimeError(
+				f"Model requires {required_vram:.2f} GB but only {usable_vram:.2f} GB available. "
+				f"Enable quantization or use larger GPU."
+			)
+
+		if verbose:
+			print(f"[VRAM] PASSED: Model will fit!")
+
+		# Decision: Single GPU vs Multi GPU
+		single_gpu_capacity = gpu_vram[0] - vram_buffer_gb
+		if verbose:
+			print(f"\t• Single GPU capacity: {single_gpu_capacity:.1f} GB (GPU VRAM: {gpu_vram[0]:.1f} GB - {vram_buffer_gb:.1f} GB buffer)")
+		is_large_model = adjusted_size >= 20
+		if verbose:
+			print(f"\t• is {model_id} Large? ({adjusted_size:.1f} > 20GB) : {is_large_model}")
 		use_single_gpu = (
 			not force_multi_gpu and
-			adjusted_size < single_gpu_capacity * 0.8 and  # 80% safety margin
+			not is_large_model and
+			adjusted_size < single_gpu_capacity * 0.8 and
 			(n_gpus == 1 or adjusted_size < 20)
 		)
 		
 		if use_single_gpu:
-			max_memory[0] = f"{max(1, single_gpu_capacity):.0f}GB"  # At least 1GB
+			max_memory[0] = f"{max(1, single_gpu_capacity):.0f}GB"
 			strategy_desc = f"Single GPU (GPU 0, limit: {max_memory[0]})"
 		else:
-			# Multi-GPU distribution
+			# Multi-GPU distribution [Model Parallelism]
 			for i in range(n_gpus):
-				# Smaller buffer on secondary GPUs
 				if gpu_vram[i] < 10:
 					buffer = vram_buffer_gb if i == 0 else 0.5
 				else:
 					buffer = vram_buffer_gb if i == 0 else 2
 				
 				if use_quantization:
-					buffer = buffer * 0.5  # Even smaller for quantized
+					buffer = buffer * 0.5
 				
 				max_memory[i] = f"{max(1, gpu_vram[i] - buffer):.0f}GB"
 			
 			total_usable = sum(float(v.replace('GB', '')) for v in max_memory.values())
-			strategy_desc = f"Multi-GPU ({n_gpus} GPUs, {total_usable:.0f}GB total)"
+			strategy_desc = f"{model_id} is too large ({adjusted_size:.2f} GB + {INFERENCE_OVERHEAD_MULTIPLIER:.1f}x overhead = {required_vram:.2f} GB) to fit in a single GPU ({single_gpu_capacity:.2f} GB) => Multi-GPU [Model Parallelism] ({n_gpus} Available GPUs, {total_usable:.0f}GB total)"
 			
 			if verbose:
 				print(f"[INFO] Using multi-GPU strategy:")
-				print(f"   • Estimated model size: {estimated_size_gb:.1f} GB (fp16)")
+				print(f"• Estimated model size: {estimated_size_gb:.1f} GB (fp16)")
 				if use_quantization:
-					print(f"   • Adjusted for quantization: {adjusted_size:.1f} GB")
-				print(f"   • Single GPU capacity: {single_gpu_capacity:.1f} GB")
-				print(f"   • Total VRAM: {total_vram_available:.1f} GB")
+					print(f"• Adjusted for quantization: {adjusted_size:.1f} GB")
+				print(f"• Single GPU capacity: {single_gpu_capacity:.1f} GB")
+				print(f"• Total VRAM: {total_vram_available:.1f} GB")
 				if force_multi_gpu:
-					print(f"   • Reason: force_multi_gpu=True")
+					print(f"• Reason: force_multi_gpu=True")
 	else:
 		strategy_desc = "CPU (no GPUs)"
 	
 	if verbose:
-		print(f"[INFO] Loading strategy: {strategy_desc}")
+		print(f"\n[INFO] {strategy_desc}")
 		if max_memory:
-			print(f"   • Max memory per GPU:")
+			print(f"Max memory per GPU:")
 			for gpu_id, limit in max_memory.items():
-				print(f"      - GPU {gpu_id}: {limit}")
-		print()
-	
+				print(f"\tGPU {gpu_id}: {limit}")
+
 	# ========== Model loading kwargs ==========
 	model_kwargs: Dict[str, Any] = {
 		"low_cpu_mem_usage": True,
 		"trust_remote_code": True,
 		"cache_dir": cache_directory[USER],
-		"dtype": torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+		"attn_implementation": attn_impl,  # ← Flash Attention 2 support added here
+		"dtype": dtype,
 	}
 	
 	if use_quantization:
@@ -392,7 +926,7 @@ def _load_llm_(
 
 	if verbose:
 		model_loader_name = "AutoModelForCausalLM" if use_auto_model else model_cls.__name__
-		print(f"[INFO] Model loading kwargs for {model_loader_name}:")
+		print(f"\n[INFO] Model loading kwargs for {model_loader_name}:")
 		for k, v in model_kwargs.items():
 			if k == "quantization_config":
 				print(f"   • {k}: {type(v).__name__}")
@@ -400,7 +934,6 @@ def _load_llm_(
 				print(f"   • {k}: {v}")
 			else:
 				print(f"   • {k}: {v}")
-
 		print()
 
 		if torch.cuda.is_available():
@@ -409,6 +942,7 @@ def _load_llm_(
 			print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
 			print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
 
+	# ========== Load Model ==========
 	try:
 		if use_auto_model:
 			model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
@@ -423,15 +957,7 @@ def _load_llm_(
 
 	# ========== Model Info & Verification ==========
 	if verbose:
-		print(f"[MODEL] {model_id} {model.__class__.__name__}")
-		for attr in dir(model):
-			print(f"{attr}")
-
-		print(f"\n[DEBUG] Model generate signature: {inspect.signature(model.generate)}")
-
-		custom_methods = [m for m in dir(model) if 'generate' in m.lower()]
-		print(f"\n[DEBUG] Available generate methods: {custom_methods}")
-
+		print(f"\n[MODEL] {model_id} {model.__class__.__name__}")
 		try:
 			first_param = next(model.parameters())
 			print(f"   • First parameter dtype: {first_param.dtype}")
@@ -494,14 +1020,14 @@ def _load_llm_(
 					pct = count / total_gpu_layers * 100 if total_gpu_layers > 0 else 0
 					print(f"   • GPU {gpu_id}: {count} layers ({pct:.1f}%)")
 			
-			# Show abbreviated device map for large models
-			if not disk_layers and not cpu_layers:
+			# Show device map only if there are issues
+			if disk_layers or cpu_layers:
+				print(f"\n[INFO] Device map (showing problematic layers):")
+				for k, v in dm.items():
+					if v in ["disk", "cpu"]:
+						print(f"   {k}: {v}")
+			elif not disk_layers and not cpu_layers:
 				print(f"\n✅ All layers on GPU - optimal performance!")
-			elif not disk_layers:
-				print(f"\n[INFO] Device map summary:")
-				items = list(dm.items())
-				for k, v in items:
-					print(f"   {k}: {v}")
 
 		if hasattr(model, 'generation_config'):
 			print(f"\n[GENERATION CONFIG]")
@@ -511,6 +1037,9 @@ def _load_llm_(
 			print(f"   • top_p: {getattr(gen_cfg, 'top_p', 'N/A')}")
 			print(f"   • top_k: {getattr(gen_cfg, 'top_k', 'N/A')}")
 			print(f"   • do_sample: {getattr(gen_cfg, 'do_sample', 'N/A')}")
+		
+		print(f"[MODEL] Loading of {model_id} complete!")
+		print(f"{'='*110}\n")
 
 	return tokenizer, model
 
