@@ -2945,10 +2945,10 @@ def analyze_top_labels_per_source(
 			# ============================================================
 			# PART 4: Agreement Analysis
 			# ============================================================
-			print("\n--- Top Label Agreement Between Sources ---")
 			
 			# Get top-N from each source
-			top_n_agreement = 20
+			top_n_agreement = 100
+			print(f"Top-{top_n_agreement} Label Agreement Between Sources")
 			llm_top_n = set(all_label_counts['LLM-based'].head(top_n_agreement)['Label'].values)
 			vlm_top_n = set(all_label_counts['VLM-based'].head(top_n_agreement)['Label'].values)
 			
@@ -2956,7 +2956,7 @@ def analyze_top_labels_per_source(
 			llm_unique_top = llm_top_n - vlm_top_n
 			vlm_unique_top = vlm_top_n - llm_top_n
 			
-			print(f"\nAmong top {top_n_agreement} labels:")
+			print(f"Among top-{top_n_agreement} labels:")
 			print(f"  Agreed by both: {len(agreement)} labels")
 			print(f"  Only in LLM top-{top_n_agreement}: {len(llm_unique_top)} labels")
 			print(f"  Only in VLM top-{top_n_agreement}: {len(vlm_unique_top)} labels")
