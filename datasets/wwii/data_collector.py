@@ -292,14 +292,15 @@ def get_dframe(
 	print(f"Found {len(hits)} Document(s) => Extracting information [might take a while]")
 	data = []
 	for idoc, vdoc in enumerate(hits):
-		print(f"[{idoc+1}/{len(hits)}]")
-		print(vdoc)
+		print(f"[{idoc+1}/{len(hits)}] {vdoc}")
+
 		img_tag = vdoc
 		img_url = img_tag.get('data-src')
 
 		if not img_url:
 			print(f"{img_url} not found, skipping...")
 			continue
+
 		parent_a = img_tag.find_parent('a')
 		# print(f"doc_url: {parent_a.get('href')}")
 
@@ -309,7 +310,7 @@ def get_dframe(
 			response.raise_for_status()
 			soup = BeautifulSoup(response.text, 'html.parser')
 			if verbose:
-				print(f"All available image(s) on {doc_doc_url}:")
+				print(f"\nAll available image(s) on {doc_doc_url}:")
 				for i, img in enumerate(soup.find_all('img')):
 					print(f"[{i}] src={img.get('src')}")
 					print(f"data-src={img.get('data-src')}")

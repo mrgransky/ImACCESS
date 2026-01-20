@@ -372,16 +372,19 @@ def get_enriched_description(df: pd.DataFrame, check_english: bool=False, min_le
 			print("enriched_document_description column already exists. Dropping it...")
 		df = df.drop(columns=['enriched_document_description'])
 
-	df_enriched = df.copy()
+	df_enriched = df.copy(deep=True)
 	
-	df_enriched['enriched_document_description'] = df.apply(
+	if verbose:
+		print(f"df_enriched: {df_enriched.shape} {type(df_enriched)} {list(df_enriched.columns)}")
+
+	df_enriched['enriched_document_description'] = df_enriched.apply(
 		lambda row: ". ".join(
 			filter(
 				None, 
 				[
 					basic_clean(str(row['title'])) if pd.notna(row['title']) and str(row['title']).strip() else None, 
 					basic_clean(str(row['description'])) if pd.notna(row['description']) and str(row['description']).strip() else None,
-					basic_clean(str(row['keywords'])) if 'keywords' in df.columns and pd.notna(row['keywords']) and str(row['keywords']).strip() else None
+					basic_clean(str(row['keywords'])) if 'keywords' in df_enriched.columns and pd.notna(row['keywords']) and str(row['keywords']).strip() else None
 				]
 			)
 		),

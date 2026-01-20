@@ -226,7 +226,6 @@ def get_multimodal_annotation(
 	use_vlm_quantization: bool = False,
 	verbose: bool = False,
 ):
-	# Ensure we have a torch.device
 	if not isinstance(device, torch.device):
 		device = torch.device(device)
 
