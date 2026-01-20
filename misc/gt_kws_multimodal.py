@@ -128,10 +128,20 @@ def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[
 			s = str(item).strip().lower()
 			if verbose:
 				print(f"        → After str/strip/lower: {repr(s)}")
-			
-			s = s.strip('"').strip("'").strip('()').strip('[]')
+
+			# Replace ampersand with semantic equivalent
+			s = s.replace('&', ' and ')
 			if verbose:
-				print(f"        → After quote/bracket removal: {repr(s)}")
+				print(f"        → After '&' normalization: {repr(s)}")
+
+			# Strip quotes and brackets
+			s = s.strip('"').strip("'").strip('()').strip('[]')
+
+			# Collapse accidental extra whitespace
+			s = ' '.join(s.split())
+
+			if verbose:
+				print(f"        → After quote/bracket/ampersand removal: {repr(s)}")
 			
 			if not s:
 				if verbose:

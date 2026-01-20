@@ -2845,14 +2845,17 @@ def analyze_top_labels_per_source(
 			
 			# Create horizontal bar plot
 			y_pos = np.arange(len(plot_data))
-			ax.barh(y_pos, plot_data['Count'].values, color='steelblue', alpha=0.8)
+			ax.barh(y_pos, plot_data['Count'].values, color="#002d4d", alpha=0.8)
 			ax.set_yticks(y_pos)
 			ax.set_yticklabels(plot_data['Label'].values, fontsize=9)
 			ax.invert_yaxis()  # Top label at top
 			ax.set_xlabel('Frequency', fontsize=11)
-			ax.set_title(f'{source_name}\n(Top {len(plot_data)} labels)', 
-						 fontsize=12, weight='bold')
-			ax.grid(axis='x', alpha=0.3)
+			ax.set_title(
+				f'{source_name} (Top-{len(plot_data)} labels)',
+				fontsize=10,
+				weight='bold'
+			)
+			ax.grid(axis='x', alpha=0.5)
 		
 		plt.tight_layout()
 		plt.savefig(
@@ -3022,7 +3025,7 @@ def analyze_top_labels_per_source(
 def perform_multilabel_eda(
 	data_path: str,
 	label_column: str,
-	n_top_labels_plot: int=70,
+	n_top_labels_plot: int=100,
 	n_top_labels_co_occurrence: int=15,
 	DPI: int=200,
 ):

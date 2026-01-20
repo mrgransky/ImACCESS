@@ -1,7 +1,6 @@
 from utils import *
 import visualize as viz
 
-
 # how to run:
 # Puhti/Mahti:
 # srun -J interactive_cpu --account=project_2009043 --partition=large --time=00-05:15:00 --mem=128G --ntasks=1 --cpus-per-task=20 --pty /bin/bash -i
@@ -17,7 +16,7 @@ def merge_csv_files(dataset_dir, verbose: bool = False):
 	if verbose:
 		print(f"Found {len(csv_files)} CSV files to merge:")
 		for i, file in enumerate(csv_files):
-			print(f"\t{i+1:02d}: {file}")
+			print(f"\t{i:02d}: {file}")
 		print(f"Merging {len(csv_files)} CSV files to {output_fpath}...")
 
 	# Initialize an empty DataFrame
@@ -57,7 +56,8 @@ def merge_csv_files(dataset_dir, verbose: bool = False):
 		label_col='multimodal_labels'
 	)
 	
-if __name__ == "__main__":
+@measure_execution_time
+def main():
 	parser = argparse.ArgumentParser(description='Merge CSV files')
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Directory containing CSV files')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
@@ -70,3 +70,6 @@ if __name__ == "__main__":
 		print_args_table(args=args, parser=parser)
 
 	merge_csv_files(dataset_dir=args.dataset_dir, verbose=args.verbose)
+
+if __name__ == "__main__":
+	main()
