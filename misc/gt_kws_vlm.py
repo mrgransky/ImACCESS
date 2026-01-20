@@ -664,32 +664,55 @@ def _qwen_vlm_(response: str, verbose: bool = False) -> Optional[List[str]]:
 	return unique_keywords if unique_keywords else None
 
 def get_vlm_based_labels_single(
-		model_id: str,
-		device: str,
-		image_path: str,
-		max_generated_tks: int,
-		max_kws: int,
-		use_quantization: bool = False,
-		verbose: bool = False,
+	model_id: str,
+	image_path: str,
+	max_generated_tks: int,
+	max_kws: int,
+	use_quantization: bool = False,
+	verbose: bool = False,
 ):
 
 	# ========== Load image ==========
 	if verbose:
-		print(f"[LOAD] Loading image: {image_path}")
+		print(f"[LOAD] {image_path}")
 
+	img = None
 	try:
 		img = Image.open(image_path)
 	except Exception as e:
-		if verbose: print(f"{e}\n=> retry via URL")
+		if verbose: 
+			print(f"{e}\n=> retry via URL")
+
 		try:
-			r = requests.get(image_path, timeout=10)
+			r = requests.get(image_path, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}, stream=True)
 			r.raise_for_status()
+
 			img = Image.open(io.BytesIO(r.content))
+
 		except Exception as e2:
 			if verbose: print(f"[ERROR] URL fetch failed => {e2}")
 			return None
 
-	img = img.convert("RGB")
+	if img is None:
+		if verbose: 
+			print(f"[ERROR] Failed to load image: {image_path}")
+		return None
+
+	try:
+		img = img.convert("RGB")
+	except Exception as e:
+		if verbose: 
+			print(f"[ERROR] Failed to convert image to RGB: {e}")
+		return None
+
+	try:
+		img_copy = img.copy()
+		img_copy.thumbnail((512, 512), resample=Image.Resampling.LANCZOS)
+		img = img_copy
+	except Exception as e:
+		if verbose: 
+			print(f"[ERROR] Failed to resize image: {e}")
+		return None
 
 	if verbose:
 		print(f"\n[IMAGE] {image_path}")
@@ -1452,7 +1475,6 @@ def main():
 	if args.image_path:
 		keywords = get_vlm_based_labels_single(
 			model_id=args.model_id,
-			device=args.device,
 			image_path=args.image_path,
 			max_kws=args.max_keywords,
 			max_generated_tks=args.max_generated_tks,
