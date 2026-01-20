@@ -3957,10 +3957,10 @@ def perform_multilabel_eda(
 		index=False
 	)
 	
-	print("\n" + "="*100)
-	print(f"EDA Elapsed_t: {time.time()-eda_st:.3f} sec")
+	print(f"EDA Elapsed_t: {time.time()-eda_st:.1f} sec")
 	for f in os.listdir(output_dir):
-		print(f"\t{f}")
+		if file_name in f:
+			print(f"\t{f}")
 
 def plot_label_distribution_pie_chart(
 		df: pd.DataFrame = None,
