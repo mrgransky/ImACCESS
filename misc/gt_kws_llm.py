@@ -189,16 +189,12 @@ def _load_llm_(
 		
 		# For older GPUs (Volta/Turing), use SDPA (PyTorch native, faster than eager)
 		if compute_cap >= 7.0:
-			# Check if PyTorch version supports SDPA
-			torch_version = tuple(int(x) for x in torch.__version__.split('.')[:2])
-			if torch_version >= (2, 0):
+			if torch.__version__ >= "2.0.0":
 				if verbose:
 					print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
-				return "sdpa"
-		
+				return "sdpa"		
 		if verbose:
 			print(f"[INFO] Using eager attention (compute {compute_cap})")
-		
 		return "eager"
 
 	attn_impl = _optimal_attn_impl(model_id)

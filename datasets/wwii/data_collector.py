@@ -79,14 +79,17 @@ def _download_and_process_image(
 	img_url: str,
 	img_fpath: str,
 	thumbnail_size: tuple = None,
-	timeout: float = 10.0,
 	max_retries: int = 3,
 	verbose: bool = False,
 ) -> bool:
 	"""download, verify, and process an image with retries + timeout"""
 	for attempt in range(1, max_retries + 1):
 		try:
-			resp = requests.get(img_url, timeout=timeout, headers=headers)
+			resp = requests.get(
+				img_url, 
+				headers=headers,
+				stream=True,
+			)
 			resp.raise_for_status()
 
 			with open(img_fpath, "wb") as f:
@@ -176,9 +179,9 @@ def get_dframe(
 		if df.shape[0] == 0:
 			raise ValueError(f"Empty DF: {df.shape} => Exit...")
 
-		if verbose:
-			print(f"Loaded {df_fpth} | {df.shape} | {type(df)} | {df.columns}")
-			print(df.head())
+		# if verbose:
+		# 	print(f"Loaded {df_fpth} | {df.shape} | {type(df)} | {df.columns}")
+		# 	print(df.head())
 
 		# # check if image exists in df['img_path'] if not download and process it
 
@@ -198,41 +201,37 @@ def get_dframe(
 		missing_indices = [i for i, path in enumerate(df['img_path'].tolist()) if not os.path.exists(path)]
 
 		if missing_indices:
-				if verbose:
-						print(f"Found {len(missing_indices)} missing images. Downloading in parallel...")
-
-				def download_task(idx: int):
-						img_path = df['img_path'].iloc[idx]
-						img_url = df['img_url'].iloc[idx]
-						success = _download_and_process_image(
-								img_url=img_url,
-								img_fpath=img_path,
-								thumbnail_size=thumbnail_size,
-								verbose=False,   # keep per-image logs quiet here
-						)
-						return idx, img_url, success
-
-				max_workers = min(8, len(missing_indices))
-				from concurrent.futures import ThreadPoolExecutor, as_completed
-				from tqdm import tqdm
-
-				failed = []
-				with ThreadPoolExecutor(max_workers=max_workers) as ex:
-						futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
-						for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading missing images", ncols=100):
-								idx, url, ok = fut.result()
-								if not ok:
-										failed.append((idx, url))
-
-				if failed and verbose:
-						print(f"⚠️ Failed to download {len(failed)} images.")
-						for i, (idx, url) in enumerate(failed[:10]):
-								print(f"   [{idx}] {url}")
-						if len(failed) > 10:
-								print(f"   ... and {len(failed) - 10} more")
-
-
-
+			if verbose:
+				print(f"Found {len(missing_indices)} missing images. Downloading in parallel...")
+			
+			def download_task(idx: int):
+					img_path = df['img_path'].iloc[idx]
+					img_url = df['img_url'].iloc[idx]
+					success = _download_and_process_image(
+							img_url=img_url,
+							img_fpath=img_path,
+							thumbnail_size=thumbnail_size,
+							verbose=False,   # keep per-image logs quiet here
+					)
+					return idx, img_url, success
+			
+			max_workers = min(8, len(missing_indices))
+			
+			# from concurrent.futures import ThreadPoolExecutor, as_completed
+			# from tqdm import tqdm
+			failed = []
+			with ThreadPoolExecutor(max_workers=max_workers) as ex:
+				futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
+				for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading missing images", ncols=100):
+					idx, url, ok = fut.result()
+					if not ok:
+						failed.append((idx, url))
+			if failed and verbose:
+				print(f"⚠️ Failed to download {len(failed)} images.")
+				for i, (idx, url) in enumerate(failed[:10]):
+					print(f"   [{idx}] {url}")
+				if len(failed) > 10:
+					print(f"   ... and {len(failed) - 10} more")
 
 		return df
 
@@ -309,6 +308,14 @@ def get_dframe(
 			response = requests.get(doc_doc_url)
 			response.raise_for_status()
 			soup = BeautifulSoup(response.text, 'html.parser')
+			if verbose:
+				print(f"All available image(s) on {doc_doc_url}:")
+				for i, img in enumerate(soup.find_all('img')):
+					print(f"[{i}] src={img.get('src')}")
+					print(f"data-src={img.get('data-src')}")
+					print(f"class={img.get('class')}")
+					print(f"width={img.get('width')} height={img.get('height')}")
+
 			header_el = soup.find('h2', class_="entry-title")
 			caption_el = soup.find('div', class_='entry-caption')
 			local_header = header_el.get_text(strip=True) if header_el else ""
@@ -445,7 +452,13 @@ def get_dframe(
 def main():
 	base_url = "https://www.worldwarphotos.info/gallery"
 	URLs = { # key: url : val: user_query
-		f"{base_url}/usa/pacific/biak/": None,
+		f"{base_url}/usa/pacific/kwajalein/": None,
+		f"{base_url}/usa/pacific/okinawa/": None,
+		f"{base_url}/usa/pacific/peleliu/": None,
+		f"{base_url}/usa/pacific/philippines/": None,
+		f"{base_url}/usa/pacific/biak/": None, # small
+		f"{base_url}/usa/pacific/makin/": None, # small
+		f"{base_url}/usa/pacific/new-guinea/": None, # small
 		f"{base_url}/usa/pacific/tarawa/": None,
 		f"{base_url}/usa/pacific/gloucester/": None,
 		f"{base_url}/usa/pacific/tinian/": None,
@@ -456,12 +469,6 @@ def main():
 		f"{base_url}/usa/pacific/guam/": None,
 		f"{base_url}/usa/pacific/iwo-jima/": None,
 		f"{base_url}/usa/pacific/iwo-jima2/": None,
-		f"{base_url}/usa/pacific/kwajalein/": None,
-		f"{base_url}/usa/pacific/makin/": None,
-		f"{base_url}/usa/pacific/new-guinea/": None,
-		f"{base_url}/usa/pacific/okinawa/": None,
-		f"{base_url}/usa/pacific/peleliu/": None,
-		f"{base_url}/usa/pacific/philippines/": None,
 		f"{base_url}/usa/aircrafts-2-3/a-17/": "aircraft",
 		f"{base_url}/usa/aircrafts-2-3/a-18/": "aircraft",
 		f"{base_url}/usa/aircrafts-2-3/a-19/": "aircraft",
@@ -864,8 +871,8 @@ def main():
 		f"{base_url}/germany/units/sturmgeschutz_brigade_244/" : "military unit",
 		}
 	
-	# slice[:5] URLs [JUST FOR TESTING]:
-	URLs = {k:v for i, (k, v) in enumerate(URLs.items()) if i < 3}
+	# # slice[:5] URLs [JUST FOR TESTING]:
+	# URLs = {k:v for i, (k, v) in enumerate(URLs.items()) if i < 3}
 
 	dfs_fname = os.path.join(HITs_DIR, f"{dataset_name}_{len(URLs)}_dfs.gz")
 	
