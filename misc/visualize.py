@@ -2847,7 +2847,7 @@ def analyze_top_labels_per_source(
 			y_pos = np.arange(len(plot_data))
 			ax.barh(y_pos, plot_data['Count'].values, color="#002d4d", alpha=0.8)
 			ax.set_yticks(y_pos)
-			ax.set_yticklabels(plot_data['Label'].values, fontsize=9)
+			ax.set_yticklabels(plot_data['Label'].values, fontsize=7)
 			ax.invert_yaxis()  # Top label at top
 			ax.set_xlabel('Frequency', fontsize=11)
 			ax.set_title(
