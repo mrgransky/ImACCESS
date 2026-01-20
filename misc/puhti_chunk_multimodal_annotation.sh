@@ -1,18 +1,18 @@
 #!/bin/bash
 
 #SBATCH --account=project_2004072
-#SBATCH --job-name=chunked_mm_annot
+#SBATCH --job-name=temp_chunked_mm_annot
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=38G
-#SBATCH --partition=gpu
+#SBATCH --mem=96G
 #SBATCH --time=03-00:00:00
 #SBATCH --array=0-24
-#SBATCH --gres=gpu:v100:4,nvme:100
+###SBATCH --partition=gpu
+###SBATCH --gres=gpu:v100:4,nvme:100
 
 set -euo pipefail
 

@@ -346,11 +346,13 @@ def get_multimodal_annotation(
 		label_column='multimodal_labels'
 	)
 
-	train_df, val_df = get_multi_label_stratified_split(
-		csv_file=output_csv,
-		val_split_pct=0.35,
-		label_col='multimodal_labels'
-	)
+	# only for full dataset and chunk is not in the file name:
+	if "_chunk_" not in os.path.basename(csv_file):
+		train_df, val_df = get_multi_label_stratified_split(
+			csv_file=output_csv,
+			val_split_pct=0.35,
+			label_col='multimodal_labels'
+		)
 
 	return multimodal_labels
 
