@@ -67,6 +67,13 @@ FIGURE_SIZE = (12, 9)
 DPI = 250
 # Define regex pattern for WWII years: 1939–1945
 YEAR_PATTERN = re.compile(r'\b(19[3][9]|[1][9]4[0-5])\b')
+headers = {
+	'Content-type': 'application/json',
+	'Accept': 'application/json; text/plain; */*',
+	'Cache-Control': 'no-cache',
+	'Connection': 'keep-alive',
+	'Pragma': 'no-cache',
+}
 
 def _download_and_process_image(
 	img_url: str,
@@ -76,48 +83,48 @@ def _download_and_process_image(
 	max_retries: int = 3,
 	verbose: bool = False,
 ) -> bool:
-		"""download, verify, and process an image with retries + timeout"""
-		for attempt in range(1, max_retries + 1):
+	"""download, verify, and process an image with retries + timeout"""
+	for attempt in range(1, max_retries + 1):
+		try:
+			resp = requests.get(img_url, timeout=timeout, headers=headers)
+			resp.raise_for_status()
+
+			with open(img_fpath, "wb") as f:
+				f.write(resp.content)
+
+			with Image.open(img_fpath) as img:
+				img.verify()
+
+			if not process_image_for_storage(
+				img_path=img_fpath,
+				thumbnail_size=thumbnail_size,
+				verbose=verbose,
+			):
+				if verbose:
+					print(f"Failed to process image {img_fpath}")
+				return False
+
+			if verbose:
+				print(f"{img_fpath} downloaded and processed successfully")
+
+			return True
+		except Exception as e:
+			if verbose:
+				print(f"[Attempt {attempt}/{max_retries}] Failed to download {img_url}: {e}")
+			
+			# Remove partially written file if any
+			if os.path.exists(img_fpath):
 				try:
-						resp = requests.get(img_url, timeout=timeout)
-						resp.raise_for_status()
-
-						with open(img_fpath, "wb") as f:
-								f.write(resp.content)
-
-						with Image.open(img_fpath) as img:
-								img.verify()
-
-						if not process_image_for_storage(
-								img_path=img_fpath,
-								thumbnail_size=thumbnail_size,
-								verbose=verbose,
-						):
-								if verbose:
-										print(f"Failed to process image {img_fpath}")
-								return False
-
-						if verbose:
-								print(f"{img_fpath} downloaded and processed successfully")
-						return True
-
-				except Exception as e:
-						if verbose:
-								print(
-										f"[Attempt {attempt}/{max_retries}] Failed to download {img_url}: {e}"
-								)
-						# Remove partially written file if any
-						if os.path.exists(img_fpath):
-								try:
-										os.remove(img_fpath)
-								except OSError:
-										pass
-
-						if attempt == max_retries:
-								# Give up
-								return False
-						# Small backoff before retrying
-						time.sleep(1.0)
+					os.remove(img_fpath)
+				except OSError:
+					pass
+			
+			if attempt == max_retries:
+				# Give up
+				return False
+			
+			# Small backoff before retrying
+			time.sleep(1.0)
 
 def extract_year(text):
 	match = YEAR_PATTERN.search(str(text))
@@ -165,60 +172,64 @@ def get_dframe(
 
 	if os.path.exists(df_fpth):
 		df = load_pickle(fpath=df_fpth)
-		# if verbose:
-		# 	print(f"Loaded {df_fpth} | {df.shape} | {type(df)} | {df.columns}")
-		# 	print(df.head())
+
+		if df.shape[0] == 0:
+			raise ValueError(f"Empty DF: {df.shape} => Exit...")
+
+		if verbose:
+			print(f"Loaded {df_fpth} | {df.shape} | {type(df)} | {df.columns}")
+			print(df.head())
 
 		# # check if image exists in df['img_path'] if not download and process it
 
-		# sequential:
-		for img_idx, img_path in enumerate(df['img_path'].tolist()):
-			if not os.path.exists(img_path):
-				if verbose:
-					print(f"Image[{img_idx}] {img_path} not found, downloading...")
-				_download_and_process_image(
-					img_url=df['img_url'][img_idx], 
-					img_fpath=img_path, 
-					thumbnail_size=thumbnail_size, 
-					verbose=verbose,
-				)
-
-		# # parallelize the above for loop:
-		# missing_indices = [i for i, path in enumerate(df['img_path'].tolist()) if not os.path.exists(path)]
-
-		# if missing_indices:
+		# # sequential:
+		# for img_idx, img_path in enumerate(df['img_path'].tolist()):
+		# 	if not os.path.exists(img_path):
 		# 		if verbose:
-		# 				print(f"Found {len(missing_indices)} missing images. Downloading in parallel...")
+		# 			print(f"Image[{img_idx}] {img_path} not found, downloading...")
+		# 		_download_and_process_image(
+		# 			img_url=df['img_url'][img_idx], 
+		# 			img_fpath=img_path, 
+		# 			thumbnail_size=thumbnail_size, 
+		# 			verbose=verbose,
+		# 		)
 
-		# 		def download_task(idx: int):
-		# 				img_path = df['img_path'].iloc[idx]
-		# 				img_url = df['img_url'].iloc[idx]
-		# 				success = _download_and_process_image(
-		# 						img_url=img_url,
-		# 						img_fpath=img_path,
-		# 						thumbnail_size=thumbnail_size,
-		# 						verbose=False,   # keep per-image logs quiet here
-		# 				)
-		# 				return idx, img_url, success
+		# parallelize the above for loop:
+		missing_indices = [i for i, path in enumerate(df['img_path'].tolist()) if not os.path.exists(path)]
 
-		# 		max_workers = min(8, len(missing_indices))
-		# 		from concurrent.futures import ThreadPoolExecutor, as_completed
-		# 		from tqdm import tqdm
+		if missing_indices:
+				if verbose:
+						print(f"Found {len(missing_indices)} missing images. Downloading in parallel...")
 
-		# 		failed = []
-		# 		with ThreadPoolExecutor(max_workers=max_workers) as ex:
-		# 				futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
-		# 				for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading missing images", ncols=100):
-		# 						idx, url, ok = fut.result()
-		# 						if not ok:
-		# 								failed.append((idx, url))
+				def download_task(idx: int):
+						img_path = df['img_path'].iloc[idx]
+						img_url = df['img_url'].iloc[idx]
+						success = _download_and_process_image(
+								img_url=img_url,
+								img_fpath=img_path,
+								thumbnail_size=thumbnail_size,
+								verbose=False,   # keep per-image logs quiet here
+						)
+						return idx, img_url, success
 
-		# 		if failed and verbose:
-		# 				print(f"⚠️ Failed to download {len(failed)} images.")
-		# 				for i, (idx, url) in enumerate(failed[:10]):
-		# 						print(f"   [{idx}] {url}")
-		# 				if len(failed) > 10:
-		# 						print(f"   ... and {len(failed) - 10} more")
+				max_workers = min(8, len(missing_indices))
+				from concurrent.futures import ThreadPoolExecutor, as_completed
+				from tqdm import tqdm
+
+				failed = []
+				with ThreadPoolExecutor(max_workers=max_workers) as ex:
+						futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
+						for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading missing images", ncols=100):
+								idx, url, ok = fut.result()
+								if not ok:
+										failed.append((idx, url))
+
+				if failed and verbose:
+						print(f"⚠️ Failed to download {len(failed)} images.")
+						for i, (idx, url) in enumerate(failed[:10]):
+								print(f"   [{idx}] {url}")
+						if len(failed) > 10:
+								print(f"   ... and {len(failed) - 10} more")
 
 
 
@@ -282,11 +293,13 @@ def get_dframe(
 	print(f"Found {len(hits)} Document(s) => Extracting information [might take a while]")
 	data = []
 	for idoc, vdoc in enumerate(hits):
-		print(idoc)
+		print(f"[{idoc+1}/{len(hits)}]")
 		print(vdoc)
 		img_tag = vdoc
 		img_url = img_tag.get('data-src')
+
 		if not img_url:
+			print(f"{img_url} not found, skipping...")
 			continue
 		parent_a = img_tag.find_parent('a')
 		# print(f"doc_url: {parent_a.get('href')}")
@@ -303,6 +316,7 @@ def get_dframe(
 		except Exception as e:
 			print(f"Failed to extract doc_url: {e}")
 			continue
+
 		doc_cap_x0 = local_caption if local_caption else None
 		doc_header_x0 = local_header if local_header else None
 		print(f"doc_header (0th try): {doc_header_x0}")
@@ -365,11 +379,17 @@ def get_dframe(
 				if year:
 					extracted_year = year
 					break
+		if verbose:
+			print(f"extracted_year: {extracted_year}")
 
+		if verbose:
+			print(f"img_fpath: {img_fpath}")
 		# Downloading & processing Images
 		if not os.path.exists(img_fpath):
 			# Fresh download
 			if not _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose):
+				if verbose:
+					print(f"Failed to download {img_url} to {img_fpath} => Skipping...")
 				continue
 		else:
 			# Image already exists - try re-processing
@@ -386,11 +406,12 @@ def get_dframe(
 				
 				# Re-download
 				if not _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose):
+					if verbose:
+						print(f"Failed to re-download {img_url} to {img_fpath} => Skipping...")
 					continue
 			else:
 				if verbose:
 					print(f"Existing image {img_fpath} re-processed successfully")
-
 
 		row = {
 			'id': filename,
@@ -404,9 +425,15 @@ def get_dframe(
 			'label': user_query if user_query else None,
 			'img_path': img_fpath,
 		}
-		data.append(row)
-		print("="*120)
+		if verbose:
+			print(f"Appending Row[{idoc+1}/{len(hits)}]:")
+			print(f"{json.dumps(row, indent=4, ensure_ascii=False)}")
+			print("-"*120)
 
+		data.append(row)
+
+	if verbose:
+		print(f"Creating DataFrame from {len(data)} rows...")
 	df = pd.DataFrame(data)
 	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
 
@@ -419,8 +446,11 @@ def main():
 	base_url = "https://www.worldwarphotos.info/gallery"
 	URLs = { # key: url : val: user_query
 		f"{base_url}/usa/pacific/biak/": None,
-		f"{base_url}/usa/pacific/bougainville/": None,
+		f"{base_url}/usa/pacific/tarawa/": None,
 		f"{base_url}/usa/pacific/gloucester/": None,
+		f"{base_url}/usa/pacific/tinian/": None,
+		f"{base_url}/usa/pacific/saipan/": None,
+		f"{base_url}/usa/pacific/bougainville/": None,
 		f"{base_url}/usa/pacific/eniwetok/": None,
 		f"{base_url}/usa/pacific/guadalcanal/": None,
 		f"{base_url}/usa/pacific/guam/": None,
@@ -432,9 +462,6 @@ def main():
 		f"{base_url}/usa/pacific/okinawa/": None,
 		f"{base_url}/usa/pacific/peleliu/": None,
 		f"{base_url}/usa/pacific/philippines/": None,
-		f"{base_url}/usa/pacific/saipan/": None,
-		f"{base_url}/usa/pacific/tarawa/": None,
-		f"{base_url}/usa/pacific/tinian/": None,
 		f"{base_url}/usa/aircrafts-2-3/a-17/": "aircraft",
 		f"{base_url}/usa/aircrafts-2-3/a-18/": "aircraft",
 		f"{base_url}/usa/aircrafts-2-3/a-19/": "aircraft",
@@ -837,8 +864,8 @@ def main():
 		f"{base_url}/germany/units/sturmgeschutz_brigade_244/" : "military unit",
 		}
 	
-	# # slice[:5] URLs [JUST FOR TESTING]:
-	# URLs = {k:v for i, (k, v) in enumerate(URLs.items()) if i < 5}
+	# slice[:5] URLs [JUST FOR TESTING]:
+	URLs = {k:v for i, (k, v) in enumerate(URLs.items()) if i < 3}
 
 	dfs_fname = os.path.join(HITs_DIR, f"{dataset_name}_{len(URLs)}_dfs.gz")
 	
