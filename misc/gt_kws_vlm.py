@@ -668,6 +668,7 @@ def get_vlm_based_labels_single(
 	image_path: str,
 	max_generated_tks: int,
 	max_kws: int,
+	img_resized_shape: int = 512,
 	use_quantization: bool = False,
 	verbose: bool = False,
 ):
@@ -707,7 +708,7 @@ def get_vlm_based_labels_single(
 
 	try:
 		img_copy = img.copy()
-		img_copy.thumbnail((512, 512), resample=Image.Resampling.LANCZOS)
+		img_copy.thumbnail((img_resized_shape, img_resized_shape), resample=Image.Resampling.LANCZOS)
 		img = img_copy
 	except Exception as e:
 		if verbose: 
@@ -1477,6 +1478,7 @@ def main():
 			model_id=args.model_id,
 			image_path=args.image_path,
 			max_kws=args.max_keywords,
+			img_resized_shape=1024,
 			max_generated_tks=args.max_generated_tks,
 			use_quantization=args.use_quantization,
 			verbose=args.verbose,
