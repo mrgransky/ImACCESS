@@ -11,7 +11,7 @@
 #SBATCH --mem=96G
 #SBATCH --time=03-00:00:00
 #SBATCH --array=0-24
-###SBATCH --partition=gpu
+#SBATCH --partition=large
 ###SBATCH --gres=gpu:v100:4,nvme:100
 
 set -euo pipefail
