@@ -2743,19 +2743,8 @@ def analyze_top_labels_per_source(
 	output_dir,
 	file_name,
 	DPI=200
-):
-	"""
-	Analyze and visualize top-N frequent labels for each source separately.
-	
-	This provides:
-	1. Individual top-N analysis for LLM, VLM, and Multimodal
-	2. Side-by-side comparison visualization
-	3. Source-specific labels (unique to LLM or VLM)
-	4. Agreement analysis between sources
-	"""
-	
-	print("\n" + "="*100)
-	print(f"--- TOP {n_top_labels_plot} MOST FREQUENT LABELS: PER-SOURCE ANALYSIS ---")
+):	
+	print(f"--- TOP-{n_top_labels_plot} MOST FREQUENT LABELS: PER-SOURCE ANALYSIS ---")
 	
 	# Define source columns to analyze
 	source_columns_to_analyze = {
@@ -2773,9 +2762,8 @@ def analyze_top_labels_per_source(
 		if col_name not in processed_dfs:
 			print(f"\n>>> Source: {source_name} ({col_name}) - NOT AVAILABLE")
 			continue
-			
+
 		print(f"\n>>> Source: {source_name} ({col_name})")
-		print("-" * 80)
 		
 		# Get all labels for this source
 		source_df = processed_dfs[col_name]
@@ -2803,15 +2791,20 @@ def analyze_top_labels_per_source(
 		print(f"Singleton labels: {len(source_singletons)} ({len(source_singletons) / len(source_unique) * 100:.2f}%)")
 		
 		# Print top-N
-		print(f"\nTop-{n_top_labels_plot} most frequent labels:")
-		print(source_counts_df.head(n_top_labels_plot).to_string(index=False))
+		# print(f"\nTop-{n_top_labels_plot} most frequent labels:")
+		# print(source_counts_df.head(n_top_labels_plot).to_string(index=False))
+		print()
+		# print all labels
+		for idx, row in source_counts_df.iterrows():
+			print(f"{row['Label']:<60}{row['Count']}")
+		# print(source_counts_df)
 		
 		# Create individual visualization for this source
 		plt.figure(figsize=(14, 12))
 		plot_data = source_counts_df.head(n_top_labels_plot)
 		sns.barplot(x='Count', y='Label', data=plot_data, palette='viridis')
 		plt.title(
-			f'Top-{n_top_labels_plot} Most Frequent Labels: {source_name}', 
+			f'Top-{n_top_labels_plot} Most Frequent {source_name} Labels', 
 			fontsize=11, 
 			weight='bold'
 		)

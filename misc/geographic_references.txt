@@ -302,3 +302,29 @@ San Jose
 Seattle
 Washington, D.C.
 Washington D.C.
+Nova Scotia
+Scotia
+Halifax
+
+Barcelona
+Madrid
+Seville
+Valencia
+Bilbao
+Cordoba
+Granada
+Malaga
+Murcia
+Palma de Mallorca
+Alicante
+Caceres
+Cordoba
+Gijon
+Jaen
+Lleida
+Oviedo
+Pamplona
+Santander
+Tarragona
+Valladolid
+Zaragoza
