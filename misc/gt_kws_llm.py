@@ -72,7 +72,7 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
 - **ABSOLUTELY NO** abbreviations, numerical words, special characters, or stopwords.
-- **ABSOLUTELY NO** country names, state names, or city names.
+- **ABSOLUTELY NO** country, state, or city as standalone keywords.
 - **ABSOLUTELY NO** explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
 - The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""
