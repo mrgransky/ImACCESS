@@ -71,6 +71,7 @@ Georgia
 Germany
 Ghana
 Greece
+Greenland
 Grenada
 Guatemala
 Guinea
@@ -78,6 +79,7 @@ Guinea-Bissau
 Guyana
 
 Haiti
+Holland
 Honduras
 Hungary
 
@@ -148,6 +150,7 @@ Oman
 
 Pakistan
 Palau
+Papua
 Panama
 Papua New Guinea
 Paraguay
@@ -160,6 +163,7 @@ Puerto Rico
 Qatar
 
 Romania
+Rumania
 Russia
 Rwanda
 
@@ -173,6 +177,7 @@ Saudi Arabia
 Senegal
 Serbia
 Seychelles
+Siberia
 Sierra Leone
 Singapore
 Slovakia
@@ -207,6 +212,10 @@ Ukraine
 United Arab Emirates
 United Kingdom
 United States
+United States of America
+USA
+U.S.
+U.S.A.
 Uruguay
 Uzbekistan
 
@@ -220,6 +229,7 @@ Yemen
 Zambia
 Zimbabwe
 State of Palestine
+Palestine
 
 Alabama
 Alaska
@@ -272,21 +282,61 @@ West Virginia
 Wisconsin
 Wyoming
 
+Boston
+Bridgeport
+Brunswick
+Chicago
+Columbus
 Houston
+CZ.
+C.Z.
+D.C.
+Calif.
+Cal.
+FL.
+GA.
+Ill.
+Mass.
+Mich.
+Okla.
+N.C.
+N.H.
+N.J.
+N.Y.
+N.Y.C.
+PA.
+P.A.
+N.Y. City
+R.I.
+S.D.
+Jacksonville
+Leadvale
 New York City
 Los Angeles
-Chicago
-Boston
 Philadelphia
 Seattle
 Atlanta
 Dallas
 Denver
 Miami
+Omaha
 Detroit
+Manhattan
+Maui
 Minneapolis
+Newport
+Newark
+New Boston
+New Castle
+New London
+New Orleans
+New Haven
+Norristown
+Norwood
 Phoenix
 Pittsburgh
+Portsmouth
+Richmond
 St. Louis
 San Diego
 San Antonio
@@ -297,34 +347,97 @@ Nashville
 Portland
 Sacramento
 Salt Lake City
+Sandusky
 San Francisco
 San Jose
+Santa Rosa
 Seattle
+Wash. D.C.
 Washington, D.C.
 Washington D.C.
+Welch
 Nova Scotia
 Scotia
 Halifax
 
+Algiers
+Ankara
+Antwerp
+Athens
+Baghdad
+Bagdad
+Bangkok
 Barcelona
+Beijing
+Berlin
+Bogota
+Bordeaux
+Brasilia
+Brussels
+Buenos Aires
+Buna
+Budapest
+Cairo
+Cebu City
+Cleveland
+Cologne
+Dessau
+Dresden
+Frankfurt
+Gaza
+Kobe
+Hanoi
+Havana
+Leipzig
+Liverpool
+London
 Madrid
+Majuro
+Manila
+Marrakech
+Mexico City
+Moscow
+Munich
+Nagoya
+New Delhi
+Oslo
+Paris
+Palermo
+Perth
+Pisa
+Quito
+Rome
 Seville
 Valencia
 Bilbao
-Cordoba
+Gijon
+Girona
 Granada
+Johannesburg
 Malaga
+Managua
 Murcia
+Panama
 Palma de Mallorca
 Alicante
 Caceres
 Cordoba
-Gijon
 Jaen
+Lima
+Lisbon
 Lleida
 Oviedo
 Pamplona
+Rio de Janeiro
 Santander
+Sicily
+Strömsund
 Tarragona
+Tokyo
+Tunis
 Valladolid
 Zaragoza
+Warsaw
+Wellington
+Åre
+östersund

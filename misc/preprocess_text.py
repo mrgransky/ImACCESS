@@ -113,6 +113,7 @@ def basic_clean(txt: str):
 
 	# Step 2: Remove known junk/phrase patterns
 	junk_phrases = [
+		r'Blurry Snapshot of',
 		r'view from upstream side of ',
 		r"view+\s+looking+\s+\w+\s+\w+\s+",
 		r"this is a general view of ",
@@ -128,6 +129,7 @@ def basic_clean(txt: str):
 		r'partial view of ',
 		r"panoramic view of ",
 		r"downstream view of ",
+		r"\s+All+\s+are+\s+unidentified",
 		r"general+\s+view+\s+\w+\s+",
 		r'here is a view of ',
 		r"looking+\s+upstream+\s+\w+\s+",
@@ -141,13 +143,22 @@ def basic_clean(txt: str):
 		r"this photograph is a view of ",
 		r"View of bottom, showing ",
 		r"Steinheimer note",
+		r'World travel.',
 		r'Original caption on envelope: ',
 		r"In the photo, ",
+		r'Historical Miscellaneous -',
 		r'History: \[none entered\]',
+		r'History: Original 4\" x 5\" negative received October 1946 from 303rd Bomb Group thru AAF Historical Section.',
+		r'History: 8\" x 10\" print received 19 Jan. 1949 from Air Historical Group, AF, 386th Bomb Group, England. Copied 9 March 1949.',
+		r'\[Photograph by: Unknown\]',
 		r'Date Month: \[Blank\]',
 		r'Date Day: \[Blank\]',
 		r'Date Year: \[Blank\]',
 		r'Subcategory: \[BLANK\]',
+		r'Subcategory: Unidentified',
+		r'Date+\s+Month:+\s+\w+',
+		r'Date+\s+Day:+\s+\w+',
+		r'Date+\s+Year:+\s+\w+',
 		r"This is an image of ",
 		r'\[blank\]',
 		r'\[sic\]',
@@ -158,10 +169,14 @@ def basic_clean(txt: str):
 		r'Photography presents ',
 		r"WBP Digitization Studio",
 		r'Note on negative envelope',
-		r'This image is one of a series of\s\d+\snegatives showing\s',
+		r'photo from the photo album ',
+		r'The digitalisat was made by the original album.',
+		r'The information about the photograph was provided by the creator of the collection, Mr. Dan Hadani',
+		r'State digitization program Saxony: Postcard publisher Brück und Sohn (digitization)',
+		r"record author: Deutsche Fotothek/SLUB Dresden (DF)",
 		r'DFG project: worldviews (2015-2017),',
+		r'This image is one of a series of\s\d+\snegatives showing\s',
 		r'Description: Imagery taken during the ',
-		r'record author: Deutsche Fotothek/SLUB Dresden (DF)',
 		r'Law Title taken from similar image in this series.',
 		r'The original finding aid described this photograph as:',
 		r'The original finding aid described this as:',
@@ -172,7 +187,10 @@ def basic_clean(txt: str):
 		r"The following geographic information is associated with this record:",
 		r'The following information was provided by digitizing partner Fold3:',
 		r'It was subsequently published in conjunction with an article.',
+		r'Original photograph is in a photo album of inaugural events.',
 		r'Type: C-N (Color Negative) C-P (Color Print) ',
+		r'From an album of Lorain H. Cunningham, who served in the 129th Field Artillery during World War I and was a friend of Harry S. Truman.',
+		r'Picture documentation (small picture slideshow) about ',
 		r'Original caption: Photograph Of ',
 		r"Captured Japanese Photograph of ",
 		r'This is a photograph from ',
@@ -184,6 +202,7 @@ def basic_clean(txt: str):
 		r'Photo album with photo',
 		r'Photographs from ',
 		r"The photographer's notes indicate ",
+		r'A+\s+photograph+\s+obtained+\s+by+\s+\w+\s+\w+\s+from film\s+\w+.',
 		r'A photograph obtained by ',
 		r"This photograph shows ",
 		r'The photograph shows ',
@@ -221,10 +240,13 @@ def basic_clean(txt: str):
 		r'View across ',
 		r'view over ',
 		r"Unknown Male",
+		r"Unknown Man",
 		r"Unknown Female",
+		r"Unknown Woman",
 		r'Pictures of ',
 		r'index to ',
 		r'Phot. of ',
+		r'\s+in+\s+color',
 		r'color photo',
 		r'Colored photo',
 		r"color copies",
@@ -238,9 +260,12 @@ def basic_clean(txt: str):
 		r"No description",
 		r'Photograph: ',
 		r'Image: ',
+		r'Wash. D.C.',
 		r'File Record',
+		r'Original negative.',
 		r'Description: ',
 		r'- Types -',
+		r' - Groups - ',
 		r'- Miscellaneous',
 		r'Steinheimer+\s\w+\s+note',
 		r"Steinheimer+\s\w+\s\w+\s+note",
@@ -264,23 +289,26 @@ def basic_clean(txt: str):
 		r'\bUS Air Force Reference Number\s*:\s*[A-Z0-9]+',  	# US Air Force Reference Number: 74399AC
 		r'\bReference Number\s*:\s*[A-Z0-9]+',               	# fallback
 		r'\bConsolidated Subjects\s*:?\s*', 									# Consolidated Subjects:
-		r'\bProperty Number\s*:?\s*\d*',
+		r'\bProperty Number\s*:?.*', 													# Property Number: X 12345 
 		r'\bDFG project\s*:?\s*.*?(?:,|\.|\n|$)',
 		r'\bworldviews\s*(?:\(?\d{4}-\d{4}\)?)?',
 		r'^Image\s+[A-Z]\b',  # Image A (only removes "Image A", "Image B", etc.)
+		r'Europeana\s+Collections\s+\d{4}(?:-\d{4})?',
 		r'(?i)^Project\s+.*?\s-\s',
 		r'(?i)(?:Series of |a series of |Group of |Collection of )(\d+\s*\w+)',
 		r'Part of the documentary ensemble:\s\w+',
-		r'no\.\s*\d+(?:-\d+)?', # no. 123, no. 123-125
-		r'Vol\.\s\d+',                                        # Vol. 5,
-		r'issue\s\d+',																				 # issue 1
-		r'part\s\d+',																				 # part 1
-		r'picture\s\d+\.',																		 # picture 125.
+		r'no\.\s*\d+(?:-\d+)?', 														# no. 123, no. 123-125
+		r'Vol\.\s\d+',                                      # Vol. 5,
+		r'Vol+\s+\d+',                                      # Vol 5,
+		r'issue\s\d+',																			# issue 1
+		r'part\s\d+',																				# part 1
+		r'picture\s\d+\.',																	# picture 125.
 		r"^\bView of\s", # View of powerhouse
 		r"one\sof\sthe\s\w+\sphotographs\sof the\sinventory\sunit\s\d+\/\w\.",
 		r"U.S.\sAir\sForce\sNumber\s\w\d+\w+",
 		r"^(\d+)\s-\s",
 		r'\d+-\w+-\d+\w-\d+',
+		r'-\s+\w\s+thru\s\w\s-',
 		r'AS\d+-\d+-\d+\s-\s',
 		r"color\sphoto\s\d+",
 		r'(?:^|[,\s])\+(?!\d)[A-Za-z0-9]+[.,]?', # remove +B09. but not +123

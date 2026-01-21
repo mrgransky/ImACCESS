@@ -14,7 +14,9 @@ no
 my
 me
 we
+mar
 was
+1st
 from
 beside
 until
@@ -161,6 +163,9 @@ s
 t
 can
 will
+jap
+cal
+japs
 just
 don
 should
@@ -501,6 +506,7 @@ itll
 itse
 ive
 join
+kansa
 keep
 keeps
 kept
@@ -1000,6 +1006,10 @@ yours
 yourselves
 youve
 zero
+misc
+okla
+view
+view of
 background
 foreground
 photograph
@@ -1010,3 +1020,37 @@ album
 published
 awers
 avers
+south
+west
+east
+north
+northeast
+northwest
+southwest
+southeast
+nnw
+nne
+sse
+ssw
+up
+down
+right
+left
+unidentified
+looking nnw
+looking ne
+looking sw
+looking nw
+looking se
+looking up
+looking down
+looking right
+looking left
+looking west
+looking east
+looking south
+looking north
+looking northeast
+looking northwest
+looking southwest
+looking southeast

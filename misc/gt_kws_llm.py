@@ -58,8 +58,6 @@ with open('geographic_references.txt', 'r') as file_:
 	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
 STOPWORDS.update(geographic_references)
 
-# print(f"Successfully loaded {len(STOPWORDS)} stopwords")
-
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 You function as a historical archivist whose expertise lies in the 20th century.
 Given the caption below, extract no more than {k} highly prominent, factual, and distinct **KEYWORDS** that convey the primary actions, objects, or occurrences.
@@ -71,11 +69,12 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey more distinct meanings.
 - Extracted **KEYWORDS** must be self-contained and grammatically complete phrases that explicitly appear in the caption. If you are uncertain, in doubt, or unsure, omit the keyword rather than guessing.
 - **ABSOLUTELY NO** dates, times, hours, minutes, calendar references, time periods, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
+- **ABSOLUTELY NO** geographic references, continents, countries, cities, or states.
 - **ABSOLUTELY NO** serial numbers, reference numbers, IDs, technical photo specs, measurements, units, coordinates, or quantitative keywords.
 - **ABSOLUTELY NO** generic photography, image, picture, or media keywords.
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
-- **ABSOLUTELY NO** abbreviations, numerical words, special characters, or stopwords.
+- **ABSOLUTELY NO** meaningless abbreviations, numerical words, special characters, or stopwords.
 - **ABSOLUTELY NO** explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
 - The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""
@@ -900,7 +899,7 @@ def _qwen_llm_response(
 			print(f"    → Cleaned: {repr(cleaned)}")
 		
 		# Check length
-		if len(cleaned) < 2:
+		if len(cleaned) < 3:
 			if verbose:
 				print(f"    ✗ Skipped: too short (len={len(cleaned)})")
 			continue

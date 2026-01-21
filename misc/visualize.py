@@ -2796,7 +2796,7 @@ def analyze_top_labels_per_source(
 		print()
 		# print all labels
 		for idx, row in source_counts_df.iterrows():
-			print(f"{row['Label']:<60}{row['Count']}")
+			print(f"{row['Label']:<100}{row['Count']}")
 		# print(source_counts_df)
 		
 		# Create individual visualization for this source
