@@ -36,6 +36,18 @@ import visualize as viz
 # large models:
 # $ python gt_kws_multimodal.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -vlm "Qwen/Qwen3-VL-30B-A3B-Instruct" -vlm_bs 16 -llm_bs 96 -nw 40 -v
 
+# STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
+STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
+# custom_stopwords_list = requests.get("https://raw.githubusercontent.com/stopwords-iso/stopwords-en/refs/heads/master/stopwords-en.txt").content
+# stopwords = set(custom_stopwords_list.decode().splitlines())
+with open('meaningless_words.txt', 'r') as file_:
+	stopwords = set([line.strip().lower() for line in file_])
+STOPWORDS.update(stopwords)
+
+with open('geographic_references.txt', 'r') as file_:
+	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
+STOPWORDS.update(geographic_references)
+
 def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[List[str]]:
 	"""
 	Cleans, normalizes, and lemmatizes label lists.
@@ -46,14 +58,15 @@ def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[
 	"""
 	if verbose:
 		print(f"\n{'='*80}")
-		print(f"[_post_process_] Starting post-processing")
-		print(f"[_post_process_] Input type: {type(labels_list)}")
-		print(f"[_post_process_] Input length: {len(labels_list) if labels_list else 0}")
+		print(f"Starting post-processing")
+		print(f"\tInput type: {type(labels_list)}")
+		print(f"\tInput length: {len(labels_list) if labels_list else 0}")
+		print(f"\tStopwords loaded: {len(STOPWORDS)}")
 		print(f"{'='*80}\n")
 	
 	if not labels_list:
 		if verbose:
-			print("[_post_process_] Empty input, returning as-is")
+			print("\tEmpty input, returning as-is")
 		return labels_list
 
 	lemmatizer = nltk.stem.WordNetLemmatizer()
@@ -158,6 +171,13 @@ def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[
 				else:
 					print(f"        → Lemmatized: {repr(lemma)} (unchanged)")
 			
+			# Check stopwords
+			if lemma in STOPWORDS:
+				if verbose:
+					print(f"        → Stopword detected, skipping")
+				continue
+
+			# Check duplicates
 			if lemma in clean_set:
 				if verbose:
 					print(f"        → Duplicate detected, skipping")
