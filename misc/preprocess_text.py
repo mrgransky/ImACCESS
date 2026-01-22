@@ -392,7 +392,12 @@ def basic_clean(txt: str):
 
 	return txt
 
-def get_enriched_description(df: pd.DataFrame, check_english: bool=False, min_length: int=10, verbose: bool=False):
+def get_enriched_description(
+	df: pd.DataFrame, 
+	check_english: bool=False, 
+	min_length: int=8, 
+	verbose: bool=False
+)-> pd.DataFrame:
 	if verbose:
 		print(f"\nAdding enriched_document_description to {df.shape} {type(df)}...")
 		print(list(df.columns))
@@ -416,9 +421,10 @@ def get_enriched_description(df: pd.DataFrame, check_english: bool=False, min_le
 
 	# safety check if enriched_document_description already exists in df.columns:
 	if "enriched_document_description" in df.columns:
-		if verbose:
-			print("enriched_document_description column already exists. Dropping it...")
 		df = df.drop(columns=['enriched_document_description'])
+		if verbose:
+			print("enriched_document_description column already exists. Dropped it...")
+			print(f"df: {df.shape} {type(df)} {list(df.columns)}")
 
 	df_enriched = df.copy(deep=True)
 	

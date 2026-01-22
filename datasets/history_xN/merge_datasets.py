@@ -12,10 +12,10 @@ from misc.preprocess_text import get_enriched_description
 
 # how to run [local]:
 # $ python merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs
-# $ nohup python -u merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs --target_chunk_mb 8 -v > logs/history_xN_merged_datasets.out &
+# $ nohup python -u merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs --chunk_size 8900 -v > logs/history_xN_merged_datasets.out &
 
 # run in Pouta:
-# $ nohup python -u merge_datasets.py -ddir /media/volume/ImACCESS/dataset/WW_DATASETs --img_mean_std --target_chunk_mb 8 -v > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
+# $ nohup python -u merge_datasets.py -ddir /media/volume/ImACCESS/dataset/WW_DATASETs --img_mean_std --chunk_size 8900 -v > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
 
 def get_dataset(ddir: str):
 	# Patterns to match dataset directories
@@ -50,7 +50,7 @@ def merge_datasets(
 	head_threshold: int=5000, 
 	tail_threshold: int=1000, 
 	img_mean_std: bool=False,
-	target_chunk_mb: int=None,
+	chunk_size: int=None,
 	val_split_pct: float=0.35, 
 	seed: int=42,
 	verbose: bool=False,
@@ -239,23 +239,22 @@ def merge_datasets(
 	merged_multi_label_df.to_csv(merged_multi_label_df_fpath, index=False)
 
 	# 2.4 Chunk merged multi-label dataframe
-	if target_chunk_mb is not None:
-		print(f"Chunking merged multi-label dataset to {target_chunk_mb} MB...")
-		# Calculate optimal chunk size
-		estimated_mb_per_row = merged_multi_label_df.memory_usage(deep=True).sum() / (1024**2) / len(merged_multi_label_df)
-		
-		optimal_chunk_size = max(1000, min(50000, int(target_chunk_mb / estimated_mb_per_row)))
-		total_num_chunks = (len(merged_multi_label_df) + optimal_chunk_size - 1) // optimal_chunk_size
-		print(f"Saving {len(merged_multi_label_df)} rows in {total_num_chunks} chunks of ~{optimal_chunk_size} rows each (estimated_mb_per_row: {estimated_mb_per_row:.3f} MB)...")
+	if chunk_size is not None:
+		print(f"Chunking merged multi-label dataset with {chunk_size} rows per chunk...")
+		total_rows = len(merged_multi_label_df)
+		total_num_chunks = (total_rows + chunk_size - 1) // chunk_size
+		if verbose:
+			print(f"Saving {total_rows} rows in {total_num_chunks} chunks of {chunk_size} rows each...")
+
 		# Save in chunks
 		for i in range(total_num_chunks):
-			start_idx = i * optimal_chunk_size
-			end_idx = min((i + 1) * optimal_chunk_size, len(merged_multi_label_df))
+			start_idx = i * chunk_size
+			end_idx = min((i + 1) * chunk_size, total_rows)
 			chunk_df = merged_multi_label_df.iloc[start_idx:end_idx]
 			chunk_df_fpth = merged_multi_label_df_fpath.replace('.csv', f'_chunk_{i}.csv')
 			chunk_df.to_csv(chunk_df_fpth, index=False)
 			if verbose:
-				print(f"  Saved chunk {i+1}/{total_num_chunks}: {chunk_df.shape[0]} rows -> {chunk_df_fpth}")
+				print(f"Saved chunk {i+1:02d}/{total_num_chunks}: {chunk_df.shape[0]} rows -> {chunk_df_fpth}")
 	
 	# 2.5 Save merged single-label and multi-label dataframes as Excel files
 	try:
@@ -300,7 +299,7 @@ def main():
 	parser.add_argument('--tail_threshold', type=int, default=1000, help='Threshold for tail class in long-tail analysis (default: 1000)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of workers for image stats computation (default: min(16, cpu_count))')
 	parser.add_argument('--batch_size', type=int, default=16, help='Batch size for computing image statistics (default: 64)')
-	parser.add_argument('--target_chunk_mb', type=int, default=None, help='Target chunk size in MB (None = no chunking)')
+	parser.add_argument('--chunk_size', type=int, default=None, help='Chunk size of rows (None = no chunking)')
 	parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
@@ -320,7 +319,7 @@ def main():
 		bins=args.bins, 
 		num_workers=args.num_workers, 
 		batch_size=args.batch_size,
-		target_chunk_mb=args.target_chunk_mb,
+		chunk_size=args.chunk_size,
 		img_mean_std=args.img_mean_std,
 		verbose=args.verbose,
 	)
