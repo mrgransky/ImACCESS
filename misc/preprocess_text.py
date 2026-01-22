@@ -309,6 +309,11 @@ def basic_clean(txt: str):
 		r'picture\s\d+\.',											# picture 125.
 		r"^\bView\sof\s", 											# View of powerhouse
 		r"^\bCopy\sof\s", 											# Copy of photo
+		r'(?:Neg\.|Negative)\s*#\s*\d+',           # Neg. # 6253
+		r'(?:CONT|Contract)\s*#\s*\d+',            # CONT # 6715
+		r'(?:Reference|Ref\.?)\s*#\s*\d+',         # Reference # 123
+		r'(?:Item|Record|File)\s*#\s*\d+',         # Item # 456
+		r'(?:Photo|Picture)\s*#\s*\d+',            # Photo # 789
 		r"one\sof\sthe\s\w+\sphotographs\sof the\sinventory\sunit\s\d+\/\w\.",
 		r"U.S.\sAir\sForce\sNumber\s\w\d+\w+",
 		r"^(\d+)\s-\s",
@@ -360,7 +365,7 @@ def basic_clean(txt: str):
 	# txt = re.sub(r'["“”„]', ' ', txt) # all double quotes
 	txt = txt.replace("‘", " ") # left single quotation mark (unicode: \u2018)	
 	
-	txt = txt.replace('#', ' ')
+	# txt = txt.replace(r'#', ' ') # not always safe!
 	# txt = txt.replace(',', ' ')
 
 	# remove everything inside parantheses
