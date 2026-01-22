@@ -147,8 +147,6 @@ def basic_clean(txt: str):
 		r'Original caption on envelope: ',
 		r"In the photo, ",
 		r'Historical Miscellaneous -',
-		r'History: \[none entered\]',
-		# r'History: 8\" x 10\" print received 19 Jan. 1949 from Air Historical Group, AF, 386th Bomb Group, England. Copied 9 March 1949.',
 		r'\[Photograph by: Unknown\]',
 		r'Date Month: \[Blank\]',
 		r'Date Day: \[Blank\]',
