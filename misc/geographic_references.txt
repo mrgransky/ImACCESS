@@ -318,10 +318,10 @@ Seattle
 Atlanta
 Dallas
 Denver
+Detroit
+Guntersville
 Kingston
 Miami
-Omaha
-Detroit
 Manhattan
 Maui
 Minneapolis
@@ -334,6 +334,7 @@ New Orleans
 New Haven
 Norristown
 Norwood
+Omaha
 Phoenix
 Pittsburgh
 Portsmouth

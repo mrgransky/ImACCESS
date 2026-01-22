@@ -132,8 +132,6 @@ def basic_clean(txt: str):
 		r"\s+All+\s+are+\s+unidentified",
 		r"general+\s+view+\s+\w+\s+",
 		r'here is a view of ',
-		r"looking+\s+upstream+\s+\w+\s+",
-		r"looking+\s+downstream+\s+\w+\s+",
 		r"This item includes\s\w+\s\w+\sof\s",
 		r'This item is a photo depicting ',
 		r"This item is a photograph depicting ",
@@ -175,6 +173,7 @@ def basic_clean(txt: str):
 		r'DFG project: worldviews \(2015-2017\), record author: Deutsche Fotothek\/SLUB Dresden \(\)\)',
 		r'DFG project: worldviews \(2015-2017\), record author: Deutsche Fotothek\/SLUB Dresden \(\:\)',
 		r'This image is one of a series of\s\d+\snegatives showing\s',
+		r'Included in the file is a copy of ',
 		r'Description: Imagery taken during the ',
 		r'Law Title taken from similar image in this series.',
 		r'The original finding aid described this photograph as:',
@@ -273,6 +272,8 @@ def basic_clean(txt: str):
 		r"^Unknown$", # when the whole string is exactly “Unknown”
 		r"^\bPhotograph+\s+of+\s+", # Photograph of powerhouse
 		r"^\bPhotographs+\s+of+\s+", # Photographs of Admiral Chester
+		# r"looking+\s+upstream+\s+\w+\s+",
+		# r"looking+\s+downstream+\s+\w+\s+",
 	]
 
 	for pattern in junk_phrases:
@@ -298,15 +299,16 @@ def basic_clean(txt: str):
 		r'(?i)^Project\s+.*?\s-\s',
 		r'(?i)(?:Series of |a series of |Group of |Collection of )(\d+\s*\w+)',
 		r'Part of the documentary ensemble:\s\w+',
-		r'History:.*?(?=\bCategory:)',											# History: 8" x 10" print received 19 Jan. 1949 from Air Historical Group, AF, 386th Bomb Group, England. Copied 9 March 1949.
-		r'State:\s*[^.]+\.?', 															# State: New York.
-		r'no\.\s*\d+(?:-\d+)?', 														# no. 123, no. 123-125
-		r'Vol\.\s\d+',                                      # Vol. 5,
-		r'Vol+\s+\d+',                                      # Vol 5,
-		r'issue\s\d+',																			# issue 1
-		r'part\s\d+',																				# part 1
-		r'picture\s\d+\.',																	# picture 125.
-		r"^\bView of\s", # View of powerhouse
+		r'History:.*?(?=\bCategory:)',					# History: 8" x 10" print received 19 Jan. 1949 from Air Historical Group, AF, 386th Bomb Group, England. Copied 9 March 1949.
+		r'State:\s*[^.]+\.?', 									# State: New York.
+		r'no\.\s*\d+(?:-\d+)?', 								# no. 123, no. 123-125
+		r'Vol\.\s\d+',                          # Vol. 5,
+		r'Vol+\s+\d+',                          # Vol 5,
+		r'issue\s\d+',													# issue 1
+		r'part\s\d+',														# part 1
+		r'picture\s\d+\.',											# picture 125.
+		r"^\bView\sof\s", 											# View of powerhouse
+		r"^\bCopy\sof\s", 											# Copy of photo
 		r"one\sof\sthe\s\w+\sphotographs\sof the\sinventory\sunit\s\d+\/\w\.",
 		r"U.S.\sAir\sForce\sNumber\s\w\d+\w+",
 		r"^(\d+)\s-\s",
@@ -384,7 +386,7 @@ def basic_clean(txt: str):
 def get_enriched_description(
 	df: pd.DataFrame, 
 	check_english: bool=False, 
-	min_length: int=7,
+	min_length: int=3,
 	verbose: bool=False
 )-> pd.DataFrame:
 	if verbose:
