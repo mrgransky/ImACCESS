@@ -10,7 +10,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --partition=interactive
-#SBATCH --time=0-06:00:00
+#SBATCH --time=0-02:00:00
 
 set -euo pipefail
 
@@ -36,6 +36,14 @@ echo "Dataset directory: $dataset_dir"
 mkdir -p "$dataset_dir"
 echo "${stars// /*}"
 
+# chunk size based on cluster:
+if [ "$SLURM_CLUSTER_NAME" == "puhti" ]; then
+	chunk_size=10000
+else
+	chunk_size=7500
+fi
+echo "Chunk size: $chunk_size"
+
 python -u merge_datasets.py \
   --dataset_dir $dataset_dir \
   --num_workers $SLURM_CPUS_PER_TASK \
@@ -46,7 +54,7 @@ python -u merge_datasets.py \
   --batch_size 256 \
   --verbose \
   --img_mean_std \
-  --chunk_size 9000 \
+  --chunk_size $chunk_size \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
