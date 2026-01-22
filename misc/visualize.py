@@ -3146,7 +3146,6 @@ def perform_multilabel_eda(
 	singleton_labels = label_counts_df[label_counts_df['Count'] == 1]
 	print(f"\nNumber of labels appearing only once: {len(singleton_labels)} ({len(singleton_labels) / len(unique_labels) * 100:.2f}%) of total unique labels")
 	print(f"Example singleton labels (first 10): {singleton_labels['Label'].head(10).tolist()}")
-	print("-" * 40 + "\n")
 
 	plt.figure(figsize=(10, 6))
 	sns.histplot(label_counts_df['Count'], bins=50, kde=False, color='coral')
@@ -3163,10 +3162,7 @@ def perform_multilabel_eda(
 	)
 	plt.close()
 
-	# ============================================================
 	# PLOT 1: Power Law Analysis
-	# ============================================================
-	print("\n" + "="*100)
 	print("--- POWER LAW ANALYSIS ---")
 	freq_values = label_counts_df['Count'].values
 	ranks = np.arange(1, len(freq_values) + 1)
@@ -3210,10 +3206,7 @@ def perform_multilabel_eda(
 	print(f"Estimated power law exponent (α): {alpha_estimate:.3f}")
 	print("Note: α ≈ 2 suggests Zipf's law, typical in natural language")
 
-	# ============================================================
-	# NEW ADDITION 2: Label Diversity Metrics
-	# ============================================================
-	print("\n" + "="*100)
+	# PLOT 2: Label Diversity Metrics
 	print("--- LABEL DIVERSITY METRICS ---")
 	
 	# Calculate Shannon entropy
@@ -3276,10 +3269,7 @@ def perform_multilabel_eda(
 	)
 	plt.close()
 
-	# ============================================================
-	# NEW ADDITION 3: Label Imbalance Analysis
-	# ============================================================
-	print("\n" + "="*100)
+	# PLOT 3: Label Imbalance Analysis
 	print("--- LABEL IMBALANCE ANALYSIS ---")
 	
 	# Calculate imbalance ratio
@@ -3393,8 +3383,7 @@ def perform_multilabel_eda(
 	)
 	plt.close()
 
-	# Original code continues...
-	print("\n" + "="*100)
+	# PLOT 4: Unique Label Set Combinations
 	print("--- Unique Label Set Combinations ---")
 	label_sets = df[label_column].apply(lambda x: tuple(sorted(x)))
 	unique_label_sets = Counter(label_sets)
@@ -3419,11 +3408,8 @@ def perform_multilabel_eda(
 		)
 		plt.close()
 	
-	print("="*100)
 	
-	# ============================================================
-	# NEW ADDITION 4: Hierarchical Clustering of Labels
-	# ============================================================
+	# PLOT 5: Hierarchical Clustering of Labels
 	print("\n--- HIERARCHICAL CLUSTERING OF LABELS (Top Labels) ---")
 	if n_top_labels_co_occurrence > len(unique_labels):
 		print(
@@ -3593,7 +3579,7 @@ def perform_multilabel_eda(
 	
 	print("="*100)
 
-	# PLOT 5: Multi-source Agreement Analysis
+	# PLOT 6: Multi-source Agreement Analysis
 	print("\n--- MULTI-SOURCE LABEL AGREEMENT ANALYSIS ---")
 	source_cols = {
 		'textual_based': 'llm_based_labels',
@@ -3800,8 +3786,14 @@ def perform_multilabel_eda(
 				
 				# Unique labels over time
 				ax = axes[0, 0]
-				ax.plot(yearly_label_counts['Year'], yearly_label_counts['Unique Labels'], 
-						marker='o', linewidth=2, markersize=8)
+				ax.plot(
+					yearly_label_counts['Year'], 
+					yearly_label_counts['Unique Labels'], 
+					marker='o',
+					linewidth=2,
+					markersize=8,
+					color="#036629"
+				)
 				ax.set_xlabel('Year')
 				ax.set_ylabel('Number of Unique Labels')
 				ax.set_title('Unique Label Growth Over Time')
@@ -3809,8 +3801,12 @@ def perform_multilabel_eda(
 				
 				# Sample count over time
 				ax = axes[0, 1]
-				ax.bar(yearly_sample_counts['Year'], yearly_sample_counts['Sample Count'], 
-						 color='coral', edgecolor='black')
+				ax.bar(
+					yearly_sample_counts['Year'],
+					yearly_sample_counts['Sample Count'],
+					color='coral',
+					edgecolor='#000000'
+				)
 				ax.set_xlabel('Year')
 				ax.set_ylabel('Number of Samples')
 				ax.set_title('Sample Distribution Over Time')
@@ -3818,8 +3814,14 @@ def perform_multilabel_eda(
 				
 				# Average cardinality over time
 				ax = axes[1, 0]
-				ax.plot(yearly_avg_cardinality['Year'], yearly_avg_cardinality['Avg Cardinality'], 
-						marker='s', linewidth=2, markersize=8, color='green')
+				ax.plot(
+					yearly_avg_cardinality['Year'],
+					yearly_avg_cardinality['Avg Cardinality'],
+					marker='s', 
+					linewidth=2, 
+					markersize=8, 
+					color="#036629"
+				)
 				ax.set_xlabel('Year')
 				ax.set_ylabel('Average Labels per Sample')
 				ax.set_title('Label Cardinality Trend Over Time')
@@ -3845,12 +3847,14 @@ def perform_multilabel_eda(
 				
 				categories = ['Persistent', 'New', 'Disappeared']
 				values = [persistent, new_labels, disappeared]
-				colors = ['green', 'blue', 'red']
+				colors = ["#036629", "#044B1F", "#048B45"]
 				ax.bar(categories, values, color=colors, alpha=0.7, edgecolor='black')
 				ax.set_ylabel('Number of Labels')
 				ax.set_title(f'Top {top_n} Label Stability\n(Early: ≤{median_year:.0f} vs Late: >{median_year:.0f})')
+
 				for i, (cat, val) in enumerate(zip(categories, values)):
 					ax.text(i, val, f'{val}', ha='center', va='bottom')
+
 				ax.grid(axis='y', alpha=0.3)
 				
 				plt.tight_layout()
@@ -3868,8 +3872,6 @@ def perform_multilabel_eda(
 		except Exception as e:
 			print(f"Error in temporal analysis: {e}")
 	
-
-	# Prepare summary stats dictionary for radar chart
 	summary_stats_dict = {
 		'Dataset Name': dataset_name,
 		'File Name': file_name,

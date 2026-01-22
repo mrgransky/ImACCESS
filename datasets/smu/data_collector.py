@@ -52,6 +52,9 @@ with open(meaningless_words_fpth, 'r') as file_:
 STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
 
+with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
+	search_labels = list(dict.fromkeys(line.strip() for line in file_))
+
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
@@ -309,32 +312,41 @@ def scrape_item_metadata(doc_url: str) -> Dict:
 
 @measure_execution_time
 def main():
-	with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
-		search_labels = list(dict.fromkeys(line.strip() for line in file_))
-	print(f"Total of {len(search_labels)} {type(search_labels)} Query phrases are being processed, please be patient...")
+	try:
+		# load searched_listed_*_dfs.gz
+		print(f">> Loading {glob.glob(HITS_DIRECTORY+'/'+'searched_listed_*_dfs.gz')[0]}")
+		dfs = load_pickle(fpath=glob.glob(HITS_DIRECTORY+'/'+'searched_listed_*_dfs.gz')[0])
+	except Exception as e:
+		print(f"<!> {e}")
+		print(f"Total of {len(search_labels)} {type(search_labels)} Query phrases are being processed, please be patient...")
+		dfs = []
+		for qi, qv in enumerate(search_labels):
+			print(f"\nQ[{qi+1}/{len(search_labels)}]: {qv}")
+			qv = clean_(text=qv, sw=STOPWORDS)
+			qv_processed = re.sub(" ", "_", qv)
+			df_fpth = os.path.join(HITS_DIRECTORY, f"df_query_{qv_processed}_{args.start_date}_{args.end_date}.gz")
+			try:
+				df = load_pickle(fpath=df_fpth)
+			except Exception as e:
+				print(f"<!> {e}")
+				df = get_dframe(
+					query=qv,
+					start_date=args.start_date,
+					end_date=args.end_date,
+					df_file_path=df_fpth,
+				)
 
-	dfs = []
-	for qi, qv in enumerate(search_labels):
-		print(f"\nQ[{qi+1}/{len(search_labels)}]: {qv}")
-		qv = clean_(text=qv, sw=STOPWORDS)
-		qv_processed = re.sub(" ", "_", qv)
-		df_fpth = os.path.join(HITS_DIRECTORY, f"df_query_{qv_processed}_{args.start_date}_{args.end_date}.gz")
-		try:
-			df = load_pickle(fpath=df_fpth)
-		except Exception as e:
-			print(e)
-			df = get_dframe(
-				query=qv,
-				start_date=args.start_date,
-				end_date=args.end_date,
-				df_file_path=df_fpth,
-			)
-		if df is not None:
-			dfs.append(df)
+			if df is not None:
+				dfs.append(df)
 
-	total_searched_labels = len(dfs)
-	print(f">> Concatinating {total_searched_labels} x {type(dfs[0])} dfs ...")
+		searched_listed_dfs_fpth = os.path.join(HITS_DIRECTORY, f"searched_listed_{len(dfs)}_dfs.gz")
 
+		save_pickle(
+			pkl=dfs, 
+			fname=searched_listed_dfs_fpth
+		)
+
+	print(f">> Concatinating {len(dfs)} x {type(dfs[0])} dfs ...")
 	df_merged_raw = pd.concat(dfs, ignore_index=True)
 	print(f">> Concatinated dfs: {df_merged_raw.shape}")
 
