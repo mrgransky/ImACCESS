@@ -204,6 +204,7 @@ def basic_clean(txt: str):
 		r'Type: C-N \(Color Negative\) C-P \(Color Print\) ',
 		r'From an album of Lorain H. Cunningham, who served in the 129th Field Artillery during World War I and was a friend of Harry S. Truman.',
 		r'Picture documentation (small picture slideshow) about ',
+		r'Original caption: Miscellaneous',
 		r'Original caption: Photograph Of ',
 		r"Captured Japanese Photograph of ",
 		r'This is a photograph from ',
@@ -395,13 +396,13 @@ def basic_clean(txt: str):
 def get_enriched_description(
 	df: pd.DataFrame, 
 	check_english: bool=False, 
-	min_length: int=8, 
+	min_length: int=7,
 	verbose: bool=False
 )-> pd.DataFrame:
 	if verbose:
 		print(f"\nGenerating enriched_document_description for {type(df)} {df.shape}...")
 		print(f"\t{list(df.columns)}")
-		print(f"\tcheck_english: {check_english} min_length: {min_length} verbose: {verbose}")
+		print(f"\tcheck_english: {check_english} min_length: {min_length}")
 
 	# check if title and description are in df.columns:
 	if "title" not in df.columns:
@@ -411,12 +412,10 @@ def get_enriched_description(
 
 	# check if how many empty(Nones) exist in title and description:
 	if verbose:
-		print(f"\tEmpty title: {df['title'].isna().sum()} "
-			f"/ {df.shape[0]} total samples "
+		print(f"\tEmpty title: {df['title'].isna().sum()}/{df.shape[0]} "
 			f"({df['title'].isna().sum()/df.shape[0]*100:.2f}%)"
 		)
-		print(f"\tEmpty description: {df['description'].isna().sum()} "
-			f"/ {df.shape[0]} total samples "
+		print(f"\tEmpty description: {df['description'].isna().sum()}/{df.shape[0]} "
 			f"({df['description'].isna().sum()/df.shape[0]*100:.2f}%)"
 		)
 
@@ -446,6 +445,11 @@ def get_enriched_description(
 		axis=1
 	)
 	
+	# Filter out samples with text < min_length
+	df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
+		lambda x: x if x and len(x.strip()) >= min_length else None
+	)
+
 	# Ensure proper ending
 	df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
 		lambda x: x.rstrip('.') + '.' if x and not x.endswith('.') else x
