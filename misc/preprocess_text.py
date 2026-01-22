@@ -399,8 +399,9 @@ def get_enriched_description(
 	verbose: bool=False
 )-> pd.DataFrame:
 	if verbose:
-		print(f"\nAdding enriched_document_description to {df.shape} {type(df)}...")
-		print(list(df.columns))
+		print(f"\nGenerating enriched_document_description for {type(df)} {df.shape}...")
+		print(f"\t{list(df.columns)}")
+		print(f"\tcheck_english: {check_english} min_length: {min_length} verbose: {verbose}")
 
 	# check if title and description are in df.columns:
 	if "title" not in df.columns:
@@ -410,12 +411,12 @@ def get_enriched_description(
 
 	# check if how many empty(Nones) exist in title and description:
 	if verbose:
-		print(f"Number of empty title: {df['title'].isna().sum()} "
-			f"out of {df.shape[0]} total samples "
+		print(f"\tEmpty title: {df['title'].isna().sum()} "
+			f"/ {df.shape[0]} total samples "
 			f"({df['title'].isna().sum()/df.shape[0]*100:.2f}%)"
 		)
-		print(f"Number of empty description: {df['description'].isna().sum()} "
-			f"out of {df.shape[0]} total samples "
+		print(f"\tEmpty description: {df['description'].isna().sum()} "
+			f"/ {df.shape[0]} total samples "
 			f"({df['description'].isna().sum()/df.shape[0]*100:.2f}%)"
 		)
 

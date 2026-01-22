@@ -1,4 +1,5 @@
 from utils import *
+from preprocess_text import get_enriched_description
 
 # basic models:
 # model_id = "google/gemma-1.1-2b-it"
@@ -24,6 +25,11 @@ from utils import *
 # not useful for instruction tuning:
 # model_id = "microsoft/DialoGPT-large"
 # model_id = "gpt2-xl"
+
+# how to run [local]:
+# python gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 2
+# nohup python -u gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 4 -mgt 64 > logs/llm_annotation_history_x4.txt &
+
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -1166,27 +1172,40 @@ def get_llm_based_labels(
 	# ========== Load data ==========
 	if verbose:
 		print(f"[PREP] Loading data (col: enriched_document_description) from {csv_file}...")
+	wanted_cols = {
+		'doc_url',
+		'title',
+		'description',
+		'keywords', # SMU dataset
+		'enriched_document_description',
+	}
+
 	try:
 		df = pd.read_csv(
 			filepath_or_buffer=csv_file,
 			on_bad_lines='skip',
 			dtype=dtypes,
 			low_memory=False,
-			usecols = ['doc_url', 'enriched_document_description'],
+			usecols = lambda c: c in wanted_cols, # automatically skips missing cols
 		)
 	except Exception as e:
 		raise ValueError(f"Error loading CSV file: {e}")
 	
-	descriptions = df['enriched_document_description'].tolist()
 	if verbose:
-		print(f"[INFO] Loaded {type(df)} {df.shape} with {len(descriptions)} descriptions")
+		print(f"[LOADED] {type(df)} {df.shape} {list(df.columns)}")
+
+	# regenerate enriched_document_description
+	df = get_enriched_description(df=df, check_english=True, verbose=verbose)
 	
+	if verbose:
+		print(f"[READY] {type(df)} {df.shape} {list(df.columns)} ({time.time() - st_t:.2f}s)")
+
+	descriptions = df['enriched_document_description'].tolist()
 	inputs = descriptions
 	if len(inputs) == 0:
 		return None
-	
+
 	# Load tokenizer and model
-	
 	tokenizer, model = _load_llm_(
 		model_id=model_id,
 		use_quantization=use_quantization,
