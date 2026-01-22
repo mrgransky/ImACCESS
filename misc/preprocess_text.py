@@ -156,6 +156,7 @@ def basic_clean(txt: str):
 		r'Date Year: \[Blank\]',
 		r'Subcategory: \[BLANK\]',
 		r'Subcategory: Unidentified',
+		r'Category: Miscellaneous ',
 		r'Date+\s+Month:+\s+\w+',
 		r'Date+\s+Day:+\s+\w+',
 		r'Date+\s+Year:+\s+\w+',
@@ -172,9 +173,21 @@ def basic_clean(txt: str):
 		r'photo from the photo album ',
 		r'The digitalisat was made by the original album.',
 		r'The information about the photograph was provided by the creator of the collection, Mr. Dan Hadani',
-		r'State digitization program Saxony: Postcard publisher Brück und Sohn (digitization)',
-		r"record author: Deutsche Fotothek/SLUB Dresden (DF)",
-		r'DFG project: worldviews (2015-2017),',
+		r'State digitization program Saxony: Postcard publisher Brück und Sohn \(digitization\)',
+		r'DFG project: worldviews \(2015-2017\), record author: Deutsche Fotothek\/SLUB Dresden \(DF\)',
+		r'DFG project: worldviews \(2015-2017\), record author: Deutsche Fotothek\/SLUB Dresden \(\)\)',
+		r'DFG project: worldviews \(2015-2017\), record author: Deutsche Fotothek\/SLUB Dresden \(\:\)',
+		r'\(Transkontinentalexkursion der American Geographical Society durch die USA 1912\)',
+		r'\(American Geographical Society transcontinental excursion in 1912\)',
+		r'\(collection Walter Becke 1921\/1932 - North and Baltic Sea trips 1927\/1932\)',
+		r'\(collection Walter Becke 1921\/1932 - SchweizFried1928\)',
+		r'\(collection Walter Becke 1921\/1932 - Adriareise 1927\)',
+		r'\(collection Walter Becke 1921\/1932 - Italienreise 1930\)',
+		r'\(collection Walter Becke 1921\/1932 - Slovak and Hungarian travel 1931\)',
+		r'\(collection Walter Becke 1921\/1932 - Austria\’s travel 1926\/1928\)',
+		r'\(front Asian and European trip Müller 1930\)',
+		r'\(Austria-Italy trip Müller 1927\)',
+		r'\(Northern Germany trip Müller 1928\)',
 		r'This image is one of a series of\s\d+\snegatives showing\s',
 		r'Description: Imagery taken during the ',
 		r'Law Title taken from similar image in this series.',
@@ -188,7 +201,7 @@ def basic_clean(txt: str):
 		r'The following information was provided by digitizing partner Fold3:',
 		r'It was subsequently published in conjunction with an article.',
 		r'Original photograph is in a photo album of inaugural events.',
-		r'Type: C-N (Color Negative) C-P (Color Print) ',
+		r'Type: C-N \(Color Negative\) C-P \(Color Print\) ',
 		r'From an album of Lorain H. Cunningham, who served in the 129th Field Artillery during World War I and was a friend of Harry S. Truman.',
 		r'Picture documentation (small picture slideshow) about ',
 		r'Original caption: Photograph Of ',
@@ -226,7 +239,7 @@ def basic_clean(txt: str):
 		r'This Photo Of ',
 		r'This image depicts ',
 		r'Text on the back',
-		r"A B/W photo of ",
+		r"A B\/W photo of ",
 		r'black and white',
 		r'Photographn of ',
 		r'In the photo ',
@@ -246,10 +259,11 @@ def basic_clean(txt: str):
 		r'Pictures of ',
 		r'index to ',
 		r'Phot. of ',
-		r'\s+in+\s+color',
+		r'Slideshow of plastic in color',
 		r'color photo',
 		r'Colored photo',
 		r"color copies",
+		r'in color, broad',
 		r"photo in color",
 		r"slide copy",
 		r'Country: Unknown',
@@ -260,7 +274,7 @@ def basic_clean(txt: str):
 		r"No description",
 		r'Photograph: ',
 		r'Image: ',
-		r'Wash. D.C.',
+		r'Wash. D\.C\.',
 		r'File Record',
 		r'Original negative.',
 		r'Description: ',
@@ -358,13 +372,19 @@ def basic_clean(txt: str):
 	txt = txt.replace('#', ' ')
 	# txt = txt.replace(',', ' ')
 
+	# remove everything inside parantheses
+	txt = re.sub(r'\([^)]*\)', ' ', txt)
+
+	# remove everything inside brackets
+	txt = re.sub(r'\[[^\]]*\]', ' ', txt)
+
 	txt = re.sub(r'-{2,}', ' ', txt)   # multiple dashes
 	txt = re.sub(r'\.{2,}', '.', txt)  # ellipses ...
 	txt = re.sub(r'[\[\]]', ' ', txt)  # square brackets
 	txt = re.sub(r'[\{\}]', ' ', txt)  # curly braces
 	txt = re.sub(r'[\(\)]', ' ', txt)  # parentheses
 
-	
+
 	txt = re.sub(r'\s+', ' ', txt) # Collapse all whitespace
 	txt = txt.replace("'", "") # stray leftover single quotes (should be none, but safe)
 	txt = txt.replace("__APOSTROPHE__", "'") # RESTORE real apostrophes

@@ -318,6 +318,7 @@ Seattle
 Atlanta
 Dallas
 Denver
+Kingston
 Miami
 Omaha
 Detroit
@@ -378,13 +379,17 @@ Buenos Aires
 Buna
 Budapest
 Cairo
+Caracas
 Cebu City
 Cleveland
 Cologne
 Dessau
 Dresden
+Dublin
 Frankfurt
 Gaza
+Hong Kong
+Ipswich
 Kobe
 Hanoi
 Havana
@@ -396,6 +401,7 @@ Majuro
 Manila
 Marrakech
 Mexico City
+Milan
 Moscow
 Munich
 Nagoya

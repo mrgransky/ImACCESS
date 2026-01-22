@@ -41,7 +41,7 @@ na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
 START_DATE = args.start_date
 END_DATE = args.end_date
 FIGURE_SIZE = (12, 9)
-DPI = 350
+DPI = 200
 
 meaningless_words_fpth = os.path.join(project_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
@@ -369,7 +369,6 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 
 @measure_execution_time
 def main():
-
 	with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		search_labels = list(dict.fromkeys(line.strip() for line in file_))
 

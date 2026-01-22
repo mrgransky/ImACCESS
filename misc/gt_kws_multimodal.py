@@ -196,10 +196,10 @@ def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[
 	
 	if verbose:
 		print(f"\n{'='*80}")
-		print(f"[_post_process_] Completed post-processing")
-		print(f"[_post_process_] Output length: {len(processed_batch)}")
-		print(f"[_post_process_] None values: {sum(1 for x in processed_batch if x is None)}")
-		print(f"[_post_process_] Empty lists: {sum(1 for x in processed_batch if x is not None and len(x) == 0)}")
+		print(f"Completed post-processing")
+		print(f"\tOutput length: {len(processed_batch)}")
+		print(f"\tNone values: {sum(1 for x in processed_batch if x is None)}")
+		print(f"\tEmpty lists: {sum(1 for x in processed_batch if x is not None and len(x) == 0)}")
 		print(f"{'='*80}\n")
 	
 	return processed_batch

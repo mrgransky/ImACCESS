@@ -1006,6 +1006,8 @@ yours
 yourselves
 youve
 zero
+black and white photograph
+color photograph
 misc
 okla
 view
@@ -1037,7 +1039,12 @@ down
 right
 left
 unidentified
+looking e
+looking s
+looking w
+looking n
 looking nnw
+looking wnw
 looking ne
 looking sw
 looking nw
