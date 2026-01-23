@@ -421,7 +421,7 @@ def main():
 	############################## aggregating user_query to list ##############################
 
 	print(f"\n2. Image synchronization (using multi-label dataset as reference)...")
-	synched_fpath = os.path.join(DATASET_DIRECTORY, f"synched_x_{total_searched_labels}_searched_labels_metadata_multi_label.csv")
+	synched_fpath = os.path.join(DATASET_DIRECTORY, f"synched_x_{len(dfs)}_searched_labels_metadata_multi_label.csv")
 	multi_label_synched_df = get_synchronized_df_img(
 		df=grouped,
 		synched_fpath=synched_fpath,
