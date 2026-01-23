@@ -80,7 +80,7 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - **ABSOLUTELY NO** generic photography, image, picture, or media keywords.
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
-- **ABSOLUTELY NO** meaningless abbreviations, numerical words, special characters, or stopwords.
+- **ABSOLUTELY NO** possessive cases, meaningless abbreviations, or numerical keywords.
 - **ABSOLUTELY NO** explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
 - The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""

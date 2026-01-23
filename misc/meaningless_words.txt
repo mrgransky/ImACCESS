@@ -36,6 +36,7 @@ beneath
 between
 opposite
 among
+cross
 across
 along
 behind

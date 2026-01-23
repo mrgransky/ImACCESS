@@ -53,8 +53,9 @@ def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[
 	Cleans, normalizes, and lemmatizes label lists.
 	1. Handles parsing (str -> list).
 	2. Lowercases and strips quotes/brackets.
-	3. Lemmatizes (e.g., "trains" -> "train").
-	4. Deduplicates within the sample (post-lemmatization).
+	3. Lemmatizes each word in phrases (e.g., "tool pushers" -> "tool pusher").
+	4. Protects abbreviations (NAS, WACs) from lemmatization.
+	5. Deduplicates within the sample (post-lemmatization).
 	"""
 	if verbose:
 		print(f"\n{'='*80}")
@@ -70,6 +71,28 @@ def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[
 		return labels_list
 
 	lemmatizer = nltk.stem.WordNetLemmatizer()
+	
+	def lemmatize_phrase(phrase: str, original_phrase: str) -> str:
+		"""
+		Lemmatize each word in a phrase independently.
+		Skip lemmatization for abbreviations (detected from original_phrase).
+		"""
+		tokens = phrase.split()
+		original_tokens = original_phrase.split()
+		lemmatized_tokens = []
+		
+		for i, token in enumerate(tokens):
+			# Check if original token was all-caps or contains periods
+			original_token = original_tokens[i] if i < len(original_tokens) else token
+			is_abbreviation = original_token.isupper() or '.' in original_token
+			
+			if is_abbreviation:
+				lemmatized_tokens.append(token)  # Keep as-is
+			else:
+				lemmatized_tokens.append(lemmatizer.lemmatize(token))
+		
+		return ' '.join(lemmatized_tokens)
+	
 	processed_batch = []
 
 	for idx, labels in enumerate(labels_list):
@@ -137,37 +160,36 @@ def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[
 					print(f"        → Empty/falsy, skipping")
 				continue
 			
+			# Store original before lowercasing (for abbreviation detection)
+			original = str(item).strip()
+			
 			# String conversion & basic cleanup
-			s = str(item).strip().lower()
+			s = original.lower()
 			if verbose:
 				print(f"        → After str/strip/lower: {repr(s)}")
 
-			# Replace ampersand with semantic equivalent
-			s = s.replace('&', ' and ')
-			if verbose:
-				print(f"        → After '&' normalization: {repr(s)}")
-
 			# Strip quotes and brackets
 			s = s.strip('"').strip("'").strip('()').strip('[]')
+			original_cleaned = original.strip('"').strip("'").strip('()').strip('[]')
 
 			# Collapse accidental extra whitespace
 			s = ' '.join(s.split())
+			original_cleaned = ' '.join(original_cleaned.split())
 
 			if verbose:
-				print(f"        → After quote/bracket/ampersand removal: {repr(s)}")
+				print(f"        → After quote/bracket removal: {repr(s)}")
 			
 			if not s:
 				if verbose:
 					print(f"        → Empty after cleanup, skipping")
 				continue
 
-			# Lemmatize (noun-based by default)
-			# This converts 'soldiers' -> 'soldier', 'factories' -> 'factory'
-			lemma = lemmatizer.lemmatize(s)
+			# Lemmatize each word in the phrase (with abbreviation protection)
+			lemma = lemmatize_phrase(s, original_cleaned)
 			
 			if verbose:
 				if lemma != s:
-					print(f"        → Lemmatized: {repr(s)} → {repr(lemma)}")
+					print(f"        → Lemmatized: {repr(s)} → {repr(lemma)} (changed)")
 				else:
 					print(f"        → Lemmatized: {repr(lemma)} (unchanged)")
 			

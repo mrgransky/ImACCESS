@@ -286,8 +286,11 @@ Boston
 Bridgeport
 Brunswick
 Chicago
+Columbia
 Columbus
 Houston
+CA
+CA.
 CZ.
 C.Z.
 D.C.
@@ -296,6 +299,7 @@ Cal.
 FL.
 GA.
 Ill.
+L.A.
 Mass.
 Mich.
 Okla.
@@ -309,10 +313,14 @@ P.A.
 N.Y. City
 R.I.
 S.D.
+S.F.
+City of S.F.
 Jacksonville
 Leadvale
 New York City
+Las Vegas
 Los Angeles
+City of Las Vegas
 Philadelphia
 Seattle
 Atlanta
@@ -340,6 +348,7 @@ Pittsburgh
 Portsmouth
 Richmond
 St. Louis
+City of St. Louis
 San Diego
 San Antonio
 San Jose
@@ -347,6 +356,7 @@ Austin
 Indianapolis
 Nashville
 Portland
+City of Portland
 Sacramento
 Salt Lake City
 Sandusky
