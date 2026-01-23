@@ -2908,14 +2908,12 @@ def analyze_top_labels_per_source(
 				print("  (None)")
 
 			print(f"--- Singleton Analysis (LLM-only and VLM-only) ---")
-			# labels with only one instance
 			llm_only_singleton = llm_counts[llm_counts['Label'].isin(llm_only) & (llm_counts['Count'] == 1)]
 			vlm_only_singleton = vlm_counts[vlm_counts['Label'].isin(vlm_only) & (vlm_counts['Count'] == 1)]
 			print(f"LLM-only singleton labels: {len(llm_only_singleton)}/{len(llm_only)} ({len(llm_only_singleton) / len(llm_only) * 100:.2f}% of LLM-only)")
 			print(f"VLM-only singleton labels: {len(vlm_only_singleton)}/{len(vlm_only)} ({len(vlm_only_singleton) / len(vlm_only) * 100:.2f}% of VLM-only)")
 			print(f"Total singleton labels: {len(llm_only_singleton) + len(vlm_only_singleton)} ({(len(llm_only_singleton) + len(vlm_only_singleton)) / (len(llm_only) + len(vlm_only)) * 100:.2f}% of total)")
 			print()
-
 
 			# Visualize source-specific labels
 			fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
