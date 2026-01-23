@@ -104,7 +104,11 @@ def is_english(
 		return False
 
 def basic_clean(txt: str):
-	if not txt or not isinstance(txt, str):
+	if (
+		not txt
+		or not isinstance(txt, str)
+		or "[sic]" in txt
+	):
 		return ""
 
 	# Step 1: PROTECT real apostrophes FIRST (most important!)

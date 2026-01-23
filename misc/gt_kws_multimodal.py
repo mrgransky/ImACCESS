@@ -48,13 +48,18 @@ with open('geographic_references.txt', 'r') as file_:
 	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
 STOPWORDS.update(geographic_references)
 
-def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[List[str]]:
+def _post_process_(
+	labels_list: List[List[str]],
+	min_kw_length: int = 4,
+	verbose: bool = False
+) -> List[List[str]]:
 	"""
 	Cleans, normalizes, and lemmatizes label lists.
 	1. Handles parsing (str -> list).
 	2. Lowercases and strips quotes/brackets.
 	3. Lemmatizes each word in phrases (e.g., "tool pushers" -> "tool pusher").
 	4. Protects abbreviations (NAS, WACs) from lemmatization.
+	6. Removes keywords shorter than min_kw_length.
 	5. Deduplicates within the sample (post-lemmatization).
 	"""
 	if verbose:
@@ -192,6 +197,12 @@ def _post_process_(labels_list: List[List[str]], verbose: bool = False) -> List[
 					print(f"        → Lemmatized: {repr(s)} → {repr(lemma)} (changed)")
 				else:
 					print(f"        → Lemmatized: {repr(lemma)} (unchanged)")
+			
+			# Check minimum length
+			if len(lemma) < min_kw_length:
+				if verbose:
+					print(f"        → Too short (len={len(lemma)} < {min_kw_length}), skipping")
+				continue
 			
 			# Check stopwords
 			if lemma in STOPWORDS:

@@ -282,7 +282,9 @@ West Virginia
 Wisconsin
 Wyoming
 
+Beverly Hills
 Boston
+Boylestone
 Bridgeport
 Brunswick
 Chicago
@@ -300,8 +302,12 @@ FL.
 GA.
 Ill.
 L.A.
+L. A.
 Mass.
 Mich.
+Mont.
+MT.
+Nev.
 Okla.
 N.C.
 N.H.

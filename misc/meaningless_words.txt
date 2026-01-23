@@ -23,6 +23,7 @@ until
 for
 inside
 below
+loco
 over
 above
 under
@@ -1062,3 +1063,6 @@ looking northeast
 looking northwest
 looking southwest
 looking southeast
+beverly hill
+boyleston
+photog
