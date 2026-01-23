@@ -76,7 +76,7 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - Extracted **KEYWORDS** must be self-contained and grammatically complete phrases that explicitly appear in the caption. If you are uncertain, in doubt, or unsure, omit the keyword rather than guessing.
 - **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
 - **ABSOLUTELY NO** possessive cases, abbreviations, shortened words or acronyms.
-- **ABSOLUTELY NO** keywords that contain number sign, or special characters.
+- **ABSOLUTELY NO** keywords that contain number sign, typos or special characters.
 - **ABSOLUTELY NO** dates, times, hours, minutes, calendar references, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
 - **ABSOLUTELY NO** geographic references, continents, countries, cities, or states.
 - **ABSOLUTELY NO** serial/reference numbers, geographic/infrastructure/operational identifiers, technical photo specs, measurements, units, coordinates, or **ANY** quantitative keywords.
@@ -911,15 +911,18 @@ def _qwen_llm_response(
 				print(f"    ✗ Skipped: too short (len={len(cleaned)})")
 			continue
 		
-		# Check stopwords (with safety check)
-		try:
-			if cleaned.lower() in STOPWORDS:
-				if verbose:
-					print(f"    ✗ Skipped: stopword")
-				continue
-		except NameError:
-			pass  # STOPWORDS not defined
-		
+		# # Check stopwords
+		if cleaned.lower() in STOPWORDS:
+			if verbose:
+				print(f"    ✗ Skipped: stopword")
+			continue
+
+		# Check if cleaned is a number # 1940
+		if cleaned.isdigit():
+			if verbose:
+				print(f"    ✗ Skipped: number")
+			continue
+
 		# Check for duplicates (case-insensitive)
 		normalized = cleaned.lower()
 		if normalized in seen:

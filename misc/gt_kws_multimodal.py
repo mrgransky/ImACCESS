@@ -48,7 +48,263 @@ with open('geographic_references.txt', 'r') as file_:
 	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
 STOPWORDS.update(geographic_references)
 
-def _post_process_(
+def _post_process_(labels_list: List[List[str]], min_kw_length: int = 2, verbose: bool = False) -> List[List[str]]:
+	"""
+	Cleans, normalizes, and lemmatizes label lists.
+	1. Handles parsing (str -> list).
+	2. Lowercases and strips quotes/brackets.
+	3. Lemmatizes each word in phrases (e.g., "tool pushers" -> "tool pusher").
+	4. Protects abbreviations (NAS, WACs) from lemmatization.
+	5. Protects quantified plurals (e.g., "two women") from lemmatization.
+	6. Protects title-case phrases (e.g., "As You Like It") from lemmatization.
+	7. Filters out keywords shorter than min_kw_length (except abbreviations).
+	8. Deduplicates within the sample (post-lemmatization).
+	
+	Args:
+		labels_list: List of label lists to process
+		min_kw_length: Minimum character length for keywords (default: 2)
+		verbose: Enable detailed logging
+	"""
+	# Number words for quantified plural detection
+	NUMBER_WORDS = {
+		"one", "two", "three", "four", "five",
+		"six", "seven", "eight", "nine", "ten"
+	}
+	
+	def is_quantified_plural(original_phrase: str) -> bool:
+			tokens = original_phrase.lower().split()
+			if len(tokens) < 2:
+					return False
+			
+			is_number = tokens[0].isdigit() or tokens[0] in NUMBER_WORDS
+			# Check for standard 's' ending OR common irregular plurals
+			is_plural = tokens[1].endswith("s") or tokens[1] in {"men", "women", "children", "people"}
+			
+			return is_number and is_plural
+
+	def is_title_like(original_phrase: str) -> bool:
+		"""
+		Check if phrase looks like a title or proper name.
+		If 60%+ of tokens start with uppercase, treat as title.
+		"""
+		tokens = original_phrase.split()
+		if len(tokens) < 2:
+			return False
+		capitalized = sum(1 for t in tokens if t and t[0].isupper())
+		return capitalized / len(tokens) >= 0.6
+	
+	def is_abbreviation(original_phrase: str) -> bool:
+		"""
+		Check if phrase is an abbreviation or model code.
+		Abbreviations should be protected from lemmatization and length filtering.
+		"""
+		return (
+			original_phrase.isupper()
+			or "." in original_phrase
+			or any(c.isdigit() for c in original_phrase)
+		)
+	
+	if verbose:
+		print(f"\n{'='*80}")
+		print(f"Starting post-processing")
+		print(f"\tInput type: {type(labels_list)}")
+		print(f"\tInput length: {len(labels_list) if labels_list else 0}")
+		print(f"\tStopwords loaded: {len(STOPWORDS)}")
+		print(f"\tMinimum keyword length: {min_kw_length}")
+		print(f"{'='*80}\n")
+	
+	if not labels_list:
+		if verbose:
+			print("\tEmpty input, returning as-is")
+		return labels_list
+
+	lemmatizer = nltk.stem.WordNetLemmatizer()
+	
+	def lemmatize_phrase(phrase: str, original_phrase: str) -> str:
+		"""
+		Lemmatize each word in a phrase independently.
+		Skip lemmatization for abbreviations (detected from original_phrase).
+		"""
+		tokens = phrase.split()
+		original_tokens = original_phrase.split()
+		lemmatized_tokens = []
+		
+		for i, token in enumerate(tokens):
+			# Check if original token was all-caps or contains periods
+			original_token = original_tokens[i] if i < len(original_tokens) else token
+			is_abbr = original_token.isupper() or '.' in original_token
+			
+			if is_abbr:
+				lemmatized_tokens.append(token)  # Keep as-is
+			else:
+				lemmatized_tokens.append(lemmatizer.lemmatize(token))
+		
+		return ' '.join(lemmatized_tokens)
+	
+	processed_batch = []
+
+	for idx, labels in enumerate(labels_list):
+		if labels is None:
+			processed_batch.append(None)
+			continue
+		
+		if isinstance(labels, float) and math.isnan(labels):
+			processed_batch.append(None)
+			continue
+
+		if verbose:
+			print(f"\n[Sample {idx+1}/{len(labels_list)}]")
+			print(f"{len(labels)} {type(labels)} {type(labels).__name__} {labels}")
+
+		# --- 1. Standardization: Ensure we have a list of strings ---
+		current_items = []
+		if labels is None:
+			if verbose:
+				print(f"  → None detected, appending None to output")
+			processed_batch.append(None)
+			continue
+		elif isinstance(labels, list):
+			current_items = labels
+			if verbose:
+				print(f"  → Already a list with {len(current_items)} items")
+		elif isinstance(labels, str):
+			if verbose:
+				print(f"  → String detected, attempting to parse...")
+			try:
+				parsed = ast.literal_eval(labels)
+				if isinstance(parsed, list):
+					current_items = parsed
+					if verbose:
+						print(f"  → Successfully parsed to list with {len(current_items)} items")
+				else:
+					current_items = [str(parsed)]
+					if verbose:
+						print(f"  → Parsed to non-list type ({type(parsed)}), wrapping in list")
+			except Exception as e:
+				current_items = [labels] # Fallback for non-list strings
+				if verbose:
+					print(f"  → Parse failed ({type(e).__name__}), treating as single-item list")
+		else:
+			# Numeric or other types
+			current_items = [str(labels)]
+			if verbose:
+				print(f"  → Non-standard type ({type(labels)}), converting to string and wrapping")
+
+		if verbose:
+			print(f"  Current items after standardization: {current_items}")
+
+		# --- 2. Normalization & Lemmatization ---
+		clean_set = set() # Use set for automatic deduplication
+		
+		if verbose:
+			print(f"  Processing {len(current_items)} items...")
+		
+		for item_idx, item in enumerate(current_items):
+			if verbose:
+				print(f"    [{item_idx+1}] Original: {repr(item)} (type: {type(item).__name__})")
+			
+			if not item:
+				if verbose:
+					print(f"        → Empty/falsy, skipping")
+				continue
+			
+			# Store original before lowercasing (for abbreviation detection)
+			original = str(item).strip()
+			
+			# String conversion & basic cleanup
+			s = original.lower()
+			if verbose:
+				print(f"        → After str/strip/lower: {repr(s)}")
+
+			# Strip quotes and brackets
+			s = s.strip('"').strip("'").strip('()').strip('[]')
+			original_cleaned = original.strip('"').strip("'").strip('()').strip('[]')
+
+			# Collapse accidental extra whitespace
+			s = ' '.join(s.split())
+			original_cleaned = ' '.join(original_cleaned.split())
+
+			if verbose:
+				print(f"        → After quote/bracket removal: {repr(s)}")
+			
+			if not s:
+				if verbose:
+					print(f"        → Empty after cleanup, skipping")
+				continue
+
+			# --- Lemmatization with guards ---
+			if is_quantified_plural(original_cleaned):
+				lemma = s  # Preserve "two women", "three soldiers"
+				if verbose:
+					print(f"        → Quantified plural detected, preserving: {repr(lemma)}")
+			elif is_title_like(original_cleaned):
+				lemma = s  # Preserve "As You Like It", "Gone With the Wind"
+				if verbose:
+					print(f"        → Title-like phrase detected, preserving: {repr(lemma)}")
+			else:
+				# Lemmatize each word in the phrase (with abbreviation protection)
+				lemma = lemmatize_phrase(s, original_cleaned)
+				if verbose:
+					if lemma != s:
+						print(f"        → Lemmatized: {repr(s)} → {repr(lemma)} (changed)")
+					else:
+						print(f"        → Lemmatized: {repr(lemma)} (unchanged)")
+			
+			# Check minimum length (but exempt abbreviations)
+			if (
+				len(lemma) < min_kw_length 
+				and not is_abbreviation(original_cleaned) # SMU, NAS
+			):
+				if verbose:
+					print(f"        → Too short and not abbreviation (len={len(lemma)} < {min_kw_length}), skipping")
+				continue
+			
+			# Check if lemma is a number
+			if lemma.isdigit():
+				if verbose:
+					print(f"        → {lemma} Number detected, skipping")
+				continue
+
+			# Check stopwords
+			if lemma in STOPWORDS:
+				if verbose:
+					print(f"        → {lemma} Stopword detected, skipping")
+				continue
+
+			# only No. NNNNN ex) No. X1657 or No. 1657
+			if re.match(r"^No\.\s\w+$", lemma, re.IGNORECASE):
+				if verbose:
+					print(f"        → {lemma} Only No. NNNNN detected, skipping")
+				continue
+
+			# Check duplicates
+			if lemma in clean_set:
+				if verbose:
+					print(f"        → {lemma} Duplicate detected, skipping")
+			else:
+				clean_set.add(lemma)
+				if verbose:
+					print(f"        → {lemma} Added to clean set")
+
+		# Convert back to list
+		result = list(clean_set)
+		processed_batch.append(result)
+		
+		if verbose:
+			print(f"  Final output for sample {idx+1}: {result}")
+			print(f"  Items: {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
+	
+	if verbose:
+		print(f"\n{'='*80}")
+		print(f"Completed post-processing")
+		print(f"\tOutput length: {len(processed_batch)}")
+		print(f"\tNone values: {sum(1 for x in processed_batch if x is None)}")
+		print(f"\tEmpty lists: {sum(1 for x in processed_batch if x is not None and len(x) == 0)}")
+		print(f"{'='*80}\n")
+	
+	return processed_batch
+
+def _post_process_old(
 	labels_list: List[List[str]],
 	min_kw_length: int = 4,
 	verbose: bool = False

@@ -2755,9 +2755,7 @@ def analyze_top_labels_per_source(
 	
 	all_label_counts = {}  # Store for comparison later
 	
-	# ============================================================
 	# PART 1: Individual Source Analysis
-	# ============================================================
 	for source_name, col_name in source_columns_to_analyze.items():
 		if col_name not in processed_dfs:
 			print(f"\n>>> Source: {source_name} ({col_name}) - NOT AVAILABLE")
@@ -2782,7 +2780,7 @@ def analyze_top_labels_per_source(
 		
 		# Print statistics
 		print(f"Total samples: {len(source_df)}")
-		print(f"Total unique labels: {len(source_unique)}")
+		print(f"Total {source_name} unique labels: {len(source_unique)}")
 		print(f"Total label instances: {len(source_labels)}")
 		print(f"Mean labels per sample: {len(source_labels) / len(source_df):.2f}")
 		
@@ -2818,9 +2816,7 @@ def analyze_top_labels_per_source(
 		)
 		plt.close()
 	
-	# ============================================================
 	# PART 2: Comparative Analysis - Side-by-side
-	# ============================================================
 	if len(all_label_counts) >= 2:
 		print("\n" + "="*100)
 		print("--- COMPARATIVE ANALYSIS: Top Labels Across Sources ---")
@@ -2844,7 +2840,7 @@ def analyze_top_labels_per_source(
 			ax.invert_yaxis()  # Top label at top
 			ax.set_xlabel('Frequency', fontsize=11)
 			ax.set_title(
-				f'{source_name} (Top-{len(plot_data)} labels)',
+				f'{source_name} (Top-{len(plot_data)} labels) [Total: {len(counts_df)}]',
 				fontsize=10,
 				weight='bold'
 			)
@@ -2858,9 +2854,7 @@ def analyze_top_labels_per_source(
 		)
 		plt.close()
 		
-		# ============================================================
 		# PART 3: Source-Specific Labels
-		# ============================================================
 		if 'LLM-based' in all_label_counts and 'VLM-based' in all_label_counts:
 			print("\n--- Source-Specific Label Analysis ---")
 			
@@ -2878,10 +2872,10 @@ def analyze_top_labels_per_source(
 			print(f"  Labels only in VLM: {len(vlm_only)} ({len(vlm_only)/len(vlm_labels)*100:.1f}% of VLM)")
 			print(f"  Labels in both: {len(both)} ({len(both)/len(llm_labels | vlm_labels)*100:.1f}% of total)")
 			
-			# Show top LLM-only and VLM-only labels
 			llm_counts = all_label_counts['LLM-based']
 			vlm_counts = all_label_counts['VLM-based']
 			
+			# Show top frequent labels
 			llm_only_top = llm_counts[llm_counts['Label'].isin(llm_only)].head(10)
 			vlm_only_top = vlm_counts[vlm_counts['Label'].isin(vlm_only)].head(10)
 			
@@ -2897,6 +2891,32 @@ def analyze_top_labels_per_source(
 			else:
 				print("  (None)")
 			
+			# Show least frequent labels
+			llm_only_tail = llm_counts[llm_counts['Label'].isin(llm_only)].tail(10)
+			vlm_only_tail = vlm_counts[vlm_counts['Label'].isin(vlm_only)].tail(10)
+
+			print(f"\nLeast Frequent LLM-only labels:")
+			if len(llm_only_tail) > 0:
+				print(llm_only_tail.to_string(index=False))
+			else:
+				print("  (None)")
+
+			print(f"\nLeast Frequent VLM-only labels:")
+			if len(vlm_only_tail) > 0:
+				print(vlm_only_tail.to_string(index=False))
+			else:
+				print("  (None)")
+
+			print(f"--- Singleton Analysis (LLM-only and VLM-only) ---")
+			# labels with only one instance
+			llm_only_singleton = llm_counts[llm_counts['Label'].isin(llm_only) & (llm_counts['Count'] == 1)]
+			vlm_only_singleton = vlm_counts[vlm_counts['Label'].isin(vlm_only) & (vlm_counts['Count'] == 1)]
+			print(f"LLM-only singleton labels: {len(llm_only_singleton)}/{len(llm_only)} ({len(llm_only_singleton) / len(llm_only) * 100:.2f}% of LLM-only)")
+			print(f"VLM-only singleton labels: {len(vlm_only_singleton)}/{len(vlm_only)} ({len(vlm_only_singleton) / len(vlm_only) * 100:.2f}% of VLM-only)")
+			print(f"Total singleton labels: {len(llm_only_singleton) + len(vlm_only_singleton)} ({(len(llm_only_singleton) + len(vlm_only_singleton)) / (len(llm_only) + len(vlm_only)) * 100:.2f}% of total)")
+			print()
+
+
 			# Visualize source-specific labels
 			fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
 			
@@ -2938,10 +2958,7 @@ def analyze_top_labels_per_source(
 			)
 			plt.close()
 			
-			# ============================================================
 			# PART 4: Agreement Analysis
-			# ============================================================
-			
 			# Get top-N from each source
 			top_n_agreement = 100
 			print(f"Top-{top_n_agreement} Label Agreement Between Sources")
