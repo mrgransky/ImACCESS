@@ -6,7 +6,7 @@ from sklearn.metrics import silhouette_score
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # Step 2: Load your data
-documents = load_pickle(fpath="/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal_multimodal.pkl")
+documents = load_pickle(fpath="/home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_24_multimodal_multimodal.pkl")
 
 print(f"Loaded {type(documents)} {len(documents)} docs")
 
@@ -16,7 +16,7 @@ all_labels = []
 # 	for label in doc:
 # 		all_labels.append(label)
 for doc in documents:
-	all_labels.append(" ".join(doc))
+	all_labels.append(", ".join(doc))
 
 print(f"Loaded {type(all_labels)} {len(all_labels)} labels")
 print(f"First 5 labels:")
@@ -37,7 +37,7 @@ for n_clusters in range_n_clusters:
 		cluster_labels = kmeans_model.fit_predict(X)
 		silhouette_avg = silhouette_score(X, cluster_labels)
 		silhouette_scores.append(silhouette_avg)
-		print(f"For n_clusters = {n_clusters}, the average silhouette_score is : {silhouette_avg:.4f}")
+		print(f"n_clusters: {n_clusters:>15} average silhouette_score: {silhouette_avg:.4f}")
 
 
 plt.figure(figsize=(10, 6))
