@@ -12,15 +12,17 @@ print(f"Loaded {type(documents)} {len(documents)} docs")
 
 # ["keyword1, keyword2, keyword3, ..."]
 all_labels = []
-# for doc in documents:
-# 	for label in doc:
-# 		all_labels.append(label)
+for doc in documents:
+	for label in doc[:100]:
+		# all_labels.append(label)
+		print(label)
+
 for doc in documents:
 	all_labels.append(", ".join(doc))
 
 print(f"Loaded {type(all_labels)} {len(all_labels)} labels")
 print(f"First 5 labels:")
-for i, label in enumerate(all_labels[:5]):
+for i, label in enumerate(all_labels[:15]):
 	print(f"{i}: {label}")
 
 # Encode the documents to get sentence embeddings
@@ -29,13 +31,13 @@ print(f"Shape of sentence embeddings: {type(X)} {X.shape}")
 
 
 # Define a range of cluster numbers to evaluate
-range_n_clusters = range(4, 100, 2)
+range_n_clusters = range(4, 100)
 silhouette_scores = []
 
 for n_clusters in range_n_clusters:
 		kmeans_model = KMeans(n_clusters=n_clusters, random_state=0, n_init=10)
 		cluster_labels = kmeans_model.fit_predict(X)
-		silhouette_avg = silhouette_score(X, cluster_labels)
+		silhouette_avg = silhouette_score(X=X, labels=cluster_labels, random_state=0, metric='euclidean')
 		silhouette_scores.append(silhouette_avg)
 		print(f"n_clusters: {n_clusters:>15} average silhouette_score: {silhouette_avg:.4f}")
 

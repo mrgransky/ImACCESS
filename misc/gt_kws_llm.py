@@ -75,7 +75,7 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey more distinct meanings.
 - Extracted **KEYWORDS** must be self-contained and grammatically complete phrases that explicitly appear in the caption. If you are uncertain, in doubt, or unsure, omit the keyword rather than guessing.
 - **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
-- **ABSOLUTELY NO** possessive cases, abbreviations, shortened words or acronyms.
+- **ABSOLUTELY NO** possessive cases, phrasal verbs, abbreviations, shortened words or acronyms.
 - **ABSOLUTELY NO** keywords that contain number sign, typos or special characters.
 - **ABSOLUTELY NO** dates, times, hours, minutes, calendar references, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
 - **ABSOLUTELY NO** geographic references, continents, countries, cities, or states.
