@@ -321,6 +321,7 @@ def basic_clean(txt: str):
 		r'(?:Photo|Picture)\s*#\s*\d+',            # Photo # 789
 		r"one\sof\sthe\s\w+\sphotographs\sof the\sinventory\sunit\s\d+\/\w\.",
 		r"U.S.\sAir\sForce\sNumber\s\w\d+\w+",
+		r'Most\s\d+\sera.',
 		r"^(\d+)\s-\s",
 		r'\d+-\w+-\d+\w-\d+',
 		r'-\s+\w\s+thru\s\w\s-',

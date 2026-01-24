@@ -80,7 +80,7 @@ python -u gt_kws_multimodal.py \
 	--vlm_batch_size $VLM_BATCH_SIZE \
 	--vlm_max_generated_tks $VLM_MAX_GEN_TKs \
 	--num_workers $SLURM_CPUS_PER_TASK \
-	--max_keywords 5 \
+	--max_keywords 3 \
 	--verbose \
 	# --use_llm_quantization \
 	# --use_vlm_quantization \

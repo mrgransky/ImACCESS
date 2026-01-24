@@ -11,22 +11,17 @@ import queue
 import pickle
 import multiprocessing
 from collections import Counter, defaultdict
-from sklearn.preprocessing import normalize, MultiLabelBinarizer
 import matplotlib.pyplot as plt
 import nltk
 from tqdm import tqdm
 import urllib.request
 import urllib.parse
 import argparse
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
 import seaborn as sns
 from typing import Tuple, Union, List, Dict, Any, Optional, Callable, TypedDict
 import certifi
 import networkx as nx
-from sklearn.metrics import silhouette_score
 from scipy.cluster.hierarchy import dendrogram, linkage
-from sklearn.neighbors import NearestNeighbors
 import hashlib
 from torch.cuda import get_device_properties, memory_allocated
 from torch.utils.data import Dataset, DataLoader
@@ -62,6 +57,14 @@ from skimage.transform import resize
 from joblib import Parallel, delayed
 from scipy.sparse import csr_matrix
 
+from sklearn.cluster import KMeans
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import normalize, MultiLabelBinarizer
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.metrics import silhouette_score
+from sklearn.neighbors import NearestNeighbors
+
 from bs4 import BeautifulSoup
 from multiprocessing import Pool
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, TimeoutError
@@ -69,8 +72,7 @@ from requests.exceptions import RequestException
 import torchvision.transforms as T
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
 from functools import cache, partial
-# from urllib.parse import urlparse, unquote, quote_plus, urljoin
-from sklearn.model_selection import train_test_split
+
 from skmultilearn.model_selection import iterative_train_test_split, IterativeStratification
 from tqdm import tqdm
 from datetime import timedelta
@@ -80,6 +82,7 @@ from natsort import natsorted
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import warnings
+from sentence_transformers import SentenceTransformer
 
 try:
 	import misc.visualize as viz  # For visualizations
