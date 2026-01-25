@@ -252,7 +252,7 @@ def basic_clean(txt: str):
 		r'Slideshow of plastic in color',
 		r'color photo',
 		r'Colored photo',
-		r"color copies",
+		r"color copies.",
 		r'in color, broad',
 		r"photo in color",
 		r"slide copy",

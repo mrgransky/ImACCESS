@@ -48,7 +48,7 @@ with open('geographic_references.txt', 'r') as file_:
 	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
 STOPWORDS.update(geographic_references)
 
-def _post_process_(labels_list: List[List[str]], min_kw_length: int = 2, verbose: bool = False) -> List[List[str]]:
+def _post_process_(labels_list: List[List[str]], min_kw_length: int = 4, verbose: bool = False) -> List[List[str]]:
 	"""
 	Cleans, normalizes, and lemmatizes label lists.
 	1. Handles parsing (str -> list).

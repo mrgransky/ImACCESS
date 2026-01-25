@@ -46,12 +46,13 @@ Identify no more than {k} highly prominent, factual, and distinct **KEYWORDS** t
 - Return **ONLY** a clean, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is acceptable only if the image is too simple.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
 - **ZERO HALLUCINATION POLICY**: Do not invent or infer specifics that lack clear verification from the visual content. If you are uncertain, in doubt, or unsure, omit the keyword rather than guessing.
+- **ABSOLUTELY NO** verbs, possessive cases, abbreviations, shortened words or acronyms as standalone keywords.
+- **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
 - **ABSOLUTELY NO** dates, times, hours, minutes, calendar references, time periods, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
 - **ABSOLUTELY NO** explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
 - **ABSOLUTELY NO** TEXT EXTRACTION / OCR: Do NOT read, transcribe, quote, paraphrase, or use any visible text from the image (including captions, labels, dates, signage, stamped annotations, handwritten notes, or serial numbers).
 - **STRICTLY EXCLUDE** image quality, type, format, or style as keywords.
 - **STRICTLY EXCLUDE** vague, generic, or historical keywords.
-- **ABSOLUTELY NO** abbreviations, numerical words, special characters, or stopwords.
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
 - The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response."""
 
