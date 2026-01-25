@@ -265,6 +265,7 @@ def basic_clean(txt: str):
 		r"No description",
 		r'Photograph: ',
 		r'Image: ',
+		r'This photograph is of a location in',
 		r'Wash. D\.C\.',
 		r'File Record',
 		r'Original negative.',
@@ -388,6 +389,7 @@ def basic_clean(txt: str):
 	txt = re.sub(r'[\{\}]', ' ', txt)  # curly braces
 	txt = re.sub(r'[\(\)]', ' ', txt)  # parentheses
 
+	txt = re.sub(r'\[\?\]', ' ', txt) # remove [?]
 	txt = re.sub(r'\s+', ' ', txt) # Collapse all whitespace
 	txt = txt.replace("'", "") # stray leftover single quotes (should be none, but safe)
 	txt = txt.replace("__APOSTROPHE__", "'") # RESTORE real apostrophes
