@@ -377,15 +377,14 @@ def basic_clean(txt: str):
 	# remove everything inside parantheses
 	txt = re.sub(r'\([^)]*\)', ' ', txt)
 
-	# remove everything inside brackets
-	txt = re.sub(r'\[[^\]]*\]', ' ', txt)
+	# # remove everything inside brackets
+	# txt = re.sub(r'\[[^\]]*\]', ' ', txt)
 
 	txt = re.sub(r'-{2,}', ' ', txt)   # multiple dashes
 	txt = re.sub(r'\.{2,}', '.', txt)  # ellipses ...
 	txt = re.sub(r'[\[\]]', ' ', txt)  # square brackets
 	txt = re.sub(r'[\{\}]', ' ', txt)  # curly braces
 	txt = re.sub(r'[\(\)]', ' ', txt)  # parentheses
-
 
 	txt = re.sub(r'\s+', ' ', txt) # Collapse all whitespace
 	txt = txt.replace("'", "") # stray leftover single quotes (should be none, but safe)

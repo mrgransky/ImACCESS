@@ -8,7 +8,7 @@ model = SentenceTransformer('all-MiniLM-L6-v2')
 # Step 2: Load your data
 documents = load_pickle(fpath="/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal_multimodal.pkl")
 print(f"Loaded {type(documents)} {len(documents)} docs")
-documents = [list(doc) for doc in set(tuple(doc) for doc in documents)]
+documents = [list(set(doc)) for doc in documents]
 print(f"Loaded {type(documents)} {len(documents)} docs after deduplication")
 # ["keyword1, keyword2, keyword3, ..."]
 all_labels = []
