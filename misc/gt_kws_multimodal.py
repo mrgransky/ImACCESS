@@ -441,16 +441,14 @@ def get_multimodal_annotation(
 	save_pickle(pkl=vlm_based_labels, fname=output_csv.replace(".csv", "_vlm.pkl"))
 	save_pickle(pkl=llm_based_labels, fname=output_csv.replace(".csv", "_llm.pkl"))
 
-
 	# do clustering
-
 
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
 		on_bad_lines='skip',
 		dtype=dtypes,
 		low_memory=False,
-		usecols = ['doc_url','img_path', 'enriched_document_description'],
+		usecols = ['doc_url','user_query', 'img_path', 'enriched_document_description'],
 	)
 
 	df['llm_based_labels'] = llm_based_labels
