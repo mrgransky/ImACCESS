@@ -902,9 +902,9 @@ def _qwen_llm_response(
 			for i, kw in enumerate(keywords_list, 1):
 				print(f"  [{i}] {kw}")
 	
-	# Step 4: Post-process keywords
-	if verbose:
-		print(f"[STEP 4] Post-processing keywords (max={max_kws})...")
+	# # Step 4: Post-process keywords
+	# if verbose:
+	# 	print(f"[STEP 4] Post-processing keywords (max={max_kws})...")
 	
 	processed = []
 	seen = set()
