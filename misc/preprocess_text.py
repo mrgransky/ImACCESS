@@ -176,16 +176,17 @@ def basic_clean(txt: str):
 		r'DFG project: worldviews \(2015-2017\), record author: Deutsche Fotothek\/SLUB Dresden \(DF\)',
 		r'DFG project: worldviews \(2015-2017\), record author: Deutsche Fotothek\/SLUB Dresden \(\)\)',
 		r'DFG project: worldviews \(2015-2017\), record author: Deutsche Fotothek\/SLUB Dresden \(\:\)',
-		r'This image is one of a series of\s\d+\snegatives showing\s',
 		r'Included in the file is a copy of ',
 		r'Description: Imagery taken during the ',
-		r'Law Title taken from similar image in this series.',
 		r'The original finding aid described this photograph as:',
 		r'The original finding aid described this as:',
 		r'The original database describes this as:',
+		r'This image is one of a series of\s\d+\snegatives showing\s',
+		r'This image is part of a series of \d+ images taken for the',
+		r'Law Title taken from similar image in this series.',
 		r'The photographer’s notes from this negative series indicate ',
-		r'The photo is accompanied by a typescript with a description',
 		r"The photographer's notes from this negative series indicate that ",
+		r'The photo is accompanied by a typescript with a description',
 		r"The following geographic information is associated with this record:",
 		r'The following information was provided by digitizing partner Fold3:',
 		r'It was subsequently published in conjunction with an article.',
@@ -307,6 +308,7 @@ def basic_clean(txt: str):
 		r'State:\s*[^.]+\.?', 									# State: New York.
 		# r'no\.\s\w+\s-\w+',											# No. 43 -C, no. 43 -C, no. 43-122
 		# r'no\.\s*\d+(?:-\d+)?', 								# no. 123, no. 123-125
+		r'\[No\.\s\w+\]', 											# [No. 123]
 		r'vol\.\s\d+',                          # Vol. 5,
 		r'vol+\s+\d+',                          # Vol 5,
 		r'issue\s\d+',													# issue 1
@@ -438,7 +440,7 @@ def get_enriched_description(
 				[
 					basic_clean(str(row['title'])) if pd.notna(row['title']) and str(row['title']).strip() else None, 
 					basic_clean(str(row['description'])) if pd.notna(row['description']) and str(row['description']).strip() else None,
-					basic_clean(str(row['keywords'])) if 'keywords' in df_enriched.columns and pd.notna(row['keywords']) and str(row['keywords']).strip() else None
+					# basic_clean(str(row['keywords'])) if 'keywords' in df_enriched.columns and pd.notna(row['keywords']) and str(row['keywords']).strip() else None
 				]
 			)
 		),

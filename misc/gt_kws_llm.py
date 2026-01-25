@@ -936,10 +936,10 @@ def _qwen_llm_response(
 		if verbose:
 			print(f"    ✓ Accepted (total: {len(processed)})")
 		
-		if len(processed) >= max_kws:
-			if verbose:
-				print(f"\n  [LIMIT] Reached max_kws={max_kws}, stopping")
-			break
+		# if len(processed) >= max_kws:
+		# 	if verbose:
+		# 		print(f"\n  [LIMIT] Reached max_kws={max_kws}, stopping")
+		# 	break
 	
 	# Step 5: Return results
 	if verbose:

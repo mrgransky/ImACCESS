@@ -211,6 +211,7 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 		doc_title = doc.get("title")
 		doc_detailed_metadata = scrape_item_metadata(doc_url=doc_page_url)
 		doc_description = doc_detailed_metadata.get("description", None)
+		doc_note = doc_detailed_metadata.get("notes", None)
 		doc_raw_keywords = doc_detailed_metadata.get("keywords", None)
 
 		doc_cleaned_keywords = None
@@ -221,8 +222,8 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 				for kw in keyword_list 
 				if kw not in REDUNDANT_KEYWORDS and len(kw) > 2
 			] # Exclude redundant terms
-			doc_cleaned_keywords = "; ".join(cleaned_keyword_list) if cleaned_keyword_list else None # Join the cleaned keywords back into a string
-			# print(f"doc_cleaned_keywords: {doc_cleaned_keywords}")
+			doc_cleaned_keywords = ", ".join(cleaned_keyword_list) if cleaned_keyword_list else None # Join the cleaned keywords back into a string
+			print(f"doc_cleaned_keywords: {doc_cleaned_keywords}")
 
 		row = {
 			'id': doc_combined_identifier,
@@ -230,6 +231,7 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 			'user_query': query,
 			'title': doc_title,
 			'description': doc_description,
+			'note': doc_note,
 			'keywords': doc_cleaned_keywords,
 			'raw_doc_date': doc_date,
 			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(doc_combined_identifier) + '.jpg')}",
@@ -403,14 +405,15 @@ def main():
 	grouped = df_merged_raw.groupby('img_url').agg(
 		{
 			'id': 'first',
+			'doc_url': 'first',
+			'img_path': 'first',
 			'title': 'first',
 			'description': 'first',
 			'keywords': 'first',
+			'note': 'first',
 			'user_query': lambda x: list(set(x)),  # Combine user_query into a list with unique elements
+			'doc_date': 'first',
 			'raw_doc_date': 'first',
-			'doc_url': 'first',
-			'img_path': 'first',
-			'doc_date': 'first'
 		}
 	).reset_index()
 	print(f"Grouped: {grouped.shape}")
