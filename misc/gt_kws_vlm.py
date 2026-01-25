@@ -1462,7 +1462,7 @@ def main():
 	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device('cuda:0' or 'cpu')")
 	parser.add_argument("--num_workers", '-nw', type=int, default=12, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing")
-	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
+	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Batch size for processing")
 	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
