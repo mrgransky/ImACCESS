@@ -138,6 +138,7 @@ def basic_clean(txt: str):
 		r'here is a view of ',
 		r"This item includes\s\w+\s\w+\sof\s",
 		r'This item is a photo depicting ',
+		r'Source:\s\d+\sPalm Beach city directory',
 		r"This item is a photograph depicting ",
 		r"This item consists of a photograph of ",
 		r'The original finding aid described this item as:',

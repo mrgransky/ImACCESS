@@ -283,6 +283,8 @@ West Virginia
 Wisconsin
 Wyoming
 
+Bakersfield
+Beaumont
 Beverly Hills
 Boston
 Boylestone
@@ -290,18 +292,22 @@ Brewster
 Brewster, NY
 Bridgeport
 Brunswick
+Burbank
+Castroville
 Chicago
 Columbia
 Columbus
 Echo
 Echo, UT
 Echo UT
+Hollywood
 Houston
 CA
 CA.
 CZ.
 C.Z.
 D.C.
+Calif
 Calif.
 Cal.
 FL.
@@ -332,6 +338,7 @@ UT.
 City of S.F.
 Jacksonville
 Leadvale
+Marshall
 New York City
 Las Vegas
 Los Angeles
@@ -363,17 +370,21 @@ New Haven
 Norristown
 Norwood
 Omaha
+Ogden
 Oakland
 Phoenix
 Pittsburgh
 Portsmouth
+Pomona
 Provo
 Richmond
 St. Louis
 City of St. Louis
+Santa Barbara
 San Diego
 San Antonio
 San Jose
+San Juan
 Austin
 Indianapolis
 Nashville
@@ -441,6 +452,7 @@ Madrid
 Majuro
 Manila
 Marrakech
+Medina
 Mexico City
 Milan
 Moscow

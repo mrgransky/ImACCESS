@@ -47,6 +47,7 @@ import joblib
 import inspect
 import warnings
 import traceback
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 warnings.filterwarnings('ignore')
 

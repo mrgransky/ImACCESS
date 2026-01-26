@@ -74,15 +74,15 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - Return **ONLY** a clean, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is expected if the caption is either short or lacks distinct concepts.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey more distinct meanings.
 - Extracted **KEYWORDS** must be self-contained and grammatically complete phrases that explicitly appear in the caption. If you are uncertain, in doubt, or unsure, omit the keyword rather than guessing.
-- **ABSOLUTELY NO** verbs, possessive cases, abbreviations, shortened words or acronyms as standalone keywords.
-- **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
-- **ABSOLUTELY NO** keywords that contain number sign, typos or special characters.
-- **ABSOLUTELY NO** dates, times, hours, minutes, calendar references, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
-- **ABSOLUTELY NO** geographic references, continents, countries, towns, cities, or states.
-- **ABSOLUTELY NO** serial/reference numbers, geographic/infrastructure/operational identifiers, technical photo specs, measurements, units, coordinates, or **ANY** quantitative keywords.
-- **ABSOLUTELY NO** generic photography, image, picture, or media keywords.
-- **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
-- **ABSOLUTELY NO** explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
+- **STRICTLY EXCLUDE** phrases that include phrasal verbs, possessive cases, abbreviations, shortened words or acronyms as standalone keywords.
+- **STRICTLY EXCLUDE** keywords that start or end with prepositions or conjunctions.
+- **STRICTLY EXCLUDE** keywords that contain number sign, typos or special characters.
+- **STRICTLY EXCLUDE** dates, times, hours, minutes, calendar references, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
+- **STRICTLY EXCLUDE** geographic references, continents, countries, towns, cities, or states.
+- **STRICTLY EXCLUDE** serial/reference numbers, geographic/infrastructure/operational identifiers, technical photo specs, measurements, units, coordinates, or **ANY** quantitative keywords.
+- **STRICTLY EXCLUDE** generic photography, image, picture, or media keywords.
+- **STRICTLY EXCLUDE** synonymous, duplicate, identical or misspelled keywords.
+- **STRICTLY EXCLUDE** explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
 - The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""
 

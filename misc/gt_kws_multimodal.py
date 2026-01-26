@@ -48,6 +48,174 @@ with open('geographic_references.txt', 'r') as file_:
 	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
 STOPWORDS.update(geographic_references)
 
+def _clustering_(
+	pkl_fpth: str,
+	model_id: str = "all-MiniLM-L6-v2",
+	device: str = "cuda" if torch.cuda.is_available() else "cpu",
+	nc:int=None,
+):
+	DATASET_DIR = os.path.dirname(pkl_fpth)
+	OUTPUTS_DIR = os.path.join(DATASET_DIR, "outputs")
+	os.makedirs(OUTPUTS_DIR, exist_ok=True)
+
+
+	COLORMAP = "Dark2"
+	cmap = plt.colormaps.get_cmap(COLORMAP)
+	model = SentenceTransformer(model_id).to(device)
+	print(f"Total number of parameters in {model_id}: {sum([p.numel() for _, p in model.named_parameters()]):,}")
+
+	documents = load_pickle(fpath=pkl_fpth)
+	print(f"Loaded {type(documents)} {len(documents)} docs")
+	documents = [list(set(doc)) for doc in documents]
+	print(f"Loaded {type(documents)} {len(documents)} docs after deduplication")
+	# # ["keyword1, keyword2, keyword3, ..."]
+	all_labels = []
+
+	for doc in documents:
+		for label in doc:
+			all_labels.append(label)
+			# print(label)
+
+	# for doc in documents:
+	# 	all_labels.append("; ".join(doc))
+
+	all_labels = list(set(all_labels))
+
+	# print(f"Loaded {type(all_labels)} {len(all_labels)} labels")
+	# for i, label in enumerate(all_labels[:20]):
+	# 	print(f"{i}: {label}")
+
+	# Encode the documents to get sentence embeddings
+	X = model.encode(all_labels, show_progress_bar=True)
+	print(f"Shape of sentence embeddings: {type(X)} {X.shape}")
+
+	if nc is None:
+		# Define a range of cluster numbers to evaluate
+		range_n_clusters = range(2, 250, 3)
+		silhouette_scores = []
+
+		for n_clusters in range_n_clusters:
+			kmeans_model = KMeans(n_clusters=n_clusters, random_state=0, n_init=10)
+			cluster_labels = kmeans_model.fit_predict(X)
+			silhouette_avg = silhouette_score(X=X, labels=cluster_labels, random_state=0, metric='euclidean')
+			silhouette_scores.append(silhouette_avg)
+			print(f"cluster: {n_clusters:<8} silhouette_score: {silhouette_avg:.4f}")
+
+		plt.figure(figsize=(10, 6))
+		plt.plot(range_n_clusters, silhouette_scores, marker='o')
+		plt.title('Silhouette Score for Various Numbers of Clusters')
+		plt.xlabel('Number of Clusters')
+		plt.ylabel('Silhouette Score')
+		plt.xticks(range_n_clusters)
+		plt.grid(True)
+
+		# Highlight the optimal number of clusters
+		optimal_n_clusters_idx = np.argmax(silhouette_scores)
+		optimal_n_clusters = range_n_clusters[optimal_n_clusters_idx]
+		plt.axvline(x=optimal_n_clusters, color='red', linestyle='--', label=f'Optimal N_clusters: {optimal_n_clusters}')
+		plt.legend()
+		plt.savefig(os.path.join(OUTPUTS_DIR, f"clusters_silhouette_score_{optimal_n_clusters}.png"), dpi=100)
+	else:
+		optimal_n_clusters = nc
+	print(f"The optimal number of clusters based on Silhouette Score is: {optimal_n_clusters}")
+
+	# Clustering using K-Means
+	# optimal_n_clusters = 90
+	kmeans_optimal = KMeans(n_clusters=optimal_n_clusters, random_state=0, n_init=10)
+	clusters_optimal = kmeans_optimal.fit_predict(X)
+
+	# Dimensionality Reduction (optional, for visualization)
+	pca = PCA(n_components=2, random_state=0)
+	X_reduced = pca.fit_transform(X)
+
+	print(f"X_pca: {type(X_reduced)} {X_reduced.shape}")
+
+	# Step 6: Visualization
+	plt.figure(figsize=(19, 15))
+	scatter = plt.scatter(
+		X_reduced[:, 0], 
+		X_reduced[:, 1], 
+		c=clusters_optimal, 
+		# cmap=COLORMAP,
+		facecolors='none',
+		s=12,
+		alpha=0.95,
+		marker='o',
+		label=f'{len(all_labels)}',
+	)
+	plt.title(f"Text Clustering Visualization (Optimal N_clusters = {optimal_n_clusters})")
+	plt.xlabel("Principal Component 1")
+	plt.ylabel("Principal Component 2")
+
+	# Adding cluster centers to the plot
+	centers_optimal = kmeans_optimal.cluster_centers_
+	centers_reduced_optimal = pca.transform(centers_optimal)
+
+	for i, center_coords in enumerate(centers_reduced_optimal):
+		plt.scatter(
+			center_coords[0], 
+			center_coords[1], 
+			# c=[cmap(i / (kmeans_optimal.n_clusters - 1 if kmeans_optimal.n_clusters > 1 else 1))], 
+			s=200, 
+			alpha=0.94, 
+			marker='X'
+		)
+		plt.scatter(center_coords[0], center_coords[1], facecolors='none', edgecolors=[cmap(i / (kmeans_optimal.n_clusters - 1 if kmeans_optimal.n_clusters > 1 else 1))], s=120, alpha=0.8, marker='o', linewidths=2)
+
+	# # Adding labels to the plot
+	# for i, txt in enumerate(all_labels):
+	# 	plt.annotate(txt[:20], (X_reduced[i, 0], X_reduced[i, 1]), fontsize=6, alpha=0.75, rotation=60)
+
+	# plt.colorbar(scatter, label='Cluster Label')
+	plt.legend(loc='best', frameon=False, fancybox=True, edgecolor='black', facecolor='white')
+	plt.tight_layout()
+	plt.savefig(os.path.join(OUTPUTS_DIR, f"clustering_optimal_{optimal_n_clusters}.png"), dpi=250)
+
+	# how many samples each cluster has:
+	unique, counts = np.unique(clusters_optimal, return_counts=True)
+	print(np.asarray((unique, counts)).T)
+
+	# create a pandas dataframe with text column and their corresponding cluster index and print them
+	df_clusters = pd.DataFrame({'text': all_labels, 'cluster': clusters_optimal})
+
+	# save df to csv:
+	df_clusters.to_csv(os.path.join(OUTPUTS_DIR, f"clustering_optimal_{optimal_n_clusters}.csv"), index=False)
+	try:
+		df_clusters.to_excel(os.path.join(OUTPUTS_DIR, f"clustering_optimal_{optimal_n_clusters}.xlsx"), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
+
+	print("-"*120)
+	# print X samples of each cluster:
+	for cluster_id in range(optimal_n_clusters):
+		print(f"Cluster {cluster_id}:")
+		print(df_clusters[df_clusters['cluster'] == cluster_id]['text'].head(50).tolist())
+		print()
+	print("-"*120)
+
+	# Dictionary to store keywords for each cluster
+	cluster_keywords = {}
+	# Process each cluster
+	for cluster_id in range(optimal_n_clusters):
+		cluster_docs = df_clusters[df_clusters['cluster'] == cluster_id]['text'].tolist()
+		# Apply TF-IDF to documents within this cluster
+		tfidf_vectorizer = TfidfVectorizer(stop_words='english', max_features=10, ngram_range=(1, 3))
+		tfidf_matrix = tfidf_vectorizer.fit_transform(cluster_docs)
+		feature_names = tfidf_vectorizer.get_feature_names_out()
+		# Calculate mean TF-IDF scores for each word in the cluster
+		avg_tfidf_scores = tfidf_matrix.mean(axis=0).A1
+		# Get top keywords for the cluster
+		top_keywords_indices = avg_tfidf_scores.argsort()[-5:][::-1] # Top 10 keywords
+		top_keywords = [(feature_names[i], avg_tfidf_scores[i]) for i in top_keywords_indices]
+		cluster_keywords[cluster_id] = top_keywords
+
+	# Print the top keywords for each cluster
+	print("Top Keywords for Each Cluster:")
+	for cluster_id, keywords in cluster_keywords.items():
+		print(f"Cluster {cluster_id}:")
+		for keyword, score in keywords:
+			print(f"\t- {keyword} (TF-IDF: {score})")
+
 def _post_process_(labels_list: List[List[str]], min_kw_length: int = 4, verbose: bool = False) -> List[List[str]]:
 	"""
 	Cleans, normalizes, and lemmatizes label lists.
@@ -369,6 +537,7 @@ def get_multimodal_annotation(
 	max_keywords: int,
 	use_llm_quantization: bool = False,
 	use_vlm_quantization: bool = False,
+	nc: int = None,
 	verbose: bool = False,
 ):
 	if not isinstance(device, torch.device):
@@ -447,8 +616,8 @@ def get_multimodal_annotation(
 	gc.collect()
 
 	# Post-process only multimodal labels
-	llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
-	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
+	llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=False)
+	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=False)
 	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=False)
 	
 	# save as pickle
@@ -456,14 +625,24 @@ def get_multimodal_annotation(
 	save_pickle(pkl=vlm_based_labels, fname=output_csv.replace(".csv", "_vlm.pkl"))
 	save_pickle(pkl=llm_based_labels, fname=output_csv.replace(".csv", "_llm.pkl"))
 
-	# do clustering
+	_clustering_(
+		pkl_fpth=output_csv.replace(".csv", "_multimodal.pkl"),
+		nc=nc,
+	)
 
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
 		on_bad_lines='skip',
 		dtype=dtypes,
 		low_memory=False,
-		usecols = ['doc_url','user_query', 'img_path', 'enriched_document_description'],
+		usecols = [
+			'doc_url',
+			'img_path',
+			'title',
+			'description',
+			# 'user_query', # not necessary
+			# 'enriched_document_description', # misleading
+		],
 	)
 
 	df['llm_based_labels'] = llm_based_labels
@@ -514,6 +693,7 @@ def main():
 	parser.add_argument("--use_vlm_quantization", '-vlm_q', action='store_true', help="Use quantization for VLM")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
+	parser.add_argument("--num_clusters", '-nc', type=int, default=None, help="Number of clusters")
 	args = parser.parse_args()
 	args.device = torch.device(args.device)
 	args.num_workers = min(args.num_workers, os.cpu_count())
@@ -534,6 +714,7 @@ def main():
 		max_keywords=args.max_keywords,
 		use_llm_quantization=args.use_llm_quantization,
 		use_vlm_quantization=args.use_vlm_quantization,
+		nc=args.num_clusters,
 		verbose=args.verbose,
 	)
 
