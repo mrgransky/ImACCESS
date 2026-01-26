@@ -265,6 +265,11 @@ def _post_process_(labels_list: List[List[str]], min_kw_length: int = 4, verbose
 					print(f"        → {lemma} Number detected, skipping")
 				continue
 
+			if re.match(r'^number\s\d+$', lemma):
+				if verbose:
+					print(f"        → {lemma} Number detected, skipping")
+				continue
+
 			# Check stopwords
 			if lemma in STOPWORDS:
 				if verbose:
@@ -275,6 +280,16 @@ def _post_process_(labels_list: List[List[str]], min_kw_length: int = 4, verbose
 			if re.match(r"^No\.\s\w+$", lemma, re.IGNORECASE):
 				if verbose:
 					print(f"        → {lemma} Only No. NNNNN detected, skipping")
+				continue
+
+			if re.match(r'^\d+\sfeet$', lemma, re.IGNORECASE) or re.match(r'^\d+\sft$', lemma, re.IGNORECASE):
+				if verbose:
+					print(f"        → {lemma} Only NNNNN feet/ft detected, skipping")
+				continue
+
+			if re.match(r'^\d+\sfoot$', lemma, re.IGNORECASE):
+				if verbose:
+					print(f"        → {lemma} Only NNNNN foot detected, skipping")
 				continue
 
 			# Check duplicates
@@ -497,7 +512,7 @@ def main():
 	parser.add_argument("--vlm_max_generated_tks", '-vlm_mgt', type=int, default=64, help="Max number of generated tokens using VLM")
 	parser.add_argument("--vlm_batch_size", '-vlm_bs', type=int, default=2, help="Batch size for visual processing using VLM (adjust based on GPU memory)")
 	parser.add_argument("--use_vlm_quantization", '-vlm_q', action='store_true', help="Use quantization for VLM")
-	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
+	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	args = parser.parse_args()
 	args.device = torch.device(args.device)

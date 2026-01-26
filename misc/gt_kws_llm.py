@@ -78,7 +78,7 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 - **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
 - **ABSOLUTELY NO** keywords that contain number sign, typos or special characters.
 - **ABSOLUTELY NO** dates, times, hours, minutes, calendar references, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
-- **ABSOLUTELY NO** geographic references, continents, countries, cities, or states.
+- **ABSOLUTELY NO** geographic references, continents, countries, towns, cities, or states.
 - **ABSOLUTELY NO** serial/reference numbers, geographic/infrastructure/operational identifiers, technical photo specs, measurements, units, coordinates, or **ANY** quantitative keywords.
 - **ABSOLUTELY NO** generic photography, image, picture, or media keywords.
 - **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.

@@ -286,11 +286,16 @@ Wyoming
 Beverly Hills
 Boston
 Boylestone
+Brewster
+Brewster, NY
 Bridgeport
 Brunswick
 Chicago
 Columbia
 Columbus
+Echo
+Echo, UT
+Echo UT
 Houston
 CA
 CA.
@@ -321,6 +326,9 @@ N.Y. City
 R.I.
 S.D.
 S.F.
+U.T.
+UT
+UT.
 City of S.F.
 Jacksonville
 Leadvale
@@ -334,6 +342,11 @@ Atlanta
 Dallas
 Denver
 Detroit
+Glendale
+Glendale CA
+Glendale, CA
+Glendale, Calif
+Glendale Calif
 Guntersville
 Kingston
 Miami
@@ -354,6 +367,7 @@ Oakland
 Phoenix
 Pittsburgh
 Portsmouth
+Provo
 Richmond
 St. Louis
 City of St. Louis
@@ -372,13 +386,20 @@ San Francisco
 San Jose
 Santa Rosa
 Seattle
+Spadra
+Spadra, CA.
+Tarrytown
+Trinidad
+Trinidad, CO
+Trinidad
+Nova Scotia
+Scotia
+Halifax
+Waterbury
 Wash. D.C.
 Washington, D.C.
 Washington D.C.
 Welch
-Nova Scotia
-Scotia
-Halifax
 
 Algiers
 Ankara
@@ -397,6 +418,7 @@ Brussels
 Buenos Aires
 Buna
 Budapest
+Cadiz
 Cairo
 Caracas
 Cebu City
@@ -453,11 +475,13 @@ Lisbon
 Lleida
 Oviedo
 Pamplona
+Ravenna
 Rio de Janeiro
 Santander
 Sicily
 Strömsund
 Tarragona
+Tehachapi
 Tokyo
 Tunis
 Valladolid
