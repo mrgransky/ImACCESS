@@ -73,7 +73,8 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 **CRITICAL RULES**:
 - Return **ONLY** a clean, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is expected if the caption is either short or lacks distinct concepts.
 - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey more distinct meanings.
-- Extracted **KEYWORDS** must be self-contained and grammatically complete phrases that explicitly appear in the caption. If you are uncertain, in doubt, or unsure, omit the keyword rather than guessing.
+- Extracted **KEYWORDS** must be self-contained and grammatically complete phrases that explicitly appear in the caption.
+- Extracted **KEYWORDS** must be fully expanded, and standard-convention Python list — with all abbreviations replaced, punctuation normalized, and duplicates/variants resolved for consistency.
 - **STRICTLY EXCLUDE** phrases that include phrasal verbs, possessive cases, abbreviations, shortened words or acronyms as standalone keywords.
 - **STRICTLY EXCLUDE** keywords that start or end with prepositions or conjunctions.
 - **STRICTLY EXCLUDE** keywords that contain number sign, typos or special characters.
