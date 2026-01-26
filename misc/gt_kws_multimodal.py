@@ -199,13 +199,13 @@ def _clustering_(
 	for cluster_id in range(optimal_n_clusters):
 		cluster_docs = df_clusters[df_clusters['cluster'] == cluster_id]['text'].tolist()
 		# Apply TF-IDF to documents within this cluster
-		tfidf_vectorizer = TfidfVectorizer(stop_words='english', max_features=10, ngram_range=(1, 3))
+		tfidf_vectorizer = TfidfVectorizer(stop_words='english', max_features=5, ngram_range=(1, 3))
 		tfidf_matrix = tfidf_vectorizer.fit_transform(cluster_docs)
 		feature_names = tfidf_vectorizer.get_feature_names_out()
 		# Calculate mean TF-IDF scores for each word in the cluster
 		avg_tfidf_scores = tfidf_matrix.mean(axis=0).A1
 		# Get top keywords for the cluster
-		top_keywords_indices = avg_tfidf_scores.argsort()[-5:][::-1] # Top 10 keywords
+		top_keywords_indices = avg_tfidf_scores.argsort()[::-1] # Top 10 keywords
 		top_keywords = [(feature_names[i], avg_tfidf_scores[i]) for i in top_keywords_indices]
 		cluster_keywords[cluster_id] = top_keywords
 
