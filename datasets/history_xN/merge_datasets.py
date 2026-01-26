@@ -8,7 +8,7 @@ sys.path.insert(0, project_dir)
 
 from misc.utils import *
 from misc.visualize import *
-from misc.preprocess_text import get_enriched_description
+from misc.nlp_utils import get_enriched_description
 
 # how to run [local]:
 # $ python merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs

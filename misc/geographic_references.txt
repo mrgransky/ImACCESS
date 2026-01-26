@@ -248,6 +248,7 @@ Illinois
 Indiana
 Iowa
 Kansas
+Kansas City
 Kentucky
 Louisiana
 Maine
@@ -283,6 +284,7 @@ West Virginia
 Wisconsin
 Wyoming
 
+Aberdeen
 Alturas
 Bakersfield
 Beaumont
@@ -296,6 +298,7 @@ Brunswick
 Burbank
 Burlington
 Castroville
+Cayuta
 Chicago
 Columbia
 Columbus
@@ -319,6 +322,7 @@ L.A.
 L. A.
 Mass.
 Mich.
+MO.
 Mont.
 MT.
 Nev.
@@ -373,6 +377,7 @@ Norristown
 Norwood
 Omaha
 Ogden
+Owego
 Oakland
 Phoenix
 Pittsburgh

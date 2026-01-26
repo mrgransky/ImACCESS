@@ -8,7 +8,7 @@ sys.path.insert(0, project_dir) # add project directory to sys.path
 
 from misc.utils import *
 from misc.visualize import *
-from misc.preprocess_text import validate_text_cleaning_pipeline, get_enriched_description
+from misc.nlp_utils import validate_text_cleaning_pipeline, get_enriched_description
 
 dataset_name = "NATIONAL_ARCHIVE".upper()
 parser = argparse.ArgumentParser(description=f"U.S. National Archive Dataset")
@@ -217,6 +217,7 @@ def get_data(
 		try:
 			hits = data.get('body', {}).get('hits', {}).get('hits', [])
 			total_hits = data.get('body', {}).get('hits', {}).get('total', {}).get('value', 0)
+			total_hits = min(total_hits, int(1e4)) # max 10,000 hits NA rest API
 			
 			if not hits:
 				print(f"Page {page}: No hits returned (might be end of results)")
@@ -225,8 +226,7 @@ def get_data(
 			label_all_hits.extend(hits)
 			consecutive_failures = 0  # Reset on success
 			
-			elapsed = time.time() - loop_st
-			print(f"Page: {page}:\tFound: {len(hits)} hits\t{len(label_all_hits)}/{total_hits}\t{elapsed:.1f} sec")
+			print(f"Page: {page:03d} Found: {len(hits)} hits\t{len(label_all_hits)}/{total_hits}\t{time.time() - loop_st:.1f} s")
 			
 			if len(label_all_hits) >= total_hits:
 				print(f"Collected all {total_hits} hits")
@@ -312,6 +312,7 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 
 		useless_description_terms = [
 			"certificate" not in doc_description.lower(),
+			"literary digest" not in doc_description.lower(),
 			"drawing" not in doc_description.lower(),
 			"sketch of" not in doc_description.lower(),
 			"newspaper" not in doc_description.lower(),
