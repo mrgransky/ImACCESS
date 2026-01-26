@@ -7,7 +7,7 @@ sys.path.insert(0, project_dir)
 
 from misc.utils import *
 import misc.visualize as viz
-from misc.preprocess_text import get_enriched_description, validate_text_cleaning_pipeline
+from misc.nlp_utils import get_enriched_description, validate_text_cleaning_pipeline
 
 # how to run in local:
 # $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std --thumbnail_size 512,512 -v > logs/wwii_dataset_collection.out &

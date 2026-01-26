@@ -8,7 +8,7 @@ print(os.listdir(project_dir))
 sys.path.insert(0, project_dir) # add project directory to sys.path
 from misc.utils import *
 from misc.visualize import *
-from misc.preprocess_text import get_enriched_description, validate_text_cleaning_pipeline, is_english
+from misc.nlp_utils import get_enriched_description, validate_text_cleaning_pipeline, is_english
 
 dataset_name: str = "europeana".upper()
 # europeana_api_key: str = "api2demo"
