@@ -2979,17 +2979,17 @@ def analyze_top_labels_per_source(
 				for i in range(0, len(agreed_list), 5):  # Print 5 per line
 					print(f"  {', '.join(agreed_list[i:i+5])}")
 			
-			if len(llm_unique_top) > 0:
-				print(f"\nTop-{top_n_agreement} LLM-only labels:")
-				llm_unique_list = sorted(list(llm_unique_top))
-				for i in range(0, len(llm_unique_list), 5):
-					print(f"  {', '.join(llm_unique_list[i:i+5])}")
+			# if len(llm_unique_top) > 0:
+			# 	print(f"\nTop-{top_n_agreement} LLM-only labels:")
+			# 	llm_unique_list = sorted(list(llm_unique_top))
+			# 	for i in range(0, len(llm_unique_list), 5):
+			# 		print(f"  {', '.join(llm_unique_list[i:i+5])}")
 			
-			if len(vlm_unique_top) > 0:
-				print(f"\nTop-{top_n_agreement} VLM-only labels:")
-				vlm_unique_list = sorted(list(vlm_unique_top))
-				for i in range(0, len(vlm_unique_list), 5):
-					print(f"  {', '.join(vlm_unique_list[i:i+5])}")
+			# if len(vlm_unique_top) > 0:
+			# 	print(f"\nTop-{top_n_agreement} VLM-only labels:")
+			# 	vlm_unique_list = sorted(list(vlm_unique_top))
+			# 	for i in range(0, len(vlm_unique_list), 5):
+			# 		print(f"  {', '.join(vlm_unique_list[i:i+5])}")
 			
 			# Create agreement visualization
 			fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))

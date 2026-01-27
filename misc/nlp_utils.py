@@ -744,6 +744,7 @@ def basic_clean(txt: str):
 
 	# === REMOVE ARCHIVAL METADATA KEY-VALUE PAIRS (NARA/USAF style) ===
 	metadata_patterns = [
+		r'https?://\S+|www\.\S+', # URLs
 		# r'\bCategory\s*:\s*.+?(?=\n|$)',                     # Category: Aircraft, Ground
 		# r'\bSubcategory\s*:\s*.+?(?=\n|$)',                  # Subcategory: Consolidated
 		# r'\bSubjects\s*:\s*.+?(?=\n|$)',                     # Subjects: BURMA & INDIA,RECREATION

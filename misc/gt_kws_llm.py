@@ -73,8 +73,8 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 {caption}
 
 **CRITICAL RULES**:
-- Return **ONLY** a standarized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is expected if the caption is either short or lacks distinct concepts.
-- Extracted **KEYWORDS** must be self-contained and grammatically complete phrases:
+- Return **ONLY** a standarized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is **expected** if the caption is either short or lacks distinct concepts.
+- Extracted **KEYWORDS** must be self-contained and grammatically complete phrases that actually appear in the caption:
 	* ALL ABBREVIATIONS MUST BE FULLY EXPANDED TO THEIR STANDARD FULL FORMS (e.g., "st." -> "street", mt. -> "mountain", "co." -> "company", "gen." -> "general", etc.).
 	* DUPLICATES AND VARIANTS MUST BE RESOLVED FOR CONSISTENCY.
 - **STRICTLY EXCLUDE** phrases that include phrasal verbs, possessive cases, abbreviations, shortened words or acronyms as standalone keywords.
