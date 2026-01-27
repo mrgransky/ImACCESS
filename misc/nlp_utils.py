@@ -1,7 +1,19 @@
-from misc.utils import *
+from utils import *
 
 # Install: pip install lingua-language-detector
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
+
+# STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
+STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
+# custom_stopwords_list = requests.get("https://raw.githubusercontent.com/stopwords-iso/stopwords-en/refs/heads/master/stopwords-en.txt").content
+# stopwords = set(custom_stopwords_list.decode().splitlines())
+with open('meaningless_words.txt', 'r') as file_:
+	stopwords = set([line.strip().lower() for line in file_])
+STOPWORDS.update(stopwords)
+
+with open('geographic_references.txt', 'r') as file_:
+	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
+STOPWORDS.update(geographic_references)
 
 # This DRASTICALLY improves accuracy on short text.
 languages_to_check = [

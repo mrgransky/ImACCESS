@@ -1030,8 +1030,8 @@ def get_synchronized_df_img(
 	actual_files = [f for f in os.listdir(image_dir) if os.path.isfile(os.path.join(image_dir, f))]
 	img_dir_size_gb = sum(os.path.getsize(os.path.join(image_dir, f)) for f in actual_files) * 1e-9
 	print(f"Directory: {image_dir}")
-	print(f"  Files: {len(actual_files)}")
-	print(f"  Total size: {img_dir_size_gb:.1f} GB")
+	print(f"\tTotal Found Files: {len(actual_files)}")
+	print(f"\tTotal size: {img_dir_size_gb:.1f} GB")
 	# Save synchronized dataset
 	print(f"Saving synchronized dataset to {synched_fpath}...")
 	synched_df.to_csv(synched_fpath, index=False)

@@ -1,5 +1,5 @@
 from utils import *
-from preprocess_text import get_enriched_description
+from nlp_utils import get_enriched_description
 
 # basic models:
 # model_id = "google/gemma-1.1-2b-it"
