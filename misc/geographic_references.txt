@@ -342,6 +342,7 @@ U.T.
 UT
 UT.
 City of S.F.
+Indio
 Jacksonville
 Leadvale
 Marshall
@@ -379,11 +380,13 @@ Omaha
 Ogden
 Owego
 Oakland
+Palm Beach
 Phoenix
 Pittsburgh
 Portsmouth
 Pomona
 Provo
+P. Rico
 Richmond
 St. Louis
 City of St. Louis
@@ -407,6 +410,7 @@ Seattle
 Spadra
 Spadra, CA.
 Tarrytown
+Texas City
 Trinidad
 Trinidad, CO
 Trinidad
@@ -504,6 +508,7 @@ Tarragona
 Tehachapi
 Tokyo
 Tunis
+Tuscany
 Valladolid
 Zaragoza
 Warsaw

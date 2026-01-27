@@ -650,6 +650,7 @@ def basic_clean(txt: str):
 		r'Type: C-N \(Color Negative\) C-P \(Color Print\) ',
 		r'From an album of Lorain H. Cunningham, who served in the 129th Field Artillery during World War I and was a friend of Harry S. Truman.',
 		r'Picture documentation (small picture slideshow) about ',
+		r'Misc. shots of ',
 		r'Original caption: Miscellaneous',
 		r'Original caption: Photograph Of ',
 		r"Captured Japanese Photograph of ",

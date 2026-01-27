@@ -30,7 +30,6 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 2
 # nohup python -u gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 4 -mgt 64 > logs/llm_annotation_history_x4.txt &
 
-
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
 		"""
@@ -64,6 +63,9 @@ with open('geographic_references.txt', 'r') as file_:
 	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
 STOPWORDS.update(geographic_references)
 
+# - **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
+	# * PUNCTUATION MUST BE NORMALIZED.
+
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 You function as a historical archivist whose expertise lies in the 20th century.
 Given the caption below, extract no more than {k} highly prominent, factual, and distinct **KEYWORDS** that convey the primary actions, objects, or occurrences. 
@@ -72,19 +74,16 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 
 **CRITICAL RULES**:
 - Return **ONLY** a standarized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is expected if the caption is either short or lacks distinct concepts.
-- **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
 - Extracted **KEYWORDS** must be self-contained and grammatically complete phrases:
-	* ALL ABBREVIATIONS MUST BE FULLY EXPANDED TO THEIR STANDARD FULL FORMS (e.g., "st." -> "street", "co." -> "company", "gen." -> "general", etc.).
-	* PUNCTUATION MUST BE NORMALIZED (e.g., & -> and, etc.).
+	* ALL ABBREVIATIONS MUST BE FULLY EXPANDED TO THEIR STANDARD FULL FORMS (e.g., "st." -> "street", mt. -> "mountain", "co." -> "company", "gen." -> "general", etc.).
 	* DUPLICATES AND VARIANTS MUST BE RESOLVED FOR CONSISTENCY.
 - **STRICTLY EXCLUDE** phrases that include phrasal verbs, possessive cases, abbreviations, shortened words or acronyms as standalone keywords.
 - **STRICTLY EXCLUDE** keywords that start or end with prepositions or conjunctions.
-- **STRICTLY EXCLUDE** keywords that contain number sign, typos or special characters.
+- **STRICTLY EXCLUDE** keywords that contain number signs (#59, No.59, No. 59, No 59 etc.), or special characters.
 - **STRICTLY EXCLUDE** dates, times, hours, minutes, calendar references, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
 - **STRICTLY EXCLUDE** geographic references, continents, countries, towns, cities, or states.
-- **STRICTLY EXCLUDE** serial/reference numbers, geographic/infrastructure/operational identifiers, technical photo specs, measurements, units, coordinates, or **ANY** quantitative keywords.
-- **STRICTLY EXCLUDE** generic photography, image, picture, or media keywords.
-- **STRICTLY EXCLUDE** synonymous, duplicate, identical or misspelled keywords.
+- **STRICTLY EXCLUDE** serial/reference numbers, geographic/infrastructure/operational identifiers, measurements, units, coordinates, or **ANY** quantitative keywords.
+- **STRICTLY EXCLUDE** generic photography, image, picture, media keywords or **ANY** technical photo specifications.
 - **STRICTLY EXCLUDE** explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
 - The standarized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""
@@ -1525,7 +1524,7 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=12, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing (adjust based on GPU memory)")
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=128, help="Max number of generated tokens")
-	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
+	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
 	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
