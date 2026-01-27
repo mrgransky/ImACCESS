@@ -192,7 +192,8 @@ def get_multimodal_annotation(
 	print(os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv")))
 	_clustering_(
 		labels=multimodal_labels, 
-		nc=nc, 
+		model_id="google/embeddinggemma-300M",
+		nc=nc,
 		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv"))
 	)
 

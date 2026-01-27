@@ -2920,8 +2920,7 @@ def analyze_top_labels_per_source(
 			
 			# LLM-only labels
 			if len(llm_only_top) > 0:
-				ax1.barh(range(len(llm_only_top)), llm_only_top['Count'].values, 
-						 color='#1f77b4', alpha=0.8)
+				ax1.barh(range(len(llm_only_top)), llm_only_top['Count'].values, color='#1f77b4', alpha=0.8)
 				ax1.set_yticks(range(len(llm_only_top)))
 				ax1.set_yticklabels(llm_only_top['Label'].values, fontsize=10)
 				ax1.invert_yaxis()
@@ -2929,14 +2928,12 @@ def analyze_top_labels_per_source(
 				ax1.set_title('Top 10 LLM-Only Labels', fontsize=12, weight='bold')
 				ax1.grid(axis='x', alpha=0.3)
 			else:
-				ax1.text(0.5, 0.5, 'No LLM-only labels', 
-						 ha='center', va='center', transform=ax1.transAxes)
+				ax1.text(0.5, 0.5, 'No LLM-only labels', ha='center', va='center', transform=ax1.transAxes)
 				ax1.set_title('Top 10 LLM-Only Labels', fontsize=12, weight='bold')
 			
 			# VLM-only labels
 			if len(vlm_only_top) > 0:
-				ax2.barh(range(len(vlm_only_top)), vlm_only_top['Count'].values, 
-						 color='#ff7f0e', alpha=0.8)
+				ax2.barh(range(len(vlm_only_top)), vlm_only_top['Count'].values, color='#ff7f0e', alpha=0.8)
 				ax2.set_yticks(range(len(vlm_only_top)))
 				ax2.set_yticklabels(vlm_only_top['Label'].values, fontsize=10)
 				ax2.invert_yaxis()
@@ -2944,8 +2941,7 @@ def analyze_top_labels_per_source(
 				ax2.set_title('Top 10 VLM-Only Labels', fontsize=12, weight='bold')
 				ax2.grid(axis='x', alpha=0.3)
 			else:
-				ax2.text(0.5, 0.5, 'No VLM-only labels', 
-						 ha='center', va='center', transform=ax2.transAxes)
+				ax2.text(0.5, 0.5, 'No VLM-only labels', ha='center', va='center', transform=ax2.transAxes)
 				ax2.set_title('Top 10 VLM-Only Labels', fontsize=12, weight='bold')
 			
 			plt.tight_layout()
@@ -2979,17 +2975,17 @@ def analyze_top_labels_per_source(
 				for i in range(0, len(agreed_list), 5):  # Print 5 per line
 					print(f"  {', '.join(agreed_list[i:i+5])}")
 			
-			# if len(llm_unique_top) > 0:
-			# 	print(f"\nTop-{top_n_agreement} LLM-only labels:")
-			# 	llm_unique_list = sorted(list(llm_unique_top))
-			# 	for i in range(0, len(llm_unique_list), 5):
-			# 		print(f"  {', '.join(llm_unique_list[i:i+5])}")
+			if len(llm_unique_top) > 0:
+				print(f"\nTop-{top_n_agreement} LLM-only labels:")
+				llm_unique_list = sorted(list(llm_unique_top))
+				for i in range(0, len(llm_unique_list), 5):
+					print(f"  {', '.join(llm_unique_list[i:i+5])}")
 			
-			# if len(vlm_unique_top) > 0:
-			# 	print(f"\nTop-{top_n_agreement} VLM-only labels:")
-			# 	vlm_unique_list = sorted(list(vlm_unique_top))
-			# 	for i in range(0, len(vlm_unique_list), 5):
-			# 		print(f"  {', '.join(vlm_unique_list[i:i+5])}")
+			if len(vlm_unique_top) > 0:
+				print(f"\nTop-{top_n_agreement} VLM-only labels:")
+				vlm_unique_list = sorted(list(vlm_unique_top))
+				for i in range(0, len(vlm_unique_list), 5):
+					print(f"  {', '.join(vlm_unique_list[i:i+5])}")
 			
 			# Create agreement visualization
 			fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))

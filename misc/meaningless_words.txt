@@ -1013,6 +1013,7 @@ color photograph
 misc
 miscellaneous items
 okla
+housten
 view
 view of
 background

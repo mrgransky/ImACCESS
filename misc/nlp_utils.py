@@ -78,7 +78,7 @@ detector_all = (
 
 def _clustering_(
 	labels: List[List[str]],
-	model_id: str = "all-MiniLM-L6-v2",
+	model_id: str,
 	device: str = "cuda" if torch.cuda.is_available() else "cpu",
 	clusters_fname: str = "clusters.csv",
 	nc:int=None,
@@ -104,17 +104,17 @@ def _clustering_(
 
 	all_labels = list(set(all_labels))
 
-	# print(f"Loaded {type(all_labels)} {len(all_labels)} labels")
-	# for i, label in enumerate(all_labels[:20]):
-	# 	print(f"{i}: {label}")
+	print(f"Loaded {type(all_labels)} {len(all_labels)} labels")
+	for i, label in enumerate(all_labels[:20]):
+		print(f"{i}: {label}")
 
 	# Encode the documents to get sentence embeddings
 	X = model.encode(all_labels, show_progress_bar=True)
-	print(f"Shape of sentence embeddings: {type(X)} {X.shape}")
+	print(f"Document Embeddings: {type(X)} {X.shape}")
 
 	if nc is None:
 		# Define a range of cluster numbers to evaluate
-		range_n_clusters = range(2, math.ceil(len(all_labels)/50), 5)
+		range_n_clusters = range(2, math.ceil(len(all_labels)/15), 5)
 		print(f"range_n_clusters: {range_n_clusters} len(all_labels): {len(all_labels)}")
 		silhouette_scores = []
 
