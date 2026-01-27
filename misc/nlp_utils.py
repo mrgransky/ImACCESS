@@ -191,7 +191,7 @@ def _clustering_(
 	# plt.colorbar(scatter, label='Cluster Label')
 	plt.legend(loc='best', frameon=False, fancybox=True, edgecolor='black', facecolor='white')
 	plt.tight_layout()
-	plt.savefig(clusters_fname.replace(".csv", ".png"), dpi=250)
+	plt.savefig(clusters_fname.replace(".csv", f"_x_{optimal_n_clusters}.png"), dpi=250)
 
 	# how many samples each cluster has:
 	unique, counts = np.unique(clusters_optimal, return_counts=True)
@@ -201,9 +201,9 @@ def _clustering_(
 	df_clusters = pd.DataFrame({'text': all_labels, 'cluster': clusters_optimal})
 
 	# save df to csv:
-	df_clusters.to_csv(clusters_fname, index=False)
+	df_clusters.to_csv(clusters_fname.replace(".csv", f"_x_{optimal_n_clusters}.csv"), index=False)
 	try:
-		df_clusters.to_excel(clusters_fname.replace(".csv", ".xlsx"), index=False)
+		df_clusters.to_excel(clusters_fname.replace(".csv", f"_x_{optimal_n_clusters}.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 

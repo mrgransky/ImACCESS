@@ -73,7 +73,7 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 {caption}
 
 **CRITICAL RULES**:
-- Return **ONLY** a standarized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is **expected** if the caption is either short or lacks distinct concepts.
+- Return **ONLY** a standarized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is **highly expected** if the caption is either short or lacks distinct concepts.
 - Extracted **KEYWORDS** must be self-contained and grammatically complete phrases that actually appear in the caption:
 	* ALL ABBREVIATIONS MUST BE FULLY EXPANDED TO THEIR STANDARD FULL FORMS (e.g., "st." -> "street", mt. -> "mountain", "co." -> "company", "gen." -> "general", etc.).
 	* DUPLICATES AND VARIANTS MUST BE RESOLVED FOR CONSISTENCY.
@@ -627,7 +627,11 @@ def _load_llm_(
 
 	return tokenizer, model
 
-def get_prompt(tokenizer: tfs.PreTrainedTokenizer, description: str, max_kws: int):
+def get_prompt(
+	tokenizer: tfs.PreTrainedTokenizer, 
+	description: str, 
+	max_kws: int
+):
 	messages = [
 		{"role": "system", "content": "You are a helpful assistant."},
 		{"role": "user", "content": LLM_INSTRUCTION_TEMPLATE.format(k=max_kws, caption=description.strip())},
@@ -643,30 +647,18 @@ def parse_llm_response(
 	model_id: str, 
 	input_prompt: str, 
 	raw_llm_response: str, 
-	max_kws: int, 
+	max_kws: int,
+	caption: str,
 	verbose: bool = False
 ):
-	if verbose: 
-		print(f"[DEBUG] Parsing LLM response for {model_id}")
-		print(f"[RESPONSE]\n{raw_llm_response}\n")
+	if verbose:
+		print(f"[DEBUG] Parsing {model_id} LLM response...")
+		# print(f"[DEBUG] Input prompt:\n{input_prompt}\n")
+		print(f"[DEBUG] Raw Caption:\n{caption}\n")
+		print(f"[LLM RESPONSE]\n{raw_llm_response}\n")
 
 	llm_response: Optional[str] = None
-
-	# response differs significantly between models
-	if "meta-llama" in model_id:
-		llm_response = _llama_llm_response(model_id, input_prompt, raw_llm_response, max_kws, verbose)
-	elif "Qwen" in model_id:
-		llm_response = _qwen_llm_response(model_id, input_prompt, raw_llm_response, max_kws, verbose)
-	elif "microsoft" in model_id:
-		llm_response = _microsoft_llm_response(model_id, input_prompt, raw_llm_response, max_kws, verbose)
-	elif "mistralai" in model_id:
-		llm_response = _mistral_llm_response(model_id, input_prompt, raw_llm_response, max_kws, verbose)
-	elif "NousResearch" in model_id:
-		llm_response = _nousresearch_llm_response(model_id, input_prompt, raw_llm_response, max_kws, verbose)
-	elif "google" in model_id:
-		llm_response = _google_llm_response(model_id, input_prompt, raw_llm_response, verbose)
-	else:
-		raise NotImplementedError(f"Model {model_id} not implemented")
+	llm_response = _qwen_llm_response(model_id, input_prompt, raw_llm_response, max_kws, caption, verbose)
 
 	return llm_response
 
@@ -674,9 +666,11 @@ def _qwen_llm_response(
 	model_id: str, 
 	input_prompt: str, 
 	llm_response: str, 
-	max_kws: int, 
+	max_kws: int,
+	caption: str,
 	verbose: bool = False
 ) -> Optional[List[str]]:
+
 	# Step 1: Find the [/INST] tag
 	inst_end_match = re.search(r'\[/INST\]', llm_response)
 	
@@ -882,13 +876,11 @@ def _qwen_llm_response(
 			for i, kw in enumerate(keywords_list, 1):
 				print(f"  [{i}] {kw}")
 	
-	# # Step 4: Post-process keywords
-	# if verbose:
-	# 	print(f"[STEP 4] Post-processing keywords (max={max_kws})...")
-	
+	# Step 4: Post-process keywords
+	if verbose:
+		print(f"[POST-PROCESSING] {keywords_list} (max allowed: {max_kws})...")
 	processed = []
 	seen = set()
-	
 	for idx, kw in enumerate(keywords_list, 1):
 		if verbose:
 				print(f"\n  Processing [{idx}/{len(keywords_list)}]: {repr(kw)}")
@@ -899,6 +891,11 @@ def _qwen_llm_response(
 				print(f"    ✗ Skipped: empty/whitespace")
 			continue
 		
+		if not kw.lower() in caption.lower():
+			if verbose:
+				print(f"    ✗ Skipped: {kw} NOT in caption: {caption}")
+			continue
+
 		# Normalize whitespace
 		cleaned = re.sub(r'\s+', ' ', str(kw).strip())
 		
@@ -1039,6 +1036,7 @@ def query_local_llm(
 		model_id=model_id, 
 		input_prompt=prompt, 
 		raw_llm_response=raw_llm_response,
+		caption=text,
 		max_kws=max_kws,
 		verbose=verbose,
 	)
@@ -1301,6 +1299,7 @@ def get_llm_based_labels(
 					model_id=model_id_,
 					input_prompt=batch_prompts[local_i],
 					raw_llm_response=decoded_batch[local_i],
+					caption=unique_inputs[idx],
 					max_kws=max_kws_,
 					verbose=verbose_,
 				)
@@ -1518,7 +1517,7 @@ def get_llm_based_labels(
 def main():
 	parser = argparse.ArgumentParser(description="LLM-instruct-based keyword annotation for Historical Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, help="Path to the metadata CSV file")
-	parser.add_argument("--model_id", '-llm', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace model ID")
+	parser.add_argument("--model_id", '-llm', type=str, default="Qwen/Qwen3-4B-Instruct-2507", help="HuggingFace model ID")
 	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	parser.add_argument("--description", '-desc', type=str, help="Description")
 	parser.add_argument("--num_workers", '-nw', type=int, default=12, help="Number of workers for parallel processing")

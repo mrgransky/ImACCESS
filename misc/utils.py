@@ -169,9 +169,9 @@ def post_process(
 
 	dataset_dir = os.path.dirname(output_dir)
 	dataset_name = os.path.basename(dataset_dir)
-	print(f"OUTPUT_DIR: {output_dir}")
-	print(f"DATASET_DIR: {dataset_dir}")
-	print(f"DATASET_NAME: {dataset_name}")
+	print(f"output_dir: {output_dir}")
+	print(f"dataset_dir: {dataset_dir}")
+	print(f"dataset_name: {dataset_name}")
 
 	if is_multi_label:
 		# For multi-label, we need special handling

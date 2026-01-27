@@ -19,7 +19,7 @@ from nlp_utils import _post_process_, _clustering_
 # Qwen/Qwen2.5-VL-7B-Instruct # only fits Puhti and Mahti
 
 # how to run [local] interactive:
-# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -vlm_bs 4 -llm_bs 2 -llm_q -vlm_mgt 32 -nw 12 -nc 10 -v
+# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -vlm_bs 4 -llm_bs 2 -llm_q -vlm_mgt 32 -nw 12 -nc 10 -v
 # with nohup:
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_q -vlm_bs 2 -llm_bs 2 -nw 20 -v > logs/multimodal_annotation_smu.txt & 
 
@@ -549,8 +549,14 @@ def get_multimodal_annotation(
 	if not isinstance(device, torch.device):
 		device = torch.device(device)
 
-	t0 = time.time()
 	output_csv = csv_file.replace(".csv", "_multimodal.csv")
+
+	OUTPUT_DIR = os.path.join(os.path.dirname(csv_file), "outputs")
+	os.makedirs(OUTPUT_DIR, exist_ok=True)
+	print(f"OUTPUT_DIR: {OUTPUT_DIR}")
+	print(f"output_csv: {output_csv}")
+	print(f"csv_file: {csv_file}")
+
 	try:
 		df = pd.read_csv(
 			filepath_or_buffer=output_csv,
@@ -626,7 +632,13 @@ def get_multimodal_annotation(
 	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=False)
 	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=False)
 	
-	_clustering_(labels=multimodal_labels, nc=nc, clusters_fname=output_csv.replace(".csv", "_multimodal_clusters.csv"))
+	print(f">> Clustering multimodal labels...")
+	print(os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv")))
+	_clustering_(
+		labels=multimodal_labels, 
+		nc=nc, 
+		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv"))
+	)
 
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
