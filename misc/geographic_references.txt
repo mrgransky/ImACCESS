@@ -288,15 +288,24 @@ Aberdeen
 Alturas
 Bakersfield
 Beaumont
+Berkeley
 Beverly Hills
+Blanco
+Blanco, TX
+Blanco, Texas
+Blanco Texas
 Boston
 Boylestone
 Brewster
 Brewster, NY
+Brewster NY
+Brewster New York
 Bridgeport
 Brunswick
 Burbank
 Burlington
+Centerville
+Centerville California
 Castroville
 Cayuta
 Chicago
@@ -305,6 +314,7 @@ Columbus
 Echo
 Echo, UT
 Echo UT
+El Paso
 Hollywood
 Houston
 CA
@@ -343,6 +353,7 @@ UT
 UT.
 City of S.F.
 Indio
+Jamestown
 Jacksonville
 Leadvale
 Marshall
@@ -418,6 +429,7 @@ Nova Scotia
 Scotia
 Halifax
 Waterbury
+Washington DC
 Wash. D.C.
 Washington, D.C.
 Washington D.C.

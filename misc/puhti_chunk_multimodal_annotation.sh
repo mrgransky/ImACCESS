@@ -50,7 +50,7 @@ if [ "$NUM_GPUS" -gt 1 ]; then
 	echo "LARGE models (multi-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 	LLM_BATCH_SIZE=28
-	LLM_MAX_GEN_TKs=128
+	LLM_MAX_GEN_TKs=96
 	# LLM_QUANTIZATION="--use_llm_quantization"  # Enable
 	VLM_MODEL="Qwen/Qwen3-VL-30B-A3B-Instruct"
 	VLM_BATCH_SIZE=10

@@ -1011,6 +1011,7 @@ zero
 black and white photograph
 color photograph
 misc
+miscellaneous items
 okla
 view
 view of

@@ -11,7 +11,7 @@
 #SBATCH --mem=96G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
-#SBATCH --array=0-4
+#SBATCH --array=2-4
 #SBATCH --gres=gpu:v100:4,nvme:100
 
 set -euo pipefail
@@ -49,9 +49,9 @@ if [ "$NUM_GPUS" -gt 1 ]; then
 	echo "LARGE models (multi-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
   BASE_LLM_BATCH_SIZES=(6 6 12 12 16)
-	LLM_MAX_GENERATED_TOKENS=128
+	LLM_MAX_GENERATED_TOKENS=96
 	VLM_MODEL="Qwen/Qwen3-VL-30B-A3B-Instruct"
-  BASE_VLM_BATCH_SIZES=(4 4 8 8 8)
+  BASE_VLM_BATCH_SIZES=(4 4 6 6 8)
 	VLM_MAX_GENERATED_TOKENS=64
 else
 	echo "SMALL models (single-GPU configuration)"
@@ -95,8 +95,8 @@ python -u gt_kws_multimodal.py \
   --vlm_model_id $VLM_MODEL \
   --vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
 	--vlm_max_generated_tks $VLM_MAX_GENERATED_TOKENS \
-  --max_keywords 5 \
-  # --verbose \
+  --max_keywords 3 \
+  --verbose \
   # --use_llm_quantization \
   # --use_vlm_quantization \
 

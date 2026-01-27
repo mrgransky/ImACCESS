@@ -11,6 +11,7 @@ from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
 from sentence_transformers import SentenceTransformer
 import numpy as np
+import math
 from sklearn.feature_extraction.text import TfidfVectorizer
 from typing import List, Tuple, Dict, Set, Any, Optional, Union, Callable, Iterable
 # Try relative import first, fallback to absolute
@@ -113,7 +114,8 @@ def _clustering_(
 
 	if nc is None:
 		# Define a range of cluster numbers to evaluate
-		range_n_clusters = range(2, 250, 3)
+		range_n_clusters = range(2, math.ceil(len(all_labels)/50), 5)
+		print(f"range_n_clusters: {range_n_clusters} len(all_labels): {len(all_labels)}")
 		silhouette_scores = []
 
 		for n_clusters in range_n_clusters:
@@ -136,9 +138,10 @@ def _clustering_(
 		optimal_n_clusters = range_n_clusters[optimal_n_clusters_idx]
 		plt.axvline(x=optimal_n_clusters, color='red', linestyle='--', label=f'Optimal N_clusters: {optimal_n_clusters}')
 		plt.legend()
-		plt.savefig(os.path.join(OUTPUTS_DIR, f"clusters_silhouette_score_{optimal_n_clusters}.png"), dpi=100)
+		plt.savefig(clusters_fname.replace(".csv", f"_silhouette_score_{optimal_n_clusters}.png"), dpi=100)
 	else:
 		optimal_n_clusters = nc
+
 	print(f"The optimal number of clusters based on Silhouette Score is: {optimal_n_clusters}")
 
 	# Clustering using K-Means

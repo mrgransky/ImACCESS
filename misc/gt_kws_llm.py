@@ -79,7 +79,7 @@ Given the caption below, extract no more than {k} highly prominent, factual, and
 	* DUPLICATES AND VARIANTS MUST BE RESOLVED FOR CONSISTENCY.
 - **STRICTLY EXCLUDE** phrases that include phrasal verbs, possessive cases, abbreviations, shortened words or acronyms as standalone keywords.
 - **STRICTLY EXCLUDE** keywords that start or end with prepositions or conjunctions.
-- **STRICTLY EXCLUDE** keywords that contain number signs (#59, No.59, No. 59, No 59 etc.), or special characters.
+- **STRICTLY EXCLUDE** keywords that contain number signs (59, #59, No.59, No. 59, No 59 etc.), or special characters.
 - **STRICTLY EXCLUDE** dates, times, hours, minutes, calendar references, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
 - **STRICTLY EXCLUDE** geographic references, continents, countries, towns, cities, or states.
 - **STRICTLY EXCLUDE** serial/reference numbers, geographic/infrastructure/operational identifiers, measurements, units, coordinates, or **ANY** quantitative keywords.
@@ -883,7 +883,7 @@ def _qwen_llm_response(
 	seen = set()
 	for idx, kw in enumerate(keywords_list, 1):
 		if verbose:
-				print(f"\n  Processing [{idx}/{len(keywords_list)}]: {repr(kw)}")
+			print(f"\n  Processing [{idx}/{len(keywords_list)}]: {repr(kw)}")
 		
 		# Check if empty
 		if not kw or not str(kw).strip():
@@ -891,32 +891,25 @@ def _qwen_llm_response(
 				print(f"    ✗ Skipped: empty/whitespace")
 			continue
 		
-		if not kw.lower() in caption.lower():
-			if verbose:
-				print(f"    ✗ Skipped: {kw} NOT in caption: {caption}")
-			continue
-
 		# Normalize whitespace
 		cleaned = re.sub(r'\s+', ' ', str(kw).strip())
-		
 		# Unescape any escaped characters
 		cleaned = cleaned.replace("\\'", "'").replace('\\"', '"')
-		
 		if verbose:
 			print(f"    → Cleaned: {repr(cleaned)}")
-		
+
 		# Check length
 		if len(cleaned) < 3:
 			if verbose:
 				print(f"    ✗ Skipped: too short (len={len(cleaned)})")
 			continue
-		
-		# # Check stopwords
+
+		# Check stopwords
 		if cleaned.lower() in STOPWORDS:
 			if verbose:
-				print(f"    ✗ Skipped: stopword")
+				print(f"    ✗ Skipped: {kw} is a stopword!")
 			continue
-
+				
 		# Check if cleaned is a number # 1940
 		if cleaned.isdigit():
 			if verbose:
@@ -929,6 +922,15 @@ def _qwen_llm_response(
 			if verbose:
 				print(f"    ✗ Skipped: duplicate")
 			continue
+
+		if (
+			"-4B-Instruct-" in model_id
+			and not cleaned.lower() in caption.lower()
+		):
+			if verbose:
+				print(f"    ✗ Skipped: {kw} NOT in caption: {caption}")
+			continue
+
 		
 		seen.add(normalized)
 		processed.append(cleaned)
