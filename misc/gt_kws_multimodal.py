@@ -50,9 +50,9 @@ with open('geographic_references.txt', 'r') as file_:
 STOPWORDS.update(geographic_references)
 
 def merge_labels(
-		llm_based_labels: List[List[str]], 
-		vlm_based_labels: List[List[str]], 
-	):
+	llm_based_labels: List[List[str]], 
+	vlm_based_labels: List[List[str]], 
+):
 	"""Merge LLM and VLM labels"""
 	assert len(llm_based_labels) == len(vlm_based_labels), "Label lists must have same length"
 	multimodal_labels = []
@@ -106,24 +106,8 @@ def get_multimodal_annotation(
 		device = torch.device(device)
 
 	output_csv = csv_file.replace(".csv", "_multimodal.csv")
-
 	OUTPUT_DIR = os.path.join(os.path.dirname(csv_file), "outputs")
 	os.makedirs(OUTPUT_DIR, exist_ok=True)
-	print(f"OUTPUT_DIR: {OUTPUT_DIR}")
-	print(f"output_csv: {output_csv}")
-	print(f"csv_file: {csv_file}")
-
-	try:
-		df = pd.read_csv(
-			filepath_or_buffer=output_csv,
-			on_bad_lines='skip',
-			dtype=dtypes,
-			low_memory=False,
-			usecols = ['multimodal_labels'],
-		)
-		return df['multimodal_labels'].tolist()
-	except Exception as e:
-		print(f"<!> {e} Generating from scratch...")
 
 	vlm_based_labels = get_vlm_based_labels(
 		csv_file=csv_file,
@@ -184,19 +168,27 @@ def get_multimodal_annotation(
 	gc.collect()
 
 	# Post-process only multimodal labels
-	llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=False)
-	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=False)
-	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=False)
-	
-	print(f">> Clustering multimodal labels...")
-	print(os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv")))
-	_clustering_(
-		labels=multimodal_labels, 
-		model_id="google/embeddinggemma-300M",
-		nc=nc,
-		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv"))
-	)
+	if verbose:
+		print(f"Post-processing LLM-based labels...")
+	llm_based_labels = _post_process_(labels_list=llm_based_labels, 	verbose=verbose)
 
+	if verbose:
+		print(f"Post-processing VLM-based labels...")
+	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, 	verbose=verbose)
+
+	if verbose:
+		print(f"Post-processing Multimodal labels...")
+	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=verbose)
+
+	# print(f">> Clustering multimodal labels...")
+	# print(os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv")))
+	# _clustering_(
+	# 	labels=multimodal_labels, 
+	# 	model_id="google/embeddinggemma-300M",
+	# 	nc=nc,
+	# 	clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv"))
+	# )
+	
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
 		on_bad_lines='skip',

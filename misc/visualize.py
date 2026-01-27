@@ -2737,37 +2737,29 @@ def plot_loss_accuracy_metrics(
 		plt.close(fig)
 
 def analyze_top_labels_per_source(
-	processed_dfs, 
-	label_column,
-	n_top_labels_plot,
-	output_dir,
-	file_name,
-	DPI=200
+	processed_dfs: dict,
+	label_column: str,
+	output_dir: str,
+	file_name: str,
+	n_top_labels_plot: int=100,
+	DPI: int=200
 ):	
 	print(f"--- TOP-{n_top_labels_plot} MOST FREQUENT LABELS: PER-SOURCE ANALYSIS ---")
-	
-	# Define source columns to analyze
-	source_columns_to_analyze = {
-		'LLM-based': 'llm_based_labels',
-		'VLM-based': 'vlm_based_labels',
-		'Multimodal': label_column
-	}
-	
-	all_label_counts = {}  # Store for comparison later
-	
-	# PART 1: Individual Source Analysis
-	for source_name, col_name in source_columns_to_analyze.items():
-		if col_name not in processed_dfs:
-			print(f"\n>>> Source: {source_name} ({col_name}) - NOT AVAILABLE")
-			continue
+	print(processed_dfs)
 
-		print(f"\n>>> Source: {source_name} ({col_name})")
-		
-		# Get all labels for this source
-		source_df = processed_dfs[col_name]
-		source_labels = [label for sublist in source_df[col_name] for label in sublist]
+	all_label_counts = {}  # Store for comparison later
+	# PART 1: Individual Source Analysis
+	for col, lst in processed_dfs.items():
+		source_labels = list()
+		for labels in lst:
+			if isinstance(labels, str):
+				labels = eval(labels)
+			source_labels.extend(labels)
+
+		print(f"\n>>> Source: {col} containing {type(source_labels)} {len(source_labels)} samples <<<")
+		# print(f"{source_labels[:15]}")
 		source_unique = sorted(list(set(source_labels)))
-		
+
 		# Count frequencies
 		source_counts = Counter(source_labels)
 		source_counts_df = pd.DataFrame(
@@ -2776,33 +2768,21 @@ def analyze_top_labels_per_source(
 		).sort_values(by='Count', ascending=False)
 		
 		# Store for later comparison
-		all_label_counts[source_name] = source_counts_df
+		all_label_counts[col] = source_counts_df
 		
 		# Print statistics
-		print(f"Total samples: {len(source_df)}")
-		print(f"Total {source_name} unique labels: {len(source_unique)}")
-		print(f"Total label instances: {len(source_labels)}")
-		print(f"Mean labels per sample: {len(source_labels) / len(source_df):.2f}")
+		print(f"Total {col} unique labels: {len(source_unique)}")
 		
 		# Singleton analysis
 		source_singletons = source_counts_df[source_counts_df['Count'] == 1]
 		print(f"Singleton labels: {len(source_singletons)} ({len(source_singletons) / len(source_unique) * 100:.2f}%)")
-		
-		# Print top-N
-		# print(f"\nTop-{n_top_labels_plot} most frequent labels:")
-		# print(source_counts_df.head(n_top_labels_plot).to_string(index=False))
-		print()
-		# print all labels
-		for idx, row in source_counts_df.iterrows():
-			print(f"{row['Label']:<100}{row['Count']}")
-		# print(source_counts_df)
-		
+				
 		# Create individual visualization for this source
 		plt.figure(figsize=(14, 12))
 		plot_data = source_counts_df.head(n_top_labels_plot)
 		sns.barplot(x='Count', y='Label', data=plot_data, palette='viridis')
 		plt.title(
-			f'Top-{n_top_labels_plot} Most Frequent {source_name} Labels', 
+			f'Top-{n_top_labels_plot} Most Frequent {col} Labels', 
 			fontsize=11, 
 			weight='bold'
 		)
@@ -2810,221 +2790,391 @@ def analyze_top_labels_per_source(
 		plt.ylabel('Label', fontsize=10)
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{file_name}_top_{n_top_labels_plot}_frequent_labels_{col_name}.png"),
+			fname=os.path.join(output_dir, f"{file_name}_top_{n_top_labels_plot}_frequent_labels_{col}.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
 		plt.close()
 	
 	# PART 2: Comparative Analysis - Side-by-side
-	if len(all_label_counts) >= 2:
-		print("\n" + "="*100)
-		print("--- COMPARATIVE ANALYSIS: Top Labels Across Sources ---")
+	print("\n--- COMPARATIVE ANALYSIS: Top Labels Across Sources ---")	
+	# Create side-by-side comparison plot
+	n_sources = len(all_label_counts)
+	fig, axes = plt.subplots(1, n_sources, figsize=(8*n_sources, 11))
+	
+	if n_sources == 1:
+		axes = [axes]
+	
+	for idx, (source_name, counts_df) in enumerate(all_label_counts.items()):
+		ax = axes[idx]
+		plot_data = counts_df.head(n_top_labels_plot)
 		
-		# Create side-by-side comparison plot
-		n_sources = len(all_label_counts)
-		fig, axes = plt.subplots(1, n_sources, figsize=(8*n_sources, 11))
-		
-		if n_sources == 1:
-			axes = [axes]
-		
-		for idx, (source_name, counts_df) in enumerate(all_label_counts.items()):
-			ax = axes[idx]
-			plot_data = counts_df.head(n_top_labels_plot)
-			
-			# Create horizontal bar plot
-			y_pos = np.arange(len(plot_data))
-			ax.barh(y_pos, plot_data['Count'].values, color="#002d4d", alpha=0.8)
-			ax.set_yticks(y_pos)
-			ax.set_yticklabels(plot_data['Label'].values, fontsize=7)
-			ax.invert_yaxis()  # Top label at top
-			ax.set_xlabel('Frequency', fontsize=11)
-			ax.set_title(
-				f'{source_name} (Top-{len(plot_data)} labels) [Total: {len(counts_df)}]',
-				fontsize=10,
-				weight='bold'
-			)
-			ax.grid(axis='x', alpha=0.5)
-		
-		plt.tight_layout()
-		plt.savefig(
-			fname=os.path.join(output_dir, f"{file_name}_comparative_top_labels_all_sources.png"),
-			dpi=DPI,
-			bbox_inches='tight'
+		# Create horizontal bar plot
+		y_pos = np.arange(len(plot_data))
+		ax.barh(y_pos, plot_data['Count'].values, color="#002d4d", alpha=0.8)
+		ax.set_yticks(y_pos)
+		ax.set_yticklabels(plot_data['Label'].values, fontsize=7)
+		ax.invert_yaxis()  # Top label at top
+		ax.set_xlabel('Frequency', fontsize=11)
+		ax.set_title(
+			f'{source_name} (Top-{len(plot_data)} labels) [Total: {len(counts_df)}]',
+			fontsize=10,
+			weight='bold'
 		)
-		plt.close()
-		
-		# PART 3: Source-Specific Labels
-		if 'LLM-based' in all_label_counts and 'VLM-based' in all_label_counts:
-			print("\n--- Source-Specific Label Analysis ---")
-			
-			llm_labels = set(all_label_counts['LLM-based']['Label'].values)
-			vlm_labels = set(all_label_counts['VLM-based']['Label'].values)
-			
-			llm_only = llm_labels - vlm_labels
-			vlm_only = vlm_labels - llm_labels
-			both = llm_labels & vlm_labels
-			
-			print(f"\nLabel Set Statistics:")
-			print(f"  Total LLM labels: {len(llm_labels)}")
-			print(f"  Total VLM labels: {len(vlm_labels)}")
-			print(f"  Labels only in LLM: {len(llm_only)} ({len(llm_only)/len(llm_labels)*100:.1f}% of LLM)")
-			print(f"  Labels only in VLM: {len(vlm_only)} ({len(vlm_only)/len(vlm_labels)*100:.1f}% of VLM)")
-			print(f"  Labels in both: {len(both)} ({len(both)/len(llm_labels | vlm_labels)*100:.1f}% of total)")
-			
-			llm_counts = all_label_counts['LLM-based']
-			vlm_counts = all_label_counts['VLM-based']
-			
-			# Show top frequent labels
-			llm_only_top = llm_counts[llm_counts['Label'].isin(llm_only)].head(10)
-			vlm_only_top = vlm_counts[vlm_counts['Label'].isin(vlm_only)].head(10)
-			
-			print(f"\nTop 10 Most Frequent LLM-only labels:")
-			if len(llm_only_top) > 0:
-				print(llm_only_top.to_string(index=False))
-			else:
-				print("  (None)")
-			
-			print(f"\nTop 10 Most Frequent VLM-only labels:")
-			if len(vlm_only_top) > 0:
-				print(vlm_only_top.to_string(index=False))
-			else:
-				print("  (None)")
-			
-			# Show least frequent labels
-			llm_only_tail = llm_counts[llm_counts['Label'].isin(llm_only)].tail(10)
-			vlm_only_tail = vlm_counts[vlm_counts['Label'].isin(vlm_only)].tail(10)
+		ax.grid(axis='x', alpha=0.5)
+	
+	plt.tight_layout()
+	plt.savefig(
+		fname=os.path.join(output_dir, f"{file_name}_comparative_top_labels_all_sources.png"),
+		dpi=DPI,
+		bbox_inches='tight'
+	)
+	plt.close()
 
-			print(f"\nLeast Frequent LLM-only labels:")
-			if len(llm_only_tail) > 0:
-				print(llm_only_tail.to_string(index=False))
-			else:
-				print("  (None)")
-
-			print(f"\nLeast Frequent VLM-only labels:")
-			if len(vlm_only_tail) > 0:
-				print(vlm_only_tail.to_string(index=False))
-			else:
-				print("  (None)")
-
-			print(f"--- Singleton Analysis (LLM-only and VLM-only) ---")
-			llm_only_singleton = llm_counts[llm_counts['Label'].isin(llm_only) & (llm_counts['Count'] == 1)]
-			vlm_only_singleton = vlm_counts[vlm_counts['Label'].isin(vlm_only) & (vlm_counts['Count'] == 1)]
-			print(f"LLM-only singleton labels: {len(llm_only_singleton)}/{len(llm_only)} ({len(llm_only_singleton) / len(llm_only) * 100:.2f}% of LLM-only)")
-			print(f"VLM-only singleton labels: {len(vlm_only_singleton)}/{len(vlm_only)} ({len(vlm_only_singleton) / len(vlm_only) * 100:.2f}% of VLM-only)")
-			print(f"Total singleton labels: {len(llm_only_singleton) + len(vlm_only_singleton)} ({(len(llm_only_singleton) + len(vlm_only_singleton)) / (len(llm_only) + len(vlm_only)) * 100:.2f}% of total)")
-			print()
-
-			# Visualize source-specific labels
-			fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
-			
-			# LLM-only labels
-			if len(llm_only_top) > 0:
-				ax1.barh(range(len(llm_only_top)), llm_only_top['Count'].values, color='#1f77b4', alpha=0.8)
-				ax1.set_yticks(range(len(llm_only_top)))
-				ax1.set_yticklabels(llm_only_top['Label'].values, fontsize=10)
-				ax1.invert_yaxis()
-				ax1.set_xlabel('Frequency', fontsize=11)
-				ax1.set_title('Top 10 LLM-Only Labels', fontsize=12, weight='bold')
-				ax1.grid(axis='x', alpha=0.3)
-			else:
-				ax1.text(0.5, 0.5, 'No LLM-only labels', ha='center', va='center', transform=ax1.transAxes)
-				ax1.set_title('Top 10 LLM-Only Labels', fontsize=12, weight='bold')
-			
-			# VLM-only labels
-			if len(vlm_only_top) > 0:
-				ax2.barh(range(len(vlm_only_top)), vlm_only_top['Count'].values, color='#ff7f0e', alpha=0.8)
-				ax2.set_yticks(range(len(vlm_only_top)))
-				ax2.set_yticklabels(vlm_only_top['Label'].values, fontsize=10)
-				ax2.invert_yaxis()
-				ax2.set_xlabel('Frequency', fontsize=11)
-				ax2.set_title('Top 10 VLM-Only Labels', fontsize=12, weight='bold')
-				ax2.grid(axis='x', alpha=0.3)
-			else:
-				ax2.text(0.5, 0.5, 'No VLM-only labels', ha='center', va='center', transform=ax2.transAxes)
-				ax2.set_title('Top 10 VLM-Only Labels', fontsize=12, weight='bold')
-			
-			plt.tight_layout()
-			plt.savefig(
-				fname=os.path.join(output_dir, f"{file_name}_source_specific_labels.png"),
-				dpi=DPI,
-				bbox_inches='tight'
-			)
-			plt.close()
-			
-			# PART 4: Agreement Analysis
-			# Get top-N from each source
-			top_n_agreement = 100
-			print(f"Top-{top_n_agreement} Label Agreement Between Sources")
-			llm_top_n = set(all_label_counts['LLM-based'].head(top_n_agreement)['Label'].values)
-			vlm_top_n = set(all_label_counts['VLM-based'].head(top_n_agreement)['Label'].values)
-			
-			agreement = llm_top_n & vlm_top_n
-			llm_unique_top = llm_top_n - vlm_top_n
-			vlm_unique_top = vlm_top_n - llm_top_n
-			
-			print(f"Among top-{top_n_agreement} labels:")
-			print(f"  Agreed by both: {len(agreement)} labels")
-			print(f"  Only in LLM top-{top_n_agreement}: {len(llm_unique_top)} labels")
-			print(f"  Only in VLM top-{top_n_agreement}: {len(vlm_unique_top)} labels")
-			print(f"  Agreement rate: {len(agreement)/top_n_agreement*100:.1f}%")
-			
-			if len(agreement) > 0:
-				print(f"\nLabels appearing in both top-{top_n_agreement}:")
-				agreed_list = sorted(list(agreement))
-				for i in range(0, len(agreed_list), 5):  # Print 5 per line
-					print(f"  {', '.join(agreed_list[i:i+5])}")
-			
-			if len(llm_unique_top) > 0:
-				print(f"\nTop-{top_n_agreement} LLM-only labels:")
-				llm_unique_list = sorted(list(llm_unique_top))
-				for i in range(0, len(llm_unique_list), 5):
-					print(f"  {', '.join(llm_unique_list[i:i+5])}")
-			
-			if len(vlm_unique_top) > 0:
-				print(f"\nTop-{top_n_agreement} VLM-only labels:")
-				vlm_unique_list = sorted(list(vlm_unique_top))
-				for i in range(0, len(vlm_unique_list), 5):
-					print(f"  {', '.join(vlm_unique_list[i:i+5])}")
-			
-			# Create agreement visualization
-			fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-			
-			# Pie chart of agreement
-			agreement_data = [len(agreement), len(llm_unique_top), len(vlm_unique_top)]
-			agreement_labels = [
-				f'Both ({len(agreement)})',
-				f'LLM-only ({len(llm_unique_top)})',
-				f'VLM-only ({len(vlm_unique_top)})'
-			]
-			colors = ['#2ca02c', '#1f77b4', '#ff7f0e']
-			
-			ax1.pie(agreement_data, labels=agreement_labels, autopct='%1.1f%%',
-					colors=colors, startangle=90)
-			ax1.set_title(f'Agreement Among Top-{top_n_agreement} Labels', 
-						  fontsize=12, weight='bold')
-			
-			# Venn-style bar chart
-			categories = ['Agreed', 'LLM-only', 'VLM-only']
-			ax2.bar(categories, agreement_data, color=colors, alpha=0.8, edgecolor='black')
-			ax2.set_ylabel('Number of Labels', fontsize=11)
-			ax2.set_title(f'Top-{top_n_agreement} Label Distribution', 
-						  fontsize=12, weight='bold')
-			ax2.grid(axis='y', alpha=0.3)
-			for i, (cat, val) in enumerate(zip(categories, agreement_data)):
-				ax2.text(i, val, str(val), ha='center', va='bottom', fontsize=11, weight='bold')
-			
-			plt.tight_layout()
-			plt.savefig(
-				fname=os.path.join(output_dir, f"{file_name}_top_label_agreement.png"),
-				dpi=DPI,
-				bbox_inches='tight'
-			)
-			plt.close()
+	# PART 3: Source-Specific Labels
+	print("\n--- Source-Specific Label Analysis ---")	
+	# Visualize source-specific labels
+	fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+	
+	# LLM-only
+	llm_only_top = all_label_counts['llm_based_labels'].head(10)
+	if len(llm_only_top) > 0:
+		ax1.barh(range(len(llm_only_top)), llm_only_top['Count'].values, color='#1f77b4', alpha=0.8)
+		ax1.set_yticks(range(len(llm_only_top)))
+		ax1.set_yticklabels(llm_only_top['Label'].values, fontsize=10)
+		ax1.invert_yaxis()
+		ax1.set_xlabel('Frequency', fontsize=11)
+		ax1.set_title('Top 10 LLM-Only Labels', fontsize=12, weight='bold')
+		ax1.grid(axis='x', alpha=0.3)
+	else:
+		ax1.text(0.5, 0.5, 'No LLM-only labels', ha='center', va='center', transform=ax1.transAxes)
+		ax1.set_title('Top 10 LLM-Only Labels', fontsize=12, weight='bold')
+	
+	# VLM-only
+	vlm_only_top = all_label_counts['vlm_based_labels'].head(10)
+	if len(vlm_only_top) > 0:
+		ax2.barh(range(len(vlm_only_top)), vlm_only_top['Count'].values, color='#ff7f0e', alpha=0.8)
+		ax2.set_yticks(range(len(vlm_only_top)))
+		ax2.set_yticklabels(vlm_only_top['Label'].values, fontsize=10)
+		ax2.invert_yaxis()
+		ax2.set_xlabel('Frequency', fontsize=11)
+		ax2.set_title('Top 10 VLM-Only Labels', fontsize=12, weight='bold')
+		ax2.grid(axis='x', alpha=0.3)
+	else:
+		ax2.text(0.5, 0.5, 'No VLM-only labels', ha='center', va='center', transform=ax2.transAxes)
+		ax2.set_title('Top 10 VLM-Only Labels', fontsize=12, weight='bold')
+	
+	plt.tight_layout()
+	plt.savefig(
+		fname=os.path.join(output_dir, f"{file_name}_source_specific_labels.png"),
+		dpi=DPI,
+		bbox_inches='tight'
+	)
+	plt.close()
+	
+	# PART 4: Agreement Analysis
+	# Get top-N from each source
+	top_n_agreement = 100
+	print(f"Top-{top_n_agreement} Label Agreement Between Sources")
+	llm_top_n = set(all_label_counts['llm_based_labels'].head(top_n_agreement)['Label'].values)
+	vlm_top_n = set(all_label_counts['vlm_based_labels'].head(top_n_agreement)['Label'].values)
+	
+	agreement = llm_top_n & vlm_top_n
+	llm_unique_top = llm_top_n - vlm_top_n
+	vlm_unique_top = vlm_top_n - llm_top_n
+	
+	print(f"Among top-{top_n_agreement} labels:")
+	print(f"  Agreed by both: {len(agreement)} labels")
+	print(f"  Only in LLM top-{top_n_agreement}: {len(llm_unique_top)} labels")
+	print(f"  Only in VLM top-{top_n_agreement}: {len(vlm_unique_top)} labels")
+	print(f"  Agreement rate: {len(agreement)/top_n_agreement*100:.1f}%")
+	
+	if len(agreement) > 0:
+		print(f"\nLabels appearing in both top-{top_n_agreement}:")
+		agreed_list = sorted(list(agreement))
+		for i in range(0, len(agreed_list), 5):  # Print 5 per line
+			print(f"  {', '.join(agreed_list[i:i+5])}")
+	
+	if len(llm_unique_top) > 0:
+		print(f"\nTop-{top_n_agreement} LLM-only labels:")
+		llm_unique_list = sorted(list(llm_unique_top))
+		for i in range(0, len(llm_unique_list), 5):
+			print(f"  {', '.join(llm_unique_list[i:i+5])}")
+	
+	if len(vlm_unique_top) > 0:
+		print(f"\nTop-{top_n_agreement} VLM-only labels:")
+		vlm_unique_list = sorted(list(vlm_unique_top))
+		for i in range(0, len(vlm_unique_list), 5):
+			print(f"  {', '.join(vlm_unique_list[i:i+5])}")
+	
+	# Create agreement visualization
+	fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+	
+	# Pie chart of agreement
+	agreement_data = [len(agreement), len(llm_unique_top), len(vlm_unique_top)]
+	agreement_labels = [
+		f'Both ({len(agreement)})',
+		f'LLM-only ({len(llm_unique_top)})',
+		f'VLM-only ({len(vlm_unique_top)})'
+	]
+	colors = ['#2ca02c', '#1f77b4', '#ff7f0e']
+	
+	ax1.pie(agreement_data, labels=agreement_labels, autopct='%1.1f%%', colors=colors, startangle=90)
+	ax1.set_title(f'Agreement Among Top-{top_n_agreement} Labels', fontsize=12, weight='bold')
+	
+	# Venn-style bar chart
+	categories = ['Agreed', 'LLM-only', 'VLM-only']
+	ax2.bar(categories, agreement_data, color=colors, alpha=0.8, edgecolor='black')
+	ax2.set_ylabel('Number of Labels', fontsize=11)
+	ax2.set_title(f'Top-{top_n_agreement} Label Distribution', fontsize=12, weight='bold')
+	ax2.grid(axis='y', alpha=0.3)
+	for i, (cat, val) in enumerate(zip(categories, agreement_data)):
+		ax2.text(i, val, str(val), ha='center', va='bottom', fontsize=11, weight='bold')
+	
+	plt.tight_layout()
+	plt.savefig(
+		fname=os.path.join(output_dir, f"{file_name}_top_label_agreement.png"),
+		dpi=DPI,
+		bbox_inches='tight'
+	)
+	plt.close()
 	
 	print("\n" + "="*100)
 	
 	return all_label_counts
+
+def analyze_multi_source_agreement(processed_dfs, output_dir, file_name, DPI=200):
+		"""
+		Analyze agreement between LLM, VLM, and Multimodal label sources.
+		
+		Args:
+				processed_dfs: dict with keys 'llm_based_labels', 'vlm_based_labels', 'multimodal_labels'
+											Each value is a list of label lists (e.g., [['label1', 'label2'], ['label3'], ...])
+				output_dir: where to save plots
+				file_name: base filename for saved plots
+				DPI: resolution for saved plots
+		"""
+		print("\n" + "="*100)
+		print("--- MULTI-SOURCE LABEL AGREEMENT ANALYSIS ---")
+		
+		source_cols = {
+				'textual_based': 'llm_based_labels',
+				'visual_based': 'vlm_based_labels',
+				'multimodal': 'multimodal_labels'
+		}
+		
+		unique_labels_by_source = {}
+		sample_count_by_source = {}
+		
+		for key, col_name in source_cols.items():
+				if col_name in processed_dfs:
+						# processed_dfs[col_name] is a list of label lists
+						label_data = processed_dfs[col_name]
+						
+						# Extract all labels (flatten the list of lists)
+						current_all_labels = []
+						for labels in label_data:
+								if isinstance(labels, str):
+										labels = eval(labels)  # Parse string representation if needed
+								if isinstance(labels, list):
+										current_all_labels.extend(labels)
+						
+						unique_labels_by_source[key] = set(current_all_labels)
+						sample_count_by_source[key] = len(label_data)
+						
+						print(f"Unique labels in '{col_name}': {len(unique_labels_by_source[key])}")
+				else:
+						unique_labels_by_source[key] = set()
+						sample_count_by_source[key] = 0
+						print(f"'{col_name}' was not processed or is empty.")
+		
+		text_set = unique_labels_by_source.get('textual_based', set())
+		visual_set = unique_labels_by_source.get('visual_based', set())
+		multimodal_set = unique_labels_by_source.get('multimodal', set())
+		
+		# Calculate overlaps
+		all_three_overlap = text_set & visual_set & multimodal_set
+		text_visual_overlap = text_set & visual_set
+		text_multimodal_overlap = text_set & multimodal_set
+		visual_multimodal_overlap = visual_set & multimodal_set
+		
+		print(f"\nLabel Set Overlaps:")
+		print(f"  Common labels across all three sources: {len(all_three_overlap)}")
+		print(f"  Common labels between Textual and Visual: {len(text_visual_overlap)}")
+		print(f"  Common labels between Textual and Multimodal: {len(text_multimodal_overlap)}")
+		print(f"  Common labels between Visual and Multimodal: {len(visual_multimodal_overlap)}")
+		
+		unique_to_text = text_set - (visual_set | multimodal_set)
+		unique_to_visual = visual_set - (text_set | multimodal_set)
+		unique_to_multimodal = multimodal_set - (text_set | visual_set)
+		
+		print(f"\nUnique Labels by Source:")
+		print(f"  Labels unique to llm_based_labels: {len(unique_to_text)}")
+		print(f"  Labels unique to vlm_based_labels: {len(unique_to_visual)}")
+		print(f"  Labels unique to multimodal_labels: {len(unique_to_multimodal)}")
+		
+		# Calculate sample-level agreement if we have all three sources
+		if all(key in unique_labels_by_source for key in ['textual_based', 'visual_based', 'multimodal']):
+				print("\n--- Sample-Level Agreement Metrics ---")
+				
+				# Get the label lists
+				text_labels_list = processed_dfs['llm_based_labels']
+				visual_labels_list = processed_dfs['vlm_based_labels']
+				multi_labels_list = processed_dfs['multimodal_labels']
+				
+				# Find common samples (assume same length and aligned)
+				min_len = min(len(text_labels_list), len(visual_labels_list), len(multi_labels_list))
+				
+				if min_len > 0:
+						agreement_scores = []
+						perfect_agreement = 0
+						partial_agreement = 0
+						no_agreement = 0
+						
+						for idx in range(min_len):
+								# Parse labels if they're strings
+								text_labels = text_labels_list[idx]
+								visual_labels = visual_labels_list[idx]
+								multi_labels = multi_labels_list[idx]
+								
+								if isinstance(text_labels, str):
+										text_labels = eval(text_labels)
+								if isinstance(visual_labels, str):
+										visual_labels = eval(visual_labels)
+								if isinstance(multi_labels, str):
+										multi_labels = eval(multi_labels)
+								
+								# Convert to sets
+								text_labels = set(text_labels) if isinstance(text_labels, list) else set()
+								visual_labels = set(visual_labels) if isinstance(visual_labels, list) else set()
+								multi_labels = set(multi_labels) if isinstance(multi_labels, list) else set()
+								
+								# Calculate pairwise Jaccard similarities
+								tv_union = text_labels | visual_labels
+								tv_jaccard = len(text_labels & visual_labels) / len(tv_union) if len(tv_union) > 0 else 0
+								
+								tm_union = text_labels | multi_labels
+								tm_jaccard = len(text_labels & multi_labels) / len(tm_union) if len(tm_union) > 0 else 0
+								
+								vm_union = visual_labels | multi_labels
+								vm_jaccard = len(visual_labels & multi_labels) / len(vm_union) if len(vm_union) > 0 else 0
+								
+								avg_jaccard = (tv_jaccard + tm_jaccard + vm_jaccard) / 3
+								agreement_scores.append(avg_jaccard)
+								
+								# Categorize agreement
+								if text_labels == visual_labels == multi_labels and len(text_labels) > 0:
+										perfect_agreement += 1
+								elif len(text_labels & visual_labels & multi_labels) > 0:
+										partial_agreement += 1
+								else:
+										no_agreement += 1
+						
+						print(f"Samples analyzed: {min_len}")
+						print(f"Perfect agreement (all labels match): {perfect_agreement} ({perfect_agreement/min_len*100:.1f}%)")
+						print(f"Partial agreement (some overlap): {partial_agreement} ({partial_agreement/min_len*100:.1f}%)")
+						print(f"No agreement (no overlap): {no_agreement} ({no_agreement/min_len*100:.1f}%)")
+						print(f"Mean Jaccard Agreement: {np.mean(agreement_scores):.3f}")
+						print(f"Median Jaccard Agreement: {np.median(agreement_scores):.3f}")
+						
+						# Visualize agreement distribution
+						fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+						
+						# Agreement score distribution
+						ax = axes[0, 0]
+						ax.hist(agreement_scores, bins=20, color='skyblue', edgecolor='black')
+						ax.axvline(
+								np.mean(agreement_scores), 
+								color='red', 
+								linestyle='--', 
+								label=f'Mean: {np.mean(agreement_scores):.3f}'
+						)
+						ax.set_xlabel('Average Jaccard Agreement Score')
+						ax.set_ylabel('Number of Samples')
+						ax.set_title('Distribution of Multi-Source Agreement Scores')
+						ax.legend()
+						ax.grid(True, alpha=0.3)
+						
+						# Agreement categories
+						ax = axes[0, 1]
+						categories = ['Perfect\nAgreement', 'Partial\nAgreement', 'No\nAgreement']
+						counts = [perfect_agreement, partial_agreement, no_agreement]
+						colors = ['green', 'orange', 'red']
+						ax.bar(categories, counts, color=colors, alpha=0.7, edgecolor='black')
+						ax.set_ylabel('Number of Samples')
+						ax.set_title('Sample-Level Agreement Categories')
+						for i, (cat, count) in enumerate(zip(categories, counts)):
+								ax.text(
+										i, 
+										count, 
+										f'{count}\n({count/min_len*100:.1f}%)', 
+										ha='center', 
+										va='bottom'
+								)
+						ax.grid(axis='y', alpha=0.3)
+						
+						# Venn diagram data
+						ax = axes[1, 0]
+						overlap_data = {
+								'Category': [
+										'All Three', 
+										'Text & Visual only', 
+										'Text & Multi only', 
+										'Visual & Multi only',
+										'Text only', 
+										'Visual only', 
+										'Multi only'
+								],
+								'Count': [
+										len(all_three_overlap),
+										len((text_set & visual_set) - multimodal_set),
+										len((text_set & multimodal_set) - visual_set),
+										len((visual_set & multimodal_set) - text_set),
+										len(unique_to_text),
+										len(unique_to_visual),
+										len(unique_to_multimodal)
+								]
+						}
+						overlap_df = pd.DataFrame(overlap_data)
+						sns.barplot(x='Count', y='Category', data=overlap_df, palette='pastel', ax=ax)
+						ax.set_title('Label Set Overlaps Across Sources')
+						ax.set_xlabel('Number of Unique Labels')
+						ax.grid(axis='x', alpha=0.3)
+						
+						# Source coverage comparison
+						ax = axes[1, 1]
+						all_labels_union = text_set | visual_set | multimodal_set
+						source_coverage = {
+								'Source': ['Textual', 'Visual', 'Multimodal'],
+								'Unique Labels': [len(text_set), len(visual_set), len(multimodal_set)],
+								'Coverage %': [
+										len(text_set) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0,
+										len(visual_set) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0,
+										len(multimodal_set) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0
+								]
+						}
+						coverage_df = pd.DataFrame(source_coverage)
+						x_pos = np.arange(len(coverage_df))
+						ax.bar(x_pos, coverage_df['Unique Labels'], alpha=0.7, edgecolor='black')
+						ax.set_xticks(x_pos)
+						ax.set_xticklabels(coverage_df['Source'])
+						ax.set_ylabel('Number of Unique Labels')
+						ax.set_title('Label Space Coverage by Source')
+						for i, (labels, pct) in enumerate(zip(coverage_df['Unique Labels'], coverage_df['Coverage %'])):
+								ax.text(i, labels, f'{labels}\n({pct:.1f}%)', ha='center', va='bottom')
+						ax.grid(axis='y', alpha=0.3)
+						
+						plt.tight_layout()
+						plt.savefig(
+								fname=os.path.join(output_dir, f"{file_name}_agreement_analysis.png"),
+								dpi=DPI,
+								bbox_inches='tight'
+						)
+						plt.close()
+						
+						print(f"\nAgreement visualization saved: {file_name}_agreement_analysis.png")
+		
+		print("="*100)
 
 def perform_multilabel_eda(
 	data_path: str,
@@ -3058,68 +3208,35 @@ def perform_multilabel_eda(
 		return
 
 	print(df.info(verbose=True, memory_usage="deep"))
-	print("\n--- Missing Values ---")
+	print("Missing Values".center(100, "-"))
 	print(df.isnull().sum())
+	print(f"[LOADED] {type(df)} {df.shape} {list(df.columns)}")
+	print(df.head(5))
+	print("-"*100)
+	print(df[label_column].head(5))
 
-	label_columns_to_parse = [
-		label_column, 
-		'llm_based_labels', 
-		'vlm_based_labels'
-	]
-	processed_dfs = {}
-	df_for_parsing_and_filtering = df.copy()
+	processed_dfs = {
+		"llm_based_labels": 	df["llm_based_labels"].tolist(),
+		"vlm_based_labels": 	df["vlm_based_labels"].tolist(),
+		"multimodal_labels": 	df[label_column].tolist(),
+	}
+	# print(f"processed_dfs: {type(processed_dfs)} {len(processed_dfs)}")
+	# print(json.dumps(processed_dfs, indent=2, ensure_ascii=False))
+	# print("-"*100)
+	# print(df[label_column].tolist(), type(df[label_column].tolist()), len(df[label_column].tolist()))
+	# print("-"*100)
+	# for i, labels in enumerate(df[label_column].tolist()):
+	# 	print(f"B4 EVAL: {i}: {type(labels)} {len(labels)} {labels}")
+	# 	labels = eval(labels)
+	# 	print(f"AFT EVAL: {i}: {type(labels)} {len(labels)} {labels}")
+	# 	print()
+
+	all_individual_labels = list()
+	for labels in df[label_column].tolist():
+		if isinstance(labels, str):
+			labels = eval(labels)
+		all_individual_labels.extend(labels)
 	
-	for col in label_columns_to_parse:
-		print(f"--- Parsing '{col}' column ---")
-		
-		if col not in df_for_parsing_and_filtering.columns:
-			print(f"Warning: Label column '{col}' not found in the DataFrame. Skipping.\n")
-			continue
-		
-		current_col_series = df_for_parsing_and_filtering[col]
-		first_valid_item = current_col_series.dropna().iloc[0] if not current_col_series.dropna().empty else None
-		if first_valid_item is not None and isinstance(first_valid_item, str):
-			print(f"Attempting to parse string representations in '{col}' column...")
-			try:
-					parsed_series = current_col_series.apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x)
-					df_for_parsing_and_filtering[col] = parsed_series
-					print(f"Successfully parsed string representations in '{col}' column.\n")
-			except (ValueError, SyntaxError) as e:
-					print(
-							f"Error: Could not parse some string values in '{col}' column. "
-							f"Ensure they are valid string representations of lists. Error: {e}"
-					)
-		elif first_valid_item is not None:
-			print(f"'{col}' column's first valid item is of type {type(first_valid_item)}. Assuming list-like or compatible. No string parsing attempted.\n")
-		else:
-			print(f"'{col}' column is empty or all NaNs. No string parsing possible.\n")
-		
-		temp_series_for_filtering = df_for_parsing_and_filtering[col].copy()
-		
-		def clean_value(val):
-			if isinstance(val, (list, tuple)):
-				return val
-			if pd.isna(val):
-				return []
-			return val
-		
-		temp_series_for_filtering = temp_series_for_filtering.apply(clean_value)
-		valid_entries_mask = temp_series_for_filtering.apply(lambda x: isinstance(x, (list, tuple)) and len(x) > 0)
-		df_filtered_for_this_col = df[valid_entries_mask].copy()
-		if len(df_filtered_for_this_col) == 0:
-				print(f"No samples with valid (non-empty list) labels found in '{col}' after parsing/filtering. Skipping further analysis for this column.\n")
-				continue
-		print(f"For column '{col}', retained {len(df_filtered_for_this_col)} rows with non-empty label lists out of {len(df)} original rows.")
-		processed_dfs[col] = df_filtered_for_this_col.copy()
-		processed_dfs[col][col] = df_for_parsing_and_filtering.loc[valid_entries_mask, col]
-
-	if label_column not in processed_dfs:
-		print(f"Main label column '{label_column}' could not be processed or is empty. Exiting EDA.")
-		return
-
-	df = processed_dfs[label_column].copy()
-
-	all_individual_labels = [label for sublist in df[label_column] for label in sublist]
 	unique_labels = sorted(list(set(all_individual_labels)))
 	print(f"--- Multi-label Statistics (Main Column: {label_column}) ---")
 	print(f"Total number of samples with valid '{label_column}': {len(df)}")
@@ -3153,13 +3270,9 @@ def perform_multilabel_eda(
 		file_name=file_name,
 		DPI=DPI
 	)
-	label_counts_df = all_label_counts['Multimodal']
-	singleton_labels = label_counts_df[label_counts_df['Count'] == 1]
-	print(f"\nNumber of labels appearing only once: {len(singleton_labels)} ({len(singleton_labels) / len(unique_labels) * 100:.2f}%) of total unique labels")
-	print(f"Example singleton labels (first 10): {singleton_labels['Label'].head(10).tolist()}")
 
 	plt.figure(figsize=(10, 6))
-	sns.histplot(label_counts_df['Count'], bins=50, kde=False, color='coral')
+	sns.histplot(all_label_counts[label_column]['Count'], bins=50, kde=False, color='coral')
 	plt.title(f'Distribution of All Label Frequencies (Main Column: "{label_column}")')
 	plt.xlabel('Label Frequency (Number of Samples)')
 	plt.ylabel('Number of Labels (Log Scale)')
@@ -3175,7 +3288,7 @@ def perform_multilabel_eda(
 
 	# PLOT 1: Power Law Analysis
 	print("--- POWER LAW ANALYSIS ---")
-	freq_values = label_counts_df['Count'].values
+	freq_values = all_label_counts[label_column]['Count'].values
 	ranks = np.arange(1, len(freq_values) + 1)
 	
 	# Log-log plot to visualize power law
@@ -3221,13 +3334,13 @@ def perform_multilabel_eda(
 	print("--- LABEL DIVERSITY METRICS ---")
 	
 	# Calculate Shannon entropy
-	label_probs = label_counts_df['Count'].values / label_counts_df['Count'].sum()
+	label_probs = all_label_counts[label_column]['Count'].values / all_label_counts[label_column]['Count'].sum()
 	shannon_entropy = scipy.stats.entropy(label_probs, base=2)
 	max_entropy = np.log2(len(unique_labels))
 	normalized_entropy = shannon_entropy / max_entropy if max_entropy > 0 else 0
 	
 	# Calculate Gini coefficient
-	sorted_counts = np.sort(label_counts_df['Count'].values)
+	sorted_counts = np.sort(all_label_counts[label_column]['Count'].values)
 	n = len(sorted_counts)
 	gini = (2 * np.sum((np.arange(1, n+1)) * sorted_counts)) / (n * np.sum(sorted_counts)) - (n + 1) / n
 	
@@ -3259,14 +3372,12 @@ def perform_multilabel_eda(
 	
 	# Diversity metrics summary
 	metrics_data = {
-		'Metric': ['Shannon Entropy', 'Normalized Entropy', 'Gini Coefficient', 
-					 'Effective Labels', 'Unique Labels'],
+		'Metric': ['Shannon Entropy', 'Normalized Entropy', 'Gini Coefficient', 'Effective Labels', 'Unique Labels'],
 		'Value': [shannon_entropy, normalized_entropy, gini, effective_labels, len(unique_labels)]
 	}
 	metrics_df = pd.DataFrame(metrics_data)
 	ax2.axis('off')
-	table = ax2.table(cellText=metrics_df.values, colLabels=metrics_df.columns,
-						cellLoc='left', loc='center', colWidths=[0.6, 0.4])
+	table = ax2.table(cellText=metrics_df.values, colLabels=metrics_df.columns, cellLoc='left', loc='center', colWidths=[0.6, 0.4])
 	table.auto_set_font_size(False)
 	table.set_fontsize(12)
 	table.scale(1, 2)
@@ -3284,17 +3395,17 @@ def perform_multilabel_eda(
 	print("--- LABEL IMBALANCE ANALYSIS ---")
 	
 	# Calculate imbalance ratio
-	max_freq = label_counts_df['Count'].max()
-	min_freq = label_counts_df['Count'].min()
+	max_freq = all_label_counts[label_column]['Count'].max()
+	min_freq = all_label_counts[label_column]['Count'].min()
 	imbalance_ratio = max_freq / min_freq
 	
 	# Calculate mean label frequency ratio (MeanLFR)
-	mean_freq = label_counts_df['Count'].mean()
-	median_freq = label_counts_df['Count'].median()
+	mean_freq = all_label_counts[label_column]['Count'].mean()
+	median_freq = all_label_counts[label_column]['Count'].median()
 	
 	# Identify severely imbalanced labels (< 1% of max frequency)
 	threshold = max_freq * 0.01
-	rare_labels = label_counts_df[label_counts_df['Count'] < threshold]
+	rare_labels = all_label_counts[label_column][all_label_counts[label_column]['Count'] < threshold]
 	
 	print(f"Imbalance Ratio (Max/Min): {imbalance_ratio:.2f}")
 	print(f"Mean Label Frequency: {mean_freq:.2f}")
@@ -3306,7 +3417,7 @@ def perform_multilabel_eda(
 	
 	# Cumulative distribution
 	ax = axes[0, 0]
-	sorted_freqs = label_counts_df['Count'].sort_values(ascending=False).values
+	sorted_freqs = all_label_counts[label_column]['Count'].sort_values(ascending=False).values
 	cumsum_freqs = np.cumsum(sorted_freqs)
 	cumsum_pct = cumsum_freqs / cumsum_freqs[-1] * 100
 	ax.plot(np.arange(1, len(cumsum_pct)+1), cumsum_pct, linewidth=2)
@@ -3324,7 +3435,7 @@ def perform_multilabel_eda(
 		transform=ax.transAxes, 
 		ha='center', 
 		va='center',
-		bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+		bbox=dict(boxstyle='round', facecolor="#3F1515", alpha=0.5)
 	)
 	
 	# Frequency binning
@@ -3353,8 +3464,8 @@ def perform_multilabel_eda(
 			label = f'{start}-{end}'
 		dynamic_labels.append(label)
 
-	label_counts_df['freq_bin'] = pd.cut(label_counts_df['Count'], bins=dynamic_bins, labels=dynamic_labels, right=False)
-	freq_bin_counts = label_counts_df['freq_bin'].value_counts().sort_index()
+	all_label_counts[label_column]['freq_bin'] = pd.cut(all_label_counts[label_column]['Count'], bins=dynamic_bins, labels=dynamic_labels, right=False)
+	freq_bin_counts = all_label_counts[label_column]['freq_bin'].value_counts().sort_index()
 
 	ax.bar(range(len(freq_bin_counts)), freq_bin_counts.values, color='coral')
 	ax.set_xticks(range(len(freq_bin_counts)))
@@ -3366,7 +3477,7 @@ def perform_multilabel_eda(
 	
 	# Box plot of frequencies
 	ax = axes[1, 0]
-	ax.boxplot([label_counts_df['Count'].values], vert=False)
+	ax.boxplot([all_label_counts[label_column]['Count'].values], vert=False)
 	ax.set_xlabel('Label Frequency')
 	ax.set_title('Box Plot of Label Frequencies')
 	ax.set_xscale('log')
@@ -3375,7 +3486,7 @@ def perform_multilabel_eda(
 	# Head vs Tail distribution
 	ax = axes[1, 1]
 	n_head = max(20, int(len(unique_labels) * 0.1))  # Top 10% or at least 20
-	head_coverage = label_counts_df.head(n_head)['Count'].sum() / label_counts_df['Count'].sum() * 100
+	head_coverage = all_label_counts[label_column].head(n_head)['Count'].sum() / all_label_counts[label_column]['Count'].sum() * 100
 	tail_coverage = 100 - head_coverage
 	ax.pie(
 		[head_coverage, tail_coverage], 
@@ -3396,12 +3507,41 @@ def perform_multilabel_eda(
 
 	# PLOT 4: Unique Label Set Combinations
 	print("--- Unique Label Set Combinations ---")
-	label_sets = df[label_column].apply(lambda x: tuple(sorted(x)))
+	def parse_and_create_tuple(x):
+			if isinstance(x, str):
+					try:
+							x = eval(x)
+					except:
+							return tuple()
+			
+			if isinstance(x, list) and len(x) > 0:
+					return tuple(sorted(x))
+			else:
+					return tuple()
+
+	label_sets = df[label_column].apply(parse_and_create_tuple)
 	unique_label_sets = Counter(label_sets)
-	unique_label_sets_df = pd.DataFrame(unique_label_sets.items(), columns=['Label Set', 'Count']).sort_values(by='Count', ascending=False)
+
+	print(f"\nTotal number of unique label combinations: {len(unique_label_sets):,}")
+	print(f"Uniqueness rate: {len(unique_label_sets)/len(df)*100:.2f}%")
+
+	# Display top 10
+	for label_set, count in unique_label_sets.most_common(10):
+		if len(label_set) <= 5:
+			label_str = ', '.join(label_set)
+		else:
+			label_str = ', '.join(label_set[:5]) + f'... (+{len(label_set)-5})'
+		print(f"  {count:4d}x | {len(label_set):2d} labels | {label_str}")
+	
+	print(f"{label_sets}")
+	unique_label_sets = Counter(label_sets)
+	unique_label_sets_df = pd.DataFrame(
+		unique_label_sets.items(), 
+		columns=['Label Set', 'Count']
+	).sort_values(by='Count', ascending=False)
+	print(unique_label_sets_df.head(10))
 	print(f"Total number of unique label combinations: {len(unique_label_sets)}")
 	print(f"Top 10 Most Frequent Label Combinations (Main Column: {label_column}):")
-	print(unique_label_sets_df.head(10))
 	
 	if len(unique_label_sets) > 0:
 		plt.figure(figsize=(12, 8))
@@ -3419,7 +3559,6 @@ def perform_multilabel_eda(
 		)
 		plt.close()
 	
-	
 	# PLOT 5: Hierarchical Clustering of Labels
 	print("\n--- HIERARCHICAL CLUSTERING OF LABELS (Top Labels) ---")
 	if n_top_labels_co_occurrence > len(unique_labels):
@@ -3429,7 +3568,7 @@ def perform_multilabel_eda(
 		)
 		n_top_labels_co_occurrence = len(unique_labels)
 	
-	print(f"Top {n_top_labels_co_occurrence} labels for correlation matrix:\n{label_counts_df['Label'].head(n_top_labels_co_occurrence).tolist()}")
+	print(f"Top {n_top_labels_co_occurrence} labels for correlation matrix:\n{all_label_counts[label_column]['Label'].head(n_top_labels_co_occurrence).tolist()}")
 	
 	if n_top_labels_co_occurrence >= 2:
 		print(f"Binarizing labels for correlation matrix (classes: {len(unique_labels)} sparse matrix) ...")
@@ -3437,7 +3576,7 @@ def perform_multilabel_eda(
 		y_binarized = mlb.fit_transform(df[label_column])
 		labels_in_order = mlb.classes_
 		
-		top_labels_for_correlation = label_counts_df['Label'].head(n_top_labels_co_occurrence).tolist()
+		top_labels_for_correlation = all_label_counts[label_column]['Label'].head(n_top_labels_co_occurrence).tolist()
 		top_label_indices = [list(labels_in_order).index(lab) for lab in top_labels_for_correlation]
 		
 		y_subset = y_binarized[:, top_label_indices].toarray()
@@ -3591,304 +3730,18 @@ def perform_multilabel_eda(
 	print("="*100)
 
 	# PLOT 6: Multi-source Agreement Analysis
-	print("\n--- MULTI-SOURCE LABEL AGREEMENT ANALYSIS ---")
-	source_cols = {
-		'textual_based': 'llm_based_labels',
-		'visual_based': 'vlm_based_labels',
-		'multimodal': 'multimodal_labels'
-	}
-	
-	unique_labels_by_source = {}
-	for key, col_name in source_cols.items():
-		if col_name in processed_dfs:
-			current_all_labels = [label for sublist in processed_dfs[col_name][col_name] for label in sublist]
-			unique_labels_by_source[key] = set(current_all_labels)
-			print(f"Unique labels in '{col_name}': {len(unique_labels_by_source[key])}")
-		else:
-			unique_labels_by_source[key] = set()
-			print(f"'{col_name}' was not processed or is empty.")
-	
-	text_set = unique_labels_by_source.get('textual_based', set())
-	visual_set = unique_labels_by_source.get('visual_based', set())
-	multimodal_set = unique_labels_by_source.get('multimodal', set())
-	
-	# Calculate overlaps
-	all_three_overlap = text_set & visual_set & multimodal_set
-	text_visual_overlap = text_set & visual_set
-	text_multimodal_overlap = text_set & multimodal_set
-	visual_multimodal_overlap = visual_set & multimodal_set
-	
-	print(f"\nCommon labels across all three sources: {len(all_three_overlap)}")
-	print(f"Common labels between Textual and Visual: {len(text_visual_overlap)}")
-	print(f"Common labels between Textual and Multimodal: {len(text_multimodal_overlap)}")
-	print(f"Common labels between Visual and Multimodal: {len(visual_multimodal_overlap)}")
-	
-	unique_to_text = text_set - (visual_set | multimodal_set)
-	unique_to_visual = visual_set - (text_set | multimodal_set)
-	unique_to_multimodal = multimodal_set - (text_set | visual_set)
-	
-	print(f"\nLabels unique to llm_based_labels: {len(unique_to_text)}")
-	print(f"Labels unique to vlm_based_labels: {len(unique_to_visual)}")
-	print(f"Labels unique to multimodal_labels: {len(unique_to_multimodal)}")
-	
-	# Calculate agreement metrics if we have sample-level data
-	if all(col in processed_dfs for col in source_cols.values()):
-		print("\n--- Sample-Level Agreement Metrics ---")
-		
-		# Find common samples across all three sources
-		common_indices = set(processed_dfs['llm_based_labels'].index) & \
-			set(processed_dfs['vlm_based_labels'].index) & \
-			set(processed_dfs['multimodal_labels'].index)
-		
-		if len(common_indices) > 0:
-			agreement_scores = []
-			perfect_agreement = 0
-			partial_agreement = 0
-			no_agreement = 0
-			
-			for idx in common_indices:
-				text_labels = set(processed_dfs['llm_based_labels'].loc[idx, 'llm_based_labels'])
-				visual_labels = set(processed_dfs['vlm_based_labels'].loc[idx, 'vlm_based_labels'])
-				multi_labels = set(processed_dfs['multimodal_labels'].loc[idx, 'multimodal_labels'])
-				
-				# Calculate pairwise Jaccard similarities
-				tv_jaccard = len(text_labels & visual_labels) / len(text_labels | visual_labels) if len(text_labels | visual_labels) > 0 else 0
-				tm_jaccard = len(text_labels & multi_labels) / len(text_labels | multi_labels) if len(text_labels | multi_labels) > 0 else 0
-				vm_jaccard = len(visual_labels & multi_labels) / len(visual_labels | multi_labels) if len(visual_labels | multi_labels) > 0 else 0
-				
-				avg_jaccard = (tv_jaccard + tm_jaccard + vm_jaccard) / 3
-				agreement_scores.append(avg_jaccard)
-				
-				if text_labels == visual_labels == multi_labels:
-					perfect_agreement += 1
-				elif len(text_labels & visual_labels & multi_labels) > 0:
-					partial_agreement += 1
-				else:
-					no_agreement += 1
-			
-			print(f"Samples with common labels across all sources: {len(common_indices)}")
-			print(f"Perfect agreement (all labels match): {perfect_agreement} ({perfect_agreement/len(common_indices)*100:.1f}%)")
-			print(f"Partial agreement (some overlap): {partial_agreement} ({partial_agreement/len(common_indices)*100:.1f}%)")
-			print(f"No agreement (no overlap): {no_agreement} ({no_agreement/len(common_indices)*100:.1f}%)")
-			print(f"Mean Jaccard Agreement: {np.mean(agreement_scores):.3f}")
-			print(f"Median Jaccard Agreement: {np.median(agreement_scores):.3f}")
-			
-			# Visualize agreement distribution
-			fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-			
-			# Agreement score distribution
-			ax = axes[0, 0]
-			ax.hist(agreement_scores, bins=50, color='skyblue', edgecolor='black')
-			ax.axvline(
-				np.mean(agreement_scores), 
-				color='red', 
-				linestyle='--', 
-				label=f'Mean: {np.mean(agreement_scores):.3f}'
-			)
-			ax.set_xlabel('Average Jaccard Agreement Score')
-			ax.set_ylabel('Number of Samples')
-			ax.set_title('Distribution of Multi-Source Agreement Scores')
-			ax.legend()
-			ax.grid(True, alpha=0.3)
-			
-			# Agreement categories
-			ax = axes[0, 1]
-			categories = ['Perfect\nAgreement', 'Partial\nAgreement', 'No\nAgreement']
-			counts = [perfect_agreement, partial_agreement, no_agreement]
-			colors = ['green', 'orange', 'red']
-			ax.bar(categories, counts, color=colors, alpha=0.7, edgecolor='black')
-			ax.set_ylabel('Number of Samples')
-			ax.set_title('Sample-Level Agreement Categories')
-			for i, (cat, count) in enumerate(zip(categories, counts)):
-				ax.text(
-					i, 
-					count, 
-					f'{count} ({count/len(common_indices)*100:.1f}%)', 
-					ha='center', 
-					va='bottom'
-				)
-			ax.grid(axis='y', alpha=0.3)
-			
-			# Venn diagram data
-			ax = axes[1, 0]
-			overlap_data = {
-				'Category': [
-					'All Three', 
-					'Text & Visual only', 
-					'Text & Multi only', 
-					'Visual & Multi only',
-					'Text only', 
-					'Visual only', 
-					'Multi only'
-				],
-				'Count': [
-					len(all_three_overlap),
-					len((text_set & visual_set) - multimodal_set),
-					len((text_set & multimodal_set) - visual_set),
-					len((visual_set & multimodal_set) - text_set),
-					len(unique_to_text),
-					len(unique_to_visual),
-					len(unique_to_multimodal)
-				]
-			}
-			overlap_df = pd.DataFrame(overlap_data)
-			sns.barplot(x='Count', y='Category', data=overlap_df, palette='pastel', ax=ax)
-			ax.set_title('Label Set Overlaps Across Sources')
-			ax.set_xlabel('Number of Unique Labels')
-			ax.grid(axis='x', alpha=0.3)
-			
-			# Source coverage comparison
-			ax = axes[1, 1]
-			source_coverage = {
-				'Source': ['Textual', 'Visual', 'Multimodal'],
-				'Unique Labels': [len(text_set), len(visual_set), len(multimodal_set)],
-				'Coverage %': [
-					len(text_set) / len(text_set | visual_set | multimodal_set) * 100,
-					len(visual_set) / len(text_set | visual_set | multimodal_set) * 100,
-					len(multimodal_set) / len(text_set | visual_set | multimodal_set) * 100
-				]
-			}
-			coverage_df = pd.DataFrame(source_coverage)
-			x_pos = np.arange(len(coverage_df))
-			ax.bar(x_pos, coverage_df['Unique Labels'], alpha=0.7, edgecolor='black')
-			ax.set_xticks(x_pos)
-			ax.set_xticklabels(coverage_df['Source'])
-			ax.set_ylabel('Number of Unique Labels')
-			ax.set_title('Label Space Coverage by Source')
-			for i, (labels, pct) in enumerate(zip(coverage_df['Unique Labels'], coverage_df['Coverage %'])):
-				ax.text(i, labels, f'{labels} ({pct:.1f}%)', ha='center', va='bottom')
-			ax.grid(axis='y', alpha=0.3)
-			
-			plt.tight_layout()
-			plt.savefig(
-				fname=os.path.join(output_dir, f"{file_name}_agreement_analysis.png"),
-				dpi=DPI,
-				bbox_inches='tight',
-			)
-			plt.close()
-	
-	# PLOT 6: Temporal Analysis (if date column exists)
-	if 'doc_date' in df.columns or 'date' in df.columns:
-		print("\n" + "="*100)
-		print("--- TEMPORAL ANALYSIS ---")
-		
-		date_col = 'doc_date' if 'doc_date' in df.columns else 'date'
-		
-		try:
-			df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-			df_with_dates = df[df[date_col].notna()].copy()
-			
-			if len(df_with_dates) > 0:
-				df_with_dates['year'] = df_with_dates[date_col].dt.year
-				
-				# Labels over time
-				yearly_label_counts = df_with_dates.groupby('year')[label_column].apply(
-					lambda x: len(set([label for sublist in x for label in sublist]))
-				).reset_index()
-				yearly_label_counts.columns = ['Year', 'Unique Labels']
-				
-				yearly_sample_counts = df_with_dates.groupby('year').size().reset_index()
-				yearly_sample_counts.columns = ['Year', 'Sample Count']
-				
-				yearly_avg_cardinality = df_with_dates.groupby('year')['label_cardinality'].mean().reset_index()
-				yearly_avg_cardinality.columns = ['Year', 'Avg Cardinality']
-				
-				fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-				
-				# Unique labels over time
-				ax = axes[0, 0]
-				ax.plot(
-					yearly_label_counts['Year'], 
-					yearly_label_counts['Unique Labels'], 
-					marker='o',
-					linewidth=2,
-					markersize=8,
-					color="#036629"
-				)
-				ax.set_xlabel('Year')
-				ax.set_ylabel('Number of Unique Labels')
-				ax.set_title('Unique Label Growth Over Time')
-				ax.grid(True, alpha=0.3)
-				
-				# Sample count over time
-				ax = axes[0, 1]
-				ax.bar(
-					yearly_sample_counts['Year'],
-					yearly_sample_counts['Sample Count'],
-					color='coral',
-					edgecolor='#000000'
-				)
-				ax.set_xlabel('Year')
-				ax.set_ylabel('Number of Samples')
-				ax.set_title('Sample Distribution Over Time')
-				ax.grid(axis='y', alpha=0.3)
-				
-				# Average cardinality over time
-				ax = axes[1, 0]
-				ax.plot(
-					yearly_avg_cardinality['Year'],
-					yearly_avg_cardinality['Avg Cardinality'],
-					marker='s', 
-					linewidth=2, 
-					markersize=8, 
-					color="#036629"
-				)
-				ax.set_xlabel('Year')
-				ax.set_ylabel('Average Labels per Sample')
-				ax.set_title('Label Cardinality Trend Over Time')
-				ax.grid(True, alpha=0.3)
-				
-				# Top labels by time period
-				ax = axes[1, 1]
-				# Split into early and late periods
-				median_year = df_with_dates['year'].median()
-				early_period = df_with_dates[df_with_dates['year'] <= median_year]
-				late_period = df_with_dates[df_with_dates['year'] > median_year]
-				
-				early_labels = Counter([label for sublist in early_period[label_column] for label in sublist])
-				late_labels = Counter([label for sublist in late_period[label_column] for label in sublist])
-				
-				top_n = 10
-				early_top = set(dict(early_labels.most_common(top_n)).keys())
-				late_top = set(dict(late_labels.most_common(top_n)).keys())
-				
-				persistent = len(early_top & late_top)
-				new_labels = len(late_top - early_top)
-				disappeared = len(early_top - late_top)
-				
-				categories = ['Persistent', 'New', 'Disappeared']
-				values = [persistent, new_labels, disappeared]
-				colors = ["#036629", "#044B1F", "#048B45"]
-				ax.bar(categories, values, color=colors, alpha=0.7, edgecolor='black')
-				ax.set_ylabel('Number of Labels')
-				ax.set_title(f'Top {top_n} Label Stability\n(Early: ≤{median_year:.0f} vs Late: >{median_year:.0f})')
+	analyze_multi_source_agreement(
+		processed_dfs=processed_dfs,
+		output_dir=output_dir,
+		file_name=file_name,
+		DPI=DPI,
+	)
 
-				for i, (cat, val) in enumerate(zip(categories, values)):
-					ax.text(i, val, f'{val}', ha='center', va='bottom')
-
-				ax.grid(axis='y', alpha=0.3)
-				
-				plt.tight_layout()
-				plt.savefig(
-					fname=os.path.join(output_dir, f"{file_name}_temporal_analysis.png"),
-					dpi=DPI,
-					bbox_inches='tight',
-				)
-				plt.close()
-				
-				print(f"Temporal analysis completed for {len(df_with_dates)} samples with valid dates")
-				print(f"Date range: {df_with_dates[date_col].min()} to {df_with_dates[date_col].max()}")
-			else:
-				print("No valid dates found for temporal analysis")
-		except Exception as e:
-			print(f"Error in temporal analysis: {e}")
-	
 	summary_stats_dict = {
 		'Dataset Name': dataset_name,
 		'File Name': file_name,
 		'Total Samples': len(df),
 		'Unique Labels': len(unique_labels),
-		'Singleton Labels': len(singleton_labels),
 		'Unique Label Combinations': len(unique_label_sets),
 		'Mean Label Cardinality': df['label_cardinality'].mean(),
 		'Median Label Cardinality': df['label_cardinality'].median(),
@@ -3925,7 +3778,6 @@ def perform_multilabel_eda(
 		'Metric': [
 			'Total Samples',
 			'Unique Labels',
-			'Singleton Labels',
 			'Unique Label Combinations',
 			'Mean Label Cardinality',
 			'Median Label Cardinality',
@@ -3940,7 +3792,6 @@ def perform_multilabel_eda(
 		'Value': [
 			len(df),
 			len(unique_labels),
-			len(singleton_labels),
 			len(unique_label_sets),
 			f"{df['label_cardinality'].mean():.2f}",
 			f"{df['label_cardinality'].median():.1f}",

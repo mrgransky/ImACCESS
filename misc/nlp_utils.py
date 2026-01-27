@@ -302,14 +302,12 @@ def _post_process_(
 		)
 	
 	if verbose:
-		print(f"\n{'='*80}")
 		print(f"Starting post-processing")
-		print(f"\tInput type: {type(labels_list)}")
-		print(f"\tInput length: {len(labels_list) if labels_list else 0}")
+		print(f"\tInput {type(labels_list)} length: {len(labels_list) if labels_list else 0}")
 		print(f"\tStopwords loaded: {len(STOPWORDS)}")
 		print(f"\tMinimum keyword length: {min_kw_length}")
-		print(f"{'='*80}\n")
 	
+
 	if not labels_list:
 		if verbose:
 			print("\tEmpty input, returning as-is")
@@ -344,7 +342,20 @@ def _post_process_(
 		if labels is None:
 			processed_batch.append(None)
 			continue
-		
+
+		# labels must be list:
+		if not isinstance(labels, list):
+			# raise ValueError(f"labels must be list, got {type(labels)} {labels}")
+			# use eval for str to list conversion:
+			try:
+				labels = eval(labels)
+			except Exception as e:
+				print(f"Failed to convert {labels} to list: {e}")
+				raise e
+				# processed_batch.append(None)
+				# continue
+
+
 		if isinstance(labels, float) and math.isnan(labels):
 			processed_batch.append(None)
 			continue
@@ -503,13 +514,13 @@ def _post_process_(
 		processed_batch.append(result)
 		
 		if verbose:
-			print(f"  Final output for sample {idx+1}: {result}")
+			print(f"  Final output for sample {idx+1}: {type(result)} {len(result)}: {result}")
 			print(f"  Items: {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
 	
 	if verbose:
 		print(f"\n{'='*80}")
 		print(f"Completed post-processing")
-		print(f"\tOutput length: {len(processed_batch)}")
+		print(f"\tOutput {type(processed_batch)} {len(processed_batch)}")
 		print(f"\tNone values: {sum(1 for x in processed_batch if x is None)}")
 		print(f"\tEmpty lists: {sum(1 for x in processed_batch if x is not None and len(x) == 0)}")
 		print(f"{'='*80}\n")
