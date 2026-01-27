@@ -626,15 +626,7 @@ def get_multimodal_annotation(
 	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=False)
 	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=False)
 	
-	# save as pickle
-	save_pickle(pkl=multimodal_labels, fname=output_csv.replace(".csv", "_multimodal.pkl"))
-	# save_pickle(pkl=vlm_based_labels, fname=output_csv.replace(".csv", "_vlm.pkl"))
-	# save_pickle(pkl=llm_based_labels, fname=output_csv.replace(".csv", "_llm.pkl"))
-
-	_clustering_(
-		pkl_fpth=output_csv.replace(".csv", "_multimodal.pkl"),
-		nc=nc,
-	)
+	_clustering_(labels=multimodal_labels, nc=nc, clusters_fname=output_csv.replace(".csv", "_multimodal_clusters.csv"))
 
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,

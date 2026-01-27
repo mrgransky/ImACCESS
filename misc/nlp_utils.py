@@ -14,10 +14,6 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from typing import List, Tuple, Dict, Set, Any, Optional, Union, Callable, Iterable
 # Try relative import first, fallback to absolute
-try:
-	from .utils import load_pickle
-except ImportError:
-	from misc.utils import load_pickle
 
 # Install: pip install lingua-language-detector
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
@@ -80,24 +76,19 @@ detector_all = (
 )
 
 def _clustering_(
-	pkl_fpth: str,
+	labels: List[List[str]],
 	model_id: str = "all-MiniLM-L6-v2",
 	device: str = "cuda" if torch.cuda.is_available() else "cpu",
+	clusters_fname: str = "clusters.csv",
 	nc:int=None,
 ):
-	DATASET_DIR = os.path.dirname(pkl_fpth)
-	OUTPUTS_DIR = os.path.join(DATASET_DIR, "outputs")
-	os.makedirs(OUTPUTS_DIR, exist_ok=True)
-
 
 	COLORMAP = "Dark2"
 	cmap = plt.colormaps.get_cmap(COLORMAP)
 	model = SentenceTransformer(model_id).to(device)
 	print(f"Total number of parameters in {model_id}: {sum([p.numel() for _, p in model.named_parameters()]):,}")
 
-	documents = load_pickle(fpath=pkl_fpth)
-	print(f"Loaded {type(documents)} {len(documents)} docs")
-	documents = [list(set(doc)) for doc in documents]
+	documents = [list(set(lbl)) for lbl in labels]
 	print(f"Loaded {type(documents)} {len(documents)} docs after deduplication")
 	# # ["keyword1, keyword2, keyword3, ..."]
 	all_labels = []
@@ -200,7 +191,7 @@ def _clustering_(
 	# plt.colorbar(scatter, label='Cluster Label')
 	plt.legend(loc='best', frameon=False, fancybox=True, edgecolor='black', facecolor='white')
 	plt.tight_layout()
-	plt.savefig(os.path.join(OUTPUTS_DIR, f"clustering_optimal_{optimal_n_clusters}.png"), dpi=250)
+	plt.savefig(clusters_fname.replace(".csv", ".png"), dpi=250)
 
 	# how many samples each cluster has:
 	unique, counts = np.unique(clusters_optimal, return_counts=True)
@@ -210,9 +201,9 @@ def _clustering_(
 	df_clusters = pd.DataFrame({'text': all_labels, 'cluster': clusters_optimal})
 
 	# save df to csv:
-	df_clusters.to_csv(os.path.join(OUTPUTS_DIR, f"clustering_optimal_{optimal_n_clusters}.csv"), index=False)
+	df_clusters.to_csv(clusters_fname, index=False)
 	try:
-		df_clusters.to_excel(os.path.join(OUTPUTS_DIR, f"clustering_optimal_{optimal_n_clusters}.xlsx"), index=False)
+		df_clusters.to_excel(clusters_fname.replace(".csv", ".xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 

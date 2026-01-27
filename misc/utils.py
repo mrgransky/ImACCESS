@@ -1171,7 +1171,9 @@ def load_pickle(fpath: str) -> object:
 			except Exception as err:
 				print(f"Error pandas pkl: {err}")
 				raise
-	elapsed_time = time.time() - start_time
+		
 	file_size_mb = os.path.getsize(fpath) / 1e6
-	print(f"Elapsed_t: {elapsed_time:.3f} s | {type(pickle_obj)} | {file_size_mb:.3f} MB".center(150, " "))
+	
+	print(f"Elapsed_t: {time.time() - start_time:.3f} s | {type(pickle_obj)} | {file_size_mb:.3f} MB".center(150, " "))
+	
 	return pickle_obj
