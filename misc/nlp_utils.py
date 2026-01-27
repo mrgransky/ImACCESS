@@ -1,17 +1,41 @@
-from utils import *
+import os
+import re
+import torch
+import pickle
+import nltk
+import matplotlib.pyplot as plt
+import pandas as pd
+from collections import Counter
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from sklearn.decomposition import PCA
+from sentence_transformers import SentenceTransformer
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from typing import List, Tuple, Dict, Set, Any, Optional, Union, Callable, Iterable
+# Try relative import first, fallback to absolute
+try:
+	from .utils import load_pickle
+except ImportError:
+	from misc.utils import load_pickle
 
 # Install: pip install lingua-language-detector
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
+
+MISC_DIR = os.path.dirname(os.path.abspath(__file__))
+print(f"MISC_DIR: {MISC_DIR}")
 
 # STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
 STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
 # custom_stopwords_list = requests.get("https://raw.githubusercontent.com/stopwords-iso/stopwords-en/refs/heads/master/stopwords-en.txt").content
 # stopwords = set(custom_stopwords_list.decode().splitlines())
-with open('meaningless_words.txt', 'r') as file_:
+meaningless_words_path = os.path.join(MISC_DIR, 'meaningless_words.txt')
+with open(meaningless_words_path, 'r') as file_:
 	stopwords = set([line.strip().lower() for line in file_])
 STOPWORDS.update(stopwords)
 
-with open('geographic_references.txt', 'r') as file_:
+geographic_references_path = os.path.join(MISC_DIR, 'geographic_references.txt')
+with open(geographic_references_path, 'r') as file_:
 	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
 STOPWORDS.update(geographic_references)
 
