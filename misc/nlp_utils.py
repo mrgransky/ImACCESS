@@ -131,9 +131,13 @@ def _clustering_(
 
 			print(f"cluster: {n_clusters:<8} silhouette_score: {silhouette_avg:.4f}")
 
-			mean_score, std_score = np.mean(silhouette_scores), np.std(silhouette_scores)
-			print(f"The optimal number of clusters based on Silhouette Score ({max(silhouette_scores):.4f} [over all clusters: {mean_score:.4f} ± {std_score:.4f}]): {optimal_n_clusters}")
+		mean_score, std_score = np.mean(silhouette_scores), np.std(silhouette_scores)
+		print(f"The optimal number of clusters based on Silhouette Score ({max(silhouette_scores):.4f} [over all clusters: {mean_score:.4f} ± {std_score:.4f}]): {optimal_n_clusters}")
 		
+		# Highlight the optimal number of clusters
+		optimal_n_clusters_idx = np.argmax(silhouette_scores)
+		optimal_n_clusters = range_n_clusters[optimal_n_clusters_idx]
+
 		plt.figure(figsize=(10, 6))
 		plt.plot(range_n_clusters, silhouette_scores, marker='o')
 		plt.title('Silhouette Score for Various Numbers of Clusters')
@@ -142,9 +146,6 @@ def _clustering_(
 		plt.xticks(range_n_clusters)
 		plt.grid(True)
 
-		# Highlight the optimal number of clusters
-		optimal_n_clusters_idx = np.argmax(silhouette_scores)
-		optimal_n_clusters = range_n_clusters[optimal_n_clusters_idx]
 		plt.axvline(x=optimal_n_clusters, color='red', linestyle='--', label=f'Optimal N_clusters: {optimal_n_clusters}')
 		plt.legend()
 		plt.savefig(clusters_fname.replace(".csv", f"_silhouette_score_{optimal_n_clusters}.png"), dpi=100)
