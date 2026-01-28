@@ -432,6 +432,11 @@ def _post_process_(
 					print(f"        → Empty/falsy, skipping")
 				continue
 			
+			if str(item).isupper():
+				if verbose:
+					print(f"        → All uppercase detected, skipping")
+				continue
+
 			# Store original before lowercasing (for abbreviation detection)
 			original = str(item).strip()
 			
