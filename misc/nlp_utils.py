@@ -524,7 +524,7 @@ def _post_process_(
 					print(f"        → {lemma} Only NNNNN foot detected, skipping")
 				continue
 
-			if any(ch in string.punctuation for ch in text):
+			if any(ch in string.punctuation for ch in lemma):
 				if verbose:
 					print(f"        → Punctuation detected in {lemma}, skipping")
 				continue
