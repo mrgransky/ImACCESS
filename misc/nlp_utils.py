@@ -1,5 +1,6 @@
 import os
 import re
+from humanize import metric
 import torch
 import pickle
 import nltk
@@ -111,19 +112,25 @@ def _clustering_(
 	# Encode the documents to get sentence embeddings
 	X = model.encode(all_labels, show_progress_bar=True)
 	print(f"Document Embeddings: {type(X)} {X.shape}")
+	# quantify the sparsity of X
+	sparsity = np.count_nonzero(X) / np.prod(X.shape)
+	print(f"Sparsity of X: {sparsity:.4f} ({sparsity*100}% non-zero elements)")
 
 	if nc is None:
 		# Define a range of cluster numbers to evaluate
-		range_n_clusters = range(2, math.ceil(len(all_labels)/15), 5)
+		range_n_clusters = range(5, max(20, math.ceil(len(all_labels)/15)), 5 if len(all_labels) > 500 else 1)
 		print(f"range_n_clusters: {range_n_clusters} len(all_labels): {len(all_labels)}")
 		silhouette_scores = []
 
 		for n_clusters in range_n_clusters:
-			kmeans_model = KMeans(n_clusters=n_clusters, random_state=0, n_init=10)
+			kmeans_model = KMeans(init='k-means++', n_clusters=n_clusters, random_state=0, n_init='auto')
 			cluster_labels = kmeans_model.fit_predict(X)
+
 			silhouette_avg = silhouette_score(X=X, labels=cluster_labels, random_state=0, metric='euclidean')
+			mean_score, std_score = np.mean(silhouette_avg), np.std(silhouette_avg)
 			silhouette_scores.append(silhouette_avg)
-			print(f"cluster: {n_clusters:<8} silhouette_score: {silhouette_avg:.4f}")
+
+			print(f"cluster: {n_clusters:<8} silhouette_score: {silhouette_avg:.4f} (mean: {mean_score:.4f}, std: {std_score:.4f})")
 
 		plt.figure(figsize=(10, 6))
 		plt.plot(range_n_clusters, silhouette_scores, marker='o')
@@ -146,8 +153,9 @@ def _clustering_(
 
 	# Clustering using K-Means
 	# optimal_n_clusters = 90
-	kmeans_optimal = KMeans(n_clusters=optimal_n_clusters, random_state=0, n_init=10)
+	kmeans_optimal = KMeans(init='k-means++', n_clusters=optimal_n_clusters, random_state=0, n_init='auto')
 	clusters_optimal = kmeans_optimal.fit_predict(X)
+	print(f"clusters_optimal: {type(clusters_optimal)} {clusters_optimal.shape}")
 
 	# Dimensionality Reduction (optional, for visualization)
 	pca = PCA(n_components=2, random_state=0)
@@ -174,7 +182,12 @@ def _clustering_(
 
 	# Adding cluster centers to the plot
 	centers_optimal = kmeans_optimal.cluster_centers_
+	labels_optimal = kmeans_optimal.labels_
+	print(f"centers_optimal: {type(centers_optimal)} {centers_optimal.shape}")
+	print(f"labels_optimal: {type(labels_optimal)} {labels_optimal.shape}")
+
 	centers_reduced_optimal = pca.transform(centers_optimal)
+	print(f"centers_reduced_optimal: {type(centers_reduced_optimal)} {centers_reduced_optimal.shape}")
 
 	for i, center_coords in enumerate(centers_reduced_optimal):
 		plt.scatter(
@@ -220,22 +233,25 @@ def _clustering_(
 
 	# Dictionary to store keywords for each cluster
 	cluster_keywords = {}
+	tfidf_vectorizer = TfidfVectorizer(stop_words='english', max_features=5, ngram_range=(1, 3))
 	# Process each cluster
 	for cluster_id in range(optimal_n_clusters):
 		cluster_docs = df_clusters[df_clusters['cluster'] == cluster_id]['text'].tolist()
+
 		# Apply TF-IDF to documents within this cluster
-		tfidf_vectorizer = TfidfVectorizer(stop_words='english', max_features=5, ngram_range=(1, 3))
 		tfidf_matrix = tfidf_vectorizer.fit_transform(cluster_docs)
 		feature_names = tfidf_vectorizer.get_feature_names_out()
+
 		# Calculate mean TF-IDF scores for each word in the cluster
 		avg_tfidf_scores = tfidf_matrix.mean(axis=0).A1
+
 		# Get top keywords for the cluster
-		top_keywords_indices = avg_tfidf_scores.argsort()[::-1] # Top 10 keywords
+		top_keywords_indices = avg_tfidf_scores.argsort()[::-1] # Top N keywords
 		top_keywords = [(feature_names[i], avg_tfidf_scores[i]) for i in top_keywords_indices]
 		cluster_keywords[cluster_id] = top_keywords
 
 	# Print the top keywords for each cluster
-	print("Top Keywords for Each Cluster:")
+	print("Top Keywords per cluster")
 	for cluster_id, keywords in cluster_keywords.items():
 		print(f"Cluster {cluster_id}:")
 		for keyword, score in keywords:
@@ -343,6 +359,10 @@ def _post_process_(
 			processed_batch.append(None)
 			continue
 
+		if isinstance(labels, float) and math.isnan(labels):
+			processed_batch.append(None)
+			continue
+
 		# labels must be list:
 		if not isinstance(labels, list):
 			# raise ValueError(f"labels must be list, got {type(labels)} {labels}")
@@ -354,11 +374,6 @@ def _post_process_(
 				raise e
 				# processed_batch.append(None)
 				# continue
-
-
-		if isinstance(labels, float) and math.isnan(labels):
-			processed_batch.append(None)
-			continue
 
 		if verbose:
 			print(f"\n[Sample {idx+1}/{len(labels_list)}]")

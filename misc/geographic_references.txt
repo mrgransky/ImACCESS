@@ -317,6 +317,10 @@ Echo UT
 El Paso
 Hollywood
 Houston
+Houston TX
+Houston, TX
+Houston, Texas
+Houston Texas
 CA
 CA.
 CZ.

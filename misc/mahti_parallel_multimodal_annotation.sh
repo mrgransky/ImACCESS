@@ -81,7 +81,7 @@ if [ "$SLURM_ARRAY_TASK_ID" -eq 0 ]; then
 			--max_generated_tks "$LLM_MAX_GEN_TKs" \
 			--max_keywords 5 \
 			--verbose
-			# --use_quantization \
+			# --llm_use_quantization \
 			# --debug \
 elif [ "$SLURM_ARRAY_TASK_ID" -eq 1 ]; then
 	echo "=== Array Task $SLURM_ARRAY_TASK_ID: Running VLM-based keyword extraction ==="
@@ -96,7 +96,7 @@ elif [ "$SLURM_ARRAY_TASK_ID" -eq 1 ]; then
 			--max_generated_tks "$VLM_MAX_GEN_TKs" \
 			--max_keywords 5 \
 			--verbose
-			# --use_quantization \
+			# --vlm_use_quantization \
 			# --debug \
 else
 	echo "ERROR: Unexpected array task ID: $SLURM_ARRAY_TASK_ID"

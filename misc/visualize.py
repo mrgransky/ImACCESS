@@ -2744,20 +2744,26 @@ def analyze_top_labels_per_source(
 	n_top_labels_plot: int=100,
 	DPI: int=200
 ):	
-	print(f"--- TOP-{n_top_labels_plot} MOST FREQUENT LABELS: PER-SOURCE ANALYSIS ---")
-	print(processed_dfs)
+	print(f"TOP-{n_top_labels_plot} MOST FREQUENT LABELS: PER-SOURCE ANALYSIS".center(160, "-"))
+	# print(processed_dfs)
 
 	all_label_counts = {}  # Store for comparison later
 	# PART 1: Individual Source Analysis
 	for col, lst in processed_dfs.items():
 		source_labels = list()
 		for labels in lst:
+			# Handle NaN and non-list values
+			if pd.isna(labels):
+				# print(f"<!> {col} containing {labels} => skipping!")
+				continue
+			# Handle string labels
 			if isinstance(labels, str):
 				labels = eval(labels)
+
 			source_labels.extend(labels)
 
 		print(f"\n>>> Source: {col} containing {type(source_labels)} {len(source_labels)} samples <<<")
-		# print(f"{source_labels[:15]}")
+		print(f"{source_labels[:15]}")
 		source_unique = sorted(list(set(source_labels)))
 
 		# Count frequencies
@@ -2774,9 +2780,12 @@ def analyze_top_labels_per_source(
 		print(f"Total {col} unique labels: {len(source_unique)}")
 		
 		# Singleton analysis
-		source_singletons = source_counts_df[source_counts_df['Count'] == 1]
-		print(f"Singleton labels: {len(source_singletons)} ({len(source_singletons) / len(source_unique) * 100:.2f}%)")
-				
+		source_singletons = source_counts_df[source_counts_df['Count'] == 1]['Label'].tolist()
+		print(f"Singleton labels {type(source_singletons)}: {len(source_singletons)}/{len(source_unique)} ({len(source_singletons) / len(source_unique) * 100:.2f}%):")
+		for i, label in enumerate(source_singletons):
+			print(f"{i:<10d}{label}")
+		print(f"{'-'*80}")
+
 		# Create individual visualization for this source
 		plt.figure(figsize=(14, 12))
 		plot_data = source_counts_df.head(n_top_labels_plot)
@@ -3247,12 +3256,12 @@ def perform_multilabel_eda(
 	df['label_cardinality'] = df[label_column].apply(len)
 	print(df['label_cardinality'].describe())
 
-	plt.figure(figsize=(10, 6))
+	plt.figure(figsize=(15, 11))
 	sns.histplot(df['label_cardinality'], bins=range(1, int(df['label_cardinality'].max()) + 2), kde=False, color='skyblue')
 	plt.title(f'Distribution of Label Cardinality (Labels per Sample for "{label_column}")')
 	plt.xlabel('Number of Labels')
 	plt.ylabel('Number of Samples')
-	plt.xticks(range(1, int(df['label_cardinality'].max()) + 1))
+	plt.xticks(range(1, int(df['label_cardinality'].max()) + 1), rotation=0, fontsize=8)
 	plt.grid(axis='y', linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.savefig(

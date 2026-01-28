@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=96G
+#SBATCH --mem=48G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
 #SBATCH --array=2-4
@@ -71,7 +71,6 @@ fi
 # 	VLM_BATCH_SIZES[$i]=$((BASE_VLM_BATCH_SIZES[i] * NUM_GPUS))
 # done
 
-
 DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 DATASETS=(
 	${DATASET_DIRECTORY}/HISTORY_X4
@@ -82,7 +81,7 @@ DATASETS=(
 )
 CSV_FILE=${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv
 LLM_BATCH_SIZES=(6 6 18 18 24)
-VLM_BATCH_SIZES=(10 10 10 10 10)
+VLM_BATCH_SIZES=(10 10 10 8 8)
 
 echo "Running Multimodal Annotation on $CSV_FILE"
 echo "Scaled LLM batch sizes: ${LLM_BATCH_SIZES[@]} max generated tokens: $LLM_MAX_GENERATED_TOKENS"
@@ -99,8 +98,8 @@ python -u gt_kws_multimodal.py \
 	--vlm_max_generated_tks $VLM_MAX_GENERATED_TOKENS \
   --max_keywords 3 \
   --verbose \
-  # --use_llm_quantization \
-  # --use_vlm_quantization \
+  # --llm_use_quantization \
+  # --vlm_use_quantization \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
