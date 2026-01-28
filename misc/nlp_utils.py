@@ -118,7 +118,7 @@ def _clustering_(
 
 	if nc is None:
 		# Define a range of cluster numbers to evaluate
-		range_n_clusters = range(5, max(20, math.ceil(len(all_labels)/15)), 5 if len(all_labels) > 500 else 1)
+		range_n_clusters = range(5, max(20, math.ceil(len(all_labels)/13)), 5 if len(all_labels) > 500 else 1)
 		print(f"range_n_clusters: {range_n_clusters} len(all_labels): {len(all_labels)}")
 		silhouette_scores = []
 
@@ -131,8 +131,9 @@ def _clustering_(
 
 			print(f"cluster: {n_clusters:<8} silhouette_score: {silhouette_avg:.4f}")
 
-		mean_score, std_score = np.mean(silhouette_scores), np.std(silhouette_scores)
-		print(f"The optimal number of clusters based on Silhouette Score ({max(silhouette_scores):.4f} ± {std_score:.4f}): {optimal_n_clusters} ")
+			mean_score, std_score = np.mean(silhouette_scores), np.std(silhouette_scores)
+			print(f"The optimal number of clusters based on Silhouette Score ({max(silhouette_scores):.4f} [over all clusters: {mean_score:.4f} ± {std_score:.4f}]): {optimal_n_clusters}")
+		
 		plt.figure(figsize=(10, 6))
 		plt.plot(range_n_clusters, silhouette_scores, marker='o')
 		plt.title('Silhouette Score for Various Numbers of Clusters')
@@ -247,9 +248,8 @@ def _clustering_(
 		cluster_keywords[cluster_id] = top_keywords
 
 	# Print the top keywords for each cluster
-	print("Top Keywords per cluster")
 	for cluster_id, keywords in cluster_keywords.items():
-		print(f"Cluster {cluster_id}:")
+		print(f"Cluster {cluster_id} contains {len(cluster_docs)} samples:")
 		print(df_clusters[df_clusters['cluster'] == cluster_id]['text'].head(50).tolist())
 		for keyword, score in keywords:
 			print(f"\t- {keyword:<20}TF-IDF: {score:.7f}")
