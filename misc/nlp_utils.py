@@ -134,7 +134,6 @@ def _clustering_(
 
 			print(f"cluster: {n_clusters:<8} silhouette_score: {silhouette_avg:.4f}")
 
-		
 		# Highlight the optimal number of clusters
 		optimal_n_clusters_idx = np.argmax(silhouette_scores)
 		optimal_n_clusters = range_n_clusters[optimal_n_clusters_idx]
@@ -230,7 +229,7 @@ def _clustering_(
 	cluster_keywords = {}
 	tfidf_vectorizer = TfidfVectorizer(
 		stop_words='english', 
-		max_features=5,
+		max_features=3,
 		ngram_range=(1, 3)
 	)
 	# Process each cluster
@@ -252,7 +251,7 @@ def _clustering_(
 
 	# Print the top keywords for each cluster
 	for cluster_id, keywords in cluster_keywords.items():
-		print(f"Cluster {cluster_id}/{optimal_n_clusters} contains {len(cluster_docs)} samples:")
+		print(f"Cluster {cluster_id}/{optimal_n_clusters} contains {len(df_clusters[df_clusters['cluster'] == cluster_id]['text'])} samples:")
 		print(df_clusters[df_clusters['cluster'] == cluster_id]['text'].head(50).tolist())
 		for keyword, score in keywords:
 			print(f"- {keyword:<70}TF-IDF: {score:.7f}\t{'OKAY' if score > 0.5 else ''}")
@@ -1103,9 +1102,7 @@ def validate_cleaning_quality(df: pd.DataFrame, text_column: str = 'enriched_doc
 def detect_outlier_samples(df: pd.DataFrame, text_column: str = 'enriched_document_description'):
 		"""
 		Find samples that are statistical outliers (likely have cleaning issues).
-		"""
-		import numpy as np
-		
+		"""		
 		df_analysis = df.copy()
 		
 		# Calculate text statistics
