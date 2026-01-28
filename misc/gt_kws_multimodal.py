@@ -32,7 +32,7 @@ from nlp_utils import _post_process_, _clustering_
 # $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 10 -llm_bs 20 -nw 54 -v > /media/volume/ImACCESS/trash/multimodal_annotation_smu.txt &
 
 # How to run [Mahti/Puhti]
-# $ srun -J gpu_interactive_test --account=project_2014707 --partition=gputest --gres=gpu:a100:4 --time=0-00:15:00 --mem=64G --cpus-per-task=40 --pty /bin/bash -i
+# $ srun -J gpu_interactive_test --account=project_2014707 --partition=gputest --gres=gpu:v100:4 --time=0-00:15:00 --mem=64G --cpus-per-task=40 --pty /bin/bash -i
 # $ nohup python -u gt_kws_multimodal.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-8B-Instruct" -vlm_bs 32 -llm_bs 96 -nw 40 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_smu.txt &
 # $ python gt_kws_multimodal.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-8B-Instruct" -vlm_bs 32 -llm_bs 96 -nw 40 -v
 
@@ -200,6 +200,10 @@ def get_multimodal_annotation(
 	df['llm_based_labels'] = llm_based_labels
 	df['vlm_based_labels'] = vlm_based_labels
 	df['multimodal_labels'] = multimodal_labels
+
+	# save multimodal labels as pkl with dill:
+	with gzip.open(os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_multimodal.pkl")), mode="wb") as f:
+		dill.dump(multimodal_labels, f)
 
 	if verbose:
 		print(f"Saving {type(df)} {df.shape} {list(df.columns)} to {output_csv}")

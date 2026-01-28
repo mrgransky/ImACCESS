@@ -39,21 +39,32 @@ from utils import *
 process = psutil.Process(os.getpid())
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
-VLM_INSTRUCTION_TEMPLATE = """You function as a historical archivist whose expertise lies in the 20th century.
-Identify no more than {k} highly prominent, factual, and distinct **KEYWORDS** that capture the visually observable actions, objects, or occurrences in the image - **completely ignoring all text**.
+
+VLM_INSTRUCTION_TEMPLATE = """You function as a historical archivist whose expertise lies in the 20th century and whose task is to produce **general-purpose, reusable semantic labels** suitable for **multi-label classification**.
+
+Extract no more than {k} **GENERAL, FACTUAL, and DISTINCT KEYWORDS** that capture the visually observable actions, objects, or occurrences in the image - **completely ignoring all text**.
 
 **CRITICAL RULES**:
-- Return **ONLY** a clean, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is acceptable only if the image is too simple.
-- **PRIORITIZE MEANINGFUL PHRASES**: Opt for multi-word n-grams such as NOUN PHRASES and NAMED ENTITIES over single terms only if they convey a more distinct meaning.
-- **ZERO HALLUCINATION POLICY**: Do not invent or infer specifics that lack clear verification from the visual content. If you are uncertain, in doubt, or unsure, omit the keyword rather than guessing.
-- **ABSOLUTELY NO** verbs, possessive cases, abbreviations, shortened words or acronyms as standalone keywords.
-- **ABSOLUTELY NO** keywords that start or end with prepositions or conjunctions.
-- **ABSOLUTELY NO** dates, times, hours, minutes, calendar references, time periods, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
-- **ABSOLUTELY NO** explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
-- **ABSOLUTELY NO** TEXT EXTRACTION / OCR: Do NOT read, transcribe, quote, paraphrase, or use any visible text from the image (including captions, labels, dates, signage, stamped annotations, handwritten notes, or serial numbers).
-- **STRICTLY EXCLUDE** image quality, type, format, or style as keywords.
-- **STRICTLY EXCLUDE** vague, generic, or historical keywords.
-- **ABSOLUTELY NO** synonymous, duplicate, identical or misspelled keywords.
+- Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS**. 
+	Fewer keywords are **preferred** if the caption lacks distinct reusable concepts.
+
+- **PRIORITIZE Generalized PHRASES**: 
+	Opt for **Semantically atomic** keywords which represent **ONE concept only** (object, role, action, or scene element).
+
+- **ZERO HALLUCINATION POLICY**: 
+	Do not invent or infer specifics that lack clear verification from the visual content. 
+	If you are uncertain about a keyword, omit the keyword rather than guessing.
+
+- **STRICTLY EXCLUDE**:
+	- verbs, possessive cases, abbreviations, shortened words or acronyms as standalone keywords.
+	- keywords that start or end with prepositions or conjunctions.
+	- dates, times, hours, minutes, calendar references, time periods, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
+	- explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
+	- TEXT EXTRACTION / OCR: Do NOT read, transcribe, quote, paraphrase, or use any visible text from the image (including captions, labels, dates, signage, stamped annotations, handwritten notes, or serial numbers).
+	- image quality, type, format, or style as keywords.
+	- vague, generic, or historical keywords.
+	- synonymous, duplicate, identical or misspelled keywords.
+
 - The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response."""
 
 def verify(p: str):
@@ -1232,8 +1243,6 @@ def get_vlm_based_labels(
 		try:
 			with Image.open(p) as im:
 				im = im.convert("RGB")
-				# If already pre-resized in data collection, no need for thumbnail here
-				# im.thumbnail((IMG_MAX_RES, IMG_MAX_RES))
 				return im.copy()
 		except Exception as e:
 			print(f"Error loading image {p}: {e}")

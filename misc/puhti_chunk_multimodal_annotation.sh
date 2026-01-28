@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2004072
-#SBATCH --job-name=temp_chunked_mm_annot
+#SBATCH --job-name=chunked_mm_annot
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -12,7 +12,7 @@
 #SBATCH --time=03-00:00:00
 #SBATCH --array=0-21
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:v100:1,nvme:100
+#SBATCH --gres=gpu:v100:4,nvme:100
 
 set -euo pipefail
 
@@ -51,21 +51,21 @@ if [ "$NUM_GPUS" -gt 1 ]; then
 	LLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 	LLM_BATCH_SIZE=28
 	LLM_MAX_GEN_TKs=96
-	# LLM_QUANTIZATION="--llm_use_quantization"  # Enable
+	# LLM_QUANTIZATION="--llm_use_quantization"
 	VLM_MODEL="Qwen/Qwen3-VL-30B-A3B-Instruct"
 	VLM_BATCH_SIZE=10
 	VLM_MAX_GEN_TKs=64
-	# VLM_QUANTIZATION="--vlm_use_quantization"  # Enable
+	# VLM_QUANTIZATION="--vlm_use_quantization"
 else
 	echo "SMALL models (single-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
 	LLM_BATCH_SIZE=32
 	LLM_MAX_GEN_TKs=256
-	# LLM_QUANTIZATION="--llm_use_quantization"  # Enable
+	# LLM_QUANTIZATION="--llm_use_quantization"
 	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 	VLM_BATCH_SIZE=24
 	VLM_MAX_GEN_TKs=64
-	# VLM_QUANTIZATION="--vlm_use_quantization"  # Enable
+	# VLM_QUANTIZATION="--vlm_use_quantization"
 fi
 
 echo "LLM Model: $LLM_MODEL (batch size: $LLM_BATCH_SIZE) max generated tokens: $LLM_MAX_GEN_TKs"
