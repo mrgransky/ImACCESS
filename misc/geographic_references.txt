@@ -424,6 +424,10 @@ Sacramento
 Salt Lake City
 Sandusky
 San Francisco
+San Francisco, CA
+San Francisco, Calif.
+San Jacinto
+San Jacinto, Texas
 San Jose
 Santa Rosa
 Seattle
@@ -490,6 +494,7 @@ Milan
 Moscow
 Munich
 Nagoya
+Naples
 New Delhi
 Oslo
 Paris
@@ -499,6 +504,7 @@ Pisa
 Quito
 Rabat
 Rome
+San Gimignano
 Seville
 Valencia
 Bilbao
@@ -524,6 +530,7 @@ Ravenna
 Rio de Janeiro
 Santander
 Sicily
+Siena
 Strömsund
 Tarragona
 Tehachapi
@@ -531,8 +538,10 @@ Tokyo
 Tunis
 Tuscany
 Valladolid
-Zaragoza
+Venice
+Verona
 Warsaw
 Wellington
+Zaragoza
 Åre
 östersund
