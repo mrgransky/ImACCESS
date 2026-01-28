@@ -966,14 +966,14 @@ def _qwen_llm_response(
 				print(f"    ✗ Skipped: duplicate")
 			continue
 
-		if (
-			"-4B-Instruct-" in model_id
-			and not cleaned.lower() in caption.lower()
-		):
-			if verbose:
-				print(f"    ✗ Skipped: {kw} NOT in caption: {caption}")
-			continue
-
+		# not required if we look for semantically atomic keywords
+		# if (
+		# 	"-4B-Instruct-" in model_id
+		# 	and not cleaned.lower() in caption.lower()
+		# ):
+		# 	if verbose:
+		# 		print(f"    ✗ Skipped: {kw} NOT in caption: {caption}")
+		# 	continue
 		
 		seen.add(normalized)
 		processed.append(cleaned)
