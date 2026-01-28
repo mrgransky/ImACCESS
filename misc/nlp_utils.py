@@ -519,10 +519,18 @@ def _post_process_(
 					print(f"        → {lemma} Number detected, skipping")
 				continue
 
-			# Check stopwords
-			if lemma in STOPWORDS:
+			# # Check stopwords
+			# if lemma in STOPWORDS:
+			# 	if verbose:
+			# 		print(f"        → {lemma} Stopword detected, skipping")
+			# 	continue
+
+			if (
+				all(lm in STOPWORDS for lm in lemma.split()) 
+				or lemma in STOPWORDS
+			):
 				if verbose:
-					print(f"        → {lemma} Stopword detected, skipping")
+					print(f"        → {lemma} All words are stopwords or stopword, skipping")
 				continue
 
 			# only No. NNNNN ex) No. X1657 or No. 1657
