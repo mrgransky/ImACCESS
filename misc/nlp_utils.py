@@ -231,7 +231,6 @@ def _clustering_(
 	tfidf_vectorizer = TfidfVectorizer(
 		stop_words='english', 
 		max_features=5,
-		min_df=0.01,
 		ngram_range=(1, 3)
 	)
 	# Process each cluster
@@ -240,7 +239,7 @@ def _clustering_(
 
 		# Apply TF-IDF to documents within this cluster
 		tfidf_matrix = tfidf_vectorizer.fit_transform(cluster_docs)
-		print(f"c: {cluster_id} tfidf_matrix: {type(tfidf_matrix)} {tfidf_matrix.shape} {tfidf_matrix.dtype}")
+		print(f"Cluster: {cluster_id} tfidf_matrix: {type(tfidf_matrix)} {tfidf_matrix.shape} {tfidf_matrix.dtype}")
 		feature_names = tfidf_vectorizer.get_feature_names_out()
 
 		# Calculate mean TF-IDF scores for each word in the cluster
@@ -253,10 +252,10 @@ def _clustering_(
 
 	# Print the top keywords for each cluster
 	for cluster_id, keywords in cluster_keywords.items():
-		print(f"Cluster {cluster_id} contains {len(cluster_docs)} samples:")
+		print(f"Cluster {cluster_id}/{optimal_n_clusters} contains {len(cluster_docs)} samples:")
 		print(df_clusters[df_clusters['cluster'] == cluster_id]['text'].head(50).tolist())
 		for keyword, score in keywords:
-			print(f"- {keyword:<70}TF-IDF: {score:.7f} {'OKAY' if score > 0.5 else ''}")
+			print(f"- {keyword:<70}TF-IDF: {score:.7f}\t{'OKAY' if score > 0.5 else ''}")
 		print()
 
 def _post_process_(
