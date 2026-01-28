@@ -259,7 +259,8 @@ def _clustering_(
 
 def _post_process_(
 	labels_list: List[List[str]], 
-	min_kw_length: int = 4, 
+	min_kw_ch_length: int = 4,
+	max_kw_word_length: int = 5,
 	verbose: bool = False
 ) -> List[List[str]]:
 	"""
@@ -270,12 +271,12 @@ def _post_process_(
 	4. Protects abbreviations (NAS, WACs) from lemmatization.
 	5. Protects quantified plurals (e.g., "two women") from lemmatization.
 	6. Protects title-case phrases (e.g., "As You Like It") from lemmatization.
-	7. Filters out keywords shorter than min_kw_length (except abbreviations).
+	7. Filters out keywords shorter than min_kw_ch_length (except abbreviations).
 	8. Deduplicates within the sample (post-lemmatization).
 	
 	Args:
 		labels_list: List of label lists to process
-		min_kw_length: Minimum character length for keywords (default: 2)
+		min_kw_ch_length: Minimum character length for keywords (default: 2)
 		verbose: Enable detailed logging
 	"""
 	# Number words for quantified plural detection
@@ -321,7 +322,7 @@ def _post_process_(
 		print(f"Starting post-processing")
 		print(f"\tInput {type(labels_list)} length: {len(labels_list) if labels_list else 0}")
 		print(f"\tStopwords loaded: {len(STOPWORDS)}")
-		print(f"\tMinimum keyword length: {min_kw_length}")
+		print(f"\tMinimum keyword length: {min_kw_ch_length}")
 	
 
 	if not labels_list:
@@ -474,21 +475,32 @@ def _post_process_(
 						print(f"        → Lemmatized: {repr(lemma)} (unchanged)")
 			
 			# Check minimum length (but exempt abbreviations)
+			if lemma.isupper():
+				if verbose:
+					print(f"        → {lemma} All uppercase detected, skipping")
+				continue
+
 			if (
-				len(lemma) < min_kw_length 
+				len(lemma) < min_kw_ch_length
 				# and not is_abbreviation(original_cleaned) # SMU, NAS
 			):
 				if verbose:
-					print(f"        → Too short and not abbreviation (len={len(lemma)} < {min_kw_length}), skipping")
+					print(f"        → {lemma} Too short and not abbreviation (len={len(lemma)} < {min_kw_ch_length}), skipping")
 				continue
-			
+
+			if len(lemma.split()) > max_kw_word_length:
+				if verbose:
+					print(f"        → {lemma} Too short and not abbreviation (len={len(lemma)} < {max_kw_word_length}), skipping")
+				continue
+
+
 			# Replace & with and and remove extra spaces:
 			lemma = re.sub(r'\s&\s', ' and ', lemma).strip() # Replace & with and and remove extra spaces
 
 			# check if digit is in the lemma:
 			if any(c.isdigit() for c in lemma):
 				if verbose:
-					print(f"        → Digit detected in {lemma}, skipping")
+					print(f"        → {lemma} Digit detected, skipping")
 				continue
 
 			# Check if lemma is a number
