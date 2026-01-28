@@ -222,12 +222,6 @@ def _clustering_(
 		print(f"Failed to write Excel file: {e}")
 
 	print("-"*120)
-	# # print X samples of each cluster:
-	# for cluster_id in range(optimal_n_clusters):
-	# 	print(f"Cluster {cluster_id}:")
-	# 	print(df_clusters[df_clusters['cluster'] == cluster_id]['text'].head(50).tolist())
-	# 	print()
-	# print("-"*120)
 
 	# Dictionary to store keywords for each cluster
 	cluster_keywords = {}
@@ -253,7 +247,7 @@ def _clustering_(
 		print(f"Cluster {cluster_id} contains {len(cluster_docs)} samples:")
 		print(df_clusters[df_clusters['cluster'] == cluster_id]['text'].head(50).tolist())
 		for keyword, score in keywords:
-			print(f"\t- {keyword:<20}TF-IDF: {score:.7f}")
+			print(f"- {keyword:<70}TF-IDF: {score:.7f} {'OK' if score > 0.5 else ''}")
 		print()
 
 def _post_process_(
