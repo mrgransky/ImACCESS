@@ -259,7 +259,7 @@ def _clustering_(
 
 def _post_process_(
 	labels_list: List[List[str]], 
-	min_kw_ch_length: int = 4,
+	min_kw_ch_length: int = 3,
 	max_kw_word_length: int = 5,
 	verbose: bool = False
 ) -> List[List[str]]:
@@ -552,6 +552,12 @@ def _post_process_(
 			if any(ch in string.punctuation for ch in lemma):
 				if verbose:
 					print(f"        → Punctuation detected in {lemma}, skipping")
+				continue
+
+			# entire string must consist only of uppercase/lowercase English letters and spaces
+			if not re.match(r'^[a-zA-Z\s]+$', lemma):
+				if verbose:
+					print(f"        → {lemma} Non-alphabetic character detected, skipping")
 				continue
 
 			# Check duplicates
