@@ -118,7 +118,10 @@ def _clustering_(
 
 	if nc is None:
 		# Define a range of cluster numbers to evaluate
-		range_n_clusters = range(5, max(20, math.ceil(len(all_labels)/13)), 5 if len(all_labels) > 500 else 1)
+		if len(all_labels) > 500:
+			range_n_clusters = range(5, max(20, math.ceil(len(all_labels)/10)), 5)
+		else:
+			range_n_clusters = range(2, 15, 1)
 		print(f"range_n_clusters: {range_n_clusters} len(all_labels): {len(all_labels)}")
 		silhouette_scores = []
 
@@ -225,7 +228,12 @@ def _clustering_(
 
 	# Dictionary to store keywords for each cluster
 	cluster_keywords = {}
-	tfidf_vectorizer = TfidfVectorizer(stop_words='english', max_features=5, ngram_range=(1, 3))
+	tfidf_vectorizer = TfidfVectorizer(
+		stop_words='english', 
+		max_features=5,
+		min_df=0.3,
+		ngram_range=(1, 3)
+	)
 	# Process each cluster
 	for cluster_id in range(optimal_n_clusters):
 		cluster_docs = df_clusters[df_clusters['cluster'] == cluster_id]['text'].tolist()
