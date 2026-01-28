@@ -63,73 +63,73 @@ with open('geographic_references.txt', 'r') as file_:
 	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
 STOPWORDS.update(geographic_references)
 
-LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
-You function as a historical archivist whose expertise lies in the 20th century and whose task is to produce
-**general-purpose, reusable semantic labels** suitable for **multi-label classification**.
-
-Given the caption below, extract no more than {k} **GENERAL, FACTUAL, and DISTINCT KEYWORDS**
-that represent **core objects, entities, actions, or scene elements** which are likely to
-**recur across many images**.
-
-{caption}
-
-**CRITICAL RULES**:
-- Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS**.
-	Fewer keywords are **preferred** if the caption lacks distinct reusable concepts.
-
-- Extracted **KEYWORDS** must be:
-	* **Semantically atomic**: each keyword must represent **ONE concept only**
-		(object, role, action, or scene element).
-	* **Generalized**: prefer the **most general factual noun phrase** that remains correct.
-		- Example: use "nurse" instead of "nurse checking blood pressure"
-		- Example: use "seaplane" instead of "seaplane on the water in the background"
-	* **Reusable**: avoid phrases that are overly specific, descriptive, or unlikely to appear
-		in multiple captions.
-
-- Keywords **DO NOT need to appear verbatim** in the caption, but **MUST be directly and
-	unambiguously inferable** from it.
-
-- **STRICTLY EXCLUDE**:
-	* Proper names of individuals, ships, organizations, or uniquely identifying entities
-		(e.g., personal names, vessel names, club names).
-	* Dates, times, years, decades, or any temporal references.
-	* Geographic references (countries, cities, regions, landmarks).
-	* Quantities, counts, measurements, or numeric expressions.
-	* Composite phrases encoding multiple concepts (e.g., subject + action + location).
-	* Phrasal verbs, possessive constructions, or descriptive clauses.
-	* Generic photography or image-related terminology.
-	* Explanatory text, punctuation, or output formatting beyond the Python list.
-
-- **Bias toward label reuse**:
-	If a specific phrase can be reduced to a more general equivalent **without losing factual correctness**,
-	ALWAYS choose the more general form.
-
-- The standardized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
-[/INST]"""
-
-
-
 # LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
-# You function as a historical archivist whose expertise lies in the 20th century.
-# Given the caption below, extract no more than {k} highly prominent, factual, and distinct **KEYWORDS** that convey the primary actions, objects, or occurrences. 
+# You function as a historical archivist whose expertise lies in the 20th century and whose task is to produce
+# **general-purpose, reusable semantic labels** suitable for **multi-label classification**.
+
+# Given the caption below, extract no more than {k} **GENERAL, FACTUAL, and DISTINCT KEYWORDS**
+# that represent **core objects, entities, actions, or scene elements** which are likely to
+# **recur across many images**.
 
 # {caption}
 
 # **CRITICAL RULES**:
-# - Return **ONLY** a standarized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is **highly expected** if the caption is either short or lacks distinct concepts.
-# - Extracted **KEYWORDS** must be self-contained and grammatically complete phrases that actually appear in the caption:
-# 	* ALL GENERIC ABBREVIATIONS MUST BE FULLY EXPANDED TO THEIR STANDARD FULL FORMS UNLESS they are part of a proper name or named entity, in which case they must be preserved exactly as written in the caption.
-# 	* DUPLICATES AND VARIANTS MUST BE RESOLVED FOR CONSISTENCY.
-# - **STRICTLY EXCLUDE** phrases that include phrasal verbs, or possessive cases as standalone keywords.
-# - **STRICTLY EXCLUDE** keywords that start or end with prepositions or conjunctions.
-# - **STRICTLY EXCLUDE** keywords which contain number signs (59, #59, No.59, No. 59, No 59), or special characters EXCEPT periods used within initials that are part of proper names (e.g., "S.S. Berkeley", "Albert E. Jenner, Jr.").
-# - **STRICTLY EXCLUDE** dates, times, hours, minutes, calendar references, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
-# - **STRICTLY EXCLUDE** geographic references, continents, countries, towns, cities, or states.
-# - **STRICTLY EXCLUDE** serial/reference numbers, geographic/infrastructure/operational identifiers, measurements, units, coordinates, or **ANY** quantitative keywords.
-# - **STRICTLY EXCLUDE** generic photography, image, picture, media keywords or **ANY** technical photo specifications.
-# - **STRICTLY EXCLUDE** explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
-# - The standarized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
+# - Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS**.
+# 	Fewer keywords are **preferred** if the caption lacks distinct reusable concepts.
+
+# - Extracted **KEYWORDS** must be:
+# 	* **Semantically atomic**: each keyword must represent **ONE concept only**
+# 		(object, role, action, or scene element).
+# 	* **Generalized**: prefer the **most general factual noun phrase** that remains correct.
+# 		- Example: use "nurse" instead of "nurse checking blood pressure"
+# 		- Example: use "seaplane" instead of "seaplane on the water in the background"
+# 	* **Reusable**: avoid phrases that are overly specific, descriptive, or unlikely to appear
+# 		in multiple captions.
+
+# - Keywords **DO NOT need to appear verbatim** in the caption, but **MUST be directly and
+# 	unambiguously inferable** from it.
+
+# - **STRICTLY EXCLUDE**:
+# 	* Proper names of individuals, ships, organizations, or uniquely identifying entities
+# 		(e.g., personal names, vessel names, club names).
+# 	* Dates, times, years, decades, or any temporal references.
+# 	* Geographic references (countries, cities, regions, landmarks).
+# 	* Quantities, counts, measurements, or numeric expressions.
+# 	* Composite phrases encoding multiple concepts (e.g., subject + action + location).
+# 	* Phrasal verbs, possessive constructions, or descriptive clauses.
+# 	* Generic photography or image-related terminology.
+# 	* Explanatory text, punctuation, or output formatting beyond the Python list.
+
+# - **Bias toward label reuse**:
+# 	If a specific phrase can be reduced to a more general equivalent **without losing factual correctness**,
+# 	ALWAYS choose the more general form.
+
+# - The standardized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 # [/INST]"""
+
+
+
+LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
+You function as a historical archivist whose expertise lies in the 20th century.
+Given the caption below, extract no more than {k} highly prominent, factual, and distinct **KEYWORDS** that convey the primary actions, objects, or occurrences. 
+
+{caption}
+
+**CRITICAL RULES**:
+- Return **ONLY** a standarized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is **highly expected** if the caption is either short or lacks distinct concepts.
+- Extracted **KEYWORDS** must be self-contained and grammatically complete phrases that actually appear in the caption:
+	* ALL GENERIC ABBREVIATIONS MUST BE FULLY EXPANDED TO THEIR STANDARD FULL FORMS UNLESS they are part of a proper name or named entity, in which case they must be preserved exactly as written in the caption.
+	* DUPLICATES AND VARIANTS MUST BE RESOLVED FOR CONSISTENCY.
+- **STRICTLY EXCLUDE** phrases that include phrasal verbs, or possessive cases as standalone keywords.
+- **STRICTLY EXCLUDE** keywords that start or end with prepositions or conjunctions.
+- **STRICTLY EXCLUDE** keywords which contain number signs (59, #59, No.59, No. 59, No 59), or special characters EXCEPT periods used within initials that are part of proper names (e.g., "S.S. Berkeley", "Albert E. Jenner, Jr.").
+- **STRICTLY EXCLUDE** dates, times, hours, minutes, calendar references, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
+- **STRICTLY EXCLUDE** geographic references, continents, countries, towns, cities, or states.
+- **STRICTLY EXCLUDE** serial/reference numbers, geographic/infrastructure/operational identifiers, measurements, units, coordinates, or **ANY** quantitative keywords.
+- **STRICTLY EXCLUDE** generic photography, image, picture, media keywords or **ANY** technical photo specifications.
+- **STRICTLY EXCLUDE** explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
+- The standarized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
+[/INST]"""
 
 
 def _load_llm_(
