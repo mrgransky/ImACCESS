@@ -273,8 +273,8 @@ def main():
 		vlm_batch_size=args.vlm_batch_size,
 		vlm_max_generated_tks=args.vlm_max_generated_tks,
 		max_keywords=args.max_keywords,
-		use_llm_quantization=args.use_llm_quantization,
-		use_vlm_quantization=args.use_vlm_quantization,
+		use_llm_quantization=args.llm_use_quantization,
+		use_vlm_quantization=args.vlm_use_quantization,
 		nc=args.num_clusters,
 		verbose=args.verbose,
 	)
