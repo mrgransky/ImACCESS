@@ -127,11 +127,12 @@ def _clustering_(
 			cluster_labels = kmeans_model.fit_predict(X)
 
 			silhouette_avg = silhouette_score(X=X, labels=cluster_labels, random_state=0, metric='euclidean')
-			mean_score, std_score = np.mean(silhouette_avg), np.std(silhouette_avg)
 			silhouette_scores.append(silhouette_avg)
 
-			print(f"cluster: {n_clusters:<8} silhouette_score: {silhouette_avg:.4f} (mean: {mean_score:.4f}, std: {std_score:.4f})")
+			print(f"cluster: {n_clusters:<8} silhouette_score: {silhouette_avg:.4f}")
 
+		mean_score, std_score = np.mean(silhouette_scores), np.std(silhouette_scores)
+		print(f"The optimal number of clusters based on Silhouette Score ({max(silhouette_scores):.4f} ± {std_score:.4f}): {optimal_n_clusters} ")
 		plt.figure(figsize=(10, 6))
 		plt.plot(range_n_clusters, silhouette_scores, marker='o')
 		plt.title('Silhouette Score for Various Numbers of Clusters')
@@ -149,10 +150,6 @@ def _clustering_(
 	else:
 		optimal_n_clusters = nc
 
-	print(f"The optimal number of clusters based on Silhouette Score is: {optimal_n_clusters}")
-
-	# Clustering using K-Means
-	# optimal_n_clusters = 90
 	kmeans_optimal = KMeans(init='k-means++', n_clusters=optimal_n_clusters, random_state=0, n_init='auto')
 	clusters_optimal = kmeans_optimal.fit_predict(X)
 	print(f"clusters_optimal: {type(clusters_optimal)} {clusters_optimal.shape}")
@@ -160,7 +157,6 @@ def _clustering_(
 	# Dimensionality Reduction (optional, for visualization)
 	pca = PCA(n_components=2, random_state=0)
 	X_reduced = pca.fit_transform(X)
-
 	print(f"X_pca: {type(X_reduced)} {X_reduced.shape}")
 
 	# Step 6: Visualization
@@ -224,12 +220,12 @@ def _clustering_(
 		print(f"Failed to write Excel file: {e}")
 
 	print("-"*120)
-	# print X samples of each cluster:
-	for cluster_id in range(optimal_n_clusters):
-		print(f"Cluster {cluster_id}:")
-		print(df_clusters[df_clusters['cluster'] == cluster_id]['text'].head(50).tolist())
-		print()
-	print("-"*120)
+	# # print X samples of each cluster:
+	# for cluster_id in range(optimal_n_clusters):
+	# 	print(f"Cluster {cluster_id}:")
+	# 	print(df_clusters[df_clusters['cluster'] == cluster_id]['text'].head(50).tolist())
+	# 	print()
+	# print("-"*120)
 
 	# Dictionary to store keywords for each cluster
 	cluster_keywords = {}
@@ -254,8 +250,10 @@ def _clustering_(
 	print("Top Keywords per cluster")
 	for cluster_id, keywords in cluster_keywords.items():
 		print(f"Cluster {cluster_id}:")
+		print(df_clusters[df_clusters['cluster'] == cluster_id]['text'].head(50).tolist())
 		for keyword, score in keywords:
-			print(f"\t- {keyword} (TF-IDF: {score})")
+			print(f"\t- {keyword:<20}TF-IDF: {score:.7f}")
+		print()
 
 def _post_process_(
 	labels_list: List[List[str]], 
