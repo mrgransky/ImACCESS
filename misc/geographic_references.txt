@@ -383,7 +383,7 @@ Glendale, Calif
 Glendale Calif
 Guntersville
 Kingston
-Miami
+Madera
 Manhattan
 Maui
 Minneapolis
@@ -394,6 +394,7 @@ New Castle
 New London
 New Orleans
 New Haven
+Miami
 Norristown
 Norwood
 Omaha

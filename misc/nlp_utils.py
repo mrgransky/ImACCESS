@@ -226,9 +226,10 @@ def _clustering_(
 
 	# Dictionary to store keywords for each cluster
 	cluster_keywords = {}
+	TOP_N = 10
 	tfidf_vectorizer = TfidfVectorizer(
 		stop_words='english', 
-		max_features=3,
+		max_features=TOP_N,
 		ngram_range=(1, 3)
 	)
 	# Process each cluster
