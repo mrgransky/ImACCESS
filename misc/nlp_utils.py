@@ -16,7 +16,7 @@ import math
 from sklearn.feature_extraction.text import TfidfVectorizer
 from typing import List, Tuple, Dict, Set, Any, Optional, Union, Callable, Iterable
 # Try relative import first, fallback to absolute
-
+import string
 # Install: pip install lingua-language-detector
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
 
@@ -119,7 +119,7 @@ def _clustering_(
 	if nc is None:
 		# Define a range of cluster numbers to evaluate
 		if len(all_labels) > 500:
-			range_n_clusters = range(5, max(20, math.ceil(len(all_labels)/10)), 5)
+			range_n_clusters = range(2, max(20, math.ceil(len(all_labels)/10)), 5)
 		else:
 			range_n_clusters = range(2, 15, 1)
 		print(f"range_n_clusters: {range_n_clusters} len(all_labels): {len(all_labels)}")
@@ -522,6 +522,11 @@ def _post_process_(
 			if re.match(r'^\d+\sfoot$', lemma, re.IGNORECASE):
 				if verbose:
 					print(f"        → {lemma} Only NNNNN foot detected, skipping")
+				continue
+
+			if any(ch in string.punctuation for ch in text):
+				if verbose:
+					print(f"        → Punctuation detected in {lemma}, skipping")
 				continue
 
 			# Check duplicates
