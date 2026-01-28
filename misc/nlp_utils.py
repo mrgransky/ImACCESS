@@ -239,7 +239,7 @@ def _clustering_(
 
 		# Apply TF-IDF to documents within this cluster
 		tfidf_matrix = tfidf_vectorizer.fit_transform(cluster_docs)
-		print(f"Cluster: {cluster_id} tfidf_matrix: {type(tfidf_matrix)} {tfidf_matrix.shape} {tfidf_matrix.dtype}")
+		print(f"Cluster {cluster_id}: tfidf_matrix: {type(tfidf_matrix)} {tfidf_matrix.shape} {tfidf_matrix.dtype}")
 		feature_names = tfidf_vectorizer.get_feature_names_out()
 
 		# Calculate mean TF-IDF scores for each word in the cluster
@@ -483,6 +483,15 @@ def _post_process_(
 					print(f"        → Too short and not abbreviation (len={len(lemma)} < {min_kw_length}), skipping")
 				continue
 			
+			# Replace & with and and remove extra spaces:
+			lemma = re.sub(r'\s&\s', ' and ', lemma).strip() # Replace & with and and remove extra spaces
+
+			# check if digit is in the lemma:
+			if any(c.isdigit() for c in lemma):
+				if verbose:
+					print(f"        → Digit detected in {lemma}, skipping")
+				continue
+
 			# Check if lemma is a number
 			if lemma.isdigit():
 				if verbose:
