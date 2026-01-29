@@ -46,7 +46,7 @@ Extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS** that capt
 
 **CRITICAL RULES**:
 - Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS**. 
-	Fewer keywords are **preferred** if the caption lacks distinct reusable concepts.
+	Fewer keywords are **preferred** if the image lacks distinct reusable concepts.
 
 - **PRIORITIZE MEANINGFUL PHRASES**: 
 	Each keyword must be **semantically atomic**, denoting exactly **one clearly observable concept**.
