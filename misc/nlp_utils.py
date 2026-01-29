@@ -284,7 +284,24 @@ def _post_process_(
 		"one", "two", "three", "four", "five",
 		"six", "seven", "eight", "nine", "ten"
 	}
-	
+
+	def is_named_facility(original_phrase: str) -> bool:
+		"""
+		Check if phrase is a named facility/location.
+		These are proper nouns and should not be lemmatized.
+		"""
+		phrase_lower = original_phrase.lower()
+		
+		# Common facility/location keywords
+		facility_keywords = {
+			'air force base', 'naval air station', 'army depot', 'navy yard',
+			'national park', 'state park', 'memorial', 'monument',
+			'air station', 'naval base', 'military base', 'fort',
+			'airport', 'airfield', 'field', 'station'
+		}
+		
+		return any(keyword in phrase_lower for keyword in facility_keywords)
+
 	def is_quantified_plural(original_phrase: str) -> bool:
 		tokens = original_phrase.lower().split()
 		if len(tokens) < 2:
@@ -470,6 +487,10 @@ def _post_process_(
 				lemma = s  # Preserve "As You Like It", "Gone With the Wind"
 				if verbose:
 					print(f"        → Title-like phrase detected, preserving: {repr(lemma)}")
+			elif is_named_facility(original_cleaned):
+				lemma = s  # Preserve "Pease Air Force Base", "Truax Field"
+				if verbose:
+					print(f"        → Named facility detected, preserving: {repr(lemma)}")	
 			else:
 				# Lemmatize each word in the phrase (with abbreviation protection)
 				lemma = lemmatize_phrase(s, original_cleaned)
