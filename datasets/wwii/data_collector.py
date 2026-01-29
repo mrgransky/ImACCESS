@@ -13,8 +13,8 @@ from misc.nlp_utils import get_enriched_description, validate_text_cleaning_pipe
 # $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std --thumbnail_size 512,512 -v > logs/wwii_dataset_collection.out &
 
 # run in Pouta:
-# $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 24 --img_mean_std --thumbnail_size 512,512 -v > /media/volume/ImACCESS/trash/wwii_dataset_collection.out &
+# $ python data_collector.py -ddir /media/volume/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/datasets/WW_DATASETs -nw 24 --img_mean_std --thumbnail_size 512,512 -v > /media/volume/ImACCESS/trash/wwii_dataset_collection.out &
 
 dataset_name = "WWII".upper()
 parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")

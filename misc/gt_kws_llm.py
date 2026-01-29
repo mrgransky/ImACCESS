@@ -67,9 +67,8 @@ LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 You function as a historical archivist whose expertise lies in the 20th century and whose task is to produce
 **general-purpose, reusable semantic labels** suitable for **multi-label classification**.
 
-Given the caption below, extract no more than {k} **GENERAL, FACTUAL, and DISTINCT KEYWORDS**
-that represent **core objects, entities, actions, or scene elements** which are likely to
-**recur across many images**.
+Given the caption below, extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS**
+that represent **core objects, entities, actions, or scene elements** which are likely to **recur across many images**.
 
 {caption}
 
@@ -80,11 +79,11 @@ that represent **core objects, entities, actions, or scene elements** which are 
 - Extracted **KEYWORDS** must be:
 	* **Semantically atomic**: each keyword must represent **ONE concept only**
 		(object, role, action, or scene element).
+	* **visually grounded nouns** that correspond to **tangible objects, agents, or physical scene elements**.
 	* **Generalized**: prefer the **most general factual noun phrase** that remains correct.
 		- Example: use "nurse" instead of "nurse checking blood pressure"
 		- Example: use "seaplane" instead of "seaplane on the water in the background"
-	* **Reusable**: avoid phrases that are overly specific, descriptive, or unlikely to appear
-		in multiple captions.
+	* **Reusable**: avoid phrases that are overly specific, descriptive, or unlikely to appear in multiple captions.
 
 - Keywords **DO NOT need to appear verbatim** in the caption, but **MUST be directly and
 	unambiguously inferable** from it.
@@ -99,10 +98,18 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	* Phrasal verbs, possessive constructions, or descriptive clauses.
 	* Generic photography or image-related terminology.
 	* Explanatory text, punctuation, or output formatting beyond the Python list.
+	* abstract events, social activities, or organizational concepts 
+		(e.g., "trip", "outing", "meeting", "moving") unless no physical object can be inferred.
 
 - **Bias toward label reuse**:
 	If a specific phrase can be reduced to a more general equivalent **without losing factual correctness**,
 	ALWAYS choose the more general form.
+
+- If multiple valid keywords are possible, prioritize in this order:
+	1) Physical objects
+	2) Human roles (only if visually salient)
+	3) Actions
+	4) Scene elements	
 
 - The standardized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""

@@ -276,6 +276,7 @@ bo
 bottom
 brief
 briefly
+broadside
 buy
 bv
 c'mon
@@ -386,6 +387,7 @@ find
 finds
 five
 fix
+follow
 followed
 following
 follows
@@ -395,6 +397,7 @@ formerly
 forth
 forty
 forward
+frontpersonforefront
 found
 four
 free
@@ -603,6 +606,7 @@ neverf
 neverless
 nevertheless
 new
+newly
 newer
 newest
 next
@@ -751,7 +755,6 @@ shant
 she'd
 she'll
 she's
-shed
 shell
 shes
 should've
@@ -894,6 +897,7 @@ twelve
 twenty
 twice
 two
+type
 undoing
 unfortunately
 unless
@@ -1018,7 +1022,6 @@ miscellaneous
 misc
 okla
 housten
-view
 view of
 background
 foreground
@@ -1073,6 +1076,14 @@ looking northeast
 looking northwest
 looking southwest
 looking southeast
+eastward
+westward
+northward
+southward
+northeastward
+northwestward
+southwestward
+southeastward
 beverly hill
 boyleston
 photog
@@ -1088,3 +1099,18 @@ scene
 area
 location
 environment
+hour
+minute
+day
+night
+morning
+afternoon
+evening
+month
+year
+co
+spring
+summer
+autumn
+fall
+winter

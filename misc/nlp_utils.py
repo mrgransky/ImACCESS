@@ -4,8 +4,7 @@ import torch
 import pickle
 
 import nltk
-# from nltk import pos_tag
-# from nltk.corpus import wordnet
+import huggingface_hub
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -25,7 +24,6 @@ import string
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
 
 MISC_DIR = os.path.dirname(os.path.abspath(__file__))
-print(f"MISC_DIR: {MISC_DIR}")
 
 nltk_modules = [
 	'punkt',
@@ -36,16 +34,23 @@ nltk_modules = [
 	'stopwords',
 ]
 
+# check if nltk_data exists:
 try:
-	nltk.data.find('corpora/stopwords')
+	nltk.data.find('tokenizers/punkt')
 except LookupError:
+	print("Downloading NLTK data...")
+	# Download only the required components
 	nltk.download(
-		'all',
-		# nltk_modules,
-		# 'stopwords',
-		quiet=True,
-		# raise_on_error=True,
+		nltk_modules,
+		quiet=False,
+		raise_on_error=True,
 	)
+
+cache_directory = {
+	"farid": "/home/farid/datasets/models",
+	"alijanif": "/scratch/project_2004072/models",
+	"ubuntu": "/media/volume/models",
+}
 
 # STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
 STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
@@ -107,15 +112,35 @@ def _clustering_(
 	device: str = "cuda" if torch.cuda.is_available() else "cpu",
 	clusters_fname: str = "clusters.csv",
 	nc:int=None,
+	verbose: bool=False,
 ):
 
 	COLORMAP = "Dark2"
 	cmap = plt.colormaps.get_cmap(COLORMAP)
-	model = SentenceTransformer(model_id).to(device)
-	print(f"Total number of parameters in {model_id}: {sum([p.numel() for _, p in model.named_parameters()]):,}")
+	# ========== HuggingFace login ==========
+	# try:
+	# 	if verbose:
+	# 		print(f"[INFO] Logging in to HuggingFace Hub...")
+	# 	huggingface_hub.login(token=os.getenv("HUGGINGFACE_TOKEN"))
+	# except Exception as e:
+	# 	print(f"<!> Failed to login to HuggingFace Hub: {e}")
+	# 	raise e
+
+	# ========== Load model ==========
+	if verbose:
+		print(f"[LOADING] {model_id} | {device} | cache_dir: {cache_directory[os.getenv('USER')]}")
+	model = SentenceTransformer(
+		model_name_or_path=model_id,
+		cache_folder=cache_directory[os.getenv('USER')],
+		token=os.getenv("HUGGINGFACE_TOKEN"),
+	).to(device)
+	if verbose:
+		print(f"Total number of parameters in {model_id}: {sum([p.numel() for _, p in model.named_parameters()]):,}")
 
 	documents = [list(set(lbl)) for lbl in labels]
-	print(f"Loaded {type(documents)} {len(documents)} docs after deduplication")
+	if verbose:
+		print(f"Loaded {type(documents)} {len(documents)} docs after deduplication")
+	
 	# # ["keyword1, keyword2, keyword3, ..."]
 	all_labels = []
 
@@ -141,14 +166,13 @@ def _clustering_(
 	print(f"Sparsity of X: {sparsity:.4f} ({sparsity*100}% non-zero elements)")
 
 	if nc is None:
-		# Define a range of cluster numbers to evaluate
-		if len(all_labels) > 500:
-			range_n_clusters = range(2, max(20, math.ceil(len(all_labels)/10)), 5)
+		if len(all_labels) > 250:
+			range_n_clusters = range(2, max(20, math.ceil(len(all_labels)/8)), 5)
 		else:
 			range_n_clusters = range(2, 15, 1)
 		print(f"range_n_clusters: {range_n_clusters} len(all_labels): {len(all_labels)}")
-		silhouette_scores = []
 
+		silhouette_scores = []
 		for n_clusters in range_n_clusters:
 			kmeans_model = KMeans(init='k-means++', n_clusters=n_clusters, random_state=0, n_init='auto')
 			cluster_labels = kmeans_model.fit_predict(X)
@@ -162,7 +186,7 @@ def _clustering_(
 		optimal_n_clusters_idx = np.argmax(silhouette_scores)
 		optimal_n_clusters = range_n_clusters[optimal_n_clusters_idx]
 		mean_score, std_score = np.mean(silhouette_scores), np.std(silhouette_scores)
-		print(f"The optimal number of clusters based on Silhouette Score ({max(silhouette_scores):.4f} [over all clusters: {mean_score:.4f} ± {std_score:.4f}]): {optimal_n_clusters}")
+		print(f"Optimal num_cluster based on Silhouette Score ({max(silhouette_scores):.4f} [over all clusters: {mean_score:.4f} ± {std_score:.4f}]): {optimal_n_clusters}")
 
 		plt.figure(figsize=(10, 6))
 		plt.plot(range_n_clusters, silhouette_scores, marker='o')
@@ -222,7 +246,16 @@ def _clustering_(
 			alpha=0.94, 
 			marker='X'
 		)
-		plt.scatter(center_coords[0], center_coords[1], facecolors='none', edgecolors=[cmap(i / (kmeans_optimal.n_clusters - 1 if kmeans_optimal.n_clusters > 1 else 1))], s=120, alpha=0.8, marker='o', linewidths=2)
+		plt.scatter(
+			center_coords[0], 
+			center_coords[1], 
+			facecolors='none', 
+			edgecolors=[cmap(i / (kmeans_optimal.n_clusters - 1 if kmeans_optimal.n_clusters > 1 else 1))], 
+			s=120, 
+			alpha=0.8, 
+			marker='o', 
+			linewidths=2
+		)
 
 	# # Adding labels to the plot
 	# for i, txt in enumerate(all_labels):
@@ -249,9 +282,10 @@ def _clustering_(
 
 	print("-"*120)
 
+
 	# Dictionary to store keywords for each cluster
 	cluster_keywords = {}
-	TOP_N = 10
+	TOP_N = 5
 	tfidf_vectorizer = TfidfVectorizer(
 		stop_words='english', 
 		max_features=TOP_N,
@@ -263,7 +297,7 @@ def _clustering_(
 
 		# Apply TF-IDF to documents within this cluster
 		tfidf_matrix = tfidf_vectorizer.fit_transform(cluster_docs)
-		print(f"Cluster {cluster_id}: tfidf_matrix: {type(tfidf_matrix)} {tfidf_matrix.shape} {tfidf_matrix.dtype}")
+		# print(f"Cluster {cluster_id}: tfidf_matrix: {type(tfidf_matrix)} {tfidf_matrix.shape} {tfidf_matrix.dtype}")
 		feature_names = tfidf_vectorizer.get_feature_names_out()
 
 		# Calculate mean TF-IDF scores for each word in the cluster
@@ -275,12 +309,39 @@ def _clustering_(
 		cluster_keywords[cluster_id] = top_keywords
 
 	# Print the top keywords for each cluster
+	topN_kw_th = 0.5
 	for cluster_id, keywords in cluster_keywords.items():
-		print(f"Cluster {cluster_id}/{optimal_n_clusters} contains {len(df_clusters[df_clusters['cluster'] == cluster_id]['text'])} samples:")
+		print(f"\nCluster {cluster_id} contains {len(df_clusters[df_clusters['cluster'] == cluster_id]['text'])} samples:")
 		print(df_clusters[df_clusters['cluster'] == cluster_id]['text'].head(50).tolist())
 		for keyword, score in keywords:
-			print(f"- {keyword:<70}TF-IDF: {score:.7f}\t{'OKAY' if score > 0.5 else ''}")
-		print()
+			print(f"- {keyword:<70}TF-IDF: {score:.7f}\t{'OKAY' if score > topN_kw_th else ''}")
+
+	# create dataframe with cluster, all its keywords, suggested top keyword and their corresponding TF-IDF score columns:
+	# cluster, keywords, top_kw_tfid_score, label
+	# 0, ['keyword1', 'keyword2', 'keyword3'], [('keyword1', 0.42), ('keyword2', 0.33), ('keyword3', 0.21)], None
+	# 1, ['keyword4', 'keyword5', 'keyword6'], [('keyword4', 0.51), ('keyword5', 0.42), ('keyword6', 0.33)], keyword4
+	df_clusters_keywords = pd.DataFrame(columns=['cluster', 'keywords', 'top_kw_tfid_score', 'label'])
+	for cluster_id, keywords in cluster_keywords.items():
+		df_clusters_keywords = pd.concat(
+			[
+				df_clusters_keywords,
+				pd.DataFrame(
+					{
+						'cluster': [cluster_id], 
+						'keywords': [df_clusters[df_clusters['cluster'] == cluster_id]['text'].tolist()], 
+						'top_kw_tfid_score': [keywords], # [(keyword, score), ...]
+						'label': [keywords[0][0] if keywords[0][1] > topN_kw_th else None] # label is the top keyword if its score is > topN_kw_th
+					}
+				)
+			], 
+			ignore_index=True
+		)
+
+	df_clusters_keywords.to_csv(clusters_fname.replace(".csv", f"_x_{optimal_n_clusters}_clustered_keywords.csv"), index=False)
+	try:
+		df_clusters_keywords.to_excel(clusters_fname.replace(".csv", f"_x_{optimal_n_clusters}_clustered_keywords.xlsx"), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
 
 def _post_process_(
 	labels_list: List[List[str]], 
@@ -359,7 +420,50 @@ def _post_process_(
 			or "." in original_phrase
 			or any(c.isdigit() for c in original_phrase)
 		)
-	
+
+	def is_adjectival_phrase(original_phrase: str) -> bool:
+		"""
+		Detect descriptive adjectival phrases like:
+		'newly built', 'recently completed', 'partially destroyed'
+		"""
+		tokens = original_phrase.lower().split()
+		if len(tokens) < 2:
+				return False
+		return tokens[0].endswith("ly")
+
+	def is_activity_gerund(original_phrase: str) -> bool:
+		"""
+		Detect single-word activity nouns like:
+		'snowshoeing', 'skiing', 'fishing'
+		"""
+		return (
+				" " not in original_phrase
+				and original_phrase.lower().endswith("ing")
+		)
+
+	def is_event_gerund_phrase(original_phrase: str) -> bool:
+			"""
+			Detect event phrases like:
+			'flag raising', 'ship launching', 'troop landing'
+			"""
+			tokens = original_phrase.lower().split()
+			return (
+					len(tokens) >= 2
+					and tokens[-1].endswith("ing")
+					and not tokens[0].endswith("ly")  # excludes 'newly built'
+			)
+
+	def is_phrasal_verb(lemma: str) -> bool:
+			tokens = lemma.split()
+			if len(tokens) < 2:
+					return False
+
+			# verb + particle/preposition
+			return (
+					tokens[0] not in STOPWORDS and
+					tokens[1] in STOPWORDS
+			)
+
 	if verbose:
 		print(f"Starting post-processing")
 		print(f"\tInput {type(labels_list)} length: {len(labels_list) if labels_list else 0}")
@@ -402,7 +506,13 @@ def _post_process_(
 			if is_abbr:
 				lemmatized_tokens.append(token)  # Keep as-is
 			else:
-				wordnet_pos = get_wordnet_pos(pos)
+				# For multi-word phrases, treat non-final words as nouns to preserve compound nouns
+				# This prevents "diving board" → "dive board", "shipping container" → "ship container"
+				if len(tokens) > 1 and i < len(tokens) - 1:
+					wordnet_pos = nltk.corpus.wordnet.NOUN
+				else:
+					wordnet_pos = get_wordnet_pos(pos)
+
 				lemmatized_tokens.append(lemmatizer.lemmatize(token, pos=wordnet_pos))
 		
 		return ' '.join(lemmatized_tokens)
@@ -530,6 +640,18 @@ def _post_process_(
 				lemma = s  # Preserve "Pease Air Force Base", "Truax Field"
 				if verbose:
 					print(f"        → Named facility detected, preserving: {repr(lemma)}")	
+			elif is_adjectival_phrase(original_cleaned):
+				lemma = s  # Preserve "newly built", "recently completed"
+				if verbose:
+					print(f"        → Adjectival phrase detected, preserving: {repr(lemma)}")
+			elif is_activity_gerund(original_cleaned):
+				lemma = s  # Preserve "snowshoeing", "skiing", "fishing"
+				if verbose:
+					print(f"        → Activity gerund detected, preserving: {repr(lemma)}")
+			elif is_event_gerund_phrase(original_cleaned):
+				lemma = s  # Preserve "flag raising", "ship launching", "troop landing"
+				if verbose:
+					print(f"        → Event gerund phrase detected, preserving: {repr(lemma)}")
 			else:
 				# Lemmatize each word in the phrase (with abbreviation protection)
 				lemma = lemmatize_phrase(s, original_cleaned)
@@ -584,6 +706,17 @@ def _post_process_(
 			# 	if verbose:
 			# 		print(f"        → {lemma} Stopword detected, skipping")
 			# 	continue
+
+			# # check for phrasal verbs or words containing prepositions: (dangerous)
+			# if any(lm in STOPWORDS for lm in lemma.split()):
+			# 	if verbose:
+			# 		print(f"        → {lemma} preposition detected, skipping")
+			# 	continue
+
+			if is_phrasal_verb(lemma):
+				if verbose:
+					print(f"        → {lemma} Phrasal verb detected, skipping")
+				continue
 
 			if (
 				all(lm in STOPWORDS for lm in lemma.split()) 

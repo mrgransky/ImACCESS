@@ -14,8 +14,8 @@ from collections import Counter, defaultdict
 import matplotlib.pyplot as plt
 import nltk
 from tqdm import tqdm
-import urllib.request
-import urllib.parse
+# import urllib.request
+# import urllib.parse
 import argparse
 import seaborn as sns
 from typing import Tuple, Union, List, Dict, Any, Optional, Callable, TypedDict
@@ -94,7 +94,6 @@ except ImportError:
 		viz = None  # Fallback if visualize module is not available
 
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
-# logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
 nltk_modules = [
 	'punkt',
@@ -105,16 +104,16 @@ nltk_modules = [
 	'stopwords',
 ]
 
+# check if nltk_data exists:
 try:
-	nltk.data.find('corpora/stopwords')
+	nltk.data.find('tokenizers/punkt')
 except LookupError:
-	print(f"NLTK data not found, downloading [takes a while] ...")
+	print("Downloading NLTK data...")
+	# Download only the required components
 	nltk.download(
-		'all',
-		# nltk_modules,
-		# 'stopwords',
-		quiet=True,
-		# raise_on_error=True,
+		nltk_modules,
+		quiet=False,
+		raise_on_error=True,
 	)
 
 HOME: str = os.getenv('HOME') # echo $HOME

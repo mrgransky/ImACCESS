@@ -2780,9 +2780,9 @@ def analyze_top_labels_per_source(
 		source_singletons = source_counts_df[source_counts_df['Count'] == 1]['Label'].tolist()
 		print(f"Singleton labels {type(source_singletons)}: {len(source_singletons)}/{len(source_unique)} ({len(source_singletons) / len(source_unique) * 100:.2f}%):")
 		print(source_singletons)
-		# for i, label in enumerate(source_singletons):
-		# 	print(f"{i:<10d}{label:<100}{len(label.split())}")
-		# print(f"{'-'*80}")
+		for i, label in enumerate(sorted(source_singletons)):
+			print(f"{label}")
+		print(f"{'-'*80}")
 
 		# Create individual visualization for this source
 		plt.figure(figsize=(14, 12))
