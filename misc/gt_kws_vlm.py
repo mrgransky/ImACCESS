@@ -62,8 +62,7 @@ Extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS** that capt
 	- explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
 	- TEXT EXTRACTION / OCR: Do NOT read, transcribe, quote, paraphrase, or use any visible text from the image (including captions, labels, dates, signage, stamped annotations, handwritten notes, or serial numbers).
 	- image quality, type, format, or style as keywords.
-	- vague, generic, or historical keywords.
-	- synonymous, duplicate, identical or misspelled keywords.
+	- vague, generic, identical or misspelled keywords.
 
 - The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response."""
 
