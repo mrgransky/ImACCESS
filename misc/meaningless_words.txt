@@ -545,6 +545,7 @@ low
 lower
 ltd
 made
+main
 mainly
 make
 makes
@@ -1081,3 +1082,9 @@ rare
 left
 right
 te hachapi
+structure
+object
+scene
+area
+location
+environment
