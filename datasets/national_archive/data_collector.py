@@ -35,7 +35,7 @@ set_seeds(seed=args.seed, debug=False)
 
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/datasets/WW_DATASETs -nw 12 --img_mean_std --thumbnail_size 512,512
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/dataset/WW_DATASETs -nw 40 -bs 128 --img_mean_std --thumbnail_size 512,512 -v > /media/volume/ImACCESS/trash/na_dl.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/datasets/WW_DATASETs -nw 40 -bs 128 --img_mean_std --thumbnail_size 512,512 -v > /media/volume/ImACCESS/trash/na_dl.out &
 
 na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
 START_DATE = args.start_date

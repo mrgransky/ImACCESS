@@ -12,6 +12,7 @@ from sklearn.decomposition import PCA
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import math
+import json
 from sklearn.feature_extraction.text import TfidfVectorizer
 from typing import List, Tuple, Dict, Set, Any, Optional, Union, Callable, Iterable
 # Try relative import first, fallback to absolute
