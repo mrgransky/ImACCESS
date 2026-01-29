@@ -53,7 +53,7 @@ Extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS** that capt
 
 - **ZERO HALLUCINATION POLICY**: 
 	Do not invent or infer specifics that lack clear verification from the visual content. 
-	If you are uncertain about a keyword, omit the keyword rather than guessing.
+	If a keyword cannot be confidently justified by what is visible, omit it.
 
 - **STRICTLY EXCLUDE**:
 	- verbs, possessive cases, abbreviations, shortened words or acronyms as standalone keywords.
@@ -62,7 +62,7 @@ Extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS** that capt
 	- explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
 	- TEXT EXTRACTION / OCR: Do NOT read, transcribe, quote, paraphrase, or use any visible text from the image (including captions, labels, dates, signage, stamped annotations, handwritten notes, or serial numbers).
 	- image quality, type, format, or style as keywords.
-	- vague, generic, identical or misspelled keywords.
+	- **overly vague or generic terms** (e.g., abstract container nouns that add little semantic value).
 
 - The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response."""
 
