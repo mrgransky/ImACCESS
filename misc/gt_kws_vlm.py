@@ -49,7 +49,8 @@ Extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS** that capt
 	Fewer keywords are **preferred** if the caption lacks distinct reusable concepts.
 
 - **PRIORITIZE MEANINGFUL PHRASES**: 
-	Keywords must be **semantically atomic**, meaning that they should each denote a solitary concept such as object, role, action, or scene component.
+	Each keyword must be **semantically atomic**, denoting exactly **one clearly observable concept**.
+	When possible, prefer **concrete visual descriptors** over abstract or umbrella terms, **without making inferences**.
 
 - **ZERO HALLUCINATION POLICY**: 
 	Do not invent or infer specifics that lack clear verification from the visual content. 
@@ -60,8 +61,8 @@ Extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS** that capt
 	- keywords that start or end with prepositions or conjunctions.
 	- dates, times, hours, minutes, calendar references, time periods, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
 	- explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
-	- TEXT EXTRACTION / OCR: Do NOT read, transcribe, quote, paraphrase, or use any visible text from the image (including captions, labels, dates, signage, stamped annotations, handwritten notes, or serial numbers).
-	- image quality, type, format, or style as keywords.
+	- TEXT EXTRACTION / OCR: do NOT read, transcribe, quote, paraphrase, or rely on any visible text in the image.
+	- image quality, format, medium, or stylistic attributes.
 	- **overly vague or generic terms** (e.g., abstract container nouns that add little semantic value).
 
 - The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response."""
