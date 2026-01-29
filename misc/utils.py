@@ -108,6 +108,7 @@ nltk_modules = [
 try:
 	nltk.data.find('corpora/stopwords')
 except LookupError:
+	print(f"NLTK data not found, downloading [takes a while] ...")
 	nltk.download(
 		'all',
 		# nltk_modules,
