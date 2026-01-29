@@ -2,7 +2,11 @@ import os
 import re
 import torch
 import pickle
+
 import nltk
+# from nltk import pos_tag
+# from nltk.corpus import wordnet
+
 import matplotlib.pyplot as plt
 import pandas as pd
 from collections import Counter
@@ -22,6 +26,26 @@ from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
 
 MISC_DIR = os.path.dirname(os.path.abspath(__file__))
 print(f"MISC_DIR: {MISC_DIR}")
+
+nltk_modules = [
+	'punkt',
+	'punkt_tab',
+	'wordnet',
+	'averaged_perceptron_tagger', 
+	'omw-1.4',
+	'stopwords',
+]
+
+try:
+	nltk.data.find('corpora/stopwords')
+except LookupError:
+	nltk.download(
+		'all',
+		# nltk_modules,
+		# 'stopwords',
+		quiet=True,
+		# raise_on_error=True,
+	)
 
 # STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
 STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
@@ -342,36 +366,50 @@ def _post_process_(
 		print(f"\tStopwords loaded: {len(STOPWORDS)}")
 		print(f"\tMinimum keyword length: {min_kw_ch_length}")
 	
-
 	if not labels_list:
 		if verbose:
 			print("\tEmpty input, returning as-is")
 		return labels_list
 
 	lemmatizer = nltk.stem.WordNetLemmatizer()
-	
+
+
+	def get_wordnet_pos(treebank_tag):
+		"""Convert Penn Treebank POS tag to WordNet POS tag"""
+		if treebank_tag.startswith('J'):
+			return nltk.corpus.wordnet.ADJ
+		elif treebank_tag.startswith('V'):
+			return nltk.corpus.wordnet.VERB
+		elif treebank_tag.startswith('N'):
+			return nltk.corpus.wordnet.NOUN
+		elif treebank_tag.startswith('R'):
+			return nltk.corpus.wordnet.ADV
+		else:
+			return nltk.corpus.wordnet.NOUN  # Default to noun
+
 	def lemmatize_phrase(phrase: str, original_phrase: str) -> str:
-		"""
-		Lemmatize each word in a phrase independently.
-		Skip lemmatization for abbreviations (detected from original_phrase).
-		"""
 		tokens = phrase.split()
 		original_tokens = original_phrase.split()
-		lemmatized_tokens = []
 		
-		for i, token in enumerate(tokens):
-			# Check if original token was all-caps or contains periods
+		# Get POS tags for the phrase
+		pos_tags = nltk.pos_tag(tokens)
+		lemmatized_tokens = []
+
+		for i, (token, pos) in enumerate(pos_tags):
 			original_token = original_tokens[i] if i < len(original_tokens) else token
 			is_abbr = original_token.isupper() or '.' in original_token
 			
 			if is_abbr:
 				lemmatized_tokens.append(token)  # Keep as-is
 			else:
-				lemmatized_tokens.append(lemmatizer.lemmatize(token))
+				wordnet_pos = get_wordnet_pos(pos)
+				lemmatized_tokens.append(lemmatizer.lemmatize(token, pos=wordnet_pos))
 		
 		return ' '.join(lemmatized_tokens)
 	
 	processed_batch = []
+
+
 
 	for idx, labels in enumerate(labels_list):
 		if labels is None:
@@ -671,7 +709,7 @@ def basic_clean(txt: str):
 	if (
 		not txt
 		or not isinstance(txt, str)
-		or "[sic]" in txt
+		# or "[sic]" in txt
 	):
 		return ""
 

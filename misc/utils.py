@@ -94,7 +94,7 @@ except ImportError:
 		viz = None  # Fallback if visualize module is not available
 
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
-logging.getLogger('tensorflow').setLevel(logging.ERROR)
+# logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
 nltk_modules = [
 	'punkt',

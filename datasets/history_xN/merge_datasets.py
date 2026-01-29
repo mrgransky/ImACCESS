@@ -15,7 +15,7 @@ from misc.nlp_utils import get_enriched_description
 # $ nohup python -u merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs --chunk_size 8900 -v > logs/history_xN_merged_datasets.out &
 
 # run in Pouta:
-# $ nohup python -u merge_datasets.py -ddir /media/volume/ImACCESS/dataset/WW_DATASETs --img_mean_std --chunk_size 8900 -v > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
+# $ nohup python -u merge_datasets.py -ddir /media/volume/ImACCESS/datasets/WW_DATASETs --img_mean_std --chunk_size 8900 -v > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
 
 def get_dataset(ddir: str):
 	# Patterns to match dataset directories
