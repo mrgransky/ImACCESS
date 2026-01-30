@@ -520,11 +520,7 @@ def _post_process_(
 					wordnet_pos = get_wordnet_pos(pos)
 
 				candidate = lemmatizer.lemmatize(token, pos=wordnet_pos)
-
-				if is_valid_word(candidate):
-					lemmatized_tokens.append(candidate)
-				else:
-					lemmatized_tokens.append(token) # Preserve original token if lemmatization fails
+				lemmatized_tokens.append(candidate)
 		
 		return ' '.join(lemmatized_tokens)
 	
@@ -668,10 +664,16 @@ def _post_process_(
 				lemma = lemmatize_phrase(s, original_cleaned)
 				if verbose:
 					if lemma != s:
-						print(f"        → Lemmatized: {repr(s)} → {repr(lemma)} (changed)")
+						print(f"        → {repr(s)}: Lemmatized → {repr(lemma)} (changed)")
 					else:
-						print(f"        → Lemmatized: {repr(lemma)} (unchanged)")
+						print(f"        → {repr(s)}: Lemmatized → {repr(lemma)} (unchanged)")
 			
+			# check if lemma is a valid word:
+			if not is_valid_word(lemma):
+				if verbose:
+					print(f"        → {lemma} Invalid word, skipping")
+				continue
+
 			# Check minimum length (but exempt abbreviations)
 			if lemma.isupper():
 				if verbose:
@@ -690,7 +692,6 @@ def _post_process_(
 				if verbose:
 					print(f"        → {lemma} Too short and not abbreviation (len={len(lemma)} < {max_kw_word_length}), skipping")
 				continue
-
 
 			# Replace & with and and remove extra spaces:
 			lemma = re.sub(r'\s&\s', ' and ', lemma).strip() # Replace & with and and remove extra spaces
