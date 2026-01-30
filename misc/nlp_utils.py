@@ -371,13 +371,6 @@ def _post_process_(
 		"six", "seven", "eight", "nine", "ten"
 	}
 
-	def is_valid_word(word: str) -> bool:
-		"""
-		Check if a word exists in WordNet.
-		Prevents invalid lemmas like 'bos', 'pas'.
-		"""
-		return bool(nltk.corpus.wordnet.synsets(word))
-
 	def is_named_facility(original_phrase: str) -> bool:
 		"""
 		Check if phrase is a named facility/location.
@@ -520,8 +513,12 @@ def _post_process_(
 					wordnet_pos = get_wordnet_pos(pos)
 
 				candidate = lemmatizer.lemmatize(token, pos=wordnet_pos)
-				lemmatized_tokens.append(candidate)
-		
+				# Reject WordNet bug: boss → bos, pass → pas, glass → glas, grass → gras
+				if token.endswith("ss") and candidate == token[:-1]:
+					lemmatized_tokens.append(token)
+				else:
+					lemmatized_tokens.append(candidate)
+
 		return ' '.join(lemmatized_tokens)
 	
 	processed_batch = []
@@ -668,12 +665,6 @@ def _post_process_(
 					else:
 						print(f"        → {repr(s)}: Lemmatized → {repr(lemma)} (unchanged)")
 			
-			# check if lemma is a valid word:
-			if not is_valid_word(lemma):
-				if verbose:
-					print(f"        → {lemma} Invalid word, skipping")
-				continue
-
 			# Check minimum length (but exempt abbreviations)
 			if lemma.isupper():
 				if verbose:
