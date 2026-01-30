@@ -99,7 +99,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	* Generic photography or image-related terminology.
 	* Explanatory text, punctuation, or output formatting beyond the Python list.
 	* abstract events, social activities, or organizational concepts 
-		(e.g., "trip", "outing", "meeting", "moving") unless no physical object can be inferred.
+		(e.g., "trip", "outing", "meeting", "moving", "coming") unless no physical object can be inferred.
 
 - **Bias toward label reuse**:
 	If a specific phrase can be reduced to a more general equivalent **without losing factual correctness**,

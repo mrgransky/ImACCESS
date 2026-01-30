@@ -371,6 +371,13 @@ def _post_process_(
 		"six", "seven", "eight", "nine", "ten"
 	}
 
+	def is_valid_word(word: str) -> bool:
+		"""
+		Check if a word exists in WordNet.
+		Prevents invalid lemmas like 'bos', 'pas'.
+		"""
+		return bool(nltk.corpus.wordnet.synsets(word))
+
 	def is_named_facility(original_phrase: str) -> bool:
 		"""
 		Check if phrase is a named facility/location.
@@ -477,7 +484,6 @@ def _post_process_(
 
 	lemmatizer = nltk.stem.WordNetLemmatizer()
 
-
 	def get_wordnet_pos(treebank_tag):
 		"""Convert Penn Treebank POS tag to WordNet POS tag"""
 		if treebank_tag.startswith('J'):
@@ -513,7 +519,12 @@ def _post_process_(
 				else:
 					wordnet_pos = get_wordnet_pos(pos)
 
-				lemmatized_tokens.append(lemmatizer.lemmatize(token, pos=wordnet_pos))
+				candidate = lemmatizer.lemmatize(token, pos=wordnet_pos)
+
+				if is_valid_word(candidate):
+					lemmatized_tokens.append(candidate)
+				else:
+					lemmatized_tokens.append(token) # Preserve original token if lemmatization fails
 		
 		return ' '.join(lemmatized_tokens)
 	
