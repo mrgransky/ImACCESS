@@ -205,6 +205,11 @@ def _clustering_(
 	kmeans_optimal = KMeans(init='k-means++', n_clusters=optimal_n_clusters, random_state=0, n_init='auto')
 	clusters_optimal = kmeans_optimal.fit_predict(X)
 	print(f"clusters_optimal: {type(clusters_optimal)} {clusters_optimal.shape}")
+	centers_optimal = kmeans_optimal.cluster_centers_
+	labels_optimal = kmeans_optimal.labels_
+	print(f"centers_optimal: {type(centers_optimal)} {centers_optimal.shape}")
+	print(f"labels_optimal: {type(labels_optimal)} {labels_optimal.shape}")
+	print(f"average number of labels per cluster: {len(all_labels)/optimal_n_clusters:.2f}")
 
 	# Dimensionality Reduction (optional, for visualization)
 	pca = PCA(n_components=2, random_state=0)
@@ -229,10 +234,6 @@ def _clustering_(
 	plt.ylabel("Principal Component 2")
 
 	# Adding cluster centers to the plot
-	centers_optimal = kmeans_optimal.cluster_centers_
-	labels_optimal = kmeans_optimal.labels_
-	print(f"centers_optimal: {type(centers_optimal)} {centers_optimal.shape}")
-	print(f"labels_optimal: {type(labels_optimal)} {labels_optimal.shape}")
 
 	centers_reduced_optimal = pca.transform(centers_optimal)
 	print(f"centers_reduced_optimal: {type(centers_reduced_optimal)} {centers_reduced_optimal.shape}")
