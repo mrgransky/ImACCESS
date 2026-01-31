@@ -58,339 +58,6 @@ pd.set_option('display.width', 1000)
 pd.set_option('display.max_rows', 100)
 sns.set_style("whitegrid")
 
-def create_dataset_radar_chart(summary_stats_dict, output_dir, label_column, DPI=200):
-		"""
-		Create a radar chart visualizing key dataset characteristics.
-		
-		This provides a compelling visual summary for papers/presentations showing:
-		- Scale (number of samples, labels)
-		- Richness (label cardinality)
-		- Diversity (normalized entropy)
-		- Balance (inverse Gini - so higher is better)
-		- Complexity (effective number of labels)
-		"""
-		print("\n" + "="*100)
-		print("--- CREATING RADAR CHART FOR DATASET CHARACTERISTICS ---")
-		
-		# Extract and normalize metrics to 0-100 scale for radar chart
-		# Each metric is normalized so that "better" = higher value
-		
-		metrics_for_radar = {}
-
-		# 0. dataset name:
-		dataset_name = summary_stats_dict['Dataset Name']
-		file_name = summary_stats_dict['File Name']
-		
-		# 1. SCALE: Log-normalized sample count (relative to common benchmarks)
-		n_samples = summary_stats_dict['Total Samples']
-		# Normalize: log scale, where 100K samples = 50, 1M = 100
-		scale_score = min(100, (np.log10(n_samples) / np.log10(1_000_000)) * 100)
-		metrics_for_radar['Scale\n(Samples)'] = scale_score
-		
-		# 2. VOCABULARY SIZE: Log-normalized label count
-		n_labels = summary_stats_dict['Unique Labels']
-		# Normalize: log scale, where 1K labels = 33, 10K = 66, 100K+ = 100
-		vocab_score = min(100, (np.log10(n_labels) / np.log10(100_000)) * 100)
-		metrics_for_radar['Vocabulary Size'] = vocab_score
-		
-		# 3. ANNOTATION RICHNESS: Label cardinality relative to benchmarks
-		mean_cardinality = float(summary_stats_dict['Mean Label Cardinality'])
-		# Normalize: 1 label = 10, 5 labels = 50, 10+ labels = 100
-		richness_score = min(100, (mean_cardinality / 10) * 100)
-		metrics_for_radar['Annotation\nRichness'] = richness_score
-		
-		# 4. DIVERSITY: Normalized entropy (already 0-1, scale to 100)
-		normalized_entropy = float(summary_stats_dict['Normalized Entropy'])
-		diversity_score = normalized_entropy * 100
-		metrics_for_radar['Label\nDiversity'] = diversity_score
-		
-		# 5. BALANCE: Inverse Gini (1 - Gini), so perfect balance = 100
-		gini = float(summary_stats_dict['Gini Coefficient'])
-		balance_score = (1 - gini) * 100
-		metrics_for_radar['Label\nBalance'] = balance_score
-		
-		# 6. TEMPORAL SPAN: If available (for historical datasets)
-		# This is optional - you can replace with another metric if needed
-		temporal_score = 70  # Placeholder: 70 years (1900-1970)
-		metrics_for_radar['Temporal\nSpan'] = temporal_score
-		
-		# 7. SEMANTIC COMPLEXITY: Effective number of labels (log-normalized)
-		effective_labels = float(summary_stats_dict['Effective # of Labels'])
-		# Normalize: 100 effective = 25, 1000 = 50, 10000+ = 100
-		complexity_score = min(100, (np.log10(effective_labels) / np.log10(10_000)) * 100)
-		metrics_for_radar['Semantic\nComplexity'] = complexity_score
-		
-		# 8. UNIQUENESS: Percentage of unique label combinations
-		unique_combinations = summary_stats_dict['Unique Label Combinations']
-		total_samples = summary_stats_dict['Total Samples']
-		uniqueness_pct = (unique_combinations / total_samples) * 100
-		metrics_for_radar['Label\nUniqueness'] = uniqueness_pct
-		
-		# Create radar chart
-		categories = list(metrics_for_radar.keys())
-		values = list(metrics_for_radar.values())
-		
-		# Number of variables
-		N = len(categories)
-		
-		# Compute angle for each axis
-		angles = [n / float(N) * 2 * np.pi for n in range(N)]
-		values += values[:1]  # Complete the circle
-		angles += angles[:1]
-		
-		# Initialize the plot
-		fig, ax = plt.subplots(figsize=(14, 14), subplot_kw=dict(projection='polar'))
-		
-		# Plot data
-		ax.plot(angles, values, 'o-', linewidth=2, color='#1f77b4', label=dataset_name)
-		ax.fill(angles, values, alpha=0.2, color='#1f77b4')
-		
-		# Optional: Add comparison with a benchmark dataset
-		# Example: ImageNet-like distribution
-		benchmark_values = [85, 30, 10, 60, 55, 0, 40, 5]  # Example benchmark scores
-		benchmark_values += benchmark_values[:1]
-		ax.plot(
-			angles, 
-			benchmark_values, 
-			'o--', 
-			linewidth=2, 
-			color='#ff7f0e', 
-			label='Typical Benchmark', 
-			alpha=0.6
-		)
-		ax.fill(angles, benchmark_values, alpha=0.15, color='#ff7f0e')
-		
-		# Fix axis to go in the right order and start at 12 o'clock
-		ax.set_theta_offset(np.pi / 2)
-		ax.set_theta_direction(-1)
-		
-		# Draw axis lines for each angle and label
-		ax.set_xticks(angles[:-1])
-		ax.set_xticklabels(categories, size=11, weight='bold')
-		
-		# Set y-axis limits and labels
-		ax.set_ylim(0, 100)
-		ax.set_yticks([20, 40, 60, 80, 100])
-		ax.set_yticklabels(['20', '40', '60', '80', '100'], size=9)
-		ax.set_rlabel_position(0)
-		
-		# Add grid
-		ax.grid(True, linestyle='--', alpha=0.7)
-		
-		# Add legend
-		ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=10)
-		
-		# Title
-		plt.title('Dataset Characteristics Profile', size=16, weight='bold', pad=20)
-		
-		# Add annotations for key strengths
-		max_idx = np.argmax(values[:-1])
-		max_angle = angles[max_idx]
-		max_value = values[max_idx]
-		ax.annotate(
-			f'Strength:\n{categories[max_idx]}', 
-			xy=(max_angle, max_value), 
-			xytext=(max_angle, max_value + 10),
-			fontsize=9,
-			ha='center',
-			bbox=dict(boxstyle='round,pad=0.5', facecolor="#c2ff91", alpha=0.5),
-			arrowprops=dict(arrowstyle='->', color='red', lw=1.5)
-		)
-		
-		plt.tight_layout()
-		plt.savefig(
-			fname=os.path.join(output_dir, f"{file_name}_radar_chart.png"),
-			dpi=DPI,
-			bbox_inches='tight'
-		)
-		plt.close()
-		
-		print("Radar chart created successfully!")
-		print(f"\nDataset Characteristic Scores (0-100 scale):")
-		for cat, val in metrics_for_radar.items():
-			print(f"  {cat.replace(chr(10), ' ')}: {val:.1f}")
-		
-		return metrics_for_radar
-
-def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column, DPI=200):
-		print("--- CREATING COMPARATIVE RADAR CHART ---")
-		
-		# Define metrics (normalized to 0-100 scale)
-		categories = [
-			'Scale',
-			'Vocabulary\nSize', 
-			'Annotation\nRichness',
-			'Diversity\n(entropy)',
-			'Balance\n(1-Gini)',
-			'Semantic\nComplexity'
-		]
-		
-		dataset_name = summary_stats_dict['Dataset Name']
-		file_name = summary_stats_dict['File Name']
-		n_samples = summary_stats_dict['Total Samples']
-		n_labels = summary_stats_dict['Unique Labels']
-		mean_card = float(summary_stats_dict['Mean Label Cardinality'])
-		norm_entropy = float(summary_stats_dict['Normalized Entropy'])
-		gini = float(summary_stats_dict['Gini Coefficient'])
-		eff_labels = float(summary_stats_dict['Effective # of Labels'])
-		
-		dataset_values = [
-				min(100, (np.log10(n_samples) / np.log10(1_000_000)) * 100),
-				min(100, (np.log10(n_labels) / np.log10(100_000)) * 100),
-				min(100, (mean_card / 10) * 100),
-				norm_entropy * 100,
-				(1 - gini) * 100,
-				min(100, (np.log10(eff_labels) / np.log10(10_000)) * 100)
-		]
-		
-		# # Benchmark datasets
-		# # (scale, vocabulary, cardinality) are 100% defensible
-		# # (diversity, balance, complexity) are approximate
-		benchmarks = {
-			'ImageNet': {
-				'color': "#004094",
-				'samples': 1_281_167,      # EXACT
-				'labels': 1_000,            # EXACT
-				'cardinality': 1.0,         # EXACT
-				'norm_entropy': 0.62,       # REASONABLE ESTIMATE
-				'gini': 0.45,               # REASONABLE ESTIMATE
-				'effective_labels': 400,    # CONSERVATIVE ESTIMATE
-			},
-			'MS-COCO': {
-				'color': "#ce7500",
-				'samples': 328_000,         # EXACT (all splits)
-				'labels': 91,               # EXACT (2017 version)
-				'cardinality': 2.9,         # EXACT (Lin+ ECCV'14)
-				'norm_entropy': 0.51,       # REASONABLE ESTIMATE
-				'gini': 0.62,               # REASONABLE ESTIMATE
-				'effective_labels': 50,     # CONSERVATIVE ESTIMATE
-			},
-			'Open Images': {
-				'color': "#009e08",
-				'samples': 9_178_275,       # EXACT (V6)
-				'labels': 19_000,           # EXACT (rounded from 19,958)
-				'cardinality': 8.4,         # EXACT (Kuznetsova+ IJCV'20)
-				'norm_entropy': 0.69,       # REASONABLE ESTIMATE
-				'gini': 0.73,               # REASONABLE ESTIMATE
-				'effective_labels': 2_000,  # CONSERVATIVE ESTIMATE
-			}
-		}
-		print(json.dumps(benchmarks, indent=2, ensure_ascii=False))
-
-		# Create figure
-		N = len(categories)
-		angles = [n / float(N) * 2 * np.pi for n in range(N)]
-		
-		fig, ax = plt.subplots(figsize=(12, 12), subplot_kw=dict(projection='polar'))
-		
-		# Plot dataset values
-		values = dataset_values + dataset_values[:1]
-		angles_plot = angles + angles[:1]
-		ax.plot(
-			angles_plot, 
-			values, 
-			'o-', 
-			linewidth=2.5,
-			label=dataset_name,
-			color='#d62728', 
-			zorder=10
-		)
-		ax.fill(angles_plot, values, alpha=0.2, color="#fc5f5f")
-		
-		for k,v in benchmarks.items():
-			print(f"{k} {v}")
-			bench_values = [
-				min(100, (np.log10(v['samples']) / np.log10(1_000_000)) * 100),
-				min(100, (np.log10(v['labels']) / np.log10(100_000)) * 100),
-				min(100, (v['cardinality'] / 10) * 100),
-				v['norm_entropy'] * 100,
-				(1 - v['gini']) * 100,
-				min(100, (np.log10(v['effective_labels']) / np.log10(10_000)) * 100)
-			]
-			bench_values_plot = bench_values + bench_values[:1]
-			ax.plot(
-				angles_plot, 
-				bench_values_plot, 
-				'o--', 
-				linewidth=1.5, 
-				label=k, 
-				alpha=0.5,
-				color=v['color']
-			)
-			ax.fill(angles_plot, bench_values_plot, alpha=0.1, color=v['color'])
-		
-		# After creating the plot, before setting labels
-		ax.set_theta_offset(np.pi / 2)  # Start at 12 o'clock
-		ax.set_theta_direction(-1)  # Clockwise
-		ax.set_xticks(angles)  # Set ticks at each angle
-
-		# Manually set labels
-		# ax.set_xticklabels(categories, size=10, weight='bold', va='center', ha='center')
-
-		# SMART LABEL POSITIONING with angle-dependent offsets
-		for angle, label in zip(angles, categories):
-			# Convert angle to degrees for easier understanding
-			angle_deg = np.degrees(angle)
-			if angle_deg == 0 or angle_deg == 90 or angle_deg == 180 or angle_deg == 360:  # Special case for 'Scale' to avoid overlap
-				offset = 1.0
-			elif 0 < angle_deg < 90: # first quadrant (CW)
-				offset = 1.1
-			elif 91 < angle_deg < 180:  # second quadrant (CW)
-				offset = 1.15
-			elif 181 < angle_deg < 270:  # third quadrant (CW)
-				offset = 1.12
-			elif 271 < angle_deg < 360:  # fourth quadrant (CW)
-				offset = 1.15
-			else:
-				print(f"<!> {angle_deg} => Default offset: 1.0")
-				offset = 1.0
-			print(f"Angle: {repr(angle_deg)}, Label: {label} => offset: {offset}")
-			
-			# Place label at calculated position
-			ax.text(
-				angle, 
-				105 * offset,
-				label, 
-				size=16, 
-				weight='bold', 
-				ha="center", 
-				va="center",
-				rotation_mode='anchor'
-			)
-
-		# Remove default labels since we're placing custom ones
-		ax.set_xticklabels([])
-
-		# Rest remains the same
-		ax.set_ylim(0, 100)
-		ax.set_yticks([20, 40, 60, 80, 100])
-		ax.set_yticklabels(['20', '40', '60', '80', '100'], size=10, zorder=100)
-		ax.grid(True, linestyle='--', alpha=0.9)
-
-		ax.legend(
-			loc='upper right', 
-			fontsize=11, 
-			frameon=False, 
-			fancybox=True, 
-			shadow=True, 
-			edgecolor='black', 
-			facecolor='white',
-			bbox_to_anchor=(1.09, 1.04) # Move legend outside the plot
-		)
-		
-		# plt.title('Multi-Dimensional Dataset Characteristics: A Comparative View', size=11, weight='bold', pad=25)
-		
-		plt.tight_layout()
-		plt.savefig(
-			fname=os.path.join(output_dir, f"{file_name}_comparative_radar_chart.png"),
-			dpi=DPI,
-			bbox_inches='tight'
-		)
-		plt.close()
-		
-		print("Comparative radar chart created successfully!")
-		return dataset_values, benchmarks
-
 def plot_image_to_texts_separate_horizontal_bars(
 				models: dict,
 				validation_loader: DataLoader,
@@ -2736,6 +2403,339 @@ def plot_loss_accuracy_metrics(
 		fig.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches='tight')
 		plt.close(fig)
 
+def create_dataset_radar_chart(summary_stats_dict, output_dir, label_column, DPI=200):
+		"""
+		Create a radar chart visualizing key dataset characteristics.
+		
+		This provides a compelling visual summary for papers/presentations showing:
+		- Scale (number of samples, labels)
+		- Richness (label cardinality)
+		- Diversity (normalized entropy)
+		- Balance (inverse Gini - so higher is better)
+		- Complexity (effective number of labels)
+		"""
+		print("\n" + "="*100)
+		print("--- CREATING RADAR CHART FOR DATASET CHARACTERISTICS ---")
+		
+		# Extract and normalize metrics to 0-100 scale for radar chart
+		# Each metric is normalized so that "better" = higher value
+		
+		metrics_for_radar = {}
+
+		# 0. dataset name:
+		dataset_name = summary_stats_dict['Dataset Name']
+		file_name = summary_stats_dict['File Name']
+		
+		# 1. SCALE: Log-normalized sample count (relative to common benchmarks)
+		n_samples = summary_stats_dict['Total Samples']
+		# Normalize: log scale, where 100K samples = 50, 1M = 100
+		scale_score = min(100, (np.log10(n_samples) / np.log10(1_000_000)) * 100)
+		metrics_for_radar['Scale\n(Samples)'] = scale_score
+		
+		# 2. VOCABULARY SIZE: Log-normalized label count
+		n_labels = summary_stats_dict['Unique Labels']
+		# Normalize: log scale, where 1K labels = 33, 10K = 66, 100K+ = 100
+		vocab_score = min(100, (np.log10(n_labels) / np.log10(100_000)) * 100)
+		metrics_for_radar['Vocabulary Size'] = vocab_score
+		
+		# 3. ANNOTATION RICHNESS: Label cardinality relative to benchmarks
+		mean_cardinality = float(summary_stats_dict['Mean Label Cardinality'])
+		# Normalize: 1 label = 10, 5 labels = 50, 10+ labels = 100
+		richness_score = min(100, (mean_cardinality / 10) * 100)
+		metrics_for_radar['Annotation\nRichness'] = richness_score
+		
+		# 4. DIVERSITY: Normalized entropy (already 0-1, scale to 100)
+		normalized_entropy = float(summary_stats_dict['Normalized Entropy'])
+		diversity_score = normalized_entropy * 100
+		metrics_for_radar['Label\nDiversity'] = diversity_score
+		
+		# 5. BALANCE: Inverse Gini (1 - Gini), so perfect balance = 100
+		gini = float(summary_stats_dict['Gini Coefficient'])
+		balance_score = (1 - gini) * 100
+		metrics_for_radar['Label\nBalance'] = balance_score
+		
+		# 6. TEMPORAL SPAN: If available (for historical datasets)
+		# This is optional - you can replace with another metric if needed
+		temporal_score = 70  # Placeholder: 70 years (1900-1970)
+		metrics_for_radar['Temporal\nSpan'] = temporal_score
+		
+		# 7. SEMANTIC COMPLEXITY: Effective number of labels (log-normalized)
+		effective_labels = float(summary_stats_dict['Effective # of Labels'])
+		# Normalize: 100 effective = 25, 1000 = 50, 10000+ = 100
+		complexity_score = min(100, (np.log10(effective_labels) / np.log10(10_000)) * 100)
+		metrics_for_radar['Semantic\nComplexity'] = complexity_score
+		
+		# 8. UNIQUENESS: Percentage of unique label combinations
+		unique_combinations = summary_stats_dict['Unique Label Combinations']
+		total_samples = summary_stats_dict['Total Samples']
+		uniqueness_pct = (unique_combinations / total_samples) * 100
+		metrics_for_radar['Label\nUniqueness'] = uniqueness_pct
+		
+		# Create radar chart
+		categories = list(metrics_for_radar.keys())
+		values = list(metrics_for_radar.values())
+		
+		# Number of variables
+		N = len(categories)
+		
+		# Compute angle for each axis
+		angles = [n / float(N) * 2 * np.pi for n in range(N)]
+		values += values[:1]  # Complete the circle
+		angles += angles[:1]
+		
+		# Initialize the plot
+		fig, ax = plt.subplots(figsize=(14, 14), subplot_kw=dict(projection='polar'))
+		
+		# Plot data
+		ax.plot(angles, values, 'o-', linewidth=2, color='#1f77b4', label=dataset_name)
+		ax.fill(angles, values, alpha=0.2, color='#1f77b4')
+		
+		# Optional: Add comparison with a benchmark dataset
+		# Example: ImageNet-like distribution
+		benchmark_values = [85, 30, 10, 60, 55, 0, 40, 5]  # Example benchmark scores
+		benchmark_values += benchmark_values[:1]
+		ax.plot(
+			angles, 
+			benchmark_values, 
+			'o--', 
+			linewidth=2, 
+			color='#ff7f0e', 
+			label='Typical Benchmark', 
+			alpha=0.6
+		)
+		ax.fill(angles, benchmark_values, alpha=0.15, color='#ff7f0e')
+		
+		# Fix axis to go in the right order and start at 12 o'clock
+		ax.set_theta_offset(np.pi / 2)
+		ax.set_theta_direction(-1)
+		
+		# Draw axis lines for each angle and label
+		ax.set_xticks(angles[:-1])
+		ax.set_xticklabels(categories, size=11, weight='bold')
+		
+		# Set y-axis limits and labels
+		ax.set_ylim(0, 100)
+		ax.set_yticks([20, 40, 60, 80, 100])
+		ax.set_yticklabels(['20', '40', '60', '80', '100'], size=9)
+		ax.set_rlabel_position(0)
+		
+		# Add grid
+		ax.grid(True, linestyle='--', alpha=0.7)
+		
+		# Add legend
+		ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=10)
+		
+		# Title
+		plt.title('Dataset Characteristics Profile', size=16, weight='bold', pad=20)
+		
+		# Add annotations for key strengths
+		max_idx = np.argmax(values[:-1])
+		max_angle = angles[max_idx]
+		max_value = values[max_idx]
+		ax.annotate(
+			f'Strength:\n{categories[max_idx]}', 
+			xy=(max_angle, max_value), 
+			xytext=(max_angle, max_value + 10),
+			fontsize=9,
+			ha='center',
+			bbox=dict(boxstyle='round,pad=0.5', facecolor="#c2ff91", alpha=0.5),
+			arrowprops=dict(arrowstyle='->', color='red', lw=1.5)
+		)
+		
+		plt.tight_layout()
+		plt.savefig(
+			fname=os.path.join(output_dir, f"{file_name}_radar_chart.png"),
+			dpi=DPI,
+			bbox_inches='tight'
+		)
+		plt.close()
+		
+		print("Radar chart created successfully!")
+		print(f"\nDataset Characteristic Scores (0-100 scale):")
+		for cat, val in metrics_for_radar.items():
+			print(f"  {cat.replace(chr(10), ' ')}: {val:.1f}")
+		
+		return metrics_for_radar
+
+def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column, DPI=200):
+		print("--- CREATING COMPARATIVE RADAR CHART ---")
+		
+		# Define metrics (normalized to 0-100 scale)
+		categories = [
+			'Scale',
+			'Vocabulary\nSize', 
+			'Annotation\nRichness',
+			'Diversity\n(entropy)',
+			'Balance\n(1-Gini)',
+			'Semantic\nComplexity'
+		]
+		
+		dataset_name = summary_stats_dict['Dataset Name']
+		file_name = summary_stats_dict['File Name']
+		n_samples = summary_stats_dict['Total Samples']
+		n_labels = summary_stats_dict['Unique Labels']
+		mean_card = float(summary_stats_dict['Mean Label Cardinality'])
+		norm_entropy = float(summary_stats_dict['Normalized Entropy'])
+		gini = float(summary_stats_dict['Gini Coefficient'])
+		eff_labels = float(summary_stats_dict['Effective # of Labels'])
+		
+		dataset_values = [
+				min(100, (np.log10(n_samples) / np.log10(1_000_000)) * 100),
+				min(100, (np.log10(n_labels) / np.log10(100_000)) * 100),
+				min(100, (mean_card / 10) * 100),
+				norm_entropy * 100,
+				(1 - gini) * 100,
+				min(100, (np.log10(eff_labels) / np.log10(10_000)) * 100)
+		]
+		
+		# # Benchmark datasets
+		# # (scale, vocabulary, cardinality) are 100% defensible
+		# # (diversity, balance, complexity) are approximate
+		benchmarks = {
+			'ImageNet': {
+				'color': "#004094",
+				'samples': 1_281_167,      # EXACT
+				'labels': 1_000,            # EXACT
+				'cardinality': 1.0,         # EXACT
+				'norm_entropy': 0.62,       # REASONABLE ESTIMATE
+				'gini': 0.45,               # REASONABLE ESTIMATE
+				'effective_labels': 400,    # CONSERVATIVE ESTIMATE
+			},
+			'MS-COCO': {
+				'color': "#ce7500",
+				'samples': 328_000,         # EXACT (all splits)
+				'labels': 91,               # EXACT (2017 version)
+				'cardinality': 2.9,         # EXACT (Lin+ ECCV'14)
+				'norm_entropy': 0.51,       # REASONABLE ESTIMATE
+				'gini': 0.62,               # REASONABLE ESTIMATE
+				'effective_labels': 50,     # CONSERVATIVE ESTIMATE
+			},
+			'Open Images': {
+				'color': "#009e08",
+				'samples': 9_178_275,       # EXACT (V6)
+				'labels': 19_000,           # EXACT (rounded from 19,958)
+				'cardinality': 8.4,         # EXACT (Kuznetsova+ IJCV'20)
+				'norm_entropy': 0.69,       # REASONABLE ESTIMATE
+				'gini': 0.73,               # REASONABLE ESTIMATE
+				'effective_labels': 2_000,  # CONSERVATIVE ESTIMATE
+			}
+		}
+		print(json.dumps(benchmarks, indent=2, ensure_ascii=False))
+
+		# Create figure
+		N = len(categories)
+		angles = [n / float(N) * 2 * np.pi for n in range(N)]
+		
+		fig, ax = plt.subplots(figsize=(12, 12), subplot_kw=dict(projection='polar'))
+		
+		# Plot dataset values
+		values = dataset_values + dataset_values[:1]
+		angles_plot = angles + angles[:1]
+		ax.plot(
+			angles_plot, 
+			values, 
+			'o-', 
+			linewidth=2.5,
+			label=dataset_name,
+			color='#d62728', 
+			zorder=10
+		)
+		ax.fill(angles_plot, values, alpha=0.2, color="#fc5f5f")
+		
+		for k,v in benchmarks.items():
+			print(f"{k} {v}")
+			bench_values = [
+				min(100, (np.log10(v['samples']) / np.log10(1_000_000)) * 100),
+				min(100, (np.log10(v['labels']) / np.log10(100_000)) * 100),
+				min(100, (v['cardinality'] / 10) * 100),
+				v['norm_entropy'] * 100,
+				(1 - v['gini']) * 100,
+				min(100, (np.log10(v['effective_labels']) / np.log10(10_000)) * 100)
+			]
+			bench_values_plot = bench_values + bench_values[:1]
+			ax.plot(
+				angles_plot, 
+				bench_values_plot, 
+				'o--', 
+				linewidth=1.5, 
+				label=k, 
+				alpha=0.5,
+				color=v['color']
+			)
+			ax.fill(angles_plot, bench_values_plot, alpha=0.1, color=v['color'])
+		
+		# After creating the plot, before setting labels
+		ax.set_theta_offset(np.pi / 2)  # Start at 12 o'clock
+		ax.set_theta_direction(-1)  # Clockwise
+		ax.set_xticks(angles)  # Set ticks at each angle
+
+		# Manually set labels
+		# ax.set_xticklabels(categories, size=10, weight='bold', va='center', ha='center')
+
+		# SMART LABEL POSITIONING with angle-dependent offsets
+		for angle, label in zip(angles, categories):
+			# Convert angle to degrees for easier understanding
+			angle_deg = np.degrees(angle)
+			if angle_deg == 0 or angle_deg == 90 or angle_deg == 180 or angle_deg == 360:  # Special case for 'Scale' to avoid overlap
+				offset = 1.0
+			elif 0 < angle_deg < 90: # first quadrant (CW)
+				offset = 1.1
+			elif 91 < angle_deg < 180:  # second quadrant (CW)
+				offset = 1.15
+			elif 181 < angle_deg < 270:  # third quadrant (CW)
+				offset = 1.12
+			elif 271 < angle_deg < 360:  # fourth quadrant (CW)
+				offset = 1.15
+			else:
+				print(f"<!> {angle_deg} => Default offset: 1.0")
+				offset = 1.0
+			print(f"Angle: {repr(angle_deg)}, Label: {label} => offset: {offset}")
+			
+			# Place label at calculated position
+			ax.text(
+				angle, 
+				105 * offset,
+				label, 
+				size=16, 
+				weight='bold', 
+				ha="center", 
+				va="center",
+				rotation_mode='anchor'
+			)
+
+		# Remove default labels since we're placing custom ones
+		ax.set_xticklabels([])
+
+		# Rest remains the same
+		ax.set_ylim(0, 100)
+		ax.set_yticks([20, 40, 60, 80, 100])
+		ax.set_yticklabels(['20', '40', '60', '80', '100'], size=10, zorder=100)
+		ax.grid(True, linestyle='--', alpha=0.9)
+
+		ax.legend(
+			loc='upper right', 
+			fontsize=11, 
+			frameon=False, 
+			fancybox=True, 
+			shadow=True, 
+			edgecolor='black', 
+			facecolor='white',
+			bbox_to_anchor=(1.09, 1.04) # Move legend outside the plot
+		)
+		
+		# plt.title('Multi-Dimensional Dataset Characteristics: A Comparative View', size=11, weight='bold', pad=25)
+		
+		plt.tight_layout()
+		plt.savefig(
+			fname=os.path.join(output_dir, f"{file_name}_comparative_radar_chart.png"),
+			dpi=DPI,
+			bbox_inches='tight'
+		)
+		plt.close()
+		
+		print("Comparative radar chart created successfully!")
+		return dataset_values, benchmarks
+
 def analyze_top_labels_per_source(
 	processed_dfs: dict,
 	label_column: str,
@@ -3570,7 +3570,7 @@ def perform_multilabel_eda(
 	print("\n--- HIERARCHICAL CLUSTERING OF LABELS (Top Labels) ---")
 	if n_top_labels_co_occurrence > len(unique_labels):
 		print(
-			f"Warning: n_top_labels_co_occurrence ({n_top_labels_co_occurrence}) is greater than "
+			f"[WARNING] n_top_labels_co_occurrence ({n_top_labels_co_occurrence}) is greater than "
 			f"the total unique labels ({len(unique_labels)}). Adjusting to total unique labels."
 		)
 		n_top_labels_co_occurrence = len(unique_labels)
@@ -3580,7 +3580,16 @@ def perform_multilabel_eda(
 	if n_top_labels_co_occurrence >= 2:
 		print(f"Binarizing labels for correlation matrix (classes: {len(unique_labels)} sparse matrix) ...")
 		mlb = MultiLabelBinarizer(classes=unique_labels, sparse_output=True)
-		y_binarized = mlb.fit_transform(df[label_column])
+
+		# Parse strings to lists
+		def parse_labels(x):
+			if isinstance(x, str):
+				return eval(x)  # "['a', 'b']" → ['a', 'b']
+			return x if isinstance(x, list) else []
+
+		parsed_labels = df[label_column].apply(parse_labels)
+		y_binarized = mlb.fit_transform(parsed_labels)
+
 		labels_in_order = mlb.classes_
 		
 		top_labels_for_correlation = all_label_counts[label_column]['Label'].head(n_top_labels_co_occurrence).tolist()
@@ -3621,7 +3630,11 @@ def perform_multilabel_eda(
 		condensed_distances = squareform(distance_matrix)
 		linkage_matrix = scipy.cluster.hierarchy.linkage(condensed_distances, method='average')
 		
-		jaccard_df = pd.DataFrame(jaccard_matrix, index=top_labels_for_correlation, columns=top_labels_for_correlation)
+		jaccard_df = pd.DataFrame(
+			jaccard_matrix, 
+			index=top_labels_for_correlation, 
+			columns=top_labels_for_correlation
+		)
 		
 		# Create separate figures for each visualization
 				
@@ -3648,22 +3661,22 @@ def perform_multilabel_eda(
 		plt.close()
 		
 		# 2. Jaccard Similarity Heatmap
-		fig_heatmap = plt.figure(figsize=(10, 8))
+		fig_heatmap = plt.figure(figsize=(12, 10))
 		ax_heatmap = fig_heatmap.add_subplot(1, 1, 1)
 		sns.heatmap(
 			jaccard_df, 
 			annot=True, 
-			fmt=".2f", 
-			cmap='Blues', 
+			fmt=".2f",
+			cmap='magma', 
 			linewidths=.5, 
 			linecolor='gray',
 			cbar_kws={'label': 'Jaccard Similarity'},
-			ax=ax_heatmap
+			ax=ax_heatmap,
 		)
-		ax_heatmap.set_title(f'Jaccard Similarity Matrix')
+		ax_heatmap.set_title(f'Jaccard Similarity Heatmap')
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{file_name}_jaccard_similarity.png"),
+			fname=os.path.join(output_dir, f"{file_name}_jaccard_similarity_heatmap.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
@@ -3692,9 +3705,9 @@ def perform_multilabel_eda(
 		plt.close()
 		
 		# 4. Network Visualization
-		fig_network = plt.figure(figsize=(10, 10))
+		fig_network = plt.figure(figsize=(18, 15))
 		ax_network = fig_network.add_subplot(1, 1, 1)
-		threshold = 0.3  # Only show edges with Jaccard > 0.3
+		threshold = 0.05  # Only show edges with Jaccard threshold
 		
 		# Create adjacency list for strong connections
 		strong_connections = []
@@ -3710,15 +3723,14 @@ def perform_multilabel_eda(
 		
 		# Draw edges
 		for i, j, weight in strong_connections:
-			ax_network.plot([x[i], x[j]], [y[i], y[j]], 'gray', alpha=weight, linewidth=weight*3)
+			ax_network.plot([x[i], x[j]], [y[i], y[j]], "#000102", alpha=weight, linewidth=weight*3.5, zorder=1)
 		
 		# Draw nodes
-		ax_network.scatter(x, y, s=200, c='lightblue', edgecolors='black', zorder=10)
+		ax_network.scatter(x, y, s=250, c="#0E01C7", edgecolors="#00144E", zorder=10, alpha=0.85)
 		
 		# Add labels
 		for idx, label in enumerate(top_labels_for_correlation):
-			ax_network.text(x[idx]*1.15, y[idx]*1.15, label, 
-							 ha='center', va='center', fontsize=8)
+			ax_network.text(x[idx]*1.15, y[idx]*1.15, label, ha='center', va='center', fontsize=12)
 		
 		ax_network.set_xlim(-1.5, 1.5)
 		ax_network.set_ylim(-1.5, 1.5)

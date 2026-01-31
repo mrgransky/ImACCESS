@@ -53,7 +53,7 @@ if [ "$NUM_GPUS" -gt 1 ]; then
 	LLM_MAX_GEN_TKs=96
 	# LLM_QUANTIZATION="--llm_use_quantization"
 	VLM_MODEL="Qwen/Qwen3-VL-30B-A3B-Instruct"
-	VLM_BATCH_SIZE=10
+	VLM_BATCH_SIZE=8
 	VLM_MAX_GEN_TKs=64
 	# VLM_QUANTIZATION="--vlm_use_quantization"
 else

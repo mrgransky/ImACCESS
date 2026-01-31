@@ -153,7 +153,7 @@ def _clustering_(
 
 	print("\n[STEP 5] KMeans clustering on semantic cores")
 	if nc is None:
-			range_n_clusters = range(10, min(250, len(core_labels) // 2), 10)
+			range_n_clusters = range(10, min(250, len(core_labels) // 2), 5)
 			silhouette_scores = []
 			print("✔ Searching for optimal cluster count...")
 			for k in range_n_clusters:
@@ -179,34 +179,34 @@ def _clustering_(
 		}
 	)
 	cluster_canonicals = {}
+	canonical_threshold = 0.4
 	tfidf = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
 	for cid in sorted(df_core.cluster.unique()):
-			cluster_texts = df_core[df_core.cluster == cid]["label"].tolist()
-			tfidf_matrix = tfidf.fit_transform(cluster_texts)
-			scores = tfidf_matrix.mean(axis=0).A1
-			vocab = tfidf.get_feature_names_out()
-			ranked = sorted(zip(vocab, scores), key=lambda x: x[1], reverse=True)
-			canonical = ranked[0][0] if ranked[0][1] > 0.4 else None
-			cluster_canonicals[cid] = {
-					"canonical": canonical,
-					"size": len(cluster_texts),
-					"top_terms": ranked[:5]
-			}
-			print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples: {cluster_texts}")
-			print("\tTop terms:")
-			for term, score in ranked[:5]:
-					print(f"\t\t- {term:<30} tfidf: {score:.4f}")
-			print(f"\t➜ Selected canonical: {canonical}")
+		cluster_texts = df_core[df_core.cluster == cid]["label"].tolist()
+		tfidf_matrix = tfidf.fit_transform(cluster_texts)
+		scores = tfidf_matrix.mean(axis=0).A1
+		vocab = tfidf.get_feature_names_out()
+		ranked = sorted(zip(vocab, scores), key=lambda x: x[1], reverse=True)
+		canonical = ranked[0][0] if ranked[0][1] > canonical_threshold else None
+		cluster_canonicals[cid] = {
+				"canonical": canonical,
+				"size": len(cluster_texts),
+				"top_terms": ranked[:5]
+		}
+		print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples: {cluster_texts}")
+		print("Top terms:")
+		for term, score in ranked[:5]:
+			print(f"\t- {term:<30} tfidf: {score:.4f}")
+		print(f"\t➜ Selected canonical: {canonical}")
 
 	print("\n[STEP 7] Saving results")
-	df_clusters = pd.DataFrame({
+	df_clusters = pd.DataFrame(
+		{
 			"label": core_labels + noise_labels,
 			"cluster": list(core_cluster_ids) + [-1] * len(noise_labels),
-			"canonical_label": (
-					[cluster_canonicals[c]["canonical"] for c in core_cluster_ids]
-					+ [None] * len(noise_labels)
-			)
-	})
+			"canonical_label": ([cluster_canonicals[c]["canonical"] for c in core_cluster_ids] + [None] * len(noise_labels))
+		}
+	)
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation.csv")
 	df_clusters.to_csv(out_csv, index=False)
 	print(f"✔ Saved consolidated labels → {out_csv}")
