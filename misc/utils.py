@@ -99,7 +99,8 @@ nltk_modules = [
 	'punkt',
 	'punkt_tab',
 	'wordnet',
-	'averaged_perceptron_tagger', 
+	'averaged_perceptron_tagger',
+	'averaged_perceptron_tagger_eng',
 	'omw-1.4',
 	'stopwords',
 ]

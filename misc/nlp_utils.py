@@ -20,6 +20,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from typing import List, Tuple, Dict, Set, Any, Optional, Union, Callable, Iterable
 # Try relative import first, fallback to absolute
 import string
+import hdbscan
 # Install: pip install lingua-language-detector
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
 
@@ -29,7 +30,8 @@ nltk_modules = [
 	'punkt',
 	'punkt_tab',
 	'wordnet',
-	'averaged_perceptron_tagger', 
+	'averaged_perceptron_tagger',
+	'averaged_perceptron_tagger_eng',
 	'omw-1.4',
 	'stopwords',
 ]
@@ -107,6 +109,112 @@ detector_all = (
 )
 
 def _clustering_(
+		labels: List[List[str]],
+		model_id: str,
+		device: str = "cuda" if torch.cuda.is_available() else "cpu",
+		clusters_fname: str = "clusters.csv",
+		nc: int = None,
+		verbose: bool = True,
+):
+	print("\n[STEP 1] Loading SentenceTransformer model")
+	model = SentenceTransformer(model_id).to(device)
+	print(f"✔ Model loaded: {model_id} Parameters: {sum(p.numel() for p in model.parameters()):,}")
+
+	print("\n[STEP 2] Deduplicating multimodal labels")
+	documents = [list(set(lbl)) for lbl in labels]
+	all_labels = sorted(set(label for doc in documents for label in doc))
+	print(f"✔ Total samples: {len(documents)}")
+	print(f"✔ Unique multimodal labels: {len(all_labels)}")
+	print("✔ Sample labels:", all_labels[:15])
+
+	print("\n[STEP 3] Encoding labels into semantic space")
+	X = model.encode(all_labels, show_progress_bar=True)
+	print(f"✔ Embedding: {type(X)} {X.shape} sparsity: {np.count_nonzero(X) / np.prod(X.shape):.4f}")
+
+	print("\n[STEP 4] Density-based clustering with HDBSCAN")
+	hdb = hdbscan.HDBSCAN(
+			min_cluster_size=5,
+			min_samples=3,
+			metric="euclidean",
+			cluster_selection_method="eom"
+	)
+	hdb_labels = hdb.fit_predict(X)
+	num_noise = np.sum(hdb_labels == -1)
+	num_core = len(hdb_labels) - num_noise
+	print(f"HDBSCAN core labels: {num_core}/{len(all_labels)} ({num_core / len(all_labels):.2%})")
+	print(f"HDBSCAN noise labels: {num_noise}/{len(all_labels)} ({num_noise / len(all_labels):.2%})")
+	core_indices = np.where(hdb_labels != -1)[0]
+	noise_indices = np.where(hdb_labels == -1)[0]
+	X_core = X[core_indices]
+	core_labels = [all_labels[i] for i in core_indices]
+	noise_labels = [all_labels[i] for i in noise_indices]
+	print("✔ Sample CORE labels:", core_labels[:10])
+	print("✔ Sample NOISE labels:", noise_labels[:10])
+
+	print("\n[STEP 5] KMeans clustering on semantic cores")
+	if nc is None:
+			range_n_clusters = range(10, min(250, len(core_labels) // 2), 10)
+			silhouette_scores = []
+			print("✔ Searching for optimal cluster count...")
+			for k in range_n_clusters:
+					km = KMeans(n_clusters=k, n_init="auto", random_state=0)
+					preds = km.fit_predict(X_core)
+					score = silhouette_score(X_core, preds)
+					silhouette_scores.append(score)
+					print(f"\tk: {k:<6} silhouette: {score:.4f}")
+			best_k = range_n_clusters[np.argmax(silhouette_scores)]
+			print(f"✔ Optimal k selected: {best_k}")
+	else:
+			best_k = nc
+			print(f"✔ Using user-defined k: {best_k}")
+
+	kmeans = KMeans(n_clusters=best_k, n_init="auto", random_state=0)
+	core_cluster_ids = kmeans.fit_predict(X_core)
+
+	print("\n[STEP 6] Canonical label induction per cluster")
+	df_core = pd.DataFrame(
+		{
+			"label": core_labels,
+			"cluster": core_cluster_ids,
+		}
+	)
+	cluster_canonicals = {}
+	tfidf = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
+	for cid in sorted(df_core.cluster.unique()):
+			cluster_texts = df_core[df_core.cluster == cid]["label"].tolist()
+			tfidf_matrix = tfidf.fit_transform(cluster_texts)
+			scores = tfidf_matrix.mean(axis=0).A1
+			vocab = tfidf.get_feature_names_out()
+			ranked = sorted(zip(vocab, scores), key=lambda x: x[1], reverse=True)
+			canonical = ranked[0][0] if ranked[0][1] > 0.4 else None
+			cluster_canonicals[cid] = {
+					"canonical": canonical,
+					"size": len(cluster_texts),
+					"top_terms": ranked[:5]
+			}
+			print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples: {cluster_texts}")
+			print("\tTop terms:")
+			for term, score in ranked[:5]:
+					print(f"\t\t- {term:<30} tfidf: {score:.4f}")
+			print(f"\t➜ Selected canonical: {canonical}")
+
+	print("\n[STEP 7] Saving results")
+	df_clusters = pd.DataFrame({
+			"label": core_labels + noise_labels,
+			"cluster": list(core_cluster_ids) + [-1] * len(noise_labels),
+			"canonical_label": (
+					[cluster_canonicals[c]["canonical"] for c in core_cluster_ids]
+					+ [None] * len(noise_labels)
+			)
+	})
+	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation.csv")
+	df_clusters.to_csv(out_csv, index=False)
+	print(f"✔ Saved consolidated labels → {out_csv}")
+	print("\n[PIPELINE COMPLETE]")
+	print("=" * 120)
+	return df_clusters
+
+def _clustering_old(
 	labels: List[List[str]],
 	model_id: str,
 	device: str = "cuda" if torch.cuda.is_available() else "cpu",
