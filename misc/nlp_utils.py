@@ -179,8 +179,8 @@ def _clustering_(
 		}
 	)
 	cluster_canonicals = {}
-	canonical_threshold = 0.4
-	tfidf = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
+	canonical_threshold = 0.3
+	tfidf = TfidfVectorizer(stop_words="english", ngram_range=(1, 3), max_features=5)
 	for cid in sorted(df_core.cluster.unique()):
 		cluster_texts = df_core[df_core.cluster == cid]["label"].tolist()
 		tfidf_matrix = tfidf.fit_transform(cluster_texts)
