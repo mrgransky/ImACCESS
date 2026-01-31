@@ -2501,7 +2501,7 @@ def create_dataset_radar_chart(summary_stats_dict, output_dir, label_column, DPI
 			linewidth=2, 
 			color='#ff7f0e', 
 			label='Typical Benchmark', 
-			alpha=0.6
+			alpha=0.75
 		)
 		ax.fill(angles, benchmark_values, alpha=0.15, color='#ff7f0e')
 		
@@ -3187,7 +3187,7 @@ def perform_multilabel_eda(
 	data_path: str,
 	label_column: str,
 	n_top_labels_plot: int=100,
-	n_top_labels_co_occurrence: int=15,
+	n_top_labels_co_occurrence: int=30,
 	DPI: int=200,
 ):
 	if not os.path.exists(data_path):
@@ -3666,10 +3666,10 @@ def perform_multilabel_eda(
 		sns.heatmap(
 			jaccard_df, 
 			annot=True, 
-			fmt=".2f",
-			cmap='magma', 
-			linewidths=.5, 
-			linecolor='gray',
+			fmt=".1f",
+			cmap='Blues',
+			linewidths=0.1, 
+			linecolor="#242B31",
 			cbar_kws={'label': 'Jaccard Similarity'},
 			ax=ax_heatmap,
 		)
@@ -3683,17 +3683,17 @@ def perform_multilabel_eda(
 		plt.close()
 		
 		# 3. Co-occurrence Matrix
-		fig_cooc = plt.figure(figsize=(10, 8))
+		fig_cooc = plt.figure(figsize=(16, 14))
 		ax_cooc = fig_cooc.add_subplot(1, 1, 1)
 		sns.heatmap(
-			cooccurrence_df, 
-			annot=True, 
-			fmt=".0f", 
-			cmap='Greens', 
-			linewidths=.5, 
-			linecolor='gray',
+			cooccurrence_df,
+			annot=True,
+			fmt=".0f",
+			cmap='Greens',
+			linewidths=0.1,
+			linecolor="#4D5153",
 			cbar_kws={'label': 'Co-occurrence Count'},
-			ax=ax_cooc
+			ax=ax_cooc,
 		)
 		ax_cooc.set_title(f'Label Co-occurrence Matrix (Absolute Counts)')
 		plt.tight_layout()
@@ -3993,15 +3993,15 @@ def plot_grouped_bar_chart(
 	plt.close()
 
 def plot_train_val_label_distribution(
-		train_df: pd.DataFrame,
-		val_df: pd.DataFrame,
-		dataset_name: str,
-		VAL_SPLIT_PCT: float,
-		FIGURE_SIZE: tuple = (12, 8),
-		DPI: int = 200,
-		fname: str = "simple_random_split_stratified_label_distribution_train_val.png",
-		label_column: str = 'label',
-	):
+	train_df: pd.DataFrame,
+	val_df: pd.DataFrame,
+	dataset_name: str,
+	VAL_SPLIT_PCT: float,
+	FIGURE_SIZE: tuple = (12, 8),
+	DPI: int = 200,
+	fname: str = "simple_random_split_stratified_label_distribution_train_val.png",
+	label_column: str = 'label',
+):
 	# Visualize label distribution in training and validation sets
 	plt.figure(figsize=FIGURE_SIZE)
 	train_df[label_column].value_counts().plot(kind='bar', color='blue', alpha=0.6, label=f'Train {1-VAL_SPLIT_PCT}')
@@ -4405,7 +4405,7 @@ def plot_long_tailed_distribution(
 			markeredgecolor='#8a008a',  # Set marker edge color
 			markersize=2,          				# Adjust marker size
 			linewidth=2.0,
-			alpha=0.6,
+			alpha=0.75,
 			label='Logarithmic'.capitalize(),
 			zorder=2,
 		)

@@ -1119,3 +1119,17 @@ summer
 autumn
 fall
 winter
+eastbound
+westbound
+northbound
+southbound
+northeastbound
+northwestbound
+southwestbound
+southeastbound
+upbound
+downbound
+upstreambound
+downstreambound
+rightbound
+leftbound
