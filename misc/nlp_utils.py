@@ -191,13 +191,13 @@ def _clustering_(
 		cluster_canonicals[cid] = {
 				"canonical": canonical,
 				"size": len(cluster_texts),
-				"top_terms": ranked[:5]
+				"top_terms": ranked
 		}
 		print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples: {cluster_texts}")
 		print("Top terms:")
-		for term, score in ranked[:5]:
+		for term, score in ranked:
 			print(f"\t- {term:<30} tfidf: {score:.4f}")
-		print(f"\t➜ Selected canonical: {canonical}")
+		print(f"Selected canonical: {canonical}")
 
 	print("\n[STEP 7] Saving results")
 	df_clusters = pd.DataFrame(
