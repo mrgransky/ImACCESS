@@ -12,14 +12,14 @@ def merge_csv_files(
 	nc: int = None,
 	verbose: bool = False
 ):
+	OUTPUT_DIR = os.path.join(dataset_dir, "outputs")
+	os.makedirs(OUTPUT_DIR, exist_ok=True)
 	output_fpath = os.path.join(dataset_dir, "metadata_multi_label_multimodal.csv")
 	# Get a list of all CSV files in the input directory
 	csv_files = glob.glob(os.path.join(dataset_dir, 'metadata_multi_label_chunk_*_multimodal.csv'))
 	# sort the list of CSV files based on the chunk number
 	csv_files.sort(key=lambda f: int(os.path.basename(f).split('_')[-2]))
 
-	OUTPUT_DIR = os.path.join(os.path.dirname(csv_file), "outputs")
-	os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 	if verbose:
 		print(f"Found {len(csv_files)} CSV files to merge:")
