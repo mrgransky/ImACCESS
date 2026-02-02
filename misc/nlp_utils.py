@@ -151,7 +151,7 @@ def _clustering_(
 
 	print(f"\n[STEP 4] Density-based clustering with HDBSCAN on semantic space for {X.shape[0]} labels")
 	hdb = hdbscan.HDBSCAN(
-		min_cluster_size=11 if X.shape[0] > 1000 else 3,
+		min_cluster_size=11 if X.shape[0] > 2000 else 3,
 		min_samples=3,
 		metric="euclidean",
 		cluster_selection_method="eom"
@@ -180,7 +180,7 @@ def _clustering_(
 		if len(core_labels) > 1000:
 			range_n_clusters = range(100, min(2500, len(core_labels) // 10), 50)
 		else:
-			range_n_clusters = range(45, min(211, len(core_labels) // 2), 3)
+			range_n_clusters = range(10, min(211, len(core_labels) // 2), 10)
 		silhouette_scores = []
 		print(f"Searching for optimal cluster count {range_n_clusters}...")
 		for k in range_n_clusters:
