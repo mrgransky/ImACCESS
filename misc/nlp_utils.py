@@ -179,7 +179,7 @@ def _clustering_(
 	print(f"\n[STEP 5.1] Silhouette analysis for KMeans clustering on {len(core_labels)} semantic cores")
 	if nc is None:
 		if len(core_labels) > 1000:
-			range_n_clusters = range(200, min(1000, len(core_labels) // 2), 10)
+			range_n_clusters = range(100, min(1000, len(core_labels) // 10), 50)
 		else:
 			range_n_clusters = range(10, min(10, len(core_labels) // 2), 5)
 		silhouette_scores = []
