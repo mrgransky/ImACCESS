@@ -52,6 +52,15 @@ def merge_csv_files(
 	if verbose:
 		print(f"Saved merged CSV file to {output_fpath}")
 
+	print(os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")))
+	_clustering_(
+		labels=df['multimodal_labels'].tolist(),
+		model_id="google/embeddinggemma-300M" if torch.__version__ > "2.6" else "sentence-transformers/all-MiniLM-L6-v2",
+		nc=nc,
+		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")),
+		verbose=verbose,
+	)
+
 	viz.perform_multilabel_eda(
 		data_path=output_fpath,
 		label_column='multimodal_labels'
@@ -62,16 +71,6 @@ def merge_csv_files(
 		val_split_pct=0.35,
 		label_col='multimodal_labels'
 	)
-
-	print(os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")))
-	_clustering_(
-		labels=df['multimodal_labels'].tolist(),
-		model_id="google/embeddinggemma-300M" if torch.__version__ > "2.6" else "sentence-transformers/all-MiniLM-L6-v2",
-		nc=nc,
-		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")),
-		verbose=verbose,
-	)
-
 
 @measure_execution_time
 def main():
