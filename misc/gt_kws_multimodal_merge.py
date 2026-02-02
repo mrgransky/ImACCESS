@@ -4,7 +4,7 @@ from nlp_utils import _clustering_
 
 # how to run:
 # Puhti/Mahti:
-# srun -J interactive_cpu --account=project_2009043 --partition=large --time=00-05:15:00 --mem=128G --ntasks=1 --cpus-per-task=20 --pty /bin/bash -i
+# srun -J interactive_cpu --account=project_2009043 --partition=small --time=00-05:15:00 --mem=128G --ntasks=1 --cpus-per-task=20 --pty /bin/bash -i
 # $ nohup python -u gt_kws_multimodal_merge.py --dataset_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -v > /scratch/project_2004072/ImACCESS/trash/logs/gt_kws_multimodal_merge_h4.txt &
 
 def merge_csv_files(
@@ -64,12 +64,12 @@ def merge_csv_files(
 		label_col='multimodal_labels'
 	)
 
-	print(os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv")))
+	print(os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")))
 	_clustering_(
 		labels=df['multimodal_labels'].tolist(),
 		model_id="google/embeddinggemma-300M" if torch.__version__ > "2.6" else "sentence-transformers/all-MiniLM-L6-v2",
 		nc=nc,
-		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv")),
+		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")),
 		verbose=verbose,
 	)
 
