@@ -220,26 +220,26 @@ def _clustering_(
 		ranked = sorted(zip(vocab, scores), key=lambda x: x[1], reverse=True)
 
 		canonical = None
-
-		# Separate n-grams and single words above threshold
-		ngrams_above_threshold = [
-				(term, score) for term, score in ranked 
-				if score > canonical_threshold and len(term.split()) > 1
-		]
-		singles_above_threshold = [
-				(term, score) for term, score in ranked 
-				if score > canonical_threshold and len(term.split()) == 1
+		# Find any term above threshold
+		terms_above_threshold = [
+			(term, score) for term, score in ranked 
+			if score > canonical_threshold
 		]
 
-		# Priority 1: Highest scoring n-gram above threshold
-		if ngrams_above_threshold:
-				canonical = ngrams_above_threshold[0][0]
-		# Priority 2: Highest scoring single word above threshold  
-		elif singles_above_threshold:
-				canonical = singles_above_threshold[0][0]
-		# Priority 3: No term above threshold (optional fallback)
-		else:
-				canonical = ranked[0][0] if ranked else None
+		if terms_above_threshold:
+			# Among terms above threshold, prioritize n-grams
+			ngrams_above = [
+				(term, score) for term, score in terms_above_threshold 
+				if len(term.split()) > 1
+			]
+			
+			if ngrams_above:
+				canonical = ngrams_above[0][0]  # Highest scoring n-gram
+			else:
+				canonical = terms_above_threshold[0][0]  # Highest scoring single word
+		
+		# No term meets threshold
+		# else: canonical remains None
 
 		# canonical = ranked[0][0] if ranked[0][1] > canonical_threshold else None
 
