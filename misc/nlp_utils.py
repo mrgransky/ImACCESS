@@ -132,7 +132,20 @@ def _clustering_(
 	print(f"✔ Model loaded: {model_id} Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
 	print("\n[STEP 2] Deduplicating labels")
-	documents = [list(set(lbl)) for lbl in labels]
+	documents = list()
+	for doc in labels:
+		# apply eval
+		if isinstance(doc, str):
+			try:
+				doc = eval(doc)
+			except Exception as e:
+				print(f"Failed to convert {doc} to list: {e}")
+				raise e
+		else:
+			documents.append(list(set(lbl for lbl in doc)))
+
+	# documents = [list(set(lbl)) for lbl in labels]
+
 	all_labels = sorted(set(label for doc in documents for label in doc))
 
 	print(f"✔ Total samples: {len(documents)}")
