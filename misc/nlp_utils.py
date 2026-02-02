@@ -112,7 +112,7 @@ detector_all = (
 def _clustering_(
 	labels: List[List[str]],
 	model_id: str,
-	device: str = "cuda" if torch.cuda.is_available() else "cpu",
+	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
 	clusters_fname: str = "clusters.csv",
 	nc: int = None,
 	verbose: bool = True,
@@ -145,7 +145,7 @@ def _clustering_(
 
 	print(f"Model loaded: {model_id} Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
-	print("\n[STEP 3] Encoding labels into semantic space")
+	print(f"\n[STEP 3] Encoding {len(all_labels)} labels into semantic space")
 	X = model.encode(all_labels, show_progress_bar=False)
 	print(f"Embedding: {type(X)} {X.shape} sparsity: {np.count_nonzero(X) / np.prod(X.shape):.4f}")
 
@@ -159,7 +159,7 @@ def _clustering_(
 	hdb_labels = hdb.fit_predict(X)
 	print(f"[HDBSCAN] labels: {type(hdb_labels)} {hdb_labels.shape} {set(hdb_labels)}")
 	cluster_counts = {int(k): v for k, v in Counter(hdb_labels).items()}
-	print(f"HDBSCAN {len(np.unique(hdb_labels))} cluster counts:\n{json.dumps(cluster_counts, indent=2, ensure_ascii=False)}")
+	print(f"[HDBSCAN] {len(np.unique(hdb_labels))} cluster counts:\n{json.dumps(cluster_counts, indent=2, ensure_ascii=False)}")
 	num_noise = np.sum(hdb_labels == -1) # outlier
 	num_core = len(hdb_labels) - num_noise
 	
@@ -178,9 +178,9 @@ def _clustering_(
 	print(f"\n[STEP 5.1] Silhouette analysis for KMeans clustering on {len(core_labels)} semantic cores")
 	if nc is None:
 		if len(core_labels) > 1000:
-			range_n_clusters = range(100, min(1000, len(core_labels) // 10), 50)
+			range_n_clusters = range(100, min(2500, len(core_labels) // 10), 50)
 		else:
-			range_n_clusters = range(10, min(200, len(core_labels) // 2), 10)
+			range_n_clusters = range(45, min(211, len(core_labels) // 2), 3)
 		silhouette_scores = []
 		print(f"Searching for optimal cluster count {range_n_clusters}...")
 		for k in range_n_clusters:
@@ -207,8 +207,12 @@ def _clustering_(
 		}
 	)
 	cluster_canonicals = {}
-	canonical_threshold = 0.35
-	tfidf = TfidfVectorizer(stop_words="english", ngram_range=(1, 3), max_features=5)
+	canonical_threshold = 0.4
+	tfidf = TfidfVectorizer(
+		stop_words="english", 
+		ngram_range=(1, 3),
+		max_features=5,
+	)
 
 	for cid in sorted(df_core.cluster.unique()):
 		cluster_texts = df_core[df_core.cluster == cid]["label"].tolist()
@@ -253,9 +257,9 @@ def _clustering_(
 
 		print("Top terms:")
 		for term, score in ranked:
-			print(f"\t- {term:<30} tfidf: {score:<8.4f}{f' > {canonical_threshold} => POTENTIAL CANONICAL' if score > canonical_threshold else ''}")
+			print(f"\t- {term:<30}tfidf: {score:<10.7f}{f' > {canonical_threshold} => POTENTIAL CANONICAL' if score > canonical_threshold else ''}")
 
-		print(f"Selected canonical: {canonical}")
+		print(f">> Canonical (threshold > {canonical_threshold} & n-gram priority): {canonical}")
 
 	print("\n[STEP 7] Saving results")
 	df_clusters = pd.DataFrame(
@@ -689,8 +693,6 @@ def _post_process_(
 		return ' '.join(lemmatized_tokens)
 	
 	processed_batch = []
-
-
 
 	for idx, labels in enumerate(labels_list):
 		if labels is None:

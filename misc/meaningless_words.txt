@@ -29,6 +29,7 @@ over
 above
 under
 near
+address
 surrounded
 surrounded by
 unknown
@@ -1092,6 +1093,10 @@ palmtree
 beverly hill
 boyleston
 photog
+enter
+entering
+exit
+exiting
 chev
 rare
 left
@@ -1106,7 +1111,10 @@ environment
 hour
 minute
 day
+daylight
+daytime
 night
+nightlight
 nighttime
 dusk
 dawn
