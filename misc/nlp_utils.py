@@ -13,6 +13,7 @@ from collections import Counter
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
+from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import math
@@ -173,7 +174,9 @@ def _clustering_(
 	noise_labels = [all_labels[i] for i in noise_indices]
 	
 	print("Sample CORE labels:", core_labels[:30])
-	print("Sample NOISE labels:", noise_labels[:30])
+	print(f"{len(noise_labels)} NOISE labels")
+	for _, v in enumerate(sorted(noise_labels)):
+		print(f"{v}")
 
 	print(f"\n[STEP 5.1] Silhouette analysis for KMeans clustering on {len(core_labels)} semantic cores")
 	if nc is None:
@@ -199,67 +202,117 @@ def _clustering_(
 	kmeans = KMeans(n_clusters=best_k, n_init="auto", random_state=0)
 	core_cluster_ids = kmeans.fit_predict(X_core)
 
-	print(f"\n[STEP 6] Canonical label induction per cluster on {len(core_labels)} semantic cores")
+
 	df_core = pd.DataFrame(
 		{
 			"label": core_labels,
 			"cluster": core_cluster_ids,
 		}
 	)
+	
+	print(f"\n[STEP 6] Centroid-nearest canonical label per cluster")
+
+	def get_centroid_canonical(cluster_embeddings, cluster_labels):
+		"""
+		cluster_embeddings: np.array of shape (n_samples, embedding_dim)
+		cluster_labels: list of original label strings
+		
+		Returns: (canonical_label, similarity_score)
+		"""
+		# Compute centroid (mean of all embeddings)
+		centroid = cluster_embeddings.mean(axis=0, keepdims=True)
+		
+		# Find similarity of each label to centroid
+		similarities = cosine_similarity(centroid, cluster_embeddings)[0]
+		
+		# Pick the label with highest similarity
+		best_idx = similarities.argmax()
+		
+		return cluster_labels[best_idx], similarities[best_idx]
+
+	
 	cluster_canonicals = {}
-	canonical_threshold = 0.4
-	tfidf = TfidfVectorizer(
-		stop_words="english", 
-		ngram_range=(1, 3),
-		max_features=5,
-	)
 
 	for cid in sorted(df_core.cluster.unique()):
-		cluster_texts = df_core[df_core.cluster == cid]["label"].tolist()
-		tfidf_matrix = tfidf.fit_transform(cluster_texts)
-
-		vocab = tfidf.get_feature_names_out()
-		scores = tfidf_matrix.mean(axis=0).A1
-
-		ranked = sorted(zip(vocab, scores), key=lambda x: x[1], reverse=True)
-
-		canonical = None
-		# Find any term above threshold
-		terms_above_threshold = [
-			(term, score) for term, score in ranked 
-			if score > canonical_threshold
-		]
-
-		if terms_above_threshold:
-			# Among terms above threshold, prioritize n-grams
-			ngrams_above = [
-				(term, score) for term, score in terms_above_threshold 
-				if len(term.split()) > 1
-			]
-			
-			if ngrams_above:
-				canonical = ngrams_above[0][0]  # Highest scoring n-gram
-			else:
-				canonical = terms_above_threshold[0][0]  # Highest scoring single word
+		# Get labels and their embeddings for this cluster
+		cluster_mask = df_core.cluster == cid
+		cluster_texts = df_core[cluster_mask]["label"].tolist()
 		
-		# No term meets threshold
-		# else: canonical remains None
-
-		# canonical = ranked[0][0] if ranked[0][1] > canonical_threshold else None
-
+		# Get embeddings for this cluster (from X_core)
+		cluster_indices = df_core[cluster_mask].index.tolist()
+		cluster_embeddings = X_core[cluster_indices]
+		
+		# Find centroid-nearest label
+		canonical, score = get_centroid_canonical(cluster_embeddings, cluster_texts)
+		
 		cluster_canonicals[cid] = {
 			"canonical": canonical,
+			"score": score,
 			"size": len(cluster_texts),
-			"top_terms": ranked
 		}
+		
+		print(f"\n[Cluster {cid}] {len(cluster_texts)} samples: {cluster_texts}")
+		print(f">> Canonical (centroid-nearest, sim={score:.4f}): {canonical}")
 
-		print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples:\n{cluster_texts}")
 
-		print("Top terms:")
-		for term, score in ranked:
-			print(f"\t- {term:<30}tfidf: {score:<10.7f}{f' > {canonical_threshold} => POTENTIAL CANONICAL' if score > canonical_threshold else ''}")
 
-		print(f">> Canonical (threshold > {canonical_threshold} & n-gram priority): {canonical}")
+
+	# print(f"\n[STEP 6] Canonical label induction per cluster on {len(core_labels)} semantic cores")
+	
+	# cluster_canonicals = {}
+	# canonical_threshold = 0.4
+	# tfidf = TfidfVectorizer(
+	# 	stop_words="english", 
+	# 	ngram_range=(1, 3),
+	# 	max_features=5,
+	# )
+
+	# for cid in sorted(df_core.cluster.unique()):
+	# 	cluster_texts = df_core[df_core.cluster == cid]["label"].tolist()
+	# 	tfidf_matrix = tfidf.fit_transform(cluster_texts)
+
+	# 	vocab = tfidf.get_feature_names_out()
+	# 	scores = tfidf_matrix.mean(axis=0).A1
+
+	# 	ranked = sorted(zip(vocab, scores), key=lambda x: x[1], reverse=True)
+
+	# 	canonical = None
+	# 	# Find any term above threshold
+	# 	terms_above_threshold = [
+	# 		(term, score) for term, score in ranked 
+	# 		if score >= canonical_threshold
+	# 	]
+
+	# 	if terms_above_threshold:
+	# 		# Among terms above threshold, prioritize n-grams
+	# 		ngrams_above = [
+	# 			(term, score) for term, score in terms_above_threshold 
+	# 			if len(term.split()) > 1
+	# 		]
+			
+	# 		if ngrams_above:
+	# 			canonical = ngrams_above[0][0]  # Highest scoring n-gram
+	# 		else:
+	# 			canonical = terms_above_threshold[0][0]  # Highest scoring single word
+		
+	# 	# No term meets threshold
+	# 	# else: canonical remains None
+
+	# 	# canonical = ranked[0][0] if ranked[0][1] > canonical_threshold else None
+
+	# 	cluster_canonicals[cid] = {
+	# 		"canonical": canonical,
+	# 		"size": len(cluster_texts),
+	# 		"top_terms": ranked
+	# 	}
+
+	# 	print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples:\n{cluster_texts}")
+
+	# 	print("Top terms:")
+	# 	for term, score in ranked:
+	# 		print(f"\t- {term:<30}tfidf: {score:<10.7f}{f' >= {canonical_threshold} => POTENTIAL CANONICAL' if score >= canonical_threshold else ''}")
+
+	# 	print(f">> Canonical (threshold >= {canonical_threshold} & n-gram priority): {canonical}")
 
 	print("\n[STEP 7] Saving results")
 	df_clusters = pd.DataFrame(
