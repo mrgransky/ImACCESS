@@ -566,6 +566,7 @@ Canadian
 Chinese
 Danish
 Dutch
+Egyptian
 English
 European
 Finnish
@@ -577,8 +578,10 @@ Irish
 Italian
 Japanese
 Korean
+Lebanese
 Mexican
 Norwegian
+North Korean
 Polish
 Portuguese
 Russian
@@ -588,4 +591,5 @@ Scottish
 Spanish
 Swedish
 Swiss
+Syrian
 Turkish

@@ -1045,6 +1045,10 @@ northeast
 northwest
 southwest
 southeast
+northern
+eastern
+western
+southern
 nnw
 nne
 sse
@@ -1108,9 +1112,14 @@ hour
 minute
 day
 night
+nighttime
+dusk
+dawn
 morning
 afternoon
 evening
+midnight
+noon
 month
 year
 co
