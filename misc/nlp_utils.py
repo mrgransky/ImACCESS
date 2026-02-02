@@ -132,9 +132,9 @@ def _clustering_(
 
 	all_labels = sorted(set(label for doc in documents for label in doc))
 
-	print(f"✔ Total samples: {type(documents)} {len(documents)} {type(documents[0])}")
-	print(f"✔ Unique labels: {type(all_labels)} {len(all_labels)} {type(all_labels[0])}")
-	print("✔ Sample labels:", all_labels[:15])
+	print(f"Total samples: {type(documents)} {len(documents)} {type(documents[0])}")
+	print(f"Unique labels: {type(all_labels)} {len(all_labels)} {type(all_labels[0])}")
+	print(f"Sample labels: {all_labels[:15]}")
 
 	print(f"\n[STEP 2] Loading SentenceTransformer {model_id}")
 	model = SentenceTransformer(
@@ -143,13 +143,13 @@ def _clustering_(
 		token=os.getenv("HUGGINGFACE_TOKEN"),
 	).to(device)
 
-	print(f"✔ Model loaded: {model_id} Parameters: {sum(p.numel() for p in model.parameters()):,}")
+	print(f"Model loaded: {model_id} Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
 	print("\n[STEP 3] Encoding labels into semantic space")
-	X = model.encode(all_labels, show_progress_bar=True)
-	print(f"✔ Embedding: {type(X)} {X.shape} sparsity: {np.count_nonzero(X) / np.prod(X.shape):.4f}")
+	X = model.encode(all_labels, show_progress_bar=False)
+	print(f"Embedding: {type(X)} {X.shape} sparsity: {np.count_nonzero(X) / np.prod(X.shape):.4f}")
 
-	print("\n[STEP 4] Density-based clustering with HDBSCAN")
+	print(f"\n[STEP 4] Density-based clustering with HDBSCAN on semantic space for {X.shape[0]} labels")
 	hdb = hdbscan.HDBSCAN(
 		min_cluster_size=5,
 		min_samples=3,
@@ -157,39 +157,50 @@ def _clustering_(
 		cluster_selection_method="eom"
 	)
 	hdb_labels = hdb.fit_predict(X)
-	num_noise = np.sum(hdb_labels == -1)
+	print(f"HDBSCAN labels: {type(hdb_labels)} {hdb_labels.shape} {set(hdb_labels)}")
+	cluster_counts = {int(k): v for k, v in Counter(hdb_labels).items()}
+	print(f"HDBSCAN {len(np.unique(hdb_labels))} cluster counts:\n{json.dumps(cluster_counts, indent=2, ensure_ascii=False)}")
+	num_noise = np.sum(hdb_labels == -1) # outlier
 	num_core = len(hdb_labels) - num_noise
+	
 	print(f"HDBSCAN core labels: {num_core}/{len(all_labels)} ({num_core / len(all_labels):.2%})")
 	print(f"HDBSCAN noise labels: {num_noise}/{len(all_labels)} ({num_noise / len(all_labels):.2%})")
+	
 	core_indices = np.where(hdb_labels != -1)[0]
 	noise_indices = np.where(hdb_labels == -1)[0]
+	
 	X_core = X[core_indices]
 	core_labels = [all_labels[i] for i in core_indices]
 	noise_labels = [all_labels[i] for i in noise_indices]
-	print("✔ Sample CORE labels:", core_labels[:10])
-	print("✔ Sample NOISE labels:", noise_labels[:10])
+	
+	print("Sample CORE labels:", core_labels[:30])
+	print("Sample NOISE labels:", noise_labels[:30])
 
-	print("\n[STEP 5] KMeans clustering on semantic cores")
+	print(f"\n[STEP 5.1] Silhouette analysis for KMeans clustering on {len(core_labels)} semantic cores")
 	if nc is None:
-		range_n_clusters = range(10, min(250, len(core_labels) // 2), 5)
+		if len(core_labels) > 1000:
+			range_n_clusters = range(100, min(600, len(core_labels) // 2), 10)
+		else:
+			range_n_clusters = range(10, min(10, len(core_labels) // 2), 5)
 		silhouette_scores = []
-		print("✔ Searching for optimal cluster count...")
+		print(f"Searching for optimal cluster count {range_n_clusters}...")
 		for k in range_n_clusters:
 			km = KMeans(n_clusters=k, n_init="auto", random_state=0)
 			preds = km.fit_predict(X_core)
-			score = silhouette_score(X_core, preds)
+			score = silhouette_score(X_core, preds, metric="euclidean", random_state=0)
 			silhouette_scores.append(score)
 			print(f"\tk: {k:<6} silhouette: {score:.4f}")
 		best_k = range_n_clusters[np.argmax(silhouette_scores)]
-		print(f"✔ Optimal k selected: {best_k}")
+		print(f"Optimal k selected: {best_k}")
 	else:
 		best_k = nc
-		print(f"✔ Using user-defined k: {best_k}")
+		print(f"Using user-defined k: {best_k}")
 
+	print(f"\n[STEP 5.2] KMeans clustering on {type(X_core)} {X_core.shape} semantic cores")
 	kmeans = KMeans(n_clusters=best_k, n_init="auto", random_state=0)
 	core_cluster_ids = kmeans.fit_predict(X_core)
 
-	print("\n[STEP 6] Canonical label induction per cluster")
+	print(f"\n[STEP 6] Canonical label induction per cluster on {len(core_labels)} semantic cores")
 	df_core = pd.DataFrame(
 		{
 			"label": core_labels,
@@ -214,7 +225,7 @@ def _clustering_(
 		print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples: {cluster_texts}")
 		print("Top terms:")
 		for term, score in ranked:
-			print(f"\t- {term:<30} tfidf: {score:.4f}")
+			print(f"\t- {term:<30} tfidf: {score:<10.4f}{f' > {canonical_threshold}' if score > canonical_threshold else ''}")
 		print(f"Selected canonical: {canonical}")
 
 	print("\n[STEP 7] Saving results")
@@ -227,7 +238,7 @@ def _clustering_(
 	)
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation.csv")
 	df_clusters.to_csv(out_csv, index=False)
-	print(f"✔ Saved consolidated labels → {out_csv}")
+	print(f"Saved consolidated labels → {out_csv}")
 	print("\n[PIPELINE COMPLETE]")
 	print("=" * 120)
 	return df_clusters

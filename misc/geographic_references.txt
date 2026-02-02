@@ -1,3 +1,14 @@
+Africa
+Asia
+Balcan
+Baltic
+Caribbean
+Europe
+Oceania
+North America
+South America
+Antarctica
+
 Afghanistan
 Albania
 Algeria
@@ -451,6 +462,7 @@ Washington D.C.
 Welch
 Winslow
 
+Aegean
 Algiers
 Ankara
 Antwerp
@@ -547,8 +559,9 @@ Warsaw
 Wellington
 Zaragoza
 Åre
-östersund
+Östersund
 
+Afghan
 African
 American
 Arab

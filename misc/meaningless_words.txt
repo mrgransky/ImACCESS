@@ -1045,10 +1045,6 @@ northeast
 northwest
 southwest
 southeast
-northern
-eastern
-western
-southern
 nnw
 nne
 sse
@@ -1097,7 +1093,6 @@ beverly hill
 boyleston
 photog
 chev
-front
 rare
 left
 right
