@@ -116,15 +116,25 @@ def _clustering_(
 		nc: int = None,
 		verbose: bool = True,
 ):
-	print(f">> Clustering {len(labels)} labels...")
+	if verbose:
+		print(f"\n[CLUSTERING] {len(labels)} labels...")
+		print(f"   ├─ model_id: {model_id}")
+		print(f"   ├─ device: {device}")
+		print(f"   └─ {labels[:5]}")
 
-	print("\n[STEP 1] Loading SentenceTransformer model")
-	model = SentenceTransformer(model_id).to(device)
+	print(f"\n[STEP 1] Loading SentenceTransformer {model_id}")
+	model = SentenceTransformer(
+		model_name_or_path=model_id,
+		cache_folder=cache_directory[os.getenv('USER')],
+		token=os.getenv("HUGGINGFACE_TOKEN"),
+	).to(device)
+
 	print(f"✔ Model loaded: {model_id} Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
 	print("\n[STEP 2] Deduplicating labels")
 	documents = [list(set(lbl)) for lbl in labels]
 	all_labels = sorted(set(label for doc in documents for label in doc))
+
 	print(f"✔ Total samples: {len(documents)}")
 	print(f"✔ Unique labels: {len(all_labels)}")
 	print("✔ Sample labels:", all_labels[:15])

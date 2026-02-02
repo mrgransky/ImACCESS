@@ -20,7 +20,6 @@ def merge_csv_files(
 	# sort the list of CSV files based on the chunk number
 	csv_files.sort(key=lambda f: int(os.path.basename(f).split('_')[-2]))
 
-
 	if verbose:
 		print(f"Found {len(csv_files)} CSV files to merge:")
 		for i, file in enumerate(csv_files):
