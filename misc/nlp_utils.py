@@ -117,7 +117,7 @@ def _clustering_(
 		verbose: bool = True,
 ):
 	if verbose:
-		print(f"\n[CLUSTERING] {len(labels)} labels...")
+		print(f"\n[CLUSTERING] {len(labels)} {type(labels)} {type(labels[0])} labels...")
 		print(f"   ├─ model_id: {model_id}")
 		print(f"   ├─ device: {device}")
 		print(f"   └─ {labels[:5]}")
@@ -134,7 +134,7 @@ def _clustering_(
 	print("\n[STEP 2] Deduplicating labels")
 	documents = list()
 	for doc in labels:
-		# apply eval
+		# apply eval if doc is str:
 		if isinstance(doc, str):
 			try:
 				doc = eval(doc)
