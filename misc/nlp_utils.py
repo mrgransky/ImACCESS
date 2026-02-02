@@ -125,10 +125,11 @@ def _clustering_(
 	print("\n[STEP 1] Deduplicating labels")
 	documents = list()
 	for doc in labels:
-		# apply eval if doc is str:
+		print(type(doc), len(doc), doc)
 		if isinstance(doc, str):
 			try:
 				doc = eval(doc)
+				print(type(doc), len(doc), doc)
 			except Exception as e:
 				print(f"Failed to convert {doc} to list: {e}")
 				raise e
