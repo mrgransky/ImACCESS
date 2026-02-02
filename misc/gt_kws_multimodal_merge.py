@@ -1,17 +1,25 @@
 from utils import *
 import visualize as viz
+from nlp_utils import _clustering_
 
 # how to run:
 # Puhti/Mahti:
 # srun -J interactive_cpu --account=project_2009043 --partition=large --time=00-05:15:00 --mem=128G --ntasks=1 --cpus-per-task=20 --pty /bin/bash -i
 # $ nohup python -u gt_kws_multimodal_merge.py --dataset_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -v > /scratch/project_2004072/ImACCESS/trash/logs/gt_kws_multimodal_merge_h4.txt &
 
-def merge_csv_files(dataset_dir, verbose: bool = False):
+def merge_csv_files(
+	dataset_dir: str,
+	nc: int = None,
+	verbose: bool = False
+):
 	output_fpath = os.path.join(dataset_dir, "metadata_multi_label_multimodal.csv")
 	# Get a list of all CSV files in the input directory
 	csv_files = glob.glob(os.path.join(dataset_dir, 'metadata_multi_label_chunk_*_multimodal.csv'))
 	# sort the list of CSV files based on the chunk number
 	csv_files.sort(key=lambda f: int(os.path.basename(f).split('_')[-2]))
+
+	OUTPUT_DIR = os.path.join(os.path.dirname(csv_file), "outputs")
+	os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 	if verbose:
 		print(f"Found {len(csv_files)} CSV files to merge:")
@@ -55,12 +63,23 @@ def merge_csv_files(dataset_dir, verbose: bool = False):
 		val_split_pct=0.35,
 		label_col='multimodal_labels'
 	)
-	
+
+	print(os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv")))
+	_clustering_(
+		labels=df['multimodal_labels'].tolist(),
+		model_id="google/embeddinggemma-300M" if torch.__version__ > "2.6" else "sentence-transformers/all-MiniLM-L6-v2",
+		nc=nc,
+		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv")),
+		verbose=verbose,
+	)
+
+
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description='Merge CSV files')
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Directory containing CSV files')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+	parser.add_argument('--num_clusters', '-nc', type=int, default=None, help='Number of clusters')
 	args = parser.parse_args()
 	set_seeds(seed=42)
 
@@ -69,7 +88,7 @@ def main():
 		print(args)
 		print_args_table(args=args, parser=parser)
 
-	merge_csv_files(dataset_dir=args.dataset_dir, verbose=args.verbose)
+	merge_csv_files(dataset_dir=args.dataset_dir, verbose=args.verbose, nc=args.num_clusters)
 
 if __name__ == "__main__":
 	main()

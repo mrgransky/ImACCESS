@@ -116,15 +116,17 @@ def _clustering_(
 		nc: int = None,
 		verbose: bool = True,
 ):
+	print(f">> Clustering {len(labels)} labels...")
+
 	print("\n[STEP 1] Loading SentenceTransformer model")
 	model = SentenceTransformer(model_id).to(device)
 	print(f"✔ Model loaded: {model_id} Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
-	print("\n[STEP 2] Deduplicating multimodal labels")
+	print("\n[STEP 2] Deduplicating labels")
 	documents = [list(set(lbl)) for lbl in labels]
 	all_labels = sorted(set(label for doc in documents for label in doc))
 	print(f"✔ Total samples: {len(documents)}")
-	print(f"✔ Unique multimodal labels: {len(all_labels)}")
+	print(f"✔ Unique labels: {len(all_labels)}")
 	print("✔ Sample labels:", all_labels[:15])
 
 	print("\n[STEP 3] Encoding labels into semantic space")
@@ -133,10 +135,10 @@ def _clustering_(
 
 	print("\n[STEP 4] Density-based clustering with HDBSCAN")
 	hdb = hdbscan.HDBSCAN(
-			min_cluster_size=5,
-			min_samples=3,
-			metric="euclidean",
-			cluster_selection_method="eom"
+		min_cluster_size=5,
+		min_samples=3,
+		metric="euclidean",
+		cluster_selection_method="eom"
 	)
 	hdb_labels = hdb.fit_predict(X)
 	num_noise = np.sum(hdb_labels == -1)
@@ -153,20 +155,20 @@ def _clustering_(
 
 	print("\n[STEP 5] KMeans clustering on semantic cores")
 	if nc is None:
-			range_n_clusters = range(10, min(250, len(core_labels) // 2), 5)
-			silhouette_scores = []
-			print("✔ Searching for optimal cluster count...")
-			for k in range_n_clusters:
-					km = KMeans(n_clusters=k, n_init="auto", random_state=0)
-					preds = km.fit_predict(X_core)
-					score = silhouette_score(X_core, preds)
-					silhouette_scores.append(score)
-					print(f"\tk: {k:<6} silhouette: {score:.4f}")
-			best_k = range_n_clusters[np.argmax(silhouette_scores)]
-			print(f"✔ Optimal k selected: {best_k}")
+		range_n_clusters = range(10, min(250, len(core_labels) // 2), 5)
+		silhouette_scores = []
+		print("✔ Searching for optimal cluster count...")
+		for k in range_n_clusters:
+			km = KMeans(n_clusters=k, n_init="auto", random_state=0)
+			preds = km.fit_predict(X_core)
+			score = silhouette_score(X_core, preds)
+			silhouette_scores.append(score)
+			print(f"\tk: {k:<6} silhouette: {score:.4f}")
+		best_k = range_n_clusters[np.argmax(silhouette_scores)]
+		print(f"✔ Optimal k selected: {best_k}")
 	else:
-			best_k = nc
-			print(f"✔ Using user-defined k: {best_k}")
+		best_k = nc
+		print(f"✔ Using user-defined k: {best_k}")
 
 	kmeans = KMeans(n_clusters=best_k, n_init="auto", random_state=0)
 	core_cluster_ids = kmeans.fit_predict(X_core)
@@ -189,9 +191,9 @@ def _clustering_(
 		ranked = sorted(zip(vocab, scores), key=lambda x: x[1], reverse=True)
 		canonical = ranked[0][0] if ranked[0][1] > canonical_threshold else None
 		cluster_canonicals[cid] = {
-				"canonical": canonical,
-				"size": len(cluster_texts),
-				"top_terms": ranked
+			"canonical": canonical,
+			"size": len(cluster_texts),
+			"top_terms": ranked
 		}
 		print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples: {cluster_texts}")
 		print("Top terms:")
