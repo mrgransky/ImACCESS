@@ -109,12 +109,12 @@ detector_all = (
 )
 
 def _clustering_(
-		labels: List[List[str]],
-		model_id: str,
-		device: str = "cuda" if torch.cuda.is_available() else "cpu",
-		clusters_fname: str = "clusters.csv",
-		nc: int = None,
-		verbose: bool = True,
+	labels: List[List[str]],
+	model_id: str,
+	device: str = "cuda" if torch.cuda.is_available() else "cpu",
+	clusters_fname: str = "clusters.csv",
+	nc: int = None,
+	verbose: bool = True,
 ):
 	if verbose:
 		print(f"\n[CLUSTERING] {len(labels)} {type(labels)} {type(labels[0])} labels...")
@@ -122,16 +122,7 @@ def _clustering_(
 		print(f"   ├─ device: {device}")
 		print(f"   └─ {labels[:5]}")
 
-	print(f"\n[STEP 1] Loading SentenceTransformer {model_id}")
-	model = SentenceTransformer(
-		model_name_or_path=model_id,
-		cache_folder=cache_directory[os.getenv('USER')],
-		token=os.getenv("HUGGINGFACE_TOKEN"),
-	).to(device)
-
-	print(f"✔ Model loaded: {model_id} Parameters: {sum(p.numel() for p in model.parameters()):,}")
-
-	print("\n[STEP 2] Deduplicating labels")
+	print("\n[STEP 1] Deduplicating labels")
 	documents = list()
 	for doc in labels:
 		# apply eval if doc is str:
@@ -144,13 +135,20 @@ def _clustering_(
 		else:
 			documents.append(list(set(lbl for lbl in doc)))
 
-	# documents = [list(set(lbl)) for lbl in labels]
-
 	all_labels = sorted(set(label for doc in documents for label in doc))
 
-	print(f"✔ Total samples: {len(documents)}")
-	print(f"✔ Unique labels: {len(all_labels)}")
+	print(f"✔ Total samples: {type(documents)} {len(documents)} {type(documents[0])}")
+	print(f"✔ Unique labels: {type(all_labels)} {len(all_labels)} {type(all_labels[0])}")
 	print("✔ Sample labels:", all_labels[:15])
+
+	print(f"\n[STEP 2] Loading SentenceTransformer {model_id}")
+	model = SentenceTransformer(
+		model_name_or_path=model_id,
+		cache_folder=cache_directory[os.getenv('USER')],
+		token=os.getenv("HUGGINGFACE_TOKEN"),
+	).to(device)
+
+	print(f"✔ Model loaded: {model_id} Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
 	print("\n[STEP 3] Encoding labels into semantic space")
 	X = model.encode(all_labels, show_progress_bar=True)
