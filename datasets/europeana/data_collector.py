@@ -158,8 +158,17 @@ def get_dframe(
 		doc_year = doc.get("year")[0] if (doc.get("year") and doc.get("year")[0]) else None
 		doc_url = f"https://www.europeana.eu/en/item{europeana_id}" # doc.get("guid")
 
+		useless_title_terms = [
+			"scheme",
+		]
+
 		for title in doc.get("title"):
-			if title and is_english(text=title, confidence_threshold=0.03, verbose=verbose) and title.lower() not in STOPWORDS:
+			if (
+				title
+				and is_english(text=title, confidence_threshold=0.03, verbose=verbose)
+				and title.lower() not in STOPWORDS
+				and title.lower() not in useless_title_terms
+			):
 				title_en = title
 				break
 			else:
@@ -173,24 +182,6 @@ def get_dframe(
 			description_en = None
 		print(f"description_en:\n{description_en}")
 	
-		# time consuming part
-		# # scrape doc.get("link") => leads to json => example api link: link: https://api.europeana.eu/record/76/jlm_item_164633.json?wskey=api2demo
-		# if verbose:
-		# 	print(f"scaping api link: {doc.get('link')}")
-		# try:
-		# 	response = requests.get(
-		# 		url=doc.get("link"),
-		# 		headers=headers,
-		# 		# verify=False, # Try disabling SSL verification if that's the issue
-		# 		# timeout=30, # Timeout in seconds
-		# 	)
-		# 	response.raise_for_status()
-		# 	doc_json = response.json()
-		# 	print(json.dumps(doc_json, indent=2, ensure_ascii=False))
-		# except Exception as e:
-		# 	print(f"<!> {e}")
-		# 	continue
-
 		if (
 			image_url 
 			and (image_url.endswith('.jpg') or image_url.endswith('.jpeg'))

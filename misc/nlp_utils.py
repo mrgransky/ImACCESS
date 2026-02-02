@@ -118,7 +118,7 @@ def _clustering_(
 	verbose: bool = True,
 ):
 	if verbose:
-		print(f"\n[CLUSTERING] {len(labels)} {type(labels)} {type(labels[0])} labels...")
+		print(f"\n[CLUSTERING] {len(labels)} {type(labels)} {type(labels[0])} labels")
 		print(f"   ├─ model_id: {model_id}")
 		print(f"   ├─ device: {device}")
 		print(f"   └─ {labels[:5]}")
@@ -151,20 +151,19 @@ def _clustering_(
 
 	print(f"\n[STEP 4] Density-based clustering with HDBSCAN on semantic space for {X.shape[0]} labels")
 	hdb = hdbscan.HDBSCAN(
-		min_cluster_size=5,
+		min_cluster_size=11 if X.shape[0] > 1000 else 3,
 		min_samples=3,
 		metric="euclidean",
 		cluster_selection_method="eom"
 	)
 	hdb_labels = hdb.fit_predict(X)
-	print(f"HDBSCAN labels: {type(hdb_labels)} {hdb_labels.shape} {set(hdb_labels)}")
+	print(f"[HDBSCAN] labels: {type(hdb_labels)} {hdb_labels.shape} {set(hdb_labels)}")
 	cluster_counts = {int(k): v for k, v in Counter(hdb_labels).items()}
 	print(f"HDBSCAN {len(np.unique(hdb_labels))} cluster counts:\n{json.dumps(cluster_counts, indent=2, ensure_ascii=False)}")
 	num_noise = np.sum(hdb_labels == -1) # outlier
 	num_core = len(hdb_labels) - num_noise
 	
-	print(f"HDBSCAN core labels: {num_core}/{len(all_labels)} ({num_core / len(all_labels):.2%})")
-	print(f"HDBSCAN noise labels: {num_noise}/{len(all_labels)} ({num_noise / len(all_labels):.2%})")
+	print(f"[HDBSCAN] core: {num_core}/{len(all_labels)} ({num_core / len(all_labels):.2%}) | noise: {num_noise}/{len(all_labels)} ({num_noise / len(all_labels):.2%})")
 	
 	core_indices = np.where(hdb_labels != -1)[0]
 	noise_indices = np.where(hdb_labels == -1)[0]
@@ -181,7 +180,7 @@ def _clustering_(
 		if len(core_labels) > 1000:
 			range_n_clusters = range(100, min(1000, len(core_labels) // 10), 50)
 		else:
-			range_n_clusters = range(10, min(10, len(core_labels) // 2), 5)
+			range_n_clusters = range(10, min(200, len(core_labels) // 2), 10)
 		silhouette_scores = []
 		print(f"Searching for optimal cluster count {range_n_clusters}...")
 		for k in range_n_clusters:
@@ -208,24 +207,54 @@ def _clustering_(
 		}
 	)
 	cluster_canonicals = {}
-	canonical_threshold = 0.3
+	canonical_threshold = 0.35
 	tfidf = TfidfVectorizer(stop_words="english", ngram_range=(1, 3), max_features=5)
+
 	for cid in sorted(df_core.cluster.unique()):
 		cluster_texts = df_core[df_core.cluster == cid]["label"].tolist()
 		tfidf_matrix = tfidf.fit_transform(cluster_texts)
-		scores = tfidf_matrix.mean(axis=0).A1
+
 		vocab = tfidf.get_feature_names_out()
+		scores = tfidf_matrix.mean(axis=0).A1
+
 		ranked = sorted(zip(vocab, scores), key=lambda x: x[1], reverse=True)
-		canonical = ranked[0][0] if ranked[0][1] > canonical_threshold else None
+
+		canonical = None
+
+		# Separate n-grams and single words above threshold
+		ngrams_above_threshold = [
+				(term, score) for term, score in ranked 
+				if score > canonical_threshold and len(term.split()) > 1
+		]
+		singles_above_threshold = [
+				(term, score) for term, score in ranked 
+				if score > canonical_threshold and len(term.split()) == 1
+		]
+
+		# Priority 1: Highest scoring n-gram above threshold
+		if ngrams_above_threshold:
+				canonical = ngrams_above_threshold[0][0]
+		# Priority 2: Highest scoring single word above threshold  
+		elif singles_above_threshold:
+				canonical = singles_above_threshold[0][0]
+		# Priority 3: No term above threshold (optional fallback)
+		else:
+				canonical = ranked[0][0] if ranked else None
+
+		# canonical = ranked[0][0] if ranked[0][1] > canonical_threshold else None
+
 		cluster_canonicals[cid] = {
 			"canonical": canonical,
 			"size": len(cluster_texts),
 			"top_terms": ranked
 		}
-		print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples: {cluster_texts}")
+
+		print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples:\n{cluster_texts}")
+
 		print("Top terms:")
 		for term, score in ranked:
-			print(f"\t- {term:<30} tfidf: {score:<10.4f}{f' > {canonical_threshold}' if score > canonical_threshold else ''}")
+			print(f"\t- {term:<30} tfidf: {score:<8.4f}{f' > {canonical_threshold} => POTENTIAL CANONICAL' if score > canonical_threshold else ''}")
+
 		print(f"Selected canonical: {canonical}")
 
 	print("\n[STEP 7] Saving results")

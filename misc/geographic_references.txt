@@ -1,6 +1,7 @@
 Africa
 Asia
 Balcan
+Balkan
 Baltic
 Caribbean
 Europe
@@ -606,3 +607,5 @@ Swedish
 Swiss
 Syrian
 Turkish
+Yugoslav
+Yugoslavian

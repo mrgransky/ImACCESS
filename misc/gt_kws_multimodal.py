@@ -231,7 +231,6 @@ def get_multimodal_annotation(
 			label_col='multimodal_labels'
 		)
 
-	print(os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv")))
 	_clustering_(
 		labels=multimodal_labels, 
 		model_id="google/embeddinggemma-300M" if torch.__version__ > "2.6" else "sentence-transformers/all-MiniLM-L6-v2",
