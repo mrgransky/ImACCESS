@@ -4,7 +4,7 @@ from nlp_utils import _clustering_
 
 # how to run:
 # Puhti/Mahti:
-# srun -J interactive_cpu --account=project_2009043 --partition=large --time=00-05:15:00 --mem=128G --ntasks=1 --cpus-per-task=10 --pty /bin/bash -i
+# srun -J interactive_cpu --account=project_2009043 --partition=large --time=00-15:15:00 --mem=128G --ntasks=1 --cpus-per-task=10 --pty /bin/bash -i
 # $ nohup python -u gt_kws_multimodal_merge.py --dataset_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -v > /scratch/project_2004072/ImACCESS/trash/logs/gt_kws_multimodal_merge_h4.txt &
 
 def merge_csv_files(

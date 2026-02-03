@@ -24,11 +24,15 @@ from typing import List, Tuple, Dict, Set, Any, Optional, Union, Callable, Itera
 # Try relative import first, fallback to absolute
 import string
 import hdbscan
+from sklearn.metrics import adjusted_rand_score
+from sklearn.utils import resample
+
 # Install: pip install lingua-language-detector
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
 
 MISC_DIR = os.path.dirname(os.path.abspath(__file__))
-
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["PYTHONHASHSEED"] = "0"
 nltk_modules = [
 	'punkt',
 	'punkt_tab',
@@ -111,6 +115,123 @@ detector_all = (
 	.build()
 )
 
+def find_robust_hdbscan_params(X, labels, n_bootstrap=5, target_coverage=0.5):
+		"""
+		Find HDBSCAN parameters balancing stability and coverage.
+		target_coverage: minimum fraction of data that should be core (not noise)
+		"""
+		n_samples = X.shape[0]
+		
+		# Wider search space with smaller min_cluster_size
+		test_params = []
+		for mcs in [3, 5, 7, 10, 15, 20]:
+				for ms in [1, 2, 3]:
+						for method in ['eom', 'leaf']:  # Try both selection methods
+								test_params.append({
+										'min_cluster_size': mcs,
+										'min_samples': ms,
+										'metric': 'euclidean',
+										'cluster_selection_method': method
+								})
+		
+		best_score = -1
+		best_result = None
+		candidates = []
+		
+		for params in test_params:
+				agreements = []
+				
+				for seed in range(n_bootstrap):
+						idx = resample(np.arange(X.shape[0]), 
+													n_samples=int(0.8*X.shape[0]), 
+													random_state=seed)
+						X_boot = X[idx]
+						hdb = hdbscan.HDBSCAN(**params)
+						boot_labels = hdb.fit_predict(X_boot)
+						full_labels = np.full(X.shape[0], -1)
+						full_labels[idx] = boot_labels
+						agreements.append(full_labels)
+				
+				agreements = np.array(agreements)
+				noise_rates = [(a == -1).mean() for a in agreements]
+				avg_noise = np.mean(noise_rates)
+				coverage = 1 - avg_noise
+				
+				# Skip if coverage too low (can't run KMeans on <10% of data)
+				if coverage < 0.15:
+						continue
+				
+				# Calculate stability only on non-noise points
+				stability_scores = []
+				for i in range(n_bootstrap):
+						for j in range(i+1, n_bootstrap):
+								mask = (agreements[i] != -1) & (agreements[j] != -1)
+								if mask.sum() > 10:
+										# ARI on points clustered in both runs
+										stability_scores.append(adjusted_rand_score(
+												agreements[i][mask], agreements[j][mask]
+										))
+				
+				stability = np.mean(stability_scores) if stability_scores else 0
+				
+				# NEW SCORING: Balance stability and coverage
+				# Use harmonic mean (F1-style) to require both to be good
+				if stability + coverage > 0:
+					score = 2 * (stability * coverage) / (stability + coverage)
+				else:
+					score = 0
+				
+				result = {
+					'params': params,
+					'stability': float(stability),
+					'coverage': float(coverage),
+					'score': float(score),
+					'n_clusters': len(set(agreements[0])) - (1 if -1 in agreements[0] else 0)
+				}
+				candidates.append(result)
+				
+				print(
+					f"mcs={params['min_cluster_size']:2d}/ms={params['min_samples']:2d}/{params['cluster_selection_method']:4s} | "
+					f"Coverage: {coverage:.1%} | Stability: {stability:.3f} | "
+					f"Clusters: {result['n_clusters']:3d} | Score: {score:.3f}"
+				)
+				
+				if score > best_score:
+						best_score = score
+						# Refit on full data
+						hdb_full = hdbscan.HDBSCAN(**params)
+						hdb_labels = hdb_full.fit_predict(X)
+						best_result = {
+								**result,
+								'hdb_labels': hdb_labels,
+								'noise_rate': float((hdb_labels == -1).mean()),
+								'core_indices': np.where(hdb_labels != -1)[0].tolist(),
+								'n_clusters': len(set(hdb_labels)) - (1 if -1 in hdb_labels else 0)
+						}
+		
+		if best_result is None:
+				# Ultimate fallback: pick highest coverage
+				best = max(candidates, key=lambda x: x['coverage'])
+				params = best['params']
+				hdb_full = hdbscan.HDBSCAN(**params)
+				hdb_labels = hdb_full.fit_predict(X)
+				best_result = {
+						**best,
+						'hdb_labels': hdb_labels,
+						'core_indices': np.where(hdb_labels != -1)[0].tolist(),
+						'n_clusters': len(set(hdb_labels)) - (1 if -1 in hdb_labels else 0),
+						'fallback': True
+				}
+		
+		print(f"\n[BEST] {best_result['params']}")
+		print(
+			f"{best_result['n_clusters']} clusters, "
+			f"{best_result.get('coverage', 1-best_result['noise_rate']):.1%} coverage, "
+			f"stability={best_result['stability']:.3f}"
+		)
+		
+		return best_result
+
 def _clustering_(
 	labels: List[List[str]],
 	model_id: str,
@@ -151,6 +272,17 @@ def _clustering_(
 	print(f"\n[STEP 3] Encoding {len(all_labels)} labels into semantic space")
 	X = model.encode(all_labels, show_progress_bar=False)
 	print(f"Embedding: {type(X)} {X.shape} sparsity: {np.count_nonzero(X) / np.prod(X.shape):.4f}")
+
+	n_boot = 3 if len(all_labels) > 5000 else 5
+	result = find_robust_hdbscan_params(X, all_labels, n_bootstrap=n_boot)
+	hdb_labels = result['hdb_labels']
+	print(f"[AUTO-TUNED] {result['params']}")
+	print(
+		f"[AUTO-TUNED] {result['n_clusters']} clusters, "
+		f"{result['noise_rate']:.1%} noise, "
+		f"stability={result['stability']:.3f}"
+	)
+
 
 	print(f"\n[STEP 4] Density-based clustering with HDBSCAN on semantic space for {X.shape[0]} labels")
 	hdb = hdbscan.HDBSCAN(
@@ -227,10 +359,10 @@ def _clustering_(
 
 	print(f"\n[STEP 5.1] Silhouette analysis for KMeans clustering on {len(core_labels)} semantic cores")
 	if nc is None:
-		if len(core_labels) > 1000:
+		if len(core_labels) > 2000:
 			range_n_clusters = range(100, min(2500, len(core_labels) // 10), 50)
 		else:
-			range_n_clusters = range(10, min(211, len(core_labels) // 2), 10)
+			range_n_clusters = range(10, min(300, len(core_labels) // 2), 10)
 		silhouette_scores = []
 		print(f"Searching for optimal cluster count {range_n_clusters}...")
 		for k in range_n_clusters:
@@ -261,41 +393,28 @@ def _clustering_(
 	cluster_canonicals = {}
 
 	def get_centroid_canonical(cluster_embeddings, cluster_labels):
-		"""
-		cluster_embeddings: np.array of shape (n_samples, embedding_dim)
-		cluster_labels: list of original label strings
-		
-		Returns: (canonical_label, similarity_score)
-		"""
 		# Compute centroid (mean of all embeddings)
-		centroid = cluster_embeddings.mean(axis=0, keepdims=True)
-		
+		centroid = cluster_embeddings.mean(axis=0, keepdims=True) # (1, embedding_dim)		
 		# Find similarity of each label to centroid
-		similarities = cosine_similarity(centroid, cluster_embeddings)[0]
-		
+		similarities = cosine_similarity(centroid, cluster_embeddings)[0] # (n_samples,)
 		# Pick the label with highest similarity
-		best_idx = similarities.argmax()
-		
+		best_idx = similarities.argmax() # 
 		return cluster_labels[best_idx], similarities[best_idx]
 
 	for cid in sorted(df_core.cluster.unique()):
 		# Get labels and their embeddings for this cluster
 		cluster_mask = df_core.cluster == cid
 		cluster_texts = df_core[cluster_mask]["label"].tolist()
-		
 		# Get embeddings for this cluster (from X_core)
 		cluster_indices = df_core[cluster_mask].index.tolist()
 		cluster_embeddings = X_core[cluster_indices]
-		
 		# Find centroid-nearest label
 		canonical, score = get_centroid_canonical(cluster_embeddings, cluster_texts)
-		
 		cluster_canonicals[cid] = {
 			"canonical": canonical,
 			"score": score,
 			"size": len(cluster_texts),
 		}
-	
 		print(f"\n[Cluster {cid}] {len(cluster_texts)} samples: {cluster_texts}")
 		print(f">> Canonical (centroid-nearest, sim={score:.4f}): {canonical}")
 	
