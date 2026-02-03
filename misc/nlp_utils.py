@@ -5,14 +5,15 @@ import pickle
 import ast
 
 import nltk
-import huggingface_hub
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 import pandas as pd
 from collections import Counter
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 import numpy as np
@@ -131,6 +132,7 @@ def _clustering_(
 			doc = ast.literal_eval(doc)
 		documents.append(list(set(lbl for lbl in doc)))
 
+	# make results deterministic & reproducible
 	all_labels = sorted(set(label for doc in documents for label in doc))
 
 	print(f"Total samples: {type(documents)} {len(documents)} {type(documents[0])}")
@@ -152,13 +154,17 @@ def _clustering_(
 
 	print(f"\n[STEP 4] Density-based clustering with HDBSCAN on semantic space for {X.shape[0]} labels")
 	hdb = hdbscan.HDBSCAN(
-		min_cluster_size=11 if X.shape[0] > 2000 else 3,
+		min_cluster_size=2,
+		# min_cluster_size=11 if X.shape[0] > 2000 else 3,
 		min_samples=3,
-		metric="euclidean",
-		cluster_selection_method="eom"
+		# metric="euclidean",
+		# cluster_selection_method="eom"
 	)
-	hdb_labels = hdb.fit_predict(X)
+	clusterer = hdb.fit(X)
+	hdb_labels = clusterer.labels_
+	hdb_probs = clusterer.probabilities_
 	print(f"[HDBSCAN] labels: {type(hdb_labels)} {hdb_labels.shape} {set(hdb_labels)}")
+	print(f"[HDBSCAN] probs: {type(hdb_probs)} {hdb_probs.shape} {set(hdb_probs)}")
 	cluster_counts = {int(k): v for k, v in Counter(hdb_labels).items()}
 	print(f"[HDBSCAN] {len(np.unique(hdb_labels))} cluster counts:\n{json.dumps(cluster_counts, indent=2, ensure_ascii=False)}")
 	num_noise = np.sum(hdb_labels == -1) # outlier
@@ -173,10 +179,51 @@ def _clustering_(
 	core_labels = [all_labels[i] for i in core_indices]
 	noise_labels = [all_labels[i] for i in noise_indices]
 	
-	print("Sample CORE labels:", core_labels[:30])
-	print(f"{len(noise_labels)} NOISE labels")
+	print(f"{len(core_labels)} CORE labels:")
+	for _, v in enumerate(sorted(core_labels)):
+		print(f"{v}")
+	print("-"*140)
+
+	print(f"{len(noise_labels)} NOISE labels:")
 	for _, v in enumerate(sorted(noise_labels)):
 		print(f"{v}")
+	print("-"*140)
+
+	print(f"\n[STEP 4.1] Visualizing HDBSCAN clusters in 2D")
+	tsne_projection = TSNE().fit_transform(X)
+	pca_projection = PCA(n_components=2).fit_transform(X)
+	print(f"TSNE: {type(tsne_projection)}, {tsne_projection.shape}")
+	print(f"PCA: {type(pca_projection)}, {pca_projection.shape}")
+	# Determine the number of colors needed for the palette
+	# If there are clusters, max_label will be at least 0. If only noise, max_label will be -1.
+	max_label = np.max(hdb_labels)
+	# The palette size should be at least max_label + 1 to accommodate all cluster indices.
+	# We use 12 as a minimum to ensure some variation even with few clusters.
+	palette_size = max(max_label + 1, 12)
+	color_palette = sns.color_palette('Paired', palette_size)
+	cluster_colors = [
+		color_palette[x] 
+		if x >= 0 else (0.5, 0.5, 0.5)
+		for x in hdb_labels
+	]
+	cluster_member_colors = [
+		sns.desaturate(x, p) 
+		for x, p in zip(cluster_colors, hdb_probs)
+	]
+
+	plt.figure(figsize=(27, 17))
+	plt.scatter(*pca_projection.T, s=40, linewidth=1.8, c=cluster_member_colors, alpha=0.8, marker="o")
+	plt.title(f"PCA HDBSCAN ({len(np.unique(hdb_labels))} clusters) Noise: {len(noise_labels)} Core: {len(core_labels)}")
+	out_cluster_fig_fpath = clusters_fname.replace(".csv", "_pca_hdb_clusters.png")
+	plt.savefig(out_cluster_fig_fpath, dpi=150, bbox_inches='tight')
+	plt.close()
+
+	plt.figure(figsize=(27, 17))
+	plt.scatter(*tsne_projection.T, s=40, linewidth=1.8, c=cluster_member_colors, alpha=0.8, marker="o")
+	plt.title(f"TSNE HDBSCAN ({len(np.unique(hdb_labels))} clusters) Noise: {len(noise_labels)} Core: {len(core_labels)}")
+	out_cluster_fig_fpath = clusters_fname.replace(".csv", "_tsne_hdb_clusters.png")
+	plt.savefig(out_cluster_fig_fpath, dpi=150, bbox_inches='tight')
+	plt.close()
 
 	print(f"\n[STEP 5.1] Silhouette analysis for KMeans clustering on {len(core_labels)} semantic cores")
 	if nc is None:
@@ -198,7 +245,7 @@ def _clustering_(
 		best_k = nc
 		print(f"Using user-defined k: {best_k}")
 
-	print(f"\n[STEP 5.2] KMeans clustering on {type(X_core)} {X_core.shape} semantic cores")
+	print(f"\n[STEP 5.2] KMeans clustering on {type(X_core)} {X_core.shape} semantic cores with k={best_k}")
 	kmeans = KMeans(n_clusters=best_k, n_init="auto", random_state=0)
 	core_cluster_ids = kmeans.fit_predict(X_core)
 
@@ -213,94 +260,94 @@ def _clustering_(
 	print(f"\n[STEP 6] Canonical label induction per cluster on {len(core_labels)} semantic cores")
 	cluster_canonicals = {}
 
-	# def get_centroid_canonical(cluster_embeddings, cluster_labels):
-	# 	"""
-	# 	cluster_embeddings: np.array of shape (n_samples, embedding_dim)
-	# 	cluster_labels: list of original label strings
+	def get_centroid_canonical(cluster_embeddings, cluster_labels):
+		"""
+		cluster_embeddings: np.array of shape (n_samples, embedding_dim)
+		cluster_labels: list of original label strings
 		
-	# 	Returns: (canonical_label, similarity_score)
-	# 	"""
-	# 	# Compute centroid (mean of all embeddings)
-	# 	centroid = cluster_embeddings.mean(axis=0, keepdims=True)
+		Returns: (canonical_label, similarity_score)
+		"""
+		# Compute centroid (mean of all embeddings)
+		centroid = cluster_embeddings.mean(axis=0, keepdims=True)
 		
-	# 	# Find similarity of each label to centroid
-	# 	similarities = cosine_similarity(centroid, cluster_embeddings)[0]
+		# Find similarity of each label to centroid
+		similarities = cosine_similarity(centroid, cluster_embeddings)[0]
 		
-	# 	# Pick the label with highest similarity
-	# 	best_idx = similarities.argmax()
+		# Pick the label with highest similarity
+		best_idx = similarities.argmax()
 		
-	# 	return cluster_labels[best_idx], similarities[best_idx]
-
-	# for cid in sorted(df_core.cluster.unique()):
-	# 	# Get labels and their embeddings for this cluster
-	# 	cluster_mask = df_core.cluster == cid
-	# 	cluster_texts = df_core[cluster_mask]["label"].tolist()
-		
-	# 	# Get embeddings for this cluster (from X_core)
-	# 	cluster_indices = df_core[cluster_mask].index.tolist()
-	# 	cluster_embeddings = X_core[cluster_indices]
-		
-	# 	# Find centroid-nearest label
-	# 	canonical, score = get_centroid_canonical(cluster_embeddings, cluster_texts)
-		
-	# 	cluster_canonicals[cid] = {
-	# 		"canonical": canonical,
-	# 		"score": score,
-	# 		"size": len(cluster_texts),
-	# 	}
-		
-	# 	print(f"\n[Cluster {cid}] {len(cluster_texts)} samples: {cluster_texts}")
-	# 	print(f">> Canonical (centroid-nearest, sim={score:.4f}): {canonical}")
-	
-	canonical_threshold = 0.4
-	tfidf = TfidfVectorizer(
-		stop_words="english", 
-		ngram_range=(1, 3),
-		max_features=5,
-	)
+		return cluster_labels[best_idx], similarities[best_idx]
 
 	for cid in sorted(df_core.cluster.unique()):
-		cluster_texts = df_core[df_core.cluster == cid]["label"].tolist()
-		tfidf_matrix = tfidf.fit_transform(cluster_texts)
-
-		vocab = tfidf.get_feature_names_out()
-		scores = tfidf_matrix.mean(axis=0).A1
-
-		ranked = sorted(zip(vocab, scores), key=lambda x: x[1], reverse=True)
-
-		canonical = None
-		# Find any term above threshold
-		terms_above_threshold = [
-			(term, score) for term, score in ranked 
-			if score >= canonical_threshold
-		]
-
-		if terms_above_threshold:
-			# Among terms above threshold, prioritize n-grams
-			ngrams_above = [
-				(term, score) for term, score in terms_above_threshold 
-				if len(term.split()) > 1
-			]
-			
-			if ngrams_above:
-				canonical = ngrams_above[0][0]  # Highest scoring n-gram
-			else:
-				canonical = terms_above_threshold[0][0]  # Highest scoring single word
+		# Get labels and their embeddings for this cluster
+		cluster_mask = df_core.cluster == cid
+		cluster_texts = df_core[cluster_mask]["label"].tolist()
 		
-		# No term meets threshold
-		# else: canonical remains None
-
+		# Get embeddings for this cluster (from X_core)
+		cluster_indices = df_core[cluster_mask].index.tolist()
+		cluster_embeddings = X_core[cluster_indices]
+		
+		# Find centroid-nearest label
+		canonical, score = get_centroid_canonical(cluster_embeddings, cluster_texts)
+		
 		cluster_canonicals[cid] = {
 			"canonical": canonical,
+			"score": score,
 			"size": len(cluster_texts),
-			"top_terms": ranked
 		}
+	
+		print(f"\n[Cluster {cid}] {len(cluster_texts)} samples: {cluster_texts}")
+		print(f">> Canonical (centroid-nearest, sim={score:.4f}): {canonical}")
+	
+	# tfidf = TfidfVectorizer(
+	# 	stop_words="english", 
+	# 	ngram_range=(1, 3),
+	# 	max_features=5,
+	# )
+	# canonical_threshold = 0.4
 
-		print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples:\n{cluster_texts}")
-		print("Top terms:")
-		for term, score in ranked:
-			print(f"\t- {term:<30}tfidf: {score:<10.7f}{f' >= {canonical_threshold} => POTENTIAL CANONICAL' if score >= canonical_threshold else ''}")
-		print(f">> Canonical (threshold >= {canonical_threshold} & n-gram priority): {canonical}")
+	# for cid in sorted(df_core.cluster.unique()):
+	# 	cluster_texts = df_core[df_core.cluster == cid]["label"].tolist()
+	# 	tfidf_matrix = tfidf.fit_transform(cluster_texts)
+
+	# 	vocab = tfidf.get_feature_names_out()
+	# 	scores = tfidf_matrix.mean(axis=0).A1
+
+	# 	ranked = sorted(zip(vocab, scores), key=lambda x: x[1], reverse=True)
+
+	# 	canonical = None
+	# 	# Find any term above threshold
+	# 	terms_above_threshold = [
+	# 		(term, score) for term, score in ranked 
+	# 		if score >= canonical_threshold
+	# 	]
+
+	# 	if terms_above_threshold:
+	# 		# Among terms above threshold, prioritize n-grams
+	# 		ngrams_above = [
+	# 			(term, score) for term, score in terms_above_threshold 
+	# 			if len(term.split()) > 1
+	# 		]
+			
+	# 		if ngrams_above:
+	# 			canonical = ngrams_above[0][0]  # Highest scoring n-gram
+	# 		else:
+	# 			canonical = terms_above_threshold[0][0]  # Highest scoring single word
+		
+	# 	# No term meets threshold
+	# 	# else: canonical remains None
+
+	# 	cluster_canonicals[cid] = {
+	# 		"canonical": canonical,
+	# 		"size": len(cluster_texts),
+	# 		"top_terms": ranked
+	# 	}
+
+	# 	print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples:\n{cluster_texts}")
+	# 	print("Top terms:")
+	# 	for term, score in ranked:
+	# 		print(f"\t- {term:<30}tfidf: {score:<10.7f}{f' >= {canonical_threshold} => POTENTIAL CANONICAL' if score >= canonical_threshold else ''}")
+	# 	print(f">> Canonical (threshold >= {canonical_threshold} & n-gram priority): {canonical}")
 
 	print("\n[STEP 7] Saving results")
 	df_clusters = pd.DataFrame(
@@ -317,244 +364,6 @@ def _clustering_(
 	print("=" * 120)
 
 	return df_clusters
-
-def _clustering_old(
-	labels: List[List[str]],
-	model_id: str,
-	device: str = "cuda" if torch.cuda.is_available() else "cpu",
-	clusters_fname: str = "clusters.csv",
-	nc:int=None,
-	verbose: bool=False,
-):
-
-	COLORMAP = "Dark2"
-	cmap = plt.colormaps.get_cmap(COLORMAP)
-	# ========== HuggingFace login ==========
-	# try:
-	# 	if verbose:
-	# 		print(f"[INFO] Logging in to HuggingFace Hub...")
-	# 	huggingface_hub.login(token=os.getenv("HUGGINGFACE_TOKEN"))
-	# except Exception as e:
-	# 	print(f"<!> Failed to login to HuggingFace Hub: {e}")
-	# 	raise e
-
-	# ========== Load model ==========
-	if verbose:
-		print(f"[LOADING] {model_id} | {device} | cache_dir: {cache_directory[os.getenv('USER')]}")
-	model = SentenceTransformer(
-		model_name_or_path=model_id,
-		cache_folder=cache_directory[os.getenv('USER')],
-		token=os.getenv("HUGGINGFACE_TOKEN"),
-	).to(device)
-	if verbose:
-		print(f"Total number of parameters in {model_id}: {sum([p.numel() for _, p in model.named_parameters()]):,}")
-
-	documents = [list(set(lbl)) for lbl in labels]
-	if verbose:
-		print(f"Loaded {type(documents)} {len(documents)} docs after deduplication")
-	
-	# # ["keyword1, keyword2, keyword3, ..."]
-	all_labels = []
-
-	for doc in documents:
-		for label in doc:
-			all_labels.append(label)
-			# print(label)
-
-	# for doc in documents:
-	# 	all_labels.append("; ".join(doc))
-
-	all_labels = list(set(all_labels))
-
-	print(f"Loaded {type(all_labels)} {len(all_labels)} labels")
-	for i, label in enumerate(all_labels[:20]):
-		print(f"{i}: {label}")
-
-	# Encode the documents to get sentence embeddings
-	X = model.encode(all_labels, show_progress_bar=True)
-	print(f"Document Embeddings: {type(X)} {X.shape}")
-	# quantify the sparsity of X
-	sparsity = np.count_nonzero(X) / np.prod(X.shape)
-	print(f"Sparsity of X: {sparsity:.4f} ({sparsity*100}% non-zero elements)")
-
-	if nc is None:
-		if len(all_labels) > 250:
-			range_n_clusters = range(2, max(20, math.ceil(len(all_labels)/8)), 5)
-		else:
-			range_n_clusters = range(2, 15, 1)
-		print(f"range_n_clusters: {range_n_clusters} len(all_labels): {len(all_labels)}")
-
-		silhouette_scores = []
-		for n_clusters in range_n_clusters:
-			kmeans_model = KMeans(init='k-means++', n_clusters=n_clusters, random_state=0, n_init='auto')
-			cluster_labels = kmeans_model.fit_predict(X)
-
-			silhouette_avg = silhouette_score(X=X, labels=cluster_labels, random_state=0, metric='euclidean')
-			silhouette_scores.append(silhouette_avg)
-
-			print(f"cluster: {n_clusters:<8} silhouette_score: {silhouette_avg:.4f}")
-
-		# Highlight the optimal number of clusters
-		optimal_n_clusters_idx = np.argmax(silhouette_scores)
-		optimal_n_clusters = range_n_clusters[optimal_n_clusters_idx]
-		mean_score, std_score = np.mean(silhouette_scores), np.std(silhouette_scores)
-		print(f"Optimal num_cluster based on Silhouette Score ({max(silhouette_scores):.4f} [over all clusters: {mean_score:.4f} ± {std_score:.4f}]): {optimal_n_clusters}")
-
-		plt.figure(figsize=(10, 6))
-		plt.plot(range_n_clusters, silhouette_scores, marker='o')
-		plt.title('Silhouette Score for Various Numbers of Clusters')
-		plt.xlabel('Number of Clusters')
-		plt.ylabel('Silhouette Score')
-		plt.xticks(range_n_clusters)
-		plt.grid(True)
-
-		plt.axvline(x=optimal_n_clusters, color='red', linestyle='--', label=f'Optimal N_clusters: {optimal_n_clusters}')
-		plt.legend()
-		plt.savefig(clusters_fname.replace(".csv", f"_silhouette_score_{optimal_n_clusters}.png"), dpi=100)
-	else:
-		optimal_n_clusters = nc
-
-	kmeans_optimal = KMeans(init='k-means++', n_clusters=optimal_n_clusters, random_state=0, n_init='auto')
-	clusters_optimal = kmeans_optimal.fit_predict(X)
-	print(f"clusters_optimal: {type(clusters_optimal)} {clusters_optimal.shape}")
-	centers_optimal = kmeans_optimal.cluster_centers_
-	labels_optimal = kmeans_optimal.labels_
-	print(f"centers_optimal: {type(centers_optimal)} {centers_optimal.shape}")
-	print(f"labels_optimal: {type(labels_optimal)} {labels_optimal.shape}")
-	print(f"average number of labels per cluster: {len(all_labels)/optimal_n_clusters:.2f}")
-
-	# Dimensionality Reduction (optional, for visualization)
-	pca = PCA(n_components=2, random_state=0)
-	X_reduced = pca.fit_transform(X)
-	print(f"X_pca: {type(X_reduced)} {X_reduced.shape}")
-
-	# Step 6: Visualization
-	plt.figure(figsize=(19, 15))
-	scatter = plt.scatter(
-		X_reduced[:, 0], 
-		X_reduced[:, 1], 
-		c=clusters_optimal, 
-		# cmap=COLORMAP,
-		facecolors='none',
-		s=12,
-		alpha=0.95,
-		marker='o',
-		label=f'{len(all_labels)}',
-	)
-	plt.title(f"Text Clustering Visualization (Optimal N_clusters = {optimal_n_clusters})")
-	plt.xlabel("Principal Component 1")
-	plt.ylabel("Principal Component 2")
-
-	# Adding cluster centers to the plot
-
-	centers_reduced_optimal = pca.transform(centers_optimal)
-	print(f"centers_reduced_optimal: {type(centers_reduced_optimal)} {centers_reduced_optimal.shape}")
-
-	for i, center_coords in enumerate(centers_reduced_optimal):
-		plt.scatter(
-			center_coords[0], 
-			center_coords[1], 
-			# c=[cmap(i / (kmeans_optimal.n_clusters - 1 if kmeans_optimal.n_clusters > 1 else 1))], 
-			s=200, 
-			alpha=0.94, 
-			marker='X'
-		)
-		plt.scatter(
-			center_coords[0], 
-			center_coords[1], 
-			facecolors='none', 
-			edgecolors=[cmap(i / (kmeans_optimal.n_clusters - 1 if kmeans_optimal.n_clusters > 1 else 1))], 
-			s=120, 
-			alpha=0.8, 
-			marker='o', 
-			linewidths=2
-		)
-
-	# # Adding labels to the plot
-	# for i, txt in enumerate(all_labels):
-	# 	plt.annotate(txt[:20], (X_reduced[i, 0], X_reduced[i, 1]), fontsize=6, alpha=0.75, rotation=60)
-
-	# plt.colorbar(scatter, label='Cluster Label')
-	plt.legend(loc='best', frameon=False, fancybox=True, edgecolor='black', facecolor='white')
-	plt.tight_layout()
-	plt.savefig(clusters_fname.replace(".csv", f"_x_{optimal_n_clusters}.png"), dpi=250)
-
-	# how many samples each cluster has:
-	unique, counts = np.unique(clusters_optimal, return_counts=True)
-	print(np.asarray((unique, counts)).T)
-
-	# create a pandas dataframe with text column and their corresponding cluster index and print them
-	df_clusters = pd.DataFrame({'text': all_labels, 'cluster': clusters_optimal})
-
-	# save df to csv:
-	df_clusters.to_csv(clusters_fname.replace(".csv", f"_x_{optimal_n_clusters}.csv"), index=False)
-	try:
-		df_clusters.to_excel(clusters_fname.replace(".csv", f"_x_{optimal_n_clusters}.xlsx"), index=False)
-	except Exception as e:
-		print(f"Failed to write Excel file: {e}")
-
-	print("-"*120)
-
-
-	# Dictionary to store keywords for each cluster
-	cluster_keywords = {}
-	TOP_N = 5
-	tfidf_vectorizer = TfidfVectorizer(
-		stop_words='english', 
-		max_features=TOP_N,
-		ngram_range=(1, 3)
-	)
-	# Process each cluster
-	for cluster_id in range(optimal_n_clusters):
-		cluster_docs = df_clusters[df_clusters['cluster'] == cluster_id]['text'].tolist()
-
-		# Apply TF-IDF to documents within this cluster
-		tfidf_matrix = tfidf_vectorizer.fit_transform(cluster_docs)
-		# print(f"Cluster {cluster_id}: tfidf_matrix: {type(tfidf_matrix)} {tfidf_matrix.shape} {tfidf_matrix.dtype}")
-		feature_names = tfidf_vectorizer.get_feature_names_out()
-
-		# Calculate mean TF-IDF scores for each word in the cluster
-		avg_tfidf_scores = tfidf_matrix.mean(axis=0).A1
-
-		# Get top keywords for the cluster
-		top_keywords_indices = avg_tfidf_scores.argsort()[::-1] # Top N keywords
-		top_keywords = [(feature_names[i], avg_tfidf_scores[i]) for i in top_keywords_indices]
-		cluster_keywords[cluster_id] = top_keywords
-
-	# Print the top keywords for each cluster
-	topN_kw_th = 0.5
-	for cluster_id, keywords in cluster_keywords.items():
-		print(f"\nCluster {cluster_id} contains {len(df_clusters[df_clusters['cluster'] == cluster_id]['text'])} samples:")
-		print(df_clusters[df_clusters['cluster'] == cluster_id]['text'].head(50).tolist())
-		for keyword, score in keywords:
-			print(f"- {keyword:<70}TF-IDF: {score:.7f}\t{'OKAY' if score > topN_kw_th else ''}")
-
-	# create dataframe with cluster, all its keywords, suggested top keyword and their corresponding TF-IDF score columns:
-	# cluster, keywords, top_kw_tfid_score, label
-	# 0, ['keyword1', 'keyword2', 'keyword3'], [('keyword1', 0.42), ('keyword2', 0.33), ('keyword3', 0.21)], None
-	# 1, ['keyword4', 'keyword5', 'keyword6'], [('keyword4', 0.51), ('keyword5', 0.42), ('keyword6', 0.33)], keyword4
-	df_clusters_keywords = pd.DataFrame(columns=['cluster', 'keywords', 'top_kw_tfid_score', 'label'])
-	for cluster_id, keywords in cluster_keywords.items():
-		df_clusters_keywords = pd.concat(
-			[
-				df_clusters_keywords,
-				pd.DataFrame(
-					{
-						'cluster': [cluster_id], 
-						'keywords': [df_clusters[df_clusters['cluster'] == cluster_id]['text'].tolist()], 
-						'top_kw_tfid_score': [keywords], # [(keyword, score), ...]
-						'label': [keywords[0][0] if keywords[0][1] > topN_kw_th else None] # label is the top keyword if its score is > topN_kw_th
-					}
-				)
-			], 
-			ignore_index=True
-		)
-
-	df_clusters_keywords.to_csv(clusters_fname.replace(".csv", f"_x_{optimal_n_clusters}_clustered_keywords.csv"), index=False)
-	try:
-		df_clusters_keywords.to_excel(clusters_fname.replace(".csv", f"_x_{optimal_n_clusters}_clustered_keywords.xlsx"), index=False)
-	except Exception as e:
-		print(f"Failed to write Excel file: {e}")
 
 def _post_process_(
 	labels_list: List[List[str]], 

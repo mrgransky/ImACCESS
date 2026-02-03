@@ -1110,6 +1110,9 @@ location
 environment
 hour
 minute
+time
+departure
+arrival
 day
 daylight
 daytime
