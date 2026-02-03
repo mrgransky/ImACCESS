@@ -19,6 +19,7 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 import math
 import json
+import time
 from sklearn.feature_extraction.text import TfidfVectorizer
 from typing import List, Tuple, Dict, Set, Any, Optional, Union, Callable, Iterable
 # Try relative import first, fallback to absolute
@@ -115,18 +116,19 @@ detector_all = (
 	.build()
 )
 
-def find_robust_hdbscan_params(X, labels, n_bootstrap=5, target_coverage=0.5):
-	# Wider search space with smaller min_cluster_size
+def find_robust_hdbscan_params(X, n_bootstrap=5, n_jobs=-1):
 	test_params = []
-	for mcs in [3, 5, 7, 10, 15, 20]:
-		for ms in [1, 2, 3]:
+	for mcs in [2, 3, 5, 7, 10, 15, 20]:
+		for ms in [1, 2, 3, 4, 5]:
 			for method in ['eom', 'leaf']:  # Try both selection methods
-				test_params.append({
+				params = {
 					'min_cluster_size': mcs,
 					'min_samples': ms,
 					'metric': 'euclidean',
+					'core_dist_n_jobs': n_jobs,
 					'cluster_selection_method': method
-				})
+				}
+				test_params.append(params)
 	
 	best_score = -1
 	best_result = None
@@ -229,6 +231,7 @@ def _clustering_(
 	clusters_fname: str = "clusters.csv",
 	nc: int = None,
 	auto_tune: bool = True,
+	n_jobs: int = -1,
 	verbose: bool = True,
 ):
 	if verbose:
@@ -261,14 +264,20 @@ def _clustering_(
 	print(f"Model loaded: {model_id} Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
 	print(f"\n[STEP 3] Encoding {len(all_labels)} labels into semantic space")
-	X = model.encode(all_labels, show_progress_bar=False)
+	X = model.encode(
+		all_labels, 
+		batch_size = 256 if len(all_labels) > 1000 else 32,
+		show_progress_bar=False,
+		convert_to_numpy=True,
+		normalize_embeddings=True,
+	)
 	print(f"Embedding: {type(X)} {X.shape} sparsity: {np.count_nonzero(X) / np.prod(X.shape):.4f}")
 
 	print(f"\n[STEP 4] Density-based clustering with HDBSCAN on semantic space for {X.shape[0]} labels")
 	if auto_tune:
 		print(f"Auto-tuning HDBSCAN parameters")
 		n_boot = 3 if len(all_labels) > 5000 else 5
-		result = find_robust_hdbscan_params(X, all_labels, n_bootstrap=n_boot)
+		result = find_robust_hdbscan_params(X=X, n_bootstrap=n_boot, n_jobs=n_jobs)
 		hdb_labels = result['hdb_labels']
 		print(f"[AUTO-TUNED] {result['params']}")
 		print(
@@ -298,6 +307,7 @@ def _clustering_(
 		min_samples=min_samples,
 		cluster_selection_method=cluster_selection_method,
 		metric=metric,
+		core_dist_n_jobs=n_jobs,
 	)
 
 	clusterer = hdb.fit(X)
