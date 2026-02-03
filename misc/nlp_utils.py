@@ -322,7 +322,7 @@ def _clustering_(
 	print("-"*140)
 
 	print(f"\n[STEP 4.1] Visualizing HDBSCAN clusters in 2D")
-	tsne_projection = TSNE().fit_transform(X)
+	tsne_projection = TSNE(n_components=2, random_state=0, perplexity=30).fit_transform(X)
 	pca_projection = PCA(n_components=2).fit_transform(X)
 	print(f"TSNE: {type(tsne_projection)}, {tsne_projection.shape}")
 	print(f"PCA: {type(pca_projection)}, {pca_projection.shape}")
