@@ -116,121 +116,111 @@ detector_all = (
 )
 
 def find_robust_hdbscan_params(X, labels, n_bootstrap=5, target_coverage=0.5):
-		"""
-		Find HDBSCAN parameters balancing stability and coverage.
-		target_coverage: minimum fraction of data that should be core (not noise)
-		"""
-		n_samples = X.shape[0]
+	# Wider search space with smaller min_cluster_size
+	test_params = []
+	for mcs in [3, 5, 7, 10, 15, 20]:
+		for ms in [1, 2, 3]:
+			for method in ['eom', 'leaf']:  # Try both selection methods
+				test_params.append({
+					'min_cluster_size': mcs,
+					'min_samples': ms,
+					'metric': 'euclidean',
+					'cluster_selection_method': method
+				})
+	
+	best_score = -1
+	best_result = None
+	candidates = []
+	
+	for params in test_params:
+		agreements = []
 		
-		# Wider search space with smaller min_cluster_size
-		test_params = []
-		for mcs in [3, 5, 7, 10, 15, 20]:
-				for ms in [1, 2, 3]:
-						for method in ['eom', 'leaf']:  # Try both selection methods
-								test_params.append({
-										'min_cluster_size': mcs,
-										'min_samples': ms,
-										'metric': 'euclidean',
-										'cluster_selection_method': method
-								})
+		for seed in range(n_bootstrap):
+			idx = resample(np.arange(X.shape[0]), n_samples=int(0.8*X.shape[0]), random_state=seed)
+			X_boot = X[idx]
+			hdb = hdbscan.HDBSCAN(**params)
+			boot_labels = hdb.fit_predict(X_boot)
+			full_labels = np.full(X.shape[0], -1)
+			full_labels[idx] = boot_labels
+			agreements.append(full_labels)
 		
-		best_score = -1
-		best_result = None
-		candidates = []
+		agreements = np.array(agreements)
+		noise_rates = [(a == -1).mean() for a in agreements]
+		avg_noise = np.mean(noise_rates)
+		coverage = 1 - avg_noise
 		
-		for params in test_params:
-				agreements = []
-				
-				for seed in range(n_bootstrap):
-						idx = resample(np.arange(X.shape[0]), 
-													n_samples=int(0.8*X.shape[0]), 
-													random_state=seed)
-						X_boot = X[idx]
-						hdb = hdbscan.HDBSCAN(**params)
-						boot_labels = hdb.fit_predict(X_boot)
-						full_labels = np.full(X.shape[0], -1)
-						full_labels[idx] = boot_labels
-						agreements.append(full_labels)
-				
-				agreements = np.array(agreements)
-				noise_rates = [(a == -1).mean() for a in agreements]
-				avg_noise = np.mean(noise_rates)
-				coverage = 1 - avg_noise
-				
-				# Skip if coverage too low (can't run KMeans on <10% of data)
-				if coverage < 0.15:
-						continue
-				
-				# Calculate stability only on non-noise points
-				stability_scores = []
-				for i in range(n_bootstrap):
-						for j in range(i+1, n_bootstrap):
-								mask = (agreements[i] != -1) & (agreements[j] != -1)
-								if mask.sum() > 10:
-										# ARI on points clustered in both runs
-										stability_scores.append(adjusted_rand_score(
-												agreements[i][mask], agreements[j][mask]
-										))
-				
-				stability = np.mean(stability_scores) if stability_scores else 0
-				
-				# NEW SCORING: Balance stability and coverage
-				# Use harmonic mean (F1-style) to require both to be good
-				if stability + coverage > 0:
-					score = 2 * (stability * coverage) / (stability + coverage)
-				else:
-					score = 0
-				
-				result = {
-					'params': params,
-					'stability': float(stability),
-					'coverage': float(coverage),
-					'score': float(score),
-					'n_clusters': len(set(agreements[0])) - (1 if -1 in agreements[0] else 0)
-				}
-				candidates.append(result)
-				
-				print(
-					f"mcs={params['min_cluster_size']:2d}/ms={params['min_samples']:2d}/{params['cluster_selection_method']:4s} | "
-					f"Coverage: {coverage:.1%} | Stability: {stability:.3f} | "
-					f"Clusters: {result['n_clusters']:3d} | Score: {score:.3f}"
-				)
-				
-				if score > best_score:
-						best_score = score
-						# Refit on full data
-						hdb_full = hdbscan.HDBSCAN(**params)
-						hdb_labels = hdb_full.fit_predict(X)
-						best_result = {
-								**result,
-								'hdb_labels': hdb_labels,
-								'noise_rate': float((hdb_labels == -1).mean()),
-								'core_indices': np.where(hdb_labels != -1)[0].tolist(),
-								'n_clusters': len(set(hdb_labels)) - (1 if -1 in hdb_labels else 0)
-						}
+		# Skip if coverage too low (can't run KMeans on <10% of data)
+		if coverage < 0.15:
+			continue
 		
-		if best_result is None:
-				# Ultimate fallback: pick highest coverage
-				best = max(candidates, key=lambda x: x['coverage'])
-				params = best['params']
-				hdb_full = hdbscan.HDBSCAN(**params)
-				hdb_labels = hdb_full.fit_predict(X)
-				best_result = {
-						**best,
-						'hdb_labels': hdb_labels,
-						'core_indices': np.where(hdb_labels != -1)[0].tolist(),
-						'n_clusters': len(set(hdb_labels)) - (1 if -1 in hdb_labels else 0),
-						'fallback': True
-				}
+		# Calculate stability only on non-noise points
+		stability_scores = []
+		for i in range(n_bootstrap):
+			for j in range(i+1, n_bootstrap):
+				mask = (agreements[i] != -1) & (agreements[j] != -1)
+				if mask.sum() > 10:
+					# ARI on points clustered in both runs
+					stability_scores.append(adjusted_rand_score(agreements[i][mask], agreements[j][mask]))
 		
-		print(f"\n[BEST] {best_result['params']}")
+		stability = np.mean(stability_scores) if stability_scores else 0
+		
+		# Balance stability and coverage
+		# Use harmonic mean (F1-style) to require both to be good
+		if stability + coverage > 0:
+			score = 2 * (stability * coverage) / (stability + coverage)
+		else:
+			score = 0
+		
+		result = {
+			'params': params,
+			'stability': float(stability),
+			'coverage': float(coverage),
+			'score': float(score),
+			'n_clusters': len(set(agreements[0])) - (1 if -1 in agreements[0] else 0)
+		}
+		candidates.append(result)
+		
 		print(
-			f"{best_result['n_clusters']} clusters, "
-			f"{best_result.get('coverage', 1-best_result['noise_rate']):.1%} coverage, "
-			f"stability={best_result['stability']:.3f}"
+			f"mcs={params['min_cluster_size']:2d}/ms={params['min_samples']:2d}/{params['cluster_selection_method']:<10}"
+			f"Coverage: {coverage:<10.1%}Stability: {stability:<10.3f}"
+			f"Clusters: {result['n_clusters']:<10}Score: {score:.3f}"
 		)
 		
-		return best_result
+		if score > best_score:
+			best_score = score
+			# Refit on full data
+			hdb_full = hdbscan.HDBSCAN(**params)
+			hdb_labels = hdb_full.fit_predict(X)
+			best_result = {
+				**result,
+				'hdb_labels': hdb_labels,
+				'noise_rate': float((hdb_labels == -1).mean()),
+				'core_indices': np.where(hdb_labels != -1)[0].tolist(),
+				'n_clusters': len(set(hdb_labels)) - (1 if -1 in hdb_labels else 0)
+			}
+	
+	if best_result is None:
+		# Ultimate fallback: pick highest coverage
+		best = max(candidates, key=lambda x: x['coverage'])
+		params = best['params']
+		hdb_full = hdbscan.HDBSCAN(**params)
+		hdb_labels = hdb_full.fit_predict(X)
+		best_result = {
+			**best,
+			'hdb_labels': hdb_labels,
+			'core_indices': np.where(hdb_labels != -1)[0].tolist(),
+			'n_clusters': len(set(hdb_labels)) - (1 if -1 in hdb_labels else 0),
+			'fallback': True
+		}
+	
+	print(f"\n[BEST] {best_result['params']}")
+	print(
+		f"{best_result['n_clusters']} clusters, "
+		f"{best_result.get('coverage', 1-best_result['noise_rate']):.1%} coverage, "
+		f"stability={best_result['stability']:.3f}"
+	)
+	
+	return best_result
 
 def _clustering_(
 	labels: List[List[str]],
@@ -238,6 +228,7 @@ def _clustering_(
 	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
 	clusters_fname: str = "clusters.csv",
 	nc: int = None,
+	auto_tune: bool = True,
 	verbose: bool = True,
 ):
 	if verbose:
@@ -273,25 +264,42 @@ def _clustering_(
 	X = model.encode(all_labels, show_progress_bar=False)
 	print(f"Embedding: {type(X)} {X.shape} sparsity: {np.count_nonzero(X) / np.prod(X.shape):.4f}")
 
-	n_boot = 3 if len(all_labels) > 5000 else 5
-	result = find_robust_hdbscan_params(X, all_labels, n_bootstrap=n_boot)
-	hdb_labels = result['hdb_labels']
-	print(f"[AUTO-TUNED] {result['params']}")
-	print(
-		f"[AUTO-TUNED] {result['n_clusters']} clusters, "
-		f"{result['noise_rate']:.1%} noise, "
-		f"stability={result['stability']:.3f}"
-	)
-
-
 	print(f"\n[STEP 4] Density-based clustering with HDBSCAN on semantic space for {X.shape[0]} labels")
+	if auto_tune:
+		print(f"Auto-tuning HDBSCAN parameters")
+		n_boot = 3 if len(all_labels) > 5000 else 5
+		result = find_robust_hdbscan_params(X, all_labels, n_bootstrap=n_boot)
+		hdb_labels = result['hdb_labels']
+		print(f"[AUTO-TUNED] {result['params']}")
+		print(
+			f"[AUTO-TUNED] {result['n_clusters']} clusters, "
+			f"{result['noise_rate']:.1%} noise, "
+			f"stability={result['stability']:.3f}"
+		)
+		min_cluster_size = result['params']['min_cluster_size']
+		min_samples = result['params']['min_samples']
+		cluster_selection_method = result['params']['cluster_selection_method']
+		metric = result['params']['metric']
+	else:
+		min_cluster_size = 2
+		min_samples = 3
+		cluster_selection_method = "eom"
+		metric = "euclidean"
+	
+	print(f"Clustering with HDBSCAN on semantic space for {X.shape[0]} labels")
+	print(f"   ├─ {type(X)} {X.shape} {X.dtype} {X.strides} {X.itemsize} {X.nbytes}")
+	print(f"   ├─ min_cluster_size={min_cluster_size}")
+	print(f"   ├─ min_samples={min_samples}")
+	print(f"   ├─ cluster_selection_method={cluster_selection_method}")
+	print(f"   └─ metric={metric}")
+
 	hdb = hdbscan.HDBSCAN(
-		min_cluster_size=2,
-		# min_cluster_size=11 if X.shape[0] > 2000 else 3,
-		min_samples=3,
-		# metric="euclidean",
-		# cluster_selection_method="eom"
+		min_cluster_size=min_cluster_size,
+		min_samples=min_samples,
+		cluster_selection_method=cluster_selection_method,
+		metric=metric,
 	)
+
 	clusterer = hdb.fit(X)
 	hdb_labels = clusterer.labels_
 	hdb_probs = clusterer.probabilities_
