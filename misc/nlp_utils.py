@@ -125,7 +125,204 @@ detector_all = (
 	.build()
 )
 
-def autotune_hdbscan_params_opt(X, n_bootstrap=5, n_jobs=-1, early_stop_threshold=0.95):
+def autotune_hdbscan_params_opt(
+		X,
+		n_bootstrap=5,
+		n_jobs=-1,
+		early_stop_threshold=0.95,
+		batch_size=None,
+		sample_frac=0.8,
+		min_overlap=50,          # require enough shared points to trust ARI
+		min_coverage=0.15,       # skip configs that label too little data
+		large_n=5000,
+):
+		"""
+		Parallel over parameter configs (processes), sequential bootstraps inside each config.
+		Batch-wise evaluation enables early stopping without nested parallelism.
+		"""
+
+		n = X.shape[0]
+		if batch_size is None:
+				# Keep batches small-ish for early stop responsiveness
+				batch_size = 2 if n > 20000 else 5
+
+		# Build param grid
+		if n > large_n:
+				print("[LARGE DATASET MODE] Using reduced parameter grid")
+				mcs_list = [5, 10, 20]
+				ms_list = [2, 4]
+				methods = ["eom"]
+		else:
+				print("[STANDARD MODE] Using full parameter grid")
+				mcs_list = [2, 3, 5, 7, 10, 15, 20]
+				ms_list = [1, 2, 3, 4, 5]
+				methods = ["eom", "leaf"]
+
+		test_params = []
+		for mcs in mcs_list:
+				for ms in ms_list:
+						for method in methods:
+								test_params.append(
+										dict(
+												min_cluster_size=mcs,
+												min_samples=ms,
+												metric="euclidean",
+												cluster_selection_method=method,
+										)
+								)
+
+		# Order params to find good ones earlier (helps early stop)
+		def priority(p):
+				method_pri = 0 if p["cluster_selection_method"] == "leaf" else 1
+				return (p["min_cluster_size"], p["min_samples"], method_pri)
+
+		test_params = sorted(test_params, key=priority)
+
+		print(f"[AUTO-TUNE] Testing up to {len(test_params)} parameter combinations")
+		print(f"[AUTO-TUNE] Bootstrap iterations: {n_bootstrap}")
+		print(f"[AUTO-TUNE] Parallel jobs: {'all cores' if n_jobs == -1 else n_jobs}")
+		print(f"[AUTO-TUNE] Early stop threshold: {early_stop_threshold}")
+
+		def run_one_config(params):
+				# Store (idx, labels) per bootstrap
+				runs = []
+				noise_rates = []
+
+				n_sub = int(sample_frac * n)
+
+				for seed in range(n_bootstrap):
+						idx = resample(np.arange(n), n_samples=n_sub, random_state=seed)
+
+						with warnings.catch_warnings():
+								warnings.filterwarnings(
+										"ignore",
+										message=".*force_all_finite.*",
+										category=FutureWarning,
+								)
+								hdb = hdbscan.HDBSCAN(**params, core_dist_n_jobs=1)
+								lbl = hdb.fit_predict(X[idx])
+
+						runs.append((idx, lbl))
+						noise_rates.append((lbl == -1).mean())
+
+				coverage = 1.0 - float(np.mean(noise_rates))
+				if coverage < min_coverage:
+						return None
+
+				# Stability: ARI on shared points clustered in both runs
+				ari_scores = []
+				for i in range(n_bootstrap):
+						idx_i, lab_i = runs[i]
+						# map index -> label for non-noise only
+						mask_i = lab_i != -1
+						map_i = dict(zip(idx_i[mask_i], lab_i[mask_i]))
+
+						for j in range(i + 1, n_bootstrap):
+								idx_j, lab_j = runs[j]
+								mask_j = lab_j != -1
+								map_j = dict(zip(idx_j[mask_j], lab_j[mask_j]))
+
+								# intersection of clustered points
+								common = set(map_i.keys()) & set(map_j.keys())
+								if len(common) < min_overlap:
+										continue
+
+								common = np.fromiter(common, dtype=np.int64)
+								a = np.array([map_i[k] for k in common], dtype=np.int64)
+								b = np.array([map_j[k] for k in common], dtype=np.int64)
+								ari_scores.append(adjusted_rand_score(a, b))
+
+				stability = float(np.mean(ari_scores)) if ari_scores else 0.0
+
+				if stability + coverage > 0:
+						score = float(2.0 * (stability * coverage) / (stability + coverage))
+				else:
+						score = 0.0
+
+				# estimate clusters from first run (rough)
+				_, lab0 = runs[0]
+				n_clusters = int(len(set(lab0)) - (1 if -1 in lab0 else 0))
+
+				return dict(
+						params=params,
+						stability=stability,
+						coverage=coverage,
+						score=score,
+						n_clusters=n_clusters,
+				)
+
+		best = None
+		best_score = -np.inf
+		candidates = []
+
+		print("\n" + "=" * 100)
+		print(f"{'Params':<22} {'Coverage':<10} {'Stability':<10} {'Clusters':<10} {'Score':<8}")
+		print("=" * 100)
+
+		for start in range(0, len(test_params), batch_size):
+				batch = test_params[start : start + batch_size]
+
+				# Outer parallelism only
+				batch_results = Parallel(n_jobs=n_jobs, backend="loky")(
+						delayed(run_one_config)(p) for p in batch
+				)
+
+				for r in batch_results:
+						if r is None:
+								continue
+						candidates.append(r)
+
+						p = r["params"]
+						pstr = f"mcs={p['min_cluster_size']:2d}/ms={p['min_samples']:2d}/{p['cluster_selection_method']:<3}"
+						print(f"{pstr:<22} {r['coverage']:<10.1%} {r['stability']:<10.3f} {r['n_clusters']:<10d} {r['score']:<8.3f}")
+
+						if r["score"] > best_score:
+								best_score = r["score"]
+								best = r
+								print(f"{'':<22} {'':<10} {'':<10} {'':<10} {'NEW BEST':<8}")
+
+				if best is not None and best_score >= early_stop_threshold:
+						remaining = len(test_params) - (start + batch_size)
+						print(f"\n[EARLY STOP] score={best_score:.3f} >= {early_stop_threshold:.3f}; skipping {remaining} configs")
+						break
+
+		if best is None:
+				raise ValueError("No valid parameter combinations found (all configs below min_coverage).")
+
+		# Final refit on full data
+		with warnings.catch_warnings():
+				warnings.filterwarnings(
+						"ignore",
+						message=".*force_all_finite.*",
+						category=FutureWarning,
+				)
+				hdb_full = hdbscan.HDBSCAN(**best["params"], core_dist_n_jobs=n_jobs)
+				hdb_labels = hdb_full.fit_predict(X)
+
+		noise_rate = float((hdb_labels == -1).mean())
+		core_indices = np.where(hdb_labels != -1)[0].tolist()
+		n_clusters_full = int(len(set(hdb_labels)) - (1 if -1 in hdb_labels else 0))
+
+		best_result = dict(
+				**best,
+				hdb_labels=hdb_labels,
+				noise_rate=noise_rate,
+				core_indices=core_indices,
+				n_clusters=n_clusters_full,
+				n_tested=len(candidates),
+		)
+
+		print(f"\n[HDBSCAN AUTO-TUNED PARAMS] {best_result['params']}")
+		print(
+				f"{best_result['n_clusters']} clusters, "
+				f"{(1-noise_rate):.1%} coverage, "
+				f"stability={best_result['stability']:.3f}, "
+				f"score={best_result['score']:.3f}"
+		)
+
+		return best_result
+
+def autotune_hdbscan_params_opt_v2(X, n_bootstrap=5, n_jobs=-1, early_stop_threshold=0.95):
 	# Adaptive parameter grid based on dataset size
 	if X.shape[0] > 5000:
 		# Reduced grid for large datasets
