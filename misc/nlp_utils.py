@@ -871,7 +871,7 @@ def _clustering_(
 	if nc is None and auto_tune:
 		
 		if len(all_labels) > int(2e4):
-			min_k, max_k, step = 100, min(5001, len(all_labels) // 100), 100
+			min_k, max_k, step = 100, min(1501, len(all_labels) // 20), 100
 		elif len(all_labels) > int(5e3):
 			min_k, max_k, step = 20, min(301, len(all_labels) // 15), 20
 		else:
