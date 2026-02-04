@@ -195,7 +195,7 @@ def autotune_hdbscan_params_opt(
 			with warnings.catch_warnings():
 				warnings.filterwarnings(
 					"ignore",
-					# message=".*force_all_finite.*",
+					message=".*force_all_finite.*",
 					category=FutureWarning,
 				)
 				hdb = hdbscan.HDBSCAN(**params, core_dist_n_jobs=1)
@@ -229,7 +229,7 @@ def autotune_hdbscan_params_opt(
 				with warnings.catch_warnings():
 					warnings.filterwarnings(
 						"ignore",
-						# message=".*number of unique classes.*",
+						message=".*number of unique classes.*",
 						category=UndefinedMetricWarning,
 					)
 					ari_scores.append(adjusted_rand_score(a, b))
@@ -243,6 +243,7 @@ def autotune_hdbscan_params_opt(
 		# estimate clusters from first run (rough)
 		_, lab0 = runs[0]
 		n_clusters = int(len(set(lab0)) - (1 if -1 in lab0 else 0))
+
 		return dict(
 			params=params,
 			stability=stability,
@@ -268,25 +269,26 @@ def autotune_hdbscan_params_opt(
 				continue
 			candidates.append(r)
 			p = r["params"]
-			pstr = f"mcs={p['min_cluster_size']:2d}/ms={p['min_samples']:2d}/{p['cluster_selection_method']:<3}"
+			pstr = f"mcs: {p['min_cluster_size']:2d} ms: {p['min_samples']:2d} {p['cluster_selection_method']:<3}"
 			print(f"{pstr:<22} {r['coverage']:<10.1%} {r['stability']:<10.3f} {r['n_clusters']:<10d} {r['score']:<8.3f}")
 			if r["score"] > best_score:
 				best_score = r["score"]
 				best = r
 				print(f"{'':<22} {'':<10} {'':<10} {'':<10} {'NEW BEST':<8}")
 		if best is not None and best_score >= early_stop_threshold:
-				remaining = len(test_params) - (start + batch_size)
-				print(f"\n[EARLY STOP] score={best_score:.3f} >= {early_stop_threshold:.3f}; skipping {remaining} configs")
-				break
+			remaining = len(test_params) - (start + batch_size)
+			print(f"\n[EARLY STOP] score={best_score:.3f} >= {early_stop_threshold:.3f}; skipping {remaining} configs")
+			break
+
 	if best is None:
 		raise ValueError("No valid parameter combinations found (all configs below min_coverage).")
 	
 	# Final refit on full data
 	with warnings.catch_warnings():
 		warnings.filterwarnings(
-				"ignore",
-				# message=".*force_all_finite.*",
-				category=FutureWarning,
+			"ignore",
+			message=".*force_all_finite.*",
+			category=FutureWarning,
 		)
 		hdb_full = hdbscan.HDBSCAN(**best["params"], core_dist_n_jobs=n_jobs)
 		hdb_labels = hdb_full.fit_predict(X)
@@ -294,21 +296,22 @@ def autotune_hdbscan_params_opt(
 	core_indices = np.where(hdb_labels != -1)[0].tolist()
 	n_clusters_full = int(len(set(hdb_labels)) - (1 if -1 in hdb_labels else 0))
 	best_result = dict(
-			**best,
-			hdb_labels=hdb_labels,
-			noise_rate=noise_rate,
-			core_indices=core_indices,
-			n_tested=len(candidates),
+		**best,
+		hdb_labels=hdb_labels,
+		noise_rate=noise_rate,
+		core_indices=core_indices,
+		n_tested=len(candidates),
 	)
 	best_result['n_clusters'] = n_clusters_full
 	
 	print(f"\n[HDBSCAN AUTO-TUNED PARAMS] {best_result['params']}")
 	print(
-			f"{best_result['n_clusters']} clusters, "
-			f"{(1-noise_rate):.1%} coverage, "
-			f"stability={best_result['stability']:.3f}, "
-			f"score={best_result['score']:.3f}"
+		f"{best_result['n_clusters']} clusters, "
+		f"{(1-noise_rate):.1%} coverage, "
+		f"stability={best_result['stability']:.3f}, "
+		f"score={best_result['score']:.3f}"
 	)
+
 	return best_result
 
 def autotune_hdbscan_params(X, n_bootstrap=5, n_jobs=-1):
