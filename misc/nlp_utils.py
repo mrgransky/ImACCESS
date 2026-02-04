@@ -658,90 +658,67 @@ def _clustering_hdbscan(
 
 	return df_clusters
 
-
-
-def find_optimal_n_clusters_agglomerative(
-		X,
-		linkage_matrix,
-		min_clusters=10,
-		max_clusters=500,
-		step=10,
-		sample_size=5000,
-		metric='silhouette',
-		verbose=True
+def get_num_clusters_agglomerative(
+	X,
+	linkage_matrix,
+	metric='silhouette',
 ):
-		"""
-		Find optimal number of clusters using silhouette or davies-bouldin score.
+	num_samples, embedding_dim = X.shape
+	sample_size = int(3e4) if num_samples > int(3e4) else num_samples
+	print(f"Auto-tuning number of clusters for X: {type(X)} {X.shape}")
+
+	# Subsample for large datasets
+	if num_samples > sample_size:
+		indices = np.random.choice(num_samples, sample_size, replace=False)
+		X_sample = X[indices]
+		print(f"[OPTIMAL K] Subsampling {sample_size}/{num_samples} points for speed")
+	else:
+		X_sample = X
+		indices = np.arange(num_samples)
+	
+	if num_samples > int(2e4):
+		range_n_clusters = range(100, min(1501, num_samples // 20), 100)
+	elif num_samples > int(5e3):
+		range_n_clusters = range(20, min(301, num_samples // 15), 20)
+	else:
+		range_n_clusters = range(5, min(201, num_samples // 2), 5)
+
+	print(f"\n[OPTIMAL K] Testing {len(range_n_clusters)} clusters {range_n_clusters} counts using {metric} score...")
+	print(f"{'n_clusters':<12} {metric:<15}")
+	print("=" * 30)
+	
+	scores = []
+	for n_clusters in range_n_clusters:
+		# Cut dendrogram at this height to get n_clusters
+		labels_full = fcluster(linkage_matrix, n_clusters, criterion='maxclust')
+		labels_sample = labels_full[indices]
 		
-		Parameters
-		----------
-		X : np.ndarray
-				Data matrix (n_samples, n_features)
-		linkage_matrix : np.ndarray
-				Precomputed linkage matrix from scipy.cluster.hierarchy.linkage
-		min_clusters : int
-				Minimum number of clusters to test
-		max_clusters : int
-				Maximum number of clusters to test
-		step : int
-				Step size for cluster range
-		sample_size : int
-				Subsample for faster evaluation (use all if None)
-		metric : str
-				'silhouette' (higher is better) or 'davies_bouldin' (lower is better)
+		# Skip if only 1 cluster or all singletons
+		if len(np.unique(labels_sample)) < 2:
+			print(f"{n_clusters:<12} {0.0:<15.4f} (skipped)")
+			continue
 		
-		Returns
-		-------
-		int
-				Optimal number of clusters
-		"""
-		
-		# Subsample for large datasets
-		if sample_size and X.shape[0] > sample_size:
-				indices = np.random.choice(X.shape[0], sample_size, replace=False)
-				X_sample = X[indices]
-				print(f"[OPTIMAL K] Subsampling {sample_size}/{X.shape[0]} points for speed")
-		else:
-				X_sample = X
-				indices = np.arange(X.shape[0])
-		
-		max_clusters = min(max_clusters, X_sample.shape[0] // 2)
-		range_n_clusters = range(min_clusters, max_clusters, step)
-		
-		scores = []
-		print(f"\n[OPTIMAL K] Testing {len(range_n_clusters)} cluster counts using {metric} score...")
-		print(f"{'n_clusters':<12} {metric:<15}")
-		print("=" * 30)
-		
-		for n_clusters in range_n_clusters:
-				# Cut dendrogram at this height to get n_clusters
-				labels_full = fcluster(linkage_matrix, n_clusters, criterion='maxclust')
-				labels_sample = labels_full[indices]
-				
-				# Skip if only 1 cluster or all singletons
-				if len(np.unique(labels_sample)) < 2:
-						continue
-				
-				if metric == 'silhouette':
-						score = silhouette_score(X_sample, labels_sample, metric='cosine')
-						scores.append((n_clusters, score))
-						print(f"{n_clusters:<12} {score:<15.4f}")
-				elif metric == 'davies_bouldin':
-						score = davies_bouldin_score(X_sample, labels_sample)
-						scores.append((n_clusters, score))
-						print(f"{n_clusters:<12} {score:<15.4f}")
-		
-		if not scores:
-				raise ValueError("No valid cluster configurations found")
-		
-		# Select best
+		score = -np.inf
 		if metric == 'silhouette':
-				best_k = max(scores, key=lambda x: x[1])[0]
-		else:  # davies_bouldin (lower is better)
-				best_k = min(scores, key=lambda x: x[1])[0]
+			score = silhouette_score(X_sample, labels_sample, metric='cosine')
+		elif metric == 'davies_bouldin':
+			score = davies_bouldin_score(X_sample, labels_sample)
 		
-		print(f"\n[OPTIMAL K] Selected: {best_k} clusters")
-		return best_k
+		scores.append((n_clusters, score))
+		print(f"{n_clusters:<12} {score:<15.4f}")
+	
+	if not scores:
+		raise ValueError("No valid cluster configurations found")
+	
+	# Select best
+	if metric == 'silhouette':
+		best_k = max(scores, key=lambda x: x[1])[0]
+	else:  # davies_bouldin (lower is better)
+		best_k = min(scores, key=lambda x: x[1])[0]
+	
+	print(f"\n[OPTIMAL K] Selected: {best_k} clusters")
+
+	return best_k
 
 def _clustering_(
 	labels: List[List[str]],
@@ -751,39 +728,8 @@ def _clustering_(
 	nc: int = None,
 	linkage_method: str = "average",  # 'average', 'complete', 'ward'
 	distance_metric: str = "cosine",  # 'cosine', 'euclidean'
-	auto_tune: bool = True,
 	verbose: bool = True,
-):
-	"""
-	Semantic label clustering using Agglomerative Clustering.
-	
-	Parameters
-	----------
-	labels : List[List[str]]
-			List of label lists per document
-	model_id : str
-			SentenceTransformer model identifier
-	device : str
-			Device for encoding ('cuda:0' or 'cpu')
-	clusters_fname : str
-			Output filename for results
-	nc : int, optional
-			Number of clusters (if None, auto-tune)
-	linkage_method : str
-			'average' (best for semantic), 'complete', or 'ward'
-	distance_metric : str
-			'cosine' (recommended) or 'euclidean'
-	auto_tune : bool
-			Whether to auto-tune number of clusters
-	verbose : bool
-			Verbose output
-	
-	Returns
-	-------
-	pd.DataFrame
-			Clustered labels with canonical representatives
-	"""
-	
+):	
 	if verbose:
 			print(f"\n[CLUSTERING - AGGLOMERATIVE] {len(labels)} documents")
 			print(f"   ├─ model_id: {model_id}")
@@ -867,32 +813,18 @@ def _clustering_(
 	
 	print(f"[LINKAGE] Complete. Linkage matrix shape: {Z.shape}")
 	
-	# ========== STEP 5: Determine Optimal Number of Clusters ==========
-	if nc is None and auto_tune:
-		
-		if len(all_labels) > int(2e4):
-			min_k, max_k, step = 100, min(1501, len(all_labels) // 20), 100
-		elif len(all_labels) > int(5e3):
-			min_k, max_k, step = 20, min(301, len(all_labels) // 15), 20
-		else:
-			min_k, max_k, step = 5, min(201, len(all_labels) // 10), 5
-		
-		print(f"\n[STEP 5] Auto-tuning number of clusters for {len(all_labels)} labels: {min_k} to {max_k} in steps of {step}")
-		best_k = find_optimal_n_clusters_agglomerative(
+	# STEP 5: Determine Optimal Number of Clusters
+	if nc is None:
+		best_k = get_num_clusters_agglomerative(
 			X=X,
 			linkage_matrix=Z,
-			min_clusters=min_k,
-			max_clusters=max_k,
-			step=step,
-			sample_size=int(1e4) if len(all_labels) > int(1e4) else None,
 			metric='silhouette',
-			verbose=verbose
 		)
 	else:
-		best_k = nc if nc else max(10, len(all_labels) // 50)
-		print(f"\n[STEP 5] Using {'user-defined' if nc else 'heuristic'} k={best_k} for {len(all_labels)} labels")
+		best_k = nc
+		print(f"Using {'user-defined' if nc else 'heuristic'} k={best_k} for {len(all_labels)} labels")
 	
-	# ========== STEP 6: Cut Dendrogram ==========
+	# STEP 6: Cut Dendrogram
 	print(f"\n[STEP 6] Cutting dendrogram at k={best_k} for {len(all_labels)} labels")
 	cluster_labels = fcluster(Z, best_k, criterion='maxclust')
 	
@@ -907,7 +839,7 @@ def _clustering_(
 		f"mean={np.mean(list(cluster_counts.values())):.1f}"
 	)
 	
-	print(f"\n[STEP 7] Visualizing clusters in 2D")	
+	# 2D cluster visualizations
 	# PCA
 	pca_projection = PCA(n_components=2, random_state=0).fit_transform(X)
 	
@@ -934,7 +866,6 @@ def _clustering_(
 	out_pca = clusters_fname.replace(".csv", "_pca_agglomerative.png")
 	plt.savefig(out_pca, dpi=150, bbox_inches='tight')
 	plt.close()
-	print(f"Saved PCA plot → {out_pca}")
 	
 	# t-SNE plot
 	tsne_colors = [palette[i % len(palette)] for i in tsne_labels]
@@ -946,7 +877,6 @@ def _clustering_(
 	out_tsne = clusters_fname.replace(".csv", "_tsne_agglomerative.png")
 	plt.savefig(out_tsne, dpi=150, bbox_inches='tight')
 	plt.close()
-	print(f"Saved t-SNE plot → {out_tsne}")
 	
 	# ========== STEP 8: Canonical Label Selection ==========
 	print(f"\n[STEP 8] Selecting canonical labels per cluster")
