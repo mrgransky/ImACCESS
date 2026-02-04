@@ -545,6 +545,7 @@ Pamplona
 Ravenna
 Rio de Janeiro
 Santander
+Shanghai
 Sicily
 Siena
 Strömsund
@@ -594,6 +595,7 @@ Italian
 Japanese
 Korean
 Lebanese
+Malaysian
 Mexican
 Norwegian
 North Korean
@@ -608,5 +610,6 @@ Swedish
 Swiss
 Syrian
 Turkish
+Vietnamese
 Yugoslav
 Yugoslavian

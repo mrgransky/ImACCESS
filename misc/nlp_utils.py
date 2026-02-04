@@ -428,8 +428,8 @@ def _clustering_(
 	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
 	clusters_fname: str = "clusters.csv",
 	nc: int = None,
-	auto_tune: bool = True,
 	n_jobs: int = -1,
+	auto_tune: bool = True,
 	verbose: bool = True,
 ):
 	if verbose:
@@ -474,7 +474,7 @@ def _clustering_(
 	print(f"\n[STEP 4] Density-based clustering with HDBSCAN on semantic space for {X.shape[0]} labels")
 	if auto_tune:
 		print(f"Auto-tuning HDBSCAN parameters")
-		n_boot = 3 if len(all_labels) > 5000 else 5
+		n_boot = 3 if len(all_labels) > int(1e4) else 5
 		result = autotune_hdbscan_params_opt(X=X, n_bootstrap=n_boot, n_jobs=n_jobs)
 		hdb_labels = result['hdb_labels']
 		min_cluster_size = result['params']['min_cluster_size']
@@ -482,8 +482,8 @@ def _clustering_(
 		cluster_selection_method = result['params']['cluster_selection_method']
 		metric = result['params']['metric']
 	else:
-		min_cluster_size = 2
-		min_samples = 3
+		min_cluster_size = 5
+		min_samples = 2
 		cluster_selection_method = "eom"
 		metric = "euclidean"
 	
@@ -569,10 +569,10 @@ def _clustering_(
 
 	print(f"\n[STEP 5.1] Silhouette analysis for KMeans clustering on {len(core_labels)} semantic cores")
 	if nc is None:
-		if len(core_labels) > 2000:
-			range_n_clusters = range(100, min(2500, len(core_labels) // 10), 50)
+		if len(core_labels) > 4000:
+			range_n_clusters = range(50, min(3001, len(core_labels) // 10), 50)
 		else:
-			range_n_clusters = range(25, min(350, len(core_labels) // 2), 5)
+			range_n_clusters = range(10, min(401, len(core_labels) // 2), 5)
 		silhouette_scores = []
 		print(f"Searching for optimal cluster count {range_n_clusters}...")
 		for k in range_n_clusters:
