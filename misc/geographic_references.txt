@@ -330,6 +330,7 @@ Centerville
 Centerville California
 Castroville
 Cayuta
+Cleveland
 Chicago
 Columbia
 Columbus
@@ -339,6 +340,7 @@ Echo
 Echo, UT
 Echo UT
 El Paso
+Hartford
 Hollywood
 Houston
 Houston TX
@@ -615,6 +617,7 @@ Finnish
 French
 German
 Greek
+Icelandic
 Indian
 Irish
 Italian

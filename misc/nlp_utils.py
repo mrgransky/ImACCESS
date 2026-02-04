@@ -40,6 +40,14 @@ from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
 import warnings
 warnings.filterwarnings('ignore')
 from sklearn.exceptions import UndefinedMetricWarning
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.metrics import silhouette_score, davies_bouldin_score
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
+from scipy.spatial.distance import squareform
+
 warnings.filterwarnings(
 	"ignore",
 	# message=".*number of unique classes.*",
@@ -47,10 +55,10 @@ warnings.filterwarnings(
 	module="sklearn.metrics"
 )
 
-
 MISC_DIR = os.path.dirname(os.path.abspath(__file__))
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["PYTHONHASHSEED"] = "0"
+# os.environ["PYTHONHASHSEED"] = "0"
+
 nltk_modules = [
 	'punkt',
 	'punkt_tab',
@@ -132,6 +140,114 @@ detector_all = (
 	.with_preloaded_language_models()
 	.build()
 )
+
+def autotune_hdbscan_params(X, n_bootstrap=5, n_jobs=-1):
+	test_params = []
+	for mcs in [2, 3, 5, 7, 10, 15, 20]:
+		for ms in [1, 2, 3, 4, 5]:
+			for method in ['eom', 'leaf']:  # Try both selection methods
+				params = {
+					'min_cluster_size': mcs,
+					'min_samples': ms,
+					'metric': 'euclidean',
+					'core_dist_n_jobs': n_jobs,
+					'cluster_selection_method': method
+				}
+				test_params.append(params)
+	
+	best_score = -1
+	best_result = None
+	candidates = []
+	
+	for params in test_params:
+		agreements = []
+		
+		for seed in range(n_bootstrap):
+			idx = resample(np.arange(X.shape[0]), n_samples=int(0.8*X.shape[0]), random_state=seed)
+			X_boot = X[idx]
+			hdb = hdbscan.HDBSCAN(**params)
+			boot_labels = hdb.fit_predict(X_boot)
+			full_labels = np.full(X.shape[0], -1)
+			full_labels[idx] = boot_labels
+			agreements.append(full_labels)
+		
+		agreements = np.array(agreements)
+		noise_rates = [(a == -1).mean() for a in agreements]
+		avg_noise = np.mean(noise_rates)
+		coverage = 1 - avg_noise
+		
+		# Skip if coverage too low (can't run KMeans on <10% of data)
+		if coverage < 0.15:
+			continue
+		
+		# Calculate stability only on non-noise points
+		stability_scores = []
+		for i in range(n_bootstrap):
+			for j in range(i+1, n_bootstrap):
+				mask = (agreements[i] != -1) & (agreements[j] != -1)
+				if mask.sum() > 10:
+					# ARI on points clustered in both runs
+					stability_scores.append(adjusted_rand_score(agreements[i][mask], agreements[j][mask]))
+		
+		stability = np.mean(stability_scores) if stability_scores else 0
+		
+		# Balance stability and coverage
+		# Use harmonic mean (F1-style) to require both to be good
+		if stability + coverage > 0:
+			score = 2 * (stability * coverage) / (stability + coverage)
+		else:
+			score = 0
+		
+		result = {
+			'params': params,
+			'stability': float(stability),
+			'coverage': float(coverage),
+			'score': float(score),
+			'n_clusters': len(set(agreements[0])) - (1 if -1 in agreements[0] else 0)
+		}
+		candidates.append(result)
+		
+		print(
+			f"mcs={params['min_cluster_size']:2d}/ms={params['min_samples']:2d}/{params['cluster_selection_method']:<10}"
+			f"Coverage: {coverage:<10.1%}Stability: {stability:<10.3f}"
+			f"Clusters: {result['n_clusters']:<10}Score: {score:.3f}"
+		)
+		
+		if score > best_score:
+			best_score = score
+			# Refit on full data
+			hdb_full = hdbscan.HDBSCAN(**params)
+			hdb_labels = hdb_full.fit_predict(X)
+			best_result = {
+				**result,
+				'hdb_labels': hdb_labels,
+				'noise_rate': float((hdb_labels == -1).mean()),
+				'core_indices': np.where(hdb_labels != -1)[0].tolist(),
+				'n_clusters': len(set(hdb_labels)) - (1 if -1 in hdb_labels else 0)
+			}
+	
+	if best_result is None:
+		# Ultimate fallback: pick highest coverage
+		best = max(candidates, key=lambda x: x['coverage'])
+		params = best['params']
+		hdb_full = hdbscan.HDBSCAN(**params)
+		hdb_labels = hdb_full.fit_predict(X)
+		best_result = {
+			**best,
+			'hdb_labels': hdb_labels,
+			'core_indices': np.where(hdb_labels != -1)[0].tolist(),
+			'n_clusters': len(set(hdb_labels)) - (1 if -1 in hdb_labels else 0),
+			'fallback': True
+		}
+	
+	print(f"\n[HDBSCAN AUTO-TUNED PARAMS] {best_result['params']}")
+	print(
+		f"{best_result['n_clusters']} clusters, "
+		f"{best_result.get('coverage', 1-best_result['noise_rate']):.1%} coverage, "
+		f"stability={best_result['stability']:.3f}"
+	)
+	
+	return best_result
 
 def autotune_hdbscan_params_opt(
 	X,
@@ -264,6 +380,7 @@ def autotune_hdbscan_params_opt(
 		batch_results = Parallel(n_jobs=n_jobs, backend="loky")(
 			delayed(run_one_config)(p) for p in batch
 		)
+
 		for r in batch_results:
 			if r is None:
 				continue
@@ -275,6 +392,7 @@ def autotune_hdbscan_params_opt(
 				best_score = r["score"]
 				best = r
 				print(f"{'':<22} {'':<10} {'':<10} {'':<10} {'NEW BEST':<8}")
+
 		if best is not None and best_score >= early_stop_threshold:
 			remaining = len(test_params) - (start + batch_size)
 			print(f"\n[EARLY STOP] score={best_score:.3f} >= {early_stop_threshold:.3f}; skipping {remaining} configs")
@@ -314,115 +432,7 @@ def autotune_hdbscan_params_opt(
 
 	return best_result
 
-def autotune_hdbscan_params(X, n_bootstrap=5, n_jobs=-1):
-	test_params = []
-	for mcs in [2, 3, 5, 7, 10, 15, 20]:
-		for ms in [1, 2, 3, 4, 5]:
-			for method in ['eom', 'leaf']:  # Try both selection methods
-				params = {
-					'min_cluster_size': mcs,
-					'min_samples': ms,
-					'metric': 'euclidean',
-					'core_dist_n_jobs': n_jobs,
-					'cluster_selection_method': method
-				}
-				test_params.append(params)
-	
-	best_score = -1
-	best_result = None
-	candidates = []
-	
-	for params in test_params:
-		agreements = []
-		
-		for seed in range(n_bootstrap):
-			idx = resample(np.arange(X.shape[0]), n_samples=int(0.8*X.shape[0]), random_state=seed)
-			X_boot = X[idx]
-			hdb = hdbscan.HDBSCAN(**params)
-			boot_labels = hdb.fit_predict(X_boot)
-			full_labels = np.full(X.shape[0], -1)
-			full_labels[idx] = boot_labels
-			agreements.append(full_labels)
-		
-		agreements = np.array(agreements)
-		noise_rates = [(a == -1).mean() for a in agreements]
-		avg_noise = np.mean(noise_rates)
-		coverage = 1 - avg_noise
-		
-		# Skip if coverage too low (can't run KMeans on <10% of data)
-		if coverage < 0.15:
-			continue
-		
-		# Calculate stability only on non-noise points
-		stability_scores = []
-		for i in range(n_bootstrap):
-			for j in range(i+1, n_bootstrap):
-				mask = (agreements[i] != -1) & (agreements[j] != -1)
-				if mask.sum() > 10:
-					# ARI on points clustered in both runs
-					stability_scores.append(adjusted_rand_score(agreements[i][mask], agreements[j][mask]))
-		
-		stability = np.mean(stability_scores) if stability_scores else 0
-		
-		# Balance stability and coverage
-		# Use harmonic mean (F1-style) to require both to be good
-		if stability + coverage > 0:
-			score = 2 * (stability * coverage) / (stability + coverage)
-		else:
-			score = 0
-		
-		result = {
-			'params': params,
-			'stability': float(stability),
-			'coverage': float(coverage),
-			'score': float(score),
-			'n_clusters': len(set(agreements[0])) - (1 if -1 in agreements[0] else 0)
-		}
-		candidates.append(result)
-		
-		print(
-			f"mcs={params['min_cluster_size']:2d}/ms={params['min_samples']:2d}/{params['cluster_selection_method']:<10}"
-			f"Coverage: {coverage:<10.1%}Stability: {stability:<10.3f}"
-			f"Clusters: {result['n_clusters']:<10}Score: {score:.3f}"
-		)
-		
-		if score > best_score:
-			best_score = score
-			# Refit on full data
-			hdb_full = hdbscan.HDBSCAN(**params)
-			hdb_labels = hdb_full.fit_predict(X)
-			best_result = {
-				**result,
-				'hdb_labels': hdb_labels,
-				'noise_rate': float((hdb_labels == -1).mean()),
-				'core_indices': np.where(hdb_labels != -1)[0].tolist(),
-				'n_clusters': len(set(hdb_labels)) - (1 if -1 in hdb_labels else 0)
-			}
-	
-	if best_result is None:
-		# Ultimate fallback: pick highest coverage
-		best = max(candidates, key=lambda x: x['coverage'])
-		params = best['params']
-		hdb_full = hdbscan.HDBSCAN(**params)
-		hdb_labels = hdb_full.fit_predict(X)
-		best_result = {
-			**best,
-			'hdb_labels': hdb_labels,
-			'core_indices': np.where(hdb_labels != -1)[0].tolist(),
-			'n_clusters': len(set(hdb_labels)) - (1 if -1 in hdb_labels else 0),
-			'fallback': True
-		}
-	
-	print(f"\n[HDBSCAN AUTO-TUNED PARAMS] {best_result['params']}")
-	print(
-		f"{best_result['n_clusters']} clusters, "
-		f"{best_result.get('coverage', 1-best_result['noise_rate']):.1%} coverage, "
-		f"stability={best_result['stability']:.3f}"
-	)
-	
-	return best_result
-
-def _clustering_(
+def _clustering_hdbscan(
 	labels: List[List[str]],
 	model_id: str,
 	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
@@ -536,11 +546,8 @@ def _clustering_(
 	pca_projection = PCA(n_components=2).fit_transform(X)
 	print(f"TSNE: {type(tsne_projection)}, {tsne_projection.shape}")
 	print(f"PCA: {type(pca_projection)}, {pca_projection.shape}")
-	# Determine the number of colors needed for the palette
-	# If there are clusters, max_label will be at least 0. If only noise, max_label will be -1.
+
 	max_label = np.max(hdb_labels)
-	# The palette size should be at least max_label + 1 to accommodate all cluster indices.
-	# We use 12 as a minimum to ensure some variation even with few clusters.
 	palette_size = max(max_label + 1, 12)
 	color_palette = sns.color_palette('Paired', palette_size)
 	cluster_colors = [
@@ -605,79 +612,36 @@ def _clustering_(
 	def get_centroid_canonical(cluster_embeddings, cluster_labels):
 		# Compute centroid (mean of all embeddings)
 		centroid = cluster_embeddings.mean(axis=0, keepdims=True) # (1, embedding_dim)		
-		# Find similarity of each label to centroid
+		
+		# similarity of each label to centroid
 		similarities = cosine_similarity(centroid, cluster_embeddings)[0] # (n_samples,)
-		# Pick the label with highest similarity
-		best_idx = similarities.argmax() # 
+		
+		# label with highest similarity
+		best_idx = similarities.argmax() # index of max similarity
+
 		return cluster_labels[best_idx], similarities[best_idx]
 
 	for cid in sorted(df_core.cluster.unique()):
 		# Get labels and their embeddings for this cluster
 		cluster_mask = df_core.cluster == cid
 		cluster_texts = df_core[cluster_mask]["label"].tolist()
+
 		# Get embeddings for this cluster (from X_core)
 		cluster_indices = df_core[cluster_mask].index.tolist()
 		cluster_embeddings = X_core[cluster_indices]
-		# Find centroid-nearest label
+
+		# centroid-nearest label
 		canonical, score = get_centroid_canonical(cluster_embeddings, cluster_texts)
+
 		cluster_canonicals[cid] = {
 			"canonical": canonical,
 			"score": score,
 			"size": len(cluster_texts),
 		}
+
 		print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples:\n{cluster_texts}")
 		print(f">> Canonical (centroid-nearest, sim={score:.4f}): {canonical}")
 	
-	# tfidf = TfidfVectorizer(
-	# 	stop_words="english", 
-	# 	ngram_range=(1, 3),
-	# 	max_features=5,
-	# )
-	# canonical_threshold = 0.4
-
-	# for cid in sorted(df_core.cluster.unique()):
-	# 	cluster_texts = df_core[df_core.cluster == cid]["label"].tolist()
-	# 	tfidf_matrix = tfidf.fit_transform(cluster_texts)
-
-	# 	vocab = tfidf.get_feature_names_out()
-	# 	scores = tfidf_matrix.mean(axis=0).A1
-
-	# 	ranked = sorted(zip(vocab, scores), key=lambda x: x[1], reverse=True)
-
-	# 	canonical = None
-	# 	# Find any term above threshold
-	# 	terms_above_threshold = [
-	# 		(term, score) for term, score in ranked 
-	# 		if score >= canonical_threshold
-	# 	]
-
-	# 	if terms_above_threshold:
-	# 		# Among terms above threshold, prioritize n-grams
-	# 		ngrams_above = [
-	# 			(term, score) for term, score in terms_above_threshold 
-	# 			if len(term.split()) > 1
-	# 		]
-			
-	# 		if ngrams_above:
-	# 			canonical = ngrams_above[0][0]  # Highest scoring n-gram
-	# 		else:
-	# 			canonical = terms_above_threshold[0][0]  # Highest scoring single word
-		
-	# 	# No term meets threshold
-	# 	# else: canonical remains None
-
-	# 	cluster_canonicals[cid] = {
-	# 		"canonical": canonical,
-	# 		"size": len(cluster_texts),
-	# 		"top_terms": ranked
-	# 	}
-
-	# 	print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples:\n{cluster_texts}")
-	# 	print("Top terms:")
-	# 	for term, score in ranked:
-	# 		print(f"\t- {term:<30}tfidf: {score:<10.7f}{f' >= {canonical_threshold} => POTENTIAL CANONICAL' if score >= canonical_threshold else ''}")
-	# 	print(f">> Canonical (threshold >= {canonical_threshold} & n-gram priority): {canonical}")
-
 	print("\n[STEP 7] Saving results")
 	df_clusters = pd.DataFrame(
 		{
@@ -693,6 +657,350 @@ def _clustering_(
 	print("=" * 120)
 
 	return df_clusters
+
+
+
+def find_optimal_n_clusters_agglomerative(
+		X,
+		linkage_matrix,
+		min_clusters=10,
+		max_clusters=500,
+		step=10,
+		sample_size=5000,
+		metric='silhouette',
+		verbose=True
+):
+		"""
+		Find optimal number of clusters using silhouette or davies-bouldin score.
+		
+		Parameters
+		----------
+		X : np.ndarray
+				Data matrix (n_samples, n_features)
+		linkage_matrix : np.ndarray
+				Precomputed linkage matrix from scipy.cluster.hierarchy.linkage
+		min_clusters : int
+				Minimum number of clusters to test
+		max_clusters : int
+				Maximum number of clusters to test
+		step : int
+				Step size for cluster range
+		sample_size : int
+				Subsample for faster evaluation (use all if None)
+		metric : str
+				'silhouette' (higher is better) or 'davies_bouldin' (lower is better)
+		
+		Returns
+		-------
+		int
+				Optimal number of clusters
+		"""
+		
+		# Subsample for large datasets
+		if sample_size and X.shape[0] > sample_size:
+				indices = np.random.choice(X.shape[0], sample_size, replace=False)
+				X_sample = X[indices]
+				print(f"[OPTIMAL K] Subsampling {sample_size}/{X.shape[0]} points for speed")
+		else:
+				X_sample = X
+				indices = np.arange(X.shape[0])
+		
+		max_clusters = min(max_clusters, X_sample.shape[0] // 2)
+		range_n_clusters = range(min_clusters, max_clusters, step)
+		
+		scores = []
+		print(f"\n[OPTIMAL K] Testing {len(range_n_clusters)} cluster counts using {metric} score...")
+		print(f"{'n_clusters':<12} {metric:<15}")
+		print("=" * 30)
+		
+		for n_clusters in range_n_clusters:
+				# Cut dendrogram at this height to get n_clusters
+				labels_full = fcluster(linkage_matrix, n_clusters, criterion='maxclust')
+				labels_sample = labels_full[indices]
+				
+				# Skip if only 1 cluster or all singletons
+				if len(np.unique(labels_sample)) < 2:
+						continue
+				
+				if metric == 'silhouette':
+						score = silhouette_score(X_sample, labels_sample, metric='cosine')
+						scores.append((n_clusters, score))
+						print(f"{n_clusters:<12} {score:<15.4f}")
+				elif metric == 'davies_bouldin':
+						score = davies_bouldin_score(X_sample, labels_sample)
+						scores.append((n_clusters, score))
+						print(f"{n_clusters:<12} {score:<15.4f}")
+		
+		if not scores:
+				raise ValueError("No valid cluster configurations found")
+		
+		# Select best
+		if metric == 'silhouette':
+				best_k = max(scores, key=lambda x: x[1])[0]
+		else:  # davies_bouldin (lower is better)
+				best_k = min(scores, key=lambda x: x[1])[0]
+		
+		print(f"\n[OPTIMAL K] Selected: {best_k} clusters")
+		return best_k
+
+def _clustering_(
+	labels: List[List[str]],
+	model_id: str,
+	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
+	clusters_fname: str = "clusters.csv",
+	nc: int = None,
+	linkage_method: str = "average",  # 'average', 'complete', 'ward'
+	distance_metric: str = "cosine",  # 'cosine', 'euclidean'
+	auto_tune: bool = True,
+	verbose: bool = True,
+):
+	"""
+	Semantic label clustering using Agglomerative Clustering.
+	
+	Parameters
+	----------
+	labels : List[List[str]]
+			List of label lists per document
+	model_id : str
+			SentenceTransformer model identifier
+	device : str
+			Device for encoding ('cuda:0' or 'cpu')
+	clusters_fname : str
+			Output filename for results
+	nc : int, optional
+			Number of clusters (if None, auto-tune)
+	linkage_method : str
+			'average' (best for semantic), 'complete', or 'ward'
+	distance_metric : str
+			'cosine' (recommended) or 'euclidean'
+	auto_tune : bool
+			Whether to auto-tune number of clusters
+	verbose : bool
+			Verbose output
+	
+	Returns
+	-------
+	pd.DataFrame
+			Clustered labels with canonical representatives
+	"""
+	
+	if verbose:
+			print(f"\n[CLUSTERING - AGGLOMERATIVE] {len(labels)} documents")
+			print(f"   ├─ model_id: {model_id}")
+			print(f"   ├─ device: {device}")
+			print(f"   ├─ linkage: {linkage_method}")
+			print(f"   ├─ distance: {distance_metric}")
+			print(f"   └─ sample: {labels[:5]}")
+	
+	# ========== STEP 1: Deduplicate ==========
+	print("\n[STEP 1] Deduplicating labels")
+	documents = []
+	for doc in labels:
+			if isinstance(doc, str):
+					doc = ast.literal_eval(doc)
+			documents.append(list(set(lbl for lbl in doc)))
+	
+	all_labels = sorted(set(label for doc in documents for label in doc))
+	
+	print(f"Total documents: {len(documents)}")
+	print(f"Unique labels: {len(all_labels)}")
+	print(f"Sample labels: {all_labels[:15]}")
+	
+	# ========== STEP 2: Load Model ==========
+	print(f"\n[STEP 2] Loading SentenceTransformer {model_id}")
+	
+	model = SentenceTransformer(
+		model_name_or_path=model_id,
+		cache_folder=cache_directory[os.getenv('USER')],
+		token=os.getenv("HUGGINGFACE_TOKEN"),
+	).to(device)
+	
+	print(f"Model loaded: {sum(p.numel() for p in model.parameters()):,} parameters")
+	
+	# ========== STEP 3: Encode ==========
+	print(f"\n[STEP 3] Encoding {len(all_labels)} labels")
+	X = model.encode(
+		all_labels,
+		batch_size=256 if len(all_labels) > 1000 else 32,
+		show_progress_bar=False,
+		convert_to_numpy=True,
+		normalize_embeddings=True,  # Critical for cosine distance
+	)
+	print(f"Embeddings: {X.shape} {X.dtype}")
+	
+	# ========== STEP 4: Agglomerative Clustering ==========
+	print(f"\n[STEP 4] Agglomerative Clustering on {X.shape[0]} labels")
+	
+	# For large datasets, use fastcluster if available
+	try:
+			import fastcluster
+			use_fastcluster = True
+			print("[FASTCLUSTER] Using fastcluster for O(n² log n) performance")
+	except ImportError:
+			use_fastcluster = False
+			print("[SCIPY] Using scipy (slower for large n)")
+	
+	# Compute linkage matrix
+	print(f"[LINKAGE] Computing {linkage_method} linkage with {distance_metric} distance...")
+	
+	if distance_metric == "cosine":
+		# Convert to distance matrix (1 - cosine_similarity)
+		# For normalized vectors, cosine distance = 1 - dot product
+		distance_matrix = 1 - (X @ X.T)
+		np.fill_diagonal(distance_matrix, 0)  # Ensure diagonal is exactly 0
+		distance_matrix = np.clip(distance_matrix, 0, 2)  # Numerical stability
+		
+		# Convert to condensed form (upper triangle)
+		condensed_dist = squareform(distance_matrix, checks=False)
+		
+		if use_fastcluster:
+			Z = fastcluster.linkage(condensed_dist, method=linkage_method)
+		else:
+			Z = linkage(condensed_dist, method=linkage_method)
+	elif distance_metric == "euclidean":
+		if use_fastcluster:
+			Z = fastcluster.linkage(X, method=linkage_method, metric='euclidean')
+		else:
+			Z = linkage(X, method=linkage_method, metric='euclidean')
+	else:
+		raise ValueError(f"Unsupported distance metric: {distance_metric}")
+	
+	print(f"[LINKAGE] Complete. Linkage matrix shape: {Z.shape}")
+	
+	# ========== STEP 5: Determine Optimal Number of Clusters ==========
+	if nc is None and auto_tune:
+		
+		if len(all_labels) > int(2e4):
+			min_k, max_k, step = 100, min(5001, len(all_labels) // 100), 100
+		elif len(all_labels) > int(5e3):
+			min_k, max_k, step = 20, min(301, len(all_labels) // 15), 20
+		else:
+			min_k, max_k, step = 5, min(201, len(all_labels) // 10), 5
+		
+		print(f"\n[STEP 5] Auto-tuning number of clusters for {len(all_labels)} labels: {min_k} to {max_k} in steps of {step}")
+		best_k = find_optimal_n_clusters_agglomerative(
+			X=X,
+			linkage_matrix=Z,
+			min_clusters=min_k,
+			max_clusters=max_k,
+			step=step,
+			sample_size=int(1e4) if len(all_labels) > int(1e4) else None,
+			metric='silhouette',
+			verbose=verbose
+		)
+	else:
+		best_k = nc if nc else max(10, len(all_labels) // 50)
+		print(f"\n[STEP 5] Using {'user-defined' if nc else 'heuristic'} k={best_k} for {len(all_labels)} labels")
+	
+	# ========== STEP 6: Cut Dendrogram ==========
+	print(f"\n[STEP 6] Cutting dendrogram at k={best_k} for {len(all_labels)} labels")
+	cluster_labels = fcluster(Z, best_k, criterion='maxclust')
+	
+	# Convert to 0-indexed
+	cluster_labels = cluster_labels - 1
+	
+	cluster_counts = Counter(cluster_labels)
+	print(f"[CLUSTERS] {len(cluster_counts)} clusters formed")
+	print(
+		f"[CLUSTERS] Size distribution: min={min(cluster_counts.values())}, "
+		f"max={max(cluster_counts.values())}, "
+		f"mean={np.mean(list(cluster_counts.values())):.1f}"
+	)
+	
+	print(f"\n[STEP 7] Visualizing clusters in 2D")	
+	# PCA
+	pca_projection = PCA(n_components=2, random_state=0).fit_transform(X)
+	
+	# t-SNE (subsample if too large)
+	if len(all_labels) > 10000:
+		tsne_indices = np.random.choice(len(all_labels), 10000, replace=False)
+		tsne_projection = TSNE(n_components=2, random_state=0, perplexity=30).fit_transform(X[tsne_indices])
+		tsne_labels = cluster_labels[tsne_indices]
+	else:
+		tsne_projection = TSNE(n_components=2, random_state=0, perplexity=30).fit_transform(X)
+		tsne_labels = cluster_labels
+	
+	# Color palette
+	n_colors = min(len(cluster_counts), 256)
+	palette = sns.color_palette('tab20', n_colors) if n_colors <= 20 else sns.color_palette('husl', n_colors)
+	colors = [palette[i % len(palette)] for i in cluster_labels]
+	
+	# PCA plot
+	plt.figure(figsize=(27, 17))
+	plt.scatter(*pca_projection.T, s=40, c=colors, alpha=0.6, marker='o')
+	plt.title(f"PCA - Agglomerative Clustering ({len(cluster_counts)} clusters, {len(all_labels)} labels)")
+	plt.xlabel("PC1")
+	plt.ylabel("PC2")
+	out_pca = clusters_fname.replace(".csv", "_pca_agglomerative.png")
+	plt.savefig(out_pca, dpi=150, bbox_inches='tight')
+	plt.close()
+	print(f"Saved PCA plot → {out_pca}")
+	
+	# t-SNE plot
+	tsne_colors = [palette[i % len(palette)] for i in tsne_labels]
+	plt.figure(figsize=(27, 17))
+	plt.scatter(*tsne_projection.T, s=40, c=tsne_colors, alpha=0.6, marker='o')
+	plt.title(f"t-SNE - Agglomerative Clustering ({len(cluster_counts)} clusters)")
+	plt.xlabel("t-SNE 1")
+	plt.ylabel("t-SNE 2")
+	out_tsne = clusters_fname.replace(".csv", "_tsne_agglomerative.png")
+	plt.savefig(out_tsne, dpi=150, bbox_inches='tight')
+	plt.close()
+	print(f"Saved t-SNE plot → {out_tsne}")
+	
+	# ========== STEP 8: Canonical Label Selection ==========
+	print(f"\n[STEP 8] Selecting canonical labels per cluster")
+	
+	df = pd.DataFrame(
+		{
+			'label': all_labels,
+			'cluster': cluster_labels
+		}
+	)
+	
+	cluster_canonicals = {}
+	
+	for cid in sorted(df.cluster.unique()):
+		cluster_mask = df.cluster == cid
+		cluster_texts = df[cluster_mask]['label'].tolist()
+		cluster_indices = df[cluster_mask].index.tolist()
+		cluster_embeddings = X[cluster_indices]
+		
+		# Centroid-nearest
+		centroid = cluster_embeddings.mean(axis=0, keepdims=True)
+		similarities = cosine_similarity(centroid, cluster_embeddings)[0]
+		best_idx = similarities.argmax()
+		canonical = cluster_texts[best_idx]
+		
+		cluster_canonicals[cid] = {
+			'canonical': canonical,
+			'score': float(similarities[best_idx]),
+			'size': len(cluster_texts)
+		}
+		
+		if verbose:
+			print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
+			print(f"\tCanonical: {canonical} (sim={similarities[best_idx]:.4f})")
+	
+	print(f"\n[STEP 9] Saving results")
+	
+	df['canonical_label'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
+	
+	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
+	df.to_csv(out_csv, index=False)
+	try:
+		df.to_excel(out_csv.replace('.csv', '.xlsx'), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
+	
+	print(f"\n[SUMMARY]")
+	print(f"  Total labels: {len(all_labels)}")
+	print(f"  Clusters: {len(cluster_counts)}")
+	print(f"  Consolidation ratio: {len(all_labels) / len(cluster_counts):.1f}:1")
+	print(f"  Largest cluster: {max(cluster_counts.values())} labels")
+	print(f"  Smallest cluster: {min(cluster_counts.values())} labels")
+
+	return df
 
 def _post_process_(
 	labels_list: List[List[str]], 
@@ -1257,6 +1565,7 @@ def basic_clean(txt: str):
 		r'Note on negative envelope',
 		r'photo from the photo album ',
 		r'The digitalisat was made by the original album.',
+		r'The following geographic information is associated with this record: ',
 		r'The photo was taken in 1954 on a pilgrimage to World War I sites. From: James K. Monteith, Clayton, Missouri, 35th Division, 128th Field Artillery Regiment.',
 		r'From an album of Lorain H. Cunningham, who served in the 129th Field Artillery during World War I and was a friend of Harry S. Truman.',
 		r'From album created by Allied Reparations Committee, headed by Ambassador Edwin W\. Pauley, 1945-47\.',
@@ -1279,7 +1588,6 @@ def basic_clean(txt: str):
 		r'The photographer’s notes from this negative series indicate ',
 		r"The photographer's notes from this negative series indicate that ",
 		r'The photo is accompanied by a typescript with a description',
-		r"The following geographic information is associated with this record:",
 		r'The following information was provided by digitizing partner Fold3:',
 		r'It was subsequently published in conjunction with an article.',
 		r'Original photograph is in a photo album of inaugural events.',
