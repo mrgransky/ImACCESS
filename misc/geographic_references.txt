@@ -10,6 +10,7 @@ North America
 South America
 Antarctica
 
+Country
 Afghanistan
 Albania
 Algeria
@@ -46,6 +47,9 @@ Canada
 Cape Verde
 Central African Republic
 Chad
+Czechoslovakia
+Czechoslovak Republic
+Czech Republic
 Chile
 China
 Colombia
@@ -186,6 +190,7 @@ Samoa
 San Marino
 São Tomé and Príncipe
 Saudi Arabia
+Scotland
 Senegal
 Serbia
 Seychelles
@@ -299,6 +304,9 @@ Wyoming
 Aberdeen
 Alturas
 Bakersfield
+Baltimore
+Baltimore, MD
+Beaufort
 Beaumont
 Bedford
 Berkeley
@@ -315,6 +323,7 @@ Brewster NY
 Brewster New York
 Bridgeport
 Brunswick
+Buffalo
 Burbank
 Burlington
 Centerville
@@ -324,6 +333,8 @@ Cayuta
 Chicago
 Columbia
 Columbus
+Dakota
+Davenport
 Echo
 Echo, UT
 Echo UT
@@ -461,8 +472,12 @@ Wash. D.C.
 Washington, D.C.
 Washington D.C.
 Welch
+Windsor
 Winslow
 
+City
+Town
+Capital
 Aegean
 Algiers
 Ankara
@@ -472,11 +487,14 @@ Baghdad
 Bagdad
 Bangkok
 Barcelona
+Basel
 Beijing
 Berlin
 Bogota
 Bordeaux
+Bremen
 Brasilia
+Bristol
 Brussels
 Buenos Aires
 Buna
@@ -488,15 +506,19 @@ Cebu City
 Cleveland
 Cologne
 Dessau
+Dorchester
 Dresden
 Dublin
+Essex
 Frankfurt
 Gaza
+Hamburg
 Hong Kong
 Ipswich
 Kobe
 Hanoi
 Havana
+Lancaster
 Leipzig
 Liverpool
 London
@@ -530,7 +552,9 @@ Granada
 Johannesburg
 Malaga
 Managua
+Manchester
 Murcia
+Nuremberg
 Panama
 Palma de Mallorca
 Alicante
@@ -548,6 +572,7 @@ Santander
 Shanghai
 Sicily
 Siena
+Southampton
 Strömsund
 Tarragona
 Tehachapi
@@ -580,6 +605,7 @@ British
 Bulgarian
 Canadian
 Chinese
+Cuban
 Danish
 Dutch
 Egyptian

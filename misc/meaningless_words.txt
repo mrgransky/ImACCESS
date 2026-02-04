@@ -1025,9 +1025,9 @@ color photograph
 miscellaneous items
 miscellaneous
 misc
+item
 okla
 housten
-view of
 background
 foreground
 photograph
@@ -1056,6 +1056,10 @@ downstream
 right
 left
 unidentified
+ne view
+se view
+sw view
+nw view
 looking
 looking e
 looking s
@@ -1149,3 +1153,29 @@ downstreambound
 rightbound
 leftbound
 worst
+snapshot
+supply
+support
+demand
+display
+figure
+figurine
+curve
+shape
+square
+group
+schedule
+setting
+action
+view
+overview
+viewpoint
+photography
+print
+open
+close
+caption
+document
+system
+icon
+symbol

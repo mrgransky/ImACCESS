@@ -625,7 +625,7 @@ def _clustering_(
 			"score": score,
 			"size": len(cluster_texts),
 		}
-		print(f"\n[Cluster {cid}] {len(cluster_texts)} samples: {cluster_texts}")
+		print(f"\n[Cluster {cid}] contains {len(cluster_texts)} samples:\n{cluster_texts}")
 		print(f">> Canonical (centroid-nearest, sim={score:.4f}): {canonical}")
 	
 	# tfidf = TfidfVectorizer(
@@ -1198,7 +1198,6 @@ def basic_clean(txt: str):
 
 	# Step 2: Remove known junk/phrase patterns
 	junk_phrases = [
-		r'Blurry Snapshot of',
 		r'view from upstream side of ',
 		r"view+\s+looking+\s+\w+\s+\w+\s+",
 		r"this is a general view of ",
@@ -1231,6 +1230,7 @@ def basic_clean(txt: str):
 		r'Original caption on envelope: ',
 		r"In the photo, ",
 		r'Historical Miscellaneous -',
+		r'\[Translated Title\]',
 		r'\[Photograph by: Unknown\]',
 		r'Date Month: \[Blank\]',
 		r'Date Day: \[Blank\]',
@@ -1246,6 +1246,10 @@ def basic_clean(txt: str):
 		r'\[sic\]',
 		r'\[arrow symbol\]',
 		r'as seen from below',
+		r'Black-and-white snapshot of ',
+		r'An informal color snapshot of ',
+		r'Blurry Snapshot of ',
+		r'\w+ faded snapshot of ',
 		r"This photograph depicts ",
 		r'This is a photograph of ',
 		r'Photography presents ',
@@ -1253,6 +1257,10 @@ def basic_clean(txt: str):
 		r'Note on negative envelope',
 		r'photo from the photo album ',
 		r'The digitalisat was made by the original album.',
+		r'The photo was taken in 1954 on a pilgrimage to World War I sites. From: James K. Monteith, Clayton, Missouri, 35th Division, 128th Field Artillery Regiment.',
+		r'From an album of Lorain H. Cunningham, who served in the 129th Field Artillery during World War I and was a friend of Harry S. Truman.',
+		r'From album created by Allied Reparations Committee, headed by Ambassador Edwin W\. Pauley, 1945-47\.',
+		r'Snapshot of France during World War I, probably taken by\s\w+\s\w+\swho was stationed there one year.',
 		r'The information about the photograph was provided by the creator of the collection, Mr. Dan Hadani',
 		r'General view of p\.\s\d+\sin the photo album of the NEF with photos.',
 		r'The album was probably for the Soviet superior in the NEF.',
@@ -1276,7 +1284,6 @@ def basic_clean(txt: str):
 		r'It was subsequently published in conjunction with an article.',
 		r'Original photograph is in a photo album of inaugural events.',
 		r'Type: C-N \(Color Negative\) C-P \(Color Print\) ',
-		r'From an album of Lorain H. Cunningham, who served in the 129th Field Artillery during World War I and was a friend of Harry S. Truman.',
 		r'Picture documentation (small picture slideshow) about ',
 		r'Misc. shots of ',
 		r'Original caption: Miscellaneous',
