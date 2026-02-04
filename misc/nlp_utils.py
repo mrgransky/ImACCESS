@@ -308,10 +308,10 @@ def autotune_hdbscan_params_opt(
 				hdb_labels=hdb_labels,
 				noise_rate=noise_rate,
 				core_indices=core_indices,
-				n_clusters=n_clusters_full,
 				n_tested=len(candidates),
 		)
-
+		best_result['n_clusters'] = n_clusters_full
+		
 		print(f"\n[HDBSCAN AUTO-TUNED PARAMS] {best_result['params']}")
 		print(
 				f"{best_result['n_clusters']} clusters, "
