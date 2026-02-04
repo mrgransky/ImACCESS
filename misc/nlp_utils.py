@@ -572,7 +572,7 @@ def _clustering_(
 		if len(core_labels) > 2000:
 			range_n_clusters = range(100, min(2500, len(core_labels) // 10), 50)
 		else:
-			range_n_clusters = range(10, min(300, len(core_labels) // 2), 10)
+			range_n_clusters = range(25, min(350, len(core_labels) // 2), 5)
 		silhouette_scores = []
 		print(f"Searching for optimal cluster count {range_n_clusters}...")
 		for k in range_n_clusters:

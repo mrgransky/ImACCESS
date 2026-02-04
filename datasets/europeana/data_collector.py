@@ -158,29 +158,8 @@ def get_dframe(
 		doc_year = doc.get("year")[0] if (doc.get("year") and doc.get("year")[0]) else None
 		doc_url = f"https://www.europeana.eu/en/item{europeana_id}" # doc.get("guid")
 
-		# useless_title_terms = [
-		# 	"scheme",
-		# ]
-
-		# for title in doc.get("title"):
-		# 	if (
-		# 		title
-		# 		and is_english(text=title, confidence_threshold=0.03, verbose=verbose)
-		# 		and title.lower() not in STOPWORDS
-		# 		and not any(word in useless_title_terms for word in title.lower().split())
-		# 	):
-		# 		title_en = title
-		# 		break
-		# 	else:
-		# 		title_en = None
-		# print(f"title_en: {title_en}")
-
-
-
-		useless_title_terms = ["scheme"]
-
+		useless_title_terms = ["scheme", "schematic"]
 		title_en = None  # default if none match
-
 		for title in doc.get("title", []):  # safer with default empty list
 				if not title:
 						continue  # skip None or empty
