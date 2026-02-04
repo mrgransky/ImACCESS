@@ -39,6 +39,14 @@ from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
 # suppress warnings
 import warnings
 warnings.filterwarnings('ignore')
+from sklearn.exceptions import UndefinedMetricWarning
+warnings.filterwarnings(
+	"ignore",
+	# message=".*number of unique classes.*",
+	category=UserWarning,
+	module="sklearn.metrics"
+)
+
 
 MISC_DIR = os.path.dirname(os.path.abspath(__file__))
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -134,7 +142,7 @@ def autotune_hdbscan_params_opt(
 	sample_frac=0.8,
 	min_overlap=50,          # require enough shared points to trust ARI
 	min_coverage=0.15,       # skip configs that label too little data
-	large_n=5000,
+	large_n=int(1e4),
 ):
 	n = X.shape[0]
 	if batch_size is None:
@@ -217,7 +225,14 @@ def autotune_hdbscan_params_opt(
 				common = np.fromiter(common, dtype=np.int64)
 				a = np.array([map_i[k] for k in common], dtype=np.int64)
 				b = np.array([map_j[k] for k in common], dtype=np.int64)
-				ari_scores.append(adjusted_rand_score(a, b))
+
+				with warnings.catch_warnings():
+					warnings.filterwarnings(
+						"ignore",
+						# message=".*number of unique classes.*",
+						category=UndefinedMetricWarning,
+					)
+					ari_scores.append(adjusted_rand_score(a, b))
 		
 		stability = float(np.mean(ari_scores)) if ari_scores else 0.0
 		if stability + coverage > 0:
