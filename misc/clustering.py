@@ -1010,7 +1010,7 @@ def cluster(
 	X = model.encode(
 		unique_labels,
 		batch_size=512,
-		show_progress_bar=verbose,
+		show_progress_bar=False,
 		convert_to_numpy=True,
 		normalize_embeddings=True,  # Critical for cosine distance
 	)
@@ -1141,7 +1141,7 @@ def cluster(
 		print(f"  └─ Cluster IDs: {stats['fine_clusters'][:25]}{'...' if len(stats['fine_clusters']) > 25 else ''}")
 	
 	# 2D cluster visualizations
-	plt.figure(figsize=(24, 16))
+	plt.figure(figsize=(24, 15))
 	dendrogram(
 		Z, 
 		truncate_mode='lastp', 
@@ -1167,7 +1167,7 @@ def cluster(
 	plt.savefig(out_dendogram, dpi=200, bbox_inches='tight')
 	plt.close()
 
-	plt.figure(figsize=(24, 18))
+	plt.figure(figsize=(24, 15))
 	dendrogram(
 		Z, 
 		color_threshold=super_cluster_distance,
