@@ -663,18 +663,8 @@ def get_num_clusters_agglomerative(
 	linkage_matrix,
 	metric='silhouette',
 ):
-	num_samples, embedding_dim = X.shape
-	sample_size = int(3e4) if num_samples > int(3e4) else num_samples
-	print(f"Auto-tuning number of clusters for X: {type(X)} {X.shape}")
-
-	# Subsample for large datasets
-	if num_samples > sample_size:
-		indices = np.random.choice(num_samples, sample_size, replace=False)
-		X_sample = X[indices]
-		print(f"[OPTIMAL K] Subsampling {sample_size}/{num_samples} points for speed")
-	else:
-		X_sample = X
-		indices = np.arange(num_samples)
+	num_samples, _ = X.shape
+	print(f"Auto-tuning number of clusters X: {type(X)} {X.shape}")
 	
 	if num_samples > int(2e4):
 		range_n_clusters = range(100, min(1501, num_samples // 20), 100)
@@ -691,7 +681,7 @@ def get_num_clusters_agglomerative(
 	for n_clusters in range_n_clusters:
 		# Cut dendrogram at this height to get n_clusters
 		labels_full = fcluster(linkage_matrix, n_clusters, criterion='maxclust')
-		labels_sample = labels_full[indices]
+		labels_sample = labels_full
 		
 		# Skip if only 1 cluster or all singletons
 		if len(np.unique(labels_sample)) < 2:
@@ -700,9 +690,9 @@ def get_num_clusters_agglomerative(
 		
 		score = -np.inf
 		if metric == 'silhouette':
-			score = silhouette_score(X_sample, labels_sample, metric='cosine')
+			score = silhouette_score(X, labels_sample, metric='cosine')
 		elif metric == 'davies_bouldin':
-			score = davies_bouldin_score(X_sample, labels_sample)
+			score = davies_bouldin_score(X, labels_sample)
 		
 		scores.append((n_clusters, score))
 		print(f"{n_clusters:<12} {score:<15.4f}")
@@ -768,7 +758,7 @@ def _clustering_(
 		convert_to_numpy=True,
 		normalize_embeddings=True,  # Critical for cosine distance
 	)
-	print(f"Embeddings: {X.shape} {X.dtype}")
+	print(f"Embeddings: {type(X)} {X.shape} {X.dtype}")
 	
 	print(f"\n[STEP 4] Agglomerative Clustering on {X.shape[0]} labels")
 	
@@ -782,7 +772,7 @@ def _clustering_(
 			print("[SCIPY] Using scipy (slower for large n)")
 	
 	# Compute linkage matrix
-	print(f"[LINKAGE] Computing {linkage_method} linkage with {distance_metric} distance...")
+	print(f"[LINKAGE] {linkage_method} linkage with {distance_metric} distance...")
 	
 	if distance_metric == "cosine":
 		# Convert to distance matrix (1 - cosine_similarity)
@@ -806,7 +796,7 @@ def _clustering_(
 	else:
 		raise ValueError(f"Unsupported distance metric: {distance_metric}")
 	
-	print(f"[LINKAGE] Complete. Linkage matrix shape: {Z.shape}")
+	print(f"[LINKAGE] {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes}")
 	
 	# STEP 5: Determine Optimal Number of Clusters
 	if nc is None:
