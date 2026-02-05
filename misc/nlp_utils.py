@@ -532,15 +532,7 @@ def _post_process_(
 		if verbose:
 			print(f"  Final output for sample {idx+1}: {type(result)} {len(result)}: {result}")
 			print(f"  Items: {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
-	
-	if verbose:
-		print(f"\n{'='*80}")
-		print(f"Completed post-processing")
-		print(f"\tOutput {type(processed_batch)} {len(processed_batch)}")
-		print(f"\tNone values: {sum(1 for x in processed_batch if x is None)}")
-		print(f"\tEmpty lists: {sum(1 for x in processed_batch if x is not None and len(x) == 0)}")
-		print(f"{'='*80}\n")
-	
+		
 	return processed_batch
 
 def is_english(
