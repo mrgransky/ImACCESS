@@ -662,223 +662,6 @@ def _clustering_hdbscan(
 
 	return df_clusters
 
-def get_num_clusters_agglomerative_v1(
-	X,
-	linkage_matrix,
-	metric='silhouette',
-):
-	num_samples, _ = X.shape
-	print(f"Auto-tuning number of clusters X: {type(X)} {X.shape}")
-	
-	# Adaptive range based on dataset size
-	if num_samples > int(2e4):
-		range_n_clusters = range(50, min(500, num_samples // 50), 25)
-	elif num_samples > int(5e3):
-		range_n_clusters = range(10, min(150, num_samples // 30), 10)
-	else:
-		range_n_clusters = range(5, min(201, num_samples // 10), 5)
-
-	print(f"\n[OPTIMAL K] Testing {len(range_n_clusters)} clusters {range_n_clusters} counts using {metric} score...")
-	print(f"{'n_clusters':<12} {metric:<15}")
-	print("=" * 30)
-	
-	scores = []
-	for n_clusters in range_n_clusters:
-		# Cut dendrogram at this height to get n_clusters
-		labels_full = fcluster(linkage_matrix, n_clusters, criterion='maxclust')
-		labels_sample = labels_full - 1  # 0-indexed
-		
-		# Skip if only 1 cluster
-		if len(np.unique(labels_sample)) < 2:
-			print(f"{n_clusters:<12} {0.0:<15.4f} (skipped)")
-			continue
-		
-		score = -np.inf
-		if metric == 'silhouette':
-			score = silhouette_score(X, labels_sample, metric='cosine')
-		elif metric == 'davies_bouldin':
-			score = davies_bouldin_score(X, labels_sample)
-		
-		scores.append((n_clusters, score))
-		print(f"{n_clusters:<12} {score:<15.4f}")
-	
-	if not scores:
-		raise ValueError("No valid cluster configurations found")
-	
-	# Select best
-	if metric == 'silhouette':
-		best_k = max(scores, key=lambda x: x[1])[0]
-	else:  # davies_bouldin (lower is better)
-		best_k = min(scores, key=lambda x: x[1])[0]
-	
-	print(f"\n[OPTIMAL K] Selected: {best_k} clusters")
-
-	return best_k
-
-def get_num_clusters_agglomerative_v2(
-		X,
-		linkage_matrix,
-		min_cluster_size=3,
-):
-		"""
-		Use Calinski-Harabasz (Variance Ratio Criterion) instead of Silhouette.
-		
-		Advantages:
-		- Faster to compute (O(n) vs O(n²))
-		- Naturally penalizes over-segmentation
-		- Higher score = better defined clusters
-		"""
-		num_samples, _ = X.shape
-		
-		# More conservative range
-		if num_samples > int(2e4):
-				range_n_clusters = range(50, min(300, num_samples // 100), 25)
-		elif num_samples > int(5e3):
-				range_n_clusters = range(10, min(100, num_samples // 50), 10)
-		else:
-				range_n_clusters = range(5, min(50, num_samples // 20), 5)
-		
-		print(f"\n[OPTIMAL K] Testing {len(range_n_clusters)} clusters using Calinski-Harabasz...")
-		print(f"{'n_clusters':<12} {'CH_score':<15} {'singletons':<12} {'mean_size':<12}")
-		print("=" * 60)
-		
-		scores = []
-		for n_clusters in range_n_clusters:
-				labels_full = fcluster(linkage_matrix, n_clusters, criterion='maxclust')
-				labels_sample = labels_full - 1
-				
-				if len(np.unique(labels_sample)) < 2:
-						print(f"{n_clusters:<12} {0.0:<15.4f} (skipped)")
-						continue
-				
-				# Calinski-Harabasz score (higher is better)
-				ch_score = calinski_harabasz_score(X, labels_sample)
-				
-				# Cluster statistics
-				cluster_sizes = np.bincount(labels_sample)
-				n_singletons = np.sum(cluster_sizes == 1)
-				mean_size = np.mean(cluster_sizes)
-				
-				# Penalty for singletons
-				singleton_ratio = n_singletons / n_clusters
-				adjusted_score = ch_score * (1 - 0.5 * singleton_ratio)
-				
-				scores.append((n_clusters, adjusted_score, n_singletons, mean_size))
-				print(f"{n_clusters:<12} {ch_score:<15.2f} {n_singletons:<12} {mean_size:<12.1f}")
-		
-		# Select best
-		best_k, best_score, best_singletons, best_mean = max(scores, key=lambda x: x[1])
-		
-		print(f"\n[OPTIMAL K] Selected: {best_k} clusters")
-		print(f"  ├─ Singletons: {best_singletons}")
-		print(f"  └─ Mean size: {best_mean:.1f}")
-		
-		return best_k
-
-def get_num_clusters_agglomerative_v3(
-		X,
-		linkage_matrix,
-		min_cluster_size=2,
-):
-		"""
-		Use multiple metrics + dendrogram analysis for robust k selection.
-		"""
-		from scipy.cluster.hierarchy import fcluster, dendrogram
-		from sklearn.metrics import (
-				silhouette_score,
-				calinski_harabasz_score,
-				davies_bouldin_score
-		)
-		
-		num_samples, _ = X.shape
-		
-		# Adaptive range - TEST MORE CLUSTERS
-		if num_samples > int(2e4):
-				range_n_clusters = range(50, min(800, num_samples // 30), 25)
-		elif num_samples > int(5e3):
-				range_n_clusters = range(20, min(300, num_samples // 20), 10)
-		else:
-				range_n_clusters = range(10, min(150, num_samples // 10), 5)
-		
-		print(f"\n[OPTIMAL K] Testing {len(range_n_clusters)} cluster configurations...")
-		print(f"{'k':<6} {'Silhouette':<12} {'CH':<12} {'DB':<12} {'Singletons':<12} {'Score':<12}")
-		print("=" * 80)
-		
-		results = []
-		
-		for n_clusters in range_n_clusters:
-				labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
-				
-				if len(np.unique(labels)) < 2:
-						continue
-				
-				# Compute metrics
-				sil = silhouette_score(X, labels, metric='cosine')
-				ch = calinski_harabasz_score(X, labels)
-				db = davies_bouldin_score(X, labels)
-				
-				# Cluster statistics
-				cluster_sizes = np.bincount(labels)
-				n_singletons = np.sum(cluster_sizes == 1)
-				n_small = np.sum(cluster_sizes < min_cluster_size)
-				singleton_ratio = n_singletons / n_clusters
-				small_ratio = n_small / n_clusters
-				
-				# Normalize metrics to [0, 1]
-				# (will normalize after collecting all scores)
-				results.append({
-						'k': n_clusters,
-						'sil': sil,
-						'ch': ch,
-						'db': db,
-						'singletons': n_singletons,
-						'singleton_ratio': singleton_ratio,
-						'small_ratio': small_ratio,
-				})
-		
-		if not results:
-				raise ValueError("No valid cluster configurations found")
-		
-		# Normalize metrics
-		sil_scores = np.array([r['sil'] for r in results])
-		ch_scores = np.array([r['ch'] for r in results])
-		db_scores = np.array([r['db'] for r in results])
-		
-		sil_norm = (sil_scores - sil_scores.min()) / (sil_scores.max() - sil_scores.min() + 1e-10)
-		ch_norm = (ch_scores - ch_scores.min()) / (ch_scores.max() - ch_scores.min() + 1e-10)
-		db_norm = 1 - (db_scores - db_scores.min()) / (db_scores.max() - db_scores.min() + 1e-10)  # Invert (lower is better)
-		
-		# Compute composite score with penalties
-		for i, r in enumerate(results):
-				# Weighted average of normalized metrics
-				base_score = (
-						0.3 * sil_norm[i] +
-						0.3 * ch_norm[i] +
-						0.2 * db_norm[i]
-				)
-				
-				# Penalties
-				singleton_penalty = 0.5 * r['singleton_ratio']
-				small_penalty = 0.3 * r['small_ratio']
-				
-				# Final score
-				r['composite'] = base_score * (1 - singleton_penalty) * (1 - small_penalty)
-				
-				print(f"{r['k']:<6} {r['sil']:<12.4f} {r['ch']:<12.2f} {r['db']:<12.4f} "
-							f"{r['singletons']:<12} {r['composite']:<12.4f}")
-		
-		# Select best composite score
-		best = max(results, key=lambda x: x['composite'])
-		
-		print(f"\n[OPTIMAL K] Selected: {best['k']} clusters")
-		print(f"  ├─ Silhouette: {best['sil']:.4f}")
-		print(f"  ├─ Calinski-Harabasz: {best['ch']:.2f}")
-		print(f"  ├─ Davies-Bouldin: {best['db']:.4f}")
-		print(f"  ├─ Singletons: {best['singletons']} ({best['singleton_ratio']*100:.1f}%)")
-		print(f"  └─ Composite score: {best['composite']:.4f}")
-		
-		return best['k']
-
 def find_optimal_super_cluster_distance_silhouette(
 		linkage_matrix,
 		embeddings,
@@ -980,47 +763,40 @@ def _clustering_(
 	print(f"\n[STEP 4] Agglomerative Clustering on {X.shape[0]} labels")
 		
 	# Compute linkage matrix
-	print(f"[LINKAGE] {linkage_method} linkage with {distance_metric} distance...")
+	print(f"[LINKAGE] {linkage_method}")
 
 	# OPTION 1: Ward linkage (RECOMMENDED for preventing mega-clusters)
 	if linkage_method == "ward":
-			# Ward requires Euclidean distance
-			# For normalized embeddings, Euclidean ≈ Cosine
-			if use_fastcluster:
-					Z = fastcluster.linkage(X, method='ward', metric='euclidean')
-			else:
-					Z = linkage(X, method='ward')
-			print(f"[LINKAGE] Using Ward linkage (Euclidean on normalized embeddings)")
-
-	# OPTION 2: Cosine distance with average/complete/single linkage
+		# Ward requires Euclidean distance
+		# For normalized embeddings, Euclidean ≈ Cosine
+		if use_fastcluster:
+			Z = fastcluster.linkage(X, method='ward', metric='euclidean')
+		else:
+			Z = linkage(X, method='ward', metric='euclidean')
+		print(f"[LINKAGE] Using Ward linkage (Euclidean on normalized embeddings)")
 	elif distance_metric == "cosine":
-			# Efficient cosine distance computation
-			distance_matrix = 1 - (X @ X.T)
-			np.fill_diagonal(distance_matrix, 0)
-			distance_matrix = np.clip(distance_matrix, 0, 2)
-			
-			condensed_dist = squareform(distance_matrix, checks=False)
-			
-			if use_fastcluster:
-					Z = fastcluster.linkage(condensed_dist, method=linkage_method)
-			else:
-					Z = linkage(condensed_dist, method=linkage_method)
-			print(f"[LINKAGE] Using {linkage_method} linkage with cosine distance")
-
-	# OPTION 3: Euclidean distance with average/complete/single linkage
+		# Efficient cosine distance computation
+		distance_matrix = 1 - (X @ X.T)
+		np.fill_diagonal(distance_matrix, 0)
+		distance_matrix = np.clip(distance_matrix, 0, 2)
+		condensed_dist = squareform(distance_matrix, checks=False)
+		if use_fastcluster:
+			Z = fastcluster.linkage(condensed_dist, method=linkage_method)
+		else:
+			Z = linkage(condensed_dist, method=linkage_method)
+		print(f"[LINKAGE] Using {linkage_method} linkage with {distance_metric} distance")
 	elif distance_metric == "euclidean":
-			if use_fastcluster:
-					Z = fastcluster.linkage(X, method=linkage_method, metric='euclidean')
-			else:
-					Z = linkage(X, method=linkage_method, metric='euclidean')
-			print(f"[LINKAGE] Using {linkage_method} linkage with Euclidean distance")
-
+		if use_fastcluster:
+			Z = fastcluster.linkage(X, method=linkage_method, metric='euclidean')
+		else:
+			Z = linkage(X, method=linkage_method, metric='euclidean')
+		print(f"[LINKAGE] Using {linkage_method} linkage with Euclidean distance")
 	else:
-			raise ValueError(f"Unsupported distance metric: {distance_metric}")
+		raise ValueError(f"Unsupported distance metric: {distance_metric}")
 
-	print(f"[LINKAGE] {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes}")
+	print(f"[LINKAGE] Z[{linkage_method}]: {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes}")
 	
-	# STEP 5: Determine Optimal Number of Clusters
+	# Determine Optimal Number of Clusters
 	if nc is None:
 		print(f"\n[STEP 5] Finding optimal number of clusters...")
 		cluster_labels, stats = get_optimal_num_clusters(
@@ -1030,7 +806,7 @@ def _clustering_(
 			min_cluster_size=2,
 			merge_singletons=True,
 			split_oversized=False,
-			verbose=True
+			verbose=verbose,
 		)
 		best_k = stats['n_clusters']
 		
@@ -1351,7 +1127,7 @@ def get_optimal_num_clusters(
 				print(f"split_oversized: {split_oversized}")
 				print(f"min_cluster_size: {min_cluster_size}")
 				print(f"X: {type(X)} {X.shape} {X.dtype}")
-				print(f"linkage_matrix: {type(linkage_matrix)} {linkage_matrix.shape} {linkage_matrix.dtype}")
+				print(f"linkage_matrix: Z: {type(linkage_matrix)} {linkage_matrix.shape} {linkage_matrix.dtype}")
 				print("="*80)
 
 		# Adaptive range based on dataset size
@@ -1365,10 +1141,9 @@ def get_optimal_num_clusters(
 				range_n_clusters = range(15, min(100, num_samples // 15), 5)
 
 		if verbose:
-				print(f"\n[OPTIMAL K] Testing {len(range_n_clusters)} cluster configurations...")
-				print(f"[OPTIMAL K] Range: {min(range_n_clusters)} to {max(range_n_clusters)}")
-				print(f"\n{'k':<6} {'Sil':<8} {'CH':<8} {'DB':<8} {'Single':<8} {'MaxSize':<8} {'Score':<8}")
-				print("=" * 70)
+			print(f"\n[OPTIMAL K] Testing {len(range_n_clusters)} cluster configurations: {range_n_clusters}")
+			print(f"\n{'k':<6} {'Sil':<8} {'CH':<8} {'DB':<8} {'Single':<8} {'MaxSize':<8} {'Score':<8}")
+			print("=" * 70)
 
 		results = []
 
@@ -1395,7 +1170,8 @@ def get_optimal_num_clusters(
 				max_size_ratio = max_cluster_size / num_samples
 				max_size_penalty = max(0, (max_size_ratio - max_cluster_size_ratio) / max_cluster_size_ratio)
 
-				results.append({
+				results.append(
+					{
 						'k': n_clusters,
 						'sil': sil,
 						'ch': ch,
@@ -1406,10 +1182,11 @@ def get_optimal_num_clusters(
 						'max_size': max_cluster_size,
 						'max_size_ratio': max_size_ratio,
 						'max_size_penalty': max_size_penalty,
-				})
+					}
+				)
 
 		if not results:
-				raise ValueError("No valid cluster configurations found")
+			raise ValueError("No valid cluster configurations found")
 
 		# Normalize metrics to [0, 1]
 		sil_scores = np.array([r['sil'] for r in results])
@@ -1429,15 +1206,6 @@ def get_optimal_num_clusters(
 						0.20 * db_norm[i]
 				)
 
-				# Enhanced penalties
-				singleton_penalty = 0.7 * r['singleton_ratio']  # Increased from 0.5
-				small_penalty = 0.4 * r['small_ratio']  # Increased from 0.3
-
-				# max_size_penalty_factor = 0.8 * r['max_size_penalty']  # NEW: Heavy penalty for oversized clusters
-
-				# # Final composite score
-				# r['composite'] = base_score * (1 - singleton_penalty) * (1 - small_penalty) * (1 - max_size_penalty_factor)
-
 				# Cap penalties to prevent negative scores
 				singleton_penalty_capped = min(0.7 * r['singleton_ratio'], 0.6)
 				small_penalty_capped = min(0.4 * r['small_ratio'], 0.4)
@@ -1446,10 +1214,11 @@ def get_optimal_num_clusters(
 				# Final composite score
 				r['composite'] = base_score * (1 - singleton_penalty_capped) * (1 - small_penalty_capped) * (1 - max_size_penalty_capped)
 
-
 				if verbose:
-						print(f"{r['k']:<6} {r['sil']:<8.4f} {r['ch']:<8.2f} {r['db']:<8.4f} "
-									f"{r['singletons']:<8} {r['max_size']:<8} {r['composite']:<8.4f}")
+					print(
+						f"{r['k']:<6} {r['sil']:<8.4f} {r['ch']:<8.2f} {r['db']:<8.4f} "
+						f"{r['singletons']:<8} {r['max_size']:<8} {r['composite']:<8.4f}"
+					)
 
 		# Select best composite score
 		best = max(results, key=lambda x: x['composite'])
