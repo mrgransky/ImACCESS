@@ -36,9 +36,6 @@ from joblib import Parallel, delayed
 # Install: pip install lingua-language-detector
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
 
-# suppress warnings
-import warnings
-warnings.filterwarnings('ignore')
 from sklearn.exceptions import UndefinedMetricWarning
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score, davies_bouldin_score
@@ -47,13 +44,10 @@ from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from scipy.spatial.distance import squareform
+from sklearn.metrics import calinski_harabasz_score
 
-warnings.filterwarnings(
-	"ignore",
-	# message=".*number of unique classes.*",
-	category=UserWarning,
-	module="sklearn.metrics"
-)
+import warnings
+warnings.filterwarnings('ignore')
 
 MISC_DIR = os.path.dirname(os.path.abspath(__file__))
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -658,7 +652,7 @@ def _clustering_hdbscan(
 
 	return df_clusters
 
-def get_num_clusters_agglomerative(
+def get_num_clusters_agglomerative_v1(
 	X,
 	linkage_matrix,
 	metric='silhouette',
@@ -666,12 +660,13 @@ def get_num_clusters_agglomerative(
 	num_samples, _ = X.shape
 	print(f"Auto-tuning number of clusters X: {type(X)} {X.shape}")
 	
+	# Adaptive range based on dataset size
 	if num_samples > int(2e4):
-		range_n_clusters = range(100, min(1501, num_samples // 20), 100)
+		range_n_clusters = range(50, min(500, num_samples // 50), 25)
 	elif num_samples > int(5e3):
-		range_n_clusters = range(20, min(301, num_samples // 15), 20)
+		range_n_clusters = range(10, min(150, num_samples // 30), 10)
 	else:
-		range_n_clusters = range(5, min(201, num_samples // 2), 5)
+		range_n_clusters = range(5, min(201, num_samples // 10), 5)
 
 	print(f"\n[OPTIMAL K] Testing {len(range_n_clusters)} clusters {range_n_clusters} counts using {metric} score...")
 	print(f"{'n_clusters':<12} {metric:<15}")
@@ -681,9 +676,9 @@ def get_num_clusters_agglomerative(
 	for n_clusters in range_n_clusters:
 		# Cut dendrogram at this height to get n_clusters
 		labels_full = fcluster(linkage_matrix, n_clusters, criterion='maxclust')
-		labels_sample = labels_full
+		labels_sample = labels_full - 1  # 0-indexed
 		
-		# Skip if only 1 cluster or all singletons
+		# Skip if only 1 cluster
 		if len(np.unique(labels_sample)) < 2:
 			print(f"{n_clusters:<12} {0.0:<15.4f} (skipped)")
 			continue
@@ -709,6 +704,66 @@ def get_num_clusters_agglomerative(
 	print(f"\n[OPTIMAL K] Selected: {best_k} clusters")
 
 	return best_k
+
+def get_num_clusters_agglomerative(
+		X,
+		linkage_matrix,
+		min_cluster_size=3,
+):
+		"""
+		Use Calinski-Harabasz (Variance Ratio Criterion) instead of Silhouette.
+		
+		Advantages:
+		- Faster to compute (O(n) vs O(n²))
+		- Naturally penalizes over-segmentation
+		- Higher score = better defined clusters
+		"""
+		num_samples, _ = X.shape
+		
+		# More conservative range
+		if num_samples > int(2e4):
+				range_n_clusters = range(50, min(300, num_samples // 100), 25)
+		elif num_samples > int(5e3):
+				range_n_clusters = range(10, min(100, num_samples // 50), 10)
+		else:
+				range_n_clusters = range(5, min(50, num_samples // 20), 5)
+		
+		print(f"\n[OPTIMAL K] Testing {len(range_n_clusters)} clusters using Calinski-Harabasz...")
+		print(f"{'n_clusters':<12} {'CH_score':<15} {'singletons':<12} {'mean_size':<12}")
+		print("=" * 60)
+		
+		scores = []
+		for n_clusters in range_n_clusters:
+				labels_full = fcluster(linkage_matrix, n_clusters, criterion='maxclust')
+				labels_sample = labels_full - 1
+				
+				if len(np.unique(labels_sample)) < 2:
+						print(f"{n_clusters:<12} {0.0:<15.4f} (skipped)")
+						continue
+				
+				# Calinski-Harabasz score (higher is better)
+				ch_score = calinski_harabasz_score(X, labels_sample)
+				
+				# Cluster statistics
+				cluster_sizes = np.bincount(labels_sample)
+				n_singletons = np.sum(cluster_sizes == 1)
+				mean_size = np.mean(cluster_sizes)
+				
+				# Penalty for singletons
+				singleton_ratio = n_singletons / n_clusters
+				adjusted_score = ch_score * (1 - 0.5 * singleton_ratio)
+				
+				scores.append((n_clusters, adjusted_score, n_singletons, mean_size))
+				print(f"{n_clusters:<12} {ch_score:<15.2f} {n_singletons:<12} {mean_size:<12.1f}")
+		
+		# Select best
+		best_k, best_score, best_singletons, best_mean = max(scores, key=lambda x: x[1])
+		
+		print(f"\n[OPTIMAL K] Selected: {best_k} clusters")
+		print(f"  ├─ Singletons: {best_singletons}")
+		print(f"  └─ Mean size: {best_mean:.1f}")
+		
+		return best_k
 
 def _clustering_(
 	labels: List[List[str]],
@@ -803,7 +858,7 @@ def _clustering_(
 		best_k = get_num_clusters_agglomerative(
 			X=X,
 			linkage_matrix=Z,
-			metric='silhouette',
+			# metric='silhouette',
 		)
 	else:
 		best_k = nc
@@ -896,9 +951,7 @@ def _clustering_(
 		if verbose:
 			print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
 			print(f"\tCanonical: {canonical} (sim={similarities[best_idx]:.4f})")
-	
-	print(f"\n[STEP 9] Saving results")
-	
+		
 	df['canonical_label'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 	
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
@@ -915,7 +968,48 @@ def _clustering_(
 	print(f"  Largest cluster: {max(cluster_counts.values())} labels")
 	print(f"  Smallest cluster: {min(cluster_counts.values())} labels")
 
+	evaluate_clustering_quality(df, X)
+
 	return df
+
+def evaluate_clustering_quality(df, X):
+    """
+    Comprehensive quality evaluation.
+    """
+    cluster_sizes = df.groupby('cluster').size()
+    
+    metrics = {
+        'n_clusters': len(cluster_sizes),
+        'n_singletons': (cluster_sizes == 1).sum(),
+        'singleton_ratio': (cluster_sizes == 1).sum() / len(cluster_sizes),
+        'mean_size': cluster_sizes.mean(),
+        'median_size': cluster_sizes.median(),
+        'max_size': cluster_sizes.max(),
+        'min_size': cluster_sizes.min(),
+        'consolidation_ratio': len(df) / len(cluster_sizes),
+    }
+    
+    # Intra-cluster similarity
+    intra_sim = []
+    for cid in df.cluster.unique():
+        cluster_mask = df.cluster == cid
+        if cluster_mask.sum() < 2:
+            continue
+        cluster_indices = df[cluster_mask].index.tolist()
+        cluster_embeddings = X[cluster_indices]
+        
+        # Average pairwise cosine similarity
+        sim_matrix = cosine_similarity(cluster_embeddings)
+        avg_sim = (sim_matrix.sum() - len(cluster_indices)) / (len(cluster_indices) * (len(cluster_indices) - 1))
+        intra_sim.append(avg_sim)
+    
+    metrics['mean_intra_similarity'] = np.mean(intra_sim)
+    
+    print("\n[QUALITY METRICS]")
+    for k, v in metrics.items():
+        print(f"  {k}: {v:.4f}" if isinstance(v, float) else f"  {k}: {v}")
+    
+    return metrics
 
 def _post_process_(
 	labels_list: List[List[str]], 
