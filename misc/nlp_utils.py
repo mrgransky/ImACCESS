@@ -722,8 +722,7 @@ def _clustering_(
 ):	
 	if verbose:
 			print(f"\n[CLUSTERING - AGGLOMERATIVE] {len(labels)} documents")
-			print(f"   ├─ model_id: {model_id}")
-			print(f"   ├─ device: {device}")
+			print(f"   ├─ model_id: {model_id} in: {device}")
 			print(f"   ├─ linkage: {linkage_method}")
 			print(f"   ├─ distance: {distance_metric}")
 			print(f"   └─ sample: {labels[:5]}")
@@ -836,21 +835,19 @@ def _clustering_(
 
 	super_cluster_labels = fcluster(Z, t=super_cluster_distance, criterion='distance') - 1
 
-	print(f"\n[VERIFICATION] Checking super-cluster alignment...")
-	print(f"  Distance threshold: {super_cluster_distance:.4f}")
-	print(f"  Expected clusters: {n_super_clusters}")
+	print(f"\n[VERIFICATION] super-cluster alignment...")
+	print(f"  ├─ Distance threshold: {super_cluster_distance:.4f}")
+	print(f"  ├─ Expected clusters: {n_super_clusters}")
 
 	# Recompute to verify
 	labels_check = fcluster(Z, t=super_cluster_distance, criterion='distance')
 	n_clusters_check = len(np.unique(labels_check))
-	print(f"  Actual clusters from fcluster: {n_clusters_check}")
+	print(f"  ├─ Actual clusters from fcluster: {n_clusters_check}")
 
 	if n_clusters_check == n_super_clusters:
-			print(f"  ✓ Alignment confirmed: {n_super_clusters} clusters at t={super_cluster_distance:.4f}")
+			print(f"  └─ Confirmed Alignment: {n_super_clusters} clusters at t={super_cluster_distance:.4f}")
 	else:
-			print(f"  ✗ MISMATCH: Expected {n_super_clusters}, got {n_clusters_check}")
-
-
+			print(f"  └─ MISMATCH ALERT: Expected {n_super_clusters}, got {n_clusters_check}")
 
 	# Map fine-grained clusters to super-clusters
 	# Get the number of fine-grained clusters dynamically
@@ -880,23 +877,17 @@ def _clustering_(
 			supercluster_stats[super_cluster_id]['fine_clusters'].append(fine_cluster_id)
 			supercluster_stats[super_cluster_id]['total_labels'] += fine_cluster_mask.sum()
 	
-	# Print super-cluster summary
-	print(f"\n{'='*80}")
 	print(f"SUPER-CLUSTER HIERARCHY SUMMARY")
-	print(f"{'='*80}")
 	print(f"Total fine-grained clusters: {n_fine_clusters}")
 	print(f"Total super-clusters: {n_super_clusters}")
-	print(f"\nSuper-Cluster Breakdown:")
 	
 	for super_id in sorted(supercluster_stats.keys()):
 			stats = supercluster_stats[super_id]
 			print(f"\n[Super-Cluster {super_id}]")
 			print(f"  ├─ Fine clusters: {len(stats['fine_clusters'])} clusters")
 			print(f"  ├─ Total labels: {stats['total_labels']} ({stats['total_labels']/len(all_labels)*100:.1f}%)")
-			print(f"  └─ Cluster IDs: {stats['fine_clusters'][:10]}{'...' if len(stats['fine_clusters']) > 10 else ''}")
+			print(f"  └─ Cluster IDs: {stats['fine_clusters'][:25]}{'...' if len(stats['fine_clusters']) > 25 else ''}")
 	
-	print(f"{'='*80}\n")
-
 	# 2D cluster visualizations
 	plt.figure(figsize=(20, 16))
 	dendrogram(
@@ -944,9 +935,7 @@ def _clustering_(
 	
 	out_full_dendogram = clusters_fname.replace(".csv", "_dendrogram_full.png")
 	plt.savefig(out_full_dendogram, dpi=200, bbox_inches='tight')
-	print(f"[SAVED] {out_full_dendogram}")
 	plt.close()
-
 
 	# PCA
 	pca_projection = PCA(n_components=2, random_state=0).fit_transform(X)
@@ -985,8 +974,7 @@ def _clustering_(
 	plt.savefig(out_tsne, dpi=150, bbox_inches='tight')
 	plt.close()
 	
-	# STEP 8: Canonical Label Selection
-	print(f"\n[STEP 8] Selecting canonical labels per cluster")
+	print(f"\nCanonical labels per cluster")
 	
 	df = pd.DataFrame(
 		{
@@ -1115,20 +1103,15 @@ def get_optimal_num_clusters(
 				Statistics about the clustering
 		"""
 
-		# ========================================================================
 		# STAGE 1: Find optimal k with enhanced consensus scoring
-		# ========================================================================
-
 		if verbose:
-				print("\n" + "="*80)
-				print("STAGE 1: OPTIMAL CLUSTER SELECTION WITH ENHANCED SCORING")
-				print(f"max_cluster_size_ratio: {max_cluster_size_ratio}")
-				print(f"merge_singletons: {merge_singletons}")
-				print(f"split_oversized: {split_oversized}")
-				print(f"min_cluster_size: {min_cluster_size}")
-				print(f"X: {type(X)} {X.shape} {X.dtype}")
-				print(f"linkage_matrix: Z: {type(linkage_matrix)} {linkage_matrix.shape} {linkage_matrix.dtype}")
-				print("="*80)
+			print("\nSTAGE 1: OPTIMAL CLUSTER SELECTION WITH ENHANCED SCORING")
+			print(f"max_cluster_size_ratio: {max_cluster_size_ratio}")
+			print(f"merge_singletons: {merge_singletons}")
+			print(f"split_oversized: {split_oversized}")
+			print(f"min_cluster_size: {min_cluster_size}")
+			print(f"X: {type(X)} {X.shape} {X.dtype} {X.min():.1f} {X.max():.1f} {X.mean():.1f} {X.std():.1f}")
+			print(f"Z: {type(linkage_matrix)} {linkage_matrix.shape} {linkage_matrix.dtype} {linkage_matrix.min():.1f} {linkage_matrix.max():.1f} {linkage_matrix.mean():.1f} {linkage_matrix.std():.1f}")
 
 		# Adaptive range based on dataset size
 		num_samples = X.shape[0]
@@ -1235,67 +1218,52 @@ def get_optimal_num_clusters(
 		# Get initial labels
 		labels = fcluster(linkage_matrix, best['k'], criterion='maxclust') - 1
 
-		# ========================================================================
 		# STAGE 2: Merge singleton clusters into nearest neighbors
-		# ========================================================================
-
 		if merge_singletons:
+			if verbose:
+				print("\nSTAGE 2: MERGING SINGLETON CLUSTERS")
+			cluster_sizes = np.bincount(labels)
+			singleton_ids = np.where(cluster_sizes == 1)[0]
+			if len(singleton_ids) > 0:
 				if verbose:
-						print("\n" + "="*80)
-						print("STAGE 2: MERGING SINGLETON CLUSTERS")
-						print("="*80)
+					print(f"\n[MERGE] Found {len(singleton_ids)} singleton clusters to merge...")
+				# Compute cluster centroids
+				unique_labels = np.unique(labels)
+				centroids = np.array(
+					[
+						X[labels == cid].mean(axis=0)
+						for cid in unique_labels
+					]
+				)
+				# For each singleton, find nearest non-singleton cluster
+				new_labels = labels.copy()
+				merged_count = 0
+				for singleton_id in singleton_ids:
+					singleton_idx = np.where(labels == singleton_id)[0][0]
+					singleton_vec = X[singleton_idx].reshape(1, -1)
+					# Compute similarity to all cluster centroids
+					sims = cosine_similarity(singleton_vec, centroids)[0]
+					# Find nearest non-singleton cluster
+					sorted_ids = np.argsort(sims)[::-1]
+					for nearest_id in sorted_ids:
+						if cluster_sizes[nearest_id] >= min_cluster_size:
+							new_labels[singleton_idx] = nearest_id
+							merged_count += 1
+							if verbose:
+								print(f"  ├─ Merged singleton {singleton_id} → cluster {nearest_id} (sim={sims[nearest_id]:.4f})")
+							break
+				# Relabel to remove gaps
+				unique_new = np.unique(new_labels)
+				label_map = {old: new for new, old in enumerate(unique_new)}
+				labels = np.array([label_map[l] for l in new_labels])
+				if verbose:
+					print(f"\n[MERGE] Merged {merged_count} singletons")
+					print(f"[MERGE] Reduced from {len(unique_labels)} to {len(unique_new)} clusters")
+			else:
+				if verbose:
+					print("\n[MERGE] No singleton clusters found. Skipping...")
 
-				cluster_sizes = np.bincount(labels)
-				singleton_ids = np.where(cluster_sizes == 1)[0]
-
-				if len(singleton_ids) > 0:
-						if verbose:
-								print(f"\n[MERGE] Found {len(singleton_ids)} singleton clusters to merge...")
-
-						# Compute cluster centroids
-						unique_labels = np.unique(labels)
-						centroids = np.array([
-								X[labels == cid].mean(axis=0)
-								for cid in unique_labels
-						])
-
-						# For each singleton, find nearest non-singleton cluster
-						new_labels = labels.copy()
-						merged_count = 0
-
-						for singleton_id in singleton_ids:
-								singleton_idx = np.where(labels == singleton_id)[0][0]
-								singleton_vec = X[singleton_idx].reshape(1, -1)
-
-								# Compute similarity to all cluster centroids
-								sims = cosine_similarity(singleton_vec, centroids)[0]
-
-								# Find nearest non-singleton cluster
-								sorted_ids = np.argsort(sims)[::-1]
-								for nearest_id in sorted_ids:
-										if cluster_sizes[nearest_id] >= min_cluster_size:
-												new_labels[singleton_idx] = nearest_id
-												merged_count += 1
-												if verbose:
-														print(f"  ├─ Merged singleton {singleton_id} → cluster {nearest_id} (sim={sims[nearest_id]:.4f})")
-												break
-
-						# Relabel to remove gaps
-						unique_new = np.unique(new_labels)
-						label_map = {old: new for new, old in enumerate(unique_new)}
-						labels = np.array([label_map[l] for l in new_labels])
-
-						if verbose:
-								print(f"\n[MERGE] Merged {merged_count} singletons")
-								print(f"[MERGE] Reduced from {len(unique_labels)} to {len(unique_new)} clusters")
-				else:
-						if verbose:
-								print("\n[MERGE] No singleton clusters found. Skipping merge step.")
-
-		# ========================================================================
 		# STAGE 3: Split oversized clusters
-		# ========================================================================
-
 		if split_oversized:
 				if verbose:
 						print("\n" + "="*80)
@@ -1351,35 +1319,29 @@ def get_optimal_num_clusters(
 						if verbose:
 								print(f"\n[SPLIT] No oversized clusters found (max size: {cluster_sizes.max()}/{max_size_threshold:.0f})")
 
-		# ========================================================================
 		# FINAL STATISTICS
-		# ========================================================================
-
 		final_cluster_sizes = np.bincount(labels)
 		final_n_clusters = len(np.unique(labels))
 		final_singletons = np.sum(final_cluster_sizes == 1)
 		final_max_size = final_cluster_sizes.max()
 
 		stats = {
-				'n_clusters': final_n_clusters,
-				'n_singletons': final_singletons,
-				'singleton_ratio': final_singletons / final_n_clusters,
-				'max_cluster_size': final_max_size,
-				'max_size_ratio': final_max_size / num_samples,
-				'mean_cluster_size': num_samples / final_n_clusters,
-				'consolidation_ratio': num_samples / final_n_clusters,
+			'n_clusters': final_n_clusters,
+			'n_singletons': final_singletons,
+			'singleton_ratio': final_singletons / final_n_clusters,
+			'max_cluster_size': final_max_size,
+			'max_size_ratio': final_max_size / num_samples,
+			'mean_cluster_size': num_samples / final_n_clusters,
+			'consolidation_ratio': num_samples / final_n_clusters,
 		}
 
 		if verbose:
-				print("\n" + "="*80)
-				print("FINAL CLUSTERING STATISTICS")
-				print("="*80)
-				print(f"  ├─ Total clusters: {stats['n_clusters']}")
-				print(f"  ├─ Singletons: {stats['n_singletons']} ({stats['singleton_ratio']*100:.1f}%)")
-				print(f"  ├─ Largest cluster: {stats['max_cluster_size']} items ({stats['max_size_ratio']*100:.1f}%)")
-				print(f"  ├─ Mean cluster size: {stats['mean_cluster_size']:.1f}")
-				print(f"  └─ Consolidation ratio: {stats['consolidation_ratio']:.1f}:1")
-				print("="*80 + "\n")
+			print("\nCLUSTERING STATISTICS")
+			print(f"  ├─ Total clusters: {stats['n_clusters']}")
+			print(f"  ├─ Singletons: {stats['n_singletons']} ({stats['singleton_ratio']*100:.1f}%)")
+			print(f"  ├─ Largest cluster: {stats['max_cluster_size']} items ({stats['max_size_ratio']*100:.1f}%)")
+			print(f"  ├─ Mean cluster size: {stats['mean_cluster_size']:.1f}")
+			print(f"  └─ Consolidation ratio: {stats['consolidation_ratio']:.1f}:1")
 
 		return labels, stats
 

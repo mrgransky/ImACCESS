@@ -61,16 +61,16 @@ def merge_csv_files(
 		verbose=verbose,
 	)
 
-	viz.perform_multilabel_eda(
-		data_path=output_fpath,
-		label_column='multimodal_labels'
-	)
+	# viz.perform_multilabel_eda(
+	# 	data_path=output_fpath,
+	# 	label_column='multimodal_labels'
+	# )
 
-	train_df, val_df = get_multi_label_stratified_split(
-		csv_file=output_fpath,
-		val_split_pct=0.35,
-		label_col='multimodal_labels'
-	)
+	# train_df, val_df = get_multi_label_stratified_split(
+	# 	csv_file=output_fpath,
+	# 	val_split_pct=0.35,
+	# 	label_col='multimodal_labels'
+	# )
 
 @measure_execution_time
 def main():
