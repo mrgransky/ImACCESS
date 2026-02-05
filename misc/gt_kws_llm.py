@@ -115,7 +115,8 @@ STOPWORDS.update(geographic_references)
 # [/INST]"""
 
 
-Too Specific which produces massive number of singleton labels
+# Too Specific which produces massive number of singleton labels
+# self-contained and grammatically complete phrases
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 You function as a historical archivist whose expertise lies in the 20th century.
 Given the caption below, extract no more than {k} highly prominent, factual, and distinct **KEYWORDS** that convey the primary actions, objects, or occurrences. 
