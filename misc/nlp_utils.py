@@ -738,13 +738,12 @@ def _clustering_(
 			print(f"   ├─ distance: {distance_metric}")
 			print(f"   └─ sample: {labels[:5]}")
 	
-	# ========== STEP 1: Deduplicate ==========
 	print("\n[STEP 1] Deduplicating labels")
 	documents = []
 	for doc in labels:
-			if isinstance(doc, str):
-					doc = ast.literal_eval(doc)
-			documents.append(list(set(lbl for lbl in doc)))
+		if isinstance(doc, str):
+			doc = ast.literal_eval(doc)
+		documents.append(list(set(lbl for lbl in doc)))
 	
 	all_labels = sorted(set(label for doc in documents for label in doc))
 	
@@ -752,9 +751,7 @@ def _clustering_(
 	print(f"Unique labels: {len(all_labels)}")
 	print(f"Sample labels: {all_labels[:15]}")
 	
-	# ========== STEP 2: Load Model ==========
 	print(f"\n[STEP 2] Loading SentenceTransformer {model_id}")
-	
 	model = SentenceTransformer(
 		model_name_or_path=model_id,
 		cache_folder=cache_directory[os.getenv('USER')],
@@ -763,7 +760,6 @@ def _clustering_(
 	
 	print(f"Model loaded: {sum(p.numel() for p in model.parameters()):,} parameters")
 	
-	# ========== STEP 3: Encode ==========
 	print(f"\n[STEP 3] Encoding {len(all_labels)} labels")
 	X = model.encode(
 		all_labels,
@@ -774,7 +770,6 @@ def _clustering_(
 	)
 	print(f"Embeddings: {X.shape} {X.dtype}")
 	
-	# ========== STEP 4: Agglomerative Clustering ==========
 	print(f"\n[STEP 4] Agglomerative Clustering on {X.shape[0]} labels")
 	
 	# For large datasets, use fastcluster if available
