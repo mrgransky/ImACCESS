@@ -2,7 +2,8 @@ from utils import *
 from gt_kws_vlm import get_vlm_based_labels, get_vlm_based_labels_debug
 from gt_kws_llm import get_llm_based_labels, get_llm_based_labels_debug
 import visualize as viz
-from nlp_utils import _post_process_, _clustering_
+from nlp_utils import _post_process_
+from cluster import _clustering_
 
 # LLM models:
 # Qwen/Qwen3-4B-Instruct-2507
@@ -218,10 +219,10 @@ def get_multimodal_annotation(
 	if verbose:
 		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
 
-	viz.perform_multilabel_eda(
-		data_path=output_csv,
-		label_column='multimodal_labels'
-	)
+	# viz.perform_multilabel_eda(
+	# 	data_path=output_csv,
+	# 	label_column='multimodal_labels'
+	# )
 
 	# only for full dataset and chunk is not in the file name:
 	if "_chunk_" not in os.path.basename(csv_file):
