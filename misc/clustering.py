@@ -1309,16 +1309,10 @@ def cluster(
 					distance_metric='cosine',
 					verbose=True
 			)
-		
-			# Save results
-			print("\n" + "="*80)
-			print("SAVING ANALYSIS RESULTS")
-			print("="*80)
-		
+				
 			# Save cluster quality metrics
 			cluster_quality_csv = clusters_fname.replace(".csv", "_cluster_quality_metrics.csv")
 			results['cluster_metrics'].to_csv(cluster_quality_csv, index=False)
-			print(f"✅ Saved cluster quality metrics to: {cluster_quality_csv}")
 		
 			# Export problematic clusters if any
 			if results['problematic_clusters']:
@@ -1340,20 +1334,15 @@ def cluster(
 			# Save executive summary
 			summary_txt = clusters_fname.replace(".csv", "_quality_summary.txt")
 			with open(summary_txt, 'w') as f:
-					f.write("="*80 + "\n")
-					f.write("CLUSTER QUALITY ANALYSIS SUMMARY\n")
-					f.write("="*80 + "\n\n")
-					f.write(results['summary'] + "\n\n")
-					f.write("="*80 + "\n")
-					f.write("RECOMMENDATIONS\n")
-					f.write("="*80 + "\n")
-					for i, rec in enumerate(results['recommendations'], 1):
-							f.write(f"{i}. {rec}\n")
-			print(f"✅ Saved quality summary to: {summary_txt}")
-		
-			print("\n" + "="*80)
-			print("CLUSTER QUALITY ANALYSIS COMPLETE")
-			print("="*80)
+				f.write("="*80 + "\n")
+				f.write("CLUSTER QUALITY ANALYSIS SUMMARY\n")
+				f.write("="*80 + "\n\n")
+				f.write(results['summary'] + "\n\n")
+				f.write("="*80 + "\n")
+				f.write("RECOMMENDATIONS\n")
+				f.write("="*80 + "\n")
+				for i, rec in enumerate(results['recommendations'], 1):
+					f.write(f"{i}. {rec}\n")
 		
 	except Exception as e:
 			print(f"\n❌ ERROR in cluster quality analysis: {e}")

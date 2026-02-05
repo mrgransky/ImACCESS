@@ -477,9 +477,10 @@ Welch
 Windsor
 Winslow
 
+Capital
 City
 Town
-Capital
+Abadan
 Aegean
 Algiers
 Ankara
