@@ -1,6 +1,6 @@
 from utils import *
 import visualize as viz
-from nlp_utils import _clustering_
+from clustering import cluster
 
 # how to run:
 # Puhti/Mahti:
@@ -53,7 +53,7 @@ def merge_csv_files(
 		print(f"Saved merged CSV file to {output_fpath}")
 
 	print(os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")))
-	_clustering_(
+	cluster(
 		labels=df['multimodal_labels'].tolist(),
 		model_id="google/embeddinggemma-300M" if torch.__version__ > "2.6" else "sentence-transformers/all-MiniLM-L6-v2",
 		nc=nc,

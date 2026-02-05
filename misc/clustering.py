@@ -982,7 +982,7 @@ def get_optimal_super_clusters(
 
 		return best_distance, best_n_clusters
 
-def _clustering_(
+def cluster(
 	labels: List[List[str]],
 	model_id: str,
 	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
@@ -1286,16 +1286,98 @@ def _clustering_(
 		print(f"Failed to write Excel file: {e}")
 	
 	eval_clusters(df, X)
-	results = analyze_cluster_quality(
-		embeddings=X,
-		labels=unique_labels,
-		cluster_assignments=cluster_ids,
-		canonical_labels=canonical_map,
-		original_label_counts=label_freq_dict,  # Optional
-		verbose=verbose
-	)
 
-	print(results['summary'])
-	results['cluster_metrics'].to_csv('cluster_quality.csv', index=False)
+
+	print("\n" + "="*80)
+	print("RUNNING COMPREHENSIVE CLUSTER QUALITY ANALYSIS")
+	print("="*80)
+
+	# Prepare data for analysis function
+	unique_labels_array = np.array(unique_labels)  # Convert list to numpy array
+
+	# Extract simple canonical mapping (cluster_id -> canonical_label_string)
+	canonical_map = {
+			cid: info['canonical'] 
+			for cid, info in cluster_canonicals.items()
+	}
+
+	# Optional: If you have original label frequencies from your documents
+	# Build label frequency dict from documents
+	label_freq_dict = {}
+	for doc in documents:
+			for label in doc:
+					label_freq_dict[label] = label_freq_dict.get(label, 0) + 1
+
+	print(f"Prepared data for analysis:")
+	print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
+	print(f"  ├─ cluster_labels: {type(cluster_labels)} {cluster_labels.shape}")
+	print(f"  ├─ canonical_map: {len(canonical_map)} mappings")
+	print(f"  └─ label_freq_dict: {len(label_freq_dict)} labels with frequencies")
+
+	# Run comprehensive analysis
+	try:
+			results = analyze_cluster_quality(
+					embeddings=X,
+					labels=unique_labels_array,  # FIXED: Use numpy array
+					cluster_assignments=cluster_labels,  # FIXED: Use correct variable name
+					canonical_labels=canonical_map,  # FIXED: Use simple dict
+					original_label_counts=label_freq_dict,  # FIXED: Use computed frequencies
+					distance_metric='cosine',
+					verbose=True
+			)
+		
+			# Save results
+			print("\n" + "="*80)
+			print("SAVING ANALYSIS RESULTS")
+			print("="*80)
+		
+			# Save cluster quality metrics
+			cluster_quality_csv = clusters_fname.replace(".csv", "_cluster_quality_metrics.csv")
+			results['cluster_metrics'].to_csv(cluster_quality_csv, index=False)
+			print(f"✅ Saved cluster quality metrics to: {cluster_quality_csv}")
+		
+			# Export problematic clusters if any
+			if results['problematic_clusters']:
+					all_problematic_ids = []
+					for issue in results['problematic_clusters']:
+							if issue['severity'] in ['HIGH', 'MEDIUM']:
+									all_problematic_ids.extend(issue['cluster_ids'])
+				
+					if all_problematic_ids:
+							problematic_csv = clusters_fname.replace(".csv", "_problematic_clusters_review.csv")
+							export_problematic_clusters(
+									labels=unique_labels_array,
+									cluster_assignments=cluster_labels,
+									canonical_labels=canonical_map,
+									problematic_cluster_ids=list(set(all_problematic_ids)),
+									output_path=problematic_csv
+							)
+		
+			# Save executive summary
+			summary_txt = clusters_fname.replace(".csv", "_quality_summary.txt")
+			with open(summary_txt, 'w') as f:
+					f.write("="*80 + "\n")
+					f.write("CLUSTER QUALITY ANALYSIS SUMMARY\n")
+					f.write("="*80 + "\n\n")
+					f.write(results['summary'] + "\n\n")
+					f.write("="*80 + "\n")
+					f.write("RECOMMENDATIONS\n")
+					f.write("="*80 + "\n")
+					for i, rec in enumerate(results['recommendations'], 1):
+							f.write(f"{i}. {rec}\n")
+			print(f"✅ Saved quality summary to: {summary_txt}")
+		
+			print("\n" + "="*80)
+			print("CLUSTER QUALITY ANALYSIS COMPLETE")
+			print("="*80)
+		
+	except Exception as e:
+			print(f"\n❌ ERROR in cluster quality analysis: {e}")
+			import traceback
+			traceback.print_exc()
+			print("\nContinuing without quality analysis...")
+
+
+
 
 	return df

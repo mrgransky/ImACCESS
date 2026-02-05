@@ -3,7 +3,7 @@ from gt_kws_vlm import get_vlm_based_labels, get_vlm_based_labels_debug
 from gt_kws_llm import get_llm_based_labels, get_llm_based_labels_debug
 import visualize as viz
 from nlp_utils import _post_process_
-from cluster import _clustering_
+from clustering import cluster
 
 # LLM models:
 # Qwen/Qwen3-4B-Instruct-2507
@@ -232,7 +232,7 @@ def get_multimodal_annotation(
 			label_col='multimodal_labels'
 		)
 
-	_clustering_(
+	cluster(
 		labels=multimodal_labels, 
 		model_id="google/embeddinggemma-300M" if torch.__version__ > "2.6" else "sentence-transformers/all-MiniLM-L6-v2",
 		nc=nc,
