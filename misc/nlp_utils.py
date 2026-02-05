@@ -49,6 +49,16 @@ from sklearn.metrics import calinski_harabasz_score
 import warnings
 warnings.filterwarnings('ignore')
 
+# For large datasets, use fastcluster if available
+try:
+	import fastcluster
+	use_fastcluster = True
+	print("[FASTCLUSTER] Using fastcluster for O(n² log n) performance")
+except ImportError:
+	use_fastcluster = False
+	print("[SCIPY] Using scipy (slower for large n)")
+
+
 MISC_DIR = os.path.dirname(os.path.abspath(__file__))
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # os.environ["PYTHONHASHSEED"] = "0"
@@ -705,7 +715,7 @@ def get_num_clusters_agglomerative_v1(
 
 	return best_k
 
-def get_num_clusters_agglomerative(
+def get_num_clusters_agglomerative_v2(
 		X,
 		linkage_matrix,
 		min_cluster_size=3,
@@ -765,13 +775,165 @@ def get_num_clusters_agglomerative(
 		
 		return best_k
 
+def get_num_clusters_agglomerative_v3(
+		X,
+		linkage_matrix,
+		min_cluster_size=2,
+):
+		"""
+		Use multiple metrics + dendrogram analysis for robust k selection.
+		"""
+		from scipy.cluster.hierarchy import fcluster, dendrogram
+		from sklearn.metrics import (
+				silhouette_score,
+				calinski_harabasz_score,
+				davies_bouldin_score
+		)
+		
+		num_samples, _ = X.shape
+		
+		# Adaptive range - TEST MORE CLUSTERS
+		if num_samples > int(2e4):
+				range_n_clusters = range(50, min(800, num_samples // 30), 25)
+		elif num_samples > int(5e3):
+				range_n_clusters = range(20, min(300, num_samples // 20), 10)
+		else:
+				range_n_clusters = range(10, min(150, num_samples // 10), 5)
+		
+		print(f"\n[OPTIMAL K] Testing {len(range_n_clusters)} cluster configurations...")
+		print(f"{'k':<6} {'Silhouette':<12} {'CH':<12} {'DB':<12} {'Singletons':<12} {'Score':<12}")
+		print("=" * 80)
+		
+		results = []
+		
+		for n_clusters in range_n_clusters:
+				labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
+				
+				if len(np.unique(labels)) < 2:
+						continue
+				
+				# Compute metrics
+				sil = silhouette_score(X, labels, metric='cosine')
+				ch = calinski_harabasz_score(X, labels)
+				db = davies_bouldin_score(X, labels)
+				
+				# Cluster statistics
+				cluster_sizes = np.bincount(labels)
+				n_singletons = np.sum(cluster_sizes == 1)
+				n_small = np.sum(cluster_sizes < min_cluster_size)
+				singleton_ratio = n_singletons / n_clusters
+				small_ratio = n_small / n_clusters
+				
+				# Normalize metrics to [0, 1]
+				# (will normalize after collecting all scores)
+				results.append({
+						'k': n_clusters,
+						'sil': sil,
+						'ch': ch,
+						'db': db,
+						'singletons': n_singletons,
+						'singleton_ratio': singleton_ratio,
+						'small_ratio': small_ratio,
+				})
+		
+		if not results:
+				raise ValueError("No valid cluster configurations found")
+		
+		# Normalize metrics
+		sil_scores = np.array([r['sil'] for r in results])
+		ch_scores = np.array([r['ch'] for r in results])
+		db_scores = np.array([r['db'] for r in results])
+		
+		sil_norm = (sil_scores - sil_scores.min()) / (sil_scores.max() - sil_scores.min() + 1e-10)
+		ch_norm = (ch_scores - ch_scores.min()) / (ch_scores.max() - ch_scores.min() + 1e-10)
+		db_norm = 1 - (db_scores - db_scores.min()) / (db_scores.max() - db_scores.min() + 1e-10)  # Invert (lower is better)
+		
+		# Compute composite score with penalties
+		for i, r in enumerate(results):
+				# Weighted average of normalized metrics
+				base_score = (
+						0.3 * sil_norm[i] +
+						0.3 * ch_norm[i] +
+						0.2 * db_norm[i]
+				)
+				
+				# Penalties
+				singleton_penalty = 0.5 * r['singleton_ratio']
+				small_penalty = 0.3 * r['small_ratio']
+				
+				# Final score
+				r['composite'] = base_score * (1 - singleton_penalty) * (1 - small_penalty)
+				
+				print(f"{r['k']:<6} {r['sil']:<12.4f} {r['ch']:<12.2f} {r['db']:<12.4f} "
+							f"{r['singletons']:<12} {r['composite']:<12.4f}")
+		
+		# Select best composite score
+		best = max(results, key=lambda x: x['composite'])
+		
+		print(f"\n[OPTIMAL K] Selected: {best['k']} clusters")
+		print(f"  ├─ Silhouette: {best['sil']:.4f}")
+		print(f"  ├─ Calinski-Harabasz: {best['ch']:.2f}")
+		print(f"  ├─ Davies-Bouldin: {best['db']:.4f}")
+		print(f"  ├─ Singletons: {best['singletons']} ({best['singleton_ratio']*100:.1f}%)")
+		print(f"  └─ Composite score: {best['composite']:.4f}")
+		
+		return best['k']
+
+def find_optimal_super_cluster_distance_silhouette(
+		linkage_matrix,
+		embeddings,
+		min_clusters=3,
+		max_clusters=10,
+		n_thresholds=50,
+):
+		distances = linkage_matrix[:, 2]
+		candidate_distances = np.linspace(distances.min(), distances.max(), n_thresholds)
+
+		best_score = -np.inf
+		best_distance = None
+		best_n_clusters = None
+
+		print(f"[SUPER-CLUSTERS] Testing {len(candidate_distances)} distance thresholds...")
+
+		for dist in candidate_distances:
+				labels = fcluster(linkage_matrix, t=dist, criterion='distance')
+				n_clusters = len(np.unique(labels))
+
+				if n_clusters < min_clusters or n_clusters > max_clusters:
+						continue
+
+				score = silhouette_score(embeddings, labels, metric='cosine')
+				if score > best_score:
+						best_score = score
+						best_distance = dist
+						best_n_clusters = n_clusters
+
+		if best_distance is None:
+				# Fallback: choose dist whose n_clusters is closest to min_clusters
+				print(f"[SUPER-CLUSTERS] No distance produced n_clusters in [{min_clusters}, {max_clusters}]. Falling back...")
+				best_gap = np.inf
+				for dist in candidate_distances:
+						labels = fcluster(linkage_matrix, t=dist, criterion='distance')
+						n_clusters = len(np.unique(labels))
+						gap = abs(n_clusters - min_clusters)
+						if gap < best_gap:
+								best_gap = gap
+								best_distance = dist
+								best_n_clusters = n_clusters
+				print(f"[SUPER-CLUSTERS] Fallback: distance={best_distance:.4f}, n_clusters={best_n_clusters}")
+
+		else:
+				print(f"[SUPER-CLUSTERS] Best silhouette: {best_score:.4f} at {best_n_clusters} clusters")
+
+		return best_distance, best_n_clusters
+
 def _clustering_(
 	labels: List[List[str]],
 	model_id: str,
 	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
 	clusters_fname: str = "clusters.csv",
 	nc: int = None,
-	linkage_method: str = "average",  # 'average', 'complete', 'ward'
+	linkage_method: str = "ward",  # 'average', 'complete', 'single', 'ward'
 	distance_metric: str = "cosine",  # 'cosine', 'euclidean'
 	verbose: bool = True,
 ):	
@@ -816,70 +978,200 @@ def _clustering_(
 	print(f"Embeddings: {type(X)} {X.shape} {X.dtype}")
 	
 	print(f"\n[STEP 4] Agglomerative Clustering on {X.shape[0]} labels")
-	
-	# For large datasets, use fastcluster if available
-	try:
-			import fastcluster
-			use_fastcluster = True
-			print("[FASTCLUSTER] Using fastcluster for O(n² log n) performance")
-	except ImportError:
-			use_fastcluster = False
-			print("[SCIPY] Using scipy (slower for large n)")
-	
+		
 	# Compute linkage matrix
 	print(f"[LINKAGE] {linkage_method} linkage with {distance_metric} distance...")
-	
-	if distance_metric == "cosine":
-		# Convert to distance matrix (1 - cosine_similarity)
-		# For normalized vectors, cosine distance = 1 - dot product
-		distance_matrix = 1 - (X @ X.T)
-		np.fill_diagonal(distance_matrix, 0)  # Ensure diagonal is exactly 0
-		distance_matrix = np.clip(distance_matrix, 0, 2)  # Numerical stability
-		
-		# Convert to condensed form (upper triangle)
-		condensed_dist = squareform(distance_matrix, checks=False)
-		
-		if use_fastcluster:
-			Z = fastcluster.linkage(condensed_dist, method=linkage_method)
-		else:
-			Z = linkage(condensed_dist, method=linkage_method)
+
+	# OPTION 1: Ward linkage (RECOMMENDED for preventing mega-clusters)
+	if linkage_method == "ward":
+			# Ward requires Euclidean distance
+			# For normalized embeddings, Euclidean ≈ Cosine
+			if use_fastcluster:
+					Z = fastcluster.linkage(X, method='ward', metric='euclidean')
+			else:
+					Z = linkage(X, method='ward')
+			print(f"[LINKAGE] Using Ward linkage (Euclidean on normalized embeddings)")
+
+	# OPTION 2: Cosine distance with average/complete/single linkage
+	elif distance_metric == "cosine":
+			# Efficient cosine distance computation
+			distance_matrix = 1 - (X @ X.T)
+			np.fill_diagonal(distance_matrix, 0)
+			distance_matrix = np.clip(distance_matrix, 0, 2)
+			
+			condensed_dist = squareform(distance_matrix, checks=False)
+			
+			if use_fastcluster:
+					Z = fastcluster.linkage(condensed_dist, method=linkage_method)
+			else:
+					Z = linkage(condensed_dist, method=linkage_method)
+			print(f"[LINKAGE] Using {linkage_method} linkage with cosine distance")
+
+	# OPTION 3: Euclidean distance with average/complete/single linkage
 	elif distance_metric == "euclidean":
-		if use_fastcluster:
-			Z = fastcluster.linkage(X, method=linkage_method, metric='euclidean')
-		else:
-			Z = linkage(X, method=linkage_method, metric='euclidean')
+			if use_fastcluster:
+					Z = fastcluster.linkage(X, method=linkage_method, metric='euclidean')
+			else:
+					Z = linkage(X, method=linkage_method, metric='euclidean')
+			print(f"[LINKAGE] Using {linkage_method} linkage with Euclidean distance")
+
 	else:
-		raise ValueError(f"Unsupported distance metric: {distance_metric}")
-	
+			raise ValueError(f"Unsupported distance metric: {distance_metric}")
+
 	print(f"[LINKAGE] {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes}")
 	
 	# STEP 5: Determine Optimal Number of Clusters
 	if nc is None:
-		best_k = get_num_clusters_agglomerative(
+		print(f"\n[STEP 5] Finding optimal number of clusters...")
+		cluster_labels, stats = get_optimal_num_clusters(
 			X=X,
 			linkage_matrix=Z,
-			# metric='silhouette',
+			max_cluster_size_ratio=0.10,  # Max 10% of data in one cluster
+			min_cluster_size=2,
+			merge_singletons=True,
+			split_oversized=False,
+			verbose=True
 		)
+		best_k = stats['n_clusters']
+		
+		print(f"\n[OPTIMAL K] Using optimized k={best_k} clusters")
+		print(f"  ├─ Consolidation: {stats['consolidation_ratio']:.1f}:1")
+		print(f"  ├─ Singletons: {stats['n_singletons']} ({stats['singleton_ratio']*100:.1f}%)")
+		print(f"  └─ Max cluster size: {stats['max_cluster_size']} ({stats['max_size_ratio']*100:.1f}%)")
 	else:
 		best_k = nc
-		print(f"Using {'user-defined' if nc else 'heuristic'} k={best_k} for {len(all_labels)} labels")
+		print(f"\n[STEP 5] Using user-defined k={best_k} for {len(all_labels)} labels")
 	
-	# STEP 6: Cut Dendrogram
-	print(f"\n[STEP 6] Cutting dendrogram at k={best_k} for {len(all_labels)} labels")
-	cluster_labels = fcluster(Z, best_k, criterion='maxclust')
+		# Cut Dendrogram
+		print(f"\n[STEP 6] Cutting dendrogram at k={best_k} for {len(all_labels)} labels")
+		cluster_labels = fcluster(Z, best_k, criterion='maxclust') - 1 # Convert to 0-indexed
+
+	print(f"cluster_labels: {type(cluster_labels)} {cluster_labels.shape} {cluster_labels.dtype} {cluster_labels.min()} {cluster_labels.max()}")
+
+	print(f"\n[STEP 6.5] Analyzing super-cluster hierarchy...")
 	
-	# Convert to 0-indexed
-	cluster_labels = cluster_labels - 1
-	
-	cluster_counts = Counter(cluster_labels)
-	print(f"[CLUSTERS] {len(cluster_counts)} clusters formed")
-	print(
-		f"[CLUSTERS] Size distribution: min={min(cluster_counts.values())}, "
-		f"max={max(cluster_counts.values())}, "
-		f"mean={np.mean(list(cluster_counts.values())):.1f}"
+	super_cluster_distance, n_super_clusters = find_optimal_super_cluster_distance_silhouette(
+		Z, 
+		X,
+		min_clusters=3,
+		max_clusters=10
 	)
+	print(f"[SUPER-CLUSTERS] Optimal distance: {super_cluster_distance:.4f} ({n_super_clusters} super-clusters)")
+
+	super_cluster_labels = fcluster(Z, t=super_cluster_distance, criterion='distance') - 1
+
+	print(f"\n[VERIFICATION] Checking super-cluster alignment...")
+	print(f"  Distance threshold: {super_cluster_distance:.4f}")
+	print(f"  Expected clusters: {n_super_clusters}")
+
+	# Recompute to verify
+	labels_check = fcluster(Z, t=super_cluster_distance, criterion='distance')
+	n_clusters_check = len(np.unique(labels_check))
+	print(f"  Actual clusters from fcluster: {n_clusters_check}")
+
+	if n_clusters_check == n_super_clusters:
+			print(f"  ✓ Alignment confirmed: {n_super_clusters} clusters at t={super_cluster_distance:.4f}")
+	else:
+			print(f"  ✗ MISMATCH: Expected {n_super_clusters}, got {n_clusters_check}")
+
+
+
+	# Map fine-grained clusters to super-clusters
+	# Get the number of fine-grained clusters dynamically
+	n_fine_clusters = len(np.unique(cluster_labels))
 	
+	# Create mapping: fine_cluster_id -> super_cluster_id
+	cluster_to_supercluster = {}
+	supercluster_stats = {}
+	
+	for fine_cluster_id in range(n_fine_clusters):
+			# Get all label indices in this fine cluster
+			fine_cluster_mask = cluster_labels == fine_cluster_id
+			fine_cluster_indices = np.where(fine_cluster_mask)[0]
+			
+			# Find which super-cluster these labels belong to (majority vote)
+			super_ids = super_cluster_labels[fine_cluster_indices]
+			super_cluster_id = int(np.bincount(super_ids).argmax())
+			
+			cluster_to_supercluster[fine_cluster_id] = super_cluster_id
+			
+			# Track super-cluster stats
+			if super_cluster_id not in supercluster_stats:
+					supercluster_stats[super_cluster_id] = {
+							'fine_clusters': [],
+							'total_labels': 0
+					}
+			supercluster_stats[super_cluster_id]['fine_clusters'].append(fine_cluster_id)
+			supercluster_stats[super_cluster_id]['total_labels'] += fine_cluster_mask.sum()
+	
+	# Print super-cluster summary
+	print(f"\n{'='*80}")
+	print(f"SUPER-CLUSTER HIERARCHY SUMMARY")
+	print(f"{'='*80}")
+	print(f"Total fine-grained clusters: {n_fine_clusters}")
+	print(f"Total super-clusters: {n_super_clusters}")
+	print(f"\nSuper-Cluster Breakdown:")
+	
+	for super_id in sorted(supercluster_stats.keys()):
+			stats = supercluster_stats[super_id]
+			print(f"\n[Super-Cluster {super_id}]")
+			print(f"  ├─ Fine clusters: {len(stats['fine_clusters'])} clusters")
+			print(f"  ├─ Total labels: {stats['total_labels']} ({stats['total_labels']/len(all_labels)*100:.1f}%)")
+			print(f"  └─ Cluster IDs: {stats['fine_clusters'][:10]}{'...' if len(stats['fine_clusters']) > 10 else ''}")
+	
+	print(f"{'='*80}\n")
+
 	# 2D cluster visualizations
+	plt.figure(figsize=(20, 16))
+	dendrogram(
+		Z, 
+		truncate_mode='lastp', 
+		p=30, 
+		show_leaf_counts=True, 
+		color_threshold=super_cluster_distance
+	)
+	plt.axhline(
+		y=super_cluster_distance, 
+		color='#000000', 
+		linestyle='--', 
+		label=f'Cut at {super_cluster_distance:.4f} ({n_super_clusters} super-clusters)',
+		linewidth=2,
+		zorder=10
+
+	)
+
+	plt.title(f'Hierarchical Clustering Dendrogram ({linkage_method} Linkage)\n{n_super_clusters} Super-Clusters at distance={super_cluster_distance:.4f}')
+	plt.xlabel('Cluster')
+	plt.ylabel('Distance')
+	plt.legend(loc='upper right', fontsize=12)
+	out_dendogram = clusters_fname.replace(".csv", "_dendrogram.png")
+	plt.savefig(out_dendogram, dpi=200, bbox_inches='tight')
+	plt.close()
+
+	plt.figure(figsize=(24, 18))
+	dendrogram(
+			Z, 
+			color_threshold=super_cluster_distance,
+			leaf_font_size=8
+	)
+	plt.axhline(
+			y=super_cluster_distance, 
+			color='red', 
+			linestyle='--', 
+			linewidth=2.5,
+			label=f'Cut at {super_cluster_distance:.4f}'
+	)
+	plt.title(f'Full Dendrogram (All {n_fine_clusters} Fine Clusters)')
+	plt.xlabel('Fine Cluster ID')
+	plt.ylabel('Distance')
+	plt.legend()
+	
+	out_full_dendogram = clusters_fname.replace(".csv", "_dendrogram_full.png")
+	plt.savefig(out_full_dendogram, dpi=200, bbox_inches='tight')
+	print(f"[SAVED] {out_full_dendogram}")
+	plt.close()
+
+
 	# PCA
 	pca_projection = PCA(n_components=2, random_state=0).fit_transform(X)
 	
@@ -893,14 +1185,13 @@ def _clustering_(
 		tsne_labels = cluster_labels
 	
 	# Color palette
-	n_colors = min(len(cluster_counts), 256)
+	n_colors = min(len(cluster_labels), 256)
 	palette = sns.color_palette('tab20', n_colors) if n_colors <= 20 else sns.color_palette('husl', n_colors)
 	colors = [palette[i % len(palette)] for i in cluster_labels]
-	
 	# PCA plot
 	plt.figure(figsize=(27, 17))
 	plt.scatter(*pca_projection.T, s=40, c=colors, alpha=0.6, marker='o')
-	plt.title(f"PCA - Agglomerative Clustering ({len(cluster_counts)} clusters, {len(all_labels)} labels)")
+	plt.title(f"PCA - Agglomerative Clustering ({len(cluster_labels)} clusters, {len(all_labels)} labels)")
 	plt.xlabel("PC1")
 	plt.ylabel("PC2")
 	out_pca = clusters_fname.replace(".csv", "_pca_agglomerative.png")
@@ -911,14 +1202,14 @@ def _clustering_(
 	tsne_colors = [palette[i % len(palette)] for i in tsne_labels]
 	plt.figure(figsize=(27, 17))
 	plt.scatter(*tsne_projection.T, s=40, c=tsne_colors, alpha=0.6, marker='o')
-	plt.title(f"t-SNE - Agglomerative Clustering ({len(cluster_counts)} clusters)")
+	plt.title(f"t-SNE - Agglomerative Clustering ({len(cluster_labels)} clusters)")
 	plt.xlabel("t-SNE 1")
 	plt.ylabel("t-SNE 2")
 	out_tsne = clusters_fname.replace(".csv", "_tsne_agglomerative.png")
 	plt.savefig(out_tsne, dpi=150, bbox_inches='tight')
 	plt.close()
 	
-	# ========== STEP 8: Canonical Label Selection ==========
+	# STEP 8: Canonical Label Selection
 	print(f"\n[STEP 8] Selecting canonical labels per cluster")
 	
 	df = pd.DataFrame(
@@ -961,55 +1252,367 @@ def _clustering_(
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 	
-	print(f"\n[SUMMARY]")
-	print(f"  Total labels: {len(all_labels)}")
-	print(f"  Clusters: {len(cluster_counts)}")
-	print(f"  Consolidation ratio: {len(all_labels) / len(cluster_counts):.1f}:1")
-	print(f"  Largest cluster: {max(cluster_counts.values())} labels")
-	print(f"  Smallest cluster: {min(cluster_counts.values())} labels")
 
 	evaluate_clustering_quality(df, X)
 
 	return df
 
 def evaluate_clustering_quality(df, X):
-    """
-    Comprehensive quality evaluation.
-    """
-    cluster_sizes = df.groupby('cluster').size()
-    
-    metrics = {
-        'n_clusters': len(cluster_sizes),
-        'n_singletons': (cluster_sizes == 1).sum(),
-        'singleton_ratio': (cluster_sizes == 1).sum() / len(cluster_sizes),
-        'mean_size': cluster_sizes.mean(),
-        'median_size': cluster_sizes.median(),
-        'max_size': cluster_sizes.max(),
-        'min_size': cluster_sizes.min(),
-        'consolidation_ratio': len(df) / len(cluster_sizes),
-    }
-    
-    # Intra-cluster similarity
-    intra_sim = []
-    for cid in df.cluster.unique():
-        cluster_mask = df.cluster == cid
-        if cluster_mask.sum() < 2:
-            continue
-        cluster_indices = df[cluster_mask].index.tolist()
-        cluster_embeddings = X[cluster_indices]
-        
-        # Average pairwise cosine similarity
-        sim_matrix = cosine_similarity(cluster_embeddings)
-        avg_sim = (sim_matrix.sum() - len(cluster_indices)) / (len(cluster_indices) * (len(cluster_indices) - 1))
-        intra_sim.append(avg_sim)
-    
-    metrics['mean_intra_similarity'] = np.mean(intra_sim)
-    
-    print("\n[QUALITY METRICS]")
-    for k, v in metrics.items():
-        print(f"  {k}: {v:.4f}" if isinstance(v, float) else f"  {k}: {v}")
-    
-    return metrics
+		"""
+		Comprehensive quality evaluation.
+		"""
+		cluster_sizes = df.groupby('cluster').size()
+		
+		metrics = {
+				'n_clusters': len(cluster_sizes),
+				'n_singletons': (cluster_sizes == 1).sum(),
+				'singleton_ratio': (cluster_sizes == 1).sum() / len(cluster_sizes),
+				'mean_size': cluster_sizes.mean(),
+				'median_size': cluster_sizes.median(),
+				'max_size': cluster_sizes.max(),
+				'min_size': cluster_sizes.min(),
+				'consolidation_ratio': len(df) / len(cluster_sizes),
+		}
+		
+		# Intra-cluster similarity
+		intra_sim = []
+		for cid in df.cluster.unique():
+				cluster_mask = df.cluster == cid
+				if cluster_mask.sum() < 2:
+						continue
+				cluster_indices = df[cluster_mask].index.tolist()
+				cluster_embeddings = X[cluster_indices]
+				
+				# Average pairwise cosine similarity
+				sim_matrix = cosine_similarity(cluster_embeddings)
+				avg_sim = (sim_matrix.sum() - len(cluster_indices)) / (len(cluster_indices) * (len(cluster_indices) - 1))
+				intra_sim.append(avg_sim)
+		
+		metrics['mean_intra_similarity'] = np.mean(intra_sim)
+		
+		print("\n[QUALITY METRICS]")
+		for k, v in metrics.items():
+				print(f"  {k}: {v:.4f}" if isinstance(v, float) else f"  {k}: {v}")
+		
+		return metrics
+
+def get_optimal_num_clusters(
+		X,
+		linkage_matrix,
+		max_cluster_size_ratio,
+		min_cluster_size=2,
+		merge_singletons=True,
+		split_oversized=True,
+		verbose=True
+):
+		"""
+		Complete integrated function to find optimal number of clusters with all fixes:
+
+		1. Enhanced consensus scoring with max cluster size penalty
+		2. Singleton merging into nearest neighbors
+		3. Two-stage clustering to split oversized clusters
+
+		Parameters:
+		-----------
+		X : np.ndarray
+				Normalized embeddings (n_samples, embedding_dim)
+		linkage_matrix : np.ndarray
+				Hierarchical linkage matrix from scipy.cluster.hierarchy.linkage
+		num_samples : int
+				Number of samples
+		min_cluster_size : int
+				Minimum cluster size (default: 2)
+		max_cluster_size_ratio : float
+				Maximum allowed cluster size as ratio of total samples
+		merge_singletons : bool
+				Whether to merge singleton clusters into nearest neighbors (default: True)
+		split_oversized : bool
+				Whether to split oversized clusters in stage 2 (default: True)
+		verbose : bool
+				Print detailed progress (default: True)
+
+		Returns:
+		--------
+		labels : np.ndarray
+				Final cluster labels (0-indexed)
+		stats : dict
+				Statistics about the clustering
+		"""
+
+		# ========================================================================
+		# STAGE 1: Find optimal k with enhanced consensus scoring
+		# ========================================================================
+
+		if verbose:
+				print("\n" + "="*80)
+				print("STAGE 1: OPTIMAL CLUSTER SELECTION WITH ENHANCED SCORING")
+				print(f"max_cluster_size_ratio: {max_cluster_size_ratio}")
+				print(f"merge_singletons: {merge_singletons}")
+				print(f"split_oversized: {split_oversized}")
+				print(f"min_cluster_size: {min_cluster_size}")
+				print(f"X: {type(X)} {X.shape} {X.dtype}")
+				print(f"linkage_matrix: {type(linkage_matrix)} {linkage_matrix.shape} {linkage_matrix.dtype}")
+				print("="*80)
+
+		# Adaptive range based on dataset size
+		num_samples = X.shape[0]
+		if num_samples > int(2e4):
+				range_n_clusters = range(50, min(400, num_samples // 50), 25)
+		elif num_samples > int(5e3):
+				range_n_clusters = range(20, min(150, num_samples // 30), 10)
+		else:
+				# For smaller datasets: more conservative range
+				range_n_clusters = range(15, min(100, num_samples // 15), 5)
+
+		if verbose:
+				print(f"\n[OPTIMAL K] Testing {len(range_n_clusters)} cluster configurations...")
+				print(f"[OPTIMAL K] Range: {min(range_n_clusters)} to {max(range_n_clusters)}")
+				print(f"\n{'k':<6} {'Sil':<8} {'CH':<8} {'DB':<8} {'Single':<8} {'MaxSize':<8} {'Score':<8}")
+				print("=" * 70)
+
+		results = []
+
+		for n_clusters in range_n_clusters:
+				labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
+
+				if len(np.unique(labels)) < 2:
+						continue
+
+				# Compute clustering quality metrics
+				sil = silhouette_score(X, labels, metric='cosine')
+				ch = calinski_harabasz_score(X, labels)
+				db = davies_bouldin_score(X, labels)
+
+				# Cluster size statistics
+				cluster_sizes = np.bincount(labels)
+				n_singletons = np.sum(cluster_sizes == 1)
+				n_small = np.sum(cluster_sizes < min_cluster_size)
+				singleton_ratio = n_singletons / n_clusters
+				small_ratio = n_small / n_clusters
+
+				# NEW: Max cluster size penalty
+				max_cluster_size = cluster_sizes.max()
+				max_size_ratio = max_cluster_size / num_samples
+				max_size_penalty = max(0, (max_size_ratio - max_cluster_size_ratio) / max_cluster_size_ratio)
+
+				results.append({
+						'k': n_clusters,
+						'sil': sil,
+						'ch': ch,
+						'db': db,
+						'singletons': n_singletons,
+						'singleton_ratio': singleton_ratio,
+						'small_ratio': small_ratio,
+						'max_size': max_cluster_size,
+						'max_size_ratio': max_size_ratio,
+						'max_size_penalty': max_size_penalty,
+				})
+
+		if not results:
+				raise ValueError("No valid cluster configurations found")
+
+		# Normalize metrics to [0, 1]
+		sil_scores = np.array([r['sil'] for r in results])
+		ch_scores = np.array([r['ch'] for r in results])
+		db_scores = np.array([r['db'] for r in results])
+
+		sil_norm = (sil_scores - sil_scores.min()) / (sil_scores.max() - sil_scores.min() + 1e-10)
+		ch_norm = (ch_scores - ch_scores.min()) / (ch_scores.max() - ch_scores.min() + 1e-10)
+		db_norm = 1 - (db_scores - db_scores.min()) / (db_scores.max() - db_scores.min() + 1e-10)
+
+		# Compute composite score with enhanced penalties
+		for i, r in enumerate(results):
+				# Weighted average of normalized metrics
+				base_score = (
+						0.25 * sil_norm[i] +
+						0.25 * ch_norm[i] +
+						0.20 * db_norm[i]
+				)
+
+				# Enhanced penalties
+				singleton_penalty = 0.7 * r['singleton_ratio']  # Increased from 0.5
+				small_penalty = 0.4 * r['small_ratio']  # Increased from 0.3
+
+				# max_size_penalty_factor = 0.8 * r['max_size_penalty']  # NEW: Heavy penalty for oversized clusters
+
+				# # Final composite score
+				# r['composite'] = base_score * (1 - singleton_penalty) * (1 - small_penalty) * (1 - max_size_penalty_factor)
+
+				# Cap penalties to prevent negative scores
+				singleton_penalty_capped = min(0.7 * r['singleton_ratio'], 0.6)
+				small_penalty_capped = min(0.4 * r['small_ratio'], 0.4)
+				max_size_penalty_capped = min(0.8 * r['max_size_penalty'], 0.8)
+
+				# Final composite score
+				r['composite'] = base_score * (1 - singleton_penalty_capped) * (1 - small_penalty_capped) * (1 - max_size_penalty_capped)
+
+
+				if verbose:
+						print(f"{r['k']:<6} {r['sil']:<8.4f} {r['ch']:<8.2f} {r['db']:<8.4f} "
+									f"{r['singletons']:<8} {r['max_size']:<8} {r['composite']:<8.4f}")
+
+		# Select best composite score
+		best = max(results, key=lambda x: x['composite'])
+
+		if verbose:
+				print(f"\n[OPTIMAL K] Selected: {best['k']} clusters")
+				print(f"  ├─ Silhouette: {best['sil']:.4f}")
+				print(f"  ├─ Calinski-Harabasz: {best['ch']:.2f}")
+				print(f"  ├─ Davies-Bouldin: {best['db']:.4f}")
+				print(f"  ├─ Singletons: {best['singletons']} ({best['singleton_ratio']*100:.1f}%)")
+				print(f"  ├─ Max cluster size: {best['max_size']} ({best['max_size_ratio']*100:.1f}%)")
+				print(f"  └─ Composite score: {best['composite']:.4f}")
+
+		# Get initial labels
+		labels = fcluster(linkage_matrix, best['k'], criterion='maxclust') - 1
+
+		# ========================================================================
+		# STAGE 2: Merge singleton clusters into nearest neighbors
+		# ========================================================================
+
+		if merge_singletons:
+				if verbose:
+						print("\n" + "="*80)
+						print("STAGE 2: MERGING SINGLETON CLUSTERS")
+						print("="*80)
+
+				cluster_sizes = np.bincount(labels)
+				singleton_ids = np.where(cluster_sizes == 1)[0]
+
+				if len(singleton_ids) > 0:
+						if verbose:
+								print(f"\n[MERGE] Found {len(singleton_ids)} singleton clusters to merge...")
+
+						# Compute cluster centroids
+						unique_labels = np.unique(labels)
+						centroids = np.array([
+								X[labels == cid].mean(axis=0)
+								for cid in unique_labels
+						])
+
+						# For each singleton, find nearest non-singleton cluster
+						new_labels = labels.copy()
+						merged_count = 0
+
+						for singleton_id in singleton_ids:
+								singleton_idx = np.where(labels == singleton_id)[0][0]
+								singleton_vec = X[singleton_idx].reshape(1, -1)
+
+								# Compute similarity to all cluster centroids
+								sims = cosine_similarity(singleton_vec, centroids)[0]
+
+								# Find nearest non-singleton cluster
+								sorted_ids = np.argsort(sims)[::-1]
+								for nearest_id in sorted_ids:
+										if cluster_sizes[nearest_id] >= min_cluster_size:
+												new_labels[singleton_idx] = nearest_id
+												merged_count += 1
+												if verbose:
+														print(f"  ├─ Merged singleton {singleton_id} → cluster {nearest_id} (sim={sims[nearest_id]:.4f})")
+												break
+
+						# Relabel to remove gaps
+						unique_new = np.unique(new_labels)
+						label_map = {old: new for new, old in enumerate(unique_new)}
+						labels = np.array([label_map[l] for l in new_labels])
+
+						if verbose:
+								print(f"\n[MERGE] Merged {merged_count} singletons")
+								print(f"[MERGE] Reduced from {len(unique_labels)} to {len(unique_new)} clusters")
+				else:
+						if verbose:
+								print("\n[MERGE] No singleton clusters found. Skipping merge step.")
+
+		# ========================================================================
+		# STAGE 3: Split oversized clusters
+		# ========================================================================
+
+		if split_oversized:
+				if verbose:
+						print("\n" + "="*80)
+						print(f"STAGE 3: SPLITTING OVERSIZED CLUSTERS (> {max_cluster_size_ratio*100:.0f}% of total)")
+						print("="*80)
+
+				cluster_sizes = np.bincount(labels)
+				max_size_threshold = num_samples * max_cluster_size_ratio
+				oversized = np.where(cluster_sizes > max_size_threshold)[0]
+
+				if len(oversized) > 0:
+						if verbose:
+								print(f"\n[SPLIT] Found {len(oversized)} oversized clusters (>{max_size_threshold:.0f} items)...")
+
+						from sklearn.cluster import AgglomerativeClustering
+
+						final_labels = labels.copy()
+						next_label = labels.max() + 1
+
+						for cid in oversized:
+								cluster_mask = labels == cid
+								cluster_indices = np.where(cluster_mask)[0]
+								cluster_X = X[cluster_indices]
+
+								# Target: ~20-30 items per subcluster
+								n_sub = max(2, int(cluster_sizes[cid] / 25))
+
+								if verbose:
+										print(f"\n  ├─ Splitting cluster {cid} ({cluster_sizes[cid]} items) → {n_sub} subclusters")
+
+								# Re-cluster this subset
+								sub_clusterer = AgglomerativeClustering(
+										n_clusters=n_sub,
+										metric='cosine',
+										linkage='average'
+								)
+								sub_labels = sub_clusterer.fit_predict(cluster_X)
+
+								# Relabel subclusters
+								for sub_id in range(n_sub):
+										sub_mask = sub_labels == sub_id
+										sub_size = sub_mask.sum()
+										final_labels[cluster_indices[sub_mask]] = next_label
+										if verbose:
+												print(f"  │  ├─ Subcluster {next_label}: {sub_size} items")
+										next_label += 1
+
+						labels = final_labels
+
+						if verbose:
+								print(f"\n[SPLIT] Final cluster count: {len(np.unique(labels))}")
+				else:
+						if verbose:
+								print(f"\n[SPLIT] No oversized clusters found (max size: {cluster_sizes.max()}/{max_size_threshold:.0f})")
+
+		# ========================================================================
+		# FINAL STATISTICS
+		# ========================================================================
+
+		final_cluster_sizes = np.bincount(labels)
+		final_n_clusters = len(np.unique(labels))
+		final_singletons = np.sum(final_cluster_sizes == 1)
+		final_max_size = final_cluster_sizes.max()
+
+		stats = {
+				'n_clusters': final_n_clusters,
+				'n_singletons': final_singletons,
+				'singleton_ratio': final_singletons / final_n_clusters,
+				'max_cluster_size': final_max_size,
+				'max_size_ratio': final_max_size / num_samples,
+				'mean_cluster_size': num_samples / final_n_clusters,
+				'consolidation_ratio': num_samples / final_n_clusters,
+		}
+
+		if verbose:
+				print("\n" + "="*80)
+				print("FINAL CLUSTERING STATISTICS")
+				print("="*80)
+				print(f"  ├─ Total clusters: {stats['n_clusters']}")
+				print(f"  ├─ Singletons: {stats['n_singletons']} ({stats['singleton_ratio']*100:.1f}%)")
+				print(f"  ├─ Largest cluster: {stats['max_cluster_size']} items ({stats['max_size_ratio']*100:.1f}%)")
+				print(f"  ├─ Mean cluster size: {stats['mean_cluster_size']:.1f}")
+				print(f"  └─ Consolidation ratio: {stats['consolidation_ratio']:.1f}:1")
+				print("="*80 + "\n")
+
+		return labels, stats
 
 def _post_process_(
 	labels_list: List[List[str]], 
