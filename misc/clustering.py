@@ -410,10 +410,6 @@ def analyze_cluster_quality(
 				'summary': summary
 		}
 
-# =============================================================================
-# HELPER FUNCTIONS
-# =============================================================================
-
 def _interpret_silhouette(score: float) -> str:
 		"""Interpret silhouette score."""
 		if score > 0.7:
@@ -427,7 +423,6 @@ def _interpret_silhouette(score: float) -> str:
 		else:
 				return "POOR"
 
-
 def _interpret_db_index(score: float) -> str:
 		"""Interpret Davies-Bouldin index."""
 		if score < 0.5:
@@ -439,7 +434,6 @@ def _interpret_db_index(score: float) -> str:
 		else:
 				return "POOR"
 
-
 def _interpret_ch_index(score: float) -> str:
 		"""Interpret Calinski-Harabasz index."""
 		if score > 1000:
@@ -450,7 +444,6 @@ def _interpret_ch_index(score: float) -> str:
 				return "FAIR"
 		else:
 				return "WEAK"
-
 
 def _flag_cluster_quality(row: pd.Series) -> str:
 		"""Flag cluster quality based on metrics."""
@@ -469,7 +462,6 @@ def _flag_cluster_quality(row: pd.Series) -> str:
 				flags.append('SINGLETON')
 		
 		return '|'.join(flags) if flags else 'OK'
-
 
 def _generate_recommendations(
 		global_metrics: Dict,
@@ -530,7 +522,6 @@ def _generate_recommendations(
 		
 		return recommendations
 
-
 def _generate_summary(
 		global_metrics: Dict,
 		consolidation_impact: Dict,
@@ -562,11 +553,6 @@ ISSUES DETECTED:
 RECOMMENDATION: {'✅ PROCEED with label mapping' if silhouette > 0.4 and high_severity_count == 0 else '⚠️  REVIEW problematic clusters before proceeding'}
 """
 		return summary.strip()
-
-
-# =============================================================================
-# EXPORT PROBLEMATIC CLUSTERS FOR MANUAL REVIEW
-# =============================================================================
 
 def export_problematic_clusters(
 		labels: np.ndarray,
@@ -610,8 +596,6 @@ def export_problematic_clusters(
 		df = pd.DataFrame(review_data)
 		df.to_csv(output_path, index=False)
 		print(f"✅ Exported {len(df)} labels from {len(problematic_cluster_ids)} problematic clusters to: {output_path}")
-
-
 
 def eval_clusters(df, X):
 		"""
