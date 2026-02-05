@@ -1014,7 +1014,7 @@ def cluster(
 		convert_to_numpy=True,
 		normalize_embeddings=True,  # Critical for cosine distance
 	)
-	print(f"Embeddings: {type(X)} {X.shape} {X.dtype}")
+	print(f"Embeddings: {type(X)} {X.shape} {X.dtype} (min, max): ({X.min():.1f}, {X.max():.1f}) (mean, std): ({X.mean():.1f}, {X.std():.1f})")
 			
 	# Compute linkage matrix
 	print(f"[LINKAGE] {linkage_method} Agglomerative Clustering on: {X.shape} embeddings")
