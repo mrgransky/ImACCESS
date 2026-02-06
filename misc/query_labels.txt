@@ -3,8 +3,8 @@ armoured fighting vehicles
 naval aircraft factory
 naval air station
 naval air base
-Armoured personnel carriers
-armored personnel carriers
+Armoured personnel carrier
+armored personnel carrier
 infantry fighting vehicles
 air force personnel
 allied air attack
@@ -135,6 +135,7 @@ military ship
 military boat
 military parade
 army parade
+medical doctor
 Medical aid
 Medical service
 first aid
@@ -267,7 +268,6 @@ projectile
 exile
 evacuation
 nurse
-doctor
 dentist
 surgeon
 embassy
