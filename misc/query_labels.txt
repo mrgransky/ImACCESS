@@ -121,7 +121,6 @@ military base
 military leader
 military unit
 military museum
-military men
 military personnel
 military ship
 military boat
