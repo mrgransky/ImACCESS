@@ -6,15 +6,16 @@ naval air base
 Armoured personnel carriers
 armored personnel carriers
 infantry fighting vehicles
+air force personnel
 allied air attack
 anti personnel mine
-anti-personnel mine
 self propelled guns
 self propelled artillery
-self-propelled guns
 water based aircraft
 water-based aircraft
-air force personnel
+anti-personnel mine
+self-propelled artillery
+self-propelled guns
 airforce personnel
 air force commander
 airforce commander
@@ -141,6 +142,8 @@ Coast Guard
 hospital base
 hospital ship
 hospital train
+passenger train
+freight train
 military hospital
 Kitchen Truck
 Railroad Truck
@@ -287,5 +290,6 @@ landmine
 marines
 tankettes
 tanks
-watercraft
 train
+watercraft
+inauguration
