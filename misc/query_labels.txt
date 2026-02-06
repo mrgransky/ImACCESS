@@ -67,6 +67,7 @@ bomber aircraft
 trainer aircraft
 transport aircraft
 light bomber
+heavy bomber
 fighter bomber
 strike fighter
 rifle grenade
