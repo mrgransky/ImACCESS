@@ -111,7 +111,6 @@ military airbase
 army airbase
 military airfield
 military airport
-airplane crash
 air station
 Air bomb
 air raid
@@ -227,7 +226,6 @@ CoastGuard
 halftrack
 antitank
 fortification
-accident
 shipwreck
 wreck
 wreckage
