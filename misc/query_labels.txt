@@ -85,6 +85,7 @@ infrastructure construction
 rail construction
 dam construction
 tunnel construction
+road construction
 allied powers
 allied forces
 air base
@@ -253,10 +254,9 @@ cannon
 ambassador
 projectile
 airport
-Anniversary
+remembrance day
 exile
 evacuation
-civilians
 nurse
 doctor
 dentist
