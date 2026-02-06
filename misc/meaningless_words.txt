@@ -1175,6 +1175,7 @@ supply
 support
 demand
 display
+fig
 figure
 figurine
 curve
@@ -1194,6 +1195,8 @@ perspective
 portion
 photography
 print
+reprint
+reproduction
 open
 close
 caption
