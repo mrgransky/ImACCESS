@@ -86,6 +86,7 @@ fighter bomber
 strike fighter
 rifle grenade
 infantry corps
+marine corps
 anti aircraft
 war crimes
 mass atrocities
