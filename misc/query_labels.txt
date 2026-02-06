@@ -71,12 +71,7 @@ heavy bomber
 fighter bomber
 strike fighter
 rifle grenade
-german tanks
-french tanks
-english tanks
-british tanks
-american tanks
-infantry tanks
+infantry corps
 anti aircraft
 war crimes
 mass atrocities
@@ -93,7 +88,9 @@ air base
 reconnaissance aircraft
 surveillance aircraft
 military aircraft
+naval airbase
 military airbase
+army airbase
 military airfield
 military airport
 airplane crash
@@ -175,7 +172,9 @@ National Day
 light station
 light house
 ground forces
-infantry weapon
+infantry weapons
+incendiary weapons
+infantry tanks
 light tanks
 medium tanks
 heavy tanks
@@ -227,6 +226,7 @@ seaplane
 airbase
 Storehouse
 lighthouse
+warehouse
 Sailboat
 regatta
 army cemetery
@@ -256,7 +256,6 @@ Ambulance
 cannon
 ambassador
 projectile
-airport
 remembrance day
 exile
 evacuation
