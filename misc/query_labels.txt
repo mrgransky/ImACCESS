@@ -33,7 +33,6 @@ army commander
 resistance commander
 intelligence commander
 logistics commander
-steam shovel
 air force base
 air force station
 artillery tractors
