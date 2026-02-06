@@ -124,7 +124,6 @@ Army Base
 Army hospital
 military base
 military leader
-military unit
 military museum
 military personnel
 military ship
@@ -191,6 +190,7 @@ flying ace
 air ace
 fighter ace
 forced displacement
+political figures
 watch tower
 watchtower
 halftrack
