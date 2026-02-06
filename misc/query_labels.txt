@@ -73,8 +73,11 @@ railroad station
 railway station
 power station
 Power Plant
+combat aircraft
 tanker aircraft
 attack aircraft
+strike aircraft
+attack bomber
 fighter aircraft
 bomber aircraft
 trainer aircraft
@@ -192,7 +195,7 @@ independence day
 light station
 light house
 ground forces
-infantry weapons
+infantry weapon
 incendiary weapons
 infantry tanks
 light tanks
@@ -260,7 +263,6 @@ Artillery
 grenade
 firearm
 rifle
-knives
 bayonet
 flamethrower
 aircraft
@@ -283,7 +285,6 @@ embassy
 reservoir
 refugees
 president
-Border
 hospital
 locomotive
 railway
@@ -302,3 +303,4 @@ train
 watercraft
 inauguration
 commanders
+Bomber
