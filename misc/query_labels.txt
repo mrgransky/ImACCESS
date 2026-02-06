@@ -132,6 +132,7 @@ military personnel
 military ship
 military boat
 military parade
+army parade
 Medical aid
 Medical service
 first aid
@@ -168,9 +169,11 @@ volley gun
 field gun
 mountain gun
 land mine
+remembrance day
 memorial day
 Decoration Day
-National Day
+national day
+independence day
 light station
 light house
 ground forces
@@ -257,7 +260,6 @@ Ambulance
 cannon
 ambassador
 projectile
-remembrance day
 exile
 evacuation
 nurse
