@@ -112,6 +112,7 @@ half track
 half-track
 military vehicles
 army vehicles
+motor vehicles
 Aerial bomb
 flying bomb
 Aerial warfare
