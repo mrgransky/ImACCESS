@@ -172,7 +172,6 @@ light station
 light house
 ground forces
 infantry weapon
-explosive weapon
 light tanks
 medium tanks
 heavy tanks
@@ -183,6 +182,12 @@ V-J Day
 tank destroyers
 anti tank
 anti-tank
+Minesweeper vessel
+Minesweeper ship
+military aviator
+military pilot
+flying aces
+air aces
 forced displacement
 watch tower
 watchtower
@@ -230,6 +235,7 @@ bayonet
 flamethrower
 aircraft
 soldier
+Infantryman
 Infantry
 aeroplane
 airplane
@@ -263,15 +269,11 @@ locomotive
 railway
 railroad
 captain
-Minesweeper vessel
-Minesweeper ship
 Ceremony
 Celebration
 ussr
 blitz
 banishment
-aviator
-pilot
 landmine
 marines
 tankettes
