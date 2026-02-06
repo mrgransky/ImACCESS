@@ -1,9 +1,9 @@
-armored fighting vehicle
+armored fighting vehicles
 naval aircraft factory
 naval air station
 naval air base
 armored personnel carrier
-infantry fighting vehicle
+infantry fighting vehicles
 allied air attack
 anti personnel mine
 anti-personnel mine
@@ -109,11 +109,11 @@ surge tank
 Water Tank
 soviet union
 Naval Officer
-halftrack vehicle
-half track vehicle
-half-track vehicle
-military vehicle
-army vehicle
+halftrack
+half track
+half-track
+military vehicles
+army vehicles
 Aerial bomb
 flying bomb
 Aerial warfare
