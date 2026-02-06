@@ -14,7 +14,9 @@ self propelled artillery
 self-propelled guns
 water based aircraft
 air force personnel
+airforce personnel
 air force commander
+airforce commander
 Pearl Harbor attack
 Treaty of Versailles
 Battle of the Bulge
@@ -157,7 +159,7 @@ Prime Minister
 health professional
 bombing attack
 atomic bomb
-Nuremberg Trial
+Nuremberg Trials
 Assault gun
 Ballon gun
 Machine gun
@@ -226,7 +228,6 @@ seaplane
 airbase
 Storehouse
 lighthouse
-warehouse
 Sailboat
 regatta
 army cemetery
