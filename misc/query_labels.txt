@@ -13,6 +13,7 @@ self propelled guns
 self propelled artillery
 self-propelled guns
 water based aircraft
+water-based aircraft
 air force personnel
 airforce personnel
 air force commander
