@@ -291,8 +291,6 @@ locomotive
 railway
 railroad
 captain
-Ceremony
-Celebration
 ussr
 blitz
 banishment
