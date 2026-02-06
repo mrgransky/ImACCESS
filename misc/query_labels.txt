@@ -181,6 +181,7 @@ V-J Day
 tank destroyers
 anti tank
 anti-tank
+forced displacement
 watch tower
 watchtower
 halftrack
@@ -206,7 +207,7 @@ submarine
 Grossdeutschland
 bombing
 helicopter
-Floatplane
+floatplane
 seaplane
 airbase
 Storehouse
@@ -251,6 +252,7 @@ surgeon
 embassy
 reservoir
 refugees
+expulsion
 president
 migration
 Border
