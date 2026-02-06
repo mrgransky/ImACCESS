@@ -36,6 +36,8 @@ naval ship
 naval vessel
 naval warship
 naval mine
+armoured cars
+armored cars
 guided missile
 ballistic missile
 red cross
