@@ -118,6 +118,7 @@ army vehicles
 motor vehicles
 Aerial bomb
 flying bomb
+Aerial combat
 Aerial warfare
 Army Base
 Army hospital
