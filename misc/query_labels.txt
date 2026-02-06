@@ -126,6 +126,7 @@ Army hospital
 military base
 military leader
 military museum
+war museum
 military personnel
 military ship
 military boat
