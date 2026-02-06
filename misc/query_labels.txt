@@ -171,10 +171,14 @@ half track
 ground forces
 infantry weapon
 explosive weapon
+light tanks
+medium tanks
+heavy tanks
 Higgins boat
 landing craft
 V-E Day
 V-J Day
+Tank destroyers
 anti tank
 anti-tank
 watch tower
@@ -264,5 +268,6 @@ aviator
 pilot
 landmine
 marines
+tanks
 watercraft
 train
