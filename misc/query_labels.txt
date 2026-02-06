@@ -99,6 +99,7 @@ Air assault
 Flag Raising
 Manhattan Project
 Eastern Front
+Western Front
 surge drum
 surge pool
 surge tank
