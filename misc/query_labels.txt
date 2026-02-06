@@ -228,8 +228,9 @@ halftrack
 antitank
 fortification
 accident
-Wreck
-Wreckage
+shipwreck
+wreck
+wreckage
 panzer
 howitzer
 Airstrike
