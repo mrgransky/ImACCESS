@@ -1010,7 +1010,7 @@ def cluster(
 	X = model.encode(
 		unique_labels,
 		batch_size=512,
-		show_progress_bar=False,
+		show_progress_bar=verbose,
 		convert_to_numpy=True,
 		normalize_embeddings=True,  # Critical for cosine distance
 	)

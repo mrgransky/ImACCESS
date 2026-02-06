@@ -307,6 +307,7 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 			"traffic statistics:" not in doc_title.lower(),
 			"sketch" not in doc_title.lower(),
 			"painting" not in doc_title.lower(),
+			"clipping from" not in doc_title.lower(),
 			"photomechanical print" not in doc_title.lower(),
 		] if doc_title is not None else []
 

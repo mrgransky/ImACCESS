@@ -1093,6 +1093,22 @@ northeastward
 northwestward
 southwestward
 southeastward
+southeastern
+southwestern
+northwestern
+northeastern
+upper
+lower
+uppermost
+lowermost
+easternmost
+westernmost
+southernmost
+northernmost
+northern
+southern
+eastern
+western
 palmtree
 beverly hill
 clevland
@@ -1168,9 +1184,14 @@ group
 schedule
 setting
 action
+imagery
+pre
 view
 overview
+review
 viewpoint
+perspective
+portion
 photography
 print
 open
@@ -1180,3 +1201,8 @@ document
 system
 icon
 symbol
+direction
+orientation
+war
+upward
+downward

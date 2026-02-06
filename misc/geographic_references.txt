@@ -89,6 +89,7 @@ Ghana
 Greece
 Greenland
 Grenada
+Guam
 Guatemala
 Guinea
 Guinea-Bissau
@@ -171,6 +172,7 @@ Panama
 Papua New Guinea
 Paraguay
 Peru
+Philippine
 Philippines
 Poland
 Portugal
@@ -214,6 +216,7 @@ Syria
 
 Tajikistan
 Tanzania
+Tasmania
 Thailand
 Timor-Leste
 Togo
@@ -479,7 +482,14 @@ Winslow
 
 Capital
 City
+Community
+District
+Island
+Municipality
+Peninsula
+Region
 Town
+
 Abadan
 Aegean
 Algiers
@@ -491,23 +501,31 @@ Bagdad
 Bangkok
 Barcelona
 Basel
+Bavaria
 Beijing
 Berlin
 Bogota
+Bordaux
 Bordeaux
+Bougainville
 Bremen
 Brasilia
 Bristol
 Brussels
 Buenos Aires
 Buna
+Bucharest
 Budapest
+Burma
 Cadiz
 Cairo
 Caracas
 Cebu City
+Chania
 Cleveland
+Coblenz
 Cologne
+Copenhagen
 Dessau
 Dorchester
 Dresden
@@ -517,12 +535,20 @@ Frankfurt
 Gaza
 Hamburg
 Hong Kong
+Incheon
+Indochina
 Ipswich
+Jerusalem
+Karachi
+Kiev
+Kyoto
 Kobe
+Koblenz
 Hanoi
 Havana
 Lancaster
 Leipzig
+Lille
 Liverpool
 London
 Madrid
@@ -532,6 +558,7 @@ Marrakech
 Medina
 Mexico City
 Milan
+Minsk
 Moscow
 Munich
 Nagoya
@@ -542,6 +569,7 @@ Paris
 Palermo
 Perth
 Pisa
+Prague
 Quito
 Rabat
 Rome
@@ -571,15 +599,21 @@ Oviedo
 Pamplona
 Ravenna
 Rio de Janeiro
+Salzburg
 Santander
+Seoul
 Shanghai
+Sinai
 Sicily
 Siena
 Southampton
 Strömsund
+Stuttgart
 Tarragona
 Tehachapi
+Tel Aviv
 Tokyo
+Transylvania
 Tunis
 Tuscany
 Valladolid
@@ -593,44 +627,59 @@ Zaragoza
 
 Afghan
 African
+Algerian
 American
 Arab
 Arabian
 Asian
 Australian
 Austrian
+Bavarian
 Belgian
 Belarusian
 Bolivian
 Bosnian
 Brazilian
-British
 Bulgarian
+British
 Canadian
 Chinese
+Chilean
 Cuban
+Croatian
 Danish
 Dutch
 Egyptian
 English
 European
 Finnish
+Filipino
+Flemish
 French
 German
 Greek
+Hawaiian
+Hungarian
 Icelandic
 Indian
+Iranian
+Iraqi
 Irish
 Italian
+Israeli
 Japanese
 Korean
 Lebanese
+Luxembourgian
 Malian
 Malaysian
 Mexican
+Moroccan
+New Zealander
 Norwegian
 North Korean
 Papuan
+Persian
 Polish
 Portuguese
 Russian
@@ -638,10 +687,13 @@ San Diegan
 Scandinavian
 Scottish
 Serbian
+Slovenian
+Slovak
 Spanish
 Swedish
 Swiss
 Syrian
+Taiwanese
 Turkish
 Vietnamese
 Yugoslav

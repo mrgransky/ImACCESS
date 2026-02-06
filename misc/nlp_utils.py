@@ -470,24 +470,24 @@ def _post_process_(
 					print(f"        → {lemma} Number detected, skipping")
 				continue
 
-			# check for phrasal verbs or words containing prepositions: (dangerous)
-			if any(lm in STOPWORDS for lm in lemma.split()):
-				if verbose:
-					print(f"        → {lemma} Stopword detected, skipping")
-				continue
+			# # check for phrasal verbs or words containing prepositions: (dangerous)
+			# if any(lm in STOPWORDS for lm in lemma.split()):
+			# 	if verbose:
+			# 		print(f"        → {lemma} Stopword detected, skipping")
+			# 	continue
 
 			if is_phrasal_verb(lemma):
 				if verbose:
 					print(f"        → {lemma} Phrasal verb detected, skipping")
 				continue
 
-			# if (
-			# 	all(lm in STOPWORDS for lm in lemma.split()) 
-			# 	or lemma in STOPWORDS
-			# ):
-			# 	if verbose:
-			# 		print(f"        → {lemma} All words are stopwords or stopword, skipping")
-			# 	continue
+			if (
+				all(lm in STOPWORDS for lm in lemma.split()) 
+				or lemma in STOPWORDS
+			):
+				if verbose:
+					print(f"        → {lemma} All words are stopwords or stopword, skipping")
+				continue
 
 			# only No. NNNNN ex) No. X1657 or No. 1657
 			if re.match(r"^No\.\s\w+$", lemma, re.IGNORECASE):
@@ -636,6 +636,7 @@ def basic_clean(txt: str):
 		r"View of bottom, showing ",
 		r"Steinheimer note",
 		r'World travel.',
+		r'Original extended caption: ',
 		r'Original caption on envelope: ',
 		r"In the photo, ",
 		r'Historical Miscellaneous -',
