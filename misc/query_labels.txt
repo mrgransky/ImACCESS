@@ -36,6 +36,12 @@ logistics commander
 air force base
 air force station
 artillery tractors
+military nurse
+army nurse
+army surgeon
+military surgeon
+military dentist
+army dentist
 naval hospital
 naval training
 naval ship
@@ -267,9 +273,6 @@ ambassador
 projectile
 exile
 evacuation
-nurse
-dentist
-surgeon
 embassy
 reservoir
 refugees
