@@ -63,7 +63,6 @@ infantry camp
 swimming camp
 fishing camp
 construction camp
-trailer camp
 winter camp
 military camp
 allied invasion
