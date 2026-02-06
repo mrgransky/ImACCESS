@@ -178,7 +178,7 @@ Higgins boat
 landing craft
 V-E Day
 V-J Day
-Tank destroyers
+tank destroyers
 anti tank
 anti-tank
 watch tower
@@ -187,6 +187,7 @@ antitank
 fortification
 accident
 Wreck
+Wreckage
 panzer
 howitzer
 Airstrike
