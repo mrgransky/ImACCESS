@@ -148,9 +148,10 @@ military ship
 military boat
 military parade
 army parade
+military medical services
 medical doctor
 Medical aid
-Medical service
+medical service
 first aid
 Coast Guard
 hospital base
