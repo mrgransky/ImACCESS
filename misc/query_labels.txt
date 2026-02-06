@@ -243,7 +243,7 @@ knives
 bayonet
 flamethrower
 aircraft
-soldier
+soldiers
 Infantryman
 Infantry
 aeroplane
