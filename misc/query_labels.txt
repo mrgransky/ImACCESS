@@ -7,8 +7,9 @@ infantry fighting vehicle
 allied air attack
 anti personnel mine
 anti-personnel mine
-self propelled gun
+self propelled guns
 self propelled artillery
+self-propelled guns
 water based aircraft
 air force personnel
 air force commander
@@ -114,7 +115,6 @@ army vehicle
 Aerial bomb
 flying bomb
 Aerial warfare
-Aerial View
 Army Base
 Army hospital
 military base
@@ -225,7 +225,6 @@ flamethrower
 aircraft
 soldier
 Infantry
-Animal
 aeroplane
 airplane
 rationing
