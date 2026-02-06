@@ -69,6 +69,8 @@ military camp
 allied invasion
 normandy invasion
 train station
+railroad station
+railway station
 power station
 Power Plant
 tanker aircraft
