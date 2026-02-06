@@ -143,9 +143,9 @@ Freight Truck
 Dump Truck
 Maintenance Truck
 Clinic Truck
-army truck
+army trucks
+military trucks
 army museum
-military truck
 afrika korps
 flying fortress
 vice president
@@ -251,7 +251,6 @@ surgeon
 embassy
 reservoir
 refugees
-expulsion
 president
 migration
 Border
