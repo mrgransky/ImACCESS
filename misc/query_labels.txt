@@ -55,9 +55,9 @@ ballistic missile
 red cross
 Flying Boat
 flame thrower
-victory bond
 victory day
-war bond
+victory bonds
+war bonds
 concentration camp
 infantry camp
 swimming camp
