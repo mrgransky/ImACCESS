@@ -109,7 +109,6 @@ surge tank
 Water Tank
 soviet union
 Naval Officer
-halftrack
 half track
 half-track
 military vehicles
@@ -169,7 +168,6 @@ Decoration Day
 National Day
 light station
 light house
-half track
 ground forces
 infantry weapon
 explosive weapon
@@ -185,6 +183,7 @@ anti tank
 anti-tank
 watch tower
 watchtower
+halftrack
 antitank
 fortification
 accident
@@ -206,7 +205,7 @@ kriegsmarine
 submarine
 Grossdeutschland
 bombing
-Helicopter
+helicopter
 Floatplane
 seaplane
 airbase
@@ -214,8 +213,10 @@ Storehouse
 lighthouse
 Sailboat
 regatta
-cemetery
-graveyard
+army cemetery
+military cemetery
+army graveyard
+military graveyard
 explosion
 Artillery
 grenade
