@@ -186,6 +186,8 @@ Minesweeper vessel
 Minesweeper ship
 military aviator
 military pilot
+army aviator
+army pilot
 flying ace
 air ace
 fighter ace
