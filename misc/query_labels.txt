@@ -64,12 +64,12 @@ transport aircraft
 light bomber
 fighter bomber
 strike fighter
-american tank
 rifle grenade
-german tank
-french tank
-english tank
-british tank
+german tanks
+french tanks
+english tanks
+british tanks
+american tanks
 anti aircraft
 war crimes
 mass atrocities
