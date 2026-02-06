@@ -186,8 +186,9 @@ Minesweeper vessel
 Minesweeper ship
 military aviator
 military pilot
-flying aces
-air aces
+flying ace
+air ace
+fighter ace
 forced displacement
 watch tower
 watchtower
