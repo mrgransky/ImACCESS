@@ -55,7 +55,7 @@ def merge_csv_files(
 	print(os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")))
 	cluster(
 		labels=df['multimodal_labels'].tolist(),
-		model_id="Qwen/Qwen3-Embedding-8B",#"google/embeddinggemma-300M" if torch.__version__ > "2.6" else "sentence-transformers/all-MiniLM-L6-v2",
+		model_id="Qwen/Qwen3-Embedding-8B" if os.getenv('USER') == "alijanif" else "Qwen/Qwen3-Embedding-0.6B",
 		nc=nc,
 		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")),
 		verbose=verbose,
