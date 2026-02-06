@@ -250,7 +250,7 @@ dentist
 surgeon
 embassy
 reservoir
-refugee
+refugees
 president
 migration
 Border
