@@ -110,7 +110,8 @@ Western Front
 surge drum
 surge pool
 surge tank
-Water Tank
+water tank
+storage tank
 soviet union
 Naval Officer
 half track
