@@ -22,7 +22,7 @@ airforce commander
 Pearl Harbor attack
 Treaty of Versailles
 Battle of the Bulge
-special forces commander
+special force commander
 theater commander
 group commander
 division commander
@@ -299,3 +299,4 @@ tanks
 train
 watercraft
 inauguration
+commanders
