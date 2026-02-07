@@ -209,6 +209,8 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 		doc_page_url = f"{SMU_BASE_URL}/collection/{doc.get('collectionAlias')}/id/{doc.get('itemId')}"
 		doc_img_link = f"{SMU_BASE_URL}/api/singleitem/image/{doc_collection}/{doc_id}/default.jpg"
 		doc_title = doc.get("title")
+		if "mock" in doc_title.lower() or "schedule" in doc_title.lower() or "circuit board" in doc_title.lower():
+			continue
 		doc_detailed_metadata = scrape_item_metadata(doc_url=doc_page_url)
 		doc_description = doc_detailed_metadata.get("description", None)
 		doc_note = doc_detailed_metadata.get("notes", None)

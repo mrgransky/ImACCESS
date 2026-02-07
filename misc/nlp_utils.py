@@ -622,6 +622,7 @@ def basic_clean(txt: str):
 		r'partial view of ',
 		r"panoramic view of ",
 		r"downstream view of ",
+		r'Color shots of ',
 		r"\s+All+\s+are+\s+unidentified",
 		r"general+\s+view+\s+\w+\s+",
 		r'here is a view of ',

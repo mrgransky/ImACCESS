@@ -68,9 +68,6 @@ winter camp
 military camp
 allied invasion
 normandy invasion
-train station
-railroad station
-railway station
 power station
 Power Plant
 combat aircraft
@@ -90,6 +87,7 @@ rifle grenade
 infantry corps
 marine corps
 anti aircraft
+antiaircraft gun
 war crimes
 mass atrocities
 trench warfare
@@ -149,6 +147,7 @@ military boat
 military parade
 army parade
 military medical services
+Defence Medical Services
 medical doctor
 Medical aid
 medical service
@@ -196,6 +195,7 @@ light station
 light house
 ground forces
 infantry weapon
+infantry gun
 incendiary weapons
 infantry tanks
 light tanks
