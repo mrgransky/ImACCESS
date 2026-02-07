@@ -54,6 +54,7 @@ STOPWORDS = set(STOPWORDS)
 
 with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 	search_labels = list(dict.fromkeys(line.strip() for line in file_))
+search_labels = list(set([lbl.lower() for lbl in search_labels]))
 
 headers = {
 	'Content-type': 'application/json',
@@ -354,8 +355,10 @@ def main():
 	df_merged_raw = pd.concat(dfs, ignore_index=True)
 	print(f">> Concatinated dfs: {df_merged_raw.shape}")
 
-	print(f"<!> Replacing labels with super classes")
-	json_file_path = os.path.join(project_dir, 'misc', 'super_labels.json')
+	json_file_path = os.path.join(project_dir, 'misc', 'canonical_labels.json')
+	print(f"<!> Replacing labels with canonical terms from {json_file_path}")
+	# json_file_path = os.path.join(project_dir, 'misc', 'super_labels.json')
+
 	if os.path.exists(json_file_path):
 		with open(json_file_path, 'r') as file_:
 			replacement_dict = json.load(file_)
@@ -363,7 +366,7 @@ def main():
 		print(f"<!> Error: {json_file_path} does not exist.")
 
 	print(f">> Pre-processing raw merged {type(df_merged_raw)} {df_merged_raw.shape}")
-	print(f">> Merging user_query to label with umbrella terms from {json_file_path}")
+	print(f">> Merging user_query to label with canonical labels from {json_file_path}")
 	df_merged_raw['label'] = df_merged_raw['user_query'].replace(replacement_dict)
 	print(f">> Found {df_merged_raw['img_url'].isna().sum()} None img_url / {df_merged_raw.shape[0]} total samples...")
 	df_merged_raw = df_merged_raw.dropna(subset=['img_url'])

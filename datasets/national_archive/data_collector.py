@@ -405,8 +405,10 @@ def main():
 	df_merged_raw = pd.concat(dfs, ignore_index=True)
 	print(f">> Concatinated dfs: {df_merged_raw.shape} Elapsed time: {time.time()-concat_st:.1f} sec")
 
-	print(f">> Replacing labels with broad umbrella terms")
-	json_file_path = os.path.join(project_dir, 'misc', 'super_labels.json')
+	print(f">> Replacing labels with canonical terms")
+	# json_file_path = os.path.join(project_dir, 'misc', 'super_labels.json')
+	json_file_path = os.path.join(project_dir, 'misc', 'canonical_labels.json')
+
 	if os.path.exists(json_file_path):
 		with open(json_file_path, 'r') as file_:
 			replacement_dict = json.load(file_)
@@ -417,7 +419,8 @@ def main():
 	print(f">> {len(unq_labels)} Unique Label(s):\n{unq_labels}")
 
 	print(f">> Pre-processing merged {type(df_merged_raw)} {df_merged_raw.shape}")
-	print(f">> Merging user_query to label with umbrella terms from {json_file_path}")
+
+	print(f">> Merging user_query to label with canonical terms from {json_file_path}")
 	df_merged_raw['label'] = df_merged_raw['user_query'].replace(replacement_dict)
 	print(f">> Found {df_merged_raw['img_url'].isna().sum()} None img_url / {df_merged_raw.shape[0]} total samples")
 	df_merged_raw = df_merged_raw.dropna(subset=['img_url'])

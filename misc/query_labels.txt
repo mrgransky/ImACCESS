@@ -222,6 +222,7 @@ political figures
 watch tower
 military ambulance
 army ambulance
+food shortage
 watchtower
 CoastGuard
 halftrack

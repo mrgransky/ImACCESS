@@ -726,6 +726,7 @@ def basic_clean(txt: str):
 		r"View is of ",
 		r'Photograph taken ',
 		r'Original caption:',
+		r'content description: ',
 		r'Caption: ',
 		r'uncaptioned ',
 		r'In the picture are ',

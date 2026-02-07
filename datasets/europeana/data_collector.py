@@ -174,8 +174,6 @@ def get_dframe(
 
 		print(f"title_en: {title_en}")
 
-
-
 		description_doc = " ".join(doc.get("dcDescriptionLangAware", {}).get("en", [])) if doc.get("dcDescriptionLangAware", {}).get("en", []) else None
 		if description_doc and is_english(text=description_doc, confidence_threshold=0.03, verbose=verbose):
 			description_en = description_doc
@@ -298,8 +296,9 @@ def main():
 	df_merged_raw = pd.concat(dfs, ignore_index=True)
 	print(f">> df_merged_raw: {df_merged_raw.shape} {type(df_merged_raw)} {list(df_merged_raw.columns)}")
 
-	json_file_path = os.path.join(project_dir, 'misc', 'super_labels.json')
-	print(f">> Loading super classes[umbrella terms]: {json_file_path}")
+	# json_file_path = os.path.join(project_dir, 'misc', 'super_labels.json')
+	json_file_path = os.path.join(project_dir, 'misc', 'canonical_labels.json')
+	print(f">> Loading super classes[canonical terms]: {json_file_path}")
 	if os.path.exists(json_file_path):
 		with open(json_file_path, 'r') as file_:
 			replacement_dict = json.load(file_)
@@ -309,7 +308,7 @@ def main():
 
 	unq_labels = set(replacement_dict.values())
 
-	print(f">> Merging user_query to label with umbrella terms (total of {len(unq_labels)} unique labels) from {json_file_path}")
+	print(f">> Merging user_query to label with canonical terms (total of {len(unq_labels)} unique labels) from {json_file_path}")
 	df_merged_raw['label'] = df_merged_raw['user_query'].replace(replacement_dict)
 	print(f">> Found {df_merged_raw['img_url'].isna().sum()} None img_url / {df_merged_raw.shape[0]} total samples")
 	df_merged_raw = df_merged_raw.dropna(subset=['img_url'])
