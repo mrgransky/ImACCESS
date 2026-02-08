@@ -115,8 +115,6 @@ Flag Raising
 Manhattan Project
 Eastern Front
 Western Front
-surge drum
-surge pool
 surge tank
 water tank
 storage tank
