@@ -142,8 +142,9 @@ military parade
 army parade
 military medical services
 Defence Medical Services
-Medical aid
+medical aid
 medical service
+medical clinic
 first aid
 Coast Guard
 hospital base
