@@ -14,8 +14,8 @@ from collections import Counter, defaultdict
 import matplotlib.pyplot as plt
 import nltk
 from tqdm import tqdm
-# import urllib.request
-# import urllib.parse
+import urllib.request
+import urllib.parse
 import argparse
 import seaborn as sns
 from typing import Tuple, Union, List, Dict, Any, Optional, Callable, TypedDict
