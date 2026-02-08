@@ -104,9 +104,6 @@ air base
 reconnaissance aircraft
 surveillance aircraft
 military aircraft
-naval airbase
-military airbase
-army airbase
 military airfield
 military airport
 air station
@@ -148,7 +145,6 @@ military parade
 army parade
 military medical services
 Defence Medical Services
-medical doctor
 Medical aid
 medical service
 first aid

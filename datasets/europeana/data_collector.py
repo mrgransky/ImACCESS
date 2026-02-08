@@ -146,39 +146,57 @@ def get_dframe(
 		# 	continue
 
 		doc_id = re.sub("/", "SLASH", europeana_id)
-		doc_title_list = doc.get("title") # ["title1", "title2", "title3", ...]
-		doc_description_list = doc.get("dcDescription" )# ["desc1", "desc2", "desc3", ...]
 
-		doc_title = ' '.join(doc_title_list) if doc_title_list else None
-		doc_description = " ".join(doc_description_list) if doc_description_list else None
-		pDate = doc.get("edmTimespanLabel")[0].get("def") if (doc.get("edmTimespanLabel") and doc.get("edmTimespanLabel")[0].get("def")) else None
+		# doc_title_list = doc.get("title") # ["title1", "title2", "title3", ...]
+		# doc_description_list = doc.get("dcDescription" )# ["desc1", "desc2", "desc3", ...]
+		# doc_title = ' '.join(doc_title_list) if doc_title_list else None
+		# doc_description = " ".join(doc_description_list) if doc_description_list else None
+		# pDate = doc.get("edmTimespanLabel")[0].get("def") if (doc.get("edmTimespanLabel") and doc.get("edmTimespanLabel")[0].get("def")) else None
 
 		image_url = doc.get("edmIsShownBy")[0]
 		raw_doc_date = doc.get("edmTimespanLabel")
 		doc_year = doc.get("year")[0] if (doc.get("year") and doc.get("year")[0]) else None
 		doc_url = f"https://www.europeana.eu/en/item{europeana_id}" # doc.get("guid")
 
-		useless_title_terms = ["scheme", "schematic", "overview map"]
+		useless_subjects = ["Manuscript"]
+		# Check if document contains useless concept labels
+		doc_concept_labels = doc.get("edmConceptLabel", [])
+		is_useless_doc = False
+		for concept in doc_concept_labels:
+			if isinstance(concept, dict) and 'def' in concept:
+				if concept['def'] in useless_subjects:
+					is_useless_doc = True
+					if verbose:
+						print(f"IGNORING DOCUMENT with concept: {concept['def']} - ID: {europeana_id}")
+					break
+		if is_useless_doc:
+			continue  # Skip this document
+
+		useless_terms = ["scheme", "schematic", "overview map", "schema", "diagram", "technology history"]
 		title_en = None  # default if none match
 		for title in doc.get("title", []):  # safer with default empty list
-				if not title:
-						continue  # skip None or empty
-
-				if (
-						is_english(text=title, confidence_threshold=0.03, verbose=verbose)
-						and not all(word in STOPWORDS for word in title.lower().split())  # exclude all-stopwords titles
-						and not any(word in useless_title_terms for word in title.lower().split())
-				):
-						title_en = title
-						break  # first suitable title found
+			if not title:
+				continue  # skip None or empty
+			if (
+				is_english(text=title, confidence_threshold=0.03, verbose=verbose)
+				and not all(word in STOPWORDS for word in title.lower().split())  # exclude all-stopwords titles
+				and not any(word in useless_terms for word in title.lower().split())
+			):
+				title_en = title
+				break  # first suitable title found
 
 		print(f"title_en: {title_en}")
 
 		description_doc = " ".join(doc.get("dcDescriptionLangAware", {}).get("en", [])) if doc.get("dcDescriptionLangAware", {}).get("en", []) else None
-		if description_doc and is_english(text=description_doc, confidence_threshold=0.03, verbose=verbose):
+		if (
+			description_doc 
+			and is_english(text=description_doc, confidence_threshold=0.03, verbose=verbose)
+			and not any(word in useless_terms for word in description_doc.lower().split())
+		):
 			description_en = description_doc
 		else:
 			description_en = None
+
 		print(f"description_en:\n{description_en}")
 	
 		if (
