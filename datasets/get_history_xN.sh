@@ -115,8 +115,8 @@ main() {
 	COLLECTORS=(
 		"SMU|${BASE_DIR}/smu/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 512,512 --verbose"
 		"WWII|${BASE_DIR}/wwii/data_collector.py|-ddir ${DATASET_DIR} -nw 8 --img_mean_std --thumbnail_size 512,512 --verbose"
-		"National_Archive|${BASE_DIR}/national_archive/data_collector.py|-ddir ${DATASET_DIR} -nw 4 --img_mean_std --thumbnail_size 512,512 --verbose"
 		"Europeana|${BASE_DIR}/europeana/data_collector.py|-ddir ${DATASET_DIR} -nw 8 --img_mean_std --thumbnail_size 512,512 --api_key api2demo --verbose"
+		"National_Archive|${BASE_DIR}/national_archive/data_collector.py|-ddir ${DATASET_DIR} -nw 4 --img_mean_std --thumbnail_size 512,512 --verbose"
 		# "SA_Kuva|${BASE_DIR}/sa_kuva/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --thumbnail_size 512,512"
 		# "WW_Vehicles|${BASE_DIR}/ww_vehicles/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --thumbnail_size 512,512"
 	)

@@ -39,6 +39,7 @@ air force station
 artillery tractors
 military nurse
 army nurse
+naval forces
 naval hospital
 naval training
 naval ship
@@ -99,6 +100,7 @@ surveillance aircraft
 military aircraft
 military airfield
 military airport
+military unit
 air station
 Air bomb
 air raid
