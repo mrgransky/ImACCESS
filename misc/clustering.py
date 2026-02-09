@@ -693,40 +693,6 @@ def get_optimal_num_clusters(
 	split_oversized=True,
 	verbose=True
 ):
-		"""
-		Complete integrated function to find optimal number of clusters with all fixes:
-
-		1. Enhanced consensus scoring with max cluster size penalty
-		2. Singleton merging into nearest neighbors
-		3. Two-stage clustering to split oversized clusters
-
-		Parameters:
-		-----------
-		X : np.ndarray
-				Normalized embeddings (n_samples, embedding_dim)
-		linkage_matrix : np.ndarray
-				Hierarchical linkage matrix from scipy.cluster.hierarchy.linkage
-		num_samples : int
-				Number of samples
-		min_cluster_size : int
-				Minimum cluster size (default: 2)
-		max_cluster_size_ratio : float
-				Maximum allowed cluster size as ratio of total samples
-		merge_singletons : bool
-				Whether to merge singleton clusters into nearest neighbors (default: True)
-		split_oversized : bool
-				Whether to split oversized clusters in stage 2 (default: True)
-		verbose : bool
-				Print detailed progress (default: True)
-
-		Returns:
-		--------
-		labels : np.ndarray
-				Final cluster labels (0-indexed)
-		stats : dict
-				Statistics about the clustering
-		"""
-
 		if verbose:
 			print("\nOPTIMAL CLUSTER SELECTION WITH ENHANCED SCORING")
 			print(f"max_cluster_size_ratio: {max_cluster_size_ratio}")
@@ -742,7 +708,7 @@ def get_optimal_num_clusters(
 			range_n_clusters = range(50, min(400, num_samples // 50), 25)
 		elif num_samples > int(5e3):
 			range_n_clusters = range(20, min(150, num_samples // 30), 10)
-		elif num_samples > int(2e3):
+		elif num_samples > int(1e3):
 			range_n_clusters = range(20, min(60, num_samples // 25), 10)
 		else:
 			# For extremely small datasets: more conservative range
@@ -1000,13 +966,50 @@ def cluster(
 	print(f"Sample unique labels: {unique_labels[:15]}")
 	
 	# attn_implementation = "flash_attention_2" if "gemma" in model_id else "eager"
+	dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
+	if verbose:
+		print(f"[INFO] {model_id} Dtype selection: {dtype}")
+
+	def _optimal_attn_impl(m_id: str) -> str:
+		"""Select best available attention implementation."""
+		if not torch.cuda.is_available():
+			return "eager"
+		
+		major, minor = torch.cuda.get_device_capability()
+		compute_cap = major + minor / 10
+		
+		# Flash Attention 2 requires Ampere or newer (compute >= 8.0)
+		if compute_cap >= 8.0:
+			try:
+				import flash_attn
+				if verbose:
+					print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
+				return "flash_attention_2"
+			except ImportError:
+				if verbose:
+					print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
+		
+		# For older GPUs (Volta/Turing), use SDPA (PyTorch native, faster than eager)
+		if compute_cap >= 7.0:
+			if torch.__version__ >= "2.0.0":
+				if verbose:
+					print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
+				return "sdpa"		
+		if verbose:
+			print(f"[INFO] Using eager attention (compute {compute_cap})")
+		return "eager"
+
+	attn_impl = _optimal_attn_impl(model_id)
+	if verbose:
+		print(f"[INFO] {model_id} Attention implementation: {attn_impl}")
+
 	# Load model and generate embeddings
 	print(f"\nSentenceTransformer {model_id}")
 	model = SentenceTransformer(
 		model_name_or_path=model_id,
 		trust_remote_code=True,
 		cache_folder=cache_directory[os.getenv('USER')],
-		model_kwargs={"attn_implementation": "flash_attention_2", "dtype": "bfloat16"},
+		model_kwargs={"attn_implementation": attn_impl, "dtype": dtype},
 		token=os.getenv("HUGGINGFACE_TOKEN"),
 		tokenizer_kwargs={"padding_side": "left"},
 	).to(device)

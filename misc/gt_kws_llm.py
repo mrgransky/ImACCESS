@@ -226,7 +226,6 @@ def _load_llm_(
 			print(f"[INFO] No architecture specified in config")
 			print(f"[INFO] Will use AutoModelForCausalLM\n")
 
-	# ========== Dtype selection ==========
 	dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
 	if verbose:
 		print(f"[INFO] {model_id} Dtype selection: {dtype}")
@@ -263,6 +262,8 @@ def _load_llm_(
 	attn_impl = _optimal_attn_impl(model_id)
 	if verbose:
 		print(f"[INFO] {model_id} Attention implementation: {attn_impl}")
+
+
 
 	# ========== Quantization config ==========
 	quantization_config = None

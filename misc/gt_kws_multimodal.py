@@ -22,9 +22,9 @@ from clustering import cluster
 # how to run [local] interactive:
 # $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -vlm_bs 4 -llm_bs 2 -llm_q -vlm_mgt 32 -nw 12 -v
 # with nohup:
-# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_q -vlm_bs 2 -llm_bs 2 -nw 20 -v > logs/multimodal_annotation_smu.txt & 
+# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/_WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_q -vlm_bs 2 -llm_bs 2 -nw 12 -v > logs/multimodal_annotation_smu.txt & 
 # one chunk:
-# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_0.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_q -vlm_bs 2 -llm_bs 2 -nw 18 -v > logs/multimodal_annotation_chunk_0.txt & 
+# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/_WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_0.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_q -vlm_bs 2 -llm_bs 2 -nw 18 -v > logs/multimodal_annotation_chunk_0.txt & 
 
 # how to run [Pouta]:
 # $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 16 -llm_bs 18 -nw 54 -v > /media/volume/ImACCESS/trash/multimodal_annotation_h4.txt &
@@ -240,7 +240,6 @@ def get_multimodal_annotation(
 	
 	if verbose:
 		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
-
 
 	viz.perform_multilabel_eda(
 		data_path=output_csv,
