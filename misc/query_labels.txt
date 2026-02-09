@@ -60,8 +60,6 @@ victory bonds
 war bonds
 concentration camp
 infantry camp
-swimming camp
-fishing camp
 construction camp
 winter camp
 military camp
