@@ -20,7 +20,7 @@ from clustering import cluster
 # Qwen/Qwen2.5-VL-7B-Instruct # only fits Puhti and Mahti
 
 # how to run [local] interactive:
-# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -vlm_bs 4 -llm_bs 2 -llm_q -vlm_mgt 32 -nw 12 -nc 10 -v
+# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -vlm_bs 4 -llm_bs 2 -llm_q -vlm_mgt 32 -nw 12 -v
 # with nohup:
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_q -vlm_bs 2 -llm_bs 2 -nw 20 -v > logs/multimodal_annotation_smu.txt & 
 # one chunk:
@@ -202,11 +202,33 @@ def get_multimodal_annotation(
 	df['vlm_based_labels'] = vlm_based_labels
 	df['multimodal_labels'] = multimodal_labels
 
-	# save multimodal labels as pkl with dill:
-	with gzip.open(os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_multimodal.pkl")), mode="wb") as f:
-		dill.dump(multimodal_labels, f)
+	# # save multimodal labels as pkl with dill:
+	# with gzip.open(os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_multimodal.pkl")), mode="wb") as f:
+	# 	dill.dump(multimodal_labels, f)
+
+	clustered_df = cluster(
+		labels=multimodal_labels,
+		model_id="Qwen/Qwen3-Embedding-8B" if os.getenv('USER') == "alijanif" else "Qwen/Qwen3-Embedding-0.6B",
+		nc=nc,
+		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv")),
+		verbose=verbose,
+	)
+
+	# canonical label available in clustered_df "canonical" column: [label] -> canonical_label]
+	# mapping each label of multimodal_labels to its canonical label:
+	# desired example:
+	# multimodal_labels						-> multimodal_canonical_labels (new column)
+	# [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
+	canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
+	canonical_multimodal_labels = []
+	for labels in tqdm(multimodal_labels, desc="Canonical labels"):
+		canonical_labels_ = [canonical_labels[label] for label in labels]
+		canonical_multimodal_labels.append(canonical_labels_)
+
+	df['multimodal_canonical_labels'] = canonical_multimodal_labels
 
 	if verbose:
+		print(df["multimodal_canonical_labels"].value_counts())
 		print(f"Saving {type(df)} {df.shape} {list(df.columns)} to {output_csv}")
 
 	df.to_csv(output_csv, index=False)
@@ -219,26 +241,20 @@ def get_multimodal_annotation(
 	if verbose:
 		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
 
-	# viz.perform_multilabel_eda(
-	# 	data_path=output_csv,
-	# 	label_column='multimodal_labels'
-	# )
+
+	viz.perform_multilabel_eda(
+		data_path=output_csv,
+		label_column='multimodal_canonical_labels'
+	)
 
 	# only for full dataset and chunk is not in the file name:
 	if "_chunk_" not in os.path.basename(csv_file):
 		train_df, val_df = get_multi_label_stratified_split(
 			csv_file=output_csv,
 			val_split_pct=0.35,
-			label_col='multimodal_labels'
+			label_col='multimodal_canonical_labels'
 		)
 
-	cluster(
-		labels=multimodal_labels,
-		model_id="Qwen/Qwen3-Embedding-8B" if os.getenv('USER') == "alijanif" else "Qwen/Qwen3-Embedding-0.6B",
-		nc=nc,
-		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv")),
-		verbose=verbose,
-	)
 
 	return multimodal_labels
 

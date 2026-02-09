@@ -636,6 +636,54 @@ def eval_clusters(df, X):
 		
 		return metrics
 
+def get_optimal_super_clusters(
+		linkage_matrix,
+		embeddings,
+		min_clusters=3,
+		max_clusters=10,
+		n_thresholds=50,
+):
+		distances = linkage_matrix[:, 2]
+		candidate_distances = np.linspace(distances.min(), distances.max(), n_thresholds)
+
+		best_score = -np.inf
+		best_distance = None
+		best_n_clusters = None
+
+		print(f"[SUPER-CLUSTERS] Testing {len(candidate_distances)} distance thresholds...")
+
+		for dist in candidate_distances:
+				labels = fcluster(linkage_matrix, t=dist, criterion='distance')
+				n_clusters = len(np.unique(labels))
+
+				if n_clusters < min_clusters or n_clusters > max_clusters:
+						continue
+
+				score = silhouette_score(embeddings, labels, metric='cosine')
+				if score > best_score:
+						best_score = score
+						best_distance = dist
+						best_n_clusters = n_clusters
+
+		if best_distance is None:
+				# Fallback: choose dist whose n_clusters is closest to min_clusters
+				print(f"[SUPER-CLUSTERS] No distance produced n_clusters in [{min_clusters}, {max_clusters}]. Falling back...")
+				best_gap = np.inf
+				for dist in candidate_distances:
+						labels = fcluster(linkage_matrix, t=dist, criterion='distance')
+						n_clusters = len(np.unique(labels))
+						gap = abs(n_clusters - min_clusters)
+						if gap < best_gap:
+								best_gap = gap
+								best_distance = dist
+								best_n_clusters = n_clusters
+				print(f"[SUPER-CLUSTERS] Fallback: distance={best_distance:.4f}, n_clusters={best_n_clusters}")
+
+		else:
+				print(f"[SUPER-CLUSTERS] Best silhouette: {best_score:.4f} at {best_n_clusters} clusters")
+
+		return best_distance, best_n_clusters
+
 def get_optimal_num_clusters(
 	X,
 	linkage_matrix,
@@ -691,12 +739,14 @@ def get_optimal_num_clusters(
 		# Adaptive range based on dataset size
 		num_samples = X.shape[0]
 		if num_samples > int(2e4):
-				range_n_clusters = range(50, min(400, num_samples // 50), 25)
+			range_n_clusters = range(50, min(400, num_samples // 50), 25)
 		elif num_samples > int(5e3):
-				range_n_clusters = range(20, min(150, num_samples // 30), 10)
+			range_n_clusters = range(20, min(150, num_samples // 30), 10)
+		elif num_samples > int(2e3):
+			range_n_clusters = range(20, min(60, num_samples // 25), 10)
 		else:
-				# For smaller datasets: more conservative range
-				range_n_clusters = range(15, min(100, num_samples // 15), 5)
+			# For extremely small datasets: more conservative range
+			range_n_clusters = range(2, 25, 1)
 
 		if verbose:
 			print(f"\n[OPTIMAL K] Testing {len(range_n_clusters)} cluster configurations: {range_n_clusters}")
@@ -918,54 +968,6 @@ def get_optimal_num_clusters(
 
 		return labels, stats
 
-def get_optimal_super_clusters(
-		linkage_matrix,
-		embeddings,
-		min_clusters=3,
-		max_clusters=10,
-		n_thresholds=50,
-):
-		distances = linkage_matrix[:, 2]
-		candidate_distances = np.linspace(distances.min(), distances.max(), n_thresholds)
-
-		best_score = -np.inf
-		best_distance = None
-		best_n_clusters = None
-
-		print(f"[SUPER-CLUSTERS] Testing {len(candidate_distances)} distance thresholds...")
-
-		for dist in candidate_distances:
-				labels = fcluster(linkage_matrix, t=dist, criterion='distance')
-				n_clusters = len(np.unique(labels))
-
-				if n_clusters < min_clusters or n_clusters > max_clusters:
-						continue
-
-				score = silhouette_score(embeddings, labels, metric='cosine')
-				if score > best_score:
-						best_score = score
-						best_distance = dist
-						best_n_clusters = n_clusters
-
-		if best_distance is None:
-				# Fallback: choose dist whose n_clusters is closest to min_clusters
-				print(f"[SUPER-CLUSTERS] No distance produced n_clusters in [{min_clusters}, {max_clusters}]. Falling back...")
-				best_gap = np.inf
-				for dist in candidate_distances:
-						labels = fcluster(linkage_matrix, t=dist, criterion='distance')
-						n_clusters = len(np.unique(labels))
-						gap = abs(n_clusters - min_clusters)
-						if gap < best_gap:
-								best_gap = gap
-								best_distance = dist
-								best_n_clusters = n_clusters
-				print(f"[SUPER-CLUSTERS] Fallback: distance={best_distance:.4f}, n_clusters={best_n_clusters}")
-
-		else:
-				print(f"[SUPER-CLUSTERS] Best silhouette: {best_score:.4f} at {best_n_clusters} clusters")
-
-		return best_distance, best_n_clusters
-
 def cluster(
 	labels: List[List[str]],
 	model_id: str,
@@ -997,11 +999,16 @@ def cluster(
 	print(f"Unique labels: {len(unique_labels)}")
 	print(f"Sample unique labels: {unique_labels[:15]}")
 	
+	# attn_implementation = "flash_attention_2" if "gemma" in model_id else "eager"
+	# Load model and generate embeddings
 	print(f"\nSentenceTransformer {model_id}")
 	model = SentenceTransformer(
 		model_name_or_path=model_id,
+		trust_remote_code=True,
 		cache_folder=cache_directory[os.getenv('USER')],
+		model_kwargs={"attn_implementation": "flash_attention_2", "dtype": "bfloat16"},
 		token=os.getenv("HUGGINGFACE_TOKEN"),
+		tokenizer_kwargs={"padding_side": "left"},
 	).to(device)
 	
 	print(f"Model loaded: {sum(p.numel() for p in model.parameters()):,} parameters")
@@ -1260,7 +1267,7 @@ def cluster(
 			print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
 			print(f"\tCanonical: {canonical} (sim={similarities[best_idx]:.4f})")
 		
-	df['canonical_label'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
+	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 	
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
 	df.to_csv(out_csv, index=False)
@@ -1281,16 +1288,16 @@ def cluster(
 
 	# Extract simple canonical mapping (cluster_id -> canonical_label_string)
 	canonical_map = {
-			cid: info['canonical'] 
-			for cid, info in cluster_canonicals.items()
+		cid: info['canonical'] 
+		for cid, info in cluster_canonicals.items()
 	}
 
 	# Optional: If you have original label frequencies from your documents
 	# Build label frequency dict from documents
 	label_freq_dict = {}
 	for doc in documents:
-			for label in doc:
-					label_freq_dict[label] = label_freq_dict.get(label, 0) + 1
+		for label in doc:
+			label_freq_dict[label] = label_freq_dict.get(label, 0) + 1
 
 	print(f"Prepared data for analysis:")
 	print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
@@ -1300,55 +1307,53 @@ def cluster(
 
 	# Run comprehensive analysis
 	try:
-			results = analyze_cluster_quality(
-					embeddings=X,
-					labels=unique_labels_array,  # FIXED: Use numpy array
-					cluster_assignments=cluster_labels,  # FIXED: Use correct variable name
-					canonical_labels=canonical_map,  # FIXED: Use simple dict
-					original_label_counts=label_freq_dict,  # FIXED: Use computed frequencies
-					distance_metric='cosine',
-					verbose=True
-			)
-				
-			# Save cluster quality metrics
-			cluster_quality_csv = clusters_fname.replace(".csv", "_cluster_quality_metrics.csv")
-			results['cluster_metrics'].to_csv(cluster_quality_csv, index=False)
+		results = analyze_cluster_quality(
+			embeddings=X,
+			labels=unique_labels_array,  # FIXED: Use numpy array
+			cluster_assignments=cluster_labels,  # FIXED: Use correct variable name
+			canonical_labels=canonical_map,  # FIXED: Use simple dict
+			original_label_counts=label_freq_dict,  # FIXED: Use computed frequencies
+			distance_metric='cosine',
+			verbose=True
+		)
+			
+		# Save cluster quality metrics
+		cluster_quality_csv = clusters_fname.replace(".csv", "_cluster_quality_metrics.csv")
+		results['cluster_metrics'].to_csv(cluster_quality_csv, index=False)
+	
+		# Export problematic clusters if any
+		if results['problematic_clusters']:
+			all_problematic_ids = []
+			for issue in results['problematic_clusters']:
+				if issue['severity'] in ['HIGH', 'MEDIUM']:
+					all_problematic_ids.extend(issue['cluster_ids'])
 		
-			# Export problematic clusters if any
-			if results['problematic_clusters']:
-					all_problematic_ids = []
-					for issue in results['problematic_clusters']:
-							if issue['severity'] in ['HIGH', 'MEDIUM']:
-									all_problematic_ids.extend(issue['cluster_ids'])
-				
-					if all_problematic_ids:
-							problematic_csv = clusters_fname.replace(".csv", "_problematic_clusters_review.csv")
-							export_problematic_clusters(
-									labels=unique_labels_array,
-									cluster_assignments=cluster_labels,
-									canonical_labels=canonical_map,
-									problematic_cluster_ids=list(set(all_problematic_ids)),
-									output_path=problematic_csv
-							)
-		
-			# Save executive summary
-			summary_txt = clusters_fname.replace(".csv", "_quality_summary.txt")
-			with open(summary_txt, 'w') as f:
-				f.write("="*80 + "\n")
-				f.write("CLUSTER QUALITY ANALYSIS SUMMARY\n")
-				f.write("="*80 + "\n\n")
-				f.write(results['summary'] + "\n\n")
-				f.write("="*80 + "\n")
-				f.write("RECOMMENDATIONS\n")
-				f.write("="*80 + "\n")
-				for i, rec in enumerate(results['recommendations'], 1):
-					f.write(f"{i}. {rec}\n")
-		
+			if all_problematic_ids:
+				problematic_csv = clusters_fname.replace(".csv", "_problematic_clusters_review.csv")
+				export_problematic_clusters(
+					labels=unique_labels_array,
+					cluster_assignments=cluster_labels,
+					canonical_labels=canonical_map,
+					problematic_cluster_ids=list(set(all_problematic_ids)),
+					output_path=problematic_csv
+				)
+		# Save executive summary
+		summary_txt = clusters_fname.replace(".csv", "_quality_summary.txt")
+		with open(summary_txt, 'w') as f:
+			f.write("="*80 + "\n")
+			f.write("CLUSTER QUALITY ANALYSIS SUMMARY\n")
+			f.write("="*80 + "\n\n")
+			f.write(results['summary'] + "\n\n")
+			f.write("="*80 + "\n")
+			f.write("RECOMMENDATIONS\n")
+			f.write("="*80 + "\n")
+			for i, rec in enumerate(results['recommendations'], 1):
+				f.write(f"{i}. {rec}\n")
 	except Exception as e:
-			print(f"\n❌ ERROR in cluster quality analysis: {e}")
-			import traceback
-			traceback.print_exc()
-			print("\nContinuing without quality analysis...")
+		print(f"\n❌ ERROR in cluster quality analysis: {e}")
+		import traceback
+		traceback.print_exc()
+		print("\nContinuing without quality analysis...")
 
 
 

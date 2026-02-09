@@ -2951,86 +2951,80 @@ def analyze_top_labels_per_source(
 	return all_label_counts
 
 def analyze_multi_source_agreement(processed_dfs, output_dir, file_name, DPI=200):
-		"""
-		Analyze agreement between LLM, VLM, and Multimodal label sources.
-		
-		Args:
-				processed_dfs: dict with keys 'llm_based_labels', 'vlm_based_labels', 'multimodal_labels'
-											Each value is a list of label lists (e.g., [['label1', 'label2'], ['label3'], ...])
-				output_dir: where to save plots
-				file_name: base filename for saved plots
-				DPI: resolution for saved plots
-		"""
 		print("\n" + "="*100)
 		print("--- MULTI-SOURCE LABEL AGREEMENT ANALYSIS ---")
 		
-		source_cols = {
-				'textual_based': 'llm_based_labels',
-				'visual_based': 'vlm_based_labels',
-				'multimodal': 'multimodal_labels'
-		}
+		# initialize keys with processed_dfs keys:
+		unique_labels_by_source = {key: set() for key in processed_dfs.keys()}
+		sample_count_by_source = {key: 0 for key in processed_dfs.keys()}
 		
-		unique_labels_by_source = {}
-		sample_count_by_source = {}
+		for col_name, labels_list  in processed_dfs.items():
+			# Extract all labels (flatten the list of lists)
+			current_all_labels = []
+			for labels in labels_list:
+				if isinstance(labels, str):
+					labels = eval(labels)  # Parse string representation if needed
+				if isinstance(labels, list):
+					current_all_labels.extend(labels)
+			
+			unique_labels_by_source[col_name] = set(current_all_labels)
+			sample_count_by_source[col_name] = len(labels_list)
+			
+			print(f"Unique labels in '{col_name}': {len(unique_labels_by_source[col_name])}")
 		
-		for key, col_name in source_cols.items():
-				if col_name in processed_dfs:
-						# processed_dfs[col_name] is a list of label lists
-						label_data = processed_dfs[col_name]
-						
-						# Extract all labels (flatten the list of lists)
-						current_all_labels = []
-						for labels in label_data:
-								if isinstance(labels, str):
-										labels = eval(labels)  # Parse string representation if needed
-								if isinstance(labels, list):
-										current_all_labels.extend(labels)
-						
-						unique_labels_by_source[key] = set(current_all_labels)
-						sample_count_by_source[key] = len(label_data)
-						
-						print(f"Unique labels in '{col_name}': {len(unique_labels_by_source[key])}")
-				else:
-						unique_labels_by_source[key] = set()
-						sample_count_by_source[key] = 0
-						print(f"'{col_name}' was not processed or is empty.")
+		print("-"*100)
+		print(unique_labels_by_source)
+		print(sample_count_by_source)
+		print("-"*100)
+
+		# Dynamically get the source sets based on available keys
+		source_keys = list(unique_labels_by_source.keys())
 		
-		text_set = unique_labels_by_source.get('textual_based', set())
-		visual_set = unique_labels_by_source.get('visual_based', set())
-		multimodal_set = unique_labels_by_source.get('multimodal', set())
+		# Map to actual sets
+		source_sets = {key: unique_labels_by_source[key] for key in source_keys}
 		
-		# Calculate overlaps
-		all_three_overlap = text_set & visual_set & multimodal_set
-		text_visual_overlap = text_set & visual_set
-		text_multimodal_overlap = text_set & multimodal_set
-		visual_multimodal_overlap = visual_set & multimodal_set
+		# Calculate overlaps dynamically
+		if len(source_keys) >= 3:
+			# Get all three sets (order doesn't matter for set operations)
+			set1, set2, set3 = [source_sets[key] for key in source_keys[:3]]
+			
+			all_three_overlap = set1 & set2 & set3
+			overlap_12 = set1 & set2
+			overlap_13 = set1 & set3
+			overlap_23 = set2 & set3
+			
+			print(f"\nLabel Set Overlaps:")
+			print(f"  Common labels across all three sources: {len(all_three_overlap)}")
+			print(f"  Common labels between {source_keys[0]} and {source_keys[1]}: {len(overlap_12)}")
+			print(f"  Common labels between {source_keys[0]} and {source_keys[2]}: {len(overlap_13)}")
+			print(f"  Common labels between {source_keys[1]} and {source_keys[2]}: {len(overlap_23)}")
+			
+			unique_to_1 = set1 - (set2 | set3)
+			unique_to_2 = set2 - (set1 | set3)
+			unique_to_3 = set3 - (set1 | set2)
+			
+			print(f"\nUnique Labels by Source:")
+			print(f"  Labels unique to {source_keys[0]}: {len(unique_to_1)}")
+			print(f"  Labels unique to {source_keys[1]}: {len(unique_to_2)}")
+			print(f"  Labels unique to {source_keys[2]}: {len(unique_to_3)}")
 		
-		print(f"\nLabel Set Overlaps:")
-		print(f"  Common labels across all three sources: {len(all_three_overlap)}")
-		print(f"  Common labels between Textual and Visual: {len(text_visual_overlap)}")
-		print(f"  Common labels between Textual and Multimodal: {len(text_multimodal_overlap)}")
-		print(f"  Common labels between Visual and Multimodal: {len(visual_multimodal_overlap)}")
-		
-		unique_to_text = text_set - (visual_set | multimodal_set)
-		unique_to_visual = visual_set - (text_set | multimodal_set)
-		unique_to_multimodal = multimodal_set - (text_set | visual_set)
-		
-		print(f"\nUnique Labels by Source:")
-		print(f"  Labels unique to llm_based_labels: {len(unique_to_text)}")
-		print(f"  Labels unique to vlm_based_labels: {len(unique_to_visual)}")
-		print(f"  Labels unique to multimodal_labels: {len(unique_to_multimodal)}")
-		
-		# Calculate sample-level agreement if we have all three sources
-		if all(key in unique_labels_by_source for key in ['textual_based', 'visual_based', 'multimodal']):
+		# Calculate sample-level agreement if we have at least 3 sources
+		if len(source_keys) >= 3:
 				print("\n--- Sample-Level Agreement Metrics ---")
 				
-				# Get the label lists
-				text_labels_list = processed_dfs['llm_based_labels']
-				visual_labels_list = processed_dfs['vlm_based_labels']
-				multi_labels_list = processed_dfs['multimodal_labels']
+				# Get the label lists dynamically (use first 3 available sources)
+				labels_lists = {key: processed_dfs[key] for key in source_keys[:3]}
+				list_names = source_keys[:3]
+				
+				# Unpack for convenience
+				labels_list_1 = labels_lists[list_names[0]]
+				labels_list_2 = labels_lists[list_names[1]]
+				labels_list_3 = labels_lists[list_names[2]]
+				
+				print(f"Analyzing agreement between: {list_names[0]}, {list_names[1]}, {list_names[2]}")
 				
 				# Find common samples (assume same length and aligned)
-				min_len = min(len(text_labels_list), len(visual_labels_list), len(multi_labels_list))
+				min_len = min(len(labels_list_1), len(labels_list_2), len(labels_list_3))
 				
 				if min_len > 0:
 						agreement_scores = []
@@ -3040,39 +3034,39 @@ def analyze_multi_source_agreement(processed_dfs, output_dir, file_name, DPI=200
 						
 						for idx in range(min_len):
 								# Parse labels if they're strings
-								text_labels = text_labels_list[idx]
-								visual_labels = visual_labels_list[idx]
-								multi_labels = multi_labels_list[idx]
+								labels_1 = labels_list_1[idx]
+								labels_2 = labels_list_2[idx]
+								labels_3 = labels_list_3[idx]
 								
-								if isinstance(text_labels, str):
-										text_labels = eval(text_labels)
-								if isinstance(visual_labels, str):
-										visual_labels = eval(visual_labels)
-								if isinstance(multi_labels, str):
-										multi_labels = eval(multi_labels)
+								if isinstance(labels_1, str):
+										labels_1 = eval(labels_1)
+								if isinstance(labels_2, str):
+										labels_2 = eval(labels_2)
+								if isinstance(labels_3, str):
+										labels_3 = eval(labels_3)
 								
 								# Convert to sets
-								text_labels = set(text_labels) if isinstance(text_labels, list) else set()
-								visual_labels = set(visual_labels) if isinstance(visual_labels, list) else set()
-								multi_labels = set(multi_labels) if isinstance(multi_labels, list) else set()
+								set_1 = set(labels_1) if isinstance(labels_1, list) else set()
+								set_2 = set(labels_2) if isinstance(labels_2, list) else set()
+								set_3 = set(labels_3) if isinstance(labels_3, list) else set()
 								
 								# Calculate pairwise Jaccard similarities
-								tv_union = text_labels | visual_labels
-								tv_jaccard = len(text_labels & visual_labels) / len(tv_union) if len(tv_union) > 0 else 0
+								union_12 = set_1 | set_2
+								jaccard_12 = len(set_1 & set_2) / len(union_12) if len(union_12) > 0 else 0
 								
-								tm_union = text_labels | multi_labels
-								tm_jaccard = len(text_labels & multi_labels) / len(tm_union) if len(tm_union) > 0 else 0
+								union_13 = set_1 | set_3
+								jaccard_13 = len(set_1 & set_3) / len(union_13) if len(union_13) > 0 else 0
 								
-								vm_union = visual_labels | multi_labels
-								vm_jaccard = len(visual_labels & multi_labels) / len(vm_union) if len(vm_union) > 0 else 0
+								union_23 = set_2 | set_3
+								jaccard_23 = len(set_2 & set_3) / len(union_23) if len(union_23) > 0 else 0
 								
-								avg_jaccard = (tv_jaccard + tm_jaccard + vm_jaccard) / 3
+								avg_jaccard = (jaccard_12 + jaccard_13 + jaccard_23) / 3
 								agreement_scores.append(avg_jaccard)
 								
 								# Categorize agreement
-								if text_labels == visual_labels == multi_labels and len(text_labels) > 0:
+								if set_1 == set_2 == set_3 and len(set_1) > 0:
 										perfect_agreement += 1
-								elif len(text_labels & visual_labels & multi_labels) > 0:
+								elif len(set_1 & set_2 & set_3) > 0:
 										partial_agreement += 1
 								else:
 										no_agreement += 1
@@ -3125,21 +3119,21 @@ def analyze_multi_source_agreement(processed_dfs, output_dir, file_name, DPI=200
 						overlap_data = {
 								'Category': [
 										'All Three', 
-										'Text & Visual only', 
-										'Text & Multi only', 
-										'Visual & Multi only',
-										'Text only', 
-										'Visual only', 
-										'Multi only'
+										f'{list_names[0]} & {list_names[1]} only', 
+										f'{list_names[0]} & {list_names[2]} only', 
+										f'{list_names[1]} & {list_names[2]} only',
+										f'{list_names[0]} only', 
+										f'{list_names[1]} only', 
+										f'{list_names[2]} only'
 								],
 								'Count': [
 										len(all_three_overlap),
-										len((text_set & visual_set) - multimodal_set),
-										len((text_set & multimodal_set) - visual_set),
-										len((visual_set & multimodal_set) - text_set),
-										len(unique_to_text),
-										len(unique_to_visual),
-										len(unique_to_multimodal)
+										len((set1 & set2) - set3),
+										len((set1 & set3) - set2),
+										len((set2 & set3) - set1),
+										len(unique_to_1),
+										len(unique_to_2),
+										len(unique_to_3)
 								]
 						}
 						overlap_df = pd.DataFrame(overlap_data)
@@ -3150,14 +3144,14 @@ def analyze_multi_source_agreement(processed_dfs, output_dir, file_name, DPI=200
 						
 						# Source coverage comparison
 						ax = axes[1, 1]
-						all_labels_union = text_set | visual_set | multimodal_set
+						all_labels_union = set1 | set2 | set3
 						source_coverage = {
-								'Source': ['Textual', 'Visual', 'Multimodal'],
-								'Unique Labels': [len(text_set), len(visual_set), len(multimodal_set)],
+								'Source': [list_names[0], list_names[1], list_names[2]],
+								'Unique Labels': [len(set1), len(set2), len(set3)],
 								'Coverage %': [
-										len(text_set) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0,
-										len(visual_set) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0,
-										len(multimodal_set) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0
+										len(set1) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0,
+										len(set2) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0,
+										len(set3) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0
 								]
 						}
 						coverage_df = pd.DataFrame(source_coverage)
@@ -3225,7 +3219,7 @@ def perform_multilabel_eda(
 	processed_dfs = {
 		"llm_based_labels": 	df["llm_based_labels"].tolist(),
 		"vlm_based_labels": 	df["vlm_based_labels"].tolist(),
-		"multimodal_labels": 	df[label_column].tolist(),
+		f"{label_column}": 	df[label_column].tolist(),
 	}
 	# print(f"processed_dfs: {type(processed_dfs)} {len(processed_dfs)}")
 	# print(json.dumps(processed_dfs, indent=2, ensure_ascii=False))

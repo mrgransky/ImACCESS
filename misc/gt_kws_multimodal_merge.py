@@ -39,6 +39,32 @@ def merge_csv_files(
 		)
 		df = pd.concat([df, temp_df], ignore_index=True)
 
+	clustered_df = cluster(
+		labels=df['multimodal_labels'].tolist(),
+		model_id="Qwen/Qwen3-Embedding-8B" if os.getenv('USER') == "alijanif" else "Qwen/Qwen3-Embedding-0.6B",
+		nc=nc,
+		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")),
+		verbose=verbose,
+	)
+
+	# canonical label available in clustered_df "canonical" column: [label] -> canonical_label]
+	# mapping each label of multimodal_labels to its canonical label:
+	# desired example:
+	# multimodal_labels						-> multimodal_canonical_labels (new column)
+	# [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
+	canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
+	canonical_multimodal_labels = []
+	for labels in tqdm(multimodal_labels, desc="Canonical labels"):
+		canonical_labels_ = [canonical_labels[label] for label in labels]
+		canonical_multimodal_labels.append(canonical_labels_)
+
+	df['multimodal_canonical_labels'] = canonical_multimodal_labels
+
+	if verbose:
+		print(df["multimodal_canonical_labels"].value_counts())
+		print(f"Saving {type(df)} {df.shape} {list(df.columns)} to {output_csv}")
+
+
 	if verbose:
 		print(f"Saving {type(df)} {df.shape} to {output_fpath}...")
 
@@ -52,25 +78,16 @@ def merge_csv_files(
 	if verbose:
 		print(f"Saved merged CSV file to {output_fpath}")
 
-	print(os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")))
-	cluster(
-		labels=df['multimodal_labels'].tolist(),
-		model_id="Qwen/Qwen3-Embedding-8B" if os.getenv('USER') == "alijanif" else "Qwen/Qwen3-Embedding-0.6B",
-		nc=nc,
-		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")),
-		verbose=verbose,
+	viz.perform_multilabel_eda(
+		data_path=output_fpath,
+		label_column='multimodal_labels'
 	)
 
-	# viz.perform_multilabel_eda(
-	# 	data_path=output_fpath,
-	# 	label_column='multimodal_labels'
-	# )
-
-	# train_df, val_df = get_multi_label_stratified_split(
-	# 	csv_file=output_fpath,
-	# 	val_split_pct=0.35,
-	# 	label_col='multimodal_labels'
-	# )
+	train_df, val_df = get_multi_label_stratified_split(
+		csv_file=output_fpath,
+		val_split_pct=0.35,
+		label_col='multimodal_labels'
+	)
 
 @measure_execution_time
 def main():
