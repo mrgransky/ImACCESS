@@ -346,10 +346,10 @@ def main():
 
 		searched_listed_dfs_fpth = os.path.join(HITS_DIRECTORY, f"searched_listed_{len(dfs)}_dfs.gz")
 
-		save_pickle(
-			pkl=dfs, 
-			fname=searched_listed_dfs_fpth
-		)
+		# save_pickle(
+		# 	pkl=dfs, 
+		# 	fname=searched_listed_dfs_fpth
+		# )
 
 	print(f">> Concatinating {len(dfs)} x {type(dfs[0])} dfs ...")
 	df_merged_raw = pd.concat(dfs, ignore_index=True)
