@@ -2,7 +2,7 @@
 
 #SBATCH --account=project_2014707
 #SBATCH --job-name=history_xN
-#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%N_%j.out
+#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
