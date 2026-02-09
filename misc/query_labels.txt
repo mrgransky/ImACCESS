@@ -16,12 +16,12 @@ water-based aircraft
 anti-personnel mine
 self-propelled artillery
 self-propelled guns
-airforce personnel
-air force commander
-airforce commander
 Pearl Harbor attack
 Treaty of Versailles
 Battle of the Bulge
+airforce personnel
+air force commander
+airforce commander
 special force commander
 theater commander
 group commander
@@ -30,6 +30,7 @@ corps commander
 submarine commander
 naval commander
 army commander
+military commander
 resistance commander
 intelligence commander
 logistics commander
@@ -38,10 +39,6 @@ air force station
 artillery tractors
 military nurse
 army nurse
-army surgeon
-military surgeon
-military dentist
-army dentist
 naval hospital
 naval training
 naval ship
@@ -137,8 +134,6 @@ military ship
 military boat
 military parade
 army parade
-military medical services
-Defence Medical Services
 medical aid
 medical service
 medical clinic
