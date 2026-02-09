@@ -3,10 +3,20 @@
 # how to run:
 # nohup bash get_history_xN.sh > logs/all_data_collectors.out &
 
-# Script to run all dataset collectors for ImACCESS project
-# Author: ImACCESS Team, Tampere University
-# Date: 2024-2025
+# Store main process group for cleanup
+SCRIPT_PGID=$$
 
+# Improved trap to kill entire process group
+cleanup() {
+	echo "Cleaning up processes..."
+	# Kill entire process group
+	kill -TERM -$SCRIPT_PGID 2>/dev/null || true
+	# Wait a moment, then force kill if needed
+	sleep 2
+	kill -9 -$SCRIPT_PGID 2>/dev/null || true
+}
+
+trap cleanup EXIT SIGINT SIGTERM
 
 set -euo pipefail
 

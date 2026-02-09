@@ -217,8 +217,6 @@ def get_dframe(
 			
 			max_workers = min(8, len(missing_indices))
 			
-			# from concurrent.futures import ThreadPoolExecutor, as_completed
-			# from tqdm import tqdm
 			failed = []
 			with ThreadPoolExecutor(max_workers=max_workers) as ex:
 				futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
@@ -226,12 +224,11 @@ def get_dframe(
 					idx, url, ok = fut.result()
 					if not ok:
 						failed.append((idx, url))
+
 			if failed and verbose:
-				print(f"⚠️ Failed to download {len(failed)} images.")
-				for i, (idx, url) in enumerate(failed[:10]):
-					print(f"   [{idx}] {url}")
-				if len(failed) > 10:
-					print(f"   ... and {len(failed) - 10} more")
+				print(f"Failed to download {len(failed)} {type(failed)} images.")
+				for i, (idx, url) in enumerate(failed):
+					print(f"{i} {idx} {url}")
 
 		return df
 
