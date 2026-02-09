@@ -72,7 +72,7 @@ def merge_datasets(
 	single_label_dfs = []
 	for i, dataset_path in enumerate(datasets):
 		if verbose:
-			print(f"Reading Dataset[{i}]: {dataset_path}")
+			print(f"\nReading Dataset[{i}]: {dataset_path}")
 	
 		dataset = os.path.basename(dataset_path)
 		single_label_path = os.path.join(dataset_path, 'metadata_single_label.csv')
@@ -105,13 +105,13 @@ def merge_datasets(
 		print(f"Merging {len(single_label_dfs)} dataset(s) into '{dataset_name}'...")
 	
 	merged_single_label_df = pd.concat(single_label_dfs, ignore_index=True)
-	print(f"Merged single-label df {type(merged_single_label_df)} {merged_single_label_df.shape} {list(merged_single_label_df.columns)}")
+	print(f"\nmerged_single_label_df: {type(merged_single_label_df)} {merged_single_label_df.shape}\n{list(merged_single_label_df.columns)}\n")
 	num_unique_labels = merged_single_label_df['label'].nunique()
 	print(f"Unique labels in merged dataset: {num_unique_labels}")
-	for label, count in merged_single_label_df['label'].value_counts().items():
-		print(f"  - {label}: {count}")
+	print(merged_single_label_df["label"].value_counts())
+	# for label, count in merged_single_label_df['label'].value_counts().items():
+	# 	print(f"  - {label}: {count}")
 	
-	print(f"merged_single_label_df: {type(merged_single_label_df)} {merged_single_label_df.shape}\n{list(merged_single_label_df.columns)}")
 	# print(merged_single_label_df.head())
 
 	merged_single_label_df_fpath = os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv')
