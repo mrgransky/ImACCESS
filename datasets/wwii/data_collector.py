@@ -205,15 +205,15 @@ def get_dframe(
 				print(f"Found {len(missing_indices)} missing images. Downloading in parallel...")
 			
 			def download_task(idx: int):
-					img_path = df['img_path'].iloc[idx]
-					img_url = df['img_url'].iloc[idx]
-					success = _download_and_process_image(
-							img_url=img_url,
-							img_fpath=img_path,
-							thumbnail_size=thumbnail_size,
-							verbose=False,   # keep per-image logs quiet here
-					)
-					return idx, img_url, success
+				img_path = df['img_path'].iloc[idx]
+				img_url = df['img_url'].iloc[idx]
+				success = _download_and_process_image(
+					img_url=img_url,
+					img_fpath=img_path,
+					thumbnail_size=thumbnail_size,
+					verbose=False,   # keep per-image logs quiet here
+				)
+				return idx, img_url, success
 			
 			max_workers = min(8, len(missing_indices))
 			
