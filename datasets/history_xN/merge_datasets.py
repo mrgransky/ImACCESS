@@ -67,6 +67,8 @@ def merge_datasets(
 	# 1. Load and merge single-label dataframes
 	if verbose:
 		print("\nLoading and merging single-label datasets...")
+		print("-"*120)
+
 	single_label_dfs = []
 	for i, dataset_path in enumerate(datasets):
 		if verbose:
@@ -92,7 +94,9 @@ def merge_datasets(
 			print(f"  Error loading {single_label_path}: {e}")
 	
 		if verbose:
-			print(f"\tLoaded {type(df)} {df.shape} from {single_label_path}")
+			print(f"{type(df)} {df.shape} from {single_label_path}")
+			print(df["label"].value_counts())
+			print("-"*100)
 	
 	if not single_label_dfs:
 		raise RuntimeError("No valid datasets found. Exiting.")
