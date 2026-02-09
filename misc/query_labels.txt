@@ -61,7 +61,6 @@ war bonds
 concentration camp
 infantry camp
 construction camp
-winter camp
 military camp
 allied invasion
 normandy invasion
