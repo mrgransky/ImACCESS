@@ -60,6 +60,7 @@ useless_collection_terms = [
 	"Newsmap",
 	"Tools and Machinery",
 	"Roads of the Past",
+	"Evidence Files",
 	"Public Roads of the Past",
 	"Government Reports",
 	"Art by",
@@ -297,6 +298,7 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 			"ad:" not in doc_title.lower(),
 			"sheets" not in doc_title.lower(),
 			"report" not in doc_title.lower(),
+			"book" not in doc_title.lower(),
 			"map" not in doc_title.lower(),
 			"portrait of" not in doc_title.lower(),
 			"poster" not in doc_title.lower(),
@@ -304,8 +306,12 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 			"sketch of" not in doc_title.lower(),
 			"layout" not in doc_title.lower(),
 			"postcard" not in doc_title.lower(),
+			"diary" not in doc_title.lower(),
 			"table:" not in doc_title.lower(),
 			"sketch" not in doc_title.lower(),
+			"letter" not in doc_title.lower(),
+			"telegrams" not in doc_title.lower(),
+			"art treasures" not in doc_title.lower(),
 			"chart" not in doc_title.lower(),
 			"inboard profile" not in doc_title.lower(),
 			"reasons why" not in doc_title.lower(),
@@ -316,6 +322,7 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 			"clipping from" not in doc_title.lower(),
 			"photomechanical print" not in doc_title.lower(),
 			"roman surveying" not in doc_title.lower(),
+			"copy of german secret order" not in doc_title.lower(),
 		] if doc_title is not None else []
 
 		useless_description_terms = [

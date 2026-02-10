@@ -31,6 +31,7 @@ division commander
 corps commander
 submarine commander
 naval commander
+naval infantry
 army commander
 military commander
 resistance commander
@@ -84,7 +85,7 @@ antiaircraft gun
 war crimes
 mass atrocities
 trench warfare
-amphibious warfare
+chemical warfare
 infrastructure construction
 rail construction
 dam construction
@@ -93,6 +94,8 @@ road construction
 allied powers
 allied forces
 air base
+Rail transport
+Train transport
 reconnaissance aircraft
 surveillance aircraft
 military aircraft
@@ -119,10 +122,9 @@ half-track
 military vehicles
 army vehicles
 motor vehicles
-Aerial bomb
+Aerial bombing
 flying bomb
 Aerial combat
-Aerial warfare
 Army Base
 Army hospital
 military base
@@ -145,7 +147,6 @@ passenger train
 freight train
 military hospital
 Kitchen Truck
-Railroad Truck
 fire truck
 Line Truck
 gas truck
@@ -161,7 +162,7 @@ flying fortress
 vice president
 Prime Minister
 health professional
-bombing attack
+boming raid
 atomic bomb
 Nuremberg Trials
 Assault gun
@@ -231,7 +232,6 @@ holocaust
 kriegsmarine
 submarine
 Grossdeutschland
-bombing
 helicopter
 floatplane
 seaplane
@@ -271,10 +271,7 @@ embassy
 reservoir
 refugees
 president
-hospital
 locomotive
-railway
-railroad
 captain
 ussr
 blitz
@@ -286,6 +283,6 @@ tanks
 train
 watercraft
 inauguration
-commanders
 Bomber
 missiles
+powerplant

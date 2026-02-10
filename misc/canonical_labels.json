@@ -7,7 +7,15 @@
 	"aircraft": "aircraft",
 	"airplane": "aircraft",
 
-	"battle of the bulge": "allied powers",
+	"attack bomber": "air attack",
+	"air raid": "air attack",
+	"air assault": "air attack",
+	"airstrike": "air attack",
+	"air attack": "air attack",
+	"air strike": "air attack",
+	"bombardment": "air attack",
+	"boming raid": "air attack",
+
 	"eastern front": "allied powers",
 	"western front": "allied powers",
 	"allied forces": "allied powers",
@@ -21,7 +29,6 @@
 	"armoured fighting vehicles": "armored fighting vehicles",
 	"infantry fighting vehicles": "armored fighting vehicles",
 
-	"nuremberg trials": "atrocities",
 	"victims": "atrocities",
 	"mass atrocities": "atrocities",
 	"massacre": "atrocities",
@@ -30,14 +37,59 @@
 	"war crimes": "atrocities",
 	"atrocities": "atrocities",
 
+	"battle of the bulge": "battle of the bulge",
+
+	"chemical warfare": "chemical warfare",
+
 	"coast guard": "coastguard",
 	"coastguard": "coastguard",
+
+	"corps commander": "corps commander",
+	"division commander": "corps commander",
+	"group commander": "corps commander",
+	"theater commander": "corps commander",
+	"resistance commander": "corps commander",
+	"military leaders": "corps commander",
+	"intelligence commander": "corps commander",
+	"logistics commander": "corps commander",
+	"air force commander": "corps commander",
+	"army commander": "corps commander",
+	"airforce commander": "corps commander",
+	"special force commander": "corps commander",
+	"military commander": "corps commander",
+	"sergeant": "corps commander",
 
 	"banishment": "forced displacement",
 	"refugees": "forced displacement",
 	"exile": "forced displacement",
 	"evacuation": "forced displacement",
 	"forced displacement": "forced displacement",
+
+	"half track": "half-track",
+	"half-track": "half-track",
+	"halftrack": "half-track",
+
+	"health professional": "health professional",
+	"military nurse": "health professional",
+	"army nurse": "health professional",
+
+	"infantry": "infantry",
+	"infantryman": "infantry",
+	"marine corps": "infantry",
+	"infantry camp": "infantry",
+	"infantry corps": "infantry",
+	"ground forces": "infantry",
+	"marines": "infantry",
+	"naval infantry": "infantry",
+	"soldiers": "infantry",
+	"troops": "infantry",
+
+	"construction camp": "infrastructure construction",
+	"dam construction": "infrastructure construction",
+	"tunnel construction": "infrastructure construction",
+	"rail construction": "infrastructure construction",
+	"infrastructure construction": "infrastructure construction",
+	"road construction": "infrastructure construction",
 
 	"army ambulance": "military ambulance",
 	"military ambulance": "military ambulance",
@@ -50,11 +102,16 @@
 	"air ace": "military aviator",
 	"flying ace": "military aviator",
 
+	"war museum": "military museum",
+	"military museum": "military museum",
+	"army museum": "military museum",
+
 	"red cross": "medical service",
 	"clinic truck": "medical service",
 	"medical aid": "medical service",
 	"medical clinic": "medical service",
 	"medical service": "medical service",
+	"first aid": "medical service",
 
 	"independence day": "memorial day",
 	"victory day": "memorial day",
@@ -72,12 +129,19 @@
 	"army cemetery": "military cemetery",
 	"army graveyard": "military cemetery",
 
+	"army hospital": "military hospital",
+	"hospital train": "military hospital",
+	"naval hospital": "military hospital",
+	"hospital ship": "military hospital",
+	"military hospital": "military hospital",
+
 	"military parade": "military parade",
 	"army parade": "military parade",
 
 	"grossdeutschland": "military unit",
 	"military unit": "military unit",
 	"afrika korps": "military unit",
+	"waffen": "military unit",
 
 	"military trucks": "military vehicles",
 	"army trucks": "military vehicles",
@@ -85,6 +149,44 @@
 	"army vehicles": "military vehicles",
 	"military vehicles": "military vehicles",
 
+	"normandy invasion": "normandy invasion",
+
+	"nuremberg trials": "nuremberg trials",
+
+	"pearl harbor attack": "pearl harbor attack",
+
+	"powerplant": "powerplant",
+	"power plant": "powerplant",
+	"power station": "powerplant",
+
+	"prisoners": "prisoners",
+
+	"rationing": "rationing",
+	"food shortage": "rationing",
+
+	"reservoir": "reservoir",
+	"water tank": "reservoir",
+	"storage tank": "reservoir",
+	"surge tank": "reservoir",
+
+	"tank destroyers": "tanks",
+	"tankettes": "tanks",
+	"tanks": "tanks",
+	"light tanks": "tanks",
+	"medium tanks": "tanks",
+	"heavy tanks": "tanks",
+	"infantry tanks": "tanks",
+
+	"train": "train",
+	"passenger train": "train",
+	"locomotive": "train",
+	"freight train": "train",
+	"rail transport": "train",
+	"train transport": "train",
+
+	"trench warfare": "trench warfare",
+
+	"treaty of versailles": "treaty of versailles",
 
 
 
@@ -94,26 +196,35 @@
 
 
 
-	"army commander": "army commander",
+
+
+
+
+
+
+
+
+
+
+
+
+
 	"admiral": "naval commander",
+
 	"aerial bomb": "bomber",
 	"aerial combat": "combat aircraft",
-	"aerial warfare": "combat aircraft",
-	"air assault": "air attack",
 	"air bomb": "air bomb",
-	"airstrike": "air attack",
+
 	"army base": "military base",
-	"army hospital": "hospital",
 	"artillery": "artillery",
 	"assault gun": "mortar gun",
 	"ballon gun": "mortar gun",
 	"bomber": "bomber",
 	"dump truck": "line truck",
 	"freight truck": "line truck",
-
 	"higgins boat": "sailboat",
-	"infantry": "infantry",
-	"infantryman": "infantry",
+
+
 	"kitchen truck": "line truck",
 	"line truck": "line truck",
 	"machine gun": "mortar gun",
@@ -124,33 +235,20 @@
 	"minesweeper vessel": "naval ship",
 	"mortar gun": "mortar gun",
 	"naval officer": "naval commander",
-
-	"pearl harbor attack": "air attack",
-	"power plant": "power plant",
-	"railroad truck": "train",
 	"rocket": "air bomb",
 	"sailboat": "sailboat",
-	"sergeant": "soldiers",
 	"storehouse": "military base",
-
 	"u-boat": "u-boat",
-	"waffen": "mortar gun",
-	"air attack": "air attack",
 	"air base": "military airfield",
 	"air force base": "military airfield",
-	"air force commander": "army commander",
 	"air force personnel": "air force personnel",
 	"air force station": "naval air station",
-	"air raid": "air attack",
+	
 	"air station": "naval air station",
-	"air strike": "air attack",
 	"airbase": "air bomb",
-	"airforce commander": "army commander",
 	"airforce personnel": "air force personnel",
 
 
-
-	"amphibious warfare": "naval ship",
 	"anti aircraft": "anti tank",
 	"anti personnel mine": "anti personnel mine",
 	"anti tank": "anti tank",
@@ -158,99 +256,48 @@
 	"anti-tank": "anti tank",
 	"antiaircraft gun": "mortar gun",
 	"antitank": "anti tank",
-
-
-	"health professional": "health professional",
-	"military nurse": "health professional",
-	"army nurse": "health professional",
-
-
-	"army museum": "military museum",
-
-
-
 	"artillery tractors": "self-propelled artillery",
 	"atomic bomb": "air bomb",
-
-
 	"attack aircraft": "combat aircraft",
-	"attack bomber": "air attack",
-	"ballistic missile": "air bomb",
+
+
+	"bomber aircraft": "combat aircraft",
 	"bayonet": "mortar gun",
 	"blitz": "air bomb",
-	"bombardment": "air attack",
-	"bomber aircraft": "combat aircraft",
-	"bombing": "air attack",
-	"bombing attack": "air attack",
 	"cannon": "artillery",
 	"captain": "naval commander",
 	"combat aircraft": "combat aircraft",
-	"commanders": "army commander",
-
-	"construction camp": "infrastructure construction",
-	"dam construction": "infrastructure construction",
-
-	"corps commander": "army commander",
-	"division commander": "army commander",
 	"embassy": "embassy",
 	"explosion": "air bomb",
 	"field gun": "mortar gun",
-
 	"fighter aircraft": "combat aircraft",
 	"fighter bomber": "combat aircraft",
 	"fire truck": "line truck",
 	"firearm": "mortar gun",
-	"first aid": "hospital",
 	"flame thrower": "flame thrower",
 	"flamethrower": "flame thrower",
 	"flying bomb": "bomber",
 	"flying fortress": "bomber",
-	"food shortage": "air bomb",
 	"fortification": "military base",
-	"freight train": "train",
 	"gas truck": "line truck",
 	"grenade": "air bomb",
-	"ground forces": "infantry",
-	"group commander": "army commander",
-	"guided missile": "air bomb",
-	"half track": "half-track",
-	"half-track": "half-track",
-	"halftrack": "half-track",
 	"heavy bomber": "bomber",
-	"heavy tanks": "tanks",
-
-	"hospital": "hospital",
-	"hospital base": "hospital",
-	"hospital ship": "hospital",
-	"hospital train": "hospital",
-
 	"howitzer": "artillery",
 	"incendiary weapons": "flame thrower",
-
-	"infantry camp": "infantry",
-	"infantry corps": "infantry",
 	"infantry gun": "mortar gun",
-	"infantry tanks": "tanks",
 	"infantry weapon": "mortar gun",
-	"infrastructure construction": "infrastructure construction",
-	"intelligence commander": "army commander",
 	"kriegsmarine": "u-boat",
+
 	"land mine": "anti personnel mine",
 	"landmine": "anti personnel mine",
 	"light bomber": "bomber",
 	"light house": "light house",
 	"light station": "light house",
-	"light tanks": "tanks",
 	"lighthouse": "light house",
-	"locomotive": "train",
-	"logistics commander": "army commander",
-	"marine corps": "infantry",
-	"marines": "soldiers",
 
 
-
-	"medium tanks": "tanks",
 	"military aircraft": "combat aircraft",
+
 	"military airfield": "military airfield",
 	"military airport": "military airfield",
 
@@ -258,11 +305,6 @@
 	"military boat": "naval ship",
 	"military camp": "military base",
 
-
-	"military hospital": "hospital",
-	"military leaders": "army commander",
-	"military medical services": "military medical services",
-	"military museum": "military museum",
 
 	"military personnel": "air force personnel",
 
@@ -274,61 +316,38 @@
 	"naval air station": "naval air station",
 	"naval aircraft factory": "naval air station",
 	"naval commander": "naval commander",
-	"naval hospital": "hospital",
+
 	"naval mine": "anti personnel mine",
 	"naval ship": "naval ship",
 	"naval training": "naval ship",
 	"naval vessel": "naval ship",
 	"naval warship": "naval ship",
-	"normandy invasion": "allied invasion",
+
+
 	"panzer": "anti tank",
-	"passenger train": "train",
-
-
-	"power station": "power plant",
-	"prisoners": "soldiers",
 	"projectile": "air bomb",
-	"rail construction": "infrastructure construction",
-	"railroad": "train",
-	"railway": "train",
-	"rationing": "war bonds",
 	"reconnaissance aircraft": "combat aircraft",
 	"regatta": "sailboat",
-	"resistance commander": "army commander",
 	"rifle": "mortar gun",
 	"rifle grenade": "mortar gun",
-	"road construction": "infrastructure construction",
 	"self propelled artillery": "self-propelled artillery",
 	"self propelled guns": "self-propelled artillery",
 	"self-propelled artillery": "self-propelled artillery",
 	"self-propelled guns": "self-propelled artillery",
-	"soldiers": "soldiers",
-	"special force commander": "army commander",
 	"strike aircraft": "combat aircraft",
 	"strike fighter": "combat aircraft",
 	"submarine": "u-boat",
 	"submarine commander": "naval commander",
-	"reservoir": "reservoir",
-	"water tank": "reservoir",
-	"storage tank": "reservoir",
-	"surge tank": "reservoir",
-	"surveillance aircraft": "combat aircraft",
-	"tank destroyers": "tanks",
 	"tanker aircraft": "combat aircraft",
-	"tankettes": "tanks",
-	"tanks": "tanks",
-	"theater commander": "army commander",
-	"train": "train",
-	"trench warfare": "anti tank",
-	"troops": "soldiers",
-	"tunnel construction": "infrastructure construction",
-
-	"victory bonds": "war bonds",
+	"surveillance aircraft": "combat aircraft",
 	"volley gun": "mortar gun",
-	"war bonds": "war bonds",
-	"war museum": "military museum",
 	"watch tower": "light house",
 	"watchtower": "coastguard",
+
+
+
+
+
 
 	"ambassador": "political figures",
 	"political figures": "political figures",
@@ -339,7 +358,10 @@
 	"ussr": "soviet union",
 	"soviet union": "soviet union",
 
-	"treaty of versailles": "treaty of versailles",
+	"victory bonds": "victory bonds",
+	"war bonds": "victory bonds",
+
+
 
 	"seaplane": "water-based aircraft",
 	"landing craft": "water-based aircraft",
