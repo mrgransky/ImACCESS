@@ -58,11 +58,16 @@
 	"military commander": "corps commander",
 	"sergeant": "corps commander",
 
+	"flame thrower": "flame thrower",
+	"flamethrower": "flame thrower",
+
 	"banishment": "forced displacement",
 	"refugees": "forced displacement",
 	"exile": "forced displacement",
 	"evacuation": "forced displacement",
 	"forced displacement": "forced displacement",
+
+	"fortification": "fortification",
 
 	"half track": "half-track",
 	"half-track": "half-track",
@@ -100,6 +105,10 @@
 	"fighter ace": "military aviator",
 	"air ace": "military aviator",
 	"flying ace": "military aviator",
+
+	"military base": "military base",
+	"military camp": "military base",
+	"army base": "military base",
 
 	"war museum": "military museum",
 	"military museum": "military museum",
@@ -147,7 +156,6 @@
 	"motor vehicles": "military vehicles",
 	"army vehicles": "military vehicles",
 	"military vehicles": "military vehicles",
-
 
 	"admiral": "naval commander",
 	"naval officer": "naval commander",
@@ -219,8 +227,6 @@
 
 	"aerial combat": "combat aircraft",
 	"air bomb": "air bomb",
-
-	"army base": "military base",
 	"artillery": "artillery",
 	"assault gun": "mortar gun",
 	"ballon gun": "mortar gun",
@@ -228,7 +234,6 @@
 	"dump truck": "line truck",
 	"freight truck": "line truck",
 	"higgins boat": "sailboat",
-
 
 	"kitchen truck": "line truck",
 	"line truck": "line truck",
@@ -238,58 +243,71 @@
 
 	"minesweeper ship": "naval ship",
 	"minesweeper vessel": "naval ship",
+
 	"mortar gun": "mortar gun",
-	"rocket": "air bomb",
 	"sailboat": "sailboat",
-	"storehouse": "military base",
+
 	"u-boat": "u-boat",
 	"air base": "military airfield",
 	"air force base": "military airfield",
-	"air force personnel": "air force personnel",
 	"air force station": "naval air station",
 	
 	"air station": "naval air station",
-	"airbase": "air bomb",
-	"airforce personnel": "air force personnel",
 
+	"airforce personnel": "air force personnel",
+	"air force personnel": "air force personnel",
+
+		"anti personnel mine": "anti personnel mine",
+	"anti-personnel mine": "anti personnel mine",
 
 	"anti aircraft": "anti tank",
-	"anti personnel mine": "anti personnel mine",
 	"anti tank": "anti tank",
-	"anti-personnel mine": "anti personnel mine",
 	"anti-tank": "anti tank",
-	"antiaircraft gun": "mortar gun",
 	"antitank": "anti tank",
+
 	"artillery tractors": "self-propelled artillery",
+
 	"atomic bomb": "air bomb",
-	"attack aircraft": "combat aircraft",
-
-
-	"bomber aircraft": "combat aircraft",
-	"bayonet": "mortar gun",
 	"blitz": "air bomb",
-	"cannon": "artillery",
-
-	"combat aircraft": "combat aircraft",
-	"embassy": "embassy",
+	"airbase": "air bomb",
+	"rocket": "air bomb",
 	"explosion": "air bomb",
-	"field gun": "mortar gun",
+
+	"antiaircraft gun": "mortar gun",
+	"bayonet": "mortar gun",
+
+	"attack aircraft": "combat aircraft",
+	"bomber aircraft": "combat aircraft",
+	"combat aircraft": "combat aircraft",
 	"fighter aircraft": "combat aircraft",
 	"fighter bomber": "combat aircraft",
-	"fire truck": "line truck",
+	"reconnaissance aircraft": "combat aircraft",
+	"strike aircraft": "combat aircraft",
+	"strike fighter": "combat aircraft",
+	"surveillance aircraft": "combat aircraft",
+	
+	"cannon": "artillery",
+	"howitzer": "artillery",
+
+	"embassy": "embassy",
+
+	"field gun": "mortar gun",
+	"infantry gun": "mortar gun",
+	"infantry weapon": "mortar gun",
 	"firearm": "mortar gun",
-	"flame thrower": "flame thrower",
-	"flamethrower": "flame thrower",
+	"mountain gun": "mortar gun",
+	"rifle": "mortar gun",
+	"rifle grenade": "mortar gun",
+
 	"flying bomb": "bomber",
 	"flying fortress": "bomber",
-	"fortification": "military base",
+
+	"fire truck": "line truck",
 	"gas truck": "line truck",
 	"grenade": "air bomb",
 	"heavy bomber": "bomber",
-	"howitzer": "artillery",
-	"incendiary weapons": "flame thrower",
-	"infantry gun": "mortar gun",
-	"infantry weapon": "mortar gun",
+
+	"incendiary weapons": "incendiary weapons",
 	"kriegsmarine": "u-boat",
 
 	"land mine": "anti personnel mine",
@@ -298,6 +316,7 @@
 	"light house": "light house",
 	"light station": "light house",
 	"lighthouse": "light house",
+	"storehouse": "storehouse",
 
 
 	"military aircraft": "combat aircraft",
@@ -305,43 +324,35 @@
 	"military airfield": "military airfield",
 	"military airport": "military airfield",
 
-	"military base": "military base",
-	"military boat": "naval ship",
-	"military camp": "military base",
 
 
 	"military personnel": "air force personnel",
 
 
-	"military ship": "naval ship",
 
-	"mountain gun": "mortar gun",
 	"naval air force": "naval air station",
 	"naval air station": "naval air station",
 	"naval aircraft factory": "naval air station",
 
 	"naval mine": "anti personnel mine",
+
+	"military ship": "naval ship",
+	"military boat": "naval ship",
 	"naval ship": "naval ship",
 	"naval training": "naval ship",
 	"naval vessel": "naval ship",
-	"naval warship": "naval ship",
+	"submarine": "u-boat",
 
 
 	"projectile": "air bomb",
-	"reconnaissance aircraft": "combat aircraft",
 	"regatta": "sailboat",
-	"rifle": "mortar gun",
-	"rifle grenade": "mortar gun",
+
 	"self propelled artillery": "self-propelled artillery",
 	"self propelled guns": "self-propelled artillery",
 	"self-propelled artillery": "self-propelled artillery",
 	"self-propelled guns": "self-propelled artillery",
-	"strike aircraft": "combat aircraft",
-	"strike fighter": "combat aircraft",
-	"submarine": "u-boat",
 
-	"tanker aircraft": "combat aircraft",
-	"surveillance aircraft": "combat aircraft",
+
 	"volley gun": "mortar gun",
 	"watch tower": "light house",
 	"watchtower": "coastguard",
@@ -350,6 +361,10 @@
 
 
 
+
+
+
+	
 
 	"ambassador": "political figures",
 	"political figures": "political figures",

@@ -46,7 +46,6 @@ naval hospital
 naval training
 naval ship
 naval vessel
-naval warship
 naval mine
 armoured cars
 armored cars
@@ -64,7 +63,6 @@ normandy invasion
 power station
 Power Plant
 combat aircraft
-tanker aircraft
 attack aircraft
 strike aircraft
 attack bomber
