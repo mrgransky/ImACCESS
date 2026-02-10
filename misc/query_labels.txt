@@ -7,7 +7,6 @@ Armoured personnel carrier
 armored personnel carrier
 infantry fighting vehicles
 air force personnel
-allied air attack
 anti personnel mine
 self propelled guns
 self propelled artillery
@@ -60,7 +59,6 @@ concentration camp
 infantry camp
 construction camp
 military camp
-allied invasion
 normandy invasion
 power station
 Power Plant
