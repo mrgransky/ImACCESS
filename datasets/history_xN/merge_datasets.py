@@ -140,25 +140,30 @@ def merge_datasets(
 		fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_grouped_bar_chart_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png")
 	)
 
-	# Stratified train/val split
-	if verbose:
-		print("Stratified Splitting".center(150, "-"))
-	single_label_train_df, single_label_val_df = train_test_split(
-		merged_single_label_df,
-		test_size=val_split_pct,
-		shuffle=True,
-		stratify=merged_single_label_df['label'],
-		random_state=seed
+	# # Stratified train/val split
+	# if verbose:
+	# 	print("Stratified Splitting".center(150, "-"))
+	# single_label_train_df, single_label_val_df = train_test_split(
+	# 	merged_single_label_df,
+	# 	test_size=val_split_pct,
+	# 	shuffle=True,
+	# 	stratify=merged_single_label_df['label'],
+	# 	random_state=seed
+	# )
+
+	single_label_train_df, single_label_val_df = get_stratified_split(
+		df=merged_single_label_df, 
+		val_split_pct=val_split_pct,
+		label_col='label',
+		seed=seed,
+		verbose=verbose,
 	)
-	single_label_train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'), index=False)
-	single_label_val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'), index=False)
-	
+
 	if verbose:
-		print("Labels per dataset in train split:")
-		print(single_label_train_df.groupby('dataset')['label'].nunique())
-		print("Labels per dataset in val split:")
-		print(single_label_val_df.groupby('dataset')['label'].nunique())
-	
+		single_label_train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'), index=False)
+		single_label_val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'), index=False)
+
+
 	plot_train_val_label_distribution(
 		train_df=single_label_train_df,
 		val_df=single_label_val_df,
