@@ -148,6 +148,7 @@
 	"rail construction": "infrastructure construction",
 	"infrastructure construction": "infrastructure construction",
 	"road construction": "infrastructure construction",
+	"bridge construction": "infrastructure construction",
 
 	"kriegsmarine": "kriegsmarine",
 
@@ -241,6 +242,7 @@
 	"naval commander": "naval commander",
 	"submarine commander": "naval commander",
 
+	"army ship": "naval ship",
 	"military ship": "naval ship",
 	"military boat": "naval ship",
 	"naval ship": "naval ship",

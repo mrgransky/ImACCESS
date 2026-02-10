@@ -92,6 +92,7 @@ rail construction
 dam construction
 tunnel construction
 road construction
+bridge construction
 allied powers
 allied forces
 air base
@@ -126,6 +127,7 @@ military base
 military leaders
 military museum
 war museum
+army ship
 military ship
 military boat
 military parade
