@@ -552,23 +552,29 @@ def measure_execution_time(func):
 	return wrapper
 
 def get_stratified_split(
-		df: pd.DataFrame, 
-		val_split_pct: float, 
-		seed: int=42,
-		label_col: str='label',
-	):
-	print(f"Stratified Splitting [Single-label dataset]".center(150, "-"))
+	df: pd.DataFrame, 
+	val_split_pct: float, 
+	seed: int=42,
+	label_col: str='label',
+):
+	print(f"\n>> Stratified Splitting [Single-label dataset]")
+
 	# Count the occurrences of each label
 	label_counts = df[label_col].value_counts()
+
 	labels_to_drop = label_counts[label_counts == 1].index
+	print(f"\nFound {len(labels_to_drop)} label(s) that occur(s) only once:\n{labels_to_drop.tolist()}\n=> Dropping them...\n")
+
 	# Filter out rows with labels that appear only once
 	df_filtered = df[~df[label_col].isin(labels_to_drop)]
+
+	print(f"df_filtered: {df_filtered.shape} {df_filtered[label_col].nunique()} unique labels")
 
 	# Check if df_filtered is not empty
 	if df_filtered.empty or df_filtered[label_col].nunique() == 0:
 		raise ValueError("No labels with more than one occurrence. Stratified sampling cannot be performed.")
 
-	# stratified splitting
+	print(f">> Splitting dataset: train/val: {val_split_pct}...")
 	train_df, val_df = train_test_split(
 		df_filtered,
 		test_size=val_split_pct,
@@ -576,6 +582,7 @@ def get_stratified_split(
 		stratify=df_filtered[label_col],
 		random_state=seed,
 	)
+
 	return train_df, val_df
 
 def get_multi_label_stratified_split(
