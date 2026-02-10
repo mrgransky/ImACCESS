@@ -160,9 +160,10 @@ def merge_datasets(
 	)
 
 	if verbose:
-		single_label_train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'), index=False)
-		single_label_val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'), index=False)
+		print(f"\n>> Saving train/val splits: {single_label_train_df.shape} | {single_label_val_df.shape}")
 
+	single_label_train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'), index=False)
+	single_label_val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'), index=False)
 
 	plot_train_val_label_distribution(
 		train_df=single_label_train_df,
