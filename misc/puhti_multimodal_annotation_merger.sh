@@ -2,12 +2,12 @@
 
 #SBATCH --account=project_2004072
 #SBATCH --job-name=mm_annot_merge
-#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
+#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
+#SBATCH --cpus-per-task=10
 #SBATCH --mem=48G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
