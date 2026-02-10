@@ -300,6 +300,7 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 			"report" not in doc_title.lower(),
 			"book" not in doc_title.lower(),
 			"map" not in doc_title.lower(),
+			"memorandum" not in doc_title.lower(),
 			"portrait of" not in doc_title.lower(),
 			"poster" not in doc_title.lower(),
 			"drawing" not in doc_title.lower(),

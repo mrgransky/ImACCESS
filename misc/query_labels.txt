@@ -221,7 +221,6 @@ panzer
 howitzer
 Airstrike
 Waffen
-bombardment
 massacre
 victims
 atrocities
