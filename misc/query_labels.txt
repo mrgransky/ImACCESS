@@ -122,7 +122,6 @@ half-track
 military vehicles
 army vehicles
 motor vehicles
-Aerial bombing
 flying bomb
 Aerial combat
 Army Base
@@ -162,7 +161,7 @@ flying fortress
 vice president
 Prime Minister
 health professional
-boming raid
+bombing raid
 atomic bomb
 Nuremberg Trials
 Assault gun
