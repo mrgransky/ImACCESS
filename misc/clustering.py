@@ -706,13 +706,13 @@ def get_optimal_num_clusters(
 		num_samples = X.shape[0]
 		if num_samples > int(2e4):
 			range_n_clusters = range(50, min(400, num_samples // 50), 25)
-		elif num_samples > int(5e3):
+		elif num_samples > int(3e3):
 			range_n_clusters = range(20, min(150, num_samples // 30), 10)
 		elif num_samples > int(1e3):
-			range_n_clusters = range(20, min(60, num_samples // 25), 10)
+			range_n_clusters = range(10, min(60, num_samples // 25), 5)
 		else:
-			# For extremely small datasets: more conservative range
-			range_n_clusters = range(2, 25, 1)
+			# extremely small datasets: more conservative range
+			range_n_clusters = range(5, 161, 1)
 
 		if verbose:
 			print(f"\n[OPTIMAL K] Testing {len(range_n_clusters)} cluster configurations: {range_n_clusters}")
@@ -720,44 +720,41 @@ def get_optimal_num_clusters(
 			print("=" * 70)
 
 		results = []
-
 		for n_clusters in range_n_clusters:
-				labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
+			labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
+			if len(np.unique(labels)) < 2:
+				continue
 
-				if len(np.unique(labels)) < 2:
-						continue
+			# Compute clustering quality metrics
+			sil = silhouette_score(X, labels, metric='cosine')
+			ch = calinski_harabasz_score(X, labels)
+			db = davies_bouldin_score(X, labels)
 
-				# Compute clustering quality metrics
-				sil = silhouette_score(X, labels, metric='cosine')
-				ch = calinski_harabasz_score(X, labels)
-				db = davies_bouldin_score(X, labels)
+			# Cluster size statistics
+			cluster_sizes = np.bincount(labels)
+			n_singletons = np.sum(cluster_sizes == 1)
+			n_small = np.sum(cluster_sizes < min_cluster_size)
+			singleton_ratio = n_singletons / n_clusters
+			small_ratio = n_small / n_clusters
 
-				# Cluster size statistics
-				cluster_sizes = np.bincount(labels)
-				n_singletons = np.sum(cluster_sizes == 1)
-				n_small = np.sum(cluster_sizes < min_cluster_size)
-				singleton_ratio = n_singletons / n_clusters
-				small_ratio = n_small / n_clusters
-
-				# NEW: Max cluster size penalty
-				max_cluster_size = cluster_sizes.max()
-				max_size_ratio = max_cluster_size / num_samples
-				max_size_penalty = max(0, (max_size_ratio - max_cluster_size_ratio) / max_cluster_size_ratio)
-
-				results.append(
-					{
-						'k': n_clusters,
-						'sil': sil,
-						'ch': ch,
-						'db': db,
-						'singletons': n_singletons,
-						'singleton_ratio': singleton_ratio,
-						'small_ratio': small_ratio,
-						'max_size': max_cluster_size,
-						'max_size_ratio': max_size_ratio,
-						'max_size_penalty': max_size_penalty,
-					}
-				)
+			# Max cluster size penalty
+			max_cluster_size = cluster_sizes.max()
+			max_size_ratio = max_cluster_size / num_samples
+			max_size_penalty = max(0, (max_size_ratio - max_cluster_size_ratio) / max_cluster_size_ratio)
+			results.append(
+				{
+					'k': n_clusters,
+					'sil': sil,
+					'ch': ch,
+					'db': db,
+					'singletons': n_singletons,
+					'singleton_ratio': singleton_ratio,
+					'small_ratio': small_ratio,
+					'max_size': max_cluster_size,
+					'max_size_ratio': max_size_ratio,
+					'max_size_penalty': max_size_penalty,
+				}
+			)
 
 		if not results:
 			raise ValueError("No valid cluster configurations found")
