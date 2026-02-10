@@ -1,6 +1,5 @@
 armored fighting vehicles
 armoured fighting vehicles
-naval air force
 naval aircraft factory
 naval air station
 Armoured personnel carrier
@@ -47,6 +46,9 @@ naval training
 naval ship
 naval vessel
 naval mine
+military airbase
+military airfield
+military airport
 armoured cars
 armored cars
 red cross
@@ -71,14 +73,16 @@ bomber aircraft
 trainer aircraft
 transport aircraft
 light bomber
+medium bomber
 heavy bomber
 fighter bomber
 strike fighter
 rifle grenade
 infantry corps
 marine corps
-anti aircraft
-antiaircraft gun
+anti aircraft guns
+antiaircraft guns
+anti-aircraft guns
 war crimes
 mass atrocities
 trench warfare
@@ -91,16 +95,13 @@ road construction
 allied powers
 allied forces
 air base
+air station
 Rail transport
 Train transport
 reconnaissance aircraft
 surveillance aircraft
-military aircraft
-military airfield
-military airport
+spy plane
 military unit
-air station
-Air bomb
 air raid
 air strike
 air attack
@@ -119,15 +120,12 @@ half-track
 military vehicles
 army vehicles
 motor vehicles
-flying bomb
-Aerial combat
 Army Base
 Army hospital
 military base
 military leaders
 military museum
 war museum
-military personnel
 military ship
 military boat
 military parade
@@ -142,13 +140,6 @@ hospital train
 passenger train
 freight train
 military hospital
-Kitchen Truck
-fire truck
-Line Truck
-gas truck
-Freight Truck
-Dump Truck
-Maintenance Truck
 Clinic Truck
 army trucks
 military trucks
@@ -158,8 +149,8 @@ flying fortress
 vice president
 Prime Minister
 health professional
+atomic bombing
 bombing raid
-atomic bomb
 Nuremberg Trials
 Assault gun
 Ballon gun
@@ -231,7 +222,6 @@ helicopter
 floatplane
 seaplane
 airbase
-Storehouse
 lighthouse
 Sailboat
 regatta
@@ -253,7 +243,6 @@ Infantry
 aeroplane
 airplane
 rationing
-Rocket
 prisoners
 Sergeant
 Admiral
@@ -278,6 +267,6 @@ tanks
 train
 watercraft
 inauguration
-Bomber
 missiles
 powerplant
+minesweeper
