@@ -500,10 +500,10 @@ def print_args_table(args, parser):
 	print(tabulate.tabulate(table_data, headers=['Argument', 'Value', 'Type'], tablefmt='orgtbl'))
 
 def set_seeds(
-		seed: int=42,
-		debug: bool=False,
-		enable_optimizations: bool=True
-	):
+	seed: int=42,
+	debug: bool=False,
+	enable_optimizations: bool=True
+):
 	random.seed(seed)
 	np.random.seed(seed)
 	torch.manual_seed(seed)
