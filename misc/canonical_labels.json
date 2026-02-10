@@ -148,6 +148,13 @@
 	"army vehicles": "military vehicles",
 	"military vehicles": "military vehicles",
 
+
+	"admiral": "naval commander",
+	"naval officer": "naval commander",
+	"captain": "naval commander",
+	"naval commander": "naval commander",
+	"submarine commander": "naval commander",
+
 	"normandy invasion": "normandy invasion",
 
 	"nuremberg trials": "nuremberg trials",
@@ -175,6 +182,7 @@
 	"medium tanks": "tanks",
 	"heavy tanks": "tanks",
 	"infantry tanks": "tanks",
+	"panzer": "tanks",
 
 	"train": "train",
 	"passenger train": "train",
@@ -208,9 +216,7 @@
 
 
 
-	"admiral": "naval commander",
 
-	"aerial bomb": "bomber",
 	"aerial combat": "combat aircraft",
 	"air bomb": "air bomb",
 
@@ -233,7 +239,6 @@
 	"minesweeper ship": "naval ship",
 	"minesweeper vessel": "naval ship",
 	"mortar gun": "mortar gun",
-	"naval officer": "naval commander",
 	"rocket": "air bomb",
 	"sailboat": "sailboat",
 	"storehouse": "military base",
@@ -264,7 +269,7 @@
 	"bayonet": "mortar gun",
 	"blitz": "air bomb",
 	"cannon": "artillery",
-	"captain": "naval commander",
+
 	"combat aircraft": "combat aircraft",
 	"embassy": "embassy",
 	"explosion": "air bomb",
@@ -314,7 +319,6 @@
 	"naval air force": "naval air station",
 	"naval air station": "naval air station",
 	"naval aircraft factory": "naval air station",
-	"naval commander": "naval commander",
 
 	"naval mine": "anti personnel mine",
 	"naval ship": "naval ship",
@@ -323,7 +327,6 @@
 	"naval warship": "naval ship",
 
 
-	"panzer": "anti tank",
 	"projectile": "air bomb",
 	"reconnaissance aircraft": "combat aircraft",
 	"regatta": "sailboat",
@@ -336,7 +339,7 @@
 	"strike aircraft": "combat aircraft",
 	"strike fighter": "combat aircraft",
 	"submarine": "u-boat",
-	"submarine commander": "naval commander",
+
 	"tanker aircraft": "combat aircraft",
 	"surveillance aircraft": "combat aircraft",
 	"volley gun": "mortar gun",
