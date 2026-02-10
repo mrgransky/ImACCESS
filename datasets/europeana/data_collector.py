@@ -324,7 +324,7 @@ def main():
 		print(f"Error: {json_file_path} does not exist.")
 		replacement_dict = {}
 
-	unq_labels = set(replacement_dict.values())
+	unq_labels = list(set(replacement_dict.values()))
 
 	print(f">> Merging user_query to label with canonical terms (total of {len(unq_labels)} unique labels) from {json_file_path}")
 	df_merged_raw['label'] = df_merged_raw['user_query'].replace(replacement_dict)
@@ -373,7 +373,7 @@ def main():
 		}
 	).reset_index()
 
-	# Map user_query to labels using replacement_dict
+	# Map user_query to canonical labels
 	grouped['label'] = grouped['user_query'].apply(lambda x: replacement_dict.get(x[0], x[0]))
 
 	print(f"Multi-label dataset {type(grouped)} {grouped.shape} {list(grouped.columns)}")

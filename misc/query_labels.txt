@@ -169,7 +169,6 @@ light house
 ground forces
 infantry weapon
 infantry gun
-incendiary weapons
 infantry tanks
 light tanks
 medium tanks
@@ -263,8 +262,6 @@ banishment
 landmine
 marines
 tankettes
-tanks
-train
 watercraft
 inauguration
 missiles

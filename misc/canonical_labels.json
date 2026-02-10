@@ -131,8 +131,6 @@
 	"military nurse": "health professional",
 	"army nurse": "health professional",
 
-	"incendiary weapons": "incendiary weapons",
-
 	"infantry": "infantry",
 	"infantryman": "infantry",
 	"marine corps": "infantry",
@@ -235,6 +233,8 @@
 	"army vehicles": "military vehicles",
 	"military vehicles": "military vehicles",
 
+	"naval aircraft factory": "naval aircraft factory",
+
 	"admiral": "naval commander",
 	"naval officer": "naval commander",
 	"captain": "naval commander",
@@ -274,14 +274,12 @@
 
 	"tank destroyers": "tanks",
 	"tankettes": "tanks",
-	"tanks": "tanks",
 	"light tanks": "tanks",
 	"medium tanks": "tanks",
 	"heavy tanks": "tanks",
 	"infantry tanks": "tanks",
 	"panzer": "tanks",
 
-	"train": "train",
 	"passenger train": "train",
 	"locomotive": "train",
 	"freight train": "train",
