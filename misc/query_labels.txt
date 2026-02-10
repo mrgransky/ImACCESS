@@ -20,8 +20,11 @@ Treaty of Versailles
 Battle of the Bulge
 airforce personnel
 air force commander
-airforce commander
 special force commander
+munitions manufacturing base
+ordnance factory
+munitions factory
+airforce commander
 theater commander
 group commander
 division commander
@@ -47,8 +50,6 @@ naval warship
 naval mine
 armoured cars
 armored cars
-guided missile
-ballistic missile
 red cross
 Flying Boat
 flame thrower
@@ -84,7 +85,6 @@ war crimes
 mass atrocities
 trench warfare
 amphibious warfare
-Manufacturing Plant
 infrastructure construction
 rail construction
 dam construction
@@ -139,7 +139,6 @@ medical service
 medical clinic
 first aid
 Coast Guard
-hospital base
 hospital ship
 hospital train
 passenger train
@@ -289,3 +288,4 @@ watercraft
 inauguration
 commanders
 Bomber
+missiles
