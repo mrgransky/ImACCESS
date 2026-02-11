@@ -137,7 +137,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 # os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 os.environ['TORCH_USE_CUDA_DSA'] = '1'  # Enables device-side assertions (as suggested in error)
-
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 # # Verify environment variables
 # print(f"HF_HOME: {os.environ['HF_HOME']}")
 # print(f"TRANSFORMERS_CACHE: {os.environ['TRANSFORMERS_CACHE']}")

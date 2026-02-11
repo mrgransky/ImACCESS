@@ -16,7 +16,7 @@ def init_worker_canonical(canonical_dict):
 	global canonical_labels_global
 	canonical_labels_global = canonical_dict
 
-def parse_and_map_labels_mp(labels_str):
+def parallel_canonical_mapping(labels_str):
 	if isinstance(labels_str, str):
 		try:
 			labels = ast.literal_eval(labels_str)
@@ -86,60 +86,24 @@ def merge_csv_files(
 	samples = {k:v for i, (k, v) in enumerate(canonical_labels.items()) if i < 10}
 	print(json.dumps(samples, indent=2, ensure_ascii=False))
 
-	# def parse_and_map_labels(labels_str):
-	# 	"""Parse string labels and map to canonical labels"""
-	# 	# Parse string representation to actual list
-	# 	if isinstance(labels_str, str):
-	# 		try:
-	# 			labels = ast.literal_eval(labels_str)
-	# 		except (ValueError, SyntaxError):
-	# 			return []
-	# 	elif pd.isna(labels_str):
-	# 		return []
-	# 	elif isinstance(labels_str, list):
-	# 		labels = labels_str
-	# 	else:
-	# 		return []
-		
-	# 	# Map to canonical labels
-	# 	return [canonical_labels.get(label, label) for label in labels]
-	
-	# print(f">> Mapping {len(df)} multimodal labels to canonical labels...")
-	# if verbose:
-	# 	print(f"Sample multimodal_labels:")
-	# 	print(df['multimodal_labels'].head(15).tolist())
-	
-	# # Use pandas apply for vectorized operation
-	# df['multimodal_canonical_labels'] = df['multimodal_labels'].apply(parse_and_map_labels)
-	
-	# if verbose:
-	# 	print(f">> canonical_multimodal_labels: {len(df['multimodal_canonical_labels'])}")
-	# 	print(df['multimodal_canonical_labels'].head(15).tolist())
-
 	# ========== Parallel mapping ==========
-	print(f">> Mapping {len(df)} multimodal labels to canonical labels using {num_workers} cores...")
-	if verbose:
-		print(f"Sample multimodal_labels:")
-		print(df['multimodal_labels'].head(15).tolist())
-
-	t_start = time.time()
 	chunksize = max(1, len(df) // (num_workers * 4))  # 4 chunks per worker
-	print(f">> Using {num_workers} workers with chunksize={chunksize}")
+	print(f"Mapping {len(df)} multimodal labels to canonical labels using {num_workers} cores with chunksize={chunksize}")
+	t_start = time.time()
 	with multiprocessing.Pool(
 		processes=num_workers,
-		initializer=init_worker_canonical,
-		initargs=(canonical_labels,)
+		initializer=init_worker_canonical, # Called ONCE per worker
+		initargs=(canonical_labels,) # Sent ONCE per worker
 	) as pool:
 		df['multimodal_canonical_labels'] = pool.map(
-			parse_and_map_labels_mp,
+			parallel_canonical_mapping,
 			df['multimodal_labels'].tolist(),
 			chunksize=chunksize
 		)
-
 	elapsed = time.time() - t_start
-	print(f">> Mapping completed in {elapsed:.2f}s ({len(df)/elapsed:.1f} rows/sec)")
 
 	if verbose:
+		print(f"Mapping completed in {elapsed:.2f}s ({len(df)/elapsed:.1f} rows/sec)")
 		print(f">> canonical_multimodal_labels: {len(df['multimodal_canonical_labels'])}")
 		print(df['multimodal_canonical_labels'].head(15).tolist())
 		print(f"\n>> Saving {type(df)} {df.shape} {list(df.columns)} to {output_fpath}")
