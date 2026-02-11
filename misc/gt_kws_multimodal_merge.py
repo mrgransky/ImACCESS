@@ -5,34 +5,32 @@ from clustering import cluster
 # how to run:
 # Puhti/Mahti:
 # srun -J interactive_cpu --account=project_2014707 --partition=large --time=00-23:45:00 --mem=128G --ntasks=1 --cpus-per-task=20 --pty /bin/bash -i
-# $ python gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -nw 20 -v
+# $ python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -nw 20 -v
 # $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
 
 # Global variable for worker processes
 canonical_labels_global = None
 
 def init_worker_canonical(canonical_dict):
-		"""Initialize each worker process with the canonical labels dictionary"""
-		global canonical_labels_global
-		canonical_labels_global = canonical_dict
+	"""Initialize each worker process with the canonical labels dictionary"""
+	global canonical_labels_global
+	canonical_labels_global = canonical_dict
 
 def parse_and_map_labels_mp(labels_str):
-		"""Parse string labels and map to canonical labels (multiprocessing-safe)"""
-		# Parse string representation to actual list
-		if isinstance(labels_str, str):
-				try:
-						labels = ast.literal_eval(labels_str)
-				except (ValueError, SyntaxError):
-						return []
-		elif pd.isna(labels_str):
-				return []
-		elif isinstance(labels_str, list):
-				labels = labels_str
-		else:
-				return []
-		
-		# Map to canonical labels using global dict
-		return [canonical_labels_global.get(label, label) for label in labels]
+	if isinstance(labels_str, str):
+		try:
+			labels = ast.literal_eval(labels_str)
+		except (ValueError, SyntaxError):
+			return []
+	elif pd.isna(labels_str):
+		return []
+	elif isinstance(labels_str, list):
+		labels = labels_str
+	else:
+		return []
+	
+	# Map to canonical labels using global dict
+	return [canonical_labels_global.get(label, label) for label in labels]
 
 def merge_csv_files(
 	dataset_dir: str,
@@ -53,18 +51,6 @@ def merge_csv_files(
 		for i, file in enumerate(csv_files):
 			print(f"\t{i:02d}: {file}")
 		print(f"\n>> Merging {len(csv_files)} CSV files to {output_fpath}")
-
-	df = pd.DataFrame()
-
-	# Iterate over the CSV files and concatenate them
-	# for file in csv_files:
-	# 	temp_df = pd.read_csv(
-	# 		filepath_or_buffer=file, 
-	# 		on_bad_lines='skip', 
-	# 		dtype=dtypes, 
-	# 		low_memory=False,
-	# 	)
-	# 	df = pd.concat([df, temp_df], ignore_index=True)
 
 	dfs = []
 	for file in csv_files:
@@ -96,7 +82,6 @@ def merge_csv_files(
 	# [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
 	canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
 	print(f">> canonical_labels: {type(canonical_labels)} {len(canonical_labels)}")
-
 	print("First 10 canonical labels (label -> canonical_label):")
 	samples = {k:v for i, (k, v) in enumerate(canonical_labels.items()) if i < 10}
 	print(json.dumps(samples, indent=2, ensure_ascii=False))
@@ -138,9 +123,6 @@ def merge_csv_files(
 		print(df['multimodal_labels'].head(15).tolist())
 
 	t_start = time.time()
-
-	# Determine optimal number of workers and chunksize
-	# num_workers = min(multiprocessing.cpu_count(), 16)  # Cap at 16 to avoid overhead
 	chunksize = max(1, len(df) // (num_workers * 4))  # 4 chunks per worker
 	print(f">> Using {num_workers} workers with chunksize={chunksize}")
 	with multiprocessing.Pool(
@@ -160,7 +142,6 @@ def merge_csv_files(
 	if verbose:
 		print(f">> canonical_multimodal_labels: {len(df['multimodal_canonical_labels'])}")
 		print(df['multimodal_canonical_labels'].head(15).tolist())
-		print(df["multimodal_canonical_labels"].value_counts())
 		print(f"\n>> Saving {type(df)} {df.shape} {list(df.columns)} to {output_fpath}")
 
 	df.to_csv(output_fpath, index=False)
