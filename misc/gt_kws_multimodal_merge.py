@@ -47,7 +47,7 @@ def merge_csv_files(
 	csv_files.sort(key=lambda f: int(os.path.basename(f).split('_')[-2]))
 
 	if verbose:
-		print(f"Found {len(csv_files)} CSV files to merge:")
+		print(f"Found {len(csv_files)} CSV files in {dataset_dir}")
 		for i, file in enumerate(csv_files):
 			print(f"\t{i:02d}: {file}")
 		print(f"\n>> Merging {len(csv_files)} CSV files to {output_fpath}")
@@ -62,8 +62,7 @@ def merge_csv_files(
 		)
 		dfs.append(temp_df)
 	df = pd.concat(dfs, ignore_index=True)
-
-	print(f">> Merged {len(df)} rows from {len(csv_files)} CSV files: {df.shape}\n{list(df.columns)}")
+	print(f">> Merged {type(df)} from {len(csv_files)} CSV files: {df.shape}\n{list(df.columns)}")
 
 	clustered_df = cluster(
 		labels=df['multimodal_labels'].tolist(),

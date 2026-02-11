@@ -92,14 +92,14 @@ def merge_labels(
 def get_multimodal_annotation(
 	csv_file: str,
 	llm_model_id: str,
-	vlm_model_id: str,
-	device: str,
-	num_workers: int,
 	llm_batch_size: int,
-	vlm_batch_size: int,
 	llm_max_generated_tks: int,
+	vlm_model_id: str,
+	vlm_batch_size: int,
 	vlm_max_generated_tks: int,
 	max_keywords: int,
+	device: str,
+	num_workers: int,
 	use_llm_quantization: bool = False,
 	use_vlm_quantization: bool = False,
 	nc: int = None,
@@ -201,10 +201,6 @@ def get_multimodal_annotation(
 	df['llm_based_labels'] = llm_based_labels
 	df['vlm_based_labels'] = vlm_based_labels
 	df['multimodal_labels'] = multimodal_labels
-
-	# # save multimodal labels as pkl with dill:
-	# with gzip.open(os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_multimodal.pkl")), mode="wb") as f:
-	# 	dill.dump(multimodal_labels, f)
 
 	clustered_df = cluster(
 		labels=multimodal_labels,
