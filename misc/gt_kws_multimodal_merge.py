@@ -55,6 +55,8 @@ def merge_csv_files(
 	# multimodal_labels						-> multimodal_canonical_labels (new column)
 	# [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
 	canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
+	print(f">> canonical_labels: {type(canonical_labels)} {len(canonical_labels)}")
+	print(canonical_labels)
 	canonical_multimodal_labels = []
 	multimodal_labels = df['multimodal_labels'].tolist()
 	print(f">> Mapping {len(multimodal_labels)} multimodal labels to canonical labels...")
