@@ -169,7 +169,9 @@ def get_dframe(
 
 	print(f">> Extracting DF for user_query[{doc_idx}]: « {user_query} » from {doc_url} with thumbnail_size={thumbnail_size}")
 	
-	content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}"
+	content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}{f'_{user_query}' if user_query else ''}"
+	print(f"content_to_hash: {content_to_hash}")
+
 	hash_digest = hashlib.md5(content_to_hash.encode('utf-8')).hexdigest()
 	df_fpth = os.path.join(HITs_DIR, f"df_{hash_digest}.gz")
 
@@ -440,8 +442,9 @@ def get_dframe(
 	if verbose:
 		print(f"Creating DataFrame from {len(data)} rows...")
 	df = pd.DataFrame(data)
+	
 	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
-
+	print(f"Saving DF to {df_fpth}")
 	save_pickle(pkl=df, fname=df_fpth)
 
 	return df
