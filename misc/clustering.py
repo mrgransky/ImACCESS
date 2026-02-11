@@ -850,12 +850,12 @@ def get_optimal_num_clusters(
 
 	# Adaptive range based on dataset size
 	num_samples = X.shape[0]
-	if num_samples > int(3e4):
-		range_n_clusters = range(50, min(551, num_samples // 50), 50)
+	if num_samples > int(4e4):
+		range_n_clusters = range(50, min(751, num_samples // 40), 50)
 	elif num_samples > int(2e4):
-		range_n_clusters = range(20, min(351, num_samples // 30), 25)
+		range_n_clusters = range(20, min(551, num_samples // 30), 25)
 	elif num_samples > int(5e3):
-		range_n_clusters = range(10, min(151, num_samples // 25), 10)
+		range_n_clusters = range(10, min(201, num_samples // 20), 10)
 	else:
 		# extremely small datasets: more conservative range
 		range_n_clusters = range(5, 161, 1)
@@ -1064,7 +1064,7 @@ def cluster(
 ):	
 	if verbose:
 		print(f"\n[AGGLOMERATIVE CLUSTERING] {len(labels)} documents")
-		print(f"   ├─ model_id: {model_id} in: {device}")
+		print(f"   ├─ {model_id} | {device} | batch_size: {batch_size}")
 		print(f"   ├─ linkage: {linkage_method}")
 		print(f"   ├─ distance: {distance_metric}")
 		print(f"   ├─ sample: {labels[:5]}")
@@ -1142,7 +1142,7 @@ def cluster(
 		batch_size=batch_size,
 		show_progress_bar=verbose,
 		convert_to_numpy=True,
-		normalize_embeddings=True,  # Critical for cosine distance
+		normalize_embeddings=True,
 	)
 	print(f"Embeddings: {type(X)} {X.shape} {X.dtype} (min, max): ({X.min():.1f}, {X.max():.1f}) (mean, std): ({X.mean():.1f}, {X.std():.1f})")
 			
