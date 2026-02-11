@@ -204,20 +204,22 @@ def merge_csv_files(
 def main():
 	parser = argparse.ArgumentParser(description='Merge CSV files')
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Directory containing CSV files')
-	parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number of workers for parallel processing')
+	parser.add_argument('--num_workers', '-nw', type=int, required=True, help='Number of workers for parallel processing')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
 	parser.add_argument('--num_clusters', '-nc', type=int, default=None, help='Number of clusters')
 	args = parser.parse_args()
+	args.dataset_dir = os.path.normpath(args.dataset_dir)
+
+	print(args)
 	set_seeds(seed=42)
 
-	args.dataset_dir = os.path.normpath(args.dataset_dir)
 	if args.verbose:
 		print(args)
 		print_args_table(args=args, parser=parser)
 
 	merge_csv_files(
 		dataset_dir=args.dataset_dir, 
-		num_workers=args.num_workers, 
+		num_workers=min(args.num_workers, multiprocessing.cpu_count()),
 		nc=args.num_clusters,
 		verbose=args.verbose,
 	)
