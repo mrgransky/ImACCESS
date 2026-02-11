@@ -56,7 +56,7 @@ def merge_csv_files(
 	# [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
 	canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
 	print(f">> canonical_labels: {type(canonical_labels)} {len(canonical_labels)}")
-	# print only first 10 canonical labels
+
 	print("First 10 canonical labels (label -> canonical_label):")
 	samples = {k:v for i, (k, v) in enumerate(canonical_labels.items()) if i < 10}
 	print(json.dumps(samples, indent=2, ensure_ascii=False))
@@ -93,7 +93,7 @@ def merge_csv_files(
 
 	if verbose:
 		print(df["multimodal_canonical_labels"].value_counts())
-		print(f"Saving {type(df)} {df.shape} {list(df.columns)} to {output_csv}")
+		print(f"\n>> Saving {type(df)} {df.shape} {list(df.columns)} to {output_fpath}")
 
 	df.to_csv(output_fpath, index=False)
 
