@@ -8,9 +8,35 @@ from clustering import cluster
 # $ python gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -nw 20 -v
 # $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
 
+# Global variable for worker processes
+canonical_labels_global = None
+
+def init_worker_canonical(canonical_dict):
+		"""Initialize each worker process with the canonical labels dictionary"""
+		global canonical_labels_global
+		canonical_labels_global = canonical_dict
+
+def parse_and_map_labels_mp(labels_str):
+		"""Parse string labels and map to canonical labels (multiprocessing-safe)"""
+		# Parse string representation to actual list
+		if isinstance(labels_str, str):
+				try:
+						labels = ast.literal_eval(labels_str)
+				except (ValueError, SyntaxError):
+						return []
+		elif pd.isna(labels_str):
+				return []
+		elif isinstance(labels_str, list):
+				labels = labels_str
+		else:
+				return []
+		
+		# Map to canonical labels using global dict
+		return [canonical_labels_global.get(label, label) for label in labels]
+
 def merge_csv_files(
 	dataset_dir: str,
-	num_workers: int = 16,
+	num_workers: int,
 	nc: int = None,
 	verbose: bool = False
 ):
@@ -42,7 +68,12 @@ def merge_csv_files(
 
 	dfs = []
 	for file in csv_files:
-		temp_df = pd.read_csv(file, on_bad_lines='skip', dtype=dtypes, low_memory=False)
+		temp_df = pd.read_csv(
+			filepath_or_buffer=file, 
+			on_bad_lines='skip', 
+			dtype=dtypes, 
+			low_memory=False
+		)
 		dfs.append(temp_df)
 	df = pd.concat(dfs, ignore_index=True)
 
@@ -58,17 +89,17 @@ def merge_csv_files(
 		verbose=verbose,
 	)
 
-	# # canonical label available in clustered_df "canonical" column: [label] -> canonical_label]
-	# # mapping each label of multimodal_labels to its canonical label:
-	# # desired example:
-	# # multimodal_labels						-> multimodal_canonical_labels (new column)
-	# # [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
-	# canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
-	# print(f">> canonical_labels: {type(canonical_labels)} {len(canonical_labels)}")
+	# canonical label available in clustered_df "canonical" column: [label] -> canonical_label]
+	# mapping each label of multimodal_labels to its canonical label:
+	# desired example:
+	# multimodal_labels						-> multimodal_canonical_labels (new column)
+	# [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
+	canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
+	print(f">> canonical_labels: {type(canonical_labels)} {len(canonical_labels)}")
 
-	# print("First 10 canonical labels (label -> canonical_label):")
-	# samples = {k:v for i, (k, v) in enumerate(canonical_labels.items()) if i < 10}
-	# print(json.dumps(samples, indent=2, ensure_ascii=False))
+	print("First 10 canonical labels (label -> canonical_label):")
+	samples = {k:v for i, (k, v) in enumerate(canonical_labels.items()) if i < 10}
+	print(json.dumps(samples, indent=2, ensure_ascii=False))
 
 	# def parse_and_map_labels(labels_str):
 	# 	"""Parse string labels and map to canonical labels"""
@@ -100,49 +131,6 @@ def merge_csv_files(
 	# 	print(f">> canonical_multimodal_labels: {len(df['multimodal_canonical_labels'])}")
 	# 	print(df['multimodal_canonical_labels'].head(15).tolist())
 
-
-	# from multiprocessing import Pool, cpu_count
-	# import ast
-	# import time
-
-	# canonical label available in clustered_df "canonical" column: [label] -> canonical_label]
-	# mapping each label of multimodal_labels to its canonical label:
-	# desired example:
-	# multimodal_labels                      -> multimodal_canonical_labels (new column)
-	# [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
-	canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
-	print(f">> canonical_labels: {type(canonical_labels)} {len(canonical_labels)}")
-
-	print("First 10 canonical labels (label -> canonical_label):")
-	samples = {k: v for i, (k, v) in enumerate(canonical_labels.items()) if i < 10}
-	print(json.dumps(samples, indent=2, ensure_ascii=False))
-
-	# ========== Multiprocessing worker function ==========
-	def parse_and_map_labels_mp(labels_str):
-		"""Parse string labels and map to canonical labels (multiprocessing-safe)"""
-		# Parse string representation to actual list
-		if isinstance(labels_str, str):
-			try:
-				labels = ast.literal_eval(labels_str)
-			except (ValueError, SyntaxError):
-				return []
-		elif pd.isna(labels_str):
-			return []
-		elif isinstance(labels_str, list):
-			labels = labels_str
-		else:
-			return []
-		
-		# Map to canonical labels
-		# Note: canonical_labels_global will be set via initializer
-		return [canonical_labels_global.get(label, label) for label in labels]
-
-	# ========== Initializer for worker processes ==========
-	def init_worker(canonical_dict):
-		"""Initialize each worker process with the canonical labels dictionary"""
-		global canonical_labels_global
-		canonical_labels_global = canonical_dict
-
 	# ========== Parallel mapping ==========
 	print(f">> Mapping {len(df)} multimodal labels to canonical labels using {num_workers} cores...")
 	if verbose:
@@ -154,10 +142,10 @@ def merge_csv_files(
 	# Determine optimal number of workers and chunksize
 	# num_workers = min(multiprocessing.cpu_count(), 16)  # Cap at 16 to avoid overhead
 	chunksize = max(1, len(df) // (num_workers * 4))  # 4 chunks per worker
-
+	print(f">> Using {num_workers} workers with chunksize={chunksize}")
 	with multiprocessing.Pool(
 		processes=num_workers,
-		initializer=init_worker,
+		initializer=init_worker_canonical,
 		initargs=(canonical_labels,)
 	) as pool:
 		df['multimodal_canonical_labels'] = pool.map(
@@ -172,10 +160,6 @@ def merge_csv_files(
 	if verbose:
 		print(f">> canonical_multimodal_labels: {len(df['multimodal_canonical_labels'])}")
 		print(df['multimodal_canonical_labels'].head(15).tolist())
-
-
-
-	if verbose:
 		print(df["multimodal_canonical_labels"].value_counts())
 		print(f"\n>> Saving {type(df)} {df.shape} {list(df.columns)} to {output_fpath}")
 
@@ -189,16 +173,16 @@ def merge_csv_files(
 	if verbose:
 		print(f"Saved merged CSV file to {output_fpath}")
 
-	viz.perform_multilabel_eda(
-		data_path=output_fpath,
-		label_column='multimodal_labels'
-	)
+	# viz.perform_multilabel_eda(
+	# 	data_path=output_fpath,
+	# 	label_column='multimodal_labels'
+	# )
 
-	train_df, val_df = get_multi_label_stratified_split(
-		csv_file=output_fpath,
-		val_split_pct=0.35,
-		label_col='multimodal_labels'
-	)
+	# train_df, val_df = get_multi_label_stratified_split(
+	# 	csv_file=output_fpath,
+	# 	val_split_pct=0.35,
+	# 	label_col='multimodal_labels'
+	# )
 
 @measure_execution_time
 def main():
