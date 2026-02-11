@@ -1,6 +1,7 @@
 from utils import *
 import visualize as viz
 from clustering import cluster
+import ast
 
 # how to run:
 # Puhti/Mahti:
@@ -56,7 +57,12 @@ def merge_csv_files(
 	# [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
 	canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
 	print(f">> canonical_labels: {type(canonical_labels)} {len(canonical_labels)}")
-	print(canonical_labels)
+	# print only first 10 canonical labels
+	print("First 10 canonical labels (label -> canonical_label):")
+	print(f"{'label':<30} -> {'canonical_label':<30}")
+	for k, v in canonical_labels.items()[:10]:
+		print(f"{k:<30} -> {v:<30}")
+
 	canonical_multimodal_labels = []
 	multimodal_labels = df['multimodal_labels'].tolist()
 	print(f">> Mapping {len(multimodal_labels)} multimodal labels to canonical labels...")
@@ -64,11 +70,19 @@ def merge_csv_files(
 	print(multimodal_labels[:15])
 
 	for labels in tqdm(multimodal_labels, desc="Canonical labels"):
-		print(f"labels: {type(labels)} {len(labels)}")
-		print(labels[:15])
-		canonical_labels_ = [canonical_labels[label] for label in labels]
-		print(f"canonical_labels_: {type(canonical_labels_)} {len(canonical_labels_)}")
-		print(canonical_labels_[:15])
+		# Parse string representation to actual list
+		if isinstance(labels, str):
+			try:
+				labels = ast.literal_eval(labels)
+			except (ValueError, SyntaxError):
+				labels = []
+		elif pd.isna(labels):
+			labels = []
+		elif not isinstance(labels, list):
+			labels = []
+		
+		# Map to canonical labels
+		canonical_labels_ = [canonical_labels.get(label, label) for label in labels]
 		canonical_multimodal_labels.append(canonical_labels_)
 
 	df['multimodal_canonical_labels'] = canonical_multimodal_labels
