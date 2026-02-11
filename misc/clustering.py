@@ -968,8 +968,7 @@ def cluster(
 	if verbose:
 		print(f"[INFO] {model_id} Dtype selection: {dtype}")
 
-	def _optimal_attn_impl(m_id: str) -> str:
-		"""Select best available attention implementation."""
+	def _optimal_attn_impl() -> str:
 		if not torch.cuda.is_available():
 			return "eager"
 		
@@ -997,9 +996,9 @@ def cluster(
 			print(f"[INFO] Using eager attention (compute {compute_cap})")
 		return "eager"
 
-	attn_impl = _optimal_attn_impl(model_id)
+	attn_impl = _optimal_attn_impl()
 	if verbose:
-		print(f"[INFO] {model_id} Attention implementation: {attn_impl}")
+		print(f"[INFO] {model_id} with {attn_impl} attention")
 
 	print(f"\n[INIT] Loading Sentence Transformer {model_id}")
 	model = SentenceTransformer(
