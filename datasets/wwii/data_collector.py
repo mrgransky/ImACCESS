@@ -616,7 +616,7 @@ def main():
 		f"{base_url}/usa/tanks/sherman-tank/": "armored fighting vehicles",
 		f"{base_url}/usa/tanks/m6-tank/": "armored fighting vehicles",
 		f"{base_url}/usa/tanks/m8/": "armored fighting vehicles",
-		f"{base_url}/usa/us-navy/": "naval forces",
+		f"{base_url}/usa/us-navy/": "naval ship",
 		f"{base_url}/usa/vehicles/g506/": "military vehicles",
 		f"{base_url}/usa/vehicles/m29/": "military vehicles",
 		f"{base_url}/italy/spg2/75-18/" : "armored fighting vehicles", # https://en.wikipedia.org/wiki/Armoured_fighting_vehicle
@@ -660,7 +660,7 @@ def main():
 		f"{base_url}/japan/aircrafts/d4y/": "aircraft", #
 		f"{base_url}/japan/aircrafts/yokosuka_mxy7_ohka/": "aircraft", #
 		f"{base_url}/japan/aircrafts/p1y/": "aircraft",
-		f"{base_url}/japan/ijn/midget/": "naval forces",
+		f"{base_url}/japan/ijn/midget/": "submarine",
 		f"{base_url}/japan/japanese-tanks/": "armored fighting vehicles",
 		f"{base_url}/uk/british-tanks/cruiser-mk-iii-a13-mk-i-cruiser-mk-iv-a13-mk-ii/": "armored fighting vehicles",
 		f"{base_url}/uk/british-tanks/challenger/": "armored fighting vehicles",
@@ -787,7 +787,7 @@ def main():
 		f"{base_url}/germany/armored_vehicles/sdkfz_231_232_233/": "armored fighting vehicles",
 		f"{base_url}/germany/armored_vehicles/sdkfz_247/": "armored fighting vehicles",
 		f"{base_url}/germany/armored_vehicles/sdkfz_263/": "armored fighting vehicles",
-		f"{base_url}/germany/kriegsmarine/": "naval forces",
+		f"{base_url}/germany/kriegsmarine/": "kriegsmarine",
 		f"{base_url}/germany/german_army_soldiers/": "military personnel",
 		f"{base_url}/germany/wehrmacht_trucks/bussing-nag/": "military vehicles",
 		f"{base_url}/germany/wehrmacht_trucks/einheitsdiesel/": "military vehicles",
