@@ -4,7 +4,7 @@ from clustering import cluster
 
 # how to run:
 # Puhti/Mahti:
-# srun -J interactive_cpu --account=project_2009043 --partition=large --time=00-15:15:00 --mem=128G --ntasks=1 --cpus-per-task=20 --pty /bin/bash -i
+# srun -J interactive_cpu --account=project_2014707 --partition=large --time=00-23:45:00 --mem=128G --ntasks=1 --cpus-per-task=20 --pty /bin/bash -i
 # $ python gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -v
 # $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
 
@@ -41,7 +41,8 @@ def merge_csv_files(
 
 	clustered_df = cluster(
 		labels=df['multimodal_labels'].tolist(),
-		model_id="Qwen/Qwen3-Embedding-8B" if os.getenv('USER') == "alijanif" else "Qwen/Qwen3-Embedding-0.6B",
+		# model_id="Qwen/Qwen3-Embedding-8B" if os.getenv('USER') == "alijanif" else "Qwen/Qwen3-Embedding-0.6B",
+		model_id="all-MiniLM-L6-v2",
 		nc=nc,
 		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")),
 		verbose=verbose,
