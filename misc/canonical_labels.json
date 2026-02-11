@@ -234,6 +234,10 @@
 	"army vehicles": "military vehicles",
 	"military vehicles": "military vehicles",
 
+	"munitions factory": "munitions factory", 
+	"munitions manufacturing base": "munitions factory", 
+	"ordnance factory": "munitions factory",
+
 	"naval aircraft factory": "naval aircraft factory",
 
 	"admiral": "naval commander",

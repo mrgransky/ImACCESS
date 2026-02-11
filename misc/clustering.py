@@ -798,7 +798,7 @@ def get_optimal_super_clusters(
 	# t-SNE (subsample if too large)
 	if len(unique_labels) > 10000:
 		tsne_indices = np.random.choice(len(unique_labels), 10000, replace=False)
-		tsne_projection = TSNE(n_components=2, random_state=0, perplexity=30).fit_transform(X[tsne_indices])
+		tsne_projection = TSNE(n_components=2, random_state=0, perplexity=30).fit_transform(embeddings[tsne_indices])
 		tsne_labels = cluster_labels[tsne_indices]
 	else:
 		tsne_projection = TSNE(n_components=2, random_state=0, perplexity=30).fit_transform(embeddings)
@@ -1168,7 +1168,7 @@ def cluster(
 	print(f"Embeddings: {type(X)} {X.shape} {X.dtype} (min, max): ({X.min():.1f}, {X.max():.1f}) (mean, std): ({X.mean():.1f}, {X.std():.1f})")
 			
 	# Compute linkage matrix
-	print(f"[LINKAGE] {linkage_method} Agglomerative Clustering on: {X.shape} embeddings")
+	print(f"[LINKAGE] {linkage_method} Agglomerative Clustering on: {X.shape} embeddings [takes a while...]")
 
 	# OPTION 1: Ward linkage (RECOMMENDED for preventing mega-clusters)
 	if linkage_method == "ward":
@@ -1226,18 +1226,18 @@ def cluster(
 
 	print(f"\n[CLUSTERING] {len(np.unique(cluster_labels))} clusters for {cluster_labels.shape} {type(cluster_labels)} labels. {cluster_labels.min()} {cluster_labels.max()}")
 
-	get_optimal_super_clusters(
-		linkage_matrix=Z, 
-		embeddings=X,
-		cluster_labels=cluster_labels,
-		unique_labels=unique_labels,
-		linkage_method=linkage_method,
-		clusters_fname=clusters_fname,
-		n_thresholds=50,
-		min_clusters=3,
-		max_clusters=10,
-		verbose=verbose
-	)
+	# get_optimal_super_clusters(
+	# 	linkage_matrix=Z, 
+	# 	embeddings=X,
+	# 	cluster_labels=cluster_labels,
+	# 	unique_labels=unique_labels,
+	# 	linkage_method=linkage_method,
+	# 	clusters_fname=clusters_fname,
+	# 	n_thresholds=50,
+	# 	min_clusters=3,
+	# 	max_clusters=10,
+	# 	verbose=verbose
+	# )
 	
 	print(f"\nCanonical labels per cluster")
 	df = pd.DataFrame(
