@@ -4,8 +4,8 @@ from clustering import cluster
 
 # how to run:
 # Puhti/Mahti:
-# srun -J interactive_cpu --account=project_2014707 --partition=large --time=00-23:45:00 --mem=128G --ntasks=1 --cpus-per-task=20 --pty /bin/bash -i
-# $ python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -nw 20 -v
+# srun -J interactive_cpu --account=project_2014707 --partition=large --time=00-23:45:00 --mem=128G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
+# $ python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4/ -nw 40 -v
 # $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
 
 # Global variable for worker processes
@@ -28,13 +28,13 @@ def parallel_canonical_mapping(labels_str):
 		labels = labels_str
 	else:
 		return []
-	
 	# Map to canonical labels using global dict
 	return [canonical_labels_global.get(label, label) for label in labels]
 
 def merge_csv_files(
 	dataset_dir: str,
 	num_workers: int,
+	model_id: str,
 	nc: int = None,
 	verbose: bool = False
 ):
@@ -67,8 +67,7 @@ def merge_csv_files(
 
 	clustered_df = cluster(
 		labels=df['multimodal_labels'].tolist(),
-		# model_id="Qwen/Qwen3-Embedding-8B" if os.getenv('USER') == "alijanif" else "Qwen/Qwen3-Embedding-0.6B",
-		model_id="all-MiniLM-L6-v2",
+		model_id=model_id,
 		batch_size=2048,
 		nc=nc,
 		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")),
@@ -88,7 +87,7 @@ def merge_csv_files(
 
 	# ========== Parallel mapping ==========
 	chunksize = max(1, len(df) // (num_workers * 4))  # 4 chunks per worker
-	print(f"Mapping {len(df)} multimodal labels to canonical labels using {num_workers} cores with chunksize={chunksize}")
+	print(f"Mapping {len(df)} multimodal labels to canonical labels using {num_workers} cores with chunks: {chunksize}")
 	t_start = time.time()
 	with multiprocessing.Pool(
 		processes=num_workers,
@@ -103,10 +102,10 @@ def merge_csv_files(
 	elapsed = time.time() - t_start
 
 	if verbose:
-		print(f"Mapping completed in {elapsed:.2f}s ({len(df)/elapsed:.1f} rows/sec)")
+		print(f"Mapping completed in {elapsed:.4f}s ({len(df)/elapsed:.1f} rows/sec)")
 		print(f">> canonical_multimodal_labels: {len(df['multimodal_canonical_labels'])}")
 		print(df['multimodal_canonical_labels'].head(15).tolist())
-		print(f"\n>> Saving {type(df)} {df.shape} {list(df.columns)} to {output_fpath}")
+		print(f"\n>> Saving {type(df)} {df.shape} to {output_fpath}\n{list(df.columns)}")
 
 	df.to_csv(output_fpath, index=False)
 
@@ -134,12 +133,11 @@ def main():
 	parser = argparse.ArgumentParser(description='Merge CSV files')
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Directory containing CSV files')
 	parser.add_argument('--num_workers', '-nw', type=int, required=True, help='Number of workers for parallel processing')
+	parser.add_argument('--model_id', '-m', type=str, default="Qwen/Qwen3-Embedding-0.6B", help='HuggingFace model ID')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
 	parser.add_argument('--num_clusters', '-nc', type=int, default=None, help='Number of clusters')
 	args = parser.parse_args()
 	args.dataset_dir = os.path.normpath(args.dataset_dir)
-
-	print(args)
 	set_seeds(seed=42)
 
 	if args.verbose:
@@ -149,6 +147,7 @@ def main():
 	merge_csv_files(
 		dataset_dir=args.dataset_dir, 
 		num_workers=min(args.num_workers, multiprocessing.cpu_count()),
+		model_id=args.model_id,
 		nc=args.num_clusters,
 		verbose=args.verbose,
 	)

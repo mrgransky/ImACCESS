@@ -5,6 +5,8 @@ from collections import Counter
 import warnings
 import os
 import ast
+import json
+import time
 from sklearn.metrics import (
 	silhouette_score, 
 	davies_bouldin_score, 
@@ -1081,8 +1083,8 @@ def cluster(
 	# Flatten and deduplicate (deterministic and reproducible)
 	unique_labels = sorted(set(label for doc in documents for label in doc))
 	
-	print(f"Total documents: {len(documents)}")
-	print(f"Unique labels: {len(unique_labels)}")
+	print(f"Total {type(documents)} documents: {len(documents)}")
+	print(f"Unique {type(unique_labels)} labels: {len(unique_labels)}")
 	print(f"Sample unique labels: {unique_labels[:15]}")
 	
 	# attn_implementation = "flash_attention_2" if "gemma" in model_id else "eager"
@@ -1146,7 +1148,7 @@ def cluster(
 			
 	# Compute linkage matrix
 	print(f"[LINKAGE] {linkage_method} Agglomerative Clustering on: {X.shape} embeddings [takes a while...]")
-
+	t0 = time.time()
 	# OPTION 1: Ward linkage (RECOMMENDED for preventing mega-clusters)
 	if linkage_method == "ward":
 		# Ward requires Euclidean distance
@@ -1175,7 +1177,7 @@ def cluster(
 	else:
 		raise ValueError(f"Unsupported distance metric: {distance_metric}")
 
-	print(f"[LINKAGE] Z[{linkage_method}]: {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes}")
+	print(f"[LINKAGE] Z[{linkage_method}]: {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes} | {time.time()-t0:.1f} sec")
 	
 	# Determine Optimal Number of Clusters
 	if nc is None:
