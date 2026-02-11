@@ -934,6 +934,7 @@ def get_optimal_num_clusters(
 def cluster(
 	labels: List[List[str]],
 	model_id: str,
+	batch_size: int = 1024,
 	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
 	clusters_fname: str = "clusters.csv",
 	nc: int = None,
@@ -1012,10 +1013,10 @@ def cluster(
 	
 	print(f"[LOADED] {sum(p.numel() for p in model.parameters()):,} parameters")
 	
-	print(f"\n[EMBEDDING] encoding {len(unique_labels)} labels using {model_id} in: {device}")
+	print(f"\n[ENCODING] {len(unique_labels)} labels | batch_size: {batch_size} | {device}")
 	X = model.encode(
 		unique_labels,
-		batch_size=1024,
+		batch_size=batch_size,
 		show_progress_bar=verbose,
 		convert_to_numpy=True,
 		normalize_embeddings=True,  # Critical for cosine distance
