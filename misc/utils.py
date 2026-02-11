@@ -590,10 +590,12 @@ def get_stratified_split(
 	)
 
 	if verbose:
-		print("Labels per dataset in train split:")
+		print("\nLabels per dataset in train split:")
 		print(train_df[label_col].value_counts())
-		print("Labels per dataset in val split:")
+		print('-'*120)
+		print("\nLabels per dataset in val split:")
 		print(val_df[label_col].value_counts())
+		print('-'*120)
 
 	return train_df, val_df
 

@@ -61,33 +61,35 @@ def merge_csv_files(
 	samples = {k:v for i, (k, v) in enumerate(canonical_labels.items()) if i < 10}
 	print(json.dumps(samples, indent=2, ensure_ascii=False))
 
-	canonical_multimodal_labels = []
-	multimodal_labels = df['multimodal_labels'].tolist()
-	print(f">> Mapping {len(multimodal_labels)} multimodal labels to canonical labels...")
-	print(f"multimodal_labels: {type(multimodal_labels)} {len(multimodal_labels)}")
-	print(multimodal_labels[:15])
-
-	for labels in tqdm(multimodal_labels, desc="Mapping to canonical labels"):
+	def parse_and_map_labels(labels_str):
+		"""Parse string labels and map to canonical labels"""
 		# Parse string representation to actual list
-		if isinstance(labels, str):
+		if isinstance(labels_str, str):
 			try:
-				labels = ast.literal_eval(labels)
+				labels = ast.literal_eval(labels_str)
 			except (ValueError, SyntaxError):
-				labels = []
-		elif pd.isna(labels):
-			labels = []
-		elif not isinstance(labels, list):
-			labels = []
+				return []
+		elif pd.isna(labels_str):
+			return []
+		elif isinstance(labels_str, list):
+			labels = labels_str
+		else:
+			return []
 		
 		# Map to canonical labels
-		canonical_labels_ = [canonical_labels.get(label, label) for label in labels]
-		canonical_multimodal_labels.append(canonical_labels_)
-
+		return [canonical_labels.get(label, label) for label in labels]
+	
+	print(f">> Mapping {len(df)} multimodal labels to canonical labels...")
 	if verbose:
-		print(f">> canonical_multimodal_labels: {type(canonical_multimodal_labels)} {len(canonical_multimodal_labels)}")
-		print(canonical_multimodal_labels[:15])
-
-	df['multimodal_canonical_labels'] = canonical_multimodal_labels
+		print(f"Sample multimodal_labels:")
+		print(df['multimodal_labels'].head(15).tolist())
+	
+	# Use pandas apply for vectorized operation
+	df['multimodal_canonical_labels'] = df['multimodal_labels'].apply(parse_and_map_labels)
+	
+	if verbose:
+		print(f">> canonical_multimodal_labels: {len(df['multimodal_canonical_labels'])}")
+		print(df['multimodal_canonical_labels'].head(15).tolist())
 
 	if verbose:
 		print(df["multimodal_canonical_labels"].value_counts())
