@@ -684,7 +684,6 @@ def get_optimal_super_clusters(
 
 	super_cluster_distance, n_super_clusters = best_distance, best_n_clusters
 
-
 	print(f"[SUPER-CLUSTERS] Optimal distance: {super_cluster_distance:.4f} ({n_super_clusters} super-clusters)")
 
 	super_cluster_labels = fcluster(linkage_matrix, t=super_cluster_distance, criterion='distance') - 1
@@ -1092,7 +1091,11 @@ def cluster(
 		print(f"   ├─ model_id: {model_id} in: {device}")
 		print(f"   ├─ linkage: {linkage_method}")
 		print(f"   ├─ distance: {distance_metric}")
-		print(f"   └─ sample: {labels[:5]}")
+		print(f"   ├─ sample: {labels[:5]}")
+		# Parse first label if it's a string, otherwise use as-is
+		first_label = ast.literal_eval(labels[0]) if isinstance(labels[0], str) else labels[0]
+		print(f"   ├─────> {first_label} {type(first_label)}")
+		print(f"   └─ nc: {nc}")
 	
 	print(f"\n[DEDUP] {len(labels)} raw labels")
 	documents = []

@@ -1,7 +1,6 @@
 from utils import *
 import visualize as viz
 from clustering import cluster
-import ast
 
 # how to run:
 # Puhti/Mahti:
@@ -59,9 +58,8 @@ def merge_csv_files(
 	print(f">> canonical_labels: {type(canonical_labels)} {len(canonical_labels)}")
 	# print only first 10 canonical labels
 	print("First 10 canonical labels (label -> canonical_label):")
-	print(f"{'label':<30} -> {'canonical_label':<30}")
-	for k, v in canonical_labels.items()[:10]:
-		print(f"{k:<30} -> {v:<30}")
+	samples = {k:v for i, (k, v) in enumerate(canonical_labels.items()) if i < 10}
+	print(json.dumps(samples, indent=2, ensure_ascii=False))
 
 	canonical_multimodal_labels = []
 	multimodal_labels = df['multimodal_labels'].tolist()
