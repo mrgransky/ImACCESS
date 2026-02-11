@@ -637,52 +637,197 @@ def eval_clusters(df, X):
 		return metrics
 
 def get_optimal_super_clusters(
-		linkage_matrix,
-		embeddings,
-		min_clusters=3,
-		max_clusters=10,
-		n_thresholds=50,
+	linkage_matrix,
+	embeddings,
+	cluster_labels,
+	unique_labels,
+	linkage_method,
+	clusters_fname,
+	n_thresholds=50,
+	min_clusters=3,
+	max_clusters=10,
+	verbose=False,
 ):
-		distances = linkage_matrix[:, 2]
-		candidate_distances = np.linspace(distances.min(), distances.max(), n_thresholds)
+	print(f"\n[SUPER-CLUSTERS] Analyzing hierarchy...")
 
-		best_score = -np.inf
-		best_distance = None
-		best_n_clusters = None
+	distances = linkage_matrix[:, 2]
+	candidate_distances = np.linspace(distances.min(), distances.max(), n_thresholds)
+	best_score = -np.inf
+	best_distance = None
+	best_n_clusters = None
+	print(f"[SUPER-CLUSTERS] Testing {len(candidate_distances)} distance thresholds...")
+	for dist in candidate_distances:
+			labels = fcluster(linkage_matrix, t=dist, criterion='distance')
+			n_clusters = len(np.unique(labels))
+			if n_clusters < min_clusters or n_clusters > max_clusters:
+					continue
+			score = silhouette_score(embeddings, labels, metric='cosine')
+			if score > best_score:
+					best_score = score
+					best_distance = dist
+					best_n_clusters = n_clusters
+	if best_distance is None:
+			# Fallback: choose dist whose n_clusters is closest to min_clusters
+			print(f"[SUPER-CLUSTERS] No distance produced n_clusters in [{min_clusters}, {max_clusters}]. Falling back...")
+			best_gap = np.inf
+			for dist in candidate_distances:
+					labels = fcluster(linkage_matrix, t=dist, criterion='distance')
+					n_clusters = len(np.unique(labels))
+					gap = abs(n_clusters - min_clusters)
+					if gap < best_gap:
+							best_gap = gap
+							best_distance = dist
+							best_n_clusters = n_clusters
+			print(f"[SUPER-CLUSTERS] Fallback: distance={best_distance:.4f}, n_clusters={best_n_clusters}")
+	else:
+			print(f"[SUPER-CLUSTERS] Best silhouette: {best_score:.4f} at {best_n_clusters} clusters")
 
-		print(f"[SUPER-CLUSTERS] Testing {len(candidate_distances)} distance thresholds...")
+	super_cluster_distance, n_super_clusters = best_distance, best_n_clusters
 
-		for dist in candidate_distances:
-				labels = fcluster(linkage_matrix, t=dist, criterion='distance')
-				n_clusters = len(np.unique(labels))
 
-				if n_clusters < min_clusters or n_clusters > max_clusters:
-						continue
+	print(f"[SUPER-CLUSTERS] Optimal distance: {super_cluster_distance:.4f} ({n_super_clusters} super-clusters)")
 
-				score = silhouette_score(embeddings, labels, metric='cosine')
-				if score > best_score:
-						best_score = score
-						best_distance = dist
-						best_n_clusters = n_clusters
+	super_cluster_labels = fcluster(linkage_matrix, t=super_cluster_distance, criterion='distance') - 1
 
-		if best_distance is None:
-				# Fallback: choose dist whose n_clusters is closest to min_clusters
-				print(f"[SUPER-CLUSTERS] No distance produced n_clusters in [{min_clusters}, {max_clusters}]. Falling back...")
-				best_gap = np.inf
-				for dist in candidate_distances:
-						labels = fcluster(linkage_matrix, t=dist, criterion='distance')
-						n_clusters = len(np.unique(labels))
-						gap = abs(n_clusters - min_clusters)
-						if gap < best_gap:
-								best_gap = gap
-								best_distance = dist
-								best_n_clusters = n_clusters
-				print(f"[SUPER-CLUSTERS] Fallback: distance={best_distance:.4f}, n_clusters={best_n_clusters}")
+	print(f"\n[VERIFICATION] super-cluster alignment...")
+	print(f"  ├─ Distance threshold: {super_cluster_distance:.4f}")
+	print(f"  ├─ Expected clusters: {n_super_clusters}")
 
-		else:
-				print(f"[SUPER-CLUSTERS] Best silhouette: {best_score:.4f} at {best_n_clusters} clusters")
+	# Recompute to verify
+	labels_check = fcluster(linkage_matrix, t=super_cluster_distance, criterion='distance')
+	n_clusters_check = len(np.unique(labels_check))
+	print(f"  ├─ Actual clusters from fcluster: {n_clusters_check}")
 
-		return best_distance, best_n_clusters
+	if n_clusters_check == n_super_clusters:
+		print(f"  └─ Confirmed Alignment: {n_super_clusters} clusters at t={super_cluster_distance:.4f}")
+	else:
+		print(f"  └─ MISMATCH ALERT: Expected {n_super_clusters}, got {n_clusters_check}")
+
+	# Map fine-grained clusters to super-clusters
+	# Get the number of fine-grained clusters dynamically
+	n_fine_clusters = len(np.unique(cluster_labels))
+	
+	# Create mapping: fine_cluster_id -> super_cluster_id
+	cluster_to_supercluster = {}
+	supercluster_stats = {}
+	
+	for fine_cluster_id in range(n_fine_clusters):
+			# Get all label indices in this fine cluster
+			fine_cluster_mask = cluster_labels == fine_cluster_id
+			fine_cluster_indices = np.where(fine_cluster_mask)[0]
+			
+			# Find which super-cluster these labels belong to (majority vote)
+			super_ids = super_cluster_labels[fine_cluster_indices]
+			super_cluster_id = int(np.bincount(super_ids).argmax())
+			
+			cluster_to_supercluster[fine_cluster_id] = super_cluster_id
+			
+			# Track super-cluster stats
+			if super_cluster_id not in supercluster_stats:
+					supercluster_stats[super_cluster_id] = {
+							'fine_clusters': [],
+							'total_labels': 0
+					}
+			supercluster_stats[super_cluster_id]['fine_clusters'].append(fine_cluster_id)
+			supercluster_stats[super_cluster_id]['total_labels'] += fine_cluster_mask.sum()
+	
+	print(f"\n[SUPER-CLUSTER] HIERARCHY")
+	print(f"Total fine-grained clusters: {n_fine_clusters}")
+	print(f"Total super-clusters: {n_super_clusters}")
+	
+	for super_id in sorted(supercluster_stats.keys()):
+		stats = supercluster_stats[super_id]
+		print(f"\n[Super-Cluster {super_id}]")
+		print(f"  ├─ Fine clusters: {len(stats['fine_clusters'])} clusters")
+		print(f"  ├─ Total labels: {stats['total_labels']} ({stats['total_labels']/len(unique_labels)*100:.1f}%)")
+		print(f"  └─ Cluster IDs: {stats['fine_clusters'][:25]}{'...' if len(stats['fine_clusters']) > 25 else ''}")
+	
+	# 2D cluster visualizations
+	plt.figure(figsize=(24, 15))
+	dendrogram(
+		linkage_matrix, 
+		truncate_mode='lastp', 
+		p=30, 
+		show_leaf_counts=True, 
+		color_threshold=super_cluster_distance
+	)
+	plt.axhline(
+		y=super_cluster_distance, 
+		color='#000000', 
+		linestyle='--', 
+		label=f'Cut at {super_cluster_distance:.4f} ({n_super_clusters} super-clusters)',
+		linewidth=2.5,
+		zorder=10
+
+	)
+
+	plt.title(f'Hierarchical Clustering Dendrogram ({linkage_method} Linkage)\n{n_super_clusters} Super-Clusters at distance={super_cluster_distance:.4f}')
+	plt.xlabel('Cluster')
+	plt.ylabel('Distance')
+	plt.legend(loc='upper right', fontsize=12)
+	out_dendogram = clusters_fname.replace(".csv", "_dendrogram.png")
+	plt.savefig(out_dendogram, dpi=200, bbox_inches='tight')
+	plt.close()
+
+	plt.figure(figsize=(24, 15))
+	dendrogram(
+		linkage_matrix,
+		color_threshold=super_cluster_distance,
+		leaf_font_size=8
+	)
+	plt.axhline(
+		y=super_cluster_distance, 
+		color='#000000', 
+		linestyle='--', 
+		linewidth=2.5,
+		label=f'Cut at {super_cluster_distance:.4f}',
+		zorder=10
+	)
+	plt.title(f'Full Dendrogram (All {n_fine_clusters} Fine Clusters)')
+	plt.xlabel('Fine Cluster ID')
+	plt.ylabel('Distance')
+	plt.legend()
+	
+	out_full_dendogram = clusters_fname.replace(".csv", "_dendrogram_full.png")
+	plt.savefig(out_full_dendogram, dpi=200, bbox_inches='tight')
+	plt.close()
+
+	# PCA
+	pca_projection = PCA(n_components=2, random_state=0).fit_transform(embeddings)
+	
+	# t-SNE (subsample if too large)
+	if len(unique_labels) > 10000:
+		tsne_indices = np.random.choice(len(unique_labels), 10000, replace=False)
+		tsne_projection = TSNE(n_components=2, random_state=0, perplexity=30).fit_transform(X[tsne_indices])
+		tsne_labels = cluster_labels[tsne_indices]
+	else:
+		tsne_projection = TSNE(n_components=2, random_state=0, perplexity=30).fit_transform(embeddings)
+		tsne_labels = cluster_labels
+	
+	# Color palette
+	n_colors = min(len(cluster_labels), 256)
+	palette = sns.color_palette('tab20', n_colors) if n_colors <= 20 else sns.color_palette('husl', n_colors)
+	colors = [palette[i % len(palette)] for i in cluster_labels]
+	# PCA plot
+	plt.figure(figsize=(27, 17))
+	plt.scatter(*pca_projection.T, s=40, c=colors, alpha=0.6, marker='o')
+	plt.title(f"PCA - Agglomerative Clustering ({len(cluster_labels)} clusters, {len(unique_labels)} labels)")
+	plt.xlabel("PC1")
+	plt.ylabel("PC2")
+	out_pca = clusters_fname.replace(".csv", "_pca_agglomerative.png")
+	plt.savefig(out_pca, dpi=150, bbox_inches='tight')
+	plt.close()
+	
+	# t-SNE plot
+	tsne_colors = [palette[i % len(palette)] for i in tsne_labels]
+	plt.figure(figsize=(27, 17))
+	plt.scatter(*tsne_projection.T, s=40, c=tsne_colors, alpha=0.6, marker='o')
+	plt.title(f"t-SNE - Agglomerative Clustering ({len(cluster_labels)} clusters)")
+	plt.xlabel("t-SNE 1")
+	plt.ylabel("t-SNE 2")
+	out_tsne = clusters_fname.replace(".csv", "_tsne_agglomerative.png")
+	plt.savefig(out_tsne, dpi=150, bbox_inches='tight')
+	plt.close()
 
 def get_optimal_num_clusters(
 	X,
@@ -1079,162 +1224,22 @@ def cluster(
 		print(f"\nCutting dendrogram at k={best_k} for {len(unique_labels)} labels")
 		cluster_labels = fcluster(Z, best_k, criterion='maxclust') - 1 # Convert to 0-indexed
 
-	print(f"cluster_labels: {type(cluster_labels)} {cluster_labels.shape} {cluster_labels.dtype} {cluster_labels.min()} {cluster_labels.max()}")
+	print(f"\n[CLUSTERING] {len(np.unique(cluster_labels))} clusters for {cluster_labels.shape} {type(cluster_labels)} labels. {cluster_labels.min()} {cluster_labels.max()}")
 
-	print(f"\nAnalyzing super-cluster hierarchy...")
-	
-	super_cluster_distance, n_super_clusters = get_optimal_super_clusters(
-		Z, 
-		X,
+	get_optimal_super_clusters(
+		linkage_matrix=Z, 
+		embeddings=X,
+		cluster_labels=cluster_labels,
+		unique_labels=unique_labels,
+		linkage_method=linkage_method,
+		clusters_fname=clusters_fname,
+		n_thresholds=50,
 		min_clusters=3,
-		max_clusters=10
+		max_clusters=10,
+		verbose=verbose
 	)
-	print(f"[SUPER-CLUSTERS] Optimal distance: {super_cluster_distance:.4f} ({n_super_clusters} super-clusters)")
-
-	super_cluster_labels = fcluster(Z, t=super_cluster_distance, criterion='distance') - 1
-
-	print(f"\n[VERIFICATION] super-cluster alignment...")
-	print(f"  ├─ Distance threshold: {super_cluster_distance:.4f}")
-	print(f"  ├─ Expected clusters: {n_super_clusters}")
-
-	# Recompute to verify
-	labels_check = fcluster(Z, t=super_cluster_distance, criterion='distance')
-	n_clusters_check = len(np.unique(labels_check))
-	print(f"  ├─ Actual clusters from fcluster: {n_clusters_check}")
-
-	if n_clusters_check == n_super_clusters:
-		print(f"  └─ Confirmed Alignment: {n_super_clusters} clusters at t={super_cluster_distance:.4f}")
-	else:
-		print(f"  └─ MISMATCH ALERT: Expected {n_super_clusters}, got {n_clusters_check}")
-
-	# Map fine-grained clusters to super-clusters
-	# Get the number of fine-grained clusters dynamically
-	n_fine_clusters = len(np.unique(cluster_labels))
-	
-	# Create mapping: fine_cluster_id -> super_cluster_id
-	cluster_to_supercluster = {}
-	supercluster_stats = {}
-	
-	for fine_cluster_id in range(n_fine_clusters):
-			# Get all label indices in this fine cluster
-			fine_cluster_mask = cluster_labels == fine_cluster_id
-			fine_cluster_indices = np.where(fine_cluster_mask)[0]
-			
-			# Find which super-cluster these labels belong to (majority vote)
-			super_ids = super_cluster_labels[fine_cluster_indices]
-			super_cluster_id = int(np.bincount(super_ids).argmax())
-			
-			cluster_to_supercluster[fine_cluster_id] = super_cluster_id
-			
-			# Track super-cluster stats
-			if super_cluster_id not in supercluster_stats:
-					supercluster_stats[super_cluster_id] = {
-							'fine_clusters': [],
-							'total_labels': 0
-					}
-			supercluster_stats[super_cluster_id]['fine_clusters'].append(fine_cluster_id)
-			supercluster_stats[super_cluster_id]['total_labels'] += fine_cluster_mask.sum()
-	
-	print(f"SUPER-CLUSTER HIERARCHY SUMMARY")
-	print(f"Total fine-grained clusters: {n_fine_clusters}")
-	print(f"Total super-clusters: {n_super_clusters}")
-	
-	for super_id in sorted(supercluster_stats.keys()):
-		stats = supercluster_stats[super_id]
-		print(f"\n[Super-Cluster {super_id}]")
-		print(f"  ├─ Fine clusters: {len(stats['fine_clusters'])} clusters")
-		print(f"  ├─ Total labels: {stats['total_labels']} ({stats['total_labels']/len(unique_labels)*100:.1f}%)")
-		print(f"  └─ Cluster IDs: {stats['fine_clusters'][:25]}{'...' if len(stats['fine_clusters']) > 25 else ''}")
-	
-	# 2D cluster visualizations
-	plt.figure(figsize=(24, 15))
-	dendrogram(
-		Z, 
-		truncate_mode='lastp', 
-		p=30, 
-		show_leaf_counts=True, 
-		color_threshold=super_cluster_distance
-	)
-	plt.axhline(
-		y=super_cluster_distance, 
-		color='#000000', 
-		linestyle='--', 
-		label=f'Cut at {super_cluster_distance:.4f} ({n_super_clusters} super-clusters)',
-		linewidth=2.5,
-		zorder=10
-
-	)
-
-	plt.title(f'Hierarchical Clustering Dendrogram ({linkage_method} Linkage)\n{n_super_clusters} Super-Clusters at distance={super_cluster_distance:.4f}')
-	plt.xlabel('Cluster')
-	plt.ylabel('Distance')
-	plt.legend(loc='upper right', fontsize=12)
-	out_dendogram = clusters_fname.replace(".csv", "_dendrogram.png")
-	plt.savefig(out_dendogram, dpi=200, bbox_inches='tight')
-	plt.close()
-
-	plt.figure(figsize=(24, 15))
-	dendrogram(
-		Z, 
-		color_threshold=super_cluster_distance,
-		leaf_font_size=8
-	)
-	plt.axhline(
-		y=super_cluster_distance, 
-		color='#000000', 
-		linestyle='--', 
-		linewidth=2.5,
-		label=f'Cut at {super_cluster_distance:.4f}',
-		zorder=10
-	)
-	plt.title(f'Full Dendrogram (All {n_fine_clusters} Fine Clusters)')
-	plt.xlabel('Fine Cluster ID')
-	plt.ylabel('Distance')
-	plt.legend()
-	
-	out_full_dendogram = clusters_fname.replace(".csv", "_dendrogram_full.png")
-	plt.savefig(out_full_dendogram, dpi=200, bbox_inches='tight')
-	plt.close()
-
-	# PCA
-	pca_projection = PCA(n_components=2, random_state=0).fit_transform(X)
-	
-	# t-SNE (subsample if too large)
-	if len(unique_labels) > 10000:
-		tsne_indices = np.random.choice(len(unique_labels), 10000, replace=False)
-		tsne_projection = TSNE(n_components=2, random_state=0, perplexity=30).fit_transform(X[tsne_indices])
-		tsne_labels = cluster_labels[tsne_indices]
-	else:
-		tsne_projection = TSNE(n_components=2, random_state=0, perplexity=30).fit_transform(X)
-		tsne_labels = cluster_labels
-	
-	# Color palette
-	n_colors = min(len(cluster_labels), 256)
-	palette = sns.color_palette('tab20', n_colors) if n_colors <= 20 else sns.color_palette('husl', n_colors)
-	colors = [palette[i % len(palette)] for i in cluster_labels]
-	# PCA plot
-	plt.figure(figsize=(27, 17))
-	plt.scatter(*pca_projection.T, s=40, c=colors, alpha=0.6, marker='o')
-	plt.title(f"PCA - Agglomerative Clustering ({len(cluster_labels)} clusters, {len(unique_labels)} labels)")
-	plt.xlabel("PC1")
-	plt.ylabel("PC2")
-	out_pca = clusters_fname.replace(".csv", "_pca_agglomerative.png")
-	plt.savefig(out_pca, dpi=150, bbox_inches='tight')
-	plt.close()
-	
-	# t-SNE plot
-	tsne_colors = [palette[i % len(palette)] for i in tsne_labels]
-	plt.figure(figsize=(27, 17))
-	plt.scatter(*tsne_projection.T, s=40, c=tsne_colors, alpha=0.6, marker='o')
-	plt.title(f"t-SNE - Agglomerative Clustering ({len(cluster_labels)} clusters)")
-	plt.xlabel("t-SNE 1")
-	plt.ylabel("t-SNE 2")
-	out_tsne = clusters_fname.replace(".csv", "_tsne_agglomerative.png")
-	plt.savefig(out_tsne, dpi=150, bbox_inches='tight')
-	plt.close()
 	
 	print(f"\nCanonical labels per cluster")
-	
 	df = pd.DataFrame(
 		{
 			'label': unique_labels,

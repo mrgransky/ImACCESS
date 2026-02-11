@@ -56,8 +56,17 @@ def merge_csv_files(
 	# [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
 	canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
 	canonical_multimodal_labels = []
-	for i, labels in tqdm(enumerate(df.multimodal_labels.tolist()), desc="Canonical labels"):
+	multimodal_labels = df['multimodal_labels'].tolist()
+	print(f">> Mapping {len(multimodal_labels)} multimodal labels to canonical labels...")
+	print(f"multimodal_labels: {type(multimodal_labels)} {len(multimodal_labels)}")
+	print(multimodal_labels[:15])
+
+	for labels in tqdm(multimodal_labels, desc="Canonical labels"):
+		print(f"labels: {type(labels)} {len(labels)}")
+		print(labels[:15])
 		canonical_labels_ = [canonical_labels[label] for label in labels]
+		print(f"canonical_labels_: {type(canonical_labels_)} {len(canonical_labels_)}")
+		print(canonical_labels_[:15])
 		canonical_multimodal_labels.append(canonical_labels_)
 
 	df['multimodal_canonical_labels'] = canonical_multimodal_labels
