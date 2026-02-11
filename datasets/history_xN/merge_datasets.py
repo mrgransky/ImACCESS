@@ -160,7 +160,7 @@ def merge_datasets(
 	)
 
 	if verbose:
-		print(f"\n>> Saving train/val splits: {single_label_train_df.shape} | {single_label_val_df.shape}")
+		print(f"\n>> Saving train/val splits: TRAIN: {single_label_train_df.shape} VAL: {single_label_val_df.shape}")
 
 	single_label_train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'), index=False)
 	single_label_val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'), index=False)

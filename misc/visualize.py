@@ -4029,13 +4029,15 @@ def plot_train_val_label_distribution(
 	plt.close()
 
 def plot_year_distribution(
-		df: pd.DataFrame,
-		dname: str,
-		fpth: str,
-		BINs: int = 50,
-		FIGURE_SIZE: tuple = (18, 8),
-		DPI: int = 200,
-	):
+	df: pd.DataFrame,
+	dname: str,
+	fpth: str,
+	BINs: int = 50,
+	FIGURE_SIZE: tuple = (18, 8),
+	DPI: int = 200,
+):
+
+	print(f"\nPlotting year distribution: df: {df.shape}")
 
 	# Convert 'doc_date' to datetime and handle invalid entries
 	df['doc_date'] = pd.to_datetime(df['doc_date'], errors='coerce')

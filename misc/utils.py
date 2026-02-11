@@ -566,7 +566,7 @@ def get_stratified_split(
 
 	labels_to_drop = label_counts[label_counts == 1].index
 	if verbose:
-		print(f"\nFound {len(labels_to_drop)} label(s) that occur(s) only once:\n{labels_to_drop.tolist()}\n=> Dropping them...\n")
+		print(f"\n>> Dropping {len(labels_to_drop)} label(s) that occur(s) only once:\n{labels_to_drop.tolist()}\n")
 
 	# Filter out rows with labels that appear only once
 	df_filtered = df[~df[label_col].isin(labels_to_drop)]
