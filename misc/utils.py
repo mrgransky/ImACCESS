@@ -67,7 +67,6 @@ from sklearn.metrics import silhouette_score
 from sklearn.neighbors import NearestNeighbors
 
 from bs4 import BeautifulSoup
-from multiprocessing import Pool
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, TimeoutError
 from requests.exceptions import RequestException
 import torchvision.transforms as T
