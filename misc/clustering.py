@@ -1093,8 +1093,8 @@ def cluster(
 		print(f"   ├─ distance: {distance_metric}")
 		print(f"   ├─ sample: {labels[:5]}")
 		# Parse first label if it's a string, otherwise use as-is
-		first_label = ast.literal_eval(labels[0]) if isinstance(labels[0], str) else labels[0]
-		print(f"   ├─────> {first_label} {type(first_label)}")
+		requires_type_exchange = isinstance(labels[0], str)
+		print(f"   ├─────> {type(labels[0])} requires_type_exchange: {requires_type_exchange}")
 		print(f"   └─ nc: {nc}")
 	
 	print(f"\n[DEDUP] {len(labels)} raw labels")

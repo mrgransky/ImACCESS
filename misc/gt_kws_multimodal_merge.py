@@ -67,7 +67,7 @@ def merge_csv_files(
 	print(f"multimodal_labels: {type(multimodal_labels)} {len(multimodal_labels)}")
 	print(multimodal_labels[:15])
 
-	for labels in tqdm(multimodal_labels, desc="Canonical labels"):
+	for labels in tqdm(multimodal_labels, desc="Mapping to canonical labels"):
 		# Parse string representation to actual list
 		if isinstance(labels, str):
 			try:
@@ -83,14 +83,16 @@ def merge_csv_files(
 		canonical_labels_ = [canonical_labels.get(label, label) for label in labels]
 		canonical_multimodal_labels.append(canonical_labels_)
 
+	if verbose:
+		print(f">> canonical_multimodal_labels: {type(canonical_multimodal_labels)} {len(canonical_multimodal_labels)}")
+		print(canonical_multimodal_labels[:15])
+
 	df['multimodal_canonical_labels'] = canonical_multimodal_labels
 
 	if verbose:
 		print(df["multimodal_canonical_labels"].value_counts())
 		print(f"Saving {type(df)} {df.shape} {list(df.columns)} to {output_csv}")
 
-	if verbose:
-		print(f"Saving {type(df)} {df.shape} to {output_fpath}")
 	df.to_csv(output_fpath, index=False)
 
 	try:
