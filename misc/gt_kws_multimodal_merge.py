@@ -39,6 +39,8 @@ def merge_csv_files(
 		)
 		df = pd.concat([df, temp_df], ignore_index=True)
 
+	print(f">> Merged {len(df)} rows from {len(csv_files)} CSV files: {df.shape}")
+
 	clustered_df = cluster(
 		labels=df['multimodal_labels'].tolist(),
 		# model_id="Qwen/Qwen3-Embedding-8B" if os.getenv('USER') == "alijanif" else "Qwen/Qwen3-Embedding-0.6B",
