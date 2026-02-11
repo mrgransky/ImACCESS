@@ -102,7 +102,7 @@ def merge_datasets(
 		raise RuntimeError("No valid datasets found. Exiting.")
 	
 	if verbose:
-		print(f"Merging {len(single_label_dfs)} dataset(s) into '{dataset_name}'...")
+		print(f"\n>> Merging {len(single_label_dfs)} dataset(s) into {dataset_name}")
 	
 	merged_single_label_df = pd.concat(single_label_dfs, ignore_index=True)
 	print(f"\nmerged_single_label_df: {type(merged_single_label_df)} {merged_single_label_df.shape}\n{list(merged_single_label_df.columns)}\n")
@@ -229,7 +229,7 @@ def merge_datasets(
 		raise RuntimeError("No valid datasets found. Exiting.")
 
 	if verbose:
-		print(f"Merging {len(multi_label_dfs)} dataset(s) into '{dataset_name}'...")
+		print(f"\n>> Merging {len(multi_label_dfs)} dataset(s) into {dataset_name}")
 
 	merged_multi_label_df = pd.concat(multi_label_dfs, ignore_index=True)	
 

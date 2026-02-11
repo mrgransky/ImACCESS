@@ -24,9 +24,8 @@ def merge_csv_files(
 		print(f"Found {len(csv_files)} CSV files to merge:")
 		for i, file in enumerate(csv_files):
 			print(f"\t{i:02d}: {file}")
-		print(f"Merging {len(csv_files)} CSV files to {output_fpath}...")
+		print(f"\n>> Merging {len(csv_files)} CSV files to {output_fpath}")
 
-	# Initialize an empty DataFrame
 	df = pd.DataFrame()
 
 	# Iterate over the CSV files and concatenate them
@@ -65,8 +64,7 @@ def merge_csv_files(
 		print(f"Saving {type(df)} {df.shape} {list(df.columns)} to {output_csv}")
 
 	if verbose:
-		print(f"Saving {type(df)} {df.shape} to {output_fpath}...")
-
+		print(f"Saving {type(df)} {df.shape} to {output_fpath}")
 	df.to_csv(output_fpath, index=False)
 
 	try:

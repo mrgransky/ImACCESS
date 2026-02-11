@@ -591,9 +591,9 @@ def get_stratified_split(
 
 	if verbose:
 		print("Labels per dataset in train split:")
-		print(train_df.groupby('dataset')['label'].nunique())
+		print(train_df[label_col].value_counts())
 		print("Labels per dataset in val split:")
-		print(val_df.groupby('dataset')['label'].nunique())
+		print(val_df[label_col].value_counts())
 
 	return train_df, val_df
 
