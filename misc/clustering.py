@@ -1000,8 +1000,7 @@ def cluster(
 	if verbose:
 		print(f"[INFO] {model_id} Attention implementation: {attn_impl}")
 
-	# Load model and generate embeddings
-	print(f"\nSentenceTransformer {model_id}")
+	print(f"\n[INIT] Loading Sentence Transformer {model_id}")
 	model = SentenceTransformer(
 		model_name_or_path=model_id,
 		trust_remote_code=True,
@@ -1011,12 +1010,12 @@ def cluster(
 		tokenizer_kwargs={"padding_side": "left"},
 	).to(device)
 	
-	print(f"Model loaded: {sum(p.numel() for p in model.parameters()):,} parameters")
+	print(f"[LOADED] {sum(p.numel() for p in model.parameters()):,} parameters")
 	
 	print(f"\n[EMBEDDING] encoding {len(unique_labels)} labels using {model_id} in: {device}")
 	X = model.encode(
 		unique_labels,
-		batch_size=512,
+		batch_size=1024,
 		show_progress_bar=verbose,
 		convert_to_numpy=True,
 		normalize_embeddings=True,  # Critical for cosine distance
