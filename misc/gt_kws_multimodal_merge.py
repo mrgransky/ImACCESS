@@ -1,5 +1,6 @@
 from utils import *
 import visualize as viz
+from nlp_utils import _post_process_
 from clustering import cluster
 
 # how to run:
@@ -64,8 +65,11 @@ def merge_csv_files(
 	df = pd.concat(dfs, ignore_index=True)
 	print(f">> Merged {type(df)} from {len(csv_files)} CSV files: {df.shape}\n{list(df.columns)}")
 
+	# post_process multimodal labels:
+	multimodal_labels = _post_process_(labels_list=df['multimodal_labels'].tolist(), verbose=verbose)
+
 	clustered_df = cluster(
-		labels=df['multimodal_labels'].tolist(),
+		labels=multimodal_labels,
 		model_id=model_id,
 		batch_size=2048,
 		nc=nc,
@@ -95,7 +99,7 @@ def merge_csv_files(
 	) as pool:
 		df['multimodal_canonical_labels'] = pool.map(
 			parallel_canonical_mapping,
-			df['multimodal_labels'].tolist(),
+			multimodal_labels,
 			chunksize=chunksize
 		)
 	elapsed = time.time() - t_start
