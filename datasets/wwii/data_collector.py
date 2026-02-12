@@ -75,17 +75,13 @@ headers = {
 	'Pragma': 'no-cache',
 }
 
-# Define realistic headers once
 HEADERS = {
-		"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-		"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-		"Accept-Language": "en-US,en;q=0.5",
-		"Accept-Encoding": "gzip, deflate",
-		"Connection": "keep-alive",
-		"Upgrade-Insecure-Requests": "1",
-		"Sec-Fetch-Dest": "document",
-		"Sec-Fetch-Mode": "navigate",
-		"Sec-Fetch-Site": "none",
+	"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+	"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+	"Accept-Language": "en-US,en;q=0.5",
+	"Accept-Encoding": "gzip, deflate",
+	"Connection": "keep-alive",
+	"Upgrade-Insecure-Requests": "1",
 }
 
 def _download_and_process_image(
@@ -180,7 +176,7 @@ def get_dframe(
 	verbose: bool=False,
 ) -> pd.DataFrame:
 
-	print(f">> Extracting DF for user_query[{doc_idx}]: « {user_query} » from {doc_url} with thumbnail_size={thumbnail_size}")
+	print(f"\n>> Extracting DF for user_query[{doc_idx}]: « {user_query} » from {doc_url} with thumbnail_size={thumbnail_size}")
 	
 	content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}"
 	print(f"content_to_hash: {content_to_hash}")
@@ -868,8 +864,8 @@ def main():
 		f"{base_url}/germany/units/sturmgeschutz_brigade_244/" : "military unit",
 		}
 	
-	# slice[:N] URLs [JUST FOR TESTING]:
-	URLs = {k:v for i, (k, v) in enumerate(URLs.items()) if i < 25}
+	# # slice[:N] URLs [JUST FOR TESTING]:
+	# URLs = {k:v for i, (k, v) in enumerate(URLs.items()) if i < 25}
 
 	dfs_fname = os.path.join(HITs_DIR, f"{dataset_name}_{len(URLs)}_dfs.gz")
 	
