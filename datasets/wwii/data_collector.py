@@ -75,16 +75,18 @@ headers = {
 	'Pragma': 'no-cache',
 }
 
-session = requests.Session()
-retries = Retry(
-	total=3,
-	backoff_factor=2,           # 2, 4, 8, 16, 32 sec
-	status_forcelist=[429, 500, 502, 503, 504],
-	allowed_methods=["GET"]
-)
-adapter = HTTPAdapter(max_retries=retries)
-session.mount("http://", adapter)
-session.mount("https://", adapter)
+# Define realistic headers once
+HEADERS = {
+		"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+		"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+		"Accept-Language": "en-US,en;q=0.5",
+		"Accept-Encoding": "gzip, deflate",
+		"Connection": "keep-alive",
+		"Upgrade-Insecure-Requests": "1",
+		"Sec-Fetch-Dest": "document",
+		"Sec-Fetch-Mode": "navigate",
+		"Sec-Fetch-Site": "none",
+}
 
 def _download_and_process_image(
 	img_url: str,
@@ -247,16 +249,13 @@ def get_dframe(
 
 	doc_url_info = extract_url_info(doc_url)
 	print(json.dumps(doc_url_info, indent=4, ensure_ascii=False))
+	session = requests.Session()
+	session.headers.update(HEADERS)
 	try:
-		response = session.get(
-			doc_url,
-			headers={
-				"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-			},
-		)
+		response = session.get(doc_url, timeout=30)
 		response.raise_for_status()
-	except requests.exceptions.RequestException as e:
-		print(f"<!> Failed after retries: {e} | URL: {doc_url}")
+	except Exception as e:
+		print(f"<!> {e} | URL: {doc_url}")
 		return None
 	print("-"*150)
 
