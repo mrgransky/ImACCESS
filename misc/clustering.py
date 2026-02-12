@@ -1087,8 +1087,12 @@ def cluster(
 	print(f"Unique {type(unique_labels)} labels: {len(unique_labels)}")
 	print(f"Sample unique labels: {unique_labels[:15]}")
 	
-	# attn_implementation = "flash_attention_2" if "gemma" in model_id else "eager"
-	dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
+	dtype = torch.float32  # More stable than float16
+	if torch.cuda.is_available():
+		if torch.cuda.is_bf16_supported():
+			dtype = torch.bfloat16  # bfloat16 is more stable than float16
+		else:
+			dtype = torch.float32
 	if verbose:
 		print(f"[INFO] {model_id} Dtype selection: {dtype}")
 
@@ -1143,9 +1147,50 @@ def cluster(
 		show_progress_bar=verbose,
 		convert_to_numpy=True,
 		normalize_embeddings=True,
+		precision='float32', # float32 is more stable than float16 for CPU stability
 	)
-	print(f"Embeddings: {type(X)} {X.shape} {X.dtype} (min, max): ({X.min():.1f}, {X.max():.1f}) (mean, std): ({X.mean():.1f}, {X.std():.1f})")
-			
+
+	# After encoding
+	if np.isnan(X).any():
+		nan_count = np.isnan(X).sum()
+		nan_rows = np.where(np.isnan(X).any(axis=1))[0]
+		
+		print("\n" + "="*80)
+		print(f"❌ ERROR: {nan_count} NaN values in embeddings!")
+		print("="*80)
+		print(f"Affected labels ({len(nan_rows)} total):")
+		for idx in nan_rows[:10]:  # Show first 10
+				print(f"  - {unique_labels[idx]}")
+		if len(nan_rows) > 10:
+				print(f"  ... and {len(nan_rows) - 10} more")
+		
+		print("\nROOT CAUSE:")
+		print("  1. Model dtype is float16 on CPU (use float32)")
+		print("  2. Model is too large for available memory")
+		print("  3. Numerical instability in model")
+		
+		print("\nFIX:")
+		print("  - Use torch_dtype=torch.float32 when loading model")
+		print("  - Use precision='float32' in model.encode()")
+		print("  - Or switch to GPU / smaller model")
+		
+		raise ValueError("Cannot proceed with NaN embeddings")
+
+	if np.isinf(X).any():
+		inf_count = np.isinf(X).sum()
+		raise ValueError(f"Infinite values detected ({inf_count}) - numerical overflow!")
+
+	if X.shape[0] == 0:
+		raise ValueError("No embeddings generated")
+
+	if np.allclose(X, 0):
+		raise ValueError("All embeddings are zero vectors")
+
+	print(f"Embeddings {X.shape} {X.dtype}")
+	print(f"  ├─ Range: [{X.min():.4f}, {X.max():.4f}]")
+	print(f"  ├─ Mean: {X.mean():.4f}")
+	print(f"  └─ Std: {X.std():.4f}")
+
 	# Compute linkage matrix
 	print(f"[LINKAGE] {linkage_method} Agglomerative Clustering on: {X.shape} embeddings [takes a while...]")
 	t0 = time.time()
@@ -1337,8 +1382,5 @@ def cluster(
 		import traceback
 		traceback.print_exc()
 		print("\nContinuing without quality analysis...")
-
-
-
 
 	return df
