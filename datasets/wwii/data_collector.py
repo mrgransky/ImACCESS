@@ -63,14 +63,6 @@ OUTPUT_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
-headers = {
-	'Content-type': 'application/json',
-	'Accept': 'application/json; text/plain; */*',
-	'Cache-Control': 'no-cache',
-	'Connection': 'keep-alive',
-	'Pragma': 'no-cache',
-}
-
 FIGURE_SIZE = (12, 9)
 DPI = 250
 # Define regex pattern for WWII years: 1939–1945
@@ -82,6 +74,17 @@ headers = {
 	'Connection': 'keep-alive',
 	'Pragma': 'no-cache',
 }
+
+session = requests.Session()
+retries = Retry(
+	total=3,
+	backoff_factor=2,           # 2, 4, 8, 16, 32 sec
+	status_forcelist=[429, 500, 502, 503, 504],
+	allowed_methods=["GET"]
+)
+adapter = HTTPAdapter(max_retries=retries)
+session.mount("http://", adapter)
+session.mount("https://", adapter)
 
 def _download_and_process_image(
 	img_url: str,
@@ -244,18 +247,18 @@ def get_dframe(
 
 	doc_url_info = extract_url_info(doc_url)
 	print(json.dumps(doc_url_info, indent=4, ensure_ascii=False))
-	print("-"*150)
-
 	try:
-		response = requests.get(
-			doc_url, 
-			timeout=(10, 30), # (connect timeout, read timeout)
-			headers=headers,
+		response = session.get(
+			doc_url,
+			headers={
+				"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+			},
 		)
 		response.raise_for_status()
-	except requests.RequestException as e:
-		print(f"<!> Error sending GET request: {e}")
+	except requests.exceptions.RequestException as e:
+		print(f"<!> Failed after retries: {e} | URL: {doc_url}")
 		return None
+	print("-"*150)
 
 	df_st_time = time.time()
 	try:

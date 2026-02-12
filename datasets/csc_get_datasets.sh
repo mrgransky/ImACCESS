@@ -35,10 +35,10 @@ DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 mkdir -p "$DATASET_DIR"
 
 DATASETS=(
+	"wwii"
 	"europeana"
 	"national_archive"
 	"smu"
-	"wwii"
 )
 
 CURRENT_DATASET="${DATASETS[$SLURM_ARRAY_TASK_ID]}"
