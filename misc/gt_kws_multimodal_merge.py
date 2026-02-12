@@ -23,7 +23,7 @@ def parallel_canonical_mapping(labels_str):
 			labels = ast.literal_eval(labels_str)
 		except (ValueError, SyntaxError):
 			return []
-	elif pd.isna(labels_str):
+	elif labels_str is None or (isinstance(labels_str, float) and math.isnan(labels_str)):
 		return []
 	elif isinstance(labels_str, list):
 		labels = labels_str

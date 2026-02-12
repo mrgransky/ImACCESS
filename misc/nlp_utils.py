@@ -490,7 +490,7 @@ def _post_process_(
 				continue
 
 			# exclude if "unidentified" or "unknown" in the keyword "american unknown soldier", "unidentified ship"
-			if any(word in lemma for word in ["unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece"]):
+			if any(word in lemma for word in ["unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part"]):
 				if verbose:
 					print(f"    ✗ Skipped: unidentified/unknown detected! {lemma}")
 				continue
