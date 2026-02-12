@@ -10,7 +10,7 @@ import misc.visualize as viz
 from misc.nlp_utils import get_enriched_description, validate_text_cleaning_pipeline
 
 # how to run in local:
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std --thumbnail_size 512,512 -v > logs/wwii_dataset_collection.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 12 --img_mean_std --thumbnail_size 512,512 -v > logs/wwii_dataset_collection.out &
 
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
@@ -172,6 +172,7 @@ def get_dframe(
 	doc_idx: int,
 	doc_url: str, 
 	user_query: str,
+	num_workers: int=8,
 	thumbnail_size: tuple=None,
 	verbose: bool=False,
 ) -> pd.DataFrame:
@@ -192,11 +193,21 @@ def get_dframe(
 			raise ValueError(f"Empty DF: {df.shape} => Exit...")
 
 		# parallelize the above for loop:
-		missing_indices = [i for i, path in enumerate(df['img_path'].tolist()) if not os.path.exists(path)]
+		missing_indices = [
+			i 
+			for i, path in enumerate(df['img_path'].tolist()) 
+			if not os.path.exists(path)
+		]
+		mising_paths = [
+			path 
+			for path in df['img_path'].tolist() 
+			if not os.path.exists(path)
+		]
 
 		if missing_indices:
 			if verbose:
-				print(f"Found {len(missing_indices)} missing images. Downloading in parallel...")
+				print(f"Downloading {len(missing_indices)} missing images using {num_workers} workers...")
+				print(f"Missing paths:\n{mising_paths}\n")
 			
 			def download_task(idx: int):
 				img_path = df['img_path'].iloc[idx]
@@ -205,14 +216,12 @@ def get_dframe(
 					img_url=img_url,
 					img_fpath=img_path,
 					thumbnail_size=thumbnail_size,
-					verbose=False,   # keep per-image logs quiet here
+					verbose=verbose,   # keep per-image logs quiet here
 				)
 				return idx, img_url, success
 			
-			max_workers = min(8, len(missing_indices))
-			
 			failed = []
-			with ThreadPoolExecutor(max_workers=max_workers) as ex:
+			with ThreadPoolExecutor(max_workers=num_workers) as ex:
 				futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
 				for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading missing images", ncols=100):
 					idx, url, ok = fut.result()
@@ -881,6 +890,7 @@ def main():
 				doc_idx=i, 
 				doc_url=k, 
 				user_query=v,
+				num_workers=args.num_workers,
 				thumbnail_size=args.thumbnail_size,
 				verbose=args.verbose,
 			) for i, (k, v) in enumerate(URLs.items())
@@ -921,7 +931,7 @@ def main():
 		print(f"Failed to write Excel file: {e}")
 
 	unique_labels = single_label_final_df['label'].unique()
-	print(f"{len(unique_labels)} Unique labels: {unique_labels}")
+	print(f"{len(unique_labels)} Unique labels:\n{unique_labels}\n")
 
 	print(single_label_final_df['label'].value_counts())
 
