@@ -182,35 +182,17 @@ def get_dframe(
 
 	print(f">> Extracting DF for user_query[{doc_idx}]: « {user_query} » from {doc_url} with thumbnail_size={thumbnail_size}")
 	
-	content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}{f'_{user_query}' if user_query else ''}"
+	content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}"
 	print(f"content_to_hash: {content_to_hash}")
-
 	hash_digest = hashlib.md5(content_to_hash.encode('utf-8')).hexdigest()
-	df_fpth = os.path.join(HITs_DIR, f"df_{hash_digest}.gz")
+	df_fpth = os.path.join(HITs_DIR, f"df_{f'{user_query}_' if user_query else ''}{hash_digest}.gz")
+	print(f"df_fpth: {df_fpth}")
 
 	if os.path.exists(df_fpth):
 		df = load_pickle(fpath=df_fpth)
 
 		if df.shape[0] == 0:
 			raise ValueError(f"Empty DF: {df.shape} => Exit...")
-
-		# if verbose:
-		# 	print(f"Loaded {df_fpth} | {df.shape} | {type(df)} | {df.columns}")
-		# 	print(df.head())
-
-		# # check if image exists in df['img_path'] if not download and process it
-
-		# # sequential:
-		# for img_idx, img_path in enumerate(df['img_path'].tolist()):
-		# 	if not os.path.exists(img_path):
-		# 		if verbose:
-		# 			print(f"Image[{img_idx}] {img_path} not found, downloading...")
-		# 		_download_and_process_image(
-		# 			img_url=df['img_url'][img_idx], 
-		# 			img_fpath=img_path, 
-		# 			thumbnail_size=thumbnail_size, 
-		# 			verbose=verbose,
-		# 		)
 
 		# parallelize the above for loop:
 		missing_indices = [i for i, path in enumerate(df['img_path'].tolist()) if not os.path.exists(path)]
@@ -249,27 +231,24 @@ def get_dframe(
 
 	doc_url_info = extract_url_info(doc_url)
 	print(json.dumps(doc_url_info, indent=4, ensure_ascii=False))
+
 	session = requests.Session()
 	session.headers.update(HEADERS)
+	
+	df_st_time = time.time()
 	try:
 		response = session.get(doc_url, timeout=30)
 		response.raise_for_status()
-	except Exception as e:
-		print(f"<!> {e} | URL: {doc_url}")
-		return None
-	print("-"*150)
-
-	df_st_time = time.time()
-	try:
-		response = requests.get(doc_url)
-		response.raise_for_status()
+		
 		soup = BeautifulSoup(response.text, 'html.parser')
 		hits = soup.find_all('img', class_='attachment-thumbnail')
-		descriptions = soup.find_all("p")
+		# descriptions = soup.find_all("p") # useless
 		header = soup.find('h2', class_="entry-title").text
 	except Exception as e:
-		print(f"Failed to retrieve doc_url or parse content: {e}")
+		print(f"<!> Failed to retrieve or parse {doc_url}: {e}")
 		return None
+	
+	print("-"*150)
 
 	# parts = [
 	# 	header,
@@ -280,6 +259,7 @@ def get_dframe(
 	# header = " ".join(filter(None, parts))
 
 	print(f"\nDoc header:\n{header}")
+	# print(f"\nDoc Descriptions:\n{descriptions}") # useless
 
 	caption_element = soup.find('div', class_='entry-caption')
 	if caption_element:
@@ -888,8 +868,8 @@ def main():
 		f"{base_url}/germany/units/sturmgeschutz_brigade_244/" : "military unit",
 		}
 	
-	# # slice[:5] URLs [JUST FOR TESTING]:
-	# URLs = {k:v for i, (k, v) in enumerate(URLs.items()) if i < 3}
+	# slice[:N] URLs [JUST FOR TESTING]:
+	URLs = {k:v for i, (k, v) in enumerate(URLs.items()) if i < 25}
 
 	dfs_fname = os.path.join(HITs_DIR, f"{dataset_name}_{len(URLs)}_dfs.gz")
 	
