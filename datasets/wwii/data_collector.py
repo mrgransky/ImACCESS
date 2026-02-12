@@ -63,6 +63,14 @@ OUTPUT_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
+headers = {
+	'Content-type': 'application/json',
+	'Accept': 'application/json; text/plain; */*',
+	'Cache-Control': 'no-cache',
+	'Connection': 'keep-alive',
+	'Pragma': 'no-cache',
+}
+
 FIGURE_SIZE = (12, 9)
 DPI = 250
 # Define regex pattern for WWII years: 1939–1945
@@ -236,8 +244,14 @@ def get_dframe(
 
 	doc_url_info = extract_url_info(doc_url)
 	print(json.dumps(doc_url_info, indent=4, ensure_ascii=False))
+	print("-"*150)
+
 	try:
-		response = requests.get(doc_url)
+		response = requests.get(
+			doc_url, 
+			timeout=(10, 30), # (connect timeout, read timeout)
+			headers=headers,
+		)
 		response.raise_for_status()
 	except requests.RequestException as e:
 		print(f"<!> Error sending GET request: {e}")
