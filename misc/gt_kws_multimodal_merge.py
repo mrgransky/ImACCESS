@@ -132,7 +132,7 @@ def main():
 	parser = argparse.ArgumentParser(description='Merge CSV files')
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Directory containing CSV files')
 	parser.add_argument('--num_workers', '-nw', type=int, required=True, help='Number of workers for parallel processing')
-	parser.add_argument('--model_id', '-m', type=str, default="Qwen/Qwen3-Embedding-0.6B", help='HuggingFace model ID')
+	parser.add_argument('--model_id', '-m', type=str, default="sentence-transformers/all-MiniLM-L6-v2", help='HuggingFace model ID')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
 	parser.add_argument('--num_clusters', '-nc', type=int, default=None, help='Number of clusters')
 	args = parser.parse_args()
