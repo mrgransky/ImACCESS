@@ -2969,10 +2969,10 @@ def analyze_multi_source_agreement(processed_dfs, output_dir, file_name, DPI=200
 			
 			print(f"Unique labels in '{col_name}': {len(unique_labels_by_source[col_name])}")
 		
-		print("-"*100)
-		print(unique_labels_by_source)
-		print(sample_count_by_source)
-		print("-"*100)
+		# print("-"*100)
+		# print(unique_labels_by_source)
+		# print(sample_count_by_source)
+		# print("-"*100)
 
 		# Dynamically get the source sets based on available keys
 		source_keys = list(unique_labels_by_source.keys())
