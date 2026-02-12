@@ -181,7 +181,8 @@ def get_dframe(
 	content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}"
 	print(f"content_to_hash: {content_to_hash}")
 	hash_digest = hashlib.md5(content_to_hash.encode('utf-8')).hexdigest()
-	df_fpth = os.path.join(HITs_DIR, f"df_{f'{user_query}_' if user_query else ''}{hash_digest}.gz")
+	query_prefix = user_query.replace(' ', '_') + '_' if user_query else ''
+	df_fpth = os.path.join(HITs_DIR, f"df_{query_prefix}{hash_digest}.gz")
 	print(f"df_fpth: {df_fpth}")
 
 	if os.path.exists(df_fpth):
@@ -700,7 +701,7 @@ def main():
 		f"{base_url}/uk/raf/lancaster/": "aircraft",
 		f"{base_url}/uk/raf/lanc/": "aircraft",
 		f"{base_url}/uk/raf/lincoln/": "aircraft",
-		f"{base_url}/uk/raf/london/": "water based aircraft",
+		f"{base_url}/uk/raf/london/": "water-based aircraft",
 		f"{base_url}/uk/raf/lysander/": "aircraft",
 		f"{base_url}/uk/raf/manchester/": "aircraft",
 		f"{base_url}/uk/raf/maryland/": "aircraft",
@@ -712,7 +713,7 @@ def main():
 		f"{base_url}/uk/raf/seafang/": "aircraft",
 		f"{base_url}/uk/raf/seafire/": "aircraft",
 		f"{base_url}/uk/raf/shetland/": "aircraft",
-		f"{base_url}/uk/raf/singapore/": "water based aircraft",
+		f"{base_url}/uk/raf/singapore/": "water-based aircraft",
 		f"{base_url}/uk/raf/skua/": "aircraft",
 		f"{base_url}/uk/raf/spiteful/": "aircraft",
 		f"{base_url}/uk/raf/spitfire/": "aircraft",
@@ -724,7 +725,7 @@ def main():
 		f"{base_url}/uk/raf/stirling/": "aircraft",
 		f"{base_url}/uk/raf/sunderland/": "aircraft",
 		f"{base_url}/uk/raf/sund/": "aircraft",
-		f"{base_url}/uk/raf/swordfish/": "water based aircraft",
+		f"{base_url}/uk/raf/swordfish/": "water-based aircraft",
 		f"{base_url}/uk/raf/tempest/": "aircraft",
 		f"{base_url}/uk/raf/tornado/": "aircraft",
 		f"{base_url}/uk/raf/typhoon/": "aircraft",
