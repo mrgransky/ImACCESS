@@ -2778,11 +2778,8 @@ def analyze_top_labels_per_source(
 		
 		# Singleton analysis
 		source_singletons = source_counts_df[source_counts_df['Count'] == 1]['Label'].tolist()
-		print(f"Singleton labels {type(source_singletons)}: {len(source_singletons)}/{len(source_unique)} ({len(source_singletons) / len(source_unique) * 100:.2f}%):")
-		print(source_singletons)
-		for i, label in enumerate(sorted(source_singletons)):
-			print(f"{label}")
-		print(f"{'-'*80}")
+		print(f"Singleton {col} {type(source_singletons)}: {len(source_singletons)}/{len(source_unique)} ({len(source_singletons) / len(source_unique) * 100:.2f}%):")
+		print(source_singletons[:15])
 
 		# Create individual visualization for this source
 		plt.figure(figsize=(14, 12))
@@ -2803,7 +2800,7 @@ def analyze_top_labels_per_source(
 		)
 		plt.close()
 	
-	# PART 2: Comparative Analysis - Side-by-side
+	# Comparative Analysis - Side-by-side
 	print("\n--- COMPARATIVE ANALYSIS: Top Labels Across Sources ---")	
 	# Create side-by-side comparison plot
 	n_sources = len(all_label_counts)
@@ -3188,7 +3185,7 @@ def perform_multilabel_eda(
 		print(f"Error: Dataset not found at '{data_path}'. Please check the path.")
 		return
 
-	print(f">> Enhanced Multi-label EDA for {data_path} (column: {label_column})")
+	print(f"\n>> Enhanced Multi-label EDA for {data_path} (column: {label_column})")
 	eda_st = time.time()
 	dataset_dir = os.path.dirname(data_path)
 	output_dir = os.path.join(dataset_dir, "outputs")
@@ -3248,9 +3245,9 @@ def perform_multilabel_eda(
 	df['label_cardinality'] = df[label_column].apply(len)
 	print(df['label_cardinality'].describe())
 
-	plt.figure(figsize=(15, 11))
+	plt.figure(figsize=(20, 8))
 	sns.histplot(df['label_cardinality'], bins=range(1, int(df['label_cardinality'].max()) + 2), kde=False, color='skyblue')
-	plt.title(f'Distribution of Label Cardinality (Labels per Sample for "{label_column}")')
+	plt.title(f'Label Cardinality Distribution (Labels per Sample for "{label_column}")')
 	plt.xlabel('Number of Labels')
 	plt.ylabel('Number of Samples')
 	plt.xticks(range(1, int(df['label_cardinality'].max()) + 1), rotation=0, fontsize=8)
@@ -4855,7 +4852,6 @@ def plot_label_distribution(
 		)
 	)
 
-	# Enhanced title and labels
 	plt.title(
 		f'Label Distribution (Total samples: {df.shape[0]} Unique Labels: {len(df[label_column].unique())})', 
 		fontsize=15,

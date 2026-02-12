@@ -701,5 +701,6 @@ Syrian
 Taiwanese
 Turkish
 Vietnamese
+Viet
 Yugoslav
 Yugoslavian

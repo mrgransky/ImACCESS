@@ -431,11 +431,11 @@ def _post_process_(
 					else:
 						print(f"        → {repr(s)}: Lemmatized → {repr(lemma)} (unchanged)")
 			
-			# Check minimum length (but exempt abbreviations)
-			if lemma.isupper():
-				if verbose:
-					print(f"        → {lemma} All uppercase detected, skipping")
-				continue
+			# # Check minimum length (but exempt abbreviations)
+			# if lemma.isupper():
+			# 	if verbose:
+			# 		print(f"        → {lemma} All uppercase detected, skipping")
+			# 	continue
 
 			if (
 				len(lemma) < min_kw_ch_length
@@ -470,11 +470,11 @@ def _post_process_(
 					print(f"        → {lemma} Number detected, skipping")
 				continue
 
-			# # check for phrasal verbs or words containing prepositions: (dangerous)
-			# if any(lm in STOPWORDS for lm in lemma.split()):
-			# 	if verbose:
-			# 		print(f"        → {lemma} Stopword detected, skipping")
-			# 	continue
+			# check for geographic references:
+			if any(lm in geographic_references for lm in lemma.split()):
+				if verbose:
+					print(f"        → {lemma} Geographic reference detected, skipping")
+				continue
 
 			if is_phrasal_verb(lemma):
 				if verbose:
@@ -487,6 +487,12 @@ def _post_process_(
 			):
 				if verbose:
 					print(f"        → {lemma} All words are stopwords or stopword, skipping")
+				continue
+
+			# exclude if "unidentified" or "unknown" in the keyword "american unknown soldier", "unidentified ship"
+			if any(word in lemma for word in ["unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece"]):
+				if verbose:
+					print(f"    ✗ Skipped: unidentified/unknown detected! {lemma}")
 				continue
 
 			# only No. NNNNN ex) No. X1657 or No. 1657

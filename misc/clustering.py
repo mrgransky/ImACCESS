@@ -1306,10 +1306,7 @@ def cluster(
 	
 	eval_clusters(df, X)
 
-
-	print("\n" + "="*80)
-	print("RUNNING COMPREHENSIVE CLUSTER QUALITY ANALYSIS")
-	print("="*80)
+	print("\nRUNNING COMPREHENSIVE CLUSTER QUALITY ANALYSIS\n")
 
 	# Prepare data for analysis function
 	unique_labels_array = np.array(unique_labels)  # Convert list to numpy array

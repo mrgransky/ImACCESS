@@ -964,7 +964,13 @@ def _qwen_llm_response(
 		# Check if cleaned is a number # 1940
 		if cleaned.isdigit():
 			if verbose:
-				print(f"    ✗ Skipped: number")
+				print(f"    ✗ Skipped: number detected! {cleaned}")
+			continue
+
+		# exldude if "unidentified" or "unknown" in the keyword
+		if any(word in cleaned.lower() for word in ["unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece"]):
+			if verbose:
+				print(f"    ✗ Skipped: unidentified/unknown detected! {cleaned}")
 			continue
 
 		# Check for duplicates (case-insensitive)
