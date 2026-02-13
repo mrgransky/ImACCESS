@@ -237,16 +237,17 @@ def get_multimodal_annotation(
 	if verbose:
 		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
 
-	viz.perform_multilabel_eda(
-		data_path=output_csv,
-		label_column='multimodal_canonical_labels'
-	)
 
 	if "_chunk_" not in os.path.basename(csv_file):
 		train_df, val_df = get_multi_label_stratified_split(
 			csv_file=output_csv,
 			val_split_pct=0.35,
 			label_col='multimodal_canonical_labels'
+		)
+
+		viz.perform_multilabel_eda(
+			data_path=output_csv,
+			label_column='multimodal_canonical_labels'
 		)
 
 	return multimodal_labels
