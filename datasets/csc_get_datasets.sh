@@ -11,7 +11,7 @@
 #SBATCH --mem=36G
 #SBATCH --array=0-3
 #SBATCH --partition=test
-#SBATCH --time=1-12:00:00
+#SBATCH --time=0-01:00:00
 
 set -euo pipefail
 
