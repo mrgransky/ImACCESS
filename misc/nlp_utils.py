@@ -117,27 +117,18 @@ def _post_process_(
 	max_kw_word_length: int = 5,
 	verbose: bool = False
 ) -> List[List[str]]:
-	"""
-	Cleans, normalizes, and lemmatizes label lists.
-	1. Handles parsing (str -> list).
-	2. Lowercases and strips quotes/brackets.
-	3. Lemmatizes each word in phrases (e.g., "tool pushers" -> "tool pusher").
-	4. Protects abbreviations (NAS, WACs) from lemmatization.
-	5. Protects quantified plurals (e.g., "two women") from lemmatization.
-	6. Protects title-case phrases (e.g., "As You Like It") from lemmatization.
-	7. Filters out keywords shorter than min_kw_ch_length (except abbreviations).
-	8. Deduplicates within the sample (post-lemmatization).
-	
-	Args:
-		labels_list: List of label lists to process
-		min_kw_ch_length: Minimum character length for keywords (default: 2)
-		verbose: Enable detailed logging
-	"""
-	# Number words for quantified plural detection
+
 	NUMBER_WORDS = {
 		"one", "two", "three", "four", "five",
 		"six", "seven", "eight", "nine", "ten"
 	}
+
+	PROTECTED_ABBREVIATIONS = {
+		'us', 'uk', 'un', 'eu', 'nato', 'usaf', 'usn', 'raf',
+		'ussr', 'usa', 'uss', 'hms', 'rms', 'nasa', 'fbi', 'cia'
+	}
+
+	GERUND_NOUNS = {'building', 'ceiling', 'flooring', 'siding', 'roofing'}
 
 	def is_named_facility(original_phrase: str) -> bool:
 		"""
@@ -200,13 +191,11 @@ def _post_process_(
 		return tokens[0].endswith("ly")
 
 	def is_activity_gerund(original_phrase: str) -> bool:
-		"""
-		Detect single-word activity nouns like:
-		'snowshoeing', 'skiing', 'fishing'
-		"""
+		phrase = original_phrase.lower()
 		return (
-				" " not in original_phrase
-				and original_phrase.lower().endswith("ing")
+			" " not in phrase
+			and phrase.lower().endswith("ing")
+			and phrase not in GERUND_NOUNS
 		)
 
 	def is_event_gerund_phrase(original_phrase: str) -> bool:
@@ -270,7 +259,7 @@ def _post_process_(
 			original_token = original_tokens[i] if i < len(original_tokens) else token
 			is_abbr = original_token.isupper() or '.' in original_token
 			
-			if is_abbr:
+			if is_abbr or token in PROTECTED_ABBREVIATIONS:
 				lemmatized_tokens.append(token)  # Keep as-is
 			else:
 				# For multi-word phrases, treat non-final words as nouns to preserve compound nouns
