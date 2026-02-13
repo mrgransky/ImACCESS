@@ -377,7 +377,17 @@ def _load_llm_(
 					return size_gb
 		except Exception as e:
 			print(f"<!> Failed to estimate model size from safetensors: {e}")
-			raise e
+		
+		# Fallback: estimate from model name or return default
+		print(f"[WARN] Could not get size from safetensors, using fallback estimation")
+		if "30B" in m_id or "32B" in m_id:
+			return 60.0
+		elif "7B" in m_id or "8B" in m_id:
+			return 14.0
+		elif "3B" in m_id or "4B" in m_id:
+			return 8.0
+		else:
+			return 10.0  # Conservative default
 
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	
