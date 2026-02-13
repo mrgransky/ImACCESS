@@ -9,6 +9,10 @@ from misc.utils import *
 import misc.visualize as viz
 from misc.nlp_utils import get_enriched_description, validate_text_cleaning_pipeline
 
+# expand width and height of pandas dataframe
+pd.set_option('display.max_colwidth', None)
+# pd.set_option('display.max_rows', None)
+
 # how to run in local:
 # $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 12 --img_mean_std --thumbnail_size 512,512 -v > logs/wwii_dataset_collection.out &
 
@@ -191,6 +195,20 @@ def get_dframe(
 
 		if df.shape[0] == 0:
 			raise ValueError(f"Empty DF: {df.shape} => Exit...")
+
+		print(df[['id', 'img_path']].head(10))
+		print()
+
+		# change img_path with current dataset directory
+		df['img_path'] = df['img_path'].apply(
+			lambda x: x.replace(
+				os.path.dirname(x), 
+				IMAGE_DIRECTORY
+			)
+		)
+		print(df[['id', 'img_path']].head(10))
+		print("#"*160)
+
 
 		# parallelize the above for loop:
 		missing_indices = [
