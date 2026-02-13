@@ -202,10 +202,7 @@ def get_dframe(
 		# change img_path with current dataset directory
 		# if dataframe is created in another machine, then img_path is not valid
 		df['img_path'] = df['img_path'].apply(
-			lambda x: x.replace(
-				os.path.dirname(x), 
-				IMAGE_DIRECTORY
-			)
+			lambda x: x.replace(os.path.dirname(x), IMAGE_DIRECTORY)
 		)
 		print(df[['id', 'img_path']].head(10))
 		print("#"*160)
