@@ -3076,14 +3076,14 @@ def analyze_multi_source_agreement(processed_dfs, output_dir, file_name, DPI=200
 						print(f"Median Jaccard Agreement: {np.median(agreement_scores):.3f}")
 						
 						# Visualize agreement distribution
-						fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+						fig, axes = plt.subplots(2, 2, figsize=(20, 14))
 						
 						# Agreement score distribution
 						ax = axes[0, 0]
-						ax.hist(agreement_scores, bins=20, color='skyblue', edgecolor='black')
+						ax.hist(agreement_scores, bins=20, color='#00315393', edgecolor="#080A0C")
 						ax.axvline(
 								np.mean(agreement_scores), 
-								color='red', 
+								color="#D60404", 
 								linestyle='--', 
 								label=f'Mean: {np.mean(agreement_scores):.3f}'
 						)
@@ -3097,8 +3097,8 @@ def analyze_multi_source_agreement(processed_dfs, output_dir, file_name, DPI=200
 						ax = axes[0, 1]
 						categories = ['Perfect\nAgreement', 'Partial\nAgreement', 'No\nAgreement']
 						counts = [perfect_agreement, partial_agreement, no_agreement]
-						colors = ['green', 'orange', 'red']
-						ax.bar(categories, counts, color=colors, alpha=0.7, edgecolor='black')
+						colors = ["#24800092", "#AA5500", '#D60404']
+						ax.bar(categories, counts, color=colors, alpha=0.7, edgecolor='#080A0C')
 						ax.set_ylabel('Number of Samples')
 						ax.set_title('Sample-Level Agreement Categories')
 						for i, (cat, count) in enumerate(zip(categories, counts)):
@@ -3153,20 +3153,20 @@ def analyze_multi_source_agreement(processed_dfs, output_dir, file_name, DPI=200
 						}
 						coverage_df = pd.DataFrame(source_coverage)
 						x_pos = np.arange(len(coverage_df))
-						ax.bar(x_pos, coverage_df['Unique Labels'], alpha=0.7, edgecolor='black')
+						ax.bar(x_pos, coverage_df['Unique Labels'], alpha=0.7, edgecolor='#080A0C')
 						ax.set_xticks(x_pos)
 						ax.set_xticklabels(coverage_df['Source'])
 						ax.set_ylabel('Number of Unique Labels')
 						ax.set_title('Label Space Coverage by Source')
 						for i, (labels, pct) in enumerate(zip(coverage_df['Unique Labels'], coverage_df['Coverage %'])):
-								ax.text(i, labels, f'{labels}\n({pct:.1f}%)', ha='center', va='bottom')
+							ax.text(i, labels, f'{labels}\n({pct:.1f}%)', ha='center', va='bottom')
 						ax.grid(axis='y', alpha=0.3)
 						
 						plt.tight_layout()
 						plt.savefig(
-								fname=os.path.join(output_dir, f"{file_name}_agreement_analysis.png"),
-								dpi=DPI,
-								bbox_inches='tight'
+							fname=os.path.join(output_dir, f"{file_name}_agreement_analysis.png"),
+							dpi=DPI,
+							bbox_inches='tight'
 						)
 						plt.close()
 						

@@ -194,7 +194,7 @@ def _post_process_(
 		phrase = original_phrase.lower()
 		return (
 			" " not in phrase
-			and phrase.lower().endswith("ing")
+			and phrase.endswith("ing")
 			and phrase not in GERUND_NOUNS
 		)
 
@@ -354,7 +354,7 @@ def _post_process_(
 			
 			if not item:
 				if verbose:
-					print(f"        → Empty/falsy, skipping")
+					print(f"        → Empty/false, skipping")
 				continue
 			
 			if str(item).isupper():
@@ -362,30 +362,17 @@ def _post_process_(
 					print(f"        → All uppercase detected, skipping")
 				continue
 
-			# Store original before lowercasing (for abbreviation detection)
+			# Capture the raw string
 			original = str(item).strip()
-			
-			# String conversion & basic cleanup
-			s = original.lower()
-			if verbose:
-				print(f"        → After str/strip/lower: {repr(s)}")
 
-			# Strip quotes and brackets
-			s = s.strip('"').strip("'").strip('()').strip('[]')
+			# Create the "Logic String" (Preserves Case)
 			original_cleaned = original.strip('"').strip("'").strip('()').strip('[]')
-
-			# Collapse accidental extra whitespace
-			s = ' '.join(s.split())
 			original_cleaned = ' '.join(original_cleaned.split())
 
+			s = original_cleaned.lower()
 			if verbose:
-				print(f"        → After quote/bracket removal: {repr(s)}")
+				print(f"        → After str/strip/lower: {repr(s)}")
 			
-			if not s:
-				if verbose:
-					print(f"        → Empty after cleanup, skipping")
-				continue
-
 			# --- Lemmatization with guards ---
 			if is_quantified_plural(original_cleaned):
 				lemma = s  # Preserve "two women", "three soldiers"
@@ -475,7 +462,7 @@ def _post_process_(
 				or lemma in STOPWORDS
 			):
 				if verbose:
-					print(f"        → {lemma} All words are stopwords or stopword, skipping")
+					print(f"        → {lemma} Stopword detected! skipping")
 				continue
 
 			# exclude if "unidentified" or "unknown" in the keyword "american unknown soldier", "unidentified ship"

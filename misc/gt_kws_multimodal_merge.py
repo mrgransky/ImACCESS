@@ -5,7 +5,7 @@ from clustering import cluster
 
 # how to run:
 # Puhti/Mahti:
-# srun -J interactive_cpu --account=project_2014707 --partition=small --time=00-23:45:00 --mem=256G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
+# srun -J interactive_cpu --account=project_2014707 --partition=large --time=00-03:45:00 --mem=256G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
 # $ python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4/ -nw 40 -v
 # $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -m "Qwen/Qwen3-Embedding-8B" -nw 40 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
 

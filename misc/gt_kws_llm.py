@@ -968,7 +968,7 @@ def _qwen_llm_response(
 			continue
 
 		# exldude if "unidentified" or "unknown" in the keyword
-		if any(word in cleaned.lower() for word in ["unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece"]):
+		if any(word in cleaned.lower() for word in ["unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part", "series", "chart", "graph", "diagram", "tableau", "plot", "graf", "schematic", "sketch", "sketching", "number", "numbered", "model"]):
 			if verbose:
 				print(f"    ✗ Skipped: unidentified/unknown detected! {cleaned}")
 			continue
