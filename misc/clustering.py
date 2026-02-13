@@ -1186,10 +1186,10 @@ def cluster(
 	if np.allclose(X, 0):
 		raise ValueError("All embeddings are zero vectors")
 
-	print(f"Embeddings {X.shape} {X.dtype}")
+	print(f"Embeddings {type(X)} {X.shape} {X.dtype}")
 	print(f"  ├─ Range: [{X.min():.4f}, {X.max():.4f}]")
-	print(f"  ├─ Mean: {X.mean():.4f}")
-	print(f"  └─ Std: {X.std():.4f}")
+	print(f"  ├─ Mean: {X.mean()}")
+	print(f"  └─ Std: {X.std()}")
 
 	# Compute linkage matrix
 	print(f"[LINKAGE] {linkage_method} Agglomerative Clustering on: {X.shape} embeddings [takes a while...]")
