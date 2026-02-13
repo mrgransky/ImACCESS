@@ -1059,14 +1059,14 @@ def cluster(
 	clusters_fname: str = "clusters.csv",
 	nc: int = None,
 	linkage_method: str = "ward",  # 'average', 'complete', 'single', 'ward'
-	distance_metric: str = "cosine",  # 'cosine', 'euclidean'
+	distance_metric: str = "euclidean",  # 'cosine', 'euclidean'
 	verbose: bool = True,
 ):	
 	if verbose:
 		print(f"\n[AGGLOMERATIVE CLUSTERING] {len(labels)} documents")
 		print(f"   ├─ {model_id} | {device} | batch_size: {batch_size}")
 		print(f"   ├─ linkage: {linkage_method}")
-		print(f"   ├─ distance: {distance_metric}")
+		# print(f"   ├─ distance: {distance_metric}")
 		print(f"   ├─ sample: {labels[:5]}")
 		# Parse first label if it's a string, otherwise use as-is
 		requires_type_exchange = isinstance(labels[0], str)
