@@ -141,6 +141,7 @@ def main():
 	parser.add_argument('--num_clusters', '-nc', type=int, default=None, help='Number of clusters')
 	args = parser.parse_args()
 	args.dataset_dir = os.path.normpath(args.dataset_dir)
+	args.num_workers = min(args.num_workers, multiprocessing.cpu_count())
 	set_seeds(seed=42)
 
 	if args.verbose:
@@ -149,7 +150,7 @@ def main():
 
 	merge_csv_files(
 		dataset_dir=args.dataset_dir, 
-		num_workers=min(args.num_workers, multiprocessing.cpu_count()),
+		num_workers=args.num_workers,
 		model_id=args.model_id,
 		nc=args.num_clusters,
 		verbose=args.verbose,
