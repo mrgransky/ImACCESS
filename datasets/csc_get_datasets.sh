@@ -1,16 +1,16 @@
 #!/bin/bash
 
-#SBATCH --account=project_2009043
+#SBATCH --account=project_2014707
 #SBATCH --job-name=dataset_collection
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
+#SBATCH --cpus-per-task=10
 #SBATCH --mem=36G
 #SBATCH --array=0-3
-#SBATCH --partition=large
+#SBATCH --partition=test
 #SBATCH --time=1-12:00:00
 
 set -euo pipefail
