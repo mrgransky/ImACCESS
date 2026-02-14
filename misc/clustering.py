@@ -1408,7 +1408,7 @@ def get_optimal_num_clusters(
 	# Adaptive range based on dataset size
 	num_samples = X.shape[0]
 	if num_samples > int(3e4):
-		range_n_clusters = range(50, min(1051, num_samples // 35), 50)
+		range_n_clusters = range(50, min(4001, num_samples // 15), 50)
 	elif num_samples > int(2e4):
 		range_n_clusters = range(20, min(751, num_samples // 25), 25)
 	elif num_samples > int(5e3):
