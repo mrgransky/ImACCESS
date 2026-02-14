@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --account=project_2014707
+#SBATCH --account=project_2004072
 #SBATCH --job-name=mm_annot
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
-#SBATCH --mem=96G
+#SBATCH --mem=64G
 #SBATCH --array=0-4
 #SBATCH --partition=gpusmall
 #SBATCH --time=01-12:00:00
