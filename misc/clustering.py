@@ -601,524 +601,6 @@ def _compute_gini(values):
 		
 		return gini
 
-def run_validation_tests(
-		embeddings: np.ndarray,
-		labels: np.ndarray,
-		cluster_assignments: np.ndarray,
-		canonical_labels: Dict[int, str],
-		model = None,
-		n_large_clusters: int = 10,
-		n_canonical_samples: int = 50,
-		test_queries: List[str] = None,
-		skip_retrieval: bool = False,
-		output_prefix: str = None,
-		verbose: bool = True
-) -> Dict:
-		"""
-		Comprehensive validation suite for clustering quality.
-		
-		This function runs three validation tests:
-		1. Large cluster quality inspection (semantic coherence)
-		2. Canonical label quality spot-check (umbrella term assessment)
-		3. Downstream retrieval simulation (task performance)
-		
-		Parameters
-		----------
-		embeddings : np.ndarray, shape (n_samples, embedding_dim)
-				Normalized embeddings of all unique labels
-		labels : np.ndarray, shape (n_samples,)
-				Original label strings corresponding to embeddings
-		cluster_assignments : np.ndarray, shape (n_samples,)
-				Cluster ID for each label
-		canonical_labels : Dict[int, str]
-				Mapping from cluster_id -> canonical label string
-		model : SentenceTransformer, optional
-				Model for encoding test queries (required for Test 3)
-		n_large_clusters : int, default=10
-				Number of large clusters to inspect in Test 1
-		n_canonical_samples : int, default=50
-				Number of canonicals to spot-check in Test 2
-		test_queries : List[str], optional
-				Custom test queries for retrieval. Uses defaults if None.
-		skip_retrieval : bool, default=False
-				Skip Test 3 (retrieval) if True
-		output_prefix : str, optional
-				Prefix for output CSV files (e.g., "clusters")
-				If provided, saves detailed results to CSV
-		verbose : bool, default=True
-				Print detailed validation reports
-		
-		Returns
-		-------
-		validation_results : Dict
-				{
-						'test1_results': Dict with large cluster analysis,
-						'test2_results': Dict with canonical quality,
-						'test3_results': Dict with retrieval simulation (if not skipped),
-						'overall_summary': str with final recommendations
-				}
-		
-		Example
-		-------
-		>>> validation_results = run_validation_tests(
-		...     embeddings=X,
-		...     labels=unique_labels_array,
-		...     cluster_assignments=cluster_labels,
-		...     canonical_labels=canonical_map,
-		...     model=model,
-		...     output_prefix="clusters"
-		... )
-		>>> print(validation_results['overall_summary'])
-		"""
-		
-		if verbose:
-				print("\n" + "="*80)
-				print("VALIDATION SUITE: THREE-STAGE CLUSTERING QUALITY ASSESSMENT")
-				print("="*80)
-				print(f"Dataset: {len(labels):,} unique labels, {len(np.unique(cluster_assignments)):,} clusters")
-				print("="*80 + "\n")
-		
-		# Create DataFrame for easier manipulation
-		df = pd.DataFrame({
-				'label': labels,
-				'cluster': cluster_assignments
-		})
-		df['canonical'] = df['cluster'].map(canonical_labels)
-		
-		validation_results = {}
-		
-		# =========================================================================
-		# TEST 1: LARGE CLUSTER QUALITY INSPECTION
-		# =========================================================================
-		if verbose:
-				print("🔍 [TEST 1/3] Large Cluster Quality Inspection")
-				print("-" * 80)
-		
-		cluster_sizes = df.groupby('cluster').size()
-		size_threshold = cluster_sizes.quantile(0.95)
-		large_cluster_ids = cluster_sizes[cluster_sizes >= size_threshold].index.tolist()
-		
-		if verbose:
-				print(f"  ├─ Large cluster threshold: {size_threshold:.0f} labels (95th percentile)")
-				print(f"  ├─ Found {len(large_cluster_ids)} large clusters")
-				print(f"  └─ Sampling {min(n_large_clusters, len(large_cluster_ids))} for manual review\n")
-		
-		# Sample large clusters
-		sampled_large_ids = np.random.choice(
-				large_cluster_ids,
-				size=min(n_large_clusters, len(large_cluster_ids)),
-				replace=False
-		)
-		
-		test1_reports = []
-		
-		for i, cid in enumerate(sampled_large_ids, 1):
-				cluster_mask = df['cluster'] == cid
-				cluster_labels_list = df[cluster_mask]['label'].tolist()
-				cluster_indices = df[cluster_mask].index.tolist()
-				cluster_embeddings = embeddings[cluster_indices]
-				canonical = df[cluster_mask]['canonical'].iloc[0]
-				
-				# Compute intra-cluster similarity
-				if len(cluster_embeddings) > 1:
-						sim_matrix = cosine_similarity(cluster_embeddings)
-						intra_sim = (sim_matrix.sum() - len(cluster_embeddings)) / (
-								len(cluster_embeddings) * (len(cluster_embeddings) - 1)
-						)
-				else:
-						intra_sim = 1.0
-				
-				# Compute canonical representativeness
-				canonical_idx = cluster_labels_list.index(canonical)
-				canonical_emb = cluster_embeddings[canonical_idx].reshape(1, -1)
-				canonical_sim = cosine_similarity(canonical_emb, cluster_embeddings).mean()
-				
-				report = {
-						'cluster_id': int(cid),
-						'size': len(cluster_labels_list),
-						'canonical': canonical,
-						'intra_similarity': float(intra_sim),
-						'canonical_representativeness': float(canonical_sim),
-						'all_labels': cluster_labels_list
-				}
-				
-				test1_reports.append(report)
-				
-				if verbose:
-						print(f"  [{i}/{len(sampled_large_ids)}] Cluster {cid} (Size: {len(cluster_labels_list)}, Intra-sim: {intra_sim:.4f})")
-						print(f"      Canonical: '{canonical}' (representativeness: {canonical_sim:.4f})")
-						print(f"      Sample labels (first 20):")
-						for j, lbl in enumerate(cluster_labels_list[:20], 1):
-								print(f"        {j:2d}. {lbl}")
-						
-						print(f"\n      ❓ MANUAL JUDGMENT:")
-						print(f"         • Are 90%+ labels compatible with '{canonical}'?")
-						print(f"         • Is '{canonical}' a good umbrella term?")
-						print(f"         • Rate: [GOOD / MARGINAL / BAD]\n")
-		
-		# Test 1 summary
-		avg_intra_sim = np.mean([r['intra_similarity'] for r in test1_reports])
-		avg_canonical_rep = np.mean([r['canonical_representativeness'] for r in test1_reports])
-		
-		test1_summary = f"""
-TEST 1 SUMMARY:
-	✓ Inspected {len(test1_reports)} large clusters (≥{size_threshold:.0f} labels)
-	✓ Avg intra-cluster similarity: {avg_intra_sim:.4f}
-	✓ Avg canonical representativeness: {avg_canonical_rep:.4f}
-
-DECISION GATE:
-	• If {int(len(test1_reports)*0.8)}+ clusters are GOOD → PASS
-	• If {int(len(test1_reports)*0.5)}-{int(len(test1_reports)*0.8)} are MARGINAL → REVIEW
-	• If <{int(len(test1_reports)*0.5)} are GOOD → FAIL
-
-MANUAL SCORING (fill in after review):
-	GOOD: _____ / {len(test1_reports)}
-	MARGINAL: _____ / {len(test1_reports)}
-	BAD: _____ / {len(test1_reports)}
-"""
-		
-		validation_results['test1_results'] = {
-				'large_cluster_ids': large_cluster_ids,
-				'sampled_cluster_ids': sampled_large_ids.tolist(),
-				'cluster_reports': test1_reports,
-				'avg_intra_similarity': avg_intra_sim,
-				'avg_canonical_representativeness': avg_canonical_rep,
-				'summary': test1_summary
-		}
-		
-		if verbose:
-				print("-" * 80)
-				print(test1_summary)
-				print("-" * 80 + "\n")
-		
-		# Export Test 1 if output_prefix provided
-		if output_prefix:
-				test1_csv = f"{output_prefix}_validation_test1_large_clusters.csv"
-				test1_export = []
-				for report in test1_reports:
-						for label in report['all_labels']:
-								test1_export.append({
-										'cluster_id': report['cluster_id'],
-										'canonical': report['canonical'],
-										'label': label,
-										'cluster_size': report['size'],
-										'intra_similarity': report['intra_similarity'],
-										'canonical_representativeness': report['canonical_representativeness']
-								})
-				pd.DataFrame(test1_export).to_csv(test1_csv, index=False)
-				if verbose:
-						print(f"  💾 Exported Test 1 details to: {test1_csv}\n")
-		
-		# =========================================================================
-		# TEST 2: CANONICAL LABEL QUALITY SPOT-CHECK
-		# =========================================================================
-		if verbose:
-				print("🏷️  [TEST 2/3] Canonical Label Quality Spot-Check")
-				print("-" * 80)
-		
-		unique_clusters = df['cluster'].unique()
-		sampled_canonical_ids = np.random.choice(
-				unique_clusters,
-				size=min(n_canonical_samples, len(unique_clusters)),
-				replace=False
-		)
-		
-		if verbose:
-				print(f"  ├─ Sampling {len(sampled_canonical_ids)} random clusters")
-				print(f"  └─ Review each canonical for quality\n")
-				print(f"  {'Canonical':<35s} {'Sample Labels':<70s} {'Size':<5s}")
-				print("  " + "-" * 110)
-		
-		test2_samples = []
-		
-		for cid in sampled_canonical_ids:
-				cluster_mask = df['cluster'] == cid
-				cluster_labels_list = df[cluster_mask]['label'].tolist()
-				canonical = df[cluster_mask]['canonical'].iloc[0]
-				
-				sample_labels = cluster_labels_list[:5]
-				sample_str = ', '.join([f"'{lbl}'" for lbl in sample_labels])
-				if len(cluster_labels_list) > 5:
-						sample_str += f" ... (+{len(cluster_labels_list)-5})"
-				
-				test2_samples.append({
-						'cluster_id': int(cid),
-						'canonical': canonical,
-						'size': len(cluster_labels_list),
-						'all_labels': cluster_labels_list
-				})
-				
-				if verbose:
-						# Truncate for display
-						display_canonical = canonical[:35]
-						display_samples = sample_str[:70]
-						print(f"  {display_canonical:<35s} {display_samples:<70s} {len(cluster_labels_list):<5d}")
-		
-		test2_summary = f"""
-TEST 2 SUMMARY:
-	✓ Reviewed {len(test2_samples)} canonical labels
-	
-DECISION CRITERIA (for each canonical):
-	1. Is it the most GENERAL term in the cluster?
-	2. Does it semantically COVER all label variants?
-	3. Would a HUMAN understand the mapping?
-	
-	If NO to any → Mark as incorrect
-
-DECISION GATE:
-	• If ≥{int(len(test2_samples)*0.8)} ({int(len(test2_samples)*0.8)}+) are GOOD → PASS (80%+ accuracy)
-	• If {int(len(test2_samples)*0.6)}-{int(len(test2_samples)*0.8)} are GOOD → REVIEW (60-80% accuracy)
-	• If <{int(len(test2_samples)*0.6)} are GOOD → FAIL (<60% accuracy)
-
-MANUAL SCORING (fill in after review):
-	GOOD: _____ / {len(test2_samples)}
-	MARGINAL: _____ / {len(test2_samples)}
-	BAD: _____ / {len(test2_samples)}
-	
-	Accuracy = (GOOD / {len(test2_samples)}) × 100 = _____%
-"""
-		
-		validation_results['test2_results'] = {
-				'sampled_clusters': test2_samples,
-				'summary': test2_summary
-		}
-		
-		if verbose:
-				print("\n" + "-" * 80)
-				print(test2_summary)
-				print("-" * 80 + "\n")
-		
-		# Export Test 2 if output_prefix provided
-		if output_prefix:
-				test2_csv = f"{output_prefix}_validation_test2_canonicals.csv"
-				test2_export = []
-				for sample in test2_samples:
-						for label in sample['all_labels']:
-								test2_export.append({
-										'cluster_id': sample['cluster_id'],
-										'canonical': sample['canonical'],
-										'label': label,
-										'is_canonical': label == sample['canonical']
-								})
-				pd.DataFrame(test2_export).to_csv(test2_csv, index=False)
-				if verbose:
-						print(f"  💾 Exported Test 2 details to: {test2_csv}\n")
-		
-		# =========================================================================
-		# TEST 3: DOWNSTREAM RETRIEVAL SIMULATION
-		# =========================================================================
-		if not skip_retrieval and model is not None:
-				if verbose:
-						print("🔎 [TEST 3/3] Downstream Retrieval Simulation")
-						print("-" * 80)
-				
-				# Default test queries for historical images
-				if test_queries is None:
-						test_queries = [
-								"military vehicles",
-								"soldiers in combat",
-								"aircraft and planes",
-								"naval ships",
-								"medical facilities",
-								"buildings and structures",
-								"weapons and artillery",
-								"people in uniform",
-								"construction work",
-								"transportation equipment"
-						]
-				
-				if verbose:
-						print(f"  ├─ Testing {len(test_queries)} retrieval queries")
-						print(f"  └─ Method: Query embedding → Find nearest canonical labels\n")
-				
-				# Encode queries
-				try:
-						query_embeddings = model.encode(
-								test_queries,
-								batch_size=32,
-								show_progress_bar=False,
-								convert_to_numpy=True,
-								normalize_embeddings=True
-						)
-				except Exception as e:
-						if verbose:
-								print(f"  ⚠️  Could not encode queries: {e}")
-								print(f"  ⏭️  Skipping Test 3\n")
-						skip_retrieval = True
-				
-				if not skip_retrieval:
-						# Get unique canonicals and their embeddings
-						canonical_df = df.groupby('canonical').agg({
-								'label': 'count',
-								'cluster': 'first'
-						}).rename(columns={'label': 'label_count'}).reset_index()
-						
-						# Compute canonical embeddings (cluster centroids)
-						canonical_embeddings_list = []
-						for canonical in canonical_df['canonical']:
-								cluster_id = canonical_df[canonical_df['canonical'] == canonical]['cluster'].iloc[0]
-								cluster_mask = df['cluster'] == cluster_id
-								cluster_indices = df[cluster_mask].index.tolist()
-								cluster_embs = embeddings[cluster_indices]
-								centroid = cluster_embs.mean(axis=0)
-								canonical_embeddings_list.append(centroid)
-						
-						canonical_embeddings_array = np.array(canonical_embeddings_list)
-						
-						query_results = []
-						
-						for i, query in enumerate(test_queries):
-								query_emb = query_embeddings[i].reshape(1, -1)
-								
-								# Find top-5 nearest canonical labels
-								similarities = cosine_similarity(query_emb, canonical_embeddings_array)[0]
-								top_5_indices = similarities.argsort()[-5:][::-1]
-								top_5_canonicals = canonical_df.iloc[top_5_indices]['canonical'].tolist()
-								top_5_similarities = similarities[top_5_indices].tolist()
-								top_5_label_counts = canonical_df.iloc[top_5_indices]['label_count'].tolist()
-								
-								result = {
-										'query': query,
-										'top_canonicals': top_5_canonicals,
-										'similarities': top_5_similarities,
-										'label_counts': top_5_label_counts
-								}
-								
-								query_results.append(result)
-								
-								if verbose:
-										print(f"  [{i+1}/{len(test_queries)}] Query: '{query}'")
-										print(f"      Top-5 Retrieved Canonicals:")
-										for j, (canonical, sim, count) in enumerate(zip(
-												top_5_canonicals, top_5_similarities, top_5_label_counts
-										), 1):
-												print(f"        {j}. {canonical:<40s} (sim={sim:.4f}, {count:3d} labels)")
-										print(f"\n      ❓ MANUAL JUDGMENT:")
-										print(f"         Precision = (# relevant / 5) × 100 = _____%")
-										print(f"         Missing any obvious canonicals? (Recall)\n")
-						
-						test3_summary = f"""
-TEST 3 SUMMARY:
-	✓ Tested {len(test_queries)} retrieval queries
-	✓ Retrieved top-5 canonical labels per query
-
-DECISION CRITERIA (for each query):
-	• Precision: % of top-5 that are relevant
-	• Recall: Did we miss obvious matches?
-
-DECISION GATE:
-	• If Avg Precision ≥70% AND Recall ≥60% → PASS
-	• If Avg Precision 60-70% OR Recall 50-60% → MARGINAL
-	• If Avg Precision <60% OR Recall <50% → FAIL
-
-MANUAL SCORING (fill in after review):
-	Query 1 Precision: _____%    Query 6 Precision: _____%
-	Query 2 Precision: _____%    Query 7 Precision: _____%
-	Query 3 Precision: _____%    Query 8 Precision: _____%
-	Query 4 Precision: _____%    Query 9 Precision: _____%
-	Query 5 Precision: _____%    Query 10 Precision: _____%
-	
-	Avg Precision: _____%
-	Avg Recall (subjective): _____%
-	
-	Overall Assessment: [PASS / MARGINAL / FAIL]
-"""
-						
-						validation_results['test3_results'] = {
-								'query_results': query_results,
-								'summary': test3_summary
-						}
-						
-						if verbose:
-								print("-" * 80)
-								print(test3_summary)
-								print("-" * 80 + "\n")
-						
-						# Export Test 3 if output_prefix provided
-						if output_prefix:
-								test3_csv = f"{output_prefix}_validation_test3_retrieval.csv"
-								test3_export = []
-								for result in query_results:
-										for j, (canonical, sim, count) in enumerate(zip(
-												result['top_canonicals'],
-												result['similarities'],
-												result['label_counts']
-										)):
-												test3_export.append({
-														'query': result['query'],
-														'rank': j + 1,
-														'canonical': canonical,
-														'similarity': sim,
-														'label_count': count
-												})
-								pd.DataFrame(test3_export).to_csv(test3_csv, index=False)
-								if verbose:
-										print(f"  💾 Exported Test 3 details to: {test3_csv}\n")
-		
-		elif skip_retrieval:
-				if verbose:
-						print("⏭️  [TEST 3/3] Downstream Retrieval Simulation - SKIPPED\n")
-				validation_results['test3_results'] = None
-		else:
-				if verbose:
-						print("⚠️  [TEST 3/3] Downstream Retrieval Simulation - SKIPPED (model not provided)\n")
-				validation_results['test3_results'] = None
-		
-		# =========================================================================
-		# OVERALL SUMMARY AND RECOMMENDATIONS
-		# =========================================================================
-		overall_summary = f"""
-{'='*80}
-VALIDATION SUITE: OVERALL SUMMARY
-{'='*80}
-
-RESULTS:
-	Test 1 (Large Clusters):
-		• Avg intra-similarity: {validation_results['test1_results']['avg_intra_similarity']:.4f}
-		• Avg canonical representativeness: {validation_results['test1_results']['avg_canonical_representativeness']:.4f}
-		• Manual review required for: {len(test1_reports)} clusters
-	
-	Test 2 (Canonical Quality):
-		• Reviewed: {len(test2_samples)} canonicals
-		• Manual review required: Rate each as GOOD/MARGINAL/BAD
-	
-	Test 3 (Retrieval):
-		• {'Completed' if validation_results.get('test3_results') else 'Skipped'}
-		{'• Manual review required: Estimate precision/recall per query' if validation_results.get('test3_results') else ''}
-
-DECISION MATRIX:
-┌────────────────────────────┬────────────────────────────┬─────────────┐
-│ Test 1                     │ Test 2                     │ Test 3      │ Decision
-├────────────────────────────┼────────────────────────────┼─────────────┤
-│ ≥80% GOOD                  │ ≥80% accuracy              │ ≥70% prec.  │ ✅ PROCEED
-│ 50-80% GOOD                │ 60-80% accuracy            │ 60-70% prec.│ ⚠️  FIX CANONICALS
-│ <50% GOOD                  │ <60% accuracy              │ <60% prec.  │ 🔴 RE-CLUSTER
-└────────────────────────────┴────────────────────────────┴─────────────┘
-
-NEXT STEPS:
-1. Review all printed test results above
-2. Fill in manual scoring sections
-3. Compute overall percentages
-4. Use decision matrix to determine action
-
-RECOMMENDED FIXES (if needed):
-• If Test 1 fails: Re-cluster with k={int(len(labels)/25)} (tighter clusters)
-• If Test 2 fails: Apply frequency-weighted canonical selection
-• If Test 3 fails: Review canonical generality (too specific?)
-
-DELIVERABLES:
-• All test results printed above (save this log!)
-{f'• CSV files exported with prefix: {output_prefix}_validation_test*.csv' if output_prefix else '• No CSV files exported (provide output_prefix to enable)'}
-{'='*80}
-"""
-		
-		validation_results['overall_summary'] = overall_summary
-		
-		if verbose:
-				print(overall_summary)
-		
-		return validation_results
-
 def analyze_cluster_quality(
 	embeddings: np.ndarray,
 	labels: np.ndarray,
@@ -2348,16 +1830,77 @@ def cluster(
 	
 	cluster_canonicals = {}
 	
+	# for cid in sorted(df.cluster.unique()):
+	# 	cluster_mask = df.cluster == cid
+	# 	cluster_texts = df[cluster_mask]['label'].tolist()
+	# 	cluster_indices = df[cluster_mask].index.tolist()
+	# 	cluster_embeddings = X[cluster_indices]
+		
+	# 	# Centroid-nearest
+	# 	centroid = cluster_embeddings.mean(axis=0, keepdims=True)
+	# 	similarities = cosine_similarity(centroid, cluster_embeddings)[0]
+	# 	best_idx = similarities.argmax()
+	# 	canonical = cluster_texts[best_idx]
+		
+	# 	cluster_canonicals[cid] = {
+	# 		'canonical': canonical,
+	# 		'score': float(similarities[best_idx]),
+	# 		'size': len(cluster_texts)
+	# 	}
+		
+	# 	if verbose:
+	# 		print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
+	# 		print(f"\tCanonical: {canonical} (sim={similarities[best_idx]:.4f})")
+		
+	# Build label frequency dict from documents
+	print(f"\n[CLUSTERING] {len(np.unique(cluster_labels))} clusters for {cluster_labels.shape} {type(cluster_labels)} labels. {cluster_labels.min()} {cluster_labels.max()}")
+	label_freq_dict = {}
+	for doc in documents:
+		for label in doc:
+			label_freq_dict[label] = label_freq_dict.get(label, 0) + 1
+	print(label_freq_dict)
+
+	original_label_counts = label_freq_dict
+	print(f"\tComputed frequencies for {len(original_label_counts)} labels")
+	print(f"\tTotal label instances: {sum(original_label_counts.values())}")
+	print(f"\tMost frequent: {max(original_label_counts.items(), key=lambda x: x[1])}")
+	print('-'*150)
+
+	print(f"\nCanonical labels per cluster")
+	cluster_canonicals = {}
 	for cid in sorted(df.cluster.unique()):
 		cluster_mask = df.cluster == cid
 		cluster_texts = df[cluster_mask]['label'].tolist()
 		cluster_indices = df[cluster_mask].index.tolist()
 		cluster_embeddings = X[cluster_indices]
 		
-		# Centroid-nearest
+		# Compute centroid
 		centroid = cluster_embeddings.mean(axis=0, keepdims=True)
 		similarities = cosine_similarity(centroid, cluster_embeddings)[0]
-		best_idx = similarities.argmax()
+		
+		# Frequency-Weighted Canonical Selection
+		if original_label_counts is not None and len(original_label_counts) > 0 and len(cluster_texts) > 1:
+			# Get label frequencies
+			label_freqs = np.array([original_label_counts.get(lbl, 1) for lbl in cluster_texts])
+			
+			# Normalize frequencies to [0, 1] using log-scale (handles extreme distributions)
+			freq_scores = np.log1p(label_freqs) / np.log1p(label_freqs.max())
+			
+			# Hybrid scoring: 70% similarity, 30% frequency
+			combined_scores = 0.7 * similarities + 0.3 * freq_scores
+			best_idx = combined_scores.argmax()
+			
+			if verbose:
+				pure_sim_idx = similarities.argmax()
+				if best_idx != pure_sim_idx:
+					print(f"\n[Cluster {cid}] Frequency weighting changed selection:")
+					print(f"  Pure similarity would pick: {cluster_texts[pure_sim_idx]} (sim={similarities[pure_sim_idx]:.4f}, freq={label_freqs[pure_sim_idx]})")
+					print(f"  Frequency-weighted picks: {cluster_texts[best_idx]} (sim={similarities[best_idx]:.4f}, freq={label_freqs[best_idx]})")
+		else:
+				# Fallback: pure similarity (original method)
+				best_idx = similarities.argmax()
+		# ========================================================================
+		
 		canonical = cluster_texts[best_idx]
 		
 		cluster_canonicals[cid] = {
@@ -2369,7 +1912,7 @@ def cluster(
 		if verbose:
 			print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
 			print(f"\tCanonical: {canonical} (sim={similarities[best_idx]:.4f})")
-		
+
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 	
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
@@ -2391,13 +1934,6 @@ def cluster(
 		cid: info['canonical'] 
 		for cid, info in cluster_canonicals.items()
 	}
-
-	# Optional: If you have original label frequencies from your documents
-	# Build label frequency dict from documents
-	label_freq_dict = {}
-	for doc in documents:
-		for label in doc:
-			label_freq_dict[label] = label_freq_dict.get(label, 0) + 1
 
 	print(f"Prepared data for analysis:")
 	print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
@@ -2434,20 +1970,6 @@ def cluster(
 				problematic_cluster_ids=list(set(all_problematic_ids)),
 				output_path=problematic_csv
 			)
-
-	# # Run validation tests
-	# run_validation_tests(
-	# 	embeddings=X,
-	# 	labels=unique_labels_array,
-	# 	cluster_assignments=cluster_labels,
-	# 	canonical_labels=canonical_map,
-	# 	model=model,
-	# 	n_large_clusters=10,
-	# 	n_canonical_samples=50,
-	# 	skip_retrieval=False,
-	# 	output_prefix=clusters_fname.replace(".csv", ""),
-	# 	verbose=verbose
-	# )
 
 	automated_cluster_validation(
 		embeddings=X,
