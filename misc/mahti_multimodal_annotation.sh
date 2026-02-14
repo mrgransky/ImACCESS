@@ -95,7 +95,7 @@ python -u gt_kws_multimodal.py \
 	--vlm_model_id $VLM_MODEL \
 	--vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
 	--vlm_max_generated_tks $VLM_MAX_GENERATED_TOKENS \
-	--max_keywords 5 \
+	--max_keywords 3 \
 	--verbose \
 	# --llm_use_quantization \
 	# --vlm_use_quantization \
