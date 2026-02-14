@@ -112,6 +112,18 @@ def merge_csv_files(
 		print(f">> canonical_multimodal_labels: {len(df['multimodal_canonical_labels'])}")
 		print(df['multimodal_canonical_labels'].head(15).tolist())
 		print(f"\n>> Saving {type(df)} {df.shape} to {output_fpath}\n{list(df.columns)}")
+		# Check if "discharge" and "hospital discharge" are in the SAME cluster
+		discharge_cluster = df[df['label'] == 'discharge']['cluster'].iloc[0]
+		hospital_discharge_cluster = df[df['label'] == 'hospital discharge']['cluster'].iloc[0]
+
+		print(f"discharge cluster: {discharge_cluster}")
+		print(f"hospital discharge cluster: {hospital_discharge_cluster}")
+		print(f"Same cluster? {discharge_cluster == hospital_discharge_cluster}")
+
+		if discharge_cluster == hospital_discharge_cluster:
+				print("❌ THEY ARE STILL TOGETHER!")
+				canonical = df[df['cluster'] == discharge_cluster]['canonical'].iloc[0]
+				print(f"Canonical: {canonical}")
 
 	df.to_csv(output_fpath, index=False)
 
