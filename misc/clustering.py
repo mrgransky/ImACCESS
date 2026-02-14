@@ -531,53 +531,47 @@ def automated_cluster_validation(
 		results['recommendations'] = recommendations
 		
 		if verbose:
-				print(f"  📋 AUTOMATED RECOMMENDATIONS:")
-				if not recommendations:
-						print(f"    ✅ No critical issues detected. Clustering quality is acceptable.")
-				else:
-						for i, rec in enumerate(recommendations, 1):
-								print(f"\n    [{i}] {rec['severity']:6s} | {rec['issue']}")
-								print(f"        Metric: {rec['metric']}")
-								print(f"        Action: {rec['action']}")
-				print()
+			print(f"  📋 AUTOMATED RECOMMENDATIONS:")
+			if not recommendations:
+				print(f"    ✅ No critical issues detected. Clustering quality is acceptable.")
+			else:
+				for i, rec in enumerate(recommendations, 1):
+					print(f"\n    [{i}] {rec['severity']:6s} | {rec['issue']}")
+					print(f"        Metric: {rec['metric']}")
+					print(f"        Action: {rec['action']}")
+			print()
 		
-		# =========================================================================
-		# SUMMARY
-		# =========================================================================
 		summary = f"""
-{'='*80}
-AUTOMATED VALIDATION SUMMARY
-{'='*80}
+			AUTOMATED VALIDATION SUMMARY
+		
+			OVERALL QUALITY: {overall_score:.3f} / 1.000 ({quality_level})
+			DECISION: {decision}
 
-OVERALL QUALITY: {overall_score:.3f} / 1.000 ({quality_level})
-DECISION: {decision}
+			CLUSTER QUALITY:
+				• Cohesion (intra-similarity): {cluster_quality['mean_intra_similarity']:.3f}
+				• Separation (inter-distance): {cluster_quality['mean_inter_cluster_distance']:.3f}
+				• Dunn Index: {cluster_quality['dunn_index']:.3f}
+				• Silhouette: {cluster_quality['silhouette_score']:.3f}
+				• Size balance (1-Gini): {1-cluster_quality['size_gini']:.3f}
+				• Low cohesion clusters: {cluster_quality['n_low_cohesion_clusters']} ({cluster_quality['pct_low_cohesion']*100:.1f}%)
 
-CLUSTER QUALITY:
-	• Cohesion (intra-similarity): {cluster_quality['mean_intra_similarity']:.3f}
-	• Separation (inter-distance): {cluster_quality['mean_inter_cluster_distance']:.3f}
-	• Dunn Index: {cluster_quality['dunn_index']:.3f}
-	• Silhouette: {cluster_quality['silhouette_score']:.3f}
-	• Size balance (1-Gini): {1-cluster_quality['size_gini']:.3f}
-	• Low cohesion clusters: {cluster_quality['n_low_cohesion_clusters']} ({cluster_quality['pct_low_cohesion']*100:.1f}%)
+			CANONICAL QUALITY:
+				• Representativeness: {canonical_quality['mean_representativeness']:.3f}
+				• Generality score: {canonical_quality['mean_generality_score']:.3f}
+				• Uniqueness: {canonical_quality['canonical_uniqueness_ratio']*100:.1f}%
+				• Centroid improvement: {canonical_quality['mean_centroid_improvement']*100:.1f}%
+				{'• Frequency alignment: ' + f"{canonical_quality['mean_frequency_alignment']:.3f}" if canonical_quality['mean_frequency_alignment'] else ''}
 
-CANONICAL QUALITY:
-	• Representativeness: {canonical_quality['mean_representativeness']:.3f}
-	• Generality score: {canonical_quality['mean_generality_score']:.3f}
-	• Uniqueness: {canonical_quality['canonical_uniqueness_ratio']*100:.1f}%
-	• Centroid improvement: {canonical_quality['mean_centroid_improvement']*100:.1f}%
-	{'• Frequency alignment: ' + f"{canonical_quality['mean_frequency_alignment']:.3f}" if canonical_quality['mean_frequency_alignment'] else ''}
+			ISSUES DETECTED: {len(recommendations)}
+			{'  • ' + recommendations[0]['issue'] if recommendations else '  • None'}
 
-ISSUES DETECTED: {len(recommendations)}
-{'  • ' + recommendations[0]['issue'] if recommendations else '  • None'}
-
-RECOMMENDATION: {decision}
-{'='*80}
-"""
+			RECOMMENDATION: {decision}
+		"""
 		
 		results['summary'] = summary
 		
 		if verbose:
-				print(summary)
+			print(summary)
 		
 		return results
 
@@ -1980,7 +1974,7 @@ def cluster(
 		verbose=True
 	)
 
-	if verbose:
+	if verbose and "discharge" in unique_labels and "hospital discharge" in unique_labels:
 		# Check if "discharge" and "hospital discharge" are in the SAME cluster
 		discharge_cluster = df[df['label'] == 'discharge']['cluster'].iloc[0]
 		hospital_discharge_cluster = df[df['label'] == 'hospital discharge']['cluster'].iloc[0]
