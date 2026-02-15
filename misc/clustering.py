@@ -1973,7 +1973,7 @@ def cluster(
 		# Parse first label if it's a string, otherwise use as-is
 		requires_type_exchange = isinstance(labels[0], str)
 		print(f"   ├─────> {type(labels[0])} requires_type_exchange: {requires_type_exchange}")
-		print(f"   └─ nc: {nc}")
+		print(f"   └─ nc: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
 	
 	print(f"\n[DEDUP] {len(labels)} raw labels")
 	documents = []
