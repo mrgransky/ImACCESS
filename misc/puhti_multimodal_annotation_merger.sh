@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --account=project_2004072
+#SBATCH --account=project_2009043
 #SBATCH --job-name=mm_annot_merge
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x.out
 #SBATCH --mail-user=farid.alijani@gmail.com

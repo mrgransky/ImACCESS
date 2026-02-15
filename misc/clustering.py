@@ -2240,16 +2240,13 @@ def cluster(
 			best_idx = combined_scores.argmax()
 			pure_sim_idx = similarities.argmax()
 			
-			# ====================================================================
-			# ADD THIS: Safety check - require minimum 3x gain
-			# ====================================================================
+			# Safety check - require minimum 3x gain
 			if best_idx != pure_sim_idx:
-					freq_gain = label_freqs[best_idx] / max(label_freqs[pure_sim_idx], 1)
-					
-					# Only override similarity if frequency gain is meaningful (≥3x)
-					if freq_gain < 3.0:
-							best_idx = pure_sim_idx  # Revert to pure similarity choice
-			# ====================================================================
+				freq_gain = label_freqs[best_idx] / max(label_freqs[pure_sim_idx], 1)
+				
+				# Only override similarity if frequency gain is meaningful (≥3x)
+				if freq_gain < 3.0:
+					best_idx = pure_sim_idx  # Revert to pure similarity choice
 			
 			# Track changes (after the safety check)
 			if best_idx != pure_sim_idx:
