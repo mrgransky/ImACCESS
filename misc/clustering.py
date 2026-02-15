@@ -2217,6 +2217,7 @@ def cluster(
 	freq_changed_count = 0
 	total_sim_loss = []
 	total_freq_gain = []
+	questionable_examples = []
 	for cid in sorted(df.cluster.unique()):
 		cluster_mask = df.cluster == cid
 		cluster_texts = df[cluster_mask]['label'].tolist()
@@ -2252,6 +2253,23 @@ def cluster(
 				total_sim_loss.append(sim_loss)
 				total_freq_gain.append(freq_gain)
 				
+				if sim_loss > 0.10 or freq_gain < 3.0:
+					questionable_examples.append(
+						{
+							'cluster_id': cid,
+							'pure_choice': cluster_texts[pure_sim_idx],
+							'freq_choice': cluster_texts[best_idx],
+							'pure_freq': label_freqs[pure_sim_idx],
+							'freq_freq': label_freqs[best_idx],
+							'pure_sim': similarities[pure_sim_idx],
+							'freq_sim': similarities[best_idx],
+							'sim_loss': sim_loss,
+							'freq_gain': freq_gain,
+							'cluster_size': len(cluster_texts),
+							'cluster_labels': cluster_texts
+						}
+					)
+
 				if verbose:
 					print(f"\n[Cluster {cid}] Frequency weighting changed selection:")
 					print(f"  Pure similarity would pick: {cluster_texts[pure_sim_idx]} (sim={similarities[pure_sim_idx]:.4f}, freq={label_freqs[pure_sim_idx]})")
@@ -2305,9 +2323,26 @@ def cluster(
 		print(f"  Good trades (<5% sim loss, >5x freq gain):      {good_trades} ({good_trades/freq_changed_count*100:.1f}%)")
 		print(f"  Questionable trades (>10% sim loss or <2x gain): {questionable_trades} ({questionable_trades/freq_changed_count*100:.1f}%)")
 		
-		if questionable_trades > 0:
+		if questionable_trades > 0 and verbose:
 				print(f"\n  ⚠️  WARNING: {questionable_trades} questionable trades detected")
 				print(f"     Consider adjusting weighting (currently 70/30) if this is high")
+				print(f"\n📋 EXAMINING QUESTIONABLE TRADES:")
+				print(f"{'Cluster':<10} {'Pure Sim Choice':<30} {'Freq Choice':<30} {'Sim Loss':<12} {'Freq Gain':<12}")
+				print("-" * 100)
+				for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True)[:20]:
+					pure_label = ex['pure_choice'][:32]
+					freq_label = ex['freq_choice'][:32]
+					print(f"{ex['cluster_id']:<10} {pure_label:<35} {freq_label:<35} {ex['sim_loss']*100:>10.1f}% {ex['freq_gain']:>10.1f}x")
+
+				# Categorize questionable trades
+				high_loss_low_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] < 2]
+				high_loss_good_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] >= 2]
+				low_loss_low_gain = [ex for ex in questionable_examples if ex['sim_loss'] <= 0.10 and ex['freq_gain'] < 2]
+				
+				print(f"\n📊 BREAKDOWN OF QUESTIONABLE TRADES:")
+				print(f"  Type A: High loss (>10%) + Low gain (<2x):   {len(high_loss_low_gain):<5} ({len(high_loss_low_gain)/questionable_trades*100:.1f}%) ❌ BAD")
+				print(f"  Type B: High loss (>10%) + Good gain (≥2x):  {len(high_loss_good_gain):<5} ({len(high_loss_good_gain)/questionable_trades*100:.1f}%) ⚠️ DEBATABLE")
+				print(f"  Type C: Low loss (≤10%) + Low gain (<2x):    {len(low_loss_low_gain):<5} ({len(low_loss_low_gain)/questionable_trades*100:.1f}%) ⚠️ UNNECESSARY")
 		else:
 				print(f"\n  ✅ All trades are high-quality!")
 		
