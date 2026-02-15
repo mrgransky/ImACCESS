@@ -74,7 +74,7 @@ def merge_csv_files(
 	clustered_df = cluster(
 		labels=multimodal_labels,
 		model_id=model_id,
-		batch_size=2048,
+		batch_size=4096,
 		nc=nc,
 		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")),
 		verbose=verbose,
