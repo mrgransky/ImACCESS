@@ -210,7 +210,7 @@ def get_multimodal_annotation(
 		verbose=verbose,
 	)
 
-	# canonical label available in clustered_df "canonical" column: [label] -> canonical_label]
+	# canonical label available in clustered_df "canonical" column: [label] -> canonical_label
 	# mapping each label of multimodal_labels to its canonical label:
 	# desired example:
 	# multimodal_labels						-> multimodal_canonical_labels (new column)
