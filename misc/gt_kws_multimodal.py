@@ -223,6 +223,24 @@ def get_multimodal_annotation(
 
 	df['multimodal_canonical_labels'] = canonical_multimodal_labels
 
+	# Deduplicate canonical labels
+	if verbose:
+		print(f"\n>> Deduplicating canonical labels...")
+		duplicate_count = sum(
+			1 for labels in df['multimodal_canonical_labels'] 
+			if len(labels) != len(set(labels))
+		)
+		print(f"   Documents with duplicates: {duplicate_count:,} ({duplicate_count/len(df)*100:.1f}%)")
+
+	df['multimodal_canonical_labels'] = df['multimodal_canonical_labels'].apply(
+		lambda labels: list(dict.fromkeys(labels))
+	)
+
+	if verbose:
+		print(f"   ✓ Deduplication complete")
+		assert sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels))) == 0
+		print(f"   ✓ Verified: 0 duplicates remaining")
+
 	if verbose:
 		print(df["multimodal_canonical_labels"].value_counts())
 		print(f"Saving {type(df)} {df.shape} {list(df.columns)} to {output_csv}")
@@ -236,7 +254,6 @@ def get_multimodal_annotation(
 	
 	if verbose:
 		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
-
 
 	if "_chunk_" not in os.path.basename(csv_file):
 		train_df, val_df = get_multi_label_stratified_split(
