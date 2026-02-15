@@ -7,7 +7,7 @@ from clustering import cluster
 # Puhti/Mahti:
 # srun -J interactive_cpu --account=project_2014707 --partition=large --time=00-23:45:00 --mem=256G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
 # $ python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4/ -nw 40 -v
-# $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -m "Qwen/Qwen3-Embedding-8B" -nw 40 -nc 5000 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
+# $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -m "Qwen/Qwen3-Embedding-8B" -nw 40 -nc 5000 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
 
 # Global variable for worker processes
 canonical_labels_global = None
@@ -108,10 +108,35 @@ def merge_csv_files(
 	elapsed = time.time() - t_start
 
 	if verbose:
-		print(f"Mapping completed in {elapsed:.4f}s ({len(df)/elapsed:.1f} rows/sec)")
-		print(f">> canonical_multimodal_labels: {len(df['multimodal_canonical_labels'])}")
+		print(f"Mapping completed in {elapsed:.4f}s ({len(df)/elapsed:.1f} rows/sec) {type(df)} {df.shape} to {output_fpath}\n{list(df.columns)}")
+
+	# DEDUPLICATION: Remove duplicate canonical labels
+	if verbose:
+		print(f"\n>> Deduplicating canonical labels...")
+		
+		# Count documents with duplicates BEFORE
+		duplicate_count = sum(
+			1 for labels in df['multimodal_canonical_labels'] 
+			if len(labels) != len(set(labels))
+		)
+		print(f"   Documents with duplicates: {duplicate_count:,} ({duplicate_count/len(df)*100:.1f}%)")
+	
+	# Deduplicate while preserving order
+	df['multimodal_canonical_labels'] = df['multimodal_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
+	
+	if verbose:
+		print(f"   ✓ Deduplication complete")
+		
+		# Verify no duplicates remain
+		duplicate_count_after = sum(
+			1 for labels in df['multimodal_canonical_labels'] 
+			if len(labels) != len(set(labels))
+		)
+		assert duplicate_count_after == 0, "Duplicates still present after deduplication!"
+		print(f"   ✓ Verified: 0 duplicates remaining")
+	
+		print(f"\n>> canonical_multimodal_labels: {len(df['multimodal_canonical_labels'])}")
 		print(df['multimodal_canonical_labels'].head(15).tolist())
-		print(f"\n>> Saving {type(df)} {df.shape} to {output_fpath}\n{list(df.columns)}")
 
 	df.to_csv(output_fpath, index=False)
 

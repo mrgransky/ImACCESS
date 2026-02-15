@@ -1609,8 +1609,8 @@ def get_optimal_num_clusters(
 	min_cluster_size=2,
 	merge_singletons=True,
 	split_oversized=True,
-	target_intra_similarity=0.82,  # NEW: Target quality
-	min_consolidation=5.0,         # NEW: Minimum reduction ratio
+	target_intra_similarity=0.82,  # Target quality
+	min_consolidation=5.0,         # Minimum reduction ratio
 	verbose=True
 ):
 	"""
@@ -1627,13 +1627,11 @@ def get_optimal_num_clusters(
 	"""
 	
 	if verbose:
-			print("\n" + "="*80)
-			print("ADAPTIVE OPTIMAL CLUSTER SELECTION (TWO-STAGE)")
-			print("="*80)
-			print(f"Target intra-cluster similarity: {target_intra_similarity:.3f}")
-			print(f"Minimum consolidation ratio: {min_consolidation:.1f}x")
-			print(f"Dataset size: {X.shape[0]:,} samples")
-			print("="*80)
+		print("ADAPTIVE OPTIMAL CLUSTER SELECTION (TWO-STAGE)")
+		print(f"   ├─ Target intra-cluster similarity: {target_intra_similarity:.3f}")
+		print(f"   ├─ Minimum consolidation ratio: {min_consolidation:.1f}x")
+		print(f"   ├─ Dataset: {type(X)} {X.shape} {X.dtype}")
+		print(f"   └─ Linkage matrix: {type(linkage_matrix)} {linkage_matrix.shape} {linkage_matrix.dtype}")
 	
 	num_samples = X.shape[0]
 	
