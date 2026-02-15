@@ -2212,12 +2212,11 @@ def cluster(
 
 	print(f"\nCanonical labels per cluster")
 	cluster_canonicals = {}
-
-	# INITIALIZE TRACKING VARIABLES (ADD THIS BEFORE THE LOOP)
 	freq_changed_count = 0
 	total_sim_loss = []
 	total_freq_gain = []
 	questionable_examples = []
+
 	for cid in sorted(df.cluster.unique()):
 		cluster_mask = df.cluster == cid
 		cluster_texts = df[cluster_mask]['label'].tolist()
@@ -2239,41 +2238,50 @@ def cluster(
 			# Hybrid scoring: 70% similarity, 30% frequency
 			combined_scores = 0.7 * similarities + 0.3 * freq_scores
 			best_idx = combined_scores.argmax()
-			
-			# TRACK IMPACT (ADD THIS INSIDE YOUR EXISTING IF BLOCK)
 			pure_sim_idx = similarities.argmax()
 			
+			# ====================================================================
+			# ADD THIS: Safety check - require minimum 3x gain
+			# ====================================================================
 			if best_idx != pure_sim_idx:
-				freq_changed_count += 1
-				
-				# Calculate impact metrics
-				sim_loss = (similarities[pure_sim_idx] - similarities[best_idx]) / similarities[pure_sim_idx]
-				freq_gain = label_freqs[best_idx] / max(label_freqs[pure_sim_idx], 1)  # Avoid division by zero
-				
-				total_sim_loss.append(sim_loss)
-				total_freq_gain.append(freq_gain)
-				
-				if sim_loss > 0.10 or freq_gain < 3.0:
-					questionable_examples.append(
-						{
-							'cluster_id': cid,
-							'pure_choice': cluster_texts[pure_sim_idx],
-							'freq_choice': cluster_texts[best_idx],
-							'pure_freq': label_freqs[pure_sim_idx],
-							'freq_freq': label_freqs[best_idx],
-							'pure_sim': similarities[pure_sim_idx],
-							'freq_sim': similarities[best_idx],
-							'sim_loss': sim_loss,
-							'freq_gain': freq_gain,
-							'cluster_size': len(cluster_texts),
-							'cluster_labels': cluster_texts
-						}
-					)
-
-				if verbose:
-					print(f"\n[Cluster {cid}] Frequency weighting changed selection:")
-					print(f"  Pure similarity would pick: {cluster_texts[pure_sim_idx]} (sim={similarities[pure_sim_idx]:.4f}, freq={label_freqs[pure_sim_idx]})")
-					print(f"  Frequency-weighted picks: {cluster_texts[best_idx]} (sim={similarities[best_idx]:.4f}, freq={label_freqs[best_idx]})")
+					freq_gain = label_freqs[best_idx] / max(label_freqs[pure_sim_idx], 1)
+					
+					# Only override similarity if frequency gain is meaningful (≥3x)
+					if freq_gain < 3.0:
+							best_idx = pure_sim_idx  # Revert to pure similarity choice
+			# ====================================================================
+			
+			# Track changes (after the safety check)
+			if best_idx != pure_sim_idx:
+					freq_changed_count += 1
+					
+					# Calculate impact metrics
+					sim_loss = (similarities[pure_sim_idx] - similarities[best_idx]) / similarities[pure_sim_idx]
+					freq_gain = label_freqs[best_idx] / max(label_freqs[pure_sim_idx], 1)
+					
+					total_sim_loss.append(sim_loss)
+					total_freq_gain.append(freq_gain)
+					
+					# Track questionable trades for inspection
+					if sim_loss > 0.10 or freq_gain < 3.0:
+							questionable_examples.append({
+									'cluster_id': cid,
+									'pure_choice': cluster_texts[pure_sim_idx],
+									'freq_choice': cluster_texts[best_idx],
+									'pure_freq': label_freqs[pure_sim_idx],
+									'freq_freq': label_freqs[best_idx],
+									'pure_sim': similarities[pure_sim_idx],
+									'freq_sim': similarities[best_idx],
+									'sim_loss': sim_loss,
+									'freq_gain': freq_gain,
+									'cluster_size': len(cluster_texts),
+									'cluster_labels': cluster_texts
+							})
+					
+					if verbose:
+							print(f"\n[Cluster {cid}] Frequency weighting changed selection:")
+							print(f"  Pure similarity would pick: {cluster_texts[pure_sim_idx]} (sim={similarities[pure_sim_idx]:.4f}, freq={label_freqs[pure_sim_idx]})")
+							print(f"  Frequency-weighted picks: {cluster_texts[best_idx]} (sim={similarities[best_idx]:.4f}, freq={label_freqs[best_idx]})")
 		else:
 			# Fallback: pure similarity (original method)
 			best_idx = similarities.argmax()
@@ -2282,14 +2290,16 @@ def cluster(
 		canonical = cluster_texts[best_idx]
 		
 		cluster_canonicals[cid] = {
-			'canonical': canonical,
-			'score': float(similarities[best_idx]),
-			'size': len(cluster_texts)
+				'canonical': canonical,
+				'score': float(similarities[best_idx]),
+				'size': len(cluster_texts)
 		}
 		
 		if verbose:
-			print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
-			print(f"\tCanonical: {canonical} (sim={similarities[best_idx]:.4f})")
+				print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
+				print(f"\tCanonical: {canonical} (sim={similarities[best_idx]:.4f})")
+
+
 
 	# PRINT SUMMARY STATISTICS (ADD THIS AFTER THE LOOP)
 	print("\n" + "="*80)
