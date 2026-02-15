@@ -2203,6 +2203,7 @@ def cluster(
 			label_freq_dict[label] = label_freq_dict.get(label, 0) + 1
 	print(label_freq_dict)
 
+
 	original_label_counts = label_freq_dict
 	print(f"\tComputed frequencies for {len(original_label_counts)} labels")
 	print(f"\tTotal label instances: {sum(original_label_counts.values())}")
@@ -2211,6 +2212,11 @@ def cluster(
 
 	print(f"\nCanonical labels per cluster")
 	cluster_canonicals = {}
+
+	# INITIALIZE TRACKING VARIABLES (ADD THIS BEFORE THE LOOP)
+	freq_changed_count = 0
+	total_sim_loss = []
+	total_freq_gain = []
 	for cid in sorted(df.cluster.unique()):
 		cluster_mask = df.cluster == cid
 		cluster_texts = df[cluster_mask]['label'].tolist()
@@ -2226,24 +2232,35 @@ def cluster(
 			# Get label frequencies
 			label_freqs = np.array([original_label_counts.get(lbl, 1) for lbl in cluster_texts])
 			
-			# Normalize frequencies to [0, 1] using log-scale (handles extreme distributions)
+			# Normalize frequencies to [0, 1] using log-scale
 			freq_scores = np.log1p(label_freqs) / np.log1p(label_freqs.max())
 			
 			# Hybrid scoring: 70% similarity, 30% frequency
 			combined_scores = 0.7 * similarities + 0.3 * freq_scores
 			best_idx = combined_scores.argmax()
 			
-			if verbose:
-				pure_sim_idx = similarities.argmax()
-				if best_idx != pure_sim_idx:
+			# TRACK IMPACT (ADD THIS INSIDE YOUR EXISTING IF BLOCK)
+			pure_sim_idx = similarities.argmax()
+			
+			if best_idx != pure_sim_idx:
+				freq_changed_count += 1
+				
+				# Calculate impact metrics
+				sim_loss = (similarities[pure_sim_idx] - similarities[best_idx]) / similarities[pure_sim_idx]
+				freq_gain = label_freqs[best_idx] / max(label_freqs[pure_sim_idx], 1)  # Avoid division by zero
+				
+				total_sim_loss.append(sim_loss)
+				total_freq_gain.append(freq_gain)
+				
+				if verbose:
 					print(f"\n[Cluster {cid}] Frequency weighting changed selection:")
 					print(f"  Pure similarity would pick: {cluster_texts[pure_sim_idx]} (sim={similarities[pure_sim_idx]:.4f}, freq={label_freqs[pure_sim_idx]})")
 					print(f"  Frequency-weighted picks: {cluster_texts[best_idx]} (sim={similarities[best_idx]:.4f}, freq={label_freqs[best_idx]})")
 		else:
-				# Fallback: pure similarity (original method)
-				best_idx = similarities.argmax()
-		# ========================================================================
+			# Fallback: pure similarity (original method)
+			best_idx = similarities.argmax()
 		
+		# Store canonical
 		canonical = cluster_texts[best_idx]
 		
 		cluster_canonicals[cid] = {
@@ -2255,6 +2272,64 @@ def cluster(
 		if verbose:
 			print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
 			print(f"\tCanonical: {canonical} (sim={similarities[best_idx]:.4f})")
+
+	# PRINT SUMMARY STATISTICS (ADD THIS AFTER THE LOOP)
+	print("\n" + "="*80)
+	print("FREQUENCY WEIGHTING IMPACT ANALYSIS")
+	print("="*80)
+
+	total_clusters = len(df.cluster.unique())
+	print(f"Total clusters analyzed: {total_clusters}")
+	print(f"Clusters where frequency changed selection: {freq_changed_count}")
+	print(f"  → {freq_changed_count/total_clusters*100:.1f}% of clusters affected")
+
+	if total_sim_loss:
+		print(f"\nSIMILARITY IMPACT:")
+		print(f"  Average similarity loss: {np.mean(total_sim_loss)*100:.2f}%")
+		print(f"  Median similarity loss:  {np.median(total_sim_loss)*100:.2f}%")
+		print(f"  Max similarity loss:     {np.max(total_sim_loss)*100:.2f}%")
+		print(f"  Min similarity loss:     {np.min(total_sim_loss)*100:.2f}%")
+		
+		print(f"\nFREQUENCY BENEFIT:")
+		print(f"  Average frequency gain: {np.mean(total_freq_gain):.1f}x")
+		print(f"  Median frequency gain:  {np.median(total_freq_gain):.1f}x")
+		print(f"  Max frequency gain:     {np.max(total_freq_gain):.1f}x")
+		print(f"  Min frequency gain:     {np.min(total_freq_gain):.1f}x")
+		
+		print(f"\nQUALITY ASSESSMENT:")
+		excellent_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.03 and f > 10)
+		good_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.05 and f > 5)
+		questionable_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s > 0.10 or f < 2)
+		
+		print(f"  Excellent trades (<3% sim loss, >10x freq gain): {excellent_trades} ({excellent_trades/freq_changed_count*100:.1f}%)")
+		print(f"  Good trades (<5% sim loss, >5x freq gain):      {good_trades} ({good_trades/freq_changed_count*100:.1f}%)")
+		print(f"  Questionable trades (>10% sim loss or <2x gain): {questionable_trades} ({questionable_trades/freq_changed_count*100:.1f}%)")
+		
+		if questionable_trades > 0:
+				print(f"\n  ⚠️  WARNING: {questionable_trades} questionable trades detected")
+				print(f"     Consider adjusting weighting (currently 70/30) if this is high")
+		else:
+				print(f"\n  ✅ All trades are high-quality!")
+		
+		# Overall verdict
+		avg_sim_loss_pct = np.mean(total_sim_loss) * 100
+		avg_freq_gain = np.mean(total_freq_gain)
+		
+		print(f"\nOVERALL VERDICT:")
+		if avg_sim_loss_pct < 3 and avg_freq_gain > 50:
+				print(f"  ✅ EXCELLENT: Small quality cost ({avg_sim_loss_pct:.1f}%) for huge frequency benefit ({avg_freq_gain:.0f}x)")
+		elif avg_sim_loss_pct < 5 and avg_freq_gain > 10:
+				print(f"  ✅ GOOD: Acceptable quality cost ({avg_sim_loss_pct:.1f}%) for strong frequency benefit ({avg_freq_gain:.0f}x)")
+		elif avg_sim_loss_pct < 8 and avg_freq_gain > 5:
+				print(f"  ⚠️  ACCEPTABLE: Moderate quality cost ({avg_sim_loss_pct:.1f}%) for moderate frequency benefit ({avg_freq_gain:.0f}x)")
+		else:
+				print(f"  ❌ POOR: High quality cost ({avg_sim_loss_pct:.1f}%) for limited frequency benefit ({avg_freq_gain:.0f}x)")
+				print(f"     Consider reducing frequency weight from 0.3 to 0.2")
+	else:
+		print("\n  ℹ️  Frequency weighting made no changes (all clusters picked highest similarity)")
+
+	print("="*80)
+	# ========================================================================
 
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 	

@@ -279,7 +279,6 @@ def _post_process_(
 		return ' '.join(lemmatized_tokens)
 	
 	processed_batch = []
-
 	for idx, labels in enumerate(labels_list):
 		if labels is None:
 			processed_batch.append(None)
@@ -466,7 +465,7 @@ def _post_process_(
 				continue
 
 			# exclude if "unidentified" or "unknown" in the keyword "american unknown soldier", "unidentified ship"
-			if any(word in lemma for word in ["unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part", "series", "chart", "graph", "diagram", "tableau", "plot", "graf", "schematic", "sketch", "sketching", "number", "numbered", "model"]):
+			if any(word in lemma for word in ["sample", "analysis", "unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part", "series", "chart", "graph", "diagram", "tableau", "plot", "graf", "schematic", "sketch", "sketching", "number", "numbered", "model"]):
 				if verbose:
 					print(f"    ✗ Skipped: unidentified/unknown detected! {lemma}")
 				continue
