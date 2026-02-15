@@ -2324,27 +2324,26 @@ def cluster(
 		print(f"  Questionable trades (>10% sim loss or <2x gain): {questionable_trades} ({questionable_trades/freq_changed_count*100:.1f}%)")
 		
 		if questionable_trades > 0 and verbose:
-				print(f"\n  ⚠️  WARNING: {questionable_trades} questionable trades detected")
-				print(f"     Consider adjusting weighting (currently 70/30) if this is high")
-				print(f"\n📋 EXAMINING QUESTIONABLE TRADES:")
-				print(f"{'Cluster':<10} {'Pure Sim Choice':<30} {'Freq Choice':<30} {'Sim Loss':<12} {'Freq Gain':<12}")
-				print("-" * 100)
-				for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True)[:20]:
-					pure_label = ex['pure_choice'][:32]
-					freq_label = ex['freq_choice'][:32]
-					print(f"{ex['cluster_id']:<10} {pure_label:<35} {freq_label:<35} {ex['sim_loss']*100:>10.1f}% {ex['freq_gain']:>10.1f}x")
-
-				# Categorize questionable trades
-				high_loss_low_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] < 2]
-				high_loss_good_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] >= 2]
-				low_loss_low_gain = [ex for ex in questionable_examples if ex['sim_loss'] <= 0.10 and ex['freq_gain'] < 2]
-				
-				print(f"\n📊 BREAKDOWN OF QUESTIONABLE TRADES:")
-				print(f"  Type A: High loss (>10%) + Low gain (<2x):   {len(high_loss_low_gain):<5} ({len(high_loss_low_gain)/questionable_trades*100:.1f}%) ❌ BAD")
-				print(f"  Type B: High loss (>10%) + Good gain (≥2x):  {len(high_loss_good_gain):<5} ({len(high_loss_good_gain)/questionable_trades*100:.1f}%) ⚠️ DEBATABLE")
-				print(f"  Type C: Low loss (≤10%) + Low gain (<2x):    {len(low_loss_low_gain):<5} ({len(low_loss_low_gain)/questionable_trades*100:.1f}%) ⚠️ UNNECESSARY")
+			print(f"\n  ⚠️  WARNING: {questionable_trades} questionable trades detected")
+			print(f"     Consider adjusting weighting (currently 70/30) if this is high")
+			print(f"\n📋 EXAMINING QUESTIONABLE TRADES:")
+			print(f"{'Cluster':<10} {'Pure Sim Choice':<30} {'Freq Choice':<30} {'Sim Loss':<12} {'Freq Gain':<12}")
+			print("-" * 100)
+			for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True)[:20]:
+				pure_label = ex['pure_choice'][:32]
+				freq_label = ex['freq_choice'][:32]
+				print(f"{ex['cluster_id']:<10} {pure_label:<35} {freq_label:<35} {ex['sim_loss']*100:>10.1f}% {ex['freq_gain']:>10.1f}x")
+			# Categorize questionable trades
+			high_loss_low_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] < 2]
+			high_loss_good_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] >= 2]
+			low_loss_low_gain = [ex for ex in questionable_examples if ex['sim_loss'] <= 0.10 and ex['freq_gain'] < 2]
+			
+			print(f"\n📊 BREAKDOWN OF QUESTIONABLE TRADES:")
+			print(f"  Type A: High loss (>10%) + Low gain (<2x):   {len(high_loss_low_gain):<5} ({len(high_loss_low_gain)/questionable_trades*100:.1f}%) ❌ BAD")
+			print(f"  Type B: High loss (>10%) + Good gain (≥2x):  {len(high_loss_good_gain):<5} ({len(high_loss_good_gain)/questionable_trades*100:.1f}%) ⚠️ DEBATABLE")
+			print(f"  Type C: Low loss (≤10%) + Low gain (<2x):    {len(low_loss_low_gain):<5} ({len(low_loss_low_gain)/questionable_trades*100:.1f}%) ⚠️ UNNECESSARY")
 		else:
-				print(f"\n  ✅ All trades are high-quality!")
+			print(f"\n  ✅ All trades are high-quality!")
 		
 		# Overall verdict
 		avg_sim_loss_pct = np.mean(total_sim_loss) * 100
