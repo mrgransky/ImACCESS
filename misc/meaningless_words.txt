@@ -1218,3 +1218,4 @@ orientation
 war
 upward
 downward
+sentence

@@ -82,6 +82,7 @@ useless_collection_terms = [
 	"Five Civilized Tribes Section 2 (1)",
 	"Reasons Why Okmulgee is an Ideal Location for Hospital",
 	"Revolutionary War Pension and Bounty-Land-Warrant",
+	"W.Indies - Navassa Island",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
@@ -261,7 +262,7 @@ def is_desired(collections, useless_terms):
 	for term in useless_terms:
 		for collection in collections:
 			if term in collection:
-				# print(f"\t> XXXX found '{term}' => skipping! XXXX <")
+				print(f"\tSkipping: '{term}' Collection: '{collection}'")
 				return False
 	return True
 
@@ -328,6 +329,7 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 
 		useless_description_terms = [
 			"certificate" not in doc_description.lower(),
+			"bookmark" not in doc_description.lower(),
 			"literary digest" not in doc_description.lower(),
 			"drawing" not in doc_description.lower(),
 			"sketch of" not in doc_description.lower(),

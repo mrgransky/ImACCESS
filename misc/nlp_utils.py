@@ -465,7 +465,7 @@ def _post_process_(
 				continue
 
 			# exclude if "unidentified" or "unknown" in the keyword "american unknown soldier", "unidentified ship" or irrelevant words
-			if any(word in lemma for word in ["man", "men", "woman", "women", "people", "person", "child", "children", "boy", "girl", "boys", "girls", "sample", "analysis", "unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part", "series", "chart", "graph", "diagram", "tableau", "plot", "graf", "schematic", "sketch", "sketching", "number", "numbered", "model"]):
+			if any(word in lemma for word in ["man", "men", "woman", "women", "people", "person", "child", "children", "boy", "girl", "boys", "girls", "brother", "brothers", "sister", "sisters", "sample", "analysis", "unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part", "series", "chart", "graph", "diagram", "tableau", "plot", "graf", "schematic", "sketch", "sketching", "number", "numbered", "model", "nickname", 'cousin', 'nephew', 'niece', 'sibling', 'uncle', "mother", "father", "daughter", "son", "godmother", "grandfather", "grandmother", "grandma", "grandpa", 'granddaughter', 'grandson', "godfather","aunt", "grandparent", "parent", "male", "female", "lady", "individual"]):
 				if verbose:
 					print(f"    ✗ Skipped: irrelevant word detected! {lemma}")
 				continue
@@ -630,6 +630,7 @@ def basic_clean(txt: str):
 		r'Subcategory: \[BLANK\]',
 		r'Subcategory: Unidentified',
 		r'Category: Miscellaneous ',
+		r'Category: Nicknames',
 		r'Date+\s+Month:+\s+\w+',
 		r'Date+\s+Day:+\s+\w+',
 		r'Date+\s+Year:+\s+\w+',

@@ -3178,7 +3178,7 @@ def perform_multilabel_eda(
 	data_path: str,
 	label_column: str,
 	n_top_labels_plot: int=100,
-	n_top_labels_co_occurrence: int=30,
+	n_top_labels_co_occurrence: int=50,
 	DPI: int=200,
 ):
 	if not os.path.exists(data_path):
@@ -3698,7 +3698,7 @@ def perform_multilabel_eda(
 		# 4. Network Visualization
 		fig_network = plt.figure(figsize=(18, 15))
 		ax_network = fig_network.add_subplot(1, 1, 1)
-		threshold = 0.05  # Only show edges with Jaccard threshold
+		threshold = 0.03  # Only show edges with Jaccard threshold
 		
 		# Create adjacency list for strong connections
 		strong_connections = []
