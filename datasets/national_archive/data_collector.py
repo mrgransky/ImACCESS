@@ -31,7 +31,7 @@ print_args_table(args=args, parser=parser)
 set_seeds(seed=args.seed, debug=False)
 
 # run in local laptop:
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 4 --img_mean_std --thumbnail_size 512,512 -v > logs/na_dataset_collection.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 2 --img_mean_std --thumbnail_size 512,512 -v > logs/na_dataset_collection.out &
 
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/datasets/WW_DATASETs -nw 12 --img_mean_std --thumbnail_size 512,512

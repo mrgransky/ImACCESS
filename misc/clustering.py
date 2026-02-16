@@ -2201,8 +2201,7 @@ def cluster(
 	for doc in documents:
 		for label in doc:
 			label_freq_dict[label] = label_freq_dict.get(label, 0) + 1
-	print(label_freq_dict)
-
+	# print(label_freq_dict)
 
 	original_label_counts = label_freq_dict
 	print(f"\tComputed frequencies for {len(original_label_counts)} labels")
@@ -2250,35 +2249,36 @@ def cluster(
 			
 			# Track changes (after the safety check)
 			if best_idx != pure_sim_idx:
-					freq_changed_count += 1
-					
-					# Calculate impact metrics
-					sim_loss = (similarities[pure_sim_idx] - similarities[best_idx]) / similarities[pure_sim_idx]
-					freq_gain = label_freqs[best_idx] / max(label_freqs[pure_sim_idx], 1)
-					
-					total_sim_loss.append(sim_loss)
-					total_freq_gain.append(freq_gain)
-					
-					# Track questionable trades for inspection
-					if sim_loss > 0.10 or freq_gain < 3.0:
-							questionable_examples.append({
-									'cluster_id': cid,
-									'pure_choice': cluster_texts[pure_sim_idx],
-									'freq_choice': cluster_texts[best_idx],
-									'pure_freq': label_freqs[pure_sim_idx],
-									'freq_freq': label_freqs[best_idx],
-									'pure_sim': similarities[pure_sim_idx],
-									'freq_sim': similarities[best_idx],
-									'sim_loss': sim_loss,
-									'freq_gain': freq_gain,
-									'cluster_size': len(cluster_texts),
-									'cluster_labels': cluster_texts
-							})
-					
-					if verbose:
-							print(f"\n[Cluster {cid}] Frequency weighting changed selection:")
-							print(f"  Pure similarity would pick: {cluster_texts[pure_sim_idx]} (sim={similarities[pure_sim_idx]:.4f}, freq={label_freqs[pure_sim_idx]})")
-							print(f"  Frequency-weighted picks: {cluster_texts[best_idx]} (sim={similarities[best_idx]:.4f}, freq={label_freqs[best_idx]})")
+				freq_changed_count += 1
+				
+				# Calculate impact metrics
+				sim_loss = (similarities[pure_sim_idx] - similarities[best_idx]) / similarities[pure_sim_idx]
+				freq_gain = label_freqs[best_idx] / max(label_freqs[pure_sim_idx], 1)
+				
+				total_sim_loss.append(sim_loss)
+				total_freq_gain.append(freq_gain)
+				
+				# Track questionable trades for inspection
+				if sim_loss > 0.10 or freq_gain < 3.0:
+						questionable_examples.append({
+							'cluster_id': cid,
+							'pure_choice': cluster_texts[pure_sim_idx],
+							'freq_choice': cluster_texts[best_idx],
+							'pure_freq': label_freqs[pure_sim_idx],
+							'freq_freq': label_freqs[best_idx],
+							'pure_sim': similarities[pure_sim_idx],
+							'freq_sim': similarities[best_idx],
+							'sim_loss': sim_loss,
+							'freq_gain': freq_gain,
+							'cluster_size': len(cluster_texts),
+							'cluster_labels': cluster_texts
+						})
+				
+				if verbose:
+					print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
+					print(f"Frequency weighting changed selection:")
+					print(f"  Pure similarity would pick: {cluster_texts[pure_sim_idx]} (sim={similarities[pure_sim_idx]:.4f}, freq={label_freqs[pure_sim_idx]})")
+					print(f"  Frequency-weighted picks: {cluster_texts[best_idx]} (sim={similarities[best_idx]:.4f}, freq={label_freqs[best_idx]})")
 		else:
 			# Fallback: pure similarity (original method)
 			best_idx = similarities.argmax()
@@ -2287,21 +2287,15 @@ def cluster(
 		canonical = cluster_texts[best_idx]
 		
 		cluster_canonicals[cid] = {
-				'canonical': canonical,
-				'score': float(similarities[best_idx]),
-				'size': len(cluster_texts)
+			'canonical': canonical,
+			'score': float(similarities[best_idx]),
+			'size': len(cluster_texts)
 		}
 		
 		if verbose:
-				print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
-				print(f"\tCanonical: {canonical} (sim={similarities[best_idx]:.4f})")
+			print(f"\tCanonical: {canonical} (sim={similarities[best_idx]:.4f})")
 
-
-
-	# PRINT SUMMARY STATISTICS (ADD THIS AFTER THE LOOP)
-	print("\n" + "="*80)
 	print("FREQUENCY WEIGHTING IMPACT ANALYSIS")
-	print("="*80)
 
 	total_clusters = len(df.cluster.unique())
 	print(f"Total clusters analyzed: {total_clusters}")
@@ -2336,10 +2330,12 @@ def cluster(
 			print(f"\n📋 EXAMINING QUESTIONABLE TRADES:")
 			print(f"{'Cluster':<10} {'Pure Sim Choice':<30} {'Freq Choice':<30} {'Sim Loss':<12} {'Freq Gain':<12}")
 			print("-" * 100)
+
 			for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True)[:20]:
 				pure_label = ex['pure_choice'][:32]
 				freq_label = ex['freq_choice'][:32]
 				print(f"{ex['cluster_id']:<10} {pure_label:<35} {freq_label:<35} {ex['sim_loss']*100:>10.1f}% {ex['freq_gain']:>10.1f}x")
+
 			# Categorize questionable trades
 			high_loss_low_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] < 2]
 			high_loss_good_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] >= 2]

@@ -464,10 +464,10 @@ def _post_process_(
 					print(f"        → {lemma} Stopword detected! skipping")
 				continue
 
-			# exclude if "unidentified" or "unknown" in the keyword "american unknown soldier", "unidentified ship"
-			if any(word in lemma for word in ["sample", "analysis", "unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part", "series", "chart", "graph", "diagram", "tableau", "plot", "graf", "schematic", "sketch", "sketching", "number", "numbered", "model"]):
+			# exclude if "unidentified" or "unknown" in the keyword "american unknown soldier", "unidentified ship" or irrelevant words
+			if any(word in lemma for word in ["man", "men", "woman", "women", "people", "person", "child", "children", "boy", "girl", "boys", "girls", "sample", "analysis", "unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part", "series", "chart", "graph", "diagram", "tableau", "plot", "graf", "schematic", "sketch", "sketching", "number", "numbered", "model"]):
 				if verbose:
-					print(f"    ✗ Skipped: unidentified/unknown detected! {lemma}")
+					print(f"    ✗ Skipped: irrelevant word detected! {lemma}")
 				continue
 
 			# only No. NNNNN ex) No. X1657 or No. 1657
