@@ -2991,7 +2991,7 @@ def analyze_multi_source_agreement(processed_dfs, output_dir, file_name, DPI=200
 			overlap_23 = set2 & set3
 			
 			print(f"\nLabel Set Overlaps:")
-			print(f"  Common labels across all three sources: {len(all_three_overlap)}")
+			print(f"  Common labels across all {len(source_keys)} sources: {len(all_three_overlap)}")
 			print(f"  Common labels between {source_keys[0]} and {source_keys[1]}: {len(overlap_12)}")
 			print(f"  Common labels between {source_keys[0]} and {source_keys[2]}: {len(overlap_13)}")
 			print(f"  Common labels between {source_keys[1]} and {source_keys[2]}: {len(overlap_23)}")

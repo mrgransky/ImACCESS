@@ -2221,6 +2221,9 @@ def cluster(
 		cluster_texts = df[cluster_mask]['label'].tolist()
 		cluster_indices = df[cluster_mask].index.tolist()
 		cluster_embeddings = X[cluster_indices]
+
+		if verbose:
+			print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
 		
 		# Compute centroid
 		centroid = cluster_embeddings.mean(axis=0, keepdims=True)
@@ -2275,7 +2278,6 @@ def cluster(
 						})
 				
 				if verbose:
-					print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
 					print(f"Frequency weighting changed selection:")
 					print(f"  Pure similarity would pick: {cluster_texts[pure_sim_idx]} (sim={similarities[pure_sim_idx]:.4f}, freq={label_freqs[pure_sim_idx]})")
 					print(f"  Frequency-weighted picks: {cluster_texts[best_idx]} (sim={similarities[best_idx]:.4f}, freq={label_freqs[best_idx]})")
@@ -2293,7 +2295,11 @@ def cluster(
 		}
 		
 		if verbose:
-			print(f"\tCanonical: {canonical} (sim={similarities[best_idx]:.4f})")
+			print(f"\t=> Selected Canonical: {canonical} (sim={similarities[best_idx]:.4f})")
+
+
+
+
 
 	print("FREQUENCY WEIGHTING IMPACT ANALYSIS")
 
