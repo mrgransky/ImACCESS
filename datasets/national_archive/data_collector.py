@@ -83,6 +83,7 @@ useless_collection_terms = [
 	"Reasons Why Okmulgee is an Ideal Location for Hospital",
 	"Revolutionary War Pension and Bounty-Land-Warrant",
 	"W.Indies - Navassa Island",
+	"Years of Lightning, Days of Drums",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")

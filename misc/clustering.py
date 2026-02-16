@@ -45,12 +45,12 @@ cache_directory = {
 }
 
 def automated_cluster_validation(
-		embeddings: np.ndarray,
-		labels: np.ndarray,
-		cluster_assignments: np.ndarray,
-		canonical_labels: Dict[int, str],
-		original_label_counts: Optional[Dict[str, int]] = None,
-		verbose: bool = True
+	embeddings: np.ndarray,
+	labels: np.ndarray,
+	cluster_assignments: np.ndarray,
+	canonical_labels: Dict[int, str],
+	original_label_counts: Optional[Dict[str, int]] = None,
+	verbose: bool = True
 ) -> Dict:
 		"""
 		Fully automated clustering quality assessment with ZERO human intervention.
@@ -90,17 +90,16 @@ def automated_cluster_validation(
 		n_clusters = len(np.unique(cluster_assignments))
 		
 		if verbose:
-				print("\n" + "="*80)
-				print("AUTOMATED CLUSTER VALIDATION (ZERO HUMAN INTERVENTION)")
-				print("="*80)
-				print(f"Dataset: {n_samples:,} unique labels → {n_clusters:,} clusters")
-				print("="*80 + "\n")
+			print("\nAUTOMATED CLUSTER VALIDATION (ZERO HUMAN INTERVENTION)")
+			print(f"Dataset: {n_samples:,} unique labels → {n_clusters:,} clusters")
 		
 		# Create DataFrame for analysis
-		df = pd.DataFrame({
+		df = pd.DataFrame(
+			{
 				'label': labels,
 				'cluster': cluster_assignments
-		})
+			}
+		)
 		df['canonical'] = df['cluster'].map(canonical_labels)
 		
 		results = {}
@@ -2085,7 +2084,7 @@ def cluster(
 		print(f"  Questionable trades (>10% sim loss or <2x gain): {questionable_trades} ({questionable_trades/freq_changed_count*100:.1f}%)")
 		
 		if questionable_trades > 0 and verbose:
-			print(f"\n[WARNING] {questionable_trades} questionable trades detected")
+			print(f"\n[WARNING] {questionable_trades} questionable trades detected:")
 			print(f"\t=> Consider adjusting weighting (currently 70/30) if this is high")
 			print(f"\nEXAMINING QUESTIONABLE TRADES:")
 			print(f"{'Cluster':<10} {'Pure Sim Choice':<30} {'Freq Choice':<30} {'Sim Loss':<12} {'Freq Gain':<12}")
@@ -2101,7 +2100,7 @@ def cluster(
 			high_loss_good_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] >= 2]
 			low_loss_low_gain = [ex for ex in questionable_examples if ex['sim_loss'] <= 0.10 and ex['freq_gain'] < 2]
 			
-			print(f"\n📊 BREAKDOWN OF QUESTIONABLE TRADES:")
+			print(f"\nBREAKDOWN OF QUESTIONABLE TRADES:")
 			print(f"  Type A: High loss (>10%) + Low gain (<2x):   {len(high_loss_low_gain):<5} ({len(high_loss_low_gain)/questionable_trades*100:.1f}%) ❌ BAD")
 			print(f"  Type B: High loss (>10%) + Good gain (≥2x):  {len(high_loss_good_gain):<5} ({len(high_loss_good_gain)/questionable_trades*100:.1f}%) ⚠️ DEBATABLE")
 			print(f"  Type C: Low loss (≤10%) + Low gain (<2x):    {len(low_loss_low_gain):<5} ({len(low_loss_low_gain)/questionable_trades*100:.1f}%) ⚠️ UNNECESSARY")

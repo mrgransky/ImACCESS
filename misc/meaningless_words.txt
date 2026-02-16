@@ -1085,6 +1085,7 @@ looking northeast
 looking northwest
 looking southwest
 looking southeast
+aerial vehicle
 eastward
 westward
 northward
@@ -1219,3 +1220,6 @@ war
 upward
 downward
 sentence
+offer
+bookmark
+urging

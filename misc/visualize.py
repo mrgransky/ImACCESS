@@ -3696,9 +3696,9 @@ def perform_multilabel_eda(
 		plt.close()
 		
 		# 4. Network Visualization
-		fig_network = plt.figure(figsize=(18, 15))
+		fig_network = plt.figure(figsize=(20, 17))
 		ax_network = fig_network.add_subplot(1, 1, 1)
-		threshold = 0.03  # Only show edges with Jaccard threshold
+		threshold = 0.01  # Only show edges with Jaccard threshold
 		
 		# Create adjacency list for strong connections
 		strong_connections = []
@@ -3714,14 +3714,14 @@ def perform_multilabel_eda(
 		
 		# Draw edges
 		for i, j, weight in strong_connections:
-			ax_network.plot([x[i], x[j]], [y[i], y[j]], "#000102", alpha=weight, linewidth=weight*3.5, zorder=1)
+			ax_network.plot([x[i], x[j]], [y[i], y[j]], "#0A0502FF", alpha=weight, linewidth=weight*5.5, zorder=1)
 		
 		# Draw nodes
-		ax_network.scatter(x, y, s=250, c="#0E01C7", edgecolors="#00144E", zorder=10, alpha=0.85)
+		ax_network.scatter(x, y, s=250, c="#0B00A1", edgecolors="#000924", zorder=10, alpha=0.9)
 		
 		# Add labels
 		for idx, label in enumerate(top_labels_for_correlation):
-			ax_network.text(x[idx]*1.15, y[idx]*1.15, label, ha='center', va='center', fontsize=12)
+			ax_network.text(x[idx]*1.15, y[idx]*1.15, label, ha='center', va='center', fontsize=11)
 		
 		ax_network.set_xlim(-1.5, 1.5)
 		ax_network.set_ylim(-1.5, 1.5)

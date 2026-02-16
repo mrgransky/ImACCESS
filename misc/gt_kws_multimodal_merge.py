@@ -65,7 +65,6 @@ def merge_csv_files(
 	df = pd.concat(dfs, ignore_index=True)
 	print(f">> Merged {type(df)} from {len(csv_files)} CSV files: {df.shape}\n{list(df.columns)}")
 
-	# post_process multimodal labels:
 	multimodal_labels = _post_process_(
 		labels_list=df['multimodal_labels'].tolist(), 
 		# verbose=verbose,
