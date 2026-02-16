@@ -118,6 +118,8 @@ soviet union
 Naval Officer
 half track
 half-track
+Waffen-SS
+Waffen SS
 military vehicles
 army vehicles
 motor vehicles
@@ -208,7 +210,6 @@ wreckage
 panzer
 howitzer
 Airstrike
-Waffen
 massacre
 victims
 atrocities

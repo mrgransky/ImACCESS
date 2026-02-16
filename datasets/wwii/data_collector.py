@@ -887,7 +887,7 @@ def main():
 		f"{base_url}/germany/units/afrika_korps/" : "military unit",
 		f"{base_url}/germany/units/waffen-ss/" : "military unit",
 		f"{base_url}/germany/units/grossdeutschland/" : "military unit",
-		f"{base_url}/germany/units/sturmgeschutz_brigade_244/" : "military unit",
+		f"{base_url}/germany/units/sturmgeschutz_brigade_244/" : "armored fighting vehicles",
 		}
 	
 	# # slice[:N] URLs [JUST FOR TESTING]:

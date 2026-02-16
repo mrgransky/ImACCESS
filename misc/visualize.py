@@ -3652,8 +3652,7 @@ def perform_multilabel_eda(
 		plt.close()
 		
 		# 2. Jaccard Similarity Heatmap
-		fig_heatmap = plt.figure(figsize=(12, 10))
-		ax_heatmap = fig_heatmap.add_subplot(1, 1, 1)
+		fig_heatmap, ax_heatmap = plt.subplots(figsize=(19, 17))
 		sns.heatmap(
 			jaccard_df, 
 			annot=True, 
@@ -3674,8 +3673,7 @@ def perform_multilabel_eda(
 		plt.close()
 		
 		# 3. Co-occurrence Matrix
-		fig_cooc = plt.figure(figsize=(16, 14))
-		ax_cooc = fig_cooc.add_subplot(1, 1, 1)
+		fig_cooc, ax_cooc = plt.subplots(figsize=(19, 17))
 		sns.heatmap(
 			cooccurrence_df,
 			annot=True,
@@ -3739,7 +3737,6 @@ def perform_multilabel_eda(
 	
 	print("="*100)
 
-	# PLOT 6: Multi-source Agreement Analysis
 	analyze_multi_source_agreement(
 		processed_dfs=processed_dfs,
 		output_dir=output_dir,
@@ -3772,7 +3769,7 @@ def perform_multilabel_eda(
 		DPI
 	)
 
-	# Optional: Create comparative radar chart
+	# Create comparative radar chart
 	scores, benchmark_scores = create_comparative_radar_chart(
 		summary_stats_dict, 
 		output_dir, 
@@ -3858,30 +3855,31 @@ def plot_label_distribution_pie_chart(
 	colors = plt.cm.tab20c(np.linspace(0, 1, len(labels)))
 	# Explode larger wedges
 	explode = [0.1 if i < 3 else 0 for i in range(len(labels))]
+
 	# Create pie chart
 	wedges, texts, autotexts = ax_pie.pie(
-			label_counts.values,
-			labels=[''] * len(labels),
-			colors=colors,
-			autopct=lambda p: f'{p:.1f}%' if p > 5 else '',
-			startangle=0,
-			explode=explode,
-			wedgeprops={
-					'edgecolor': 'black',
-					'linewidth': 0.7,
-					'alpha': 0.8,
-			}
+		label_counts.values,
+		labels=[''] * len(labels),
+		colors=colors,
+		autopct=lambda p: f'{p:.1f}%' if p > 5 else '',
+		startangle=0,
+		explode=explode,
+		wedgeprops={
+			'edgecolor': '#000000',
+			'linewidth': 0.7,
+			'alpha': 0.8,
+		}
 	)
 	# Adjust percentage label contrast and position
 	for i, autotext in enumerate(autotexts):
-			if autotext.get_text():
-					wedge_color = wedges[i].get_facecolor()
-					luminance = 0.299 * wedge_color[0] + 0.587 * wedge_color[1] + 0.114 * wedge_color[2]
-					autotext.set_color('white' if luminance < 0.5 else 'black')
-					if label_counts.values[i] / total_samples < 0.1:
-							autotext.set_position((autotext.get_position()[0] * 1.2, autotext.get_position()[1] * 1.2))
-					autotext.set_fontsize(18)
-					autotext.set_weight('bold')  # Make font bold
+		if autotext.get_text():
+			wedge_color = wedges[i].get_facecolor()
+			luminance = 0.299 * wedge_color[0] + 0.587 * wedge_color[1] + 0.114 * wedge_color[2]
+			autotext.set_color('white' if luminance < 0.5 else 'black')
+			if label_counts.values[i] / total_samples < 0.1:
+				autotext.set_position((autotext.get_position()[0] * 1.2, autotext.get_position()[1] * 1.2))
+			autotext.set_fontsize(18)
+			autotext.set_weight('bold')  # Make font bold
 
 	# Turn off axis for legend subplot
 	ax_legend.axis('off')

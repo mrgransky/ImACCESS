@@ -84,6 +84,8 @@ useless_collection_terms = [
 	"Revolutionary War Pension and Bounty-Land-Warrant",
 	"W.Indies - Navassa Island",
 	"Years of Lightning, Days of Drums",
+	"Training Camps and Schools - Military - Camp Cody",
+	"Personnel - Civilians - Davis",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")

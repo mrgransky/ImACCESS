@@ -545,6 +545,7 @@ Iwo Jima
 Jerusalem
 Karachi
 Kiev
+Kirkuk
 Kyoto
 Kobe
 Koblenz
@@ -676,15 +677,19 @@ Italian
 Israeli
 Japanese
 Korean
+Kurd
+Kurdish
 Lebanese
 Luxembourgian
 Malian
 Malaysian
 Mexican
+Mongolian
 Moroccan
 New Zealander
 Norwegian
 North Korean
+Okinawan
 Papuan
 Persian
 Polish
@@ -702,6 +707,7 @@ Swiss
 Syrian
 Taiwanese
 Turkish
+Uzbek
 Vietnamese
 Viet
 Yugoslav
