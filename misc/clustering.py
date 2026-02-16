@@ -1407,7 +1407,7 @@ def get_optimal_num_clusters(
 		print("-" * 80)
 	
 	# Adaptive coarse range based on dataset size
-	if num_samples > int(3e4):
+	if num_samples > int(2e4):
 		# Large datasets: test k = 1000, 2000, 3000, ..., 10000
 		coarse_range = range(1000, min(10001, num_samples // 3), 1000)
 	elif num_samples > int(1e4):

@@ -293,6 +293,8 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 		useless_title_terms = [
 			"wildflowers" not in doc_title.lower(), 
 			"-sc-" not in doc_title.lower(),
+			"yard sub-surface survey" not in doc_title.lower(),
+			"blueprint" not in doc_title.lower(),
 			"notes" not in doc_title.lower(),
 			"page" not in doc_title.lower(),
 			"exhibit" not in doc_title.lower(),

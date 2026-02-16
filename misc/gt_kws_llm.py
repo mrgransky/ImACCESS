@@ -84,13 +84,11 @@ that represent **core objects, entities, actions, or scene elements** which are 
 		- Example: use "seaplane" instead of "seaplane on the water in the background"
 	* **Reusable**: avoid phrases that are overly specific, descriptive, or unlikely to appear in multiple captions.
 
-- Keywords **DO NOT need to appear verbatim** in the caption, but **MUST be directly and
-	unambiguously inferable** from it.
+- Keywords **DO NOT need to appear verbatim** in the caption, but **MUST be directly and unambiguously inferable** from it.
 
 - **STRICTLY EXCLUDE**:
-	* Proper names of individuals, ships, organizations, or uniquely identifying entities
-		(e.g., personal names, vessel names, club names).
 	* Dates, times, years, decades, or any temporal references.
+	* Family relationship terms.
 	* Geographic references (continents, countries, cities, towns, islands, regions, landmarks).
 	* Quantities, counts, measurements, or numeric expressions.
 	* Composite phrases encoding multiple concepts (e.g., subject + action + location).

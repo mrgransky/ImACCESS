@@ -696,7 +696,6 @@ def get_multi_label_stratified_split(
 	print(f"train_original_indices: {type(train_original_indices)} {train_original_indices.shape}")
 	print(f"val_original_indices: {type(val_original_indices)} {val_original_indices.shape}")
 
-
 	train_df = df_filtered.loc[train_original_indices].reset_index(drop=True)
 	val_df = df_filtered.loc[val_original_indices].reset_index(drop=True)
 	
@@ -712,7 +711,9 @@ def get_multi_label_stratified_split(
 	val_path = csv_file.replace('.csv', '_val.csv')
 	train_df.to_csv(train_path, index=False)
 	val_df.to_csv(val_path, index=False)
+
 	print(f"Saved train/val splits to {train_path} and {val_path}")
+
 	return train_df, val_df
 
 def get_extension(url: str="www.example.com/some_/path/to/file.jpg"):
