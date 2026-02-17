@@ -31,7 +31,7 @@ print_args_table(args=args, parser=parser)
 set_seeds(seed=args.seed, debug=False)
 
 # run in local laptop:
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 2 --thumbnail_size 512,512 -v > logs/na_dataset_collection.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 12 --thumbnail_size 512,512 -v > logs/na_dataset_collection.out &
 
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/datasets/WW_DATASETs -nw 12 --img_mean_std --thumbnail_size 512,512
@@ -275,6 +275,9 @@ def is_desired(collections, useless_terms):
 	return True
 
 def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFrame:
+	query = query.lower()
+
+	# check if df already exists:
 	qv_processed = re.sub(
 		pattern=" ", 
 		repl="_", 
@@ -605,13 +608,17 @@ def main():
 		valid_filenames.add(os.path.basename(img_path))
 	for img_path in multi_label_final_df['img_path']:
 		valid_filenames.add(os.path.basename(img_path))
-	
+	print(f"Found {len(valid_filenames)} valid image files in the final dataset")
+
 	for img_file in os.listdir(IMAGE_DIRECTORY):
 		if img_file.endswith('.jpg'):
 			if img_file not in valid_filenames:
 				print(f"Removing unnecessary image file: {img_file}")
 				os.remove(os.path.join(IMAGE_DIRECTORY, img_file))
 
+	# confirm df size and number of images in the IMAGE_DIRECTORY are the same
+	print("\nConfirming df size and number of images in the IMAGE_DIRECTORY are the same...")
+	assert len(valid_filenames) == len(os.listdir(IMAGE_DIRECTORY)), "Number of images in the final dataset and in the IMAGE_DIRECTORY are not the same!"
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))

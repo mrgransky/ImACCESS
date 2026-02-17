@@ -522,6 +522,7 @@ Budapest
 Burma
 Cadiz
 Cairo
+Canberra
 Caracas
 Cebu City
 Chania
@@ -594,6 +595,7 @@ Managua
 Manchester
 Murcia
 Nuremberg
+Ottawa
 Panama
 Palma de Mallorca
 Alicante
@@ -640,6 +642,7 @@ American
 Arab
 Arabian
 Asian
+Aussie
 Australian
 Austrian
 Bavarian
