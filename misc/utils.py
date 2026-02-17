@@ -893,7 +893,7 @@ def download_image(
 			else:
 				if verbose:
 					mode = "thumbnailed" if thumbnail_size else "original"
-					print(f"{rIdx:<10}/{total_rows:<10} {image_id:<100} (Existing, {mode}) {time.time()-t0:.1f}s")
+					print(f"{rIdx:<10}/{total_rows:<10} {image_id:<100} (Existing, {mode}) {time.time()-t0:.3f}s")
 				return True							
 		except (IOError, SyntaxError, Image.DecompressionBombError) as e:
 			print(f"Existing image {image_path} is invalid: {e}, re-downloading...")

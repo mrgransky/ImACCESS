@@ -31,7 +31,7 @@ print_args_table(args=args, parser=parser)
 set_seeds(seed=args.seed, debug=False)
 
 # run in local laptop:
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 2 --img_mean_std --thumbnail_size 512,512 -v > logs/na_dataset_collection.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 2 --thumbnail_size 512,512 -v > logs/na_dataset_collection.out &
 
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/datasets/WW_DATASETs -nw 12 --img_mean_std --thumbnail_size 512,512
@@ -57,6 +57,7 @@ useless_collection_terms = [
 	"Awards",
 	"Presentations",
 	"Cartoon", 
+	"Artwork",
 	"Newsmap",
 	"Tools and Machinery",
 	"Roads of the Past",
@@ -87,6 +88,8 @@ useless_collection_terms = [
 	"Training Camps and Schools - Military - Camp Cody",
 	"Personnel - Civilians - Davis",
 	"Records of the U.S. Fish and Wildlife Service",
+	"Gemini VII",
+	"Auschwitz Concentration Camp",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
@@ -117,12 +120,13 @@ def get_doc_year(text, raw_doc_date):
 		return None
 
 def get_data(
-	start_date: str = "1914-01-01", 
-	end_date: str = "1914-01-02", 
-	label: str = "world war",
+	label: str,
+	start_date: str, 
+	end_date: str, 
 	max_retries: int = 3,
 	retry_delay: int = 5,
 ) -> Optional[List[Dict]]:
+
 	t0 = time.time()
 	label_processed = re.sub(" ", "_", label)
 	label_all_hits_fpth = os.path.join(
@@ -149,7 +153,7 @@ def get_data(
 		"availableOnline": "true",
 		"dataSource": "description",
 		"endDate": end_date,
-		"levelOfDescription": "item",
+		# "levelOfDescription": "item",
 		"objectType": "jpg,png",
 		"q": label,
 		"startDate": start_date,
@@ -270,7 +274,7 @@ def is_desired(collections, useless_terms):
 				return False
 	return True
 
-def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
+def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFrame:
 	qv_processed = re.sub(
 		pattern=" ", 
 		repl="_", 
@@ -281,6 +285,7 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 	if os.path.exists(df_fpth):
 		df = load_pickle(fpath=df_fpth)
 		return df	
+
 	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
 	df_st_time = time.time()
 	data = []
@@ -360,9 +365,18 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 		doc_title = re.sub(r'\s+', ' ', doc_title).strip() if doc_title else None
 		doc_description = re.sub(r'\s+', ' ', doc_description).strip() if doc_description else None
 
+		print(f"\nquery: {query}")
+		print(f"id: {na_identifier}")
 		print(f"doc_title: {doc_title}")
 		print(f"doc_description: {doc_description}")
-		print()
+		# Skip if query is not in either title or description
+		if (
+			(doc_title is None or query not in doc_title.lower())
+			and (doc_description is None or query not in doc_description.lower())
+		):
+			if verbose:
+				print(f"<!> Skipping: '{query}' not in doc_title or doc_description")
+			continue
 
 		row = {
 			'id': na_identifier,
@@ -376,6 +390,11 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
+	
+	# Check if DataFrame is empty before processing
+	if df.empty:
+		print(f"No valid documents found for query: « {query} »")
+		return None
 
 	# extract doc_date from description:
 	df['doc_date'] = df.apply(lambda row: get_doc_year(row['description'], row['raw_doc_date']), axis=1)
@@ -383,7 +402,7 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 	# Filter the DataFrame based on the validity check
 	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
 
-	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
+	print(f"Final DF: {df.shape} {type(df)} (out of {len(docs)} hits) Elapsed time: {time.time()-df_st_time:.1f} sec")
 
 	if df.shape[0] == 0:
 		return
@@ -413,6 +432,7 @@ def main():
 			df = get_dframe(
 				query=qv,
 				docs=label_all_hits,
+				verbose=args.verbose,
 			)
 			if df is not None and df.shape[0]>1:
 				dfs.append(df)
@@ -575,6 +595,23 @@ def main():
 	for file in sorted(os.listdir(DATASET_DIRECTORY)):
 		if file.endswith(('.csv', '.xlsx')):
 			print(f"\t- {file}")
+
+	# remove unnecessary image files which are not in the final dataset
+	print("\nRemoving unnecessary image files which are not in the final dataset...")
+	
+	# Extract actual filenames from img_path column
+	valid_filenames = set()
+	for img_path in single_label_final_df['img_path']:
+		valid_filenames.add(os.path.basename(img_path))
+	for img_path in multi_label_final_df['img_path']:
+		valid_filenames.add(os.path.basename(img_path))
+	
+	for img_file in os.listdir(IMAGE_DIRECTORY):
+		if img_file.endswith('.jpg'):
+			if img_file not in valid_filenames:
+				print(f"Removing unnecessary image file: {img_file}")
+				os.remove(os.path.join(IMAGE_DIRECTORY, img_file))
+
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
