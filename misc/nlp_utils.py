@@ -210,16 +210,50 @@ def _post_process_(
 					and not tokens[0].endswith("ly")  # excludes 'newly built'
 			)
 
-	def is_phrasal_verb(lemma: str) -> bool:
-			tokens = lemma.split()
-			if len(tokens) < 2:
-					return False
+	# def is_phrasal_verb(lemma: str) -> bool:
+	# 		tokens = lemma.split()
+	# 		if len(tokens) < 2:
+	# 				return False
 
-			# verb + particle/preposition
-			return (
-					tokens[0] not in STOPWORDS and
-					tokens[1] in STOPWORDS
-			)
+	# 		# verb + particle/preposition
+	# 		return (
+	# 				tokens[0] not in STOPWORDS and
+	# 				tokens[1] in STOPWORDS
+	# 		)
+
+	def is_phrasal_verb(lemma: str) -> bool:
+			"""
+			Detect true phrasal verbs like:
+			- "take off", "put on", "look up", "turn around"
+			
+			NOT:
+			- "congested area" (adjective + noun)
+			- "military base" (adjective + noun)
+			"""
+			tokens = lemma.split()
+			if len(tokens) != 2:  # Phrasal verbs are exactly 2 words
+					return False
+			
+			# Common phrasal verb particles
+			PARTICLES = {
+					'up', 'down', 'out', 'in', 'on', 'off', 
+					'away', 'back', 'over', 'around', 'through'
+			}
+			
+			# Check if second word is a particle
+			if tokens[1] not in PARTICLES:
+					return False
+			
+			# Use POS tagging to verify first word is a verb
+			pos_tags = nltk.pos_tag(tokens)
+			first_word_pos = pos_tags[0][1]
+			
+			# First word should be a verb (VB, VBD, VBG, VBN, VBP, VBZ)
+			if not first_word_pos.startswith('VB'):
+					return False
+			
+			return True
+
 
 	# CONTEXT-AWARE FILTERING (replace your existing filter)
 	# Define generic word sets
@@ -576,10 +610,25 @@ def _post_process_(
 					print(f"        → {lemma} Only NNNNN foot detected, skipping")
 				continue
 
-			if any(ch in string.punctuation for ch in lemma):
-				if verbose:
-					print(f"        → Punctuation detected in {lemma}, skipping")
-				continue
+			# if any(ch in string.punctuation for ch in lemma):
+			# 	if verbose:
+			# 		print(f"        → Punctuation detected in {lemma}, skipping")
+			# 	continue
+
+			# Skip punctuation EXCEPT hyphens in compound words
+			invalid_punctuation = set(string.punctuation) - {'-'}  # Allow hyphens
+			if any(ch in invalid_punctuation for ch in lemma):
+					if verbose:
+							print(f"        → Punctuation detected in {lemma}, skipping")
+					continue
+
+			# ADDITIONAL: Reject standalone hyphens or hyphen-only strings
+			if lemma == '-' or lemma.replace('-', '').strip() == '':
+					if verbose:
+							print(f"        → Invalid hyphen pattern, skipping")
+					continue
+
+
 
 			# entire string must consist only of uppercase/lowercase English letters and spaces
 			if not re.match(r'^[a-zA-Z\s]+$', lemma):
