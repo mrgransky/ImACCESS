@@ -227,6 +227,7 @@ airbase
 lighthouse
 Sailboat
 regatta
+army camp
 army cemetery
 military cemetery
 army graveyard

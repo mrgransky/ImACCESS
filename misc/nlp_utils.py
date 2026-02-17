@@ -221,6 +221,87 @@ def _post_process_(
 					tokens[1] in STOPWORDS
 			)
 
+	# CONTEXT-AWARE FILTERING (replace your existing filter)
+	# Define generic word sets
+	GENERIC_PEOPLE_WORDS = {
+			"man", "men", "woman", "women", "people", "person", 
+			"child", "children", "individual", "male", "female"
+	}
+
+	GENERIC_FAMILY_WORDS = {
+			"boy", "girl", "boys", "girls",
+			"brother", "sister", "brothers", "sisters",
+			"cousin", "nephew", "niece", "sibling",
+			"mother", "father", "daughter", "son",
+			"uncle", "aunt",
+			"grandfather", "grandmother", "grandma", "grandpa",
+			"granddaughter", "grandson", "godfather", "godmother",
+			"parent", "grandparent"
+	}
+
+	GENERIC_TECH_WORDS = {
+			"equipment", "component", "system", 
+			"material", "piece", "part", "variant",
+			"supply"  # Add supply here as generic tech term
+	}
+
+	GENERIC_META_WORDS = {
+			"sample", "analysis", "section", "segment",
+			"identifier", "number", "numbered",
+			"chart", "graph", "diagram", "plot", "tableau",
+			"sketch", "sketching", "schematic",
+			"date", "project", "program", "series",
+			"model", "nickname", "service"  # Add these
+	}
+
+	ALWAYS_REMOVE = {"unknown", "unidentified"}
+
+	NUMBER_WORDS = {
+			"one", "two", "three", "four", "five", "six", "seven", 
+			"eight", "nine", "ten", "eleven", "twelve", 
+			"twenty", "thirty", "hundred"
+	}
+
+	def should_filter_label(lemma: str) -> bool:
+			"""Context-aware filtering."""
+			words = lemma.lower().split()
+			
+			# Rule 1: Always remove uninformative terms
+			if any(term in words for term in ALWAYS_REMOVE):
+					return True
+			
+			# Rule 2: Single-word generic terms
+			if len(words) == 1:
+					word = words[0]
+					all_generic = (GENERIC_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | 
+												GENERIC_TECH_WORDS | GENERIC_META_WORDS)
+					return word in all_generic
+			
+			# Rule 3: Quantified plurals (your main concern!)
+			if len(words) == 2:
+					first_word = words[0]
+					second_word = words[1]
+					
+					is_number = first_word.isdigit() or first_word in NUMBER_WORDS
+					is_generic_person = (second_word in GENERIC_PEOPLE_WORDS or 
+															second_word in GENERIC_FAMILY_WORDS)
+					
+					if is_number and is_generic_person:
+							return True  # Remove "three men", "two women"
+			
+			# Rule 4: Multi-word compounds - keep if has specific words
+			all_generic = (GENERIC_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | 
+										GENERIC_TECH_WORDS | GENERIC_META_WORDS)
+			
+			generic_count = sum(1 for w in words if w in all_generic)
+			
+			# All words generic → Remove
+			if generic_count == len(words):
+					return True
+			
+			# Has specific words → Keep
+			return False
+
 	if verbose:
 		print(f"Starting post-processing")
 		print(f"\tInput {type(labels_list)} length: {len(labels_list) if labels_list else 0}")
@@ -374,9 +455,13 @@ def _post_process_(
 			
 			# --- Lemmatization with guards ---
 			if is_quantified_plural(original_cleaned):
-				lemma = s  # Preserve "two women", "three soldiers"
+				# Skip this label entirely (don't even lemmatize)
 				if verbose:
-					print(f"        → Quantified plural detected, preserving: {repr(lemma)}")
+					print(f"        → Quantified plural detected, skipping")
+				continue
+				# lemma = s  # Preserve "two women", "three soldiers"
+				# if verbose:
+				# 	print(f"        → Quantified plural detected, preserving: {repr(lemma)}")
 			elif is_title_like(original_cleaned):
 				lemma = s  # Preserve "As You Like It", "Gone With the Wind"
 				if verbose:
@@ -464,10 +549,15 @@ def _post_process_(
 					print(f"        → {lemma} Stopword detected! skipping")
 				continue
 
-			# exclude if "unidentified" or "unknown" in the keyword "american unknown soldier", "unidentified ship" or irrelevant words
-			if any(word in lemma for word in ["man", "men", "woman", "women", "people", "person", "child", "children", "boy", "girl", "boys", "girls", "brother", "brothers", "sister", "sisters", "sample", "analysis", "unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part", "series", "chart", "graph", "diagram", "tableau", "plot", "graf", "schematic", "sketch", "sketching", "number", "numbered", "model", "nickname", 'cousin', 'nephew', 'niece', 'sibling', 'uncle', "mother", "father", "daughter", "son", "godmother", "grandfather", "grandmother", "grandma", "grandpa", 'granddaughter', 'grandson', "godfather","aunt", "grandparent", "parent", "male", "female", "individual", "section", "date", "project", "program", "identifier", "segment", "service"]):
+			# # exclude if "unidentified" or "unknown" in the keyword "american unknown soldier", "unidentified ship" or irrelevant words
+			# if any(word in lemma for word in ["man", "men", "woman", "women", "people", "person", "child", "children", "boy", "girl", "boys", "girls", "brother", "brothers", "sister", "sisters", "sample", "analysis", "unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part", "series", "chart", "graph", "diagram", "tableau", "plot", "graf", "schematic", "sketch", "sketching", "number", "numbered", "model", "nickname", 'cousin', 'nephew', 'niece', 'sibling', 'uncle', "mother", "father", "daughter", "son", "godmother", "grandfather", "grandmother", "grandma", "grandpa", 'granddaughter', 'grandson', "godfather","aunt", "grandparent", "parent", "male", "female", "individual", "section", "date", "project", "program", "identifier", "segment", "service"]):
+			# 	if verbose:
+			# 		print(f"    ✗ Skipped: irrelevant word detected! {lemma}")
+			# 	continue
+
+			if should_filter_label(lemma):
 				if verbose:
-					print(f"    ✗ Skipped: irrelevant word detected! {lemma}")
+					print(f"    ✗ Skipped: '{lemma}' as irrelevant!")
 				continue
 
 			# only No. NNNNN ex) No. X1657 or No. 1657
