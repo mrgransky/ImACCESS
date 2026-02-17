@@ -630,7 +630,7 @@ def _post_process_(
 
 
 			# entire string must consist only of uppercase/lowercase English letters and spaces
-			if not re.match(r'^[a-zA-Z\s]+$', lemma):
+			if not re.match(r"^[a-zA-Z\s'\-]+$", lemma):
 				if verbose:
 					print(f"        → {lemma} Non-alphabetic character detected, skipping")
 				continue
