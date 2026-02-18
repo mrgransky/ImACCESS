@@ -1,14 +1,22 @@
 {
-	"aeroplane": "aircraft",
+	"aircraft": "aircraft",
 	"floatplane": "aircraft",
 	"helicopter": "aircraft",
 	"trainer aircraft": "aircraft",
 	"transport aircraft": "aircraft",
-	"aircraft": "aircraft",
 	"airplane": "aircraft",
+	"aeroplane": "aircraft",
+
+	"airplane crew": "aircraft crew",
+	"aeroplane crew": "aircraft crew",
+	"aircraft crew": "aircraft crew",
+	"aero crew": "aircraft crew",
 
 	"airforce personnel": "air force personnel",
 	"air force personnel": "air force personnel",
+
+	"military personnel": "military personnel",
+	"army personnel": "military personnel",
 
 	"anti aircraft guns": "anti aircraft guns",
 	"antiaircraft guns": "anti aircraft guns",
@@ -47,6 +55,7 @@
 	"combat aircraft": "combat aircraft",
 	"fighter aircraft": "combat aircraft",
 	"fighter bomber": "combat aircraft",
+	"fighter plane": "combat aircraft",
 	"light bomber": "combat aircraft",
 	"medium bomber": "combat aircraft",
 	"heavy bomber": "combat aircraft",
@@ -71,12 +80,15 @@
 	"western front": "allied powers",
 	"allied forces": "allied powers",
 	"allied powers": "allied powers",
+	"axis powers": "axis powers",
 
 	"armoured personnel carrier": "armored fighting vehicles",
 	"armored cars": "armored fighting vehicles",
+	"armored vehicles": "armored fighting vehicles",
 	"armored fighting vehicles": "armored fighting vehicles",
 	"armored personnel carrier": "armored fighting vehicles",
 	"armoured cars": "armored fighting vehicles",
+	"armoured vehicles": "armored fighting vehicles",
 	"armoured fighting vehicles": "armored fighting vehicles",
 	"infantry fighting vehicles": "armored fighting vehicles",
 
@@ -94,6 +106,8 @@
 
 	"coast guard": "coastguard",
 	"coastguard": "coastguard",
+
+	"cockpit": "cockpit",
 
 	"corps commander": "corps commander",
 	"division commander": "corps commander",
@@ -185,6 +199,13 @@
 	"naval air station": "military airfield",
 	"air force station": "military airfield",
 	"air force base": "military airfield",
+
+	"military academy": "military academy",
+	"army academy": "military academy",
+
+	"shelter": "shelter",
+	"dugout": "shelter",
+	"dug-out": "shelter",
 
 	"army ambulance": "military ambulance",
 	"military ambulance": "military ambulance",

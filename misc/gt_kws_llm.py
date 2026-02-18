@@ -82,7 +82,11 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	* **Generalized**: prefer the **most general factual noun phrase** that remains correct.
 		- Example: use "nurse" instead of "nurse checking blood pressure"
 		- Example: use "seaplane" instead of "seaplane on the water in the background"
-	* **Reusable**: avoid phrases that are overly specific, descriptive, or unlikely to appear in multiple captions.
+		- Example: use "airplane" instead of "airplane in flight"
+		- Example: use "smoking" instead of "a group of youngsters smoking outdoors"
+		- Example: use "flag" instead of "german flag"
+		- Example: use "red cross" instead of "american red cross"
+ 	* **Reusable**: avoid phrases that are overly specific, descriptive, or unlikely to appear in multiple captions.
 
 - Keywords **DO NOT need to appear verbatim** in the caption, but **MUST be directly and unambiguously inferable** from it.
 
@@ -90,6 +94,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	* Dates, times, years, decades, or any temporal references.
 	* Family relationship terms.
 	* Geographic references (continents, countries, cities, towns, islands, regions, landmarks).
+	* Nationalities, ethnicities, or religions.
 	* Quantities, counts, measurements, or numeric expressions.
 	* Composite phrases encoding multiple concepts (e.g., subject + action + location).
 	* Phrasal verbs, possessive constructions, or descriptive clauses.
@@ -975,27 +980,12 @@ def _qwen_llm_response(
 				print(f"    ✗ Skipped: number detected! {cleaned}")
 			continue
 
-		# exldude if "unidentified" or "unknown" in the keyword
-		if any(word in cleaned.lower() for word in ["unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part", "series", "chart", "graph", "diagram", "tableau", "plot", "graf", "schematic", "sketch", "sketching", "number", "numbered", "model"]):
-			if verbose:
-				print(f"    ✗ Skipped: unidentified/unknown detected! {cleaned}")
-			continue
-
 		# Check for duplicates (case-insensitive)
 		normalized = cleaned.lower()
 		if normalized in seen:
 			if verbose:
 				print(f"    ✗ Skipped: duplicate")
 			continue
-
-		# not required if we look for semantically atomic keywords
-		# if (
-		# 	"-4B-Instruct-" in model_id
-		# 	and not cleaned.lower() in caption.lower()
-		# ):
-		# 	if verbose:
-		# 		print(f"    ✗ Skipped: {kw} NOT in caption: {caption}")
-		# 	continue
 		
 		seen.add(normalized)
 		processed.append(cleaned)

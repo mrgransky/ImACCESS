@@ -18,6 +18,8 @@ Pearl Harbor attack
 Treaty of Versailles
 Battle of the Bulge
 airforce personnel
+military personnel
+army personnel
 air force commander
 special force commander
 munitions manufacturing base
@@ -50,17 +52,27 @@ military airbase
 military airfield
 military airport
 armoured cars
+armoured vehicles
 armored cars
+armored vehicles
 red cross
+aeroplane crew
+airplane crew
+aircraft crew
+aero crew
 Flying Boat
 flame thrower
 victory day
+commencement day
 victory bonds
 war bonds
 concentration camp
 infantry camp
 construction camp
 military camp
+army camp
+military academy
+army academy
 normandy invasion
 power station
 Power Plant
@@ -69,6 +81,7 @@ attack aircraft
 strike aircraft
 attack bomber
 fighter aircraft
+fighter plane
 bomber aircraft
 trainer aircraft
 transport aircraft
@@ -93,6 +106,7 @@ dam construction
 tunnel construction
 road construction
 bridge construction
+axis powers
 allied powers
 allied forces
 air base
@@ -190,15 +204,16 @@ military aviator
 military pilot
 army aviator
 army pilot
-flying ace
-air ace
-fighter ace
 forced displacement
 political figures
 watch tower
 military ambulance
 army ambulance
 food shortage
+flying ace
+air ace
+fighter ace
+cockpit
 watchtower
 CoastGuard
 halftrack
@@ -227,7 +242,6 @@ airbase
 lighthouse
 Sailboat
 regatta
-army camp
 army cemetery
 military cemetery
 army graveyard
@@ -240,11 +254,11 @@ rifle
 bayonet
 flamethrower
 aircraft
+airplane
+aeroplane
 soldiers
 Infantryman
 Infantry
-aeroplane
-airplane
 rationing
 prisoners
 Sergeant
@@ -271,3 +285,6 @@ inauguration
 missiles
 powerplant
 minesweeper
+shelter
+dugout
+dug-out

@@ -76,8 +76,6 @@ useless_collection_terms = [
 	"Appian Way",
 	"Indexes to Aerial Photography",
 	"Posters",
-	"World War II Posters",
-	"Posters Promoting the War Effort on the Home Front",
 	"Illustrative Material Published By The Government Printing Office and other Government Agencies",
 	"Field Artillery Units and Revolutionary War Artillerymen",
 	"Five Civilized Tribes Section 2 (1)",
@@ -87,9 +85,24 @@ useless_collection_terms = [
 	"Years of Lightning, Days of Drums",
 	"Training Camps and Schools - Military - Camp Cody",
 	"Personnel - Civilians - Davis",
+	# "Records of the War Department General and Special Staffs",
+	"Photographs of Activities, Facilities and Personnel",
 	"Records of the U.S. Fish and Wildlife Service",
-	"Gemini VII",
+	"Gemini",
+	"Apollo",
 	"Auschwitz Concentration Camp",
+	"Signal Corps Photograph Collection: Equipment File",
+	"Photographs of Civil War-Era and Other Subjects",
+	"Inmate Case Files",
+	"Records of the U.S. Information Agency",
+	"Hoover Presidential Library Audiovisual Collection",
+	"NBN-100-0.16 Coat of Arms - 100th Infantry Battalion",
+	"Airplanes - Wheels",
+	"Airplanes - Wings",
+	"Omaha Beach",
+	"Ambassador Katz",
+	"Christmas Card",
+	"President Edouard Herriot",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
@@ -298,6 +311,19 @@ def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFra
 		na_identifier = record.get('naId')
 		raw_doc_date = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
+
+		if verbose:
+			print(f"\nquery: {query}")
+			print(f"id: {na_identifier}")
+			print(doc.get('fields', {}))
+
+		obj_type = fields.get('firstDigitalObject', [{}])[0].get('objectType')
+		unwanted_types = ["Portable Document File (PDF)", "Video", "Audio"]
+		if obj_type and any(unwanted in obj_type for unwanted in unwanted_types):
+			if verbose:
+				print(f"<!> Skipping: '{obj_type}'")
+			continue
+
 		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
 		doc_title = record.get('title')
 		doc_description = record.get('scopeAndContentNote', None)
@@ -318,6 +344,7 @@ def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFra
 			"memorandum" not in doc_title.lower(),
 			"portrait of" not in doc_title.lower(),
 			"poster" not in doc_title.lower(),
+			"scroll" not in doc_title.lower(),
 			"drawing" not in doc_title.lower(),
 			"sketch of" not in doc_title.lower(),
 			"layout" not in doc_title.lower(),
@@ -339,6 +366,8 @@ def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFra
 			"photomechanical print" not in doc_title.lower(),
 			"roman surveying" not in doc_title.lower(),
 			"copy of german secret order" not in doc_title.lower(),
+			"prospectus" not in doc_title.lower(),
+			"guest log of" not in doc_title.lower(),
 		] if doc_title is not None else []
 
 		useless_description_terms = [
@@ -352,6 +381,10 @@ def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFra
 			"report" not in doc_description.lower(),
 			"attachment" not in doc_description.lower(),
 			"illustrated family record" not in doc_description.lower(),
+			"it is a plan that is labeled" not in doc_description.lower(),
+			"lithographic print" not in doc_description.lower(),
+			"advertisement for" not in doc_description.lower(),
+			"photographer: american red cross activities" not in doc_description.lower(),
 		] if doc_description is not None else []
 
 		if (
@@ -368,10 +401,10 @@ def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFra
 		doc_title = re.sub(r'\s+', ' ', doc_title).strip() if doc_title else None
 		doc_description = re.sub(r'\s+', ' ', doc_description).strip() if doc_description else None
 
-		print(f"\nquery: {query}")
-		print(f"id: {na_identifier}")
+		
 		print(f"doc_title: {doc_title}")
 		print(f"doc_description: {doc_description}")
+
 		# Skip if query is not in either title or description
 		if (
 			(doc_title is None or query not in doc_title.lower())
@@ -600,8 +633,7 @@ def main():
 			print(f"\t- {file}")
 
 	# remove unnecessary image files which are not in the final dataset
-	print("\nRemoving unnecessary image files which are not in the final dataset...")
-	
+	print("\nRemoving unnecessary image files which are not in the final dataset...")	
 	# Extract actual filenames from img_path column
 	valid_filenames = set()
 	for img_path in single_label_final_df['img_path']:
@@ -618,6 +650,8 @@ def main():
 
 	# confirm df size and number of images in the IMAGE_DIRECTORY are the same
 	print("\nConfirming df size and number of images in the IMAGE_DIRECTORY are the same...")
+	print(f"Number of images in the final dataset: {len(valid_filenames)}")
+	print(f"Number of images in the IMAGE_DIRECTORY: {len(os.listdir(IMAGE_DIRECTORY))}")
 	assert len(valid_filenames) == len(os.listdir(IMAGE_DIRECTORY)), "Number of images in the final dataset and in the IMAGE_DIRECTORY are not the same!"
 
 if __name__ == "__main__":
