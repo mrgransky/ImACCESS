@@ -91,6 +91,14 @@
 	"armoured vehicles": "armored fighting vehicles",
 	"armoured fighting vehicles": "armored fighting vehicles",
 	"infantry fighting vehicles": "armored fighting vehicles",
+	"tank destroyers": "armored fighting vehicles",
+	"tankettes": "armored fighting vehicles",
+	"light tanks": "armored fighting vehicles",
+	"medium tanks": "armored fighting vehicles",
+	"heavy tanks": "armored fighting vehicles",
+	"infantry tanks": "armored fighting vehicles",
+	"panzer": "armored fighting vehicles",
+	"combat vehicle": "armored fighting vehicles",
 
 	"victims": "atrocities",
 	"mass atrocities": "atrocities",
@@ -193,6 +201,7 @@
 	"air base": "military airfield",
 	"airbase": "military airfield",
 	"military airbase": "military airfield",
+	"army airbase": "military airfield",
 	"military airfield":"military airfield",
 	"military airport":"military airfield",
 	"air station": "military airfield",
@@ -244,6 +253,7 @@
 
 	"military parade": "military parade",
 	"army parade": "military parade",
+	"army day parade": "military parade",
 
 	"grossdeutschland": "military unit",
 	"military unit": "military unit",
@@ -301,14 +311,7 @@
 	"storage tank": "reservoir",
 	"surge tank": "reservoir",
 
-	"tank destroyers": "tanks",
-	"tankettes": "tanks",
-	"light tanks": "tanks",
-	"medium tanks": "tanks",
-	"heavy tanks": "tanks",
-	"infantry tanks": "tanks",
-	"panzer": "tanks",
-
+	
 	"passenger train": "train",
 	"locomotive": "train",
 	"freight train": "train",

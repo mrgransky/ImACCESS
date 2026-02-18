@@ -23,6 +23,7 @@ army personnel
 air force commander
 special force commander
 munitions manufacturing base
+army day parade
 ordnance factory
 munitions factory
 airforce commander
@@ -49,6 +50,7 @@ naval ship
 naval vessel
 naval mine
 military airbase
+army airbase
 military airfield
 military airport
 armoured cars
@@ -134,15 +136,16 @@ half track
 half-track
 Waffen-SS
 Waffen SS
+combat vehicle
 military vehicles
 army vehicles
 motor vehicles
 Army Base
-Army hospital
 military base
 military leaders
 military museum
 war museum
+army museum
 army ship
 military ship
 military boat
@@ -158,10 +161,10 @@ hospital train
 passenger train
 freight train
 military hospital
+army hospital
 Clinic Truck
 army trucks
 military trucks
-army museum
 afrika korps
 flying fortress
 vice president

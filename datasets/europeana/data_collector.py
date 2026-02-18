@@ -130,6 +130,7 @@ def get_dframe(
 ):
 	print(f"Analyzing {len(docs)} {type(docs)} document(s) for label: « {label} » might take a while...")
 	df_st_time = time.time()
+
 	data = []
 	for doc_idx, doc in enumerate(docs):
 		if verbose:
@@ -137,13 +138,21 @@ def get_dframe(
 			for k, v in doc.items():
 				print(f"{k}: {v}")
 			print("-"*50)
+
 		europeana_id = doc.get("id")
-		# doc_categories = doc.get("edmConcept", []) # edmConcept: ['http://data.europeana.eu/concept/43', 'http://data.europeana.eu/concept/17', 'http://data.europeana.eu/concept/48']
-		# if doc_categories and 'http://data.europeana.eu/concept/43' in doc_categories: # map document
-		# 	# ignore map documents
-		# 	if verbose:
-		# 		print(f"IGNORING MAP DOCUMENT: {europeana_id}")
-		# 	continue
+		doc_categories = doc.get("edmConcept", []) # edmConcept: ['http://data.europeana.eu/concept/43', 'http://data.europeana.eu/concept/17', 'http://data.europeana.eu/concept/48']
+		print(f"doc_categories: {doc_categories}")
+
+		# if doc_categories: 
+		# 	if 'http://data.europeana.eu/concept/43' in doc_categories: # map document
+		# 		if verbose:
+		# 			print(f"IGNORING MAP DOCUMENT: {europeana_id}")
+		# 		continue
+
+		# 	if 'http://data.europeana.eu/concept/2856' in doc_categories: # album document
+		# 		if verbose:
+		# 			print(f"IGNORING ALBUM DOCUMENT: {europeana_id}")
+		# 		continue
 
 		doc_id = re.sub("/", "SLASH", europeana_id)
 
@@ -158,7 +167,7 @@ def get_dframe(
 		doc_year = doc.get("year")[0] if (doc.get("year") and doc.get("year")[0]) else None
 		doc_url = f"https://www.europeana.eu/en/item{europeana_id}" # doc.get("guid")
 
-		useless_subjects = ["Manuscript"]
+		useless_subjects = ["Manuscript", "Album", "Map"]
 		# Check if document contains useless concept labels
 		doc_concept_labels = doc.get("edmConceptLabel", [])
 		is_useless_doc = False
@@ -220,9 +229,17 @@ def get_dframe(
 			'title': title_en,
 			'description': description_en
 		}
+
+		print(json.dumps(row, indent=2, ensure_ascii=False))
+		print("-"*100)
+
 		data.append(row)
 
 	df = pd.DataFrame(data)
+	if df.empty:
+		if verbose:
+			print("Empty DataFrame. Returning None...")
+		return None
 
 	# Apply the function to the 'raw_doc_date' and 'doc_year' columns
 	df['doc_date'] = df.apply(lambda row: get_europeana_date_or_year(row['raw_doc_date'], row['doc_year']), axis=1)
