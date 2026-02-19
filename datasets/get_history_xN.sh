@@ -8,7 +8,7 @@ SCRIPT_PGID=$$
 
 # Improved trap to kill entire process group
 cleanup() {
-	echo "Cleaning up processes..."
+	# echo "Cleaning up processes..."
 	# Kill entire process group
 	kill -TERM -$SCRIPT_PGID 2>/dev/null || true
 	# Wait a moment, then force kill if needed
@@ -127,7 +127,7 @@ main() {
 		"SMU|${BASE_DIR}/smu/data_collector.py|-ddir ${DATASET_DIR} -nw 16 --img_mean_std --thumbnail_size 512,512 --verbose"
 		"WWII|${BASE_DIR}/wwii/data_collector.py|-ddir ${DATASET_DIR} -nw 8 --img_mean_std --thumbnail_size 512,512 --verbose"
 		"Europeana|${BASE_DIR}/europeana/data_collector.py|-ddir ${DATASET_DIR} -nw 8 --img_mean_std --thumbnail_size 512,512 --api_key api2demo --verbose"
-		"National_Archive|${BASE_DIR}/national_archive/data_collector.py|-ddir ${DATASET_DIR} -nw 4 --img_mean_std --thumbnail_size 512,512 --verbose"
+		"National_Archive|${BASE_DIR}/national_archive/data_collector.py|-ddir ${DATASET_DIR} -nw 4 --thumbnail_size 512,512 --verbose"
 		# "SA_Kuva|${BASE_DIR}/sa_kuva/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --thumbnail_size 512,512"
 		# "WW_Vehicles|${BASE_DIR}/ww_vehicles/data_collector.py|-ddir ${DATASET_DIR} -nw 12 --img_mean_std --thumbnail_size 512,512"
 	)
@@ -166,7 +166,7 @@ main() {
 
 	print_status "Running dataset merger => History_xN ..."
 
-	python -u "${BASE_DIR}/history_xN/merge_datasets.py" -ddir "${DATASET_DIR}"	--img_mean_std --chunk_size 9000 -nw 2 -v
+	python -u "${BASE_DIR}/history_xN/merge_datasets.py" -ddir "${DATASET_DIR}"	--img_mean_std --chunk_size 8900 -nw 2 -v
 	print_success "Pipeline execution completed!"
 }
 
