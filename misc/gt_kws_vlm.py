@@ -261,17 +261,55 @@ def _load_vlm_(
 	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
 		tokenizer.padding_side = "left"
 	
+	# def get_estimated_gb_size(m_id: str) -> float:
+	# 	info = huggingface_hub.model_info(m_id, token=hf_tk)
+	# 	try:
+	# 		if hasattr(info, "safetensors") and info.safetensors:
+	# 			total_bytes = info.safetensors.total
+	# 			if total_bytes > 0:
+	# 				size_gb = total_bytes / (1024 ** 3)
+	# 				return size_gb
+	# 	except Exception as e:
+	# 		print(f"<!> Failed to estimate model size from safetensors: {e}")
+	# 		raise e
+
+
+	def _model_info_to_dict(info):
+			"""Version‑agnostic conversion of ModelInfo → plain dict."""
+			if hasattr(info, "model_dump"):
+					return info.model_dump()
+			if hasattr(info, "dict"):
+					return info.dict()
+			if hasattr(info, "to_dict"):
+					return info.to_dict()
+			# Fallback – public attributes only
+			return {k: v for k, v in vars(info).items() if not k.startswith("_")}
+
 	def get_estimated_gb_size(m_id: str) -> float:
-		info = huggingface_hub.model_info(m_id, token=hf_tk)
-		try:
-			if hasattr(info, "safetensors") and info.safetensors:
-				total_bytes = info.safetensors.total
-				if total_bytes > 0:
-					size_gb = total_bytes / (1024 ** 3)
-					return size_gb
-		except Exception as e:
-			print(f"<!> Failed to estimate model size from safetensors: {e}")
-			raise e
+		info = huggingface_hub.model_info(m_id, token=hf_tk, files_metadata=True)
+		print(type(info))
+		print(info)
+		print(json.dumps(_model_info_to_dict(info), indent=2, ensure_ascii=False))
+		# Method 1: safetensors metadata (some models have this)
+		if hasattr(info, "safetensors") and info.safetensors:
+			print(f"[INFO] {m_id} has safetensors metadata")
+			total_bytes = getattr(info.safetensors, "total", None)
+			if total_bytes and total_bytes > 0:
+				return total_bytes / (1024 ** 3)
+		
+		# Method 2: sum individual weight file sizes
+		if info.siblings:
+			print(f"[INFO] {m_id} has {len(info.siblings)} siblings")
+			total_bytes = sum(
+				s.size for s in info.siblings
+				if s.size is not None and (
+					s.rfilename.endswith(".safetensors") or
+					s.rfilename.endswith(".bin")
+				)
+			)
+			if total_bytes > 0:
+				return total_bytes / (1024 ** 3)
+		raise ValueError(f"Could not estimate size for {m_id}")
 
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	

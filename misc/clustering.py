@@ -1783,6 +1783,7 @@ def cluster(
 				if verbose:
 					print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
 				return "sdpa"		
+
 		if verbose:
 			print(f"[INFO] Using eager attention (compute {compute_cap})")
 		return "eager"
@@ -1796,7 +1797,7 @@ def cluster(
 		model_name_or_path=model_id,
 		trust_remote_code=True,
 		cache_folder=cache_directory[os.getenv('USER')],
-		model_kwargs={"attn_implementation": attn_impl, "dtype": dtype},
+		model_kwargs={"attn_implementation": attn_impl, "dtype": dtype} if "Qwen" in model_id else {}, # "Qwen" in model_id else {}",
 		token=os.getenv("HUGGINGFACE_TOKEN"),
 		tokenizer_kwargs={"padding_side": "left"},
 	).to(device)
