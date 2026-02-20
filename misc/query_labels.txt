@@ -1,3 +1,4 @@
+naval base hospital
 armored fighting vehicles
 armoured fighting vehicles
 naval aircraft factory
@@ -49,6 +50,16 @@ naval training
 naval ship
 naval vessel
 naval mine
+mine laying
+mine planting
+damaged ship
+damaged airplane
+damaged aircraft
+damaged building
+destroyed building
+destroyed aircraft
+destroyed airplane
+destroyed ship
 military airbase
 army airbase
 military airfield
@@ -92,13 +103,17 @@ medium bomber
 heavy bomber
 fighter bomber
 strike fighter
-rifle grenade
+army rifle
+military rifle
+cadet rifle
 infantry corps
 marine corps
 anti aircraft guns
 antiaircraft guns
 anti-aircraft guns
 war crimes
+war children
+refugee children
 mass atrocities
 trench warfare
 chemical warfare
@@ -115,6 +130,12 @@ air base
 air station
 Rail transport
 Train transport
+Train Platform
+Train Station
+Railway Station
+Railway Platform
+Railroad Station
+Railroad Platform
 reconnaissance aircraft
 surveillance aircraft
 spy plane
@@ -151,6 +172,7 @@ military ship
 military boat
 military parade
 army parade
+day parade
 medical aid
 medical service
 medical clinic
@@ -201,8 +223,9 @@ V-J Day
 tank destroyers
 anti tank
 anti-tank
-Minesweeper vessel
-Minesweeper ship
+minesweeper vessel
+minesweeper ship
+mine sweeper
 military aviator
 military pilot
 army aviator
@@ -253,7 +276,6 @@ explosion
 Artillery
 grenade
 firearm
-rifle
 bayonet
 flamethrower
 aircraft
@@ -278,7 +300,6 @@ president
 locomotive
 captain
 ussr
-blitz
 banishment
 landmine
 marines
@@ -291,3 +312,5 @@ minesweeper
 shelter
 dugout
 dug-out
+barracks
+marching

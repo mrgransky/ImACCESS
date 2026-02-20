@@ -38,6 +38,68 @@ headers = {
 	'Pragma': 'no-cache',
 }
 
+useless_terms = [
+	"ex libris a.wiepjes",
+	"ritning", "fotokuvert", 
+	"photo envelope", "fragment of a letter", "reproduction of a letter",
+	"poster", "stempel /", "/stamp",
+	"recordings from belgian military hospital, 1917-1918",
+	"ΟΙ ΝΕΚΡΟΙ ΜΑΣ", "orthophoto",
+	"Machtiging tot", "Kriegserrinnerungen", "Handboek", "Textheft",
+	"scheme", "schematic", "overview map", "schema", "diagram", 
+	"drawing", "diploma",
+	"technology history", "announcement about", "studio photo",
+	"text book", "textbook", "text booklet", "handbook", "newspaper repro",
+	"3D (hbim)",
+]
+
+useless_data_provider = [
+	"Museum of World Culture",
+	"Museum of Ethnography",
+	"Count Károly Esterházy Mansion and County Museum - Pápa",
+	"Toy Museum of the City of Nuremberg",
+	"Wellcome Collection",
+	"MAK – Museum of Applied Arts",
+	"Estonian Filmarchives", # blank photos
+	"Library of the Alliance Israélite Universelle",
+	"Bibliotheca Hertziana, Max Planck Institute for Art History Rome. Photographic Collection",
+	"Municipality of Thasos",
+	"National Museum of Transylvanian History",
+	"Greater Digital Library",
+	"Roscheider Hof Open Air Museum",
+	"The Photographic Archive of the Zentralinstitut für Kunstgeschichte",
+	"Freies Deutsches Hochstift / Frankfurter Goethe-Museum",
+	"Magnus-Hirschfeld-Gesellschaft",
+]
+
+useless_subjects = [
+	"Manuscript", "Album", "Map", "Collection", "Food", "HIV/AIDS", "Marketplace",
+	"Recreational Artifacts (hierarchy name )", "Albumen print", "Art of painting",
+	'Sword', 'Art of sculpture',  "Newspaper",
+	'Coin', 'Silver', 'silver (metal)', 'coins (money)', "Silver",
+	# 'Daguerreotype process',
+	"Postcard",
+	"Book",
+	'Illustration',
+	# 'figures (illustrations)',
+	# 'Occupation (historical period)',
+	'2D Graphics',
+	"Plexiglas",
+	# "History",
+	"Award",
+	"Drawing",
+	"Numismatics", 'Crop', 'Horn', 'Crown', 'Relay baton', "Revolution", "Spur",
+	"Pattern", "Textile", "Cartography",
+]
+
+useless_creators = [
+	"Westhoff",  # Catches both "L. Westhoff" and "L.Westhoff"
+	"Reuven Rubin",
+	"Takács Dezső",
+	"Antonia Prodromou",
+	"Stoedtner, Franz (Lichtbildverlag) (Herstellung) (Fotograf)",
+]
+
 def get_europeana_date_or_year(doc_date, doc_year):
 	if doc_year is not None:
 		return doc_year
@@ -62,9 +124,11 @@ def get_data(europeana_api_key: str, start_date: str, end_date: str, hits_dir: s
 	label_all_hits_fpth = os.path.join(hits_dir, f"results_query_{label_processed}_{start_date}_{end_date}.gz")
 	try:
 		label_all_hits = load_pickle(fpath=label_all_hits_fpth)
+		return label_all_hits
 	except Exception as e:
 		print(f"{e}")
 		print(f"Collecting all docs for label: « {label} » might take a while...")
+
 		params = {
 			'wskey': europeana_api_key,
 			'qf': [
@@ -73,11 +137,15 @@ def get_data(europeana_api_key: str, start_date: str, end_date: str, hits_dir: s
 				# 'contentTier:"4"', # high quality images
 				'MIME_TYPE:image/jpeg',
 				# 'LANGUAGE:en',
+				f'proxy_dc_title:"{label}" OR proxy_dc_description:"{label}"',
 			],
 			'rows': 100,
 			'query': label,
 			# 'reusability': 'open' # TODO: LICENCE issues(must be resolved later!)
 		}
+		print(json.dumps(params, indent=2, ensure_ascii=False))
+		print("-"*120)
+
 		label_all_hits = []
 		start = 1
 		while True:
@@ -117,7 +185,9 @@ def get_data(europeana_api_key: str, start_date: str, end_date: str, hits_dir: s
 		if len(label_all_hits) == 0:
 			return
 		save_pickle(pkl=label_all_hits, fname=label_all_hits_fpth)
+
 	print(f"Total hit(s): {len(label_all_hits)} {type(label_all_hits)} for query: « {label} » found in {time.time()-t0:.2f} sec")
+
 	return label_all_hits
 
 def get_dframe(
@@ -134,27 +204,19 @@ def get_dframe(
 	data = []
 	for doc_idx, doc in enumerate(docs):
 		if verbose:
-			print(f"\ndoc: {doc_idx} {type(doc)} {list(doc.keys())}")
+			print(f"\ndoc: {doc_idx} {type(doc)}\n{list(doc.keys())}\n")
 			for k, v in doc.items():
 				print(f"{k}: {v}")
-			print("-"*50)
+			print()
+
+		if doc.get("dataProvider")[0] in useless_data_provider:
+			if verbose:
+				print(f"IGNORING DOCUMENT from useless data provider: {doc.get('dataProvider')[0]}")
+			continue
 
 		europeana_id = doc.get("id")
-		doc_categories = doc.get("edmConcept", []) # edmConcept: ['http://data.europeana.eu/concept/43', 'http://data.europeana.eu/concept/17', 'http://data.europeana.eu/concept/48']
-		print(f"doc_categories: {doc_categories}")
-
-		# if doc_categories: 
-		# 	if 'http://data.europeana.eu/concept/43' in doc_categories: # map document
-		# 		if verbose:
-		# 			print(f"IGNORING MAP DOCUMENT: {europeana_id}")
-		# 		continue
-
-		# 	if 'http://data.europeana.eu/concept/2856' in doc_categories: # album document
-		# 		if verbose:
-		# 			print(f"IGNORING ALBUM DOCUMENT: {europeana_id}")
-		# 		continue
-
 		doc_id = re.sub("/", "SLASH", europeana_id)
+		raw_doc_date = doc.get("edmTimespanLabel")
 
 		# doc_title_list = doc.get("title") # ["title1", "title2", "title3", ...]
 		# doc_description_list = doc.get("dcDescription" )# ["desc1", "desc2", "desc3", ...]
@@ -163,46 +225,99 @@ def get_dframe(
 		# pDate = doc.get("edmTimespanLabel")[0].get("def") if (doc.get("edmTimespanLabel") and doc.get("edmTimespanLabel")[0].get("def")) else None
 
 		image_url = doc.get("edmIsShownBy")[0]
-		raw_doc_date = doc.get("edmTimespanLabel")
+
+		# image_url_from_api = doc.get("link")
+
 		doc_year = doc.get("year")[0] if (doc.get("year") and doc.get("year")[0]) else None
+		
+		# Fallback to edmTimespanLabel if year is not available
+		if doc_year is None:
+			raw_doc_date = doc.get("edmTimespanLabel")
+			if raw_doc_date:
+				doc_year = get_europeana_date_or_year(raw_doc_date, None)
+		
+		# Convert doc_year to int if it exists
+		if doc_year:
+			try:
+				doc_year = int(doc_year)
+			except (ValueError, TypeError):
+				doc_year = None
+		
+		# exclude if doc_year is not in the desired range
+		start_year = int(start_date.split("-")[0])
+		end_year = int(end_date.split("-")[0])
+		if doc_year and (doc_year < start_year or doc_year > end_year):
+			if verbose:
+				print(f"IGNORING DOCUMENT out of range: {doc_year} - URL: {doc.get('guid')}")
+			continue
+
+		doc_creator = doc.get("dcCreator")
+		if doc_creator:
+			# exclude if any of the elements from useless_creators is in doc_creator
+			if any(creator in doc_creator for creator in useless_creators):
+				if verbose:
+					print(f"IGNORING DOCUMENT with useless creator: {doc_creator} - ID: {europeana_id}")
+				continue
+
 		doc_url = f"https://www.europeana.eu/en/item{europeana_id}" # doc.get("guid")
 
-		useless_subjects = ["Manuscript", "Album", "Map"]
 		# Check if document contains useless concept labels
 		doc_concept_labels = doc.get("edmConceptLabel", [])
-		is_useless_doc = False
-		for concept in doc_concept_labels:
-			if isinstance(concept, dict) and 'def' in concept:
-				if concept['def'] in useless_subjects:
-					is_useless_doc = True
-					if verbose:
-						print(f"IGNORING DOCUMENT with concept: {concept['def']} - ID: {europeana_id}")
+		useless_concept = next(
+			(concept['def'] for concept in doc_concept_labels
+			if isinstance(concept, dict) and concept.get('def') in useless_subjects),
+			None
+		)
+		if useless_concept:
+			if verbose:
+				print(f"IGNORING DOCUMENT with concept: '{useless_concept}' - ID: {europeana_id}")
+			continue  # ← Now correctly skips to next document!
+
+
+		all_titles = doc.get("title", [])
+		if any(
+			term in title.lower()
+			for title in all_titles if title
+			for term in useless_terms
+		):
+			if verbose:
+				matched = [(t, term) for t in all_titles if t for term in useless_terms if term in t.lower()]
+				print(f"IGNORING DOCUMENT with useless term in title: {matched[0]} - ID: {europeana_id}")
+			continue  # skip the document!
+
+		# Try to get English title from dcTitleLangAware first
+		title_en_list = doc.get("dcTitleLangAware", {}).get("en", None)
+		if title_en_list:
+			title_en = title_en_list[0] if isinstance(title_en_list, list) else title_en_list
+		else:
+			title_en = None
+		
+		# Fallback to language detection if no English title found
+		if title_en is None:
+			for title in doc.get("title", []):
+				if not title:
+					continue
+				title_lower = title.lower()
+				if (
+					is_english(text=title, confidence_threshold=0.03, verbose=verbose)
+					and not all(word in STOPWORDS for word in title_lower.split())
+					and not any(term in title_lower for term in useless_terms)
+				):
+					title_en = title
 					break
-		if is_useless_doc:
-			continue  # Skip this document
-
-		useless_terms = ["scheme", "schematic", "overview map", "schema", "diagram", "technology history"]
-		title_en = None  # default if none match
-		for title in doc.get("title", []):  # safer with default empty list
-			if not title:
-				continue  # skip None or empty
-			if (
-				is_english(text=title, confidence_threshold=0.03, verbose=verbose)
-				and not all(word in STOPWORDS for word in title.lower().split())  # exclude all-stopwords titles
-				and not any(word in useless_terms for word in title.lower().split())
-			):
-				title_en = title
-				break  # first suitable title found
-
-		print(f"title_en: {title_en}")
 
 		description_doc = " ".join(doc.get("dcDescriptionLangAware", {}).get("en", [])) if doc.get("dcDescriptionLangAware", {}).get("en", []) else None
-		if (
-			description_doc 
-			and is_english(text=description_doc, confidence_threshold=0.03, verbose=verbose)
-			and not any(word in useless_terms for word in description_doc.lower().split())
-		):
-			description_en = description_doc
+		if description_doc:
+			description_lower = description_doc.lower()
+			if any(term in description_lower for term in useless_terms):  # substring match
+				if verbose:
+					print(f"IGNORING DOCUMENT with useless term in description, ID: {europeana_id}")
+				continue
+
+			if is_english(text=description_doc, confidence_threshold=0.03, verbose=verbose):
+				description_en = description_doc
+			else:
+				description_en = None
 		else:
 			description_en = None
 
@@ -450,7 +565,6 @@ def main():
 		output_dir=OUTPUT_DIRECTORY,
 	)
 
-
 	# if IMAGE_DIRECTORY is not empty, load it, else compute it
 	if args.img_mean_std and os.listdir(IMAGE_DIRECTORY):
 		try:
@@ -484,6 +598,28 @@ def main():
 		if file.endswith(('.csv', '.xlsx')):
 			print(f"\t- {file}")
 
+	# remove unnecessary image files which are not in the final dataset
+	print("\nRemoving unnecessary image files which are not in the final dataset...")	
+	# Extract actual filenames from img_path column
+	valid_filenames = set()
+	for img_path in single_label_final_df['img_path']:
+		valid_filenames.add(os.path.basename(img_path))
+	for img_path in multi_label_final_df['img_path']:
+		valid_filenames.add(os.path.basename(img_path))
+	print(f"Found {len(valid_filenames)} valid image files in the final dataset")
+
+	for img_file in os.listdir(IMAGE_DIRECTORY):
+		if img_file.endswith('.jpg'):
+			if img_file not in valid_filenames:
+				print(f"Removing unnecessary image file: {img_file}")
+				os.remove(os.path.join(IMAGE_DIRECTORY, img_file))
+
+	# confirm df size and number of images in the IMAGE_DIRECTORY are the same
+	print("\nConfirming df size and number of images in the IMAGE_DIRECTORY are the same...")
+	print(f"Number of images in the final dataset: {len(valid_filenames)}")
+	print(f"Number of images in the IMAGE_DIRECTORY: {len(os.listdir(IMAGE_DIRECTORY))}")
+	assert len(valid_filenames) == len(os.listdir(IMAGE_DIRECTORY)), "Number of images in the final dataset and in the IMAGE_DIRECTORY are not the same!"
+
 def test():
 	query = "RESERVOIR"
 	params = {
@@ -498,6 +634,8 @@ def test():
 		'query': query,
 		# 'reusability': 'open',
 	}
+
+
 	# Send a GET request to the API
 	response = requests.get(europeana_api_base_url, params=params)
 	# Check if the request was successful

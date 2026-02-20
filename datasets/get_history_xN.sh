@@ -166,7 +166,7 @@ main() {
 
 	print_status "Running dataset merger => History_xN ..."
 
-	python -u "${BASE_DIR}/history_xN/merge_datasets.py" -ddir "${DATASET_DIR}"	--img_mean_std --chunk_size 8900 -nw 2 -v
+	python -u "${BASE_DIR}/history_xN/merge_datasets.py" -ddir "${DATASET_DIR}"	--chunk_size 8900 -nw 2 -v
 	print_success "Pipeline execution completed!"
 }
 

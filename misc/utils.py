@@ -47,6 +47,7 @@ import joblib
 import inspect
 import warnings
 import traceback
+import builtins
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 warnings.filterwarnings('ignore')
@@ -790,7 +791,7 @@ def process_image_for_storage(
 			original_dimensions = img.size
 			
 			# Thumbnail if size is specified and image is larger
-			action = "Converted to JPEG"
+			action = "\t\t => Converted to JPEG"
 			if thumbnail_size is not None:
 				if not isinstance(thumbnail_size, (tuple, list)) or len(thumbnail_size) != 2:
 					raise ValueError(f"thumbnail_size must be a tuple of 2 integers, got: {thumbnail_size}")
@@ -799,7 +800,7 @@ def process_image_for_storage(
 				
 				if img.size[0] > target_w or img.size[1] > target_h:
 					img.thumbnail((target_w, target_h), resample=Image.Resampling.LANCZOS)
-					action = f"Successfully thumbnailed to ≤{target_w}×{target_h}"
+					action = f"\t\t => Successfully thumbnailed to ≤{target_w}×{target_h}"
 			
 			# Always save as optimized JPEG
 			img.save(
@@ -841,9 +842,9 @@ def download_image(
 	session, 
 	image_dir, 
 	total_rows,
-	retries: int = 2, 
+	retries: int = 1,
 	backoff_factor: float = 0.5,
-	download_timeout: int = 15,
+	download_timeout: int = 10,
 	thumbnail_size: tuple = None,  # None = no thumbnailing
 	verbose: bool = False,
 ):
@@ -893,7 +894,7 @@ def download_image(
 			else:
 				if verbose:
 					mode = "thumbnailed" if thumbnail_size else "original"
-					print(f"{rIdx:<10}/{total_rows:<10} {image_id:<100} (Existing, {mode}) {time.time()-t0:.3f}s")
+					print(f"{rIdx:05d} / {total_rows:<15}{image_id:<100} (Existing, {mode}) {time.time()-t0:.3f}s")
 				return True							
 		except (IOError, SyntaxError, Image.DecompressionBombError) as e:
 			print(f"Existing image {image_path} is invalid: {e}, re-downloading...")
@@ -914,7 +915,7 @@ def download_image(
 			)
 			response.raise_for_status()
 		except requests.exceptions.SSLError as ssl_err:
-			print(f"[{rIdx}/{total_rows}] SSL error. Retrying without verification: {ssl_err}")
+			print(f"[{rIdx:05d} / {total_rows}] SSL error. Retrying without verification: {ssl_err}")
 			try:
 				response = session.get(
 					url=image_url,
@@ -924,14 +925,14 @@ def download_image(
 				)
 				response.raise_for_status()
 			except Exception as fallback_err:
-				print(f"[{rIdx}/{total_rows}] Retry without verification failed: {fallback_err}")
+				print(f"[{rIdx:05d} / {total_rows}] Retry without verification failed: {fallback_err}")
 				attempt += 1
 				time.sleep(backoff_factor * (2 ** attempt))
 				continue
 						
 		except (RequestException, IOError) as e:
 			attempt += 1
-			print(f"[{rIdx}/{total_rows}] {e} retry {attempt}/{retries}")
+			print(f"[{rIdx:05d} / {total_rows}] {builtins.str(e):<180}retry: {attempt}/{retries}")
 			time.sleep(backoff_factor * (2 ** attempt))
 			continue
 
@@ -953,25 +954,25 @@ def download_image(
 			
 			if verbose:
 				mode = f"Thumbnailed" if thumbnail_size else "Original"
-				print(f"{rIdx:<10}/{total_rows:<10} {image_id:<100} ({mode}) {time.time()-t0:.1f}s")
+				print(f"{rIdx:05d} / {total_rows:<10} {image_id:<100} ({mode}) {time.time()-t0:.1f}s")
 			
 			return True
 		except (SyntaxError, Image.DecompressionBombError, ValueError) as e:
-			print(f"[{rIdx}/{total_rows}] Downloaded image {image_id} is invalid: {e}")
+			print(f"[{rIdx:05d} / {total_rows}] Downloaded image {image_id} is invalid: {e}")
 			break
 		except Exception as e:
-			print(f"[{rIdx}/{total_rows}] {e}")
+			print(f"[{rIdx:05d} / {total_rows}] {e}")
 			attempt += 1
 			time.sleep(backoff_factor * (2 ** attempt))
 
 	# --- Step 3: Clean up if failed ---
 	if os.path.exists(image_path):
 		if verbose:
-			print(f"Removing broken image: {image_path}")
+			print(f"\t\t => Removing broken image: {image_path}")
 		os.remove(image_path)
 	
 	if verbose:
-		print(f"[{rIdx}/{total_rows}] Failed downloading {image_id} after {retries} attempts.")
+		print(f"[{rIdx:05d} / {total_rows}] Failed downloading {image_id} after {retries} attempts.")
 	return False
 
 def get_synchronized_df_img(
@@ -979,7 +980,8 @@ def get_synchronized_df_img(
 	synched_fpath: str,
 	nw: int,
 	thumbnail_size: tuple = None,  # None = keep original, (W, H) = resize
-	timeout: int = 30,
+	retries: int = 1,
+	timeout: int = 10,
 	verbose: bool = False,
 ):
 	"""
@@ -1027,7 +1029,7 @@ def get_synchronized_df_img(
 					session=session, 
 					image_dir=image_dir, 
 					total_rows=df.shape[0],
-					retries=2, 
+					retries=retries, 
 					backoff_factor=0.5,
 					download_timeout=timeout,
 					thumbnail_size=thumbnail_size,
@@ -1042,7 +1044,19 @@ def get_synchronized_df_img(
 					if success:
 						successful_rows.append(original_df_idx)
 				except Exception as e:
-					print(f"Unexpected error for row {original_df_idx}: {e}")
+					# --- IMPROVED ERROR HANDLING ---
+					print(f"<!> Error for row {original_df_idx}")
+					print(f"    Exception Type: {type(e).__name__}") # e.g., HTTPError, ConnectionError
+					print(f"    Message: {builtins.str(e)}") # Use builtins.str to avoid recursion
+					
+					# Try to print the URL that failed for context
+					try:
+						print(f"    URL: {df.loc[original_df_idx, 'img_url']}")
+					except:
+						pass
+					
+					print("    Traceback:")
+					traceback.print_exc()
 
 	print(f"Successfully downloaded: {len(successful_rows)}/{df.shape[0]} images")
 	# Create synchronized DataFrame
@@ -1051,10 +1065,8 @@ def get_synchronized_df_img(
 	# Calculate directory statistics
 	actual_files = [f for f in os.listdir(image_dir) if os.path.isfile(os.path.join(image_dir, f))]
 	img_dir_size_gb = sum(os.path.getsize(os.path.join(image_dir, f)) for f in actual_files) * 1e-9
-	print(f"Directory: {image_dir}")
-	print(f"\tTotal Found Files: {len(actual_files)}")
-	print(f"\tTotal size: {img_dir_size_gb:.1f} GB")
-	# Save synchronized dataset
+	print(f"Directory: {image_dir} contains {len(actual_files)} images with total size: {img_dir_size_gb:.1f} GB")
+
 	print(f"Saving synchronized dataset to {synched_fpath}...")
 	synched_df.to_csv(synched_fpath, index=False)
 	
@@ -1123,10 +1135,10 @@ def get_mean_std_rgb_img_multiprocessing(
 			batch_paths = image_paths[i:i + batch_size]
 			batch_futures = [executor.submit(process_rgb_image, path, transform) for path in batch_paths]
 			futures.extend(batch_futures)
-		# Process results with timeout handling
+
 		for future in tqdm(as_completed(futures), total=len(futures), desc="Processing Batches"):
 			try:
-				result = future.result(timeout=TIMEOUT)  # Increase timeout for slow I/O
+				result = future.result(timeout=TIMEOUT)
 				if result:
 					partial_sum, partial_sum_sq, partial_count = result
 					if partial_count > 0:

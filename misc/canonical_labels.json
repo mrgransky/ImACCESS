@@ -42,10 +42,13 @@
 	"field gun": "artillery",
 	"infantry gun": "artillery",
 	"infantry weapon": "artillery",
-	"firearm": "artillery",
-	"mountain gun": "artillery",
+	"army rifle": "artillery",
+	"military rifle": "artillery",
+	"cadet rifle": "artillery",
 	"rifle": "artillery",
 	"rifle grenade": "artillery",
+	"firearm": "artillery",
+	"mountain gun": "artillery",
 	"volley gun": "artillery",
 
 	"attack aircraft": "combat aircraft",
@@ -74,7 +77,6 @@
 	"air attack": "air attack",
 	"air strike": "air attack",
 	"bombing raid": "air attack",
-	"blitz": "air attack",
 
 	"eastern front": "allied powers",
 	"western front": "allied powers",
@@ -239,6 +241,7 @@
 	"minesweeper ship": "minesweeper",
 	"minesweeper vessel": "minesweeper",
 	"minesweeper": "minesweeper",
+	"mine sweeper": "minesweeper",
 	
 	"military cemetery": "military cemetery",
 	"military graveyard": "military cemetery",
@@ -246,14 +249,17 @@
 	"army graveyard": "military cemetery",
 
 	"army hospital": "military hospital",
-	"hospital train": "military hospital",
 	"naval hospital": "military hospital",
+	"naval base hospital": "military hospital",
 	"hospital ship": "military hospital",
+	"hospital train":"military hospital",
 	"military hospital": "military hospital",
 
 	"military parade": "military parade",
 	"army parade": "military parade",
 	"army day parade": "military parade",
+	"day parade": "military parade",
+	"marching": "military parade",
 
 	"grossdeutschland": "military unit",
 	"military unit": "military unit",
@@ -287,6 +293,8 @@
 	"naval vessel": "naval ship",
 
 	"naval mine": "naval mine",
+	"mine laying": "naval mine",
+	"mine planting": "naval mine",
 
 	"normandy invasion": "normandy invasion",
 
@@ -317,6 +325,12 @@
 	"freight train": "train",
 	"rail transport": "train",
 	"train transport": "train",
+	"train station": "train",
+	"train platform": "train",
+	"railway station": "train",
+	"railway platform": "train",
+	"railroad station": "train",
+	"railroad platform": "train",
 
 	"trench warfare": "trench warfare",
 
@@ -343,6 +357,9 @@
 	"victory bonds": "victory bonds",
 	"war bonds": "victory bonds",
 
+	"war children": "war children",
+	"refugee children": "war children",
+
 	"watchtower": "watchtower",
 	"watch tower": "watchtower",
 
@@ -359,5 +376,13 @@
 
 	"wreck": "wreck",
 	"shipwreck": "wreck",
-	"wreckage": "wreck"
+	"wreckage": "wreck",
+	"damaged ship": "wreck",
+	"damaged airplane": "wreck",
+	"damaged aircraft": "wreck",
+	"damaged building": "wreck",
+	"destroyed building": "wreck",
+	"destroyed aircraft": "wreck",
+	"destroyed airplane": "wreck",
+	"destroyed ship": "wreck"
 }
