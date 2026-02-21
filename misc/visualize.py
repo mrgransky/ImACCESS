@@ -2841,7 +2841,7 @@ def analyze_top_labels_per_source(
 	fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
 	
 	# LLM-only
-	llm_only_top = all_label_counts['llm_based_labels'].head(10)
+	llm_only_top = all_label_counts['llm_based_labels'].head(20)
 	if len(llm_only_top) > 0:
 		ax1.barh(range(len(llm_only_top)), llm_only_top['Count'].values, color='#1f77b4', alpha=0.8)
 		ax1.set_yticks(range(len(llm_only_top)))
@@ -2852,17 +2852,17 @@ def analyze_top_labels_per_source(
 		ax1.grid(axis='x', alpha=0.3)
 	else:
 		ax1.text(0.5, 0.5, 'No LLM-only labels', ha='center', va='center', transform=ax1.transAxes)
-		ax1.set_title('Top 10 LLM-Only Labels', fontsize=12, weight='bold')
+		ax1.set_title('Top 20 LLM-Only Labels', fontsize=12, weight='bold')
 	
 	# VLM-only
-	vlm_only_top = all_label_counts['vlm_based_labels'].head(10)
+	vlm_only_top = all_label_counts['vlm_based_labels'].head(20)
 	if len(vlm_only_top) > 0:
 		ax2.barh(range(len(vlm_only_top)), vlm_only_top['Count'].values, color='#ff7f0e', alpha=0.8)
 		ax2.set_yticks(range(len(vlm_only_top)))
 		ax2.set_yticklabels(vlm_only_top['Label'].values, fontsize=10)
 		ax2.invert_yaxis()
 		ax2.set_xlabel('Frequency', fontsize=11)
-		ax2.set_title('Top 10 VLM-Only Labels', fontsize=12, weight='bold')
+		ax2.set_title('Top 20 VLM-Only Labels', fontsize=12, weight='bold')
 		ax2.grid(axis='x', alpha=0.3)
 	else:
 		ax2.text(0.5, 0.5, 'No VLM-only labels', ha='center', va='center', transform=ax2.transAxes)
