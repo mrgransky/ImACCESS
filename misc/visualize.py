@@ -3676,15 +3676,15 @@ def perform_multilabel_eda(
 		fig_cooc, ax_cooc = plt.subplots(figsize=(19, 17))
 		sns.heatmap(
 			cooccurrence_df,
-			annot=True,
-			fmt=".0f",
+			annot=False,
+			# fmt=".0f",
 			cmap='Greens',
-			linewidths=0.1,
-			linecolor="#4D5153",
+			linewidths=0.05,
+			linecolor="#E6E6E6",
 			cbar_kws={'label': 'Co-occurrence Count'},
 			ax=ax_cooc,
 		)
-		ax_cooc.set_title(f'Label Co-occurrence Matrix (Absolute Counts)')
+		ax_cooc.set_title(f'Top-{n_top_labels_co_occurrence} Label Co-occurrence Matrix (Absolute Counts)')
 		plt.tight_layout()
 		plt.savefig(
 			fname=os.path.join(output_dir, f"{file_name}_cooccurrence_matrix.png"),
