@@ -24,7 +24,7 @@ from clustering import cluster
 # with nohup:
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_q -vlm_bs 2 -llm_bs 2 -nw 12 -v > logs/multimodal_annotation_smu.txt & 
 # one chunk:
-# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_0.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_q -vlm_bs 2 -llm_bs 2 -nw 18 -v > logs/multimodal_annotation_chunk_0.txt & 
+# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_0.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_q -vlm_q -vlm_bs 2 -llm_bs 2 -nw 18 -v > logs/multimodal_annotation_chunk_0.txt & 
 
 # how to run [Pouta]:
 # $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 16 -llm_bs 18 -nw 54 -v > /media/volume/ImACCESS/trash/multimodal_annotation_h4.txt &

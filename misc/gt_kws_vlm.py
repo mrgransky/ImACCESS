@@ -40,33 +40,42 @@ process = psutil.Process(os.getpid())
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 
-VLM_INSTRUCTION_TEMPLATE = """You function as a historical archivist whose expertise lies in the 20th century and whose task is to produce **general-purpose, reusable semantic labels** suitable for **multi-label classification**.
+VLM_INSTRUCTION_TEMPLATE = """You function as a historical archivist whose expertise lies in the 20th century. 
+Your task is to produce **ontology-level, reusable semantic labels** suitable for **multi-label classification and representation learning**.
 
-Extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS** that capture the visually observable actions, objects, or occurrences in the image - **completely ignoring all text**.
+Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and REUSABLE KEYWORDS** that capture stable objects, infrastructure, machinery, vehicles, architectural elements, tools, or clearly defined activities.
 
-**CRITICAL RULES**:
-- Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS**. 
-	Fewer keywords are **preferred** if the image lacks distinct reusable concepts.
+CRITICAL OBJECTIVE:
+Favor labels that represent **mid-level or domain-relevant visual categories** that could generalize across many images. Avoid generic demographic aggregates.
 
-- **PRIORITIZE MEANINGFUL PHRASES**: 
-	Each keyword must be **semantically atomic**, denoting **clearly observable concepts**.
-	When possible, prefer **concrete visual descriptors** over abstract or umbrella terms, **without making inferences**.
+CRITICAL RULES:
 
-- **ZERO HALLUCINATION POLICY**: 
-	Do not invent or infer specifics that lack clear verification from the visual content. 
-	If a keyword cannot be confidently justified by what is visible, omit it.
+- Return ONLY a standardized, valid, and parsable Python LIST with AT MOST {k} KEYWORDS.
+	Fewer keywords are preferred if distinct reusable categories are limited.
 
-- **STRICTLY EXCLUDE**:
-	- verbs, possessive cases, abbreviations, shortened words or acronyms as standalone keywords.
-	- keywords that start or end with prepositions or conjunctions.
-	- dates, times, hours, minutes, calendar references, time periods, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
-	- explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
-	- TEXT EXTRACTION / OCR: do NOT read, transcribe, quote, paraphrase, or rely on any visible text in the image.
-	- image quality, format, medium, or stylistic attributes.
-	- **overly vague or generic terms** (e.g., abstract container nouns that add little semantic value).
+- PRIORITIZE:
+		• infrastructure (e.g., bridge, railway station, harbor)
+		• machinery and equipment (e.g., locomotive, crane, press machine)
+		• vehicles (e.g., freight car, aircraft, truck)
+		• architectural structures
+		• clearly defined industrial or military assets
 
-- The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response."""
+- DE-PRIORITIZE or EXCLUDE:
+		• generic human category nouns (e.g., man, men, woman, people, children)
+			UNLESS they are semantically specialized (e.g., soldier, pilot, railway worker).
+		• vague container nouns (e.g., scene, group, event)
+		• counting-based phrases (e.g., three men, several people)
+		• purely demographic descriptors without contextual role
 
+- ZERO HALLUCINATION POLICY:
+		Do not infer specifics beyond what is clearly visible.
+
+- STRICTLY EXCLUDE:
+		verbs, possessives, abbreviations, time references, OCR, stylistic descriptions,
+		or explanatory text outside the Python LIST.
+
+The clean, valid Python LIST must be the VERY LAST THING in your response.
+"""
 
 # VLM_INSTRUCTION_TEMPLATE = """You function as a historical archivist whose expertise lies in the 20th century and whose task is to produce **general-purpose, reusable semantic labels** suitable for **multi-label classification**.
 
