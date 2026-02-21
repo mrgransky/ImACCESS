@@ -1307,10 +1307,10 @@ def get_vlm_based_labels(
 		gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
 	else:
 		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
+
 	if verbose:
 		print(f"\n[GEN CONFIG] Using generation parameters:")
-		for k, v in gen_kwargs.items():
-			print(f"   • {k}: {v}")
+		print(json.dumps(gen_kwargs, indent=2, ensure_ascii=False))
 	
 	# ========== Process batches ==========
 	def _load_(p: str) -> Optional[Image.Image]:
