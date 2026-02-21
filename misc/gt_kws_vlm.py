@@ -289,7 +289,6 @@ def _load_vlm_(
 		info = huggingface_hub.model_info(m_id, token=hf_tk, files_metadata=True)
 		print(type(info))
 		print(info)
-		print(json.dumps(_model_info_to_dict(info), indent=2, ensure_ascii=False))
 		# Method 1: safetensors metadata (some models have this)
 		if hasattr(info, "safetensors") and info.safetensors:
 			print(f"[INFO] {m_id} has safetensors metadata")
