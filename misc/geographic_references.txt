@@ -131,6 +131,7 @@ Liechtenstein
 Lithuania
 Luxembourg
 
+Macedonia
 Madagascar
 Malawi
 Malaysia
@@ -684,6 +685,7 @@ Kurd
 Kurdish
 Lebanese
 Luxembourgian
+Macedonian
 Malian
 Malaysian
 Mexican

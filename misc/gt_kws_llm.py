@@ -369,30 +369,41 @@ def _load_llm_(
 		print(f"   • padding side      : {tokenizer.padding_side:>20}")
 		print()
 	
-	# ========== Dynamic Device Strategy with Adaptive VRAM Buffering ==========
+
+
 	def get_estimated_gb_size(m_id: str) -> float:
 		info = huggingface_hub.model_info(m_id, token=hf_tk, files_metadata=True)
 		print(type(info))
 		print(info)
-		try:
-			if hasattr(info, "safetensors") and info.safetensors:
-				total_bytes = info.safetensors.total
-				if total_bytes > 0:
-					size_gb = total_bytes / (1024 ** 3)
-					return size_gb
-		except Exception as e:
-			print(f"<!> Failed to estimate model size from safetensors: {e}")
 		
-		# # Fallback: estimate from model name or return default
-		# print(f"[WARN] Could not get size from safetensors, using fallback estimation")
-		# if "30B" in m_id or "32B" in m_id:
-		# 	return 60.0
-		# elif "7B" in m_id or "8B" in m_id:
-		# 	return 14.0
-		# elif "3B" in m_id or "4B" in m_id:
-		# 	return 8.0
-		# else:
-		# 	return 10.0  # Conservative default
+		# Method 1: Direct safetensors metadata (only works for single-file or repos with specific metadata)
+		if hasattr(info, "safetensors") and info.safetensors:
+			try:
+				# Handle if it's a dict (newer huggingface_hub) or object
+				if isinstance(info.safetensors, dict):
+					total_bytes = info.safetensors.get("total")
+				else:
+					total_bytes = getattr(info.safetensors, "total", None)
+				
+				if total_bytes and total_bytes > 0:
+					return total_bytes / (1024 ** 3)
+			except Exception as e:
+				print(f"<!> Failed to estimate model size from safetensors metadata: {e}")
+		
+		# Method 2: Sum individual weight file sizes (Robust fallback)
+		# This works for sharded models (e.g., model-00001-of-00003.safetensors)
+		if info.siblings:
+			total_bytes = sum(
+				s.size for s in info.siblings
+				if s.size is not None and (
+					s.rfilename.endswith(".safetensors") or
+					s.rfilename.endswith(".bin")
+				)
+			)
+			if total_bytes > 0:
+				return total_bytes / (1024 ** 3)
+		
+		raise ValueError(f"Could not estimate size for {m_id}. No weights found.")
 
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	
@@ -441,13 +452,13 @@ def _load_llm_(
 				print(f"[INFO] Adjusted size for {quantization_bits}-bit quantization: {adjusted_size:.1f} GB")
 		
 		# ========== PRE-FLIGHT VRAM VALIDATION ==========
-		INFERENCE_OVERHEAD_MULTIPLIER = 1.5
+		INFERENCE_OVERHEAD_MULTIPLIER = 1.3
 		required_vram = adjusted_size * INFERENCE_OVERHEAD_MULTIPLIER
 		usable_vram = total_vram_available - (n_gpus * vram_buffer_gb)
 
 		if verbose:
 			print(f"\n[VRAM CHECK] Pre-flight validation:")
-			print(f"\t• Estimated Model size (fp16): {adjusted_size:.1f} GB (with {INFERENCE_OVERHEAD_MULTIPLIER}x overhead): {required_vram:.1f} GB")
+			print(f"\t• Estimated Model size (fp16): {adjusted_size:.2f} GB (with {INFERENCE_OVERHEAD_MULTIPLIER}x overhead): {required_vram:.2f} GB")
 			print(f"\t• Available VRAM (total):      {total_vram_available:.1f} GB")
 			print(f"\t• Available VRAM (usable):     {usable_vram:.1f} GB ({n_gpus}x GPU(s), {vram_buffer_gb:.1f} GB buffer per GPU)")
 
