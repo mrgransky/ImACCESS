@@ -1381,338 +1381,406 @@ def get_optimal_super_clusters(
 	plt.close()
 
 def get_optimal_num_clusters(
-	X,
-	linkage_matrix,
-	max_cluster_size_ratio=0.025,
-	min_cluster_size=2,
-	merge_singletons=True,
-	split_oversized=True,
-	target_intra_similarity=0.82,  # Target quality
-	min_consolidation=5.0,         # Minimum reduction ratio
-	verbose=True
+		X,
+		linkage_matrix,
+		max_cluster_size_ratio=0.025,
+		min_cluster_size=2,
+		merge_singletons=True,
+		split_oversized=False,  				# Disabled by default (creates noise)
+		target_intra_similarity=0.70, 	# ← CHANGED: 0.82 → 0.70 (MPNet-Base baseline)
+		min_consolidation=4.0,         # ← CHANGED: 5.0 → 4.0 (allow k=7,250)
+		max_consolidation=6.0,         # ← NEW: Upper limit (prevent over-consolidation)
+		target_singleton_ratio=0.015,  # ← NEW: Target 1-2% singletons (like k=7,250)
+		quality_vs_consolidation_weight=0.6,  # ← NEW: 60% quality, 40% consolidation
+		verbose=True
 ):
-	if verbose:
-		print("\nADAPTIVE OPTIMAL CLUSTER SELECTION (TWO-STAGE)")
-		print(f"   ├─ Target intra-cluster similarity: {target_intra_similarity:.3f}")
-		print(f"   ├─ Minimum consolidation ratio: {min_consolidation:.1f}x")
-		print(f"   ├─ Dataset: {type(X)} {X.shape} {X.dtype}")
-		print(f"   └─ Linkage matrix: {type(linkage_matrix)} {linkage_matrix.shape} {linkage_matrix.dtype}")
-	
-	num_samples = X.shape[0]
-	
-	# STAGE 1: COARSE SEARCH - Find plateau region
-	if verbose:
-		print("\n[STAGE 1] COARSE SEARCH - Finding quality plateau")
-		print("-" * 80)
-	
-	# Adaptive coarse range based on dataset size
-	if num_samples > int(2e4):
-		# Large datasets: test k = 1000, 2000, 3000, ..., 10000
-		coarse_range = range(1000, min(10001, num_samples // 3), 1000)
-	elif num_samples > int(1e4):
-		# Medium datasets: test k = 500, 1000, 1500, ..., 5000
-		coarse_range = range(500, min(5001, num_samples // 2), 500)
-	elif num_samples > int(5e3):
-		# Small datasets: test k = 100, 200, 300, ..., 1000
-		coarse_range = range(100, min(1001, num_samples // 5), 100)
-	else:
-		# Very small datasets: test k = 20, 40, 60, ..., 200
-		coarse_range = range(20, min(201, num_samples // 25), 20)
-	
-	if verbose:
-		print(f"Testing {len(coarse_range)} configurations: {list(coarse_range)}")
-		print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'MaxSize':<10} {'Status':<20}")
-		print("-" * 80)
-	
-	coarse_results = []
-	best_intra_sim = 0
-	plateau_k = None
-	
-	for n_clusters in coarse_range:
-		labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
+		"""
+		Adaptive two-stage cluster selection optimized for MPNet-Base embeddings.
 		
-		if len(np.unique(labels)) < 2:
-			continue
+		Key Changes from Original:
+		1. Lower target_intra_similarity (0.70) to match MPNet-Base's conservative scoring
+		2. Lower min_consolidation (4.0) to allow k=7,250 range
+		3. Add max_consolidation (6.0) to prevent over-consolidation
+		4. Add singleton ratio targeting (1-2% optimal)
+		5. Composite scoring: balance quality vs consolidation
+		6. Disable oversized splitting (creates noise)
 		
-		# Compute mean intra-cluster similarity
-		unique_labels = np.unique(labels)
-		intra_sims = []
+		Expected behavior on your dataset:
+		- Dataset: 33,163 labels
+		- Target range: k=7,000-8,000
+		- Expected k: ~7,250
+		- Expected quality: 0.70-0.73
+		- Expected singletons: 50-150 (0.7-2.0%)
+		"""
 		
-		for cid in unique_labels:
-			cluster_mask = labels == cid
-			cluster_X = X[cluster_mask]
-			
-			if len(cluster_X) > 1:
-				# Compute pairwise similarities within cluster
-				sim_matrix = cosine_similarity(cluster_X)
-				# Mean of off-diagonal elements
-				n = len(cluster_X)
-				intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
-				intra_sims.append(intra_sim)
+		if verbose:
+				print("\nADAPTIVE OPTIMAL CLUSTER SELECTION (MPNet-Optimized)")
+				print(f"   ├─ Target intra-cluster similarity: {target_intra_similarity:.3f}")
+				print(f"   ├─ Consolidation range: {min_consolidation:.1f}x - {max_consolidation:.1f}x")
+				print(f"   ├─ Target singleton ratio: {target_singleton_ratio*100:.1f}%")
+				print(f"   ├─ Quality weight: {quality_vs_consolidation_weight*100:.0f}%")
+				print(f"   ├─ Dataset: {type(X)} {X.shape} {X.dtype}")
+				print(f"   └─ Linkage matrix: {type(linkage_matrix)} {linkage_matrix.shape}")
 		
-		mean_intra_sim = np.mean(intra_sims) if intra_sims else 0
+		num_samples = X.shape[0]
 		
-		# Cluster statistics
-		cluster_sizes = np.bincount(labels)
-		max_size = cluster_sizes.max()
-		consolidation = num_samples / n_clusters
+		# ========================================================================
+		# STAGE 1: COARSE SEARCH - Find quality plateau
+		# ========================================================================
+		if verbose:
+				print("\n[STAGE 1] COARSE SEARCH - Finding quality plateau")
+				print("-" * 80)
 		
-		coarse_results.append(
-			{
-				'k': n_clusters,
-				'intra_sim': mean_intra_sim,
-				'consolidation': consolidation,
-				'max_size': max_size
-			}
-		)
-		
-		# Check if reached target or plateau
-		status = ""
-		if mean_intra_sim >= target_intra_similarity:
-			status = "✓ TARGET REACHED"
-			if plateau_k is None:
-				plateau_k = n_clusters
-		elif mean_intra_sim > best_intra_sim:
-			best_intra_sim = mean_intra_sim
-			status = "↑ Improving"
-		elif mean_intra_sim < best_intra_sim - 0.005:
-			status = "↓ Declining (stop soon)"
+		# Adaptive coarse range based on dataset size
+		if num_samples > int(2e4):
+				# Large datasets (like yours: 33,163): test k = 1000, 2000, ..., 10000
+				coarse_range = range(1000, min(10001, num_samples // 3), 1000)
+		elif num_samples > int(1e4):
+				# Medium datasets: test k = 500, 1000, 1500, ..., 5000
+				coarse_range = range(500, min(5001, num_samples // 2), 500)
+		elif num_samples > int(5e3):
+				# Small datasets: test k = 100, 200, 300, ..., 1000
+				coarse_range = range(100, min(1001, num_samples // 5), 100)
 		else:
-			status = "→ Plateau region"
-			if plateau_k is None and mean_intra_sim > 0.80:
-				plateau_k = n_clusters
+				# Very small datasets: test k = 20, 40, 60, ..., 200
+				coarse_range = range(20, min(201, num_samples // 25), 20)
 		
 		if verbose:
-			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {max_size:<10} {status:<20}")
+				print(f"Testing {len(coarse_range)} configurations: {list(coarse_range)}")
+				print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Status':<30}")
+				print("-" * 80)
 		
-		# Early stopping: If we've been in plateau for 2 steps and met min consolidation
-		if len(coarse_results) >= 3:
-			recent_sims = [r['intra_sim'] for r in coarse_results[-3:]]
-			if max(recent_sims) - min(recent_sims) < 0.01 and consolidation >= min_consolidation:
-				if verbose:
-					print(f"\n[STAGE 1] Plateau detected at k≈{n_clusters}. Moving to fine search.")
-				break
-	
-	if not coarse_results:
-		raise ValueError("No valid cluster configurations found in coarse search")
-	
-	# Determine search region for Stage 2
-	if plateau_k is None:
-		# Use k with best intra-similarity
-		best_coarse = max(coarse_results, key=lambda x: x['intra_sim'])
-		plateau_k = best_coarse['k']
-	
-	if verbose:
-		print(f"\n[STAGE 1] Complete. Plateau region centered around k={plateau_k}")
-	
-	# STAGE 2: FINE SEARCH - Optimize within plateau region		
-	if verbose:
-		print("\n[STAGE 2] FINE SEARCH - Optimizing within plateau region")
-		print("-" * 80)
-	
-	# Adaptive fine range based on dataset size
-	if num_samples < 1000:
-		# Small dataset: test around plateau_k with small steps
-		fine_min = max(2, int(plateau_k * 0.5))
-		fine_max = min(int(plateau_k * 2.0), num_samples // 2)
-		fine_step = max(1, (fine_max - fine_min) // 10)  # ~10 test points
-	else:
-		# Large dataset
-		fine_min = max(int(plateau_k * 0.7), 100)
-		fine_max = min(int(plateau_k * 1.3), num_samples // 3)
-		fine_step = max(50, plateau_k // 50)
-
-	fine_range = range(fine_min, fine_max + 1, fine_step)
-	
-	if verbose:
-		print(f"Testing {len(fine_range)} configurations: {fine_min} to {fine_max} (step={fine_step})")
-		print(f"\n{'k':<8} {'IntraSim':<12} {'Represent':<12} {'FreqAlign':<12} {'Score':<10}")
-		print("-" * 80)
-	
-	fine_results = []
-	
-	for n_clusters in fine_range:
-		labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
+		coarse_results = []
+		best_intra_sim = 0
+		plateau_k = None
 		
-		if len(np.unique(labels)) < 2:
-			continue
-		
-		# Compute detailed metrics
-		unique_labels = np.unique(labels)
-		intra_sims = []
-		
-		for cid in unique_labels:
-			cluster_mask = labels == cid
-			cluster_X = X[cluster_mask]
-			
-			if len(cluster_X) > 1:
-				sim_matrix = cosine_similarity(cluster_X)
-				n = len(cluster_X)
-				intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
-				intra_sims.append(intra_sim)
-		
-		mean_intra_sim = np.mean(intra_sims) if intra_sims else 0
-		
-		# Compute global metrics
-		sil = silhouette_score(X, labels, metric='cosine') if len(unique_labels) > 1 else 0
-		
-		# Cluster size statistics
-		cluster_sizes = np.bincount(labels)
-		max_size = cluster_sizes.max()
-		consolidation = num_samples / n_clusters
-		
-		# Composite score: Prioritize intra-similarity, penalize over-consolidation
-		score = mean_intra_sim * (1.0 if consolidation >= min_consolidation else 0.5)
-		
-		fine_results.append(
-			{
-				'k': n_clusters,
-				'intra_sim': mean_intra_sim,
-				'silhouette': sil,
-				'consolidation': consolidation,
-				'max_size': max_size,
-				'score': score
-			}
-		)
-		
-		if verbose:
-			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {sil:<12.4f} {consolidation:<12.1f} {score:<10.4f}")
-	
-	if not fine_results:
-		raise ValueError("No valid cluster configurations found in fine search")
-	
-	# Select best configuration
-	# Priority: intra_sim > target, then maximize score
-	target_met = [r for r in fine_results if r['intra_sim'] >= target_intra_similarity]
-	
-	if target_met:
-		# Among those meeting target, prefer higher consolidation (fewer clusters)
-		best = min(target_met, key=lambda x: x['k'])
-		if verbose:
-			print(f"\n[STAGE 2] Selected k={best['k']} (meets target, minimal k)")
-	else:
-		# Otherwise, select highest intra-similarity
-		best = max(fine_results, key=lambda x: x['intra_sim'])
-		if verbose:
-			print(f"\n[STAGE 2] Selected k={best['k']} (highest intra-similarity)")
-	
-	# STAGE 3: POST-PROCESSING (unchanged)
-	optimal_k = best['k']
-	labels = fcluster(linkage_matrix, optimal_k, criterion='maxclust') - 1
-	
-	if verbose:
-		print(f"\nOPTIMAL K SELECTED: {optimal_k}")
-		print(f"  ├─ Intra-cluster similarity: {best['intra_sim']:.4f}")
-		print(f"  ├─ Silhouette score: {best['silhouette']:.4f}")
-		print(f"  ├─ Consolidation ratio: {best['consolidation']:.1f}x")
-		print(f"  └─ Max cluster size: {best['max_size']}")
-		print()
-	
-	# [STAGE 3] Merge singletons
-	if merge_singletons:
-		cluster_sizes = np.bincount(labels)
-		singleton_ids = np.where(cluster_sizes == 1)[0]
-		
-		if len(singleton_ids) > 0:
-			if verbose:
-				print("\n[STAGE 3] MERGING SINGLETON CLUSTERS")
-				print(f"[MERGE] Found {len(singleton_ids)} singleton clusters to merge...")
-			
-			unique_labels = np.unique(labels)
-			centroids = np.array([X[labels == cid].mean(axis=0) for cid in unique_labels])
-			
-			new_labels = labels.copy()
-			merged_count = 0
-			
-			for singleton_id in singleton_ids:
-				singleton_idx = np.where(labels == singleton_id)[0][0]
-				singleton_vec = X[singleton_idx].reshape(1, -1)
-				sims = cosine_similarity(singleton_vec, centroids)[0]
-				sorted_ids = np.argsort(sims)[::-1]
+		for n_clusters in coarse_range:
+				labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
 				
-				for nearest_id in sorted_ids:
-					if cluster_sizes[nearest_id] >= min_cluster_size:
-						new_labels[singleton_idx] = nearest_id
-						merged_count += 1
-						if verbose:
-							print(f"  ├─ Merged singleton {singleton_id} → cluster {nearest_id} (sim={sims[nearest_id]:.4f})")
-						break
-			
-			unique_new = np.unique(new_labels)
-			label_map = {old: new for new, old in enumerate(unique_new)}
-			labels = np.array([label_map[l] for l in new_labels])
-			
-			if verbose:
-				print(f"[MERGE] Merged {merged_count} singletons")
-				print(f"[MERGE] Reduced from {len(unique_labels)} to {len(unique_new)} clusters")
-	
-	# [STAGE 4] Split oversized clusters (existing code - optional, can be removed)
-	if split_oversized:
-		cluster_sizes = np.bincount(labels)
-		max_size_threshold = num_samples * max_cluster_size_ratio
-		oversized = np.where(cluster_sizes > max_size_threshold)[0]
-		
-		if len(oversized) > 0:
-			if verbose:
-				print(f"\n[STAGE 4] SPLITTING OVERSIZED CLUSTERS (> {max_cluster_size_ratio*100:.0f}% of total)")
-				print(f"[SPLIT] Found {len(oversized)} oversized clusters")
-			
-			final_labels = labels.copy()
-			next_label = labels.max() + 1
-			
-			for cid in oversized:
-				cluster_mask = labels == cid
-				cluster_indices = np.where(cluster_mask)[0]
-				cluster_X = X[cluster_indices]
-				n_sub = max(2, int(cluster_sizes[cid] / 25))
+				if len(np.unique(labels)) < 2:
+						continue
+				
+				# Compute mean intra-cluster similarity
+				unique_labels = np.unique(labels)
+				intra_sims = []
+				
+				for cid in unique_labels:
+						cluster_mask = labels == cid
+						cluster_X = X[cluster_mask]
+						
+						if len(cluster_X) > 1:
+								sim_matrix = cosine_similarity(cluster_X)
+								n = len(cluster_X)
+								intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
+								intra_sims.append(intra_sim)
+				
+				mean_intra_sim = np.mean(intra_sims) if intra_sims else 0
+				
+				# Cluster statistics
+				cluster_sizes = np.bincount(labels)
+				n_singletons = np.sum(cluster_sizes == 1)
+				singleton_ratio = n_singletons / n_clusters
+				consolidation = num_samples / n_clusters
+				
+				coarse_results.append({
+						'k': n_clusters,
+						'intra_sim': mean_intra_sim,
+						'consolidation': consolidation,
+						'singleton_ratio': singleton_ratio,
+						'n_singletons': n_singletons
+				})
+				
+				# Check if in target range
+				in_consol_range = min_consolidation <= consolidation <= max_consolidation
+				in_singleton_range = 0.005 <= singleton_ratio <= 0.03  # 0.5%-3% acceptable
+				
+				status = ""
+				if mean_intra_sim >= target_intra_similarity and in_consol_range:
+						status = "✓ TARGET REACHED (quality + consolidation)"
+						if plateau_k is None:
+								plateau_k = n_clusters
+				elif in_consol_range and in_singleton_range:
+						status = "✓ OPTIMAL RANGE (consolidation + singletons)"
+						if plateau_k is None:
+								plateau_k = n_clusters
+				elif mean_intra_sim > best_intra_sim:
+						best_intra_sim = mean_intra_sim
+						status = "↑ Improving quality"
+				else:
+						status = "→ Plateau region"
 				
 				if verbose:
-					print(f"  ├─ Splitting cluster {cid} ({cluster_sizes[cid]} items) → {n_sub} subclusters")
+						print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} "
+									f"{singleton_ratio:<10.3f} {status:<30}")
 				
-				sub_clusterer = AgglomerativeClustering(
-					n_clusters=n_sub,
-					metric='cosine',
-					linkage='average'
+				# Early stopping: If in optimal range for 2 consecutive steps
+				if len(coarse_results) >= 2:
+						recent = coarse_results[-2:]
+						both_optimal = all(
+								r['intra_sim'] >= target_intra_similarity * 0.95 and
+								min_consolidation <= r['consolidation'] <= max_consolidation
+								for r in recent
+						)
+						if both_optimal and plateau_k is not None:
+								if verbose:
+										print(f"\n[STAGE 1] Optimal range detected. Moving to fine search.")
+								break
+		
+		if not coarse_results:
+				raise ValueError("No valid cluster configurations found in coarse search")
+		
+		# Determine search region for Stage 2
+		if plateau_k is None:
+				# Use k that best balances quality and consolidation
+				def score_coarse(r):
+						# Penalize if outside consolidation range
+						consol_penalty = 1.0
+						if r['consolidation'] < min_consolidation:
+								consol_penalty = 0.5
+						elif r['consolidation'] > max_consolidation:
+								consol_penalty = 0.7
+						
+						# Reward if near target singleton ratio
+						singleton_penalty = 1.0 - abs(r['singleton_ratio'] - target_singleton_ratio)
+						singleton_penalty = max(0.5, singleton_penalty)
+						
+						return r['intra_sim'] * consol_penalty * singleton_penalty
+				
+				best_coarse = max(coarse_results, key=score_coarse)
+				plateau_k = best_coarse['k']
+		
+		if verbose:
+				print(f"\n[STAGE 1] Complete. Plateau region centered around k={plateau_k}")
+				print(f"  Predicted optimal range: {int(plateau_k*0.9)} - {int(plateau_k*1.1)}")
+		
+		# ========================================================================
+		# STAGE 2: FINE SEARCH - Optimize within plateau region
+		# ========================================================================
+		if verbose:
+				print("\n[STAGE 2] FINE SEARCH - Optimizing around plateau")
+				print("-" * 80)
+		
+		# Fine search range: ±20% around plateau with smaller steps
+		fine_min = max(int(plateau_k * 0.8), 100)
+		fine_max = min(int(plateau_k * 1.2), num_samples // 3)
+		
+		# Adaptive step size
+		if num_samples > 20000:
+				fine_step = 250  # For large datasets, test every 250
+		elif num_samples > 10000:
+				fine_step = 100
+		else:
+				fine_step = 50
+		
+		fine_range = range(fine_min, fine_max + 1, fine_step)
+		
+		if verbose:
+				print(f"Testing {len(fine_range)} configurations: {fine_min} to {fine_max} (step={fine_step})")
+				print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Score':<10} {'Status':<20}")
+				print("-" * 80)
+		
+		fine_results = []
+		
+		for n_clusters in fine_range:
+				labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
+				
+				if len(np.unique(labels)) < 2:
+						continue
+				
+				# Compute intra-cluster similarity
+				unique_labels = np.unique(labels)
+				intra_sims = []
+				
+				for cid in unique_labels:
+						cluster_mask = labels == cid
+						cluster_X = X[cluster_mask]
+						
+						if len(cluster_X) > 1:
+								sim_matrix = cosine_similarity(cluster_X)
+								n = len(cluster_X)
+								intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
+								intra_sims.append(intra_sim)
+				
+				mean_intra_sim = np.mean(intra_sims) if intra_sims else 0
+				
+				# Compute statistics
+				cluster_sizes = np.bincount(labels)
+				n_singletons = np.sum(cluster_sizes == 1)
+				singleton_ratio = n_singletons / n_clusters
+				consolidation = num_samples / n_clusters
+				
+				# ====================================================================
+				# COMPOSITE SCORING FUNCTION (Key Innovation!)
+				# ====================================================================
+				
+				# Quality component (normalized to 0-1)
+				quality_score = mean_intra_sim / target_intra_similarity
+				quality_score = min(1.0, quality_score)  # Cap at 1.0
+				
+				# Consolidation component (penalize if outside range)
+				if consolidation < min_consolidation:
+						consol_score = consolidation / min_consolidation  # Penalize low consolidation
+				elif consolidation > max_consolidation:
+						consol_score = max_consolidation / consolidation  # Penalize high consolidation
+				else:
+						consol_score = 1.0  # Perfect
+				
+				# Singleton component (penalize if far from target)
+				singleton_error = abs(singleton_ratio - target_singleton_ratio)
+				singleton_score = 1.0 - min(1.0, singleton_error / target_singleton_ratio)
+				
+				# Final composite score
+				score = (
+						quality_vs_consolidation_weight * quality_score +
+						(1 - quality_vs_consolidation_weight) * 0.7 * consol_score +
+						(1 - quality_vs_consolidation_weight) * 0.3 * singleton_score
 				)
-				sub_labels = sub_clusterer.fit_predict(cluster_X)
 				
-				for sub_id in range(n_sub):
-					sub_mask = sub_labels == sub_id
-					sub_size = sub_mask.sum()
-					final_labels[cluster_indices[sub_mask]] = next_label
-					if verbose:
-						print(f"  │  ├─ Subcluster {next_label}: {sub_size} items")
-					next_label += 1
-			
-			labels = final_labels
-			if verbose:
-				print(f"[SPLIT] Final cluster count: {len(np.unique(labels))}")
-	
-	# Final statistics
-	final_cluster_sizes = np.bincount(labels)
-	final_n_clusters = len(np.unique(labels))
-	final_singletons = np.sum(final_cluster_sizes == 1)
-	final_max_size = final_cluster_sizes.max()
-	
-	stats = {
-		'n_clusters': final_n_clusters,
-		'n_singletons': final_singletons,
-		'singleton_ratio': final_singletons / final_n_clusters,
-		'max_cluster_size': final_max_size,
-		'max_size_ratio': final_max_size / num_samples,
-		'mean_cluster_size': num_samples / final_n_clusters,
-		'consolidation_ratio': num_samples / final_n_clusters,
-	}
-	
-	if verbose:
-		print("\nFINAL CLUSTERING STATISTICS")
-		print(f"  ├─ Total clusters: {stats['n_clusters']}")
-		print(f"  ├─ Singletons: {stats['n_singletons']} ({stats['singleton_ratio']*100:.1f}%)")
-		print(f"  ├─ Largest cluster: {stats['max_cluster_size']} items ({stats['max_size_ratio']*100:.1f}%)")
-		print(f"  ├─ Mean cluster size: {stats['mean_cluster_size']:.1f}")
-		print(f"  └─ Consolidation ratio: {stats['consolidation_ratio']:.1f}:1")
-	
-	return labels, stats
+				fine_results.append({
+						'k': n_clusters,
+						'intra_sim': mean_intra_sim,
+						'consolidation': consolidation,
+						'singleton_ratio': singleton_ratio,
+						'n_singletons': n_singletons,
+						'quality_score': quality_score,
+						'consol_score': consol_score,
+						'singleton_score': singleton_score,
+						'composite_score': score
+				})
+				
+				# Status
+				status = ""
+				if quality_score >= 0.95 and consol_score >= 0.9:
+						status = "⭐ EXCELLENT"
+				elif quality_score >= 0.90 and consol_score >= 0.8:
+						status = "✓ GOOD"
+				elif score >= 0.70:
+						status = "→ Acceptable"
+				else:
+						status = "✗ Below target"
+				
+				if verbose:
+						print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} "
+									f"{singleton_ratio:<10.3f} {score:<10.4f} {status:<20}")
+		
+		if not fine_results:
+				raise ValueError("No valid cluster configurations found in fine search")
+		
+		# ========================================================================
+		# SELECT BEST CONFIGURATION
+		# ========================================================================
+		
+		# Priority: Highest composite score
+		best = max(fine_results, key=lambda x: x['composite_score'])
+		
+		if verbose:
+				print(f"\n[STAGE 2] Selected k={best['k']} (highest composite score)")
+				print(f"  ├─ Composite score: {best['composite_score']:.4f}")
+				print(f"  ├─ Quality score: {best['quality_score']:.4f}")
+				print(f"  ├─ Consolidation score: {best['consol_score']:.4f}")
+				print(f"  └─ Singleton score: {best['singleton_score']:.4f}")
+		
+		# ========================================================================
+		# STAGE 3: POST-PROCESSING - Merge singletons
+		# ========================================================================
+		optimal_k = best['k']
+		labels = fcluster(linkage_matrix, optimal_k, criterion='maxclust') - 1
+		
+		if merge_singletons:
+				cluster_sizes = np.bincount(labels)
+				singleton_ids = np.where(cluster_sizes == 1)[0]
+				
+				if len(singleton_ids) > 0:
+						if verbose:
+								print(f"\n[STAGE 3] MERGING SINGLETON CLUSTERS")
+								print(f"  Found {len(singleton_ids)} singleton clusters")
+						
+						unique_labels = np.unique(labels)
+						centroids = np.array([X[labels == cid].mean(axis=0) for cid in unique_labels])
+						
+						new_labels = labels.copy()
+						merged_count = 0
+						
+						for singleton_id in singleton_ids:
+								singleton_idx = np.where(labels == singleton_id)[0][0]
+								singleton_vec = X[singleton_idx].reshape(1, -1)
+								sims = cosine_similarity(singleton_vec, centroids)[0]
+								sorted_ids = np.argsort(sims)[::-1]
+								
+								# Find nearest non-singleton cluster
+								for nearest_id in sorted_ids:
+										if cluster_sizes[nearest_id] >= min_cluster_size:
+												new_labels[singleton_idx] = nearest_id
+												merged_count += 1
+												if verbose and merged_count <= 5:  # Only print first 5
+														print(f"  ├─ Merged singleton {singleton_id} → "
+																	f"cluster {nearest_id} (sim={sims[nearest_id]:.4f})")
+												break
+						
+						unique_new = np.unique(new_labels)
+						label_map = {old: new for new, old in enumerate(unique_new)}
+						labels = np.array([label_map[l] for l in new_labels])
+						
+						if verbose:
+								if merged_count > 5:
+										print(f"  ├─ ... ({merged_count - 5} more)")
+								print(f"  ├─ Total merged: {merged_count} singletons")
+								print(f"  └─ Final clusters: {len(unique_new)} (was {len(unique_labels)})")
+		
+		# ========================================================================
+		# FINAL STATISTICS
+		# ========================================================================
+		final_cluster_sizes = np.bincount(labels)
+		final_n_clusters = len(np.unique(labels))
+		final_singletons = np.sum(final_cluster_sizes == 1)
+		final_max_size = final_cluster_sizes.max()
+		
+		# Recompute final intra-similarity
+		final_intra_sims = []
+		for cid in np.unique(labels):
+				cluster_X = X[labels == cid]
+				if len(cluster_X) > 1:
+						sim_matrix = cosine_similarity(cluster_X)
+						n = len(cluster_X)
+						intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
+						final_intra_sims.append(intra_sim)
+		final_mean_intra_sim = np.mean(final_intra_sims) if final_intra_sims else 0
+		
+		stats = {
+				'n_clusters': final_n_clusters,
+				'n_singletons': final_singletons,
+				'singleton_ratio': final_singletons / final_n_clusters if final_n_clusters > 0 else 0,
+				'max_cluster_size': final_max_size,
+				'max_size_ratio': final_max_size / num_samples,
+				'mean_cluster_size': num_samples / final_n_clusters,
+				'consolidation_ratio': num_samples / final_n_clusters,
+				'mean_intra_similarity': final_mean_intra_sim
+		}
+		
+		if verbose:
+				print("\n" + "="*80)
+				print("FINAL CLUSTERING STATISTICS")
+				print("="*80)
+				print(f"  ├─ Total clusters: {stats['n_clusters']}")
+				print(f"  ├─ Singletons: {stats['n_singletons']} ({stats['singleton_ratio']*100:.1f}%)")
+				print(f"  ├─ Mean intra-similarity: {stats['mean_intra_similarity']:.4f}")
+				print(f"  ├─ Largest cluster: {stats['max_cluster_size']} items "
+							f"({stats['max_size_ratio']*100:.1f}%)")
+				print(f"  ├─ Mean cluster size: {stats['mean_cluster_size']:.1f}")
+				print(f"  └─ Consolidation ratio: {stats['consolidation_ratio']:.1f}:1")
+				
+				# Quality assessment
+				if stats['mean_intra_similarity'] >= target_intra_similarity:
+						quality_status = "✅ EXCELLENT"
+				elif stats['mean_intra_similarity'] >= target_intra_similarity * 0.95:
+						quality_status = "✅ GOOD"
+				else:
+						quality_status = "⚠️  ACCEPTABLE"
+				
+				print(f"\n  Quality Status: {quality_status}")
+				print("="*80)
+		
+		return labels, stats
 
 def cluster(
 	labels: List[List[str]],
@@ -1893,7 +1961,7 @@ def cluster(
 		cluster_labels, stats = get_optimal_num_clusters(
 			X=X,
 			linkage_matrix=Z,
-			max_cluster_size_ratio=0.10,  # Max 10% of data in one cluster
+			max_cluster_size_ratio=max_cluster_size_ratio, # Max X% of data in one cluster
 			min_cluster_size=2,
 			merge_singletons=True,
 			split_oversized=False,

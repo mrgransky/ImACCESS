@@ -48,6 +48,18 @@ Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and REUSABLE KEYWORDS*
 CRITICAL OBJECTIVE:
 Favor labels that represent **mid-level or domain-relevant visual categories** that could generalize across many images. Avoid generic demographic aggregates.
 
+- Extracted **KEYWORDS** must be:
+	* **Semantically atomic**: each keyword must represent **core concept only**.
+	* **visually grounded nouns** that correspond to **tangible objects, agents, or scene elements**.
+	* **Generalized**: prefer the **most general factual noun phrase** that remains correct.
+		- Example: use "nurse" instead of "nurse checking blood pressure"
+		- Example: use "seaplane" instead of "seaplane on the water in the background"
+		- Example: use "airplane" instead of "airplane in flight"
+		- Example: use "smoking" instead of "a group of youngsters smoking outdoors"
+		- Example: use "flag" instead of "german flag"
+		- Example: use "red cross" instead of "american red cross"
+ 	* **Reusable**: avoid phrases that are overly specific, descriptive, or unlikely to appear in multiple captions.
+
 CRITICAL RULES:
 
 - Return ONLY a standardized, valid, and parsable Python LIST with AT MOST {k} KEYWORDS.
@@ -76,33 +88,6 @@ CRITICAL RULES:
 
 The clean, valid Python LIST must be the VERY LAST THING in your response.
 """
-
-# VLM_INSTRUCTION_TEMPLATE = """You function as a historical archivist whose expertise lies in the 20th century and whose task is to produce **general-purpose, reusable semantic labels** suitable for **multi-label classification**.
-
-# Extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS** that capture the visually observable actions, objects, or occurrences in the image - **completely ignoring all text**.
-
-# **CRITICAL RULES**:
-# - Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS**. 
-# 	Fewer keywords are **preferred** if the image lacks distinct reusable concepts.
-
-# - **PRIORITIZE MEANINGFUL PHRASES**: 
-# 	Each keyword must be **semantically atomic**, denoting exactly **one clearly observable concept**.
-# 	When possible, prefer **concrete visual descriptors** over abstract or umbrella terms, **without making inferences**.
-
-# - **ZERO HALLUCINATION POLICY**: 
-# 	Do not invent or infer specifics that lack clear verification from the visual content. 
-# 	If a keyword cannot be confidently justified by what is visible, omit it.
-
-# - **STRICTLY EXCLUDE**:
-# 	- verbs, possessive cases, abbreviations, shortened words or acronyms as standalone keywords.
-# 	- keywords that start or end with prepositions or conjunctions.
-# 	- dates, times, hours, minutes, calendar references, time periods, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
-# 	- explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
-# 	- TEXT EXTRACTION / OCR: do NOT read, transcribe, quote, paraphrase, or rely on any visible text in the image.
-# 	- image quality, format, medium, or stylistic attributes.
-# 	- **overly vague or generic terms** (e.g., abstract container nouns that add little semantic value).
-
-# - The clean, valid, and parsable **Python LIST** must be the **VERY LAST THING** in your response."""
 
 def verify(p: str):
 	if p is None or not os.path.exists(p):
