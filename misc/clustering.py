@@ -108,8 +108,7 @@ def automated_cluster_validation(
 		# PART 1: CLUSTER QUALITY METRICS (Automated)
 		# =========================================================================
 		if verbose:
-				print("📊 [PART 1/2] Automated Cluster Quality Assessment")
-				print("-" * 80)
+			print("\n[PART 1/2] Automated Cluster Quality Assessment")
 		
 		cluster_quality = {}
 		
@@ -191,28 +190,25 @@ def automated_cluster_validation(
 		cluster_quality['silhouette_score'] = silhouette
 		
 		if verbose:
-				print(f"  ✓ Intra-cluster cohesion:")
-				print(f"      Mean: {cluster_quality['mean_intra_similarity']:.4f}")
-				print(f"      Min:  {cluster_quality['min_intra_similarity']:.4f}")
-				print(f"      Std:  {cluster_quality['std_intra_similarity']:.4f}")
-				print(f"  ✓ Inter-cluster separation: {cluster_quality['mean_inter_cluster_distance']:.4f}")
-				print(f"  ✓ Dunn Index: {cluster_quality['dunn_index']:.4f}")
-				print(f"  ✓ Silhouette Score: {cluster_quality['silhouette_score']:.4f}")
-				print(f"  ✓ Size distribution:")
-				print(f"      Mean: {cluster_quality['size_mean']:.1f}")
-				print(f"      CV: {cluster_quality['size_cv']:.3f} (lower is more balanced)")
-				print(f"      Gini: {cluster_quality['size_gini']:.3f} (lower is more equal)")
-				print(f"  ✓ Low cohesion clusters: {n_low_cohesion} ({cluster_quality['pct_low_cohesion']*100:.1f}%)")
+				print(f"\tIntra-cluster cohesion:")
+				print(f"\t\tMean: {cluster_quality['mean_intra_similarity']:.4f}")
+				print(f"\t\tMin:  {cluster_quality['min_intra_similarity']:.4f}")
+				print(f"\t\tStd:  {cluster_quality['std_intra_similarity']:.4f}")
+				print(f"\tInter-cluster separation: {cluster_quality['mean_inter_cluster_distance']:.4f}")
+				print(f"\tDunn Index: {cluster_quality['dunn_index']:.4f}")
+				print(f"\tSilhouette Score: {cluster_quality['silhouette_score']:.4f}")
+				print(f"\tSize distribution:")
+				print(f"\t\tMean: {cluster_quality['size_mean']:.1f}")
+				print(f"\t\tCV: {cluster_quality['size_cv']:.3f} (lower is more balanced)")
+				print(f"\t\tGini: {cluster_quality['size_gini']:.3f} (lower is more equal)")
+				print(f"\tLow cohesion clusters: {n_low_cohesion} ({cluster_quality['pct_low_cohesion']*100:.1f}%)")
 				print()
 		
 		results['cluster_quality'] = cluster_quality
 		
-		# =========================================================================
 		# PART 2: CANONICAL LABEL QUALITY METRICS (Automated)
-		# =========================================================================
 		if verbose:
-				print("🏷️  [PART 2/2] Automated Canonical Label Quality Assessment")
-				print("-" * 80)
+			print("\n[PART 2/2] Automated Canonical Label Quality Assessment")
 		
 		canonical_quality = {}
 		
@@ -359,12 +355,9 @@ def automated_cluster_validation(
 		
 		results['canonical_quality'] = canonical_quality
 		
-		# =========================================================================
 		# PART 3: OVERALL QUALITY SCORE & AUTOMATED DECISION
-		# =========================================================================
 		if verbose:
-				print("🎯 [PART 3/3] Overall Quality Score & Automated Decision")
-				print("-" * 80)
+			print("\n[PART 3/3] Overall Quality Score & Automated Decision")
 		
 		# Compute weighted overall score (0-1 scale)
 		scores = {}
@@ -446,9 +439,7 @@ def automated_cluster_validation(
 				print(f"  ✅ AUTOMATED DECISION: {decision}")
 				print()
 		
-		# =========================================================================
 		# PART 4: AUTOMATED RECOMMENDATIONS
-		# =========================================================================
 		recommendations = []
 		
 		# Issue 1: Low cluster cohesion
@@ -530,9 +521,9 @@ def automated_cluster_validation(
 		results['recommendations'] = recommendations
 		
 		if verbose:
-			print(f"  📋 AUTOMATED RECOMMENDATIONS:")
+			print(f"\nAUTOMATED RECOMMENDATIONS:")
 			if not recommendations:
-				print(f"    ✅ No critical issues detected. Clustering quality is acceptable.")
+				print(f"[OK] No critical issues detected. Clustering quality is acceptable.")
 			else:
 				for i, rec in enumerate(recommendations, 1):
 					print(f"\n    [{i}] {rec['severity']:6s} | {rec['issue']}")
@@ -660,18 +651,13 @@ def analyze_cluster_quality(
 		n_clusters = len(np.unique(cluster_assignments))
 		
 		if verbose:
-				print("\n" + "="*80)
-				print("CLUSTER QUALITY ANALYSIS REPORT")
-				print("="*80)
+				print("\nCLUSTER QUALITY ANALYSIS REPORT\n")
 				print(f"Dataset: {n_samples:,} unique labels → {n_clusters:,} clusters")
 				print(f"Reduction ratio: {n_samples/n_clusters:.2f}x")
-				print("="*80 + "\n")
 		
-		# -------------------------------------------------------------------------
 		# 1. GLOBAL CLUSTERING METRICS
-		# -------------------------------------------------------------------------
 		if verbose:
-				print("📊 [1/6] Computing Global Clustering Metrics...")
+			print("\n[1/6] Computing Global Clustering Metrics...")
 		
 		global_metrics = {}
 		
@@ -701,15 +687,13 @@ def analyze_cluster_quality(
 		global_metrics['ch_interpretation'] = _interpret_ch_index(ch_index)
 		
 		if verbose:
-				print(f"  ✓ Silhouette Score:        {silhouette:.4f}  [{global_metrics['silhouette_interpretation']}]")
-				print(f"  ✓ Davies-Bouldin Index:    {db_index:.4f}  [{global_metrics['db_interpretation']}]")
-				print(f"  ✓ Calinski-Harabasz Index: {ch_index:.2f}  [{global_metrics['ch_interpretation']}]")
+				print(f"\tSilhouette Score:        {silhouette:.4f} [{global_metrics['silhouette_interpretation']}]")
+				print(f"\tDavies-Bouldin Index:    {db_index:.4f}   [{global_metrics['db_interpretation']}]")
+				print(f"\tCalinski-Harabasz Index: {ch_index:.2f}   [{global_metrics['ch_interpretation']}]")
 		
-		# -------------------------------------------------------------------------
 		# 2. PER-CLUSTER QUALITY METRICS
-		# -------------------------------------------------------------------------
 		if verbose:
-				print("\n🔍 [2/6] Analyzing Per-Cluster Quality...")
+				print("\n[2/6] Analyzing Per-Cluster Quality...")
 		
 		cluster_metrics_list = []
 		
@@ -786,16 +770,14 @@ def analyze_cluster_quality(
 		cluster_df['quality_flag'] = cluster_df.apply(_flag_cluster_quality, axis=1)
 		
 		if verbose:
-				print(f"  ✓ Analyzed {n_clusters:,} clusters")
-				print(f"  ✓ Avg cluster size: {cluster_df['size'].mean():.1f} (median: {cluster_df['size'].median():.0f})")
-				print(f"  ✓ Avg intra-cluster similarity: {cluster_df['intra_cluster_similarity'].mean():.4f}")
-				print(f"  ✓ Avg canonical representativeness: {cluster_df['canonical_representativeness'].mean():.4f}")
+			print(f"\tAnalyzed {n_clusters:,} clusters")
+			print(f"\tAvg cluster size: {cluster_df['size'].mean():.1f} (median: {cluster_df['size'].median():.0f})")
+			print(f"\tAvg intra-cluster similarity: {cluster_df['intra_cluster_similarity'].mean():.4f}")
+			print(f"\tAvg canonical representativeness: {cluster_df['canonical_representativeness'].mean():.4f}")
 		
-		# -------------------------------------------------------------------------
 		# 3. IDENTIFY PROBLEMATIC CLUSTERS
-		# -------------------------------------------------------------------------
 		if verbose:
-				print("\n⚠️  [3/6] Identifying Problematic Clusters...")
+			print("\n[3/6] Identifying Problematic Clusters...")
 		
 		problematic_clusters = []
 		
@@ -857,16 +839,14 @@ def analyze_cluster_quality(
 		
 		if verbose:
 				if len(problematic_clusters) == 0:
-						print("  ✓ No major issues detected!")
+					print("\tNo major issues detected!")
 				else:
-						for issue in problematic_clusters:
-								print(f"  ⚠️  {issue['severity']:6s} | {issue['issue']:30s} | {issue['count']:4d} clusters")
+					for issue in problematic_clusters:
+						print(f"\t{issue['severity']:15s}{issue['issue']:50s}{issue['count']:4d} clusters")
 		
-		# -------------------------------------------------------------------------
 		# 4. CONSOLIDATION IMPACT ANALYSIS
-		# -------------------------------------------------------------------------
 		if verbose:
-				print("\n📉 [4/6] Analyzing Consolidation Impact...")
+			print("\n[4/6] Analyzing Consolidation Impact...")
 		
 		consolidation_impact = {
 				'original_labels': n_samples,
@@ -888,15 +868,13 @@ def analyze_cluster_quality(
 				consolidation_impact['avg_instances_per_cluster'] = total_original_instances / n_clusters
 		
 		if verbose:
-				print(f"  ✓ Label reduction: {n_samples:,} → {n_clusters:,} ({consolidation_impact['reduction_percentage']:.1f}% reduction)")
-				print(f"  ✓ Avg consolidation: {consolidation_impact['reduction_ratio']:.2f} labels per cluster")
-				print(f"  ✓ Singleton clusters: {len(singletons):,} ({consolidation_impact['singleton_percentage']:.1f}%)")
+				print(f"\tLabel reduction: {n_samples:,} → {n_clusters:,} ({consolidation_impact['reduction_percentage']:.1f}% reduction)")
+				print(f"\tAvg consolidation: {consolidation_impact['reduction_ratio']:.2f} labels per cluster")
+				print(f"\tSingleton clusters: {len(singletons):,} ({consolidation_impact['singleton_percentage']:.1f}%)")
 		
-		# -------------------------------------------------------------------------
 		# 5. CLUSTER SIZE DISTRIBUTION ANALYSIS
-		# -------------------------------------------------------------------------
 		if verbose:
-				print("\n📊 [5/6] Cluster Size Distribution...")
+			print("\n[5/6] Cluster Size Distribution...")
 		
 		size_distribution = {
 				'min': int(cluster_df['size'].min()),
@@ -910,15 +888,15 @@ def analyze_cluster_quality(
 		}
 		
 		if verbose:
-				print(f"  ✓ Min: {size_distribution['min']}, Q25: {size_distribution['q25']}, "
-							f"Median: {size_distribution['median']}, Q75: {size_distribution['q75']}, "
-							f"Q95: {size_distribution['q95']}, Max: {size_distribution['max']}")
+			print(
+				f"\tMin: {size_distribution['min']}, Q25: {size_distribution['q25']}, "
+				f"Median: {size_distribution['median']}, Q75: {size_distribution['q75']}, "
+				f"Q95: {size_distribution['q95']}, Max: {size_distribution['max']}"
+			)
 		
-		# -------------------------------------------------------------------------
 		# 6. GENERATE RECOMMENDATIONS
-		# -------------------------------------------------------------------------
 		if verbose:
-				print("\n💡 [6/6] Generating Recommendations...")
+			print("\n[6/6] Generating Recommendations...")
 		
 		recommendations = _generate_recommendations(
 				global_metrics, 
@@ -928,12 +906,9 @@ def analyze_cluster_quality(
 		)
 		
 		if verbose:
-				for i, rec in enumerate(recommendations, 1):
-						print(f"  {i}. {rec}")
+			for i, rec in enumerate(recommendations, 1):
+				print(f"\t{i}. {rec}")
 		
-		# -------------------------------------------------------------------------
-		# GENERATE EXECUTIVE SUMMARY
-		# -------------------------------------------------------------------------
 		summary = _generate_summary(
 				global_metrics, 
 				consolidation_impact, 
@@ -943,15 +918,10 @@ def analyze_cluster_quality(
 		)
 		
 		if verbose:
-				print("\n" + "="*80)
-				print("EXECUTIVE SUMMARY")
-				print("="*80)
-				print(summary)
-				print("="*80 + "\n")
+			print("\nEXECUTIVE SUMMARY\n")
+			print(summary)
+			print()
 		
-		# -------------------------------------------------------------------------
-		# RETURN COMPREHENSIVE RESULTS
-		# -------------------------------------------------------------------------
 		return {
 				'global_metrics': global_metrics,
 				'cluster_metrics': cluster_df,
@@ -1791,6 +1761,7 @@ def cluster(
 	nc: int = None,
 	linkage_method: str = "ward",  # 'average', 'complete', 'single', 'ward'
 	distance_metric: str = "euclidean",  # 'cosine', 'euclidean'
+	max_cluster_size_ratio: float = 0.1,
 	verbose: bool = True,
 ):	
 	if verbose:
@@ -2148,21 +2119,20 @@ def cluster(
 		good_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.05 and f > 5)
 		questionable_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s > 0.10 or f < 2)
 		
-		print(f"  Excellent trades (<3% sim loss, >10x freq gain): {excellent_trades} ({excellent_trades/freq_changed_count*100:.1f}%)")
-		print(f"  Good trades (<5% sim loss, >5x freq gain):      {good_trades} ({good_trades/freq_changed_count*100:.1f}%)")
-		print(f"  Questionable trades (>10% sim loss or <2x gain): {questionable_trades} ({questionable_trades/freq_changed_count*100:.1f}%)")
+		print(f"\tExcellent trades (<3% sim loss, >10x freq gain): {excellent_trades} ({excellent_trades/freq_changed_count*100:.1f}%)")
+		print(f"\tGood trades (<5% sim loss, >5x freq gain):       {good_trades} ({good_trades/freq_changed_count*100:.1f}%)")
+		print(f"\tQuestionable trades (>10% sim loss or <2x gain): {questionable_trades} ({questionable_trades/freq_changed_count*100:.1f}%)")
 		
 		if questionable_trades > 0 and verbose:
 			print(f"\n[WARNING] {questionable_trades} questionable trades detected:")
-			print(f"\t=> Consider adjusting weighting (currently 70/30) if this is high")
-			print(f"\nEXAMINING QUESTIONABLE TRADES:")
-			print(f"{'Cluster':<10} {'Pure Sim Choice':<30} {'Freq Choice':<30} {'Sim Loss':<12} {'Freq Gain':<12}")
-			print("-" * 100)
+			print(f"\t=> Consider adjusting weighting (currently 70/30) if this is high\n")
+			print(f"{'Cluster':<10} {'Pure Sim Choice':<35} {'Freq Weight Choice':<35} {'Sim Loss(%)':<15} {'Freq Gain'}")
+			print("-" * 110)
 
-			for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True)[:20]:
+			for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True):
 				pure_label = ex['pure_choice'][:32]
 				freq_label = ex['freq_choice'][:32]
-				print(f"{ex['cluster_id']:<10} {pure_label:<35} {freq_label:<35} {ex['sim_loss']*100:>10.1f}% {ex['freq_gain']:>10.1f}x")
+				print(f"{ex['cluster_id']:<10} {pure_label:<35} {freq_label:<35} {ex['sim_loss']*100:<15.1f} {ex['freq_gain']:.1f}x")
 
 			# Categorize questionable trades
 			high_loss_low_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] < 2]
@@ -2170,11 +2140,11 @@ def cluster(
 			low_loss_low_gain = [ex for ex in questionable_examples if ex['sim_loss'] <= 0.10 and ex['freq_gain'] < 2]
 			
 			print(f"\nBREAKDOWN OF QUESTIONABLE TRADES:")
-			print(f"  Type A: High loss (>10%) + Low gain (<2x):   {len(high_loss_low_gain):<5} ({len(high_loss_low_gain)/questionable_trades*100:.1f}%) ❌ BAD")
-			print(f"  Type B: High loss (>10%) + Good gain (≥2x):  {len(high_loss_good_gain):<5} ({len(high_loss_good_gain)/questionable_trades*100:.1f}%) ⚠️ DEBATABLE")
-			print(f"  Type C: Low loss (≤10%) + Low gain (<2x):    {len(low_loss_low_gain):<5} ({len(low_loss_low_gain)/questionable_trades*100:.1f}%) ⚠️ UNNECESSARY")
+			print(f"\tType A: High loss (>10%) + Low gain (<2x):   {len(high_loss_low_gain):<5} ({len(high_loss_low_gain)/questionable_trades*100:.1f}%) ❌ BAD")
+			print(f"\tType B: High loss (>10%) + Good gain (≥2x):  {len(high_loss_good_gain):<5} ({len(high_loss_good_gain)/questionable_trades*100:.1f}%) ⚠️ DEBATABLE")
+			print(f"\tType C: Low loss  (≤10%) + Low gain (<2x):   {len(low_loss_low_gain):<5} ({len(low_loss_low_gain)/questionable_trades*100:.1f}%) ⚠️ UNNECESSARY")
 		else:
-			print(f"\n  ✅ All trades are high-quality!")
+			print(f"\nAll trades are high-quality!")
 		
 		# Overall verdict
 		avg_sim_loss_pct = np.mean(total_sim_loss) * 100
