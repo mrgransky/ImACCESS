@@ -1353,10 +1353,8 @@ def get_optimal_super_clusters(
 def get_optimal_num_clusters(
 		X,
 		linkage_matrix,
-		max_cluster_size_ratio=0.025,
 		min_cluster_size=2,
 		merge_singletons=True,
-		split_oversized=False,  				# Disabled by default (creates noise)
 		target_intra_similarity=0.70, 	# ← CHANGED: 0.82 → 0.70 (MPNet-Base baseline)
 		min_consolidation=4.0,         # ← CHANGED: 5.0 → 4.0 (allow k=7,250)
 		max_consolidation=6.0,         # ← NEW: Upper limit (prevent over-consolidation)
@@ -1761,7 +1759,6 @@ def cluster(
 	nc: int = None,
 	linkage_method: str = "ward",  # 'average', 'complete', 'single', 'ward'
 	distance_metric: str = "euclidean",  # 'cosine', 'euclidean'
-	max_cluster_size_ratio: float = 0.1,
 	verbose: bool = True,
 ):	
 	if verbose:
@@ -1932,10 +1929,12 @@ def cluster(
 		cluster_labels, stats = get_optimal_num_clusters(
 			X=X,
 			linkage_matrix=Z,
-			max_cluster_size_ratio=max_cluster_size_ratio, # Max X% of data in one cluster
-			min_cluster_size=2,
+			target_intra_similarity=0.70, # 0.70 is MPNet-Base's conservative scoring
+			min_consolidation=4.0, # Allows k=7,000-8,000
+			max_consolidation=6.0, # Prevents over-consolidation
+			target_singleton_ratio=0.015, # Target 1-2% singletons
+			quality_vs_consolidation_weight=0.6, # 60% quality, 40% efficiency
 			merge_singletons=True,
-			split_oversized=False,
 			verbose=verbose,
 		)
 		best_k = stats['n_clusters']
