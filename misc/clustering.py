@@ -1351,40 +1351,24 @@ def get_optimal_super_clusters(
 	plt.close()
 
 def get_optimal_num_clusters(
-		X,
-		linkage_matrix,
-		min_cluster_size=2,
-		merge_singletons=True,
-		target_intra_similarity=0.70, 	# ← CHANGED: 0.82 → 0.70 (MPNet-Base baseline)
-		min_consolidation=4.0,         # ← CHANGED: 5.0 → 4.0 (allow k=7,250)
-		max_consolidation=6.0,         # ← NEW: Upper limit (prevent over-consolidation)
-		target_singleton_ratio=0.015,  # ← NEW: Target 1-2% singletons (like k=7,250)
-		quality_vs_consolidation_weight=0.6,  # ← NEW: 60% quality, 40% consolidation
-		verbose=True
+	X,
+	linkage_matrix,
+	min_cluster_size=2,
+	merge_singletons=True,
+	target_intra_similarity=0.70,
+	min_consolidation=4.0,  
+	max_consolidation=6.0,
+	target_singleton_ratio=0.015,
+	quality_vs_consolidation_weight=0.6,
+	verbose=True
 ):
-		"""
-		Adaptive two-stage cluster selection optimized for MPNet-Base embeddings.
-		
-		Key Changes from Original:
-		1. Lower target_intra_similarity (0.70) to match MPNet-Base's conservative scoring
-		2. Lower min_consolidation (4.0) to allow k=7,250 range
-		3. Add max_consolidation (6.0) to prevent over-consolidation
-		4. Add singleton ratio targeting (1-2% optimal)
-		5. Composite scoring: balance quality vs consolidation
-		6. Disable oversized splitting (creates noise)
-		
-		Expected behavior on your dataset:
-		- Dataset: 33,163 labels
-		- Target range: k=7,000-8,000
-		- Expected k: ~7,250
-		- Expected quality: 0.70-0.73
-		- Expected singletons: 50-150 (0.7-2.0%)
-		"""
-		
 		if verbose:
 				print("\nADAPTIVE OPTIMAL CLUSTER SELECTION (MPNet-Optimized)")
 				print(f"   ├─ Target intra-cluster similarity: {target_intra_similarity:.3f}")
-				print(f"   ├─ Consolidation range: {min_consolidation:.1f}x - {max_consolidation:.1f}x")
+				print(f"   ├─ Min cluster size: {min_cluster_size}")
+				print(f"   ├─ Merge singletons: {merge_singletons}")
+				print(f"   ├─ Consolidation (Reduction ratio) range: {min_consolidation:.1f}x - {max_consolidation:.1f}x")
+				print(f"   ├─ Required and valid clusters range: {X.shape[0]//max_consolidation} ≤ k ≤ {X.shape[0]//min_consolidation}")
 				print(f"   ├─ Target singleton ratio: {target_singleton_ratio*100:.1f}%")
 				print(f"   ├─ Quality weight: {quality_vs_consolidation_weight*100:.0f}%")
 				print(f"   ├─ Dataset: {type(X)} {X.shape} {X.dtype}")
@@ -1392,9 +1376,7 @@ def get_optimal_num_clusters(
 		
 		num_samples = X.shape[0]
 		
-		# ========================================================================
 		# STAGE 1: COARSE SEARCH - Find quality plateau
-		# ========================================================================
 		if verbose:
 				print("\n[STAGE 1] COARSE SEARCH - Finding quality plateau")
 				print("-" * 80)
@@ -1450,13 +1432,15 @@ def get_optimal_num_clusters(
 				singleton_ratio = n_singletons / n_clusters
 				consolidation = num_samples / n_clusters
 				
-				coarse_results.append({
+				coarse_results.append(
+					{
 						'k': n_clusters,
 						'intra_sim': mean_intra_sim,
 						'consolidation': consolidation,
 						'singleton_ratio': singleton_ratio,
 						'n_singletons': n_singletons
-				})
+					}
+				)
 				
 				# Check if in target range
 				in_consol_range = min_consolidation <= consolidation <= max_consolidation
@@ -1619,7 +1603,7 @@ def get_optimal_num_clusters(
 				# Status
 				status = ""
 				if quality_score >= 0.95 and consol_score >= 0.9:
-						status = "⭐ EXCELLENT"
+						status = "EXCELLENT"
 				elif quality_score >= 0.90 and consol_score >= 0.8:
 						status = "✓ GOOD"
 				elif score >= 0.70:
@@ -1726,24 +1710,22 @@ def get_optimal_num_clusters(
 		}
 		
 		if verbose:
-				print("\n" + "="*80)
 				print("FINAL CLUSTERING STATISTICS")
-				print("="*80)
 				print(f"  ├─ Total clusters: {stats['n_clusters']}")
 				print(f"  ├─ Singletons: {stats['n_singletons']} ({stats['singleton_ratio']*100:.1f}%)")
 				print(f"  ├─ Mean intra-similarity: {stats['mean_intra_similarity']:.4f}")
 				print(f"  ├─ Largest cluster: {stats['max_cluster_size']} items "
 							f"({stats['max_size_ratio']*100:.1f}%)")
-				print(f"  ├─ Mean cluster size: {stats['mean_cluster_size']:.1f}")
-				print(f"  └─ Consolidation ratio: {stats['consolidation_ratio']:.1f}:1")
+				print(f"  ├─ Mean cluster size: {stats['mean_cluster_size']:.2f}")
+				print(f"  └─ Consolidation ratio: {stats['consolidation_ratio']:.2f}:1")
 				
 				# Quality assessment
 				if stats['mean_intra_similarity'] >= target_intra_similarity:
-						quality_status = "✅ EXCELLENT"
+					quality_status = "EXCELLENT"
 				elif stats['mean_intra_similarity'] >= target_intra_similarity * 0.95:
-						quality_status = "✅ GOOD"
+					quality_status = "GOOD"
 				else:
-						quality_status = "⚠️  ACCEPTABLE"
+					quality_status = "ACCEPTABLE"
 				
 				print(f"\n  Quality Status: {quality_status}")
 				print("="*80)
