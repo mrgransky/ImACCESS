@@ -1364,12 +1364,12 @@ def get_optimal_num_clusters(
 ):
 		if verbose:
 			print("\nADAPTIVE OPTIMAL CLUSTER SELECTION")
-			print(f"   ├─ Target intra-cluster similarity: {target_intra_similarity:.3f}")
+			print(f"   ├─ Target intra-cluster similarity: {target_intra_similarity}")
 			print(f"   ├─ Min cluster size: {min_cluster_size}")
 			print(f"   ├─ Merge singletons: {merge_singletons}")
-			print(f"   ├─ Consolidation (Reduction ratio) range: {min_consolidation:.1f}x - {max_consolidation:.1f}x")
+			print(f"   ├─ Consolidation (Reduction ratio) range: {min_consolidation}x - {max_consolidation}x")
 			print(f"   ├─ Required and valid clusters range: {X.shape[0]//max_consolidation} ≤ k ≤ {X.shape[0]//min_consolidation}")
-			print(f"   ├─ Target singleton ratio: {target_singleton_ratio*100:.1f}%")
+			print(f"   ├─ Target singleton ratio: {target_singleton_ratio*100}%")
 			print(f"   ├─ Quality weight: {quality_vs_consolidation_weight*100:.0f}%")
 			print(f"   ├─ Dataset: {type(X)} {X.shape} {X.dtype}")
 			print(f"   └─ Linkage matrix: {type(linkage_matrix)} {linkage_matrix.shape}")
@@ -1407,7 +1407,7 @@ def get_optimal_num_clusters(
 				labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
 				
 				if len(np.unique(labels)) < 2:
-						continue
+					continue
 				
 				# Compute mean intra-cluster similarity
 				unique_labels = np.unique(labels)
