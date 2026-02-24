@@ -193,18 +193,18 @@ def compute_multilabel_contrastive_loss(
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
 	
 	batch_size, num_classes = label_vectors.shape
-	if verbose:
-		print(f"batch_size: {batch_size}, num_classes: {num_classes}")
+	# if verbose:
+	# 	print(f"batch_size: {batch_size}, num_classes: {num_classes}")
 
 	# Encode images
 	image_embeds = model.encode_image(images)  # [batch_size, embed_dim]
 	image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
-	if verbose:
-		print(f"image_embeds: {image_embeds.shape} {image_embeds.dtype} {image_embeds.device}")
+	# if verbose:
+	# 	print(f"image_embeds: {image_embeds.shape} {image_embeds.dtype} {image_embeds.device}")
 	
 	all_class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
-	if verbose:
-		print(f"all_class_embeds: {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+	# if verbose:
+	# 	print(f"all_class_embeds: {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
 
 	# ================================
 	# Image-to-Text Loss
@@ -212,8 +212,8 @@ def compute_multilabel_contrastive_loss(
 	# Compute similarity matrix: [batch_size, num_classes]
 	i2t_similarities = torch.matmul(image_embeds, all_class_embeds.T) / temperature
 	
-	if verbose:
-		print(f"i2t_similarities: {i2t_similarities.shape} {i2t_similarities.dtype} {i2t_similarities.device}")
+	# if verbose:
+	# 	print(f"i2t_similarities: {i2t_similarities.shape} {i2t_similarities.dtype} {i2t_similarities.device}")
 
 	# I2T targets: label_vectors directly [batch_size, num_classes]
 	i2t_targets = label_vectors.float()
@@ -227,8 +227,8 @@ def compute_multilabel_contrastive_loss(
 	# Compute similarity matrix: [num_classes, batch_size]
 	t2i_similarities = torch.matmul(all_class_embeds, image_embeds.T) / temperature
 
-	if verbose:
-		print(f"t2i_similarities: {t2i_similarities.shape} {t2i_similarities.dtype} {t2i_similarities.device}")
+	# if verbose:
+	# 	print(f"t2i_similarities: {t2i_similarities.shape} {t2i_similarities.dtype} {t2i_similarities.device}")
 	
 	# T2I targets: transpose of label_vectors [num_classes, batch_size]
 	t2i_targets = label_vectors.T.float()
@@ -238,10 +238,10 @@ def compute_multilabel_contrastive_loss(
 
 	total_loss = (loss_weights["i2t"] * loss_i2t) + (loss_weights["t2i"] * loss_t2i)
 
-	if verbose:
-		print(f"loss_i2t: {loss_i2t.item()} loss_t2i: {loss_t2i.item()} total_loss: {total_loss.item()}")
-		print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
-		print("-"*60)
+	# if verbose:
+	# 	print(f"loss_i2t: {loss_i2t.item()} loss_t2i: {loss_t2i.item()} total_loss: {total_loss.item()}")
+	# 	print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
+	# 	print("-"*60)
 	
 	return total_loss, loss_i2t, loss_t2i
 

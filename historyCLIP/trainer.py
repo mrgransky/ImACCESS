@@ -55,7 +55,7 @@ from historyXN_dataset_loader import get_single_label_dataloaders, get_multi_lab
 def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
 	parser.add_argument('--metadata_csv', '-csv', type=str, required=True, help='Metadata CSV file')
-	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'probe', 'lora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'adapter'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
+	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'probe', 'lora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'adapter'], default=None, help='Fine-tuning strategy')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--epochs', '-e', type=int, default=63, help='Number of epochs')
@@ -109,6 +109,7 @@ def main():
 	DATASET_DIRECTORY = os.path.dirname(args.metadata_csv)
 	dataset_name = os.path.basename(DATASET_DIRECTORY)
 	dataset_type = "single_label" if "single_label" in args.metadata_csv else "multi_label"
+	column = "multimodal_canonical_labels" if "multi_label" in args.metadata_csv else "label"
 	# Original stdout/stderr
 	original_stdout = sys.stdout
 	original_stderr = sys.stderr
@@ -210,6 +211,7 @@ def main():
 			batch_size=args.batch_size,
 			num_workers=args.num_workers,
 			input_resolution=model_config["image_resolution"],
+			col=column,
 			# cache_size=args.cache_size,
 		)
 		print_loader_info(loader=train_loader, batch_size=args.batch_size)

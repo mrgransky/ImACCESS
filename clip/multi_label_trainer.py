@@ -6,29 +6,29 @@ from evals import *
 import visualize as viz
 
 def full_finetune_multi_label(
-		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
-		num_epochs: int,
-		print_every: int,
-		learning_rate: float,
-		weight_decay: float,
-		device: str,
-		results_dir: str,
-		patience: int,
-		min_delta: float,
-		cumulative_delta: float,
-		minimum_epochs: int,
-		volatility_threshold: float,
-		slope_threshold: float,
-		pairwise_imp_threshold: float,
-		topk_values: List[int] = [1, 5, 10, 15, 20],
-		loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
-		temperature: float = 0.07,  # Temperature for contrastive learning
-		label_smoothing: float = 0.0,  # Label smoothing for multi-label
-		use_lamb: bool = False,
-		verbose: bool=True,
-	):
+	model: torch.nn.Module,
+	train_loader: DataLoader,
+	validation_loader: DataLoader,
+	num_epochs: int,
+	print_every: int,
+	learning_rate: float,
+	weight_decay: float,
+	device: str,
+	results_dir: str,
+	patience: int,
+	min_delta: float,
+	cumulative_delta: float,
+	minimum_epochs: int,
+	volatility_threshold: float,
+	slope_threshold: float,
+	pairwise_imp_threshold: float,
+	topk_values: List[int] = [1, 5, 10, 15, 20],
+	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
+	temperature: float = 0.07,  # Temperature for contrastive learning
+	label_smoothing: float = 0.0,  # Label smoothing for multi-label
+	use_lamb: bool = False,
+	verbose: bool=True,
+):
 	"""
 	Full fine-tuning for multi-label CLIP classification.
 	
@@ -85,7 +85,6 @@ def full_finetune_multi_label(
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
-
 
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__

@@ -7,7 +7,6 @@ dtypes={
 	'title': str,
 	'description': str,
 	'img_url': str,
-	'label_title_description': str,
 	'raw_doc_date': str,
 	'doc_year': float,
 	'doc_url': str,
@@ -16,9 +15,10 @@ dtypes={
 	'dataset': str,
 	'date': str,
 	'country': str,
-	'textual_based_labels': str,
-	'visual_based_labels': str,
+	'llm_based_labels': str,
+	'vlm_based_labels': str,
 	'multimodal_labels': str,
+	'multimodal_canonical_labels': str,
 }
 
 def _convert_image_to_rgb(image: Image) -> Image:
@@ -56,9 +56,8 @@ def get_preprocess(dataset_dir: str, input_resolution: int) -> T.Compose:
 	
 	return preprocess
 
-def get_single_label_datasets(metadata_fpth: str):
+def get_single_label_datasets(metadata_fpth: str, col:str='label'):
 	ddir = os.path.dirname(metadata_fpth)
-	print(f"Loading single-label dataset: {metadata_fpth}")
 	############################################################################
 	# debugging types of columns
 	# df = pd.read_csv(filepath_or_buffer=metadata_fpth, on_bad_lines='skip')
@@ -77,37 +76,43 @@ def get_single_label_datasets(metadata_fpth: str):
 
 	metadata_train_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_train.csv'))
 	metadata_val_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_val.csv'))
-	print(f"Loading training single-label dataset: {metadata_train_fpth}")
+
+	print(f">> Loading training single-label dataset: {metadata_train_fpth}")
 	df_train = pd.read_csv(
 		filepath_or_buffer=metadata_train_fpth, 
 		on_bad_lines='skip',
 		dtype=dtypes, 
 		low_memory=True,
 	)
-	print(f"Loading validation single-label dataset: {metadata_val_fpth}")
+
+	print(f">> Loading validation single-label dataset: {metadata_val_fpth}")
 	df_val = pd.read_csv(
 		filepath_or_buffer=metadata_val_fpth,
 		on_bad_lines='skip',
 		dtype=dtypes, 
 		low_memory=True,
 	)
+	print("="*100)
 	print(f"TRAIN {type(df_train)}: {list(df_train.columns)} {df_train.shape}")
 	print(f"VAL {type(df_val)}: {list(df_val.columns)} {df_val.shape}")
+	print("="*100)
+
 	# # ######################################################################################
 	# Create deterministic label mapping from all data
-	all_labels = sorted(set(df_train["label"].unique()) | set(df_val["label"].unique()))
+	all_labels = sorted(set(df_train[col].unique()) | set(df_val[col].unique()))
 	label_dict = {label: idx for idx, label in enumerate(all_labels)}
 	# print(json.dumps(label_dict, indent=2, ensure_ascii=False))
 	# Map labels to integers
-	df_train['label_int'] = df_train['label'].map(label_dict)
-	df_val['label_int'] = df_val['label'].map(label_dict)
+	df_train['label_int'] = df_train[col].map(label_dict)
+	df_val['label_int'] = df_val[col].map(label_dict)
 	# Validate that all validation labels exist in training
-	val_labels = set(df_val["label"].unique())
-	train_labels = set(df_train["label"].unique())
+	val_labels = set(df_val[col].unique())
+	train_labels = set(df_train[col].unique())
 	unknown_labels = val_labels - train_labels
 	if unknown_labels:
 		print(f"WARNING: Validation set contains labels not in training: {unknown_labels}")
 	# # ######################################################################################
+
 	return df_train, df_val
 
 def get_single_label_dataloaders(
@@ -115,13 +120,14 @@ def get_single_label_dataloaders(
 		batch_size: int,
 		num_workers: int,
 		input_resolution: int,
+		col:str='label',
 		memory_threshold_gib: float = 500.0,  # Minimum available memory (GiB) to preload images
 	)-> Tuple[DataLoader, DataLoader]:
 	ddir = os.path.dirname(metadata_fpth)
 	dataset_name = os.path.basename(ddir)
 
-	print(f"Creating single-label dataloaders for {dataset_name} from {metadata_fpth}...")
-	train_dataset, val_dataset = get_single_label_datasets(metadata_fpth=metadata_fpth)
+	print(f"\nCreating single-label dataloaders for {dataset_name} from {metadata_fpth}")
+	train_dataset, val_dataset = get_single_label_datasets(metadata_fpth=metadata_fpth, col=col)
 
 	preprocess = get_preprocess(dataset_dir=ddir, input_resolution=input_resolution)
 	
@@ -155,6 +161,7 @@ def get_single_label_dataloaders(
 		data_frame=val_dataset.sort_values(by="img_path").reset_index(drop=True),
 		transform=preprocess,
 		memory_threshold_gib=memory_threshold_gib,
+		col=col,
 	)
 	
 	print(validation_dataset)
@@ -182,13 +189,14 @@ class HistoricalArchivesSingleLabelDataset(Dataset):
 		train: bool,
 		data_frame: pd.DataFrame,
 		transform,
+		col:str='label',
 		memory_threshold_gib: float = 500.0,  # Minimum available memory (GiB) to preload images
 	):
 		self.dataset_name = dataset_name
 		self.train = train
 		self.data_frame = data_frame
 		self.images = self.data_frame["img_path"].values
-		self.labels = self.data_frame["label"].values
+		self.labels = self.data_frame[col].values
 		self.labels_int = self.data_frame["label_int"].values
 		# Sort unique labels to ensure deterministic ordering across runs (fixes non-reproducible results):
 		self.unique_labels = sorted(list(set(self.labels)))  # Sort the unique labels
@@ -253,9 +261,9 @@ class HistoricalArchivesSingleLabelDataset(Dataset):
 		tokenized_label_tensor = clip.tokenize(texts=doc_label).squeeze(0)
 		return image_tensor, tokenized_label_tensor, doc_label_int
 
-def get_multi_label_datasets(metadata_fpth: str):
+def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 	ddir = os.path.dirname(metadata_fpth)
-	print(f"Loading multi-label dataset: {metadata_fpth}")
+
 	df = pd.read_csv(
 		filepath_or_buffer=metadata_fpth, 
 		on_bad_lines='skip',
@@ -267,27 +275,29 @@ def get_multi_label_datasets(metadata_fpth: str):
 	metadata_train_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_train.csv'))
 	metadata_val_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_val.csv'))
 
-	print(f"Loading multi-label training dataset: {metadata_train_fpth}")
+	print(f">> Loading multi-label training dataset: {metadata_train_fpth}")
 	df_train = pd.read_csv(
 		filepath_or_buffer=metadata_train_fpth, 
 		on_bad_lines='skip',
 		dtype=dtypes, 
 		low_memory=False,
 	)
-	print(f"TRAIN {type(df_train)}: {list(df_train.columns)} {df_train.shape}")
 	
-	print(f"Loading multi-label validation dataset: {metadata_val_fpth}")
+	print(f">> Loading multi-label validation dataset: {metadata_val_fpth}")
 	df_val = pd.read_csv(
 		filepath_or_buffer=metadata_val_fpth,
 		on_bad_lines='skip',
 		dtype=dtypes, 
 		low_memory=False,
 	)	
+	print("="*100)
+	print(f"TRAIN {type(df_train)}: {list(df_train.columns)} {df_train.shape}")
 	print(f"VAL {type(df_val)}: {list(df_val.columns)} {df_val.shape}")
+	print("="*100)
 
 	# Create label mapping from all unique labels in the dataset
 	all_labels = set()
-	for labels_str in df['multimodal_labels']:
+	for labels_str in df[col]:
 		try:
 			labels = ast.literal_eval(labels_str)
 			all_labels.update(labels)
@@ -301,7 +311,7 @@ def get_multi_label_datasets(metadata_fpth: str):
 	# Add label vectors to dataframes
 	for df_split in [df_train, df_val]:
 			label_vectors = []
-			for labels_str in df_split['multimodal_labels']:
+			for labels_str in df_split[col]:
 					try:
 							labels = ast.literal_eval(labels_str)
 							vector = np.zeros(len(all_labels), dtype=np.float32)
@@ -496,12 +506,13 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 				text_augmentation: bool = True,
 				cache_size: int = 0,
 				cache_workers: int = 4,
+				col:str='multimodal_labels',
 			):
 			self.dataset_name = dataset_name
 			self.train = train
 			self.data_frame = data_frame
 			self.images = self.data_frame["img_path"].values
-			self.labels = self.data_frame["multimodal_labels"].values
+			self.labels = self.data_frame[col].values
 			self.label_dict = label_dict
 			self._num_classes = len(label_dict)
 			self.transform = transform
@@ -652,13 +663,14 @@ def get_multi_label_dataloaders(
 		batch_size: int,
 		num_workers: int,
 		input_resolution: int,
+		col:str='multimodal_labels',
 		cache_size: int = None,
 	) -> Tuple[DataLoader, DataLoader]:
 	ddir = os.path.dirname(metadata_fpth)
 	dataset_name = os.path.basename(ddir)
-	print(f"Creating multi-label dataloaders for {dataset_name} from {metadata_fpth}...")
+	print(f"\nCreating multi-label dataloaders for {dataset_name} from {metadata_fpth}")
 	
-	train_dataset, val_dataset, label_dict = get_multi_label_datasets(metadata_fpth=metadata_fpth)
+	train_dataset, val_dataset, label_dict = get_multi_label_datasets(metadata_fpth=metadata_fpth, col=col)
 	preprocess = get_preprocess(dataset_dir=ddir, input_resolution=input_resolution)
 	total_samples = len(train_dataset) + len(val_dataset)
 
@@ -705,6 +717,7 @@ def get_multi_label_dataloaders(
 		label_dict=label_dict,
 		cache_size=train_cache_size,
 		cache_workers=min(4, num_workers),
+		col=col,
 	)
 	
 	print(train_dataset)
@@ -717,6 +730,7 @@ def get_multi_label_dataloaders(
 		label_dict=label_dict,
 		cache_size=val_cache_size,
 		cache_workers=min(4, num_workers),
+		col=col,
 	)
 	
 	print(val_dataset)
@@ -762,13 +776,14 @@ class HistoricalArchivesMultiLabelDatasetWithManualCaching(Dataset):
 				transform,
 				label_dict: dict,
 				text_augmentation: bool = True,
+				col:str='multimodal_labels',
 				cache_size: int = 10000
 		):
 				self.dataset_name = dataset_name
 				self.train = train
 				self.data_frame = data_frame
 				self.images = self.data_frame["img_path"].values
-				self.labels = self.data_frame["multimodal_labels"].values
+				self.labels = self.data_frame[col].values
 				self.label_dict = label_dict
 				self._num_classes = len(label_dict)
 				self.transform = transform
@@ -876,13 +891,14 @@ def get_multi_label_dataloaders_with_manual_caching(
 		batch_size: int,
 		num_workers: int,
 		input_resolution: int,
+		col:str='multimodal_labels',
 		cache_size: int = int(5e4),
 	):
 	dataset_name = os.path.basename(dataset_dir)
-	print(f"Creating multi-label dataloaders for {dataset_name}...")
+	print(f"\nCreating multi-label dataloaders for {dataset_name}")
 
 	# --- 1. Load data from CSVs (this part remains the same) ---
-	train_df, val_df, label_dict = get_multi_label_datasets(ddir=dataset_dir)
+	train_df, val_df, label_dict = get_multi_label_datasets(ddir=dataset_dir, col=col)
 	preprocess = get_preprocess(dataset_dir=dataset_dir, input_resolution=input_resolution)
 	total_samples = len(train_df) + len(val_df)
 	cache_size = min(cache_size, int(total_samples*0.60))
@@ -898,22 +914,24 @@ def get_multi_label_dataloaders_with_manual_caching(
 
 	# --- 2. Create the full dataset instances with LRU caching ---
 	train_dataset = HistoricalArchivesMultiLabelDataset(
-			dataset_name=f"{dataset_name}_TRAIN",
-			train=True,
-			data_frame=train_df,
-			transform=preprocess,
-			label_dict=label_dict,
-			cache_size=train_cache_size,
+		dataset_name=f"{dataset_name}_TRAIN",
+		train=True,
+		data_frame=train_df,
+		transform=preprocess,
+		label_dict=label_dict,
+		col=col,
+		cache_size=train_cache_size,
 	)
 	print(train_dataset)
 	
 	val_dataset = HistoricalArchivesMultiLabelDataset(
-			dataset_name=f"{dataset_name}_VALIDATION",
-			train=False,
-			data_frame=val_df,
-			transform=preprocess,
-			label_dict=label_dict,
-			cache_size=val_cache_size,
+		dataset_name=f"{dataset_name}_VALIDATION",
+		train=False,
+		data_frame=val_df,
+		transform=preprocess,
+		label_dict=label_dict,
+		col=col,
+		cache_size=val_cache_size,
 	)
 	print(val_dataset)
 	
