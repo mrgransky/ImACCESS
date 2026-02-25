@@ -706,10 +706,20 @@ def get_multi_label_stratified_split(
 	print(f"\n>> Original Filtered Data: {df_filtered.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
 
 	print(f"TRAIN: {train_df.shape}")
-	print(train_df[label_col].value_counts())
+	print(f"Train samples: {len(train_df)}, Unique label combinations: {train_df[label_col].apply(tuple).nunique()}")
+	# Sample 1000 rows for quick distribution check
+	sample_size = min(1000, len(train_df))
+	print(f"Label distribution (sample of {sample_size}):")
+	print(train_df[label_col].sample(sample_size).apply(tuple).value_counts().head(10))
+	print('-'*120)
 
 	print(f"VAL: {val_df.shape}")
-	print(val_df[label_col].value_counts())
+	print(f"Val samples: {len(val_df)}, Unique label combinations: {val_df[label_col].apply(tuple).nunique()}")
+	# Sample 1000 rows for quick distribution check
+	sample_size = min(1000, len(val_df))
+	print(f"Label distribution (sample of {sample_size}):")
+	print(val_df[label_col].sample(sample_size).apply(tuple).value_counts().head(10))
+	print('-'*120)
 
 	print(f"Stratified Splitting Elapsed Time: {time.time()-t_st:.3f} sec")
 	

@@ -652,12 +652,12 @@ def analyze_cluster_quality(
 		# Silhouette Score (higher is better, range [-1, 1])
 		# Measures how similar objects are to their own cluster vs other clusters
 		with warnings.catch_warnings():
-				warnings.simplefilter("ignore")
-				if distance_metric == 'cosine':
-						distances = cosine_distances(embeddings)
-						silhouette = silhouette_score(distances, cluster_assignments, metric='precomputed')
-				else:
-						silhouette = silhouette_score(embeddings, cluster_assignments, metric='euclidean')
+			warnings.simplefilter("ignore")
+			if distance_metric == 'cosine':
+				distances = cosine_distances(embeddings)
+				silhouette = silhouette_score(distances, cluster_assignments, metric='precomputed')
+			else:
+				silhouette = silhouette_score(embeddings, cluster_assignments, metric='euclidean')
 		
 		global_metrics['silhouette_score'] = silhouette
 		global_metrics['silhouette_interpretation'] = _interpret_silhouette(silhouette)
