@@ -1386,21 +1386,30 @@ def get_optimal_num_clusters(
 		# STAGE 1: COARSE SEARCH - Find quality plateau
 		if verbose:
 			print("\n[STAGE 1] COARSE SEARCH - Finding quality plateau")
-		
+
+		valid_k_min = int(num_samples // max_consolidation)
+		valid_k_max = int(num_samples // min_consolidation)
+
 		# Adaptive coarse range based on dataset size
 		if num_samples > int(2e4):
 			# Large datasets k = 1000, 2000, ..., 10000
-			coarse_range = range(1000, min(10001, num_samples // 3), 1000)
+			coarse_step = 1000
 		elif num_samples > int(1e4):
 			# Medium datasets: test k = 500, 1000, 1500, ..., 5000
-			coarse_range = range(500, min(5001, num_samples // 2), 500)
+			coarse_step = 500
 		elif num_samples > int(5e3):
 			# Small datasets: test k = 100, 200, 300, ..., 1000
-			coarse_range = range(100, min(1001, num_samples // 5), 100)
+			coarse_step = 100
 		else:
 			# Very small datasets: test k = 10, 20, 30, ..., 200
-			coarse_range = range(10, min(301, num_samples // 10), 10)
+			coarse_step = max(1, (valid_k_max - valid_k_min) // 10)  # ~10 steps in valid zone
 		
+		# Extend range to cover from 10% of valid_k_min up to valid_k_max
+		coarse_start = max(10, valid_k_min // 2)
+		coarse_end = valid_k_max + coarse_step
+
+		coarse_range = range(coarse_start, coarse_end, coarse_step)
+
 		if verbose:
 			print(f"Testing {len(coarse_range)} configurations: {list(coarse_range)}")
 			print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Status':<30}")
@@ -1516,17 +1525,16 @@ def get_optimal_num_clusters(
 			print("\n[STAGE 2] FINE SEARCH - Optimizing around plateau")
 
 		# Fine search range: ±20% around plateau with smaller steps
-		fine_min = max(int(plateau_k * 0.8), 100)
-		fine_max = min(int(plateau_k * 1.2), num_samples // 3)
+		fine_min = max(int(plateau_k * 0.8), valid_k_min)  # Never go below valid zone
+		fine_max = min(int(plateau_k * 1.2), valid_k_max)  # Never go above valid zone
 		
-		# Adaptive step size
-		if num_samples > 20000:
-			fine_step = 250  # For large datasets, test every 250
-		elif num_samples > 10000:
-			fine_step = 100
-		else:
-			fine_step = 50
-		
+		# Guard: if plateau_k was outside valid range, just search the valid range
+		if fine_min >= fine_max:
+			fine_min = valid_k_min
+			fine_max = valid_k_max
+
+		# Adaptive step
+		fine_step = max(1, (fine_max - fine_min) // 20)  # ~20 steps in plateau zone
 		fine_range = range(fine_min, fine_max + 1, fine_step)
 		
 		if verbose:
