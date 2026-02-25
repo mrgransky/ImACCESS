@@ -1382,8 +1382,6 @@ def get_optimal_num_clusters(
 		print(f"   ├─ Dataset: {type(X)} {X.shape} {X.dtype}")
 		print(f"   └─ Linkage matrix: {type(linkage_matrix)} {linkage_matrix.shape}")
 	
-	
-	# STAGE 1: COARSE SEARCH - Find quality plateau
 	valid_k_min = int(num_samples // max_consolidation)
 	valid_k_max = int(num_samples // min_consolidation)
 	if verbose:
@@ -1400,8 +1398,9 @@ def get_optimal_num_clusters(
 	
 	# Extend range to cover from 10% of valid_k_min up to valid_k_max
 	coarse_start = max(10, valid_k_min // 2)
-	coarse_end = valid_k_max + coarse_step
-	coarse_range = range(coarse_start, coarse_end, coarse_step)
+	coarse_end = valid_k_max + coarse_step # Use overshoot to ensure valid_k_max is covered and peeked
+	coarse_range = range(coarse_start, coarse_end, coarse_step)  # explicit +1, drop overshoot
+
 	if verbose:
 		print(f"Testing {len(coarse_range)} configurations: {list(coarse_range)} (step={coarse_step})")
 		print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Status':<30}")
@@ -1422,14 +1421,14 @@ def get_optimal_num_clusters(
 			intra_sims = []
 			
 			for cid in unique_labels:
-					cluster_mask = labels == cid
-					cluster_X = X[cluster_mask]
-					
-					if len(cluster_X) > 1:
-							sim_matrix = cosine_similarity(cluster_X)
-							n = len(cluster_X)
-							intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
-							intra_sims.append(intra_sim)
+				cluster_mask = labels == cid
+				cluster_X = X[cluster_mask]
+				
+				if len(cluster_X) > 1:
+					sim_matrix = cosine_similarity(cluster_X)
+					n = len(cluster_X)
+					intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
+					intra_sims.append(intra_sim)
 			
 			mean_intra_sim = np.mean(intra_sims) if intra_sims else 0
 			
