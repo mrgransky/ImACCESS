@@ -67,7 +67,7 @@ def merge_csv_files(
 
 	multimodal_labels = _post_process_(
 		labels_list=df['multimodal_labels'].tolist(), 
-		# verbose=verbose,
+		verbose=verbose,
 	)
 
 	clustered_df = cluster(
