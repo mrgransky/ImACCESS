@@ -1474,28 +1474,41 @@ def get_optimal_num_clusters(
 						best_intra_sim = mean_intra_sim
 						status = "↑ Improving quality"
 				else:
-						status = "→ Plateau region"
+					status = "→ Plateau region"
 				
 				if verbose:
-						print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} "
-									f"{singleton_ratio:<10.3f} {status:<30}")
+					print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {singleton_ratio:<10.3f} {status:<30}")
 				
 				# Early stopping: If in optimal range for 2 consecutive steps
 				if len(coarse_results) >= 2:
-						recent = coarse_results[-2:]
-						both_optimal = all(
-								r['intra_sim'] >= target_intra_similarity * 0.95 and
-								min_consolidation <= r['consolidation'] <= max_consolidation
-								for r in recent
-						)
-						if both_optimal and plateau_k is not None:
-								if verbose:
-										print(f"\n[STAGE 1] Optimal range detected. Moving to fine search.")
-								break
+					recent = coarse_results[-2:]
+					both_optimal = all(
+						r['intra_sim'] >= target_intra_similarity * 0.95 and
+						min_consolidation <= r['consolidation'] <= max_consolidation
+						for r in recent
+					)
+					if both_optimal and plateau_k is not None:
+						if verbose:
+							print(f"\n[STAGE 1] Optimal range detected. Moving to fine search.")
+						break
 		
 		if not coarse_results:
-				raise ValueError("No valid cluster configurations found in coarse search")
+			raise ValueError("No valid cluster configurations found in coarse search")
 		
+		max_observed_intra = max(r['intra_sim'] for r in coarse_results)
+		gap = (target_intra_similarity - max_observed_intra) / target_intra_similarity
+
+		if gap > 0.10:  # Target is >10% above what's achievable
+			adjusted_target = max_observed_intra * 1.02  # 2% headroom above observed max
+			if verbose:
+				print(f"\n[STAGE 1] ⚠ Target intra-sim {target_intra_similarity:.2f} unreachable.")
+				print(f"           Max observed: {max_observed_intra:.4f} (gap={gap*100:.1f}%)")
+				print(f"           Auto-adjusting target → {adjusted_target:.4f}")
+			target_intra_similarity = adjusted_target
+		else:
+			if verbose:
+				print(f"\n[STAGE 1] ✓ Target intra-sim {target_intra_similarity:.2f} is achievable.")
+
 		# Determine search region for Stage 2
 		if plateau_k is None:
 				# Use k that best balances quality and consolidation
@@ -1526,15 +1539,19 @@ def get_optimal_num_clusters(
 
 		# Fine search range: ±20% around plateau with smaller steps
 		fine_min = max(int(plateau_k * 0.8), valid_k_min)  # Never go below valid zone
-		fine_max = min(int(plateau_k * 1.2), valid_k_max)  # Never go above valid zone
+		fine_step = max(1, (valid_k_max - valid_k_min) // 20)  # ← compute early using valid range
+		# Allow exactly 2 fine steps beyond the strict boundary
+		fine_max = min(
+			int(plateau_k * 1.2), # Strict 20% above plateau
+			int(num_samples // min_consolidation) + 2 * fine_step  # ← 2 steps of headroom
+		)
 		
 		# Guard: if plateau_k was outside valid range, just search the valid range
 		if fine_min >= fine_max:
 			fine_min = valid_k_min
 			fine_max = valid_k_max
+			fine_step = max(1, (fine_max - fine_min) // 20)  # recompute if guard triggered
 
-		# Adaptive step
-		fine_step = max(1, (fine_max - fine_min) // 20)  # ~20 steps in plateau zone
 		fine_range = range(fine_min, fine_max + 1, fine_step)
 		
 		if verbose:

@@ -665,7 +665,7 @@ def get_multi_label_stratified_split(
 	print(f">> Found {len(unique_labels)} unique labels:\n{unique_labels.tolist()[:50]}")
 	
 	# --- 4. Perform Iterative Stratification ---
-	print(">> Multi-label stratification using Iterative Stratification")
+	print("\n>> Multi-label stratification using Iterative Stratification")
 	X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
 	print(f"X_indices: {type(X_indices)} {X_indices.shape}")
 
@@ -704,6 +704,12 @@ def get_multi_label_stratified_split(
 	if train_df.empty or val_df.empty:
 		raise ValueError("Train or validation set is empty after splitting. Adjust val_split_pct or check data.")
 	print(f"\n>> Original Filtered Data: {df_filtered.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
+
+	print(f"TRAIN: {train_df.shape}")
+	print(train_df[label_col].value_counts())
+
+	print(f"VAL: {val_df.shape}")
+	print(val_df[label_col].value_counts())
 
 	print(f"Stratified Splitting Elapsed Time: {time.time()-t_st:.3f} sec")
 	

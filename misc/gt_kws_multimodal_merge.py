@@ -152,7 +152,7 @@ def merge_csv_files(
 		label_column='multimodal_canonical_labels'
 	)
 
-	train_df, val_df = get_multi_label_stratified_split(
+	get_multi_label_stratified_split(
 		csv_file=output_fpath,
 		val_split_pct=0.35,
 		label_col='multimodal_canonical_labels'
