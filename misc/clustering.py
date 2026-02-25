@@ -1541,7 +1541,7 @@ def get_optimal_num_clusters(
 		# Allow exactly 2 fine steps beyond the strict boundary
 		fine_max = min(
 			int(plateau_k * 1.2), # Strict 20% above plateau
-			int(num_samples // min_consolidation) + 2 * fine_step  # ← 2 steps of headroom
+			int(num_samples // min_consolidation) + 2 * fine_step  # +2 steps of headroom
 		)
 		
 		if verbose:
