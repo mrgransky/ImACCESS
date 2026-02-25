@@ -1369,26 +1369,25 @@ def get_optimal_num_clusters(
 	quality_vs_consolidation_weight=0.6,
 	verbose=True
 ):
+		num_samples = X.shape[0]
 		if verbose:
 			print("\nADAPTIVE OPTIMAL CLUSTER SELECTION")
 			print(f"   ├─ Target intra-cluster similarity: {target_intra_similarity}")
 			print(f"   ├─ Min cluster size: {min_cluster_size}")
 			print(f"   ├─ Merge singletons: {merge_singletons}")
 			print(f"   ├─ Consolidation (Reduction ratio) range: {min_consolidation}x - {max_consolidation}x")
-			print(f"   ├─ Required and valid clusters range: {X.shape[0]//max_consolidation} ≤ k ≤ {X.shape[0]//min_consolidation}")
-			print(f"   ├─ Target singleton ratio: {target_singleton_ratio*100}%")
+			print(f"   ├─ Required and valid clusters range: {num_samples//max_consolidation} ≤ k ≤ {num_samples//min_consolidation}")
+			print(f"   ├─ Target singleton ratio: {target_singleton_ratio}")
 			print(f"   ├─ Quality weight: {quality_vs_consolidation_weight*100:.0f}%")
 			print(f"   ├─ Dataset: {type(X)} {X.shape} {X.dtype}")
 			print(f"   └─ Linkage matrix: {type(linkage_matrix)} {linkage_matrix.shape}")
 		
-		num_samples = X.shape[0]
 		
 		# STAGE 1: COARSE SEARCH - Find quality plateau
-		if verbose:
-			print("\n[STAGE 1] COARSE SEARCH - Finding quality plateau")
-
 		valid_k_min = int(num_samples // max_consolidation)
 		valid_k_max = int(num_samples // min_consolidation)
+		if verbose:
+			print(f"\n[STAGE 1] COARSE SEARCH - Finding quality plateau: {valid_k_min} ≤ k ≤ {valid_k_max}")
 
 		# Adaptive coarse range based on dataset size
 		if num_samples > int(2e4):
@@ -1411,7 +1410,7 @@ def get_optimal_num_clusters(
 		coarse_range = range(coarse_start, coarse_end, coarse_step)
 
 		if verbose:
-			print(f"Testing {len(coarse_range)} configurations: {list(coarse_range)}")
+			print(f"Testing {len(coarse_range)} configurations: {list(coarse_range)} (step={coarse_step})")
 			print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Status':<30}")
 			print("-" * 80)
 		
@@ -1477,7 +1476,7 @@ def get_optimal_num_clusters(
 					status = "→ Plateau region"
 				
 				if verbose:
-					print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {singleton_ratio:<10.3f} {status:<30}")
+					print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {singleton_ratio:<10.4f} {status:<30}")
 				
 				# Early stopping: If in optimal range for 2 consecutive steps
 				if len(coarse_results) >= 2:
@@ -1640,8 +1639,7 @@ def get_optimal_num_clusters(
 						status = "✗ Below target"
 				
 				if verbose:
-						print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} "
-									f"{singleton_ratio:<10.3f} {score:<10.4f} {status:<20}")
+					print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {singleton_ratio:<10.4f} {score:<10.4f} {status:<20}")
 		
 		if not fine_results:
 			raise ValueError("No valid cluster configurations found in fine search")
