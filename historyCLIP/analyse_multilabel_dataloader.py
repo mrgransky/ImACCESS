@@ -62,6 +62,7 @@ from torch.utils.data import DataLoader, Dataset
 
 warnings.filterwarnings("ignore")
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Minimal CLIP tokenizer stub
 # Swap for:  import clip  and  clip.tokenize(...)  in your real training code.
@@ -446,11 +447,8 @@ def _plot_imbalance(freq, pos_weight, names, sorted_idx, head, tail, split, n, o
 # CHECK B — Co-occurrence
 # ─────────────────────────────────────────────────────────────────────────────
 
-def phi_coefficient(a, b):
-		tp = np.sum(a & b); fp = np.sum(~a & b)
-		fn = np.sum(a & ~b); tn = np.sum(~a & ~b)
-		d  = math.sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))
-		return (tp*tn - fp*fn) / d if d > 0 else 0.0
+# phi_coefficient is now computed fully vectorised inside analyse_cooccurrence
+# using matrix operations — no per-pair Python loop needed.
 
 
 def analyse_cooccurrence(dataset, split_name,
@@ -496,34 +494,91 @@ def analyse_cooccurrence(dataset, split_name,
 				remap   = {i: i for i in range(C_full)}
 				C       = C_full
 
-		mat = np.zeros((n_samples, C), dtype=bool)
+		# ── Build binary label matrix [N × C] ─────────────────────────────────────
+		import time as _t
+		t0 = _t.perf_counter()
+		mat = np.zeros((n_samples, C), dtype=np.float32)   # float32 for BLAS matmul
 		for row, raw in enumerate(dataset.labels):
 				try:
 						for lbl in ast.literal_eval(raw):
 								if lbl in dataset.label_dict:
 										orig_idx = dataset.label_dict[lbl]
 										if orig_idx in idx_set:
-												mat[row, remap[orig_idx]] = True
-				except (ValueError, SyntaxError): pass
+												mat[row, remap[orig_idx]] = 1.0
+				except (ValueError, SyntaxError):
+						pass
+		print(f"  Label matrix built in {_t.perf_counter()-t0:.1f}s  "
+					f"({mat.nbytes/1024**2:.0f} MB)", flush=True)
 
-		raw_cooc = (mat.T @ mat).astype(np.float32)
-		union    = np.maximum(mat.T @ ~mat + ~mat.T @ mat + raw_cooc, 1)
-		jaccard  = raw_cooc / union
+		# ── Guard: warn if C×C matrix would exceed 2 GB ───────────────────────────
+		phi_bytes = C * C * 8   # float64
+		if phi_bytes > 2 * 1024**3:
+				print(f"  [!] Full {C}×{C} Phi matrix would require "
+							f"{phi_bytes/1024**3:.1f} GB — aborting co-occurrence.\n"
+							f"      Re-run with --max_cooc_classes N (recommended N ≤ 500).")
+				return dict(raw_cooc=None, jaccard=None, phi=None,
+										pos_pairs=[], neg_pairs=[], density=float(mat.mean()*100))
 
-		phi = np.zeros((C, C))
-		for i in range(C):
-				for j in range(i, C):
-						phi[i, j] = phi[j, i] = 1.0 if i == j else phi_coefficient(mat[:, i], mat[:, j])
+		# ── Vectorised co-occurrence metrics (fully NumPy, no Python loops) ────────
+		# raw_cooc[i,j] = number of samples where both class i and j are positive
+		t1 = _t.perf_counter()
+		raw_cooc = (mat.T @ mat).astype(np.float32)           # [C×C], BLAS SGEMM
 
-		pos_pairs = sorted([(phi[i,j], names[i], names[j], int(raw_cooc[i,j]))
-												for i in range(C) for j in range(i+1,C)
-												if phi[i,j] >= phi_pos], key=lambda x: -x[0])
-		neg_pairs = sorted([(phi[i,j], names[i], names[j], int(raw_cooc[i,j]))
-												for i in range(C) for j in range(i+1,C)
-												if phi[i,j] <= phi_neg], key=lambda x: x[0])
+		freq = raw_cooc.diagonal()                            # [C], marginal counts
 
-		density = mat.mean() * 100
-		print(f"\n  Binary label matrix : {mat.shape}  ({mat.sum():,} total positives)")
+		# Vectorised Phi (Matthews) coefficient for all pairs simultaneously:
+		#   phi[i,j] = (tp*tn - fp*fn) / sqrt((tp+fp)(tp+fn)(tn+fp)(tn+fn))
+		# where all quantities are derived from the raw_cooc matrix and marginals.
+		#   tp[i,j] = raw_cooc[i,j]
+		#   fp[i,j] = freq[j] - raw_cooc[i,j]   (j positive, i negative)
+		#   fn[i,j] = freq[i] - raw_cooc[i,j]   (i positive, j negative)
+		#   tn[i,j] = N - freq[i] - freq[j] + raw_cooc[i,j]
+		N    = float(n_samples)
+		tp   = raw_cooc
+		fp   = freq[np.newaxis, :] - tp          # broadcast: shape [C, C]
+		fn   = freq[:, np.newaxis] - tp
+		tn   = N - freq[:, np.newaxis] - freq[np.newaxis, :] + tp
+
+		denom = np.sqrt(
+				np.maximum((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn), 0.0)
+		).astype(np.float64)
+
+		phi = np.where(denom > 0,
+									 (tp * tn - fp * fn).astype(np.float64) / denom,
+									 0.0)
+		np.fill_diagonal(phi, 1.0)
+
+		# ── Jaccard ────────────────────────────────────────────────────────────────
+		union   = np.maximum(freq[:, np.newaxis] + freq[np.newaxis, :] - raw_cooc, 1.0)
+		jaccard = (raw_cooc / union).astype(np.float32)
+
+		print(f"  Phi + Jaccard computed in {_t.perf_counter()-t1:.1f}s", flush=True)
+
+		# ── Extract interesting pairs (upper triangle only) ────────────────────────
+		t2 = _t.perf_counter()
+		i_idx, j_idx = np.triu_indices(C, k=1)
+		phi_vals  = phi[i_idx, j_idx]
+		cooc_vals = raw_cooc[i_idx, j_idx].astype(int)
+
+		pos_mask = phi_vals >= phi_pos
+		neg_mask = phi_vals <= phi_neg
+
+		pos_pairs = sorted(
+				[(phi_vals[k], names[i_idx[k]], names[j_idx[k]], int(cooc_vals[k]))
+				 for k in np.where(pos_mask)[0]],
+				key=lambda x: -x[0]
+		)
+		neg_pairs = sorted(
+				[(phi_vals[k], names[i_idx[k]], names[j_idx[k]], int(cooc_vals[k]))
+				 for k in np.where(neg_mask)[0]],
+				key=lambda x: x[0]
+		)
+		print(f"  Pair extraction in {_t.perf_counter()-t2:.1f}s  "
+					f"| pos_pairs={len(pos_pairs):,}  neg_pairs={len(neg_pairs):,}",
+					flush=True)
+
+		density = float(mat.mean()) * 100
+		print(f"\n  Binary label matrix : {mat.shape}  ({int(mat.sum()):,} total positives)")
 		print(f"  Label density       : {density:.2f}% of (sample, class) cells are positive")
 
 		if pos_pairs:
@@ -709,8 +764,8 @@ def parse_args():
 									 help="Path to metadata_multi_label_multimodal.csv")
 		p.add_argument("--col",         default="multimodal_canonical_labels",
 									 help="Label column to use (default: multimodal_canonical_labels)")
-		p.add_argument("--batch_size",  type=int, default=128)
-		p.add_argument("--num_workers", type=int, default=8)
+		p.add_argument("--batch_size",  type=int, default=256)
+		p.add_argument("--num_workers", type=int, default=16)
 		p.add_argument("--resolution",  type=int, default=224)
 		p.add_argument("--phi_pos",     type=float, default=0.20,
 									 help="Phi threshold for co-occurring pairs")
@@ -727,7 +782,6 @@ def parse_args():
 
 def main():
 		args = parse_args()
-		print(args)
 
 		csv_path   = os.path.abspath(args.csv)
 		dataset_dir = os.path.dirname(csv_path)
@@ -777,13 +831,25 @@ def main():
 		imb_va = analyse_class_imbalance(val_ds,   "VAL",   output_dir=output_dir)
 
 		# ── CHECK B ───────────────────────────────────────────────────────────────
+		# Auto-cap co-occurrence for large-vocab datasets if user didn't override.
+		# The full Phi matrix for 7,485 classes = 7485²×8 bytes ≈ 449 GB — unusable.
+		# Default cap: 500 classes (Phi matrix ≈ 2 MB, fast).
+		AUTO_CAP = 500
+		max_cooc = args.max_cooc_classes
+		if max_cooc is None and n_classes > AUTO_CAP:
+				max_cooc = AUTO_CAP
+				print(f"\n[Co-occurrence] {n_classes:,} classes detected — auto-capping to top "
+							f"{AUTO_CAP} for CHECK B.\n"
+							f"  Override with --max_cooc_classes N (or --max_cooc_classes 0 to disable cap).")
+		elif args.max_cooc_classes == 0:
+				max_cooc = None   # 0 means "no cap, user accepts the risk"
 		cooc_tr = analyse_cooccurrence(train_ds, "TRAIN",
 																	 phi_pos=args.phi_pos, phi_neg=args.phi_neg,
-																	 top_k=args.max_cooc_classes,
+																	 top_k=max_cooc,
 																	 output_dir=output_dir)
 		cooc_va = analyse_cooccurrence(val_ds,   "VAL",
 																	 phi_pos=args.phi_pos, phi_neg=args.phi_neg,
-																	 top_k=args.max_cooc_classes,
+																	 top_k=max_cooc,
 																	 output_dir=output_dir)
 
 		# ── CHECK C ───────────────────────────────────────────────────────────────
@@ -870,9 +936,11 @@ def main():
 				print(f"    [{'✓' if os.path.exists(path) else '✗'}] {f}")
 		print(sep)
 
+
 def _parseable(raw):
-	try: ast.literal_eval(raw); return True
-	except: return False
+		try: ast.literal_eval(raw); return True
+		except: return False
+
 
 if __name__ == "__main__":
-	main()
+		main()
