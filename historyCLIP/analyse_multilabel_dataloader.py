@@ -333,112 +333,241 @@ def _decide_cache(df_train, df_val) -> tuple[int, int]:
 # CHECK A — Class imbalance
 # ─────────────────────────────────────────────────────────────────────────────
 
-def analyse_class_imbalance(dataset, split_name, beta=0.9999, output_dir=".") -> dict:
+def _pareto_split(freq: np.ndarray, pareto: float = 0.80):
+		"""
+		Return (head_mask, tail_mask) using a Pareto split.
+
+		head: smallest set of classes whose cumulative frequency covers
+					`pareto` fraction of all label occurrences.
+		tail: classes with zero occurrences in this split
+					(genuinely unobserved — pos_weight would be undefined).
+
+		The middle band (observed but not head) is left unmarked.
+		This avoids the arbitrary 20% boundary and scales correctly
+		from 60 classes (SMU) to 7,485 classes (HISTORY_X4).
+		"""
+		total       = freq.sum()
+		sorted_idx  = np.argsort(freq)[::-1]
+		cumsum      = np.cumsum(freq[sorted_idx])
+		# number of classes needed to reach `pareto` of total occurrences
+		n_head      = int(np.searchsorted(cumsum, pareto * total)) + 1
+		n_head      = max(1, min(n_head, len(freq)))
+
+		head_mask   = np.zeros(len(freq), dtype=bool)
+		head_mask[sorted_idx[:n_head]] = True
+		tail_mask   = (freq == 0)
+		return head_mask, tail_mask, n_head
+
+
+def analyse_class_imbalance(dataset, split_name, beta=0.9999,
+														 pareto=0.80, pw_tail_threshold=20.0,
+														 output_dir=".") -> dict:
+		"""
+		Parameters
+		----------
+		pareto : float
+				Fraction of total label occurrences covered by the "head" set.
+				Default 0.80 (80/20 Pareto rule). Head = fewest classes that
+				collectively account for this fraction of all positive labels.
+		pw_tail_threshold : float
+				Classes whose pos_weight exceeds this value are flagged as
+				"effectively rare" for loss-weighting purposes. Default 20.
+		"""
 		print(f"\n{'─'*60}")
 		print(f"  CHECK A  ·  Class Imbalance — {split_name}  ({len(dataset):,} samples)")
 		print(f"{'─'*60}")
 
-		n       = len(dataset)
-		C       = dataset._num_classes
-		names   = dataset.unique_labels
-		freq    = np.zeros(C, dtype=np.int64)
+		n     = len(dataset)
+		C     = dataset._num_classes
+		names = dataset.unique_labels
+		freq  = np.zeros(C, dtype=np.int64)
 
 		for raw in dataset.labels:
 				try:
 						for lbl in ast.literal_eval(raw):
 								if lbl in dataset.label_dict:
 										freq[dataset.label_dict[lbl]] += 1
-				except (ValueError, SyntaxError): pass
+				except (ValueError, SyntaxError):
+						pass
 
-		freq_ratio      = freq / n
-		n_neg           = n - freq
-		pos_weight      = torch.tensor(
+		freq_ratio  = freq / max(n, 1)
+		n_neg       = n - freq
+		pos_weight  = torch.tensor(
 				np.where(freq > 0, n_neg / np.maximum(freq, 1), 1.0), dtype=torch.float32)
-		eff_num         = (1.0 - beta**np.maximum(freq, 1)) / (1.0 - beta)
-		ens_weights     = (1.0 / eff_num)
-		ens_weights     = ens_weights / ens_weights.sum() * C
-		imb_ratio       = freq.max() / max(freq.min(), 1)
+		eff_num     = (1.0 - beta ** np.maximum(freq, 1)) / (1.0 - beta)
+		ens_weights = (1.0 / eff_num)
+		ens_weights = ens_weights / ens_weights.sum() * C
+		imb_ratio   = freq.max() / max(freq.min(), 1)
 
 		sorted_idx  = np.argsort(freq)[::-1]
-		cutoff      = max(1, int(C * 0.20))
-		head_labels = [names[i] for i in sorted_idx[:cutoff]]
-		tail_labels = [names[i] for i in sorted_idx[-cutoff:]]
+
+		# ── Principled head / tail split ──────────────────────────────────────────
+		head_mask, zero_mask, n_head = _pareto_split(freq, pareto)
+
+		# "effectively rare" = pos_weight exceeds threshold (loss-weighting concern)
+		rare_mask = (pos_weight.numpy() > pw_tail_threshold) & ~zero_mask
+
+		head_set  = set(names[i] for i in range(C) if head_mask[i])
+		zero_set  = set(names[i] for i in range(C) if zero_mask[i])
+		rare_set  = set(names[i] for i in range(C) if rare_mask[i])
 
 		# ── Console table ─────────────────────────────────────────────────────────
-		col_w = max(len(l) for l in names) + 2
-		print(f"  {'Label':<{col_w}} {'Count':>7}  {'Freq%':>6}  {'pos_weight':>10}  {'ENS_w':>8}")
-		print("  " + "─" * (col_w + 38))
-		for i in sorted_idx:
-				marker = " ▲ HEAD" if names[i] in head_labels else \
-								 " ▼ TAIL" if names[i] in tail_labels else ""
-				print(f"  {names[i]:<{col_w}} {freq[i]:>7,}  "
-							f"{freq_ratio[i]*100:>5.1f}%  "
-							f"{pos_weight[i].item():>10.3f}  "
-							f"{ens_weights[i]:>8.4f}{marker}")
+		# For large C, truncate: show top-40, separator, bottom-20
+		col_w     = min(max(len(l) for l in names) + 2, 45)
+		MAX_SHOW  = 60   # total rows to print; split top/bottom for large C
+		show_all  = (C <= MAX_SHOW)
 
-		print(f"\n  Imbalance ratio (max/min)  : {imb_ratio:.1f}×")
-		print(f"  Head (top 20%)             : {head_labels}")
-		print(f"  Tail (bottom 20%)           : {tail_labels}")
+		print(f"  {'Label':<{col_w}} {'Count':>7}  {'Freq%':>6}  {'pos_weight':>10}  {'ENS_w':>8}  Note")
+		print("  " + "─" * (col_w + 52))
+
+		def _row(i):
+				nm  = names[i]
+				note = ""
+				if nm in head_set:  note = "▲ HEAD"
+				if nm in zero_set:  note = "✗ ZERO"
+				if nm in rare_set:  note += (" " if note else "") + "⚠ RARE"
+				return (f"  {nm[:col_w-1]:<{col_w}} {freq[i]:>7,}  "
+								f"{freq_ratio[i]*100:>5.1f}%  "
+								f"{pos_weight[i].item():>10.3f}  "
+								f"{ens_weights[i]:>8.4f}  {note}")
+
+		if show_all:
+				for i in sorted_idx:
+						print(_row(i))
+		else:
+				top_n, bot_n = 40, 20
+				for i in sorted_idx[:top_n]:
+						print(_row(i))
+				print(f"  {'':.<{col_w}}  ... {C - top_n - bot_n:,} middle classes omitted ...")
+				for i in sorted_idx[-(bot_n):]:
+						print(_row(i))
+
+		# ── Summary ───────────────────────────────────────────────────────────────
+		n_zero = int(zero_mask.sum())
+		n_rare = int(rare_mask.sum())
+		pct_head_classes = n_head / C * 100
+		pct_occ_covered  = freq[head_mask].sum() / max(freq.sum(), 1) * 100
+
+		print(f"\n  Imbalance ratio (max/min freq)   : {imb_ratio:.1f}×")
+		print(f"\n  Pareto head  (≥{pareto:.0%} of occurrences) :")
+		print(f"    {n_head:,} of {C:,} classes ({pct_head_classes:.1f}%) cover "
+					f"{pct_occ_covered:.1f}% of all positive labels")
+		print(f"    Head classes: {sorted(head_set)[:15]}"
+					f"{'...' if len(head_set) > 15 else ''}")
+		print(f"\n  Zero-count classes (unobserved in this split) : {n_zero:,}")
+		if n_zero and n_zero <= 20:
+				print(f"    {sorted(zero_set)}")
+		elif n_zero:
+				print(f"    (first 20): {sorted(zero_set)[:20]} …")
+
+		print(f"\n  Effectively rare  (pos_weight > {pw_tail_threshold:.0f}) : {n_rare:,} classes")
+		if n_rare and n_rare <= 20:
+				pw_rare = sorted([(pos_weight[dataset.label_dict[nm]].item(), nm)
+													for nm in rare_set], reverse=True)
+				for pw_v, nm in pw_rare:
+						print(f"    {nm}: {pw_v:.1f}")
+		elif n_rare:
+				pw_rare = sorted([(pos_weight[dataset.label_dict[nm]].item(), nm)
+													for nm in rare_set], reverse=True)
+				print(f"    Top 20 by pos_weight:")
+				for pw_v, nm in pw_rare[:20]:
+						print(f"      {nm}: {pw_v:.1f}")
 
 		# ── PNG ───────────────────────────────────────────────────────────────────
-		_plot_imbalance(freq, pos_weight, names, sorted_idx, head_labels, tail_labels,
-										split_name, n, output_dir)
+		_plot_imbalance(freq, pos_weight, names, sorted_idx,
+										head_mask, zero_mask, rare_mask,
+										split_name, n, pareto, pw_tail_threshold, output_dir)
 
 		return dict(freq=freq, freq_ratio=freq_ratio, imb_ratio=imb_ratio,
 								pos_weight=pos_weight, ens_weights=ens_weights,
-								head_labels=head_labels, tail_labels=tail_labels)
+								head_set=head_set, zero_set=zero_set, rare_set=rare_set,
+								n_head=n_head, n_zero=n_zero, n_rare=n_rare)
 
 
-def _plot_imbalance(freq, pos_weight, names, sorted_idx, head, tail, split, n, out_dir):
-		C   = len(names)
-		fw  = max(16, C * 0.55)
+def _plot_imbalance(freq, pos_weight, names, sorted_idx,
+										head_mask, zero_mask, rare_mask,
+										split, n, pareto, pw_threshold, out_dir):
+		C = len(names)
+
+		# For large C, cap the plot at top-150 classes so it's legible
+		PLOT_CAP = 150
+		if C > PLOT_CAP:
+				plot_idx = sorted_idx[:PLOT_CAP]
+				title_note = f"  (top {PLOT_CAP} of {C:,} shown)"
+		else:
+				plot_idx = sorted_idx
+				title_note = ""
+
+		fw  = max(16, len(plot_idx) * 0.42)
 		fig, axes = plt.subplots(2, 1, figsize=(fw, 10), facecolor="#0f1117")
-		fig.suptitle(f"Class Imbalance — {split}  ({n:,} samples)",
-								 fontsize=13, color="#e8e8e8", y=0.99, fontweight="bold")
+		fig.suptitle(f"Class Imbalance — {split}  ({n:,} samples){title_note}",
+								 fontsize=12, color="#e8e8e8", y=0.99, fontweight="bold")
 
-		x     = np.arange(len(sorted_idx))
-		xlabs = [names[i] for i in sorted_idx]
-		colors = ["#ef4444" if names[i] in head else
-							"#3b82f6" if names[i] in tail else "#6366f1"
-							for i in sorted_idx]
+		x     = np.arange(len(plot_idx))
+		xlabs = [names[i][:20] for i in plot_idx]   # truncate long names
 
+		def _color(i):
+				if zero_mask[i]:  return "#374151"   # grey  — zero count
+				if head_mask[i]:  return "#ef4444"   # red   — pareto head
+				if rare_mask[i]:  return "#f59e0b"   # amber — effectively rare
+				return "#6366f1"                      # indigo — middle band
+
+		colors = [_color(i) for i in plot_idx]
+
+		# ── top panel: frequency ──────────────────────────────────────────────────
 		ax = axes[0]
 		ax.set_facecolor("#0f1117")
-		bars = ax.bar(x, [freq[i] for i in sorted_idx], color=colors,
-									edgecolor="#1e2030", linewidth=0.4)
-		ax.set_xticks(x); ax.set_xticklabels(xlabs, rotation=50, ha="right",
-																					fontsize=7, color="#c0c0c0")
+		bars = ax.bar(x, [freq[i] for i in plot_idx],
+									color=colors, edgecolor="#1e2030", linewidth=0.3)
+		ax.set_xticks(x)
+		ax.set_xticklabels(xlabs, rotation=55, ha="right",
+											 fontsize=max(4, min(7, 200 // len(plot_idx))),
+											 color="#c0c0c0")
 		ax.set_ylabel("Positive Count", color="#c0c0c0", fontsize=9)
-		ax.set_title("Label Frequency  (▲ head · ▼ tail)", color="#d0d0d0", fontsize=10, pad=6)
+		ax.set_title(
+				f"Label Frequency  |  ▲ Pareto head ({pareto:.0%})  "
+				f"⚠ Rare (pw>{pw_threshold:.0f})  ✗ Zero",
+				color="#d0d0d0", fontsize=9, pad=6)
 		ax.tick_params(colors="#808080"); ax.spines[:].set_color("#2a2a3a")
 		ax.set_xlim(-0.7, len(x) - 0.3)
-		for bar, i in zip(bars, sorted_idx):
-				ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(freq) * 0.01,
-								f"{freq[i]:,}", ha="center", va="bottom", fontsize=5.5, color="#a0a0b0")
+		# only annotate bars when they fit
+		if len(plot_idx) <= 80:
+				for bar, i in zip(bars, plot_idx):
+						if freq[i] > 0:
+								ax.text(bar.get_x() + bar.get_width() / 2,
+												bar.get_height() + max(freq[plot_idx]) * 0.01,
+												f"{freq[i]:,}", ha="center", va="bottom",
+												fontsize=5, color="#a0a0b0")
 
+		# ── bottom panel: pos_weight ──────────────────────────────────────────────
 		ax2 = axes[1]
 		ax2.set_facecolor("#0f1117")
-		pw  = [pos_weight[i].item() for i in sorted_idx]
+		pw  = [pos_weight[i].item() for i in plot_idx]
 		cmap = matplotlib.colormaps["RdYlGn_r"]
 		norm = mcolors.Normalize(vmin=min(pw), vmax=max(pw))
-		bars2 = ax2.bar(x, pw, color=[cmap(norm(v)) for v in pw],
-										edgecolor="#1e2030", linewidth=0.4)
-		ax2.set_xticks(x); ax2.set_xticklabels(xlabs, rotation=50, ha="right",
-																						 fontsize=7, color="#c0c0c0")
+		ax2.bar(x, pw, color=[cmap(norm(v)) for v in pw],
+						edgecolor="#1e2030", linewidth=0.3)
+		ax2.set_xticks(x)
+		ax2.set_xticklabels(xlabs, rotation=55, ha="right",
+												fontsize=max(4, min(7, 200 // len(plot_idx))),
+												color="#c0c0c0")
 		ax2.set_ylabel("pos_weight (neg/pos)", color="#c0c0c0", fontsize=9)
-		ax2.set_title("BCEWithLogitsLoss pos_weight  (higher = rarer label)",
-									color="#d0d0d0", fontsize=10, pad=6)
+		ax2.set_title(
+				f"BCEWithLogitsLoss pos_weight  "
+				f"(dashed = balanced, dotted = threshold {pw_threshold:.0f})",
+				color="#d0d0d0", fontsize=9, pad=6)
 		ax2.tick_params(colors="#808080"); ax2.spines[:].set_color("#2a2a3a")
 		ax2.set_xlim(-0.7, len(x) - 0.3)
-		ax2.axhline(1.0, color="#fbbf24", lw=0.8, ls="--", alpha=0.6, label="Balanced (pw=1)")
-		ax2.legend(fontsize=8, labelcolor="#e0e0e0", framealpha=0.15)
-		for bar, v in zip(bars2, pw):
-				ax2.text(bar.get_x() + bar.get_width() / 2, v + max(pw) * 0.01,
-								 f"{v:.1f}", ha="center", va="bottom", fontsize=5.5, color="#c0c0c0")
+		ax2.axhline(1.0, color="#fbbf24", lw=0.8, ls="--", alpha=0.7,
+								label="Balanced (pw=1)")
+		ax2.axhline(pw_threshold, color="#f87171", lw=0.8, ls=":",
+								alpha=0.7, label=f"Rare threshold (pw={pw_threshold:.0f})")
+		ax2.legend(fontsize=7, labelcolor="#e0e0e0", framealpha=0.15)
 
 		plt.tight_layout(rect=[0, 0, 1, 0.97])
 		path = os.path.join(out_dir, f"imbalance_{split.lower()}.png")
-		plt.savefig(path, dpi=140, bbox_inches="tight", facecolor=fig.get_facecolor())
+		plt.savefig(path, dpi=140, bbox_inches="tight",
+								facecolor=fig.get_facecolor())
 		plt.close()
 		print(f"\n  [PNG] Saved → {path}")
 
@@ -764,13 +893,19 @@ def parse_args():
 									 help="Path to metadata_multi_label_multimodal.csv")
 		p.add_argument("--col",         default="multimodal_canonical_labels",
 									 help="Label column to use (default: multimodal_canonical_labels)")
-		p.add_argument("--batch_size",  type=int, default=256)
-		p.add_argument("--num_workers", type=int, default=8)
+		p.add_argument("--batch_size",  type=int, default=32)
+		p.add_argument("--num_workers", type=int, default=4)
 		p.add_argument("--resolution",  type=int, default=224)
 		p.add_argument("--phi_pos",     type=float, default=0.20,
 									 help="Phi threshold for co-occurring pairs")
 		p.add_argument("--phi_neg",     type=float, default=-0.10,
 									 help="Phi threshold for mutually exclusive pairs")
+		p.add_argument("--pareto",      type=float, default=0.80,
+									 help="Pareto fraction for head/tail split in CHECK A (default 0.80). "
+												"Head = fewest classes covering this fraction of all occurrences.")
+		p.add_argument("--pw_tail_threshold", type=float, default=20.0,
+									 help="pos_weight threshold above which a class is flagged as "
+												"effectively rare (default 20.0).")
 		p.add_argument("--output_dir",  default=None,
 									 help="Where to save PNGs/HTML (default: <csv_dir>/dataloader_analysis)")
 		p.add_argument("--max_cooc_classes", type=int, default=None,
@@ -828,8 +963,14 @@ def main():
 		print(val_ds)
 
 		# ── CHECK A ───────────────────────────────────────────────────────────────
-		imb_tr = analyse_class_imbalance(train_ds, "TRAIN", output_dir=output_dir)
-		imb_va = analyse_class_imbalance(val_ds,   "VAL",   output_dir=output_dir)
+		imb_tr = analyse_class_imbalance(train_ds, "TRAIN",
+																			pareto=args.pareto,
+																			pw_tail_threshold=args.pw_tail_threshold,
+																			output_dir=output_dir)
+		imb_va = analyse_class_imbalance(val_ds,   "VAL",
+																			pareto=args.pareto,
+																			pw_tail_threshold=args.pw_tail_threshold,
+																			output_dir=output_dir)
 
 		# ── CHECK B ───────────────────────────────────────────────────────────────
 		# Auto-cap co-occurrence for large-vocab datasets if user didn't override.
@@ -916,14 +1057,17 @@ def main():
 		if abs(r_tr - r_va) > r_tr * 0.5:
 				print(f"      [!] Ratios differ >50% — consider stratified splitting")
 
-		extreme = [(k, v.item()) for k, v in zip(label_dict.keys(), imb_tr["pos_weight"])
-							 if v.item() > 20]
-		if extreme:
-				print(f"  [!] {len(extreme)} labels with pos_weight > 20 (very rare):")
-				for nm, w in sorted(extreme, key=lambda x: -x[1])[:20]:
-						print(f"      {nm}: {w:.1f}")
-		else:
-				print(f"  [✓] No extreme pos_weight values (all ≤ 20)")
+		n_rare_tr = imb_tr["n_rare"]
+		n_zero_tr = imb_tr["n_zero"]
+		n_zero_va = imb_va["n_zero"]
+		print(f"  [{'!' if n_rare_tr > 0 else '✓'}] {n_rare_tr:,} train labels with "
+					f"pos_weight > {args.pw_tail_threshold:.0f}  (effectively rare)")
+		print(f"  [{'!' if n_zero_tr > 0 else '✓'}] {n_zero_tr:,} zero-count labels in train split")
+		if n_zero_va > 0:
+				zero_va_only = imb_va["zero_set"] - imb_tr["zero_set"]
+				print(f"  [!] {n_zero_va:,} zero-count labels in val split "
+							f"({len(zero_va_only):,} absent from train too — "
+							f"model will never predict these)")
 
 		# ── Summary ───────────────────────────────────────────────────────────────
 		outputs = ["imbalance_train.png", "imbalance_val.png",
