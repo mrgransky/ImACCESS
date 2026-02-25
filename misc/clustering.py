@@ -1530,7 +1530,6 @@ def get_optimal_num_clusters(
 		
 		if verbose:
 			print(f"\n[STAGE 1] Complete. Plateau region centered around k={plateau_k}")
-			print(f"\tPredicted optimal range: {int(plateau_k*0.9)} - {int(plateau_k*1.1)}")
 		
 		# STAGE 2: FINE SEARCH - Optimize within plateau region
 		if verbose:
@@ -1545,8 +1544,13 @@ def get_optimal_num_clusters(
 			int(num_samples // min_consolidation) + 2 * fine_step  # ← 2 steps of headroom
 		)
 		
+		if verbose:
+			print(f"Fine search range: {fine_min} ≤ k ≤ {fine_max} (step={fine_step})")
+
 		# Guard: if plateau_k was outside valid range, just search the valid range
 		if fine_min >= fine_max:
+			if verbose:
+				print(f"[WARNING] Plateau k={plateau_k} outside valid range: {valid_k_min} ≤ k ≤ {valid_k_max}. Searching valid range only.")
 			fine_min = valid_k_min
 			fine_max = valid_k_max
 			fine_step = max(1, (fine_max - fine_min) // 20)  # recompute if guard triggered
@@ -1554,7 +1558,7 @@ def get_optimal_num_clusters(
 		fine_range = range(fine_min, fine_max + 1, fine_step)
 		
 		if verbose:
-			print(f"Testing {len(fine_range)} configurations: {fine_min} to {fine_max} (step={fine_step})")
+			print(f"Testing {len(fine_range)} configurations: {list(fine_range)} (step={fine_step})")
 			print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Score':<10} {'Status':<20}")
 			print("-" * 80)
 		
