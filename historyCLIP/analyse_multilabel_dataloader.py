@@ -765,7 +765,7 @@ def parse_args():
 		p.add_argument("--col",         default="multimodal_canonical_labels",
 									 help="Label column to use (default: multimodal_canonical_labels)")
 		p.add_argument("--batch_size",  type=int, default=256)
-		p.add_argument("--num_workers", type=int, default=16)
+		p.add_argument("--num_workers", type=int, default=8)
 		p.add_argument("--resolution",  type=int, default=224)
 		p.add_argument("--phi_pos",     type=float, default=0.20,
 									 help="Phi threshold for co-occurring pairs")
@@ -782,6 +782,7 @@ def parse_args():
 
 def main():
 		args = parse_args()
+		print(args)
 
 		csv_path   = os.path.abspath(args.csv)
 		dataset_dir = os.path.dirname(csv_path)
