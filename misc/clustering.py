@@ -592,6 +592,7 @@ def analyze_cluster_quality(
 	canonical_labels: Dict[int, str],
 	original_label_counts: Optional[Dict[str, int]] = None,
 	distance_metric: str = 'cosine',
+	output_dir: str = "./",
 	verbose: bool = True
 ) -> Dict:
 		"""
@@ -632,19 +633,6 @@ def analyze_cluster_quality(
 				- 'consolidation_impact': Label reduction statistics
 				- 'recommendations': Actionable insights
 				- 'summary': Executive summary string
-		
-		Example
-		-------
-		>>> results = analyze_cluster_quality(
-		...     embeddings=embeddings,
-		...     labels=unique_labels,
-		...     cluster_assignments=cluster_ids,
-		...     canonical_labels=canonical_map,
-		...     original_label_counts=label_freq_dict
-		... )
-		>>> print(results['summary'])
-		>>> problematic = results['problematic_clusters']
-		>>> cluster_df = results['cluster_metrics']
 		"""
 		
 		n_samples = len(labels)
@@ -784,65 +772,84 @@ def analyze_cluster_quality(
 		# Flag 1: Low cohesion (intra-cluster similarity < 0.5)
 		low_cohesion = cluster_df[cluster_df['intra_cluster_similarity'] < 0.5]
 		if len(low_cohesion) > 0:
-				problematic_clusters.append({
-						'issue': 'Low Cohesion',
-						'count': len(low_cohesion),
-						'cluster_ids': low_cohesion['cluster_id'].tolist(),
-						'severity': 'HIGH',
-						'description': 'Clusters with low internal similarity (< 0.5). May contain semantically diverse labels.'
-				})
+			problematic_clusters.append(
+				{
+					'issue': 'Low Cohesion',
+					'count': len(low_cohesion),
+					'cluster_ids': low_cohesion['cluster_id'].tolist(),
+					'severity': 'HIGH',
+					'description': 'Clusters with low internal similarity (< 0.5). May contain semantically diverse labels.'
+				}
+			)
+			# save into file:
+			low_cohesion.to_csv(os.path.join(output_dir, f"low_cohesion_clusters.csv"), index=False)
 		
 		# Flag 2: Poor canonical representativeness (< 0.6)
 		poor_canonical = cluster_df[cluster_df['canonical_representativeness'] < 0.6]
 		if len(poor_canonical) > 0:
-				problematic_clusters.append({
-						'issue': 'Poor Canonical Representativeness',
-						'count': len(poor_canonical),
-						'cluster_ids': poor_canonical['cluster_id'].tolist(),
-						'severity': 'MEDIUM',
-						'description': 'Canonical label does not represent cluster well (< 0.6 similarity).'
-				})
+			problematic_clusters.append(
+				{
+					'issue': 'Poor Canonical Representativeness',
+					'count': len(poor_canonical),
+					'cluster_ids': poor_canonical['cluster_id'].tolist(),
+					'severity': 'MEDIUM',
+					'description': 'Canonical label does not represent cluster well (< 0.6 similarity).'
+				}
+			)
+			# save into file:
+			poor_canonical.to_csv(os.path.join(output_dir, f"poor_canonical_clusters.csv"), index=False)
 		
 		# Flag 3: Large diameter (> 0.8 cosine distance)
 		large_diameter = cluster_df[cluster_df['cluster_diameter'] > 0.8]
 		if len(large_diameter) > 0:
-				problematic_clusters.append({
-						'issue': 'Large Cluster Diameter',
-						'count': len(large_diameter),
-						'cluster_ids': large_diameter['cluster_id'].tolist(),
-						'severity': 'MEDIUM',
-						'description': 'Clusters with large spread (diameter > 0.8). May need splitting.'
-				})
+			problematic_clusters.append(
+				{
+					'issue': 'Large Cluster Diameter',
+					'count': len(large_diameter),
+					'cluster_ids': large_diameter['cluster_id'].tolist(),
+					'severity': 'MEDIUM',
+					'description': 'Clusters with large spread (diameter > 0.8). May need splitting.'
+				}
+			)
+			# save into file:
+			large_diameter.to_csv(os.path.join(output_dir, f"large_diameter_clusters.csv"), index=False)
 		
 		# Flag 4: Singleton clusters (size = 1)
 		singletons = cluster_df[cluster_df['size'] == 1]
 		if len(singletons) > 0:
-				problematic_clusters.append({
-						'issue': 'Singleton Clusters',
-						'count': len(singletons),
-						'cluster_ids': singletons['cluster_id'].tolist(),
-						'severity': 'LOW',
-						'description': 'Clusters with only one label. No consolidation benefit.'
-				})
+			problematic_clusters.append(
+				{
+					'issue': 'Singleton Clusters',
+					'count': len(singletons),
+					'cluster_ids': singletons['cluster_id'].tolist(),
+					'severity': 'LOW',
+					'description': 'Clusters with only one label. No consolidation benefit.'
+				}
+			)
 		
 		# Flag 5: Very large clusters (size > 95th percentile)
 		size_threshold = cluster_df['size'].quantile(0.95)
 		very_large = cluster_df[cluster_df['size'] > size_threshold]
 		if len(very_large) > 0:
-				problematic_clusters.append({
-						'issue': 'Very Large Clusters',
-						'count': len(very_large),
-						'cluster_ids': very_large['cluster_id'].tolist(),
-						'severity': 'LOW',
-						'description': f'Clusters larger than 95th percentile (> {size_threshold:.0f} labels). May be over-merged.'
-				})
+			problematic_clusters.append(
+				{
+					'issue': 'Very Large Clusters',
+					'count': len(very_large),
+					'cluster_ids': very_large['cluster_id'].tolist(),
+					'severity': 'LOW',
+					'description': f'Clusters larger than 95th percentile (> {size_threshold:.0f} labels). May be over-merged.'
+				}
+			)
+			# save into file:
+			very_large.to_csv(os.path.join(output_dir, f"very_large_clusters.csv"), index=False)
 		
 		if verbose:
-				if len(problematic_clusters) == 0:
-					print("\tNo major issues detected!")
-				else:
-					for issue in problematic_clusters:
-						print(f"\t{issue['severity']:15s}{issue['issue']:50s}{issue['count']:4d} clusters")
+			if len(problematic_clusters) == 0:
+				print("\t[OK] No major problematic clusters detected!")
+			else:
+				print(f"Found {len(problematic_clusters)} type(s) of problematic clusters:")
+				for issue in problematic_clusters:
+					print(f"{issue['severity']:10s}{issue['issue']:35s}{issue['count']:4d} clusters")
 		
 		# 4. CONSOLIDATION IMPACT ANALYSIS
 		if verbose:
@@ -1514,11 +1521,11 @@ def get_optimal_num_clusters(
 		
 		# Adaptive step size
 		if num_samples > 20000:
-				fine_step = 250  # For large datasets, test every 250
+			fine_step = 250  # For large datasets, test every 250
 		elif num_samples > 10000:
-				fine_step = 100
+			fine_step = 100
 		else:
-				fine_step = 50
+			fine_step = 50
 		
 		fine_range = range(fine_min, fine_max + 1, fine_step)
 		
@@ -1612,7 +1619,7 @@ def get_optimal_num_clusters(
 									f"{singleton_ratio:<10.3f} {score:<10.4f} {status:<20}")
 		
 		if not fine_results:
-				raise ValueError("No valid cluster configurations found in fine search")
+			raise ValueError("No valid cluster configurations found in fine search")
 		
 		# SELECT BEST CONFIGURATION
 		# Priority: Highest composite score
@@ -1724,9 +1731,9 @@ def get_optimal_num_clusters(
 def cluster(
 	labels: List[List[str]],
 	model_id: str,
+	clusters_fname: str,
 	batch_size: int = 1024,
 	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
-	clusters_fname: str = "clusters.csv",
 	nc: int = None,
 	linkage_method: str = "ward",  # 'average', 'complete', 'single', 'ward'
 	distance_metric: str = "euclidean",  # 'cosine', 'euclidean'
@@ -2165,6 +2172,8 @@ def cluster(
 	print(f"  └─ label_freq_dict: {len(label_freq_dict)} labels with frequencies")
 
 	# Run comprehensive analysis
+	print(f"Running cluster quality analysis...")
+	print(clusters_fname)
 	results = analyze_cluster_quality(
 		embeddings=X,
 		labels=unique_labels_array,  # FIXED: Use numpy array
@@ -2172,6 +2181,7 @@ def cluster(
 		canonical_labels=canonical_map,  # FIXED: Use simple dict
 		original_label_counts=label_freq_dict,  # FIXED: Use computed frequencies
 		distance_metric='cosine',
+		output_dir=os.path.dirname(clusters_fname),
 		verbose=True
 	)	
 	cluster_quality_csv = clusters_fname.replace(".csv", "_cluster_quality_metrics.csv")
