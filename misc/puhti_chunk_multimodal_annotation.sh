@@ -60,7 +60,7 @@ else
 	echo "SMALL models (single-GPU configuration)"
 	LLM_MODEL="Qwen/Qwen3-4B-Instruct-2507"
 	LLM_BATCH_SIZE=32
-	LLM_MAX_GEN_TKs=256
+	LLM_MAX_GEN_TKs=128
 	# LLM_QUANTIZATION="--llm_use_quantization"
 	VLM_MODEL="Qwen/Qwen3-VL-8B-Instruct"
 	VLM_BATCH_SIZE=24

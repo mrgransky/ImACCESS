@@ -675,9 +675,9 @@ def analyze_cluster_quality(
 		global_metrics['ch_interpretation'] = _interpret_ch_index(ch_index)
 		
 		if verbose:
-				print(f"\tSilhouette Score:        {silhouette:.4f} [{global_metrics['silhouette_interpretation']}]")
-				print(f"\tDavies-Bouldin Index:    {db_index:.4f}   [{global_metrics['db_interpretation']}]")
-				print(f"\tCalinski-Harabasz Index: {ch_index:.2f}   [{global_metrics['ch_interpretation']}]")
+				print(f"Silhouette Score:        {silhouette:<15.4f}{global_metrics['silhouette_interpretation']}")
+				print(f"Davies-Bouldin Index:    {db_index:<15.4f}{global_metrics['db_interpretation']}")
+				print(f"Calinski-Harabasz Index: {ch_index:<15.4f}{global_metrics['ch_interpretation']}")
 		
 		# 2. PER-CLUSTER QUALITY METRICS
 		if verbose:
