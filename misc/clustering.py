@@ -1956,11 +1956,11 @@ def cluster(
 		cluster_labels, stats = get_optimal_num_clusters(
 			X=X,
 			linkage_matrix=Z,
-			target_intra_similarity=0.70, # 0.70 is MPNet-Base's conservative scoring
+			target_intra_similarity=0.65, # 0.70 is MPNet-Base's conservative scoring
 			min_consolidation=4.0, # Allows k=7,000-8,000
-			max_consolidation=6.0, # Prevents over-consolidation
-			target_singleton_ratio=0.015, # Target 1-2% singletons
-			quality_vs_consolidation_weight=0.6, # 60% quality, 40% efficiency
+			max_consolidation=7.0, # Prevents over-consolidation
+			target_singleton_ratio=0.010, # Target 1-2% singletons
+			quality_vs_consolidation_weight=0.5, # 60% quality, 40% efficiency
 			merge_singletons=True,
 			verbose=verbose,
 		)
