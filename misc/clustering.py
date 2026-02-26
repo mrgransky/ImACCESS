@@ -2198,9 +2198,9 @@ def cluster(
 			low_loss_low_gain = [ex for ex in questionable_examples if ex['sim_loss'] <= 0.10 and ex['freq_gain'] < 2]
 			
 			print(f"\nBREAKDOWN OF QUESTIONABLE TRADES:")
-			print(f"Type A: High loss (>10%) + Low gain (<2x):   {len(high_loss_low_gain):<5} ({len(high_loss_low_gain)/questionable_trades:<25.4f}BAD")
-			print(f"Type B: High loss (>10%) + Good gain (≥2x):  {len(high_loss_good_gain):<5} ({len(high_loss_good_gain)/questionable_trades:<25.4f}DEBATABLE")
-			print(f"Type C: Low loss  (≤10%) + Low gain (<2x):   {len(low_loss_low_gain):<5} ({len(low_loss_low_gain)/questionable_trades:<25.4f}UNNECESSARY")
+			print(f"Type A: High loss (>10%) + Low gain (<2x):   {len(high_loss_low_gain):<10}{len(high_loss_low_gain)/questionable_trades:<10.4f}BAD")
+			print(f"Type B: High loss (>10%) + Good gain (≥2x):  {len(high_loss_good_gain):<10}{len(high_loss_good_gain)/questionable_trades:<10.4f}DEBATABLE")
+			print(f"Type C: Low loss  (≤10%) + Low gain (<2x):   {len(low_loss_low_gain):<10}{len(low_loss_low_gain)/questionable_trades:<10.4f}UNNECESSARY")
 		else:
 			print(f"\nAll trades are high-quality!")
 		
