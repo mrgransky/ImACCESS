@@ -1970,17 +1970,32 @@ def cluster(
 	
 	# Determine Optimal Number of Clusters
 	if nc is None:
+		# # new dataset:
+		# cluster_labels, stats = get_optimal_num_clusters(
+		# 	X=X,
+		# 	linkage_matrix=Z,
+		# 	target_intra_similarity=0.69,
+		# 	min_consolidation=3.8,
+		# 	max_consolidation=5.0,
+		# 	target_singleton_ratio=0.015,
+		# 	quality_vs_consolidation_weight=0.5,
+		# 	merge_singletons=True,
+		# 	verbose=verbose,
+		# )
+
+		# old dataset:
 		cluster_labels, stats = get_optimal_num_clusters(
 			X=X,
 			linkage_matrix=Z,
-			target_intra_similarity=0.69,
-			min_consolidation=3.8,
-			max_consolidation=5.0,
+			target_intra_similarity=0.7,
+			min_consolidation=4.0,
+			max_consolidation=6.0,
 			target_singleton_ratio=0.015,
-			quality_vs_consolidation_weight=0.5,
+			quality_vs_consolidation_weight=0.6,
 			merge_singletons=True,
 			verbose=verbose,
 		)
+
 		best_k = stats['n_clusters']
 	else:
 		best_k = nc
