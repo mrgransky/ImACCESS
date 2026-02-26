@@ -3569,7 +3569,6 @@ def perform_multilabel_eda(
 		top_label_indices = [list(labels_in_order).index(lab) for lab in top_labels_for_correlation]
 		
 		y_subset = y_binarized[:, top_label_indices].toarray()
-		print(f"y_subset: {type(y_subset)} {y_subset.shape} {y_subset}")		
 
 		# Calculate Jaccard Similarity Matrix
 		jaccard_matrix = np.zeros((n_top_labels_co_occurrence, n_top_labels_co_occurrence))

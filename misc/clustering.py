@@ -1387,7 +1387,7 @@ def get_optimal_num_clusters(
 	if verbose:
 		print(f"\n[STAGE 1] COARSE SEARCH - Finding quality plateau: {valid_k_min} ≤ k ≤ {valid_k_max}")
 	# Adaptive coarse range based on dataset size
-	if num_samples > int(2e4):
+	if num_samples > int(3e4):
 		coarse_step = 1000
 	elif num_samples > int(1e4):
 		coarse_step = 500
@@ -1403,8 +1403,8 @@ def get_optimal_num_clusters(
 
 	if verbose:
 		print(f"Testing {len(coarse_range)} configurations: {list(coarse_range)} (step={coarse_step})")
-		print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Status':<30}")
-		print("-" * 100)
+		print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Status':<50} {'Reason'}")
+		print("-" * 200)
 	
 	coarse_results = []
 	best_intra_sim = 0
@@ -1451,24 +1451,41 @@ def get_optimal_num_clusters(
 		# Check if in target range
 		in_consol_range = min_consolidation <= consolidation <= max_consolidation
 		in_singleton_range = 0.005 <= singleton_ratio <= 0.03  # 0.5%-3% acceptable
-		
+
 		status = ""
+		reason = ""
 		if mean_intra_sim >= target_intra_similarity and in_consol_range:
 			status = "✓ TARGET REACHED (quality + consolidation)"
+			reason = (
+				f"IntraSim {mean_intra_sim:.4f} ≥ target {target_intra_similarity:.4f} "
+				f"AND consol {consolidation:.1f}x in [{min_consolidation},{max_consolidation}]"
+			)
 			if plateau_k is None:
 				plateau_k = n_clusters
 		elif in_consol_range and in_singleton_range:
 			status = "✓ OPTIMAL RANGE (consolidation + singletons)"
+			reason = (
+				f"Consol {consolidation:.1f}x in [{min_consolidation},{max_consolidation}] "
+				f"AND singleton {singleton_ratio:.4f} in [0.005,0.03]"
+			)
 			if plateau_k is None:
 				plateau_k = n_clusters
 		elif mean_intra_sim > best_intra_sim:
 			best_intra_sim = mean_intra_sim
 			status = "↑ Improving quality"
+			reason = (
+				f"IntraSim {mean_intra_sim:.4f} > prev best {best_intra_sim:.4f}"
+				+ (f" | consol {consolidation:.1f}x outside [{min_consolidation},{max_consolidation}]" if not in_consol_range else "")
+				+ (f" | singleton {singleton_ratio:.4f} outside [0.005,0.03]" if not in_singleton_range else "")
+			)
 		else:
 			status = "→ Plateau region"
-		
+			reason = (
+				f"IntraSim {mean_intra_sim:.4f} ≤ prev best {best_intra_sim:.4f} (no improvement)"
+			)
+
 		if verbose:
-			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {singleton_ratio:<10.4f} {status:<30}")
+			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {singleton_ratio:<10.4f} {status:<50} {reason}")
 		
 		# Early stopping: If in optimal range for 2 consecutive steps
 		if len(coarse_results) >= 2:
@@ -1548,8 +1565,8 @@ def get_optimal_num_clusters(
 	
 	if verbose:
 		print(f"Testing {len(fine_range)} configurations: {list(fine_range)} (step={fine_step})")
-		print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Score':<10} {'Status':<20}")
-		print("-" * 80)
+		print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Score':<10} {'Status':<20} {'Reason'}")
+		print("-" * 150)
 	
 	fine_results = []
 	
@@ -1617,19 +1634,38 @@ def get_optimal_num_clusters(
 				'composite_score': score
 		})
 		
-		# Status
+		# Status + Reason
 		status = ""
+		reason = ""
 		if quality_score >= 0.95 and consol_score >= 0.9:
-				status = "EXCELLENT"
+			status = "EXCELLENT"
+			reason = (
+				f"QualScore {quality_score:.3f} ≥ 0.95 "
+				f"AND ConsolScore {consol_score:.3f} ≥ 0.90 "
+				f"| SingletonScore {singleton_score:.3f}"
+			)
 		elif quality_score >= 0.90 and consol_score >= 0.8:
-				status = "✓ GOOD"
+			status = "✓ GOOD"
+			reason = (
+				f"QualScore {quality_score:.3f} ≥ 0.90 "
+				f"AND ConsolScore {consol_score:.3f} ≥ 0.80 "
+				f"| SingletonScore {singleton_score:.3f}"
+			)
 		elif score >= 0.70:
-				status = "→ Acceptable"
+			status = "→ Acceptable"
+			reason = (
+				f"CompositeScore {score:.3f} ≥ 0.70 "
+				f"| QualScore {quality_score:.3f} ConsolScore {consol_score:.3f} SingletonScore {singleton_score:.3f}"
+			)
 		else:
-				status = "✗ Below target"
-		
+			status = "✗ Below target"
+			reason = (
+				f"CompositeScore {score:.3f} < 0.70 "
+				f"| QualScore {quality_score:.3f} ConsolScore {consol_score:.3f} SingletonScore {singleton_score:.3f}"
+			)
+
 		if verbose:
-			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {singleton_ratio:<10.4f} {score:<10.4f} {status:<20}")
+			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {singleton_ratio:<10.4f} {score:<10.4f} {status:<20}{reason}")
 	
 	if not fine_results:
 		raise ValueError("No valid cluster configurations found in fine search")
@@ -2130,9 +2166,9 @@ def cluster(
 			low_loss_low_gain = [ex for ex in questionable_examples if ex['sim_loss'] <= 0.10 and ex['freq_gain'] < 2]
 			
 			print(f"\nBREAKDOWN OF QUESTIONABLE TRADES:")
-			print(f"\tType A: High loss (>10%) + Low gain (<2x):   {len(high_loss_low_gain):<5} ({len(high_loss_low_gain)/questionable_trades*100:.1f}%) ❌ BAD")
-			print(f"\tType B: High loss (>10%) + Good gain (≥2x):  {len(high_loss_good_gain):<5} ({len(high_loss_good_gain)/questionable_trades*100:.1f}%) ⚠️ DEBATABLE")
-			print(f"\tType C: Low loss  (≤10%) + Low gain (<2x):   {len(low_loss_low_gain):<5} ({len(low_loss_low_gain)/questionable_trades*100:.1f}%) ⚠️ UNNECESSARY")
+			print(f"\tType A: High loss (>10%) + Low gain (<2x):   {len(high_loss_low_gain):<5} ({len(high_loss_low_gain)/questionable_trades:<25.4f}❌ BAD")
+			print(f"\tType B: High loss (>10%) + Good gain (≥2x):  {len(high_loss_good_gain):<5} ({len(high_loss_good_gain)/questionable_trades:<25.4f}⚠️ DEBATABLE")
+			print(f"\tType C: Low loss  (≤10%) + Low gain (<2x):   {len(low_loss_low_gain):<5} ({len(low_loss_low_gain)/questionable_trades:<25.4f}⚠️ UNNECESSARY")
 		else:
 			print(f"\nAll trades are high-quality!")
 		
