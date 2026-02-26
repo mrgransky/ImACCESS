@@ -173,11 +173,11 @@ def get_multimodal_annotation(
 	# Post-process only multimodal labels
 	if verbose:
 		print(f"Post-processing LLM-based labels...")
-	llm_based_labels = _post_process_(labels_list=llm_based_labels, 	verbose=verbose)
+	llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
 
 	if verbose:
 		print(f"Post-processing VLM-based labels...")
-	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, 	verbose=verbose)
+	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
 
 	if verbose:
 		print(f"Post-processing Multimodal labels...")
@@ -257,7 +257,7 @@ def get_multimodal_annotation(
 		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
 
 	if "_chunk_" not in os.path.basename(csv_file):
-		train_df, val_df = get_multi_label_stratified_split(
+		get_multi_label_stratified_split(
 			csv_file=output_csv,
 			val_split_pct=0.35,
 			label_col='multimodal_canonical_labels'

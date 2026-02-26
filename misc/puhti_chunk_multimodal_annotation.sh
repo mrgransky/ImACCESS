@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=chunked_mm_annot
+#SBATCH --job-name=temp_chunked_mm_annot
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -10,9 +10,9 @@
 #SBATCH --cpus-per-task=20
 #SBATCH --mem=39G
 #SBATCH --time=03-00:00:00
-#SBATCH --array=0-11
+#SBATCH --array=0-20
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:v100:4,nvme:100
+#SBATCH --gres=gpu:v100:1,nvme:100
 
 set -euo pipefail
 
@@ -71,7 +71,7 @@ fi
 echo "LLM Model: $LLM_MODEL (batch size: $LLM_BATCH_SIZE) max generated tokens: $LLM_MAX_GEN_TKs"
 echo "VLM Model: $VLM_MODEL (batch size: $VLM_BATCH_SIZE) max generated tokens: $VLM_MAX_GEN_TKs"
 
-DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
+DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/_WW_DATASETs"
 CSV_FILE=${DATASET_DIRECTORY}/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv
 echo "Running (chunked) Multimodal Annotation on $CSV_FILE"
 
