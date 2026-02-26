@@ -3569,18 +3569,8 @@ def perform_multilabel_eda(
 		top_label_indices = [list(labels_in_order).index(lab) for lab in top_labels_for_correlation]
 		
 		y_subset = y_binarized[:, top_label_indices].toarray()
-		
-		# Calculate co-occurrence matrix
-		cooccurrence_matrix = np.zeros((n_top_labels_co_occurrence, n_top_labels_co_occurrence))
-		for i in range(n_top_labels_co_occurrence):
-			for j in range(n_top_labels_co_occurrence):
-				if i == j:
-					cooccurrence_matrix[i, j] = np.sum(y_subset[:, i])  # Count of label i
-				else:
-					cooccurrence_matrix[i, j] = np.sum(y_subset[:, i] & y_subset[:, j])  # Co-occurrence count
-		
-		cooccurrence_df = pd.DataFrame(cooccurrence_matrix, index=top_labels_for_correlation, columns=top_labels_for_correlation)
-		
+		print(f"y_subset: {type(y_subset)} {y_subset.shape} {y_subset}")		
+
 		# Calculate Jaccard Similarity Matrix
 		jaccard_matrix = np.zeros((n_top_labels_co_occurrence, n_top_labels_co_occurrence))
 		for i in range(n_top_labels_co_occurrence):
@@ -3653,29 +3643,8 @@ def perform_multilabel_eda(
 			bbox_inches='tight',
 		)
 		plt.close()
-		
-		# 3. Co-occurrence Matrix
-		fig_cooc, ax_cooc = plt.subplots(figsize=(19, 17))
-		sns.heatmap(
-			cooccurrence_df,
-			annot=False,
-			# fmt=".0f",
-			cmap='Greens',
-			linewidths=0.05,
-			linecolor="#E6E6E6",
-			cbar_kws={'label': 'Co-occurrence Count'},
-			ax=ax_cooc,
-		)
-		ax_cooc.set_title(f'Top-{n_top_labels_co_occurrence} Label Co-occurrence Matrix (Absolute Counts)')
-		plt.tight_layout()
-		plt.savefig(
-			fname=os.path.join(output_dir, f"{file_name}_cooccurrence_matrix.png"),
-			dpi=DPI,
-			bbox_inches='tight',
-		)
-		plt.close()
-		
-		# 4. Network Visualization
+				
+		# 3. Network Visualization
 		fig_network = plt.figure(figsize=(20, 17))
 		ax_network = fig_network.add_subplot(1, 1, 1)
 		threshold = 0.01  # Only show edges with Jaccard threshold
