@@ -1411,77 +1411,77 @@ def get_optimal_num_clusters(
 	plateau_k = None
 	
 	for n_clusters in coarse_range:
-			labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
+		labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
+		
+		if len(np.unique(labels)) < 2:
+			continue
+		
+		# Compute mean intra-cluster similarity
+		unique_labels = np.unique(labels)
+		intra_sims = []
+		
+		for cid in unique_labels:
+			cluster_mask = labels == cid
+			cluster_X = X[cluster_mask]
 			
-			if len(np.unique(labels)) < 2:
-				continue
-			
-			# Compute mean intra-cluster similarity
-			unique_labels = np.unique(labels)
-			intra_sims = []
-			
-			for cid in unique_labels:
-				cluster_mask = labels == cid
-				cluster_X = X[cluster_mask]
-				
-				if len(cluster_X) > 1:
-					sim_matrix = cosine_similarity(cluster_X)
-					n = len(cluster_X)
-					intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
-					intra_sims.append(intra_sim)
-			
-			mean_intra_sim = np.mean(intra_sims) if intra_sims else 0
-			
-			# Cluster statistics
-			cluster_sizes = np.bincount(labels)
-			n_singletons = np.sum(cluster_sizes == 1)
-			singleton_ratio = n_singletons / n_clusters
-			consolidation = num_samples / n_clusters
-			
-			coarse_results.append(
-				{
-					'k': n_clusters,
-					'intra_sim': mean_intra_sim,
-					'consolidation': consolidation,
-					'singleton_ratio': singleton_ratio,
-					'n_singletons': n_singletons
-				}
+			if len(cluster_X) > 1:
+				sim_matrix = cosine_similarity(cluster_X)
+				n = len(cluster_X)
+				intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
+				intra_sims.append(intra_sim)
+		
+		mean_intra_sim = np.mean(intra_sims) if intra_sims else 0
+		
+		# Cluster statistics
+		cluster_sizes = np.bincount(labels)
+		n_singletons = np.sum(cluster_sizes == 1)
+		singleton_ratio = n_singletons / n_clusters
+		consolidation = num_samples / n_clusters
+		
+		coarse_results.append(
+			{
+				'k': n_clusters,
+				'intra_sim': mean_intra_sim,
+				'consolidation': consolidation,
+				'singleton_ratio': singleton_ratio,
+				'n_singletons': n_singletons
+			}
+		)
+		
+		# Check if in target range
+		in_consol_range = min_consolidation <= consolidation <= max_consolidation
+		in_singleton_range = 0.005 <= singleton_ratio <= 0.03  # 0.5%-3% acceptable
+		
+		status = ""
+		if mean_intra_sim >= target_intra_similarity and in_consol_range:
+			status = "✓ TARGET REACHED (quality + consolidation)"
+			if plateau_k is None:
+				plateau_k = n_clusters
+		elif in_consol_range and in_singleton_range:
+			status = "✓ OPTIMAL RANGE (consolidation + singletons)"
+			if plateau_k is None:
+				plateau_k = n_clusters
+		elif mean_intra_sim > best_intra_sim:
+			best_intra_sim = mean_intra_sim
+			status = "↑ Improving quality"
+		else:
+			status = "→ Plateau region"
+		
+		if verbose:
+			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {singleton_ratio:<10.4f} {status:<30}")
+		
+		# Early stopping: If in optimal range for 2 consecutive steps
+		if len(coarse_results) >= 2:
+			recent = coarse_results[-2:]
+			both_optimal = all(
+				r['intra_sim'] >= target_intra_similarity * 0.95 and
+				min_consolidation <= r['consolidation'] <= max_consolidation
+				for r in recent
 			)
-			
-			# Check if in target range
-			in_consol_range = min_consolidation <= consolidation <= max_consolidation
-			in_singleton_range = 0.005 <= singleton_ratio <= 0.03  # 0.5%-3% acceptable
-			
-			status = ""
-			if mean_intra_sim >= target_intra_similarity and in_consol_range:
-					status = "✓ TARGET REACHED (quality + consolidation)"
-					if plateau_k is None:
-							plateau_k = n_clusters
-			elif in_consol_range and in_singleton_range:
-					status = "✓ OPTIMAL RANGE (consolidation + singletons)"
-					if plateau_k is None:
-							plateau_k = n_clusters
-			elif mean_intra_sim > best_intra_sim:
-					best_intra_sim = mean_intra_sim
-					status = "↑ Improving quality"
-			else:
-				status = "→ Plateau region"
-			
-			if verbose:
-				print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {singleton_ratio:<10.4f} {status:<30}")
-			
-			# Early stopping: If in optimal range for 2 consecutive steps
-			if len(coarse_results) >= 2:
-				recent = coarse_results[-2:]
-				both_optimal = all(
-					r['intra_sim'] >= target_intra_similarity * 0.95 and
-					min_consolidation <= r['consolidation'] <= max_consolidation
-					for r in recent
-				)
-				if both_optimal and plateau_k is not None:
-					if verbose:
-						print(f"\n[STAGE 1] Optimal range detected. Moving to fine search.")
-					break
+			if both_optimal and plateau_k is not None:
+				if verbose:
+					print(f"\n[STAGE 1] Optimal range detected. Moving to fine search.")
+				break
 	
 	if not coarse_results:
 		raise ValueError("No valid cluster configurations found in coarse search")
@@ -1498,25 +1498,26 @@ def get_optimal_num_clusters(
 	else:
 		if verbose:
 			print(f"Target intra-sim {target_intra_similarity:.2f} is achievable.")
+
 	# Determine search region for Stage 2
 	if plateau_k is None:
-			# Use k that best balances quality and consolidation
-			def score_coarse(r):
-					# Penalize if outside consolidation range
-					consol_penalty = 1.0
-					if r['consolidation'] < min_consolidation:
-							consol_penalty = 0.5
-					elif r['consolidation'] > max_consolidation:
-							consol_penalty = 0.7
-					
-					# Reward if near target singleton ratio
-					singleton_penalty = 1.0 - abs(r['singleton_ratio'] - target_singleton_ratio)
-					singleton_penalty = max(0.5, singleton_penalty)
-					
-					return r['intra_sim'] * consol_penalty * singleton_penalty
+		# Use k that best balances quality and consolidation
+		def score_coarse(r):
+			# Penalize if outside consolidation range
+			consol_penalty = 1.0
+			if r['consolidation'] < min_consolidation:
+				consol_penalty = 0.5
+			elif r['consolidation'] > max_consolidation:
+				consol_penalty = 0.7
 			
-			best_coarse = max(coarse_results, key=score_coarse)
-			plateau_k = best_coarse['k']
+			# Reward if near target singleton ratio
+			singleton_penalty = 1.0 - abs(r['singleton_ratio'] - target_singleton_ratio)
+			singleton_penalty = max(0.5, singleton_penalty)
+			
+			return r['intra_sim'] * consol_penalty * singleton_penalty
+		
+		best_coarse = max(coarse_results, key=score_coarse)
+		plateau_k = best_coarse['k']
 	
 	if verbose:
 		print(f"[DONE STAGE 1] Plateau region centered around k={plateau_k}")
@@ -1533,7 +1534,7 @@ def get_optimal_num_clusters(
 	)
 	
 	if verbose:
-		print(f"[PROPOSAL] Fine search range: {fine_min} ≤ k ≤ {fine_max}")
+		print(f"[PROPOSAL] Fine search range(using Pareto Principle[80:20]): {fine_min} ≤ k ≤ {fine_max}")
 
 	# Guard: if plateau_k was outside valid range, just search the valid range
 	if fine_min >= fine_max:
