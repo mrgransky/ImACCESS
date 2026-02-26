@@ -50,64 +50,95 @@ def dissolve_low_cohesion_clusters(
 		threshold=0.5,
 		verbose=True
 ):
-	clusters_to_dissolve = []
-	
-	# Find low cohesion clusters
-	for cluster_id in df['cluster'].unique():
-			cluster_mask = df['cluster'] == cluster_id
-			cluster_size = cluster_mask.sum()
-			
-			if cluster_size < 2:
-					continue
-			
-			cluster_indices = df[cluster_mask].index.tolist()
-			cluster_embeddings = embeddings[cluster_indices]
-			
-			# Compute intra-cluster similarity
-			sim_matrix = cosine_similarity(cluster_embeddings)
-			n = len(cluster_embeddings)
-			intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
-			
-			if intra_sim < threshold:
-					clusters_to_dissolve.append({
-							'cluster_id': cluster_id,
-							'size': cluster_size,
-							'intra_sim': intra_sim
-					})
-	
-	if verbose:
-			print(f"\n[DISSOLUTION] Found {len(clusters_to_dissolve)} low cohesion clusters")
-			print(f"  Threshold: {threshold}")
-			print(f"  Total labels affected: {sum(c['size'] for c in clusters_to_dissolve)}")
-	
-	# Reassign labels to new singleton clusters
-	max_cluster_id = df['cluster'].max()
-	new_cluster_id = max_cluster_id + 1
-	
-	for cluster_info in clusters_to_dissolve:
-			cluster_id = cluster_info['cluster_id']
-			cluster_mask = df['cluster'] == cluster_id
-			
-			# Assign each label to its own cluster
-			for idx in df[cluster_mask].index:
-					df.loc[idx, 'cluster'] = new_cluster_id
-					df.loc[idx, 'canonical'] = df.loc[idx, 'label']  # Label becomes its own canonical
-					new_cluster_id += 1
-	
-	# Recompute statistics
-	new_n_clusters = df['cluster'].nunique()
-	new_consolidation = len(df) / new_n_clusters
-	
-	if verbose:
-			print(f"\n[RESULTS]")
-			print(f"  Old clusters: {max_cluster_id + 1}")
-			print(f"  New clusters: {new_n_clusters}")
-			print(f"  Change: +{new_n_clusters - (max_cluster_id + 1)}")
-			print(f"  Old consolidation: 4.51x")
-			print(f"  New consolidation: {new_consolidation:.2f}x")
-			print(f"  Dissolved: {len(clusters_to_dissolve)} problematic clusters")
-	
-	return df
+		"""
+		Dissolve clusters with intra-similarity < threshold.
+		Ensures cluster IDs remain contiguous (0, 1, 2, ..., n-1).
+		"""
+		from sklearn.metrics.pairwise import cosine_similarity
+		import numpy as np
+		
+		if verbose:
+				print(f"\n[DISSOLUTION] Analyzing clusters...")
+				print(f"  Threshold: {threshold}")
+		
+		clusters_to_dissolve = []
+		
+		# Find low cohesion clusters
+		for cluster_id in df['cluster'].unique():
+				cluster_mask = df['cluster'] == cluster_id
+				cluster_size = cluster_mask.sum()
+				
+				if cluster_size < 2:
+						continue
+				
+				cluster_labels = df[cluster_mask]['label'].tolist()
+				cluster_indices = df[cluster_mask].index.tolist()
+				cluster_embeddings = embeddings[cluster_indices]
+				
+				sim_matrix = cosine_similarity(cluster_embeddings)
+				n = len(cluster_embeddings)
+				intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
+				
+				if intra_sim < threshold:
+						clusters_to_dissolve.append({
+								'cluster_id': cluster_id,
+								'size': cluster_size,
+								'intra_sim': intra_sim,
+								'labels': cluster_labels
+						})
+		
+		if verbose:
+				print(f"\n[DISSOLUTION] Found {len(clusters_to_dissolve)} low cohesion clusters")
+				print(f"  Total labels affected: {sum(c['size'] for c in clusters_to_dissolve)}")
+		
+		if len(clusters_to_dissolve) == 0:
+				print("\n✅ No low cohesion clusters found. Nothing to dissolve.")
+				return df
+		
+		# Get next available cluster ID
+		max_cluster_id = df['cluster'].max()
+		next_cluster_id = max_cluster_id + 1
+		
+		if verbose:
+				print(f"\n[DISSOLVING] Reassigning labels to new clusters...")
+		
+		# Dissolve each low cohesion cluster
+		for cluster_info in clusters_to_dissolve:
+				cluster_id = cluster_info['cluster_id']
+				cluster_mask = df['cluster'] == cluster_id
+				
+				for idx in df[cluster_mask].index:
+						label_name = df.loc[idx, 'label']
+						df.loc[idx, 'cluster'] = next_cluster_id
+						df.loc[idx, 'canonical'] = label_name
+						next_cluster_id += 1
+		
+		# ✅✅✅ CRITICAL FIX: Re-index clusters to be contiguous (0, 1, 2, ...)
+		if verbose:
+				print(f"\n[RE-INDEXING] Making cluster IDs contiguous...")
+		
+		unique_clusters = sorted(df['cluster'].unique())
+		cluster_mapping = {old_id: new_id for new_id, old_id in enumerate(unique_clusters)}
+		
+		df['cluster'] = df['cluster'].map(cluster_mapping)
+		
+		# Compute statistics
+		old_n_clusters = max_cluster_id + 1
+		new_n_clusters = df['cluster'].nunique()
+		old_consolidation = len(df) / old_n_clusters
+		new_consolidation = len(df) / new_n_clusters
+		
+		if verbose:
+				print(f"\n[RESULTS]")
+				print(f"  Old clusters: {old_n_clusters:,}")
+				print(f"  New clusters: {new_n_clusters:,}")
+				print(f"  Change: +{new_n_clusters - old_n_clusters:,}")
+				print(f"  Old consolidation: {old_consolidation:.2f}x")
+				print(f"  New consolidation: {new_consolidation:.2f}x")
+				print(f"  Cluster ID range: 0 to {df['cluster'].max()} (contiguous: {df['cluster'].max() == new_n_clusters - 1})")
+				print(f"\n✅ Dissolution complete!")
+		
+		return df
 
 def automated_cluster_validation(
 	embeddings: np.ndarray,
