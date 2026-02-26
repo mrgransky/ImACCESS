@@ -675,13 +675,13 @@ def analyze_cluster_quality(
 		global_metrics['ch_interpretation'] = _interpret_ch_index(ch_index)
 		
 		if verbose:
-				print(f"Silhouette Score:        {silhouette:<15.4f}{global_metrics['silhouette_interpretation']}")
-				print(f"Davies-Bouldin Index:    {db_index:<15.4f}{global_metrics['db_interpretation']}")
-				print(f"Calinski-Harabasz Index: {ch_index:<15.4f}{global_metrics['ch_interpretation']}")
+			print(f"Silhouette Score:        {silhouette:<15.4f}{global_metrics['silhouette_interpretation']}")
+			print(f"Davies-Bouldin Index:    {db_index:<15.4f}{global_metrics['db_interpretation']}")
+			print(f"Calinski-Harabasz Index: {ch_index:<15.4f}{global_metrics['ch_interpretation']}")
 		
 		# 2. PER-CLUSTER QUALITY METRICS
 		if verbose:
-				print("\n[2/6] Analyzing Per-Cluster Quality...")
+			print("\n[2/6] Analyzing Per-Cluster Quality...")
 		
 		cluster_metrics_list = []
 		
@@ -693,7 +693,7 @@ def analyze_cluster_quality(
 				
 				# Skip empty clusters (shouldn't happen but safety check)
 				if cluster_size == 0:
-						continue
+					continue
 				
 				# Canonical label for this cluster
 				canonical = canonical_labels.get(cluster_id, "UNKNOWN")
@@ -851,6 +851,23 @@ def analyze_cluster_quality(
 				for issue in problematic_clusters:
 					print(f"{issue['severity']:10s}{issue['issue']:35s}{issue['count']:4d} clusters")
 		
+		# Print detailed breakdown of low cohesion clusters
+		if verbose:
+			print(f"\n[LOW COHESION DETAIL] {len(low_cohesion)} clusters flagged (intra_sim < 0.5):")
+			print(f"{'─' * 60}")
+			low_cohesion_sorted = low_cohesion.sort_values('intra_cluster_similarity')
+			for _, row in low_cohesion_sorted.iterrows():
+				cid = int(row['cluster_id'])
+				canonical = row['canonical_label']
+				sim = row['intra_cluster_similarity']
+				size = int(row['size'])
+				# Retrieve all member labels for this cluster
+				member_labels = labels[cluster_assignments == cid].tolist()
+				print(f"Cluster {cid}: canonical='{canonical}' | sim={sim:.4f} | size={size}")
+				print(f"  labels: {member_labels}")
+				print()
+			print(f"{'─' * 60}")
+
 		# 4. CONSOLIDATION IMPACT ANALYSIS
 		if verbose:
 			print("\n[4/6] Analyzing Consolidation Impact...")
