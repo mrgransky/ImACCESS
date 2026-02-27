@@ -1,713 +1,375 @@
+import json
 import numpy as np
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
 import pandas as pd
 import torch
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+import warnings
+warnings.filterwarnings('ignore')
 
 # ============================================================================
-# 1. LOAD ALL THREE MODELS
+# CONFIGURATION
 # ============================================================================
 
-print("Loading embedding models...")
+# Path to the JSON file exported by analyze_cluster_quality()
+LOW_COHESION_JSON = "/scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4/outputs/low_cohesion_clusters.json"
+
+# Models to test
+MODELS_TO_TEST = {
+	'MPNet-Base': 'sentence-transformers/all-mpnet-base-v2',          # Current (768-dim)
+	'E5-Large-v2': 'intfloat/e5-large-v2',                            # Strong semantic (1024-dim)
+	'E5-Mistral': 'intfloat/e5-mistral-7b-instruct',                  # SOTA (4096-dim)
+	'BGE-Large': 'BAAI/bge-large-en-v1.5',                            # Chinese SOTA (1024-dim)
+	'Jina-v3': 'jinaai/jina-embeddings-v3',                           # Long context (1024-dim)
+	'Nomic-v1.5': 'nomic-ai/nomic-embed-text-v1.5',                   # Vision-compatible (768-dim)
+	'Qwen-Embedding-8B': 'Qwen/Qwen3-Embedding-8B',                   # 8B parameters (1024-dim)
+}
+
+# Cache directory
+CACHE_DIR = "/scratch/project_2004072/models"
+
+# Device
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+# ============================================================================
+# 1. LOAD LOW COHESION CLUSTERS FROM JSON
+# ============================================================================
+
+print("="*80)
+print("LOADING LOW COHESION CLUSTERS FROM JSON")
 print("="*80)
 
-# Model 1: Your current model (4096-dim)
-print("\n[1/3] Loading Qwen3-Embedding-8B (4096-dim)...")
-model_qwen = SentenceTransformer(
-    "Qwen/Qwen3-Embedding-8B",
-    trust_remote_code=True,
-    device='cuda' if torch.cuda.is_available() else 'cpu'
-)
-print(f"✓ Loaded. Embedding dim: {model_qwen.get_sentence_embedding_dimension()}")
+with open(LOW_COHESION_JSON, 'r', encoding='utf-8') as f:
+		low_cohesion_data = json.load(f)
 
-# Model 2: E5-large-v2 (1024-dim, strong semantic understanding)
-print("\n[2/3] Loading intfloat/e5-large-v2 (1024-dim)...")
-model_e5 = SentenceTransformer(
-    "intfloat/e5-large-v2",
-    device='cuda' if torch.cuda.is_available() else 'cpu'
-)
-print(f"✓ Loaded. Embedding dim: {model_e5.get_sentence_embedding_dimension()}")
+# Convert to simpler format: {cluster_id: [labels]}
+LOW_COHESION_CLUSTERS = {
+		int(cid): data['labels'] 
+		for cid, data in low_cohesion_data.items()
+}
 
-# Model 3: MPNet (768-dim, balanced performance)
-print("\n[3/3] Loading all-mpnet-base-v2 (768-dim)...")
-model_mpnet = SentenceTransformer(
-    "sentence-transformers/all-mpnet-base-v2",
-    device='cuda' if torch.cuda.is_available() else 'cpu'
-)
-print(f"✓ Loaded. Embedding dim: {model_mpnet.get_sentence_embedding_dimension()}")
+print(f"\n✓ Loaded {len(LOW_COHESION_CLUSTERS)} low-cohesion clusters")
+print(f"  Total labels: {sum(len(labels) for labels in LOW_COHESION_CLUSTERS.values())}")
+print(f"  Avg cluster size: {np.mean([len(labels) for labels in LOW_COHESION_CLUSTERS.values()]):.1f}")
+print(f"  Device: {DEVICE}")
+
+# Show first 5 examples
+print("\nFirst 5 clusters:")
+for i, (cid, labels) in enumerate(list(LOW_COHESION_CLUSTERS.items())[:5], 1):
+		print(f"  {i}. Cluster {cid}: {labels}")
+
+# ============================================================================
+# 2. LOAD EMBEDDING MODELS
+# ============================================================================
 
 print("\n" + "="*80)
-print("All models loaded successfully!\n")
+print("LOADING EMBEDDING MODELS")
+print("="*80)
 
-# ============================================================================
-# 2. DEFINE YOUR PROBLEMATIC CLUSTERS
-# ============================================================================
+models = {}
+for model_name, model_id in MODELS_TO_TEST.items():
+		try:
+				print(f"\n[{model_name}] Loading {model_id}...")
+				
+				# Special handling for large models
+				if 'mistral' in model_id.lower():
+						model = SentenceTransformer(
+								model_id,
+								trust_remote_code=True,
+								device=DEVICE,
+								cache_folder=CACHE_DIR,
+								model_kwargs={'torch_dtype': torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32}
+						)
+				else:
+						model = SentenceTransformer(
+								model_id,
+								trust_remote_code=True,
+								device=DEVICE,
+								cache_folder=CACHE_DIR
+						)
+				
+				models[model_name] = model
+				dim = model.get_sentence_embedding_dimension()
+				print(f"  ✓ Loaded. Embedding dim: {dim}")
+		
+		except Exception as e:
+				print(f"  ✗ Failed: {e}")
+				print(f"  Skipping {model_name}")
 
-problematic_clusters = {
-    "Cluster 3187 (Random Objects)": [
-        'candlestick', 'ticker tape', 'tweezer'
-    ],
-
-    "Cluster 587 (Bow Homonym)": [
-        'arrow', 'arrowhead', 'bow', 'bow section', 'bowtie', 'yellow arrow'
-    ],
-
-    "Cluster 1825 (Sports Mixed)": [
-        'tack', 'tackle', 'tackle block', 'tackling', 'touchdown'
-    ],
-
-    "Cluster 984 (Spider/Crawler)": [
-        'cobweb', 'crawler tractor', 'crawling', 'spider', 'spider trap'
-    ],
-
-    "Cluster 1767 (Random Short Words)": [
-        'oar', 'ore', 'outrigger', 'urn'
-    ],
-
-    "Cluster 1741 (Alphabetical Soup)": [
-        'delouser', 'lace', 'lad', 'landau', 'lap', 'lar', 'lei',
-        'leper', 'levy', 'lichen', 'lying'
-    ],
-
-    "Cluster 1829 (T-words)": [
-        'target tug', 'tiller', 'toga', 'tosspot', 'tug', 'tuxedo'
-    ],
-
-    "Cluster 1813 (B-words)": [
-        'abri', 'barging', 'berg', 'blubber', 'bluff', 'boister', 'brig'
-    ],
-
-    "Cluster 2035 (Random Short)": [
-        'ale', 'ant', 'ash', 'fin', 'fir', 'inn', 'ink', 'safe', 'tern'
-    ],
-
-    "Cluster 1060 (RAAF/Raft)": [
-        'raaf', 'raf pilot', 'raft', 'target raft'
-    ],
-
-    "Cluster 981 (Mosquito)": [
-        'butterfly', 'mosquito', 'mosquito aircraft', 'mosquito bomber'
-    ],
-}
+print(f"\n✓ Successfully loaded {len(models)}/{len(MODELS_TO_TEST)} models")
 
 # ============================================================================
 # 3. ANALYSIS FUNCTION
 # ============================================================================
 
-def analyze_cluster(cluster_name, terms, model, model_name):
-    """
-    Analyze a cluster with a specific embedding model.
-    Returns intra-cluster similarity and similarity matrix.
-    """
-    # Encode terms
-    embeddings = model.encode(terms, convert_to_numpy=True, normalize_embeddings=True)
-
-    # Compute similarity matrix
-    sim_matrix = cosine_similarity(embeddings)
-
-    # Compute intra-cluster similarity (mean of off-diagonal elements)
-    n = len(terms)
-    if n > 1:
-        intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
-    else:
-        intra_sim = 1.0
-
-    return {
-        'model': model_name,
-        'cluster': cluster_name,
-        'n_terms': n,
-        'intra_similarity': intra_sim,
-        'sim_matrix': sim_matrix,
-        'terms': terms
-    }
+def analyze_cluster_with_model(cluster_id, labels, model, model_name):
+		"""Analyze a single cluster with a specific embedding model."""
+		try:
+				# Encode labels
+				embeddings = model.encode(
+						labels,
+						convert_to_numpy=True,
+						normalize_embeddings=True,
+						show_progress_bar=False
+				)
+				
+				# Compute similarity matrix
+				sim_matrix = cosine_similarity(embeddings)
+				
+				# Compute metrics
+				n = len(labels)
+				if n > 1:
+						# Intra-cluster similarity (mean of off-diagonal)
+						intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
+						
+						# Min and max (excluding diagonal)
+						mask = ~np.eye(n, dtype=bool)
+						min_sim = sim_matrix[mask].min()
+						max_sim = sim_matrix[mask].max()
+						std_sim = sim_matrix[mask].std()
+				else:
+						intra_sim = 1.0
+						min_sim = 1.0
+						max_sim = 1.0
+						std_sim = 0.0
+				
+				return {
+						'cluster_id': cluster_id,
+						'model': model_name,
+						'n_labels': n,
+						'intra_sim': intra_sim,
+						'min_sim': min_sim,
+						'max_sim': max_sim,
+						'std_sim': std_sim,
+						'labels': labels
+				}
+		
+		except Exception as e:
+				print(f"  Error analyzing cluster {cluster_id} with {model_name}: {e}")
+				return None
 
 # ============================================================================
-# 4. RUN ANALYSIS ON ALL CLUSTERS WITH ALL MODELS
+# 4. RUN ANALYSIS ON ALL CLUSTERS
 # ============================================================================
 
-print("Analyzing problematic clusters with all models...")
+print("\n" + "="*80)
+print("ANALYZING LOW-COHESION CLUSTERS")
 print("="*80)
 
 results = []
+total_clusters = len(LOW_COHESION_CLUSTERS)
 
-for cluster_name, terms in problematic_clusters.items():
-    print(f"\n{cluster_name}")
-    print(f"Terms: {terms[:3]}..." if len(terms) > 3 else f"Terms: {terms}")
-    print("-" * 80)
+for idx, (cluster_id, labels) in enumerate(LOW_COHESION_CLUSTERS.items(), 1):
+		# Show progress every 50 clusters
+		if idx % 50 == 0 or idx == 1:
+				print(f"\n[{idx}/{total_clusters}] Processing cluster {cluster_id}...")
+		
+		cluster_results = {}
+		
+		for model_name, model in models.items():
+				result = analyze_cluster_with_model(cluster_id, labels, model, model_name)
+				if result:
+						results.append(result)
+						cluster_results[model_name] = result['intra_sim']
+		
+		# Show details for first 10 clusters
+		if idx <= 10:
+				print(f"  Cluster {cluster_id}: {labels}")
+				for model_name, sim in cluster_results.items():
+						print(f"    {model_name:<15} intra-sim: {sim:.4f}")
+				
+				# Find best model (LOWEST similarity = best separation)
+				if cluster_results:
+						best_model = min(cluster_results.items(), key=lambda x: x[1])
+						print(f"    → Best (lowest): {best_model[0]} ({best_model[1]:.4f}) ✓")
 
-    # Analyze with each model
-    qwen_result = analyze_cluster(cluster_name, terms, model_qwen, "Qwen3-8B")
-    e5_result = analyze_cluster(cluster_name, terms, model_e5, "E5-Large-v2")
-    mpnet_result = analyze_cluster(cluster_name, terms, model_mpnet, "MPNet-Base")
-
-    results.extend([qwen_result, e5_result, mpnet_result])
-
-    # Print comparison
-    print(f"  Qwen3-8B      intra-sim: {qwen_result['intra_similarity']:.4f}")
-    print(f"  E5-Large-v2   intra-sim: {e5_result['intra_similarity']:.4f}")
-    print(f"  MPNet-Base    intra-sim: {mpnet_result['intra_similarity']:.4f}")
-
-    # Determine best model (LOWER is better for problematic clusters)
-    best_model = min([qwen_result, e5_result, mpnet_result],
-                     key=lambda x: x['intra_similarity'])
-
-    print(f"  → Best (lowest): {best_model['model']} ✓")
-
-# ============================================================================
-# 5. SUMMARY TABLE
-# ============================================================================
-
-print("\n" + "="*80)
-print("SUMMARY: Intra-Cluster Similarity by Model")
-print("="*80)
-print("(LOWER is BETTER for problematic clusters - indicates better separation)\n")
-
-# Create summary DataFrame
-summary_data = []
-for result in results:
-    summary_data.append({
-        'Cluster': result['cluster'],
-        'Model': result['model'],
-        'Intra-Similarity': result['intra_similarity'],
-        'N_Terms': result['n_terms']
-    })
-
-df_summary = pd.DataFrame(summary_data)
-
-# Pivot for easier comparison
-pivot = df_summary.pivot(index='Cluster', columns='Model', values='Intra-Similarity')
-pivot = pivot[['Qwen3-8B', 'E5-Large-v2', 'MPNet-Base']]  # Order columns
-
-# Add "Winner" column (lowest similarity)
-pivot['Best_Model'] = pivot.idxmin(axis=1)
-pivot['Separation_Gain'] = pivot['Qwen3-8B'] - pivot[['E5-Large-v2', 'MPNet-Base']].min(axis=1)
-
-print(pivot.to_string())
+print(f"\n✓ Analysis complete!")
 
 # ============================================================================
-# 6. DETAILED PAIRWISE ANALYSIS FOR WORST CLUSTERS
+# 5. CREATE SUMMARY DATAFRAME
 # ============================================================================
 
 print("\n" + "="*80)
-print("DETAILED PAIRWISE ANALYSIS: Worst Problematic Clusters")
+print("CREATING SUMMARY")
 print("="*80)
 
-worst_clusters = [
-    ("Cluster 3187", ['candlestick', 'ticker tape', 'tweezer']),
-    ("Cluster 587", ['arrow', 'bow', 'bowtie']),  # Key problematic trio
-    ("Cluster 1767", ['oar', 'ore', 'outrigger', 'urn']),
-]
+df_results = pd.DataFrame(results)
 
-for cluster_name, terms in worst_clusters:
-    print(f"\n{cluster_name}: {terms}")
-    print("-" * 80)
-
-    for model, model_name in [(model_qwen, "Qwen3-8B"),
-                               (model_e5, "E5-Large-v2"),
-                               (model_mpnet, "MPNet-Base")]:
-        print(f"\n{model_name}:")
-        embeddings = model.encode(terms, convert_to_numpy=True, normalize_embeddings=True)
-        sim_matrix = cosine_similarity(embeddings)
-
-        # Print pairwise similarities
-        for i in range(len(terms)):
-            for j in range(i+1, len(terms)):
-                sim = sim_matrix[i, j]
-
-                # Status based on similarity
-                if sim > 0.80:
-                    status = "❌ TOO HIGH"
-                elif sim > 0.70:
-                    status = "⚠️  HIGH"
-                elif sim > 0.60:
-                    status = "✓ OK"
-                else:
-                    status = "✓✓ GOOD"
-
-                print(f"  {terms[i]:20s} ↔ {terms[j]:20s}: {sim:.3f}  {status}")
-
-# ============================================================================
-# 7. SPECIFIC HOMONYM TEST (bow weapon vs bowtie)
-# ============================================================================
-
-print("\n" + "="*80)
-print("HOMONYM DISAMBIGUATION TEST: 'bow' (weapon) vs 'bowtie' (clothing)")
-print("="*80)
-
-homonym_terms = {
-    'archery_context': ['arrow', 'arrowhead', 'bow', 'quiver', 'target'],
-    'fashion_context': ['bowtie', 'tie', 'suit', 'tuxedo', 'collar'],
-}
-
-for model, model_name in [(model_qwen, "Qwen3-8B"),
-                           (model_e5, "E5-Large-v2"),
-                           (model_mpnet, "MPNet-Base")]:
-    print(f"\n{model_name}:")
-
-    # Encode all terms
-    all_terms = homonym_terms['archery_context'] + homonym_terms['fashion_context']
-    embeddings = model.encode(all_terms, convert_to_numpy=True, normalize_embeddings=True)
-
-    # Get 'bow' and 'bowtie' embeddings
-    bow_idx = all_terms.index('bow')
-    bowtie_idx = all_terms.index('bowtie')
-
-    bow_emb = embeddings[bow_idx:bow_idx+1]
-    bowtie_emb = embeddings[bowtie_idx:bowtie_idx+1]
-
-    # Similarity between bow and bowtie
-    bow_bowtie_sim = cosine_similarity(bow_emb, bowtie_emb)[0, 0]
-
-    # Average similarity of 'bow' to archery terms
-    archery_embs = embeddings[:5]  # First 5 are archery
-    bow_archery_sim = cosine_similarity(bow_emb, archery_embs)[0].mean()
-
-    # Average similarity of 'bowtie' to fashion terms
-    fashion_embs = embeddings[5:]  # Last 5 are fashion
-    bowtie_fashion_sim = cosine_similarity(bowtie_emb, fashion_embs)[0].mean()
-
-    print(f"  bow ↔ bowtie:           {bow_bowtie_sim:.3f}  {'❌ TOO HIGH' if bow_bowtie_sim > 0.70 else '✓ OK'}")
-    print(f"  bow → archery context:  {bow_archery_sim:.3f}  (should be high)")
-    print(f"  bowtie → fashion context: {bowtie_fashion_sim:.3f}  (should be high)")
-    print(f"  Disambiguation quality: {'✓ GOOD' if bow_bowtie_sim < bow_archery_sim - 0.1 else '⚠️ POOR'}")
-
-# ============================================================================
-# 8. ALPHABETICAL CLUSTERING TEST
-# ============================================================================
-
-print("\n" + "="*80)
-print("ALPHABETICAL CLUSTERING TEST: Random 'la-' words")
-print("="*80)
-
-alphabetical_terms = ['lace', 'lad', 'lap', 'lei', 'levy', 'lichen']
-
-for model, model_name in [(model_qwen, "Qwen3-8B"),
-                           (model_e5, "E5-Large-v2"),
-                           (model_mpnet, "MPNet-Base")]:
-    print(f"\n{model_name}:")
-    embeddings = model.encode(alphabetical_terms, convert_to_numpy=True, normalize_embeddings=True)
-    sim_matrix = cosine_similarity(embeddings)
-
-    # Mean intra-cluster similarity
-    n = len(alphabetical_terms)
-    mean_sim = (sim_matrix.sum() - n) / (n * (n - 1))
-
-    print(f"  Mean similarity: {mean_sim:.3f}")
-
-    if mean_sim < 0.30:
-        print(f"  ✓✓ EXCELLENT - Model resists alphabetical clustering")
-    elif mean_sim < 0.50:
-        print(f"  ✓ GOOD - Some resistance to alphabetical clustering")
-    elif mean_sim < 0.65:
-        print(f"  ⚠️  MODERATE - Weak resistance")
-    else:
-        print(f"  ❌ POOR - Falls for alphabetical clustering")
-
-# ============================================================================
-# 9. FINAL RECOMMENDATION
-# ============================================================================
-
-print("\n" + "="*80)
-print("FINAL RECOMMENDATION")
-print("="*80)
-
-# Count wins per model
-wins = df_summary.groupby('Model')['Intra-Similarity'].apply(
-    lambda x: (x == x.min()).sum() if len(x) > 0 else 0
+# Pivot for comparison
+pivot = df_results.pivot(
+		index='cluster_id',
+		columns='model',
+		values='intra_sim'
 )
 
-print("\nModel Performance Summary:")
-print(f"  Qwen3-8B:      {wins.get('Qwen3-8B', 0)} clusters with lowest similarity")
-print(f"  E5-Large-v2:   {wins.get('E5-Large-v2', 0)} clusters with lowest similarity")
-print(f"  MPNet-Base:    {wins.get('MPNet-Base', 0)} clusters with lowest similarity")
+# Add metadata columns
+first_results = df_results.drop_duplicates('cluster_id').set_index('cluster_id')
+pivot['n_labels'] = first_results['n_labels']
+pivot['labels_preview'] = first_results['labels'].apply(
+		lambda x: ', '.join(x[:3]) + ('...' if len(x) > 3 else '')
+)
 
-# Average separation gain
-avg_gain = pivot['Separation_Gain'].mean()
-best_alternative = 'E5-Large-v2' if pivot['E5-Large-v2'].mean() < pivot['MPNet-Base'].mean() else 'MPNet-Base'
+# Add analysis columns
+pivot['MPNet_sim'] = pivot.get('MPNet-Base', np.nan)
+pivot['Best_sim'] = pivot[list(models.keys())].min(axis=1)
+pivot['Best_model'] = pivot[list(models.keys())].idxmin(axis=1)
+pivot['Improvement_over_MPNet'] = ((pivot['MPNet_sim'] - pivot['Best_sim']) / pivot['MPNet_sim'] * 100)
 
-print(f"\nAverage separation gain over Qwen3-8B: {avg_gain:.4f}")
-
-if avg_gain > 0.05:
-    print(f"\n✅ RECOMMENDATION: Switch to {best_alternative}")
-    print(f"   Expected improvement: {avg_gain*100:.1f}% better separation")
-elif avg_gain > 0.02:
-    print(f"\n⚠️  RECOMMENDATION: Consider switching to {best_alternative}")
-    print(f"   Marginal improvement: {avg_gain*100:.1f}% better separation")
-else:
-    print(f"\n❌ RECOMMENDATION: Stay with Qwen3-8B")
-    print(f"   Alternative models don't provide significant improvement")
+# ============================================================================
+# 6. SUMMARY STATISTICS
+# ============================================================================
 
 print("\n" + "="*80)
-print("Analysis complete!")
+print("SUMMARY STATISTICS")
 print("="*80)
 
-model_qwen = SentenceTransformer("Qwen/Qwen3-Embedding-8B", trust_remote_code=True)
-model_e5 = SentenceTransformer("intfloat/e5-large-v2")
-model_mpnet = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
+print("\n1. AVERAGE INTRA-SIMILARITY (Lower = Better Separation)")
+print("-" * 80)
+for model_name in models.keys():
+		if model_name in pivot.columns:
+				avg_sim = pivot[model_name].mean()
+				status = "✅ EXCELLENT" if avg_sim < 0.45 else "✓ GOOD" if avg_sim < 0.55 else "⚠️ MODERATE" if avg_sim < 0.65 else "❌ POOR"
+				print(f"  {model_name:<15} {avg_sim:.4f}  {status}")
 
-print("All models loaded!\n")
+print("\n2. WINNER COUNT (Most clusters with lowest similarity)")
+print("-" * 80)
+winner_counts = pivot['Best_model'].value_counts()
+for model_name, count in winner_counts.items():
+		pct = count / len(pivot) * 100
+		print(f"  {model_name:<15} {count:3d} wins ({pct:5.1f}%)")
+
+print("\n3. IMPROVEMENT OVER MPNet-Base")
+print("-" * 80)
+avg_improvement = pivot['Improvement_over_MPNet'].mean()
+print(f"  Average improvement: {avg_improvement:.2f}%")
+print(f"  Max improvement: {pivot['Improvement_over_MPNet'].max():.2f}%")
+print(f"  Min improvement: {pivot['Improvement_over_MPNet'].min():.2f}%")
+print(f"  Clusters with >10% improvement: {(pivot['Improvement_over_MPNet'] > 10).sum()}")
+print(f"  Clusters with >20% improvement: {(pivot['Improvement_over_MPNet'] > 20).sum()}")
 
 # ============================================================================
-# DEFINE CLUSTERS TO TEST
+# 7. CATEGORY ANALYSIS
 # ============================================================================
 
-# Mix of PROBLEMATIC clusters (should show MPNet wins)
-# and WELL-FORMED clusters (should show all models do well)
+print("\n" + "="*80)
+print("CATEGORY ANALYSIS (by MPNet-Base similarity)")
+print("="*80)
 
-test_clusters = {
-    # ========================================================================
-    # PROBLEMATIC CLUSTERS (from previous analysis)
-    # ========================================================================
-    "❌ Random Objects": [
-        'candlestick', 'ticker tape', 'tweezer'
-    ],
-
-    "❌ Bow Homonym": [
-        'arrow', 'arrowhead', 'bow', 'bow section', 'bowtie', 'yellow arrow'
-    ],
-
-    "❌ Random Short Words": [
-        'oar', 'ore', 'outrigger', 'urn'
-    ],
-
-    "❌ Alphabetical Soup": [
-        'delouser', 'lace', 'lad', 'landau', 'lap', 'lar', 'lei',
-        'leper', 'levy', 'lichen', 'lying'
-    ],
-
-    "❌ RAAF/Raft": [
-        'raaf', 'raf pilot', 'raft', 'target raft'
-    ],
-
-    # ========================================================================
-    # WELL-FORMED CLUSTERS (from your new output)
-    # ========================================================================
-    "✅ Merchant Ships": [
-        'merchant marine', 'merchant marine vessel', 'merchant navy',
-        'merchant ship', 'merchantman'
-    ],
-
-    "✅ Naval Vessels": [
-        'military ship', 'naval ship', 'naval vessel',
-        'navy ship', 'navy vessel'
-    ],
-
-    "✅ Steamships": [
-        'steam ship', 'steamboat', 'steamship', 'steamer'
-    ],
-
-    "✅ Sailing Ships": [
-        'sailing ship', 'sailing vessel', 'sailship',
-        'schooner', 'sloop'
-    ],
-
-    "✅ Troopships": [
-        'troop ship', 'troop transport ship', 'troopship'
-    ],
-
-    "✅ Air Squadron": [
-        'air squadron', 'aircraft squadron', 'fighter squadron',
-        'squadron', 'combat squadron'
-    ],
-
-    "✅ Fighter Groups": [
-        'fighter group', 'fighter wing', 'combat wing'
-    ],
-
-    "✅ Air Force Units": [
-        'air force', 'air force squadron', 'air force unit',
-        'tactical air command'
-    ],
-
-    "✅ Supply Crates": [
-        'supply crate', 'supply crates', 'packing crate'
-    ],
-
-    "✅ Containers": [
-        'container', 'supply container', 'packing box', 'equipment box'
-    ],
+mpnet_sim = pivot['MPNet_sim']
+categories = {
+		'Extremely Low (< 0.40)': mpnet_sim < 0.40,
+		'Very Low (0.40-0.45)': (mpnet_sim >= 0.40) & (mpnet_sim < 0.45),
+		'Low (0.45-0.50)': (mpnet_sim >= 0.45) & (mpnet_sim < 0.50),
 }
 
-# ============================================================================
-# ANALYSIS FUNCTION
-# ============================================================================
-
-def analyze_cluster(cluster_name, terms, model, model_name):
-    """Analyze cluster quality with a specific model."""
-    embeddings = model.encode(terms, convert_to_numpy=True, normalize_embeddings=True)
-    sim_matrix = cosine_similarity(embeddings)
-
-    n = len(terms)
-    if n > 1:
-        intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
-    else:
-        intra_sim = 1.0
-
-    # Additional metrics
-    min_sim = np.min(sim_matrix + np.eye(n) * 10)  # Exclude diagonal
-    max_sim = np.max(sim_matrix - np.eye(n) * 10)  # Exclude diagonal
-    std_sim = np.std(sim_matrix[np.triu_indices(n, k=1)])
-
-    return {
-        'model': model_name,
-        'cluster': cluster_name,
-        'n_terms': n,
-        'intra_similarity': intra_sim,
-        'min_similarity': min_sim,
-        'max_similarity': max_sim,
-        'std_similarity': std_sim,
-        'sim_matrix': sim_matrix,
-        'terms': terms
-    }
+for category_name, mask in categories.items():
+		n_clusters = mask.sum()
+		if n_clusters == 0:
+				continue
+		
+		print(f"\n{category_name}: {n_clusters} clusters")
+		print("-" * 80)
+		
+		category_data = pivot[mask]
+		
+		# Best model for this category
+		best_models = category_data['Best_model'].value_counts()
+		print("  Best model distribution:")
+		for model, count in best_models.items():
+				pct = count / n_clusters * 100
+				print(f"    {model:<15} {count:3d} clusters ({pct:5.1f}%)")
+		
+		# Average improvement
+		avg_imp = category_data['Improvement_over_MPNet'].mean()
+		print(f"  Average improvement over MPNet: {avg_imp:.2f}%")
 
 # ============================================================================
-# RUN ANALYSIS
-# ============================================================================
-
-print("Analyzing clusters with all models...")
-print("="*80)
-
-results = []
-
-for cluster_name, terms in test_clusters.items():
-    is_problematic = cluster_name.startswith("❌")
-    cluster_type = "PROBLEMATIC" if is_problematic else "WELL-FORMED"
-
-    print(f"\n{cluster_name} [{cluster_type}]")
-    print(f"Terms: {terms[:3]}..." if len(terms) > 3 else f"Terms: {terms}")
-    print("-" * 80)
-
-    # Analyze with each model
-    qwen_result = analyze_cluster(cluster_name, terms, model_qwen, "Qwen3-8B")
-    e5_result = analyze_cluster(cluster_name, terms, model_e5, "E5-Large-v2")
-    mpnet_result = analyze_cluster(cluster_name, terms, model_mpnet, "MPNet-Base")
-
-    results.extend([qwen_result, e5_result, mpnet_result])
-
-    # Print comparison
-    print(f"  Qwen3-8B      intra: {qwen_result['intra_similarity']:.4f}  "
-          f"range: [{qwen_result['min_similarity']:.3f}, {qwen_result['max_similarity']:.3f}]")
-    print(f"  E5-Large-v2   intra: {e5_result['intra_similarity']:.4f}  "
-          f"range: [{e5_result['min_similarity']:.3f}, {e5_result['max_similarity']:.3f}]")
-    print(f"  MPNet-Base    intra: {mpnet_result['intra_similarity']:.4f}  "
-          f"range: [{mpnet_result['min_similarity']:.3f}, {mpnet_result['max_similarity']:.3f}]")
-
-    # Determine best model based on cluster type
-    if is_problematic:
-        # For problematic clusters, LOWER is better
-        best_model = min([qwen_result, e5_result, mpnet_result],
-                        key=lambda x: x['intra_similarity'])
-        metric = "lowest (best for separation)"
-    else:
-        # For well-formed clusters, HIGHER is better
-        best_model = max([qwen_result, e5_result, mpnet_result],
-                        key=lambda x: x['intra_similarity'])
-        metric = "highest (best cohesion)"
-
-    print(f"  → Best ({metric}): {best_model['model']} ✓")
-
-# ============================================================================
-# SUMMARY TABLES
+# 8. DETAILED EXAMPLES (Top 20 Worst MPNet-Base Performers)
 # ============================================================================
 
 print("\n" + "="*80)
-print("SUMMARY: Performance by Cluster Type")
+print("TOP 20 WORST MPNet-BASE PERFORMERS")
 print("="*80)
 
-# Create summary DataFrame
-summary_data = []
-for result in results:
-    is_problematic = result['cluster'].startswith("❌")
-    summary_data.append({
-        'Cluster': result['cluster'],
-        'Type': 'PROBLEMATIC' if is_problematic else 'WELL-FORMED',
-        'Model': result['model'],
-        'Intra-Similarity': result['intra_similarity'],
-        'Min-Sim': result['min_similarity'],
-        'Max-Sim': result['max_similarity'],
-        'Std-Sim': result['std_similarity']
-    })
+# Sort by MPNet similarity (highest = worst separation)
+worst_clusters = pivot.nlargest(20, 'MPNet_sim')
 
-df_summary = pd.DataFrame(summary_data)
-
-# ============================================================================
-# ANALYSIS 1: Problematic Clusters (LOWER similarity is BETTER)
-# ============================================================================
-
-print("\n" + "="*80)
-print("PROBLEMATIC CLUSTERS ANALYSIS")
-print("="*80)
-print("(LOWER intra-similarity = BETTER separation)\n")
-
-df_problematic = df_summary[df_summary['Type'] == 'PROBLEMATIC'].copy()
-pivot_prob = df_problematic.pivot(index='Cluster', columns='Model', values='Intra-Similarity')
-pivot_prob = pivot_prob[['Qwen3-8B', 'E5-Large-v2', 'MPNet-Base']]
-
-# Calculate Best_Score first, only from the numeric columns
-pivot_prob['Best_Score'] = pivot_prob.min(axis=1)
-
-# Then add the Winner column based on idxmin
-pivot_prob['Winner'] = pivot_prob[['Qwen3-8B', 'E5-Large-v2', 'MPNet-Base']].idxmin(axis=1)
-
-# Then calculate Qwen_Improvement
-pivot_prob['Qwen_Improvement'] = ((pivot_prob['Qwen3-8B'] - pivot_prob['Best_Score']) /
-                                   pivot_prob['Qwen3-8B'] * 100)
-
-print(pivot_prob.to_string())
-
-# Count wins
-prob_wins = pivot_prob['Winner'].value_counts()
-print(f"\n📊 Winner Count (Problematic Clusters):")
-for model, count in prob_wins.items():
-    print(f"  {model}: {count} wins")
-
-avg_improvement = pivot_prob['Qwen_Improvement'].mean()
-print(f"\n💡 Average improvement over Qwen3-8B: {avg_improvement:.1f}%")
+for idx, (cluster_id, row) in enumerate(worst_clusters.iterrows(), 1):
+		labels = LOW_COHESION_CLUSTERS[cluster_id]
+		
+		print(f"\n{idx}. Cluster {cluster_id}: {labels}")
+		print("-" * 80)
+		
+		for model_name in models.keys():
+				if model_name in row:
+						sim = row[model_name]
+						is_best = (model_name == row['Best_model'])
+						marker = " ← BEST" if is_best else ""
+						print(f"  {model_name:<15} {sim:.4f}{marker}")
+		
+		improvement = row['Improvement_over_MPNet']
+		print(f"  Improvement: {improvement:.2f}%")
 
 # ============================================================================
-# ANALYSIS 2: Well-Formed Clusters (HIGHER similarity is BETTER)
+# 9. EXPORT RESULTS
 # ============================================================================
 
-print("\n" + "="*80)
-print("WELL-FORMED CLUSTERS ANALYSIS")
-print("="*80)
-print("(HIGHER intra-similarity = BETTER cohesion)\n")
+output_csv = LOW_COHESION_JSON.replace('.json', '_model_comparison.csv')
+pivot.to_csv(output_csv)
+print(f"\n✓ Results exported to: {output_csv}")
 
-df_wellformed = df_summary[df_summary['Type'] == 'WELL-FORMED'].copy()
-pivot_well = df_wellformed.pivot(index='Cluster', columns='Model', values='Intra-Similarity')
-pivot_well = pivot_well[['Qwen3-8B', 'E5-Large-v2', 'MPNet-Base']]
-
-# Calculate Best_Score first, only from the numeric columns
-pivot_well['Best_Score'] = pivot_well.max(axis=1)
-
-# Then add the Winner column (highest for well-formed)
-pivot_well['Winner'] = pivot_well[['Qwen3-8B', 'E5-Large-v2', 'MPNet-Base']].idxmax(axis=1)
-
-# Then calculate Qwen_Difference
-pivot_well['Qwen_Difference'] = pivot_well['Qwen3-8B'] - pivot_well['Best_Score']
-
-print(pivot_well.to_string())
-
-# Count wins
-well_wins = pivot_well['Winner'].value_counts()
-print(f"\n📊 Winner Count (Well-Formed Clusters):")
-for model, count in well_wins.items():
-    print(f"  {model}: {count} wins")
-
-avg_diff = pivot_well['Qwen_Difference'].mean()
-if avg_diff < 0:
-    print(f"\n⚠️  Qwen3-8B is {abs(avg_diff):.4f} LOWER on average (cohesion loss)")
-else:
-    print(f"\n✓ Qwen3-8B is {avg_diff:.4f} HIGHER on average (cohesion maintained)")
+# Also export detailed results
+detailed_csv = LOW_COHESION_JSON.replace('.json', '_model_comparison_detailed.csv')
+df_results.to_csv(detailed_csv, index=False)
+print(f"✓ Detailed results exported to: {detailed_csv}")
 
 # ============================================================================
-# ANALYSIS 3: Overall Performance Score
-# ============================================================================
-
-print("\n" + "="*80)
-print("OVERALL PERFORMANCE SCORE")
-print("="*80)
-
-# Score = (Problematic wins × 2) + (Well-formed wins × 1)
-# Problematic clusters are weighted 2x because they're more critical
-
-overall_scores = {}
-for model in ['Qwen3-8B', 'E5-Large-v2', 'MPNet-Base']:
-    prob_score = prob_wins.get(model, 0) * 2  # Weight problematic 2x
-    well_score = well_wins.get(model, 0) * 1
-    total_score = prob_score + well_score
-    overall_scores[model] = {
-        'Problematic_Wins': prob_wins.get(model, 0),
-        'WellFormed_Wins': well_wins.get(model, 0),
-        'Total_Score': total_score
-    }
-
-print("\nModel Performance:")
-print(f"{'Model':<20} {'Prob. Wins':<12} {'Well Wins':<12} {'Total Score':<12}")
-print("-" * 60)
-for model, scores in sorted(overall_scores.items(), key=lambda x: x[1]['Total_Score'], reverse=True):
-    print(f"{model:<20} {scores['Problematic_Wins']:<12} "
-          f"{scores['WellFormed_Wins']:<12} {scores['Total_Score']:<12}")
-
-winner = max(overall_scores.items(), key=lambda x: x[1]['Total_Score'])
-print(f"\n🏆 OVERALL WINNER: {winner[0]}")
-
-# ============================================================================
-# ANALYSIS 4: Detailed Quality Metrics
-# ============================================================================
-
-print("\n" + "="*80)
-print("DETAILED QUALITY METRICS")
-print("="*80)
-
-print("\nProblematic Clusters - Target: Low intra-sim, high separation")
-print("-" * 80)
-for model in ['Qwen3-8B', 'E5-Large-v2', 'MPNet-Base']:
-    model_data = df_problematic[df_problematic['Model'] == model]
-    avg_intra = model_data['Intra-Similarity'].mean()
-    avg_std = model_data['Std-Sim'].mean()
-
-    print(f"{model:<15} Avg Intra: {avg_intra:.4f}  Avg Std: {avg_std:.4f}  "
-          f"{'✅ GOOD' if avg_intra < 0.65 else '⚠️ MODERATE' if avg_intra < 0.75 else '❌ POOR'}")
-
-print("\nWell-Formed Clusters - Target: High intra-sim, low variance")
-print("-" * 80)
-for model in ['Qwen3-8B', 'E5-Large-v2', 'MPNet-Base']:
-    model_data = df_wellformed[df_wellformed['Model'] == model]
-    avg_intra = model_data['Intra-Similarity'].mean()
-    avg_std = model_data['Std-Sim'].mean()
-
-    print(f"{model:<15} Avg Intra: {avg_intra:.4f}  Avg Std: {avg_std:.4f}  "
-          f"{'✅ EXCELLENT' if avg_intra > 0.90 else '✓ GOOD' if avg_intra > 0.85 else '⚠️ OK'}")
-
-# ============================================================================
-# FINAL RECOMMENDATION
+# 10. FINAL RECOMMENDATION
 # ============================================================================
 
 print("\n" + "="*80)
 print("FINAL RECOMMENDATION")
 print("="*80)
 
+# Find overall best model
+best_model_name = winner_counts.idxmax()
+best_model_wins = winner_counts.max()
+best_model_pct = best_model_wins / len(pivot) * 100
+best_model_avg_sim = pivot[best_model_name].mean()
+mpnet_avg_sim = pivot['MPNet_sim'].mean()
+
+print(f"\nBest Performing Model: {best_model_name}")
+print(f"  Wins: {best_model_wins}/{len(pivot)} clusters ({best_model_pct:.1f}%)")
+print(f"  Avg intra-sim: {best_model_avg_sim:.4f} (MPNet: {mpnet_avg_sim:.4f})")
+print(f"  Avg improvement: {avg_improvement:.2f}%")
+print(f"  Separation gain: {(mpnet_avg_sim - best_model_avg_sim) / mpnet_avg_sim * 100:.1f}%")
+
 # Decision logic
-mpnet_prob_wins = prob_wins.get('MPNet-Base', 0)
-mpnet_well_wins = well_wins.get('MPNet-Base', 0)
-total_prob = len(pivot_prob)
-total_well = len(pivot_well)
-
-mpnet_prob_rate = mpnet_prob_wins / total_prob * 100
-mpnet_well_rate = mpnet_well_wins / total_well * 100
-
-print(f"\nMPNet-Base Performance:")
-print(f"  Problematic clusters: {mpnet_prob_wins}/{total_prob} wins ({mpnet_prob_rate:.0f}%)")
-print(f"  Well-formed clusters: {mpnet_well_wins}/{total_well} wins ({mpnet_well_rate:.0f}%)")
-print(f"  Overall score: {overall_scores['MPNet-Base']['Total_Score']}")
-
-qwen_prob_wins = prob_wins.get('Qwen3-8B', 0)
-qwen_well_wins = well_wins.get('Qwen3-8B', 0)
-qwen_prob_rate = qwen_prob_wins / total_prob * 100
-qwen_well_rate = qwen_well_wins / total_well * 100
-
-print(f"\nQwen3-8B Performance:")
-print(f"  Problematic clusters: {qwen_prob_wins}/{total_prob} wins ({qwen_prob_rate:.0f}%)")
-print(f"  Well-formed clusters: {qwen_well_wins}/{total_well} wins ({qwen_well_rate:.0f}%)")
-print(f"  Overall score: {overall_scores['Qwen3-8B']['Total_Score']}")
-
-# Decision
-if mpnet_prob_rate >= 80 and overall_scores['MPNet-Base']['Total_Score'] > overall_scores['Qwen3-8B']['Total_Score']:
-    print("\n✅ STRONG RECOMMENDATION: Switch to MPNet-Base")
-    print(f"   - Dominates problematic clusters ({mpnet_prob_rate:.0f}%)")
-    print(f"   - {'Maintains' if mpnet_well_rate >= 40 else 'Acceptable'} well-formed quality ({mpnet_well_rate:.0f}%)")
-    print(f"   - Higher overall score ({overall_scores['MPNet-Base']['Total_Score']} vs {overall_scores['Qwen3-8B']['Total_Score']})")
-
-elif mpnet_prob_rate >= 60:
-    print("\n⚠️  MODERATE RECOMMENDATION: Consider switching to MPNet-Base")
-    print(f"   - Strong on problematic clusters ({mpnet_prob_rate:.0f}%)")
-    print(f"   - Trade-off on well-formed clusters ({mpnet_well_rate:.0f}%)")
-
+if best_model_name != 'MPNet-Base':
+		if avg_improvement > 15 and best_model_pct > 60:
+				print(f"\n✅ STRONG RECOMMENDATION: Switch to {best_model_name}")
+				print(f"   - Dominates {best_model_pct:.0f}% of problematic clusters")
+				print(f"   - Average {avg_improvement:.1f}% improvement in separation")
+				print(f"   - Will significantly reduce low-cohesion clusters")
+				print(f"\n   NEXT STEPS:")
+				print(f"   1. Re-run clustering with {best_model_name}")
+				print(f"   2. Expected: <100 low-cohesion clusters (vs current 300)")
+				print(f"   3. No need for dissolution or aggressive filtering")
+		elif avg_improvement > 8 and best_model_pct > 50:
+				print(f"\n⚠️  MODERATE RECOMMENDATION: Consider switching to {best_model_name}")
+				print(f"   - Notable improvement ({avg_improvement:.1f}%)")
+				print(f"   - Wins {best_model_pct:.0f}% of problematic clusters")
+				print(f"   - Worth re-clustering if time permits")
+		else:
+				print(f"\n⚠️  MARGINAL IMPROVEMENT: {best_model_name} is slightly better")
+				print(f"   - Small improvement ({avg_improvement:.1f}%)")
+				print(f"   - May not justify re-clustering effort")
+				print(f"   - Consider keeping MPNet-Base and using dissolution + filtering")
 else:
-    print("\n❌ RECOMMENDATION: Stay with Qwen3-8B")
-    print(f"   - MPNet-Base doesn't show sufficient improvement")
+		print(f"\n✓ MPNet-Base is already optimal for these clusters")
+		print(f"   - No significant improvement from other models")
+		print(f"   - Proceed with dissolution + filtering strategy")
 
 print("\n" + "="*80)
-print("Analysis complete!")
+print("ANALYSIS COMPLETE")
 print("="*80)
