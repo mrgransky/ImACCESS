@@ -140,10 +140,10 @@ def dissolve_low_cohesion_clusters(
 		return df
 
 def fix_poor_canonical_clusters(
-		df,
-		embeddings,
-		threshold=0.60,
-		verbose=True
+	df,
+	embeddings,
+	threshold=0.60,
+	verbose=True
 ):
 	print(f"\n[FIX POOR CANONICAL] Threshold: {threshold}")
 	
@@ -151,39 +151,41 @@ def fix_poor_canonical_clusters(
 	poor_canonical_clusters = []
 	
 	for cluster_id in df['cluster'].unique():
-			cluster_mask = df['cluster'] == cluster_id
-			cluster_labels = df[cluster_mask]['label'].tolist()
-			cluster_size = len(cluster_labels)
-			
-			if cluster_size < 2:
-					continue
-			
-			cluster_indices = df[cluster_mask].index.tolist()
-			cluster_embeddings = embeddings[cluster_indices]
-			
-			# Get current canonical
-			current_canonical = df[cluster_mask]['canonical'].iloc[0]
-			canonical_idx = cluster_labels.index(current_canonical)
-			canonical_emb = cluster_embeddings[canonical_idx].reshape(1, -1)
-			
-			# Compute representativeness (avg similarity to all members)
-			canonical_rep = cosine_similarity(canonical_emb, cluster_embeddings).mean()
-			
-			if canonical_rep < threshold:
-					poor_canonical_clusters.append({
-							'cluster_id': cluster_id,
-							'current_canonical': current_canonical,
-							'representativeness': canonical_rep,
-							'size': cluster_size,
-							'labels': cluster_labels
-					})
+		cluster_mask = df['cluster'] == cluster_id
+		cluster_labels = df[cluster_mask]['label'].tolist()
+		cluster_size = len(cluster_labels)
+		
+		if cluster_size < 2:
+			continue
+		
+		cluster_indices = df[cluster_mask].index.tolist()
+		cluster_embeddings = embeddings[cluster_indices]
+		
+		# Get current canonical
+		current_canonical = df[cluster_mask]['canonical'].iloc[0]
+		canonical_idx = cluster_labels.index(current_canonical)
+		canonical_emb = cluster_embeddings[canonical_idx].reshape(1, -1)
+		
+		# Compute representativeness (avg similarity to all members)
+		canonical_rep = cosine_similarity(canonical_emb, cluster_embeddings).mean()
+		
+		if canonical_rep < threshold:
+			poor_canonical_clusters.append(
+				{
+					'cluster_id': cluster_id,
+					'current_canonical': current_canonical,
+					'representativeness': canonical_rep,
+					'size': cluster_size,
+					'labels': cluster_labels
+				}
+			)
 	
 	if verbose:
-			print(f"  Found {len(poor_canonical_clusters)} clusters with poor canonical")
+		print(f"  Found {len(poor_canonical_clusters)} clusters with poor canonical")
 	
 	if len(poor_canonical_clusters) == 0:
-			print("  ✓ All canonical labels are representative!")
-			return df
+		print("  ✓ All canonical labels are representative!")
+		return df
 	
 	# Re-select canonical for each poor cluster
 	fixed_count = 0
@@ -2395,25 +2397,25 @@ def cluster(
 
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 
-	df = dissolve_low_cohesion_clusters(
-		df=df,
-		embeddings=X,
-		threshold=0.50,
-		verbose=verbose,
-	)
+	# df = dissolve_low_cohesion_clusters(
+	# 	df=df,
+	# 	embeddings=X,
+	# 	threshold=0.50,
+	# 	verbose=verbose,
+	# )
 
-	print("\n[SYNC] Updating cluster assignments for analysis...")
-	cluster_labels = df['cluster'].values
-	canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
-	print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
-	print(f"  └─ Updated canonical_map: {len(canonical_map)} mappings")
+	# print("\n[SYNC] Updating cluster assignments for analysis...")
+	# cluster_labels = df['cluster'].values
+	# canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
+	# print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
+	# print(f"  └─ Updated canonical_map: {len(canonical_map)} mappings")
 
-	df = fix_poor_canonical_clusters(
-		df=df,
-		embeddings=X,
-		threshold=0.60,
-		verbose=verbose,
-	)
+	# df = fix_poor_canonical_clusters(
+	# 	df=df,
+	# 	embeddings=X,
+	# 	threshold=0.60,
+	# 	verbose=verbose,
+	# )
 
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
 	df.to_csv(out_csv, index=False)
