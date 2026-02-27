@@ -242,14 +242,14 @@ for model_name in models.keys():
 		if model_name in pivot.columns:
 				avg_sim = pivot[model_name].mean()
 				status = "✅ EXCELLENT" if avg_sim < 0.45 else "✓ GOOD" if avg_sim < 0.55 else "⚠️ MODERATE" if avg_sim < 0.65 else "❌ POOR"
-				print(f"  {model_name:<15} {avg_sim:.4f}  {status}")
+				print(f"{model_name:<50}{avg_sim:<15.4f}{status}")
 
 print("\n2. WINNER COUNT (Most clusters with lowest similarity)")
 print("-" * 80)
 winner_counts = pivot['Best_model'].value_counts()
 for model_name, count in winner_counts.items():
 		pct = count / len(pivot) * 100
-		print(f"  {model_name:<15} {count:3d} wins ({pct:5.1f}%)")
+		print(f"{model_name:<50}{count:<10d} wins ({pct:5.1f}%)")
 
 print("\n3. IMPROVEMENT OVER MPNet-Base")
 print("-" * 80)
