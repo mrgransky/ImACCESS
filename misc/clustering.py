@@ -1317,45 +1317,6 @@ def export_problematic_clusters(
 		df.to_csv(output_path, index=False)
 		print(f"✅ Exported {len(df)} labels from {len(problematic_cluster_ids)} problematic clusters to: {output_path}")
 
-def eval_clusters(df, X):
-		"""
-		Comprehensive quality evaluation.
-		"""
-		cluster_sizes = df.groupby('cluster').size()
-		
-		metrics = {
-				'n_clusters': len(cluster_sizes),
-				'n_singletons': (cluster_sizes == 1).sum(),
-				'singleton_ratio': (cluster_sizes == 1).sum() / len(cluster_sizes),
-				'mean_size': cluster_sizes.mean(),
-				'median_size': cluster_sizes.median(),
-				'max_size': cluster_sizes.max(),
-				'min_size': cluster_sizes.min(),
-				'consolidation_ratio': len(df) / len(cluster_sizes),
-		}
-		
-		# Intra-cluster similarity
-		intra_sim = []
-		for cid in df.cluster.unique():
-				cluster_mask = df.cluster == cid
-				if cluster_mask.sum() < 2:
-						continue
-				cluster_indices = df[cluster_mask].index.tolist()
-				cluster_embeddings = X[cluster_indices]
-				
-				# Average pairwise cosine similarity
-				sim_matrix = cosine_similarity(cluster_embeddings)
-				avg_sim = (sim_matrix.sum() - len(cluster_indices)) / (len(cluster_indices) * (len(cluster_indices) - 1))
-				intra_sim.append(avg_sim)
-		
-		metrics['mean_intra_similarity'] = np.mean(intra_sim)
-		
-		print("\n[QUALITY METRICS]")
-		for k, v in metrics.items():
-				print(f"  {k}: {v:.4f}" if isinstance(v, float) else f"  {k}: {v}")
-		
-		return metrics
-
 def get_optimal_super_clusters(
 	linkage_matrix,
 	embeddings,
@@ -2404,12 +2365,6 @@ def cluster(
 	# 	verbose=verbose,
 	# )
 
-	print("\n[SYNC] Updating cluster assignments for analysis...")
-	cluster_labels = df['cluster'].values
-	canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
-	print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
-	print(f"  └─ Updated canonical_map: {len(canonical_map)} mappings")
-
 	# df = fix_poor_canonical_clusters(
 	# 	df=df,
 	# 	embeddings=X,
@@ -2419,23 +2374,17 @@ def cluster(
 
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
 	df.to_csv(out_csv, index=False)
-	try:
-		df.to_excel(out_csv.replace('.csv', '.xlsx'), index=False)
-	except Exception as e:
-		print(f"Failed to write Excel file: {e}")
 	
-	eval_clusters(df, X)
-
 	print("\nRUNNING COMPREHENSIVE CLUSTER QUALITY ANALYSIS\n")
+	cluster_labels = df['cluster'].values
+	canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
 	unique_labels_array = np.array(unique_labels)
-	print(f"\nPrepared data for analysis:")
+	print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
+	print(f"  ├─ Updated canonical_map: {len(canonical_map)} mappings")
 	print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
 	print(f"  ├─ cluster_labels: {type(cluster_labels)} {cluster_labels.shape}")
 	print(f"  ├─ canonical_map: {len(canonical_map)} mappings")
-	print(f"  └─ label_freq_dict: {len(label_freq_dict)} labels with frequencies")
-
-	# Verification check
-	print(f"\n[VERIFICATION] Cluster count consistency:")
+	print(f"  ├─ label_freq_dict: {len(label_freq_dict)} labels with frequencies")
 	print(f"  ├─ df reports: {df['cluster'].nunique()} clusters")
 	print(f"  ├─ cluster_labels reports: {len(np.unique(cluster_labels))} clusters")
 	print(f"  └─ canonical_map reports: {len(canonical_map)} clusters")
@@ -2445,49 +2394,11 @@ def cluster(
 	else:
 		print(f"All consistent!")
 
-	# # Extract simple canonical mapping (cluster_id -> canonical_label_string)
-	# canonical_map = {
-	# 	cid: info['canonical'] 
-	# 	for cid, info in cluster_canonicals.items()
-	# }
-
-	# print(f"Prepared data for analysis:")
-	# print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
-	# print(f"  ├─ cluster_labels: {type(cluster_labels)} {cluster_labels.shape}")
-	# print(f"  ├─ canonical_map: {len(canonical_map)} mappings")
-	# print(f"  └─ label_freq_dict: {len(label_freq_dict)} labels with frequencies")
-
-	# print(f"\ncluster quality analysis\n")
-	# print(clusters_fname)
-	# results = analyze_cluster_quality(
-	# 	embeddings=X,
-	# 	labels=unique_labels_array,
-	# 	cluster_assignments=cluster_labels,
-	# 	canonical_labels=canonical_map,
-	# 	original_label_counts=label_freq_dict,
-	# 	distance_metric='cosine',
-	# 	output_dir=os.path.dirname(clusters_fname),
-	# 	verbose=True
-	# )	
-	# cluster_quality_csv = clusters_fname.replace(".csv", "_cluster_quality_metrics.csv")
-	# results['cluster_metrics'].to_csv(cluster_quality_csv, index=False)
-
-
-	# Prepare canonical map from updated df
-	canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
-
-	print(f"\nPrepared data for analysis:")
-	print(f"  ├─ unique_labels_array: {len(df)} labels")
-	print(f"  ├─ cluster_assignments: from df['cluster']")
-	print(f"  ├─ canonical_map: {len(canonical_map)} mappings")
-	print(f"  └─ label_freq_dict: {len(label_freq_dict)} labels with frequencies")
-
-	# Use df['cluster'].values directly (always up-to-date)
 	results = analyze_cluster_quality(
 		embeddings=X,
-		labels=df['label'].values,           # ✅ From df (always correct order)
-		cluster_assignments=df['cluster'].values,  # ✅ From df (always updated)
-		canonical_labels=canonical_map,      # ✅ Regenerated from df
+		labels=df['label'].values,
+		cluster_assignments=df['cluster'].values,
+		canonical_labels=canonical_map,
 		original_label_counts=label_freq_dict,
 		distance_metric='cosine',
 		output_dir=os.path.dirname(clusters_fname),
