@@ -16,11 +16,12 @@ LOW_COHESION_JSON = "/scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4/o
 
 # Models to test
 MODELS_TO_TEST = {
-	'Qwen-Embedding-4B': 'Qwen/Qwen3-Embedding-4B',                   # 4B parameters (1024-dim)
-	'E5-Mistral': 'intfloat/e5-mistral-7b-instruct',                  # SOTA (4096-dim)
-	'E5-Large-v2': 'intfloat/e5-large-v2',                            # Strong semantic (1024-dim)
+	'Qwen-Embedding-4B': 'Qwen/Qwen3-Embedding-4B',
+	'E5-Mistral': 'intfloat/e5-mistral-7b-instruct',
+	'E5-Large': 'intfloat/e5-large',
+	'E5-Large-v2': 'intfloat/e5-large-v2',
 	'E5-Mistral-Multilingual': 'intfloat/multilingual-e5-large-instruct',
-	'MPNet-Base': 'sentence-transformers/all-mpnet-base-v2',          # Current (768-dim)
+	'MPNet-Base': 'sentence-transformers/all-mpnet-base-v2',
 	'MPNet-Base-QA': 'sentence-transformers/multi-qa-mpnet-base-dot-v1',
 	'MiniLM-L12': "sentence-transformers/all-MiniLM-L12-v2",
 	'MiniLM-L6': "sentence-transformers/all-MiniLM-L6-v2",
