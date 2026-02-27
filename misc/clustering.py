@@ -2317,18 +2317,16 @@ def cluster(
 				print(f"     Consider reducing frequency weight from 0.3 to 0.2")
 	else:
 		print("\n  ℹ️  Frequency weighting made no changes (all clusters picked highest similarity)")
-
 	print("="*100)
 
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 
-	print("\nDISSOLVING LOW COHESION CLUSTERS\n")
-	df = dissolve_low_cohesion_clusters(
-		df=df,
-		embeddings=X,
-		threshold=0.50,
-		verbose=verbose,
-	)
+	# df = dissolve_low_cohesion_clusters(
+	# 	df=df,
+	# 	embeddings=X,
+	# 	threshold=0.50,
+	# 	verbose=verbose,
+	# )
 
 	print("\n[SYNC] Updating cluster assignments for analysis...")
 	cluster_labels = df['cluster'].values
@@ -2416,7 +2414,6 @@ def cluster(
 	cluster_quality_csv = clusters_fname.replace(".csv", "_cluster_quality_metrics.csv")
 	results['cluster_metrics'].to_csv(cluster_quality_csv, index=False)
 
-
 	# Export problematic clusters if any
 	if results['problematic_clusters']:
 		all_problematic_ids = []
@@ -2442,19 +2439,5 @@ def cluster(
 		original_label_counts=label_freq_dict,
 		verbose=True
 	)
-
-	if verbose and "discharge" in unique_labels and "hospital discharge" in unique_labels:
-		# Check if "discharge" and "hospital discharge" are in the SAME cluster
-		discharge_cluster = df[df['label'] == 'discharge']['cluster'].iloc[0]
-		hospital_discharge_cluster = df[df['label'] == 'hospital discharge']['cluster'].iloc[0]
-
-		print(f"discharge cluster: {discharge_cluster}")
-		print(f"hospital discharge cluster: {hospital_discharge_cluster}")
-		print(f"Same cluster? {discharge_cluster == hospital_discharge_cluster}")
-
-		if discharge_cluster == hospital_discharge_cluster:
-			print("❌ THEY ARE STILL TOGETHER!")
-			canonical = df[df['cluster'] == discharge_cluster]['canonical'].iloc[0]
-			print(f"Canonical: {canonical}")
 
 	return df

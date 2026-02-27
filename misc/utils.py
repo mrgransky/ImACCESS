@@ -649,8 +649,10 @@ def get_multi_label_stratified_split(
 	final_rows = len(df_filtered)
 	if final_rows == 0:
 		raise ValueError("No samples with non-empty label lists remain after parsing and initial filtering.")
+
 	if initial_rows != final_rows:
 		print(f"Removed {initial_rows - final_rows} rows with empty label lists.")
+
 	print(f"DataFrame shape after filtering empty label lists: {df_filtered.shape}")
 
 	# --- 3. Binarize Labels ---
@@ -685,7 +687,7 @@ def get_multi_label_stratified_split(
 	#################################################################################################
 	print(f">> IterativeStratification dataset: {df_filtered.shape} [takes time for large datasets]...")
 	stratifier = IterativeStratification(
-		n_splits=2,
+		n_splits=2,  # Split into 2 folds: train and validation
 		order=1 if len(df_filtered) > int(1e5) else 2,  # Lower order = faster (default is 2)
 		sample_distribution_per_fold=[val_split_pct, 1-val_split_pct],
 	)
