@@ -19,12 +19,15 @@ MODELS_TO_TEST = {
 	'MPNet-Base': 'sentence-transformers/all-mpnet-base-v2',          # Current (768-dim)
 	'E5-Large-v2': 'intfloat/e5-large-v2',                            # Strong semantic (1024-dim)
 	'E5-Mistral': 'intfloat/e5-mistral-7b-instruct',                  # SOTA (4096-dim)
+	'E5-Mistral-v2': 'intfloat/e5-mistral-7b-instruct',                  # SOTA (4096-dim)
+	'E5-Mistral-Multilingual': 'intfloat/multilingual-e5-large-instruct',
 	'BGE-Large': 'BAAI/bge-large-en-v1.5',                            # Chinese SOTA (1024-dim)
 	'MiniLM-L12': "sentence-transformers/all-MiniLM-L12-v2",
 	'MiniLM-L6': "sentence-transformers/all-MiniLM-L6-v2",
 	# 'Jina-v3': 'jinaai/jina-embeddings-v3',                           # Long context (1024-dim)
 	'Nomic-v1.5': 'nomic-ai/nomic-embed-text-v1.5',                   # Vision-compatible (768-dim)
 	'Qwen-Embedding-0.6B': 'Qwen/Qwen3-Embedding-0.6B',                   # 0.6B parameters (1024-dim)
+	'Qwen-Embedding-4B': 'Qwen/Qwen3-Embedding-4B',                   # 4B parameters (1024-dim)
 }
 
 # Cache directory
