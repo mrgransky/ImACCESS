@@ -139,6 +139,88 @@ def dissolve_low_cohesion_clusters(
 		
 		return df
 
+def fix_poor_canonical_clusters(
+		df,
+		embeddings,
+		threshold=0.60,
+		verbose=True
+):
+	print(f"\n[FIX POOR CANONICAL] Threshold: {threshold}")
+	
+	# Identify poor canonical clusters
+	poor_canonical_clusters = []
+	
+	for cluster_id in df['cluster'].unique():
+			cluster_mask = df['cluster'] == cluster_id
+			cluster_labels = df[cluster_mask]['label'].tolist()
+			cluster_size = len(cluster_labels)
+			
+			if cluster_size < 2:
+					continue
+			
+			cluster_indices = df[cluster_mask].index.tolist()
+			cluster_embeddings = embeddings[cluster_indices]
+			
+			# Get current canonical
+			current_canonical = df[cluster_mask]['canonical'].iloc[0]
+			canonical_idx = cluster_labels.index(current_canonical)
+			canonical_emb = cluster_embeddings[canonical_idx].reshape(1, -1)
+			
+			# Compute representativeness (avg similarity to all members)
+			canonical_rep = cosine_similarity(canonical_emb, cluster_embeddings).mean()
+			
+			if canonical_rep < threshold:
+					poor_canonical_clusters.append({
+							'cluster_id': cluster_id,
+							'current_canonical': current_canonical,
+							'representativeness': canonical_rep,
+							'size': cluster_size,
+							'labels': cluster_labels
+					})
+	
+	if verbose:
+			print(f"  Found {len(poor_canonical_clusters)} clusters with poor canonical")
+	
+	if len(poor_canonical_clusters) == 0:
+			print("  ✓ All canonical labels are representative!")
+			return df
+	
+	# Re-select canonical for each poor cluster
+	fixed_count = 0
+	
+	for cluster_info in poor_canonical_clusters:
+		cluster_id = cluster_info['cluster_id']
+		cluster_labels = cluster_info['labels']
+		old_canonical = cluster_info['current_canonical']
+		
+		cluster_mask = df['cluster'] == cluster_id
+		cluster_indices = df[cluster_mask].index.tolist()
+		cluster_embeddings = embeddings[cluster_indices]
+		
+		# Method 1: Centroid-nearest (most representative)
+		centroid = cluster_embeddings.mean(axis=0, keepdims=True)
+		similarities = cosine_similarity(centroid, cluster_embeddings)[0]
+		best_idx = similarities.argmax()
+		new_canonical = cluster_labels[best_idx]
+		new_rep = similarities[best_idx]
+		
+		# Update canonical in dataframe
+		df.loc[cluster_mask, 'canonical'] = new_canonical
+		
+		fixed_count += 1
+		
+		if verbose:
+			print(f"\nCluster {cluster_id} ({len(cluster_labels)} labels):")
+			print(f"\tOld: '{old_canonical}' (rep={cluster_info['representativeness']:.4f})")
+			print(f"\tNew: '{new_canonical}' (rep={new_rep:.4f})")
+			print(f"\tImprovement: {(new_rep - cluster_info['representativeness']):.4f}")
+			print(f"\tLabels: {cluster_labels}")
+	
+	if verbose:
+		print(f"\n✓ Fixed {fixed_count} clusters")
+	
+	return df
+
 def automated_cluster_validation(
 	embeddings: np.ndarray,
 	labels: np.ndarray,
@@ -2325,6 +2407,13 @@ def cluster(
 	canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
 	print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
 	print(f"  └─ Updated canonical_map: {len(canonical_map)} mappings")
+
+	df = fix_poor_canonical_clusters(
+		df=df,
+		embeddings=X,
+		threshold=0.60,
+		verbose=verbose,
+	)
 
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
 	df.to_csv(out_csv, index=False)

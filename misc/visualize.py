@@ -2762,9 +2762,9 @@ def analyze_top_labels_per_source(
 
 			source_labels.extend(labels)
 
-		print(f"\n>>> Source: {col} containing {type(source_labels)} {len(source_labels)} samples <<<")
+		print(f"\n>>> Source: {col} containing {type(source_labels)} {len(source_labels)} samples")
 		source_unique = sorted(list(set(source_labels)))
-		print(f"Total {col} unique labels: {type(source_unique)} {len(source_unique)}:\n{source_unique[:15]}\n")
+		print(f"Total {col} unique labels: {type(source_unique)} {len(source_unique)}")
 
 		# Count frequencies
 		source_counts = Counter(source_labels)
@@ -2779,7 +2779,7 @@ def analyze_top_labels_per_source(
 		# Singleton analysis
 		source_singletons = source_counts_df[source_counts_df['Count'] == 1]['Label'].tolist()
 		print(f"Singleton {col} {type(source_singletons)}: {len(source_singletons)}/{len(source_unique)} ({len(source_singletons) / len(source_unique) * 100:.2f}%):")
-		print(source_singletons[:15])
+		print(source_singletons[:25])
 
 		# Create individual visualization for this source
 		plt.figure(figsize=(14, 12))
