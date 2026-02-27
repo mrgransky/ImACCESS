@@ -2404,11 +2404,11 @@ def cluster(
 	# 	verbose=verbose,
 	# )
 
-	# print("\n[SYNC] Updating cluster assignments for analysis...")
-	# cluster_labels = df['cluster'].values
-	# canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
-	# print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
-	# print(f"  └─ Updated canonical_map: {len(canonical_map)} mappings")
+	print("\n[SYNC] Updating cluster assignments for analysis...")
+	cluster_labels = df['cluster'].values
+	canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
+	print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
+	print(f"  └─ Updated canonical_map: {len(canonical_map)} mappings")
 
 	# df = fix_poor_canonical_clusters(
 	# 	df=df,
