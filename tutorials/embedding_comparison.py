@@ -20,9 +20,9 @@ MODELS_TO_TEST = {
 	'E5-Large-v2': 'intfloat/e5-large-v2',                            # Strong semantic (1024-dim)
 	'E5-Mistral': 'intfloat/e5-mistral-7b-instruct',                  # SOTA (4096-dim)
 	'BGE-Large': 'BAAI/bge-large-en-v1.5',                            # Chinese SOTA (1024-dim)
-	'Jina-v3': 'jinaai/jina-embeddings-v3',                           # Long context (1024-dim)
+	# 'Jina-v3': 'jinaai/jina-embeddings-v3',                           # Long context (1024-dim)
 	'Nomic-v1.5': 'nomic-ai/nomic-embed-text-v1.5',                   # Vision-compatible (768-dim)
-	'Qwen-Embedding-8B': 'Qwen/Qwen3-Embedding-8B',                   # 8B parameters (1024-dim)
+	# 'Qwen-Embedding-8B': 'Qwen/Qwen3-Embedding-8B',                   # 8B parameters (1024-dim)
 }
 
 # Cache directory
@@ -78,7 +78,7 @@ for model_name, model_id in MODELS_TO_TEST.items():
 								trust_remote_code=True,
 								device=DEVICE,
 								cache_folder=CACHE_DIR,
-								model_kwargs={'torch_dtype': torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32}
+								model_kwargs={'dtype': torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32}
 						)
 				else:
 						model = SentenceTransformer(
