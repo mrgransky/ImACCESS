@@ -113,7 +113,6 @@ def dissolve_low_cohesion_clusters(
 						df.loc[idx, 'canonical'] = label_name
 						next_cluster_id += 1
 		
-		# ✅✅✅ CRITICAL FIX: Re-index clusters to be contiguous (0, 1, 2, ...)
 		if verbose:
 				print(f"\n[RE-INDEXING] Making cluster IDs contiguous...")
 		
@@ -691,366 +690,342 @@ def analyze_cluster_quality(
 	output_dir: str = "./",
 	verbose: bool = True
 ) -> Dict:
-		"""
-		Comprehensive cluster quality analysis for semantic label consolidation.
-		
-		This function evaluates clustering quality from multiple perspectives:
-		1. Global clustering metrics (silhouette, DB index, CH index)
-		2. Per-cluster quality metrics (cohesion, separation, size distribution)
-		3. Semantic quality (intra-cluster similarity, canonical representativeness)
-		4. Label consolidation impact (coverage, reduction ratio)
-		5. Anomaly detection (outlier clusters, suspicious merges)
-		
-		Parameters
-		----------
-		embeddings : np.ndarray, shape (n_samples, embedding_dim)
-				Normalized embeddings of all unique labels
-		labels : np.ndarray, shape (n_samples,)
-				Original label strings corresponding to embeddings
-		cluster_assignments : np.ndarray, shape (n_samples,)
-				Cluster ID for each label (from agglomerative clustering)
-		canonical_labels : Dict[int, str]
-				Mapping from cluster_id -> canonical label string
-		original_label_counts : Dict[str, int], optional
-				Original frequency of each label in the full dataset
-				(before deduplication). Used for weighted analysis.
-		distance_metric : str, default='cosine'
-				Distance metric for quality evaluation ('cosine' or 'euclidean')
-		verbose : bool, default=True
-				Print detailed analysis report
-		
-		Returns
-		-------
-		analysis_results : Dict
-				Comprehensive dictionary containing:
-				- 'global_metrics': Overall clustering quality scores
-				- 'cluster_metrics': Per-cluster quality DataFrame
-				- 'problematic_clusters': List of clusters needing review
-				- 'consolidation_impact': Label reduction statistics
-				- 'recommendations': Actionable insights
-				- 'summary': Executive summary string
-		"""
-		
-		n_samples = len(labels)
-		n_clusters = len(np.unique(cluster_assignments))
-		
-		if verbose:
-				print("\nCLUSTER QUALITY ANALYSIS REPORT\n")
-				print(f"Dataset: {n_samples:,} unique labels → {n_clusters:,} clusters")
-				print(f"Reduction ratio: {n_samples/n_clusters:.2f}x")
-		
-		# 1. GLOBAL CLUSTERING METRICS
-		if verbose:
-			print("\n[1/6] Computing Global Clustering Metrics...")
-		
-		global_metrics = {}
-		
-		# Silhouette Score (higher is better, range [-1, 1])
-		# Measures how similar objects are to their own cluster vs other clusters
-		with warnings.catch_warnings():
-			warnings.simplefilter("ignore")
-			if distance_metric == 'cosine':
-				distances = cosine_distances(embeddings)
-				silhouette = silhouette_score(distances, cluster_assignments, metric='precomputed')
+	n_samples = len(labels)
+	n_clusters = len(np.unique(cluster_assignments))
+	
+	if verbose:
+			print("\nCLUSTER QUALITY ANALYSIS REPORT\n")
+			print(f"Dataset: {n_samples:,} unique labels → {n_clusters:,} clusters")
+			print(f"Reduction ratio: {n_samples/n_clusters:.2f}x")
+	
+	# 1. GLOBAL CLUSTERING METRICS
+	if verbose:
+		print("\n[1/6] Computing Global Clustering Metrics...")
+	
+	global_metrics = {}
+	
+	# Silhouette Score (higher is better, range [-1, 1])
+	# Measures how similar objects are to their own cluster vs other clusters
+	with warnings.catch_warnings():
+		warnings.simplefilter("ignore")
+		if distance_metric == 'cosine':
+			distances = cosine_distances(embeddings)
+			silhouette = silhouette_score(distances, cluster_assignments, metric='precomputed')
+		else:
+			silhouette = silhouette_score(embeddings, cluster_assignments, metric='euclidean')
+	
+	global_metrics['silhouette_score'] = silhouette
+	global_metrics['silhouette_interpretation'] = _interpret_silhouette(silhouette)
+	
+	# Davies-Bouldin Index (lower is better, range [0, ∞))
+	# Ratio of within-cluster to between-cluster distances
+	db_index = davies_bouldin_score(embeddings, cluster_assignments)
+	global_metrics['davies_bouldin_index'] = db_index
+	global_metrics['db_interpretation'] = _interpret_db_index(db_index)
+	
+	# Calinski-Harabasz Index (higher is better, range [0, ∞))
+	# Ratio of between-cluster to within-cluster variance
+	ch_index = calinski_harabasz_score(embeddings, cluster_assignments)
+	global_metrics['calinski_harabasz_index'] = ch_index
+	global_metrics['ch_interpretation'] = _interpret_ch_index(ch_index)
+	
+	if verbose:
+		print(f"Silhouette Score:        {silhouette:<15.4f}{global_metrics['silhouette_interpretation']}")
+		print(f"Davies-Bouldin Index:    {db_index:<15.4f}{global_metrics['db_interpretation']}")
+		print(f"Calinski-Harabasz Index: {ch_index:<15.4f}{global_metrics['ch_interpretation']}")
+	
+	# 2. PER-CLUSTER QUALITY METRICS
+	if verbose:
+		print("\n[2/6] Analyzing Per-Cluster Quality...")
+	
+	cluster_metrics_list = []
+	
+	for cluster_id in range(n_clusters):
+			mask = cluster_assignments == cluster_id
+			cluster_embeddings = embeddings[mask]
+			cluster_labels = labels[mask]
+			cluster_size = len(cluster_labels)
+			
+			# Skip empty clusters (shouldn't happen but safety check)
+			if cluster_size == 0:
+				continue
+			
+			# Canonical label for this cluster
+			canonical = canonical_labels.get(cluster_id, "UNKNOWN")
+			
+			# Intra-cluster cohesion (average cosine similarity within cluster)
+			if cluster_size > 1:
+					intra_sim = cosine_similarity(cluster_embeddings).mean()
+					# Exclude diagonal (self-similarity = 1.0)
+					intra_sim_no_diag = (cosine_similarity(cluster_embeddings).sum() - cluster_size) / (cluster_size * (cluster_size - 1))
 			else:
-				silhouette = silhouette_score(embeddings, cluster_assignments, metric='euclidean')
-		
-		global_metrics['silhouette_score'] = silhouette
-		global_metrics['silhouette_interpretation'] = _interpret_silhouette(silhouette)
-		
-		# Davies-Bouldin Index (lower is better, range [0, ∞))
-		# Ratio of within-cluster to between-cluster distances
-		db_index = davies_bouldin_score(embeddings, cluster_assignments)
-		global_metrics['davies_bouldin_index'] = db_index
-		global_metrics['db_interpretation'] = _interpret_db_index(db_index)
-		
-		# Calinski-Harabasz Index (higher is better, range [0, ∞))
-		# Ratio of between-cluster to within-cluster variance
-		ch_index = calinski_harabasz_score(embeddings, cluster_assignments)
-		global_metrics['calinski_harabasz_index'] = ch_index
-		global_metrics['ch_interpretation'] = _interpret_ch_index(ch_index)
-		
-		if verbose:
-			print(f"Silhouette Score:        {silhouette:<15.4f}{global_metrics['silhouette_interpretation']}")
-			print(f"Davies-Bouldin Index:    {db_index:<15.4f}{global_metrics['db_interpretation']}")
-			print(f"Calinski-Harabasz Index: {ch_index:<15.4f}{global_metrics['ch_interpretation']}")
-		
-		# 2. PER-CLUSTER QUALITY METRICS
-		if verbose:
-			print("\n[2/6] Analyzing Per-Cluster Quality...")
-		
-		cluster_metrics_list = []
-		
-		for cluster_id in range(n_clusters):
-				mask = cluster_assignments == cluster_id
-				cluster_embeddings = embeddings[mask]
-				cluster_labels = labels[mask]
-				cluster_size = len(cluster_labels)
-				
-				# Skip empty clusters (shouldn't happen but safety check)
-				if cluster_size == 0:
-					continue
-				
-				# Canonical label for this cluster
-				canonical = canonical_labels.get(cluster_id, "UNKNOWN")
-				
-				# Intra-cluster cohesion (average cosine similarity within cluster)
-				if cluster_size > 1:
-						intra_sim = cosine_similarity(cluster_embeddings).mean()
-						# Exclude diagonal (self-similarity = 1.0)
-						intra_sim_no_diag = (cosine_similarity(cluster_embeddings).sum() - cluster_size) / (cluster_size * (cluster_size - 1))
-				else:
-						intra_sim = 1.0
-						intra_sim_no_diag = 1.0
-				
-				# Canonical representativeness (how well canonical represents the cluster)
-				canonical_idx = np.where(cluster_labels == canonical)[0]
-				if len(canonical_idx) > 0:
-						canonical_emb = cluster_embeddings[canonical_idx[0]].reshape(1, -1)
-						canonical_sim = cosine_similarity(canonical_emb, cluster_embeddings).mean()
-				else:
-						# Canonical not in cluster (shouldn't happen)
-						canonical_sim = 0.0
-				
-				# Cluster diameter (max pairwise distance)
-				if cluster_size > 1:
-						pairwise_dists = pdist(cluster_embeddings, metric='cosine')
-						diameter = pairwise_dists.max()
-						avg_distance = pairwise_dists.mean()
-				else:
-						diameter = 0.0
-						avg_distance = 0.0
-				
-				# Label diversity (entropy of label distribution)
-				if original_label_counts:
-						cluster_counts = [original_label_counts.get(lbl, 1) for lbl in cluster_labels]
-						total_count = sum(cluster_counts)
-						probs = np.array(cluster_counts) / total_count
-						label_entropy = entropy(probs)
-				else:
-						label_entropy = np.log(cluster_size) if cluster_size > 1 else 0.0
-				
-				# Weighted coverage (if original counts provided)
-				if original_label_counts:
-						cluster_coverage = sum(original_label_counts.get(lbl, 1) for lbl in cluster_labels)
-				else:
-						cluster_coverage = cluster_size
-				
-				cluster_metrics_list.append({
-						'cluster_id': cluster_id,
-						'size': cluster_size,
-						'canonical_label': canonical,
-						'intra_cluster_similarity': intra_sim_no_diag,
-						'canonical_representativeness': canonical_sim,
-						'cluster_diameter': diameter,
-						'avg_pairwise_distance': avg_distance,
-						'label_entropy': label_entropy,
-						'coverage': cluster_coverage
-				})
-		
-		cluster_df = pd.DataFrame(cluster_metrics_list)
-		
-		# Add quality flags
-		cluster_df['quality_flag'] = cluster_df.apply(_flag_cluster_quality, axis=1)
-		
-		if verbose:
-			print(f"\tAnalyzed {n_clusters:,} clusters")
-			print(f"\tAvg cluster size: {cluster_df['size'].mean():.1f} (median: {cluster_df['size'].median():.0f})")
-			print(f"\tAvg intra-cluster similarity: {cluster_df['intra_cluster_similarity'].mean():.4f}")
-			print(f"\tAvg canonical representativeness: {cluster_df['canonical_representativeness'].mean():.4f}")
-		
-		# 3. IDENTIFY PROBLEMATIC CLUSTERS
-		if verbose:
-			print("\n[3/6] Identifying Problematic Clusters...")
-		
-		problematic_clusters = []
-		
-		# Flag 1: Low cohesion (intra-cluster similarity < 0.5)
-		low_cohesion = cluster_df[cluster_df['intra_cluster_similarity'] < 0.5]
-		if len(low_cohesion) > 0:
-			problematic_clusters.append(
-				{
-					'issue': 'Low Cohesion',
-					'count': len(low_cohesion),
-					'cluster_ids': low_cohesion['cluster_id'].tolist(),
-					'severity': 'HIGH',
-					'description': 'Clusters with low internal similarity (< 0.5). May contain semantically diverse labels.'
-				}
-			)
-			# save into file:
-			low_cohesion.to_csv(os.path.join(output_dir, f"low_cohesion_clusters.csv"), index=False)
-		
-		# Flag 2: Poor canonical representativeness (< 0.6)
-		poor_canonical = cluster_df[cluster_df['canonical_representativeness'] < 0.6]
-		if len(poor_canonical) > 0:
-			problematic_clusters.append(
-				{
-					'issue': 'Poor Canonical Representativeness',
-					'count': len(poor_canonical),
-					'cluster_ids': poor_canonical['cluster_id'].tolist(),
-					'severity': 'MEDIUM',
-					'description': 'Canonical label does not represent cluster well (< 0.6 similarity).'
-				}
-			)
-			# save into file:
-			poor_canonical.to_csv(os.path.join(output_dir, f"poor_canonical_clusters.csv"), index=False)
-		
-		# Flag 3: Large diameter (> 0.8 cosine distance)
-		large_diameter = cluster_df[cluster_df['cluster_diameter'] > 0.8]
-		if len(large_diameter) > 0:
-			problematic_clusters.append(
-				{
-					'issue': 'Large Cluster Diameter',
-					'count': len(large_diameter),
-					'cluster_ids': large_diameter['cluster_id'].tolist(),
-					'severity': 'MEDIUM',
-					'description': 'Clusters with large spread (diameter > 0.8). May need splitting.'
-				}
-			)
-			# save into file:
-			large_diameter.to_csv(os.path.join(output_dir, f"large_diameter_clusters.csv"), index=False)
-		
-		# Flag 4: Singleton clusters (size = 1)
-		singletons = cluster_df[cluster_df['size'] == 1]
-		if len(singletons) > 0:
-			problematic_clusters.append(
-				{
-					'issue': 'Singleton Clusters',
-					'count': len(singletons),
-					'cluster_ids': singletons['cluster_id'].tolist(),
-					'severity': 'LOW',
-					'description': 'Clusters with only one label. No consolidation benefit.'
-				}
-			)
-		
-		# Flag 5: Very large clusters (size > 95th percentile)
-		size_threshold = cluster_df['size'].quantile(0.95)
-		very_large = cluster_df[cluster_df['size'] > size_threshold]
-		if len(very_large) > 0:
-			problematic_clusters.append(
-				{
-					'issue': 'Very Large Clusters',
-					'count': len(very_large),
-					'cluster_ids': very_large['cluster_id'].tolist(),
-					'severity': 'LOW',
-					'description': f'Clusters larger than 95th percentile (> {size_threshold:.0f} labels). May be over-merged.'
-				}
-			)
-			# save into file:
-			very_large.to_csv(os.path.join(output_dir, f"very_large_clusters.csv"), index=False)
-		
-		if verbose:
-			if len(problematic_clusters) == 0:
-				print("\t[OK] No major problematic clusters detected!")
+					intra_sim = 1.0
+					intra_sim_no_diag = 1.0
+			
+			# Canonical representativeness (how well canonical represents the cluster)
+			canonical_idx = np.where(cluster_labels == canonical)[0]
+			if len(canonical_idx) > 0:
+					canonical_emb = cluster_embeddings[canonical_idx[0]].reshape(1, -1)
+					canonical_sim = cosine_similarity(canonical_emb, cluster_embeddings).mean()
 			else:
-				print(f"Found {len(problematic_clusters)} type(s) of problematic clusters:")
-				for issue in problematic_clusters:
-					print(f"{issue['severity']:10s}{issue['issue']:35s}{issue['count']:4d} clusters")
+					# Canonical not in cluster (shouldn't happen)
+					canonical_sim = 0.0
+			
+			# Cluster diameter (max pairwise distance)
+			if cluster_size > 1:
+					pairwise_dists = pdist(cluster_embeddings, metric='cosine')
+					diameter = pairwise_dists.max()
+					avg_distance = pairwise_dists.mean()
+			else:
+					diameter = 0.0
+					avg_distance = 0.0
+			
+			# Label diversity (entropy of label distribution)
+			if original_label_counts:
+					cluster_counts = [original_label_counts.get(lbl, 1) for lbl in cluster_labels]
+					total_count = sum(cluster_counts)
+					probs = np.array(cluster_counts) / total_count
+					label_entropy = entropy(probs)
+			else:
+					label_entropy = np.log(cluster_size) if cluster_size > 1 else 0.0
+			
+			# Weighted coverage (if original counts provided)
+			if original_label_counts:
+					cluster_coverage = sum(original_label_counts.get(lbl, 1) for lbl in cluster_labels)
+			else:
+					cluster_coverage = cluster_size
+			
+			cluster_metrics_list.append({
+					'cluster_id': cluster_id,
+					'size': cluster_size,
+					'canonical_label': canonical,
+					'intra_cluster_similarity': intra_sim_no_diag,
+					'canonical_representativeness': canonical_sim,
+					'cluster_diameter': diameter,
+					'avg_pairwise_distance': avg_distance,
+					'label_entropy': label_entropy,
+					'coverage': cluster_coverage
+			})
+	
+	cluster_df = pd.DataFrame(cluster_metrics_list)
+	
+	# Add quality flags
+	cluster_df['quality_flag'] = cluster_df.apply(_flag_cluster_quality, axis=1)
+	
+	if verbose:
+		print(f"\tAnalyzed {n_clusters:,} clusters")
+		print(f"\tAvg cluster size: {cluster_df['size'].mean():.1f} (median: {cluster_df['size'].median():.0f})")
+		print(f"\tAvg intra-cluster similarity: {cluster_df['intra_cluster_similarity'].mean():.4f}")
+		print(f"\tAvg canonical representativeness: {cluster_df['canonical_representativeness'].mean():.4f}")
+	
+	# 3. IDENTIFY PROBLEMATIC CLUSTERS
+	if verbose:
+		print("\n[3/6] Identifying Problematic Clusters...")
+	
+	problematic_clusters = []
+	
+	# Flag 1: Low cohesion (intra-cluster similarity < 0.5)
+	low_cohesion = cluster_df[cluster_df['intra_cluster_similarity'] < 0.5]
+	if len(low_cohesion) > 0:
+		problematic_clusters.append(
+			{
+				'issue': 'Low Cohesion',
+				'count': len(low_cohesion),
+				'cluster_ids': low_cohesion['cluster_id'].tolist(),
+				'severity': 'HIGH',
+				'description': 'Clusters with low internal similarity (< 0.5). May contain semantically diverse labels.'
+			}
+		)
+		# save into file:
+		low_cohesion.to_csv(os.path.join(output_dir, f"low_cohesion_clusters.csv"), index=False)
+		low_cohesion_dict = {}
+		for _, row in low_cohesion.iterrows():
+			cid = int(row['cluster_id'])
+			member_labels = labels[cluster_assignments == cid].tolist()
+			low_cohesion_dict[cid] = {
+				'labels': member_labels,
+				'canonical': row['canonical_label'],
+				'intra_similarity': float(row['intra_cluster_similarity']),
+				'size': int(row['size'])
+			}
 		
-		# Print detailed breakdown of low cohesion clusters
+		json_path = os.path.join(output_dir, "low_cohesion_clusters.json")
+		with open(json_path, 'w', encoding='utf-8') as f:
+			json.dump(low_cohesion_dict, f, indent=2, ensure_ascii=False)
+		
 		if verbose:
-			print(f"\n[LOW COHESION DETAIL] {len(low_cohesion)} clusters flagged (intra_sim < 0.5):")
-			print(f"{'─' * 60}")
-			low_cohesion_sorted = low_cohesion.sort_values('intra_cluster_similarity')
-			for _, row in low_cohesion_sorted.iterrows():
-				cid = int(row['cluster_id'])
-				canonical = row['canonical_label']
-				sim = row['intra_cluster_similarity']
-				size = int(row['size'])
-				# Retrieve all member labels for this cluster
-				member_labels = labels[cluster_assignments == cid].tolist()
-				print(f"Cluster {cid}: canonical='{canonical}' | sim={sim:.4f} | size={size}")
-				print(f"  labels: {member_labels}")
-				print()
-			print(f"{'─' * 60}")
+			print(f"\n✓ Exported {len(low_cohesion_dict)} low cohesion clusters to: {json_path}")
 
-		# 4. CONSOLIDATION IMPACT ANALYSIS
-		if verbose:
-			print("\n[4/6] Analyzing Consolidation Impact...")
-		
-		consolidation_impact = {
-				'original_labels': n_samples,
-				'consolidated_labels': n_clusters,
-				'reduction_ratio': n_samples / n_clusters,
-				'reduction_percentage': (1 - n_clusters / n_samples) * 100,
-				'singleton_clusters': len(singletons),
-				'singleton_percentage': len(singletons) / n_clusters * 100,
-				'avg_cluster_size': cluster_df['size'].mean(),
-				'median_cluster_size': cluster_df['size'].median(),
-				'max_cluster_size': cluster_df['size'].max(),
-				'size_std': cluster_df['size'].std()
-		}
-		
-		if original_label_counts:
-				total_original_instances = sum(original_label_counts.values())
-				consolidation_impact['total_original_instances'] = total_original_instances
-				consolidation_impact['avg_instances_per_original_label'] = total_original_instances / n_samples
-				consolidation_impact['avg_instances_per_cluster'] = total_original_instances / n_clusters
-		
-		if verbose:
-				print(f"\tLabel reduction: {n_samples:,} → {n_clusters:,} ({consolidation_impact['reduction_percentage']:.1f}% reduction)")
-				print(f"\tAvg consolidation: {consolidation_impact['reduction_ratio']:.2f} labels per cluster")
-				print(f"\tSingleton clusters: {len(singletons):,} ({consolidation_impact['singleton_percentage']:.1f}%)")
-		
-		# 5. CLUSTER SIZE DISTRIBUTION ANALYSIS
-		if verbose:
-			print("\n[5/6] Cluster Size Distribution...")
-		
-		size_distribution = {
-				'min': int(cluster_df['size'].min()),
-				'q25': int(cluster_df['size'].quantile(0.25)),
-				'median': int(cluster_df['size'].median()),
-				'q75': int(cluster_df['size'].quantile(0.75)),
-				'q95': int(cluster_df['size'].quantile(0.95)),
-				'max': int(cluster_df['size'].max()),
-				'mean': float(cluster_df['size'].mean()),
-				'std': float(cluster_df['size'].std())
-		}
-		
-		if verbose:
-			print(
-				f"\tMin: {size_distribution['min']}, Q25: {size_distribution['q25']}, "
-				f"Median: {size_distribution['median']}, Q75: {size_distribution['q75']}, "
-				f"Q95: {size_distribution['q95']}, Max: {size_distribution['max']}"
-			)
-		
-		# 6. GENERATE RECOMMENDATIONS
-		if verbose:
-			print("\n[6/6] Generating Recommendations...")
-		
-		recommendations = _generate_recommendations(
-				global_metrics, 
-				cluster_df, 
-				problematic_clusters, 
-				consolidation_impact
+
+	# Flag 2: Poor canonical representativeness (< 0.6)
+	poor_canonical = cluster_df[cluster_df['canonical_representativeness'] < 0.6]
+	if len(poor_canonical) > 0:
+		problematic_clusters.append(
+			{
+				'issue': 'Poor Canonical Representativeness',
+				'count': len(poor_canonical),
+				'cluster_ids': poor_canonical['cluster_id'].tolist(),
+				'severity': 'MEDIUM',
+				'description': 'Canonical label does not represent cluster well (< 0.6 similarity).'
+			}
 		)
-		
-		if verbose:
-			for i, rec in enumerate(recommendations, 1):
-				print(f"\t{i}. {rec}")
-		
-		summary = _generate_summary(
-				global_metrics, 
-				consolidation_impact, 
-				problematic_clusters,
-				n_samples,
-				n_clusters
+		# save into file:
+		poor_canonical.to_csv(os.path.join(output_dir, f"poor_canonical_clusters.csv"), index=False)
+	
+	# Flag 3: Large diameter (> 0.8 cosine distance)
+	large_diameter = cluster_df[cluster_df['cluster_diameter'] > 0.8]
+	if len(large_diameter) > 0:
+		problematic_clusters.append(
+			{
+				'issue': 'Large Cluster Diameter',
+				'count': len(large_diameter),
+				'cluster_ids': large_diameter['cluster_id'].tolist(),
+				'severity': 'MEDIUM',
+				'description': 'Clusters with large spread (diameter > 0.8). May need splitting.'
+			}
 		)
-		
-		if verbose:
-			print("\nEXECUTIVE SUMMARY\n")
-			print(summary)
+		# save into file:
+		large_diameter.to_csv(os.path.join(output_dir, f"large_diameter_clusters.csv"), index=False)
+	
+	# Flag 4: Singleton clusters (size = 1)
+	singletons = cluster_df[cluster_df['size'] == 1]
+	if len(singletons) > 0:
+		problematic_clusters.append(
+			{
+				'issue': 'Singleton Clusters',
+				'count': len(singletons),
+				'cluster_ids': singletons['cluster_id'].tolist(),
+				'severity': 'LOW',
+				'description': 'Clusters with only one label. No consolidation benefit.'
+			}
+		)
+	
+	# Flag 5: Very large clusters (size > 95th percentile)
+	size_threshold = cluster_df['size'].quantile(0.95)
+	very_large = cluster_df[cluster_df['size'] > size_threshold]
+	if len(very_large) > 0:
+		problematic_clusters.append(
+			{
+				'issue': 'Very Large Clusters',
+				'count': len(very_large),
+				'cluster_ids': very_large['cluster_id'].tolist(),
+				'severity': 'LOW',
+				'description': f'Clusters larger than 95th percentile (> {size_threshold:.0f} labels). May be over-merged.'
+			}
+		)
+		# save into file:
+		very_large.to_csv(os.path.join(output_dir, f"very_large_clusters.csv"), index=False)
+	
+	if verbose:
+		if len(problematic_clusters) == 0:
+			print("\t[OK] No major problematic clusters detected!")
+		else:
+			print(f"Found {len(problematic_clusters)} type(s) of problematic clusters:")
+			for issue in problematic_clusters:
+				print(f"{issue['severity']:10s}{issue['issue']:35s}{issue['count']:4d} clusters")
+	
+	if verbose:
+		print(f"\n[LOW COHESION DETAIL] {len(low_cohesion)} clusters flagged (intra_sim < 0.5):")
+		print(f"{'─' * 60}")
+		low_cohesion_sorted = low_cohesion.sort_values('intra_cluster_similarity')
+		for _, row in low_cohesion_sorted.iterrows():
+			cid = int(row['cluster_id'])
+			canonical = row['canonical_label']
+			sim = row['intra_cluster_similarity']
+			size = int(row['size'])
+			# Retrieve all member labels for this cluster
+			member_labels = labels[cluster_assignments == cid].tolist()
+			print(f"Cluster {cid}: canonical='{canonical}' | sim={sim:.4f} | size={size}")
+			print(f"  labels: {member_labels}")
 			print()
-		
-		return {
-				'global_metrics': global_metrics,
-				'cluster_metrics': cluster_df,
-				'problematic_clusters': problematic_clusters,
-				'consolidation_impact': consolidation_impact,
-				'size_distribution': size_distribution,
-				'recommendations': recommendations,
-				'summary': summary
-		}
+		print(f"{'─' * 60}")
+	# 4. CONSOLIDATION IMPACT ANALYSIS
+	if verbose:
+		print("\n[4/6] Analyzing Consolidation Impact...")
+	
+	consolidation_impact = {
+			'original_labels': n_samples,
+			'consolidated_labels': n_clusters,
+			'reduction_ratio': n_samples / n_clusters,
+			'reduction_percentage': (1 - n_clusters / n_samples) * 100,
+			'singleton_clusters': len(singletons),
+			'singleton_percentage': len(singletons) / n_clusters * 100,
+			'avg_cluster_size': cluster_df['size'].mean(),
+			'median_cluster_size': cluster_df['size'].median(),
+			'max_cluster_size': cluster_df['size'].max(),
+			'size_std': cluster_df['size'].std()
+	}
+	
+	if original_label_counts:
+			total_original_instances = sum(original_label_counts.values())
+			consolidation_impact['total_original_instances'] = total_original_instances
+			consolidation_impact['avg_instances_per_original_label'] = total_original_instances / n_samples
+			consolidation_impact['avg_instances_per_cluster'] = total_original_instances / n_clusters
+	
+	if verbose:
+			print(f"\tLabel reduction: {n_samples:,} → {n_clusters:,} ({consolidation_impact['reduction_percentage']:.1f}% reduction)")
+			print(f"\tAvg consolidation: {consolidation_impact['reduction_ratio']:.2f} labels per cluster")
+			print(f"\tSingleton clusters: {len(singletons):,} ({consolidation_impact['singleton_percentage']:.1f}%)")
+	
+	# 5. CLUSTER SIZE DISTRIBUTION ANALYSIS
+	if verbose:
+		print("\n[5/6] Cluster Size Distribution...")
+	
+	size_distribution = {
+			'min': int(cluster_df['size'].min()),
+			'q25': int(cluster_df['size'].quantile(0.25)),
+			'median': int(cluster_df['size'].median()),
+			'q75': int(cluster_df['size'].quantile(0.75)),
+			'q95': int(cluster_df['size'].quantile(0.95)),
+			'max': int(cluster_df['size'].max()),
+			'mean': float(cluster_df['size'].mean()),
+			'std': float(cluster_df['size'].std())
+	}
+	
+	if verbose:
+		print(
+			f"\tMin: {size_distribution['min']}, Q25: {size_distribution['q25']}, "
+			f"Median: {size_distribution['median']}, Q75: {size_distribution['q75']}, "
+			f"Q95: {size_distribution['q95']}, Max: {size_distribution['max']}"
+		)
+	
+	# 6. GENERATE RECOMMENDATIONS
+	if verbose:
+		print("\n[6/6] Generating Recommendations...")
+	
+	recommendations = _generate_recommendations(
+			global_metrics, 
+			cluster_df, 
+			problematic_clusters, 
+			consolidation_impact
+	)
+	
+	if verbose:
+		for i, rec in enumerate(recommendations, 1):
+			print(f"\t{i}. {rec}")
+	
+	summary = _generate_summary(
+			global_metrics, 
+			consolidation_impact, 
+			problematic_clusters,
+			n_samples,
+			n_clusters
+	)
+	
+	if verbose:
+		print("\nEXECUTIVE SUMMARY\n")
+		print(summary)
+		print()
+	
+	return {
+		'global_metrics': global_metrics,
+		'cluster_metrics': cluster_df,
+		'problematic_clusters': problematic_clusters,
+		'consolidation_impact': consolidation_impact,
+		'size_distribution': size_distribution,
+		'recommendations': recommendations,
+		'summary': summary
+	}
 
 def _interpret_silhouette(score: float) -> str:
 		"""Interpret silhouette score."""
