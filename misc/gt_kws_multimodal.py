@@ -205,7 +205,7 @@ def get_multimodal_annotation(
 	clustered_df = cluster(
 		labels=multimodal_labels,
 		# model_id="Qwen/Qwen3-Embedding-8B" if os.getenv('USER') == "alijanif" else "Qwen/Qwen3-Embedding-0.6B",
-		model_id="all-mpnet-base-v2",
+		model_id="all-MiniLM-L12-v2",
 		nc=nc,
 		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv")),
 		verbose=verbose,

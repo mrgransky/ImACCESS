@@ -1881,9 +1881,7 @@ def cluster(
 		print(f"\n[AGGLOMERATIVE CLUSTERING] {len(labels)} documents")
 		print(f"   ├─ {model_id} | {device} | batch_size: {batch_size}")
 		print(f"   ├─ linkage: {linkage_method}")
-		# print(f"   ├─ distance: {distance_metric}")
 		print(f"   ├─ sample: {labels[:5]}")
-		# Parse first label if it's a string, otherwise use as-is
 		requires_type_exchange = isinstance(labels[0], str)
 		print(f"   ├─────> {type(labels[0])} requires_type_exchange: {requires_type_exchange}")
 		print(f"   └─ nc: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
@@ -2296,12 +2294,12 @@ def cluster(
 
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 
-	# df = dissolve_low_cohesion_clusters(
-	# 	df=df,
-	# 	embeddings=X,
-	# 	threshold=0.50,
-	# 	verbose=verbose,
-	# )
+	df = dissolve_low_cohesion_clusters(
+		df=df,
+		embeddings=X,
+		threshold=0.50,
+		verbose=verbose,
+	)
 
 	print("\n[SYNC] Updating cluster assignments for analysis...")
 	cluster_labels = df['cluster'].values
