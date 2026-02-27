@@ -25,7 +25,8 @@ MODELS_TO_TEST = {
 	# 'Jina-v3': 'jinaai/jina-embeddings-v3',                           # Long context (1024-dim)
 	'Nomic-v1.5': 'nomic-ai/nomic-embed-text-v1.5',                   # Vision-compatible (768-dim)
 	'E5-Large-v2': 'intfloat/e5-large-v2',                            # Strong semantic (1024-dim)
-	'E5-Mistral': 'intfloat/e5-mistral-7b-instruct',                  # SOTA (4096-dim)
+	# 'E5-Mistral': 'intfloat/e5-mistral-7b-instruct',                  # SOTA (4096-dim)
+	'Gemma-300M': 'google/embeddinggemma-300m',
 	'E5-Mistral-v2': 'intfloat/e5-mistral-7b-instruct',                  # SOTA (4096-dim)
 	'E5-Mistral-Multilingual': 'intfloat/multilingual-e5-large-instruct',
 	'BGE-Large': 'BAAI/bge-large-en-v1.5',                            # Chinese SOTA (1024-dim)
