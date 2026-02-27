@@ -24,7 +24,7 @@ MODELS_TO_TEST = {
 	'MiniLM-L6': "sentence-transformers/all-MiniLM-L6-v2",
 	# 'Jina-v3': 'jinaai/jina-embeddings-v3',                           # Long context (1024-dim)
 	'Nomic-v1.5': 'nomic-ai/nomic-embed-text-v1.5',                   # Vision-compatible (768-dim)
-	# 'Qwen-Embedding-8B': 'Qwen/Qwen3-Embedding-8B',                   # 8B parameters (1024-dim)
+	'Qwen-Embedding-0.6B': 'Qwen/Qwen3-Embedding-0.6B',                   # 0.6B parameters (1024-dim)
 }
 
 # Cache directory
