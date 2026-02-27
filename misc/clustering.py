@@ -573,14 +573,17 @@ def automated_cluster_validation(
 						'action': "Review low-cohesion clusters; may need manual splitting or different distance metric"
 				})
 		
+
 		# Issue 5: Poor canonical representativeness
 		if canonical_quality['mean_representativeness'] < 0.75:
-				recommendations.append({
-						'issue': 'Poor Canonical Representativeness',
-						'metric': f"Mean representativeness = {canonical_quality['mean_representativeness']:.3f} (target: >0.75)",
-						'severity': 'HIGH',
-						'action': "Switch to frequency-weighted centroid selection or alternative canonical selection method"
-				})
+			recommendations.append(
+				{
+					'issue': 'Poor Canonical Representativeness',
+					'metric': f"Mean representativeness = {canonical_quality['mean_representativeness']:.3f} (target: >0.75)",
+					'severity': 'HIGH',
+					'action': "Switch to frequency-weighted centroid selection or alternative canonical selection method"
+				}
+			)
 		
 		# Issue 6: Canonicals too specific (too long)
 		if canonical_quality['canonical_avg_length'] > canonical_quality['cluster_avg_length'] * 1.2:
@@ -924,7 +927,7 @@ def analyze_cluster_quality(
 			for issue in problematic_clusters:
 				print(f"{issue['severity']:10s}{issue['issue']:35s}{issue['count']:4d} clusters")
 	
-	if verbose:
+	if verbose and len(low_cohesion) > 0:
 		print(f"\n[LOW COHESION DETAIL] {len(low_cohesion)} clusters flagged (intra_sim < 0.5):")
 		print(f"{'─' * 60}")
 		low_cohesion_sorted = low_cohesion.sort_values('intra_cluster_similarity')
@@ -939,6 +942,22 @@ def analyze_cluster_quality(
 			print(f"  labels: {member_labels}")
 			print()
 		print(f"{'─' * 60}")
+
+	if verbose and len(poor_canonical) > 0:
+		print(f"\n[POOR CANONICAL DETAIL] {len(poor_canonical)} clusters flagged (canonical_rep < 0.6):")
+		print(f"{'─' * 60}")
+		for _, row in poor_canonical.iterrows():
+			cid = int(row['cluster_id'])
+			canonical = row['canonical_label']
+			sim = row['canonical_representativeness']
+			size = int(row['size'])
+			# Retrieve all member labels for this cluster
+			member_labels = labels[cluster_assignments == cid].tolist()
+			print(f"Cluster {cid}: canonical='{canonical}' | sim={sim:.4f} | size={size}")
+			print(f"  labels: {member_labels}")
+			print()
+		print(f"{'─' * 60}")
+
 	# 4. CONSOLIDATION IMPACT ANALYSIS
 	if verbose:
 		print("\n[4/6] Analyzing Consolidation Impact...")
