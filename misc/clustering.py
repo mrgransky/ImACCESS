@@ -101,7 +101,7 @@ def remove_problematic_cluster_labels(
 				cluster_size = len(cluster_labels)
 				
 				if cluster_size < 2:
-						continue
+					continue
 				
 				cluster_indices = df[cluster_mask].index.tolist()
 				cluster_embeddings = embeddings[cluster_indices]
@@ -122,12 +122,12 @@ def remove_problematic_cluster_labels(
 						removed_labels.extend(cluster_labels)
 		
 		if verbose:
-				print(f"\n[LOW COHESION] Found {len(low_cohesion_clusters)} clusters")
-				print(f"  Labels to remove: {sum(c['size'] for c in low_cohesion_clusters)}")
-				if low_cohesion_clusters:
-						print(f"  Examples:")
-						for cluster in low_cohesion_clusters[:5]:
-								print(f"    Cluster {cluster['cluster_id']}: {cluster['labels'][:3]}... (sim={cluster['intra_sim']:.4f})")
+			print(f"\n[LOW COHESION] Found {len(low_cohesion_clusters)} clusters")
+			print(f"  Labels to remove: {sum(c['size'] for c in low_cohesion_clusters)}")
+			if low_cohesion_clusters:
+				print(f"  Examples:")
+				for cluster in low_cohesion_clusters[:5]:
+					print(f"    Cluster {cluster['cluster_id']}: {cluster['labels']} (sim={cluster['intra_sim']:.4f})")
 		
 		# ========================================================================
 		# PART 2: Identify Poor Canonical Clusters
@@ -137,14 +137,14 @@ def remove_problematic_cluster_labels(
 		
 		for cluster_id in df['cluster'].unique():
 				if cluster_id in problematic_cluster_ids:
-						continue  # Already marked for removal
+					continue  # Already marked for removal
 				
 				cluster_mask = df['cluster'] == cluster_id
 				cluster_labels = df[cluster_mask]['label'].tolist()
 				cluster_size = len(cluster_labels)
 				
 				if cluster_size < 2:
-						continue
+					continue
 				
 				cluster_indices = df[cluster_mask].index.tolist()
 				cluster_embeddings = embeddings[cluster_indices]
