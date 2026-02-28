@@ -24,6 +24,7 @@ MODELS_TO_TEST = {
 	'MPNet-Base': 'sentence-transformers/all-mpnet-base-v2',
 	'MPNet-Base-QA': 'sentence-transformers/multi-qa-mpnet-base-dot-v1',
 	'MiniLM-L12': "sentence-transformers/all-MiniLM-L12-v2",
+	'MiniLM-L12-Multilingual': 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
 	'MiniLM-L6': "sentence-transformers/all-MiniLM-L6-v2",
 	# 'Jina-v3': 'jinaai/jina-embeddings-v3',                           # Long context (1024-dim)
 	'Nomic-v1.5': 'nomic-ai/nomic-embed-text-v1.5',                   # Vision-compatible (768-dim)

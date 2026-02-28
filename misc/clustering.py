@@ -44,6 +44,182 @@ cache_directory = {
 	"ubuntu": "/media/volume/models",
 }
 
+def remove_problematic_cluster_labels(
+		df,
+		embeddings,
+		low_cohesion_threshold=0.45,
+		poor_canonical_threshold=0.60,
+		verbose=True
+):
+		"""
+		Remove ALL labels from problematic clusters.
+		
+		Removes labels from:
+			1. Low-cohesion clusters (intra_sim < threshold)
+			2. Poor canonical clusters (canonical_rep < threshold)
+		
+		This is an aggressive but clean approach that eliminates
+		problematic labels entirely rather than trying to fix them.
+		
+		Parameters
+		----------
+		df : pd.DataFrame
+				Clustering results with ['label', 'cluster', 'canonical']
+		embeddings : np.ndarray
+				Label embeddings (same order as unique labels)
+		low_cohesion_threshold : float
+				Intra-similarity threshold for low-cohesion detection (default: 0.45)
+		poor_canonical_threshold : float
+				Canonical representativeness threshold (default: 0.60)
+		verbose : bool
+				Print detailed statistics
+		
+		Returns
+		-------
+		df_clean : pd.DataFrame
+				Cleaned clustering with problematic labels removed
+		removed_labels : list
+				List of removed labels for reference
+		"""
+		from sklearn.metrics.pairwise import cosine_similarity
+		import numpy as np
+		
+		if verbose:
+				print("\n" + "="*80)
+				print("REMOVING PROBLEMATIC CLUSTER LABELS")
+				print("="*80)
+				print(f"  Low-cohesion threshold: {low_cohesion_threshold}")
+				print(f"  Poor canonical threshold: {poor_canonical_threshold}")
+		
+		problematic_cluster_ids = set()
+		removed_labels = []
+		
+		# ========================================================================
+		# PART 1: Identify Low-Cohesion Clusters
+		# ========================================================================
+		
+		low_cohesion_clusters = []
+		
+		for cluster_id in df['cluster'].unique():
+				cluster_mask = df['cluster'] == cluster_id
+				cluster_labels = df[cluster_mask]['label'].tolist()
+				cluster_size = len(cluster_labels)
+				
+				if cluster_size < 2:
+						continue
+				
+				cluster_indices = df[cluster_mask].index.tolist()
+				cluster_embeddings = embeddings[cluster_indices]
+				
+				# Compute intra-cluster similarity
+				sim_matrix = cosine_similarity(cluster_embeddings)
+				n = len(cluster_embeddings)
+				intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
+				
+				if intra_sim < low_cohesion_threshold:
+						low_cohesion_clusters.append({
+								'cluster_id': cluster_id,
+								'intra_sim': intra_sim,
+								'size': cluster_size,
+								'labels': cluster_labels
+						})
+						problematic_cluster_ids.add(cluster_id)
+						removed_labels.extend(cluster_labels)
+		
+		if verbose:
+				print(f"\n[LOW COHESION] Found {len(low_cohesion_clusters)} clusters")
+				print(f"  Labels to remove: {sum(c['size'] for c in low_cohesion_clusters)}")
+				if low_cohesion_clusters:
+						print(f"  Examples:")
+						for cluster in low_cohesion_clusters[:5]:
+								print(f"    Cluster {cluster['cluster_id']}: {cluster['labels'][:3]}... (sim={cluster['intra_sim']:.4f})")
+		
+		# ========================================================================
+		# PART 2: Identify Poor Canonical Clusters
+		# ========================================================================
+		
+		poor_canonical_clusters = []
+		
+		for cluster_id in df['cluster'].unique():
+				if cluster_id in problematic_cluster_ids:
+						continue  # Already marked for removal
+				
+				cluster_mask = df['cluster'] == cluster_id
+				cluster_labels = df[cluster_mask]['label'].tolist()
+				cluster_size = len(cluster_labels)
+				
+				if cluster_size < 2:
+						continue
+				
+				cluster_indices = df[cluster_mask].index.tolist()
+				cluster_embeddings = embeddings[cluster_indices]
+				
+				# Get current canonical
+				current_canonical = df[cluster_mask]['canonical'].iloc[0]
+				canonical_idx = cluster_labels.index(current_canonical)
+				canonical_emb = cluster_embeddings[canonical_idx].reshape(1, -1)
+				
+				# Compute canonical representativeness
+				canonical_rep = cosine_similarity(canonical_emb, cluster_embeddings).mean()
+				
+				if canonical_rep < poor_canonical_threshold:
+						poor_canonical_clusters.append({
+								'cluster_id': cluster_id,
+								'canonical': current_canonical,
+								'representativeness': canonical_rep,
+								'size': cluster_size,
+								'labels': cluster_labels
+						})
+						problematic_cluster_ids.add(cluster_id)
+						removed_labels.extend(cluster_labels)
+		
+		if verbose:
+				print(f"\n[POOR CANONICAL] Found {len(poor_canonical_clusters)} clusters")
+				print(f"  Labels to remove: {sum(c['size'] for c in poor_canonical_clusters)}")
+				if poor_canonical_clusters:
+						print(f"  Examples:")
+						for cluster in poor_canonical_clusters[:5]:
+								print(f"    Cluster {cluster['cluster_id']}: {cluster['labels']} (rep={cluster['representativeness']:.4f})")
+		
+		# ========================================================================
+		# PART 3: Remove Problematic Labels
+		# ========================================================================
+		
+		if verbose:
+				print(f"\n[REMOVAL SUMMARY]")
+				print(f"  Total problematic clusters: {len(problematic_cluster_ids)}")
+				print(f"  Total labels to remove: {len(removed_labels)}")
+				print(f"  Percentage of labels: {len(removed_labels)/len(df)*100:.2f}%")
+		
+		# Remove labels from problematic clusters
+		df_clean = df[~df['cluster'].isin(problematic_cluster_ids)].copy()
+		
+		# Re-index cluster IDs to be contiguous
+		unique_clusters = sorted(df_clean['cluster'].unique())
+		cluster_mapping = {old_id: new_id for new_id, old_id in enumerate(unique_clusters)}
+		df_clean['cluster'] = df_clean['cluster'].map(cluster_mapping)
+		
+		if verbose:
+				print(f"\n[RESULTS]")
+				print(f"  Original labels: {len(df):,}")
+				print(f"  Cleaned labels: {len(df_clean):,}")
+				print(f"  Removed labels: {len(df) - len(df_clean):,}")
+				print(f"  Original clusters: {df['cluster'].nunique():,}")
+				print(f"  Cleaned clusters: {df_clean['cluster'].nunique():,}")
+				print(f"  Removed clusters: {df['cluster'].nunique() - df_clean['cluster'].nunique():,}")
+				
+				# Consolidation stats
+				original_consolidation = len(df) / df['cluster'].nunique()
+				new_consolidation = len(df_clean) / df_clean['cluster'].nunique()
+				print(f"\n  Original consolidation: {original_consolidation:.2f}x")
+				print(f"  New consolidation: {new_consolidation:.2f}x")
+				print(f"  Change: {(new_consolidation - original_consolidation):.2f}x")
+				
+				print("\n✓ Problematic labels removed!")
+				print("="*80)
+		
+		return df_clean, removed_labels
+
 def dissolve_low_cohesion_clusters(
 		df,
 		embeddings,
