@@ -35,6 +35,7 @@ Bhutan
 Bolivia
 Bosnia and Herzegovina
 Botswana
+Bohemia
 Brazil
 Brunei
 Bulgaria
@@ -247,6 +248,7 @@ Venezuela
 Vietnam
 
 Yemen
+Yugoslavia
 
 Zambia
 Zimbabwe
@@ -538,6 +540,7 @@ Dublin
 Essex
 Frankfurt
 Gaza
+Geneva
 Hamburg
 Hong Kong
 Incheon
@@ -631,6 +634,7 @@ Tuscany
 Valladolid
 Venice
 Verona
+Vienna
 Warsaw
 Wellington
 Zaragoza
