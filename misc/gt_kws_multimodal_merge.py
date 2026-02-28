@@ -153,11 +153,13 @@ def merge_csv_files(
 		print(f"Saved merged CSV file to {output_fpath}")
 
 	viz.perform_multilabel_eda(
-		data_path=output_fpath,
+		df=df,
+		output_dir=OUTPUT_DIR,
 		label_column='multimodal_canonical_labels'
 	)
 
 	get_multi_label_stratified_split(
+		df=df,
 		csv_file=output_fpath,
 		val_split_pct=0.35,
 		label_col='multimodal_canonical_labels'

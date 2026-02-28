@@ -604,7 +604,7 @@ def get_multi_label_stratified_split(
 	csv_file: str,
 	val_split_pct: float,
 	label_col: str = 'multimodal_labels',
-	min_label_frequency: int = 5,  # ← NEW: Minimum occurrences to keep a label
+	min_label_frequency: int = 5,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
 		print(f"\n>> Stratified Splitting [Multi-label dataset] with {val_split_pct} validation split...")
