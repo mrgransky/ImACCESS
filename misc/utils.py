@@ -599,182 +599,24 @@ def get_stratified_split(
 
 	return train_df, val_df
 
-def get_multi_label_stratified_split_(
+def get_multi_label_stratified_split(
+	df: pd.DataFrame,
 	csv_file: str,
 	val_split_pct: float,
-	label_col: str='multimodal_labels',
+	label_col: str = 'multimodal_labels',
+	min_label_frequency: int = 5,  # ← NEW: Minimum occurrences to keep a label
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-	print(f"\n>> Stratified Splitting [Multi-label dataset] with {val_split_pct*100:.0f}% validation split...")
-	t_st = time.time()
-	df = pd.read_csv(
-		filepath_or_buffer=csv_file,
-		on_bad_lines='skip',
-		dtype=dtypes,
-		low_memory=False,
-	)
-	df_copy = df.copy()
 
-	# 1. Robust Label Parsing using ast.literal_eval
-	print(f"Parsing '{label_col}' column...")
-	if label_col not in df_copy.columns:
-		raise ValueError(f"Label column '{label_col}' not found in the DataFrame.")
-
-	def parse_label(x):
-		if isinstance(x, str): # Only apply literal_eval if it's a string
-			try:
-				return ast.literal_eval(x)
-			except (ValueError, SyntaxError) as e:
-				# Raise an error if a string cannot be parsed, as it's unexpected
-				raise ValueError(f"Malformed string found in '{label_col}': '{x}'. Error: {e}")
-		elif isinstance(x, list): # If it's already a list, return it as is
-			return x
-		else:
-			# Handle other unexpected types, or raise an error
-			print(f"Warning: Unexpected type '{type(x)}' found in '{label_col}': {x}. Trying to convert to empty list.")
-			return [] # Or raise ValueError("Unsupported type in label column")
-	try:
-		df_copy[label_col] = df_copy[label_col].apply(parse_label)
-		print(f"Successfully processed '{label_col}' column.")
-	except ValueError as e: # Catch the specific ValueError from parse_label
-		raise ValueError(
-			f"Error parsing multi-label column '{label_col}'. "
-			f"Ensure it contains valid string representations of lists. Error: {e}"
-		)
-	except Exception as e: # Catch any other unexpected errors during apply
-		raise ValueError(f"Unexpected error during parsing of '{label_col}': {e}")
-
-	# --- 2. Remove rows with empty label lists (if any became empty after parsing) ---
-	df_filtered = df_copy[df_copy[label_col].apply(len) > 0]
-	initial_rows = len(df_copy)
-	final_rows = len(df_filtered)
-	if final_rows == 0:
-		raise ValueError("No samples with non-empty label lists remain after parsing and initial filtering.")
-
-	if initial_rows != final_rows:
-		print(f"Removed {initial_rows - final_rows} rows with empty label lists.")
-
-	print(f"DataFrame shape after filtering empty label lists: {df_filtered.shape}")
-
-	# --- 3. Binarize Labels ---
-	print(">> Binarizing labels...")
-	mlb = MultiLabelBinarizer(sparse_output=True)
-	label_matrix = mlb.fit_transform(df_filtered[label_col])
-	print(f"Label matrix: {label_matrix.shape} {label_matrix.data.nbytes / 1e6:.1f} MB")
-
-	unique_labels = mlb.classes_
-	if len(unique_labels) == 0:
-		raise ValueError("No unique labels found after processing. Cannot perform stratification.")
-	print(f">> Found {len(unique_labels)} unique labels:\n{unique_labels.tolist()[:50]}")
-	
-	# --- 4. Perform Iterative Stratification ---
-	print("\n>> Multi-label stratification using Iterative Stratification")
-	X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
-	print(f"X_indices: {type(X_indices)} {X_indices.shape}")
-
-	# #################################################################################################
-	# print(">> iterative_train_test_split (slow)...")
-	# X_train_idx, y_train_labels, X_val_idx, y_val_labels = iterative_train_test_split(
-	# 	X_indices, 
-	# 	label_matrix, # sparse matrix
-	# 	test_size=val_split_pct,
-	# 	n_jobs=-1, # Use all available CPU cores
-	# )
-	# print(">> Converting back to original DataFrame indices...")
-	# train_original_indices = df_filtered.iloc[X_train_idx.flatten()].index.values
-	# val_original_indices = df_filtered.iloc[X_val_idx.flatten()].index.values
-	# #################################################################################################
-
-	#################################################################################################
-	print(f">> IterativeStratification dataset: {df_filtered.shape} [takes time for large datasets]...")
-	stratifier = IterativeStratification(
-		n_splits=2,  # Split into 2 folds: train and validation
-		order=1 if len(df_filtered) > int(1e5) else 2,  # Lower order = faster (default is 2)
-		sample_distribution_per_fold=[val_split_pct, 1-val_split_pct],
-	)
-	train_indices, val_indices = next(stratifier.split(X_indices, label_matrix))
-	train_original_indices = df_filtered.iloc[train_indices].index.values
-	val_original_indices = df_filtered.iloc[val_indices].index.values
-	#################################################################################################
-
-	print(f"train_original_indices: {type(train_original_indices)} {train_original_indices.shape}")
-	print(f"val_original_indices: {type(val_original_indices)} {val_original_indices.shape}")
-
-	train_df = df_filtered.loc[train_original_indices].reset_index(drop=True)
-	val_df = df_filtered.loc[val_original_indices].reset_index(drop=True)
-	
-	# --- 5. Verify Split and Print Distributions ---
-	if train_df.empty or val_df.empty:
-		raise ValueError("Train or validation set is empty after splitting. Adjust val_split_pct or check data.")
-	print(f"\n>> Original Filtered Data: {df_filtered.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
-
-	print(f"TRAIN: {train_df.shape}")
-	print(f"Train samples: {len(train_df)}, Unique label combinations: {train_df[label_col].apply(tuple).nunique()}")
-	# Sample 1000 rows for quick distribution check
-	sample_size = min(1000, len(train_df))
-	print(f"Label distribution (sample of {sample_size}):")
-	print(train_df[label_col].sample(sample_size).apply(tuple).value_counts().head(10))
-	print('-'*120)
-
-	print(f"VAL: {val_df.shape}")
-	print(f"Val samples: {len(val_df)}, Unique label combinations: {val_df[label_col].apply(tuple).nunique()}")
-	# Sample 1000 rows for quick distribution check
-	sample_size = min(1000, len(val_df))
-	print(f"Label distribution (sample of {sample_size}):")
-	print(val_df[label_col].sample(sample_size).apply(tuple).value_counts().head(10))
-	print('-'*120)
-
-	print(f"Stratified Splitting Elapsed Time: {time.time()-t_st:.3f} sec")
-	
-	# Save train/val splits
-	train_path = csv_file.replace('.csv', '_train.csv')
-	val_path = csv_file.replace('.csv', '_val.csv')
-	train_df.to_csv(train_path, index=False)
-	val_df.to_csv(val_path, index=False)
-
-	print(f"Saved train/val splits to {train_path} and {val_path}")
-
-	return train_df, val_df
-
-def get_multi_label_stratified_split(
-		csv_file: str,
-		val_split_pct: float,
-		label_col: str = 'multimodal_labels',
-		min_label_frequency: int = 5,  # ← NEW: Minimum occurrences to keep a label
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-		"""
-		Perform stratified train/val split for multi-label dataset.
-		
-		Parameters
-		----------
-		csv_file : str
-				Path to CSV file containing multi-label data
-		val_split_pct : float
-				Validation split percentage (e.g., 0.2 for 20%)
-		label_col : str
-				Column name containing label lists
-		min_label_frequency : int
-				Minimum number of times a label must appear to be included.
-				Labels appearing fewer times will be removed before splitting.
-				Default: 5 (ensures reliable stratification with 80/20 split)
-		
-		Returns
-		-------
-		train_df : pd.DataFrame
-				Training split
-		val_df : pd.DataFrame
-				Validation split
-		"""
-		
-		print(f"\n>> Stratified Splitting [Multi-label dataset] with {val_split_pct*100:.0f}% validation split...")
+		print(f"\n>> Stratified Splitting [Multi-label dataset] with {val_split_pct} validation split...")
 		print(f"   Min label frequency: {min_label_frequency}")
 		t_st = time.time()
 		
-		df = pd.read_csv(
-				filepath_or_buffer=csv_file,
-				on_bad_lines='skip',
-				dtype=dtypes,
-				low_memory=False,
-		)
+		# df = pd.read_csv(
+		# 		filepath_or_buffer=csv_file,
+		# 		on_bad_lines='skip',
+		# 		dtype=dtypes,
+		# 		low_memory=False,
+		# )
 		df_copy = df.copy()
 
 		# 1. Robust Label Parsing

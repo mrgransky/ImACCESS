@@ -202,80 +202,93 @@ def get_multimodal_annotation(
 	df['vlm_based_labels'] = vlm_based_labels
 	df['multimodal_labels'] = multimodal_labels
 
-	clustered_df = cluster(
-		labels=multimodal_labels,
-		# model_id="Qwen/Qwen3-Embedding-8B" if os.getenv('USER') == "alijanif" else "Qwen/Qwen3-Embedding-0.6B",
-		model_id="all-MiniLM-L12-v2",
-		nc=nc,
-		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv")),
-		verbose=verbose,
-	)
-
-	# canonical label available in clustered_df "canonical" column: [label] -> canonical_label
-	# mapping each label of multimodal_labels to its canonical label:
-	# desired example:
-	# multimodal_labels						-> multimodal_canonical_labels (new column)
-	# [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
-	canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
-	canonical_multimodal_labels = []
-	missing_labels = set()
-
-	# for labels in tqdm(multimodal_labels, desc="Canonical labels"):
-	# 	canonical_labels_ = [canonical_labels[label] for label in labels if label in canonical_labels]
-	# 	canonical_multimodal_labels.append(canonical_labels_)
-
-	for labels in tqdm(multimodal_labels, desc="Canonical labels"):
-		canonical_labels_ = []
-		for label in labels:
-			if label in canonical_labels:
-				canonical_labels_.append(canonical_labels[label])
-			else:
-				# Label was removed as problematic - skip it
-				missing_labels.add(label)
-		
-		# Only add if at least one label remains
-		if canonical_labels_:
-			canonical_multimodal_labels.append(canonical_labels_)
-		else:
-			# All labels were removed - add empty list
-			canonical_multimodal_labels.append([])
-			
-	if verbose and missing_labels:
-		print(f"\n⚠️  {len(missing_labels)} labels were removed as problematic:")
-		print(f"   Sample: {list(missing_labels)[:20]}")
-		print(f"   These labels will be excluded from canonical mapping")
-			
-	df['multimodal_canonical_labels'] = canonical_multimodal_labels
-
-	# Remove samples with empty canonical labels (optional)
-	before_count = len(df)
-	df = df[df['multimodal_canonical_labels'].apply(len) > 0]
-	after_count = len(df)
-	
-	if verbose and before_count != after_count:
-		print(f"\n⚠️  Removed {before_count - after_count} samples with no valid labels")
-
-	# Deduplicate canonical labels
-	if verbose:
-		print(f"\n>> Deduplicating canonical labels...")
-		duplicate_count = sum(
-			1 for labels in df['multimodal_canonical_labels'] 
-			if len(labels) != len(set(labels))
+	if "_chunk_" not in os.path.basename(csv_file):
+		clustered_df = cluster(
+			labels=multimodal_labels,
+			# model_id="Qwen/Qwen3-Embedding-8B" if os.getenv('USER') == "alijanif" else "Qwen/Qwen3-Embedding-0.6B",
+			model_id="all-MiniLM-L12-v2",
+			nc=nc,
+			clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(csv_file).replace(".csv", "_clusters.csv")),
+			verbose=verbose,
 		)
-		print(f"Documents with duplicates: {duplicate_count:,} ({duplicate_count/len(df)*100:.1f}%)")
-	df['multimodal_canonical_labels'] = df['multimodal_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
 
-	if verbose:
-		print(f"   ✓ Deduplication complete")
-		assert sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels))) == 0
-		print(f"   ✓ Verified: 0 duplicates remaining")
+		# canonical label available in clustered_df "canonical" column: [label] -> canonical_label
+		# mapping each label of multimodal_labels to its canonical label:
+		# desired example:
+		# multimodal_labels						-> multimodal_canonical_labels (new column)
+		# [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
+		canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
+		canonical_multimodal_labels = []
+		missing_labels = set()
 
-	if verbose:
-		print(df["multimodal_canonical_labels"].value_counts())
-		print(f"Saving {type(df)} {df.shape} {list(df.columns)} to {output_csv}")
+		# for labels in tqdm(multimodal_labels, desc="Canonical labels"):
+		# 	canonical_labels_ = [canonical_labels[label] for label in labels if label in canonical_labels]
+		# 	canonical_multimodal_labels.append(canonical_labels_)
+
+		for labels in tqdm(multimodal_labels, desc="Canonical labels"):
+			canonical_labels_ = []
+			for label in labels:
+				if label in canonical_labels:
+					canonical_labels_.append(canonical_labels[label])
+				else:
+					# Label was removed as problematic - skip it
+					missing_labels.add(label)
+			
+			# Only add if at least one label remains
+			if canonical_labels_:
+				canonical_multimodal_labels.append(canonical_labels_)
+			else:
+				# All labels were removed - add empty list
+				canonical_multimodal_labels.append([])
+				
+		if verbose and missing_labels:
+			print(f"\n⚠️  {len(missing_labels)} labels were removed as problematic:")
+			print(f"   Sample: {list(missing_labels)[:20]}")
+			print(f"   These labels will be excluded from canonical mapping")
+				
+		df['multimodal_canonical_labels'] = canonical_multimodal_labels
+
+		# Remove samples with empty canonical labels (optional)
+		before_count = len(df)
+		df = df[df['multimodal_canonical_labels'].apply(len) > 0]
+		after_count = len(df)
+		
+		if verbose and before_count != after_count:
+			print(f"\n⚠️  Removed {before_count - after_count} samples with no valid labels")
+
+		# Deduplicate canonical labels
+		if verbose:
+			print(f"\n>> Deduplicating canonical labels...")
+			duplicate_count = sum(
+				1 for labels in df['multimodal_canonical_labels'] 
+				if len(labels) != len(set(labels))
+			)
+			print(f"Documents with duplicates: {duplicate_count:,} ({duplicate_count/len(df)*100:.1f}%)")
+		df['multimodal_canonical_labels'] = df['multimodal_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
+
+		if verbose:
+			print(f"   ✓ Deduplication complete")
+			assert sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels))) == 0
+			print(f"   ✓ Verified: 0 duplicates remaining")
+
+		if verbose:
+			print(df["multimodal_canonical_labels"].value_counts())
+			print(f"Saving {type(df)} {df.shape} {list(df.columns)} to {output_csv}")
+
+		get_multi_label_stratified_split(
+			df=df,
+			csv_file=output_csv,
+			val_split_pct=0.35,
+			label_col='multimodal_canonical_labels'
+		)
+
+		viz.perform_multilabel_eda(
+			df=df,
+			output_dir=OUTPUT_DIR,
+			label_column='multimodal_canonical_labels'
+		)
 
 	df.to_csv(output_csv, index=False)
-
 	try:
 		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
 	except Exception as e:
@@ -283,18 +296,6 @@ def get_multimodal_annotation(
 	
 	if verbose:
 		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
-
-	if "_chunk_" not in os.path.basename(csv_file):
-		get_multi_label_stratified_split(
-			csv_file=output_csv,
-			val_split_pct=0.35,
-			label_col='multimodal_canonical_labels'
-		)
-
-		viz.perform_multilabel_eda(
-			data_path=output_csv,
-			label_column='multimodal_canonical_labels'
-		)
 
 	return multimodal_labels
 

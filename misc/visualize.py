@@ -2424,7 +2424,6 @@ def create_dataset_radar_chart(summary_stats_dict, output_dir, label_column, DPI
 
 		# 0. dataset name:
 		dataset_name = summary_stats_dict['Dataset Name']
-		file_name = summary_stats_dict['File Name']
 		
 		# 1. SCALE: Log-normalized sample count (relative to common benchmarks)
 		n_samples = summary_stats_dict['Total Samples']
@@ -2544,7 +2543,7 @@ def create_dataset_radar_chart(summary_stats_dict, output_dir, label_column, DPI
 		
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{file_name}_radar_chart.png"),
+			fname=os.path.join(output_dir, f"radar_chart.png"),
 			dpi=DPI,
 			bbox_inches='tight'
 		)
@@ -2571,7 +2570,6 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 		]
 		
 		dataset_name = summary_stats_dict['Dataset Name']
-		file_name = summary_stats_dict['File Name']
 		n_samples = summary_stats_dict['Total Samples']
 		n_labels = summary_stats_dict['Unique Labels']
 		mean_card = float(summary_stats_dict['Mean Label Cardinality'])
@@ -2727,7 +2725,7 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 		
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{file_name}_comparative_radar_chart.png"),
+			fname=os.path.join(output_dir, f"comparative_radar_chart.png"),
 			dpi=DPI,
 			bbox_inches='tight'
 		)
@@ -2738,27 +2736,35 @@ def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column,
 
 def analyze_top_labels_per_source(
 	processed_dfs: dict,
-	label_column: str,
 	output_dir: str,
-	file_name: str,
 	n_top_labels_plot: int=100,
 	DPI: int=200
 ):	
-	print(f"TOP-{n_top_labels_plot} MOST FREQUENT LABELS: PER-SOURCE ANALYSIS".center(160, "-"))
-	# print(processed_dfs)
+	print(f"\nTOP-{n_top_labels_plot} MOST FREQUENT LABELS: PER-SOURCE ANALYSIS\n")
+	print(processed_dfs)
 
-	all_label_counts = {}  # Store for comparison later
+	all_label_counts = {}
 	# PART 1: Individual Source Analysis
 	for col, lst in processed_dfs.items():
 		source_labels = list()
+
 		for labels in lst:
 			# Handle NaN and non-list values
-			if pd.isna(labels):
-				# print(f"<!> {col} containing {labels} => skipping!")
+			if isinstance(labels, list):
+				# It is a valid list of labels, proceed
+				pass
+			elif pd.isna(labels):
+				print(f"<!> {col} containing {labels} => skipping!")
 				continue
-			# Handle string labels
-			if isinstance(labels, str):
-				labels = eval(labels)
+			elif isinstance(labels, str):
+				try:
+					labels = ast.literal_eval(labels)  # Parse string representation of list
+				except Exception as e:
+					print(f"<!> {col} containing {labels} => skipping! {e}")
+					continue
+			else:
+				print(f"<!> {col} containing {type(labels)} {labels} => skipping!")
+				continue
 
 			source_labels.extend(labels)
 
@@ -2794,7 +2800,7 @@ def analyze_top_labels_per_source(
 		plt.ylabel('Label', fontsize=10)
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{file_name}_top_{n_top_labels_plot}_frequent_labels_{col}.png"),
+			fname=os.path.join(output_dir, f"top_{n_top_labels_plot}_frequent_labels_{col}.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
@@ -2829,7 +2835,7 @@ def analyze_top_labels_per_source(
 	
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"{file_name}_comparative_top_labels_all_sources.png"),
+		fname=os.path.join(output_dir, f"comparative_top_labels_all_sources.png"),
 		dpi=DPI,
 		bbox_inches='tight'
 	)
@@ -2870,7 +2876,7 @@ def analyze_top_labels_per_source(
 	
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"{file_name}_source_specific_labels.png"),
+		fname=os.path.join(output_dir, f"source_specific_labels.png"),
 		dpi=DPI,
 		bbox_inches='tight'
 	)
@@ -2919,7 +2925,7 @@ def analyze_top_labels_per_source(
 	
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"{file_name}_top_label_agreement.png"),
+		fname=os.path.join(output_dir, f"top_label_agreement.png"),
 		dpi=DPI,
 		bbox_inches='tight'
 	)
@@ -2929,287 +2935,260 @@ def analyze_top_labels_per_source(
 	
 	return all_label_counts
 
-def analyze_multi_source_agreement(processed_dfs, output_dir, file_name, DPI=200):
-		print("\n" + "="*100)
-		print("--- MULTI-SOURCE LABEL AGREEMENT ANALYSIS ---")
+def analyze_multi_source_agreement(
+	processed_dfs, 
+	output_dir, 
+	DPI=200
+):
+	print("\nMULTI-SOURCE LABEL AGREEMENT ANALYSIS\n")
+	
+	# initialize keys with processed_dfs keys:
+	unique_labels_by_source = {key: set() for key in processed_dfs.keys()}
+	sample_count_by_source = {key: 0 for key in processed_dfs.keys()}
+	
+	for col_name, labels_list  in processed_dfs.items():
+		# Extract all labels (flatten the list of lists)
+		current_all_labels = []
+		for labels in labels_list:
+			if isinstance(labels, str):
+				labels = eval(labels)  # Parse string representation if needed
+			if isinstance(labels, list):
+				current_all_labels.extend(labels)
 		
-		# initialize keys with processed_dfs keys:
-		unique_labels_by_source = {key: set() for key in processed_dfs.keys()}
-		sample_count_by_source = {key: 0 for key in processed_dfs.keys()}
+		unique_labels_by_source[col_name] = set(current_all_labels)
+		sample_count_by_source[col_name] = len(labels_list)
 		
-		for col_name, labels_list  in processed_dfs.items():
-			# Extract all labels (flatten the list of lists)
-			current_all_labels = []
-			for labels in labels_list:
-				if isinstance(labels, str):
-					labels = eval(labels)  # Parse string representation if needed
-				if isinstance(labels, list):
-					current_all_labels.extend(labels)
+		print(f"Unique labels in '{col_name}': {len(unique_labels_by_source[col_name])}")
+	
+	# Dynamically get the source sets based on available keys
+	source_keys = list(unique_labels_by_source.keys())
+	
+	# Map to actual sets
+	source_sets = {key: unique_labels_by_source[key] for key in source_keys}
+	
+	# Calculate overlaps dynamically
+	if len(source_keys) >= 3:
+		# Get all three sets (order doesn't matter for set operations)
+		set1, set2, set3 = [source_sets[key] for key in source_keys[:3]]
+		
+		all_three_overlap = set1 & set2 & set3
+		overlap_12 = set1 & set2
+		overlap_13 = set1 & set3
+		overlap_23 = set2 & set3
+		
+		print(f"\nLabel Set Overlaps:")
+		print(f"  Common labels across all {len(source_keys)} sources: {len(all_three_overlap)}")
+		print(f"  Common labels between {source_keys[0]} and {source_keys[1]}: {len(overlap_12)}")
+		print(f"  Common labels between {source_keys[0]} and {source_keys[2]}: {len(overlap_13)}")
+		print(f"  Common labels between {source_keys[1]} and {source_keys[2]}: {len(overlap_23)}")
+		
+		unique_to_1 = set1 - (set2 | set3)
+		unique_to_2 = set2 - (set1 | set3)
+		unique_to_3 = set3 - (set1 | set2)
+		
+		print(f"\nUnique Labels by Source:")
+		print(f"  Labels unique to {source_keys[0]}: {len(unique_to_1)}")
+		print(f"  Labels unique to {source_keys[1]}: {len(unique_to_2)}")
+		print(f"  Labels unique to {source_keys[2]}: {len(unique_to_3)}")
+	
+	# Calculate sample-level agreement if we have at least 3 sources
+	if len(source_keys) >= 3:
+			print("\n--- Sample-Level Agreement Metrics ---")
 			
-			unique_labels_by_source[col_name] = set(current_all_labels)
-			sample_count_by_source[col_name] = len(labels_list)
+			# Get the label lists dynamically (use first 3 available sources)
+			labels_lists = {key: processed_dfs[key] for key in source_keys[:3]}
+			list_names = source_keys[:3]
 			
-			print(f"Unique labels in '{col_name}': {len(unique_labels_by_source[col_name])}")
-		
-		# print("-"*100)
-		# print(unique_labels_by_source)
-		# print(sample_count_by_source)
-		# print("-"*100)
-
-		# Dynamically get the source sets based on available keys
-		source_keys = list(unique_labels_by_source.keys())
-		
-		# Map to actual sets
-		source_sets = {key: unique_labels_by_source[key] for key in source_keys}
-		
-		# Calculate overlaps dynamically
-		if len(source_keys) >= 3:
-			# Get all three sets (order doesn't matter for set operations)
-			set1, set2, set3 = [source_sets[key] for key in source_keys[:3]]
+			# Unpack for convenience
+			labels_list_1 = labels_lists[list_names[0]]
+			labels_list_2 = labels_lists[list_names[1]]
+			labels_list_3 = labels_lists[list_names[2]]
 			
-			all_three_overlap = set1 & set2 & set3
-			overlap_12 = set1 & set2
-			overlap_13 = set1 & set3
-			overlap_23 = set2 & set3
+			print(f"Analyzing agreement between: {list_names[0]}, {list_names[1]}, {list_names[2]}")
 			
-			print(f"\nLabel Set Overlaps:")
-			print(f"  Common labels across all {len(source_keys)} sources: {len(all_three_overlap)}")
-			print(f"  Common labels between {source_keys[0]} and {source_keys[1]}: {len(overlap_12)}")
-			print(f"  Common labels between {source_keys[0]} and {source_keys[2]}: {len(overlap_13)}")
-			print(f"  Common labels between {source_keys[1]} and {source_keys[2]}: {len(overlap_23)}")
+			# Find common samples (assume same length and aligned)
+			min_len = min(len(labels_list_1), len(labels_list_2), len(labels_list_3))
 			
-			unique_to_1 = set1 - (set2 | set3)
-			unique_to_2 = set2 - (set1 | set3)
-			unique_to_3 = set3 - (set1 | set2)
-			
-			print(f"\nUnique Labels by Source:")
-			print(f"  Labels unique to {source_keys[0]}: {len(unique_to_1)}")
-			print(f"  Labels unique to {source_keys[1]}: {len(unique_to_2)}")
-			print(f"  Labels unique to {source_keys[2]}: {len(unique_to_3)}")
-		
-		# Calculate sample-level agreement if we have at least 3 sources
-		if len(source_keys) >= 3:
-				print("\n--- Sample-Level Agreement Metrics ---")
-				
-				# Get the label lists dynamically (use first 3 available sources)
-				labels_lists = {key: processed_dfs[key] for key in source_keys[:3]}
-				list_names = source_keys[:3]
-				
-				# Unpack for convenience
-				labels_list_1 = labels_lists[list_names[0]]
-				labels_list_2 = labels_lists[list_names[1]]
-				labels_list_3 = labels_lists[list_names[2]]
-				
-				print(f"Analyzing agreement between: {list_names[0]}, {list_names[1]}, {list_names[2]}")
-				
-				# Find common samples (assume same length and aligned)
-				min_len = min(len(labels_list_1), len(labels_list_2), len(labels_list_3))
-				
-				if min_len > 0:
-						agreement_scores = []
-						perfect_agreement = 0
-						partial_agreement = 0
-						no_agreement = 0
-						
-						for idx in range(min_len):
-								# Parse labels if they're strings
-								labels_1 = labels_list_1[idx]
-								labels_2 = labels_list_2[idx]
-								labels_3 = labels_list_3[idx]
-								
-								if isinstance(labels_1, str):
-										labels_1 = eval(labels_1)
-								if isinstance(labels_2, str):
-										labels_2 = eval(labels_2)
-								if isinstance(labels_3, str):
-										labels_3 = eval(labels_3)
-								
-								# Convert to sets
-								set_1 = set(labels_1) if isinstance(labels_1, list) else set()
-								set_2 = set(labels_2) if isinstance(labels_2, list) else set()
-								set_3 = set(labels_3) if isinstance(labels_3, list) else set()
-								
-								# Calculate pairwise Jaccard similarities
-								union_12 = set_1 | set_2
-								jaccard_12 = len(set_1 & set_2) / len(union_12) if len(union_12) > 0 else 0
-								
-								union_13 = set_1 | set_3
-								jaccard_13 = len(set_1 & set_3) / len(union_13) if len(union_13) > 0 else 0
-								
-								union_23 = set_2 | set_3
-								jaccard_23 = len(set_2 & set_3) / len(union_23) if len(union_23) > 0 else 0
-								
-								avg_jaccard = (jaccard_12 + jaccard_13 + jaccard_23) / 3
-								agreement_scores.append(avg_jaccard)
-								
-								# Categorize agreement
-								if set_1 == set_2 == set_3 and len(set_1) > 0:
-										perfect_agreement += 1
-								elif len(set_1 & set_2 & set_3) > 0:
-										partial_agreement += 1
-								else:
-										no_agreement += 1
-						
-						print(f"Samples analyzed: {min_len}")
-						print(f"Perfect agreement (all labels match): {perfect_agreement} ({perfect_agreement/min_len*100:.1f}%)")
-						print(f"Partial agreement (some overlap): {partial_agreement} ({partial_agreement/min_len*100:.1f}%)")
-						print(f"No agreement (no overlap): {no_agreement} ({no_agreement/min_len*100:.1f}%)")
-						print(f"Mean Jaccard Agreement: {np.mean(agreement_scores):.3f}")
-						print(f"Median Jaccard Agreement: {np.median(agreement_scores):.3f}")
-						
-						# Visualize agreement distribution
-						fig, axes = plt.subplots(2, 2, figsize=(20, 14))
-						
-						# Agreement score distribution
-						ax = axes[0, 0]
-						ax.hist(agreement_scores, bins=20, color='#00315393', edgecolor="#080A0C")
-						ax.axvline(
-								np.mean(agreement_scores), 
-								color="#D60404", 
-								linestyle='--', 
-								label=f'Mean: {np.mean(agreement_scores):.3f}'
-						)
-						ax.set_xlabel('Average Jaccard Agreement Score')
-						ax.set_ylabel('Number of Samples')
-						ax.set_title('Distribution of Multi-Source Agreement Scores')
-						ax.legend()
-						ax.grid(True, alpha=0.3)
-						
-						# Agreement categories
-						ax = axes[0, 1]
-						categories = ['Perfect\nAgreement', 'Partial\nAgreement', 'No\nAgreement']
-						counts = [perfect_agreement, partial_agreement, no_agreement]
-						colors = ["#24800092", "#AA5500", '#D60404']
-						ax.bar(categories, counts, color=colors, alpha=0.7, edgecolor='#080A0C')
-						ax.set_ylabel('Number of Samples')
-						ax.set_title('Sample-Level Agreement Categories')
-						for i, (cat, count) in enumerate(zip(categories, counts)):
-								ax.text(
-										i, 
-										count, 
-										f'{count}\n({count/min_len*100:.1f}%)', 
-										ha='center', 
-										va='bottom'
-								)
-						ax.grid(axis='y', alpha=0.3)
-						
-						# Venn diagram data
-						ax = axes[1, 0]
-						overlap_data = {
-								'Category': [
-										'All Three', 
-										f'{list_names[0]} & {list_names[1]} only', 
-										f'{list_names[0]} & {list_names[2]} only', 
-										f'{list_names[1]} & {list_names[2]} only',
-										f'{list_names[0]} only', 
-										f'{list_names[1]} only', 
-										f'{list_names[2]} only'
-								],
-								'Count': [
-										len(all_three_overlap),
-										len((set1 & set2) - set3),
-										len((set1 & set3) - set2),
-										len((set2 & set3) - set1),
-										len(unique_to_1),
-										len(unique_to_2),
-										len(unique_to_3)
-								]
-						}
-						overlap_df = pd.DataFrame(overlap_data)
-						sns.barplot(x='Count', y='Category', data=overlap_df, palette='pastel', ax=ax)
-						ax.set_title('Label Set Overlaps Across Sources')
-						ax.set_xlabel('Number of Unique Labels')
-						ax.grid(axis='x', alpha=0.3)
-						
-						# Source coverage comparison
-						ax = axes[1, 1]
-						all_labels_union = set1 | set2 | set3
-						source_coverage = {
-								'Source': [list_names[0], list_names[1], list_names[2]],
-								'Unique Labels': [len(set1), len(set2), len(set3)],
-								'Coverage %': [
-										len(set1) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0,
-										len(set2) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0,
-										len(set3) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0
-								]
-						}
-						coverage_df = pd.DataFrame(source_coverage)
-						x_pos = np.arange(len(coverage_df))
-						ax.bar(x_pos, coverage_df['Unique Labels'], alpha=0.7, edgecolor='#080A0C')
-						ax.set_xticks(x_pos)
-						ax.set_xticklabels(coverage_df['Source'])
-						ax.set_ylabel('Number of Unique Labels')
-						ax.set_title('Label Space Coverage by Source')
-						for i, (labels, pct) in enumerate(zip(coverage_df['Unique Labels'], coverage_df['Coverage %'])):
-							ax.text(i, labels, f'{labels}\n({pct:.1f}%)', ha='center', va='bottom')
-						ax.grid(axis='y', alpha=0.3)
-						
-						plt.tight_layout()
-						plt.savefig(
-							fname=os.path.join(output_dir, f"{file_name}_agreement_analysis.png"),
-							dpi=DPI,
-							bbox_inches='tight'
-						)
-						plt.close()
-						
-						print(f"\nAgreement visualization saved: {file_name}_agreement_analysis.png")
-		
-		print("="*100)
-
+			if min_len > 0:
+					agreement_scores = []
+					perfect_agreement = 0
+					partial_agreement = 0
+					no_agreement = 0
+					
+					for idx in range(min_len):
+							# Parse labels if they're strings
+							labels_1 = labels_list_1[idx]
+							labels_2 = labels_list_2[idx]
+							labels_3 = labels_list_3[idx]
+							
+							if isinstance(labels_1, str):
+									labels_1 = eval(labels_1)
+							if isinstance(labels_2, str):
+									labels_2 = eval(labels_2)
+							if isinstance(labels_3, str):
+									labels_3 = eval(labels_3)
+							
+							# Convert to sets
+							set_1 = set(labels_1) if isinstance(labels_1, list) else set()
+							set_2 = set(labels_2) if isinstance(labels_2, list) else set()
+							set_3 = set(labels_3) if isinstance(labels_3, list) else set()
+							
+							# Calculate pairwise Jaccard similarities
+							union_12 = set_1 | set_2
+							jaccard_12 = len(set_1 & set_2) / len(union_12) if len(union_12) > 0 else 0
+							
+							union_13 = set_1 | set_3
+							jaccard_13 = len(set_1 & set_3) / len(union_13) if len(union_13) > 0 else 0
+							
+							union_23 = set_2 | set_3
+							jaccard_23 = len(set_2 & set_3) / len(union_23) if len(union_23) > 0 else 0
+							
+							avg_jaccard = (jaccard_12 + jaccard_13 + jaccard_23) / 3
+							agreement_scores.append(avg_jaccard)
+							
+							# Categorize agreement
+							if set_1 == set_2 == set_3 and len(set_1) > 0:
+									perfect_agreement += 1
+							elif len(set_1 & set_2 & set_3) > 0:
+									partial_agreement += 1
+							else:
+									no_agreement += 1
+					
+					print(f"Samples analyzed: {min_len}")
+					print(f"Perfect agreement (all labels match): {perfect_agreement} ({perfect_agreement/min_len*100:.1f}%)")
+					print(f"Partial agreement (some overlap): {partial_agreement} ({partial_agreement/min_len*100:.1f}%)")
+					print(f"No agreement (no overlap): {no_agreement} ({no_agreement/min_len*100:.1f}%)")
+					print(f"Mean Jaccard Agreement: {np.mean(agreement_scores):.3f}")
+					print(f"Median Jaccard Agreement: {np.median(agreement_scores):.3f}")
+					
+					# Visualize agreement distribution
+					fig, axes = plt.subplots(2, 2, figsize=(20, 14))
+					
+					# Agreement score distribution
+					ax = axes[0, 0]
+					ax.hist(agreement_scores, bins=20, color='#00315393', edgecolor="#080A0C")
+					ax.axvline(
+							np.mean(agreement_scores), 
+							color="#D60404", 
+							linestyle='--', 
+							label=f'Mean: {np.mean(agreement_scores):.3f}'
+					)
+					ax.set_xlabel('Average Jaccard Agreement Score')
+					ax.set_ylabel('Number of Samples')
+					ax.set_title('Distribution of Multi-Source Agreement Scores')
+					ax.legend()
+					ax.grid(True, alpha=0.3)
+					
+					# Agreement categories
+					ax = axes[0, 1]
+					categories = ['Perfect\nAgreement', 'Partial\nAgreement', 'No\nAgreement']
+					counts = [perfect_agreement, partial_agreement, no_agreement]
+					colors = ["#24800092", "#AA5500", '#D60404']
+					ax.bar(categories, counts, color=colors, alpha=0.7, edgecolor='#080A0C')
+					ax.set_ylabel('Number of Samples')
+					ax.set_title('Sample-Level Agreement Categories')
+					for i, (cat, count) in enumerate(zip(categories, counts)):
+							ax.text(
+									i, 
+									count, 
+									f'{count}\n({count/min_len*100:.1f}%)', 
+									ha='center', 
+									va='bottom'
+							)
+					ax.grid(axis='y', alpha=0.3)
+					
+					# Venn diagram data
+					ax = axes[1, 0]
+					overlap_data = {
+							'Category': [
+									'All Three', 
+									f'{list_names[0]} & {list_names[1]} only', 
+									f'{list_names[0]} & {list_names[2]} only', 
+									f'{list_names[1]} & {list_names[2]} only',
+									f'{list_names[0]} only', 
+									f'{list_names[1]} only', 
+									f'{list_names[2]} only'
+							],
+							'Count': [
+									len(all_three_overlap),
+									len((set1 & set2) - set3),
+									len((set1 & set3) - set2),
+									len((set2 & set3) - set1),
+									len(unique_to_1),
+									len(unique_to_2),
+									len(unique_to_3)
+							]
+					}
+					overlap_df = pd.DataFrame(overlap_data)
+					sns.barplot(x='Count', y='Category', data=overlap_df, palette='pastel', ax=ax)
+					ax.set_title('Label Set Overlaps Across Sources')
+					ax.set_xlabel('Number of Unique Labels')
+					ax.grid(axis='x', alpha=0.3)
+					
+					# Source coverage comparison
+					ax = axes[1, 1]
+					all_labels_union = set1 | set2 | set3
+					source_coverage = {
+							'Source': [list_names[0], list_names[1], list_names[2]],
+							'Unique Labels': [len(set1), len(set2), len(set3)],
+							'Coverage %': [
+									len(set1) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0,
+									len(set2) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0,
+									len(set3) / len(all_labels_union) * 100 if len(all_labels_union) > 0 else 0
+							]
+					}
+					coverage_df = pd.DataFrame(source_coverage)
+					x_pos = np.arange(len(coverage_df))
+					ax.bar(x_pos, coverage_df['Unique Labels'], alpha=0.7, edgecolor='#080A0C')
+					ax.set_xticks(x_pos)
+					ax.set_xticklabels(coverage_df['Source'])
+					ax.set_ylabel('Number of Unique Labels')
+					ax.set_title('Label Space Coverage by Source')
+					for i, (labels, pct) in enumerate(zip(coverage_df['Unique Labels'], coverage_df['Coverage %'])):
+						ax.text(i, labels, f'{labels}\n({pct:.1f}%)', ha='center', va='bottom')
+					ax.grid(axis='y', alpha=0.3)
+					
+					plt.tight_layout()
+					plt.savefig(
+						fname=os.path.join(output_dir, f"agreement_analysis.png"),
+						dpi=DPI,
+						bbox_inches='tight'
+					)
+					plt.close()
+					
+					print(f"\nAgreement visualization saved: agreement_analysis.png")
+	
 def perform_multilabel_eda(
-	data_path: str,
+	df: pd.DataFrame,
 	label_column: str,
+	output_dir: str,
 	n_top_labels_plot: int=100,
 	n_top_labels_co_occurrence: int=50,
 	DPI: int=200,
 ):
-	if not os.path.exists(data_path):
-		print(f"Error: Dataset not found at '{data_path}'. Please check the path.")
-		return
-
-	print(f"\n>> Enhanced Multi-label EDA for {data_path} (column: {label_column})")
+	print(f"\n>> Enhanced Multi-label EDA for {type(df)} {df.shape} (column: {label_column})")
 	eda_st = time.time()
-	dataset_dir = os.path.dirname(data_path)
-	output_dir = os.path.join(dataset_dir, "outputs")
-	os.makedirs(output_dir, exist_ok=True)
 
+	dataset_dir = os.path.dirname(output_dir)
 	dataset_name = os.path.basename(dataset_dir) # HISTORY_X4
-	file_name = os.path.splitext(os.path.basename(data_path))[0] # metadata_multi_label_multimodal
 
-	try:
-		df = pd.read_csv(
-			filepath_or_buffer=data_path,
-			on_bad_lines='skip',
-			low_memory=False,
-		)
-		print(f"Dataset {type(df)} loaded successfully. Shape: {df.shape}\n")
-	except Exception as e:
-		print(f"Error loading dataset from '{data_path}': {e}")
-		return
+	print(dataset_dir)
+	print(output_dir)
+	print(dataset_name)
 
 	print(df.info(verbose=True, memory_usage="deep"))
 	print("Missing Values".center(100, "-"))
 	print(df.isnull().sum())
 	print(f"[LOADED] {type(df)} {df.shape} {list(df.columns)}")
-	print(df.head(5))
 	print("-"*100)
 	print(df[label_column].head(5))
+	print("-"*100)
 
 	processed_dfs = {
 		"llm_based_labels": 	df["llm_based_labels"].tolist(),
 		"vlm_based_labels": 	df["vlm_based_labels"].tolist(),
 		f"{label_column}": 	df[label_column].tolist(),
 	}
-	# print(f"processed_dfs: {type(processed_dfs)} {len(processed_dfs)}")
-	# print(json.dumps(processed_dfs, indent=2, ensure_ascii=False))
-	# print("-"*100)
-	# print(df[label_column].tolist(), type(df[label_column].tolist()), len(df[label_column].tolist()))
-	# print("-"*100)
-	# for i, labels in enumerate(df[label_column].tolist()):
-	# 	print(f"B4 EVAL: {i}: {type(labels)} {len(labels)} {labels}")
-	# 	labels = eval(labels)
-	# 	print(f"AFT EVAL: {i}: {type(labels)} {len(labels)} {labels}")
-	# 	print()
 
 	all_individual_labels = list()
 	for labels in df[label_column].tolist():
@@ -3236,7 +3215,7 @@ def perform_multilabel_eda(
 	plt.grid(axis='y', linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"{file_name}_label_cardinality_distribution_{label_column}.png"),
+		fname=os.path.join(output_dir, f"label_cardinality_distribution_{label_column}.png"),
 		dpi=DPI,
 		bbox_inches='tight',
 	)
@@ -3244,10 +3223,8 @@ def perform_multilabel_eda(
 	
 	all_label_counts = analyze_top_labels_per_source(
 		processed_dfs=processed_dfs,
-		label_column=label_column,
 		n_top_labels_plot=n_top_labels_plot,
 		output_dir=output_dir,
-		file_name=file_name,
 		DPI=DPI
 	)
 
@@ -3260,7 +3237,7 @@ def perform_multilabel_eda(
 	plt.grid(axis='y', linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"{file_name}_all_label_frequencies_distribution_{label_column}.png"),
+		fname=os.path.join(output_dir, f"all_label_frequencies_distribution_{label_column}.png"),
 		dpi=DPI,
 		bbox_inches='tight',
 	)
@@ -3301,7 +3278,7 @@ def perform_multilabel_eda(
 	
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"{file_name}_power_law_analysis.png"),
+		fname=os.path.join(output_dir, f"power_law_analysis.png"),
 		dpi=DPI,
 		bbox_inches='tight',
 	)
@@ -3365,7 +3342,7 @@ def perform_multilabel_eda(
 	
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"{file_name}_diversity_metrics.png"),
+		fname=os.path.join(output_dir, f"diversity_metrics.png"),
 		dpi=DPI,
 		bbox_inches='tight',
 	)
@@ -3479,7 +3456,7 @@ def perform_multilabel_eda(
 	
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"{file_name}_imbalance_analysis.png"),
+		fname=os.path.join(output_dir, f"imbalance_analysis.png"),
 		dpi=DPI,
 		bbox_inches='tight',
 	)
@@ -3533,7 +3510,7 @@ def perform_multilabel_eda(
 		plt.ylabel('Label Combination')
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{file_name}_top_unique_label_combinations.png"),
+			fname=os.path.join(output_dir, f"top_unique_label_combinations.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
@@ -3616,7 +3593,7 @@ def perform_multilabel_eda(
 		ax_dendro.tick_params(axis='x', rotation=90)
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{file_name}_dendrogram.png"),
+			fname=os.path.join(output_dir, f"dendrogram.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
@@ -3637,7 +3614,7 @@ def perform_multilabel_eda(
 		ax_heatmap.set_title(f'Jaccard Similarity Heatmap')
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{file_name}_jaccard_similarity_heatmap.png"),
+			fname=os.path.join(output_dir, f"jaccard_similarity_heatmap.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
@@ -3677,7 +3654,7 @@ def perform_multilabel_eda(
 		ax_network.set_title(f'Label Co-occurrence Network (Jaccard > {threshold})')
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{file_name}_network_visualization.png"),
+			fname=os.path.join(output_dir, f"network_visualization.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
@@ -3690,13 +3667,12 @@ def perform_multilabel_eda(
 	analyze_multi_source_agreement(
 		processed_dfs=processed_dfs,
 		output_dir=output_dir,
-		file_name=file_name,
 		DPI=DPI,
 	)
 
 	summary_stats_dict = {
 		'Dataset Name': dataset_name,
-		'File Name': file_name,
+		# 'File Name': file_name,
 		'Total Samples': len(df),
 		'Unique Labels': len(unique_labels),
 		'Unique Label Combinations': len(unique_label_sets),
@@ -3767,14 +3743,11 @@ def perform_multilabel_eda(
 	
 	# Save summary to CSV
 	summary_df.to_csv(
-		os.path.join(output_dir, f"{file_name}_summary_statistics.csv"),
+		os.path.join(output_dir, f"summary_statistics.csv"),
 		index=False
 	)
 	
 	print(f"EDA Elapsed_t: {time.time()-eda_st:.1f} sec")
-	for f in os.listdir(output_dir):
-		if file_name in f:
-			print(f"\t{f}")
 
 def plot_label_distribution_pie_chart(
 		df: pd.DataFrame = None,
