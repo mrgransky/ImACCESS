@@ -950,14 +950,53 @@ def analyze_cluster_quality(
 	output_dir: str = "./",
 	verbose: bool = True
 ) -> Dict:
+
+	n_embeddings = len(embeddings)
+	n_labels = len(labels)
+	n_clusters = len(cluster_assignments)
+	
+	if verbose:
+		print(f"\n[VALIDATION] embeddings: {n_embeddings}, labels: {n_labels}, cluster_assignments: {n_clusters}")
+	
+	# Find the minimum length to ensure consistency
+	min_len = min(n_embeddings, n_labels, n_clusters)
+	
+	if n_embeddings != n_labels or n_embeddings != n_clusters:
+		if verbose:
+			print(f"[WARNING] Array length mismatch! Truncating to {min_len} samples...")
+			print(f"  - Dropping {n_embeddings - min_len} embeddings")
+			print(f"  - Dropping {n_labels - min_len} labels")
+			print(f"  - Dropping {n_clusters - min_len} cluster assignments")
+		
+		# Truncate all arrays to the same length
+		embeddings = embeddings[:min_len]
+		labels = labels[:min_len]
+		cluster_assignments = cluster_assignments[:min_len]
+	
+	# Check for NaN/Inf in embeddings and remove those samples
+	valid_mask = np.isfinite(embeddings).all(axis=1)
+	if not valid_mask.all():
+		n_invalid = (~valid_mask).sum()
+		
+		if verbose:
+			print(f"[WARNING] Found {n_invalid} samples with NaN/Inf in embeddings. Removing...")
+		
+		embeddings = embeddings[valid_mask]
+		labels = labels[valid_mask]
+		cluster_assignments = cluster_assignments[valid_mask]
+	
+	# ========== Now proceed with validated data ==========
 	n_samples = len(labels)
 	n_clusters = len(np.unique(cluster_assignments))
 	
-	if verbose:
-			print("\nCLUSTER QUALITY ANALYSIS REPORT\n")
-			print(f"Dataset: {n_samples:,} unique labels → {n_clusters:,} clusters")
-			print(f"Reduction ratio: {n_samples/n_clusters:.2f}x")
+	if n_clusters < 2:
+		raise ValueError(f"Need at least 2 clusters for quality analysis, got {n_clusters}")
 	
+	if verbose:
+		print("\nCLUSTER QUALITY ANALYSIS REPORT\n")
+		print(f"Dataset: {n_samples:,} unique labels → {n_clusters:,} clusters")
+		print(f"Reduction ratio: {n_samples/n_clusters:.2f}x")	
+
 	# 1. GLOBAL CLUSTERING METRICS
 	if verbose:
 		print("\n[1/6] Computing Global Clustering Metrics...")
@@ -2354,7 +2393,7 @@ def cluster(
 	# 		'score': float(similarities[best_idx]),
 	# 		'size': len(cluster_texts)
 	# 	}
-		
+
 	# 	if verbose:
 	# 		print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
 	# 		print(f"\tCanonical: {canonical} (sim={similarities[best_idx]:.4f})")
@@ -2527,9 +2566,14 @@ def cluster(
 				print(f"     Consider reducing frequency weight from 0.3 to 0.2")
 	else:
 		print("\n  ℹ️  Frequency weighting made no changes (all clusters picked highest similarity)")
+
 	print("="*100)
 
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
+
+
+
+
 
 	# df = dissolve_low_cohesion_clusters(
 	# 	df=df,
@@ -2552,6 +2596,10 @@ def cluster(
 		poor_canonical_threshold=0.60,
 		verbose=verbose,
 	)
+
+
+
+
 
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
 	df.to_csv(out_csv, index=False)
