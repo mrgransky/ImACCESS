@@ -190,32 +190,41 @@ def remove_problematic_cluster_labels(
 		
 		# Remove labels from problematic clusters
 		df_clean = df[~df['cluster'].isin(problematic_cluster_ids)].copy()
+
+		kept_indices = df_clean.index.tolist()
+		embeddings_clean = embeddings[kept_indices]
 		
 		# Re-index cluster IDs to be contiguous
 		unique_clusters = sorted(df_clean['cluster'].unique())
 		cluster_mapping = {old_id: new_id for new_id, old_id in enumerate(unique_clusters)}
 		df_clean['cluster'] = df_clean['cluster'].map(cluster_mapping)
-		
+
+		# Reset index so df_clean indices are 0, 1, 2, ... n-1
+		df_clean = df_clean.reset_index(drop=True)
+
 		if verbose:
-				print(f"\n[RESULTS]")
-				print(f"  Original labels: {len(df):,}")
-				print(f"  Cleaned labels: {len(df_clean):,}")
-				print(f"  Removed labels: {len(df) - len(df_clean):,}")
-				print(f"  Original clusters: {df['cluster'].nunique():,}")
-				print(f"  Cleaned clusters: {df_clean['cluster'].nunique():,}")
-				print(f"  Removed clusters: {df['cluster'].nunique() - df_clean['cluster'].nunique():,}")
-				
-				# Consolidation stats
-				original_consolidation = len(df) / df['cluster'].nunique()
-				new_consolidation = len(df_clean) / df_clean['cluster'].nunique()
-				print(f"\n  Original consolidation: {original_consolidation:.2f}x")
-				print(f"  New consolidation: {new_consolidation:.2f}x")
-				print(f"  Change: {(new_consolidation - original_consolidation):.2f}x")
-				
-				print("\n✓ Problematic labels removed!")
-				print("="*80)
+			print(f"\n[RESULTS]")
+			print(f"  Original labels: {len(df):,}")
+			print(f"  Cleaned labels: {len(df_clean):,}")
+			print(f"  Removed labels: {len(df) - len(df_clean):,}")
+			print(f"  Original embeddings: {embeddings.shape}")
+			print(f"  Cleaned embeddings: {embeddings_clean.shape}")
+
+			print(f"  Original clusters: {df['cluster'].nunique():,}")
+			print(f"  Cleaned clusters: {df_clean['cluster'].nunique():,}")
+			print(f"  Removed clusters: {df['cluster'].nunique() - df_clean['cluster'].nunique():,}")
+			
+			# Consolidation stats
+			original_consolidation = len(df) / df['cluster'].nunique()
+			new_consolidation = len(df_clean) / df_clean['cluster'].nunique()
+			print(f"\n  Original consolidation: {original_consolidation:.2f}x")
+			print(f"  New consolidation: {new_consolidation:.2f}x")
+			print(f"  Change: {(new_consolidation - original_consolidation):.2f}x")
+			
+			print("\n✓ Problematic labels removed!")
+			print("="*80)
 		
-		return df_clean, removed_labels
+		return df_clean, embeddings_clean, removed_labels
 
 def dissolve_low_cohesion_clusters(
 		df,
@@ -951,40 +960,15 @@ def analyze_cluster_quality(
 	verbose: bool = True
 ) -> Dict:
 
-	n_embeddings = len(embeddings)
+	n_emb = len(embeddings)
 	n_labels = len(labels)
-	n_clusters = len(cluster_assignments)
-	
-	if verbose:
-		print(f"\n[VALIDATION] embeddings: {n_embeddings}, labels: {n_labels}, cluster_assignments: {n_clusters}")
-	
-	# Find the minimum length to ensure consistency
-	min_len = min(n_embeddings, n_labels, n_clusters)
-	
-	if n_embeddings != n_labels or n_embeddings != n_clusters:
-		if verbose:
-			print(f"[WARNING] Array length mismatch! Truncating to {min_len} samples...")
-			print(f"  - Dropping {n_embeddings - min_len} embeddings")
-			print(f"  - Dropping {n_labels - min_len} labels")
-			print(f"  - Dropping {n_clusters - min_len} cluster assignments")
-		
-		# Truncate all arrays to the same length
-		embeddings = embeddings[:min_len]
-		labels = labels[:min_len]
-		cluster_assignments = cluster_assignments[:min_len]
-	
-	# Check for NaN/Inf in embeddings and remove those samples
-	valid_mask = np.isfinite(embeddings).all(axis=1)
-	if not valid_mask.all():
-		n_invalid = (~valid_mask).sum()
-		
-		if verbose:
-			print(f"[WARNING] Found {n_invalid} samples with NaN/Inf in embeddings. Removing...")
-		
-		embeddings = embeddings[valid_mask]
-		labels = labels[valid_mask]
-		cluster_assignments = cluster_assignments[valid_mask]
-	
+	n_assign = len(cluster_assignments)
+	if not (n_emb == n_labels == n_assign):
+		raise ValueError(
+			f"Input size mismatch: embeddings ({n_emb}), labels ({n_labels}), "
+			f"and cluster_assignments ({n_assign}) must have the same length."
+		)	
+
 	# ========== Now proceed with validated data ==========
 	n_samples = len(labels)
 	n_clusters = len(np.unique(cluster_assignments))
@@ -993,9 +977,9 @@ def analyze_cluster_quality(
 		raise ValueError(f"Need at least 2 clusters for quality analysis, got {n_clusters}")
 	
 	if verbose:
-		print("\nCLUSTER QUALITY ANALYSIS REPORT\n")
-		print(f"Dataset: {n_samples:,} unique labels → {n_clusters:,} clusters")
-		print(f"Reduction ratio: {n_samples/n_clusters:.2f}x")	
+		print("\nCLUSTER QUALITY ANALYSIS")
+		print(f"\tDataset: {n_samples:,} unique labels → {n_clusters:,} clusters")
+		print(f"\tReduction ratio: {n_samples/n_clusters:.2f}x")	
 
 	# 1. GLOBAL CLUSTERING METRICS
 	if verbose:
@@ -2589,44 +2573,25 @@ def cluster(
 	# 	verbose=verbose,
 	# )
 
-	df, removed_labels = remove_problematic_cluster_labels(
+
+	df_clean, X_clean, removed_labels = remove_problematic_cluster_labels(
 		df=df,
 		embeddings=X,
 		low_cohesion_threshold=0.50,
 		poor_canonical_threshold=0.60,
-		verbose=verbose,
+		verbose=True
 	)
 
+	# Prepare for analysis (NEW - CORRECT!)
+	unique_labels_array = df_clean['label'].values  # 36,657 labels
+	cluster_labels = df_clean['cluster'].values      # 36,657 cluster assignments
+	canonical_map = df_clean.groupby('cluster')['canonical'].first().to_dict()
 
-
-
-
-	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
-	df.to_csv(out_csv, index=False)
-	
-	print("\nRUNNING COMPREHENSIVE CLUSTER QUALITY ANALYSIS\n")
-	cluster_labels = df['cluster'].values
-	canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
-	unique_labels_array = np.array(unique_labels)
-	print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
-	print(f"  ├─ Updated canonical_map: {len(canonical_map)} mappings")
-	print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
-	print(f"  ├─ cluster_labels: {type(cluster_labels)} {cluster_labels.shape}")
-	print(f"  ├─ canonical_map: {len(canonical_map)} mappings")
-	print(f"  ├─ label_freq_dict: {len(label_freq_dict)} labels with frequencies")
-	print(f"  ├─ df reports: {df['cluster'].nunique()} clusters")
-	print(f"  ├─ cluster_labels reports: {len(np.unique(cluster_labels))} clusters")
-	print(f"  └─ canonical_map reports: {len(canonical_map)} clusters")
-
-	if df['cluster'].nunique() != len(np.unique(cluster_labels)):
-		print(f"[WARNING] Mismatch detected! Analysis may be stale!")
-	else:
-		print(f"All consistent!")
-
-	results = analyze_cluster_quality(
-		embeddings=X,
-		labels=df['label'].values,
-		cluster_assignments=df['cluster'].values,
+	# Call analyze_cluster_quality with SYNCHRONIZED arrays ✅
+	analysis_results = analyze_cluster_quality(
+		embeddings=X_clean,
+		labels=unique_labels_array,
+		cluster_assignments=cluster_labels,
 		canonical_labels=canonical_map,
 		original_label_counts=label_freq_dict,
 		distance_metric='cosine',
@@ -2634,33 +2599,66 @@ def cluster(
 		verbose=verbose,
 	)
 
-	cluster_quality_csv = clusters_fname.replace(".csv", "_cluster_quality_metrics.csv")
-	results['cluster_metrics'].to_csv(cluster_quality_csv, index=False)
-
-	# Export problematic clusters if any
-	if results['problematic_clusters']:
-		all_problematic_ids = []
-		for issue in results['problematic_clusters']:
-			if issue['severity'] in ['HIGH', 'MEDIUM']:
-				all_problematic_ids.extend(issue['cluster_ids'])
+	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
+	df.to_csv(out_csv, index=False)
 	
-		if all_problematic_ids:
-			problematic_csv = clusters_fname.replace(".csv", "_problematic_clusters_review.csv")
-			export_problematic_clusters(
-				labels=unique_labels_array,
-				cluster_assignments=cluster_labels,
-				canonical_labels=canonical_map,
-				problematic_cluster_ids=list(set(all_problematic_ids)),
-				output_path=problematic_csv
-			)
+	# print("\nRUNNING COMPREHENSIVE CLUSTER QUALITY ANALYSIS\n")
+	# cluster_labels = df['cluster'].values
+	# canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
+	# unique_labels_array = np.array(unique_labels)
+	# print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
+	# print(f"  ├─ Updated canonical_map: {len(canonical_map)} mappings")
+	# print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
+	# print(f"  ├─ cluster_labels: {type(cluster_labels)} {cluster_labels.shape}")
+	# print(f"  ├─ canonical_map: {len(canonical_map)} mappings")
+	# print(f"  ├─ label_freq_dict: {len(label_freq_dict)} labels with frequencies")
+	# print(f"  ├─ df reports: {df['cluster'].nunique()} clusters")
+	# print(f"  ├─ cluster_labels reports: {len(np.unique(cluster_labels))} clusters")
+	# print(f"  └─ canonical_map reports: {len(canonical_map)} clusters")
 
-	automated_cluster_validation(
-		embeddings=X,
-		labels=unique_labels_array,
-		cluster_assignments=cluster_labels,
-		canonical_labels=canonical_map,
-		original_label_counts=label_freq_dict,
-		verbose=True
-	)
+	# if df['cluster'].nunique() != len(np.unique(cluster_labels)):
+	# 	print(f"[WARNING] Mismatch detected! Analysis may be stale!")
+	# else:
+	# 	print(f"All consistent!")
+
+	# results = analyze_cluster_quality(
+	# 	embeddings=X,
+	# 	labels=df['label'].values,
+	# 	cluster_assignments=df['cluster'].values,
+	# 	canonical_labels=canonical_map,
+	# 	original_label_counts=label_freq_dict,
+	# 	distance_metric='cosine',
+	# 	output_dir=os.path.dirname(clusters_fname),
+	# 	verbose=verbose,
+	# )
+
+	# cluster_quality_csv = clusters_fname.replace(".csv", "_cluster_quality_metrics.csv")
+	# results['cluster_metrics'].to_csv(cluster_quality_csv, index=False)
+
+	# # Export problematic clusters if any
+	# if results['problematic_clusters']:
+	# 	all_problematic_ids = []
+	# 	for issue in results['problematic_clusters']:
+	# 		if issue['severity'] in ['HIGH', 'MEDIUM']:
+	# 			all_problematic_ids.extend(issue['cluster_ids'])
+	
+	# 	if all_problematic_ids:
+	# 		problematic_csv = clusters_fname.replace(".csv", "_problematic_clusters_review.csv")
+	# 		export_problematic_clusters(
+	# 			labels=unique_labels_array,
+	# 			cluster_assignments=cluster_labels,
+	# 			canonical_labels=canonical_map,
+	# 			problematic_cluster_ids=list(set(all_problematic_ids)),
+	# 			output_path=problematic_csv
+	# 		)
+
+	# automated_cluster_validation(
+	# 	embeddings=X,
+	# 	labels=unique_labels_array,
+	# 	cluster_assignments=cluster_labels,
+	# 	canonical_labels=canonical_map,
+	# 	original_label_counts=label_freq_dict,
+	# 	verbose=True
+	# )
 
 	return df
