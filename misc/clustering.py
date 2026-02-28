@@ -112,14 +112,16 @@ def remove_problematic_cluster_labels(
 				intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
 				
 				if intra_sim < low_cohesion_threshold:
-						low_cohesion_clusters.append({
-								'cluster_id': cluster_id,
-								'intra_sim': intra_sim,
-								'size': cluster_size,
-								'labels': cluster_labels
-						})
-						problematic_cluster_ids.add(cluster_id)
-						removed_labels.extend(cluster_labels)
+					low_cohesion_clusters.append(
+						{
+							'cluster_id': cluster_id,
+							'intra_sim': intra_sim,
+							'size': cluster_size,
+							'labels': cluster_labels
+						}
+					)
+					problematic_cluster_ids.add(cluster_id)
+					removed_labels.extend(cluster_labels)
 		
 		if verbose:
 			print(f"\n[LOW COHESION] Found {len(low_cohesion_clusters)} clusters")
@@ -2543,7 +2545,7 @@ def cluster(
 	# 	verbose=verbose,
 	# )
 
-	df_clean, removed_labels = remove_problematic_cluster_labels(
+	df, removed_labels = remove_problematic_cluster_labels(
 		df=df,
 		embeddings=X,
 		low_cohesion_threshold=0.50,
