@@ -2543,6 +2543,14 @@ def cluster(
 	# 	verbose=verbose,
 	# )
 
+	df_clean, removed_labels = remove_problematic_cluster_labels(
+		df=df,
+		embeddings=X,
+		low_cohesion_threshold=0.50,
+		poor_canonical_threshold=0.60,
+		verbose=verbose,
+	)
+
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
 	df.to_csv(out_csv, index=False)
 	
