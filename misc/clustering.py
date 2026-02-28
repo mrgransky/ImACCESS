@@ -2556,9 +2556,6 @@ def cluster(
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 
 
-
-
-
 	# df = dissolve_low_cohesion_clusters(
 	# 	df=df,
 	# 	embeddings=X,
@@ -2574,7 +2571,7 @@ def cluster(
 	# )
 
 
-	df_clean, X_clean, removed_labels = remove_problematic_cluster_labels(
+	df, X_clean, removed_labels = remove_problematic_cluster_labels(
 		df=df,
 		embeddings=X,
 		low_cohesion_threshold=0.50,
@@ -2582,16 +2579,36 @@ def cluster(
 		verbose=True
 	)
 
-	# Prepare for analysis (NEW - CORRECT!)
-	unique_labels_array = df_clean['label'].values  # 36,657 labels
-	cluster_labels = df_clean['cluster'].values      # 36,657 cluster assignments
-	canonical_map = df_clean.groupby('cluster')['canonical'].first().to_dict()
+	if verbose:
+		print(f"\n Problematic clusters removed")
+		print(f"  Removed labels: {len(removed_labels)}")
+		print(f"  Final clusters: {len(df['cluster'].unique())}")
 
-	# Call analyze_cluster_quality with SYNCHRONIZED arrays ✅
-	analysis_results = analyze_cluster_quality(
-		embeddings=X_clean,
-		labels=unique_labels_array,
-		cluster_assignments=cluster_labels,
+	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
+	df.to_csv(out_csv, index=False)
+	
+	unique_labels_array = df['label'].values  # 36,657 labels
+	cluster_labels = df['cluster'].values      # 36,657 cluster assignments
+	canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
+
+	print("\nRUNNING COMPREHENSIVE CLUSTER QUALITY ANALYSIS")
+	print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
+	print(f"  ├─ Updated canonical_map: {len(canonical_map)} mappings")
+	print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
+	print(f"  ├─ cluster_labels: {type(cluster_labels)} {cluster_labels.shape}")
+	print(f"  ├─ label_freq_dict: {len(label_freq_dict)} labels with frequencies")
+	print(f"  ├─ df reports: {df['cluster'].nunique()} clusters")
+	print(f"  └─ cluster_labels reports: {len(np.unique(cluster_labels))} clusters")
+	
+	if df['cluster'].nunique() != len(np.unique(cluster_labels)):
+		print(f"[WARNING] Mismatch detected! Analysis may be stale!")
+	else:
+		print(f"All consistent!")
+
+	results = analyze_cluster_quality(
+		embeddings=X_clean,  # ✅ CORRECT: 36,657 embeddings (matches!)
+		labels=unique_labels_array,  # ✅ CORRECT: 36,657 labels
+		cluster_assignments=cluster_labels,  # ✅ CORRECT: 36,657 assignments
 		canonical_labels=canonical_map,
 		original_label_counts=label_freq_dict,
 		distance_metric='cosine',
@@ -2599,66 +2616,26 @@ def cluster(
 		verbose=verbose,
 	)
 
-	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
-	df.to_csv(out_csv, index=False)
+	cluster_quality_csv = clusters_fname.replace(".csv", "_cluster_quality_metrics.csv")
+	results['cluster_metrics'].to_csv(cluster_quality_csv, index=False)
+
+	if results['problematic_clusters']:
+		if verbose:
+			print(f"\n[WARNING] {len(results['problematic_clusters'])} types of problematic clusters detected! => Exporting for manual review...")
+		all_problematic_ids = []
+		for issue in results['problematic_clusters']:
+			if issue['severity'] in ['HIGH', 'MEDIUM']:
+				all_problematic_ids.extend(issue['cluster_ids'])
 	
-	# print("\nRUNNING COMPREHENSIVE CLUSTER QUALITY ANALYSIS\n")
-	# cluster_labels = df['cluster'].values
-	# canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
-	# unique_labels_array = np.array(unique_labels)
-	# print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
-	# print(f"  ├─ Updated canonical_map: {len(canonical_map)} mappings")
-	# print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
-	# print(f"  ├─ cluster_labels: {type(cluster_labels)} {cluster_labels.shape}")
-	# print(f"  ├─ canonical_map: {len(canonical_map)} mappings")
-	# print(f"  ├─ label_freq_dict: {len(label_freq_dict)} labels with frequencies")
-	# print(f"  ├─ df reports: {df['cluster'].nunique()} clusters")
-	# print(f"  ├─ cluster_labels reports: {len(np.unique(cluster_labels))} clusters")
-	# print(f"  └─ canonical_map reports: {len(canonical_map)} clusters")
+		if all_problematic_ids:
+			problematic_csv = clusters_fname.replace(".csv", "_problematic_clusters_review.csv")
+			export_problematic_clusters(
+				labels=unique_labels_array,
+				cluster_assignments=cluster_labels,
+				canonical_labels=canonical_map,
+				problematic_cluster_ids=list(set(all_problematic_ids)),
+				output_path=problematic_csv
+			)
 
-	# if df['cluster'].nunique() != len(np.unique(cluster_labels)):
-	# 	print(f"[WARNING] Mismatch detected! Analysis may be stale!")
-	# else:
-	# 	print(f"All consistent!")
-
-	# results = analyze_cluster_quality(
-	# 	embeddings=X,
-	# 	labels=df['label'].values,
-	# 	cluster_assignments=df['cluster'].values,
-	# 	canonical_labels=canonical_map,
-	# 	original_label_counts=label_freq_dict,
-	# 	distance_metric='cosine',
-	# 	output_dir=os.path.dirname(clusters_fname),
-	# 	verbose=verbose,
-	# )
-
-	# cluster_quality_csv = clusters_fname.replace(".csv", "_cluster_quality_metrics.csv")
-	# results['cluster_metrics'].to_csv(cluster_quality_csv, index=False)
-
-	# # Export problematic clusters if any
-	# if results['problematic_clusters']:
-	# 	all_problematic_ids = []
-	# 	for issue in results['problematic_clusters']:
-	# 		if issue['severity'] in ['HIGH', 'MEDIUM']:
-	# 			all_problematic_ids.extend(issue['cluster_ids'])
-	
-	# 	if all_problematic_ids:
-	# 		problematic_csv = clusters_fname.replace(".csv", "_problematic_clusters_review.csv")
-	# 		export_problematic_clusters(
-	# 			labels=unique_labels_array,
-	# 			cluster_assignments=cluster_labels,
-	# 			canonical_labels=canonical_map,
-	# 			problematic_cluster_ids=list(set(all_problematic_ids)),
-	# 			output_path=problematic_csv
-	# 		)
-
-	# automated_cluster_validation(
-	# 	embeddings=X,
-	# 	labels=unique_labels_array,
-	# 	cluster_assignments=cluster_labels,
-	# 	canonical_labels=canonical_map,
-	# 	original_label_counts=label_freq_dict,
-	# 	verbose=True
-	# )
 
 	return df
