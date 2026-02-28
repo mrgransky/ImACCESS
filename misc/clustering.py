@@ -47,7 +47,7 @@ cache_directory = {
 def remove_problematic_cluster_labels(
 		df,
 		embeddings,
-		low_cohesion_threshold=0.45,
+		low_cohesion_threshold=0.50,
 		poor_canonical_threshold=0.60,
 		verbose=True
 ):
@@ -81,15 +81,10 @@ def remove_problematic_cluster_labels(
 		removed_labels : list
 				List of removed labels for reference
 		"""
-		from sklearn.metrics.pairwise import cosine_similarity
-		import numpy as np
-		
 		if verbose:
-				print("\n" + "="*80)
-				print("REMOVING PROBLEMATIC CLUSTER LABELS")
-				print("="*80)
-				print(f"  Low-cohesion threshold: {low_cohesion_threshold}")
-				print(f"  Poor canonical threshold: {poor_canonical_threshold}")
+			print("\nREMOVING PROBLEMATIC CLUSTER LABELS")
+			print(f"\tLow-cohesion threshold: {low_cohesion_threshold}")
+			print(f"\tPoor canonical threshold: {poor_canonical_threshold}")
 		
 		problematic_cluster_ids = set()
 		removed_labels = []
