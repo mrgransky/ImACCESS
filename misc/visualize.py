@@ -2754,7 +2754,7 @@ def analyze_top_labels_per_source(
 				# It is a valid list of labels, proceed
 				pass
 			elif pd.isna(labels):
-				print(f"<!> {col} containing {labels} => skipping!")
+				# print(f"<!> {col} containing {labels} => skipping!")
 				continue
 			elif isinstance(labels, str):
 				try:
