@@ -2741,7 +2741,7 @@ def analyze_top_labels_per_source(
 	DPI: int=200
 ):	
 	print(f"\nTOP-{n_top_labels_plot} MOST FREQUENT LABELS: PER-SOURCE ANALYSIS\n")
-	print(processed_dfs)
+	# print(processed_dfs)
 
 	all_label_counts = {}
 	# PART 1: Individual Source Analysis
