@@ -3180,9 +3180,6 @@ def perform_multilabel_eda(
 	print("Missing Values".center(100, "-"))
 	print(df.isnull().sum())
 	print(f"[LOADED] {type(df)} {df.shape} {list(df.columns)}")
-	print("-"*100)
-	print(df[label_column].head(5))
-	print("-"*100)
 
 	processed_dfs = {
 		"llm_based_labels": 	df["llm_based_labels"].tolist(),
@@ -3197,12 +3194,12 @@ def perform_multilabel_eda(
 		all_individual_labels.extend(labels)
 	
 	unique_labels = sorted(list(set(all_individual_labels)))
-	print(f"--- Multi-label Statistics (Main Column: {label_column}) ---")
+	print(f"Multi-label Statistics (Main Column: {label_column})")
 	print(f"Total number of samples with valid '{label_column}': {len(df)}")
 	print(f"Total number of unique labels across the dataset (from '{label_column}'): {len(unique_labels)}")
 	print(f"Example unique labels:\n{unique_labels[:50]}")
 
-	print(f"--- Label Cardinality Statistics (Main Column: {label_column}) ---")
+	print(f"Label Cardinality Statistics (Main Column: {label_column})")
 	df['label_cardinality'] = df[label_column].apply(len)
 	print(df['label_cardinality'].describe())
 
