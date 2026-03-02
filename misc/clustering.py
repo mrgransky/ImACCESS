@@ -1830,9 +1830,6 @@ def get_optimal_num_clusters(
 			reason = (
 				f"IntraSim {mean_intra_sim:.4f} ≤ prev best {best_intra_sim:.4f} (no improvement)"
 			)
-
-		if verbose:
-			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {singleton_ratio:<10.4f} {status:<50} {reason}")
 		
 		# Early stopping: If in optimal range for 2 consecutive steps
 		if len(coarse_results) >= 2:
@@ -1846,7 +1843,10 @@ def get_optimal_num_clusters(
 				if verbose:
 					print(f"\n[STAGE 1] Optimal range detected. Moving to fine search.")
 				break
-	
+
+		if verbose:
+			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {singleton_ratio:<10.4f} {status:<50} {reason}")
+
 	if not coarse_results:
 		raise ValueError("No valid cluster configurations found in coarse search")
 	
