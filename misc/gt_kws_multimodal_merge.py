@@ -12,7 +12,7 @@ from clustering import cluster
 # $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -m "Qwen/Qwen3-Embedding-8B" -nw 40 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
 
 # old dataset:
-# $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -m "Qwen/Qwen3-Embedding-8B" -nw 40 -v > /scratch/project_2004072/ImACCESS/trash/logs/_interactive_multimodal_annotation_h4.txt &
+# $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -m "all-MiniLM-L12-v2" -nw 20 -v > /scratch/project_2004072/ImACCESS/trash/logs/_interactive_multimodal_annotation_h4.txt &
 
 # Global variable for worker processes
 canonical_labels_global = None
@@ -34,8 +34,19 @@ def parallel_canonical_mapping(labels_str):
 		labels = labels_str
 	else:
 		return []
-	# Map to canonical labels using global dict
-	return [canonical_labels_global.get(label, label) for label in labels]
+
+	# # Map to canonical labels using global dict
+	# return [canonical_labels_global.get(label, label) for label in labels]
+
+	# Map to canonical labels, SKIPPING labels not in dict
+	# (these are labels that were removed as problematic)
+	canonical_labels_ = []
+	for label in labels:
+		if label in canonical_labels_global:
+			canonical_labels_.append(canonical_labels_global[label])
+		# else: label was removed as problematic, skip it
+	
+	return canonical_labels_
 
 def merge_csv_files(
 	dataset_dir: str,
@@ -91,14 +102,10 @@ def merge_csv_files(
 	# [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
 	canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
 	print(f">> canonical_labels: {type(canonical_labels)} {len(canonical_labels)}")
-	print("First 10 canonical labels (label -> canonical_label):")
-	samples = {k:v for i, (k, v) in enumerate(canonical_labels.items()) if i < 10}
-	print(json.dumps(samples, indent=2, ensure_ascii=False))
 
 	# ========== Parallel mapping ==========
 	chunksize = max(1, len(df) // (num_workers * 4))  # 4 chunks per worker
 	print(f"Mapping {len(df)} multimodal labels to canonical labels using {num_workers} cores with chunks: {chunksize}")
-	t_start = time.time()
 	with multiprocessing.Pool(
 		processes=num_workers,
 		initializer=init_worker_canonical, # Called ONCE per worker
@@ -109,10 +116,28 @@ def merge_csv_files(
 			multimodal_labels,
 			chunksize=chunksize
 		)
-	elapsed = time.time() - t_start
 
+	# ✅ Filter out samples with no valid canonical labels
+	before_count = len(df)
+	df = df[df['multimodal_canonical_labels'].apply(len) > 0].copy()
+	after_count = len(df)
+	
 	if verbose:
-		print(f"Mapping completed in {elapsed:.4f}s ({len(df)/elapsed:.1f} rows/sec) {type(df)} {df.shape} to {output_fpath}\n{list(df.columns)}")
+		print(f"\n>> Canonical mapping complete:")
+		print(f"   Samples before: {before_count:,}")
+		print(f"   Samples after: {after_count:,}")
+		if before_count != after_count:
+			removed = before_count - after_count
+			print(f"   Removed {removed:,} samples with no valid labels ({removed/before_count*100:.2f}%)")
+		
+		# Show some statistics
+		label_counts = df['multimodal_canonical_labels'].apply(len)
+		print(f"\n   Labels per sample:")
+		print(f"     Mean: {label_counts.mean():.2f}")
+		print(f"     Median: {label_counts.median():.0f}")
+		print(f"     Min: {label_counts.min()}")
+		print(f"     Max: {label_counts.max()}")
+
 
 	# DEDUPLICATION: Remove duplicate canonical labels
 	if verbose:

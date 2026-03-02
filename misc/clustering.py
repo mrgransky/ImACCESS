@@ -68,7 +68,7 @@ def remove_problematic_cluster_labels(
 		embeddings : np.ndarray
 				Label embeddings (same order as unique labels)
 		low_cohesion_threshold : float
-				Intra-similarity threshold for low-cohesion detection (default: 0.45)
+				Intra-similarity threshold for low-cohesion detection (default: 0.50)
 		poor_canonical_threshold : float
 				Canonical representativeness threshold (default: 0.60)
 		verbose : bool
@@ -85,6 +85,8 @@ def remove_problematic_cluster_labels(
 			print("\nREMOVING PROBLEMATIC CLUSTER LABELS")
 			print(f"\tLow-cohesion threshold: {low_cohesion_threshold}")
 			print(f"\tPoor canonical threshold: {poor_canonical_threshold}")
+			print(df.shape, list(df.columns))
+			print(df.head(15))
 		
 		problematic_cluster_ids = set()
 		removed_labels = []
@@ -128,7 +130,7 @@ def remove_problematic_cluster_labels(
 			print(f"  Labels to remove: {sum(c['size'] for c in low_cohesion_clusters)}")
 			if low_cohesion_clusters:
 				print(f"  Examples:")
-				for cluster in low_cohesion_clusters[:5]:
+				for cluster in low_cohesion_clusters[:15]:
 					print(f"    Cluster {cluster['cluster_id']}: {cluster['labels']} (sim={cluster['intra_sim']:.4f})")
 		
 		# ========================================================================
@@ -178,15 +180,12 @@ def remove_problematic_cluster_labels(
 						for cluster in poor_canonical_clusters[:5]:
 								print(f"    Cluster {cluster['cluster_id']}: {cluster['labels']} (rep={cluster['representativeness']:.4f})")
 		
-		# ========================================================================
-		# PART 3: Remove Problematic Labels
-		# ========================================================================
-		
+		# PART 3: Remove Problematic Labels		
 		if verbose:
-				print(f"\n[REMOVAL SUMMARY]")
-				print(f"  Total problematic clusters: {len(problematic_cluster_ids)}")
-				print(f"  Total labels to remove: {len(removed_labels)}")
-				print(f"  Percentage of labels: {len(removed_labels)/len(df)*100:.2f}%")
+			print(f"\n[REMOVAL SUMMARY]")
+			print(f"  Total problematic clusters: {len(problematic_cluster_ids)}")
+			print(f"  Total labels to remove: {len(removed_labels)}")
+			print(f"  Percentage of labels: {len(removed_labels)/len(df)*100:.2f}%")
 		
 		# Remove labels from problematic clusters
 		df_clean = df[~df['cluster'].isin(problematic_cluster_ids)].copy()
@@ -204,8 +203,8 @@ def remove_problematic_cluster_labels(
 
 		if verbose:
 			print(f"\n[RESULTS]")
-			print(f"  Original labels: {len(df):,}")
-			print(f"  Cleaned labels: {len(df_clean):,}")
+			print(f"  df original: {df.shape}")
+			print(f"  df clean: {df_clean.shape}")
 			print(f"  Removed labels: {len(df) - len(df_clean):,}")
 			print(f"  Original embeddings: {embeddings.shape}")
 			print(f"  Cleaned embeddings: {embeddings_clean.shape}")
@@ -221,7 +220,7 @@ def remove_problematic_cluster_labels(
 			print(f"  New consolidation: {new_consolidation:.2f}x")
 			print(f"  Change: {(new_consolidation - original_consolidation):.2f}x")
 			
-			print("\n✓ Problematic labels removed!")
+			print("\nProblematic labels removed!")
 			print("="*80)
 		
 		return df_clean, embeddings_clean, removed_labels
@@ -2486,30 +2485,29 @@ def cluster(
 	print("\nFREQUENCY WEIGHTING IMPACT ANALYSIS\n")
 	total_clusters = len(df.cluster.unique())
 	print(f"Total clusters analyzed: {total_clusters}")
-	print(f"Clusters where frequency changed selection: {freq_changed_count}")
-	print(f"  → {freq_changed_count/total_clusters*100:.1f}% of clusters affected")
+	print(f"Clusters where frequency changed the canonical: {freq_changed_count} ({freq_changed_count/total_clusters*100:.1f}%)")
 
 	if total_sim_loss:
-		print(f"\nSIMILARITY IMPACT:")
-		print(f"  Average similarity loss: {np.mean(total_sim_loss)*100:.2f}%")
-		print(f"  Median similarity loss:  {np.median(total_sim_loss)*100:.2f}%")
-		print(f"  Max similarity loss:     {np.max(total_sim_loss)*100:.2f}%")
-		print(f"  Min similarity loss:     {np.min(total_sim_loss)*100:.2f}%")
+		print(f"\nSIMILARITY LOSS IMPACT:")
+		print(f"  Average  {np.mean(total_sim_loss)*100:.2f}%")
+		print(f"  Median   {np.median(total_sim_loss)*100:.2f}%")
+		print(f"  Max      {np.max(total_sim_loss)*100:.2f}%")
+		print(f"  Min      {np.min(total_sim_loss)*100:.2f}%")
 		
-		print(f"\nFREQUENCY BENEFIT:")
-		print(f"  Average frequency gain: {np.mean(total_freq_gain):.1f}x")
-		print(f"  Median frequency gain:  {np.median(total_freq_gain):.1f}x")
-		print(f"  Max frequency gain:     {np.max(total_freq_gain):.1f}x")
-		print(f"  Min frequency gain:     {np.min(total_freq_gain):.1f}x")
+		print(f"\nFREQUENCY GAIN BENEFIT:")
+		print(f"  Average {np.mean(total_freq_gain):.1f}x")
+		print(f"  Median  {np.median(total_freq_gain):.1f}x")
+		print(f"  Max     {np.max(total_freq_gain):.1f}x")
+		print(f"  Min     {np.min(total_freq_gain):.1f}x")
 		
 		print(f"\nQUALITY ASSESSMENT:")
 		excellent_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.03 and f > 10)
 		good_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.05 and f > 5)
 		questionable_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s > 0.10 or f < 2)
 		
-		print(f"\tExcellent trades (<3% sim loss, >10x freq gain): {excellent_trades} ({excellent_trades/freq_changed_count*100:.1f}%)")
-		print(f"\tGood trades (<5% sim loss, >5x freq gain):       {good_trades} ({good_trades/freq_changed_count*100:.1f}%)")
-		print(f"\tQuestionable trades (>10% sim loss or <2x gain): {questionable_trades} ({questionable_trades/freq_changed_count*100:.1f}%)")
+		print(f"\tExcellent trades (<3% sim loss, >10x freq gain): {excellent_trades:<10} ({excellent_trades/freq_changed_count*100:.1f}%)")
+		print(f"\tGood trades (<5% sim loss, >5x freq gain):       {good_trades:<10} ({good_trades/freq_changed_count*100:.1f}%)")
+		print(f"\tQuestionable trades (>10% sim loss or <2x gain): {questionable_trades:<10} ({questionable_trades/freq_changed_count*100:.1f}%)")
 		
 		if questionable_trades > 0 and verbose:
 			print(f"\n[WARNING] {questionable_trades} questionable trades detected:")
@@ -2555,22 +2553,6 @@ def cluster(
 
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 
-
-	# df = dissolve_low_cohesion_clusters(
-	# 	df=df,
-	# 	embeddings=X,
-	# 	threshold=0.50,
-	# 	verbose=verbose,
-	# )
-
-	# df = fix_poor_canonical_clusters(
-	# 	df=df,
-	# 	embeddings=X,
-	# 	threshold=0.60,
-	# 	verbose=verbose,
-	# )
-
-
 	df, X_clean, removed_labels = remove_problematic_cluster_labels(
 		df=df,
 		embeddings=X,
@@ -2578,11 +2560,6 @@ def cluster(
 		poor_canonical_threshold=0.60,
 		verbose=True
 	)
-
-	if verbose:
-		print(f"\n Problematic clusters removed")
-		print(f"  Removed labels: {len(removed_labels)}")
-		print(f"  Final clusters: {len(df['cluster'].unique())}")
 
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
 	df.to_csv(out_csv, index=False)
@@ -2636,6 +2613,5 @@ def cluster(
 				problematic_cluster_ids=list(set(all_problematic_ids)),
 				output_path=problematic_csv
 			)
-
 
 	return df
