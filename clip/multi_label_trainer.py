@@ -125,25 +125,38 @@ def full_finetune_multi_label(
 
 	get_parameters_info(model=model, mode=mode)
 
-	# Compute once before training, from train_loader dataset
-	train_freq = torch.zeros(num_classes)
-	for raw in train_loader.dataset.labels:
-		try:
-			for lbl in ast.literal_eval(raw):
-				if lbl in train_loader.dataset.label_dict:
-					train_freq[train_loader.dataset.label_dict[lbl]] += 1
-		except: 
-			pass
-
+	# Compute pos_weight from training set frequencies
+	print("Computing pos_weight from training set...")
+	train_freq = torch.zeros(num_classes, dtype=torch.float32)
 	N = len(train_loader.dataset)
+
+	for raw in train_loader.dataset.labels:
+			try:
+					for lbl in ast.literal_eval(raw):
+							if lbl in train_loader.dataset.label_dict:
+									train_freq[train_loader.dataset.label_dict[lbl]] += 1
+			except (ValueError, SyntaxError):
+					pass
+
+	# pos_weight = (N - freq) / freq for observed classes
+	# Cap at 1000 to avoid float16 overflow (max float16 = 65504)
 	pos_weight = torch.where(
-		train_freq > 0,
-		(N - train_freq) / train_freq.clamp(min=1),
-		torch.ones(num_classes)          # zero-count classes get pw=1, but see point 3
+			train_freq > 0,
+			((N - train_freq) / train_freq.clamp(min=1)).clamp(max=1000.0),
+			torch.ones(num_classes),
 	).to(device)
 
-	criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-	# criterion = torch.nn.BCEWithLogitsLoss()
+	# Zero-count class mask — exclude from loss entirely
+	active_mask = (train_freq > 0).to(device)  # [C] bool, ~3,057 True
+
+	print(f"pos_weight range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+	print(f"Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+
+	# Replace the criterion line
+	criterion = torch.nn.BCEWithLogitsLoss(
+			pos_weight=pos_weight,
+			reduction='none',   # apply active_mask after, then mean
+	)
 
 	if verbose:
 		print(f"{criterion.__class__.__name__}")
