@@ -55,8 +55,8 @@ from historyXN_dataset_loader import get_single_label_dataloaders, get_multi_lab
 def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
 	parser.add_argument('--metadata_csv', '-csv', type=str, required=True, help='Metadata CSV file')
-	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'probe', 'lora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'adapter'], default=None, help='Fine-tuning strategy')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
+	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'probe', 'lora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'adapter'], default=None, help='Fine-tuning strategy')
 	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--epochs', '-e', type=int, default=63, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=2, help='Batch size for training')
