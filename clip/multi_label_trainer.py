@@ -125,10 +125,10 @@ def full_finetune_multi_label(
 
 	# Freeze text encoder, fine-tune only vision encoder
 	for name, param in model.named_parameters():
-			if 'visual' in name:
-					param.requires_grad = True
-			else:
-					param.requires_grad = False
+		if 'visual' in name:
+			param.requires_grad = True
+		else:
+			param.requires_grad = False
 
 	# Verify the split
 	trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -166,19 +166,30 @@ def full_finetune_multi_label(
 	print(f"pos_weight range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
 	print(f"Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 
-	# Replace the criterion line
-	criterion = torch.nn.BCEWithLogitsLoss(
-			pos_weight=pos_weight,
-			reduction='none',   # apply active_mask after, then mean
+	# I2T: pos_weight applies — rows are images, cols are classes
+	criterion_i2t = torch.nn.BCEWithLogitsLoss(
+		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
+		reduction='none',
 	)
 
 	if verbose:
-		print(f"{criterion.__class__.__name__}")
+		print(f"[I2T] {criterion_i2t.__class__.__name__}")
 		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} min, max: {pos_weight.min().item():.3f}, {pos_weight.max().item():.3f}")
 		print(f"   ├─ number of samples: {N}")
 		print(f"   ├─ number of classes: {num_classes}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} min, max: {train_freq.min().item():.3f}, {train_freq.max().item():.3f}")
 		print()
+
+	# T2I: no pos_weight — rows are classes, cols are batch images
+	# The imbalance is already corrected via I2T; T2I provides directional symmetry
+	criterion_t2i = torch.nn.BCEWithLogitsLoss(
+		reduction='none',
+	)
+
+	if verbose:
+		print(f"[T2I] {criterion_t2i.__class__.__name__}")
+
+
 
 	all_class_embeds = []
 	model.eval()
@@ -248,7 +259,8 @@ def full_finetune_multi_label(
 		f"{model_arch}_"
 		f"{optimizer.__class__.__name__}_"
 		f"{scheduler.__class__.__name__}_"
-		f"{criterion.__class__.__name__}_"
+		f"{criterion_i2t.__class__.__name__}_"
+		f"{criterion_t2i.__class__.__name__}_"
 		f"{scaler.__class__.__name__}_"
 		f"ieps_{num_epochs}_"
 		f"do_{dropout_val}_"
@@ -305,7 +317,8 @@ def full_finetune_multi_label(
 					images=images,
 					all_class_embeds=all_class_embeds,
 					label_vectors=label_vectors,
-					criterion=criterion,
+					criterion_i2t=criterion_i2t,
+					criterion_t2i=criterion_t2i,
 					active_mask=active_mask,
 					temperature=temperature,
 					loss_weights=loss_weights,
