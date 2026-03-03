@@ -116,7 +116,7 @@ def full_finetune_multi_label(
 	print()
 
 	for n, p in model.named_parameters():
-		print(f"{n:<50}{p.requires_grad:<10}{p.shape} {p.dtype}")
+		print(f"{n:<50}{p.requires_grad:<10}{p.dtype:<25}{p.shape}")
 
 	# Unfreeze all layers for full fine-tuning
 	for name, param in model.named_parameters():
@@ -142,7 +142,8 @@ def full_finetune_multi_label(
 		torch.ones(num_classes)          # zero-count classes get pw=1, but see point 3
 	).to(device)
 
-	criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+	# criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+	criterion = torch.nn.BCEWithLogitsLoss()
 
 	if verbose:
 		print(f"{criterion.__class__.__name__}")
