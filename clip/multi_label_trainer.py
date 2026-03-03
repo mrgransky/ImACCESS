@@ -364,7 +364,9 @@ def full_finetune_multi_label(
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
 			validation_loader=validation_loader,
-			criterion=criterion,
+			criterion_i2t=criterion_i2t,
+			criterion_t2i=criterion_t2i,
+			active_mask=active_mask,
 			device=device,
 			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
 			temperature=temperature,
