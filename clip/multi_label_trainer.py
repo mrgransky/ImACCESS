@@ -25,7 +25,6 @@ def full_finetune_multi_label(
 	topk_values: List[int] = [1, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
 	temperature: float = 0.07,  # Temperature for contrastive learning
-	label_smoothing: float = 0.0,  # Label smoothing for multi-label
 	use_lamb: bool = False,
 	verbose: bool=True,
 ):
@@ -122,19 +121,33 @@ def full_finetune_multi_label(
 
 	get_parameters_info(model=model, mode=mode)
 
-	# Use BCEWithLogitsLoss for multi-label classification
-	if label_smoothing > 0:
-		if verbose:
-			print(f"Using label smoothing: {label_smoothing}")
-		criterion = LabelSmoothingBCELoss(smoothing=label_smoothing)
-	else:
-		criterion = torch.nn.BCEWithLogitsLoss()
+	# Compute once before training, from train_loader dataset
+	train_freq = torch.zeros(num_classes)
+	for raw in train_loader.dataset.labels:
+			try:
+					for lbl in ast.literal_eval(raw):
+							if lbl in train_loader.dataset.label_dict:
+									train_freq[train_loader.dataset.label_dict[lbl]] += 1
+			except: pass
+
+	N = len(train_loader.dataset)
+	pos_weight = torch.where(
+			train_freq > 0,
+			(N - train_freq) / train_freq.clamp(min=1),
+			torch.ones(num_classes)          # zero-count classes get pw=1, but see point 3
+	).to(device)
+
+	criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
 	if verbose:
-		print(f"Using {criterion.__class__.__name__} for multi-label classification with {num_classes} classes")
+		print(f"{criterion.__class__.__name__}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device}")
+		print(f"   ├─ number of samples: {N}")
+		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   └─ train_freq: {train_freq}")
 
 	all_class_embeds = []
-	model.eval()  # Ensure model is in eval mode
+	model.eval()
 	text_batch_size = validation_loader.batch_size
 	if verbose:
 		print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
@@ -152,7 +165,6 @@ def full_finetune_multi_label(
 				# Clean up
 				del batch_class_texts, batch_embeds
 				torch.cuda.empty_cache()
-	
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
 	if verbose:
 		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
