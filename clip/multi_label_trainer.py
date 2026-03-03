@@ -116,7 +116,7 @@ def full_finetune_multi_label(
 	print()
 
 	for n, p in model.named_parameters():
-		print(f"{n:<50}{p.requires_grad:<10}{p.dtype:<25}{p.shape}")
+		print(f"{n:<50}{p.requires_grad:<10}{p.dtype} {p.shape}")
 
 	# Unfreeze all layers for full fine-tuning
 	for name, param in model.named_parameters():
