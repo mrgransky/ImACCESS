@@ -62,7 +62,6 @@ from torch.utils.data import DataLoader, Dataset
 
 warnings.filterwarnings("ignore")
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Minimal CLIP tokenizer stub
 # Swap for:  import clip  and  clip.tokenize(...)  in your real training code.
@@ -922,7 +921,7 @@ def main():
 		csv_path   = os.path.abspath(args.csv)
 		dataset_dir = os.path.dirname(csv_path)
 		dataset_name = os.path.basename(dataset_dir)
-		output_dir   = args.output_dir or os.path.join(dataset_dir, "dataloader_analysis")
+		output_dir   = args.output_dir or os.path.join(dataset_dir, "outputs")
 		os.makedirs(output_dir, exist_ok=True)
 
 		sep = "=" * 70
