@@ -117,11 +117,27 @@ def full_finetune_multi_label(
 
 	for n, p in model.named_parameters():
 		print(f"{n:<100}{p.requires_grad:<10}{p.dtype} {p.shape}")
-
-	# Unfreeze all layers for full fine-tuning
-	for name, param in model.named_parameters():
-		param.requires_grad = True
 	print("="*140)
+
+	# # Unfreeze all layers for full fine-tuning
+	# for name, param in model.named_parameters():
+	# 	param.requires_grad = True
+
+	# Freeze text encoder, fine-tune only vision encoder
+	for name, param in model.named_parameters():
+			if 'visual' in name:
+					param.requires_grad = True
+			else:
+					param.requires_grad = False
+
+	# Verify the split
+	trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	frozen    = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+	print(f"Trainable (vision): {trainable:,}")
+	print(f"Frozen (text):      {frozen:,}")
+	# Expected: ~87M trainable (vision), ~38M frozen (text) for ViT-B/32
+
+
 
 	get_parameters_info(model=model, mode=mode)
 
@@ -186,6 +202,7 @@ def full_finetune_multi_label(
 				del batch_class_texts, batch_embeds
 				torch.cuda.empty_cache()
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
+	all_class_embeds = all_class_embeds.detach()
 	if verbose:
 		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
 
