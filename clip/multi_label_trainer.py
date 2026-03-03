@@ -116,11 +116,12 @@ def full_finetune_multi_label(
 	print()
 
 	for n, p in model.named_parameters():
-		print(f"{n}: {type(p).__name__} {p.__class__.__name__} {p.requires_grad} {p.shape} {p.dtype} {p.device}")
+		print(f"{n:<50}{p.requires_grad:<10}{p.shape:<25}{p.dtype}")
 
 	# Unfreeze all layers for full fine-tuning
 	for name, param in model.named_parameters():
 		param.requires_grad = True
+	print("="*150)
 
 	get_parameters_info(model=model, mode=mode)
 
