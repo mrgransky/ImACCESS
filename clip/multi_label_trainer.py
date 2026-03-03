@@ -376,7 +376,9 @@ def full_finetune_multi_label(
 		validation_results = get_validation_metrics(
 			model=model,
 			validation_loader=validation_loader,
-			criterion=criterion,  # Now uses BCEWithLogitsLoss
+			criterion_i2t=criterion_i2t,
+			criterion_t2i=criterion_t2i,
+			active_mask=active_mask,
 			device=device,
 			topK_values=topk_values,
 			finetune_strategy=mode,
@@ -461,7 +463,9 @@ def full_finetune_multi_label(
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
-		criterion=criterion,
+		criterion_i2t=criterion_i2t,
+		criterion_t2i=criterion_t2i,
+		active_mask=active_mask,
 		early_stopping=early_stopping,
 		checkpoint_path=mdl_fpth,
 		finetune_strategy=mode,

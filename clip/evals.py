@@ -76,7 +76,9 @@ def compute_multilabel_validation_loss(
 def compute_multilabel_inbatch_metrics(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
-		criterion: torch.nn.Module,
+		criterion_i2t,
+		criterion_t2i,
+		active_mask,
 		device: str,
 		topK_values: List[int],
 		max_samples: int = 384,
@@ -151,8 +153,11 @@ def compute_multilabel_inbatch_metrics(
 			t2i_targets = label_vectors.T.float()
 			t2i_similarities = torch.matmul(all_class_embeds, image_embeds.T) / temperature
 			
-			loss_i2t = criterion(i2t_similarities, i2t_targets)
-			loss_t2i = criterion(t2i_similarities, t2i_targets)
+			i2t_loss_raw = criterion_i2t(i2t_similarities, i2t_targets)   # [B, C]
+			t2i_loss_raw = criterion_t2i(t2i_similarities, t2i_targets)   # [C, B]
+			loss_i2t = i2t_loss_raw[:, active_mask].mean()
+			loss_t2i = t2i_loss_raw[active_mask, :].mean()
+
 			batch_loss = 0.5 * (loss_i2t + loss_t2i)
 			total_loss += batch_loss.item()
 			
@@ -254,7 +259,9 @@ def compute_multilabel_inbatch_metrics(
 def compute_direct_in_batch_metrics(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
-		criterion: torch.nn.Module,
+		criterion_i2t: torch.nn.Module,
+		criterion_t2i: torch.nn.Module,
+		active_mask: torch.Tensor,
 		device: str,
 		topK_values: List[int],
 		max_samples: int = 384,
@@ -278,7 +285,9 @@ def compute_direct_in_batch_metrics(
 		multi_label_in_batch_metrics = compute_multilabel_inbatch_metrics(
 			model=model,
 			validation_loader=validation_loader,
-			criterion=criterion,
+			criterion_i2t=criterion_i2t,
+			criterion_t2i=criterion_t2i,
+			active_mask=active_mask,
 			device=device,
 			topK_values=topK_values,
 			max_samples=max_samples,
@@ -289,6 +298,7 @@ def compute_direct_in_batch_metrics(
 
 	if verbose:
 		print("Single-label dataset detected - computing in-batch metrics")
+	criterion = torch.nn.CrossEntropyLoss()
 	total_loss = 0.0
 	total_img2txt_correct = 0
 	total_txt2img_correct = 0
@@ -807,7 +817,9 @@ def compute_singlelabel_correctness(
 def get_validation_metrics(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
-		criterion: torch.nn.Module,
+		criterion_i2t: torch.nn.Module,
+		criterion_t2i: torch.nn.Module,
+		active_mask: torch.Tensor,
 		device: str,
 		topK_values: List[int],
 		cache_dir: str,
@@ -1393,7 +1405,9 @@ def _compute_matched_cosine_similarity(image_embeds, text_embeds, labels, is_mul
 def evaluate_best_model(
 		model,
 		validation_loader,
-		criterion,
+		criterion_i2t,
+		criterion_t2i,
+		active_mask,
 		early_stopping,
 		checkpoint_path,
 		finetune_strategy,
@@ -1476,7 +1490,9 @@ def evaluate_best_model(
 	validation_results = get_validation_metrics(
 		model=model,
 		validation_loader=validation_loader,
-		criterion=criterion,
+		criterion_i2t=criterion_i2t,
+		criterion_t2i=criterion_t2i,
+		active_mask=active_mask,
 		device=device,
 		topK_values=topk_values,
 		finetune_strategy=finetune_strategy,
