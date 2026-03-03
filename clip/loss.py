@@ -248,18 +248,18 @@ def compute_multilabel_contrastive_loss_(
 def compute_multilabel_contrastive_loss(
 	model,
 	images,
-	all_class_embeds,   # now a valid fixed tensor throughout training
+	all_class_embeds,
 	label_vectors,
 	criterion,
-	active_mask,        # NEW: [num_classes] bool
+	active_mask,
 	temperature,
 	loss_weights=None,
 	verbose=False,
 ):
 	if loss_weights is None:
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
-	image_embeds = F.normalize(model.encode_image(images), dim=-1)
-	class_embeds = F.normalize(all_class_embeds, dim=-1)
+	image_embeds = torch.nn.functional.normalize(model.encode_image(images), dim=-1)
+	class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
 	
 	# I2T: [batch_size, num_classes]
 	i2t_sim = torch.matmul(image_embeds, class_embeds.T) / temperature
