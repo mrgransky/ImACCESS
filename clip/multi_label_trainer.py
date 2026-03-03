@@ -137,8 +137,6 @@ def full_finetune_multi_label(
 	print(f"Frozen (text):      {frozen:,}")
 	# Expected: ~87M trainable (vision), ~38M frozen (text) for ViT-B/32
 
-
-
 	get_parameters_info(model=model, mode=mode)
 
 	# Compute pos_weight from training set frequencies
@@ -308,6 +306,7 @@ def full_finetune_multi_label(
 					all_class_embeds=all_class_embeds,
 					label_vectors=label_vectors,
 					criterion=criterion,
+					active_mask=active_mask,
 					temperature=temperature,
 					loss_weights=loss_weights,
 					verbose=verbose,
