@@ -1426,7 +1426,7 @@ def evaluate_best_model(
 	model_source = "current"
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	if verbose:
-		print(f"Evaluating best model on {dataset_name} {finetune_strategy} criterion: {criterion.__class__.__name__}")
+		print(f"Evaluating best model on {dataset_name} {finetune_strategy}")
 
 	if os.path.exists(checkpoint_path):
 		if verbose:
