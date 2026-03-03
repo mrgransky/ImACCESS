@@ -1292,10 +1292,10 @@ def analyze_cluster_quality(
 		print("\n[6/6] Generating Recommendations...")
 	
 	recommendations = _generate_recommendations(
-			global_metrics, 
-			cluster_df, 
-			problematic_clusters, 
-			consolidation_impact
+		global_metrics, 
+		cluster_df, 
+		problematic_clusters, 
+		consolidation_impact
 	)
 	
 	if verbose:
@@ -1303,18 +1303,13 @@ def analyze_cluster_quality(
 			print(f"\t{i}. {rec}")
 	
 	summary = _generate_summary(
-			global_metrics, 
-			consolidation_impact, 
-			problematic_clusters,
-			n_samples,
-			n_clusters
+		global_metrics, 
+		consolidation_impact, 
+		problematic_clusters,
+		n_samples,
+		n_clusters
 	)
-	
-	if verbose:
-		print("\nEXECUTIVE SUMMARY\n")
-		print(summary)
-		print()
-	
+		
 	return {
 		'global_metrics': global_metrics,
 		'cluster_metrics': cluster_df,
@@ -1438,36 +1433,33 @@ def _generate_recommendations(
 		return recommendations
 
 def _generate_summary(
-		global_metrics: Dict,
-		consolidation_impact: Dict,
-		problematic_clusters: List[Dict],
-		n_samples: int,
-		n_clusters: int
+	global_metrics: Dict,
+	consolidation_impact: Dict,
+	problematic_clusters: List[Dict],
+	n_samples: int,
+	n_clusters: int
 ) -> str:
-		"""Generate executive summary."""
-		silhouette = global_metrics['silhouette_score']
-		db_index = global_metrics['davies_bouldin_index']
-		reduction_ratio = consolidation_impact['reduction_ratio']
-		singleton_pct = consolidation_impact['singleton_percentage']
-		
-		high_severity_count = sum(1 for p in problematic_clusters if p['severity'] == 'HIGH')
-		
-		summary = f"""
-Clustering consolidated {n_samples:,} unique labels into {n_clusters:,} clusters 
-({reduction_ratio:.2f}x reduction, {consolidation_impact['reduction_percentage']:.1f}% decrease).
-
-QUALITY ASSESSMENT:
-	• Silhouette Score: {silhouette:.4f} ({global_metrics['silhouette_interpretation']})
-	• Davies-Bouldin Index: {db_index:.4f} ({global_metrics['db_interpretation']})
-	• Singleton Rate: {singleton_pct:.1f}%
-
-ISSUES DETECTED:
-	• {high_severity_count} high-severity clusters requiring review
-	• {len(problematic_clusters)} total issue categories identified
-
-RECOMMENDATION: {'✅ PROCEED with label mapping' if silhouette > 0.4 and high_severity_count == 0 else '⚠️  REVIEW problematic clusters before proceeding'}
-"""
-		return summary.strip()
+	
+	silhouette = global_metrics['silhouette_score']
+	db_index = global_metrics['davies_bouldin_index']
+	reduction_ratio = consolidation_impact['reduction_ratio']
+	singleton_pct = consolidation_impact['singleton_percentage']
+	
+	high_severity_count = sum(1 for p in problematic_clusters if p['severity'] == 'HIGH')
+	
+	summary = f"""
+		Clustering consolidated {n_samples:,} unique labels into {n_clusters:,} clusters 
+		({reduction_ratio:.2f}x reduction, {consolidation_impact['reduction_percentage']:.1f}% decrease).
+		QUALITY ASSESSMENT:
+			• Silhouette Score: {silhouette:.4f} ({global_metrics['silhouette_interpretation']})
+			• Davies-Bouldin Index: {db_index:.4f} ({global_metrics['db_interpretation']})
+			• Singleton Rate: {singleton_pct:.1f}%
+		ISSUES DETECTED:
+			• {high_severity_count} high-severity clusters requiring review
+			• {len(problematic_clusters)} total issue categories identified
+		RECOMMENDATION: {'✅ PROCEED with label mapping' if silhouette > 0.4 and high_severity_count == 0 else '⚠️  REVIEW problematic clusters before proceeding'}
+	"""
+	return summary.strip()
 
 def export_problematic_clusters(
 		labels: np.ndarray,

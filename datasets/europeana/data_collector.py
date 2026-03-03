@@ -74,7 +74,7 @@ useless_data_provider = [
 
 useless_subjects = [
 	"Manuscript", "Album", "Map", "Collection", "Food", "HIV/AIDS", "Marketplace",
-	"Recreational Artifacts (hierarchy name )", "Albumen print", "Art of painting",
+	"Recreational Artifacts (hierarchy name )", "Albumen print", "Art of painting", "Landscape painting", "Work of art",
 	'Sword', 'Art of sculpture',  "Newspaper",
 	'Coin', 'Silver', 'silver (metal)', 'coins (money)', "Silver",
 	# 'Daguerreotype process',
@@ -95,6 +95,7 @@ useless_subjects = [
 useless_creators = [
 	"Westhoff",  # Catches both "L. Westhoff" and "L.Westhoff"
 	"Reuven Rubin",
+	"Marcel Janco",
 	"Takács Dezső",
 	"Antonia Prodromou",
 	"Stoedtner, Franz (Lichtbildverlag) (Herstellung) (Fotograf)",

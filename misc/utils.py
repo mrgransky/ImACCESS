@@ -702,7 +702,7 @@ def get_multi_label_stratified_split(
 		samples_after = len(df_filtered)
 		
 		if samples_after == 0:
-				raise ValueError("No samples remain after filtering rare labels. Try lowering min_label_frequency.")
+			raise ValueError("No samples remain after filtering rare labels. Try lowering min_label_frequency.")
 		
 		print(f"   Samples after filtering: {samples_after} (removed {samples_before - samples_after})")
 		
@@ -718,7 +718,7 @@ def get_multi_label_stratified_split(
 
 		unique_labels = mlb.classes_
 		if len(unique_labels) == 0:
-				raise ValueError("No unique labels found after processing. Cannot perform stratification.")
+			raise ValueError("No unique labels found after processing. Cannot perform stratification.")
 		
 		print(f"   Found {len(unique_labels)} unique labels")
 		print(f"   Sample labels: {unique_labels.tolist()[:20]}")
@@ -728,17 +728,17 @@ def get_multi_label_stratified_split(
 		X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
 		
 		try:
-				stratifier = IterativeStratification(
-						n_splits=2,
-						order=1 if len(df_filtered) > int(1e5) else 2,
-						sample_distribution_per_fold=[val_split_pct, 1-val_split_pct],
-				)
-				train_indices, val_indices = next(stratifier.split(X_indices, label_matrix))
+			stratifier = IterativeStratification(
+				n_splits=2,
+				order=1 if len(df_filtered) > int(1e5) else 2,
+				sample_distribution_per_fold=[val_split_pct, 1-val_split_pct],
+			)
+			train_indices, val_indices = next(stratifier.split(X_indices, label_matrix))
 		except Exception as e:
-				print(f"   ❌ Stratification failed: {e}")
-				print(f"   This may indicate labels with insufficient samples.")
-				print(f"   Try increasing min_label_frequency (current: {min_label_frequency})")
-				raise
+			print(f"   ❌ Stratification failed: {e}")
+			print(f"   This may indicate labels with insufficient samples.")
+			print(f"   Try increasing min_label_frequency (current: {min_label_frequency})")
+			raise e
 		
 		train_original_indices = df_filtered.iloc[train_indices].index.values
 		val_original_indices = df_filtered.iloc[val_indices].index.values
@@ -748,39 +748,37 @@ def get_multi_label_stratified_split(
 		
 		# Verify Split
 		if train_df.empty or val_df.empty:
-				raise ValueError("Train or validation set is empty after splitting.")
+			raise ValueError("Train or validation set is empty after splitting.")
 		
 		print(f"\n>> SPLIT SUMMARY")
 		print(f"   Original: {df_filtered.shape}")
 		print(f"   Train:    {train_df.shape} ({len(train_df)/len(df_filtered)*100:.1f}%)")
 		print(f"   Val:      {val_df.shape} ({len(val_df)/len(df_filtered)*100:.1f}%)")
 		
-		# Quick distribution check
-		print(f"\n>> TRAIN SET")
-		print(f"   Samples: {len(train_df)}")
-		print(f"   Unique label combinations: {train_df[label_col].apply(tuple).nunique()}")
-		sample_size = min(1000, len(train_df))
-		print(f"   Label distribution (sample of {sample_size}):")
-		print(train_df[label_col].sample(sample_size).apply(tuple).value_counts().head(10))
+		# print(f"\n>> TRAIN SET")
+		# print(f"   Samples: {len(train_df)}")
+		# print(f"   Unique label combinations: {train_df[label_col].apply(tuple).nunique()}")
+		# sample_size = min(1000, len(train_df))
+		# print(f"   Label distribution (sample of {sample_size}):")
+		# print(train_df[label_col].sample(sample_size).apply(tuple).value_counts().head(10))
 		
-		print(f"\n>> VAL SET")
-		print(f"   Samples: {len(val_df)}")
-		print(f"   Unique label combinations: {val_df[label_col].apply(tuple).nunique()}")
-		sample_size = min(1000, len(val_df))
-		print(f"   Label distribution (sample of {sample_size}):")
-		print(val_df[label_col].sample(sample_size).apply(tuple).value_counts().head(10))
+		# print(f"\n>> VAL SET")
+		# print(f"   Samples: {len(val_df)}")
+		# print(f"   Unique label combinations: {val_df[label_col].apply(tuple).nunique()}")
+		# sample_size = min(1000, len(val_df))
+		# print(f"   Label distribution (sample of {sample_size}):")
+		# print(val_df[label_col].sample(sample_size).apply(tuple).value_counts().head(10))
 		
 		print(f"\n>> Elapsed Time: {time.time()-t_st:.1f} sec")
 		
-		# Save splits
 		train_path = csv_file.replace('.csv', '_train.csv')
 		val_path = csv_file.replace('.csv', '_val.csv')
 		train_df.to_csv(train_path, index=False)
 		val_df.to_csv(val_path, index=False)
 		
-		print(f"\n✓ Saved splits:")
-		print(f"   Train: {train_path}")
-		print(f"   Val:   {val_path}")
+		print(f"\nSaved splits:")
+		print(f"Train: {train_path}")
+		print(f"Val:   {val_path}")
 
 		return train_df, val_df
 

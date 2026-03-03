@@ -319,7 +319,6 @@
 	"storage tank": "reservoir",
 	"surge tank": "reservoir",
 
-	
 	"passenger train": "train",
 	"locomotive": "train",
 	"freight train": "train",
@@ -373,6 +372,9 @@
 	"higgins boat": "watercraft",
 	"sailboat": "watercraft",
 	"regatta": "watercraft",
+
+	"wounded": "wounded soldiers",
+	"wounded soldiers": "wounded soldiers",
 
 	"wreck": "wreck",
 	"shipwreck": "wreck",

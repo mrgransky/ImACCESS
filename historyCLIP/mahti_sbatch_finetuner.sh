@@ -55,6 +55,7 @@ for dir in "${BASE_DATASET_DIRECTORY[@]}"; do
   SINGLE_LABEL_CSVS+=("${dir}/${SINGLE_LABEL_FILE}")
   MULTI_LABEL_CSVS+=("${dir}/${MULTI_LABEL_FILE}")
 done
+
 ##############################################################################
 # 										# H4			# NA				# EU				# WWII			# SMU
 FINETUNE_STRATEGIES=(

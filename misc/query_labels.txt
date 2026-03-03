@@ -218,9 +218,14 @@ medium tanks
 heavy tanks
 Higgins boat
 landing craft
+army cemetery
+military cemetery
+army graveyard
+military graveyard
+wounded soldiers
+tank destroyers
 V-E Day
 V-J Day
-tank destroyers
 anti tank
 anti-tank
 minesweeper vessel
@@ -268,10 +273,7 @@ airbase
 lighthouse
 Sailboat
 regatta
-army cemetery
-military cemetery
-army graveyard
-military graveyard
+wounded
 explosion
 Artillery
 grenade
