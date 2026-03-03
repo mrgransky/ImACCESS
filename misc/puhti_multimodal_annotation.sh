@@ -81,7 +81,7 @@ DATASETS=(
 )
 CSV_FILE=${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv
 LLM_BATCH_SIZES=(6 6 18 18 28)
-VLM_BATCH_SIZES=(10 10 10 8 8)
+VLM_BATCH_SIZES=(8 8 8 8 8)
 
 echo "Running Multimodal Annotation on $CSV_FILE"
 echo "Scaled LLM batch sizes: ${LLM_BATCH_SIZES[@]} max generated tokens: $LLM_MAX_GENERATED_TOKENS"
