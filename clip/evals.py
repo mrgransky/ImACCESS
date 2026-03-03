@@ -257,17 +257,17 @@ def compute_multilabel_inbatch_metrics(
 	}
 
 def compute_direct_in_batch_metrics(
-		model: torch.nn.Module,
-		validation_loader: DataLoader,
-		criterion_i2t: torch.nn.Module,
-		criterion_t2i: torch.nn.Module,
-		active_mask: torch.Tensor,
-		device: str,
-		topK_values: List[int],
-		max_samples: int = 384,
-		temperature: float = 0.07,
-		verbose: bool = False,
-	) -> Dict:
+	model: torch.nn.Module,
+	validation_loader: DataLoader,
+	criterion_i2t: torch.nn.Module,
+	criterion_t2i: torch.nn.Module,
+	active_mask: torch.Tensor,
+	device: str,
+	topK_values: List[int],
+	max_samples: int = 384,
+	temperature: float = 0.07,
+	verbose: bool = False,
+) -> Dict:
 
 	model.eval()
 	total_loss = 0.0
@@ -878,7 +878,9 @@ def get_validation_metrics(
 		in_batch_metrics = compute_direct_in_batch_metrics(
 			model=model,
 			validation_loader=validation_loader,
-			criterion=criterion,
+			criterion_i2t=criterion_i2t,
+			criterion_t2i=criterion_t2i,
+			active_mask=active_mask,
 			device=device,
 			topK_values=topK_values,
 			max_samples=max_in_batch_samples,
