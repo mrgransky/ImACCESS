@@ -129,6 +129,7 @@ def full_finetune_multi_label(
 		criterion = LabelSmoothingBCELoss(smoothing=label_smoothing)
 	else:
 		criterion = torch.nn.BCEWithLogitsLoss()
+
 	if verbose:
 		print(f"Using {criterion.__class__.__name__} for multi-label classification with {num_classes} classes")
 
