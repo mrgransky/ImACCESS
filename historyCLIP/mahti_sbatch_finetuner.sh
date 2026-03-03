@@ -231,7 +231,6 @@ echo ">> Starting trainer.py for dataset[$SLURM_ARRAY_TASK_ID]: $METADATA_CSV"
 CMD="python -u trainer.py \
   --metadata_csv \"$METADATA_CSV\" \
   --model_architecture \"$architecture\" \
-  --mode \"finetune\" \
   --finetune_strategy \"$strategy\" \
   --epochs \"${EPOCHS[$dataset_index]}\" \
   --num_workers \"$SLURM_CPUS_PER_TASK\" \
@@ -254,7 +253,8 @@ CMD="python -u trainer.py \
   --min_epochs_per_phase \"${MIN_EPOCHS_PER_PHASE[$dataset_index]}\" \
   --total_num_phases \"${TOTAL_NUM_PHASES[$dataset_index]}\" \
   --print_every \"${PRINT_FREQUENCIES[$dataset_index]}\" \
-  --sampling \"${SAMPLINGS[1]}\""
+  --sampling \"${SAMPLINGS[1]}\" \
+  --verbose"
 
 if [ "$strategy" = "lora_plus" ]; then
   CMD="$CMD --lora_plus_lambda \"${LORA_PLUS_LAMBDAS[$dataset_index]}\""
