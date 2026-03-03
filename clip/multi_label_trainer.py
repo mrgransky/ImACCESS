@@ -188,8 +188,8 @@ def full_finetune_multi_label(
 
 	if verbose:
 		print(f"[T2I] {criterion_t2i.__class__.__name__}")
-
-
+		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
+		print()
 
 	all_class_embeds = []
 	model.eval()
