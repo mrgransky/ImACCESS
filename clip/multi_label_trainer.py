@@ -115,6 +115,9 @@ def full_finetune_multi_label(
 	print(non_zero_dropouts)
 	print()
 
+	for n, p in model.named_parameters():
+		print(f"{n}: {type(p).__name__} {p.__class__.__name__} {p.requires_grad} {p.shape} {p.dtype} {p.device}")
+
 	# Unfreeze all layers for full fine-tuning
 	for name, param in model.named_parameters():
 		param.requires_grad = True
@@ -124,27 +127,28 @@ def full_finetune_multi_label(
 	# Compute once before training, from train_loader dataset
 	train_freq = torch.zeros(num_classes)
 	for raw in train_loader.dataset.labels:
-			try:
-					for lbl in ast.literal_eval(raw):
-							if lbl in train_loader.dataset.label_dict:
-									train_freq[train_loader.dataset.label_dict[lbl]] += 1
-			except: pass
+		try:
+			for lbl in ast.literal_eval(raw):
+				if lbl in train_loader.dataset.label_dict:
+					train_freq[train_loader.dataset.label_dict[lbl]] += 1
+		except: 
+			pass
 
 	N = len(train_loader.dataset)
 	pos_weight = torch.where(
-			train_freq > 0,
-			(N - train_freq) / train_freq.clamp(min=1),
-			torch.ones(num_classes)          # zero-count classes get pw=1, but see point 3
+		train_freq > 0,
+		(N - train_freq) / train_freq.clamp(min=1),
+		torch.ones(num_classes)          # zero-count classes get pw=1, but see point 3
 	).to(device)
 
 	criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
 	if verbose:
 		print(f"{criterion.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} min, max: {pos_weight.min().item():.3f}, {pos_weight.max().item():.3f}")
 		print(f"   ├─ number of samples: {N}")
 		print(f"   ├─ number of classes: {num_classes}")
-		print(f"   └─ train_freq: {train_freq}")
+		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} min, max: {train_freq.min().item():.3f}, {train_freq.max().item():.3f}")
 
 	all_class_embeds = []
 	model.eval()
