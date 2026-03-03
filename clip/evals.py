@@ -6,7 +6,9 @@ if USER == "farid":
 def compute_multilabel_validation_loss(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
-		criterion: torch.nn.Module,
+		criterion_i2t,      # BCEWithLogitsLoss with pos_weight, reduction='none'
+		criterion_t2i,      # BCEWithLogitsLoss plain, reduction='none'
+		active_mask,        # [num_classes] bool
 		device: str,
 		temperature: float = 0.07,
 		max_batches: int = None,
@@ -56,8 +58,12 @@ def compute_multilabel_validation_loss(
 			i2t_targets = label_vectors
 			t2i_targets = label_vectors.T
 			
-			loss_i2t = criterion(i2t_similarities, i2t_targets)
-			loss_t2i = criterion(t2i_similarities, t2i_targets)
+			i2t_loss_raw = criterion_i2t(i2t_similarities, i2t_targets) # [B, C]
+			loss_i2t = i2t_loss_raw[:, active_mask].mean()
+
+			t2i_loss_raw = criterion_t2i(t2i_similarities, t2i_targets) # [C, B]
+			loss_t2i = t2i_loss_raw[active_mask, :].mean()
+
 			batch_loss = 0.5 * (loss_i2t + loss_t2i)
 			
 			# Correct accumulation
