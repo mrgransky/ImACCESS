@@ -4,16 +4,15 @@ if USER == "farid":
 	from visualize import build_arch_flowchart
 
 def compute_multilabel_validation_loss(
-		model: torch.nn.Module,
-		validation_loader: DataLoader,
-		criterion_i2t,      # BCEWithLogitsLoss with pos_weight, reduction='none'
-		criterion_t2i,      # BCEWithLogitsLoss plain, reduction='none'
-		active_mask,        # [num_classes] bool
-		device: str,
-		temperature: float = 0.07,
-		max_batches: int = None,
-		all_class_embeds: torch.Tensor = None,
-	) -> float:
+	model: torch.nn.Module,
+	validation_loader: DataLoader,
+	criterion_i2t,      # BCEWithLogitsLoss with pos_weight, reduction='none'
+	criterion_t2i,      # BCEWithLogitsLoss plain, reduction='none'
+	active_mask,        # [num_classes] bool
+	device: str,
+	temperature: float = 0.07,
+	all_class_embeds: torch.Tensor = None,
+) -> float:
 	model.eval()
 	total_loss = 0.0
 	total_samples = 0
@@ -33,11 +32,13 @@ def compute_multilabel_validation_loss(
 			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 				all_class_embeds = model.encode_text(all_class_texts)
 			all_class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
-	
+
+	max_batches = max(50, len(validation_loader) // 10)
+
 	with torch.no_grad():
 		for batch_idx, (images, _, label_vectors) in enumerate(validation_loader):
-			if max_batches and batch_idx >= max_batches:
-					break
+			if batch_idx >= max_batches:
+				break
 			
 			batch_size = images.size(0)
 			if batch_size == 0:  # Skip empty batches

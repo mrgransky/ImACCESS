@@ -290,10 +290,6 @@ def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 		dtype=dtypes, 
 		low_memory=False,
 	)	
-	print("="*100)
-	print(f"TRAIN {type(df_train)}: {list(df_train.columns)} {df_train.shape}")
-	print(f"VAL {type(df_val)}: {list(df_val.columns)} {df_val.shape}")
-	print("="*100)
 
 	# Create label mapping from all unique labels in the dataset
 	all_labels = set()
@@ -307,23 +303,35 @@ def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 	# Convert to sorted list for deterministic ordering
 	all_labels = sorted(all_labels)
 	label_dict = {label: idx for idx, label in enumerate(all_labels)}
+	print(f"{len(label_dict)} {type(label_dict)} labels is created from {len(all_labels)} unique canonical {type(all_labels)} labels:")
+	print(json.dumps(label_dict, indent=2, ensure_ascii=False))
+	print("="*100)
 	
 	# Add label vectors to dataframes
 	for df_split in [df_train, df_val]:
-			label_vectors = []
-			for labels_str in df_split[col]:
-					try:
-							labels = ast.literal_eval(labels_str)
-							vector = np.zeros(len(all_labels), dtype=np.float32)
-							for label in labels:
-									if label in label_dict:
-											vector[label_dict[label]] = 1.0
-							label_vectors.append(vector)
-					except (ValueError, SyntaxError):
-							label_vectors.append(np.zeros(len(all_labels), dtype=np.float32))
-			
-			df_split['label_vector'] = label_vectors
+		label_vectors = []
+		for labels_str in df_split[col]:
+			try:
+				labels = ast.literal_eval(labels_str)
+				vector = np.zeros(len(all_labels), dtype=np.float32)
+				for label in labels:
+					if label in label_dict:
+						vector[label_dict[label]] = 1.0
+				label_vectors.append(vector)
+			except (ValueError, SyntaxError):
+				label_vectors.append(np.zeros(len(all_labels), dtype=np.float32))
+		
+		df_split['label_vector'] = label_vectors
 	
+	print(f"TRAIN {type(df_train)}: {list(df_train.columns)} {df_train.shape}")
+	print(df_train[['img_path', 'multimodal_canonical_labels', 'label_vector']].head(10))
+	print(df_train['label_vector'].apply(lambda x: np.where(x==1)[0].tolist()).head(10)) # indices of 1s in label_vector
+	print()
+	print(f"VAL {type(df_val)}: {list(df_val.columns)} {df_val.shape}")
+	print(df_val[['img_path', 'multimodal_canonical_labels', 'label_vector']].head(10))
+	print("="*100)
+
+
 	return df_train, df_val, label_dict
 
 def custom_collate_fn(batch):
@@ -496,167 +504,167 @@ def get_cache_size(
 	return cache_size
 
 class HistoricalArchivesMultiLabelDataset(Dataset):
-		def __init__(
-				self,
-				dataset_name: str,
-				train: bool,
-				data_frame: pd.DataFrame,
-				transform,
-				label_dict: dict,
-				text_augmentation: bool = True,
-				cache_size: int = 0,
-				cache_workers: int = 4,
-				col:str='multimodal_labels',
-			):
-			self.dataset_name = dataset_name
-			self.train = train
-			self.data_frame = data_frame
-			self.images = self.data_frame["img_path"].values
-			self.labels = self.data_frame[col].values
-			self.label_dict = label_dict
-			self._num_classes = len(label_dict)
-			self.transform = transform
-			self.text_augmentation = text_augmentation
-			self.split = 'Train' if self.train else 'Validation'
-			self.cache_size = cache_size
+	def __init__(
+			self,
+			dataset_name: str,
+			train: bool,
+			data_frame: pd.DataFrame,
+			transform,
+			label_dict: dict,
+			text_augmentation: bool = True,
+			cache_size: int = 0,
+			cache_workers: int = 4,
+			col:str='multimodal_labels',
+		):
+		self.dataset_name = dataset_name
+		self.train = train
+		self.data_frame = data_frame
+		self.images = self.data_frame["img_path"].values
+		self.labels = self.data_frame[col].values
+		self.label_dict = label_dict
+		self._num_classes = len(label_dict)
+		self.transform = transform
+		self.text_augmentation = text_augmentation
+		self.split = 'Train' if self.train else 'Validation'
+		self.cache_size = cache_size
 
-			# Initialize cache
-			if self.cache_size > 0:
-				self.image_cache = ImageCache(
-					self.images,
-					self.cache_size,
-					num_workers=cache_workers
-				)
-				self.cache_hits = 0
-				self.cache_misses = 0
-			else:
-				self.image_cache = None
-
-			# Precompute text tokens
-			self.text_cache = [None] * len(self.data_frame)
-			self._preload_texts()
-				
-		def _preload_texts(self):
-			print(f"Preprocessing texts for {self.dataset_name}...")
-			for idx in tqdm(range(len(self.labels)), desc=f"Tokenizing texts for {self.dataset_name}"):
-				self.text_cache[idx] = self._tokenize_labels(self.labels[idx])
-		
-		def _tokenize_labels(self, labels_str):
-				"""Tokenize label string."""
-				try:
-						labels = ast.literal_eval(labels_str)
-						text_desc = self._create_text_description(labels)
-						return clip.tokenize(text_desc).squeeze(0)
-				except (ValueError, SyntaxError):
-						return clip.tokenize("").squeeze(0)
-		
-		def _create_text_description(self, labels: list) -> str:
-				"""Create text description from labels."""
-				if not labels:
-						return ""
-				if not self.train or not self.text_augmentation:
-						return " ".join(labels)
-				if len(labels) == 1:
-						return labels[0]
-				if len(labels) == 2:
-						return f"{labels[0]} and {labels[1]}"
-				np.random.shuffle(labels)
-				return ", ".join(labels[:-1]) + f", and {labels[-1]}"
-		
-		def _get_label_vector(self, labels_str: str) -> torch.Tensor:
-				"""Convert label string to binary vector."""
-				vector = torch.zeros(self._num_classes, dtype=torch.float32)
-				try:
-						labels = ast.literal_eval(labels_str)
-						for label in labels:
-								if label in self.label_dict:
-										vector[self.label_dict[label]] = 1.0
-				except (ValueError, SyntaxError):
-						pass
-				return vector
-		
-		def _load_image(self, idx: int) -> Image.Image:
-				"""Load image with caching."""
-				# Try cache first
-				if self.image_cache is not None:
-						cached_img = self.image_cache.get(idx)
-						if cached_img is not None:
-								self.cache_hits += 1
-								return cached_img
-						else:
-								self.cache_misses += 1
-				
-				# Load from disk
-				img_path = self.images[idx]
-				try:
-						with Image.open(img_path) as img:
-								return img.convert("RGB")
-				except Exception as e:
-						print(f"Error loading {img_path}: {e}")
-						# Return a blank image instead of None
-						return Image.new("RGB", (224, 224), color='white')
-		
-		@property
-		def unique_labels(self):
-			return sorted(self.label_dict.keys()) if self.label_dict else []
-		
-		def get_cache_stats(self):
-			"""Get cache statistics."""
-			if self.image_cache is not None:
-				total_requests = self.cache_hits + self.cache_misses
-				hit_rate = (self.cache_hits / total_requests * 100) if total_requests > 0 else 0
-				return {
-					"cache_size": len(self.image_cache),
-					"hits": self.cache_hits,
-					"misses": self.cache_misses,
-					"hit_rate": hit_rate
-				}
-			return None
-		
-		def __len__(self):
-				return len(self.data_frame)
-		
-		def __repr__(self):
-			transform_str = f"Transform: {self.transform}\n" if self.transform else ""
-			
-			if self.image_cache is not None:
-				stats = self.get_cache_stats()
-				cache_str = (
-					f"Image Cache: Size={len(self.image_cache)}/{len(self.images)}, "
-					f"Hit Rate={stats['hit_rate']:.1f}%"
-				)
-			else:
-				cache_str = "Image Cache: DISABLED (streaming mode)"
-			
-			return (
-				f"{self.dataset_name}\n"
-				f"\tSplit: {self.split} ({self.data_frame.shape[0]} samples)\n"
-				f"\tNum classes: {self._num_classes}\n"
-				f"\t{cache_str}\n"
-				f"{transform_str}"
+		# Initialize cache
+		if self.cache_size > 0:
+			self.image_cache = ImageCache(
+				self.images,
+				self.cache_size,
+				num_workers=cache_workers
 			)
-		
-		def __getitem__(self, idx: int):
+			self.cache_hits = 0
+			self.cache_misses = 0
+		else:
+			self.image_cache = None
+
+		# Precompute text tokens
+		self.text_cache = [None] * len(self.data_frame)
+		self._preload_texts()
+			
+	def _preload_texts(self):
+		print(f"Preprocessing texts for {self.dataset_name}...")
+		for idx in tqdm(range(len(self.labels)), desc=f"Tokenizing texts for {self.dataset_name}"):
+			self.text_cache[idx] = self._tokenize_labels(self.labels[idx])
+	
+	def _tokenize_labels(self, labels_str):
+			"""Tokenize label string."""
 			try:
-				# Load and transform image
-				image = self._load_image(idx)
-				image_tensor = self.transform(image)
-				
-				# Get precomputed text
-				tokenized_text = self.text_cache[idx]
-				
-				# Get label vector
-				label_vector = self._get_label_vector(self.labels[idx])
-				
-				return image_tensor, tokenized_text, label_vector
-			except Exception as e:
-				print(f"Error processing sample {idx}: {e}")
-				# Return valid tensors with zeros instead of None
-				return (
-					torch.zeros(3, 224, 224),  # Blank image
-					torch.zeros(77, dtype=torch.long),  # Empty text
-					torch.zeros(self._num_classes)  # No labels
-				)
+					labels = ast.literal_eval(labels_str)
+					text_desc = self._create_text_description(labels)
+					return clip.tokenize(text_desc).squeeze(0)
+			except (ValueError, SyntaxError):
+					return clip.tokenize("").squeeze(0)
+	
+	def _create_text_description(self, labels: list) -> str:
+		"""Create text description from labels."""
+		if not labels:
+				return ""
+		if not self.train or not self.text_augmentation:
+				return " ".join(labels)
+		if len(labels) == 1:
+				return labels[0]
+		if len(labels) == 2:
+				return f"{labels[0]} and {labels[1]}"
+		np.random.shuffle(labels)
+		return ", ".join(labels[:-1]) + f", and {labels[-1]}"
+	
+	def _get_label_vector(self, labels_str: str) -> torch.Tensor:
+		"""Convert label string to binary vector."""
+		vector = torch.zeros(self._num_classes, dtype=torch.float32)
+		try:
+			labels = ast.literal_eval(labels_str)
+			for label in labels:
+				if label in self.label_dict:
+					vector[self.label_dict[label]] = 1.0
+		except (ValueError, SyntaxError):
+			pass
+		
+		return vector
+	
+	def _load_image(self, idx: int) -> Image.Image:
+		# Try cache first
+		if self.image_cache is not None:
+			cached_img = self.image_cache.get(idx)
+			if cached_img is not None:
+				self.cache_hits += 1
+				return cached_img
+			else:
+				self.cache_misses += 1
+		
+		# Load from disk
+		img_path = self.images[idx]
+		try:
+			with Image.open(img_path) as img:
+				return img.convert("RGB")
+		except Exception as e:
+			print(f"Error loading {img_path}: {e}")
+			# Return a blank image instead of None
+			return Image.new("RGB", (512, 512), color='white')
+	
+	@property
+	def unique_labels(self):
+		return sorted(self.label_dict.keys()) if self.label_dict else []
+	
+	def get_cache_stats(self):
+		"""Get cache statistics."""
+		if self.image_cache is not None:
+			total_requests = self.cache_hits + self.cache_misses
+			hit_rate = (self.cache_hits / total_requests * 100) if total_requests > 0 else 0
+			return {
+				"cache_size": len(self.image_cache),
+				"hits": self.cache_hits,
+				"misses": self.cache_misses,
+				"hit_rate": hit_rate
+			}
+		return None
+	
+	def __len__(self):
+			return len(self.data_frame)
+	
+	def __repr__(self):
+		transform_str = f"Transform: {self.transform}\n" if self.transform else ""
+		
+		if self.image_cache is not None:
+			stats = self.get_cache_stats()
+			cache_str = (
+				f"Image Cache: Size={len(self.image_cache)}/{len(self.images)}, "
+				f"Hit Rate={stats['hit_rate']:.1f}%"
+			)
+		else:
+			cache_str = "Image Cache: DISABLED (streaming mode)"
+		
+		return (
+			f"{self.dataset_name}\n"
+			f"\tSplit: {self.split} ({self.data_frame.shape[0]} samples)\n"
+			f"\tNum classes: {self._num_classes}\n"
+			f"\t{cache_str}\n"
+			f"{transform_str}"
+		)
+	
+	def __getitem__(self, idx: int):
+		try:
+			# Load and transform image
+			image = self._load_image(idx)
+			image_tensor = self.transform(image)
+			
+			# Get precomputed text
+			tokenized_text = self.text_cache[idx]
+			
+			# Get label vector
+			label_vector = self._get_label_vector(self.labels[idx])
+			
+			return image_tensor, tokenized_text, label_vector
+		except Exception as e:
+			print(f"Error processing sample {idx}: {e}")
+			# Return valid tensors with zeros instead of None
+			return (
+				torch.zeros(3, 224, 224),  # Blank image
+				torch.zeros(77, dtype=torch.long),  # Empty text
+				torch.zeros(self._num_classes)  # No labels
+			)
 
 def get_multi_label_dataloaders(
 		metadata_fpth: str,
@@ -761,208 +769,3 @@ def get_multi_label_dataloaders(
 	val_loader.name = f"{dataset_name.lower()}_multilabel_validation".upper()
 	
 	return train_loader, val_loader
-
-class HistoricalArchivesMultiLabelDatasetWithManualCaching(Dataset):
-		"""
-		A robust and high-performance Dataset class for multi-label archives.
-		This implementation combines LRU caching for performance with graceful
-		error handling to prevent crashes from corrupted data.
-		"""
-		def __init__(
-				self,
-				dataset_name: str,
-				train: bool,
-				data_frame: pd.DataFrame,
-				transform,
-				label_dict: dict,
-				text_augmentation: bool = True,
-				col:str='multimodal_labels',
-				cache_size: int = 10000
-		):
-				self.dataset_name = dataset_name
-				self.train = train
-				self.data_frame = data_frame
-				self.images = self.data_frame["img_path"].values
-				self.labels = self.data_frame[col].values
-				self.label_dict = label_dict
-				self._num_classes = len(label_dict)
-				self.transform = transform
-				self.text_augmentation = text_augmentation
-
-				# This is the core of the performance improvement.
-				# It creates a new, separate cache for each instance (train, val).
-				self._load_image = lru_cache(maxsize=cache_size)(self._load_image_base)
-				print(f"LRU cache enabled for image loading with maxsize={cache_size} for {self.dataset_name}")
-
-				# Pre-caching tokenized text is still a good, lightweight optimization.
-				self.text_cache = [None] * len(self.data_frame)
-				self._preload_texts()
-
-		@property
-		def unique_labels(self):
-			return sorted(self.label_dict.keys()) if self.label_dict else []
-
-		@staticmethod
-		def _load_image_base(img_path: str) -> Image.Image:
-				"""
-				Base function for loading an image. It's wrapped by the lru_cache.
-				It should be simple: it either succeeds or raises an exception.
-				"""
-				return Image.open(img_path).convert("RGB")
-
-		def __getitem__(self, idx: int):
-				"""
-				Attempts to load a single sample. Returns None on any loading error.
-				This method is now simple and clean.
-				"""
-				try:
-						image_path = self.images[idx]
-						# This call is cached. It's fast after the first load.
-						image = self._load_image(image_path)
-						
-						# Get other data (text is pre-cached, label vector is computed)
-						tokenized_text = self.text_cache[idx]
-						label_vector = self._get_label_vector(self.labels[idx])
-						
-						# Apply transformations
-						image_tensor = self.transform(image)
-						
-						return image_tensor, tokenized_text, label_vector
-
-				except Exception as e:
-						# If any part of the process fails (especially image loading),
-						# we print a non-fatal warning and return None.
-						# The custom_collate_fn will handle this gracefully.
-						# print(f"WARNING: Skipping sample {idx} due to error: {e} | Path: {self.images[idx]}")
-						return None
-						
-		def _preload_texts(self):
-				print(f"Preprocessing texts for {self.dataset_name}...")
-				for idx in tqdm(range(len(self.labels)), desc=f"Tokenizing texts for {self.dataset_name}"):
-						self.text_cache[idx] = self._tokenize_labels(self.labels[idx])
-		
-		def _tokenize_labels(self, labels_str):
-				try:
-						labels = ast.literal_eval(labels_str)
-						text_desc = self._create_text_description(labels)
-						return clip.tokenize(text_desc).squeeze(0)
-				except (ValueError, SyntaxError):
-						return clip.tokenize("").squeeze(0)
-		
-		def _create_text_description(self, labels: list) -> str:
-				if not labels: return ""
-				if not self.train or not self.text_augmentation: return " ".join(labels)
-				if len(labels) == 1: return labels[0]
-				if len(labels) == 2: return f"{labels[0]} and {labels[1]}"
-				np.random.shuffle(labels)
-				return ", ".join(labels[:-1]) + f", and {labels[-1]}"
-		
-		def _get_label_vector(self, labels_str: str) -> torch.Tensor:
-				vector = torch.zeros(self._num_classes, dtype=torch.float32)
-				try:
-						labels = ast.literal_eval(labels_str)
-						for label in labels:
-								if label in self.label_dict:
-										vector[self.label_dict[label]] = 1.0
-				except (ValueError, SyntaxError):
-						pass
-				return vector
-
-		def __len__(self):
-				return len(self.data_frame)
-		
-		def __repr__(self):
-				transform_str = f"Transform: {self.transform}\n" if self.transform else ""
-				split = 'Train' if self.train else 'Validation'
-				# The cache info is now managed per-worker, so a central view isn't possible.
-				# Stating the configuration is the correct approach.
-				cache_str = f"Image Cache (LRU): Maxsize={self._load_image.cache_info().maxsize}"
-				
-				return (
-						f"{self.dataset_name}\n"
-						f"\tSplit: {split} ({self.data_frame.shape[0]} samples)\n"
-						f"\tNum classes: {self._num_classes}\n"
-						f"\t{cache_str}\n"
-						f"{transform_str}"
-				)
-
-def get_multi_label_dataloaders_with_manual_caching(
-		dataset_dir: str,
-		batch_size: int,
-		num_workers: int,
-		input_resolution: int,
-		col:str='multimodal_labels',
-		cache_size: int = int(5e4),
-	):
-	dataset_name = os.path.basename(dataset_dir)
-	print(f"\nCreating multi-label dataloaders for {dataset_name}")
-
-	# --- 1. Load data from CSVs (this part remains the same) ---
-	train_df, val_df, label_dict = get_multi_label_datasets(ddir=dataset_dir, col=col)
-	preprocess = get_preprocess(dataset_dir=dataset_dir, input_resolution=input_resolution)
-	total_samples = len(train_df) + len(val_df)
-	cache_size = min(cache_size, int(total_samples*0.60))
-	train_pct = 0.60
-	val_pct = 1.0 - train_pct
-	train_cache_size = int(cache_size * train_pct)
-	val_cache_size = int(cache_size * val_pct)
-	print(
-		f">> Total Samples: {total_samples:,} | Total cache size: {cache_size:,} => "
-		f"train[{train_pct*100:.0f}%]: {train_cache_size:,}, "
-		f"validation[{val_pct*100:.0f}%]: {val_cache_size:,}"
-	)
-
-	# --- 2. Create the full dataset instances with LRU caching ---
-	train_dataset = HistoricalArchivesMultiLabelDataset(
-		dataset_name=f"{dataset_name}_TRAIN",
-		train=True,
-		data_frame=train_df,
-		transform=preprocess,
-		label_dict=label_dict,
-		col=col,
-		cache_size=train_cache_size,
-	)
-	print(train_dataset)
-	
-	val_dataset = HistoricalArchivesMultiLabelDataset(
-		dataset_name=f"{dataset_name}_VALIDATION",
-		train=False,
-		data_frame=val_df,
-		transform=preprocess,
-		label_dict=label_dict,
-		col=col,
-		cache_size=val_cache_size,
-	)
-	print(val_dataset)
-	
-	# # --- 3. Create a small, fixed subset for QUICK validation checks ---
-	# # This is critical for solving the slow validation loop bottleneck.
-	# quick_val_indices = np.random.choice(len(val_dataset), size=min(2048, len(val_dataset)), replace=False)
-	# quick_val_subset = torch.utils.data.Subset(val_dataset, quick_val_indices)
-	# print(f"Created a quick validation subset with {len(quick_val_subset)} samples.")
-	
-	# --- 4. Create the DataLoader instances using the custom collate function ---
-	common_loader_args = {
-		'batch_size': batch_size,
-		'num_workers': min(num_workers, 4),
-		'pin_memory': torch.cuda.is_available(),
-		'persistent_workers': (num_workers > 0),
-		'collate_fn': custom_collate_fn # Use the robust collate function
-	}
-	train_loader = DataLoader(dataset=train_dataset, shuffle=True, **common_loader_args)
-	train_loader.name = f"{dataset_name.upper()}_MULTILABEL_TRAIN"
-	
-	# Loader for the FULL validation set (for infrequent, detailed metrics)
-	full_val_loader = DataLoader(dataset=val_dataset, shuffle=False, **common_loader_args)
-	full_val_loader.name = f"{dataset_name.upper()}_MULTILABEL_VALIDATION"
-
-	# # Loader for the QUICK validation subset (for fast, per-epoch loss checks)
-	# quick_val_loader = DataLoader(dataset=quick_val_subset, shuffle=False, **common_loader_args)
-	# quick_val_loader.name = f"{dataset_name.upper()}_MULTILABEL_QUICK_VAL"
-
-	return train_loader, full_val_loader	
-	# return (
-	# 	train_loader, 
-	# 	full_val_loader, 
-	# 	quick_val_loader
-	# )

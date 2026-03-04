@@ -25,7 +25,6 @@ def full_finetune_multi_label(
 	topk_values: List[int] = [1, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
 	temperature: float = 0.07,  # Temperature for contrastive learning
-	use_lamb: bool = False,
 	verbose: bool=True,
 ):
 	"""
@@ -116,7 +115,7 @@ def full_finetune_multi_label(
 	print()
 
 	for n, p in model.named_parameters():
-		print(f"{n:<100}{p.requires_grad:<10}{p.dtype} {p.shape}")
+		print(f"{n:<80}{p.requires_grad:<5}{p.dtype}\t{p.shape}")
 	print("="*140)
 
 	# # Unfreeze all layers for full fine-tuning
@@ -155,16 +154,13 @@ def full_finetune_multi_label(
 	# pos_weight = (N - freq) / freq for observed classes
 	# Cap at 1000 to avoid float16 overflow (max float16 = 65504)
 	pos_weight = torch.where(
-			train_freq > 0,
-			((N - train_freq) / train_freq.clamp(min=1)).clamp(max=1000.0),
-			torch.ones(num_classes),
+		train_freq > 0,
+		((N - train_freq) / train_freq.clamp(min=1)).clamp(max=1000.0),
+		torch.ones(num_classes),
 	).to(device)
 
 	# Zero-count class mask — exclude from loss entirely
 	active_mask = (train_freq > 0).to(device)  # [C] bool, ~3,057 True
-
-	print(f"pos_weight range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-	print(f"Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 
 	# I2T: pos_weight applies — rows are images, cols are classes
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
@@ -173,12 +169,13 @@ def full_finetune_multi_label(
 	)
 
 	if verbose:
-		print(f"[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} min, max: {pos_weight.min().item():.3f}, {pos_weight.max().item():.3f}")
+		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
 		print(f"   ├─ number of samples: {N}")
 		print(f"   ├─ number of classes: {num_classes}")
-		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} min, max: {train_freq.min().item():.3f}, {train_freq.max().item():.3f}")
-		print()
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
+		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
 
 	# T2I: no pos_weight — rows are classes, cols are batch images
 	# The imbalance is already corrected via I2T; T2I provides directional symmetry
@@ -187,9 +184,8 @@ def full_finetune_multi_label(
 	)
 
 	if verbose:
-		print(f"[T2I] {criterion_t2i.__class__.__name__}")
+		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
-		print()
 
 	all_class_embeds = []
 	model.eval()
@@ -215,33 +211,29 @@ def full_finetune_multi_label(
 	if verbose:
 		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
 
-	if use_lamb:
-		optimizer = LAMB(
-			params=[p for p in model.parameters() if p.requires_grad],
-			lr=learning_rate,
-			weight_decay=weight_decay,
-		)
-	else:
-		optimizer = torch.optim.AdamW(
-			params=[p for p in model.parameters() if p.requires_grad],
-			lr=learning_rate,
-			betas=(0.9, 0.98),
-			eps=1e-6,
-			weight_decay=weight_decay,
-		)
+	optimizer = torch.optim.AdamW(
+		params=[p for p in model.parameters() if p.requires_grad],
+		lr=learning_rate,
+		betas=(0.9, 0.98),
+		eps=1e-6,
+		weight_decay=weight_decay,
+	)
 
 	estimated_epochs = min(num_epochs, 15)
 	total_training_steps = estimated_epochs * len(train_loader)
+	# T_max = total_training_steps
+	T_max = num_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
-		T_max=total_training_steps,
+		T_max = T_max,
 		eta_min=eta_min,
 		last_epoch=-1,
 	)
-	print(f"{scheduler.__class__.__name__} scheduler configured")
-	print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
+	print(f"\n{scheduler.__class__.__name__} scheduler configured")
+	# print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
+	print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)] (full requested duration)")
 	print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
 	scaler = torch.amp.GradScaler(
@@ -251,7 +243,7 @@ def full_finetune_multi_label(
 		backoff_factor=0.5,
 		growth_interval=2000,
 	)
-	print(f"Using {scaler.__class__.__name__} for automatic mixed precision training")
+	print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -370,7 +362,6 @@ def full_finetune_multi_label(
 			device=device,
 			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
 			temperature=temperature,
-			max_batches=10
 		)
 		
 		validation_results = get_validation_metrics(
@@ -952,7 +943,6 @@ def progressive_finetune_multi_label(
 			device=device,
 			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
 			temperature=temperature,
-			max_batches=10
 		)
 
 		validation_results = get_validation_metrics(
@@ -1518,7 +1508,6 @@ def lora_finetune_multi_label(
 			device=device,
 			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
 			temperature=temperature,
-			max_batches=10
 		)
 
 		validation_results = get_validation_metrics(
@@ -2130,7 +2119,6 @@ def lora_plus_finetune_multi_label(
 			device=device,
 			all_class_embeds=all_class_embeds,
 			temperature=temperature,
-			max_batches=10
 		)
 		
 		validation_results = get_validation_metrics(
@@ -2678,7 +2666,6 @@ def ia3_finetune_multi_label(
 			device=device,
 			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
 			temperature=temperature,
-			max_batches=10
 		)
 
 		validation_results = get_validation_metrics(
@@ -3239,7 +3226,6 @@ def vera_finetune_multi_label(
 			device=device,
 			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
 			temperature=temperature,
-			max_batches=10
 		)
 
 		validation_results = get_validation_metrics(
