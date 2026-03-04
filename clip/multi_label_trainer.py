@@ -115,7 +115,7 @@ def full_finetune_multi_label(
 	print()
 
 	for n, p in model.named_parameters():
-		print(f"{n:<80}{p.requires_grad:<5}{p.dtype}\t{p.shape}")
+		print(f"{n:<60}{p.requires_grad:<5}{p.dtype}\t{p.shape}")
 	print("="*140)
 
 	# # Unfreeze all layers for full fine-tuning
@@ -128,13 +128,6 @@ def full_finetune_multi_label(
 			param.requires_grad = True
 		else:
 			param.requires_grad = False
-
-	# # Verify the split
-	# trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-	# frozen    = sum(p.numel() for p in model.parameters() if not p.requires_grad)
-	# print(f"Trainable (vision): {trainable:,}")
-	# print(f"Frozen (text):      {frozen:,}")
-	# # Expected: ~87M trainable (vision), ~38M frozen (text) for ViT-B/32
 
 	get_parameters_info(model=model, mode=mode)
 
@@ -172,10 +165,11 @@ def full_finetune_multi_label(
 	# Rare: pos_weight > 20 AND freq >= min_freq (learnable but imbalanced)
 	rare_mask = (pos_weight > 20.0) & active_mask      # already on device
 
-	print(f"Head classes  (Pareto 80%): {head_mask.sum().item():,}")
-	print(f"Rare classes  (pw>20):      {rare_mask.sum().item():,}")
-	print(f"Active classes (freq>0):    {active_mask.sum().item():,}")
-
+	if verbose:
+		print(f"\nLabel distribution in training set:")
+		print(f"  ├─ Head (Pareto 80%): {head_mask.sum().item():,}")
+		print(f"  ├─ Rare (pw>20):      {rare_mask.sum().item():,}")
+		print(f"  └─ Active (freq>0):   {active_mask.sum().item():,}")
 
 	# I2T: pos_weight applies — rows are images, cols are classes
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
