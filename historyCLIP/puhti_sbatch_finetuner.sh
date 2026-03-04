@@ -188,7 +188,7 @@ fi
 
 case $strategy in
   "full"|"lora"|"lora_plus"|"dora"|"vera")
-    ADJUSTED_BATCH_SIZE=48
+    ADJUSTED_BATCH_SIZE=40
     ;;
   "progressive")
     case $architecture in

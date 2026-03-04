@@ -129,27 +129,26 @@ def full_finetune_multi_label(
 		else:
 			param.requires_grad = False
 
-	# Verify the split
-	trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-	frozen    = sum(p.numel() for p in model.parameters() if not p.requires_grad)
-	print(f"Trainable (vision): {trainable:,}")
-	print(f"Frozen (text):      {frozen:,}")
-	# Expected: ~87M trainable (vision), ~38M frozen (text) for ViT-B/32
+	# # Verify the split
+	# trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	# frozen    = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+	# print(f"Trainable (vision): {trainable:,}")
+	# print(f"Frozen (text):      {frozen:,}")
+	# # Expected: ~87M trainable (vision), ~38M frozen (text) for ViT-B/32
 
 	get_parameters_info(model=model, mode=mode)
 
 	# Compute pos_weight from training set frequencies
-	print("Computing pos_weight from training set...")
 	train_freq = torch.zeros(num_classes, dtype=torch.float32)
 	N = len(train_loader.dataset)
 
 	for raw in train_loader.dataset.labels:
-			try:
-					for lbl in ast.literal_eval(raw):
-							if lbl in train_loader.dataset.label_dict:
-									train_freq[train_loader.dataset.label_dict[lbl]] += 1
-			except (ValueError, SyntaxError):
-					pass
+		try:
+			for lbl in ast.literal_eval(raw):
+				if lbl in train_loader.dataset.label_dict:
+					train_freq[train_loader.dataset.label_dict[lbl]] += 1
+		except (ValueError, SyntaxError):
+			pass
 
 	# pos_weight = (N - freq) / freq for observed classes
 	# Cap at 1000 to avoid float16 overflow (max float16 = 65504)
@@ -161,6 +160,22 @@ def full_finetune_multi_label(
 
 	# Zero-count class mask — exclude from loss entirely
 	active_mask = (train_freq > 0).to(device)  # [C] bool, ~3,057 True
+
+	# Head: Pareto classes covering 80% of occurrences
+	sorted_freq, sorted_idx = torch.sort(train_freq, descending=True)
+	cumsum = sorted_freq.cumsum(0)
+	pareto_cutoff = (cumsum <= cumsum[-1] * 0.80).sum().item() + 1
+	head_indices = sorted_idx[:pareto_cutoff]
+	head_mask = torch.zeros(num_classes, dtype=torch.bool, device=device)
+	head_mask[head_indices] = True
+
+	# Rare: pos_weight > 20 AND freq >= min_freq (learnable but imbalanced)
+	rare_mask = (pos_weight > 20.0) & active_mask      # already on device
+
+	print(f"Head classes  (Pareto 80%): {head_mask.sum().item():,}")
+	print(f"Rare classes  (pw>20):      {rare_mask.sum().item():,}")
+	print(f"Active classes (freq>0):    {active_mask.sum().item():,}")
+
 
 	# I2T: pos_weight applies — rows are images, cols are classes
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
@@ -285,7 +300,7 @@ def full_finetune_multi_label(
 		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
 		model.train()
-		print(f"Epoch [{epoch + 1}/{num_epochs}]")
+		print(f"Epoch [{epoch+1}/{num_epochs}]")
 		
 		epoch_loss_total = 0.0
 		epoch_loss_i2t = 0.0
@@ -374,53 +389,46 @@ def full_finetune_multi_label(
 			topK_values=topk_values,
 			finetune_strategy=mode,
 			cache_dir=results_dir,
-			verbose=True,
+			verbose=verbose,
 			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 			is_training=True,
 			model_hash=get_model_hash(model),
 			temperature=temperature,
 		)
 		
-		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
-		in_batch_loss_acc_metrics_per_epoch["val_loss"] = current_val_loss
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
 		retrieval_metrics_per_epoch = {
 			"img2txt": validation_results["img2txt_metrics"],
 			"txt2img": validation_results["txt2img_metrics"]
 		}
-		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
 		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
 		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
 		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
-		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
+
 		print(
-			f'@ Epoch {epoch + 1}:\n'
-			f'\t[LOSS] {mode}:\n'
-			f'\t\tTraining - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f})\n'
-			f'\t\tValidation: {current_val_loss:.6f}\n'
-			f'\tMulti-label Validation Metrics:\n'
-			f'\t\tIn-batch Top-K Accuracy:\n'
-			f'\t\t\t[Image→Text]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-			f'\t\t\t[Text→Image]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
-			f'\t\tFull Validation Set:\n'
-			f'\t\t\t[Image→Text]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-			f'\t\t\t[Text→Image]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+			f'\nEpoch {epoch+1}:\n'
+			f'   ├─ [LOSS] {mode}-FT: Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Validation: {current_val_loss:.6f}\n'
+			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
+			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
+			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'      └─ [T2I] {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+		)
+		
+		print(f"   ├─ Retrieval Metrics:")
+		print(
+			f"      ├─ [I2T] mAP {retrieval_metrics_per_epoch['img2txt'].get('mAP', {})}, "
+			f"Recall: {retrieval_metrics_per_epoch['img2txt'].get('Recall', {})}"
+		)
+		print(
+			f"      └─ [T2I] mAP: {retrieval_metrics_per_epoch['txt2img'].get('mAP', {})}, "
+			f"Recall: {retrieval_metrics_per_epoch['txt2img'].get('Recall', {})}"
 		)
 		if full_val_loss_acc_metrics_per_epoch.get("hamming_loss") is not None:
-			print(f'\tMulti-label Metrics:')
-			print(f'\t\tHamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
-			print(f'\t\tPartial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
-			print(f'\t\tF1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
-		
-		print(f"\tRetrieval Metrics:")
-		print(
-			f"\t\tImage-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A')}, "
-			f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A')}"
-		)
-		print(
-			f"\t\tText-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A')}, "
-			f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A')}"
-		)
+			print(f'   ├─ Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
+			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
+			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
+			print()
+
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
@@ -448,34 +456,33 @@ def full_finetune_multi_label(
 
 	print(f"[{mode}] Total Training  Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
-	# ================================
 	# FINAL EVALUATION
-	# ================================
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
 		criterion_i2t=criterion_i2t,
 		criterion_t2i=criterion_t2i,
 		active_mask=active_mask,
+		head_mask=head_mask,
+		rare_mask=rare_mask,
 		early_stopping=early_stopping,
 		checkpoint_path=mdl_fpth,
 		finetune_strategy=mode,
 		device=device,
 		cache_dir=results_dir,
 		topk_values=topk_values,
-		verbose=True,
+		verbose=verbose,
 		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 	)
+	print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
+	print()
 
-	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
 	model_source = evaluation_results["model_loaded_from"]
 
-	print(f"Final evaluation used model weights from: {model_source}")
-
-	print("\nGenerating result plots...")
+	print(f"\nGenerating result plots: model weights from: {model_source}")
 
 	actual_trained_epochs = len(training_losses)
 
@@ -505,9 +512,7 @@ def full_finetune_multi_label(
 
 	print(f"Best model will be renamed to: {mdl_fpth}")
 
-	# ================================
 	# PLOTTING: Enhanced for multi-label
-	# ================================
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
 		"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
@@ -523,34 +528,20 @@ def full_finetune_multi_label(
 		training_losses_breakdown=training_losses_breakdown,
 		filepath=plot_paths["losses_breakdown"]
 	)
-	viz.plot_loss_accuracy_metrics(
-			dataset_name=dataset_name,
-			train_losses=training_losses,
-			val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-			in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-			in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-			full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
-			full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
-			losses_file_path=plot_paths["losses"],
-			in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
-			in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
-			full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
-			full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
-	)
 	viz.plot_retrieval_metrics_per_epoch(
-			dataset_name=dataset_name,
-			image_to_text_metrics_list=img2txt_metrics_all_epochs,
-			text_to_image_metrics_list=txt2img_metrics_all_epochs,
-			fname=plot_paths["retrieval_per_epoch"],
+		dataset_name=dataset_name,
+		image_to_text_metrics_list=img2txt_metrics_all_epochs,
+		text_to_image_metrics_list=txt2img_metrics_all_epochs,
+		fname=plot_paths["retrieval_per_epoch"],
 	)
 	viz.plot_retrieval_metrics_best_model(
-			dataset_name=dataset_name,
-			image_to_text_metrics=final_img2txt_metrics,
-			text_to_image_metrics=final_txt2img_metrics,
-			fname=plot_paths["retrieval_best"],
+		dataset_name=dataset_name,
+		image_to_text_metrics=final_img2txt_metrics,
+		text_to_image_metrics=final_txt2img_metrics,
+		fname=plot_paths["retrieval_best"],
 	)
 
-	return final_metrics_in_batch, final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
 def progressive_finetune_multi_label(
 		model: torch.nn.Module,
