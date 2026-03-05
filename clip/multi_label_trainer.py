@@ -2140,27 +2140,68 @@ def probe_finetune_multi_label(
 		for param in model.parameters():
 			param.requires_grad = False
 
+		model.eval()
+		# Build probe (wraps frozen CLIP, adds trainable W)
 		probe = get_probe_clip(
 			clip_model=model,
 			validation_loader=validation_loader,
 			device=torch.device(device),
-			# hidden_dim=256,  # Optional: creates MLP probe
+			hidden_dim=probe_hidden_dim,  # creates MLP probe
 			dropout=probe_dropout,
 			zero_shot_init=True, # faster convergence
 			verbose=verbose,
 		)
 
-		embed_dim = probe.input_dim  # Get the detected feature dimension
-		probe_num_params = sum(p.numel() for p in probe.parameters())
-		probe_param_type = probe.probe_type
+		masks = compute_loss_masks(
+			train_loader=train_loader,
+			num_classes=num_classes,
+			device=device,
+			verbose=verbose,
+		)
+		pos_weight  = masks["pos_weight"]
+		active_mask = masks["active_mask"]
+		head_mask   = masks["head_mask"]
+		rare_mask   = masks["rare_mask"]
+		N = masks["N"]
+		train_freq = masks["train_freq"]
 
-		print(f"CLIP embedding dimension: {embed_dim} Probe: {probe_param_type} | Parameters: {probe_num_params:,}")
+		# ── Criteria ─────────────────────────────────────────────────────────────
+		# For the probe, loss is computed directly on logits [B, C] — same shape
+		# as i2t_sim — so criterion_i2t with pos_weight applies directly.
+		# No criterion_t2i needed: the probe has no T2I direction.
+		criterion = torch.nn.BCEWithLogitsLoss(
+			pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
+			reduction='none',
+		)
+		if verbose:
+			print(f"\n{criterion.__class__.__name__}")
+			print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+			print(f"   ├─ number of samples: {N}")
+			print(f"   ├─ number of classes: {num_classes}")
+			print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+			print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
+			print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
+
+		# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
+		model.eval()
+		all_class_embeds = []
+		text_batch_size = validation_loader.batch_size
+		print(f"\n>> Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+		with torch.no_grad():
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding"):
+					batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
+					embeds = model.encode_text(batch_tokens)
+					embeds = torch.nn.functional.normalize(embeds, dim=-1)
+					all_class_embeds.append(embeds.cpu())
+					del batch_tokens, embeds
+		all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
+		if verbose:
+			print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
 
 		# Optimizer setup
-		probe_params = probe.parameters()
-		print(f"Probe trainable parameters: {sum(p.numel() for p in probe_params):,}")
 		optimizer = torch.optim.AdamW(
-			params=probe_params,
+			params=probe.probe.parameters(),
 			lr=learning_rate,
 			betas=(0.9, 0.98),
 			eps=1e-6,
@@ -2192,7 +2233,7 @@ def probe_finetune_multi_label(
 			growth_interval=2000,
 		)
 		if verbose:
-			print(f"{scaler.__class__.__name__} for automatic mixed precision training")
+			print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
 
 		mdl_fpth = os.path.join(
 				results_dir,
@@ -2200,7 +2241,7 @@ def probe_finetune_multi_label(
 				f"{model_arch}_"
 				f"{optimizer.__class__.__name__}_"
 				f"{scheduler.__class__.__name__}_"
-				f"probe_{probe_param_type}_"
+				f"probe_{probe.probe_type}_"
 				f"ieps_{num_epochs}_"
 				f"lr_{learning_rate:.1e}_"
 				f"wd_{weight_decay:.1e}_"
@@ -2216,344 +2257,265 @@ def probe_finetune_multi_label(
 				f".pth"
 		)
 
-		# Optional: Cache features for efficiency
-		train_features_cache = None
-		val_features_cache = None
-		
+
+		# ── Feature caching ───────────────────────────────────────────────────────
+		# FIX 3: wrap feature extraction in torch.no_grad() to avoid building
+		# a computation graph for 74K images — CLIP is frozen, gradients useless.
 		if cache_features:
-				print("Pre-extracting features for efficient training...")
-				# Extract training features
-				train_features = list()
-				train_labels = list()
-				model.eval()
-				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-					for batch_data in tqdm(train_loader, desc="Extracting train features"):
-						if len(batch_data) == 3:
-							images, _, label_vectors = batch_data
-						else:
-							raise ValueError(f"Expected 3 items, got {len(batch_data)}")
-						
-						images = images.to(device, non_blocking=True)
-						image_embeds = model.encode_image(images)
-						image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
-						
-						train_features.append(image_embeds.cpu())
-						train_labels.append(label_vectors.cpu())
-				
-				train_features_cache = (torch.cat(train_features, dim=0), torch.cat(train_labels, dim=0))
-				
-				# Extract validation features
-				val_features = list()
-				val_labels = list()
-				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-					for batch_data in tqdm(validation_loader, desc="Extracting val features"):
-						if len(batch_data) == 3:
-							images, _, label_vectors = batch_data
-						else:
-							raise ValueError(f"Expected 3 items, got {len(batch_data)}")
-						
-						images = images.to(device, non_blocking=True)
-						image_embeds = model.encode_image(images)
-						image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
-						
-						val_features.append(image_embeds.cpu())
-						val_labels.append(label_vectors.cpu())
-				
-				val_features_cache = (torch.cat(val_features, dim=0), torch.cat(val_labels, dim=0))
-				
-				print(f"Cached features - Train: {train_features_cache[0].shape}, Val: {val_features_cache[0].shape}")
-				
-				# Create feature dataloaders
-				from torch.utils.data import TensorDataset
-				train_feature_dataset = TensorDataset(train_features_cache[0], train_features_cache[1])
-				val_feature_dataset = TensorDataset(val_features_cache[0], val_features_cache[1])
-				
-				train_feature_loader = DataLoader(
-						train_feature_dataset,
-						batch_size=train_loader.batch_size,
-						shuffle=True,
-						num_workers=0
-				)
-				val_feature_loader = DataLoader(
-						val_feature_dataset,
-						batch_size=validation_loader.batch_size,
-						shuffle=False,
-						num_workers=0
-				)
+			print("Pre-extracting image features (CLIP frozen — runs once)...")
+			model.eval()
+			def extract_features(loader, desc):
+					feats, lbls = [], []
+					with torch.no_grad():
+							with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+									for images, _, label_vectors in tqdm(loader, desc=desc):
+											images = images.to(device, non_blocking=True)
+											emb = model.encode_image(images)
+											emb = torch.nn.functional.normalize(emb, dim=-1)
+											feats.append(emb.cpu())
+											lbls.append(label_vectors.cpu())
+					return torch.cat(feats, dim=0), torch.cat(lbls, dim=0)
+			train_feats, train_lbls = extract_features(train_loader, "Train features")
+			val_feats,   val_lbls   = extract_features(validation_loader, "Val features")
+			print(f"Cached — train: {train_feats.shape}, val: {val_feats.shape}")
+			from torch.utils.data import TensorDataset
+			train_feature_loader = DataLoader(
+					TensorDataset(train_feats, train_lbls),
+					batch_size=train_loader.batch_size,
+					shuffle=True,
+					num_workers=0,
+			)
+			val_feature_loader = DataLoader(
+					TensorDataset(val_feats, val_lbls),
+					batch_size=validation_loader.batch_size,
+					shuffle=False,
+					num_workers=0,
+			)
 
 		training_losses = list()
 		training_losses_breakdown = {"total": []}
 		img2txt_metrics_all_epochs = list()
 		txt2img_metrics_all_epochs = list()
-		in_batch_loss_acc_metrics_all_epochs = list()
 		full_val_loss_acc_metrics_all_epochs = list()
+		learning_rates_history = list()
+		weight_decays_history = list()
 		train_start_time = time.time()
 
 		for epoch in range(num_epochs):
 				train_and_val_st_time = time.time()
 				torch.cuda.empty_cache()
-				probe.train()
+				probe.probe.train()  # only the linear head
+				model.eval() # CLIP stays frozen, no gradients
 
 				print(f"Epoch [{epoch + 1}/{num_epochs}]")
 				
-				epoch_loss_total = 0.0
+				epoch_loss = 0.0
 				num_batches = 0
 				
 				# Choose data source
-				data_loader = train_feature_loader if cache_features else train_loader
+				data_iter = train_feature_loader if cache_features else train_loader
 				
-				for bidx, batch_data in enumerate(data_loader):
-						if cache_features:
-								# Using cached features
-								image_embeds, label_vectors = batch_data
-								image_embeds = image_embeds.to(device, non_blocking=True)
-								label_vectors = label_vectors.to(device, non_blocking=True).float()
-						else:
-								# Extract features on-the-fly
-								if len(batch_data) == 3:
-										images, _, label_vectors = batch_data
-								else:
-										raise ValueError(f"Expected 3 items, got {len(batch_data)}")
-								
-								images = images.to(device, non_blocking=True)
-								label_vectors = label_vectors.to(device, non_blocking=True).float()
-								
-								# Extract image embeddings (frozen)
-								with torch.no_grad():
-										image_embeds = model.encode_image(images)
-										image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
+				for bidx, batch_data in enumerate(data_iter):
+					if cache_features:
+						# Using cached features
+						image_embeds, label_vectors = batch_data
+						image_embeds = image_embeds.to(device, non_blocking=True)
+						label_vectors = label_vectors.to(device, non_blocking=True).float()
+					else:
+						images, _, label_vectors = batch_data
+						images = images.to(device, non_blocking=True)
+						label_vectors = label_vectors.to(device, non_blocking=True).float()
 						
-						optimizer.zero_grad(set_to_none=True)
+						# Extract image embeddings (frozen)
+						with torch.no_grad():
+							image_embeds = model.encode_image(images)
+							image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
+					
+					optimizer.zero_grad(set_to_none=True)
+					
+					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+						# Linear probe forward (multi-label logits)
+						logits = probe.probe(image_embeds)   
 						
-						with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-								# Linear probe forward (multi-label logits)
-								logits = probe(image_embeds)
-								
-								# Multi-label loss
-								loss = criterion(logits, label_vectors)
-						
-						# Check for NaN loss
-						if torch.isnan(loss):
-								print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
-								continue
-						
-						scaler.scale(loss).backward()
-						scaler.unscale_(optimizer)
-						torch.nn.utils.clip_grad_norm_(probe.parameters(), max_norm=1.0)
-						scaler.step(optimizer)
-						scaler.update()
-						scheduler.step()
-						
-						# Track losses
-						batch_loss_total = loss.item()
-						epoch_loss_total += batch_loss_total
-						num_batches += 1
-						
-						if bidx % print_every == 0 or bidx + 1 == len(data_loader):
-							print(
-								f"\t\tBatch [{bidx + 1:04d}/{len(data_loader)}] "
-								f"Loss: {batch_loss_total:.6f}"
-							)
+						# Apply pos_weight BCE, mask zero-count classes
+						loss_raw = criterion(logits, label_vectors)  # [B, C], reduction='none'
+						loss = loss_raw[:, active_mask].mean()
+													
+					# Check for NaN loss
+					if torch.isnan(loss):
+						print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
+						continue
+					
+					scaler.scale(loss).backward()
+					scaler.unscale_(optimizer)
+					torch.nn.utils.clip_grad_norm_(probe.probe.parameters(), max_norm=1.0)
+					scaler.step(optimizer)
+					scaler.update()
+					scheduler.step()
+					
+					# Track losses
+					epoch_loss  += loss.item()
+					num_batches += 1
+					
+					if bidx % print_every == 0 or bidx + 1 == len(data_iter):
+						print(f"\t\tBatch [{bidx+1:04d}/{len(data_iter)}] Loss: {loss.item():.6f}")
 				
 				# Calculate average losses
-				avg_total_loss = epoch_loss_total / num_batches if num_batches > 0 else 0.0
-				training_losses.append(avg_total_loss)
-				training_losses_breakdown["total"].append(avg_total_loss)
+				avg_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
+				training_losses.append(avg_loss)
+				training_losses_breakdown["total"].append(avg_loss)
+				learning_rates_history.append([g['lr'] for g in optimizer.param_groups])
+				weight_decays_history.append([g['weight_decay'] for g in optimizer.param_groups])
 
 				print(f">> Validating Epoch {epoch+1} ...")
 				
-				# Validation with probe
-				probe.eval()
+				probe.probe.eval()
 				val_loss = 0.0
-				val_preds = list()
-				val_labels_list = list()
+				val_preds_list, val_labels_list = list(), list()
 				
 				with torch.no_grad():
-						data_loader = val_feature_loader if cache_features else validation_loader
+					val_iter = val_feature_loader if cache_features else validation_loader
+					
+					for batch_data in val_iter:
+						if cache_features:
+							image_embeds, label_vectors = batch_data
+							image_embeds = image_embeds.to(device, non_blocking=True)
+							label_vectors = label_vectors.to(device, non_blocking=True).float()
+						else:
+							images, _, label_vectors = batch_data										
+							images = images.to(device, non_blocking=True)
+							label_vectors = label_vectors.to(device, non_blocking=True).float()
+							
+							# Extract features
+							image_embeds = model.encode_image(images)
+							image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 						
-						for batch_data in data_loader:
-								if cache_features:
-										image_embeds, label_vectors = batch_data
-										image_embeds = image_embeds.to(device, non_blocking=True)
-										label_vectors = label_vectors.to(device, non_blocking=True).float()
-								else:
-										if len(batch_data) == 3:
-												images, _, label_vectors = batch_data
-										else:
-												raise ValueError(f"Expected 3 items, got {len(batch_data)}")
-										
-										images = images.to(device, non_blocking=True)
-										label_vectors = label_vectors.to(device, non_blocking=True).float()
-										
-										# Extract features
-										image_embeds = model.encode_image(images)
-										image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
-								
-								# Get predictions from probe
-								logits = probe(image_embeds)
-								loss = criterion(logits, label_vectors)
-								val_loss += loss.item()
-								
-								# Store predictions for metrics
-								probs = torch.sigmoid(logits)
-								preds = (probs > 0.5).float()
-								val_preds.append(preds.cpu())
-								val_labels_list.append(label_vectors.cpu())
+						# Get predictions from probe
+						logits = probe.probe(image_embeds)
+						loss_raw = criterion(logits, label_vectors)
+						val_loss += loss_raw[:, active_mask].mean().item()
+						val_preds_list.append((torch.sigmoid(logits) > 0.5).float().cpu())
+						val_labels_list.append(label_vectors.cpu())
 				
-				avg_val_loss = val_loss / len(data_loader)
+				avg_val_loss = val_loss / len(val_iter)
 				
 				# Calculate multi-label metrics
-				val_preds = torch.cat(val_preds, dim=0)
+				val_preds = torch.cat(val_preds_list, dim=0)
 				val_labels = torch.cat(val_labels_list, dim=0)
 				
 				hamming = hamming_loss(val_labels.numpy(), val_preds.numpy())
 				f1 = f1_score(val_labels.numpy(), val_preds.numpy(), average='weighted', zero_division=0)
 				exact_match = (val_preds == val_labels).all(dim=1).float().mean().item()
 				partial_match = (val_preds == val_labels).float().mean().item()
-				
-				print(f"Validation - Loss: {avg_val_loss:.6f}, Hamming: {hamming:.4f}, F1: {f1:.4f}, Exact Match: {exact_match:.4f}")
-				
-				# Create metrics for compatibility
-				current_val_loss = avg_val_loss
-				
-				# Simple in-batch metrics
-				in_batch_metrics = {
-						"val_loss": avg_val_loss,
-						"hamming_loss": hamming,
-						"f1_score": f1,
-						"exact_match_acc": exact_match,
-						"partial_acc": partial_match,
+				epoch_metrics = {
+					"val_loss":       avg_val_loss,
+					"hamming_loss":   hamming,
+					"f1_score":       f1,
+					"exact_match_acc": exact_match,
+					"partial_acc":    partial_match,
 				}
-				in_batch_loss_acc_metrics_all_epochs.append(in_batch_metrics)
-				full_val_loss_acc_metrics_all_epochs.append(in_batch_metrics)
+				full_val_loss_acc_metrics_all_epochs.append(epoch_metrics)
+				print(f"Validation - Loss: {avg_val_loss:.6f}, Hamming: {hamming:.4f}, F1: {f1:.4f}, Exact Match: {exact_match:.4f}")
+				cos_sim = torch.nn.functional.cosine_similarity(
+					train_feats[:512].to(device) if cache_features else torch.zeros(1),
+					train_feats[:512].to(device) if cache_features else torch.zeros(1),
+					dim=1,
+				).mean().item()  # placeholder — probe has no separate text encoder to compare against
+
+				print(
+					f"\n@ Epoch {epoch+1}:\n"
+					f"  Loss  — Train: {avg_loss:.4f}  Val: {avg_val_loss:.4f}\n"
+					f"  Hamming: {hamming:.4f}  F1: {f1:.4f}  "
+					f"ExactMatch: {exact_match:.4f}  PartialAcc: {partial_match:.4f}\n"
+					f"  LR    — {scheduler.get_last_lr()[0]:.2e}"
+				)
 
 				if early_stopping.should_stop(
-						current_value=current_val_loss,
-						model=probe,  # Save probe weights
-						epoch=epoch,
-						optimizer=optimizer,
-						scheduler=scheduler,
-						checkpoint_path=mdl_fpth,
+					current_value=avg_val_loss,
+					model=probe.probe, # save only probe weights, not full CLIP
+					epoch=epoch,
+					optimizer=optimizer,
+					scheduler=scheduler,
+					checkpoint_path=mdl_fpth,
 				):
-						print(f"\nEarly stopping at epoch {epoch + 1}")
-						break
+					print(
+						f"\nEarly stopping at epoch {epoch+1} | "
+						f"best loss: {early_stopping.get_best_score():.6f} "
+						f"@ epoch {early_stopping.get_best_epoch()+1}"
+					)
+					break
 
-				print(f"Epoch {epoch+1} Duration: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))
+				print(f"[TOTAL ELAPSED TIME (Train + Validation)] Epoch {epoch+1} {time.time() - train_and_val_st_time:.2f} sec")
 		
 		print(f"[{mode}] Total Time: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
 		# Load best probe weights
 		if os.path.exists(mdl_fpth):
-				print(f"Loading best probe weights from {mdl_fpth}")
-				checkpoint = torch.load(mdl_fpth, map_location=device)
-				if 'model_state_dict' in checkpoint:
-						probe.load_state_dict(checkpoint['model_state_dict'])
-				else:
-						probe.load_state_dict(checkpoint)
+			print(f"Loading best probe weights from {mdl_fpth}")
+			checkpoint = torch.load(mdl_fpth, map_location=device)
+			state_dict = checkpoint.get('model_state_dict', checkpoint)
+			probe.probe.load_state_dict(state_dict, strict=False)
+		elif early_stopping.best_weights is not None:
+			print(f"Loading best weights from early stopping (epoch {early_stopping.best_epoch+1})")
+			probe.probe.load_state_dict(
+				{k: v.to(device) for k, v in early_stopping.best_weights.items()}
+			)
+		else:
+			print("Warning: No best weights found - using final weights")
 
-		# Final evaluation
-		print("\nFinal Evaluation:")
-		probe.eval()
-		final_preds = list()
-		final_labels = list()
-		
-		with torch.no_grad():
-				data_loader = val_feature_loader if cache_features else validation_loader
-				
-				for batch_data in data_loader:
-						if cache_features:
-								image_embeds, label_vectors = batch_data
-								image_embeds = image_embeds.to(device, non_blocking=True)
-								label_vectors = label_vectors.to(device, non_blocking=True).float()
-						else:
-								if len(batch_data) == 3:
-										images, _, label_vectors = batch_data
-								else:
-										raise ValueError(f"Expected 3 items, got {len(batch_data)}")
-								
-								images = images.to(device, non_blocking=True)
-								label_vectors = label_vectors.to(device, non_blocking=True).float()
-								
-								image_embeds = model.encode_image(images)
-								image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
-						
-						logits = probe(image_embeds)
-						probs = torch.sigmoid(logits)
-						preds = (probs > 0.5).float()
-						
-						final_preds.append(preds.cpu())
-						final_labels.append(label_vectors.cpu())
-		
-		final_preds = torch.cat(final_preds, dim=0)
-		final_labels = torch.cat(final_labels, dim=0)
-		
-		# Final metrics
-		final_hamming = hamming_loss(final_labels.numpy(), final_preds.numpy())
-		final_f1 = f1_score(final_labels.numpy(), final_preds.numpy(), average='weighted', zero_division=0)
-		final_exact = (final_preds == final_labels).all(dim=1).float().mean().item()
-		final_partial = (final_preds == final_labels).float().mean().item()
-		best_val_loss = early_stopping.get_best_score() or 0.0
-
-		print("\n" + "="*80)
-		print("ENHANCED LINEAR PROBE MULTI-LABEL TRAINING SUMMARY")
-		print("="*80)
-		print(f"Method: {mode}")
-		print(f"Model: {getattr(model, 'name', 'Unknown')}")
-		print(f"Probe Type: {probe_type}")
-		print(f"Probe Parameters: {probe_params:,}")
-		print(f"CLIP Parameters (frozen): {sum(p.numel() for p in model.parameters()):,}")
-		print(f"Total Epochs: {len(training_losses)}")
-		print(f"Best Val Loss: {best_val_loss}")
-		print(f"Best Epoch: {early_stopping.get_best_epoch() + 1}")
-		print("-"*80)
-		print("Final Metrics:")
-		print(f"  Hamming Loss: {final_hamming:.4f}")
-		print(f"  F1 Score: {final_f1:.4f}")
-		print(f"  Exact Match: {final_exact:.4f}")
-		print(f"  Partial Match: {final_partial:.4f}")
-		print("="*80)
-
+		# ── Final evaluation via evaluate_best_model ─────────────────────────────
+		# pass probe (not model) — probe.encode_image and probe.encode_text
+		# delegate to frozen CLIP, so get_validation_metrics works correctly.
+		# The probe's W matrix is now the fine-tuned one; similarity is computed
+		# as probe.encode_image(img) @ probe.encode_text(class).T, which is
+		# equivalent to image_embed @ W.T since W was initialised from text embeds.
 		evaluation_results = evaluate_best_model(
-				model=model,
-				validation_loader=validation_loader,
-				early_stopping=early_stopping,
-				checkpoint_path=mdl_fpth,
-				finetune_strategy=mode,
-				device=device,
-				cache_dir=results_dir,
-				topk_values=topk_values,
-				verbose=verbose,
-				max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+			model=probe, # not model — probe wraps model with trained W
+			validation_loader=validation_loader,
+			active_mask=active_mask,
+			head_mask=head_mask,
+			rare_mask=rare_mask,
+			early_stopping=early_stopping,
+			checkpoint_path=mdl_fpth,
+			finetune_strategy=mode,
+			device=device,
+			cache_dir=results_dir,
+			topk_values=topk_values,
+			temperature=temperature,
+			verbose=verbose,
 		)
-
-		# Access individual metrics
-		final_metrics_in_batch = evaluation_results["in_batch_metrics"]
-		final_metrics_full = evaluation_results["full_metrics"]
+		final_metrics_full    = evaluation_results["full_metrics"]
 		final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 		final_txt2img_metrics = evaluation_results["txt2img_metrics"]
+		final_tiered_i2t      = evaluation_results["tiered_i2t"]
+		final_tiered_t2i      = evaluation_results["tiered_t2i"]
+		model_source          = evaluation_results["model_loaded_from"]
+		actual_trained_epochs = len(training_losses)
 
 		if verbose:
-				print(f"Final evaluation used model weights from: {evaluation_results['model_loaded_from']}")
-				print("--- Final Metrics [In-batch Validation] ---")
-				print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
-				print("--- Final Metrics [Full Validation Set] ---")
-				print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-				print("--- Image-to-Text Retrieval ---")
-				print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-				print("--- Text-to-Image Retrieval ---")
-				print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+			print(f"\nFinal evaluation from: {model_source}")
+			print(f"\n{'='*80}")
+			print(f"Probe Multi-Label Fine-tuning Complete")
+			print(f"  Method: {mode}")
+			print(f"  Model: {model_arch}")
+			print(f"  {probe.probe_type} | Params: {sum(p.numel() for p in probe.probe.parameters())}")
+			print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+			print(f"  Epochs trained: {actual_trained_epochs}")
+			print(f"  Best val loss: {early_stopping.get_best_score()}")
+			print(f"{'='*80}")
+			print("\n>> Tiered I2T Retrieval")
+			for tier, m in final_tiered_i2t.items():
+					print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+			print("\n>> Tiered T2I Retrieval")
+			for tier, m in final_tiered_t2i.items():
+					print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 
 		print("\nGenerating result plots...")
-		actual_trained_epochs = len(training_losses)
 
 		file_base_name = (
 			f"{dataset_name}_"
 			f"{mode}_"
 			f"{CLUSTER}_"
-			f"{optimizer.__class__.__name__}_"
-			f"{scheduler.__class__.__name__}_"
-			f"{criterion.__class__.__name__}_"
-			f"{scaler.__class__.__name__}_"
 			f"{model_name}_"
 			f"{model_arch}_"
 			f"ep_{actual_trained_epochs}_"
@@ -2565,8 +2527,8 @@ def probe_finetune_multi_label(
 		
 		# Update model path
 		mdl_fpth = get_updated_model_name(
-				original_path=mdl_fpth, 
-				actual_epochs=actual_trained_epochs
+			original_path=mdl_fpth, 
+			actual_epochs=actual_trained_epochs
 		)
 		
 		print(f"Model renamed to: {mdl_fpth}")
@@ -2588,21 +2550,6 @@ def probe_finetune_multi_label(
 				filepath=plot_paths["losses_breakdown"]
 		)
 
-		viz.plot_loss_accuracy_metrics(
-				dataset_name=dataset_name,
-				train_losses=training_losses,
-				val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-				in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-				in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-				full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
-				full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
-				losses_file_path=plot_paths["losses"],
-				in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
-				in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
-				full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
-				full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
-		)
-
 		viz.plot_retrieval_metrics_per_epoch(
 				dataset_name=dataset_name,
 				image_to_text_metrics_list=img2txt_metrics_all_epochs,
@@ -2617,7 +2564,7 @@ def probe_finetune_multi_label(
 				fname=plot_paths["retrieval_best"],
 		)
 
-		return in_batch_loss_acc_metrics_all_epochs
+		return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
 def ia3_finetune_multi_label(
 		model: torch.nn.Module,
