@@ -436,22 +436,22 @@ def compute_singlelabel_correctness(
 
 @torch.no_grad()
 def get_validation_metrics(
-		model: torch.nn.Module,
-		validation_loader: DataLoader,
-		device: str,
-		topK_values: List[int],
-		cache_dir: str,
-		finetune_strategy: str = None,
-		chunk_size: int = 1024,
-		force_recompute: bool = False,
-		embeddings_cache: tuple = None,
-		lora_params: Optional[Dict] = None,
-		is_training: bool = False,
-		model_hash: str = None,
-		temperature: float = 0.07,
-		class_embeds_override: Optional[torch.Tensor] = None,
-		verbose: bool = True,
-	) -> Dict:
+	model: torch.nn.Module,
+	validation_loader: DataLoader,
+	device: str,
+	topK_values: List[int],
+	cache_dir: str,
+	finetune_strategy: str = None,
+	chunk_size: int = 1024,
+	force_recompute: bool = False,
+	embeddings_cache: tuple = None,
+	lora_params: Optional[Dict] = None,
+	is_training: bool = False,
+	model_hash: str = None,
+	temperature: float = 0.07,
+	class_embeds_override: Optional[torch.Tensor] = None,
+	verbose: bool = True,
+) -> Dict:
 
 	if verbose:
 		print("Computing validation metrics (in-batch, full-set, retrieval)...")
@@ -581,6 +581,11 @@ def get_validation_metrics(
 	if verbose:
 		print("Computing similarity matrices...")
 	
+	# Move embeddings to device for similarity computation
+	device_image_embeds = all_image_embeds.to(device, non_blocking=True)
+	device_class_text_embeds = class_text_embeds.to(device, non_blocking=True)
+	device_labels = all_labels.to(device, non_blocking=True)
+
 	i2t_similarity = chunked_similarity_computation(
 		device_image_embeds, 
 		device_class_text_embeds, 
