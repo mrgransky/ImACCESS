@@ -196,7 +196,7 @@ class SingleLabelLinearProbe(torch.nn.Module):
 						with torch.no_grad():
 								self.clip_model.eval()
 								class_embeds = self.clip_model.encode_text(class_texts)
-								class_embeds = F.normalize(class_embeds, dim=-1)
+								class_embeds = torch.nn.functional.normalize(class_embeds, dim=-1)
 						
 						# Initialize based on probe type
 						if self.probe_type == "Linear":
@@ -324,7 +324,7 @@ class SingleLabelLinearProbe(torch.nn.Module):
 							elif len(x.shape) == 4 and x.shape[1] == 3:  # Images: [batch, 3, H, W]
 									# This is raw images, encode them first then apply probe
 									features = self.encode_image(x)
-									features = F.normalize(features, dim=-1)
+									features = torch.nn.functional.normalize(features, dim=-1)
 									return self.probe(features)
 							else:
 									# Try to treat as features anyway (fallback)
@@ -566,7 +566,7 @@ class MultiLabelProbe(torch.nn.Module):
 						with torch.no_grad():
 								self.clip_model.eval()
 								class_embeds = self.clip_model.encode_text(class_texts)
-								class_embeds = F.normalize(class_embeds, dim=-1)
+								class_embeds = torch.nn.functional.normalize(class_embeds, dim=-1)
 						
 						# Initialize based on probe type
 						if self.probe_type == "Linear":
@@ -707,3 +707,141 @@ def get_probe_clip(
 				print("=" * 80)
 		
 		return probe
+
+def _detect_dataset_type(validation_loader: DataLoader, verbose: bool = True) -> Dict:
+	"""
+	Detect whether the dataset is single-label or multi-label by inspecting the DataLoader.
+	
+	Args:
+		validation_loader: DataLoader to inspect
+		verbose: Whether to print detection details
+		
+	Returns:
+		Dictionary containing dataset information
+	"""
+	
+	if verbose:
+		print("🔍 Detecting dataset type...")
+	
+	# Get dataset reference
+	dataset = validation_loader.dataset
+	dataset_name = dataset.__class__.__name__
+	
+	is_multilabel = False
+	detection_method = "unknown"
+	sample_shapes = "unavailable"
+	
+	# Method 1: Check for explicit multi-label indicators in dataset attributes
+	if hasattr(dataset, 'label_dict') and dataset.label_dict is not None:
+		is_multilabel = True
+		detection_method = "label_dict_attribute"
+	elif 'MultiLabel' in dataset_name:
+		is_multilabel = True
+		detection_method = "class_name_pattern"
+	elif hasattr(dataset, '_num_classes') and not hasattr(dataset, 'labels_int'):
+		is_multilabel = True
+		detection_method = "_num_classes_without_labels_int"
+	
+	# Method 2: Inspect a sample from the DataLoader
+	try:
+		sample_batch = next(iter(validation_loader))
+		
+		if len(sample_batch) >= 3:
+			# Check the shape of the third element (labels)
+			labels = sample_batch[2]
+			
+			if isinstance(labels, torch.Tensor):
+				if labels.dim() == 2 and labels.shape[1] > 1:
+					# Multi-hot encoded labels: [batch_size, num_classes]
+					is_multilabel = True
+					detection_method = "multi_hot_tensor_shape"
+				elif labels.dim() == 1:
+					# Single integer labels: [batch_size]
+					is_multilabel = False
+					detection_method = "single_label_tensor_shape"
+			
+			sample_shapes = {
+				'images': tuple(sample_batch[0].shape),
+				'labels': tuple(labels.shape) if isinstance(labels, torch.Tensor) else type(labels)
+			}
+	
+	except Exception as e:
+		if verbose:
+			print(f"   ⚠ Could not inspect sample batch: {e}")
+	
+	# Method 3: Check for unique_labels vs labels_int
+	if detection_method == "unknown":
+		if hasattr(dataset, 'unique_labels') and not hasattr(dataset, 'labels_int'):
+			is_multilabel = True
+			detection_method = "unique_labels_without_labels_int"
+		elif hasattr(dataset, 'labels_int'):
+			is_multilabel = False
+			detection_method = "labels_int_attribute"
+	
+	dataset_info = {
+		'is_multilabel': is_multilabel,
+		'dataset_name': dataset_name,
+		'detection_method': detection_method,
+		'sample_shapes': sample_shapes
+	}
+	
+	if verbose:
+		print(f"   📊 Dataset: {dataset_name}")
+		print(f"   🏷️  Type: {'Multi-label' if is_multilabel else 'Single-label'}")
+		print(f"   🔧 Detection method: {detection_method}")
+		if sample_shapes != "unavailable":
+			print(f"   📐 Sample shapes: {sample_shapes}")
+	
+	return dataset_info
+
+def _extract_class_names(validation_loader: DataLoader, dataset_info: Dict, verbose: bool = True) -> List[str]:
+	"""
+	Extract class names from the dataset.
+	
+	Args:
+		validation_loader: DataLoader to extract class names from
+		dataset_info: Dataset information from _detect_dataset_type
+		verbose: Whether to print extraction details
+		
+	Returns:
+		List of class names
+	"""
+	
+	if verbose:
+		print("🔍 Extracting class names...")
+	
+	dataset = validation_loader.dataset
+	class_names = None
+	
+	# Method 1: Check for classes attribute (standard for torchvision datasets)
+	if hasattr(dataset, 'classes'):
+		class_names = dataset.classes
+		if verbose:
+			print(f"   ✓ Found {len(class_names)} classes via 'classes' attribute")
+	
+	# Method 2: Check for unique_labels (multi-label datasets)
+	elif hasattr(dataset, 'unique_labels'):
+		class_names = dataset.unique_labels
+		if verbose:
+			print(f"   ✓ Found {len(class_names)} classes via 'unique_labels' attribute")
+	
+	# Method 3: Check for label_dict
+	elif hasattr(dataset, 'label_dict') and dataset.label_dict is not None:
+		class_names = list(dataset.label_dict.keys())
+		if verbose:
+			print(f"   ✓ Found {len(class_names)} classes via 'label_dict' attribute")
+	
+	# Method 4: Try to infer from dataset name or metadata
+	elif hasattr(dataset, '_num_classes'):
+		num_classes = dataset._num_classes
+		class_names = [f"class_{i}" for i in range(num_classes)]
+		if verbose:
+			print(f"   ⚠ Generated {num_classes} generic class names")
+	
+	if class_names is None:
+		raise ValueError(
+			f"Cannot extract class names from dataset '{dataset_info['dataset_name']}'. "
+			f"Dataset must have one of: 'classes', 'unique_labels', 'label_dict', or '_num_classes' attribute."
+		)
+	
+	return class_names

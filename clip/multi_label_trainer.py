@@ -2,6 +2,7 @@ from utils import *
 from early_stopper import EarlyStopping
 from loss import compute_multilabel_contrastive_loss, LabelSmoothingBCELoss, compute_loss_masks
 from peft import get_injected_peft_clip, get_adapter_peft_clip
+from probe import get_probe_clip
 from evals import *
 import visualize as viz
 
@@ -2065,31 +2066,29 @@ def dora_finetune_multi_label(
 	print(f"{'='*150}\n")
 
 def probe_finetune_multi_label(
-		model: torch.nn.Module,
-		train_loader,
-		validation_loader,
-		num_epochs: int,
-		print_every: int,
-		learning_rate: float,
-		weight_decay: float,
-		device: str,
-		results_dir: str,
-		patience: int = 10,
-		min_delta: float = 1e-4,
-		cumulative_delta: float = 5e-3,
-		minimum_epochs: int = 20,
-		topk_values: List[int] = [1, 3, 5, 10, 15, 20],
-		loss_weights: Dict[str, float] = None,
-		temperature: float = 0.07,
-		label_smoothing: float = 0.0,
-		volatility_threshold: float = 15.0,
-		slope_threshold: float = 1e-4,
-		pairwise_imp_threshold: float = 1e-4,
-		use_lamb: bool = False,
-		probe_hidden_dim: int = None,  # Optional: add hidden layer
-		probe_dropout: float = 0.1,
-		cache_features: bool = True,  # Optional: cache features for efficiency
-		verbose: bool = True,
+	model: torch.nn.Module,
+	train_loader,
+	validation_loader,
+	num_epochs: int,
+	print_every: int,
+	learning_rate: float,
+	weight_decay: float,
+	device: str,
+	results_dir: str,
+	patience: int = 10,
+	min_delta: float = 1e-4,
+	cumulative_delta: float = 5e-3,
+	minimum_epochs: int = 20,
+	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
+	loss_weights: Dict[str, float] = None,
+	temperature: float = 0.07,
+	volatility_threshold: float = 15.0,
+	slope_threshold: float = 1e-4,
+	pairwise_imp_threshold: float = 1e-4,
+	probe_hidden_dim: int = None,  # Optional: add hidden layer
+	probe_dropout: float = 0.1,
+	cache_features: bool = True,  # Optional: cache features for efficiency
+	verbose: bool = True,
 ):
 		"""
 		Enhanced Linear probing fine-tuning for multi-label CLIP classification with robust ViT support.
@@ -2097,28 +2096,34 @@ def probe_finetune_multi_label(
 		"""
 
 		window_size = minimum_epochs + 1
-		# Set default loss weights
 		if loss_weights is None:
-				loss_weights = {"i2t": 0.5, "t2i": 0.5}
+			loss_weights = {"i2t": 0.5, "t2i": 0.5}
 
 		early_stopping = EarlyStopping(
-				patience=patience,
-				min_delta=min_delta,
-				cumulative_delta=cumulative_delta,
-				window_size=window_size,
-				mode='min',
-				min_epochs=minimum_epochs,
-				restore_best_weights=True,
-				volatility_threshold=volatility_threshold,
-				slope_threshold=slope_threshold,
-				pairwise_imp_threshold=pairwise_imp_threshold,
-				# min_phases_before_stopping=1,
+			patience=patience,
+			min_delta=min_delta,
+			cumulative_delta=cumulative_delta,
+			window_size=window_size,
+			mode='min',
+			min_epochs=minimum_epochs,
+			restore_best_weights=True,
+			volatility_threshold=volatility_threshold,
+			slope_threshold=slope_threshold,
+			pairwise_imp_threshold=pairwise_imp_threshold,
+			# min_phases_before_stopping=1,
 		)
 
 		try:
-				dataset_name = validation_loader.dataset.dataset.__class__.__name__
+			dataset_name = validation_loader.dataset.dataset.__class__.__name__
 		except AttributeError:
-				dataset_name = validation_loader.dataset.dataset_name
+			dataset_name = validation_loader.dataset.dataset_name
+
+		try:
+			class_names = validation_loader.dataset.unique_labels
+		except AttributeError:
+			class_names = validation_loader.dataset.dataset.classes
+		
+		num_classes = len(class_names)
 
 		mode = inspect.stack()[0].function
 		mode = re.sub(r'_finetune_multi_label', '', mode)
@@ -2127,26 +2132,14 @@ def probe_finetune_multi_label(
 
 		print(f"{mode} | {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
 		if torch.cuda.is_available():
-				gpu_name = torch.cuda.get_device_name(device)
-				total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-				print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+			gpu_name = torch.cuda.get_device_name(device)
+			total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-		# Get dataset information
-		try:
-				num_classes = len(validation_loader.dataset.unique_labels)
-				class_names = validation_loader.dataset.unique_labels
-		except:
-				num_classes = len(validation_loader.dataset.dataset.classes)
-				class_names = validation_loader.dataset.dataset.classes
-		print(f"Multi-label Linear Probe fine-tuning: {num_classes} classes")
-
-		# =====================================
 		# STEP 1: FREEZE ALL CLIP PARAMETERS AND CREATE ROBUST PROBE
-		# =====================================
 		for param in model.parameters():
-				param.requires_grad = False
+			param.requires_grad = False
 
-		print("\nCreating robust probe model...")
 		probe = get_probe_clip(
 			clip_model=model,
 			validation_loader=validation_loader,
@@ -2154,67 +2147,41 @@ def probe_finetune_multi_label(
 			# hidden_dim=256,  # Optional: creates MLP probe
 			dropout=probe_dropout,
 			zero_shot_init=True, # faster convergence
-			verbose=True
+			verbose=verbose,
 		)
-		print(f"Multi-label dataset: {isinstance(probe, MultiLabelProbe)}")
 
 		embed_dim = probe.input_dim  # Get the detected feature dimension
-		probe_params = sum(p.numel() for p in probe.parameters())
-		probe_type = probe.probe_type
+		probe_num_params = sum(p.numel() for p in probe.parameters())
+		probe_param_type = probe.probe_type
 
-		print(f"CLIP embedding dimension: {embed_dim}")
-		print(f"Probe type: {probe_type} | Parameters: {probe_params:,}")
-
-		# Use BCEWithLogitsLoss for multi-label classification
-		if label_smoothing > 0:
-				print(f"Using label smoothing: {label_smoothing}")
-				criterion = LabelSmoothingBCELoss(smoothing=label_smoothing)
-		else:
-				criterion = torch.nn.BCEWithLogitsLoss()
-		print(f"Using {criterion.__class__.__name__} for multi-label classification")
-
-		# Pre-encode all class texts (for evaluation)
-		print(f"Pre-encoding {num_classes} class texts...")
-		all_class_texts = clip.tokenize(class_names).to(device)
-		print(f"all_class_texts: {type(all_class_texts)} {all_class_texts.shape} {all_class_texts.dtype} {all_class_texts.device}")
-		model.eval()
-		with torch.no_grad():
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-				all_class_embeds = model.encode_text(all_class_texts)
-				all_class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
-		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+		print(f"CLIP embedding dimension: {embed_dim} Probe: {probe_param_type} | Parameters: {probe_num_params:,}")
 
 		# Optimizer setup
-		if use_lamb:
-				optimizer = LAMB(
-						params=probe.parameters(),
-						lr=learning_rate,
-						betas=(0.9, 0.98),
-						eps=1e-6,
-						weight_decay=weight_decay,
-				)
-		else:
-				optimizer = torch.optim.AdamW(
-						params=probe.parameters(),
-						lr=learning_rate,
-						betas=(0.9, 0.98),
-						eps=1e-6,
-						weight_decay=weight_decay,
-				)
+		probe_params = probe.parameters()
+		print(f"Probe trainable parameters: {sum(p.numel() for p in probe_params):,}")
+		optimizer = torch.optim.AdamW(
+			params=probe_params,
+			lr=learning_rate,
+			betas=(0.9, 0.98),
+			eps=1e-6,
+			weight_decay=weight_decay,
+		)
 
-		estimated_epochs = min(num_epochs, 15)
-		total_training_steps = estimated_epochs * len(train_loader)
+		# estimated_epochs = min(num_epochs, 15)
+		# total_training_steps = estimated_epochs * len(train_loader)
+		# T_max = total_training_steps
+		T_max = num_epochs * len(train_loader)
 		ANNEALING_RATIO = 1e-2 # 1% of initial LR
 		eta_min = learning_rate * ANNEALING_RATIO
 		scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 			optimizer=optimizer,
-			T_max=total_training_steps,
+			T_max=T_max,
 			eta_min=eta_min,
 			last_epoch=-1,
 		)
 		if verbose:
-			print(f"{scheduler.__class__.__name__} scheduler")
-			print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
+			print(f"\n{scheduler.__class__.__name__}")
+			print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
 			print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
 
 		scaler = torch.amp.GradScaler(
@@ -2225,7 +2192,7 @@ def probe_finetune_multi_label(
 			growth_interval=2000,
 		)
 		if verbose:
-			print(f"Using {scaler.__class__.__name__} for automatic mixed precision training")
+			print(f"{scaler.__class__.__name__} for automatic mixed precision training")
 
 		mdl_fpth = os.path.join(
 				results_dir,
@@ -2233,8 +2200,7 @@ def probe_finetune_multi_label(
 				f"{model_arch}_"
 				f"{optimizer.__class__.__name__}_"
 				f"{scheduler.__class__.__name__}_"
-				f"{criterion.__class__.__name__}_"
-				f"probe_{probe_type}_"
+				f"probe_{probe_param_type}_"
 				f"ieps_{num_epochs}_"
 				f"lr_{learning_rate:.1e}_"
 				f"wd_{weight_decay:.1e}_"
@@ -2550,7 +2516,6 @@ def probe_finetune_multi_label(
 		evaluation_results = evaluate_best_model(
 				model=model,
 				validation_loader=validation_loader,
-				criterion=criterion,
 				early_stopping=early_stopping,
 				checkpoint_path=mdl_fpth,
 				finetune_strategy=mode,
