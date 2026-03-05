@@ -165,155 +165,71 @@ class LossAnalyzer:
 		return signals
 
 def compute_loss_masks(
-		train_loader: DataLoader,
-		num_classes: int,
-		device: torch.device,
-		pareto_threshold: float = 0.80,
-		pw_rare_threshold: float = 20.0,
-		verbose: bool = True,
+	train_loader: DataLoader,
+	num_classes: int,
+	device: torch.device,
+	pareto_threshold: float = 0.80,
+	pw_rare_threshold: float = 20.0,
+	verbose: bool = True,
 ) -> Dict[str, torch.Tensor]:
-		"""
-		Compute pos_weight, active_mask, head_mask, and rare_mask from
-		training set label frequencies. Called internally by every
-		fine-tuning function — no need to pass masks from outside.
-
-		Returns dict with keys:
-				pos_weight   [num_classes] float32  — for BCEWithLogitsLoss
-				active_mask  [num_classes] bool     — freq > 0
-				head_mask    [num_classes] bool     — Pareto 80% head classes
-				rare_mask    [num_classes] bool     — pos_weight > pw_rare_threshold
-				train_freq   [num_classes] float32  — raw frequencies (CPU)
-				N            int                    — total training samples
-		"""
-		print("Computing label frequencies from training set...")
-		train_freq = torch.zeros(num_classes, dtype=torch.float32)
-		N = len(train_loader.dataset)
-
-		for raw in train_loader.dataset.labels:
-				try:
-						for lbl in ast.literal_eval(raw):
-								if lbl in train_loader.dataset.label_dict:
-										train_freq[train_loader.dataset.label_dict[lbl]] += 1
-				except (ValueError, SyntaxError):
-						pass
-
-		# pos_weight — capped at 1000 to avoid float16 overflow
-		pos_weight = torch.where(
-				train_freq > 0,
-				((N - train_freq) / train_freq.clamp(min=1)).clamp(max=1000.0),
-				torch.ones(num_classes),
-		).to(device)
-
-		# active_mask — classes with at least one training example
-		active_mask = (train_freq > 0).to(device)
-
-		# head_mask — Pareto classes covering pareto_threshold of occurrences
-		sorted_freq, sorted_idx = torch.sort(train_freq, descending=True)
-		cumsum = sorted_freq.cumsum(0)
-		pareto_cutoff = (cumsum <= cumsum[-1] * pareto_threshold).sum().item() + 1
-		head_indices = sorted_idx[:pareto_cutoff]
-		head_mask = torch.zeros(num_classes, dtype=torch.bool, device=device)
-		head_mask[head_indices] = True
-
-		# rare_mask — learnable but imbalanced classes
-		rare_mask = (pos_weight > pw_rare_threshold) & active_mask
-
-		if verbose:
-				print(f"  ├─ Total samples (N):       {N:,}")
-				print(f"  ├─ pos_weight range:         [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-				print(f"  ├─ Active classes (freq>0):  {active_mask.sum().item():,} / {num_classes:,}")
-				print(f"  ├─ Head (Pareto {pareto_threshold:.0%}):        {head_mask.sum().item():,}")
-				print(f"  └─ Rare (pw>{pw_rare_threshold:.0f}):          {rare_mask.sum().item():,}")
-
-		return {
-				"pos_weight":  pos_weight,
-				"active_mask": active_mask,
-				"head_mask":   head_mask,
-				"rare_mask":   rare_mask,
-				"train_freq":  train_freq,
-				"N":           N,
-		}
-
-def compute_multilabel_contrastive_loss_(
-		model: torch.nn.Module,
-		images: torch.Tensor,
-		all_class_embeds: torch.Tensor,
-		label_vectors: torch.Tensor,
-		criterion: torch.nn.Module,
-		temperature: float,
-		loss_weights: Dict[str, float] = None,
-		verbose: bool = False,
-	) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 	"""
-	Compute bidirectional multi-label contrastive loss.
-	
-	Args:
-		model: CLIP model
-		images: [batch_size, 3, 224, 224]
-		all_class_embeds: [num_classes, embed_dim] - pre-computed text embeddings
-		label_vectors: [batch_size, num_classes] - binary label matrix
-		criterion: Loss function (BCEWithLogitsLoss)
-		temperature: Temperature scaling for similarities
-		loss_weights: Weights for I2T and T2I losses
-		verbose: Print debug info
-	Returns:
-		Tuple of (total_loss, i2t_loss, t2i_loss)
+	Compute pos_weight, active_mask, head_mask, and rare_mask from
+	training set label frequencies. Called internally by every
+	fine-tuning function — no need to pass masks from outside.
+	Returns dict with keys:
+			pos_weight   [num_classes] float32  — for BCEWithLogitsLoss
+			active_mask  [num_classes] bool     — freq > 0
+			head_mask    [num_classes] bool     — Pareto 80% head classes
+			rare_mask    [num_classes] bool     — pos_weight > pw_rare_threshold
+			train_freq   [num_classes] float32  — raw frequencies (CPU)
+			N            int                    — total training samples
 	"""
-	if loss_weights is None:
-		loss_weights = {"i2t": 0.5, "t2i": 0.5}
-	
-	batch_size, num_classes = label_vectors.shape
-	# if verbose:
-	# 	print(f"batch_size: {batch_size}, num_classes: {num_classes}")
+	print("\nLabel frequencies from training set")
+	train_freq = torch.zeros(num_classes, dtype=torch.float32)
+	N = len(train_loader.dataset)
+	for raw in train_loader.dataset.labels:
+			try:
+					for lbl in ast.literal_eval(raw):
+							if lbl in train_loader.dataset.label_dict:
+									train_freq[train_loader.dataset.label_dict[lbl]] += 1
+			except (ValueError, SyntaxError):
+					pass
 
-	# Encode images
-	image_embeds = model.encode_image(images)  # [batch_size, embed_dim]
-	image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
-	# if verbose:
-	# 	print(f"image_embeds: {image_embeds.shape} {image_embeds.dtype} {image_embeds.device}")
-	
-	all_class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
-	# if verbose:
-	# 	print(f"all_class_embeds: {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+	# pos_weight — capped at 1000 to avoid float16 overflow
+	pos_weight = torch.where(
+			train_freq > 0,
+			((N - train_freq) / train_freq.clamp(min=1)).clamp(max=1000.0),
+			torch.ones(num_classes),
+	).to(device)
 
-	# ================================
-	# Image-to-Text Loss
-	# ================================
-	# Compute similarity matrix: [batch_size, num_classes]
-	i2t_similarities = torch.matmul(image_embeds, all_class_embeds.T) / temperature
-	
-	# if verbose:
-	# 	print(f"i2t_similarities: {i2t_similarities.shape} {i2t_similarities.dtype} {i2t_similarities.device}")
+	# active_mask — classes with at least one training example
+	active_mask = (train_freq > 0).to(device)
 
-	# I2T targets: label_vectors directly [batch_size, num_classes]
-	i2t_targets = label_vectors.float()
-	
-	# Compute I2T loss
-	loss_i2t = criterion(i2t_similarities, i2t_targets)
-	
-	# ================================
-	# Text-to-Image Loss  
-	# ================================
-	# Compute similarity matrix: [num_classes, batch_size]
-	t2i_similarities = torch.matmul(all_class_embeds, image_embeds.T) / temperature
+	# head_mask — Pareto classes covering pareto_threshold of occurrences
+	sorted_freq, sorted_idx = torch.sort(train_freq, descending=True)
+	cumsum = sorted_freq.cumsum(0)
+	pareto_cutoff = (cumsum <= cumsum[-1] * pareto_threshold).sum().item() + 1
+	head_indices = sorted_idx[:pareto_cutoff]
+	head_mask = torch.zeros(num_classes, dtype=torch.bool, device=device)
+	head_mask[head_indices] = True
 
-	# if verbose:
-	# 	print(f"t2i_similarities: {t2i_similarities.shape} {t2i_similarities.dtype} {t2i_similarities.device}")
-	
-	# T2I targets: transpose of label_vectors [num_classes, batch_size]
-	t2i_targets = label_vectors.T.float()
-	
-	# Compute T2I loss
-	loss_t2i = criterion(t2i_similarities, t2i_targets)
+	# rare_mask — learnable but imbalanced classes
+	rare_mask = (pos_weight > pw_rare_threshold) & active_mask
+	if verbose:
+		print(f"  ├─ Total samples (N):        {N:,}")
+		print(f"  ├─ pos_weight range:         [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"  ├─ Active classes (freq>0):  {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"  ├─ Head (Pareto {pareto_threshold:.0%}):        {head_mask.sum().item():,}")
+		print(f"  └─ Rare (pw>{pw_rare_threshold:.0f}):           {rare_mask.sum().item():,}")
 
-	total_loss = (loss_weights["i2t"] * loss_i2t) + (loss_weights["t2i"] * loss_t2i)
-
-	# if verbose:
-	# 	print(f"loss_i2t: {loss_i2t.item()} loss_t2i: {loss_t2i.item()} total_loss: {total_loss.item()}")
-	# 	print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
-	# 	print("-"*60)
-	
-	return total_loss, loss_i2t, loss_t2i
+	return {
+			"pos_weight":  pos_weight,
+			"active_mask": active_mask,
+			"head_mask":   head_mask,
+			"rare_mask":   rare_mask,
+			"train_freq":  train_freq,
+			"N":           N,
+	}
 
 def compute_multilabel_contrastive_loss(
 		model,
@@ -345,7 +261,6 @@ def compute_multilabel_contrastive_loss(
 
 		total_loss = loss_weights["i2t"] * loss_i2t + loss_weights["t2i"] * loss_t2i
 		return total_loss, loss_i2t, loss_t2i
-
 
 class LabelSmoothingBCELoss(torch.nn.Module):
 	def __init__(self, smoothing: float = 0.1):

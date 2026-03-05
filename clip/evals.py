@@ -438,16 +438,12 @@ def compute_singlelabel_correctness(
 def get_validation_metrics(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
-		criterion_i2t: torch.nn.Module,
-		criterion_t2i: torch.nn.Module,
-		active_mask: torch.Tensor,
 		device: str,
 		topK_values: List[int],
 		cache_dir: str,
 		finetune_strategy: str = None,
 		chunk_size: int = 1024,
 		verbose: bool = True,
-		max_in_batch_samples: Optional[int] = None,
 		force_recompute: bool = False,
 		embeddings_cache: tuple = None,
 		lora_params: Optional[Dict] = None,
@@ -622,7 +618,14 @@ def get_validation_metrics(
 	# Step 6: Compute retrieval metrics
 	cache_key_base = f"{dataset_name}_{finetune_strategy}_{model_class_name}_{model_arch_name.replace('/', '_')}"
 	if lora_params:
-		cache_key_base += f"_lora_r{lora_params['lora_rank']}_a{lora_params['lora_alpha']}_d{lora_params['lora_dropout']}"
+		lora_rank = lora_params.get("lora_rank")
+		lora_alpha = lora_params.get("lora_alpha")
+		lora_dropout = lora_params.get("lora_dropout")
+		# LoRA+ has additional parameters
+		lora_plus_lambda = lora_params.get("lora_plus_lambda", None)
+		cache_key_base += f"_lora_r{lora_rank}_a{lora_alpha}_d{lora_dropout}"
+		if lora_plus_lambda is not None:
+			cache_key_base += f"_lmbd_{lora_plus_lambda}"
 	
 	if verbose:
 		print("Computing image-to-text and text-to-image retrieval metrics...")
@@ -1013,8 +1016,6 @@ def _compute_matched_cosine_similarity(image_embeds, text_embeds, labels, is_mul
 def evaluate_best_model(
 		model,
 		validation_loader,
-		criterion_i2t,
-		criterion_t2i,
 		active_mask,
 		head_mask,
 		rare_mask,
@@ -1026,8 +1027,7 @@ def evaluate_best_model(
 		topk_values: list[int] = [1, 5, 10],
 		clean_cache: bool = True,
 		embeddings_cache=None,
-		max_in_batch_samples: int = 384,
-		lora_params = None,
+		lora_params: Optional[Dict] = None,
 		temperature: float = 0.07,
 		verbose: bool = True,
 	):
@@ -1100,20 +1100,16 @@ def evaluate_best_model(
 	validation_results = get_validation_metrics(
 		model=model,
 		validation_loader=validation_loader,
-		criterion_i2t=criterion_i2t,
-		criterion_t2i=criterion_t2i,
-		active_mask=active_mask,
 		device=device,
 		topK_values=topk_values,
 		finetune_strategy=finetune_strategy,
 		cache_dir=cache_dir,
-		verbose=verbose,
-		max_in_batch_samples=max_in_batch_samples,
 		embeddings_cache=embeddings_cache,
 		lora_params=lora_params,
 		is_training=False,  # Use cache for final evaluation/inference
 		model_hash=get_model_hash(model),
 		temperature=temperature,
+		verbose=verbose,
 	)
 	full_metrics = validation_results["full_metrics"]
 	i2t_similarity    = validation_results["i2t_similarity"]

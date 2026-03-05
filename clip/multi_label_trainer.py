@@ -112,6 +112,8 @@ def full_finetune_multi_label(
 	active_mask = masks["active_mask"]
 	head_mask   = masks["head_mask"]
 	rare_mask   = masks["rare_mask"]
+	N = masks["N"]
+	train_freq = masks["train_freq"]
 
 	# I2T: pos_weight applies — rows are images, cols are classes
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
@@ -138,8 +140,8 @@ def full_finetune_multi_label(
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 
-	all_class_embeds = []
 	model.eval()
+	all_class_embeds = []
 	text_batch_size = validation_loader.batch_size
 	if verbose:
 		print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
@@ -325,15 +327,11 @@ def full_finetune_multi_label(
 		validation_results = get_validation_metrics(
 			model=model,
 			validation_loader=validation_loader,
-			criterion_i2t=criterion_i2t,
-			criterion_t2i=criterion_t2i,
-			active_mask=active_mask,
 			device=device,
 			topK_values=topk_values,
 			finetune_strategy=mode,
 			cache_dir=results_dir,
 			verbose=verbose,
-			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 			is_training=True,
 			model_hash=get_model_hash(model),
 			temperature=temperature,
@@ -377,6 +375,9 @@ def full_finetune_multi_label(
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 			print()
 
+
+
+
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
@@ -408,8 +409,6 @@ def full_finetune_multi_label(
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
-		criterion_i2t=criterion_i2t,
-		criterion_t2i=criterion_t2i,
 		active_mask=active_mask,
 		head_mask=head_mask,
 		rare_mask=rare_mask,
@@ -420,7 +419,6 @@ def full_finetune_multi_label(
 		cache_dir=results_dir,
 		topk_values=topk_values,
 		verbose=verbose,
-		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 	)
 	print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
 	print()
@@ -541,14 +539,14 @@ def lora_finetune_multi_label(
 		model_name = model.__class__.__name__
 
 		try:
-				dataset_name = validation_loader.dataset.dataset.__class__.__name__
+			dataset_name = validation_loader.dataset.dataset.__class__.__name__
 		except AttributeError:
-				dataset_name = validation_loader.dataset.dataset_name
+			dataset_name = validation_loader.dataset.dataset_name
 
 		try:
-				class_names = validation_loader.dataset.unique_labels
+			class_names = validation_loader.dataset.unique_labels
 		except AttributeError:
-				class_names = validation_loader.dataset.dataset.classes
+			class_names = validation_loader.dataset.dataset.classes
 		num_classes = len(class_names)
 
 		print(
@@ -588,16 +586,37 @@ def lora_finetune_multi_label(
 		active_mask = masks["active_mask"]
 		head_mask   = masks["head_mask"]
 		rare_mask   = masks["rare_mask"]
+		N = masks["N"]
+		train_freq = masks["train_freq"]
 
 		# ── Criteria ─────────────────────────────────────────────────────────────
+		# I2T: pos_weight applies — rows are images, cols are classes
 		criterion_i2t = torch.nn.BCEWithLogitsLoss(
-				pos_weight=pos_weight,
-				reduction='none',
+			pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
+			reduction='none',
 		)
+
+		if verbose:
+			print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
+			print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+			print(f"   ├─ number of samples: {N}")
+			print(f"   ├─ number of classes: {num_classes}")
+			print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+			print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
+			print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
+
+		# T2I: no pos_weight — rows are classes, cols are batch images
+		# The imbalance is already corrected via I2T; T2I provides directional symmetry
 		criterion_t2i = torch.nn.BCEWithLogitsLoss(
-				reduction='none',
+			reduction='none',
 		)
-		print(f"[I2T] BCEWithLogitsLoss with pos_weight | [T2I] BCEWithLogitsLoss (no pos_weight)")
+
+		if verbose:
+			print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
+			print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
+
+
+
 
 		# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
 		model.eval()
@@ -720,7 +739,7 @@ def lora_finetune_multi_label(
 										active_mask=active_mask,
 										temperature=temperature,
 										loss_weights=loss_weights,
-										verbose=False,
+										verbose=verbose,
 								)
 
 						if torch.isnan(total_loss):
@@ -770,9 +789,6 @@ def lora_finetune_multi_label(
 				validation_results = get_validation_metrics(
 					model=model,
 					validation_loader=validation_loader,
-					criterion_i2t=criterion_i2t,
-					criterion_t2i=criterion_t2i,
-					active_mask=active_mask,
 					device=device,
 					topK_values=topk_values,
 					finetune_strategy=mode,
@@ -803,7 +819,7 @@ def lora_finetune_multi_label(
 				cos_sim   = full_val_metrics.get("cosine_similarity", float("nan"))
 
 				print(
-						f"\n@ Epoch {epoch+1}:\n"
+						f"\nEpoch {epoch+1}:\n"
 						f"  Loss  — Train: {avg_total:.4f} (I2T: {avg_i2t:.4f}, T2I: {avg_t2i:.4f})  Val: {current_val_loss:.4f}\n"
 						f"  I2T   — mAP@10: {i2t_map10:.4f}  R@10: {i2t_r10:.4f}\n"
 						f"  T2I   — mAP@10: {t2i_map10:.4f}  R@10: {t2i_r10:.4f}\n"
@@ -846,8 +862,6 @@ def lora_finetune_multi_label(
 		evaluation_results = evaluate_best_model(
 			model=model,
 			validation_loader=validation_loader,
-			criterion_i2t=criterion_i2t,
-			criterion_t2i=criterion_t2i,
 			active_mask=active_mask,
 			head_mask=head_mask,
 			rare_mask=rare_mask,
@@ -1037,13 +1051,16 @@ def lora_plus_finetune_multi_label(
 	
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
+	# Get dataset information
+	try:
+		class_names = validation_loader.dataset.unique_labels
+	except AttributeError:
+		class_names = validation_loader.dataset.dataset.classes
+	num_classes = len(class_names)	
 	
 	if verbose:
 		print(f"{mode.upper()} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
-		print(f"   ├─ Rank: {lora_rank}")
-		print(f"   ├─ Alpha: {lora_alpha}")
-		print(f"   ├─ Dropout: {lora_dropout}")
-		print(f"   ├─ LoRA+ Learning Rate Multiplier (λ): {lora_plus_lambda}")
+		print(f"   ├─ Multi-label classification: {num_classes} classes")
 		if quantized:
 			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
 		
@@ -1055,16 +1072,6 @@ def lora_plus_finetune_multi_label(
 			print(f"   ├─ Total Memory: {gpu_total_mem:.2f}GB")
 			print(f"   └─ CUDA Capability: {cuda_capability}")
 	
-	# Get dataset information
-	try:
-		class_names = validation_loader.dataset.unique_labels
-	except AttributeError:
-		class_names = validation_loader.dataset.dataset.classes
-	num_classes = len(class_names)
-	
-	if verbose:
-		print(f"Multi-label LoRA+ fine-tuning: {num_classes} classes")
-	
 	# Apply LoRA+ to the model
 	model = get_injected_peft_clip(
 		clip_model=model,
@@ -1072,6 +1079,8 @@ def lora_plus_finetune_multi_label(
 		rank=lora_rank,
 		alpha=lora_alpha,
 		dropout=lora_dropout,
+		target_text_modules=[], # no LoRA in text encoder
+		target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
 		lora_plus_lambda=lora_plus_lambda,
 		quantization_bits=quantization_bits,
 		quantized=quantized,
@@ -1080,7 +1089,64 @@ def lora_plus_finetune_multi_label(
 	
 	model.to(device)
 	get_parameters_info(model=model, mode=mode)
-	
+
+	masks = compute_loss_masks(
+		train_loader=train_loader,
+		num_classes=num_classes,
+		device=device,
+		verbose=verbose,
+	)
+	pos_weight  = masks["pos_weight"]
+	active_mask = masks["active_mask"]
+	head_mask   = masks["head_mask"]
+	rare_mask   = masks["rare_mask"]
+	N = masks["N"]
+	train_freq = masks["train_freq"]
+
+	# ── Criteria ─────────────────────────────────────────────────────────────
+	# I2T: pos_weight applies — rows are images, cols are classes
+	criterion_i2t = torch.nn.BCEWithLogitsLoss(
+		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
+		reduction='none',
+	)
+
+	if verbose:
+		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ number of samples: {N}")
+		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
+		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
+
+	# T2I: no pos_weight — rows are classes, cols are batch images
+	# The imbalance is already corrected via I2T; T2I provides directional symmetry
+	criterion_t2i = torch.nn.BCEWithLogitsLoss(
+		reduction='none',
+	)
+
+	if verbose:
+		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
+		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
+
+	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
+	model.eval()
+	all_class_embeds = []
+	text_batch_size = validation_loader.batch_size
+	print(f"\n>> Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	with torch.no_grad():
+		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding"):
+				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
+				embeds = model.encode_text(batch_tokens)
+				embeds = torch.nn.functional.normalize(embeds, dim=-1)
+				all_class_embeds.append(embeds.cpu())
+				del batch_tokens, embeds
+	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
+
+	if verbose:
+		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+
 	# Separate LoRA A and B parameters for differential LR
 	lora_A_params = [p for n, p in model.named_parameters() if p.requires_grad and "lora_A" in n]
 	lora_B_params = [p for n, p in model.named_parameters() if p.requires_grad and "lora_B" in n]
@@ -1088,7 +1154,7 @@ def lora_plus_finetune_multi_label(
 	all_lora_params = set(id(p) for p in lora_A_params + lora_B_params)
 	ungrouped = [n for n, p in model.named_parameters() if p.requires_grad and id(p) not in all_lora_params]
 	if ungrouped:
-			raise ValueError(f"LoRA+: trainable params not in lora_A or lora_B groups: {ungrouped}")
+		raise ValueError(f"LoRA+: trainable params not in lora_A or lora_B groups: {ungrouped}")
 
 	if verbose:
 		print(f"\n{mode.upper()} Parameter Groups:")
@@ -1145,44 +1211,7 @@ def lora_plus_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
-
-	# Use BCEWithLogitsLoss for multi-label classification
-	if label_smoothing > 0:
-		if verbose:
-			print(f"Using label smoothing: {label_smoothing}")
-		criterion = LabelSmoothingBCELoss(smoothing=label_smoothing)
-	else:
-		criterion = torch.nn.BCEWithLogitsLoss()
-	
-	if verbose:
-		print(f"Using {criterion.__class__.__name__} for multi-label classification")
-	
-	# Pre-encode all class texts for efficiency
-	all_class_embeds = []
-	model.eval()
-	text_batch_size = validation_loader.batch_size
-	if verbose:
-		print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
-	
-	with torch.no_grad():
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding class texts"):
-				end_idx = min(i + text_batch_size, num_classes)
-				batch_class_names = class_names[i:end_idx]
-				
-				batch_class_texts = clip.tokenize(batch_class_names).to(device)
-				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
-				all_class_embeds.append(batch_embeds.cpu())
-				
-				del batch_class_texts, batch_embeds
-				if torch.cuda.is_available():
-					torch.cuda.empty_cache()
-	
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
-	if verbose:
-		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
-	
+		
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
@@ -1193,11 +1222,11 @@ def lora_plus_finetune_multi_label(
 		f"lmbd_{lora_plus_lambda}_"
 		f"lora_B_lr_{lora_B_lr:.1e}_"
 		f"wd_{weight_decay:.1e}_"
-		f"bs_{train_loader.batch_size}_"
 		f"lor_{lora_rank}_"
 		f"loa_{lora_alpha}_"
 		f"lod_{lora_dropout}_"
 		f"temp_{temperature}_"
+		f"bs_{train_loader.batch_size}_"
 		f"mep_{minimum_epochs}_"
 		f"pat_{patience}_"
 		f"mdt_{min_delta:.1e}_"
@@ -1251,7 +1280,9 @@ def lora_plus_finetune_multi_label(
 					images=images,
 					all_class_embeds=all_class_embeds,
 					label_vectors=label_vectors,
-					criterion=criterion,
+					criterion_i2t=criterion_i2t,
+					criterion_t2i=criterion_t2i,
+					active_mask=active_mask,
 					temperature=temperature,
 					loss_weights=loss_weights,
 					verbose=verbose,
@@ -1286,7 +1317,7 @@ def lora_plus_finetune_multi_label(
 					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
 				)
 		
-		# Calculate average losses
+		# average losses
 		avg_total_loss = epoch_loss_total / num_batches if num_batches > 0 else 0.0
 		avg_i2t_loss = epoch_loss_i2t / num_batches if num_batches > 0 else 0.0
 		avg_t2i_loss = epoch_loss_t2i / num_batches if num_batches > 0 else 0.0
@@ -1302,14 +1333,16 @@ def lora_plus_finetune_multi_label(
 		
 		if verbose and epoch == 0:
 			print(f"[Epoch {epoch+1}] {len(learning_rates_history[-1])} LR groups: {learning_rates_history[-1]}")
+			print(f"[Epoch {epoch+1}] {len(weight_decays_history[-1])} WD groups: {weight_decays_history[-1]}")
+			print("-"*100)
 		
-		print(f">> Validating Epoch {epoch+1} ...")
-		
-		# Compute validation loss
+		print(f">> Validating Epoch {epoch+1} ...")		
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
 			validation_loader=validation_loader,
-			criterion=criterion,
+			criterion_i2t=criterion_i2t,
+			criterion_t2i=criterion_t2i,
+			active_mask=active_mask,
 			device=device,
 			all_class_embeds=all_class_embeds,
 			temperature=temperature,
@@ -1318,69 +1351,60 @@ def lora_plus_finetune_multi_label(
 		validation_results = get_validation_metrics(
 			model=model,
 			validation_loader=validation_loader,
-			criterion=criterion,
 			device=device,
 			topK_values=topk_values,
 			finetune_strategy=mode,
 			cache_dir=results_dir,
-			verbose=True,
+			verbose=verbose,
 			lora_params={
 				"lora_rank": lora_rank,
 				"lora_alpha": lora_alpha,
 				"lora_dropout": lora_dropout,
 				"lora_plus_lambda": lora_plus_lambda,
 			},
-			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 			is_training=True,
 			model_hash=get_model_hash(model),
 			temperature=temperature,
 		)
 		
-		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
-		in_batch_loss_acc_metrics_per_epoch["val_loss"] = current_val_loss
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
+		full_val_metrics = validation_results["full_metrics"]
+		cos_sim = full_val_metrics.get("cosine_similarity", float("nan"))
+
 		retrieval_metrics_per_epoch = {
 			"img2txt": validation_results["img2txt_metrics"],
 			"txt2img": validation_results["txt2img_metrics"]
 		}
-		
-		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
 		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
 		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
 		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
-		
-		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
-		
+
 		print(
-			f'Epoch {epoch + 1}:\n'
-			f'\t[LOSS] {mode}:\n'
-			f'\t\tTraining - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f})\n'
-			f'\t\tValidation: {current_val_loss:.6f}\n'
-			f'\tMulti-label Validation Metrics:\n'
-			f'\t\tIn-batch Top-K Accuracy:\n'
-			f'\t\t\t[Image→Text]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-			f'\t\t\t[Text→Image]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
-			f'\t\tFull Validation Set:\n'
-			f'\t\t\t[Image→Text]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-			f'\t\t\t[Text→Image]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+			f'\nEpoch {epoch+1}:\n'
+			f'   ├─ [LOSS] {mode}-FT: Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Validation: {current_val_loss:.6f}\n'
+			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
+			f'   ├─ Embed — CosSim: {cos_sim:.4f}\n'
+			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
+			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'      └─ [T2I] {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
 		
+		print(f"   ├─ Retrieval Metrics:")
+		print(
+			f"      ├─ [I2T] mAP {retrieval_metrics_per_epoch['img2txt'].get('mAP', {})}, "
+			f"Recall: {retrieval_metrics_per_epoch['img2txt'].get('Recall', {})}"
+		)
+		print(
+			f"      └─ [T2I] mAP: {retrieval_metrics_per_epoch['txt2img'].get('mAP', {})}, "
+			f"Recall: {retrieval_metrics_per_epoch['txt2img'].get('Recall', {})}"
+		)
+
 		if full_val_loss_acc_metrics_per_epoch.get("hamming_loss") is not None:
-			print(f'\tMulti-label Metrics:')
-			print(f'\t\tHamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
-			print(f'\t\tPartial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
-			print(f'\t\tF1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
-		
-		print(f"\tRetrieval Metrics:")
-		print(
-			f"\t\tImage-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A')}, "
-			f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A')}"
-		)
-		print(
-			f"\t\tText-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A')}, "
-			f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A')}"
-		)
-		
+			print(f'   ├─ Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
+			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
+			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
+			print()
+
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
@@ -1407,7 +1431,7 @@ def lora_plus_finetune_multi_label(
 				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
 			break
 		
-		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))
+		print(f"[TOTAL ELAPSED TIME (Train + Validation)] Epoch {epoch+1} {time.time() - train_and_val_st_time:.2f} sec")
 	
 	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 	
@@ -1415,32 +1439,48 @@ def lora_plus_finetune_multi_label(
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
-		criterion=criterion,
+		active_mask=active_mask,
+		head_mask=head_mask,
+		rare_mask=rare_mask,
 		early_stopping=early_stopping,
 		checkpoint_path=mdl_fpth,
 		finetune_strategy=mode,
 		device=device,
 		cache_dir=results_dir,
 		topk_values=topk_values,
-		verbose=True,
-		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+		lora_params={
+			"lora_rank": lora_rank,
+			"lora_alpha": lora_alpha,
+			"lora_dropout": lora_dropout,
+			"lora_plus_lambda": lora_plus_lambda,
+		},
+		temperature=temperature,
+		verbose=verbose,
 	)
 	
-	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
+	final_tiered_i2t        = evaluation_results["tiered_i2t"]
+	final_tiered_t2i        = evaluation_results["tiered_t2i"]
 	model_source = evaluation_results["model_loaded_from"]
 	
-	print(f"Final evaluation used model weights from: {model_source}")
-	print("--- Final Metrics [In-batch Validation] ---")
-	print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
-	print("--- Final Metrics [Full Validation Set] ---")
-	print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-	print("--- Image-to-Text Retrieval ---")
-	print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-	print("--- Text-to-Image Retrieval ---")
-	print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+	if verbose:
+		print(f"\nFinal evaluation from: {model_source}")
+		print("\n>> Tiered I2T Retrieval")
+		for tier, m in final_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n>> Tiered T2I Retrieval")
+		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+
+		print(f"Final evaluation used model weights from: {model_source}")
+		print("--- Final Metrics [Full Validation Set] ---")
+		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
+		print("--- Image-to-Text Retrieval ---")
+		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
+		print("--- Text-to-Image Retrieval ---")
+		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
 	
 	print("\nGenerating result plots...")
 	actual_trained_epochs = len(training_losses)
@@ -1480,21 +1520,6 @@ def lora_plus_finetune_multi_label(
 		filepath=plot_paths["losses_breakdown"]
 	)
 	
-	viz.plot_loss_accuracy_metrics(
-		dataset_name=dataset_name,
-		train_losses=training_losses,
-		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-		in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-		in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-		full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
-		full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
-		losses_file_path=plot_paths["losses"],
-		in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
-		in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
-		full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
-		full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
-	)
-	
 	viz.plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
 		image_to_text_metrics_list=img2txt_metrics_all_epochs,
@@ -1509,7 +1534,534 @@ def lora_plus_finetune_multi_label(
 		fname=plot_paths["retrieval_best"],
 	)
 	
-	return final_metrics_in_batch, final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+
+def dora_finetune_multi_label(
+		model: torch.nn.Module,
+		train_loader: DataLoader,
+		validation_loader: DataLoader,
+		num_epochs: int,
+		print_every: int,
+		learning_rate: float,
+		weight_decay: float,
+		device: str,
+		results_dir: str,
+		lora_rank: int,
+		lora_alpha: float,
+		lora_dropout: float,
+		patience: int,
+		min_delta: float,
+		cumulative_delta: float,
+		minimum_epochs: int,
+		volatility_threshold: float,
+		slope_threshold: float,
+		pairwise_imp_threshold: float,
+		topk_values: List[int] = [1, 3, 5, 10, 15, 20],
+		quantization_bits: int = 8,
+		quantized: bool = False,
+		temperature: float = 0.07,
+		loss_weights: Dict[str, float] = None,
+		verbose: bool = True,
+	):
+	"""
+	DoRA (Weight-Decomposed Low-Rank Adaptation) fine-tuning for multi-label datasets.
+	
+	DoRA decomposes pre-trained weights into magnitude and direction components,
+	applying LoRA to the directional component while keeping magnitude trainable.
+	This improves learning capacity and stability without inference overhead.
+	
+	Reference: DoRA: Weight-Decomposed Low-Rank Adaptation, ICML'24
+	"""
+	
+	if loss_weights is None:
+		loss_weights = {"i2t": 0.5, "t2i": 0.5}
+	
+	window_size = minimum_epochs + 1
+
+	# Validate dropout configuration
+	dropout_values = list()
+	for name, module in model.named_modules():
+		if isinstance(module, torch.nn.Dropout):
+			dropout_values.append((name, module.p))
+
+	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
+	if non_zero_dropouts:
+		dropout_info = ", ".join([f"{name}: p={p}" for name, p in non_zero_dropouts])
+		assert False, (
+			f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during DoRA fine-tuning:"
+			f"\n{dropout_info}\n"
+			"This adds stochasticity and noise to the frozen base model, which is unconventional for DoRA practices.\n"
+			"Fix: Set dropout=0.0 in clip.load() to enforce a deterministic base model behavior during DoRA fine-tuning "
+			"which gives you more control over DoRA-specific regularization without affecting the base model.\n"
+		)
+
+	# Early stopping setup
+	early_stopping = EarlyStopping(
+		patience=patience,
+		min_delta=min_delta,
+		cumulative_delta=cumulative_delta,
+		window_size=window_size,
+		mode='min',
+		min_epochs=minimum_epochs,
+		restore_best_weights=True,
+		volatility_threshold=volatility_threshold,
+		slope_threshold=slope_threshold,
+		pairwise_imp_threshold=pairwise_imp_threshold,
+	)
+
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except AttributeError:
+		dataset_name = validation_loader.dataset.dataset_name
+
+	try:
+		class_names = validation_loader.dataset.unique_labels
+	except AttributeError:
+		class_names = validation_loader.dataset.dataset.classes
+	num_classes = len(class_names)
+
+	mode = inspect.stack()[0].function
+	mode = re.sub(r'_finetune_multi_label', '', mode)
+
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_name = model.__class__.__name__
+
+	if verbose:
+		print(f"{mode.upper()} [Multi-Label] Rank: {lora_rank} Alpha: {lora_alpha} Dropout: {lora_dropout} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
+		if quantized:
+			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
+		print(f"   ├─ Temperature: {temperature}")
+		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
+
+		if torch.cuda.is_available():
+			gpu_name = torch.cuda.get_device_name(device)
+			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+			cuda_capability = torch.cuda.get_device_capability()
+			print(f"   ├─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
+
+	# Inject DoRA into model
+	model = get_injected_peft_clip(
+		clip_model=model,
+		method=mode, # "dora"
+		rank=lora_rank,
+		alpha=lora_alpha,
+		dropout=lora_dropout,
+		target_text_modules=[], # no DoRA in text encoder
+		target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
+		quantization_bits=quantization_bits,
+		quantized=quantized,
+		verbose=verbose,
+	)
+	model.to(device)
+	get_parameters_info(model=model, mode=mode)
+
+	masks = compute_loss_masks(
+		train_loader=train_loader,
+		num_classes=num_classes,
+		device=device,
+		verbose=verbose,
+	)
+	pos_weight  = masks["pos_weight"]
+	active_mask = masks["active_mask"]
+	head_mask   = masks["head_mask"]
+	rare_mask   = masks["rare_mask"]
+	N = masks["N"]
+	train_freq = masks["train_freq"]
+
+	# ── Criteria ─────────────────────────────────────────────────────────────
+	# I2T: pos_weight applies — rows are images, cols are classes
+	criterion_i2t = torch.nn.BCEWithLogitsLoss(
+		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
+		reduction='none',
+	)
+
+	if verbose:
+		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ number of samples: {N}")
+		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
+		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
+
+	# T2I: no pos_weight — rows are classes, cols are batch images
+	# The imbalance is already corrected via I2T; T2I provides directional symmetry
+	criterion_t2i = torch.nn.BCEWithLogitsLoss(
+		reduction='none',
+	)
+
+	if verbose:
+		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
+		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
+
+	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
+	model.eval()
+	all_class_embeds = []
+	text_batch_size = validation_loader.batch_size
+	print(f"\n>> Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	with torch.no_grad():
+		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding"):
+				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
+				embeds = model.encode_text(batch_tokens)
+				embeds = torch.nn.functional.normalize(embeds, dim=-1)
+				all_class_embeds.append(embeds.cpu())
+				del batch_tokens, embeds
+	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
+
+	if verbose:
+		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+
+	# Optimizer setup
+	dora_params = [p for p in model.parameters() if p.requires_grad]
+	print(f"DoRA trainable parameters: {sum(p.numel() for p in dora_params):,}")
+
+	optimizer = torch.optim.AdamW(
+		params=dora_params,
+		lr=learning_rate,
+		betas=(0.9, 0.98),
+		eps=1e-6,
+		weight_decay=weight_decay,
+	)
+
+	# Learning rate scheduler
+	# estimated_epochs = min(num_epochs, 15)
+	# total_training_steps = estimated_epochs * len(train_loader)
+	# T_max = total_training_steps
+	T_max = num_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2
+	eta_min = learning_rate * ANNEALING_RATIO
+	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+		optimizer=optimizer,
+		T_max=T_max,
+		eta_min=eta_min,
+		last_epoch=-1,
+	)
+	if verbose:
+		print(f"{scheduler.__class__.__name__}")
+		print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
+	
+	scaler = torch.amp.GradScaler(
+		device=device,
+		init_scale=2**16,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
+	)
+
+	# Model checkpoint path
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{mode}_"
+		f"{'quantized_' + str(quantization_bits) + 'bit_' if quantized else ''}"
+		f"{model_arch}_"
+		f"ieps_{num_epochs}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"bs_{train_loader.batch_size}_"
+		f"lor_{lora_rank}_"
+		f"loa_{lora_alpha}_"
+		f"lod_{lora_dropout}_"
+		f"temp_{temperature}_"
+		f"mep_{minimum_epochs}_"
+		f"pat_{patience}_"
+		f"mdt_{min_delta:.1e}_"
+		f"cdt_{cumulative_delta:.1e}_"
+		f"vt_{volatility_threshold}_"
+		f"st_{slope_threshold:.1e}_"
+		f"pit_{pairwise_imp_threshold:.1e}"
+		f".pth"
+	)
+
+	# Training metrics storage
+	training_losses = list()
+	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
+	img2txt_metrics_all_epochs = list()
+	txt2img_metrics_all_epochs = list()
+	full_val_loss_acc_metrics_all_epochs = list()
+	learning_rates_history = list()
+	weight_decays_history = list()
+	
+	train_start_time = time.time()
+	final_img2txt_metrics = None
+	final_txt2img_metrics = None
+
+	# Training loop
+	for epoch in range(num_epochs):
+		train_and_val_st_time = time.time()
+		torch.cuda.empty_cache()
+		model.train()
+		print(f"Epoch [{epoch + 1}/{num_epochs}]")
+		
+		epoch_loss_total = 0.0
+		epoch_loss_i2t = 0.0
+		epoch_loss_t2i = 0.0
+		num_batches = 0
+
+		for bidx, (images, _, label_vectors) in enumerate(train_loader):
+			optimizer.zero_grad(set_to_none=True)
+			images = images.to(device, non_blocking=True)
+			label_vectors = label_vectors.to(device, non_blocking=True)
+
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
+					model=model,
+					images=images,
+					all_class_embeds=all_class_embeds,
+					label_vectors=label_vectors,
+					criterion_i2t=criterion_i2t,
+					criterion_t2i=criterion_t2i,
+					active_mask=active_mask,
+					temperature=temperature,
+					loss_weights=loss_weights,
+					verbose=False,
+				)
+
+			# Check for NaN loss
+			if torch.isnan(total_loss):
+				print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
+				continue
+
+			scaler.scale(total_loss).backward()
+			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			scaler.step(optimizer)
+			scaler.update()
+			scheduler.step()
+			
+			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+				print(
+					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
+					f"Loss: {total_loss.item():.7f} "
+					f"(I2T: {loss_i2t.item():.7f}, T2I: {loss_t2i.item():.7f})"
+				)
+			
+			epoch_loss_total += total_loss.item()
+			epoch_loss_i2t += loss_i2t.item()
+			epoch_loss_t2i += loss_t2i.item()
+			num_batches += 1
+		
+		avg_total_loss = epoch_loss_total / num_batches if num_batches > 0 else 0.0
+		avg_i2t_loss   = epoch_loss_i2t   / num_batches if num_batches > 0 else 0.0
+		avg_t2i_loss   = epoch_loss_t2i   / num_batches if num_batches > 0 else 0.0
+
+		training_losses.append(avg_total_loss)
+		training_losses_breakdown["total"].append(avg_total_loss)
+		training_losses_breakdown["i2t"].append(avg_i2t_loss)
+		training_losses_breakdown["t2i"].append(avg_t2i_loss)
+
+		learning_rates_history.append(optimizer.param_groups[0]['lr'])
+		weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
+
+		print(f">> Validating Epoch {epoch+1} ...")
+		current_val_loss = compute_multilabel_validation_loss(
+			model=model,
+			validation_loader=validation_loader,
+			criterion_i2t=criterion_i2t,
+			criterion_t2i=criterion_t2i,
+			active_mask=active_mask,
+			device=device,
+			all_class_embeds=all_class_embeds,
+			temperature=temperature,
+		)
+		
+		validation_results = get_validation_metrics(
+			model=model,
+			validation_loader=validation_loader,
+			device=device,
+			topK_values=topk_values,
+			finetune_strategy=mode,
+			cache_dir=results_dir,
+			verbose=verbose,
+			lora_params={
+				"lora_rank": lora_rank,
+				"lora_alpha": lora_alpha,
+				"lora_dropout": lora_dropout,
+			},
+			is_training=True,
+			model_hash=get_model_hash(model),
+			temperature=temperature,
+		)
+		
+		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
+		full_val_metrics = validation_results["full_metrics"]
+		cos_sim = full_val_metrics.get("cosine_similarity", float("nan"))
+
+		retrieval_metrics_per_epoch = {
+			"img2txt": validation_results["img2txt_metrics"],
+			"txt2img": validation_results["txt2img_metrics"]
+		}
+		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
+		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
+		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
+
+		print(
+			f'\nEpoch {epoch+1}:\n'
+			f'   ├─ [LOSS] {mode}-FT: Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Validation: {current_val_loss:.6f}\n'
+			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
+			f'   ├─ Embed — CosSim: {cos_sim:.4f}\n'
+			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
+			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'      └─ [T2I] {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+		)
+		
+		print(f"   ├─ Retrieval Metrics:")
+		print(
+			f"      ├─ [I2T] mAP {retrieval_metrics_per_epoch['img2txt'].get('mAP', {})}, "
+			f"Recall: {retrieval_metrics_per_epoch['img2txt'].get('Recall', {})}"
+		)
+		print(
+			f"      └─ [T2I] mAP: {retrieval_metrics_per_epoch['txt2img'].get('mAP', {})}, "
+			f"Recall: {retrieval_metrics_per_epoch['txt2img'].get('Recall', {})}"
+		)
+
+		if full_val_loss_acc_metrics_per_epoch.get("hamming_loss") is not None:
+			print(f'   ├─ Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
+			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
+			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
+			print()
+
+		# Cache stats
+		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			print(f"#"*100)
+			cache_stats = train_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Train Cache Stats: {cache_stats}")
+
+		if hasattr(validation_loader.dataset, 'get_cache_stats'):
+			cache_stats = validation_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Validation Cache Stats: {cache_stats}")
+			print(f"#"*100)
+
+		# Early stopping check
+		if early_stopping.should_stop(
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
+		):
+			print(
+				f"\nEarly stopping triggered at epoch {epoch + 1} "
+				f"with best loss: {early_stopping.get_best_score()} "
+				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
+			break
+
+		print(f"[TOTAL ELAPSED TIME (Train + Validation)] Epoch {epoch+1} {time.time() - train_and_val_st_time:.2f} sec")
+	
+	print(f"[{mode}] Total Training Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+
+	# Final evaluation
+	evaluation_results = evaluate_best_model(
+		model=model,
+		validation_loader=validation_loader,
+		active_mask=active_mask,
+		head_mask=head_mask,
+		rare_mask=rare_mask,
+		early_stopping=early_stopping,
+		checkpoint_path=mdl_fpth,
+		finetune_strategy=mode,
+		device=device,
+		cache_dir=results_dir,
+		topk_values=topk_values,
+		lora_params={
+			"lora_rank": lora_rank,
+			"lora_alpha": lora_alpha,
+			"lora_dropout": lora_dropout,
+		},
+		temperature=temperature,
+		verbose=verbose,
+	)
+
+	final_metrics_full = evaluation_results["full_metrics"]
+	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
+	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
+	final_tiered_i2t = evaluation_results["tiered_i2t"]
+	final_tiered_t2i = evaluation_results["tiered_t2i"]
+	model_source = evaluation_results["model_loaded_from"]
+	
+	if verbose:
+		print(f"\nFinal evaluation from: {model_source}")
+		print("\n>> Tiered I2T Retrieval")
+		for tier, m in final_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n>> Tiered T2I Retrieval")
+		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+
+		print(f"Final evaluation used model weights from: {model_source}")
+		print("--- Final Metrics [Full Validation Set] ---")
+		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
+		print("--- Image-to-Text Retrieval ---")
+		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
+		print("--- Text-to-Image Retrieval ---")
+		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+
+	# Generate plots
+	print("\nGenerating result plots...")
+	actual_trained_epochs = len(training_losses)
+
+	file_base_name = (
+		f"{mode}_"
+		f"{CLUSTER}_"
+		f"{model_arch}_"
+		f"ep_{actual_trained_epochs}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"bs_{train_loader.batch_size}_"
+		f"lor_{lora_rank}_"
+		f"loa_{lora_alpha}_"
+		f"lod_{lora_dropout}_"
+		f"temp_{temperature}"
+	)
+	
+	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
+	print(f"Best model will be renamed to: {mdl_fpth}")
+
+	plot_paths = {
+		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+		"loss_breakdown": os.path.join(results_dir, f"{file_base_name}_loss_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+	}
+
+	# Plot loss breakdown (I2T vs T2I)
+	viz.plot_multilabel_loss_breakdown(
+		training_losses_breakdown=training_losses_breakdown,
+		filepath=plot_paths["loss_breakdown"],
+	)
+
+	viz.plot_retrieval_metrics_per_epoch(
+		dataset_name=dataset_name,
+		image_to_text_metrics_list=img2txt_metrics_all_epochs,
+		text_to_image_metrics_list=txt2img_metrics_all_epochs,
+		fname=plot_paths["retrieval_per_epoch"],
+	)
+
+	viz.plot_retrieval_metrics_best_model(
+		dataset_name=dataset_name,
+		image_to_text_metrics=final_img2txt_metrics,
+		text_to_image_metrics=final_txt2img_metrics,
+		fname=plot_paths["retrieval_best"],
+	)
+
+	viz.plot_hyperparameter_evolution(
+		eta_min=eta_min,
+		learning_rates=learning_rates_history,
+		weight_decays=weight_decays_history,
+		fname=os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
+	)
+
+	print(f"\n{'='*150}")
+	print(f"DoRA Multi-Label Fine-tuning Complete!")
+	print(f"Best model saved to: {mdl_fpth}")
+	print(f"{'='*150}\n")
 
 def ia3_finetune_multi_label(
 		model: torch.nn.Module,
@@ -2621,496 +3173,6 @@ def vera_finetune_multi_label(
 	)
 
 	return final_metrics_in_batch, final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
-
-def dora_finetune_multi_label(
-		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
-		num_epochs: int,
-		print_every: int,
-		learning_rate: float,
-		weight_decay: float,
-		device: str,
-		results_dir: str,
-		lora_rank: int,
-		lora_alpha: float,
-		lora_dropout: float,
-		patience: int,
-		min_delta: float,
-		cumulative_delta: float,
-		minimum_epochs: int,
-		volatility_threshold: float,
-		slope_threshold: float,
-		pairwise_imp_threshold: float,
-		topk_values: List[int] = [1, 5, 10, 15, 20],
-		quantization_bits: int = 8,
-		quantized: bool = False,
-		use_lamb: bool = False,
-		temperature: float = 0.07,
-		loss_weights: Dict[str, float] = None,
-		label_smoothing: float = 0.0,
-		verbose: bool = True,
-	):
-	"""
-	DoRA (Weight-Decomposed Low-Rank Adaptation) fine-tuning for multi-label datasets.
-	
-	DoRA decomposes pre-trained weights into magnitude and direction components,
-	applying LoRA to the directional component while keeping magnitude trainable.
-	This improves learning capacity and stability without inference overhead.
-	
-	Reference: DoRA: Weight-Decomposed Low-Rank Adaptation, ICML'24
-	"""
-	
-	if loss_weights is None:
-		loss_weights = {"i2t": 0.5, "t2i": 0.5}
-	
-	window_size = minimum_epochs + 1
-
-	# Validate dropout configuration
-	dropout_values = list()
-	for name, module in model.named_modules():
-		if isinstance(module, torch.nn.Dropout):
-			dropout_values.append((name, module.p))
-
-	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
-	if non_zero_dropouts:
-		dropout_info = ", ".join([f"{name}: p={p}" for name, p in non_zero_dropouts])
-		assert False, (
-			f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during DoRA fine-tuning:"
-			f"\n{dropout_info}\n"
-			"This adds stochasticity and noise to the frozen base model, which is unconventional for DoRA practices.\n"
-			"Fix: Set dropout=0.0 in clip.load() to enforce a deterministic base model behavior during DoRA fine-tuning "
-			"which gives you more control over DoRA-specific regularization without affecting the base model.\n"
-		)
-
-	# Early stopping setup
-	early_stopping = EarlyStopping(
-		patience=patience,
-		min_delta=min_delta,
-		cumulative_delta=cumulative_delta,
-		window_size=window_size,
-		mode='min',
-		min_epochs=minimum_epochs,
-		restore_best_weights=True,
-		volatility_threshold=volatility_threshold,
-		slope_threshold=slope_threshold,
-		pairwise_imp_threshold=pairwise_imp_threshold,
-	)
-
-	# Dataset and directory setup
-	try:
-		dataset_name = validation_loader.dataset.dataset.__class__.__name__
-	except AttributeError:
-		dataset_name = validation_loader.dataset.dataset_name
-
-	mode = inspect.stack()[0].function
-	mode = re.sub(r'_finetune_multi_label', '', mode)
-
-	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
-	model_name = model.__class__.__name__
-
-	if verbose:
-		print(f"{mode.upper()} [Multi-Label] Rank: {lora_rank} Alpha: {lora_alpha} Dropout: {lora_dropout} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
-		if quantized:
-			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
-		print(f"   ├─ Temperature: {temperature}")
-		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
-		if label_smoothing > 0:
-			print(f"   ├─ Label Smoothing: {label_smoothing}")
-
-		if torch.cuda.is_available():
-			gpu_name = torch.cuda.get_device_name(device)
-			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-			cuda_capability = torch.cuda.get_device_capability()
-			print(f"   ├─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
-
-	# Inject DoRA into model
-	model = get_injected_peft_clip(
-		clip_model=model,
-		method=mode,
-		rank=lora_rank,
-		alpha=lora_alpha,
-		dropout=lora_dropout,
-		quantization_bits=quantization_bits,
-		quantized=quantized,
-		verbose=verbose,
-	)
-	model.to(device)
-	get_parameters_info(model=model, mode=mode)
-
-	# Optimizer setup
-	if use_lamb:
-		optimizer = LAMB(
-			params=[p for p in model.parameters() if p.requires_grad],
-			lr=learning_rate,
-			betas=(0.9, 0.98),
-			eps=1e-6,
-			weight_decay=weight_decay,
-		)
-	else:
-		optimizer = torch.optim.AdamW(
-			params=[p for p in model.parameters() if p.requires_grad],
-			lr=learning_rate,
-			betas=(0.9, 0.98),
-			eps=1e-6,
-			weight_decay=weight_decay,
-		)
-
-	# Learning rate scheduler
-	estimated_epochs = min(num_epochs, 15)
-	total_training_steps = estimated_epochs * len(train_loader)
-	ANNEALING_RATIO = 1e-2
-	eta_min = learning_rate * ANNEALING_RATIO
-	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-		optimizer=optimizer,
-		T_max=total_training_steps,
-		eta_min=eta_min,
-		last_epoch=-1,
-	)
-	if verbose:
-		print(f"{scheduler.__class__.__name__} scheduler")
-		print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
-
-	# Loss function
-	if label_smoothing > 0:
-		criterion = LabelSmoothingBCELoss(smoothing=label_smoothing)
-	else:
-		criterion = torch.nn.BCEWithLogitsLoss()
-	
-	scaler = torch.amp.GradScaler(
-		device=device,
-		init_scale=2**16,
-		growth_factor=2.0,
-		backoff_factor=0.5,
-		growth_interval=2000,
-	)
-
-	# Model checkpoint path
-	mdl_fpth = os.path.join(
-		results_dir,
-		f"{mode}_"
-		f"{'quantized_' + str(quantization_bits) + 'bit_' if quantized else ''}"
-		f"{model_arch}_"
-		f"ieps_{num_epochs}_"
-		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
-		f"bs_{train_loader.batch_size}_"
-		f"lor_{lora_rank}_"
-		f"loa_{lora_alpha}_"
-		f"lod_{lora_dropout}_"
-		f"temp_{temperature}_"
-		f"mep_{minimum_epochs}_"
-		f"pat_{patience}_"
-		f"mdt_{min_delta:.1e}_"
-		f"cdt_{cumulative_delta:.1e}_"
-		f"vt_{volatility_threshold}_"
-		f"st_{slope_threshold:.1e}_"
-		f"pit_{pairwise_imp_threshold:.1e}"
-		f".pth"
-	)
-
-	# Pre-encode class embeddings for efficiency
-	try:
-		class_names = validation_loader.dataset.unique_labels
-	except AttributeError:
-		class_names = validation_loader.dataset.dataset.classes
-	
-	num_classes = len(class_names)
-	if verbose:
-		print(f"Pre-encoding {num_classes} class embeddings...")
-	
-	# Pre-encode in batches to avoid memory issues
-	text_batch_size = train_loader.batch_size
-	all_class_embeds = []
-	model.eval()
-	with torch.no_grad():
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			for i in range(0, num_classes, text_batch_size):
-				end_idx = min(i + text_batch_size, num_classes)
-				batch_class_names = class_names[i:end_idx]
-				batch_class_texts = clip.tokenize(batch_class_names).to(device)
-				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
-				all_class_embeds.append(batch_embeds.cpu())
-				del batch_class_texts, batch_embeds
-				torch.cuda.empty_cache()
-	
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
-	if verbose:
-		print(f"Class embeddings shape: {all_class_embeds.shape}")
-
-	# Training metrics storage
-	training_losses = list()
-	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
-	img2txt_metrics_all_epochs = list()
-	txt2img_metrics_all_epochs = list()
-	in_batch_loss_acc_metrics_all_epochs = list()
-	full_val_loss_acc_metrics_all_epochs = list()
-	learning_rates_history = list()
-	weight_decays_history = list()
-	
-	train_start_time = time.time()
-	final_img2txt_metrics = None
-	final_txt2img_metrics = None
-
-	# Training loop
-	for epoch in range(num_epochs):
-		train_and_val_st_time = time.time()
-		torch.cuda.empty_cache()
-		model.train()
-		print(f"Epoch [{epoch + 1}/{num_epochs}]")
-		
-		epoch_loss = 0.0
-		epoch_i2t_loss = 0.0
-		epoch_t2i_loss = 0.0
-		
-		for bidx, (images, _, label_vectors) in enumerate(train_loader):
-			optimizer.zero_grad(set_to_none=True)
-			images = images.to(device, non_blocking=True)
-			label_vectors = label_vectors.to(device, non_blocking=True)
-
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
-					model=model,
-					images=images,
-					all_class_embeds=all_class_embeds,
-					label_vectors=label_vectors,
-					criterion=criterion,
-					temperature=temperature,
-					loss_weights=loss_weights,
-					verbose=False,
-				)
-
-			# Check for NaN loss
-			if torch.isnan(total_loss):
-				print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
-				continue
-
-			scaler.scale(total_loss).backward()
-			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-			scaler.step(optimizer)
-			scaler.update()
-			scheduler.step()
-			
-			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-				print(
-					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
-					f"Loss: {total_loss.item():.7f} "
-					f"(I2T: {loss_i2t.item():.7f}, T2I: {loss_t2i.item():.7f})"
-				)
-			
-			epoch_loss += total_loss.item()
-			epoch_i2t_loss += loss_i2t.item()
-			epoch_t2i_loss += loss_t2i.item()
-		
-		avg_training_loss = epoch_loss / len(train_loader)
-		avg_i2t_loss = epoch_i2t_loss / len(train_loader)
-		avg_t2i_loss = epoch_t2i_loss / len(train_loader)
-		
-		training_losses.append(avg_training_loss)
-
-		training_losses_breakdown["total"].append(avg_training_loss)
-		training_losses_breakdown["i2t"].append(avg_i2t_loss)
-		training_losses_breakdown["t2i"].append(avg_t2i_loss)
-
-		learning_rates_history.append(optimizer.param_groups[0]['lr'])
-		weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
-
-		print(f">> Validating Epoch {epoch+1} ...")
-		
-		# Validation metrics
-		validation_results = get_validation_metrics(
-			model=model,
-			validation_loader=validation_loader,
-			criterion=criterion,
-			device=device,
-			topK_values=topk_values,
-			finetune_strategy=mode,
-			cache_dir=results_dir,
-			verbose=True,
-			lora_params={
-				"lora_rank": lora_rank,
-				"lora_alpha": lora_alpha,
-				"lora_dropout": lora_dropout,
-			},
-			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
-			is_training=True,
-			model_hash=get_model_hash(model),
-			temperature=temperature,
-		)
-		
-		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
-		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
-		retrieval_metrics_per_epoch = {
-			"img2txt": validation_results["img2txt_metrics"],
-			"txt2img": validation_results["txt2img_metrics"]
-		}
-
-		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
-		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
-		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
-		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
-		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
-
-		print(
-			f'Epoch {epoch + 1}:\n'
-			f'\t[LOSS] {mode} (Multi-Label)\n'
-			f'\t\tTraining: {avg_training_loss:.7f} (I2T: {avg_i2t_loss:.7f}, T2I: {avg_t2i_loss:.7f})\n'
-			f'\t\tValidation(in-batch): {current_val_loss:.7f}\n'
-			f'\tValidation Top-k Accuracy:\n'
-			f'\tIn-batch:\n'
-			f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-			f'\t\t[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
-			f'\tFull Validation Set:\n'
-			f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-			f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
-		)
-		print(f"Image-to-Text Retrieval:\n\t{retrieval_metrics_per_epoch['img2txt']}")
-		print(f"Text-to-Image Retrieval:\n\t{retrieval_metrics_per_epoch['txt2img']}")
-
-		# Cache stats
-		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			print(f"#"*100)
-			cache_stats = train_loader.dataset.get_cache_stats()
-			if cache_stats is not None:
-				print(f"Train Cache Stats: {cache_stats}")
-
-		if hasattr(validation_loader.dataset, 'get_cache_stats'):
-			cache_stats = validation_loader.dataset.get_cache_stats()
-			if cache_stats is not None:
-				print(f"Validation Cache Stats: {cache_stats}")
-			print(f"#"*100)
-
-		# Early stopping check
-		if early_stopping.should_stop(
-			current_value=current_val_loss,
-			model=model,
-			epoch=epoch,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			checkpoint_path=mdl_fpth,
-		):
-			print(
-				f"\nEarly stopping triggered at epoch {epoch + 1} "
-				f"with best loss: {early_stopping.get_best_score()} "
-				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
-			break
-
-		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))
-	
-	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
-
-	# Final evaluation
-	evaluation_results = evaluate_best_model(
-		model=model,
-		validation_loader=validation_loader,
-		criterion=criterion,
-		early_stopping=early_stopping,
-		checkpoint_path=mdl_fpth,
-		finetune_strategy=mode,
-		device=device,
-		cache_dir=results_dir,
-		topk_values=topk_values,
-		verbose=True,
-		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
-		temperature=temperature,
-	)
-
-	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
-	final_metrics_full = evaluation_results["full_metrics"]
-	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
-	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	model_source = evaluation_results["model_loaded_from"]
-	
-	print(f"Final evaluation used model weights from: {model_source}")
-	print("--- Final Metrics [In-batch Validation] ---")
-	print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
-	print("--- Final Metrics [Full Validation Set] ---")
-	print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-	print("--- Image-to-Text Retrieval ---")
-	print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-	print("--- Text-to-Image Retrieval ---")
-	print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
-
-	# Generate plots
-	print("\nGenerating result plots...")
-	actual_trained_epochs = len(training_losses)
-
-	file_base_name = (
-		f"{mode}_"
-		f"{CLUSTER}_"
-		f"{model_arch}_"
-		f"ep_{actual_trained_epochs}_"
-		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
-		f"bs_{train_loader.batch_size}_"
-		f"lor_{lora_rank}_"
-		f"loa_{lora_alpha}_"
-		f"lod_{lora_dropout}_"
-		f"temp_{temperature}"
-	)
-	
-	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
-	print(f"Best model will be renamed to: {mdl_fpth}")
-
-	plot_paths = {
-		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"loss_breakdown": os.path.join(results_dir, f"{file_base_name}_loss_breakdown.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-	}
-
-	# Plot loss breakdown (I2T vs T2I)
-	viz.plot_multilabel_loss_breakdown(
-		training_losses_breakdown=training_losses_breakdown,
-		filepath=plot_paths["loss_breakdown"],
-	)
-
-	viz.plot_loss_accuracy_metrics(
-		dataset_name=dataset_name,
-		train_losses=training_losses,
-		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-		in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-		in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-		full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
-		full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
-		losses_file_path=plot_paths["losses"],
-		in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
-		in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
-		full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
-		full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
-	)
-
-	viz.plot_retrieval_metrics_per_epoch(
-		dataset_name=dataset_name,
-		image_to_text_metrics_list=img2txt_metrics_all_epochs,
-		text_to_image_metrics_list=txt2img_metrics_all_epochs,
-		fname=plot_paths["retrieval_per_epoch"],
-	)
-
-	viz.plot_retrieval_metrics_best_model(
-		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
-		fname=plot_paths["retrieval_best"],
-	)
-
-	viz.plot_hyperparameter_evolution(
-		eta_min=eta_min,
-		learning_rates=learning_rates_history,
-		weight_decays=weight_decays_history,
-		fname=os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
-	)
-
-	print(f"\n{'='*150}")
-	print(f"DoRA Multi-Label Fine-tuning Complete!")
-	print(f"Best model saved to: {mdl_fpth}")
-	print(f"{'='*150}\n")
 
 def clip_adapter_finetune_multi_label(
 		model: torch.nn.Module,
