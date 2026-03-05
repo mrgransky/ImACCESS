@@ -2483,6 +2483,7 @@ def probe_finetune_multi_label(
 			cache_dir=results_dir,
 			topk_values=topk_values,
 			temperature=temperature,
+			class_embeds_override=probe.probe.weight.detach().clone(),
 			verbose=verbose,
 		)
 		final_metrics_full    = evaluation_results["full_metrics"]

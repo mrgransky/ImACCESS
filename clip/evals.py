@@ -443,13 +443,14 @@ def get_validation_metrics(
 		cache_dir: str,
 		finetune_strategy: str = None,
 		chunk_size: int = 1024,
-		verbose: bool = True,
 		force_recompute: bool = False,
 		embeddings_cache: tuple = None,
 		lora_params: Optional[Dict] = None,
 		is_training: bool = False,
 		model_hash: str = None,
 		temperature: float = 0.07,
+		class_embeds_override: Optional[torch.Tensor] = None,
+		verbose: bool = True,
 	) -> Dict:
 
 	if verbose:
@@ -548,36 +549,34 @@ def get_validation_metrics(
 			except Exception as e:
 				print(f"Cache saving failed: {e}")
 	
-	# Step 3: Compute text embeddings
-	text_batch_size = validation_loader.batch_size
-	if verbose:
-		print(f"Pre-encoding {n_classes} classes in batch_size: {text_batch_size}")
-	class_text_embeds = []
-	model.eval()
-	with torch.no_grad():
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			for i in tqdm(range(0, n_classes, text_batch_size), desc="Pre-encoding class texts"):
-				end_idx = min(i + text_batch_size, n_classes)
-				batch_class_names = class_names[i:end_idx]
-								
-				batch_class_texts = clip.tokenize(batch_class_names).to(device)
-				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
-				class_text_embeds.append(batch_embeds.cpu())  # Move to CPU immediately to save GPU memory
-				
-				del batch_class_texts, batch_embeds
-				torch.cuda.empty_cache()
-	class_text_embeds = torch.cat(class_text_embeds, dim=0).to(device)
-	if verbose:
-		print(f"class_text_embeds: {type(class_text_embeds)} {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
+	# Step 3: Compute class embeddings
+	if class_embeds_override is not None:
+		# Use probe's trained W instead of frozen text encoder
+		class_text_embeds = F.normalize(class_embeds_override, dim=-1).to(device).float()
+		if verbose:
+			print(f"class_text_embeds [probe W override]: {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
+	else:
+		# Standard path: encode class names with frozen text encoder
+		text_batch_size = validation_loader.batch_size
+		if verbose:
+			print(f"Pre-encoding {n_classes} classes in batch_size: {text_batch_size}")
+		class_text_embeds = []
+		model.eval()
+		with torch.no_grad():
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				for i in tqdm(range(0, n_classes, text_batch_size), desc="Pre-encoding class texts"):
+					end_idx = min(i + text_batch_size, n_classes)
+					batch_class_names = class_names[i:end_idx]
+					batch_class_texts = clip.tokenize(batch_class_names).to(device)
+					batch_embeds = model.encode_text(batch_class_texts)
+					batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
+					class_text_embeds.append(batch_embeds.cpu())
+					del batch_class_texts, batch_embeds
+					torch.cuda.empty_cache()
+		class_text_embeds = torch.cat(class_text_embeds, dim=0).to(device)
+		if verbose:
+			print(f"class_text_embeds: {type(class_text_embeds)} {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
 
-	# Move to device and ensure proper types
-	device_image_embeds = all_image_embeds.to(device).float()
-	device_class_text_embeds = class_text_embeds.to(device).float()
-	device_labels = all_labels.to(device)
-	if verbose:
-		print(f"Device image embeds: {type(device_image_embeds)} {device_image_embeds.shape} {device_image_embeds.dtype} {device_image_embeds.device}")
-	
 	# Step 4: Compute similarity matrices (chunked for memory efficiency)
 	if verbose:
 		print("Computing similarity matrices...")
@@ -1028,6 +1027,7 @@ def evaluate_best_model(
 		embeddings_cache=None,
 		lora_params: Optional[Dict] = None,
 		temperature: float = 0.07,
+		class_embeds_override: Optional[torch.Tensor] = None,
 		verbose: bool = True,
 	):
 	model_source = "current"
@@ -1108,6 +1108,7 @@ def evaluate_best_model(
 		is_training=False,  # Use cache for final evaluation/inference
 		model_hash=get_model_hash(model),
 		temperature=temperature,
+		class_embeds_override=class_embeds_override,
 		verbose=verbose,
 	)
 	full_metrics = validation_results["full_metrics"]
