@@ -552,7 +552,7 @@ def get_validation_metrics(
 	# Step 3: Compute class embeddings
 	if class_embeds_override is not None:
 		# Use probe's trained W instead of frozen text encoder
-		class_text_embeds = F.normalize(class_embeds_override, dim=-1).to(device).float()
+		class_text_embeds = torch.nn.functional.normalize(class_embeds_override, dim=-1).to(device).float()
 		if verbose:
 			print(f"class_text_embeds [probe W override]: {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
 	else:
