@@ -367,52 +367,52 @@ class SingleLabelLinearProbe(torch.nn.Module):
 
 class MultiLabelProbe(torch.nn.Module):
 	def __init__(
-			self, 
-			clip_model: torch.nn.Module,
-			num_classes: int,
-			class_names: List[str],
-			device: torch.device,
-			hidden_dim: Optional[int] = None, 
-			dropout: float = 0.1,
-			zero_shot_init: bool = True,
-			target_resolution: Optional[int] = None,
-			verbose: bool = True
+		self, 
+		clip_model: torch.nn.Module,
+		num_classes: int,
+		class_names: List[str],
+		device: torch.device,
+		hidden_dim: Optional[int] = None, 
+		dropout: float = 0.1,
+		zero_shot_init: bool = True,
+		target_resolution: Optional[int] = None,
+		verbose: bool = True
 	):
-			super().__init__()
-			
-			self.clip_model = clip_model
-			self.num_classes = num_classes
-			self.class_names = class_names
-			self.device = device
-			self.verbose = verbose
-			
-			# Step 1: Fix ViT positional embeddings if needed
-			self._fix_vit_positional_embeddings(target_resolution)
-			
-			# Step 2: Detect feature dimension
-			self.input_dim = self._detect_feature_dimension()
-			
-			# Step 3: Build probe architecture
-			if hidden_dim is not None:
-					# Two-layer MLP probe
-					self.probe = nn.Sequential(
-							nn.Linear(self.input_dim, hidden_dim),
-							nn.ReLU(),
-							nn.Dropout(dropout),
-							nn.Linear(hidden_dim, num_classes)
-					)
-					self.probe_type = "MLP"
-			else:
-					# Simple linear probe
-					self.probe = torch.nn.Linear(self.input_dim, num_classes)
-					self.probe_type = "Linear"
-			
-			# Step 4: Initialize probe weights for multi-label
-			if zero_shot_init:
-					self._zero_shot_initialization_multilabel()
-			
-			if self.verbose:
-					self._print_initialization_summary()
+		super().__init__()
+		
+		self.clip_model = clip_model
+		self.num_classes = num_classes
+		self.class_names = class_names
+		self.device = device
+		self.verbose = verbose
+		
+		# Step 1: Fix ViT positional embeddings if needed
+		self._fix_vit_positional_embeddings(target_resolution)
+		
+		# Step 2: Detect feature dimension
+		self.input_dim = self._detect_feature_dimension()
+		
+		# Step 3: Build probe architecture
+		if hidden_dim is not None:
+			# Two-layer MLP probe
+			self.probe = nn.Sequential(
+				nn.Linear(self.input_dim, hidden_dim),
+				nn.ReLU(),
+				nn.Dropout(dropout),
+				nn.Linear(hidden_dim, num_classes)
+			)
+			self.probe_type = "MLP"
+		else:
+			# Simple linear probe
+			self.probe = torch.nn.Linear(self.input_dim, num_classes)
+			self.probe_type = "Linear"
+		
+		# Step 4: Initialize probe weights for multi-label
+		if zero_shot_init:
+			self._zero_shot_initialization_multilabel()
+		
+		if self.verbose:
+			self._print_initialization_summary()
 	
 	def _fix_vit_positional_embeddings(self, target_resolution: Optional[int]):
 			"""Fix ViT positional embedding mismatches for different resolutions."""
@@ -460,22 +460,20 @@ class MultiLabelProbe(torch.nn.Module):
 			
 			# Apply interpolation fix
 			try:
-					with torch.no_grad():
-							new_pos_embed = self._interpolate_positional_embedding(
-									visual.positional_embedding,
-									current_grid_size,
-									target_grid_size
-							)
-							visual.positional_embedding.data = new_pos_embed
-							visual.input_resolution = target_resolution
-					
-					if self.verbose:
-							print(f"  ✓ Successfully fixed: {current_seq_len} -> {new_pos_embed.shape[0]} embeddings")
-							
+				with torch.no_grad():
+					new_pos_embed = self._interpolate_positional_embedding(
+						visual.positional_embedding,
+						current_grid_size,
+						target_grid_size
+					)
+					visual.positional_embedding.data = new_pos_embed
+					visual.input_resolution = target_resolution
+				if self.verbose:
+					print(f"  ✓ Successfully fixed: {current_seq_len} -> {new_pos_embed.shape[0]} embeddings")	
 			except Exception as e:
-					if self.verbose:
-							print(f"  ✗ Fix failed: {e}")
-							print("  Continuing with original embeddings...")
+				if self.verbose:
+					print(f"  ✗ Fix failed: {e}")
+					print("  Continuing with original embeddings...")
 	
 	def _interpolate_positional_embedding(
 			self, 
@@ -598,35 +596,33 @@ class MultiLabelProbe(torch.nn.Module):
 							print("  Using default random initialization")
 	
 	def _print_initialization_summary(self):
-			"""Print summary of probe initialization."""
-			probe_params = sum(p.numel() for p in self.probe.parameters())
-			clip_params = sum(p.numel() for p in self.clip_model.parameters())
-			
-			print(f"\nRobust Multi-label Linear Probe Summary:")
-			print(f"  Model: {getattr(self.clip_model, 'name', 'Unknown CLIP')}")
-			print(f"  Probe Type: {self.probe_type}")
-			print(f"  Input Features: {self.input_dim}")
-			print(f"  Output Classes: {self.num_classes}")
-			print(f"  Probe Parameters: {probe_params:,}")
-			print(f"  CLIP Parameters (frozen): {clip_params:,}")
-			print(f"  Trainable Ratio: {probe_params/(probe_params + clip_params)*100:.4f}%")
+		probe_params = sum(p.numel() for p in self.probe.parameters())
+		clip_params = sum(p.numel() for p in self.clip_model.parameters())
+		
+		print(f"\nRobust Multi-label Probe Summary:")
+		print(f"  Model: {getattr(self.clip_model, 'name', 'Unknown CLIP')}")
+		print(f"  Probe Type: {self.probe_type}")
+		print(f"  Input Features: {self.input_dim}")
+		print(f"  Output Classes: {self.num_classes}")
+		print(f"  Probe Parameters: {probe_params:,}")
+		print(f"  CLIP Parameters (frozen): {clip_params:,}")
+		print(f"  Trainable Ratio: {probe_params/(probe_params + clip_params)*100:.4f}%")
 	
 	def forward(self, x):
 		return self.probe(x)
-
 
 	# ── CLIP interface delegation ─────────────────────────────────────────────
 	# evaluate_best_model → get_validation_metrics → _compute_image_embeddings
 	# calls model.encode_image(images), so MultiLabelProbe must delegate.
 	def encode_image(self, images):
-			return self.clip_model.encode_image(images)
+		return self.clip_model.encode_image(images)
 
 	def encode_text(self, text):
-			return self.clip_model.encode_text(text)
+		return self.clip_model.encode_text(text)
 
 	@property
 	def visual(self):
-			return self.clip_model.visual
+		return self.clip_model.visual
 
 	@property
 	def transformer(self):
@@ -688,83 +684,70 @@ def get_probe_clip(
 		target_resolution: Optional[int] = None,
 		verbose: bool = True
 ) -> Union[SingleLabelLinearProbe, MultiLabelProbe]:
-		"""
-		Automatically detects dataset type and creates the appropriate linear probe for CLIP.
-		
-		Args:
-				clip_model: The CLIP model to create a probe for
-				validation_loader: DataLoader to detect dataset type and get class information
-				device: Device to place the probe on
-				hidden_dim: Optional hidden dimension for MLP probe (None = linear probe)
-				dropout: Dropout rate for the probe
-				zero_shot_init: Whether to initialize with CLIP text embeddings
-				target_resolution: Target image resolution (auto-detected if None)
-				verbose: Whether to print detailed information
-				
-		Returns:
-				Either SingleLabelLinearProbe or MultiLabelProbe instance
-				
-		Raises:
-				ValueError: If dataset type cannot be determined or class information is missing
-		"""
-		
+	"""
+	Automatically detects dataset type and creates the appropriate linear probe for CLIP.
+	
+	Args:
+			clip_model: The CLIP model to create a probe for
+			validation_loader: DataLoader to detect dataset type and get class information
+			device: Device to place the probe on
+			hidden_dim: Optional hidden dimension for MLP probe (None = linear probe)
+			dropout: Dropout rate for the probe
+			zero_shot_init: Whether to initialize with CLIP text embeddings
+			target_resolution: Target image resolution (auto-detected if None)
+			verbose: Whether to print detailed information
+			
+	Returns:
+			Either SingleLabelLinearProbe or MultiLabelProbe instance
+			
+	Raises:
+			ValueError: If dataset type cannot be determined or class information is missing
+	"""
+	
+	# Step 1: Detect dataset type by inspecting the DataLoader
+	dataset_info = _detect_dataset_type(validation_loader, verbose)
+	
+	# Step 2: Extract class information
+	class_names = _extract_class_names(validation_loader, dataset_info, verbose)
+	num_classes = len(class_names)
+	
+	# Step 3: Create appropriate probe based on dataset type
+	if dataset_info['is_multilabel']:
 		if verbose:
-				print("=" * 80)
-				print("AUTOMATIC LINEAR PROBE DETECTION AND CREATION")
-				print("=" * 80)
+			print(f"🎯 Creating MultiLabelProbe for {num_classes} classes")
+			print(f"   Dataset: {dataset_info['dataset_name']}")
+			print(f"   Sample shape: {dataset_info['sample_shapes']}")
 		
-		# Step 1: Detect dataset type by inspecting the DataLoader
-		dataset_info = _detect_dataset_type(validation_loader, verbose)
-		
-		# Step 2: Extract class information
-		class_names = _extract_class_names(validation_loader, dataset_info, verbose)
-		num_classes = len(class_names)
-		
-		# Step 3: Create appropriate probe based on dataset type
-		if dataset_info['is_multilabel']:
-				if verbose:
-						print(f"🎯 Creating MultiLabelProbe for {num_classes} classes")
-						print(f"   Dataset: {dataset_info['dataset_name']}")
-						print(f"   Sample shape: {dataset_info['sample_shapes']}")
-				
-				probe = MultiLabelProbe(
-						clip_model=clip_model,
-						num_classes=num_classes,
-						class_names=class_names,
-						device=device,
-						hidden_dim=hidden_dim,
-						dropout=dropout,
-						zero_shot_init=zero_shot_init,
-						target_resolution=target_resolution,
-						verbose=verbose
-				).to(device)
-		else:
-				if verbose:
-						print(f"🎯 Creating SingleLabelLinearProbe for {num_classes} classes")
-						print(f"   Dataset: {dataset_info['dataset_name']}")
-						print(f"   Sample shape: {dataset_info['sample_shapes']}")
-				
-				probe = SingleLabelLinearProbe(
-						clip_model=clip_model,
-						num_classes=num_classes,
-						class_names=class_names,
-						device=device,
-						hidden_dim=hidden_dim,
-						dropout=dropout,
-						zero_shot_init=zero_shot_init,
-						target_resolution=target_resolution,
-						verbose=verbose
-				).to(device)
-		
+		probe = MultiLabelProbe(
+			clip_model=clip_model,
+			num_classes=num_classes,
+			class_names=class_names,
+			device=device,
+			hidden_dim=hidden_dim,
+			dropout=dropout,
+			zero_shot_init=zero_shot_init,
+			target_resolution=target_resolution,
+			verbose=verbose
+		).to(device)
+	else:
 		if verbose:
-				print("=" * 80)
-				print(f"✅ Successfully created {probe.__class__.__name__}")
-				print(f"   Probe type: {probe.probe_type}")
-				print(f"   Input dimension: {probe.input_dim}")
-				print(f"   Output classes: {probe.num_classes}")
-				print("=" * 80)
+			print(f"🎯 Creating SingleLabelLinearProbe for {num_classes} classes")
+			print(f"   Dataset: {dataset_info['dataset_name']}")
+			print(f"   Sample shape: {dataset_info['sample_shapes']}")
 		
-		return probe
+		probe = SingleLabelLinearProbe(
+			clip_model=clip_model,
+			num_classes=num_classes,
+			class_names=class_names,
+			device=device,
+			hidden_dim=hidden_dim,
+			dropout=dropout,
+			zero_shot_init=zero_shot_init,
+			target_resolution=target_resolution,
+			verbose=verbose
+		).to(device)
+		
+	return probe
 
 def _detect_dataset_type(validation_loader: DataLoader, verbose: bool = True) -> Dict:
 	"""
@@ -779,6 +762,7 @@ def _detect_dataset_type(validation_loader: DataLoader, verbose: bool = True) ->
 	"""
 	
 	if verbose:
+		print("\nAUTOMATIC LINEAR PROBE DETECTION AND CREATION")
 		print("🔍 Detecting dataset type...")
 	
 	# Get dataset reference
