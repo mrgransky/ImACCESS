@@ -2413,20 +2413,25 @@ def probe_finetune_multi_label(
 				"exact_match_acc": exact_match,
 				"partial_acc":    partial_match,
 			}
+
 			full_val_loss_acc_metrics_all_epochs.append(epoch_metrics)
+
 			print(f"Validation - Loss: {avg_val_loss:.6f}, Hamming: {hamming:.4f}, F1: {f1:.4f}, Exact Match: {exact_match:.4f}")
 			cos_sim = torch.nn.functional.cosine_similarity(
 				train_feats[:512].to(device) if cache_features else torch.zeros(1),
 				train_feats[:512].to(device) if cache_features else torch.zeros(1),
 				dim=1,
 			).mean().item()  # placeholder — probe has no separate text encoder to compare against
+
 			print(
-				f"\n@ Epoch {epoch+1}:\n"
-				f"  Loss  — Train: {avg_loss:.4f}  Val: {avg_val_loss:.4f}\n"
-				f"  Hamming: {hamming:.4f}  F1: {f1:.4f}  "
-				f"ExactMatch: {exact_match:.4f}  PartialAcc: {partial_match:.4f}\n"
-				f"  LR    — {scheduler.get_last_lr()[0]:.2e}"
+				f"\nEpoch {epoch+1}:\n"
+				f"  Loss — Train: {avg_loss:.8f}  Val: {avg_val_loss:.8f}\n"
+				f"  Hamming: {hamming:.4f}  F1: {f1:.4f}\n"
+				f"  ExactMatch: {exact_match:.4f}  PartialAcc: {partial_match:.4f}\n"
+				f"  LR: {scheduler.get_last_lr()[0]:.2e}\n"
+				f"  CosSim: {cos_sim:.4f}"
 			)
+
 			if early_stopping.should_stop(
 				current_value=avg_val_loss,
 				model=probe.probe, # save only probe weights, not full CLIP
@@ -2441,7 +2446,7 @@ def probe_finetune_multi_label(
 					f"@ epoch {early_stopping.get_best_epoch()+1}"
 				)
 				break
-			print(f"[TOTAL ELAPSED TIME (Train + Validation)] Epoch {epoch+1} {time.time() - train_and_val_st_time:.2f} sec")
+			print(f"[TOTAL ELAPSED TIME (Train + Validation)] Epoch {epoch+1:<20}{time.time() - train_and_val_st_time:.2f} sec")
 		
 		print(f"[{mode}] Total Time: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
@@ -2501,10 +2506,10 @@ def probe_finetune_multi_label(
 			print(f"{'='*80}")
 			print("\n>> Tiered I2T Retrieval")
 			for tier, m in final_tiered_i2t.items():
-					print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 			print("\n>> Tiered T2I Retrieval")
 			for tier, m in final_tiered_t2i.items():
-					print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 
 		print("\nGenerating result plots...")
 

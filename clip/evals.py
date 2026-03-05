@@ -487,7 +487,6 @@ def get_validation_metrics(
 	if model_hash:
 		cache_file = cache_file.replace(".pt", f"_{model_hash}.pt")
 	
-	
 	# Step 2: Load or compute embeddings
 	cache_loaded = False
 	
