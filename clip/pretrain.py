@@ -43,16 +43,16 @@ def extract_features(
 	return features, labels
 
 def pretrain_single_label(
-		model: torch.nn.Module,
-		train_loader: Optional[DataLoader],
-		validation_loader: DataLoader,
-		device: torch.device,
-		results_dir: str,
-		cache_dir: str=None,
-		topk_values: List=[1, 3, 5],
-		verbose:bool=True,
-		embeddings_cache=None,
-	):
+	model: torch.nn.Module,
+	train_loader: Optional[DataLoader],
+	validation_loader: DataLoader,
+	device: torch.device,
+	results_dir: str,
+	cache_dir: str=None,
+	topk_values: List=[1, 3, 5],
+	verbose:bool=True,
+	embeddings_cache=None,
+):
 	model_name = model.__class__.__name__
 	model_arch = re.sub(r"[/@]", "_", model.name)
 	if cache_dir is None:

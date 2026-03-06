@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
-#SBATCH --mem=164G
+#SBATCH --mem=256G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-44:4
@@ -172,7 +172,7 @@ fi
 
 case $strategy in
   "full"|"lora"|"lora_plus"|"dora"|"vera")
-    ADJUSTED_BATCH_SIZE=40
+    ADJUSTED_BATCH_SIZE=32
     ;;
   "progressive")
     case $architecture in

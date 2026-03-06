@@ -1,0 +1,882 @@
+import os
+import sys
+HOME, USER = os.getenv('HOME'), os.getenv('USER')
+IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
+CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
+sys.path.insert(0, CLIP_DIR)
+
+from utils import *
+from historyXN_dataset_loader import (
+	get_multi_label_dataloaders, 
+	get_preprocess
+)
+
+# from clip directory:
+from peft import get_injected_peft_clip
+from probe import get_probe_clip
+from evals import evaluate_best_model
+import visualize as viz
+
+# "https://pbs.twimg.com/media/GowwFwkbQAAaMs-?format=jpg"
+# "https://pbs.twimg.com/media/Gowu5zDaYAAZ2YK?format=jpg"
+# "https://pbs.twimg.com/media/Go0qRhvWEAAIxpn?format=png"
+# "https://pbs.twimg.com/media/Go2T7FJbIAApElq?format=jpg"
+# https://pbs.twimg.com/media/GowwFwkbQAAaMs-?format=jpg
+
+# # run in local for all fine-tuned models with image and label:
+# $ python multi_label_inference.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -a 'ViT-B/32' -v
+
+def _compute_similarities_chunked(
+		image_embeds: torch.Tensor,
+		class_embeds: torch.Tensor,
+		chunk_size: int = 100,
+		device: str = "cuda",
+		temperature: float = 0.07
+	) -> torch.Tensor:
+	num_images = image_embeds.size(0)
+	num_classes = class_embeds.size(0)
+	
+	# Pre-allocate result tensor on CPU to save GPU memory
+	similarities = torch.zeros(num_images, num_classes, dtype=torch.float32, device=device,)
+	
+	for i in range(0, num_images, chunk_size):
+		end_i = min(i + chunk_size, num_images)
+		
+		# Move only the current chunk to GPU
+		img_chunk = image_embeds[i:end_i].to(device)
+		
+		# Compute similarity for this chunk
+		with torch.no_grad():
+			chunk_sim = torch.matmul(img_chunk, class_embeds.T) / temperature
+		
+		# Store result on CPU
+		similarities[i:end_i] = chunk_sim.cpu()
+		
+		# Clean up GPU memory
+		del img_chunk, chunk_sim
+		torch.cuda.empty_cache()
+	
+	return similarities.to(device, non_blocking=True)
+
+def _compute_image_embeddings_multilabel(
+		model: torch.nn.Module,
+		validation_loader: DataLoader,
+		device: Union[str, torch.device],
+		verbose: bool = False,
+		max_samples: int = None
+	):
+	all_image_embeds = []
+	all_labels = []
+	processed_samples = 0
+	
+	model.eval()
+	iterator = tqdm(validation_loader, desc="Encoding images") if verbose else validation_loader
+	
+	for batch_idx, (images, _, labels) in enumerate(iterator):
+		# Check if we've processed enough samples
+		if max_samples and processed_samples >= max_samples:
+			break
+		
+		# Adjust batch size if we're near the limit
+		if max_samples and processed_samples + images.size(0) > max_samples:
+			remaining = max_samples - processed_samples
+			images = images[:remaining]
+			labels = labels[:remaining]
+		
+		images = images.to(device, non_blocking=True)
+		torch.cuda.empty_cache()
+		
+		try:
+			with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
+				with torch.no_grad():
+					image_embeds = model.encode_image(images)
+			image_embeds = torch.nn.functional.normalize(image_embeds.float(), dim=-1)
+			# Move to CPU immediately to free GPU memory
+			all_image_embeds.append(image_embeds.cpu())
+			all_labels.append(labels.cpu())
+			processed_samples += images.size(0)			
+			del images, image_embeds
+			torch.cuda.empty_cache()
+		except torch.cuda.OutOfMemoryError:
+			print(f"OOM at batch {batch_idx}, reducing batch size...")
+			batch_size = images.size(0)
+			chunk_size = max(1, batch_size // 2)
+			for i in range(0, batch_size, chunk_size):
+				end_idx = min(i + chunk_size, batch_size)
+				img_chunk = images[i:end_idx].to(device, non_blocking=True)
+				label_chunk = labels[i:end_idx]				
+				torch.cuda.empty_cache()
+				with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
+					with torch.no_grad():
+						chunk_embeds = model.encode_image(img_chunk)
+				chunk_embeds = torch.nn.functional.normalize(chunk_embeds.float(), dim=-1)
+				all_image_embeds.append(chunk_embeds.cpu())
+				all_labels.append(label_chunk.cpu())
+				processed_samples += img_chunk.size(0)
+				del img_chunk, chunk_embeds
+				torch.cuda.empty_cache()
+			del images
+			torch.cuda.empty_cache()	
+	all_image_embeds = torch.cat(all_image_embeds, dim=0)
+	all_labels = torch.cat(all_labels, dim=0)
+	
+	if verbose:
+		print(f"Processed {processed_samples} samples, embedding shape: {all_image_embeds.shape}")
+	
+	return all_image_embeds.to(device, non_blocking=True), all_labels.to(device, non_blocking=True)
+
+def pretrain_multi_label(
+		model: torch.nn.Module,
+		validation_loader: DataLoader,
+		device: torch.device,
+		results_dir: str,
+		cache_dir: str = None,
+		topk_values: List[int] = [1, 3, 5],
+		verbose: bool = True,
+		max_samples: int = None,
+		temperature: float = 0.07
+	) -> Tuple[Dict, Dict]:
+	model_name = model.__class__.__name__
+	model_arch = re.sub(r"[/@]", "_", model.name)
+	if cache_dir is None:
+		cache_dir = results_dir
+	
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except:
+		dataset_name = validation_loader.dataset.dataset_name
+	
+	if verbose:
+		print(f"Pretrain Multi-label Evaluation {dataset_name} {model_name} - {model_arch} {device}".center(170, "-"))
+
+	# Get class information
+	try:
+		class_names = validation_loader.dataset.unique_labels
+		num_classes = len(class_names)
+	except AttributeError:
+		class_names = validation_loader.dataset.dataset.classes
+		num_classes = len(class_names)
+	
+	if verbose:
+		print(f"Multi-label evaluation: {num_classes} classes")
+	
+	# Use the memory-efficient embedding computation
+	all_image_embeds, all_labels = _compute_image_embeddings_multilabel(
+		model,
+		validation_loader,
+		device,
+		verbose=verbose,
+		max_samples=max_samples,
+	)
+	
+	# Pre-encode all class texts
+	all_class_texts = clip.tokenize(class_names).to(device, non_blocking=True)
+	with torch.no_grad():
+		all_class_embeds = model.encode_text(all_class_texts)
+		all_class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
+	
+	# Clear cache before similarity computation
+	torch.cuda.empty_cache()
+	if verbose:
+		print(f"Computing Image-to-Text similarities with temperature={temperature}")
+	# Compute similarities in chunks
+	i2t_similarities = _compute_similarities_chunked(
+		all_image_embeds, 
+		all_class_embeds, 
+		chunk_size=100,
+		device=device,
+		temperature=temperature
+	)
+	if verbose:
+		print(f"Computing Text-to-Image similarities with temperature={temperature}")
+	t2i_similarities = _compute_similarities_chunked(
+		all_class_embeds,
+		all_image_embeds, 
+		chunk_size=100,
+		device=device,
+		temperature=temperature
+	)
+	
+	# Compute retrieval metrics compatible with plotting functions
+	img2txt_metrics = _compute_multilabel_retrieval_metrics(
+		similarity_matrix=i2t_similarities,
+		query_labels=all_labels,
+		candidate_labels=torch.arange(num_classes, device=device),
+		topK_values=topk_values,
+		mode="Image-to-Text",
+		verbose=verbose
+	)
+	
+	txt2img_metrics = _compute_multilabel_retrieval_metrics(
+		similarity_matrix=t2i_similarities,
+		query_labels=torch.arange(num_classes, device=device),
+		candidate_labels=all_labels,
+		topK_values=topk_values,
+		mode="Text-to-Image",
+		verbose=verbose
+	)
+	
+	if verbose:
+		print("Image to Text Metrics: ")
+		print(json.dumps(img2txt_metrics, indent=2, ensure_ascii=False))
+		print("Text to Image Metrics: ")
+		print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
+
+	# Create plot
+	retrieval_metrics_best_model_fpth = os.path.join(
+		results_dir, 
+		f"{dataset_name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt_txt2img.png"
+	)
+	
+	# Import plotting function (assuming it exists)
+	try:
+		from visualize import plot_retrieval_metrics_best_model
+		plot_retrieval_metrics_best_model(
+			dataset_name=dataset_name,
+			image_to_text_metrics=img2txt_metrics,
+			text_to_image_metrics=txt2img_metrics,
+			fname=retrieval_metrics_best_model_fpth,
+			best_model_name=f"Pretrained {model_name} {model_arch}",
+		)
+	except ImportError:
+		print("Warning: Could not import plotting function")
+
+	return img2txt_metrics, txt2img_metrics
+
+def _compute_multilabel_retrieval_metrics(
+		similarity_matrix: torch.Tensor,
+		query_labels: torch.Tensor,
+		candidate_labels: torch.Tensor,
+		topK_values: List[int],
+		mode: str = "Image-to-Text",
+		verbose: bool = True
+) -> Dict:
+	"""
+	Compute retrieval metrics for multi-label classification that are compatible 
+	with the plotting functions (mP, mAP, Recall).
+	"""
+	if verbose:
+		print(f"Computing retrieval metrics for {mode}")
+	
+	metrics = {"mP": {}, "mAP": {}, "Recall": {}}
+	
+	num_queries, num_candidates = similarity_matrix.shape
+	device = similarity_matrix.device
+	
+	# Get top-K indices for all queries
+	all_sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
+	
+	for K in topK_values:
+		if K > num_candidates:
+			continue
+			
+		top_k_indices = all_sorted_indices[:, :K]
+		
+		# Compute correctness mask for multi-label
+		if mode == "Image-to-Text":
+			# query_labels: [num_images, num_classes], candidate_labels: [num_classes]
+			correct_mask = _compute_multilabel_i2t_correctness(
+				top_k_indices, query_labels, K
+			)
+		else:  # Text-to-Image
+			# query_labels: [num_classes], candidate_labels: [num_images, num_classes]
+			correct_mask = _compute_multilabel_t2i_correctness(
+				top_k_indices, candidate_labels, K
+			)
+		
+		# Compute metrics
+		# mP: Mean Precision - average precision across all queries
+		metrics["mP"][str(K)] = correct_mask.float().mean().item()
+		
+		# Recall: Fraction of queries that retrieved at least one relevant item
+		metrics["Recall"][str(K)] = correct_mask.any(dim=1).float().mean().item()
+		
+		# mAP: Mean Average Precision
+		ap_scores = []
+		for i in range(num_queries):
+			relevant_mask = correct_mask[i]
+			if relevant_mask.any():
+				# Calculate AP for this query
+				relevant_positions = torch.where(relevant_mask)[0].float() + 1  # 1-indexed
+				precisions = torch.arange(1, len(relevant_positions) + 1, device=device).float() / relevant_positions
+				ap = precisions.mean().item()
+			else:
+				ap = 0.0
+			ap_scores.append(ap)
+		
+		metrics["mAP"][str(K)] = np.mean(ap_scores)
+	
+	return metrics
+
+def _compute_multilabel_i2t_correctness(
+		top_k_indices: torch.Tensor,
+		query_labels: torch.Tensor,
+		K: int
+	) -> torch.Tensor:
+	num_images = top_k_indices.shape[0]
+	device = top_k_indices.device
+	correct_mask = torch.zeros(num_images, K, device=device, dtype=torch.bool)
+
+	for i in range(num_images):
+		true_class_indices = torch.where(query_labels[i] == 1)[0]
+
+		if len(true_class_indices) > 0:
+			retrieved_classes = top_k_indices[i]
+			correct_retrievals = torch.isin(retrieved_classes, true_class_indices)
+			correct_mask[i] = correct_retrievals
+
+	return correct_mask
+
+def _compute_multilabel_t2i_correctness(
+		top_k_indices: torch.Tensor,
+		candidate_labels: torch.Tensor,
+		K: int
+) -> torch.Tensor:
+	"""
+	Compute correctness mask for Text-to-Image multi-label retrieval.
+	
+	Args:
+		top_k_indices: [num_classes, K] - top K image indices for each class
+		candidate_labels: [num_images, num_classes] - multi-hot labels for each image
+		K: number of top retrievals
+		
+	Returns:
+		correct_mask: [num_classes, K] - binary mask indicating correct retrievals
+	"""
+	num_classes = top_k_indices.shape[0]
+	device = top_k_indices.device
+	
+	correct_mask = torch.zeros(num_classes, K, device=device, dtype=torch.bool)
+	
+	for class_idx in range(num_classes):
+		# Get images that have this class
+		images_with_class = torch.where(candidate_labels[:, class_idx] == 1)[0]
+		
+		if len(images_with_class) > 0:
+			# Check which of the top-K retrieved images actually have this class
+			retrieved_images = top_k_indices[class_idx]  # [K]
+			correct_retrievals = torch.isin(retrieved_images, images_with_class)
+			correct_mask[class_idx] = correct_retrievals
+	
+	return correct_mask
+
+def get_multi_label_head_torso_tail_samples(
+	metadata_path: str,
+	metadata_train_path: str,
+	metadata_val_path: str,
+	num_samples_per_segment: int = 5,
+) -> Tuple[List[Dict], List[str]]:
+	"""
+	Sample from head, torso, tail distributions for multi-label datasets.
+	Only used when dataset_type == 'multi_label'
+	"""
+	try:
+		df_val = pd.read_csv(
+		filepath_or_buffer=metadata_val_path, 
+			on_bad_lines='skip', 
+			dtype=dtypes, 
+			low_memory=False
+		)
+		print(f"VAL: {type(df_val)} {df_val.shape} {list(df_val.columns)}")
+		# For multi-label, we need to count label frequencies differently
+		all_labels = []
+		for labels_str in df_val['multimodal_labels']:
+			try:
+				labels = ast.literal_eval(labels_str)
+				all_labels.extend(labels)
+			except:
+				continue
+		
+		# Count label frequencies
+		label_counts = pd.Series(all_labels).value_counts()
+		
+		# Define head, torso, tail based on frequency distribution
+		total_labels = len(label_counts)
+		head_threshold = int(total_labels * 0.2)  # Top 20%
+		tail_threshold = int(total_labels * 0.8)   # Bottom 20%
+		
+		head_labels = set(label_counts.head(head_threshold).index)
+		tail_labels = set(label_counts.tail(total_labels - tail_threshold).index)
+		torso_labels = set(label_counts.index) - head_labels - tail_labels
+		
+		# Sample images and labels
+		i2t_samples = []
+		t2i_samples = []
+		
+		# Sample images with head, torso, tail labels
+		for segment_name, segment_labels in [("head", head_labels), ("torso", torso_labels), ("tail", tail_labels)]:
+			segment_samples = []
+			for _, row in df_val.iterrows():
+				try:
+						row_labels = set(ast.literal_eval(row['multimodal_labels']))
+						if row_labels & segment_labels:  # If any intersection
+								segment_samples.append(
+									{
+										'image_path': row['img_path'],
+										'labels': list(row_labels),
+										'segment': segment_name
+									}
+								)
+				except:
+					continue
+			# Randomly sample from this segment
+			if len(segment_samples) >= num_samples_per_segment:
+				sampled = random.sample(segment_samples, num_samples_per_segment)
+				i2t_samples.extend(sampled)
+
+		# Sample text queries from head, torso, tail
+		for segment_name, segment_labels in [("head", head_labels), ("torso", torso_labels), ("tail", tail_labels)]:
+			segment_label_list = list(segment_labels)
+			if len(segment_label_list) >= num_samples_per_segment:
+				sampled_labels = random.sample(segment_label_list, num_samples_per_segment)
+				t2i_samples.extend(sampled_labels)
+		
+		return i2t_samples, t2i_samples
+	except Exception as e:
+		print(f"Error in multi-label sampling: {e}")
+		return [], []
+
+def compute_model_embeddings(
+	strategy: str,
+	model: torch.nn.Module,
+	loader: DataLoader,
+	device: Union[str, torch.device],
+	cache_dir: str,
+	lora_rank: int=None,
+	lora_alpha: float=None,
+	lora_dropout: float=None
+):
+	"""
+	Compute embeddings for different types of fine-tuned models.
+	This function now properly handles:
+	- Regular CLIP models (pretrained, full, progressive)
+	- LoRA models 
+	- Linear probe models
+	"""
+	model.eval()
+	embeddings = []
+	paths = []
+	dataset_name = getattr(loader, 'name', 'unknown_dataset')
+	
+	cache_file_name = (
+		f"{dataset_name}_"
+		f"{strategy}_"
+		f"{model.__class__.__name__}_"
+		f"{re.sub(r'[/@]', '_', model.name)}_"
+	)
+
+	if strategy == "lora" and lora_rank is not None and lora_alpha is not None and lora_dropout is not None:
+		cache_file_name += (
+			f"lora_rank_{lora_rank}_"
+			f"lora_alpha_{lora_alpha}_"
+			f"lora_dropout_{lora_dropout}_"
+		)
+	cache_file_name += "embeddings.pt"
+	cache_file = os.path.join(cache_dir, cache_file_name)
+	
+	if os.path.exists(cache_file):
+		data = torch.load(f=cache_file, map_location=device, mmap=True)
+		return data['embeddings'], data['image_paths']
+	
+	# Determine how to extract embeddings based on model type
+	def get_image_embeddings(model, images):
+		"""Extract image embeddings handling different model types"""
+		
+		# Check if this is a linear probe model
+		if hasattr(model, 'clip_model') and hasattr(model, 'probe'):
+			# This is a linear probe - use the frozen CLIP encoder
+			# This will show that linear probe produces same embeddings as pretrained
+			return model.clip_model.encode_image(images)
+				
+		# Check if this is a standard CLIP model (pretrained, full, progressive, LoRA)
+		elif hasattr(model, 'encode_image'):
+			# This is a regular CLIP model (could be modified by LoRA, full, progressive)
+			return model.encode_image(images)
+				
+		# Handle wrapper classes or other custom model types
+		elif hasattr(model, 'visual') and hasattr(model.visual, '__call__'):
+			# Fallback: try to use visual encoder directly
+			return model.visual(images)
+				
+		else:
+			raise AttributeError(
+				f"Model of type {type(model)} doesn't have a recognizable image encoding method. "
+				f"Expected 'encode_image' method or 'clip_model.encode_image' for probe models."
+			)
+	
+	for batch_idx, (images, _, _) in enumerate(tqdm(loader, desc=f"Processing {strategy}")):
+		images = images.to(device, non_blocking=True)
+
+		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			# Use the appropriate embedding extraction method
+			features = get_image_embeddings(model, images)
+			features /= features.norm(dim=-1, keepdim=True)
+
+		embeddings.append(features.cpu())
+		paths.extend([f"batch_{batch_idx}_img_{i}" for i in range(len(images))])
+	
+	embeddings = torch.cat(embeddings, dim=0)
+	torch.save({'embeddings': embeddings, 'image_paths': paths}, cache_file)
+
+	return embeddings.to(device), paths
+
+@measure_execution_time
+def main():
+	parser = argparse.ArgumentParser(description="Evaluate CLIP for Historical Archives Dataset [Inference]")
+	parser.add_argument('--metadata_csv', '-csv', type=str, required=True, help='Metadata CSV file')
+	parser.add_argument('--model_architecture', '-a', type=str, required=True, help='CLIP architecture')
+	parser.add_argument('--batch_size', '-bs', type=int, default=16, help='Batch size for training')
+	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
+	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs')
+
+	parser.add_argument('--query_image', '-qi', type=str, default=None, help='image path for zero shot classification')
+	parser.add_argument('--query_label', '-ql', type=str, default=None, help='image path for zero shot classification')
+	parser.add_argument('--topK', '-k', type=int, default=3, help='TopK results')
+	parser.add_argument('--topK_values', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
+	parser.add_argument('--temperature', '-t', type=float, default=0.07, help='Temperature for evaluation')
+	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
+	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
+
+	args, unknown = parser.parse_known_args()
+	args.device = torch.device(args.device)
+	print_args_table(args=args, parser=parser)
+	print(args)
+	set_seeds(seed=42)
+	DATASET_DIRECTORY = os.path.dirname(args.metadata_csv)
+	dataset_name = os.path.basename(DATASET_DIRECTORY)
+	dataset_type = "single_label" if "single_label" in args.metadata_csv else "multi_label"
+	RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{dataset_type}")
+	INFERENCE_DIRECTORY = os.path.join(RESULT_DIRECTORY, f"inference")
+	CACHES_DIRECTORY = os.path.join(INFERENCE_DIRECTORY, "caches")
+
+	os.makedirs(INFERENCE_DIRECTORY, exist_ok=True)
+	os.makedirs(CACHES_DIRECTORY, exist_ok=True)
+
+	# list of all available checkpoints in RESULT_DIRECTORY file.pth:
+	available_checkpoints = glob.glob(os.path.join(RESULT_DIRECTORY, "*.pth"))
+	print(f"{len(available_checkpoints)} Available checkpoints")
+	for i, ft_path in enumerate(available_checkpoints):
+		print(f"Checkpoint[{i}]: {ft_path}")
+
+	if "probe" in available_checkpoints:
+		params = get_probe_params(args.probe_checkpoint)
+		if params:
+			print(f">> {args.probe_checkpoint}\n\tProbe parameters: {params}")
+			args.probe_dropout = params['probe_dropout']
+		else:
+			raise ValueError("Probe parameters not found in the provided checkpoint path!")
+
+	if "lora" in available_checkpoints:
+		params = get_lora_params(args.lora_checkpoint)
+		if params:
+			print(f">> {args.lora_checkpoint}\n\tLoRA parameters: {params}")
+			args.lora_rank = params['lora_rank']
+			args.lora_alpha = params['lora_alpha']
+			args.lora_dropout = params['lora_dropout']
+		else:
+			raise ValueError("LoRA parameters not found in the provided checkpoint path!")
+
+	# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
+	# print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
+	models_to_plot = {}
+	print(f">> CLIP model configuration: {args.model_architecture}...")
+	model_config = get_config(architecture=args.model_architecture)
+	print(json.dumps(model_config, indent=4, ensure_ascii=False))
+
+	pretrained_model, pretrained_preprocess = clip.load(
+		name=args.model_architecture,
+		device=args.device,
+		download_root=get_model_directory(path=DATASET_DIRECTORY),
+	)
+	pretrained_model = pretrained_model.float() # Convert model parameters to FP32
+	pretrained_model_name = pretrained_model.__class__.__name__ # CLIP
+	pretrained_model.name = args.model_architecture # ViT-B/32
+	pretrained_model_arch = re.sub(r'[/@]', '-', args.model_architecture)
+	print(f">> Pretrained model: {pretrained_model_name} {pretrained_model_arch}")
+
+	print(f"Temperature used in evaluation: {getattr(args, 'temperature', 'Not set')}")
+
+	models_to_plot["pretrained"] = pretrained_model
+
+	train_loader, validation_loader = get_multi_label_dataloaders(
+		metadata_fpth=args.metadata_csv,
+		batch_size=args.batch_size,
+		num_workers=args.num_workers,
+		input_resolution=model_config["image_resolution"],
+	)
+
+	criterion = torch.nn.BCEWithLogitsLoss()
+
+	print(f">> dataset: {dataset_type} => criterion: {criterion.__class__.__name__}")
+	print_loader_info(loader=train_loader, batch_size=args.batch_size)
+	print_loader_info(loader=validation_loader, batch_size=args.batch_size)
+
+	print("DEBUGGING: Ground Truth Examination")
+	# Check if ground truth extraction is correct
+	for sample in validation_loader:
+		images, _, labels = sample
+		print(f"Batch size: {images.shape[0]}")
+		print(f"Image shape: {images.shape}")
+		print(f"Label shape: {labels.shape}")  # Should be [batch_size, num_classes]
+		print(f"Labels dtype: {labels.dtype}")
+		print(f"Number of positive labels in 1st sample: {labels[0].sum().item()}")
+		print(f"Non-zero label indices: {torch.where(labels[0] == 1)[0].tolist()}")
+		print(f"Number of positive labels in 2nd sample: {labels[1].sum().item()}")
+		break  # Only check first batch	
+	print("="*80)
+
+	customized_preprocess = get_preprocess(
+		dataset_dir=DATASET_DIRECTORY, 
+		input_resolution=model_config["image_resolution"],
+	)
+
+	if args.query_image is None or args.query_label is None:
+		print("\nSystematic selection of samples from validation set: Head, Torso, Tail...")
+		i2t_samples, t2i_samples = get_multi_label_head_torso_tail_samples(
+			metadata_path=args.metadata_csv,
+			metadata_train_path=args.metadata_csv.replace('.csv', '_train.csv'),
+			metadata_val_path=args.metadata_csv.replace('.csv', '_val.csv'),
+			num_samples_per_segment=2,
+		)
+		if i2t_samples and t2i_samples:
+			QUERY_IMAGES = [sample['image_path'] for sample in i2t_samples]
+			QUERY_LABELS = t2i_samples  # Already a list of strings
+	else:
+		QUERY_IMAGES = [args.query_image]
+		QUERY_LABELS = [args.query_label]
+
+	print("\nQUERY IMAGES & LABELS")
+	print(f">> {len(QUERY_IMAGES)} QUERY IMAGES:")
+	for i, v in enumerate(QUERY_IMAGES):
+		print(f"{i}. {v}")
+	print(f">> {len(QUERY_LABELS)} QUERY LABELS:")
+	for i, v in enumerate(QUERY_LABELS):
+		print(f"{i}. {v}")
+	print("-"*160)
+
+	print(f">> Loading {len(available_checkpoints)} Fine-tuned Models [takes a while]...")
+	ft_start = time.time()
+	fine_tuned_models = {}
+	finetuned_img2txt_dict = {args.model_architecture: {}}
+	finetuned_txt2img_dict = {args.model_architecture: {}}
+	for i, ft_path in enumerate(available_checkpoints):
+		print(f"Loading model[{i}] from {ft_path}")
+		model, _ = clip.load(
+			name=args.model_architecture, 
+			device=args.device, 
+			download_root=get_model_directory(path=DATASET_DIRECTORY)
+		)
+		if "lora" in ft_path:
+			lora_model = get_injected_peft_clip(
+				clip_model=model, 
+				method="lora",
+				rank=args.lora_rank, 
+				alpha=args.lora_alpha, 
+				dropout=args.lora_dropout, 
+				verbose=args.verbose,
+			)
+			lora_model.to(args.device)
+			lora_model = lora_model.float()
+			lora_model.name = args.model_architecture
+			checkpoint = torch.load(ft_path, map_location=args.device)
+			lora_model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
+			fine_tuned_models[ft_name] = lora_model
+		elif "adapter" in ft_path:
+			# "clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"
+			adapter_model = get_adapter_peft_clip(
+				clip_model=model, 
+				method="",
+				cache_dim=None, 
+				bottleneck_dim=256, 
+				activation="relu", 
+				verbose=args.verbose,
+			)
+			adapter_model.to(args.device)
+			adapter_model = adapter_model.float()
+			adapter_model.name = args.model_architecture
+			checkpoint = torch.load(ft_path, map_location=args.device)
+			adapter_model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
+			fine_tuned_models[ft_name] = adapter_model
+		elif "probe" in ft_path:
+			probe_model = get_probe_clip(
+				clip_model=model,
+				validation_loader=validation_loader,
+				device=args.device,
+				# hidden_dim=args.probe_hidden_dim, # Optional: creates MLP probe
+				dropout=args.probe_dropout,
+				zero_shot_init=False, # doesn't matter
+				verbose=args.verbose,
+			)
+			probe_model.to(args.device)
+			probe_model = probe_model.float()
+			probe_model.name = args.model_architecture
+			checkpoint = torch.load(ft_path, map_location=args.device)
+			probe_model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
+			fine_tuned_models[ft_name] = probe_model
+		else:
+			model.to(args.device)
+			model = model.float()
+			model.name = args.model_architecture
+			checkpoint = torch.load(ft_path, map_location=args.device)
+			model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
+			fine_tuned_models[ft_name] = model
+		print("done!")
+
+	print(f">> {len(fine_tuned_models)} Fine-tuned Models loaded in {time.time() - ft_start:.1f} sec")
+	models_to_plot.update(fine_tuned_models)
+
+	if args.verbose:
+		print(f"Computing {len(models_to_plot)} {type(models_to_plot)} Model(s) Embeddings".center(100, "-"))
+	embeddings_cache = {}
+	for strategy, model in models_to_plot.items():
+		embeddings, paths = compute_model_embeddings(
+			strategy=strategy,
+			model=model,
+			loader=validation_loader,
+			device=args.device,
+			cache_dir=CACHES_DIRECTORY,
+			lora_rank=args.lora_rank if strategy == "lora" else None,
+			lora_alpha=args.lora_alpha if strategy == "lora" else None,
+			lora_dropout=args.lora_dropout if strategy == "lora" else None,
+		)
+		embeddings_cache[strategy] = (embeddings, paths)
+
+	if args.verbose:
+		print(f"\n{len(embeddings_cache)} Embedding Similarity Analysis: {list(embeddings_cache.keys())}")
+	pretrained_emb = embeddings_cache["pretrained"][0]
+	for strategy, (emb, _) in embeddings_cache.items():
+		if strategy != "pretrained":
+			# Compute cosine similarity between embeddings
+			similarity = torch.nn.functional.cosine_similarity(pretrained_emb.flatten(), emb.flatten(), dim=0)
+			print(f"{strategy} vs pretrained: {similarity:.4f}")
+			# probe should have similarity ≈ 1.0 (as it's just a linear transformation), others should be < 1.0
+
+	if args.verbose:
+		print(f"\nEvaluating {len(fine_tuned_models)} Fine-tuned Models: {list(fine_tuned_models.keys())}")
+	ft_eval_start = time.time()
+	for ft_name, ft_path in finetuned_checkpoint_paths.items():
+		if ft_name in fine_tuned_models:
+			print(f"<<>> Evaluating: {ft_name}")
+			evaluation_results = evaluate_best_model(
+				model=fine_tuned_models[ft_name],
+				validation_loader=validation_loader,
+				criterion=criterion,
+				early_stopping=None,
+				checkpoint_path=ft_path,
+				finetune_strategy=ft_name,
+				device=args.device,
+				cache_dir=CACHES_DIRECTORY,
+				topk_values=args.topK_values,
+				verbose=args.verbose,
+				clean_cache=False,
+				embeddings_cache=embeddings_cache[ft_name],
+				max_in_batch_samples=None, # get_max_samples(batch_size=args.batch_size, N=10, device=args.device),
+				lora_params={
+					"lora_rank": args.lora_rank,
+					"lora_alpha": args.lora_alpha,
+					"lora_dropout": args.lora_dropout,
+				} if ft_name == "lora" else None,
+				temperature=args.temperature,
+			)
+			finetuned_img2txt_dict[args.model_architecture][ft_name] = evaluation_results["img2txt_metrics"]
+			finetuned_txt2img_dict[args.model_architecture][ft_name] = evaluation_results["txt2img_metrics"]
+	print(f"{len(fine_tuned_models)} Fine-tuned Models evaluated in {time.time() - ft_eval_start:.5f} sec")
+
+	####################################### Qualitative Analysis #######################################
+	if args.verbose:
+		print(f"Qualitative Analysis".center(160, " "))
+	for query_image in QUERY_IMAGES:
+		viz.plot_image_to_texts_pretrained(
+			best_pretrained_model=pretrained_model,
+			validation_loader=validation_loader,
+			# preprocess=pretrained_preprocess, # customized_preprocess,
+			preprocess=customized_preprocess,
+			img_path=query_image,
+			topk=args.topK,
+			device=args.device,
+			results_dir=INFERENCE_DIRECTORY,
+		)
+		viz.plot_image_to_texts_stacked_horizontal_bar(
+			models=models_to_plot,
+			validation_loader=validation_loader,
+			preprocess=customized_preprocess,
+			img_path=query_image,
+			topk=args.topK,
+			device=args.device,
+			results_dir=INFERENCE_DIRECTORY,
+		)
+		viz.plot_image_to_texts_separate_horizontal_bars(
+			models=models_to_plot,
+			validation_loader=validation_loader,
+			preprocess=customized_preprocess,
+			img_path=query_image,
+			topk=args.topK,
+			device=args.device,
+			results_dir=INFERENCE_DIRECTORY,
+		)
+
+	for query_label in QUERY_LABELS:
+		viz.plot_text_to_images(
+			models=models_to_plot,
+			validation_loader=validation_loader,
+			preprocess=customized_preprocess,
+			query_text=query_label,
+			topk=args.topK,
+			device=args.device,
+			results_dir=INFERENCE_DIRECTORY,
+			cache_dir=CACHES_DIRECTORY,
+			embeddings_cache=embeddings_cache,
+		)
+	####################################### Qualitative Analysis #######################################
+
+	####################################### Quantitative Analysis #######################################
+	finetune_strategies = []
+	if args.full_checkpoint is not None:
+		finetune_strategies.append("full")
+	if args.lora_checkpoint is not None:
+		finetune_strategies.append("lora")
+	if args.progressive_checkpoint is not None:
+		finetune_strategies.append("progressive")
+	if args.probe_checkpoint is not None:
+		finetune_strategies.append("probe")
+
+	if len(finetune_strategies) == 0:
+		raise ValueError("Please provide at least one checkpoint for comparison!")
+
+	if args.verbose:
+		print(f"Quantitative Analysis for {len(finetune_strategies)} Finetune strategies: {finetune_strategies}".center(160, " "))
+
+	pretrained_img2txt_dict = {args.model_architecture: {}}
+	pretrained_txt2img_dict = {args.model_architecture: {}}
+	# max_eval_samples = min(500, len(validation_loader.dataset))
+	max_eval_samples = len(validation_loader.dataset)
+	pretrained_img2txt, pretrained_txt2img = pretrain_multi_label(
+		model=pretrained_model,
+		validation_loader=validation_loader,
+		device=args.device,
+		results_dir=INFERENCE_DIRECTORY,
+		cache_dir=CACHES_DIRECTORY,
+		topk_values=args.topK_values,
+		verbose=args.verbose,
+		max_samples=max_eval_samples,
+		temperature=args.temperature,
+	)
+	pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
+	pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
+	
+	viz.plot_retrieval_metrics(
+		dataset_name=validation_loader.name,
+		pretrained_img2txt_dict=pretrained_img2txt_dict,
+		pretrained_txt2img_dict=pretrained_txt2img_dict,
+		finetuned_img2txt_dict=finetuned_img2txt_dict,
+		finetuned_txt2img_dict=finetuned_txt2img_dict,
+		model_name=args.model_architecture,
+		finetune_strategies=finetune_strategies,
+		topK_values=args.topK_values,
+		results_dir=INFERENCE_DIRECTORY,
+		verbose=args.verbose,
+	)
+	####################################### Quantitative Analysis #######################################
+
+if __name__ == "__main__":
+	main()
