@@ -174,13 +174,6 @@ case $strategy in
   "full"|"lora"|"lora_plus"|"dora"|"vera")
     ADJUSTED_BATCH_SIZE=32
     ;;
-  "progressive")
-    case $architecture in
-      "ViT-L/14@336px") ADJUSTED_BATCH_SIZE=64 ;;
-      "ViT-L/14")       ADJUSTED_BATCH_SIZE=128 ;;
-      "ViT-B/32"|"ViT-B/16") ADJUSTED_BATCH_SIZE=256 ;;
-    esac
-    ;;
   "probe"|"ia3"|"adapter")
     case $architecture in
       "ViT-L/14@336px") ADJUSTED_BATCH_SIZE=32 ;;

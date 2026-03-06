@@ -1017,30 +1017,32 @@ def _compute_matched_cosine_similarity(image_embeds, text_embeds, labels, is_mul
 	return cos_sim.mean().item()
 
 def evaluate_best_model(
-		model,
-		validation_loader,
-		active_mask,
-		head_mask,
-		rare_mask,
-		early_stopping,
-		checkpoint_path,
-		finetune_strategy,
-		device,
-		cache_dir: str,
-		topk_values: list[int] = [1, 5, 10],
-		clean_cache: bool = True,
-		embeddings_cache=None,
-		lora_params: Optional[Dict] = None,
-		temperature: float = 0.07,
-		class_embeds_override: Optional[torch.Tensor] = None,
-		verbose: bool = True,
-	):
+	model,
+	validation_loader,
+	active_mask,
+	head_mask,
+	rare_mask,
+	early_stopping,
+	checkpoint_path,
+	finetune_strategy,
+	device,
+	cache_dir: str,
+	topk_values: list[int] = [1, 5, 10],
+	clean_cache: bool = True,
+	embeddings_cache=None,
+	lora_params: Optional[Dict] = None,
+	temperature: float = 0.07,
+	class_embeds_override: Optional[torch.Tensor] = None,
+	verbose: bool = True,
+):
 	model_source = "current"
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	if verbose:
 		print(f"Evaluating best model on {dataset_name} {finetune_strategy}")
+		print(f"Checkpoint: {checkpoint_path}")
+		print(f"model: {type(model)}")
 
-	if os.path.exists(checkpoint_path):
+	if checkpoint_path is not None and os.path.exists(checkpoint_path):
 		if verbose:
 			print(f"Loading best model weights {checkpoint_path} for final evaluation...")
 		try:
@@ -1084,6 +1086,9 @@ def evaluate_best_model(
 				print("Proceeding with current model weights.")
 	else:
 		if verbose:
+			if checkpoint_path is None:
+				print("No checkpoint path provided. Proceeding with current model weights.")
+			else:
 				print(f"Checkpoint not found at {checkpoint_path}. Proceeding with current model weights.")
 
 	if model_source == "current" and early_stopping and early_stopping.restore_best_weights and early_stopping.best_weights is not None:
