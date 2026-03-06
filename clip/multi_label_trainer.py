@@ -2416,19 +2416,32 @@ def probe_finetune_multi_label(
 
 			full_val_loss_acc_metrics_all_epochs.append(epoch_metrics)
 
-			print(f"Validation - Loss: {avg_val_loss:.6f}, Hamming: {hamming:.4f}, F1: {f1:.4f}, Exact Match: {exact_match:.4f}")
-			cos_sim = torch.nn.functional.cosine_similarity(
-				train_feats[:512].to(device) if cache_features else torch.zeros(1),
-				train_feats[:512].to(device) if cache_features else torch.zeros(1),
-				dim=1,
-			).mean().item()  # placeholder — probe has no separate text encoder to compare against
+			if cache_features:
+				sample_feats = train_feats[:512].to(device)        # [512, 768] image features
+				# Get true class indices for these 512 samples from the loader
+				# For each sample, average the W rows corresponding to its true labels
+				sample_labels = train_lbls[:512].to(device)  # [512, C] multi-hot
+				
+				W = torch.nn.functional.normalize(probe.probe.weight, dim=-1)        # [C, 768]
+				
+				matched_class_vecs = torch.zeros(512, W.shape[1], device=device)
+				for i in range(512):
+						pos_idx = sample_labels[i].nonzero(as_tuple=True)[0]
+						if pos_idx.numel() > 0:
+								matched_class_vecs[i] = W[pos_idx].mean(dim=0)
+				
+				matched_class_vecs = torch.nn.functional.normalize(matched_class_vecs, dim=-1)
+				sample_feats_norm = torch.nn.functional.normalize(sample_feats, dim=-1)
+				cos_sim = torch.nn.functional.cosine_similarity(sample_feats_norm, matched_class_vecs, dim=1).mean().item()
+			else:
+				cos_sim = 0.0
 
 			print(
 				f"\nEpoch {epoch+1}:\n"
 				f"  Loss — Train: {avg_loss:.8f}  Val: {avg_val_loss:.8f}\n"
 				f"  Hamming: {hamming:.4f}  F1: {f1:.4f}\n"
-				f"  ExactMatch: {exact_match:.4f}  PartialAcc: {partial_match:.4f}\n"
-				f"  LR: {scheduler.get_last_lr()[0]:.2e}\n"
+				f"  ExactMatch: {exact_match}  PartialAcc: {partial_match:.4f}\n"
+				f"  LR: {scheduler.get_last_lr()[0]}\n"
 				f"  CosSim: {cos_sim:.4f}"
 			)
 
@@ -2632,8 +2645,6 @@ def ia3_finetune_multi_label(
 	"""
 	# Adaptive window size based on minimum epochs
 	window_size = minimum_epochs + 1
-
-	# Set default loss weights
 	if loss_weights is None:
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
 	
