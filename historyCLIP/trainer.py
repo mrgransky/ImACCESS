@@ -123,11 +123,6 @@ def main():
 	if not args.finetune_strategy:
 		raise ValueError("finetune_strategy must be specified (example: -fts lora)")
 
-	if args.finetune_strategy == "progressive":
-		assert args.min_phases_before_stopping is not None, "min_phases_before_stopping must be specified for progressive finetuning (example: -mphbs 3)"
-		assert args.min_epochs_per_phase is not None, "min_epochs_per_phase must be specified for progressive finetuning (example: -mepph 5)"
-		assert args.total_num_phases is not None, "total_num_phases must be specified for progressive finetuning (example: -tnp 6)"
-
 	if args.finetune_strategy == "lora" or args.finetune_strategy == "dora" or args.finetune_strategy == "lora_plus":
 		assert args.lora_rank is not None, "lora_rank must be specified for lora finetuning"
 		assert args.lora_alpha is not None, "lora_alpha must be specified for lora finetuning"
@@ -166,9 +161,6 @@ def main():
 			if args.finetune_strategy == "lora" or args.finetune_strategy == "dora":
 				log_file_base_name += f"_lor_{args.lora_rank}_loa_{args.lora_alpha}_lod_{args.lora_dropout}"
 			
-			if args.finetune_strategy == "progressive":
-				log_file_base_name += f"_mphbs_{args.min_phases_before_stopping}_mepph_{args.min_epochs_per_phase}_tnp_{args.total_num_phases}"
-
 			if args.use_lamb:
 				log_file_base_name += "_lamb"
 			
@@ -244,7 +236,6 @@ def main():
 				'ia3': ia3_finetune_multi_label,
 				'dora': dora_finetune_multi_label,
 				'vera': vera_finetune_multi_label,
-				'progressive': progressive_finetune_multi_label,
 				'adapter': clip_adapter_finetune_multi_label if args.adapter_method and args.adapter_method.startswith('clip_adapter') else tip_adapter_finetune_multi_label,
 			}
 		}
