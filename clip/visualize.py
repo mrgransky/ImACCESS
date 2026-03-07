@@ -42,16 +42,16 @@ segment_specs = {
 
 # Method display names and consistent colours for the paper
 METHOD_STYLE = {
-	"pretrained":      {"label": "Zero-Shot",			"color": "#3B3B3B", "ls": "dashdot",  "marker": "o"},
-	"probe":           {"label": "Linear Probe",	"color": "#222222", "ls": "dashdot",  "marker": "o"},
-	"full":            {"label": "Full FT",				"color": "#D55E00", "ls": "-",   "marker": "D"},
-	"lora":            {"label": "LoRA (r=16)",		"color": "#0072B2", "ls": "-",   "marker": "^"},
-	"lora_plus":       {"label": "LoRA+",					"color": "#56B4E9", "ls": "-",   "marker": "v"},
-	"dora":            {"label": "DoRA",					"color": "#009E73", "ls": "-",   "marker": "P"},
-	"ia3":             {"label": "IA³",						"color": "#CC79A7", "ls": "-",   "marker": "X"},
-	"vera":            {"label": "VeRA",					"color": "#F0E442", "ls": "-",   "marker": "*"},
-	"clip_adapter_v":  {"label": "CLIP-Adapter-V","color": "#332A2A", "ls": "-",   "marker": "h"},
-	"tip_adapter_f":   {"label": "Tip-Adapter-F",	"color": "#666614", "ls": "-",   "marker": "8"},
+	"zero_shot":				{"label": "Zero-Shot",				"color": "#838282",		"ls": "dashdot",  "marker": "*"},
+	"probe":						{"label": "Linear Probe",			"color": "#5E5C5C",		"ls": "dashdot",  "marker": "*"},
+	"full":							{"label": "Full FT",					"color": "#D83200",		"ls": "-",				"marker": "D"},
+	"lora":							{"label": "LoRA (r=16)",			"color": "#001FCC",		"ls": "-",				"marker": "^"},
+	"lora_plus":				{"label": "LoRA+",						"color": "#00B862",		"ls": "-",				"marker": "^"},
+	"dora":							{"label": "DoRA",							"color": "#0D9ED8",		"ls": "-",				"marker": "^"},
+	"vera":							{"label": "VeRA",							"color": "#BDAA00",		"ls": "-",				"marker": "^"},
+	"ia3":							{"label": "IA³",							"color": "#D177A8",		"ls": "-",				"marker": "X"},
+	"clip_adapter_v":		{"label": "CLIP-Adapter-V",		"color": "#805454FF",	"ls": "--",				"marker": "8"},
+	"tip_adapter_f":		{"label": "Tip-Adapter-F",		"color": "#9E5D07",		"ls": "--",				"marker": "8"},
 }
 
 positive_pct_col = "#357402ff"
@@ -3705,15 +3705,14 @@ def plot_retrieval_curves(
 										xs = [int(k) for k in ks]
 
 										style = METHOD_STYLE.get(strategy, {"label": strategy, "color": "#b3acac", "ls": ":", "marker": "."})
-										print(f"style: {style}")
 										ax.plot(
 												xs, ys,
 												label=style["label"],
 												color=style["color"],
 												linestyle=style["ls"],
 												marker=style["marker"],
-												markersize=4,
-												linewidth=1.2,
+												markersize=3.5,
+												linewidth=1.25,
 										)
 										plotted_any = True
 
@@ -3728,9 +3727,9 @@ def plot_retrieval_curves(
 								ax.set_title(f"{dir_label} — {tier_label} {metric_label}@K")
 								ax.legend(
 									loc="lower right", 
-									ncol=2, 
-									frameon=True,
-									shadow=True,
+									ncol=5,
+									fontsize=7.5,
+									frameon=False,
 									fancybox=True,
 									edgecolor='black',
 									facecolor='white',
