@@ -581,7 +581,6 @@ def probe_multi_label(
 
 	# Generate plots
 	file_base_name = (
-		f"{dataset_name}_"
 		f"{mode}_"
 		f"{CLUSTER}_"
 		f"{model_name}_"
@@ -1082,7 +1081,6 @@ def full_finetune_multi_label(
 
 	# Generate plots
 	file_base_name = (
-		f"{dataset_name}_"
 		f"{mode}_"
 		f"{CLUSTER}_"
 		f"{optimizer.__class__.__name__}_"
@@ -1533,7 +1531,7 @@ def lora_finetune_multi_label(
 
 	# Generate plots
 	file_base_name = (
-		f"{dataset_name}_{mode}_{CLUSTER}_"
+		f"{mode}_{CLUSTER}_"
 		f"{optimizer.__class__.__name__}_{scheduler.__class__.__name__}_"
 		f"BCEWithLogitsLoss_{scaler.__class__.__name__}_"
 		f"{model_name}_{model_arch}_ep_{actual_trained_epochs}_"
@@ -3258,7 +3256,6 @@ def ia3_finetune_multi_label(
 
 	# Generate plots
 	file_base_name = (
-		f"{dataset_name}_"
 		f"{mode}_"
 		f"{CLUSTER}_"
 		f"{model_name}_"
@@ -4353,7 +4350,7 @@ def clip_adapter_finetune_multi_label(
 	append_retrieval_results(
 		tiered_i2t=final_tiered_i2t, 
 		tiered_t2i=final_tiered_t2i, 
-		strategy_name=mode,
+		strategy_name=clip_adapter_method,
 		results_dir=results_dir,
 		dataset_name=dataset_name,
 		verbose=verbose,
@@ -5133,7 +5130,7 @@ def tip_adapter_finetune_multi_label(
 	append_retrieval_results(
 		tiered_i2t=final_tiered_i2t, 
 		tiered_t2i=final_tiered_t2i, 
-		strategy_name=mode,
+		strategy_name=tip_adapter_method,
 		results_dir=results_dir,
 		dataset_name=dataset_name,
 		verbose=verbose,

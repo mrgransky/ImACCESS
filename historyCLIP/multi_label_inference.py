@@ -426,15 +426,15 @@ def main():
 	DATASET_DIRECTORY = os.path.dirname(args.metadata_csv)
 	dataset_name = os.path.basename(DATASET_DIRECTORY)
 	dataset_type = "single_label" if "single_label" in args.metadata_csv else "multi_label"
-	RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{dataset_type}")
-	INFERENCE_DIRECTORY = os.path.join(RESULT_DIRECTORY, f"inference")
+	RESULTS_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{dataset_type}")
+	INFERENCE_DIRECTORY = os.path.join(RESULTS_DIRECTORY, f"inference")
 	CACHES_DIRECTORY = os.path.join(INFERENCE_DIRECTORY, "caches")
 
 	os.makedirs(INFERENCE_DIRECTORY, exist_ok=True)
 	os.makedirs(CACHES_DIRECTORY, exist_ok=True)
 
 	# list of all available checkpoints in RESULT_DIRECTORY file.pth:
-	available_checkpoints = glob.glob(os.path.join(RESULT_DIRECTORY, "*.pth"))
+	available_checkpoints = glob.glob(os.path.join(RESULTS_DIRECTORY, "*.pth"))
 	print(f"{len(available_checkpoints)} Available checkpoints")
 	for i, ft_path in enumerate(available_checkpoints):
 		print(f"Checkpoint[{i}]: {ft_path}")
@@ -565,116 +565,117 @@ def main():
 		print(f"{i}. {v}")
 	print("-"*160)
 
-	# clear cache
-	torch.cuda.empty_cache()
+	# # clear cache
+	# torch.cuda.empty_cache()
 
-	fine_tuned_models = load_finetuned_models(
-		available_checkpoints=available_checkpoints,
-		model_architecture=args.model_architecture,
-		device=args.device,
-		dataset_directory=DATASET_DIRECTORY,
-		validation_loader=validation_loader,
-		verbose=args.verbose,
-	)
-	models_to_plot.update(fine_tuned_models)
+	# fine_tuned_models = load_finetuned_models(
+	# 	available_checkpoints=available_checkpoints,
+	# 	model_architecture=args.model_architecture,
+	# 	device=args.device,
+	# 	dataset_directory=DATASET_DIRECTORY,
+	# 	validation_loader=validation_loader,
+	# 	verbose=args.verbose,
+	# )
+	# models_to_plot.update(fine_tuned_models)
 
-	if args.verbose:
-		print(f"\nEvaluating {len(fine_tuned_models)} Fine-tuned Models: {list(fine_tuned_models.keys())}")
-	finetuned_img2txt_dict = {args.model_architecture: {}}
-	finetuned_txt2img_dict = {args.model_architecture: {}}
-	ft_eval_start = time.time()
-	# clear cache
-	torch.cuda.empty_cache()
-	for strategy, ft_model in fine_tuned_models.items():
-		print(f"\n>> Evaluating: {strategy}")
-		evaluation_results = evaluate_best_model(
-			model=ft_model,
-			validation_loader=validation_loader,
-			active_mask=masks["active_mask"],
-			head_mask=masks["head_mask"],
-			rare_mask=masks["rare_mask"],
-			early_stopping=None,
-			checkpoint_path=None,
-			finetune_strategy=strategy,
-			device=args.device,
-			cache_dir=CACHES_DIRECTORY,
-			topk_values=args.topK_values,
-			verbose=args.verbose,
-			clean_cache=False, # keep cache across models
-			lora_params={
-				"lora_rank": args.lora_rank,
-				"lora_alpha": args.lora_alpha,
-				"lora_dropout": args.lora_dropout,
-			} if strategy == "lora" else None,
-			temperature=args.temperature,
-		)
-		finetuned_img2txt_dict[args.model_architecture][strategy] = evaluation_results["img2txt_metrics"]
-		finetuned_txt2img_dict[args.model_architecture][strategy] = evaluation_results["txt2img_metrics"]
-		# clear cache
-		torch.cuda.empty_cache()
+	# if args.verbose:
+	# 	print(f"\nEvaluating {len(fine_tuned_models)} Fine-tuned Models: {list(fine_tuned_models.keys())}")
+	# finetuned_img2txt_dict = {args.model_architecture: {}}
+	# finetuned_txt2img_dict = {args.model_architecture: {}}
+	# ft_eval_start = time.time()
+	# # clear cache
+	# torch.cuda.empty_cache()
+	# for strategy, ft_model in fine_tuned_models.items():
+	# 	print(f"\n>> Evaluating: {strategy}")
+	# 	evaluation_results = evaluate_best_model(
+	# 		model=ft_model,
+	# 		validation_loader=validation_loader,
+	# 		active_mask=masks["active_mask"],
+	# 		head_mask=masks["head_mask"],
+	# 		rare_mask=masks["rare_mask"],
+	# 		early_stopping=None,
+	# 		checkpoint_path=None,
+	# 		finetune_strategy=strategy,
+	# 		device=args.device,
+	# 		cache_dir=CACHES_DIRECTORY,
+	# 		topk_values=args.topK_values,
+	# 		verbose=args.verbose,
+	# 		clean_cache=False, # keep cache across models
+	# 		lora_params={
+	# 			"lora_rank": args.lora_rank,
+	# 			"lora_alpha": args.lora_alpha,
+	# 			"lora_dropout": args.lora_dropout,
+	# 		} if strategy == "lora" else None,
+	# 		temperature=args.temperature,
+	# 	)
+	# 	finetuned_img2txt_dict[args.model_architecture][strategy] = evaluation_results["img2txt_metrics"]
+	# 	finetuned_txt2img_dict[args.model_architecture][strategy] = evaluation_results["txt2img_metrics"]
+	# 	# clear cache
+	# 	torch.cuda.empty_cache()
 
-	print(f"{len(fine_tuned_models)} Fine-tuned Models evaluated in {time.time() - ft_eval_start:.5f} sec")
+	# print(f"{len(fine_tuned_models)} Fine-tuned Models evaluated in {time.time() - ft_eval_start:.5f} sec")
 
-	####################################### Qualitative Analysis #######################################
-	if args.verbose:
-		print(f"Qualitative Analysis".center(160, " "))
-	for query_image in QUERY_IMAGES:
-		viz.plot_image_to_texts_pretrained(
-			best_pretrained_model=pretrained_model,
-			validation_loader=validation_loader,
-			# preprocess=pretrained_preprocess, # customized_preprocess,
-			preprocess=customized_preprocess,
-			img_path=query_image,
-			topk=args.topK,
-			device=args.device,
-			results_dir=INFERENCE_DIRECTORY,
-		)
-		viz.plot_image_to_texts_stacked_horizontal_bar(
-			models=models_to_plot,
-			validation_loader=validation_loader,
-			preprocess=customized_preprocess,
-			img_path=query_image,
-			topk=args.topK,
-			device=args.device,
-			results_dir=INFERENCE_DIRECTORY,
-		)
-		viz.plot_image_to_texts_separate_horizontal_bars(
-			models=models_to_plot,
-			validation_loader=validation_loader,
-			preprocess=customized_preprocess,
-			img_path=query_image,
-			topk=args.topK,
-			device=args.device,
-			results_dir=INFERENCE_DIRECTORY,
-		)
+	# ####################################### Qualitative Analysis #######################################
+	# if args.verbose:
+	# 	print(f"Qualitative Analysis".center(160, " "))
+	# for query_image in QUERY_IMAGES:
+	# 	viz.plot_image_to_texts_pretrained(
+	# 		best_pretrained_model=pretrained_model,
+	# 		validation_loader=validation_loader,
+	# 		# preprocess=pretrained_preprocess, # customized_preprocess,
+	# 		preprocess=customized_preprocess,
+	# 		img_path=query_image,
+	# 		topk=args.topK,
+	# 		device=args.device,
+	# 		results_dir=INFERENCE_DIRECTORY,
+	# 	)
+	# 	viz.plot_image_to_texts_stacked_horizontal_bar(
+	# 		models=models_to_plot,
+	# 		validation_loader=validation_loader,
+	# 		preprocess=customized_preprocess,
+	# 		img_path=query_image,
+	# 		topk=args.topK,
+	# 		device=args.device,
+	# 		results_dir=INFERENCE_DIRECTORY,
+	# 	)
+	# 	viz.plot_image_to_texts_separate_horizontal_bars(
+	# 		models=models_to_plot,
+	# 		validation_loader=validation_loader,
+	# 		preprocess=customized_preprocess,
+	# 		img_path=query_image,
+	# 		topk=args.topK,
+	# 		device=args.device,
+	# 		results_dir=INFERENCE_DIRECTORY,
+	# 	)
 
-	for query_label in QUERY_LABELS:
-		viz.plot_text_to_images(
-			models=models_to_plot,
-			validation_loader=validation_loader,
-			preprocess=customized_preprocess,
-			query_text=query_label,
-			topk=args.topK,
-			device=args.device,
-			results_dir=INFERENCE_DIRECTORY,
-			cache_dir=CACHES_DIRECTORY,
-			embeddings_cache=embeddings_cache,
-		)
-	####################################### Qualitative Analysis #######################################
+	# for query_label in QUERY_LABELS:
+	# 	viz.plot_text_to_images(
+	# 		models=models_to_plot,
+	# 		validation_loader=validation_loader,
+	# 		preprocess=customized_preprocess,
+	# 		query_text=query_label,
+	# 		topk=args.topK,
+	# 		device=args.device,
+	# 		results_dir=INFERENCE_DIRECTORY,
+	# 		cache_dir=CACHES_DIRECTORY,
+	# 		embeddings_cache=embeddings_cache,
+	# 	)
+	# ####################################### Qualitative Analysis #######################################
 
 	####################################### Quantitative Analysis #######################################
-	if args.plot and os.path.exists(results_json_path):
+	results_json_path = os.path.join(RESULTS_DIRECTORY, f"{dataset_name}_retrieval_metrics_accumulated.json")
+	if os.path.exists(results_json_path):
 		with open(results_json_path) as f:
 			all_results = json.load(f)
 		print(f">> Plotting {len(all_results)} methods: {list(all_results.keys())}")
-		plot_retrieval_curves(
-				all_results=all_results,
-				output_dir=os.path.join(RESULTS_DIRECTORY, "plots"),
-				dataset_name=dataset_name,
-				verbose=args.verbose,
+		viz.plot_retrieval_curves(
+			all_results=all_results,
+			output_dir=os.path.join(RESULTS_DIRECTORY, "plots"),
+			dataset_name=dataset_name,
+			verbose=args.verbose,
 		)
-	elif args.plot:
-		print(f"[WARNING] --plot requested but no results file found at {results_json_path}")
+	else:
+		print(f"WARNING: {results_json_path} not found. Skipping plotting...")
 	####################################### Quantitative Analysis #######################################
 
 if __name__ == "__main__":

@@ -40,6 +40,19 @@ segment_specs = {
 	},
 }
 
+# Method display names and consistent colours for the paper
+METHOD_STYLE = {
+	"pretrained":      {"label": "Zero-Shot",			"color": "#3B3B3B", "ls": "dashdot",  "marker": "o"},
+	"probe":           {"label": "Linear Probe",	"color": "#222222", "ls": "dashdot",  "marker": "o"},
+	"full":            {"label": "Full FT",				"color": "#D55E00", "ls": "-",   "marker": "D"},
+	"lora":            {"label": "LoRA (r=16)",		"color": "#0072B2", "ls": "-",   "marker": "^"},
+	"lora_plus":       {"label": "LoRA+",					"color": "#56B4E9", "ls": "-",   "marker": "v"},
+	"dora":            {"label": "DoRA",					"color": "#009E73", "ls": "-",   "marker": "P"},
+	"ia3":             {"label": "IA³",						"color": "#CC79A7", "ls": "-",   "marker": "X"},
+	"vera":            {"label": "VeRA",					"color": "#F0E442", "ls": "-",   "marker": "*"},
+	"clip_adapter_v":  {"label": "CLIP-Adapter-V","color": "#332A2A", "ls": "-",   "marker": "h"},
+	"tip_adapter_f":   {"label": "Tip-Adapter-F",	"color": "#666614", "ls": "-",   "marker": "8"},
+}
 
 positive_pct_col = "#357402ff"
 negative_pct_col = "#c0003aff"
@@ -3427,3 +3440,313 @@ def plot_retrieval_metrics_per_epoch(
 	plt.savefig(fname, dpi=300, bbox_inches='tight')
 	plt.close(fig)
 
+def _parse_checkpoint_strategy(ft_path: str) -> Tuple[str, Dict]:
+		"""
+		Parse checkpoint filename to determine fine-tuning strategy and hyperparameters.
+		Returns (strategy_name, params_dict).
+
+		Checkpoint naming conventions:
+			lora_*          → strategy="lora"
+			lora_plus_*     → strategy="lora_plus"
+			dora_*          → strategy="dora"
+			vera_*          → strategy="vera"
+			ia3_*           → strategy="ia3"
+			clip_adapter_v_* / clip_adapter_t_* / clip_adapter_vt_* → strategy=that variant
+			tip_adapter_f_* → strategy="tip_adapter_f"
+			tip_adapter_*   → strategy="tip_adapter"
+			probe_*         → strategy="probe"
+			full_*          → strategy="full"
+		"""
+		fname = os.path.basename(ft_path)
+
+		# Order matters — more specific patterns before general ones
+		if fname.startswith("lora_plus"):
+				strategy = "lora_plus"
+		elif fname.startswith("lora"):
+				strategy = "lora"
+		elif fname.startswith("dora"):
+				strategy = "dora"
+		elif fname.startswith("vera"):
+				strategy = "vera"
+		elif fname.startswith("ia3"):
+				strategy = "ia3"
+		elif fname.startswith("clip_adapter_vt"):
+				strategy = "clip_adapter_vt"
+		elif fname.startswith("clip_adapter_t"):
+				strategy = "clip_adapter_t"
+		elif fname.startswith("clip_adapter_v"):
+				strategy = "clip_adapter_v"
+		elif fname.startswith("tip_adapter_f"):
+				strategy = "tip_adapter_f"
+		elif fname.startswith("tip_adapter"):
+				strategy = "tip_adapter"
+		elif fname.startswith("probe"):
+				strategy = "probe"
+		elif fname.startswith("full"):
+				strategy = "full"
+		else:
+				strategy = "unknown"
+
+		# Extract LoRA hyperparams from filename if present
+		params = {}
+		lor_match = re.search(r'lor_(\d+)', fname)
+		loa_match = re.search(r'loa_([\d.]+)', fname)
+		lod_match = re.search(r'lod_([\d.]+)', fname)
+		cbd_match = re.search(r'cbd_(\d+)', fname)
+		act_match = re.search(r'act_(\w+?)_', fname)
+
+		if lor_match:
+				params["lora_rank"]    = int(lor_match.group(1))
+		if loa_match:
+				params["lora_alpha"]   = float(loa_match.group(1))
+		if lod_match:
+				params["lora_dropout"] = float(lod_match.group(1))
+		if cbd_match:
+				params["bottleneck_dim"] = int(cbd_match.group(1))
+		if act_match:
+				params["activation"] = act_match.group(1)
+
+		return strategy, params
+
+def _load_checkpoint_into_model(
+		model: torch.nn.Module,
+		ft_path: str,
+		device: torch.device,
+		verbose: bool = False,
+) -> torch.nn.Module:
+		"""Load checkpoint weights into an already-constructed model."""
+		checkpoint = torch.load(ft_path, map_location=device)
+		state_dict = checkpoint.get('model_state_dict', checkpoint)
+
+		# Key translation for probe checkpoints (saved as bare linear layer)
+		try:
+				missing, unexpected = model.load_state_dict(state_dict, strict=False)
+				if verbose and (missing or unexpected):
+						print(f"  Missing keys : {len(missing)}")
+						print(f"  Unexpected   : {len(unexpected)}")
+		except Exception as e:
+				print(f"  [WARNING] load_state_dict failed: {e}")
+
+		return model
+
+def load_finetuned_models(
+		available_checkpoints: List[str],
+		model_architecture: str,
+		device: torch.device,
+		dataset_directory: str,
+		validation_loader: DataLoader,
+		verbose: bool = False,
+) -> Dict[str, torch.nn.Module]:
+		"""
+		Load all fine-tuned model checkpoints found in results_dir.
+		Returns dict mapping strategy_name → model.
+		"""
+		fine_tuned_models = {}
+		ft_start = time.time()
+		print(f">> Loading {len(available_checkpoints)} fine-tuned checkpoints...")
+
+		for i, ft_path in enumerate(available_checkpoints):
+				strategy, params = _parse_checkpoint_strategy(ft_path)
+				print(f"  [{i+1}/{len(available_checkpoints)}] strategy={strategy}  {os.path.basename(ft_path)}")
+
+				# Fresh base model for each checkpoint
+				base_model, _ = clip.load(
+						name=model_architecture,
+						device=device,
+						download_root=get_model_directory(path=dataset_directory),
+				)
+				base_model = base_model.float()
+				base_model.name = model_architecture
+
+				try:
+						if strategy in ("lora", "lora_plus", "dora"):
+								rank    = params.get("lora_rank", 16)
+								alpha   = params.get("lora_alpha", 1.0)
+								dropout = params.get("lora_dropout", 0.0)
+								ft_model = get_injected_peft_clip(
+										clip_model=base_model,
+										method=strategy,
+										rank=rank,
+										alpha=alpha,
+										dropout=dropout,
+										target_text_modules=[],
+										target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
+										verbose=verbose,
+								)
+
+						elif strategy in ("ia3", "vera"):
+								rank    = params.get("lora_rank", 16)
+								alpha   = params.get("lora_alpha", 1.0)
+								dropout = params.get("lora_dropout", 0.0)
+								ft_model = get_injected_peft_clip(
+										clip_model=base_model,
+										method=strategy,
+										rank=rank,
+										alpha=alpha,
+										dropout=dropout,
+										target_text_modules=[],
+										target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
+										verbose=verbose,
+								)
+
+						elif strategy in ("clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"):
+								bottleneck_dim = params.get("bottleneck_dim", 256)
+								activation     = params.get("activation", "relu")
+								ft_model = get_adapter_peft_clip(
+										clip_model=base_model,
+										method=strategy,
+										cache_dim=None,
+										bottleneck_dim=bottleneck_dim,
+										activation=activation,
+										verbose=verbose,
+								)
+
+						elif strategy in ("tip_adapter", "tip_adapter_f"):
+								# Tip-Adapter cache is not reconstructible from checkpoint alone —
+								# the cache depends on support set features extracted at training time.
+								# For inference, we load the trainable projection weights only.
+								try:
+										text_dim = base_model.encode_text(
+												clip.tokenize(["a"]).to(device)
+										).shape[-1]
+								except Exception:
+										text_dim = 768
+								ft_model = get_adapter_peft_clip(
+										clip_model=base_model,
+										method=strategy,
+										cache_dim=text_dim,
+										bottleneck_dim=None,
+										activation=None,
+										verbose=verbose,
+								)
+
+						elif strategy == "probe":
+								ft_model = get_probe_clip(
+										clip_model=base_model,
+										validation_loader=validation_loader,
+										device=device,
+										verbose=verbose,
+								)
+
+						elif strategy == "full":
+								ft_model = base_model  # weights loaded directly below
+
+						else:
+								print(f"  [SKIP] Unknown strategy '{strategy}' for {ft_path}")
+								continue
+
+						ft_model = ft_model.to(device).float()
+						ft_model.name = model_architecture
+						ft_model = _load_checkpoint_into_model(ft_model, ft_path, device, verbose)
+
+						# Use strategy as key — append index if duplicate (e.g. two lora checkpoints)
+						key = strategy
+						if key in fine_tuned_models:
+								key = f"{strategy}_{i}"
+						fine_tuned_models[key] = ft_model
+						print(f"  ✓ Loaded {key}")
+
+				except Exception as e:
+						print(f"  [ERROR] Failed to load {ft_path}: {e}")
+						continue
+
+		print(f">> {len(fine_tuned_models)} models loaded in {time.time()-ft_start:.1f}s")
+		return fine_tuned_models
+
+def plot_retrieval_curves(
+		all_results: Dict[str, Dict],   # strategy → extract_per_k_metrics() output
+		output_dir: str,
+		dataset_name: str,
+		directions: List[str] = ["i2t", "t2i"],
+		tiers: List[str] = ["overall", "head", "rare"],
+		metrics: List[str] = ["mAP", "Recall"],
+		figsize: Tuple[float, float] = (7.5, 7.0),   # single-column IEEE width
+		dpi: int = 300,
+		verbose: bool = True,
+) -> List[str]:
+		"""
+		Produce one figure per (direction × tier × metric) combination.
+		Each figure is saved as both PDF (for LaTeX) and PNG (for quick inspection).
+
+		Returns list of saved PDF paths.
+		"""
+		matplotlib.rcParams.update({
+				"font.family":      "serif",
+				"font.size":        9,
+				"axes.titlesize":   9,
+				"axes.labelsize":   9,
+				"legend.fontsize":  7,
+				"xtick.labelsize":  8,
+				"ytick.labelsize":  8,
+				"figure.dpi":       dpi,
+				"savefig.bbox":     "tight",
+				"savefig.pad_inches": 0.02,
+		})
+
+		os.makedirs(output_dir, exist_ok=True)
+		saved_paths = []
+
+		for direction in directions:
+				dir_label = "Image→Text" if direction == "i2t" else "Text→Image"
+				for tier in tiers:
+						for metric in metrics:
+								fig, ax = plt.subplots(figsize=figsize)
+
+								plotted_any = False
+								for strategy, per_k in all_results.items():
+										tier_data = per_k.get(direction, {}).get(tier, {})
+										metric_data = tier_data.get(metric, {})
+										if not metric_data:
+												continue
+
+										# Sort by K numerically
+										ks = sorted(metric_data.keys(), key=lambda x: int(x))
+										ys = [metric_data[k] for k in ks]
+										xs = [int(k) for k in ks]
+
+										style = METHOD_STYLE.get(strategy, {"label": strategy, "color": "#b3acac", "ls": ":", "marker": "."})
+										print(f"style: {style}")
+										ax.plot(
+												xs, ys,
+												label=style["label"],
+												color=style["color"],
+												linestyle=style["ls"],
+												marker=style["marker"],
+												markersize=4,
+												linewidth=1.2,
+										)
+										plotted_any = True
+
+								if not plotted_any:
+										plt.close(fig)
+										continue
+
+								tier_label = tier.capitalize()
+								metric_label = "mAP" if metric == "mAP" else "Recall"
+								ax.set_xlabel("K")
+								ax.set_ylabel(f"{metric_label}@K")
+								ax.set_title(f"{dir_label} — {tier_label} {metric_label}@K")
+								ax.legend(
+									loc="lower right", 
+									ncol=2, 
+									frameon=True,
+									shadow=True,
+									fancybox=True,
+									edgecolor='black',
+									facecolor='white',
+								)
+								ax.set_xticks(xs)
+								ax.grid(True, linestyle=":", linewidth=0.5, alpha=0.6)
+								ax.set_ylim(bottom=0)
+
+								stem = f"{dataset_name}_{direction}_{tier}_{metric.lower()}_at_k"
+								for ext in ("pdf", "png"):
+										fpath = os.path.join(output_dir, f"{stem}.{ext}")
+										fig.savefig(fpath)
+										if ext == "pdf":
+												saved_paths.append(fpath)
+												if verbose:
+														print(f"  Saved: {fpath}")
+								plt.close(fig)
+
+		return saved_paths
