@@ -3971,7 +3971,7 @@ def tip_adapter_finetune_single_label(
 	
 	return in_batch_loss_acc_metrics_all_epochs
 
-def probe_finetune_single_label(
+def probe_single_label(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
 		validation_loader: DataLoader,

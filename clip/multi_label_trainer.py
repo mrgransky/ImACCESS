@@ -1,10 +1,626 @@
 from utils import *
 from early_stopper import EarlyStopping
-from loss import compute_multilabel_contrastive_loss, LabelSmoothingBCELoss, compute_loss_masks
+from loss import compute_multilabel_contrastive_loss, compute_loss_masks
 from peft import get_injected_peft_clip, get_adapter_peft_clip
 from probe import get_probe_clip
 from evals import *
 import visualize as viz
+
+def zero_shot_multi_label(
+	model: torch.nn.Module,
+	train_loader: DataLoader,
+	validation_loader: DataLoader,
+	device: str,
+	results_dir: str,
+	num_epochs: int,
+	print_every: int,
+	learning_rate: float,
+	weight_decay: float,
+	patience: int,
+	min_delta: float,
+	cumulative_delta: float,
+	minimum_epochs: int,
+	volatility_threshold: float,
+	slope_threshold: float,
+	pairwise_imp_threshold: float,
+	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
+	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
+	temperature: float = 0.07,
+	verbose: bool = True,
+) -> Dict:
+	# dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except AttributeError:
+		dataset_name = validation_loader.dataset.dataset_name
+
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown'
+	mode = inspect.stack()[0].function
+	mode = re.sub(r'_multi_label', '', mode)
+	if verbose:
+		print(f"{mode.upper()} CLIP Evaluation: {model.__class__.__name__} {model_arch} on {dataset_name}")
+
+	# Identical pipeline to evaluate_best_model — no separate implementation
+	validation_results = get_validation_metrics(
+		model=model,
+		validation_loader=validation_loader,
+		device=device,
+		topK_values=topk_values,
+		finetune_strategy="pretrained",
+		cache_dir=results_dir,
+		verbose=verbose,
+		is_training=False,
+		model_hash=get_model_hash(model),
+		temperature=temperature,
+	)
+
+	i2t_similarity = validation_results["i2t_similarity"]
+	t2i_similarity = validation_results["t2i_similarity"]
+	device_labels   = validation_results["device_labels"]
+
+	# GET CLASS INFORMATION
+	try:
+		class_names = validation_loader.dataset.unique_labels
+	except AttributeError:
+		try:
+			class_names = validation_loader.dataset.dataset.classes
+		except:
+			class_names = train_loader.dataset.unique_labels	
+	num_classes = len(class_names)
+
+	masks = compute_loss_masks(
+		train_loader=train_loader,
+		num_classes=num_classes,
+		device=device,
+		verbose=verbose,
+	)
+	active_mask = masks["active_mask"]
+	head_mask   = masks["head_mask"]
+	rare_mask   = masks["rare_mask"]
+
+	final_tiered_i2t = compute_tiered_retrieval_metrics(
+		similarity_matrix=i2t_similarity,
+		query_labels=device_labels,
+		topK_values=topk_values,
+		head_mask=head_mask,
+		rare_mask=rare_mask,
+		active_mask=active_mask,
+		mode="Image-to-Text",
+		verbose=verbose,
+	)
+
+	final_tiered_t2i = compute_tiered_retrieval_metrics(
+		similarity_matrix=t2i_similarity,
+		query_labels=device_labels,
+		topK_values=topk_values,
+		head_mask=head_mask,
+		rare_mask=rare_mask,
+		active_mask=active_mask,
+		mode="Text-to-Image",
+		min_val_support=10,
+		verbose=verbose,
+	)
+
+	del i2t_similarity, t2i_similarity
+	torch.cuda.empty_cache()
+
+	if verbose:
+		print(f"{'='*50}")
+		print(f"\n{mode.upper()} Tiered I2T Retrieval")
+		for tier, m in final_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print(f"\n{mode.upper()} Tiered T2I Retrieval")
+		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print(f"{'='*50}")
+
+	append_retrieval_results(
+		tiered_i2t=final_tiered_i2t, 
+		tiered_t2i=final_tiered_t2i, 
+		strategy_name=mode,
+		results_dir=results_dir,
+		dataset_name=dataset_name,
+		verbose=verbose,
+	)
+
+	return {
+		"full_metrics":    validation_results["full_metrics"],
+		"img2txt_metrics": validation_results["img2txt_metrics"],
+		"txt2img_metrics": validation_results["txt2img_metrics"],
+		"tiered_i2t":      final_tiered_i2t,
+		"tiered_t2i":      final_tiered_t2i,
+	}
+
+def probe_multi_label(
+	model: torch.nn.Module,
+	train_loader,
+	validation_loader,
+	num_epochs: int,
+	print_every: int,
+	learning_rate: float,
+	weight_decay: float,
+	device: str,
+	results_dir: str,
+	patience: int = 10,
+	min_delta: float = 1e-4,
+	cumulative_delta: float = 5e-3,
+	minimum_epochs: int = 20,
+	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
+	loss_weights: Dict[str, float] = None,
+	temperature: float = 0.07,
+	volatility_threshold: float = 15.0,
+	slope_threshold: float = 1e-4,
+	pairwise_imp_threshold: float = 1e-4,
+	probe_hidden_dim: int = None,
+	probe_dropout: float = 0.1,
+	cache_features: bool = True,
+	verbose: bool = True,
+):
+	window_size = minimum_epochs + 1
+	if loss_weights is None:
+		loss_weights = {"i2t": 0.5, "t2i": 0.5}
+	early_stopping = EarlyStopping(
+		patience=patience,
+		min_delta=min_delta,
+		cumulative_delta=cumulative_delta,
+		window_size=window_size,
+		mode='min',
+		min_epochs=minimum_epochs,
+		restore_best_weights=True,
+		volatility_threshold=volatility_threshold,
+		slope_threshold=slope_threshold,
+		pairwise_imp_threshold=pairwise_imp_threshold,
+		# min_phases_before_stopping=1,
+	)
+
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except AttributeError:
+		dataset_name = validation_loader.dataset.dataset_name
+
+	try:
+		class_names = validation_loader.dataset.unique_labels
+	except AttributeError:
+		class_names = validation_loader.dataset.dataset.classes	
+	num_classes = len(class_names)
+
+	mode = inspect.stack()[0].function
+	mode = re.sub(r'_multi_label', '', mode)
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_name = model.__class__.__name__
+	print(f"{mode} | {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+	# STEP 1: FREEZE ALL CLIP PARAMETERS AND CREATE ROBUST PROBE
+	for param in model.parameters():
+		param.requires_grad = False
+	model.eval()
+	# Build probe (wraps frozen CLIP, adds trainable W)
+	probe = get_probe_clip(
+		clip_model=model,
+		validation_loader=validation_loader,
+		device=torch.device(device),
+		hidden_dim=probe_hidden_dim,  # creates MLP probe
+		dropout=probe_dropout,
+		zero_shot_init=True, # faster convergence
+		verbose=verbose,
+	)
+	masks = compute_loss_masks(
+		train_loader=train_loader,
+		num_classes=num_classes,
+		device=device,
+		verbose=verbose,
+	)
+	pos_weight  = masks["pos_weight"]
+	active_mask = masks["active_mask"]
+	head_mask   = masks["head_mask"]
+	rare_mask   = masks["rare_mask"]
+	N = masks["N"]
+	train_freq = masks["train_freq"]
+	# ── Criteria ─────────────────────────────────────────────────────────────
+	# For the probe, loss is computed directly on logits [B, C] — same shape
+	# as i2t_sim — so criterion_i2t with pos_weight applies directly.
+	# No criterion_t2i needed: the probe has no T2I direction.
+	criterion = torch.nn.BCEWithLogitsLoss(
+		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
+		reduction='none',
+	)
+	if verbose:
+		print(f"\n{criterion.__class__.__name__}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ number of samples: {N}")
+		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
+		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
+	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
+	model.eval()
+	all_class_embeds = []
+	text_batch_size = validation_loader.batch_size
+	print(f"\n>> Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	with torch.no_grad():
+		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding"):
+				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
+				embeds = model.encode_text(batch_tokens)
+				embeds = torch.nn.functional.normalize(embeds, dim=-1)
+				all_class_embeds.append(embeds.cpu())
+				del batch_tokens, embeds
+	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
+	if verbose:
+		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+	# Optimizer setup
+	optimizer = torch.optim.AdamW(
+		params=probe.probe.parameters(),
+		lr=learning_rate,
+		betas=(0.9, 0.98),
+		eps=1e-6,
+		weight_decay=weight_decay,
+	)
+	# estimated_epochs = min(num_epochs, 15)
+	# total_training_steps = estimated_epochs * len(train_loader)
+	# T_max = total_training_steps
+	T_max = num_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2 # 1% of initial LR
+	eta_min = learning_rate * ANNEALING_RATIO
+	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+		optimizer=optimizer,
+		T_max=T_max,
+		eta_min=eta_min,
+		last_epoch=-1,
+	)
+	if verbose:
+		print(f"\n{scheduler.__class__.__name__}")
+		print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
+	scaler = torch.amp.GradScaler(
+		device=device,
+		init_scale=2**16,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
+	)
+	if verbose:
+		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+	mdl_fpth = os.path.join(
+			results_dir,
+			f"{mode}_"
+			f"{model_arch}_"
+			f"{optimizer.__class__.__name__}_"
+			f"{scheduler.__class__.__name__}_"
+			f"probe_{probe.probe_type}_"
+			f"ieps_{num_epochs}_"
+			f"lr_{learning_rate:.1e}_"
+			f"wd_{weight_decay:.1e}_"
+			f"temp_{temperature}_"
+			f"bs_{train_loader.batch_size}_"
+			f"mep_{minimum_epochs}_"
+			f"pat_{patience}_"
+			f"mdt_{min_delta:.1e}_"
+			f"cdt_{cumulative_delta:.1e}_"
+			f"vt_{volatility_threshold}_"
+			f"st_{slope_threshold:.1e}_"
+			f"pit_{pairwise_imp_threshold:.1e}"
+			f".pth"
+	)
+	# ── Feature caching ───────────────────────────────────────────────────────
+	# wrap feature extraction in torch.no_grad() to avoid building
+	# a computation graph for 74K images — CLIP is frozen, gradients useless.
+	if cache_features:
+		print("Pre-extracting image features (CLIP frozen — runs once)...")
+		model.eval()
+		def extract_features(loader, desc):
+			feats, lbls = [], []
+			with torch.no_grad():
+					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+							for images, _, label_vectors in tqdm(loader, desc=desc):
+									images = images.to(device, non_blocking=True)
+									emb = model.encode_image(images)
+									emb = torch.nn.functional.normalize(emb, dim=-1)
+									feats.append(emb.cpu())
+									lbls.append(label_vectors.cpu())
+			return torch.cat(feats, dim=0), torch.cat(lbls, dim=0)
+		
+		train_feats, train_lbls = extract_features(train_loader, "Train features")
+		val_feats, val_lbls = extract_features(validation_loader, "Val features")
+		print(f"Cached — train: {train_feats.shape}, val: {val_feats.shape}")
+		
+		from torch.utils.data import TensorDataset
+		train_feature_loader = DataLoader(
+				TensorDataset(train_feats, train_lbls),
+				batch_size=train_loader.batch_size,
+				shuffle=True,
+				num_workers=0,
+		)
+		val_feature_loader = DataLoader(
+				TensorDataset(val_feats, val_lbls),
+				batch_size=validation_loader.batch_size,
+				shuffle=False,
+				num_workers=0,
+		)
+	training_losses = list()
+	training_losses_breakdown = {"total": []}
+	img2txt_metrics_all_epochs = list()
+	txt2img_metrics_all_epochs = list()
+	full_val_loss_acc_metrics_all_epochs = list()
+	learning_rates_history = list()
+	weight_decays_history = list()
+	train_start_time = time.time()
+	for epoch in range(num_epochs):
+		train_and_val_st_time = time.time()
+		torch.cuda.empty_cache()
+		probe.probe.train()  # only the linear head
+		model.eval() # CLIP stays frozen, no gradients
+		print(f"Epoch [{epoch + 1}/{num_epochs}]")
+		
+		epoch_loss = 0.0
+		num_batches = 0
+		
+		# Choose data source
+		data_iter = train_feature_loader if cache_features else train_loader
+		
+		for bidx, batch_data in enumerate(data_iter):
+			if cache_features:
+				# Using cached features
+				image_embeds, label_vectors = batch_data
+				image_embeds = image_embeds.to(device, non_blocking=True)
+				label_vectors = label_vectors.to(device, non_blocking=True).float()
+			else:
+				images, _, label_vectors = batch_data
+				images = images.to(device, non_blocking=True)
+				label_vectors = label_vectors.to(device, non_blocking=True).float()
+				
+				# Extract image embeddings (frozen)
+				with torch.no_grad():
+					image_embeds = model.encode_image(images)
+					image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
+			
+			optimizer.zero_grad(set_to_none=True)
+			
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				# Linear probe forward (multi-label logits)
+				logits = probe.probe(image_embeds)   
+				
+				# Apply pos_weight BCE, mask zero-count classes
+				loss_raw = criterion(logits, label_vectors)  # [B, C], reduction='none'
+				loss = loss_raw[:, active_mask].mean()
+											
+			# Check for NaN loss
+			if torch.isnan(loss):
+				print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
+				continue
+			
+			scaler.scale(loss).backward()
+			scaler.unscale_(optimizer)
+			torch.nn.utils.clip_grad_norm_(probe.probe.parameters(), max_norm=1.0)
+			scaler.step(optimizer)
+			scaler.update()
+			scheduler.step()
+			
+			# Track losses
+			epoch_loss  += loss.item()
+			num_batches += 1
+			
+			if bidx % print_every == 0 or bidx + 1 == len(data_iter):
+				print(f"\t\tBatch [{bidx+1:04d}/{len(data_iter)}] Loss: {loss.item():.6f}")
+		
+		# Calculate average losses
+		avg_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
+		training_losses.append(avg_loss)
+		training_losses_breakdown["total"].append(avg_loss)
+		learning_rates_history.append([g['lr'] for g in optimizer.param_groups])
+		weight_decays_history.append([g['weight_decay'] for g in optimizer.param_groups])
+		print(f">> Validating Epoch {epoch+1} ...")
+		
+		probe.probe.eval()
+		val_loss = 0.0
+		val_preds_list, val_labels_list = list(), list()
+		
+		with torch.no_grad():
+			val_iter = val_feature_loader if cache_features else validation_loader
+			
+			for batch_data in val_iter:
+				if cache_features:
+					image_embeds, label_vectors = batch_data
+					image_embeds = image_embeds.to(device, non_blocking=True)
+					label_vectors = label_vectors.to(device, non_blocking=True).float()
+				else:
+					images, _, label_vectors = batch_data										
+					images = images.to(device, non_blocking=True)
+					label_vectors = label_vectors.to(device, non_blocking=True).float()
+					
+					# Extract features
+					image_embeds = model.encode_image(images)
+					image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
+				
+				# Get predictions from probe
+				logits = probe.probe(image_embeds)
+				loss_raw = criterion(logits, label_vectors)
+				val_loss += loss_raw[:, active_mask].mean().item()
+				val_preds_list.append((torch.sigmoid(logits) > 0.5).float().cpu())
+				val_labels_list.append(label_vectors.cpu())
+		
+		avg_val_loss = val_loss / len(val_iter)
+		
+		# Calculate multi-label metrics
+		val_preds = torch.cat(val_preds_list, dim=0)
+		val_labels = torch.cat(val_labels_list, dim=0)
+		
+		hamming = hamming_loss(val_labels.numpy(), val_preds.numpy())
+		f1 = f1_score(val_labels.numpy(), val_preds.numpy(), average='weighted', zero_division=0)
+		exact_match = (val_preds == val_labels).all(dim=1).float().mean().item()
+		partial_match = (val_preds == val_labels).float().mean().item()
+		epoch_metrics = {
+			"val_loss":       avg_val_loss,
+			"hamming_loss":   hamming,
+			"f1_score":       f1,
+			"exact_match_acc": exact_match,
+			"partial_acc":    partial_match,
+		}
+		full_val_loss_acc_metrics_all_epochs.append(epoch_metrics)
+		if cache_features:
+			sample_feats = train_feats[:512].to(device)        # [512, 768] image features
+			# Get true class indices for these 512 samples from the loader
+			# For each sample, average the W rows corresponding to its true labels
+			sample_labels = train_lbls[:512].to(device)  # [512, C] multi-hot
+			
+			W = torch.nn.functional.normalize(probe.probe.weight, dim=-1)        # [C, 768]
+			
+			matched_class_vecs = torch.zeros(512, W.shape[1], device=device)
+			for i in range(512):
+					pos_idx = sample_labels[i].nonzero(as_tuple=True)[0]
+					if pos_idx.numel() > 0:
+							matched_class_vecs[i] = W[pos_idx].mean(dim=0)
+			
+			matched_class_vecs = torch.nn.functional.normalize(matched_class_vecs, dim=-1)
+			sample_feats_norm = torch.nn.functional.normalize(sample_feats, dim=-1)
+			cos_sim = torch.nn.functional.cosine_similarity(sample_feats_norm, matched_class_vecs, dim=1).mean().item()
+		else:
+			cos_sim = 0.0
+		print(
+			f"\nEpoch {epoch+1}:\n"
+			f"  Loss — Train: {avg_loss:.8f}  Val: {avg_val_loss:.8f}\n"
+			f"  Hamming: {hamming:.4f}  F1: {f1:.4f}\n"
+			f"  ExactMatch: {exact_match}  PartialAcc: {partial_match:.4f}\n"
+			f"  LR: {scheduler.get_last_lr()[0]}\n"
+			f"  CosSim: {cos_sim:.4f}"
+		)
+		if early_stopping.should_stop(
+			current_value=avg_val_loss,
+			model=probe.probe, # save only probe weights, not full CLIP
+			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
+		):
+			print(
+				f"\nEarly stopping at epoch {epoch+1} | "
+				f"best loss: {early_stopping.get_best_score():.6f} "
+				f"@ epoch {early_stopping.get_best_epoch()+1}"
+			)
+			break
+		print(f"[TOTAL ELAPSED TIME (Train + Validation)] Epoch {epoch+1:<20}{time.time() - train_and_val_st_time:.2f} sec")
+	
+	print(f"[{mode}] Total Time: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+	# Load best probe weights
+	if os.path.exists(mdl_fpth):
+		print(f"Loading best probe weights from {mdl_fpth}")
+		checkpoint = torch.load(mdl_fpth, map_location=device)
+		state_dict = checkpoint.get('model_state_dict', checkpoint)
+		probe.probe.load_state_dict(state_dict, strict=False)
+	elif early_stopping.best_weights is not None:
+		print(f"Loading best weights from early stopping (epoch {early_stopping.best_epoch+1})")
+		probe.probe.load_state_dict(
+			{k: v.to(device) for k, v in early_stopping.best_weights.items()}
+		)
+	else:
+		print("Warning: No best weights found - using final weights")
+	# ── Final evaluation via evaluate_best_model ─────────────────────────────
+	# pass probe (not model) — probe.encode_image and probe.encode_text
+	# delegate to frozen CLIP, so get_validation_metrics works correctly.
+	# The probe's W matrix is now the fine-tuned one; similarity is computed
+	# as probe.encode_image(img) @ probe.encode_text(class).T, which is
+	# equivalent to image_embed @ W.T since W was initialised from text embeds.
+	evaluation_results = evaluate_best_model(
+		model=probe, # not model — probe wraps model with trained W
+		validation_loader=validation_loader,
+		active_mask=active_mask,
+		head_mask=head_mask,
+		rare_mask=rare_mask,
+		early_stopping=early_stopping,
+		checkpoint_path=mdl_fpth,
+		finetune_strategy=mode,
+		device=device,
+		cache_dir=results_dir,
+		topk_values=topk_values,
+		temperature=temperature,
+		class_embeds_override=probe.probe.weight.detach().clone(),
+		verbose=verbose,
+	)
+	final_metrics_full    = evaluation_results["full_metrics"]
+	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
+	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
+	final_tiered_i2t      = evaluation_results["tiered_i2t"]
+	final_tiered_t2i      = evaluation_results["tiered_t2i"]
+	model_source          = evaluation_results["model_loaded_from"]
+
+	# Update model path
+	actual_trained_epochs = len(training_losses)
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth, 
+		actual_epochs=actual_trained_epochs
+	)
+	print(f"Best model will be renamed to: {mdl_fpth}")
+
+	if verbose:
+		print(f"{'='*50}")
+		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"  Model: {model_arch}")
+		print(f"  {probe.probe_type} | Params: {sum(p.numel() for p in probe.probe.parameters())}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  Epochs trained: {actual_trained_epochs}")
+		print(f"  Best val loss: {early_stopping.get_best_score()}")
+		print("\n>> Tiered I2T Retrieval")
+		for tier, m in final_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n>> Tiered T2I Retrieval")
+		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print(f"{'='*50}")
+
+	append_retrieval_results(
+		tiered_i2t=final_tiered_i2t, 
+		tiered_t2i=final_tiered_t2i, 
+		strategy_name=mode,
+		results_dir=results_dir,
+		dataset_name=dataset_name,
+		verbose=verbose,
+	)
+
+	# Generate plots
+	file_base_name = (
+		f"{dataset_name}_"
+		f"{mode}_"
+		f"{CLUSTER}_"
+		f"{model_name}_"
+		f"{model_arch}_"
+		f"ep_{actual_trained_epochs}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"temp_{temperature}_"
+		f"bs_{train_loader.batch_size}"
+	)
+	
+	# Plotting
+	plot_paths = {
+			"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+			"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
+			"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+			"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+			"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+			"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+			"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+			"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+	}
+	viz.plot_multilabel_loss_breakdown(
+			training_losses_breakdown=training_losses_breakdown,
+			filepath=plot_paths["losses_breakdown"]
+	)
+	viz.plot_retrieval_metrics_per_epoch(
+			dataset_name=dataset_name,
+			image_to_text_metrics_list=img2txt_metrics_all_epochs,
+			text_to_image_metrics_list=txt2img_metrics_all_epochs,
+			fname=plot_paths["retrieval_per_epoch"],
+	)
+	viz.plot_retrieval_metrics_best_model(
+			dataset_name=dataset_name,
+			image_to_text_metrics=final_img2txt_metrics,
+			text_to_image_metrics=final_txt2img_metrics,
+			fname=plot_paths["retrieval_best"],
+	)
+	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
 def full_finetune_multi_label(
 	model: torch.nn.Module,
@@ -28,7 +644,6 @@ def full_finetune_multi_label(
 	temperature: float = 0.07,  # Temperature for contrastive learning
 	verbose: bool=True,
 ):
-
 	window_size = minimum_epochs + 1
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_finetune_multi_label', '', mode)
@@ -203,11 +818,6 @@ def full_finetune_multi_label(
 		results_dir,
 		f"{mode}_"
 		f"{model_arch}_"
-		f"{optimizer.__class__.__name__}_"
-		f"{scheduler.__class__.__name__}_"
-		f"{criterion_i2t.__class__.__name__}_"
-		f"{criterion_t2i.__class__.__name__}_"
-		f"{scaler.__class__.__name__}_"
 		f"ieps_{num_epochs}_"
 		f"do_{dropout_val}_"
 		f"lr_{learning_rate:.1e}_"
@@ -228,10 +838,8 @@ def full_finetune_multi_label(
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
-	in_batch_loss_acc_metrics_all_epochs = list()
 	full_val_loss_acc_metrics_all_epochs = list()
 	train_start_time = time.time()
-	best_val_loss = float('inf')
 	final_img2txt_metrics = None
 	final_txt2img_metrics = None
 
@@ -375,9 +983,6 @@ def full_finetune_multi_label(
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 			print()
 
-
-
-
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
@@ -401,9 +1006,9 @@ def full_finetune_multi_label(
 				f"with best loss: {early_stopping.get_best_score()} "
 				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
 			break
-		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f}s".center(150, "="))
+		print(f"Epoch {epoch+1} Elapsed Time (Train + Validation): {time.time() - train_and_val_st_time:.2f}s")
 
-	print(f"[{mode}] Total Training  Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+	print(f"[{mode}] Total Training  Elapsed Time: {time.time() - train_start_time:.1f} sec")
 
 	# FINAL EVALUATION
 	evaluation_results = evaluate_best_model(
@@ -417,11 +1022,16 @@ def full_finetune_multi_label(
 		finetune_strategy=mode,
 		device=device,
 		cache_dir=results_dir,
+		lora_params=None,
 		topk_values=topk_values,
+		temperature=temperature,
 		verbose=verbose,
 	)
-	print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
-	print()
+	if verbose:
+		print(f"{'='*50}")
+		print(f"Full evaluation results:")
+		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
+		print(f"{'='*50}")
 
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
@@ -430,32 +1040,47 @@ def full_finetune_multi_label(
 	final_tiered_t2i        = evaluation_results["tiered_t2i"]
 	model_source = evaluation_results["model_loaded_from"]
 
+	actual_trained_epochs = len(training_losses)
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth, 
+		actual_epochs=actual_trained_epochs
+	)
+
 	if verbose:
-		print(f"\nFinal evaluation from: {model_source}")
+		print(f"{'='*50}")
+		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"  Model: {model_arch}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  Epochs trained: {actual_trained_epochs}")
+		print(f"  Best val loss: {early_stopping.get_best_score()}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n>> Tiered T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print(f"{'='*50}")
 
-		print(f"Final evaluation used model weights from: {model_source}")
-		print("--- Final Metrics [Full Validation Set] ---")
+		print("\nFull Validation Set")
 		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-		print("--- Image-to-Text Retrieval ---")
+
+		print("\nImage-to-Text Retrieval")
 		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-		print("--- Text-to-Image Retrieval ---")
+
+		print("\nText-to-Image Retrieval")
 		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+		print(f"\nBest model: {mdl_fpth}")
 
-
-	actual_trained_epochs = len(training_losses)
-	mdl_fpth = get_updated_model_name(
-		original_path=mdl_fpth, 
-		actual_epochs=actual_trained_epochs
+	append_retrieval_results(
+		tiered_i2t=final_tiered_i2t, 
+		tiered_t2i=final_tiered_t2i, 
+		strategy_name=mode,
+		results_dir=results_dir,
+		dataset_name=dataset_name,
+		verbose=verbose,
 	)
-	print(f"Best model will be renamed to: {mdl_fpth}")
 
-	print(f"\nGenerating result plots: model weights from: {model_source}")
+	# Generate plots
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
@@ -475,8 +1100,6 @@ def full_finetune_multi_label(
 		f"do_{dropout_val}"
 	)
 	
-
-	# PLOTTING: Enhanced for multi-label
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
 		"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
@@ -492,12 +1115,14 @@ def full_finetune_multi_label(
 		training_losses_breakdown=training_losses_breakdown,
 		filepath=plot_paths["losses_breakdown"]
 	)
+	
 	viz.plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
 		image_to_text_metrics_list=img2txt_metrics_all_epochs,
 		text_to_image_metrics_list=txt2img_metrics_all_epochs,
 		fname=plot_paths["retrieval_per_epoch"],
 	)
+	
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=final_img2txt_metrics,
@@ -534,423 +1159,425 @@ def lora_finetune_multi_label(
 	quantized: bool = False,
 	verbose: bool = True,
 ):
-		window_size = minimum_epochs + 1
-		if loss_weights is None:
-				loss_weights = {"i2t": 0.5, "t2i": 0.5}
-
-		# ── Dropout check ────────────────────────────────────────────────────────
-		non_zero_dropouts = [
-				(name, module.p)
-				for name, module in model.named_modules()
-				if isinstance(module, torch.nn.Dropout) and module.p > 0
-		]
-		if non_zero_dropouts:
-				dropout_info = ", ".join([f"{n}: p={p}" for n, p in non_zero_dropouts])
-				assert False, (
-						f"Non-zero dropout in base model during LoRA: {dropout_info}\n"
-						"Set dropout=0.0 in clip.load() before LoRA injection."
-				)
-
-		mode = re.sub(r'_finetune_multi_label', '', inspect.stack()[0].function)
-		model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
-		model_name = model.__class__.__name__
-
-		try:
-			dataset_name = validation_loader.dataset.dataset.__class__.__name__
-		except AttributeError:
-			dataset_name = validation_loader.dataset.dataset_name
-
-		try:
-			class_names = validation_loader.dataset.unique_labels
-		except AttributeError:
-			class_names = validation_loader.dataset.dataset.classes
-		num_classes = len(class_names)
-
-		print(
-			f"{mode} | r={lora_rank} | α={lora_alpha} | drop={lora_dropout} | "
-			f"{model_name} {model_arch} {dataset_name} bs={train_loader.batch_size} {device}"
-		)
-		if torch.cuda.is_available():
-			gpu_name = torch.cuda.get_device_name(device)
-			total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
-
-		# ── LoRA injection — vision encoder only ─────────────────────────────────
-		# Text encoder stays frozen and un-injected, consistent with full fine-tuning.
-		# all_class_embeds pre-computed from frozen text encoder remains valid.
-		model = get_injected_peft_clip(
-			clip_model=model,
-			method=mode,
-			rank=lora_rank,
-			alpha=lora_alpha,
-			dropout=lora_dropout,
-			target_text_modules=[], # no LoRA in text encoder
-			target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
-			quantization_bits=quantization_bits,
-			quantized=quantized,
-			verbose=verbose,
-		)
-		model.to(device)
-		get_parameters_info(model=model, mode=mode)
-
-		masks = compute_loss_masks(
-			train_loader=train_loader,
-			num_classes=num_classes,
+	window_size = minimum_epochs + 1
+	if loss_weights is None:
+			loss_weights = {"i2t": 0.5, "t2i": 0.5}
+	# ── Dropout check ────────────────────────────────────────────────────────
+	non_zero_dropouts = [
+			(name, module.p)
+			for name, module in model.named_modules()
+			if isinstance(module, torch.nn.Dropout) and module.p > 0
+	]
+	if non_zero_dropouts:
+			dropout_info = ", ".join([f"{n}: p={p}" for n, p in non_zero_dropouts])
+			assert False, (
+					f"Non-zero dropout in base model during LoRA: {dropout_info}\n"
+					"Set dropout=0.0 in clip.load() before LoRA injection."
+			)
+	mode = re.sub(r'_finetune_multi_label', '', inspect.stack()[0].function)
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_name = model.__class__.__name__
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except AttributeError:
+		dataset_name = validation_loader.dataset.dataset_name
+	try:
+		class_names = validation_loader.dataset.unique_labels
+	except AttributeError:
+		class_names = validation_loader.dataset.dataset.classes
+	num_classes = len(class_names)
+	print(
+		f"{mode} | r={lora_rank} | α={lora_alpha} | drop={lora_dropout} | "
+		f"{model_name} {model_arch} {dataset_name} bs={train_loader.batch_size} {device}"
+	)
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+	# ── LoRA injection — vision encoder only ─────────────────────────────────
+	# Text encoder stays frozen and un-injected, consistent with full fine-tuning.
+	# all_class_embeds pre-computed from frozen text encoder remains valid.
+	model = get_injected_peft_clip(
+		clip_model=model,
+		method=mode,
+		rank=lora_rank,
+		alpha=lora_alpha,
+		dropout=lora_dropout,
+		target_text_modules=[], # no LoRA in text encoder
+		target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
+		quantization_bits=quantization_bits,
+		quantized=quantized,
+		verbose=verbose,
+	)
+	model.to(device)
+	get_parameters_info(model=model, mode=mode)
+	masks = compute_loss_masks(
+		train_loader=train_loader,
+		num_classes=num_classes,
+		device=device,
+		verbose=verbose,
+	)
+	pos_weight  = masks["pos_weight"]
+	active_mask = masks["active_mask"]
+	head_mask   = masks["head_mask"]
+	rare_mask   = masks["rare_mask"]
+	N = masks["N"]
+	train_freq = masks["train_freq"]
+	# ── Criteria ─────────────────────────────────────────────────────────────
+	# I2T: pos_weight applies — rows are images, cols are classes
+	criterion_i2t = torch.nn.BCEWithLogitsLoss(
+		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
+		reduction='none',
+	)
+	if verbose:
+		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ number of samples: {N}")
+		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
+		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
+	# T2I: no pos_weight — rows are classes, cols are batch images
+	# The imbalance is already corrected via I2T; T2I provides directional symmetry
+	criterion_t2i = torch.nn.BCEWithLogitsLoss(
+		reduction='none',
+	)
+	if verbose:
+		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
+		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
+	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
+	model.eval()
+	all_class_embeds = []
+	text_batch_size = validation_loader.batch_size
+	print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	with torch.no_grad():
+		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding"):
+				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
+				embeds = model.encode_text(batch_tokens)
+				embeds = torch.nn.functional.normalize(embeds, dim=-1)
+				all_class_embeds.append(embeds.cpu())
+				del batch_tokens, embeds
+	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
+	print(f"all_class_embeds: {all_class_embeds.shape} — fixed for entire training run")
+	# ── Early stopping ────────────────────────────────────────────────────────
+	early_stopping = EarlyStopping(
+			patience=patience,
+			min_delta=min_delta,
+			cumulative_delta=cumulative_delta,
+			window_size=window_size,
+			mode='min',
+			min_epochs=minimum_epochs,
+			restore_best_weights=True,
+			volatility_threshold=volatility_threshold,
+			slope_threshold=slope_threshold,
+			pairwise_imp_threshold=pairwise_imp_threshold,
+	)
+	# ── Optimizer — LoRA parameters only ─────────────────────────────────────
+	lora_params = [p for p in model.parameters() if p.requires_grad]
+	print(f"LoRA trainable parameters: {sum(p.numel() for p in lora_params):,}")
+	optimizer = torch.optim.AdamW(
+		params=lora_params,
+		lr=learning_rate,
+		betas=(0.9, 0.98),
+		eps=1e-6,
+		weight_decay=weight_decay,
+	)
+	# ── Scheduler — full requested duration ──────────────────────────────────
+	total_training_steps = num_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2
+	eta_min = learning_rate * ANNEALING_RATIO
+	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+			optimizer=optimizer,
+			T_max=total_training_steps,
+			eta_min=eta_min,
+			last_epoch=-1,
+	)
+	print(f"CosineAnnealingLR | T_max={total_training_steps} ({num_epochs} epochs × {len(train_loader)} batches) | eta_min={eta_min:.2e}")
+	scaler = torch.amp.GradScaler(
 			device=device,
-			verbose=verbose,
-		)
-		pos_weight  = masks["pos_weight"]
-		active_mask = masks["active_mask"]
-		head_mask   = masks["head_mask"]
-		rare_mask   = masks["rare_mask"]
-		N = masks["N"]
-		train_freq = masks["train_freq"]
-
-		# ── Criteria ─────────────────────────────────────────────────────────────
-		# I2T: pos_weight applies — rows are images, cols are classes
-		criterion_i2t = torch.nn.BCEWithLogitsLoss(
-			pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
-			reduction='none',
-		)
-
-		if verbose:
-			print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-			print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-			print(f"   ├─ number of samples: {N}")
-			print(f"   ├─ number of classes: {num_classes}")
-			print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
-			print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
-			print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
-
-		# T2I: no pos_weight — rows are classes, cols are batch images
-		# The imbalance is already corrected via I2T; T2I provides directional symmetry
-		criterion_t2i = torch.nn.BCEWithLogitsLoss(
-			reduction='none',
-		)
-
-		if verbose:
-			print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
-			print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
-
-
-
-
-		# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
-		model.eval()
-		all_class_embeds = []
-		text_batch_size = validation_loader.batch_size
-		print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
-		with torch.no_grad():
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-				for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding"):
-					batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
-					embeds = model.encode_text(batch_tokens)
-					embeds = torch.nn.functional.normalize(embeds, dim=-1)
-					all_class_embeds.append(embeds.cpu())
-					del batch_tokens, embeds
-		all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
-		print(f"all_class_embeds: {all_class_embeds.shape} — fixed for entire training run")
-
-		# ── Early stopping ────────────────────────────────────────────────────────
-		early_stopping = EarlyStopping(
-				patience=patience,
-				min_delta=min_delta,
-				cumulative_delta=cumulative_delta,
-				window_size=window_size,
-				mode='min',
-				min_epochs=minimum_epochs,
-				restore_best_weights=True,
-				volatility_threshold=volatility_threshold,
-				slope_threshold=slope_threshold,
-				pairwise_imp_threshold=pairwise_imp_threshold,
-		)
-
-		# ── Optimizer — LoRA parameters only ─────────────────────────────────────
-		lora_params = [p for p in model.parameters() if p.requires_grad]
-		print(f"LoRA trainable parameters: {sum(p.numel() for p in lora_params):,}")
-
-		optimizer = torch.optim.AdamW(
-			params=lora_params,
-			lr=learning_rate,
-			betas=(0.9, 0.98),
-			eps=1e-6,
-			weight_decay=weight_decay,
-		)
-
-		# ── Scheduler — full requested duration ──────────────────────────────────
-		total_training_steps = num_epochs * len(train_loader)
-		ANNEALING_RATIO = 1e-2
-		eta_min = learning_rate * ANNEALING_RATIO
-		scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-				optimizer=optimizer,
-				T_max=total_training_steps,
-				eta_min=eta_min,
-				last_epoch=-1,
-		)
-		print(f"CosineAnnealingLR | T_max={total_training_steps} ({num_epochs} epochs × {len(train_loader)} batches) | eta_min={eta_min:.2e}")
-
-		scaler = torch.amp.GradScaler(
-				device=device,
-				init_scale=2**16,
-				growth_factor=2.0,
-				backoff_factor=0.5,
-				growth_interval=2000,
-		)
-
-		# ── Checkpoint path ───────────────────────────────────────────────────────
-		dropout_val = lora_dropout
-		mdl_fpth = os.path.join(
-				results_dir,
-				f"{mode}_{model_arch}_{optimizer.__class__.__name__}_"
-				f"{scheduler.__class__.__name__}_BCEWithLogitsLoss_"
-				f"{scaler.__class__.__name__}_"
-				f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
-				f"lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}_"
-				f"temp_{temperature}_bs_{train_loader.batch_size}_"
-				f"mep_{minimum_epochs}_pat_{patience}_"
-				f"mdt_{min_delta:.1e}_cdt_{cumulative_delta:.1e}_"
-				f"vt_{volatility_threshold}_st_{slope_threshold:.1e}_"
-				f"pit_{pairwise_imp_threshold:.1e}.pth"
-		)
-
-		# ── Training state ────────────────────────────────────────────────────────
-		training_losses = []
-		training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
-		img2txt_metrics_all_epochs = []
-		txt2img_metrics_all_epochs = []
-		full_val_loss_acc_metrics_all_epochs = []
-		train_start_time = time.time()
-
-		# ── Training loop ─────────────────────────────────────────────────────────
-		for epoch in range(num_epochs):
-				train_and_val_st = time.time()
-				torch.cuda.empty_cache()
-				model.train()
-				print(f"Epoch [{epoch+1}/{num_epochs}]")
-
-				epoch_loss_total = epoch_loss_i2t = epoch_loss_t2i = 0.0
-				num_batches = 0
-
-				for bidx, batch_data in enumerate(train_loader):
-						if len(batch_data) != 3:
-							raise ValueError(f"Expected 3 items from DataLoader, got {len(batch_data)}")
-						images, _, label_vectors = batch_data
-
-						batch_size = images.size(0)
-						images = images.to(device, non_blocking=True)
-						label_vectors = label_vectors.to(device, non_blocking=True).float()
-
-						if label_vectors.shape != (batch_size, num_classes):
-							raise ValueError(f"Label vectors shape {label_vectors.shape} != expected ({batch_size}, {num_classes})")
-
-						optimizer.zero_grad(set_to_none=True)
-
-						with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-								total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
-										model=model,
-										images=images,
-										all_class_embeds=all_class_embeds,
-										label_vectors=label_vectors,
-										criterion_i2t=criterion_i2t,
-										criterion_t2i=criterion_t2i,
-										active_mask=active_mask,
-										temperature=temperature,
-										loss_weights=loss_weights,
-										verbose=verbose,
-								)
-
-						if torch.isnan(total_loss):
-							print(f"Warning: NaN loss at epoch {epoch+1}, batch {bidx+1}. Skipping.")
-							continue
-
-						scaler.scale(total_loss).backward()
-						scaler.unscale_(optimizer)
-						torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-						scaler.step(optimizer)
-						scaler.update()
-						scheduler.step()
-
-						epoch_loss_total += total_loss.item()
-						epoch_loss_i2t   += loss_i2t.item()
-						epoch_loss_t2i   += loss_t2i.item()
-						num_batches += 1
-
-						if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-							print(
-								f"\t\tBatch [{bidx+1:04d}/{len(train_loader)}] "
-								f"Total: {total_loss.item():.6f} "
-								f"(I2T: {loss_i2t.item():.6f}, T2I: {loss_t2i.item():.6f})"
+			init_scale=2**16,
+			growth_factor=2.0,
+			backoff_factor=0.5,
+			growth_interval=2000,
+	)
+	# ── Checkpoint path ───────────────────────────────────────────────────────
+	dropout_val = lora_dropout
+	mdl_fpth = os.path.join(
+			results_dir,
+			f"{mode}_{model_arch}_{optimizer.__class__.__name__}_"
+			f"{scheduler.__class__.__name__}_BCEWithLogitsLoss_"
+			f"{scaler.__class__.__name__}_"
+			f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
+			f"lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}_"
+			f"temp_{temperature}_bs_{train_loader.batch_size}_"
+			f"mep_{minimum_epochs}_pat_{patience}_"
+			f"mdt_{min_delta:.1e}_cdt_{cumulative_delta:.1e}_"
+			f"vt_{volatility_threshold}_st_{slope_threshold:.1e}_"
+			f"pit_{pairwise_imp_threshold:.1e}.pth"
+	)
+	# ── Training state ────────────────────────────────────────────────────────
+	training_losses = []
+	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
+	img2txt_metrics_all_epochs = []
+	txt2img_metrics_all_epochs = []
+	full_val_loss_acc_metrics_all_epochs = []
+	learning_rates_history = []
+	weight_decays_history = []
+	train_start_time = time.time()
+	# ── Training loop ─────────────────────────────────────────────────────────
+	for epoch in range(num_epochs):
+			train_and_val_st = time.time()
+			torch.cuda.empty_cache()
+			model.train()
+			print(f"Epoch [{epoch+1}/{num_epochs}]")
+			epoch_loss_total = epoch_loss_i2t = epoch_loss_t2i = 0.0
+			num_batches = 0
+			for bidx, batch_data in enumerate(train_loader):
+					if len(batch_data) != 3:
+						raise ValueError(f"Expected 3 items from DataLoader, got {len(batch_data)}")
+					images, _, label_vectors = batch_data
+					batch_size = images.size(0)
+					images = images.to(device, non_blocking=True)
+					label_vectors = label_vectors.to(device, non_blocking=True).float()
+					if label_vectors.shape != (batch_size, num_classes):
+						raise ValueError(f"Label vectors shape {label_vectors.shape} != expected ({batch_size}, {num_classes})")
+					optimizer.zero_grad(set_to_none=True)
+					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+							total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
+									model=model,
+									images=images,
+									all_class_embeds=all_class_embeds,
+									label_vectors=label_vectors,
+									criterion_i2t=criterion_i2t,
+									criterion_t2i=criterion_t2i,
+									active_mask=active_mask,
+									temperature=temperature,
+									loss_weights=loss_weights,
+									verbose=verbose,
 							)
-
-				avg_total = epoch_loss_total / num_batches if num_batches > 0 else 0.0
-				avg_i2t   = epoch_loss_i2t   / num_batches if num_batches > 0 else 0.0
-				avg_t2i   = epoch_loss_t2i   / num_batches if num_batches > 0 else 0.0
-				training_losses.append(avg_total)
-				training_losses_breakdown["total"].append(avg_total)
-				training_losses_breakdown["i2t"].append(avg_i2t)
-				training_losses_breakdown["t2i"].append(avg_t2i)
-
-				# ── Validation ────────────────────────────────────────────────────────
-				print(f">> Validating Epoch {epoch+1}...")
-				current_val_loss = compute_multilabel_validation_loss(
-					model=model,
-					validation_loader=validation_loader,
-					criterion_i2t=criterion_i2t,
-					criterion_t2i=criterion_t2i,
-					active_mask=active_mask,
-					device=device,
-					all_class_embeds=all_class_embeds,
-					temperature=temperature,
-				)
-
-				validation_results = get_validation_metrics(
-					model=model,
-					validation_loader=validation_loader,
-					device=device,
-					topK_values=topk_values,
-					finetune_strategy=mode,
-					cache_dir=results_dir,
-					verbose=verbose,
-					lora_params={
-						"lora_rank": lora_rank,
-						"lora_alpha": lora_alpha,
-						"lora_dropout": lora_dropout,
-					},
-					is_training=True,
-					model_hash=get_model_hash(model),
-					temperature=temperature,
-				)
-
-				full_val_metrics = validation_results["full_metrics"]
-				img2txt_metrics  = validation_results["img2txt_metrics"]
-				txt2img_metrics  = validation_results["txt2img_metrics"]
-
-				full_val_loss_acc_metrics_all_epochs.append(full_val_metrics)
-				img2txt_metrics_all_epochs.append(img2txt_metrics)
-				txt2img_metrics_all_epochs.append(txt2img_metrics)
-
-				i2t_map10 = img2txt_metrics.get("mAP", {}).get("10", float("nan"))
-				t2i_map10 = txt2img_metrics.get("mAP", {}).get("10", float("nan"))
-				i2t_r10   = img2txt_metrics.get("Recall", {}).get("10", float("nan"))
-				t2i_r10   = txt2img_metrics.get("Recall", {}).get("10", float("nan"))
-				cos_sim   = full_val_metrics.get("cosine_similarity", float("nan"))
-
-				print(
-						f"\nEpoch {epoch+1}:\n"
-						f"  Loss  — Train: {avg_total:.4f} (I2T: {avg_i2t:.4f}, T2I: {avg_t2i:.4f})  Val: {current_val_loss:.4f}\n"
-						f"  I2T   — mAP@10: {i2t_map10:.4f}  R@10: {i2t_r10:.4f}\n"
-						f"  T2I   — mAP@10: {t2i_map10:.4f}  R@10: {t2i_r10:.4f}\n"
-						f"  Embed — CosSim: {cos_sim:.4f}\n"
-						f"  LR    — {scheduler.get_last_lr()[0]:.2e}"
-				)
-
-				if hasattr(train_loader.dataset, 'get_cache_stats'):
-						stats = train_loader.dataset.get_cache_stats()
-						if stats:
-								print(f"  Train cache: {stats}")
-				if hasattr(validation_loader.dataset, 'get_cache_stats'):
-						stats = validation_loader.dataset.get_cache_stats()
-						if stats:
-								print(f"  Val cache:   {stats}")
-
-				if early_stopping.should_stop(
-						current_value=current_val_loss,
-						model=model,
-						epoch=epoch,
-						optimizer=optimizer,
-						scheduler=scheduler,
-						checkpoint_path=mdl_fpth,
-				):
+					if torch.isnan(total_loss):
+						print(f"Warning: NaN loss at epoch {epoch+1}, batch {bidx+1}. Skipping.")
+						continue
+					scaler.scale(total_loss).backward()
+					scaler.unscale_(optimizer)
+					torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+					scaler.step(optimizer)
+					scaler.update()
+					scheduler.step()
+					epoch_loss_total += total_loss.item()
+					epoch_loss_i2t   += loss_i2t.item()
+					epoch_loss_t2i   += loss_t2i.item()
+					num_batches += 1
+					if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 						print(
-								f"\nEarly stopping at epoch {epoch+1} | "
-								f"best loss: {early_stopping.get_best_score():.6f} "
-								f"@ epoch {early_stopping.get_best_epoch()+1}"
+							f"\t\tBatch [{bidx+1:04d}/{len(train_loader)}] "
+							f"Total: {total_loss.item():.6f} "
+							f"(I2T: {loss_i2t.item():.6f}, T2I: {loss_t2i.item():.6f})"
 						)
-						break
+			avg_total = epoch_loss_total / num_batches if num_batches > 0 else 0.0
+			avg_i2t   = epoch_loss_i2t   / num_batches if num_batches > 0 else 0.0
+			avg_t2i   = epoch_loss_t2i   / num_batches if num_batches > 0 else 0.0
+			training_losses.append(avg_total)
+			training_losses_breakdown["total"].append(avg_total)
+			training_losses_breakdown["i2t"].append(avg_i2t)
+			training_losses_breakdown["t2i"].append(avg_t2i)
 
-				print(f"[ELAPSED TIME] Epoch {epoch+1:<20}{time.time()-train_and_val_st:.1f} sec")
+			learning_rates_history.append([optimizer.param_groups[0]['lr']])
+			weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
-		print(f"[{mode}] Total elapsed: {time.time()-train_start_time:.1f}s")
+			# ── Validation ────────────────────────────────────────────────────────
+			print(f">> Validating Epoch {epoch+1}...")
+			current_val_loss = compute_multilabel_validation_loss(
+				model=model,
+				validation_loader=validation_loader,
+				criterion_i2t=criterion_i2t,
+				criterion_t2i=criterion_t2i,
+				active_mask=active_mask,
+				device=device,
+				all_class_embeds=all_class_embeds,
+				temperature=temperature,
+			)
+			validation_results = get_validation_metrics(
+				model=model,
+				validation_loader=validation_loader,
+				device=device,
+				topK_values=topk_values,
+				finetune_strategy=mode,
+				cache_dir=results_dir,
+				verbose=verbose,
+				lora_params={
+					"lora_rank": lora_rank,
+					"lora_alpha": lora_alpha,
+					"lora_dropout": lora_dropout,
+				},
+				is_training=True,
+				model_hash=get_model_hash(model),
+				temperature=temperature,
+			)
+			full_val_metrics = validation_results["full_metrics"]
+			img2txt_metrics  = validation_results["img2txt_metrics"]
+			txt2img_metrics  = validation_results["txt2img_metrics"]
+			full_val_loss_acc_metrics_all_epochs.append(full_val_metrics)
+			img2txt_metrics_all_epochs.append(img2txt_metrics)
+			txt2img_metrics_all_epochs.append(txt2img_metrics)
+			i2t_map10 = img2txt_metrics.get("mAP", {}).get("10", float("nan"))
+			t2i_map10 = txt2img_metrics.get("mAP", {}).get("10", float("nan"))
+			i2t_r10   = img2txt_metrics.get("Recall", {}).get("10", float("nan"))
+			t2i_r10   = txt2img_metrics.get("Recall", {}).get("10", float("nan"))
+			cos_sim   = full_val_metrics.get("cosine_similarity", float("nan"))
+			print(
+					f"\nEpoch {epoch+1}:\n"
+					f"  Loss  — Train: {avg_total:.4f} (I2T: {avg_i2t:.4f}, T2I: {avg_t2i:.4f})  Val: {current_val_loss:.4f}\n"
+					f"  I2T   — mAP@10: {i2t_map10:.4f}  R@10: {i2t_r10:.4f}\n"
+					f"  T2I   — mAP@10: {t2i_map10:.4f}  R@10: {t2i_r10:.4f}\n"
+					f"  Embed — CosSim: {cos_sim:.4f}\n"
+					f"  LR    — {scheduler.get_last_lr()[0]:.2e}"
+			)
+			if hasattr(train_loader.dataset, 'get_cache_stats'):
+					stats = train_loader.dataset.get_cache_stats()
+					if stats:
+							print(f"  Train cache: {stats}")
+			if hasattr(validation_loader.dataset, 'get_cache_stats'):
+					stats = validation_loader.dataset.get_cache_stats()
+					if stats:
+							print(f"  Val cache:   {stats}")
+			if early_stopping.should_stop(
+					current_value=current_val_loss,
+					model=model,
+					epoch=epoch,
+					optimizer=optimizer,
+					scheduler=scheduler,
+					checkpoint_path=mdl_fpth,
+			):
+					print(
+							f"\nEarly stopping at epoch {epoch+1} | "
+							f"best loss: {early_stopping.get_best_score():.6f} "
+							f"@ epoch {early_stopping.get_best_epoch()+1}"
+					)
+					break
+			print(f"[ELAPSED TIME] Epoch {epoch+1:<20}{time.time()-train_and_val_st:.1f} sec")
 
-		# ── Final evaluation ──────────────────────────────────────────────────────
-		actual_trained_epochs = len(training_losses)
-		mdl_fpth = get_updated_model_name(
-			original_path=mdl_fpth, 
-			actual_epochs=actual_trained_epochs
-		)
+	print(f"[{mode}] Total elapsed: {time.time()-train_start_time:.1f}s")
 
-		evaluation_results = evaluate_best_model(
-			model=model,
-			validation_loader=validation_loader,
-			active_mask=active_mask,
-			head_mask=head_mask,
-			rare_mask=rare_mask,
-			early_stopping=early_stopping,
-			checkpoint_path=mdl_fpth,
-			finetune_strategy=mode,
-			device=device,
-			cache_dir=results_dir,
-			topk_values=topk_values,
-			verbose=verbose,
-			lora_params={
-				"lora_rank": lora_rank,
-				"lora_alpha": lora_alpha,
-				"lora_dropout": lora_dropout,
-			},
-		)
+	# Final evaluation
+	evaluation_results = evaluate_best_model(
+		model=model,
+		validation_loader=validation_loader,
+		active_mask=active_mask,
+		head_mask=head_mask,
+		rare_mask=rare_mask,
+		early_stopping=early_stopping,
+		checkpoint_path=mdl_fpth,
+		finetune_strategy=mode,
+		device=device,
+		cache_dir=results_dir,
+		lora_params={
+			"lora_rank": lora_rank,
+			"lora_alpha": lora_alpha,
+			"lora_dropout": lora_dropout,
+		},
+		topk_values=topk_values,
+		verbose=verbose,
+	)
 
-		final_metrics_full      = evaluation_results["full_metrics"]
-		final_img2txt_metrics   = evaluation_results["img2txt_metrics"]
-		final_txt2img_metrics   = evaluation_results["txt2img_metrics"]
-		final_tiered_i2t        = evaluation_results["tiered_i2t"]
-		final_tiered_t2i        = evaluation_results["tiered_t2i"]
-		model_source            = evaluation_results["model_loaded_from"]
+	if verbose:
+		print(f"{'='*50}")
+		print(f"Full evaluation results:")
+		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
+		print(f"{'='*50}")
 
-		if verbose:
-			print(f"\nFinal evaluation from: {model_source}")
-			print("\n>> Tiered I2T Retrieval")
-			for tier, m in final_tiered_i2t.items():
-				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-			print("\n>> Tiered T2I Retrieval")
-			for tier, m in final_tiered_t2i.items():
-				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+	final_metrics_full = evaluation_results["full_metrics"]
+	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
+	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
+	final_tiered_i2t        = evaluation_results["tiered_i2t"]
+	final_tiered_t2i        = evaluation_results["tiered_t2i"]
+	model_source = evaluation_results["model_loaded_from"]
 
-		file_base_name = (
-			f"{dataset_name}_{mode}_{CLUSTER}_"
-			f"{optimizer.__class__.__name__}_{scheduler.__class__.__name__}_"
-			f"BCEWithLogitsLoss_{scaler.__class__.__name__}_"
-			f"{model_name}_{model_arch}_ep_{actual_trained_epochs}_"
-			f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_temp_{temperature}_"
-			f"bs_{train_loader.batch_size}_lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}"
-		)
+	actual_trained_epochs = len(training_losses)
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth, 
+		actual_epochs=actual_trained_epochs
+	)
 
-		plot_paths = {
-			"losses_breakdown":   os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-			"losses":             os.path.join(results_dir, f"{file_base_name}_losses.png"),
-			"full_val_topk_i2t":  os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-			"full_val_topk_t2i":  os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-			"retrieval_per_epoch":os.path.join(results_dir, f"{file_base_name}_retrieval_per_epoch.png"),
-			"retrieval_best":     os.path.join(results_dir, f"{file_base_name}_retrieval_best.png"),
-		}
+	if verbose:
+		print(f"{'='*50}")
+		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"  Model: {model_arch}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  Epochs trained: {actual_trained_epochs}")
+		print(f"  Best val loss: {early_stopping.get_best_score()}")
+		print("\n>> Tiered I2T Retrieval")
+		for tier, m in final_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n>> Tiered T2I Retrieval")
+		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print(f"{'='*50}")
+		print("\nFull Validation Set")
+		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
+		print("\nImage-to-Text Retrieval")
+		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
+		print("\nText-to-Image Retrieval")
+		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+		print(f"\nBest model: {mdl_fpth}")
 
-		viz.plot_multilabel_loss_breakdown(
-			training_losses_breakdown=training_losses_breakdown,
-			filepath=plot_paths["losses_breakdown"],
-		)
-		viz.plot_retrieval_metrics_per_epoch(
-			dataset_name=dataset_name,
-			image_to_text_metrics_list=img2txt_metrics_all_epochs,
-			text_to_image_metrics_list=txt2img_metrics_all_epochs,
-			fname=plot_paths["retrieval_per_epoch"],
-		)
-		viz.plot_retrieval_metrics_best_model(
-			dataset_name=dataset_name,
-			image_to_text_metrics=final_img2txt_metrics,
-			text_to_image_metrics=final_txt2img_metrics,
-			fname=plot_paths["retrieval_best"],
-		)
+	append_retrieval_results(
+		tiered_i2t=final_tiered_i2t, 
+		tiered_t2i=final_tiered_t2i, 
+		strategy_name=mode,
+		results_dir=results_dir,
+		dataset_name=dataset_name,
+		verbose=verbose,
+	)
 
-		return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+	# Generate plots
+	file_base_name = (
+		f"{dataset_name}_{mode}_{CLUSTER}_"
+		f"{optimizer.__class__.__name__}_{scheduler.__class__.__name__}_"
+		f"BCEWithLogitsLoss_{scaler.__class__.__name__}_"
+		f"{model_name}_{model_arch}_ep_{actual_trained_epochs}_"
+		f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_temp_{temperature}_"
+		f"bs_{train_loader.batch_size}_lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}"
+	)
+
+	plot_paths = {
+		"losses_breakdown":   os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
+		"losses":             os.path.join(results_dir, f"{file_base_name}_losses.png"),
+		"full_val_topk_i2t":  os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i":  os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch":os.path.join(results_dir, f"{file_base_name}_retrieval_per_epoch.png"),
+		"retrieval_best":     os.path.join(results_dir, f"{file_base_name}_retrieval_best.png"),
+		"hp_evol":            os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
+	}
+
+	viz.plot_multilabel_loss_breakdown(
+		training_losses_breakdown=training_losses_breakdown,
+		filepath=plot_paths["losses_breakdown"],
+	)
+
+	viz.plot_retrieval_metrics_per_epoch(
+		dataset_name=dataset_name,
+		image_to_text_metrics_list=img2txt_metrics_all_epochs,
+		text_to_image_metrics_list=txt2img_metrics_all_epochs,
+		fname=plot_paths["retrieval_per_epoch"],
+	)
+
+	viz.plot_retrieval_metrics_best_model(
+		dataset_name=dataset_name,
+		image_to_text_metrics=final_img2txt_metrics,
+		text_to_image_metrics=final_txt2img_metrics,
+		fname=plot_paths["retrieval_best"],
+	)
+
+	viz.plot_hyperparameter_evolution(
+		eta_min=eta_min,
+		learning_rates=learning_rates_history,
+		weight_decays=weight_decays_history,
+		fname=plot_paths["hp_evol"],
+	)
+
+	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
 def lora_plus_finetune_multi_label(
 		model: torch.nn.Module,
@@ -1018,11 +1645,8 @@ def lora_plus_finetune_multi_label(
 		loss_weights: Optional weights for I2T and T2I losses
 		temperature: Temperature scaling for similarities
 		verbose: Enable detailed logging
-	"""
-	
-	window_size = minimum_epochs + 1
-	
-	# Set default loss weights
+	"""	
+	window_size = minimum_epochs + 1	
 	if loss_weights is None:
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
 	
@@ -1062,17 +1686,18 @@ def lora_plus_finetune_multi_label(
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 	
-	mode = inspect.stack()[0].function
-	mode = re.sub(r'_finetune_multi_label', '', mode)
-	
-	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
-	model_name = model.__class__.__name__
 	# Get dataset information
 	try:
 		class_names = validation_loader.dataset.unique_labels
 	except AttributeError:
 		class_names = validation_loader.dataset.dataset.classes
 	num_classes = len(class_names)	
+
+	mode = inspect.stack()[0].function
+	mode = re.sub(r'_finetune_multi_label', '', mode)
+	
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_name = model.__class__.__name__
 	
 	if verbose:
 		print(f"{mode.upper()} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
@@ -1446,9 +2071,9 @@ def lora_plus_finetune_multi_label(
 				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
 			break
 		
-		print(f"[TOTAL ELAPSED TIME (Train + Validation)] Epoch {epoch+1} {time.time() - train_and_val_st_time:.2f} sec")
+		print(f"Epoch {epoch+1} [TOTAL ELAPSED TIME (Train + Validation)] {time.time() - train_and_val_st_time:.2f} sec")
 	
-	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec")
 	
 	# Final evaluation
 	evaluation_results = evaluate_best_model(
@@ -1462,50 +2087,68 @@ def lora_plus_finetune_multi_label(
 		finetune_strategy=mode,
 		device=device,
 		cache_dir=results_dir,
-		topk_values=topk_values,
 		lora_params={
 			"lora_rank": lora_rank,
 			"lora_alpha": lora_alpha,
 			"lora_dropout": lora_dropout,
 			"lora_plus_lambda": lora_plus_lambda,
 		},
-		temperature=temperature,
+		topk_values=topk_values,
 		verbose=verbose,
 	)
-	
+
+	if verbose:
+		print(f"{'='*50}")
+		print(f"Full evaluation results:")
+		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
+		print(f"{'='*50}")
+
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
 	final_tiered_i2t        = evaluation_results["tiered_i2t"]
 	final_tiered_t2i        = evaluation_results["tiered_t2i"]
 	model_source = evaluation_results["model_loaded_from"]
-	
+
+	actual_trained_epochs = len(training_losses)
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth, 
+		actual_epochs=actual_trained_epochs
+	)
+
 	if verbose:
-		print(f"\nFinal evaluation from: {model_source}")
+		print(f"{'='*50}")
+		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"  Model: {model_arch}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  Epochs trained: {actual_trained_epochs}")
+		print(f"  Best val loss: {early_stopping.get_best_score()}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n>> Tiered T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print(f"Final evaluation used model weights from: {model_source}")
-		print("--- Final Metrics [Full Validation Set] ---")
+		print(f"{'='*50}")
+		
+		print("\nFull Validation Set")
 		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-		print("--- Image-to-Text Retrieval ---")
+		print("\nImage-to-Text Retrieval")
 		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-		print("--- Text-to-Image Retrieval ---")
+		print("\nText-to-Image Retrieval")
 		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
-	
-	actual_trained_epochs = len(training_losses)
-	mdl_fpth = get_updated_model_name(
-		original_path=mdl_fpth, 
-		actual_epochs=actual_trained_epochs
-	)
-	print(f"Best model will be renamed to: {mdl_fpth}")
+		print(f"\nBest model: {mdl_fpth}")
 
-	print("\nGenerating result plots...")
-	
+	append_retrieval_results(
+		tiered_i2t=final_tiered_i2t, 
+		tiered_t2i=final_tiered_t2i, 
+		strategy_name=mode,
+		results_dir=results_dir,
+		dataset_name=dataset_name,
+		verbose=verbose,
+	)
+
+	# Generate plots
 	file_base_name = (
 		f"{mode}_"
 		f"{CLUSTER}_"
@@ -1521,7 +2164,6 @@ def lora_plus_finetune_multi_label(
 		f"lod_{lora_dropout}_"
 		f"temp_{temperature}"
 	)
-	
 	
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
@@ -1870,8 +2512,8 @@ def dora_finetune_multi_label(
 		training_losses_breakdown["i2t"].append(avg_i2t_loss)
 		training_losses_breakdown["t2i"].append(avg_t2i_loss)
 
-		learning_rates_history.append(optimizer.param_groups[0]['lr'])
-		weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
+		learning_rates_history.append([optimizer.param_groups[0]['lr']])
+		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
 		print(f">> Validating Epoch {epoch+1} ...")
 		current_val_loss = compute_multilabel_validation_loss(
@@ -1984,49 +2626,66 @@ def dora_finetune_multi_label(
 		finetune_strategy=mode,
 		device=device,
 		cache_dir=results_dir,
-		topk_values=topk_values,
 		lora_params={
 			"lora_rank": lora_rank,
 			"lora_alpha": lora_alpha,
 			"lora_dropout": lora_dropout,
 		},
-		temperature=temperature,
+		topk_values=topk_values,
 		verbose=verbose,
 	)
+
+	if verbose:
+		print(f"{'='*50}")
+		print(f"Full evaluation results:")
+		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
+		print(f"{'='*50}")
 
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t = evaluation_results["tiered_i2t"]
-	final_tiered_t2i = evaluation_results["tiered_t2i"]
+	final_tiered_i2t        = evaluation_results["tiered_i2t"]
+	final_tiered_t2i        = evaluation_results["tiered_t2i"]
 	model_source = evaluation_results["model_loaded_from"]
-	
-	if verbose:
-		print(f"\nFinal evaluation from: {model_source}")
-		print("\n>> Tiered I2T Retrieval")
-		for tier, m in final_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n>> Tiered T2I Retrieval")
-		for tier, m in final_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print(f"Final evaluation used model weights from: {model_source}")
-		print("--- Final Metrics [Full Validation Set] ---")
-		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-		print("--- Image-to-Text Retrieval ---")
-		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-		print("--- Text-to-Image Retrieval ---")
-		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
 
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
 		original_path=mdl_fpth, 
 		actual_epochs=actual_trained_epochs
 	)
-	print(f"Best model will be renamed to: {mdl_fpth}")
+
+	if verbose:
+		print(f"{'='*50}")
+		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"  Model: {model_arch}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  Epochs trained: {actual_trained_epochs}")
+		print(f"  Best val loss: {early_stopping.get_best_score()}")
+		print("\n>> Tiered I2T Retrieval")
+		for tier, m in final_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n>> Tiered T2I Retrieval")
+		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print(f"{'='*50}")
+		print("\nFull Validation Set")
+		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
+		print("\nImage-to-Text Retrieval")
+		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
+		print("\nText-to-Image Retrieval")
+		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+		print(f"\nBest model: {mdl_fpth}")
+
+	append_retrieval_results(
+		tiered_i2t=final_tiered_i2t, 
+		tiered_t2i=final_tiered_t2i, 
+		strategy_name=mode,
+		results_dir=results_dir,
+		dataset_name=dataset_name,
+		verbose=verbose,
+	)
 
 	# Generate plots
-	print("\nGenerating result plots...")
 	file_base_name = (
 		f"{mode}_"
 		f"{CLUSTER}_"
@@ -2079,525 +2738,6 @@ def dora_finetune_multi_label(
 		weight_decays=weight_decays_history,
 		fname=plot_paths["hp_evol"],
 	)
-
-	print(f"\n{'='*150}")
-	print(f"DoRA Multi-Label Fine-tuning Complete!")
-	print(f"Best model saved to: {mdl_fpth}")
-	print(f"{'='*150}\n")
-
-def probe_finetune_multi_label(
-	model: torch.nn.Module,
-	train_loader,
-	validation_loader,
-	num_epochs: int,
-	print_every: int,
-	learning_rate: float,
-	weight_decay: float,
-	device: str,
-	results_dir: str,
-	patience: int = 10,
-	min_delta: float = 1e-4,
-	cumulative_delta: float = 5e-3,
-	minimum_epochs: int = 20,
-	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
-	loss_weights: Dict[str, float] = None,
-	temperature: float = 0.07,
-	volatility_threshold: float = 15.0,
-	slope_threshold: float = 1e-4,
-	pairwise_imp_threshold: float = 1e-4,
-	probe_hidden_dim: int = None,  # Optional: add hidden layer
-	probe_dropout: float = 0.1,
-	cache_features: bool = True,  # Optional: cache features for efficiency
-	verbose: bool = True,
-):
-		"""
-		Enhanced Linear probing fine-tuning for multi-label CLIP classification with robust ViT support.
-		Automatically handles different ViT architectures and fixes positional embedding issues.
-		"""
-
-		window_size = minimum_epochs + 1
-		if loss_weights is None:
-			loss_weights = {"i2t": 0.5, "t2i": 0.5}
-
-		early_stopping = EarlyStopping(
-			patience=patience,
-			min_delta=min_delta,
-			cumulative_delta=cumulative_delta,
-			window_size=window_size,
-			mode='min',
-			min_epochs=minimum_epochs,
-			restore_best_weights=True,
-			volatility_threshold=volatility_threshold,
-			slope_threshold=slope_threshold,
-			pairwise_imp_threshold=pairwise_imp_threshold,
-			# min_phases_before_stopping=1,
-		)
-
-		try:
-			dataset_name = validation_loader.dataset.dataset.__class__.__name__
-		except AttributeError:
-			dataset_name = validation_loader.dataset.dataset_name
-
-		try:
-			class_names = validation_loader.dataset.unique_labels
-		except AttributeError:
-			class_names = validation_loader.dataset.dataset.classes
-		
-		num_classes = len(class_names)
-
-		mode = inspect.stack()[0].function
-		mode = re.sub(r'_finetune_multi_label', '', mode)
-		model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
-		model_name = model.__class__.__name__
-
-		print(f"{mode} | {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
-		if torch.cuda.is_available():
-			gpu_name = torch.cuda.get_device_name(device)
-			total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
-
-		# STEP 1: FREEZE ALL CLIP PARAMETERS AND CREATE ROBUST PROBE
-		for param in model.parameters():
-			param.requires_grad = False
-
-		model.eval()
-		# Build probe (wraps frozen CLIP, adds trainable W)
-		probe = get_probe_clip(
-			clip_model=model,
-			validation_loader=validation_loader,
-			device=torch.device(device),
-			hidden_dim=probe_hidden_dim,  # creates MLP probe
-			dropout=probe_dropout,
-			zero_shot_init=True, # faster convergence
-			verbose=verbose,
-		)
-
-		masks = compute_loss_masks(
-			train_loader=train_loader,
-			num_classes=num_classes,
-			device=device,
-			verbose=verbose,
-		)
-		pos_weight  = masks["pos_weight"]
-		active_mask = masks["active_mask"]
-		head_mask   = masks["head_mask"]
-		rare_mask   = masks["rare_mask"]
-		N = masks["N"]
-		train_freq = masks["train_freq"]
-
-		# ── Criteria ─────────────────────────────────────────────────────────────
-		# For the probe, loss is computed directly on logits [B, C] — same shape
-		# as i2t_sim — so criterion_i2t with pos_weight applies directly.
-		# No criterion_t2i needed: the probe has no T2I direction.
-		criterion = torch.nn.BCEWithLogitsLoss(
-			pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
-			reduction='none',
-		)
-		if verbose:
-			print(f"\n{criterion.__class__.__name__}")
-			print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-			print(f"   ├─ number of samples: {N}")
-			print(f"   ├─ number of classes: {num_classes}")
-			print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
-			print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
-			print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
-
-		# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
-		model.eval()
-		all_class_embeds = []
-		text_batch_size = validation_loader.batch_size
-		print(f"\n>> Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
-		with torch.no_grad():
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-				for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding"):
-					batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
-					embeds = model.encode_text(batch_tokens)
-					embeds = torch.nn.functional.normalize(embeds, dim=-1)
-					all_class_embeds.append(embeds.cpu())
-					del batch_tokens, embeds
-		all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
-		if verbose:
-			print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
-
-		# Optimizer setup
-		optimizer = torch.optim.AdamW(
-			params=probe.probe.parameters(),
-			lr=learning_rate,
-			betas=(0.9, 0.98),
-			eps=1e-6,
-			weight_decay=weight_decay,
-		)
-
-		# estimated_epochs = min(num_epochs, 15)
-		# total_training_steps = estimated_epochs * len(train_loader)
-		# T_max = total_training_steps
-		T_max = num_epochs * len(train_loader)
-		ANNEALING_RATIO = 1e-2 # 1% of initial LR
-		eta_min = learning_rate * ANNEALING_RATIO
-		scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-			optimizer=optimizer,
-			T_max=T_max,
-			eta_min=eta_min,
-			last_epoch=-1,
-		)
-		if verbose:
-			print(f"\n{scheduler.__class__.__name__}")
-			print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
-			print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
-
-		scaler = torch.amp.GradScaler(
-			device=device,
-			init_scale=2**16,
-			growth_factor=2.0,
-			backoff_factor=0.5,
-			growth_interval=2000,
-		)
-		if verbose:
-			print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
-
-		mdl_fpth = os.path.join(
-				results_dir,
-				f"{mode}_"
-				f"{model_arch}_"
-				f"{optimizer.__class__.__name__}_"
-				f"{scheduler.__class__.__name__}_"
-				f"probe_{probe.probe_type}_"
-				f"ieps_{num_epochs}_"
-				f"lr_{learning_rate:.1e}_"
-				f"wd_{weight_decay:.1e}_"
-				f"temp_{temperature}_"
-				f"bs_{train_loader.batch_size}_"
-				f"mep_{minimum_epochs}_"
-				f"pat_{patience}_"
-				f"mdt_{min_delta:.1e}_"
-				f"cdt_{cumulative_delta:.1e}_"
-				f"vt_{volatility_threshold}_"
-				f"st_{slope_threshold:.1e}_"
-				f"pit_{pairwise_imp_threshold:.1e}"
-				f".pth"
-		)
-
-		# ── Feature caching ───────────────────────────────────────────────────────
-		# wrap feature extraction in torch.no_grad() to avoid building
-		# a computation graph for 74K images — CLIP is frozen, gradients useless.
-		if cache_features:
-			print("Pre-extracting image features (CLIP frozen — runs once)...")
-			model.eval()
-			def extract_features(loader, desc):
-				feats, lbls = [], []
-				with torch.no_grad():
-						with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-								for images, _, label_vectors in tqdm(loader, desc=desc):
-										images = images.to(device, non_blocking=True)
-										emb = model.encode_image(images)
-										emb = torch.nn.functional.normalize(emb, dim=-1)
-										feats.append(emb.cpu())
-										lbls.append(label_vectors.cpu())
-				return torch.cat(feats, dim=0), torch.cat(lbls, dim=0)
-			
-			train_feats, train_lbls = extract_features(train_loader, "Train features")
-			val_feats, val_lbls = extract_features(validation_loader, "Val features")
-			print(f"Cached — train: {train_feats.shape}, val: {val_feats.shape}")
-			
-			from torch.utils.data import TensorDataset
-			train_feature_loader = DataLoader(
-					TensorDataset(train_feats, train_lbls),
-					batch_size=train_loader.batch_size,
-					shuffle=True,
-					num_workers=0,
-			)
-			val_feature_loader = DataLoader(
-					TensorDataset(val_feats, val_lbls),
-					batch_size=validation_loader.batch_size,
-					shuffle=False,
-					num_workers=0,
-			)
-
-		training_losses = list()
-		training_losses_breakdown = {"total": []}
-		img2txt_metrics_all_epochs = list()
-		txt2img_metrics_all_epochs = list()
-		full_val_loss_acc_metrics_all_epochs = list()
-		learning_rates_history = list()
-		weight_decays_history = list()
-		train_start_time = time.time()
-
-		for epoch in range(num_epochs):
-			train_and_val_st_time = time.time()
-			torch.cuda.empty_cache()
-			probe.probe.train()  # only the linear head
-			model.eval() # CLIP stays frozen, no gradients
-			print(f"Epoch [{epoch + 1}/{num_epochs}]")
-			
-			epoch_loss = 0.0
-			num_batches = 0
-			
-			# Choose data source
-			data_iter = train_feature_loader if cache_features else train_loader
-			
-			for bidx, batch_data in enumerate(data_iter):
-				if cache_features:
-					# Using cached features
-					image_embeds, label_vectors = batch_data
-					image_embeds = image_embeds.to(device, non_blocking=True)
-					label_vectors = label_vectors.to(device, non_blocking=True).float()
-				else:
-					images, _, label_vectors = batch_data
-					images = images.to(device, non_blocking=True)
-					label_vectors = label_vectors.to(device, non_blocking=True).float()
-					
-					# Extract image embeddings (frozen)
-					with torch.no_grad():
-						image_embeds = model.encode_image(images)
-						image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
-				
-				optimizer.zero_grad(set_to_none=True)
-				
-				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-					# Linear probe forward (multi-label logits)
-					logits = probe.probe(image_embeds)   
-					
-					# Apply pos_weight BCE, mask zero-count classes
-					loss_raw = criterion(logits, label_vectors)  # [B, C], reduction='none'
-					loss = loss_raw[:, active_mask].mean()
-												
-				# Check for NaN loss
-				if torch.isnan(loss):
-					print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
-					continue
-				
-				scaler.scale(loss).backward()
-				scaler.unscale_(optimizer)
-				torch.nn.utils.clip_grad_norm_(probe.probe.parameters(), max_norm=1.0)
-				scaler.step(optimizer)
-				scaler.update()
-				scheduler.step()
-				
-				# Track losses
-				epoch_loss  += loss.item()
-				num_batches += 1
-				
-				if bidx % print_every == 0 or bidx + 1 == len(data_iter):
-					print(f"\t\tBatch [{bidx+1:04d}/{len(data_iter)}] Loss: {loss.item():.6f}")
-			
-			# Calculate average losses
-			avg_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
-			training_losses.append(avg_loss)
-			training_losses_breakdown["total"].append(avg_loss)
-			learning_rates_history.append([g['lr'] for g in optimizer.param_groups])
-			weight_decays_history.append([g['weight_decay'] for g in optimizer.param_groups])
-			print(f">> Validating Epoch {epoch+1} ...")
-			
-			probe.probe.eval()
-			val_loss = 0.0
-			val_preds_list, val_labels_list = list(), list()
-			
-			with torch.no_grad():
-				val_iter = val_feature_loader if cache_features else validation_loader
-				
-				for batch_data in val_iter:
-					if cache_features:
-						image_embeds, label_vectors = batch_data
-						image_embeds = image_embeds.to(device, non_blocking=True)
-						label_vectors = label_vectors.to(device, non_blocking=True).float()
-					else:
-						images, _, label_vectors = batch_data										
-						images = images.to(device, non_blocking=True)
-						label_vectors = label_vectors.to(device, non_blocking=True).float()
-						
-						# Extract features
-						image_embeds = model.encode_image(images)
-						image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
-					
-					# Get predictions from probe
-					logits = probe.probe(image_embeds)
-					loss_raw = criterion(logits, label_vectors)
-					val_loss += loss_raw[:, active_mask].mean().item()
-					val_preds_list.append((torch.sigmoid(logits) > 0.5).float().cpu())
-					val_labels_list.append(label_vectors.cpu())
-			
-			avg_val_loss = val_loss / len(val_iter)
-			
-			# Calculate multi-label metrics
-			val_preds = torch.cat(val_preds_list, dim=0)
-			val_labels = torch.cat(val_labels_list, dim=0)
-			
-			hamming = hamming_loss(val_labels.numpy(), val_preds.numpy())
-			f1 = f1_score(val_labels.numpy(), val_preds.numpy(), average='weighted', zero_division=0)
-			exact_match = (val_preds == val_labels).all(dim=1).float().mean().item()
-			partial_match = (val_preds == val_labels).float().mean().item()
-			epoch_metrics = {
-				"val_loss":       avg_val_loss,
-				"hamming_loss":   hamming,
-				"f1_score":       f1,
-				"exact_match_acc": exact_match,
-				"partial_acc":    partial_match,
-			}
-
-			full_val_loss_acc_metrics_all_epochs.append(epoch_metrics)
-
-			if cache_features:
-				sample_feats = train_feats[:512].to(device)        # [512, 768] image features
-				# Get true class indices for these 512 samples from the loader
-				# For each sample, average the W rows corresponding to its true labels
-				sample_labels = train_lbls[:512].to(device)  # [512, C] multi-hot
-				
-				W = torch.nn.functional.normalize(probe.probe.weight, dim=-1)        # [C, 768]
-				
-				matched_class_vecs = torch.zeros(512, W.shape[1], device=device)
-				for i in range(512):
-						pos_idx = sample_labels[i].nonzero(as_tuple=True)[0]
-						if pos_idx.numel() > 0:
-								matched_class_vecs[i] = W[pos_idx].mean(dim=0)
-				
-				matched_class_vecs = torch.nn.functional.normalize(matched_class_vecs, dim=-1)
-				sample_feats_norm = torch.nn.functional.normalize(sample_feats, dim=-1)
-				cos_sim = torch.nn.functional.cosine_similarity(sample_feats_norm, matched_class_vecs, dim=1).mean().item()
-			else:
-				cos_sim = 0.0
-
-			print(
-				f"\nEpoch {epoch+1}:\n"
-				f"  Loss — Train: {avg_loss:.8f}  Val: {avg_val_loss:.8f}\n"
-				f"  Hamming: {hamming:.4f}  F1: {f1:.4f}\n"
-				f"  ExactMatch: {exact_match}  PartialAcc: {partial_match:.4f}\n"
-				f"  LR: {scheduler.get_last_lr()[0]}\n"
-				f"  CosSim: {cos_sim:.4f}"
-			)
-
-			if early_stopping.should_stop(
-				current_value=avg_val_loss,
-				model=probe.probe, # save only probe weights, not full CLIP
-				epoch=epoch,
-				optimizer=optimizer,
-				scheduler=scheduler,
-				checkpoint_path=mdl_fpth,
-			):
-				print(
-					f"\nEarly stopping at epoch {epoch+1} | "
-					f"best loss: {early_stopping.get_best_score():.6f} "
-					f"@ epoch {early_stopping.get_best_epoch()+1}"
-				)
-				break
-			print(f"[TOTAL ELAPSED TIME (Train + Validation)] Epoch {epoch+1:<20}{time.time() - train_and_val_st_time:.2f} sec")
-		
-		print(f"[{mode}] Total Time: {time.time() - train_start_time:.1f} sec".center(170, "-"))
-
-		# Load best probe weights
-		if os.path.exists(mdl_fpth):
-			print(f"Loading best probe weights from {mdl_fpth}")
-			checkpoint = torch.load(mdl_fpth, map_location=device)
-			state_dict = checkpoint.get('model_state_dict', checkpoint)
-			probe.probe.load_state_dict(state_dict, strict=False)
-		elif early_stopping.best_weights is not None:
-			print(f"Loading best weights from early stopping (epoch {early_stopping.best_epoch+1})")
-			probe.probe.load_state_dict(
-				{k: v.to(device) for k, v in early_stopping.best_weights.items()}
-			)
-		else:
-			print("Warning: No best weights found - using final weights")
-
-		# ── Final evaluation via evaluate_best_model ─────────────────────────────
-		# pass probe (not model) — probe.encode_image and probe.encode_text
-		# delegate to frozen CLIP, so get_validation_metrics works correctly.
-		# The probe's W matrix is now the fine-tuned one; similarity is computed
-		# as probe.encode_image(img) @ probe.encode_text(class).T, which is
-		# equivalent to image_embed @ W.T since W was initialised from text embeds.
-		evaluation_results = evaluate_best_model(
-			model=probe, # not model — probe wraps model with trained W
-			validation_loader=validation_loader,
-			active_mask=active_mask,
-			head_mask=head_mask,
-			rare_mask=rare_mask,
-			early_stopping=early_stopping,
-			checkpoint_path=mdl_fpth,
-			finetune_strategy=mode,
-			device=device,
-			cache_dir=results_dir,
-			topk_values=topk_values,
-			temperature=temperature,
-			class_embeds_override=probe.probe.weight.detach().clone(),
-			verbose=verbose,
-		)
-		final_metrics_full    = evaluation_results["full_metrics"]
-		final_img2txt_metrics = evaluation_results["img2txt_metrics"]
-		final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-		final_tiered_i2t      = evaluation_results["tiered_i2t"]
-		final_tiered_t2i      = evaluation_results["tiered_t2i"]
-		model_source          = evaluation_results["model_loaded_from"]
-		actual_trained_epochs = len(training_losses)
-
-		if verbose:
-			print(f"\nFinal evaluation from: {model_source}")
-			print(f"\n{'='*80}")
-			print(f"Probe Multi-Label Fine-tuning Complete")
-			print(f"  Method: {mode}")
-			print(f"  Model: {model_arch}")
-			print(f"  {probe.probe_type} | Params: {sum(p.numel() for p in probe.probe.parameters())}")
-			print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
-			print(f"  Epochs trained: {actual_trained_epochs}")
-			print(f"  Best val loss: {early_stopping.get_best_score()}")
-			print(f"{'='*80}")
-			print("\n>> Tiered I2T Retrieval")
-			for tier, m in final_tiered_i2t.items():
-				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-			print("\n>> Tiered T2I Retrieval")
-			for tier, m in final_tiered_t2i.items():
-				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		# Update model path
-		mdl_fpth = get_updated_model_name(
-			original_path=mdl_fpth, 
-			actual_epochs=actual_trained_epochs
-		)
-		print(f"Model renamed to: {mdl_fpth}")
-
-		print("\nGenerating result plots...")
-		file_base_name = (
-			f"{dataset_name}_"
-			f"{mode}_"
-			f"{CLUSTER}_"
-			f"{model_name}_"
-			f"{model_arch}_"
-			f"ep_{actual_trained_epochs}_"
-			f"lr_{learning_rate:.1e}_"
-			f"wd_{weight_decay:.1e}_"
-			f"temp_{temperature}_"
-			f"bs_{train_loader.batch_size}"
-		)
-		
-		# Plotting
-		plot_paths = {
-				"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-				"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-				"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-				"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-				"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-				"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-				"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-				"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-		}
-
-		viz.plot_multilabel_loss_breakdown(
-				training_losses_breakdown=training_losses_breakdown,
-				filepath=plot_paths["losses_breakdown"]
-		)
-
-		viz.plot_retrieval_metrics_per_epoch(
-				dataset_name=dataset_name,
-				image_to_text_metrics_list=img2txt_metrics_all_epochs,
-				text_to_image_metrics_list=txt2img_metrics_all_epochs,
-				fname=plot_paths["retrieval_per_epoch"],
-		)
-
-		viz.plot_retrieval_metrics_best_model(
-				dataset_name=dataset_name,
-				image_to_text_metrics=final_img2txt_metrics,
-				text_to_image_metrics=final_txt2img_metrics,
-				fname=plot_paths["retrieval_best"],
-		)
-
-		return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
 def ia3_finetune_multi_label(
 		model: torch.nn.Module,
@@ -2657,7 +2797,6 @@ def ia3_finetune_multi_label(
 			quantized: Whether to use quantized base weights
 			verbose: Enable detailed logging
 	"""
-
 	window_size = minimum_epochs + 1
 	if loss_weights is None:
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
@@ -3049,6 +3188,7 @@ def ia3_finetune_multi_label(
 	
 	print(f"[{mode}] Total Training Time: {time.time() - train_start_time:.1f} sec")
 
+	# Final evaluation
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
@@ -3060,11 +3200,18 @@ def ia3_finetune_multi_label(
 		finetune_strategy=mode,
 		device=device,
 		cache_dir=results_dir,
-		topk_values=topk_values,
+		lora_params=None,
 		temperature=temperature,
+		topk_values=topk_values,
 		verbose=verbose,
 	)
-	
+
+	if verbose:
+		print(f"{'='*50}")
+		print(f"Full evaluation results:")
+		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
+		print(f"{'='*50}")
+
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
@@ -3072,31 +3219,44 @@ def ia3_finetune_multi_label(
 	final_tiered_t2i        = evaluation_results["tiered_t2i"]
 	model_source = evaluation_results["model_loaded_from"]
 
+	actual_trained_epochs = len(training_losses)
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth, 
+		actual_epochs=actual_trained_epochs
+	)
+
 	if verbose:
-		print(f"\nFinal evaluation from: {model_source}")
+		print(f"{'='*50}")
+		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"  Model: {model_arch}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  Epochs trained: {actual_trained_epochs}")
+		print(f"  Best val loss: {early_stopping.get_best_score()}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n>> Tiered T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print(f"Final evaluation used model weights from: {model_source}")
-		print("--- Final Metrics [Full Validation Set] ---")
+		print(f"{'='*50}")
+		print("\nFull Validation Set")
 		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-		print("--- Image-to-Text Retrieval ---")
+		print("\nImage-to-Text Retrieval")
 		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-		print("--- Text-to-Image Retrieval ---")
+		print("\nText-to-Image Retrieval")
 		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+		print(f"\nBest model: {mdl_fpth}")
 
-	actual_trained_epochs = len(training_losses)
-	mdl_fpth = get_updated_model_name(
-		original_path=mdl_fpth, 
-		actual_epochs=actual_trained_epochs
+	append_retrieval_results(
+		tiered_i2t=final_tiered_i2t, 
+		tiered_t2i=final_tiered_t2i, 
+		strategy_name=mode,
+		results_dir=results_dir,
+		dataset_name=dataset_name,
+		verbose=verbose,
 	)
-	print(f"Best model will be renamed to: {mdl_fpth}")
 
-	print("\nGenerating result plots...")
+	# Generate plots
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
@@ -3603,6 +3763,7 @@ def vera_finetune_multi_label(
 	
 	print(f"[{mode}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
 
+	# Final evaluation
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
@@ -3614,15 +3775,21 @@ def vera_finetune_multi_label(
 		finetune_strategy=mode,
 		device=device,
 		cache_dir=results_dir,
-		topk_values=topk_values,
 		lora_params={
 			"lora_rank": lora_rank,
 			"lora_alpha": lora_alpha,
 			"lora_dropout": lora_dropout,
 		},
 		temperature=temperature,
+		topk_values=topk_values,
 		verbose=verbose,
 	)
+
+	if verbose:
+		print(f"{'='*50}")
+		print(f"Full evaluation results:")
+		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
+		print(f"{'='*50}")
 
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
@@ -3631,32 +3798,44 @@ def vera_finetune_multi_label(
 	final_tiered_t2i        = evaluation_results["tiered_t2i"]
 	model_source = evaluation_results["model_loaded_from"]
 
+	actual_trained_epochs = len(training_losses)
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth, 
+		actual_epochs=actual_trained_epochs
+	)
+
 	if verbose:
-		print(f"\nFinal evaluation from: {model_source}")
+		print(f"{'='*50}")
+		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"  Model: {model_arch}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  Epochs trained: {actual_trained_epochs}")
+		print(f"  Best val loss: {early_stopping.get_best_score()}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n>> Tiered T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print(f"Final evaluation used model weights from: {model_source}")
-		print("--- Final Metrics [Full Validation Set] ---")
+		print(f"{'='*50}")
+		print("\nFull Validation Set")
 		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-		print("--- Image-to-Text Retrieval ---")
+		print("\nImage-to-Text Retrieval")
 		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-		print("--- Text-to-Image Retrieval ---")
+		print("\nText-to-Image Retrieval")
 		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+		print(f"\nBest model: {mdl_fpth}")
 
-
-	actual_trained_epochs = len(training_losses)
-	mdl_fpth = get_updated_model_name(
-		original_path=mdl_fpth,
-		actual_epochs=actual_trained_epochs
+	append_retrieval_results(
+		tiered_i2t=final_tiered_i2t, 
+		tiered_t2i=final_tiered_t2i, 
+		strategy_name=mode,
+		results_dir=results_dir,
+		dataset_name=dataset_name,
+		verbose=verbose,
 	)
-	print(f"Best model will be renamed to: {mdl_fpth}")
 
-	# PLOTTING: Enhanced for multi-label
+	# Generate plots
 	file_base_name = (
 		f"{mode}_"
 		f"{CLUSTER}_"
@@ -4125,7 +4304,7 @@ def clip_adapter_finetune_multi_label(
 
 	print(f"[{mode}] Total Training Elapsed Time: {time.time()-train_start_time:.1f} sec")
 
-	# ── Final evaluation ──────────────────────────────────────────────────────
+	# Final evaluation
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
@@ -4137,6 +4316,7 @@ def clip_adapter_finetune_multi_label(
 		finetune_strategy=mode,
 		device=device,
 		cache_dir=results_dir,
+		lora_params=None,
 		topk_values=topk_values,
 		temperature=temperature,
 		verbose=verbose,
@@ -4153,22 +4333,33 @@ def clip_adapter_finetune_multi_label(
 	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
 
 	if verbose:
-		print(f"\nFinal evaluation from: {model_source}")
+		print(f"{'='*50}")
+		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"  Model: {model_arch}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  Epochs trained: {actual_trained_epochs}")
+		print(f"  Best val loss: {early_stopping.get_best_score()}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n>> Tiered T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"\n{'='*80}")
 		print(f"CLIP-Adapter Multi-Label Fine-tuning Complete")
 		print(f"  Method   : {clip_adapter_method}")
-		print(f"  Model    : {model_arch}")
 		print(f"  Bottleneck: {bottleneck_dim}  Activation: {activation}")
-		print(f"  Epochs   : {actual_trained_epochs}  Best val loss: {early_stopping.get_best_score():.6f}")
-		print(f"{'='*80}")
+		print(f"{'='*50}")
 
-	# ── Plots ─────────────────────────────────────────────────────────────────
+	append_retrieval_results(
+		tiered_i2t=final_tiered_i2t, 
+		tiered_t2i=final_tiered_t2i, 
+		strategy_name=mode,
+		results_dir=results_dir,
+		dataset_name=dataset_name,
+		verbose=verbose,
+	)
+
+	# Generate plots
 	file_base = (
 		f"{mode}_{CLUSTER}_{model_arch}_ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_"
@@ -4179,18 +4370,21 @@ def clip_adapter_finetune_multi_label(
 		training_losses_breakdown=training_losses_breakdown,
 		filepath=os.path.join(results_dir, f"{file_base}_loss_breakdown.png"),
 	)
+	
 	viz.plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
 		image_to_text_metrics_list=img2txt_metrics_all_epochs,
 		text_to_image_metrics_list=txt2img_metrics_all_epochs,
 		fname=os.path.join(results_dir, f"{file_base}_retrieval_per_epoch.png"),
 	)
+	
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=final_img2txt,
 		text_to_image_metrics=final_txt2img,
 		fname=os.path.join(results_dir, f"{file_base}_retrieval_best.png"),
 	)
+	
 	viz.plot_hyperparameter_evolution(
 		eta_min=eta_min,
 		learning_rates=learning_rates_history,
@@ -4899,10 +5093,16 @@ def tip_adapter_finetune_multi_label(
 		device=device,
 		cache_dir=results_dir,
 		topk_values=topk_values,
-		verbose=verbose,
+		lora_params=None,
 		temperature=temperature,
+		verbose=verbose,
 	)
 	
+	if verbose:
+		print(f"{'='*50}")
+		print(f"Full evaluation results:")
+		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
+		print(f"{'='*50}")
 
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
@@ -4911,37 +5111,35 @@ def tip_adapter_finetune_multi_label(
 	final_tiered_t2i        = evaluation_results["tiered_t2i"]
 	model_source = evaluation_results["model_loaded_from"]
 
+	actual_trained_epochs = len(training_losses) if training_losses else 0
+	if num_epochs > 0:
+		mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
+
 	if verbose:
-		print(f"\nFinal evaluation from: {model_source}")
+		print(f"{'='*50}")
+		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"  Model: {model_arch}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n>> Tiered T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print(f"Tip-Adapter Multi-Label Fine-tuning Complete!")
+		print(f"Method: {tip_adapter_method} | Beta: {initial_beta} | Alpha: {initial_alpha} | Shots: {support_shots}")
+		print(f"Best model saved to: {mdl_fpth if num_epochs > 0 else 'N/A (training-free)'}")	
+		print(f"{'='*50}")
 
-		print(f"Final evaluation used model weights from: {model_source}")
-		print("--- Final Metrics [Full Validation Set] ---")
-		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-		print("--- Image-to-Text Retrieval ---")
-		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-		print("--- Text-to-Image Retrieval ---")
-		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+	append_retrieval_results(
+		tiered_i2t=final_tiered_i2t, 
+		tiered_t2i=final_tiered_t2i, 
+		strategy_name=mode,
+		results_dir=results_dir,
+		dataset_name=dataset_name,
+		verbose=verbose,
+	)
 
-	actual_trained_epochs = len(training_losses) if training_losses else 0
-
-	if num_epochs > 0:
-		mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
-		print(f"Best model will be renamed to: {mdl_fpth}")
-
-	print(f"\n{'='*150}")
-	print(f"Tip-Adapter Multi-Label Fine-tuning Complete!")
-	print(f"Method: {tip_adapter_method} | Beta: {initial_beta} | Alpha: {initial_alpha} | Shots: {support_shots}")
-	print(f"Best model saved to: {mdl_fpth if num_epochs > 0 else 'N/A (training-free)'}")
-	print(f"{'='*150}\n")
-	
 	# Generate plots
-	print("\nGenerating result plots...")
 	file_base_name = (
 		f"{tip_adapter_method}_"
 		f"{CLUSTER}_"
@@ -4996,6 +5194,5 @@ def tip_adapter_finetune_multi_label(
 		text_to_image_metrics=final_txt2img_metrics,
 		fname=plot_paths["retrieval_best"],
 	)
-	
 	
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics, mdl_fpth

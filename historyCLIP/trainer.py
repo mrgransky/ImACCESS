@@ -62,14 +62,14 @@ def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
 	parser.add_argument('--metadata_csv', '-csv', type=str, required=True, help='Metadata CSV file')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
-	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'probe', 'lora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'adapter'], default=None, help='Fine-tuning strategy')
+	parser.add_argument('--strategy', '-stg', type=str, choices=['full', 'lora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'adapter', 'baseline'], default=None, help='Strategy')
 	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
-	parser.add_argument('--epochs', '-e', type=int, default=63, help='Number of epochs')
-	parser.add_argument('--batch_size', '-bs', type=int, default=2, help='Batch size for training')
+	parser.add_argument('--epochs', '-e', type=int, default=35, help='Number of epochs')
+	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
-	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs [def: max cpus]')
+	parser.add_argument('--num_workers', '-nw', type=int, default=12, help='Number of CPUs [def: max cpus]')
 
 	# Early stopping
 	parser.add_argument('--minimum_epochs', '-mep', type=int, default=7, help='Early stopping minimum epochs')
@@ -81,23 +81,23 @@ def main():
 	parser.add_argument('--pairwise_imp_threshold', '-pith', type=float, default=1e-4, help='Pairwise improvement threshold for early stopping')
 
 	# LoRA & LoRA+
-	parser.add_argument('--lora_rank', '-lor', type=int, default=None, help='LoRA rank (used if finetune_strategy=lora)')
-	parser.add_argument('--lora_alpha', '-loa', type=float, default=None, help='LoRA alpha (used if finetune_strategy=lora)')
-	parser.add_argument('--lora_dropout', '-lod', type=float, default=None, help='LoRA dropout (used if finetune_strategy=lora)')
+	parser.add_argument('--lora_rank', '-lor', type=int, default=None, help='LoRA rank (used if strategy=lora)')
+	parser.add_argument('--lora_alpha', '-loa', type=float, default=None, help='LoRA alpha (used if strategy=lora)')
+	parser.add_argument('--lora_dropout', '-lod', type=float, default=None, help='LoRA dropout (used if strategy=lora)')
 
 	# LoRA+
-	parser.add_argument('--lora_plus_lambda', '-lmbd', type=float, default=None, help='LoRA+ lambda multiplier (used if finetune_strategy=lora_plus)')
+	parser.add_argument('--lora_plus_lambda', '-lmbd', type=float, default=None, help='LoRA+ lambda multiplier (used if strategy=lora_plus)')
 
 	# Progressive
-	parser.add_argument('--min_phases_before_stopping', '-mphbs', type=int, default=None, help='Minimum number of phases before stopping (used if finetune_strategy=progressive)')
-	parser.add_argument('--min_epochs_per_phase', '-mepph', type=int, default=None, help='Minimum number of epochs per phase (used if finetune_strategy=progressive)')
-	parser.add_argument('--total_num_phases', '-tnp', type=int, default=None, help='Total number of phases (used if finetune_strategy=progressive)')
-
-	# Linear probe
-	parser.add_argument('--probe_dropout', '-pdo', type=float, default=None, help='Linear probe dropout (used if finetune_strategy=linear_probe)')
+	parser.add_argument('--min_phases_before_stopping', '-mphbs', type=int, default=None, help='Minimum number of phases before stopping (used if strategy=progressive)')
+	parser.add_argument('--min_epochs_per_phase', '-mepph', type=int, default=None, help='Minimum number of epochs per phase (used if strategy=progressive)')
+	parser.add_argument('--total_num_phases', '-tnp', type=int, default=None, help='Total number of phases (used if strategy=progressive)')
 
 	# Adapter-based FT
-	parser.add_argument('--adapter_method', '-am', type=str, choices=['clip_adapter_v', 'clip_adapter_t', 'clip_adapter_vt', 'tip_adapter', 'tip_adapter_f'], default=None, help='Adapter method (used if finetune_strategy=adapter)')
+	parser.add_argument('--adapter_method', '-am', type=str, choices=['clip_adapter_v', 'clip_adapter_t', 'clip_adapter_vt', 'tip_adapter', 'tip_adapter_f'], default=None, help='Adapter method (used if strategy=adapter)')
+
+	# Baselines
+	parser.add_argument('--baseline_method', '-bm', type=str, choices=['zero_shot', 'probe'], default=None, help='Baseline method')
 
 	# Common
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
@@ -120,21 +120,18 @@ def main():
 	original_stderr = sys.stderr
 	log_file = None
 
-	if not args.finetune_strategy:
-		raise ValueError("finetune_strategy must be specified (example: -fts lora)")
+	if not args.strategy:
+		raise ValueError("strategy must be specified (example: -fts lora)")
 
-	if args.finetune_strategy == "lora" or args.finetune_strategy == "dora" or args.finetune_strategy == "lora_plus":
+	if args.strategy == "lora" or args.strategy == "dora" or args.strategy == "lora_plus":
 		assert args.lora_rank is not None, "lora_rank must be specified for lora finetuning"
 		assert args.lora_alpha is not None, "lora_alpha must be specified for lora finetuning"
 		assert args.lora_dropout is not None, "lora_dropout must be specified for lora finetuning"
 
-	if args.finetune_strategy == "probe":
-		assert args.probe_dropout is not None, "probe_dropout must be specified for linear probe finetuning (example: -pdo 0.1)"
-
-	if args.finetune_strategy == "lora_plus":
+	if args.strategy == "lora_plus":
 		assert args.lora_plus_lambda is not None, "lora_plus_lambda must be specified for lora_plus finetuning (example: -lmbd 32.0)"
 
-	if args.finetune_strategy == "adapter":
+	if args.strategy == "adapter":
 		assert args.adapter_method is not None, "adapter_method must be specified for adapter-based finetuning (example: -am clip_adapter_v)"
 
 	try:
@@ -144,7 +141,7 @@ def main():
 			arch_name = args.model_architecture.replace('/', '').replace('@', '_')
 			log_file_base_name = (
 				f"{dataset_name}_{dataset_type}_"
-				f"{args.finetune_strategy}_"
+				f"{args.strategy}_"
 				f"{arch_name}_"
 				f"bs_{args.batch_size}_"
 				f"nw_{args.num_workers}_"
@@ -158,7 +155,7 @@ def main():
 				f"do_{args.dropout}"
 			)
 
-			if args.finetune_strategy == "lora" or args.finetune_strategy == "dora":
+			if args.strategy == "lora" or args.strategy == "dora":
 				log_file_base_name += f"_lor_{args.lora_rank}_loa_{args.lora_alpha}_lod_{args.lora_dropout}"
 			
 			if args.use_lamb:
@@ -219,7 +216,7 @@ def main():
 		finetune_functions = {
 			'single_label': {
 				'full': full_finetune_single_label,
-				'probe': probe_finetune_single_label,
+				'probe': probe_single_label,
 				'lora': lora_finetune_single_label,
 				'lora_plus': lora_plus_finetune_single_label,
 				'ia3': ia3_finetune_single_label,
@@ -230,16 +227,16 @@ def main():
 			},
 			'multi_label': {
 				'full': full_finetune_multi_label,
-				'probe': probe_finetune_multi_label,
 				'lora': lora_finetune_multi_label,
 				'lora_plus': lora_plus_finetune_multi_label,
 				'ia3': ia3_finetune_multi_label,
 				'dora': dora_finetune_multi_label,
 				'vera': vera_finetune_multi_label,
+				'baseline': probe_multi_label if args.baseline_method and args.baseline_method.startswith('probe') else zero_shot_multi_label,
 				'adapter': clip_adapter_finetune_multi_label if args.adapter_method and args.adapter_method.startswith('clip_adapter') else tip_adapter_finetune_multi_label,
 			}
 		}
-		finetune_functions[dataset_type][args.finetune_strategy](
+		finetune_functions[dataset_type][args.strategy](
 			model=model,
 			train_loader=train_loader,
 			validation_loader=validation_loader,
@@ -262,31 +259,31 @@ def main():
 						'lora_rank': args.lora_rank,
 						'lora_alpha': args.lora_alpha,
 						'lora_dropout': args.lora_dropout
-					} if args.finetune_strategy == 'lora' or args.finetune_strategy == 'dora' or args.finetune_strategy == 'vera' or args.finetune_strategy == 'lora_plus' else {}
+					} if args.strategy == 'lora' or args.strategy == 'dora' or args.strategy == 'vera' or args.strategy == 'lora_plus' else {}
 				),
 			**(
 					{
 						'min_phases_before_stopping': args.min_phases_before_stopping,
 						'min_epochs_per_phase': args.min_epochs_per_phase,
 						'total_num_phases': args.total_num_phases,
-					} if args.finetune_strategy == 'progressive' else {}
+					} if args.strategy == 'progressive' else {}
 					),
 			**(
 					{
 						'probe_dropout': args.probe_dropout,
-					} if args.finetune_strategy == 'probe' else {}
+					} if args.strategy == 'probe' else {}
 				),
 			**(
 					{
 						'lora_plus_lambda': args.lora_plus_lambda,
-					} if args.finetune_strategy == 'lora_plus' else {}
+					} if args.strategy == 'lora_plus' else {}
 				),
 			**(
 					{
 						'clip_adapter_method': args.adapter_method,
 						'bottleneck_dim': 256,
 						'activation': 'relu',
-					} if args.finetune_strategy == 'adapter' and args.adapter_method and args.adapter_method.startswith('clip_adapter') else {}
+					} if args.strategy == 'adapter' and args.adapter_method and args.adapter_method.startswith('clip_adapter') else {}
 				),
 			**(
 					{
@@ -294,22 +291,22 @@ def main():
 						'initial_beta': 1.0,
 						'initial_alpha': 1.0,
 						'support_shots': 16,
-					} if args.finetune_strategy == 'adapter' and args.adapter_method and args.adapter_method.startswith('tip_adapter') else {}
+					} if args.strategy == 'adapter' and args.adapter_method and args.adapter_method.startswith('tip_adapter') else {}
 				),
 		)
 		
-		# Clean up any available JSON/PT files before finishing
-		json_files = glob.glob(os.path.join(RESULT_DIRECTORY, "*.json"))
-		pt_files = glob.glob(os.path.join(RESULT_DIRECTORY, "*.pt"))
-		cleanup_files = json_files + pt_files
-		if cleanup_files:
-			print(f"Cleaning up {len(cleanup_files)} file(s) from {RESULT_DIRECTORY}:")
-			print(cleanup_files)
-			for file in cleanup_files:
-				try:
-					os.remove(file)
-				except Exception as e:
-					print(f"Warning: Failed to remove {file}: {e}")
+		# # Clean up any available JSON/PT files before finishing
+		# json_files = glob.glob(os.path.join(RESULT_DIRECTORY, "*.json"))
+		# pt_files = glob.glob(os.path.join(RESULT_DIRECTORY, "*.pt"))
+		# cleanup_files = json_files + pt_files
+		# if cleanup_files:
+		# 	print(f"Cleaning up {len(cleanup_files)} file(s) from {RESULT_DIRECTORY}:")
+		# 	for f in cleanup_files:
+		# 		print(f)
+		# 		try:
+		# 			os.remove(f)
+		# 		except Exception as e:
+		# 			print(f"Warning: Failed to remove {f}: {e}")
 
 		print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))
 	finally:

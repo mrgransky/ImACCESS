@@ -188,90 +188,6 @@ def get_multi_label_head_torso_tail_samples(
 		print(f"Error in multi-label sampling: {e}")
 		return [], []
 
-def compute_model_embeddings(
-	strategy: str,
-	model: torch.nn.Module,
-	loader: DataLoader,
-	device: Union[str, torch.device],
-	cache_dir: str,
-	lora_rank: int=None,
-	lora_alpha: float=None,
-	lora_dropout: float=None
-):
-	"""
-	Compute embeddings for different types of fine-tuned models.
-	This function now properly handles:
-	- Regular CLIP models (pretrained, full, progressive)
-	- LoRA models 
-	- Linear probe models
-	"""
-	model.eval()
-	embeddings = []
-	paths = []
-	dataset_name = getattr(loader, 'name', 'unknown_dataset')
-	
-	cache_file_name = (
-		f"{dataset_name}_"
-		f"{strategy}_"
-		f"{model.__class__.__name__}_"
-		f"{re.sub(r'[/@]', '_', model.name)}_"
-	)
-
-	if strategy == "lora" and lora_rank is not None and lora_alpha is not None and lora_dropout is not None:
-		cache_file_name += (
-			f"lora_rank_{lora_rank}_"
-			f"lora_alpha_{lora_alpha}_"
-			f"lora_dropout_{lora_dropout}_"
-		)
-	cache_file_name += "embeddings.pt"
-	cache_file = os.path.join(cache_dir, cache_file_name)
-	
-	if os.path.exists(cache_file):
-		data = torch.load(f=cache_file, map_location=device, mmap=True)
-		return data['embeddings'], data['image_paths']
-	
-	# Determine how to extract embeddings based on model type
-	def get_image_embeddings(model, images):
-		"""Extract image embeddings handling different model types"""
-		
-		# Check if this is a linear probe model
-		if hasattr(model, 'clip_model') and hasattr(model, 'probe'):
-			# This is a linear probe - use the frozen CLIP encoder
-			# This will show that linear probe produces same embeddings as pretrained
-			return model.clip_model.encode_image(images)
-				
-		# Check if this is a standard CLIP model (pretrained, full, progressive, LoRA)
-		elif hasattr(model, 'encode_image'):
-			# This is a regular CLIP model (could be modified by LoRA, full, progressive)
-			return model.encode_image(images)
-				
-		# Handle wrapper classes or other custom model types
-		elif hasattr(model, 'visual') and hasattr(model.visual, '__call__'):
-			# Fallback: try to use visual encoder directly
-			return model.visual(images)
-				
-		else:
-			raise AttributeError(
-				f"Model of type {type(model)} doesn't have a recognizable image encoding method. "
-				f"Expected 'encode_image' method or 'clip_model.encode_image' for probe models."
-			)
-	
-	for batch_idx, (images, _, _) in enumerate(tqdm(loader, desc=f"Processing {strategy}")):
-		images = images.to(device, non_blocking=True)
-
-		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			# Use the appropriate embedding extraction method
-			features = get_image_embeddings(model, images)
-			features /= features.norm(dim=-1, keepdim=True)
-
-		embeddings.append(features.cpu())
-		paths.extend([f"batch_{batch_idx}_img_{i}" for i in range(len(images))])
-	
-	embeddings = torch.cat(embeddings, dim=0)
-	torch.save({'embeddings': embeddings, 'image_paths': paths}, cache_file)
-
-	return embeddings.to(device), paths
-
 def _parse_checkpoint_strategy(ft_path: str) -> Tuple[str, Dict]:
 		"""
 		Parse checkpoint filename to determine fine-tuning strategy and hyperparameters.
@@ -747,52 +663,18 @@ def main():
 	####################################### Qualitative Analysis #######################################
 
 	####################################### Quantitative Analysis #######################################
-	finetune_strategies = []
-	if args.full_checkpoint is not None:
-		finetune_strategies.append("full")
-	if args.lora_checkpoint is not None:
-		finetune_strategies.append("lora")
-	if args.progressive_checkpoint is not None:
-		finetune_strategies.append("progressive")
-	if args.probe_checkpoint is not None:
-		finetune_strategies.append("probe")
-
-	if len(finetune_strategies) == 0:
-		raise ValueError("Please provide at least one checkpoint for comparison!")
-
-	if args.verbose:
-		print(f"Quantitative Analysis for {len(finetune_strategies)} Finetune strategies: {finetune_strategies}".center(160, " "))
-
-	pretrained_img2txt_dict = {args.model_architecture: {}}
-	pretrained_txt2img_dict = {args.model_architecture: {}}
-	# max_eval_samples = min(500, len(validation_loader.dataset))
-	max_eval_samples = len(validation_loader.dataset)
-	pretrained_img2txt, pretrained_txt2img = pretrain_multi_label(
-		model=pretrained_model,
-		validation_loader=validation_loader,
-		device=args.device,
-		results_dir=INFERENCE_DIRECTORY,
-		cache_dir=CACHES_DIRECTORY,
-		topk_values=args.topK_values,
-		verbose=args.verbose,
-		max_samples=max_eval_samples,
-		temperature=args.temperature,
-	)
-	pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
-	pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
-	
-	viz.plot_retrieval_metrics(
-		dataset_name=validation_loader.name,
-		pretrained_img2txt_dict=pretrained_img2txt_dict,
-		pretrained_txt2img_dict=pretrained_txt2img_dict,
-		finetuned_img2txt_dict=finetuned_img2txt_dict,
-		finetuned_txt2img_dict=finetuned_txt2img_dict,
-		model_name=args.model_architecture,
-		finetune_strategies=finetune_strategies,
-		topK_values=args.topK_values,
-		results_dir=INFERENCE_DIRECTORY,
-		verbose=args.verbose,
-	)
+	if args.plot and os.path.exists(results_json_path):
+		with open(results_json_path) as f:
+			all_results = json.load(f)
+		print(f">> Plotting {len(all_results)} methods: {list(all_results.keys())}")
+		plot_retrieval_curves(
+				all_results=all_results,
+				output_dir=os.path.join(RESULTS_DIRECTORY, "plots"),
+				dataset_name=dataset_name,
+				verbose=args.verbose,
+		)
+	elif args.plot:
+		print(f"[WARNING] --plot requested but no results file found at {results_json_path}")
 	####################################### Quantitative Analysis #######################################
 
 if __name__ == "__main__":

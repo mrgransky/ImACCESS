@@ -11,7 +11,7 @@
 #SBATCH --mem=256G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0-44:4
+#SBATCH --array=0-48:4
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -71,6 +71,7 @@ FINETUNE_STRATEGIES=(
 	"tip_adapter"				# 36-39, 	# 88-91, 		# 140-143, 	# 192-195, 	# 244-247
 	"tip_adaptter_f"		# 40-43, 	# 92-95, 		# 144-147, 	# 196-199, 	# 248-251
 	"probe"				      # 44-47, 	# 96-99, 		# 148-151, 	# 200-203, 	# 252-255
+  "zero_shot"         # 48-51, 	# 100-103, 	# 152-155, 	# 204-207, 	# 256-259
 )
 ##############################################################################
 
@@ -171,10 +172,16 @@ else
 fi
 
 case $strategy in
-  "full"|"lora"|"lora_plus"|"dora"|"vera")
+  "full"|"lora"|"lora_plus")
     ADJUSTED_BATCH_SIZE=32
     ;;
-  "probe"|"ia3"|"adapter")
+  "dora"|"vera"|"ia3")
+    ADJUSTED_BATCH_SIZE=16
+    ;;
+  "probe")
+    ADJUSTED_BATCH_SIZE=128
+    ;;
+  "adapter")
     case $architecture in
       "ViT-L/14@336px") ADJUSTED_BATCH_SIZE=32 ;;
       "ViT-L/14")       ADJUSTED_BATCH_SIZE=64 ;;
