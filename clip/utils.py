@@ -47,6 +47,8 @@ import matplotlib.image as mpimg
 import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.lines import Line2D
+from matplotlib.gridspec import GridSpec
 import seaborn as sns
 
 from PIL import Image, ImageDraw, ImageFont
@@ -61,8 +63,6 @@ from tqdm import tqdm
 from collections import defaultdict
 import logging
 import warnings
-import matplotlib.gridspec as gridspec
-from matplotlib.lines import Line2D
 
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)

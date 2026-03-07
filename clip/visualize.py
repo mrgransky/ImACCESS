@@ -1892,7 +1892,7 @@ def plot_image_to_texts_separate_horizontal_bars(
 		width_ratios = [img_display_width] + [model_panel_width] * num_strategies
 		
 		# Create GridSpec with exact dimensions
-		gs = gridspec.GridSpec(
+		gs = GridSpec(
 				1, 
 				1 + num_strategies, 
 				width_ratios=width_ratios,
@@ -2259,7 +2259,7 @@ def plot_image_to_texts_pretrained(
 	)
 
 	fig = plt.figure(figsize=figure_size, dpi=dpi)
-	gs = gridspec.GridSpec(1, 2, width_ratios=[1, 1.05], wspace=0.01)
+	gs = GridSpec(1, 2, width_ratios=[1, 1.05], wspace=0.01)
 
 	ax0 = plt.subplot(gs[0])
 	ax0.imshow(img)
@@ -2808,280 +2808,6 @@ def plot_text_to_images(
 			dpi=(dpi, dpi)
 		)
 
-def plot_retrieval_metrics(
-		dataset_name: str,
-		pretrained_img2txt_dict: dict,
-		pretrained_txt2img_dict: dict,
-		finetuned_img2txt_dict: dict,
-		finetuned_txt2img_dict: dict,
-		model_name: str,
-		finetune_strategies: list,
-		results_dir: str,
-		topK_values: list,
-		figure_size=(11, 10),
-		DPI: int = 250,
-		verbose: bool = False,
-	):
-	metrics = ["mP", "mAP", "Recall"]
-	if model_name not in finetuned_img2txt_dict.keys():
-		print(f"WARNING: {model_name} not found in finetuned_img2txt_dict. Skipping...")
-		print(json.dumps(finetuned_img2txt_dict, indent=4, ensure_ascii=False))
-		return
-
-	if model_name not in finetuned_txt2img_dict.keys():
-		print(f"WARNING: {model_name} not found in finetuned_txt2img_dict. Skipping...")
-		print(json.dumps(finetuned_txt2img_dict, indent=4, ensure_ascii=False))
-		return
-	
-	# Validate finetune_strategies
-	if verbose:
-		print(f"Plotting Retrieval Metrics for {model_name} with {len(finetune_strategies)} Finetune strategies: {finetune_strategies}")
-
-	if not finetune_strategies:
-		print("WARNING: No valid finetune strategies provided. Skipping...")
-		return
-
-	tex_table_values = {mode: {} for mode in modes}
-	for mode in modes:
-		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
-		finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
-		
-		for metric in metrics:
-			# Create figure with slightly adjusted size for better annotation spacing
-			fig, ax = plt.subplots(figsize=figure_size, constrained_layout=True)
-
-			# Create filename for the output
-			fname = (
-				f"{dataset_name}_"
-				f"{'_'.join(finetune_strategies)}_"
-				f"finetuned_vs_pretrained_"
-				f"{re.sub(r'[/@]', '-', model_name)}_"
-				f"{mode.replace('-', '_')}_"
-				f"{metric}"
-				f".png"
-			)
-			file_path = os.path.join(results_dir, fname)
-
-			# Check if metric exists in pretrained dictionary
-			if metric not in pretrained_dict.get(model_name, {}):
-				print(f"WARNING: Metric {metric} not found in pretrained_{mode.lower().replace('-', '_')}_dict for {model_name}")
-				continue
-
-			# Get available k values across all dictionaries
-			k_values = sorted(k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {}))
-			
-			# Validate k values across all strategies
-			for strategy in finetune_strategies:
-				if strategy not in finetuned_dict.get(model_name, {}) or metric not in finetuned_dict.get(model_name, {}).get(strategy, {}):
-					print(f"WARNING: Metric {metric} not found in finetuned_{mode.lower().replace('-', '_')}_dict for {model_name}/{strategy}")
-					k_values = []  # Reset if any strategy is missing
-					break
-				k_values = sorted(set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys()))
-
-			if not k_values:
-				print(f"WARNING: No matching K values found for {metric}")
-				continue
-
-			# Plot Pre-trained (dashed line)
-			pretrained_vals = [pretrained_dict[model_name][metric].get(str(k), float('nan')) for k in k_values]
-			ax.plot(
-				k_values,
-				pretrained_vals,
-				label=f"CLIP {model_name}",
-				color=pretrained_colors[model_name],
-				linestyle='--', 
-				marker='o',
-				linewidth=4.5,
-				markersize=6.5,
-				alpha=0.98,
-			)
-
-			# Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
-			for strategy in finetune_strategies:
-				finetuned_vals = [finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) for k in k_values]
-				ax.plot(
-					k_values,
-					finetuned_vals,
-					label=f"{strategy.upper()}",
-					color=strategy_colors[strategy], 
-					linestyle='-', 
-					marker=strategy_styles[strategy],
-					linewidth=2.0,
-					markersize=4,
-					alpha=0.75,
-				)
-			
-			# Analyze plot data to place annotations intelligently
-			key_k_values = [1, 10, 20]  # These are the key points to annotate
-			annotation_positions = {}    # To store planned annotation positions
-			
-			# First pass: gather data about values and improvements
-			for k in key_k_values:
-				if k in k_values:
-					k_idx = k_values.index(k)
-					pre_val = pretrained_vals[k_idx]
-					finetuned_vals_at_k = {
-						strategy: finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) 
-						for strategy in finetune_strategies
-					}
-					
-					# Calculate improvements
-					improvements = {}
-					for strategy, val in finetuned_vals_at_k.items():
-						if pre_val != 0:
-							imp = (val - pre_val) / pre_val * 100
-							improvements[strategy] = (imp, val)
-					
-					# Store data for this k
-					annotation_positions[k] = {
-						'best': max(improvements.items(), key=lambda x: x[1][0]),
-						'worst': min(improvements.items(), key=lambda x: x[1][0]),
-						'all_values': [v[1] for v in improvements.values()]
-					}
-
-			# Second pass: determine optimal annotation placement based on plot density
-			for k, data in annotation_positions.items():
-				best_strategy, (best_imp, best_val) = data['best']
-				worst_strategy, (worst_imp, worst_val) = data['worst']
-				
-				# Find y positions of all lines at this k
-				all_values = data['all_values']
-				all_values.sort()  # Sort for easier gap analysis
-				
-				# For best annotation (typically placed above)
-				best_text_color = positive_pct_col if best_imp >= 0 else negative_pct_col
-				best_arrow_style = '<|-' if best_imp >= 0 else '-|>'
-				
-				# For worst annotation (typically placed below)
-				worst_text_color = positive_pct_col if worst_imp >= 0 else negative_pct_col
-				worst_arrow_style = '-|>' if worst_imp >= 0 else '<|-'
-				
-				# Calculate the overall range and spacing between values
-				if len(all_values) > 1:  # More than one strategy
-					value_range = max(all_values) - min(all_values)
-					avg_gap = value_range / (len(all_values) - 1) if len(all_values) > 1 else 0.1
-					
-					# Check if annotation positioning needs adjustment
-					if value_range < 0.15:  # Values are close together
-						# Use more extreme offsets
-						best_offset = (5, 20)  # Further right and higher up
-						worst_offset = (5, -20)  # Further right and lower down
-					else:
-						# Regular offsets for well-separated values
-						best_offset = (0, 20)
-						worst_offset = (0, -20)
-				else:
-					# Default offsets when there's only one strategy
-					best_offset = (0, 30)
-					worst_offset = (0, -30)
-				
-				# Place best strategy annotation with adjusted position
-				ax.annotate(
-					f"{best_imp:+.1f}%",
-					xy=(k, best_val),
-					xytext=best_offset,
-					textcoords='offset points',
-					fontsize=12,
-					fontweight='bold',
-					color=best_text_color,
-					bbox=dict(
-						facecolor='#ffffff', 
-						edgecolor='none', 
-						alpha=0.7, 
-						pad=0.1
-					),
-					arrowprops=dict(
-						arrowstyle=best_arrow_style,
-						color=best_text_color,
-						shrinkA=0,
-						shrinkB=3,
-						alpha=0.8,
-					)
-				)
-				
-				# Place worst strategy annotation with adjusted position
-				# Only annotate worst if it's different from best (avoids duplication)
-				if worst_strategy != best_strategy:
-					ax.annotate(
-						f"{worst_imp:+.1f}%",
-						xy=(k, worst_val),
-						xytext=worst_offset,
-						textcoords='offset points',
-						fontsize=12,
-						fontweight='bold',
-						color=worst_text_color,
-						bbox=dict(
-							facecolor='#ffffff', 
-							edgecolor='none', 
-							alpha=0.7, 
-							pad=0.1
-						),
-						arrowprops=dict(
-							arrowstyle=worst_arrow_style,
-							color=worst_text_color,
-							shrinkA=0,
-							shrinkB=3,
-							alpha=0.8,
-						)
-					)
-			
-			# Format the plot
-			y_offset = 1.05
-			title_bottom_y = y_offset + 0.02  # Calculate position below title
-			legend_gap = 0.0  # Fixed gap between title and legend
-			legend_y_pos = title_bottom_y - legend_gap
-			ax.set_title(
-				f"{metric}@K", 
-				fontsize=13, 
-				fontweight='bold', 
-				y=y_offset,
-			)
-			ax.set_xlabel("K", fontsize=11, fontweight='bold')
-			ax.set_xticks(k_values)
-			ax.set_xticklabels(k_values, fontsize=15)
-			# ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
-			# ax.set_yticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=10)
-			ax.grid(True, linestyle='--', alpha=0.4, color='black')
-			y_max = max(max(pretrained_vals), max(finetuned_vals))
-			y_min = min(min(pretrained_vals), min(finetuned_vals))
-			padding = (y_max - y_min) * 0.2
-			# print(f"{metric}@K y_min: {y_min}, y_max: {y_max} padding: {padding}")
-			ax.set_ylim(min(0, y_min - padding), max(1, y_max + padding))
-			# ax.set_ylim(max(-0.02, y_min - padding), min(1.02, y_max + padding))
-			# ax.set_ylim(-0.01, 1.01)
-			ax.set_yticklabels([f'{y:.2f}' for y in ax.get_yticks()], fontsize=15)
-			
-			ax.legend(
-				loc='upper center',
-				bbox_to_anchor=(0.5, legend_y_pos),  # Position with fixed gap below title
-				frameon=False,
-				fontsize=12,
-				facecolor='white',
-				ncol=len(finetune_strategies) + 1,
-			)
-			
-			for spine in ax.spines.values():
-				spine.set_color('black')
-				spine.set_linewidth(0.7)
-
-			plt.tight_layout()
-			plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
-			plt.close(fig)
-
-			# Detailed logging of numerical values
-			print(f"{mode} | {model_name} | {metric}@K | {finetune_strategies} | K={k_values}".center(160, " "))
-			
-			print(f"Pretrained {model_name}")
-			for k in k_values:
-				val = pretrained_dict[model_name][metric].get(str(k), float('nan'))
-				print(f"\t{metric}@{k}: {val:.3f}")
-			for strategy in finetune_strategies:
-				print(f"{strategy.upper()}")
-				for k in k_values:
-					val = finetuned_dict[model_name][strategy][metric].get(str(k), float('nan'))
-					print(f"\t{metric}@{k}: {val:.3f}")
-			print("".center(160, "-"))
-
 def plot_all_pretrain_metrics(
 		dataset_name: str,
 		img2txt_metrics_dict: dict,
@@ -3440,229 +3166,489 @@ def plot_retrieval_metrics_per_epoch(
 	plt.savefig(fname, dpi=300, bbox_inches='tight')
 	plt.close(fig)
 
-def _parse_checkpoint_strategy(ft_path: str) -> Tuple[str, Dict]:
+def plot_qualitative_retrieval(
+	results_by_strategy: Dict[str, Dict],  # strategy → run_qualitative_retrieval output
+	output_dir: str,
+	dataset_name: str,
+	topk: int = 5,
+	img_size: int = 96,
+	dpi: int = 300,
+	verbose: bool = True,
+) -> List[str]:
 		"""
-		Parse checkpoint filename to determine fine-tuning strategy and hyperparameters.
-		Returns (strategy_name, params_dict).
-
-		Checkpoint naming conventions:
-			lora_*          → strategy="lora"
-			lora_plus_*     → strategy="lora_plus"
-			dora_*          → strategy="dora"
-			vera_*          → strategy="vera"
-			ia3_*           → strategy="ia3"
-			clip_adapter_v_* / clip_adapter_t_* / clip_adapter_vt_* → strategy=that variant
-			tip_adapter_f_* → strategy="tip_adapter_f"
-			tip_adapter_*   → strategy="tip_adapter"
-			probe_*         → strategy="probe"
-			full_*          → strategy="full"
+		Produces one figure per retrieval direction (I2T, T2I).
+		Rows = query samples, columns = strategies side by side.
 		"""
-		fname = os.path.basename(ft_path)
 
-		# Order matters — more specific patterns before general ones
-		if fname.startswith("lora_plus"):
-				strategy = "lora_plus"
-		elif fname.startswith("lora"):
-				strategy = "lora"
-		elif fname.startswith("dora"):
-				strategy = "dora"
-		elif fname.startswith("vera"):
-				strategy = "vera"
-		elif fname.startswith("ia3"):
-				strategy = "ia3"
-		elif fname.startswith("clip_adapter_vt"):
-				strategy = "clip_adapter_vt"
-		elif fname.startswith("clip_adapter_t"):
-				strategy = "clip_adapter_t"
-		elif fname.startswith("clip_adapter_v"):
-				strategy = "clip_adapter_v"
-		elif fname.startswith("tip_adapter_f"):
-				strategy = "tip_adapter_f"
-		elif fname.startswith("tip_adapter"):
-				strategy = "tip_adapter"
-		elif fname.startswith("probe"):
-				strategy = "probe"
-		elif fname.startswith("full"):
-				strategy = "full"
-		else:
-				strategy = "unknown"
+		os.makedirs(output_dir, exist_ok=True)
+		saved_paths = []
+		strategies = list(results_by_strategy.keys())
 
-		# Extract LoRA hyperparams from filename if present
-		params = {}
-		lor_match = re.search(r'lor_(\d+)', fname)
-		loa_match = re.search(r'loa_([\d.]+)', fname)
-		lod_match = re.search(r'lod_([\d.]+)', fname)
-		cbd_match = re.search(r'cbd_(\d+)', fname)
-		act_match = re.search(r'act_(\w+?)_', fname)
+		# ------------------------------------------------------------------ #
+		# I2T figure                                                          #
+		# Layout: one row per query image                                     #
+		#         columns: query image | strategy_1 labels | strategy_2 ...  #
+		# ------------------------------------------------------------------ #
+		i2t_samples = results_by_strategy[strategies[0]]["i2t"]
+		n_queries = len(i2t_samples)
+		# n_cols = 1 + len(strategies)   # query image + one col per strategy
+		n_cols = 1 + 1 + len(strategies)  # query image + GT column + one per strategy
 
-		if lor_match:
-				params["lora_rank"]    = int(lor_match.group(1))
-		if loa_match:
-				params["lora_alpha"]   = float(loa_match.group(1))
-		if lod_match:
-				params["lora_dropout"] = float(lod_match.group(1))
-		if cbd_match:
-				params["bottleneck_dim"] = int(cbd_match.group(1))
-		if act_match:
-				params["activation"] = act_match.group(1)
+		fig_h = n_queries * 1.4 + 0.6
+		fig_w = n_cols * 2.8
+		fig, axes = plt.subplots(n_queries, n_cols, figsize=(fig_w, fig_h), dpi=dpi)
+		if n_queries == 1:
+			axes = axes[None, :]
 
-		return strategy, params
+		# Column headers
+		print(n_cols)
+		print(axes.shape)
+		axes[0, 0].set_title("Query Image", fontsize=7, fontweight="bold")
+		axes[0, 1].set_title("GT", fontsize=7, fontweight="bold")
+		for col, strat in enumerate(strategies, start=2):
+			label = METHOD_STYLE.get(strat, {}).get("label", strat)
+			axes[0, col].set_title(label, fontsize=7, fontweight="bold")
 
-def _load_checkpoint_into_model(
-		model: torch.nn.Module,
-		ft_path: str,
-		device: torch.device,
-		verbose: bool = False,
-) -> torch.nn.Module:
-		"""Load checkpoint weights into an already-constructed model."""
-		checkpoint = torch.load(ft_path, map_location=device)
-		state_dict = checkpoint.get('model_state_dict', checkpoint)
+		for row, sample in enumerate(i2t_samples):
+			# Query image
+			ax_img = axes[row, 0]
 
-		# Key translation for probe checkpoints (saved as bare linear layer)
-		try:
-				missing, unexpected = model.load_state_dict(state_dict, strict=False)
-				if verbose and (missing or unexpected):
-						print(f"  Missing keys : {len(missing)}")
-						print(f"  Unexpected   : {len(unexpected)}")
-		except Exception as e:
-				print(f"  [WARNING] load_state_dict failed: {e}")
+			try:
+				img = Image.open(sample["image_path"]).convert("RGB")
+				img.thumbnail((img_size * 2, img_size * 2))
+				ax_img.imshow(img)
+			except Exception:
+				ax_img.text(0.5, 0.5, "N/A", ha="center", va="center")
 
-		return model
+			ax_img.axis("off")
+			ax_img.set_ylabel(
+				sample["segment"].upper(),
+				fontsize=6,
+				rotation=0,
+				labelpad=30,
+				va="center",
+			)
+			
+			# Ground truth column
+			print(f"row: {row}, sample: {sample}")
+			print()
+			ax_gt = axes[row, 1]
+			ax_gt.axis("off")
+			gt_labels = sample["ground_truth"][:5]  # truncate for readability
+			gt_text = "\n".join(f"• {l[:25]}" for l in gt_labels)
+			
+			if len(sample["ground_truth"]) > 5:
+				gt_text += f"\n  (+{len(sample['ground_truth'])-5} more)"
+			ax_gt.text(
+				0.01,
+				0.99, 
+				gt_text,
+				transform=ax_gt.transAxes,
+				fontsize=8.5, 
+				va="top",
+				ha="left",
+				color="#333333",
+				fontfamily="monospace",
+			)
 
-def load_finetuned_models(
-		available_checkpoints: List[str],
-		model_architecture: str,
-		device: torch.device,
-		dataset_directory: str,
-		validation_loader: DataLoader,
-		verbose: bool = False,
-) -> Dict[str, torch.nn.Module]:
-		"""
-		Load all fine-tuned model checkpoints found in results_dir.
-		Returns dict mapping strategy_name → model.
-		"""
-		fine_tuned_models = {}
-		ft_start = time.time()
-		print(f">> Loading {len(available_checkpoints)} fine-tuned checkpoints...")
+			# Retrieved labels per strategy
+			for col, strat in enumerate(strategies, start=2):
+				print(col, strat)
+				strat_sample = results_by_strategy[strat]["i2t"][row]
+				gt_set = set(strat_sample["ground_truth"])
+				ax = axes[row, col]
+				ax.axis("off")
+				lines = []
+				colors = []
+				for rank, (lbl, score) in enumerate(zip(strat_sample["retrieved_labels"], strat_sample["retrieved_scores"])):
+					hit = lbl in gt_set
+					lines.append(f"{rank+1}. {lbl[:28]}  ({score:.2f})")
+					colors.append("#024b02" if hit else "#ad0101")   # green / red
+				y = 0.97
+				for line, color in zip(lines, colors):
+					ax.text(
+						0.01,
+						y,
+						line,
+						transform=ax.transAxes,
+						fontsize=6.5, 
+						va="top",
+						ha="left",
+						color=color,
+						fontfamily="monospace",
+					)
+					y -= 0.18
 
-		for i, ft_path in enumerate(available_checkpoints):
-				strategy, params = _parse_checkpoint_strategy(ft_path)
-				print(f"  [{i+1}/{len(available_checkpoints)}] strategy={strategy}  {os.path.basename(ft_path)}")
+		# Legend
+		handles = [
+				mpatches.Patch(color="#2ca02c", label="Correct (in ground truth)"),
+				mpatches.Patch(color="#d62728", label="Incorrect"),
+		]
+		fig.legend(handles=handles, loc="lower center", ncol=2, fontsize=7, framealpha=0.9)
+		fig.suptitle(f"I2T Qualitative Retrieval", fontsize=9, fontweight="bold")
+		plt.tight_layout(rect=[0, 0.03, 1, 0.97])
 
-				# Fresh base model for each checkpoint
-				base_model, _ = clip.load(
-						name=model_architecture,
-						device=device,
-						download_root=get_model_directory(path=dataset_directory),
+		for ext in ("pdf", "png"):
+				fpath = os.path.join(output_dir, f"{dataset_name}_qualitative_i2t.{ext}")
+				fig.savefig(fpath, bbox_inches="tight")
+				if ext == "pdf":
+						saved_paths.append(fpath)
+						if verbose:
+								print(f"  Saved: {fpath}")
+		plt.close(fig)
+
+		# ------------------------------------------------------------------ #
+		# T2I figure                                                          #
+		# Layout: one row per query label                                     #
+		#         columns: query text | top-k images per strategy            #
+		# ------------------------------------------------------------------ #
+		t2i_samples_0 = results_by_strategy[strategies[0]]["t2i"]
+		n_t2i = len(t2i_samples_0)
+		# One col for query label text + topk image cols per strategy
+		n_cols_t2i = 1 + len(strategies) * topk
+
+		fig2, axes2 = plt.subplots(
+				n_t2i, n_cols_t2i,
+				figsize=(n_cols_t2i * 1.2 + 0.5, n_t2i * 1.4 + 0.6),
+				dpi=dpi,
+		)
+		if n_t2i == 1:
+				axes2 = axes2[None, :]
+
+		axes2[0, 0].set_title("Query Label", fontsize=7, fontweight="bold")
+		for s_idx, strat in enumerate(strategies):
+				mid_col = 1 + s_idx * topk + topk // 2
+				label = METHOD_STYLE.get(strat, {}).get("label", strat)
+				axes2[0, mid_col].set_title(label, fontsize=7, fontweight="bold")
+
+		for row, t2i_label_result in enumerate(t2i_samples_0):
+				ax_q = axes2[row, 0]
+				ax_q.axis("off")
+				ax_q.text(
+						0.5, 0.5,
+						t2i_label_result["query_label"],
+						ha="center", va="center",
+						fontsize=6, wrap=True,
+						transform=ax_q.transAxes,
 				)
-				base_model = base_model.float()
-				base_model.name = model_architecture
+				ax_q.set_ylabel(
+						results_by_strategy[strategies[0]]["t2i"][row].get("segment", ""),
+						fontsize=6, rotation=0, labelpad=30, va="center",
+				)
 
-				try:
-						if strategy in ("lora", "lora_plus", "dora"):
-								rank    = params.get("lora_rank", 16)
-								alpha   = params.get("lora_alpha", 1.0)
-								dropout = params.get("lora_dropout", 0.0)
-								ft_model = get_injected_peft_clip(
-										clip_model=base_model,
-										method=strategy,
-										rank=rank,
-										alpha=alpha,
-										dropout=dropout,
-										target_text_modules=[],
-										target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
-										verbose=verbose,
-								)
-
-						elif strategy in ("ia3", "vera"):
-								rank    = params.get("lora_rank", 16)
-								alpha   = params.get("lora_alpha", 1.0)
-								dropout = params.get("lora_dropout", 0.0)
-								ft_model = get_injected_peft_clip(
-										clip_model=base_model,
-										method=strategy,
-										rank=rank,
-										alpha=alpha,
-										dropout=dropout,
-										target_text_modules=[],
-										target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
-										verbose=verbose,
-								)
-
-						elif strategy in ("clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"):
-								bottleneck_dim = params.get("bottleneck_dim", 256)
-								activation     = params.get("activation", "relu")
-								ft_model = get_adapter_peft_clip(
-										clip_model=base_model,
-										method=strategy,
-										cache_dim=None,
-										bottleneck_dim=bottleneck_dim,
-										activation=activation,
-										verbose=verbose,
-								)
-
-						elif strategy in ("tip_adapter", "tip_adapter_f"):
-								# Tip-Adapter cache is not reconstructible from checkpoint alone —
-								# the cache depends on support set features extracted at training time.
-								# For inference, we load the trainable projection weights only.
+				for s_idx, strat in enumerate(strategies):
+						strat_result = results_by_strategy[strat]["t2i"][row]
+						for k, img_path in enumerate(strat_result["retrieved_paths"][:topk]):
+								col = 1 + s_idx * topk + k
+								ax = axes2[row, col]
 								try:
-										text_dim = base_model.encode_text(
-												clip.tokenize(["a"]).to(device)
-										).shape[-1]
+										img = Image.open(img_path).convert("RGB")
+										img.thumbnail((img_size, img_size))
+										ax.imshow(img)
 								except Exception:
-										text_dim = 768
-								ft_model = get_adapter_peft_clip(
-										clip_model=base_model,
-										method=strategy,
-										cache_dim=text_dim,
-										bottleneck_dim=None,
-										activation=None,
-										verbose=verbose,
-								)
+										ax.text(0.5, 0.5, "N/A", ha="center", va="center", fontsize=5)
+								ax.axis("off")
+								score = strat_result["retrieved_scores"][k]
+								ax.set_xlabel(f"{score:.2f}", fontsize=4.5)
 
-						elif strategy == "probe":
-								ft_model = get_probe_clip(
-										clip_model=base_model,
-										validation_loader=validation_loader,
-										device=device,
-										verbose=verbose,
-								)
+		fig2.suptitle(f"T2I Qualitative Retrieval", fontsize=9, fontweight="bold")
+		plt.tight_layout(rect=[0, 0.01, 1, 0.97])
 
-						elif strategy == "full":
-								ft_model = base_model  # weights loaded directly below
+		for ext in ("pdf", "png"):
+				fpath = os.path.join(output_dir, f"{dataset_name}_qualitative_t2i.{ext}")
+				fig2.savefig(fpath, bbox_inches="tight")
+				if ext == "pdf":
+						saved_paths.append(fpath)
+						if verbose:
+								print(f"  Saved: {fpath}")
+		plt.close(fig2)
 
-						else:
-								print(f"  [SKIP] Unknown strategy '{strategy}' for {ft_path}")
-								continue
+		return saved_paths
 
-						ft_model = ft_model.to(device).float()
-						ft_model.name = model_architecture
-						ft_model = _load_checkpoint_into_model(ft_model, ft_path, device, verbose)
+def plot_retrieval_metrics(
+		dataset_name: str,
+		pretrained_img2txt_dict: dict,
+		pretrained_txt2img_dict: dict,
+		finetuned_img2txt_dict: dict,
+		finetuned_txt2img_dict: dict,
+		model_name: str,
+		finetune_strategies: list,
+		results_dir: str,
+		topK_values: list,
+		figure_size=(11, 10),
+		DPI: int = 250,
+		verbose: bool = False,
+	):
+	metrics = ["mP", "mAP", "Recall"]
+	if model_name not in finetuned_img2txt_dict.keys():
+		print(f"WARNING: {model_name} not found in finetuned_img2txt_dict. Skipping...")
+		print(json.dumps(finetuned_img2txt_dict, indent=4, ensure_ascii=False))
+		return
 
-						# Use strategy as key — append index if duplicate (e.g. two lora checkpoints)
-						key = strategy
-						if key in fine_tuned_models:
-								key = f"{strategy}_{i}"
-						fine_tuned_models[key] = ft_model
-						print(f"  ✓ Loaded {key}")
+	if model_name not in finetuned_txt2img_dict.keys():
+		print(f"WARNING: {model_name} not found in finetuned_txt2img_dict. Skipping...")
+		print(json.dumps(finetuned_txt2img_dict, indent=4, ensure_ascii=False))
+		return
+	
+	# Validate finetune_strategies
+	if verbose:
+		print(f"Plotting Retrieval Metrics for {model_name} with {len(finetune_strategies)} Finetune strategies: {finetune_strategies}")
 
-				except Exception as e:
-						print(f"  [ERROR] Failed to load {ft_path}: {e}")
-						continue
+	if not finetune_strategies:
+		print("WARNING: No valid finetune strategies provided. Skipping...")
+		return
 
-		print(f">> {len(fine_tuned_models)} models loaded in {time.time()-ft_start:.1f}s")
-		return fine_tuned_models
+	tex_table_values = {mode: {} for mode in modes}
+	for mode in modes:
+		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
+		finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+		
+		for metric in metrics:
+			# Create figure with slightly adjusted size for better annotation spacing
+			fig, ax = plt.subplots(figsize=figure_size, constrained_layout=True)
+
+			# Create filename for the output
+			fname = (
+				f"{dataset_name}_"
+				f"{'_'.join(finetune_strategies)}_"
+				f"finetuned_vs_pretrained_"
+				f"{re.sub(r'[/@]', '-', model_name)}_"
+				f"{mode.replace('-', '_')}_"
+				f"{metric}"
+				f".png"
+			)
+			file_path = os.path.join(results_dir, fname)
+
+			# Check if metric exists in pretrained dictionary
+			if metric not in pretrained_dict.get(model_name, {}):
+				print(f"WARNING: Metric {metric} not found in pretrained_{mode.lower().replace('-', '_')}_dict for {model_name}")
+				continue
+
+			# Get available k values across all dictionaries
+			k_values = sorted(k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {}))
+			
+			# Validate k values across all strategies
+			for strategy in finetune_strategies:
+				if strategy not in finetuned_dict.get(model_name, {}) or metric not in finetuned_dict.get(model_name, {}).get(strategy, {}):
+					print(f"WARNING: Metric {metric} not found in finetuned_{mode.lower().replace('-', '_')}_dict for {model_name}/{strategy}")
+					k_values = []  # Reset if any strategy is missing
+					break
+				k_values = sorted(set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys()))
+
+			if not k_values:
+				print(f"WARNING: No matching K values found for {metric}")
+				continue
+
+			# Plot Pre-trained (dashed line)
+			pretrained_vals = [pretrained_dict[model_name][metric].get(str(k), float('nan')) for k in k_values]
+			ax.plot(
+				k_values,
+				pretrained_vals,
+				label=f"CLIP {model_name}",
+				color=pretrained_colors[model_name],
+				linestyle='--', 
+				marker='o',
+				linewidth=4.5,
+				markersize=6.5,
+				alpha=0.98,
+			)
+
+			# Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
+			for strategy in finetune_strategies:
+				finetuned_vals = [finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) for k in k_values]
+				ax.plot(
+					k_values,
+					finetuned_vals,
+					label=f"{strategy.upper()}",
+					color=strategy_colors[strategy], 
+					linestyle='-', 
+					marker=strategy_styles[strategy],
+					linewidth=2.0,
+					markersize=4,
+					alpha=0.75,
+				)
+			
+			# Analyze plot data to place annotations intelligently
+			key_k_values = [1, 10, 20]  # These are the key points to annotate
+			annotation_positions = {}    # To store planned annotation positions
+			
+			# First pass: gather data about values and improvements
+			for k in key_k_values:
+				if k in k_values:
+					k_idx = k_values.index(k)
+					pre_val = pretrained_vals[k_idx]
+					finetuned_vals_at_k = {
+						strategy: finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) 
+						for strategy in finetune_strategies
+					}
+					
+					# Calculate improvements
+					improvements = {}
+					for strategy, val in finetuned_vals_at_k.items():
+						if pre_val != 0:
+							imp = (val - pre_val) / pre_val * 100
+							improvements[strategy] = (imp, val)
+					
+					# Store data for this k
+					annotation_positions[k] = {
+						'best': max(improvements.items(), key=lambda x: x[1][0]),
+						'worst': min(improvements.items(), key=lambda x: x[1][0]),
+						'all_values': [v[1] for v in improvements.values()]
+					}
+
+			# Second pass: determine optimal annotation placement based on plot density
+			for k, data in annotation_positions.items():
+				best_strategy, (best_imp, best_val) = data['best']
+				worst_strategy, (worst_imp, worst_val) = data['worst']
+				
+				# Find y positions of all lines at this k
+				all_values = data['all_values']
+				all_values.sort()  # Sort for easier gap analysis
+				
+				# For best annotation (typically placed above)
+				best_text_color = positive_pct_col if best_imp >= 0 else negative_pct_col
+				best_arrow_style = '<|-' if best_imp >= 0 else '-|>'
+				
+				# For worst annotation (typically placed below)
+				worst_text_color = positive_pct_col if worst_imp >= 0 else negative_pct_col
+				worst_arrow_style = '-|>' if worst_imp >= 0 else '<|-'
+				
+				# Calculate the overall range and spacing between values
+				if len(all_values) > 1:  # More than one strategy
+					value_range = max(all_values) - min(all_values)
+					avg_gap = value_range / (len(all_values) - 1) if len(all_values) > 1 else 0.1
+					
+					# Check if annotation positioning needs adjustment
+					if value_range < 0.15:  # Values are close together
+						# Use more extreme offsets
+						best_offset = (5, 20)  # Further right and higher up
+						worst_offset = (5, -20)  # Further right and lower down
+					else:
+						# Regular offsets for well-separated values
+						best_offset = (0, 20)
+						worst_offset = (0, -20)
+				else:
+					# Default offsets when there's only one strategy
+					best_offset = (0, 30)
+					worst_offset = (0, -30)
+				
+				# Place best strategy annotation with adjusted position
+				ax.annotate(
+					f"{best_imp:+.1f}%",
+					xy=(k, best_val),
+					xytext=best_offset,
+					textcoords='offset points',
+					fontsize=12,
+					fontweight='bold',
+					color=best_text_color,
+					bbox=dict(
+						facecolor='#ffffff', 
+						edgecolor='none', 
+						alpha=0.7, 
+						pad=0.1
+					),
+					arrowprops=dict(
+						arrowstyle=best_arrow_style,
+						color=best_text_color,
+						shrinkA=0,
+						shrinkB=3,
+						alpha=0.8,
+					)
+				)
+				
+				# Place worst strategy annotation with adjusted position
+				# Only annotate worst if it's different from best (avoids duplication)
+				if worst_strategy != best_strategy:
+					ax.annotate(
+						f"{worst_imp:+.1f}%",
+						xy=(k, worst_val),
+						xytext=worst_offset,
+						textcoords='offset points',
+						fontsize=12,
+						fontweight='bold',
+						color=worst_text_color,
+						bbox=dict(
+							facecolor='#ffffff', 
+							edgecolor='none', 
+							alpha=0.7, 
+							pad=0.1
+						),
+						arrowprops=dict(
+							arrowstyle=worst_arrow_style,
+							color=worst_text_color,
+							shrinkA=0,
+							shrinkB=3,
+							alpha=0.8,
+						)
+					)
+			
+			# Format the plot
+			y_offset = 1.05
+			title_bottom_y = y_offset + 0.02  # Calculate position below title
+			legend_gap = 0.0  # Fixed gap between title and legend
+			legend_y_pos = title_bottom_y - legend_gap
+			ax.set_title(
+				f"{metric}@K", 
+				fontsize=13, 
+				fontweight='bold', 
+				y=y_offset,
+			)
+			ax.set_xlabel("K", fontsize=11, fontweight='bold')
+			ax.set_xticks(k_values)
+			ax.set_xticklabels(k_values, fontsize=15)
+			# ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+			# ax.set_yticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=10)
+			ax.grid(True, linestyle='--', alpha=0.4, color='black')
+			y_max = max(max(pretrained_vals), max(finetuned_vals))
+			y_min = min(min(pretrained_vals), min(finetuned_vals))
+			padding = (y_max - y_min) * 0.2
+			# print(f"{metric}@K y_min: {y_min}, y_max: {y_max} padding: {padding}")
+			ax.set_ylim(min(0, y_min - padding), max(1, y_max + padding))
+			# ax.set_ylim(max(-0.02, y_min - padding), min(1.02, y_max + padding))
+			# ax.set_ylim(-0.01, 1.01)
+			ax.set_yticklabels([f'{y:.2f}' for y in ax.get_yticks()], fontsize=15)
+			
+			ax.legend(
+				loc='upper center',
+				bbox_to_anchor=(0.5, legend_y_pos),  # Position with fixed gap below title
+				frameon=False,
+				fontsize=12,
+				facecolor='white',
+				ncol=len(finetune_strategies) + 1,
+			)
+			
+			for spine in ax.spines.values():
+				spine.set_color('black')
+				spine.set_linewidth(0.7)
+
+			plt.tight_layout()
+			plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
+			plt.close(fig)
+
+			# Detailed logging of numerical values
+			print(f"{mode} | {model_name} | {metric}@K | {finetune_strategies} | K={k_values}".center(160, " "))
+			
+			print(f"Pretrained {model_name}")
+			for k in k_values:
+				val = pretrained_dict[model_name][metric].get(str(k), float('nan'))
+				print(f"\t{metric}@{k}: {val:.3f}")
+			for strategy in finetune_strategies:
+				print(f"{strategy.upper()}")
+				for k in k_values:
+					val = finetuned_dict[model_name][strategy][metric].get(str(k), float('nan'))
+					print(f"\t{metric}@{k}: {val:.3f}")
+			print("".center(160, "-"))
 
 def plot_retrieval_curves(
-		all_results: Dict[str, Dict],   # strategy → extract_per_k_metrics() output
-		output_dir: str,
-		dataset_name: str,
-		directions: List[str] = ["i2t", "t2i"],
-		tiers: List[str] = ["overall", "head", "rare"],
-		metrics: List[str] = ["mAP", "Recall"],
-		figsize: Tuple[float, float] = (7.5, 7.0),   # single-column IEEE width
-		dpi: int = 300,
-		verbose: bool = True,
+	all_results: Dict[str, Dict],   # strategy → extract_per_k_metrics() output
+	output_dir: str,
+	dataset_name: str,
+	directions: List[str] = ["i2t", "t2i"],
+	tiers: List[str] = ["overall", "head", "rare"],
+	metrics: List[str] = ["mAP", "Recall"],
+	figsize: Tuple[float, float] = (7.5, 7.0),   # single-column IEEE width
+	dpi: int = 300,
+	verbose: bool = True,
 ) -> List[str]:
 		"""
 		Produce one figure per (direction × tier × metric) combination.
@@ -3687,65 +3673,60 @@ def plot_retrieval_curves(
 		saved_paths = []
 
 		for direction in directions:
-				dir_label = "Image→Text" if direction == "i2t" else "Text→Image"
-				for tier in tiers:
-						for metric in metrics:
-								fig, ax = plt.subplots(figsize=figsize)
-
-								plotted_any = False
-								for strategy, per_k in all_results.items():
-										tier_data = per_k.get(direction, {}).get(tier, {})
-										metric_data = tier_data.get(metric, {})
-										if not metric_data:
-												continue
-
-										# Sort by K numerically
-										ks = sorted(metric_data.keys(), key=lambda x: int(x))
-										ys = [metric_data[k] for k in ks]
-										xs = [int(k) for k in ks]
-
-										style = METHOD_STYLE.get(strategy, {"label": strategy, "color": "#b3acac", "ls": ":", "marker": "."})
-										ax.plot(
-												xs, ys,
-												label=style["label"],
-												color=style["color"],
-												linestyle=style["ls"],
-												marker=style["marker"],
-												markersize=3.5,
-												linewidth=1.25,
-										)
-										plotted_any = True
-
-								if not plotted_any:
-										plt.close(fig)
-										continue
-
-								tier_label = tier.capitalize()
-								metric_label = "mAP" if metric == "mAP" else "Recall"
-								ax.set_xlabel("K")
-								ax.set_ylabel(f"{metric_label}@K")
-								ax.set_title(f"{dir_label} — {tier_label} {metric_label}@K")
-								ax.legend(
-									loc="lower right", 
-									ncol=5,
-									fontsize=7.5,
-									frameon=False,
-									fancybox=True,
-									edgecolor='black',
-									facecolor='white',
-								)
-								ax.set_xticks(xs)
-								ax.grid(True, linestyle=":", linewidth=0.5, alpha=0.6)
-								ax.set_ylim(bottom=0)
-
-								stem = f"{dataset_name}_{direction}_{tier}_{metric.lower()}_at_k"
-								for ext in ("pdf", "png"):
-										fpath = os.path.join(output_dir, f"{stem}.{ext}")
-										fig.savefig(fpath)
-										if ext == "pdf":
-												saved_paths.append(fpath)
-												if verbose:
-														print(f"  Saved: {fpath}")
-								plt.close(fig)
+			dir_label = "Image→Text" if direction == "i2t" else "Text→Image"
+			for tier in tiers:
+				for metric in metrics:
+					fig, ax = plt.subplots(figsize=figsize)
+					plotted_any = False
+					for strategy, per_k in all_results.items():
+						tier_data = per_k.get(direction, {}).get(tier, {})
+						metric_data = tier_data.get(metric, {})
+						if not metric_data:
+							continue
+						# Sort by K numerically
+						ks = sorted(metric_data.keys(), key=lambda x: int(x))
+						ys = [metric_data[k] for k in ks]
+						xs = [int(k) for k in ks]
+						style = METHOD_STYLE.get(strategy, {"label": strategy, "color": "#b3acac", "ls": ":", "marker": "."})
+						ax.plot(
+							xs,
+							ys,
+							label=style["label"],
+							color=style["color"],
+							linestyle=style["ls"],
+							marker=style["marker"],
+							markersize=3.5,
+							linewidth=1.25,
+						)
+						plotted_any = True
+					if not plotted_any:
+						plt.close(fig)
+						continue
+					tier_label = tier.capitalize()
+					metric_label = "mAP" if metric == "mAP" else "Recall"
+					ax.set_xlabel("K")
+					ax.set_ylabel(f"{metric_label}@K")
+					ax.set_title(f"{dir_label} — {tier_label} {metric_label}@K")
+					ax.legend(
+						loc="best",
+						ncol=5,
+						fontsize=7.5,
+						frameon=False,
+						fancybox=True,
+						edgecolor='black',
+						facecolor='white',
+					)
+					ax.set_xticks(xs)
+					ax.grid(True, linestyle=":", linewidth=0.5, alpha=0.6)
+					ax.set_ylim(bottom=0)
+					stem = f"{dataset_name}_{direction}_{tier}_{metric.lower()}_at_k"
+					for ext in ("pdf", "png"):
+							fpath = os.path.join(output_dir, f"{stem}.{ext}")
+							fig.savefig(fpath)
+							if ext == "pdf":
+									saved_paths.append(fpath)
+									if verbose:
+											print(f"  Saved: {fpath}")
+					plt.close(fig)
 
 		return saved_paths

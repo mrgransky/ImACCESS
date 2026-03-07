@@ -27,6 +27,82 @@ import visualize as viz
 # # run in local for all fine-tuned models with image and label:
 # $ python multi_label_inference.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -a 'ViT-B/32' -v
 
+def run_qualitative_retrieval(
+	model: torch.nn.Module,
+	i2t_samples: List[Dict],       # from get_multi_label_head_torso_tail_samples
+	t2i_samples: List[str],        # list of query label strings
+	class_names: List[str],        # full list of all class labels
+	preprocess,                    # CLIP image preprocessor
+	device: torch.device,
+	topk: int = 5,
+) -> Dict:
+	"""
+	For each I2T sample: encode query image, retrieve top-k labels by cosine similarity.
+	For each T2I sample: encode query label, retrieve top-k images by cosine similarity.
+	Returns structured results ready for plotting.
+	"""
+	model.eval()
+	# Pre-encode all class name texts once
+	with torch.no_grad():
+		text_tokens = clip.tokenize(class_names, truncate=True).to(device)
+		all_text_embeds = torch.nn.functional.normalize(model.encode_text(text_tokens).float(), dim=-1)  # [C, D]
+	
+	# ------------------------------------------------------------------ #
+	# I2T: query image → retrieve top-k labels                           #
+	# ------------------------------------------------------------------ #
+	i2t_results = []
+	for sample in i2t_samples:
+		image = preprocess(Image.open(sample["image_path"]).convert("RGB")).unsqueeze(0).to(device)
+		with torch.no_grad():
+				img_embed = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1)  # [1, D]
+		sims = (img_embed @ all_text_embeds.T).squeeze(0)                       # [C]
+		topk_indices = sims.topk(topk).indices.cpu().tolist()
+		retrieved_labels = [class_names[idx] for idx in topk_indices]
+		retrieved_scores = [sims[idx].item() for idx in topk_indices]
+		i2t_results.append(
+			{
+				"image_path":       sample["image_path"],
+				"ground_truth":     sample["all_labels"],
+				"segment":          sample["segment"],
+				"retrieved_labels": retrieved_labels,
+				"retrieved_scores": retrieved_scores,
+			}
+		)
+	
+	# ------------------------------------------------------------------ #
+	# T2I: query label → retrieve top-k images                           #
+	# We need image embeddings for the full val set — expensive once,     #
+	# so we encode only the candidate pool (i2t_samples images) for the  #
+	# qualitative figure. For a full eval use the cached embeddings.      #
+	# ------------------------------------------------------------------ #
+	all_image_paths = list({s["image_path"] for s in i2t_samples})
+	image_embeds_map = {}
+	for img_path in all_image_paths:
+		image = preprocess(Image.open(img_path).convert("RGB")).unsqueeze(0).to(device)
+		with torch.no_grad():
+			emb = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1)
+		image_embeds_map[img_path] = emb.squeeze(0)
+	
+	t2i_results = []
+	for query_label in t2i_samples:
+		with torch.no_grad():
+				token = clip.tokenize([query_label], truncate=True).to(device)
+				txt_embed = torch.nn.functional.normalize(model.encode_text(token).float(), dim=-1)  # [1, D]
+		sims = {
+			path: (txt_embed @ emb.unsqueeze(1)).item()
+			for path, emb in image_embeds_map.items()
+		}
+		topk_paths = sorted(sims, key=sims.get, reverse=True)[:topk]
+		t2i_results.append(
+			{
+				"query_label":    query_label,
+				"retrieved_paths": topk_paths,
+				"retrieved_scores": [sims[p] for p in topk_paths],
+			}
+		)
+	
+	return {"i2t": i2t_results, "t2i": t2i_results}
+
 def pretrain_multi_label(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
@@ -117,75 +193,274 @@ def get_multi_label_head_torso_tail_samples(
 	metadata_train_path: str,
 	metadata_val_path: str,
 	num_samples_per_segment: int = 5,
-) -> Tuple[List[Dict], List[str]]:
+	seed: int = 42,  # Add seed parameter
+) -> Tuple[List[Dict], List[str], Dict]:
 	"""
 	Sample from head, torso, tail distributions for multi-label datasets.
-	Only used when dataset_type == 'multi_label'
+	Fully deterministic with seed parameter.
 	"""
 	try:
-		df_val = pd.read_csv(
-		filepath_or_buffer=metadata_val_path, 
-			on_bad_lines='skip', 
-			dtype=dtypes, 
-			low_memory=False
-		)
-		print(f"VAL: {type(df_val)} {df_val.shape} {list(df_val.columns)}")
-		# For multi-label, we need to count label frequencies differently
-		all_labels = []
-		for labels_str in df_val['multimodal_labels']:
-			try:
-				labels = ast.literal_eval(labels_str)
-				all_labels.extend(labels)
-			except:
-				continue
-		
-		# Count label frequencies
-		label_counts = pd.Series(all_labels).value_counts()
-		
-		# Define head, torso, tail based on frequency distribution
-		total_labels = len(label_counts)
-		head_threshold = int(total_labels * 0.2)  # Top 20%
-		tail_threshold = int(total_labels * 0.8)   # Bottom 20%
-		
-		head_labels = set(label_counts.head(head_threshold).index)
-		tail_labels = set(label_counts.tail(total_labels - tail_threshold).index)
-		torso_labels = set(label_counts.index) - head_labels - tail_labels
-		
-		# Sample images and labels
-		i2t_samples = []
-		t2i_samples = []
-		
-		# Sample images with head, torso, tail labels
-		for segment_name, segment_labels in [("head", head_labels), ("torso", torso_labels), ("tail", tail_labels)]:
-			segment_samples = []
-			for _, row in df_val.iterrows():
-				try:
-						row_labels = set(ast.literal_eval(row['multimodal_labels']))
-						if row_labels & segment_labels:  # If any intersection
-								segment_samples.append(
-									{
-										'image_path': row['img_path'],
-										'labels': list(row_labels),
-										'segment': segment_name
+			# Create a local random generator for this function only
+			local_rng = random.Random(seed)
+			
+			df_val = pd.read_csv(
+					filepath_or_buffer=metadata_val_path, 
+					on_bad_lines='skip', 
+					dtype=dtypes, 
+					low_memory=False
+			)
+			
+			# Sort dataframe by index to ensure consistent iteration order
+			df_val = df_val.sort_index()
+			
+			print(f"VAL: {type(df_val)} {df_val.shape} {list(df_val.columns)}")
+			
+			# For multi-label, we need to count label frequencies differently
+			all_labels = []
+			label_to_images = {}  # Track which images have which labels
+			
+			# Iterate in sorted order for consistency
+			for idx, row in df_val.iterrows():
+					try:
+							labels = ast.literal_eval(row['multimodal_labels'])
+							# Sort labels for consistency
+							labels = sorted(labels)
+							all_labels.extend(labels)
+							
+							# Build reverse index
+							for label in labels:
+									if label not in label_to_images:
+											label_to_images[label] = []
+									label_to_images[label].append({
+											'image_path': row['img_path'],
+											'row_index': idx,
+											'all_labels': labels
+									})
+					except Exception as e:
+							continue
+			
+			# Count label frequencies - use stable sort
+			label_counts = pd.Series(all_labels).value_counts()
+			
+			# Sort label_counts index for consistency
+			label_counts = label_counts.sort_index()
+			
+			# Calculate distribution statistics
+			total_labels = len(label_counts)
+			total_frequency = label_counts.sum()
+			
+			# Define head, torso, tail based on frequency distribution
+			head_threshold = int(total_labels * 0.2)  # Top 20%
+			tail_threshold = int(total_labels * 0.8)   # Bottom 20%
+			
+			# Get head labels (most frequent)
+			head_labels = set(label_counts.head(head_threshold).index)
+			
+			# Get tail labels (least frequent) - need to sort tail properly
+			tail_labels = set(label_counts.tail(total_labels - tail_threshold).index)
+			
+			# Torso is the remainder
+			torso_labels = set(label_counts.index) - head_labels - tail_labels
+			
+			# Convert to sorted lists for deterministic iteration
+			head_labels = sorted(head_labels)
+			torso_labels = sorted(torso_labels)
+			tail_labels = sorted(tail_labels)
+			
+			# Calculate frequency statistics for each segment
+			head_freq = label_counts[head_labels].sum() if head_labels else 0
+			torso_freq = label_counts[torso_labels].sum() if torso_labels else 0
+			tail_freq = label_counts[tail_labels].sum() if tail_labels else 0
+			
+			# Compile detailed distribution info
+			distribution_info = {
+					'label_counts': label_counts.to_dict(),
+					'segment_info': {
+							'head': {
+									'count': len(head_labels),
+									'percentage': len(head_labels) / total_labels * 100 if total_labels > 0 else 0,
+									'frequency': head_freq,
+									'frequency_percentage': head_freq / total_frequency * 100 if total_frequency > 0 else 0,
+									'labels': head_labels,
+									'frequency_range': {
+											'min': label_counts[head_labels].min() if head_labels else 0,
+											'max': label_counts[head_labels].max() if head_labels else 0,
+											'mean': label_counts[head_labels].mean() if head_labels else 0
 									}
-								)
-				except:
-					continue
-			# Randomly sample from this segment
-			if len(segment_samples) >= num_samples_per_segment:
-				sampled = random.sample(segment_samples, num_samples_per_segment)
-				i2t_samples.extend(sampled)
-
-		# Sample text queries from head, torso, tail
-		for segment_name, segment_labels in [("head", head_labels), ("torso", torso_labels), ("tail", tail_labels)]:
-			segment_label_list = list(segment_labels)
-			if len(segment_label_list) >= num_samples_per_segment:
-				sampled_labels = random.sample(segment_label_list, num_samples_per_segment)
-				t2i_samples.extend(sampled_labels)
-		
-		return i2t_samples, t2i_samples
+							},
+							'torso': {
+									'count': len(torso_labels),
+									'percentage': len(torso_labels) / total_labels * 100 if total_labels > 0 else 0,
+									'frequency': torso_freq,
+									'frequency_percentage': torso_freq / total_frequency * 100 if total_frequency > 0 else 0,
+									'labels': torso_labels,
+									'frequency_range': {
+											'min': label_counts[torso_labels].min() if torso_labels else 0,
+											'max': label_counts[torso_labels].max() if torso_labels else 0,
+											'mean': label_counts[torso_labels].mean() if torso_labels else 0
+									}
+							},
+							'tail': {
+									'count': len(tail_labels),
+									'percentage': len(tail_labels) / total_labels * 100 if total_labels > 0 else 0,
+									'frequency': tail_freq,
+									'frequency_percentage': tail_freq / total_frequency * 100 if total_frequency > 0 else 0,
+									'labels': tail_labels,
+									'frequency_range': {
+											'min': label_counts[tail_labels].min() if tail_labels else 0,
+											'max': label_counts[tail_labels].max() if tail_labels else 0,
+											'mean': label_counts[tail_labels].mean() if tail_labels else 0
+									}
+							}
+					},
+					'total_labels': total_labels,
+					'total_frequency': total_frequency,
+					'head_threshold': head_threshold,
+					'tail_threshold': tail_threshold,
+					'seed_used': seed  # Track which seed was used
+			}
+			
+			# Print distribution summary
+			print("\n" + "="*80)
+			print("LABEL DISTRIBUTION ANALYSIS")
+			print("="*80)
+			print(f"Total unique labels: {total_labels}")
+			print(f"Total label occurrences: {total_frequency}")
+			print(f"Using seed: {seed}")
+			print(f"\nHead threshold (top 20%): {head_threshold} labels")
+			print(f"Tail threshold (bottom 20%): {total_labels - tail_threshold} labels")
+			
+			print("\n--- HEAD (most frequent) ---")
+			head_info = distribution_info['segment_info']['head']
+			print(f"Count: {head_info['count']} labels ({head_info['percentage']:.1f}%)")
+			print(f"Frequency: {head_info['frequency']} occurrences ({head_info['frequency_percentage']:.1f}%)")
+			print(f"Frequency range: {head_info['frequency_range']['min']} - {head_info['frequency_range']['max']} (mean: {head_info['frequency_range']['mean']:.1f})")
+			print(f"Sample head labels: {head_labels[:10]}")
+			
+			print("\n--- TORSO (medium frequency) ---")
+			torso_info = distribution_info['segment_info']['torso']
+			print(f"Count: {torso_info['count']} labels ({torso_info['percentage']:.1f}%)")
+			print(f"Frequency: {torso_info['frequency']} occurrences ({torso_info['frequency_percentage']:.1f}%)")
+			print(f"Frequency range: {torso_info['frequency_range']['min']} - {torso_info['frequency_range']['max']} (mean: {torso_info['frequency_range']['mean']:.1f})")
+			print(f"Sample torso labels: {torso_labels[:10]}")
+			
+			print("\n--- TAIL (least frequent) ---")
+			tail_info = distribution_info['segment_info']['tail']
+			print(f"Count: {tail_info['count']} labels ({tail_info['percentage']:.1f}%)")
+			print(f"Frequency: {tail_info['frequency']} occurrences ({tail_info['frequency_percentage']:.1f}%)")
+			print(f"Frequency range: {tail_info['frequency_range']['min']} - {tail_info['frequency_range']['max']} (mean: {tail_info['frequency_range']['mean']:.1f})")
+			print(f"Sample tail labels: {tail_labels[:10]}")
+			
+			# Sample images with head, torso, tail labels
+			i2t_samples = []
+			t2i_samples = []
+			
+			# Image sampling (image-to-text)
+			print("\n" + "="*80)
+			print("SAMPLING IMAGES (Image-to-Text)")
+			print("="*80)
+			
+			# Process segments in fixed order
+			for segment_name, segment_labels in [("head", head_labels), ("torso", torso_labels), ("tail", tail_labels)]:
+					segment_samples = []
+					
+					# Find all images with labels from this segment
+					# Iterate through labels in sorted order
+					for label in sorted(segment_labels):
+							if label in label_to_images:
+									# Sort images by path for consistency
+									images_for_label = sorted(label_to_images[label], key=lambda x: x['image_path'])
+									segment_samples.extend(images_for_label)
+					
+					# Remove duplicates while preserving order (use OrderedDict for deterministic behavior)
+					unique_samples = {}
+					for sample in segment_samples:
+							if sample['image_path'] not in unique_samples:
+									unique_samples[sample['image_path']] = sample
+					
+					segment_samples = list(unique_samples.values())
+					
+					print(f"\n{segment_name.upper()} segment:")
+					print(f"  Total unique images available: {len(segment_samples)}")
+					
+					# Randomly sample from this segment using local RNG
+					if len(segment_samples) >= num_samples_per_segment:
+							# Sort segment_samples by image path for deterministic selection before sampling
+							segment_samples = sorted(segment_samples, key=lambda x: x['image_path'])
+							sampled = local_rng.sample(segment_samples, num_samples_per_segment)
+							
+							for sample in sampled:
+									sample['segment'] = segment_name
+									i2t_samples.append(sample)
+							
+							print(f"  Sampled {num_samples_per_segment} images:")
+							for i, sample in enumerate(sampled, 1):
+									# Get which specific labels from this segment are in this image
+									image_labels = set(sample['all_labels'])
+									segment_labels_in_image = image_labels & set(segment_labels)
+									
+									print(f"    {i}. {os.path.basename(sample['image_path'])}")
+									print(f"       All labels: {sample['all_labels']}")
+									print(f"       {segment_name} labels: {sorted(segment_labels_in_image)}")
+					else:
+							print(f"  WARNING: Only {len(segment_samples)} images available, need {num_samples_per_segment}")
+							if segment_samples:
+									# Sort for consistency
+									segment_samples = sorted(segment_samples, key=lambda x: x['image_path'])
+									sampled = segment_samples  # Take all available
+									for sample in sampled:
+											sample['segment'] = segment_name
+											i2t_samples.append(sample)
+									print(f"  Using all {len(segment_samples)} available images instead")
+			
+			# Sort final i2t_samples for consistency
+			i2t_samples = sorted(i2t_samples, key=lambda x: x['image_path'])
+			
+			# Sample text queries from head, torso, tail
+			print("\n" + "="*80)
+			print("SAMPLING TEXT QUERIES (Text-to-Image)")
+			print("="*80)
+			
+			for segment_name, segment_labels in [("head", head_labels), ("torso", torso_labels), ("tail", tail_labels)]:
+				segment_label_list = list(segment_labels)
+				
+				print(f"\n{segment_name.upper()} segment:")
+				print(f"  Total labels available: {len(segment_label_list)}")
+				
+				if len(segment_label_list) >= num_samples_per_segment:
+					# Sort for deterministic selection
+					segment_label_list = sorted(segment_label_list)
+					sampled_labels = local_rng.sample(segment_label_list, num_samples_per_segment)
+					t2i_samples.extend(sampled_labels)
+					
+					print(f"  Sampled {num_samples_per_segment} labels:")
+					for i, label in enumerate(sampled_labels, 1):
+						freq = label_counts[label]
+						print(f"    {i}. '{label}' (frequency: {freq})")
+						
+						# Show sample images with this label
+						if label in label_to_images:
+							sample_images = sorted(label_to_images[label], key=lambda x: x['image_path'])[:2]
+							print(f"       Example images: {[os.path.basename(img['image_path']) for img in sample_images]}")
+				else:
+					print(f"[WARNING] Only {len(segment_label_list)} labels available, need {num_samples_per_segment}")
+					if segment_label_list:
+						t2i_samples.extend(sorted(segment_label_list))
+						print(f"  Using all {len(segment_label_list)} available labels instead")
+			
+			# Sort final t2i_samples for consistency
+			t2i_samples = sorted(t2i_samples)
+			
+			print("\n" + "="*80)
+			print(f"TOTAL SAMPLES: {len(i2t_samples)} images, {len(t2i_samples)} text queries")
+			print("="*80)
+			
+			return i2t_samples, t2i_samples
+			
 	except Exception as e:
 		print(f"Error in multi-label sampling: {e}")
+		import traceback
+		traceback.print_exc()
 		return [], []
 
 def _parse_checkpoint_strategy(ft_path: str) -> Tuple[str, Dict]:
@@ -412,8 +687,9 @@ def main():
 
 	parser.add_argument('--query_image', '-qi', type=str, default=None, help='image path for zero shot classification')
 	parser.add_argument('--query_label', '-ql', type=str, default=None, help='image path for zero shot classification')
-	parser.add_argument('--topK', '-k', type=int, default=3, help='TopK results')
-	parser.add_argument('--topK_values', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
+	parser.add_argument('--qualitative_topk', type=int, default=3, help='TopK results for qualitative analysis')
+	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
+
 	parser.add_argument('--temperature', '-t', type=float, default=0.07, help='Temperature for evaluation')
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
@@ -541,6 +817,7 @@ def main():
 		verbose=args.verbose,
 	)
 
+	# ####################################### Qualitative Analysis #######################################
 	if args.query_image is None or args.query_label is None:
 		print("\nSystematic selection of samples from validation set: Head, Torso, Tail...")
 		i2t_samples, t2i_samples = get_multi_label_head_torso_tail_samples(
@@ -565,101 +842,47 @@ def main():
 		print(f"{i}. {v}")
 	print("-"*160)
 
-	# # clear cache
-	# torch.cuda.empty_cache()
+	# Load all fine-tuned models
+	fine_tuned_models = load_finetuned_models(
+		available_checkpoints=available_checkpoints,
+		model_architecture=args.model_architecture,
+		device=args.device,
+		dataset_directory=DATASET_DIRECTORY,
+		validation_loader=validation_loader,
+		verbose=args.verbose,
+	)
 
-	# fine_tuned_models = load_finetuned_models(
-	# 	available_checkpoints=available_checkpoints,
-	# 	model_architecture=args.model_architecture,
-	# 	device=args.device,
-	# 	dataset_directory=DATASET_DIRECTORY,
-	# 	validation_loader=validation_loader,
-	# 	verbose=args.verbose,
-	# )
-	# models_to_plot.update(fine_tuned_models)
+	qualitative_results = {}
+	for strategy, ft_model in fine_tuned_models.items():
+		qualitative_results[strategy] = run_qualitative_retrieval(
+			model=ft_model,
+			i2t_samples=i2t_samples,
+			t2i_samples=t2i_samples,
+			class_names=class_names,
+			preprocess=customized_preprocess,
+			device=args.device,
+			topk=args.qualitative_topk,
+		)
 
-	# if args.verbose:
-	# 	print(f"\nEvaluating {len(fine_tuned_models)} Fine-tuned Models: {list(fine_tuned_models.keys())}")
-	# finetuned_img2txt_dict = {args.model_architecture: {}}
-	# finetuned_txt2img_dict = {args.model_architecture: {}}
-	# ft_eval_start = time.time()
-	# # clear cache
-	# torch.cuda.empty_cache()
-	# for strategy, ft_model in fine_tuned_models.items():
-	# 	print(f"\n>> Evaluating: {strategy}")
-	# 	evaluation_results = evaluate_best_model(
-	# 		model=ft_model,
-	# 		validation_loader=validation_loader,
-	# 		active_mask=masks["active_mask"],
-	# 		head_mask=masks["head_mask"],
-	# 		rare_mask=masks["rare_mask"],
-	# 		early_stopping=None,
-	# 		checkpoint_path=None,
-	# 		finetune_strategy=strategy,
-	# 		device=args.device,
-	# 		cache_dir=CACHES_DIRECTORY,
-	# 		topk_values=args.topK_values,
-	# 		verbose=args.verbose,
-	# 		clean_cache=False, # keep cache across models
-	# 		lora_params={
-	# 			"lora_rank": args.lora_rank,
-	# 			"lora_alpha": args.lora_alpha,
-	# 			"lora_dropout": args.lora_dropout,
-	# 		} if strategy == "lora" else None,
-	# 		temperature=args.temperature,
-	# 	)
-	# 	finetuned_img2txt_dict[args.model_architecture][strategy] = evaluation_results["img2txt_metrics"]
-	# 	finetuned_txt2img_dict[args.model_architecture][strategy] = evaluation_results["txt2img_metrics"]
-	# 	# clear cache
-	# 	torch.cuda.empty_cache()
+	# Always include zero-shot for comparison
+	qualitative_results["pretrained"] = run_qualitative_retrieval(
+		model=pretrained_model,
+		i2t_samples=i2t_samples,
+		t2i_samples=t2i_samples,
+		class_names=class_names,
+		preprocess=customized_preprocess,
+		device=args.device,
+		topk=args.qualitative_topk,
+	)
 
-	# print(f"{len(fine_tuned_models)} Fine-tuned Models evaluated in {time.time() - ft_eval_start:.5f} sec")
+	viz.plot_qualitative_retrieval(
+		results_by_strategy=qualitative_results,
+		output_dir=INFERENCE_DIRECTORY,
+		dataset_name=dataset_name,
+		topk=args.qualitative_topk,
+		verbose=args.verbose,
+	)
 
-	# ####################################### Qualitative Analysis #######################################
-	# if args.verbose:
-	# 	print(f"Qualitative Analysis".center(160, " "))
-	# for query_image in QUERY_IMAGES:
-	# 	viz.plot_image_to_texts_pretrained(
-	# 		best_pretrained_model=pretrained_model,
-	# 		validation_loader=validation_loader,
-	# 		# preprocess=pretrained_preprocess, # customized_preprocess,
-	# 		preprocess=customized_preprocess,
-	# 		img_path=query_image,
-	# 		topk=args.topK,
-	# 		device=args.device,
-	# 		results_dir=INFERENCE_DIRECTORY,
-	# 	)
-	# 	viz.plot_image_to_texts_stacked_horizontal_bar(
-	# 		models=models_to_plot,
-	# 		validation_loader=validation_loader,
-	# 		preprocess=customized_preprocess,
-	# 		img_path=query_image,
-	# 		topk=args.topK,
-	# 		device=args.device,
-	# 		results_dir=INFERENCE_DIRECTORY,
-	# 	)
-	# 	viz.plot_image_to_texts_separate_horizontal_bars(
-	# 		models=models_to_plot,
-	# 		validation_loader=validation_loader,
-	# 		preprocess=customized_preprocess,
-	# 		img_path=query_image,
-	# 		topk=args.topK,
-	# 		device=args.device,
-	# 		results_dir=INFERENCE_DIRECTORY,
-	# 	)
-
-	# for query_label in QUERY_LABELS:
-	# 	viz.plot_text_to_images(
-	# 		models=models_to_plot,
-	# 		validation_loader=validation_loader,
-	# 		preprocess=customized_preprocess,
-	# 		query_text=query_label,
-	# 		topk=args.topK,
-	# 		device=args.device,
-	# 		results_dir=INFERENCE_DIRECTORY,
-	# 		cache_dir=CACHES_DIRECTORY,
-	# 		embeddings_cache=embeddings_cache,
-	# 	)
 	# ####################################### Qualitative Analysis #######################################
 
 	####################################### Quantitative Analysis #######################################
@@ -670,7 +893,7 @@ def main():
 		print(f">> Plotting {len(all_results)} methods: {list(all_results.keys())}")
 		viz.plot_retrieval_curves(
 			all_results=all_results,
-			output_dir=os.path.join(RESULTS_DIRECTORY, "plots"),
+			output_dir=INFERENCE_DIRECTORY,
 			dataset_name=dataset_name,
 			verbose=args.verbose,
 		)
