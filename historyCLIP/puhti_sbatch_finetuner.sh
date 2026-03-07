@@ -145,6 +145,13 @@ if [[ "$strategy" == *"adapter"* ]]; then
 	strategy="adapter"
 fi
 
+BASELINE_MODEL=""
+if [[ "$strategy" == *"baseline"* ]]; then
+	BASELINE_MODEL="$strategy"
+	strategy="baseline"
+fi
+
+
 initial_early_stopping_minimum_epochs="${EARLY_STOPPING_INIT_MIN_EPOCHS[$dataset_index]}"
 case $strategy in
 	"full")
@@ -197,6 +204,9 @@ echo "STRATEGY: $strategy"
 if [ -n "$ADAPTER_METHOD" ]; then
 	echo "ADAPTER_METHOD: $ADAPTER_METHOD"
 fi
+if [ -n "$BASELINE_MODEL" ]; then
+	echo "BASELINE_MODEL: $BASELINE_MODEL"
+fi
 echo "ARCHITECTURE_INDEX: $architecture_index"
 echo "MODEL_ARCHITECTURE: $architecture"
 echo "EPOCHS: ${EPOCHS[$dataset_index]}"
@@ -243,6 +253,10 @@ fi
 
 if [ -n "$ADAPTER_METHOD" ]; then
 	CMD="$CMD --adapter_method \"$ADAPTER_METHOD\""
+fi
+
+if [ -n "$BASELINE_MODEL" ]; then
+	CMD="$CMD --baseline_model \"$BASELINE_MODEL\""
 fi
 
 eval $CMD
