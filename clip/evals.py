@@ -4,18 +4,25 @@ if USER == "farid":
 	from visualize import build_arch_flowchart
 
 def compute_tiered_retrieval_metrics(
-		similarity_matrix: torch.Tensor,
-		query_labels: torch.Tensor,
-		topK_values: List[int],
-		head_mask: torch.Tensor,
-		rare_mask: torch.Tensor,
-		active_mask: torch.Tensor,
-		mode: str = "Image-to-Text",
-		min_val_support: int = 10,
-		verbose: bool = False,
+	similarity_matrix: torch.Tensor,
+	query_labels: torch.Tensor,
+	topK_values: List[int],
+	head_mask: torch.Tensor,
+	rare_mask: torch.Tensor,
+	active_mask: torch.Tensor,
+	mode: str = "Image-to-Text",
+	min_val_support: int = 10,
+	verbose: bool = False,
 ) -> Dict:
 	if verbose:
-		print(f">> [{mode}] similarity_matrix: {similarity_matrix.shape} {similarity_matrix.device}")
+		print(
+			f">> [{mode}] similarity_matrix: {similarity_matrix.shape} {similarity_matrix.device} | "
+			f"query_labels: {query_labels.shape} {query_labels.device} | "
+			f"head_mask: {head_mask.shape} {head_mask.device} | "
+			f"rare_mask: {rare_mask.shape} {rare_mask.device} | "
+			f"active_mask: {active_mask.shape} {active_mask.device}"
+		)
+
 	tiers = {
 		"overall": active_mask,
 		"head":    head_mask & active_mask,
@@ -23,38 +30,45 @@ def compute_tiered_retrieval_metrics(
 	}
 	results = {}
 	for tier_name, tier_mask in tiers.items():
-			tier_indices = torch.where(tier_mask)[0]
-			if mode == "Image-to-Text":
-					# Queries are images, candidates are text (one per class)
-					tier_sim = similarity_matrix[:, tier_indices] # [N_images, N_tier]
-					tier_query_labels = query_labels[:, tier_indices] # [N_images, N_tier]
-					tier_candidate_labels = torch.arange(len(tier_indices), device=similarity_matrix.device) # [N_tier] — class identity
-			else:  # Text-to-Image
-					# Queries are text (one per class), candidates are images
-					if tier_name == "rare":
-							val_support = query_labels[:, tier_indices].sum(dim=0)  # [N_tier]
-							supported = val_support >= min_val_support
-							tier_indices = tier_indices[supported]
-					tier_sim = similarity_matrix[tier_indices, :]          # [N_tier, N_images]
-					tier_query_labels = torch.arange(
-							len(tier_indices), device=similarity_matrix.device
-					)                                                        # [N_tier] — class identity
-					# *** Critical fix: slice image labels to tier classes only ***
-					tier_candidate_labels = query_labels[:, tier_indices]   # [N_images, N_tier]
-			tier_metrics = compute_retrieval_metrics_from_similarity(
-					similarity_matrix=tier_sim,
-					query_labels=tier_query_labels,
-					candidate_labels=tier_candidate_labels,
-					topK_values=topK_values,
-					mode=mode,
-					verbose=False,
+		tier_indices = torch.where(tier_mask)[0]
+		
+		if mode == "Image-to-Text":
+			# Queries are images, candidates are text (one per class)
+			tier_sim = similarity_matrix[:, tier_indices] # [N_images, N_tier]
+			tier_query_labels = query_labels[:, tier_indices] # [N_images, N_tier]
+			tier_candidate_labels = torch.arange(len(tier_indices), device=similarity_matrix.device) # [N_tier] — class identity
+		else:  # Text-to-Image
+			# Queries are text (one per class), candidates are images
+			if tier_name == "rare":
+				val_support = query_labels[:, tier_indices].sum(dim=0)  # [N_tier]
+				supported = val_support >= min_val_support
+				tier_indices = tier_indices[supported]
+			
+			tier_sim = similarity_matrix[tier_indices, :]          # [N_tier, N_images]
+			tier_query_labels = torch.arange(len(tier_indices), device=similarity_matrix.device) # [N_tier] — class identity
+			
+			# slice image labels to tier classes only
+			tier_candidate_labels = query_labels[:, tier_indices]   # [N_images, N_tier]
+		
+		tier_metrics = compute_retrieval_metrics_from_similarity(
+			similarity_matrix=tier_sim,
+			query_labels=tier_query_labels,
+			candidate_labels=tier_candidate_labels,
+			topK_values=topK_values,
+			mode=mode,
+			verbose=verbose,
+		)
+		
+		results[tier_name] = tier_metrics
+		
+		if verbose:
+			print(
+				f"  [{tier_name.upper():8s}] "
+				f"mAP@10={tier_metrics['mAP'].get('10', 0):.4f}  "
+				f"R@10={tier_metrics['Recall'].get('10', 0):.4f}  "
+				f"({tier_indices.shape[0]} classes)"
 			)
-			results[tier_name] = tier_metrics
-			if verbose:
-					print(f"  [{tier_name.upper():8s}] "
-								f"mAP@10={tier_metrics['mAP'].get('10', 0):.4f}  "
-								f"R@10={tier_metrics['Recall'].get('10', 0):.4f}  "
-								f"({tier_indices.shape[0]} classes)")
+	
 	return results
 
 def compute_multilabel_validation_loss(

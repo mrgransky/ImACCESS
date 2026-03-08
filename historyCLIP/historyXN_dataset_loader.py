@@ -25,16 +25,6 @@ def _convert_image_to_rgb(image: Image) -> Image:
 	return image.convert("RGB")
 
 def get_preprocess(dataset_dir: str, input_resolution: int) -> T.Compose:
-	"""
-	Create a preprocessing transformation pipeline for image data.
-	
-	Args:
-			dataset_dir: Directory containing the dataset and possibly mean/std statistics
-			input_resolution: Target resolution for the images
-			
-	Returns:
-			A torchvision.transforms.Compose object containing the preprocessing pipeline
-	"""
 	try:
 		mean = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_mean.gz"))
 		std = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_std.gz"))
@@ -308,9 +298,9 @@ def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 	# Convert to sorted list for deterministic ordering
 	all_labels = sorted(all_labels)
 	label_dict = {label: idx for idx, label in enumerate(all_labels)}
-	print(f"{len(label_dict)} {type(label_dict)} labels is created from {len(all_labels)} unique canonical {type(all_labels)} labels:")
-	print(json.dumps(label_dict, indent=2, ensure_ascii=False))
-	print("="*100)
+	print(f"{len(label_dict)} {type(label_dict)} labels is created from {len(all_labels)} unique canonical {type(all_labels)} labels")
+	# print(json.dumps(label_dict, indent=2, ensure_ascii=False))
+	# print("="*100)
 	
 	# Add label vectors to dataframes
 	for df_split in [df_train, df_val]:
@@ -329,11 +319,11 @@ def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 		df_split['label_vector'] = label_vectors
 	
 	print(f"TRAIN {type(df_train)}: {list(df_train.columns)} {df_train.shape}")
-	print(df_train[['img_path', 'multimodal_canonical_labels', 'label_vector']].head(10))
-	print(df_train['label_vector'].apply(lambda x: np.where(x==1)[0].tolist()).head(10)) # indices of 1s in label_vector
-	print()
+	# print(df_train[['img_path', 'multimodal_canonical_labels', 'label_vector']].head(10))
+	# print(df_train['label_vector'].apply(lambda x: np.where(x==1)[0].tolist()).head(10)) # indices of 1s in label_vector
+	# print()
 	print(f"VAL {type(df_val)}: {list(df_val.columns)} {df_val.shape}")
-	print(df_val[['img_path', 'multimodal_canonical_labels', 'label_vector']].head(10))
+	# print(df_val[['img_path', 'multimodal_canonical_labels', 'label_vector']].head(10))
 	print("="*100)
 
 
@@ -423,11 +413,10 @@ def estimate_image_size_mb(path: str) -> float:
 		return None
 
 def get_estimated_image_size_mb(
-		image_paths: Union[List[str], pd.Series],
-		sample_size: int = 100,
-		num_workers: int = 8
-	) -> float:
-
+	image_paths: Union[List[str], pd.Series],
+	sample_size: int = 100,
+	num_workers: int = 8
+) -> float:
 	if isinstance(image_paths, pd.Series):
 		image_paths = image_paths.dropna().tolist()
 
@@ -436,7 +425,7 @@ def get_estimated_image_size_mb(
 		return 7.0
 
 	actual_sample_size = min(sample_size, len(image_paths))
-	print(f"Estimating average image RAM size from {actual_sample_size} samples out of {len(image_paths)} total images...")
+	print(f"Estimating average image RAM size: {actual_sample_size}/{len(image_paths)} total images")
 
 	sample_paths = random.sample(image_paths, actual_sample_size)
 
@@ -455,6 +444,7 @@ def get_estimated_image_size_mb(
 	avg_mb = sum(sizes) / len(sizes)
 	print(f"Successfully estimated {len(sizes)}/{actual_sample_size} images.")
 	print(f"Estimated avg image RAM size: {avg_mb:.2f} MB | Elapsed: {time.time() - t0:.2f} sec")
+
 	return avg_mb
 
 def get_cache_size(

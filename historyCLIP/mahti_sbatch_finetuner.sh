@@ -34,16 +34,16 @@ echo "${stars// /*}"
 LABEL_TYPE="${LABEL_TYPE:-multi}"
 
 SAMPLINGS=(
-  "kfold_stratified" 
-  "stratified_random"
+	"kfold_stratified" 
+	"stratified_random"
 )
 
 BASE_DATASET_DIRECTORY=(
-  /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
-  /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
-  /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
-  /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
-  /scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
 SINGLE_LABEL_FILE="metadata_single_label.csv"
@@ -52,16 +52,16 @@ MULTI_LABEL_FILE="metadata_multi_label_multimodal.csv"
 SINGLE_LABEL_CSVS=()
 MULTI_LABEL_CSVS=()
 for dir in "${BASE_DATASET_DIRECTORY[@]}"; do
-  SINGLE_LABEL_CSVS+=("${dir}/${SINGLE_LABEL_FILE}")
-  MULTI_LABEL_CSVS+=("${dir}/${MULTI_LABEL_FILE}")
+	SINGLE_LABEL_CSVS+=("${dir}/${SINGLE_LABEL_FILE}")
+	MULTI_LABEL_CSVS+=("${dir}/${MULTI_LABEL_FILE}")
 done
 
 ##############################################################################
 # 										# H4			# NA				# EU				# WWII			# SMU
 FINETUNE_STRATEGIES=(
-  "full"              # 00-03, 	# 52-55, 		# 104-107, 	# 156-159, 	# 208-211
-  "lora"              # 04-07, 	# 56-59, 		# 108-111, 	# 160-163, 	# 212-215
-  "lora_plus"					# 08-11, 	# 60-63, 		# 112-115, 	# 164-167, 	# 216-219
+	"full"              # 00-03, 	# 52-55, 		# 104-107, 	# 156-159, 	# 208-211
+	"lora"              # 04-07, 	# 56-59, 		# 108-111, 	# 160-163, 	# 212-215
+	"lora_plus"					# 08-11, 	# 60-63, 		# 112-115, 	# 164-167, 	# 216-219
 	"dora"							# 12-15, 	# 64-67, 		# 116-119, 	# 168-171, 	# 220-223
 	"vera"							# 16-19, 	# 68-71, 		# 120-123, 	# 172-175, 	# 224-227
 	"ia3"								# 20-23, 	# 72-75, 		# 124-127, 	# 176-179, 	# 228-231
@@ -69,29 +69,17 @@ FINETUNE_STRATEGIES=(
 	"clip_adapter_t"		# 28-31, 	# 80-83, 		# 132-135, 	# 184-187, 	# 236-239
 	"clip_adapter_vt"		# 32-35, 	# 84-87, 		# 136-139, 	# 188-191, 	# 240-243
 	"tip_adapter"				# 36-39, 	# 88-91, 		# 140-143, 	# 192-195, 	# 244-247
-	"tip_adaptter_f"		# 40-43, 	# 92-95, 		# 144-147, 	# 196-199, 	# 248-251
-	"progressive"				# 44-47, 	# 96-99, 		# 148-151, 	# 200-203, 	# 252-255
-	"probe"							# 48-51, 	# 100-103, 	# 152-155, 	# 204-207, 	# 256-259
+	"tip_adapter_f"			# 40-43, 	# 92-95, 		# 144-147, 	# 196-199, 	# 248-251
+	"probe"				      # 44-47, 	# 96-99, 		# 148-151, 	# 200-203, 	# 252-255
+	"zero_shot"         # 48-51, 	# 100-103, 	# 152-155, 	# 204-207, 	# 256-259
 )
 ##############################################################################
 
-# 08-11, 	# 60-63, 		# 112-115, 	# 164-167, 	# 216-219
-# 12-15, 	# 64-67, 		# 116-119, 	# 168-171, 	# 220-223
-# 16-19, 	# 68-71, 		# 120-123, 	# 172-175, 	# 224-227
-# 20-23, 	# 72-75, 		# 124-127, 	# 176-179, 	# 228-231
-# 24-27, 	# 76-79, 		# 128-131, 	# 180-183, 	# 232-235
-# 28-31, 	# 80-83, 		# 132-135, 	# 184-187, 	# 236-239
-# 32-35, 	# 84-87, 		# 136-139, 	# 188-191, 	# 240-243
-# 36-39, 	# 88-91, 		# 140-143, 	# 192-195, 	# 244-247
-# 40-43, 	# 92-95, 		# 144-147, 	# 196-199, 	# 248-251
-# 44-47, 	# 96-99, 		# 148-151, 	# 200-203, 	# 252-255
-# 48-51, 	# 100-103, 	# 152-155, 	# 204-207, 	# 256-25
-
 MODEL_ARCHITECTURES=(
-  "ViT-L/14@336px"
-  "ViT-L/14"
-  "ViT-B/32"
-  "ViT-B/16"
+	"ViT-L/14@336px"
+	"ViT-L/14"
+	"ViT-B/32"
+	"ViT-B/16"
 )
 
 NUM_DATASETS=${#BASE_DATASET_DIRECTORY[@]}
@@ -104,33 +92,31 @@ strategy_index=$((remainder / NUM_ARCHITECTURES))
 architecture_index=$((remainder % NUM_ARCHITECTURES))
 
 if [ $dataset_index -ge $NUM_DATASETS ] || \
-   [ $strategy_index -ge $NUM_STRATEGIES ] || \
-   [ $architecture_index -ge $NUM_ARCHITECTURES ]; then
-  echo "Error: Invalid dataset, strategy, or architecture index" >&2
-  exit 1
+	 [ $strategy_index -ge $NUM_STRATEGIES ] || \
+	 [ $architecture_index -ge $NUM_ARCHITECTURES ]; then
+	echo "Error: Invalid dataset, strategy, or architecture index" >&2
+	exit 1
 fi
 
 case "$LABEL_TYPE" in
-  single) METADATA_CSV="${SINGLE_LABEL_CSVS[$dataset_index]}" ;;
-  multi)  METADATA_CSV="${MULTI_LABEL_CSVS[$dataset_index]}" ;;
-  *)
-    echo "Error: LABEL_TYPE must be 'single' or 'multi', got '$LABEL_TYPE'" >&2
-    exit 1
-    ;;
+	single) METADATA_CSV="${SINGLE_LABEL_CSVS[$dataset_index]}" ;;
+	multi)  METADATA_CSV="${MULTI_LABEL_CSVS[$dataset_index]}" ;;
+	*)
+		echo "Error: LABEL_TYPE must be 'single' or 'multi', got '$LABEL_TYPE'" >&2
+		exit 1
+		;;
 esac
 
-INIT_LRS=(5.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+INIT_LRS=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
 EPOCHS=(100 100 150 150 150)
 
-LORA_RANKS=(32 64 64 64 64)
-LORA_ALPHAS=(64.0 128.0 128.0 128.0 128.0)
-LORA_DROPOUTS=(0.15 0.1 0.05 0.05 0.05)
+LORA_RANKS=(16 64 64 64 64)
+LORA_ALPHAS=(32.0 128.0 128.0 128.0 128.0)
+LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 
-LORA_PLUS_LAMBDAS=(16.0 16.0 16.0 16.0 16.0)
-
-PROBE_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
+LORA_PLUS_LAMBDAS=(32.0 16.0 16.0 16.0 16.0)
 
 MIN_PHASES_BEFORE_STOPPING=(3 3 3 3 3)
 MIN_EPOCHS_PER_PHASE=(5 5 5 5 5)
@@ -153,57 +139,63 @@ architecture="${MODEL_ARCHITECTURES[$architecture_index]}"
 
 ADAPTER_METHOD=""
 if [[ "$strategy" == *"adapter"* ]]; then
-  ADAPTER_METHOD="$strategy"
-  strategy="adapter"
+	ADAPTER_METHOD="$strategy"
+	strategy="adapter"
+fi
+
+BASELINE_METHOD=""
+if [[ "$strategy" == "zero_shot" ]] || [[ "$strategy" == "probe" ]]; then
+	BASELINE_METHOD="$strategy"
+	strategy="baseline"
 fi
 
 initial_early_stopping_minimum_epochs="${EARLY_STOPPING_INIT_MIN_EPOCHS[$dataset_index]}"
+# default
+EARLY_STOPPING_MIN_EPOCHS=$initial_early_stopping_minimum_epochs
 case $strategy in
-  "full")
-    EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs - 3))
-    ;;
-  "lora"|"lora_plus"|"dora"|"vera")
-    EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs + 3))
-    ;;
-  "probe")
-    EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs - 4))
-    ;;
-  "progressive")
-    EARLY_STOPPING_MIN_EPOCHS=$initial_early_stopping_minimum_epochs
-    ;;
-  "ia3"|"adapter")
-    EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs + 2))
-    ;;
+	"full")
+		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs - 3))
+		;;
+	"lora"|"lora_plus"|"dora"|"vera")
+		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs + 3))
+		;;
+	"baseline")
+		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs - 4))
+		;;
+	"ia3"|"adapter")
+		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs + 2))
+		;;
 esac
 EARLY_STOPPING_MIN_EPOCHS=$((EARLY_STOPPING_MIN_EPOCHS < 3 ? 3 : EARLY_STOPPING_MIN_EPOCHS))
 
 if [ "$strategy" = "lora" ] || [ "$strategy" = "lora_plus" ] || \
-   [ "$strategy" = "dora" ] || [ "$strategy" = "vera" ] || \
-   [ "$strategy" = "ia3" ] || [ "$strategy" = "probe" ] || \
-   [ "$strategy" = "adapter" ]; then
-  DROPOUT=0.0
+	 [ "$strategy" = "dora" ] || [ "$strategy" = "vera" ] || \
+	 [ "$strategy" = "ia3" ] || [ "$strategy" = "baseline" ] || \
+	 [ "$strategy" = "adapter" ]; then
+	DROPOUT=0.0
 else
-  DROPOUT="${DROPOUTS[$dataset_index]}"
+	DROPOUT="${DROPOUTS[$dataset_index]}"
 fi
 
+# default
+ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 case $strategy in
-  "full"|"lora"|"lora_plus"|"dora"|"vera")
-    ADJUSTED_BATCH_SIZE=48
-    ;;
-  "progressive")
-    case $architecture in
-      "ViT-L/14@336px") ADJUSTED_BATCH_SIZE=64 ;;
-      "ViT-L/14")       ADJUSTED_BATCH_SIZE=128 ;;
-      "ViT-B/32"|"ViT-B/16") ADJUSTED_BATCH_SIZE=256 ;;
-    esac
-    ;;
-  "probe"|"ia3"|"adapter")
-    case $architecture in
-      "ViT-L/14@336px") ADJUSTED_BATCH_SIZE=32 ;;
-      "ViT-L/14")       ADJUSTED_BATCH_SIZE=64 ;;
-      "ViT-B/32"|"ViT-B/16") ADJUSTED_BATCH_SIZE=128 ;;
-    esac
-    ;;
+	"full"|"lora"|"lora_plus")
+		ADJUSTED_BATCH_SIZE=32
+		;;
+	"vera"|"ia3")
+		ADJUSTED_BATCH_SIZE=24
+		;;
+	"dora")
+		ADJUSTED_BATCH_SIZE=16
+		;;
+	"adapter")
+		case $architecture in
+			"ViT-L/14@336px") ADJUSTED_BATCH_SIZE=36 ;;
+			"ViT-L/14")       ADJUSTED_BATCH_SIZE=64 ;;
+			"ViT-B/32"|"ViT-B/16") ADJUSTED_BATCH_SIZE=128 ;;
+		esac
+		;;
 esac
 
 echo "=== CONFIGURATION ==="
@@ -212,9 +204,12 @@ echo "LABEL_TYPE: $LABEL_TYPE"
 echo "DATASET_INDEX: $dataset_index"
 echo "CSV_FILE: $METADATA_CSV"
 echo "STRATEGY_INDEX: $strategy_index"
-echo "FINETUNE_STRATEGY: $strategy"
+echo "STRATEGY: $strategy"
 if [ -n "$ADAPTER_METHOD" ]; then
-  echo "ADAPTER_METHOD: $ADAPTER_METHOD"
+	echo "ADAPTER_METHOD: $ADAPTER_METHOD"
+fi
+if [ -n "$BASELINE_METHOD" ]; then
+	echo "BASELINE_METHOD: $BASELINE_METHOD"
 fi
 echo "ARCHITECTURE_INDEX: $architecture_index"
 echo "MODEL_ARCHITECTURE: $architecture"
@@ -229,39 +224,42 @@ echo "====================="
 echo ">> Starting trainer.py for dataset[$SLURM_ARRAY_TASK_ID]: $METADATA_CSV"
 
 CMD="python -u trainer.py \
-  --metadata_csv \"$METADATA_CSV\" \
-  --model_architecture \"$architecture\" \
-  --finetune_strategy \"$strategy\" \
-  --epochs \"${EPOCHS[$dataset_index]}\" \
-  --num_workers \"$SLURM_CPUS_PER_TASK\" \
-  --batch_size \"$ADJUSTED_BATCH_SIZE\" \
-  --dropout \"$DROPOUT\" \
-  --learning_rate \"${INIT_LRS[$dataset_index]}\" \
-  --weight_decay \"${INIT_WDS[$dataset_index]}\" \
-  --minimum_epochs \"$EARLY_STOPPING_MIN_EPOCHS\" \
-  --patience \"${EARLY_STOPPING_PATIENCE[$dataset_index]}\" \
-  --minimum_delta \"${EARLY_STOPPING_MIN_DELTA[$dataset_index]}\" \
-  --cumulative_delta \"${EARLY_STOPPING_CUMULATIVE_DELTA[$dataset_index]}\" \
-  --volatility_threshold \"${VOLATILITY_THRESHOLDS[$dataset_index]}\" \
-  --slope_threshold \"${SLOPE_THRESHOLDS[$dataset_index]}\" \
-  --pairwise_imp_threshold \"${PAIRWISE_IMP_THRESHOLDS[$dataset_index]}\" \
-  --lora_rank \"${LORA_RANKS[$dataset_index]}\" \
-  --lora_alpha \"${LORA_ALPHAS[$dataset_index]}\" \
-  --lora_dropout \"${LORA_DROPOUTS[$dataset_index]}\" \
-  --probe_dropout \"${PROBE_DROPOUTS[$dataset_index]}\" \
-  --min_phases_before_stopping \"${MIN_PHASES_BEFORE_STOPPING[$dataset_index]}\" \
-  --min_epochs_per_phase \"${MIN_EPOCHS_PER_PHASE[$dataset_index]}\" \
-  --total_num_phases \"${TOTAL_NUM_PHASES[$dataset_index]}\" \
-  --print_every \"${PRINT_FREQUENCIES[$dataset_index]}\" \
-  --sampling \"${SAMPLINGS[1]}\" \
-  --verbose"
+	--metadata_csv \"$METADATA_CSV\" \
+	--model_architecture \"$architecture\" \
+	--strategy \"$strategy\" \
+	--epochs \"${EPOCHS[$dataset_index]}\" \
+	--num_workers \"$SLURM_CPUS_PER_TASK\" \
+	--batch_size \"$ADJUSTED_BATCH_SIZE\" \
+	--dropout \"$DROPOUT\" \
+	--learning_rate \"${INIT_LRS[$dataset_index]}\" \
+	--weight_decay \"${INIT_WDS[$dataset_index]}\" \
+	--minimum_epochs \"$EARLY_STOPPING_MIN_EPOCHS\" \
+	--patience \"${EARLY_STOPPING_PATIENCE[$dataset_index]}\" \
+	--minimum_delta \"${EARLY_STOPPING_MIN_DELTA[$dataset_index]}\" \
+	--cumulative_delta \"${EARLY_STOPPING_CUMULATIVE_DELTA[$dataset_index]}\" \
+	--volatility_threshold \"${VOLATILITY_THRESHOLDS[$dataset_index]}\" \
+	--slope_threshold \"${SLOPE_THRESHOLDS[$dataset_index]}\" \
+	--pairwise_imp_threshold \"${PAIRWISE_IMP_THRESHOLDS[$dataset_index]}\" \
+	--lora_rank \"${LORA_RANKS[$dataset_index]}\" \
+	--lora_alpha \"${LORA_ALPHAS[$dataset_index]}\" \
+	--lora_dropout \"${LORA_DROPOUTS[$dataset_index]}\" \
+	--min_phases_before_stopping \"${MIN_PHASES_BEFORE_STOPPING[$dataset_index]}\" \
+	--min_epochs_per_phase \"${MIN_EPOCHS_PER_PHASE[$dataset_index]}\" \
+	--total_num_phases \"${TOTAL_NUM_PHASES[$dataset_index]}\" \
+	--print_every \"${PRINT_FREQUENCIES[$dataset_index]}\" \
+	--sampling \"${SAMPLINGS[1]}\" \
+	--verbose"
 
 if [ "$strategy" = "lora_plus" ]; then
-  CMD="$CMD --lora_plus_lambda \"${LORA_PLUS_LAMBDAS[$dataset_index]}\""
+	CMD="$CMD --lora_plus_lambda \"${LORA_PLUS_LAMBDAS[$dataset_index]}\""
 fi
 
 if [ -n "$ADAPTER_METHOD" ]; then
-  CMD="$CMD --adapter_method \"$ADAPTER_METHOD\""
+	CMD="$CMD --adapter_method \"$ADAPTER_METHOD\""
+fi
+
+if [ -n "$BASELINE_METHOD" ]; then
+	CMD="$CMD --baseline_method \"$BASELINE_METHOD\""
 fi
 
 eval $CMD

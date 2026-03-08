@@ -11,7 +11,8 @@
 #SBATCH --mem=256G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0-48:4
+#######SBATCH --array=0-48:4
+#SBATCH --array=8
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -107,7 +108,7 @@ case "$LABEL_TYPE" in
 		;;
 esac
 
-INIT_LRS=(5.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+INIT_LRS=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
 EPOCHS=(100 100 150 150 150)
@@ -180,10 +181,10 @@ fi
 # default
 ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 case $strategy in
-	"full"|"lora"|"lora_plus")
+	"full"|"lora")
 		ADJUSTED_BATCH_SIZE=32
 		;;
-	"vera"|"ia3")
+	"vera"|"ia3"|"lora_plus")
 		ADJUSTED_BATCH_SIZE=24
 		;;
 	"dora")

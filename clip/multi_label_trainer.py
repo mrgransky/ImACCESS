@@ -285,25 +285,25 @@ def probe_multi_label(
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
 	mdl_fpth = os.path.join(
-			results_dir,
-			f"{mode}_"
-			f"{model_arch}_"
-			f"{optimizer.__class__.__name__}_"
-			f"{scheduler.__class__.__name__}_"
-			f"probe_{probe.probe_type}_"
-			f"ieps_{num_epochs}_"
-			f"lr_{learning_rate:.1e}_"
-			f"wd_{weight_decay:.1e}_"
-			f"temp_{temperature}_"
-			f"bs_{train_loader.batch_size}_"
-			f"mep_{minimum_epochs}_"
-			f"pat_{patience}_"
-			f"mdt_{min_delta:.1e}_"
-			f"cdt_{cumulative_delta:.1e}_"
-			f"vt_{volatility_threshold}_"
-			f"st_{slope_threshold:.1e}_"
-			f"pit_{pairwise_imp_threshold:.1e}"
-			f".pth"
+		results_dir,
+		f"{mode}_{probe.probe_type}_"
+		f"{CLUSTER}_"
+		f"{model_arch}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"ieps_{num_epochs}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"temp_{temperature}_"
+		f"bs_{train_loader.batch_size}_"
+		f"mep_{minimum_epochs}_"
+		f"pat_{patience}_"
+		f"mdt_{min_delta:.1e}_"
+		f"cdt_{cumulative_delta:.1e}_"
+		f"vt_{volatility_threshold}_"
+		f"st_{slope_threshold:.1e}_"
+		f"pit_{pairwise_imp_threshold:.1e}"
+		f".pth"
 	)
 	# ── Feature caching ───────────────────────────────────────────────────────
 	# wrap feature extraction in torch.no_grad() to avoid building
@@ -558,8 +558,8 @@ def probe_multi_label(
 		print(f"{'='*50}")
 		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
-		print(f"  {probe.probe_type} | Params: {sum(p.numel() for p in probe.probe.parameters())}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  {probe.probe_type} | Params: {sum(p.numel() for p in probe.probe.parameters()):,}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score()}")
 		print("\n>> Tiered I2T Retrieval")
@@ -581,7 +581,7 @@ def probe_multi_label(
 
 	# Generate plots
 	file_base_name = (
-		f"{mode}_"
+		f"{mode}_{probe.probe_type}_"
 		f"{CLUSTER}_"
 		f"{model_name}_"
 		f"{model_arch}_"
@@ -644,13 +644,12 @@ def full_finetune_multi_label(
 	verbose: bool=True,
 ):
 	window_size = minimum_epochs + 1
-	mode = inspect.stack()[0].function
-	mode = re.sub(r'_finetune_multi_label', '', mode)
-	
-	# Set default loss weights
 	if loss_weights is None:
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
-	
+
+	mode = inspect.stack()[0].function
+	mode = re.sub(r'_finetune_multi_label', '', mode)
+		
 	early_stopping = EarlyStopping(
 		patience=patience,
 		min_delta=min_delta,
@@ -670,6 +669,12 @@ def full_finetune_multi_label(
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 
+	try:
+		class_names = validation_loader.dataset.unique_labels
+	except AttributeError:
+		class_names = validation_loader.dataset.dataset.classes
+	num_classes = len(class_names)
+	
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
 	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
@@ -678,12 +683,6 @@ def full_finetune_multi_label(
 		gpu_name = torch.cuda.get_device_name(device)
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
 		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
-	
-	try:
-		class_names = validation_loader.dataset.unique_labels
-	except AttributeError:
-		class_names = validation_loader.dataset.dataset.classes
-	num_classes = len(class_names)
 	
 	dropout_val = 0.0
 	for name, module in model.named_modules():
@@ -700,10 +699,6 @@ def full_finetune_multi_label(
 	print(non_zero_dropouts)
 	print()
 
-	for n, p in model.named_parameters():
-		print(f"{n:<60}{p.requires_grad:<5}{p.dtype}\t{p.shape}")
-	print("="*140)
-
 	# # Unfreeze all layers for full fine-tuning
 	# for name, param in model.named_parameters():
 	# 	param.requires_grad = True
@@ -714,6 +709,10 @@ def full_finetune_multi_label(
 			param.requires_grad = True
 		else:
 			param.requires_grad = False
+
+	for n, p in model.named_parameters():
+		print(f"{n:<60}{p.requires_grad:<5}{p.dtype}\t{p.shape}")
+	print("="*130)
 
 	get_parameters_info(model=model, mode=mode)
 
@@ -1049,7 +1048,7 @@ def full_finetune_multi_label(
 		print(f"{'='*50}")
 		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score()}")
 		print("\n>> Tiered I2T Retrieval")
@@ -1502,7 +1501,7 @@ def lora_finetune_multi_label(
 		print(f"{'='*50}")
 		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score()}")
 		print("\n>> Tiered I2T Retrieval")
@@ -2118,7 +2117,7 @@ def lora_plus_finetune_multi_label(
 		print(f"{'='*50}")
 		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score()}")
 		print("\n>> Tiered I2T Retrieval")
@@ -2656,7 +2655,7 @@ def dora_finetune_multi_label(
 		print(f"{'='*50}")
 		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score()}")
 		print("\n>> Tiered I2T Retrieval")
@@ -3227,7 +3226,7 @@ def ia3_finetune_multi_label(
 		print(f"{'='*50}")
 		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score()}")
 		print("\n>> Tiered I2T Retrieval")
@@ -3805,7 +3804,7 @@ def vera_finetune_multi_label(
 		print(f"{'='*50}")
 		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score()}")
 		print("\n>> Tiered I2T Retrieval")
@@ -4333,7 +4332,7 @@ def clip_adapter_finetune_multi_label(
 		print(f"{'='*50}")
 		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score()}")
 		print(f"  Method   : {clip_adapter_method}")
