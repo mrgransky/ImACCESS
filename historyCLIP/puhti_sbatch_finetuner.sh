@@ -112,13 +112,11 @@ INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
 EPOCHS=(100 100 150 150 150)
 
-LORA_RANKS=(32 64 64 64 64)
-LORA_ALPHAS=(64.0 128.0 128.0 128.0 128.0)
-LORA_DROPOUTS=(0.15 0.1 0.05 0.05 0.05)
+LORA_RANKS=(16 64 64 64 64)
+LORA_ALPHAS=(32.0 128.0 128.0 128.0 128.0)
+LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 
-LORA_PLUS_LAMBDAS=(16.0 16.0 16.0 16.0 16.0)
-
-PROBE_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
+LORA_PLUS_LAMBDAS=(32.0 16.0 16.0 16.0 16.0)
 
 MIN_PHASES_BEFORE_STOPPING=(3 3 3 3 3)
 MIN_EPOCHS_PER_PHASE=(5 5 5 5 5)
@@ -245,7 +243,6 @@ CMD="python -u trainer.py \
 	--lora_rank \"${LORA_RANKS[$dataset_index]}\" \
 	--lora_alpha \"${LORA_ALPHAS[$dataset_index]}\" \
 	--lora_dropout \"${LORA_DROPOUTS[$dataset_index]}\" \
-	--probe_dropout \"${PROBE_DROPOUTS[$dataset_index]}\" \
 	--min_phases_before_stopping \"${MIN_PHASES_BEFORE_STOPPING[$dataset_index]}\" \
 	--min_epochs_per_phase \"${MIN_EPOCHS_PER_PHASE[$dataset_index]}\" \
 	--total_num_phases \"${TOTAL_NUM_PHASES[$dataset_index]}\" \

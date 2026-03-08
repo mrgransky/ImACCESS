@@ -46,8 +46,13 @@ def get_preprocess(dataset_dir: str, input_resolution: int) -> T.Compose:
 	
 	preprocess = T.Compose(
 		[
-			T.Resize(size=input_resolution, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
-			T.CenterCrop(size=input_resolution),
+			T.Resize(
+				# size=input_resolution, # 224/336 # RuntimeError: stack expects each tensor to be equal size, but got [3, 224, 224] at entry 0 and [3, 278, 224] at entry 1
+				size=(input_resolution, input_resolution), # 224/336
+				interpolation=T.InterpolationMode.BICUBIC, 
+				antialias=True
+			),
+			# T.CenterCrop(size=input_resolution), # Historical images may have important contextual information at the edges
 			_convert_image_to_rgb,
 			T.ToTensor(),
 			T.Normalize(mean=mean, std=std),
