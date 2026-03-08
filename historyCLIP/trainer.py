@@ -121,7 +121,7 @@ def main():
 	log_file = None
 
 	if not args.strategy:
-		raise ValueError("strategy must be specified (example: -fts lora)")
+		raise ValueError("strategy must be specified (example: -stg lora)")
 
 	if args.strategy == "lora" or args.strategy == "dora" or args.strategy == "lora_plus":
 		assert args.lora_rank is not None, "lora_rank must be specified for lora finetuning"
