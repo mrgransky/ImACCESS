@@ -144,7 +144,7 @@ if [[ "$strategy" == *"adapter"* ]]; then
 fi
 
 BASELINE_METHOD=""
-if [[ "$strategy" == *"baseline"* ]]; then
+if [[ "$strategy" == "zero_shot" ]] || [[ "$strategy" == "probe" ]]; then
 	BASELINE_METHOD="$strategy"
 	strategy="baseline"
 fi
