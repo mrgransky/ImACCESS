@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --account=project_2014707
+#SBATCH --account=project_2004072
 #SBATCH --job-name=ft_h4_multi_label
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
@@ -69,7 +69,7 @@ FINETUNE_STRATEGIES=(
 	"clip_adapter_t"		# 28-31, 	# 80-83, 		# 132-135, 	# 184-187, 	# 236-239
 	"clip_adapter_vt"		# 32-35, 	# 84-87, 		# 136-139, 	# 188-191, 	# 240-243
 	"tip_adapter"				# 36-39, 	# 88-91, 		# 140-143, 	# 192-195, 	# 244-247
-	"tip_adaptter_f"		# 40-43, 	# 92-95, 		# 144-147, 	# 196-199, 	# 248-251
+	"tip_adapter_f"			# 40-43, 	# 92-95, 		# 144-147, 	# 196-199, 	# 248-251
 	"probe"				      # 44-47, 	# 96-99, 		# 148-151, 	# 200-203, 	# 252-255
 	"zero_shot"         # 48-51, 	# 100-103, 	# 152-155, 	# 204-207, 	# 256-259
 )
@@ -145,14 +145,15 @@ if [[ "$strategy" == *"adapter"* ]]; then
 	strategy="adapter"
 fi
 
-BASELINE_MODEL=""
+BASELINE_METHOD=""
 if [[ "$strategy" == *"baseline"* ]]; then
-	BASELINE_MODEL="$strategy"
+	BASELINE_METHOD="$strategy"
 	strategy="baseline"
 fi
 
-
 initial_early_stopping_minimum_epochs="${EARLY_STOPPING_INIT_MIN_EPOCHS[$dataset_index]}"
+# default
+EARLY_STOPPING_MIN_EPOCHS=$initial_early_stopping_minimum_epochs
 case $strategy in
 	"full")
 		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs - 3))
@@ -160,7 +161,7 @@ case $strategy in
 	"lora"|"lora_plus"|"dora"|"vera")
 		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs + 3))
 		;;
-	"probe")
+	"baseline")
 		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs - 4))
 		;;
 	"ia3"|"adapter")
@@ -171,19 +172,24 @@ EARLY_STOPPING_MIN_EPOCHS=$((EARLY_STOPPING_MIN_EPOCHS < 3 ? 3 : EARLY_STOPPING_
 
 if [ "$strategy" = "lora" ] || [ "$strategy" = "lora_plus" ] || \
 	 [ "$strategy" = "dora" ] || [ "$strategy" = "vera" ] || \
-	 [ "$strategy" = "ia3" ] || [ "$strategy" = "probe" ] || \
+	 [ "$strategy" = "ia3" ] || [ "$strategy" = "baseline" ] || \
 	 [ "$strategy" = "adapter" ]; then
 	DROPOUT=0.0
 else
 	DROPOUT="${DROPOUTS[$dataset_index]}"
 fi
 
+# default
+ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 case $strategy in
 	"full"|"lora"|"lora_plus")
 		ADJUSTED_BATCH_SIZE=32
 		;;
-	"dora"|"vera"|"ia3")
+	"vera"|"ia3")
 		ADJUSTED_BATCH_SIZE=24
+		;;
+	"dora")
+		ADJUSTED_BATCH_SIZE=16
 		;;
 	"adapter")
 		case $architecture in
@@ -204,8 +210,8 @@ echo "STRATEGY: $strategy"
 if [ -n "$ADAPTER_METHOD" ]; then
 	echo "ADAPTER_METHOD: $ADAPTER_METHOD"
 fi
-if [ -n "$BASELINE_MODEL" ]; then
-	echo "BASELINE_MODEL: $BASELINE_MODEL"
+if [ -n "$BASELINE_METHOD" ]; then
+	echo "BASELINE_METHOD: $BASELINE_METHOD"
 fi
 echo "ARCHITECTURE_INDEX: $architecture_index"
 echo "MODEL_ARCHITECTURE: $architecture"
@@ -255,8 +261,8 @@ if [ -n "$ADAPTER_METHOD" ]; then
 	CMD="$CMD --adapter_method \"$ADAPTER_METHOD\""
 fi
 
-if [ -n "$BASELINE_MODEL" ]; then
-	CMD="$CMD --baseline_model \"$BASELINE_MODEL\""
+if [ -n "$BASELINE_METHOD" ]; then
+	CMD="$CMD --baseline_method \"$BASELINE_METHOD\""
 fi
 
 eval $CMD

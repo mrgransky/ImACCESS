@@ -4080,9 +4080,9 @@ def clip_adapter_finetune_multi_label(
 	# ── Checkpoint path ───────────────────────────────────────────────────────
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{mode}_{model_arch}_"
+		f"{clip_adapter_method}_{model_arch}_"
 		f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
-		f"bs_{train_loader.batch_size}_cad_{clip_adapter_method}_"
+		f"bs_{train_loader.batch_size}_"
 		f"cbd_{bottleneck_dim}_act_{activation}_temp_{temperature}_"
 		f"mep_{minimum_epochs}_pat_{patience}_mdt_{min_delta:.1e}_"
 		f"cdt_{cumulative_delta:.1e}_vt_{volatility_threshold}_"
@@ -4336,15 +4336,17 @@ def clip_adapter_finetune_multi_label(
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters())}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score()}")
+		print(f"  Method   : {clip_adapter_method}")
+		print(f"  Bottleneck: {bottleneck_dim}  Activation: {activation}")
+		print(f"  Learning rate: {learning_rate}  Weight decay: {weight_decay}")
+		print(f"  Batch size: {train_loader.batch_size}  Temperature: {temperature}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n>> Tiered T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"CLIP-Adapter Multi-Label Fine-tuning Complete")
-		print(f"  Method   : {clip_adapter_method}")
-		print(f"  Bottleneck: {bottleneck_dim}  Activation: {activation}")
+		print(f"  Best model saved to: {mdl_fpth}")
 		print(f"{'='*50}")
 
 	append_retrieval_results(
@@ -4358,9 +4360,9 @@ def clip_adapter_finetune_multi_label(
 
 	# Generate plots
 	file_base = (
-		f"{mode}_{CLUSTER}_{model_arch}_ep_{actual_trained_epochs}_"
+		f"{clip_adapter_method}_{CLUSTER}_{model_arch}_ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_"
-		f"cad_{clip_adapter_method}_cbd_{bottleneck_dim}_act_{activation}_temp_{temperature}"
+		f"cbd_{bottleneck_dim}_act_{activation}_temp_{temperature}"
 	)
 
 	viz.plot_multilabel_loss_breakdown(

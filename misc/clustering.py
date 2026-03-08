@@ -220,7 +220,7 @@ def remove_problematic_cluster_labels(
 			print(f"  New consolidation: {new_consolidation:.2f}x")
 			print(f"  Change: {(new_consolidation - original_consolidation):.2f}x")
 			
-			print("\nProblematic labels removed!")
+			print(f"\n{len(removed_labels)} problematic labels removed!")
 			print("="*80)
 		
 		return df_clean, embeddings_clean, removed_labels
@@ -2393,7 +2393,7 @@ def cluster(
 	total_sim_loss = []
 	total_freq_gain = []
 	questionable_examples = []
-
+	t0 = time.time()
 	for cid in sorted(df.cluster.unique()):
 		cluster_mask = df.cluster == cid
 		cluster_texts = df[cluster_mask]['label'].tolist()
@@ -2473,11 +2473,14 @@ def cluster(
 		
 		if verbose:
 			print(f"\t=> Selected Canonical: {canonical} (sim={similarities[best_idx]:.4f})")
+	
+	print(f"\n[CLUSTERING DONE] {len(cluster_canonicals)} cluster canonicals computed in {time.time()-t0:.2f} sec.")
+	print(f"-"*110)
 
-	print("\nFREQUENCY WEIGHTING IMPACT ANALYSIS\n")
+	print("\nFREQUENCY WEIGHTING IMPACT ANALYSIS")
 	total_clusters = len(df.cluster.unique())
-	print(f"Total clusters analyzed: {total_clusters}")
-	print(f"Clusters where frequency changed the canonical: {freq_changed_count} ({freq_changed_count/total_clusters*100:.1f}%)")
+	print(f"  Total clusters analyzed: {total_clusters}")
+	print(f"  Clusters where frequency changed the canonical: {freq_changed_count} ({freq_changed_count/total_clusters*100:.1f}%)")
 
 	if total_sim_loss:
 		print(f"\nSIMILARITY LOSS IMPACT:")
@@ -2497,9 +2500,9 @@ def cluster(
 		good_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.05 and f > 5)
 		questionable_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s > 0.10 or f < 2)
 		
-		print(f"\tExcellent trades (<3% sim loss, >10x freq gain): {excellent_trades:<10} ({excellent_trades/freq_changed_count*100:.1f}%)")
-		print(f"\tGood trades (<5% sim loss, >5x freq gain):       {good_trades:<10} ({good_trades/freq_changed_count*100:.1f}%)")
-		print(f"\tQuestionable trades (>10% sim loss or <2x gain): {questionable_trades:<10} ({questionable_trades/freq_changed_count*100:.1f}%)")
+		print(f"  Excellent trades (<3% sim loss, >10x freq gain): {excellent_trades:<10} ({excellent_trades/freq_changed_count*100:.1f}%)")
+		print(f"  Good trades (<5% sim loss, >5x freq gain):       {good_trades:<10} ({good_trades/freq_changed_count*100:.1f}%)")
+		print(f"  Questionable trades (>10% sim loss or <2x gain): {questionable_trades:<10} ({questionable_trades/freq_changed_count*100:.1f}%)")
 		
 		if questionable_trades > 0 and verbose:
 			print(f"\n[WARNING] {questionable_trades} questionable trades detected:")
