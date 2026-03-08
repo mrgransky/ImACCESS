@@ -211,12 +211,8 @@ def main():
 		print_loader_info(loader=train_loader, batch_size=args.batch_size)
 		print_loader_info(loader=validation_loader, batch_size=args.batch_size)
 
-		# viz.visualize_(dataloader=validation_loader, batches=4, num_samples=7)
-
-		viz.visualize_samples(validation_loader, num_samples=5)
+		# viz.visualize_samples(validation_loader, num_samples=5)
 		
-		return
-
 		finetune_functions = {
 			'single_label': {
 				'full': full_finetune_single_label,
