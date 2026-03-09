@@ -463,8 +463,12 @@ def get_validation_metrics(
 ) -> Dict:
 
 	if verbose:
-		print("Computing validation metrics (in-batch, full-set, retrieval)...")
-	
+		print("Computing validation metrics")
+		print(f"Model: {type(model)}")
+		print(f"Dataset: {validation_loader.dataset.__class__.__name__}")
+		print(f"TopK values: {topK_values}")
+		print()
+
 	model.eval()
 	torch.cuda.empty_cache()
 	start_time = time.time()
@@ -485,8 +489,8 @@ def get_validation_metrics(
 	n_classes = len(class_names)
 	num_samples = len(validation_loader.dataset)
 	
-	# if verbose:
-	# 	print(f"Dataset: {dataset_name}, Label(s): {n_classes}, Samples: {num_samples}")
+	if verbose:
+		print(f"Dataset: {dataset_name}, Label(s): {n_classes}, Samples: {num_samples}")
 	
 	cache_file = os.path.join(
 		cache_dir,
@@ -624,8 +628,8 @@ def get_validation_metrics(
 		device_class_text_embeds=device_class_text_embeds,
 		chunk_size=chunk_size
 	)
-	if verbose:
-		print(json.dumps(full_metrics, ensure_ascii=False, indent=2))
+	# if verbose:
+	# 	print(json.dumps(full_metrics, ensure_ascii=False, indent=2))
 	
 	# Step 6: Compute retrieval metrics
 	cache_key_base = f"{dataset_name}_{finetune_strategy}_{model_class_name}_{model_arch_name.replace('/', '_')}"
@@ -675,6 +679,7 @@ def get_validation_metrics(
 	)
 
 	if verbose:
+		print(f"{type(model)} I2T: {type(img2txt_metrics)}\nT2I: {type(txt2img_metrics)}")
 		print(f"Validation elapsed_t: {time.time() - start_time:.1f}s")
 	
 	return {
@@ -1047,9 +1052,7 @@ def evaluate_best_model(
 	model_source = "current"
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	if verbose:
-		print(f"Evaluating best model on {dataset_name} {finetune_strategy}")
-		print(f"Checkpoint: {checkpoint_path}")
-		print(f"model: {type(model)}")
+		print(f"Evaluating best {type(model)} on {dataset_name} | Strategy: {finetune_strategy}")
 
 	if checkpoint_path is not None and os.path.exists(checkpoint_path):
 		if verbose:
@@ -1113,7 +1116,7 @@ def evaluate_best_model(
 
 	if verbose:
 		param_count = sum(p.numel() for p in model.parameters())
-		print(f"Model ready for evaluation. Parameters: {param_count:,}")
+		print(f">> {type(model)} Parameters: {param_count:,}")
 		
 	validation_results = get_validation_metrics(
 		model=model,

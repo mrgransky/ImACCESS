@@ -274,7 +274,7 @@ def probe_multi_label(
 	if verbose:
 		print(f"\n{scheduler.__class__.__name__}")
 		print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 	scaler = torch.amp.GradScaler(
 		device=device,
 		init_scale=2**16,
@@ -412,7 +412,7 @@ def probe_multi_label(
 		training_losses_breakdown["total"].append(avg_loss)
 		learning_rates_history.append([g['lr'] for g in optimizer.param_groups])
 		weight_decays_history.append([g['weight_decay'] for g in optimizer.param_groups])
-		print(f">> Validating Epoch {epoch+1} ...")
+		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
 		
 		probe.probe.eval()
 		val_loss = 0.0
@@ -677,12 +677,18 @@ def full_finetune_multi_label(
 	
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
-	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
-
+	print(f"{mode.upper()}-FT")
+	print(f"  ├─ {model_name} {model_arch}")
+	print(f"  ├─ {dataset_name} {num_classes} classes")
+	print(f"  ├─ Epochs: {num_epochs}  Batch size: {train_loader.batch_size}  Device: {type(device)} {device}")
+	print(f"  ├─ Learning rate: {learning_rate}  Weight decay: {weight_decay}  Patience: {patience}")
+	print(f"  ├─ Loss weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
+	print(f"  ├─ Temperature: {temperature}")
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+		cuda_capability = torch.cuda.get_device_capability()
+		print(f"  └─ {gpu_name} {total_mem:.2f}GB VRAM cuda capability: {cuda_capability}")
 	
 	dropout_val = 0.0
 	for name, module in model.named_modules():
@@ -695,21 +701,20 @@ def full_finetune_multi_label(
 			dropout_values.append((name, module.p))
 	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
 
-	print(f"\nNon-zero dropout detected in base {model_name} {model_arch} during {mode}:")
-	print(non_zero_dropouts)
-	print()
+	if non_zero_dropouts:
+		print(f"\nNon-zero dropout detected in base {model_name} {model_arch} during {mode}:")
+		print(non_zero_dropouts)
+		print()
 
-	# # Unfreeze all layers for full fine-tuning
-	# for name, param in model.named_parameters():
-	# 	param.requires_grad = True
+	# Freeze all parameters first
+	for param in model.parameters():
+		param.requires_grad = False
+	
+	# Unfreeze only vision encoder parameters
+	for param in model.visual.parameters():
+		param.requires_grad = True
 
-	# Freeze text encoder, fine-tune only vision encoder
-	for name, param in model.named_parameters():
-		if 'visual' in name:
-			param.requires_grad = True
-		else:
-			param.requires_grad = False
-
+	print("\nModel parameters before training:")
 	for n, p in model.named_parameters():
 		print(f"{n:<60}{p.requires_grad:<5}{p.dtype}\t{p.shape}")
 	print("="*130)
@@ -916,7 +921,7 @@ def full_finetune_multi_label(
 		training_losses_breakdown["total"].append(avg_total_loss)
 		training_losses_breakdown["i2t"].append(avg_i2t_loss)
 		training_losses_breakdown["t2i"].append(avg_t2i_loss)
-		print(f">> Training completed in {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1}")
+		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1}")
 
 		# clear cache before validation
 		torch.cuda.empty_cache()
@@ -1006,7 +1011,8 @@ def full_finetune_multi_label(
 			break
 		print(f"Epoch {epoch+1} Elapsed Time (Train + Validation): {time.time() - train_and_val_st_time:.2f}s")
 
-	print(f"[{mode}] Total Training  Elapsed Time: {time.time() - train_start_time:.1f} sec")
+	print(f"[{mode}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
+	print(f"-"*100)
 
 	# FINAL EVALUATION
 	evaluation_results = evaluate_best_model(
@@ -1324,7 +1330,7 @@ def lora_finetune_multi_label(
 	train_start_time = time.time()
 	# ── Training loop ─────────────────────────────────────────────────────────
 	for epoch in range(num_epochs):
-			train_and_val_st = time.time()
+			train_and_val_st_time = time.time()
 			torch.cuda.empty_cache()
 			model.train()
 			print(f"Epoch [{epoch+1}/{num_epochs}]")
@@ -1384,7 +1390,8 @@ def lora_finetune_multi_label(
 			weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
 			# ── Validation ────────────────────────────────────────────────────────
-			print(f">> Validating Epoch {epoch+1}...")
+			print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
+
 			current_val_loss = compute_multilabel_validation_loss(
 				model=model,
 				validation_loader=validation_loader,
@@ -1453,7 +1460,7 @@ def lora_finetune_multi_label(
 							f"@ epoch {early_stopping.get_best_epoch()+1}"
 					)
 					break
-			print(f"[ELAPSED TIME] Epoch {epoch+1:<20}{time.time()-train_and_val_st:.1f} sec")
+			print(f"[ELAPSED TIME (Train + Validation)] Epoch {epoch+1:<20}{time.time()-train_and_val_st_time:.1f} sec")
 
 	print(f"[{mode}] Total elapsed: {time.time()-train_start_time:.1f}s")
 
@@ -1973,7 +1980,7 @@ def lora_plus_finetune_multi_label(
 			print(f"[Epoch {epoch+1}] {len(weight_decays_history[-1])} WD groups: {weight_decays_history[-1]}")
 			print("-"*100)
 		
-		print(f">> Validating Epoch {epoch+1} ...")		
+		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")		
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
 			validation_loader=validation_loader,
@@ -2511,7 +2518,7 @@ def dora_finetune_multi_label(
 		learning_rates_history.append([optimizer.param_groups[0]['lr']])
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
-		print(f">> Validating Epoch {epoch+1} ...")
+		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
 			validation_loader=validation_loader,
@@ -3089,7 +3096,7 @@ def ia3_finetune_multi_label(
 		learning_rates_history.append([optimizer.param_groups[0]['lr']])
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
-		print(f">> Validating Epoch {epoch+1} ...")
+		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
 		
 		# Compute validation loss using the same multi-label loss function
 		current_val_loss = compute_multilabel_validation_loss(
@@ -3660,7 +3667,7 @@ def vera_finetune_multi_label(
 		learning_rates_history.append([optimizer.param_groups[0]['lr']])
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
-		print(f">> Validating Epoch {epoch+1} ...")
+		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
 		
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
@@ -4130,7 +4137,7 @@ def clip_adapter_finetune_multi_label(
 
 	# ── Training loop ─────────────────────────────────────────────────────────
 	for epoch in range(num_epochs):
-		train_and_val_st = time.time()
+		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
 
 		# Re-encode class texts if text adapter is active (weights changed last epoch)
@@ -4213,7 +4220,7 @@ def clip_adapter_finetune_multi_label(
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
 		# ── Validation ────────────────────────────────────────────────────────
-		print(f">> Validating Epoch {epoch+1} ...")
+		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
 
 		# For validation loss: always use freshly encoded class embeds
 		# (for clip_adapter_t/vt, re-encode under no_grad with current adapter weights)
@@ -4295,7 +4302,7 @@ def clip_adapter_finetune_multi_label(
 			)
 			break
 
-		print(f"[TOTAL ELAPSED TIME (Train + Validation)] Epoch {epoch+1} {time.time()-train_and_val_st:.2f} sec")
+		print(f"[TOTAL ELAPSED TIME (Train + Validation)] Epoch {epoch+1:<20}{time.time()-train_and_val_st_time:.2f} sec")
 
 	print(f"[{mode}] Total Training Elapsed Time: {time.time()-train_start_time:.1f} sec")
 
@@ -4986,7 +4993,7 @@ def tip_adapter_finetune_multi_label(
 		learning_rates_history.append([optimizer.param_groups[0]['lr']])
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
-		print(f">> Validating Epoch {epoch+1} ...")
+		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
 			validation_loader=validation_loader,

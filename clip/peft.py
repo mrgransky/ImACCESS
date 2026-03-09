@@ -1125,8 +1125,6 @@ class TipAdapterFLinear(torch.nn.Module):
 				
 				# Trainable linear projection
 				self.linear = torch.nn.Linear(in_features, out_features, bias=True).to(device)
-				# self.weight = self.linear.weight
-				# self.bias = self.linear.bias
 				
 				# Cache buffers
 				self.register_buffer('cache_keys', torch.empty(0, out_features, device=device))
