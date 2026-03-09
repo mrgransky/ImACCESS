@@ -80,12 +80,23 @@ def compute_multilabel_validation_loss(
 	device: str,
 	all_class_embeds: torch.Tensor,
 	temperature: float = 0.07,
+	verbose: bool = False,
 ) -> float:
 	model.eval()
 	total_loss = 0.0
 	total_samples = 0
 	
 	max_batches = max(50, len(validation_loader) // 10)
+	if verbose:
+		print(f"\ncompute_multilabel_validation_loss:")
+		print(f"  model: {type(model)}")
+		print(f"  validation_loader: {validation_loader.name} {len(validation_loader)} batches")
+		print(f"  max_batches: {max_batches}")
+		print(f"  criterion_i2t: {type(criterion_i2t)}")
+		print(f"  criterion_t2i: {type(criterion_t2i)}")
+		print(f"  active_mask: {active_mask.shape} {active_mask.sum()}/{len(active_mask)}")
+		print(f"  all_class_embeds: {all_class_embeds.shape} {all_class_embeds.device}")
+		print(f"  temperature: {temperature}")
 
 	with torch.no_grad():
 		for batch_idx, (images, _, label_vectors) in enumerate(validation_loader):
@@ -124,6 +135,7 @@ def compute_multilabel_validation_loss(
 			total_samples += batch_size
 	
 	avg_loss = total_loss / total_samples if total_samples > 0 else 0.0
+
 	return avg_loss
 
 def chunked_similarity_computation(
@@ -238,8 +250,8 @@ def compute_retrieval_metrics_from_similarity(
 		cache_dir: str = None,
 		cache_key: str = None,
 		is_training: bool = False,
-		verbose: bool = False,
 		chunk_size: int = 1000,
+		verbose: bool = False,
 	) -> Dict:
 	"""
 	Compute retrieval metrics (mP, mAP, Recall) with memory optimization and proper multi-label support.
@@ -262,7 +274,7 @@ def compute_retrieval_metrics_from_similarity(
 			Dictionary with mP, mAP, and Recall metrics
 	"""
 	if verbose:
-		print(f"Computing retrieval metrics (mP, mAP, Recall) for {mode}")
+		print(f"\nComputing retrieval metrics (mP, mAP, Recall) for {mode}")
 	
 	num_queries, num_candidates = similarity_matrix.shape
 	device = similarity_matrix.device
@@ -376,8 +388,10 @@ def compute_retrieval_metrics_from_similarity(
 		except Exception as e:
 			if verbose:
 				print(f"Cache saving failed: {e}")
-	if verbose:
-		print(json.dumps(metrics, ensure_ascii=False, indent=2))
+
+	# if verbose:
+	# 	print(json.dumps(metrics, ensure_ascii=False, indent=2))
+
 	return metrics
 
 def compute_multilabel_correctness(
@@ -463,7 +477,7 @@ def get_validation_metrics(
 ) -> Dict:
 
 	if verbose:
-		print("Computing validation metrics")
+		print("\nComputing validation metrics:")
 		print(f"Model: {type(model)}")
 		print(f"Dataset: {validation_loader.dataset.__class__.__name__}")
 		print(f"TopK values: {topK_values}")
@@ -679,7 +693,7 @@ def get_validation_metrics(
 	)
 
 	if verbose:
-		print(f"{type(model)} I2T: {type(img2txt_metrics)}\nT2I: {type(txt2img_metrics)}")
+		print(f"{type(model)} I2T: {type(img2txt_metrics)} T2I: {type(txt2img_metrics)}")
 		print(f"Validation elapsed_t: {time.time() - start_time:.1f}s")
 	
 	return {

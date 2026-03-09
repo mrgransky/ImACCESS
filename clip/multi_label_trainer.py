@@ -838,6 +838,7 @@ def full_finetune_multi_label(
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
 	training_losses = list()
+	validation_losses = list()
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
@@ -857,17 +858,9 @@ def full_finetune_multi_label(
 		epoch_loss_t2i = 0.0
 		num_batches = 0
 		for bidx, batch_data in enumerate(train_loader):
-			if len(batch_data) == 3:
-				images, _, label_vectors = batch_data  # Ignore tokenized_labels, use pre-encoded
-			else:
-				raise ValueError(f"Expected 3 items from DataLoader, got {len(batch_data)}")
-			batch_size = images.size(0)
+			images, _, label_vectors = batch_data  # Ignore tokenized_labels, use pre-encoded
 			images = images.to(device, non_blocking=True)
 			label_vectors = label_vectors.to(device, non_blocking=True).float()
-
-			# Validate label_vectors shape
-			if label_vectors.shape != (batch_size, num_classes):
-				raise ValueError(f"Label vectors shape {label_vectors.shape} doesn't match expected ({batch_size}, {num_classes})")
 			
 			optimizer.zero_grad(set_to_none=True)
 			
@@ -921,6 +914,7 @@ def full_finetune_multi_label(
 		training_losses_breakdown["total"].append(avg_total_loss)
 		training_losses_breakdown["i2t"].append(avg_i2t_loss)
 		training_losses_breakdown["t2i"].append(avg_t2i_loss)
+
 		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1}")
 
 		# clear cache before validation
@@ -934,7 +928,9 @@ def full_finetune_multi_label(
 			device=device,
 			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
 			temperature=temperature,
+			verbose=verbose,
 		)
+		validation_losses.append(current_val_loss)
 		
 		validation_results = get_validation_metrics(
 			model=model,
@@ -1321,6 +1317,7 @@ def lora_finetune_multi_label(
 	)
 	# ── Training state ────────────────────────────────────────────────────────
 	training_losses = []
+	validation_losses = []
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
 	img2txt_metrics_all_epochs = []
 	txt2img_metrics_all_epochs = []
@@ -1401,7 +1398,10 @@ def lora_finetune_multi_label(
 				device=device,
 				all_class_embeds=all_class_embeds,
 				temperature=temperature,
+				verbose=verbose,
 			)
+			validation_losses.append(current_val_loss)
+
 			validation_results = get_validation_metrics(
 				model=model,
 				validation_loader=validation_loader,
@@ -1419,6 +1419,7 @@ def lora_finetune_multi_label(
 				model_hash=get_model_hash(model),
 				temperature=temperature,
 			)
+			
 			full_val_metrics = validation_results["full_metrics"]
 			img2txt_metrics  = validation_results["img2txt_metrics"]
 			txt2img_metrics  = validation_results["txt2img_metrics"]
@@ -1882,10 +1883,10 @@ def lora_plus_finetune_multi_label(
 	)
 	
 	training_losses = list()
+	validation_losses = list()
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
 	img2txt_metrics_all_epochs = []
 	txt2img_metrics_all_epochs = []
-	in_batch_loss_acc_metrics_all_epochs = []
 	full_val_loss_acc_metrics_all_epochs = []
 	learning_rates_history = []
 	weight_decays_history = []
@@ -1990,7 +1991,9 @@ def lora_plus_finetune_multi_label(
 			device=device,
 			all_class_embeds=all_class_embeds,
 			temperature=temperature,
+			verbose=verbose,
 		)
+		validation_losses.append(current_val_loss)
 		
 		validation_results = get_validation_metrics(
 			model=model,
@@ -2440,6 +2443,7 @@ def dora_finetune_multi_label(
 
 	# Training metrics storage
 	training_losses = list()
+	validation_losses = list()
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
@@ -2528,7 +2532,9 @@ def dora_finetune_multi_label(
 			device=device,
 			all_class_embeds=all_class_embeds,
 			temperature=temperature,
+			verbose=verbose,
 		)
+		validation_losses.append(current_val_loss)
 		
 		validation_results = get_validation_metrics(
 			model=model,
@@ -3009,6 +3015,7 @@ def ia3_finetune_multi_label(
 	)
 
 	training_losses = list()
+	validation_losses = list()
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
@@ -3108,7 +3115,9 @@ def ia3_finetune_multi_label(
 			device=device,
 			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
 			temperature=temperature,
+			verbose=verbose,
 		)
+		validation_losses.append(current_val_loss)
 
 		validation_results = get_validation_metrics(
 			model=model,
@@ -3582,6 +3591,7 @@ def vera_finetune_multi_label(
 	)
 
 	training_losses = list()
+	validation_losses = list()
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
@@ -3678,7 +3688,9 @@ def vera_finetune_multi_label(
 			device=device,
 			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
 			temperature=temperature,
+			verbose=verbose,
 		)
+		validation_losses.append(current_val_loss)
 
 		validation_results = get_validation_metrics(
 			model=model,
@@ -4127,6 +4139,7 @@ def clip_adapter_finetune_multi_label(
 
 	# ── Metrics storage ───────────────────────────────────────────────────────
 	training_losses = []
+	validation_losses = []
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
 	img2txt_metrics_all_epochs = []
 	txt2img_metrics_all_epochs = []
@@ -4235,7 +4248,9 @@ def clip_adapter_finetune_multi_label(
 			device=device,
 			all_class_embeds=val_class_embeds,
 			temperature=temperature,
+			verbose=verbose,
 		)
+		validation_losses.append(current_val_loss)
 
 		validation_results = get_validation_metrics(
 			model=model,
@@ -4844,6 +4859,7 @@ def tip_adapter_finetune_multi_label(
 	)
 	
 	training_losses = list()
+	validation_losses = list()
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
 	img2txt_metrics_all_epochs = []
 	txt2img_metrics_all_epochs = []
@@ -5003,7 +5019,9 @@ def tip_adapter_finetune_multi_label(
 			device=device,
 			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
 			temperature=temperature,
+			verbose=verbose,
 		)
+		validation_losses.append(current_val_loss)
 
 		validation_results = get_validation_metrics(
 			model=model,
