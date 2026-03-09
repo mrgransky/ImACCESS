@@ -291,7 +291,7 @@ def compute_retrieval_metrics_from_similarity(
 	
 	if verbose:
 		print(
-			f"{'Multi-label' if is_multi_label else 'Single-label'} Dataset |"
+			f"{'Multi-label' if is_multi_label else 'Single-label'} Dataset | "
 			f"Similarity matrix: {similarity_matrix.shape} | "
 			f"Query labels: {query_labels.shape} | "
 			f"Candidate labels: {candidate_labels.shape}"

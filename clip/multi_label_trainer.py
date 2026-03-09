@@ -4594,12 +4594,11 @@ def tip_adapter_finetune_multi_label(
 		print(f"   ├─ Temperature: {temperature}")
 		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
 		print(f"   ├─ Support Shots: {support_shots}")
-		
 		if torch.cuda.is_available():
 			gpu_name = torch.cuda.get_device_name(device)
 			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
 			cuda_capability = torch.cuda.get_device_capability()
-			print(f"   ├─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
+			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 	
 	# === GET TEXT EMBEDDING DIMENSION ===
 	# IMPORTANT: Do this BEFORE modifying the model
@@ -4612,13 +4611,12 @@ def tip_adapter_finetune_multi_label(
 	except Exception as e:
 		print(f"Warning: Could not automatically detect embedding dimension. Using default 512. Error: {e}")
 		cache_dim = 512
-	
 	if verbose:
 		print(f"Detected text embedding dimension: {cache_dim}")
 	
 	# === SUPPORT SET CONSTRUCTION FOR MULTI-LABEL ===
 	if verbose:
-		print(f"\n[Tip-Adapter Multi-Label] Constructing support set with {support_shots} shots per class...")
+		print(f"\n>> Constructing support set with {support_shots} shots per class...")
 	
 	# For multi-label, we need to collect samples that contain each class
 	class_to_samples = defaultdict(list)
