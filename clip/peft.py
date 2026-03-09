@@ -1145,11 +1145,17 @@ class TipAdapterFLinear(torch.nn.Module):
 			assert support_features.shape[1] == self.out_features
 			assert text_features.shape[1] == self.out_features
 			
+
+			# Guard 1: missing support image (zero-padded feature vector)
+			feat_valid = support_features.norm(dim=-1) > 1e-6
+
+			# Guard 2: support image with no active labels (zero label vector)
+			label_valid = support_labels.float().sum(dim=-1) > 0  # multi-label case
+
+			valid_mask = feat_valid & label_valid   # [num_classes]
+
 			# Normalize support features (keys)
 			cache_keys = torch.nn.functional.normalize(support_features, p=2, dim=-1)
-			# Zero-pad guard: entries with near-zero norm (missing classes) must not
-			# contribute a spurious unit vector after normalization
-			valid_mask = support_features.norm(dim=-1) > 1e-6   # [num_classes]
 			cache_keys[~valid_mask] = 0.0
 
 			# Handle single-label or multi-label
@@ -1184,6 +1190,9 @@ class TipAdapterFLinear(torch.nn.Module):
 				print(f"\n[{self.__class__.__name__}] Cache set: {self.cache_keys.shape[0]} support samples")
 				print(f"    ├─ Keys: {self.cache_keys.shape}")
 				print(f"    ├─ Values: {self.cache_values.shape}")
+				print(f"    ├─ Valid entries (feat): {feat_valid.sum().item()} / {feat_valid.shape[0]}")
+				print(f"    ├─ Valid entries (label): {label_valid.sum().item()} / {label_valid.shape[0]}")
+				print(f"    ├─ Valid entries (both): {valid_mask.sum().item()} / {valid_mask.shape[0]}")
 				print(f"    ├─ Valid entries: {n_valid.item()} / {valid_mask.shape[0]}")
 				print(f"    ├─ Keys norms   — min: {keys_norms.min():.6f}  max: {keys_norms.max():.6f}  mean: {keys_norms.mean():.6f}")
 				print(f"    ├─ Values norms — min: {vals_norms.min():.6f}  max: {vals_norms.max():.6f}  mean: {vals_norms.mean():.6f}")

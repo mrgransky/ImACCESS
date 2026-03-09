@@ -680,7 +680,7 @@ def load_finetuned_models(
 def main():
 	parser = argparse.ArgumentParser(description="Evaluate CLIP for Historical Archives Dataset [Inference]")
 	parser.add_argument('--metadata_csv', '-csv', type=str, required=True, help='Metadata CSV file')
-	parser.add_argument('--model_architecture', '-a', type=str, required=True, help='CLIP architecture')
+	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP architecture')
 	parser.add_argument('--batch_size', '-bs', type=int, default=16, help='Batch size for training')
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs')
@@ -818,72 +818,72 @@ def main():
 	)
 
 	# ####################################### Qualitative Analysis #######################################
-	if args.query_image is None or args.query_label is None:
-		print("\nSystematic selection of samples from validation set: Head, Torso, Tail...")
-		i2t_samples, t2i_samples = get_multi_label_head_torso_tail_samples(
-			metadata_path=args.metadata_csv,
-			metadata_train_path=args.metadata_csv.replace('.csv', '_train.csv'),
-			metadata_val_path=args.metadata_csv.replace('.csv', '_val.csv'),
-			num_samples_per_segment=2,
-		)
-		if i2t_samples and t2i_samples:
-			QUERY_IMAGES = [sample['image_path'] for sample in i2t_samples]
-			QUERY_LABELS = t2i_samples  # Already a list of strings
-	else:
-		QUERY_IMAGES = [args.query_image]
-		QUERY_LABELS = [args.query_label]
+	# if args.query_image is None or args.query_label is None:
+	# 	print("\nSystematic selection of samples from validation set: Head, Torso, Tail...")
+	# 	i2t_samples, t2i_samples = get_multi_label_head_torso_tail_samples(
+	# 		metadata_path=args.metadata_csv,
+	# 		metadata_train_path=args.metadata_csv.replace('.csv', '_train.csv'),
+	# 		metadata_val_path=args.metadata_csv.replace('.csv', '_val.csv'),
+	# 		num_samples_per_segment=2,
+	# 	)
+	# 	if i2t_samples and t2i_samples:
+	# 		QUERY_IMAGES = [sample['image_path'] for sample in i2t_samples]
+	# 		QUERY_LABELS = t2i_samples  # Already a list of strings
+	# else:
+	# 	QUERY_IMAGES = [args.query_image]
+	# 	QUERY_LABELS = [args.query_label]
 
-	print("\nQUERY IMAGES & LABELS")
-	print(f">> {len(QUERY_IMAGES)} QUERY IMAGES:")
-	for i, v in enumerate(QUERY_IMAGES):
-		print(f"{i}. {v}")
-	print(f">> {len(QUERY_LABELS)} QUERY LABELS:")
-	for i, v in enumerate(QUERY_LABELS):
-		print(f"{i}. {v}")
-	print("-"*160)
+	# print("\nQUERY IMAGES & LABELS")
+	# print(f">> {len(QUERY_IMAGES)} QUERY IMAGES:")
+	# for i, v in enumerate(QUERY_IMAGES):
+	# 	print(f"{i}. {v}")
+	# print(f">> {len(QUERY_LABELS)} QUERY LABELS:")
+	# for i, v in enumerate(QUERY_LABELS):
+	# 	print(f"{i}. {v}")
+	# print("-"*160)
 
-	# Load all fine-tuned models
-	fine_tuned_models = load_finetuned_models(
-		available_checkpoints=available_checkpoints,
-		model_architecture=args.model_architecture,
-		device=args.device,
-		dataset_directory=DATASET_DIRECTORY,
-		validation_loader=validation_loader,
-		verbose=args.verbose,
-	)
+	# # Load all fine-tuned models
+	# fine_tuned_models = load_finetuned_models(
+	# 	available_checkpoints=available_checkpoints,
+	# 	model_architecture=args.model_architecture,
+	# 	device=args.device,
+	# 	dataset_directory=DATASET_DIRECTORY,
+	# 	validation_loader=validation_loader,
+	# 	verbose=args.verbose,
+	# )
 
-	qualitative_results = {}
-	for strategy, ft_model in fine_tuned_models.items():
-		qualitative_results[strategy] = run_qualitative_retrieval(
-			model=ft_model,
-			i2t_samples=i2t_samples,
-			t2i_samples=t2i_samples,
-			class_names=class_names,
-			preprocess=customized_preprocess,
-			device=args.device,
-			topk=args.qualitative_topk,
-		)
+	# qualitative_results = {}
+	# for strategy, ft_model in fine_tuned_models.items():
+	# 	qualitative_results[strategy] = run_qualitative_retrieval(
+	# 		model=ft_model,
+	# 		i2t_samples=i2t_samples,
+	# 		t2i_samples=t2i_samples,
+	# 		class_names=class_names,
+	# 		preprocess=customized_preprocess,
+	# 		device=args.device,
+	# 		topk=args.qualitative_topk,
+	# 	)
 
-	# Always include zero-shot for comparison
-	qualitative_results["pretrained"] = run_qualitative_retrieval(
-		model=pretrained_model,
-		i2t_samples=i2t_samples,
-		t2i_samples=t2i_samples,
-		class_names=class_names,
-		preprocess=customized_preprocess,
-		device=args.device,
-		topk=args.qualitative_topk,
-	)
+	# # Always include zero-shot for comparison
+	# qualitative_results["pretrained"] = run_qualitative_retrieval(
+	# 	model=pretrained_model,
+	# 	i2t_samples=i2t_samples,
+	# 	t2i_samples=t2i_samples,
+	# 	class_names=class_names,
+	# 	preprocess=customized_preprocess,
+	# 	device=args.device,
+	# 	topk=args.qualitative_topk,
+	# )
 
-	viz.plot_qualitative_retrieval(
-		results_by_strategy=qualitative_results,
-		output_dir=INFERENCE_DIRECTORY,
-		dataset_name=dataset_name,
-		topk=args.qualitative_topk,
-		verbose=args.verbose,
-	)
+	# viz.plot_qualitative_retrieval(
+	# 	results_by_strategy=qualitative_results,
+	# 	output_dir=INFERENCE_DIRECTORY,
+	# 	dataset_name=dataset_name,
+	# 	topk=args.qualitative_topk,
+	# 	verbose=args.verbose,
+	# )
 
-	# ####################################### Qualitative Analysis #######################################
+	# # ####################################### Qualitative Analysis #######################################
 
 	####################################### Quantitative Analysis #######################################
 	results_json_path = os.path.join(RESULTS_DIRECTORY, f"{dataset_name}_retrieval_metrics_accumulated.json")
