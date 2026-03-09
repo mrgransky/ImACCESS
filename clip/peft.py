@@ -1118,7 +1118,7 @@ class TipAdapterFLinear(torch.nn.Module):
 				self.verbose = verbose
 				
 				if self.verbose:
-						print(f"[{self.__class__.__name__}] Initializing")
+						print(f"\n[{self.__class__.__name__}] Initializing")
 						print(f"    ├─ Dimensions: {in_features} -> {out_features}")
 						print(f"    ├─ Initial β: {initial_beta}")
 						print(f"    └─ Initial α: {initial_alpha}")
@@ -1142,20 +1142,16 @@ class TipAdapterFLinear(torch.nn.Module):
 			support_labels: torch.Tensor,
 			text_features: torch.Tensor
 		):
-			"""
-			Set cache using support set.
-			
-			IMPORTANT: support_features should be AFTER the linear projection
-			to ensure they're in the same space as text_features.
-			
-			Supports both single-label [N] and multi-label [N, C] formats.
-			"""
 			assert support_features.shape[1] == self.out_features
 			assert text_features.shape[1] == self.out_features
 			
 			# Normalize support features (keys)
 			cache_keys = torch.nn.functional.normalize(support_features, p=2, dim=-1)
-			
+			# Zero-pad guard: entries with near-zero norm (missing classes) must not
+			# contribute a spurious unit vector after normalization
+			valid_mask = support_features.norm(dim=-1) > 1e-6   # [num_classes]
+			cache_keys[~valid_mask] = 0.0
+
 			# Handle single-label or multi-label
 			if support_labels.dim() == 1:
 				# Single-label: direct indexing
@@ -1171,16 +1167,20 @@ class TipAdapterFLinear(torch.nn.Module):
 			
 			# Normalize cache values
 			cache_values = torch.nn.functional.normalize(cache_values, p=2, dim=-1)
+
+			# Zero out value entries for missing classes too
+			cache_values[~valid_mask] = 0.0
 			
 			self.cache_keys = cache_keys.to(self.device)
 			self.cache_values = cache_values.to(self.device)
 			
 			if self.verbose:
-				print(f"[Tip-Adapter-F] Cache set: {self.cache_keys.shape[0]} support samples")
+				print(f"\n[{self.__class__.__name__}] Cache set: {self.cache_keys.shape[0]} support samples")
 				print(f"    ├─ Keys: {self.cache_keys.shape}")
 				print(f"    ├─ Values: {self.cache_values.shape}")
-				print(f"    ├─ Keys normalized: {torch.allclose(self.cache_keys.norm(dim=-1), torch.ones(1, device=self.device))}")
-				print(f"    └─ Values normalized: {torch.allclose(self.cache_values.norm(dim=-1), torch.ones(1, device=self.device))}")
+				print(f"    ├─ Valid entries: {valid_mask.sum().item()} / {valid_mask.shape[0]}")
+				print(f"    ├─ Keys normalized: {torch.allclose(self.cache_keys[valid_mask].norm(dim=-1), torch.ones(valid_mask.sum(), device=self.device))}")
+				print(f"    └─ Values normalized: {torch.allclose(self.cache_values[valid_mask].norm(dim=-1), torch.ones(valid_mask.sum(), device=self.device))}")
 
 		def forward(self, x: torch.Tensor) -> torch.Tensor:
 				"""
@@ -1554,9 +1554,11 @@ class CLIPAdapterVisual(torch.nn.Module):
 def get_adapter_peft_clip(
 	clip_model: torch.nn.Module,
 	method: str,
-	cache_dim: int,  # For Tip-Adapter compatibility
-	bottleneck_dim: Optional[int] = 256,  # For CLIP-Adapter
-	activation: str = "relu",  # For CLIP-Adapter
+	cache_dim: int,  # Tip-Adapter
+	initial_beta: float = 1.0,    # Tip-Adapter
+	initial_alpha: float = 1.0,   # Tip-Adapter
+	bottleneck_dim: Optional[int] = 256,  # CLIP-Adapter
+	activation: str = "relu",  # CLIP-Adapter
 	verbose: bool = True,
 ):
 	"""
@@ -1759,6 +1761,8 @@ def get_adapter_peft_clip(
 		adapter_visual_proj = AdapterClass(
 			cache_features_dim=original_proj_out_dim,
 			device=device,
+			initial_beta=initial_beta,
+			initial_alpha=initial_alpha,
 			verbose=verbose
 		)
 		
@@ -1806,6 +1810,8 @@ def get_adapter_peft_clip(
 			in_features=original_proj_in_dim,
 			out_features=original_proj_out_dim,
 			device=device,
+			initial_beta=initial_beta,
+			initial_alpha=initial_alpha,
 			verbose=verbose
 		)
 		# Copy the original projection weight for initialization
@@ -1874,21 +1880,21 @@ def get_adapter_peft_clip(
 	if method == "tip_adapter_f":
 		# Freeze entire model first
 		for param in model.parameters():
-				param.requires_grad = False
+			param.requires_grad = False
 		
 		# Unfreeze by direct module reference, not string matching
 		adapter_module = getattr(model.visual, "tip_adapter_f_proj")
 		for param in adapter_module.parameters():
-				param.requires_grad = True  # covers linear.weight, linear.bias, beta, alpha
+			param.requires_grad = True  # covers linear.weight, linear.bias, beta, alpha
 		
 		if verbose:
-				trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-				print(f"\n[5] PARAMETER FREEZING - {method_name}")
-				print(f"    ├─ Total Parameters: {sum(p.numel() for p in model.parameters()):,}")
-				print(f"    └─ Trainable Parameters: {trainable:,}")
-				for name, param in model.named_parameters():
-						if param.requires_grad:
-								print(f"       ✓ {name}: {param.numel():,}")
+			trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+			print(f"\n[5] PARAMETER FREEZING - {method_name}")
+			print(f"    ├─ Total Parameters: {sum(p.numel() for p in model.parameters()):,}")
+			print(f"    └─ Trainable Parameters: {trainable:,}")
+			for name, param in model.named_parameters():
+				if param.requires_grad:
+					print(f"       ✓ {name}: {param.numel():,}")
 	elif method == "tip_adapter":
 		# For training-free Tip-Adapter, only beta and alpha are trainable
 		for name, param in model.named_parameters():
@@ -1901,6 +1907,7 @@ def get_adapter_peft_clip(
 			print(f"    └─ Trainable Parameters (β, α): {trainable_params:,}")
 	else:
 		raise ValueError(f"Unsupported adapter method: {method}")
+
 	return model
 
 def get_injected_peft_clip(

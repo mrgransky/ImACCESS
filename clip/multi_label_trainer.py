@@ -4511,9 +4511,14 @@ def tip_adapter_finetune_multi_label(
 	model_name = model.__class__.__name__
 	
 	if verbose:
-		print(f"{mode.upper()} [Multi-Label] Method: {tip_adapter_method} Beta: {initial_beta} Alpha: {initial_alpha} "
-					f"{model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} "
-					f"{type(device)} {device}")
+		print(f"\n{mode.upper()} [Multi-Label]")
+		print(f"   ├─ Method: {tip_adapter_method}")
+		print(f"   ├─ Beta[init]: {initial_beta}")
+		print(f"   ├─ Alpha[init]: {initial_alpha}")
+		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
+		print(f"   ├─ Model      : {model_name} {model_arch}")
+		print(f"   ├─ Batch size : {train_loader.batch_size}")
+		print(f"   ├─ Device     : {type(device)} {device}")
 		print(f"   ├─ Temperature: {temperature}")
 		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
 		print(f"   ├─ Support Shots: {support_shots}")
@@ -4667,6 +4672,8 @@ def tip_adapter_finetune_multi_label(
 		cache_dim=cache_dim,
 		bottleneck_dim=None,  # Not used for Tip-Adapter
 		activation=None,  # Not used for Tip-Adapter
+		initial_beta=initial_beta,
+		initial_alpha=initial_alpha,
 		verbose=verbose,
 	).to(device)
 	
@@ -5106,10 +5113,8 @@ def tip_adapter_finetune_multi_label(
 	)
 	
 	if verbose:
-		print(f"{'='*50}")
-		print(f"Full evaluation results:")
+		print(f"\nFull evaluation results:")
 		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
-		print(f"{'='*50}")
 
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
@@ -5130,13 +5135,13 @@ def tip_adapter_finetune_multi_label(
 		print(f"  ├─ Beta[init]: {initial_beta}")
 		print(f"  ├─ Alpha[init]: {initial_alpha}")
 		print(f"  ├─ Support Shots: {support_shots}")
+		print(f"  └─ Best model saved to: {mdl_fpth if num_epochs > 0 else 'N/A (training-free)'}")	
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n>> Tiered T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"  └─ Best model saved to: {mdl_fpth if num_epochs > 0 else 'N/A (training-free)'}")	
 		print(f"{'='*50}")
 
 	append_retrieval_results(
