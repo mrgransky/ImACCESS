@@ -1118,15 +1118,15 @@ class TipAdapterFLinear(torch.nn.Module):
 				self.verbose = verbose
 				
 				if self.verbose:
-						print(f"[Tip-Adapter-F] Initializing")
+						print(f"[{self.__class__.__name__}] Initializing")
 						print(f"    ├─ Dimensions: {in_features} -> {out_features}")
 						print(f"    ├─ Initial β: {initial_beta}")
 						print(f"    └─ Initial α: {initial_alpha}")
 				
 				# Trainable linear projection
 				self.linear = torch.nn.Linear(in_features, out_features, bias=True).to(device)
-				self.weight = self.linear.weight
-				self.bias = self.linear.bias
+				# self.weight = self.linear.weight
+				# self.bias = self.linear.bias
 				
 				# Cache buffers
 				self.register_buffer('cache_keys', torch.empty(0, out_features, device=device))
@@ -1796,7 +1796,6 @@ def get_adapter_peft_clip(
 			print(f"    ├─ Replaced final projection logic with {AdapterClass.__name__}")
 			print(f"    ├─ Input to adapter: {original_proj_out_dim}, Output from adapter: {original_proj_out_dim}")
 			print(f"    └─ Model's visual.forward has been updated.")
-	
 	elif method == "tip_adapter_f":
 		# Tip-Adapter-F replaces the original projection entirely
 		if original_proj_out_dim != cache_dim:
@@ -1845,7 +1844,9 @@ def get_adapter_peft_clip(
 			print(f"    ├─ Input to adapter: {original_proj_in_dim}, Output from adapter: {original_proj_out_dim}")
 			print(f"    ├─ Cache feature dim: {original_proj_out_dim}")
 			print(f"    └─ Model's visual.forward has been updated.")
-	
+	else:
+		raise ValueError(f"Unsupported adapter method: {method}")
+
 	# --- Memory Footprint for Tip-Adapter ---
 	mem_info = adapter_visual_proj.get_memory_footprint()
 	if verbose:
@@ -1860,17 +1861,34 @@ def get_adapter_peft_clip(
 			print(f"    └─ Cache Size (samples): {mem_info['cache_size']}")
 	
 	# --- FREEZE NON-ADAPTER PARAMETERS ---
+	# if method == "tip_adapter_f":
+	# 	# For Tip-Adapter-F, only the linear layer's weight/bias and beta/alpha are trainable
+	# 	for name, param in model.named_parameters():
+	# 		param.requires_grad = "linear.weight" in name or "linear.bias" in name or "beta" in name or "alpha" in name
+		
+	# 	if verbose:
+	# 		trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	# 		print(f"\n[5] PARAMETER FREEZING - {method_name}")
+	# 		print(f"    ├─ Total Parameters: {sum(p.numel() for p in model.parameters()):,}")
+	# 		print(f"    └─ Trainable Parameters: {trainable_params:,}")
 	if method == "tip_adapter_f":
-		# For Tip-Adapter-F, only the linear layer's weight/bias and beta/alpha are trainable
-		for name, param in model.named_parameters():
-			param.requires_grad = "linear.weight" in name or "linear.bias" in name or "beta" in name or "alpha" in name
+		# Freeze entire model first
+		for param in model.parameters():
+				param.requires_grad = False
+		
+		# Unfreeze by direct module reference, not string matching
+		adapter_module = getattr(model.visual, "tip_adapter_f_proj")
+		for param in adapter_module.parameters():
+				param.requires_grad = True  # covers linear.weight, linear.bias, beta, alpha
 		
 		if verbose:
-			trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-			print(f"\n[5] PARAMETER FREEZING - {method_name}")
-			print(f"    ├─ Total Parameters: {sum(p.numel() for p in model.parameters()):,}")
-			print(f"    └─ Trainable Parameters: {trainable_params:,}")
-	
+				trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+				print(f"\n[5] PARAMETER FREEZING - {method_name}")
+				print(f"    ├─ Total Parameters: {sum(p.numel() for p in model.parameters()):,}")
+				print(f"    └─ Trainable Parameters: {trainable:,}")
+				for name, param in model.named_parameters():
+						if param.requires_grad:
+								print(f"       ✓ {name}: {param.numel():,}")
 	elif method == "tip_adapter":
 		# For training-free Tip-Adapter, only beta and alpha are trainable
 		for name, param in model.named_parameters():
@@ -1881,7 +1899,8 @@ def get_adapter_peft_clip(
 			print(f"\n[5] PARAMETER FREEZING - {method_name} (Training-Free)")
 			print(f"    ├─ Total Parameters: {sum(p.numel() for p in model.parameters()):,}")
 			print(f"    └─ Trainable Parameters (β, α): {trainable_params:,}")
-	
+	else:
+		raise ValueError(f"Unsupported adapter method: {method}")
 	return model
 
 def get_injected_peft_clip(
@@ -1940,19 +1959,19 @@ def get_injected_peft_clip(
 			method_name = "LoRA+"
 	
 	if verbose:
-		print(f"\n[PEFT CONFIGURATION]")
+		print(f"\n[PEFT CONFIGURATION] Low-Rank & Vector Scaling Adaptation")
 		print(f"{'='*100}")
-		print(f"[1] METHOD SELECTION")
-		print(f"    ├─ Selected Method: {method_name}")
+		print(f"[1] METHOD")
+		print(f"    ├─ {method_name}")
 		print(f"    ├─ Adapter Class: {AdapterClass.__name__}")
 		print(f"    ├─ Rank: {rank}")
 		print(f"    ├─ Alpha: {alpha}")
 		print(f"    ├─ Dropout: {dropout}")
 		if lora_plus_lambda:
 			print(f"    ├─ {method_name} Learning Rate Multiplier (λ): {lora_plus_lambda}")
-			print(f"    └─ Scaling Factor: {alpha/rank}")
+			print(f"    └─ Scaling Factor (α/r): {alpha/rank}")
 		else:
-			print(f"    └─ Scaling Factor: {alpha/rank if method != 'vera' else 'N/A (VeRA uses trainable vectors)'}")
+			print(f"    └─ Scaling Factor (α/r): {alpha/rank if method != 'vera' else 'N/A (VeRA uses trainable vectors)'}")
 
 	# Check CUDA capability for quantization
 	capability = torch.cuda.get_device_capability()

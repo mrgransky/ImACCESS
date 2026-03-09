@@ -1723,9 +1723,8 @@ def lora_plus_finetune_multi_label(
 		quantization_bits=quantization_bits,
 		quantized=quantized,
 		verbose=verbose,
-	)
+	).to(device)
 	
-	model.to(device)
 	get_parameters_info(model=model, mode=mode)
 
 	masks = compute_loss_masks(
@@ -4330,7 +4329,7 @@ def clip_adapter_finetune_multi_label(
 
 	if verbose:
 		print(f"{'='*50}")
-		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
@@ -4671,6 +4670,11 @@ def tip_adapter_finetune_multi_label(
 		verbose=verbose,
 	).to(device)
 	
+	print("=== Full parameter inventory ===")
+	for name, param in model.named_parameters():
+			print(f"  {name}: numel={param.numel()} requires_grad={param.requires_grad}")
+	print("=== End of parameter inventory ===")
+
 	# === SET CACHE IN THE ADAPTER MODULE ===
 	if verbose:
 		print("\n[Tip-Adapter] Setting cache in adapter module...")
@@ -4726,8 +4730,6 @@ def tip_adapter_finetune_multi_label(
 		print(f"Total frozen parameters: {total_frozen:,}")
 	
 	get_parameters_info(model=model, mode=tip_adapter_method)
-
-
 
 	masks = compute_loss_masks(
 		train_loader=train_loader,
@@ -5122,17 +5124,19 @@ def tip_adapter_finetune_multi_label(
 
 	if verbose:
 		print(f"{'='*50}")
-		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  Model: {model_arch}")
+		print(f"{mode.upper()} Final evaluation from: {model_source}")
+		print(f"  ├─ Model: {model_arch}")
+		print(f"  ├─ Method: {tip_adapter_method}")
+		print(f"  ├─ Beta[init]: {initial_beta}")
+		print(f"  ├─ Alpha[init]: {initial_alpha}")
+		print(f"  ├─ Support Shots: {support_shots}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n>> Tiered T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"Tip-Adapter Multi-Label Fine-tuning Complete!")
-		print(f"Method: {tip_adapter_method} | Beta: {initial_beta} | Alpha: {initial_alpha} | Shots: {support_shots}")
-		print(f"Best model saved to: {mdl_fpth if num_epochs > 0 else 'N/A (training-free)'}")	
+		print(f"  └─ Best model saved to: {mdl_fpth if num_epochs > 0 else 'N/A (training-free)'}")	
 		print(f"{'='*50}")
 
 	append_retrieval_results(
