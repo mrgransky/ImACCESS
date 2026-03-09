@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --account=project_2004072
+#SBATCH --account=project_2009043
 #SBATCH --job-name=ft_h4_multi_label
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
