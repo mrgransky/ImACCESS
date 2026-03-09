@@ -69,6 +69,23 @@ modes = ["Image-to-Text", "Text-to-Image"]
 if USER == "farid":
 	from graphviz import Digraph
 
+def plot_alpha_beta_evolution(
+		alphas: List[float],
+		betas: List[float],
+		fname: str,
+):
+	fig, ax = plt.subplots(figsize=(10, 5))
+	ax.plot(alphas, label="α", color="#0010F3", linewidth=2)
+	ax.plot(betas, label="β", color="#C27E00", linewidth=2)
+	ax.set_xlabel("Epoch", fontsize=12)
+	ax.set_ylabel("Value", fontsize=12)
+	ax.set_title("α and β Evolution", fontsize=14)
+	ax.legend(fontsize=10)
+	plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+	plt.tight_layout()
+	plt.savefig(fname, dpi=200, bbox_inches='tight')
+	plt.close()
+
 def plot_train_val_losses(
 		train_losses: List[float],
 		val_losses: List[float],

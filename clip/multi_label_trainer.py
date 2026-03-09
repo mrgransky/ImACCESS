@@ -4916,7 +4916,8 @@ def tip_adapter_finetune_multi_label(
 	full_val_loss_acc_metrics_all_epochs = []
 	learning_rates_history = []
 	weight_decays_history = []
-	
+	alphas = []
+	betas = []
 	train_start_time = time.time()
 	final_img2txt_metrics = None
 	final_txt2img_metrics = None
@@ -5117,6 +5118,10 @@ def tip_adapter_finetune_multi_label(
 			f"Recall: {retrieval_metrics_per_epoch['txt2img'].get('Recall', {})}"
 		)
 
+		print(f"   ├─ α: {adapter_module.alpha.item():.5f}, β: {adapter_module.beta.item():.5f}")
+		alphas.append(adapter_module.alpha.item())
+		betas.append(adapter_module.beta.item())
+
 		if full_val_loss_acc_metrics_per_epoch.get("hamming_loss") is not None:
 			print(f'   ├─ Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
 			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
@@ -5136,9 +5141,6 @@ def tip_adapter_finetune_multi_label(
 				print(f"Validation Cache Stats: {cache_stats}")
 			print(f"#"*100)
 		
-		# Print current alpha and beta values
-		print(f"Current α: {adapter_module.alpha.item():.4f}, Current β: {adapter_module.beta.item():.4f}")
-		
 		# Early stopping check
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -5156,7 +5158,7 @@ def tip_adapter_finetune_multi_label(
 		
 		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec")
 	
-	print(f"[{mode}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
+	print(f"[{tip_adapter_method}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
 	
 	# Final evaluation
 	evaluation_results = evaluate_best_model(
@@ -5242,6 +5244,7 @@ def tip_adapter_finetune_multi_label(
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 		"hp_evol": os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
+		"alpha_beta_evol": os.path.join(results_dir, f"{file_base_name}_alpha_beta_evol.png"),
 	}
 	
 	if actual_trained_epochs > 0:
@@ -5277,6 +5280,12 @@ def tip_adapter_finetune_multi_label(
 		train_losses=training_losses,
 		val_losses=validation_losses,
 		fname=plot_paths["losses"],
+	)
+
+	viz.plot_alpha_beta_evolution(
+		alphas=alphas,
+		betas=betas,
+		fname=plot_paths["alpha_beta_evol"],
 	)
 
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics, mdl_fpth
