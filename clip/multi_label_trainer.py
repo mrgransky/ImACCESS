@@ -3979,7 +3979,7 @@ def clip_adapter_finetune_multi_label(
 			print(f"   ├─ {gpu_name} | {gpu_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 		print(f"   └─ Text adapter active: {text_adapter_active}")
 
-	# ── Early stopping ────────────────────────────────────────────────────────
+	# Early stopping
 	early_stopping = EarlyStopping(
 		patience=patience,
 		min_delta=min_delta,
@@ -3993,7 +3993,7 @@ def clip_adapter_finetune_multi_label(
 		pairwise_imp_threshold=pairwise_imp_threshold,
 	)
 
-	# ── Inject adapter ────────────────────────────────────────────────────────
+	# Inject adapter
 	model = get_adapter_peft_clip(
 		clip_model=model,
 		method=clip_adapter_method,
@@ -4003,7 +4003,7 @@ def clip_adapter_finetune_multi_label(
 		verbose=verbose,
 	).to(device)
 
-	get_parameters_info(model=model, mode=mode)
+	get_parameters_info(model=model, mode=clip_adapter_method)
 
 	if verbose:
 		trainable = [(n, p.numel()) for n, p in model.named_parameters() if p.requires_grad]
@@ -4016,7 +4016,7 @@ def clip_adapter_finetune_multi_label(
 		print(f"Total trainable : {sum(n for _,n in trainable):,}")
 		print(f"Total frozen    : {sum(n for _,n in frozen):,}")
 
-	# ── Loss masks ────────────────────────────────────────────────────────────
+	# Loss masks
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
@@ -4393,30 +4393,30 @@ def clip_adapter_finetune_multi_label(
 	return final_metrics_full, final_img2txt, final_txt2img, mdl_fpth
 
 def tip_adapter_finetune_multi_label(
-		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
-		num_epochs: int,
-		print_every: int,
-		learning_rate: float,
-		weight_decay: float,
-		device: str,
-		results_dir: str,
-		tip_adapter_method: str,  # "tip_adapter" or "tip_adapter_f"
-		patience: int,
-		min_delta: float,
-		cumulative_delta: float,
-		minimum_epochs: int,
-		volatility_threshold: float,
-		slope_threshold: float,
-		pairwise_imp_threshold: float,
-		topk_values: List[int]=[1, 5, 10, 15, 20],
-		initial_beta: float=1.0,
-		initial_alpha: float=1.0,
-		support_shots: int=16,  # Number of support samples per class
-		temperature: float=0.07,
-		loss_weights: Dict[str, float]=None,
-		verbose: bool=True,
+	model: torch.nn.Module,
+	train_loader: DataLoader,
+	validation_loader: DataLoader,
+	num_epochs: int,
+	print_every: int,
+	learning_rate: float,
+	weight_decay: float,
+	device: str,
+	results_dir: str,
+	tip_adapter_method: str,  # "tip_adapter" or "tip_adapter_f"
+	patience: int,
+	min_delta: float,
+	cumulative_delta: float,
+	minimum_epochs: int,
+	volatility_threshold: float,
+	slope_threshold: float,
+	pairwise_imp_threshold: float,
+	topk_values: List[int]=[1, 5, 10, 15, 20],
+	initial_beta: float=1.0,
+	initial_alpha: float=1.0,
+	support_shots: int=16,  # Number of support samples per class
+	temperature: float=0.07,
+	loss_weights: Dict[str, float]=None,
+	verbose: bool=True,
 ):
 	"""
 	Fine-tunes a CLIP model using Tip-Adapter or Tip-Adapter-F technique for multi-label datasets.
@@ -4641,11 +4641,16 @@ def tip_adapter_finetune_multi_label(
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 			for i in range(0, num_classes, text_batch_size):
 				end_idx = min(i + text_batch_size, num_classes)
+
 				batch_class_names = class_names[i:end_idx]
+
 				batch_class_texts = clip.tokenize(batch_class_names).to(device)
+
 				batch_embeds = model.encode_text(batch_class_texts)
 				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
+
 				all_class_embeds.append(batch_embeds.cpu())
+
 				del batch_class_texts, batch_embeds
 				torch.cuda.empty_cache()
 	
@@ -4676,8 +4681,8 @@ def tip_adapter_finetune_multi_label(
 		# Print available attributes to help debug
 		visual_attrs = [a for a in dir(model.visual) if not a.startswith('_')]
 		raise ValueError(
-				f"Could not find Tip-Adapter module. "
-				f"Available model.visual attributes: {visual_attrs}"
+			f"Could not find Tip-Adapter module. "
+			f"Available model.visual attributes: {visual_attrs}"
 		)
 
 	# For multi-label, we set the cache with label vectors instead of single labels
@@ -4720,8 +4725,10 @@ def tip_adapter_finetune_multi_label(
 		print(f"Total trainable parameters: {total_trainable:,}")
 		print(f"Total frozen parameters: {total_frozen:,}")
 	
-	get_parameters_info(model=model, mode=mode)
-	
+	get_parameters_info(model=model, mode=tip_adapter_method)
+
+
+
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,

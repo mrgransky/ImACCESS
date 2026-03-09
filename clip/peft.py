@@ -1853,9 +1853,9 @@ def get_adapter_peft_clip(
 		if method == "tip_adapter_f":
 			print(f"    ├─ Linear Layer Parameters: {mem_info.get('linear_params', 0):,}")
 			print(f"    ├─ Linear Layer Memory: {mem_info.get('linear_memory_mb', 0):.4f} MB")
-		print(f"    ├─ Cache Memory (depends on cache size): {mem_info['cache_memory_mb']:.4f} MB")
-		print(f"    ├─ Parameter Memory (β, α): {mem_info['param_memory_mb']:.4f} MB")
-		print(f"    └─ Total Estimated: {mem_info['total_memory_mb']:.4f} MB")
+		print(f"    ├─ Cache Memory (depends on cache size): {mem_info['cache_memory_mb']} MB")
+		print(f"    ├─ Parameter Memory (β, α): {mem_info['param_memory_mb']} MB")
+		print(f"    ├─ Total Estimated: {mem_info['total_memory_mb']:.4f} MB")
 		if 'cache_size' in mem_info:
 			print(f"    └─ Cache Size (samples): {mem_info['cache_size']}")
 	
