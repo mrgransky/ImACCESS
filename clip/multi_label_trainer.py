@@ -4661,11 +4661,7 @@ def tip_adapter_finetune_multi_label(
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
 	if verbose:
 		print(f"Class embeddings shape: {all_class_embeds.shape}")
-	
-	# === NOW APPLY TIP-ADAPTER ===
-	if verbose:
-		print("\n[Tip-Adapter] Applying Tip-Adapter to model...")
-	
+		
 	model = get_adapter_peft_clip(
 		clip_model=model,
 		method=tip_adapter_method,
@@ -4679,12 +4675,8 @@ def tip_adapter_finetune_multi_label(
 	
 	print("=== Full parameter inventory ===")
 	for name, param in model.named_parameters():
-			print(f"  {name}: numel={param.numel()} requires_grad={param.requires_grad}")
+		print(f"  {name}: numel={param.numel()} requires_grad={param.requires_grad}")
 	print("=== End of parameter inventory ===")
-
-	# === SET CACHE IN THE ADAPTER MODULE ===
-	if verbose:
-		print("\n[Tip-Adapter] Setting cache in adapter module...")
 	
 	# Access the adapter module from the visual encoder
 	adapter_module = getattr(model.visual, f"{tip_adapter_method.replace('-', '_')}_proj", None)
@@ -4704,11 +4696,10 @@ def tip_adapter_finetune_multi_label(
 	)
 	
 	if verbose:
-		print("Cache successfully set in Tip-Adapter module")
 		cache_stats = adapter_module.get_memory_footprint()
-		print(f"Cache statistics:")
-		print(f"  ├─ Cache size: {cache_stats.get('cache_size', 0)} samples")
-		print(f"  ├─ Cache memory: {cache_stats.get('cache_memory_mb', 0):.4f} MB")
+		print(f"\n[CACHE] {tip_adapter_method}:")
+		print(f"  ├─ size: {cache_stats.get('cache_size', 0)} samples")
+		print(f"  ├─ memory: {cache_stats.get('cache_memory_mb', 0):.4f} MB")
 		print(f"  └─ Total memory: {cache_stats.get('total_memory_mb', 0):.4f} MB")
 	
 	# DEBUG: Check which parameters are trainable
@@ -4721,8 +4712,7 @@ def tip_adapter_finetune_multi_label(
 			else:
 				frozen_params.append((name, param.numel()))
 		
-		print(f"\nDEBUG - Trainable parameters: {len(trainable_params)}")
-		print(f"DEBUG - Frozen parameters: {len(frozen_params)}")
+		print(f"\n[{tip_adapter_method} Parameters] Trainable: {len(trainable_params)} Frozen: {len(frozen_params)}")
 		
 		if trainable_params:
 			print("Trainable parameters:")
@@ -4733,8 +4723,7 @@ def tip_adapter_finetune_multi_label(
 		
 		total_trainable = sum(numel for _, numel in trainable_params)
 		total_frozen = sum(numel for _, numel in frozen_params)
-		print(f"Total trainable parameters: {total_trainable:,}")
-		print(f"Total frozen parameters: {total_frozen:,}")
+		print(f"[TOTAL] Trainable: {total_trainable:,} Frozen: {total_frozen:,}")
 	
 	get_parameters_info(model=model, mode=tip_adapter_method)
 

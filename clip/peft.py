@@ -1173,14 +1173,23 @@ class TipAdapterFLinear(torch.nn.Module):
 			
 			self.cache_keys = cache_keys.to(self.device)
 			self.cache_values = cache_values.to(self.device)
-			
+
 			if self.verbose:
+				valid_mask_dev = valid_mask.to(self.device)
+				n_valid = valid_mask_dev.sum()
+				keys_norms = self.cache_keys[valid_mask_dev].norm(dim=-1)
+				vals_norms = self.cache_values[valid_mask_dev].norm(dim=-1)
+				keys_normalized = torch.allclose(keys_norms, torch.ones(n_valid, device=self.device), atol=1e-5)
+				vals_normalized = torch.allclose(vals_norms, torch.ones(n_valid, device=self.device), atol=1e-5)
 				print(f"\n[{self.__class__.__name__}] Cache set: {self.cache_keys.shape[0]} support samples")
 				print(f"    ├─ Keys: {self.cache_keys.shape}")
 				print(f"    ├─ Values: {self.cache_values.shape}")
-				print(f"    ├─ Valid entries: {valid_mask.sum().item()} / {valid_mask.shape[0]}")
-				print(f"    ├─ Keys normalized: {torch.allclose(self.cache_keys[valid_mask].norm(dim=-1), torch.ones(valid_mask.sum(), device=self.device))}")
-				print(f"    └─ Values normalized: {torch.allclose(self.cache_values[valid_mask].norm(dim=-1), torch.ones(valid_mask.sum(), device=self.device))}")
+				print(f"    ├─ Valid entries: {n_valid.item()} / {valid_mask.shape[0]}")
+				print(f"    ├─ Keys norms   — min: {keys_norms.min():.6f}  max: {keys_norms.max():.6f}  mean: {keys_norms.mean():.6f}")
+				print(f"    ├─ Values norms — min: {vals_norms.min():.6f}  max: {vals_norms.max():.6f}  mean: {vals_norms.mean():.6f}")
+				print(f"    ├─ Keys normalized: {keys_normalized}")
+				print(f"    └─ Values normalized: {vals_normalized}")
+
 
 		def forward(self, x: torch.Tensor) -> torch.Tensor:
 				"""
