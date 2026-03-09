@@ -136,7 +136,11 @@ def append_retrieval_results(
 		json.dump(accumulated, f, indent=2)
 	
 	if verbose:
-		print(f"Results appended to {results_json_path}  [methods so far: {list(accumulated.keys())}]")
+		collected_methods = list(accumulated.keys())
+		n_methods = len(collected_methods)
+		print(f"\nResults of strategy '{strategy_name}' appended to {results_json_path}")
+		print(f">> {n_methods} collected methods: {collected_methods}")
+		print("="*140)
 	
 	return results_json_path
 

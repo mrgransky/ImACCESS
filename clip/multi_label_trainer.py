@@ -603,22 +603,26 @@ def probe_multi_label(
 			"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 			"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 	}
+	
 	viz.plot_multilabel_loss_breakdown(
 			training_losses_breakdown=training_losses_breakdown,
 			filepath=plot_paths["losses_breakdown"]
 	)
+	
 	viz.plot_retrieval_metrics_per_epoch(
 			dataset_name=dataset_name,
 			image_to_text_metrics_list=img2txt_metrics_all_epochs,
 			text_to_image_metrics_list=txt2img_metrics_all_epochs,
 			fname=plot_paths["retrieval_per_epoch"],
 	)
+	
 	viz.plot_retrieval_metrics_best_model(
 			dataset_name=dataset_name,
 			image_to_text_metrics=final_img2txt_metrics,
 			text_to_image_metrics=final_txt2img_metrics,
 			fname=plot_paths["retrieval_best"],
 	)
+	
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
 def full_finetune_multi_label(
@@ -1129,6 +1133,12 @@ def full_finetune_multi_label(
 		fname=plot_paths["retrieval_best"],
 	)
 
+	viz.plot_train_val_losses(
+		train_losses=training_losses,
+		val_losses=validation_losses,
+		fname=plot_paths["losses"],
+	)
+
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
 def lora_finetune_multi_label(
@@ -1580,6 +1590,12 @@ def lora_finetune_multi_label(
 		learning_rates=learning_rates_history,
 		weight_decays=weight_decays_history,
 		fname=plot_paths["hp_evol"],
+	)
+
+	viz.plot_train_val_losses(
+		train_losses=training_losses,
+		val_losses=validation_losses,
+		fname=plot_paths["losses"],
 	)
 
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
@@ -2201,6 +2217,12 @@ def lora_plus_finetune_multi_label(
 		fname=plot_paths["retrieval_best"],
 	)
 	
+	viz.plot_train_val_losses(
+		train_losses=training_losses,
+		val_losses=validation_losses,
+		fname=plot_paths["losses"],
+	)
+
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
 def dora_finetune_multi_label(
@@ -2747,6 +2769,14 @@ def dora_finetune_multi_label(
 		weight_decays=weight_decays_history,
 		fname=plot_paths["hp_evol"],
 	)
+
+	viz.plot_train_val_losses(
+		train_losses=training_losses,
+		val_losses=validation_losses,
+		fname=plot_paths["losses"],
+	)
+
+	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
 def ia3_finetune_multi_label(
 		model: torch.nn.Module,
@@ -3317,6 +3347,12 @@ def ia3_finetune_multi_label(
 		learning_rates=learning_rates_history,
 		weight_decays=weight_decays_history,
 		fname=plot_paths["hp_evol"],
+	)
+
+	viz.plot_train_val_losses(
+		train_losses=training_losses,
+		val_losses=validation_losses,
+		fname=plot_paths["losses"],
 	)
 
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
@@ -3901,6 +3937,12 @@ def vera_finetune_multi_label(
 		fname=plot_paths["hp_evol"],
 	)
 
+	viz.plot_train_val_losses(
+		train_losses=training_losses,
+		val_losses=validation_losses,
+		fname=plot_paths["losses"],
+	)
+
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
 def clip_adapter_finetune_multi_label(
@@ -4296,11 +4338,13 @@ def clip_adapter_finetune_multi_label(
 			)
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			print(f"#"*100)
 			cs = train_loader.dataset.get_cache_stats()
 			if cs: print(f"Train cache: {cs}")
 		if hasattr(validation_loader.dataset, 'get_cache_stats'):
 			cs = validation_loader.dataset.get_cache_stats()
 			if cs: print(f"Val cache  : {cs}")
+			print(f"#"*100)
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -4409,6 +4453,12 @@ def clip_adapter_finetune_multi_label(
 		learning_rates=learning_rates_history,
 		weight_decays=weight_decays_history,
 		fname=os.path.join(results_dir, f"{file_base}_hp_evol.png"),
+	)
+
+	viz.plot_train_val_losses(
+		train_losses=training_losses,
+		val_losses=validation_losses,
+		fname=os.path.join(results_dir, f"{file_base}_losses.png"),
 	)
 
 	return final_metrics_full, final_img2txt, final_txt2img, mdl_fpth
@@ -5223,4 +5273,10 @@ def tip_adapter_finetune_multi_label(
 		fname=plot_paths["retrieval_best"],
 	)
 	
+	viz.plot_train_val_losses(
+		train_losses=training_losses,
+		val_losses=validation_losses,
+		fname=plot_paths["losses"],
+	)
+
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics, mdl_fpth

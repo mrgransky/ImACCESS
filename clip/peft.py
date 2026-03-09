@@ -1143,7 +1143,6 @@ class TipAdapterFLinear(torch.nn.Module):
 			assert support_features.shape[1] == self.out_features
 			assert text_features.shape[1] == self.out_features
 			
-
 			# Guard 1: missing support image (zero-padded feature vector)
 			feat_valid = support_features.norm(dim=-1) > 1e-6
 
@@ -1192,11 +1191,10 @@ class TipAdapterFLinear(torch.nn.Module):
 				print(f"    ├─ Valid entries (label): {label_valid.sum().item()} / {label_valid.shape[0]}")
 				print(f"    ├─ Valid entries (both): {valid_mask.sum().item()} / {valid_mask.shape[0]}")
 				print(f"    ├─ Valid entries: {n_valid.item()} / {valid_mask.shape[0]}")
-				print(f"    ├─ Keys norms   — min: {keys_norms.min():.6f}  max: {keys_norms.max():.6f}  mean: {keys_norms.mean():.6f}")
-				print(f"    ├─ Values norms — min: {vals_norms.min():.6f}  max: {vals_norms.max():.6f}  mean: {vals_norms.mean():.6f}")
+				print(f"    ├─ Keys norms   — min: {keys_norms.min()} max: {keys_norms.max()} mean: {keys_norms.mean()}")
+				print(f"    ├─ Values norms — min: {vals_norms.min()} max: {vals_norms.max()} mean: {vals_norms.mean()}")
 				print(f"    ├─ Keys normalized: {keys_normalized}")
 				print(f"    └─ Values normalized: {vals_normalized}")
-
 
 		def forward(self, x: torch.Tensor) -> torch.Tensor:
 				"""

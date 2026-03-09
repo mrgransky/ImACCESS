@@ -479,7 +479,7 @@ def get_validation_metrics(
 	if verbose:
 		print("\nComputing validation metrics:")
 		print(f"Model: {type(model)}")
-		print(f"Dataset: {validation_loader.dataset.__class__.__name__}")
+		print(f"Dataset: {validation_loader.name}")
 		print(f"TopK values: {topK_values}")
 		print()
 

@@ -69,6 +69,28 @@ modes = ["Image-to-Text", "Text-to-Image"]
 if USER == "farid":
 	from graphviz import Digraph
 
+def plot_train_val_losses(
+		train_losses: List[float],
+		val_losses: List[float],
+		fname: str,
+):
+	num_epochs = len(train_losses)
+	if num_epochs <= 1:  # No plot if only one epoch
+		return
+	epochs = range(1, num_epochs + 1)
+
+	fig, ax = plt.subplots(figsize=(10, 5))
+	ax.plot(epochs, train_losses, label="Train", color=train_loss_color, linewidth=2)
+	ax.plot(epochs, val_losses, label="Validation", color=val_loss_color, linewidth=2)
+	ax.set_xlabel("Epoch", fontsize=12)
+	ax.set_ylabel("Loss", fontsize=12)
+	ax.set_title("Train and Validation Losses", fontsize=14)
+	ax.legend(fontsize=10)
+	plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+	plt.tight_layout()
+	plt.savefig(fname, dpi=200, bbox_inches='tight')
+	plt.close()
+
 def _get_category_labels_and_indices(
 		metadata_path: str,
 		class_names: List[str],
