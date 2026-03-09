@@ -1,17 +1,17 @@
 #!/bin/bash
 
-#SBATCH --account=project_2004072
-#SBATCH --job-name=h4_multi_label
+#SBATCH --account=project_2009043
+#SBATCH --job-name=ft_h4_multi_label
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=64
-#SBATCH --mem=333G
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=256G
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1
-#SBATCH --array=0-40:4
+#SBATCH --array=0-48:4
 #SBATCH --time=1-12:00:00
 
 set -euo pipefail
@@ -63,8 +63,8 @@ FINETUNE_STRATEGIES=(
 	"lora"              # 04-07, 	# 56-59, 		# 108-111, 	# 160-163, 	# 212-215
 	"lora_plus"					# 08-11, 	# 60-63, 		# 112-115, 	# 164-167, 	# 216-219
 	"dora"							# 12-15, 	# 64-67, 		# 116-119, 	# 168-171, 	# 220-223
-	"vera"							# 16-19, 	# 68-71, 		# 120-123, 	# 172-175, 	# 224-227
-	"ia3"								# 20-23, 	# 72-75, 		# 124-127, 	# 176-179, 	# 228-231
+	"ia3"								# 16-19, 	# 68-71, 		# 120-123, 	# 172-175, 	# 224-227
+	"vera"							# 20-23, 	# 72-75, 		# 124-127, 	# 176-179, 	# 228-231
 	"clip_adapter_v"		# 24-27, 	# 76-79, 		# 128-131, 	# 180-183, 	# 232-235
 	"clip_adapter_t"		# 28-31, 	# 80-83, 		# 132-135, 	# 184-187, 	# 236-239
 	"clip_adapter_vt"		# 32-35, 	# 84-87, 		# 136-139, 	# 188-191, 	# 240-243
@@ -180,10 +180,10 @@ fi
 # default
 ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 case $strategy in
-	"full"|"lora"|"lora_plus")
+	"full"|"lora")
 		ADJUSTED_BATCH_SIZE=32
 		;;
-	"vera"|"ia3")
+	"vera"|"ia3"|"lora_plus")
 		ADJUSTED_BATCH_SIZE=24
 		;;
 	"dora")
@@ -211,8 +211,7 @@ fi
 if [ -n "$BASELINE_METHOD" ]; then
 	echo "BASELINE_METHOD: $BASELINE_METHOD"
 fi
-echo "ARCHITECTURE_INDEX: $architecture_index"
-echo "MODEL_ARCHITECTURE: $architecture"
+echo "ARCHITECTURE_INDEX: $architecture_index MODEL_ARCHITECTURE: $architecture"
 echo "EPOCHS: ${EPOCHS[$dataset_index]}"
 echo "INITIAL LEARNING RATE: ${INIT_LRS[$dataset_index]}"
 echo "INITIAL WEIGHT DECAY: ${INIT_WDS[$dataset_index]}"
@@ -220,8 +219,6 @@ echo "DROPOUT: $DROPOUT"
 echo "EARLY_STOPPING_MIN_EPOCHS: $EARLY_STOPPING_MIN_EPOCHS"
 echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} [ADJUSTED]: $ADJUSTED_BATCH_SIZE"
 echo "====================="
-
-echo ">> Starting trainer.py for dataset[$SLURM_ARRAY_TASK_ID]: $METADATA_CSV"
 
 CMD="python -u trainer.py \
 	--metadata_csv \"$METADATA_CSV\" \
