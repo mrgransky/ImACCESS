@@ -4057,7 +4057,6 @@ def clip_adapter_finetune_multi_label(
 	model = get_adapter_peft_clip(
 		clip_model=model,
 		method=clip_adapter_method,
-		cache_dim=None,
 		bottleneck_dim=bottleneck_dim,
 		activation=activation,
 		verbose=verbose,
@@ -4090,7 +4089,7 @@ def clip_adapter_finetune_multi_label(
 	N           = masks["N"]
 	train_freq  = masks["train_freq"]
 
-	# ── Criteria ──────────────────────────────────────────────────────────────
+	#Criteria
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction='none')
 	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none')
 	if verbose:
@@ -4098,7 +4097,7 @@ def clip_adapter_finetune_multi_label(
 		print(f"   ├─ N={N}  classes={num_classes}  active={active_mask.sum().item():,}")
 		print(f"[T2I] BCEWithLogitsLoss  no pos_weight")
 
-	# ── Optimizer ─────────────────────────────────────────────────────────────
+	# Optimizer
 	adapter_params = [p for p in model.parameters() if p.requires_grad]
 	if not adapter_params:
 		raise ValueError("No trainable parameters found. Check get_adapter_peft_clip.")
@@ -4112,7 +4111,7 @@ def clip_adapter_finetune_multi_label(
 		weight_decay=weight_decay,
 	)
 
-	# ── Scheduler ─────────────────────────────────────────────────────────────
+	# Scheduler
 	T_max = num_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2
 	eta_min = learning_rate * ANNEALING_RATIO
@@ -4127,7 +4126,7 @@ def clip_adapter_finetune_multi_label(
 		print(f"  ├─ T_max = {T_max} steps [{num_epochs} epochs × {len(train_loader)} batches]")
 		print(f"  └─ eta_min = {eta_min:.2e} ({ANNEALING_RATIO*100:.1f}% of lr)")
 
-	# ── AMP scaler ────────────────────────────────────────────────────────────
+	# AMP scaler
 	scaler = torch.amp.GradScaler(
 		device=device,
 		init_scale=2**16,
@@ -4136,7 +4135,7 @@ def clip_adapter_finetune_multi_label(
 		growth_interval=2000,
 	)
 
-	# ── Checkpoint path ───────────────────────────────────────────────────────
+	# Checkpoint path
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{clip_adapter_method}_{model_arch}_"
@@ -4600,20 +4599,6 @@ def tip_adapter_finetune_multi_label(
 			cuda_capability = torch.cuda.get_device_capability()
 			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 	
-	# === GET TEXT EMBEDDING DIMENSION ===
-	# IMPORTANT: Do this BEFORE modifying the model
-	try:
-		dummy_text = clip.tokenize(["a photo of a cat"]).to(device)
-		with torch.no_grad():
-			model.eval()
-			text_features = model.encode_text(dummy_text)
-			cache_dim = text_features.shape[-1]
-	except Exception as e:
-		print(f"Warning: Could not automatically detect embedding dimension. Using default 512. Error: {e}")
-		cache_dim = 512
-	if verbose:
-		print(f"Detected text embedding dimension: {cache_dim}")
-	
 	# === SUPPORT SET CONSTRUCTION FOR MULTI-LABEL ===
 	if verbose:
 		print(f"\n>> Constructing support set with {support_shots} shots per class...")
@@ -4735,7 +4720,6 @@ def tip_adapter_finetune_multi_label(
 	model = get_adapter_peft_clip(
 		clip_model=model,
 		method=tip_adapter_method,
-		cache_dim=cache_dim,
 		bottleneck_dim=None,  # Not used for Tip-Adapter
 		activation=None,  # Not used for Tip-Adapter
 		initial_beta=initial_beta,

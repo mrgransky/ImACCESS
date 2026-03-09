@@ -1568,7 +1568,6 @@ class CLIPAdapterVisual(torch.nn.Module):
 def get_adapter_peft_clip(
 	clip_model: torch.nn.Module,
 	method: str,
-	cache_dim: int,  # Tip-Adapter
 	initial_beta: float = 1.0,    # Tip-Adapter
 	initial_alpha: float = 1.0,   # Tip-Adapter
 	bottleneck_dim: Optional[int] = 256,  # CLIP-Adapter
@@ -1716,6 +1715,18 @@ def get_adapter_peft_clip(
 	if method not in ["tip_adapter", "tip_adapter_f"]:
 		raise ValueError(f"method must be 'tip_adapter' or 'tip_adapter_f', got '{method}'")
 	
+	if method in ["tip_adapter", "tip_adapter_f"]:
+		# Infer cache_dim from visual projection (already accessed below anyway)
+		if hasattr(clip_model.visual, "proj"):
+			cache_dim = clip_model.visual.proj.size(1)
+		elif hasattr(clip_model, "text_projection"):
+			cache_dim = clip_model.text_projection.size(1)
+		else:
+			raise ValueError("Could not infer cache_dim. Please specify explicitly.")
+
+		if verbose:
+			print(f"[{method}] Inferred cache_dim: {cache_dim}")
+
 	# Select adapter class based on method
 	if method == "tip_adapter":
 		AdapterClass = TipAdapterLinear
