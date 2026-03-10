@@ -1277,9 +1277,8 @@ def lora_finetune_multi_label(
 			slope_threshold=slope_threshold,
 			pairwise_imp_threshold=pairwise_imp_threshold,
 	)
-	# ── Optimizer — LoRA parameters only ─────────────────────────────────────
-	lora_params = [p for p in model.parameters() if p.requires_grad]
-	print(f"LoRA trainable parameters: {sum(p.numel() for p in lora_params):,}")
+	# Optimizer — LoRA parameters only
+	lora_params = [p for p in model.parameters() if p.requires_grad]	
 	optimizer = torch.optim.AdamW(
 		params=lora_params,
 		lr=learning_rate,
@@ -1287,25 +1286,28 @@ def lora_finetune_multi_label(
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
-	# ── Scheduler — full requested duration ──────────────────────────────────
+	# Scheduler — full requested duration
 	total_training_steps = num_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2
 	eta_min = learning_rate * ANNEALING_RATIO
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-			optimizer=optimizer,
-			T_max=total_training_steps,
-			eta_min=eta_min,
-			last_epoch=-1,
+		optimizer=optimizer,
+		T_max=total_training_steps,
+		eta_min=eta_min,
+		last_epoch=-1,
 	)
-	print(f"CosineAnnealingLR | T_max={total_training_steps} ({num_epochs} epochs × {len(train_loader)} batches) | eta_min={eta_min:.2e}")
+	print(f"{scheduler.__class__.__name__}")
+	print(f"  ├─ T_max = {total_training_steps} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
+	print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
+	
 	scaler = torch.amp.GradScaler(
-			device=device,
-			init_scale=2**16,
-			growth_factor=2.0,
-			backoff_factor=0.5,
-			growth_interval=2000,
+		device=device,
+		init_scale=2**16,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
 	)
-	# ── Checkpoint path ───────────────────────────────────────────────────────
+	# Checkpoint path
 	dropout_val = lora_dropout
 	mdl_fpth = os.path.join(
 			results_dir,
@@ -1908,19 +1910,11 @@ def lora_plus_finetune_multi_label(
 		num_batches = 0
 		
 		for bidx, batch_data in enumerate(train_loader):
-			if len(batch_data) == 3:
-				images, _, label_vectors = batch_data
-			else:
-				raise ValueError(f"Expected 3 items from DataLoader, got {len(batch_data)}")
+			images, _, label_vectors = batch_data
 			
-			batch_size = images.size(0)
 			images = images.to(device, non_blocking=True)
 			label_vectors = label_vectors.to(device, non_blocking=True).float()
-			
-			# Validate label_vectors shape
-			if label_vectors.shape != (batch_size, num_classes):
-				raise ValueError(f"Label vectors shape {label_vectors.shape} doesn't match expected ({batch_size}, {num_classes})")
-			
+						
 			optimizer.zero_grad(set_to_none=True)
 			
 			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
@@ -5018,7 +5012,7 @@ def tip_adapter_finetune_multi_label(
 		
 		print(
 			f'\nEpoch {epoch+1}:\n'
-			f'   ├─ [LOSS] {mode.upper()}-FT: Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Validation: {current_val_loss:.6f}\n'
+			f'   ├─ [LOSS] {tip_adapter_method.upper()}-FT: Train - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Val: {current_val_loss:.6f}\n'
 			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
 			f'   ├─ Embed — CosSim: {cos_sim:.4f}\n'
 			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
