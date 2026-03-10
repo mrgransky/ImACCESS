@@ -292,10 +292,7 @@ def probe_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_{probe.probe_type}_"
-		f"{CLUSTER}_"
 		f"{model_arch}_"
-		f"{optimizer.__class__.__name__}_"
-		f"{scheduler.__class__.__name__}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
@@ -505,7 +502,7 @@ def probe_multi_label(
 				f"@ epoch {early_stopping.get_best_epoch()+1}"
 			)
 			break
-		print(f"[TOTAL ELAPSED TIME (Train + Validation)] Epoch {epoch+1:<20}{time.time() - train_and_val_st_time:.2f} sec")
+		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f} sec")
 	
 	print(f"[{mode}] Total Time: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 	# Load best probe weights
@@ -543,6 +540,10 @@ def probe_multi_label(
 		class_embeds_override=probe.probe.weight.detach().clone(),
 		verbose=verbose,
 	)
+	if verbose:
+		print(f"\n{mode.upper()} Final evaluation results:")
+		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
+
 	final_metrics_full    = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
@@ -556,7 +557,6 @@ def probe_multi_label(
 		original_path=mdl_fpth, 
 		actual_epochs=actual_trained_epochs
 	)
-	print(f"Best model will be renamed to: {mdl_fpth}")
 
 	if verbose:
 		print(f"{'='*50}")
@@ -565,7 +565,8 @@ def probe_multi_label(
 		print(f"  {probe.probe_type} | Params: {sum(p.numel() for p in probe.probe.parameters()):,}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score()}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
@@ -990,6 +991,20 @@ def full_finetune_multi_label(
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 			print()
 
+		if early_stopping.should_stop(
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
+		):
+			print(
+				f"[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
+				f"@ epoch {early_stopping.get_best_epoch()+1}")
+			break
+
+		# Cache stats
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
@@ -1000,19 +1015,7 @@ def full_finetune_multi_label(
 			if cache_stats is not None:
 				print(f"Validation Cache: {cache_stats}")
 
-		if early_stopping.should_stop(
-			current_value=current_val_loss,
-			model=model,
-			epoch=epoch,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			checkpoint_path=mdl_fpth,
-		):
-			print(
-				f"[EARLY STOPPING] best loss: {early_stopping.get_best_score()} "
-				f"@ epoch {early_stopping.get_best_epoch()+1}")
-			break
-		print(f"Epoch {epoch+1} Elapsed Time (Train + Validation): {time.time() - train_and_val_st_time:.2f}s")
+		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 
 	print(f"[{mode}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
 	print(f"-"*100)
@@ -1035,10 +1038,8 @@ def full_finetune_multi_label(
 		verbose=verbose,
 	)
 	if verbose:
-		print(f"{'='*50}")
-		print(f"Full evaluation results:")
+		print(f"\nFull evaluation results:")
 		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
-		print(f"{'='*50}")
 
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
@@ -1059,7 +1060,8 @@ def full_finetune_multi_label(
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score()}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
@@ -1067,16 +1069,6 @@ def full_finetune_multi_label(
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
-
-		print("\nFull Validation Set")
-		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-
-		print("\nImage-to-Text Retrieval")
-		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-
-		print("\nText-to-Image Retrieval")
-		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
-		print(f"\nBest model: {mdl_fpth}")
 
 	append_retrieval_results(
 		tiered_i2t=final_tiered_i2t, 
@@ -1317,9 +1309,7 @@ def lora_finetune_multi_label(
 	dropout_val = lora_dropout
 	mdl_fpth = os.path.join(
 			results_dir,
-			f"{mode}_{model_arch}_{optimizer.__class__.__name__}_"
-			f"{scheduler.__class__.__name__}_BCEWithLogitsLoss_"
-			f"{scaler.__class__.__name__}_"
+			f"{mode}_{model_arch}_"
 			f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
 			f"lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}_"
 			f"temp_{temperature}_bs_{train_loader.batch_size}_"
@@ -1452,15 +1442,7 @@ def lora_finetune_multi_label(
 					f"  Embed — CosSim: {cos_sim:.4f}\n"
 					f"  LR    — {scheduler.get_last_lr()[0]:.2e}"
 			)
-			if hasattr(train_loader.dataset, 'get_cache_stats'):
-				stats = train_loader.dataset.get_cache_stats()
-				if stats:
-					print(f"Train cache: {stats}")
-			if hasattr(validation_loader.dataset, 'get_cache_stats'):
-				stats = validation_loader.dataset.get_cache_stats()
-				if stats:
-					print(f"Val cache:   {stats}")
-			
+
 			if early_stopping.should_stop(
 					current_value=current_val_loss,
 					model=model,
@@ -1474,7 +1456,19 @@ def lora_finetune_multi_label(
 						f"@ epoch {early_stopping.get_best_epoch()+1}"
 					)
 					break
-			print(f"[ELAPSED TIME (Train + Validation)] Epoch {epoch+1:<20}{time.time()-train_and_val_st_time:.1f} sec")
+
+			# Cache stats
+			if hasattr(train_loader.dataset, 'get_cache_stats'):
+				stats = train_loader.dataset.get_cache_stats()
+				if stats:
+					print(f"Train cache: {stats}")
+
+			if hasattr(validation_loader.dataset, 'get_cache_stats'):
+				stats = validation_loader.dataset.get_cache_stats()
+				if stats:
+					print(f"Val cache:   {stats}")
+			
+			print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time()-train_and_val_st_time:.1f}s")
 
 	print(f"[{mode}] Total elapsed: {time.time()-train_start_time:.1f}s")
 
@@ -1500,10 +1494,8 @@ def lora_finetune_multi_label(
 	)
 
 	if verbose:
-		print(f"{'='*50}")
-		print(f"Full evaluation results:")
+		print(f"\nFull evaluation results:")
 		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
-		print(f"{'='*50}")
 
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
@@ -1524,7 +1516,8 @@ def lora_finetune_multi_label(
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score()}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
@@ -1532,13 +1525,6 @@ def lora_finetune_multi_label(
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
-		print("\nFull Validation Set")
-		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-		print("\nImage-to-Text Retrieval")
-		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-		print("\nText-to-Image Retrieval")
-		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
-		print(f"\nBest model: {mdl_fpth}")
 
 	append_retrieval_results(
 		tiered_i2t=final_tiered_i2t, 
@@ -1998,7 +1984,6 @@ def lora_plus_finetune_multi_label(
 		if verbose and epoch == 0:
 			print(f"[Epoch {epoch+1}] {len(learning_rates_history[-1])} LR groups: {learning_rates_history[-1]}")
 			print(f"[Epoch {epoch+1}] {len(weight_decays_history[-1])} WD groups: {weight_decays_history[-1]}")
-			print("-"*100)
 		
 		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")		
 		current_val_loss = compute_multilabel_validation_loss(
@@ -2070,6 +2055,20 @@ def lora_plus_finetune_multi_label(
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 			print()
 
+		if early_stopping.should_stop(
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
+		):
+			print(
+				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
+				f"@ epoch {early_stopping.get_best_epoch()+1}")
+			break
+		
+		# Cache stats
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
@@ -2080,23 +2079,9 @@ def lora_plus_finetune_multi_label(
 			if cache_stats is not None:
 				print(f"Validation Cache: {cache_stats}")
 		
-		if early_stopping.should_stop(
-			current_value=current_val_loss,
-			model=model,
-			epoch=epoch,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			checkpoint_path=mdl_fpth,
-		):
-			print(
-				f"\nEarly stopping triggered at epoch {epoch + 1} "
-				f"with best loss: {early_stopping.get_best_score()} "
-				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
-			break
-		
-		print(f"Epoch {epoch+1} [TOTAL ELAPSED TIME (Train + Validation)] {time.time() - train_and_val_st_time:.2f} sec")
+		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 	
-	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec")
+	print(f"[{mode}] Total Elapsed Time: {time.time() - train_start_time:.1f}s")
 	
 	# Final evaluation
 	evaluation_results = evaluate_best_model(
@@ -2121,10 +2106,8 @@ def lora_plus_finetune_multi_label(
 	)
 
 	if verbose:
-		print(f"{'='*50}")
-		print(f"Full evaluation results:")
+		print(f"\nFull evaluation results:")
 		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
-		print(f"{'='*50}")
 
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
@@ -2145,7 +2128,8 @@ def lora_plus_finetune_multi_label(
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score()}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
@@ -2154,13 +2138,6 @@ def lora_plus_finetune_multi_label(
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 		
-		print("\nFull Validation Set")
-		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-		print("\nImage-to-Text Retrieval")
-		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-		print("\nText-to-Image Retrieval")
-		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
-		print(f"\nBest model: {mdl_fpth}")
 
 	append_retrieval_results(
 		tiered_i2t=final_tiered_i2t, 
@@ -2614,6 +2591,19 @@ def dora_finetune_multi_label(
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 			print()
 
+		if early_stopping.should_stop(
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
+		):
+			print(
+				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
+				f"@ epoch {early_stopping.get_best_epoch()+1}")
+			break
+
 		# Cache stats
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			cache_stats = train_loader.dataset.get_cache_stats()
@@ -2625,24 +2615,9 @@ def dora_finetune_multi_label(
 			if cache_stats is not None:
 				print(f"Validation Cache: {cache_stats}")
 
-		# Early stopping check
-		if early_stopping.should_stop(
-			current_value=current_val_loss,
-			model=model,
-			epoch=epoch,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			checkpoint_path=mdl_fpth,
-		):
-			print(
-				f"\nEarly stopping triggered at epoch {epoch + 1} "
-				f"with best loss: {early_stopping.get_best_score()} "
-				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
-			break
-
-		print(f"[TOTAL ELAPSED TIME (Train + Validation)] Epoch {epoch+1} {time.time() - train_and_val_st_time:.2f} sec")
+		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 	
-	print(f"[{mode}] Total Training Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+	print(f"[{mode}] Total Training Elapsed Time: {time.time() - train_start_time:.1f}s")
 
 	# Final evaluation
 	evaluation_results = evaluate_best_model(
@@ -2690,7 +2665,8 @@ def dora_finetune_multi_label(
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score()}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
@@ -2698,13 +2674,6 @@ def dora_finetune_multi_label(
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
-		print("\nFull Validation Set")
-		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-		print("\nImage-to-Text Retrieval")
-		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-		print("\nText-to-Image Retrieval")
-		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
-		print(f"\nBest model: {mdl_fpth}")
 
 	append_retrieval_results(
 		tiered_i2t=final_tiered_i2t, 
@@ -3023,11 +2992,6 @@ def ia3_finetune_multi_label(
 		results_dir,
 		f"{mode}_"
 		f"{model_arch}_"
-		f"{optimizer.__class__.__name__}_"
-		f"{scheduler.__class__.__name__}_"
-		f"i2t_{criterion_i2t.__class__.__name__}_"
-		f"t2i_{criterion_t2i.__class__.__name__}_"
-		f"{scaler.__class__.__name__}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
@@ -3199,6 +3163,20 @@ def ia3_finetune_multi_label(
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 			print()
 
+		if early_stopping.should_stop(
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
+		):
+			print(
+				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
+				f"@ epoch {early_stopping.get_best_epoch()+1}")
+			break
+
+		# Cache stats
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
@@ -3209,20 +3187,7 @@ def ia3_finetune_multi_label(
 			if cache_stats is not None:
 				print(f"Validation Cache: {cache_stats}")
 
-		if early_stopping.should_stop(
-			current_value=current_val_loss,
-			model=model,
-			epoch=epoch,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			checkpoint_path=mdl_fpth,
-		):
-			print(
-				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score()} "
-				f"@ epoch {early_stopping.get_best_epoch()+1}")
-			break
-
-		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec")
+		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 	
 	print(f"[{mode}] Total Training Time: {time.time() - train_start_time:.1f} sec")
 
@@ -3245,10 +3210,8 @@ def ia3_finetune_multi_label(
 	)
 
 	if verbose:
-		print(f"{'='*50}")
-		print(f"Full evaluation results:")
+		print(f"\nFull evaluation results:")
 		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
-		print(f"{'='*50}")
 
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
@@ -3270,6 +3233,7 @@ def ia3_finetune_multi_label(
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score()}")
+		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
@@ -3277,13 +3241,6 @@ def ia3_finetune_multi_label(
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
-		print("\nFull Validation Set")
-		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-		print("\nImage-to-Text Retrieval")
-		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-		print("\nText-to-Image Retrieval")
-		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
-		print(f"\nBest model: {mdl_fpth}")
 
 	append_retrieval_results(
 		tiered_i2t=final_tiered_i2t, 
@@ -3779,6 +3736,20 @@ def vera_finetune_multi_label(
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 			print()
 
+		if early_stopping.should_stop(
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
+		):
+			print(
+				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
+				f"@ epoch {early_stopping.get_best_epoch()+1}")
+			break
+
+		# Cache stats
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
@@ -3789,20 +3760,7 @@ def vera_finetune_multi_label(
 			if cache_stats is not None:
 				print(f"Validation Cache: {cache_stats}")
 
-		if early_stopping.should_stop(
-			current_value=current_val_loss,
-			model=model,
-			epoch=epoch,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			checkpoint_path=mdl_fpth,
-		):
-			print(
-				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score()} "
-				f"@ epoch {early_stopping.get_best_epoch()+1}")
-			break
-
-		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec")
+		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 	
 	print(f"[{mode}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
 
@@ -3829,10 +3787,8 @@ def vera_finetune_multi_label(
 	)
 
 	if verbose:
-		print(f"{'='*50}")
-		print(f"Full evaluation results:")
+		print(f"\nFull evaluation results:")
 		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
-		print(f"{'='*50}")
 
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
@@ -3853,7 +3809,8 @@ def vera_finetune_multi_label(
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score()}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
@@ -3861,13 +3818,6 @@ def vera_finetune_multi_label(
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
-		print("\nFull Validation Set")
-		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-		print("\nImage-to-Text Retrieval")
-		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-		print("\nText-to-Image Retrieval")
-		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
-		print(f"\nBest model: {mdl_fpth}")
 
 	append_retrieval_results(
 		tiered_i2t=final_tiered_i2t, 
@@ -4329,14 +4279,6 @@ def clip_adapter_finetune_multi_label(
 				f'F1: {full_metrics["f1_score"]:.4f}'
 			)
 
-		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			cs = train_loader.dataset.get_cache_stats()
-			if cs: print(f"Train cache: {cs}")
-		
-		if hasattr(validation_loader.dataset, 'get_cache_stats'):
-			cs = validation_loader.dataset.get_cache_stats()
-			if cs: print(f"Val cache: {cs}")
-
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
 			model=model,
@@ -4351,7 +4293,16 @@ def clip_adapter_finetune_multi_label(
 			)
 			break
 
-		print(f"[TOTAL ELAPSED TIME (Train + Validation)] Epoch {epoch+1:<20}{time.time()-train_and_val_st_time:.2f} sec")
+		# Cache stats
+		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			cs = train_loader.dataset.get_cache_stats()
+			if cs: print(f"Train cache: {cs}")
+		
+		if hasattr(validation_loader.dataset, 'get_cache_stats'):
+			cs = validation_loader.dataset.get_cache_stats()
+			if cs: print(f"Val cache: {cs}")
+
+		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time()-train_and_val_st_time:.1f}s")
 
 	print(f"[{mode}] Total Training Elapsed Time: {time.time()-train_start_time:.1f} sec")
 
@@ -4389,7 +4340,8 @@ def clip_adapter_finetune_multi_label(
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score()}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best model: {mdl_fpth}")
 		print(f"  Method   : {clip_adapter_method}")
 		print(f"  Bottleneck: {bottleneck_dim}  Activation: {activation}")
 		print(f"  Learning rate: {learning_rate}  Weight decay: {weight_decay}")
@@ -4400,7 +4352,6 @@ def clip_adapter_finetune_multi_label(
 		print("\n>> Tiered T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"  Best model saved to: {mdl_fpth}")
 		print(f"{'='*50}")
 
 	append_retrieval_results(
@@ -4898,7 +4849,7 @@ def tip_adapter_finetune_multi_label(
 	# If training-free, skip training loop
 	if num_epochs == 0 or not trainable_parameters:
 		if verbose:
-			print("\n[Tip-Adapter] Training-free mode - proceeding directly to evaluation")
+			print(f"\n[{tip_adapter_method}] Training-free mode - proceeding directly to evaluation")
 		
 		# Perform evaluation only
 		evaluation_results = evaluate_best_model(
@@ -4931,12 +4882,6 @@ def tip_adapter_finetune_multi_label(
 			for tier, m in final_tiered_t2i.items():
 				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 			
-			print("--- Final Metrics [Full Validation Set] ---")
-			print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-			print("--- Image-to-Text Retrieval ---")
-			print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-			print("--- Text-to-Image Retrieval ---")
-			print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
 		
 		# Generate best model plot only
 		file_base_name = (
@@ -5101,6 +5046,20 @@ def tip_adapter_finetune_multi_label(
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 			print()
 
+		# Early stopping check
+		if early_stopping.should_stop(
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
+		):
+			print(
+				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
+				f"@ epoch {early_stopping.get_best_epoch()+1}")
+			break
+		
 		# Cache stats
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			cache_stats = train_loader.dataset.get_cache_stats()
@@ -5112,21 +5071,7 @@ def tip_adapter_finetune_multi_label(
 			if cache_stats is not None:
 				print(f"Validation Cache: {cache_stats}")
 		
-		# Early stopping check
-		if early_stopping.should_stop(
-			current_value=current_val_loss,
-			model=model,
-			epoch=epoch,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			checkpoint_path=mdl_fpth,
-		):
-			print(
-				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score()} "
-				f"@ epoch {early_stopping.get_best_epoch()+1}")
-			break
-		
-		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec")
+		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 	
 	print(f"[{tip_adapter_method}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
 	

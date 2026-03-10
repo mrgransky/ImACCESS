@@ -7,12 +7,11 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=40
+#SBATCH --cpus-per-task=10
 #SBATCH --mem=256G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-##########SBATCH --array=0-48:4
-#SBATCH --array=0
+#SBATCH --array=0-48:4
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -108,29 +107,37 @@ case "$LABEL_TYPE" in
 		;;
 esac
 
-INIT_LRS=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
-INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
-DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
+# Batch sizes and print frequencies
+BATCH_SIZES=(16 64 64 64 64)
+PRINT_FREQUENCIES=(1000 1000 50 50 25)
+
+# Learning rates by method group
+LR_FULL_FT=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+LR_LINEAR_PROBE=(5.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+LR_PEFT_ALL=(5.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)  # LoRA, LoRA+, DoRA, VeRA, IA³, Adapters
+
+# Default parameters
+WEIGHT_DECAY=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 EPOCHS=(100 100 150 150 150)
 
+# LoRA family parameters
 LORA_RANKS=(16 64 64 64 64)
 LORA_ALPHAS=(32.0 128.0 128.0 128.0 128.0)
-LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
-
+LORA_DROPOUTS=(0.05 0.1 0.05 0.05 0.05)
 LORA_PLUS_LAMBDAS=(32.0 16.0 16.0 16.0 16.0)
 
+# Progressive fine-tuning parameters
 MIN_PHASES_BEFORE_STOPPING=(3 3 3 3 3)
 MIN_EPOCHS_PER_PHASE=(5 5 5 5 5)
 TOTAL_NUM_PHASES=(8 4 4 4 4)
 
-BATCH_SIZES=(512 64 64 64 64)
-PRINT_FREQUENCIES=(1000 1000 50 50 25)
-
-EARLY_STOPPING_INIT_MIN_EPOCHS=(10 25 17 17 12)
+# Early stopping parameters
+EARLY_STOPPING_INIT_MIN_EPOCHS=(15 25 17 17 12)
 EARLY_STOPPING_PATIENCE=(3 5 5 5 5)
 EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)
 EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)
 
+# Stability thresholds
 VOLATILITY_THRESHOLDS=(5.0 15.0 15.0 15.0 15.0)
 SLOPE_THRESHOLDS=(1e-4 1e-4 1e-4 1e-4 1e-4)
 PAIRWISE_IMP_THRESHOLDS=(1e-4 1e-4 1e-4 1e-4 1e-4)
@@ -150,54 +157,23 @@ if [[ "$strategy" == "zero_shot" ]] || [[ "$strategy" == "probe" ]]; then
 	strategy="baseline"
 fi
 
-initial_early_stopping_minimum_epochs="${EARLY_STOPPING_INIT_MIN_EPOCHS[$dataset_index]}"
-# default
-EARLY_STOPPING_MIN_EPOCHS=$initial_early_stopping_minimum_epochs
-case $strategy in
-	"full")
-		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs - 3))
-		;;
-	"lora"|"lora_plus"|"dora"|"vera")
-		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs + 3))
-		;;
-	"baseline")
-		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs - 4))
-		;;
-	"ia3"|"adapter")
-		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs + 2))
-		;;
-esac
-EARLY_STOPPING_MIN_EPOCHS=$((EARLY_STOPPING_MIN_EPOCHS < 3 ? 3 : EARLY_STOPPING_MIN_EPOCHS))
-
-if [ "$strategy" = "lora" ] || [ "$strategy" = "lora_plus" ] || \
-	 [ "$strategy" = "dora" ] || [ "$strategy" = "vera" ] || \
-	 [ "$strategy" = "ia3" ] || [ "$strategy" = "baseline" ] || \
-	 [ "$strategy" = "adapter" ]; then
-	DROPOUT=0.0
+# Determine learning rate based on strategy
+if [ "$strategy" = "full" ]; then
+		LEARNING_RATE="${LR_FULL_FT[$dataset_index]}"
+elif [ "$BASELINE_METHOD" = "probe" ]; then
+		LEARNING_RATE="${LR_LINEAR_PROBE[$dataset_index]}"
 else
-	DROPOUT="${DROPOUTS[$dataset_index]}"
+		# All PEFT methods: LoRA, LoRA+, DoRA, VeRA, IA³, Adapters
+		LEARNING_RATE="${LR_PEFT_ALL[$dataset_index]}"
 fi
 
-# default
+# Early stopping minimum epochs
+initial_early_stopping_minimum_epochs="${EARLY_STOPPING_INIT_MIN_EPOCHS[$dataset_index]}"
+EARLY_STOPPING_MIN_EPOCHS=$initial_early_stopping_minimum_epochs
+EARLY_STOPPING_MIN_EPOCHS=$((EARLY_STOPPING_MIN_EPOCHS < 3 ? 3 : EARLY_STOPPING_MIN_EPOCHS))
+
+# Batch size
 ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
-case $strategy in
-	"full"|"lora")
-		ADJUSTED_BATCH_SIZE=32
-		;;
-	"vera"|"ia3"|"lora_plus")
-		ADJUSTED_BATCH_SIZE=24
-		;;
-	"dora")
-		ADJUSTED_BATCH_SIZE=16
-		;;
-	"adapter")
-		case $architecture in
-			"ViT-L/14@336px") ADJUSTED_BATCH_SIZE=36 ;;
-			"ViT-L/14")       ADJUSTED_BATCH_SIZE=64 ;;
-			"ViT-B/32"|"ViT-B/16") ADJUSTED_BATCH_SIZE=128 ;;
-		esac
-		;;
-esac
 
 echo "=== CONFIGURATION ==="
 echo "SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
@@ -214,11 +190,20 @@ if [ -n "$BASELINE_METHOD" ]; then
 fi
 echo "ARCHITECTURE_INDEX: $architecture_index MODEL_ARCHITECTURE: $architecture"
 echo "EPOCHS: ${EPOCHS[$dataset_index]}"
-echo "INITIAL LEARNING RATE: ${INIT_LRS[$dataset_index]}"
-echo "INITIAL WEIGHT DECAY: ${INIT_WDS[$dataset_index]}"
-echo "DROPOUT: $DROPOUT"
+echo "LR: $LEARNING_RATE"
+echo "WD: ${WEIGHT_DECAY[$dataset_index]}"
 echo "EARLY_STOPPING_MIN_EPOCHS: $EARLY_STOPPING_MIN_EPOCHS"
 echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} [ADJUSTED]: $ADJUSTED_BATCH_SIZE"
+# Show LoRA parameters only for applicable methods
+if [ "$strategy" = "lora" ] || [ "$strategy" = "lora_plus" ] || \
+   [ "$strategy" = "dora" ] || [ "$strategy" = "vera" ]; then
+    echo "LORA_RANK: ${LORA_RANKS[$dataset_index]}"
+    echo "LORA_ALPHA: ${LORA_ALPHAS[$dataset_index]}"
+    echo "LORA_DROPOUT: ${LORA_DROPOUTS[$dataset_index]}"
+    if [ "$strategy" = "lora_plus" ]; then
+        echo "LORA_PLUS_LAMBDA: ${LORA_PLUS_LAMBDAS[$dataset_index]}"
+    fi
+fi
 echo "====================="
 
 CMD="python -u trainer.py \
@@ -228,9 +213,8 @@ CMD="python -u trainer.py \
 	--epochs \"${EPOCHS[$dataset_index]}\" \
 	--num_workers \"$SLURM_CPUS_PER_TASK\" \
 	--batch_size \"$ADJUSTED_BATCH_SIZE\" \
-	--dropout \"$DROPOUT\" \
-	--learning_rate \"${INIT_LRS[$dataset_index]}\" \
-	--weight_decay \"${INIT_WDS[$dataset_index]}\" \
+	--learning_rate \"$LEARNING_RATE\" \
+	--weight_decay \"${WEIGHT_DECAY[$dataset_index]}\" \
 	--minimum_epochs \"$EARLY_STOPPING_MIN_EPOCHS\" \
 	--patience \"${EARLY_STOPPING_PATIENCE[$dataset_index]}\" \
 	--minimum_delta \"${EARLY_STOPPING_MIN_DELTA[$dataset_index]}\" \
@@ -238,15 +222,20 @@ CMD="python -u trainer.py \
 	--volatility_threshold \"${VOLATILITY_THRESHOLDS[$dataset_index]}\" \
 	--slope_threshold \"${SLOPE_THRESHOLDS[$dataset_index]}\" \
 	--pairwise_imp_threshold \"${PAIRWISE_IMP_THRESHOLDS[$dataset_index]}\" \
-	--lora_rank \"${LORA_RANKS[$dataset_index]}\" \
-	--lora_alpha \"${LORA_ALPHAS[$dataset_index]}\" \
-	--lora_dropout \"${LORA_DROPOUTS[$dataset_index]}\" \
 	--min_phases_before_stopping \"${MIN_PHASES_BEFORE_STOPPING[$dataset_index]}\" \
 	--min_epochs_per_phase \"${MIN_EPOCHS_PER_PHASE[$dataset_index]}\" \
 	--total_num_phases \"${TOTAL_NUM_PHASES[$dataset_index]}\" \
 	--print_every \"${PRINT_FREQUENCIES[$dataset_index]}\" \
 	--sampling \"${SAMPLINGS[1]}\" \
 	--verbose"
+
+# Add LoRA parameters only for LoRA, LoRA+, DoRA, and VeRA
+if [ "$strategy" = "lora" ] || [ "$strategy" = "lora_plus" ] || \
+	 [ "$strategy" = "dora" ] || [ "$strategy" = "vera" ]; then
+	CMD="$CMD --lora_rank \"${LORA_RANKS[$dataset_index]}\""
+	CMD="$CMD --lora_alpha \"${LORA_ALPHAS[$dataset_index]}\""
+	CMD="$CMD --lora_dropout \"${LORA_DROPOUTS[$dataset_index]}\""
+fi
 
 if [ "$strategy" = "lora_plus" ]; then
 	CMD="$CMD --lora_plus_lambda \"${LORA_PLUS_LAMBDAS[$dataset_index]}\""

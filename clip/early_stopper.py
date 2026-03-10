@@ -183,160 +183,285 @@ class EarlyStopping:
 				return self.best_epoch
 
 		def should_stop(
-			self,
-			current_value: float,
-			model: torch.nn.Module,
-			epoch: int,
-			optimizer: torch.optim.Optimizer,
-			scheduler,
-			checkpoint_path: str,
-			current_phase: Optional[int] = None,
+				self,
+				current_value: float,
+				model: torch.nn.Module,
+				epoch: int,
+				optimizer: torch.optim.Optimizer,
+				scheduler,
+				checkpoint_path: str,
+				current_phase: Optional[int] = None,
 		) -> bool:
-			# 1. Record raw loss & EMA
-			self.value_history.append(current_value)
-			self._update_ema(current_value)
-			
-			current_ema = self.ema_history[-1]
-			phase_info = f", Phase {current_phase}" if current_phase is not None else ""
-			
-			print(f"\n{self.__class__.__name__} Check (Epoch {epoch+1}{phase_info})")
-			print(f"\tRaw loss: {current_value} | EMA loss: {current_ema}")
-			print(f"\tCounter: {self.counter}/{self.effective_patience} | Adaptation: {'ON' if self._adaptation_active else 'OFF'}")
-			
-			# 2. Respect min_epochs
-			if epoch < self.min_epochs:
-				print(f"\tSkipping check (epoch {epoch+1} ≤ min_epochs {self.min_epochs})")
-				return False
+				# ------------------------------------------------------------------ #
+				# 1. Record raw loss and update EMA                                   #
+				# ------------------------------------------------------------------ #
+				self.value_history.append(current_value)
+				self._update_ema(current_value)
 
-			# 3. Handle improvement
-			if self._is_improvement(current_value):
-				old_best = f"{self.best_score}" if self.best_score is not None else "N/A"
-				print(f"\tNew best Found: {current_value} | previous best: {old_best}")
-				
-				self.best_score = current_value
-				self.best_epoch = epoch
-				self.counter = 0
-				self.improvement_history.append(True)
-				
-				# Store best weights
-				if self.restore_best_weights:
-					self.best_weights = {k: v.clone().cpu().detach() for k, v in model.state_dict().items()}
-				
-				# Save checkpoint with better error handling
-				self._save_checkpoint(checkpoint_path, model, optimizer, scheduler, current_phase)
-			else:
-				self.counter += 1
-				self.improvement_history.append(False)
-				best_str = f"{self.best_score}" if self.best_score is not None else "N/A"
-				print(f"\tNo improvement detected. Best: {best_str}")
+				current_ema = self.ema_history[-1]
+				phase_info  = f", Phase {current_phase}" if current_phase is not None else ""
+				sep         = "─" * 80
 
-			# 4. Check if we have enough history for window-based analysis
-			if len(self.value_history) < self.window_size:
-				print(f"\tInsufficient history ({len(self.value_history)}/{self.window_size}) for window checks")
-				if self.counter >= self.effective_patience:
-					# Only check phase constraints if min_phases_before_stopping is set
-					if self.min_phases_before_stopping is not None:
-						phase_ok = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
-						if phase_ok:
-							print("\tPatience exceeded → early stop")
-							return True
+				print(f"\n{sep}")
+				print(f"EarlyStopping Check — Epoch {epoch+1}{phase_info}")
+				print(f"{sep}")
+				print(f"  Raw loss        : {current_value:.8f}")
+				print(f"  EMA loss        : {current_ema:.8f}")
+				print(f"  Best score      : {self.best_score if self.best_score is not None else 'N/A'}")
+				print(f"  Best epoch      : {self.best_epoch + 1 if self.best_score is not None else 'N/A'}")
+				print(f"  Patience counter: {self.counter} / {self.effective_patience}")
+				print(f"  Adaptation      : {'ON' if self._adaptation_active else 'OFF'}")
+				print(f"  History length  : {len(self.value_history)} epochs")
+
+				# ------------------------------------------------------------------ #
+				# 2. Respect min_epochs — no stopping decisions before warmup ends    #
+				# ------------------------------------------------------------------ #
+				if epoch < self.min_epochs:
+						print(f"\n  [SKIP] Epoch {epoch+1} ≤ min_epochs {self.min_epochs} — skipping all checks")
+						# Still track improvement and save checkpoints during warmup
+						if self._is_improvement(current_value):
+								self._record_improvement(current_value, epoch, model, optimizer, scheduler, checkpoint_path, current_phase)
 						else:
-							print(f"\tPatience exceeded but {self.__class__.__name__} delayed until phase >= {self.min_phases_before_stopping}")
-							return False
-					else:
-						print("\tPatience exceeded → early stop")
-						return True
-				return False
-			else:
-				print(f"\tSufficient history ({len(self.value_history)}/{self.window_size}) for window checks")
-				print(self.value_history)
+								self.counter += 1
+								self.improvement_history.append(False)
+								print(f"  [WARMUP] No improvement. Counter: {self.counter}/{self.effective_patience}")
+						return False
 
-			# 5. Compute window statistics
-			raw_window = self.value_history[-self.window_size:]
-			raw_slope = compute_slope(raw_window)
-			raw_volatility = self._volatility(raw_window)
-			# print volatility and slope
-			print(f"\tRaw window: {raw_window}")
-			print(f"\tRaw slope: {raw_slope}")
-			print(f"\tRaw volatility: {raw_volatility}")
-
-			
-			# Pairwise improvement analysis
-			pairwise_diffs = [
-				(raw_window[i] - raw_window[i + 1]) * self.sign 
-				for i in range(len(raw_window) - 1)
-			]
-			pairwise_improvement = np.mean(pairwise_diffs) if pairwise_diffs else 0.0
-			
-			# Cumulative improvement
-			cum_imp_signed = (raw_window[0] - raw_window[-1]) * self.sign
-			cum_imp_abs = abs(cum_imp_signed)
-
-			# 6. EMA-based analysis and dynamic adaptation
-			if len(self.ema_history) >= self.ema_window:
-				ema_window_vals = self.ema_history[-self.ema_window:]
-				ema_slope = compute_slope(ema_window_vals)
-				ema_vol = self._volatility(ema_window_vals)
-			else:
-				ema_slope = 0.0
-				ema_vol = 0.0
-			self._apply_dynamic_adaptation(ema_slope, ema_vol)
-
-			# 7. Assemble stopping reasons
-			stop_reasons: List[str] = []
-			
-			if self.counter >= self.effective_patience:
-				stop_reasons.append(f"Patience ({self.counter}/{self.effective_patience})")
-			
-			if raw_volatility >= self.volatility_threshold:
-				stop_reasons.append(f"High volatility ({raw_volatility:.2f}%) > {self.volatility_threshold}%")
-			
-			worsening = (self.mode == "min" and raw_slope > self.slope_threshold) or (self.mode == "max" and raw_slope < self.slope_threshold)
-			if worsening:
-				stop_reasons.append(f"Worsening slope ({raw_slope}) > {self.slope_threshold}")
-			
-			close_to_best = (
-				abs(current_value - self.best_score) < self.min_delta 
-				if self.best_score is not None else False
-			)
-			if pairwise_improvement < self.pairwise_imp_threshold and not close_to_best:
-				stop_reasons.append(f"Low pairwise improvement ({pairwise_improvement}) < {self.pairwise_imp_threshold}")
-			
-			if cum_imp_abs < self.cumulative_delta:
-				stop_reasons.append(f"Low cumulative improvement ({cum_imp_abs}) < {self.cumulative_delta}")
-			
-			# EMA trend analysis (only add if clearly worsening)
-			if len(self.ema_history) >= 3:
-				trend_len = min(10, len(self.ema_history))
-				recent_trend = np.mean(np.diff(self.ema_history[-trend_len:])) if trend_len >= 2 else 0.0
-				if recent_trend > self.ema_threshold:
-					stop_reasons.append(f"EMA trend worsening ({recent_trend}) > {self.ema_threshold} over {trend_len} epochs")
-
-			# 8. Final decision with phase constraints
-			should_stop = bool(stop_reasons)
-			if should_stop:
-				# Only apply phase constraints if min_phases_before_stopping is set (progressive fine-tuning)
-				if self.min_phases_before_stopping is not None:
-					phase_ok = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
-					if not phase_ok:
-						print(f"\tStopping criteria met ({', '.join(stop_reasons)}) but waiting for phase >= {self.min_phases_before_stopping}")
-						should_stop = False
-					else:
-						print(f"EARLY STOPPING TRIGGERED:")
-						for reason in stop_reasons:
-							print(f"    • {reason}")
+				# ------------------------------------------------------------------ #
+				# 3. Improvement check — always runs regardless of window state       #
+				# ------------------------------------------------------------------ #
+				if self._is_improvement(current_value):
+						self._record_improvement(current_value, epoch, model, optimizer, scheduler, checkpoint_path, current_phase)
 				else:
-					print(f"EARLY STOPPING TRIGGERED:")
-					for reason in stop_reasons:
-						print(f"    • {reason}")
-			else:
-				print("NO stopping conditions met => CONTINUING TRAINING...")
+						self.counter += 1
+						self.improvement_history.append(False)
+						delta_from_best = abs(current_value - self.best_score) if self.best_score is not None else float('nan')
+						print(f"\n  [NO IMPROVEMENT]")
+						print(f"    Delta from best : {delta_from_best:.8f}  (min_delta={self.min_delta})")
+						print(f"    Patience counter: {self.counter} / {self.effective_patience}")
 
-			# 9. Restore best weights if stopping
-			if should_stop and self.restore_best_weights:
-				self._restore_best_weights(model)
+				# ------------------------------------------------------------------ #
+				# 4. HARD STOP — patience counter exceeded                            #
+				# This is the only single-condition stop allowed                      #
+				# ------------------------------------------------------------------ #
+				if self.counter >= self.effective_patience:
+						print(f"\n  [HARD STOP] Patience counter {self.counter} >= {self.effective_patience}")
+						if self.restore_best_weights:
+								self._restore_best_weights(model)
+						return True
 
-			return should_stop
+				# ------------------------------------------------------------------ #
+				# 5. Window checks — require sufficient history                       #
+				# ------------------------------------------------------------------ #
+				if len(self.value_history) < self.window_size:
+						print(f"\n  [SKIP WINDOW] Insufficient history {len(self.value_history)}/{self.window_size}")
+						return False
+
+				# ------------------------------------------------------------------ #
+				# 6. Compute window statistics on EMA (not raw) for stability         #
+				# ------------------------------------------------------------------ #
+				raw_window  = self.value_history[-self.window_size:]
+				ema_window_vals = self.ema_history[-self.window_size:]
+
+				raw_slope      = compute_slope(raw_window)
+				raw_volatility = self._volatility(raw_window)
+				ema_slope      = compute_slope(ema_window_vals)
+				ema_vol        = self._volatility(ema_window_vals)
+
+				# Pairwise improvement on raw window
+				pairwise_diffs = [
+						(raw_window[i] - raw_window[i + 1]) * self.sign
+						for i in range(len(raw_window) - 1)
+				]
+				pairwise_improvement = float(np.mean(pairwise_diffs)) if pairwise_diffs else 0.0
+
+				# Relative pairwise improvement (normalised by best score magnitude)
+				relative_pairwise = (
+						pairwise_improvement / abs(self.best_score)
+						if self.best_score is not None and abs(self.best_score) > 1e-10
+						else pairwise_improvement
+				)
+
+				# Cumulative improvement over the window
+				cum_imp_signed = (raw_window[0] - raw_window[-1]) * self.sign
+				cum_imp_abs    = abs(cum_imp_signed)
+
+				# EMA trend over recent history
+				trend_len    = min(10, len(self.ema_history))
+				recent_trend = float(np.mean(np.diff(self.ema_history[-trend_len:]))) if trend_len >= 2 else 0.0
+
+				print(f"\n  {'─'*40}")
+				print(f"  WINDOW STATISTICS  (window_size={self.window_size})")
+				print(f"  {'─'*40}")
+				print(f"  Raw window values   : {[f'{v:.6f}' for v in raw_window]}")
+				print(f"  EMA window values   : {[f'{v:.6f}' for v in ema_window_vals]}")
+				print(f"  Raw slope           : {raw_slope:+.8f}  (threshold={self.slope_threshold:.1e})")
+				print(f"  Raw volatility      : {raw_volatility:.4f}%  (threshold={self.volatility_threshold:.1f}%)")
+				print(f"  EMA slope           : {ema_slope:+.8f}  (threshold={self.slope_threshold:.1e})")
+				print(f"  EMA volatility      : {ema_vol:.4f}%  (threshold={self.volatility_threshold:.1f}%)")
+				print(f"  Pairwise diffs      : {[f'{d:+.6f}' for d in pairwise_diffs]}")
+				print(f"  Pairwise improvement: {pairwise_improvement:+.8f}  (absolute)")
+				print(f"  Relative pairwise   : {relative_pairwise:+.8f}  (threshold={self.pairwise_imp_threshold})")
+				print(f"  Cumulative imp.     : {cum_imp_abs:.8f}  (threshold={self.cumulative_delta})")
+				print(f"  EMA recent trend    : {recent_trend:+.8f}  (threshold={self.ema_threshold:.1e}, len={trend_len})")
+
+				# ------------------------------------------------------------------ #
+				# 7. Dynamic adaptation based on EMA stability                        #
+				# ------------------------------------------------------------------ #
+				if len(self.ema_history) >= self.ema_window:
+						ema_full_window = self.ema_history[-self.ema_window:]
+						ema_full_slope  = compute_slope(ema_full_window)
+						ema_full_vol    = self._volatility(ema_full_window)
+				else:
+						ema_full_slope = 0.0
+						ema_full_vol   = 0.0
+
+				print(f"\n  EMA full-window slope : {ema_full_slope:+.8f}")
+				print(f"  EMA full-window vol   : {ema_full_vol:.4f}%")
+				self._apply_dynamic_adaptation(ema_full_slope, ema_full_vol)
+
+				# ------------------------------------------------------------------ #
+				# 8. Evaluate SOFT stopping signals — require >= 2 to agree           #
+				# Using EMA-based volatility (not raw) for stability                  #
+				# ------------------------------------------------------------------ #
+				close_to_best = (
+						abs(current_value - self.best_score) < self.min_delta
+						if self.best_score is not None else False
+				)
+
+				soft_signals: List[str] = []
+
+				# Signal 1 — EMA volatility (replaces raw volatility)
+				if ema_vol >= self.volatility_threshold:
+						soft_signals.append(
+								f"High EMA volatility ({ema_vol:.4f}%) >= {self.volatility_threshold:.1f}%"
+						)
+
+				# Signal 2 — worsening slope (EMA-based)
+				ema_worsening = (
+						(self.mode == "min" and ema_slope > self.slope_threshold) or
+						(self.mode == "max" and ema_slope < -self.slope_threshold)
+				)
+				if ema_worsening:
+						soft_signals.append(
+								f"Worsening EMA slope ({ema_slope:+.8f}) vs threshold ({self.slope_threshold:.1e})"
+						)
+
+				# Signal 3 — low relative pairwise improvement
+				if relative_pairwise < self.pairwise_imp_threshold and not close_to_best:
+						soft_signals.append(
+								f"Low relative pairwise improvement ({relative_pairwise:+.8f}) "
+								f"< {self.pairwise_imp_threshold} [close_to_best={close_to_best}]"
+						)
+
+				# Signal 4 — low cumulative improvement over window
+				if cum_imp_abs < self.cumulative_delta:
+						soft_signals.append(
+								f"Low cumulative improvement ({cum_imp_abs:.8f}) < {self.cumulative_delta}"
+						)
+
+				# Signal 5 — EMA trend worsening
+				if recent_trend > self.ema_threshold:
+						soft_signals.append(
+								f"EMA trend worsening ({recent_trend:+.8f}) > {self.ema_threshold:.1e} over {trend_len} epochs"
+						)
+
+				# ------------------------------------------------------------------ #
+				# 9. Print soft signal evaluation                                     #
+				# ------------------------------------------------------------------ #
+				print(f"\n  {'─'*60}")
+				print(f"  SOFT SIGNAL EVALUATION  (require >= 2 to trigger stop)")
+				print(f"  {'─'*60}")
+
+				all_signal_names = [
+						("EMA volatility",           ema_vol >= self.volatility_threshold),
+						("Worsening EMA slope",      ema_worsening),
+						("Low relative pairwise",    relative_pairwise < self.pairwise_imp_threshold and not close_to_best),
+						("Low cumulative imp.",      cum_imp_abs < self.cumulative_delta),
+						("EMA trend worsening",      recent_trend > self.ema_threshold),
+				]
+				for signal_name, fired in all_signal_names:
+						status = "✗ FIRED" if fired else "✓ OK   "
+						print(f"    [{status}] {signal_name}")
+
+				print(f"\n  Soft signals fired: {len(soft_signals)} / {len(all_signal_names)}")
+				if soft_signals:
+						for s in soft_signals:
+								print(f"    • {s}")
+				else:
+						print(f"    (none)")
+
+				# ------------------------------------------------------------------ #
+				# 10. Final stopping decision                                         #
+				# ------------------------------------------------------------------ #
+				should_stop_flag = len(soft_signals) >= 2
+
+				print(f"\nFINAL DECISION:")
+
+				if should_stop_flag:
+						# Phase constraint check (only relevant for progressive fine-tuning)
+						if self.min_phases_before_stopping is not None:
+								phase_ok = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
+								if not phase_ok:
+										print(f"  [DEFER] Soft signals >= 2 but waiting for phase >= {self.min_phases_before_stopping}")
+										print(f"  => CONTINUE TRAINING")
+										should_stop_flag = False
+								else:
+										print(f"  [SOFT STOP] {len(soft_signals)} signals agreed:")
+										for s in soft_signals:
+												print(f"    • {s}")
+						else:
+								print(f"  [SOFT STOP] {len(soft_signals)} signals agreed:")
+								for s in soft_signals:
+										print(f"    • {s}")
+				else:
+						print(f"\t=> NO stopping conditions met — CONTINUE TRAINING")
+
+				print(f"{sep}\n")
+
+				# ------------------------------------------------------------------ #
+				# 11. Restore best weights if stopping                                #
+				# ------------------------------------------------------------------ #
+				if should_stop_flag and self.restore_best_weights:
+						self._restore_best_weights(model)
+
+				return should_stop_flag
+
+		def _record_improvement(
+				self,
+				current_value: float,
+				epoch: int,
+				model: torch.nn.Module,
+				optimizer: torch.optim.Optimizer,
+				scheduler,
+				checkpoint_path: str,
+				current_phase: Optional[int],
+		) -> None:
+				"""Centralised improvement recording — called from should_stop and warmup block."""
+				old_best = f"{self.best_score:.8f}" if self.best_score is not None else "N/A"
+				improvement = (
+						abs(self.best_score - current_value)
+						if self.best_score is not None else float('nan')
+				)
+				self.best_score  = current_value
+				self.best_epoch  = epoch
+				self.counter     = 0
+				self.improvement_history.append(True)
+
+				print(f"\n  [NEW BEST]")
+				print(f"    Previous best : {old_best}")
+				print(f"    New best      : {current_value:.8f}")
+				print(f"    Improvement   : {improvement:.8f}")
+				print(f"    Epoch         : {epoch + 1}")
+
+				if self.restore_best_weights:
+						self.best_weights = {
+								k: v.clone().cpu().detach()
+								for k, v in model.state_dict().items()
+						}
+						print(f"    Best weights  : stored in memory")
+
+				self._save_checkpoint(checkpoint_path, model, optimizer, scheduler, current_phase)
 
 		def _save_checkpoint(self, path: str, model, optimizer, scheduler, current_phase):
 				"""Save checkpoint with enhanced error handling"""

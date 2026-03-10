@@ -15,13 +15,12 @@ def compute_tiered_retrieval_metrics(
 	verbose: bool = False,
 ) -> Dict:
 	if verbose:
-		print(
-			f">> [{mode}] similarity_matrix: {similarity_matrix.shape} {similarity_matrix.device} | "
-			f"query_labels: {query_labels.shape} {query_labels.device} | "
-			f"head_mask: {head_mask.shape} {head_mask.device} | "
-			f"rare_mask: {rare_mask.shape} {rare_mask.device} | "
-			f"active_mask: {active_mask.shape} {active_mask.device}"
-		)
+		print(f"[{mode}]")
+		print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
+		print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
+		print(f"  ├─ Head mask: {head_mask.shape} {head_mask.device}")
+		print(f"  ├─ Rare mask: {rare_mask.shape} {rare_mask.device}")
+		print(f"  └─ Active mask: {active_mask.shape} {active_mask.device}")
 
 	tiers = {
 		"overall": active_mask,
@@ -273,8 +272,8 @@ def compute_retrieval_metrics_from_similarity(
 	Returns:
 			Dictionary with mP, mAP, and Recall metrics
 	"""
-	if verbose:
-		print(f"\nComputing retrieval metrics (mP, mAP, Recall) for {mode}")
+	# if verbose:
+	# 	print(f"\n[{mode}] Retrieval metrics (mP, mAP, Recall)")
 	
 	num_queries, num_candidates = similarity_matrix.shape
 	device = similarity_matrix.device
@@ -289,13 +288,14 @@ def compute_retrieval_metrics_from_similarity(
 		else len(query_labels.shape) == 2
 	)
 	
-	if verbose:
-		print(
-			f"{'Multi-label' if is_multi_label else 'Single-label'} Dataset | "
-			f"Similarity matrix: {similarity_matrix.shape} | "
-			f"Query labels: {query_labels.shape} | "
-			f"Candidate labels: {candidate_labels.shape}"
-		)
+	# if verbose:
+	# 	print(f"  ├─ is_multi_label: {is_multi_label}")
+	# 	print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
+	# 	print(f"  ├─ num_queries: {num_queries}  num_candidates: {num_candidates}")
+	# 	print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
+	# 	print(f"  ├─ Candidate labels: {candidate_labels.shape} {candidate_labels.device}")
+	# 	print(f"  ├─ Class counts: {class_counts.shape if class_counts is not None else None}")
+	# 	print(f"  └─ Max K: {max_k}")
 	
 	# Check cache
 	cache_file = None
@@ -377,21 +377,6 @@ def compute_retrieval_metrics_from_similarity(
 		ap_scores = (precisions * correct_mask.float()).sum(dim=1) / correct_mask.sum(dim=1).clamp(min=1)
 		metrics["mAP"][str(K)] = ap_scores.nanmean().item()
 	
-	# Save cache
-	if cache_file and not is_training:
-		try:
-			os.makedirs(cache_dir, exist_ok=True)
-			with open(cache_file, 'w') as f:
-				json.dump(metrics, f)
-			if verbose:
-				print(f"Cached metrics to {cache_file}")
-		except Exception as e:
-			if verbose:
-				print(f"Cache saving failed: {e}")
-
-	# if verbose:
-	# 	print(json.dumps(metrics, ensure_ascii=False, indent=2))
-
 	return metrics
 
 def compute_multilabel_correctness(
@@ -477,11 +462,7 @@ def get_validation_metrics(
 ) -> Dict:
 
 	if verbose:
-		print("\nComputing validation metrics:")
-		print(f"Model: {type(model)}")
-		print(f"Dataset: {validation_loader.name}")
-		print(f"TopK values: {topK_values}")
-		print()
+		print("\nComputing validation metrics...")
 
 	model.eval()
 	torch.cuda.empty_cache()
@@ -605,10 +586,6 @@ def get_validation_metrics(
 			print(f"class_text_embeds: {type(class_text_embeds)} {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
 
 	# Step 4: Compute similarity matrices (chunked for memory efficiency)
-	if verbose:
-		print("Computing similarity matrices...")
-	
-	# Move embeddings to device for similarity computation
 	device_image_embeds = all_image_embeds.to(device, non_blocking=True)
 	device_class_text_embeds = class_text_embeds.to(device, non_blocking=True)
 	device_labels = all_labels.to(device, non_blocking=True)
@@ -629,8 +606,6 @@ def get_validation_metrics(
 		print(f"Similarity matrices: I2T {i2t_similarity.shape}, T2I {t2i_similarity.shape}")
 
 	# Step 5: Compute full-set metrics
-	if verbose:
-		print("Computing full-set metrics...")
 	full_metrics = compute_full_set_metrics_from_cache(
 		i2t_similarity=i2t_similarity,
 		t2i_similarity=t2i_similarity,
@@ -653,13 +628,10 @@ def get_validation_metrics(
 		lora_dropout = lora_params.get("lora_dropout")
 		# LoRA+ has additional parameters
 		lora_plus_lambda = lora_params.get("lora_plus_lambda", None)
-		cache_key_base += f"_lora_r{lora_rank}_a{lora_alpha}_d{lora_dropout}"
+		cache_key_base += f"_lora_r_{lora_rank}_a_{lora_alpha}_d_{lora_dropout}"
 		if lora_plus_lambda is not None:
 			cache_key_base += f"_lmbd_{lora_plus_lambda}"
 	
-	if verbose:
-		print("Computing image-to-text and text-to-image retrieval metrics...")
-
 	img2txt_metrics = compute_retrieval_metrics_from_similarity(
 		similarity_matrix=i2t_similarity,
 		query_labels=device_labels,
@@ -693,8 +665,8 @@ def get_validation_metrics(
 	)
 
 	if verbose:
-		print(f"{type(model)} I2T: {type(img2txt_metrics)} T2I: {type(txt2img_metrics)}")
-		print(f"Validation elapsed_t: {time.time() - start_time:.1f}s")
+		# print(f"{type(model)} I2T: {type(img2txt_metrics)} T2I: {type(txt2img_metrics)}")
+		print(f"\nValidation Elapsed Time: {time.time() - start_time:.1f}s")
 	
 	return {
 		"full_metrics": full_metrics,
@@ -1181,16 +1153,16 @@ def evaluate_best_model(
 	del i2t_similarity, t2i_similarity
 	torch.cuda.empty_cache()
 	
-	if clean_cache:
-		cleanup_embedding_cache(
-			dataset_name=dataset_name,
-			cache_dir=cache_dir,
-			finetune_strategy=finetune_strategy,
-			batch_size=validation_loader.batch_size,
-			num_workers=validation_loader.num_workers,
-			model_name=model.__class__.__name__,
-			model_arch=model.name if hasattr(model, 'name') else 'unknown_arch'
-		)
+	# if clean_cache:
+	# 	cleanup_embedding_cache(
+	# 		dataset_name=dataset_name,
+	# 		cache_dir=cache_dir,
+	# 		finetune_strategy=finetune_strategy,
+	# 		batch_size=validation_loader.batch_size,
+	# 		num_workers=validation_loader.num_workers,
+	# 		model_name=model.__class__.__name__,
+	# 		model_arch=model.name if hasattr(model, 'name') else 'unknown_arch'
+	# 	)
 
 	return {
 		"full_metrics":      full_metrics,

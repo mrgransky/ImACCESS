@@ -1204,7 +1204,7 @@ class TipAdapterFLinear(torch.nn.Module):
 				projected = self.linear(x)  # [batch, out_features]
 				
 				if self.cache_keys.shape[0] == 0:
-						# No cache, return projected features
+						# return projected features
 						return projected
 				
 				# CRITICAL: Normalize projected features
