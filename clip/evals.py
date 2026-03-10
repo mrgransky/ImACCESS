@@ -566,15 +566,15 @@ def get_validation_metrics(
 		if verbose:
 			print(f"Elapsed: {time.time() - t0:.1f} s")
 		
-		# Save to cache if not training
-		if not is_training:
-			try:
-				os.makedirs(cache_dir, exist_ok=True)
-				torch.save({'image_embeds': all_image_embeds.cpu(), 'labels': all_labels.cpu()}, cache_file)
-				if verbose:
-					print(f"Saved embeddings to cache: {cache_file}")
-			except Exception as e:
-				print(f"Cache saving failed: {e}")
+		# # Save to cache if not training
+		# if not is_training:
+		# 	try:
+		# 		os.makedirs(cache_dir, exist_ok=True)
+		# 		torch.save({'image_embeds': all_image_embeds.cpu(), 'labels': all_labels.cpu()}, cache_file)
+		# 		if verbose:
+		# 			print(f"Saved embeddings to cache: {cache_file}")
+		# 	except Exception as e:
+		# 		print(f"Cache saving failed: {e}")
 	
 	# Step 3: Compute class embeddings
 	if class_embeds_override is not None:

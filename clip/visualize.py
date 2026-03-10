@@ -1768,15 +1768,15 @@ def plot_multilabel_loss_breakdown(
 		figure_size=(12, 8),
 		DPI: int = 300,
 	):
-	print(f"Plotting multi-label loss breakdown to {filepath}...")
-	print(training_losses_breakdown)
-	# --- Debug: Print loss lengths for verification ---
-	print("\n[Plotting] Loss list lengths before plotting:")
-	for key, loss_list in training_losses_breakdown.items():
-		if isinstance(loss_list, list):
-			print(f"  - {key:<10}: {len(loss_list)} values")
-		else:
-			print(f"  - {key:<10}: Not a list (type={type(loss_list).__name__})")
+	# print(f"Plotting multi-label loss breakdown to {filepath}...")
+	# print(training_losses_breakdown)
+	# # --- Debug: Print loss lengths for verification ---
+	# print("\n[Plotting] Loss list lengths before plotting:")
+	# for key, loss_list in training_losses_breakdown.items():
+	# 	if isinstance(loss_list, list):
+	# 		print(f"  - {key:<10}: {len(loss_list)} values")
+	# 	else:
+	# 		print(f"  - {key:<10}: Not a list (type={type(loss_list).__name__})")
 
 	# Find the number of epochs from the longest valid list in the dictionary
 	num_epochs = 0

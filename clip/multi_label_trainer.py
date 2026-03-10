@@ -188,16 +188,19 @@ def probe_multi_label(
 	mode = re.sub(r'_multi_label', '', mode)
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
-	print(f"{mode} | {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
+
+	print(f"{mode} | {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
-	# STEP 1: FREEZE ALL CLIP PARAMETERS AND CREATE ROBUST PROBE
+		print(f"{gpu_name} | {total_mem:.2f}GB VRAM")
+
+	# FREEZE ALL CLIP PARAMETERS AND CREATE ROBUST PROBE
 	for param in model.parameters():
 		param.requires_grad = False
-	model.eval()
+
 	# Build probe (wraps frozen CLIP, adds trainable W)
+	model.eval()
 	probe = get_probe_clip(
 		clip_model=model,
 		validation_loader=validation_loader,
@@ -219,7 +222,8 @@ def probe_multi_label(
 	rare_mask   = masks["rare_mask"]
 	N = masks["N"]
 	train_freq = masks["train_freq"]
-	# ── Criteria ─────────────────────────────────────────────────────────────
+
+	# ── Criteria
 	# For the probe, loss is computed directly on logits [B, C] — same shape
 	# as i2t_sim — so criterion_i2t with pos_weight applies directly.
 	# No criterion_t2i needed: the probe has no T2I direction.
@@ -235,6 +239,7 @@ def probe_multi_label(
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
+
 	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
 	model.eval()
 	all_class_embeds = []
@@ -496,8 +501,7 @@ def probe_multi_label(
 			checkpoint_path=mdl_fpth,
 		):
 			print(
-				f"\nEarly stopping at epoch {epoch+1} | "
-				f"best loss: {early_stopping.get_best_score():.6f} "
+				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
 				f"@ epoch {early_stopping.get_best_epoch()+1}"
 			)
 			break
@@ -962,7 +966,7 @@ def full_finetune_multi_label(
 
 		print(
 			f'\nEpoch {epoch+1}:\n'
-			f'   ├─ [LOSS] {mode}-FT: Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Validation: {current_val_loss:.6f}\n'
+			f'   ├─ [LOSS] {mode}-FT: Train — Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Val: {current_val_loss:.6f}\n'
 			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
 			f'   ├─ Embed — CosSim: {cos_sim:.4f}\n'
 			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
@@ -987,15 +991,15 @@ def full_finetune_multi_label(
 			print()
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
-				print(f"Train Cache Stats: {cache_stats}")
+				print(f"Train Cache: {cache_stats}")
+		
 		if hasattr(validation_loader.dataset, 'get_cache_stats'):
 			cache_stats = validation_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
-				print(f"Validation Cache Stats: {cache_stats}")
-			print(f"#"*100)
+				print(f"Validation Cache: {cache_stats}")
+
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
 			model=model,
@@ -1005,9 +1009,8 @@ def full_finetune_multi_label(
 			checkpoint_path=mdl_fpth,
 		):
 			print(
-				f"\nEarly stopping at epoch {epoch + 1} "
-				f"with best loss: {early_stopping.get_best_score()} "
-				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
+				f"[EARLY STOPPING] best loss: {early_stopping.get_best_score()} "
+				f"@ epoch {early_stopping.get_best_epoch()+1}")
 			break
 		print(f"Epoch {epoch+1} Elapsed Time (Train + Validation): {time.time() - train_and_val_st_time:.2f}s")
 
@@ -1450,13 +1453,14 @@ def lora_finetune_multi_label(
 					f"  LR    — {scheduler.get_last_lr()[0]:.2e}"
 			)
 			if hasattr(train_loader.dataset, 'get_cache_stats'):
-					stats = train_loader.dataset.get_cache_stats()
-					if stats:
-							print(f"  Train cache: {stats}")
+				stats = train_loader.dataset.get_cache_stats()
+				if stats:
+					print(f"Train cache: {stats}")
 			if hasattr(validation_loader.dataset, 'get_cache_stats'):
-					stats = validation_loader.dataset.get_cache_stats()
-					if stats:
-							print(f"  Val cache:   {stats}")
+				stats = validation_loader.dataset.get_cache_stats()
+				if stats:
+					print(f"Val cache:   {stats}")
+			
 			if early_stopping.should_stop(
 					current_value=current_val_loss,
 					model=model,
@@ -1466,9 +1470,8 @@ def lora_finetune_multi_label(
 					checkpoint_path=mdl_fpth,
 			):
 					print(
-							f"\nEarly stopping at epoch {epoch+1} | "
-							f"best loss: {early_stopping.get_best_score():.6f} "
-							f"@ epoch {early_stopping.get_best_epoch()+1}"
+						f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
+						f"@ epoch {early_stopping.get_best_epoch()+1}"
 					)
 					break
 			print(f"[ELAPSED TIME (Train + Validation)] Epoch {epoch+1:<20}{time.time()-train_and_val_st_time:.1f} sec")
@@ -2068,16 +2071,14 @@ def lora_plus_finetune_multi_label(
 			print()
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
-				print(f"Train Cache Stats: {cache_stats}")
+				print(f"Train Cache: {cache_stats}")
 		
 		if hasattr(validation_loader.dataset, 'get_cache_stats'):
 			cache_stats = validation_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
-				print(f"Validation Cache Stats: {cache_stats}")
-			print(f"#"*100)
+				print(f"Validation Cache: {cache_stats}")
 		
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -2615,16 +2616,14 @@ def dora_finetune_multi_label(
 
 		# Cache stats
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
-				print(f"Train Cache Stats: {cache_stats}")
+				print(f"Train Cache: {cache_stats}")
 
 		if hasattr(validation_loader.dataset, 'get_cache_stats'):
 			cache_stats = validation_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
-				print(f"Validation Cache Stats: {cache_stats}")
-			print(f"#"*100)
+				print(f"Validation Cache: {cache_stats}")
 
 		# Early stopping check
 		if early_stopping.should_stop(
@@ -3201,16 +3200,14 @@ def ia3_finetune_multi_label(
 			print()
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
-				print(f"Train Cache Stats: {cache_stats}")
+				print(f"Train Cache: {cache_stats}")
 
 		if hasattr(validation_loader.dataset, 'get_cache_stats'):
 			cache_stats = validation_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
-				print(f"Validation Cache Stats: {cache_stats}")
-			print(f"#"*100)
+				print(f"Validation Cache: {cache_stats}")
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -3221,9 +3218,8 @@ def ia3_finetune_multi_label(
 			checkpoint_path=mdl_fpth,
 		):
 			print(
-				f"\nEarly stopping triggered at epoch {epoch + 1} "
-				f"with best loss: {early_stopping.get_best_score()} "
-				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
+				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score()} "
+				f"@ epoch {early_stopping.get_best_epoch()+1}")
 			break
 
 		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec")
@@ -3784,16 +3780,14 @@ def vera_finetune_multi_label(
 			print()
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
-				print(f"Train Cache Stats: {cache_stats}")
+				print(f"Train Cache: {cache_stats}")
 
 		if hasattr(validation_loader.dataset, 'get_cache_stats'):
 			cache_stats = validation_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
-				print(f"Validation Cache Stats: {cache_stats}")
-			print(f"#"*100)
+				print(f"Validation Cache: {cache_stats}")
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -3804,9 +3798,8 @@ def vera_finetune_multi_label(
 			checkpoint_path=mdl_fpth,
 		):
 			print(
-				f"\nEarly stopping triggered at epoch {epoch + 1} "
-				f"with best loss: {early_stopping.get_best_score()} "
-				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
+				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score()} "
+				f"@ epoch {early_stopping.get_best_epoch()+1}")
 			break
 
 		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec")
@@ -4337,13 +4330,12 @@ def clip_adapter_finetune_multi_label(
 			)
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			print(f"#"*100)
 			cs = train_loader.dataset.get_cache_stats()
 			if cs: print(f"Train cache: {cs}")
+		
 		if hasattr(validation_loader.dataset, 'get_cache_stats'):
 			cs = validation_loader.dataset.get_cache_stats()
-			if cs: print(f"Val cache  : {cs}")
-			print(f"#"*100)
+			if cs: print(f"Val cache: {cs}")
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -4354,8 +4346,7 @@ def clip_adapter_finetune_multi_label(
 			checkpoint_path=mdl_fpth,
 		):
 			print(
-				f"\nEarly stopping at epoch {epoch+1} | "
-				f"best loss: {early_stopping.get_best_score():.6f} "
+				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
 				f"@ epoch {early_stopping.get_best_epoch()+1}"
 			)
 			break
@@ -5112,16 +5103,14 @@ def tip_adapter_finetune_multi_label(
 
 		# Cache stats
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
-				print(f"Train Cache Stats: {cache_stats}")
+				print(f"Train Cache: {cache_stats}")
 		
 		if hasattr(validation_loader.dataset, 'get_cache_stats'):
 			cache_stats = validation_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
-				print(f"Validation Cache Stats: {cache_stats}")
-			print(f"#"*100)
+				print(f"Validation Cache: {cache_stats}")
 		
 		# Early stopping check
 		if early_stopping.should_stop(
@@ -5133,9 +5122,8 @@ def tip_adapter_finetune_multi_label(
 			checkpoint_path=mdl_fpth,
 		):
 			print(
-				f"\nEarly stopping triggered at epoch {epoch + 1} "
-				f"with best loss: {early_stopping.get_best_score()} "
-				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
+				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score()} "
+				f"@ epoch {early_stopping.get_best_epoch()+1}")
 			break
 		
 		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec")

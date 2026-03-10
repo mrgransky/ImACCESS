@@ -451,12 +451,12 @@ class MultiLabelProbe(torch.nn.Module):
 			
 			if current_seq_len == expected_seq_len:
 					if self.verbose:
-							print("  ✓ Positional embedding size matches - no fix needed")
+							print("  [OK] Positional embedding size matches - no fix needed")
 					visual.input_resolution = target_resolution
 					return
 			
 			if self.verbose:
-					print("  ⚠ Size mismatch detected - applying interpolation fix...")
+					print("  [WARNING] Size mismatch detected - applying interpolation fix...")
 			
 			# Apply interpolation fix
 			try:
@@ -604,7 +604,7 @@ class MultiLabelProbe(torch.nn.Module):
 		print(f"  Probe Type: {self.probe_type}")
 		print(f"  Input Features: {self.input_dim}")
 		print(f"  Output Classes: {self.num_classes}")
-		print(f"  Probe Parameters: {probe_params:,}")
+		print(f"  Probe Parameters (trainable): {probe_params:,}")
 		print(f"  CLIP Parameters (frozen): {clip_params:,}")
 		print(f"  Trainable Ratio: {probe_params/(probe_params + clip_params)*100:.4f}%")
 	
@@ -714,9 +714,8 @@ def get_probe_clip(
 	# Step 3: Create appropriate probe based on dataset type
 	if dataset_info['is_multilabel']:
 		if verbose:
-			print(f"🎯 Creating MultiLabelProbe for {num_classes} classes")
-			print(f"   Dataset: {dataset_info['dataset_name']}")
-			print(f"   Sample shape: {dataset_info['sample_shapes']}")
+			print(f"Creating MultiLabelProbe for {num_classes} classes")
+			print(f"   Sample: {dataset_info['sample_shapes']}")
 		
 		probe = MultiLabelProbe(
 			clip_model=clip_model,
@@ -731,9 +730,8 @@ def get_probe_clip(
 		).to(device)
 	else:
 		if verbose:
-			print(f"🎯 Creating SingleLabelLinearProbe for {num_classes} classes")
-			print(f"   Dataset: {dataset_info['dataset_name']}")
-			print(f"   Sample shape: {dataset_info['sample_shapes']}")
+			print(f"Creating SingleLabelLinearProbe for {num_classes} classes")
+			print(f"   Sample: {dataset_info['sample_shapes']}")
 		
 		probe = SingleLabelLinearProbe(
 			clip_model=clip_model,
@@ -763,12 +761,11 @@ def _detect_dataset_type(validation_loader: DataLoader, verbose: bool = True) ->
 	
 	if verbose:
 		print("\nAUTOMATIC LINEAR PROBE DETECTION AND CREATION")
-		print("🔍 Detecting dataset type...")
+		print("Dataset Analysis")
 	
 	# Get dataset reference
 	dataset = validation_loader.dataset
-	dataset_name = dataset.__class__.__name__
-	
+	dataset_name = getattr(dataset, 'dataset_name', 'unknown_dataset')	
 	is_multilabel = False
 	detection_method = "unknown"
 	sample_shapes = "unavailable"
@@ -828,11 +825,9 @@ def _detect_dataset_type(validation_loader: DataLoader, verbose: bool = True) ->
 	}
 	
 	if verbose:
-		print(f"   📊 Dataset: {dataset_name}")
-		print(f"   🏷️  Type: {'Multi-label' if is_multilabel else 'Single-label'}")
-		print(f"   🔧 Detection method: {detection_method}")
-		if sample_shapes != "unavailable":
-			print(f"   📐 Sample shapes: {sample_shapes}")
+		print(f"   Dataset: {dataset_name}")
+		print(f"   Type: {'Multi-label' if is_multilabel else 'Single-label'}")
+		print(f"   Detection method: {detection_method}")
 	
 	return dataset_info
 
@@ -850,7 +845,7 @@ def _extract_class_names(validation_loader: DataLoader, dataset_info: Dict, verb
 	"""
 	
 	if verbose:
-		print("🔍 Extracting class names...")
+		print("Extracting classes")
 	
 	dataset = validation_loader.dataset
 	class_names = None

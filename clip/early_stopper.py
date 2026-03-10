@@ -255,6 +255,11 @@ class EarlyStopping:
 			raw_window = self.value_history[-self.window_size:]
 			raw_slope = compute_slope(raw_window)
 			raw_volatility = self._volatility(raw_window)
+			# print volatility and slope
+			print(f"\tRaw window: {raw_window}")
+			print(f"\tRaw slope: {raw_slope}")
+			print(f"\tRaw volatility: {raw_volatility}")
+
 			
 			# Pairwise improvement analysis
 			pairwise_diffs = [
@@ -317,15 +322,15 @@ class EarlyStopping:
 						print(f"\tStopping criteria met ({', '.join(stop_reasons)}) but waiting for phase >= {self.min_phases_before_stopping}")
 						should_stop = False
 					else:
-						print(f"  EARLY STOPPING TRIGGERED:")
+						print(f"EARLY STOPPING TRIGGERED:")
 						for reason in stop_reasons:
 							print(f"    • {reason}")
 				else:
-					print(f"  EARLY STOPPING TRIGGERED:")
+					print(f"EARLY STOPPING TRIGGERED:")
 					for reason in stop_reasons:
 						print(f"    • {reason}")
 			else:
-				print("  No stopping conditions met")
+				print("NO stopping conditions met => CONTINUING TRAINING...")
 
 			# 9. Restore best weights if stopping
 			if should_stop and self.restore_best_weights:
