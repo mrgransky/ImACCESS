@@ -8,20 +8,20 @@ Usage
 -----
 # Minimal — point at the full metadata CSV:
 python analyse_multilabel_dataloader.py \
-		--csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv
+		-csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv
 
 # Larger dataset:
 python analyse_multilabel_dataloader.py \
-		--csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label_multimodal.csv
+		-csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label_multimodal.csv
 
 # Override column (default: multimodal_canonical_labels):
 python analyse_multilabel_dataloader.py \
-		--csv /path/to/metadata_multi_label_multimodal.csv \
+		-csv /path/to/metadata_multi_label_multimodal.csv \
 		--col multimodal_labels
 
 # Override batch size / workers:
 python analyse_multilabel_dataloader.py \
-		--csv /path/to/metadata.csv --batch_size 64 --num_workers 4
+		-csv /path/to/metadata.csv --batch_size 64 --num_workers 4
 
 Assumptions (same as your existing codebase)
 ---------------------------------------------
