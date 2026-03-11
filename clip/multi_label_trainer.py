@@ -4100,7 +4100,6 @@ def clip_adapter_finetune_multi_label(
 		all_class_embeds = None
 		print(f"\n>> Text adapter active — class texts will be re-encoded each epoch.")
 
-	# ── Metrics storage ───────────────────────────────────────────────────────
 	training_losses = []
 	validation_losses = []
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
@@ -4111,7 +4110,7 @@ def clip_adapter_finetune_multi_label(
 	weight_decays_history  = []
 	train_start_time = time.time()
 
-	# ── Training loop ─────────────────────────────────────────────────────────
+	# Training loop
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
@@ -4241,22 +4240,20 @@ def clip_adapter_finetune_multi_label(
 
 		print(
 			f'\nEpoch {epoch+1}:\n'
-			f'   ├─ [LOSS] Train: {avg_total:.6f} (I2T: {avg_i2t:.6f}, T2I: {avg_t2i:.6f})  Val: {current_val_loss:.6f}\n'
+			f'   ├─ [LOSS] {clip_adapter_method}-FT: Train: {avg_total:.6f} (I2T: {avg_i2t:.6f}, T2I: {avg_t2i:.6f})  Val: {current_val_loss:.6f}\n'
 			f'   ├─ LR: {scheduler.get_last_lr()[0]:.2e}\n'
 			f'   ├─ CosSim: {cos_sim:.4f}\n'
-			f'   ├─ [I2T] topk: {full_metrics.get("img2txt_topk_acc")}\n'
-			f'   └─ [T2I] topk: {full_metrics.get("txt2img_topk_acc")}'
+			f'   ├─ [I2T] Accuracy: {full_metrics.get("img2txt_topk_acc")}\n'
+			f'   ├─ [T2I] Accuracy: {full_metrics.get("txt2img_topk_acc")}'
 		)
 		print(
 			f"   ├─ [I2T] mAP={retrieval['img2txt'].get('mAP',{})}  R={retrieval['img2txt'].get('Recall',{})}\n"
-			f"   └─ [T2I] mAP={retrieval['txt2img'].get('mAP',{})}  R={retrieval['txt2img'].get('Recall',{})}"
+			f"   ├─ [T2I] mAP={retrieval['txt2img'].get('mAP',{})}  R={retrieval['txt2img'].get('Recall',{})}"
 		)
 		if full_metrics.get("hamming_loss") is not None:
-			print(
-				f'   ├─ Hamming: {full_metrics["hamming_loss"]:.4f}  '
-				f'PartialAcc: {full_metrics["partial_acc"]:.4f}  '
-				f'F1: {full_metrics["f1_score"]:.4f}'
-			)
+			print(f'   ├─ Hamming Loss: {full_metrics["hamming_loss"]:.4f}')
+			print(f'   ├─ PartialAcc: {full_metrics["partial_acc"]:.4f}')
+			print(f'   └─ F1: {full_metrics["f1_score"]:.4f}')
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -4283,7 +4280,7 @@ def clip_adapter_finetune_multi_label(
 
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time()-train_and_val_st_time:.1f}s")
 
-	print(f"[{mode}] Total Training Elapsed Time: {time.time()-train_start_time:.1f} sec")
+	print(f"[{clip_adapter_method}] Total Training Elapsed Time: {time.time()-train_start_time:.1f} sec")
 
 	# Final evaluation
 	evaluation_results = evaluate_best_model(
@@ -4316,15 +4313,17 @@ def clip_adapter_finetune_multi_label(
 	if verbose:
 		print(f"{'='*50}")
 		print(f"{mode.upper()} Final evaluation from: {model_source}")
+		print(f"  Method   : {clip_adapter_method}")
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
-		print(f"  Best model: {mdl_fpth}")
-		print(f"  Method   : {clip_adapter_method}")
 		print(f"  Bottleneck: {bottleneck_dim}  Activation: {activation}")
 		print(f"  Learning rate: {learning_rate}  Weight decay: {weight_decay}")
-		print(f"  Batch size: {train_loader.batch_size}  Temperature: {temperature}")
+		print(f"  Batch size: {train_loader.batch_size}")
+		print(f"  Temperature: {temperature}")
+		print(f"  Best model: {mdl_fpth}")
+
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
