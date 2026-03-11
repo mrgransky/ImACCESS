@@ -214,7 +214,7 @@ class EarlyStopping:
 
 				# 2. Respect min_epochs — no stopping decisions before warmup ends    #
 				if epoch < self.min_epochs:
-					print(f"\n  [SKIP] Epoch {epoch+1} ≤ min_epochs {self.min_epochs} — skipping all checks")
+					print(f"\n[SKIP] Epoch {epoch+1} ≤ min_epochs {self.min_epochs} — skipping all checks")
 					# Still track improvement and save checkpoints during warmup
 					if self._is_improvement(current_value):
 						self._record_improvement(current_value, epoch, model, optimizer, scheduler, checkpoint_path, current_phase)
@@ -231,13 +231,14 @@ class EarlyStopping:
 					self.counter += 1
 					self.improvement_history.append(False)
 					delta_from_best = abs(current_value - self.best_score) if self.best_score is not None else float('nan')
-					print(f"\n  [NO IMPROVEMENT]")
+					print(f"\n[NO IMPROVEMENT]")
 					print(f"    Delta from best : {delta_from_best:.8f}  (min_delta={self.min_delta})")
 					print(f"    Patience counter: {self.counter} / {self.effective_patience}")
+					print()
 
 				# 4. HARD STOP — patience counter exceeded (only single-condition stop allowed)
 				if self.counter >= self.effective_patience:
-					print(f"\n  [HARD STOP] Patience counter {self.counter} >= {self.effective_patience}")
+					print(f"\n[HARD STOP] Patience counter {self.counter} >= {self.effective_patience}")
 					if self.restore_best_weights:
 						self._restore_best_weights(model)
 					return True
@@ -278,7 +279,7 @@ class EarlyStopping:
 				trend_len    = min(10, len(self.ema_history))
 				recent_trend = float(np.mean(np.diff(self.ema_history[-trend_len:]))) if trend_len >= 2 else 0.0
 
-				print(f"  WINDOW STATISTICS  (window_size={self.window_size})")
+				print(f"WINDOW STATISTICS  (window_size={self.window_size})")
 				print(f"  Raw window values   : {[f'{v:.6f}' for v in raw_window]}")
 				print(f"  EMA window values   : {[f'{v:.6f}' for v in ema_window_vals]}")
 				print(f"  Raw slope           : {raw_slope:+.8f}  (threshold={self.slope_threshold:.1e})")
@@ -293,12 +294,12 @@ class EarlyStopping:
 
 				# 7. Dynamic adaptation based on EMA stability                        #
 				if len(self.ema_history) >= self.ema_window:
-						ema_full_window = self.ema_history[-self.ema_window:]
-						ema_full_slope  = compute_slope(ema_full_window)
-						ema_full_vol    = self._volatility(ema_full_window)
+					ema_full_window = self.ema_history[-self.ema_window:]
+					ema_full_slope  = compute_slope(ema_full_window)
+					ema_full_vol    = self._volatility(ema_full_window)
 				else:
-						ema_full_slope = 0.0
-						ema_full_vol   = 0.0
+					ema_full_slope = 0.0
+					ema_full_vol   = 0.0
 
 				print(f"\n  EMA full-window slope : {ema_full_slope:+.8f}")
 				print(f"  EMA full-window vol   : {ema_full_vol:.4f}%")
@@ -316,40 +317,40 @@ class EarlyStopping:
 				# Signal 1 — EMA volatility (replaces raw volatility)
 				if ema_vol >= self.volatility_threshold:
 						soft_signals.append(
-								f"High EMA volatility ({ema_vol:.4f}%) >= {self.volatility_threshold:.1f}%"
+							f"High EMA volatility ({ema_vol:.4f}%) >= {self.volatility_threshold:.1f}%"
 						)
 
 				# Signal 2 — worsening slope (EMA-based)
 				ema_worsening = (
-						(self.mode == "min" and ema_slope > self.slope_threshold) or
-						(self.mode == "max" and ema_slope < -self.slope_threshold)
+					(self.mode == "min" and ema_slope > self.slope_threshold) or
+					(self.mode == "max" and ema_slope < -self.slope_threshold)
 				)
 				if ema_worsening:
-						soft_signals.append(
-								f"Worsening EMA slope ({ema_slope:+.8f}) vs threshold ({self.slope_threshold:.1e})"
-						)
+					soft_signals.append(
+						f"Worsening EMA slope ({ema_slope:+.8f}) vs threshold ({self.slope_threshold:.1e})"
+					)
 
 				# Signal 3 — low relative pairwise improvement
 				if relative_pairwise < self.pairwise_imp_threshold and not close_to_best:
-						soft_signals.append(
-								f"Low relative pairwise improvement ({relative_pairwise:+.8f}) "
-								f"< {self.pairwise_imp_threshold} [close_to_best={close_to_best}]"
-						)
+					soft_signals.append(
+						f"Low relative pairwise improvement ({relative_pairwise:+.8f}) "
+						f"< {self.pairwise_imp_threshold} [close_to_best={close_to_best}]"
+					)
 
 				# Signal 4 — low cumulative improvement over window
 				if cum_imp_abs < self.cumulative_delta:
-						soft_signals.append(
-								f"Low cumulative improvement ({cum_imp_abs:.8f}) < {self.cumulative_delta}"
-						)
+					soft_signals.append(
+						f"Low cumulative improvement ({cum_imp_abs:.8f}) < {self.cumulative_delta}"
+					)
 
 				# Signal 5 — EMA trend worsening
 				if recent_trend > self.ema_threshold:
-						soft_signals.append(
-								f"EMA trend worsening ({recent_trend:+.8f}) > {self.ema_threshold:.1e} over {trend_len} epochs"
-						)
+					soft_signals.append(
+						f"EMA trend worsening ({recent_trend:+.8f}) > {self.ema_threshold:.1e} over {trend_len} epochs"
+					)
 
 				# 9. Print soft signal evaluation
-				print(f"\n  SOFT SIGNAL EVALUATION  (require >= 2 to trigger stop)")
+				print(f"\nSOFT SIGNAL EVALUATION  (require >= 2 to trigger stop)")
 
 				all_signal_names = [
 					("EMA volatility",           ema_vol >= self.volatility_threshold),
@@ -389,7 +390,7 @@ class EarlyStopping:
 						for s in soft_signals:
 							print(f"    • {s}")
 				else:
-					print(f"\t=> NO stopping conditions met — CONTINUE TRAINING")
+					print(f"\tNO stopping conditions met — CONTINUE TRAINING")
 
 				print(f"{sep}\n")
 
@@ -420,18 +421,18 @@ class EarlyStopping:
 				self.counter     = 0
 				self.improvement_history.append(True)
 
-				print(f"\n  [NEW BEST]")
-				print(f"    Previous best : {old_best}")
-				print(f"    New best      : {current_value:.8f}")
-				print(f"    Improvement   : {improvement:.8f}")
-				print(f"    Epoch         : {epoch + 1}")
+				print(f"\n[NEW BEST]")
+				print(f"  Previous best : {old_best}")
+				print(f"  New best      : {current_value:.8f}")
+				print(f"  Improvement   : {improvement:.8f}")
+				print(f"  Epoch         : {epoch + 1}")
 
 				if self.restore_best_weights:
 						self.best_weights = {
 								k: v.clone().cpu().detach()
 								for k, v in model.state_dict().items()
 						}
-						print(f"    Best weights  : stored in memory")
+						print(f"  Best weights  : stored in memory")
 
 				self._save_checkpoint(checkpoint_path, model, optimizer, scheduler, current_phase)
 
