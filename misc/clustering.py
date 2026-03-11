@@ -1610,11 +1610,11 @@ def get_optimal_super_clusters(
 		print(f"  └─ Cluster IDs: {stats['fine_clusters'][:25]}{'...' if len(stats['fine_clusters']) > 25 else ''}")
 	
 	# 2D cluster visualizations
-	plt.figure(figsize=(24, 15))
+	plt.figure(figsize=(10, 7))
 	dendrogram(
 		linkage_matrix, 
 		truncate_mode='lastp', 
-		p=30, 
+		p=40, 
 		show_leaf_counts=True, 
 		color_threshold=super_cluster_distance
 	)
@@ -1636,7 +1636,7 @@ def get_optimal_super_clusters(
 	plt.savefig(out_dendogram, dpi=200, bbox_inches='tight')
 	plt.close()
 
-	plt.figure(figsize=(15, 9))
+	plt.figure(figsize=(24, 15))
 	dendrogram(
 		linkage_matrix,
 		color_threshold=super_cluster_distance,
