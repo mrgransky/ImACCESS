@@ -882,203 +882,170 @@ def run_epoch(loader, num_classes, split_name) -> dict:
 								shape_errors=shape_errors)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Main
-# ─────────────────────────────────────────────────────────────────────────────
-
 def parse_args():
-		p = argparse.ArgumentParser(description="Multi-label dataloader analysis on a real dataset")
-		p.add_argument("--csv",         required=True,
-									 help="Path to metadata_multi_label_multimodal.csv")
-		p.add_argument("--col",         default="multimodal_canonical_labels",
-									 help="Label column to use (default: multimodal_canonical_labels)")
-		p.add_argument("--batch_size",  type=int, default=32)
-		p.add_argument("--num_workers", type=int, default=4)
-		p.add_argument("--resolution",  type=int, default=224)
-		p.add_argument("--phi_pos",     type=float, default=0.20,
-									 help="Phi threshold for co-occurring pairs")
-		p.add_argument("--phi_neg",     type=float, default=-0.10,
-									 help="Phi threshold for mutually exclusive pairs")
-		p.add_argument("--pareto",      type=float, default=0.80,
-									 help="Pareto fraction for head/tail split in CHECK A (default 0.80). "
-												"Head = fewest classes covering this fraction of all occurrences.")
-		p.add_argument("--pw_tail_threshold", type=float, default=20.0,
-									 help="pos_weight threshold above which a class is flagged as "
-												"effectively rare (default 20.0).")
-		p.add_argument("--output_dir",  default=None,
-									 help="Where to save PNGs/HTML (default: <csv_dir>/dataloader_analysis)")
-		p.add_argument("--max_cooc_classes", type=int, default=None,
-									 help="Limit co-occurrence to top-K most frequent classes. "
-												"Essential for large-vocab datasets (e.g. HISTORY_X4: --max_cooc_classes 80). "
-												"Default: all classes.")
-		return p.parse_args()
-
+	p = argparse.ArgumentParser(description="Multi-label dataloader analysis on a real dataset")
+	p.add_argument("--metadata_csv", "-csv", required=True, help="Path to metadata_multi_label_multimodal.csv")
+	p.add_argument("--col",         default="multimodal_canonical_labels", help="Label column to use (default: multimodal_canonical_labels)")
+	p.add_argument("--batch_size",  type=int, default=32)
+	p.add_argument("--num_workers", type=int, default=4)
+	p.add_argument("--resolution",  type=int, default=224)
+	p.add_argument("--phi_pos",     type=float, default=0.20, help="Phi threshold for co-occurring pairs")
+	p.add_argument("--phi_neg",     type=float, default=-0.10, help="Phi threshold for mutually exclusive pairs")
+	p.add_argument("--pareto",      type=float, default=0.80, help="Pareto fraction for head/tail split in CHECK A (default 0.80). Head = fewest classes covering this fraction of all occurrences.")
+	p.add_argument("--pw_tail_threshold", type=float, default=20.0, help="pos_weight threshold above which a class is flagged as effectively rare (default 20.0).")
+	p.add_argument("--output_dir",  default=None, help="Where to save PNGs/HTML (default: <csv_dir>/dataloader_analysis)")
+	p.add_argument("--max_cooc_classes", type=int, default=None, help="Limit co-occurrence to top-K most frequent classes. Essential for large-vocab datasets (e.g. HISTORY_X4: --max_cooc_classes 80). Default: all classes.")
+	return p.parse_args()
 
 def main():
-		args = parse_args()
-		print(args)
+	args = parse_args()
+	print(args)
 
-		csv_path   = os.path.abspath(args.csv)
-		dataset_dir = os.path.dirname(csv_path)
-		dataset_name = os.path.basename(dataset_dir)
-		output_dir   = args.output_dir or os.path.join(dataset_dir, "outputs")
-		os.makedirs(output_dir, exist_ok=True)
-
-		sep = "=" * 70
-		print(sep)
-		print(f"  Multi-label Dataloader Analysis")
-		print(f"  Dataset  : {dataset_name}")
-		print(f"  CSV      : {csv_path}")
-		print(f"  Column   : {args.col}")
-		print(f"  Output   : {output_dir}")
-		print(sep)
-
-		# ── 1. Load data ──────────────────────────────────────────────────────────
-		df_full, df_train, df_val = load_splits(csv_path, args.col)
-		label_dict  = build_label_dict(df_full, args.col)
-		n_classes   = len(label_dict)
-		preprocess  = get_preprocess(dataset_dir, args.resolution)
-
-		# ── 2. Cache ──────────────────────────────────────────────────────────────
-		train_cache, val_cache = _decide_cache(df_train, df_val)
-
-		# ── 3. Build datasets ─────────────────────────────────────────────────────
-		print(f"\n── Building Train dataset ({len(df_train):,} samples) ──")
-		train_ds = HistoricalArchivesMultiLabelDataset(
-				dataset_name=f"{dataset_name}_TRAIN", train=True,
-				data_frame=df_train.sort_values("img_path").reset_index(drop=True),
-				transform=preprocess, label_dict=label_dict,
-				cache_size=train_cache, cache_workers=min(4, args.num_workers or 4),
-				col=args.col)
-		print(train_ds)
-
-		print(f"\n── Building Val dataset ({len(df_val):,} samples) ──")
-		val_ds = HistoricalArchivesMultiLabelDataset(
-				dataset_name=f"{dataset_name}_VAL", train=False,
-				data_frame=df_val.sort_values("img_path").reset_index(drop=True),
-				transform=preprocess, label_dict=label_dict,
-				cache_size=val_cache, cache_workers=min(4, args.num_workers or 4),
-				col=args.col)
-		print(val_ds)
-
-		# ── CHECK A ───────────────────────────────────────────────────────────────
-		imb_tr = analyse_class_imbalance(train_ds, "TRAIN",
-																			pareto=args.pareto,
-																			pw_tail_threshold=args.pw_tail_threshold,
-																			output_dir=output_dir)
-		imb_va = analyse_class_imbalance(val_ds,   "VAL",
-																			pareto=args.pareto,
-																			pw_tail_threshold=args.pw_tail_threshold,
-																			output_dir=output_dir)
-
-		# ── CHECK B ───────────────────────────────────────────────────────────────
-		# Auto-cap co-occurrence for large-vocab datasets if user didn't override.
-		# The full Phi matrix for 7,485 classes = 7485²×8 bytes ≈ 449 GB — unusable.
-		# Default cap: 500 classes (Phi matrix ≈ 2 MB, fast).
-		AUTO_CAP = 500
-		max_cooc = args.max_cooc_classes
-		if max_cooc is None and n_classes > AUTO_CAP:
-				max_cooc = AUTO_CAP
-				print(f"\n[Co-occurrence] {n_classes:,} classes detected — auto-capping to top "
-							f"{AUTO_CAP} for CHECK B.\n"
-							f"  Override with --max_cooc_classes N (or --max_cooc_classes 0 to disable cap).")
-		elif args.max_cooc_classes == 0:
-				max_cooc = None   # 0 means "no cap, user accepts the risk"
-		cooc_tr = analyse_cooccurrence(train_ds, "TRAIN",
-																	 phi_pos=args.phi_pos, phi_neg=args.phi_neg,
-																	 top_k=max_cooc,
-																	 output_dir=output_dir)
-		cooc_va = analyse_cooccurrence(val_ds,   "VAL",
-																	 phi_pos=args.phi_pos, phi_neg=args.phi_neg,
-																	 top_k=max_cooc,
-																	 output_dir=output_dir)
-
-		# ── CHECK C ───────────────────────────────────────────────────────────────
-		# NOTE: num_workers=0 is intentional here.
-		# With num_workers>0, DataLoader spawns subprocesses that each hold their
-		# own copy of the dataset object. Cache hits/misses would accumulate on those
-		# copies and be invisible to the main process. Using num_workers=0 keeps
-		# everything in the main process so hit/miss counters are accurate.
-		print(f"\n{'─'*60}")
-		print("  CHECK C  ·  Dataloader Batch Integrity  (num_workers=0, single-process)")
-		print(f"{'─'*60}")
-		integrity_kw = dict(batch_size=args.batch_size, num_workers=0,
-												pin_memory=False, drop_last=False)
-		train_loader = DataLoader(train_ds, shuffle=True,  **integrity_kw)
-		val_loader   = DataLoader(val_ds,   shuffle=False, **integrity_kw)
-
-		import time as _time
-		for name, loader, expected in [("TRAIN", train_loader, len(df_train)),
-																		("VAL",   val_loader,   len(df_val))]:
-				t0 = _time.perf_counter()
-				r  = run_epoch(loader, n_classes, name)
-				elapsed = _time.perf_counter() - t0
-				throughput = r["n_samples"] / elapsed if elapsed > 0 else 0
-				ok = r["n_corrupt"] == 0 and r["n_samples"] == expected and not r["shape_errors"]
-				print(f"  [{'✓' if ok else '✗'}] {name}: "
-							f"{r['n_samples']:,} samples | corrupt={r['n_corrupt']} | "
-							f"avg_density={r['avg_density']:.2f} | "
-							f"throughput={throughput:.0f} img/s | "
-							f"shape_errors={len(r['shape_errors'])}")
-				if r["shape_errors"]:
-						for e in r["shape_errors"]: print(f"       {e}")
-
-		# ── Cache stats (accurate because CHECK C ran single-process) ─────────────
-		print(f"\n{'─'*60}")
-		print("  Cache Stats after epoch  (single-process, hits/misses are accurate)")
-		print(f"{'─'*60}")
-		for ds_name, ds in [("TRAIN", train_ds), ("VAL", val_ds)]:
-				cs = ds.get_cache_stats()
-				print(f"  [{ds_name}]  hits={cs['hits']:,}  misses={cs['misses']:,}  "
-							f"hit_rate={cs['hit_rate_pct']:.1f}%  cache_size={cs['cache_size']:,}")
-
-		# ── Cross-split checks ────────────────────────────────────────────────────
-		print(f"\n{'─'*60}")
-		print("  Cross-split Consistency Checks")
-		print(f"{'─'*60}")
-
-		assert train_ds._num_classes == val_ds._num_classes
-		print(f"  [✓] Shared vocabulary: {n_classes} classes")
-
-		val_present   = {l for raw in val_ds.labels
-										 for l in (ast.literal_eval(raw) if _parseable(raw) else [])}
-		train_present = {l for raw in train_ds.labels
-										 for l in (ast.literal_eval(raw) if _parseable(raw) else [])}
-		unseen = val_present - train_present
-		if unseen:
-				print(f"  [!] {len(unseen)} val labels absent from train: {sorted(unseen)}")
-				print(f"      → pos_weight for these will be 1.0 (not penalised)")
-		else:
-				print(f"  [✓] All val labels present in train split")
-
-		r_tr, r_va = imb_tr["imb_ratio"], imb_va["imb_ratio"]
-		print(f"  [✓] Imbalance ratio  train={r_tr:.1f}×  val={r_va:.1f}×")
-		if abs(r_tr - r_va) > r_tr * 0.5:
-				print(f"      [!] Ratios differ >50% — consider stratified splitting")
-
-		n_rare_tr = imb_tr["n_rare"]
-		n_zero_tr = imb_tr["n_zero"]
-		n_zero_va = imb_va["n_zero"]
-		print(f"  [{'!' if n_rare_tr > 0 else '✓'}] {n_rare_tr:,} train labels with "
-					f"pos_weight > {args.pw_tail_threshold:.0f}  (effectively rare)")
-		print(f"  [{'!' if n_zero_tr > 0 else '✓'}] {n_zero_tr:,} zero-count labels in train split")
-		if n_zero_va > 0:
-				zero_va_only = imb_va["zero_set"] - imb_tr["zero_set"]
-				print(f"  [!] {n_zero_va:,} zero-count labels in val split "
-							f"({len(zero_va_only):,} absent from train too — "
-							f"model will never predict these)")
-
-		# ── Summary ───────────────────────────────────────────────────────────────
-		outputs = ["imbalance_train.png", "imbalance_val.png",
-							 "cooccurrence_phi_train.png", "cooccurrence_phi_val.png",
-							 "cooccurrence_train.html", "cooccurrence_val.html"]
-		print(f"\n{sep}")
-		print("  ✅  ALL CHECKS COMPLETE")
-		print(f"  Output files in: {output_dir}")
-		for f in outputs:
-				path = os.path.join(output_dir, f)
-				print(f"    [{'✓' if os.path.exists(path) else '✗'}] {f}")
-		print(sep)
+	csv_path   = os.path.abspath(args.metadata_csv)
+	dataset_dir = os.path.dirname(csv_path)
+	dataset_name = os.path.basename(dataset_dir)
+	output_dir   = args.output_dir or os.path.join(dataset_dir, "outputs")
+	os.makedirs(output_dir, exist_ok=True)
+	sep = "=" * 70
+	print(sep)
+	print(f"  Multi-label Dataloader Analysis")
+	print(f"  Dataset  : {dataset_name}")
+	print(f"  CSV      : {csv_path}")
+	print(f"  Column   : {args.col}")
+	print(f"  Output   : {output_dir}")
+	print(sep)
+	# ── 1. Load data ──────────────────────────────────────────────────────────
+	df_full, df_train, df_val = load_splits(csv_path, args.col)
+	label_dict  = build_label_dict(df_full, args.col)
+	n_classes   = len(label_dict)
+	preprocess  = get_preprocess(dataset_dir, args.resolution)
+	# ── 2. Cache ──────────────────────────────────────────────────────────────
+	train_cache, val_cache = _decide_cache(df_train, df_val)
+	# ── 3. Build datasets ─────────────────────────────────────────────────────
+	print(f"\n── Building Train dataset ({len(df_train):,} samples) ──")
+	train_ds = HistoricalArchivesMultiLabelDataset(
+			dataset_name=f"{dataset_name}_TRAIN", train=True,
+			data_frame=df_train.sort_values("img_path").reset_index(drop=True),
+			transform=preprocess, label_dict=label_dict,
+			cache_size=train_cache, cache_workers=min(4, args.num_workers or 4),
+			col=args.col)
+	print(train_ds)
+	print(f"\n── Building Val dataset ({len(df_val):,} samples) ──")
+	val_ds = HistoricalArchivesMultiLabelDataset(
+			dataset_name=f"{dataset_name}_VAL", train=False,
+			data_frame=df_val.sort_values("img_path").reset_index(drop=True),
+			transform=preprocess, label_dict=label_dict,
+			cache_size=val_cache, cache_workers=min(4, args.num_workers or 4),
+			col=args.col)
+	print(val_ds)
+	# ── CHECK A ───────────────────────────────────────────────────────────────
+	imb_tr = analyse_class_imbalance(train_ds, "TRAIN",
+																		pareto=args.pareto,
+																		pw_tail_threshold=args.pw_tail_threshold,
+																		output_dir=output_dir)
+	imb_va = analyse_class_imbalance(val_ds,   "VAL",
+																		pareto=args.pareto,
+																		pw_tail_threshold=args.pw_tail_threshold,
+																		output_dir=output_dir)
+	# ── CHECK B ───────────────────────────────────────────────────────────────
+	# Auto-cap co-occurrence for large-vocab datasets if user didn't override.
+	# The full Phi matrix for 7,485 classes = 7485²×8 bytes ≈ 449 GB — unusable.
+	# Default cap: 500 classes (Phi matrix ≈ 2 MB, fast).
+	AUTO_CAP = 500
+	max_cooc = args.max_cooc_classes
+	if max_cooc is None and n_classes > AUTO_CAP:
+			max_cooc = AUTO_CAP
+			print(f"\n[Co-occurrence] {n_classes:,} classes detected — auto-capping to top "
+						f"{AUTO_CAP} for CHECK B.\n"
+						f"  Override with --max_cooc_classes N (or --max_cooc_classes 0 to disable cap).")
+	elif args.max_cooc_classes == 0:
+			max_cooc = None   # 0 means "no cap, user accepts the risk"
+	cooc_tr = analyse_cooccurrence(train_ds, "TRAIN",
+																 phi_pos=args.phi_pos, phi_neg=args.phi_neg,
+																 top_k=max_cooc,
+																 output_dir=output_dir)
+	cooc_va = analyse_cooccurrence(val_ds,   "VAL",
+																 phi_pos=args.phi_pos, phi_neg=args.phi_neg,
+																 top_k=max_cooc,
+																 output_dir=output_dir)
+	# ── CHECK C ───────────────────────────────────────────────────────────────
+	# NOTE: num_workers=0 is intentional here.
+	# With num_workers>0, DataLoader spawns subprocesses that each hold their
+	# own copy of the dataset object. Cache hits/misses would accumulate on those
+	# copies and be invisible to the main process. Using num_workers=0 keeps
+	# everything in the main process so hit/miss counters are accurate.
+	print(f"\n{'─'*60}")
+	print("  CHECK C  ·  Dataloader Batch Integrity  (num_workers=0, single-process)")
+	print(f"{'─'*60}")
+	integrity_kw = dict(batch_size=args.batch_size, num_workers=0,
+											pin_memory=False, drop_last=False)
+	train_loader = DataLoader(train_ds, shuffle=True,  **integrity_kw)
+	val_loader   = DataLoader(val_ds,   shuffle=False, **integrity_kw)
+	import time as _time
+	for name, loader, expected in [("TRAIN", train_loader, len(df_train)),
+																	("VAL",   val_loader,   len(df_val))]:
+			t0 = _time.perf_counter()
+			r  = run_epoch(loader, n_classes, name)
+			elapsed = _time.perf_counter() - t0
+			throughput = r["n_samples"] / elapsed if elapsed > 0 else 0
+			ok = r["n_corrupt"] == 0 and r["n_samples"] == expected and not r["shape_errors"]
+			print(f"  [{'✓' if ok else '✗'}] {name}: "
+						f"{r['n_samples']:,} samples | corrupt={r['n_corrupt']} | "
+						f"avg_density={r['avg_density']:.2f} | "
+						f"throughput={throughput:.0f} img/s | "
+						f"shape_errors={len(r['shape_errors'])}")
+			if r["shape_errors"]:
+					for e in r["shape_errors"]: print(f"       {e}")
+	# ── Cache stats (accurate because CHECK C ran single-process) ─────────────
+	print(f"\n{'─'*60}")
+	print("  Cache Stats after epoch  (single-process, hits/misses are accurate)")
+	print(f"{'─'*60}")
+	for ds_name, ds in [("TRAIN", train_ds), ("VAL", val_ds)]:
+			cs = ds.get_cache_stats()
+			print(f"  [{ds_name}]  hits={cs['hits']:,}  misses={cs['misses']:,}  "
+						f"hit_rate={cs['hit_rate_pct']:.1f}%  cache_size={cs['cache_size']:,}")
+	# ── Cross-split checks ────────────────────────────────────────────────────
+	print(f"\n{'─'*60}")
+	print("  Cross-split Consistency Checks")
+	print(f"{'─'*60}")
+	assert train_ds._num_classes == val_ds._num_classes
+	print(f"  [✓] Shared vocabulary: {n_classes} classes")
+	val_present   = {l for raw in val_ds.labels
+									 for l in (ast.literal_eval(raw) if _parseable(raw) else [])}
+	train_present = {l for raw in train_ds.labels
+									 for l in (ast.literal_eval(raw) if _parseable(raw) else [])}
+	unseen = val_present - train_present
+	if unseen:
+			print(f"  [!] {len(unseen)} val labels absent from train: {sorted(unseen)}")
+			print(f"      → pos_weight for these will be 1.0 (not penalised)")
+	else:
+			print(f"  [✓] All val labels present in train split")
+	r_tr, r_va = imb_tr["imb_ratio"], imb_va["imb_ratio"]
+	print(f"  [✓] Imbalance ratio  train={r_tr:.1f}×  val={r_va:.1f}×")
+	if abs(r_tr - r_va) > r_tr * 0.5:
+			print(f"      [!] Ratios differ >50% — consider stratified splitting")
+	n_rare_tr = imb_tr["n_rare"]
+	n_zero_tr = imb_tr["n_zero"]
+	n_zero_va = imb_va["n_zero"]
+	print(f"  [{'!' if n_rare_tr > 0 else '✓'}] {n_rare_tr:,} train labels with "
+				f"pos_weight > {args.pw_tail_threshold:.0f}  (effectively rare)")
+	print(f"  [{'!' if n_zero_tr > 0 else '✓'}] {n_zero_tr:,} zero-count labels in train split")
+	if n_zero_va > 0:
+			zero_va_only = imb_va["zero_set"] - imb_tr["zero_set"]
+			print(f"  [!] {n_zero_va:,} zero-count labels in val split "
+						f"({len(zero_va_only):,} absent from train too — "
+						f"model will never predict these)")
+	# Summary
+	outputs = ["imbalance_train.png", "imbalance_val.png",
+						 "cooccurrence_phi_train.png", "cooccurrence_phi_val.png",
+						 "cooccurrence_train.html", "cooccurrence_val.html"]
+	print(f"\n{sep}")
+	print("  ✅  ALL CHECKS COMPLETE")
+	print(f"  Output files in: {output_dir}")
+	for f in outputs:
+			path = os.path.join(output_dir, f)
+			print(f"    [{'✓' if os.path.exists(path) else '✗'}] {f}")
+	print(sep)
 
 
 def _parseable(raw):
@@ -1087,4 +1054,4 @@ def _parseable(raw):
 
 
 if __name__ == "__main__":
-		main()
+	main()
