@@ -221,7 +221,7 @@ class EarlyStopping:
 					else:
 						self.counter += 1
 						self.improvement_history.append(False)
-						print(f"  [WARMUP] No improvement. Counter: {self.counter}/{self.effective_patience}")
+						print(f"  [WARMUP] No improvement. Counter: {self.counter}/{self.effective_patience}\n")
 					return False
 
 				# 3. Improvement check — always runs regardless of window state       #

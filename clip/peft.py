@@ -1891,17 +1891,6 @@ def get_adapter_peft_clip(
 		if 'cache_size' in mem_info:
 			print(f"    └─ Cache Size (samples): {mem_info['cache_size']}")
 	
-	# --- FREEZE NON-ADAPTER PARAMETERS ---
-	# if method == "tip_adapter_f":
-	# 	# For Tip-Adapter-F, only the linear layer's weight/bias and beta/alpha are trainable
-	# 	for name, param in model.named_parameters():
-	# 		param.requires_grad = "linear.weight" in name or "linear.bias" in name or "beta" in name or "alpha" in name
-		
-	# 	if verbose:
-	# 		trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-	# 		print(f"\n[5] PARAMETER FREEZING - {method_name}")
-	# 		print(f"    ├─ Total Parameters: {sum(p.numel() for p in model.parameters()):,}")
-	# 		print(f"    └─ Trainable Parameters: {trainable_params:,}")
 	if method == "tip_adapter_f":
 		# Freeze entire model first
 		for param in model.parameters():
@@ -2187,7 +2176,8 @@ def get_injected_peft_clip(
 	
 	################################################ Encoders ###############################################
 	# Text encoder
-	if verbose: print("\n[TEXT ENCODER ADAPTATION]")
+	if verbose: 
+		print(f"\n[{method_name} TEXT ENCODER ADAPTATION] {target_text_modules}")
 	for name, module in model.transformer.named_modules():
 		if isinstance(module, torch.nn.Linear) and any(t in name.split(".")[-1] for t in target_text_modules):
 			parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
@@ -2250,7 +2240,8 @@ def get_injected_peft_clip(
 				print(f"{statement}\n")
 	
 	# Vision encoder
-	if verbose: print("\n[VISION ENCODER ADAPTATION]")
+	if verbose: 
+		print(f"\n[{method_name} VISION ENCODER ADAPTATION]: {target_vision_modules}")
 	for name, module in model.visual.named_modules():
 		if isinstance(module, torch.nn.Linear) and any(t in name.split(".")[-1] for t in target_vision_modules):
 			parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
@@ -2314,12 +2305,17 @@ def get_injected_peft_clip(
 	################################################ Encoders ###############################################
 
 	############################################## Projections ##############################################	
-	if verbose: print("\n[PROJECTIONS ADAPTATION]")
-	# Text projection
-	if verbose: print("\n[TEXTUAL]")
+	if verbose: 
+		print(f"\n[{method_name} PROJECTIONS ADAPTATION]")
+
 	if hasattr(model, "text_projection") and isinstance(model.text_projection, torch.nn.Parameter):
 		in_dim = model.text_projection.size(0)
 		out_dim = model.text_projection.size(1)
+		if verbose:
+			print(f"\n[TEXT PROJECTION ADAPTATION]")
+			print(f"    ├─ Projection: {type(model.text_projection)} {model.text_projection.size()}")
+			print(f"    ├─ In features: {in_dim}")
+			print(f"    └─ Out features: {out_dim}")
 		
 		kwargs = {
 			'in_features': in_dim,
@@ -2385,10 +2381,14 @@ def get_injected_peft_clip(
 			print(f"{statement}\n")
 	
 	# Visual projection (ViT)
-	if verbose: print("\n[VISUAL]")
 	if hasattr(model.visual, "proj") and isinstance(model.visual.proj, torch.nn.Parameter):
 		in_dim = model.visual.proj.size(0)
 		out_dim = model.visual.proj.size(1)
+		if verbose:
+			print(f"\n[VISUAL PROJECTION ADAPTATION]")
+			print(f"    ├─ Projection: {type(model.visual.proj)} {model.visual.proj.size()}")
+			print(f"    ├─ In features: {in_dim}")
+			print(f"    └─ Out features: {out_dim}")
 		
 		kwargs = {
 			'in_features': in_dim,

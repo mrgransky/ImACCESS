@@ -159,6 +159,7 @@ def probe_multi_label(
 	window_size = minimum_epochs + 1
 	if loss_weights is None:
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
+	
 	early_stopping = EarlyStopping(
 		patience=patience,
 		min_delta=min_delta,
@@ -189,11 +190,19 @@ def probe_multi_label(
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
 
-	print(f"{mode} | {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
-	if torch.cuda.is_available():
-		gpu_name = torch.cuda.get_device_name(device)
-		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-		print(f"{gpu_name} | {total_mem:.2f}GB VRAM")
+	if verbose:
+		print(f"\n{mode.upper()} [Multi-Label]")
+		print(f"   ├─ {model_name} {model_arch}")
+		print(f"   ├─ {dataset_name} {num_classes} classes")
+		print(f"   ├─ Batch size : {train_loader.batch_size}")
+		print(f"   ├─ Device     : {type(device)} {device}")
+		print(f"   ├─ Temperature: {temperature}")
+		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
+		if torch.cuda.is_available():
+			gpu_name = torch.cuda.get_device_name(device)
+			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
+			cuda_capability = torch.cuda.get_device_capability()
+			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 
 	# FREEZE ALL CLIP PARAMETERS AND CREATE ROBUST PROBE
 	for param in model.parameters():
@@ -240,23 +249,6 @@ def probe_multi_label(
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
 
-	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
-	model.eval()
-	all_class_embeds = []
-	text_batch_size = validation_loader.batch_size
-	print(f"\n>> Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
-	with torch.no_grad():
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding"):
-				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
-				embeds = model.encode_text(batch_tokens)
-				embeds = torch.nn.functional.normalize(embeds, dim=-1)
-				all_class_embeds.append(embeds.cpu())
-				del batch_tokens, embeds
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
-	if verbose:
-		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
-	# Optimizer setup
 	optimizer = torch.optim.AdamW(
 		params=probe.probe.parameters(),
 		lr=learning_rate,
@@ -264,6 +256,14 @@ def probe_multi_label(
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
+
+	if verbose:
+		print(f"\n{optimizer.__class__.__name__}")
+		print(f"  ├─ LR: {learning_rate}")
+		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
+		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
+		print(f"  └─ Weight Decay: {weight_decay}")
+
 	# estimated_epochs = min(num_epochs, 15)
 	# total_training_steps = estimated_epochs * len(train_loader)
 	# T_max = total_training_steps
@@ -276,19 +276,23 @@ def probe_multi_label(
 		eta_min=eta_min,
 		last_epoch=-1,
 	)
+	
 	if verbose:
 		print(f"\n{scheduler.__class__.__name__}")
 		print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+	
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**16,
-		growth_factor=2.0,
-		backoff_factor=0.5,
-		growth_interval=2000,
+		init_scale=2**11,      # 2048 — much more conservative start
+		growth_factor=1.5,     # slower scale growth
+		backoff_factor=0.5,    # standard
+		growth_interval=5000,  # longer interval before attempting growth
 	)
+
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_{probe.probe_type}_"
@@ -307,41 +311,45 @@ def probe_multi_label(
 		f"pit_{pairwise_imp_threshold:.1e}"
 		f".pth"
 	)
-	# ── Feature caching ───────────────────────────────────────────────────────
+
+	# ── Feature caching
 	# wrap feature extraction in torch.no_grad() to avoid building
 	# a computation graph for 74K images — CLIP is frozen, gradients useless.
 	if cache_features:
 		print("Pre-extracting image features (CLIP frozen — runs once)...")
 		model.eval()
+
 		def extract_features(loader, desc):
 			feats, lbls = [], []
 			with torch.no_grad():
-					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-							for images, _, label_vectors in tqdm(loader, desc=desc):
-									images = images.to(device, non_blocking=True)
-									emb = model.encode_image(images)
-									emb = torch.nn.functional.normalize(emb, dim=-1)
-									feats.append(emb.cpu())
-									lbls.append(label_vectors.cpu())
+				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+					for images, _, label_vectors in tqdm(loader, desc=desc):
+						images = images.to(device, non_blocking=True)
+						emb = model.encode_image(images)
+						emb = torch.nn.functional.normalize(emb, dim=-1)
+						feats.append(emb.cpu())
+						lbls.append(label_vectors.cpu())
 			return torch.cat(feats, dim=0), torch.cat(lbls, dim=0)
 		
 		train_feats, train_lbls = extract_features(train_loader, "Train features")
 		val_feats, val_lbls = extract_features(validation_loader, "Val features")
+
 		print(f"Cached — train: {train_feats.shape}, val: {val_feats.shape}")
 		
-		from torch.utils.data import TensorDataset
 		train_feature_loader = DataLoader(
-				TensorDataset(train_feats, train_lbls),
-				batch_size=train_loader.batch_size,
-				shuffle=True,
-				num_workers=0,
+			TensorDataset(train_feats, train_lbls),
+			batch_size=train_loader.batch_size,
+			shuffle=True,
+			num_workers=0,
 		)
+
 		val_feature_loader = DataLoader(
-				TensorDataset(val_feats, val_lbls),
-				batch_size=validation_loader.batch_size,
-				shuffle=False,
-				num_workers=0,
+			TensorDataset(val_feats, val_lbls),
+			batch_size=validation_loader.batch_size,
+			shuffle=False,
+			num_workers=0,
 		)
+	
 	training_losses = list()
 	training_losses_breakdown = {"total": []}
 	img2txt_metrics_all_epochs = list()
@@ -518,7 +526,8 @@ def probe_multi_label(
 		)
 	else:
 		print("Warning: No best weights found - using final weights")
-	# ── Final evaluation via evaluate_best_model ─────────────────────────────
+	
+	# Final evaluation
 	# pass probe (not model) — probe.encode_image and probe.encode_text
 	# delegate to frozen CLIP, so get_validation_metrics works correctly.
 	# The probe's W matrix is now the fine-tuned one; similarity is computed
@@ -786,10 +795,15 @@ def full_finetune_multi_label(
 				# Clean up
 				del batch_class_texts, batch_embeds
 				torch.cuda.empty_cache()
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
-	all_class_embeds = all_class_embeds.detach()
+	
+	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
+	
 	if verbose:
-		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
+		print(f"   ├─ {type(all_class_embeds)}")
+		print(f"   ├─ {all_class_embeds.shape}")
+		print(f"   ├─ {all_class_embeds.dtype}")
+		print(f"   └─ {all_class_embeds.device}")
 
 	optimizer = torch.optim.AdamW(
 		params=[p for p in model.parameters() if p.requires_grad],
@@ -818,12 +832,14 @@ def full_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**16,
-		growth_factor=2.0,
-		backoff_factor=0.5,
-		growth_interval=2000,
+		init_scale=2**11,      # 2048 — much more conservative start
+		growth_factor=1.5,     # slower scale growth
+		backoff_factor=0.5,    # standard
+		growth_interval=5000,  # longer interval before attempting growth
 	)
-	print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+
+	if verbose:
+		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -893,7 +909,7 @@ def full_finetune_multi_label(
 
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
-			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
 			scaler.step(optimizer)
 			scaler.update()
 			scheduler.step()
@@ -1159,7 +1175,8 @@ def lora_finetune_multi_label(
 	window_size = minimum_epochs + 1
 	if loss_weights is None:
 			loss_weights = {"i2t": 0.5, "t2i": 0.5}
-	# ── Dropout check ────────────────────────────────────────────────────────
+
+	# ── Dropout check 
 	non_zero_dropouts = [
 			(name, module.p)
 			for name, module in model.named_modules()
@@ -1171,27 +1188,41 @@ def lora_finetune_multi_label(
 					f"Non-zero dropout in base model during LoRA: {dropout_info}\n"
 					"Set dropout=0.0 in clip.load() before LoRA injection."
 			)
+	
 	mode = re.sub(r'_finetune_multi_label', '', inspect.stack()[0].function)
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
+	
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
+	
 	try:
 		class_names = validation_loader.dataset.unique_labels
 	except AttributeError:
 		class_names = validation_loader.dataset.dataset.classes
 	num_classes = len(class_names)
-	print(
-		f"{mode} | r={lora_rank} | α={lora_alpha} | drop={lora_dropout} | "
-		f"{model_name} {model_arch} {dataset_name} bs={train_loader.batch_size} {device}"
-	)
+	
+	if verbose:
+		print(f"\n{mode.upper()}")
+		print(f"   ├─ Model      : {model_name} {model_arch}")
+		print(f"   ├─ Rank: {lora_rank}")
+		print(f"   ├─ Alpha: {lora_alpha}")
+		print(f"   ├─ Dropout: {lora_dropout}")
+		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
+		print(f"   ├─ Batch size : {train_loader.batch_size}")
+		print(f"   ├─ Device     : {type(device)} {device}")
+		print(f"   ├─ Temperature: {temperature}")
+		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
+		
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
-	# ── LoRA injection — vision encoder only ─────────────────────────────────
+		cuda_capability = torch.cuda.get_device_capability()
+		print(f"   └─ {gpu_name} | {total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
+		
+	# ── LoRA injection — vision encoder only
 	# Text encoder stays frozen and un-injected, consistent with full fine-tuning.
 	# all_class_embeds pre-computed from frozen text encoder remains valid.
 	model = get_injected_peft_clip(
@@ -1220,7 +1251,8 @@ def lora_finetune_multi_label(
 	rare_mask   = masks["rare_mask"]
 	N = masks["N"]
 	train_freq = masks["train_freq"]
-	# ── Criteria ─────────────────────────────────────────────────────────────
+
+	# ── Criteria
 	# I2T: pos_weight applies — rows are images, cols are classes
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
 		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
@@ -1242,6 +1274,7 @@ def lora_finetune_multi_label(
 	if verbose:
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
+	
 	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
 	model.eval()
 	all_class_embeds = []
@@ -1255,9 +1288,18 @@ def lora_finetune_multi_label(
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
 				all_class_embeds.append(embeds.cpu())
 				del batch_tokens, embeds
+	
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
-	print(f"all_class_embeds: {all_class_embeds.shape} — fixed for entire training run")
-	# ── Early stopping ────────────────────────────────────────────────────────
+	
+	if verbose:
+		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
+		print(f"   ├─ {type(all_class_embeds)}")
+		print(f"   ├─ {all_class_embeds.shape}")
+		print(f"   ├─ {all_class_embeds.dtype}")
+		print(f"   └─ {all_class_embeds.device}")
+
+
+	# ── Early stopping
 	early_stopping = EarlyStopping(
 			patience=patience,
 			min_delta=min_delta,
@@ -1270,6 +1312,7 @@ def lora_finetune_multi_label(
 			slope_threshold=slope_threshold,
 			pairwise_imp_threshold=pairwise_imp_threshold,
 	)
+
 	# Optimizer — LoRA parameters only
 	lora_params = [p for p in model.parameters() if p.requires_grad]	
 	optimizer = torch.optim.AdamW(
@@ -1279,6 +1322,7 @@ def lora_finetune_multi_label(
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
+
 	# Scheduler — full requested duration
 	total_training_steps = num_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2
@@ -1289,17 +1333,21 @@ def lora_finetune_multi_label(
 		eta_min=eta_min,
 		last_epoch=-1,
 	)
-	print(f"{scheduler.__class__.__name__}")
-	print(f"  ├─ T_max = {total_training_steps} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
-	print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
+	if verbose:
+		print(f"\n{scheduler.__class__.__name__}")
+		print(f"  ├─ T_max = {total_training_steps} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
 	
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**16,
-		growth_factor=2.0,
-		backoff_factor=0.5,
-		growth_interval=2000,
+		init_scale=2**11,      # 2048 — much more conservative start
+		growth_factor=1.5,     # slower scale growth
+		backoff_factor=0.5,    # standard
+		growth_interval=5000,  # longer interval before attempting growth
 	)
+
+	if verbose:
+		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
 
 	# Checkpoint path
 	mdl_fpth = os.path.join(
@@ -1359,7 +1407,7 @@ def lora_finetune_multi_label(
 						continue
 					scaler.scale(total_loss).backward()
 					scaler.unscale_(optimizer)
-					torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+					torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
 					scaler.step(optimizer)
 					scaler.update()
 					scheduler.step()
@@ -1533,7 +1581,7 @@ def lora_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
-		f"{model_name}_{model_arch}_ep_{actual_trained_epochs}_"
+		f"{model_arch}_ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}"
 	)
@@ -1703,8 +1751,9 @@ def lora_plus_finetune_multi_label(
 	model_name = model.__class__.__name__
 	
 	if verbose:
-		print(f"{mode.upper()} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
-		print(f"   ├─ Multi-label classification: {num_classes} classes")
+		print(f"\n{mode.upper()} {model_name} {model_arch}")
+		print(f"   ├─ {dataset_name} {num_classes} classes")
+		print(f"   ├─ Batch size: {train_loader.batch_size}  Device: {type(device)} {device}")
 		if quantized:
 			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
 		
@@ -1723,7 +1772,7 @@ def lora_plus_finetune_multi_label(
 		rank=lora_rank,
 		alpha=lora_alpha,
 		dropout=lora_dropout,
-		target_text_modules=[], # no LoRA in text encoder
+		target_text_modules=[], # no LoRA+ in text encoder
 		target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
 		lora_plus_lambda=lora_plus_lambda,
 		quantization_bits=quantization_bits,
@@ -1785,10 +1834,15 @@ def lora_plus_finetune_multi_label(
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
 				all_class_embeds.append(embeds.cpu())
 				del batch_tokens, embeds
+
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
 
 	if verbose:
-		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
+		print(f"   ├─ {type(all_class_embeds)}")
+		print(f"   ├─ {all_class_embeds.shape}")
+		print(f"   ├─ {all_class_embeds.dtype}")
+		print(f"   └─ {all_class_embeds.device}")
 
 	# Separate LoRA A and B parameters for differential LR
 	lora_A_params = [p for n, p in model.named_parameters() if p.requires_grad and "lora_A" in n]
@@ -1847,14 +1901,15 @@ def lora_plus_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**16,
-		growth_factor=2.0,
-		backoff_factor=0.5,
-		growth_interval=2000,
+		init_scale=2**11,      # 2048 — much more conservative start
+		growth_factor=1.5,     # slower scale growth
+		backoff_factor=0.5,    # standard
+		growth_interval=5000,  # longer interval before attempting growth
 	)
+
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
-		
+
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
@@ -1930,7 +1985,7 @@ def lora_plus_finetune_multi_label(
 			
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
-			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
 			scaler.step(optimizer)
 			scaler.update()
 			scheduler.step()
@@ -2110,8 +2165,9 @@ def lora_plus_finetune_multi_label(
 		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
+		print(f"  LoRA params: Rank: {lora_rank}  Alpha: {lora_alpha}  Dropout: {lora_dropout}  Lambda: {lora_plus_lambda}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
@@ -2286,7 +2342,7 @@ def dora_finetune_multi_label(
 			gpu_name = torch.cuda.get_device_name(device)
 			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
 			cuda_capability = torch.cuda.get_device_capability()
-			print(f"   ├─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
+			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 
 	# Inject DoRA into model
 	model = get_injected_peft_clip(
@@ -2347,7 +2403,7 @@ def dora_finetune_multi_label(
 	model.eval()
 	all_class_embeds = []
 	text_batch_size = validation_loader.batch_size
-	print(f"\n>> Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding"):
@@ -2356,15 +2412,18 @@ def dora_finetune_multi_label(
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
 				all_class_embeds.append(embeds.cpu())
 				del batch_tokens, embeds
+	
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
 
 	if verbose:
-		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
+		print(f"   ├─ {type(all_class_embeds)}")
+		print(f"   ├─ {all_class_embeds.shape}")
+		print(f"   ├─ {all_class_embeds.dtype}")
+		print(f"   └─ {all_class_embeds.device}")
 
 	# Optimizer setup
 	dora_params = [p for p in model.parameters() if p.requires_grad]
-	print(f"DoRA trainable parameters: {sum(p.numel() for p in dora_params):,}")
-
 	optimizer = torch.optim.AdamW(
 		params=dora_params,
 		lr=learning_rate,
@@ -2372,6 +2431,13 @@ def dora_finetune_multi_label(
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
+
+	if verbose:
+		print(f"\n{optimizer.__class__.__name__}")
+		print(f"  ├─ LR: {learning_rate}")
+		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
+		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
+		print(f"  └─ Weight Decay: {weight_decay}")
 
 	# Learning rate scheduler
 	# estimated_epochs = min(num_epochs, 15)
@@ -2386,18 +2452,22 @@ def dora_finetune_multi_label(
 		eta_min=eta_min,
 		last_epoch=-1,
 	)
+	
 	if verbose:
-		print(f"{scheduler.__class__.__name__}")
+		print(f"\n{scheduler.__class__.__name__}")
 		print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
 	
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**16,
-		growth_factor=2.0,
-		backoff_factor=0.5,
-		growth_interval=2000,
+		init_scale=2**11,      # 2048 — much more conservative start
+		growth_factor=1.5,     # slower scale growth
+		backoff_factor=0.5,    # standard
+		growth_interval=5000,  # longer interval before attempting growth
 	)
+
+	if verbose:
+		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
 
 	# Model checkpoint path
 	mdl_fpth = os.path.join(
@@ -2423,7 +2493,6 @@ def dora_finetune_multi_label(
 		f".pth"
 	)
 
-	# Training metrics storage
 	training_losses = list()
 	validation_losses = list()
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
@@ -2475,7 +2544,7 @@ def dora_finetune_multi_label(
 
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
-			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
 			scaler.step(optimizer)
 			scaler.update()
 			scheduler.step()
@@ -2912,6 +2981,7 @@ def ia3_finetune_multi_label(
 	if verbose:
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
+	
 	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
 	model.eval()
 	all_class_embeds = []
@@ -2925,9 +2995,15 @@ def ia3_finetune_multi_label(
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
 				all_class_embeds.append(embeds.cpu())
 				del batch_tokens, embeds
+	
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
+
 	if verbose:
-		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
+		print(f"   ├─ {type(all_class_embeds)}")
+		print(f"   ├─ {all_class_embeds.shape}")
+		print(f"   ├─ {all_class_embeds.dtype}")
+		print(f"   └─ {all_class_embeds.device}")
 
 	# Optimizer setup
 	ia3_params = [p for p in model.parameters() if p.requires_grad]
@@ -2961,11 +3037,12 @@ def ia3_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**16,
-		growth_factor=2.0,
-		backoff_factor=0.5,
-		growth_interval=2000,
-	) # automatic mixed precision
+		init_scale=2**11,      # 2048 — much more conservative start
+		growth_factor=1.5,     # slower scale growth
+		backoff_factor=0.5,    # standard
+		growth_interval=5000,  # longer interval before attempting growth
+	)
+
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
 
@@ -3042,7 +3119,7 @@ def ia3_finetune_multi_label(
 			
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
-			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
 			scaler.step(optimizer)
 			scaler.update()
 			scheduler.step()
@@ -3478,6 +3555,7 @@ def vera_finetune_multi_label(
 	if verbose:
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
+
 	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
 	model.eval()
 	all_class_embeds = []
@@ -3491,9 +3569,15 @@ def vera_finetune_multi_label(
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
 				all_class_embeds.append(embeds.cpu())
 				del batch_tokens, embeds
+	
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
+	
 	if verbose:
-		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
+		print(f"   ├─ {type(all_class_embeds)}")
+		print(f"   ├─ {all_class_embeds.shape}")
+		print(f"   ├─ {all_class_embeds.dtype}")
+		print(f"   └─ {all_class_embeds.device}")
 
 	# Optimizer setup
 	vera_params = [p for p in model.parameters() if p.requires_grad]
@@ -3527,10 +3611,10 @@ def vera_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**16,
-		growth_factor=2.0,
-		backoff_factor=0.5,
-		growth_interval=2000,
+		init_scale=2**11,      # 2048 — much more conservative start
+		growth_factor=1.5,     # slower scale growth
+		backoff_factor=0.5,    # standard
+		growth_interval=5000,  # longer interval before attempting growth
 	)
 
 	if verbose:
@@ -3611,7 +3695,7 @@ def vera_finetune_multi_label(
 			
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
-			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
 			scaler.step(optimizer)
 			scaler.update()
 			scheduler.step()
@@ -4048,14 +4132,16 @@ def clip_adapter_finetune_multi_label(
 		print(f"  ├─ T_max = {T_max} steps [{num_epochs} epochs × {len(train_loader)} batches]")
 		print(f"  └─ eta_min = {eta_min:.2e} ({ANNEALING_RATIO*100:.1f}% of lr)")
 
-	# AMP scaler
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**16,
-		growth_factor=2.0,
-		backoff_factor=0.5,
-		growth_interval=2000,
+		init_scale=2**11,      # 2048 — much more conservative start
+		growth_factor=1.5,     # slower scale growth
+		backoff_factor=0.5,    # standard
+		growth_interval=5000,  # longer interval before attempting growth
 	)
+
+	if verbose:
+		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
 
 	# Checkpoint path
 	mdl_fpth = os.path.join(
@@ -4166,7 +4252,7 @@ def clip_adapter_finetune_multi_label(
 
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
-			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
 			scaler.step(optimizer)
 			scaler.update()
 			scheduler.step()
@@ -4634,9 +4720,14 @@ def tip_adapter_finetune_multi_label(
 				torch.cuda.empty_cache()
 	
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
+
 	if verbose:
-		print(f"Class embeddings shape: {all_class_embeds.shape}")
-		
+		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
+		print(f"   ├─ {type(all_class_embeds)}")
+		print(f"   ├─ {all_class_embeds.shape}")
+		print(f"   ├─ {all_class_embeds.dtype}")
+		print(f"   └─ {all_class_embeds.device}")
+
 	model = get_adapter_peft_clip(
 		clip_model=model,
 		method=tip_adapter_method,
@@ -4782,11 +4873,14 @@ def tip_adapter_finetune_multi_label(
 	
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**16,
-		growth_factor=2.0,
-		backoff_factor=0.5,
-		growth_interval=2000,
+		init_scale=2**11,      # 2048 — much more conservative start
+		growth_factor=1.5,     # slower scale growth
+		backoff_factor=0.5,    # standard
+		growth_interval=5000,  # longer interval before attempting growth
 	)
+
+	if verbose:
+		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -4920,7 +5014,7 @@ def tip_adapter_finetune_multi_label(
 
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
-			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
 			scaler.step(optimizer)
 			scaler.update()
 			scheduler.step()
