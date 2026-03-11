@@ -11,8 +11,8 @@
 #SBATCH --mem=256G
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1
-######SBATCH --array=0-48:4
-#SBATCH --array=8
+#SBATCH --array=0-48:4
+#####SBATCH --array=8
 #SBATCH --time=1-12:00:00
 
 set -euo pipefail
@@ -64,8 +64,8 @@ FINETUNE_STRATEGIES=(
 	"lora"              # 04-07, 	# 56-59, 		# 108-111, 	# 160-163, 	# 212-215
 	"lora_plus"					# 08-11, 	# 60-63, 		# 112-115, 	# 164-167, 	# 216-219
 	"dora"							# 12-15, 	# 64-67, 		# 116-119, 	# 168-171, 	# 220-223
-	"ia3"								# 16-19, 	# 68-71, 		# 120-123, 	# 172-175, 	# 224-227
-	"vera"							# 20-23, 	# 72-75, 		# 124-127, 	# 176-179, 	# 228-231
+	"vera"							# 16-19, 	# 68-71, 		# 120-123, 	# 172-175, 	# 224-227
+	"ia3"								# 20-23, 	# 72-75, 		# 124-127, 	# 176-179, 	# 228-231
 	"clip_adapter_v"		# 24-27, 	# 76-79, 		# 128-131, 	# 180-183, 	# 232-235
 	"clip_adapter_t"		# 28-31, 	# 80-83, 		# 132-135, 	# 184-187, 	# 236-239
 	"clip_adapter_vt"		# 32-35, 	# 84-87, 		# 136-139, 	# 188-191, 	# 240-243
@@ -125,7 +125,7 @@ EPOCHS=(100 100 150 150 150)
 LORA_RANKS=(16 64 64 64 64)
 LORA_ALPHAS=(32.0 128.0 128.0 128.0 128.0)
 LORA_DROPOUTS=(0.05 0.1 0.05 0.05 0.05)
-LORA_PLUS_LAMBDAS=(16.0 16.0 16.0 16.0 16.0)
+LORA_PLUS_LAMBDAS=(4.0 16.0 16.0 16.0 16.0)
 
 # Progressive fine-tuning parameters
 MIN_PHASES_BEFORE_STOPPING=(3 3 3 3 3)
