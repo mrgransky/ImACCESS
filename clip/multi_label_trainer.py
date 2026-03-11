@@ -587,7 +587,6 @@ def probe_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{mode}_{probe.probe_type}_"
-		f"{CLUSTER}_"
 		f"{model_name}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
@@ -1082,12 +1081,6 @@ def full_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
-		f"{CLUSTER}_"
-		f"{optimizer.__class__.__name__}_"
-		f"{scheduler.__class__.__name__}_"
-		f"{criterion_i2t.__class__.__name__}_"
-		f"{criterion_t2i.__class__.__name__}_"
-		f"{scaler.__class__.__name__}_"
 		f"{model_name}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
@@ -1307,18 +1300,18 @@ def lora_finetune_multi_label(
 		backoff_factor=0.5,
 		growth_interval=2000,
 	)
+
 	# Checkpoint path
-	dropout_val = lora_dropout
 	mdl_fpth = os.path.join(
-			results_dir,
-			f"{mode}_{model_arch}_"
-			f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
-			f"lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}_"
-			f"temp_{temperature}_bs_{train_loader.batch_size}_"
-			f"mep_{minimum_epochs}_pat_{patience}_"
-			f"mdt_{min_delta:.1e}_cdt_{cumulative_delta:.1e}_"
-			f"vt_{volatility_threshold}_st_{slope_threshold:.1e}_"
-			f"pit_{pairwise_imp_threshold:.1e}.pth"
+		results_dir,
+		f"{mode}_{model_arch}_"
+		f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
+		f"lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}_"
+		f"temp_{temperature}_bs_{train_loader.batch_size}_"
+		f"mep_{minimum_epochs}_pat_{patience}_"
+		f"mdt_{min_delta:.1e}_cdt_{cumulative_delta:.1e}_"
+		f"vt_{volatility_threshold}_st_{slope_threshold:.1e}_"
+		f"pit_{pairwise_imp_threshold:.1e}.pth"
 	)
 	# ── Training state ────────────────────────────────────────────────────────
 	training_losses = []
@@ -1539,9 +1532,7 @@ def lora_finetune_multi_label(
 
 	# Generate plots
 	file_base_name = (
-		f"{mode}_{CLUSTER}_"
-		f"{optimizer.__class__.__name__}_{scheduler.__class__.__name__}_"
-		f"BCEWithLogitsLoss_{scaler.__class__.__name__}_"
+		f"{mode}_"
 		f"{model_name}_{model_arch}_ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}"
@@ -2025,14 +2016,13 @@ def lora_plus_finetune_multi_label(
 
 		print(
 			f'\nEpoch {epoch+1}:\n'
-			f'   ├─ [LOSS] {mode}-FT: Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Validation: {current_val_loss:.6f}\n'
+			f'   ├─ [LOSS] {mode}-FT: Train - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Val: {current_val_loss:.6f}\n'
 			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
 			f'   ├─ Embed — CosSim: {cos_sim:.4f}\n'
 			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
 			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'      └─ [T2I] {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
-		
 		print(f"   ├─ Retrieval Metrics:")
 		print(
 			f"      ├─ [I2T] mAP {retrieval_metrics_per_epoch['img2txt'].get('mAP', {})}, "
@@ -2047,7 +2037,6 @@ def lora_plus_finetune_multi_label(
 			print(f'   ├─ Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
 			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
-			print()
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -2145,7 +2134,6 @@ def lora_plus_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
-		f"{CLUSTER}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lora_A_lr_{lora_A_lr:.1e}_"
@@ -2681,7 +2669,6 @@ def dora_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
-		f"{CLUSTER}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
@@ -3248,7 +3235,6 @@ def ia3_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
-		f"{CLUSTER}_"
 		f"{model_name}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
@@ -3825,7 +3811,6 @@ def vera_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
-		f"{CLUSTER}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
@@ -4359,7 +4344,7 @@ def clip_adapter_finetune_multi_label(
 
 	# Generate plots
 	file_base = (
-		f"{clip_adapter_method}_{CLUSTER}_{model_arch}_ep_{actual_trained_epochs}_"
+		f"{clip_adapter_method}_{model_arch}_ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_"
 		f"cbd_{bottleneck_dim}_act_{activation}_temp_{temperature}"
 	)
@@ -4880,7 +4865,6 @@ def tip_adapter_finetune_multi_label(
 		# Generate best model plot only
 		file_base_name = (
 			f"{tip_adapter_method}_"
-			f"{CLUSTER}_"
 			f"{model_arch}_"
 			f"training_free_"
 			f"bs_{train_loader.batch_size}_"
@@ -5131,7 +5115,6 @@ def tip_adapter_finetune_multi_label(
 	# Generate plots
 	file_base_name = (
 		f"{tip_adapter_method}_"
-		f"{CLUSTER}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"

@@ -493,6 +493,7 @@ def get_validation_metrics(
 		f"nw_{num_workers}_{model_class_name}_{model_arch_name.replace('/', '_')}_"
 		f"validation_embeddings.pt"
 	)
+
 	if model_hash:
 		cache_file = cache_file.replace(".pt", f"_{model_hash}.pt")
 	
@@ -505,9 +506,7 @@ def get_validation_metrics(
 		all_labels = _prepare_labels_tensor(validation_loader, num_samples, n_classes, device)
 		cache_loaded = True
 		if verbose:
-			print(f"Embeddings cache loaded from provided embeddings_cache: {type(embeddings_cache)}")
-	
-	# Try to load from file cache
+			print(f"Embeddings cache loaded from provided embeddings_cache: {type(embeddings_cache)}")	
 	elif not is_training and os.path.exists(cache_file) and not force_recompute:
 		if verbose:
 			print(f"Loading cached embeddings from {cache_file}")
@@ -546,17 +545,7 @@ def get_validation_metrics(
 		)
 		if verbose:
 			print(f"Elapsed: {time.time() - t0:.1f} s")
-		
-		# # Save to cache if not training
-		# if not is_training:
-		# 	try:
-		# 		os.makedirs(cache_dir, exist_ok=True)
-		# 		torch.save({'image_embeds': all_image_embeds.cpu(), 'labels': all_labels.cpu()}, cache_file)
-		# 		if verbose:
-		# 			print(f"Saved embeddings to cache: {cache_file}")
-		# 	except Exception as e:
-		# 		print(f"Cache saving failed: {e}")
-	
+			
 	# Step 3: Compute class embeddings
 	if class_embeds_override is not None:
 		# Use probe's trained W instead of frozen text encoder
@@ -617,8 +606,6 @@ def get_validation_metrics(
 		device_class_text_embeds=device_class_text_embeds,
 		chunk_size=chunk_size
 	)
-	# if verbose:
-	# 	print(json.dumps(full_metrics, ensure_ascii=False, indent=2))
 	
 	# Step 6: Compute retrieval metrics
 	cache_key_base = f"{dataset_name}_{finetune_strategy}_{model_class_name}_{model_arch_name.replace('/', '_')}"
@@ -746,26 +733,26 @@ def compute_full_set_metrics_from_cache(
 		f1_score_val = None
 		
 		if is_multi_label:
-				# Get optimal threshold for predictions
-				i2t_probs = torch.sigmoid(i2t_similarity)
-				threshold = 0.5
-				
-				# Make predictions
-				i2t_preds = (i2t_probs > threshold).float()
-				
-				# Compute additional metrics
-				hamming_loss = (i2t_preds != labels).float().mean().item()
-				partial_acc = (i2t_preds == labels).float().mean().item()
-				
-				try:
-						f1_score_val = f1_score(
-								labels.cpu().numpy(), 
-								i2t_preds.cpu().numpy(), 
-								average='weighted',
-								zero_division=0
-						)
-				except:
-						f1_score_val = 0.0
+			# Get optimal threshold for predictions
+			i2t_probs = torch.sigmoid(i2t_similarity)
+			threshold = 0.5
+			
+			# Make predictions
+			i2t_preds = (i2t_probs > threshold).float()
+			
+			# Compute additional metrics
+			hamming_loss = (i2t_preds != labels).float().mean().item()
+			partial_acc = (i2t_preds == labels).float().mean().item()
+			
+			try:
+				f1_score_val = f1_score(
+					labels.cpu().numpy(), 
+					i2t_preds.cpu().numpy(), 
+					average='weighted',
+					zero_division=0
+				)
+			except:
+				f1_score_val = 0.0
 		
 		return {
 				"img2txt_acc": float(img2txt_acc),
@@ -1014,6 +1001,7 @@ def _compute_matched_cosine_similarity(image_embeds, text_embeds, labels, is_mul
 		matched_text_embeds = text_embeds[labels]
 	
 	cos_sim = torch.nn.functional.cosine_similarity(image_embeds, matched_text_embeds, dim=1)
+
 	return cos_sim.mean().item()
 
 def evaluate_best_model(

@@ -11,7 +11,8 @@
 #SBATCH --mem=256G
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1
-#SBATCH --array=0-48:4
+######SBATCH --array=0-48:4
+#SBATCH --array=8
 #SBATCH --time=1-12:00:00
 
 set -euo pipefail
@@ -124,7 +125,7 @@ EPOCHS=(100 100 150 150 150)
 LORA_RANKS=(16 64 64 64 64)
 LORA_ALPHAS=(32.0 128.0 128.0 128.0 128.0)
 LORA_DROPOUTS=(0.05 0.1 0.05 0.05 0.05)
-LORA_PLUS_LAMBDAS=(32.0 16.0 16.0 16.0 16.0)
+LORA_PLUS_LAMBDAS=(16.0 16.0 16.0 16.0 16.0)
 
 # Progressive fine-tuning parameters
 MIN_PHASES_BEFORE_STOPPING=(3 3 3 3 3)
