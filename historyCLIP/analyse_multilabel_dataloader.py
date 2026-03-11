@@ -680,7 +680,7 @@ def analyse_cooccurrence(dataset, split_name,
 		union   = np.maximum(freq[:, np.newaxis] + freq[np.newaxis, :] - raw_cooc, 1.0)
 		jaccard = (raw_cooc / union).astype(np.float32)
 
-		print(f"  Phi + Jaccard computed in {_t.perf_counter()-t1:.1f}s", flush=True)
+		print(f"  Phi + Jaccard computed in {_t.perf_counter()-t1:.3f}s", flush=True)
 
 		# ── Extract interesting pairs (upper triangle only) ────────────────────────
 		t2 = _t.perf_counter()
@@ -701,7 +701,7 @@ def analyse_cooccurrence(dataset, split_name,
 				 for k in np.where(neg_mask)[0]],
 				key=lambda x: x[0]
 		)
-		print(f"  Pair extraction in {_t.perf_counter()-t2:.1f}s  "
+		print(f"  Pair extraction in {_t.perf_counter()-t2:.3f}s  "
 					f"| pos_pairs={len(pos_pairs):,}  neg_pairs={len(neg_pairs):,}",
 					flush=True)
 

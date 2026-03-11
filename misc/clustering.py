@@ -1618,25 +1618,25 @@ def get_optimal_super_clusters(
 		show_leaf_counts=True, 
 		color_threshold=super_cluster_distance
 	)
-	plt.axhline(
-		y=super_cluster_distance, 
-		color='#000000', 
-		linestyle='--', 
-		label=f'Cut at {super_cluster_distance:.4f} ({n_super_clusters} super-clusters)',
-		linewidth=2.5,
-		zorder=10
-
-	)
+	# plt.axhline(
+	# 	y=super_cluster_distance, 
+	# 	color='#000000', 
+	# 	linestyle='--', 
+	# 	label=f'Cut at {super_cluster_distance:.4f} ({n_super_clusters} super-clusters)',
+	# 	linewidth=2.5,
+	# 	zorder=10,
+	# )
 
 	plt.title(f'Hierarchical Clustering Dendrogram ({linkage_method} Linkage)\n{n_super_clusters} Super-Clusters at distance={super_cluster_distance:.4f}')
 	plt.xlabel('Cluster')
 	plt.ylabel('Distance')
 	plt.legend(loc='upper right', fontsize=12)
+	plt.grid(False)
 	out_dendogram = clusters_fname.replace(".csv", "_dendrogram.png")
 	plt.savefig(out_dendogram, dpi=200, bbox_inches='tight')
 	plt.close()
 
-	plt.figure(figsize=(24, 15))
+	plt.figure(figsize=(15, 9))
 	dendrogram(
 		linkage_matrix,
 		color_threshold=super_cluster_distance,
@@ -2327,18 +2327,18 @@ def cluster(
 
 	print(f"\n[CLUSTERING] {len(np.unique(cluster_labels))} clusters for {cluster_labels.shape} {type(cluster_labels)} labels. {cluster_labels.min()} {cluster_labels.max()}")
 
-	# get_optimal_super_clusters(
-	# 	linkage_matrix=Z, 
-	# 	embeddings=X,
-	# 	cluster_labels=cluster_labels,
-	# 	unique_labels=unique_labels,
-	# 	linkage_method=linkage_method,
-	# 	clusters_fname=clusters_fname,
-	# 	n_thresholds=50,
-	# 	min_clusters=3,
-	# 	max_clusters=10,
-	# 	verbose=verbose
-	# )
+	get_optimal_super_clusters(
+		linkage_matrix=Z, 
+		embeddings=X,
+		cluster_labels=cluster_labels,
+		unique_labels=unique_labels,
+		linkage_method=linkage_method,
+		clusters_fname=clusters_fname,
+		n_thresholds=50,
+		min_clusters=3,
+		max_clusters=10,
+		verbose=verbose
+	)
 	
 	print(f"\nCanonical labels per cluster")
 
