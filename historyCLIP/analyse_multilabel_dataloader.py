@@ -7,12 +7,11 @@ No synthetic data is generated.
 Usage
 -----
 # Minimal — point at the full metadata CSV:
-python analyse_multilabel_dataloader.py \
-		-csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv
+python analyse_multilabel_dataloader.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv
 
 # Larger dataset:
-python analyse_multilabel_dataloader.py \
-		-csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label_multimodal.csv
+$ python analyse_multilabel_dataloader.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_multimodal.csv
+$ nohup python -u analyse_multilabel_dataloader.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_multimodal.csv > /scratch/project_2004072/ImACCESS/trash/logs/analyse_multilabel_dataloader_h4.txt &
 
 # Override column (default: multimodal_canonical_labels):
 python analyse_multilabel_dataloader.py \
