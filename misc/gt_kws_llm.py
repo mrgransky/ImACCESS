@@ -373,10 +373,12 @@ def _load_llm_(
 			Tries multiple sources, returns conservative (higher) value.
 			"""
 			try:
-					info = huggingface_hub.model_info(model_id, token=hf_tk)
+				info = huggingface_hub.model_info(model_id, token=hf_tk, files_metadata=True)
 			except Exception as e:
-					raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
+				raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
 
+			print(type(info))
+			print(info)
 			param_count = None
 
 			# Preferred: safetensors metadata (parameter count)
