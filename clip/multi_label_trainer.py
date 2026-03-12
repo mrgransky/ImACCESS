@@ -2846,12 +2846,19 @@ def dora_finetune_multi_label(
 	model_name = model.__class__.__name__
 
 	if verbose:
-		print(f"{mode.upper()} [Multi-Label] Rank: {lora_rank} Alpha: {lora_alpha} Dropout: {lora_dropout} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
-		if quantized:
-			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
+		print(f"\n{mode.upper()} [Multi-Label]")
+		print(f"   ├─ Rank: {lora_rank}")
+		print(f"   ├─ Alpha: {lora_alpha}")
+		print(f"   ├─ Dropout: {lora_dropout}")
+		print(f"   ├─ Model      : {model_name} {model_arch}")
+		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
+		print(f"   ├─ Batch size : {train_loader.batch_size}")
+		print(f"   ├─ Device     : {type(device)} {device}")
+		print(f"   ├─ Learning rate: {learning_rate}  Weight decay: {weight_decay}")
 		print(f"   ├─ Temperature: {temperature}")
 		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
-
+		if quantized:
+			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
 		if torch.cuda.is_available():
 			gpu_name = torch.cuda.get_device_name(device)
 			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
@@ -4004,8 +4011,17 @@ def vera_finetune_multi_label(
 	model_name = model.__class__.__name__
 
 	if verbose:
-		print(f"{mode.upper()} [Multi-Label] Rank: {lora_rank} Alpha: {lora_alpha} Dropout: {lora_dropout} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
-
+		print(f"\n{mode.upper()} [Multi-Label]")
+		print(f"   ├─ Rank: {lora_rank}")
+		print(f"   ├─ Alpha: {lora_alpha} (not used in VeRA)")
+		print(f"   ├─ Dropout: {lora_dropout}")
+		print(f"   ├─ Model      : {model_name} {model_arch}")
+		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
+		print(f"   ├─ Batch size : {train_loader.batch_size}")
+		print(f"   ├─ Device     : {type(device)} {device}")
+		print(f"   ├─ Learning rate: {learning_rate}  Weight decay: {weight_decay}")
+		print(f"   ├─ Temperature: {temperature}")
+		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
 		if quantized:
 			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
 
@@ -4013,7 +4029,7 @@ def vera_finetune_multi_label(
 			gpu_name = torch.cuda.get_device_name(device)
 			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
 			cuda_capability = torch.cuda.get_device_capability()
-			print(f"   ├─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
+			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 
 
 	# Apply VeRA to the model
@@ -4095,7 +4111,6 @@ def vera_finetune_multi_label(
 
 	# Optimizer setup
 	vera_params = [p for p in model.parameters() if p.requires_grad]
-	print(f"{mode.upper()} trainable parameters: {sum(p.numel() for p in vera_params)}")
 
 	optimizer = torch.optim.AdamW(
 		params=vera_params,

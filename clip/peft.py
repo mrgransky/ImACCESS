@@ -49,12 +49,12 @@ class IA3Linear(torch.nn.Module):
 				self.verbose = verbose
 
 				if self.verbose:
-						print(f"[IA³] Initializing IA3Linear")
-						print(f"    ├─ in_features={in_features}, out_features={out_features}")
+					print(f"[INITIALIZATION] {self.__class__.__name__}")
+					print(f"    ├─ in_features={in_features}, out_features={out_features}")
+					if quantized:
 						print(f"    ├─ Quantized: {quantized}")
-						if quantized:
-								print(f"    ├─ Quantization bits: {quantization_bits}")
-								print(f"    └─ Compute dtype: {compute_dtype}")
+						print(f"    ├─ Quantization bits: {quantization_bits}")
+						print(f"    └─ dtype: {compute_dtype}")
 
 				# Create base linear layer
 				if quantized:
@@ -79,12 +79,18 @@ class IA3Linear(torch.nn.Module):
 				# IA³ scaling vector: shape = [out_features]
 				self.ia3_scale = torch.nn.Parameter(torch.ones(out_features, device=device))
 				if self.verbose:
-						print(f"    └─ IA³ scale vector: {self.ia3_scale.shape}, init: ones")
+					print(f"    └─ scale vector: {type(self.ia3_scale)} {self.ia3_scale.shape}, init (ones?): {self.ia3_scale.mean()}, std: {self.ia3_scale.std()}")
 
 				# Freeze base weights
 				self.linear.weight.requires_grad = False
+				if self.verbose:
+					print(f"    └─ Frozen base weights requires_grad: {self.linear.weight.requires_grad}")
+				
+				# Freeze base bias if exists
 				if bias and self.linear.bias is not None:
-						self.linear.bias.requires_grad = False
+					self.linear.bias.requires_grad = False
+					if self.verbose:
+						print(f"    └─ Frozen base bias requires_grad: {self.linear.bias.requires_grad}")
 
 		def forward(self, x: torch.Tensor) -> torch.Tensor:
 				"""
@@ -135,6 +141,19 @@ class IA3Linear(torch.nn.Module):
 						'bits': self.quantization_bits if self.quantized else 32
 				}
 
+		def __repr__(self) -> str:
+				quantization_str = (
+						f"quantized={self.quantized}, bits={self.quantization_bits}, dtype={self.compute_dtype}"
+						if self.quantized
+						else "full precision (fp32)"
+				)
+				return (
+						f"\n{self.__class__.__name__}\n"
+						f"  ├─ in_features={self.in_features}, out_features={self.out_features}\n"
+						f"  ├─ trainable_params={self.out_features:,} (IA³ scale vector)\n"
+						f"  └─ {quantization_str}\n"
+				)
+
 class LoRALinear(torch.nn.Module):
 	def __init__(
 		self,
@@ -170,8 +189,8 @@ class LoRALinear(torch.nn.Module):
 			print(f"[INITIALIZATION] {self.__class__.__name__}")
 			print(f"\tLayer config: in_features={self.in_features}, out_features={self.out_features}, rank={self.rank}")
 			print(f"\tRank: {self.rank} Alpha: {self.alpha} Dropout: {dropout}")
-			if rslora:
-				print(f"\trsLoRA Scaling Factor (α/√r): {self.scale}")
+			if self.rslora:
+				print(f"\trsLoRA={self.rslora} Scaling Factor (α/√r): {self.scale}")
 			else:
 				print(f"\tScaling Factor (α/r): {self.scale}")
 			print(f"\tCompression ratio (d=max(in_features, out_features)/r): {compression_ratio:.2f}x")
