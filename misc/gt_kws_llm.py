@@ -392,16 +392,18 @@ def _load_llm_(
 			elif hasattr(safet, "total"):
 				param_count = safet.total
 
+
 		# 3. Choose best source and apply realistic multiplier
 		if disk_bytes > 0:
+			print(f"disk_bytes: {disk_bytes}")
 			# Disk size already in target dtype → small overhead (alignment, buffers)
 			est_gb = (disk_bytes * 1.20) / (1024 ** 3)   # 20% safety margin
 
 			return round(est_gb, 2)
 
-		print(f"param_count: {param_count}")
-
+	
 		if param_count:
+			print(f"param_count: {param_count}")
 			# fp16/bf16 = 2 bytes/param + 18–25% overhead
 			est_bytes = param_count * 2.0 * 1.22
 			est_gb = est_bytes / (1024 ** 3)
