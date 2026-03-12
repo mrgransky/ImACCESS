@@ -20,7 +20,8 @@ from nlp_utils import get_enriched_description
 # model_id = "allenai/Olmo-3-7B-Instruct"
 # model_id = "google/flan-t5-xxl"
 
-# Qwen/Qwen3-30B-A3B-Instruct-2507 # multi-gpu required
+# Qwen/Qwen3-30B-A3B-Instruct-2507 # multi-gpu 
+# Qwen/Qwen3-Next-80B-A3B-Instruct # multi-gpu required
 
 # not useful for instruction tuning:
 # model_id = "microsoft/DialoGPT-large"
@@ -633,6 +634,9 @@ def _load_llm_(
 
 		print(f"   • Total parameters: {total_params:,}")
 		print(f"   • Actual model size (fp16): {approx_fp16_gb:.2f} GB")
+		print(f"   • Actual model size (fp8): {approx_fp8_gb:.2f} GB")
+		print(f"   • Actual model size (fp4): {approx_fp4_gb:.2f} GB")
+		print(f"   • Available VRAM: {total_vram_available:.2f} GB")
 		if use_quantization:
 			if quantization_bits == 8:
 				print(f"   • Actual model size (int8): {approx_fp8_gb:.2f} GB")
