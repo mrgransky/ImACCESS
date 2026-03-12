@@ -64,7 +64,7 @@ def main():
 	# Common
 	parser.add_argument('--metadata_csv', '-csv', type=str, required=True, help='Metadata CSV file')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
-	parser.add_argument('--strategy', '-stg', type=str, choices=['full', 'lora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'adapter', 'baseline'], default=None, help='Strategy')
+	parser.add_argument('--strategy', '-stg', type=str, choices=['full', 'lora', 'rslora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'adapter', 'baseline'], default=None, help='Strategy')
 	parser.add_argument('--epochs', '-e', type=int, default=100, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=5e-4, help='learning rate [def: 5e-4]')
@@ -122,10 +122,12 @@ def main():
 	if not args.strategy:
 		raise ValueError("strategy must be specified (example: -stg lora)")
 
-	if args.strategy == "lora" or args.strategy == "dora" or args.strategy == "lora_plus":
-		assert args.lora_rank is not None, "lora_rank must be specified for lora finetuning"
-		assert args.lora_alpha is not None, "lora_alpha must be specified for lora finetuning"
-		assert args.lora_dropout is not None, "lora_dropout must be specified for lora finetuning"
+	LORA_FAMILY_STRATEGIES = ('lora', 'rslora', 'dora', 'lora_plus', 'vera')
+	
+	if args.strategy in LORA_FAMILY_STRATEGIES:
+		assert args.lora_rank is not None, "lora_rank must be specified for LoRA-family strategies"
+		assert args.lora_alpha is not None, "lora_alpha must be specified for LoRA-family strategies"
+		assert args.lora_dropout is not None, "lora_dropout must be specified for LoRA-family strategies"
 
 	if args.strategy == "lora_plus":
 		assert args.lora_plus_lambda is not None, "lora_plus_lambda must be specified for lora_plus finetuning (example: -lmbd 32.0)"
@@ -154,12 +156,12 @@ def main():
 				f"do_{args.dropout}"
 			)
 
-			if args.strategy == "lora" or args.strategy == "dora":
+			if args.strategy in LORA_FAMILY_STRATEGIES:
 				log_file_base_name += f"_lor_{args.lora_rank}_loa_{args.lora_alpha}_lod_{args.lora_dropout}"
 			
-			if args.use_lamb:
-				log_file_base_name += "_lamb"
-			
+			if args.strategy == "lora_plus":
+				log_file_base_name += f"_lmbd_{args.lora_plus_lambda}"			
+
 			log_file_path = os.path.join(args.log_dir, f"{log_file_base_name}.txt")
 
 			log_file = open(log_file_path, 'w')
@@ -226,6 +228,7 @@ def main():
 			'multi_label': {
 				'full': full_finetune_multi_label,
 				'lora': lora_finetune_multi_label,
+				'rslora': rslora_finetune_multi_label,
 				'lora_plus': lora_plus_finetune_multi_label,
 				'ia3': ia3_finetune_multi_label,
 				'dora': dora_finetune_multi_label,
@@ -257,7 +260,7 @@ def main():
 						'lora_rank': args.lora_rank,
 						'lora_alpha': args.lora_alpha,
 						'lora_dropout': args.lora_dropout
-					} if args.strategy == 'lora' or args.strategy == 'dora' or args.strategy == 'vera' or args.strategy == 'lora_plus' else {}
+					} if args.strategy in LORA_FAMILY_STRATEGIES else {}
 				),
 			**(
 					{

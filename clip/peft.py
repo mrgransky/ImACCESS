@@ -145,6 +145,7 @@ class LoRALinear(torch.nn.Module):
 		alpha: float,
 		dropout: float,
 		bias: bool,
+		rslora: bool = False,
 		quantized: bool = False,
 		quantization_bits: int = 4,  # 4-bit or 8-bit
 		compute_dtype: torch.dtype = torch.float16,
@@ -156,20 +157,27 @@ class LoRALinear(torch.nn.Module):
 		self.out_features = out_features
 		self.device = device
 		self.rank = rank
+		self.alpha = alpha
+		self.dropout = torch.nn.Dropout(p=dropout)
+		self.rslora = rslora
+		self.scale = self.alpha / (self.rank ** 0.5) if self.rslora else self.alpha / self.rank # rsLoRA uses α/√r instead of α/r
 		self.quantized = quantized
 		self.quantization_bits = quantization_bits
 		self.compute_dtype = compute_dtype
 		self.verbose = verbose
-		
+		compression_ratio = max(self.in_features, self.out_features) / self.rank
 		if self.verbose:
-			print(f"Layer Initialization")
-			print(f"\tLayer config: in_features={in_features}, out_features={out_features}, rank={rank}")
-			print(f"\tEmbedding dimension ratio: {max(in_features, out_features) / rank:.2f}")
-			print(f"\tQuantized: {quantized}")
+			print(f"[INITIALIZATION] {self.__class__.__name__}")
+			print(f"\tLayer config: in_features={self.in_features}, out_features={self.out_features}, rank={self.rank}")
+			print(f"\tCompute dtype: {compute_dtype}")
+			print(f"\tRank: {self.rank} Alpha: {self.alpha} Dropout: {dropout}")
+			if rslora:
+				print(f"\trsLoRA Scaling Factor (α/√r): {self.scale}")
+			else:
+				print(f"\tScaling Factor (α/r): {self.scale}")
+			print(f"\tCompression ratio (d/r): {compression_ratio:.2f}x")
 			if quantized:
 				print(f"\tQuantization bits: {quantization_bits}")
-				print(f"\tCompute dtype: {compute_dtype}")
-
 
 		# Create base linear layer based on quantization setting
 		if quantized:
@@ -205,18 +213,14 @@ class LoRALinear(torch.nn.Module):
 		self.lora_A = torch.nn.Linear(in_features, rank, bias=False)
 		self.lora_B = torch.nn.Linear(rank, out_features, bias=False)
 		
-		self.dropout = torch.nn.Dropout(p=dropout)
-		self.scale = alpha / rank
-		
 		# Initialize LoRA weights
 		torch.nn.init.normal_(self.lora_A.weight, mean=0.0, std=1/rank)
 		torch.nn.init.zeros_(self.lora_B.weight)
 		
 		if self.verbose:
-			print(f"Initialized weights:")
+			print(f"[INITIALIZATION] weights:")
 			print(f"\tlora_A: {self.lora_A.weight.shape} init: N(0, {1/rank})")
 			print(f"\tlora_B: {self.lora_B.weight.shape} init: 0.0 | All zeros: {torch.all(self.lora_B.weight == 0.0)}")
-			print(f"\tscaling factor: {self.scale}")
 
 		# Freeze base weights
 		self.linear.weight.requires_grad = False
@@ -282,6 +286,24 @@ class LoRALinear(torch.nn.Module):
 			'bits': self.quantization_bits if self.quantized else 32
 		}
 
+	def __repr__(self) -> str:
+		quantization_str = (
+			f"quantized={self.quantized}, bits={self.quantization_bits}, dtype={self.compute_dtype}"
+			if self.quantized
+			else "full precision (fp32)"
+		)
+		lora_type = "rsLoRA" if self.rslora else "LoRA"
+		lora_A_params = self.lora_A.weight.shape[0] * self.lora_A.weight.shape[1]  # rank × in_features
+		lora_B_params = self.lora_B.weight.shape[0] * self.lora_B.weight.shape[1]  # out_features × rank
+		return (
+			f"{self.__class__.__name__}\n"
+			f"  ├─ {lora_type}\n"
+			f"  ├─ in_features={self.in_features}, out_features={self.out_features}\n"
+			f"  ├─ rank={self.rank}, alpha={self.alpha}, dropout={self.dropout.p}, scale={self.scale}\n"
+			f"  ├─ trainable_params={lora_A_params + lora_B_params:,} (A: {lora_A_params:,} + B: {lora_B_params:,})\n"
+			f"  └─ {quantization_str}\n"
+		)
+
 class DoRALinear(torch.nn.Module):
 	"""
 	DoRA (Weight-Decomposed Low-Rank Adaptation) Extension for CLIP
@@ -332,6 +354,8 @@ class DoRALinear(torch.nn.Module):
 		self.out_features = out_features
 		self.device = device
 		self.rank = rank
+		self.alpha = alpha
+		self.dropout = torch.nn.Dropout(p=dropout)
 		self.quantized = quantized
 		self.quantization_bits = quantization_bits
 		self.compute_dtype = compute_dtype
@@ -369,9 +393,8 @@ class DoRALinear(torch.nn.Module):
 		# [4] LoRA layers for directional updates (always in full precision)
 		self.lora_A = torch.nn.Linear(in_features, rank, bias=False) 	# Trainable: YES
 		self.lora_B = torch.nn.Linear(rank, out_features, bias=False) # Trainable: YES		
-		self.dropout = torch.nn.Dropout(p=dropout)
 		self.scale = alpha / rank
-		# LoRA Path: x → A → dropout → B → scale  
+		
 		
 		# [5] DoRA-specific: 
 		# Initialize Magnitude vector (learnable parameter) with column-wise norms of the pre-trained weight
@@ -441,6 +464,7 @@ class DoRALinear(torch.nn.Module):
 			base_output = self.linear(x)
 			
 			# [2] Compute LoRA directional update ΔV @ x
+			# LoRA Path: x → A → dropout → B → scale  
 			lora_output = self.lora_B(self.dropout(self.lora_A(x)))
 			
 			# [3] Normalize by original magnitude to get V @ x
@@ -537,6 +561,22 @@ class DoRALinear(torch.nn.Module):
 			'bits': self.quantization_bits if self.quantized else 32
 		}
 
+	def __repr__(self) -> str:
+		quantization_str = (
+			f"quantized={self.quantized}, bits={self.quantization_bits}, dtype={self.compute_dtype}"
+			if self.quantized
+			else "full precision (fp32)"
+		)
+		lora_A_params = self.lora_A.weight.shape[0] * self.lora_A.weight.shape[1]  # rank × in_features
+		lora_B_params = self.lora_B.weight.shape[0] * self.lora_B.weight.shape[1]  # out_features × rank
+		return (
+			f"{self.__class__.__name__}\n"
+			f"  ├─ in_features={self.in_features}, out_features={self.out_features}\n"
+			f"  ├─ rank={self.rank}, alpha={self.alpha}, scale={self.scale}\n"
+			f"  ├─ trainable_params={lora_A_params + lora_B_params:,} (A: {lora_A_params:,} + B: {lora_B_params:,})\n"
+			f"  └─ {quantization_str}\n"
+		)
+
 class VeRALinear(torch.nn.Module):
 	"""
 		VeRA (Vector-based Random Matrix Adaptation) for CLIP
@@ -584,26 +624,26 @@ class VeRALinear(torch.nn.Module):
 		key = (rank, device)
 		
 		if verbose:
-			print(f"\n[VeRA] Initializing shared matrices for rank={rank}, max_dim={max_dim}, device={device}")
+			print(f"\n[INITIALIZATION] shared matrices for rank={rank}, max_dim={max_dim}, device={device}")
 		
 		if key not in cls._shared_matrices:
 			# First initialization for this rank/device
 			if verbose:
-				print(f"[VeRA] First initialization for this rank/device combination")
+				print(f"First initialization for this rank/device combination")
 			
 			torch.manual_seed(42)  # For reproducibility
 			# Conservative initialization that works well for all layer types
 			# scale = (2.0 / (rank + max_dim)) ** 0.5  # Slightly more conservative than Xavier
 			scale = rank ** -0.5
 			if verbose:
-				print(f"[VeRA] initialization scale: {scale:.6f}")
+				print(f"[INITIALIZATION] scale(rank**-0.5): {scale:.6f}")
 			
 			shared_A = torch.randn(rank, max_dim, device=device) * scale
 			shared_B = torch.randn(max_dim, rank, device=device) * scale
 			
 			if verbose:
-				print(f"[VeRA] shared_A {shared_A.shape} mean={shared_A.mean():.6f} std={shared_A.std():.6f}")
-				print(f"[VeRA] shared_B {shared_B.shape} mean={shared_B.mean():.6f} std={shared_B.std():.6f}")
+				print(f"shared_A {shared_A.shape} mean={shared_A.mean():.6f} std={shared_A.std():.6f}")
+				print(f"shared_B {shared_B.shape} mean={shared_B.mean():.6f} std={shared_B.std():.6f}")
 			
 			cls._shared_matrices[key] = (shared_A, shared_B, max_dim)
 		else:
@@ -611,12 +651,12 @@ class VeRALinear(torch.nn.Module):
 			shared_A, shared_B, current_max_dim = cls._shared_matrices[key]
 			
 			if verbose:
-				print(f"[VeRA] Found existing matrices with current_max_dim={current_max_dim}")
+				print(f"Found existing matrices with current_max_dim={current_max_dim}")
 			
 			if max_dim > current_max_dim:
 				# Expand matrices to accommodate larger dimensions
 				if verbose:
-					print(f"[VeRA] Expanding matrices from {current_max_dim} to {max_dim}")
+					print(f"Expanding matrices from {current_max_dim} to {max_dim}")
 				
 				torch.manual_seed(42)
 				scale = rank ** -0.5
@@ -629,14 +669,14 @@ class VeRALinear(torch.nn.Module):
 				new_shared_B[:current_max_dim, :] = shared_B
 				
 				if verbose:
-					print(f"[VeRA] Expanded shared_A to shape: {new_shared_A.shape}")
-					print(f"[VeRA] Expanded shared_B to shape: {new_shared_B.shape}")
-					print(f"[VeRA] Preserved values for first {current_max_dim} dimensions")
+					print(f"Expanded shared_A to shape: {new_shared_A.shape}")
+					print(f"Expanded shared_B to shape: {new_shared_B.shape}")
+					print(f"Preserved values for first {current_max_dim} dimensions")
 				
 				cls._shared_matrices[key] = (new_shared_A, new_shared_B, max_dim)
 			else:
 				if verbose:
-					print(f"[VeRA] Using existing matrices without expansion")
+					print(f"Using existing matrices without expansion")
 		
 		shared_A, shared_B, _ = cls._shared_matrices[key]
 		return shared_A, shared_B
@@ -647,7 +687,7 @@ class VeRALinear(torch.nn.Module):
 		out_features: int,
 		device: Union[str, torch.device], 
 		rank: int,
-		alpha: float,
+		alpha: float, # not used in VeRA, kept for compatibility
 		dropout: float,
 		bias: bool,
 		quantized: bool,
@@ -662,21 +702,21 @@ class VeRALinear(torch.nn.Module):
 		self.out_features = out_features
 		self.device = device
 		self.rank = rank
-		self.alpha = alpha # not used
+		self.dropout = torch.nn.Dropout(p=dropout)
 		self.quantized = quantized
 		self.quantization_bits = quantization_bits
 		self.compute_dtype = compute_dtype
 		self.verbose = verbose
 		
 		if self.verbose:
-			print(f"\n[VeRA] Initializing VeRALinear layer")
-			print(f"[VeRA] Layer config: in_features={in_features}, out_features={out_features}, rank={rank}")
-			print(f"[VeRA] Quantized: {quantized}, bits: {quantization_bits}")
+			print(f"\n[INITIALIZATION] {self.__class__.__name__}")
+			print(f"Layer config: in_features={in_features}, out_features={out_features}, rank={rank}")
 		
 		# Create base linear layer
 		if quantized:
 			if self.verbose:
-				print(f"[VeRA] Creating quantized linear layer ({quantization_bits}-bit)")
+				print(f"Quantized: {quantized}, bits: {quantization_bits}, dtype: {compute_dtype}")
+				print(f"Creating quantized linear layer ({quantization_bits}-bit)")
 			
 			if quantization_bits == 4:
 				self.linear = bnb.nn.Linear4bit(
@@ -699,7 +739,7 @@ class VeRALinear(torch.nn.Module):
 				raise ValueError(f"Unsupported quantization bits: {quantization_bits}. Use 4 or 8.")
 		else:
 			if self.verbose:
-				print(f"[VeRA] Creating standard linear layer")
+				print(f"Creating standard linear layer")
 			self.linear = torch.nn.Linear(in_features, out_features, bias=bias).to(self.device)
 		
 		# Store weight references
@@ -707,9 +747,9 @@ class VeRALinear(torch.nn.Module):
 		self.bias = self.linear.bias if bias else None
 		
 		if self.verbose:
-			print(f"[VeRA] Base linear weight {type(self.weight)} {self.weight.shape} mean={self.weight.mean():.6f}, std={self.weight.std():.6f}")
+			print(f"Base linear weight {type(self.weight)} {self.weight.shape} mean={self.weight.mean():.6f}, std={self.weight.std():.6f}")
 			if self.bias is not None:
-				print(f"[VeRA] Base linear bias {type(self.bias)} {self.bias.shape} mean={self.bias.mean():.6f}, std={self.bias.std():.6f}")
+				print(f"Base linear bias {type(self.bias)} {self.bias.shape} mean={self.bias.mean():.6f}, std={self.bias.std():.6f}")
 		
 		max_dim = max(self.in_features, self.out_features)
 						
@@ -727,11 +767,11 @@ class VeRALinear(torch.nn.Module):
 		vera_B_slice = shared_B_full[:self.out_features, :].clone()
 		
 		if self.verbose:
-			print(f"[VeRA] Slicing shared matrices for this layer:")
-			print(f"[VeRA] vera_A slice {vera_A_slice.shape} (from {shared_A_full.shape})")
-			print(f"[VeRA] vera_A slice mean={vera_A_slice.mean():.6f}, std={vera_A_slice.std():.6f}")
-			print(f"[VeRA] vera_B slice {vera_B_slice.shape} (from {shared_B_full.shape})")
-			print(f"[VeRA] vera_B slice mean={vera_B_slice.mean():.6f}, std={vera_B_slice.std():.6f}")
+			print(f"{self.__class__.__name__} Slicing shared matrices for this layer:")
+			print(f"vera_A slice {vera_A_slice.shape} (from {shared_A_full.shape})")
+			print(f"vera_A slice mean={vera_A_slice.mean():.6f}, std={vera_A_slice.std():.6f}")
+			print(f"vera_B slice {vera_B_slice.shape} (from {shared_B_full.shape})")
+			print(f"vera_B slice mean={vera_B_slice.mean():.6f}, std={vera_B_slice.std():.6f}")
 		
 		self.register_buffer('vera_A', vera_A_slice)
 		self.register_buffer('vera_B', vera_B_slice)
@@ -741,20 +781,20 @@ class VeRALinear(torch.nn.Module):
 		self.lambda_b = torch.nn.Parameter(torch.zeros(self.out_features)) # [out_features]
 		
 		if self.verbose:
-				print(f"[VeRA] Initialized scaling vectors:")
-				print(f"[VeRA] lambda_d shape: {self.lambda_d.shape}, init: ones")
-				print(f"[VeRA] lambda_b shape: {self.lambda_b.shape}, init: zeros")
-		
-		self.dropout = torch.nn.Dropout(p=dropout)
-		
+			print(f"\n[INITIALIZATION] scaling vectors (λ_d, λ_b):")
+			print(f"λ_d (from rank: {self.rank}): {self.lambda_d.shape}, init (ones?): {self.lambda_d.mean()} ") # check if ones
+			print(f"λ_b (from out_features: {self.out_features}): {self.lambda_b.shape}, init (zeros?): {self.lambda_b.mean()} ")
+				
 		# Freeze base weights
 		self.linear.weight.requires_grad = False
-		if bias and self.linear.bias is not None:
-				self.linear.bias.requires_grad = False
-		
 		if self.verbose:
-				print(f"[VeRA] Froze base weights (requires_grad=False)")
-				print(f"[VeRA] VeRALinear initialization complete")
+			print(f"\n[INITIALIZATION] Frozen base weights requires_grad: {self.linear.weight.requires_grad}")
+
+		# Freeze base bias if exists
+		if bias and self.linear.bias is not None:
+			self.linear.bias.requires_grad = False
+			if self.verbose:
+				print(f"\n[INITIALIZATION] Frozen base bias requires_grad: {self.linear.bias.requires_grad}")				
 	
 	def forward(self, x: torch.Tensor) -> torch.Tensor:
 			"""
@@ -816,11 +856,11 @@ class VeRALinear(torch.nn.Module):
 
 	def merge_weights(self) -> None:
 		if self.verbose:
-			print(f"\n[VeRA] Merging VeRA weights into base weights")
+			print(f"\nMerging VeRA weights into base weights")
 		
 		if self.quantized:
 			if self.verbose:
-				print(f"[VeRA] Skipping merge for quantized layer")
+				print(f"Skipping merge for quantized layer")
 			raise NotImplementedError(
 				"Weight merging for quantized VeRA layers is not recommended as it "
 				"would dequantize the base weights, losing the memory benefit. "
@@ -833,23 +873,23 @@ class VeRALinear(torch.nn.Module):
 			B_scaled = self.vera_B * self.lambda_d  # [out_features, rank]
 			
 			if self.verbose:
-				print(f"[VeRA] B_scaled shape: {B_scaled.shape}")
-				print(f"[VeRA] B_scaled stats: mean={B_scaled.mean():.6f}, std={B_scaled.std():.6f}")
+				print(f"B_scaled shape: {B_scaled.shape}")
+				print(f"B_scaled stats: mean={B_scaled.mean():.6f}, std={B_scaled.std():.6f}")
 			
 			# Then compute (B * Λ_d) * A
 			vera_delta = B_scaled @ self.vera_A  # [out_features, in_features]
 			
 			if self.verbose:
-				print(f"[VeRA] vera_delta shape: {vera_delta.shape}")
-				print(f"[VeRA] vera_delta stats: mean={vera_delta.mean():.6f}, std={vera_delta.std():.6f}")
+				print(f"vera_delta shape: {vera_delta.shape}")
+				print(f"vera_delta stats: mean={vera_delta.mean():.6f}, std={vera_delta.std():.6f}")
 			
 			# Finally scale by Λ_b
 			vera_delta = vera_delta * self.lambda_b.unsqueeze(1)  # [out_features, in_features]
 			
 			if self.verbose:
-				print(f"[VeRA] Final vera_delta after lambda_b scaling:")
-				print(f"[VeRA] Shape: {vera_delta.shape}")
-				print(f"[VeRA] Stats: mean={vera_delta.mean():.6f}, std={vera_delta.std():.6f}")
+				print(f"Final vera_delta after lambda_b scaling:")
+				print(f"Shape: {vera_delta.shape}")
+				print(f"Stats: mean={vera_delta.mean():.6f}, std={vera_delta.std():.6f}")
 			
 			# Add to base weights
 			original_weight_stats = {
@@ -866,14 +906,12 @@ class VeRALinear(torch.nn.Module):
 			
 			if self.verbose:
 				print(
-					f"[VeRA] Original weight stats: mean={original_weight_stats['mean']:.6f}, "
-					f"std={original_weight_stats['std']:.6f}"
+					f"Original weight stats: mean={original_weight_stats['mean']:.6f}, std={original_weight_stats['std']:.6f}"
 				)
 				print(
-					f"[VeRA] New weight stats: mean={new_weight_stats['mean']:.6f}, "
-					f"std={new_weight_stats['std']:.6f}"
+					f"New weight stats: mean={new_weight_stats['mean']:.6f}, std={new_weight_stats['std']:.6f}"
 				)
-				print(f"[VeRA] Weight change: mean={new_weight_stats['mean']-original_weight_stats['mean']:.6f}")
+				print(f"Weight change: mean={new_weight_stats['mean']-original_weight_stats['mean']:.6f}")
 			
 			# Zero out scaling vectors
 			original_lambda_d = self.lambda_d.clone()
@@ -883,17 +921,17 @@ class VeRALinear(torch.nn.Module):
 			self.lambda_b.data.zero_()
 			
 			if self.verbose:
-				print(f"[VeRA] Zeroed scaling vectors:")
-				print(f"[VeRA] lambda_d: {original_lambda_d.tolist()} -> {self.lambda_d.tolist()}")
-				print(f"[VeRA] lambda_b: {original_lambda_b.tolist()} -> {self.lambda_b.tolist()}")
-				print(f"[VeRA] Weight merge complete")
+				print(f"Zeroed scaling vectors:")
+				print(f"lambda_d: {original_lambda_d.tolist()} -> {self.lambda_d.tolist()}")
+				print(f"lambda_b: {original_lambda_b.tolist()} -> {self.lambda_b.tolist()}")
+				print(f"Weight merge complete")
 
 	def get_memory_footprint(self) -> dict:
 		"""Return memory usage statistics."""
 		base_params = self.in_features * self.out_features
 		
 		# VeRA trainable params: only d and b vectors
-		vera_trainable_params = self.rank + self.out_features  # d + b
+		vera_trainable_params = self.rank + self.out_features  # λ_d + λ_b
 		
 		# Shared frozen matrices (accounted separately, not per-layer)
 		vera_shared_params = (self.rank * self.in_features) + (self.out_features * self.rank)
@@ -908,11 +946,11 @@ class VeRALinear(torch.nn.Module):
 		vera_memory_mb = (vera_trainable_params * 4) / (1024 ** 2)
 		
 		if self.verbose:
-			print(f"\n[VeRA] Memory footprint calculation:")
-			print(f"[VeRA] Base params: {base_params:,} ({base_memory_mb:.4f} MB)")
-			print(f"[VeRA] VeRA trainable params: {vera_trainable_params:,} ({vera_memory_mb:.4f} MB)")
-			print(f"[VeRA] VeRA shared params: {vera_shared_params:,} (not counted per-layer)")
-			print(f"[VeRA] Total memory: {base_memory_mb + vera_memory_mb:.4f} MB")
+			print(f"\nMemory footprint calculation:")
+			print(f"Base params: {base_params:,} ({base_memory_mb:.4f} MB)")
+			print(f"=> trainable params (λ_d + λ_b): {vera_trainable_params} (λ_d: {self.rank:,} + λ_b: {self.out_features}) ({vera_memory_mb:.4f} MB)")
+			print(f"=> shared params: {vera_shared_params} (not counted per-layer)")
+			print(f"Total memory (base + trainable): {base_memory_mb + vera_memory_mb:.4f} MB")
 		
 		return {
 			'base_params': base_params,
@@ -924,6 +962,20 @@ class VeRALinear(torch.nn.Module):
 			'quantized': self.quantized,
 			'bits': self.quantization_bits if self.quantized else 32
 		}
+
+	def __repr__(self) -> str:
+		quantization_str = (
+			f"quantized={self.quantized}, bits={self.quantization_bits}, dtype={self.compute_dtype}"
+			if self.quantized
+			else "full precision (fp32)"
+		)
+		return (
+			f"{self.__class__.__name__}\n"
+			f"  ├─ in_features={self.in_features}, out_features={self.out_features}\n"
+			f"  ├─ rank={self.rank}, dropout={self.dropout.p}\n"
+			f"  ├─ trainable_params={self.rank + self.out_features} (λ_d: {self.rank} + λ_b: {self.out_features})\n"
+			f"  └─ {quantization_str}\n"
+		)
 
 class TipAdapterLinear(torch.nn.Module):
 	"""
@@ -1637,6 +1689,7 @@ def get_adapter_peft_clip(
 			adapter_memory_info['visual'] = visual_adapter.get_memory_footprint()
 			
 			if verbose:
+				print(f"\tCompression ratio (d/r): {max(self.in_features, self.out_features) / self.rank:.2f}x")
 				print(f"    └─ Visual Adapter Memory: {adapter_memory_info['visual']['memory_mb']:.4f} MB")
 		
 		# Text Adapter
@@ -1939,11 +1992,11 @@ def get_injected_peft_clip(
 	verbose: bool=False,
 ):
 	"""
-	Apply LoRA, LoRA+, DoRA, VeRA or (IA)³ to a CLIP model.
+	Apply LoRA, rsLoRA, LoRA+, DoRA, VeRA or (IA)³ to a CLIP model.
 	
 	Args:
 		clip_model: Pre-trained CLIP model
-		method: Adaptation method - "lora", "lora_plus", "dora", or "vera"
+		method: Adaptation method - "lora", "rslora", "lora_plus", "dora", or "vera"
 		rank: Rank of adaptation matrices
 		alpha: Scaling factor for updates (not used for VeRA)
 		dropout: Dropout rate for adaptation layers
@@ -1960,10 +2013,11 @@ def get_injected_peft_clip(
 	"""
 	
 	# Validate method
-	if method not in ["lora", "lora_plus", "dora", "vera", "ia3"]:
-		raise ValueError(f"method must be 'lora', 'lora_plus', 'dora', 'vera', or 'ia3', got '{method}'")
+	if method not in ["lora", "rslora", "lora_plus", "dora", "vera", "ia3"]:
+		raise ValueError(f"method must be 'lora', 'rslora', 'lora_plus', 'dora', 'vera', or 'ia3', got '{method}'")
 	
 	# Select adapter class
+	_use_rslora = method == "rslora"
 	if method == "dora":
 		AdapterClass = DoRALinear
 		method_name = "DoRA"
@@ -1976,6 +2030,8 @@ def get_injected_peft_clip(
 	else:
 		AdapterClass = LoRALinear
 		method_name = "LoRA"
+		if method == "rslora":
+			method_name = "rsLoRA"
 		if lora_plus_lambda:
 			method_name = "LoRA+"
 	
@@ -1990,9 +2046,6 @@ def get_injected_peft_clip(
 		print(f"    ├─ Dropout: {dropout}")
 		if lora_plus_lambda:
 			print(f"    ├─ {method_name} Learning Rate Multiplier (λ): {lora_plus_lambda}")
-			print(f"    └─ Scaling Factor (α/r): {alpha/rank}")
-		else:
-			print(f"    └─ Scaling Factor (α/r): {alpha/rank if method != 'vera' else 'N/A (VeRA uses trainable vectors)'}")
 
 	# Check CUDA capability for quantization
 	capability = torch.cuda.get_device_capability()
@@ -2125,9 +2178,17 @@ def get_injected_peft_clip(
 			'quantization_bits': quantization_bits,
 			'compute_dtype': compute_dtype,
 		}
-				
-		adapter_layer = AdapterClass(**kwargs)
+		if AdapterClass == LoRALinear:
+			kwargs['rslora'] = _use_rslora
 		
+		if verbose:
+			print(f"kwargs: {kwargs}")
+
+		adapter_layer = AdapterClass(**kwargs)
+		print(f"#"*150)
+		print(f"{adapter_layer}")
+		print(f"#"*150)
+
 		# Copy original weights
 		if not quantized:
 			# For non-quantized, direct copy
@@ -2156,12 +2217,12 @@ def get_injected_peft_clip(
 			memory_stats[encoder_key]['magnitude_mb'] += mem_info['magnitude_memory_mb']
 		elif method == "ia3":
 			memory_stats[encoder_key]['adapter_mb'] += mem_info['ia3_memory_mb']
-		else:  # lora or lora_plus
+		else:  # lora, rslora, lora_plus
 			memory_stats[encoder_key]['adapter_mb'] += mem_info['lora_memory_mb']
 		
 		if verbose:
 			statement = (
-				f"Replaced {name_prefix}: {child_name:<100s}"
+				f"Replaced {name_prefix}: {child_name} {type(module)} => {type(adapter_layer)} "
 				f"[Memory] base: {mem_info['base_memory_mb']:.2f} MB @ {mem_info['bits']}bit, "
 			)
 			if method == "vera":
@@ -2196,7 +2257,12 @@ def get_injected_peft_clip(
 				'quantization_bits': quantization_bits,
 				'compute_dtype': compute_dtype,
 			}
-						
+			if AdapterClass == LoRALinear:
+				kwargs['rslora'] = _use_rslora
+			
+			if verbose:
+				print(f"kwargs: {kwargs}")
+
 			adapter_layer = AdapterClass(**kwargs)
 			
 			with torch.no_grad():
@@ -2260,7 +2326,12 @@ def get_injected_peft_clip(
 				'quantization_bits': quantization_bits,
 				'compute_dtype': compute_dtype,
 			}
-						
+			if AdapterClass == LoRALinear:
+				kwargs['rslora'] = _use_rslora
+
+			if verbose:
+				print(f"kwargs: {kwargs}")
+
 			adapter_layer = AdapterClass(**kwargs)
 			
 			with torch.no_grad():
@@ -2329,7 +2400,12 @@ def get_injected_peft_clip(
 			'quantization_bits': quantization_bits,
 			'compute_dtype': compute_dtype,
 		}
+		if AdapterClass == LoRALinear:
+			kwargs['rslora'] = _use_rslora
 				
+		if verbose:
+			print(f"kwargs: {kwargs}")
+
 		adapter_text_proj = AdapterClass(**kwargs)
 		
 		with torch.no_grad():
@@ -2402,7 +2478,12 @@ def get_injected_peft_clip(
 			'quantization_bits': quantization_bits,
 			'compute_dtype': compute_dtype,
 		}
-				
+		if AdapterClass == LoRALinear:
+			kwargs['rslora'] = _use_rslora
+
+		if verbose:
+			print(f"kwargs: {kwargs}")
+
 		adapter_visual_proj = AdapterClass(**kwargs)
 		
 		with torch.no_grad():
@@ -2568,7 +2649,7 @@ def get_injected_peft_clip(
 			param.requires_grad = "lora_A" in name or "lora_B" in name or "magnitude" in name
 		elif method == "ia3":
 			param.requires_grad = "ia3_scale" in name
-		else:  # lora or lora_plus
+		else:  # lora, rslora, lora_plus
 			param.requires_grad = "lora_A" in name or "lora_B" in name
 	
 	return model

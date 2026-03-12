@@ -2249,33 +2249,539 @@ def lora_plus_finetune_multi_label(
 
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
+def rslora_finetune_multi_label(
+	model: torch.nn.Module,
+	train_loader: DataLoader,
+	validation_loader: DataLoader,
+	num_epochs: int,
+	print_every: int,
+	learning_rate: float,
+	weight_decay: float,
+	device: str,
+	results_dir: str,
+	lora_rank: int,
+	lora_alpha: float,
+	lora_dropout: float,
+	patience: int,
+	min_delta: float,
+	cumulative_delta: float,
+	minimum_epochs: int,
+	volatility_threshold: float,
+	slope_threshold: float,
+	pairwise_imp_threshold: float,
+	topk_values: List[int] = [1, 5, 10, 15, 20],
+	loss_weights: Dict[str, float] = None,
+	temperature: float = 0.07,
+	quantization_bits: int = 8,
+	quantized: bool = False,
+	verbose: bool = True,
+):
+	"""
+	rsLoRA multi-label fine-tuning for CLIP.
+
+	Identical to lora_finetune_multi_label() in every respect except that
+	LoRA's standard scaling  α/r  is replaced by the rank-stabilised variant
+		α / √r   (rsLoRA, Kalajdzievski 2023)
+
+	This keeps gradient norms bounded as rank grows, which is particularly
+	useful when sweeping lora_rank or when training at higher ranks (r ≥ 16)
+	where standard LoRA can exhibit loss spikes or slower convergence.
+
+	All parameters are identical to lora_finetune_multi_label(); the only
+	internal difference is passing method="rslora" to get_injected_peft_clip(),
+	which sets self.scale = alpha / (rank ** 0.5) inside LoRALinear.
+	"""
+	window_size = minimum_epochs + 1
+	if loss_weights is None:
+		loss_weights = {"i2t": 0.5, "t2i": 0.5}
+
+	# ── Dropout check ────────────────────────────────────────────────────────
+	non_zero_dropouts = [
+		(name, module.p)
+		for name, module in model.named_modules()
+		if isinstance(module, torch.nn.Dropout) and module.p > 0
+	]
+	if non_zero_dropouts:
+		dropout_info = ", ".join([f"{n}: p={p}" for n, p in non_zero_dropouts])
+		assert False, (
+			f"Non-zero dropout in base model during rsLoRA: {dropout_info}\n"
+			"Set dropout=0.0 in clip.load() before rsLoRA injection."
+		)
+
+	mode = re.sub(r'_finetune_multi_label', '', inspect.stack()[0].function)  # → "rslora"
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_name = model.__class__.__name__
+
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except AttributeError:
+		dataset_name = validation_loader.dataset.dataset_name
+
+	try:
+		class_names = validation_loader.dataset.unique_labels
+	except AttributeError:
+		class_names = validation_loader.dataset.dataset.classes
+	num_classes = len(class_names)
+
+	if verbose:
+		print(f"\n{mode.upper()}")
+		print(f"   ├─ Model      : {model_name} {model_arch}")
+		print(f"   ├─ Rank       : {lora_rank}")
+		print(f"   ├─ Alpha      : {lora_alpha}")
+		print(f"   ├─ Scaling    : α/√r = {lora_alpha / (lora_rank ** 0.5):.6f}  "
+					f"(vs standard α/r = {lora_alpha / lora_rank:.6f})")
+		print(f"   ├─ Dropout    : {lora_dropout}")
+		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
+		print(f"   ├─ Batch size : {train_loader.batch_size}")
+		print(f"   ├─ Device     : {type(device)} {device}")
+		print(f"   ├─ Temperature: {temperature}")
+		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
+
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024 ** 3)
+		cuda_capability = torch.cuda.get_device_capability()
+		print(f"   └─ {gpu_name} | {total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
+
+	# ── rsLoRA injection — vision encoder only ───────────────────────────────
+	# Text encoder stays frozen and un-injected.
+	# all_class_embeds pre-computed from frozen text encoder remains valid.
+	model = get_injected_peft_clip(
+		clip_model=model,
+		method=mode,                          # "rslora" → LoRALinear(rslora=True)
+		rank=lora_rank,
+		alpha=lora_alpha,
+		dropout=lora_dropout,
+		target_text_modules=[],               # no rsLoRA in text encoder
+		target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
+		quantization_bits=quantization_bits,
+		quantized=quantized,
+		verbose=verbose,
+	)
+	model.to(device)
+	get_parameters_info(model=model, mode=mode)
+
+	masks = compute_loss_masks(
+		train_loader=train_loader,
+		num_classes=num_classes,
+		device=device,
+		verbose=verbose,
+	)
+	pos_weight  = masks["pos_weight"]
+	active_mask = masks["active_mask"]
+	head_mask   = masks["head_mask"]
+	rare_mask   = masks["rare_mask"]
+	N           = masks["N"]
+	train_freq  = masks["train_freq"]
+
+	# ── Criteria ─────────────────────────────────────────────────────────────
+	criterion_i2t = torch.nn.BCEWithLogitsLoss(
+		pos_weight=pos_weight,
+		reduction='none',
+	)
+	if verbose:
+		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} "
+					f"{pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ number of samples: {N}")
+		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} "
+					f"{active_mask.device} True count: {active_mask.sum().item():,}")
+		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} "
+					f"{train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
+
+	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none')
+	if verbose:
+		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
+		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
+
+	# ── Pre-encode class texts (frozen text encoder) ──────────────────────────
+	model.eval()
+	all_class_embeds = []
+	text_batch_size = validation_loader.batch_size
+	print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	with torch.no_grad():
+		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			for i in range(0, num_classes, text_batch_size):
+				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
+				embeds = model.encode_text(batch_tokens)
+				embeds = torch.nn.functional.normalize(embeds, dim=-1)
+				all_class_embeds.append(embeds.cpu())
+				del batch_tokens, embeds
+
+	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
+
+	if verbose:
+		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
+		print(f"   ├─ {type(all_class_embeds)}")
+		print(f"   ├─ {all_class_embeds.shape}")
+		print(f"   ├─ {all_class_embeds.dtype}")
+		print(f"   └─ {all_class_embeds.device}")
+
+	# ── Early stopping ────────────────────────────────────────────────────────
+	early_stopping = EarlyStopping(
+		patience=patience,
+		min_delta=min_delta,
+		cumulative_delta=cumulative_delta,
+		window_size=window_size,
+		mode='min',
+		min_epochs=minimum_epochs,
+		restore_best_weights=True,
+		volatility_threshold=volatility_threshold,
+		slope_threshold=slope_threshold,
+		pairwise_imp_threshold=pairwise_imp_threshold,
+	)
+
+	# ── Optimizer — rsLoRA parameters only ───────────────────────────────────
+	lora_params = [p for p in model.parameters() if p.requires_grad]
+	optimizer = torch.optim.AdamW(
+		params=lora_params,
+		lr=learning_rate,
+		betas=(0.9, 0.98),
+		eps=1e-6,
+		weight_decay=weight_decay,
+	)
+
+	# ── Scheduler ─────────────────────────────────────────────────────────────
+	total_training_steps = num_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2
+	eta_min = learning_rate * ANNEALING_RATIO
+	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+		optimizer=optimizer,
+		T_max=total_training_steps,
+		eta_min=eta_min,
+		last_epoch=-1,
+	)
+	if verbose:
+		print(f"\n{scheduler.__class__.__name__}")
+		print(f"  ├─ T_max = {total_training_steps} steps "
+					f"[({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
+
+	scaler = torch.amp.GradScaler(
+		device=device,
+		init_scale=2**11,
+		growth_factor=1.5,
+		backoff_factor=0.5,
+		growth_interval=5000,
+	)
+	if verbose:
+		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+
+	# ── Checkpoint path ───────────────────────────────────────────────────────
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{mode}_{model_arch}_"
+		f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
+		f"lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}_"
+		f"temp_{temperature}_bs_{train_loader.batch_size}_"
+		f"mep_{minimum_epochs}_pat_{patience}_"
+		f"mdt_{min_delta:.1e}_cdt_{cumulative_delta:.1e}_"
+		f"vt_{volatility_threshold}_st_{slope_threshold:.1e}_"
+		f"pit_{pairwise_imp_threshold:.1e}.pth"
+	)
+
+	# ── Training state ────────────────────────────────────────────────────────
+	training_losses = []
+	validation_losses = []
+	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
+	img2txt_metrics_all_epochs = []
+	txt2img_metrics_all_epochs = []
+	full_val_loss_acc_metrics_all_epochs = []
+	learning_rates_history = []
+	weight_decays_history = []
+	train_start_time = time.time()
+
+	# ── Training loop ─────────────────────────────────────────────────────────
+	for epoch in range(num_epochs):
+		train_and_val_st_time = time.time()
+		torch.cuda.empty_cache()
+		model.train()
+		print(f"Epoch [{epoch+1}/{num_epochs}]")
+		epoch_loss_total = epoch_loss_i2t = epoch_loss_t2i = 0.0
+		num_batches = 0
+
+		for bidx, batch_data in enumerate(train_loader):
+			if len(batch_data) != 3:
+				raise ValueError(f"Expected 3 items from DataLoader, got {len(batch_data)}")
+			images, _, label_vectors = batch_data
+			batch_size = images.size(0)
+			images = images.to(device, non_blocking=True)
+			label_vectors = label_vectors.to(device, non_blocking=True).float()
+			if label_vectors.shape != (batch_size, num_classes):
+				raise ValueError(
+					f"Label vectors shape {label_vectors.shape} != expected ({batch_size}, {num_classes})"
+				)
+			optimizer.zero_grad(set_to_none=True)
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
+					model=model,
+					images=images,
+					all_class_embeds=all_class_embeds,
+					label_vectors=label_vectors,
+					criterion_i2t=criterion_i2t,
+					criterion_t2i=criterion_t2i,
+					active_mask=active_mask,
+					temperature=temperature,
+					loss_weights=loss_weights,
+					verbose=verbose,
+				)
+			if torch.isnan(total_loss):
+				print(f"Warning: NaN loss at epoch {epoch+1}, batch {bidx+1}. Skipping.")
+				continue
+			scaler.scale(total_loss).backward()
+			scaler.unscale_(optimizer)
+			torch.nn.utils.clip_grad_norm_(
+				[p for p in model.parameters() if p.requires_grad], max_norm=1.0
+			)
+			scaler.step(optimizer)
+			scaler.update()
+			scheduler.step()
+			epoch_loss_total += total_loss.item()
+			epoch_loss_i2t   += loss_i2t.item()
+			epoch_loss_t2i   += loss_t2i.item()
+			num_batches += 1
+			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+				print(
+					f"\t\tBatch [{bidx+1:04d}/{len(train_loader)}] "
+					f"Total: {total_loss.item():.6f} "
+					f"(I2T: {loss_i2t.item():.6f}, T2I: {loss_t2i.item():.6f})"
+				)
+
+		avg_total = epoch_loss_total / num_batches if num_batches > 0 else 0.0
+		avg_i2t   = epoch_loss_i2t   / num_batches if num_batches > 0 else 0.0
+		avg_t2i   = epoch_loss_t2i   / num_batches if num_batches > 0 else 0.0
+		training_losses.append(avg_total)
+		training_losses_breakdown["total"].append(avg_total)
+		training_losses_breakdown["i2t"].append(avg_i2t)
+		training_losses_breakdown["t2i"].append(avg_t2i)
+		learning_rates_history.append([optimizer.param_groups[0]['lr']])
+		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
+
+		# ── Validation ────────────────────────────────────────────────────────
+		print(
+			f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. "
+			f"Validating Epoch {epoch+1} ..."
+		)
+
+		current_val_loss = compute_multilabel_validation_loss(
+			model=model,
+			validation_loader=validation_loader,
+			criterion_i2t=criterion_i2t,
+			criterion_t2i=criterion_t2i,
+			active_mask=active_mask,
+			device=device,
+			all_class_embeds=all_class_embeds,
+			temperature=temperature,
+			verbose=verbose,
+		)
+		validation_losses.append(current_val_loss)
+
+		validation_results = get_validation_metrics(
+			model=model,
+			validation_loader=validation_loader,
+			device=device,
+			topK_values=topk_values,
+			finetune_strategy=mode,
+			cache_dir=results_dir,
+			verbose=verbose,
+			lora_params={
+				"lora_rank": lora_rank,
+				"lora_alpha": lora_alpha,
+				"lora_dropout": lora_dropout,
+			},
+			is_training=True,
+			model_hash=get_model_hash(model),
+			temperature=temperature,
+		)
+
+		full_val_metrics = validation_results["full_metrics"]
+		img2txt_metrics  = validation_results["img2txt_metrics"]
+		txt2img_metrics  = validation_results["txt2img_metrics"]
+		full_val_loss_acc_metrics_all_epochs.append(full_val_metrics)
+		img2txt_metrics_all_epochs.append(img2txt_metrics)
+		txt2img_metrics_all_epochs.append(txt2img_metrics)
+
+		i2t_map10 = img2txt_metrics.get("mAP", {}).get("10", float("nan"))
+		t2i_map10 = txt2img_metrics.get("mAP", {}).get("10", float("nan"))
+		i2t_r10   = img2txt_metrics.get("Recall", {}).get("10", float("nan"))
+		t2i_r10   = txt2img_metrics.get("Recall", {}).get("10", float("nan"))
+		cos_sim   = full_val_metrics.get("cosine_similarity", float("nan"))
+		print(
+			f"\nEpoch {epoch+1}:\n"
+			f"  Loss  — Train: {avg_total:.4f} (I2T: {avg_i2t:.4f}, T2I: {avg_t2i:.4f})  Val: {current_val_loss:.4f}\n"
+			f"  I2T   — mAP@10: {i2t_map10:.4f}  R@10: {i2t_r10:.4f}\n"
+			f"  T2I   — mAP@10: {t2i_map10:.4f}  R@10: {t2i_r10:.4f}\n"
+			f"  Embed — CosSim: {cos_sim:.4f}\n"
+			f"  LR    — {scheduler.get_last_lr()[0]:.2e}"
+		)
+
+		if early_stopping.should_stop(
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
+		):
+			print(
+				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
+				f"@ epoch {early_stopping.get_best_epoch()+1}"
+			)
+			break
+
+		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			stats = train_loader.dataset.get_cache_stats()
+			if stats:
+				print(f"Train cache: {stats}")
+		if hasattr(validation_loader.dataset, 'get_cache_stats'):
+			stats = validation_loader.dataset.get_cache_stats()
+			if stats:
+				print(f"Val cache:   {stats}")
+
+		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time()-train_and_val_st_time:.1f}s")
+
+	print(f"[{mode}] Total elapsed: {time.time()-train_start_time:.1f}s")
+
+	# ── Final evaluation ──────────────────────────────────────────────────────
+	evaluation_results = evaluate_best_model(
+		model=model,
+		validation_loader=validation_loader,
+		active_mask=active_mask,
+		head_mask=head_mask,
+		rare_mask=rare_mask,
+		early_stopping=early_stopping,
+		checkpoint_path=mdl_fpth,
+		finetune_strategy=mode,
+		device=device,
+		cache_dir=results_dir,
+		lora_params={
+			"lora_rank": lora_rank,
+			"lora_alpha": lora_alpha,
+			"lora_dropout": lora_dropout,
+		},
+		topk_values=topk_values,
+		verbose=verbose,
+	)
+
+	if verbose:
+		print(f"\nFull evaluation results:")
+		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
+
+	final_metrics_full    = evaluation_results["full_metrics"]
+	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
+	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
+	final_tiered_i2t      = evaluation_results["tiered_i2t"]
+	final_tiered_t2i      = evaluation_results["tiered_t2i"]
+	model_source          = evaluation_results["model_loaded_from"]
+
+	actual_trained_epochs = len(training_losses)
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth,
+		actual_epochs=actual_trained_epochs
+	)
+
+	if verbose:
+		print(f"{'='*50}")
+		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"  Model: {model_arch}")
+		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
+		print(f"  Epochs trained: {actual_trained_epochs}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best model: {mdl_fpth}")
+		print("\n>> Tiered I2T Retrieval")
+		for tier, m in final_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n>> Tiered T2I Retrieval")
+		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print(f"{'='*50}")
+
+	append_retrieval_results(
+		tiered_i2t=final_tiered_i2t,
+		tiered_t2i=final_tiered_t2i,
+		strategy_name=mode,
+		results_dir=results_dir,
+		dataset_name=dataset_name,
+		verbose=verbose,
+	)
+
+	# ── Plots ─────────────────────────────────────────────────────────────────
+	file_base_name = (
+		f"{mode}_"
+		f"{model_arch}_ep_{actual_trained_epochs}_"
+		f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_temp_{temperature}_"
+		f"bs_{train_loader.batch_size}_lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}"
+	)
+
+	plot_paths = {
+		"losses_breakdown":    os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
+		"losses":              os.path.join(results_dir, f"{file_base_name}_losses.png"),
+		"full_val_topk_i2t":   os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i":   os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_per_epoch.png"),
+		"retrieval_best":      os.path.join(results_dir, f"{file_base_name}_retrieval_best.png"),
+		"hp_evol":             os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
+	}
+
+	viz.plot_multilabel_loss_breakdown(
+		training_losses_breakdown=training_losses_breakdown,
+		filepath=plot_paths["losses_breakdown"],
+	)
+	viz.plot_retrieval_metrics_per_epoch(
+		dataset_name=dataset_name,
+		image_to_text_metrics_list=img2txt_metrics_all_epochs,
+		text_to_image_metrics_list=txt2img_metrics_all_epochs,
+		fname=plot_paths["retrieval_per_epoch"],
+	)
+	viz.plot_retrieval_metrics_best_model(
+		dataset_name=dataset_name,
+		image_to_text_metrics=final_img2txt_metrics,
+		text_to_image_metrics=final_txt2img_metrics,
+		fname=plot_paths["retrieval_best"],
+	)
+	viz.plot_hyperparameter_evolution(
+		eta_min=eta_min,
+		learning_rates=learning_rates_history,
+		weight_decays=weight_decays_history,
+		fname=plot_paths["hp_evol"],
+	)
+	viz.plot_train_val_losses(
+		train_losses=training_losses,
+		val_losses=validation_losses,
+		fname=plot_paths["losses"],
+	)
+
+	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+
 def dora_finetune_multi_label(
-		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
-		num_epochs: int,
-		print_every: int,
-		learning_rate: float,
-		weight_decay: float,
-		device: str,
-		results_dir: str,
-		lora_rank: int,
-		lora_alpha: float,
-		lora_dropout: float,
-		patience: int,
-		min_delta: float,
-		cumulative_delta: float,
-		minimum_epochs: int,
-		volatility_threshold: float,
-		slope_threshold: float,
-		pairwise_imp_threshold: float,
-		topk_values: List[int] = [1, 3, 5, 10, 15, 20],
-		quantization_bits: int = 8,
-		quantized: bool = False,
-		temperature: float = 0.07,
-		loss_weights: Dict[str, float] = None,
-		verbose: bool = True,
-	):
+	model: torch.nn.Module,
+	train_loader: DataLoader,
+	validation_loader: DataLoader,
+	num_epochs: int,
+	print_every: int,
+	learning_rate: float,
+	weight_decay: float,
+	device: str,
+	results_dir: str,
+	lora_rank: int,
+	lora_alpha: float,
+	lora_dropout: float,
+	patience: int,
+	min_delta: float,
+	cumulative_delta: float,
+	minimum_epochs: int,
+	volatility_threshold: float,
+	slope_threshold: float,
+	pairwise_imp_threshold: float,
+	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
+	quantization_bits: int = 8,
+	quantized: bool = False,
+	temperature: float = 0.07,
+	loss_weights: Dict[str, float] = None,
+	verbose: bool = True,
+):
 	"""
 	DoRA (Weight-Decomposed Low-Rank Adaptation) fine-tuning for multi-label datasets.
 	
@@ -3988,16 +4494,16 @@ def clip_adapter_finetune_multi_label(
 	Fine-tunes a CLIP model using CLIP-Adapter for multi-label datasets.
 
 	Three variants controlled by clip_adapter_method:
-	  - "clip_adapter_v"  : adapter on vision encoder only  → text encoder fully frozen
-	                        → all_class_embeds pre-encoded once, reused every epoch
-	  - "clip_adapter_t"  : adapter on text encoder only    → vision encoder fully frozen
-	                        → all_class_embeds re-encoded every epoch (adapter changes)
-	  - "clip_adapter_vt" : adapters on both encoders       → same as clip_adapter_t
-	                        → all_class_embeds re-encoded every epoch
+		- "clip_adapter_v"  : adapter on vision encoder only  → text encoder fully frozen
+													→ all_class_embeds pre-encoded once, reused every epoch
+		- "clip_adapter_t"  : adapter on text encoder only    → vision encoder fully frozen
+													→ all_class_embeds re-encoded every epoch (adapter changes)
+		- "clip_adapter_vt" : adapters on both encoders       → same as clip_adapter_t
+													→ all_class_embeds re-encoded every epoch
 
 	Loss:
-	  - criterion_i2t: BCEWithLogitsLoss with pos_weight  [B, C] → active_mask applied
-	  - criterion_t2i: BCEWithLogitsLoss plain             [C, B] → active_mask applied
+		- criterion_i2t: BCEWithLogitsLoss with pos_weight  [B, C] → active_mask applied
+		- criterion_t2i: BCEWithLogitsLoss plain             [C, B] → active_mask applied
 	"""
 
 	# ── Validate method ───────────────────────────────────────────────────────
