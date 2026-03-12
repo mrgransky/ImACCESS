@@ -1899,16 +1899,18 @@ def lora_plus_finetune_multi_label(
 		print(f"  ├─ T_max = {T_max} steps")
 		print(f"  └─ eta_min = {eta_min} (according to paper)")
 
-	scaler = torch.amp.GradScaler(
-		device=device,
-		init_scale=2**11,      # 2048 — much more conservative start
-		growth_factor=1.5,     # slower scale growth
-		backoff_factor=0.5,    # standard
-		growth_interval=5000,  # longer interval before attempting growth
-	)
+	# scaler = torch.amp.GradScaler(
+	# 	device=device,
+	# 	init_scale=2**11,      # 2048 — much more conservative start
+	# 	growth_factor=1.5,     # slower scale growth
+	# 	backoff_factor=0.5,    # standard
+	# 	growth_interval=5000,  # longer interval before attempting growth
+	# )
 
-	if verbose:
-		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+	# if verbose:
+	# 	print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+
+	scaler = None  # AMP disabled for LoRA+ — differential lr unstable with GradScaler
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -1963,7 +1965,8 @@ def lora_plus_finetune_multi_label(
 						
 			optimizer.zero_grad(set_to_none=True)
 			
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			# with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			with torch.amp.autocast(device_type=device.type, enabled=False):
 				# Multi-label contrastive loss computation
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
 					model=model,
@@ -1979,16 +1982,21 @@ def lora_plus_finetune_multi_label(
 				)
 			
 			# Check for NaN loss
-			if torch.isnan(total_loss):
-				print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
-				continue
+			if torch.isnan(total_loss) or torch.isinf(total_loss):
+				print(f"Warning: NaN/Inf loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
+				print(f"total_loss: {total_loss} loss_i2t: {loss_i2t} loss_t2i: {loss_t2i}")
+				print(f"total_loss.isnan(): {torch.isnan(total_loss)} total_loss.isinf(): {torch.isinf(total_loss)}")
+				# no zero_grad needed here — already done above
+				continue # skip this batch
 			
-			scaler.scale(total_loss).backward()
-			scaler.unscale_(optimizer)
+			# scaler.scale(total_loss).backward()
+			# scaler.unscale_(optimizer)
+			total_loss.backward()
 			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
-			scaler.step(optimizer)
-			scaler.update()
-			scheduler.step()
+			# scaler.step(optimizer)
+			# scaler.update()
+			# scheduler.step()
+			optimizer.step()
 			
 			# Track losses
 			batch_loss_total = total_loss.item()
