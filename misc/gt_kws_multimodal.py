@@ -16,8 +16,9 @@ from clustering import cluster
 
 # VLM models:
 # llava-hf/llava-v1.6-vicuna-13b-hf
-# Qwen/Qwen2.5-VL-3B-Instruct
-# Qwen/Qwen2.5-VL-7B-Instruct # only fits Puhti and Mahti
+# Qwen/Qwen3-VL-2B-Instruct
+# Qwen/Qwen3-VL-4B-Instruct
+# Qwen/Qwen3-VL-8B-Instruct # only fits Puhti and Mahti
 
 # how to run [local] interactive:
 # $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -vlm_bs 4 -llm_bs 2 -llm_q -vlm_mgt 32 -nw 12 -v

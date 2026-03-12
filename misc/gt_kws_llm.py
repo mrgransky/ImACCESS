@@ -371,83 +371,50 @@ def _load_llm_(
 		print()
 	
 	def get_estimated_gb_size(model_id: str, assume_dtype_bytes: float = 2.0) -> float:
-			"""
-			Returns a conservative estimate of **in-memory weight footprint** in GiB.
-			Uses parameter count from hub metadata when possible.
-			"""
-			info = huggingface_hub.model_info(model_id, token=hf_tk)
-			
-			param_count = None
-			
-			# Preferred: use parameter count from safetensors metadata
-			if hasattr(info, "safetensors") and info.safetensors:
-					if isinstance(info.safetensors, dict):
-							param_count = info.safetensors.get("total")
-					elif hasattr(info.safetensors, "total"):
-							param_count = info.safetensors.total
-			
-			# Fallback: parse from model card or config if available
-			if not param_count and hasattr(info, "config"):
-					if "num_parameters" in info.config:
-							param_count = info.config["num_parameters"]
-			
-			if param_count:
-					# Conservative: add ~10–15% overhead for alignment/shared tensors
-					bytes_est = param_count * assume_dtype_bytes * 1.12
-					return bytes_est / (1024 ** 3)
-			
-			# Ultimate fallback: sum safetensors file sizes (least accurate)
-			if info.siblings:
-					total_bytes = sum(
-							s.size for s in info.siblings
-							if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin"))
-					)
-					if total_bytes > 0:
-							# Apply larger multiplier because file size usually underestimates
-							return (total_bytes * 1.9) / (1024 ** 3)
-			
-			raise ValueError(f"Could not estimate size for {model_id}")
-
-	# def get_estimated_gb_size(m_id: str) -> float:
-	# 	info = huggingface_hub.model_info(m_id, token=hf_tk, files_metadata=True)
-	# 	print(type(info))
-	# 	print(info)
+		"""
+		Returns a conservative estimate of **in-memory weight footprint** in GiB.
+		Uses parameter count from hub metadata when possible.
+		"""
+		info = huggingface_hub.model_info(model_id, token=hf_tk)
 		
-	# 	# Method 1: Direct safetensors metadata (only works for single-file or repos with specific metadata)
-	# 	if hasattr(info, "safetensors") and info.safetensors:
-	# 		try:
-	# 			# Handle if it's a dict (newer huggingface_hub) or object
-	# 			if isinstance(info.safetensors, dict):
-	# 				param_count = info.safetensors.get("total")
-	# 			else:
-	# 				param_count = getattr(info.safetensors, "total", None)
-	# 			print(f"param_count: {param_count}")
-	# 			if param_count:
-	# 				# Assume bf16/fp16 → 2 bytes per parameter
-	# 				return param_count * 2 / (1024 ** 3)
-	# 		except Exception as e:
-	# 			print(f"<!> Failed to estimate model size from safetensors metadata: {e}")
+		param_count = None
 		
-	# 	# Method 2: Sum individual weight file sizes (Robust fallback)
-	# 	# This works for sharded models (e.g., model-00001-of-00003.safetensors)
-	# 	if info.siblings:
-	# 		total_bytes = sum(
-	# 			s.size for s in info.siblings
-	# 			if s.size is not None and (
-	# 				s.rfilename.endswith(".safetensors") or
-	# 				s.rfilename.endswith(".bin")
-	# 			)
-	# 		)
-	# 		if total_bytes > 0:
-	# 			return total_bytes / (1024 ** 3)
+		# Preferred: use parameter count from safetensors metadata
+		if hasattr(info, "safetensors") and info.safetensors:
+			if isinstance(info.safetensors, dict):
+				param_count = info.safetensors.get("total")
+			elif hasattr(info.safetensors, "total"):
+				param_count = info.safetensors.total
 		
-	# 	raise ValueError(f"Could not estimate size for {m_id}. No weights found.")
+		# Fallback: parse from model card or config if available
+		if not param_count and hasattr(info, "config"):
+			if "num_parameters" in info.config:
+				param_count = info.config["num_parameters"]
+		
+		if param_count:
+			# Conservative: add ~10–15% overhead for alignment/shared tensors
+			bytes_est = param_count * assume_dtype_bytes * 1.12
+			return bytes_est / (1024 ** 3)
+		
+		# Ultimate fallback: sum safetensors file sizes (least accurate)
+		if info.siblings:
+			total_bytes = sum(
+				s.size for s in info.siblings
+				if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin"))
+			)
+			if total_bytes > 0:
+				# Apply larger multiplier because file size usually underestimates
+				return (total_bytes * 1.9) / (1024 ** 3)
+		
+		raise ValueError(f"Could not estimate size for {model_id}")
 
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	
 	if verbose:
 		print(f"[INFO] {model_id} Estimated size: {estimated_size_gb:.2f} GB (fp16)")
-	
+	if estimated_size_gb > total_vram_available:
+		raise RuntimeError(f"Model {model_id} is too large to fit in available VRAM. Estimated size: {estimated_size_gb:.2f} GB, Available VRAM: {total_vram_available:.2f} GB")
+
 	max_memory = {}
 	
 	if n_gpus > 0:
