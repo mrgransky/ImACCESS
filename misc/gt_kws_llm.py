@@ -409,12 +409,10 @@ def _load_llm_(
 		raise ValueError(f"Could not estimate size for {model_id}")
 
 	estimated_size_gb = get_estimated_gb_size(model_id)
-	
 	if verbose:
 		print(f"[INFO] {model_id} Estimated size: {estimated_size_gb:.2f} GB (fp16)")
-	if estimated_size_gb > total_vram_available:
-		raise RuntimeError(f"Model {model_id} is too large to fit in available VRAM. Estimated size: {estimated_size_gb:.2f} GB, Available VRAM: {total_vram_available:.2f} GB")
-
+	
+	
 	max_memory = {}
 	
 	if n_gpus > 0:
@@ -428,7 +426,10 @@ def _load_llm_(
 			vram_gb = props.total_memory / (1024**3)
 			gpu_vram.append(vram_gb)
 			total_vram_available += vram_gb
-		
+			
+		if estimated_size_gb > total_vram_available:
+			raise RuntimeError(f"Model {model_id} is too large to fit in available VRAM. Estimated size: {estimated_size_gb:.2f} GB, Available VRAM: {total_vram_available:.2f} GB")
+
 		# ADAPTIVE BUFFER: Scale based on GPU size
 		if gpu_vram[0] < 10:
 			vram_buffer_gb = 0.7
