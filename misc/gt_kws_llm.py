@@ -367,51 +367,51 @@ def _load_llm_(
 		print(f"   • padding side      : {tokenizer.padding_side:>20}")
 		print()
 	
-
 	def get_estimated_gb_size(model_id: str) -> float:
-			"""
-			Estimate **in-memory weight footprint** in GiB.
-			Returns conservative (higher) value suitable for VRAM checks.
-			"""
-			try:
-					info = huggingface_hub.model_info(model_id, token=hf_tk, files_metadata=True)
-			except Exception as e:
-					raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
-			print(type(info))
-			print(info)
-			disk_bytes = 0
-			param_count = None
+		try:
+			info = huggingface_hub.model_info(model_id, token=hf_tk, files_metadata=True)
+		except Exception as e:
+			raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
+		print(type(info))
+		print(info)
 
-			# 1. Sum actual file sizes (most reliable when available)
-			if info.siblings:
-					for s in info.siblings:
-							if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin")):
-									disk_bytes += s.size
+		disk_bytes = 0
+		param_count = None
 
-			# 2. Try safetensors metadata (parameter count)
-			if hasattr(info, "safetensors") and info.safetensors:
-					safet = info.safetensors
-					if isinstance(safet, dict):
-							param_count = safet.get("total")
-					elif hasattr(safet, "total"):
-							param_count = safet.total
+		# 1. Sum actual file sizes (most reliable when available)
+		if info.siblings:
+			for s in info.siblings:
+				if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin")):
+					disk_bytes += s.size
 
-			# 3. Choose best source and apply realistic multiplier
-			if disk_bytes > 0:
-					# Disk size already in target dtype → small overhead (alignment, buffers)
-					est_gb = (disk_bytes * 1.20) / (1024 ** 3)   # 20% safety margin
-					return round(est_gb, 2)
+		# 2. Try safetensors metadata (parameter count)
+		if hasattr(info, "safetensors") and info.safetensors:
+			safet = info.safetensors
+			if isinstance(safet, dict):
+				param_count = safet.get("total")
+			elif hasattr(safet, "total"):
+				param_count = safet.total
 
-			if param_count:
-					# fp16/bf16 = 2 bytes/param + 18–25% overhead
-					est_bytes = param_count * 2.0 * 1.22
-					est_gb = est_bytes / (1024 ** 3)
-					return round(est_gb, 2)
+		# 3. Choose best source and apply realistic multiplier
+		if disk_bytes > 0:
+			# Disk size already in target dtype → small overhead (alignment, buffers)
+			est_gb = (disk_bytes * 1.20) / (1024 ** 3)   # 20% safety margin
 
-			raise ValueError(
-					f"No usable size info for {model_id}. "
-					"No file sizes, parameter count, or safetensors metadata available."
-			)
+			return round(est_gb, 2)
+
+		print(f"param_count: {param_count}")
+
+		if param_count:
+			# fp16/bf16 = 2 bytes/param + 18–25% overhead
+			est_bytes = param_count * 2.0 * 1.22
+			est_gb = est_bytes / (1024 ** 3)
+
+			return round(est_gb, 2)
+
+		raise ValueError(
+			f"No usable size info for {model_id}. "
+			"No file sizes, parameter count, or safetensors metadata available."
+		)
 
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	if verbose:
