@@ -569,7 +569,7 @@ def probe_multi_label(
 
 	if verbose:
 		print(f"{'='*50}")
-		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
 		print(f"  {probe.probe_type} | Params: {sum(p.numel() for p in probe.probe.parameters()):,}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
@@ -1071,7 +1071,7 @@ def full_finetune_multi_label(
 
 	if verbose:
 		print(f"{'='*50}")
-		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
@@ -1555,7 +1555,7 @@ def lora_finetune_multi_label(
 
 	if verbose:
 		print(f"{'='*50}")
-		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
@@ -2170,7 +2170,7 @@ def lora_plus_finetune_multi_label(
 
 	if verbose:
 		print(f"{'='*50}")
-		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  LoRA params: Rank: {lora_rank}  Alpha: {lora_alpha}  Dropout: {lora_dropout}  Lambda: {lora_plus_lambda}")
@@ -2684,7 +2684,7 @@ def rslora_finetune_multi_label(
 
 	if verbose:
 		print(f"{'='*50}")
-		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
@@ -3233,7 +3233,7 @@ def dora_finetune_multi_label(
 
 	if verbose:
 		print(f"{'='*50}")
-		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
@@ -3807,7 +3807,7 @@ def ia3_finetune_multi_label(
 
 	if verbose:
 		print(f"{'='*50}")
-		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
@@ -4398,7 +4398,7 @@ def vera_finetune_multi_label(
 
 	if verbose:
 		print(f"{'='*50}")
-		print(f"\n{mode.upper()} Final evaluation from: {model_source}")
+		print(f"{mode.upper()} Final evaluation from: {model_source}")
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
