@@ -428,20 +428,20 @@ def _load_llm_(
 	# 		except Exception as e:
 	# 			print(f"<!> Failed to estimate model size from safetensors metadata: {e}")
 		
-		# # Method 2: Sum individual weight file sizes (Robust fallback)
-		# # This works for sharded models (e.g., model-00001-of-00003.safetensors)
-		# if info.siblings:
-		# 	total_bytes = sum(
-		# 		s.size for s in info.siblings
-		# 		if s.size is not None and (
-		# 			s.rfilename.endswith(".safetensors") or
-		# 			s.rfilename.endswith(".bin")
-		# 		)
-		# 	)
-		# 	if total_bytes > 0:
-		# 		return total_bytes / (1024 ** 3)
+	# 	# Method 2: Sum individual weight file sizes (Robust fallback)
+	# 	# This works for sharded models (e.g., model-00001-of-00003.safetensors)
+	# 	if info.siblings:
+	# 		total_bytes = sum(
+	# 			s.size for s in info.siblings
+	# 			if s.size is not None and (
+	# 				s.rfilename.endswith(".safetensors") or
+	# 				s.rfilename.endswith(".bin")
+	# 			)
+	# 		)
+	# 		if total_bytes > 0:
+	# 			return total_bytes / (1024 ** 3)
 		
-		# raise ValueError(f"Could not estimate size for {m_id}. No weights found.")
+	# 	raise ValueError(f"Could not estimate size for {m_id}. No weights found.")
 
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	
