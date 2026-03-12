@@ -20,7 +20,7 @@ from nlp_utils import get_enriched_description
 # model_id = "allenai/Olmo-3-7B-Instruct"
 # model_id = "google/flan-t5-xxl"
 
-# Qwen/Qwen3-30B-A3B-Instruct-2507 # multi-gpu 
+# Qwen/Qwen3-30B-A3B-Instruct-2507 # multi-gpu required
 # Qwen/Qwen3-Next-80B-A3B-Instruct # multi-gpu required
 
 # not useful for instruction tuning:
@@ -116,7 +116,6 @@ that represent **core objects, entities, actions, or scene elements** which are 
 
 - The standardized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""
-
 
 # # Too Specific which produces massive number of singleton labels
 # # self-contained and grammatically complete phrases
@@ -267,8 +266,6 @@ def _load_llm_(
 	if verbose:
 		print(f"[INFO] {model_id} Attention implementation: {attn_impl}")
 
-
-
 	# ========== Quantization config ==========
 	quantization_config = None
 	if use_quantization:
@@ -376,6 +373,8 @@ def _load_llm_(
 		Uses parameter count from hub metadata when possible.
 		"""
 		info = huggingface_hub.model_info(model_id, token=hf_tk)
+		print(type(info))
+		print(info)
 		
 		param_count = None
 		
