@@ -397,11 +397,10 @@ def _load_llm_(
 		if disk_bytes > 0:
 			print(f"disk_bytes: {disk_bytes}")
 			# Disk size already in target dtype → small overhead (alignment, buffers)
-			est_gb = (disk_bytes * 1.20) / (1024 ** 3)   # 20% safety margin
+			est_gb = (disk_bytes * 1.01) / (1024 ** 3)   # 20% safety margin
 
-			return round(est_gb, 2)
+			return est_gb
 
-	
 		if param_count:
 			print(f"param_count: {param_count}")
 			# fp16/bf16 = 2 bytes/param + 18–25% overhead
