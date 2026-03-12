@@ -372,6 +372,7 @@ def _load_llm_(
 			info = huggingface_hub.model_info(model_id, token=hf_tk, files_metadata=True)
 		except Exception as e:
 			raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
+
 		print(type(info))
 		print(info)
 
@@ -392,12 +393,11 @@ def _load_llm_(
 			elif hasattr(safet, "total"):
 				param_count = safet.total
 
-
 		# 3. Choose best source and apply realistic multiplier
 		if disk_bytes > 0:
 			print(f"disk_bytes: {disk_bytes}")
-			# Disk size already in target dtype → small overhead (alignment, buffers)
-			est_gb = (disk_bytes * 1.01) / (1024 ** 3)   # 20% safety margin
+			# Disk size already in target dtype → small overhead (1%) (alignment, buffers)
+			est_gb = (disk_bytes * 1.01) / (1024 ** 3)
 
 			return est_gb
 
@@ -407,7 +407,7 @@ def _load_llm_(
 			est_bytes = param_count * 2.0 * 1.22
 			est_gb = est_bytes / (1024 ** 3)
 
-			return round(est_gb, 2)
+			return est_gb
 
 		raise ValueError(
 			f"No usable size info for {model_id}. "
@@ -416,7 +416,7 @@ def _load_llm_(
 
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	if verbose:
-		print(f"[INFO] {model_id} Estimated size: {estimated_size_gb:.2f} GB (fp16)")
+		print(f"\n[INFO] {model_id} Estimated size: {estimated_size_gb:.2f} GB (fp16)")
 	
 	max_memory = {}
 	
