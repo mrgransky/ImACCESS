@@ -310,17 +310,20 @@ class LoRALinear(torch.nn.Module):
 			if self.quantized
 			else "full precision (fp32)"
 		)
-		lora_type = "rsLoRA" if self.rslora else "LoRA"
 		lora_A_params = self.lora_A.weight.shape[0] * self.lora_A.weight.shape[1]  # rank × in_features
 		lora_B_params = self.lora_B.weight.shape[0] * self.lora_B.weight.shape[1]  # out_features × rank
-		return (
+		statement = (
 			f"\n{self.__class__.__name__}\n"
-			f"  ├─ {lora_type}\n"
 			f"  ├─ in_features={self.in_features}, out_features={self.out_features}\n"
-			f"  ├─ rank={self.rank}, alpha={self.alpha}, dropout={self.dropout.p}, scale={self.scale}\n"
+			f"  ├─ rank={self.rank}, alpha={self.alpha}, dropout={self.dropout.p}\n"
 			f"  ├─ trainable_params={lora_A_params + lora_B_params:,} (A: {lora_A_params:,} + B: {lora_B_params:,})\n"
-			f"  └─ {quantization_str}\n"
+			f"  ├─ {quantization_str}\n"
 		)
+		if self.rslora:
+			statement += f"  └─ rsLoRA: Scaling Factor (α/√r): {self.scale}\n"
+		else:
+			statement += f"  └─ Scaling Factor (α/r): {self.scale}\n"
+		return statement
 
 class DoRALinear(torch.nn.Module):
 	"""

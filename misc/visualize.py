@@ -1852,73 +1852,6 @@ def plot_all_pretrain_metrics(
 		plt.savefig(os.path.join(results_dir, file_name), dpi=DPI, bbox_inches='tight')
 		plt.close(fig)
 
-def visualize_samples(dataloader, dataset, num_samples=5):
-		for bidx, (images, tokenized_labels, labels_indices) in enumerate(dataloader):
-				print(f"Batch {bidx}, Shapes: {images.shape}, {tokenized_labels.shape}, {labels_indices.shape}")
-				if bidx >= num_samples:
-						break
-				
-				# Get the global index of the first sample in this batch
-				start_idx = bidx * dataloader.batch_size
-				for i in range(min(dataloader.batch_size, len(images))):
-						global_idx = start_idx + i
-						if global_idx >= len(dataset):
-								break
-						image = images[i].permute(1, 2, 0).numpy()  # Convert tensor to numpy array
-						caption_idx = labels_indices[i].item()
-						path = dataset.images[global_idx]
-						label = dataset.labels[global_idx]
-						label_int = dataset.labels_int[global_idx]
-						
-						print(f"Global Index: {global_idx}")
-						print(f"Image {image.shape} Path: {path}")
-						print(f"Label: {label}, Label Int: {label_int}, Caption Index: {caption_idx}")
-						
-						# Denormalize the image (adjust mean/std based on your dataset)
-						mean = np.array([0.5126933455467224, 0.5045100450515747, 0.48094621300697327])
-						std = np.array([0.276103675365448, 0.2733437418937683, 0.27065524458885193])
-						image = image * std + mean  # Reverse normalization
-						image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1]
-						
-						plt.figure(figsize=(10, 10))
-						plt.imshow(image)
-						plt.title(f"Label: {label} (Index: {caption_idx})")
-						plt.axis('off')
-						plt.show()
-
-def visualize_(dataloader, batches=3, num_samples=5):
-	"""
-	Visualize the first 'num_samples' images of each batch in a single figure.
-	Args:
-			dataloader (torch.utils.data.DataLoader): Data loader containing images and captions.
-			num_samples (int, optional): Number of batches to visualize. Defaults to 5.
-			num_cols (int, optional): Number of columns in the visualization. Defaults to 5.
-	"""
-	# Get the number of batches in the dataloader
-	num_batches = len(dataloader)
-	# Limit the number of batches to visualize
-	num_batches = min(num_batches, batches)
-	# Create a figure with 'num_samples' rows and 'num_cols' columns
-	fig, axes = plt.subplots(nrows=num_batches, ncols=num_samples, figsize=(20, num_batches * 2))
-	# Iterate over the batches
-	for bidx, (images, tokenized_labels, labels_indices) in enumerate(dataloader):
-		if bidx >= num_batches:
-			break
-		# Iterate over the first 'num_cols' images in the batch
-		for cidx in range(num_samples):
-			image = images[cidx].permute(1, 2, 0).numpy()  # Convert tensor to numpy array and permute dimensions
-			caption_idx = labels_indices[cidx]
-			# Denormalize the image
-			image = image * np.array([0.2268645167350769]) + np.array([0.6929051876068115])
-			image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1] range
-			# Plot the image
-			axes[bidx, cidx].imshow(image)
-			axes[bidx, cidx].set_title(f"Batch {bidx+1}, Img {cidx+1}: {caption_idx}", fontsize=8)
-			axes[bidx, cidx].axis('off')
-	# Layout so plots do not overlap
-	plt.tight_layout()
-	plt.show()
-
 def plot_retrieval_metrics_best_model(
 		dataset_name: str,
 		image_to_text_metrics: Dict[str, Dict[str, float]],
@@ -2118,631 +2051,195 @@ def plot_retrieval_metrics_per_epoch(
 	plt.savefig(fname, dpi=300, bbox_inches='tight')
 	plt.close(fig)
 
-def plot_loss_accuracy_metrics(
-		dataset_name: str,
-		train_losses: List[float],
-		val_losses: List[float],
-		in_batch_topk_val_accuracy_i2t_list: List[float],
-		in_batch_topk_val_accuracy_t2i_list: List[float],
-		full_topk_val_accuracy_i2t_list: List[float] = None,
-		full_topk_val_accuracy_t2i_list: List[float] = None,
-		mean_reciprocal_rank_list: List[float] = None,
-		cosine_similarity_list: List[float] = None,
-		losses_file_path: str = "losses.png",
-		in_batch_topk_val_acc_i2t_fpth: str = "in_batch_val_topk_accuracy_i2t.png",
-		in_batch_topk_val_acc_t2i_fpth: str = "in_batch_val_topk_accuracy_t2i.png",
-		full_topk_val_acc_i2t_fpth: str = "full_val_topk_accuracy_i2t.png",
-		full_topk_val_acc_t2i_fpth: str = "full_val_topk_accuracy_t2i.png",
-		mean_reciprocal_rank_file_path: str = "mean_reciprocal_rank.png",
-		cosine_similarity_file_path: str = "cosine_similarity.png",
-		DPI: int = 300,
-		figure_size: tuple = (10, 4),
-	):
+def create_comparative_radar_chart(
+	summary_stats_dict, 
+	output_dir, 
+	label_column, 
+	DPI=200
+):
+	print("\n>> COMPARATIVE RADAR CHART")
+	
+	print(f"summary_stats_dict:")
+	print(json.dumps(summary_stats_dict, indent=2, ensure_ascii=False))
 
-	num_epochs = len(train_losses)
-	if num_epochs <= 1:  # No plot if only one epoch
-		return
-			
-	# Setup common plotting configurations
-	epochs = np.arange(1, num_epochs + 1)
+	# Define metrics (normalized to 0-100 scale)
+	categories = [
+		'Scale',
+		'Vocabulary\nSize', 
+		'Annotation\nRichness',
+		'Diversity\n(entropy)',
+		'Balance\n(1-Gini)',
+		'Semantic\nComplexity'
+	]
+
+	dataset_name = summary_stats_dict['Dataset Name']
+	n_samples = summary_stats_dict['Total Samples']
+	n_labels = summary_stats_dict['Unique Labels']
+	mean_card = float(summary_stats_dict['Mean Label Cardinality'])
+	norm_entropy = float(summary_stats_dict['Normalized Entropy'])
+	gini = float(summary_stats_dict['Gini Coefficient'])
+	eff_labels = float(summary_stats_dict['Effective # of Labels'])
 	
-	# Create selective x-ticks for better readability
-	num_xticks = min(20, num_epochs)
-	selective_xticks = np.linspace(1, num_epochs, num_xticks, dtype=int)
+	dataset_values = [
+		min(100, (np.log10(n_samples) / np.log10(1_000_000)) * 100),
+		min(100, (np.log10(n_labels) / np.log10(100_000)) * 100),
+		min(100, (mean_card / 10) * 100),
+		norm_entropy * 100,
+		(1 - gini) * 100,
+		min(100, (np.log10(eff_labels) / np.log10(10_000)) * 100)
+	]
 	
-	# Define a consistent color palette
-	colors = {
-		'train': '#1f77b4',
-		'val': '#ff7f0e',
-		'img2txt': '#2ca02c',
-		'txt2img': '#d62728'
+	# # Benchmark datasets
+	# # (scale, vocabulary, cardinality) are 100% defensible
+	# # (diversity, balance, complexity) are approximate
+	benchmarks = {
+		'ImageNet': {
+			'color': "#004094",
+			'samples': 1_281_167,      	# EXACT
+			'labels': 1_000,            # EXACT
+			'cardinality': 1.0,         # EXACT
+			'norm_entropy': 0.62,       # REASONABLE ESTIMATE
+			'gini': 0.45,               # REASONABLE ESTIMATE
+			'effective_labels': 400,    # CONSERVATIVE ESTIMATE
+		},
+		'MS-COCO': {
+			'color': "#ce7500",
+			'samples': 328_000,         # EXACT (all splits)
+			'labels': 91,               # EXACT (2017 version)
+			'cardinality': 2.9,         # EXACT (Lin+ ECCV'14)
+			'norm_entropy': 0.51,       # REASONABLE ESTIMATE
+			'gini': 0.62,               # REASONABLE ESTIMATE
+			'effective_labels': 50,     # CONSERVATIVE ESTIMATE
+		},
+		'Open Images V6': {
+			'color': "#009e08",
+			'samples': 9_178_275,       # EXACT (V6)
+			'labels': 19_000,           # EXACT (rounded from 19,958)
+			'cardinality': 8.4,         # EXACT (Kuznetsova+ IJCV'20)
+			'norm_entropy': 0.69,       # REASONABLE ESTIMATE
+			'gini': 0.73,               # REASONABLE ESTIMATE
+			'effective_labels': 2_000,  # CONSERVATIVE ESTIMATE
+		}
 	}
 	
-	# Common plot settings function
-	def setup_plot(ax, xlabel='Epoch', ylabel=None, title=None):
-		ax.set_xlabel(xlabel, fontsize=12)
-		if ylabel:
-			ax.set_ylabel(ylabel, fontsize=12)
-		if title:
-			ax.set_title(title, fontsize=10, fontweight='bold')
-		ax.set_xlim(0, num_epochs + 1)
-		ax.set_xticks(selective_xticks)
-		ax.tick_params(axis='both', labelsize=10)
-		ax.grid(True, linestyle='--', alpha=0.7)
-		return ax
+	fig, ax = plt.subplots(figsize=(12, 12), subplot_kw=dict(projection='polar'))
+	N = len(categories)
+	angles = [n / float(N) * 2 * np.pi for n in range(N)]
 	
-	# 1. Losses plot
-	fig, ax = plt.subplots(figsize=figure_size)
+	# Plot dataset values
+	values = dataset_values + dataset_values[:1]
+	angles_plot = angles + angles[:1]
+	print(f"{len(values)} values: {values}")
+	print(f"{len(angles_plot)} angles_plot: {angles_plot}")
+
 	ax.plot(
-		epochs,
-		train_losses, 
-		color=colors['train'], 
-		label='Training', 
-		lw=1.5, 
-		marker='o', 
-		markersize=2,
+		angles_plot, 
+		values, 
+		'o-', 
+		linewidth=2.5,
+		label=dataset_name,
+		color='#d62728', 
+		zorder=10
 	)
-	ax.plot(
-		epochs,
-		val_losses,
-		color=colors['val'], 
-		label='Validation',
-		lw=1.5, 
-		marker='o', 
-		markersize=2,
-	)
-					
-	setup_plot(
-		ax, ylabel='Loss', 
-		title=f'{dataset_name} Learning Curve: (Loss)',
-	)
-	ax.legend(
-		fontsize=10, 
-		loc='best', 
-		frameon=True, 
-		fancybox=True,
-		shadow=True,
-		facecolor='white',
-		edgecolor='black',
-	)
-	fig.tight_layout()
-	fig.savefig(losses_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close(fig)
-	
-	# 1. Image-to-Text Top-K[in-batch matching] Validation Accuracy plot
-	if in_batch_topk_val_accuracy_i2t_list:
-		topk_values = list(in_batch_topk_val_accuracy_i2t_list[0].keys())
-		fig, ax = plt.subplots(figsize=figure_size)
-		
-		for i, k in enumerate(topk_values):
-			accuracy_values = [epoch_data[k] for epoch_data in in_batch_topk_val_accuracy_i2t_list]
-			ax.plot(
-				epochs, 
-				accuracy_values, 
-				label=f'Top-{k}',
-				lw=1.5, 
-				marker='o', 
-				markersize=2, 
-				color=plt.cm.tab10(i),
-			)
-							 
-		setup_plot(
-			ax, 
-			ylabel='Accuracy', 
-			title=f'{dataset_name} Image-to-Text Top-K [in-batch matching] Validation Accuracy'
-		)
-		ax.set_ylim(-0.05, 1.05)
-		ax.legend(
-			fontsize=9, 
-			loc='best',
-			ncol=len(topk_values),
-			frameon=True, 
-			fancybox=True,
-			shadow=True,
-			facecolor='white',
-			edgecolor='black',
-		)
-		fig.tight_layout()
-		fig.savefig(in_batch_topk_val_acc_i2t_fpth, dpi=DPI, bbox_inches='tight')
-		plt.close(fig)
-
-	# 2. Image-to-Text Top-K[full matching] Validation Accuracy plot
-	if full_topk_val_accuracy_i2t_list:
-		topk_values = list(full_topk_val_accuracy_i2t_list[0].keys())
-		fig, ax = plt.subplots(figsize=figure_size)
-
-		for i, k in enumerate(topk_values):
-			accuracy_values = [epoch_data[k] for epoch_data in full_topk_val_accuracy_i2t_list]
-			ax.plot(
-				epochs,
-				accuracy_values,
-				label=f'Top-{k}',
-				lw=1.5,
-				marker='o',
-				markersize=2,
-				color=plt.cm.tab10(i),
-			)
-
-		setup_plot(
-			ax,
-			ylabel='Accuracy',
-			title=f'{dataset_name} Image-to-Text Top-K [full matching] Validation Accuracy'
-		)
-		ax.set_ylim(-0.05, 1.05)
-		ax.legend(
-			fontsize=9,
-			loc='best',
-			ncol=len(topk_values),
-			frameon=True,
-			fancybox=True,
-			shadow=True,
-			edgecolor='black',
-			facecolor='white',
-		)
-		fig.tight_layout()
-		fig.savefig(full_topk_val_acc_i2t_fpth, dpi=DPI, bbox_inches='tight')
-		plt.close(fig)
-
-	if full_topk_val_accuracy_t2i_list:
-		topk_values = list(full_topk_val_accuracy_t2i_list[0].keys())
-		fig, ax = plt.subplots(figsize=figure_size)
-		for i, k in enumerate(topk_values):
-			accuracy_values = [epoch_data[k] for epoch_data in full_topk_val_accuracy_t2i_list]
-			ax.plot(
-				epochs,
-				accuracy_values,
-				label=f'Top-{k}',
-				lw=1.5,
-				marker='o',
-				markersize=2,
-				color=plt.cm.tab10(i),
-			)
-
-		setup_plot(
-			ax,
-			ylabel='Accuracy',
-			title=f'{dataset_name} Text-to-Image Top-K [full matching] Validation Accuracy'
-		)
-		ax.set_ylim(-0.05, 1.05)
-		ax.legend(
-			fontsize=9,
-			loc='best',
-			ncol=len(topk_values),
-			frameon=True,
-			fancybox=True,
-			shadow=True,
-			edgecolor='black',
-			facecolor='white',
-		)
-		fig.tight_layout()
-		fig.savefig(full_topk_val_acc_t2i_fpth, dpi=DPI, bbox_inches='tight')
-		plt.close(fig)
-
-	# 3. Text-to-Image Top-K Accuracy plot
-	if in_batch_topk_val_accuracy_t2i_list:
-		topk_values = list(in_batch_topk_val_accuracy_t2i_list[0].keys())
-		fig, ax = plt.subplots(figsize=figure_size)
-		
-		for i, k in enumerate(topk_values):
-			accuracy_values = [epoch_data[k] for epoch_data in in_batch_topk_val_accuracy_t2i_list]
-			ax.plot(
-				epochs, 
-				accuracy_values, 
-				label=f'Top-{k}',
-				lw=1.5, 
-				marker='o', 
-				markersize=2, 
-				color=plt.cm.tab10(i),
-			)
-							 
-		setup_plot(
-			ax, 
-			ylabel='Accuracy', 
-			title=f'{dataset_name} Text-to-Image Top-K [in-batch matching] Validation Accuracy'
-		)
-		ax.set_ylim(-0.05, 1.05)
-		ax.legend(
-			fontsize=9, 
-			loc='best',
-			ncol=len(topk_values),
-			frameon=True, 
-			fancybox=True, 
-			shadow=True,
-			edgecolor='black',
-			facecolor='white',
-		)
-		fig.tight_layout()
-		fig.savefig(in_batch_topk_val_acc_t2i_fpth, dpi=DPI, bbox_inches='tight')
-		plt.close(fig)
-	
-	# 4. Mean Reciprocal Rank plot (if data provided)
-	if mean_reciprocal_rank_list and len(mean_reciprocal_rank_list) > 0:
-		fig, ax = plt.subplots(figsize=figure_size)
-		ax.plot(
-			epochs, 
-			mean_reciprocal_rank_list, 
-			color='#9467bd', 
-			label='MRR', 
-			lw=1.5, 
-			marker='o', 
-			markersize=2,
-		)
-						
-		setup_plot(
-			ax, 
-			ylabel='Mean Reciprocal Rank',
-			title=f'{dataset_name} Mean Reciprocal Rank (Image-to-Text)',
-		)
-		
-		ax.set_ylim(-0.05, 1.05)
-		ax.legend(fontsize=10, loc='best', frameon=True)
-		fig.tight_layout()
-		fig.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
-		plt.close(fig)
-	
-	# 5. Cosine Similarity plot (if data provided)
-	if cosine_similarity_list and len(cosine_similarity_list) > 0:
-		fig, ax = plt.subplots(figsize=figure_size)
-		ax.plot(
-			epochs, 
-			cosine_similarity_list, 
-			color='#17becf',
-			label='Cosine Similarity', 
-			lw=1.5, 
-			marker='o', 
-			markersize=2,
-		)
-						
-		setup_plot(
-			ax, 
-			ylabel='Cosine Similarity',
-			title=f'{dataset_name} Cosine Similarity Between Embeddings'
-		)
-		ax.legend(fontsize=10, loc='best')
-		fig.tight_layout()
-		fig.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches='tight')
-		plt.close(fig)
-
-def create_dataset_radar_chart(summary_stats_dict, output_dir, label_column, DPI=200):
-		"""
-		Create a radar chart visualizing key dataset characteristics.
-		
-		This provides a compelling visual summary for papers/presentations showing:
-		- Scale (number of samples, labels)
-		- Richness (label cardinality)
-		- Diversity (normalized entropy)
-		- Balance (inverse Gini - so higher is better)
-		- Complexity (effective number of labels)
-		"""
-		print("\n" + "="*100)
-		print("--- CREATING RADAR CHART FOR DATASET CHARACTERISTICS ---")
-		
-		# Extract and normalize metrics to 0-100 scale for radar chart
-		# Each metric is normalized so that "better" = higher value
-		
-		metrics_for_radar = {}
-
-		# 0. dataset name:
-		dataset_name = summary_stats_dict['Dataset Name']
-		
-		# 1. SCALE: Log-normalized sample count (relative to common benchmarks)
-		n_samples = summary_stats_dict['Total Samples']
-		# Normalize: log scale, where 100K samples = 50, 1M = 100
-		scale_score = min(100, (np.log10(n_samples) / np.log10(1_000_000)) * 100)
-		metrics_for_radar['Scale\n(Samples)'] = scale_score
-		
-		# 2. VOCABULARY SIZE: Log-normalized label count
-		n_labels = summary_stats_dict['Unique Labels']
-		# Normalize: log scale, where 1K labels = 33, 10K = 66, 100K+ = 100
-		vocab_score = min(100, (np.log10(n_labels) / np.log10(100_000)) * 100)
-		metrics_for_radar['Vocabulary Size'] = vocab_score
-		
-		# 3. ANNOTATION RICHNESS: Label cardinality relative to benchmarks
-		mean_cardinality = float(summary_stats_dict['Mean Label Cardinality'])
-		# Normalize: 1 label = 10, 5 labels = 50, 10+ labels = 100
-		richness_score = min(100, (mean_cardinality / 10) * 100)
-		metrics_for_radar['Annotation\nRichness'] = richness_score
-		
-		# 4. DIVERSITY: Normalized entropy (already 0-1, scale to 100)
-		normalized_entropy = float(summary_stats_dict['Normalized Entropy'])
-		diversity_score = normalized_entropy * 100
-		metrics_for_radar['Label\nDiversity'] = diversity_score
-		
-		# 5. BALANCE: Inverse Gini (1 - Gini), so perfect balance = 100
-		gini = float(summary_stats_dict['Gini Coefficient'])
-		balance_score = (1 - gini) * 100
-		metrics_for_radar['Label\nBalance'] = balance_score
-		
-		# 6. TEMPORAL SPAN: If available (for historical datasets)
-		# This is optional - you can replace with another metric if needed
-		temporal_score = 70  # Placeholder: 70 years (1900-1970)
-		metrics_for_radar['Temporal\nSpan'] = temporal_score
-		
-		# 7. SEMANTIC COMPLEXITY: Effective number of labels (log-normalized)
-		effective_labels = float(summary_stats_dict['Effective # of Labels'])
-		# Normalize: 100 effective = 25, 1000 = 50, 10000+ = 100
-		complexity_score = min(100, (np.log10(effective_labels) / np.log10(10_000)) * 100)
-		metrics_for_radar['Semantic\nComplexity'] = complexity_score
-		
-		# 8. UNIQUENESS: Percentage of unique label combinations
-		unique_combinations = summary_stats_dict['Unique Label Combinations']
-		total_samples = summary_stats_dict['Total Samples']
-		uniqueness_pct = (unique_combinations / total_samples) * 100
-		metrics_for_radar['Label\nUniqueness'] = uniqueness_pct
-		
-		# Create radar chart
-		categories = list(metrics_for_radar.keys())
-		values = list(metrics_for_radar.values())
-		
-		# Number of variables
-		N = len(categories)
-		
-		# Compute angle for each axis
-		angles = [n / float(N) * 2 * np.pi for n in range(N)]
-		values += values[:1]  # Complete the circle
-		angles += angles[:1]
-		
-		# Initialize the plot
-		fig, ax = plt.subplots(figsize=(14, 14), subplot_kw=dict(projection='polar'))
-		
-		# Plot data
-		ax.plot(angles, values, 'o-', linewidth=2, color='#1f77b4', label=dataset_name)
-		ax.fill(angles, values, alpha=0.2, color='#1f77b4')
-		
-		# Optional: Add comparison with a benchmark dataset
-		# Example: ImageNet-like distribution
-		benchmark_values = [85, 30, 10, 60, 55, 0, 40, 5]  # Example benchmark scores
-		benchmark_values += benchmark_values[:1]
-		ax.plot(
-			angles, 
-			benchmark_values, 
-			'o--', 
-			linewidth=2, 
-			color='#ff7f0e', 
-			label='Typical Benchmark', 
-			alpha=0.75
-		)
-		ax.fill(angles, benchmark_values, alpha=0.15, color='#ff7f0e')
-		
-		# Fix axis to go in the right order and start at 12 o'clock
-		ax.set_theta_offset(np.pi / 2)
-		ax.set_theta_direction(-1)
-		
-		# Draw axis lines for each angle and label
-		ax.set_xticks(angles[:-1])
-		ax.set_xticklabels(categories, size=11, weight='bold')
-		
-		# Set y-axis limits and labels
-		ax.set_ylim(0, 100)
-		ax.set_yticks([20, 40, 60, 80, 100])
-		ax.set_yticklabels(['20', '40', '60', '80', '100'], size=9)
-		ax.set_rlabel_position(0)
-		
-		# Add grid
-		ax.grid(True, linestyle='--', alpha=0.7)
-		
-		# Add legend
-		ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=10)
-		
-		# Title
-		plt.title('Dataset Characteristics Profile', size=16, weight='bold', pad=20)
-		
-		# Add annotations for key strengths
-		max_idx = np.argmax(values[:-1])
-		max_angle = angles[max_idx]
-		max_value = values[max_idx]
-		ax.annotate(
-			f'Strength:\n{categories[max_idx]}', 
-			xy=(max_angle, max_value), 
-			xytext=(max_angle, max_value + 10),
-			fontsize=9,
-			ha='center',
-			bbox=dict(boxstyle='round,pad=0.5', facecolor="#c2ff91", alpha=0.5),
-			arrowprops=dict(arrowstyle='->', color='red', lw=1.5)
-		)
-		
-		plt.tight_layout()
-		plt.savefig(
-			fname=os.path.join(output_dir, f"radar_chart.png"),
-			dpi=DPI,
-			bbox_inches='tight'
-		)
-		plt.close()
-		
-		print("Radar chart created successfully!")
-		print(f"\nDataset Characteristic Scores (0-100 scale):")
-		for cat, val in metrics_for_radar.items():
-			print(f"  {cat.replace(chr(10), ' ')}: {val:.1f}")
-		
-		return metrics_for_radar
-
-def create_comparative_radar_chart(summary_stats_dict, output_dir, label_column, DPI=200):
-		print("--- CREATING COMPARATIVE RADAR CHART ---")
-		
-		# Define metrics (normalized to 0-100 scale)
-		categories = [
-			'Scale',
-			'Vocabulary\nSize', 
-			'Annotation\nRichness',
-			'Diversity\n(entropy)',
-			'Balance\n(1-Gini)',
-			'Semantic\nComplexity'
+	ax.fill(angles_plot, values, alpha=0.2, color="#fc5f5f")
+	print("-"*100)
+	for k, v in benchmarks.items():
+		print(f"{k} {v}")
+		bench_values = [
+			min(100, (np.log10(v['samples']) / np.log10(1_000_000)) * 100),
+			min(100, (np.log10(v['labels']) / np.log10(100_000)) * 100),
+			min(100, (v['cardinality'] / 10) * 100),
+			v['norm_entropy'] * 100,
+			(1 - v['gini']) * 100,
+			min(100, (np.log10(v['effective_labels']) / np.log10(10_000)) * 100)
 		]
-		
-		dataset_name = summary_stats_dict['Dataset Name']
-		n_samples = summary_stats_dict['Total Samples']
-		n_labels = summary_stats_dict['Unique Labels']
-		mean_card = float(summary_stats_dict['Mean Label Cardinality'])
-		norm_entropy = float(summary_stats_dict['Normalized Entropy'])
-		gini = float(summary_stats_dict['Gini Coefficient'])
-		eff_labels = float(summary_stats_dict['Effective # of Labels'])
-		
-		dataset_values = [
-				min(100, (np.log10(n_samples) / np.log10(1_000_000)) * 100),
-				min(100, (np.log10(n_labels) / np.log10(100_000)) * 100),
-				min(100, (mean_card / 10) * 100),
-				norm_entropy * 100,
-				(1 - gini) * 100,
-				min(100, (np.log10(eff_labels) / np.log10(10_000)) * 100)
-		]
-		
-		# # Benchmark datasets
-		# # (scale, vocabulary, cardinality) are 100% defensible
-		# # (diversity, balance, complexity) are approximate
-		benchmarks = {
-			'ImageNet': {
-				'color': "#004094",
-				'samples': 1_281_167,      # EXACT
-				'labels': 1_000,            # EXACT
-				'cardinality': 1.0,         # EXACT
-				'norm_entropy': 0.62,       # REASONABLE ESTIMATE
-				'gini': 0.45,               # REASONABLE ESTIMATE
-				'effective_labels': 400,    # CONSERVATIVE ESTIMATE
-			},
-			'MS-COCO': {
-				'color': "#ce7500",
-				'samples': 328_000,         # EXACT (all splits)
-				'labels': 91,               # EXACT (2017 version)
-				'cardinality': 2.9,         # EXACT (Lin+ ECCV'14)
-				'norm_entropy': 0.51,       # REASONABLE ESTIMATE
-				'gini': 0.62,               # REASONABLE ESTIMATE
-				'effective_labels': 50,     # CONSERVATIVE ESTIMATE
-			},
-			'Open Images': {
-				'color': "#009e08",
-				'samples': 9_178_275,       # EXACT (V6)
-				'labels': 19_000,           # EXACT (rounded from 19,958)
-				'cardinality': 8.4,         # EXACT (Kuznetsova+ IJCV'20)
-				'norm_entropy': 0.69,       # REASONABLE ESTIMATE
-				'gini': 0.73,               # REASONABLE ESTIMATE
-				'effective_labels': 2_000,  # CONSERVATIVE ESTIMATE
-			}
-		}
-		print(json.dumps(benchmarks, indent=2, ensure_ascii=False))
-
-		# Create figure
-		N = len(categories)
-		angles = [n / float(N) * 2 * np.pi for n in range(N)]
-		
-		fig, ax = plt.subplots(figsize=(12, 12), subplot_kw=dict(projection='polar'))
-		
-		# Plot dataset values
-		values = dataset_values + dataset_values[:1]
-		angles_plot = angles + angles[:1]
+		bench_values_plot = bench_values + bench_values[:1]
 		ax.plot(
 			angles_plot, 
-			values, 
-			'o-', 
-			linewidth=2.5,
-			label=dataset_name,
-			color='#d62728', 
-			zorder=10
+			bench_values_plot, 
+			'o--', 
+			linewidth=1.5, 
+			label=k, 
+			alpha=0.5,
+			color=v['color']
 		)
-		ax.fill(angles_plot, values, alpha=0.2, color="#fc5f5f")
+		ax.fill(angles_plot, bench_values_plot, alpha=0.1, color=v['color'])
+	
+	# After creating the plot, before setting labels
+	ax.set_theta_offset(np.pi / 2)  # Start at 12 o'clock
+	ax.set_theta_direction(-1)  # Clockwise
+	ax.set_xticks(angles)  # Set ticks at each angle
+	# Manually set labels
+	# ax.set_xticklabels(categories, size=10, weight='bold', va='center', ha='center')
+	# SMART LABEL POSITIONING with angle-dependent offsets
+	for angle, label in zip(angles, categories):
+		# Convert angle to degrees for easier understanding
+		angle_deg = np.degrees(angle)
+		if angle_deg == 0 or angle_deg == 90 or angle_deg == 180 or angle_deg == 360:  # Special case for 'Scale' to avoid overlap
+			offset = 1.0
+		elif 0 < angle_deg < 90: # first quadrant (CW)
+			offset = 1.1
+		elif 91 < angle_deg < 180:  # second quadrant (CW)
+			offset = 1.15
+		elif 181 < angle_deg < 270:  # third quadrant (CW)
+			offset = 1.12
+		elif 271 < angle_deg < 360:  # fourth quadrant (CW)
+			offset = 1.15
+		else:
+			print(f"<!> {angle_deg} => Default offset: 1.0")
+			offset = 1.0
+		print(f"Angle: {repr(angle_deg)}, Label: {label} => offset: {offset}")
 		
-		for k,v in benchmarks.items():
-			print(f"{k} {v}")
-			bench_values = [
-				min(100, (np.log10(v['samples']) / np.log10(1_000_000)) * 100),
-				min(100, (np.log10(v['labels']) / np.log10(100_000)) * 100),
-				min(100, (v['cardinality'] / 10) * 100),
-				v['norm_entropy'] * 100,
-				(1 - v['gini']) * 100,
-				min(100, (np.log10(v['effective_labels']) / np.log10(10_000)) * 100)
-			]
-			bench_values_plot = bench_values + bench_values[:1]
-			ax.plot(
-				angles_plot, 
-				bench_values_plot, 
-				'o--', 
-				linewidth=1.5, 
-				label=k, 
-				alpha=0.5,
-				color=v['color']
-			)
-			ax.fill(angles_plot, bench_values_plot, alpha=0.1, color=v['color'])
-		
-		# After creating the plot, before setting labels
-		ax.set_theta_offset(np.pi / 2)  # Start at 12 o'clock
-		ax.set_theta_direction(-1)  # Clockwise
-		ax.set_xticks(angles)  # Set ticks at each angle
-
-		# Manually set labels
-		# ax.set_xticklabels(categories, size=10, weight='bold', va='center', ha='center')
-
-		# SMART LABEL POSITIONING with angle-dependent offsets
-		for angle, label in zip(angles, categories):
-			# Convert angle to degrees for easier understanding
-			angle_deg = np.degrees(angle)
-			if angle_deg == 0 or angle_deg == 90 or angle_deg == 180 or angle_deg == 360:  # Special case for 'Scale' to avoid overlap
-				offset = 1.0
-			elif 0 < angle_deg < 90: # first quadrant (CW)
-				offset = 1.1
-			elif 91 < angle_deg < 180:  # second quadrant (CW)
-				offset = 1.15
-			elif 181 < angle_deg < 270:  # third quadrant (CW)
-				offset = 1.12
-			elif 271 < angle_deg < 360:  # fourth quadrant (CW)
-				offset = 1.15
-			else:
-				print(f"<!> {angle_deg} => Default offset: 1.0")
-				offset = 1.0
-			print(f"Angle: {repr(angle_deg)}, Label: {label} => offset: {offset}")
-			
-			# Place label at calculated position
-			ax.text(
-				angle, 
-				105 * offset,
-				label, 
-				size=16, 
-				weight='bold', 
-				ha="center", 
-				va="center",
-				rotation_mode='anchor'
-			)
-
-		# Remove default labels since we're placing custom ones
-		ax.set_xticklabels([])
-
-		# Rest remains the same
-		ax.set_ylim(0, 100)
-		ax.set_yticks([20, 40, 60, 80, 100])
-		ax.set_yticklabels(['20', '40', '60', '80', '100'], size=10, zorder=100)
-		ax.grid(True, linestyle='--', alpha=0.9)
-
-		ax.legend(
-			loc='upper right', 
-			fontsize=11, 
-			frameon=False, 
-			fancybox=True, 
-			shadow=True, 
-			edgecolor='black', 
-			facecolor='white',
-			bbox_to_anchor=(1.09, 1.04) # Move legend outside the plot
+		# Place label at calculated position
+		ax.text(
+			angle, 
+			105 * offset,
+			label, 
+			size=16, 
+			weight='bold', 
+			ha="center", 
+			va="center",
+			rotation_mode='anchor'
 		)
-		
-		# plt.title('Multi-Dimensional Dataset Characteristics: A Comparative View', size=11, weight='bold', pad=25)
-		
-		plt.tight_layout()
-		plt.savefig(
-			fname=os.path.join(output_dir, f"comparative_radar_chart.png"),
-			dpi=DPI,
-			bbox_inches='tight'
-		)
-		plt.close()
-		
-		print("Comparative radar chart created successfully!")
-		return dataset_values, benchmarks
+
+	# Remove default labels since we're placing custom ones
+	ax.set_xticklabels([])
+	# Rest remains the same
+	ax.set_ylim(0, 100)
+	ax.set_yticks([20, 40, 60, 80, 100])
+	ax.set_yticklabels(['20', '40', '60', '80', '100'], size=10, zorder=100)
+	ax.grid(True, linestyle='--', alpha=0.9)
+	ax.legend(
+		loc='upper right', 
+		fontsize=13, 
+		frameon=False, 
+		fancybox=True, 
+		shadow=True, 
+		edgecolor='black', 
+		facecolor='white',
+		bbox_to_anchor=(1.09, 1.04) # Move legend outside the plot
+	)
+	
+	# plt.title('Multi-Dimensional Dataset Characteristics: A Comparative View', size=11, weight='bold', pad=25)
+	
+	plt.tight_layout()
+	plt.savefig(
+		fname=os.path.join(output_dir, f"comparative_radar_chart.png"),
+		dpi=DPI,
+		bbox_inches='tight'
+	)
+	plt.close()
+	
+	return dataset_values, benchmarks
 
 def analyze_top_labels_per_source(
 	processed_dfs: dict,
 	output_dir: str,
 	n_top_labels_plot: int=100,
 	DPI: int=200
-):	
-	print(f"\nTOP-{n_top_labels_plot} MOST FREQUENT LABELS: PER-SOURCE ANALYSIS\n")
-	# print(processed_dfs)
-
+):
+	print(f"\n>> TOP-{n_top_labels_plot} MOST FREQUENT LABELS: PER-SOURCE ANALYSIS")
+	
 	all_label_counts = {}
 	# PART 1: Individual Source Analysis
 	for col, lst in processed_dfs.items():
@@ -2806,8 +2303,7 @@ def analyze_top_labels_per_source(
 		)
 		plt.close()
 	
-	# Comparative Analysis - Side-by-side
-	print("\n--- COMPARATIVE ANALYSIS: Top Labels Across Sources ---")	
+	print("\n>> COMPARATIVE ANALYSIS: Top Labels Across Sources ---")	
 	# Create side-by-side comparison plot
 	n_sources = len(all_label_counts)
 	fig, axes = plt.subplots(1, n_sources, figsize=(8*n_sources, 11))
@@ -2841,8 +2337,7 @@ def analyze_top_labels_per_source(
 	)
 	plt.close()
 
-	# PART 3: Source-Specific Labels
-	print("\n--- Source-Specific Label Analysis ---")	
+	print("\n>> Source-Specific Label Analysis")	
 	# Visualize source-specific labels
 	fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
 	
@@ -2882,10 +2377,9 @@ def analyze_top_labels_per_source(
 	)
 	plt.close()
 	
-	# PART 4: Agreement Analysis
 	# Get top-N from each source
 	top_n_agreement = 100
-	print(f"Top-{top_n_agreement} Label Agreement Between Sources")
+	print(f"\n>> Top-{top_n_agreement} Label Agreement Between Sources")
 	llm_top_n = set(all_label_counts['llm_based_labels'].head(top_n_agreement)['Label'].values)
 	vlm_top_n = set(all_label_counts['vlm_based_labels'].head(top_n_agreement)['Label'].values)
 	
@@ -2930,9 +2424,7 @@ def analyze_top_labels_per_source(
 		bbox_inches='tight'
 	)
 	plt.close()
-	
-	print("\n" + "="*100)
-	
+		
 	return all_label_counts
 
 def analyze_multi_source_agreement(
@@ -2993,7 +2485,7 @@ def analyze_multi_source_agreement(
 	
 	# Calculate sample-level agreement if we have at least 3 sources
 	if len(source_keys) >= 3:
-			print("\n--- Sample-Level Agreement Metrics ---")
+			print("\n>> Sample-Level Agreement Metrics")
 			
 			# Get the label lists dynamically (use first 3 available sources)
 			labels_lists = {key: processed_dfs[key] for key in source_keys[:3]}
@@ -3177,7 +2669,7 @@ def perform_multilabel_eda(
 	print(dataset_name)
 
 	print(df.info(verbose=True, memory_usage="deep"))
-	print("Missing Values".center(100, "-"))
+	print("\n>> Missing Values:")
 	print(df.isnull().sum())
 	print(f"[LOADED] {type(df)} {df.shape} {list(df.columns)}")
 
@@ -3240,8 +2732,7 @@ def perform_multilabel_eda(
 	)
 	plt.close()
 
-	# PLOT 1: Power Law Analysis
-	print("--- POWER LAW ANALYSIS ---")
+	print("\n>> POWER LAW ANALYSIS")
 	freq_values = all_label_counts[label_column]['Count'].values
 	ranks = np.arange(1, len(freq_values) + 1)
 	
@@ -3284,9 +2775,7 @@ def perform_multilabel_eda(
 	print(f"Estimated power law exponent (α): {alpha_estimate:.3f}")
 	print("Note: α ≈ 2 suggests Zipf's law, typical in natural language")
 
-	# PLOT 2: Label Diversity Metrics
-	print("--- LABEL DIVERSITY METRICS ---")
-	
+	print("\n>> LABEL DIVERSITY METRICS")	
 	# Calculate Shannon entropy
 	label_probs = all_label_counts[label_column]['Count'].values / all_label_counts[label_column]['Count'].sum()
 	shannon_entropy = scipy.stats.entropy(label_probs, base=2)
@@ -3345,8 +2834,8 @@ def perform_multilabel_eda(
 	)
 	plt.close()
 
-	# PLOT 3: Label Imbalance Analysis
-	print("--- LABEL IMBALANCE ANALYSIS ---")
+	# Label Imbalance Analysis
+	print("\n>> LABEL IMBALANCE ANALYSIS")
 	
 	# Calculate imbalance ratio
 	max_freq = all_label_counts[label_column]['Count'].max()
@@ -3459,8 +2948,8 @@ def perform_multilabel_eda(
 	)
 	plt.close()
 
-	# PLOT 4: Unique Label Set Combinations
-	print("--- Unique Label Set Combinations ---")
+	# Unique Label Set Combinations
+	print("\n>> Unique Label Set Combinations")
 	def parse_and_create_tuple(x):
 			if isinstance(x, str):
 					try:
@@ -3513,8 +3002,8 @@ def perform_multilabel_eda(
 		)
 		plt.close()
 	
-	# PLOT 5: Hierarchical Clustering of Labels
-	print("\n--- HIERARCHICAL CLUSTERING OF LABELS (Top Labels) ---")
+	# Hierarchical Clustering of Labels
+	print("\n>> HIERARCHICAL CLUSTERING OF LABELS (Top Labels)")
 	if n_top_labels_co_occurrence > len(unique_labels):
 		print(
 			f"[WARNING] n_top_labels_co_occurrence ({n_top_labels_co_occurrence}) is greater than "
@@ -3684,14 +3173,6 @@ def perform_multilabel_eda(
 		'Effective # of Labels': effective_labels
 	}
 
-	# Create radar chart
-	radar_scores = create_dataset_radar_chart(
-		summary_stats_dict, 
-		output_dir, 
-		label_column, 
-		DPI
-	)
-
 	# Create comparative radar chart
 	scores, benchmark_scores = create_comparative_radar_chart(
 		summary_stats_dict, 
@@ -3701,8 +3182,7 @@ def perform_multilabel_eda(
 	)
 
 	# Summary Statistics Table
-	print("\n" + "="*100)
-	print("--- COMPREHENSIVE SUMMARY STATISTICS ---")
+	print("\n>> COMPREHENSIVE SUMMARY STATISTICS")
 	
 	summary_stats = {
 		'Metric': [
@@ -3744,7 +3224,8 @@ def perform_multilabel_eda(
 		index=False
 	)
 	
-	print(f"EDA Elapsed_t: {time.time()-eda_st:.1f} sec")
+	print(f"\nEDA Total Elapsed Time: {time.time()-eda_st:.1f} sec")
+	print("="*100)
 
 def plot_label_distribution_pie_chart(
 		df: pd.DataFrame = None,
