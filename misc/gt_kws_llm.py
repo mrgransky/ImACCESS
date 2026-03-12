@@ -367,46 +367,60 @@ def _load_llm_(
 		print(f"   • padding side      : {tokenizer.padding_side:>20}")
 		print()
 	
-	def get_estimated_gb_size(model_id: str, dtype_bytes: float = 2.0) -> float:
-		"""
-		Return estimated **in-memory weight footprint** in GiB.
-		Uses model card / hub metadata preferentially.
-		"""
-		try:
-				info = huggingface_hub.model_info(model_id, token=hf_tk)
-		except Exception as e:
-				raise ValueError(f"Failed to fetch model info: {e}")
-		print(type(info))
-		print(info)
 
-		param_count = None
+	def get_estimated_gb_size(model_id: str) -> float:
+			"""
+			Estimate **in-memory weight footprint** in GiB.
+			Returns conservative (higher) value suitable for VRAM checks.
+			"""
+			try:
+					info = huggingface_hub.model_info(model_id, token=hf_tk, files_metadata=True)
+			except Exception as e:
+					raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
+			print(type(info))
+			print(info)
+			disk_bytes = 0
+			param_count = None
 
-		# 1. Try safetensors metadata (preferred when available)
-		if hasattr(info, "safetensors") and info.safetensors:
-				safet = info.safetensors
-				if isinstance(safet, dict):
-						param_count = safet.get("total")
-				elif hasattr(safet, "total"):
-						param_count = safet.total
+			# 1. Sum actual file sizes (most reliable when available)
+			if info.siblings:
+					for s in info.siblings:
+							if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin")):
+									disk_bytes += s.size
 
-		# 2. Fallback: sum file sizes only if param count missing
-		if not param_count and info.siblings:
-				total_bytes = sum(
-						s.size or 0
-						for s in info.siblings
-						if s.rfilename and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin"))
-				)
-				if total_bytes > 0:
-						# Disk size is usually already in target dtype → small multiplier
-						return (total_bytes * 1.15) / (1024 ** 3)   # 15% overhead
+			# 2. Try safetensors metadata (parameter count)
+			if hasattr(info, "safetensors") and info.safetensors:
+					safet = info.safetensors
+					if isinstance(safet, dict):
+							param_count = safet.get("total")
+					elif hasattr(safet, "total"):
+							param_count = safet.total
 
-		# 3. If we have param count → best estimate
-		if param_count:
-				# 2 bytes/param for fp16/bf16 + ~15–20% overhead
-				est_bytes = param_count * dtype_bytes * 1.18
-				return est_bytes / (1024 ** 3)
+			# 3. Hard-coded fallback for known Qwen3 MoE models (very common failure case)
+			KNOWN_QWEN3_MOE = {
+					"Qwen/Qwen3-30B-A3B-Instruct-2507": 30_500_000_000,   # 30.5B
+					"Qwen/Qwen3-Next-80B-A3B-Instruct": 80_000_000_000,   # 80B
+					# Add more as needed
+			}
+			if not param_count and model_id in KNOWN_QWEN3_MOE:
+					param_count = KNOWN_QWEN3_MOE[model_id]
 
-		raise ValueError(f"No usable size info for {model_id}")
+			# 4. Choose best source and apply realistic multiplier
+			if disk_bytes > 0:
+					# Disk size already in target dtype → small overhead (alignment, buffers)
+					est_gb = (disk_bytes * 1.20) / (1024 ** 3)   # 20% safety margin
+					return round(est_gb, 2)
+
+			if param_count:
+					# fp16/bf16 = 2 bytes/param + 18–25% overhead
+					est_bytes = param_count * 2.0 * 1.22
+					est_gb = est_bytes / (1024 ** 3)
+					return round(est_gb, 2)
+
+			raise ValueError(
+					f"No usable size info for {model_id}. "
+					"No file sizes, parameter count, or safetensors metadata available."
+			)
 
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	if verbose:
