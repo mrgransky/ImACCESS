@@ -206,18 +206,38 @@ class HistoricalArchivesSingleLabelDataset(Dataset):
 			print(f"Available memory ({available_memory_gib:.2f} GiB) below threshold ({memory_threshold_gib} GiB). Skipping preloading.")
 			self.image_cache = None
 	
-	def _preload_images(self):
-		print(f"Preloading images into memory for {self.dataset_name} ({'train' if self.train else 'validation'})...")
-		cache = []
-		for img_path in tqdm(self.images, desc="Loading images"):
+	def _preload_images(self, num_workers):
+		print(f"\nPreloading {self.cache_size} images using {num_workers} workers...")
+		
+		# For training, load random subset; for validation, load first N images
+		indices_to_load = np.random.choice(
+			len(self.image_paths), 
+			size=min(self.cache_size, len(self.image_paths)), 
+			replace=False
+		)
+		
+		def load_image(idx):
 			try:
-				img = Image.open(img_path).convert("RGB")
-				cache.append(img)
+				img_path = self.image_paths[idx]
+				with Image.open(img_path) as img:
+					# Store as numpy array (more compact than PIL Image)
+					img_array = np.array(img.convert("RGB"), dtype=np.uint8)
+				return idx, img_array
 			except Exception as e:
-				print(f"ERROR: {img_path}\t{e}")
-				cache.append(None)
-		print(f"Preloaded {sum(1 for img in cache if img is not None)}/{len(cache)} images successfully")
-		return cache
+				print(f"Failed to load image at index {idx}: {e}")
+				return idx, None
+		
+		# Load images in parallel
+		with ThreadPoolExecutor(max_workers=num_workers) as executor:
+			futures = [executor.submit(load_image, idx) for idx in indices_to_load]
+			
+			for future in as_completed(futures):
+				idx, img_array = future.result()
+				if img_array is not None:
+					with self.lock:
+						self.cache[idx] = img_array
+		
+		print(f"Successfully cached {len(self.cache)} images")
 	
 	def __len__(self):
 		return len(self.data_frame)
@@ -381,13 +401,11 @@ class ImageCache:
 		with ThreadPoolExecutor(max_workers=num_workers) as executor:
 			futures = [executor.submit(load_image, idx) for idx in indices_to_load]
 			
-			with tqdm(total=len(indices_to_load), desc="Loading images") as pbar:
-				for future in as_completed(futures):
-					idx, img_array = future.result()
-					if img_array is not None:
-						with self.lock:
-							self.cache[idx] = img_array
-					pbar.update(1)
+			for future in as_completed(futures):
+				idx, img_array = future.result()
+				if img_array is not None:
+					with self.lock:
+						self.cache[idx] = img_array
 		
 		print(f"Successfully cached {len(self.cache)} images")
 	
@@ -433,7 +451,7 @@ def get_estimated_image_size_mb(
 	sizes = []
 
 	with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
-		for size in tqdm(executor.map(estimate_image_size_mb, sample_paths), total=actual_sample_size):
+		for size in executor.map(estimate_image_size_mb, sample_paths):
 			if size is not None:
 				sizes.append(size)
 
@@ -541,7 +559,7 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 			
 	def _preload_texts(self):
 		print(f"Preprocessing texts for {self.dataset_name}...")
-		for idx in tqdm(range(len(self.labels)), desc=f"Tokenizing texts for {self.dataset_name}"):
+		for idx in range(len(self.labels)):
 			self.text_cache[idx] = self._tokenize_labels(self.labels[idx])
 	
 	def _tokenize_labels(self, labels_str):

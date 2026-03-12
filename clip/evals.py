@@ -561,7 +561,7 @@ def get_validation_metrics(
 		model.eval()
 		with torch.no_grad():
 			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-				for i in tqdm(range(0, n_classes, text_batch_size), desc="Pre-encoding class texts"):
+				for i in range(0, n_classes, text_batch_size):
 					end_idx = min(i + text_batch_size, n_classes)
 					batch_class_names = class_names[i:end_idx]
 					batch_class_texts = clip.tokenize(batch_class_names).to(device)
@@ -875,11 +875,9 @@ def _compute_image_embeddings(
 	model = model.to(device)
 	model.eval()
 
-	iterator = tqdm(validation_loader, desc="Encoding images") if verbose else validation_loader
-
 	batch_count = 0
 	with torch.no_grad():
-		for images, _, labels_indices in iterator:
+		for images, _, labels_indices in validation_loader:
 			if max_batches and batch_count >= max_batches:
 				print(f"Stopping at batch {batch_count} due to max_batches limit")
 				break

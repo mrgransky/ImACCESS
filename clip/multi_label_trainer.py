@@ -783,7 +783,7 @@ def full_finetune_multi_label(
 		print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding class texts"):
+			for i in range(0, num_classes, text_batch_size):
 				end_idx = min(i + text_batch_size, num_classes)
 				batch_class_names = class_names[i:end_idx]
 
@@ -1282,7 +1282,7 @@ def lora_finetune_multi_label(
 	print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding"):
+			for i in range(0, num_classes, text_batch_size):
 				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
 				embeds = model.encode_text(batch_tokens)
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
@@ -1828,7 +1828,7 @@ def lora_plus_finetune_multi_label(
 	print(f"\n>> Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding"):
+			for i in range(0, num_classes, text_batch_size):
 				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
 				embeds = model.encode_text(batch_tokens)
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
@@ -2406,7 +2406,7 @@ def dora_finetune_multi_label(
 	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding"):
+			for i in range(0, num_classes, text_batch_size):
 				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
 				embeds = model.encode_text(batch_tokens)
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
@@ -2989,7 +2989,7 @@ def ia3_finetune_multi_label(
 	print(f"\n>> Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding"):
+			for i in range(0, num_classes, text_batch_size):
 				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
 				embeds = model.encode_text(batch_tokens)
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
@@ -3563,7 +3563,7 @@ def vera_finetune_multi_label(
 	print(f"\n>> Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding"):
+			for i in range(0, num_classes, text_batch_size):
 				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
 				embeds = model.encode_text(batch_tokens)
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
