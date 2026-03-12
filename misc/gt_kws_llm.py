@@ -391,20 +391,21 @@ def _load_llm_(
 
 			# Fallback 1: try config or card_data if exposed
 			if not param_count and hasattr(info, "config"):
-					param_count = info.config.get("num_parameters")
+				param_count = info.config.get("num_parameters")
 
 			# Fallback 2: manual parsing from card (sometimes in README or tags)
 			if not param_count:
-					# Many model cards say "30.5B parameters" somewhere
-					# You could regex the card_content, but for now skip or hardcode known models
-					pass
+				# Many model cards say "30.5B parameters" somewhere
+				# You could regex the card_content, but for now skip or hardcode known models
+				pass
 
 			if param_count:
-					# Conservative: 2 bytes/param + 12–20% overhead for alignment/shared tensors
-					est_bytes = param_count * dtype_bytes * 1.18
-					est_gb = est_bytes / (1024 ** 3)
-					# Add note that this is weights only — inference needs more
-					return est_gb
+				print(f"param_count: {param_count}")
+				# Conservative: 2 bytes/param + 12–20% overhead for alignment/shared tensors
+				est_bytes = param_count * dtype_bytes * 1.18
+				est_gb = est_bytes / (1024 ** 3)
+				# Add note that this is weights only — inference needs more
+				return est_gb
 
 			# Fallback 3: sum file sizes (least accurate, but better than nothing)
 			if info.siblings:
