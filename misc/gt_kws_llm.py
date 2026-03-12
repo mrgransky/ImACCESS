@@ -372,24 +372,63 @@ def _load_llm_(
 	
 
 
-	def get_estimated_gb_size(m_id: str) -> float:
-		info = huggingface_hub.model_info(m_id, token=hf_tk, files_metadata=True)
-		print(type(info))
-		print(info)
+	def get_estimated_gb_size(model_id: str, assume_dtype_bytes: float = 2.0) -> float:
+			"""
+			Returns a conservative estimate of **in-memory weight footprint** in GiB.
+			Uses parameter count from hub metadata when possible.
+			"""
+			info = huggingface_hub.model_info(model_id, token=hf_tk)
+			
+			param_count = None
+			
+			# Preferred: use parameter count from safetensors metadata
+			if hasattr(info, "safetensors") and info.safetensors:
+					if isinstance(info.safetensors, dict):
+							param_count = info.safetensors.get("total")
+					elif hasattr(info.safetensors, "total"):
+							param_count = info.safetensors.total
+			
+			# Fallback: parse from model card or config if available
+			if not param_count and hasattr(info, "config"):
+					if "num_parameters" in info.config:
+							param_count = info.config["num_parameters"]
+			
+			if param_count:
+					# Conservative: add ~10–15% overhead for alignment/shared tensors
+					bytes_est = param_count * assume_dtype_bytes * 1.12
+					return bytes_est / (1024 ** 3)
+			
+			# Ultimate fallback: sum safetensors file sizes (least accurate)
+			if info.siblings:
+					total_bytes = sum(
+							s.size for s in info.siblings
+							if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin"))
+					)
+					if total_bytes > 0:
+							# Apply larger multiplier because file size usually underestimates
+							return (total_bytes * 1.9) / (1024 ** 3)
+			
+			raise ValueError(f"Could not estimate size for {model_id}")
+
+	# def get_estimated_gb_size(m_id: str) -> float:
+	# 	info = huggingface_hub.model_info(m_id, token=hf_tk, files_metadata=True)
+	# 	print(type(info))
+	# 	print(info)
 		
-		# Method 1: Direct safetensors metadata (only works for single-file or repos with specific metadata)
-		if hasattr(info, "safetensors") and info.safetensors:
-			try:
-				# Handle if it's a dict (newer huggingface_hub) or object
-				if isinstance(info.safetensors, dict):
-					total_bytes = info.safetensors.get("total")
-				else:
-					total_bytes = getattr(info.safetensors, "total", None)
-				
-				if total_bytes and total_bytes > 0:
-					return total_bytes / (1024 ** 3)
-			except Exception as e:
-				print(f"<!> Failed to estimate model size from safetensors metadata: {e}")
+	# 	# Method 1: Direct safetensors metadata (only works for single-file or repos with specific metadata)
+	# 	if hasattr(info, "safetensors") and info.safetensors:
+	# 		try:
+	# 			# Handle if it's a dict (newer huggingface_hub) or object
+	# 			if isinstance(info.safetensors, dict):
+	# 				param_count = info.safetensors.get("total")
+	# 			else:
+	# 				param_count = getattr(info.safetensors, "total", None)
+	# 			print(f"param_count: {param_count}")
+	# 			if param_count:
+	# 				# Assume bf16/fp16 → 2 bytes per parameter
+	# 				return param_count * 2 / (1024 ** 3)
+	# 		except Exception as e:
+	# 			print(f"<!> Failed to estimate model size from safetensors metadata: {e}")
 		
 		# Method 2: Sum individual weight file sizes (Robust fallback)
 		# This works for sharded models (e.g., model-00001-of-00003.safetensors)
@@ -633,9 +672,9 @@ def _load_llm_(
 		approx_fp4_gb = total_params * 0.5 / (1024 ** 3)
 
 		print(f"   • Total parameters: {total_params:,}")
-		print(f"   • Actual model size (fp16): {approx_fp16_gb:.2f} GB")
-		print(f"   • Actual model size (fp8): {approx_fp8_gb:.2f} GB")
-		print(f"   • Actual model size (fp4): {approx_fp4_gb:.2f} GB")
+		print(f"   • Actual model size (fp16) [2 bytes per BF16 parameter]:  {approx_fp16_gb:.2f} GB")
+		print(f"   • Actual model size (fp8) 	[1 byte per BF16 parameter]:   {approx_fp8_gb:.2f} GB")
+		print(f"   • Actual model size (fp4)  [0.5 byte per BF16 parameter]: {approx_fp4_gb:.2f} GB")
 		print(f"   • Available VRAM: {total_vram_available:.2f} GB")
 		if use_quantization:
 			if quantization_bits == 8:
