@@ -368,62 +368,45 @@ def _load_llm_(
 		print()
 	
 	def get_estimated_gb_size(model_id: str, dtype_bytes: float = 2.0) -> float:
-			"""
-			Estimate in-memory weight footprint in GiB.
-			Tries multiple sources, returns conservative (higher) value.
-			"""
-			try:
-				info = huggingface_hub.model_info(model_id, token=hf_tk, files_metadata=True)
-			except Exception as e:
-				raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
+		"""
+		Return estimated **in-memory weight footprint** in GiB.
+		Uses model card / hub metadata preferentially.
+		"""
+		try:
+				info = huggingface_hub.model_info(model_id, token=hf_tk)
+		except Exception as e:
+				raise ValueError(f"Failed to fetch model info: {e}")
+		print(type(info))
+		print(info)
 
-			print(type(info))
-			print(info)
-			param_count = None
+		param_count = None
 
-			# Preferred: safetensors metadata (parameter count)
-			if hasattr(info, "safetensors") and info.safetensors:
-					safet = info.safetensors
-					if isinstance(safet, dict):
-							param_count = safet.get("total")
-					elif hasattr(safet, "total"):
-							param_count = safet.total
+		# 1. Try safetensors metadata (preferred when available)
+		if hasattr(info, "safetensors") and info.safetensors:
+				safet = info.safetensors
+				if isinstance(safet, dict):
+						param_count = safet.get("total")
+				elif hasattr(safet, "total"):
+						param_count = safet.total
 
-			# Fallback 1: try config or card_data if exposed
-			if not param_count and hasattr(info, "config"):
-				param_count = info.config.get("num_parameters")
-
-			# Fallback 2: manual parsing from card (sometimes in README or tags)
-			if not param_count:
-				print(f"Param count not found in safetensors or config")
-				# Many model cards say "30.5B parameters" somewhere
-				# You could regex the card_content, but for now skip or hardcode known models
-				pass
-
-			if param_count:
-				print(f"param_count: {param_count}")
-				# Conservative: 2 bytes/param + 12–20% overhead for alignment/shared tensors
-				est_bytes = param_count * dtype_bytes * 1.18
-				est_gb = est_bytes / (1024 ** 3)
-				# Add note that this is weights only — inference needs more
-				return est_gb
-
-			# Fallback 3: sum file sizes (least accurate, but better than nothing)
-			if info.siblings:
-				total_bytes = 0
-				for s in info.siblings:
-					if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin")):
-						total_bytes += s.size
-				
+		# 2. Fallback: sum file sizes only if param count missing
+		if not param_count and info.siblings:
+				total_bytes = sum(
+						s.size or 0
+						for s in info.siblings
+						if s.rfilename and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin"))
+				)
 				if total_bytes > 0:
-					print(f"total_bytes: {total_bytes}")
-					# File size usually underestimates RAM by ~1.8–2.2×
-					return (total_bytes * dtype_bytes) / (1024 ** 3)
+						# Disk size is usually already in target dtype → small multiplier
+						return (total_bytes * 1.15) / (1024 ** 3)   # 15% overhead
 
-			raise ValueError(
-					f"Could not estimate size for {model_id}. "
-					"No parameter count or file sizes available in hub metadata."
-			)
+		# 3. If we have param count → best estimate
+		if param_count:
+				# 2 bytes/param for fp16/bf16 + ~15–20% overhead
+				est_bytes = param_count * dtype_bytes * 1.18
+				return est_bytes / (1024 ** 3)
+
+		raise ValueError(f"No usable size info for {model_id}")
 
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	if verbose:
