@@ -396,16 +396,7 @@ def _load_llm_(
 					elif hasattr(safet, "total"):
 							param_count = safet.total
 
-			# 3. Hard-coded fallback for known Qwen3 MoE models (very common failure case)
-			KNOWN_QWEN3_MOE = {
-					"Qwen/Qwen3-30B-A3B-Instruct-2507": 30_500_000_000,   # 30.5B
-					"Qwen/Qwen3-Next-80B-A3B-Instruct": 80_000_000_000,   # 80B
-					# Add more as needed
-			}
-			if not param_count and model_id in KNOWN_QWEN3_MOE:
-					param_count = KNOWN_QWEN3_MOE[model_id]
-
-			# 4. Choose best source and apply realistic multiplier
+			# 3. Choose best source and apply realistic multiplier
 			if disk_bytes > 0:
 					# Disk size already in target dtype → small overhead (alignment, buffers)
 					est_gb = (disk_bytes * 1.20) / (1024 ** 3)   # 20% safety margin
