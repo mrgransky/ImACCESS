@@ -110,7 +110,7 @@ case "$LABEL_TYPE" in
 esac
 
 # Batch sizes and print frequencies
-BATCH_SIZES=(16 64 64 64 64)
+BATCH_SIZES=(24 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 25)
 
 # Learning rates by method group
