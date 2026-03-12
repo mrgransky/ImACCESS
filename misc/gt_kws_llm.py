@@ -395,6 +395,7 @@ def _load_llm_(
 
 			# Fallback 2: manual parsing from card (sometimes in README or tags)
 			if not param_count:
+				print(f"Param count not found in safetensors or config")
 				# Many model cards say "30.5B parameters" somewhere
 				# You could regex the card_content, but for now skip or hardcode known models
 				pass
@@ -409,14 +410,15 @@ def _load_llm_(
 
 			# Fallback 3: sum file sizes (least accurate, but better than nothing)
 			if info.siblings:
-					total_bytes = 0
-					for s in info.siblings:
-							if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin")):
-									total_bytes += s.size
-
-					if total_bytes > 0:
-							# File size usually underestimates RAM by ~1.8–2.2×
-							return (total_bytes * 2.0) / (1024 ** 3)
+				total_bytes = 0
+				for s in info.siblings:
+					if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin")):
+						total_bytes += s.size
+				
+				if total_bytes > 0:
+					print(f"total_bytes: {total_bytes}")
+					# File size usually underestimates RAM by ~1.8–2.2×
+					return (total_bytes * dtype_bytes) / (1024 ** 3)
 
 			raise ValueError(
 					f"Could not estimate size for {model_id}. "
