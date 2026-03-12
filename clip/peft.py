@@ -1354,10 +1354,14 @@ class CLIPAdapterBottleneck(torch.nn.Module):
 		self.verbose = verbose
 		
 		if self.verbose:
-			print(f"[CLIP-Adapter] Bottleneck: {in_features} -> {bottleneck_dim} -> {in_features}")
+			print(f"\n{self.__class__.__name__}")
+			print(f"    ├─ in_features: {in_features}")
+			print(f"    ├─ bottleneck_dim: {bottleneck_dim}")
+			print(f"    ├─ Architecture: in_features: {in_features} -> bottleneck_dim: {bottleneck_dim} -> in_features: {in_features}")
 			print(f"    ├─ Activation: {activation}")
 			print(f"    ├─ Residual ratio: {residual_ratio} (trainable: {trainable_ratio})")
-			print(f"    └─ LayerNorm: {use_layer_norm}")
+			print(f"    ├─ LayerNorm: {use_layer_norm}")
+			print(f"    └─ Residual ratio: {residual_ratio} (trainable: {trainable_ratio})")
 		
 		# Down projection
 		self.down_proj = torch.nn.Linear(in_features, bottleneck_dim, bias=False).to(device)
@@ -1422,6 +1426,17 @@ class CLIPAdapterBottleneck(torch.nn.Module):
 			'params': total_params,
 			'memory_mb': memory_mb,
 		}
+
+	def __repr__(self) -> str:
+		return (
+			f"\n{self.__class__.__name__}\n"
+			f"  ├─ in_features: {self.in_features}\n"
+			f"  ├─ bottleneck_dim: {self.bottleneck_dim}\n"
+			f"  ├─ Activation: {self.activation.__class__.__name__}\n"
+			f"  ├─ Residual ratio: {self.ratio.item()} (trainable: {self.ratio.requires_grad})\n"
+			f"  ├─ LayerNorm: {self.use_layer_norm}\n"
+			f"  └─ Memory footprint: {self.get_memory_footprint()['memory_mb']:.4f} MB\n"
+		)	
 
 class CLIPAdapterText(torch.nn.Module):
 	"""
@@ -1575,7 +1590,7 @@ class CLIPAdapterVisual(torch.nn.Module):
 		self.verbose = verbose
 		
 		if self.verbose:
-			print(f"[CLIP-Adapter-Visual] Initializing")
+			print(f"\n[INITIALIZATION] {self.__class__.__name__}")
 		
 		# Get feature dimension from ln_post
 		if hasattr(clip_visual_model, 'ln_post'):
@@ -1597,8 +1612,9 @@ class CLIPAdapterVisual(torch.nn.Module):
 		self.hook_handle = clip_visual_model.ln_post.register_forward_hook(self._adapter_hook)
 		
 		if self.verbose:
-			print(f"[CLIP-Adapter-Visual] Hook registered on ln_post")
-			print(f"[CLIP-Adapter-Visual] Adapter input/output dim: {in_features}")
+			print(f"{self.__class__.__name__} Hook registered on ln_post")
+			print(f"  ├─ in_features: {in_features}")
+			print(f"  └─ bottleneck_dim: {bottleneck_dim}")
 	
 	def _adapter_hook(self, module, input, output):
 		"""
@@ -1707,8 +1723,7 @@ def get_adapter_peft_clip(
 			adapter_memory_info['visual'] = visual_adapter.get_memory_footprint()
 			
 			if verbose:
-				print(f"\tCompression ratio (d/r): {max(self.in_features, self.out_features) / self.rank:.2f}x")
-				print(f"    └─ Visual Adapter Memory: {adapter_memory_info['visual']['memory_mb']:.4f} MB")
+				print(f"Visual Adapter Memory: {adapter_memory_info['visual']['memory_mb']:.4f} MB")
 		
 		# Text Adapter
 		if method in ["clip_adapter_t", "clip_adapter_vt"]:
