@@ -169,13 +169,12 @@ class LoRALinear(torch.nn.Module):
 		if self.verbose:
 			print(f"[INITIALIZATION] {self.__class__.__name__}")
 			print(f"\tLayer config: in_features={self.in_features}, out_features={self.out_features}, rank={self.rank}")
-			print(f"\tCompute dtype: {compute_dtype}")
 			print(f"\tRank: {self.rank} Alpha: {self.alpha} Dropout: {dropout}")
 			if rslora:
 				print(f"\trsLoRA Scaling Factor (α/√r): {self.scale}")
 			else:
 				print(f"\tScaling Factor (α/r): {self.scale}")
-			print(f"\tCompression ratio (d/r): {compression_ratio:.2f}x")
+			print(f"\tCompression ratio (d=max(in_features, out_features)/r): {compression_ratio:.2f}x")
 			if quantized:
 				print(f"\tQuantization bits: {quantization_bits}")
 
@@ -296,7 +295,7 @@ class LoRALinear(torch.nn.Module):
 		lora_A_params = self.lora_A.weight.shape[0] * self.lora_A.weight.shape[1]  # rank × in_features
 		lora_B_params = self.lora_B.weight.shape[0] * self.lora_B.weight.shape[1]  # out_features × rank
 		return (
-			f"{self.__class__.__name__}\n"
+			f"\n{self.__class__.__name__}\n"
 			f"  ├─ {lora_type}\n"
 			f"  ├─ in_features={self.in_features}, out_features={self.out_features}\n"
 			f"  ├─ rank={self.rank}, alpha={self.alpha}, dropout={self.dropout.p}, scale={self.scale}\n"
@@ -570,7 +569,7 @@ class DoRALinear(torch.nn.Module):
 		lora_A_params = self.lora_A.weight.shape[0] * self.lora_A.weight.shape[1]  # rank × in_features
 		lora_B_params = self.lora_B.weight.shape[0] * self.lora_B.weight.shape[1]  # out_features × rank
 		return (
-			f"{self.__class__.__name__}\n"
+			f"\n{self.__class__.__name__}\n"
 			f"  ├─ in_features={self.in_features}, out_features={self.out_features}\n"
 			f"  ├─ rank={self.rank}, alpha={self.alpha}, scale={self.scale}\n"
 			f"  ├─ trainable_params={lora_A_params + lora_B_params:,} (A: {lora_A_params:,} + B: {lora_B_params:,})\n"
@@ -970,7 +969,7 @@ class VeRALinear(torch.nn.Module):
 			else "full precision (fp32)"
 		)
 		return (
-			f"{self.__class__.__name__}\n"
+			f"\n{self.__class__.__name__}\n"
 			f"  ├─ in_features={self.in_features}, out_features={self.out_features}\n"
 			f"  ├─ rank={self.rank}, dropout={self.dropout.p}\n"
 			f"  ├─ trainable_params={self.rank + self.out_features} (λ_d: {self.rank} + λ_b: {self.out_features})\n"
@@ -2043,9 +2042,9 @@ def get_injected_peft_clip(
 		print(f"    ├─ Adapter Class: {AdapterClass.__name__}")
 		print(f"    ├─ Rank: {rank}")
 		print(f"    ├─ Alpha: {alpha}")
-		print(f"    ├─ Dropout: {dropout}")
 		if lora_plus_lambda:
 			print(f"    ├─ {method_name} Learning Rate Multiplier (λ): {lora_plus_lambda}")
+		print(f"    └─ Dropout: {dropout}")
 
 	# Check CUDA capability for quantization
 	capability = torch.cuda.get_device_capability()
@@ -2185,9 +2184,7 @@ def get_injected_peft_clip(
 			print(f"kwargs: {kwargs}")
 
 		adapter_layer = AdapterClass(**kwargs)
-		print(f"#"*150)
-		print(f"{adapter_layer}")
-		print(f"#"*150)
+		print(adapter_layer)
 
 		# Copy original weights
 		if not quantized:
