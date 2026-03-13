@@ -5715,6 +5715,7 @@ def tip_adapter_finetune_multi_label(
 		print(f"  ├─ Method: {tip_adapter_method}")
 		print(f"  ├─ Beta[init]: {initial_beta}")
 		print(f"  ├─ Alpha[init]: {initial_alpha}")
+		print(f"  ├─ Epochs trained: {actual_trained_epochs}")
 		print(f"  ├─ Support Shots: {support_shots}")
 		print(f"  └─ Best model saved to: {mdl_fpth if num_epochs > 0 else 'N/A (training-free)'}")	
 		print("\n>> Tiered I2T Retrieval")
