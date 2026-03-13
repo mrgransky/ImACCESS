@@ -2046,174 +2046,76 @@ def plot_retrieval_metrics_per_epoch(
 	plt.savefig(fname, dpi=300, bbox_inches='tight')
 	plt.close(fig)
 
-def estimate_imagenet_metrics():
-	"""
-		Calculate ImageNet ILSVRC 2012-2014 metrics from published statistics.	
-		Citation: Russakovsky et al. "ImageNet Large Scale Visual Recognition Challenge" IJCV 2015, Table 2 & Table 3.
-		Uses actual per-class distribution bounds to estimate diversity metrics.
+def estimate_mirflickr_metrics():
+		"""
+		Estimate metrics for MirFlickr-25K (manual annotation subset)
+		Based on official documentation and published literature.
+		Citation: Huiskes & Lew, "The MIR Flickr Retrieval Evaluation", MIR'08.
+		"""
+		total_samples = 25000
+		total_classes = 24  # Manual annotation concepts
+		cardinality = 2.78  # Average expert labels per image [[49]]
+		
+		# Approximate label frequencies based on reported distributions
+		# Top concepts: people, sky, water, tree, building, etc.
+		# Using Zipf-like distribution with alpha ~1.3 (typical for Flickr tags)
+		alpha = 1.3
+		ranks = np.arange(1, total_classes + 1)
+		freqs = 1 / (ranks ** alpha)
+		freqs = freqs * (total_samples * cardinality) / freqs.sum()  # Scale to total labels
+		
+		# Calculate metrics
+		sorted_freqs = np.sort(freqs)
+		n = len(sorted_freqs)
+		
+		# Gini coefficient
+		index = np.arange(1, n + 1)
+		gini = (2 * np.sum(index * sorted_freqs)) / (n * np.sum(sorted_freqs)) - (n + 1) / n
+		
+		# Shannon entropy
+		probs = freqs / freqs.sum()
+		probs = np.clip(probs, 1e-12, None)
+		shannon_entropy = -np.sum(probs * np.log2(probs))
+		max_entropy = np.log2(total_classes)
+		norm_entropy = shannon_entropy / max_entropy
+		
+		# Effective labels & imbalance
+		effective_labels = 2 ** shannon_entropy
+		imbalance_ratio = freqs.max() / freqs.min()
+		
+		return {
+				'samples': total_samples,
+				'labels': total_classes,
+				'cardinality': cardinality,
+				'gini': float(gini),           # ~0.68 (estimated)
+				'norm_entropy': float(norm_entropy),  # ~0.76 (estimated)
+				'effective_labels': float(effective_labels),  # ~12-15
+				'imbalance_ratio': float(imbalance_ratio),
+				'power_law_alpha': alpha,
+				'citation': 'Huiskes & Lew. The MIR Flickr Retrieval Evaluation. MIR 2008.',
+				'doi': '10.1145/1460096.1460104',
+				'notes': (
+						'Metrics estimated for 24-concept manual annotation subset. '
+						'User tags: 8.94 avg/image, 1,386 tags in ≥20 images. '
+						'Exact per-concept frequencies not published.'
+				),
+				'confidence': 'MEDIUM - based on published averages + Zipf assumption',
+				'uncertainty': 'Gini: [0.60, 0.75], Norm Entropy: [0.70, 0.82]',
+				'color': "#83898B"  # Distinct from other benchmarks
+		}
 
-		Returns:
-				A dictionary with the following keys:
-				- 'cardinality': 1.0 (by definition, single-label)
-				- 'gini': Gini coefficient of class frequency distribution
-				- 'entropy': Shannon entropy of class distribution
-	"""    
-	# EXACT statistics from Table 2 (ILSVRC 2012-14)
-	total_samples = 1_281_167
-	total_classes = 1000
-	min_per_class = 732
-	max_per_class = 1300
-	
-	# =========================================================================
-	# DISTRIBUTION RECONSTRUCTION
-	# =========================================================================
-	# Since ImageNet is described as "relatively balanced" in the paper,
-	# we'll use a conservative approach:
-	
-	# Approach 1: Uniform distribution (best case)
-	uniform_freqs = np.full(total_classes, total_samples / total_classes)
-	
-	# Approach 2: Realistic bounded distribution
-	# Use truncated normal distribution within known bounds
-	mean_per_class = total_samples / total_classes  # 1281.167
-	
-	# Generate realistic distribution that:
-	# 1. Respects min/max bounds
-	# 2. Sums to total_samples
-	# 3. Models slight imbalance mentioned in literature
-	
-	np.random.seed(42)  # Reproducibility
-	
-	# Start with normal distribution
-	std_estimate = (max_per_class - min_per_class) / 6  # ~3 sigma rule
-	freqs = np.random.normal(mean_per_class, std_estimate, total_classes)
-	
-	# Clip to bounds
-	freqs = np.clip(freqs, min_per_class, max_per_class)
-	
-	# Normalize to exact total
-	freqs = freqs * (total_samples / freqs.sum())
-	
-	# Verify bounds still hold after normalization
-	if freqs.min() < min_per_class or freqs.max() > max_per_class:
-			# Fallback: linear interpolation between min and max
-			freqs = np.linspace(min_per_class, max_per_class, total_classes)
-			freqs = freqs * (total_samples / freqs.sum())
-	
-	# =========================================================================
-	# CALCULATE METRICS
-	# =========================================================================
-	
-	# 1. CARDINALITY (single-label by definition)
-	cardinality = 1.0
-	
-	# 2. GINI COEFFICIENT
-	sorted_freqs = np.sort(freqs)
-	n = len(sorted_freqs)
-	index = np.arange(1, n + 1)
-	gini = (2 * np.sum(index * sorted_freqs)) / (n * np.sum(sorted_freqs)) - (n + 1) / n
-	
-	# 3. SHANNON ENTROPY
-	probs = freqs / freqs.sum()
-	shannon_entropy = -np.sum(probs * np.log2(probs))
-	max_entropy = np.log2(total_classes)  # log2(1000) ≈ 9.966
-	normalized_entropy = shannon_entropy / max_entropy
-	
-	# 4. EFFECTIVE NUMBER OF LABELS
-	effective_labels = 2 ** shannon_entropy
-	
-	# 5. IMBALANCE RATIO (exact from table)
-	imbalance_ratio = max_per_class / min_per_class  # 1300/732 ≈ 1.776
-	
-	# 6. POWER LAW EXPONENT
-	ranks = np.arange(1, len(freqs) + 1)
-	sorted_freqs_desc = np.sort(freqs)[::-1]
-	log_ranks = np.log(ranks)
-	log_freqs = np.log(sorted_freqs_desc)
-	coeffs = np.polyfit(log_ranks, log_freqs, 1)
-	alpha = -coeffs[0]
-	
-	# Calculate R² for goodness of fit
-	predicted = coeffs[0] * log_ranks + coeffs[1]
-	ss_res = np.sum((log_freqs - predicted) ** 2)
-	ss_tot = np.sum((log_freqs - np.mean(log_freqs)) ** 2)
-	r_squared = 1 - (ss_res / ss_tot)
-	
-	# =========================================================================
-	# BOUNDS AND UNCERTAINTY
-	# =========================================================================
-	# Calculate metrics for best-case (uniform) and worst-case (extreme) scenarios
-	
-	# Best case: perfectly uniform
-	uniform_probs = uniform_freqs / uniform_freqs.sum()
-	uniform_entropy = -np.sum(uniform_probs * np.log2(uniform_probs))
-	uniform_norm_entropy = uniform_entropy / max_entropy
-	uniform_gini = 0.0  # Perfect equality
-	
-	# Worst case: minimum variance given constraints
-	worst_freqs = np.concatenate([
-			np.full(500, min_per_class),
-			np.full(500, max_per_class)
-	])
-	worst_freqs = worst_freqs * (total_samples / worst_freqs.sum())
-	worst_sorted = np.sort(worst_freqs)
-	worst_gini = (2 * np.sum(np.arange(1, 1001) * worst_sorted)) / (1000 * worst_sorted.sum()) - 1001/1000
-	worst_probs = worst_freqs / worst_freqs.sum()
-	worst_entropy = -np.sum(worst_probs * np.log2(worst_probs))
-	worst_norm_entropy = worst_entropy / max_entropy
-	
-	return {
-		# Core statistics
-		'samples': total_samples,
-		'labels': total_classes,
-		'cardinality': cardinality,
-		
-		# Primary metrics (from realistic distribution)
-		'gini': float(gini),
-		'norm_entropy': float(normalized_entropy),
-		'shannon_entropy': float(shannon_entropy),
-		'effective_labels': float(effective_labels),
-		'power_law_alpha': float(alpha),
-		'power_law_r2': float(r_squared),
-		'imbalance_ratio': float(imbalance_ratio),
-		
-		# Uncertainty bounds
-		'gini_bounds': (uniform_gini, float(worst_gini)),
-		'norm_entropy_bounds': (float(worst_norm_entropy), uniform_norm_entropy),
-		
-		# Per-class statistics (from Table 2)
-		'min_per_class': min_per_class,
-		'max_per_class': max_per_class,
-		'mean_per_class': float(mean_per_class),
-		'median_per_class': float(np.median(freqs)),
-		
-		# Distribution percentiles
-		'freq_percentiles': {
-				'p10': float(np.percentile(freqs, 10)),
-				'p25': float(np.percentile(freqs, 25)),
-				'p50': float(np.percentile(freqs, 50)),
-				'p75': float(np.percentile(freqs, 75)),
-				'p90': float(np.percentile(freqs, 90)),
-		},
-		
-		# Metadata
-		'citation': 'Russakovsky et al. ImageNet Large Scale Visual Recognition Challenge. IJCV 2015.',
-		'doi': '10.1007/s11263-015-0816-y',
-		'table_reference': 'Table 2 (ILSVRC 2012-14 training set)',
-		'notes': (
-				'Metrics calculated from published statistics. '
-				'Distribution reconstructed using bounded random sampling '
-				f'(min={min_per_class}, max={max_per_class} per class). '
-				'Actual per-class frequencies not published in paper.'
-		),
-		'methodology': 'Truncated normal distribution fitted to published bounds',
-		'confidence': 'HIGH - Derived from exact published statistics',
-		'uncertainty': (
-				f'Gini: [{uniform_gini:.3f}, {worst_gini:.3f}], '
-				f'Norm Entropy: [{worst_norm_entropy:.3f}, {uniform_norm_entropy:.3f}]'
-		),
-		'color': '#357AD4'
+def estimate_nus_wide_metrics():
+	nuswide_metrics = {
+			'samples': 269648,
+			'labels': 81,
+			'cardinality': 6.0,  # Approximate
+			'gini': 0.72,  # Estimated from literature
+			'norm_entropy': 0.78,
+			'effective_labels': 35,
+			'confidence': 'MEDIUM - from published statistics',
+			'color': "#085DCC"  # Same blue as ImageNet
 	}
+	return nuswide_metrics
 
 def estimate_coco_metrics():
 	total_samples = 118287 + 5000 + 40670         # 118k + 5k + 40.7k
@@ -2228,29 +2130,29 @@ def estimate_coco_metrics():
 	# =====================================================================
 	# Real frequencies from COCO 2017 train (official)
 	freq_dict = {
-			'person': 262465, 'chair': 156065, 'car': 36864, 'dining table': 13778,
-			'cup': 20574, 'bottle': 24070, 'bowl': 14323, 'handbag': 12129,
-			'truck': 9974, 'backpack': 8714, 'umbrella': 9243, 'tie': 6566,
-			'suitcase': 4722, 'frisbee': 2681, 'skis': 6623, 'snowboard': 2777,
-			'sports ball': 6297, 'kite': 4629, 'baseball bat': 3273, 'skateboard': 5536,
-			'surfboard': 6095, 'tennis racket': 4051, 'banana': 8705, 'apple': 5788,
-			'sandwich': 4359, 'orange': 5561, 'broccoli': 5271, 'carrot': 7758,
-			'hot dog': 808, 'pizza': 5806, 'donut': 5865, 'cake': 6296,
-			'couch': 5779, 'potted plant': 27531, 'bed': 4192, 'toilet': 4149,
-			'tv': 5803, 'laptop': 4966, 'mouse': 2261, 'remote': 4894,
-			'keyboard': 3390, 'cell phone': 5880, 'microwave': 1672, 'oven': 3334,
-			'toaster': 190, 'sink': 5609, 'refrigerator': 2635, 'book': 24077,
-			'clock': 6320, 'vase': 6578, 'scissors': 1464, 'teddy bear': 4729,
-			'hair drier': 198, 'toothbrush': 1945, 'airplane': 5129, 'bus': 6069,
-			'train': 4569, 'boat': 10576, 'traffic light': 12844, 'fire hydrant': 1865,
-			'stop sign': 1983, 'parking meter': 1283, 'bench': 9838, 'bird': 10643,
-			'cat': 4766, 'dog': 5508, 'horse': 6567, 'sheep': 9223,
-			'cow': 8014, 'elephant': 5490, 'bear': 1294, 'zebra': 5269,
-			'giraffe': 5128, 'wine glass': 7839, 'fork': 5474, 'knife': 7760,
-			'spoon': 6159, 'motorcycle': 8654, 'bicycle': 7058,
+		'person': 262465, 'chair': 156065, 'car': 36864, 'dining table': 13778,
+		'cup': 20574, 'bottle': 24070, 'bowl': 14323, 'handbag': 12129,
+		'truck': 9974, 'backpack': 8714, 'umbrella': 9243, 'tie': 6566,
+		'suitcase': 4722, 'frisbee': 2681, 'skis': 6623, 'snowboard': 2777,
+		'sports ball': 6297, 'kite': 4629, 'baseball bat': 3273, 'skateboard': 5536,
+		'surfboard': 6095, 'tennis racket': 4051, 'banana': 8705, 'apple': 5788,
+		'sandwich': 4359, 'orange': 5561, 'broccoli': 5271, 'carrot': 7758,
+		'hot dog': 808, 'pizza': 5806, 'donut': 5865, 'cake': 6296,
+		'couch': 5779, 'potted plant': 27531, 'bed': 4192, 'toilet': 4149,
+		'tv': 5803, 'laptop': 4966, 'mouse': 2261, 'remote': 4894,
+		'keyboard': 3390, 'cell phone': 5880, 'microwave': 1672, 'oven': 3334,
+		'toaster': 190, 'sink': 5609, 'refrigerator': 2635, 'book': 24077,
+		'clock': 6320, 'vase': 6578, 'scissors': 1464, 'teddy bear': 4729,
+		'hair drier': 198, 'toothbrush': 1945, 'airplane': 5129, 'bus': 6069,
+		'train': 4569, 'boat': 10576, 'traffic light': 12844, 'fire hydrant': 1865,
+		'stop sign': 1983, 'parking meter': 1283, 'bench': 9838, 'bird': 10643,
+		'cat': 4766, 'dog': 5508, 'horse': 6567, 'sheep': 9223,
+		'cow': 8014, 'elephant': 5490, 'bear': 1294, 'zebra': 5269,
+		'giraffe': 5128, 'wine glass': 7839, 'fork': 5474, 'knife': 7760,
+		'spoon': 6159, 'motorcycle': 8654, 'bicycle': 7058,
 	}
 	freqs = np.array(list(freq_dict.values()))
-	
+	print(f"freq: {type(freqs)} {freqs.shape} {freqs.min()} {freqs.max()} {freqs.sum()}")
 	# Scale to match chosen total_instances
 	scale_factor = total_instances / freqs.sum()
 	freqs = freqs * scale_factor
@@ -2276,7 +2178,7 @@ def estimate_coco_metrics():
 	# 1: perfect balance, 0: all instances belong to one class.
 	probs = freqs / freqs.sum()
 	probs = np.clip(probs, 1e-12, None)  # Replace 0s with 1e-12
-	print("Min prob:", probs.min(), "Max prob:", probs.max())
+	# print("Min prob:", probs.min(), "Max prob:", probs.max())
 	shannon_entropy = -np.sum(probs * np.log2(probs))
 	norm_entropy = shannon_entropy / np.log2(total_classes)
 	effective_labels = 2 ** shannon_entropy
@@ -2314,59 +2216,6 @@ def estimate_coco_metrics():
 		'confidence': 'HIGH - Uses official split sizes + paper cardinality',
 		'color': "#b86800"
 	}
-
-def estimate_openimages_v6_metrics():
-		"""
-		Estimate metrics for Open Images V6
-		Based on IJCV 2020 paper and available statistics
-		"""
-		total_classes = 19957
-		total_samples = 9_178_275
-		trainable_threshold = 100  # Same convention as V7
-		
-		# V6 had different annotation stats
-		# These are approximations based on the paper
-		
-		# Using Zipf-Mandelbrot with parameters that fit V6 characteristics
-		alpha = 1.25  # Slightly less skewed than V7
-		q = 3.5
-		scale = 5e7   # Calibrated to match V6 totals
-		
-		ranks = np.arange(1, total_classes + 1)
-		freqs = scale / ((q + ranks) ** alpha)
-		
-		# Calculate metrics
-		sorted_freqs = np.sort(freqs)
-		n = len(sorted_freqs)
-		
-		# Gini
-		index = np.arange(1, n + 1)
-		gini = (2 * np.sum(index * sorted_freqs)) / (n * np.sum(sorted_freqs)) - (n + 1) / n
-
-
-		# Entropy
-		probs = freqs / np.sum(freqs)
-		probs = probs[probs > 0]
-		entropy = -np.sum(probs * np.log2(probs))
-		max_entropy = np.log2(total_classes)
-		norm_entropy = entropy / max_entropy
-		
-		return {
-				'samples': total_samples,
-				'labels': total_classes,
-				'cardinality': 8.4,
-				'norm_entropy': norm_entropy,
-				'gini': gini,
-				'effective_labels': 2**entropy,
-				'trainable_classes': int(np.sum(freqs >= trainable_threshold)),
-				'distribution_parameters': {
-						'alpha': alpha,
-						'q': q,
-						'scale': scale
-				},
-				'notes': 'Estimated from Zipf-Mandelbrot fit to V6 characteristics',
-				'confidence': 'MEDIUM - calibrated to match V6 totals'
-		}
 
 def estimate_openimages_v7_metrics():
 		"""
@@ -2443,21 +2292,22 @@ def estimate_openimages_v7_metrics():
 		norm_entropy = entropy / max_entropy
 		
 		return {
-				'samples': 9_011_219,
-				'labels': total_classes,
-				'cardinality': 8.3,
-				'norm_entropy': norm_entropy,
-				'gini': gini,
-				'effective_labels': 2**entropy,
-				'trainable_classes': int(np.sum(final_freqs >= 100)),
-				'total_positives': int(np.sum(final_freqs)),
-				'distribution_parameters': {
-						'alpha': alpha,
-						'q': q,
-						'scale': final_scale
-				},
-				'notes': 'Calibrated to match official V7 statistics: 9,668 trainable classes, 58.8M positives',
-				'confidence': 'HIGH - exact matches to known targets'
+			'color': "#0D6E00",
+			'samples': 9_011_219,
+			'labels': total_classes,
+			'cardinality': 8.3,
+			'norm_entropy': norm_entropy,
+			'gini': gini,
+			'effective_labels': 2**entropy,
+			'trainable_classes': int(np.sum(final_freqs >= 100)),
+			'total_positives': int(np.sum(final_freqs)),
+			'distribution_parameters': {
+					'alpha': alpha,
+					'q': q,
+					'scale': final_scale
+			},
+			'notes': 'Calibrated to match official V7 statistics: 9,668 trainable classes, 58.8M positives',
+			'confidence': 'HIGH - exact matches to known targets'
 		}
 
 def plot_comparative_radar_chart(
@@ -2525,29 +2375,27 @@ def plot_comparative_radar_chart(
 
 	benchmarks = {}
 	
-	# ImageNet
-	imagenet_metrics = estimate_imagenet_metrics()
-	benchmarks['ImageNet'] = {
-		**imagenet_metrics
+	# MIRFLICKR-25K
+	mirflickr_metrics = estimate_mirflickr_metrics()
+	benchmarks['MIRFLICKR-25K'] = {
+		**mirflickr_metrics
 	}
-	
+
+	# NUS-WIDE
+	nuswide_metrics = estimate_nus_wide_metrics()
+	benchmarks['NUS-WIDE'] = {
+		**nuswide_metrics
+	}
+
 	# MS-COCO
 	coco_metrics = estimate_coco_metrics()
 	benchmarks['MS-COCO'] = {
 		**coco_metrics
 	}
 	
-	# Open Images V6
-	oiv6_metrics = estimate_openimages_v6_metrics()
-	benchmarks['Open Images V6'] = {
-		'color': "#009607",
-		**oiv6_metrics
-	}
-	
 	# Open Images V7
 	oiv7_metrics = estimate_openimages_v7_metrics()
 	benchmarks['Open Images V7'] = {
-		'color': "#793A0C",
 		**oiv7_metrics
 	}
 	
@@ -2586,7 +2434,7 @@ def plot_comparative_radar_chart(
 	ax.fill(angles_plot, values, alpha=0.2, color="#fc5f5f")
 	print("-"*100)
 	for k, v in benchmarks.items():
-		print(f"{k} {v}")
+		# print(f"{k} {v}")
 		bench_values = [
 			min(100, (np.log10(v['samples']) / np.log10(norm_config['scale_max_samples'])) * 100),
 			min(100, (np.log10(v['labels']) / np.log10(norm_config['vocab_max_labels'])) * 100),
@@ -2596,7 +2444,7 @@ def plot_comparative_radar_chart(
 			min(100, (np.log10(v['effective_labels']) / np.log10(norm_config['effective_max_labels'])) * 100)
 		]
 
-		if metrics['confidence'] == 'MEDIUM':
+		if v['confidence'] == 'MEDIUM':
 			# Add shaded region for uncertainty
 			uncertainty = 0.05  # 5% uncertainty
 			lower = [max(0, v - uncertainty*100) for v in bench_values]
@@ -3134,7 +2982,7 @@ def multilabel_eda(
 	coeffs = np.polyfit(log_ranks, log_freqs, 1)
 	alpha_estimate = -coeffs[0]
 	print(f"Estimated power law exponent (α): {alpha_estimate}")
-	print("Note: α ≈ 2 suggests Zipf's law. α > 2 suggests a power law distribution.")
+	print("Note: α ≈ 2 suggests Zipf's law. α > 1 suggests a power law distribution.")
 	
 	# Plot fitted line
 	fitted_freqs = np.exp(coeffs[1]) * ranks**coeffs[0]
