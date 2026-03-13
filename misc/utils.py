@@ -606,25 +606,26 @@ def get_multi_label_stratified_split(
 	label_col: str = 'multimodal_labels',
 	min_label_frequency: int = 3,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-	print(f"\n>> Stratified Splitting [Multi-label dataset] with {val_split_pct} validation split...")
-	print(f"   Min label frequency: {min_label_frequency}")
+
+	print(f"\nStratified Split [Multi-label] {val_split_pct} train/val split (Min label freq: {min_label_frequency})".upper())
+
 	t_st = time.time()
 	df_copy = df.copy()
 	# 1. Robust Label Parsing
 	print(f"\n[1/5] Parsing '{label_col}' column...")
 	if label_col not in df_copy.columns:
-			raise ValueError(f"Label column '{label_col}' not found in the DataFrame.")
+		raise ValueError(f"Label column '{label_col}' not found in the DataFrame.")
 	def parse_label(x):
-			if isinstance(x, str):
-					try:
-							return ast.literal_eval(x)
-					except (ValueError, SyntaxError) as e:
-							raise ValueError(f"Malformed string found in '{label_col}': '{x}'. Error: {e}")
-			elif isinstance(x, list):
-					return x
-			else:
-					print(f"Warning: Unexpected type '{type(x)}' found in '{label_col}': {x}. Trying to convert to empty list.")
-					return []
+		if isinstance(x, str):
+				try:
+						return ast.literal_eval(x)
+				except (ValueError, SyntaxError) as e:
+						raise ValueError(f"Malformed string found in '{label_col}': '{x}'. Error: {e}")
+		elif isinstance(x, list):
+				return x
+		else:
+				print(f"Warning: Unexpected type '{type(x)}' found in '{label_col}': {x}. Trying to convert to empty list.")
+				return []
 	
 	try:
 			df_copy[label_col] = df_copy[label_col].apply(parse_label)
@@ -757,16 +758,14 @@ def get_multi_label_stratified_split(
 	# print(f"   Label distribution (sample of {sample_size}):")
 	# print(val_df[label_col].sample(sample_size).apply(tuple).value_counts().head(10))
 	
-	print(f"\n>> Elapsed Time: {time.time()-t_st:.1f} sec")
-	
 	train_path = csv_file.replace('.csv', '_train.csv')
 	val_path = csv_file.replace('.csv', '_val.csv')
 	train_df.to_csv(train_path, index=False)
 	val_df.to_csv(val_path, index=False)
 	
-	print(f"\nSaved splits:")
-	print(f"Train: {train_path}")
-	print(f"Val:   {val_path}")
+	print(f"\nSTRATIFIED SPLIT Total Elapsed Time: {time.time()-t_st:.1f} sec")
+	print(f"-"*100)
+
 	return train_df, val_df
 
 def get_extension(url: str="www.example.com/some_/path/to/file.jpg"):

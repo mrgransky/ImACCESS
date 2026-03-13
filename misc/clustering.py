@@ -976,9 +976,8 @@ def analyze_cluster_quality(
 		raise ValueError(f"Need at least 2 clusters for quality analysis, got {n_clusters}")
 	
 	if verbose:
-		print("\nCLUSTER QUALITY ANALYSIS")
-		print(f"\tDataset: {n_samples:,} unique labels → {n_clusters:,} clusters")
-		print(f"\tReduction ratio: {n_samples/n_clusters:.2f}x")	
+		print(f"\nANALYZING CLUSTER QUALITY: {n_samples} samples → {n_clusters} clusters (reduction ratio: {n_samples/n_clusters:.2f}x)")
+		
 
 	# 1. GLOBAL CLUSTERING METRICS
 	if verbose:
@@ -1309,7 +1308,9 @@ def analyze_cluster_quality(
 		n_samples,
 		n_clusters
 	)
-		
+
+	print(f"\n{summary}\n")
+
 	return {
 		'global_metrics': global_metrics,
 		'cluster_metrics': cluster_df,
@@ -1374,63 +1375,63 @@ def _flag_cluster_quality(row: pd.Series) -> str:
 		return '|'.join(flags) if flags else 'OK'
 
 def _generate_recommendations(
-		global_metrics: Dict,
-		cluster_df: pd.DataFrame,
-		problematic_clusters: List[Dict],
-		consolidation_impact: Dict
+	global_metrics: Dict,
+	cluster_df: pd.DataFrame,
+	problematic_clusters: List[Dict],
+	consolidation_impact: Dict
 ) -> List[str]:
-		"""Generate actionable recommendations."""
-		recommendations = []
-		
-		# Recommendation 1: Overall quality
-		silhouette = global_metrics['silhouette_score']
-		if silhouette < 0.3:
-				recommendations.append(
-						"⚠️  LOW OVERALL QUALITY: Consider increasing n_clusters or using a different linkage method."
-				)
-		elif silhouette > 0.5:
-				recommendations.append(
-						"✅ GOOD OVERALL QUALITY: Clustering structure is well-defined."
-				)
-		
-		# Recommendation 2: Problematic clusters
-		high_severity_issues = [p for p in problematic_clusters if p['severity'] == 'HIGH']
-		if high_severity_issues:
-				recommendations.append(
-						f"⚠️  REVIEW {len(high_severity_issues)} HIGH-SEVERITY CLUSTERS: "
-						f"Check clusters with low cohesion manually."
-				)
-		
-		# Recommendation 3: Singletons
-		singleton_pct = consolidation_impact['singleton_percentage']
-		if singleton_pct > 20:
-				recommendations.append(
-						f"⚠️  HIGH SINGLETON RATE ({singleton_pct:.1f}%): "
-						f"Consider reducing n_clusters to improve consolidation."
-				)
-		
-		# Recommendation 4: Consolidation effectiveness
-		reduction_ratio = consolidation_impact['reduction_ratio']
-		if reduction_ratio < 2:
-				recommendations.append(
-						f"⚠️  LOW CONSOLIDATION ({reduction_ratio:.1f}x): "
-						f"Clustering provides minimal label reduction. Consider more aggressive merging."
-				)
-		elif reduction_ratio > 10:
-				recommendations.append(
-						f"✅ STRONG CONSOLIDATION ({reduction_ratio:.1f}x): "
-						f"Significant label reduction achieved."
-				)
-		
-		# Recommendation 5: Canonical representativeness
-		avg_canonical_rep = cluster_df['canonical_representativeness'].mean()
-		if avg_canonical_rep < 0.7:
-				recommendations.append(
-						f"⚠️  CANONICAL LABELS MAY NOT BE OPTIMAL: "
-						f"Avg representativeness = {avg_canonical_rep:.3f}. Consider alternative selection strategy."
-				)
-		
-		return recommendations
+	"""Generate actionable recommendations."""
+	recommendations = []
+	
+	# Recommendation 1: Overall quality
+	silhouette = global_metrics['silhouette_score']
+	if silhouette < 0.3:
+			recommendations.append(
+				f"⚠️  LOW OVERALL QUALITY: silhouette={silhouette:.4f}. Either increase n_clusters or use a different linkage method."
+			)
+	elif silhouette > 0.5:
+		recommendations.append(
+			"✅ GOOD OVERALL QUALITY: Clustering structure is well-defined."
+		)
+	
+	# Recommendation 2: Problematic clusters
+	high_severity_issues = [p for p in problematic_clusters if p['severity'] == 'HIGH']
+	if high_severity_issues:
+		recommendations.append(
+				f"⚠️  REVIEW {len(high_severity_issues)} HIGH-SEVERITY CLUSTERS: "
+				f"Check clusters with low cohesion manually."
+		)
+	
+	# Recommendation 3: Singletons
+	singleton_pct = consolidation_impact['singleton_percentage']
+	if singleton_pct > 20:
+		recommendations.append(
+				f"⚠️  HIGH SINGLETON RATE ({singleton_pct:.1f}%): "
+				f"Consider reducing n_clusters to improve consolidation."
+		)
+	
+	# Recommendation 4: Consolidation effectiveness
+	reduction_ratio = consolidation_impact['reduction_ratio']
+	if reduction_ratio < 2:
+		recommendations.append(
+				f"⚠️  LOW CONSOLIDATION ({reduction_ratio:.1f}x): "
+				f"Clustering provides minimal label reduction. Consider more aggressive merging."
+		)
+	elif reduction_ratio > 10:
+		recommendations.append(
+				f"✅ STRONG CONSOLIDATION ({reduction_ratio:.1f}x): "
+				f"Significant label reduction achieved."
+		)
+	
+	# Recommendation 5: Canonical representativeness
+	avg_canonical_rep = cluster_df['canonical_representativeness'].mean()
+	if avg_canonical_rep < 0.7:
+		recommendations.append(
+			f"⚠️  CANONICAL LABELS MAY NOT BE OPTIMAL: "
+			f"Avg representativeness = {avg_canonical_rep:.3f}. Consider alternative selection strategy."
+		)
+	
+	return recommendations
 
 def _generate_summary(
 	global_metrics: Dict,
@@ -2127,7 +2128,7 @@ def cluster(
 	distance_metric: str = "euclidean",  # 'cosine', 'euclidean'
 	verbose: bool = True,
 ):
-
+	st_t = time.time()
 	if verbose:
 		print(f"\n[AGGLOMERATIVE CLUSTERING] {len(labels)} documents")
 		print(f"   ├─ {model_id} | {device} | batch_size: {batch_size}")
@@ -2474,8 +2475,8 @@ def cluster(
 		if verbose:
 			print(f"\t=> Selected Canonical: {canonical} (sim={similarities[best_idx]:.4f})")
 	
-	print(f"\n[CLUSTERING DONE] {len(cluster_canonicals)} cluster canonicals computed in {time.time()-t0:.2f} sec.")
-	print(f"-"*110)
+	print(f"\n[CLUSTERING] {len(cluster_canonicals)} cluster canonicals computed in {time.time()-t0:.1f} sec.")
+	print(f"-"*100)
 
 	print("\nFREQUENCY WEIGHTING IMPACT ANALYSIS")
 	total_clusters = len(df.cluster.unique())
@@ -2563,7 +2564,7 @@ def cluster(
 	cluster_labels = df['cluster'].values      # 36,657 cluster assignments
 	canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
 
-	print("\nRUNNING COMPREHENSIVE CLUSTER QUALITY ANALYSIS")
+	print("\nCOMPREHENSIVE CLUSTER QUALITY")
 	print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
 	print(f"  ├─ Updated canonical_map: {len(canonical_map)} mappings")
 	print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
@@ -2593,7 +2594,7 @@ def cluster(
 
 	if results['problematic_clusters']:
 		if verbose:
-			print(f"\n[WARNING] {len(results['problematic_clusters'])} types of problematic clusters detected! => Exporting for manual review...")
+			print(f"\n[WARNING] {len(results['problematic_clusters'])} types of problematic clusters detected! => Exporting for manual review")
 		all_problematic_ids = []
 		for issue in results['problematic_clusters']:
 			if issue['severity'] in ['HIGH', 'MEDIUM']:
@@ -2608,5 +2609,9 @@ def cluster(
 				problematic_cluster_ids=list(set(all_problematic_ids)),
 				output_path=problematic_csv
 			)
+
+	if verbose:
+		print(f"[CLUSTERING] Total Elapsed Time: {time.time()-st_t:.1f} sec")
+		print("="*100)
 
 	return df

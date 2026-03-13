@@ -177,7 +177,7 @@ def merge_csv_files(
 	if verbose:
 		print(f"Saved merged CSV file to {output_fpath}")
 
-	viz.perform_multilabel_eda(
+	viz.multilabel_eda(
 		df=df,
 		output_dir=OUTPUT_DIR,
 		label_column='multimodal_canonical_labels'

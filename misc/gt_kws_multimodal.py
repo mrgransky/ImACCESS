@@ -290,7 +290,7 @@ def get_multimodal_annotation(
 			label_col='multimodal_canonical_labels'
 		)
 
-		viz.perform_multilabel_eda(
+		viz.multilabel_eda(
 			df=df,
 			output_dir=OUTPUT_DIR,
 			label_column='multimodal_canonical_labels'
