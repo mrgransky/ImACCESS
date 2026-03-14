@@ -251,7 +251,7 @@ def calculate_and_plot_long_tail_performance(
 		print(f"colors_for_plot: {colors_for_plot}")
 		df_results.plot(kind='bar', ax=ax, color=colors_for_plot, rot=0)
 
-		ax.set_title(f'Text-to-Image Recall@{top_k} by Label Frequency', fontsize=14, weight='bold')
+		ax.set_title(f'T2I Recall@{top_k} by Label Frequency', fontsize=14, weight='bold')
 		ax.set_xlabel('Model', fontsize=12)
 		ax.set_ylabel(f'Recall@{top_k}', fontsize=12)
 		ax.legend(fontsize=11, ncol=len(df_results.columns), loc='best', frameon=False, shadow=False, fancybox=False)
@@ -1795,9 +1795,9 @@ def plot_multilabel_loss_breakdown(
 
 	# Define plotting styles for known loss components for consistency
 	styles = {
-		"total": {'color': 'b', 'linestyle': '-', 'linewidth': 1.5, 'label': 'Total Loss'},
-		"i2t": {'color': 'g', 'linestyle': '--', 'linewidth': 2.0, 'label': 'Image→Text Loss'},
-		"t2i": {'color': 'r', 'linestyle': '--', 'linewidth': 2.0, 'label': 'Text→Image Loss'},
+		"total": {'color': "#0C00B1", 'linestyle': '-', 'linewidth': 1.5, 'label': 'Total Loss'},
+		"i2t": {'color': '#007f00', 'linestyle': '--', 'linewidth': 2.0, 'label': 'I2T Loss'},
+		"t2i": {'color': '#C0003A', 'linestyle': '--', 'linewidth': 2.0, 'label': 'T2I Loss'},
 	}
 
 	# Plot each loss component present in the dictionary
@@ -3104,7 +3104,7 @@ def plot_retrieval_metrics_per_epoch(
 		ti_valid_k_values = sorted([int(k) for k in ti_first_metrics.keys()])
 		# Print warning if K values differ significantly (optional, for debugging)
 		if set(it_valid_k_values) != set(ti_valid_k_values):
-			print(f"<!> Warning: K values differ between Image-to-Text ({it_valid_k_values}) and Text-to-Image ({ti_valid_k_values}).")
+			print(f"<!> Warning: K values differ between I2T ({it_valid_k_values}) and T2I ({ti_valid_k_values}).")
 
 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
 	
@@ -3183,205 +3183,6 @@ def plot_retrieval_metrics_per_epoch(
 	# plt.tight_layout(rect=[0, 0.03, 0.9, 0.95])
 	plt.savefig(fname, dpi=300, bbox_inches='tight')
 	plt.close(fig)
-
-def plot_qualitative_retrieval(
-	results_by_strategy: Dict[str, Dict],  # strategy → run_qualitative_retrieval output
-	output_dir: str,
-	dataset_name: str,
-	topk: int = 5,
-	img_size: int = 96,
-	dpi: int = 300,
-	verbose: bool = True,
-) -> List[str]:
-		"""
-		Produces one figure per retrieval direction (I2T, T2I).
-		Rows = query samples, columns = strategies side by side.
-		"""
-
-		os.makedirs(output_dir, exist_ok=True)
-		saved_paths = []
-		strategies = list(results_by_strategy.keys())
-
-		# ------------------------------------------------------------------ #
-		# I2T figure                                                          #
-		# Layout: one row per query image                                     #
-		#         columns: query image | strategy_1 labels | strategy_2 ...  #
-		# ------------------------------------------------------------------ #
-		i2t_samples = results_by_strategy[strategies[0]]["i2t"]
-		n_queries = len(i2t_samples)
-		# n_cols = 1 + len(strategies)   # query image + one col per strategy
-		n_cols = 1 + 1 + len(strategies)  # query image + GT column + one per strategy
-
-		fig_h = n_queries * 1.4 + 0.6
-		fig_w = n_cols * 2.8
-		fig, axes = plt.subplots(n_queries, n_cols, figsize=(fig_w, fig_h), dpi=dpi)
-		if n_queries == 1:
-			axes = axes[None, :]
-
-		# Column headers
-		print(n_cols)
-		print(axes.shape)
-		axes[0, 0].set_title("Query Image", fontsize=7, fontweight="bold")
-		axes[0, 1].set_title("GT", fontsize=7, fontweight="bold")
-		for col, strat in enumerate(strategies, start=2):
-			label = METHOD_STYLE.get(strat, {}).get("label", strat)
-			axes[0, col].set_title(label, fontsize=7, fontweight="bold")
-
-		for row, sample in enumerate(i2t_samples):
-			# Query image
-			ax_img = axes[row, 0]
-
-			try:
-				img = Image.open(sample["image_path"]).convert("RGB")
-				img.thumbnail((img_size * 2, img_size * 2))
-				ax_img.imshow(img)
-			except Exception:
-				ax_img.text(0.5, 0.5, "N/A", ha="center", va="center")
-
-			ax_img.axis("off")
-			ax_img.set_ylabel(
-				sample["segment"].upper(),
-				fontsize=6,
-				rotation=0,
-				labelpad=30,
-				va="center",
-			)
-			
-			# Ground truth column
-			print(f"row: {row}, sample: {sample}")
-			print()
-			ax_gt = axes[row, 1]
-			ax_gt.axis("off")
-			gt_labels = sample["ground_truth"][:5]  # truncate for readability
-			gt_text = "\n".join(f"• {l[:25]}" for l in gt_labels)
-			
-			if len(sample["ground_truth"]) > 5:
-				gt_text += f"\n  (+{len(sample['ground_truth'])-5} more)"
-			ax_gt.text(
-				0.01,
-				0.99, 
-				gt_text,
-				transform=ax_gt.transAxes,
-				fontsize=8.5, 
-				va="top",
-				ha="left",
-				color="#333333",
-				fontfamily="monospace",
-			)
-
-			# Retrieved labels per strategy
-			for col, strat in enumerate(strategies, start=2):
-				print(col, strat)
-				strat_sample = results_by_strategy[strat]["i2t"][row]
-				gt_set = set(strat_sample["ground_truth"])
-				ax = axes[row, col]
-				ax.axis("off")
-				lines = []
-				colors = []
-				for rank, (lbl, score) in enumerate(zip(strat_sample["retrieved_labels"], strat_sample["retrieved_scores"])):
-					hit = lbl in gt_set
-					lines.append(f"{rank+1}. {lbl[:28]}  ({score:.2f})")
-					colors.append("#024b02" if hit else "#ad0101")   # green / red
-				y = 0.97
-				for line, color in zip(lines, colors):
-					ax.text(
-						0.01,
-						y,
-						line,
-						transform=ax.transAxes,
-						fontsize=6.5, 
-						va="top",
-						ha="left",
-						color=color,
-						fontfamily="monospace",
-					)
-					y -= 0.18
-
-		# Legend
-		handles = [
-				mpatches.Patch(color="#2ca02c", label="Correct (in ground truth)"),
-				mpatches.Patch(color="#d62728", label="Incorrect"),
-		]
-		fig.legend(handles=handles, loc="lower center", ncol=2, fontsize=7, framealpha=0.9)
-		fig.suptitle(f"I2T Qualitative Retrieval", fontsize=9, fontweight="bold")
-		plt.tight_layout(rect=[0, 0.03, 1, 0.97])
-
-		for ext in ("pdf", "png"):
-				fpath = os.path.join(output_dir, f"{dataset_name}_qualitative_i2t.{ext}")
-				fig.savefig(fpath, bbox_inches="tight")
-				if ext == "pdf":
-						saved_paths.append(fpath)
-						if verbose:
-								print(f"  Saved: {fpath}")
-		plt.close(fig)
-
-		# ------------------------------------------------------------------ #
-		# T2I figure                                                          #
-		# Layout: one row per query label                                     #
-		#         columns: query text | top-k images per strategy            #
-		# ------------------------------------------------------------------ #
-		t2i_samples_0 = results_by_strategy[strategies[0]]["t2i"]
-		n_t2i = len(t2i_samples_0)
-		# One col for query label text + topk image cols per strategy
-		n_cols_t2i = 1 + len(strategies) * topk
-
-		fig2, axes2 = plt.subplots(
-				n_t2i, n_cols_t2i,
-				figsize=(n_cols_t2i * 1.2 + 0.5, n_t2i * 1.4 + 0.6),
-				dpi=dpi,
-		)
-		if n_t2i == 1:
-				axes2 = axes2[None, :]
-
-		axes2[0, 0].set_title("Query Label", fontsize=7, fontweight="bold")
-		for s_idx, strat in enumerate(strategies):
-				mid_col = 1 + s_idx * topk + topk // 2
-				label = METHOD_STYLE.get(strat, {}).get("label", strat)
-				axes2[0, mid_col].set_title(label, fontsize=7, fontweight="bold")
-
-		for row, t2i_label_result in enumerate(t2i_samples_0):
-				ax_q = axes2[row, 0]
-				ax_q.axis("off")
-				ax_q.text(
-						0.5, 0.5,
-						t2i_label_result["query_label"],
-						ha="center", va="center",
-						fontsize=6, wrap=True,
-						transform=ax_q.transAxes,
-				)
-				ax_q.set_ylabel(
-						results_by_strategy[strategies[0]]["t2i"][row].get("segment", ""),
-						fontsize=6, rotation=0, labelpad=30, va="center",
-				)
-
-				for s_idx, strat in enumerate(strategies):
-						strat_result = results_by_strategy[strat]["t2i"][row]
-						for k, img_path in enumerate(strat_result["retrieved_paths"][:topk]):
-								col = 1 + s_idx * topk + k
-								ax = axes2[row, col]
-								try:
-										img = Image.open(img_path).convert("RGB")
-										img.thumbnail((img_size, img_size))
-										ax.imshow(img)
-								except Exception:
-										ax.text(0.5, 0.5, "N/A", ha="center", va="center", fontsize=5)
-								ax.axis("off")
-								score = strat_result["retrieved_scores"][k]
-								ax.set_xlabel(f"{score:.2f}", fontsize=4.5)
-
-		fig2.suptitle(f"T2I Qualitative Retrieval", fontsize=9, fontweight="bold")
-		plt.tight_layout(rect=[0, 0.01, 1, 0.97])
-
-		for ext in ("pdf", "png"):
-				fpath = os.path.join(output_dir, f"{dataset_name}_qualitative_t2i.{ext}")
-				fig2.savefig(fpath, bbox_inches="tight")
-				if ext == "pdf":
-						saved_paths.append(fpath)
-						if verbose:
-								print(f"  Saved: {fpath}")
-		plt.close(fig2)
-
-		return saved_paths
 
 def plot_retrieval_metrics(
 		dataset_name: str,
@@ -3657,6 +3458,182 @@ def plot_retrieval_metrics(
 					print(f"\t{metric}@{k}: {val:.3f}")
 			print("".center(160, "-"))
 
+def plot_qualitative_retrieval(
+	results_by_strategy: Dict[str, Dict],
+	output_dir: str,
+	dataset_name: str,
+	t2i_topk: int = 1,
+	i2t_topk: int = 3,
+	img_size: int = 96,
+	dpi: int = 300,
+	verbose: bool = True,
+) -> List[str]:
+	os.makedirs(output_dir, exist_ok=True)
+	saved_paths = []
+	strategies = list(results_by_strategy.keys())
+
+	# ------------------------------------------------------------------#
+	# I2T figure                                                        #
+	# Layout: one row per query image                                   #
+	#         columns: query image | strategy_1 labels | strategy_2			#
+	# ------------------------------------------------------------------#
+	i2t_samples = results_by_strategy[strategies[0]]["i2t"]
+	n_queries = len(i2t_samples)
+	n_cols = 1 + 1 + len(strategies)  # query image + GT column + one per strategy
+	fig_h = n_queries * 1.4 + 0.6
+	fig_w = n_cols * 2.8
+	fig, axes = plt.subplots(n_queries, n_cols, figsize=(fig_w, fig_h), dpi=dpi)
+	if n_queries == 1:
+		axes = axes[None, :]
+	# Column headers
+	print(n_cols)
+	print(axes.shape)
+	axes[0, 0].set_title("Query Image", fontsize=7, fontweight="bold")
+	axes[0, 1].set_title("Ground Truth", fontsize=7, fontweight="bold")
+	for col, strat in enumerate(strategies, start=2):
+		label = METHOD_STYLE.get(strat, {}).get("label", strat)
+		axes[0, col].set_title(label, fontsize=7, fontweight="bold")
+	for row, sample in enumerate(i2t_samples):
+		# Query image
+		ax_img = axes[row, 0]
+		try:
+			img = Image.open(sample["image_path"]).convert("RGB")
+			img.thumbnail((img_size * 2, img_size * 2))
+			ax_img.imshow(img)
+		except Exception:
+			ax_img.text(0.5, 0.5, "N/A", ha="center", va="center")
+		ax_img.axis("off")
+		ax_img.set_ylabel(
+			sample["segment"].upper(),
+			fontsize=6,
+			rotation=0,
+			labelpad=30,
+			va="center",
+		)
+		
+		# Ground truth column
+		print(f"row: {row}, sample: {sample}")
+		print()
+		ax_gt = axes[row, 1]
+		ax_gt.axis("off")
+		gt_labels = sample["ground_truth"]
+		gt_text = "\n".join(f"• {l}" for l in gt_labels)
+		
+		ax_gt.text(
+			0.01,
+			0.99, 
+			gt_text,
+			transform=ax_gt.transAxes,
+			fontsize=8.5, 
+			va="top",
+			ha="left",
+			color="#0C0B0B",
+			fontfamily="monospace",
+		)
+		# Retrieved labels per strategy
+		for col, strat in enumerate(strategies, start=2):
+			print(col, strat)
+			strat_sample = results_by_strategy[strat]["i2t"][row]
+			gt_set = set(strat_sample["ground_truth"])
+			ax = axes[row, col]
+			ax.axis("off")
+			lines = []
+			colors = []
+			for rank, (lbl, score) in enumerate(zip(strat_sample["retrieved_labels"], strat_sample["retrieved_scores"])):
+				hit = lbl in gt_set
+				lines.append(f"{rank+1}. {lbl} ({score:.4f})")
+				colors.append("#024b02" if hit else "#ad0101")   # green / red
+			y = 0.97
+			for line, color in zip(lines, colors):
+				ax.text(
+					0.01,
+					y,
+					line,
+					transform=ax.transAxes,
+					fontsize=6.5, 
+					va="top",
+					ha="left",
+					color=color,
+					fontfamily="monospace",
+				)
+				y -= 0.18
+
+	# Legend
+	handles = [
+		mpatches.Patch(color="#2ca02c", label="Correct (in ground truth)"),
+		mpatches.Patch(color="#d62728", label="Incorrect"),
+	]
+	fig.legend(handles=handles, loc="lower center", ncol=2, fontsize=7, framealpha=0.9)
+	fig.suptitle(f"I2T Top-{i2t_topk} Qualitative Retrieval", fontsize=9, fontweight="bold")
+	plt.tight_layout(rect=[0, 0.03, 1, 0.97])
+	for ext in ("pdf", "png"):
+		fpath = os.path.join(output_dir, f"qualitative_i2t.{ext}")
+		fig.savefig(fpath, bbox_inches="tight")
+		if ext == "pdf":
+			saved_paths.append(fpath)
+	plt.close(fig)
+
+	# ------------------------------------------------------------------ 	#
+	# T2I figure                                                         	#
+	# Layout: one row per query label                                    	#
+	# columns: query text | top-k images per strategy											#
+	# ------------------------------------------------------------------ 	#
+	t2i_samples_0 = results_by_strategy[strategies[0]]["t2i"]
+	n_t2i = len(t2i_samples_0)
+	# One col for query label text + t2i_topk image cols per strategy
+	n_cols_t2i = 1 + len(strategies) * t2i_topk
+	fig2, axes2 = plt.subplots(
+		n_t2i, n_cols_t2i,
+		figsize=(n_cols_t2i * 1.2 + 0.5, n_t2i * 1.4 + 0.6),
+		dpi=dpi,
+	)
+	if n_t2i == 1:
+		axes2 = axes2[None, :]
+	axes2[0, 0].set_title("Query Label", fontsize=7, fontweight="bold")
+	for s_idx, strat in enumerate(strategies):
+		mid_col = 1 + s_idx * t2i_topk + t2i_topk // 2
+		label = METHOD_STYLE.get(strat, {}).get("label", strat)
+		axes2[0, mid_col].set_title(label, fontsize=10)
+	for row, t2i_label_result in enumerate(t2i_samples_0):
+		ax_q = axes2[row, 0]
+		ax_q.axis("off")
+		ax_q.text(
+			0.5, 
+			0.5,
+			t2i_label_result["query_label"],
+			ha="center", va="center",
+			fontsize=6, wrap=True,
+			transform=ax_q.transAxes,
+		)
+		ax_q.set_ylabel(
+			results_by_strategy[strategies[0]]["t2i"][row].get("segment", ""),
+			fontsize=6, rotation=0, labelpad=30, va="center",
+		)
+		for s_idx, strat in enumerate(strategies):
+			strat_result = results_by_strategy[strat]["t2i"][row]
+			for k, img_path in enumerate(strat_result["retrieved_paths"][:t2i_topk]):
+				col = 1 + s_idx * t2i_topk + k
+				ax = axes2[row, col]
+				try:
+					img = Image.open(img_path).convert("RGB")
+					img.thumbnail((img_size, img_size))
+					ax.imshow(img)
+				except Exception:
+					ax.text(0.5, 0.5, "N/A", ha="center", va="center", fontsize=5)
+				ax.axis("off")
+				score = strat_result["retrieved_scores"][k]
+				ax.set_xlabel(f"{score:.2f}", fontsize=4.5)
+	fig2.suptitle(f"T2I Top-{t2i_topk} Qualitative Retrieval", fontsize=10, fontweight="bold")
+	plt.tight_layout(rect=[0, 0.01, 1, 0.97])
+	for ext in ("pdf", "png"):
+		fpath = os.path.join(output_dir, f"qualitative_t2i.{ext}")
+		fig2.savefig(fpath, bbox_inches="tight")
+		if ext == "pdf":
+			saved_paths.append(fpath)
+	
+	plt.close(fig2)
+	return saved_paths
+
 def plot_retrieval_curves(
 	all_results: Dict[str, Dict],   # strategy → extract_per_k_metrics() output
 	output_dir: str,
@@ -3664,9 +3641,8 @@ def plot_retrieval_curves(
 	directions: List[str] = ["i2t", "t2i"],
 	tiers: List[str] = ["overall", "head", "rare"],
 	metrics: List[str] = ["mAP", "Recall"],
-	figsize: Tuple[float, float] = (7.5, 7.0),   # single-column IEEE width
-	dpi: int = 300,
-	verbose: bool = True,
+	figsize: Tuple[float, float] = (7.0, 6.0),   # single-column IEEE width
+	dpi: int = 200,
 ) -> List[str]:
 		"""
 		Produce one figure per (direction × tier × metric) combination.
@@ -3674,7 +3650,8 @@ def plot_retrieval_curves(
 
 		Returns list of saved PDF paths.
 		"""
-		matplotlib.rcParams.update({
+		matplotlib.rcParams.update(
+			{
 				"font.family":      "serif",
 				"font.size":        9,
 				"axes.titlesize":   9,
@@ -3685,13 +3662,15 @@ def plot_retrieval_curves(
 				"figure.dpi":       dpi,
 				"savefig.bbox":     "tight",
 				"savefig.pad_inches": 0.02,
-		})
+			}
+		)
 
 		os.makedirs(output_dir, exist_ok=True)
 		saved_paths = []
+		# print(json.dumps(all_results, indent=4, ensure_ascii=False))
 
 		for direction in directions:
-			dir_label = "Image→Text" if direction == "i2t" else "Text→Image"
+			dir_label = direction.upper() # I2T, T2I
 			for tier in tiers:
 				for metric in metrics:
 					fig, ax = plt.subplots(figsize=figsize)
@@ -3713,8 +3692,8 @@ def plot_retrieval_curves(
 							color=style["color"],
 							linestyle=style["ls"],
 							marker=style["marker"],
-							markersize=3.5,
-							linewidth=1.25,
+							markersize=2.5,
+							linewidth=1.1,
 						)
 						plotted_any = True
 					if not plotted_any:
@@ -3727,8 +3706,8 @@ def plot_retrieval_curves(
 					ax.set_title(f"{dir_label} — {tier_label} {metric_label}@K")
 					ax.legend(
 						loc="best",
-						ncol=5,
-						fontsize=7.5,
+						ncol=3,
+						fontsize=8.5,
 						frameon=False,
 						fancybox=True,
 						edgecolor='black',
@@ -3736,15 +3715,13 @@ def plot_retrieval_curves(
 					)
 					ax.set_xticks(xs)
 					ax.grid(True, linestyle=":", linewidth=0.5, alpha=0.6)
-					ax.set_ylim(bottom=0)
-					stem = f"{dataset_name}_{direction}_{tier}_{metric.lower()}_at_k"
+					ax.set_ylim(bottom=-0.01, top=1.0)
+					stem = f"{direction}_{tier}_{metric.lower()}"
 					for ext in ("pdf", "png"):
-							fpath = os.path.join(output_dir, f"{stem}.{ext}")
-							fig.savefig(fpath)
-							if ext == "pdf":
-									saved_paths.append(fpath)
-									if verbose:
-											print(f"  Saved: {fpath}")
+						fpath = os.path.join(output_dir, f"quantitative_{stem}.{ext}")
+						fig.savefig(fpath)
+						if ext == "pdf":
+							saved_paths.append(fpath)
 					plt.close(fig)
 
 		return saved_paths

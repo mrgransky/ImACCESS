@@ -27,6 +27,41 @@ import visualize as viz
 # # run in local for all fine-tuned models with image and label:
 # $ python multi_label_inference.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -a 'ViT-B/32' -v
 
+def get_top_k_strategies(
+	results_json_path: str, 
+	top_k: int = 5, 
+	metric_key: str = "mAP", 
+	k_value: str = "10"
+) -> List[str]:
+	if not os.path.exists(results_json_path):
+		print(f"WARNING: {results_json_path} not found. Cannot rank strategies.")
+		return []
+
+	with open(results_json_path, 'r') as f:
+		all_results = json.load(f)
+	scores = {}
+	print(f"\n>> Ranking {len(all_results)} strategies based on I2T mAP@{k_value}...")
+	print(all_results)
+	for strategy, metrics in all_results.items():
+		try:
+			# Metric path: tiered_i2t -> overall -> mAP -> 10
+			# Adjust this path if your JSON structure differs
+			score = metrics['i2t']['overall'][metric_key][k_value]
+			scores[strategy] = score
+		except KeyError:
+			# Fallback if specific key missing
+			scores[strategy] = -1.0
+
+	print(scores)
+	# Sort by score descending
+	sorted_strategies = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
+	
+	print(f"\n>> Top {top_k} Strategies selected based on I2T mAP@{k_value}:")
+	for i, strat in enumerate(sorted_strategies[:top_k]):
+		print(f"   {i+1}. {strat:<20} (Score: {scores[strat]:.4f})")
+			
+	return sorted_strategies[:top_k]
+
 def run_qualitative_retrieval(
 	model: torch.nn.Module,
 	i2t_samples: List[Dict],       # from get_multi_label_head_torso_tail_samples
@@ -36,29 +71,25 @@ def run_qualitative_retrieval(
 	device: torch.device,
 	topk: int = 5,
 ) -> Dict:
-	"""
-	For each I2T sample: encode query image, retrieve top-k labels by cosine similarity.
-	For each T2I sample: encode query label, retrieve top-k images by cosine similarity.
-	Returns structured results ready for plotting.
-	"""
 	model.eval()
 	# Pre-encode all class name texts once
 	with torch.no_grad():
 		text_tokens = clip.tokenize(class_names, truncate=True).to(device)
 		all_text_embeds = torch.nn.functional.normalize(model.encode_text(text_tokens).float(), dim=-1)  # [C, D]
 	
-	# ------------------------------------------------------------------ #
 	# I2T: query image → retrieve top-k labels                           #
-	# ------------------------------------------------------------------ #
 	i2t_results = []
 	for sample in i2t_samples:
 		image = preprocess(Image.open(sample["image_path"]).convert("RGB")).unsqueeze(0).to(device)
 		with torch.no_grad():
-				img_embed = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1)  # [1, D]
-		sims = (img_embed @ all_text_embeds.T).squeeze(0)                       # [C]
+			img_embed = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1)  # [1, D]
+
+		sims = (img_embed @ all_text_embeds.T).squeeze(0)																				# [C]
+
 		topk_indices = sims.topk(topk).indices.cpu().tolist()
 		retrieved_labels = [class_names[idx] for idx in topk_indices]
 		retrieved_scores = [sims[idx].item() for idx in topk_indices]
+
 		i2t_results.append(
 			{
 				"image_path":       sample["image_path"],
@@ -69,12 +100,12 @@ def run_qualitative_retrieval(
 			}
 		)
 	
-	# ------------------------------------------------------------------ #
-	# T2I: query label → retrieve top-k images                           #
+	# ------------------------------------------------------------------ 	#
+	# T2I: query label → retrieve top-k images                           	#
 	# We need image embeddings for the full val set — expensive once,     #
-	# so we encode only the candidate pool (i2t_samples images) for the  #
+	# so we encode only the candidate pool (i2t_samples images) for the  	#
 	# qualitative figure. For a full eval use the cached embeddings.      #
-	# ------------------------------------------------------------------ #
+	# ------------------------------------------------------------------ 	#
 	all_image_paths = list({s["image_path"] for s in i2t_samples})
 	image_embeds_map = {}
 	for img_path in all_image_paths:
@@ -86,13 +117,16 @@ def run_qualitative_retrieval(
 	t2i_results = []
 	for query_label in t2i_samples:
 		with torch.no_grad():
-				token = clip.tokenize([query_label], truncate=True).to(device)
-				txt_embed = torch.nn.functional.normalize(model.encode_text(token).float(), dim=-1)  # [1, D]
+			token = clip.tokenize([query_label], truncate=True).to(device)
+			txt_embed = torch.nn.functional.normalize(model.encode_text(token).float(), dim=-1)  # [1, D]
+		
 		sims = {
 			path: (txt_embed @ emb.unsqueeze(1)).item()
 			for path, emb in image_embeds_map.items()
 		}
-		topk_paths = sorted(sims, key=sims.get, reverse=True)[:topk]
+		
+		topk_paths = sorted(sims, key=sims.get, reverse=True)#[:topk]
+		
 		t2i_results.append(
 			{
 				"query_label":    query_label,
@@ -357,7 +391,7 @@ def get_multi_label_head_torso_tail_samples(
 			
 			# Image sampling (image-to-text)
 			print("\n" + "="*80)
-			print("SAMPLING IMAGES (Image-to-Text)")
+			print("SAMPLING IMAGES (I2T)")
 			print("="*80)
 			
 			# Process segments in fixed order
@@ -418,7 +452,7 @@ def get_multi_label_head_torso_tail_samples(
 			
 			# Sample text queries from head, torso, tail
 			print("\n" + "="*80)
-			print("SAMPLING TEXT QUERIES (Text-to-Image)")
+			print("SAMPLING TEXT QUERIES (T2I)")
 			print("="*80)
 			
 			for segment_name, segment_labels in [("head", head_labels), ("torso", torso_labels), ("tail", tail_labels)]:
@@ -553,128 +587,113 @@ def _load_checkpoint_into_model(
 		return model
 
 def load_finetuned_models(
-		available_checkpoints: List[str],
-		model_architecture: str,
-		device: torch.device,
-		dataset_directory: str,
-		validation_loader: DataLoader,
-		verbose: bool = False,
+	available_checkpoints: List[str],
+	model_architecture: str,
+	device: torch.device,
+	dataset_directory: str,
+	validation_loader: DataLoader,
+	verbose: bool = False,
 ) -> Dict[str, torch.nn.Module]:
-		"""
-		Load all fine-tuned model checkpoints found in results_dir.
-		Returns dict mapping strategy_name → model.
-		"""
-		fine_tuned_models = {}
-		ft_start = time.time()
-		print(f">> Loading {len(available_checkpoints)} fine-tuned checkpoints...")
-
-		for i, ft_path in enumerate(available_checkpoints):
-				strategy, params = _parse_checkpoint_strategy(ft_path)
-				print(f"  [{i+1}/{len(available_checkpoints)}] strategy={strategy}  {os.path.basename(ft_path)}")
-
-				# Fresh base model for each checkpoint
-				base_model, _ = clip.load(
-						name=model_architecture,
-						device=device,
-						download_root=get_model_directory(path=dataset_directory),
+	fine_tuned_models = {}
+	ft_start = time.time()
+	
+	print(f">> Loading {len(available_checkpoints)} fine-tuned checkpoints...")
+	for i, ft_path in enumerate(available_checkpoints):
+		strategy, params = _parse_checkpoint_strategy(ft_path)
+		print(f"  [{i+1}/{len(available_checkpoints)}] strategy={strategy}  {os.path.basename(ft_path)}")
+		# Fresh base model for each checkpoint
+		base_model, _ = clip.load(
+			name=model_architecture,
+			device=device,
+			download_root=get_model_directory(path=dataset_directory),
+		)
+		base_model = base_model.float()
+		base_model.name = model_architecture
+		try:
+			if strategy in ("lora", "lora_plus", "dora", "rslora"):
+					rank    = params.get("lora_rank")
+					alpha   = params.get("lora_alpha")
+					dropout = params.get("lora_dropout")
+					ft_model = get_injected_peft_clip(
+							clip_model=base_model,
+							method=strategy,
+							rank=rank,
+							alpha=alpha,
+							dropout=dropout,
+							target_text_modules=[],
+							target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
+							verbose=verbose,
+					)
+			elif strategy in ("ia3", "vera"):
+					rank    = params.get("lora_rank")
+					alpha   = params.get("lora_alpha")
+					dropout = params.get("lora_dropout")
+					ft_model = get_injected_peft_clip(
+							clip_model=base_model,
+							method=strategy,
+							rank=rank,
+							alpha=alpha,
+							dropout=dropout,
+							target_text_modules=[],
+							target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
+							verbose=verbose,
+					)
+			elif strategy in ("clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"):
+					bottleneck_dim = params.get("bottleneck_dim")
+					activation = params.get("activation")
+					ft_model = get_adapter_peft_clip(
+						clip_model=base_model,
+						method=strategy,
+						bottleneck_dim=bottleneck_dim,
+						activation=activation,
+						verbose=verbose,
+					)
+			elif strategy in ("tip_adapter", "tip_adapter_f"):
+					# Tip-Adapter cache is not reconstructible from checkpoint alone —
+					# the cache depends on support set features extracted at training time.
+					# For inference, we load the trainable projection weights only.
+					try:
+						text_dim = base_model.encode_text(
+							clip.tokenize(["a"]).to(device)
+						).shape[-1]
+					except Exception:
+							text_dim = 768
+					ft_model = get_adapter_peft_clip(
+							clip_model=base_model,
+							method=strategy,
+							cache_dim=text_dim,
+							bottleneck_dim=None,
+							activation=None,
+							verbose=verbose,
+					)
+			elif strategy == "probe":
+				ft_model = get_probe_clip(
+					clip_model=base_model,
+					validation_loader=validation_loader,
+					device=device,
+					verbose=verbose,
 				)
-				base_model = base_model.float()
-				base_model.name = model_architecture
+			elif strategy == "full":
+					ft_model = base_model  # weights loaded directly below
+			else:
+				print(f"  [SKIP] Unknown strategy '{strategy}' for {ft_path}")
+				continue
+			ft_model = ft_model.to(device).float()
+			ft_model.name = model_architecture
+			ft_model = _load_checkpoint_into_model(ft_model, ft_path, device, verbose)
+			# Use strategy as key — append index if duplicate (e.g. two lora checkpoints)
+			key = strategy
+			if key in fine_tuned_models:
+				key = f"{strategy}_{i}"
+			fine_tuned_models[key] = ft_model
+			print(f"[OK] Loaded {key}")
+		except Exception as e:
+			print(f"[ERROR] Failed to load {ft_path}: {e}")
+			continue
 
-				try:
-						if strategy in ("lora", "lora_plus", "dora"):
-								rank    = params.get("lora_rank", 16)
-								alpha   = params.get("lora_alpha", 1.0)
-								dropout = params.get("lora_dropout", 0.0)
-								ft_model = get_injected_peft_clip(
-										clip_model=base_model,
-										method=strategy,
-										rank=rank,
-										alpha=alpha,
-										dropout=dropout,
-										target_text_modules=[],
-										target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
-										verbose=verbose,
-								)
+	print(f">> {len(fine_tuned_models)} {type(fine_tuned_models)} models loaded in {time.time()-ft_start:.1f}s")
 
-						elif strategy in ("ia3", "vera"):
-								rank    = params.get("lora_rank", 16)
-								alpha   = params.get("lora_alpha", 1.0)
-								dropout = params.get("lora_dropout", 0.0)
-								ft_model = get_injected_peft_clip(
-										clip_model=base_model,
-										method=strategy,
-										rank=rank,
-										alpha=alpha,
-										dropout=dropout,
-										target_text_modules=[],
-										target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
-										verbose=verbose,
-								)
-
-						elif strategy in ("clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"):
-								bottleneck_dim = params.get("bottleneck_dim", 256)
-								activation     = params.get("activation", "relu")
-								ft_model = get_adapter_peft_clip(
-										clip_model=base_model,
-										method=strategy,
-										cache_dim=None,
-										bottleneck_dim=bottleneck_dim,
-										activation=activation,
-										verbose=verbose,
-								)
-
-						elif strategy in ("tip_adapter", "tip_adapter_f"):
-								# Tip-Adapter cache is not reconstructible from checkpoint alone —
-								# the cache depends on support set features extracted at training time.
-								# For inference, we load the trainable projection weights only.
-								try:
-										text_dim = base_model.encode_text(
-												clip.tokenize(["a"]).to(device)
-										).shape[-1]
-								except Exception:
-										text_dim = 768
-								ft_model = get_adapter_peft_clip(
-										clip_model=base_model,
-										method=strategy,
-										cache_dim=text_dim,
-										bottleneck_dim=None,
-										activation=None,
-										verbose=verbose,
-								)
-
-						elif strategy == "probe":
-								ft_model = get_probe_clip(
-										clip_model=base_model,
-										validation_loader=validation_loader,
-										device=device,
-										verbose=verbose,
-								)
-
-						elif strategy == "full":
-								ft_model = base_model  # weights loaded directly below
-
-						else:
-								print(f"  [SKIP] Unknown strategy '{strategy}' for {ft_path}")
-								continue
-
-						ft_model = ft_model.to(device).float()
-						ft_model.name = model_architecture
-						ft_model = _load_checkpoint_into_model(ft_model, ft_path, device, verbose)
-
-						# Use strategy as key — append index if duplicate (e.g. two lora checkpoints)
-						key = strategy
-						if key in fine_tuned_models:
-								key = f"{strategy}_{i}"
-						fine_tuned_models[key] = ft_model
-						print(f"  ✓ Loaded {key}")
-
-				except Exception as e:
-						print(f"  [ERROR] Failed to load {ft_path}: {e}")
-						continue
-
-		print(f">> {len(fine_tuned_models)} {type(fine_tuned_models)} models loaded in {time.time()-ft_start:.1f}s")
-		return fine_tuned_models
+	return fine_tuned_models
 
 @measure_execution_time
 def main():
@@ -687,7 +706,8 @@ def main():
 
 	parser.add_argument('--query_image', '-qi', type=str, default=None, help='image path for zero shot classification')
 	parser.add_argument('--query_label', '-ql', type=str, default=None, help='image path for zero shot classification')
-	parser.add_argument('--qualitative_topk', type=int, default=3, help='TopK results for qualitative analysis')
+	parser.add_argument('--t2i_topk', type=int, default=1, help='TopK results for Text-to-Image retrieval')
+	parser.add_argument('--i2t_topk', type=int, default=3, help='TopK results for Image-to-Text retrieval')
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 
 	parser.add_argument('--temperature', '-t', type=float, default=0.07, help='Temperature for evaluation')
@@ -793,98 +813,6 @@ def main():
 		except:
 			class_names = train_loader.dataset.unique_labels
 	
-	num_classes = len(class_names)
-
-	# Compute masks once from training set — reused for all models
-	masks = compute_loss_masks(
-		train_loader=train_loader,
-		num_classes=num_classes,
-		device=args.device,
-		verbose=args.verbose,
-	)
-
-	# Zero-shot baseline
-	pretrained_results = pretrain_multi_label(
-		model=pretrained_model,
-		validation_loader=validation_loader,
-		device=args.device,
-		results_dir=INFERENCE_DIRECTORY,
-		active_mask=masks["active_mask"],
-		head_mask=masks["head_mask"],
-		rare_mask=masks["rare_mask"],
-		topk_values=args.topK_values,
-		temperature=args.temperature,
-		verbose=args.verbose,
-	)
-
-	# ####################################### Qualitative Analysis #######################################
-	# if args.query_image is None or args.query_label is None:
-	# 	print("\nSystematic selection of samples from validation set: Head, Torso, Tail...")
-	# 	i2t_samples, t2i_samples = get_multi_label_head_torso_tail_samples(
-	# 		metadata_path=args.metadata_csv,
-	# 		metadata_train_path=args.metadata_csv.replace('.csv', '_train.csv'),
-	# 		metadata_val_path=args.metadata_csv.replace('.csv', '_val.csv'),
-	# 		num_samples_per_segment=2,
-	# 	)
-	# 	if i2t_samples and t2i_samples:
-	# 		QUERY_IMAGES = [sample['image_path'] for sample in i2t_samples]
-	# 		QUERY_LABELS = t2i_samples  # Already a list of strings
-	# else:
-	# 	QUERY_IMAGES = [args.query_image]
-	# 	QUERY_LABELS = [args.query_label]
-
-	# print("\nQUERY IMAGES & LABELS")
-	# print(f">> {len(QUERY_IMAGES)} QUERY IMAGES:")
-	# for i, v in enumerate(QUERY_IMAGES):
-	# 	print(f"{i}. {v}")
-	# print(f">> {len(QUERY_LABELS)} QUERY LABELS:")
-	# for i, v in enumerate(QUERY_LABELS):
-	# 	print(f"{i}. {v}")
-	# print("-"*160)
-
-	# # Load all fine-tuned models
-	# fine_tuned_models = load_finetuned_models(
-	# 	available_checkpoints=available_checkpoints,
-	# 	model_architecture=args.model_architecture,
-	# 	device=args.device,
-	# 	dataset_directory=DATASET_DIRECTORY,
-	# 	validation_loader=validation_loader,
-	# 	verbose=args.verbose,
-	# )
-
-	# qualitative_results = {}
-	# for strategy, ft_model in fine_tuned_models.items():
-	# 	qualitative_results[strategy] = run_qualitative_retrieval(
-	# 		model=ft_model,
-	# 		i2t_samples=i2t_samples,
-	# 		t2i_samples=t2i_samples,
-	# 		class_names=class_names,
-	# 		preprocess=customized_preprocess,
-	# 		device=args.device,
-	# 		topk=args.qualitative_topk,
-	# 	)
-
-	# # Always include zero-shot for comparison
-	# qualitative_results["pretrained"] = run_qualitative_retrieval(
-	# 	model=pretrained_model,
-	# 	i2t_samples=i2t_samples,
-	# 	t2i_samples=t2i_samples,
-	# 	class_names=class_names,
-	# 	preprocess=customized_preprocess,
-	# 	device=args.device,
-	# 	topk=args.qualitative_topk,
-	# )
-
-	# viz.plot_qualitative_retrieval(
-	# 	results_by_strategy=qualitative_results,
-	# 	output_dir=INFERENCE_DIRECTORY,
-	# 	dataset_name=dataset_name,
-	# 	topk=args.qualitative_topk,
-	# 	verbose=args.verbose,
-	# )
-
-	# # ####################################### Qualitative Analysis #######################################
-
 	####################################### Quantitative Analysis #######################################
 	results_json_path = os.path.join(RESULTS_DIRECTORY, f"{dataset_name}_retrieval_metrics_accumulated.json")
 	if os.path.exists(results_json_path):
@@ -895,11 +823,119 @@ def main():
 			all_results=all_results,
 			output_dir=INFERENCE_DIRECTORY,
 			dataset_name=dataset_name,
-			verbose=args.verbose,
 		)
 	else:
 		print(f"WARNING: {results_json_path} not found. Skipping plotting...")
 	####################################### Quantitative Analysis #######################################
+
+	####################################### Qualitative Analysis #######################################
+	if args.query_image is None or args.query_label is None:
+		print("\nSystematic selection of samples from validation set: Head, Torso, Tail...")
+		i2t_samples, t2i_samples = get_multi_label_head_torso_tail_samples(
+			metadata_path=args.metadata_csv,
+			metadata_train_path=args.metadata_csv.replace('.csv', '_train.csv'),
+			metadata_val_path=args.metadata_csv.replace('.csv', '_val.csv'),
+			num_samples_per_segment=2,
+		)
+		if i2t_samples and t2i_samples:
+			QUERY_IMAGES = [sample['image_path'] for sample in i2t_samples]
+			QUERY_LABELS = t2i_samples  # Already a list of strings
+	else:
+		QUERY_IMAGES = [args.query_image]
+		QUERY_LABELS = [args.query_label]
+
+	print("\nQUERY IMAGES & LABELS")
+	print(f">> {len(QUERY_IMAGES)} QUERY IMAGES:")
+	for i, v in enumerate(QUERY_IMAGES):
+		print(f"{i}. {v}")
+	print(f">> {len(QUERY_LABELS)} QUERY LABELS:")
+	for i, v in enumerate(QUERY_LABELS):
+		print(f"{i}. {v}")
+	print("-"*160)
+
+	# 1. Determine which strategies to evaluate
+	strategies_to_evaluate = get_top_k_strategies(
+		results_json_path=results_json_path,
+		top_k=5,
+		metric_key="mAP",
+		k_value="10",
+	)
+	# If ranking failed or file missing, fallback to first 5 checkpoints
+	if not strategies_to_evaluate:
+		print("WARNING: Falling back to first 5 available checkpoints for qualitative analysis.")
+		strategies_to_evaluate = [
+			_parse_checkpoint_strategy(p)[0] 
+			for p in available_checkpoints[:5]
+		]
+
+	# 2. Filter checkpoint files to only the selected strategies
+	# We map strategy_name -> list of paths to handle potential duplicates (though unlikely in Top-K)
+	selected_checkpoints = []
+	for ckpt_path in available_checkpoints:
+		strategy_name, _ = _parse_checkpoint_strategy(ckpt_path)
+		if strategy_name in strategies_to_evaluate:
+			selected_checkpoints.append(ckpt_path)
+	print(f"\n>> Processing {len(selected_checkpoints)} selected models sequentially...")
+	qualitative_results = {}
+
+	# 3. Sequential Loading & Inference Loop
+	for i, ckpt_path in enumerate(selected_checkpoints):
+		strategy_name, _ = _parse_checkpoint_strategy(ckpt_path)
+		
+		print(f"\n{'='*80}")
+		print(f"[{i+1}/{len(selected_checkpoints)}] Processing: {strategy_name}")
+		print(f"Checkpoint: {os.path.basename(ckpt_path)}")
+		print(f"{'='*80}")
+		# --- LOAD SINGLE MODEL ---
+		# one failure doesn't crash the whole run
+		try:
+			# Clear cache before loading
+			torch.cuda.empty_cache()
+			
+			# Load ONLY this specific model
+			model_dict = load_finetuned_models(
+				available_checkpoints=[ckpt_path], # Pass single checkpoint
+				model_architecture=args.model_architecture,
+				device=args.device,
+				dataset_directory=DATASET_DIRECTORY,
+				validation_loader=validation_loader,
+				verbose=args.verbose,
+			)
+			if not model_dict:
+				print(f"  [SKIP] Failed to load checkpoint.")
+				continue
+			
+			# Get the model object
+			ft_model = list(model_dict.values())[0]
+			
+			qualitative_results[strategy_name] = run_qualitative_retrieval(
+				model=ft_model,
+				i2t_samples=i2t_samples,
+				t2i_samples=t2i_samples,
+				class_names=class_names,
+				preprocess=customized_preprocess,
+				device=args.device,
+				topk=args.i2t_topk,
+			)
+
+			del ft_model
+			del model_dict
+			torch.cuda.empty_cache()
+		except Exception as e:
+			print(f"  [ERROR] Failed to process {strategy_name}: {e}")
+			torch.cuda.empty_cache()
+			continue
+
+	# 5. Generate Plots
+	viz.plot_qualitative_retrieval(
+		results_by_strategy=qualitative_results,
+		output_dir=INFERENCE_DIRECTORY,
+		dataset_name=dataset_name,
+		t2i_topk=args.t2i_topk,
+		i2t_topk=args.i2t_topk,
+		verbose=args.verbose,
+	)
+	####################################### Qualitative Analysis #######################################
 
 if __name__ == "__main__":
 	main()

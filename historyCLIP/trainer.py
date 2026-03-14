@@ -9,7 +9,6 @@ from utils import *
 from single_label_trainer import *
 from multi_label_trainer import *
 
-import visualize as viz
 from historyXN_dataset_loader import get_single_label_dataloaders, get_multi_label_dataloaders
 
 # $ python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=10))))"
@@ -21,8 +20,6 @@ from historyXN_dataset_loader import get_single_label_dataloaders, get_multi_lab
 
 # multi-label:
 # $ python trainer.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -fts full
-
-
 
 # Pouta:
 # pretrain:
