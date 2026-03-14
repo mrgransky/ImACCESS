@@ -198,7 +198,7 @@ echo "EARLY_STOPPING_MIN_EPOCHS: $EARLY_STOPPING_MIN_EPOCHS"
 echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} [ADJUSTED]: $ADJUSTED_BATCH_SIZE"
 # Show LoRA parameters only for applicable methods
 if [ "$strategy" = "lora" ] || [ "$strategy" = "lora_plus" ] || \
-   [ "$strategy" = "dora" ] || [ "$strategy" = "vera" ]; then
+   [ "$strategy" = "dora" ] || [ "$strategy" = "vera" ] || [ "$strategy" = "rslora" ]; then
     echo "LORA_RANK: ${LORA_RANKS[$dataset_index]}"
     echo "LORA_ALPHA: ${LORA_ALPHAS[$dataset_index]}"
     echo "LORA_DROPOUT: ${LORA_DROPOUTS[$dataset_index]}"
@@ -231,9 +231,9 @@ CMD="python -u trainer.py \
 	--sampling \"${SAMPLINGS[1]}\" \
 	--verbose"
 
-# Add LoRA parameters only for LoRA, LoRA+, DoRA, and VeRA
+# Add LoRA parameters only for LoRA, LoRA+, DoRA, VeRA, and RSLora
 if [ "$strategy" = "lora" ] || [ "$strategy" = "lora_plus" ] || \
-	 [ "$strategy" = "dora" ] || [ "$strategy" = "vera" ]; then
+	 [ "$strategy" = "dora" ] || [ "$strategy" = "vera" ] || [ "$strategy" = "rslora" ]; then
 	CMD="$CMD --lora_rank \"${LORA_RANKS[$dataset_index]}\""
 	CMD="$CMD --lora_alpha \"${LORA_ALPHAS[$dataset_index]}\""
 	CMD="$CMD --lora_dropout \"${LORA_DROPOUTS[$dataset_index]}\""
