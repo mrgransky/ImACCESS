@@ -604,7 +604,8 @@ def get_validation_metrics(
 		device=device,
 		device_image_embeds=device_image_embeds,
 		device_class_text_embeds=device_class_text_embeds,
-		chunk_size=chunk_size
+		chunk_size=chunk_size,
+		verbose=verbose,
 	)
 	
 	# Step 6: Compute retrieval metrics
@@ -674,6 +675,7 @@ def compute_full_set_metrics_from_cache(
 		device_image_embeds: torch.Tensor,
 		device_class_text_embeds: torch.Tensor,
 		chunk_size: int = 1000,
+		verbose: bool = False,
 ) -> Dict:
 		"""
 		Compute comprehensive full-set metrics with proper multi-label support and memory optimization.
@@ -719,14 +721,29 @@ def compute_full_set_metrics_from_cache(
 		else:
 				img2txt_mrr = _compute_singlelabel_mrr(i2t_similarity, labels)
 		
-		# Compute cosine similarity between matched pairs
-		cos_sim = _compute_matched_cosine_similarity(
-			device_image_embeds, 
-			device_class_text_embeds, 
-			labels, 
-			is_multi_label
-		)
-		
+
+
+		# ── Alignment score (replaces cosine similarity for multi-label) ──────
+		if is_multi_label:
+				alignment_score = _compute_multilabel_alignment_score(
+						image_embeds=device_image_embeds,
+						all_class_embeds=device_class_text_embeds,
+						labels=labels,
+						temperature=0.07,
+						topk=5,
+						verbose=verbose,
+				)
+				cos_sim = None  # no longer computed for multi-label
+		else:
+				alignment_score = None
+				cos_sim = _compute_matched_cosine_similarity(
+						image_embeds=device_image_embeds,
+						text_embeds=device_class_text_embeds,
+						labels=labels,
+						is_multi_label=False,
+						verbose=verbose,
+				)
+
 		# Additional multi-label metrics
 		hamming_loss = None
 		partial_acc = None 
@@ -760,7 +777,8 @@ def compute_full_set_metrics_from_cache(
 				"img2txt_topk_acc": {str(k): float(v) for k, v in img2txt_topk_acc.items()},
 				"txt2img_topk_acc": {str(k): float(v) for k, v in txt2img_topk_acc.items()},
 				"mean_reciprocal_rank": float(img2txt_mrr),
-				"cosine_similarity": float(cos_sim),
+				"cosine_similarity": float(cos_sim) if cos_sim is not None else None,
+				"alignment_score": float(alignment_score) if alignment_score is not None else None,
 				"hamming_loss": float(hamming_loss) if hamming_loss is not None else None,
 				"partial_acc": float(partial_acc) if partial_acc is not None else None,
 				"f1_score": float(f1_score_val) if f1_score_val is not None else None,
@@ -983,24 +1001,183 @@ def _compute_singlelabel_mrr(i2t_similarity, labels):
 		rr_indices = ranks.eq(labels.view(-1, 1)).nonzero(as_tuple=True)[1] + 1
 		return (1.0 / rr_indices.float()).mean().item()
 
-def _compute_matched_cosine_similarity(image_embeds, text_embeds, labels, is_multi_label):
-	"""Compute cosine similarity between matched image-text pairs."""
-	if is_multi_label:
-		# For multi-label, average text embeddings of true classes
-		matched_text_embeds = torch.zeros_like(image_embeds)
-		for i in range(len(labels)):
-			positive_indices = torch.where(labels[i] == 1)[0]
-			if positive_indices.numel() > 0:
-				matched_text_embeds[i] = text_embeds[positive_indices].mean(dim=0)
-			else:
-				matched_text_embeds[i] = text_embeds.mean(dim=0)
-	else:
-		# For single-label, direct indexing
-		matched_text_embeds = text_embeds[labels]
-	
-	cos_sim = torch.nn.functional.cosine_similarity(image_embeds, matched_text_embeds, dim=1)
+def _compute_matched_cosine_similarity(
+		image_embeds,
+		text_embeds,
+		labels,
+		is_multi_label,
+		verbose=False,  # set True for one epoch to diagnose
+):
+		"""Compute cosine similarity between matched image-text pairs."""
 
-	return cos_sim.mean().item()
+		# ── Debug: input tensor health ────────────────────────────────────────
+		if verbose:
+				print(f"\n[CosSim DEBUG] Input shapes and health")
+				print(f"  image_embeds  : {image_embeds.shape} dtype={image_embeds.dtype} device={image_embeds.device}")
+				print(f"  text_embeds   : {text_embeds.shape} dtype={text_embeds.dtype} device={text_embeds.device}")
+				print(f"  labels        : {labels.shape} dtype={labels.dtype}")
+				print(f"  image_embeds  — nan={torch.isnan(image_embeds).any().item()} inf={torch.isinf(image_embeds).any().item()}")
+				print(f"  text_embeds   — nan={torch.isnan(text_embeds).any().item()} inf={torch.isinf(text_embeds).any().item()}")
+
+				# Check normalisation — CLIP embeddings should be unit norm
+				img_norms = image_embeds.norm(dim=1)
+				txt_norms = text_embeds.norm(dim=1)
+				print(f"\n  image_embeds norms — min={img_norms.min():.6f} max={img_norms.max():.6f} mean={img_norms.mean():.6f}")
+				print(f"  text_embeds  norms — min={txt_norms.min():.6f} max={txt_norms.max():.6f} mean={txt_norms.mean():.6f}")
+				print(f"  Are image_embeds normalised (norm≈1)? {torch.allclose(img_norms, torch.ones_like(img_norms), atol=1e-3)}")
+				print(f"  Are text_embeds  normalised (norm≈1)? {torch.allclose(txt_norms, torch.ones_like(txt_norms), atol=1e-3)}")
+
+				# Check value ranges
+				print(f"\n  image_embeds values — min={image_embeds.min():.6f} max={image_embeds.max():.6f} mean={image_embeds.mean():.6f}")
+				print(f"  text_embeds  values — min={text_embeds.min():.6f} max={text_embeds.max():.6f} mean={text_embeds.mean():.6f}")
+
+				# Label statistics
+				if is_multi_label:
+						pos_per_sample = labels.sum(dim=1)
+						print(f"\n  Labels — positives per sample: min={pos_per_sample.min().item():.0f} max={pos_per_sample.max().item():.0f} mean={pos_per_sample.mean().item():.2f}")
+						print(f"  Samples with zero positive labels: {(pos_per_sample == 0).sum().item()}")
+
+		# ── Build matched text embeddings ─────────────────────────────────────
+		if is_multi_label:
+				matched_text_embeds = torch.zeros_like(image_embeds)
+				positive_counts = []
+				for i in range(len(labels)):
+						positive_indices = torch.where(labels[i] == 1)[0]
+						if positive_indices.numel() > 0:
+								matched_text_embeds[i] = text_embeds[positive_indices].mean(dim=0)
+								positive_counts.append(positive_indices.numel())
+						else:
+								matched_text_embeds[i] = text_embeds.mean(dim=0)
+								positive_counts.append(0)
+		else:
+				matched_text_embeds = text_embeds[labels]
+				positive_counts = [1] * len(labels)
+
+		# ── Debug: matched embeddings health ─────────────────────────────────
+		if verbose:
+				matched_norms = matched_text_embeds.norm(dim=1)
+				print(f"\n  matched_text_embeds — shape={matched_text_embeds.shape}")
+				print(f"  matched_text_embeds — nan={torch.isnan(matched_text_embeds).any().item()} inf={torch.isinf(matched_text_embeds).any().item()}")
+				print(f"  matched_text_embeds norms — min={matched_norms.min():.6f} max={matched_norms.max():.6f} mean={matched_norms.mean():.6f}")
+				print(f"  NOTE: averaged embeddings are NOT unit norm even if inputs are")
+				print(f"  Positive label counts — min={min(positive_counts)} max={max(positive_counts)} mean={sum(positive_counts)/len(positive_counts):.2f}")
+
+				# Raw dot products before normalisation — key diagnostic
+				# If dot products are negative, the embeddings are fundamentally misaligned
+				dot_products = (image_embeds * matched_text_embeds).sum(dim=1)
+				print(f"\n  Raw dot products (before norm division):")
+				print(f"    min={dot_products.min():.6f} max={dot_products.max():.6f} mean={dot_products.mean():.6f}")
+				print(f"    negative fraction: {(dot_products < 0).float().mean().item():.3f}")
+
+				# Per-sample cosine similarity distribution
+				img_n = torch.nn.functional.normalize(image_embeds, dim=1)
+				txt_n = torch.nn.functional.normalize(matched_text_embeds, dim=1)
+				per_sample_cos = (img_n * txt_n).sum(dim=1)
+				print(f"\n  Per-sample CosSim (normalised):")
+				print(f"    min={per_sample_cos.min():.6f} max={per_sample_cos.max():.6f} mean={per_sample_cos.mean():.6f}")
+				print(f"    positive fraction: {(per_sample_cos > 0).float().mean().item():.3f}")
+				print(f"    >0.1 fraction    : {(per_sample_cos > 0.1).float().mean().item():.3f}")
+				print(f"    <-0.1 fraction   : {(per_sample_cos < -0.1).float().mean().item():.3f}")
+
+				# Check if the issue is averaging — compare single-label vs averaged
+				# Take first sample with exactly 1 positive label as reference
+				single_label_samples = [i for i, c in enumerate(positive_counts) if c == 1]
+				multi_label_samples  = [i for i, c in enumerate(positive_counts) if c > 1]
+				if single_label_samples:
+						sl_cos = per_sample_cos[single_label_samples]
+						print(f"\n  Single-positive samples ({len(single_label_samples)} samples):")
+						print(f"    CosSim — min={sl_cos.min():.6f} max={sl_cos.max():.6f} mean={sl_cos.mean():.6f}")
+				if multi_label_samples:
+						ml_cos = per_sample_cos[multi_label_samples]
+						print(f"  Multi-positive samples ({len(multi_label_samples)} samples):")
+						print(f"    CosSim — min={ml_cos.min():.6f} max={ml_cos.max():.6f} mean={ml_cos.mean():.6f}")
+
+				# Check text_embeds passed in — are these class embeddings or something else?
+				print(f"\n  text_embeds origin check:")
+				print(f"    shape[0]={text_embeds.shape[0]} — expected num_classes=4669")
+				print(f"    shape[1]={text_embeds.shape[1]} — expected embed_dim=768")
+
+		# ── Guard: NaN/Inf check ──────────────────────────────────────────────
+		if torch.isnan(image_embeds).any() or torch.isnan(matched_text_embeds).any():
+				if verbose:
+						print(f"\n  [GUARD] NaN detected — returning float('nan')")
+				return float('nan')
+
+		# ── Guard: zero-norm mask ─────────────────────────────────────────────
+		img_norms = image_embeds.norm(dim=1, keepdim=True)
+		txt_norms = matched_text_embeds.norm(dim=1, keepdim=True)
+		valid_mask = (img_norms.squeeze() > 1e-8) & (txt_norms.squeeze() > 1e-8)
+
+		if valid_mask.sum() == 0:
+				if verbose:
+						print(f"\n  [GUARD] No valid pairs — returning float('nan')")
+				return float('nan')
+
+		cos_sim = torch.nn.functional.cosine_similarity(
+				image_embeds[valid_mask],
+				matched_text_embeds[valid_mask],
+				dim=1,
+		)
+
+		result = cos_sim.mean().item()
+
+		if verbose:
+				print(f"\n  Final CosSim (valid pairs={valid_mask.sum().item()}/{len(valid_mask)}): {result:.6f}")
+
+		return result
+
+def _compute_multilabel_alignment_score(
+		image_embeds: torch.Tensor,       # [N, D] — L2 normalised
+		all_class_embeds: torch.Tensor,   # [C, D] — L2 normalised
+		labels: torch.Tensor,             # [N, C] — binary, long
+		temperature: float = 0.07,
+		topk: int = 5,
+		verbose: bool = False,
+) -> float:
+		"""
+		Fraction of samples where at least one true class ranks in top-K
+		by cosine similarity. Meaningful and interpretable for multi-label data.
+
+		Returns value in [0, 1]:
+				0.0 — no image has any true class in its top-K retrieved classes
+				1.0 — every image has at least one true class in its top-K
+		"""
+		# Guard: NaN/Inf check
+		if torch.isnan(image_embeds).any() or torch.isnan(all_class_embeds).any():
+				return float('nan')
+
+		# [N, C] similarity logits
+		logits = (image_embeds @ all_class_embeds.T) / temperature
+
+		# Clamp topk to available classes
+		effective_k = min(topk, logits.shape[1])
+
+		# [N, K] top-K class indices per image
+		topk_indices = logits.topk(effective_k, dim=1).indices
+
+		# Vectorised hit detection — no Python loop
+		# Scatter top-K indices into a binary hit matrix [N, C]
+		topk_mask = torch.zeros_like(logits, dtype=torch.bool)
+		topk_mask.scatter_(1, topk_indices, True)
+
+		# A hit occurs when any true class appears in the top-K mask
+		# labels is long — cast to bool for AND operation
+		hits = (topk_mask & labels.bool()).any(dim=1)  # [N]
+		score = hits.float().mean().item()
+
+		if verbose:
+				print(f"\n[Alignment Score @ top-{effective_k}]")
+				print(f"  Samples with ≥1 true class in top-{effective_k}: {hits.sum().item()} / {len(hits)}")
+				print(f"  Alignment score: {score:.6f}")
+				# Additional breakdown by number of positive labels
+				pos_counts = labels.sum(dim=1).long()
+				for n_pos in sorted(pos_counts.unique().tolist()):
+						mask = pos_counts == n_pos
+						if mask.sum() > 0:
+								group_score = hits[mask].float().mean().item()
+								print(f"  └─ {n_pos} positive labels ({mask.sum().item()} samples): {group_score:.4f}")
+
+		return score
 
 def evaluate_best_model(
 	model,

@@ -83,10 +83,10 @@ def zero_shot_multi_label(
 		topK_values=topk_values,
 		finetune_strategy="pretrained",
 		cache_dir=results_dir,
-		verbose=verbose,
 		is_training=False,
 		model_hash=get_model_hash(model),
 		temperature=temperature,
+		verbose=verbose,
 	)
 
 	i2t_similarity = validation_results["i2t_similarity"]
@@ -998,14 +998,15 @@ def full_finetune_multi_label(
 			topK_values=topk_values,
 			finetune_strategy=mode,
 			cache_dir=results_dir,
-			verbose=verbose,
 			is_training=True,
 			model_hash=get_model_hash(model),
 			temperature=temperature,
+			verbose=verbose,
 		)
 		
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
-		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity", float("nan"))
+		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity")
+		align_score   = full_val_loss_acc_metrics_per_epoch.get("alignment_score")
 
 		retrieval_metrics_per_epoch = {
 			"img2txt": validation_results["img2txt_metrics"],
@@ -1019,12 +1020,17 @@ def full_finetune_multi_label(
 			f'\nEpoch {epoch+1}:\n'
 			f'   ├─ [LOSS] {mode}-FT: Train — Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Val: {current_val_loss:.6f}\n'
 			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
-			f'   ├─ Embed — CosSim: {cos_sim:.4f}\n'
 			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
 			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'      └─ [T2I] {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
-		
+		if align_score is not None:
+			print(f'   ├─ Embed — AlignScore@5: {align_score:.4f}')
+		elif cos_sim is not None:
+			print(f'   ├─ Embed — CosSim: {cos_sim:.4f}')
+		else:
+			print(f'   ├─ Embed — AlignScore: N/A')
+
 		print(f"   ├─ Retrieval Metrics:")
 		print(
 			f"      ├─ [I2T] mAP {retrieval_metrics_per_epoch['img2txt'].get('mAP', {})}, "
@@ -1490,7 +1496,6 @@ def lora_finetune_multi_label(
 				topK_values=topk_values,
 				finetune_strategy=mode,
 				cache_dir=results_dir,
-				verbose=verbose,
 				lora_params={
 					"lora_rank": lora_rank,
 					"lora_alpha": lora_alpha,
@@ -1499,27 +1504,35 @@ def lora_finetune_multi_label(
 				is_training=True,
 				model_hash=get_model_hash(model),
 				temperature=temperature,
+				verbose=verbose,
 			)
 			
 			full_val_metrics = validation_results["full_metrics"]
 			img2txt_metrics  = validation_results["img2txt_metrics"]
 			txt2img_metrics  = validation_results["txt2img_metrics"]
 			full_val_loss_acc_metrics_all_epochs.append(full_val_metrics)
+			cos_sim = full_val_metrics.get("cosine_similarity")
+			align_score = full_val_metrics.get("alignment_score")
+
 			img2txt_metrics_all_epochs.append(img2txt_metrics)
 			txt2img_metrics_all_epochs.append(txt2img_metrics)
 			i2t_map10 = img2txt_metrics.get("mAP", {}).get("10", float("nan"))
 			t2i_map10 = txt2img_metrics.get("mAP", {}).get("10", float("nan"))
-			i2t_r10   = img2txt_metrics.get("Recall", {}).get("10", float("nan"))
-			t2i_r10   = txt2img_metrics.get("Recall", {}).get("10", float("nan"))
-			cos_sim   = full_val_metrics.get("cosine_similarity", float("nan"))
+			i2t_r10 = img2txt_metrics.get("Recall", {}).get("10", float("nan"))
+			t2i_r10 = txt2img_metrics.get("Recall", {}).get("10", float("nan"))
 			print(
 					f"\nEpoch {epoch+1}:\n"
 					f"  Loss  — Train: {avg_total:.4f} (I2T: {avg_i2t:.4f}, T2I: {avg_t2i:.4f})  Val: {current_val_loss:.4f}\n"
 					f"  I2T   — mAP@10: {i2t_map10:.4f}  R@10: {i2t_r10:.4f}\n"
 					f"  T2I   — mAP@10: {t2i_map10:.4f}  R@10: {t2i_r10:.4f}\n"
-					f"  Embed — CosSim: {cos_sim:.4f}\n"
 					f"  LR    — {scheduler.get_last_lr()[0]:.2e}"
 			)
+			if align_score is not None:
+				print(f"  Embed — AlignScore@5: {align_score:.4f}")
+			elif cos_sim is not None:
+				print(f"  Embed — CosSim: {cos_sim:.4f}")
+			else:
+				print(f"  Embed — AlignScore: N/A")
 
 			if early_stopping.should_stop(
 					current_value=current_val_loss,
@@ -1921,8 +1934,7 @@ def lora_plus_finetune_multi_label(
 		print(f"\n{optimizer.__class__.__name__}")
 		print(f"  ├─ LR: lora_A = {lora_A_lr} lora_B = {lora_B_lr}")
 		print(f"  ├─ WD: lora_A = {lora_A_wd} lora_B = {lora_B_wd}")
-		print(f"  ├─ LoRA+ | A params: {sum(p.numel() for p in lora_A_params):,} @ lr={lora_A_lr:.2e}")
-		print(f"  └─ LoRA+ | B params: {sum(p.numel() for p in lora_B_params):,} @ lr={lora_B_lr:.2e}")
+		print(f"  └─ Params: lora_A:{sum(p.numel() for p in lora_A_params):,} lora_B: {sum(p.numel() for p in lora_B_params):,}")
 	
 	# Setup scheduler
 	# estimated_epochs = min(num_epochs, 15)
@@ -2105,7 +2117,6 @@ def lora_plus_finetune_multi_label(
 			print(f"[Epoch {epoch+1}] {len(learning_rates_history[-1])} LR groups: {learning_rates_history[-1]}")
 			print(f"[Epoch {epoch+1}] {len(weight_decays_history[-1])} WD groups: {weight_decays_history[-1]}")
 		
-
 		# ── Weight health check before validation ──────────────────────────
 		healthy, A_norms, B_norms = check_lora_weight_health(model, epoch, verbose=True)
 		if not healthy:
@@ -2139,7 +2150,6 @@ def lora_plus_finetune_multi_label(
 			topK_values=topk_values,
 			finetune_strategy=mode,
 			cache_dir=results_dir,
-			verbose=verbose,
 			lora_params={
 				"lora_rank": lora_rank,
 				"lora_alpha": lora_alpha,
@@ -2149,10 +2159,12 @@ def lora_plus_finetune_multi_label(
 			is_training=True,
 			model_hash=get_model_hash(model),
 			temperature=temperature,
+			verbose=verbose,
 		)
 		
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
-		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity", float("nan"))
+		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity")
+		align_score   = full_val_loss_acc_metrics_per_epoch.get("alignment_score")
 
 		retrieval_metrics_per_epoch = {
 			"img2txt": validation_results["img2txt_metrics"],
@@ -2166,11 +2178,17 @@ def lora_plus_finetune_multi_label(
 			f'\nEpoch {epoch+1}:\n'
 			f'   ├─ [LOSS] {mode}-FT: Train - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Val: {current_val_loss:.6f}\n'
 			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
-			f'   ├─ Embed — CosSim: {cos_sim:.4f}\n'
 			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
 			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'      └─ [T2I] {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
+		if align_score is not None:
+			print(f'   ├─ Embed — AlignScore@5: {align_score:.4f}')
+		elif cos_sim is not None:
+			print(f'   ├─ Embed — CosSim: {cos_sim:.4f}')
+		else:
+			print(f'   ├─ Embed — AlignScore: N/A')
+
 		print(f"   ├─ Retrieval Metrics:")
 		print(
 			f"      ├─ [I2T] mAP {retrieval_metrics_per_epoch['img2txt'].get('mAP', {})}, "
@@ -2670,7 +2688,6 @@ def rslora_finetune_multi_label(
 			topK_values=topk_values,
 			finetune_strategy=mode,
 			cache_dir=results_dir,
-			verbose=verbose,
 			lora_params={
 				"lora_rank": lora_rank,
 				"lora_alpha": lora_alpha,
@@ -2679,6 +2696,7 @@ def rslora_finetune_multi_label(
 			is_training=True,
 			model_hash=get_model_hash(model),
 			temperature=temperature,
+			verbose=verbose,
 		)
 
 		full_val_metrics = validation_results["full_metrics"]
@@ -2692,15 +2710,21 @@ def rslora_finetune_multi_label(
 		t2i_map10 = txt2img_metrics.get("mAP", {}).get("10", float("nan"))
 		i2t_r10   = img2txt_metrics.get("Recall", {}).get("10", float("nan"))
 		t2i_r10   = txt2img_metrics.get("Recall", {}).get("10", float("nan"))
-		cos_sim   = full_val_metrics.get("cosine_similarity", float("nan"))
+		cos_sim   = full_val_metrics.get("cosine_similarity")
+		align_score = full_val_metrics.get("alignment_score")
 		print(
 			f"\nEpoch {epoch+1}:\n"
 			f"  Loss  — Train: {avg_total:.4f} (I2T: {avg_i2t:.4f}, T2I: {avg_t2i:.4f})  Val: {current_val_loss:.4f}\n"
 			f"  I2T   — mAP@10: {i2t_map10:.4f}  R@10: {i2t_r10:.4f}\n"
 			f"  T2I   — mAP@10: {t2i_map10:.4f}  R@10: {t2i_r10:.4f}\n"
-			f"  Embed — CosSim: {cos_sim:.4f}\n"
 			f"  LR    — {scheduler.get_last_lr()[0]:.2e}"
 		)
+		if align_score is not None:
+			print(f"  Embed — AlignScore@5: {align_score:.4f}")
+		elif cos_sim is not None:
+			print(f"  Embed — CosSim: {cos_sim:.4f}")
+		else:
+			print(f"  Embed — AlignScore: N/A")
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -3200,7 +3224,6 @@ def dora_finetune_multi_label(
 			topK_values=topk_values,
 			finetune_strategy=mode,
 			cache_dir=results_dir,
-			verbose=verbose,
 			lora_params={
 				"lora_rank": lora_rank,
 				"lora_alpha": lora_alpha,
@@ -3209,10 +3232,12 @@ def dora_finetune_multi_label(
 			is_training=True,
 			model_hash=get_model_hash(model),
 			temperature=temperature,
+			verbose=verbose,
 		)
 		
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
-		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity", float("nan"))
+		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity")
+		align_score = full_val_loss_acc_metrics_per_epoch.get("alignment_score")
 
 		retrieval_metrics_per_epoch = {
 			"img2txt": validation_results["img2txt_metrics"],
@@ -3226,12 +3251,18 @@ def dora_finetune_multi_label(
 			f'\nEpoch {epoch+1}:\n'
 			f'   ├─ [LOSS] {mode}-FT: Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Validation: {current_val_loss:.6f}\n'
 			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
-			f'   ├─ Embed — CosSim: {cos_sim:.4f}\n'
 			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
 			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'      └─ [T2I] {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
-		
+		if align_score is not None:
+			print(f'   ├─ Embed — AlignScore@5: {align_score:.4f}')
+		elif cos_sim is not None:
+			print(f'   ├─ Embed — CosSim: {cos_sim:.4f}')
+		else:
+			print(f'   ├─ Embed — AlignScore: N/A')
+
+
 		print(f"   ├─ Retrieval Metrics:")
 		print(
 			f"      ├─ [I2T] mAP {retrieval_metrics_per_epoch['img2txt'].get('mAP', {})}, "
@@ -3783,14 +3814,15 @@ def ia3_finetune_multi_label(
 			topK_values=topk_values,
 			finetune_strategy=mode,
 			cache_dir=results_dir,
-			verbose=verbose,
 			is_training=True,
 			model_hash=get_model_hash(model),
 			temperature=temperature,
+			verbose=verbose,
 		)
 		
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
-		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity", float("nan"))
+		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity")
+		align_score   = full_val_loss_acc_metrics_per_epoch.get("alignment_score")
 
 		retrieval_metrics_per_epoch = {
 			"img2txt": validation_results["img2txt_metrics"],
@@ -3805,11 +3837,16 @@ def ia3_finetune_multi_label(
 			f'\nEpoch {epoch+1}:\n'
 			f'   ├─ [LOSS] {mode}-FT: Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Validation: {current_val_loss:.6f}\n'
 			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
-			f'   ├─ Embed — CosSim: {cos_sim:.4f}\n'
 			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
 			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'      └─ [T2I] {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
+		if align_score is not None:
+			print(f'   ├─ Embed — AlignScore@5: {align_score:.4f}')
+		elif cos_sim is not None:
+			print(f'   ├─ Embed — CosSim: {cos_sim:.4f}')
+		else:
+			print(f'   ├─ Embed — AlignScore: N/A')
 		
 		print(f"   ├─ Retrieval Metrics:")
 		print(
@@ -4366,7 +4403,6 @@ def vera_finetune_multi_label(
 			topK_values=topk_values,
 			finetune_strategy=mode,
 			cache_dir=results_dir,
-			verbose=verbose,
 			lora_params={
 				"lora_rank": lora_rank,
 				"lora_alpha": lora_alpha,
@@ -4375,10 +4411,13 @@ def vera_finetune_multi_label(
 			is_training=True,
 			model_hash=get_model_hash(model),
 			temperature=temperature,
+			verbose=verbose,
 		)
 		
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
-		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity", float("nan"))
+		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity")
+		align_score   = full_val_loss_acc_metrics_per_epoch.get("alignment_score")
+
 		retrieval_metrics_per_epoch = {
 			"img2txt": validation_results["img2txt_metrics"],
 			"txt2img": validation_results["txt2img_metrics"]
@@ -4392,11 +4431,16 @@ def vera_finetune_multi_label(
 			f'\nEpoch {epoch+1}:\n'
 			f'   ├─ [LOSS] {mode.upper()}-FT: Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Validation: {current_val_loss:.6f}\n'
 			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
-			f'   ├─ Embed — CosSim: {cos_sim:.4f}\n'
 			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
 			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'      └─ [T2I] {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
+		if align_score is not None:
+			print(f'   ├─ Embed — AlignScore@5: {align_score:.4f}')
+		elif cos_sim is not None:
+			print(f'   ├─ Embed — CosSim: {cos_sim:.4f}')
+		else:
+			print(f'   ├─ Embed — AlignScore: N/A')
 		
 		print(f"   ├─ Retrieval Metrics:")
 		print(
@@ -4921,14 +4965,16 @@ def clip_adapter_finetune_multi_label(
 			topK_values=topk_values,
 			finetune_strategy=mode,
 			cache_dir=results_dir,
-			verbose=verbose,
 			is_training=True,
 			model_hash=get_model_hash(model),
 			temperature=temperature,
+			verbose=verbose,
 		)
 
 		full_metrics = validation_results["full_metrics"]
-		cos_sim = full_metrics.get("cosine_similarity", float("nan"))
+		cos_sim = full_metrics.get("cosine_similarity")
+		align_score = full_metrics.get("alignment_score")
+		
 		retrieval = {
 			"img2txt": validation_results["img2txt_metrics"],
 			"txt2img": validation_results["txt2img_metrics"],
@@ -4942,10 +4988,17 @@ def clip_adapter_finetune_multi_label(
 			f'\nEpoch {epoch+1}:\n'
 			f'   ├─ [LOSS] {clip_adapter_method}-FT: Train: {avg_total:.6f} (I2T: {avg_i2t:.6f}, T2I: {avg_t2i:.6f})  Val: {current_val_loss:.6f}\n'
 			f'   ├─ LR: {scheduler.get_last_lr()[0]:.2e}\n'
-			f'   ├─ CosSim: {cos_sim:.4f}\n'
 			f'   ├─ [I2T] Accuracy: {full_metrics.get("img2txt_topk_acc")}\n'
 			f'   ├─ [T2I] Accuracy: {full_metrics.get("txt2img_topk_acc")}'
 		)
+		if align_score is not None:
+			print(f'   ├─ Embed — AlignScore@5: {align_score:.4f}')
+		elif cos_sim is not None:
+			print(f'   ├─ Embed — CosSim: {cos_sim:.4f}')
+		else:
+			print(f'   ├─ Embed — AlignScore: N/A')
+
+
 		print(
 			f"   ├─ [I2T] mAP={retrieval['img2txt'].get('mAP',{})}  R={retrieval['img2txt'].get('Recall',{})}\n"
 			f"   ├─ [T2I] mAP={retrieval['txt2img'].get('mAP',{})}  R={retrieval['txt2img'].get('Recall',{})}"
@@ -5691,7 +5744,9 @@ def tip_adapter_finetune_multi_label(
 		)
 		
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
-		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity", float("nan"))
+		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity")
+		align_score   = full_val_loss_acc_metrics_per_epoch.get("alignment_score")
+		
 		retrieval_metrics_per_epoch = {
 			"img2txt": validation_results["img2txt_metrics"],
 			"txt2img": validation_results["txt2img_metrics"]
@@ -5705,11 +5760,16 @@ def tip_adapter_finetune_multi_label(
 			f'\nEpoch {epoch+1}:\n'
 			f'   ├─ [LOSS] {tip_adapter_method.upper()}-FT: Train - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Val: {current_val_loss:.6f}\n'
 			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
-			f'   ├─ Embed — CosSim: {cos_sim:.4f}\n'
 			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
 			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'      └─ [T2I] {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
+		if align_score is not None:
+			print(f'   ├─ Embed — AlignScore@5: {align_score:.4f}')
+		elif cos_sim is not None:
+			print(f'   ├─ Embed — CosSim: {cos_sim:.4f}')
+		else:
+			print(f'   ├─ Embed — AlignScore: N/A')
 		
 		print(f"   ├─ Retrieval Metrics:")
 		print(
