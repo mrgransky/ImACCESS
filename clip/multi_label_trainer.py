@@ -1863,24 +1863,32 @@ def lora_plus_finetune_multi_label(
 	
 	# Setup optimizer with differential learning rates
 	lora_A_lr = learning_rate
+	lora_A_wd = weight_decay
 	lora_B_lr = learning_rate * lora_plus_lambda
-	
+	lora_B_wd = 0.0
+
 	optimizer = torch.optim.AdamW(
 		params=[
-			{'params': lora_A_params, 'lr': lora_A_lr},
-			{'params': lora_B_params, 'lr': lora_B_lr},
+			{
+				'params': lora_A_params,
+				'lr': lora_A_lr,
+				'weight_decay': lora_A_wd,
+			},
+			{
+				'params': lora_B_params,
+				'lr': lora_B_lr,
+				'weight_decay': lora_B_wd,
+			},
 		],
-		betas=(0.9, 0.98),
-		eps=1e-6,
-		weight_decay=weight_decay,
 	)
-	
+
+
 	if verbose:
 		print(f"\n{optimizer.__class__.__name__}")
 		print(f"  ├─ LR: lora_A = {lora_A_lr} lora_B = {lora_B_lr}")
+		print(f"  ├─ WD: lora_A = {lora_A_wd} lora_B = {lora_B_wd}")
 		print(f"  ├─ LoRA+ | A params: {sum(p.numel() for p in lora_A_params):,} @ lr={lora_A_lr:.2e}")
-		print(f"  ├─ LoRA+ | B params: {sum(p.numel() for p in lora_B_params):,} @ lr={lora_B_lr:.2e}")
-		print(f"  └─ Weight Decay: {weight_decay}")
+		print(f"  └─ LoRA+ | B params: {sum(p.numel() for p in lora_B_params):,} @ lr={lora_B_lr:.2e}")
 	
 	# Setup scheduler
 	# estimated_epochs = min(num_epochs, 15)
