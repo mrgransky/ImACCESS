@@ -6,6 +6,41 @@ from probe import get_probe_clip
 from evals import *
 import visualize as viz
 
+# ── Weight health check ──────────────────────────────────────────────
+def check_lora_weight_health(model, epoch, verbose=True):
+		issues = []
+		stats = {"A": {}, "B": {}}
+		for name, param in model.named_parameters():
+				if not param.requires_grad:
+						continue
+				group = "A" if "lora_A" in name else "B" if "lora_B" in name else None
+				if group is None:
+						continue
+				has_nan = torch.isnan(param.data).any().item()
+				has_inf = torch.isinf(param.data).any().item()
+				norm = param.data.norm().item()
+				if has_nan or has_inf:
+						issues.append(f"  ✗ {name}: nan={has_nan} inf={has_inf} norm={norm:.4e}")
+				stats[group][name] = norm
+		
+		A_norms = list(stats["A"].values())
+		B_norms = list(stats["B"].values())
+		
+		if verbose:
+				print(f"\n[Weight Health — Epoch {epoch+1}]")
+				if A_norms:
+						print(f"  lora_A norms — min={min(A_norms):.4e} max={max(A_norms):.4e} mean={sum(A_norms)/len(A_norms):.4e}")
+				if B_norms:
+						print(f"  lora_B norms — min={min(B_norms):.4e} max={max(B_norms):.4e} mean={sum(B_norms)/len(B_norms):.4e}")
+				if issues:
+						print(f"  !! {len(issues)} corrupted tensors:")
+						for issue in issues[:10]:  # cap at 10
+								print(issue)
+				else:
+						print(f"  ✓ All weights healthy")
+		
+		return len(issues) == 0, A_norms, B_norms
+
 def zero_shot_multi_label(
 	model: torch.nn.Module,
 	train_loader: DataLoader,
@@ -1999,12 +2034,42 @@ def lora_plus_finetune_multi_label(
 			# scaler.scale(total_loss).backward()
 			# scaler.unscale_(optimizer)
 			total_loss.backward()
+			# ── Gradient health check (every 500 batches) ────────────────────────
+			if bidx % 500 == 0:
+					grad_norms_A, grad_norms_B = [], []
+					for name, param in model.named_parameters():
+							if param.requires_grad and param.grad is not None:
+									gn = param.grad.norm().item()
+									if "lora_A" in name:
+											grad_norms_A.append(gn)
+									elif "lora_B" in name:
+											grad_norms_B.append(gn)
+					if grad_norms_A and grad_norms_B:
+							print(
+									f"  [Grad norms e{epoch+1} b{bidx+1}] "
+									f"A: min={min(grad_norms_A):.3e} max={max(grad_norms_A):.3e} "
+									f"B: min={min(grad_norms_B):.3e} max={max(grad_norms_B):.3e}"
+							)
+
 			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
 			# scaler.step(optimizer)
 			# scaler.update()
 			# scheduler.step()
 			optimizer.step()
-			
+			# ── Post-step weight norm tracking ──────────────────────────────────
+			if bidx % 500 == 0:
+					B_norms_current = [
+							p.data.norm().item()
+							for n, p in model.named_parameters()
+							if p.requires_grad and "lora_B" in n
+					]
+					if B_norms_current:
+							print(
+									f"  [B weight norms e{epoch+1} b{bidx+1}] "
+									f"min={min(B_norms_current):.3e} max={max(B_norms_current):.3e} "
+									f"mean={sum(B_norms_current)/len(B_norms_current):.3e}"
+							)
+
 			# Track losses
 			batch_loss_total = total_loss.item()
 			batch_loss_i2t = loss_i2t.item()
@@ -2040,6 +2105,19 @@ def lora_plus_finetune_multi_label(
 			print(f"[Epoch {epoch+1}] {len(learning_rates_history[-1])} LR groups: {learning_rates_history[-1]}")
 			print(f"[Epoch {epoch+1}] {len(weight_decays_history[-1])} WD groups: {weight_decays_history[-1]}")
 		
+
+		# ── Weight health check before validation ──────────────────────────
+		healthy, A_norms, B_norms = check_lora_weight_health(model, epoch, verbose=True)
+		if not healthy:
+			print(f"[CRITICAL] Weight corruption detected at epoch {epoch+1} before validation.")
+			if early_stopping.best_weights is not None:
+				print(f"  Restoring best weights from epoch {early_stopping.get_best_epoch()+1}.")
+				early_stopping._restore_best_weights(model)
+			else:
+				print(f"  No best weights stored yet (corruption at epoch {epoch+1}). Breaking without restoration.")
+			break
+
+
 		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")		
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
