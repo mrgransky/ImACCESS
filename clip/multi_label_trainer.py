@@ -512,26 +512,46 @@ def probe_multi_label(
 			sample_labels = train_lbls[:512].to(device)  # [512, C] multi-hot
 			
 			W = torch.nn.functional.normalize(probe.probe.weight, dim=-1)        # [C, 768]
-			
 			matched_class_vecs = torch.zeros(512, W.shape[1], device=device)
+
 			for i in range(512):
-					pos_idx = sample_labels[i].nonzero(as_tuple=True)[0]
-					if pos_idx.numel() > 0:
-							matched_class_vecs[i] = W[pos_idx].mean(dim=0)
+				pos_idx = sample_labels[i].nonzero(as_tuple=True)[0]
+				if pos_idx.numel() > 0:
+					matched_class_vecs[i] = W[pos_idx].mean(dim=0)
 			
 			matched_class_vecs = torch.nn.functional.normalize(matched_class_vecs, dim=-1)
 			sample_feats_norm = torch.nn.functional.normalize(sample_feats, dim=-1)
-			cos_sim = torch.nn.functional.cosine_similarity(sample_feats_norm, matched_class_vecs, dim=1).mean().item()
+			cos_sim = torch.nn.functional.cosine_similarity(
+				sample_feats_norm, 
+				matched_class_vecs, 
+				dim=1
+			).mean().item()
+
+			# AlignScore@5 against learned W — comparable to PEFT methods
+			align_score = get_multilabel_alignment_score(
+				image_embeds=sample_feats_norm,
+				all_class_embeds=W, # probe W, not frozen text embeds
+				labels=sample_labels,
+				temperature=0.07,
+				topk=5,
+				verbose=verbose,
+			)
 		else:
-			cos_sim = 0.0
+			cos_sim = 0
+			align_score = 0
+		
 		print(
 			f"\nEpoch {epoch+1}:\n"
 			f"  Loss — Train: {avg_loss:.8f}  Val: {avg_val_loss:.8f}\n"
 			f"  Hamming: {hamming:.4f}  F1: {f1:.4f}\n"
 			f"  ExactMatch: {exact_match}  PartialAcc: {partial_match:.4f}\n"
-			f"  LR: {scheduler.get_last_lr()[0]}\n"
-			f"  CosSim: {cos_sim:.4f}"
+			f"  LR: {scheduler.get_last_lr()}"
 		)
+		if align_score is not None:
+			print(f"  AlignScore@5 (W): {align_score:.4f}")
+		if cos_sim is not None:
+			print(f"  CosSim (W):: {cos_sim:.4f}")
+		
 		if early_stopping.should_stop(
 			current_value=avg_val_loss,
 			model=probe.probe, # save only probe weights, not full CLIP

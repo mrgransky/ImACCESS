@@ -725,7 +725,7 @@ def compute_full_set_metrics_from_cache(
 
 		# ── Alignment score (replaces cosine similarity for multi-label) ──────
 		if is_multi_label:
-				alignment_score = _compute_multilabel_alignment_score(
+				alignment_score = get_multilabel_alignment_score(
 						image_embeds=device_image_embeds,
 						all_class_embeds=device_class_text_embeds,
 						labels=labels,
@@ -736,7 +736,7 @@ def compute_full_set_metrics_from_cache(
 				cos_sim = None  # no longer computed for multi-label
 		else:
 				alignment_score = None
-				cos_sim = _compute_matched_cosine_similarity(
+				cos_sim = get_matched_cosine_similarity(
 						image_embeds=device_image_embeds,
 						text_embeds=device_class_text_embeds,
 						labels=labels,
@@ -1001,7 +1001,7 @@ def _compute_singlelabel_mrr(i2t_similarity, labels):
 		rr_indices = ranks.eq(labels.view(-1, 1)).nonzero(as_tuple=True)[1] + 1
 		return (1.0 / rr_indices.float()).mean().item()
 
-def _compute_matched_cosine_similarity(
+def get_matched_cosine_similarity(
 		image_embeds,
 		text_embeds,
 		labels,
@@ -1126,7 +1126,7 @@ def _compute_matched_cosine_similarity(
 
 		return result
 
-def _compute_multilabel_alignment_score(
+def get_multilabel_alignment_score(
 		image_embeds: torch.Tensor,       # [N, D] — L2 normalised
 		all_class_embeds: torch.Tensor,   # [C, D] — L2 normalised
 		labels: torch.Tensor,             # [N, C] — binary, long
