@@ -25,6 +25,7 @@ echo -e "${txt//?/$ch}\n${txt}\n${txt//?/$ch}"
 echo "${stars// /*}"
 echo "CPUS/NODE: $SLURM_JOB_CPUS_PER_NODE, MEM/NODE(--mem): $SLURM_MEM_PER_NODE"
 echo "HOST: $SLURM_SUBMIT_HOST @ $SLURM_JOB_ACCOUNT, CLUSTER: $SLURM_CLUSTER_NAME, Partition: $SLURM_JOB_PARTITION"
+echo "SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
 echo "JOBname: $SLURM_JOB_NAME, ID: $SLURM_JOB_ID, WRK_DIR: $SLURM_SUBMIT_DIR"
 echo "nNODES: $SLURM_NNODES, NODELIST: $SLURM_JOB_NODELIST, NODE_ID: $SLURM_NODEID"
 echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_NPROCS"
@@ -110,7 +111,7 @@ case "$LABEL_TYPE" in
 esac
 
 # Batch sizes and print frequencies
-BATCH_SIZES=(24 64 64 64 64)
+BATCH_SIZES=(32 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 25)
 
 # Learning rates by method group
@@ -178,19 +179,16 @@ EARLY_STOPPING_MIN_EPOCHS=$((EARLY_STOPPING_MIN_EPOCHS < 3 ? 3 : EARLY_STOPPING_
 ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 
 echo "=== CONFIGURATION ==="
-echo "SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
 echo "LABEL_TYPE: $LABEL_TYPE"
-echo "DATASET_INDEX: $dataset_index"
-echo "CSV_FILE: $METADATA_CSV"
-echo "STRATEGY_INDEX: $strategy_index"
-echo "STRATEGY: $strategy"
+echo "CSV_FILE[$dataset_index]: $METADATA_CSV"
+echo "STRATEGY[$strategy_index]: $strategy"
 if [ -n "$ADAPTER_METHOD" ]; then
 	echo "ADAPTER_METHOD: $ADAPTER_METHOD"
 fi
 if [ -n "$BASELINE_METHOD" ]; then
 	echo "BASELINE_METHOD: $BASELINE_METHOD"
 fi
-echo "ARCHITECTURE_INDEX: $architecture_index MODEL_ARCHITECTURE: $architecture"
+echo "ARCHITECTURE[$architecture_index]: $architecture"
 echo "EPOCHS: ${EPOCHS[$dataset_index]}"
 echo "LR: $LEARNING_RATE"
 echo "WD: ${WEIGHT_DECAY[$dataset_index]}"
@@ -198,7 +196,7 @@ echo "EARLY_STOPPING_MIN_EPOCHS: $EARLY_STOPPING_MIN_EPOCHS"
 echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} [ADJUSTED]: $ADJUSTED_BATCH_SIZE"
 # Show LoRA parameters only for applicable methods
 if [ "$strategy" = "lora" ] || [ "$strategy" = "lora_plus" ] || \
-   [ "$strategy" = "dora" ] || [ "$strategy" = "vera" ]; then
+   [ "$strategy" = "dora" ] || [ "$strategy" = "vera" ] || [ "$strategy" = "rslora" ]; then
     echo "LORA_RANK: ${LORA_RANKS[$dataset_index]}"
     echo "LORA_ALPHA: ${LORA_ALPHAS[$dataset_index]}"
     echo "LORA_DROPOUT: ${LORA_DROPOUTS[$dataset_index]}"
@@ -231,9 +229,9 @@ CMD="python -u trainer.py \
 	--sampling \"${SAMPLINGS[1]}\" \
 	--verbose"
 
-# Add LoRA parameters only for LoRA, LoRA+, DoRA, and VeRA
+# Add LoRA parameters only for LoRA, LoRA+, DoRA, VeRA, and RSLora
 if [ "$strategy" = "lora" ] || [ "$strategy" = "lora_plus" ] || \
-	 [ "$strategy" = "dora" ] || [ "$strategy" = "vera" ]; then
+	 [ "$strategy" = "dora" ] || [ "$strategy" = "vera" ] || [ "$strategy" = "rslora" ]; then
 	CMD="$CMD --lora_rank \"${LORA_RANKS[$dataset_index]}\""
 	CMD="$CMD --lora_alpha \"${LORA_ALPHAS[$dataset_index]}\""
 	CMD="$CMD --lora_dropout \"${LORA_DROPOUTS[$dataset_index]}\""
