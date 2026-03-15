@@ -1166,16 +1166,16 @@ def get_multilabel_alignment_score(
 		score = hits.float().mean().item()
 
 		if verbose:
-				print(f"\n[Alignment Score @ top-{effective_k}]")
-				print(f"  Samples with ≥1 true class in top-{effective_k}: {hits.sum().item()} / {len(hits)}")
-				print(f"  Alignment score: {score:.6f}")
-				# Additional breakdown by number of positive labels
-				pos_counts = labels.sum(dim=1).long()
-				for n_pos in sorted(pos_counts.unique().tolist()):
-						mask = pos_counts == n_pos
-						if mask.sum() > 0:
-								group_score = hits[mask].float().mean().item()
-								print(f"  └─ {n_pos} positive labels ({mask.sum().item()} samples): {group_score:.4f}")
+			print(f"\n[Alignment Score @ top-{effective_k}]")
+			print(f"  Samples with ≥1 true class in top-{effective_k}: {hits.sum().item()} / {len(hits)}")
+			print(f"  Alignment score: {score:.6f}")
+			# Additional breakdown by number of positive labels
+			pos_counts = labels.sum(dim=1).long()
+			for n_pos in sorted(pos_counts.unique().tolist()):
+					mask = pos_counts == n_pos
+					if mask.sum() > 0:
+							group_score = hits[mask].float().mean().item()
+							print(f"  └─ {n_pos} positive labels ({mask.sum().item()} samples): {group_score:.4f}")
 
 		return score
 

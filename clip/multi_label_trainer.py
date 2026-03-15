@@ -1,3 +1,5 @@
+from gc import enable
+
 from utils import *
 from early_stopper import EarlyStopping
 from loss import compute_multilabel_contrastive_loss, compute_loss_masks
@@ -1699,33 +1701,33 @@ def lora_finetune_multi_label(
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
 def lora_plus_finetune_multi_label(
-		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
-		num_epochs: int,
-		print_every: int,
-		learning_rate: float,
-		weight_decay: float,
-		device: str,
-		results_dir: str,
-		lora_rank: int,
-		lora_alpha: float,
-		lora_dropout: float,
-		lora_plus_lambda: float,
-		patience: int,
-		min_delta: float,
-		cumulative_delta: float,
-		minimum_epochs: int,
-		volatility_threshold: float,
-		slope_threshold: float,
-		pairwise_imp_threshold: float,
-		topk_values: List[int]=[1, 5, 10, 15, 20],
-		quantization_bits: int=8,
-		quantized: bool=False,
-		loss_weights: Dict[str, float]=None,
-		temperature: float=0.07,
-		verbose: bool=True,
-	):
+	model: torch.nn.Module,
+	train_loader: DataLoader,
+	validation_loader: DataLoader,
+	num_epochs: int,
+	print_every: int,
+	learning_rate: float,
+	weight_decay: float,
+	device: str,
+	results_dir: str,
+	lora_rank: int,
+	lora_alpha: float,
+	lora_dropout: float,
+	lora_plus_lambda: float,
+	patience: int,
+	min_delta: float,
+	cumulative_delta: float,
+	minimum_epochs: int,
+	volatility_threshold: float,
+	slope_threshold: float,
+	pairwise_imp_threshold: float,
+	topk_values: List[int]=[1, 5, 10, 15, 20],
+	quantization_bits: int=8,
+	quantized: bool=False,
+	loss_weights: Dict[str, float]=None,
+	temperature: float=0.07,
+	verbose: bool=True,
+):
 	"""
 	LoRA+ fine-tuning for multi-label CLIP classification.
 	
@@ -2039,8 +2041,11 @@ def lora_plus_finetune_multi_label(
 						
 			optimizer.zero_grad(set_to_none=True)
 			
-			# with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			with torch.amp.autocast(device_type=device.type, enabled=False):
+			with torch.amp.autocast(
+				device_type=device.type,
+				enabled=False,
+				# enabled=torch.cuda.is_available(),
+			):
 				# Multi-label contrastive loss computation
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
 					model=model,
@@ -2057,7 +2062,7 @@ def lora_plus_finetune_multi_label(
 			
 			# Check for NaN loss
 			if torch.isnan(total_loss) or torch.isinf(total_loss):
-				print(f"Warning: NaN/Inf loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
+				print(f"[WARNING] NaN/Inf loss detected at epoch {epoch+1}, Skipping batch: {bidx+1}.")
 				print(f"total_loss: {total_loss} loss_i2t: {loss_i2t} loss_t2i: {loss_t2i}")
 				print(f"total_loss.isnan(): {torch.isnan(total_loss)} total_loss.isinf(): {torch.isinf(total_loss)}")
 				# no zero_grad needed here — already done above
@@ -2066,41 +2071,60 @@ def lora_plus_finetune_multi_label(
 			# scaler.scale(total_loss).backward()
 			# scaler.unscale_(optimizer)
 			total_loss.backward()
-			# ── Gradient health check (every 500 batches) ────────────────────────
-			if bidx % 500 == 0:
-					grad_norms_A, grad_norms_B = [], []
-					for name, param in model.named_parameters():
-							if param.requires_grad and param.grad is not None:
-									gn = param.grad.norm().item()
-									if "lora_A" in name:
-											grad_norms_A.append(gn)
-									elif "lora_B" in name:
-											grad_norms_B.append(gn)
-					if grad_norms_A and grad_norms_B:
-							print(
-									f"  [Grad norms e{epoch+1} b{bidx+1}] "
-									f"A: min={min(grad_norms_A):.3e} max={max(grad_norms_A):.3e} "
-									f"B: min={min(grad_norms_B):.3e} max={max(grad_norms_B):.3e}"
-							)
-
 			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
+
+			# Grad norm check — post-clipping
+			if bidx % 500 == 0:
+				grad_norms_A, grad_norms_B = [], []
+				for name, param in model.named_parameters():
+					if param.requires_grad and param.grad is not None:
+						gn = param.grad.norm().item()
+						if "lora_A" in name:
+							grad_norms_A.append(gn)
+						elif "lora_B" in name:
+							grad_norms_B.append(gn)
+				
+				if grad_norms_A and grad_norms_B:
+					print(
+						f"\t\tBatch [{bidx + 1}/{len(train_loader)}] "
+						f"[Grad norms e{epoch+1} b{bidx+1}] "
+						f"A: min={min(grad_norms_A):.3f} max={max(grad_norms_A):.3f} "
+						f"B: min={min(grad_norms_B):.3f} max={max(grad_norms_B):.3f}"
+					)
 			# scaler.step(optimizer)
 			# scaler.update()
-			# scheduler.step()
+
 			optimizer.step()
-			# ── Post-step weight norm tracking ──────────────────────────────────
+
+			# Clip B matrix norms (magnitude control)
+			B_MAX_NORM = 10.0
+			with torch.no_grad():
+				for name, param in model.named_parameters():
+					if param.requires_grad and "lora_B" in name:
+						norm = param.data.norm()
+						if norm > B_MAX_NORM:
+							param.data.mul_(B_MAX_NORM / norm)
+
+			# Post-step weight norm tracking
 			if bidx % 500 == 0:
-					B_norms_current = [
-							p.data.norm().item()
-							for n, p in model.named_parameters()
-							if p.requires_grad and "lora_B" in n
-					]
-					if B_norms_current:
-							print(
-									f"  [B weight norms e{epoch+1} b{bidx+1}] "
-									f"min={min(B_norms_current):.3e} max={max(B_norms_current):.3e} "
-									f"mean={sum(B_norms_current)/len(B_norms_current):.3e}"
-							)
+				B_norms_current = [
+					p.data.norm().item()
+					for n, p in model.named_parameters()
+					if p.requires_grad and "lora_B" in n
+				]
+				if B_norms_current:
+					print(
+						f"\t\tBatch [{bidx + 1}/{len(train_loader)}] "
+						f"[B weight norms post-clip e{epoch+1} b{bidx+1}] "
+						f"min={min(B_norms_current):.3f} " 
+						f"max={max(B_norms_current):.3f} "
+						f"mean={sum(B_norms_current)/len(B_norms_current):.3f} "
+						f"std={np.std(B_norms_current):.3f} "
+						f"clip_count={sum(1 for n in B_norms_current if n > B_MAX_NORM)} "
+						f"(ceiling={B_MAX_NORM})"
+					)
+
+			scheduler.step()
 
 			# Track losses
 			batch_loss_total = total_loss.item()
