@@ -2,6 +2,7 @@ import bitsandbytes as bnb
 import torch
 import copy
 from typing import Tuple, Union, List, Optional, Dict
+import types
 
 class IA3Linear(torch.nn.Module):
 		"""
@@ -2013,6 +2014,88 @@ def get_adapter_peft_clip(
 
 	return model
 
+# ── MHA LoRA forward patch ────────────────────────────────────────────────────
+# PyTorch's nn.MultiheadAttention.forward() calls F.multi_head_attention_forward
+# directly with self.in_proj_weight and self.out_proj.weight, bypassing any
+# custom .forward() method on injected LoRALinear modules. This patch replaces
+# the MHA forward method to dynamically compose W + scale*(B@A) at runtime.
+
+def bind_mha_lora_forward(mha_module: torch.nn.Module, method_name: str) -> None:
+		"""
+		Monkey-patch a nn.MultiheadAttention instance so that its forward pass
+		applies the LoRA delta for in_proj and out_proj.
+
+		Must be called after:
+			- module.in_proj_weight is reassigned to adapter_layer.linear.weight
+			- module.register_module(f"{method_name}_in_proj", adapter_layer)
+			- out_proj has been replaced with a LoRALinear via replace_linear()
+
+		Args:
+				mha_module  : the nn.MultiheadAttention instance to patch
+				method_name : PEFT method string ("lora", "rslora", "lora_plus", ...)
+											used to look up the registered in_proj adapter submodule
+		"""
+		def forward(
+				self,
+				query,
+				key,
+				value,
+				key_padding_mask=None,
+				need_weights=True,
+				attn_mask=None,
+				average_attn_weights=True,
+				is_causal=False,
+		):
+				# ── in_proj ───────────────────────────────────────────────────────────
+				in_proj_adapter = getattr(self, f"{method_name}_in_proj", None)
+				if in_proj_adapter is not None:
+						# Materialise W_full = W_base + scale * (B @ A)
+						# Overhead: one [rank × in] @ [out × rank] matmul per forward pass.
+						# For rank=16, in=1024, out=3072: 16*1024 + 3072*16 = 65k MACs — negligible.
+						in_weight = (
+								self.in_proj_weight
+								+ in_proj_adapter.scale
+								* (in_proj_adapter.lora_B.weight @ in_proj_adapter.lora_A.weight)
+						)
+						in_bias = self.in_proj_bias
+				else:
+						in_weight = self.in_proj_weight
+						in_bias   = self.in_proj_bias
+
+				# ── out_proj ──────────────────────────────────────────────────────────
+				# After replace_linear(), self.out_proj is a LoRALinear instance.
+				# F.multi_head_attention_forward accesses self.out_proj.weight directly,
+				# which resolves to adapter.linear.weight (frozen base only).
+				# We must compose the full weight here.
+				if hasattr(self.out_proj, 'lora_A'):
+						out_weight = (
+								self.out_proj.linear.weight
+								+ self.out_proj.scale
+								* (self.out_proj.lora_B.weight @ self.out_proj.lora_A.weight)
+						)
+						out_bias = self.out_proj.linear.bias
+				else:
+						out_weight = self.out_proj.weight
+						out_bias   = self.out_proj.bias
+
+				return torch.nn.functional.multi_head_attention_forward(
+						query, key, value,
+						self.embed_dim, self.num_heads,
+						in_weight, in_bias,
+						self.bias_k, self.bias_v, self.add_zero_attn,
+						self.dropout,
+						out_weight, out_bias,
+						training=self.training,
+						key_padding_mask=key_padding_mask,
+						need_weights=need_weights,
+						attn_mask=attn_mask,
+						use_separate_proj_weight=False,
+						average_attn_weights=average_attn_weights,
+						is_causal=is_causal,
+				)
+
+		mha_module.forward = types.MethodType(forward, mha_module)
+
 def get_injected_peft_clip(
 	clip_model: torch.nn.Module,
 	method: str,
@@ -2311,7 +2394,8 @@ def get_injected_peft_clip(
 			module.in_proj_bias = adapter_layer.linear.bias
 			module.register_module(f"{method}_in_proj", adapter_layer)
 			replaced_modules.add(f"Text: {name}.in_proj")
-			
+			bind_mha_lora_forward(module, method) # Patch MHA forward to apply LoRA delta
+
 			mem_info = adapter_layer.get_memory_footprint()
 			memory_stats['text_encoder']['base_mb'] += mem_info['base_memory_mb']
 			if method == "vera":
@@ -2380,7 +2464,8 @@ def get_injected_peft_clip(
 			module.in_proj_bias = adapter_layer.linear.bias
 			module.register_module(f"{method}_in_proj", adapter_layer)
 			replaced_modules.add(f"Vision: {name}.in_proj")
-			
+			bind_mha_lora_forward(module, method) # Patch MHA forward to apply LoRA delta
+
 			mem_info = adapter_layer.get_memory_footprint()
 			memory_stats['vision_encoder']['base_mb'] += mem_info['base_memory_mb']
 			if method == "vera":
@@ -2408,6 +2493,8 @@ def get_injected_peft_clip(
 					statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f} MB"
 				print(f"{statement}\n")
 	################################################ Encoders ###############################################
+
+
 
 	############################################## Projections ##############################################	
 	if verbose: 
@@ -2650,30 +2737,25 @@ def get_injected_peft_clip(
 			print(f"  Quantized base: {overall_base:.2f} MB")
 			print(f"  Memory saved: {savings:.2f} MB ({savings_pct:.1f}%)")
 		
-		# Method-specific statistics
-		print(f"\n{method_name} Statistics:")
-		if lora_plus_lambda:
-			print(f"\tLearning rate multiplier (λ): {lora_plus_lambda}")
-			print(f"\tTrainable LoRA A learning rate: 1.0x (base)")
-			print(f"\tTrainable LoRA B learning rate: {lora_plus_lambda}x (accelerated)")
-			print(f"\tBenefit: Faster convergence for large embedding dimensions")
-			print(f"\tRecommendation: Use differential learning rate optimizer")
-		elif method == "vera":
-			print(f"\tShared frozen matrices: {memory_stats['shared_matrices_mb']:.2f} MB")
-			print(f"\tTrainable scaling vectors: {overall_adapter:.4f} MB")
-			print(f"\tTotal trainable: {overall_adapter:.4f} MB")
-			print(f"\tFrozen base weights: {overall_base:.3f} MB")
-			print(f"\tParameter reduction vs LoRA: ~{(1 - overall_adapter/(overall_adapter + overall_base))*100:.1f}%")
-		elif method == "dora":
-			print(f"\tTrainable magnitude parameters: {overall_magnitude:.4f} MB")
-			print(f"\tTrainable LoRA parameters: {overall_adapter:.4f} MB")
-			print(f"\tTotal trainable: {overall_adapter + overall_magnitude:.4f} MB")
-			print(f"\tFrozen directional base: {overall_base:.3f} MB")
-		elif method == "ia3":
-			print(f"\tTrainable scaling vectors: {overall_adapter:.4f} MB")
-			print(f"\tTotal trainable: {overall_adapter:.4f} MB")
-			print(f"\tFrozen base weights: {overall_base:.3f} MB")
-			print(f"\tParameter count: ~{sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
+
+		print(f"\n[MHA FORWARD PATCH VERIFICATION]")
+		patched_text   = 0
+		patched_vision = 0
+		
+		for name, module in model.transformer.named_modules():
+			if isinstance(module, torch.nn.MultiheadAttention):
+				is_patched = hasattr(module.forward, '__func__') or isinstance(module.forward, types.MethodType)
+				if is_patched:
+					patched_text += 1
+		
+		for name, module in model.visual.named_modules():
+			if isinstance(module, torch.nn.MultiheadAttention):
+				is_patched = isinstance(module.forward, types.MethodType)
+				if is_patched:
+					patched_vision += 1
+		
+		print(f"    ├─ Text  encoder MHA modules patched: {patched_text}")
+		print(f"    └─ Vision encoder MHA modules patched: {patched_vision}")
 
 	# Freeze all non-adapter parameters
 	for name, param in model.named_parameters():

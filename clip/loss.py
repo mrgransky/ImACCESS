@@ -232,52 +232,31 @@ def compute_loss_masks(
 	}
 
 def compute_multilabel_contrastive_loss(
-		model,
-		images,
-		all_class_embeds,
-		label_vectors,
-		criterion_i2t, # with pos_weight
-		criterion_t2i, # without pos_weight
-		active_mask,
-		temperature,
-		loss_weights=None,
-		verbose=False,
+	model,
+	images,
+	all_class_embeds,
+	label_vectors,
+	criterion_i2t, # with pos_weight
+	criterion_t2i, # without pos_weight
+	active_mask,
+	temperature,
+	loss_weights=None,
+	verbose=False,
 ):
-		if loss_weights is None:
-				loss_weights = {"i2t": 0.5, "t2i": 0.5}
+	if loss_weights is None:
+		loss_weights = {"i2t": 0.5, "t2i": 0.5}
+	image_embeds = torch.nn.functional.normalize(model.encode_image(images), dim=-1)
+	class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
 
-		image_embeds = torch.nn.functional.normalize(model.encode_image(images), dim=-1)
-		class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
+	# I2T: [batch_size, num_classes]
+	i2t_sim = torch.matmul(image_embeds, class_embeds.T) / temperature
+	i2t_loss_raw = criterion_i2t(i2t_sim, label_vectors.float())  # [batch, C]
+	loss_i2t = i2t_loss_raw[:, active_mask].mean()
 
-		# I2T: [batch_size, num_classes]
-		i2t_sim = torch.matmul(image_embeds, class_embeds.T) / temperature
-		i2t_loss_raw = criterion_i2t(i2t_sim, label_vectors.float())  # [batch, C]
-		loss_i2t = i2t_loss_raw[:, active_mask].mean()
+	# T2I: [num_classes, batch_size]
+	t2i_sim = torch.matmul(class_embeds, image_embeds.T) / temperature
+	t2i_loss_raw = criterion_t2i(t2i_sim, label_vectors.T.float())  # [C, batch]
+	loss_t2i = t2i_loss_raw[active_mask, :].mean()
+	total_loss = loss_weights["i2t"] * loss_i2t + loss_weights["t2i"] * loss_t2i
 
-		# T2I: [num_classes, batch_size]
-		t2i_sim = torch.matmul(class_embeds, image_embeds.T) / temperature
-		t2i_loss_raw = criterion_t2i(t2i_sim, label_vectors.T.float())  # [C, batch]
-		loss_t2i = t2i_loss_raw[active_mask, :].mean()
-
-		total_loss = loss_weights["i2t"] * loss_i2t + loss_weights["t2i"] * loss_t2i
-		return total_loss, loss_i2t, loss_t2i
-
-class LabelSmoothingBCELoss(torch.nn.Module):
-	def __init__(self, smoothing: float = 0.1):
-		super().__init__()
-		self.smoothing = smoothing
-			
-	def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-		"""
-		Args:
-			logits: [batch_size, num_classes] - raw logits
-			targets: [batch_size, num_classes] - binary targets (0 or 1)
-		"""
-		# Apply label smoothing
-		# Positive labels: 1 -> (1 - smoothing)
-		# Negative labels: 0 -> smoothing
-		smooth_targets = targets * (1 - self.smoothing) + (1 - targets) * self.smoothing
-		
-		# Apply BCE loss with logits
-		loss = F.binary_cross_entropy_with_logits(logits, smooth_targets)
-		return loss
+	return total_loss, loss_i2t, loss_t2i

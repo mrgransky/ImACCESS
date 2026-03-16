@@ -1,5 +1,3 @@
-from gc import enable
-
 from utils import *
 from early_stopper import EarlyStopping
 from loss import compute_multilabel_contrastive_loss, compute_loss_masks
@@ -2442,7 +2440,7 @@ def rslora_finetune_multi_label(
 	if loss_weights is None:
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
 
-	# ── Dropout check ────────────────────────────────────────────────────────
+	# ── Dropout check
 	non_zero_dropouts = [
 		(name, module.p)
 		for name, module in model.named_modules()
@@ -2470,19 +2468,24 @@ def rslora_finetune_multi_label(
 		class_names = validation_loader.dataset.dataset.classes
 	num_classes = len(class_names)
 
+	# Convert user-facing alpha (LoRA convention) to rsLoRA-equivalent alpha
+	# so that alpha/sqrt(rank) == original alpha/rank
+	rslora_alpha = lora_alpha / (lora_rank ** 0.5)   # 32/4 = 8.0
+	# Then pass rslora_alpha to get_injected_peft_clip instead of lora_alpha
+
 	if verbose:
 		print(f"\n{mode.upper()}")
-		print(f"   ├─ Model      : {model_name} {model_arch}")
-		print(f"   ├─ Rank       : {lora_rank}")
-		print(f"   ├─ Alpha      : {lora_alpha}")
-		print(f"   ├─ Scaling    : α/√r = {lora_alpha / (lora_rank ** 0.5):.6f}  "
-					f"(vs standard α/r = {lora_alpha / lora_rank:.6f})")
-		print(f"   ├─ Dropout    : {lora_dropout}")
-		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
-		print(f"   ├─ Batch size : {train_loader.batch_size}")
-		print(f"   ├─ Device     : {type(device)} {device}")
-		print(f"   ├─ Temperature: {temperature}")
-		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
+		print(f"   ├─ {model_name} {model_arch}")
+		print(f"   ├─ Rank           : {lora_rank}")
+		print(f"   ├─ Alpha (input)  : {lora_alpha}  →  rsLoRA alpha: {rslora_alpha}")
+		print(f"   ├─ Scaling        : α/√r = {rslora_alpha / (lora_rank ** 0.5)}  (vs standard α/r = {lora_alpha / lora_rank})")
+		print(f"   ├─ Effective scale: {rslora_alpha / (lora_rank ** 0.5)} (identical to LoRA scale {lora_alpha / lora_rank})")
+		print(f"   ├─ Dropout        : {lora_dropout}")
+		print(f"   ├─ Dataset        : {dataset_name}  classes: {num_classes}")
+		print(f"   ├─ Batch size     : {train_loader.batch_size}")
+		print(f"   ├─ Device         : {type(device)} {device}")
+		print(f"   ├─ Temperature    : {temperature}")
+		print(f"   ├─ Loss Weights   : I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
 
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
@@ -2490,22 +2493,22 @@ def rslora_finetune_multi_label(
 		cuda_capability = torch.cuda.get_device_capability()
 		print(f"   └─ {gpu_name} | {total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 
-	# ── rsLoRA injection — vision encoder only ───────────────────────────────
+	# ── rsLoRA injection — vision encoder only
 	# Text encoder stays frozen and un-injected.
 	# all_class_embeds pre-computed from frozen text encoder remains valid.
 	model = get_injected_peft_clip(
 		clip_model=model,
-		method=mode,                          # "rslora" → LoRALinear(rslora=True)
+		method=mode,
 		rank=lora_rank,
-		alpha=lora_alpha,
+		alpha=rslora_alpha,
 		dropout=lora_dropout,
 		target_text_modules=[],               # no rsLoRA in text encoder
 		target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
 		quantization_bits=quantization_bits,
 		quantized=quantized,
 		verbose=verbose,
-	)
-	model.to(device)
+	).to(device)
+	
 	get_parameters_info(model=model, mode=mode)
 
 	masks = compute_loss_masks(
@@ -2521,7 +2524,7 @@ def rslora_finetune_multi_label(
 	N           = masks["N"]
 	train_freq  = masks["train_freq"]
 
-	# ── Criteria ─────────────────────────────────────────────────────────────
+	# ── Criteria
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
 		pos_weight=pos_weight,
 		reduction='none',
@@ -2580,17 +2583,17 @@ def rslora_finetune_multi_label(
 		pairwise_imp_threshold=pairwise_imp_threshold,
 	)
 
-	# ── Optimizer — rsLoRA parameters only ───────────────────────────────────
-	lora_params = [p for p in model.parameters() if p.requires_grad]
+	# ── Optimizer — rsLoRA parameters only 
+	rslora_params = [p for p in model.parameters() if p.requires_grad]
 	optimizer = torch.optim.AdamW(
-		params=lora_params,
+		params=rslora_params,
 		lr=learning_rate,
 		betas=(0.9, 0.98),
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
 
-	# ── Scheduler ─────────────────────────────────────────────────────────────
+	# ── Scheduler
 	total_training_steps = num_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2
 	eta_min = learning_rate * ANNEALING_RATIO
@@ -2616,12 +2619,11 @@ def rslora_finetune_multi_label(
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
 
-	# ── Checkpoint path ───────────────────────────────────────────────────────
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_{model_arch}_"
 		f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
-		f"lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}_"
+		f"lor_{lora_rank}_rslora_alpha_{rslora_alpha}_lod_{lora_dropout}_"
 		f"temp_{temperature}_bs_{train_loader.batch_size}_"
 		f"mep_{minimum_epochs}_pat_{patience}_"
 		f"mdt_{min_delta:.1e}_cdt_{cumulative_delta:.1e}_"
@@ -2629,7 +2631,6 @@ def rslora_finetune_multi_label(
 		f"pit_{pairwise_imp_threshold:.1e}.pth"
 	)
 
-	# ── Training state ────────────────────────────────────────────────────────
 	training_losses = []
 	validation_losses = []
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
@@ -2860,12 +2861,11 @@ def rslora_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	# ── Plots ─────────────────────────────────────────────────────────────────
 	file_base_name = (
 		f"{mode}_"
 		f"{model_arch}_ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_temp_{temperature}_"
-		f"bs_{train_loader.batch_size}_lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}"
+		f"bs_{train_loader.batch_size}_lor_{lora_rank}_rslora_alpha_{rslora_alpha}_lod_{lora_dropout}"
 	)
 
 	plot_paths = {

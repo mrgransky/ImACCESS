@@ -62,7 +62,7 @@ def main():
 	parser.add_argument('--metadata_csv', '-csv', type=str, required=True, help='Metadata CSV file')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--strategy', '-stg', type=str, choices=['full', 'lora', 'rslora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'adapter', 'baseline'], default=None, help='Strategy')
-	parser.add_argument('--epochs', '-e', type=int, default=100, help='Number of epochs')
+	parser.add_argument('--epochs', '-e', type=int, default=40, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=5e-4, help='learning rate [def: 5e-4]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 1e-2]')
@@ -105,7 +105,6 @@ def main():
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
-	print(args)
 
 	DATASET_DIRECTORY = os.path.dirname(args.metadata_csv)
 	dataset_name = os.path.basename(DATASET_DIRECTORY)
