@@ -2021,80 +2021,96 @@ def get_adapter_peft_clip(
 # the MHA forward method to dynamically compose W + scale*(B@A) at runtime.
 
 def bind_mha_lora_forward(mha_module: torch.nn.Module, method_name: str) -> None:
-		"""
-		Monkey-patch a nn.MultiheadAttention instance so that its forward pass
-		applies the LoRA delta for in_proj and out_proj.
-
-		Must be called after:
-			- module.in_proj_weight is reassigned to adapter_layer.linear.weight
-			- module.register_module(f"{method_name}_in_proj", adapter_layer)
-			- out_proj has been replaced with a LoRALinear via replace_linear()
-
-		Args:
-				mha_module  : the nn.MultiheadAttention instance to patch
-				method_name : PEFT method string ("lora", "rslora", "lora_plus", ...)
-											used to look up the registered in_proj adapter submodule
-		"""
-		def forward(
-				self,
-				query,
-				key,
-				value,
-				key_padding_mask=None,
-				need_weights=True,
-				attn_mask=None,
-				average_attn_weights=True,
-				is_causal=False,
-		):
-				# ── in_proj ───────────────────────────────────────────────────────────
-				in_proj_adapter = getattr(self, f"{method_name}_in_proj", None)
-				if in_proj_adapter is not None:
-						# Materialise W_full = W_base + scale * (B @ A)
-						# Overhead: one [rank × in] @ [out × rank] matmul per forward pass.
-						# For rank=16, in=1024, out=3072: 16*1024 + 3072*16 = 65k MACs — negligible.
-						in_weight = (
-								self.in_proj_weight
-								+ in_proj_adapter.scale
-								* (in_proj_adapter.lora_B.weight @ in_proj_adapter.lora_A.weight)
-						)
-						in_bias = self.in_proj_bias
-				else:
-						in_weight = self.in_proj_weight
-						in_bias   = self.in_proj_bias
-
-				# ── out_proj ──────────────────────────────────────────────────────────
-				# After replace_linear(), self.out_proj is a LoRALinear instance.
-				# F.multi_head_attention_forward accesses self.out_proj.weight directly,
-				# which resolves to adapter.linear.weight (frozen base only).
-				# We must compose the full weight here.
-				if hasattr(self.out_proj, 'lora_A'):
-						out_weight = (
-								self.out_proj.linear.weight
-								+ self.out_proj.scale
-								* (self.out_proj.lora_B.weight @ self.out_proj.lora_A.weight)
-						)
-						out_bias = self.out_proj.linear.bias
-				else:
-						out_weight = self.out_proj.weight
-						out_bias   = self.out_proj.bias
-
-				return torch.nn.functional.multi_head_attention_forward(
-						query, key, value,
-						self.embed_dim, self.num_heads,
-						in_weight, in_bias,
-						self.bias_k, self.bias_v, self.add_zero_attn,
-						self.dropout,
-						out_weight, out_bias,
-						training=self.training,
-						key_padding_mask=key_padding_mask,
-						need_weights=need_weights,
-						attn_mask=attn_mask,
-						use_separate_proj_weight=False,
-						average_attn_weights=average_attn_weights,
-						is_causal=is_causal,
+	"""
+	Monkey-patch a nn.MultiheadAttention instance so that its forward pass
+	applies the LoRA delta for in_proj and out_proj.
+	Must be called after:
+		- module.in_proj_weight is reassigned to adapter_layer.linear.weight
+		- module.register_module(f"{method_name}_in_proj", adapter_layer)
+		- out_proj has been replaced with a LoRALinear via replace_linear()
+	Args:
+			mha_module  : the nn.MultiheadAttention instance to patch
+			method_name : PEFT method string ("lora", "rslora", "lora_plus", ...)
+										used to look up the registered in_proj adapter submodule
+	"""
+	def forward(
+		self,
+		query,
+		key,
+		value,
+		key_padding_mask=None,
+		need_weights=True,
+		attn_mask=None,
+		average_attn_weights=True,
+		is_causal=False,
+	):
+		# in_proj
+		in_proj_adapter = getattr(self, f"{method_name}_in_proj", None)
+		if in_proj_adapter is not None:
+			if isinstance(in_proj_adapter, IA3Linear):
+				# IA³: element-wise row scaling on the weight matrix
+				in_weight = (self.in_proj_weight * in_proj_adapter.ia3_scale.unsqueeze(1))
+			elif isinstance(in_proj_adapter, VeRALinear):
+				# VeRA: W + Λ_b * B * Λ_d * A  (all in weight space)
+				BLd = in_proj_adapter.vera_B * in_proj_adapter.lambda_d.unsqueeze(0)  # [out, rank]
+				delta_W = BLd @ in_proj_adapter.vera_A                                # [out, in]
+				delta_W = delta_W * in_proj_adapter.lambda_b.unsqueeze(1)             # [out, in]
+				in_weight = self.in_proj_weight + delta_W
+			else:
+				# LoRA / rsLoRA / LoRA+ / DoRA — all have .scale, .lora_A, .lora_B
+				# Materialise W_full = W_base + scale * (B @ A)
+				# Overhead: one [rank × in] @ [out × rank] matmul per forward pass.
+				# For rank=16, in=1024, out=3072: 16*1024 + 3072*16 = 65k MACs — negligible.
+				in_weight = (
+					self.in_proj_weight
+					+ in_proj_adapter.scale * (in_proj_adapter.lora_B.weight @ in_proj_adapter.lora_A.weight)
 				)
+			in_bias = self.in_proj_bias
+		else:
+			in_weight = self.in_proj_weight
+			in_bias   = self.in_proj_bias
 
-		mha_module.forward = types.MethodType(forward, mha_module)
+		# out_proj 
+		# After replace_linear(), self.out_proj is a LoRALinear instance.
+		# F.multi_head_attention_forward accesses self.out_proj.weight directly,
+		# which resolves to adapter.linear.weight (frozen base only).
+		# We must compose the full weight here.
+		if isinstance(self.out_proj, IA3Linear):
+			out_weight = self.out_proj.linear.weight * self.out_proj.ia3_scale.unsqueeze(1)
+			out_bias = self.out_proj.linear.bias
+		elif isinstance(self.out_proj, VeRALinear):
+			B_scaled   = self.out_proj.vera_B * self.out_proj.lambda_d         # [out, rank]
+			vera_delta = (B_scaled @ self.out_proj.vera_A)                     # [out, in]
+			vera_delta = vera_delta * self.out_proj.lambda_b.unsqueeze(1)
+			out_weight = self.out_proj.linear.weight + vera_delta
+			out_bias   = self.out_proj.linear.bias
+		elif hasattr(self.out_proj, 'lora_A'):
+			out_weight = (
+				self.out_proj.linear.weight
+				+ self.out_proj.scale * (self.out_proj.lora_B.weight @ self.out_proj.lora_A.weight)
+			)
+			out_bias = self.out_proj.linear.bias
+		else:
+			out_weight = self.out_proj.weight
+			out_bias   = self.out_proj.bias
+
+		return torch.nn.functional.multi_head_attention_forward(
+			query, key, value,
+			self.embed_dim, self.num_heads,
+			in_weight, in_bias,
+			self.bias_k, self.bias_v, self.add_zero_attn,
+			self.dropout,
+			out_weight, out_bias,
+			training=self.training,
+			key_padding_mask=key_padding_mask,
+			need_weights=need_weights,
+			attn_mask=attn_mask,
+			use_separate_proj_weight=False,
+			average_attn_weights=average_attn_weights,
+			is_causal=is_causal,
+		)
+
+	mha_module.forward = types.MethodType(forward, mha_module)
 
 def get_injected_peft_clip(
 	clip_model: torch.nn.Module,
