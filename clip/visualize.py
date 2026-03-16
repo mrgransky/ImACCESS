@@ -2997,7 +2997,7 @@ def plot_retrieval_metrics_best_model(
 		DPI: int=300,
 	):
 	metrics = list(image_to_text_metrics.keys())  # ['mP', 'mAP', 'Recall']
-	suptitle_text = f"{dataset_name} Retrieval Performance Metrics [{best_model_name}]: "
+	suptitle_text = f"Retrieval Performance Metrics [{best_model_name}]: "
 	for metric in metrics:
 		suptitle_text += f"{metric}@K | " 
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
@@ -3087,6 +3087,7 @@ def plot_retrieval_metrics_per_epoch(
 		image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
 		text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
 		fname: str = "Retrieval_Performance_Metrics.png",
+		DPI: int = 300,
 	):
 	num_epochs = len(image_to_text_metrics_list)
 	num_xticks = min(10, num_epochs)
@@ -3106,8 +3107,8 @@ def plot_retrieval_metrics_per_epoch(
 			print(f"<!> Warning: K values differ between I2T ({it_valid_k_values}) and T2I ({ti_valid_k_values}).")
 
 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
-	
-	suptitle_text = f"{dataset_name} Retrieval Performance Metrics [per epoch]: "
+	print(f"Metrics: {metrics}")
+	suptitle_text = f"Retrieval Performance Metrics [per epoch]: "
 	for metric in metrics:
 		suptitle_text += f"{metric}@K | "
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
@@ -3118,6 +3119,7 @@ def plot_retrieval_metrics_per_epoch(
 	colors = plt.cm.Set1.colors
 	fig, axs = plt.subplots(len(modes), len(metrics), figsize=(20, 11), constrained_layout=True)
 	fig.suptitle(suptitle_text, fontsize=15, fontweight='bold')
+
 	# Store legend handles and labels
 	legend_handles = []
 	legend_labels = []
@@ -3151,7 +3153,9 @@ def plot_retrieval_metrics_per_epoch(
 			ax.set_ylabel(f'{metric}@K', fontsize=12)
 			ax.set_title(f'{modes[i]} - {metric}@K', fontsize=14)
 			ax.grid(True, linestyle='--', alpha=0.7)
+
 			# ax.set_xticks(epochs)
+
 			ax.set_xticks(selective_xticks_epochs) # Only show selected epochs
 			ax.set_xlim(0, num_epochs + 1)
 			# ax.set_ylim(bottom=-0.05, top=1.05)
@@ -3180,7 +3184,9 @@ def plot_retrieval_metrics_per_epoch(
 	# 	facecolor='white',
 	# )
 	# plt.tight_layout(rect=[0, 0.03, 0.9, 0.95])
-	plt.savefig(fname, dpi=300, bbox_inches='tight')
+
+	plt.savefig(fname, dpi=DPI, bbox_inches='tight')
+
 	plt.close(fig)
 
 def plot_retrieval_metrics(
