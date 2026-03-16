@@ -6,7 +6,6 @@ from probe import get_probe_clip
 from evals import *
 import visualize as viz
 
-# ── Weight health check ──────────────────────────────────────────────
 def check_lora_weight_health(model, epoch, verbose=True):
 		issues = []
 		stats = {"A": {}, "B": {}}
@@ -1080,16 +1079,16 @@ def full_finetune_multi_label(
 				f"@ epoch {early_stopping.get_best_epoch()+1}")
 			break
 
-		# Cache stats
-		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			cache_stats = train_loader.dataset.get_cache_stats()
-			if cache_stats is not None:
-				print(f"Train Cache: {cache_stats}")
+		# # Cache stats
+		# if hasattr(train_loader.dataset, 'get_cache_stats'):
+		# 	cache_stats = train_loader.dataset.get_cache_stats()
+		# 	if cache_stats is not None:
+		# 		print(f"Train Cache: {cache_stats}")
 		
-		if hasattr(validation_loader.dataset, 'get_cache_stats'):
-			cache_stats = validation_loader.dataset.get_cache_stats()
-			if cache_stats is not None:
-				print(f"Validation Cache: {cache_stats}")
+		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
+		# 	cache_stats = validation_loader.dataset.get_cache_stats()
+		# 	if cache_stats is not None:
+		# 		print(f"Validation Cache: {cache_stats}")
 
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 
@@ -1422,7 +1421,7 @@ def lora_finetune_multi_label(
 		f"vt_{volatility_threshold}_st_{slope_threshold:.1e}_"
 		f"pit_{pairwise_imp_threshold:.1e}.pth"
 	)
-	# ── Training state ────────────────────────────────────────────────────────
+
 	training_losses = []
 	validation_losses = []
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
@@ -1432,7 +1431,7 @@ def lora_finetune_multi_label(
 	learning_rates_history = []
 	weight_decays_history = []
 	train_start_time = time.time()
-	# ── Training loop ─────────────────────────────────────────────────────────
+
 	for epoch in range(num_epochs):
 			train_and_val_st_time = time.time()
 			torch.cuda.empty_cache()
@@ -1493,7 +1492,6 @@ def lora_finetune_multi_label(
 			learning_rates_history.append([optimizer.param_groups[0]['lr']])
 			weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
-			# ── Validation ────────────────────────────────────────────────────────
 			print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
 
 			current_val_loss = compute_multilabel_validation_loss(
@@ -1568,16 +1566,16 @@ def lora_finetune_multi_label(
 					)
 					break
 
-			# Cache stats
-			if hasattr(train_loader.dataset, 'get_cache_stats'):
-				stats = train_loader.dataset.get_cache_stats()
-				if stats:
-					print(f"Train cache: {stats}")
+			# # Cache stats
+			# if hasattr(train_loader.dataset, 'get_cache_stats'):
+			# 	stats = train_loader.dataset.get_cache_stats()
+			# 	if stats:
+			# 		print(f"Train cache: {stats}")
 
-			if hasattr(validation_loader.dataset, 'get_cache_stats'):
-				stats = validation_loader.dataset.get_cache_stats()
-				if stats:
-					print(f"Val cache:   {stats}")
+			# if hasattr(validation_loader.dataset, 'get_cache_stats'):
+			# 	stats = validation_loader.dataset.get_cache_stats()
+			# 	if stats:
+			# 		print(f"Val cache:   {stats}")
 			
 			print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time()-train_and_val_st_time:.1f}s")
 
@@ -2259,16 +2257,16 @@ def lora_plus_finetune_multi_label(
 				f"@ epoch {early_stopping.get_best_epoch()+1}")
 			break
 		
-		# Cache stats
-		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			cache_stats = train_loader.dataset.get_cache_stats()
-			if cache_stats is not None:
-				print(f"Train Cache: {cache_stats}")
+		# # Cache stats
+		# if hasattr(train_loader.dataset, 'get_cache_stats'):
+		# 	cache_stats = train_loader.dataset.get_cache_stats()
+		# 	if cache_stats is not None:
+		# 		print(f"Train Cache: {cache_stats}")
 		
-		if hasattr(validation_loader.dataset, 'get_cache_stats'):
-			cache_stats = validation_loader.dataset.get_cache_stats()
-			if cache_stats is not None:
-				print(f"Validation Cache: {cache_stats}")
+		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
+		# 	cache_stats = validation_loader.dataset.get_cache_stats()
+		# 	if cache_stats is not None:
+		# 		print(f"Validation Cache: {cache_stats}")
 		
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 	
@@ -2468,18 +2466,11 @@ def rslora_finetune_multi_label(
 		class_names = validation_loader.dataset.dataset.classes
 	num_classes = len(class_names)
 
-	# Convert user-facing alpha (LoRA convention) to rsLoRA-equivalent alpha
-	# so that alpha/sqrt(rank) == original alpha/rank
-	rslora_alpha = lora_alpha / (lora_rank ** 0.5)   # 32/4 = 8.0
-	# Then pass rslora_alpha to get_injected_peft_clip instead of lora_alpha
-
 	if verbose:
 		print(f"\n{mode.upper()}")
 		print(f"   ├─ {model_name} {model_arch}")
 		print(f"   ├─ Rank           : {lora_rank}")
-		print(f"   ├─ Alpha (input)  : {lora_alpha}  →  rsLoRA alpha: {rslora_alpha}")
-		print(f"   ├─ Scaling        : α/√r = {rslora_alpha / (lora_rank ** 0.5)}  (vs standard α/r = {lora_alpha / lora_rank})")
-		print(f"   ├─ Effective scale: {rslora_alpha / (lora_rank ** 0.5)} (identical to LoRA scale {lora_alpha / lora_rank})")
+		print(f"   ├─ Alpha (input)  : {lora_alpha}")
 		print(f"   ├─ Dropout        : {lora_dropout}")
 		print(f"   ├─ Dataset        : {dataset_name}  classes: {num_classes}")
 		print(f"   ├─ Batch size     : {train_loader.batch_size}")
@@ -2500,7 +2491,7 @@ def rslora_finetune_multi_label(
 		clip_model=model,
 		method=mode,
 		rank=lora_rank,
-		alpha=rslora_alpha,
+		alpha=lora_alpha,
 		dropout=lora_dropout,
 		target_text_modules=[],               # no rsLoRA in text encoder
 		target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
@@ -2546,7 +2537,7 @@ def rslora_finetune_multi_label(
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 
-	# ── Pre-encode class texts (frozen text encoder) ──────────────────────────
+	# Pre-encode class texts (frozen text encoder)
 	model.eval()
 	all_class_embeds = []
 	text_batch_size = validation_loader.batch_size
@@ -2569,7 +2560,6 @@ def rslora_finetune_multi_label(
 		print(f"   ├─ {all_class_embeds.dtype}")
 		print(f"   └─ {all_class_embeds.device}")
 
-	# ── Early stopping ────────────────────────────────────────────────────────
 	early_stopping = EarlyStopping(
 		patience=patience,
 		min_delta=min_delta,
@@ -2583,7 +2573,7 @@ def rslora_finetune_multi_label(
 		pairwise_imp_threshold=pairwise_imp_threshold,
 	)
 
-	# ── Optimizer — rsLoRA parameters only 
+	#  Optimizer — rsLoRA parameters only 
 	rslora_params = [p for p in model.parameters() if p.requires_grad]
 	optimizer = torch.optim.AdamW(
 		params=rslora_params,
@@ -2593,7 +2583,7 @@ def rslora_finetune_multi_label(
 		weight_decay=weight_decay,
 	)
 
-	# ── Scheduler
+	# Scheduler
 	total_training_steps = num_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2
 	eta_min = learning_rate * ANNEALING_RATIO
@@ -2623,7 +2613,9 @@ def rslora_finetune_multi_label(
 		results_dir,
 		f"{mode}_{model_arch}_"
 		f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
-		f"lor_{lora_rank}_rslora_alpha_{rslora_alpha}_lod_{lora_dropout}_"
+		f"lor_{lora_rank}_"
+		f"loa_{lora_alpha}_"
+		f"lod_{lora_dropout}_"
 		f"temp_{temperature}_bs_{train_loader.batch_size}_"
 		f"mep_{minimum_epochs}_pat_{patience}_"
 		f"mdt_{min_delta:.1e}_cdt_{cumulative_delta:.1e}_"
@@ -2641,7 +2633,6 @@ def rslora_finetune_multi_label(
 	weight_decays_history = []
 	train_start_time = time.time()
 
-	# ── Training loop ─────────────────────────────────────────────────────────
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
@@ -2785,20 +2776,19 @@ def rslora_finetune_multi_label(
 			)
 			break
 
-		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			stats = train_loader.dataset.get_cache_stats()
-			if stats:
-				print(f"Train cache: {stats}")
-		if hasattr(validation_loader.dataset, 'get_cache_stats'):
-			stats = validation_loader.dataset.get_cache_stats()
-			if stats:
-				print(f"Val cache:   {stats}")
+		# if hasattr(train_loader.dataset, 'get_cache_stats'):
+		# 	stats = train_loader.dataset.get_cache_stats()
+		# 	if stats:
+		# 		print(f"Train cache: {stats}")
+		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
+		# 	stats = validation_loader.dataset.get_cache_stats()
+		# 	if stats:
+		# 		print(f"Val cache:   {stats}")
 
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time()-train_and_val_st_time:.1f}s")
 
 	print(f"[{mode}] Total elapsed: {time.time()-train_start_time:.1f}s")
 
-	# ── Final evaluation ──────────────────────────────────────────────────────
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
@@ -2865,7 +2855,10 @@ def rslora_finetune_multi_label(
 		f"{mode}_"
 		f"{model_arch}_ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_temp_{temperature}_"
-		f"bs_{train_loader.batch_size}_lor_{lora_rank}_rslora_alpha_{rslora_alpha}_lod_{lora_dropout}"
+		f"bs_{train_loader.batch_size}_"
+		f"lor_{lora_rank}_"
+		f"loa_{lora_alpha}_"
+		f"lod_{lora_dropout}"
 	)
 
 	plot_paths = {
@@ -3336,16 +3329,16 @@ def dora_finetune_multi_label(
 				f"@ epoch {early_stopping.get_best_epoch()+1}")
 			break
 
-		# Cache stats
-		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			cache_stats = train_loader.dataset.get_cache_stats()
-			if cache_stats is not None:
-				print(f"Train Cache: {cache_stats}")
+		# # Cache stats
+		# if hasattr(train_loader.dataset, 'get_cache_stats'):
+		# 	cache_stats = train_loader.dataset.get_cache_stats()
+		# 	if cache_stats is not None:
+		# 		print(f"Train Cache: {cache_stats}")
 
-		if hasattr(validation_loader.dataset, 'get_cache_stats'):
-			cache_stats = validation_loader.dataset.get_cache_stats()
-			if cache_stats is not None:
-				print(f"Validation Cache: {cache_stats}")
+		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
+		# 	cache_stats = validation_loader.dataset.get_cache_stats()
+		# 	if cache_stats is not None:
+		# 		print(f"Validation Cache: {cache_stats}")
 
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 	
@@ -3921,16 +3914,16 @@ def ia3_finetune_multi_label(
 				f"@ epoch {early_stopping.get_best_epoch()+1}")
 			break
 
-		# Cache stats
-		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			cache_stats = train_loader.dataset.get_cache_stats()
-			if cache_stats is not None:
-				print(f"Train Cache: {cache_stats}")
+		# # Cache stats
+		# if hasattr(train_loader.dataset, 'get_cache_stats'):
+		# 	cache_stats = train_loader.dataset.get_cache_stats()
+		# 	if cache_stats is not None:
+		# 		print(f"Train Cache: {cache_stats}")
 
-		if hasattr(validation_loader.dataset, 'get_cache_stats'):
-			cache_stats = validation_loader.dataset.get_cache_stats()
-			if cache_stats is not None:
-				print(f"Validation Cache: {cache_stats}")
+		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
+		# 	cache_stats = validation_loader.dataset.get_cache_stats()
+		# 	if cache_stats is not None:
+		# 		print(f"Validation Cache: {cache_stats}")
 
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 	
@@ -4515,16 +4508,16 @@ def vera_finetune_multi_label(
 				f"@ epoch {early_stopping.get_best_epoch()+1}")
 			break
 
-		# Cache stats
-		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			cache_stats = train_loader.dataset.get_cache_stats()
-			if cache_stats is not None:
-				print(f"Train Cache: {cache_stats}")
+		# # Cache stats
+		# if hasattr(train_loader.dataset, 'get_cache_stats'):
+		# 	cache_stats = train_loader.dataset.get_cache_stats()
+		# 	if cache_stats is not None:
+		# 		print(f"Train Cache: {cache_stats}")
 
-		if hasattr(validation_loader.dataset, 'get_cache_stats'):
-			cache_stats = validation_loader.dataset.get_cache_stats()
-			if cache_stats is not None:
-				print(f"Validation Cache: {cache_stats}")
+		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
+		# 	cache_stats = validation_loader.dataset.get_cache_stats()
+		# 	if cache_stats is not None:
+		# 		print(f"Validation Cache: {cache_stats}")
 
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 	
@@ -5066,14 +5059,14 @@ def clip_adapter_finetune_multi_label(
 			)
 			break
 
-		# Cache stats
-		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			cs = train_loader.dataset.get_cache_stats()
-			if cs: print(f"Train cache: {cs}")
+		# # Cache stats
+		# if hasattr(train_loader.dataset, 'get_cache_stats'):
+		# 	cs = train_loader.dataset.get_cache_stats()
+		# 	if cs: print(f"Train cache: {cs}")
 		
-		if hasattr(validation_loader.dataset, 'get_cache_stats'):
-			cs = validation_loader.dataset.get_cache_stats()
-			if cs: print(f"Val cache: {cs}")
+		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
+		# 	cs = validation_loader.dataset.get_cache_stats()
+		# 	if cs: print(f"Val cache: {cs}")
 
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time()-train_and_val_st_time:.1f}s")
 
@@ -5849,16 +5842,16 @@ def tip_adapter_finetune_multi_label(
 				f"@ epoch {early_stopping.get_best_epoch()+1}")
 			break
 		
-		# Cache stats
-		if hasattr(train_loader.dataset, 'get_cache_stats'):
-			cache_stats = train_loader.dataset.get_cache_stats()
-			if cache_stats is not None:
-				print(f"Train Cache: {cache_stats}")
+		# # Cache stats
+		# if hasattr(train_loader.dataset, 'get_cache_stats'):
+		# 	cache_stats = train_loader.dataset.get_cache_stats()
+		# 	if cache_stats is not None:
+		# 		print(f"Train Cache: {cache_stats}")
 		
-		if hasattr(validation_loader.dataset, 'get_cache_stats'):
-			cache_stats = validation_loader.dataset.get_cache_stats()
-			if cache_stats is not None:
-				print(f"Validation Cache: {cache_stats}")
+		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
+		# 	cache_stats = validation_loader.dataset.get_cache_stats()
+		# 	if cache_stats is not None:
+		# 		print(f"Validation Cache: {cache_stats}")
 		
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 	

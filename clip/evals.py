@@ -87,15 +87,12 @@ def compute_multilabel_validation_loss(
 	
 	max_batches = max(50, len(validation_loader) // 10)
 	if verbose:
-		print(f"\ncompute_multilabel_validation_loss:")
-		print(f"  model: {type(model)}")
-		print(f"  validation_loader: {validation_loader.name} {len(validation_loader)} batches")
+		print(f"\nMultilabel validation loss:")
+		print(f"  {type(model)} {model.name}")
+		print(f"  {validation_loader.name} {len(validation_loader)} batches")
 		print(f"  max_batches: {max_batches}")
-		print(f"  criterion_i2t: {type(criterion_i2t)}")
-		print(f"  criterion_t2i: {type(criterion_t2i)}")
 		print(f"  active_mask: {active_mask.shape} {active_mask.sum()}/{len(active_mask)}")
 		print(f"  all_class_embeds: {all_class_embeds.shape} {all_class_embeds.device}")
-		print(f"  temperature: {temperature}")
 
 	with torch.no_grad():
 		for batch_idx, (images, _, label_vectors) in enumerate(validation_loader):
@@ -1144,7 +1141,9 @@ def get_multilabel_alignment_score(
 		"""
 		# Guard: NaN/Inf check
 		if torch.isnan(image_embeds).any() or torch.isnan(all_class_embeds).any():
-				return float('nan')
+			if verbose:
+				print(f"\n  [GUARD] NaN detected — returning float('nan')")
+			return float('nan')
 
 		# [N, C] similarity logits
 		logits = (image_embeds @ all_class_embeds.T) / temperature

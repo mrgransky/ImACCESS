@@ -54,12 +54,8 @@ METHOD_STYLE = {
 	"tip_adapter_f":    {"label": "Tip-Adapter-F",      "color": "#7CCBFF",  "ls": "--",      "marker": "s"},
 }
 
-
-
-
 positive_pct_col = "#357402ff"
 negative_pct_col = "#c0003aff"
-
 transition_color = "#00A336"
 early_stop_color = "#1D0808"
 best_model_color = "#C002A7"
@@ -67,6 +63,7 @@ train_loss_color = "#0010F3"
 val_loss_color = "#C27E00"
 loss_imp_color = "#004214"
 trainable_param_color = "#0104C9"
+
 modes = ["Image-to-Text", "Text-to-Image"]
 
 if USER == "farid":
@@ -77,7 +74,7 @@ def plot_alpha_beta_evolution(
 		betas: List[float],
 		fname: str,
 ):
-	fig, ax = plt.subplots(figsize=(10, 5))
+	fig, ax = plt.subplots(figsize=(7, 5))
 	ax.plot(alphas, label="α", color="#0010F3", linewidth=2)
 	ax.plot(betas, label="β", color="#C27E00", linewidth=2)
 	ax.set_xlabel("Epoch", fontsize=12)
@@ -3474,11 +3471,8 @@ def plot_qualitative_retrieval(
 	saved_paths = []
 	strategies = list(results_by_strategy.keys())
 
-	# ------------------------------------------------------------------#
-	# I2T figure                                                        #
-	# Layout: one row per query image                                   #
-	#         columns: query image | strategy_1 labels | strategy_2			#
-	# ------------------------------------------------------------------#
+	print(f"\n{len(results_by_strategy[strategies[0]]['i2t'])} I2T: Top-{i2t_topk}")
+	print(json.dumps(results_by_strategy[strategies[0]]["i2t"], indent=2, ensure_ascii=False))
 	i2t_samples = results_by_strategy[strategies[0]]["i2t"]
 	n_queries = len(i2t_samples)
 	n_cols = 1 + 1 + len(strategies)  # query image + GT column + one per strategy
@@ -3487,14 +3481,14 @@ def plot_qualitative_retrieval(
 	fig, axes = plt.subplots(n_queries, n_cols, figsize=(fig_w, fig_h), dpi=dpi)
 	if n_queries == 1:
 		axes = axes[None, :]
+
 	# Column headers
-	print(n_cols)
-	print(axes.shape)
 	axes[0, 0].set_title("Query Image", fontsize=7, fontweight="bold")
 	axes[0, 1].set_title("Ground Truth", fontsize=7, fontweight="bold")
 	for col, strat in enumerate(strategies, start=2):
 		label = METHOD_STYLE.get(strat, {}).get("label", strat)
 		axes[0, col].set_title(label, fontsize=7, fontweight="bold")
+
 	for row, sample in enumerate(i2t_samples):
 		# Query image
 		ax_img = axes[row, 0]
@@ -3504,7 +3498,9 @@ def plot_qualitative_retrieval(
 			ax_img.imshow(img)
 		except Exception:
 			ax_img.text(0.5, 0.5, "N/A", ha="center", va="center")
+
 		ax_img.axis("off")
+
 		ax_img.set_ylabel(
 			sample["segment"].upper(),
 			fontsize=6,
@@ -3515,7 +3511,7 @@ def plot_qualitative_retrieval(
 		
 		# Ground truth column
 		print(f"row: {row}, sample: {sample}")
-		print()
+
 		ax_gt = axes[row, 1]
 		ax_gt.axis("off")
 		gt_labels = sample["ground_truth"]
@@ -3534,7 +3530,7 @@ def plot_qualitative_retrieval(
 		)
 		# Retrieved labels per strategy
 		for col, strat in enumerate(strategies, start=2):
-			print(col, strat)
+			# print(col, strat)
 			strat_sample = results_by_strategy[strat]["i2t"][row]
 			gt_set = set(strat_sample["ground_truth"])
 			ax = axes[row, col]
@@ -3575,17 +3571,15 @@ def plot_qualitative_retrieval(
 			saved_paths.append(fpath)
 	plt.close(fig)
 
-	# ------------------------------------------------------------------ 	#
-	# T2I figure                                                         	#
-	# Layout: one row per query label                                    	#
-	# columns: query text | top-k images per strategy											#
-	# ------------------------------------------------------------------ 	#
+	print(f"{len(results_by_strategy[strategies[0]]['t2i'])} T2I: Top-{t2i_topk}")
+	print(json.dumps(results_by_strategy[strategies[0]]["t2i"], indent=2, ensure_ascii=False))
 	t2i_samples_0 = results_by_strategy[strategies[0]]["t2i"]
 	n_t2i = len(t2i_samples_0)
 	# One col for query label text + t2i_topk image cols per strategy
 	n_cols_t2i = 1 + len(strategies) * t2i_topk
 	fig2, axes2 = plt.subplots(
-		n_t2i, n_cols_t2i,
+		n_t2i, 
+		n_cols_t2i,
 		figsize=(n_cols_t2i * 1.2 + 0.5, n_t2i * 1.4 + 0.6),
 		dpi=dpi,
 	)
@@ -3603,8 +3597,10 @@ def plot_qualitative_retrieval(
 			0.5, 
 			0.5,
 			t2i_label_result["query_label"],
-			ha="center", va="center",
-			fontsize=6, wrap=True,
+			ha="center", 
+			va="center",
+			fontsize=6, 
+			wrap=True,
 			transform=ax_q.transAxes,
 		)
 		ax_q.set_ylabel(
@@ -3625,8 +3621,10 @@ def plot_qualitative_retrieval(
 				ax.axis("off")
 				score = strat_result["retrieved_scores"][k]
 				ax.set_xlabel(f"{score:.2f}", fontsize=4.5)
+
 	fig2.suptitle(f"T2I Top-{t2i_topk} Qualitative Retrieval", fontsize=10, fontweight="bold")
 	plt.tight_layout(rect=[0, 0.01, 1, 0.97])
+
 	for ext in ("pdf", "png"):
 		fpath = os.path.join(output_dir, f"qualitative_t2i.{ext}")
 		fig2.savefig(fpath, bbox_inches="tight")

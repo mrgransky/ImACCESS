@@ -308,77 +308,74 @@ def get_multi_label_head_torso_tail_samples(
 			
 			# Compile detailed distribution info
 			distribution_info = {
-					'label_counts': label_counts.to_dict(),
-					'segment_info': {
-							'head': {
-									'count': len(head_labels),
-									'percentage': len(head_labels) / total_labels * 100 if total_labels > 0 else 0,
-									'frequency': head_freq,
-									'frequency_percentage': head_freq / total_frequency * 100 if total_frequency > 0 else 0,
-									'labels': head_labels,
-									'frequency_range': {
-											'min': label_counts[head_labels].min() if head_labels else 0,
-											'max': label_counts[head_labels].max() if head_labels else 0,
-											'mean': label_counts[head_labels].mean() if head_labels else 0
-									}
-							},
-							'torso': {
-									'count': len(torso_labels),
-									'percentage': len(torso_labels) / total_labels * 100 if total_labels > 0 else 0,
-									'frequency': torso_freq,
-									'frequency_percentage': torso_freq / total_frequency * 100 if total_frequency > 0 else 0,
-									'labels': torso_labels,
-									'frequency_range': {
-											'min': label_counts[torso_labels].min() if torso_labels else 0,
-											'max': label_counts[torso_labels].max() if torso_labels else 0,
-											'mean': label_counts[torso_labels].mean() if torso_labels else 0
-									}
-							},
-							'tail': {
-									'count': len(tail_labels),
-									'percentage': len(tail_labels) / total_labels * 100 if total_labels > 0 else 0,
-									'frequency': tail_freq,
-									'frequency_percentage': tail_freq / total_frequency * 100 if total_frequency > 0 else 0,
-									'labels': tail_labels,
-									'frequency_range': {
-											'min': label_counts[tail_labels].min() if tail_labels else 0,
-											'max': label_counts[tail_labels].max() if tail_labels else 0,
-											'mean': label_counts[tail_labels].mean() if tail_labels else 0
-									}
-							}
+				'label_counts': label_counts.to_dict(),
+				'segment_info': {
+					'head': {
+						'count': len(head_labels),
+						'percentage': len(head_labels) / total_labels * 100 if total_labels > 0 else 0,
+						'frequency': head_freq,
+						'frequency_percentage': head_freq / total_frequency * 100 if total_frequency > 0 else 0,
+						'labels': head_labels,
+						'frequency_range': {
+							'min': label_counts[head_labels].min() if head_labels else 0,
+							'max': label_counts[head_labels].max() if head_labels else 0,
+							'mean': label_counts[head_labels].mean() if head_labels else 0
+						}
 					},
-					'total_labels': total_labels,
-					'total_frequency': total_frequency,
-					'head_threshold': head_threshold,
-					'tail_threshold': tail_threshold,
-					'seed_used': seed  # Track which seed was used
+					'torso': {
+						'count': len(torso_labels),
+						'percentage': len(torso_labels) / total_labels * 100 if total_labels > 0 else 0,
+						'frequency': torso_freq,
+						'frequency_percentage': torso_freq / total_frequency * 100 if total_frequency > 0 else 0,
+						'labels': torso_labels,
+						'frequency_range': {
+							'min': label_counts[torso_labels].min() if torso_labels else 0,
+							'max': label_counts[torso_labels].max() if torso_labels else 0,
+							'mean': label_counts[torso_labels].mean() if torso_labels else 0
+						}
+					},
+					'tail': {
+						'count': len(tail_labels),
+						'percentage': len(tail_labels) / total_labels * 100 if total_labels > 0 else 0,
+						'frequency': tail_freq,
+						'frequency_percentage': tail_freq / total_frequency * 100 if total_frequency > 0 else 0,
+						'labels': tail_labels,
+						'frequency_range': {
+							'min': label_counts[tail_labels].min() if tail_labels else 0,
+							'max': label_counts[tail_labels].max() if tail_labels else 0,
+							'mean': label_counts[tail_labels].mean() if tail_labels else 0
+						}
+					}
+				},
+				'total_labels': total_labels,
+				'total_frequency': total_frequency,
+				'head_threshold': head_threshold,
+				'tail_threshold': tail_threshold,
+				'seed_used': seed  # Track which seed was used
 			}
 			
-			# Print distribution summary
-			print("\n" + "="*80)
-			print("LABEL DISTRIBUTION ANALYSIS")
-			print("="*80)
+			print("\nLABEL DISTRIBUTION ANALYSIS")
 			print(f"Total unique labels: {total_labels}")
 			print(f"Total label occurrences: {total_frequency}")
 			print(f"Using seed: {seed}")
 			print(f"\nHead threshold (top 20%): {head_threshold} labels")
 			print(f"Tail threshold (bottom 20%): {total_labels - tail_threshold} labels")
 			
-			print("\n--- HEAD (most frequent) ---")
+			print("\nHEAD (most frequent)")
 			head_info = distribution_info['segment_info']['head']
 			print(f"Count: {head_info['count']} labels ({head_info['percentage']:.1f}%)")
 			print(f"Frequency: {head_info['frequency']} occurrences ({head_info['frequency_percentage']:.1f}%)")
 			print(f"Frequency range: {head_info['frequency_range']['min']} - {head_info['frequency_range']['max']} (mean: {head_info['frequency_range']['mean']:.1f})")
 			print(f"Sample head labels: {head_labels[:10]}")
 			
-			print("\n--- TORSO (medium frequency) ---")
+			print("\nTORSO (medium frequency)")
 			torso_info = distribution_info['segment_info']['torso']
 			print(f"Count: {torso_info['count']} labels ({torso_info['percentage']:.1f}%)")
 			print(f"Frequency: {torso_info['frequency']} occurrences ({torso_info['frequency_percentage']:.1f}%)")
 			print(f"Frequency range: {torso_info['frequency_range']['min']} - {torso_info['frequency_range']['max']} (mean: {torso_info['frequency_range']['mean']:.1f})")
 			print(f"Sample torso labels: {torso_labels[:10]}")
 			
-			print("\n--- TAIL (least frequent) ---")
+			print("\nTAIL (least frequent)")
 			tail_info = distribution_info['segment_info']['tail']
 			print(f"Count: {tail_info['count']} labels ({tail_info['percentage']:.1f}%)")
 			print(f"Frequency: {tail_info['frequency']} occurrences ({tail_info['frequency_percentage']:.1f}%)")
@@ -390,70 +387,66 @@ def get_multi_label_head_torso_tail_samples(
 			t2i_samples = []
 			
 			# Image sampling (image-to-text)
-			print("\n" + "="*80)
-			print("SAMPLING IMAGES (I2T)")
-			print("="*80)
+			print("\nSAMPLING IMAGES (I2T)")
 			
 			# Process segments in fixed order
 			for segment_name, segment_labels in [("head", head_labels), ("torso", torso_labels), ("tail", tail_labels)]:
-					segment_samples = []
+				segment_samples = []
+				
+				# Find all images with labels from this segment
+				# Iterate through labels in sorted order
+				for label in sorted(segment_labels):
+					if label in label_to_images:
+						# Sort images by path for consistency
+						images_for_label = sorted(label_to_images[label], key=lambda x: x['image_path'])
+						segment_samples.extend(images_for_label)
+				
+				# Remove duplicates while preserving order (use OrderedDict for deterministic behavior)
+				unique_samples = {}
+				for sample in segment_samples:
+					if sample['image_path'] not in unique_samples:
+						unique_samples[sample['image_path']] = sample
+				
+				segment_samples = list(unique_samples.values())
+				
+				print(f"\n{segment_name.upper()} segment:")
+				print(f"  Total unique images available: {len(segment_samples)}")
+				
+				# Randomly sample from this segment using local RNG
+				if len(segment_samples) >= num_samples_per_segment:
+					# Sort segment_samples by image path for deterministic selection before sampling
+					segment_samples = sorted(segment_samples, key=lambda x: x['image_path'])
+					sampled = local_rng.sample(segment_samples, num_samples_per_segment)
 					
-					# Find all images with labels from this segment
-					# Iterate through labels in sorted order
-					for label in sorted(segment_labels):
-							if label in label_to_images:
-									# Sort images by path for consistency
-									images_for_label = sorted(label_to_images[label], key=lambda x: x['image_path'])
-									segment_samples.extend(images_for_label)
+					for sample in sampled:
+						sample['segment'] = segment_name
+						i2t_samples.append(sample)
 					
-					# Remove duplicates while preserving order (use OrderedDict for deterministic behavior)
-					unique_samples = {}
-					for sample in segment_samples:
-							if sample['image_path'] not in unique_samples:
-									unique_samples[sample['image_path']] = sample
-					
-					segment_samples = list(unique_samples.values())
-					
-					print(f"\n{segment_name.upper()} segment:")
-					print(f"  Total unique images available: {len(segment_samples)}")
-					
-					# Randomly sample from this segment using local RNG
-					if len(segment_samples) >= num_samples_per_segment:
-							# Sort segment_samples by image path for deterministic selection before sampling
-							segment_samples = sorted(segment_samples, key=lambda x: x['image_path'])
-							sampled = local_rng.sample(segment_samples, num_samples_per_segment)
-							
-							for sample in sampled:
-									sample['segment'] = segment_name
-									i2t_samples.append(sample)
-							
-							print(f"  Sampled {num_samples_per_segment} images:")
-							for i, sample in enumerate(sampled, 1):
-									# Get which specific labels from this segment are in this image
-									image_labels = set(sample['all_labels'])
-									segment_labels_in_image = image_labels & set(segment_labels)
-									
-									print(f"    {i}. {os.path.basename(sample['image_path'])}")
-									print(f"       All labels: {sample['all_labels']}")
-									print(f"       {segment_name} labels: {sorted(segment_labels_in_image)}")
-					else:
-							print(f"  WARNING: Only {len(segment_samples)} images available, need {num_samples_per_segment}")
-							if segment_samples:
-									# Sort for consistency
-									segment_samples = sorted(segment_samples, key=lambda x: x['image_path'])
-									sampled = segment_samples  # Take all available
-									for sample in sampled:
-											sample['segment'] = segment_name
-											i2t_samples.append(sample)
-									print(f"  Using all {len(segment_samples)} available images instead")
+					print(f"  Sampled {num_samples_per_segment} images:")
+					for i, sample in enumerate(sampled, 1):
+						# Get which specific labels from this segment are in this image
+						image_labels = set(sample['all_labels'])
+						segment_labels_in_image = image_labels & set(segment_labels)
+						
+						print(f"    {i}. {os.path.basename(sample['image_path'])}")
+						print(f"       All labels: {sample['all_labels']}")
+						print(f"       {segment_name} labels: {sorted(segment_labels_in_image)}")
+				else:
+					print(f"  WARNING: Only {len(segment_samples)} images available, need {num_samples_per_segment}")
+					if segment_samples:
+						# Sort for consistency
+						segment_samples = sorted(segment_samples, key=lambda x: x['image_path'])
+						sampled = segment_samples  # Take all available
+						for sample in sampled:
+							sample['segment'] = segment_name
+							i2t_samples.append(sample)
+						print(f"  Using all {len(segment_samples)} available images instead")
 			
 			# Sort final i2t_samples for consistency
 			i2t_samples = sorted(i2t_samples, key=lambda x: x['image_path'])
 			
 			# Sample text queries from head, torso, tail
-			print("\n" + "="*80)
-			print("SAMPLING TEXT QUERIES (T2I)")
-			print("="*80)
+			print("\nSAMPLING TEXT QUERIES (T2I)")
 			
 			for segment_name, segment_labels in [("head", head_labels), ("torso", torso_labels), ("tail", tail_labels)]:
 				segment_label_list = list(segment_labels)
@@ -485,9 +478,7 @@ def get_multi_label_head_torso_tail_samples(
 			# Sort final t2i_samples for consistency
 			t2i_samples = sorted(t2i_samples)
 			
-			print("\n" + "="*80)
-			print(f"TOTAL SAMPLES: {len(i2t_samples)} images, {len(t2i_samples)} text queries")
-			print("="*80)
+			print(f">> TOTAL SAMPLES: {len(i2t_samples)} images, {len(t2i_samples)} text queries")
 			
 			return i2t_samples, t2i_samples
 			
