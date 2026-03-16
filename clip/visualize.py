@@ -40,20 +40,22 @@ segment_specs = {
 	},
 }
 
-# Method display names and consistent colours for the paper
 METHOD_STYLE = {
-	"zero_shot":				{"label": "Zero-Shot",				"color": "#838282",		"ls": "dashdot",  "marker": "*"},
-	"probe":						{"label": "Linear Probe",			"color": "#5E5C5C",		"ls": "dashdot",  "marker": "*"},
-	"full":							{"label": "Full",							"color": "#D83200",		"ls": "-",				"marker": "D"},
-	"lora":							{"label": "LoRA",							"color": "#001ECA",		"ls": "-",				"marker": "^"},
-	"rslora":						{"label": "rsLoRA",						"color": "#181E3D",		"ls": "-",				"marker": "^"},
-	"lora_plus":				{"label": "LoRA+",						"color": "#00B862",		"ls": "-",				"marker": "^"},
-	"dora":							{"label": "DoRA",							"color": "#0D9ED8",		"ls": "-",				"marker": "^"},
-	"vera":							{"label": "VeRA",							"color": "#BDAA00",		"ls": "-",				"marker": "^"},
-	"ia3":							{"label": "IA³",							"color": "#D177A8",		"ls": "-",				"marker": "X"},
-	"clip_adapter_v":		{"label": "CLIP-Adapter-V",		"color": "#805454FF",	"ls": "--",				"marker": "8"},
-	"tip_adapter_f":		{"label": "Tip-Adapter-F",		"color": "#9E5D07",		"ls": "--",				"marker": "8"},
+	"zero_shot":        {"label": "Zero-Shot",          "color": "#979595",  "ls": "dashdot", "marker": "*"},
+	"probe":            {"label": "Linear Probe",       "color": "#019952FF","ls": "dashdot", "marker": "*"},
+	"full":             {"label": "Full",               "color": "#181717",  "ls": "-",       "marker": "D"},
+	"lora":             {"label": "LoRA",               "color": "#0014C9",  "ls": "-",       "marker": "^"},
+	"rslora":           {"label": "rsLoRA",             "color": "#B1A041",  "ls": "-",       "marker": "^"},
+	"lora_plus":        {"label": "LoRA+",              "color": "#EBA101",  "ls": "-",       "marker": "^"},
+	"dora":             {"label": "DoRA",               "color": "#DA5DBA",  "ls": "-",       "marker": "^"},
+	"vera":             {"label": "VeRA",               "color": "#D53C00",  "ls": "-",       "marker": "^"},
+	"ia3":              {"label": "IA³",                "color": "#998787",  "ls": "-",       "marker": "X"},
+	"clip_adapter_v":   {"label": "CLIP-Adapter-V",     "color": "#0064B6",  "ls": "--",      "marker": "s"},
+	"tip_adapter_f":    {"label": "Tip-Adapter-F",      "color": "#7CCBFF",  "ls": "--",      "marker": "s"},
 }
+
+
+
 
 positive_pct_col = "#357402ff"
 negative_pct_col = "#c0003aff"

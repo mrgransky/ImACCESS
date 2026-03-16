@@ -121,7 +121,7 @@ LR_PEFT_ALL=(5.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)  # LoRA, LoRA+, DoRA, VeRA
 
 # Default parameters
 WEIGHT_DECAY=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
-EPOCHS=(100 100 150 150 150)
+EPOCHS=(85 100 150 150 150)
 
 # LoRA family parameters
 LORA_RANKS=(16 64 64 64 64)
