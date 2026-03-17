@@ -1124,59 +1124,94 @@ def get_matched_cosine_similarity(
 		return result
 
 def get_multilabel_alignment_score(
-		image_embeds: torch.Tensor,       # [N, D] — L2 normalised
-		all_class_embeds: torch.Tensor,   # [C, D] — L2 normalised
-		labels: torch.Tensor,             # [N, C] — binary, long
-		temperature: float = 0.07,
-		topk: int = 5,
-		verbose: bool = False,
+	image_embeds: torch.Tensor,       # [N, D] — L2 normalised
+	all_class_embeds: torch.Tensor,   # [C, D] — L2 normalised
+	labels: torch.Tensor,             # [N, C] — binary, long
+	temperature: float = 0.07,
+	topk: int = 5,
+	verbose: bool = False,
 ) -> float:
-		"""
-		Fraction of samples where at least one true class ranks in top-K
-		by cosine similarity. Meaningful and interpretable for multi-label data.
-
-		Returns value in [0, 1]:
-				0.0 — no image has any true class in its top-K retrieved classes
-				1.0 — every image has at least one true class in its top-K
-		"""
-		# Guard: NaN/Inf check
-		if torch.isnan(image_embeds).any() or torch.isnan(all_class_embeds).any():
-			if verbose:
-				print(f"\n  [GUARD] NaN detected — returning float('nan')")
-			return float('nan')
-
-		# [N, C] similarity logits
-		logits = (image_embeds @ all_class_embeds.T) / temperature
-
-		# Clamp topk to available classes
-		effective_k = min(topk, logits.shape[1])
-
-		# [N, K] top-K class indices per image
-		topk_indices = logits.topk(effective_k, dim=1).indices
-
-		# Vectorised hit detection — no Python loop
-		# Scatter top-K indices into a binary hit matrix [N, C]
-		topk_mask = torch.zeros_like(logits, dtype=torch.bool)
-		topk_mask.scatter_(1, topk_indices, True)
-
-		# A hit occurs when any true class appears in the top-K mask
-		# labels is long — cast to bool for AND operation
-		hits = (topk_mask & labels.bool()).any(dim=1)  # [N]
-		score = hits.float().mean().item()
-
+	"""
+	Fraction of samples where at least one true class ranks in top-K
+	by cosine similarity. Meaningful and interpretable for multi-label data.
+	Returns value in [0, 1]:
+			0.0 — no image has any true class in its top-K retrieved classes
+			1.0 — every image has at least one true class in its top-K
+	"""
+	
+	# Guard: NaN/Inf check with detailed diagnostics
+	image_has_nan = torch.isnan(image_embeds).any()
+	image_has_inf = torch.isinf(image_embeds).any()
+	class_has_nan = torch.isnan(all_class_embeds).any()
+	class_has_inf = torch.isinf(all_class_embeds).any()
+	
+	if image_has_nan or class_has_nan or image_has_inf or class_has_inf:
 		if verbose:
-			print(f"\n[Alignment Score @ top-{effective_k}]")
-			print(f"  Samples with ≥1 true class in top-{effective_k}: {hits.sum().item()} / {len(hits)}")
-			print(f"  Alignment score: {score:.6f}")
-			# Additional breakdown by number of positive labels
-			pos_counts = labels.sum(dim=1).long()
-			for n_pos in sorted(pos_counts.unique().tolist()):
-					mask = pos_counts == n_pos
-					if mask.sum() > 0:
-							group_score = hits[mask].float().mean().item()
-							print(f"  └─ {n_pos} positive labels ({mask.sum().item()} samples): {group_score:.4f}")
-
-		return score
+			print(f"\n  [GUARD] NaN/Inf detected in embeddings:")
+			print(f"    image_embeds  — NaN: {image_has_nan.item()} | Inf: {image_has_inf.item()}")
+			print(f"    class_embeds  — NaN: {class_has_nan.item()} | Inf: {class_has_inf.item()}")
+			
+			if image_has_nan:
+				nan_mask = torch.isnan(image_embeds)
+				nan_rows = nan_mask.any(dim=1).nonzero(as_tuple=True)[0]
+				nan_cols = nan_mask.any(dim=0).nonzero(as_tuple=True)[0]
+				print(f"    image_embeds NaN locations:")
+				print(f"      Affected samples (rows): {nan_rows.tolist()[:10]} {'...' if len(nan_rows) > 10 else ''} (total: {len(nan_rows)})")
+				print(f"      Affected dimensions (cols): {nan_cols.tolist()[:10]} {'...' if len(nan_cols) > 10 else ''} (total: {len(nan_cols)})")
+			
+			if class_has_nan:
+				nan_mask = torch.isnan(all_class_embeds)
+				nan_rows = nan_mask.any(dim=1).nonzero(as_tuple=True)[0]
+				nan_cols = nan_mask.any(dim=0).nonzero(as_tuple=True)[0]
+				print(f"    class_embeds NaN locations:")
+				print(f"      Affected classes (rows): {nan_rows.tolist()[:10]} {'...' if len(nan_rows) > 10 else ''} (total: {len(nan_rows)})")
+				print(f"      Affected dimensions (cols): {nan_cols.tolist()[:10]} {'...' if len(nan_cols) > 10 else ''} (total: {len(nan_cols)})")
+			
+			if image_has_inf:
+				inf_mask = torch.isinf(image_embeds)
+				inf_count = inf_mask.sum().item()
+				print(f"    image_embeds Inf count: {inf_count}")
+			
+			if class_has_inf:
+				inf_mask = torch.isinf(all_class_embeds)
+				inf_count = inf_mask.sum().item()
+				print(f"    class_embeds Inf count: {inf_count}")
+		
+		return float('nan')
+	
+	# [N, C] similarity logits
+	logits = (image_embeds @ all_class_embeds.T) / temperature
+	
+	# Clamp topk to available classes
+	effective_k = min(topk, logits.shape[1])
+	
+	# [N, K] top-K class indices per image
+	topk_indices = logits.topk(effective_k, dim=1).indices
+	
+	# Vectorised hit detection — no Python loop
+	# Scatter top-K indices into a binary hit matrix [N, C]
+	topk_mask = torch.zeros_like(logits, dtype=torch.bool)
+	topk_mask.scatter_(1, topk_indices, True)
+	
+	# A hit occurs when any true class appears in the top-K mask
+	# labels is long — cast to bool for AND operation
+	hits = (topk_mask & labels.bool()).any(dim=1)  # [N]
+	score = hits.float().mean().item()
+	
+	if verbose:
+		print(f"\n[Alignment Score @ top-{effective_k}]")
+		print(f"  Samples with ≥1 true class in top-{effective_k}: {hits.sum().item()} / {len(hits)}")
+		print(f"  Alignment score: {score:.6f}")
+		
+		# Additional breakdown by number of positive labels
+		pos_counts = labels.sum(dim=1).long()
+		for n_pos in sorted(pos_counts.unique().tolist()):
+			mask = pos_counts == n_pos
+			if mask.sum() > 0:
+				group_score = hits[mask].float().mean().item()
+				print(f"  └─ {n_pos} positive labels ({mask.sum().item()} samples): {group_score:.4f}")
+	
+	return score
 
 def evaluate_best_model(
 	model,

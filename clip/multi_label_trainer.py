@@ -1838,9 +1838,9 @@ def lora_plus_finetune_multi_label(
 		rank=lora_rank,
 		alpha=lora_alpha,
 		dropout=lora_dropout,
+		lora_plus_lambda=lora_plus_lambda,
 		target_text_modules=[], # no LoRA+ in text encoder
 		target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
-		lora_plus_lambda=lora_plus_lambda,
 		quantization_bits=quantization_bits,
 		quantized=quantized,
 		verbose=verbose,

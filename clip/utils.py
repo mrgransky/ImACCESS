@@ -480,7 +480,7 @@ def get_parameters_info(model, mode):
 
 	# Print detailed statistics
 	print(f"\n{model.__class__.__name__} {model.name} Parameters Statistics")
-	print(f"   ├─ Fine-tuning Method: {mode.upper()}")
+	print(f"   ├─ {mode.upper()}")
 	print(f"   ├─ Image Encoder: Total: {img_total:,} (Trainable [Unfrozen]): {img_trainable:,} ({img_trainable_percent:.3f}%)  Frozen: {img_frozen:,} ({img_frozen_percent:.3f}%)")
 	print(f"   ├─ Text Encoder: Total: {text_total:,} (Trainable [Unfrozen]): {text_trainable:,} ({text_trainable_percent:.3f}%)  Frozen: {text_frozen:,} ({text_frozen_percent:.3f}%)")
 	print(f"   ├─ Logit Scale: {logit_scale_params}")
