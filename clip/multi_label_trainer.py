@@ -1991,12 +1991,12 @@ def lora_plus_finetune_multi_label(
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
 		f"lora_A_lr_{lora_A_lr:.1e}_"
-		f"lmbd_{lora_plus_lambda}_"
 		f"lora_B_lr_{lora_B_lr:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"lor_{lora_rank}_"
 		f"loa_{lora_alpha}_"
 		f"lod_{lora_dropout}_"
+		f"lmbd_{lora_plus_lambda}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_"
 		f"mep_{minimum_epochs}_"
@@ -5435,8 +5435,6 @@ def tip_adapter_finetune_multi_label(
 	model = get_adapter_peft_clip(
 		clip_model=model,
 		method=tip_adapter_method,
-		bottleneck_dim=None,  # Not used for Tip-Adapter
-		activation=None,  # Not used for Tip-Adapter
 		initial_beta=initial_beta,
 		initial_alpha=initial_alpha,
 		verbose=verbose,
@@ -5594,8 +5592,8 @@ def tip_adapter_finetune_multi_label(
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
-		f"beta_{initial_beta}_"
-		f"alpha_{initial_alpha}_"
+		f"init_alpha_{initial_alpha}_"
+		f"init_beta_{initial_beta}_"
 		f"shots_{support_shots}_"
 		f"temp_{temperature}_"
 		f"mep_{minimum_epochs}_"

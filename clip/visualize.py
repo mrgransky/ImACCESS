@@ -1768,16 +1768,6 @@ def plot_multilabel_loss_breakdown(
 		figure_size=(12, 8),
 		DPI: int = 300,
 	):
-	# print(f"Plotting multi-label loss breakdown to {filepath}...")
-	# print(training_losses_breakdown)
-	# # --- Debug: Print loss lengths for verification ---
-	# print("\n[Plotting] Loss list lengths before plotting:")
-	# for key, loss_list in training_losses_breakdown.items():
-	# 	if isinstance(loss_list, list):
-	# 		print(f"  - {key:<10}: {len(loss_list)} values")
-	# 	else:
-	# 		print(f"  - {key:<10}: Not a list (type={type(loss_list).__name__})")
-
 	# Find the number of epochs from the longest valid list in the dictionary
 	num_epochs = 0
 	if training_losses_breakdown:
@@ -1815,14 +1805,8 @@ def plot_multilabel_loss_breakdown(
 	plt.legend(title='Loss Components', fontsize=10, title_fontsize=12, loc='upper right')
 	plt.grid(True, which='both', linestyle='--', linewidth=0.5)
 	plt.tight_layout()
-
-	try:
-		plt.savefig(filepath, dpi=DPI, bbox_inches='tight')
-		print(f"Successfully saved loss breakdown plot to {filepath}")
-	except Exception as e:
-		print(f"Error saving plot to {filepath}: {e}")
-	finally:
-		plt.close()
+	plt.savefig(filepath, dpi=DPI, bbox_inches='tight')
+	plt.close()
 
 def plot_image_to_texts_separate_horizontal_bars(
 				models: dict,
@@ -3107,7 +3091,6 @@ def plot_retrieval_metrics_per_epoch(
 			print(f"<!> Warning: K values differ between I2T ({it_valid_k_values}) and T2I ({ti_valid_k_values}).")
 
 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
-	print(f"Metrics: {metrics}")
 	suptitle_text = f"Retrieval Performance Metrics [per epoch]: "
 	for metric in metrics:
 		suptitle_text += f"{metric}@K | "

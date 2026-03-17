@@ -52,15 +52,32 @@ def get_top_k_strategies(
 			# Fallback if specific key missing
 			scores[strategy] = -1.0
 
-	print(scores)
+	# print(scores)
+
 	# Sort by score descending
 	sorted_strategies = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
-	
-	print(f"\n>> Top {top_k} Strategies selected based on I2T mAP@{k_value}:")
-	for i, strat in enumerate(sorted_strategies[:top_k]):
+	top_k_sorted_strategies = sorted_strategies[:top_k]
+	print(f"\nTop-{len(top_k_sorted_strategies)} Strategies selected based on I2T mAP@{k_value}:")
+	for i, strat in enumerate(top_k_sorted_strategies):
 		print(f"   {i+1}. {strat:<20} (Score: {scores[strat]:.4f})")
-			
-	return sorted_strategies[:top_k]
+	print("-"*60)
+
+	# Find checkpoint files that start with each strategy name
+	pth_files_directory = os.path.dirname(results_json_path)
+	print(f"pth_files_directory: {pth_files_directory}")
+	top_k_sorted_checkpoints = []
+	for strategy in top_k_sorted_strategies:
+		matching_files = [
+			f for f in os.listdir(pth_files_directory) 
+			if f.startswith(strategy) and f.endswith('.pth')
+		]
+		if matching_files:
+			# Take the first match if multiple exist
+			top_k_sorted_checkpoints.append(os.path.join(pth_files_directory, matching_files[0]))
+		else:
+			print(f"WARNING: No checkpoint found for strategy '{strategy}'")
+
+	return top_k_sorted_strategies, top_k_sorted_checkpoints
 
 def run_qualitative_retrieval(
 	model: torch.nn.Module,
@@ -489,27 +506,13 @@ def get_multi_label_head_torso_tail_samples(
 		return [], []
 
 def _parse_checkpoint_strategy(ft_path: str) -> Tuple[str, Dict]:
-		"""
-		Parse checkpoint filename to determine fine-tuning strategy and hyperparameters.
-		Returns (strategy_name, params_dict).
-
-		Checkpoint naming conventions:
-			lora_*          → strategy="lora"
-			lora_plus_*     → strategy="lora_plus"
-			dora_*          → strategy="dora"
-			vera_*          → strategy="vera"
-			ia3_*           → strategy="ia3"
-			clip_adapter_v_* / clip_adapter_t_* / clip_adapter_vt_* → strategy=that variant
-			tip_adapter_f_* → strategy="tip_adapter_f"
-			tip_adapter_*   → strategy="tip_adapter"
-			probe_*         → strategy="probe"
-			full_*          → strategy="full"
-		"""
 		fname = os.path.basename(ft_path)
 
 		# Order matters — more specific patterns before general ones
 		if fname.startswith("lora_plus"):
-				strategy = "lora_plus"
+			strategy = "lora_plus"
+		elif fname.startswith("rslora"):
+			strategy = "rslora"
 		elif fname.startswith("lora"):
 				strategy = "lora"
 		elif fname.startswith("dora"):
@@ -535,50 +538,56 @@ def _parse_checkpoint_strategy(ft_path: str) -> Tuple[str, Dict]:
 		else:
 				strategy = "unknown"
 
-		# Extract LoRA hyperparams from filename if present
+		# Extract hyperparams from filename if present
 		params = {}
-		lor_match = re.search(r'lor_(\d+)', fname)
-		loa_match = re.search(r'loa_([\d.]+)', fname)
-		lod_match = re.search(r'lod_([\d.]+)', fname)
-		cbd_match = re.search(r'cbd_(\d+)', fname)
+		lor_match = re.search(r'lor_(\d+)', fname) # LoRA rank
+		loa_match = re.search(r'loa_([\d.]+)', fname) # LoRA alpha
+		lod_match = re.search(r'lod_([\d.]+)', fname) # LoRA dropout
+		lmbd_match = re.search(r'lmbd_([\d.]+)', fname) # LoRA+ lambda
+		cbd_match = re.search(r'cbd_(\d+)', fname) # Bottleneck dim
 		act_match = re.search(r'act_(\w+?)_', fname)
+		init_alpha_match = re.search(r'init_alpha_([\d.]+)', fname)
+		init_beta_match = re.search(r'init_beta_([\d.]+)', fname)
 
 		if lor_match:
-				params["lora_rank"]    = int(lor_match.group(1))
+			params["lora_rank"]    = int(lor_match.group(1))
 		if loa_match:
-				params["lora_alpha"]   = float(loa_match.group(1))
+			params["lora_alpha"]   = float(loa_match.group(1))
 		if lod_match:
-				params["lora_dropout"] = float(lod_match.group(1))
+			params["lora_dropout"] = float(lod_match.group(1))
+		if lmbd_match:
+			params["lora_plus_lambda"] = float(lmbd_match.group(1))
 		if cbd_match:
-				params["bottleneck_dim"] = int(cbd_match.group(1))
+			params["bottleneck_dim"] = int(cbd_match.group(1))
 		if act_match:
-				params["activation"] = act_match.group(1)
+			params["activation"] = act_match.group(1)
+		if init_alpha_match:
+			params["init_alpha"] = float(init_alpha_match.group(1))
+		if init_beta_match:
+			params["init_beta"] = float(init_beta_match.group(1))
 
 		return strategy, params
 
 def _load_checkpoint_into_model(
-		model: torch.nn.Module,
-		ft_path: str,
-		device: torch.device,
-		verbose: bool = False,
+	model: torch.nn.Module,
+	ft_path: str,
+	device: torch.device,
+	verbose: bool = False,
 ) -> torch.nn.Module:
-		"""Load checkpoint weights into an already-constructed model."""
-		checkpoint = torch.load(ft_path, map_location=device)
-		state_dict = checkpoint.get('model_state_dict', checkpoint)
-
-		# Key translation for probe checkpoints (saved as bare linear layer)
-		try:
-				missing, unexpected = model.load_state_dict(state_dict, strict=False)
-				if verbose and (missing or unexpected):
-						print(f"  Missing keys : {len(missing)}")
-						print(f"  Unexpected   : {len(unexpected)}")
-		except Exception as e:
-				print(f"  [WARNING] load_state_dict failed: {e}")
-
-		return model
+	checkpoint = torch.load(ft_path, map_location=device)
+	state_dict = checkpoint.get('model_state_dict', checkpoint)
+	# Key translation for probe checkpoints (saved as bare linear layer)
+	try:
+		missing, unexpected = model.load_state_dict(state_dict, strict=False)
+		if verbose and (missing or unexpected):
+			print(f"  Missing keys : {len(missing)}")
+			print(f"  Unexpected   : {len(unexpected)}")
+	except Exception as e:
+		print(f"[WARNING] load_state_dict failed:\n{e}")
+	return model
 
 def load_finetuned_models(
-	available_checkpoints: List[str],
+	checkpoint_path: str,
 	model_architecture: str,
 	device: torch.device,
 	dataset_directory: str,
@@ -588,108 +597,127 @@ def load_finetuned_models(
 	fine_tuned_models = {}
 	ft_start = time.time()
 	
-	print(f">> Loading {len(available_checkpoints)} fine-tuned checkpoints...")
-	for i, ft_path in enumerate(available_checkpoints):
-		strategy, params = _parse_checkpoint_strategy(ft_path)
-		print(f"  [{i+1}/{len(available_checkpoints)}] strategy={strategy}  {os.path.basename(ft_path)}")
-		# Fresh base model for each checkpoint
-		base_model, _ = clip.load(
-			name=model_architecture,
-			device=device,
-			download_root=get_model_directory(path=dataset_directory),
-		)
-		base_model = base_model.float()
-		base_model.name = model_architecture
-		try:
-			if strategy in ("lora", "lora_plus", "dora", "rslora"):
-					rank    = params.get("lora_rank")
-					alpha   = params.get("lora_alpha")
-					dropout = params.get("lora_dropout")
-					ft_model = get_injected_peft_clip(
-							clip_model=base_model,
-							method=strategy,
-							rank=rank,
-							alpha=alpha,
-							dropout=dropout,
-							target_text_modules=[],
-							target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
-							verbose=verbose,
-					)
-			elif strategy in ("ia3", "vera"):
-					rank    = params.get("lora_rank")
-					alpha   = params.get("lora_alpha")
-					dropout = params.get("lora_dropout")
-					ft_model = get_injected_peft_clip(
-							clip_model=base_model,
-							method=strategy,
-							rank=rank,
-							alpha=alpha,
-							dropout=dropout,
-							target_text_modules=[],
-							target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
-							verbose=verbose,
-					)
-			elif strategy in ("clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"):
-					bottleneck_dim = params.get("bottleneck_dim")
-					activation = params.get("activation")
-					ft_model = get_adapter_peft_clip(
-						clip_model=base_model,
-						method=strategy,
-						bottleneck_dim=bottleneck_dim,
-						activation=activation,
-						verbose=verbose,
-					)
-			elif strategy in ("tip_adapter", "tip_adapter_f"):
-					# Tip-Adapter cache is not reconstructible from checkpoint alone —
-					# the cache depends on support set features extracted at training time.
-					# For inference, we load the trainable projection weights only.
-					try:
-						text_dim = base_model.encode_text(
-							clip.tokenize(["a"]).to(device)
-						).shape[-1]
-					except Exception:
-							text_dim = 768
-					ft_model = get_adapter_peft_clip(
-							clip_model=base_model,
-							method=strategy,
-							cache_dim=text_dim,
-							bottleneck_dim=None,
-							activation=None,
-							verbose=verbose,
-					)
-			elif strategy == "probe":
-				ft_model = get_probe_clip(
+	strategy, params = _parse_checkpoint_strategy(checkpoint_path)
+	print(f"Strategy: {strategy} Params: {params}")
+	print(f"Loading {checkpoint_path}")
+
+	# Fresh base model for each checkpoint
+	base_model, _ = clip.load(
+		name=model_architecture,
+		device=device,
+		download_root=get_model_directory(path=dataset_directory),
+	)
+	base_model = base_model.float()
+	base_model.name = model_architecture
+	try:
+		if strategy in ("lora", "lora_plus", "dora", "rslora"):
+			rank    = params.get("lora_rank")
+			alpha   = params.get("lora_alpha")
+			dropout = params.get("lora_dropout")
+
+			ft_model = get_injected_peft_clip(
+				clip_model=base_model,
+				method=strategy,
+				rank=rank,
+				alpha=alpha,
+				dropout=dropout,
+				lora_plus_lambda=params.get("lora_plus_lambda"),
+				target_text_modules=[],
+				target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
+				verbose=verbose,
+			)
+		elif strategy in ("ia3", "vera"):
+			rank    = params.get("lora_rank")
+			alpha   = params.get("lora_alpha")
+			dropout = params.get("lora_dropout")
+			ft_model = get_injected_peft_clip(
 					clip_model=base_model,
-					validation_loader=validation_loader,
-					device=device,
+					method=strategy,
+					rank=rank,
+					alpha=alpha,
+					dropout=dropout,
+					target_text_modules=[],
+					target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
+					verbose=verbose,
+			)
+		elif strategy in ("clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"):
+				bottleneck_dim = params.get("bottleneck_dim")
+				activation = params.get("activation")
+				ft_model = get_adapter_peft_clip(
+					clip_model=base_model,
+					method=strategy,
+					bottleneck_dim=bottleneck_dim,
+					activation=activation,
 					verbose=verbose,
 				)
-			elif strategy == "full":
-					ft_model = base_model  # weights loaded directly below
-			else:
-				print(f"  [SKIP] Unknown strategy '{strategy}' for {ft_path}")
-				continue
-			ft_model = ft_model.to(device).float()
-			ft_model.name = model_architecture
-			ft_model = _load_checkpoint_into_model(ft_model, ft_path, device, verbose)
-			# Use strategy as key — append index if duplicate (e.g. two lora checkpoints)
-			key = strategy
-			if key in fine_tuned_models:
-				key = f"{strategy}_{i}"
-			fine_tuned_models[key] = ft_model
-			print(f"[OK] Loaded {key}")
-		except Exception as e:
-			print(f"[ERROR] Failed to load {ft_path}: {e}")
-			continue
+		elif strategy in ("tip_adapter", "tip_adapter_f"):
+			# Tip-Adapter cache is not reconstructible from checkpoint alone —
+			# the cache depends on support set features extracted at training time.
+			# For inference, we load the trainable projection weights only.
+			ft_model = get_adapter_peft_clip(
+				clip_model=base_model,
+				method=strategy,
+				bottleneck_dim=None,
+				activation=None,
+				initial_beta=params.get("init_beta"),
+				initial_alpha=params.get("init_alpha"),
+				verbose=verbose,
+			)
+			# Load checkpoint first to get cache size
+			checkpoint = torch.load(checkpoint_path, map_location=device)
+			state_dict = checkpoint.get('model_state_dict', checkpoint)
+			
+			# Extract cache dimensions from checkpoint
+			cache_key = f"visual.{strategy.replace('-', '_')}_proj.cache_keys"
+			if cache_key in state_dict:
+				if verbose:
+					print(f"  Found cache in checkpoint: {cache_key}")
+	
+				cache_size = state_dict[cache_key].shape[0]
+				cache_dim = state_dict[cache_key].shape[1]
 
-	print(f">> {len(fine_tuned_models)} {type(fine_tuned_models)} models loaded in {time.time()-ft_start:.1f}s")
+				if verbose:
+					print(f"  Cache size: {cache_size}, Cache dim: {cache_dim}")
+				
+				# Resize the cache buffers to match checkpoint
+				adapter_module = getattr(ft_model.visual, f"{strategy.replace('-', '_')}_proj")
+				adapter_module.cache_keys = torch.zeros(cache_size, cache_dim, device=device)
+				adapter_module.cache_values = torch.zeros(cache_size, cache_dim, device=device)
+				
+				if verbose:
+					print(f"  Resized cache to [{cache_size}, {cache_dim}]")
+		elif strategy == "probe":
+			ft_model = get_probe_clip(
+				clip_model=base_model,
+				validation_loader=validation_loader,
+				device=device,
+				verbose=verbose,
+			)
+		elif strategy == "full":
+			ft_model = base_model  # weights loaded directly below
+		else:
+			print(f"  [SKIP] Unknown strategy '{strategy}' for {checkpoint_path}")
+			return {}
+
+		ft_model = ft_model.to(device).float()
+		ft_model.name = model_architecture
+		ft_model = _load_checkpoint_into_model(ft_model, checkpoint_path, device, verbose)
+		# Use strategy as key — append index if duplicate (e.g. two lora checkpoints)
+		key = strategy
+		if key in fine_tuned_models:
+			key = f"{strategy}_{i}"
+		fine_tuned_models[key] = ft_model
+		print(f"[OK] Loaded {key} in {time.time()-ft_start:.1f}s")
+	except Exception as e:
+		print(f"[ERROR] Failed to load {checkpoint_path}: {e}")
+		return {}
 
 	return fine_tuned_models
 
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="Evaluate CLIP for Historical Archives Dataset [Inference]")
-	parser.add_argument('--metadata_csv', '-csv', type=str, required=True, help='Metadata CSV file')
+	parser.add_argument('--pth_files_directory', '-pth_dir', type=str, required=True, help='Directory containing the .pth files')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP architecture')
 	parser.add_argument('--batch_size', '-bs', type=int, default=16, help='Batch size for training')
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
@@ -707,25 +735,26 @@ def main():
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
+	args.pth_files_directory = os.path.normpath(args.pth_files_directory)
 	print_args_table(args=args, parser=parser)
 	print(args)
 	set_seeds(seed=42)
-	DATASET_DIRECTORY = os.path.dirname(args.metadata_csv)
+	DATASET_DIRECTORY = os.path.dirname(args.pth_files_directory)
+	print(f"DATASET_DIRECTORY: {DATASET_DIRECTORY}")
 	dataset_name = os.path.basename(DATASET_DIRECTORY)
-	dataset_type = "single_label" if "single_label" in args.metadata_csv else "multi_label"
-	RESULTS_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"_{dataset_type}")
-	# check if results directory exists:
-	assert os.path.exists(RESULTS_DIRECTORY), f"Results directory {RESULTS_DIRECTORY} does not exist!"
+	dataset_type = "multi_label"
+	metadata_csv = os.path.join(DATASET_DIRECTORY, f"metadata_{dataset_type}_multimodal.csv")
+	assert os.path.exists(metadata_csv), f"{metadata_csv} not found!"
 
-	INFERENCE_DIRECTORY = os.path.join(RESULTS_DIRECTORY, f"inference")
+	INFERENCE_DIRECTORY = os.path.join(args.pth_files_directory, f"inference")
 	CACHES_DIRECTORY = os.path.join(INFERENCE_DIRECTORY, "caches")
 
 	os.makedirs(INFERENCE_DIRECTORY, exist_ok=True)
 	os.makedirs(CACHES_DIRECTORY, exist_ok=True)
 
 	# list of all available checkpoints in RESULT_DIRECTORY file.pth:
-	available_checkpoints = glob.glob(os.path.join(RESULTS_DIRECTORY, "*.pth"))
-	assert len(available_checkpoints) > 0, f"No checkpoints found in {RESULTS_DIRECTORY}"
+	available_checkpoints = glob.glob(os.path.join(args.pth_files_directory, "*.pth"))
+	assert len(available_checkpoints) > 0, f"No checkpoints found in {args.pth_files_directory}"
 
 	if args.verbose:
 		print(f"{len(available_checkpoints)} Available checkpoints")
@@ -752,28 +781,12 @@ def main():
 
 	# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 	# print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
-	models_to_plot = {}
 	print(f">> CLIP model configuration: {args.model_architecture}...")
 	model_config = get_config(architecture=args.model_architecture)
 	print(json.dumps(model_config, indent=4, ensure_ascii=False))
 
-	pretrained_model, pretrained_preprocess = clip.load(
-		name=args.model_architecture,
-		device=args.device,
-		download_root=get_model_directory(path=DATASET_DIRECTORY),
-	)
-	pretrained_model = pretrained_model.float() # Convert model parameters to FP32
-	pretrained_model_name = pretrained_model.__class__.__name__ # CLIP
-	pretrained_model.name = args.model_architecture # ViT-B/32
-	pretrained_model_arch = re.sub(r'[/@]', '-', args.model_architecture)
-	print(f">> Pretrained model: {pretrained_model_name} {pretrained_model_arch}")
-
-	print(f"Temperature used in evaluation: {getattr(args, 'temperature', 'Not set')}")
-
-	models_to_plot["pretrained"] = pretrained_model
-
 	train_loader, validation_loader = get_multi_label_dataloaders(
-		metadata_fpth=args.metadata_csv,
+		metadata_fpth=metadata_csv,
 		batch_size=args.batch_size,
 		num_workers=args.num_workers,
 		input_resolution=model_config["image_resolution"],
@@ -811,11 +824,11 @@ def main():
 			class_names = train_loader.dataset.unique_labels
 	
 	####################################### Quantitative Analysis #######################################
-	results_json_path = os.path.join(RESULTS_DIRECTORY, f"{dataset_name}_retrieval_metrics_accumulated.json")
+	results_json_path = os.path.join(args.pth_files_directory, f"{dataset_name}_retrieval_metrics_accumulated.json")
 	if os.path.exists(results_json_path):
 		with open(results_json_path) as f:
 			all_results = json.load(f)
-		print(f">> Plotting {len(all_results)} methods: {list(all_results.keys())}")
+		print(f"[Quantitative Analysis] {len(all_results)} methods: {list(all_results.keys())}")
 		viz.plot_retrieval_curves(
 			all_results=all_results,
 			output_dir=INFERENCE_DIRECTORY,
@@ -826,12 +839,13 @@ def main():
 	####################################### Quantitative Analysis #######################################
 
 	####################################### Qualitative Analysis #######################################
+	print(f"Qualitative Analysis".upper().center(160, "-"))
 	if args.query_image is None or args.query_label is None:
 		print("\nSystematic selection of samples from validation set: Head, Torso, Tail...")
 		i2t_samples, t2i_samples = get_multi_label_head_torso_tail_samples(
-			metadata_path=args.metadata_csv,
-			metadata_train_path=args.metadata_csv.replace('.csv', '_train.csv'),
-			metadata_val_path=args.metadata_csv.replace('.csv', '_val.csv'),
+			metadata_path=metadata_csv,
+			metadata_train_path=metadata_csv.replace('.csv', '_train.csv'),
+			metadata_val_path=metadata_csv.replace('.csv', '_val.csv'),
 			num_samples_per_segment=2,
 		)
 		if i2t_samples and t2i_samples:
@@ -842,56 +856,56 @@ def main():
 		QUERY_LABELS = [args.query_label]
 
 	print("\nQUERY IMAGES & LABELS")
+	
 	print(f">> {len(QUERY_IMAGES)} QUERY IMAGES:")
 	for i, v in enumerate(QUERY_IMAGES):
 		print(f"{i}. {v}")
+	
 	print(f">> {len(QUERY_LABELS)} QUERY LABELS:")
 	for i, v in enumerate(QUERY_LABELS):
 		print(f"{i}. {v}")
-	print("-"*160)
 
 	# 1. Determine which strategies to evaluate
-	strategies_to_evaluate = get_top_k_strategies(
+	selected_strategies, selected_checkpoints = get_top_k_strategies(
 		results_json_path=results_json_path,
 		top_k=5,
 		metric_key="mAP",
 		k_value="10",
 	)
-	# If ranking failed or file missing, fallback to first 5 checkpoints
-	if not strategies_to_evaluate:
-		print("WARNING: Falling back to first 5 available checkpoints for qualitative analysis.")
-		strategies_to_evaluate = [
-			_parse_checkpoint_strategy(p)[0] 
-			for p in available_checkpoints[:5]
-		]
+	# # If ranking failed or file missing, fallback to first 5 checkpoints
+	# if not strategies_to_evaluate:
+	# 	print("WARNING: Falling back to first 5 available checkpoints for qualitative analysis.")
+	# 	strategies_to_evaluate = [
+	# 		_parse_checkpoint_strategy(p)[0] 
+	# 		for p in available_checkpoints[:5]
+	# 	]
 
-	# 2. Filter checkpoint files to only the selected strategies
-	# We map strategy_name -> list of paths to handle potential duplicates (though unlikely in Top-K)
-	selected_checkpoints = []
-	for ckpt_path in available_checkpoints:
-		strategy_name, _ = _parse_checkpoint_strategy(ckpt_path)
-		if strategy_name in strategies_to_evaluate:
-			selected_checkpoints.append(ckpt_path)
-	print(f"\n>> Processing {len(selected_checkpoints)} selected models sequentially...")
+	# # 2. Filter checkpoint files to only the selected strategies
+	# # We map strategy_name -> list of paths to handle potential duplicates (though unlikely in Top-K)
+	# selected_checkpoints = []
+	# for ckpt_path in available_checkpoints:
+	# 	strategy_name, _ = _parse_checkpoint_strategy(ckpt_path)
+	# 	if strategy_name in strategies_to_evaluate:
+	# 		selected_checkpoints.append(ckpt_path)
+
+	print(f"{len(selected_checkpoints)} selected models for Qualitative Analysis:")
+	for i, v in enumerate(selected_checkpoints):
+		print(f"{i}. {v}")
+
 	qualitative_results = {}
-
 	# 3. Sequential Loading & Inference Loop
 	for i, ckpt_path in enumerate(selected_checkpoints):
 		strategy_name, _ = _parse_checkpoint_strategy(ckpt_path)
 		
-		print(f"\n{'='*80}")
-		print(f"[{i+1}/{len(selected_checkpoints)}] Processing: {strategy_name}")
-		print(f"Checkpoint: {os.path.basename(ckpt_path)}")
-		print(f"{'='*80}")
-		# --- LOAD SINGLE MODEL ---
-		# one failure doesn't crash the whole run
+		print(f"\n[{i+1}/{len(selected_checkpoints)}] Processing: {strategy_name}")
+		
 		try:
 			# Clear cache before loading
 			torch.cuda.empty_cache()
 			
 			# Load ONLY this specific model
 			model_dict = load_finetuned_models(
-				available_checkpoints=[ckpt_path], # Pass single checkpoint
+				checkpoint_path=ckpt_path,
 				model_architecture=args.model_architecture,
 				device=args.device,
 				dataset_directory=DATASET_DIRECTORY,

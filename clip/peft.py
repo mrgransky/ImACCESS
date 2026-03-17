@@ -1658,11 +1658,11 @@ class CLIPAdapterVisual(torch.nn.Module):
 def get_adapter_peft_clip(
 	clip_model: torch.nn.Module,
 	method: str,
-	initial_beta: float = 1.0,    # Tip-Adapter
-	initial_alpha: float = 1.0,   # Tip-Adapter
-	bottleneck_dim: Optional[int] = 256,  # CLIP-Adapter
-	activation: str = "relu",  # CLIP-Adapter
-	verbose: bool = True,
+	initial_beta: Optional[float]=None,    # Tip-Adapter
+	initial_alpha: Optional[float]=None,   # Tip-Adapter
+	bottleneck_dim: Optional[int]=None,  # CLIP-Adapter
+	activation: Optional[str]=None,  # CLIP-Adapter
+	verbose: bool=False,
 ):
 	"""
 	Apply adapter-based fine-tuning techniques (Tip-Adapter, CLIP-Adapter) to a CLIP model.
@@ -2118,12 +2118,12 @@ def get_injected_peft_clip(
 	rank: int,
 	alpha: float,
 	dropout: float,
+	lora_plus_lambda: Optional[float]=None,
 	target_text_modules: List[str]=["in_proj", "out_proj", "c_fc", "c_proj"],
 	target_vision_modules: List[str]=["in_proj", "out_proj", "q_proj", "k_proj", "v_proj", "c_fc", "c_proj"],
 	quantized: bool=False,
 	quantization_bits: int=8,
 	compute_dtype: torch.dtype=torch.float16,
-	lora_plus_lambda: Optional[float]=None,
 	verbose: bool=False,
 ):
 	"""
