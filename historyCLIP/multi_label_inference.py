@@ -713,7 +713,10 @@ def main():
 	DATASET_DIRECTORY = os.path.dirname(args.metadata_csv)
 	dataset_name = os.path.basename(DATASET_DIRECTORY)
 	dataset_type = "single_label" if "single_label" in args.metadata_csv else "multi_label"
-	RESULTS_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{dataset_type}")
+	RESULTS_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"_{dataset_type}")
+	# check if results directory exists:
+	assert os.path.exists(RESULTS_DIRECTORY), f"Results directory {RESULTS_DIRECTORY} does not exist!"
+
 	INFERENCE_DIRECTORY = os.path.join(RESULTS_DIRECTORY, f"inference")
 	CACHES_DIRECTORY = os.path.join(INFERENCE_DIRECTORY, "caches")
 
@@ -722,9 +725,12 @@ def main():
 
 	# list of all available checkpoints in RESULT_DIRECTORY file.pth:
 	available_checkpoints = glob.glob(os.path.join(RESULTS_DIRECTORY, "*.pth"))
-	print(f"{len(available_checkpoints)} Available checkpoints")
-	for i, ft_path in enumerate(available_checkpoints):
-		print(f"Checkpoint[{i}]: {ft_path}")
+	assert len(available_checkpoints) > 0, f"No checkpoints found in {RESULTS_DIRECTORY}"
+
+	if args.verbose:
+		print(f"{len(available_checkpoints)} Available checkpoints")
+		for i, ft_path in enumerate(available_checkpoints):
+			print(f"Checkpoint[{i}]: {ft_path}")
 
 	if "probe" in available_checkpoints:
 		params = get_probe_params(args.probe_checkpoint)
