@@ -718,7 +718,7 @@ def load_finetuned_models(
 def main():
 	parser = argparse.ArgumentParser(description="Evaluate CLIP for Historical Archives Dataset [Inference]")
 	parser.add_argument('--pth_files_directory', '-pth_dir', type=str, required=True, help='Directory containing the .pth files')
-	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP architecture')
+	parser.add_argument('--model_architecture', '-a', type=str, required=True, help='CLIP architecture')
 	parser.add_argument('--batch_size', '-bs', type=int, default=16, help='Batch size for training')
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs')
