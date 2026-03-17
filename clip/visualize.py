@@ -3476,9 +3476,10 @@ def plot_qualitative_retrieval(
 	os.makedirs(output_dir, exist_ok=True)
 	saved_paths = []
 	strategies = list(results_by_strategy.keys())
+	print(json.dumps(results_by_strategy, indent=2, ensure_ascii=False))
+	print(f"strategies: {strategies}")
 
-	print(f"\n{len(results_by_strategy[strategies[0]]['i2t'])} I2T: Top-{i2t_topk}")
-	print(json.dumps(results_by_strategy[strategies[0]]["i2t"], indent=2, ensure_ascii=False))
+	print(f"\nI2T: Top-{i2t_topk}")
 	i2t_samples = results_by_strategy[strategies[0]]["i2t"]
 	n_queries = len(i2t_samples)
 	n_cols = 1 + 1 + len(strategies)  # query image + GT column + one per strategy
