@@ -659,8 +659,8 @@ def load_finetuned_models(
 				method=strategy,
 				bottleneck_dim=None,
 				activation=None,
-				initial_beta=params.get("init_beta"),
-				initial_alpha=params.get("init_alpha"),
+				initial_beta=params.get("init_beta", 1.0),
+				initial_alpha=params.get("init_alpha", 1.0),
 				verbose=verbose,
 			)
 			# Load checkpoint first to get cache size
