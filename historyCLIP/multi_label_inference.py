@@ -506,67 +506,70 @@ def get_multi_label_head_torso_tail_samples(
 		return [], []
 
 def _parse_checkpoint_strategy(ft_path: str) -> Tuple[str, Dict]:
-		fname = os.path.basename(ft_path)
+	fname = os.path.basename(ft_path)
+	
+	# Order matters — more specific patterns before general ones
+	if fname.startswith("lora_plus"):
+		strategy = "lora_plus"
+	elif fname.startswith("rslora"):
+		strategy = "rslora"
+	elif fname.startswith("lora"):
+		strategy = "lora"
+	elif fname.startswith("dora"):
+		strategy = "dora"
+	elif fname.startswith("vera"):
+		strategy = "vera"
+	elif fname.startswith("ia3"):
+		strategy = "ia3"
+	elif fname.startswith("clip_adapter_vt"):
+		strategy = "clip_adapter_vt"
+	elif fname.startswith("clip_adapter_t"):
+		strategy = "clip_adapter_t"
+	elif fname.startswith("clip_adapter_v"):
+		strategy = "clip_adapter_v"
+	elif fname.startswith("tip_adapter_f"):
+		strategy = "tip_adapter_f"
+	elif fname.startswith("tip_adapter"):
+		strategy = "tip_adapter"
+	elif fname.startswith("probe"):
+		strategy = "probe"
+	elif fname.startswith("full"):
+		strategy = "full"
+	else:
+		strategy = "unknown"
 
-		# Order matters — more specific patterns before general ones
-		if fname.startswith("lora_plus"):
-			strategy = "lora_plus"
-		elif fname.startswith("rslora"):
-			strategy = "rslora"
-		elif fname.startswith("lora"):
-				strategy = "lora"
-		elif fname.startswith("dora"):
-				strategy = "dora"
-		elif fname.startswith("vera"):
-				strategy = "vera"
-		elif fname.startswith("ia3"):
-				strategy = "ia3"
-		elif fname.startswith("clip_adapter_vt"):
-				strategy = "clip_adapter_vt"
-		elif fname.startswith("clip_adapter_t"):
-				strategy = "clip_adapter_t"
-		elif fname.startswith("clip_adapter_v"):
-				strategy = "clip_adapter_v"
-		elif fname.startswith("tip_adapter_f"):
-				strategy = "tip_adapter_f"
-		elif fname.startswith("tip_adapter"):
-				strategy = "tip_adapter"
-		elif fname.startswith("probe"):
-				strategy = "probe"
-		elif fname.startswith("full"):
-				strategy = "full"
-		else:
-				strategy = "unknown"
+	# Extract hyperparams from filename if present
+	params = {}
+	batch_size = re.search(r'bs_(\d+)', fname) # Batch size
+	lor_match = re.search(r'lor_(\d+)', fname) # LoRA rank
+	loa_match = re.search(r'loa_([\d.]+)', fname) # LoRA alpha
+	lod_match = re.search(r'lod_([\d.]+)', fname) # LoRA dropout
+	lmbd_match = re.search(r'lmbd_([\d.]+)', fname) # LoRA+ lambda
+	cbd_match = re.search(r'cbd_(\d+)', fname) # Bottleneck dim
+	act_match = re.search(r'act_(\w+?)_', fname)
+	init_alpha_match = re.search(r'init_alpha_([\d.]+)', fname)
+	init_beta_match = re.search(r'init_beta_([\d.]+)', fname)
 
-		# Extract hyperparams from filename if present
-		params = {}
-		lor_match = re.search(r'lor_(\d+)', fname) # LoRA rank
-		loa_match = re.search(r'loa_([\d.]+)', fname) # LoRA alpha
-		lod_match = re.search(r'lod_([\d.]+)', fname) # LoRA dropout
-		lmbd_match = re.search(r'lmbd_([\d.]+)', fname) # LoRA+ lambda
-		cbd_match = re.search(r'cbd_(\d+)', fname) # Bottleneck dim
-		act_match = re.search(r'act_(\w+?)_', fname)
-		init_alpha_match = re.search(r'init_alpha_([\d.]+)', fname)
-		init_beta_match = re.search(r'init_beta_([\d.]+)', fname)
+	if batch_size:
+		params["batch_size"] = int(batch_size.group(1))
+	if lor_match:
+		params["lora_rank"]    = int(lor_match.group(1))
+	if loa_match:
+		params["lora_alpha"]   = float(loa_match.group(1))
+	if lod_match:
+		params["lora_dropout"] = float(lod_match.group(1))
+	if lmbd_match:
+		params["lora_plus_lambda"] = float(lmbd_match.group(1))
+	if cbd_match:
+		params["bottleneck_dim"] = int(cbd_match.group(1))
+	if act_match:
+		params["activation"] = act_match.group(1)
+	if init_alpha_match:
+		params["init_alpha"] = float(init_alpha_match.group(1))
+	if init_beta_match:
+		params["init_beta"] = float(init_beta_match.group(1))
 
-		if lor_match:
-			params["lora_rank"]    = int(lor_match.group(1))
-		if loa_match:
-			params["lora_alpha"]   = float(loa_match.group(1))
-		if lod_match:
-			params["lora_dropout"] = float(lod_match.group(1))
-		if lmbd_match:
-			params["lora_plus_lambda"] = float(lmbd_match.group(1))
-		if cbd_match:
-			params["bottleneck_dim"] = int(cbd_match.group(1))
-		if act_match:
-			params["activation"] = act_match.group(1)
-		if init_alpha_match:
-			params["init_alpha"] = float(init_alpha_match.group(1))
-		if init_beta_match:
-			params["init_beta"] = float(init_beta_match.group(1))
-
-		return strategy, params
+	return strategy, params
 
 def _load_checkpoint_into_model(
 	model: torch.nn.Module,
@@ -719,7 +722,7 @@ def main():
 	parser = argparse.ArgumentParser(description="Evaluate CLIP for Historical Archives Dataset [Inference]")
 	parser.add_argument('--pth_files_directory', '-pth_dir', type=str, required=True, help='Directory containing the .pth files')
 	parser.add_argument('--model_architecture', '-a', type=str, required=True, help='CLIP architecture')
-	parser.add_argument('--batch_size', '-bs', type=int, default=16, help='Batch size for training')
+	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs')
 
@@ -801,7 +804,7 @@ def main():
 		images, _, labels = sample
 		print(f"Batch size: {images.shape[0]}")
 		print(f"Image shape: {images.shape}")
-		print(f"Label shape: {labels.shape}")  # Should be [batch_size, num_classes]
+		print(f"Label shape: {labels.shape}")  # [batch_size, num_classes]
 		print(f"Labels dtype: {labels.dtype}")
 		print(f"Number of positive labels in 1st sample: {labels[0].sum().item()}")
 		print(f"Non-zero label indices: {torch.where(labels[0] == 1)[0].tolist()}")
@@ -865,39 +868,24 @@ def main():
 	for i, v in enumerate(QUERY_LABELS):
 		print(f"{i}. {v}")
 
-	# 1. Determine which strategies to evaluate
+	# Determine which strategies to evaluate
 	selected_strategies, selected_checkpoints = get_top_k_strategies(
 		results_json_path=results_json_path,
 		top_k=5,
 		metric_key="mAP",
 		k_value="10",
 	)
-	# # If ranking failed or file missing, fallback to first 5 checkpoints
-	# if not strategies_to_evaluate:
-	# 	print("WARNING: Falling back to first 5 available checkpoints for qualitative analysis.")
-	# 	strategies_to_evaluate = [
-	# 		_parse_checkpoint_strategy(p)[0] 
-	# 		for p in available_checkpoints[:5]
-	# 	]
-
-	# # 2. Filter checkpoint files to only the selected strategies
-	# # We map strategy_name -> list of paths to handle potential duplicates (though unlikely in Top-K)
-	# selected_checkpoints = []
-	# for ckpt_path in available_checkpoints:
-	# 	strategy_name, _ = _parse_checkpoint_strategy(ckpt_path)
-	# 	if strategy_name in strategies_to_evaluate:
-	# 		selected_checkpoints.append(ckpt_path)
-
 	print(f"{len(selected_checkpoints)} selected models for Qualitative Analysis:")
-	for i, v in enumerate(selected_checkpoints):
-		print(f"{i}. {v}")
+	for i, v in enumerate(zip(selected_strategies, selected_checkpoints)):
+		print(f"{i} {v[0]:<20} {v[1]}")
 
 	qualitative_results = {}
-	# 3. Sequential Loading & Inference Loop
+	
+	# Sequential Loading & Inference Loop
 	for i, ckpt_path in enumerate(selected_checkpoints):
 		strategy_name, _ = _parse_checkpoint_strategy(ckpt_path)
 		
-		print(f"\n[{i+1}/{len(selected_checkpoints)}] Processing: {strategy_name}")
+		print(f"\n[{i+1}/{len(selected_checkpoints)}] Processing: {ckpt_path}")
 		
 		try:
 			# Clear cache before loading
@@ -937,7 +925,7 @@ def main():
 			torch.cuda.empty_cache()
 			continue
 
-	# 5. Generate Plots
+	# Generate Plots
 	viz.plot_qualitative_retrieval(
 		results_by_strategy=qualitative_results,
 		output_dir=INFERENCE_DIRECTORY,

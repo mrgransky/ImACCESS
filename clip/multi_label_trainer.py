@@ -2522,15 +2522,11 @@ def rslora_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} "
-					f"{pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"   ├─ number of samples: {N}")
-		print(f"   ├─ number of classes: {num_classes}")
-		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
-		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} "
-					f"{active_mask.device} True count: {active_mask.sum().item():,}")
-		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} "
-					f"{train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
+		print(f"   ├─ samples: {N} classes: {num_classes}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item()}")
+		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item()}")
+		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min()}, {train_freq.max()}]")
 
 	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none')
 	if verbose:
@@ -2541,7 +2537,8 @@ def rslora_finetune_multi_label(
 	model.eval()
 	all_class_embeds = []
 	text_batch_size = validation_loader.batch_size
-	print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	
+	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 			for i in range(0, num_classes, text_batch_size):
@@ -2582,6 +2579,13 @@ def rslora_finetune_multi_label(
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
+	if verbose:
+		print(f"\n{optimizer.__class__.__name__}")
+		print(f"  ├─ Params: {sum(p.numel() for p in rslora_params)}")
+		print(f"  ├─ LR: {learning_rate}")
+		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
+		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
+		print(f"  └─ Weight Decay: {weight_decay}")
 
 	# Scheduler
 	total_training_steps = num_epochs * len(train_loader)
@@ -2595,8 +2599,7 @@ def rslora_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n{scheduler.__class__.__name__}")
-		print(f"  ├─ T_max = {total_training_steps} steps "
-					f"[({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  ├─ T_max = {total_training_steps} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
 
 	scaler = torch.amp.GradScaler(

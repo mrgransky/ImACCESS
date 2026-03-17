@@ -112,7 +112,7 @@ esac
 
 # Batch sizes and print frequencies
 BATCH_SIZES=(16 64 64 64 64)
-PRINT_FREQUENCIES=(1000 1000 50 50 25)
+PRINT_FREQUENCIES=(500 1000 50 50 25)
 
 # Learning rates by method group
 # LR_FULL_FT=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
