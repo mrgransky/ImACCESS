@@ -1927,7 +1927,7 @@ def lora_plus_finetune_multi_label(
 		print(f"  ├─ Unassigned params: {len(ungrouped)} tensors")
 		print(f"  └─ LR multiplier (λ): {lora_plus_lambda}")
 	
-	# Setup optimizer with differential learning rates
+	# Optimizer with differential learning rates
 	lora_A_lr = learning_rate
 	lora_A_wd = weight_decay
 	lora_B_lr = learning_rate * lora_plus_lambda
@@ -1950,11 +1950,11 @@ def lora_plus_finetune_multi_label(
 
 	if verbose:
 		print(f"\n{optimizer.__class__.__name__}")
-		print(f"  ├─ LR: lora_A = {lora_A_lr} lora_B = {lora_B_lr}")
+		print(f"  ├─ LR: lora_A = {lora_A_lr} lora_B = {lora_B_lr} (λ={lora_plus_lambda})")
 		print(f"  ├─ WD: lora_A = {lora_A_wd} lora_B = {lora_B_wd}")
 		print(f"  └─ Params: lora_A:{sum(p.numel() for p in lora_A_params):,} lora_B: {sum(p.numel() for p in lora_B_params):,}")
 	
-	# Setup scheduler
+	# scheduler
 	# estimated_epochs = min(num_epochs, 15)
 	# total_training_steps = estimated_epochs * len(train_loader)
 	# T_max = total_training_steps
@@ -1968,7 +1968,7 @@ def lora_plus_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n{scheduler.__class__.__name__}")
-		print(f"  ├─ T_max = {T_max} steps")
+		print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} (according to paper)")
 
 	# scaler = torch.amp.GradScaler(
@@ -2272,7 +2272,6 @@ def lora_plus_finetune_multi_label(
 	
 	print(f"[{mode}] Total Elapsed Time: {time.time() - train_start_time:.1f}s")
 	
-	# Final evaluation
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
@@ -2293,7 +2292,6 @@ def lora_plus_finetune_multi_label(
 		topk_values=topk_values,
 		verbose=verbose,
 	)
-
 	if verbose:
 		print(f"\nFull evaluation results:")
 		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
@@ -2301,8 +2299,8 @@ def lora_plus_finetune_multi_label(
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t        = evaluation_results["tiered_i2t"]
-	final_tiered_t2i        = evaluation_results["tiered_t2i"]
+	final_tiered_i2t = evaluation_results["tiered_i2t"]
+	final_tiered_t2i = evaluation_results["tiered_t2i"]
 	model_source = evaluation_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
@@ -2327,8 +2325,7 @@ def lora_plus_finetune_multi_label(
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
-		
-
+	
 	append_retrieval_results(
 		tiered_i2t=final_tiered_i2t, 
 		tiered_t2i=final_tiered_t2i, 

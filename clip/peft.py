@@ -3,6 +3,7 @@ import torch
 import copy
 from typing import Tuple, Union, List, Optional, Dict
 import types
+import traceback
 
 class IA3Linear(torch.nn.Module):
 		"""
@@ -243,8 +244,12 @@ class LoRALinear(torch.nn.Module):
 
 		# Freeze base weights
 		self.linear.weight.requires_grad = False
+		if self.verbose:
+			print(f"[INITIALIZATION] Frozen base weights requires_grad: {self.linear.weight.requires_grad}")
 		if bias and self.linear.bias is not None:
 			self.linear.bias.requires_grad = False
+			if self.verbose:
+				print(f"[INITIALIZATION] Frozen base bias requires_grad: {self.linear.bias.requires_grad}")
 	
 	def forward(self, x: torch.Tensor) -> torch.Tensor:
 		# Base output (dequantized automatically if quantized)
@@ -2033,6 +2038,7 @@ def bind_mha_lora_forward(mha_module: torch.nn.Module, method_name: str) -> None
 			method_name : PEFT method string ("lora", "rslora", "lora_plus", ...)
 										used to look up the registered in_proj adapter submodule
 	"""
+	
 	def forward(
 		self,
 		query,
@@ -2285,7 +2291,47 @@ def get_injected_peft_clip(
 		
 		print(f"\n{'='*100}\n")
 
+	_reset_count = 0
+	for _name, _module in clip_model.named_modules():
+			if isinstance(_module, torch.nn.MultiheadAttention):
+					if 'forward' in _module.__dict__:
+							del _module.__dict__['forward']
+							_reset_count += 1
+
+	if _reset_count > 0:
+			print(f"[RESET] Removed {_reset_count} stale MHA forward patches from clip_model")
+
 	model = copy.deepcopy(clip_model)
+	# Verify no shared MHA objects between text and vision
+	text_mha_ids   = {id(m) for _, m in model.transformer.named_modules() if isinstance(m, torch.nn.MultiheadAttention)}
+	vision_mha_ids = {id(m) for _, m in model.visual.named_modules()      if isinstance(m, torch.nn.MultiheadAttention)}
+	overlap = text_mha_ids & vision_mha_ids
+
+	print(f"[DEEPCOPY CHECK] text MHA: {len(text_mha_ids)}, vision MHA: {len(vision_mha_ids)}, overlap: {len(overlap)}")
+	if overlap:
+			print(f"[DEEPCOPY CHECK] SHARED OBJECTS DETECTED — deepcopy did not produce independent modules")
+			# Force independent copies of shared MHA modules
+			import copy as _copy
+			for _name, _mod in list(model.visual.named_modules()):
+					if isinstance(_mod, torch.nn.MultiheadAttention) and id(_mod) in text_mha_ids:
+							# Replace shared module with an independent copy
+							_parent_name, _child_name = _name.rsplit(".", 1) if "." in _name else ("", _name)
+							_parent = model.visual if _parent_name == "" else model.visual.get_submodule(_parent_name)
+							setattr(_parent, _child_name, _copy.deepcopy(_mod))
+							print(f"[DEEPCOPY CHECK] Replaced shared module: visual.{_name}")
+
+	# Count how many MHA modules model.visual.named_modules() actually yields
+	vision_traversal_mha = [
+			(name, id(mod))
+			for name, mod in model.visual.named_modules()
+			if isinstance(mod, torch.nn.MultiheadAttention)
+	]
+	print(f"[TRAVERSAL CHECK] model.visual.named_modules() yields {len(vision_traversal_mha)} MHA modules:")
+	for name, mod_id in vision_traversal_mha:
+			in_text = mod_id in text_mha_ids
+			in_vision = mod_id in vision_mha_ids
+			print(f"  {name} id={mod_id} in_text={in_text} in_vision={in_vision}")
+
 	replaced_modules = set()
 	memory_stats = {
 		'text_encoder': {'base_mb': 0, 'adapter_mb': 0, 'magnitude_mb': 0},
@@ -2510,7 +2556,19 @@ def get_injected_peft_clip(
 				print(f"{statement}\n")
 	################################################ Encoders ###############################################
 
-
+	# ── Post-injection patch verification ────────────────────────────────────
+	post_inject_text_patched = sum(
+		1 for _, mod in model.transformer.named_modules()
+		if isinstance(mod, torch.nn.MultiheadAttention)
+		and 'forward' in mod.__dict__
+	)
+	post_inject_vision_patched = sum(
+		1 for _, mod in model.visual.named_modules()
+		if isinstance(mod, torch.nn.MultiheadAttention)
+		and 'forward' in mod.__dict__
+	)
+	print(f"[POST-INJECT CHECK] Text MHA patched : {post_inject_text_patched} (expected: 0)")
+	print(f"[POST-INJECT CHECK] Vision MHA patched: {post_inject_vision_patched} (expected: {sum(1 for _, m in model.visual.named_modules() if isinstance(m, torch.nn.MultiheadAttention))})")
 
 	############################################## Projections ##############################################	
 	if verbose: 
@@ -2753,25 +2811,114 @@ def get_injected_peft_clip(
 			print(f"  Quantized base: {overall_base:.2f} MB")
 			print(f"  Memory saved: {savings:.2f} MB ({savings_pct:.1f}%)")
 		
-
 		print(f"\n[MHA FORWARD PATCH VERIFICATION]")
-		patched_text   = 0
-		patched_vision = 0
-		
-		for name, module in model.transformer.named_modules():
-			if isinstance(module, torch.nn.MultiheadAttention):
-				is_patched = hasattr(module.forward, '__func__') or isinstance(module.forward, types.MethodType)
-				if is_patched:
-					patched_text += 1
-		
-		for name, module in model.visual.named_modules():
-			if isinstance(module, torch.nn.MultiheadAttention):
-				is_patched = isinstance(module.forward, types.MethodType)
-				if is_patched:
-					patched_vision += 1
-		
-		print(f"    ├─ Text  encoder MHA modules patched: {patched_text}")
-		print(f"    └─ Vision encoder MHA modules patched: {patched_vision}")
+		def verify_mha_patches(encoder_module, encoder_name, method_name, expect_adapters: bool):
+			total    = 0
+			patched  = 0
+			issues   = []
+			for name, module in encoder_module.named_modules():
+					if not isinstance(module, torch.nn.MultiheadAttention):
+							continue
+					total += 1
+					is_patched = 'forward' in module.__dict__
+					in_proj_adapter = getattr(module, f"{method_name}_in_proj", None)
+					has_in_proj     = in_proj_adapter is not None
+					has_out_lora    = hasattr(module.out_proj, 'lora_A')
+					if not expect_adapters:
+							# Text encoder with target_text_modules=[] — patch should NOT be applied
+							if is_patched:
+									issues.append(f"{encoder_name}.{name} — patched but no adapters injected (spurious patch)")
+									status = "⚠"
+							else:
+									status = "✓ (correctly unpatched)"
+									patched += 1
+							if verbose:
+									print(f"    {status} {encoder_name}.{name}")
+									print(f"        └─ forward patched: {is_patched} (expected: False)")
+							continue
+					# Vision encoder — adapters expected
+					in_proj_ok   = False
+					in_proj_info = "NOT FOUND"
+					if has_in_proj:
+							scale_val      = getattr(in_proj_adapter, 'scale', None)
+							rslora_val     = getattr(in_proj_adapter, 'rslora', False)
+							weight_aliased = module.in_proj_weight is in_proj_adapter.linear.weight
+							in_proj_ok     = (
+									hasattr(in_proj_adapter, 'lora_A')
+									and hasattr(in_proj_adapter, 'lora_B')
+									and weight_aliased
+							)
+							in_proj_info = (
+									f"lora_A={in_proj_adapter.lora_A.weight.shape} "
+									f"lora_B={in_proj_adapter.lora_B.weight.shape} "
+									f"scale={scale_val:.4f} "
+									f"rslora={rslora_val} "
+									f"weight_aliased={weight_aliased}"
+							)
+					out_proj_ok   = False
+					out_proj_info = "NOT LoRALinear"
+					if has_out_lora:
+							scale_val    = getattr(module.out_proj, 'scale', None)
+							rslora_val   = getattr(module.out_proj, 'rslora', False)
+							out_proj_ok  = True
+							out_proj_info = (
+									f"lora_A={module.out_proj.lora_A.weight.shape} "
+									f"lora_B={module.out_proj.lora_B.weight.shape} "
+									f"scale={scale_val:.4f} "
+									f"rslora={rslora_val} "
+									f"base_weight={module.out_proj.linear.weight.shape}"
+							)
+					weight_shape_ok = False
+					shape_info      = "N/A"
+					if has_in_proj and in_proj_ok:
+							lora_delta      = (
+									in_proj_adapter.scale
+									* (in_proj_adapter.lora_B.weight @ in_proj_adapter.lora_A.weight)
+							)
+							weight_shape_ok = lora_delta.shape == module.in_proj_weight.shape
+							shape_info      = (
+									f"delta={lora_delta.shape} "
+									f"matches_in_proj={weight_shape_ok} "
+									f"delta_norm={lora_delta.norm().item():.6f}"
+							)
+					overall_ok = is_patched and in_proj_ok and out_proj_ok and weight_shape_ok
+					if overall_ok:
+							patched += 1
+					else:
+							issues.append(f"{encoder_name}.{name}")
+					if verbose:
+							status = "✓" if overall_ok else "✗"
+							print(f"    {status} {encoder_name}.{name}")
+							print(f"        ├─ forward patched  : {is_patched}")
+							print(f"        ├─ in_proj  adapter : {in_proj_info}")
+							print(f"        ├─ out_proj adapter : {out_proj_info}")
+							print(f"        └─ weight delta     : {shape_info}")
+			return total, patched, issues
+
+		# Call sites — pass expect_adapters based on whether text modules were targeted
+		text_has_adapters = len(target_text_modules) > 0 and "in_proj" in target_text_modules
+		text_total, text_patched, text_issues = verify_mha_patches(
+				model.transformer, "Text", method, expect_adapters=text_has_adapters
+		)
+		vis_total, vis_patched, vis_issues = verify_mha_patches(
+				model.visual, "Vision", method, expect_adapters=True
+		)
+
+		print(f"\n[MHA PATCH SUMMARY]")
+		text_label = (
+				f"{text_patched}/{text_total} patched correctly"
+				if text_has_adapters
+				else f"{text_patched}/{text_total} correctly unpatched (target_text_modules={target_text_modules})"
+		)
+		print(f"    ├─ Text  encoder : {text_label}")
+		print(f"    ├─ Vision encoder: {vis_patched}/{vis_total} patched correctly")
+		all_issues = text_issues + vis_issues
+		if all_issues:
+				print(f"    └─ ISSUES detected in {len(all_issues)} modules:")
+				for issue in all_issues:
+						print(f"         ✗ {issue}")
+		else:
+				print(f"    └─ All modules verified — no issues detected")
 
 	# Freeze all non-adapter parameters
 	for name, param in model.named_parameters():

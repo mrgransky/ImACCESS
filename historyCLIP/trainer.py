@@ -84,7 +84,7 @@ def main():
 	parser.add_argument('--slope_threshold', '-slth', type=float, default=1e-4, help='Slope threshold for early stopping')
 	parser.add_argument('--pairwise_imp_threshold', '-pith', type=float, default=1e-4, help='Pairwise improvement threshold for early stopping')
 
-	# LoRA & LoRA+
+	# LoRA, LoRA+, DoRA, VeRA, RSLoRA
 	parser.add_argument('--lora_rank', '-lor', type=int, default=None, help='LoRA rank (used if strategy=lora)')
 	parser.add_argument('--lora_alpha', '-loa', type=float, default=None, help='LoRA alpha (used if strategy=lora)')
 	parser.add_argument('--lora_dropout', '-lod', type=float, default=None, help='LoRA dropout (used if strategy=lora)')
