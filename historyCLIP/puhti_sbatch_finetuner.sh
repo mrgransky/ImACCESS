@@ -115,9 +115,10 @@ BATCH_SIZES=(16 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 25)
 
 # Learning rates by method group
-LR_FULL_FT=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
-LR_LINEAR_PROBE=(5.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
-LR_PEFT_ALL=(5.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)  # LoRA, LoRA+, DoRA, VeRA, IA³, Adapters
+# LR_FULL_FT=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+LR_FULL_FT=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+LR_LINEAR_PROBE=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+LR_PEFT_ALL=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)  # LoRA, LoRA+, DoRA, VeRA, IA³, Adapters
 
 # Default parameters
 WEIGHT_DECAY=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)

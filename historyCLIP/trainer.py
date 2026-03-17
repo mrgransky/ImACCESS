@@ -140,7 +140,6 @@ def main():
 				f"{dataset_name}_{dataset_type}_"
 				f"{args.strategy}_"
 				f"{arch_name}_"
-				f"bs_{args.batch_size}_"
 				f"nw_{args.num_workers}_"
 				f"ep_{args.epochs}_"
 				f"mep_{args.minimum_epochs}_"
@@ -204,8 +203,9 @@ def main():
 			input_resolution=model_config["image_resolution"],
 			col=column,
 		)
-		print_loader_info(loader=train_loader, batch_size=args.batch_size)
-		print_loader_info(loader=validation_loader, batch_size=args.batch_size)
+
+		print_loader_info(loader=train_loader)
+		print_loader_info(loader=validation_loader)
 
 		# viz.visualize_samples(validation_loader, num_samples=5)
 		

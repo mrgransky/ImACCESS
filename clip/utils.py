@@ -486,46 +486,47 @@ def get_parameters_info(model, mode):
 	print(f"   ├─ Logit Scale: {logit_scale_params}")
 	print(f"   └─ Total: {total_params:,}  (Trainable [Unfrozen]): {total_trainable:,} ({total_trainable_percent:.3f}%)  Frozen: {total_frozen:,} ({total_frozen_percent:.3f}%)")
 
-def print_loader_info(loader, batch_size):
-		loader_num_samples = len(loader.dataset)
-		per_batch_samples = loader_num_samples // batch_size
-		last_batch_samples = loader_num_samples % batch_size
-		if last_batch_samples == 0:
-				last_batch_samples = batch_size
-		
-		# Try multiple ways to get class information
-		try:
-				# Case 1: Standard PyTorch dataset
-				class_names = loader.dataset.classes
-		except AttributeError:
-				try:
-						# Case 2: Subset or wrapped dataset
-						class_names = loader.dataset.dataset.classes
-				except AttributeError:
-						try:
-								# Case 3: Our custom attribute
-								class_names = loader.dataset.unique_labels
-						except AttributeError:
-								# Case 4: Multi-label dataset with label_dict
-								if hasattr(loader.dataset, 'label_dict'):
-										class_names = sorted(loader.dataset.label_dict.keys())
-								else:
-										class_names = ["unknown"]
-		
-		n_classes = len(class_names)
-		total_samples_calc = per_batch_samples * batch_size + last_batch_samples
-		
-		# Get loader name safely
-		loader_name = getattr(loader, 'name', 'UNNAMED_LOADER')
-		
-		print(
-				f"\n{loader_name}:\n"
-				f"\tWrapped in {len(loader)} batches\n"
-				f"\tSamples per batch (total batches: {batch_size}): {per_batch_samples}\n"
-				f"\tSamples in last batch: {last_batch_samples}\n"
-				f"\tTotal samples: {loader_num_samples} (calculated: {total_samples_calc} = {per_batch_samples} x {batch_size} + {last_batch_samples})\n"
-				f"\tUnique Label(s): {n_classes}\n"
-		)
+def print_loader_info(loader):
+	batch_size = loader.batch_size
+	loader_num_samples = len(loader.dataset)
+	per_batch_samples = loader_num_samples // batch_size
+	last_batch_samples = loader_num_samples % batch_size
+	if last_batch_samples == 0:
+		last_batch_samples = batch_size
+	
+	# Try multiple ways to get class information
+	try:
+			# Case 1: Standard PyTorch dataset
+			class_names = loader.dataset.classes
+	except AttributeError:
+			try:
+					# Case 2: Subset or wrapped dataset
+					class_names = loader.dataset.dataset.classes
+			except AttributeError:
+					try:
+							# Case 3: Our custom attribute
+							class_names = loader.dataset.unique_labels
+					except AttributeError:
+							# Case 4: Multi-label dataset with label_dict
+							if hasattr(loader.dataset, 'label_dict'):
+									class_names = sorted(loader.dataset.label_dict.keys())
+							else:
+									class_names = ["unknown"]
+	
+	n_classes = len(class_names)
+	total_samples_calc = per_batch_samples * batch_size + last_batch_samples
+	
+	# Get loader name safely
+	loader_name = getattr(loader, 'name', 'UNNAMED_LOADER')
+	
+	print(
+			f"\n{loader_name}:\n"
+			f"\tWrapped in {len(loader)} batches\n"
+			f"\tSamples per batch (total batches: {batch_size}): {per_batch_samples}\n"
+			f"\tSamples in last batch: {last_batch_samples}\n"
+			f"\tTotal samples: {loader_num_samples} (calculated: {total_samples_calc} = {per_batch_samples} x {batch_size} + {last_batch_samples})\n"
+			f"\tUnique Label(s): {n_classes}\n"
+	)
 
 def log_gpu_memory(device):
 	gpu_mem_allocated = torch.cuda.memory_allocated(device) / (1024 ** 2)

@@ -2640,19 +2640,15 @@ def rslora_finetune_multi_label(
 		print(f"Epoch [{epoch+1}/{num_epochs}]")
 		epoch_loss_total = epoch_loss_i2t = epoch_loss_t2i = 0.0
 		num_batches = 0
+		nan_loss_count = 0      # track NaN loss skips
+		nan_grad_count = 0      # track NaN gradient skips
 
 		for bidx, batch_data in enumerate(train_loader):
-			if len(batch_data) != 3:
-				raise ValueError(f"Expected 3 items from DataLoader, got {len(batch_data)}")
 			images, _, label_vectors = batch_data
-			batch_size = images.size(0)
 			images = images.to(device, non_blocking=True)
 			label_vectors = label_vectors.to(device, non_blocking=True).float()
-			if label_vectors.shape != (batch_size, num_classes):
-				raise ValueError(
-					f"Label vectors shape {label_vectors.shape} != expected ({batch_size}, {num_classes})"
-				)
 			optimizer.zero_grad(set_to_none=True)
+
 			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
 					model=model,
@@ -2666,27 +2662,80 @@ def rslora_finetune_multi_label(
 					loss_weights=loss_weights,
 					verbose=verbose,
 				)
-			if torch.isnan(total_loss):
-				print(f"Warning: NaN loss at epoch {epoch+1}, batch {bidx+1}. Skipping.")
+
+			if torch.isnan(total_loss) or torch.isinf(total_loss):
+				nan_loss_count += 1
+				if nan_loss_count % 100 == 1:  # log every 100th skip to avoid spam
+					print(
+						f"Warning: NaN/Inf loss at epoch {epoch+1}, "
+						f"batch {bidx+1} (total skipped: {nan_loss_count}). Skipping."
+					)
+				
+				# Abort epoch if NaN cascade is unrecoverable
+				if nan_loss_count > len(train_loader) // 2:
+					raise RuntimeError(
+						f"[ABORT] NaN loss in >{len(train_loader)//2} batches "
+						f"All {len(train_loader)} batches produced NaN/Inf loss. "
+						f"Reduce learning_rate or lora_alpha and rerun."
+					)
+				
 				continue
+
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
+
+			# Check for NaN/Inf gradients after unscaling
+			has_bad_grad = any(
+				not torch.isfinite(p.grad).all()
+				for p in model.parameters()
+				if p.requires_grad and p.grad is not None
+			)
+			
+			if has_bad_grad:
+				nan_grad_count += 1
+				if nan_grad_count % 50 == 1:
+					print(
+						f"Warning: NaN/Inf gradient at epoch {epoch+1}, "
+						f"batch {bidx+1} (total skipped: {nan_grad_count}). Skipping step."
+					)
+				optimizer.zero_grad(set_to_none=True)
+				scaler.update()
+				continue
+			
 			torch.nn.utils.clip_grad_norm_(
-				[p for p in model.parameters() if p.requires_grad], max_norm=1.0
+				[p for p in model.parameters() if p.requires_grad],
+				max_norm=1.0,
 			)
 			scaler.step(optimizer)
 			scaler.update()
 			scheduler.step()
+
 			epoch_loss_total += total_loss.item()
 			epoch_loss_i2t   += loss_i2t.item()
 			epoch_loss_t2i   += loss_t2i.item()
 			num_batches += 1
+
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
 					f"\t\tBatch [{bidx+1:04d}/{len(train_loader)}] "
 					f"Total: {total_loss.item():.6f} "
 					f"(I2T: {loss_i2t.item():.6f}, T2I: {loss_t2i.item():.6f})"
 				)
+
+		if num_batches == 0:
+			raise RuntimeError(
+				f"[ABORT] Epoch {epoch+1}: zero valid batches. "
+				f"All {len(train_loader)} batches produced NaN/Inf loss. "
+				f"Reduce learning_rate or lora_alpha and rerun."
+			)
+
+		# Report skips at end of epoch
+		if nan_loss_count > 0 or nan_grad_count > 0:
+			print(
+				f"[Epoch {epoch+1}] Skipped batches — "
+				f"NaN loss: {nan_loss_count}, NaN grad: {nan_grad_count} "
+				f"/ {len(train_loader)} total"
+			)
 
 		avg_total = epoch_loss_total / num_batches if num_batches > 0 else 0.0
 		avg_i2t   = epoch_loss_i2t   / num_batches if num_batches > 0 else 0.0
@@ -2698,7 +2747,6 @@ def rslora_finetune_multi_label(
 		learning_rates_history.append([optimizer.param_groups[0]['lr']])
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
-		# ── Validation ────────────────────────────────────────────────────────
 		print(
 			f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. "
 			f"Validating Epoch {epoch+1} ..."
@@ -2775,15 +2823,6 @@ def rslora_finetune_multi_label(
 				f"@ epoch {early_stopping.get_best_epoch()+1}"
 			)
 			break
-
-		# if hasattr(train_loader.dataset, 'get_cache_stats'):
-		# 	stats = train_loader.dataset.get_cache_stats()
-		# 	if stats:
-		# 		print(f"Train cache: {stats}")
-		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
-		# 	stats = validation_loader.dataset.get_cache_stats()
-		# 	if stats:
-		# 		print(f"Val cache:   {stats}")
 
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time()-train_and_val_st_time:.1f}s")
 

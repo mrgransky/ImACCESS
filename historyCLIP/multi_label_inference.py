@@ -792,8 +792,8 @@ def main():
 		input_resolution=model_config["image_resolution"],
 	)
 
-	print_loader_info(loader=train_loader, batch_size=args.batch_size)
-	print_loader_info(loader=validation_loader, batch_size=args.batch_size)
+	print_loader_info(loader=train_loader)
+	print_loader_info(loader=validation_loader)
 
 	print("DEBUGGING: Ground Truth Examination")
 	# Check if ground truth extraction is correct
