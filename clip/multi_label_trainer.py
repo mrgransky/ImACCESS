@@ -1553,12 +1553,13 @@ def lora_finetune_multi_label(
 			t2i_map10 = txt2img_metrics.get("mAP", {}).get("10", float("nan"))
 			i2t_r10 = img2txt_metrics.get("Recall", {}).get("10", float("nan"))
 			t2i_r10 = txt2img_metrics.get("Recall", {}).get("10", float("nan"))
+
 			print(
-					f"\nEpoch {epoch+1}:\n"
-					f"  Loss  — Train: {avg_total:.4f} (I2T: {avg_i2t:.4f}, T2I: {avg_t2i:.4f})  Val: {current_val_loss:.4f}\n"
-					f"  I2T   — mAP@10: {i2t_map10:.4f}  R@10: {i2t_r10:.4f}\n"
-					f"  T2I   — mAP@10: {t2i_map10:.4f}  R@10: {t2i_r10:.4f}\n"
-					f"  LR    — {scheduler.get_last_lr()[0]:.2e}"
+				f"\nEpoch {epoch+1}:\n"
+				f"  [LOSS] — {mode.upper()} Train: {avg_total:.4f} (I2T: {avg_i2t}, T2I: {avg_t2i}) Val: {current_val_loss}\n"
+				f"  I2T    — mAP@10: {i2t_map10:.4f}  R@10: {i2t_r10:.4f}\n"
+				f"  T2I    — mAP@10: {t2i_map10:.4f}  R@10: {t2i_r10:.4f}\n"
+				f"  LR     — {scheduler.get_last_lr()[0]:.2e}"
 			)
 			if align_score is not None:
 				print(f"  Embed — AlignScore@5: {align_score:.4f}")
@@ -1580,17 +1581,6 @@ def lora_finetune_multi_label(
 						f"@ epoch {early_stopping.get_best_epoch()+1}"
 					)
 					break
-
-			# # Cache stats
-			# if hasattr(train_loader.dataset, 'get_cache_stats'):
-			# 	stats = train_loader.dataset.get_cache_stats()
-			# 	if stats:
-			# 		print(f"Train cache: {stats}")
-
-			# if hasattr(validation_loader.dataset, 'get_cache_stats'):
-			# 	stats = validation_loader.dataset.get_cache_stats()
-			# 	if stats:
-			# 		print(f"Val cache:   {stats}")
 			
 			print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time()-train_and_val_st_time:.1f}s")
 
@@ -2527,7 +2517,7 @@ def rslora_finetune_multi_label(
 	N           = masks["N"]
 	train_freq  = masks["train_freq"]
 
-	# ── Criteria
+	# Criteria
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
 		pos_weight=pos_weight,
 		reduction='none',
@@ -2762,10 +2752,7 @@ def rslora_finetune_multi_label(
 		learning_rates_history.append([optimizer.param_groups[0]['lr']])
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
-		print(
-			f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. "
-			f"Validating Epoch {epoch+1} ..."
-		)
+		print(f"Training Epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f}s. Validating Epoch {epoch+1}...")
 
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
@@ -2813,10 +2800,10 @@ def rslora_finetune_multi_label(
 		align_score = full_val_metrics.get("alignment_score")
 		print(
 			f"\nEpoch {epoch+1}:\n"
-			f"  Loss  — Train: {avg_total:.4f} (I2T: {avg_i2t:.4f}, T2I: {avg_t2i:.4f})  Val: {current_val_loss:.4f}\n"
-			f"  I2T   — mAP@10: {i2t_map10:.4f}  R@10: {i2t_r10:.4f}\n"
-			f"  T2I   — mAP@10: {t2i_map10:.4f}  R@10: {t2i_r10:.4f}\n"
-			f"  LR    — {scheduler.get_last_lr()[0]:.2e}"
+			f"  [LOSS] — {mode.upper()} Train: {avg_total} (I2T: {avg_i2t}, T2I: {avg_t2i}) Val: {current_val_loss}\n"
+			f"  I2T    — mAP@10: {i2t_map10:.4f}  R@10: {i2t_r10:.4f}\n"
+			f"  T2I    — mAP@10: {t2i_map10:.4f}  R@10: {t2i_r10:.4f}\n"
+			f"  LR     — {scheduler.get_last_lr()[0]:.2e}"
 		)
 		if align_score is not None:
 			print(f"  Embed — AlignScore@5: {align_score:.4f}")
@@ -3228,7 +3215,6 @@ def dora_finetune_multi_label(
 	final_img2txt_metrics = None
 	final_txt2img_metrics = None
 
-	# Training loop
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
@@ -3341,7 +3327,7 @@ def dora_finetune_multi_label(
 
 		print(
 			f'\nEpoch {epoch+1}:\n'
-			f'   ├─ [LOSS] {mode}-FT: Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Validation: {current_val_loss:.6f}\n'
+			f'   ├─ [LOSS] {mode.upper()}: Train - Total: {avg_total_loss} (I2T: {avg_i2t_loss}, T2I: {avg_t2i_loss}) Val: {current_val_loss}\n'
 			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
 			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
 			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
