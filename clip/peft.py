@@ -813,8 +813,8 @@ class VeRALinear(torch.nn.Module):
 			print(f"\n[INITIALIZATION] scaling vectors (λ_d, λ_b):")
 			print(f"λ_d (from rank: {self.rank}): {self.lambda_d.shape}, init (ones?): {self.lambda_d.mean()} ") # check if ones
 			print(f"λ_b (from out_features: {self.out_features}): {self.lambda_b.shape}, init (zeros?): {self.lambda_b.mean()} ")
-			print(f"MEAN: λ_d: {self.lambda_d.mean()} λ_b: {self.lambda_b.mean()}")
-			print(f"STD: λ_d: {self.lambda_d.std()} λ_b: {self.lambda_b.std()}")
+			print(f"[MEAN] λ_d: {self.lambda_d.mean()} λ_b: {self.lambda_b.mean()}")
+			print(f"[STD]  λ_d: {self.lambda_d.std()}  λ_b: {self.lambda_b.std()}")
 			
 		# Freeze base weights
 		self.linear.weight.requires_grad = False
