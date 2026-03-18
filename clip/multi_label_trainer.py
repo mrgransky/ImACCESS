@@ -1367,7 +1367,6 @@ def lora_finetune_multi_label(
 		print(f"   ├─ {all_class_embeds.dtype}")
 		print(f"   └─ {all_class_embeds.device}")
 
-
 	# ── Early stopping
 	early_stopping = EarlyStopping(
 			patience=patience,
