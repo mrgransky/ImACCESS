@@ -859,13 +859,22 @@ def full_finetune_multi_label(
 		print(f"   ├─ {all_class_embeds.dtype}")
 		print(f"   └─ {all_class_embeds.device}")
 
+
+	full_params = [p for p in model.parameters() if p.requires_grad]
 	optimizer = torch.optim.AdamW(
-		params=[p for p in model.parameters() if p.requires_grad],
+		params=full_params,
 		lr=learning_rate,
 		betas=(0.9, 0.98),
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
+	if verbose:
+		print(f"\n{optimizer.__class__.__name__}")
+		print(f"  ├─ Params: {sum(p.numel() for p in full_params):,}")
+		print(f"  ├─ LR: {learning_rate}")
+		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
+		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
+		print(f"  └─ Weight Decay: {weight_decay}")
 
 	estimated_epochs = min(num_epochs, 15)
 	total_training_steps = estimated_epochs * len(train_loader)
@@ -1382,6 +1391,13 @@ def lora_finetune_multi_label(
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
+	if verbose:
+		print(f"\n{optimizer.__class__.__name__}")
+		print(f"  ├─ Params: {sum(p.numel() for p in lora_params):,}")
+		print(f"  ├─ LR: {learning_rate}")
+		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
+		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
+		print(f"  └─ Weight Decay: {weight_decay}")
 
 	# Scheduler — full requested duration
 	total_training_steps = num_epochs * len(train_loader)
@@ -2578,7 +2594,7 @@ def rslora_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n{optimizer.__class__.__name__}")
-		print(f"  ├─ Params: {sum(p.numel() for p in rslora_params)}")
+		print(f"  ├─ Params: {sum(p.numel() for p in rslora_params):,}")
 		print(f"  ├─ LR: {learning_rate}")
 		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
@@ -3140,6 +3156,7 @@ def dora_finetune_multi_label(
 
 	if verbose:
 		print(f"\n{optimizer.__class__.__name__}")
+		print(f"  ├─ Params: {sum(p.numel() for p in dora_params):,}")
 		print(f"  ├─ LR: {learning_rate}")
 		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
@@ -3720,7 +3737,6 @@ def ia3_finetune_multi_label(
 
 	# Optimizer setup
 	ia3_params = [p for p in model.parameters() if p.requires_grad]
-	print(f"(IA)³ trainable parameters: {sum(p.numel() for p in ia3_params)}")
 
 	optimizer = torch.optim.AdamW(
 		params=ia3_params,
@@ -3729,6 +3745,13 @@ def ia3_finetune_multi_label(
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
+	if verbose:
+		print(f"\n{optimizer.__class__.__name__}")
+		print(f"  ├─ Params: {sum(p.numel() for p in ia3_params):,}")
+		print(f"  ├─ LR: {learning_rate}")
+		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
+		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
+		print(f"  └─ Weight Decay: {weight_decay}")
 
 	# Learning rate scheduler
 	# estimated_epochs = min(num_epochs, 15)
@@ -4317,6 +4340,13 @@ def vera_finetune_multi_label(
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
+	if verbose:
+		print(f"\n{optimizer.__class__.__name__}")
+		print(f"  ├─ Params: {sum(p.numel() for p in vera_params):,}")
+		print(f"  ├─ LR: {learning_rate}")
+		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
+		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
+		print(f"  └─ Weight Decay: {weight_decay}")
 
 	# Learning rate scheduler
 	# estimated_epochs = min(num_epochs, 15)
@@ -4841,7 +4871,6 @@ def clip_adapter_finetune_multi_label(
 	adapter_params = [p for p in model.parameters() if p.requires_grad]
 	if not adapter_params:
 		raise ValueError("No trainable parameters found. Check get_adapter_peft_clip.")
-	print(f"{mode.upper()} trainable parameters: {sum(p.numel() for p in adapter_params):,}")
 
 	optimizer = torch.optim.AdamW(
 		params=adapter_params,
@@ -4850,6 +4879,13 @@ def clip_adapter_finetune_multi_label(
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
+	if verbose:
+		print(f"\n{optimizer.__class__.__name__}")
+		print(f"  ├─ Params: {sum(p.numel() for p in adapter_params):,}")
+		print(f"  ├─ LR: {learning_rate}")
+		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
+		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
+		print(f"  └─ Weight Decay: {weight_decay}")
 
 	# Scheduler
 	T_max = num_epochs * len(train_loader)
@@ -5592,6 +5628,13 @@ def tip_adapter_finetune_multi_label(
 			eps=1e-6,
 			weight_decay=weight_decay,
 		)
+		if verbose:
+			print(f"\n{optimizer.__class__.__name__} optimizer")
+			print(f"  ├─ Params: {sum(p.numel() for p in trainable_parameters):,}")
+			print(f"  ├─ LR: {learning_rate}")
+			print(f"  ├─ Betas: {optimizer.defaults['betas']}")
+			print(f"  ├─ Eps: {optimizer.defaults['eps']}")
+			print(f"  └─ Weight Decay: {weight_decay}")
 		
 		T_max = num_epochs * len(train_loader)
 		ANNEALING_RATIO = 1e-2
