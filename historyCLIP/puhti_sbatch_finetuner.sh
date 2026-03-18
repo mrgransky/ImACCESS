@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=256G
+#SBATCH --mem=192G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-40:4
@@ -112,7 +112,7 @@ esac
 
 # Batch sizes and print frequencies
 BATCH_SIZES=(16 64 64 64 64)
-PRINT_FREQUENCIES=(500 1000 50 50 25)
+PRINT_FREQUENCIES=(1000 1000 50 50 25)
 
 # Learning rates by method group
 # LR_FULL_FT=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)

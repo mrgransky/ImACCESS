@@ -1556,10 +1556,10 @@ def lora_finetune_multi_label(
 
 			print(
 				f"\nEpoch {epoch+1}:\n"
-				f"  [LOSS] — {mode.upper()} Train: {avg_total:.4f} (I2T: {avg_i2t}, T2I: {avg_t2i}) Val: {current_val_loss}\n"
+				f"  [LOSS] — {mode.upper()}-FT Train: {avg_total:.4f} (I2T: {avg_i2t}, T2I: {avg_t2i}) Val: {current_val_loss}\n"
 				f"  I2T    — mAP@10: {i2t_map10:.4f}  R@10: {i2t_r10:.4f}\n"
 				f"  T2I    — mAP@10: {t2i_map10:.4f}  R@10: {t2i_r10:.4f}\n"
-				f"  LR     — {scheduler.get_last_lr()[0]:.2e}"
+				f"  LR     — {scheduler.get_last_lr()[0]}"
 			)
 			if align_score is not None:
 				print(f"  Embed — AlignScore@5: {align_score:.4f}")
@@ -1586,7 +1586,6 @@ def lora_finetune_multi_label(
 
 	print(f"[{mode}] Total elapsed: {time.time()-train_start_time:.1f}s")
 
-	# Final evaluation
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
@@ -2800,10 +2799,10 @@ def rslora_finetune_multi_label(
 		align_score = full_val_metrics.get("alignment_score")
 		print(
 			f"\nEpoch {epoch+1}:\n"
-			f"  [LOSS] — {mode.upper()} Train: {avg_total} (I2T: {avg_i2t}, T2I: {avg_t2i}) Val: {current_val_loss}\n"
+			f"  [LOSS] — {mode.upper()}-FT Train: {avg_total} (I2T: {avg_i2t}, T2I: {avg_t2i}) Val: {current_val_loss}\n"
 			f"  I2T    — mAP@10: {i2t_map10:.4f}  R@10: {i2t_r10:.4f}\n"
 			f"  T2I    — mAP@10: {t2i_map10:.4f}  R@10: {t2i_r10:.4f}\n"
-			f"  LR     — {scheduler.get_last_lr()[0]:.2e}"
+			f"  LR     — {scheduler.get_last_lr()[0]}"
 		)
 		if align_score is not None:
 			print(f"  Embed — AlignScore@5: {align_score:.4f}")
@@ -4521,7 +4520,7 @@ def vera_finetune_multi_label(
 		print(
 			f'\nEpoch {epoch+1}:\n'
 			f'   ├─ [LOSS] {mode.upper()}-FT: Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Validation: {current_val_loss:.6f}\n'
-			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
+			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]}\n'
 			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
 			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'      └─ [T2I] {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
@@ -4532,7 +4531,13 @@ def vera_finetune_multi_label(
 			print(f'   ├─ Embed — CosSim: {cos_sim:.4f}')
 		else:
 			print(f'   ├─ Embed — AlignScore: N/A')
-		
+		# print(f"   ├─ [VeRA SCALING VECTORS]:")
+		# for name, module in model.named_modules():
+		# 	if hasattr(module, 'lambda_b') and hasattr(module, 'lambda_d'):
+		# 		lb = module.lambda_b.data
+		# 		ld = module.lambda_d.data
+		# 		print(f"\t{name:<60s}λ_b: mean={lb.mean():.6f} std={lb.std():.6f} max={lb.abs().max():.6f} λ_d: mean={ld.mean():.6f} std={ld.std():.6f} max={ld.abs().max():.6f}")
+
 		print(f"   ├─ Retrieval Metrics:")
 		print(
 			f"      ├─ [I2T] mAP {retrieval_metrics_per_epoch['img2txt'].get('mAP', {})}, "
@@ -4562,20 +4567,52 @@ def vera_finetune_multi_label(
 				f"@ epoch {early_stopping.get_best_epoch()+1}")
 			break
 
-		# # Cache stats
-		# if hasattr(train_loader.dataset, 'get_cache_stats'):
-		# 	cache_stats = train_loader.dataset.get_cache_stats()
-		# 	if cache_stats is not None:
-		# 		print(f"Train Cache: {cache_stats}")
-
-		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
-		# 	cache_stats = validation_loader.dataset.get_cache_stats()
-		# 	if cache_stats is not None:
-		# 		print(f"Validation Cache: {cache_stats}")
-
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 	
-	print(f"[{mode}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
+	print(f"[VeRA SCALING VECTORS — Post-Training Summary]")
+	lambda_b_stats = []
+	lambda_d_stats = []
+	for name, module in model.named_modules():
+		if hasattr(module, 'lambda_b') and hasattr(module, 'lambda_d'):
+			lb = module.lambda_b.data.cpu()
+			ld = module.lambda_d.data.cpu()
+			lambda_b_stats.append(lb)
+			lambda_d_stats.append(ld)
+			print(
+				f"  {name:<50s} "
+				f"λ_b: mean={lb.mean():.6f} std={lb.std():.6f} max={lb.abs().max():.6f} | "
+				f"λ_d: mean={ld.mean():.6f} std={ld.std():.6f}"
+			)
+
+	# Global summary
+	glb_lb = torch.cat(lambda_b_stats)
+	glb_ld = torch.cat(lambda_d_stats)
+
+	lb_mean_abs = glb_lb.abs().mean().item()
+	lb_std = glb_lb.std().item()
+	ld_mean_delta = (glb_ld - 1.0).abs().mean().item()
+
+	print(f"\n[GLOBAL SUMMARY — VeRA SCALING VECTORS]")
+	print(f"  ▶ Gating Signal (λ_b): Mean |λ_b| = {lb_mean_abs} std={lb_std}")
+	print(f"  ▶ Refine Signal (λ_d): Mean Δλ_d  = {ld_mean_delta} std={glb_ld.std()}")
+	print(f"  ▶ λ_b — max={glb_lb.abs().max():.6f}  nonzero={(glb_lb.abs() > 1e-6).sum().item()}/{glb_lb.numel()}")
+	print(f"  ▶ λ_d — max={glb_ld.abs().max():.6f}  delta_from_init={ld_mean_delta}")
+	print(f"\n[DIAGNOSIS]")
+	if lb_mean_abs < 1e-7:
+		print("  ❌ CRITICAL: λ_b is effectively zero. The VeRA path is CLOSED. Check gradients/LR.")
+	elif lb_mean_abs < 1e-4:
+		print("  ⚠️ WARNING: λ_b is very weak. Model is barely using the adapted path.")
+	else:
+		print("  ✅ SUCCESS: λ_b is active. The model is successfully 'opening the gate' to VeRA.")
+			
+	if ld_mean_delta < 1e-7:
+		print("  ⚠️ NOTE: λ_d hasn't moved from 1.0. Rank-space refinement is inactive.")
+	elif ld_mean_delta > 0.5:
+		print("  ⚠️ NOTE: λ_d has shifted significantly (>0.5). High adaptation in rank-space.")
+	else:
+		print("  ✅ SUCCESS: λ_d is refining the rank-space directions.")
+	
+	print(f"\n[{mode.upper()}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
 
 	# Final evaluation
 	evaluation_results = evaluate_best_model(

@@ -3107,7 +3107,7 @@ def multilabel_eda(
 		'NUS-WIDE': estimate_nus_wide_metrics(),
 		'MIRFLICKR-25K': estimate_mirflickr_metrics()
 	}
-	fig, ax = plt.subplots(figsize=(10, 10))
+	fig, ax = plt.subplots(figsize=(9, 9))
 	
 	# 2. Plot Perfect Equality Line
 	ax.plot([0, 1], [0, 1], 'k--', linewidth=2, label='Perfect Equality', alpha=0.5)
@@ -3161,7 +3161,7 @@ def multilabel_eda(
 	# ax.set_title(f'Lorenz Curve: Label Imbalance Analysis', fontsize=14, weight='bold')
 	ax.legend(
 		loc='best',
-		fontsize=11,
+		fontsize=12,
 		frameon=False,
 		fancybox=True,
 		shadow=True,
