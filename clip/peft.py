@@ -803,15 +803,19 @@ class VeRALinear(torch.nn.Module):
 		self.register_buffer('vera_A', vera_A_slice)
 		self.register_buffer('vera_B', vera_B_slice)
 		
-		# Trainable scaling vectors (per layer)
-		self.lambda_d = torch.nn.Parameter(torch.ones(self.rank)) # [rank]
-		self.lambda_b = torch.nn.Parameter(torch.zeros(self.out_features)) # [out_features]
-		
+		# # Trainable scaling vectors (per layer)
+		# self.lambda_d = torch.nn.Parameter(torch.ones(self.rank)) # [rank]
+		# self.lambda_b = torch.nn.Parameter(torch.zeros(self.out_features)) # [out_features]
+		self.lambda_d = torch.nn.Parameter(torch.ones(self.rank, device=self.device))
+		self.lambda_b = torch.nn.Parameter(torch.zeros(self.out_features, device=self.device))
+
 		if self.verbose:
 			print(f"\n[INITIALIZATION] scaling vectors (λ_d, λ_b):")
 			print(f"λ_d (from rank: {self.rank}): {self.lambda_d.shape}, init (ones?): {self.lambda_d.mean()} ") # check if ones
 			print(f"λ_b (from out_features: {self.out_features}): {self.lambda_b.shape}, init (zeros?): {self.lambda_b.mean()} ")
-				
+			print(f"MEAN: λ_d: {self.lambda_d.mean()} λ_b: {self.lambda_b.mean()}")
+			print(f"STD: λ_d: {self.lambda_d.std()} λ_b: {self.lambda_b.std()}")
+			
 		# Freeze base weights
 		self.linear.weight.requires_grad = False
 		if self.verbose:
