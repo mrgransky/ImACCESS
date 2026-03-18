@@ -2019,12 +2019,6 @@ def get_adapter_peft_clip(
 
 	return model
 
-# ── MHA LoRA forward patch ────────────────────────────────────────────────────
-# PyTorch's nn.MultiheadAttention.forward() calls F.multi_head_attention_forward
-# directly with self.in_proj_weight and self.out_proj.weight, bypassing any
-# custom .forward() method on injected LoRALinear modules. This patch replaces
-# the MHA forward method to dynamically compose W + scale*(B@A) at runtime.
-
 def bind_mha_lora_forward(mha_module: torch.nn.Module, method_name: str) -> None:
 	"""
 	Monkey-patch a nn.MultiheadAttention instance so that its forward pass
@@ -2813,21 +2807,19 @@ def get_injected_peft_clip(
 		
 		print(f"\n[MHA FORWARD PATCH VERIFICATION]")
 		def verify_mha_patches(encoder_module, encoder_name, method_name, expect_adapters: bool):
-			total    = 0
-			patched  = 0
-			issues   = []
+			total   = 0
+			patched = 0
+			issues  = []
 			for name, module in encoder_module.named_modules():
 					if not isinstance(module, torch.nn.MultiheadAttention):
 							continue
 					total += 1
-					is_patched = 'forward' in module.__dict__
+					is_patched      = 'forward' in module.__dict__
 					in_proj_adapter = getattr(module, f"{method_name}_in_proj", None)
 					has_in_proj     = in_proj_adapter is not None
-					has_out_lora    = hasattr(module.out_proj, 'lora_A')
 					if not expect_adapters:
-							# Text encoder with target_text_modules=[] — patch should NOT be applied
 							if is_patched:
-									issues.append(f"{encoder_name}.{name} — patched but no adapters injected (spurious patch)")
+									issues.append(f"{encoder_name}.{name} — patched but no adapters injected")
 									status = "⚠"
 							else:
 									status = "✓ (correctly unpatched)"
@@ -2836,51 +2828,100 @@ def get_injected_peft_clip(
 									print(f"    {status} {encoder_name}.{name}")
 									print(f"        └─ forward patched: {is_patched} (expected: False)")
 							continue
-					# Vision encoder — adapters expected
+					# ── per-method in_proj verification ──────────────────────────────
 					in_proj_ok   = False
 					in_proj_info = "NOT FOUND"
 					if has_in_proj:
-							scale_val      = getattr(in_proj_adapter, 'scale', None)
-							rslora_val     = getattr(in_proj_adapter, 'rslora', False)
-							weight_aliased = module.in_proj_weight is in_proj_adapter.linear.weight
-							in_proj_ok     = (
-									hasattr(in_proj_adapter, 'lora_A')
-									and hasattr(in_proj_adapter, 'lora_B')
-									and weight_aliased
-							)
-							in_proj_info = (
-									f"lora_A={in_proj_adapter.lora_A.weight.shape} "
-									f"lora_B={in_proj_adapter.lora_B.weight.shape} "
-									f"scale={scale_val:.4f} "
-									f"rslora={rslora_val} "
-									f"weight_aliased={weight_aliased}"
-							)
+							if isinstance(in_proj_adapter, IA3Linear):
+									weight_aliased = module.in_proj_weight is in_proj_adapter.linear.weight
+									in_proj_ok     = hasattr(in_proj_adapter, 'ia3_scale') and weight_aliased
+									in_proj_info   = (
+											f"ia3_scale={in_proj_adapter.ia3_scale.shape} "
+											f"weight_aliased={weight_aliased}"
+									)
+							elif isinstance(in_proj_adapter, VeRALinear):
+									weight_aliased = module.in_proj_weight is in_proj_adapter.linear.weight
+									in_proj_ok     = (
+											hasattr(in_proj_adapter, 'vera_A')
+											and hasattr(in_proj_adapter, 'vera_B')
+											and hasattr(in_proj_adapter, 'lambda_d')
+											and hasattr(in_proj_adapter, 'lambda_b')
+											and weight_aliased
+									)
+									in_proj_info   = (
+											f"vera_A={in_proj_adapter.vera_A.shape} "
+											f"vera_B={in_proj_adapter.vera_B.shape} "
+											f"lambda_d={in_proj_adapter.lambda_d.shape} "
+											f"lambda_b={in_proj_adapter.lambda_b.shape} "
+											f"weight_aliased={weight_aliased}"
+									)
+							else:  # LoRA / rsLoRA / LoRA+ / DoRA
+									scale_val      = getattr(in_proj_adapter, 'scale', None)
+									rslora_val     = getattr(in_proj_adapter, 'rslora', False)
+									weight_aliased = module.in_proj_weight is in_proj_adapter.linear.weight
+									in_proj_ok     = (
+											hasattr(in_proj_adapter, 'lora_A')
+											and hasattr(in_proj_adapter, 'lora_B')
+											and weight_aliased
+									)
+									in_proj_info   = (
+											f"lora_A={in_proj_adapter.lora_A.weight.shape} "
+											f"lora_B={in_proj_adapter.lora_B.weight.shape} "
+											f"scale={scale_val:.4f} rslora={rslora_val} "
+											f"weight_aliased={weight_aliased}"
+									)
+					# ── per-method out_proj verification ─────────────────────────────
 					out_proj_ok   = False
-					out_proj_info = "NOT LoRALinear"
-					if has_out_lora:
-							scale_val    = getattr(module.out_proj, 'scale', None)
-							rslora_val   = getattr(module.out_proj, 'rslora', False)
-							out_proj_ok  = True
+					out_proj_info = "NOT adapted"
+					if isinstance(module.out_proj, IA3Linear):
+							out_proj_ok   = hasattr(module.out_proj, 'ia3_scale')
+							out_proj_info = f"ia3_scale={module.out_proj.ia3_scale.shape}"
+					elif isinstance(module.out_proj, VeRALinear):
+							out_proj_ok   = (
+									hasattr(module.out_proj, 'vera_A')
+									and hasattr(module.out_proj, 'vera_B')
+							)
+							out_proj_info = (
+									f"vera_A={module.out_proj.vera_A.shape} "
+									f"vera_B={module.out_proj.vera_B.shape}"
+							)
+					elif hasattr(module.out_proj, 'lora_A'):
+							scale_val     = getattr(module.out_proj, 'scale', None)
+							out_proj_ok   = True
 							out_proj_info = (
 									f"lora_A={module.out_proj.lora_A.weight.shape} "
 									f"lora_B={module.out_proj.lora_B.weight.shape} "
-									f"scale={scale_val:.4f} "
-									f"rslora={rslora_val} "
-									f"base_weight={module.out_proj.linear.weight.shape}"
+									f"scale={scale_val:.4f}"
 							)
+					# ── weight delta shape check (method-aware) ───────────────────────
 					weight_shape_ok = False
 					shape_info      = "N/A"
 					if has_in_proj and in_proj_ok:
-							lora_delta      = (
-									in_proj_adapter.scale
-									* (in_proj_adapter.lora_B.weight @ in_proj_adapter.lora_A.weight)
-							)
-							weight_shape_ok = lora_delta.shape == module.in_proj_weight.shape
-							shape_info      = (
-									f"delta={lora_delta.shape} "
-									f"matches_in_proj={weight_shape_ok} "
-									f"delta_norm={lora_delta.norm().item():.6f}"
-							)
+							if isinstance(in_proj_adapter, IA3Linear):
+									delta          = in_proj_adapter.ia3_scale.unsqueeze(1) * in_proj_adapter.linear.weight
+									weight_shape_ok = delta.shape == module.in_proj_weight.shape
+									shape_info      = (
+											f"delta={delta.shape} matches_in_proj={weight_shape_ok} "
+											f"delta_norm={delta.norm().item():.6f}"
+									)
+							elif isinstance(in_proj_adapter, VeRALinear):
+									BLd             = in_proj_adapter.vera_B * in_proj_adapter.lambda_d.unsqueeze(0)
+									delta           = (BLd @ in_proj_adapter.vera_A) * in_proj_adapter.lambda_b.unsqueeze(1)
+									weight_shape_ok = delta.shape == module.in_proj_weight.shape
+									shape_info      = (
+											f"delta={delta.shape} matches_in_proj={weight_shape_ok} "
+											f"delta_norm={delta.norm().item():.6f}"
+									)
+							else:
+									delta           = (
+											in_proj_adapter.scale
+											* (in_proj_adapter.lora_B.weight @ in_proj_adapter.lora_A.weight)
+									)
+									weight_shape_ok = delta.shape == module.in_proj_weight.shape
+									shape_info      = (
+											f"delta={delta.shape} matches_in_proj={weight_shape_ok} "
+											f"delta_norm={delta.norm().item():.6f}"
+									)
 					overall_ok = is_patched and in_proj_ok and out_proj_ok and weight_shape_ok
 					if overall_ok:
 							patched += 1

@@ -680,13 +680,13 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 			)
 
 def get_multi_label_dataloaders(
-		metadata_fpth: str,
-		batch_size: int,
-		num_workers: int,
-		input_resolution: int,
-		col:str='multimodal_labels',
-		cache_size: int = None,
-	) -> Tuple[DataLoader, DataLoader]:
+	metadata_fpth: str,
+	batch_size: int,
+	num_workers: int,
+	input_resolution: int,
+	col:str='multimodal_labels',
+	cache_size: int = None,
+) -> Tuple[DataLoader, DataLoader]:
 	ddir = os.path.dirname(metadata_fpth)
 	dataset_name = os.path.basename(ddir)
 	print(f"\nCreating multi-label dataloaders for {dataset_name} from {metadata_fpth}")
