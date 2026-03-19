@@ -701,38 +701,6 @@ def get_multi_label_dataloaders(
 		sample_size=int(total_samples*0.1) if total_samples > int(1e5) else 5000,
 	)
 	
-	# if 'SLURM_MEM_PER_NODE' in os.environ:
-	# 	# Slurm reports memory in Megabytes. Convert to GB.
-	# 	slurm_mem_mb = float(os.environ['SLURM_MEM_PER_NODE'])
-	# 	available_gb = slurm_mem_mb / 1024.0
-	# 	total_gb = available_gb
-	# 	is_hpc = True
-	# 	print(
-	# 		f"\n>> HPC Environment Detected (Slurm).\n"
-	# 		f"\tSlurm Allocated Memory: {available_gb:.2f}GB\n"
-	# 		f"\t(Using allocation limit instead of node physical memory)"
-	# 	)
-	# else:
-	# 	if cache_size is None:
-	# 		# Fallback for local development (Non-HPC)
-	# 		memory = psutil.virtual_memory()
-	# 		available_gb = memory.available / (1024**3)
-	# 		total_gb = memory.total / (1024**3)
-	# 		is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID'])
-	# 		print(
-	# 			f"\n>> Local Environment Detected.\n"
-	# 			f"\tRAM memory [Total]: {total_gb:.2f}GB [Available]: {available_gb:.2f}GB"
-	# 		)			
-	# 		print(f"\tEstimated image size: {average_image_size_mb:.2f}MB/image")
-			
-	# 		cache_size = get_cache_size(
-	# 			dataset_size=total_samples,
-	# 			available_memory_gb=available_gb, # This is now correctly 128GB
-	# 			average_image_size_mb=average_image_size_mb,
-	# 			is_hpc=is_hpc,
-	# 		)
-
-
 	is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID'])
 	if is_hpc:
 		if 'SLURM_MEM_PER_NODE' in os.environ:

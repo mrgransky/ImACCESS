@@ -330,6 +330,7 @@ def probe_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_{probe.probe_type}_"
+		f"{model_name}_"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
@@ -899,6 +900,7 @@ def full_finetune_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
+		f"{model_name}_"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
 		f"do_{dropout_val}_"
@@ -915,6 +917,7 @@ def full_finetune_multi_label(
 		f"pit_{pairwise_imp_threshold:.1e}"
 		f".pth"
 	)
+	
 	print(f"Best model will be saved in: {mdl_fpth}")
 	training_losses = list()
 	validation_losses = list()
@@ -1414,7 +1417,9 @@ def lora_finetune_multi_label(
 	# Checkpoint path
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{mode}_{model_arch}_"
+		f"{mode}_"
+		f"{model_name}_"
+		f"{model_arch}_"
 		f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
 		f"lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}_"
 		f"temp_{temperature}_bs_{train_loader.batch_size}_"
@@ -1974,6 +1979,7 @@ def lora_plus_finetune_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
+		f"{model_name}_"
 		f"{'quantized_' + str(quantization_bits) + 'bit_' if quantized else ''}"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
@@ -2595,7 +2601,9 @@ def rslora_finetune_multi_label(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{mode}_{model_arch}_"
+		f"{mode}_"
+		f"{model_name}_"
+		f"{model_arch}_"
 		f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
 		f"lor_{lora_rank}_"
 		f"loa_{lora_alpha}_"
@@ -3157,6 +3165,7 @@ def dora_finetune_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
+		f"{model_name}_"
 		f"{'quantized_' + str(quantization_bits) + 'bit_' if quantized else ''}"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
@@ -3739,6 +3748,7 @@ def ia3_finetune_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
+		f"{model_name}_"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
@@ -4329,6 +4339,7 @@ def vera_finetune_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
+		f"{model_name}_"
 		f"{'quantized_' + str(quantization_bits) + 'bit_' if quantized else ''}"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
@@ -4898,7 +4909,9 @@ def clip_adapter_finetune_multi_label(
 	# Checkpoint path
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{clip_adapter_method}_{model_arch}_"
+		f"{clip_adapter_method}_"
+		f"{model_name}_"
+		f"{model_arch}_"
 		f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
 		f"cbd_{bottleneck_dim}_act_{activation}_temp_{temperature}_"
@@ -5649,6 +5662,7 @@ def tip_adapter_finetune_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{tip_adapter_method}_"
+		f"{model_name}_"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
