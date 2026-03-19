@@ -387,9 +387,6 @@ def probe_multi_label(
 	
 	training_losses = list()
 	validation_losses = list()
-	training_losses_breakdown = {"total": []}
-	img2txt_metrics_all_epochs = list()
-	txt2img_metrics_all_epochs = list()
 	full_val_loss_acc_metrics_all_epochs = list()
 	learning_rates_history = list()
 	weight_decays_history = list()
@@ -3486,29 +3483,29 @@ def dora_finetune_multi_label(
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
 def ia3_finetune_multi_label(
-		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
-		num_epochs: int,
-		print_every: int,
-		learning_rate: float,
-		weight_decay: float,
-		device: str,
-		results_dir: str,
-		patience: int,
-		min_delta: float,
-		cumulative_delta: float,
-		minimum_epochs: int,
-		volatility_threshold: float,
-		slope_threshold: float,
-		pairwise_imp_threshold: float,
-		topk_values: List[int] = [1, 5, 10, 15, 20],
-		loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
-		temperature: float = 0.07,  # Temperature for contrastive learning
-		quantization_bits: int = 8,
-		quantized: bool = False,
-		verbose: bool = True,
-	):
+	model: torch.nn.Module,
+	train_loader: DataLoader,
+	validation_loader: DataLoader,
+	num_epochs: int,
+	print_every: int,
+	learning_rate: float,
+	weight_decay: float,
+	device: str,
+	results_dir: str,
+	patience: int,
+	min_delta: float,
+	cumulative_delta: float,
+	minimum_epochs: int,
+	volatility_threshold: float,
+	slope_threshold: float,
+	pairwise_imp_threshold: float,
+	topk_values: List[int] = [1, 5, 10, 15, 20],
+	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
+	temperature: float = 0.07,  # Temperature for contrastive learning
+	quantization_bits: int = 8,
+	quantized: bool = False,
+	verbose: bool = True,
+):
 	"""
 	(IA)³ fine-tuning for multi-label CLIP classification.
 	

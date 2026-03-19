@@ -476,8 +476,17 @@ def plot_hyperparameter_evolution(
 	epochs = list(range(len(learning_rates)))
 
 	ax1.plot(epochs, learning_rates, color="#0010F3", linewidth=2.0, alpha=0.8, label="LR")
-	ax1.axhline(y=eta_min, color="#CE0045", linestyle="--", linewidth=1.0, alpha=0.8, label="eta_min")
-	ax1.legend(loc='upper right', frameon=True, fancybox=True, shadow=True, facecolor='white', edgecolor='black')
+	ax1.axhline(y=eta_min, color="#CE0045", linestyle="--", linewidth=1.0, alpha=0.8, label=f"eta_min = {eta_min}")
+	ax1.legend(
+		loc="best",
+		fontsize=10,
+		ncol=1,
+		frameon=False, 
+		fancybox=True, 
+		shadow=True, 
+		facecolor='white', 
+		edgecolor='none'
+	)
 	ax1.set_title("Learning Rate Evolution", fontsize=10, weight="bold")
 	ax1.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=nbins))
 	ax1.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
@@ -488,7 +497,16 @@ def plot_hyperparameter_evolution(
 	ax2.set_xlabel("Epoch", fontsize=10, weight="bold")
 	ax2.set_ylabel("WD", fontsize=10, weight="bold")
 	ax2.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=nbins))
-	ax2.legend(loc='upper right', frameon=True, fancybox=True, shadow=True, facecolor='white', edgecolor='black')
+	ax2.legend(
+		loc='best',
+		fontsize=10,
+		ncol=1,
+		frameon=False, 
+		fancybox=True, 
+		shadow=True, 
+		facecolor='white', 
+		edgecolor='none'
+	)
 	ax2.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
 
 	plt.tight_layout()

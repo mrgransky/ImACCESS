@@ -192,9 +192,7 @@ class EarlyStopping:
 			checkpoint_path: str,
 			current_phase: Optional[int] = None,
 		) -> bool:
-				# ------------------------------------------------------------------ #
 				# 1. Record raw loss and update EMA                                   #
-				# ------------------------------------------------------------------ #
 				self.value_history.append(current_value)
 				self._update_ema(current_value)
 
@@ -233,7 +231,7 @@ class EarlyStopping:
 					self.improvement_history.append(False)
 					delta_from_best = abs(current_value - self.best_score) if self.best_score is not None else float('nan')
 					print(f"\n[NO IMPROVEMENT]")
-					print(f"    Delta from best : {delta_from_best:.8f}  (min_delta={self.min_delta})")
+					print(f"    Delta from best : {delta_from_best} < (min_delta={self.min_delta})")
 					print(f"    Patience counter: {self.counter} / {self.effective_patience}")
 					print()
 
@@ -402,40 +400,40 @@ class EarlyStopping:
 				return should_stop_flag
 
 		def _record_improvement(
-				self,
-				current_value: float,
-				epoch: int,
-				model: torch.nn.Module,
-				optimizer: torch.optim.Optimizer,
-				scheduler,
-				checkpoint_path: str,
-				current_phase: Optional[int],
+			self,
+			current_value: float,
+			epoch: int,
+			model: torch.nn.Module,
+			optimizer: torch.optim.Optimizer,
+			scheduler,
+			checkpoint_path: str,
+			current_phase: Optional[int],
 		) -> None:
-				"""Centralised improvement recording — called from should_stop and warmup block."""
-				old_best = f"{self.best_score:.8f}" if self.best_score is not None else "N/A"
-				improvement = (
-						abs(self.best_score - current_value)
-						if self.best_score is not None else float('nan')
-				)
-				self.best_score  = current_value
-				self.best_epoch  = epoch
-				self.counter     = 0
-				self.improvement_history.append(True)
-
-				print(f"\n[NEW BEST]")
-				print(f"  Previous best : {old_best}")
-				print(f"  New best      : {current_value:.8f}")
-				print(f"  Improvement   : {improvement:.8f}")
-				print(f"  Epoch         : {epoch + 1}")
-
-				if self.restore_best_weights:
-						self.best_weights = {
-								k: v.clone().cpu().detach()
-								for k, v in model.state_dict().items()
-						}
-						print(f"  Best weights  : stored in memory")
-
-				self._save_checkpoint(checkpoint_path, model, optimizer, scheduler, current_phase)
+			old_best = f"{self.best_score}" if self.best_score is not None else "N/A"
+			improvement = (
+				abs(self.best_score - current_value)
+				if self.best_score is not None else float('nan')
+			)
+			
+			self.best_score  = current_value
+			self.best_epoch  = epoch
+			self.counter     = 0
+			self.improvement_history.append(True)
+			
+			print(f"\n[NEW BEST]")
+			print(f"  Previous best : {old_best}")
+			print(f"  New best      : {current_value}")
+			print(f"  Improvement   : {improvement} >= {self.min_delta}")
+			print(f"  Epoch         : {epoch + 1}")
+			
+			if self.restore_best_weights:
+				self.best_weights = {
+					k: v.clone().cpu().detach()
+					for k, v in model.state_dict().items()
+				}
+				print(f"  Best weights  : stored in memory")
+			
+			self._save_checkpoint(checkpoint_path, model, optimizer, scheduler, current_phase)
 
 		def _save_checkpoint(self, path: str, model, optimizer, scheduler, current_phase):
 				"""Save checkpoint with enhanced error handling"""
