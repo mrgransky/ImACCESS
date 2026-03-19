@@ -701,14 +701,65 @@ def get_multi_label_dataloaders(
 		sample_size=int(total_samples*0.1) if total_samples > int(1e5) else 5000,
 	)
 	
-	if cache_size is None:
+	# if 'SLURM_MEM_PER_NODE' in os.environ:
+	# 	# Slurm reports memory in Megabytes. Convert to GB.
+	# 	slurm_mem_mb = float(os.environ['SLURM_MEM_PER_NODE'])
+	# 	available_gb = slurm_mem_mb / 1024.0
+	# 	total_gb = available_gb
+	# 	is_hpc = True
+	# 	print(
+	# 		f"\n>> HPC Environment Detected (Slurm).\n"
+	# 		f"\tSlurm Allocated Memory: {available_gb:.2f}GB\n"
+	# 		f"\t(Using allocation limit instead of node physical memory)"
+	# 	)
+	# else:
+	# 	if cache_size is None:
+	# 		# Fallback for local development (Non-HPC)
+	# 		memory = psutil.virtual_memory()
+	# 		available_gb = memory.available / (1024**3)
+	# 		total_gb = memory.total / (1024**3)
+	# 		is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID'])
+	# 		print(
+	# 			f"\n>> Local Environment Detected.\n"
+	# 			f"\tRAM memory [Total]: {total_gb:.2f}GB [Available]: {available_gb:.2f}GB"
+	# 		)			
+	# 		print(f"\tEstimated image size: {average_image_size_mb:.2f}MB/image")
+			
+	# 		cache_size = get_cache_size(
+	# 			dataset_size=total_samples,
+	# 			available_memory_gb=available_gb, # This is now correctly 128GB
+	# 			average_image_size_mb=average_image_size_mb,
+	# 			is_hpc=is_hpc,
+	# 		)
+
+
+	is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID'])
+	if is_hpc:
+		if 'SLURM_MEM_PER_NODE' in os.environ:
+			# Slurm reports memory in Megabytes. Convert to GB.
+			slurm_mem_mb = float(os.environ['SLURM_MEM_PER_NODE'])
+			available_gb = slurm_mem_mb / 1024.0
+			total_gb = available_gb
+			print(
+				f"\n>> HPC Environment Detected (Slurm).\n"
+				f"\tSlurm Allocated Memory: {available_gb:.2f}GB\n"
+				f"\t(Using allocation limit instead of node physical memory)"
+			)
+		else:
+			raise ValueError(f"\n>> HPC Environment Detected (Slurm) but SLURM_MEM_PER_NODE not found in environment variables.")
+	else:
 		memory = psutil.virtual_memory()
 		available_gb = memory.available / (1024**3)
 		total_gb = memory.total / (1024**3)
-		is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID'])
+
+	print(
+		f"\nEnvironment Detected: {'HPC' if is_hpc else 'Local'}\n"
+		f"\tRAM memory [Total]: {total_gb:.2f}GB [Available]: {available_gb:.2f}GB"
+	)
+
+	if cache_size is None:
 		print(
-			f"\n>> Obtaining optimal cache size for multi-label dataloader with a total of {total_samples:,} samples:\n"
-			f"\tRAM memory [Total]: {total_gb:.2f}GB [Available]: {available_gb:.2f}GB\n"
+			f"\nObtaining optimal cache size for multi-label dataloader with a total of {total_samples:,} samples:\n"
 			f"\tEstimated image size: {average_image_size_mb:.2f}MB/image"
 		)
 		
@@ -728,7 +779,7 @@ def get_multi_label_dataloaders(
 		val_cache_size = cache_size - train_cache_size
 	else:
 		train_cache_size = val_cache_size = 0
-	print(f">> Total cache size: {cache_size:,} Distributed (train[{train_pct*100:.0f}%]: {train_cache_size:,}, validation[{val_pct*100:.0f}%]: {val_cache_size:,})")
+	print(f"\n[TOTAL] cache size: {cache_size:,} Distributed (train[{train_pct*100:.0f}%]: {train_cache_size:,}, validation[{val_pct*100:.0f}%]: {val_cache_size:,})")
 	
 	train_dataset = HistoricalArchivesMultiLabelDataset(
 		dataset_name=dataset_name,
