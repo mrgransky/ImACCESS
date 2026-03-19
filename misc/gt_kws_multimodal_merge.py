@@ -5,11 +5,11 @@ from clustering import cluster
 
 # how to run:
 # Puhti/Mahti:
-# srun -J interactive_cpu --account=project_2004072 --partition=small --time=00-13:45:00 --mem=48G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
+# srun -J interactive_cpu --account=project_2004072 --partition=small --time=00-13:45:00 --mem=164G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
 # $ python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4/ -nw 40 -v
 
 # new dataset:
-# $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -m "Qwen/Qwen3-Embedding-8B" -nw 8 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
+# $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -m "Qwen/Qwen3-Embedding-8B" -nw 40 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
 
 # old dataset:
 # $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -m "Qwen/Qwen3-Embedding-8B" -nw 20 -v > /scratch/project_2004072/ImACCESS/trash/logs/_interactive_multimodal_annotation_h4.txt &
@@ -18,7 +18,6 @@ from clustering import cluster
 canonical_labels_global = None
 
 def init_worker_canonical(canonical_dict):
-	"""Initialize each worker process with the canonical labels dictionary"""
 	global canonical_labels_global
 	canonical_labels_global = canonical_dict
 

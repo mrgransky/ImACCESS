@@ -603,9 +603,6 @@ def probe_multi_label(
 		class_embeds_override=probe.probe.weight.detach().clone(),
 		verbose=verbose,
 	)
-	if verbose:
-		print(f"\n{mode.upper()} Final evaluation results:")
-		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
 
 	final_metrics_full    = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
@@ -859,7 +856,6 @@ def full_finetune_multi_label(
 		print(f"   ├─ {all_class_embeds.dtype}")
 		print(f"   └─ {all_class_embeds.device}")
 
-
 	full_params = [p for p in model.parameters() if p.requires_grad]
 	optimizer = torch.optim.AdamW(
 		params=full_params,
@@ -876,9 +872,6 @@ def full_finetune_multi_label(
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
 		print(f"  └─ Weight Decay: {weight_decay}")
 
-	estimated_epochs = min(num_epochs, 15)
-	total_training_steps = estimated_epochs * len(train_loader)
-	# T_max = total_training_steps
 	T_max = num_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
@@ -889,7 +882,6 @@ def full_finetune_multi_label(
 		last_epoch=-1,
 	)
 	print(f"\n{scheduler.__class__.__name__} scheduler configured")
-	# print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
 	print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)] (full requested duration)")
 	print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
@@ -1102,9 +1094,7 @@ def full_finetune_multi_label(
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 
 	print(f"[{mode}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
-	print(f"-"*100)
 
-	# FINAL EVALUATION
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
@@ -1121,15 +1111,12 @@ def full_finetune_multi_label(
 		temperature=temperature,
 		verbose=verbose,
 	)
-	if verbose:
-		print(f"\nFull evaluation results:")
-		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
 
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t        = evaluation_results["tiered_i2t"]
-	final_tiered_t2i        = evaluation_results["tiered_t2i"]
+	final_tiered_i2t = evaluation_results["tiered_i2t"]
+	final_tiered_t2i = evaluation_results["tiered_t2i"]
 	model_source = evaluation_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
@@ -1605,10 +1592,6 @@ def lora_finetune_multi_label(
 		topk_values=topk_values,
 		verbose=verbose,
 	)
-
-	if verbose:
-		print(f"\nFull evaluation results:")
-		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
 
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
@@ -2296,10 +2279,7 @@ def lora_plus_finetune_multi_label(
 		topk_values=topk_values,
 		verbose=verbose,
 	)
-	if verbose:
-		print(f"\nFull evaluation results:")
-		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
-
+	
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
@@ -2848,10 +2828,6 @@ def rslora_finetune_multi_label(
 		topk_values=topk_values,
 		verbose=verbose,
 	)
-
-	if verbose:
-		print(f"\nFull evaluation results:")
-		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
 
 	final_metrics_full    = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
@@ -3405,17 +3381,11 @@ def dora_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	if verbose:
-		print(f"{'='*50}")
-		print(f"Full evaluation results:")
-		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
-		print(f"{'='*50}")
-
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t        = evaluation_results["tiered_i2t"]
-	final_tiered_t2i        = evaluation_results["tiered_t2i"]
+	final_tiered_i2t = evaluation_results["tiered_i2t"]
+	final_tiered_t2i = evaluation_results["tiered_t2i"]
 	model_source = evaluation_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
@@ -3975,7 +3945,6 @@ def ia3_finetune_multi_label(
 	
 	print(f"[{mode}] Total Training Time: {time.time() - train_start_time:.1f} sec")
 
-	# Final evaluation
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
@@ -3993,15 +3962,11 @@ def ia3_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	if verbose:
-		print(f"\nFull evaluation results:")
-		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
-
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t        = evaluation_results["tiered_i2t"]
-	final_tiered_t2i        = evaluation_results["tiered_t2i"]
+	final_tiered_i2t = evaluation_results["tiered_i2t"]
+	final_tiered_t2i = evaluation_results["tiered_t2i"]
 	model_source = evaluation_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
@@ -4614,7 +4579,6 @@ def vera_finetune_multi_label(
 	
 	print(f"\n[{mode.upper()}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
 
-	# Final evaluation
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
@@ -4636,15 +4600,11 @@ def vera_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	if verbose:
-		print(f"\nFull evaluation results:")
-		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
-
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t        = evaluation_results["tiered_i2t"]
-	final_tiered_t2i        = evaluation_results["tiered_t2i"]
+	final_tiered_i2t = evaluation_results["tiered_i2t"]
+	final_tiered_t2i = evaluation_results["tiered_t2i"]
 	model_source = evaluation_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
@@ -4988,7 +4948,6 @@ def clip_adapter_finetune_multi_label(
 	weight_decays_history  = []
 	train_start_time = time.time()
 
-	# Training loop
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
@@ -5169,7 +5128,6 @@ def clip_adapter_finetune_multi_label(
 
 	print(f"[{clip_adapter_method}] Total Training Elapsed Time: {time.time()-train_start_time:.1f} sec")
 
-	# Final evaluation
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
@@ -5187,12 +5145,12 @@ def clip_adapter_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	final_metrics_full   = evaluation_results["full_metrics"]
-	final_img2txt        = evaluation_results["img2txt_metrics"]
-	final_txt2img        = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t     = evaluation_results["tiered_i2t"]
-	final_tiered_t2i     = evaluation_results["tiered_t2i"]
-	model_source         = evaluation_results["model_loaded_from"]
+	final_metrics_full = evaluation_results["full_metrics"]
+	final_img2txt = evaluation_results["img2txt_metrics"]
+	final_txt2img = evaluation_results["txt2img_metrics"]
+	final_tiered_i2t = evaluation_results["tiered_i2t"]
+	final_tiered_t2i = evaluation_results["tiered_t2i"]
+	model_source = evaluation_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
@@ -5749,8 +5707,8 @@ def tip_adapter_finetune_multi_label(
 		final_metrics_full = evaluation_results["full_metrics"]
 		final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 		final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-		final_tiered_i2t        = evaluation_results["tiered_i2t"]
-		final_tiered_t2i        = evaluation_results["tiered_t2i"]		
+		final_tiered_i2t = evaluation_results["tiered_i2t"]
+		final_tiered_t2i = evaluation_results["tiered_t2i"]		
 
 		if verbose:
 			print("\n>> Tiered I2T Retrieval")
@@ -5959,7 +5917,6 @@ def tip_adapter_finetune_multi_label(
 	
 	print(f"[{tip_adapter_method}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
 	
-	# Final evaluation
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
@@ -5977,15 +5934,11 @@ def tip_adapter_finetune_multi_label(
 		verbose=verbose,
 	)
 	
-	if verbose:
-		print(f"\nFull evaluation results:")
-		print(json.dumps(evaluation_results, indent=2, ensure_ascii=False))
-
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t        = evaluation_results["tiered_i2t"]
-	final_tiered_t2i        = evaluation_results["tiered_t2i"]
+	final_tiered_i2t = evaluation_results["tiered_i2t"]
+	final_tiered_t2i = evaluation_results["tiered_t2i"]
 	model_source = evaluation_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses) if training_losses else 0

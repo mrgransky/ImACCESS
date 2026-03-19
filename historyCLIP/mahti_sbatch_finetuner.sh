@@ -109,7 +109,6 @@ case "$LABEL_TYPE" in
 		;;
 esac
 
-# Batch sizes and print frequencies
 BATCH_SIZES=(24 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 25)
 
@@ -119,7 +118,6 @@ LR_FULL_FT=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 LR_LINEAR_PROBE=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 LR_PEFT_ALL=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)  # LoRA, LoRA+, DoRA, VeRA, IA³, Adapters
 
-# Default parameters
 WEIGHT_DECAY=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 EPOCHS=(85 100 150 150 150)
 
