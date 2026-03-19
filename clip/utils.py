@@ -40,16 +40,6 @@ from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import torchvision.transforms as T
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
-import matplotlib.ticker as ticker
-import matplotlib.patches as mpatches
-from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.lines import Line2D
-from matplotlib.gridspec import GridSpec
-import seaborn as sns
 
 from PIL import Image, ImageDraw, ImageFont
 from typing import Tuple, Union, List, Dict, Any, Optional

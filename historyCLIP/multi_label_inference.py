@@ -27,132 +27,309 @@ import visualize as viz
 # # run in local for all fine-tuned models with image and label:
 # $ python multi_label_inference.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -a 'ViT-B/32' -v
 
-def get_top_k_strategies(
-	results_json_path: str, 
-	top_k: int = 5, 
-	metric_key: str = "mAP", 
-	k_value: str = "10"
-) -> List[str]:
-	if not os.path.exists(results_json_path):
-		print(f"WARNING: {results_json_path} not found. Cannot rank strategies.")
-		return []
+def get_tail_only_samples(
+		metadata_val_path: str,
+		num_samples: int = 5,
+		seed: int = 42,
+) -> Tuple[List[Dict], List[str]]:
+		"""
+		Sample exclusively from the tail distribution (bottom 20% by frequency).
+		Returns i2t_samples (images whose ALL labels are tail) and t2i_samples (tail label strings).
+		"""
+		local_rng = random.Random(seed)
 
-	with open(results_json_path, 'r') as f:
-		all_results = json.load(f)
-	scores = {}
-	print(f"\n>> Ranking {len(all_results)} strategies based on I2T [OVERRALL] mAP@{k_value}...")
-	print(all_results)
-	for strategy, metrics in all_results.items():
-		try:
-			# Metric path: tiered_i2t -> overall -> mAP -> 10
-			# Adjust this path if your JSON structure differs
-			score = metrics['i2t']['overall'][metric_key][k_value]
-			scores[strategy] = score
-		except KeyError:
-			# Fallback if specific key missing
-			scores[strategy] = -1.0
+		df_val = pd.read_csv(
+				filepath_or_buffer=metadata_val_path,
+				on_bad_lines='skip',
+				dtype=dtypes,
+				low_memory=False,
+		).sort_index()
 
-	# print(scores)
+		all_labels = []
+		label_to_images = {}
+		for idx, row in df_val.iterrows():
+				try:
+						labels = sorted(ast.literal_eval(row['multimodal_labels']))
+						all_labels.extend(labels)
+						for label in labels:
+								label_to_images.setdefault(label, []).append({
+										'image_path': row['img_path'],
+										'row_index': idx,
+										'all_labels': labels,
+										'segment': 'tail',
+								})
+				except Exception:
+						continue
 
-	# Sort by score descending
-	sorted_strategies = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
-	top_k_sorted_strategies = sorted_strategies[:top_k]
-	print(f"\nTop-{len(top_k_sorted_strategies)} Strategies selected based on I2T mAP@{k_value}:")
-	for i, strat in enumerate(top_k_sorted_strategies):
-		print(f"   {i+1}. {strat:<20} (Score: {scores[strat]:.4f})")
-	print("-"*60)
+		label_counts = pd.Series(all_labels).value_counts().sort_index()
+		total_labels = len(label_counts)
+		tail_threshold = int(total_labels * 0.8)
+		tail_labels = sorted(label_counts.tail(total_labels - tail_threshold).index)
 
-	# Find checkpoint files that start with each strategy name
-	pth_files_directory = os.path.dirname(results_json_path)
-	print(f"pth_files_directory: {pth_files_directory}")
-	top_k_sorted_checkpoints = []
-	for strategy in top_k_sorted_strategies:
-		matching_files = [
-			f for f in os.listdir(pth_files_directory) 
-			if f.startswith(strategy) and f.endswith('.pth')
-		]
-		if matching_files:
-			# Take the first match if multiple exist
-			top_k_sorted_checkpoints.append(os.path.join(pth_files_directory, matching_files[0]))
+		print(f"\nTAIL distribution: {len(tail_labels)} labels "
+					f"(freq range: {label_counts[tail_labels].min()}–{label_counts[tail_labels].max()}, "
+					f"mean: {label_counts[tail_labels].mean():.1f})")
+
+		# --- I2T samples: images that contain at least one tail label ---
+		candidate_pool = {}
+		for label in tail_labels:
+				for entry in sorted(label_to_images.get(label, []), key=lambda x: x['image_path']):
+						candidate_pool.setdefault(entry['image_path'], entry)
+		candidates = sorted(candidate_pool.values(), key=lambda x: x['image_path'])
+
+		if len(candidates) >= num_samples:
+				i2t_samples = local_rng.sample(candidates, num_samples)
 		else:
-			print(f"WARNING: No checkpoint found for strategy '{strategy}'")
+				print(f"[WARNING] Only {len(candidates)} tail images available; using all.")
+				i2t_samples = candidates
+		i2t_samples = sorted(i2t_samples, key=lambda x: x['image_path'])
 
-	return top_k_sorted_strategies, top_k_sorted_checkpoints
+		# --- T2I samples: tail label strings ---
+		if len(tail_labels) >= num_samples:
+				t2i_samples = sorted(local_rng.sample(tail_labels, num_samples))
+		else:
+				print(f"[WARNING] Only {len(tail_labels)} tail labels available; using all.")
+				t2i_samples = tail_labels
+
+		print(f"Sampled {len(i2t_samples)} tail images and {len(t2i_samples)} tail labels.")
+		return i2t_samples, t2i_samples
+
+def get_top_k_strategies(
+		results_json_path: str,
+		top_k: int = 5,
+		metric_key: str = "mAP",
+		k_value: str = "10",
+		mode: str = "i2t",          # <-- NEW: "i2t" or "t2i"
+) -> Tuple[List[str], List[str]]:
+		if not os.path.exists(results_json_path):
+				print(f"WARNING: {results_json_path} not found.")
+				return [], []
+
+		with open(results_json_path) as f:
+				all_results = json.load(f)
+
+		direction = mode.lower()   # "i2t" or "t2i"
+		scores = {}
+		print(f"\n>> Ranking {len(all_results)} strategies — {direction.upper()} overall {metric_key}@{k_value}")
+		for strategy, metrics in all_results.items():
+				try:
+						scores[strategy] = metrics[direction]['overall'][metric_key][k_value]
+				except KeyError:
+						scores[strategy] = -1.0
+
+		sorted_strategies = sorted(scores, key=scores.get, reverse=True)[:top_k]
+		print(f"\nTop-{len(sorted_strategies)} ({direction.upper()}):")
+		for i, s in enumerate(sorted_strategies):
+				print(f"  {i+1}. {s:<20} ({metric_key}@{k_value}: {scores[s]:.4f})")
+		print("-" * 60)
+
+		pth_dir = os.path.dirname(results_json_path)
+		checkpoints = []
+		for strategy in sorted_strategies:
+				matches = [
+						f for f in os.listdir(pth_dir)
+						if f.startswith(strategy) and f.endswith('.pth')
+				]
+				if matches:
+						checkpoints.append(os.path.join(pth_dir, matches[0]))
+				else:
+						print(f"WARNING: no checkpoint for '{strategy}'")
+
+		return sorted_strategies, checkpoints
 
 def run_qualitative_retrieval(
-	model: torch.nn.Module,
-	i2t_samples: List[Dict],       # from get_multi_label_head_torso_tail_samples
-	t2i_samples: List[str],        # list of query label strings
-	class_names: List[str],        # full list of all class labels
-	preprocess,                    # CLIP image preprocessor
-	device: torch.device,
-	topk: int = 5,
+		model: torch.nn.Module,
+		i2t_samples: List[Dict],
+		t2i_samples: List[str],
+		class_names: List[str],
+		all_val_image_paths: List[str],   # <-- NEW: full val pool for T2I
+		preprocess,
+		device: torch.device,
+		i2t_topk: int = 3,
+		t2i_topk: int = 1,
 ) -> Dict:
-	model.eval()
-	# Pre-encode all class name texts once
-	with torch.no_grad():
-		text_tokens = clip.tokenize(class_names, truncate=True).to(device)
-		all_text_embeds = torch.nn.functional.normalize(model.encode_text(text_tokens).float(), dim=-1)  # [C, D]
-	
-	# I2T: query image → retrieve top-k labels                           #
-	i2t_results = []
-	for sample in i2t_samples:
-		image = preprocess(Image.open(sample["image_path"]).convert("RGB")).unsqueeze(0).to(device)
-		with torch.no_grad():
-			img_embed = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1)  # [1, D]
+		model.eval()
 
-		sims = (img_embed @ all_text_embeds.T).squeeze(0)																				# [C]
-
-		topk_indices = sims.topk(topk).indices.cpu().tolist()
-		retrieved_labels = [class_names[idx] for idx in topk_indices]
-		retrieved_scores = [sims[idx].item() for idx in topk_indices]
-
-		i2t_results.append(
-			{
-				"image_path":       sample["image_path"],
-				"ground_truth":     sample["all_labels"],
-				"segment":          sample["segment"],
-				"retrieved_labels": retrieved_labels,
-				"retrieved_scores": retrieved_scores,
-			}
-		)
-	
-	# ------------------------------------------------------------------ 	#
-	# T2I: query label → retrieve top-k images                           	#
-	# We need image embeddings for the full val set — expensive once,     #
-	# so we encode only the candidate pool (i2t_samples images) for the  	#
-	# qualitative figure. For a full eval use the cached embeddings.      #
-	# ------------------------------------------------------------------ 	#
-	all_image_paths = list({s["image_path"] for s in i2t_samples})
-	image_embeds_map = {}
-	for img_path in all_image_paths:
-		image = preprocess(Image.open(img_path).convert("RGB")).unsqueeze(0).to(device)
 		with torch.no_grad():
-			emb = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1)
-		image_embeds_map[img_path] = emb.squeeze(0)
+				text_tokens = clip.tokenize(class_names, truncate=True).to(device)
+				all_text_embeds = torch.nn.functional.normalize(model.encode_text(text_tokens).float(), dim=-1)  # [C, D]
+
+		# I2T: tail image → top-i2t_topk predicted labels
+		i2t_results = []
+		for sample in i2t_samples:
+			image = preprocess(Image.open(sample['image_path']).convert('RGB')).unsqueeze(0).to(device)
+			with torch.no_grad():
+				img_embed = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1)
+			sims = (img_embed @ all_text_embeds.T).squeeze(0)
+			topk_idx = sims.topk(i2t_topk).indices.cpu().tolist()
+			i2t_results.append(
+				{
+					'image_path':       sample['image_path'],
+					'ground_truth':     sample['all_labels'],
+					'segment':          sample['segment'],
+					'retrieved_labels': [class_names[j] for j in topk_idx],
+					'retrieved_scores': [sims[j].item() for j in topk_idx],
+				}
+			)
+
+		# T2I: tail label → top-t2i_topk images from FULL val pool
+		# Encode val images in batches to avoid OOM
+		all_img_embeds = []
+		BATCH = 64
+		for start in range(0, len(all_val_image_paths), BATCH):
+				batch_paths = all_val_image_paths[start:start + BATCH]
+				imgs = torch.stack([
+						preprocess(Image.open(p).convert('RGB'))
+						for p in batch_paths
+				]).to(device)
+				with torch.no_grad():
+						embs = torch.nn.functional.normalize(model.encode_image(imgs).float(), dim=-1)
+				all_img_embeds.append(embs.cpu())
+		all_img_embeds = torch.cat(all_img_embeds, dim=0)  # [N_val, D]
+
+		t2i_results = []
+		for query_label in t2i_samples:
+			with torch.no_grad():
+				token = clip.tokenize([query_label], truncate=True).to(device)
+				txt_embed = torch.nn.functional.normalize(model.encode_text(token).float(), dim=-1).cpu()
+			sims = (txt_embed @ all_img_embeds.T).squeeze(0)  # [N_val]
+			topk_idx = sims.topk(t2i_topk).indices.tolist()
+			t2i_results.append(
+				{
+					'query_label':      query_label,
+					'retrieved_paths':  [all_val_image_paths[j] for j in topk_idx],
+					'retrieved_scores': [sims[j].item() for j in topk_idx],
+				}
+			)
+
+		return {'i2t': i2t_results, 't2i': t2i_results}
+
+# def get_top_k_strategies(
+# 	results_json_path: str, 
+# 	top_k: int = 5, 
+# 	metric_key: str = "mAP", 
+# 	k_value: str = "10"
+# ) -> List[str]:
+# 	if not os.path.exists(results_json_path):
+# 		print(f"WARNING: {results_json_path} not found. Cannot rank strategies.")
+# 		return []
+
+# 	with open(results_json_path, 'r') as f:
+# 		all_results = json.load(f)
+# 	scores = {}
+# 	print(f"\n>> Ranking {len(all_results)} strategies based on I2T [OVERRALL] mAP@{k_value}...")
+# 	print(all_results)
+# 	for strategy, metrics in all_results.items():
+# 		try:
+# 			# Metric path: tiered_i2t -> overall -> mAP -> 10
+# 			# Adjust this path if your JSON structure differs
+# 			score = metrics['i2t']['overall'][metric_key][k_value]
+# 			scores[strategy] = score
+# 		except KeyError:
+# 			# Fallback if specific key missing
+# 			scores[strategy] = -1.0
+
+# 	# print(scores)
+
+# 	# Sort by score descending
+# 	sorted_strategies = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
+# 	top_k_sorted_strategies = sorted_strategies[:top_k]
+# 	print(f"\nTop-{len(top_k_sorted_strategies)} Strategies selected based on I2T mAP@{k_value}:")
+# 	for i, strat in enumerate(top_k_sorted_strategies):
+# 		print(f"   {i+1}. {strat:<20} (Score: {scores[strat]:.4f})")
+# 	print("-"*60)
+
+# 	# Find checkpoint files that start with each strategy name
+# 	pth_files_directory = os.path.dirname(results_json_path)
+# 	print(f"pth_files_directory: {pth_files_directory}")
+# 	top_k_sorted_checkpoints = []
+# 	for strategy in top_k_sorted_strategies:
+# 		matching_files = [
+# 			f for f in os.listdir(pth_files_directory) 
+# 			if f.startswith(strategy) and f.endswith('.pth')
+# 		]
+# 		if matching_files:
+# 			# Take the first match if multiple exist
+# 			top_k_sorted_checkpoints.append(os.path.join(pth_files_directory, matching_files[0]))
+# 		else:
+# 			print(f"WARNING: No checkpoint found for strategy '{strategy}'")
+
+# 	return top_k_sorted_strategies, top_k_sorted_checkpoints
+
+# def run_qualitative_retrieval(
+# 	model: torch.nn.Module,
+# 	i2t_samples: List[Dict],       # from get_multi_label_head_torso_tail_samples
+# 	t2i_samples: List[str],        # list of query label strings
+# 	class_names: List[str],        # full list of all class labels
+# 	preprocess,                    # CLIP image preprocessor
+# 	device: torch.device,
+# 	topk: int = 5,
+# ) -> Dict:
+# 	model.eval()
+# 	# Pre-encode all class name texts once
+# 	with torch.no_grad():
+# 		text_tokens = clip.tokenize(class_names, truncate=True).to(device)
+# 		all_text_embeds = torch.nn.functional.normalize(model.encode_text(text_tokens).float(), dim=-1)  # [C, D]
 	
-	t2i_results = []
-	for query_label in t2i_samples:
-		with torch.no_grad():
-			token = clip.tokenize([query_label], truncate=True).to(device)
-			txt_embed = torch.nn.functional.normalize(model.encode_text(token).float(), dim=-1)  # [1, D]
-		
-		sims = {
-			path: (txt_embed @ emb.unsqueeze(1)).item()
-			for path, emb in image_embeds_map.items()
-		}
-		
-		topk_paths = sorted(sims, key=sims.get, reverse=True)#[:topk]
-		
-		t2i_results.append(
-			{
-				"query_label":    query_label,
-				"retrieved_paths": topk_paths,
-				"retrieved_scores": [sims[p] for p in topk_paths],
-			}
-		)
+# 	# I2T: query image → retrieve top-k labels                           #
+# 	i2t_results = []
+# 	for sample in i2t_samples:
+# 		image = preprocess(Image.open(sample["image_path"]).convert("RGB")).unsqueeze(0).to(device)
+# 		with torch.no_grad():
+# 			img_embed = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1)  # [1, D]
+
+# 		sims = (img_embed @ all_text_embeds.T).squeeze(0)																				# [C]
+
+# 		topk_indices = sims.topk(topk).indices.cpu().tolist()
+# 		retrieved_labels = [class_names[idx] for idx in topk_indices]
+# 		retrieved_scores = [sims[idx].item() for idx in topk_indices]
+
+# 		i2t_results.append(
+# 			{
+# 				"image_path":       sample["image_path"],
+# 				"ground_truth":     sample["all_labels"],
+# 				"segment":          sample["segment"],
+# 				"retrieved_labels": retrieved_labels,
+# 				"retrieved_scores": retrieved_scores,
+# 			}
+# 		)
 	
-	return {"i2t": i2t_results, "t2i": t2i_results}
+# 	# ------------------------------------------------------------------ 	#
+# 	# T2I: query label → retrieve top-k images                           	#
+# 	# We need image embeddings for the full val set — expensive once,     #
+# 	# so we encode only the candidate pool (i2t_samples images) for the  	#
+# 	# qualitative figure. For a full eval use the cached embeddings.      #
+# 	# ------------------------------------------------------------------ 	#
+# 	all_image_paths = list({s["image_path"] for s in i2t_samples})
+# 	image_embeds_map = {}
+# 	for img_path in all_image_paths:
+# 		image = preprocess(Image.open(img_path).convert("RGB")).unsqueeze(0).to(device)
+# 		with torch.no_grad():
+# 			emb = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1)
+# 		image_embeds_map[img_path] = emb.squeeze(0)
+	
+# 	t2i_results = []
+# 	for query_label in t2i_samples:
+# 		with torch.no_grad():
+# 			token = clip.tokenize([query_label], truncate=True).to(device)
+# 			txt_embed = torch.nn.functional.normalize(model.encode_text(token).float(), dim=-1)  # [1, D]
+		
+# 		sims = {
+# 			path: (txt_embed @ emb.unsqueeze(1)).item()
+# 			for path, emb in image_embeds_map.items()
+# 		}
+		
+# 		topk_paths = sorted(sims, key=sims.get, reverse=True)#[:topk]
+		
+# 		t2i_results.append(
+# 			{
+# 				"query_label":    query_label,
+# 				"retrieved_paths": topk_paths,
+# 				"retrieved_scores": [sims[p] for p in topk_paths],
+# 			}
+# 		)
+	
+# 	return {"i2t": i2t_results, "t2i": t2i_results}
 
 def pretrain_multi_label(
 		model: torch.nn.Module,
@@ -832,7 +1009,7 @@ def main():
 		with open(results_json_path) as f:
 			all_results = json.load(f)
 		print(f"[Quantitative Analysis] {len(all_results)} methods: {list(all_results.keys())}")
-		viz.plot_retrieval_curves(
+		viz.plot_quantitative_retrieval(
 			all_results=all_results,
 			output_dir=INFERENCE_DIRECTORY,
 			dataset_name=dataset_name,
@@ -842,96 +1019,71 @@ def main():
 	####################################### Quantitative Analysis #######################################
 
 	####################################### Qualitative Analysis #######################################
-	print(f"Qualitative Analysis".upper().center(160, "-"))
-	if args.query_image is None or args.query_label is None:
-		print("\nSystematic selection of samples from validation set: Head, Torso, Tail...")
-		i2t_samples, t2i_samples = get_multi_label_head_torso_tail_samples(
-			metadata_path=metadata_csv,
-			metadata_train_path=metadata_csv.replace('.csv', '_train.csv'),
+	i2t_samples, t2i_samples = get_tail_only_samples(
 			metadata_val_path=metadata_csv.replace('.csv', '_val.csv'),
-			num_samples_per_segment=2,
-		)
-		if i2t_samples and t2i_samples:
-			QUERY_IMAGES = [sample['image_path'] for sample in i2t_samples]
-			QUERY_LABELS = t2i_samples  # Already a list of strings
-	else:
-		QUERY_IMAGES = [args.query_image]
-		QUERY_LABELS = [args.query_label]
-
-	print("\nQUERY IMAGES & LABELS")
-	
-	print(f">> {len(QUERY_IMAGES)} QUERY IMAGES:")
-	for i, v in enumerate(QUERY_IMAGES):
-		print(f"{i}. {v}")
-	
-	print(f">> {len(QUERY_LABELS)} QUERY LABELS:")
-	for i, v in enumerate(QUERY_LABELS):
-		print(f"{i}. {v}")
-
-	# Determine which strategies to evaluate
-	selected_strategies, selected_checkpoints = get_top_k_strategies(
-		results_json_path=results_json_path,
-		top_k=5,
-		metric_key="mAP",
-		k_value="10",
+			num_samples=5,
+			seed=42,
 	)
-	print(f"{len(selected_checkpoints)} selected models for Qualitative Analysis:")
-	for i, v in enumerate(zip(selected_strategies, selected_checkpoints)):
-		print(f"{i} {v[0]:<20} {v[1]}")
+
+	# Build full val image path list for T2I pool
+	all_val_image_paths = sorted(
+		validation_loader.dataset.data_frame['img_path'].tolist()
+	)
+
+	# Separate top-K selection per direction
+	i2t_strategies, i2t_checkpoints = get_top_k_strategies(
+		results_json_path, top_k=5, metric_key="mAP", k_value="10", mode="i2t"
+	)
+	t2i_strategies, t2i_checkpoints = get_top_k_strategies(
+		results_json_path, top_k=5, metric_key="mAP", k_value="10", mode="t2i"
+	)
+
+	# Union of checkpoints to avoid loading the same model twice
+	all_checkpoints = dict.fromkeys(i2t_checkpoints + t2i_checkpoints)
 
 	qualitative_results = {}
-	
-	# Sequential Loading & Inference Loop
-	for i, ckpt_path in enumerate(selected_checkpoints):
+	for ckpt_path in all_checkpoints:
 		strategy_name, _ = _parse_checkpoint_strategy(ckpt_path)
+		torch.cuda.empty_cache()
+		model_dict = load_finetuned_models(
+			checkpoint_path=ckpt_path,
+			model_architecture=args.model_architecture,
+			device=args.device,
+			dataset_directory=DATASET_DIRECTORY,
+			validation_loader=validation_loader,
+			verbose=args.verbose,
+		)
 		
-		print(f"\n[{i+1}/{len(selected_checkpoints)}] Processing: {ckpt_path}")
-		
-		try:
-			# Clear cache before loading
-			torch.cuda.empty_cache()
-			
-			# Load ONLY this specific model
-			model_dict = load_finetuned_models(
-				checkpoint_path=ckpt_path,
-				model_architecture=args.model_architecture,
-				device=args.device,
-				dataset_directory=DATASET_DIRECTORY,
-				validation_loader=validation_loader,
-				verbose=args.verbose,
-			)
-			if not model_dict:
-				print(f"  [SKIP] Failed to load checkpoint.")
-				continue
-			
-			# Get the model object
-			ft_model = list(model_dict.values())[0]
-			
-			qualitative_results[strategy_name] = run_qualitative_retrieval(
-				model=ft_model,
-				i2t_samples=i2t_samples,
-				t2i_samples=t2i_samples,
-				class_names=class_names,
-				preprocess=customized_preprocess,
-				device=args.device,
-				topk=args.i2t_topk,
-			)
-
-			del ft_model
-			del model_dict
-			torch.cuda.empty_cache()
-		except Exception as e:
-			print(f"  [ERROR] Failed to process {strategy_name}: {e}")
-			torch.cuda.empty_cache()
+		if not model_dict:
 			continue
+		
+		ft_model = list(model_dict.values())[0]
+		
+		qualitative_results[strategy_name] = run_qualitative_retrieval(
+			model=ft_model,
+			i2t_samples=i2t_samples,
+			t2i_samples=t2i_samples,
+			class_names=class_names,
+			all_val_image_paths=all_val_image_paths,
+			preprocess=customized_preprocess,
+			device=args.device,
+			i2t_topk=args.i2t_topk,
+			t2i_topk=args.t2i_topk,
+		)
+		del ft_model, model_dict
+		torch.cuda.empty_cache()
 
-	# Generate Plots
-	viz.plot_qualitative_retrieval(
-		results_by_strategy=qualitative_results,
+	# Two separate plots
+	viz.plot_qualitative_retrieval_i2t(
+		results_by_strategy={s: qualitative_results[s] for s in i2t_strategies if s in qualitative_results},
 		output_dir=INFERENCE_DIRECTORY,
-		dataset_name=dataset_name,
-		t2i_topk=args.t2i_topk,
-		i2t_topk=args.i2t_topk,
+		topk=args.i2t_topk,
+		verbose=args.verbose,
+	)
+	viz.plot_qualitative_retrieval_t2i(
+		results_by_strategy={s: qualitative_results[s] for s in t2i_strategies if s in qualitative_results},
+		output_dir=INFERENCE_DIRECTORY,
+		topk=args.t2i_topk,
 		verbose=args.verbose,
 	)
 	####################################### Qualitative Analysis #######################################
