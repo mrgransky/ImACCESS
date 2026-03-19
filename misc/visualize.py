@@ -2491,7 +2491,7 @@ def plot_comparative_radar_chart(
 		print(f"  Confidence: {metrics['confidence']}")
 	print("="*60)
 
-	fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(projection='polar'))
+	fig, ax = plt.subplots(figsize=(11, 11), subplot_kw=dict(projection='polar'))
 	N = len(categories)
 	angles = [n / float(N) * 2 * np.pi for n in range(N)]
 	
@@ -2532,14 +2532,16 @@ def plot_comparative_radar_chart(
 			upper_plot = upper + upper[:1]
 			# Fill uncertainty region
 			ax.fill_between(angles_plot, lower_plot, upper_plot, alpha=0.1, color=v['color'])
+
 		bench_values_plot = bench_values + bench_values[:1]
+
 		ax.plot(
 			angles_plot, 
 			bench_values_plot, 
 			'o--', 
-			linewidth=1.5, 
+			linewidth=2.0,
 			label=k, 
-			alpha=0.5,
+			alpha=0.3,
 			color=v['color']
 		)
 		ax.fill(angles_plot, bench_values_plot, alpha=0.1, color=v['color'])
@@ -2575,7 +2577,7 @@ def plot_comparative_radar_chart(
 			angle, 
 			105 * offset,
 			label, 
-			size=16, 
+			size=13,
 			weight='bold', 
 			ha="center", 
 			va="center",
@@ -2589,17 +2591,17 @@ def plot_comparative_radar_chart(
 	ax.set_ylim(0, 100)
 	ax.set_yticks([20, 40, 60, 80, 100])
 	ax.set_yticklabels(['20', '40', '60', '80', '100'], size=10, zorder=100)
-	ax.grid(True, linestyle='--', alpha=0.9)
+	ax.grid(True, linestyle='--', color="#464646", alpha=0.5)
 	
 	ax.legend(
-		loc='upper right', 
-		fontsize=11, 
+		loc='upper left',
+		fontsize=14,
 		frameon=False,
 		fancybox=True,
 		shadow=True,
 		edgecolor='black',
 		facecolor='white',
-		bbox_to_anchor=(1.1, 1.05) # Move legend outside the plot
+		bbox_to_anchor=(-0.1, 1.05) # Move legend outside the plot
 	)
 	
 	# plt.title('Multi-Dimensional Dataset Characteristics: A Comparative View', size=11, weight='bold', pad=25)
@@ -3107,10 +3109,17 @@ def multilabel_eda(
 		'NUS-WIDE': estimate_nus_wide_metrics(),
 		'MIRFLICKR-25K': estimate_mirflickr_metrics()
 	}
-	fig, ax = plt.subplots(figsize=(9, 9))
+	fig, ax = plt.subplots(figsize=(8, 8))
 	
 	# 2. Plot Perfect Equality Line
-	ax.plot([0, 1], [0, 1], 'k--', linewidth=2, label='Perfect Equality', alpha=0.5)
+	ax.plot(
+		[0, 1], [0, 1], 
+		color='#000000', 
+		linestyle='dashdot',
+		linewidth=2, 
+		label='Perfect Equality', 
+		alpha=0.75,
+	)
 	
 	# 3. Plot Main Dataset (HISTORY_X4)
 	# sorted_counts is already calculated above
@@ -3131,7 +3140,7 @@ def multilabel_eda(
 		label_proportions, 
 		cumulative_proportions, 
 		label_proportions, 
-		alpha=0.15, 
+		alpha=0.11,
 		color='#d62728'
 	)
 
@@ -3151,36 +3160,35 @@ def multilabel_eda(
 				x_p, 
 				cum_p, 
 				linestyle='--', 
-				linewidth=1.2,
+				linewidth=1.1,
 				label=f"{name} (Gini={metrics['gini']:.3f})", 
-				color=metrics.get('color', 'gray'), 
-				alpha=0.85
+				color=metrics.get('color', "#616161"), 
+				alpha=0.85,
 			)
 	ax.set_xlabel('Cumulative Proportion of Labels', fontsize=14)
 	ax.set_ylabel('Cumulative Proportion of Samples', fontsize=14)
 	# ax.set_title(f'Lorenz Curve: Label Imbalance Analysis', fontsize=14, weight='bold')
 	ax.legend(
 		loc='best',
-		fontsize=12,
+		fontsize=14,
 		frameon=False,
 		fancybox=True,
 		shadow=True,
 		edgecolor='black',
 		facecolor='white',
 	)
-	ax.grid(True, alpha=0.3)
+	ax.grid(True, alpha=0.5)
 	ax.set_xlim(0, 1)
 	ax.set_ylim(0, 1)
 			
 	plt.tight_layout()
 	plt.savefig(
-			fname=os.path.join(output_dir, f"diversity_metrics.png"),
-			dpi=DPI,
-			bbox_inches='tight',
+		fname=os.path.join(output_dir, f"diversity_metrics.png"),
+		dpi=DPI,
+		bbox_inches='tight',
 	)
 	plt.close()
 
-	# Label Imbalance Analysis
 	print("\n>> LABEL IMBALANCE ANALYSIS")
 	
 	# Calculate imbalance ratio
@@ -3473,7 +3481,6 @@ def multilabel_eda(
 		DPI
 	)
 
-	# Summary Statistics Table
 	print("\nCOMPREHENSIVE SUMMARY STATISTICS")
 	
 	summary_stats = {

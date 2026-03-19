@@ -102,8 +102,17 @@ def plot_train_val_losses(
 	ax.set_xlabel("Epoch", fontsize=12)
 	ax.set_ylabel("Loss", fontsize=12)
 	ax.set_title("Train and Validation Losses", fontsize=14)
-	ax.legend(fontsize=10)
-	plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+	ax.legend(
+		fontsize=10, 
+		loc='best', 
+		ncol=2, 
+		frameon=False, 
+		fancybox=True, 
+		shadow=True, 
+		edgecolor='none', 
+		facecolor='white'
+	)
+	plt.grid(True, which="both", linestyle="--", linewidth=0.5, color="#8A8A8A", alpha=0.5)
 	plt.tight_layout()
 	plt.savefig(fname, dpi=200, bbox_inches='tight')
 	plt.close()

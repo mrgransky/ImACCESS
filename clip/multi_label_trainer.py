@@ -386,6 +386,7 @@ def probe_multi_label(
 		)
 	
 	training_losses = list()
+	validation_losses = list()
 	training_losses_breakdown = {"total": []}
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
@@ -393,6 +394,7 @@ def probe_multi_label(
 	learning_rates_history = list()
 	weight_decays_history = list()
 	train_start_time = time.time()
+
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
@@ -454,10 +456,9 @@ def probe_multi_label(
 		# Calculate average losses
 		avg_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
 		training_losses.append(avg_loss)
-		training_losses_breakdown["total"].append(avg_loss)
 		learning_rates_history.append([g['lr'] for g in optimizer.param_groups])
 		weight_decays_history.append([g['weight_decay'] for g in optimizer.param_groups])
-		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
+		print(f">> Training Elapsed Time: {time.time() - train_and_val_st_time:.1f}s. Validating Epoch {epoch+1} ...")
 		
 		probe.probe.eval()
 		val_loss = 0.0
@@ -488,7 +489,7 @@ def probe_multi_label(
 				val_labels_list.append(label_vectors.cpu())
 		
 		avg_val_loss = val_loss / len(val_iter)
-		
+		validation_losses.append(avg_val_loss)
 		# Calculate multi-label metrics
 		val_preds = torch.cat(val_preds_list, dim=0)
 		val_labels = torch.cat(val_labels_list, dim=0)
@@ -542,9 +543,10 @@ def probe_multi_label(
 		
 		print(
 			f"\nEpoch {epoch+1}:\n"
-			f"  Loss — Train: {avg_loss:.8f}  Val: {avg_val_loss:.8f}\n"
-			f"  Hamming: {hamming:.4f}  F1: {f1:.4f}\n"
-			f"  ExactMatch: {exact_match}  PartialAcc: {partial_match:.4f}\n"
+			f"  [LOSS] {mode.upper()} — Train: {avg_loss} Val: {avg_val_loss}\n"
+			f"  Hamming Loss: {hamming:.4f}\n"
+			f"  F1 Score: {f1:.4f}\n"
+			f"  ExactMatch: {exact_match} PartialAcc: {partial_match:.4f}\n"
 			f"  LR: {scheduler.get_last_lr()}"
 		)
 		if align_score is not None:
@@ -659,33 +661,27 @@ def probe_multi_label(
 	
 	# Plotting
 	plot_paths = {
-			"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-			"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-			"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-			"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-			"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-			"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-			"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-			"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 	}
 	
-	viz.plot_multilabel_loss_breakdown(
-			training_losses_breakdown=training_losses_breakdown,
-			filepath=plot_paths["losses_breakdown"]
-	)
-	
-	viz.plot_retrieval_metrics_per_epoch(
-			dataset_name=dataset_name,
-			image_to_text_metrics_list=img2txt_metrics_all_epochs,
-			text_to_image_metrics_list=txt2img_metrics_all_epochs,
-			fname=plot_paths["retrieval_per_epoch"],
+	viz.plot_train_val_losses(
+		train_losses=training_losses,
+		val_losses=validation_losses,
+		fname=plot_paths["losses"],
 	)
 	
 	viz.plot_retrieval_metrics_best_model(
-			dataset_name=dataset_name,
-			image_to_text_metrics=final_img2txt_metrics,
-			text_to_image_metrics=final_txt2img_metrics,
-			fname=plot_paths["retrieval_best"],
+		dataset_name=dataset_name,
+		image_to_text_metrics=final_img2txt_metrics,
+		text_to_image_metrics=final_txt2img_metrics,
+		fname=plot_paths["retrieval_best"],
 	)
 	
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics

@@ -221,7 +221,8 @@ class EarlyStopping:
 					else:
 						self.counter += 1
 						self.improvement_history.append(False)
-						print(f"  [WARMUP] No improvement. Counter: {self.counter}/{self.effective_patience}\n")
+						print(f"  [WARMUP] No improvement: {current_value} > {self.best_score}")
+						print(f"  Counter: {self.counter}/{self.effective_patience}\n")
 					return False
 
 				# 3. Improvement check — always runs regardless of window state       #
@@ -340,7 +341,7 @@ class EarlyStopping:
 				# Signal 4 — low cumulative improvement over window
 				if cum_imp_abs < self.cumulative_delta:
 					soft_signals.append(
-						f"Low cumulative improvement ({cum_imp_abs:.8f}) < {self.cumulative_delta}"
+						f"Low cumulative improvement: {cum_imp_abs} < {self.cumulative_delta}"
 					)
 
 				# Signal 5 — EMA trend worsening

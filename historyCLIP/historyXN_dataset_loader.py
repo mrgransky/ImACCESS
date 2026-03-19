@@ -708,11 +708,6 @@ def get_multi_label_dataloaders(
 			slurm_mem_mb = float(os.environ['SLURM_MEM_PER_NODE'])
 			available_gb = slurm_mem_mb / 1024.0
 			total_gb = available_gb
-			print(
-				f"\n>> HPC Environment Detected (Slurm).\n"
-				f"\tSlurm Allocated Memory: {available_gb:.2f}GB\n"
-				f"\t(Using allocation limit instead of node physical memory)"
-			)
 		else:
 			raise ValueError(f"\n>> HPC Environment Detected (Slurm) but SLURM_MEM_PER_NODE not found in environment variables.")
 	else:
