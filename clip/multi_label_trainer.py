@@ -1400,21 +1400,26 @@ def lora_finetune_multi_label(
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
 		print(f"  └─ Weight Decay: {weight_decay}")
 
-	# Scheduler — full requested duration
-	total_training_steps = num_epochs * len(train_loader)
-	ANNEALING_RATIO = 1e-2
+	# Scheduler
+	# approximate T_max: N epochs * minimum_epochs
+	estimated_epochs = 2 * minimum_epochs
+	T_max = estimated_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
-		T_max=total_training_steps,
+		T_max=T_max,
 		eta_min=eta_min,
 		last_epoch=-1,
 	)
+	
 	if verbose:
 		print(f"\n{scheduler.__class__.__name__}")
-		print(f"  ├─ T_max = {total_training_steps} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
-	
+		print(f"  ├─ minimum_epochs = {minimum_epochs}")
+		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
+		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+
 	scaler = torch.amp.GradScaler(
 		device=device,
 		init_scale=2**11,      # 2048 — much more conservative start
@@ -2591,19 +2596,25 @@ def rslora_finetune_multi_label(
 		print(f"  └─ Weight Decay: {weight_decay}")
 
 	# Scheduler
-	total_training_steps = num_epochs * len(train_loader)
-	ANNEALING_RATIO = 1e-2
+	# approximate T_max: N epochs * minimum_epochs
+	estimated_epochs = 2 * minimum_epochs
+	T_max = estimated_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
-		T_max=total_training_steps,
+		T_max=T_max,
 		eta_min=eta_min,
 		last_epoch=-1,
 	)
+	
 	if verbose:
 		print(f"\n{scheduler.__class__.__name__}")
-		print(f"  ├─ T_max = {total_training_steps} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
+		print(f"  ├─ minimum_epochs = {minimum_epochs}")
+		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
+		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+
 
 	scaler = torch.amp.GradScaler(
 		device=device,

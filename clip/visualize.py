@@ -473,10 +473,13 @@ def plot_hyperparameter_evolution(
 		nbins: int=15
 	):
 	fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 7))
-	epochs = list(range(len(learning_rates)))
+	num_epochs = len(learning_rates)
+	if num_epochs == 1:
+		return
+	epochs = range(1, num_epochs + 1)
 
-	ax1.plot(epochs, learning_rates, color="#0010F3", linewidth=2.0, alpha=0.8, label="LR")
-	ax1.axhline(y=eta_min, color="#CE0045", linestyle="--", linewidth=1.0, alpha=0.8, label=f"eta_min = {eta_min}")
+	ax1.plot(epochs, learning_rates, color="#000ECC", linewidth=2.0, alpha=0.85, label="LR")
+	ax1.axhline(y=eta_min, color="#AD023B", linestyle="--", linewidth=1.0, alpha=0.8, label=f"eta_min = {eta_min}")
 	ax1.legend(
 		loc="best",
 		fontsize=10,
