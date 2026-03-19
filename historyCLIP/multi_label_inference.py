@@ -40,7 +40,7 @@ def get_top_k_strategies(
 	with open(results_json_path, 'r') as f:
 		all_results = json.load(f)
 	scores = {}
-	print(f"\n>> Ranking {len(all_results)} strategies based on I2T mAP@{k_value}...")
+	print(f"\n>> Ranking {len(all_results)} strategies based on I2T [OVERRALL] mAP@{k_value}...")
 	print(all_results)
 	for strategy, metrics in all_results.items():
 		try:

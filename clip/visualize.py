@@ -466,12 +466,12 @@ def plot_unfreeze_heatmap_old(
 		plt.close(fig)
 
 def plot_hyperparameter_evolution(
-		eta_min: float,
-		learning_rates: List[float],
-		weight_decays: List[float],
-		fname: str,
-		nbins: int=15
-	):
+	eta_min: float,
+	learning_rates: List[float],
+	weight_decays: List[float],
+	fname: str,
+	nbins: int=15
+):
 	fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 7))
 	num_epochs = len(learning_rates)
 	if num_epochs == 1:

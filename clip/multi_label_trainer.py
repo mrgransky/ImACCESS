@@ -1963,7 +1963,6 @@ def lora_plus_finetune_multi_label(
 		print(f"  ├─ WD: lora_A = {lora_A_wd} lora_B = {lora_B_wd}")
 		print(f"  └─ Params: lora_A:{sum(p.numel() for p in lora_A_params):,} lora_B: {sum(p.numel() for p in lora_B_params):,}")
 	
-
 	# Scheduler
 	# approximate T_max: N epochs * minimum_epochs
 	estimated_epochs = 2 * minimum_epochs
@@ -2271,17 +2270,6 @@ def lora_plus_finetune_multi_label(
 				f"@ epoch {early_stopping.get_best_epoch()+1}")
 			break
 		
-		# # Cache stats
-		# if hasattr(train_loader.dataset, 'get_cache_stats'):
-		# 	cache_stats = train_loader.dataset.get_cache_stats()
-		# 	if cache_stats is not None:
-		# 		print(f"Train Cache: {cache_stats}")
-		
-		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
-		# 	cache_stats = validation_loader.dataset.get_cache_stats()
-		# 	if cache_stats is not None:
-		# 		print(f"Validation Cache: {cache_stats}")
-		
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 	
 	print(f"[{mode}] Total Elapsed Time: {time.time() - train_start_time:.1f}s")
@@ -2371,6 +2359,7 @@ def lora_plus_finetune_multi_label(
 		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"hp_evol": os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
 	}
 	
 	viz.plot_multilabel_loss_breakdown(
@@ -2396,6 +2385,13 @@ def lora_plus_finetune_multi_label(
 		train_losses=training_losses,
 		val_losses=validation_losses,
 		fname=plot_paths["losses"],
+	)
+
+	viz.plot_hyperparameter_evolution(
+		eta_min=eta_min,
+		learning_rates=learning_rates_history,
+		weight_decays=weight_decays_history,
+		fname=plot_paths["hp_evol"],
 	)
 
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
