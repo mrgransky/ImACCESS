@@ -480,7 +480,7 @@ def plot_hyperparameter_evolution(
 	ax1.legend(
 		loc="best",
 		fontsize=10,
-		ncol=1,
+		ncol=2,
 		frameon=False, 
 		fancybox=True, 
 		shadow=True, 

@@ -298,10 +298,9 @@ def probe_multi_label(
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
 		print(f"  └─ Weight Decay: {weight_decay}")
 
-	# estimated_epochs = min(num_epochs, 15)
-	# total_training_steps = estimated_epochs * len(train_loader)
-	# T_max = total_training_steps
-	T_max = num_epochs * len(train_loader)
+	# approximate T_max: N epochs * minimum_epochs
+	estimated_epochs = 2 * minimum_epochs
+	T_max = estimated_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -313,7 +312,9 @@ def probe_multi_label(
 	
 	if verbose:
 		print(f"\n{scheduler.__class__.__name__}")
-		print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  ├─ minimum_epochs = {minimum_epochs}")
+		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
+		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 	
 	scaler = torch.amp.GradScaler(
@@ -666,8 +667,16 @@ def probe_multi_label(
 		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"hp_evol": os.path.join(results_dir, f"{file_base_name}_hyperparameter_evolution.png"),
 	}
 	
+	viz.plot_hyperparameter_evolution(
+		eta_min=eta_min,
+		learning_rates=learning_rates_history,
+		weight_decays=weight_decays_history,
+		fname=plot_paths["hp_evol"],
+	)
+
 	viz.plot_train_val_losses(
 		train_losses=training_losses,
 		val_losses=validation_losses,
@@ -850,6 +859,7 @@ def full_finetune_multi_label(
 		print(f"   ├─ {all_class_embeds.dtype}")
 		print(f"   └─ {all_class_embeds.device}")
 
+	# Optimizer
 	full_params = [p for p in model.parameters() if p.requires_grad]
 	optimizer = torch.optim.AdamW(
 		params=full_params,
@@ -858,6 +868,7 @@ def full_finetune_multi_label(
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
+
 	if verbose:
 		print(f"\n{optimizer.__class__.__name__}")
 		print(f"  ├─ Params: {sum(p.numel() for p in full_params):,}")
@@ -866,18 +877,25 @@ def full_finetune_multi_label(
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
 		print(f"  └─ Weight Decay: {weight_decay}")
 
-	T_max = num_epochs * len(train_loader)
+	# Scheduler
+	# approximate T_max: N epochs * minimum_epochs
+	estimated_epochs = 2 * minimum_epochs
+	T_max = estimated_epochs * len(train_loader)
 	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
-		T_max = T_max,
+		T_max=T_max,
 		eta_min=eta_min,
 		last_epoch=-1,
 	)
-	print(f"\n{scheduler.__class__.__name__} scheduler configured")
-	print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)] (full requested duration)")
-	print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+	
+	if verbose:
+		print(f"\n{scheduler.__class__.__name__}")
+		print(f"  ├─ minimum_epochs = {minimum_epochs}")
+		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
+		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -918,6 +936,8 @@ def full_finetune_multi_label(
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
 	full_val_loss_acc_metrics_all_epochs = list()
+	learning_rates_history = list()
+	weight_decays_history = list()
 	train_start_time = time.time()
 	final_img2txt_metrics = None
 	final_txt2img_metrics = None
@@ -989,6 +1009,8 @@ def full_finetune_multi_label(
 		training_losses_breakdown["total"].append(avg_total_loss)
 		training_losses_breakdown["i2t"].append(avg_i2t_loss)
 		training_losses_breakdown["t2i"].append(avg_t2i_loss)
+		learning_rates_history.append([optimizer.param_groups[0]['lr']])
+		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
 		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1}")
 
@@ -1076,17 +1098,6 @@ def full_finetune_multi_label(
 				f"@ epoch {early_stopping.get_best_epoch()+1}")
 			break
 
-		# # Cache stats
-		# if hasattr(train_loader.dataset, 'get_cache_stats'):
-		# 	cache_stats = train_loader.dataset.get_cache_stats()
-		# 	if cache_stats is not None:
-		# 		print(f"Train Cache: {cache_stats}")
-		
-		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
-		# 	cache_stats = validation_loader.dataset.get_cache_stats()
-		# 	if cache_stats is not None:
-		# 		print(f"Validation Cache: {cache_stats}")
-
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
 
 	print(f"[{mode}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
@@ -1168,6 +1179,7 @@ def full_finetune_multi_label(
 		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"hp_evol": os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
 	}
 	
 	viz.plot_multilabel_loss_breakdown(
@@ -1193,6 +1205,13 @@ def full_finetune_multi_label(
 		train_losses=training_losses,
 		val_losses=validation_losses,
 		fname=plot_paths["losses"],
+	)
+
+	viz.plot_hyperparameter_evolution(
+		eta_min=eta_min,
+		learning_rates=learning_rates_history,
+		weight_decays=weight_decays_history,
+		fname=plot_paths["hp_evol"],
 	)
 
 	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
@@ -1939,22 +1958,26 @@ def lora_plus_finetune_multi_label(
 		print(f"  ├─ WD: lora_A = {lora_A_wd} lora_B = {lora_B_wd}")
 		print(f"  └─ Params: lora_A:{sum(p.numel() for p in lora_A_params):,} lora_B: {sum(p.numel() for p in lora_B_params):,}")
 	
-	# scheduler
-	# estimated_epochs = min(num_epochs, 15)
-	# total_training_steps = estimated_epochs * len(train_loader)
-	# T_max = total_training_steps
-	T_max = num_epochs * len(train_loader)
-	eta_min = 0 # according to paper
+
+	# Scheduler
+	# approximate T_max: N epochs * minimum_epochs
+	estimated_epochs = 2 * minimum_epochs
+	T_max = estimated_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2 # 1% of initial LR
+	eta_min = learning_rate * ANNEALING_RATIO
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
 		T_max=T_max,
 		eta_min=eta_min,
 		last_epoch=-1,
 	)
+	
 	if verbose:
 		print(f"\n{scheduler.__class__.__name__}")
-		print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} (according to paper)")
+		print(f"  ├─ minimum_epochs = {minimum_epochs}")
+		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
+		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
 	# scaler = torch.amp.GradScaler(
 	# 	device=device,
@@ -3124,12 +3147,12 @@ def dora_finetune_multi_label(
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
 		print(f"  └─ Weight Decay: {weight_decay}")
 
-	# Learning rate scheduler
-	# estimated_epochs = min(num_epochs, 15)
-	# total_training_steps = estimated_epochs * len(train_loader)
-	# T_max = total_training_steps
-	T_max = num_epochs * len(train_loader)
-	ANNEALING_RATIO = 1e-2
+
+	# Scheduler
+	# approximate T_max: N epochs * minimum_epochs
+	estimated_epochs = 2 * minimum_epochs
+	T_max = estimated_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
@@ -3140,9 +3163,12 @@ def dora_finetune_multi_label(
 	
 	if verbose:
 		print(f"\n{scheduler.__class__.__name__}")
-		print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
-	
+		print(f"  ├─ minimum_epochs = {minimum_epochs}")
+		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
+		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+
+
 	scaler = torch.amp.GradScaler(
 		device=device,
 		init_scale=2**11,      # 2048 — much more conservative start
@@ -3709,12 +3735,11 @@ def ia3_finetune_multi_label(
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
 		print(f"  └─ Weight Decay: {weight_decay}")
 
-	# Learning rate scheduler
-	# estimated_epochs = min(num_epochs, 15)
-	# total_training_steps = estimated_epochs * len(train_loader)
-	# T_max = total_training_steps
-	T_max = num_epochs * len(train_loader)
-	ANNEALING_RATIO = 1e-2
+	# Scheduler
+	# approximate T_max: N epochs * minimum_epochs
+	estimated_epochs = 2 * minimum_epochs
+	T_max = estimated_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
@@ -3722,10 +3747,14 @@ def ia3_finetune_multi_label(
 		eta_min=eta_min,
 		last_epoch=-1,
 	)
+	
 	if verbose:
 		print(f"\n{scheduler.__class__.__name__}")
-		print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
+		print(f"  ├─ minimum_epochs = {minimum_epochs}")
+		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
+		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+
 
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -4300,12 +4329,12 @@ def vera_finetune_multi_label(
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
 		print(f"  └─ Weight Decay: {weight_decay}")
 
-	# Learning rate scheduler
-	# estimated_epochs = min(num_epochs, 15)
-	# total_training_steps = estimated_epochs * len(train_loader)
-	# T_max = total_training_steps
-	T_max = num_epochs * len(train_loader)
-	ANNEALING_RATIO = 1e-2
+
+	# Scheduler
+	# approximate T_max: N epochs * minimum_epochs
+	estimated_epochs = 2 * minimum_epochs
+	T_max = estimated_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
@@ -4313,10 +4342,17 @@ def vera_finetune_multi_label(
 		eta_min=eta_min,
 		last_epoch=-1,
 	)
+	
 	if verbose:
 		print(f"\n{scheduler.__class__.__name__}")
-		print(f"  ├─ T_max = {T_max} steps [({num_epochs} epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
+		print(f"  ├─ minimum_epochs = {minimum_epochs}")
+		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
+		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+
+
+
+
 
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -4874,8 +4910,10 @@ def clip_adapter_finetune_multi_label(
 		print(f"  └─ Weight Decay: {weight_decay}")
 
 	# Scheduler
-	T_max = num_epochs * len(train_loader)
-	ANNEALING_RATIO = 1e-2
+	# approximate T_max: N epochs * minimum_epochs
+	estimated_epochs = 2 * minimum_epochs
+	T_max = estimated_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2 # 1% of initial LR
 	eta_min = learning_rate * ANNEALING_RATIO
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
@@ -4883,10 +4921,13 @@ def clip_adapter_finetune_multi_label(
 		eta_min=eta_min,
 		last_epoch=-1,
 	)
+	
 	if verbose:
 		print(f"\n{scheduler.__class__.__name__}")
-		print(f"  ├─ T_max = {T_max} steps [{num_epochs} epochs × {len(train_loader)} batches]")
-		print(f"  └─ eta_min = {eta_min:.2e} ({ANNEALING_RATIO*100:.1f}% of lr)")
+		print(f"  ├─ minimum_epochs = {minimum_epochs}")
+		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
+		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -5621,9 +5662,12 @@ def tip_adapter_finetune_multi_label(
 			print(f"  ├─ Betas: {optimizer.defaults['betas']}")
 			print(f"  ├─ Eps: {optimizer.defaults['eps']}")
 			print(f"  └─ Weight Decay: {weight_decay}")
-		
-		T_max = num_epochs * len(train_loader)
-		ANNEALING_RATIO = 1e-2
+
+		# Scheduler
+		# approximate T_max: N epochs * minimum_epochs
+		estimated_epochs = 2 * minimum_epochs
+		T_max = estimated_epochs * len(train_loader)
+		ANNEALING_RATIO = 1e-2 # 1% of initial LR
 		eta_min = learning_rate * ANNEALING_RATIO
 		scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 			optimizer=optimizer,
@@ -5631,10 +5675,15 @@ def tip_adapter_finetune_multi_label(
 			eta_min=eta_min,
 			last_epoch=-1,
 		)
+		
 		if verbose:
-			print(f"\n{scheduler.__class__.__name__} scheduler")
-			print(f"  ├─ T_max = {T_max} steps [{num_epochs} epochs × {len(train_loader)} batches]")
-			print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
+			print(f"\n{scheduler.__class__.__name__}")
+			print(f"  ├─ minimum_epochs = {minimum_epochs}")
+			print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
+			print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
+			print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+
+
 	else:
 		optimizer = None
 		scheduler = None
