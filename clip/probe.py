@@ -565,7 +565,7 @@ class MultiLabelProbe(torch.nn.Module):
 					if self.probe_type == "Linear":
 							# For multi-label, use scaled initialization (less aggressive than single-label)
 							with torch.no_grad():
-									self.probe.weight.data = class_embeds.clone() * 0.1  # Scale down for multi-label
+									self.probe.weight.data = class_embeds.clone()
 									self.probe.bias.data.zero_()
 							
 							if self.verbose:
@@ -675,14 +675,14 @@ class MultiLabelProbe(torch.nn.Module):
 
 
 def get_probe_clip(
-		clip_model: torch.nn.Module,
-		validation_loader: DataLoader,
-		device: torch.device,
-		hidden_dim: Optional[int] = None,
-		dropout: float = 0.1,
-		zero_shot_init: bool = True,
-		target_resolution: Optional[int] = None,
-		verbose: bool = True
+	clip_model: torch.nn.Module,
+	validation_loader: DataLoader,
+	device: torch.device,
+	hidden_dim: Optional[int] = None,
+	dropout: float = 0.1,
+	zero_shot_init: bool = True,
+	target_resolution: Optional[int] = None,
+	verbose: bool = True
 ) -> Union[SingleLabelLinearProbe, MultiLabelProbe]:
 	"""
 	Automatically detects dataset type and creates the appropriate linear probe for CLIP.

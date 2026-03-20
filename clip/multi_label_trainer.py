@@ -59,7 +59,7 @@ def zero_shot_multi_label(
 	pairwise_imp_threshold: float,
 	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
 	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
-	temperature: float = 0.07,
+	temperature: float = 0.07, # only zero_shot uses temp: 0.07
 	verbose: bool = True,
 ) -> Dict:
 	# dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
@@ -74,7 +74,6 @@ def zero_shot_multi_label(
 	if verbose:
 		print(f"{mode.upper()} CLIP Evaluation: {model.__class__.__name__} {model_arch} on {dataset_name}")
 
-	# Identical pipeline to evaluate_best_model — no separate implementation
 	validation_results = get_validation_metrics(
 		model=model,
 		validation_loader=validation_loader,
@@ -105,6 +104,7 @@ def zero_shot_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
+		pw_mode="log",
 		device=device,
 		verbose=verbose,
 	)
@@ -181,7 +181,7 @@ def probe_multi_label(
 	minimum_epochs: int = 20,
 	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,
-	temperature: float = 0.07,
+	temperature: float = 1.0,
 	volatility_threshold: float = 15.0,
 	slope_threshold: float = 1e-4,
 	pairwise_imp_threshold: float = 1e-4,
@@ -256,6 +256,7 @@ def probe_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
+		pw_mode="log",
 		device=device,
 		verbose=verbose,
 	)
@@ -531,7 +532,7 @@ def probe_multi_label(
 				image_embeds=sample_feats_norm,
 				all_class_embeds=W, # probe W, not frozen text embeds
 				labels=sample_labels,
-				temperature=0.07,
+				temperature=temperature,
 				topk=5,
 				verbose=verbose,
 			)
@@ -709,9 +710,9 @@ def full_finetune_multi_label(
 	volatility_threshold: float,
 	slope_threshold: float,
 	pairwise_imp_threshold: float,
+	temperature: float = 1.0,
 	topk_values: List[int] = [1, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
-	temperature: float = 0.07,  # Temperature for contrastive learning
 	verbose: bool=True,
 ):
 	window_size = minimum_epochs + 1
@@ -795,6 +796,8 @@ def full_finetune_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
+		pw_mode="linear", 
+		pw_max_cap=100.0,
 		device=device,
 		verbose=verbose,
 	)
@@ -1238,7 +1241,7 @@ def lora_finetune_multi_label(
 	pairwise_imp_threshold: float,
 	topk_values: List[int] = [1, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,
-	temperature: float = 0.07,
+	temperature: float = 1.0,
 	quantization_bits: int = 8,
 	quantized: bool = False,
 	verbose: bool = True,
@@ -1313,6 +1316,7 @@ def lora_finetune_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
+		pw_mode="sqrt",
 		device=device,
 		verbose=verbose,
 	)
@@ -1611,6 +1615,7 @@ def lora_finetune_multi_label(
 			"lora_alpha": lora_alpha,
 			"lora_dropout": lora_dropout,
 		},
+		temperature=temperature,
 		topk_values=topk_values,
 		verbose=verbose,
 	)
@@ -1730,7 +1735,7 @@ def lora_plus_finetune_multi_label(
 	quantization_bits: int=8,
 	quantized: bool=False,
 	loss_weights: Dict[str, float]=None,
-	temperature: float=0.07,
+	temperature: float=1.0,
 	verbose: bool=True,
 ):
 	"""
@@ -1860,6 +1865,7 @@ def lora_plus_finetune_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
+		pw_mode="sqrt",
 		device=device,
 		verbose=verbose,
 	)
@@ -1870,7 +1876,7 @@ def lora_plus_finetune_multi_label(
 	N = masks["N"]
 	train_freq = masks["train_freq"]
 
-	# ── Criteria ─────────────────────────────────────────────────────────────
+	# Criteria
 	# I2T: pos_weight applies — rows are images, cols are classes
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
 		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
@@ -2291,6 +2297,7 @@ def lora_plus_finetune_multi_label(
 			"lora_dropout": lora_dropout,
 			"lora_plus_lambda": lora_plus_lambda,
 		},
+		temperature=temperature,
 		topk_values=topk_values,
 		verbose=verbose,
 	)
@@ -2418,7 +2425,7 @@ def rslora_finetune_multi_label(
 	pairwise_imp_threshold: float,
 	topk_values: List[int] = [1, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,
-	temperature: float = 0.07,
+	temperature: float = 1.0,
 	quantization_bits: int = 8,
 	quantized: bool = False,
 	verbose: bool = True,
@@ -2509,6 +2516,7 @@ def rslora_finetune_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
+		pw_mode="sqrt",
 		device=device,
 		verbose=verbose,
 	)
@@ -2856,6 +2864,7 @@ def rslora_finetune_multi_label(
 			"lora_alpha": lora_alpha,
 			"lora_dropout": lora_dropout,
 		},
+		temperature=temperature,
 		topk_values=topk_values,
 		verbose=verbose,
 	)
@@ -2971,7 +2980,7 @@ def dora_finetune_multi_label(
 	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
 	quantization_bits: int = 8,
 	quantized: bool = False,
-	temperature: float = 0.07,
+	temperature: float = 1.0,
 	loss_weights: Dict[str, float] = None,
 	verbose: bool = True,
 ):
@@ -3077,6 +3086,7 @@ def dora_finetune_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
+		pw_mode="sqrt",
 		device=device,
 		verbose=verbose,
 	)
@@ -3412,6 +3422,7 @@ def dora_finetune_multi_label(
 			"lora_alpha": lora_alpha,
 			"lora_dropout": lora_dropout,
 		},
+		temperature=temperature,
 		topk_values=topk_values,
 		verbose=verbose,
 	)
@@ -3534,7 +3545,7 @@ def ia3_finetune_multi_label(
 	pairwise_imp_threshold: float,
 	topk_values: List[int] = [1, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
-	temperature: float = 0.07,  # Temperature for contrastive learning
+	temperature: float = 1.0,
 	quantization_bits: int = 8,
 	quantized: bool = False,
 	verbose: bool = True,
@@ -3667,6 +3678,7 @@ def ia3_finetune_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
+		pw_mode="log",
 		device=device,
 		verbose=verbose,
 	)
@@ -4119,7 +4131,7 @@ def vera_finetune_multi_label(
 	pairwise_imp_threshold: float,
 	topk_values: List[int] = [1, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
-	temperature: float = 0.07,  # Temperature for contrastive learning
+	temperature: float = 1.0,
 	quantization_bits: int = 8,
 	quantized: bool = False,
 	verbose: bool = True,
@@ -4261,6 +4273,7 @@ def vera_finetune_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
+		pw_mode="log",
 		device=device,
 		verbose=verbose,
 	)
@@ -4765,7 +4778,7 @@ def clip_adapter_finetune_multi_label(
 	slope_threshold: float = 1e-3,
 	pairwise_imp_threshold: float = 0.01,
 	topk_values: List[int] = [1, 5, 10, 15, 20],
-	temperature: float = 0.07,
+	temperature: float = 1.0,
 	loss_weights: Dict[str, float] = None,
 	verbose: bool = True,
 ):
@@ -4878,6 +4891,7 @@ def clip_adapter_finetune_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
+		pw_mode="log",
 		device=device,
 		verbose=verbose,
 	)
@@ -5303,7 +5317,7 @@ def tip_adapter_finetune_multi_label(
 	initial_beta: float=1.0,
 	initial_alpha: float=1.0,
 	support_shots: int=16,  # Number of support samples per class
-	temperature: float=0.07,
+	temperature: float=1.0,
 	loss_weights: Dict[str, float]=None,
 	verbose: bool=True,
 ):
@@ -5606,6 +5620,7 @@ def tip_adapter_finetune_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
+		pw_mode="log",
 		device=device,
 		verbose=verbose,
 	)
@@ -5750,7 +5765,6 @@ def tip_adapter_finetune_multi_label(
 		if verbose:
 			print(f"\n[{tip_adapter_method}] Training-free mode - proceeding directly to evaluation")
 		
-		# Perform evaluation only
 		evaluation_results = evaluate_best_model(
 			model=model,
 			validation_loader=validation_loader,
@@ -5763,8 +5777,8 @@ def tip_adapter_finetune_multi_label(
 			device=device,
 			cache_dir=results_dir,
 			topk_values=topk_values,
-			verbose=verbose,
 			temperature=temperature,
+			verbose=verbose,
 		)
 		
 		final_metrics_full = evaluation_results["full_metrics"]

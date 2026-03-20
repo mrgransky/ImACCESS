@@ -78,7 +78,7 @@ def compute_multilabel_validation_loss(
 	active_mask,        # [num_classes] bool
 	device: str,
 	all_class_embeds: torch.Tensor,
-	temperature: float = 0.07,
+	temperature: float,
 	verbose: bool = False,
 ) -> float:
 	model.eval()
@@ -137,8 +137,8 @@ def compute_multilabel_validation_loss(
 def chunked_similarity_computation(
 		query_embeddings: torch.Tensor,
 		candidate_embeddings: torch.Tensor,
+		temperature: float,
 		chunk_size: int = 1000,
-		temperature: float = 0.07
 	) -> torch.Tensor:
 	num_queries = query_embeddings.shape[0]
 	num_candidates = candidate_embeddings.shape[0]
@@ -269,8 +269,6 @@ def compute_retrieval_metrics_from_similarity(
 	Returns:
 			Dictionary with mP, mAP, and Recall metrics
 	"""
-	# if verbose:
-	# 	print(f"\n[{mode}] Retrieval metrics (mP, mAP, Recall)")
 	
 	num_queries, num_candidates = similarity_matrix.shape
 	device = similarity_matrix.device
@@ -284,16 +282,7 @@ def compute_retrieval_metrics_from_similarity(
 		len(candidate_labels.shape) == 2 if mode == "Text-to-Image" 
 		else len(query_labels.shape) == 2
 	)
-	
-	# if verbose:
-	# 	print(f"  ├─ is_multi_label: {is_multi_label}")
-	# 	print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
-	# 	print(f"  ├─ num_queries: {num_queries}  num_candidates: {num_candidates}")
-	# 	print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
-	# 	print(f"  ├─ Candidate labels: {candidate_labels.shape} {candidate_labels.device}")
-	# 	print(f"  ├─ Class counts: {class_counts.shape if class_counts is not None else None}")
-	# 	print(f"  └─ Max K: {max_k}")
-	
+		
 	# Check cache
 	cache_file = None
 	if cache_dir and cache_key and not is_training:
@@ -446,6 +435,7 @@ def get_validation_metrics(
 	device: str,
 	topK_values: List[int],
 	cache_dir: str,
+	temperature: float,
 	finetune_strategy: str = None,
 	chunk_size: int = 1024,
 	force_recompute: bool = False,
@@ -453,13 +443,13 @@ def get_validation_metrics(
 	lora_params: Optional[Dict] = None,
 	is_training: bool = False,
 	model_hash: str = None,
-	temperature: float = 0.07,
 	class_embeds_override: Optional[torch.Tensor] = None,
 	verbose: bool = True,
 ) -> Dict:
 
 	if verbose:
-		print("\nComputing validation metrics...")
+		print("\nComputing validation metrics")
+		print(f"└─ Temperatur: {temperature}")
 
 	model.eval()
 	torch.cuda.empty_cache()
@@ -601,6 +591,7 @@ def get_validation_metrics(
 		device=device,
 		device_image_embeds=device_image_embeds,
 		device_class_text_embeds=device_class_text_embeds,
+		temperature=temperature,
 		chunk_size=chunk_size,
 		verbose=verbose,
 	)
@@ -671,6 +662,7 @@ def compute_full_set_metrics_from_cache(
 		device: str,
 		device_image_embeds: torch.Tensor,
 		device_class_text_embeds: torch.Tensor,
+		temperature: float,
 		chunk_size: int = 1000,
 		verbose: bool = False,
 ) -> Dict:
@@ -718,19 +710,17 @@ def compute_full_set_metrics_from_cache(
 		else:
 				img2txt_mrr = _compute_singlelabel_mrr(i2t_similarity, labels)
 		
-
-
-		# ── Alignment score (replaces cosine similarity for multi-label) ──────
+		# Alignment score
 		if is_multi_label:
-				alignment_score = get_multilabel_alignment_score(
-						image_embeds=device_image_embeds,
-						all_class_embeds=device_class_text_embeds,
-						labels=labels,
-						temperature=0.07,
-						topk=5,
-						verbose=verbose,
-				)
-				cos_sim = None  # no longer computed for multi-label
+			alignment_score = get_multilabel_alignment_score(
+				image_embeds=device_image_embeds,
+				all_class_embeds=device_class_text_embeds,
+				labels=labels,
+				temperature=temperature,
+				topk=5,
+				verbose=verbose,
+			)
+			cos_sim = None  # no longer computed for multi-label
 		else:
 				alignment_score = None
 				cos_sim = get_matched_cosine_similarity(
@@ -1110,11 +1100,15 @@ def get_matched_cosine_similarity(
 						print(f"\n  [GUARD] No valid pairs — returning float('nan')")
 				return float('nan')
 
-		cos_sim = torch.nn.functional.cosine_similarity(
-				image_embeds[valid_mask],
-				matched_text_embeds[valid_mask],
-				dim=1,
-		)
+		# cos_sim = torch.nn.functional.cosine_similarity(
+		# 	image_embeds[valid_mask],
+		# 	matched_text_embeds[valid_mask],
+		# 	dim=1,
+		# )
+		# Normalise matched embeddings before cosine similarity
+		img_n = torch.nn.functional.normalize(image_embeds[valid_mask], dim=1)
+		txt_n = torch.nn.functional.normalize(matched_text_embeds[valid_mask], dim=1)
+		cos_sim = torch.nn.functional.cosine_similarity(img_n, txt_n, dim=1)
 
 		result = cos_sim.mean().item()
 
@@ -1127,7 +1121,7 @@ def get_multilabel_alignment_score(
 	image_embeds: torch.Tensor,       # [N, D] — L2 normalised
 	all_class_embeds: torch.Tensor,   # [C, D] — L2 normalised
 	labels: torch.Tensor,             # [N, C] — binary, long
-	temperature: float = 0.07,
+	temperature: float, # 0.07 only for Zero-Shot CLIP,
 	topk: int = 5,
 	verbose: bool = False,
 ) -> float:
@@ -1179,8 +1173,11 @@ def get_multilabel_alignment_score(
 		
 		return float('nan')
 	
-	# [N, C] similarity logits
-	logits = (image_embeds @ all_class_embeds.T) / temperature
+	# [N, C] cosine similarity (no temperature for ranking — temperature distorts topk)
+	# Normalise both sides before ranking
+	image_embeds_n = torch.nn.functional.normalize(image_embeds, dim=1)
+	all_class_embeds_n = torch.nn.functional.normalize(all_class_embeds, dim=1)
+	logits = (image_embeds_n @ all_class_embeds_n.T) / temperature
 	
 	# Clamp topk to available classes
 	effective_k = min(topk, logits.shape[1])
@@ -1199,7 +1196,7 @@ def get_multilabel_alignment_score(
 	score = hits.float().mean().item()
 	
 	if verbose:
-		print(f"\n[Alignment Score @ top-{effective_k}]")
+		print(f"\n[Alignment Score @ top-{effective_k}] Temperature: {temperature}")
 		print(f"  Samples with ≥1 true class in top-{effective_k}: {hits.sum().item()} / {len(hits)}")
 		print(f"  Alignment score: {score:.6f}")
 		
@@ -1209,7 +1206,7 @@ def get_multilabel_alignment_score(
 			mask = pos_counts == n_pos
 			if mask.sum() > 0:
 				group_score = hits[mask].float().mean().item()
-				print(f"  └─ {n_pos} positive labels ({mask.sum().item()} samples): {group_score:.4f}")
+				print(f"  └─ {n_pos} positive labels ({mask.sum().item()} samples): {group_score}")
 	
 	return score
 
@@ -1224,11 +1221,11 @@ def evaluate_best_model(
 	finetune_strategy,
 	device,
 	cache_dir: str,
+	temperature: float,
 	topk_values: list[int] = [1, 5, 10],
 	clean_cache: bool = True,
 	embeddings_cache=None,
 	lora_params: Optional[Dict] = None,
-	temperature: float = 0.07,
 	class_embeds_override: Optional[torch.Tensor] = None,
 	verbose: bool = True,
 ):
@@ -1317,9 +1314,9 @@ def evaluate_best_model(
 		verbose=verbose,
 	)
 	full_metrics = validation_results["full_metrics"]
-	i2t_similarity    = validation_results["i2t_similarity"]
-	t2i_similarity    = validation_results["t2i_similarity"]
-	device_labels     = validation_results["device_labels"]
+	i2t_similarity = validation_results["i2t_similarity"]
+	t2i_similarity = validation_results["t2i_similarity"]
+	device_labels  = validation_results["device_labels"]
 
 	if verbose:
 		print("\nComputing tiered retrieval metrics (Overall / Head / Rare)...")
@@ -1342,7 +1339,7 @@ def evaluate_best_model(
 			rare_mask=rare_mask,
 			active_mask=active_mask,
 			mode="Text-to-Image",
-			min_val_support=10,
+			min_val_support=5,
 			verbose=verbose,
 	)
 

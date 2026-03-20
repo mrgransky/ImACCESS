@@ -165,71 +165,124 @@ class LossAnalyzer:
 		return signals
 
 def compute_loss_masks(
-	train_loader: DataLoader,
-	num_classes: int,
-	device: torch.device,
-	pareto_threshold: float = 0.80,
-	pw_rare_threshold: float = 20.0,
-	verbose: bool = True,
+    train_loader: DataLoader,
+    num_classes: int,
+    device: torch.device,
+    pareto_threshold: float = 0.80,
+    rare_percentile: float = 0.20,       # bottom X% of active classes by frequency → rare
+    pw_mode: str = "log",                # "log" | "sqrt" | "linear"
+    pw_max_cap: float = 100.0,           # only used when pw_mode="linear"
+    verbose: bool = True,
 ) -> Dict[str, torch.Tensor]:
-	"""
-	Compute pos_weight, active_mask, head_mask, and rare_mask from
-	training set label frequencies. Called internally by every
-	fine-tuning function — no need to pass masks from outside.
-	Returns dict with keys:
-			pos_weight   [num_classes] float32  — for BCEWithLogitsLoss
-			active_mask  [num_classes] bool     — freq > 0
-			head_mask    [num_classes] bool     — Pareto 80% head classes
-			rare_mask    [num_classes] bool     — pos_weight > pw_rare_threshold
-			train_freq   [num_classes] float32  — raw frequencies (CPU)
-			N            int                    — total training samples
-	"""
-	print("\nLabel frequencies from training set")
-	train_freq = torch.zeros(num_classes, dtype=torch.float32)
-	N = len(train_loader.dataset)
-	for raw in train_loader.dataset.labels:
-			try:
-					for lbl in ast.literal_eval(raw):
-							if lbl in train_loader.dataset.label_dict:
-									train_freq[train_loader.dataset.label_dict[lbl]] += 1
-			except (ValueError, SyntaxError):
-					pass
+    """
+    Compute training loss weights and evaluation tier masks from training label frequencies.
 
-	# pos_weight — capped at 1000 to avoid float16 overflow
-	pos_weight = torch.where(
-			train_freq > 0,
-			((N - train_freq) / train_freq.clamp(min=1)).clamp(max=1000.0),
-			torch.ones(num_classes),
-	).to(device)
+    Two concerns are kept strictly separate:
+      1. pos_weight  — loss weighting, depends on pw_mode (training only)
+      2. head/rare   — evaluation tiers, based purely on frequency (all strategies)
 
-	# active_mask — classes with at least one training example
-	active_mask = (train_freq > 0).to(device)
+    Args:
+        train_loader     : DataLoader whose .dataset has .labels and .label_dict
+        num_classes      : Total number of classes (including inactive)
+        device           : Target device for returned tensors
+        pareto_threshold : Cumulative frequency fraction defining "head" classes (default 80%)
+        rare_percentile  : Bottom fraction of active classes by frequency → "rare" (default 20%)
+        pw_mode          : Loss weighting strategy:
+                             "log"    → log1p(ratio)          range ~[0, 11]   probe/adapters/IA3/VeRA
+                             "sqrt"   → sqrt(ratio)           range ~[1, 274]  LoRA/LoRA+/DoRA
+                             "linear" → ratio.clamp(pw_max_cap) range ~[1, cap] full fine-tuning
+        pw_max_cap       : Hard cap for "linear" mode (ignored otherwise)
+        verbose          : Print summary statistics
 
-	# head_mask — Pareto classes covering pareto_threshold of occurrences
-	sorted_freq, sorted_idx = torch.sort(train_freq, descending=True)
-	cumsum = sorted_freq.cumsum(0)
-	pareto_cutoff = (cumsum <= cumsum[-1] * pareto_threshold).sum().item() + 1
-	head_indices = sorted_idx[:pareto_cutoff]
-	head_mask = torch.zeros(num_classes, dtype=torch.bool, device=device)
-	head_mask[head_indices] = True
+    Returns dict with keys:
+        pos_weight   [num_classes] float32  cuda — for BCEWithLogitsLoss (training only)
+        active_mask  [num_classes] bool     cuda — freq > 0
+        head_mask    [num_classes] bool     cuda — Pareto top classes by cumulative frequency
+        rare_mask    [num_classes] bool     cuda — bottom rare_percentile of active classes
+        train_freq   [num_classes] float32  cpu  — raw per-class counts
+        N            int                        — total training samples
+    """
+    # ── 1. Count label frequencies ──────────────────────────────────────────
+    train_freq = torch.zeros(num_classes, dtype=torch.float32)
+    N = len(train_loader.dataset)
 
-	# rare_mask — learnable but imbalanced classes
-	rare_mask = (pos_weight > pw_rare_threshold) & active_mask
-	if verbose:
-		print(f"  ├─ Total samples (N):        {N:,}")
-		print(f"  ├─ pos_weight range:         [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"  ├─ Active classes (freq>0):  {active_mask.sum().item():,} / {num_classes:,}")
-		print(f"  ├─ Head (Pareto {pareto_threshold:.0%}):        {head_mask.sum().item():,}")
-		print(f"  └─ Rare (pw>{pw_rare_threshold:.0f}):           {rare_mask.sum().item():,}")
+    for raw in train_loader.dataset.labels:
+        try:
+            for lbl in ast.literal_eval(raw):
+                if lbl in train_loader.dataset.label_dict:
+                    train_freq[train_loader.dataset.label_dict[lbl]] += 1
+        except (ValueError, SyntaxError):
+            pass
 
-	return {
-			"pos_weight":  pos_weight,
-			"active_mask": active_mask,
-			"head_mask":   head_mask,
-			"rare_mask":   rare_mask,
-			"train_freq":  train_freq,
-			"N":           N,
-	}
+    # ── 2. active_mask — classes with at least one training example ─────────
+    active_mask = (train_freq > 0).to(device)
+
+    # ── 3. pos_weight — training loss weighting only ────────────────────────
+    ratio = (N - train_freq) / train_freq.clamp(min=1)
+
+    if pw_mode == "log":
+        # smooth, conservative — safe for probes / adapters / IA3 / VeRA
+        # range: ~[0, log1p(N)] ≈ [0, 11] for N~75k; no clamp needed
+        scaled = torch.log1p(ratio)
+
+    elif pw_mode == "sqrt":
+        # moderate — suitable for LoRA / LoRA+ / DoRA
+        # range: ~[1, sqrt(N)] ≈ [1, 274] for N~75k
+        scaled = torch.sqrt(ratio).clamp(min=1.0)
+
+    elif pw_mode == "linear":
+        # strong — suitable for full fine-tuning where backbone absorbs gradients
+        # range: [1, pw_max_cap]
+        scaled = ratio.clamp(min=1.0, max=pw_max_cap)
+
+    else:
+        raise ValueError(
+            f"Unknown pw_mode '{pw_mode}'. Choose from: 'log', 'sqrt', 'linear'."
+        )
+
+    # inactive classes always get weight 1.0 (they are masked out in the loss anyway)
+    pos_weight = torch.where(
+        train_freq > 0,
+        scaled,
+        torch.ones(num_classes),
+    ).to(device)
+
+    # ── 4. head_mask — Pareto top classes by cumulative frequency ───────────
+    # "head" = fewest classes that together account for pareto_threshold of all occurrences
+    sorted_freq, sorted_idx = torch.sort(train_freq, descending=True)
+    cumsum = sorted_freq.cumsum(0)
+    pareto_cutoff = int((cumsum <= cumsum[-1] * pareto_threshold).sum().item()) + 1
+    head_mask = torch.zeros(num_classes, dtype=torch.bool, device=device)
+    head_mask[sorted_idx[:pareto_cutoff]] = True
+
+    # ── 5. rare_mask — bottom rare_percentile of ACTIVE classes by frequency ─
+    # Fully decoupled from pos_weight — stable across all strategies and zero-shot
+    active_freq = train_freq[active_mask.cpu()]   # CPU tensor, active classes only
+    if active_freq.numel() > 1:
+        freq_threshold = torch.quantile(active_freq, rare_percentile)
+        rare_mask = ((train_freq <= freq_threshold) & (train_freq > 0)).to(device)
+    else:
+        # degenerate dataset — no rare classes
+        rare_mask = torch.zeros(num_classes, dtype=torch.bool, device=device)
+
+    # ── 6. Verbose summary ──────────────────────────────────────────────────
+    if verbose:
+        print(f"\nLabel frequencies from training set")
+        print(f"  ├─ Total samples (N):        {N:,}")
+        print(f"  ├─ pw_mode:                  {pw_mode}  cap={pw_max_cap if pw_mode == 'linear' else 'n/a'}")
+        print(f"  ├─ pos_weight range:         [{pos_weight[active_mask].min():.3f}, {pos_weight[active_mask].max():.3f}]")
+        print(f"  ├─ Active classes (freq>0):  {active_mask.sum().item():,} / {num_classes:,}")
+        print(f"  ├─ Head  (Pareto {pareto_threshold:.0%}):       {head_mask.sum().item():,}")
+        print(f"  └─ Rare  (bottom {rare_percentile:.0%} freq):    {rare_mask.sum().item():,}")
+
+    return {
+        "pos_weight":  pos_weight,
+        "active_mask": active_mask,
+        "head_mask":   head_mask,
+        "rare_mask":   rare_mask,
+        "train_freq":  train_freq,   # CPU — intentional, used for analysis
+        "N":           N,
+    }
 
 def compute_multilabel_contrastive_loss(
 	model,

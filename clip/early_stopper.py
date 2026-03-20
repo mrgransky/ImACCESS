@@ -219,7 +219,7 @@ class EarlyStopping:
 					else:
 						self.counter += 1
 						self.improvement_history.append(False)
-						print(f"  [WARMUP] No improvement: {current_value} > {self.best_score}")
+						print(f"  [WARMUP] No improvement: current: {current_value} < best: {self.best_score}")
 						print(f"  Counter: {self.counter}/{self.effective_patience}\n")
 					return False
 

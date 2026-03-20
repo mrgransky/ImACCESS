@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=164G
+#SBATCH --mem=256G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-40:4
@@ -116,7 +116,7 @@ PRINT_FREQUENCIES=(1000 1000 50 50 25)
 # Learning rates by method group
 # LR_FULL_FT=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 LR_FULL_FT=(5.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
-LR_LINEAR_PROBE=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+LR_LINEAR_PROBE=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 LR_PEFT_ALL=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)  # LoRA, LoRA+, DoRA, VeRA, IA³, Adapters
 
 WEIGHT_DECAY=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
