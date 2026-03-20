@@ -24,8 +24,12 @@ import visualize as viz
 # "https://pbs.twimg.com/media/Go2T7FJbIAApElq?format=jpg"
 # https://pbs.twimg.com/media/GowwFwkbQAAaMs-?format=jpg
 
-# # run in local for all fine-tuned models with image and label:
-# $ python multi_label_inference.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -a 'ViT-B/32' -v
+# # run in local and Puhti for all fine-tuned models with image and label:
+# local:
+# $ python multi_label_inference.py -pth_dir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/multi_label/ -a 'ViT-B/32' -v
+
+# Puhti:
+# $ python multi_label_inference.py -pth_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/multi_label/ -a 'ViT-L/14@336px' -v
 
 def get_tail_only_samples(
 		metadata_val_path: str,
@@ -203,133 +207,6 @@ def run_qualitative_retrieval(
 			)
 
 		return {'i2t': i2t_results, 't2i': t2i_results}
-
-# def get_top_k_strategies(
-# 	results_json_path: str, 
-# 	top_k: int = 5, 
-# 	metric_key: str = "mAP", 
-# 	k_value: str = "10"
-# ) -> List[str]:
-# 	if not os.path.exists(results_json_path):
-# 		print(f"WARNING: {results_json_path} not found. Cannot rank strategies.")
-# 		return []
-
-# 	with open(results_json_path, 'r') as f:
-# 		all_results = json.load(f)
-# 	scores = {}
-# 	print(f"\n>> Ranking {len(all_results)} strategies based on I2T [OVERRALL] mAP@{k_value}...")
-# 	print(all_results)
-# 	for strategy, metrics in all_results.items():
-# 		try:
-# 			# Metric path: tiered_i2t -> overall -> mAP -> 10
-# 			# Adjust this path if your JSON structure differs
-# 			score = metrics['i2t']['overall'][metric_key][k_value]
-# 			scores[strategy] = score
-# 		except KeyError:
-# 			# Fallback if specific key missing
-# 			scores[strategy] = -1.0
-
-# 	# print(scores)
-
-# 	# Sort by score descending
-# 	sorted_strategies = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
-# 	top_k_sorted_strategies = sorted_strategies[:top_k]
-# 	print(f"\nTop-{len(top_k_sorted_strategies)} Strategies selected based on I2T mAP@{k_value}:")
-# 	for i, strat in enumerate(top_k_sorted_strategies):
-# 		print(f"   {i+1}. {strat:<20} (Score: {scores[strat]:.4f})")
-# 	print("-"*60)
-
-# 	# Find checkpoint files that start with each strategy name
-# 	pth_files_directory = os.path.dirname(results_json_path)
-# 	print(f"pth_files_directory: {pth_files_directory}")
-# 	top_k_sorted_checkpoints = []
-# 	for strategy in top_k_sorted_strategies:
-# 		matching_files = [
-# 			f for f in os.listdir(pth_files_directory) 
-# 			if f.startswith(strategy) and f.endswith('.pth')
-# 		]
-# 		if matching_files:
-# 			# Take the first match if multiple exist
-# 			top_k_sorted_checkpoints.append(os.path.join(pth_files_directory, matching_files[0]))
-# 		else:
-# 			print(f"WARNING: No checkpoint found for strategy '{strategy}'")
-
-# 	return top_k_sorted_strategies, top_k_sorted_checkpoints
-
-# def run_qualitative_retrieval(
-# 	model: torch.nn.Module,
-# 	i2t_samples: List[Dict],       # from get_multi_label_head_torso_tail_samples
-# 	t2i_samples: List[str],        # list of query label strings
-# 	class_names: List[str],        # full list of all class labels
-# 	preprocess,                    # CLIP image preprocessor
-# 	device: torch.device,
-# 	topk: int = 5,
-# ) -> Dict:
-# 	model.eval()
-# 	# Pre-encode all class name texts once
-# 	with torch.no_grad():
-# 		text_tokens = clip.tokenize(class_names, truncate=True).to(device)
-# 		all_text_embeds = torch.nn.functional.normalize(model.encode_text(text_tokens).float(), dim=-1)  # [C, D]
-	
-# 	# I2T: query image → retrieve top-k labels                           #
-# 	i2t_results = []
-# 	for sample in i2t_samples:
-# 		image = preprocess(Image.open(sample["image_path"]).convert("RGB")).unsqueeze(0).to(device)
-# 		with torch.no_grad():
-# 			img_embed = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1)  # [1, D]
-
-# 		sims = (img_embed @ all_text_embeds.T).squeeze(0)																				# [C]
-
-# 		topk_indices = sims.topk(topk).indices.cpu().tolist()
-# 		retrieved_labels = [class_names[idx] for idx in topk_indices]
-# 		retrieved_scores = [sims[idx].item() for idx in topk_indices]
-
-# 		i2t_results.append(
-# 			{
-# 				"image_path":       sample["image_path"],
-# 				"ground_truth":     sample["all_labels"],
-# 				"segment":          sample["segment"],
-# 				"retrieved_labels": retrieved_labels,
-# 				"retrieved_scores": retrieved_scores,
-# 			}
-# 		)
-	
-# 	# ------------------------------------------------------------------ 	#
-# 	# T2I: query label → retrieve top-k images                           	#
-# 	# We need image embeddings for the full val set — expensive once,     #
-# 	# so we encode only the candidate pool (i2t_samples images) for the  	#
-# 	# qualitative figure. For a full eval use the cached embeddings.      #
-# 	# ------------------------------------------------------------------ 	#
-# 	all_image_paths = list({s["image_path"] for s in i2t_samples})
-# 	image_embeds_map = {}
-# 	for img_path in all_image_paths:
-# 		image = preprocess(Image.open(img_path).convert("RGB")).unsqueeze(0).to(device)
-# 		with torch.no_grad():
-# 			emb = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1)
-# 		image_embeds_map[img_path] = emb.squeeze(0)
-	
-# 	t2i_results = []
-# 	for query_label in t2i_samples:
-# 		with torch.no_grad():
-# 			token = clip.tokenize([query_label], truncate=True).to(device)
-# 			txt_embed = torch.nn.functional.normalize(model.encode_text(token).float(), dim=-1)  # [1, D]
-		
-# 		sims = {
-# 			path: (txt_embed @ emb.unsqueeze(1)).item()
-# 			for path, emb in image_embeds_map.items()
-# 		}
-		
-# 		topk_paths = sorted(sims, key=sims.get, reverse=True)#[:topk]
-		
-# 		t2i_results.append(
-# 			{
-# 				"query_label":    query_label,
-# 				"retrieved_paths": topk_paths,
-# 				"retrieved_scores": [sims[p] for p in topk_paths],
-# 			}
-# 		)
-	
-# 	return {"i2t": i2t_results, "t2i": t2i_results}
 
 def pretrain_multi_label(
 		model: torch.nn.Module,
@@ -756,14 +633,18 @@ def _load_checkpoint_into_model(
 ) -> torch.nn.Module:
 	checkpoint = torch.load(ft_path, map_location=device)
 	state_dict = checkpoint.get('model_state_dict', checkpoint)
+
 	# Key translation for probe checkpoints (saved as bare linear layer)
+	print(f"Loading {ft_path} into {type(model)}")
+	# print(f"Checkpoint keys (sample): {list(state_dict.keys())}")
 	try:
 		missing, unexpected = model.load_state_dict(state_dict, strict=False)
 		if verbose and (missing or unexpected):
-			print(f"  Missing keys : {len(missing)}")
-			print(f"  Unexpected   : {len(unexpected)}")
+			print(f"{len(missing)} Missing: {missing}")
+			print(f"{len(unexpected)} Unexpected: {unexpected}")
 	except Exception as e:
-		print(f"[WARNING] load_state_dict failed:\n{e}")
+		print(f"[WARNING] load_state_dict failed: {e}")
+
 	return model
 
 def load_finetuned_models(

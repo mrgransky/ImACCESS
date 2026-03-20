@@ -742,7 +742,7 @@ def get_multi_label_dataloaders(
 		val_cache_size = cache_size - train_cache_size
 	else:
 		train_cache_size = val_cache_size = 0
-	print(f"\n[TOTAL] cache size: {cache_size:,} Distributed (train[{train_pct*100:.0f}%]: {train_cache_size:,}, validation[{val_pct*100:.0f}%]: {val_cache_size:,})")
+	print(f"\n[TOTAL] cache size: {cache_size:,} (train[{train_pct*100:.0f}%]: {train_cache_size:,}, val[{val_pct*100:.0f}%]: {val_cache_size:,})")
 	
 	train_dataset = HistoricalArchivesMultiLabelDataset(
 		dataset_name=dataset_name,

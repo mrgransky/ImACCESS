@@ -554,7 +554,7 @@ def probe_multi_label(
 		
 		if early_stopping.should_stop(
 			current_value=avg_val_loss,
-			model=probe.probe, # save only probe weights, not full CLIP
+			model=probe, # full MultiLabelProbe: saves {probe.weight, probe.bias, clip_model.*}
 			epoch=epoch,
 			optimizer=optimizer,
 			scheduler=scheduler,
@@ -573,10 +573,10 @@ def probe_multi_label(
 		print(f"Loading best probe weights from {mdl_fpth}")
 		checkpoint = torch.load(mdl_fpth, map_location=device)
 		state_dict = checkpoint.get('model_state_dict', checkpoint)
-		probe.probe.load_state_dict(state_dict, strict=False)
+		probe.load_state_dict(state_dict, strict=False)
 	elif early_stopping.best_weights is not None:
 		print(f"Loading best weights from early stopping (epoch {early_stopping.best_epoch+1})")
-		probe.probe.load_state_dict(
+		probe.load_state_dict(
 			{k: v.to(device) for k, v in early_stopping.best_weights.items()}
 		)
 	else:
@@ -1843,7 +1843,7 @@ def lora_plus_finetune_multi_label(
 	# Apply LoRA+ to the model
 	model = get_injected_peft_clip(
 		clip_model=model,
-		method=mode.replace('_plus', ''),  # Use 'lora' method, LoRA+ in optimizer
+		method=mode,
 		rank=lora_rank,
 		alpha=lora_alpha,
 		dropout=lora_dropout,
@@ -3650,7 +3650,7 @@ def ia3_finetune_multi_label(
 
 	model = get_injected_peft_clip(
 		clip_model=model,
-		method="ia3",
+		method=mode,
 		rank=1,  # Not used for (IA)³, but required by function signature
 		alpha=1.0,  # Not used for (IA)³, but required by function signature
 		dropout=0.0,  # Not used for (IA)³, but required by function signature
