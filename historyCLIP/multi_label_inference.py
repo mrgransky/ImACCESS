@@ -142,46 +142,68 @@ def get_top_k_strategies(
 		return sorted_strategies, checkpoints
 
 def run_qualitative_retrieval(
-		model: torch.nn.Module,
-		i2t_samples: List[Dict],
-		t2i_samples: List[str],
-		class_names: List[str],
-		all_val_image_paths: List[str],   # <-- NEW: full val pool for T2I
-		preprocess,
-		device: torch.device,
-		i2t_topk: int = 3,
-		t2i_topk: int = 1,
+	model: torch.nn.Module,
+	i2t_samples: List[Dict],
+	t2i_samples: List[str],
+	class_names: List[str],
+	all_val_image_paths: List[str],
+	preprocess,
+	device: torch.device,
+	i2t_topk: int = 3,
+	t2i_topk: int = 1,
+	text_batch_size: int = 256,   # chunk size for text encoding
+	image_batch_size: int = 32,   # chunk size for image encoding
 ) -> Dict:
 		model.eval()
 
-		with torch.no_grad():
-				text_tokens = clip.tokenize(class_names, truncate=True).to(device)
-				all_text_embeds = torch.nn.functional.normalize(model.encode_text(text_tokens).float(), dim=-1)  # [C, D]
+		# ------------------------------------------------------------------ #
+		# Encode ALL class name texts in chunks to avoid OOM                  #
+		# For ViT-L/14@336px with ~4,669 classes, encoding all at once        #
+		# requires ~15 GiB. Chunking keeps peak usage under control.          #
+		# ------------------------------------------------------------------ #
+		all_text_embeds = []
+		for start in range(0, len(class_names), text_batch_size):
+				chunk = class_names[start : start + text_batch_size]
+				with torch.no_grad():
+						tokens = clip.tokenize(chunk, truncate=True).to(device)
+						chunk_embeds = torch.nn.functional.normalize(model.encode_text(tokens).float(), dim=-1)
+				all_text_embeds.append(chunk_embeds.cpu())   # keep on CPU until needed
+				del tokens, chunk_embeds
+				torch.cuda.empty_cache()
+		all_text_embeds = torch.cat(all_text_embeds, dim=0)  # [C, D] on CPU
 
-		# I2T: tail image → top-i2t_topk predicted labels
+		# I2T: tail image → top-i2t_topk predicted labels                    #
 		i2t_results = []
 		for sample in i2t_samples:
-			image = preprocess(Image.open(sample['image_path']).convert('RGB')).unsqueeze(0).to(device)
-			with torch.no_grad():
-				img_embed = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1)
-			sims = (img_embed @ all_text_embeds.T).squeeze(0)
-			topk_idx = sims.topk(i2t_topk).indices.cpu().tolist()
-			i2t_results.append(
-				{
-					'image_path':       sample['image_path'],
-					'ground_truth':     sample['all_labels'],
-					'segment':          sample['segment'],
-					'retrieved_labels': [class_names[j] for j in topk_idx],
-					'retrieved_scores': [sims[j].item() for j in topk_idx],
-				}
-			)
+				image = preprocess(
+						Image.open(sample['image_path']).convert('RGB')
+				).unsqueeze(0).to(device)
+				with torch.no_grad():
+						img_embed = torch.nn.functional.normalize(
+								model.encode_image(image).float(), dim=-1
+						).cpu()  # [1, D] on CPU
+				# cosine sim against CPU text embeds — no GPU needed for matmul at this scale
+				sims = (img_embed @ all_text_embeds.T).squeeze(0)   # [C]
+				topk_idx = sims.topk(i2t_topk).indices.tolist()
+				i2t_results.append({
+						'image_path':       sample['image_path'],
+						'ground_truth':     sample['all_labels'],
+						'segment':          sample['segment'],
+						'retrieved_labels': [class_names[j] for j in topk_idx],
+						'retrieved_scores': [sims[j].item() for j in topk_idx],
+				})
+				del image, img_embed
+				torch.cuda.empty_cache()
 
-		# T2I: tail label → top-t2i_topk images from FULL val pool
-		# Encode val images in batches to avoid OOM
-		all_img_embeds = []
-		BATCH = 64
-		for start in range(0, len(all_val_image_paths), BATCH):
-				batch_paths = all_val_image_paths[start:start + BATCH]
+		# ------------------------------------------------------------------ #
+		# T2I: tail label → top-t2i_topk images from FULL val pool           #
+		# Encode val images in chunks, accumulate embeddings on CPU,          #
+		# then do the similarity matmul entirely on CPU to avoid OOM.         #
+		# For 41K images × 768-dim: ~120 MB on CPU — totally fine.           #
+		# ------------------------------------------------------------------ #
+		all_img_embeds = []   # accumulate on CPU
+		for start in range(0, len(all_val_image_paths), image_batch_size):
+				batch_paths = all_val_image_paths[start : start + image_batch_size]
 				imgs = torch.stack([
 						preprocess(Image.open(p).convert('RGB'))
 						for p in batch_paths
@@ -189,22 +211,26 @@ def run_qualitative_retrieval(
 				with torch.no_grad():
 						embs = torch.nn.functional.normalize(model.encode_image(imgs).float(), dim=-1)
 				all_img_embeds.append(embs.cpu())
-		all_img_embeds = torch.cat(all_img_embeds, dim=0)  # [N_val, D]
+				del imgs, embs
+				torch.cuda.empty_cache()
+		all_img_embeds = torch.cat(all_img_embeds, dim=0)  # [N_val, D] on CPU
 
+		# Encode query labels (already chunked above, but these are just t2i_samples — small)
 		t2i_results = []
 		for query_label in t2i_samples:
-			with torch.no_grad():
-				token = clip.tokenize([query_label], truncate=True).to(device)
-				txt_embed = torch.nn.functional.normalize(model.encode_text(token).float(), dim=-1).cpu()
-			sims = (txt_embed @ all_img_embeds.T).squeeze(0)  # [N_val]
-			topk_idx = sims.topk(t2i_topk).indices.tolist()
-			t2i_results.append(
-				{
-					'query_label':      query_label,
-					'retrieved_paths':  [all_val_image_paths[j] for j in topk_idx],
-					'retrieved_scores': [sims[j].item() for j in topk_idx],
-				}
-			)
+				with torch.no_grad():
+						token = clip.tokenize([query_label], truncate=True).to(device)
+						txt_embed = torch.nn.functional.normalize(
+								model.encode_text(token).float(), dim=-1
+						).cpu()  # [1, D] on CPU
+				sims = (txt_embed @ all_img_embeds.T).squeeze(0)   # [N_val] on CPU
+				topk_idx = sims.topk(t2i_topk).indices.tolist()
+				t2i_results.append({
+						'query_label':      query_label,
+						'retrieved_paths':  [all_val_image_paths[j] for j in topk_idx],
+						'retrieved_scores': [sims[j].item() for j in topk_idx],
+				})
+				del token, txt_embed
 
 		return {'i2t': i2t_results, 't2i': t2i_results}
 
@@ -950,6 +976,8 @@ def main():
 			device=args.device,
 			i2t_topk=args.i2t_topk,
 			t2i_topk=args.t2i_topk,
+			text_batch_size=256, # tune down to 128 if ViT-L/14@336px still OOMs
+			image_batch_size=32, # tune down to 16 for 32GB GPUs under memory pressure
 		)
 		del ft_model, model_dict
 		torch.cuda.empty_cache()
