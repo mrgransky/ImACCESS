@@ -8,8 +8,8 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=10G
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=256G
 #SBATCH --partition=gpu
 #SBATCH --time=0-01:00:00
 #SBATCH --array=0
@@ -48,6 +48,7 @@ python -u multi_label_inference.py \
 	--pth_files_directory ${path_files_dir} \
 	--batch_size 16 \
 	--num_workers $SLURM_CPUS_PER_TASK \
+	--model_architecture "ViT-L/14@336px" \
 	--verbose
 
 
