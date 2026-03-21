@@ -621,7 +621,7 @@ def get_validation_metrics(
 
 	if verbose:
 		print("\nComputing validation metrics")
-		print(f"└─ Temperatur: {temperature}")
+		print(f"└─ Temperature: {temperature}")
 
 	model.eval()
 	torch.cuda.empty_cache()
