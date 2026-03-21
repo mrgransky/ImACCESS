@@ -3,6 +3,178 @@ from utils import *
 if USER == "farid":
 	from visualize import build_arch_flowchart
 
+def check_lora_weight_health(model, epoch, verbose=True):
+		issues = []
+		stats = {"A": {}, "B": {}}
+		for name, param in model.named_parameters():
+				if not param.requires_grad:
+						continue
+				group = "A" if "lora_A" in name else "B" if "lora_B" in name else None
+				if group is None:
+						continue
+				has_nan = torch.isnan(param.data).any().item()
+				has_inf = torch.isinf(param.data).any().item()
+				norm = param.data.norm().item()
+				if has_nan or has_inf:
+						issues.append(f"  ✗ {name}: nan={has_nan} inf={has_inf} norm={norm:.4e}")
+				stats[group][name] = norm
+		
+		A_norms = list(stats["A"].values())
+		B_norms = list(stats["B"].values())
+		
+		if verbose:
+				print(f"\n[Weight Health — Epoch {epoch+1}]")
+				if A_norms:
+						print(f"  lora_A norms — min={min(A_norms):.4e} max={max(A_norms):.4e} mean={sum(A_norms)/len(A_norms):.4e}")
+				if B_norms:
+						print(f"  lora_B norms — min={min(B_norms):.4e} max={max(B_norms):.4e} mean={sum(B_norms)/len(B_norms):.4e}")
+				if issues:
+						print(f"  !! {len(issues)} corrupted tensors:")
+						for issue in issues[:10]:  # cap at 10
+								print(issue)
+				else:
+						print(f"  ✓ All weights healthy")
+		
+		return len(issues) == 0, A_norms, B_norms
+
+def check_training_health(
+		model,
+		epoch,
+		mode,
+		training_losses,
+		validation_losses,
+		align_score,
+		temperature,        # ← pass in so the abort message can report it
+		learning_rate,      # ← pass in for diagnostic message
+		verbose=True,
+):
+		issues = []
+
+		# ── Signal 1: Loss flatline (universal) ──────────────────────────────
+		if len(training_losses) >= 2:
+				loss_delta = abs(training_losses[0] - training_losses[-1])
+				relative_delta = loss_delta / (training_losses[0] + 1e-8)
+				if relative_delta < 0.005:
+						issues.append(
+								f"Loss flatline: {training_losses[0]:.6f} → "
+								f"{training_losses[-1]:.6f} "
+								f"({relative_delta*100:.3f}% change)"
+						)
+
+		# ── Signal 2: AlignScore frozen (universal) ───────────────────────────
+		if (
+				align_score is not None
+				and align_score == align_score  # not NaN
+				and epoch >= 1
+				and align_score < 0.005
+		):
+				issues.append(
+						f"AlignScore@5 critically low: {align_score:.6f}"
+				)
+
+		# ── Signal 3: Method-specific parameter movement ──────────────────────
+		mode_lower = mode.lower()
+
+		if "probe" in mode_lower:
+				# Probe W should diverge from zero-shot initialisation
+				w_norms = [
+						p.data.norm().item()
+						for n, p in model.named_parameters()
+						if p.requires_grad and "weight" in n
+				]
+				if w_norms and max(w_norms) < 1e-03:
+						issues.append(
+								f"Linear probe W has not moved: max norm={max(w_norms):.2e}"
+						)
+
+		elif "full" in mode_lower:
+				# Full FT — check that at least some vision layers have nonzero gradients
+				# Use weight norm change as proxy since gradients are only available
+				# during backward — compare to pretrained norms which should be ~O(1)
+				# This signal is weak for Full FT so we skip Signal 3 and rely on 1+2
+				pass  # Signals 1 and 2 are sufficient for Full FT
+
+		elif "lora" in mode_lower or "dora" in mode_lower:
+				B_norms = [
+						p.data.norm().item()
+						for n, p in model.named_parameters()
+						if p.requires_grad and "lora_B" in n
+				]
+				if B_norms:
+						mean_B = sum(B_norms) / len(B_norms)
+						if mean_B < 1e-03:
+								issues.append(
+										f"LoRA B matrices static: mean norm={mean_B:.2e} < 1e-03"
+								)
+
+		elif "vera" in mode_lower:
+				lb_vals = [
+						p.data.abs().mean().item()
+						for n, p in model.named_parameters()
+						if p.requires_grad and "lambda_b" in n
+				]
+				if lb_vals:
+						lb_mean = sum(lb_vals) / len(lb_vals)
+						if lb_mean < 5e-04:
+								issues.append(
+										f"VeRA λ_b static: mean|λ_b|={lb_mean:.2e} < 5e-04"
+								)
+
+		elif "ia3" in mode_lower:
+				deltas = [
+						(p.data - 1.0).abs().mean().item()
+						for n, p in model.named_parameters()
+						if p.requires_grad and "scaling" in n
+				]
+				if deltas:
+						delta_mean = sum(deltas) / len(deltas)
+						if delta_mean < 5e-04:
+								issues.append(
+										f"IA³ scaling vectors static: "
+										f"mean|s-1|={delta_mean:.2e} < 5e-04"
+								)
+
+		elif "adapter" in mode_lower or "tip" in mode_lower:
+				adapter_norms = [
+						p.data.norm().item()
+						for n, p in model.named_parameters()
+						if p.requires_grad
+				]
+				if adapter_norms:
+						mean_norm = sum(adapter_norms) / len(adapter_norms)
+						if mean_norm < 1e-03:
+								issues.append(
+										f"Adapter weights static: mean norm={mean_norm:.2e} < 1e-03"
+								)
+
+		# ── Decision ─────────────────────────────────────────────────────────
+		should_abort = len(issues) >= 2
+
+		if verbose:
+				print(f"\n{'─'*60}")
+				print(f"[Training Health Check — Epoch {epoch+1} | {mode.upper()}]")
+				print(f"  Config: temperature={temperature} lr={learning_rate:.1e}")
+				if issues:
+						for issue in issues:
+								print(f"  ⚠  {issue}")
+				else:
+						print(f"  ✓  All signals healthy — training proceeding normally")
+
+				if should_abort:
+						print(f"\n  ❌ ABORT: {len(issues)}/3 signals indicate broken gradient.")
+						print(f"  Most likely causes given your config:")
+						if temperature >= 0.5:
+								print(f"    → temperature={temperature} is too high for "
+											f"4667-class L2-normalised BCE — use 0.07")
+						if learning_rate < 1e-05:
+								print(f"    → learning_rate={learning_rate:.1e} may be too low")
+						print(f"  Aborting to save GPU time.")
+				else:
+						print(f"  ✓  Training healthy — continuing.")
+				print(f"{'─'*60}\n")
+
+		return should_abort
+
 def compute_tiered_retrieval_metrics(
 	similarity_matrix: torch.Tensor,
 	query_labels: torch.Tensor,

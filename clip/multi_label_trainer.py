@@ -6,40 +6,6 @@ from probe import get_probe_clip
 from evals import *
 import visualize as viz
 
-def check_lora_weight_health(model, epoch, verbose=True):
-		issues = []
-		stats = {"A": {}, "B": {}}
-		for name, param in model.named_parameters():
-				if not param.requires_grad:
-						continue
-				group = "A" if "lora_A" in name else "B" if "lora_B" in name else None
-				if group is None:
-						continue
-				has_nan = torch.isnan(param.data).any().item()
-				has_inf = torch.isinf(param.data).any().item()
-				norm = param.data.norm().item()
-				if has_nan or has_inf:
-						issues.append(f"  ✗ {name}: nan={has_nan} inf={has_inf} norm={norm:.4e}")
-				stats[group][name] = norm
-		
-		A_norms = list(stats["A"].values())
-		B_norms = list(stats["B"].values())
-		
-		if verbose:
-				print(f"\n[Weight Health — Epoch {epoch+1}]")
-				if A_norms:
-						print(f"  lora_A norms — min={min(A_norms):.4e} max={max(A_norms):.4e} mean={sum(A_norms)/len(A_norms):.4e}")
-				if B_norms:
-						print(f"  lora_B norms — min={min(B_norms):.4e} max={max(B_norms):.4e} mean={sum(B_norms)/len(B_norms):.4e}")
-				if issues:
-						print(f"  !! {len(issues)} corrupted tensors:")
-						for issue in issues[:10]:  # cap at 10
-								print(issue)
-				else:
-						print(f"  ✓ All weights healthy")
-		
-		return len(issues) == 0, A_norms, B_norms
-
 def zero_shot_multi_label(
 	model: torch.nn.Module,
 	train_loader: DataLoader,
@@ -553,6 +519,25 @@ def probe_multi_label(
 		if cos_sim is not None:
 			print(f"  CosSim (W):: {cos_sim:.4f}")
 		
+		# ── Training health check ────────────────────────────────────────────
+		# Run after epoch 1 and at mid-warmup — all signals now available
+		if epoch in {0, minimum_epochs // 2}:
+			should_abort = check_training_health(
+				model=probe.probe,  # ← probe weights, not full CLIP
+				epoch=epoch,
+				mode=mode,
+				training_losses=training_losses,
+				validation_losses=validation_losses,
+				align_score=align_score,
+				temperature=temperature,
+				learning_rate=learning_rate,
+				verbose=verbose,
+			)
+			if should_abort:
+				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
+				break
+
+
 		if early_stopping.should_stop(
 			current_value=avg_val_loss,
 			model=probe, # full MultiLabelProbe: saves {probe.weight, probe.bias, clip_model.*}
@@ -933,6 +918,7 @@ def full_finetune_multi_label(
 	)
 	
 	print(f"Best model will be saved in: {mdl_fpth}")
+
 	training_losses = list()
 	validation_losses = list()
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
@@ -955,6 +941,7 @@ def full_finetune_multi_label(
 		epoch_loss_i2t = 0.0
 		epoch_loss_t2i = 0.0
 		num_batches = 0
+
 		for bidx, batch_data in enumerate(train_loader):
 			images, _, label_vectors = batch_data  # Ignore tokenized_labels, use pre-encoded
 			images = images.to(device, non_blocking=True)
@@ -1012,6 +999,7 @@ def full_finetune_multi_label(
 		training_losses_breakdown["total"].append(avg_total_loss)
 		training_losses_breakdown["i2t"].append(avg_i2t_loss)
 		training_losses_breakdown["t2i"].append(avg_t2i_loss)
+
 		learning_rates_history.append([optimizer.param_groups[0]['lr']])
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
@@ -1087,6 +1075,24 @@ def full_finetune_multi_label(
 			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 			print()
+
+		# ── Training health check ────────────────────────────────────────────
+		# Run after epoch 1 and at mid-warmup — all signals now available
+		if epoch in {0, minimum_epochs // 2}:
+			should_abort = check_training_health(
+				model=model,
+				epoch=epoch,
+				mode=mode,
+				training_losses=training_losses,
+				validation_losses=validation_losses,
+				align_score=align_score,
+				temperature=temperature,
+				learning_rate=learning_rate,
+				verbose=verbose,
+			)
+			if should_abort:
+				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
+				break
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -1580,6 +1586,25 @@ def lora_finetune_multi_label(
 				print(f"  Embed — CosSim: {cos_sim:.4f}")
 			else:
 				print(f"  Embed — AlignScore: N/A")
+
+
+			# ── Training health check ────────────────────────────────────────────
+			# Run after epoch 1 and at mid-warmup — all signals now available
+			if epoch in {0, minimum_epochs // 2}:
+				should_abort = check_training_health(
+					model=model,
+					epoch=epoch,
+					mode=mode,
+					training_losses=training_losses,
+					validation_losses=validation_losses,
+					align_score=align_score,
+					temperature=temperature,
+					learning_rate=learning_rate,
+					verbose=verbose,
+				)
+				if should_abort:
+					print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
+					break
 
 			if early_stopping.should_stop(
 					current_value=current_val_loss,
@@ -2263,6 +2288,25 @@ def lora_plus_finetune_multi_label(
 			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 
+		# ── Training health check ────────────────────────────────────────────
+		# Run after epoch 1 and at mid-warmup — all signals now available
+		if epoch in {0, minimum_epochs // 2}:
+			should_abort = check_training_health(
+				model=model,
+				epoch=epoch,
+				mode=mode,
+				training_losses=training_losses,
+				validation_losses=validation_losses,
+				align_score=align_score,
+				temperature=temperature,
+				learning_rate=learning_rate,
+				verbose=verbose,
+			)
+			if should_abort:
+				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
+				break
+
+
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
 			model=model,
@@ -2830,6 +2874,25 @@ def rslora_finetune_multi_label(
 		else:
 			print(f"  Embed — AlignScore: N/A")
 
+
+		# ── Training health check ────────────────────────────────────────────
+		# Run after epoch 1 and at mid-warmup — all signals now available
+		if epoch in {0, minimum_epochs // 2}:
+			should_abort = check_training_health(
+				model=model,
+				epoch=epoch,
+				mode=mode,
+				training_losses=training_losses,
+				validation_losses=validation_losses,
+				align_score=align_score,
+				temperature=temperature,
+				learning_rate=learning_rate,
+				verbose=verbose,
+			)
+			if should_abort:
+				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
+				break
+
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
 			model=model,
@@ -3376,6 +3439,24 @@ def dora_finetune_multi_label(
 			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 			print()
+
+		# ── Training health check ────────────────────────────────────────────
+		# Run after epoch 1 and at mid-warmup — all signals now available
+		if epoch in {0, minimum_epochs // 2}:
+			should_abort = check_training_health(
+				model=model,
+				epoch=epoch,
+				mode=mode,
+				training_losses=training_losses,
+				validation_losses=validation_losses,
+				align_score=align_score,
+				temperature=temperature,
+				learning_rate=learning_rate,
+				verbose=verbose,
+			)
+			if should_abort:
+				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
+				break
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -3967,6 +4048,24 @@ def ia3_finetune_multi_label(
 			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 			print()
+
+		# ── Training health check ────────────────────────────────────────────
+		# Run after epoch 1 and at mid-warmup — all signals now available
+		if epoch in {0, minimum_epochs // 2}:
+			should_abort = check_training_health(
+				model=model,
+				epoch=epoch,
+				mode=mode,
+				training_losses=training_losses,
+				validation_losses=validation_losses,
+				align_score=align_score,
+				temperature=temperature,
+				learning_rate=learning_rate,
+				verbose=verbose,
+			)
+			if should_abort:
+				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
+				break
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -4579,6 +4678,24 @@ def vera_finetune_multi_label(
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 			print()
 
+		# ── Training health check ────────────────────────────────────────────
+		# Run after epoch 1 and at mid-warmup — all signals now available
+		if epoch in {0, minimum_epochs // 2}:
+			should_abort = check_training_health(
+				model=model,
+				epoch=epoch,
+				mode=mode,
+				training_losses=training_losses,
+				validation_losses=validation_losses,
+				align_score=align_score,
+				temperature=temperature,
+				learning_rate=learning_rate,
+				verbose=verbose,
+			)
+			if should_abort:
+				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
+				break
+
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
 			model=model,
@@ -5168,6 +5285,24 @@ def clip_adapter_finetune_multi_label(
 			print(f'   ├─ Hamming Loss: {full_metrics["hamming_loss"]:.4f}')
 			print(f'   ├─ PartialAcc: {full_metrics["partial_acc"]:.4f}')
 			print(f'   └─ F1: {full_metrics["f1_score"]:.4f}')
+
+		# ── Training health check ────────────────────────────────────────────
+		# Run after epoch 1 and at mid-warmup — all signals now available
+		if epoch in {0, minimum_epochs // 2}:
+			should_abort = check_training_health(
+				model=model,
+				epoch=epoch,
+				mode=mode,
+				training_losses=training_losses,
+				validation_losses=validation_losses,
+				align_score=align_score,
+				temperature=temperature,
+				learning_rate=learning_rate,
+				verbose=verbose,
+			)
+			if should_abort:
+				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
+				break
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -5964,6 +6099,26 @@ def tip_adapter_finetune_multi_label(
 			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 			print()
+
+
+		# ── Training health check ────────────────────────────────────────────
+		# Run after epoch 1 and at mid-warmup — all signals now available
+		if epoch in {0, minimum_epochs // 2}:
+			should_abort = check_training_health(
+				model=model,
+				epoch=epoch,
+				mode=mode,
+				training_losses=training_losses,
+				validation_losses=validation_losses,
+				align_score=align_score,
+				temperature=temperature,
+				learning_rate=learning_rate,
+				verbose=verbose,
+			)
+			if should_abort:
+				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
+				break
+
 
 		# Early stopping check
 		if early_stopping.should_stop(
