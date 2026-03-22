@@ -187,7 +187,7 @@ def compute_tiered_retrieval_metrics(
 	verbose: bool = False,
 ) -> Dict:
 	if verbose:
-		print(f"[{mode}]")
+		print(f"\n{mode}")
 		print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
 		print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
 		print(f"  ├─ Head mask: {head_mask.shape} {head_mask.device}")
@@ -213,8 +213,11 @@ def compute_tiered_retrieval_metrics(
 			if tier_name == "rare":
 				val_support = query_labels[:, tier_indices].sum(dim=0)  # [N_tier]
 				supported = val_support >= min_val_support
-				tier_indices = tier_indices[supported]
-			
+				if supported.any():
+					tier_indices = tier_indices[supported]
+				else:
+					if verbose:
+						print(f"[{tier_name.upper()}/{mode}] min_val_support={min_val_support} too strict — using all {tier_indices.numel()} rare classes")
 			tier_sim = similarity_matrix[tier_indices, :]          # [N_tier, N_images]
 			tier_query_labels = torch.arange(len(tier_indices), device=similarity_matrix.device) # [N_tier] — class identity
 			
@@ -234,12 +237,12 @@ def compute_tiered_retrieval_metrics(
 		
 		if verbose:
 			print(
-				f"  [{tier_name.upper():8s}] "
+				f"[{tier_name.upper():8s}] "
 				f"mAP@10={tier_metrics['mAP'].get('10', 0):.4f}  "
 				f"R@10={tier_metrics['Recall'].get('10', 0):.4f}  "
-				f"({tier_indices.shape[0]} classes)"
+				f"({tier_indices.shape[0]} label(s))"
 			)
-	
+
 	return results
 
 def compute_multilabel_validation_loss(
@@ -1194,7 +1197,7 @@ def get_matched_cosine_similarity(
 				if is_multi_label:
 						pos_per_sample = labels.sum(dim=1)
 						print(f"\n  Labels — positives per sample: min={pos_per_sample.min().item():.0f} max={pos_per_sample.max().item():.0f} mean={pos_per_sample.mean().item():.2f}")
-						print(f"  Samples with zero positive labels: {(pos_per_sample == 0).sum().item()}")
+						print(f"Samples with zero positive labels: {(pos_per_sample == 0).sum().item()}")
 
 		# ── Build matched text embeddings ─────────────────────────────────────
 		if is_multi_label:
@@ -1297,14 +1300,6 @@ def get_multilabel_alignment_score(
 	topk: int = 5,
 	verbose: bool = False,
 ) -> float:
-	"""
-	Fraction of samples where at least one true class ranks in top-K
-	by cosine similarity. Meaningful and interpretable for multi-label data.
-	Returns value in [0, 1]:
-			0.0 — no image has any true class in its top-K retrieved classes
-			1.0 — every image has at least one true class in its top-K
-	"""
-	
 	# Guard: NaN/Inf check with detailed diagnostics
 	image_has_nan = torch.isnan(image_embeds).any()
 	image_has_inf = torch.isinf(image_embeds).any()
@@ -1369,8 +1364,8 @@ def get_multilabel_alignment_score(
 	
 	if verbose:
 		print(f"\n[Alignment Score @ top-{effective_k}] Temperature: {temperature}")
-		print(f"  Samples with ≥1 true class in top-{effective_k}: {hits.sum().item()} / {len(hits)}")
-		print(f"  Alignment score: {score:.6f}")
+		print(f"Samples with ≥1 true class in top-{effective_k}: {hits.sum().item()} / {len(hits)} ({hits.float().mean().item()*100:.1f}%)")
+		print(f"Alignment score: {score}")
 		
 		# Additional breakdown by number of positive labels
 		pos_counts = labels.sum(dim=1).long()
@@ -1394,6 +1389,7 @@ def evaluate_best_model(
 	device,
 	cache_dir: str,
 	temperature: float,
+	min_val_support: int = 5,
 	topk_values: list[int] = [1, 5, 10],
 	clean_cache: bool = True,
 	embeddings_cache=None,
@@ -1491,7 +1487,7 @@ def evaluate_best_model(
 	device_labels  = validation_results["device_labels"]
 
 	if verbose:
-		print("\nComputing tiered retrieval metrics (Overall / Head / Rare)...")
+		print(f"\nComputing tiered retrieval metrics (Overall / Head / Rare) with min_val_support: {min_val_support}")
 
 	tiered_i2t = compute_tiered_retrieval_metrics(
 			similarity_matrix=i2t_similarity,
@@ -1501,6 +1497,7 @@ def evaluate_best_model(
 			rare_mask=rare_mask,
 			active_mask=active_mask,
 			mode="Image-to-Text",
+			min_val_support=min_val_support,
 			verbose=verbose,
 	)
 	tiered_t2i = compute_tiered_retrieval_metrics(
@@ -1511,7 +1508,7 @@ def evaluate_best_model(
 			rare_mask=rare_mask,
 			active_mask=active_mask,
 			mode="Text-to-Image",
-			min_val_support=5,
+			min_val_support=min_val_support,
 			verbose=verbose,
 	)
 

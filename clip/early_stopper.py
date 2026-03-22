@@ -192,7 +192,7 @@ class EarlyStopping:
 			checkpoint_path: str,
 			current_phase: Optional[int] = None,
 		) -> bool:
-				# 1. Record raw loss and update EMA                                   #
+				# 1. Record raw loss and update EMA
 				self.value_history.append(current_value)
 				self._update_ema(current_value)
 
@@ -210,7 +210,7 @@ class EarlyStopping:
 				print(f"  ├─ Adaptation      : {'ON' if self._adaptation_active else 'OFF'}")
 				print(f"  └─ History length  : {len(self.value_history)} epochs")
 
-				# 2. Respect min_epochs — no stopping decisions before warmup ends    #
+				# 2. Respect min_epochs — no stopping decisions before warmup ends
 				if epoch < self.min_epochs:
 					print(f"\n[SKIP] Epoch {epoch+1} ≤ min_epochs {self.min_epochs} — skipping all checks")
 					# Still track improvement and save checkpoints during warmup
@@ -431,7 +431,7 @@ class EarlyStopping:
 					k: v.clone().cpu().detach()
 					for k, v in model.state_dict().items()
 				}
-				print(f"  Best weights  : stored in memory")
+				print(f"  Best weights stored in memory")
 			
 			self._save_checkpoint(checkpoint_path, model, optimizer, scheduler, current_phase)
 
@@ -451,7 +451,7 @@ class EarlyStopping:
 						checkpoint["phase"] = current_phase
 					
 					torch.save(checkpoint, path)
-					print(f"\tSaved checkpoint: {path}\n")
+					print(f"Saved: {path}\n")
 				except Exception as e:
 					print(f"  Warning: Failed to save checkpoint - {e}")
 

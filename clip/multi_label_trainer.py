@@ -519,7 +519,7 @@ def probe_multi_label(
 		if cos_sim is not None:
 			print(f"  CosSim (W):: {cos_sim:.4f}")
 		
-		# ── Training health check ────────────────────────────────────────────
+		# Training health check
 		# Run after epoch 1 and at mid-warmup — all signals now available
 		if epoch in {0, minimum_epochs // 2}:
 			should_abort = check_training_health(
@@ -1074,9 +1074,8 @@ def full_finetune_multi_label(
 			print(f'   ├─ Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
 			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
-			print()
 
-		# ── Training health check ────────────────────────────────────────────
+		# Training health check
 		# Run after epoch 1 and at mid-warmup — all signals now available
 		if epoch in {0, minimum_epochs // 2}:
 			should_abort = check_training_health(
@@ -2288,7 +2287,7 @@ def lora_plus_finetune_multi_label(
 			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 
-		# ── Training health check ────────────────────────────────────────────
+		# Training health check
 		# Run after epoch 1 and at mid-warmup — all signals now available
 		if epoch in {0, minimum_epochs // 2}:
 			should_abort = check_training_health(
@@ -3438,9 +3437,8 @@ def dora_finetune_multi_label(
 			print(f'   ├─ Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
 			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
-			print()
 
-		# ── Training health check ────────────────────────────────────────────
+		# Training health check
 		# Run after epoch 1 and at mid-warmup — all signals now available
 		if epoch in {0, minimum_epochs // 2}:
 			should_abort = check_training_health(
@@ -4047,9 +4045,8 @@ def ia3_finetune_multi_label(
 			print(f'   ├─ Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
 			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
-			print()
 
-		# ── Training health check ────────────────────────────────────────────
+		# Training health check
 		# Run after epoch 1 and at mid-warmup — all signals now available
 		if epoch in {0, minimum_epochs // 2}:
 			should_abort = check_training_health(
@@ -4676,9 +4673,8 @@ def vera_finetune_multi_label(
 			print(f'   ├─ Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
 			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
-			print()
 
-		# ── Training health check ────────────────────────────────────────────
+		# Training health check
 		# Run after epoch 1 and at mid-warmup — all signals now available
 		if epoch in {0, minimum_epochs // 2}:
 			should_abort = check_training_health(
@@ -6098,10 +6094,8 @@ def tip_adapter_finetune_multi_label(
 			print(f'   ├─ Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
 			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
 			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
-			print()
 
-
-		# ── Training health check ────────────────────────────────────────────
+		# Training health check
 		# Run after epoch 1 and at mid-warmup — all signals now available
 		if epoch in {0, minimum_epochs // 2}:
 			should_abort = check_training_health(
