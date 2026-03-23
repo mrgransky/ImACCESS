@@ -294,6 +294,12 @@ def probe_multi_label(
 
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		scaler_state = scaler.state_dict()
+		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
+		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
+		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
+		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
+		print(f"  └─ enabled: {scaler.is_enabled()}")
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -315,7 +321,7 @@ def probe_multi_label(
 		f".pth"
 	)
 
-	# ── Feature caching
+	# Feature caching
 	# wrap feature extraction in torch.no_grad() to avoid building
 	# a computation graph for 74K images — CLIP is frozen, gradients useless.
 	if cache_features:
@@ -895,6 +901,12 @@ def full_finetune_multi_label(
 
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		scaler_state = scaler.state_dict()
+		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
+		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
+		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
+		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
+		print(f"  └─ enabled: {scaler.is_enabled()}")
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -1439,6 +1451,12 @@ def lora_finetune_multi_label(
 
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		scaler_state = scaler.state_dict()
+		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
+		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
+		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
+		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
+		print(f"  └─ enabled: {scaler.is_enabled()}")
 
 	# Checkpoint path
 	mdl_fpth = os.path.join(
@@ -2023,6 +2041,12 @@ def lora_plus_finetune_multi_label(
 
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		scaler_state = scaler.state_dict()
+		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
+		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
+		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
+		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
+		print(f"  └─ enabled: {scaler.is_enabled()}")
 
 	# scaler = None  # AMP disabled for LoRA+ — differential lr unstable with GradScaler
 
@@ -2692,8 +2716,15 @@ def rslora_finetune_multi_label(
 		backoff_factor=0.5,
 		growth_interval=5000,
 	)
+
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		scaler_state = scaler.state_dict()
+		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
+		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
+		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
+		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
+		print(f"  └─ enabled: {scaler.is_enabled()}")
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -3280,6 +3311,12 @@ def dora_finetune_multi_label(
 
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		scaler_state = scaler.state_dict()
+		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
+		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
+		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
+		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
+		print(f"  └─ enabled: {scaler.is_enabled()}")
 
 	# Model checkpoint path
 	mdl_fpth = os.path.join(
@@ -3886,6 +3923,12 @@ def ia3_finetune_multi_label(
 
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		scaler_state = scaler.state_dict()
+		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
+		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
+		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
+		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
+		print(f"  └─ enabled: {scaler.is_enabled()}")
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -4488,10 +4531,6 @@ def vera_finetune_multi_label(
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
-
-
-
-
 	scaler = torch.amp.GradScaler(
 		device=device,
 		init_scale=2**11,      # 2048 — much more conservative start
@@ -4502,6 +4541,12 @@ def vera_finetune_multi_label(
 
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		scaler_state = scaler.state_dict()
+		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
+		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
+		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
+		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
+		print(f"  └─ enabled: {scaler.is_enabled()}")
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -5095,6 +5140,12 @@ def clip_adapter_finetune_multi_label(
 
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		scaler_state = scaler.state_dict()
+		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
+		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
+		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
+		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
+		print(f"  └─ enabled: {scaler.is_enabled()}")
 
 	# Checkpoint path
 	mdl_fpth = os.path.join(
@@ -5857,8 +5908,6 @@ def tip_adapter_finetune_multi_label(
 			print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
 			print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
 			print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
-
-
 	else:
 		optimizer = None
 		scheduler = None
@@ -5875,6 +5924,12 @@ def tip_adapter_finetune_multi_label(
 
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		scaler_state = scaler.state_dict()
+		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
+		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
+		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
+		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
+		print(f"  └─ enabled: {scaler.is_enabled()}")
 
 	mdl_fpth = os.path.join(
 		results_dir,
