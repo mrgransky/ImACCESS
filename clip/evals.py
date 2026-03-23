@@ -573,7 +573,6 @@ def compute_retrieval_metrics_from_similarity(
 			else:
 				print(f"    ✓ All query classes have ≥1 relevant image")
 
-
 	# Check cache
 	cache_file = None
 	if cache_dir and cache_key and not is_training:
@@ -1510,7 +1509,7 @@ def evaluate_best_model(
 	model_source = "current"
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	if verbose:
-		print(f"Evaluating best {type(model)} on {dataset_name} | Strategy: {finetune_strategy}")
+		print(f"\n[BEST MODEL EVALUATION] {type(model)} | {dataset_name} | Strategy: {finetune_strategy}")
 
 	if checkpoint_path is not None and os.path.exists(checkpoint_path):
 		# if verbose:
@@ -1529,7 +1528,7 @@ def evaluate_best_model(
 					model.load_state_dict(translated_state_dict, strict=False)
 					best_epoch = checkpoint.get('epoch', 'unknown')
 					if verbose:
-						print(f"Loaded weights from checkpoint (epoch {best_epoch+1}): best_val_loss: {checkpoint.get('best_val_loss', 'unknown')}")
+						print(f"[LOADED] checkpoint weights (ep: {best_epoch+1}): best_val_loss: {checkpoint.get('best_val_loss', 'unknown')}")
 					model_source = "checkpoint"
 				except Exception as e:
 					if verbose:
@@ -1545,7 +1544,7 @@ def evaluate_best_model(
 				translated_state_dict = translate_state_dict_keys(checkpoint, key_mappings)
 				model.load_state_dict(translated_state_dict, strict=False)
 				if verbose:
-					print("Loaded weights from direct state dictionary")
+					print("[LOADED] weights from direct state dictionary")
 				model_source = "checkpoint"
 			else:
 				if verbose:
@@ -1564,7 +1563,7 @@ def evaluate_best_model(
 	if model_source == "current" and early_stopping and early_stopping.restore_best_weights and early_stopping.best_weights is not None:
 		try:
 			if verbose:
-				print(f"Loading weights from early stopping (epoch {early_stopping.best_epoch+1})")
+				print(f"[LOADED] weights from early stopping (ep: {early_stopping.best_epoch+1})")
 			model.load_state_dict({k: v.to(device, non_blocking=True) for k, v in early_stopping.best_weights.items()})
 			model_source = "early_stopping"
 		except Exception as e:
@@ -1574,7 +1573,7 @@ def evaluate_best_model(
 
 	if verbose:
 		param_count = sum(p.numel() for p in model.parameters())
-		print(f">> {type(model)} Parameters: {param_count:,}")
+		print(f"{type(model)} {model.name} Parameters: {param_count:,}")
 		
 	validation_results = get_validation_metrics(
 		model=model,
