@@ -178,6 +178,45 @@ def check_training_health(
 
 		return should_abort
 
+def compute_adaptive_min_val_support(
+    query_labels: torch.Tensor,   # [N, C]
+    active_mask: torch.Tensor,    # [C]
+    percentile: float = 0.05,     # bottom 5% of active class frequencies
+    absolute_min: int = 1,        # never go below 1
+    absolute_max: int = 10,       # never go above 10
+    verbose: bool = True,
+) -> int:
+    """
+    Compute min_val_support as the 5th percentile of active class
+    validation frequencies, clamped to [absolute_min, absolute_max].
+    
+    This ensures the threshold scales with dataset size:
+      - SMU  (301 val samples):    ~1-2
+      - HISTORY-X4 (40958 val):   ~3-5
+    """
+    val_support = query_labels.sum(dim=0)          # [C] per-class image count
+    active_support = val_support[active_mask]       # only active classes
+
+    if active_support.numel() == 0:
+        return absolute_min
+
+    threshold = int(torch.quantile(
+        active_support.float(), percentile
+    ).item())
+    threshold = max(absolute_min, min(absolute_max, threshold))
+
+    if verbose:
+        print(f"\n[Adaptive min_val_support]")
+        print(f"  Active class val frequencies — "
+              f"min={active_support.min().item():.0f} "
+              f"max={active_support.max().item():.0f} "
+              f"mean={active_support.float().mean().item():.1f} "
+              f"median={active_support.float().median().item():.1f}")
+        print(f"  {percentile*100:.0f}th percentile = {threshold} "
+              f"(clamped to [{absolute_min}, {absolute_max}])")
+
+    return threshold
+
 def compute_tiered_retrieval_metrics(
 		similarity_matrix: torch.Tensor,
 		query_labels: torch.Tensor,
@@ -1434,9 +1473,7 @@ def evaluate_best_model(
 	device,
 	cache_dir: str,
 	temperature: float,
-	min_val_support: int = 10,
 	topk_values: list[int] = [1, 5, 10],
-	clean_cache: bool = True,
 	embeddings_cache=None,
 	lora_params: Optional[Dict] = None,
 	class_embeds_override: Optional[torch.Tensor] = None,
@@ -1531,8 +1568,22 @@ def evaluate_best_model(
 	t2i_similarity = validation_results["t2i_similarity"]
 	device_labels  = validation_results["device_labels"]
 
+	# Compute adaptive threshold from actual validation label distribution
+	adaptive_support = compute_adaptive_min_val_support(
+		query_labels=device_labels,
+		active_mask=active_mask,
+		percentile=0.05,
+		absolute_min=1,
+		absolute_max=10,
+		verbose=verbose,
+	)
+
 	if verbose:
-		print(f"\nComputing tiered retrieval metrics (Overall / Head / Rare) with min_val_support: {min_val_support}")
+		print(
+			f"\nComputing tiered retrieval metrics "
+			f"(Overall / Head / Rare) "
+			f"with min_val_support: {adaptive_support} (adaptive)"
+		)
 
 	tiered_i2t = compute_tiered_retrieval_metrics(
 		similarity_matrix=i2t_similarity,
@@ -1542,7 +1593,7 @@ def evaluate_best_model(
 		rare_mask=rare_mask,
 		active_mask=active_mask,
 		mode="Image-to-Text",
-		min_val_support=min_val_support,
+		min_val_support=adaptive_support,
 		verbose=verbose,
 	)
 
@@ -1554,7 +1605,7 @@ def evaluate_best_model(
 		rare_mask=rare_mask,
 		active_mask=active_mask,
 		mode="Text-to-Image",
-		min_val_support=min_val_support,
+		min_val_support=adaptive_support,
 		verbose=verbose,
 	)
 
@@ -1562,17 +1613,6 @@ def evaluate_best_model(
 	del i2t_similarity, t2i_similarity
 	torch.cuda.empty_cache()
 	
-	# if clean_cache:
-	# 	cleanup_embedding_cache(
-	# 		dataset_name=dataset_name,
-	# 		cache_dir=cache_dir,
-	# 		finetune_strategy=finetune_strategy,
-	# 		batch_size=validation_loader.batch_size,
-	# 		num_workers=validation_loader.num_workers,
-	# 		model_name=model.__class__.__name__,
-	# 		model_arch=model.name if hasattr(model, 'name') else 'unknown_arch'
-	# 	)
-
 	return {
 		"full_metrics":      full_metrics,
 		"img2txt_metrics":   validation_results["img2txt_metrics"],
