@@ -179,83 +179,116 @@ def check_training_health(
 		return should_abort
 
 def compute_tiered_retrieval_metrics(
-	similarity_matrix: torch.Tensor,
-	query_labels: torch.Tensor,
-	topK_values: List[int],
-	head_mask: torch.Tensor,
-	rare_mask: torch.Tensor,
-	active_mask: torch.Tensor,
-	mode: str = "Image-to-Text",
-	min_val_support: int = 10,
-	verbose: bool = False,
+		similarity_matrix: torch.Tensor,
+		query_labels: torch.Tensor,
+		topK_values: List[int],
+		head_mask: torch.Tensor,
+		rare_mask: torch.Tensor,
+		active_mask: torch.Tensor,
+		mode: str = "Image-to-Text",
+		min_val_support: int = 10,
+		verbose: bool = False,
 ) -> Dict:
-	if verbose:
-		print(f"\n{mode}")
-		print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
-		print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
-		print(f"  ├─ Head mask: {head_mask.shape} {head_mask.device}")
-		print(f"  ├─ Rare mask: {rare_mask.shape} {rare_mask.device}")
-		print(f"  └─ Active mask: {active_mask.shape} {active_mask.device}")
 
-	tiers = {
-		"overall": active_mask,
-		"head":    head_mask & active_mask,
-		"rare":    rare_mask & active_mask,
-	}
-
-	results = {}
-	for tier_name, tier_mask in tiers.items():
-		tier_indices = torch.where(tier_mask)[0]
-		
-		if mode == "Image-to-Text":
-			# Queries are images, candidates are text (one per class)
-			tier_sim = similarity_matrix[:, tier_indices] # [N_images, N_tier]
-			tier_query_labels = query_labels[:, tier_indices] # [N_images, N_tier]
-			tier_candidate_labels = torch.arange(
-				len(tier_indices), 
-				device=similarity_matrix.device
-			) # [N_tier] — class identity
-		else:  # Text-to-Image
-			# Queries are text (one per class), candidates are images
-			if tier_name == "rare":
-				val_support = query_labels[:, tier_indices].sum(dim=0) # [N_tier]
-				supported = val_support >= min_val_support
-
-				if supported.any():
-					tier_indices = tier_indices[supported]
-				else:
-					if verbose:
-						print(f"[{tier_name.upper()}/{mode}] min_val_support={min_val_support} too strict — using all {tier_indices.numel()} rare classes")
-
-			tier_sim = similarity_matrix[tier_indices, :] # [N_tier, N_images]
-			tier_query_labels = torch.arange(
-				len(tier_indices), 
-				device=similarity_matrix.device
-			) # [N_tier] — class identity
-			
-			# slice image labels to tier classes only
-			tier_candidate_labels = query_labels[:, tier_indices] # [N_images, N_tier]
-		
-		tier_metrics = compute_retrieval_metrics_from_similarity(
-			similarity_matrix=tier_sim,
-			query_labels=tier_query_labels,
-			candidate_labels=tier_candidate_labels,
-			topK_values=topK_values,
-			mode=mode,
-			verbose=verbose,
-		)
-		
-		results[tier_name] = tier_metrics
-		
 		if verbose:
-			print(
-				f"[{tier_name.upper():8s}] "
-				f"mAP@10={tier_metrics['mAP'].get('10', 0):.4f}  "
-				f"R@10={tier_metrics['Recall'].get('10', 0):.4f}  "
-				f"({tier_indices.shape[0]} label(s))"
-			)
+				print(f"\n{mode}")
+				print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
+				print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
+				print(f"  ├─ Head mask: {head_mask.shape} {head_mask.device}")
+				print(f"  ├─ Rare mask: {rare_mask.shape} {rare_mask.device}")
+				print(f"  └─ Active mask: {active_mask.shape} {active_mask.device}")
 
-	return results
+		# ── Per-class validation support ─────────────────────────────────────
+		# query_labels: [N_images, C] — col sum gives per-class image count
+		val_support = query_labels.sum(dim=0)  # [C]
+
+		# ── Supported mask — classes with sufficient validation coverage ──────
+		# Applied to ALL tiers for consistency, not just T2I rare
+		supported_mask = val_support >= min_val_support  # [C]
+
+		tiers = {
+				"overall": active_mask & supported_mask,
+				"head":    head_mask & active_mask & supported_mask,
+				"rare":    rare_mask & active_mask & supported_mask,
+		}
+
+		if verbose:
+				print(f"\n  [Support filter] min_val_support={min_val_support}")
+				print(f"  ├─ Active classes before filter : {active_mask.sum().item()}")
+				print(f"  ├─ Active classes after  filter : {(active_mask & supported_mask).sum().item()}")
+				print(f"  ├─ Head   classes after  filter : {(head_mask & active_mask & supported_mask).sum().item()}")
+				print(f"  └─ Rare   classes after  filter : {(rare_mask & active_mask & supported_mask).sum().item()}")
+
+		results = {}
+		for tier_name, tier_mask in tiers.items():
+				tier_indices = torch.where(tier_mask)[0]
+
+				if tier_indices.numel() == 0:
+						if verbose:
+								print(f"  [{tier_name.upper():8s}] SKIP — no classes pass "
+											f"min_val_support={min_val_support}")
+						results[tier_name] = {
+								"mAP": {str(k): 0.0 for k in topK_values},
+								"Recall": {str(k): 0.0 for k in topK_values},
+								"mP": {str(k): 0.0 for k in topK_values},
+						}
+						continue
+
+				if mode == "Image-to-Text":
+						# Filter columns to tier classes
+						tier_sim = similarity_matrix[:, tier_indices]       # [N, tier]
+						tier_query_labels = query_labels[:, tier_indices]   # [N, tier]
+
+						# Further filter rows to images that have ≥1 positive in this tier
+						# This avoids diluting mAP with images that have no tier labels
+						has_tier_label = tier_query_labels.sum(dim=1) > 0   # [N]
+						if has_tier_label.sum() == 0:
+								if verbose:
+										print(f"  [{tier_name.upper():8s}] SKIP — no images have "
+													f"labels in this tier")
+								results[tier_name] = {
+										"mAP": {str(k): 0.0 for k in topK_values},
+										"Recall": {str(k): 0.0 for k in topK_values},
+										"mP": {str(k): 0.0 for k in topK_values},
+								}
+								continue
+
+						tier_sim = tier_sim[has_tier_label]
+						tier_query_labels = tier_query_labels[has_tier_label]
+						tier_candidate_labels = torch.arange(
+								len(tier_indices),
+								device=similarity_matrix.device,
+						)
+
+				else:  # Text-to-Image
+						# Queries are classes (rows), candidates are images (cols)
+						tier_sim = similarity_matrix[tier_indices, :]       # [tier, N]
+						tier_query_labels = torch.arange(
+								len(tier_indices),
+								device=similarity_matrix.device,
+						)
+						tier_candidate_labels = query_labels[:, tier_indices]  # [N, tier]
+
+				tier_metrics = compute_retrieval_metrics_from_similarity(
+						similarity_matrix=tier_sim,
+						query_labels=tier_query_labels,
+						candidate_labels=tier_candidate_labels,
+						topK_values=topK_values,
+						mode=mode,
+						verbose=verbose,
+				)
+				results[tier_name] = tier_metrics
+
+				if verbose:
+						n_queries = tier_sim.shape[0]
+						print(
+								f"  [{tier_name.upper():8s}] "
+								f"mAP@10={tier_metrics['mAP'].get('10', 0):.4f}  "
+								f"R@10={tier_metrics['Recall'].get('10', 0):.4f}  "
+								f"({tier_indices.shape[0]} classes, {n_queries} queries)"
+						)
+
+		return results
 
 def compute_multilabel_validation_loss(
 	model: torch.nn.Module,
@@ -1415,8 +1448,8 @@ def evaluate_best_model(
 		print(f"Evaluating best {type(model)} on {dataset_name} | Strategy: {finetune_strategy}")
 
 	if checkpoint_path is not None and os.path.exists(checkpoint_path):
-		if verbose:
-			print(f"Loading best model weights {checkpoint_path} for final evaluation...")
+		# if verbose:
+		# 	print(f"Loading best model weights {checkpoint_path} for final evaluation...")
 		try:
 			checkpoint = torch.load(checkpoint_path, map_location=device)
 			if 'model_state_dict' in checkpoint:
