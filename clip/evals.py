@@ -186,36 +186,41 @@ def compute_adaptive_min_val_support(
 		absolute_max: int = 10,       # never go above 10
 		verbose: bool = True,
 ) -> int:
-		"""
-		Compute min_val_support as the 5th percentile of active class
-		validation frequencies, clamped to [absolute_min, absolute_max].
-		
-		This ensures the threshold scales with dataset size:
-			- SMU  (301 val samples):    ~1-2
-			- HISTORY-X4 (40958 val):   ~3-5
-		"""
-		val_support = query_labels.sum(dim=0)          # [C] per-class image count
-		active_support = val_support[active_mask]       # only active classes
+	"""
+	Compute min_val_support as the 5th percentile of active class
+	validation frequencies, clamped to [absolute_min, absolute_max].
+	
+	This ensures the threshold scales with dataset size:
+		- SMU  (301 val samples):   ~1-2
+		- HISTORY-X4 (40958 val):   ~3-5
+	"""
+	
+	val_support = query_labels.sum(dim=0)          # [C] per-class image count
+	active_support = val_support[active_mask]      # only active classes
+	if active_support.numel() == 0:
+		return absolute_min
+	
+	threshold = int(
+		torch.quantile(
+			active_support.float(), 
+			percentile
+		).item()
+	)
 
-		if active_support.numel() == 0:
-				return absolute_min
+	threshold = max(absolute_min, min(absolute_max, threshold))
 
-		threshold = int(torch.quantile(
-				active_support.float(), percentile
-		).item())
-		threshold = max(absolute_min, min(absolute_max, threshold))
+	if verbose:
+		print(f"\n[Adaptive min_val_support]")
+		print(
+			f"  Active class val frequencies — "
+			f"min={active_support.min().item():.0f} "
+			f"max={active_support.max().item():.0f} "
+			f"mean={active_support.float().mean().item():.1f} "
+			f"median={active_support.float().median().item():.1f}"
+		)
+		print(f"  {percentile*100:.0f}th percentile = {threshold} (clamped to [{absolute_min}, {absolute_max}])")
 
-		if verbose:
-				print(f"\n[Adaptive min_val_support]")
-				print(f"  Active class val frequencies — "
-							f"min={active_support.min().item():.0f} "
-							f"max={active_support.max().item():.0f} "
-							f"mean={active_support.float().mean().item():.1f} "
-							f"median={active_support.float().median().item():.1f}")
-				print(f"  {percentile*100:.0f}th percentile = {threshold} "
-							f"(clamped to [{absolute_min}, {absolute_max}])")
-
-		return threshold
+	return threshold
 
 def compute_tiered_retrieval_metrics(
 	similarity_matrix: torch.Tensor,
