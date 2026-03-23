@@ -1458,7 +1458,6 @@ def lora_finetune_multi_label(
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
 		print(f"  └─ enabled: {scaler.is_enabled()}")
 
-	# Checkpoint path
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
@@ -2170,8 +2169,12 @@ def lora_plus_finetune_multi_label(
 			if torch.isnan(grad_norm) or torch.isinf(grad_norm):
 				if verbose:
 					print(f"[WARNING] NaN/Inf grad norm detected at epoch {epoch+1}, Skipping batch: {bidx+1}.")
+
 				optimizer.zero_grad(set_to_none=True)
-				scaler.update()  # must still call to reset internal state
+
+				if scaler is not None:
+					scaler.update()  # must still call to reset internal state
+
 				continue
 
 			# Step the optimizer (Generic for Scaler or None)
