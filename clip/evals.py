@@ -179,155 +179,147 @@ def check_training_health(
 		return should_abort
 
 def compute_adaptive_min_val_support(
-    query_labels: torch.Tensor,   # [N, C]
-    active_mask: torch.Tensor,    # [C]
-    percentile: float = 0.05,     # bottom 5% of active class frequencies
-    absolute_min: int = 1,        # never go below 1
-    absolute_max: int = 10,       # never go above 10
-    verbose: bool = True,
+		query_labels: torch.Tensor,   # [N, C]
+		active_mask: torch.Tensor,    # [C]
+		percentile: float = 0.05,     # bottom 5% of active class frequencies
+		absolute_min: int = 1,        # never go below 1
+		absolute_max: int = 10,       # never go above 10
+		verbose: bool = True,
 ) -> int:
-    """
-    Compute min_val_support as the 5th percentile of active class
-    validation frequencies, clamped to [absolute_min, absolute_max].
-    
-    This ensures the threshold scales with dataset size:
-      - SMU  (301 val samples):    ~1-2
-      - HISTORY-X4 (40958 val):   ~3-5
-    """
-    val_support = query_labels.sum(dim=0)          # [C] per-class image count
-    active_support = val_support[active_mask]       # only active classes
+		"""
+		Compute min_val_support as the 5th percentile of active class
+		validation frequencies, clamped to [absolute_min, absolute_max].
+		
+		This ensures the threshold scales with dataset size:
+			- SMU  (301 val samples):    ~1-2
+			- HISTORY-X4 (40958 val):   ~3-5
+		"""
+		val_support = query_labels.sum(dim=0)          # [C] per-class image count
+		active_support = val_support[active_mask]       # only active classes
 
-    if active_support.numel() == 0:
-        return absolute_min
+		if active_support.numel() == 0:
+				return absolute_min
 
-    threshold = int(torch.quantile(
-        active_support.float(), percentile
-    ).item())
-    threshold = max(absolute_min, min(absolute_max, threshold))
+		threshold = int(torch.quantile(
+				active_support.float(), percentile
+		).item())
+		threshold = max(absolute_min, min(absolute_max, threshold))
 
-    if verbose:
-        print(f"\n[Adaptive min_val_support]")
-        print(f"  Active class val frequencies — "
-              f"min={active_support.min().item():.0f} "
-              f"max={active_support.max().item():.0f} "
-              f"mean={active_support.float().mean().item():.1f} "
-              f"median={active_support.float().median().item():.1f}")
-        print(f"  {percentile*100:.0f}th percentile = {threshold} "
-              f"(clamped to [{absolute_min}, {absolute_max}])")
+		if verbose:
+				print(f"\n[Adaptive min_val_support]")
+				print(f"  Active class val frequencies — "
+							f"min={active_support.min().item():.0f} "
+							f"max={active_support.max().item():.0f} "
+							f"mean={active_support.float().mean().item():.1f} "
+							f"median={active_support.float().median().item():.1f}")
+				print(f"  {percentile*100:.0f}th percentile = {threshold} "
+							f"(clamped to [{absolute_min}, {absolute_max}])")
 
-    return threshold
+		return threshold
 
 def compute_tiered_retrieval_metrics(
-		similarity_matrix: torch.Tensor,
-		query_labels: torch.Tensor,
-		topK_values: List[int],
-		head_mask: torch.Tensor,
-		rare_mask: torch.Tensor,
-		active_mask: torch.Tensor,
-		mode: str = "Image-to-Text",
-		min_val_support: int = 10,
-		verbose: bool = False,
+	similarity_matrix: torch.Tensor,
+	query_labels: torch.Tensor,
+	topK_values: List[int],
+	head_mask: torch.Tensor,
+	rare_mask: torch.Tensor,
+	active_mask: torch.Tensor,
+	mode: str = "Image-to-Text",
+	min_val_support: int = 10,
+	verbose: bool = False,
 ) -> Dict:
+	if verbose:
+		print(f"\n{mode}")
+		print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
+		print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
+		print(f"  ├─ Head mask: {head_mask.shape} {head_mask.device}")
+		print(f"  ├─ Rare mask: {rare_mask.shape} {rare_mask.device}")
+		print(f"  └─ Active mask: {active_mask.shape} {active_mask.device}")
 
-		if verbose:
-				print(f"\n{mode}")
-				print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
-				print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
-				print(f"  ├─ Head mask: {head_mask.shape} {head_mask.device}")
-				print(f"  ├─ Rare mask: {rare_mask.shape} {rare_mask.device}")
-				print(f"  └─ Active mask: {active_mask.shape} {active_mask.device}")
+	# Per-class validation support
+	# query_labels: [N_images, C] — col sum gives per-class image count
+	val_support = query_labels.sum(dim=0)  # [C]
 
-		# ── Per-class validation support ─────────────────────────────────────
-		# query_labels: [N_images, C] — col sum gives per-class image count
-		val_support = query_labels.sum(dim=0)  # [C]
+	# Supported mask — classes with sufficient validation coverage
+	# Applied to ALL tiers for consistency, not just T2I rare
+	supported_mask = val_support >= min_val_support  # [C]
 
-		# ── Supported mask — classes with sufficient validation coverage ──────
-		# Applied to ALL tiers for consistency, not just T2I rare
-		supported_mask = val_support >= min_val_support  # [C]
+	tiers = {
+		"overall": active_mask & supported_mask,
+		"head":    head_mask & active_mask & supported_mask,
+		"rare":    rare_mask & active_mask & supported_mask,
+	}
+	if verbose:
+		print(f"\n  [Support filter] min_val_support={min_val_support}")
+		print(f"  ├─ Active classes before filter : {active_mask.sum().item()}")
+		print(f"  ├─ Active classes after  filter : {(active_mask & supported_mask).sum().item()}")
+		print(f"  ├─ Head   classes after  filter : {(head_mask & active_mask & supported_mask).sum().item()}")
+		print(f"  └─ Rare   classes after  filter : {(rare_mask & active_mask & supported_mask).sum().item()}")
 
-		tiers = {
-				"overall": active_mask & supported_mask,
-				"head":    head_mask & active_mask & supported_mask,
-				"rare":    rare_mask & active_mask & supported_mask,
-		}
+	results = {}
+	for tier_name, tier_mask in tiers.items():
+		tier_indices = torch.where(tier_mask)[0]
+		if tier_indices.numel() == 0:
+			if verbose:
+				print(f"  [{tier_name.upper():8s}] SKIP — no classes pass min_val_support={min_val_support}")
 
-		if verbose:
-				print(f"\n  [Support filter] min_val_support={min_val_support}")
-				print(f"  ├─ Active classes before filter : {active_mask.sum().item()}")
-				print(f"  ├─ Active classes after  filter : {(active_mask & supported_mask).sum().item()}")
-				print(f"  ├─ Head   classes after  filter : {(head_mask & active_mask & supported_mask).sum().item()}")
-				print(f"  └─ Rare   classes after  filter : {(rare_mask & active_mask & supported_mask).sum().item()}")
+			results[tier_name] = {
+				"mAP": {str(k): 0.0 for k in topK_values},
+				"Recall": {str(k): 0.0 for k in topK_values},
+				"mP": {str(k): 0.0 for k in topK_values},
+			}
 
-		results = {}
-		for tier_name, tier_mask in tiers.items():
-				tier_indices = torch.where(tier_mask)[0]
+			continue
 
-				if tier_indices.numel() == 0:
-						if verbose:
-								print(f"  [{tier_name.upper():8s}] SKIP — no classes pass "
-											f"min_val_support={min_val_support}")
-						results[tier_name] = {
-								"mAP": {str(k): 0.0 for k in topK_values},
-								"Recall": {str(k): 0.0 for k in topK_values},
-								"mP": {str(k): 0.0 for k in topK_values},
-						}
-						continue
-
-				if mode == "Image-to-Text":
-						# Filter columns to tier classes
-						tier_sim = similarity_matrix[:, tier_indices]       # [N, tier]
-						tier_query_labels = query_labels[:, tier_indices]   # [N, tier]
-
-						# Further filter rows to images that have ≥1 positive in this tier
-						# This avoids diluting mAP with images that have no tier labels
-						has_tier_label = tier_query_labels.sum(dim=1) > 0   # [N]
-						if has_tier_label.sum() == 0:
-								if verbose:
-										print(f"  [{tier_name.upper():8s}] SKIP — no images have "
-													f"labels in this tier")
-								results[tier_name] = {
-										"mAP": {str(k): 0.0 for k in topK_values},
-										"Recall": {str(k): 0.0 for k in topK_values},
-										"mP": {str(k): 0.0 for k in topK_values},
-								}
-								continue
-
-						tier_sim = tier_sim[has_tier_label]
-						tier_query_labels = tier_query_labels[has_tier_label]
-						tier_candidate_labels = torch.arange(
-								len(tier_indices),
-								device=similarity_matrix.device,
-						)
-
-				else:  # Text-to-Image
-						# Queries are classes (rows), candidates are images (cols)
-						tier_sim = similarity_matrix[tier_indices, :]       # [tier, N]
-						tier_query_labels = torch.arange(
-								len(tier_indices),
-								device=similarity_matrix.device,
-						)
-						tier_candidate_labels = query_labels[:, tier_indices]  # [N, tier]
-
-				tier_metrics = compute_retrieval_metrics_from_similarity(
-						similarity_matrix=tier_sim,
-						query_labels=tier_query_labels,
-						candidate_labels=tier_candidate_labels,
-						topK_values=topK_values,
-						mode=mode,
-						verbose=verbose,
-				)
-				results[tier_name] = tier_metrics
-
+		if mode == "Image-to-Text":
+			# Filter columns to tier classes
+			tier_sim = similarity_matrix[:, tier_indices]       # [N, tier]
+			tier_query_labels = query_labels[:, tier_indices]   # [N, tier]
+			# Further filter rows to images that have ≥1 positive in this tier
+			# This avoids diluting mAP with images that have no tier labels
+			has_tier_label = tier_query_labels.sum(dim=1) > 0   # [N]
+			if has_tier_label.sum() == 0:
 				if verbose:
-						n_queries = tier_sim.shape[0]
-						print(
-								f"  [{tier_name.upper():8s}] "
-								f"mAP@10={tier_metrics['mAP'].get('10', 0):.4f}  "
-								f"R@10={tier_metrics['Recall'].get('10', 0):.4f}  "
-								f"({tier_indices.shape[0]} classes, {n_queries} queries)"
-						)
+					print(f"  [{tier_name.upper():8s}] SKIP — no images have labels in this tier")
+				results[tier_name] = {
+					"mAP": {str(k): 0.0 for k in topK_values},
+					"Recall": {str(k): 0.0 for k in topK_values},
+					"mP": {str(k): 0.0 for k in topK_values},
+				}
+				continue
+			tier_sim = tier_sim[has_tier_label]
+			tier_query_labels = tier_query_labels[has_tier_label]
+			tier_candidate_labels = torch.arange(
+				len(tier_indices),
+				device=similarity_matrix.device,
+			)
+		else:  # Text-to-Image
+			# Queries are classes (rows), candidates are images (cols)
+			tier_sim = similarity_matrix[tier_indices, :]       # [tier, N]
+			tier_query_labels = torch.arange(
+				len(tier_indices),
+				device=similarity_matrix.device,
+			)
+			tier_candidate_labels = query_labels[:, tier_indices]  # [N, tier]
+		tier_metrics = compute_retrieval_metrics_from_similarity(
+			similarity_matrix=tier_sim,
+			query_labels=tier_query_labels,
+			candidate_labels=tier_candidate_labels,
+			topK_values=topK_values,
+			mode=mode,
+			verbose=verbose,
+		)
+		results[tier_name] = tier_metrics
+		if verbose:
+			n_queries = tier_sim.shape[0]
+			print(
+				f"  [{tier_name.upper():8s}] "
+				f"mAP@10={tier_metrics['mAP'].get('10', 0):.4f}  "
+				f"R@10={tier_metrics['Recall'].get('10', 0):.4f}  "
+				f"({tier_indices.shape[0]} classes, {n_queries} queries)"
+			)
 
-		return results
+	return results
 
 def compute_multilabel_validation_loss(
 	model: torch.nn.Module,
@@ -495,19 +487,19 @@ def compute_multilabel_mrr(
 		return np.mean(reciprocal_ranks) if reciprocal_ranks else 0.0
 
 def compute_retrieval_metrics_from_similarity(
-		similarity_matrix: torch.Tensor,
-		query_labels: torch.Tensor,
-		candidate_labels: torch.Tensor,
-		topK_values: List[int],
-		mode: str = "Image-to-Text",
-		class_counts: Optional[torch.Tensor] = None,
-		max_k: Optional[int] = None,
-		cache_dir: str = None,
-		cache_key: str = None,
-		is_training: bool = False,
-		chunk_size: int = 1000,
-		verbose: bool = False,
-	) -> Dict:
+	similarity_matrix: torch.Tensor,
+	query_labels: torch.Tensor,
+	candidate_labels: torch.Tensor,
+	topK_values: List[int],
+	mode: str = "Image-to-Text",
+	class_counts: Optional[torch.Tensor] = None,
+	max_k: Optional[int] = None,
+	cache_dir: str = None,
+	cache_key: str = None,
+	is_training: bool = False,
+	chunk_size: int = 1000,
+	verbose: bool = False,
+) -> Dict:
 	"""
 	Compute retrieval metrics (mP, mAP, Recall) with memory optimization and proper multi-label support.
 	
@@ -541,7 +533,50 @@ def compute_retrieval_metrics_from_similarity(
 		len(candidate_labels.shape) == 2 if mode == "Text-to-Image" 
 		else len(query_labels.shape) == 2
 	)
-		
+
+	# Sanity check — relevant items per query should reflect tier size 
+	if verbose and is_multi_label:
+		if mode == "Image-to-Text":
+			# query_labels: [N_images, N_tier] — relevant = true classes per image
+			relevant_per_query = (query_labels > 0).sum(dim=1).float()
+			n_candidates = similarity_matrix.shape[1]
+			print(f"\n  [I2T Sanity] Relevant items per query (out of {n_candidates} candidates):")
+			print(f"    min={relevant_per_query.min():.0f} "
+					f"max={relevant_per_query.max():.0f} "
+					f"mean={relevant_per_query.mean():.2f} "
+					f"zero-relevant queries={( relevant_per_query == 0).sum().item()}")
+			if relevant_per_query.max().item() > n_candidates:
+				print(f"    ⚠ WARNING: max relevant ({relevant_per_query.max():.0f}) "
+						f"> num candidates ({n_candidates}) — "
+						f"full label vector may be leaking into tier computation")
+			else:
+				print(f"    ✓ max relevant ≤ num candidates — tier labels correctly restricted")
+		else:  # Text-to-Image
+			# candidate_labels: [N_images, N_tier] — relevant = images per class
+			relevant_per_query = candidate_labels.sum(dim=0).float()  # [N_tier]
+			n_queries = similarity_matrix.shape[0]
+			print(f"\n  [T2I Sanity] Relevant items per query class (out of {similarity_matrix.shape[1]} images):")
+			print(
+				f"    min={relevant_per_query.min():.0f} "
+				f"max={relevant_per_query.max():.0f} "
+				f"mean={relevant_per_query.mean():.2f} "
+				f"zero-relevant classes={( relevant_per_query == 0).sum().item()}"
+			)
+			if (relevant_per_query == 0).any():
+				zero_count = (relevant_per_query == 0).sum().item()
+				print(
+					f"    ⚠ {zero_count} classes have zero relevant images "
+					f"— likely inactive classes (freq=0 in validation). "
+					f"These contribute 0 to mAP and are expected in full evaluation. "
+					f"Tiered evaluation will filter these via active_mask."
+				)
+		else:
+			print(f"    ✓ All query classes have ≥1 relevant image")
+
+
+
+
+
 	# Check cache
 	cache_file = None
 	if cache_dir and cache_key and not is_training:
@@ -861,8 +896,10 @@ def get_validation_metrics(
 		lora_rank = lora_params.get("lora_rank")
 		lora_alpha = lora_params.get("lora_alpha")
 		lora_dropout = lora_params.get("lora_dropout")
+
 		# LoRA+ has additional parameters
 		lora_plus_lambda = lora_params.get("lora_plus_lambda", None)
+
 		cache_key_base += f"_lora_r_{lora_rank}_a_{lora_alpha}_d_{lora_dropout}"
 		if lora_plus_lambda is not None:
 			cache_key_base += f"_lmbd_{lora_plus_lambda}"
@@ -1042,12 +1079,6 @@ def _prepare_labels_tensor(
 	"""
 	dataset = validation_loader.dataset
 	
-	# Detect dataset type by checking for multi-label specific attributes
-	# is_multi_label = (
-	# 	hasattr(dataset, 'label_dict') or 
-	# 	hasattr(dataset, '_num_classes') or
-	# 	'MultiLabel' in dataset.__class__.__name__
-	# )
 	is_multi_label = (
 		(hasattr(dataset, 'label_dict') 
 	 and dataset.label_dict is not None) 
