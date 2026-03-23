@@ -570,11 +570,8 @@ def compute_retrieval_metrics_from_similarity(
 					f"These contribute 0 to mAP and are expected in full evaluation. "
 					f"Tiered evaluation will filter these via active_mask."
 				)
-		else:
-			print(f"    ✓ All query classes have ≥1 relevant image")
-
-
-
+			else:
+				print(f"    ✓ All query classes have ≥1 relevant image")
 
 
 	# Check cache
