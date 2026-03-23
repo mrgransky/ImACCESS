@@ -4,38 +4,41 @@ if USER == "farid":
 	from visualize import build_arch_flowchart
 
 def check_lora_weight_health(model, epoch, verbose=True):
-		issues = []
-		stats = {"A": {}, "B": {}}
-		for name, param in model.named_parameters():
-				if not param.requires_grad:
-						continue
-				group = "A" if "lora_A" in name else "B" if "lora_B" in name else None
-				if group is None:
-						continue
-				has_nan = torch.isnan(param.data).any().item()
-				has_inf = torch.isinf(param.data).any().item()
-				norm = param.data.norm().item()
-				if has_nan or has_inf:
-						issues.append(f"  ✗ {name}: nan={has_nan} inf={has_inf} norm={norm:.4e}")
-				stats[group][name] = norm
+	issues = []
+	stats = {"A": {}, "B": {}}
+	for name, param in model.named_parameters():
+		if not param.requires_grad:
+			continue
+		group = "A" if "lora_A" in name else "B" if "lora_B" in name else None
+		if group is None:
+			continue
 		
-		A_norms = list(stats["A"].values())
-		B_norms = list(stats["B"].values())
+		has_nan = torch.isnan(param.data).any().item()
+		has_inf = torch.isinf(param.data).any().item()
+		norm = param.data.norm().item()
 		
-		if verbose:
-				print(f"\n[Weight Health — Epoch {epoch+1}]")
-				if A_norms:
-						print(f"  lora_A norms — min={min(A_norms):.4e} max={max(A_norms):.4e} mean={sum(A_norms)/len(A_norms):.4e}")
-				if B_norms:
-						print(f"  lora_B norms — min={min(B_norms):.4e} max={max(B_norms):.4e} mean={sum(B_norms)/len(B_norms):.4e}")
-				if issues:
-						print(f"  !! {len(issues)} corrupted tensors:")
-						for issue in issues[:10]:  # cap at 10
-								print(issue)
-				else:
-						print(f"  ✓ All weights healthy")
+		if has_nan or has_inf:
+			issues.append(f"  ✗ {name}: nan={has_nan} inf={has_inf} norm={norm:.4e}")
 		
-		return len(issues) == 0, A_norms, B_norms
+		stats[group][name] = norm
+	
+	A_norms = list(stats["A"].values())
+	B_norms = list(stats["B"].values())
+	
+	if verbose:
+		print(f"\n[Weight Health — Epoch {epoch+1}]")
+		if A_norms:
+			print(f"  lora_A norms — min={min(A_norms):.4e} max={max(A_norms):.4e} mean={sum(A_norms)/len(A_norms):.4e}")
+		if B_norms:
+			print(f"  lora_B norms — min={min(B_norms):.4e} max={max(B_norms):.4e} mean={sum(B_norms)/len(B_norms):.4e}")
+		if issues:
+			print(f"  !! {len(issues)} corrupted tensors:")
+			for issue in issues[:10]:  # cap at 10
+				print(issue)
+		else:
+			print(f"  ✓ All weights healthy")
+	
+	return len(issues) == 0, A_norms, B_norms
 
 def check_training_health(
 		model,
@@ -199,6 +202,7 @@ def compute_tiered_retrieval_metrics(
 		"head":    head_mask & active_mask,
 		"rare":    rare_mask & active_mask,
 	}
+
 	results = {}
 	for tier_name, tier_mask in tiers.items():
 		tier_indices = torch.where(tier_mask)[0]
@@ -207,22 +211,30 @@ def compute_tiered_retrieval_metrics(
 			# Queries are images, candidates are text (one per class)
 			tier_sim = similarity_matrix[:, tier_indices] # [N_images, N_tier]
 			tier_query_labels = query_labels[:, tier_indices] # [N_images, N_tier]
-			tier_candidate_labels = torch.arange(len(tier_indices), device=similarity_matrix.device) # [N_tier] — class identity
+			tier_candidate_labels = torch.arange(
+				len(tier_indices), 
+				device=similarity_matrix.device
+			) # [N_tier] — class identity
 		else:  # Text-to-Image
 			# Queries are text (one per class), candidates are images
 			if tier_name == "rare":
-				val_support = query_labels[:, tier_indices].sum(dim=0)  # [N_tier]
+				val_support = query_labels[:, tier_indices].sum(dim=0) # [N_tier]
 				supported = val_support >= min_val_support
+
 				if supported.any():
 					tier_indices = tier_indices[supported]
 				else:
 					if verbose:
 						print(f"[{tier_name.upper()}/{mode}] min_val_support={min_val_support} too strict — using all {tier_indices.numel()} rare classes")
-			tier_sim = similarity_matrix[tier_indices, :]          # [N_tier, N_images]
-			tier_query_labels = torch.arange(len(tier_indices), device=similarity_matrix.device) # [N_tier] — class identity
+
+			tier_sim = similarity_matrix[tier_indices, :] # [N_tier, N_images]
+			tier_query_labels = torch.arange(
+				len(tier_indices), 
+				device=similarity_matrix.device
+			) # [N_tier] — class identity
 			
 			# slice image labels to tier classes only
-			tier_candidate_labels = query_labels[:, tier_indices]   # [N_images, N_tier]
+			tier_candidate_labels = query_labels[:, tier_indices] # [N_images, N_tier]
 		
 		tier_metrics = compute_retrieval_metrics_from_similarity(
 			similarity_matrix=tier_sim,
@@ -1389,7 +1401,7 @@ def evaluate_best_model(
 	device,
 	cache_dir: str,
 	temperature: float,
-	min_val_support: int = 5,
+	min_val_support: int = 10,
 	topk_values: list[int] = [1, 5, 10],
 	clean_cache: bool = True,
 	embeddings_cache=None,
@@ -1490,29 +1502,30 @@ def evaluate_best_model(
 		print(f"\nComputing tiered retrieval metrics (Overall / Head / Rare) with min_val_support: {min_val_support}")
 
 	tiered_i2t = compute_tiered_retrieval_metrics(
-			similarity_matrix=i2t_similarity,
-			query_labels=device_labels,
-			topK_values=topk_values,
-			head_mask=head_mask,
-			rare_mask=rare_mask,
-			active_mask=active_mask,
-			mode="Image-to-Text",
-			min_val_support=min_val_support,
-			verbose=verbose,
-	)
-	tiered_t2i = compute_tiered_retrieval_metrics(
-			similarity_matrix=t2i_similarity,
-			query_labels=device_labels,
-			topK_values=topk_values,
-			head_mask=head_mask,
-			rare_mask=rare_mask,
-			active_mask=active_mask,
-			mode="Text-to-Image",
-			min_val_support=min_val_support,
-			verbose=verbose,
+		similarity_matrix=i2t_similarity,
+		query_labels=device_labels,
+		topK_values=topk_values,
+		head_mask=head_mask,
+		rare_mask=rare_mask,
+		active_mask=active_mask,
+		mode="Image-to-Text",
+		min_val_support=min_val_support,
+		verbose=verbose,
 	)
 
-	# ── Clean up large tensors immediately after use ─────────────
+	tiered_t2i = compute_tiered_retrieval_metrics(
+		similarity_matrix=t2i_similarity,
+		query_labels=device_labels,
+		topK_values=topk_values,
+		head_mask=head_mask,
+		rare_mask=rare_mask,
+		active_mask=active_mask,
+		mode="Text-to-Image",
+		min_val_support=min_val_support,
+		verbose=verbose,
+	)
+
+	# Clean up large tensors immediately after use
 	del i2t_similarity, t2i_similarity
 	torch.cuda.empty_cache()
 	

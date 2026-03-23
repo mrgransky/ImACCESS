@@ -2013,18 +2013,18 @@ def lora_plus_finetune_multi_label(
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
-	# scaler = torch.amp.GradScaler(
-	# 	device=device,
-	# 	init_scale=2**11,      # 2048 — much more conservative start
-	# 	growth_factor=1.5,     # slower scale growth
-	# 	backoff_factor=0.5,    # standard
-	# 	growth_interval=5000,  # longer interval before attempting growth
-	# )
+	scaler = torch.amp.GradScaler(
+		device=device,
+		init_scale=2**11,      # 2048 — much more conservative start
+		growth_factor=1.5,     # slower scale growth
+		backoff_factor=0.5,    # standard
+		growth_interval=5000,  # longer interval before attempting growth
+	)
 
-	# if verbose:
-	# 	print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+	if verbose:
+		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
 
-	scaler = None  # AMP disabled for LoRA+ — differential lr unstable with GradScaler
+	# scaler = None  # AMP disabled for LoRA+ — differential lr unstable with GradScaler
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -2082,8 +2082,9 @@ def lora_plus_finetune_multi_label(
 			
 			with torch.amp.autocast(
 				device_type=device.type,
-				enabled=False,
-				# enabled=torch.cuda.is_available(),
+				# enabled=False,
+				enabled=torch.cuda.is_available(),
+				dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 			):
 				# Multi-label contrastive loss computation
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
@@ -2107,10 +2108,20 @@ def lora_plus_finetune_multi_label(
 				# no zero_grad needed here — already done above
 				continue # skip this batch
 			
-			# scaler.scale(total_loss).backward()
-			# scaler.unscale_(optimizer)
-			total_loss.backward()
-			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
+			# Backward Pass (Generic for Scaler or None)
+			if scaler is not None:
+				scaler.scale(total_loss).backward()
+			else:
+				total_loss.backward()
+			
+			# Gradient Clipping (Vital for LoRA+)
+			if scaler is not None:
+				scaler.unscale_(optimizer)
+
+			grad_norm = torch.nn.utils.clip_grad_norm_(
+				[p for p in model.parameters() if p.requires_grad], 
+				max_norm=1.0
+			)
 
 			# Grad norm check — post-clipping
 			if bidx % 500 == 0:
@@ -2130,10 +2141,21 @@ def lora_plus_finetune_multi_label(
 						f"A: min={min(grad_norms_A):.3f} max={max(grad_norms_A):.3f} "
 						f"B: min={min(grad_norms_B):.3f} max={max(grad_norms_B):.3f}"
 					)
-			# scaler.step(optimizer)
-			# scaler.update()
 
-			optimizer.step()
+			# Guard: skip optimizer step if grads are still corrupt post-unscale
+			if torch.isnan(grad_norm) or torch.isinf(grad_norm):
+				if verbose:
+					print(f"[WARNING] NaN/Inf grad norm detected at epoch {epoch+1}, Skipping batch: {bidx+1}.")
+				optimizer.zero_grad(set_to_none=True)
+				scaler.update()  # must still call to reset internal state
+				continue
+
+			# Step the optimizer (Generic for Scaler or None)
+			if scaler is not None:
+				scaler.step(optimizer)
+				scaler.update()
+			else:
+				optimizer.step()
 
 			# Clip B matrix norms (magnitude control)
 			B_MAX_NORM = 10.0
@@ -2200,8 +2222,8 @@ def lora_plus_finetune_multi_label(
 			print(f"[Epoch {epoch+1}] {len(learning_rates_history[-1])} LR groups: {learning_rates_history[-1]}")
 			print(f"[Epoch {epoch+1}] {len(weight_decays_history[-1])} WD groups: {weight_decays_history[-1]}")
 		
-		# ── Weight health check before validation ──────────────────────────
-		healthy, A_norms, B_norms = check_lora_weight_health(model, epoch, verbose=True)
+		# Weight health check before validation
+		healthy, A_norms, B_norms = check_lora_weight_health(model, epoch, verbose=verbose)
 		if not healthy:
 			print(f"[CRITICAL] Weight corruption detected at epoch {epoch+1} before validation.")
 			if early_stopping.best_weights is not None:
@@ -4733,8 +4755,8 @@ def vera_finetune_multi_label(
 	print(f"\n[GLOBAL SUMMARY — VeRA SCALING VECTORS]")
 	print(f"  ▶ Gating Signal (λ_b): Mean |λ_b| = {lb_mean_abs} std={lb_std}")
 	print(f"  ▶ Refine Signal (λ_d): Mean Δλ_d  = {ld_mean_delta} std={glb_ld.std()}")
-	print(f"  ▶ λ_b — max={glb_lb.abs().max():.6f}  nonzero={(glb_lb.abs() > 1e-6).sum().item()}/{glb_lb.numel()}")
-	print(f"  ▶ λ_d — max={glb_ld.abs().max():.6f}  delta_from_init={ld_mean_delta}")
+	print(f"  ▶ λ_b — max={glb_lb.abs().max():.6f} nonzero={(glb_lb.abs() > 1e-6).sum().item()} / {glb_lb.numel()} ({100*(glb_lb.abs() > 1e-6).sum().item()/glb_lb.numel():.1f}%)")
+	print(f"  ▶ λ_d — max={glb_ld.abs().max():.6f} delta_from_init={ld_mean_delta}")
 	print(f"\n[DIAGNOSIS]")
 	if lb_mean_abs < 1e-7:
 		print("  ❌ CRITICAL: λ_b is effectively zero. The VeRA path is CLOSED. Check gradients/LR.")
