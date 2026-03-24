@@ -283,17 +283,18 @@ def get_multimodal_annotation(
 			print(df["multimodal_canonical_labels"].value_counts())
 			print(f"Saving {type(df)} {df.shape} {list(df.columns)} to {output_csv}")
 
-		get_multi_label_stratified_split(
-			df=df,
-			csv_file=output_csv,
-			val_split_pct=0.35,
-			label_col='multimodal_canonical_labels'
-		)
-
 		viz.multilabel_eda(
 			df=df,
 			output_dir=OUTPUT_DIR,
 			label_column='multimodal_canonical_labels'
+		)
+
+		get_multi_label_stratified_split(
+			df=df,
+			csv_file=output_csv,
+			val_split_pct=0.35,
+			label_col='multimodal_canonical_labels',
+			min_label_frequency=5,
 		)
 
 	df.to_csv(output_csv, index=False)
