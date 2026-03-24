@@ -63,7 +63,7 @@ def main():
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--strategy', '-stg', type=str, choices=['full', 'lora', 'rslora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'adapter', 'baseline'], default=None, help='Strategy')
 	parser.add_argument('--epochs', '-e', type=int, default=100, help='Number of epochs')
-	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
+	parser.add_argument('--batch_size', '-bs', type=int, default=4, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=5e-5, help='learning rate [def: 5e-5]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 1e-2]')
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
