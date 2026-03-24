@@ -186,7 +186,8 @@ def merge_csv_files(
 		df=df,
 		csv_file=output_fpath,
 		val_split_pct=0.35,
-		label_col='multimodal_canonical_labels'
+		label_col='multimodal_canonical_labels',
+		min_label_frequency=5,
 	)
 
 @measure_execution_time

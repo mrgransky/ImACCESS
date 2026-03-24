@@ -604,10 +604,10 @@ def get_multi_label_stratified_split(
 	csv_file: str,
 	val_split_pct: float,
 	label_col: str = 'multimodal_labels',
-	min_label_frequency: int = 3,
+	min_label_frequency: int = 5,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
-	print(f"\nStratified Split [Multi-label] {val_split_pct} train/val split (Min label freq: {min_label_frequency})".upper())
+	print(f"\nStratified Split [Multi-label] {val_split_pct} train/val split (Min label freq: {min_label_frequency})")
 
 	t_st = time.time()
 	df_copy = df.copy()
