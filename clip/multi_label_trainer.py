@@ -25,7 +25,7 @@ def zero_shot_multi_label(
 	pairwise_imp_threshold: float,
 	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
 	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
-	temperature: float = 0.07, # only zero_shot uses temp: 0.07
+	temperature: float = 0.07,
 	verbose: bool = True,
 ) -> Dict:
 	# dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
