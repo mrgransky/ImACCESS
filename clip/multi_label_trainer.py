@@ -86,7 +86,6 @@ def zero_shot_multi_label(
 		verbose=verbose,
 	)
 
-
 	final_tiered_i2t = compute_tiered_retrieval_metrics(
 		similarity_matrix=i2t_similarity,
 		query_labels=device_labels,
@@ -106,7 +105,6 @@ def zero_shot_multi_label(
 		rare_mask=rare_mask,
 		active_mask=active_mask,
 		mode="Text-to-Image",
-		min_val_support=10,
 		verbose=verbose,
 	)
 

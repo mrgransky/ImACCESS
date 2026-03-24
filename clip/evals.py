@@ -230,7 +230,6 @@ def compute_tiered_retrieval_metrics(
 	rare_mask: torch.Tensor,
 	active_mask: torch.Tensor,
 	mode: str = "Image-to-Text",
-	min_val_support: int = 10,
 	verbose: bool = False,
 ) -> Dict:
 	if verbose:
@@ -240,6 +239,23 @@ def compute_tiered_retrieval_metrics(
 		print(f"  ├─ Head mask: {head_mask.shape} {head_mask.device}")
 		print(f"  ├─ Rare mask: {rare_mask.shape} {rare_mask.device}")
 		print(f"  └─ Active mask: {active_mask.shape} {active_mask.device}")
+
+	# Compute adaptive threshold from actual validation label distribution
+	min_val_support = compute_adaptive_min_val_support(
+		query_labels=query_labels,
+		active_mask=active_mask,
+		percentile=0.05,
+		absolute_min=1,
+		absolute_max=10,
+		verbose=verbose,
+	)
+
+	if verbose:
+		print(
+			f"\nComputing tiered retrieval metrics "
+			f"(Overall / Head / Rare) "
+			f"with min_val_support: {min_val_support} (adaptive)"
+		)
 
 	# Per-class validation support
 	# query_labels: [N_images, C] — col sum gives per-class image count
@@ -1601,22 +1617,6 @@ def evaluate_best_model(
 	t2i_similarity = validation_results["t2i_similarity"]
 	device_labels  = validation_results["device_labels"]
 
-	# Compute adaptive threshold from actual validation label distribution
-	adaptive_support = compute_adaptive_min_val_support(
-		query_labels=device_labels,
-		active_mask=active_mask,
-		percentile=0.05,
-		absolute_min=1,
-		absolute_max=10,
-		verbose=verbose,
-	)
-
-	if verbose:
-		print(
-			f"\nComputing tiered retrieval metrics "
-			f"(Overall / Head / Rare) "
-			f"with min_val_support: {adaptive_support} (adaptive)"
-		)
 
 	tiered_i2t = compute_tiered_retrieval_metrics(
 		similarity_matrix=i2t_similarity,
@@ -1626,7 +1626,6 @@ def evaluate_best_model(
 		rare_mask=rare_mask,
 		active_mask=active_mask,
 		mode="Image-to-Text",
-		min_val_support=adaptive_support,
 		verbose=verbose,
 	)
 
@@ -1638,7 +1637,6 @@ def evaluate_best_model(
 		rare_mask=rare_mask,
 		active_mask=active_mask,
 		mode="Text-to-Image",
-		min_val_support=adaptive_support,
 		verbose=verbose,
 	)
 
