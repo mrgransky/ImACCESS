@@ -7,13 +7,13 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=164G
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=256G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 ###SBATCH --array=0-40:4
-#SBATCH --array=0,4
-#SBATCH --time=00-05:00:00
+#SBATCH --array=0,4,36
+#SBATCH --time=03-00:00:00
 
 set -euo pipefail
 
@@ -134,7 +134,7 @@ MIN_EPOCHS_PER_PHASE=(5 5 5 5 5)
 TOTAL_NUM_PHASES=(8 4 4 4 4)
 
 # Early stopping parameters
-EARLY_STOPPING_INIT_MIN_EPOCHS=(15 25 17 17 12)
+EARLY_STOPPING_INIT_MIN_EPOCHS=(13 25 17 17 12)
 EARLY_STOPPING_PATIENCE=(3 5 5 5 5)
 EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)
 EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)
