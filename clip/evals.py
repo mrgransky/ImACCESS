@@ -179,12 +179,12 @@ def check_training_health(
 		return should_abort
 
 def compute_adaptive_min_val_support(
-		query_labels: torch.Tensor,   # [N, C]
-		active_mask: torch.Tensor,    # [C]
-		percentile: float = 0.05,     # bottom 5% of active class frequencies
-		absolute_min: int = 1,        # never go below 1
-		absolute_max: int = 10,       # never go above 10
-		verbose: bool = True,
+	query_labels: torch.Tensor,   # [N, C]
+	active_mask: torch.Tensor,    # [C]
+	percentile: float = 0.05,     # bottom 5% of active class frequencies
+	absolute_min: int = 1,        # never go below 1
+	absolute_max: int = 10,       # never go above 10
+	verbose: bool = True,
 ) -> int:
 	"""
 	Compute min_val_support as the 5th percentile of active class

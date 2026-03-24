@@ -164,6 +164,43 @@ class LossAnalyzer:
 				
 		return signals
 
+def diagnose_train_val_coverage(
+	train_freq: torch.Tensor,
+	validation_loader,
+	num_classes: int,
+	verbose: bool = True,
+) -> torch.Tensor:
+	"""
+	Returns val_freq tensor and prints coverage diagnostic.
+	Call once after compute_loss_masks() in each fine-tuning function.
+	"""
+	val_freq = torch.zeros(num_classes, dtype=torch.float32)
+	for raw in validation_loader.dataset.labels:
+			try:
+					for lbl in ast.literal_eval(raw):
+							if lbl in validation_loader.dataset.label_dict:
+									val_freq[validation_loader.dataset.label_dict[lbl]] += 1
+			except (ValueError, SyntaxError):
+					pass
+	val_active   = (val_freq > 0)
+	train_active = (train_freq > 0)
+	train_only   = (train_active & ~val_active).sum().item()
+	val_only     = (val_active & ~train_active).sum().item()
+	both_active  = (train_active & val_active).sum().item()
+	neither      = (~train_active & ~val_active).sum().item()
+	if verbose:
+			print(f"\n[Train/Val Class Coverage Diagnostic]")
+			print(f"  ├─ Active in both train and val : {both_active:,}")
+			print(f"  ├─ Active in train only         : {train_only:,}")
+			print(f"  ├─ Active in val only           : {val_only:,}")
+			print(f"  └─ Inactive in both             : {neither:,}")
+			if train_only > 0:
+					print(f"\n  ⚠  {train_only} classes trained on but absent from val.")
+			if val_only > 0:
+					print(f"\n  ⚠  {val_only} classes in val with no training samples — "
+								f"pos_weight defaults to 1.0 for these.")
+	return val_freq
+
 def compute_loss_masks(
 	train_loader: DataLoader,
 	num_classes: int,

@@ -77,6 +77,15 @@ def zero_shot_multi_label(
 	active_mask = masks["active_mask"]
 	head_mask   = masks["head_mask"]
 	rare_mask   = masks["rare_mask"]
+	train_freq = masks["train_freq"]
+
+	val_freq = diagnose_train_val_coverage(
+		train_freq=train_freq,
+		validation_loader=validation_loader,
+		num_classes=num_classes,
+		verbose=verbose,
+	)
+
 
 	final_tiered_i2t = compute_tiered_retrieval_metrics(
 		similarity_matrix=i2t_similarity,
@@ -219,6 +228,7 @@ def probe_multi_label(
 		zero_shot_init=True, # faster convergence
 		verbose=verbose,
 	)
+
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
@@ -226,12 +236,20 @@ def probe_multi_label(
 		device=device,
 		verbose=verbose,
 	)
-	pos_weight  = masks["pos_weight"]
+
+	pos_weight = masks["pos_weight"]
 	active_mask = masks["active_mask"]
-	head_mask   = masks["head_mask"]
-	rare_mask   = masks["rare_mask"]
+	head_mask = masks["head_mask"]
+	rare_mask = masks["rare_mask"]
 	N = masks["N"]
 	train_freq = masks["train_freq"]
+
+	val_freq = diagnose_train_val_coverage(
+		train_freq=train_freq,
+		validation_loader=validation_loader,
+		num_classes=num_classes,
+		verbose=verbose,
+	)
 
 	# ── Criteria
 	# For the probe, loss is computed directly on logits [B, C] — same shape
@@ -799,6 +817,13 @@ def full_finetune_multi_label(
 	N = masks["N"]
 	train_freq = masks["train_freq"]
 
+	val_freq = diagnose_train_val_coverage(
+		train_freq=train_freq,
+		validation_loader=validation_loader,
+		num_classes=num_classes,
+		verbose=verbose,
+	)
+
 	# I2T: pos_weight applies — rows are images, cols are classes
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
 		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
@@ -1343,6 +1368,13 @@ def lora_finetune_multi_label(
 	rare_mask   = masks["rare_mask"]
 	N = masks["N"]
 	train_freq = masks["train_freq"]
+
+	val_freq = diagnose_train_val_coverage(
+		train_freq=train_freq,
+		validation_loader=validation_loader,
+		num_classes=num_classes,
+		verbose=verbose,
+	)
 
 	# ── Criteria
 	# I2T: pos_weight applies — rows are images, cols are classes
@@ -1916,6 +1948,13 @@ def lora_plus_finetune_multi_label(
 	rare_mask   = masks["rare_mask"]
 	N = masks["N"]
 	train_freq = masks["train_freq"]
+
+	val_freq = diagnose_train_val_coverage(
+		train_freq=train_freq,
+		validation_loader=validation_loader,
+		num_classes=num_classes,
+		verbose=verbose,
+	)
 
 	# Criteria
 	# I2T: pos_weight applies — rows are images, cols are classes
@@ -2619,6 +2658,13 @@ def rslora_finetune_multi_label(
 	N           = masks["N"]
 	train_freq  = masks["train_freq"]
 
+	val_freq = diagnose_train_val_coverage(
+		train_freq=train_freq,
+		validation_loader=validation_loader,
+		num_classes=num_classes,
+		verbose=verbose,
+	)
+
 	# Criteria
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
 		pos_weight=pos_weight,
@@ -3215,7 +3261,14 @@ def dora_finetune_multi_label(
 	N = masks["N"]
 	train_freq = masks["train_freq"]
 
-	# ── Criteria ─────────────────────────────────────────────────────────────
+	val_freq = diagnose_train_val_coverage(
+		train_freq=train_freq,
+		validation_loader=validation_loader,
+		num_classes=num_classes,
+		verbose=verbose,
+	)
+
+	# Criteria
 	# I2T: pos_weight applies — rows are images, cols are classes
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
 		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
@@ -3830,7 +3883,14 @@ def ia3_finetune_multi_label(
 	N = masks["N"]
 	train_freq = masks["train_freq"]
 
-	# ── Criteria ─────────────────────────────────────────────────────────────
+	val_freq = diagnose_train_val_coverage(
+		train_freq=train_freq,
+		validation_loader=validation_loader,
+		num_classes=num_classes,
+		verbose=verbose,
+	)
+
+	# Criteria
 	# I2T: pos_weight applies — rows are images, cols are classes
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
 		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
@@ -4448,7 +4508,14 @@ def vera_finetune_multi_label(
 	N = masks["N"]
 	train_freq = masks["train_freq"]
 
-	# ── Criteria ─────────────────────────────────────────────────────────────
+	val_freq = diagnose_train_val_coverage(
+		train_freq=train_freq,
+		validation_loader=validation_loader,
+		num_classes=num_classes,
+		verbose=verbose,
+	)
+
+	# Criteria
 	# I2T: pos_weight applies — rows are images, cols are classes
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
 		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
@@ -5084,6 +5151,13 @@ def clip_adapter_finetune_multi_label(
 	rare_mask   = masks["rare_mask"]
 	N           = masks["N"]
 	train_freq  = masks["train_freq"]
+
+	val_freq = diagnose_train_val_coverage(
+		train_freq=train_freq,
+		validation_loader=validation_loader,
+		num_classes=num_classes,
+		verbose=verbose,
+	)
 
 	#Criteria
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction='none')
@@ -5838,7 +5912,14 @@ def tip_adapter_finetune_multi_label(
 	N = masks["N"]
 	train_freq = masks["train_freq"]
 
-	# ── Criteria ─────────────────────────────────────────────────────────────
+	val_freq = diagnose_train_val_coverage(
+		train_freq=train_freq,
+		validation_loader=validation_loader,
+		num_classes=num_classes,
+		verbose=verbose,
+	)
+
+	# Criteria
 	# I2T: pos_weight applies — rows are images, cols are classes
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
 		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
