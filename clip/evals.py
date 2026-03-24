@@ -213,10 +213,10 @@ def compute_adaptive_min_val_support(
 		print(f"\n[Adaptive min_val_support]")
 		print(
 			f"  Active class val frequencies — "
-			f"min={active_support.min().item():.0f} "
-			f"max={active_support.max().item():.0f} "
-			f"mean={active_support.float().mean().item():.1f} "
-			f"median={active_support.float().median().item():.1f}"
+			f"min={active_support.min().item()} "
+			f"max={active_support.max().item()} "
+			f"mean={active_support.float().mean().item()} "
+			f"median={active_support.float().median().item()}"
 		)
 		print(f"  {percentile*100:.0f}th percentile = {threshold} (clamped to [{absolute_min}, {absolute_max}])")
 
