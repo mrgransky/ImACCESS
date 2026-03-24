@@ -894,7 +894,7 @@ def get_validation_metrics(
 
 	if verbose:
 		print(f"Similarity matrices: I2T {i2t_similarity.shape}, T2I {t2i_similarity.shape}")
-		print(f"\n[Embedding Geometry Diagnostics]")
+		print(f"[Embedding Geometry Diagnostics]")
 		# ── 1. Norm distribution of image embeddings ──────────────────
 		img_norms = device_image_embeds.norm(dim=1)
 		print(f"  Image embedding norms:")
