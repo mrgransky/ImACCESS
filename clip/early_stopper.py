@@ -202,13 +202,13 @@ class EarlyStopping:
 
 				print(f"\n{sep}")
 				print(f"EarlyStopping Check — Epoch {epoch+1}{phase_info}")
-				print(f"  ├─ Raw loss        : {current_value:.8f}")
-				print(f"  ├─ EMA loss        : {current_ema:.8f}")
-				print(f"  ├─ Best score      : {self.best_score if self.best_score is not None else 'N/A'}")
-				print(f"  ├─ Best epoch      : {self.best_epoch + 1 if self.best_score is not None else 'N/A'}")
-				print(f"  ├─ Patience counter: {self.counter} / {self.effective_patience}")
-				print(f"  ├─ Adaptation      : {'ON' if self._adaptation_active else 'OFF'}")
-				print(f"  └─ History length  : {len(self.value_history)} epochs")
+				print(f"  ├─ Raw current loss      : {current_value}")
+				print(f"  ├─ EMA loss              : {current_ema}")
+				print(f"  ├─ Best previous score   : {self.best_score if self.best_score is not None else 'N/A'}")
+				print(f"  ├─ Best epoch            : {self.best_epoch + 1 if self.best_score is not None else 'N/A'}")
+				print(f"  ├─ Patience counter      : {self.counter} / {self.effective_patience}")
+				print(f"  ├─ Adaptation            : {'ON' if self._adaptation_active else 'OFF'}")
+				print(f"  └─ History length        : {len(self.value_history)} epochs")
 
 				# 2. Respect min_epochs — no stopping decisions before warmup ends
 				if epoch < self.min_epochs:
@@ -223,7 +223,7 @@ class EarlyStopping:
 						print(f"  Counter: {self.counter}/{self.effective_patience}\n")
 					return False
 
-				# 3. Improvement check — always runs regardless of window state       #
+				# 3. Improvement check — always runs regardless of window state
 				if self._is_improvement(current_value):
 					self._record_improvement(current_value, epoch, model, optimizer, scheduler, checkpoint_path, current_phase)
 				else:
