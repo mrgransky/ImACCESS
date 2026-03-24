@@ -189,16 +189,47 @@ def diagnose_train_val_coverage(
 	both_active  = (train_active & val_active).sum().item()
 	neither      = (~train_active & ~val_active).sum().item()
 	if verbose:
-			print(f"\n[Train/Val Class Coverage Diagnostic]")
-			print(f"  ├─ Active in both train and val : {both_active:,}")
-			print(f"  ├─ Active in train only         : {train_only:,}")
-			print(f"  ├─ Active in val only           : {val_only:,}")
-			print(f"  └─ Inactive in both             : {neither:,}")
-			if train_only > 0:
-					print(f"\n  ⚠  {train_only} classes trained on but absent from val.")
-			if val_only > 0:
-					print(f"\n  ⚠  {val_only} classes in val with no training samples — "
-								f"pos_weight defaults to 1.0 for these.")
+		print(f"\n[Train/Val Class Coverage Diagnostic]")
+		print(f"  ├─ Active in both train and val : {both_active:,}")
+		print(f"  ├─ Active in train only         : {train_only:,}")
+		print(f"  ├─ Active in val only           : {val_only:,}")
+		print(f"  └─ Inactive in both             : {neither:,}")
+		if train_only > 0:
+			print(f"\n  ⚠  {train_only} classes trained on but absent from val.")
+		if val_only > 0:
+			print(
+				f"\n  ⚠  {val_only} classes in val with no training samples — "
+				f"pos_weight defaults to 1.0 for these."
+			)
+		
+		# Train-only class frequency analysis
+		if train_only > 0:
+			train_only_mask  = (train_active & ~val_active)
+			train_only_freqs = train_freq[train_only_mask]
+			print(f"\n  [Train-only class frequency analysis]")
+			print(f"  ├─ Count                : {train_only_mask.sum().item():,}")
+			print(f"  ├─ Frequency min        : {train_only_freqs.min():.0f}")
+			print(f"  ├─ Frequency max        : {train_only_freqs.max():.0f}")
+			print(f"  ├─ Frequency mean       : {train_only_freqs.mean():.1f}")
+			print(f"  ├─ Frequency median     : {train_only_freqs.median():.1f}")
+			print(f"  ├─ Classes with freq=1  : {(train_only_freqs == 1).sum().item():,}")
+			print(f"  ├─ Classes with freq≤5  : {(train_only_freqs <= 5).sum().item():,}")
+			print(f"  └─ Classes with freq>10 : {(train_only_freqs > 10).sum().item():,}")
+		
+		# Val-only class frequency analysis
+		if val_only > 0:
+			val_only_mask  = (val_active & ~train_active)
+			val_only_freqs = val_freq[val_only_mask]
+			print(f"\n  [Val-only class frequency analysis]")
+			print(f"  ├─ Count                : {val_only_mask.sum().item():,}")
+			print(f"  ├─ Val frequency min    : {val_only_freqs.min():.0f}")
+			print(f"  ├─ Val frequency max    : {val_only_freqs.max():.0f}")
+			print(f"  └─ Val frequency mean   : {val_only_freqs.mean():.1f}")
+			print(
+				f"  Note: these classes will appear in rare tier evaluation "
+				f"but model has no positive training signal for them."
+			)
+	
 	return val_freq
 
 def compute_loss_masks(
