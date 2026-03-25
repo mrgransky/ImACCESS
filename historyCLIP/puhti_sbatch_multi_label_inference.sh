@@ -39,7 +39,7 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
-path_files_dir=${DATASETS[$SLURM_ARRAY_TASK_ID]}/multi_label_new
+path_files_dir=${DATASETS[$SLURM_ARRAY_TASK_ID]}/multi_label
 
 echo "Processing: ${path_files_dir}"
 
