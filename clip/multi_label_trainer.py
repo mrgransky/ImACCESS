@@ -3929,9 +3929,6 @@ def ia3_finetune_multi_label(
 		
 	if verbose:
 		print(f"\n{mode.upper()} [Multi-Label]")
-		print(f"   ├─ Rank: {lora_rank}")
-		print(f"   ├─ Alpha: {lora_alpha}")
-		print(f"   ├─ Dropout: {lora_dropout}")
 		print(f"   ├─ Model      : {model_name} {model_arch}")
 		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
 		print(f"   ├─ Batch size : {train_loader.batch_size}")
@@ -4014,7 +4011,6 @@ def ia3_finetune_multi_label(
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 	
-	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
 	model.eval()
 	all_class_embeds = []
 	text_batch_size = validation_loader.batch_size
@@ -4045,7 +4041,6 @@ def ia3_finetune_multi_label(
 
 	# Optimizer setup
 	ia3_params = [p for p in model.parameters() if p.requires_grad]
-
 	optimizer = torch.optim.AdamW(
 		params=ia3_params,
 		lr=learning_rate,
@@ -4053,6 +4048,7 @@ def ia3_finetune_multi_label(
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
+	
 	if verbose:
 		print(f"\n{optimizer.__class__.__name__}")
 		print(f"  ├─ Params: {sum(p.numel() for p in ia3_params):,}")
