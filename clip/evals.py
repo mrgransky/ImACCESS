@@ -961,11 +961,6 @@ def get_validation_metrics(
 		del inter_cls_sims, off_diag, max_sims_per_image
 		torch.cuda.empty_cache()
 
-
-
-
-
-
 	# Step 5: Compute full-set metrics
 	full_metrics = compute_full_set_metrics_from_cache(
 		i2t_similarity=i2t_similarity,
@@ -1363,59 +1358,54 @@ def _compute_t2i_accuracy(t2i_similarity, labels, topK_values, is_multi_label, n
 	
 	return txt2img_topk_acc
 
-def _compute_singlelabel_mrr(i2t_similarity, labels):
-	"""Compute MRR for single-label datasets."""
-	ranks = i2t_similarity.argsort(dim=-1, descending=True)
-	rr_indices = ranks.eq(labels.view(-1, 1)).nonzero(as_tuple=True)[1] + 1
-	return (1.0 / rr_indices.float()).mean().item()
-
 def get_matched_cosine_similarity(
 	image_embeds,
 	text_embeds,
 	labels,
 	is_multi_label,
-	verbose=False,  # set True for one epoch to diagnose
+	verbose=False,
 ):
-	"""Compute cosine similarity between matched image-text pairs."""
-	# ── Debug: input tensor health ────────────────────────────────────────
 	if verbose:
-			print(f"\n[CosSim DEBUG] Input shapes and health")
-			print(f"  image_embeds  : {image_embeds.shape} dtype={image_embeds.dtype} device={image_embeds.device}")
-			print(f"  text_embeds   : {text_embeds.shape} dtype={text_embeds.dtype} device={text_embeds.device}")
-			print(f"  labels        : {labels.shape} dtype={labels.dtype}")
-			print(f"  image_embeds  — nan={torch.isnan(image_embeds).any().item()} inf={torch.isinf(image_embeds).any().item()}")
-			print(f"  text_embeds   — nan={torch.isnan(text_embeds).any().item()} inf={torch.isinf(text_embeds).any().item()}")
-			# Check normalisation — CLIP embeddings should be unit norm
-			img_norms = image_embeds.norm(dim=1)
-			txt_norms = text_embeds.norm(dim=1)
-			print(f"\n  image_embeds norms — min={img_norms.min():.6f} max={img_norms.max():.6f} mean={img_norms.mean():.6f}")
-			print(f"  text_embeds  norms — min={txt_norms.min():.6f} max={txt_norms.max():.6f} mean={txt_norms.mean():.6f}")
-			print(f"  Are image_embeds normalised (norm≈1)? {torch.allclose(img_norms, torch.ones_like(img_norms), atol=1e-3)}")
-			print(f"  Are text_embeds  normalised (norm≈1)? {torch.allclose(txt_norms, torch.ones_like(txt_norms), atol=1e-3)}")
-			# Check value ranges
-			print(f"\n  image_embeds values — min={image_embeds.min():.6f} max={image_embeds.max():.6f} mean={image_embeds.mean():.6f}")
-			print(f"  text_embeds  values — min={text_embeds.min():.6f} max={text_embeds.max():.6f} mean={text_embeds.mean():.6f}")
-			# Label statistics
-			if is_multi_label:
-					pos_per_sample = labels.sum(dim=1)
-					print(f"\n  Labels — positives per sample: min={pos_per_sample.min().item():.0f} max={pos_per_sample.max().item():.0f} mean={pos_per_sample.mean().item():.2f}")
-					print(f"Samples with zero positive labels: {(pos_per_sample == 0).sum().item()}")
-	# ── Build matched text embeddings ─────────────────────────────────────
+		print(f"\n[CosSim DEBUG] Input shapes and health")
+		print(f"  image_embeds  : {image_embeds.shape} dtype={image_embeds.dtype} device={image_embeds.device}")
+		print(f"  text_embeds   : {text_embeds.shape} dtype={text_embeds.dtype} device={text_embeds.device}")
+		print(f"  labels        : {labels.shape} dtype={labels.dtype}")
+		print(f"  image_embeds  — nan={torch.isnan(image_embeds).any().item()} inf={torch.isinf(image_embeds).any().item()}")
+		print(f"  text_embeds   — nan={torch.isnan(text_embeds).any().item()} inf={torch.isinf(text_embeds).any().item()}")
+
+		# Check normalisation — CLIP embeddings should be unit norm
+		img_norms = image_embeds.norm(dim=1)
+		txt_norms = text_embeds.norm(dim=1)
+		print(f"\n  image_embeds norms — min={img_norms.min():.6f} max={img_norms.max():.6f} mean={img_norms.mean():.6f}")
+		print(f"  text_embeds  norms — min={txt_norms.min():.6f} max={txt_norms.max():.6f} mean={txt_norms.mean():.6f}")
+		print(f"  Are image_embeds normalised (norm≈1)? {torch.allclose(img_norms, torch.ones_like(img_norms), atol=1e-3)}")
+		print(f"  Are text_embeds  normalised (norm≈1)? {torch.allclose(txt_norms, torch.ones_like(txt_norms), atol=1e-3)}")
+
+		# Check value ranges
+		print(f"\n  image_embeds values — min={image_embeds.min():.6f} max={image_embeds.max():.6f} mean={image_embeds.mean():.6f}")
+		print(f"  text_embeds  values — min={text_embeds.min():.6f} max={text_embeds.max():.6f} mean={text_embeds.mean():.6f}")
+
+		# Label statistics
+		if is_multi_label:
+			pos_per_sample = labels.sum(dim=1)
+			print(f"\n  Labels — positives per sample: min={pos_per_sample.min().item():.0f} max={pos_per_sample.max().item():.0f} mean={pos_per_sample.mean().item():.2f}")
+			print(f"Samples with zero positive labels: {(pos_per_sample == 0).sum().item()}")
+
 	if is_multi_label:
-			matched_text_embeds = torch.zeros_like(image_embeds)
-			positive_counts = []
-			for i in range(len(labels)):
-					positive_indices = torch.where(labels[i] == 1)[0]
-					if positive_indices.numel() > 0:
-							matched_text_embeds[i] = text_embeds[positive_indices].mean(dim=0)
-							positive_counts.append(positive_indices.numel())
-					else:
-							matched_text_embeds[i] = text_embeds.mean(dim=0)
-							positive_counts.append(0)
+		matched_text_embeds = torch.zeros_like(image_embeds)
+		positive_counts = []
+		for i in range(len(labels)):
+			positive_indices = torch.where(labels[i] == 1)[0]
+			if positive_indices.numel() > 0:
+				matched_text_embeds[i] = text_embeds[positive_indices].mean(dim=0)
+				positive_counts.append(positive_indices.numel())
+			else:
+				matched_text_embeds[i] = text_embeds.mean(dim=0)
+				positive_counts.append(0)
 	else:
-			matched_text_embeds = text_embeds[labels]
-			positive_counts = [1] * len(labels)
-	# ── Debug: matched embeddings health ─────────────────────────────────
+		matched_text_embeds = text_embeds[labels]
+		positive_counts = [1] * len(labels)
+
 	if verbose:
 			matched_norms = matched_text_embeds.norm(dim=1)
 			print(f"\n  matched_text_embeds — shape={matched_text_embeds.shape}")
@@ -1423,12 +1413,14 @@ def get_matched_cosine_similarity(
 			print(f"  matched_text_embeds norms — min={matched_norms.min():.6f} max={matched_norms.max():.6f} mean={matched_norms.mean():.6f}")
 			print(f"  NOTE: averaged embeddings are NOT unit norm even if inputs are")
 			print(f"  Positive label counts — min={min(positive_counts)} max={max(positive_counts)} mean={sum(positive_counts)/len(positive_counts):.2f}")
+			
 			# Raw dot products before normalisation — key diagnostic
 			# If dot products are negative, the embeddings are fundamentally misaligned
 			dot_products = (image_embeds * matched_text_embeds).sum(dim=1)
 			print(f"\n  Raw dot products (before norm division):")
 			print(f"    min={dot_products.min():.6f} max={dot_products.max():.6f} mean={dot_products.mean():.6f}")
 			print(f"    negative fraction: {(dot_products < 0).float().mean().item():.3f}")
+			
 			# Per-sample cosine similarity distribution
 			img_n = torch.nn.functional.normalize(image_embeds, dim=1)
 			txt_n = torch.nn.functional.normalize(matched_text_embeds, dim=1)
@@ -1438,35 +1430,40 @@ def get_matched_cosine_similarity(
 			print(f"    positive fraction: {(per_sample_cos > 0).float().mean().item():.3f}")
 			print(f"    >0.1 fraction    : {(per_sample_cos > 0.1).float().mean().item():.3f}")
 			print(f"    <-0.1 fraction   : {(per_sample_cos < -0.1).float().mean().item():.3f}")
+			
 			# Check if the issue is averaging — compare single-label vs averaged
 			# Take first sample with exactly 1 positive label as reference
 			single_label_samples = [i for i, c in enumerate(positive_counts) if c == 1]
 			multi_label_samples  = [i for i, c in enumerate(positive_counts) if c > 1]
 			if single_label_samples:
-					sl_cos = per_sample_cos[single_label_samples]
-					print(f"\n  Single-positive samples ({len(single_label_samples)} samples):")
-					print(f"    CosSim — min={sl_cos.min():.6f} max={sl_cos.max():.6f} mean={sl_cos.mean():.6f}")
+				sl_cos = per_sample_cos[single_label_samples]
+				print(f"\n  Single-positive samples ({len(single_label_samples)} samples):")
+				print(f"    CosSim — min={sl_cos.min():.6f} max={sl_cos.max():.6f} mean={sl_cos.mean():.6f}")
 			if multi_label_samples:
-					ml_cos = per_sample_cos[multi_label_samples]
-					print(f"  Multi-positive samples ({len(multi_label_samples)} samples):")
-					print(f"    CosSim — min={ml_cos.min():.6f} max={ml_cos.max():.6f} mean={ml_cos.mean():.6f}")
+				ml_cos = per_sample_cos[multi_label_samples]
+				print(f"  Multi-positive samples ({len(multi_label_samples)} samples):")
+				print(f"    CosSim — min={ml_cos.min():.6f} max={ml_cos.max():.6f} mean={ml_cos.mean():.6f}")
+			
 			# Check text_embeds passed in — are these class embeddings or something else?
 			print(f"\n  text_embeds origin check:")
 			print(f"    shape[0]={text_embeds.shape[0]} — expected num_classes=4669")
 			print(f"    shape[1]={text_embeds.shape[1]} — expected embed_dim=768")
-	# ── Guard: NaN/Inf check ──────────────────────────────────────────────
+
+	# Guard: NaN/Inf check
 	if torch.isnan(image_embeds).any() or torch.isnan(matched_text_embeds).any():
-			if verbose:
-					print(f"\n  [GUARD] NaN detected — returning float('nan')")
-			return float('nan')
-	# ── Guard: zero-norm mask ─────────────────────────────────────────────
+		if verbose:
+			print(f"\n  [GUARD] NaN detected — returning float('nan')")
+		
+		return float('nan')
+
+	# Guard: zero-norm mask
 	img_norms = image_embeds.norm(dim=1, keepdim=True)
 	txt_norms = matched_text_embeds.norm(dim=1, keepdim=True)
 	valid_mask = (img_norms.squeeze() > 1e-8) & (txt_norms.squeeze() > 1e-8)
 	if valid_mask.sum() == 0:
-			if verbose:
-					print(f"\n  [GUARD] No valid pairs — returning float('nan')")
-			return float('nan')
+		if verbose:
+			print(f"\n  [GUARD] No valid pairs — returning float('nan')")
+		return float('nan')
 
 	# Normalise matched embeddings before cosine similarity
 	img_n = torch.nn.functional.normalize(image_embeds[valid_mask], dim=1)
@@ -1475,7 +1472,7 @@ def get_matched_cosine_similarity(
 	result = cos_sim.mean().item()
 
 	if verbose:
-			print(f"\n  Final CosSim (valid pairs={valid_mask.sum().item()}/{len(valid_mask)}): {result:.6f}")
+		print(f"\n  Final CosSim (valid pairs={valid_mask.sum().item()}/{len(valid_mask)}): {result:.6f}")
 
 	return result
 
@@ -1487,6 +1484,7 @@ def get_multilabel_alignment_score(
 	topk: int = 5,
 	verbose: bool = False,
 ) -> float:
+
 	# Guard: NaN/Inf check with detailed diagnostics
 	image_has_nan = torch.isnan(image_embeds).any()
 	image_has_inf = torch.isinf(image_embeds).any()
@@ -1558,14 +1556,13 @@ def get_multilabel_alignment_score(
 		)
 		print(f"Alignment score: {score}")
 
-		# Existing breakdown by positive label count
+		# breakdown by positive label count
 		pos_counts = labels.sum(dim=1).long()
 		for n_pos in sorted(pos_counts.unique().tolist()):
-				mask = pos_counts == n_pos
-				if mask.sum() > 0:
-						group_score = hits[mask].float().mean().item()
-						print(f"  └─ {n_pos} positive labels "
-									f"({mask.sum().item()} samples): {group_score}")
+			mask = pos_counts == n_pos
+			if mask.sum() > 0:
+				group_score = hits[mask].float().mean().item()
+				print(f"  └─ {n_pos} positive labels ({mask.sum().item()} samples): {group_score}")
 
 		# breakdown by class frequency tier
 		# Requires class_freq to be passed in — add as optional parameter
@@ -1575,65 +1572,58 @@ def get_multilabel_alignment_score(
 		# For each image that IS a hit, which rank did the first correct class appear?
 		hit_indices = hits.nonzero(as_tuple=True)[0]
 		if len(hit_indices) > 0:
-				# Find rank of first correct class for hit images
-				hit_topk = topk_indices[hit_indices]          # [n_hits, K]
-				hit_labels = labels[hit_indices].bool()        # [n_hits, C]
-				first_hit_ranks = []
-				for i in range(min(len(hit_indices), 1000)):   # cap at 1000 for speed
-						for rank, cls_idx in enumerate(hit_topk[i].tolist()):
-								if hit_labels[i, cls_idx]:
-										first_hit_ranks.append(rank + 1)
-										break
-				if first_hit_ranks:
-						first_hit_ranks_t = torch.tensor(
-								first_hit_ranks, dtype=torch.float32
-						)
-						print(f"  First correct class rank (hit images only):")
-						print(f"    mean={first_hit_ranks_t.mean():.2f}  "
-									f"median={first_hit_ranks_t.median():.2f}  "
-									f"rank=1: {(first_hit_ranks_t == 1).float().mean():.3f}  "
-									f"rank≤3: {(first_hit_ranks_t <= 3).float().mean():.3f}")
+			# Find rank of first correct class for hit images
+			hit_topk = topk_indices[hit_indices]          # [n_hits, K]
+			hit_labels = labels[hit_indices].bool()       # [n_hits, C]
+			first_hit_ranks = []
+			for i in range(min(len(hit_indices), 1000)):  # cap at 1000 for speed
+				for rank, cls_idx in enumerate(hit_topk[i].tolist()):
+					if hit_labels[i, cls_idx]:
+						first_hit_ranks.append(rank + 1)
+						break
+			if first_hit_ranks:
+				first_hit_ranks_t = torch.tensor(first_hit_ranks, dtype=torch.float32)
+				print(f"First correct class rank (hit images only):")
+				print(f"mean={first_hit_ranks_t.mean():.2f}  median={first_hit_ranks_t.median():.2f}")
+				print(f"rank=1: {(first_hit_ranks_t == 1).float().mean():.3f}")
+				print(f"rank≤3: {(first_hit_ranks_t <= 3).float().mean():.3f}")
 
 		# Miss analysis — for non-hit images, how close was the nearest true class?
 		miss_indices = (~hits).nonzero(as_tuple=True)[0]
 		if len(miss_indices) > 0:
-				n_miss_sample = min(len(miss_indices), 1000)
-				miss_sample = miss_indices[:n_miss_sample]
-				miss_sims_all = logits[miss_sample]             # [n_miss, C]
-				miss_labels_all = labels[miss_sample].bool()    # [n_miss, C]
-				# For each miss image, what rank did its true classes achieve?
-				miss_true_ranks = []
-				sorted_miss = miss_sims_all.argsort(dim=1, descending=True)
-				for i in range(n_miss_sample):
-						true_cls = miss_labels_all[i].nonzero(as_tuple=True)[0]
-						if len(true_cls) == 0:
-								continue
-						# Find rank of highest-ranked true class
-						ranks_of_true = []
-						for tc in true_cls.tolist():
-								rank = (sorted_miss[i] == tc).nonzero(
-										as_tuple=True
-								)[0].item() + 1
-								ranks_of_true.append(rank)
-						miss_true_ranks.append(min(ranks_of_true))
-				if miss_true_ranks:
-						miss_ranks_t = torch.tensor(
-								miss_true_ranks, dtype=torch.float32
-						)
-						print(f"  Best true class rank for MISS images (sample of {n_miss_sample}):")
-						print(f"    mean={miss_ranks_t.mean():.1f}  "
-									f"median={miss_ranks_t.median():.1f}  "
-									f"rank≤10: {(miss_ranks_t <= 10).float().mean():.3f}  "
-									f"rank≤50: {(miss_ranks_t <= 50).float().mean():.3f}  "
-									f"rank≤100: {(miss_ranks_t <= 100).float().mean():.3f}")
-						print(f"    → If mean rank is high (>>100), class embeddings "
-									f"are geometrically far from image embeddings")
-						print(f"    → If mean rank is low (≤50), images are close but "
-									f"other classes rank higher (inter-class confusion)")
-
-
-
-
+			n_miss_sample = min(len(miss_indices), 1000)
+			miss_sample = miss_indices[:n_miss_sample]
+			miss_sims_all = logits[miss_sample]             # [n_miss, C]
+			miss_labels_all = labels[miss_sample].bool()    # [n_miss, C]
+			
+			# For each miss image, what rank did its true classes achieve?
+			miss_true_ranks = []
+			sorted_miss = miss_sims_all.argsort(dim=1, descending=True)
+			for i in range(n_miss_sample):
+				true_cls = miss_labels_all[i].nonzero(as_tuple=True)[0]
+				if len(true_cls) == 0:
+					continue
+				
+				# Find rank of highest-ranked true class
+				ranks_of_true = []
+				for tc in true_cls.tolist():
+					rank = (sorted_miss[i] == tc).nonzero(as_tuple=True)[0].item() + 1
+					ranks_of_true.append(rank)
+				miss_true_ranks.append(min(ranks_of_true))
+			
+			if miss_true_ranks:
+				miss_ranks_t = torch.tensor(miss_true_ranks, dtype=torch.float32)
+				print(f"Best true class rank for MISS images (sample of {n_miss_sample}):")
+				print(f"mean={miss_ranks_t.mean():.1f}  median={miss_ranks_t.median():.1f}")
+				print(f"rank≤10:  {(miss_ranks_t <= 10).float().mean():.3f}")
+				print(f"rank≤50:  {(miss_ranks_t <= 50).float().mean():.3f}")
+				print(f"rank≤100: {(miss_ranks_t <= 100).float().mean():.3f}")
+				if miss_ranks_t.mean() > 100:
+					print(f"mean rank: {miss_ranks_t.mean():.1f} high (>>100) class embeddings geometrically far from image embeddings.")
+				elif miss_ranks_t.mean() <= 50:
+					print(f"mean rank: {miss_ranks_t.mean():.1f} is low (≤50) images close but other classes rank higher (inter-class confusion).")
+				else:
+					print(f"mean rank: {miss_ranks_t.mean():.1f} is moderate (50 < mean < 100) images close but other classes rank higher (inter-class confusion).")
 
 	return score
 
