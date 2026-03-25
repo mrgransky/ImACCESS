@@ -205,11 +205,16 @@ def probe_multi_label(
 		print(f"   ├─ Device     : {type(device)} {device}")
 		print(f"   ├─ Temperature: {temperature}")
 		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
-		if torch.cuda.is_available():
-			gpu_name = torch.cuda.get_device_name(device)
-			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
-			cuda_capability = torch.cuda.get_device_capability()
-			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
+	
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
+		cuda_capability = torch.cuda.get_device_capability()
+		if cuda_capability[0] >= 8 and torch.cuda.is_bf16_supported():
+			amp_dtype = torch.bfloat16
+		else:
+			amp_dtype = torch.float16
+		print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 
 	# FREEZE ALL CLIP PARAMETERS AND CREATE ROBUST PROBE
 	for param in model.parameters():
@@ -309,13 +314,14 @@ def probe_multi_label(
 	)
 
 	if verbose:
-		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
 		scaler_state = scaler.state_dict()
 		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ enabled: {scaler.is_enabled()}")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print()
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -347,7 +353,11 @@ def probe_multi_label(
 		def extract_features(loader, desc):
 			feats, lbls = [], []
 			with torch.no_grad():
-				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				with torch.amp.autocast(
+					device_type=device.type, 
+					enabled=torch.cuda.is_available(),
+					dtype=amp_dtype,
+				):
 					for images, _, label_vectors in tqdm(loader, desc=desc):
 						images = images.to(device, non_blocking=True)
 						emb = model.encode_image(images)
@@ -413,7 +423,11 @@ def probe_multi_label(
 			
 			optimizer.zero_grad(set_to_none=True)
 			
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			with torch.amp.autocast(
+				device_type=device.type, 
+				enabled=torch.cuda.is_available(),
+				dtype=amp_dtype,
+			):
 				# Linear probe forward (multi-label logits)
 				logits = probe.probe(image_embeds)   
 				
@@ -756,18 +770,28 @@ def full_finetune_multi_label(
 	
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
-	print(f"{mode.upper()}-FT")
-	print(f"  ├─ {model_name} {model_arch}")
-	print(f"  ├─ {dataset_name} {num_classes} classes")
-	print(f"  ├─ Epochs: {num_epochs}  Batch size: {train_loader.batch_size}  Device: {type(device)} {device}")
-	print(f"  ├─ Learning rate: {learning_rate}  Weight decay: {weight_decay}  Patience: {patience}")
-	print(f"  ├─ Loss weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
-	print(f"  ├─ Temperature: {temperature}")
+
+	if verbose:
+		print(f"{mode.upper()}-FT")
+		print(f"  ├─ {model_name} {model_arch}")
+		print(f"  ├─ {dataset_name} {num_classes} classes")
+		print(f"  ├─ Epochs: {num_epochs}  Batch size: {train_loader.batch_size}  Device: {type(device)} {device}")
+		print(f"  ├─ Learning rate: {learning_rate}  Weight decay: {weight_decay}  Patience: {patience}")
+		print(f"  ├─ Loss weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
+		print(f"  ├─ Temperature: {temperature}")
+
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
 		cuda_capability = torch.cuda.get_device_capability()
-		print(f"  └─ {gpu_name} {total_mem:.2f}GB VRAM cuda capability: {cuda_capability}")
+		# check with cuda capability
+		if cuda_capability[0] >= 8 and torch.cuda.is_bf16_supported():
+			amp_dtype = torch.bfloat16
+		else:
+			amp_dtype = torch.float16
+
+		if verbose:
+			print(f"  └─ {gpu_name} {total_mem:.2f}GB VRAM cuda capability: {cuda_capability}")
 	
 	dropout_val = 0.0
 	for name, module in model.named_modules():
@@ -851,9 +875,13 @@ def full_finetune_multi_label(
 	all_class_embeds = []
 	text_batch_size = validation_loader.batch_size
 	if verbose:
-		print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+		print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+		with torch.amp.autocast(
+			device_type=device.type, 
+			enabled=torch.cuda.is_available(),
+			dtype=amp_dtype,
+		):
 			for i in range(0, num_classes, text_batch_size):
 				end_idx = min(i + text_batch_size, num_classes)
 				batch_class_names = class_names[i:end_idx]
@@ -923,13 +951,14 @@ def full_finetune_multi_label(
 	)
 
 	if verbose:
-		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
 		scaler_state = scaler.state_dict()
 		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ enabled: {scaler.is_enabled()}")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print()
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -984,7 +1013,11 @@ def full_finetune_multi_label(
 			
 			optimizer.zero_grad(set_to_none=True)
 			
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			with torch.amp.autocast(
+				device_type=device.type, 
+				enabled=torch.cuda.is_available(),
+				dtype=amp_dtype,
+			):
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
 					model=model,
 					images=images,
@@ -1334,7 +1367,14 @@ def lora_finetune_multi_label(
 		gpu_name = torch.cuda.get_device_name(device)
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
 		cuda_capability = torch.cuda.get_device_capability()
-		print(f"   └─ {gpu_name} | {total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
+		# check with cuda capability
+		if cuda_capability[0] >= 8 and torch.cuda.is_bf16_supported():
+			amp_dtype = torch.bfloat16
+		else:
+			amp_dtype = torch.float16
+		
+		if verbose:
+			print(f"   └─ {gpu_name} | {total_mem:.1f}GB VRAM | cuda capability: {cuda_capability}")
 		
 	# ── LoRA injection — vision encoder only
 	# Text encoder stays frozen and un-injected, consistent with full fine-tuning.
@@ -1374,7 +1414,7 @@ def lora_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	# ── Criteria
+	# Criteria
 	# I2T: pos_weight applies — rows are images, cols are classes
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
 		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
@@ -1388,6 +1428,7 @@ def lora_finetune_multi_label(
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
+
 	# T2I: no pos_weight — rows are classes, cols are batch images
 	# The imbalance is already corrected via I2T; T2I provides directional symmetry
 	criterion_t2i = torch.nn.BCEWithLogitsLoss(
@@ -1401,9 +1442,14 @@ def lora_finetune_multi_label(
 	model.eval()
 	all_class_embeds = []
 	text_batch_size = validation_loader.batch_size
-	print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	if verbose:
+		print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+		with torch.amp.autocast(
+			device_type=device.type, 
+			enabled=torch.cuda.is_available(),
+			dtype=amp_dtype,
+		):
 			for i in range(0, num_classes, text_batch_size):
 				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
 				embeds = model.encode_text(batch_tokens)
@@ -1480,13 +1526,14 @@ def lora_finetune_multi_label(
 	)
 
 	if verbose:
-		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
 		scaler_state = scaler.state_dict()
 		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ enabled: {scaler.is_enabled()}")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print()
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -1519,51 +1566,61 @@ def lora_finetune_multi_label(
 			print(f"Epoch [{epoch+1}/{num_epochs}]")
 			epoch_loss_total = epoch_loss_i2t = epoch_loss_t2i = 0.0
 			num_batches = 0
+
 			for bidx, batch_data in enumerate(train_loader):
-					if len(batch_data) != 3:
-						raise ValueError(f"Expected 3 items from DataLoader, got {len(batch_data)}")
-					images, _, label_vectors = batch_data
-					batch_size = images.size(0)
-					images = images.to(device, non_blocking=True)
-					label_vectors = label_vectors.to(device, non_blocking=True).float()
-					if label_vectors.shape != (batch_size, num_classes):
-						raise ValueError(f"Label vectors shape {label_vectors.shape} != expected ({batch_size}, {num_classes})")
-					optimizer.zero_grad(set_to_none=True)
-					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-							total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
-									model=model,
-									images=images,
-									all_class_embeds=all_class_embeds,
-									label_vectors=label_vectors,
-									criterion_i2t=criterion_i2t,
-									criterion_t2i=criterion_t2i,
-									active_mask=active_mask,
-									temperature=temperature,
-									loss_weights=loss_weights,
-									verbose=verbose,
-							)
-					if torch.isnan(total_loss):
-						print(f"Warning: NaN loss at epoch {epoch+1}, batch {bidx+1}. Skipping.")
-						continue
-					scaler.scale(total_loss).backward()
-					scaler.unscale_(optimizer)
-					torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
-					scaler.step(optimizer)
-					scaler.update()
-					scheduler.step()
-					epoch_loss_total += total_loss.item()
-					epoch_loss_i2t   += loss_i2t.item()
-					epoch_loss_t2i   += loss_t2i.item()
-					num_batches += 1
-					if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-						print(
-							f"\t\tBatch [{bidx+1:04d}/{len(train_loader)}] "
-							f"Total: {total_loss.item():.6f} "
-							f"(I2T: {loss_i2t.item():.6f}, T2I: {loss_t2i.item():.6f})"
-						)
+				images, _, label_vectors = batch_data
+				images = images.to(device, non_blocking=True)
+				label_vectors = label_vectors.to(device, non_blocking=True).float()
+				optimizer.zero_grad(set_to_none=True)
+
+				with torch.amp.autocast(
+					device_type=device.type, 
+					enabled=torch.cuda.is_available(),
+					dtype=amp_dtype,
+				):
+					total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
+						model=model,
+						images=images,
+						all_class_embeds=all_class_embeds,
+						label_vectors=label_vectors,
+						criterion_i2t=criterion_i2t,
+						criterion_t2i=criterion_t2i,
+						active_mask=active_mask,
+						temperature=temperature,
+						loss_weights=loss_weights,
+						verbose=verbose,
+					)
+
+				if torch.isnan(total_loss):
+					print(f"Warning: NaN loss at epoch {epoch+1}, batch {bidx+1}. Skipping.")
+					continue
+
+				scaler.scale(total_loss).backward()
+				scaler.unscale_(optimizer)
+				torch.nn.utils.clip_grad_norm_(
+					[p for p in model.parameters() if p.requires_grad], 
+					max_norm=1.0
+				)
+
+				scaler.step(optimizer)
+				scaler.update()
+				scheduler.step()
+				epoch_loss_total += total_loss.item()
+				epoch_loss_i2t   += loss_i2t.item()
+				epoch_loss_t2i   += loss_t2i.item()
+
+				num_batches += 1
+				if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+					print(
+						f"\t\tBatch [{bidx+1:04d}/{len(train_loader)}] "
+						f"Total: {total_loss.item():.6f} "
+						f"(I2T: {loss_i2t.item():.6f}, T2I: {loss_t2i.item():.6f})"
+					)
+
 			avg_total = epoch_loss_total / num_batches if num_batches > 0 else 0.0
 			avg_i2t   = epoch_loss_i2t   / num_batches if num_batches > 0 else 0.0
 			avg_t2i   = epoch_loss_t2i   / num_batches if num_batches > 0 else 0.0
+
 			training_losses.append(avg_total)
 			training_losses_breakdown["total"].append(avg_total)
 			training_losses_breakdown["i2t"].append(avg_i2t)
@@ -1908,10 +1965,15 @@ def lora_plus_finetune_multi_label(
 		if quantized:
 			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
 		
-		if torch.cuda.is_available():
-			gpu_name = torch.cuda.get_device_name(device)
-			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-			cuda_capability = torch.cuda.get_device_capability(device)
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+		cuda_capability = torch.cuda.get_device_capability(device)
+		if cuda_capability[0] >= 8 and torch.cuda.is_bf16_supported():
+			amp_dtype = torch.bfloat16
+		else:
+			amp_dtype = torch.float16
+		if verbose:
 			print(f"   ├─ {gpu_name} {device}")
 			print(f"   ├─ Total Memory: {gpu_total_mem:.1f}GB")
 			print(f"   └─ CUDA Capability: {cuda_capability}")
@@ -1984,14 +2046,19 @@ def lora_plus_finetune_multi_label(
 	model.eval()
 	all_class_embeds = []
 	text_batch_size = validation_loader.batch_size
-	print(f"\n>> Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+		with torch.amp.autocast(
+			device_type=device.type, 
+			enabled=torch.cuda.is_available(),
+			dtype=amp_dtype,
+		):
 			for i in range(0, num_classes, text_batch_size):
 				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
 				embeds = model.encode_text(batch_tokens)
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
 				all_class_embeds.append(embeds.cpu())
+
 				del batch_tokens, embeds
 
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
@@ -2074,13 +2141,6 @@ def lora_plus_finetune_multi_label(
 		backoff_factor=0.5,    # standard
 		growth_interval=5000,  # longer interval before attempting growth
 	)
-
-	if torch.cuda.is_available():
-		# check with cuda capability
-		if cuda_capability[0] >= 8 and torch.cuda.is_bf16_supported():
-			amp_dtype = torch.bfloat16
-		else:
-			amp_dtype = torch.float16
 
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
@@ -2203,10 +2263,9 @@ def lora_plus_finetune_multi_label(
 				
 				if grad_norms_A and grad_norms_B:
 					print(
-						f"\t\tBatch [{bidx + 1}/{len(train_loader)}] "
-						f"[Grad norms e{epoch+1} b{bidx+1}] "
-						f"A: min={min(grad_norms_A):.3f} max={max(grad_norms_A):.3f} "
-						f"B: min={min(grad_norms_B):.3f} max={max(grad_norms_B):.3f}"
+						f"\t\t[Grad norms e{epoch+1} b{bidx+1}] "
+						f"A: min={min(grad_norms_A)} max={max(grad_norms_A)} "
+						f"B: min={min(grad_norms_B)} max={max(grad_norms_B)}"
 					)
 
 			# Guard: skip optimizer step if grads are still corrupt post-unscale
@@ -2246,12 +2305,11 @@ def lora_plus_finetune_multi_label(
 				]
 				if B_norms_current:
 					print(
-						f"\t\tBatch [{bidx + 1}/{len(train_loader)}] "
-						f"[B weight norms post-clip e{epoch+1} b{bidx+1}] "
-						f"min={min(B_norms_current):.3f} " 
-						f"max={max(B_norms_current):.3f} "
-						f"mean={sum(B_norms_current)/len(B_norms_current):.3f} "
-						f"std={np.std(B_norms_current):.3f} "
+						f"\t\t[B weight norms post-clip e{epoch+1} b{bidx+1}] "
+						f"min={min(B_norms_current)} " 
+						f"max={max(B_norms_current)} "
+						f"mean={sum(B_norms_current)/len(B_norms_current)} "
+						f"std={np.std(B_norms_current)} "
 						f"clip_count={sum(1 for n in B_norms_current if n > B_MAX_NORM)} "
 						f"(ceiling={B_MAX_NORM})"
 					)
@@ -2629,7 +2687,12 @@ def rslora_finetune_multi_label(
 		gpu_name = torch.cuda.get_device_name(device)
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024 ** 3)
 		cuda_capability = torch.cuda.get_device_capability()
-		print(f"   └─ {gpu_name} | {total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
+		if cuda_capability[0] >= 8 and torch.cuda.is_bf16_supported():
+			amp_dtype = torch.bfloat16
+		else:
+			amp_dtype = torch.float16
+		if verbose:
+			print(f"   └─ {gpu_name} | {total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 
 	# ── rsLoRA injection — vision encoder only
 	# Text encoder stays frozen and un-injected.
@@ -2692,15 +2755,20 @@ def rslora_finetune_multi_label(
 	model.eval()
 	all_class_embeds = []
 	text_batch_size = validation_loader.batch_size
-	
-	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	if verbose:
+		print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+		with torch.amp.autocast(
+			device_type=device.type, 
+			enabled=torch.cuda.is_available(),
+			dtype=amp_dtype,
+		):
 			for i in range(0, num_classes, text_batch_size):
 				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
 				embeds = model.encode_text(batch_tokens)
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
 				all_class_embeds.append(embeds.cpu())
+
 				del batch_tokens, embeds
 
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
@@ -2762,7 +2830,6 @@ def rslora_finetune_multi_label(
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
-
 	scaler = torch.amp.GradScaler(
 		device=device,
 		init_scale=2**11,
@@ -2772,13 +2839,14 @@ def rslora_finetune_multi_label(
 	)
 
 	if verbose:
-		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
 		scaler_state = scaler.state_dict()
 		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ enabled: {scaler.is_enabled()}")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print()
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -2822,7 +2890,11 @@ def rslora_finetune_multi_label(
 			label_vectors = label_vectors.to(device, non_blocking=True).float()
 			optimizer.zero_grad(set_to_none=True)
 
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			with torch.amp.autocast(
+				device_type=device.type, 
+				enabled=torch.cuda.is_available(),
+				dtype=amp_dtype,
+			):
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
 					model=model,
 					images=images,
@@ -3230,10 +3302,16 @@ def dora_finetune_multi_label(
 		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
 		if quantized:
 			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
-		if torch.cuda.is_available():
-			gpu_name = torch.cuda.get_device_name(device)
-			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-			cuda_capability = torch.cuda.get_device_capability()
+
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+		cuda_capability = torch.cuda.get_device_capability()
+		if cuda_capability[0] >= 8 and torch.cuda.is_bf16_supported():
+			amp_dtype = torch.bfloat16
+		else:
+			amp_dtype = torch.float16
+		if verbose:
 			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 
 	# Inject DoRA into model
@@ -3299,13 +3377,17 @@ def dora_finetune_multi_label(
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 
-	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
 	model.eval()
 	all_class_embeds = []
 	text_batch_size = validation_loader.batch_size
-	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	if verbose:
+		print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+		with torch.amp.autocast(
+			device_type=device.type, 
+			enabled=torch.cuda.is_available(),
+			dtype=amp_dtype,
+		):
 			for i in range(0, num_classes, text_batch_size):
 				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
 				embeds = model.encode_text(batch_tokens)
@@ -3340,7 +3422,6 @@ def dora_finetune_multi_label(
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
 		print(f"  └─ Weight Decay: {weight_decay}")
 
-
 	# Scheduler
 	# approximate T_max: N epochs * minimum_epochs
 	estimated_epochs = 2 * minimum_epochs
@@ -3361,7 +3442,6 @@ def dora_finetune_multi_label(
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
-
 	scaler = torch.amp.GradScaler(
 		device=device,
 		init_scale=2**11,      # 2048 — much more conservative start
@@ -3371,13 +3451,14 @@ def dora_finetune_multi_label(
 	)
 
 	if verbose:
-		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
 		scaler_state = scaler.state_dict()
 		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ enabled: {scaler.is_enabled()}")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print()
 
 	# Model checkpoint path
 	mdl_fpth = os.path.join(
@@ -3433,7 +3514,11 @@ def dora_finetune_multi_label(
 			images = images.to(device, non_blocking=True)
 			label_vectors = label_vectors.to(device, non_blocking=True)
 
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			with torch.amp.autocast(
+				device_type=device.type, 
+				enabled=torch.cuda.is_available(),
+				dtype=amp_dtype,
+			):
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
 					model=model,
 					images=images,
@@ -3835,28 +3920,32 @@ def ia3_finetune_multi_label(
 
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
+		
+	if verbose:
+		print(f"\n{mode.upper()} [Multi-Label]")
+		print(f"   ├─ Rank: {lora_rank}")
+		print(f"   ├─ Alpha: {lora_alpha}")
+		print(f"   ├─ Dropout: {lora_dropout}")
+		print(f"   ├─ Model      : {model_name} {model_arch}")
+		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
+		print(f"   ├─ Batch size : {train_loader.batch_size}")
+		print(f"   ├─ Device     : {type(device)} {device}")
+		print(f"   ├─ Learning rate: {learning_rate}  Weight decay: {weight_decay}")
+		print(f"   ├─ Temperature: {temperature}")
+		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
+		if quantized:
+			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
 
-	print(f"{mode} | {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
 		gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
 		cuda_capability = torch.cuda.get_device_capability()
-		print(f"   ├─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
-
-
-	if verbose:
-		print(f"{mode.upper()} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
-
-		if quantized:
-			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
-
-		if torch.cuda.is_available():
-			gpu_name = torch.cuda.get_device_name(device)
-			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
-			cuda_capability = torch.cuda.get_device_capability()
-			print(f"   ├─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
-
-		print(f"Multi-label (IA)³ fine-tuning: {num_classes} classes")
+		if cuda_capability[0] >= 8 and torch.cuda.is_bf16_supported():
+			amp_dtype = torch.bfloat16
+		else:
+			amp_dtype = torch.float16
+		if verbose:
+			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 
 	model = get_injected_peft_clip(
 		clip_model=model,
@@ -3923,9 +4012,13 @@ def ia3_finetune_multi_label(
 	model.eval()
 	all_class_embeds = []
 	text_batch_size = validation_loader.batch_size
-	print(f"\n>> Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+		with torch.amp.autocast(
+			device_type=device.type, 
+			enabled=torch.cuda.is_available(),
+			dtype=amp_dtype,
+		):
 			for i in range(0, num_classes, text_batch_size):
 				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
 				embeds = model.encode_text(batch_tokens)
@@ -3980,7 +4073,6 @@ def ia3_finetune_multi_label(
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
-
 	scaler = torch.amp.GradScaler(
 		device=device,
 		init_scale=2**11,      # 2048 — much more conservative start
@@ -3990,13 +4082,14 @@ def ia3_finetune_multi_label(
 	)
 
 	if verbose:
-		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
 		scaler_state = scaler.state_dict()
 		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ enabled: {scaler.is_enabled()}")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print()
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -4043,15 +4136,16 @@ def ia3_finetune_multi_label(
 		
 		for bidx, batch_data in enumerate(train_loader):
 			optimizer.zero_grad(set_to_none=True)
-
 			images, _, label_vectors = batch_data
-
-			batch_size = images.size(0)
 
 			images = images.to(device, non_blocking=True)
 			label_vectors = label_vectors.to(device, non_blocking=True).float()
 						
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			with torch.amp.autocast(
+				device_type=device.type, 
+				enabled=torch.cuda.is_available(),
+				dtype=amp_dtype,
+			):
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
 					model=model,
 					images=images,
@@ -4475,12 +4569,16 @@ def vera_finetune_multi_label(
 		if quantized:
 			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
 
-		if torch.cuda.is_available():
-			gpu_name = torch.cuda.get_device_name(device)
-			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
-			cuda_capability = torch.cuda.get_device_capability()
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
+		cuda_capability = torch.cuda.get_device_capability()
+		if cuda_capability[0] >= 8 and torch.cuda.is_bf16_supported():
+			amp_dtype = torch.bfloat16
+		else:
+			amp_dtype = torch.float16
+		if verbose:
 			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
-
 
 	# Apply VeRA to the model
 	model = get_injected_peft_clip(
@@ -4544,18 +4642,22 @@ def vera_finetune_multi_label(
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 
-	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
 	model.eval()
 	all_class_embeds = []
 	text_batch_size = validation_loader.batch_size
-	print(f"\n>> Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+		with torch.amp.autocast(
+			device_type=device.type, 
+			enabled=torch.cuda.is_available(),
+			dtype=amp_dtype,
+		):
 			for i in range(0, num_classes, text_batch_size):
 				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
 				embeds = model.encode_text(batch_tokens)
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
 				all_class_embeds.append(embeds.cpu())
+
 				del batch_tokens, embeds
 	
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
@@ -4577,6 +4679,7 @@ def vera_finetune_multi_label(
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
+
 	if verbose:
 		print(f"\n{optimizer.__class__.__name__}")
 		print(f"  ├─ Params: {sum(p.numel() for p in vera_params):,}")
@@ -4584,7 +4687,6 @@ def vera_finetune_multi_label(
 		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
 		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
 		print(f"  └─ Weight Decay: {weight_decay}")
-
 
 	# Scheduler
 	# approximate T_max: N epochs * minimum_epochs
@@ -4615,13 +4717,14 @@ def vera_finetune_multi_label(
 	)
 
 	if verbose:
-		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
 		scaler_state = scaler.state_dict()
 		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ enabled: {scaler.is_enabled()}")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print()
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -4678,7 +4781,11 @@ def vera_finetune_multi_label(
 			images = images.to(device, non_blocking=True)
 			label_vectors = label_vectors.to(device, non_blocking=True).float()
 						
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			with torch.amp.autocast(
+				device_type=device.type, 
+				enabled=torch.cuda.is_available(),
+				dtype=amp_dtype,
+			):
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
 					model=model,
 					images=images,
@@ -5053,7 +5160,7 @@ def clip_adapter_finetune_multi_label(
 		- criterion_t2i: BCEWithLogitsLoss plain             [C, B] → active_mask applied
 	"""
 
-	# ── Validate method ───────────────────────────────────────────────────────
+	# Validate method
 	valid_methods = ("clip_adapter_v", "clip_adapter_t", "clip_adapter_vt")
 	assert clip_adapter_method in valid_methods, (
 		f"clip_adapter_method must be one of {valid_methods}, got '{clip_adapter_method}'"
@@ -5064,7 +5171,6 @@ def clip_adapter_finetune_multi_label(
 	if loss_weights is None:
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
 
-	# ── Dataset info ──────────────────────────────────────────────────────────
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
 	except AttributeError:
@@ -5082,7 +5188,7 @@ def clip_adapter_finetune_multi_label(
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
 
-	# ── Dropout check (warning only — CLIP-Adapter tolerates dropout) ─────────
+	# Dropout check (warning only — CLIP-Adapter tolerates dropout) 
 	non_zero_dropouts = [
 		(name, module.p)
 		for name, module in model.named_modules()
@@ -5099,12 +5205,18 @@ def clip_adapter_finetune_multi_label(
 		print(f"   ├─ Batch size : {train_loader.batch_size}")
 		print(f"   ├─ Temperature: {temperature}")
 		print(f"   ├─ Loss weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
-		if torch.cuda.is_available():
-			gpu_name = torch.cuda.get_device_name(device)
-			gpu_mem  = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-			cuda_capability = torch.cuda.get_device_capability()
-			print(f"   ├─ {gpu_name} | {gpu_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
-		print(f"   └─ Text adapter active: {text_adapter_active}")
+		print(f"   ├─ Text adapter active: {text_adapter_active}")
+	
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		gpu_mem  = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+		cuda_capability = torch.cuda.get_device_capability()
+		if cuda_capability[0] >= 8 and torch.cuda.is_bf16_supported():
+			amp_dtype = torch.bfloat16
+		else:
+			amp_dtype = torch.float16
+		if verbose:
+			print(f"   └─ {gpu_name} | {gpu_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 
 	# Early stopping
 	early_stopping = EarlyStopping(
@@ -5221,13 +5333,14 @@ def clip_adapter_finetune_multi_label(
 	)
 
 	if verbose:
-		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
 		scaler_state = scaler.state_dict()
 		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ enabled: {scaler.is_enabled()}")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print()
 
 	# Checkpoint path
 	mdl_fpth = os.path.join(
@@ -5243,7 +5356,7 @@ def clip_adapter_finetune_multi_label(
 		f"st_{slope_threshold:.1e}_pit_{pairwise_imp_threshold:.1e}.pth"
 	)
 
-	# ── Pre-encode class texts ────────────────────────────────────────────────
+	# Pre-encode class texts
 	# For clip_adapter_v: text encoder is fully frozen → encode once, reuse forever.
 	# For clip_adapter_t / clip_adapter_vt: text adapter changes every step →
 	#   we keep the raw tokens and re-encode at the start of each epoch.
@@ -5255,7 +5368,11 @@ def clip_adapter_finetune_multi_label(
 		model.eval()
 		embeds_list = []
 		with torch.no_grad():
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			with torch.amp.autocast(
+				device_type=device.type, 
+				enabled=torch.cuda.is_available(),
+				dtype=amp_dtype,
+			):
 				for i in range(0, num_classes, text_batch_size):
 					batch_tokens = all_class_tokens[i:i+text_batch_size]
 					e = model.encode_text(batch_tokens)
@@ -5306,10 +5423,14 @@ def clip_adapter_finetune_multi_label(
 		for bidx, (images, _, label_vectors) in enumerate(train_loader):
 			optimizer.zero_grad(set_to_none=True)
 
-			images       = images.to(device, non_blocking=True)
+			images = images.to(device, non_blocking=True)
 			label_vectors = label_vectors.to(device, non_blocking=True).float()
 
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			with torch.amp.autocast(
+				device_type=device.type, 
+				enabled=torch.cuda.is_available(),
+				dtype=amp_dtype,
+			):
 				# For clip_adapter_vt / clip_adapter_t: text adapter is in train mode,
 				# so we must pass through encode_text with gradients for the text adapter.
 				# For clip_adapter_v: all_class_embeds is already pre-encoded and detached.
@@ -5712,10 +5833,16 @@ def tip_adapter_finetune_multi_label(
 		print(f"   ├─ Temperature: {temperature}")
 		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
 		print(f"   ├─ Support Shots: {support_shots}")
-		if torch.cuda.is_available():
-			gpu_name = torch.cuda.get_device_name(device)
-			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-			cuda_capability = torch.cuda.get_device_capability()
+	
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+		cuda_capability = torch.cuda.get_device_capability()
+		if cuda_capability[0] >= 8 and torch.cuda.is_bf16_supported():
+			amp_dtype = torch.bfloat16
+		else:
+			amp_dtype = torch.float16
+		if verbose:
 			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 	
 	# === SUPPORT SET CONSTRUCTION FOR MULTI-LABEL ===
@@ -5816,7 +5943,11 @@ def tip_adapter_finetune_multi_label(
 	model.eval()
 	
 	with torch.no_grad():
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+		with torch.amp.autocast(
+			device_type=device.type, 
+			enabled=torch.cuda.is_available(),
+			dtype=amp_dtype,
+		):
 			for i in range(0, num_classes, text_batch_size):
 				end_idx = min(i + text_batch_size, num_classes)
 
@@ -6012,13 +6143,14 @@ def tip_adapter_finetune_multi_label(
 	)
 
 	if verbose:
-		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
 		scaler_state = scaler.state_dict()
 		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ enabled: {scaler.is_enabled()}")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print()
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -6131,7 +6263,11 @@ def tip_adapter_finetune_multi_label(
 			images = images.to(device, non_blocking=True)
 			label_vectors = label_vectors.to(device, non_blocking=True).float()
 			
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			with torch.amp.autocast(
+				device_type=device.type, 
+				enabled=torch.cuda.is_available(),
+				dtype=amp_dtype,
+			):
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
 					model=model,
 					images=images,

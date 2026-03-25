@@ -701,20 +701,19 @@ def get_multi_label_stratified_split(
 	# Verify final label count
 	final_labels = set([l for labels in df_filtered[label_col] for l in labels])
 	print(f"   Final unique labels: {len(final_labels)}")
-	# 4. Binarize Labels
-	print(f"\n[4/5] Binarizing labels...")
+
+	print(f"\n[4/5] Binarizing Label matrix ({df_filtered[label_col].shape})...")
 	mlb = MultiLabelBinarizer(sparse_output=True)
 	label_matrix = mlb.fit_transform(df_filtered[label_col])
-	print(f"   Label matrix: {label_matrix.shape} ({label_matrix.data.nbytes / 1e6:.1f} MB)")
+	print(f"   Label matrix: {type(label_matrix)} {label_matrix.shape} | {label_matrix.dtype} | Density: {label_matrix.count_nonzero() / np.prod(label_matrix.shape) * 100:.1f}% | Non-zeroes: {label_matrix.count_nonzero()} | Data size: ({label_matrix.data.nbytes / 1e6:.3f} MB)")
 	unique_labels = mlb.classes_
 	if len(unique_labels) == 0:
 		raise ValueError("No unique labels found after processing. Cannot perform stratification.")
 	
-	print(f"   Found {len(unique_labels)} unique labels")
-	print(f"   Sample labels: {unique_labels.tolist()[:20]}")
+	print(f"   {len(unique_labels)} unique labels")
+	print(f"   Sample unique labels: {unique_labels.tolist()[:20]}")
 	
-	# 5. Perform Iterative Stratification
-	print(f"\n[5/5] Performing iterative stratification...")
+	print(f"\n[5/5] Iterative stratification...")
 	X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
 	
 	try:
