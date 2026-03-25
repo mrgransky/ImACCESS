@@ -2275,6 +2275,7 @@ def lora_plus_finetune_multi_label(
 			if torch.isnan(grad_norm) or torch.isinf(grad_norm):
 				if verbose:
 					print(f"[WARNING] NaN/Inf grad norm detected at epoch {epoch+1}, Skipping batch: {bidx+1}.")
+					print(f"grad_norm: {grad_norm} grad_norm.isnan(): {torch.isnan(grad_norm)} grad_norm.isinf(): {torch.isinf(grad_norm)}")
 
 				optimizer.zero_grad(set_to_none=True)
 
