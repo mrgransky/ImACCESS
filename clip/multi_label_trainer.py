@@ -1455,7 +1455,9 @@ def lora_finetune_multi_label(
 				embeds = model.encode_text(batch_tokens)
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
 				all_class_embeds.append(embeds.cpu())
+
 				del batch_tokens, embeds
+				torch.cuda.empty_cache()
 	
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
 	
@@ -2060,6 +2062,7 @@ def lora_plus_finetune_multi_label(
 				all_class_embeds.append(embeds.cpu())
 
 				del batch_tokens, embeds
+				torch.cuda.empty_cache()
 
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
 
@@ -2770,6 +2773,7 @@ def rslora_finetune_multi_label(
 				all_class_embeds.append(embeds.cpu())
 
 				del batch_tokens, embeds
+				torch.cuda.empty_cache()
 
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
 
@@ -3393,7 +3397,9 @@ def dora_finetune_multi_label(
 				embeds = model.encode_text(batch_tokens)
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
 				all_class_embeds.append(embeds.cpu())
+
 				del batch_tokens, embeds
+				torch.cuda.empty_cache()
 	
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
 
@@ -4024,7 +4030,9 @@ def ia3_finetune_multi_label(
 				embeds = model.encode_text(batch_tokens)
 				embeds = torch.nn.functional.normalize(embeds, dim=-1)
 				all_class_embeds.append(embeds.cpu())
+
 				del batch_tokens, embeds
+				torch.cuda.empty_cache()
 	
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
 
@@ -4659,6 +4667,7 @@ def vera_finetune_multi_label(
 				all_class_embeds.append(embeds.cpu())
 
 				del batch_tokens, embeds
+				torch.cuda.empty_cache()
 	
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
 	
