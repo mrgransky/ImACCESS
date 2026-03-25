@@ -1911,9 +1911,9 @@ def lora_plus_finetune_multi_label(
 		if torch.cuda.is_available():
 			gpu_name = torch.cuda.get_device_name(device)
 			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-			cuda_capability = torch.cuda.get_device_capability()
+			cuda_capability = torch.cuda.get_device_capability(device)
 			print(f"   ├─ {gpu_name} {device}")
-			print(f"   ├─ Total Memory: {gpu_total_mem:.2f}GB")
+			print(f"   ├─ Total Memory: {gpu_total_mem:.1f}GB")
 			print(f"   └─ CUDA Capability: {cuda_capability}")
 	
 	# Apply LoRA+ to the model
@@ -2075,14 +2075,22 @@ def lora_plus_finetune_multi_label(
 		growth_interval=5000,  # longer interval before attempting growth
 	)
 
+	if torch.cuda.is_available():
+		# check with cuda capability
+		if cuda_capability[0] >= 8 and torch.cuda.is_bf16_supported():
+			amp_dtype = torch.bfloat16
+		else:
+			amp_dtype = torch.float16
+
 	if verbose:
-		print(f"\n{scaler.__class__.__name__} for automatic mixed precision training")
+		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
 		scaler_state = scaler.state_dict()
 		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ enabled: {scaler.is_enabled()}")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print()
 
 	# scaler = None  # AMP disabled for LoRA+ — differential lr unstable with GradScaler
 
@@ -2142,9 +2150,8 @@ def lora_plus_finetune_multi_label(
 			
 			with torch.amp.autocast(
 				device_type=device.type,
-				# enabled=False,
 				enabled=torch.cuda.is_available(),
-				dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+				dtype=amp_dtype,
 			):
 				# Multi-label contrastive loss computation
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
