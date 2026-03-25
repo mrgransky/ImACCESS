@@ -1567,7 +1567,7 @@ def get_multilabel_alignment_score(
 		# breakdown by class frequency tier
 		# Requires class_freq to be passed in — add as optional parameter
 		# This shows whether degradation is concentrated in head vs rare classes
-		print(f"\n  [AlignScore breakdown by hit type]")
+		print(f"\n[AlignScore breakdown by hit type]")
 
 		# For each image that IS a hit, which rank did the first correct class appear?
 		hit_indices = hits.nonzero(as_tuple=True)[0]
