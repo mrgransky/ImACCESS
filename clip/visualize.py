@@ -4162,7 +4162,7 @@ def plot_quantitative_retrieval(
 						facecolor='white',
 					)
 					ax.set_xticks(xs)
-					ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.75)
+					ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.65)
 					ax.set_ylim(bottom=-0.01, top=1.0)
 					stem = f"{direction}_{tier}_{metric.lower()}"
 					for ext in ("pdf", "png"):
