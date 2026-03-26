@@ -2532,10 +2532,9 @@ def lora_plus_finetune_multi_label(
 	if verbose:
 		print(f"{'='*50}")
 		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  Model: {model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
-		print(f"  LoRA params: Rank: {lora_rank}  Alpha: {lora_alpha}  Dropout: {lora_dropout}  Lambda: {lora_plus_lambda}")
-		print(f"  Epochs trained: {actual_trained_epochs}")
+		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
+		print(f"  Rank: {lora_rank} Alpha: {lora_alpha} Dropout: {lora_dropout} Lambda: {lora_plus_lambda} B_MAX_NORM: {B_MAX_NORM}")
+		print(f"  Total trained epochs: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
