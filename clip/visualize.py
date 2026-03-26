@@ -4095,24 +4095,17 @@ def plot_quantitative_retrieval(
 	directions: List[str] = ["i2t", "t2i"],
 	tiers: List[str] = ["overall", "head", "rare"],
 	metrics: List[str] = ["mAP", "Recall"],
-	figsize: Tuple[float, float] = (7.0, 6.0),   # single-column IEEE width
+	figsize: Tuple[float, float] = (6.5, 5.5),   # single-column IEEE width
 	dpi: int = 200,
 ) -> List[str]:
-		"""
-		Produce one figure per (direction × tier × metric) combination.
-		Each figure is saved as both PDF (for LaTeX) and PNG (for quick inspection).
-
-		Returns list of saved PDF paths.
-		"""
 		matplotlib.rcParams.update(
 			{
 				"font.family":      "serif",
 				"font.size":        9,
 				"axes.titlesize":   9,
 				"axes.labelsize":   9,
-				"legend.fontsize":  7,
-				"xtick.labelsize":  8,
-				"ytick.labelsize":  8,
+				"xtick.labelsize":  10,
+				"ytick.labelsize":  10,
 				"figure.dpi":       dpi,
 				"savefig.bbox":     "tight",
 				"savefig.pad_inches": 0.02,
@@ -4155,9 +4148,10 @@ def plot_quantitative_retrieval(
 						continue
 					tier_label = tier.capitalize()
 					metric_label = "mAP" if metric == "mAP" else "Recall"
+
 					ax.set_xlabel("K")
 					ax.set_ylabel(f"{metric_label}@K")
-					ax.set_title(f"{dir_label} — {tier_label} {metric_label}@K")
+					# ax.set_title(f"{dir_label} — {tier_label} {metric_label}@K")
 					ax.legend(
 						loc="best",
 						ncol=3,
@@ -4168,7 +4162,7 @@ def plot_quantitative_retrieval(
 						facecolor='white',
 					)
 					ax.set_xticks(xs)
-					ax.grid(True, linestyle=":", linewidth=0.5, alpha=0.6)
+					ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.75)
 					ax.set_ylim(bottom=-0.01, top=1.0)
 					stem = f"{direction}_{tier}_{metric.lower()}"
 					for ext in ("pdf", "png"):
