@@ -2183,7 +2183,7 @@ def lora_plus_finetune_multi_label(
 		f"lr_A_{lora_A_lr:.1e}_"
 		f"wd_A_{lora_A_wd:.1e}_"
 		f"lr_B_{lora_B_lr:.1e}_"
-		f"wd_B_{lora_B_wd:.1e}_"
+		f"wd_B_{lora_B_wd}_"
 		f"lor_{lora_rank}_"
 		f"loa_{lora_alpha}_"
 		f"lod_{lora_dropout}_"
