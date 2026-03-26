@@ -4101,9 +4101,9 @@ def plot_quantitative_retrieval(
 		matplotlib.rcParams.update(
 			{
 				"font.family":      "serif",
-				"font.size":        9,
-				"axes.titlesize":   9,
-				"axes.labelsize":   9,
+				"font.size":        10,
+				"axes.titlesize":   11,
+				"axes.labelsize":   13,
 				"xtick.labelsize":  10,
 				"ytick.labelsize":  10,
 				"figure.dpi":       dpi,
