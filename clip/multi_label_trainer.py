@@ -1376,7 +1376,7 @@ def lora_finetune_multi_label(
 		if verbose:
 			print(f"   └─ {gpu_name} | {total_mem:.1f}GB VRAM | cuda capability: {cuda_capability}")
 		
-	# ── LoRA injection — vision encoder only
+	# LoRA injection — vision encoder only
 	# Text encoder stays frozen and un-injected, consistent with full fine-tuning.
 	# all_class_embeds pre-computed from frozen text encoder remains valid.
 	model = get_injected_peft_clip(
@@ -1390,9 +1390,10 @@ def lora_finetune_multi_label(
 		quantization_bits=quantization_bits,
 		quantized=quantized,
 		verbose=verbose,
-	)
-	model.to(device)
+	).to(device)
+	
 	get_parameters_info(model=model, mode=mode)
+	
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
@@ -1618,6 +1619,20 @@ def lora_finetune_multi_label(
 						f"Total: {total_loss.item():.6f} "
 						f"(I2T: {loss_i2t.item():.6f}, T2I: {loss_t2i.item():.6f})"
 					)
+
+					b_norms = [
+						p.data.norm().item()
+						for n, p in model.named_parameters()
+						if p.requires_grad and "lora_B" in n
+					]
+					if b_norms:
+						b_norms_t = torch.tensor(b_norms)
+						print(
+							f"\t\t[B weight norms e{epoch+1} b{bidx+1}] "
+							f"min={b_norms_t.min()} "
+							f"max={b_norms_t.max()} "
+							f"mean={b_norms_t.mean()}"
+						)
 
 			avg_total = epoch_loss_total / num_batches if num_batches > 0 else 0.0
 			avg_i2t   = epoch_loss_i2t   / num_batches if num_batches > 0 else 0.0
@@ -1866,6 +1881,7 @@ def lora_plus_finetune_multi_label(
 	quantized: bool=False,
 	loss_weights: Dict[str, float]=None,
 	temperature: float=1.0,
+	B_MAX_NORM = 50.0,
 	verbose: bool=True,
 ):
 	"""
@@ -2254,7 +2270,7 @@ def lora_plus_finetune_multi_label(
 			)
 
 			# Grad norm check — post-clipping
-			if bidx % 500 == 0:
+			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				grad_norms_A, grad_norms_B = [], []
 				for name, param in model.named_parameters():
 					if param.requires_grad and param.grad is not None:
@@ -2292,7 +2308,6 @@ def lora_plus_finetune_multi_label(
 				optimizer.step()
 
 			# Clip B matrix norms (magnitude control)
-			B_MAX_NORM = 10.0
 			with torch.no_grad():
 				for name, param in model.named_parameters():
 					if param.requires_grad and "lora_B" in name:
@@ -2301,19 +2316,20 @@ def lora_plus_finetune_multi_label(
 							param.data.mul_(B_MAX_NORM / norm)
 
 			# Post-step weight norm tracking
-			if bidx % 500 == 0:
+			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				B_norms_current = [
 					p.data.norm().item()
 					for n, p in model.named_parameters()
 					if p.requires_grad and "lora_B" in n
 				]
 				if B_norms_current:
+					B_norms_t = torch.tensor(B_norms_current)
 					print(
 						f"\t\t[B weight norms post-clip e{epoch+1} b{bidx+1}] "
-						f"min={min(B_norms_current)} " 
-						f"max={max(B_norms_current)} "
-						f"mean={sum(B_norms_current)/len(B_norms_current)} "
-						f"std={np.std(B_norms_current)} "
+						f"min={B_norms_t.min()} " 
+						f"max={B_norms_t.max()} "
+						f"mean={B_norms_t.mean()} "
+						f"std={B_norms_t.std()} "
 						f"clip_count={sum(1 for n in B_norms_current if n > B_MAX_NORM)} "
 						f"(ceiling={B_MAX_NORM})"
 					)
