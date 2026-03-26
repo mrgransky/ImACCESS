@@ -101,9 +101,10 @@ def get_tail_only_samples(
 def get_top_k_strategies(
 		results_json_path: str,
 		top_k: int = 5,
-		metric_key: str = "mAP",
+		distribution: str = "rare", # overall, head, rare
+		metric_key: str = "mAP", # mAP, Recall
 		k_value: str = "10",
-		mode: str = "i2t",          # <-- NEW: "i2t" or "t2i"
+		mode: str = "i2t", # "i2t" or "t2i"
 ) -> Tuple[List[str], List[str]]:
 		if not os.path.exists(results_json_path):
 				print(f"WARNING: {results_json_path} not found.")
@@ -114,15 +115,15 @@ def get_top_k_strategies(
 
 		direction = mode.lower()   # "i2t" or "t2i"
 		scores = {}
-		print(f"\n>> Ranking {len(all_results)} strategies — {direction.upper()} overall {metric_key}@{k_value}")
+		print(f"\n>> Ranking {len(all_results)} strategies — {direction.upper()} {distribution} {metric_key}@{k_value}")
 		for strategy, metrics in all_results.items():
-				try:
-						scores[strategy] = metrics[direction]['overall'][metric_key][k_value]
-				except KeyError:
-						scores[strategy] = -1.0
+			try:
+				scores[strategy] = metrics[direction][distribution][metric_key][k_value]
+			except KeyError:
+				scores[strategy] = -1.0
 
 		sorted_strategies = sorted(scores, key=scores.get, reverse=True)[:top_k]
-		print(f"\nTop-{len(sorted_strategies)} ({direction.upper()}):")
+		print(f"\nTop-{len(sorted_strategies)} ({direction.upper()} {distribution}):")
 		for i, s in enumerate(sorted_strategies):
 				print(f"  {i+1}. {s:<20} ({metric_key}@{k_value}: {scores[s]:.4f})")
 		print("-" * 60)
@@ -934,10 +935,20 @@ def main():
 
 	# Separate top-K selection per direction
 	i2t_strategies, i2t_checkpoints = get_top_k_strategies(
-		results_json_path, top_k=5, metric_key="mAP", k_value="10", mode="i2t"
+		results_json_path,
+		top_k=5,
+		distribution="rare",
+		metric_key="mAP", 
+		k_value="10", 
+		mode="i2t",
 	)
 	t2i_strategies, t2i_checkpoints = get_top_k_strategies(
-		results_json_path, top_k=5, metric_key="mAP", k_value="10", mode="t2i"
+		results_json_path, 
+		top_k=5,
+		distribution="rare",
+		metric_key="mAP",
+		k_value="10",
+		mode="t2i",
 	)
 
 	# Union of checkpoints to avoid loading the same model twice
