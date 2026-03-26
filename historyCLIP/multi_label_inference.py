@@ -1010,7 +1010,7 @@ def main():
 			device=args.device,
 			dataset_directory=DATASET_DIRECTORY,
 			validation_loader=validation_loader,
-			verbose=False,
+			verbose=args.verbose,
 		)
 		
 		if not model_dict:
