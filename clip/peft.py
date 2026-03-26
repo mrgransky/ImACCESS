@@ -170,7 +170,7 @@ class LoRALinear(torch.nn.Module):
 		quantized: bool = False,
 		quantization_bits: int = 4,  # 4-bit or 8-bit
 		compute_dtype: torch.dtype = torch.float16,
-		verbose: bool=True,
+		verbose: bool=False,
 	):
 		super(LoRALinear, self).__init__()
 		
@@ -720,7 +720,7 @@ class VeRALinear(torch.nn.Module):
 		quantized: bool,
 		quantization_bits: int=8,
 		compute_dtype: torch.dtype = torch.float16,
-		verbose: bool = True,
+		verbose: bool=False,
 	):
 		super(VeRALinear, self).__init__()
 		
@@ -1798,7 +1798,6 @@ def get_adapter_peft_clip(
 			else:
 				print("\n    WARNING: No trainable parameters found!")
 		
-		# --- MEMORY SUMMARY ---
 		if verbose:
 			print(f"\n[6] MEMORY FOOTPRINT SUMMARY - CLIP-ADAPTER")
 			total_adapter_memory = 0.0
@@ -2305,27 +2304,30 @@ def get_injected_peft_clip(
 	vision_mha_ids = {id(m) for _, m in model.visual.named_modules()      if isinstance(m, torch.nn.MultiheadAttention)}
 	overlap = text_mha_ids & vision_mha_ids
 
-	print(f"[DEEPCOPY CHECK] text MHA: {len(text_mha_ids)}, vision MHA: {len(vision_mha_ids)}, overlap: {len(overlap)}")
+	if verbose:
+		print(f"[DEEPCOPY CHECK] text MHA: {len(text_mha_ids)}, vision MHA: {len(vision_mha_ids)}, overlap: {len(overlap)}")
+
 	if overlap:
-			print(f"[DEEPCOPY CHECK] SHARED OBJECTS DETECTED — deepcopy did not produce independent modules")
-			# Force independent copies of shared MHA modules
-			import copy as _copy
-			for _name, _mod in list(model.visual.named_modules()):
-					if isinstance(_mod, torch.nn.MultiheadAttention) and id(_mod) in text_mha_ids:
-							# Replace shared module with an independent copy
-							_parent_name, _child_name = _name.rsplit(".", 1) if "." in _name else ("", _name)
-							_parent = model.visual if _parent_name == "" else model.visual.get_submodule(_parent_name)
-							setattr(_parent, _child_name, _copy.deepcopy(_mod))
-							print(f"[DEEPCOPY CHECK] Replaced shared module: visual.{_name}")
+		print(f"[DEEPCOPY CHECK] SHARED OBJECTS DETECTED — deepcopy did not produce independent modules")
+		# Force independent copies of shared MHA modules
+		for _name, _mod in list(model.visual.named_modules()):
+			if isinstance(_mod, torch.nn.MultiheadAttention) and id(_mod) in text_mha_ids:
+				# Replace shared module with an independent copy
+				_parent_name, _child_name = _name.rsplit(".", 1) if "." in _name else ("", _name)
+				_parent = model.visual if _parent_name == "" else model.visual.get_submodule(_parent_name)
+				setattr(_parent, _child_name, copy.deepcopy(_mod))
+				print(f"[DEEPCOPY CHECK] Replaced shared module: visual.{_name}")
 
 	# Count how many MHA modules model.visual.named_modules() actually yields
 	vision_traversal_mha = [
-			(name, id(mod))
-			for name, mod in model.visual.named_modules()
-			if isinstance(mod, torch.nn.MultiheadAttention)
+		(name, id(mod))
+		for name, mod in model.visual.named_modules()
+		if isinstance(mod, torch.nn.MultiheadAttention)
 	]
-	print(f"[TRAVERSAL CHECK] model.visual.named_modules() yields {len(vision_traversal_mha)} MHA modules:")
-	for name, mod_id in vision_traversal_mha:
+
+	if verbose:
+		print(f"[TRAVERSAL CHECK] model.visual.named_modules() yields {len(vision_traversal_mha)} MHA modules:")
+		for name, mod_id in vision_traversal_mha:
 			in_text = mod_id in text_mha_ids
 			in_vision = mod_id in vision_mha_ids
 			print(f"  {name} id={mod_id} in_text={in_text} in_vision={in_vision}")
@@ -2359,12 +2361,11 @@ def get_injected_peft_clip(
 		}
 		if AdapterClass == LoRALinear:
 			kwargs['rslora'] = _use_rslora
+		adapter_layer = AdapterClass(**kwargs)
 		
 		if verbose:
 			print(f"kwargs: {kwargs}")
-
-		adapter_layer = AdapterClass(**kwargs)
-		print(adapter_layer)
+			print(adapter_layer)
 
 		# Copy original weights
 		if not quantized:
@@ -2565,8 +2566,9 @@ def get_injected_peft_clip(
 		if isinstance(mod, torch.nn.MultiheadAttention)
 		and 'forward' in mod.__dict__
 	)
-	print(f"[POST-INJECT CHECK] Text MHA patched : {post_inject_text_patched} (expected: 0)")
-	print(f"[POST-INJECT CHECK] Vision MHA patched: {post_inject_vision_patched} (expected: {sum(1 for _, m in model.visual.named_modules() if isinstance(m, torch.nn.MultiheadAttention))})")
+	if verbose:
+		print(f"[POST-INJECT CHECK] Text MHA patched : {post_inject_text_patched} (expected: 0)")
+		print(f"[POST-INJECT CHECK] Vision MHA patched: {post_inject_vision_patched} (expected: {sum(1 for _, m in model.visual.named_modules() if isinstance(m, torch.nn.MultiheadAttention))})")
 
 	############################################## Projections ##############################################	
 	if verbose: 

@@ -32,71 +32,70 @@ import visualize as viz
 # $ python multi_label_inference.py -pth_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/multi_label/ -a 'ViT-L/14@336px' -v
 
 def get_tail_only_samples(
-		metadata_val_path: str,
-		num_samples: int = 5,
-		seed: int = 42,
+	metadata_val_path: str,
+	num_samples: int = 5,
+	seed: int = 42,
 ) -> Tuple[List[Dict], List[str]]:
-		"""
-		Sample exclusively from the tail distribution (bottom 20% by frequency).
-		Returns i2t_samples (images whose ALL labels are tail) and t2i_samples (tail label strings).
-		"""
-		local_rng = random.Random(seed)
+	"""
+	Sample exclusively from the tail distribution (bottom 20% by frequency).
+	Returns i2t_samples (images whose ALL labels are tail) and t2i_samples (tail label strings).
+	"""
+	local_rng = random.Random(seed)
+	df_val = pd.read_csv(
+		filepath_or_buffer=metadata_val_path,
+		on_bad_lines='skip',
+		dtype=dtypes,
+		low_memory=False,
+	).sort_index()
+	all_labels = []
+	label_to_images = {}
+	for idx, row in df_val.iterrows():
+			try:
+					labels = sorted(ast.literal_eval(row['multimodal_labels']))
+					all_labels.extend(labels)
+					for label in labels:
+							label_to_images.setdefault(label, []).append({
+									'image_path': row['img_path'],
+									'row_index': idx,
+									'all_labels': labels,
+									'segment': 'tail',
+							})
+			except Exception:
+					continue
+	label_counts = pd.Series(all_labels).value_counts().sort_index()
+	total_labels = len(label_counts)
+	tail_threshold = int(total_labels * 0.8)
+	tail_labels = sorted(label_counts.tail(total_labels - tail_threshold).index)
+	print(
+		f"\nTAIL distribution: {len(tail_labels)} labels "
+		f"(freq range: {label_counts[tail_labels].min()}–{label_counts[tail_labels].max()}, "
+		f"mean: {label_counts[tail_labels].mean():.1f})"
+	)
+	# --- I2T samples: images that contain at least one tail label ---
+	candidate_pool = {}
+	for label in tail_labels:
+			for entry in sorted(label_to_images.get(label, []), key=lambda x: x['image_path']):
+					candidate_pool.setdefault(entry['image_path'], entry)
+	candidates = sorted(candidate_pool.values(), key=lambda x: x['image_path'])
+	if len(candidates) >= num_samples:
+			i2t_samples = local_rng.sample(candidates, num_samples)
+	else:
+			print(f"[WARNING] Only {len(candidates)} tail images available; using all.")
+			i2t_samples = candidates
+	i2t_samples = sorted(i2t_samples, key=lambda x: x['image_path'])
+	# --- T2I samples: tail label strings ---
+	if len(tail_labels) >= num_samples:
+		t2i_samples = sorted(local_rng.sample(tail_labels, num_samples))
+	else:
+		print(f"[WARNING] Only {len(tail_labels)} tail labels available; using all.")
+		t2i_samples = tail_labels
+	print(f"{len(i2t_samples)} selected Query Images from Tail Distribution:")
+	print(json.dumps(i2t_samples, indent=4, ensure_ascii=False))
+	print(f"{len(t2i_samples)} Query Labels from Tail Distribution: {t2i_samples}")
+	
+	print("-"*130)
 
-		df_val = pd.read_csv(
-				filepath_or_buffer=metadata_val_path,
-				on_bad_lines='skip',
-				dtype=dtypes,
-				low_memory=False,
-		).sort_index()
-
-		all_labels = []
-		label_to_images = {}
-		for idx, row in df_val.iterrows():
-				try:
-						labels = sorted(ast.literal_eval(row['multimodal_labels']))
-						all_labels.extend(labels)
-						for label in labels:
-								label_to_images.setdefault(label, []).append({
-										'image_path': row['img_path'],
-										'row_index': idx,
-										'all_labels': labels,
-										'segment': 'tail',
-								})
-				except Exception:
-						continue
-
-		label_counts = pd.Series(all_labels).value_counts().sort_index()
-		total_labels = len(label_counts)
-		tail_threshold = int(total_labels * 0.8)
-		tail_labels = sorted(label_counts.tail(total_labels - tail_threshold).index)
-
-		print(f"\nTAIL distribution: {len(tail_labels)} labels "
-					f"(freq range: {label_counts[tail_labels].min()}–{label_counts[tail_labels].max()}, "
-					f"mean: {label_counts[tail_labels].mean():.1f})")
-
-		# --- I2T samples: images that contain at least one tail label ---
-		candidate_pool = {}
-		for label in tail_labels:
-				for entry in sorted(label_to_images.get(label, []), key=lambda x: x['image_path']):
-						candidate_pool.setdefault(entry['image_path'], entry)
-		candidates = sorted(candidate_pool.values(), key=lambda x: x['image_path'])
-
-		if len(candidates) >= num_samples:
-				i2t_samples = local_rng.sample(candidates, num_samples)
-		else:
-				print(f"[WARNING] Only {len(candidates)} tail images available; using all.")
-				i2t_samples = candidates
-		i2t_samples = sorted(i2t_samples, key=lambda x: x['image_path'])
-
-		# --- T2I samples: tail label strings ---
-		if len(tail_labels) >= num_samples:
-				t2i_samples = sorted(local_rng.sample(tail_labels, num_samples))
-		else:
-				print(f"[WARNING] Only {len(tail_labels)} tail labels available; using all.")
-				t2i_samples = tail_labels
-
-		print(f"Sampled {len(i2t_samples)} tail images and {len(t2i_samples)} tail labels.")
-		return i2t_samples, t2i_samples
+	return i2t_samples, t2i_samples
 
 def get_top_k_strategies(
 		results_json_path: str,
@@ -130,15 +129,22 @@ def get_top_k_strategies(
 
 		pth_dir = os.path.dirname(results_json_path)
 		checkpoints = []
+		
 		for strategy in sorted_strategies:
-				matches = [
-						f for f in os.listdir(pth_dir)
-						if f.startswith(strategy) and f.endswith('.pth')
-				]
-				if matches:
-						checkpoints.append(os.path.join(pth_dir, matches[0]))
-				else:
-						print(f"WARNING: no checkpoint for '{strategy}'")
+			all_pths = [f for f in os.listdir(pth_dir) if f.endswith('.pth')]
+			valid_match = None
+			
+			for f in all_pths:
+				# Use existing parser to see what the file ACTUALLY is
+				detected_strategy, _ = _parse_checkpoint_strategy(f)
+				if detected_strategy == strategy:
+					valid_match = f
+					break
+							
+			if valid_match:
+					checkpoints.append(os.path.join(pth_dir, valid_match))
+			else:
+					print(f"WARNING: no checkpoint for '{strategy}'")
 
 		return sorted_strategies, checkpoints
 
@@ -665,7 +671,7 @@ def _load_checkpoint_into_model(
 			print(f"{len(missing)} Missing: {missing}")
 			print(f"{len(unexpected)} Unexpected: {unexpected}")
 	except Exception as e:
-		print(f"[WARNING] load_state_dict failed: {e}")
+		print(f"[WARNING] load_state_dict failed:\n{e}")
 
 	return model
 
@@ -681,7 +687,7 @@ def load_finetuned_models(
 	ft_start = time.time()
 	
 	strategy, params = _parse_checkpoint_strategy(checkpoint_path)
-	print(f"Strategy: {strategy} Params: {params}")
+	print(f"\nStrategy: {strategy} Params: {params}")
 	print(f"Loading {checkpoint_path}")
 
 	# Fresh base model for each checkpoint
@@ -692,6 +698,7 @@ def load_finetuned_models(
 	)
 	base_model = base_model.float()
 	base_model.name = model_architecture
+
 	try:
 		if strategy in ("lora", "lora_plus", "dora", "rslora"):
 			rank    = params.get("lora_rank")
@@ -770,12 +777,39 @@ def load_finetuned_models(
 				if verbose:
 					print(f"  Resized cache to [{cache_size}, {cache_dim}]")
 		elif strategy == "probe":
+			# ── Peek at checkpoint to get the correct probe output size ──────────
+			_ckpt = torch.load(checkpoint_path, map_location=device)
+			_sd   = _ckpt.get('model_state_dict', _ckpt)
+			# probe weight shape: [num_classes, feature_dim]
+			probe_weight_key = next(
+					(k for k in _sd if k.endswith('probe.weight') or k.endswith('probe.bias')), 
+					None
+			)
+			if probe_weight_key and probe_weight_key.endswith('probe.weight'):
+					ckpt_num_classes = _sd[probe_weight_key].shape[0]
+					if verbose:
+							print(f"  Checkpoint probe output size: {ckpt_num_classes}")
+			else:
+					# Fallback: derive from validation loader
+					ckpt_num_classes = None
+					if verbose:
+							print("  Could not detect probe size from checkpoint — using validation loader")
+			del _ckpt, _sd  # free memory before building model
+
 			ft_model = get_probe_clip(
 				clip_model=base_model,
 				validation_loader=validation_loader,
 				device=device,
+				num_classes_override=ckpt_num_classes, # checkpoint size
 				verbose=verbose,
 			)
+
+			# ft_model = get_probe_clip(
+			# 	clip_model=base_model,
+			# 	validation_loader=validation_loader,
+			# 	device=device,
+			# 	verbose=verbose,
+			# )
 		elif strategy == "full":
 			ft_model = base_model  # weights loaded directly below
 		else:
@@ -784,13 +818,20 @@ def load_finetuned_models(
 
 		ft_model = ft_model.to(device).float()
 		ft_model.name = model_architecture
-		ft_model = _load_checkpoint_into_model(ft_model, checkpoint_path, device, verbose)
+		ft_model = _load_checkpoint_into_model(
+			model=ft_model, 
+			ft_path=checkpoint_path, 
+			device=device, 
+			verbose=verbose
+		)
+
 		# Use strategy as key — append index if duplicate (e.g. two lora checkpoints)
 		key = strategy
 		if key in fine_tuned_models:
 			key = f"{strategy}_{i}"
 		fine_tuned_models[key] = ft_model
 		print(f"[OK] Loaded {key} in {time.time()-ft_start:.1f}s")
+		print("-"*100)
 	except Exception as e:
 		print(f"[ERROR] Failed to load {checkpoint_path}: {e}")
 		return {}
@@ -923,9 +964,9 @@ def main():
 
 	####################################### Qualitative Analysis #######################################
 	i2t_samples, t2i_samples = get_tail_only_samples(
-			metadata_val_path=metadata_csv.replace('.csv', '_val.csv'),
-			num_samples=5,
-			seed=42,
+		metadata_val_path=metadata_csv.replace('.csv', '_val.csv'),
+		num_samples=5,
+		seed=42,
 	)
 
 	# Build full val image path list for T2I pool
@@ -936,7 +977,7 @@ def main():
 	# Separate top-K selection per direction
 	i2t_strategies, i2t_checkpoints = get_top_k_strategies(
 		results_json_path,
-		top_k=5,
+		top_k=3,
 		distribution="rare",
 		metric_key="mAP", 
 		k_value="10", 
@@ -944,7 +985,7 @@ def main():
 	)
 	t2i_strategies, t2i_checkpoints = get_top_k_strategies(
 		results_json_path, 
-		top_k=5,
+		top_k=3,
 		distribution="rare",
 		metric_key="mAP",
 		k_value="10",
@@ -953,18 +994,23 @@ def main():
 
 	# Union of checkpoints to avoid loading the same model twice
 	all_checkpoints = dict.fromkeys(i2t_checkpoints + t2i_checkpoints)
+	if args.verbose:
+		print("i2t_checkpoints:", i2t_checkpoints)
+		print("t2i_checkpoints:", t2i_checkpoints)
+		print(f"all_checkpoints: {len(all_checkpoints)} = (i2t: {len(i2t_checkpoints)}) + (t2i: {len(t2i_checkpoints)})")
+		print(json.dumps(all_checkpoints, indent=4, ensure_ascii=False))
 
 	qualitative_results = {}
 	for ckpt_path in all_checkpoints:
 		strategy_name, _ = _parse_checkpoint_strategy(ckpt_path)
-		torch.cuda.empty_cache()
+
 		model_dict = load_finetuned_models(
 			checkpoint_path=ckpt_path,
 			model_architecture=args.model_architecture,
 			device=args.device,
 			dataset_directory=DATASET_DIRECTORY,
 			validation_loader=validation_loader,
-			verbose=args.verbose,
+			verbose=False,
 		)
 		
 		if not model_dict:
@@ -985,6 +1031,7 @@ def main():
 			text_batch_size=128, # tune down to 128 if ViT-L/14@336px still OOMs
 			image_batch_size=16, # tune down to 16 for 32GB GPUs under memory pressure
 		)
+
 		del ft_model, model_dict
 		torch.cuda.empty_cache()
 

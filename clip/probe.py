@@ -673,7 +673,6 @@ class MultiLabelProbe(torch.nn.Module):
 			self.clip_model.eval()
 			return self
 
-
 def get_probe_clip(
 	clip_model: torch.nn.Module,
 	validation_loader: DataLoader,
@@ -682,6 +681,7 @@ def get_probe_clip(
 	dropout: float = 0.1,
 	zero_shot_init: bool = True,
 	target_resolution: Optional[int] = None,
+	num_classes_override: Optional[int] = None,
 	verbose: bool = True
 ) -> Union[SingleLabelLinearProbe, MultiLabelProbe]:
 	"""
@@ -711,7 +711,24 @@ def get_probe_clip(
 	class_names = _extract_class_names(validation_loader, dataset_info, verbose)
 	num_classes = len(class_names)
 	
-	# Step 3: Create appropriate probe based on dataset type
+	# Step 3: Override num_classes if checkpoint size is known
+	if num_classes_override is not None and num_classes_override != num_classes:
+		if verbose:
+				print(
+						f"  ⚠️  num_classes override: loader={num_classes} → checkpoint={num_classes_override}. "
+						f"Using checkpoint size. class_names will be truncated/padded."
+				)
+		# Truncate or pad class_names to match checkpoint size
+		if num_classes_override <= num_classes:
+				class_names = class_names[:num_classes_override]
+		else:
+				# Pad with placeholder names if checkpoint has MORE classes than loader
+				class_names = list(class_names) + [
+						f"class_{i}" for i in range(num_classes, num_classes_override)
+				]
+		num_classes = num_classes_override
+
+	# Step 4: Create appropriate probe based on dataset type
 	if dataset_info['is_multilabel']:
 		if verbose:
 			print(f"Creating MultiLabelProbe for {num_classes} classes")
