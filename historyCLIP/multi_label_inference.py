@@ -35,6 +35,7 @@ def get_multi_label_head_torso_tail_samples(
 	metadata_path: str,
 	metadata_train_path: str,
 	metadata_val_path: str,
+	col:str,
 	num_samples_per_segment: int = 5,
 	seed: int = 42,  # Add seed parameter
 ) -> Tuple[List[Dict], List[str], Dict]:
@@ -65,7 +66,7 @@ def get_multi_label_head_torso_tail_samples(
 			# Iterate in sorted order for consistency
 			for idx, row in df_val.iterrows():
 					try:
-							labels = ast.literal_eval(row['multimodal_labels'])
+							labels = ast.literal_eval(row[col])
 							# Sort labels for consistency
 							labels = sorted(labels)
 							all_labels.extend(labels)
@@ -389,6 +390,7 @@ def _load_checkpoint_into_model(
 
 def get_tail_only_samples(
 	metadata_val_path: str,
+	col:str,
 	num_samples: int = 5,
 	seed: int = 42,
 ) -> Tuple[List[Dict], List[str]]:
@@ -396,6 +398,8 @@ def get_tail_only_samples(
 	Sample exclusively from the tail distribution (bottom 20% by frequency).
 	Returns i2t_samples (images whose ALL labels are tail) and t2i_samples (tail label strings).
 	"""
+	print(f"Sampling from Tail Distribution: {metadata_val_path}")
+	print(f"Column: {col}")
 	local_rng = random.Random(seed)
 	df_val = pd.read_csv(
 		filepath_or_buffer=metadata_val_path,
@@ -407,7 +411,7 @@ def get_tail_only_samples(
 	label_to_images = {}
 	for idx, row in df_val.iterrows():
 			try:
-					labels = sorted(ast.literal_eval(row['multimodal_labels']))
+					labels = sorted(ast.literal_eval(row[col]))
 					all_labels.extend(labels)
 					for label in labels:
 							label_to_images.setdefault(label, []).append({
@@ -1062,6 +1066,7 @@ def run_inference(
 	####################################### Qualitative Analysis #######################################
 	i2t_samples, t2i_samples = get_tail_only_samples(
 		metadata_val_path=metadata_csv.replace('.csv', '_val.csv'),
+		col=column,
 		num_samples=5,
 		seed=42,
 	)
