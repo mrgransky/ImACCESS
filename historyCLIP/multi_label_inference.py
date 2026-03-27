@@ -993,6 +993,7 @@ def run_inference(
 	pth_files_directory: str,
 	model_architecture: str,
 	metadata_csv: str,
+	device: torch.device,
 	batch_size: int,
 	num_workers: int,
 	dataset_dir: str,
@@ -1002,6 +1003,7 @@ def run_inference(
 	verbose: bool = True,
 ):
 	dataset_name = os.path.basename(dataset_dir)
+	column = "multimodal_canonical_labels" if "multi_label" in metadata_csv else "label"
 	# list of all available checkpoints in RESULT_DIRECTORY file.pth:
 	available_checkpoints = glob.glob(os.path.join(pth_files_directory, "*.pth"))
 	assert len(available_checkpoints) > 0, f"No checkpoints found in {pth_files_directory}"
@@ -1022,6 +1024,7 @@ def run_inference(
 		batch_size=batch_size,
 		num_workers=num_workers,
 		input_resolution=model_config["image_resolution"],
+		col=column,
 	)
 
 	print_loader_info(loader=train_loader)
@@ -1101,7 +1104,7 @@ def run_inference(
 		model_dict, canonical_class_names, probe_train_freq = _load_models(
 			checkpoint_path=ckpt_path,
 			model_architecture=model_architecture,
-			device=args.device,
+			device=device,
 			dataset_directory=dataset_dir,
 			validation_loader=validation_loader,
 			class_names=class_names,
@@ -1192,6 +1195,7 @@ def main():
 		pth_files_directory=args.pth_files_directory,
 		model_architecture=args.model_architecture,
 		metadata_csv=metadata_csv,
+		device=args.device,
 		batch_size=args.batch_size,
 		num_workers=args.num_workers,
 		dataset_dir=DATASET_DIRECTORY,

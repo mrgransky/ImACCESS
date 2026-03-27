@@ -690,6 +690,7 @@ def get_multi_label_dataloaders(
 	ddir = os.path.dirname(metadata_fpth)
 	dataset_name = os.path.basename(ddir)
 	print(f"\nCreating multi-label dataloaders for {dataset_name} from {metadata_fpth}")
+	print(f"Column: {col}")
 	
 	train_dataset, val_dataset, label_dict = get_multi_label_datasets(metadata_fpth=metadata_fpth, col=col)
 	preprocess = get_preprocess(dataset_dir=ddir, input_resolution=input_resolution)
