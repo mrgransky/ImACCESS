@@ -10,8 +10,8 @@
 #SBATCH --cpus-per-task=10
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1
-#SBATCH --mem=256G
-#SBATCH --time=00-12:00:00
+#SBATCH --mem=96G
+#SBATCH --time=00-08:00:00
 ####SBATCH --begin=09:30:00
 #SBATCH --array=0
 
@@ -40,7 +40,7 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
-path_files_dir=${DATASETS[$SLURM_ARRAY_TASK_ID]}/multi_label_old
+path_files_dir=${DATASETS[$SLURM_ARRAY_TASK_ID]}/multi_label
 
 echo "Processing: ${path_files_dir}"
 

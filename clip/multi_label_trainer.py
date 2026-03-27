@@ -78,7 +78,7 @@ def zero_shot_multi_label(
 
 	i2t_similarity = validation_results["i2t_similarity"]
 	t2i_similarity = validation_results["t2i_similarity"]
-	device_labels   = validation_results["device_labels"]
+	device_labels = validation_results["device_labels"]
 
 	try:
 		class_names = validation_loader.dataset.unique_labels
@@ -331,10 +331,10 @@ def probe_multi_label(
 	
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 — much more conservative start
-		growth_factor=1.5,     # slower scale growth
-		backoff_factor=0.5,    # standard
-		growth_interval=5000,  # longer interval before attempting growth
+		init_scale=2**10,      # Start low
+		growth_factor=2.0,     # default
+		backoff_factor=0.5,    # default, if NaN, scale is halved
+		growth_interval=2000,  # default
 	)
 
 	if verbose:
@@ -968,10 +968,10 @@ def full_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 — much more conservative start
-		growth_factor=1.5,     # slower scale growth
-		backoff_factor=0.5,    # standard
-		growth_interval=5000,  # longer interval before attempting growth
+		init_scale=2**10,      # Start low
+		growth_factor=2.0,     # default
+		backoff_factor=0.5,    # default, if NaN, scale is halved
+		growth_interval=2000,  # default
 	)
 
 	if verbose:
@@ -1546,10 +1546,10 @@ def lora_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 — much more conservative start
-		growth_factor=1.5,     # slower scale growth
-		backoff_factor=0.5,    # standard
-		growth_interval=5000,  # longer interval before attempting growth
+		init_scale=2**10,      # Start low
+		growth_factor=2.0,     # default
+		backoff_factor=0.5,    # default, if NaN, scale is halved
+		growth_interval=2000,  # default
 	)
 
 	if verbose:
@@ -2179,10 +2179,10 @@ def lora_plus_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 — much more conservative start
-		growth_factor=1.5,     # slower scale growth
-		backoff_factor=0.5,    # standard
-		growth_interval=5000,  # longer interval before attempting growth
+		init_scale=2**10,      # Start low
+		growth_factor=2.0,     # default
+		backoff_factor=0.5,    # default, if NaN, scale is halved
+		growth_interval=2000,  # default
 	)
 
 	if verbose:
@@ -2877,10 +2877,10 @@ def rslora_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,
-		growth_factor=1.5,
-		backoff_factor=0.5,
-		growth_interval=5000,
+		init_scale=2**10,      # Start low
+		growth_factor=2.0,     # default
+		backoff_factor=0.5,    # default, if NaN, scale is halved
+		growth_interval=2000,  # default
 	)
 
 	if verbose:
@@ -3491,10 +3491,10 @@ def dora_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 — much more conservative start
-		growth_factor=1.5,     # slower scale growth
-		backoff_factor=0.5,    # standard
-		growth_interval=5000,  # longer interval before attempting growth
+		init_scale=2**10,      # Start low
+		growth_factor=2.0,     # default
+		backoff_factor=0.5,    # default, if NaN, scale is halved
+		growth_interval=2000,  # default
 	)
 
 	if verbose:
@@ -4120,10 +4120,10 @@ def ia3_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 — much more conservative start
-		growth_factor=1.5,     # slower scale growth
-		backoff_factor=0.5,    # standard
-		growth_interval=5000,  # longer interval before attempting growth
+		init_scale=2**10,      # Start low
+		growth_factor=2.0,     # default
+		backoff_factor=0.5,    # default, if NaN, scale is halved
+		growth_interval=2000,  # default
 	)
 
 	if verbose:
@@ -4756,10 +4756,10 @@ def vera_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 — much more conservative start
-		growth_factor=1.5,     # slower scale growth
-		backoff_factor=0.5,    # standard
-		growth_interval=5000,  # longer interval before attempting growth
+		init_scale=2**10,      # Start low
+		growth_factor=2.0,     # default
+		backoff_factor=0.5,    # default, if NaN, scale is halved
+		growth_interval=2000,  # default
 	)
 
 	if verbose:
@@ -5372,10 +5372,10 @@ def clip_adapter_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 — much more conservative start
-		growth_factor=1.5,     # slower scale growth
-		backoff_factor=0.5,    # standard
-		growth_interval=5000,  # longer interval before attempting growth
+		init_scale=2**10,      # Start low
+		growth_factor=2.0,     # default
+		backoff_factor=0.5,    # default, if NaN, scale is halved
+		growth_interval=2000,  # default
 	)
 
 	if verbose:
@@ -6182,10 +6182,10 @@ def tip_adapter_finetune_multi_label(
 	
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 — much more conservative start
-		growth_factor=1.5,     # slower scale growth
-		backoff_factor=0.5,    # standard
-		growth_interval=5000,  # longer interval before attempting growth
+		init_scale=2**10,      # Start low
+		growth_factor=2.0,     # default
+		backoff_factor=0.5,    # default, if NaN, scale is halved
+		growth_interval=2000,  # default
 	)
 
 	if verbose:
