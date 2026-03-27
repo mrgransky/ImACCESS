@@ -7,13 +7,13 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=174G
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=128G
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1
-#SBATCH --array=0-40:4
-####SBATCH --array=8,12
-#SBATCH --time=1-12:00:00
+##SBATCH --array=0-40:4
+#SBATCH --array=0
+#SBATCH --time=0-01:00:00
 
 set -euo pipefail
 user="`whoami`"

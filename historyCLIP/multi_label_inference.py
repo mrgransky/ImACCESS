@@ -926,16 +926,15 @@ def _load_models(
 			try:
 					zs_full = []
 					with torch.no_grad():
-							for start in range(0, len(probe_class_names), 64):
-									chunk  = probe_class_names[start: start + 64]
-									tokens = clip.tokenize(chunk, truncate=True).to(device)
-									zs_chunk = torch.nn.functional.normalize(
-											ft_model.clip_model.encode_text(tokens).float(), dim=-1
-									).cpu()
-									zs_full.append(zs_chunk)
+						for start in range(0, len(probe_class_names), 64):
+							chunk  = probe_class_names[start: start + 64]
+							tokens = clip.tokenize(chunk, truncate=True).to(device)
+							zs_chunk = torch.nn.functional.normalize(ft_model.clip_model.encode_text(tokens).float(), dim=-1).cpu()
+							zs_full.append(zs_chunk)
 					zs_full  = torch.cat(zs_full, dim=0)
 					W_tmp    = torch.nn.functional.normalize(W_raw.cpu(), dim=-1)
 					sim_all  = (W_tmp * zs_full).sum(dim=-1)   # [C]
+					
 					# Build full table
 					rows = []
 					for idx in range(len(probe_class_names)):
@@ -965,6 +964,7 @@ def _load_models(
 					# Save full table
 					drift_csv = os.path.join(
 							os.path.dirname(checkpoint_path),
+							"inference",
 							"probe_drift_analysis.csv"
 					)
 					df_drift.to_csv(drift_csv, index=False)
@@ -972,6 +972,9 @@ def _load_models(
 					del zs_full, W_tmp, sim_all
 			except Exception as e:
 					print(f"  [Full drift table failed: {e}]")
+
+
+
 
 		# Use strategy as key — append index if duplicate (e.g. two lora checkpoints)
 		key = strategy
