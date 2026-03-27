@@ -989,63 +989,38 @@ def _load_models(
 
 	return fine_tuned_models, probe_class_names, probe_train_freq.to_dict() if probe_train_freq is not None else None
 
-@measure_execution_time
-def main():
-	parser = argparse.ArgumentParser(description="Evaluate CLIP for Historical Archives Dataset [Inference]")
-	parser.add_argument('--pth_files_directory', '-pth_dir', type=str, required=True, help='Directory containing the .pth files')
-	parser.add_argument('--model_architecture', '-a', type=str, required=True, help='CLIP architecture')
-	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
-	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
-	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs')
-
-	parser.add_argument('--query_image', '-qi', type=str, default=None, help='image path for zero shot classification')
-	parser.add_argument('--query_label', '-ql', type=str, default=None, help='image path for zero shot classification')
-	parser.add_argument('--t2i_topk', type=int, default=1, help='TopK results for Text-to-Image retrieval')
-	parser.add_argument('--i2t_topk', type=int, default=3, help='TopK results for Image-to-Text retrieval')
-	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
-
-	parser.add_argument('--temperature', '-t', type=float, default=0.07, help='Temperature for evaluation')
-	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
-	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
-
-	args, unknown = parser.parse_known_args()
-	args.device = torch.device(args.device)
-	args.pth_files_directory = os.path.normpath(args.pth_files_directory)
-	print_args_table(args=args, parser=parser)
-	print(args)
-	set_seeds(seed=42)
-	DATASET_DIRECTORY = os.path.dirname(args.pth_files_directory)
-	print(f"DATASET_DIRECTORY: {DATASET_DIRECTORY}")
-	dataset_name = os.path.basename(DATASET_DIRECTORY)
-	dataset_type = "multi_label"
-	metadata_csv = os.path.join(DATASET_DIRECTORY, f"metadata_{dataset_type}_multimodal.csv")
-	assert os.path.exists(metadata_csv), f"{metadata_csv} not found!"
-
-	INFERENCE_DIRECTORY = os.path.join(args.pth_files_directory, f"inference")
-	CACHES_DIRECTORY = os.path.join(INFERENCE_DIRECTORY, "caches")
-
-	os.makedirs(INFERENCE_DIRECTORY, exist_ok=True)
-	os.makedirs(CACHES_DIRECTORY, exist_ok=True)
-
+def run_inference(
+	pth_files_directory: str,
+	model_architecture: str,
+	metadata_csv: str,
+	batch_size: int,
+	num_workers: int,
+	dataset_dir: str,
+	inference_dir: str,
+	i2t_topk: int = 3,
+	t2i_topk: int = 1,
+	verbose: bool = True,
+):
+	dataset_name = os.path.basename(dataset_dir)
 	# list of all available checkpoints in RESULT_DIRECTORY file.pth:
-	available_checkpoints = glob.glob(os.path.join(args.pth_files_directory, "*.pth"))
-	assert len(available_checkpoints) > 0, f"No checkpoints found in {args.pth_files_directory}"
+	available_checkpoints = glob.glob(os.path.join(pth_files_directory, "*.pth"))
+	assert len(available_checkpoints) > 0, f"No checkpoints found in {pth_files_directory}"
 
-	if args.verbose:
+	if verbose:
 		print(f"{len(available_checkpoints)} Available checkpoints")
 		for i, ft_path in enumerate(available_checkpoints):
 			print(f"Checkpoint[{i}]: {ft_path}")
 
 	# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 	# print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
-	print(f">> CLIP model configuration: {args.model_architecture}...")
-	model_config = get_config(architecture=args.model_architecture)
+	print(f">> CLIP model configuration: {model_architecture}...")
+	model_config = get_config(architecture=model_architecture)
 	print(json.dumps(model_config, indent=4, ensure_ascii=False))
 
 	train_loader, validation_loader = get_multi_label_dataloaders(
 		metadata_fpth=metadata_csv,
-		batch_size=args.batch_size,
-		num_workers=args.num_workers,
+		batch_size=batch_size,
+		num_workers=num_workers,
 		input_resolution=model_config["image_resolution"],
 	)
 
@@ -1053,7 +1028,7 @@ def main():
 	print_loader_info(loader=validation_loader)
 
 	customized_preprocess = get_preprocess(
-		dataset_dir=DATASET_DIRECTORY, 
+		dataset_dir=dataset_dir, 
 		input_resolution=model_config["image_resolution"],
 	)
 
@@ -1064,16 +1039,17 @@ def main():
 			class_names = validation_loader.dataset.dataset.classes
 		except:
 			class_names = train_loader.dataset.unique_labels
-	
+	print(f"Number of classes: {len(class_names)}")
+
 	####################################### Quantitative Analysis #######################################
-	results_json_path = os.path.join(args.pth_files_directory, f"{dataset_name}_retrieval_metrics_accumulated.json")
+	results_json_path = os.path.join(pth_files_directory, f"{dataset_name}_retrieval_metrics_accumulated.json")
 	if os.path.exists(results_json_path):
 		with open(results_json_path) as f:
 			all_results = json.load(f)
 		print(f"[Quantitative Analysis] {len(all_results)} methods: {list(all_results.keys())}")
 		viz.plot_quantitative_retrieval(
 			all_results=all_results,
-			output_dir=INFERENCE_DIRECTORY,
+			output_dir=inference_dir,
 			dataset_name=dataset_name,
 		)
 	else:
@@ -1112,7 +1088,7 @@ def main():
 
 	# Union of checkpoints to avoid loading the same model twice
 	all_checkpoints = dict.fromkeys(i2t_checkpoints + t2i_checkpoints)
-	if args.verbose:
+	if verbose:
 		print("i2t_checkpoints:", i2t_checkpoints)
 		print("t2i_checkpoints:", t2i_checkpoints)
 		print(f"all_checkpoints: {len(all_checkpoints)} = (i2t: {len(i2t_checkpoints)}) + (t2i: {len(t2i_checkpoints)})")
@@ -1124,12 +1100,12 @@ def main():
 
 		model_dict, canonical_class_names, probe_train_freq = _load_models(
 			checkpoint_path=ckpt_path,
-			model_architecture=args.model_architecture,
+			model_architecture=model_architecture,
 			device=args.device,
-			dataset_directory=DATASET_DIRECTORY,
+			dataset_directory=dataset_dir,
 			validation_loader=validation_loader,
 			class_names=class_names,
-			verbose=args.verbose,
+			verbose=verbose,
 		)
 		
 		if not model_dict:
@@ -1144,9 +1120,9 @@ def main():
 			class_names=class_names,
 			all_val_image_paths=all_val_image_paths,
 			preprocess=customized_preprocess,
-			device=args.device,
-			i2t_topk=args.i2t_topk,
-			t2i_topk=args.t2i_topk,
+			device=device,
+			i2t_topk=i2t_topk,
+			t2i_topk=t2i_topk,
 			canonical_class_names=canonical_class_names,  # None for non-probe, correct for probe
 			probe_train_freq=probe_train_freq,
 			text_batch_size=128, # tune down to 128 if ViT-L/14@336px still OOMs
@@ -1164,17 +1140,66 @@ def main():
 	# Two separate plots
 	viz.plot_qualitative_retrieval_i2t(
 		results_by_strategy={s: qualitative_results[s] for s in i2t_strategies if s in qualitative_results},
-		output_dir=INFERENCE_DIRECTORY,
-		topk=args.i2t_topk,
-		verbose=args.verbose,
+		output_dir=inference_dir,
+		topk=i2t_topk,
+		verbose=verbose,
 	)
 	viz.plot_qualitative_retrieval_t2i(
 		results_by_strategy={s: qualitative_results[s] for s in t2i_strategies if s in qualitative_results},
-		output_dir=INFERENCE_DIRECTORY,
-		topk=args.t2i_topk,
-		verbose=args.verbose,
+		output_dir=inference_dir,
+		topk=t2i_topk,
+		verbose=verbose,
 	)
 	####################################### Qualitative Analysis #######################################
+
+
+@measure_execution_time
+def main():
+	parser = argparse.ArgumentParser(description="Evaluate CLIP for Historical Archives Dataset [Inference]")
+	parser.add_argument('--pth_files_directory', '-pth_dir', type=str, required=True, help='Directory containing the .pth files')
+	parser.add_argument('--model_architecture', '-a', type=str, required=True, help='CLIP architecture')
+	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
+	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
+	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs')
+
+	parser.add_argument('--query_image', '-qi', type=str, default=None, help='image path for zero shot classification')
+	parser.add_argument('--query_label', '-ql', type=str, default=None, help='image path for zero shot classification')
+	parser.add_argument('--t2i_topk', type=int, default=1, help='TopK results for Text-to-Image retrieval')
+	parser.add_argument('--i2t_topk', type=int, default=3, help='TopK results for Image-to-Text retrieval')
+	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
+
+	parser.add_argument('--temperature', '-t', type=float, default=0.07, help='Temperature for evaluation')
+	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
+	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
+
+	args, unknown = parser.parse_known_args()
+	args.device = torch.device(args.device)
+	args.pth_files_directory = os.path.normpath(args.pth_files_directory)
+	print_args_table(args=args, parser=parser)
+	print(args)
+	set_seeds(seed=42)
+	DATASET_DIRECTORY = os.path.dirname(args.pth_files_directory)
+	print(f"DATASET_DIRECTORY: {DATASET_DIRECTORY}")
+	
+	dataset_type = "multi_label"
+	metadata_csv = os.path.join(DATASET_DIRECTORY, f"metadata_{dataset_type}_multimodal.csv")
+	assert os.path.exists(metadata_csv), f"{metadata_csv} not found!"
+
+	INFERENCE_DIRECTORY = os.path.join(args.pth_files_directory, f"inference")
+	os.makedirs(INFERENCE_DIRECTORY, exist_ok=True)
+
+	run_inference(
+		pth_files_directory=args.pth_files_directory,
+		model_architecture=args.model_architecture,
+		metadata_csv=metadata_csv,
+		batch_size=args.batch_size,
+		num_workers=args.num_workers,
+		dataset_dir=DATASET_DIRECTORY,
+		inference_dir=INFERENCE_DIRECTORY,
+		i2t_topk=args.i2t_topk,
+		t2i_topk=args.t2i_topk,
+		verbose=args.verbose,
+	)
 
 if __name__ == "__main__":
 	main()
