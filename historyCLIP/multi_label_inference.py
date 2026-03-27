@@ -1008,7 +1008,8 @@ def run_inference(
 ):
 	dataset_name = os.path.basename(dataset_dir)
 	column = "multimodal_canonical_labels" if "multi_label" in metadata_csv else "label"
-	# list of all available checkpoints in RESULT_DIRECTORY file.pth:
+
+	# list of all available checkpoints in directory of file.pth:
 	available_checkpoints = glob.glob(os.path.join(pth_files_directory, "*.pth"))
 	assert len(available_checkpoints) > 0, f"No checkpoints found in {pth_files_directory}"
 
