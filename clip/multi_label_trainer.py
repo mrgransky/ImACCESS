@@ -28,24 +28,47 @@ def zero_shot_multi_label(
 	temperature: float = 0.07,
 	verbose: bool = True,
 ) -> Dict:
-	# dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 
-	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown'
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_name = model.__class__.__name__
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_multi_label', '', mode)
 	if verbose:
-		print(f"{mode.upper()} CLIP Evaluation: {model.__class__.__name__} {model_arch} on {dataset_name}")
+		print(f"{mode.upper()} {model_name} {model_arch} on {dataset_name}")
+
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{mode}_"
+		f"{model_name}_"
+		f"{model_arch}_"
+		f"bs_{train_loader.batch_size}_"
+		f"temp_{temperature}"
+		f".pth"
+	)
+
+	# Save zero-shot checkpoint (just the base model state)
+	checkpoint = {
+		"epoch": 0,  # No training epochs
+		"model_state_dict": model.state_dict(),
+		"best_val_loss": None,  # No training loss
+		"strategy": "zero_shot",
+		"temperature": temperature,
+		"model_architecture": model_arch,
+	}
+	torch.save(checkpoint, mdl_fpth)
+	if verbose:
+		print(f"\nSaved {mode} checkpoint: {mdl_fpth}")
 
 	validation_results = get_validation_metrics(
 		model=model,
 		validation_loader=validation_loader,
 		device=device,
 		topK_values=topk_values,
-		finetune_strategy="pretrained",
 		cache_dir=results_dir,
 		is_training=False,
 		model_hash=get_model_hash(model),
@@ -57,7 +80,6 @@ def zero_shot_multi_label(
 	t2i_similarity = validation_results["t2i_similarity"]
 	device_labels   = validation_results["device_labels"]
 
-	# GET CLASS INFORMATION
 	try:
 		class_names = validation_loader.dataset.unique_labels
 	except AttributeError:
@@ -129,6 +151,8 @@ def zero_shot_multi_label(
 		dataset_name=dataset_name,
 		verbose=verbose,
 	)
+
+
 
 	return {
 		"full_metrics":    validation_results["full_metrics"],

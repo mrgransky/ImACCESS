@@ -98,55 +98,50 @@ def get_tail_only_samples(
 	return i2t_samples, t2i_samples
 
 def get_top_k_strategies(
-		results_json_path: str,
-		top_k: int = 5,
-		distribution: str = "rare", # overall, head, rare
-		metric_key: str = "mAP", # mAP, Recall
-		k_value: str = "10",
-		mode: str = "i2t", # "i2t" or "t2i"
+	results_json_path: str,
+	top_k: int = 5,
+	distribution: str = "rare", # overall, head, rare
+	metric_key: str = "mAP", # mAP, Recall
+	k_value: str = "10",
+	mode: str = "i2t", # "i2t" or "t2i"
 ) -> Tuple[List[str], List[str]]:
-		if not os.path.exists(results_json_path):
-				print(f"WARNING: {results_json_path} not found.")
-				return [], []
-
-		with open(results_json_path) as f:
-				all_results = json.load(f)
-
-		direction = mode.lower()   # "i2t" or "t2i"
-		scores = {}
-		print(f"\n>> Ranking {len(all_results)} strategies — {direction.upper()} {distribution} {metric_key}@{k_value}")
-		for strategy, metrics in all_results.items():
-			try:
-				scores[strategy] = metrics[direction][distribution][metric_key][k_value]
-			except KeyError:
-				scores[strategy] = -1.0
-
-		sorted_strategies = sorted(scores, key=scores.get, reverse=True)[:top_k]
-		print(f"\nTop-{len(sorted_strategies)} ({direction.upper()} {distribution}):")
-		for i, s in enumerate(sorted_strategies):
-				print(f"  {i+1}. {s:<20} ({metric_key}@{k_value}: {scores[s]:.4f})")
-		print("-" * 60)
-
-		pth_dir = os.path.dirname(results_json_path)
-		checkpoints = []
+	if not os.path.exists(results_json_path):
+		print(f"WARNING: {results_json_path} not found.")
+		return [], []
+	with open(results_json_path) as f:
+		all_results = json.load(f)
+	direction = mode.lower()   # "i2t" or "t2i"
+	scores = {}
+	print(f"\n>> Ranking {len(all_results)} strategies — {direction.upper()} {distribution} {metric_key}@{k_value}")
+	for strategy, metrics in all_results.items():
+		try:
+			scores[strategy] = metrics[direction][distribution][metric_key][k_value]
+		except KeyError:
+			scores[strategy] = -1.0
+	sorted_strategies = sorted(scores, key=scores.get, reverse=True)[:top_k]
+	print(f"\nTop-{len(sorted_strategies)} ({direction.upper()} {distribution}):")
+	for i, s in enumerate(sorted_strategies):
+			print(f"  {i+1}. {s:<20} ({metric_key}@{k_value}: {scores[s]:.4f})")
+	print("-" * 60)
+	pth_dir = os.path.dirname(results_json_path)
+	checkpoints = []
+	
+	for strategy in sorted_strategies:
+		all_pths = [f for f in os.listdir(pth_dir) if f.endswith('.pth')]
+		valid_match = None
 		
-		for strategy in sorted_strategies:
-			all_pths = [f for f in os.listdir(pth_dir) if f.endswith('.pth')]
-			valid_match = None
-			
-			for f in all_pths:
-				# Use existing parser to see what the file ACTUALLY is
-				detected_strategy, _ = _parse_checkpoint_strategy(f)
-				if detected_strategy == strategy:
-					valid_match = f
-					break
-							
-			if valid_match:
-					checkpoints.append(os.path.join(pth_dir, valid_match))
-			else:
-					print(f"WARNING: no checkpoint for '{strategy}'")
-
-		return sorted_strategies, checkpoints
+		for f in all_pths:
+			# Use existing parser to see what the file ACTUALLY is
+			detected_strategy, _ = _parse_checkpoint_strategy(f)
+			if detected_strategy == strategy:
+				valid_match = f
+				break
+						
+		if valid_match:
+			checkpoints.append(os.path.join(pth_dir, valid_match))
+		else:
+			print(f"WARNING: no checkpoint for '{strategy}'")
+	return sorted_strategies, checkpoints
 
 def run_qualitative_retrieval(
 	model: torch.nn.Module,
@@ -161,22 +156,41 @@ def run_qualitative_retrieval(
 	text_batch_size: int = 256,   # chunk size for text encoding
 	image_batch_size: int = 32,   # chunk size for image encoding
 ) -> Dict:
+
+
 	model.eval()
-	# ------------------------------------------------------------------ #
-	# Encode ALL class name texts in chunks to avoid OOM                  #
-	# For ViT-L/14@336px with ~4,669 classes, encoding all at once        #
-	# requires ~15 GiB. Chunking keeps peak usage under control.          #
-	# ------------------------------------------------------------------ #
-	all_text_embeds = []
-	for start in range(0, len(class_names), text_batch_size):
+
+
+	# Class embedding matrix: probe uses trained W rows directly;
+	# all other strategies encode class names through the text encoder.
+	# This keeps the call site clean — no strategy-awareness needed there.
+	is_probe = hasattr(model, 'probe') and isinstance(model.probe, torch.nn.Linear) # head is linear (Only Probe)
+	# is_probe = hasattr(model, 'probe') and hasattr(model, 'clip_model') # head is linear or MLP (General)
+	if is_probe:
+		# probe.weight rows ARE the class embeddings — using encode_text
+		# here would silently fall back to frozen CLIP text encoder,
+		# producing results identical to zero-shot (wrong).
+		print(
+			f"[qualitative] Probe detected — using trained W ({model.probe.weight.shape}) "
+			f"as class embeddings instead of encode_text.")
+		all_text_embeds = torch.nn.functional.normalize(model.probe.weight.detach().float(), dim=-1).cpu()  # [C, D]
+	else:
+		# All other strategies: chunk-encode class names through text encoder
+		all_text_embeds = []
+		for start in range(0, len(class_names), text_batch_size):
 			chunk = class_names[start : start + text_batch_size]
 			with torch.no_grad():
-					tokens = clip.tokenize(chunk, truncate=True).to(device)
-					chunk_embeds = torch.nn.functional.normalize(model.encode_text(tokens).float(), dim=-1)
-			all_text_embeds.append(chunk_embeds.cpu())   # keep on CPU until needed
+				tokens = clip.tokenize(chunk, truncate=True).to(device)
+				chunk_embeds = torch.nn.functional.normalize(
+					model.encode_text(tokens).float(), dim=-1
+				)
+			all_text_embeds.append(chunk_embeds.cpu())
 			del tokens, chunk_embeds
 			torch.cuda.empty_cache()
-	all_text_embeds = torch.cat(all_text_embeds, dim=0)  # [C, D] on CPU
+		all_text_embeds = torch.cat(all_text_embeds, dim=0)  # [C, D] on CPU
+
+
+
 	# I2T: tail image → top-i2t_topk predicted labels                    #
 	i2t_results = []
 	for sample in i2t_samples:
@@ -221,105 +235,20 @@ def run_qualitative_retrieval(
 	# Encode query labels (already chunked above, but these are just t2i_samples — small)
 	t2i_results = []
 	for query_label in t2i_samples:
-			with torch.no_grad():
-					token = clip.tokenize([query_label], truncate=True).to(device)
-					txt_embed = torch.nn.functional.normalize(
-							model.encode_text(token).float(), dim=-1
-					).cpu()  # [1, D] on CPU
-			sims = (txt_embed @ all_img_embeds.T).squeeze(0)   # [N_val] on CPU
-			topk_idx = sims.topk(t2i_topk).indices.tolist()
-			t2i_results.append({
-					'query_label':      query_label,
-					'retrieved_paths':  [all_val_image_paths[j] for j in topk_idx],
-					'retrieved_scores': [sims[j].item() for j in topk_idx],
-			})
-			del token, txt_embed
+		with torch.no_grad():
+			token = clip.tokenize([query_label], truncate=True).to(device)
+			txt_embed = torch.nn.functional.normalize(model.encode_text(token).float(), dim=-1).cpu()  # [1, D] on CPU
+		sims = (txt_embed @ all_img_embeds.T).squeeze(0)   # [N_val] on CPU
+		topk_idx = sims.topk(t2i_topk).indices.tolist()
+		t2i_results.append(
+			{
+				'query_label':      query_label,
+				'retrieved_paths':  [all_val_image_paths[j] for j in topk_idx],
+				'retrieved_scores': [sims[j].item() for j in topk_idx],
+			}
+		)
+		del token, txt_embed
 	return {'i2t': i2t_results, 't2i': t2i_results}
-
-def pretrain_multi_label(
-		model: torch.nn.Module,
-		validation_loader: DataLoader,
-		device: torch.device,
-		results_dir: str,
-		active_mask: torch.Tensor,
-		head_mask: torch.Tensor,
-		rare_mask: torch.Tensor,
-		topk_values: List[int] = [1, 3, 5, 10, 15, 20],
-		temperature: float = 0.07,
-		verbose: bool = True,
-) -> Dict:
-		"""
-		Evaluate pretrained (zero-shot) CLIP on the validation set.
-		Routes through the same get_validation_metrics + compute_tiered_retrieval_metrics
-		pipeline as evaluate_best_model, so numbers are directly comparable in the table.
-		"""
-		dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
-		model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown'
-
-		if verbose:
-				print(f"Zero-Shot CLIP Evaluation: {model.__class__.__name__} {model_arch} on {dataset_name}")
-
-		# Identical pipeline to evaluate_best_model — no separate implementation
-		validation_results = get_validation_metrics(
-				model=model,
-				validation_loader=validation_loader,
-				device=device,
-				topK_values=topk_values,
-				finetune_strategy="pretrained",
-				cache_dir=results_dir,
-				verbose=verbose,
-				is_training=False,
-				model_hash=get_model_hash(model),
-				temperature=temperature,
-		)
-
-		i2t_similarity = validation_results["i2t_similarity"]
-		t2i_similarity = validation_results["t2i_similarity"]
-		device_labels   = validation_results["device_labels"]
-
-		if verbose:
-				print("\nComputing tiered retrieval metrics (Overall / Head / Rare)...")
-
-		tiered_i2t = compute_tiered_retrieval_metrics(
-				similarity_matrix=i2t_similarity,
-				query_labels=device_labels,
-				topK_values=topk_values,
-				head_mask=head_mask,
-				rare_mask=rare_mask,
-				active_mask=active_mask,
-				mode="Image-to-Text",
-				verbose=verbose,
-		)
-		tiered_t2i = compute_tiered_retrieval_metrics(
-				similarity_matrix=t2i_similarity,
-				query_labels=device_labels,
-				topK_values=topk_values,
-				head_mask=head_mask,
-				rare_mask=rare_mask,
-				active_mask=active_mask,
-				mode="Text-to-Image",
-				min_val_support=10,
-				verbose=verbose,
-		)
-
-		del i2t_similarity, t2i_similarity
-		torch.cuda.empty_cache()
-
-		if verbose:
-				print("\n>> Zero-Shot Tiered I2T Retrieval")
-				for tier, m in tiered_i2t.items():
-						print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-				print("\n>> Zero-Shot Tiered T2I Retrieval")
-				for tier, m in tiered_t2i.items():
-						print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		return {
-				"full_metrics":    validation_results["full_metrics"],
-				"img2txt_metrics": validation_results["img2txt_metrics"],
-				"txt2img_metrics": validation_results["txt2img_metrics"],
-				"tiered_i2t":      tiered_i2t,
-				"tiered_t2i":      tiered_t2i,
-		}
 
 def get_multi_label_head_torso_tail_samples(
 	metadata_path: str,
@@ -591,7 +520,9 @@ def _parse_checkpoint_strategy(ft_path: str) -> Tuple[str, Dict]:
 	fname = os.path.basename(ft_path)
 	
 	# Order matters — more specific patterns before general ones
-	if fname.startswith("lora_plus"):
+	if fname.startswith("zero_shot"):
+		strategy = "zero_shot"
+	elif fname.startswith("lora_plus"):
 		strategy = "lora_plus"
 	elif fname.startswith("rslora"):
 		strategy = "rslora"
@@ -675,7 +606,7 @@ def _load_checkpoint_into_model(
 
 	return model
 
-def load_finetuned_models(
+def _load_models(
 	checkpoint_path: str,
 	model_architecture: str,
 	device: torch.device,
@@ -700,7 +631,9 @@ def load_finetuned_models(
 	base_model.name = model_architecture
 
 	try:
-		if strategy in ("lora", "lora_plus", "dora", "rslora"):
+		if strategy == "zero_shot":
+			ft_model = base_model
+		elif strategy in ("lora", "lora_plus", "dora", "rslora"):
 			rank    = params.get("lora_rank")
 			alpha   = params.get("lora_alpha")
 			dropout = params.get("lora_dropout")
@@ -885,24 +818,6 @@ def main():
 		for i, ft_path in enumerate(available_checkpoints):
 			print(f"Checkpoint[{i}]: {ft_path}")
 
-	if "probe" in available_checkpoints:
-		params = get_probe_params(args.probe_checkpoint)
-		if params:
-			print(f">> {args.probe_checkpoint}\n\tProbe parameters: {params}")
-			args.probe_dropout = params['probe_dropout']
-		else:
-			raise ValueError("Probe parameters not found in the provided checkpoint path!")
-
-	if "lora" in available_checkpoints:
-		params = get_lora_params(args.lora_checkpoint)
-		if params:
-			print(f">> {args.lora_checkpoint}\n\tLoRA parameters: {params}")
-			args.lora_rank = params['lora_rank']
-			args.lora_alpha = params['lora_alpha']
-			args.lora_dropout = params['lora_dropout']
-		else:
-			raise ValueError("LoRA parameters not found in the provided checkpoint path!")
-
 	# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 	# print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 	print(f">> CLIP model configuration: {args.model_architecture}...")
@@ -919,26 +834,11 @@ def main():
 	print_loader_info(loader=train_loader)
 	print_loader_info(loader=validation_loader)
 
-	print("DEBUGGING: Ground Truth Examination")
-	# Check if ground truth extraction is correct
-	for sample in validation_loader:
-		images, _, labels = sample
-		print(f"Batch size: {images.shape[0]}")
-		print(f"Image shape: {images.shape}")
-		print(f"Label shape: {labels.shape}")  # [batch_size, num_classes]
-		print(f"Labels dtype: {labels.dtype}")
-		print(f"Number of positive labels in 1st sample: {labels[0].sum().item()}")
-		print(f"Non-zero label indices: {torch.where(labels[0] == 1)[0].tolist()}")
-		print(f"Number of positive labels in 2nd sample: {labels[1].sum().item()}")
-		break  # Only check first batch	
-	print("="*80)
-
 	customized_preprocess = get_preprocess(
 		dataset_dir=DATASET_DIRECTORY, 
 		input_resolution=model_config["image_resolution"],
 	)
 
-	# GET CLASS INFORMATION
 	try:
 		class_names = validation_loader.dataset.unique_labels
 	except AttributeError:
@@ -1004,7 +904,7 @@ def main():
 	for ckpt_path in all_checkpoints:
 		strategy_name, _ = _parse_checkpoint_strategy(ckpt_path)
 
-		model_dict = load_finetuned_models(
+		model_dict = _load_models(
 			checkpoint_path=ckpt_path,
 			model_architecture=args.model_architecture,
 			device=args.device,
@@ -1034,6 +934,11 @@ def main():
 
 		del ft_model, model_dict
 		torch.cuda.empty_cache()
+
+	print("="*100)
+	print("qualitative_results:")
+	print(json.dumps(qualitative_results, indent=4, ensure_ascii=False))
+	print("="*100)
 
 	# Two separate plots
 	viz.plot_qualitative_retrieval_i2t(
