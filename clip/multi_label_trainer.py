@@ -178,13 +178,13 @@ def probe_multi_label(
 	minimum_epochs: int = 20,
 	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,
-	temperature: float = 1.0,
 	volatility_threshold: float = 15.0,
 	slope_threshold: float = 1e-4,
 	pairwise_imp_threshold: float = 1e-4,
 	probe_hidden_dim: int = None,
 	probe_dropout: float = 0.1,
 	cache_features: bool = True,
+	temperature: float = 0.07,
 	verbose: bool = True,
 ):
 	window_size = minimum_epochs + 1
@@ -331,10 +331,10 @@ def probe_multi_label(
 	
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**10,      # Start low
-		growth_factor=2.0,     # default
-		backoff_factor=0.5,    # default, if NaN, scale is halved
-		growth_interval=2000,  # default
+		init_scale=2**11,      # 2048 (Conservative start)
+		growth_factor=1.5,     # Smoother growth than default 2.0
+		backoff_factor=0.5,    # Standard
+		growth_interval=5000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -672,7 +672,7 @@ def probe_multi_label(
 		print(f"  {probe.probe_type} | Params: {sum(p.numel() for p in probe.probe.parameters()):,}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
@@ -755,7 +755,7 @@ def full_finetune_multi_label(
 	volatility_threshold: float,
 	slope_threshold: float,
 	pairwise_imp_threshold: float,
-	temperature: float = 1.0,
+	temperature: float = 0.07,
 	topk_values: List[int] = [1, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
 	verbose: bool=True,
@@ -968,10 +968,10 @@ def full_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**10,      # Start low
-		growth_factor=2.0,     # default
-		backoff_factor=0.5,    # default, if NaN, scale is halved
-		growth_interval=2000,  # default
+		init_scale=2**11,      # 2048 (Conservative start)
+		growth_factor=1.5,     # Smoother growth than default 2.0
+		backoff_factor=0.5,    # Standard
+		growth_interval=5000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -1238,7 +1238,7 @@ def full_finetune_multi_label(
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
@@ -1338,7 +1338,7 @@ def lora_finetune_multi_label(
 	pairwise_imp_threshold: float,
 	topk_values: List[int] = [1, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,
-	temperature: float = 1.0,
+	temperature: float = 0.07,
 	quantization_bits: int = 8,
 	quantized: bool = False,
 	verbose: bool = True,
@@ -1546,10 +1546,10 @@ def lora_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**10,      # Start low
-		growth_factor=2.0,     # default
-		backoff_factor=0.5,    # default, if NaN, scale is halved
-		growth_interval=2000,  # default
+		init_scale=2**11,      # 2048 (Conservative start)
+		growth_factor=1.5,     # Smoother growth than default 2.0
+		backoff_factor=0.5,    # Standard
+		growth_interval=5000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -1808,7 +1808,7 @@ def lora_finetune_multi_label(
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
@@ -1904,8 +1904,8 @@ def lora_plus_finetune_multi_label(
 	quantization_bits: int=8,
 	quantized: bool=False,
 	loss_weights: Dict[str, float]=None,
-	temperature: float=1.0,
-	B_MAX_NORM = 50.0,
+	temperature: float = 0.07,
+	B_MAX_NORM = 20.0,
 	verbose: bool=True,
 ):
 	"""
@@ -2179,10 +2179,10 @@ def lora_plus_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**10,      # Start low
-		growth_factor=2.0,     # default
-		backoff_factor=0.5,    # default, if NaN, scale is halved
-		growth_interval=2000,  # default
+		init_scale=2**11,      # 2048 (Conservative start)
+		growth_factor=1.5,     # Smoother growth than default 2.0
+		backoff_factor=0.5,    # Standard
+		growth_interval=5000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -2663,7 +2663,7 @@ def rslora_finetune_multi_label(
 	pairwise_imp_threshold: float,
 	topk_values: List[int] = [1, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,
-	temperature: float = 1.0,
+	temperature: float = 0.07,
 	quantization_bits: int = 8,
 	quantized: bool = False,
 	verbose: bool = True,
@@ -2877,10 +2877,10 @@ def rslora_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**10,      # Start low
-		growth_factor=2.0,     # default
-		backoff_factor=0.5,    # default, if NaN, scale is halved
-		growth_interval=2000,  # default
+		init_scale=2**11,      # 2048 (Conservative start)
+		growth_factor=1.5,     # Smoother growth than default 2.0
+		backoff_factor=0.5,    # Standard
+		growth_interval=5000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -2955,11 +2955,10 @@ def rslora_finetune_multi_label(
 
 			if torch.isnan(total_loss) or torch.isinf(total_loss):
 				nan_loss_count += 1
-				if nan_loss_count % 100 == 1:  # log every 100th skip to avoid spam
-					print(
-						f"Warning: NaN/Inf loss at epoch {epoch+1}, "
-						f"batch {bidx+1} (total skipped: {nan_loss_count}). Skipping."
-					)
+				print(
+					f"Warning: NaN/Inf loss at epoch {epoch+1}, "
+					f"batch {bidx+1} (total skipped: {nan_loss_count}). Skipping."
+				)
 				
 				# Abort epoch if NaN cascade is unrecoverable
 				if nan_loss_count > len(train_loader) // 2:
@@ -3174,7 +3173,7 @@ def rslora_finetune_multi_label(
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
@@ -3266,7 +3265,7 @@ def dora_finetune_multi_label(
 	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
 	quantization_bits: int = 8,
 	quantized: bool = False,
-	temperature: float = 1.0,
+	temperature: float = 0.07,
 	loss_weights: Dict[str, float] = None,
 	verbose: bool = True,
 ):
@@ -3491,10 +3490,10 @@ def dora_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**10,      # Start low
-		growth_factor=2.0,     # default
-		backoff_factor=0.5,    # default, if NaN, scale is halved
-		growth_interval=2000,  # default
+		init_scale=2**11,      # 2048 (Conservative start)
+		growth_factor=1.5,     # Smoother growth than default 2.0
+		backoff_factor=0.5,    # Standard
+		growth_interval=5000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -3777,7 +3776,7 @@ def dora_finetune_multi_label(
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
@@ -3876,7 +3875,7 @@ def ia3_finetune_multi_label(
 	pairwise_imp_threshold: float,
 	topk_values: List[int] = [1, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
-	temperature: float = 1.0,
+	temperature: float = 0.07,
 	quantization_bits: int = 8,
 	quantized: bool = False,
 	verbose: bool = True,
@@ -4120,10 +4119,10 @@ def ia3_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**10,      # Start low
-		growth_factor=2.0,     # default
-		backoff_factor=0.5,    # default, if NaN, scale is halved
-		growth_interval=2000,  # default
+		init_scale=2**11,      # 2048 (Conservative start)
+		growth_factor=1.5,     # Smoother growth than default 2.0
+		backoff_factor=0.5,    # Standard
+		growth_interval=5000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -4400,7 +4399,7 @@ def ia3_finetune_multi_label(
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score()}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
@@ -4499,7 +4498,7 @@ def vera_finetune_multi_label(
 	pairwise_imp_threshold: float,
 	topk_values: List[int] = [1, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
-	temperature: float = 1.0,
+	temperature: float = 0.07,
 	quantization_bits: int = 8,
 	quantized: bool = False,
 	verbose: bool = True,
@@ -4756,10 +4755,10 @@ def vera_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**10,      # Start low
-		growth_factor=2.0,     # default
-		backoff_factor=0.5,    # default, if NaN, scale is halved
-		growth_interval=2000,  # default
+		init_scale=2**11,      # 2048 (Conservative start)
+		growth_factor=1.5,     # Smoother growth than default 2.0
+		backoff_factor=0.5,    # Standard
+		growth_interval=5000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -5087,7 +5086,7 @@ def vera_finetune_multi_label(
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
 		print("\n>> Tiered I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
@@ -5186,7 +5185,7 @@ def clip_adapter_finetune_multi_label(
 	slope_threshold: float = 1e-3,
 	pairwise_imp_threshold: float = 0.01,
 	topk_values: List[int] = [1, 5, 10, 15, 20],
-	temperature: float = 1.0,
+	temperature: float = 0.07,
 	loss_weights: Dict[str, float] = None,
 	verbose: bool = True,
 ):
@@ -5372,10 +5371,10 @@ def clip_adapter_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**10,      # Start low
-		growth_factor=2.0,     # default
-		backoff_factor=0.5,    # default, if NaN, scale is halved
-		growth_interval=2000,  # default
+		init_scale=2**11,      # 2048 (Conservative start)
+		growth_factor=1.5,     # Smoother growth than default 2.0
+		backoff_factor=0.5,    # Standard
+		growth_interval=5000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -5683,7 +5682,7 @@ def clip_adapter_finetune_multi_label(
 		print(f"  Model: {model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Bottleneck: {bottleneck_dim}  Activation: {activation}")
 		print(f"  Learning rate: {learning_rate}  Weight decay: {weight_decay}")
 		print(f"  Batch size: {train_loader.batch_size}")
@@ -5770,7 +5769,7 @@ def tip_adapter_finetune_multi_label(
 	initial_beta: float=1.0,
 	initial_alpha: float=1.0,
 	support_shots: int=16,  # Number of support samples per class
-	temperature: float=1.0,
+	temperature: float = 0.07,
 	loss_weights: Dict[str, float]=None,
 	verbose: bool=True,
 ):
@@ -6182,10 +6181,10 @@ def tip_adapter_finetune_multi_label(
 	
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**10,      # Start low
-		growth_factor=2.0,     # default
-		backoff_factor=0.5,    # default, if NaN, scale is halved
-		growth_interval=2000,  # default
+		init_scale=2**11,      # 2048 (Conservative start)
+		growth_factor=1.5,     # Smoother growth than default 2.0
+		backoff_factor=0.5,    # Standard
+		growth_interval=5000,  # Keep scale stable longer
 	)
 
 	if verbose:
