@@ -1905,7 +1905,7 @@ def lora_plus_finetune_multi_label(
 	quantized: bool=False,
 	loss_weights: Dict[str, float]=None,
 	temperature: float = 0.07,
-	B_MAX_NORM = 20.0,
+	B_MAX_NORM = 50.0,
 	verbose: bool=True,
 ):
 	"""
