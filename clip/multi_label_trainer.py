@@ -288,7 +288,7 @@ def probe_multi_label(
 	)
 	if verbose:
 		print(f"\n{criterion.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
 		print(f"   ├─ number of samples: {N}")
 		print(f"   ├─ number of classes: {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
@@ -878,7 +878,7 @@ def full_finetune_multi_label(
 
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
 		print(f"   ├─ number of samples: {N}")
 		print(f"   ├─ number of classes: {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
@@ -1377,11 +1377,11 @@ def lora_finetune_multi_label(
 	
 	if verbose:
 		print(f"\n{mode.upper()}")
-		print(f"   ├─ Model      : {model_name} {model_arch}")
+		print(f"   ├─ {model_name} {model_arch}")
 		print(f"   ├─ Rank: {lora_rank}")
 		print(f"   ├─ Alpha: {lora_alpha}")
 		print(f"   ├─ Dropout: {lora_dropout}")
-		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
+		print(f"   ├─ {dataset_name} classes: {num_classes}")
 		print(f"   ├─ Batch size : {train_loader.batch_size}")
 		print(f"   ├─ Device     : {type(device)} {device}")
 		print(f"   ├─ Temperature: {temperature}")
@@ -1422,6 +1422,7 @@ def lora_finetune_multi_label(
 		train_loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="sqrt",
+		pw_max_cap=50.0,
 		device=device,
 		verbose=verbose,
 	)
@@ -1447,7 +1448,7 @@ def lora_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
 		print(f"   ├─ number of samples: {N}")
 		print(f"   ├─ number of classes: {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
@@ -2041,6 +2042,7 @@ def lora_plus_finetune_multi_label(
 		train_loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="sqrt",
+		pw_max_cap=50.0,
 		device=device,
 		verbose=verbose,
 	)
@@ -2067,7 +2069,7 @@ def lora_plus_finetune_multi_label(
 
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
 		print(f"   ├─ number of samples: {N}")
 		print(f"   ├─ number of classes: {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
@@ -2155,7 +2157,7 @@ def lora_plus_finetune_multi_label(
 		print(f"\n{optimizer.__class__.__name__}")
 		print(f"  ├─ LR: lora_A = {lora_A_lr} lora_B = {lora_B_lr} (λ={lora_plus_lambda})")
 		print(f"  ├─ WD: lora_A = {lora_A_wd} lora_B = {lora_B_wd}")
-		print(f"  └─ Params: lora_A:{sum(p.numel() for p in lora_A_params):,} lora_B: {sum(p.numel() for p in lora_B_params):,}")
+		print(f"  └─ Params: lora_A: {sum(p.numel() for p in lora_A_params):,} lora_B: {sum(p.numel() for p in lora_B_params):,}")
 	
 	# Scheduler
 	# approximate T_max: N epochs * minimum_epochs
@@ -2208,6 +2210,7 @@ def lora_plus_finetune_multi_label(
 		f"wd_A_{lora_A_wd:.1e}_"
 		f"lr_B_{lora_B_lr:.1e}_"
 		f"wd_B_{lora_B_wd}_"
+		f"B_norm_max_{B_MAX_NORM}_"
 		f"lor_{lora_rank}_"
 		f"loa_{lora_alpha}_"
 		f"lod_{lora_dropout}_"
@@ -2584,10 +2587,12 @@ def lora_plus_finetune_multi_label(
 		f"{mode}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
-		f"lora_A_lr_{lora_A_lr:.1e}_"
+		f"lr_A_{lora_A_lr:.1e}_"
+		f"wd_A_{lora_A_wd:.1e}_"
 		f"lmbd_{lora_plus_lambda}_"
-		f"lora_B_lr_{lora_B_lr:.1e}_"
-		f"wd_{weight_decay:.1e}_"
+		f"lr_B_{lora_B_lr:.1e}_"
+		f"wd_B_{lora_B_wd}_"
+		f"B_norm_max_{B_MAX_NORM}_"
 		f"bs_{train_loader.batch_size}_"
 		f"lor_{lora_rank}_"
 		f"loa_{lora_alpha}_"
@@ -2760,6 +2765,7 @@ def rslora_finetune_multi_label(
 		train_loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="sqrt",
+		pw_max_cap=50.0,
 		device=device,
 		verbose=verbose,
 	)
@@ -3378,6 +3384,7 @@ def dora_finetune_multi_label(
 		train_loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="sqrt",
+		pw_max_cap=50.0,
 		device=device,
 		verbose=verbose,
 	)
@@ -3404,7 +3411,7 @@ def dora_finetune_multi_label(
 
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
 		print(f"   ├─ number of samples: {N}")
 		print(f"   ├─ number of classes: {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
@@ -4035,7 +4042,7 @@ def ia3_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
 		print(f"   ├─ number of samples: {N}")
 		print(f"   ├─ number of classes: {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
@@ -4670,7 +4677,7 @@ def vera_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
 		print(f"   ├─ number of samples: {N}")
 		print(f"   ├─ number of classes: {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
@@ -5325,7 +5332,7 @@ def clip_adapter_finetune_multi_label(
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction='none')
 	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none')
 	if verbose:
-		print(f"\n[I2T] BCEWithLogitsLoss  pos_weight range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"\n[I2T] BCEWithLogitsLoss  pos_weight range: [{pos_weight.min()}, {pos_weight.max()}]")
 		print(f"   ├─ N={N}  classes={num_classes}  active={active_mask.sum().item():,}")
 		print(f"[T2I] BCEWithLogitsLoss  no pos_weight")
 
@@ -6108,7 +6115,7 @@ def tip_adapter_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
 		print(f"   ├─ number of samples: {N}")
 		print(f"   ├─ number of classes: {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")

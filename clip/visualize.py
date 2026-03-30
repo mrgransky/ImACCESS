@@ -3516,7 +3516,7 @@ def plot_qualitative_retrieval_i2t(
 	# Figure dimensions
 	IMG_COL_W  = 1.5   # inches — query image column
 	GT_COL_W   = 1.5   # inches — ground truth text column
-	CELL_W     = 2.2   # inches — per strategy column
+	CELL_W     = 2.7   # inches — per strategy column
 	ROW_H      = 1.5   # inches — per image row
 	HEADER_H   = 0.5  # inches — strategy header row
 	

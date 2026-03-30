@@ -255,8 +255,8 @@ def compute_loss_masks(
 			rare_percentile  : Bottom fraction of active classes by frequency → "rare" (default 20%)
 			pw_mode          : Loss weighting strategy:
 													 "log"    → log1p(ratio)          range ~[0, 11]   probe/adapters/IA3/VeRA
-													 "sqrt"   → sqrt(ratio)           range ~[1, 274]  LoRA/LoRA+/DoRA
-													 "linear" → ratio.clamp(pw_max_cap) range ~[1, cap] full fine-tuning
+													 "sqrt"   → sqrt(ratio).clamp(max=pw_max_cap)  range ~[1, cap=50] LoRA/LoRA+/DoRA/RSLora
+													 "linear" → ratio.clamp(pw_max_cap) range ~[1, cap=100] full fine-tuning
 			pw_max_cap       : Hard cap for "linear" mode (ignored otherwise)
 			verbose          : Print summary statistics
 	Returns dict with keys:
@@ -289,10 +289,15 @@ def compute_loss_masks(
 		# range: ~[0, log1p(N)] ≈ [0, 11] for N~75k; no clamp needed
 		scaled = torch.log1p(ratio)
 	elif pw_mode == "sqrt":
-		# moderate — suitable for LoRA / LoRA+ / DoRA
-		# range: ~[1, sqrt(N)] ≈ [1, 274] for N~75k
-		scaled = torch.sqrt(ratio).clamp(min=1.0)
+		# moderate — suitable for LoRA / LoRA+ / DoRA / RSLora
+		# range: ~[1, sqrt(N)] ≈ [1, 274] for N~75k => [1, 50.0]
+		# clamp needed to ensure gradient flow through the rare classes
+		if verbose:
+			print(f"pw_mode: {pw_mode} => clamp needed to ensure gradient flow through the rare classes")
+		scaled = torch.sqrt(ratio).clamp(min=1.0, max=pw_max_cap)
 	elif pw_mode == "linear":
+		if verbose:
+			print(f"pw_mode: {pw_mode} => pw_max_cap: {pw_max_cap} to ensure gradient flow through the rare classes")
 		# strong — suitable for full fine-tuning where backbone absorbs gradients
 		# range: [1, pw_max_cap]
 		scaled = ratio.clamp(min=1.0, max=pw_max_cap)
