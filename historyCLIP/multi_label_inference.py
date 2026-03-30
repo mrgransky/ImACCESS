@@ -590,33 +590,64 @@ def run_qualitative_retrieval(
 	# For 41K images × 768-dim: ~120 MB on CPU — totally fine.           #
 	all_img_embeds = []   # accumulate on CPU
 	for start in range(0, len(all_val_image_paths), image_batch_size):
-			batch_paths = all_val_image_paths[start : start + image_batch_size]
-			imgs = torch.stack([
-					preprocess(Image.open(p).convert('RGB'))
-					for p in batch_paths
-			]).to(device)
-			with torch.no_grad():
-					embs = torch.nn.functional.normalize(model.encode_image(imgs).float(), dim=-1)
-			all_img_embeds.append(embs.cpu())
-			del imgs, embs
-			torch.cuda.empty_cache()
+		batch_paths = all_val_image_paths[start : start + image_batch_size]
+		imgs = torch.stack(
+			[
+				preprocess(Image.open(p).convert('RGB'))
+				for p in batch_paths
+			]
+		).to(device)
+		with torch.no_grad():
+			embs = torch.nn.functional.normalize(model.encode_image(imgs).float(), dim=-1)
+		all_img_embeds.append(embs.cpu())
+		del imgs, embs
+		torch.cuda.empty_cache()
+
 	all_img_embeds = torch.cat(all_img_embeds, dim=0)  # [N_val, D] on CPU
-	# Encode query labels (already chunked above, but these are just t2i_samples — small)
+	
+	# Build once before the T2I loop, after all_text_embeds_active is defined
+	if is_probe:
+		label_to_embed_idx = {name: i for i, name in enumerate(label_vocab_active)}
+
+	# T2I loop
 	t2i_results = []
 	for query_label in t2i_samples:
-		with torch.no_grad():
-			token = clip.tokenize([query_label], truncate=True).to(device)
-			txt_embed = torch.nn.functional.normalize(model.encode_text(token).float(), dim=-1).cpu()  # [1, D] on CPU
-		sims = (txt_embed @ all_img_embeds.T).squeeze(0)   # [N_val] on CPU
-		topk_idx = sims.topk(t2i_topk).indices.tolist()
-		t2i_results.append(
-			{
-				'query_label':      query_label,
-				'retrieved_paths':  [all_val_image_paths[j] for j in topk_idx],
-				'retrieved_scores': [sims[j].item() for j in topk_idx],
-			}
-		)
-		del token, txt_embed
+			if is_probe:
+					if query_label in label_to_embed_idx:
+							idx = label_to_embed_idx[query_label]
+							txt_embed = all_text_embeds_active[idx].unsqueeze(0)  # [1, D] already normalised
+					else:
+							# query_label is a zero-freq class — W row exists but was never trained.
+							# Options: (a) skip, (b) fall back to frozen text encoder with a warning.
+							# Option (b) is more informative for the qualitative figure:
+							print(f"  [probe T2I] '{query_label}' not in active vocab — falling back to ZS text encoder")
+							with torch.no_grad():
+									token = clip.tokenize([query_label], truncate=True).to(device)
+									txt_embed = torch.nn.functional.normalize(
+											model.clip_model.encode_text(token).float(), dim=-1
+									).cpu()
+			else:
+					with torch.no_grad():
+							token = clip.tokenize([query_label], truncate=True).to(device)
+							txt_embed = torch.nn.functional.normalize(
+									model.encode_text(token).float(), dim=-1
+							).cpu()
+
+			sims     = (txt_embed @ all_img_embeds.T).squeeze(0)
+			topk_idx = sims.topk(t2i_topk).indices.tolist()
+			t2i_results.append({
+					'query_label':      query_label,
+					'retrieved_paths':  [all_val_image_paths[j] for j in topk_idx],
+					'retrieved_scores': [sims[j].item() for j in topk_idx],
+			})
+
+
+
+
+
+
+
+
 	return {'i2t': i2t_results, 't2i': t2i_results}
 
 def _load_models(
