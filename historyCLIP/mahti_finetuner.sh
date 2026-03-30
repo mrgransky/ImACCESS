@@ -16,6 +16,7 @@
 #SBATCH --time=1-12:00:00
 
 set -euo pipefail
+
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
 txt="$user began Slurm job: `date`"
@@ -109,13 +110,13 @@ case "$LABEL_TYPE" in
 		;;
 esac
 
-BATCH_SIZES=(24 64 64 64 64)
-PRINT_FREQUENCIES=(1000 1000 50 50 25)
+BATCH_SIZES=(16 64 64 64 64)
+PRINT_FREQUENCIES=(500 1000 50 50 25)
 
 # Learning rates by method group
 # LR_FULL_FT=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
-LR_FULL_FT=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
-LR_LINEAR_PROBE=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+LR_FULL_FT=(5.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+LR_LINEAR_PROBE=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 LR_PEFT_ALL=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)  # LoRA, LoRA+, DoRA, VeRA, IA³, Adapters
 
 WEIGHT_DECAY=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
