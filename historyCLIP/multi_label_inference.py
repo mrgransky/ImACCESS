@@ -459,15 +459,21 @@ def get_tail_only_samples(
 
 def get_top_k_strategies(
 	results_json_path: str,
-	top_k: int = 5,
+	top_k: int,
 	distribution: str = "rare", # overall, head, rare
 	metric_key: str = "mAP", # mAP, Recall
 	k_value: int = 10,
-	mode: str = "i2t", # "i2t" or "t2i"
+	mode: str = "i2t", # i2t, t2i
 ) -> Tuple[List[str], List[str]]:
+
+	assert mode in ["i2t", "t2i"], f"Invalid mode: {mode}"
+	assert distribution in ["overall", "head", "rare"], f"Invalid distribution: {distribution}"
+	assert metric_key in ["mAP", "Recall"], f"Invalid metric_key: {metric_key}"
+
 	if not os.path.exists(results_json_path):
 		print(f"WARNING: {results_json_path} not found.")
 		return [], []
+
 	with open(results_json_path) as f:
 		all_results = json.load(f)
 
@@ -587,7 +593,6 @@ def run_qualitative_retrieval(
 			})
 			del image, img_embed
 			torch.cuda.empty_cache()
-
 
 	# T2I: tail label → top-t2i_topk images from FULL val pool
 	# Encode val images in chunks, accumulate embeddings on CPU,          #
@@ -987,15 +992,19 @@ def _load_models(
 									'pct_rank':   pct_rank,
 							})
 					df_drift = pd.DataFrame(rows).sort_values('zs_align')
+
 					# Summary statistics per tier
 					print(f"\n  Drift summary by tier:")
 					print(f"  {'Tier':<8} {'N':>5} {'mean ZS-align':>15} {'mean freq':>12} {'zero-freq classes':>18}")
 					print(f"  {'-'*60}")
 					for tier in ['head', 'torso', 'tail']:
-							sub = df_drift[df_drift['tier'] == tier]
-							zero_freq = (sub['probe_train_freq'] == 0).sum()
-							print(f"  {tier:<8} {len(sub):>5} {sub['zs_align'].mean():>15.4f} "
-										f"{sub['probe_train_freq'].mean():>12.1f} {zero_freq:>18}")
+						sub = df_drift[df_drift['tier'] == tier]
+						zero_freq = (sub['probe_train_freq'] == 0).sum()
+						print(
+							f"  {tier:<8} {len(sub):>5} {sub['zs_align'].mean():>15.4f} "
+							f"{sub['probe_train_freq'].mean():>12.1f} {zero_freq:>18}"
+						)
+					
 					# Save full table
 					drift_csv = os.path.join(
 						os.path.dirname(checkpoint_path),
@@ -1006,7 +1015,7 @@ def _load_models(
 					print(f"\n  Full drift table saved → {drift_csv}")
 					viz.plot_semantic_drift_analysis(
 						csv_path=drift_csv,
-						output_dir=inference_dir,
+						output_dir=os.path.join(os.path.dirname(checkpoint_path), "inference"),
 					)
 					del zs_full, W_tmp, sim_all
 			except Exception as e:
@@ -1106,9 +1115,7 @@ def run_inference(
 	)
 
 	# Build full val image path list for T2I pool
-	all_val_image_paths = sorted(
-		validation_loader.dataset.data_frame['img_path'].tolist()
-	)
+	all_val_image_paths = sorted(validation_loader.dataset.data_frame['img_path'].tolist())
 
 	# Separate top-K strategies selection I2T
 	i2t_strategies, i2t_checkpoints = get_top_k_strategies(

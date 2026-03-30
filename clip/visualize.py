@@ -25,7 +25,6 @@ import seaborn as sns
 from matplotlib.colors import to_rgba
 from PIL import Image
 
-
 strategy_colors = {
 	'full': "#012894", 
 	'lora': '#f58320be', 
@@ -95,19 +94,6 @@ modes = ["Image-to-Text", "Text-to-Image"]
 if os.environ["USER"] == "farid":
 	from graphviz import Digraph
 
-# Colorblind-safe strategy palette (up to 8 strategies).
-# Same family as the rest of visualize.py.
-_STRATEGY_PALETTE = [
-	"#2166AC",
-	"#D6604D",
-	"#4DAC26",
-	"#8073AC",
-	"#F4A582",
-	"#1A9850",
-	"#FDAE61",
-	"#878787",
-]
-
 _FONT_FAMILY = "serif"
 _TITLE_SIZE  = 11
 _LABEL_SIZE  = 9
@@ -128,26 +114,6 @@ def _set_publication_rc():
 				"axes.spines.top":   False,
 				"axes.spines.right": False,
 		})
-
-def _short_strategy_label(s: str) -> str:
-		"""Human-readable display name for a strategy key."""
-		mapping = {
-				"lora":           "LoRA",
-				"lora_plus":      "LoRA+",
-				"dora":           "DoRA",
-				"rslora":         "rsLoRA",
-				"vera":           "VeRA",
-				"ia3":            "IA³",
-				"clip_adapter_v": "CLIP-Adp(V)",
-				"clip_adapter_t": "CLIP-Adp(T)",
-				"clip_adapter_vt":"CLIP-Adp(VT)",
-				"tip_adapter":    "Tip-Adp",
-				"tip_adapter_f":  "Tip-Adp-F",
-				"probe":          "Probe",
-				"full":           "Full FT",
-				"pretrained":     "Zero-Shot",
-		}
-		return mapping.get(s, s.replace("_", "-").upper())
 
 def _load_image_rgb(path: str) -> Optional[np.ndarray]:
 		try:
@@ -3336,57 +3302,73 @@ def plot_retrieval_metrics(
 			print("".center(160, "-"))
 
 def plot_semantic_drift_analysis(csv_path: str, output_dir: str):
-		"""
-		Scatter plot showing Cosine Similarity (Drift) vs. Training Frequency.
-		X-axis: Log of Training Frequency
-		Y-axis: Cosine Similarity with Zero-Shot initialization
-		"""
-		df = pd.read_csv(csv_path)
-		
-		# Use log scale for frequency to handle the long tail
-		# np.log1p handles frequency=0 cases safely
-		df['log_freq'] = np.log1p(df['probe_train_freq'])
-		
-		plt.figure(figsize=(8, 6), dpi=300)
-		sns.set_style("whitegrid", {'axes.edgecolor': '.15', 'grid.linestyle': '--'})
-		
-		# 1. Main scatter plot colored by Tier
-		palette = {"head": "#2E7D32", "torso": "#1976D2", "tail": "#C62828"}
-		sns.scatterplot(
-				data=df, x='log_freq', y='zs_align', 
-				hue='tier', palette=palette, 
-				alpha=0.5, s=40, edgecolor='none'
-		)
-		
-		# 2. Add a trend line (Regression) to show the overall 'Cost of Learning'
-		sns.regplot(
-				data=df, x='log_freq', y='zs_align', 
-				scatter=False, color='black', 
-				line_kws={"linestyle": "--", "linewidth": 1.5, "alpha": 0.7}
-		)
+	"""
+	Scatter plot showing Cosine Similarity (Drift) vs. Training Frequency.
+	X-axis: Log of Training Frequency
+	Y-axis: Cosine Similarity with Zero-Shot initialization
+	"""
+	df = pd.read_csv(
+		filepath_or_buffer=csv_path,
+		on_bad_lines='skip',
+		low_memory=False,
+	)
+	print(f"Semantic Drift Analysis: {csv_path}")
+	print(f"df: {type(df)} {df.shape} {list(df.columns)}")
+	print(df.head())
+	
+	# Use log scale for frequency to handle the long tail
+	# np.log1p handles frequency=0 cases safely
+	df['log_freq'] = np.log1p(df['probe_train_freq'])
+	
+	plt.figure(figsize=(8, 6), dpi=300)
+	sns.set_style("whitegrid", {'axes.edgecolor': '.15', 'grid.linestyle': '--'})
+	
+	# 1. Main scatter plot colored by Tier
+	palette = [segment_specs[tier.capitalize()]["color"] for tier in df["tier"].unique()]
+	print(f"palette: {palette}")
+	sns.scatterplot(
+		data=df, 
+		x='log_freq', 
+		y='zs_align', 
+		hue='tier', 
+		palette=palette, 
+		alpha=0.5, 
+		s=40, 
+		edgecolor='none',
+	)
+	
+	# 2. Add a trend line (Regression) to show the overall 'Cost of Learning'
+	sns.regplot(
+		data=df, 
+		x='log_freq', 
+		y='zs_align', 
+		scatter=False, 
+		color='black', 
+		line_kws={"linestyle": "--", "linewidth": 1.5, "alpha": 0.7}
+	)
 
-		# 3. Annotate the most drifted classes (Bottom 5 by zs_align)
-		most_drifted = df.nsmallest(5, 'zs_align')
-		for _, row in most_drifted.iterrows():
-				plt.annotate(
-						row['class'], 
-						(row['log_freq'], row['zs_align']),
-						textcoords="offset points", xytext=(5, -10),
-						fontsize=8, fontweight='bold', alpha=0.8
-				)
-
-		plt.title("Semantic Drift vs. Training Frequency (Probe)", fontsize=14, fontweight='bold', pad=15)
-		plt.xlabel("Training Frequency (log scale)", fontsize=12)
-		plt.ylabel("Alignment with Zero-Shot Initialization", fontsize=12)
-		plt.legend(title="Tier", frameon=True, loc='upper left')
-		
-		# Reference line at 1.0 (Zero-Shot baseline)
-		plt.axhline(1.0, color='gray', linestyle=':', alpha=0.5, label='ZS Baseline')
-		
-		plt.tight_layout()
-		out_path = os.path.join(output_dir, "probe_semantic_drift.pdf")
-		plt.savefig(out_path, bbox_inches='tight')
-		print(f"Drift Analysis saved → {out_path}")
+	# 3. Annotate the most drifted classes (Bottom 5 by zs_align)
+	most_drifted = df.nsmallest(5, 'zs_align')
+	for _, row in most_drifted.iterrows():
+			plt.annotate(
+					row['class'], 
+					(row['log_freq'], row['zs_align']),
+					textcoords="offset points", xytext=(5, -10),
+					fontsize=8, fontweight='bold', alpha=0.8
+			)
+	plt.title("Semantic Drift vs. Training Frequency (Probe)", fontsize=14, fontweight='bold', pad=15)
+	plt.xlabel("Training Frequency (log scale)", fontsize=12)
+	plt.ylabel("Alignment with Zero-Shot Initialization", fontsize=12)
+	plt.legend(title="Tier", frameon=True, loc='upper left')
+	
+	# Reference line at 1.0 (Zero-Shot baseline)
+	plt.axhline(1.0, color='gray', linestyle=':', alpha=0.5, label='ZS Baseline')
+	
+	plt.tight_layout()
+	out_path = os.path.join(output_dir, "probe_semantic_drift.png")
+	plt.savefig(out_path, bbox_inches='tight', dpi=300)
+	plt.close()
+	print(f"Drift Analysis saved → {out_path}")
 
 def plot_score_distribution_kde(
 	results_by_strategy: Dict[str, Dict],
@@ -3541,7 +3523,17 @@ def plot_qualitative_retrieval_i2t(
 	for j, strat in enumerate(strategies):
 		ax_h = fig.add_subplot(gs[0, j + 2])
 		ax_h.axis("off")
-		ax_h.text(0.5, 0.5, _short_strategy_label(strat), ha="center", va="center", fontsize=_TITLE_SIZE, fontweight="bold", color=METHOD_STYLE.get(strat, {"color": "#000000"})["color"], transform=ax_h.transAxes)
+		ax_h.text(
+			0.5, 
+			0.5, 
+			METHOD_STYLE[strat]["label"],
+			ha="center", 
+			va="center", 
+			fontsize=_TITLE_SIZE, 
+			fontweight="bold", 
+			color=METHOD_STYLE.get(strat, {"color": "#000000"})["color"], 
+			transform=ax_h.transAxes
+		)
 	
 	# Content
 	for i, sample_ref in enumerate(ref_i2t):
@@ -3652,12 +3644,13 @@ def plot_qualitative_retrieval_t2i(
 	n_strat = len(strategies)
 	topk = max(1, topk)
 
-	QUERY_W  = 1.5   
-	CELL_W   = 1.5   
-	ROW_H    = 1.5   
+	QUERY_W  = 2.3   
+	CELL_W   = 1.7   
+	ROW_H    = 1.7   
 	HEADER_H = 0.5
-	fig_w = QUERY_W + n_strat * CELL_W + 0.3
-	fig_h = HEADER_H + num_labels * ROW_H * topk + 0.1
+	fig_w = QUERY_W + n_strat * CELL_W + 0.0
+	fig_h = HEADER_H + num_labels * ROW_H * topk + 0.0
+	print(f"fig_w: {fig_w}, fig_h: {fig_h}")
 	fig = plt.figure(figsize=(fig_w, fig_h), dpi=_DPI)
 
 	gs = GridSpec(
@@ -3673,12 +3666,31 @@ def plot_qualitative_retrieval_t2i(
 	
 	ax_corner = fig.add_subplot(gs[0, 0])
 	ax_corner.axis("off")
-	ax_corner.text(0.05, 0.5, "Query Label", ha="left", va="center", fontsize=_ANNO_SIZE, fontweight="bold", transform=ax_corner.transAxes)
+	ax_corner.text(
+		0.05, 
+		0.5, 
+		"Query Label", 
+		ha="left", 
+		va="center", 
+		fontsize=_ANNO_SIZE, 
+		fontweight="bold", 
+		transform=ax_corner.transAxes
+	)
 
 	for j, strat in enumerate(strategies):
 		ax_h = fig.add_subplot(gs[0, j + 1])
 		ax_h.axis("off")
-		ax_h.text(0.5, 0.5, _short_strategy_label(strat), ha="center", va="center", fontsize=_TITLE_SIZE, fontweight="bold", color=METHOD_STYLE.get(strat, {"color": "#000000"})["color"], transform=ax_h.transAxes)
+		ax_h.text(
+			0.5, 
+			0.5, 
+			METHOD_STYLE[strat]["label"], 
+			ha="center", 
+			va="center", 
+			fontsize=_TITLE_SIZE, 
+			fontweight="bold", 
+			color=METHOD_STYLE.get(strat, {"color": "#000000"})["color"], 
+			transform=ax_h.transAxes
+		)
 
 	for i, sample_ref in enumerate(ref_t2i):
 			query_label = sample_ref["query_label"]
@@ -3686,10 +3698,12 @@ def plot_qualitative_retrieval_t2i(
 			ax_q = fig.add_subplot(gs[i + 1, 0])
 			ax_q.axis("off")
 			ax_q.text(
-				0.05, 0.5,
+				0.05, 
+				0.5,
 				query_label,
-				ha="left", va="center",
-				fontsize=max(_LABEL_SIZE, 11),
+				ha="left", 
+				va="center",
+				fontsize=10,
 				fontweight="bold",
 				color="#1A1A2E",
 				wrap=True,
