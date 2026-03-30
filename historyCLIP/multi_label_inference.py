@@ -998,17 +998,19 @@ def _load_models(
 										f"{sub['probe_train_freq'].mean():>12.1f} {zero_freq:>18}")
 					# Save full table
 					drift_csv = os.path.join(
-							os.path.dirname(checkpoint_path),
-							"inference",
-							"probe_drift_analysis.csv"
+						os.path.dirname(checkpoint_path),
+						"inference",
+						"probe_drift_analysis.csv"
 					)
 					df_drift.to_csv(drift_csv, index=False)
 					print(f"\n  Full drift table saved → {drift_csv}")
+					viz.plot_semantic_drift_analysis(
+						csv_path=drift_csv,
+						output_dir=inference_dir,
+					)
 					del zs_full, W_tmp, sim_all
 			except Exception as e:
 					print(f"  [Full drift table failed: {e}]")
-
-
 
 
 		# Use strategy as key — append index if duplicate (e.g. two lora checkpoints)
@@ -1180,19 +1182,38 @@ def run_inference(
 	print(json.dumps(qualitative_results, indent=2, ensure_ascii=False))
 	print("="*100)
 
-	# Two separate plots
+	# Plot I2T qualitative results (only top-K I2T strategies)
 	viz.plot_qualitative_retrieval_i2t(
 		results_by_strategy={s: qualitative_results[s] for s in i2t_strategies if s in qualitative_results},
 		output_dir=inference_dir,
 		topk=i2t_topk,
 		verbose=verbose,
 	)
+
+	# Plot T2I qualitative results (only top-K T2I strategies)
 	viz.plot_qualitative_retrieval_t2i(
 		results_by_strategy={s: qualitative_results[s] for s in t2i_strategies if s in qualitative_results},
 		output_dir=inference_dir,
 		topk=t2i_topk,
 		verbose=verbose,
 	)
+
+	# Plot I2T score distribution (only top-K I2T strategies)
+	viz.plot_score_distribution_kde(
+		results_by_strategy={s: qualitative_results[s] for s in i2t_strategies if s in qualitative_results},
+		output_dir=inference_dir,
+		directions=["i2t"],
+		verbose=verbose,
+	)
+
+	# Plot T2I score distribution (only top-K T2I strategies)
+	viz.plot_score_distribution_kde(
+		results_by_strategy={s: qualitative_results[s] for s in t2i_strategies if s in qualitative_results},
+		output_dir=inference_dir,
+		directions=["t2i"],
+		verbose=verbose,
+	)
+
 	####################################### Qualitative Analysis #######################################
 
 @measure_execution_time

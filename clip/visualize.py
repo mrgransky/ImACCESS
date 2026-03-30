@@ -115,12 +115,6 @@ _TICK_SIZE   = 8
 _ANNO_SIZE   = 10.0
 _DPI         = 300
 
-def _strategy_colors(strategies: List[str]) -> Dict[str, str]:
-	return {
-		s: _STRATEGY_PALETTE[i % len(_STRATEGY_PALETTE)] 
-		for i, s in enumerate(strategies)
-	}
-
 def _set_publication_rc():
 		plt.rcParams.update({
 				"font.family":       _FONT_FAMILY,
@@ -154,9 +148,6 @@ def _short_strategy_label(s: str) -> str:
 				"pretrained":     "Zero-Shot",
 		}
 		return mapping.get(s, s.replace("_", "-").upper())
-
-def _wrap(text: str, width: int = 22) -> str:
-		return "\n".join(textwrap.wrap(text, width))
 
 def _load_image_rgb(path: str) -> Optional[np.ndarray]:
 		try:
@@ -1627,137 +1618,6 @@ def plot_phase_transition_analysis(
 	# Phase effectiveness analysis using advanced metrics
 	if advanced_phase_data:
 		efficiencies = [m['efficiency'] for _, m in advanced_phase_data]
-		convergence_qualities = [m['convergence_quality'] for _, m in advanced_phase_data]
-		stabilities = [m['stability'] for _, m in advanced_phase_data]
-		
-		# Find most effective phase by efficiency
-		most_efficient_idx = np.argmax(efficiencies) if efficiencies else 0
-		least_efficient_idx = np.argmin(efficiencies) if efficiencies else 0
-		most_efficient_phase = f"Phase {advanced_phase_data[most_efficient_idx][0]} ({efficiencies[most_efficient_idx]:.3f}%/epoch)"
-		least_efficient_phase = f"Phase {advanced_phase_data[least_efficient_idx][0]} ({efficiencies[least_efficient_idx]:.3f}%/epoch)"
-		
-		# Find most stable phase
-		most_stable_idx = np.argmax(stabilities) if stabilities else 0
-		most_stable_phase = f"Phase {advanced_phase_data[most_stable_idx][0]} (Stability: {stabilities[most_stable_idx]:.2f})"
-		
-		avg_efficiency = np.mean(efficiencies) if efficiencies else 0
-		avg_convergence = np.mean(convergence_qualities) if convergence_qualities else 0
-	else:
-		most_efficient_phase = "N/A"
-		least_efficient_phase = "N/A"
-		most_stable_phase = "N/A"
-		avg_efficiency = 0
-		avg_convergence = 0
-
-	# Phase transition effectiveness (existing logic)
-	transition_improvements = []
-	for i, t_epoch in enumerate(transitions):
-		if t_epoch > 0 and t_epoch < len(val_losses) - 1:
-			before = val_losses[t_epoch - 1]
-			after = val_losses[t_epoch + 1] if t_epoch + 1 < len(val_losses) else val_losses[t_epoch]
-			improvement = ((before - after) / before * 100) if before > 0 else 0
-			transition_improvements.append(improvement)
-
-	avg_transition_improvement = np.mean(transition_improvements) if transition_improvements else 0
-
-	# Learning rate adaptation analysis
-	lr_changes = []
-	for t_epoch in transitions:
-		if t_epoch > 0 and t_epoch < len(learning_rates):
-			before_lr = learning_rates[t_epoch - 1]
-			after_lr = learning_rates[t_epoch]
-			change = ((after_lr - before_lr) / before_lr * 100) if before_lr > 0 else 0
-			lr_changes.append(change)
-
-	# Training efficiency metrics
-	if total_epochs > 0:
-		total_efficiency = total_improvement / total_epochs
-		time_to_best = (best_epoch + 1) if best_epoch is not None else total_epochs
-		efficiency_to_best = total_improvement / time_to_best if time_to_best > 0 else 0
-	else:
-		total_efficiency = 0
-		efficiency_to_best = 0
-
-	# Best model context
-	best_model_phase = phases[best_epoch] if best_epoch is not None else -1
-	trainable_info_at_best = f"(Phase {best_model_phase})"
-
-	# Generate comprehensive summary
-	summary_text = f"""
-	COMPREHENSIVE TRAINING ANALYSIS:
-
-	OVERALL PERFORMANCE:
-			• Total Epochs: {total_epochs}
-			• Number of Phases: {num_phases}
-			• Final Training Loss: {final_train_loss:.4f}
-			• Final Validation Loss: {final_val_loss:.4f}
-			• Best Validation Loss: {best_val_loss:.4f}
-			• Total Improvement: {total_improvement:.2f}%
-			• Overall Efficiency: {total_efficiency:.3f}% per epoch
-			• Efficiency to Best: {efficiency_to_best:.3f}% per epoch
-			• Training Status: {'Early Stopped' if early_stop_epoch else 'Completed'}
-
-	DIAGNOSTICS:
-			• Loss Divergence (Train vs Val): {loss_divergence:.1f}% {'[OVERFITTING RISK]' if loss_divergence > 20 else '[OK]'}
-			• Performance Delta (Best vs Final): {performance_delta:.1f}% {'[OVERTRAINING RISK]' if performance_delta > 5 else '[OK]'}
-			• Best Model: Epoch {best_epoch + 1 if best_epoch is not None else 'N/A'} {trainable_info_at_best}
-
-	PHASE EFFECTIVENESS ANALYSIS:
-			• Average Learning Efficiency: {avg_efficiency:.3f}% per epoch
-			• Average Convergence Quality (R²): {avg_convergence:.3f}
-			• Most Efficient Phase: {most_efficient_phase}
-			• Least Efficient Phase: {least_efficient_phase}
-			• Most Stable Phase: {most_stable_phase}
-
-	TRANSITION ANALYSIS:
-			• Total Transitions: {len(transitions)}
-			• Average Improvement per Transition: {avg_transition_improvement:.2f}%
-			• Transition Success Rate: {len([x for x in transition_improvements if x > 0])}/{len(transition_improvements)} positive
-
-	HYPERPARAMETER ADAPTATION:
-			• Learning Rate Range: {min(learning_rates):.2e} → {max(learning_rates):.2e}
-			• Weight Decay Range: {min(weight_decays):.2e} → {max(weight_decays):.2e}
-			• LR Reduction Factor: {(learning_rates[0]/learning_rates[-1]):.1f}x
-	"""
-
-	if transitions:
-		summary_text += f"\n    TRANSITION EPOCHS: {transitions}"
-
-	# Detailed phase insights
-	phase_insights = "\n    DETAILED PHASE ANALYSIS:\n"
-	for phase, metrics in advanced_phase_data:
-		phase_insights += (
-			f"    • Phase {phase}: {metrics['duration']} epochs\n"
-			f"      ├─ Efficiency: {metrics['efficiency']:+.3f}%/epoch\n"
-			f"      ├─ Robust Improvement: {metrics['robust_improvement']:+.2f}%\n"
-			f"      ├─ Convergence Quality (R²): {metrics['convergence_quality']:.3f}\n"
-			f"      ├─ Volatility (CV): {metrics['volatility']:.3f}\n"
-			f"      ├─ Early vs Late Learning: {metrics['early_vs_late']:+.2f}%\n"
-			f"      └─ Final Loss: {metrics['final_loss']:.4f}\n\n"
-		)
-
-	summary_text += phase_insights
-
-	print(summary_text)
-
-	# Updated analysis results for return
-	analysis_results = {
-		'total_improvement': total_improvement,
-		'total_efficiency': total_efficiency,
-		'efficiency_to_best': efficiency_to_best,
-		'num_transitions': len(transitions),
-		'most_efficient_phase': advanced_phase_data[most_efficient_idx][0] if advanced_phase_data else 0,
-		'avg_efficiency': avg_efficiency,
-		'avg_convergence_quality': avg_convergence,
-		'transition_improvements': transition_improvements,
-		'transition_success_rate': len([x for x in transition_improvements if x > 0]) / len(transition_improvements) if transition_improvements else 0,
-		'lr_adaptation_factor': learning_rates[0]/learning_rates[-1] if learning_rates[-1] > 0 else 1.0,
-		'loss_divergence': loss_divergence,
-		'performance_delta': performance_delta,
-		'advanced_phase_metrics': {p: m for p, m in advanced_phase_data}
-	}
-
-	return analysis_results
 
 def collect_progressive_training_history(
 		training_losses: List[float],
@@ -3475,6 +3335,157 @@ def plot_retrieval_metrics(
 					print(f"\t{metric}@{k}: {val:.3f}")
 			print("".center(160, "-"))
 
+def plot_semantic_drift_analysis(csv_path: str, output_dir: str):
+		"""
+		Scatter plot showing Cosine Similarity (Drift) vs. Training Frequency.
+		X-axis: Log of Training Frequency
+		Y-axis: Cosine Similarity with Zero-Shot initialization
+		"""
+		df = pd.read_csv(csv_path)
+		
+		# Use log scale for frequency to handle the long tail
+		# np.log1p handles frequency=0 cases safely
+		df['log_freq'] = np.log1p(df['probe_train_freq'])
+		
+		plt.figure(figsize=(8, 6), dpi=300)
+		sns.set_style("whitegrid", {'axes.edgecolor': '.15', 'grid.linestyle': '--'})
+		
+		# 1. Main scatter plot colored by Tier
+		palette = {"head": "#2E7D32", "torso": "#1976D2", "tail": "#C62828"}
+		sns.scatterplot(
+				data=df, x='log_freq', y='zs_align', 
+				hue='tier', palette=palette, 
+				alpha=0.5, s=40, edgecolor='none'
+		)
+		
+		# 2. Add a trend line (Regression) to show the overall 'Cost of Learning'
+		sns.regplot(
+				data=df, x='log_freq', y='zs_align', 
+				scatter=False, color='black', 
+				line_kws={"linestyle": "--", "linewidth": 1.5, "alpha": 0.7}
+		)
+
+		# 3. Annotate the most drifted classes (Bottom 5 by zs_align)
+		most_drifted = df.nsmallest(5, 'zs_align')
+		for _, row in most_drifted.iterrows():
+				plt.annotate(
+						row['class'], 
+						(row['log_freq'], row['zs_align']),
+						textcoords="offset points", xytext=(5, -10),
+						fontsize=8, fontweight='bold', alpha=0.8
+				)
+
+		plt.title("Semantic Drift vs. Training Frequency (Probe)", fontsize=14, fontweight='bold', pad=15)
+		plt.xlabel("Training Frequency (log scale)", fontsize=12)
+		plt.ylabel("Alignment with Zero-Shot Initialization", fontsize=12)
+		plt.legend(title="Tier", frameon=True, loc='upper left')
+		
+		# Reference line at 1.0 (Zero-Shot baseline)
+		plt.axhline(1.0, color='gray', linestyle=':', alpha=0.5, label='ZS Baseline')
+		
+		plt.tight_layout()
+		out_path = os.path.join(output_dir, "probe_semantic_drift.pdf")
+		plt.savefig(out_path, bbox_inches='tight')
+		print(f"Drift Analysis saved → {out_path}")
+
+def plot_score_distribution_kde(
+	results_by_strategy: Dict[str, Dict],
+	output_dir: str,
+	directions: List[str] = ["i2t", "t2i"],
+	figsize: Tuple[float, float] = (8, 6),
+	dpi: int = 300,
+	verbose: bool = False,
+) -> List[str]:
+	"""
+	Generates KDE plots showing score distributions for each strategy.
+	Each direction (I2T/T2I) gets its own figure with all strategies overlaid.
+	
+	Args:
+		results_by_strategy: Dict mapping strategy name to results dict with 'i2t' and 't2i' keys
+		output_dir: Directory to save plots
+		directions: List of directions to plot (default: ["i2t", "t2i"])
+		figsize: Figure size tuple
+		dpi: Resolution for saved figures
+		verbose: Print debug information
+		
+	Returns:
+		List of saved file paths
+	"""
+	_set_publication_rc()
+	os.makedirs(output_dir, exist_ok=True)
+	saved_paths = []
+	
+	for direction in directions:
+		# Filter strategies that have data for this direction
+		valid_strategies = [
+			s for s in results_by_strategy.keys() 
+			if direction in results_by_strategy[s] and len(results_by_strategy[s][direction]) > 0
+		]
+		
+		if not valid_strategies:
+			if verbose:
+				print(f"[{direction.upper()} KDE] No valid strategies found, skipping...")
+			continue
+		
+		# Create single figure for this direction
+		fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+		
+		for strategy in valid_strategies:
+			results = results_by_strategy[strategy]
+			
+			# Extract all scores for this direction
+			all_scores = []
+			for item in results[direction]:
+				all_scores.extend(item['retrieved_scores'])
+			
+			if verbose:
+				print(f"[{direction.upper()}] {strategy}: {len(all_scores)} scores, "
+				      f"range=[{min(all_scores):.3f}, {max(all_scores):.3f}]")
+			
+			# Get styling from METHOD_STYLE
+			method_color = METHOD_STYLE.get(strategy, {}).get("color", "#000000")
+			method_label = METHOD_STYLE.get(strategy, {}).get("label", strategy.upper())
+			
+			# Plot KDE
+			sns.kdeplot(
+				all_scores,
+				ax=ax,
+				fill=True,
+				alpha=0.3,
+				linewidth=2.5,
+				color=method_color,
+				label=method_label,
+			)
+		
+		# Add vertical line at 0
+		ax.axvline(0, color='black', linewidth=1, linestyle='--', alpha=0.4)
+		
+		# Styling
+		direction_label = "Image-to-Text" if direction == "i2t" else "Text-to-Image"
+		ax.set_title(
+			f"{direction_label}: Score Distribution",
+			fontsize=14,
+			fontweight='bold'
+		)
+		ax.set_xlabel("Cosine Similarity", fontsize=12)
+		ax.set_ylabel("Density", fontsize=12)
+		ax.legend(frameon=True, loc='best', fontsize=10)
+		ax.grid(True, alpha=0.2, linestyle='--')
+		sns.despine(ax=ax)
+		
+		plt.tight_layout()
+		
+		# Save figure
+		out_path = os.path.join(output_dir, f"score_distribution_{direction}.png")
+		plt.savefig(out_path, dpi=dpi, bbox_inches='tight')
+		plt.close(fig)
+		saved_paths.append(out_path)
+		
+		if verbose:
+			print(f"[{direction.upper()} KDE] Saved → {out_path}")
+	
+	return saved_paths
+
 def plot_qualitative_retrieval_i2t(
 	results_by_strategy: Dict[str, Dict],
 	output_dir: str,
@@ -3545,7 +3556,7 @@ def plot_qualitative_retrieval_i2t(
 		else:
 			ax_img.set_facecolor("#DDDDDD")
 			ax_img.text(0.5, 0.5, "N/A", ha="center", va="center", transform=ax_img.transAxes)
-            
+						
 		segment = sample_ref.get("segment", "")
 		bc = segment_specs.get(segment.capitalize(), {"color": "#AAAAAA"})["color"]
 		ax_img.text(0.02, 0.97, segment.upper(), ha="left", va="top", fontsize=max(_ANNO_SIZE - 1.5, 5.5), fontweight="bold", color="#ffffff", bbox=dict(boxstyle="round,pad=0.15", facecolor=bc, edgecolor="none", alpha=0.85), transform=ax_img.transAxes)
@@ -3563,18 +3574,18 @@ def plot_qualitative_retrieval_i2t(
 			ax.set_ylim(-0.5, topk - 0.5)
 			ax.invert_yaxis()
 			ax.axis("off")
-            
+						
 			strat_data = results_by_strategy[strat]["i2t"]
 			match = next((s for s in strat_data if s["image_path"] == sample_ref["image_path"]), None)
-            
+						
 			if match is None:
 				ax.text(0.5, 0.5, "–", ha="center", va="center", transform=ax.transAxes)
 				continue
-                
+								
 			labels = match["retrieved_labels"][:topk]
 			for k, lbl in enumerate(labels):
 				hit = lbl in gt_set
-                
+								
 				# Modern Pill-Badge Styling
 				bg_col = "#E8F5E9" if hit else "#FFEBEE"   # Soft green / soft red
 				edge_col = "#4DAC26" if hit else "#F5695F" # Strong green / strong red
@@ -3589,12 +3600,12 @@ def plot_qualitative_retrieval_i2t(
 					color=txt_col,
 					fontweight="bold" if hit else "normal",
 					bbox=dict(
-                        boxstyle="round,pad=0.3", 
-                        facecolor=bg_col, 
-                        edgecolor=edge_col, 
-                        linewidth=1.2,
-                        alpha=0.9
-                    ),
+												boxstyle="round,pad=0.3", 
+												facecolor=bg_col, 
+												edgecolor=edge_col, 
+												linewidth=1.2,
+												alpha=0.9
+										),
 				)
 			ax.axvline(0, color="#DDDDDD", linewidth=1.0) # Softened the divider line
 
@@ -3702,7 +3713,7 @@ def plot_qualitative_retrieval_t2i(
 					for spine in ax.spines.values():
 						spine.set_visible(False)
 					continue
-                    
+										
 				img_path = match["retrieved_paths"][0]
 				img_arr = _load_image_rgb(img_path)
 				
