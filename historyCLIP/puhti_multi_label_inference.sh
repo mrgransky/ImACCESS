@@ -50,6 +50,5 @@ python -u multi_label_inference.py \
 	--model_architecture "ViT-L/14@336px" \
 	--verbose
 
-
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

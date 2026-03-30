@@ -3489,15 +3489,15 @@ def plot_qualitative_retrieval_i2t(
 	
 	n_strat = len(strategies)
 	
-	# Figure dimensions
 	IMG_COL_W  = 1.5   
-	GT_COL_W   = 1.8   # Made slightly wider for cleaner text wrapping
-	CELL_W     = 2.2   # Slightly narrower since we removed the bars/scores
 	ROW_H      = 1.5   
+	GT_COL_W   = 2.0   # Made slightly wider for cleaner text wrapping
+	CELL_W     = 2.5
 	HEADER_H   = 0.5  
 	
 	fig_w = IMG_COL_W + GT_COL_W + n_strat * CELL_W
 	fig_h = HEADER_H + num_images * ROW_H
+	print(f"fig_w: {fig_w}, fig_h: {fig_h}")
 	fig = plt.figure(figsize=(fig_w, fig_h), dpi=_DPI)
 	
 	gs = GridSpec(
@@ -3584,20 +3584,21 @@ def plot_qualitative_retrieval_i2t(
 				txt_col = "#1A5C10" if hit else "#8B1A0D"  # Dark green / dark red text
 				
 				ax.text(
-					0.05, k,
-					lbl, # Removed score, just showing the word
+					0.05, 
+					k,
+					lbl,
 					ha="left", 
 					va="center",
-					fontsize=max(_ANNO_SIZE, 7.5),
+					fontsize=9.0,
 					color=txt_col,
 					fontweight="bold" if hit else "normal",
 					bbox=dict(
-												boxstyle="round,pad=0.3", 
-												facecolor=bg_col, 
-												edgecolor=edge_col, 
-												linewidth=1.2,
-												alpha=0.9
-										),
+						boxstyle="round,pad=0.3", 
+						facecolor=bg_col, 
+						edgecolor=edge_col, 
+						linewidth=1.2,
+						alpha=0.9
+					),
 				)
 			ax.axvline(0, color="#DDDDDD", linewidth=1.0) # Softened the divider line
 
