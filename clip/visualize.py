@@ -3482,110 +3482,61 @@ def plot_qualitative_retrieval_i2t(
 	verbose: bool = False,
 ) -> str:
 	"""
-	I2T qualitative figure.
-	Parameters
-	----------
-	results_by_strategy : {strategy_name: {"i2t": [...], "t2i": [...]}}
-					Output of run_qualitative_retrieval, filtered to top-K strategies.
-	output_dir : str
-	topk : int
-					Number of predicted labels displayed per cell.
-	verbose : bool
-	Returns
-	-------
-	str  Path to saved figure.
+	I2T qualitative figure - Publication Ready.
 	"""
-	# if verbose:
-	# 	print(f"plot_qualitative_retrieval_i2t: {topk}")
-	# 	print(json.dumps(results_by_strategy, indent=2, ensure_ascii=False))
-
 	_set_publication_rc()
 	strategies = list(results_by_strategy.keys())
 	if not strategies:
-		print("[plot_qualitative_retrieval_i2t] No strategies provided — skipping.")
 		return ""
 
-	# Collect i2t samples from first strategy (all strategies share the same queries)
 	ref_i2t = results_by_strategy[strategies[0]]["i2t"]
 	num_images = len(ref_i2t)
 	if num_images == 0:
-			print("[plot_qualitative_retrieval_i2t] No I2T samples — skipping.")
-			return ""
+		return ""
+	
 	n_strat = len(strategies)
 	
 	# Figure dimensions
-	IMG_COL_W  = 1.5   # inches — query image column
-	GT_COL_W   = 1.5   # inches — ground truth text column
-	CELL_W     = 2.7   # inches — per strategy column
-	ROW_H      = 1.5   # inches — per image row
-	HEADER_H   = 0.5  # inches — strategy header row
+	IMG_COL_W  = 1.5   
+	GT_COL_W   = 1.8   # Made slightly wider for cleaner text wrapping
+	CELL_W     = 2.2   # Slightly narrower since we removed the bars/scores
+	ROW_H      = 1.5   
+	HEADER_H   = 0.5  
 	
-	# Calculate total width with the extra column
-	fig_w = IMG_COL_W + GT_COL_W + n_strat * CELL_W + 0.0
-	fig_h = HEADER_H + num_images * ROW_H + 0.0
+	fig_w = IMG_COL_W + GT_COL_W + n_strat * CELL_W
+	fig_h = HEADER_H + num_images * ROW_H
 	fig = plt.figure(figsize=(fig_w, fig_h), dpi=_DPI)
 	
-	# GridSpec: 1 header row + num_images content rows
-	#           1 img col + 1 gt col + n_strat strategy cols
 	gs = GridSpec(
 		nrows=num_images + 1,
-		ncols=n_strat + 2,  # Increased columns by 1
+		ncols=n_strat + 2,
 		figure=fig,
 		left=0.01, right=0.99,
-		top=0.97,  bottom=0.02,
-		hspace=0.08,
-		wspace=0.05,
+		top=0.97,  bottom=0.05,  # Added bottom margin for legend
+		hspace=0.08, wspace=0.05,
 		height_ratios=[HEADER_H / ROW_H] + [1.0] * num_images,
 		width_ratios=[IMG_COL_W / CELL_W, GT_COL_W / CELL_W] + [1.0] * n_strat,
 	)
-	# Header row		
-	# Col 0: Query Image Header
+	
+	# Headers
 	ax_h_img = fig.add_subplot(gs[0, 0])
 	ax_h_img.axis("off")
-	ax_h_img.text(
-			0.5, 
-			0.5,
-			"Query Image",
-			ha="center", va="center",
-			fontweight="bold",
-			fontsize=_ANNO_SIZE,
-			transform=ax_h_img.transAxes,
-	)
-	# Col 1: Ground-Truth Header
+	ax_h_img.text(0.5, 0.5, "Query Image", ha="center", va="center", fontweight="bold", fontsize=_ANNO_SIZE, transform=ax_h_img.transAxes)
+	
 	ax_h_gt = fig.add_subplot(gs[0, 1])
 	ax_h_gt.axis("off")
-	ax_h_gt.text(
-		0.5, 
-		0.5,
-		"Ground-Truth",
-		ha="center", 
-		va="center",
-		fontweight="bold",
-		fontsize=_ANNO_SIZE,
-		transform=ax_h_gt.transAxes,
-	)
-	# Strategy column headers (start at col 2)
+	ax_h_gt.text(0.5, 0.5, "Ground-Truth", ha="center", va="center", fontweight="bold", fontsize=_ANNO_SIZE, transform=ax_h_gt.transAxes)
+	
 	for j, strat in enumerate(strategies):
 		ax_h = fig.add_subplot(gs[0, j + 2])
 		ax_h.axis("off")
-		label = _short_strategy_label(strat)
-		ax_h.text(
-			0.5, 
-			0.5, 
-			label,
-			ha="center", 
-			va="center",
-			fontsize=_TITLE_SIZE,
-			fontweight="bold",
-			color=METHOD_STYLE.get(strat, {"color": "#000000"})["color"],
-			transform=ax_h.transAxes,
-		)
+		ax_h.text(0.5, 0.5, _short_strategy_label(strat), ha="center", va="center", fontsize=_TITLE_SIZE, fontweight="bold", color=METHOD_STYLE.get(strat, {"color": "#000000"})["color"], transform=ax_h.transAxes)
 	
-	# Content rows
+	# Content
 	for i, sample_ref in enumerate(ref_i2t):
 		gt_set = set(sample_ref["ground_truth"])
 
-		# Column 0: Image Thumbnail
+		# 1. Image
 		ax_img = fig.add_subplot(gs[i + 1, 0])
 		ax_img.axis("off")
 		img_arr = _load_image_rgb(sample_ref["image_path"])
@@ -3593,125 +3544,72 @@ def plot_qualitative_retrieval_i2t(
 			ax_img.imshow(img_arr, aspect="auto")
 		else:
 			ax_img.set_facecolor("#DDDDDD")
-			ax_img.text(
-				0.5, 
-				0.5, 
-				"N/A", 
-				ha="center", 
-				va="center",
-				fontsize=_ANNO_SIZE, 
-				transform=ax_img.transAxes
-			)
-		# Segment badge (head / torso / tail) - stays on image
+			ax_img.text(0.5, 0.5, "N/A", ha="center", va="center", transform=ax_img.transAxes)
+            
 		segment = sample_ref.get("segment", "")
 		bc = segment_specs.get(segment.capitalize(), {"color": "#AAAAAA"})["color"]
-		ax_img.text(
-			0.02, 
-			0.97, 
-			segment.upper(),
-			ha="left", 
-			va="top",
-			fontsize=max(_ANNO_SIZE - 1.5, 5.5),
-			fontweight="bold",
-			color="#ffffff",
-			bbox=dict(boxstyle="round,pad=0.15", facecolor=bc, edgecolor="none", alpha=0.85),
-			transform=ax_img.transAxes,
-		)
+		ax_img.text(0.02, 0.97, segment.upper(), ha="left", va="top", fontsize=max(_ANNO_SIZE - 1.5, 5.5), fontweight="bold", color="#ffffff", bbox=dict(boxstyle="round,pad=0.15", facecolor=bc, edgecolor="none", alpha=0.85), transform=ax_img.transAxes)
 		
-		# Column 1: Ground-Truth
+		# 2. Ground Truth
 		ax_gt = fig.add_subplot(gs[i + 1, 1])
 		ax_gt.axis("off")
+		gt_text = "\n".join(lb for lb in sample_ref["ground_truth"])
+		ax_gt.text(0.05, 0.5, gt_text, ha="left", va="center", fontsize=max(_ANNO_SIZE - 1, 6), color="#141212", transform=ax_gt.transAxes)
 		
-		gt_labels = sample_ref["ground_truth"]
-		gt_text   = "\n".join(lb for lb in gt_labels)
-		
-		ax_gt.text(
-			0.05,
-			0.5,
-			gt_text,
-			ha="left", 
-			va="center",
-			fontsize=max(_ANNO_SIZE - 1, 6),
-			color="#141212",
-			transform=ax_gt.transAxes,
-		)
-		# Strategy cells (start at col 2)
+		# 3. Strategy Cells
 		for j, strat in enumerate(strategies):
 			ax = fig.add_subplot(gs[i + 1, j + 2])
 			ax.set_xlim(0, 1)
 			ax.set_ylim(-0.5, topk - 0.5)
 			ax.invert_yaxis()
 			ax.axis("off")
+            
 			strat_data = results_by_strategy[strat]["i2t"]
-			# Match by image path
-			match = next(
-				(s for s in strat_data if s["image_path"] == sample_ref["image_path"]),
-				None,
-			)
+			match = next((s for s in strat_data if s["image_path"] == sample_ref["image_path"]), None)
+            
 			if match is None:
-				ax.text(
-					0.5,
-					0.5, 
-					"–", 
-					ha="center", 
-					va="center",
-					fontsize=_ANNO_SIZE, 
-					transform=ax.transAxes
-				)
+				ax.text(0.5, 0.5, "–", ha="center", va="center", transform=ax.transAxes)
 				continue
+                
 			labels = match["retrieved_labels"][:topk]
-			scores = match["retrieved_scores"][:topk]
-			for k, (lbl, score) in enumerate(zip(labels, scores)):
-				hit     = lbl in gt_set
-				bar_col = "#4DAC26" if hit else "#F5695F"   # green=hit, red=miss
-				txt_col = "#1A5C10" if hit else "#8B1A0D"
+			for k, lbl in enumerate(labels):
+				hit = lbl in gt_set
+                
+				# Modern Pill-Badge Styling
+				bg_col = "#E8F5E9" if hit else "#FFEBEE"   # Soft green / soft red
+				edge_col = "#4DAC26" if hit else "#F5695F" # Strong green / strong red
+				txt_col = "#1A5C10" if hit else "#8B1A0D"  # Dark green / dark red text
 				
-				# Horizontal score bar
-				ax.barh(
-					k, 
-					score,
-					color=bar_col, 
-					alpha=0.75,
-					height=0.45,
-					left=0,
-					linewidth=0,
-				)
-				# Label text (clipped to cell)
 				ax.text(
-					0.01, 
-					k,
-					f"{lbl} ({score:.3f})",
+					0.05, k,
+					lbl, # Removed score, just showing the word
 					ha="left", 
 					va="center",
-					fontsize=max(_ANNO_SIZE - 1, 6),
-					# color=txt_col,
-					color="#121020",
+					fontsize=max(_ANNO_SIZE, 7.5),
+					color=txt_col,
 					fontweight="bold" if hit else "normal",
-					clip_on=True,
+					bbox=dict(
+                        boxstyle="round,pad=0.3", 
+                        facecolor=bg_col, 
+                        edgecolor=edge_col, 
+                        linewidth=1.2,
+                        alpha=0.9
+                    ),
 				)
-			# Thin separator line between cells
-			ax.axvline(0, color="#46449B", linewidth=0.5, alpha=0.5)
+			ax.axvline(0, color="#DDDDDD", linewidth=1.0) # Softened the divider line
 
 	# Legend
-	hit_patch = Patch(color="#4DAC26", alpha=0.8, label="Correct label (hit)")
-	miss_patch = Patch(color="#D6604D", alpha=0.8, label="Incorrect label (miss)")
+	hit_patch = Patch(color="#E8F5E9", ec="#4DAC26", lw=1.5, label="Correct label (hit)")
+	miss_patch = Patch(color="#FFEBEE", ec="#F5695F", lw=1.5, label="Incorrect label (miss)")
 	fig.legend(
 			handles=[hit_patch, miss_patch],
 			loc="lower center",
 			ncol=2,
 			fontsize=_TICK_SIZE,
-			frameon=True,
-			framealpha=0.9,
-			edgecolor="#CCCCCC",
-			bbox_to_anchor=(0.5, 0.0),
+			frameon=False,
+			bbox_to_anchor=(0.5, -0.01),
 	)
 
-	# fig.suptitle(
-	# 		f"I2T Qualitative Top-{topk} Retrieval — Tail Distribution",
-	# 		fontsize=_TITLE_SIZE + 0.5,
-	# 		fontweight="bold",
-	# 		y=0.995,
-	# )
 	fname = os.path.join(output_dir, f"qualitative_i2t_tail.png")
 	fig.savefig(fname, dpi=_DPI, bbox_inches="tight")
 	plt.close(fig)
@@ -3728,46 +3626,27 @@ def plot_qualitative_retrieval_t2i(
 	verbose: bool = False,
 ) -> str:
 	"""
-	T2I qualitative figure.
-	Parameters
-	----------
-	results_by_strategy : {strategy_name: {"i2t": [...], "t2i": [...]}}
-	output_dir : str
-	topk : int
-		Number of retrieved images shown per cell (usually 1).
-	verbose : bool
-	Returns
-	-------
-	str  Path to saved figure.
+	T2I qualitative figure - Publication Ready.
 	"""
-	# if verbose:
-	# 	print(f"plot_qualitative_retrieval_t2i: {topk}")
-	# 	print(json.dumps(results_by_strategy, indent=2, ensure_ascii=False))
-
 	_set_publication_rc()
 	strategies = list(results_by_strategy.keys())
 	if not strategies:
-		print("[plot_qualitative_retrieval_t2i] No strategies provided — skipping.")
 		return ""
 	ref_t2i = results_by_strategy[strategies[0]]["t2i"]
 	
 	num_labels = len(ref_t2i)
 	if num_labels == 0:
-		print("[plot_qualitative_retrieval_t2i] No T2I samples — skipping.")
 		return ""
 	
 	n_strat = len(strategies)
-	
-	# For topk>1 we stack images vertically within a cell; keep topk=1 default
 	topk = max(1, topk)
 
-	# Figure dimensions
-	QUERY_W  = 1.5   # inches — query label column
-	CELL_W   = 1.5   # inches — per strategy  (image thumbnail)
-	ROW_H    = 1.5   # inches — per query label row
+	QUERY_W  = 1.5   
+	CELL_W   = 1.5   
+	ROW_H    = 1.5   
 	HEADER_H = 0.5
 	fig_w = QUERY_W + n_strat * CELL_W + 0.3
-	fig_h = HEADER_H + num_labels * ROW_H * topk + 0.4
+	fig_h = HEADER_H + num_labels * ROW_H * topk + 0.1
 	fig = plt.figure(figsize=(fig_w, fig_h), dpi=_DPI)
 
 	gs = GridSpec(
@@ -3776,133 +3655,75 @@ def plot_qualitative_retrieval_t2i(
 		figure=fig,
 		left=0.01, right=0.99,
 		top=0.97,  bottom=0.02,
-		hspace=0.06,
-		wspace=0.04,
+		hspace=0.08, wspace=0.06,
 		height_ratios=[HEADER_H / ROW_H] + [1.0] * num_labels,
 		width_ratios=[QUERY_W / CELL_W] + [1.0] * n_strat,
 	)
-	# Header row
+	
 	ax_corner = fig.add_subplot(gs[0, 0])
 	ax_corner.axis("off")
-	ax_corner.text(
-		0.05, 
-		0.5, 
-		"Query Label",
-		ha="left", 
-		va="center",
-		fontsize=_ANNO_SIZE, 
-		style="oblique",
-		transform=ax_corner.transAxes,
-	)
+	ax_corner.text(0.05, 0.5, "Query Label", ha="left", va="center", fontsize=_ANNO_SIZE, fontweight="bold", transform=ax_corner.transAxes)
 
 	for j, strat in enumerate(strategies):
 		ax_h = fig.add_subplot(gs[0, j + 1])
 		ax_h.axis("off")
-		label = _short_strategy_label(strat)
-		ax_h.text(
-			0.5, 
-			0.5, 
-			label,
-			ha="center", 
-			va="center",
-			fontsize=_TITLE_SIZE,
-			fontweight="bold",
-			color=METHOD_STYLE.get(strat, {"color": "#000000"})["color"],
-			transform=ax_h.transAxes,
-		)
+		ax_h.text(0.5, 0.5, _short_strategy_label(strat), ha="center", va="center", fontsize=_TITLE_SIZE, fontweight="bold", color=METHOD_STYLE.get(strat, {"color": "#000000"})["color"], transform=ax_h.transAxes)
 
-	# Content rows
 	for i, sample_ref in enumerate(ref_t2i):
 			query_label = sample_ref["query_label"]
-			# -- Query label column
+			
 			ax_q = fig.add_subplot(gs[i + 1, 0])
 			ax_q.axis("off")
 			ax_q.text(
-				0.05, 
-				0.1,
+				0.05, 0.5,
 				query_label,
-				ha="left", 
-				va="center",
-				fontsize=_LABEL_SIZE,
+				ha="left", va="center",
+				fontsize=max(_LABEL_SIZE, 11),
 				fontweight="bold",
 				color="#1A1A2E",
 				wrap=True,
 				transform=ax_q.transAxes,
 			)
 
-			# Strategy cells
 			for j, strat in enumerate(strategies):
 				ax = fig.add_subplot(gs[i + 1, j + 1])
-				ax.axis("off")
+				
+				# Remove axes ticks but keep the spines for the colored border
+				ax.set_xticks([])
+				ax.set_yticks([])
+				
 				strat_data = results_by_strategy[strat]["t2i"]
-				match = next(
-					(s for s in strat_data if s["query_label"] == query_label),
-					None,
-				)
+				match = next((s for s in strat_data if s["query_label"] == query_label), None)
+				
 				if match is None or not match["retrieved_paths"]:
 					ax.set_facecolor("#EEEEEE")
-					ax.text(
-						0.5, 
-						0.5, 
-						"–", 
-						ha="center", 
-						va="center",
-						fontsize=_ANNO_SIZE, 
-						transform=ax.transAxes
-					)
+					ax.text(0.5, 0.5, "–", ha="center", va="center", transform=ax.transAxes)
+					# Hide spines for empty cells
+					for spine in ax.spines.values():
+						spine.set_visible(False)
 					continue
-				# Show top-1 image (topk=1 default)
+                    
 				img_path = match["retrieved_paths"][0]
-				score = match["retrieved_scores"][0]
 				img_arr = _load_image_rgb(img_path)
+				
 				if img_arr is not None:
 					ax.imshow(img_arr, aspect="auto")
 				else:
 					ax.set_facecolor("#DDDDDD")
-					ax.text(
-						0.5, 
-						0.6, 
-						"N/A", 
-						ha="center", 
-						va="center",
-						fontsize=_ANNO_SIZE, 
-						transform=ax.transAxes
-					)
+					ax.text(0.5, 0.5, "Image N/A", ha="center", va="center", transform=ax.transAxes)
 
-				# Score badge at bottom-right
-				ax.text(
-					0.97, 
-					0.03,
-					f"{score:.3f}",
-					ha="right", 
-					va="bottom",
-					fontsize=max(_ANNO_SIZE - 1, 6),
-					color="white",
-					fontweight="bold",
-					bbox=dict(
-						boxstyle="round,pad=0.18",
-						facecolor=METHOD_STYLE.get(strat, {"color": "#000000"})["color"],
-						edgecolor="none",
-						alpha=0.95,
-					),
-					transform=ax.transAxes,
-				)
+				# Apply colored strategy border, slightly thicker to make it pop
+				for spine in ax.spines.values():
+					spine.set_visible(True)
+					spine.set_color(METHOD_STYLE.get(strat, {"color": "#000000"})["color"])
+					spine.set_linewidth(2.0)
 
-				# Coloured border around cell using strategy colour
-				for spine in ["top", "bottom", "left", "right"]:
-					ax.spines[spine].set_visible(True)
-					ax.spines[spine].set_color(METHOD_STYLE.get(strat, {"color": "#000000"})["color"])
-					ax.spines[spine].set_linewidth(1.2)
+				# REMOVED: the bottom right score badge. Let the image speak for itself.
 
-	# fig.suptitle(
-	# 	f"T2I Qualitative Top-{topk} Retrieval — Tail Distribution",
-	# 	fontsize=_TITLE_SIZE + 0.5,
-	# 	fontweight="bold",
-	# 	y=0.995,
-	# )
 	out_fname = os.path.join(output_dir, f"qualitative_t2i_tail.png")
 	fig.savefig(out_fname, dpi=_DPI, bbox_inches="tight")
 	plt.close(fig)
+	
 	if verbose:
 		print(f"[T2I qualitative] Saved → {out_fname}")
 	

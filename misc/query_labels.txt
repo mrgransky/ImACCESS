@@ -300,7 +300,6 @@ reservoir
 refugees
 president
 locomotive
-captain
 ussr
 banishment
 landmine

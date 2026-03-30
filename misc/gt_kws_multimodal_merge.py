@@ -102,9 +102,10 @@ def merge_csv_files(
 	canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
 	print(f">> canonical_labels: {type(canonical_labels)} {len(canonical_labels)}")
 
-	# ========== Parallel mapping ==========
+	# Parallel mapping
 	chunksize = max(1, len(df) // (num_workers * 4))  # 4 chunks per worker
-	print(f"Mapping {len(df)} multimodal labels to canonical labels using {num_workers} cores with chunks: {chunksize}")
+	print(f"Mapping {len(df)} samples to their corresponding canonical labels")
+	print(f"num_workers: {num_workers} chunksize: {chunksize}")
 	with multiprocessing.Pool(
 		processes=num_workers,
 		initializer=init_worker_canonical, # Called ONCE per worker
@@ -116,7 +117,7 @@ def merge_csv_files(
 			chunksize=chunksize
 		)
 
-	# ✅ Filter out samples with no valid canonical labels
+	# Filter out samples with no valid canonical labels
 	before_count = len(df)
 	df = df[df['multimodal_canonical_labels'].apply(len) > 0].copy()
 	after_count = len(df)
@@ -136,7 +137,6 @@ def merge_csv_files(
 		print(f"     Median: {label_counts.median():.0f}")
 		print(f"     Min: {label_counts.min()}")
 		print(f"     Max: {label_counts.max()}")
-
 
 	# DEDUPLICATION: Remove duplicate canonical labels
 	if verbose:

@@ -462,7 +462,7 @@ def get_top_k_strategies(
 	top_k: int = 5,
 	distribution: str = "rare", # overall, head, rare
 	metric_key: str = "mAP", # mAP, Recall
-	k_value: str = "10",
+	k_value: int = 10,
 	mode: str = "i2t", # "i2t" or "t2i"
 ) -> Tuple[List[str], List[str]]:
 	if not os.path.exists(results_json_path):
@@ -470,20 +470,24 @@ def get_top_k_strategies(
 		return [], []
 	with open(results_json_path) as f:
 		all_results = json.load(f)
+
 	direction = mode.lower()   # "i2t" or "t2i"
 	scores = {}
 	print(f"\n>> Ranking {len(all_results)} strategies — {direction.upper()} {distribution} {metric_key}@{k_value}")
 	for strategy, metrics in all_results.items():
 		try:
-			scores[strategy] = metrics[direction][distribution][metric_key][k_value]
+			scores[strategy] = metrics[direction][distribution][metric_key][str(k_value)]
 		except KeyError:
 			scores[strategy] = -1.0
+	
 	sorted_strategies = sorted(scores, key=scores.get, reverse=True)[:top_k]
 	print(f"\nTop-{len(sorted_strategies)} ({direction.upper()} {distribution}):")
 	for i, s in enumerate(sorted_strategies):
-			print(f"  {i+1}. {s:<20} ({metric_key}@{k_value}: {scores[s]:.4f})")
+		print(f"  {i+1}. {s:<20} ({metric_key}@{k_value}: {scores[s]:.4f})")
 	print("-" * 60)
+
 	pth_dir = os.path.dirname(results_json_path)
+
 	checkpoints = []
 	
 	for strategy in sorted_strategies:
@@ -517,6 +521,7 @@ def run_qualitative_retrieval(
 	probe_train_freq: Optional[dict] = None,
 	text_batch_size: int = 256,   # chunk size for text encoding
 	image_batch_size: int = 32,   # chunk size for image encoding
+	verbose: bool = False,
 ) -> Dict:
 
 	model.eval()
@@ -612,41 +617,36 @@ def run_qualitative_retrieval(
 	# T2I loop
 	t2i_results = []
 	for query_label in t2i_samples:
-			if is_probe:
-					if query_label in label_to_embed_idx:
-							idx = label_to_embed_idx[query_label]
-							txt_embed = all_text_embeds_active[idx].unsqueeze(0)  # [1, D] already normalised
-					else:
-							# query_label is a zero-freq class — W row exists but was never trained.
-							# Options: (a) skip, (b) fall back to frozen text encoder with a warning.
-							# Option (b) is more informative for the qualitative figure:
-							print(f"  [probe T2I] '{query_label}' not in active vocab — falling back to ZS text encoder")
-							with torch.no_grad():
-									token = clip.tokenize([query_label], truncate=True).to(device)
-									txt_embed = torch.nn.functional.normalize(
-											model.clip_model.encode_text(token).float(), dim=-1
-									).cpu()
+		if is_probe:
+			if query_label in label_to_embed_idx:
+				idx = label_to_embed_idx[query_label]
+				txt_embed = all_text_embeds_active[idx].unsqueeze(0)  # [1, D] already normalised
 			else:
-					with torch.no_grad():
-							token = clip.tokenize([query_label], truncate=True).to(device)
-							txt_embed = torch.nn.functional.normalize(
-									model.encode_text(token).float(), dim=-1
-							).cpu()
+				# query_label is a zero-freq class — W row exists but was never trained.
+				# Options: (a) skip, (b) fall back to frozen text encoder with a warning.
+				# Option (b) is more informative for the qualitative figure:
+				print(f"  [probe T2I] '{query_label}' not in active vocab — falling back to ZS text encoder")
+				with torch.no_grad():
+					token = clip.tokenize([query_label], truncate=True).to(device)
+					txt_embed = torch.nn.functional.normalize(model.clip_model.encode_text(token).float(), dim=-1).cpu()
+		else:
+			with torch.no_grad():
+				token = clip.tokenize([query_label], truncate=True).to(device)
+				txt_embed = torch.nn.functional.normalize(model.encode_text(token).float(), dim=-1).cpu()
+		sims     = (txt_embed @ all_img_embeds.T).squeeze(0)
+		topk_idx = sims.topk(t2i_topk).indices.tolist()
+		t2i_results.append(
+			{
+				'query_label':      query_label,
+				'retrieved_paths':  [all_val_image_paths[j] for j in topk_idx],
+				'retrieved_scores': [sims[j].item() for j in topk_idx],
+			}
+		)
 
-			sims     = (txt_embed @ all_img_embeds.T).squeeze(0)
-			topk_idx = sims.topk(t2i_topk).indices.tolist()
-			t2i_results.append({
-					'query_label':      query_label,
-					'retrieved_paths':  [all_val_image_paths[j] for j in topk_idx],
-					'retrieved_scores': [sims[j].item() for j in topk_idx],
-			})
 
-
-
-
-
-
-
+	if verbose:
+		print(f"i2t_results: {len(i2t_results)}")
+		print(f"t2i_results: {len(t2i_results)}")
 
 	return {'i2t': i2t_results, 't2i': t2i_results}
 
@@ -1108,21 +1108,23 @@ def run_inference(
 		validation_loader.dataset.data_frame['img_path'].tolist()
 	)
 
-	# Separate top-K selection per direction
+	# Separate top-K strategies selection I2T
 	i2t_strategies, i2t_checkpoints = get_top_k_strategies(
 		results_json_path,
 		top_k=3,
 		distribution="rare",
 		metric_key="mAP", 
-		k_value="10", 
+		k_value=i2t_topk,
 		mode="i2t",
 	)
+
+	# Separate top-K strategies selection T2I
 	t2i_strategies, t2i_checkpoints = get_top_k_strategies(
 		results_json_path, 
 		top_k=3,
 		distribution="rare",
 		metric_key="mAP",
-		k_value="10",
+		k_value=t2i_topk,
 		mode="t2i",
 	)
 
@@ -1167,14 +1169,15 @@ def run_inference(
 			probe_train_freq=probe_train_freq,
 			text_batch_size=128, # tune down to 128 if ViT-L/14@336px still OOMs
 			image_batch_size=16, # tune down to 16 for 32GB GPUs under memory pressure
+			verbose=verbose,
 		)
 
 		del ft_model, model_dict
 		torch.cuda.empty_cache()
 
 	print("="*100)
-	print("qualitative_results:")
-	print(json.dumps(qualitative_results, indent=4, ensure_ascii=False))
+	print(f"{len(qualitative_results)} Qualitative Results:")
+	print(json.dumps(qualitative_results, indent=2, ensure_ascii=False))
 	print("="*100)
 
 	# Two separate plots
@@ -1191,7 +1194,6 @@ def run_inference(
 		verbose=verbose,
 	)
 	####################################### Qualitative Analysis #######################################
-
 
 @measure_execution_time
 def main():

@@ -3777,10 +3777,17 @@ def plot_year_distribution(
 	mean_year = year_series.mean()
 	median_year = year_series.median()
 	std_year = year_series.std()
+
 	# Calculate 95% confidence interval for the mean
 	confidence_level = 0.95
 	n = len(year_series)
-	mean_conf_interval = stats.t.interval(confidence_level, df=n-1, loc=mean_year, scale=stats.sem(year_series))
+	mean_conf_interval = scipy.stats.t.interval(
+		confidence_level, 
+		df=n-1, 
+		loc=mean_year, 
+		scale=scipy.stats.sem(year_series)
+	)
+
 	# Get the overall shape of the distribution
 	distribution_skew = year_series.skew()
 	distribution_kurtosis = year_series.kurtosis()
@@ -3799,6 +3806,7 @@ def plot_year_distribution(
 		linewidth=1.5,
 		label="Temporal Distribution Histogram"
 	)
+
 	# Create the KDE object and adjust bandwidth to match Seaborn's default behavior
 	kde = scipy.stats.gaussian_kde(year_series, bw_method='scott')  # Use 'scott' or 'silverman', or a custom value
 	x_range = np.linspace(start_year, end_year, 300)
