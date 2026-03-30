@@ -1,18 +1,18 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=inference_multi_label
+#SBATCH --job-name=inference_multi_label_new
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
+#SBATCH --cpus-per-task=8
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1
-#SBATCH --mem=96G
-#SBATCH --time=00-08:00:00
-####SBATCH --begin=05:00:00
+#SBATCH --mem=77G
+#SBATCH --time=00-05:00:00
+#SBATCH --begin=09:00:00
 #SBATCH --array=0
 
 set -euo pipefail
@@ -50,7 +50,6 @@ python -u multi_label_inference.py \
 	--num_workers $SLURM_CPUS_PER_TASK \
 	--model_architecture "ViT-L/14@336px" \
 	--verbose
-
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

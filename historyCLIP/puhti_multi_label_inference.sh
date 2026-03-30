@@ -1,18 +1,19 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=inference_h4_multi_label
+#SBATCH --job-name=inference_h4_multi_label_new
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=96G
+#SBATCH --mem=77G
 #SBATCH --partition=gpu
-#SBATCH --time=00-08:00:00
+#SBATCH --time=00-05:00:00
 #SBATCH --array=0
 #SBATCH --gres=gpu:v100:1
+#SBATCH --begin=09:00:00
 
 set -euo pipefail
 
@@ -39,7 +40,7 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
-path_files_dir=${DATASETS[$SLURM_ARRAY_TASK_ID]}/multi_label_old
+path_files_dir=${DATASETS[$SLURM_ARRAY_TASK_ID]}/multi_label
 
 echo "Processing: ${path_files_dir}"
 
