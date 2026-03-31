@@ -389,6 +389,124 @@ def _load_checkpoint_into_model(
 	return model
 
 def get_tail_only_samples(
+    metadata_val_path: str,
+    col: str,
+    num_samples: int = 5,
+    seed: int = 42,
+) -> Tuple[List[Dict], List[str]]:
+
+    local_rng = random.Random(seed)
+
+    # ── Full dataset frequency (canonical vocabulary, all 4667 labels) ───
+    full_meta_path = metadata_val_path.replace('_val.csv', '.csv')
+    print(f"Computing label frequencies from full dataset: {full_meta_path}")
+
+    all_labels_full = []
+    for _, row in pd.read_csv(
+        full_meta_path, on_bad_lines='skip', low_memory=False
+    ).iterrows():
+        try:
+            all_labels_full.extend(ast.literal_eval(row[col]))
+        except Exception:
+            continue
+
+    # Frequency over full dataset — correct population for tier definitions
+    label_counts_full = pd.Series(all_labels_full).value_counts().sort_values(ascending=True)
+    total_labels_full = len(label_counts_full)
+    print(f"Full dataset: {total_labels_full} unique canonical labels")
+
+    # ── Val-only data for image sampling ─────────────────────────────────
+    df_val = pd.read_csv(
+        filepath_or_buffer=metadata_val_path,
+        on_bad_lines='skip',
+        dtype=dtypes,
+        low_memory=False,
+    ).sort_index()
+
+    all_labels_val = []
+    label_to_images = {}
+    for idx, row in df_val.iterrows():
+        try:
+            labels = sorted(ast.literal_eval(row[col]))
+            all_labels_val.extend(labels)
+            for label in labels:
+                label_to_images.setdefault(label, []).append({
+                    'image_path': row['img_path'],
+                    'row_index':  idx,
+                    'all_labels': labels,
+                    'segment':    'tail',
+                })
+        except Exception:
+            continue
+
+    val_label_set = set(all_labels_val)
+    print(f"Val split   : {len(val_label_set)} unique canonical labels "
+          f"({len(val_label_set)/total_labels_full*100:.1f}% of full vocab)")
+    print(f"Train-only  : {total_labels_full - len(val_label_set)} labels absent from val")
+
+    # ── Tail tier defined on full-dataset frequencies ─────────────────────
+    tail_threshold  = int(total_labels_full * 0.8)
+    n_tail          = total_labels_full - tail_threshold
+    tail_labels_full = set(label_counts_full.head(n_tail).index)  # rarest N labels
+
+    # Restrict to labels that actually appear in val (otherwise T2I pool is empty)
+    tail_labels = sorted(tail_labels_full & val_label_set)
+
+    print(f"\nTail tier (bottom 20% of full vocab): {len(tail_labels_full)} labels")
+    print(f"Tail labels present in val          : {len(tail_labels)} "
+          f"({len(tail_labels)/len(tail_labels_full)*100:.1f}%)")
+    print(f"Tail freq range (full dataset)      : "
+          f"{label_counts_full[tail_labels].min()}–"
+          f"{label_counts_full[tail_labels].max()}, "
+          f"mean={label_counts_full[tail_labels].mean():.1f}")
+
+    # Sanity check
+    suspicious = [(l, label_counts_full[l]) for l in tail_labels
+                  if label_counts_full[l] > 20]
+    if suspicious:
+        print(f"[WARNING] {len(suspicious)} tail labels have full-dataset freq > 20")
+    else:
+        print(f"[OK] All tail labels have full-dataset freq ≤ 20")
+
+    # ── I2T samples ───────────────────────────────────────────────────────
+    candidate_pool = {}
+    for label in tail_labels:
+        for entry in sorted(label_to_images.get(label, []),
+                            key=lambda x: x['image_path']):
+            candidate_pool.setdefault(entry['image_path'], entry)
+    candidates = sorted(candidate_pool.values(), key=lambda x: x['image_path'])
+
+    if len(candidates) >= num_samples:
+        i2t_samples = local_rng.sample(candidates, num_samples)
+    else:
+        print(f"[WARNING] Only {len(candidates)} tail images; using all.")
+        i2t_samples = candidates
+    i2t_samples = sorted(i2t_samples, key=lambda x: x['image_path'])
+
+    # Annotate which specific labels caused each image to be selected
+    tail_label_set = set(tail_labels)
+    for sample in i2t_samples:
+        sample['tail_labels'] = [l for l in sample['all_labels']
+                                  if l in tail_label_set]
+
+    # ── T2I samples ───────────────────────────────────────────────────────
+    if len(tail_labels) >= num_samples:
+        t2i_samples = sorted(local_rng.sample(tail_labels, num_samples))
+    else:
+        print(f"[WARNING] Only {len(tail_labels)} tail labels; using all.")
+        t2i_samples = tail_labels
+
+    print(f"\n{len(i2t_samples)} Query Images from Tail Distribution:")
+    for s in i2t_samples:
+        print(f"{s['image_path']}")
+        print(f"    All labels : {s['all_labels']}")
+        print(f"    Tail label(s): {s['tail_labels']}")
+    print(f"\n{len(t2i_samples)} Query Labels from Tail Distribution: {t2i_samples}")
+    print("-" * 130)
+
+    return i2t_samples, t2i_samples
+
+def get_tail_only_samples_(
 	metadata_val_path: str,
 	col:str,
 	num_samples: int = 5,
@@ -424,7 +542,7 @@ def get_tail_only_samples(
 				)
 		except Exception:
 			continue
-		
+
 	# sorted by frequency ascending
 	label_counts = pd.Series(all_labels).value_counts().sort_values(ascending=True)
 	print(f"Total unique labels: {len(label_counts)}")
@@ -486,9 +604,16 @@ def get_tail_only_samples(
 		t2i_samples = tail_labels
 	
 	print(f"{len(i2t_samples)} selected Query Images from Tail Distribution:")
-	print(json.dumps(i2t_samples, indent=4, ensure_ascii=False))
+	print(json.dumps(i2t_samples, indent=2, ensure_ascii=False))
 	print(f"{len(t2i_samples)} Query Labels from Tail Distribution: {t2i_samples}")
-	
+	# Annotate which labels are actually tail
+	for sample in i2t_samples:
+		tail_hits = [l for l in sample['all_labels'] if l in set(tail_labels)]
+		sample['tail_labels'] = tail_hits   # add to dict for downstream use
+		print(f"  {os.path.basename(sample['image_path'])}")
+		print(f"    All labels:  {sample['all_labels']}")
+		print(f"    Tail labels: {tail_hits}")
+
 	print("-"*130)
 
 	return i2t_samples, t2i_samples

@@ -2134,16 +2134,35 @@ def cluster(
 		print(f"   ├─ {model_id} | {device} | batch_size: {batch_size}")
 		print(f"   ├─ linkage: {linkage_method}")
 		print(f"   ├─ sample: {labels[:5]}")
+
 		requires_type_exchange = isinstance(labels[0], str)
+
 		print(f"   ├─────> {type(labels[0])} requires_type_exchange: {requires_type_exchange}")
 		print(f"   └─ nc: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
 	
-	print(f"\n[DEDUP] {len(labels)} raw labels")
+	print(f"\n[DEDUP] {len(labels)} {type(labels)} raw labels")
 	documents = []
-	for doc in labels:
+	for i, doc in enumerate(labels):
+		if doc is None:
+			print(f"doc[{i}]: None (skipping)")
+			documents.append([])  # Empty list for None documents
+			continue
+		
 		if isinstance(doc, str):
-			doc = ast.literal_eval(doc)
-		documents.append(list(set(lbl for lbl in doc)))
+			try:
+				doc = ast.literal_eval(doc)
+			except (ValueError, SyntaxError):
+				print(f"doc[{i}]: Failed to parse '{doc}' (skipping)")
+				documents.append([])
+				continue
+		
+		if not isinstance(doc, list):
+			print(f"doc[{i}]: Invalid type {type(doc)} (skipping)")
+			documents.append([])
+			continue
+		
+		# Deduplicate labels within document
+		documents.append(list(set(lbl for lbl in doc if lbl is not None)))
 	
 	# Flatten and deduplicate (deterministic and reproducible)
 	unique_labels = sorted(set(label for doc in documents for label in doc))

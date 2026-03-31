@@ -141,7 +141,6 @@ that represent **core objects, entities, actions, or scene elements** which are 
 # - The standarized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 # [/INST]"""
 
-
 def _load_llm_(
 	model_id: str,
 	use_quantization: bool = False,

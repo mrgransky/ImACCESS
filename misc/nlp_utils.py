@@ -199,141 +199,137 @@ def _post_process_(
 		)
 
 	def is_event_gerund_phrase(original_phrase: str) -> bool:
-			"""
-			Detect event phrases like:
-			'flag raising', 'ship launching', 'troop landing'
-			"""
-			tokens = original_phrase.lower().split()
-			return (
-					len(tokens) >= 2
-					and tokens[-1].endswith("ing")
-					and not tokens[0].endswith("ly")  # excludes 'newly built'
-			)
-
-	# def is_phrasal_verb(lemma: str) -> bool:
-	# 		tokens = lemma.split()
-	# 		if len(tokens) < 2:
-	# 				return False
-
-	# 		# verb + particle/preposition
-	# 		return (
-	# 				tokens[0] not in STOPWORDS and
-	# 				tokens[1] in STOPWORDS
-	# 		)
+		"""
+		Detect event phrases like:
+		'flag raising', 'ship launching', 'troop landing'
+		"""
+		tokens = original_phrase.lower().split()
+		
+		return (
+			len(tokens) >= 2
+			and tokens[-1].endswith("ing")
+			and not tokens[0].endswith("ly")  # excludes 'newly built'
+		)
 
 	def is_phrasal_verb(lemma: str) -> bool:
-			"""
-			Detect true phrasal verbs like:
-			- "take off", "put on", "look up", "turn around"
-			
-			NOT:
-			- "congested area" (adjective + noun)
-			- "military base" (adjective + noun)
-			"""
-			tokens = lemma.split()
-			if len(tokens) != 2:  # Phrasal verbs are exactly 2 words
-					return False
-			
-			# Common phrasal verb particles
-			PARTICLES = {
-					'up', 'down', 'out', 'in', 'on', 'off', 
-					'away', 'back', 'over', 'around', 'through'
-			}
-			
-			# Check if second word is a particle
-			if tokens[1] not in PARTICLES:
-					return False
-			
-			# Use POS tagging to verify first word is a verb
-			pos_tags = nltk.pos_tag(tokens)
-			first_word_pos = pos_tags[0][1]
-			
-			# First word should be a verb (VB, VBD, VBG, VBN, VBP, VBZ)
-			if not first_word_pos.startswith('VB'):
-					return False
-			
-			return True
+		"""
+		Detect true phrasal verbs like:
+		- "take off", "put on", "look up", "turn around"
+		
+		NOT:
+		- "congested area" (adjective + noun)
+		- "military base" (adjective + noun)
+		"""
+		tokens = lemma.split()
+		if len(tokens) != 2:  # Phrasal verbs are exactly 2 words
+			return False
+		
+		# Common phrasal verb particles
+		PARTICLES = {
+			'up', 'down', 'out', 'in', 'on', 'off', 
+			'away', 'back', 'over', 'around', 'through'
+		}
+		
+		# Check if second word is a particle
+		if tokens[1] not in PARTICLES:
+			return False
+		
+		# Use POS tagging to verify first word is a verb
+		pos_tags = nltk.pos_tag(tokens)
+		first_word_pos = pos_tags[0][1]
+		
+		# First word should be a verb (VB, VBD, VBG, VBN, VBP, VBZ)
+		if not first_word_pos.startswith('VB'):
+			return False
+		
+		return True
 
 	# CONTEXT-AWARE FILTERING (replace your existing filter)
 	# Define generic word sets
 	GENERIC_PEOPLE_WORDS = {
-			"man", "men", "woman", "women", "people", "person", 
-			"child", "children", "individual", "male", "female"
+		"man", "men", "woman", "women", "people", "person", 
+		"child", "children", "individual", "male", "female"
 	}
 
 	GENERIC_FAMILY_WORDS = {
-			"boy", "girl", "boys", "girls",
-			"brother", "sister", "brothers", "sisters",
-			"cousin", "nephew", "niece", "sibling",
-			"mother", "father", "daughter", "son",
-			"uncle", "aunt",
-			"grandfather", "grandmother", "grandma", "grandpa",
-			"granddaughter", "grandson", "godfather", "godmother",
-			"parent", "grandparent"
+		"boy", "girl", "boys", "girls",
+		"brother", "sister", "brothers", "sisters",
+		"cousin", "nephew", "niece", "sibling",
+		"mother", "father", "daughter", "son",
+		"uncle", "aunt",
+		"grandfather", "grandmother", "grandma", "grandpa",
+		"granddaughter", "grandson", "godfather", "godmother",
+		"parent", "grandparent"
 	}
 
 	GENERIC_TECH_WORDS = {
-			"equipment", "component", "system", 
-			"material", "piece", "part", "variant",
-			"supply"  # Add supply here as generic tech term
+		"equipment", "component", "system", 
+		"material", "piece", "part", "variant",
+		"supply"  # Add supply here as generic tech term
 	}
 
 	GENERIC_META_WORDS = {
-			"sample", "analysis", "section", "segment",
-			"identifier", "number", "numbered",
-			"chart", "graph", "diagram", "plot", "tableau",
-			"sketch", "sketching", "schematic",
-			"date", "project", "program", "series",
-			"model", "nickname", "service"  # Add these
+		"sample", "analysis", "section", "segment",
+		"identifier", "number", "numbered",
+		"chart", "graph", "diagram", "plot", "tableau",
+		"sketch", "sketching", "schematic",
+		"date", "project", "program", "series",
+		"model", "nickname", "service"  # Add these
 	}
 
 	ALWAYS_REMOVE = {"unknown", "unidentified"}
 
 	NUMBER_WORDS = {
-			"one", "two", "three", "four", "five", "six", "seven", 
-			"eight", "nine", "ten", "eleven", "twelve", 
-			"twenty", "thirty", "hundred"
+		"one", "two", "three", "four", "five", "six", "seven", 
+		"eight", "nine", "ten", "eleven", "twelve", 
+		"twenty", "thirty", "hundred"
 	}
 
 	def should_filter_label(lemma: str) -> bool:
-			"""Context-aware filtering."""
-			words = lemma.lower().split()
+		"""Context-aware filtering."""
+		words = lemma.lower().split()
+		
+		# Rule 1: Always remove uninformative terms
+		if any(term in words for term in ALWAYS_REMOVE):
+			return True
+		
+		# Rule 2: Single-word generic terms
+		if len(words) == 1:
+			word = words[0]
+			all_generic = (
+				GENERIC_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | 
+				GENERIC_TECH_WORDS | GENERIC_META_WORDS
+			)
+			return word in all_generic
+		
+		# Rule 3: Quantified plurals (your main concern!)
+		if len(words) == 2:
+			first_word = words[0]
+			second_word = words[1]
 			
-			# Rule 1: Always remove uninformative terms
-			if any(term in words for term in ALWAYS_REMOVE):
-					return True
+			is_number = first_word.isdigit() or first_word in NUMBER_WORDS
+			is_generic_person = (
+				second_word in GENERIC_PEOPLE_WORDS or 
+				second_word in GENERIC_FAMILY_WORDS
+			)
 			
-			# Rule 2: Single-word generic terms
-			if len(words) == 1:
-					word = words[0]
-					all_generic = (GENERIC_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | 
-												GENERIC_TECH_WORDS | GENERIC_META_WORDS)
-					return word in all_generic
-			
-			# Rule 3: Quantified plurals (your main concern!)
-			if len(words) == 2:
-					first_word = words[0]
-					second_word = words[1]
-					
-					is_number = first_word.isdigit() or first_word in NUMBER_WORDS
-					is_generic_person = (second_word in GENERIC_PEOPLE_WORDS or 
-															second_word in GENERIC_FAMILY_WORDS)
-					
-					if is_number and is_generic_person:
-							return True  # Remove "three men", "two women"
-			
-			# Rule 4: Multi-word compounds - keep if has specific words
-			all_generic = (GENERIC_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | 
-										GENERIC_TECH_WORDS | GENERIC_META_WORDS)
-			
-			generic_count = sum(1 for w in words if w in all_generic)
-			
-			# All words generic → Remove
-			if generic_count == len(words):
-					return True
-			
-			# Has specific words → Keep
-			return False
+			if is_number and is_generic_person:
+				return True  # Remove "three men", "two women"
+		
+		# Rule 4: Multi-word compounds - keep if has specific words
+		all_generic = (
+			GENERIC_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | 
+			GENERIC_TECH_WORDS | GENERIC_META_WORDS
+		)
+		
+		generic_count = sum(1 for w in words if w in all_generic)
+		
+		# All words generic → Remove
+		if generic_count == len(words):
+			return True
+		
+		# Has specific words → Keep
+		return False
 
 	if verbose:
 		print(f"Starting post-processing")
