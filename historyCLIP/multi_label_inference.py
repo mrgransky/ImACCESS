@@ -410,45 +410,81 @@ def get_tail_only_samples(
 	all_labels = []
 	label_to_images = {}
 	for idx, row in df_val.iterrows():
-			try:
-					labels = sorted(ast.literal_eval(row[col]))
-					all_labels.extend(labels)
-					for label in labels:
-							label_to_images.setdefault(label, []).append({
-									'image_path': row['img_path'],
-									'row_index': idx,
-									'all_labels': labels,
-									'segment': 'tail',
-							})
-			except Exception:
-					continue
-	label_counts = pd.Series(all_labels).value_counts().sort_index()
+		try:
+			labels = sorted(ast.literal_eval(row[col]))
+			all_labels.extend(labels)
+			for label in labels:
+				label_to_images.setdefault(label, []).append(
+					{
+						'image_path': row['img_path'],
+						'row_index': idx,
+						'all_labels': labels,
+						'segment': 'tail',
+					}
+				)
+		except Exception:
+			continue
+		
+	# sorted by frequency ascending
+	label_counts = pd.Series(all_labels).value_counts().sort_values(ascending=True)
+	print(f"Total unique labels: {len(label_counts)}")
+
+	print(f"\nLabel frequency distribution ({len(label_counts)} unique labels):")
+	print(label_counts.describe())
+
+	# confirm sort order is frequency ascending
+	print(f"\nLowest-frequency labels (should be freq=1 or very small):")
+	print(label_counts.head(10).to_string())
+	print(f"\nHighest-frequency labels (should be large counts):")
+	print(label_counts.tail(10).to_string())
+
 	total_labels = len(label_counts)
 	tail_threshold = int(total_labels * 0.8)
-	tail_labels = sorted(label_counts.tail(total_labels - tail_threshold).index)
+	tail_labels = sorted(label_counts.head(total_labels - tail_threshold).index)
+
 	print(
-		f"\nTAIL distribution: {len(tail_labels)} labels "
-		f"(freq range: {label_counts[tail_labels].min()}–{label_counts[tail_labels].max()}, "
-		f"mean: {label_counts[tail_labels].mean():.1f})"
+		f"\nTail threshold: bottom {total_labels - tail_threshold} labels "
+		f"({(total_labels - tail_threshold)/total_labels*100:.1f}% of {total_labels})"
 	)
+	print(
+		f"Tail freq range: {label_counts[tail_labels].min()}–{label_counts[tail_labels].max()}, "
+		f"mean={label_counts[tail_labels].mean():.1f}"
+	)
+	
+	print(f"Sample tail labels (first 10): {tail_labels[:10]}")
+	print(f"Sample tail labels (last 10):  {tail_labels[-10:]}")
+
+	# verify no head-class labels leaked into tail
+	suspicious = [(l, label_counts[l]) for l in tail_labels if label_counts[l] > 20]
+	if suspicious:
+			print(f"\n[WARNING] {len(suspicious)} tail labels have freq > 20 — possible threshold issue:")
+			for label, freq in sorted(suspicious, key=lambda x: -x[1])[:10]:
+					print(f"  {label:<40} freq={freq}")
+	else:
+			print(f"\n[OK] All tail labels have freq ≤ 20 — threshold looks correct")
+
 	# --- I2T samples: images that contain at least one tail label ---
 	candidate_pool = {}
 	for label in tail_labels:
-			for entry in sorted(label_to_images.get(label, []), key=lambda x: x['image_path']):
-					candidate_pool.setdefault(entry['image_path'], entry)
+		for entry in sorted(label_to_images.get(label, []), key=lambda x: x['image_path']):
+			candidate_pool.setdefault(entry['image_path'], entry)
+	
 	candidates = sorted(candidate_pool.values(), key=lambda x: x['image_path'])
 	if len(candidates) >= num_samples:
-			i2t_samples = local_rng.sample(candidates, num_samples)
+		i2t_samples = local_rng.sample(candidates, num_samples)
 	else:
-			print(f"[WARNING] Only {len(candidates)} tail images available; using all.")
-			i2t_samples = candidates
+		print(f"[WARNING] Only {len(candidates)} tail images available; using all.")
+		i2t_samples = candidates
+	
 	i2t_samples = sorted(i2t_samples, key=lambda x: x['image_path'])
+	
 	# --- T2I samples: tail label strings ---
 	if len(tail_labels) >= num_samples:
 		t2i_samples = sorted(local_rng.sample(tail_labels, num_samples))
 	else:
 		print(f"[WARNING] Only {len(tail_labels)} tail labels available; using all.")
 		t2i_samples = tail_labels
+	
 	print(f"{len(i2t_samples)} selected Query Images from Tail Distribution:")
 	print(json.dumps(i2t_samples, indent=4, ensure_ascii=False))
 	print(f"{len(t2i_samples)} Query Labels from Tail Distribution: {t2i_samples}")

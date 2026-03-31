@@ -3589,7 +3589,7 @@ def plot_qualitative_retrieval_i2t(
 					lbl,
 					ha="left", 
 					va="center",
-					fontsize=9.0,
+					fontsize=8.6,
 					color=txt_col,
 					fontweight="bold" if hit else "normal",
 					bbox=dict(
