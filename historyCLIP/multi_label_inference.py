@@ -424,71 +424,90 @@ def get_tail_only_samples(
 	all_labels_val = []
 	label_to_images = {}
 	for idx, row in df_val.iterrows():
-			try:
-					labels = sorted(ast.literal_eval(row[col]))
-					all_labels_val.extend(labels)
-					for label in labels:
-							label_to_images.setdefault(label, []).append({
-									'image_path': row['img_path'],
-									'row_index':  idx,
-									'all_labels': labels,
-									'segment':    'tail',
-							})
-			except Exception:
-					continue
+		try:
+			labels = sorted(ast.literal_eval(row[col]))
+			all_labels_val.extend(labels)
+			for label in labels:
+				label_to_images.setdefault(label, []).append(
+					{
+						'image_path': row['img_path'],
+						'row_index':  idx,
+						'all_labels': labels,
+						'segment':    'tail',
+					}
+				)
+		except Exception:
+			continue
+
 	val_label_set = set(all_labels_val)
-	print(f"Val split   : {len(val_label_set)} unique canonical labels "
-				f"({len(val_label_set)/total_labels_full*100:.1f}% of full vocab)")
+	print(
+		f"Val split   : {len(val_label_set)} unique canonical labels "
+		f"({len(val_label_set)/total_labels_full*100:.1f}% of full vocab)"
+	)
 	print(f"Train-only  : {total_labels_full - len(val_label_set)} labels absent from val")
-	# ── Tail tier defined on full-dataset frequencies ─────────────────────
-	tail_threshold  = int(total_labels_full * 0.8)
-	n_tail          = total_labels_full - tail_threshold
+	
+	# Tail tier defined on full-dataset frequencies
+	tail_threshold = int(total_labels_full * 0.8)
+	n_tail = total_labels_full - tail_threshold
 	tail_labels_full = set(label_counts_full.head(n_tail).index)  # rarest N labels
+
 	# Restrict to labels that actually appear in val (otherwise T2I pool is empty)
 	tail_labels = sorted(tail_labels_full & val_label_set)
 	print(f"\nTail tier (bottom 20% of full vocab): {len(tail_labels_full)} labels")
-	print(f"Tail labels present in val          : {len(tail_labels)} "
-				f"({len(tail_labels)/len(tail_labels_full)*100:.1f}%)")
-	print(f"Tail freq range (full dataset)      : "
-				f"{label_counts_full[tail_labels].min()}–"
-				f"{label_counts_full[tail_labels].max()}, "
-				f"mean={label_counts_full[tail_labels].mean():.1f}")
+	print(
+		f"Tail labels present in val          : {len(tail_labels)} "
+		f"({len(tail_labels)/len(tail_labels_full)*100:.1f}%)"
+	)
+	print(
+		f"Tail freq range (full dataset)      : "
+		f"{label_counts_full[tail_labels].min()}–"
+		f"{label_counts_full[tail_labels].max()}, "
+		f"mean={label_counts_full[tail_labels].mean():.1f}"
+	)
+	
 	# Sanity check
-	suspicious = [(l, label_counts_full[l]) for l in tail_labels
-								if label_counts_full[l] > 20]
+	suspicious = [
+		(l, label_counts_full[l]) 
+		for l in tail_labels
+		if label_counts_full[l] > 20
+	]
 	if suspicious:
-			print(f"[WARNING] {len(suspicious)} tail labels have full-dataset freq > 20")
+		print(f"[WARNING] {len(suspicious)} tail labels have full-dataset freq > 20")
 	else:
-			print(f"[OK] All tail labels have full-dataset freq ≤ 20")
-	# ── I2T samples ───────────────────────────────────────────────────────
+		print(f"[OK] All tail labels have full-dataset freq ≤ 20")
+	
+	# I2T samples
 	candidate_pool = {}
 	for label in tail_labels:
-			for entry in sorted(label_to_images.get(label, []),
-													key=lambda x: x['image_path']):
-					candidate_pool.setdefault(entry['image_path'], entry)
+		for entry in sorted(label_to_images.get(label, []), key=lambda x: x['image_path']):
+			candidate_pool.setdefault(entry['image_path'], entry)
 	candidates = sorted(candidate_pool.values(), key=lambda x: x['image_path'])
+	
 	if len(candidates) >= num_samples:
-			i2t_samples = local_rng.sample(candidates, num_samples)
+		i2t_samples = local_rng.sample(candidates, num_samples)
 	else:
-			print(f"[WARNING] Only {len(candidates)} tail images; using all.")
-			i2t_samples = candidates
+		print(f"[WARNING] Only {len(candidates)} tail images; using all.")
+		i2t_samples = candidates
+	
 	i2t_samples = sorted(i2t_samples, key=lambda x: x['image_path'])
 	# Annotate which specific labels caused each image to be selected
 	tail_label_set = set(tail_labels)
 	for sample in i2t_samples:
-			sample['tail_labels'] = [l for l in sample['all_labels']
-																if l in tail_label_set]
-	# ── T2I samples ───────────────────────────────────────────────────────
+		sample['tail_labels'] = [l for l in sample['all_labels'] if l in tail_label_set]
+
+	# T2I samples
 	if len(tail_labels) >= num_samples:
-			t2i_samples = sorted(local_rng.sample(tail_labels, num_samples))
+		t2i_samples = sorted(local_rng.sample(tail_labels, num_samples))
 	else:
-			print(f"[WARNING] Only {len(tail_labels)} tail labels; using all.")
-			t2i_samples = tail_labels
+		print(f"[WARNING] Only {len(tail_labels)} tail labels; using all.")
+		t2i_samples = tail_labels
+	
 	print(f"\n{len(i2t_samples)} Query Images from Tail Distribution:")
 	for s in i2t_samples:
-			print(f"{s['image_path']}")
-			print(f"    All labels : {s['all_labels']}")
-			print(f"    Tail label(s): {s['tail_labels']}")
+		print(f"{s['image_path']}")
+		print(f"    All labels : {s['all_labels']}")
+		print(f"    Tail label(s): {s['tail_labels']}")
+
 	print(f"\n{len(t2i_samples)} Query Labels from Tail Distribution: {t2i_samples}")
 	print("-" * 130)
 
