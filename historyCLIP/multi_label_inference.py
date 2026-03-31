@@ -396,6 +396,8 @@ def get_tail_only_samples(
 ) -> Tuple[List[Dict], List[str]]:
 	local_rng = random.Random(seed)
 
+	print(f"\n>> Getting {num_samples} Tail sample(s) for I2T & T2I")
+
 	# Full dataset frequency (canonical vocabulary, all N labels)
 	full_meta_path = metadata_val_path.replace('_val.csv', '.csv')
 	print(f"Computing label frequencies from full dataset: {full_meta_path}")
@@ -450,9 +452,25 @@ def get_tail_only_samples(
 	tail_threshold = int(total_labels_full * 0.8)
 	n_tail = total_labels_full - tail_threshold
 	tail_labels_full = set(label_counts_full.head(n_tail).index)  # rarest N labels
-
 	# Restrict to labels that actually appear in val (otherwise T2I pool is empty)
 	tail_labels = sorted(tail_labels_full & val_label_set)
+	print(f"\nFrequency distribution around tail boundary (full dataset):")
+	boundary_counts = label_counts_full[(label_counts_full >= 3) & (label_counts_full <= 10)]
+	freq_distribution = boundary_counts.value_counts().sort_index()
+	for freq, count in freq_distribution.items():
+		marker = " ← tail boundary" if freq == label_counts_full[tail_labels].max() else ""
+		print(f"  freq={freq:>3}: {count:>5} labels{marker}")
+
+	head_start_freq = label_counts_full.iloc[int(total_labels_full * 0.8)]
+	print(
+		f"\nHead tier starts at freq ≥ {head_start_freq} "
+		f"(top 20% of {total_labels_full} labels)"
+	)
+	print(
+		f"Tail tier ends   at freq ≤ {label_counts_full[sorted(tail_labels_full)].max()} "
+		f"(bottom 20% of {total_labels_full} labels)"
+	)
+
 	print(f"\nTail tier (bottom 20% of full vocab): {len(tail_labels_full)} labels")
 	print(
 		f"Tail labels present in val          : {len(tail_labels)} "
