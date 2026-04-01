@@ -91,8 +91,40 @@ def merge_csv_files(
 	if verbose:
 		print(f">> Merged {type(df)} from {len(csv_files)} CSV files: {df.shape}\n{list(df.columns)}")
 
+	if verbose:
+		print(f"Post-processing LLM-based labels...")
+	llm_based_labels = df['llm_based_labels'].tolist()
+	llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=False)
+
+	if verbose:
+		print(f"Post-processing VLM-based labels...")
+	vlm_based_labels = df['vlm_based_labels'].tolist()
+	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=False)
+
+	if verbose:
+		print(f"Post-processing Multimodal labels...")
 	multimodal_labels = df['multimodal_labels'].tolist()
 	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=False)
+
+	llm_canonical_labels, _ = get_canonical_labels_parallel(
+		labels=llm_based_labels,
+		model_id=embedding_model_id,
+		label_source="llm",
+		output_dir=OUTPUT_DIR,
+		num_workers=num_workers,
+		nc=nc,
+		verbose=verbose,
+	)
+
+	vlm_canonical_labels, _ = get_canonical_labels_parallel(
+		labels=vlm_based_labels,
+		model_id=embedding_model_id,
+		label_source="vlm",
+		output_dir=OUTPUT_DIR,
+		num_workers=num_workers,
+		nc=nc,
+		verbose=verbose,
+	)
 
 	multimodal_canonical_labels, _ = get_canonical_labels_parallel(
 		labels=multimodal_labels,
@@ -103,6 +135,18 @@ def merge_csv_files(
 		nc=nc,
 		verbose=verbose,
 	)
+
+	# check length of each before setting into column:
+	if verbose:
+		print("="*60)
+		print(f"LLM canonical: {type(llm_canonical_labels)} {len(llm_canonical_labels)}")
+		print(f"VLM canonical: {type(vlm_canonical_labels)} {len(vlm_canonical_labels)}")
+		print(f"Multimodal canonical: {type(multimodal_canonical_labels)} {len(multimodal_canonical_labels)}")
+		print("="*60)
+
+
+	df['llm_canonical_labels'] = llm_canonical_labels
+	df['vlm_canonical_labels'] = vlm_canonical_labels
 	df['multimodal_canonical_labels'] = multimodal_canonical_labels
 
 	# clustered_df = cluster(
