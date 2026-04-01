@@ -93,18 +93,13 @@ def get_canonical_labels_parallel(
 	labels: List[List[str]],
 	label_source: str,          # "llm", "vlm", or "multimodal"
 	output_dir: str,
-	csv_basename: str,
 	model_id: str,
 	num_workers: int = 4,
 	nc: int = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
 	print(f"\n>> Getting {label_source} Canonical Labels (Parallel Mapping: nw: {num_workers})")
-	# clusters_fname = os.path.join(
-	# 	output_dir,
-	# 	csv_basename.replace(".csv", f"_{label_source}_clusters.csv")
-	# )
-	clusters_fname = os.path.join(output_dir, f"_{label_source}_clusters.csv")
+	clusters_fname = os.path.join(output_dir, f"{label_source}_clusters.csv")
 	print(f"clusters_fname: {clusters_fname}")
 
 	clustered_df = cluster(
@@ -181,18 +176,14 @@ def get_canonical_labels(
 	labels: List[List[str]],
 	label_source: str,  # "llm", "vlm", or "multimodal"
 	output_dir: str,
-	csv_basename: str,
 	model_id: str,
 	nc: int = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
 
 	print(f"\n>> Getting {label_source} Canonical Labels (Sequential Mapping)")
-	clusters_fname = os.path.join(
-		output_dir,
-		csv_basename.replace(".csv", f"_{label_source}_clusters.csv")
-	)
 
+	clusters_fname = os.path.join(output_dir, f"{label_source}_clusters.csv")
 	clustered_df = cluster(
 		labels=labels,
 		model_id=model_id,

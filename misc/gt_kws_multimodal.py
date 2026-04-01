@@ -197,7 +197,6 @@ def get_multimodal_annotation(
 	df['multimodal_labels'] = multimodal_labels
 
 	if "_chunk_" not in os.path.basename(csv_file):
-		csv_basename = os.path.basename(csv_file)
 		
 		# --- LLM canonical labels ---
 		llm_canonical_labels, _ = get_canonical_labels(
@@ -205,7 +204,6 @@ def get_multimodal_annotation(
 			label_source="llm",
 			model_id=embedding_model_id,
 			output_dir=OUTPUT_DIR,
-			csv_basename=csv_basename,
 			nc=nc,
 			verbose=verbose,
 		)
@@ -216,7 +214,6 @@ def get_multimodal_annotation(
 			label_source="vlm",
 			model_id=embedding_model_id,
 			output_dir=OUTPUT_DIR,
-			csv_basename=csv_basename,
 			nc=nc,
 			verbose=verbose,
 		)
@@ -227,7 +224,6 @@ def get_multimodal_annotation(
 			model_id=embedding_model_id,
 			label_source="multimodal",
 			output_dir=OUTPUT_DIR,
-			csv_basename=csv_basename,
 			nc=nc,
 			verbose=verbose,
 		)
