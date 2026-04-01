@@ -5,14 +5,14 @@ from clustering import get_canonical_labels_parallel
 
 # how to run:
 # Puhti/Mahti:
-# srun -J cpu --account=project_2004072 --partition=small --time=00-13:45:00 --mem=164G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
+# srun -J cpu --account=project_2004072 --partition=large --time=00-13:45:00 --mem=164G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
 # $ python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4/ -nw 40 -v
 
 # new dataset:
-# $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -m "Qwen/Qwen3-Embedding-8B" -nw 40 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
+# $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -emb "Qwen/Qwen3-Embedding-8B" -nw 40 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
 
 # old dataset:
-# $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -m "Qwen/Qwen3-Embedding-8B" -nw 20 -v > /scratch/project_2004072/ImACCESS/trash/logs/_interactive_multimodal_annotation_h4.txt &
+# $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -emb "Qwen/Qwen3-Embedding-8B" -nw 20 -v > /scratch/project_2004072/ImACCESS/trash/logs/_interactive_multimodal_annotation_h4.txt &
 
 # # Global variable for worker processes
 # canonical_labels_global = None
@@ -50,7 +50,7 @@ from clustering import get_canonical_labels_parallel
 def merge_csv_files(
 	dataset_dir: str,
 	num_workers: int,
-	model_id: str,
+	embedding_model_id: str,
 	nc: int = None,
 	verbose: bool = False
 ):
@@ -86,7 +86,7 @@ def merge_csv_files(
 
 	get_canonical_labels_parallel(
 		labels=multimodal_labels,
-		model_id=model_id,
+		model_id=embedding_model_id,
 		label_source="multimodal",
 		output_dir=OUTPUT_DIR,
 		csv_basename=csv_basename,
@@ -97,7 +97,7 @@ def merge_csv_files(
 
 	# clustered_df = cluster(
 	# 	labels=multimodal_labels,
-	# 	model_id=model_id,
+	# 	model_id=embedding_model_id,
 	# 	batch_size=4096,
 	# 	nc=nc,
 	# 	clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")),
@@ -205,7 +205,7 @@ def main():
 	parser = argparse.ArgumentParser(description='Merge CSV files')
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Directory containing CSV files')
 	parser.add_argument('--num_workers', '-nw', type=int, required=True, help='Number of workers for parallel processing')
-	parser.add_argument('--model_id', '-m', type=str, default="sentence-transformers/all-MiniLM-L6-v2", help='HuggingFace model ID')
+	parser.add_argument('--embedding_model_id', '-emb', type=str, default="sentence-transformers/all-MiniLM-L6-v2", help='HuggingFace model ID')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
 	parser.add_argument('--num_clusters', '-nc', type=int, default=None, help='Number of clusters')
 	args = parser.parse_args()
@@ -220,7 +220,7 @@ def main():
 	merge_csv_files(
 		dataset_dir=args.dataset_dir, 
 		num_workers=args.num_workers,
-		model_id=args.model_id,
+		embedding_model_id=args.embedding_model_id,
 		nc=args.num_clusters,
 		verbose=args.verbose,
 	)
