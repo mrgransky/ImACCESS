@@ -87,11 +87,13 @@ def get_canonical_labels_parallel(
 	nc: int = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
-	print(f"\n>> Getting {label_source} Canonical Labels (Parallel Mapping: nw: {num_workers})")
-	print(f"Input: {len(labels)} {label_source} labels")
-	print(f"Sample: {labels[:10]}")
 	clusters_fname = os.path.join(output_dir, f"{label_source}_clusters.csv")
-	print(f"clusters_fname: {clusters_fname}")
+
+	if verbose:
+		print(f"\n>> Getting {label_source.upper()} Canonical Labels (Parallel Mapping: nw: {num_workers})")
+		print(f"Input: {len(labels)} {label_source} labels")
+		print(f"Samples: {labels[:7]}")
+		print(f"clusters_fname: {clusters_fname}")
 
 	clustered_df = cluster(
 		labels=labels,
