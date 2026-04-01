@@ -5,7 +5,7 @@ from clustering import get_canonical_labels_parallel, cluster
 
 # how to run:
 # Puhti/Mahti:
-# srun -J cpu --account=project_2004072 --partition=large --time=00-13:45:00 --mem=164G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
+# srun -J cpu --account=project_2004072 --partition=large --time=00-13:45:00 --mem=96G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
 # $ python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/ -nw 8 -v
 
 # new dataset:
