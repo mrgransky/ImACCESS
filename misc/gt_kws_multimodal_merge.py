@@ -63,21 +63,19 @@ def merge_csv_files(
 	csv_files.sort(key=lambda f: int(os.path.basename(f).split('_')[-2]))
 
 	if verbose:
-		print(f"Found {len(csv_files)} CSV files in {dataset_dir}")
-		# for i, file in enumerate(csv_files):
-		# 	print(f"\t{i:02d}: {file}")
-		print(f"\n>> Merging {len(csv_files)} CSV files to {output_fpath}")
+		print(f"\nFound {len(csv_files)} CSV files in {dataset_dir}")
+		print(f">> Merging {len(csv_files)} CSV files to {output_fpath}")
 
 	dfs = []
 	for i, file_ in enumerate(csv_files):
-		print(f"{i:02d}: {file_}", end=" ")
+		print(f"{i:02d} {file_}", end="\t")
 		temp_df = pd.read_csv(
 			filepath_or_buffer=file_, 
 			on_bad_lines='skip', 
 			dtype=dtypes, 
 			low_memory=False
 		)
-		print(type(temp_df), temp_df.shape)
+		print(temp_df.shape, list(temp_df.columns))
 		dfs.append(temp_df)
 	df = pd.concat(dfs, ignore_index=True)
 
