@@ -94,6 +94,7 @@ def get_canonical_labels_parallel(
 	label_source: str,          # "llm", "vlm", or "multimodal"
 	output_dir: str,
 	csv_basename: str,
+	model_id: str,
 	num_workers: int = 4,
 	nc: int = None,
 	verbose: bool = False,
@@ -107,11 +108,7 @@ def get_canonical_labels_parallel(
 
 	clustered_df = cluster(
 		labels=labels,
-		model_id=(
-			"Qwen/Qwen3-Embedding-8B"
-			if os.getenv('USER') == "alijanif"
-			else "Qwen/Qwen3-Embedding-0.6B"
-		),
+		model_id=model_id,
 		nc=nc,
 		clusters_fname=clusters_fname,
 		verbose=verbose,
