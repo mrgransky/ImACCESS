@@ -118,6 +118,7 @@ def _post_process_(
 	verbose: bool = False
 ) -> List[List[str]]:
 
+	# CONTEXT-AWARE FILTERING
 	NUMBER_WORDS = {
 		"one", "two", "three", "four", "five",
 		"six", "seven", "eight", "nine", "ten"
@@ -129,6 +130,54 @@ def _post_process_(
 	}
 
 	GERUND_NOUNS = {'building', 'ceiling', 'flooring', 'siding', 'roofing'}
+
+	# Define generic word sets
+	GENERIC_PEOPLE_WORDS = {
+		"man", "men", "woman", "women", "people", "person", 
+		"child", "children", "individual", "male", "female"
+	}
+
+	GENERIC_FAMILY_WORDS = {
+		"boy", "girl", "boys", "girls",
+		"brother", "sister", "brothers", "sisters",
+		"cousin", "nephew", "niece", "sibling",
+		"mother", "father", "daughter", "son",
+		"uncle", "aunt",
+		"grandfather", "grandmother", "grandma", "grandpa",
+		"granddaughter", "grandson", "godfather", "godmother",
+		"parent", "grandparent"
+	}
+
+	GENERIC_TECH_WORDS = {
+		"equipment", "component", "system", 
+		"material", "piece", "part", "variant",
+		"supply"  # Add supply here as generic tech term
+	}
+
+	GENERIC_META_WORDS = {
+		"sample", "analysis", "section", "segment",
+		"identifier", "number", "numbered",
+		"chart", "graph", "diagram", "plot", "tableau",
+		"sketch", "sketching", "schematic",
+		"date", "project", "program", "series",
+		"model", "nickname", "service"  # Add these
+	}
+
+	ALWAYS_REMOVE = {"unknown", "unidentified"}
+
+	NUMBER_WORDS = {
+		"one", "two", "three", "four", "five", "six", "seven", 
+		"eight", "nine", "ten", "eleven", "twelve", 
+		"twenty", "thirty", "hundred"
+	}
+
+	COLORS = {
+		"red", "orange", "yellow", "green", "blue", "indigo", "violet",
+		"purple", "pink", "brown", "black", "white", "gray", "grey",
+		"gold", "silver", "beige", "ivory", "tan", "maroon", "navy",
+		"teal", "cyan", "magenta", "crimson", "scarlet", "khaki",
+		"olive", "turquoise", "lavender", "coral", "salmon", "amber"
+	}
 
 	def is_named_facility(original_phrase: str) -> bool:
 		"""
@@ -243,47 +292,6 @@ def _post_process_(
 			return False
 		
 		return True
-
-	# CONTEXT-AWARE FILTERING (replace your existing filter)
-	# Define generic word sets
-	GENERIC_PEOPLE_WORDS = {
-		"man", "men", "woman", "women", "people", "person", 
-		"child", "children", "individual", "male", "female"
-	}
-
-	GENERIC_FAMILY_WORDS = {
-		"boy", "girl", "boys", "girls",
-		"brother", "sister", "brothers", "sisters",
-		"cousin", "nephew", "niece", "sibling",
-		"mother", "father", "daughter", "son",
-		"uncle", "aunt",
-		"grandfather", "grandmother", "grandma", "grandpa",
-		"granddaughter", "grandson", "godfather", "godmother",
-		"parent", "grandparent"
-	}
-
-	GENERIC_TECH_WORDS = {
-		"equipment", "component", "system", 
-		"material", "piece", "part", "variant",
-		"supply"  # Add supply here as generic tech term
-	}
-
-	GENERIC_META_WORDS = {
-		"sample", "analysis", "section", "segment",
-		"identifier", "number", "numbered",
-		"chart", "graph", "diagram", "plot", "tableau",
-		"sketch", "sketching", "schematic",
-		"date", "project", "program", "series",
-		"model", "nickname", "service"  # Add these
-	}
-
-	ALWAYS_REMOVE = {"unknown", "unidentified"}
-
-	NUMBER_WORDS = {
-		"one", "two", "three", "four", "five", "six", "seven", 
-		"eight", "nine", "ten", "eleven", "twelve", 
-		"twenty", "thirty", "hundred"
-	}
 
 	def should_filter_label(lemma: str) -> bool:
 		"""Context-aware filtering."""
@@ -578,6 +586,18 @@ def _post_process_(
 					print(f"        → {lemma} Stopword detected! skipping")
 				continue
 
+			# Exclude pure color descriptors
+			if all(w in COLORS for w in lemma.split()):
+				if verbose:
+					print(f"        → {lemma} Color descriptor detected, skipping")
+				continue
+
+			# Exclude "black and white" specifically
+			if lemma in {"black and white", "black & white", "B/W", "B&W"}:
+				if verbose:
+					print(f"        → {lemma} Black and white detected, skipping")
+				continue
+
 			# # exclude if "unidentified" or "unknown" in the keyword "american unknown soldier", "unidentified ship" or irrelevant words
 			# if any(word in lemma for word in ["man", "men", "woman", "women", "people", "person", "child", "children", "boy", "girl", "boys", "girls", "brother", "brothers", "sister", "sisters", "sample", "analysis", "unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part", "series", "chart", "graph", "diagram", "tableau", "plot", "graf", "schematic", "sketch", "sketching", "number", "numbered", "model", "nickname", 'cousin', 'nephew', 'niece', 'sibling', 'uncle', "mother", "father", "daughter", "son", "godmother", "grandfather", "grandmother", "grandma", "grandpa", 'granddaughter', 'grandson', "godfather","aunt", "grandparent", "parent", "male", "female", "individual", "section", "date", "project", "program", "identifier", "segment", "service"]):
 			# 	if verbose:
@@ -617,13 +637,11 @@ def _post_process_(
 							print(f"        → Punctuation detected in {lemma}, skipping")
 					continue
 
-			# ADDITIONAL: Reject standalone hyphens or hyphen-only strings
+			# Reject standalone hyphens or hyphen-only strings
 			if lemma == '-' or lemma.replace('-', '').strip() == '':
 					if verbose:
 							print(f"        → Invalid hyphen pattern, skipping")
 					continue
-
-
 
 			# entire string must consist only of uppercase/lowercase English letters and spaces
 			if not re.match(r"^[a-zA-Z\s'\-]+$", lemma):
@@ -640,13 +658,20 @@ def _post_process_(
 				if verbose:
 					print(f"        → {lemma} Added to clean set")
 
+		if verbose:
+			print(f"clean_set: {len(clean_set)} {type(clean_set)}")
+
 		# Convert back to list
-		result = list(clean_set)
+		result = list(clean_set) if clean_set else None
 		processed_batch.append(result)
 		
 		if verbose:
-			print(f"  Final output for sample {idx+1}: {type(result)} {len(result)}: {result}")
-			print(f"  Items: {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
+			if result is None:
+				print(f"  Final output for sample {idx+1}: None (all items filtered)")
+				print(f"  Items: {len(current_items)} → 0 (removed {len(current_items)})")
+			else:
+				print(f"  Final output for sample {idx+1}: {type(result)} {len(result)}: {result}")
+				print(f"  Items: {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
 		
 	return processed_batch
 

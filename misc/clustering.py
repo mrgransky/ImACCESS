@@ -7,6 +7,7 @@ import os
 import ast
 import json
 import time
+import multiprocessing
 from sklearn.metrics import (
 	silhouette_score, 
 	davies_bouldin_score, 
@@ -43,6 +44,208 @@ cache_directory = {
 	"alijanif": "/scratch/project_2004072/models",
 	"ubuntu": "/media/volume/models",
 }
+
+# Module-level globals for multiprocessing workers
+_canonical_map_global = None
+
+def _init_canonical_worker(canonical_dict: dict):
+		"""Called ONCE per worker process — avoids pickling the dict 222k times."""
+		global _canonical_map_global
+		_canonical_map_global = canonical_dict
+
+def _map_labels_worker(sample_labels):
+		"""
+		Worker function: parse + map a single sample's labels to canonical labels.
+		Skips labels not in the canonical map (removed as problematic).
+		"""
+		# ── Parse ──────────────────────────────────────────────────────────────
+		if sample_labels is None:
+				return None
+
+		if isinstance(sample_labels, float):
+				# NaN comes through as float from pandas
+				try:
+						if math.isnan(sample_labels):
+								return None
+				except (TypeError, ValueError):
+						return None
+
+		if isinstance(sample_labels, str):
+				try:
+						sample_labels = ast.literal_eval(sample_labels)
+				except (ValueError, SyntaxError):
+						return None
+
+		if not isinstance(sample_labels, list):
+				return None
+
+		# ── Map ────────────────────────────────────────────────────────────────
+		mapped = []
+		for label in sample_labels:
+				if label in _canonical_map_global:
+						mapped.append(_canonical_map_global[label])
+				# else: label was removed as problematic → skip
+
+		# Deduplicate while preserving order
+		return list(dict.fromkeys(mapped))
+
+def get_canonical_labels_parallel(
+	labels: List[List[str]],
+	label_source: str,          # "llm", "vlm", or "multimodal"
+	output_dir: str,
+	csv_basename: str,
+	num_workers: int = 4,
+	nc: int = None,
+	verbose: bool = False,
+) -> Tuple[List[List[str]], dict]:
+	clusters_fname = os.path.join(
+		output_dir,
+		csv_basename.replace(".csv", f"_{label_source}_clusters.csv")
+	)
+	clustered_df = cluster(
+		labels=labels,
+		model_id=(
+			"Qwen/Qwen3-Embedding-8B"
+			if os.getenv('USER') == "alijanif"
+			else "Qwen/Qwen3-Embedding-0.6B"
+		),
+		nc=nc,
+		clusters_fname=clusters_fname,
+		verbose=verbose,
+	)
+
+	if verbose:
+		print(
+			f"[{label_source.upper()}] Clustered into "
+			f"{clustered_df['cluster'].nunique()} clusters "
+			f"from {len(clustered_df)} unique labels"
+		)
+		print(clustered_df.head(10))
+	canonical_map = clustered_df.set_index('label')['canonical'].to_dict()
+	print(f"[{label_source.upper()}] canonical_map: {len(canonical_map)} entries")
+
+	# Parallel mapping
+	chunksize  = max(1, len(labels) // (num_workers * 4))  # 4 chunks per worker
+	print(
+		f"[{label_source.upper()}] Mapping {len(labels):,} samples → canonical labels "
+		f"| workers={num_workers} | chunksize={chunksize}"
+	)
+
+	t0 = time.time()
+	with multiprocessing.Pool(
+		processes=num_workers,
+		initializer=_init_canonical_worker,   # called ONCE per worker
+		initargs=(canonical_map,),            # dict sent ONCE per worker
+	) as pool:
+		mapped_labels = pool.map(
+			_map_labels_worker,
+			labels,
+			chunksize=chunksize,
+		)
+	elapsed = time.time() - t0
+	print(
+		f"[{label_source.upper()}] Mapping done in {elapsed:.2f}s "
+		f"({len(labels)/elapsed:,.0f} rows/sec)"
+	)
+
+	# Post-processing stats
+	missing_labels: set = set()
+	none_count     = 0
+	empty_count    = 0
+	for original, mapped in zip(labels, mapped_labels):
+		if mapped is None:
+			none_count += 1
+			continue
+		if len(mapped) == 0:
+			empty_count += 1
+		
+		# Collect labels that were dropped (not in canonical_map)
+		if original is not None and isinstance(original, list):
+			for lbl in original:
+				if lbl not in canonical_map:
+					missing_labels.add(lbl)
+	
+	if verbose:
+		print(f"\n[{label_source.upper()}] Mapping summary:")
+		print(f"   Total samples   : {len(labels):,}")
+		print(f"   None (unparseable): {none_count:,}")
+		print(f"   Empty after map : {empty_count:,}")
+		print(f"   Labels not in canonical map (removed as problematic): {len(missing_labels):,}")
+		if missing_labels:
+			print(f"   Sample missing  : {list(missing_labels)[:10]}...")
+	
+	return mapped_labels, canonical_map
+
+def get_canonical_labels(
+	labels: List[List[str]],
+	label_source: str,  # "llm", "vlm", or "multimodal"
+	output_dir: str,
+	csv_basename: str,
+	nc: int = None,
+	verbose: bool = False,
+) -> Tuple[List[List[str]], dict]:
+	clusters_fname = os.path.join(
+		output_dir,
+		csv_basename.replace(".csv", f"_{label_source}_clusters.csv")
+	)
+
+	clustered_df = cluster(
+		labels=labels,
+		model_id=(
+			"Qwen/Qwen3-Embedding-8B"
+			if os.getenv('USER') == "alijanif"
+			else "Qwen/Qwen3-Embedding-0.6B"
+		),
+		nc=nc,
+		clusters_fname=clusters_fname,
+		verbose=verbose,
+	)
+
+	if verbose:
+		print(
+			f"[{label_source.upper()}] Clustered into "
+			f"{clustered_df['cluster'].nunique()} clusters "
+			f"from {len(clustered_df)} unique labels"
+		)
+		print(clustered_df.head(10))
+
+	canonical_map = clustered_df.set_index('label')['canonical'].to_dict()
+	canonical_labels = []
+	missing_labels = set()
+
+	for sample_labels in labels:
+		if sample_labels is None:
+			canonical_labels.append(None)
+			continue
+		
+		if not isinstance(sample_labels, list):
+			if isinstance(sample_labels, str):
+				try:
+					sample_labels = ast.literal_eval(sample_labels)
+				except (ValueError, SyntaxError):
+					canonical_labels.append(None)
+					continue
+			else:
+				canonical_labels.append(None)
+				continue
+		
+		mapped = []
+		for label in sample_labels:
+			if label in canonical_map:
+				mapped.append(canonical_map[label])
+			else:
+				missing_labels.add(label)
+		
+		# Deduplicate while preserving order
+		canonical_labels.append(list(dict.fromkeys(mapped)))
+	
+	if verbose and missing_labels:
+		print(
+			f"[{label_source.upper()}] {len(missing_labels)} labels removed "
+			f"(not in canonical map): {list(missing_labels)[:10]}..."
+		)
+
+	return canonical_labels, canonical_map
 
 def remove_problematic_cluster_labels(
 		df,
@@ -1321,58 +1524,59 @@ def analyze_cluster_quality(
 		'summary': summary
 	}
 
-def _interpret_silhouette(score: float) -> str:
-		"""Interpret silhouette score."""
-		if score > 0.7:
-				return "EXCELLENT"
-		elif score > 0.5:
-				return "GOOD"
-		elif score > 0.3:
-				return "FAIR"
-		elif score > 0.0:
-				return "WEAK"
-		else:
-				return "POOR"
+def _interpret_ch_index(score: float) -> str:
+	# Interpret Calinski-Harabasz index
+
+	if score > 1000:
+		return "EXCELLENT"
+	elif score > 500:
+		return "GOOD"
+	elif score > 200:
+		return "FAIR"
+	else:
+		return "WEAK"
 
 def _interpret_db_index(score: float) -> str:
-		"""Interpret Davies-Bouldin index."""
-		if score < 0.5:
-				return "EXCELLENT"
-		elif score < 1.0:
-				return "GOOD"
-		elif score < 1.5:
-				return "FAIR"
-		else:
-				return "POOR"
+	# Interpret Davies-Bouldin index
+	if score < 0.5:
+		return "EXCELLENT"
+	elif score < 1.0:
+		return "GOOD"
+	elif score < 1.5:
+		return "FAIR"
+	else:
+		return "POOR"
 
-def _interpret_ch_index(score: float) -> str:
-		"""Interpret Calinski-Harabasz index."""
-		if score > 1000:
-				return "EXCELLENT"
-		elif score > 500:
-				return "GOOD"
-		elif score > 200:
-				return "FAIR"
-		else:
-				return "WEAK"
+def _interpret_silhouette(score: float) -> str:
+	# Interpret silhouette score
+	if score > 0.7:
+		return "EXCELLENT"
+	elif score > 0.5:
+		return "GOOD"
+	elif score > 0.3:
+		return "FAIR"
+	elif score > 0.0:
+		return "WEAK"
+	else:
+		return "POOR"
 
 def _flag_cluster_quality(row: pd.Series) -> str:
-		"""Flag cluster quality based on metrics."""
-		flags = []
-		
-		if row['intra_cluster_similarity'] < 0.5:
-				flags.append('LOW_COHESION')
-		
-		if row['canonical_representativeness'] < 0.6:
-				flags.append('POOR_CANONICAL')
-		
-		if row['cluster_diameter'] > 0.8:
-				flags.append('LARGE_DIAMETER')
-		
-		if row['size'] == 1:
-				flags.append('SINGLETON')
-		
-		return '|'.join(flags) if flags else 'OK'
+	# Flag cluster quality based on metrics
+	flags = []
+	
+	if row['intra_cluster_similarity'] < 0.5:
+		flags.append('LOW_COHESION')
+	
+	if row['canonical_representativeness'] < 0.6:
+		flags.append('POOR_CANONICAL')
+	
+	if row['cluster_diameter'] > 0.8:
+		flags.append('LARGE_DIAMETER')
+	
+	if row['size'] == 1:
+		flags.append('SINGLETON')
+	
+	return '|'.join(flags) if flags else 'OK'
 
 def _generate_recommendations(
 	global_metrics: Dict,
@@ -2145,7 +2349,6 @@ def cluster(
 	for i, doc in enumerate(labels):
 		if doc is None:
 			print(f"doc[{i}]: None (skipping)")
-			documents.append([])  # Empty list for None documents
 			continue
 		
 		if isinstance(doc, str):
@@ -2153,12 +2356,10 @@ def cluster(
 				doc = ast.literal_eval(doc)
 			except (ValueError, SyntaxError):
 				print(f"doc[{i}]: Failed to parse '{doc}' (skipping)")
-				documents.append([])
 				continue
 		
 		if not isinstance(doc, list):
 			print(f"doc[{i}]: Invalid type {type(doc)} (skipping)")
-			documents.append([])
 			continue
 		
 		# Deduplicate labels within document
@@ -2170,6 +2371,7 @@ def cluster(
 	print(f"Total {type(documents)} documents: {len(documents)}")
 	print(f"Unique {type(unique_labels)} labels: {len(unique_labels)}")
 	print(f"Sample unique labels: {unique_labels[:15]}")
+	print("-"*100)
 	
 	dtype = torch.float32  # More stable than float16
 	if torch.cuda.is_available():
@@ -2630,7 +2832,11 @@ def cluster(
 			)
 
 	if verbose:
+		print(f"Clustered {len(df)} labels into {df['cluster'].nunique()} clusters")
+		print(f"{type(df)} {df.shape} {list(df.columns)}")
+		print(df.head(15))
+		print(df.info())
 		print(f"[CLUSTERING] Total Elapsed Time: {time.time()-st_t:.1f} sec")
-		print("="*100)
+		print("="*60)
 
 	return df

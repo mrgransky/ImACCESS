@@ -318,7 +318,7 @@ def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 	# Convert to sorted list for deterministic ordering
 	all_labels = sorted(all_labels)
 	label_dict = {label: idx for idx, label in enumerate(all_labels)}
-	print(f"{len(label_dict)} {type(label_dict)} labels is created from {len(all_labels)} unique canonical {type(all_labels)} labels")
+	print(f"{len(label_dict)} {type(label_dict)} labels is created from {len(all_labels)} unique {type(all_labels)} {col}")
 	# print(json.dumps(label_dict, indent=2, ensure_ascii=False))
 	# print("="*100)
 	
@@ -338,11 +338,11 @@ def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 		
 		df_split['label_vector'] = label_vectors
 	
-	print(f"TRAIN {type(df_train)}: {list(df_train.columns)} {df_train.shape}")
+	print(f"\n>> TRAIN {type(df_train)} {df_train.shape}\n{list(df_train.columns)} ")
 	# print(df_train[['img_path', 'multimodal_canonical_labels', 'label_vector']].head(10))
 	# print(df_train['label_vector'].apply(lambda x: np.where(x==1)[0].tolist()).head(10)) # indices of 1s in label_vector
 	# print()
-	print(f"VAL {type(df_val)}: {list(df_val.columns)} {df_val.shape}")
+	print(f"\n>> VAL {type(df_val)} {df_val.shape}\n{list(df_val.columns)}")
 	# print(df_val[['img_path', 'multimodal_canonical_labels', 'label_vector']].head(10))
 	print("="*100)
 

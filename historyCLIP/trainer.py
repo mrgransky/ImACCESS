@@ -60,6 +60,7 @@ def main():
 
 	# Common
 	parser.add_argument('--metadata_csv', '-csv', type=str, required=True, help='Metadata CSV file')
+	parser.add_argument('--column', '-c', type=str, choices=['llm_canonical_labels', 'vlm_canonical_labels', 'multimodal_canonical_labels'], required=True, help='Column for loading label')	
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--strategy', '-stg', type=str, choices=['full', 'lora', 'rslora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'adapter', 'baseline'], default=None, help='Strategy')
 	parser.add_argument('--epochs', '-e', type=int, default=100, help='Number of epochs')
@@ -110,7 +111,6 @@ def main():
 	DATASET_DIRECTORY = os.path.dirname(args.metadata_csv)
 	dataset_name = os.path.basename(DATASET_DIRECTORY)
 	dataset_type = "single_label" if "single_label" in args.metadata_csv else "multi_label"
-	column = "multimodal_canonical_labels" if "multi_label" in args.metadata_csv else "label"
 	# Original stdout/stderr
 	original_stdout = sys.stdout
 	original_stderr = sys.stderr
@@ -173,7 +173,8 @@ def main():
 		set_seeds(seed=42)
 		# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 		# print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
-		RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{dataset_type}")
+		# RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{dataset_type}") # multi_label
+		RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{args.column}") # multimodal_canonical_labels
 		os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 
 		print(f">> CLIP Model Architecture: {args.model_architecture}...")
@@ -204,7 +205,7 @@ def main():
 			batch_size=args.batch_size,
 			num_workers=args.num_workers,
 			input_resolution=model_config["image_resolution"],
-			col=column,
+			col=args.column,
 		)
 
 		print_loader_info(loader=train_loader)

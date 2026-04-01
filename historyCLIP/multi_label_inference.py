@@ -519,7 +519,19 @@ def get_tail_only_samples(
 	else:
 		print(f"[WARNING] Only {len(tail_labels)} tail labels; using all.")
 		t2i_samples = tail_labels
-	
+
+	# # Optional: filter out obviously non-informative tail labels before T2I sampling
+	# generic_filter = {
+	# 	'black', 'white', 'red', 'blue', 'green', 'yellow',	# colour descriptors
+	# 	'large', 'small', 'old', 'new',                     # size/age descriptors
+	# 	'unknown', 'other', 'misc',                         # catch-all labels
+	# }
+	# tail_labels_for_t2i = [l for l in tail_labels if l not in generic_filter]
+	# if len(tail_labels_for_t2i) >= num_samples:
+	# 		t2i_samples = sorted(local_rng.sample(tail_labels_for_t2i, num_samples))
+	# else:
+	# 		t2i_samples = tail_labels_for_t2i
+
 	print(f"\n{len(i2t_samples)} Query Images from Tail Distribution:")
 	for s in i2t_samples:
 		print(f"{s['image_path']}")
@@ -1123,7 +1135,7 @@ def run_inference(
 	verbose: bool = True,
 ):
 	dataset_name = os.path.basename(dataset_dir)
-	column = "multimodal_canonical_labels" if "multi_label" in metadata_csv else "label"
+	column = os.path.basename(pth_files_directory) # multimodal_canonical_labels, 
 
 	# list of all available checkpoints in directory of file.pth:
 	available_checkpoints = glob.glob(os.path.join(pth_files_directory, "*.pth"))

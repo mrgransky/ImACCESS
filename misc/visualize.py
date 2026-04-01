@@ -3004,12 +3004,12 @@ def multilabel_eda(
 	dataset_dir = os.path.dirname(output_dir)
 	dataset_name = os.path.basename(dataset_dir) # HISTORY_X4
 
-	print(f"Dataset: {dataset_name}: {type(df)} {df.shape} {list(df.columns)}")
+	print(f"{dataset_name}: {type(df)} {df.shape}\n{list(df.columns)}")
 	print(df.info(verbose=True, memory_usage="deep"))
 
 	processed_dfs = {
-		"llm_based_labels": 	df["llm_based_labels"].tolist(),
-		"vlm_based_labels": 	df["vlm_based_labels"].tolist(),
+		"llm_based_labels": df["llm_based_labels"].tolist(),
+		"vlm_based_labels": df["vlm_based_labels"].tolist(),
 		f"{label_column}": 	df[label_column].tolist(),
 	}
 
