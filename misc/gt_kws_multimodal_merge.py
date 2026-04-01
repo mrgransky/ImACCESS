@@ -58,7 +58,9 @@ def merge_csv_files(
 
 	if verbose:
 		print(f">> Merged {type(df)} from {len(csv_files)} CSV files: {df.shape}\n{list(df.columns)}")
-		print(df.info(debug=True))
+		print(df.info(verbose=True, memory_usage='deep'))
+		print(df.head(10))
+
 
 	if verbose:
 		print(f"Post-processing LLM-based labels...")
