@@ -64,21 +64,25 @@ def merge_csv_files(
 
 	if verbose:
 		print(f"Found {len(csv_files)} CSV files in {dataset_dir}")
-		for i, file in enumerate(csv_files):
-			print(f"\t{i:02d}: {file}")
+		# for i, file in enumerate(csv_files):
+		# 	print(f"\t{i:02d}: {file}")
 		print(f"\n>> Merging {len(csv_files)} CSV files to {output_fpath}")
 
 	dfs = []
-	for file in csv_files:
+	for i, file_ in enumerate(csv_files):
+		print(f"{i:02d}: {file_}", end=" ")
 		temp_df = pd.read_csv(
-			filepath_or_buffer=file, 
+			filepath_or_buffer=file_, 
 			on_bad_lines='skip', 
 			dtype=dtypes, 
 			low_memory=False
 		)
+		print(type(temp_df), temp_df.shape)
 		dfs.append(temp_df)
 	df = pd.concat(dfs, ignore_index=True)
-	print(f">> Merged {type(df)} from {len(csv_files)} CSV files: {df.shape}\n{list(df.columns)}")
+
+	if verbose:
+		print(f">> Merged {type(df)} from {len(csv_files)} CSV files: {df.shape}\n{list(df.columns)}")
 
 	multimodal_labels = df['multimodal_labels'].tolist()
 	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=False)
