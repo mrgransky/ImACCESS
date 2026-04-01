@@ -49,45 +49,35 @@ cache_directory = {
 _canonical_map_global = None
 
 def _init_canonical_worker(canonical_dict: dict):
-		"""Called ONCE per worker process — avoids pickling the dict 222k times."""
-		global _canonical_map_global
-		_canonical_map_global = canonical_dict
+	global _canonical_map_global
+	_canonical_map_global = canonical_dict
 
-def _map_labels_worker(sample_labels):
-		"""
-		Worker function: parse + map a single sample's labels to canonical labels.
-		Skips labels not in the canonical map (removed as problematic).
-		"""
-		# ── Parse ──────────────────────────────────────────────────────────────
-		if sample_labels is None:
-				return None
+def parallel_canonical_mapping(labels_str):
+	if isinstance(labels_str, str):
+		try:
+			labels = ast.literal_eval(labels_str)
+		except (ValueError, SyntaxError):
+			return []
+	elif labels_str is None or (isinstance(labels_str, float) and math.isnan(labels_str)):
+		return []
+	elif isinstance(labels_str, list):
+		labels = labels_str
+	else:
+		return []
 
-		if isinstance(sample_labels, float):
-				# NaN comes through as float from pandas
-				try:
-						if math.isnan(sample_labels):
-								return None
-				except (TypeError, ValueError):
-						return None
+	# # Map to canonical labels using global dict
+	# return [canonical_labels_global.get(label, label) for label in labels]
 
-		if isinstance(sample_labels, str):
-				try:
-						sample_labels = ast.literal_eval(sample_labels)
-				except (ValueError, SyntaxError):
-						return None
+	# Map to canonical labels, SKIPPING labels not in dict
+	# (these are labels that were removed as problematic)
+	canonical_labels_ = []
+	for label in labels:
+		if label in canonical_labels_global:
+			canonical_labels_.append(canonical_labels_global[label])
+		# else: label was removed as problematic, skip it
+	
+	return canonical_labels_
 
-		if not isinstance(sample_labels, list):
-				return None
-
-		# ── Map ────────────────────────────────────────────────────────────────
-		mapped = []
-		for label in sample_labels:
-				if label in _canonical_map_global:
-						mapped.append(_canonical_map_global[label])
-				# else: label was removed as problematic → skip
-
-		# Deduplicate while preserving order
-		return list(dict.fromkeys(mapped))
 
 def get_canonical_labels_parallel(
 	labels: List[List[str]],
@@ -117,8 +107,9 @@ def get_canonical_labels_parallel(
 			f"from {len(clustered_df)} unique labels"
 		)
 		print(clustered_df.head(10))
+
 	canonical_map = clustered_df.set_index('label')['canonical'].to_dict()
-	print(f"[{label_source.upper()}] canonical_map: {len(canonical_map)} entries")
+	print(f"[{label_source.upper()}] canonical_map: {type(canonical_labels)} {len(canonical_map)} entries")
 
 	# Parallel mapping
 	chunksize  = max(1, len(labels) // (num_workers * 4))  # 4 chunks per worker
@@ -134,11 +125,12 @@ def get_canonical_labels_parallel(
 		initargs=(canonical_map,),            # dict sent ONCE per worker
 	) as pool:
 		mapped_labels = pool.map(
-			_map_labels_worker,
+			parallel_canonical_mapping,
 			labels,
 			chunksize=chunksize,
 		)
 	elapsed = time.time() - t0
+
 	print(
 		f"[{label_source.upper()}] Mapping done in {elapsed:.2f}s "
 		f"({len(labels)/elapsed:,.0f} rows/sec)"
@@ -2471,6 +2463,7 @@ def cluster(
 
 	# Compute linkage matrix
 	print(f"[LINKAGE] {linkage_method} Agglomerative Clustering on: {X.shape} embeddings [takes a while...]")
+
 	t0 = time.time()
 	# OPTION 1: Ward linkage (RECOMMENDED for preventing mega-clusters)
 	if linkage_method == "ward":
@@ -2606,6 +2599,7 @@ def cluster(
 	total_sim_loss = []
 	total_freq_gain = []
 	questionable_examples = []
+
 	t0 = time.time()
 	for cid in sorted(df.cluster.unique()):
 		cluster_mask = df.cluster == cid
@@ -2791,9 +2785,9 @@ def cluster(
 		print(f"All consistent!")
 
 	results = analyze_cluster_quality(
-		embeddings=X_clean,  # ✅ CORRECT: 36,657 embeddings (matches!)
-		labels=unique_labels_array,  # ✅ CORRECT: 36,657 labels
-		cluster_assignments=cluster_labels,  # ✅ CORRECT: 36,657 assignments
+		embeddings=X_clean,									# 36,657 embeddings (matches!)
+		labels=unique_labels_array,					# 36,657 labels
+		cluster_assignments=cluster_labels,	# 36,657 assignments
 		canonical_labels=canonical_map,
 		original_label_counts=label_freq_dict,
 		distance_metric='cosine',

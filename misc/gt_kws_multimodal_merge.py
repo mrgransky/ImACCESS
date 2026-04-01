@@ -14,38 +14,38 @@ from clustering import get_canonical_labels_parallel, cluster
 # old dataset:
 # $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -emb "Qwen/Qwen3-Embedding-8B" -nw 20 -v > /scratch/project_2004072/ImACCESS/trash/logs/_interactive_multimodal_annotation_h4.txt &
 
-# Global variable for worker processes
-canonical_labels_global = None
+# # Global variable for worker processes
+# canonical_labels_global = None
 
-def init_worker_canonical(canonical_dict):
-	global canonical_labels_global
-	canonical_labels_global = canonical_dict
+# def init_worker_canonical(canonical_dict):
+# 	global canonical_labels_global
+# 	canonical_labels_global = canonical_dict
 
-def parallel_canonical_mapping(labels_str):
-	if isinstance(labels_str, str):
-		try:
-			labels = ast.literal_eval(labels_str)
-		except (ValueError, SyntaxError):
-			return []
-	elif labels_str is None or (isinstance(labels_str, float) and math.isnan(labels_str)):
-		return []
-	elif isinstance(labels_str, list):
-		labels = labels_str
-	else:
-		return []
+# def parallel_canonical_mapping(labels_str):
+# 	if isinstance(labels_str, str):
+# 		try:
+# 			labels = ast.literal_eval(labels_str)
+# 		except (ValueError, SyntaxError):
+# 			return []
+# 	elif labels_str is None or (isinstance(labels_str, float) and math.isnan(labels_str)):
+# 		return []
+# 	elif isinstance(labels_str, list):
+# 		labels = labels_str
+# 	else:
+# 		return []
 
-	# # Map to canonical labels using global dict
-	# return [canonical_labels_global.get(label, label) for label in labels]
+# 	# # Map to canonical labels using global dict
+# 	# return [canonical_labels_global.get(label, label) for label in labels]
 
-	# Map to canonical labels, SKIPPING labels not in dict
-	# (these are labels that were removed as problematic)
-	canonical_labels_ = []
-	for label in labels:
-		if label in canonical_labels_global:
-			canonical_labels_.append(canonical_labels_global[label])
-		# else: label was removed as problematic, skip it
+# 	# Map to canonical labels, SKIPPING labels not in dict
+# 	# (these are labels that were removed as problematic)
+# 	canonical_labels_ = []
+# 	for label in labels:
+# 		if label in canonical_labels_global:
+# 			canonical_labels_.append(canonical_labels_global[label])
+# 		# else: label was removed as problematic, skip it
 	
-	return canonical_labels_
+# 	return canonical_labels_
 
 def merge_csv_files(
 	dataset_dir: str,
@@ -80,59 +80,60 @@ def merge_csv_files(
 	df = pd.concat(dfs, ignore_index=True)
 	print(f">> Merged {type(df)} from {len(csv_files)} CSV files: {df.shape}\n{list(df.columns)}")
 
-
 	multimodal_labels = df['multimodal_labels'].tolist()
 	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=False)
 
-	# get_canonical_labels_parallel(
-	# 	labels=multimodal_labels,
-	# 	model_id=embedding_model_id,
-	# 	label_source="multimodal",
-	# 	output_dir=OUTPUT_DIR,
-	# 	num_workers=num_workers,
-	# 	nc=nc,
-	# 	verbose=verbose,
-	# )
-
-	clustered_df = cluster(
+	get_canonical_labels_parallel(
 		labels=multimodal_labels,
 		model_id=embedding_model_id,
-		batch_size=4096,
+		label_source="multimodal",
+		output_dir=OUTPUT_DIR,
+		num_workers=num_workers,
 		nc=nc,
-		clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")),
 		verbose=verbose,
 	)
 
-	# canonical label available in clustered_df "canonical" column: [label] -> canonical_label]
-	# mapping each label of multimodal_labels to its canonical label:
-	# desired example:
-	# multimodal_labels						-> multimodal_canonical_labels (new column)
-	# [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
-	canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
-	print(f">> canonical_labels: {type(canonical_labels)} {len(canonical_labels)}")
+	# clustered_df = cluster(
+	# 	labels=multimodal_labels,
+	# 	model_id=embedding_model_id,
+	# 	batch_size=4096,
+	# 	nc=nc,
+	# 	clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")),
+	# 	verbose=verbose,
+	# )
 
-	# Parallel mapping
-	chunksize = max(1, len(df) // (num_workers * 4))  # 4 chunks per worker
-	print(f"Mapping {len(df)} samples to their corresponding canonical labels")
-	print(f"num_workers: {num_workers} chunksize: {chunksize}")
-	with multiprocessing.Pool(
-		processes=num_workers,
-		initializer=init_worker_canonical, # Called ONCE per worker
-		initargs=(canonical_labels,) # Sent ONCE per worker
-	) as pool:
-		df['multimodal_canonical_labels'] = pool.map(
-			parallel_canonical_mapping,
-			multimodal_labels,
-			chunksize=chunksize
-		)
+	# # canonical label available in clustered_df "canonical" column: [label] -> canonical_label]
+	# # mapping each label of multimodal_labels to its canonical label:
+	# # desired example:
+	# # multimodal_labels						-> multimodal_canonical_labels (new column)
+	# # [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
+	# canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
+	# print(f"Canonical_labels: {type(canonical_labels)} {len(canonical_labels)}")
 
-	# Filter out samples with no valid canonical labels
+	# # Parallel mapping
+	# print(f"Parallel Mapping of {len(df)} samples => canonical labels")
+	# chunksize = max(1, len(df) // (num_workers * 4))  # 4 chunks per worker
+	# print(f"num_workers: {num_workers} chunksize: {chunksize}")
+
+	# with multiprocessing.Pool(
+	# 	processes=num_workers,
+	# 	initializer=init_worker_canonical, # Called ONCE per worker
+	# 	initargs=(canonical_labels,) # Sent ONCE per worker
+	# ) as pool:
+	# 	df['multimodal_canonical_labels'] = pool.map(
+	# 		parallel_canonical_mapping,
+	# 		multimodal_labels,
+	# 		chunksize=chunksize
+	# 	)
+
+	if verbose:
+		print(f"[FILTERING] samples with no valid canonical labels")
 	before_count = len(df)
 	df = df[df['multimodal_canonical_labels'].apply(len) > 0].copy()
 	after_count = len(df)
 	
 	if verbose:
-		print(f"\n>> Canonical mapping complete:")
+		print(f"\n[DONE] Canonical mapping:")
 		print(f"   Samples before: {before_count:,}")
 		print(f"   Samples after: {after_count:,}")
 		if before_count != after_count:
