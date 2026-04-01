@@ -1,7 +1,7 @@
 from utils import *
 import visualize as viz
 from nlp_utils import _post_process_
-from clustering import get_canonical_labels_parallel
+from clustering import get_canonical_labels_parallel, cluster
 
 # how to run:
 # Puhti/Mahti:
