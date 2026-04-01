@@ -250,11 +250,23 @@ def get_multimodal_annotation(
 				print(df[empty_canonical][['doc_url', 'multimodal_labels', 'multimodal_canonical_labels']].head(10))
 
 		before_count = len(df)
-		df = df[df['multimodal_canonical_labels'].apply(len) > 0]
+		df = df[df['multimodal_canonical_labels'].apply(len) > 0].copy()
 		after_count = len(df)
-		
-		if verbose and before_count != after_count:
-			print(f"\n>> Removed {before_count - after_count} samples with no valid labels: New: {df.shape}")
+		if verbose:
+			print(f"\n[DONE] Canonical mapping:")
+			print(f"   Samples before: {before_count:,}")
+			print(f"   Samples after: {after_count:,}")
+			if before_count != after_count:
+				removed = before_count - after_count
+				print(f"   Removed {removed:,} samples with no valid labels ({removed/before_count*100:.2f}%)")
+			
+			# Show some statistics
+			label_counts = df['multimodal_canonical_labels'].apply(len)
+			print(f"\n   Labels per sample:")
+			print(f"     Mean: {label_counts.mean():.2f}")
+			print(f"     Median: {label_counts.median():.0f}")
+			print(f"     Min: {label_counts.min()}")
+			print(f"     Max: {label_counts.max()}")
 
 		# Deduplicate canonical labels
 		if verbose:
@@ -264,16 +276,13 @@ def get_multimodal_annotation(
 				if len(labels) != len(set(labels))
 			)
 			print(f"Documents with duplicates: {duplicate_count:,} ({duplicate_count/len(df)*100:.1f}%)")
+
 		df['multimodal_canonical_labels'] = df['multimodal_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
 
 		if verbose:
 			print(f"   ✓ Deduplication complete")
 			assert sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels))) == 0
 			print(f"   ✓ Verified: 0 duplicates remaining")
-
-		if verbose:
-			print(df["multimodal_canonical_labels"].value_counts())
-			print(f"Saving {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
 
 		viz.multilabel_eda(
 			df=df,

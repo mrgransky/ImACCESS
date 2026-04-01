@@ -78,7 +78,6 @@ def parallel_canonical_mapping(labels_str):
 	
 	return canonical_labels_
 
-
 def get_canonical_labels_parallel(
 	labels: List[List[str]],
 	label_source: str,          # "llm", "vlm", or "multimodal"
@@ -118,8 +117,8 @@ def get_canonical_labels_parallel(
 	t0 = time.time()
 	with multiprocessing.Pool(
 		processes=num_workers,
-		initializer=_init_canonical_worker,   # called ONCE per worker
-		initargs=(canonical_map,),            # dict sent ONCE per worker
+		initializer=init_worker_canonical,	# called ONCE per worker
+		initargs=(canonical_map,),					# dict sent ONCE per worker
 	) as pool:
 		mapped_labels = pool.map(
 			parallel_canonical_mapping,

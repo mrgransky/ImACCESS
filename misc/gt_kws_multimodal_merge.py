@@ -83,7 +83,7 @@ def merge_csv_files(
 	multimodal_labels = df['multimodal_labels'].tolist()
 	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=False)
 
-	get_canonical_labels_parallel(
+	multimodal_canonical_labels, _ = get_canonical_labels_parallel(
 		labels=multimodal_labels,
 		model_id=embedding_model_id,
 		label_source="multimodal",
@@ -92,6 +92,7 @@ def merge_csv_files(
 		nc=nc,
 		verbose=verbose,
 	)
+	df['multimodal_canonical_labels'] = multimodal_canonical_labels
 
 	# clustered_df = cluster(
 	# 	labels=multimodal_labels,
@@ -173,8 +174,8 @@ def merge_csv_files(
 		assert duplicate_count_after == 0, "Duplicates still present after deduplication!"
 		print(f"   ✓ Verified: 0 duplicates remaining")
 	
-		print(f"\n>> canonical_multimodal_labels: {len(df['multimodal_canonical_labels'])}")
-		print(df['multimodal_canonical_labels'].head(15).tolist())
+	if verbose:
+		print(f"Saving {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
 
 	df.to_csv(output_fpath, index=False)
 
