@@ -14,39 +14,6 @@ from clustering import get_canonical_labels_parallel, cluster
 # old dataset:
 # $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -emb "Qwen/Qwen3-Embedding-8B" -nw 20 -v > /scratch/project_2004072/ImACCESS/trash/logs/_interactive_multimodal_annotation_h4.txt &
 
-# # Global variable for worker processes
-# canonical_labels_global = None
-
-# def init_worker_canonical(canonical_dict):
-# 	global canonical_labels_global
-# 	canonical_labels_global = canonical_dict
-
-# def parallel_canonical_mapping(labels_str):
-# 	if isinstance(labels_str, str):
-# 		try:
-# 			labels = ast.literal_eval(labels_str)
-# 		except (ValueError, SyntaxError):
-# 			return []
-# 	elif labels_str is None or (isinstance(labels_str, float) and math.isnan(labels_str)):
-# 		return []
-# 	elif isinstance(labels_str, list):
-# 		labels = labels_str
-# 	else:
-# 		return []
-
-# 	# # Map to canonical labels using global dict
-# 	# return [canonical_labels_global.get(label, label) for label in labels]
-
-# 	# Map to canonical labels, SKIPPING labels not in dict
-# 	# (these are labels that were removed as problematic)
-# 	canonical_labels_ = []
-# 	for label in labels:
-# 		if label in canonical_labels_global:
-# 			canonical_labels_.append(canonical_labels_global[label])
-# 		# else: label was removed as problematic, skip it
-	
-# 	return canonical_labels_
-
 def merge_csv_files(
 	dataset_dir: str,
 	num_workers: int,
@@ -86,10 +53,12 @@ def merge_csv_files(
 		)
 		print(temp_df.shape, list(temp_df.columns))
 		dfs.append(temp_df)
+
 	df = pd.concat(dfs, ignore_index=True)
 
 	if verbose:
 		print(f">> Merged {type(df)} from {len(csv_files)} CSV files: {df.shape}\n{list(df.columns)}")
+		print(df.info(debug=True))
 
 	if verbose:
 		print(f"Post-processing LLM-based labels...")
@@ -139,51 +108,19 @@ def merge_csv_files(
 	# check length of each before setting into column:
 	if verbose:
 		print("="*60)
-		print(f"LLM canonical: {type(llm_canonical_labels)} {len(llm_canonical_labels)}")
-		print(f"VLM canonical: {type(vlm_canonical_labels)} {len(vlm_canonical_labels)}")
-		print(f"Multimodal canonical: {type(multimodal_canonical_labels)} {len(multimodal_canonical_labels)}")
+		print(f"Canonical labels lengths:")
+		print(f"LLM         {type(llm_canonical_labels)} {len(llm_canonical_labels)}")
+		print(f"VLM         {type(vlm_canonical_labels)} {len(vlm_canonical_labels)}")
+		print(f"Multimodal: {type(multimodal_canonical_labels)} {len(multimodal_canonical_labels)}")
 		print("="*60)
-
 
 	df['llm_canonical_labels'] = llm_canonical_labels
 	df['vlm_canonical_labels'] = vlm_canonical_labels
 	df['multimodal_canonical_labels'] = multimodal_canonical_labels
 
-	# clustered_df = cluster(
-	# 	labels=multimodal_labels,
-	# 	model_id=embedding_model_id,
-	# 	batch_size=4096,
-	# 	nc=nc,
-	# 	clusters_fname=os.path.join(OUTPUT_DIR, os.path.basename(output_fpath).replace(".csv", "_clusters.csv")),
-	# 	verbose=verbose,
-	# )
-
-	# # canonical label available in clustered_df "canonical" column: [label] -> canonical_label]
-	# # mapping each label of multimodal_labels to its canonical label:
-	# # desired example:
-	# # multimodal_labels						-> multimodal_canonical_labels (new column)
-	# # [label_1, label_2, label_3] -> [canonical_label_1, canonical_label_2, canonical_label_3]
-	# canonical_labels = clustered_df.set_index('label')['canonical'].to_dict()
-	# print(f"Canonical_labels: {type(canonical_labels)} {len(canonical_labels)}")
-
-	# # Parallel mapping
-	# print(f"Parallel Mapping of {len(df)} samples => canonical labels")
-	# chunksize = max(1, len(df) // (num_workers * 4))  # 4 chunks per worker
-	# print(f"num_workers: {num_workers} chunksize: {chunksize}")
-
-	# with multiprocessing.Pool(
-	# 	processes=num_workers,
-	# 	initializer=init_worker_canonical, # Called ONCE per worker
-	# 	initargs=(canonical_labels,) # Sent ONCE per worker
-	# ) as pool:
-	# 	df['multimodal_canonical_labels'] = pool.map(
-	# 		parallel_canonical_mapping,
-	# 		multimodal_labels,
-	# 		chunksize=chunksize
-	# 	)
-
 	if verbose:
 		print(f"[FILTERING] samples with no valid canonical labels")
+
 	before_count = len(df)
 	df = df[df['multimodal_canonical_labels'].apply(len) > 0].copy()
 	after_count = len(df)
@@ -209,25 +146,35 @@ def merge_csv_files(
 		print(f"\n>> Deduplicating canonical labels...")
 		
 		# Count documents with duplicates BEFORE
-		duplicate_count = sum(
-			1 for labels in df['multimodal_canonical_labels'] 
-			if len(labels) != len(set(labels))
-		)
-		print(f"   Documents with duplicates: {duplicate_count:,} ({duplicate_count/len(df)*100:.1f}%)")
+		llm_dup_count = sum(1 for labels in df['llm_canonical_labels'] if len(labels) != len(set(labels)))
+		vlm_dup_count = sum(1 for labels in df['vlm_canonical_labels'] if len(labels) != len(set(labels)))
+		mm_dup_count = sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels)))
+		
+		print(f"   LLM duplicates: {llm_dup_count:,} ({llm_dup_count/len(df)*100:.1f}%)")
+		print(f"   VLM duplicates: {vlm_dup_count:,} ({vlm_dup_count/len(df)*100:.1f}%)")
+		print(f"   Multimodal duplicates: {mm_dup_count:,} ({mm_dup_count/len(df)*100:.1f}%)")
 	
-	# Deduplicate while preserving order
+	# Deduplicate all three label columns while preserving order
+	df['llm_canonical_labels'] = df['llm_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
+	df['vlm_canonical_labels'] = df['vlm_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
 	df['multimodal_canonical_labels'] = df['multimodal_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
 	
+	# Verify no duplicates remain
+	assert sum(1 for labels in df['llm_canonical_labels'] if len(labels) != len(set(labels))) == 0
+	assert sum(1 for labels in df['vlm_canonical_labels'] if len(labels) != len(set(labels))) == 0
+	assert sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels))) == 0
+	
 	if verbose:
-		print(f"   ✓ Deduplication complete")
+		print(f"   ✓ Deduplication complete for all label columns")
+		llm_duplicate_count = sum(1 for labels in df['llm_canonical_labels'] if len(labels) != len(set(labels)))
+		vlm_duplicate_count = sum(1 for labels in df['vlm_canonical_labels'] if len(labels) != len(set(labels)))
+		multimodal_duplicate_count = sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels)))
+
+		print(f"   LLM duplicates: {llm_duplicate_count:,} ({llm_duplicate_count/len(df)*100:.1f}%)")
+		print(f"   VLM duplicates: {vlm_duplicate_count:,} ({vlm_duplicate_count/len(df)*100:.1f}%)")
+		print(f"   Multimodal duplicates: {multimodal_duplicate_count:,} ({multimodal_duplicate_count/len(df)*100:.1f}%)")
 		
-		# Verify no duplicates remain
-		duplicate_count_after = sum(
-			1 for labels in df['multimodal_canonical_labels'] 
-			if len(labels) != len(set(labels))
-		)
-		assert duplicate_count_after == 0, "Duplicates still present after deduplication!"
-		print(f"   ✓ Verified: 0 duplicates remaining")
+		print(f"   ✓ Verified: 0 duplicates remaining in all columns")
 	
 	if verbose:
 		print(f"Saving {type(df)} {df.shape}\n{list(df.columns)}")

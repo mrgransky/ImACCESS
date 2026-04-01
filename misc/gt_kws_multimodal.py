@@ -231,11 +231,11 @@ def get_multimodal_annotation(
 		# check length of each before setting into column:
 		if verbose:
 			print("="*60)
-			print(f"LLM canonical: {type(llm_canonical_labels)} {len(llm_canonical_labels)}")
-			print(f"VLM canonical: {type(vlm_canonical_labels)} {len(vlm_canonical_labels)}")
-			print(f"Multimodal canonical: {type(multimodal_canonical_labels)} {len(multimodal_canonical_labels)}")
+			print(f"Canonical labels length check:")
+			print(f"LLM:        {type(llm_canonical_labels)} {len(llm_canonical_labels)}")
+			print(f"VLM:        {type(vlm_canonical_labels)} {len(vlm_canonical_labels)}")
+			print(f"Multimodal: {type(multimodal_canonical_labels)} {len(multimodal_canonical_labels)}")
 			print("="*60)
-
 
 		df['llm_canonical_labels'] = llm_canonical_labels
 		df['vlm_canonical_labels'] = vlm_canonical_labels
@@ -244,11 +244,25 @@ def get_multimodal_annotation(
 		# Remove samples with empty canonical labels (optional)
 		# Print those rows with empty canonical labels:
 		if verbose:
-			empty_canonical = df['multimodal_canonical_labels'].apply(len) == 0
-			if empty_canonical.any():  # Check if there are any rows with empty canonical labels
-				print(f"\n>> Printing rows with empty canonical labels...")
-				print(df[empty_canonical][['doc_url', 'multimodal_labels', 'multimodal_canonical_labels']].head(10))
+			empty_llm_canonical = df['llm_canonical_labels'].apply(len) == 0
+			empty_vlm_canonical = df['vlm_canonical_labels'].apply(len) == 0
+			empty_multimodal_canonical = df['multimodal_canonical_labels'].apply(len) == 0
 
+			if empty_llm_canonical.any():  # Check if there are any rows with empty LLM canonical labels
+				print(f"\n>> Printing rows with empty canonical labels...")
+				print(df[empty_llm_canonical][['doc_url', 'llm_labels', 'llm_canonical_labels']].head(10))
+
+			if empty_vlm_canonical.any():  # Check if there are any rows with empty VLM canonical labels
+				print(f"\n>> Printing rows with empty canonical labels...")
+				print(df[empty_vlm_canonical][['doc_url', 'vlm_labels', 'vlm_canonical_labels']].head(10))
+
+			if empty_multimodal_canonical.any():  # Check if there are any rows with empty multimodal canonical labels
+				print(f"\n>> Printing rows with empty canonical labels...")
+				print(df[empty_multimodal_canonical][['doc_url', 'multimodal_labels', 'multimodal_canonical_labels']].head(10))
+
+		if verbose:
+			print(f"[FILTERING] samples with no valid canonical labels")
+		
 		before_count = len(df)
 		df = df[df['multimodal_canonical_labels'].apply(len) > 0].copy()
 		after_count = len(df)
@@ -277,11 +291,25 @@ def get_multimodal_annotation(
 			)
 			print(f"Documents with duplicates: {duplicate_count:,} ({duplicate_count/len(df)*100:.1f}%)")
 
+		df['llm_canonical_labels'] = df['llm_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
+		df['vlm_canonical_labels'] = df['vlm_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
 		df['multimodal_canonical_labels'] = df['multimodal_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
+
+		assert sum(1 for labels in df['llm_canonical_labels'] if len(labels) != len(set(labels))) == 0
+		assert sum(1 for labels in df['vlm_canonical_labels'] if len(labels) != len(set(labels))) == 0
+		assert sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels))) == 0
 
 		if verbose:
 			print(f"   ✓ Deduplication complete")
-			assert sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels))) == 0
+
+			multimodal_duplicate_count = sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels)))
+			llm_duplicate_count = sum(1 for labels in df['llm_canonical_labels'] if len(labels) != len(set(labels)))
+			vlm_duplicate_count = sum(1 for labels in df['vlm_canonical_labels'] if len(labels) != len(set(labels)))
+
+			print(f"[LLM] Documents with duplicates: {llm_duplicate_count:,} ({llm_duplicate_count/len(df)*100:.1f}%)")
+			print(f"[VLM] Documents with duplicates: {vlm_duplicate_count:,} ({vlm_duplicate_count/len(df)*100:.1f}%)")
+			print(f"[Multimodal] Documents with duplicates: {multimodal_duplicate_count:,} ({multimodal_duplicate_count/len(df)*100:.1f}%)")
+
 			print(f"   ✓ Verified: 0 duplicates remaining")
 
 		viz.multilabel_eda(
