@@ -175,7 +175,7 @@ def merge_csv_files(
 		print(f"   ✓ Verified: 0 duplicates remaining")
 	
 	if verbose:
-		print(f"Saving {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
+		print(f"Saving {type(df)} {df.shape}\n{list(df.columns)}")
 
 	df.to_csv(output_fpath, index=False)
 
