@@ -182,7 +182,7 @@ def get_multimodal_annotation(
 		on_bad_lines='skip',
 		dtype=dtypes,
 		low_memory=False,
-		usecols = [
+		usecols=[
 			'doc_url',
 			'img_path',
 			'title',

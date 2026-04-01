@@ -64,7 +64,7 @@ def merge_csv_files(
 
 	if verbose:
 		print(f"\nFound {len(csv_files)} CSV files in {dataset_dir}")
-		print(f">> Merging {len(csv_files)} CSV files to {output_fpath}")
+		print(f"\tMerging {len(csv_files)} CSVs => {output_fpath}")
 
 	dfs = []
 	for i, file_ in enumerate(csv_files):
@@ -73,7 +73,16 @@ def merge_csv_files(
 			filepath_or_buffer=file_, 
 			on_bad_lines='skip', 
 			dtype=dtypes, 
-			low_memory=False
+			low_memory=False,
+			usecols=[
+				'doc_url', 
+				'img_path', 
+				'title', 
+				'description', 
+				'llm_based_labels', 
+				'vlm_based_labels', 
+				'multimodal_labels',
+			]
 		)
 		print(temp_df.shape, list(temp_df.columns))
 		dfs.append(temp_df)
