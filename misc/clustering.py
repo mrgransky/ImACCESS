@@ -45,12 +45,12 @@ cache_directory = {
 	"ubuntu": "/media/volume/models",
 }
 
-# Module-level globals for multiprocessing workers
-_canonical_map_global = None
+# Global variable for worker processes
+canonical_labels_global = None
 
-def _init_canonical_worker(canonical_dict: dict):
-	global _canonical_map_global
-	_canonical_map_global = canonical_dict
+def init_worker_canonical(canonical_dict):
+	global canonical_labels_global
+	canonical_labels_global = canonical_dict
 
 def parallel_canonical_mapping(labels_str):
 	if isinstance(labels_str, str):
