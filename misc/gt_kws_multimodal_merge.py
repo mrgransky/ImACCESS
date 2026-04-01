@@ -86,6 +86,7 @@ def merge_csv_files(
 
 	get_canonical_labels_parallel(
 		labels=multimodal_labels,
+		model_id=model_id,
 		label_source="multimodal",
 		output_dir=OUTPUT_DIR,
 		csv_basename=csv_basename,

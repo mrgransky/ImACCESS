@@ -98,6 +98,7 @@ def get_canonical_labels_parallel(
 	nc: int = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
+	print(f"\n>> Getting {label_source} Canonical Labels (Parallel Mapping: nw: {num_workers})")
 	clusters_fname = os.path.join(
 		output_dir,
 		csv_basename.replace(".csv", f"_{label_source}_clusters.csv")
@@ -181,9 +182,12 @@ def get_canonical_labels(
 	label_source: str,  # "llm", "vlm", or "multimodal"
 	output_dir: str,
 	csv_basename: str,
+	model_id: str,
 	nc: int = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
+
+	print(f"\n>> Getting {label_source} Canonical Labels (Sequential Mapping)")
 	clusters_fname = os.path.join(
 		output_dir,
 		csv_basename.replace(".csv", f"_{label_source}_clusters.csv")
@@ -191,11 +195,7 @@ def get_canonical_labels(
 
 	clustered_df = cluster(
 		labels=labels,
-		model_id=(
-			"Qwen/Qwen3-Embedding-8B"
-			if os.getenv('USER') == "alijanif"
-			else "Qwen/Qwen3-Embedding-0.6B"
-		),
+		model_id=model_id,
 		nc=nc,
 		clusters_fname=clusters_fname,
 		verbose=verbose,

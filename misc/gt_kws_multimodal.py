@@ -93,6 +93,7 @@ def get_multimodal_annotation(
 	vlm_model_id: str,
 	vlm_batch_size: int,
 	vlm_max_generated_tks: int,
+	embedding_model_id: str,
 	max_keywords: int,
 	device: str,
 	num_workers: int,
@@ -202,6 +203,7 @@ def get_multimodal_annotation(
 		llm_canonical_labels, _ = get_canonical_labels(
 			labels=llm_based_labels,
 			label_source="llm",
+			model_id=embedding_model_id,
 			output_dir=OUTPUT_DIR,
 			csv_basename=csv_basename,
 			nc=nc,
@@ -212,6 +214,7 @@ def get_multimodal_annotation(
 		vlm_canonical_labels, _ = get_canonical_labels(
 			labels=vlm_based_labels,
 			label_source="vlm",
+			model_id=embedding_model_id,
 			output_dir=OUTPUT_DIR,
 			csv_basename=csv_basename,
 			nc=nc,
@@ -221,6 +224,7 @@ def get_multimodal_annotation(
 		# --- Multimodal (fused) canonical labels ---
 		multimodal_canonical_labels, _ = get_canonical_labels(
 			labels=multimodal_labels,
+			model_id=embedding_model_id,
 			label_source="multimodal",
 			output_dir=OUTPUT_DIR,
 			csv_basename=csv_basename,
@@ -312,9 +316,18 @@ def main():
 	parser.add_argument("--vlm_max_generated_tks", '-vlm_mgt', type=int, default=64, help="Max number of generated tokens using VLM")
 	parser.add_argument("--vlm_batch_size", '-vlm_bs', type=int, default=2, help="Batch size for visual processing using VLM (adjust based on GPU memory)")
 	parser.add_argument("--vlm_use_quantization", '-vlm_q', action='store_true', help="Use quantization for VLM")
+	parser.add_argument("--embedding_model_id", '-emb_id', type=str, default="Qwen/Qwen3-Embedding-0.6B", help="HuggingFace Embedding model ID")
+
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--num_clusters", '-nc', type=int, default=None, help="Number of clusters")
+
+	# model_id=(
+	# 	"Qwen/Qwen3-Embedding-8B"
+	# 	if os.getenv('USER') == "alijanif"
+	# 	else "Qwen/Qwen3-Embedding-0.6B"
+	# ),
+
 	args = parser.parse_args()
 	args.device = torch.device(args.device)
 	args.num_workers = min(args.num_workers, os.cpu_count())
@@ -333,6 +346,7 @@ def main():
 		vlm_batch_size=args.vlm_batch_size,
 		vlm_max_generated_tks=args.vlm_max_generated_tks,
 		max_keywords=args.max_keywords,
+		embedding_model_id=args.embedding_model_id,
 		use_llm_quantization=args.llm_use_quantization,
 		use_vlm_quantization=args.vlm_use_quantization,
 		nc=args.num_clusters,
