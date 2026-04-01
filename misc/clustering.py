@@ -101,15 +101,12 @@ def get_canonical_labels_parallel(
 	)
 
 	if verbose:
-		print(
-			f"[{label_source.upper()}] Clustered into "
-			f"{clustered_df['cluster'].nunique()} clusters "
-			f"from {len(clustered_df)} unique labels"
-		)
+		print(f"[{label_source.upper()}]")
+		print(f"  ├─ {len(clustered_df)} unique labels ==>> {clustered_df['cluster'].nunique()} clusters")
 		print(clustered_df.head(10))
 
 	canonical_map = clustered_df.set_index('label')['canonical'].to_dict()
-	print(f"[{label_source.upper()}] canonical_map: {type(canonical_labels)} {len(canonical_map)} entries")
+	print(f"[{label_source.upper()}] canonical_map: {type(canonical_map)} {len(canonical_map)} entries")
 
 	# Parallel mapping
 	chunksize  = max(1, len(labels) // (num_workers * 4))  # 4 chunks per worker
@@ -2531,20 +2528,22 @@ def cluster(
 		print(f"\nCutting dendrogram at k={best_k} for {len(unique_labels)} labels")
 		cluster_labels = fcluster(Z, best_k, criterion='maxclust') - 1 # Convert to 0-indexed
 
-	print(f"\n[CLUSTERING] {len(np.unique(cluster_labels))} clusters for {cluster_labels.shape} {type(cluster_labels)} labels. {cluster_labels.min()} {cluster_labels.max()}")
+	print(f"\n[CLUSTERING] {len(np.unique(cluster_labels))} clusters") 
+	print(f"{cluster_labels.shape} {type(cluster_labels)} labels.")
+	print(f"(min, max): ({cluster_labels.min()}, {cluster_labels.max()})")
 
-	get_optimal_super_clusters(
-		linkage_matrix=Z, 
-		embeddings=X,
-		cluster_labels=cluster_labels,
-		unique_labels=unique_labels,
-		linkage_method=linkage_method,
-		clusters_fname=clusters_fname,
-		n_thresholds=50,
-		min_clusters=3,
-		max_clusters=10,
-		verbose=verbose
-	)
+	# get_optimal_super_clusters(
+	# 	linkage_matrix=Z, 
+	# 	embeddings=X,
+	# 	cluster_labels=cluster_labels,
+	# 	unique_labels=unique_labels,
+	# 	linkage_method=linkage_method,
+	# 	clusters_fname=clusters_fname,
+	# 	n_thresholds=50,
+	# 	min_clusters=3,
+	# 	max_clusters=10,
+	# 	verbose=verbose
+	# )
 	
 	print(f"\nCanonical labels per cluster")
 

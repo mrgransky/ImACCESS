@@ -230,9 +230,11 @@ def get_multimodal_annotation(
 
 		# check length of each before setting into column:
 		if verbose:
+			print("="*60)
 			print(f"LLM canonical: {type(llm_canonical_labels)} {len(llm_canonical_labels)}")
 			print(f"VLM canonical: {type(vlm_canonical_labels)} {len(vlm_canonical_labels)}")
 			print(f"Multimodal canonical: {type(multimodal_canonical_labels)} {len(multimodal_canonical_labels)}")
+			print("="*60)
 
 
 		df['llm_canonical_labels'] = llm_canonical_labels
