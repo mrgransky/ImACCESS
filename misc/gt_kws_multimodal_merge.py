@@ -6,7 +6,7 @@ from clustering import get_canonical_labels_parallel
 # how to run:
 # Puhti/Mahti:
 # srun -J cpu --account=project_2004072 --partition=large --time=00-13:45:00 --mem=164G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
-# $ python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4/ -nw 40 -v
+# $ python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/ -nw 8 -v
 
 # new dataset:
 # $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -emb "Qwen/Qwen3-Embedding-8B" -nw 40 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
@@ -83,6 +83,11 @@ def merge_csv_files(
 
 	multimodal_labels = df['multimodal_labels'].tolist()
 	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=False)
+
+	csv_basename = os.path.join(
+		OUTPUT_DIR, 
+		os.path.basename(output_fpath)#.replace(".csv", "_clusters.csv")
+	)
 
 	get_canonical_labels_parallel(
 		labels=multimodal_labels,

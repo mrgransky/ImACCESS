@@ -103,6 +103,8 @@ def get_canonical_labels_parallel(
 		output_dir,
 		csv_basename.replace(".csv", f"_{label_source}_clusters.csv")
 	)
+	print(f"clusters_fname: {clusters_fname}")
+
 	clustered_df = cluster(
 		labels=labels,
 		model_id=(
