@@ -89,7 +89,8 @@ that represent **core objects, entities, actions, or scene elements** which are 
 		- Example: use "red cross" instead of "american red cross"
  	* **Reusable**: avoid phrases that are overly specific, descriptive, or unlikely to appear in multiple captions.
 
-- Keywords **DO NOT need to appear verbatim** in the caption, but **MUST be directly and unambiguously inferable** from it.
+- Keywords should not appear verbatim in the caption, but **MUST be directly and unambiguously inferable** from it.
+- When a term is a specific subtype of a broader, reusable category, prefer the broader canonical category unless the subtype is necessary for disambiguation.
 
 - **STRICTLY EXCLUDE**:
 	* Dates, times, years, decades, or any temporal references.
@@ -104,7 +105,13 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	* abstract events, activities, or organizational concepts 
 		(e.g., "trip", "outing", "meeting", "moving", "coming", "arriving", "departure") unless no physical object can be inferred.
 
-- **Bias toward label reuse**:
+	* Any adjectives describing color, material, size, condition, or surface appearance 
+		(e.g., black aircraft, red car, white building, blue sky, wooden house, large ship).
+	* Do NOT encode color or other visual attributes as part of object labels.
+	* If a color-modified object appears, return only the base object category 
+		(e.g., return "aircraft" instead of "yellow aircraft").
+
+	- **Bias toward label reuse**:
 	If a specific phrase can be reduced to a more general equivalent **without losing factual correctness**,
 	ALWAYS choose the more general form.
 
