@@ -108,16 +108,9 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	* Generic photography or image-related terminology.
 
 - Keywords MAY appear verbatim in the caption if they are the most precise and reusable label. Do NOT paraphrase just to avoid repetition.
-	
-- ANTI-REDUNDANCY RULE:
-	Do NOT extract both a specific designation AND its general category.
-	If "Me 109" is extracted, do NOT also extract "airplane".
-	If "howitzer" is extracted, do NOT also extract "weapon".
-	Always prefer the more specific term when both refer to the same entity.
-	
+
 - ANTI-HALLUCINATION RULE:
-	Do NOT infer keywords from implied or associated context.
-	Only extract what is explicitly stated in the caption.
+	Only use the exact information given in the caption for keyword extraction, without making assumptions based on implied meanings.
 
 	- Color handling:
 	Remove color only if it is purely descriptive (e.g., red car, blue sky).
@@ -1149,23 +1142,6 @@ def query_local_llm(
 	)
 	if verbose: 
 		print(f"Response parsing elapsed time: {time.time() - parsing_start:.5f}s")
-
-	# filtering_start = time.time()
-	# if keywords:
-	# 	filtered_keywords = [
-	# 		kw 
-	# 		for kw in keywords 
-	# 		if kw not in re.sub(r'[^\w\s]', '', LLM_INSTRUCTION_TEMPLATE).split() # remove punctuation and split
-	# 	]
-	# 	if not filtered_keywords:
-	# 		return None
-	# 	keywords = filtered_keywords
-	
-	# filtering_time = time.time() - filtering_start
-
-	# if verbose:
-	# 	print(f"Keyword filtering elapsed time: {filtering_time:.5f}s")
-	# 	print(f"TOTAL execution time: {time.time() - start_time:.2f}s")
 	
 	return keywords
 
