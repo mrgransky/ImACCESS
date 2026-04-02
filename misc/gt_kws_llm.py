@@ -95,7 +95,6 @@ that represent **core objects, entities, actions, or scene elements** which are 
  	* **Reusable**: avoid phrases that are overly specific, descriptive, or unlikely to appear in multiple captions.
 
 - Keywords should not appear verbatim in the caption, but **MUST be directly and unambiguously inferable** from it.
-- When a term is a specific subtype of a broader, reusable category, prefer the broader canonical category unless the subtype is necessary for disambiguation.
 
 - **STRICTLY EXCLUDE**:
 	* Dates, times, years, decades, or any temporal references.
@@ -128,6 +127,9 @@ that represent **core objects, entities, actions, or scene elements** which are 
 
 - The standardized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""
+
+
+# - When a term is a specific subtype of a broader, reusable category, prefer the broader canonical category unless the subtype is necessary for disambiguation.
 
 # # Too Specific which produces massive number of singleton labels
 # # self-contained and grammatically complete phrases
