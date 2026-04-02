@@ -107,6 +107,8 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	* abstract organizational/social events with no visual anchor (e.g., "meeting", "trip", "outing").
 	* Generic photography or image-related terminology.
 
+- Keywords MAY appear verbatim in the caption if they are the most precise and reusable label. Do NOT paraphrase just to avoid repetition.
+	
 - ANTI-REDUNDANCY RULE:
 	Do NOT extract both a specific designation AND its general category.
 	If "Me 109" is extracted, do NOT also extract "airplane".
@@ -138,7 +140,6 @@ that represent **core objects, entities, actions, or scene elements** which are 
 
 
 # - When a term is a specific subtype of a broader, reusable category, prefer the broader canonical category unless the subtype is necessary for disambiguation.
-# - Keywords MAY appear verbatim in the caption if they are the most precise and reusable label. Do NOT paraphrase just to avoid repetition.
 
 # # Too Specific which produces massive number of singleton labels
 # # self-contained and grammatically complete phrases
