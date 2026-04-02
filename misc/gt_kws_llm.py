@@ -1147,25 +1147,25 @@ def query_local_llm(
 		max_kws=max_kws,
 		verbose=verbose,
 	)
-	
 	if verbose: 
 		print(f"Response parsing elapsed time: {time.time() - parsing_start:.5f}s")
 
-	filtering_start = time.time()
-	if keywords:
-		filtered_keywords = [
-			kw 
-			for kw in keywords 
-			if kw not in re.sub(r'[^\w\s]', '', LLM_INSTRUCTION_TEMPLATE).split() # remove punctuation and split
-		]
-		if not filtered_keywords:
-			return None
-		keywords = filtered_keywords
-	filtering_time = time.time() - filtering_start
+	# filtering_start = time.time()
+	# if keywords:
+	# 	filtered_keywords = [
+	# 		kw 
+	# 		for kw in keywords 
+	# 		if kw not in re.sub(r'[^\w\s]', '', LLM_INSTRUCTION_TEMPLATE).split() # remove punctuation and split
+	# 	]
+	# 	if not filtered_keywords:
+	# 		return None
+	# 	keywords = filtered_keywords
+	
+	# filtering_time = time.time() - filtering_start
 
-	if verbose:
-		print(f"Keyword filtering elapsed time: {filtering_time:.5f}s")
-		print(f"TOTAL execution time: {time.time() - start_time:.2f}s")
+	# if verbose:
+	# 	print(f"Keyword filtering elapsed time: {filtering_time:.5f}s")
+	# 	print(f"TOTAL execution time: {time.time() - start_time:.2f}s")
 	
 	return keywords
 
