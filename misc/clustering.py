@@ -161,7 +161,8 @@ def get_canonical_labels_parallel(
 		print(f"   Labels not in canonical map (removed as problematic): {len(missing_labels):,}")
 		if missing_labels:
 			print(f"   Sample missing  : {list(missing_labels)[:10]}...")
-	
+		print("="*100)
+
 	return mapped_labels, canonical_map
 
 def get_canonical_labels(
