@@ -50,44 +50,44 @@ Favor labels that represent **mid-level or domain-relevant visual categories** t
 
 - Extracted **KEYWORDS** must be:
 	* **Semantically atomic**: each keyword must represent **core concept only**.
-	* **visually grounded nouns** that correspond to **tangible objects, agents, or scene elements**.
-	* **Generalized**: prefer the **most general factual noun phrase** that remains correct.
-		- Example: use "nurse" instead of "nurse checking blood pressure"
-		- Example: use "seaplane" instead of "seaplane on the water in the background"
-		- Example: use "airplane" instead of "airplane in flight"
-		- Example: use "smoking" instead of "a group of youngsters smoking outdoors"
-		- Example: use "flag" instead of "german flag"
-		- Example: use "red cross" instead of "american red cross"
- 	* **Reusable**: avoid phrases that are overly specific, descriptive, or unlikely to appear in multiple captions.
+	* **Visually grounded**: tangible objects, agents, scene elements, or observable actions.
+	* **Generalized**: prefer the most general factual noun/verb that remains correct:
+		- use "nurse" instead of "nurse checking blood pressure"
+		- use "seaplane" instead of "seaplane on the water in the background"
+		- use "airplane" instead of "airplane in flight"
+		- use "smoking" instead of "a group of youngsters smoking outdoors"
+		- use "flag" instead of "german flag"
+		- use "red cross" instead of "american red cross"
+		- use "map" instead of "map of Europe"
+ 	* **Reusable**: likely to recur across many captions in a large archive.
 
 CRITICAL RULES:
 
 - Return ONLY a standardized, valid, and parsable Python LIST with AT MOST {k} KEYWORDS.
-	Fewer keywords are preferred if distinct reusable categories are limited.
-
-- PRIORITIZE:
-		• infrastructure (e.g., bridge, railway station, harbor)
-		• machinery and equipment (e.g., locomotive, crane, press machine)
-		• vehicles (e.g., freight car, aircraft, truck)
-		• architectural structures
-		• clearly defined industrial or military assets
+	Return fewer keywords if the scene is simple. A short accurate list is always better than a padded inferred one.
 
 - DE-PRIORITIZE or EXCLUDE:
-		• generic human category nouns (e.g., man, men, woman, people, children)
-			UNLESS they are semantically specialized (e.g., soldier, pilot, railway worker).
+		• generic human category nouns (e.g., man, men, woman, people, children) UNLESS they are semantically specialized (e.g., soldier, pilot, railway worker)
 		• vague container nouns (e.g., scene, group, event)
-		• counting-based phrases (e.g., three men, several people)
+		• counting-based phrases (e.g., three men, several people, two babies)
 		• purely demographic descriptors without contextual role
 
-- ZERO HALLUCINATION POLICY:
-		Do not infer specifics beyond what is clearly visible.
+- ANTI-HALLUCINATION RULE:
+		Avoid making assumptions or drawing conclusions that go beyond what is explicitly shown.
 
 - STRICTLY EXCLUDE:
-		verbs, possessives, abbreviations, time references, OCR, stylistic descriptions,
-		or explanatory text outside the Python LIST.
+		verbs, possessives, abbreviations, time references, OCR, stylistic descriptions, or explanatory text outside the Python LIST.
 
 The clean, valid Python LIST must be the VERY LAST THING in your response.
 """
+
+# - PRIORITIZE:
+# 		• infrastructure (e.g., bridge, railway station, harbor)
+# 		• machinery and equipment (e.g., locomotive, crane, press machine)
+# 		• vehicles (e.g., freight car, aircraft, truck)
+# 		• architectural structures
+# 		• clearly defined industrial or military assets
+
 
 def verify(p: str):
 	if p is None or not os.path.exists(p):
