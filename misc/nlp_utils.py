@@ -129,6 +129,15 @@ def _post_process_(
 		'ussr', 'usa', 'uss', 'hms', 'rms', 'nasa', 'fbi', 'cia'
 	}
 
+	PROTECTED_PHRASES = {
+		"united states",
+		"united kingdom",
+		"united nations",
+		"soviet union",
+		"marine corps",       # → "marine corp" bug
+		"corps",              # standalone too
+	}
+
 	GERUND_NOUNS = {'building', 'ceiling', 'flooring', 'siding', 'roofing'}
 
 	# Define generic word sets
@@ -367,17 +376,25 @@ def _post_process_(
 
 	def lemmatize_phrase(phrase: str, original_phrase: str) -> str:
 		tokens = phrase.split()
-		original_tokens = original_phrase.split()
-		
-		# Get POS tags for the phrase
+		original_tokens = original_phrase.split()		
 		pos_tags = nltk.pos_tag(tokens)
 		lemmatized_tokens = []
 
+		# Build a set of token indices that belong to a protected phrase
+		protected_indices = set()
+		for protected in PROTECTED_PHRASES:
+			p_tokens = protected.split()
+			p_len = len(p_tokens)
+			for start in range(len(tokens) - p_len + 1):
+				if tokens[start:start + p_len] == p_tokens:
+					for j in range(start, start + p_len):
+						protected_indices.add(j)
+		
 		for i, (token, pos) in enumerate(pos_tags):
 			original_token = original_tokens[i] if i < len(original_tokens) else token
 			is_abbr = original_token.isupper() or '.' in original_token
 			
-			if is_abbr or token in PROTECTED_ABBREVIATIONS:
+			if is_abbr or token in PROTECTED_ABBREVIATIONS or i in protected_indices:
 				lemmatized_tokens.append(token)  # Keep as-is
 			else:
 				# For multi-word phrases, treat non-final words as nouns to preserve compound nouns
