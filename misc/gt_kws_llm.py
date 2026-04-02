@@ -80,10 +80,10 @@ that represent **core objects, entities, actions, or scene elements** which are 
 
 **CRITICAL RULES**:
 - Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS**.
-	Fewer keywords are **preferred** if the caption lacks distinct reusable concepts.
+	If the caption is sparse, return fewer keywords. A short accurate list is always better than a padded inferred one.
 
 - Extracted **KEYWORDS** must be:
-	* **Semantically atomic**: each keyword must represent **core concept only**.
+	* **Semantically atomic**: each keyword represents one core concept only.
 	* **Visually grounded**: tangible objects, agents, scene elements, or observable actions.
 	* **Generalized**: prefer the most general factual noun/verb that remains correct:
 		- use "nurse" instead of "nurse checking blood pressure"
@@ -107,7 +107,17 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	* abstract organizational/social events with no visual anchor (e.g., "meeting", "trip", "outing").
 	* Generic photography or image-related terminology.
 
-- Color handling:
+- ANTI-REDUNDANCY RULE:
+	Do NOT extract both a specific designation AND its general category.
+	If "Me 109" is extracted, do NOT also extract "airplane".
+	If "howitzer" is extracted, do NOT also extract "weapon".
+	Always prefer the more specific term when both refer to the same entity.
+	
+- ANTI-HALLUCINATION RULE:
+	Do NOT infer keywords from implied or associated context.
+	Only extract what is explicitly stated in the caption.
+
+	- Color handling:
 	Remove color only if it is purely descriptive (e.g., red car, blue sky).
 	Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas, Green Berets).
 
@@ -118,10 +128,10 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	it MUST be treated as a single atomic label and MUST NOT be reduced.
 
 - Keyword priority order:
-  1) Physical objects (tangible, visually prominent)
-  2) Actions (if more reusable than objects present)
-  3) Human roles (only if visually salient)
-  4) Scene elements
+	1) Physical objects (tangible, visually prominent)
+	2) Actions (if more reusable than objects present)
+	3) Human roles (only if visually salient)
+	4) Scene elements
 
 	- The standardized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""
