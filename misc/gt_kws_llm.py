@@ -85,6 +85,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 - Extracted **KEYWORDS** must be:
 	* **Semantically atomic**: each keyword must represent **core concept only**.
 	* **visually grounded nouns** that correspond to **tangible objects, agents, or scene elements**.
+	* **visually grounded actions** that describe observable scene dynamics (e.g., "evacuation", "surgery", "harvest", "combat").
 	* **Generalized**: prefer the **most general factual noun phrase** that remains correct.
 		- Example: use "nurse" instead of "nurse checking blood pressure"
 		- Example: use "seaplane" instead of "seaplane on the water in the background"
@@ -94,8 +95,6 @@ that represent **core objects, entities, actions, or scene elements** which are 
 		- Example: use "red cross" instead of "american red cross"
  	* **Reusable**: avoid phrases that are overly specific, descriptive, or unlikely to appear in multiple captions.
 
-- Keywords should not appear verbatim in the caption, but **MUST be directly and unambiguously inferable** from it.
-
 - **STRICTLY EXCLUDE**:
 	* Dates, times, years, decades, or any temporal references.
 	* Family relationship terms.
@@ -104,32 +103,32 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	* Quantities, counts, measurements, or numeric expressions.
 	* Composite phrases encoding multiple concepts (e.g., subject + action + location).
 	* Phrasal verbs, possessive constructions, or descriptive clauses.
-	* Generic photography or image-related terminology.
 	* Explanatory text, punctuation, or output formatting beyond the Python list.
-	* abstract events, activities, or organizational concepts 
-		(e.g., "trip", "outing", "meeting", "moving", "coming", "arriving", "departure") unless no physical object can be inferred.
+	* abstract organizational/social events with no visual anchor (e.g., "meeting", "trip", "outing").
+	* Generic photography or image-related terminology.
 
-	* Any adjectives describing color, material, size, condition, or surface appearance 
-		(e.g., black aircraft, red car, white building, blue sky, wooden house, large ship).
-	* Do NOT encode color or other visual attributes as part of object labels.
-	* If a color-modified object appears, return only the base object category 
-		(e.g., return "aircraft" instead of "yellow aircraft").
+- Color handling:
+	Remove color only if it is purely descriptive (e.g., red car, blue sky).
+	Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas, Green Berets).
 
-	- **Bias toward label reuse**:
-	If a specific phrase can be reduced to a more general equivalent **without losing factual correctness**,
-	ALWAYS choose the more general form.
+- Bias toward label reuse:
+	If a specific phrase can be reduced to a more general equivalent **without losing factual correctness**, opt for general form.
+	If a term represents a standardized domain-specific concept 
+	(e.g., military designation, chemical classification, organization name),
+	it MUST be treated as a single atomic label and MUST NOT be reduced.
 
-- If multiple valid keywords are possible, prioritize in this order:
-	1) Physical objects
-	2) Human roles (only if visually salient)
-	3) Actions
-	4) Scene elements	
+- Keyword priority order:
+  1) Physical objects (tangible, visually prominent)
+  2) Actions (if more reusable than objects present)
+  3) Human roles (only if visually salient)
+  4) Scene elements
 
-- The standardized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
+	- The standardized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""
 
 
 # - When a term is a specific subtype of a broader, reusable category, prefer the broader canonical category unless the subtype is necessary for disambiguation.
+# - Keywords MAY appear verbatim in the caption if they are the most precise and reusable label. Do NOT paraphrase just to avoid repetition.
 
 # # Too Specific which produces massive number of singleton labels
 # # self-contained and grammatically complete phrases
