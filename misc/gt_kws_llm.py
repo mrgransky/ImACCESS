@@ -27,9 +27,14 @@ from nlp_utils import get_enriched_description
 # model_id = "microsoft/DialoGPT-large"
 # model_id = "gpt2-xl"
 
+
 # how to run [local]:
 # python gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 2
 # nohup python -u gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 4 -mgt 64 > logs/llm_annotation_history_x4.txt &
+
+# with description:
+# python gt_kws_llm.py -desc "Chemical Warfare Service - Equipment - Miscellaneous - Chemical Warfare Service; Editorial Division under Dr. W.D. Bancroft. 10.5 cm light field howitzer gas shell blue cross (German),Photographer: Chemical Warfare Service" -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
+
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -1618,6 +1623,7 @@ def main():
 	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
+
 	args = parser.parse_args()
 
 	set_seeds(seed=42, debug=args.debug)
