@@ -9,7 +9,7 @@ from clustering import get_canonical_labels_parallel, cluster
 # $ python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/ -nw 8 -v
 
 # new dataset:
-# $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -emb "Qwen/Qwen3-Embedding-8B" -nw 40 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
+# $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -emb "Qwen/Qwen3-Embedding-8B" -nw 8 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
 
 # old dataset:
 # $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -emb "Qwen/Qwen3-Embedding-8B" -nw 20 -v > /scratch/project_2004072/ImACCESS/trash/logs/_interactive_multimodal_annotation_h4.txt &
@@ -65,17 +65,17 @@ def merge_csv_files(
 	if verbose:
 		print(f"Post-processing LLM-based labels...")
 	llm_based_labels = df['llm_based_labels'].tolist()
-	llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=False)
+	llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
 
 	if verbose:
 		print(f"Post-processing VLM-based labels...")
 	vlm_based_labels = df['vlm_based_labels'].tolist()
-	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=False)
+	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
 
 	if verbose:
 		print(f"Post-processing Multimodal labels...")
 	multimodal_labels = df['multimodal_labels'].tolist()
-	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=False)
+	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=verbose)
 
 	llm_canonical_labels, _ = get_canonical_labels_parallel(
 		labels=llm_based_labels,

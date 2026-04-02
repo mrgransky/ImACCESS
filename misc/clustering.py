@@ -91,8 +91,8 @@ def get_canonical_labels_parallel(
 
 	if verbose:
 		print(f"\n>> Getting {label_source.upper()} Canonical Labels (Parallel Mapping: nw: {num_workers})")
-		print(f"Input: {len(labels)} {label_source} labels")
-		print(f"Samples: {labels[:7]}")
+		print(f"Input: {len(labels)} samples")
+		print(f"Examples: {labels[:7]}")
 		print(f"clusters_fname: {clusters_fname}")
 
 	clustered_df = cluster(
@@ -2317,7 +2317,7 @@ def cluster(
 ):
 	st_t = time.time()
 	if verbose:
-		print(f"\n[AGGLOMERATIVE CLUSTERING] {len(labels)} documents")
+		print(f"\n[AGGLOMERATIVE CLUSTERING] {len(labels)} samples")
 		print(f"   ├─ {model_id} | {device} | batch_size: {batch_size}")
 		print(f"   ├─ linkage: {linkage_method}")
 		print(f"   ├─ sample: {labels[:5]}")
@@ -2331,7 +2331,7 @@ def cluster(
 	documents = []
 	for i, doc in enumerate(labels):
 		if doc is None:
-			print(f"doc[{i}]: None (skipping)")
+			# print(f"doc[{i}]: None (skipping)")
 			continue
 		
 		if isinstance(doc, str):
