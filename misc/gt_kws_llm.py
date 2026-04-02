@@ -84,16 +84,16 @@ that represent **core objects, entities, actions, or scene elements** which are 
 
 - Extracted **KEYWORDS** must be:
 	* **Semantically atomic**: each keyword must represent **core concept only**.
-	* **visually grounded nouns** that correspond to **tangible objects, agents, or scene elements**.
-	* **visually grounded actions** that describe observable scene dynamics (e.g., "evacuation", "surgery", "harvest", "combat").
-	* **Generalized**: prefer the **most general factual noun phrase** that remains correct.
-		- Example: use "nurse" instead of "nurse checking blood pressure"
-		- Example: use "seaplane" instead of "seaplane on the water in the background"
-		- Example: use "airplane" instead of "airplane in flight"
-		- Example: use "smoking" instead of "a group of youngsters smoking outdoors"
-		- Example: use "flag" instead of "german flag"
-		- Example: use "red cross" instead of "american red cross"
- 	* **Reusable**: avoid phrases that are overly specific, descriptive, or unlikely to appear in multiple captions.
+	* **Visually grounded**: tangible objects, agents, scene elements, or observable actions.
+	* **Generalized**: prefer the most general factual noun/verb that remains correct:
+		- use "nurse" instead of "nurse checking blood pressure"
+		- use "seaplane" instead of "seaplane on the water in the background"
+		- use "airplane" instead of "airplane in flight"
+		- use "smoking" instead of "a group of youngsters smoking outdoors"
+		- use "flag" instead of "german flag"
+		- use "red cross" instead of "american red cross"
+		- use "harvest" not "farmers harvesting hay with wooden pitchforks"
+ 	* **Reusable**: likely to recur across many captions in a large archive.
 
 - **STRICTLY EXCLUDE**:
 	* Dates, times, years, decades, or any temporal references.
