@@ -241,30 +241,25 @@ def get_multimodal_annotation(
 		df['vlm_canonical_labels'] = vlm_canonical_labels
 		df['multimodal_canonical_labels'] = multimodal_canonical_labels
 
-		# Remove samples with empty canonical labels (optional)
-		# Print those rows with empty canonical labels:
 		if verbose:
-			empty_llm_canonical = df['llm_canonical_labels'].apply(len) == 0
-			empty_vlm_canonical = df['vlm_canonical_labels'].apply(len) == 0
-			empty_multimodal_canonical = df['multimodal_canonical_labels'].apply(len) == 0
+			empty_llm_canonical = df['llm_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) == 0
+			empty_vlm_canonical = df['vlm_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) == 0
+			empty_multimodal_canonical = df['multimodal_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) == 0
 
-			if empty_llm_canonical.any():  # Check if there are any rows with empty LLM canonical labels
-				print(f"\n>> Printing rows with empty canonical labels...")
-				print(df[empty_llm_canonical][['doc_url', 'llm_labels', 'llm_canonical_labels']].head(10))
+			if empty_llm_canonical.any():
+				print(f"\n>> Rows with empty LLM canonical labels...")
+				print(df[empty_llm_canonical][['doc_url', 'llm_based_labels', 'llm_canonical_labels']].head(50))
 
-			if empty_vlm_canonical.any():  # Check if there are any rows with empty VLM canonical labels
-				print(f"\n>> Printing rows with empty canonical labels...")
-				print(df[empty_vlm_canonical][['doc_url', 'vlm_labels', 'vlm_canonical_labels']].head(10))
+			if empty_vlm_canonical.any():
+				print(f"\n>> Rows with empty VLM canonical labels...")
+				print(df[empty_vlm_canonical][['doc_url', 'vlm_based_labels', 'vlm_canonical_labels']].head(50))
 
-			if empty_multimodal_canonical.any():  # Check if there are any rows with empty multimodal canonical labels
-				print(f"\n>> Printing rows with empty canonical labels...")
-				print(df[empty_multimodal_canonical][['doc_url', 'multimodal_labels', 'multimodal_canonical_labels']].head(10))
-
-		if verbose:
-			print(f"[FILTERING] samples with no valid canonical labels")
+			if empty_multimodal_canonical.any():
+				print(f"\n>> Rows with empty multimodal canonical labels...")
+				print(df[empty_multimodal_canonical][['doc_url', 'multimodal_labels', 'multimodal_canonical_labels']].head(50))
 		
 		before_count = len(df)
-		df = df[df['multimodal_canonical_labels'].apply(len) > 0].copy()
+		df = df[df['multimodal_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) > 0].copy()
 		after_count = len(df)
 		if verbose:
 			print(f"\n[DONE] Canonical mapping:")
@@ -282,29 +277,42 @@ def get_multimodal_annotation(
 			print(f"     Min: {label_counts.min()}")
 			print(f"     Max: {label_counts.max()}")
 
-		# Deduplicate canonical labels
+		# Deduplicate canonical labels safely
 		if verbose:
-			print(f"\n>> Deduplicating canonical labels...")
-			duplicate_count = sum(
-				1 for labels in df['multimodal_canonical_labels'] 
-				if len(labels) != len(set(labels))
-			)
-			print(f"Documents with duplicates: {duplicate_count:,} ({duplicate_count/len(df)*100:.1f}%)")
+				print(f"\n>> Deduplicating canonical labels...")
 
-		df['llm_canonical_labels'] = df['llm_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
-		df['vlm_canonical_labels'] = df['vlm_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
-		df['multimodal_canonical_labels'] = df['multimodal_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
+		# Use a helper to handle None values
+		def safe_dedup(labels):
+			if labels is None:
+				return None
+			return list(dict.fromkeys(labels))
 
-		assert sum(1 for labels in df['llm_canonical_labels'] if len(labels) != len(set(labels))) == 0
-		assert sum(1 for labels in df['vlm_canonical_labels'] if len(labels) != len(set(labels))) == 0
-		assert sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels))) == 0
+		df['llm_canonical_labels'] = df['llm_canonical_labels'].apply(safe_dedup)
+		df['vlm_canonical_labels'] = df['vlm_canonical_labels'].apply(safe_dedup)
+		df['multimodal_canonical_labels'] = df['multimodal_canonical_labels'].apply(safe_dedup)
+
+		# Update assertions to handle the empty lists we just created
+		assert sum(1 for labels in df['llm_canonical_labels'] if labels is not None and len(labels) != len(set(labels))) == 0
+		assert sum(1 for labels in df['vlm_canonical_labels'] if labels is not None and len(labels) != len(set(labels))) == 0
+		assert sum(1 for labels in df['multimodal_canonical_labels'] if labels is not None and len(labels) != len(set(labels))) == 0
 
 		if verbose:
 			print(f"   ✓ Deduplication complete")
 
-			multimodal_duplicate_count = sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels)))
-			llm_duplicate_count = sum(1 for labels in df['llm_canonical_labels'] if len(labels) != len(set(labels)))
-			vlm_duplicate_count = sum(1 for labels in df['vlm_canonical_labels'] if len(labels) != len(set(labels)))
+			llm_duplicate_count = sum(
+				1 for labels in df['llm_canonical_labels']
+				if labels is not None and len(labels) != len(set(labels))
+			)
+
+			vlm_duplicate_count = sum(
+				1 for labels in df['vlm_canonical_labels']
+				if labels is not None and len(labels) != len(set(labels))
+			)
+
+			multimodal_duplicate_count = sum(
+				1 for labels in df['multimodal_canonical_labels']
+				if labels is not None and len(labels) != len(set(labels))
+			)
 
 			print(f"[LLM] Documents with duplicates: {llm_duplicate_count:,} ({llm_duplicate_count/len(df)*100:.1f}%)")
 			print(f"[VLM] Documents with duplicates: {vlm_duplicate_count:,} ({vlm_duplicate_count/len(df)*100:.1f}%)")

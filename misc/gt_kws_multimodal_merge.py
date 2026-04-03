@@ -65,17 +65,17 @@ def merge_csv_files(
 	if verbose:
 		print(f"Post-processing LLM-based labels...")
 	llm_based_labels = df['llm_based_labels'].tolist()
-	llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
+	llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=False)
 
 	if verbose:
 		print(f"Post-processing VLM-based labels...")
 	vlm_based_labels = df['vlm_based_labels'].tolist()
-	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
+	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=False)
 
 	if verbose:
 		print(f"Post-processing Multimodal labels...")
 	multimodal_labels = df['multimodal_labels'].tolist()
-	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=verbose)
+	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=False)
 
 	llm_canonical_labels, _ = get_canonical_labels_parallel(
 		labels=llm_based_labels,
@@ -143,40 +143,44 @@ def merge_csv_files(
 		print(f"     Min: {label_counts.min()}")
 		print(f"     Max: {label_counts.max()}")
 
-	# DEDUPLICATION: Remove duplicate canonical labels
+	# Deduplicate canonical labels safely
 	if verbose:
 		print(f"\n>> Deduplicating canonical labels...")
-		
-		# Count documents with duplicates BEFORE
-		llm_dup_count = sum(1 for labels in df['llm_canonical_labels'] if len(labels) != len(set(labels)))
-		vlm_dup_count = sum(1 for labels in df['vlm_canonical_labels'] if len(labels) != len(set(labels)))
-		mm_dup_count = sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels)))
-		
-		print(f"   LLM duplicates: {llm_dup_count:,} ({llm_dup_count/len(df)*100:.1f}%)")
-		print(f"   VLM duplicates: {vlm_dup_count:,} ({vlm_dup_count/len(df)*100:.1f}%)")
-		print(f"   Multimodal duplicates: {mm_dup_count:,} ({mm_dup_count/len(df)*100:.1f}%)")
-	
-	# Deduplicate all three label columns while preserving order
-	df['llm_canonical_labels'] = df['llm_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
-	df['vlm_canonical_labels'] = df['vlm_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
-	df['multimodal_canonical_labels'] = df['multimodal_canonical_labels'].apply(lambda labels: list(dict.fromkeys(labels)))
-	
-	# Verify no duplicates remain
-	assert sum(1 for labels in df['llm_canonical_labels'] if len(labels) != len(set(labels))) == 0
-	assert sum(1 for labels in df['vlm_canonical_labels'] if len(labels) != len(set(labels))) == 0
-	assert sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels))) == 0
-	
-	if verbose:
-		print(f"   ✓ Deduplication complete for all label columns")
-		llm_duplicate_count = sum(1 for labels in df['llm_canonical_labels'] if len(labels) != len(set(labels)))
-		vlm_duplicate_count = sum(1 for labels in df['vlm_canonical_labels'] if len(labels) != len(set(labels)))
-		multimodal_duplicate_count = sum(1 for labels in df['multimodal_canonical_labels'] if len(labels) != len(set(labels)))
 
-		print(f"   LLM duplicates: {llm_duplicate_count:,} ({llm_duplicate_count/len(df)*100:.1f}%)")
-		print(f"   VLM duplicates: {vlm_duplicate_count:,} ({vlm_duplicate_count/len(df)*100:.1f}%)")
-		print(f"   Multimodal duplicates: {multimodal_duplicate_count:,} ({multimodal_duplicate_count/len(df)*100:.1f}%)")
-		
-		print(f"   ✓ Verified: 0 duplicates remaining in all columns")
+	# Use a helper to handle None values
+	def safe_dedup(labels):
+		if labels is None:
+			return None
+		return list(dict.fromkeys(labels))
+
+	df['llm_canonical_labels'] = df['llm_canonical_labels'].apply(safe_dedup)
+	df['vlm_canonical_labels'] = df['vlm_canonical_labels'].apply(safe_dedup)
+	df['multimodal_canonical_labels'] = df['multimodal_canonical_labels'].apply(safe_dedup)
+
+	# Update assertions to handle the empty lists we just created
+	assert sum(1 for labels in df['llm_canonical_labels'] if labels is not None and len(labels) != len(set(labels))) == 0
+	assert sum(1 for labels in df['vlm_canonical_labels'] if labels is not None and len(labels) != len(set(labels))) == 0
+	assert sum(1 for labels in df['multimodal_canonical_labels'] if labels is not None and len(labels) != len(set(labels))) == 0
+
+	if verbose:
+		print(f"   ✓ Deduplication complete")
+		llm_duplicate_count = sum(
+			1 for labels in df['llm_canonical_labels']
+			if labels is not None and len(labels) != len(set(labels))
+		)
+		vlm_duplicate_count = sum(
+			1 for labels in df['vlm_canonical_labels']
+			if labels is not None and len(labels) != len(set(labels))
+		)
+		multimodal_duplicate_count = sum(
+			1 for labels in df['multimodal_canonical_labels']
+			if labels is not None and len(labels) != len(set(labels))
+		)
+
+		print(f"[LLM] Documents with duplicates: {llm_duplicate_count:,} ({llm_duplicate_count/len(df)*100:.1f}%)")
+		print(f"[VLM] Documents with duplicates: {vlm_duplicate_count:,} ({vlm_duplicate_count/len(df)*100:.1f}%)")
+		print(f"[Multimodal] Documents with duplicates: {multimodal_duplicate_count:,} ({multimodal_duplicate_count/len(df)*100:.1f}%)")
+		print(f"   ✓ Verified: 0 duplicates remaining")
 	
 	if verbose:
 		print(f"Saving {type(df)} {df.shape}\n{list(df.columns)}")
