@@ -3430,7 +3430,7 @@ def cluster(
 		if verbose:
 			print(f"\n[STEP 8] Injected {len(virtual_rows)} virtual hypernym row(s) into df+X")
 			for r in virtual_rows:
-				print(f"  cluster {r['cluster']:>5d}  canonical = '{r['label']}'")
+				print(f"cluster {r['cluster']:>5d}  canonical = '{r['label']}'")
 
 	df, X_clean, removed_labels = remove_problematic_cluster_labels(
 		df=df,
