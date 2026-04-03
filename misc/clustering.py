@@ -3417,28 +3417,29 @@ def cluster(
 	# =========================================================================
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 
-	# ── Sanity check: Verify canonical belongs to its cluster ──────────────
-	if verbose:
-		print("\n[SANITY CHECK] Verifying canonical labels belong to their clusters...")
+	# # ── Sanity check: Verify canonical belongs to its cluster ──────────────
+	# if verbose:
+	# 	print("\n[SANITY CHECK] Verifying canonical labels belong to their clusters...")
 	
-	mismatches = 0
-	for cid, info in cluster_canonicals.items():
-		cluster_labels_for_cid = df[df['cluster'] == cid]['label'].tolist()
-		if info['canonical'] not in cluster_labels_for_cid:
-			mismatches += 1
-			# Fallback to the first label in the cluster
-			fallback = cluster_labels_for_cid[0]
-			if verbose:
-				print(f"[WARNING] Cluster {cid}: canonical '{info['canonical']}' not in cluster {cluster_labels_for_cid} →\n\tfallback '{fallback}'")
-			cluster_canonicals[cid]['canonical'] = fallback
-			# Update dataframe
-			df.loc[df['cluster'] == cid, 'canonical'] = fallback
+	# mismatches = 0
+	# for cid, info in cluster_canonicals.items():
+	# 	cluster_labels_for_cid = df[df['cluster'] == cid]['label'].tolist()
+	# 	if info['canonical'] not in cluster_labels_for_cid:
+	# 		mismatches += 1
+	# 		# Fallback to the first label in the cluster
+	# 		fallback = cluster_labels_for_cid[0]
+	# 		if verbose:
+	# 			print(f"[WARNING] Cluster {cid}: canonical '{info['canonical']}' not in cluster {cluster_labels_for_cid}\n\tfallback '{fallback}'")
+	# 		cluster_canonicals[cid]['canonical'] = fallback
+	# 		# Update dataframe
+	# 		df.loc[df['cluster'] == cid, 'canonical'] = fallback
 	
-	if verbose:
-		if mismatches > 0:
-			print(f"  Fixed {mismatches} canonical mismatches")
-		else:
-			print(f"[OK] All canonicals verified")
+	# if verbose:
+	# 	if mismatches > 0:
+	# 		print(f"  Fixed {mismatches} canonical mismatches")
+	# 	else:
+	# 		print(f"[OK] All canonicals verified")
+
 
 	df, X_clean, removed_labels = remove_problematic_cluster_labels(
 		df=df,
