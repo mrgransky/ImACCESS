@@ -3481,10 +3481,12 @@ def cluster(
 	if results['problematic_clusters']:
 		if verbose:
 			print(f"\n[WARNING] {len(results['problematic_clusters'])} types of problematic clusters detected! => Exporting for manual review")
+
 		all_problematic_ids = []
 		for issue in results['problematic_clusters']:
 			if issue['severity'] in ['HIGH', 'MEDIUM']:
 				all_problematic_ids.extend(issue['cluster_ids'])
+
 		if all_problematic_ids:
 			problematic_csv = clusters_fname.replace(".csv", "_problematic_clusters_review.csv")
 			export_problematic_clusters(
@@ -3498,7 +3500,6 @@ def cluster(
 	if verbose:
 		print(f"Clustered {len(df)} labels into {df['cluster'].nunique()} clusters")
 		print(f"{type(df)} {df.shape} {list(df.columns)}")
-		print(df.head(15))
 		print(df.info())
 		print(f"[CLUSTERING] Total Elapsed Time: {time.time()-st_t:.1f} sec")
 		print("=" * 60)

@@ -825,6 +825,7 @@ def basic_clean(txt: str):
 		r"WBP Digitization Studio",
 		r'Note on negative envelope',
 		r'photo from the photo album ',
+		r'All others pictured are unknown.',
 		r'The digitalisat was made by the original album.',
 		r'The following geographic information is associated with this record: ',
 		r'The photo was taken in 1954 on a pilgrimage to World War I sites. From: James K. Monteith, Clayton, Missouri, 35th Division, 128th Field Artillery Regiment.',
