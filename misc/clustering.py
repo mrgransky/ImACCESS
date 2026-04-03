@@ -3429,7 +3429,7 @@ def cluster(
 			# Fallback to the first label in the cluster
 			fallback = cluster_labels_for_cid[0]
 			if verbose:
-				print(f"[WARNING] Cluster {cid}: canonical '{info['canonical']}' not in cluster {cluster_labels_for_cid[:5]}... — using fallback '{fallback}'")
+				print(f"[WARNING] Cluster {cid}: canonical '{info['canonical']}' not in cluster {cluster_labels_for_cid} →\n\tfallback '{fallback}'")
 			cluster_canonicals[cid]['canonical'] = fallback
 			# Update dataframe
 			df.loc[df['cluster'] == cid, 'canonical'] = fallback
