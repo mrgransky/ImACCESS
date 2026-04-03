@@ -342,6 +342,23 @@ def remove_problematic_cluster_labels(
 				
 				# Get current canonical
 				current_canonical = df[cluster_mask]['canonical'].iloc[0]
+				
+				# Check if canonical exists in cluster labels
+				if current_canonical not in cluster_labels:
+					if verbose:
+						print(f"[WARNING] Cluster {cluster_id}: canonical '{current_canonical}' not in labels {cluster_labels}")
+					# Skip this cluster or mark as problematic
+					problematic_cluster_ids.add(cluster_id)
+					removed_labels.extend(cluster_labels)
+					poor_canonical_clusters.append({
+						'cluster_id': cluster_id,
+						'canonical': current_canonical,
+						'representativeness': 0.0,
+						'size': cluster_size,
+						'labels': cluster_labels
+					})
+					continue
+				
 				canonical_idx = cluster_labels.index(current_canonical)
 				canonical_emb = cluster_embeddings[canonical_idx].reshape(1, -1)
 				
@@ -2755,6 +2772,29 @@ def cluster_original(
 
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 
+	# ── Sanity check: Verify canonical belongs to its cluster ──────────────
+	if verbose:
+		print("\n[SANITY CHECK] Verifying canonical labels belong to their clusters...")
+	
+	mismatches = 0
+	for cid, info in cluster_canonicals.items():
+		cluster_labels_for_cid = df[df['cluster'] == cid]['label'].tolist()
+		if info['canonical'] not in cluster_labels_for_cid:
+			mismatches += 1
+			# Fallback to the first label in the cluster
+			fallback = cluster_labels_for_cid[0]
+			if verbose:
+				print(f"  ⚠️  Cluster {cid}: canonical '{info['canonical']}' not in cluster {cluster_labels_for_cid[:5]}... — using fallback '{fallback}'")
+			cluster_canonicals[cid]['canonical'] = fallback
+			# Update dataframe
+			df.loc[df['cluster'] == cid, 'canonical'] = fallback
+	
+	if verbose:
+		if mismatches > 0:
+			print(f"  Fixed {mismatches} canonical mismatches")
+		else:
+			print(f"  ✅ All canonicals verified")
+
 	df, X_clean, removed_labels = remove_problematic_cluster_labels(
 		df=df,
 		embeddings=X,
@@ -3376,6 +3416,38 @@ def cluster(
 	# STEP 8: MAP CANONICALS + CLEAN PROBLEMATIC CLUSTERS
 	# =========================================================================
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
+
+	# ── Sanity check: Verify canonical belongs to its cluster ──────────────
+	if verbose:
+		print("\n[SANITY CHECK] Verifying canonical labels belong to their clusters...")
+	
+	mismatches = 0
+	for cid, info in cluster_canonicals.items():
+		cluster_labels_for_cid = df[df['cluster'] == cid]['label'].tolist()
+		if info['canonical'] not in cluster_labels_for_cid:
+			mismatches += 1
+			# Fallback to the first label in the cluster
+			fallback = cluster_labels_for_cid[0]
+			if verbose:
+				print(f"[WARNING] Cluster {cid}: canonical '{info['canonical']}' not in cluster {cluster_labels_for_cid[:5]}... — using fallback '{fallback}'")
+			cluster_canonicals[cid]['canonical'] = fallback
+			# Update dataframe
+			df.loc[df['cluster'] == cid, 'canonical'] = fallback
+	
+	if verbose:
+		if mismatches > 0:
+			print(f"  Fixed {mismatches} canonical mismatches")
+		else:
+			print(f"[OK] All canonicals verified")
+
+	df, X_clean, removed_labels = remove_problematic_cluster_labels(
+		df=df,
+		embeddings=X,
+		low_cohesion_threshold=0.50,
+		poor_canonical_threshold=0.60,
+		verbose=True
+	)
+
 
 	df, X_clean, removed_labels = remove_problematic_cluster_labels(
 		df=df,
