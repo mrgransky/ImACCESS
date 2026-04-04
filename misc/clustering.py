@@ -57,20 +57,20 @@ def parallel_canonical_mapping(labels_str):
 		try:
 			labels = ast.literal_eval(labels_str)
 		except (ValueError, SyntaxError):
-			return []
+			return None
 	elif labels_str is None or (isinstance(labels_str, float) and math.isnan(labels_str)):
-		return []
+		return None
 	elif isinstance(labels_str, list):
 		labels = labels_str
 	else:
-		return []
+		return None
 
 	# # Map to canonical labels using global dict
 	# return [canonical_labels_global.get(label, label) for label in labels]
 
 	# Map to canonical labels, SKIPPING labels not in dict
 	# (these are labels that were removed as problematic)
-	canonical_labels_ = []
+	canonical_labels_ = list()
 	for label in labels:
 		if label in canonical_labels_global:
 			canonical_labels_.append(canonical_labels_global[label])
@@ -159,9 +159,9 @@ def get_canonical_labels_parallel(
 		print(f"   None (unparseable): {none_count:,}")
 		print(f"   Empty after map : {empty_count:,}")
 		print(f"   Labels not in canonical map (removed as problematic): {len(missing_labels):,}")
+		print(f"   Canonical labels : {len(canonical_map):,}")
 		if missing_labels:
 			print(f"   Sample missing  : {list(missing_labels)[:10]}...")
-		print("="*100)
 
 	return mapped_labels, canonical_map
 
@@ -194,7 +194,7 @@ def get_canonical_labels(
 		print(clustered_df.head(10))
 
 	canonical_map = clustered_df.set_index('label')['canonical'].to_dict()
-	canonical_labels = []
+	canonical_labels = list()
 	missing_labels = set()
 
 	for sample_labels in labels:
@@ -213,7 +213,7 @@ def get_canonical_labels(
 				canonical_labels.append(None)
 				continue
 		
-		mapped = []
+		mapped = list()
 		for label in sample_labels:
 			if label in canonical_map:
 				mapped.append(canonical_map[label])
@@ -248,7 +248,7 @@ def dissolve_low_cohesion_clusters(
 				print(f"\n[DISSOLUTION] Analyzing clusters...")
 				print(f"  Threshold: {threshold}")
 		
-		clusters_to_dissolve = []
+		clusters_to_dissolve = list()
 		
 		# Find low cohesion clusters
 		for cluster_id in df['cluster'].unique():
@@ -335,7 +335,7 @@ def fix_poor_canonical_clusters(
 	print(f"\n[FIX POOR CANONICAL] Threshold: {threshold}")
 	
 	# Identify poor canonical clusters
-	poor_canonical_clusters = []
+	poor_canonical_clusters = list()
 	
 	for cluster_id in df['cluster'].unique():
 		cluster_mask = df['cluster'] == cluster_id
@@ -479,7 +479,7 @@ def automated_cluster_validation(
 		cluster_quality = {}
 		
 		# Metric 1.1: Intra-cluster cohesion (higher is better)
-		intra_similarities = []
+		intra_similarities = list()
 		for cid in range(n_clusters):
 				cluster_mask = cluster_assignments == cid
 				cluster_embeddings = embeddings[cluster_mask]
@@ -498,7 +498,7 @@ def automated_cluster_validation(
 		
 		# Metric 1.2: Inter-cluster separation (higher is better)
 		# Compute centroid for each cluster
-		cluster_centroids = []
+		cluster_centroids = list()
 		for cid in range(n_clusters):
 				cluster_mask = cluster_assignments == cid
 				cluster_embeddings = embeddings[cluster_mask]
@@ -579,7 +579,7 @@ def automated_cluster_validation(
 		canonical_quality = {}
 		
 		# Metric 2.1: Canonical representativeness (how well canonical represents cluster)
-		canonical_representativeness_scores = []
+		canonical_representativeness_scores = list()
 		
 		for cid in range(n_clusters):
 				cluster_mask = cluster_assignments == cid
@@ -605,7 +605,7 @@ def automated_cluster_validation(
 		
 		# Metric 2.2: Canonical generality (shorter labels are usually more general)
 		canonical_lengths = [len(canonical_labels[cid].split()) for cid in range(n_clusters)]
-		cluster_avg_lengths = []
+		cluster_avg_lengths = list()
 		
 		for cid in range(n_clusters):
 				cluster_mask = cluster_assignments == cid
@@ -614,7 +614,7 @@ def automated_cluster_validation(
 				cluster_avg_lengths.append(avg_length)
 		
 		# Canonical should be shorter than or equal to cluster average (more general)
-		canonical_generality_scores = []
+		canonical_generality_scores = list()
 		for can_len, cluster_len in zip(canonical_lengths, cluster_avg_lengths):
 				# Score: 1.0 if canonical is shorter, decreases if longer
 				generality = max(0, 1 - (can_len - cluster_len) / (cluster_len + 1e-10))
@@ -626,7 +626,7 @@ def automated_cluster_validation(
 		
 		# Metric 2.3: Frequency alignment (if label counts available)
 		if original_label_counts:
-				frequency_alignment_scores = []
+				frequency_alignment_scores = list()
 				
 				for cid in range(n_clusters):
 						cluster_mask = cluster_assignments == cid
@@ -664,7 +664,7 @@ def automated_cluster_validation(
 		
 		# Metric 2.5: Centroid vs alternatives comparison
 		# How much better is centroid-nearest vs random selection?
-		centroid_improvement_scores = []
+		centroid_improvement_scores = list()
 		
 		for cid in range(n_clusters):
 				cluster_mask = cluster_assignments == cid
@@ -684,7 +684,7 @@ def automated_cluster_validation(
 						current_score = 0.0
 				
 				# Random baseline: average representativeness of random labels
-				random_scores = []
+				random_scores = list()
 				for emb in cluster_embeddings[:min(10, len(cluster_embeddings))]:  # Sample 10
 						emb_reshaped = emb.reshape(1, -1)
 						random_score = cosine_similarity(emb_reshaped, cluster_embeddings).mean()
@@ -806,7 +806,7 @@ def automated_cluster_validation(
 				print()
 		
 		# PART 4: AUTOMATED RECOMMENDATIONS
-		recommendations = []
+		recommendations = list()
 		
 		# Issue 1: Low cluster cohesion
 		if cluster_quality['mean_intra_similarity'] < 0.70:
@@ -1025,7 +1025,7 @@ def analyze_cluster_quality(
 	if verbose:
 		print("\n[2/6] Analyzing Per-Cluster Quality...")
 	
-	cluster_metrics_list = []
+	cluster_metrics_list = list()
 	
 	for cluster_id in range(n_clusters):
 			mask = cluster_assignments == cluster_id
@@ -1109,7 +1109,7 @@ def analyze_cluster_quality(
 	if verbose:
 		print("\n[3/6] Identifying Problematic Clusters...")
 	
-	problematic_clusters = []
+	problematic_clusters = list()
 	
 	# Flag 1: Low cohesion (intra-cluster similarity < 0.5)
 	low_cohesion = cluster_df[cluster_df['intra_cluster_similarity'] < 0.5]
@@ -1365,7 +1365,7 @@ def _interpret_silhouette(score: float) -> str:
 
 def _flag_cluster_quality(row: pd.Series) -> str:
 	# Flag cluster quality based on metrics
-	flags = []
+	flags = list()
 	
 	if row['intra_cluster_similarity'] < 0.5:
 		flags.append('LOW_COHESION')
@@ -1388,7 +1388,7 @@ def _generate_recommendations(
 	consolidation_impact: Dict
 ) -> List[str]:
 	"""Generate actionable recommendations."""
-	recommendations = []
+	recommendations = list()
 	
 	# Recommendation 1: Overall quality
 	silhouette = global_metrics['silhouette_score']
@@ -1493,7 +1493,7 @@ def export_problematic_clusters(
 				Output CSV file path
 		"""
 		
-		review_data = []
+		review_data = list()
 		
 		for cluster_id in problematic_cluster_ids:
 				mask = cluster_assignments == cluster_id
@@ -1753,7 +1753,7 @@ def get_optimal_num_clusters(
 		print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Status':<50} {'Reason'}")
 		print("-" * 200)
 	
-	coarse_results = []
+	coarse_results = list()
 	best_intra_sim = 0
 	plateau_k = None
 	
@@ -1765,7 +1765,7 @@ def get_optimal_num_clusters(
 		
 		# Compute mean intra-cluster similarity
 		unique_labels = np.unique(labels)
-		intra_sims = []
+		intra_sims = list()
 		
 		for cid in unique_labels:
 			cluster_mask = labels == cid
@@ -1915,7 +1915,7 @@ def get_optimal_num_clusters(
 		print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Score':<10} {'Status':<20} {'Reason'}")
 		print("-" * 150)
 	
-	fine_results = []
+	fine_results = list()
 	
 	for n_clusters in fine_range:
 		labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
@@ -1925,7 +1925,7 @@ def get_optimal_num_clusters(
 		
 		# Compute intra-cluster similarity
 		unique_labels = np.unique(labels)
-		intra_sims = []
+		intra_sims = list()
 		
 		for cid in unique_labels:
 			cluster_mask = labels == cid
@@ -2082,7 +2082,7 @@ def get_optimal_num_clusters(
 	final_max_size = final_cluster_sizes.max()
 	
 	# Recompute final intra-similarity
-	final_intra_sims = []
+	final_intra_sims = list()
 	for cid in np.unique(labels):
 		cluster_X = X[labels == cid]
 		if len(cluster_X) > 1:
@@ -2179,12 +2179,12 @@ def remove_problematic_cluster_labels(
 		print(df.head(15))
 
 	problematic_cluster_ids = set()
-	removed_labels = []
+	removed_labels = list()
 
 	# =========================================================================
 	# PART 1: Identify Low-Cohesion Clusters
 	# =========================================================================
-	low_cohesion_clusters = []
+	low_cohesion_clusters = list()
 
 	for cluster_id in df['cluster'].unique():
 		cluster_mask   = df['cluster'] == cluster_id
@@ -2222,7 +2222,7 @@ def remove_problematic_cluster_labels(
 	# =========================================================================
 	# PART 2: Identify Poor Canonical Clusters
 	# =========================================================================
-	poor_canonical_clusters = []
+	poor_canonical_clusters = list()
 
 	for cluster_id in df['cluster'].unique():
 		if cluster_id in problematic_cluster_ids:
@@ -2329,7 +2329,7 @@ def cluster_original(
 		print(f"   └─ nc: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
 	
 	print(f"\n[DEDUP] {len(labels)} {type(labels)} raw labels")
-	documents = []
+	documents = list()
 	for i, doc in enumerate(labels):
 		if doc is None:
 			# print(f"doc[{i}]: None (skipping)")
@@ -2596,9 +2596,9 @@ def cluster_original(
 	print(f"\nCanonical labels per cluster")
 	cluster_canonicals = {}
 	freq_changed_count = 0
-	total_sim_loss = []
-	total_freq_gain = []
-	questionable_examples = []
+	total_sim_loss = list()
+	total_freq_gain = list()
+	questionable_examples = list()
 
 	t0 = time.time()
 	for cid in sorted(df.cluster.unique()):
@@ -2824,7 +2824,7 @@ def cluster_original(
 	if results['problematic_clusters']:
 		if verbose:
 			print(f"\n[WARNING] {len(results['problematic_clusters'])} types of problematic clusters detected! => Exporting for manual review")
-		all_problematic_ids = []
+		all_problematic_ids = list()
 		for issue in results['problematic_clusters']:
 			if issue['severity'] in ['HIGH', 'MEDIUM']:
 				all_problematic_ids.extend(issue['cluster_ids'])
@@ -2953,7 +2953,7 @@ def assign_canonical_labels(
 		'bridge' scores 1.0 in a cluster of 'X bridge' labels.
 		"""
 		cluster_token_sets = [set(lbl.split()) for lbl in cluster_lbls]
-		scores = []
+		scores = list()
 		for cand in candidates:
 			cand_tokens = set(cand.split())
 			subsumers = sum(1 for ts in cluster_token_sets if cand_tokens.issubset(ts))
@@ -2966,9 +2966,9 @@ def assign_canonical_labels(
 	cluster_canonicals    = {}
 	virtual_used_count    = 0
 	freq_changed_count    = 0
-	total_sim_loss        = []
-	total_freq_gain       = []
-	questionable_examples = []
+	total_sim_loss        = list()
+	total_freq_gain       = list()
+	questionable_examples = list()
 
 	for cid in sorted(df.cluster.unique()):
 		cluster_mask       = df.cluster == cid
@@ -3147,7 +3147,7 @@ def cluster(
 	# STEP 1: DEDUP + FLATTEN
 	# =========================================================================
 	print(f"\n[DEDUP] {len(labels)} {type(labels)} raw labels")
-	documents = []
+	documents = list()
 	for i, doc in enumerate(labels):
 		if doc is None:
 			continue
@@ -3405,8 +3405,8 @@ def cluster(
 	# list), remove_problematic_cluster_labels would flag it as missing and
 	# drop the entire cluster.  Fix: insert the virtual hypernym as a genuine
 	# row so it is a legitimate cluster member from this point onward.
-	virtual_rows  = []
-	virtual_embs  = []
+	virtual_rows  = list()
+	virtual_embs  = list()
 	for cid, meta in cluster_canonicals.items():
 		if not meta['virtual']:
 			continue
@@ -3430,7 +3430,7 @@ def cluster(
 		if verbose:
 			print(f"\n[STEP 8] Injected {len(virtual_rows)} virtual hypernym row(s) into df+X")
 			for r in virtual_rows:
-				print(f"cluster {r['cluster']:>5d}  canonical = '{r['label']}'")
+				print(f"cluster {r['cluster']:>6d}  canonical: {r['label']}")
 
 	df, X_clean, removed_labels = remove_problematic_cluster_labels(
 		df=df,
@@ -3482,7 +3482,7 @@ def cluster(
 		if verbose:
 			print(f"\n[WARNING] {len(results['problematic_clusters'])} types of problematic clusters detected! => Exporting for manual review")
 
-		all_problematic_ids = []
+		all_problematic_ids = list()
 		for issue in results['problematic_clusters']:
 			if issue['severity'] in ['HIGH', 'MEDIUM']:
 				all_problematic_ids.extend(issue['cluster_ids'])

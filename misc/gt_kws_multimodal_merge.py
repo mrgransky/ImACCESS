@@ -4,6 +4,9 @@ from nlp_utils import _post_process_
 from clustering import get_canonical_labels_parallel, cluster
 
 # how to run:
+# local:
+# $ python -u gt_kws_multimodal_merge.py -ddir /home/farid/datasets/WW_DATASETs/HISTORY_X4/ -nw 8 -emb "Qwen/Qwen3-Embedding-0.6B" -v
+
 # Puhti/Mahti:
 # srun -J cpu --account=project_2004072 --partition=small --time=00-13:00:00 --mem=96G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
 # $ python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/ -nw 8 -v
@@ -33,7 +36,7 @@ def merge_csv_files(
 		print(f"\nFound {len(csv_files)} CSV files in {dataset_dir}")
 		print(f"\tMerging {len(csv_files)} CSVs => {output_fpath}")
 
-	dfs = []
+	dfs = list()
 	for i, file_ in enumerate(csv_files):
 		print(f"{i:02d} {file_}", end="\t")
 		temp_df = pd.read_csv(
@@ -124,7 +127,7 @@ def merge_csv_files(
 		print(f"[FILTERING] samples with no valid canonical labels")
 
 	before_count = len(df)
-	df = df[df['multimodal_canonical_labels'].apply(len) > 0].copy()
+	df = df[df['multimodal_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) > 0].copy()
 	after_count = len(df)
 	
 	if verbose:
