@@ -1148,11 +1148,6 @@ noon
 month
 year
 co
-spring
-summer
-autumn
-fall
-winter
 eastbound
 westbound
 northbound
@@ -1254,7 +1249,9 @@ evening
 midnight
 noon
 spring
+springtime
 summer
 autumn
 fall
 winter
+half

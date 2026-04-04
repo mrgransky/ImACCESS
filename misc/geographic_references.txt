@@ -330,6 +330,8 @@ Brewster, NY
 Brewster NY
 Brewster New York
 Bridgeport
+Brook
+Brooklyn
 Brunswick
 Buffalo
 Burbank
@@ -511,6 +513,7 @@ Basel
 Bavaria
 Beijing
 Berlin
+Bermuda
 Bogota
 Bordaux
 Bordeaux
