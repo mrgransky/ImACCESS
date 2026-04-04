@@ -33,7 +33,7 @@ from nlp_utils import get_enriched_description
 # nohup python -u gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 4 -mgt 64 > logs/llm_annotation_history_x4.txt &
 
 # with description:
-# python gt_kws_llm.py -desc "Chemical Warfare Service - Equipment - Miscellaneous - Chemical Warfare Service; Editorial Division under Dr. W.D. Bancroft. 10.5 cm light field howitzer gas shell blue cross (German),Photographer: Chemical Warfare Service" -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
+# python gt_kws_llm.py -desc "P.C. Stooksbury Sale - Shows Height And Volume Of Bl. And Ch. Oak Left - Gentle South Slope - Little Shade, The following geographic information is associated with this record: Norris Reservoir, Tennessee,reservoir,P.C. Stooksbury Sale - Shows Height And Volume Of Bl. And Ch. Oak Left - Gentle South Slope - Little Shade. Norris Reservoir, Tennessee." -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
 
 
 if not hasattr(tfs.utils, "LossKwargs"):
@@ -130,7 +130,6 @@ that represent **core objects, entities, actions, or scene elements** which are 
 
 	- The standardized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]"""
-
 
 # - When a term is a specific subtype of a broader, reusable category, prefer the broader canonical category unless the subtype is necessary for disambiguation.
 
@@ -1096,7 +1095,6 @@ def query_local_llm(
 		if verbose: 
 			print(f"Tokenization: {tokenization_time:.5f}s")
 
-		generation_start = time.time()
 		with torch.no_grad():
 			with torch.amp.autocast(
 				device_type=device.type, 
@@ -1113,16 +1111,8 @@ def query_local_llm(
 					eos_token_id=tokenizer.eos_token_id,
 					use_cache=True,
 				)
-		generation_time = time.time() - generation_start
-		
-		if verbose:
-			print(f"Model generation: {generation_time:.5f}s")
 
-		decoding_start = time.time()
-		raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-		
-		if verbose: 
-			print(f"Decoding: {time.time() - decoding_start:.5f}s")
+		raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)	
 	except Exception as e:
 		print(f"<!> Error {e}")
 		return None

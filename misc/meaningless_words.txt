@@ -1169,11 +1169,9 @@ rightbound
 leftbound
 worst
 snapshot
-supply
-support
-demand
 display
 fig
+rot
 chart
 graph
 diagram
