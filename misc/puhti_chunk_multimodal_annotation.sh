@@ -10,7 +10,7 @@
 #SBATCH --cpus-per-task=20
 #SBATCH --mem=39G
 #SBATCH --time=03-00:00:00
-#SBATCH --array=0-20
+#SBATCH --array=0-11
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1,nvme:100
 
@@ -71,7 +71,7 @@ fi
 echo "LLM Model: $LLM_MODEL (batch size: $LLM_BATCH_SIZE) max generated tokens: $LLM_MAX_GEN_TKs"
 echo "VLM Model: $VLM_MODEL (batch size: $VLM_BATCH_SIZE) max generated tokens: $VLM_MAX_GEN_TKs"
 
-DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/_WW_DATASETs"
+DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 CSV_FILE=${DATASET_DIRECTORY}/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv
 echo "Running (chunked) Multimodal Annotation on $CSV_FILE"
 
