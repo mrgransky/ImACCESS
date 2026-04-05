@@ -67,7 +67,7 @@ CRITICAL RULES:
 	Return fewer keywords if the scene is simple. A short accurate list is always better than a padded inferred one.
 
 - DE-PRIORITIZE or EXCLUDE:
-		• generic human category nouns (e.g., man, men, woman, people, children) UNLESS they are semantically specialized (e.g., soldier, pilot, railway worker)
+		• generic human category nouns (e.g., man, men, woman, person, people, children) UNLESS they are semantically specialized (e.g., soldier, pilot, railway worker)
 		• vague container nouns (e.g., scene, group, event)
 		• counting-based phrases (e.g., three men, several people, two babies)
 		• purely demographic descriptors without contextual role

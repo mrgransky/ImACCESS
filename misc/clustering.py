@@ -7,6 +7,7 @@ import os
 import ast
 import json
 import time
+import gc
 import multiprocessing
 from sklearn.metrics import (
 	silhouette_score, 
@@ -3503,5 +3504,9 @@ def cluster(
 		print(df.info())
 		print(f"[CLUSTERING] Total Elapsed Time: {time.time()-st_t:.1f} sec")
 		print("=" * 60)
+
+	# clear cache
+	torch.cuda.empty_cache()
+	gc.collect()
 
 	return df
