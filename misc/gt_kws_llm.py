@@ -98,7 +98,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 - **STRICTLY EXCLUDE**:
 	* Dates, times, years, decades, or any temporal references.
 	* Family relationship terms.
-	* Geographic references (continents, countries, cities, towns, islands, regions, landmarks).
+	* Geographic locations such as continents, countries, cities, towns, islands, regions, landmarks.
 	* Nationalities, ethnicities, or religions.
 	* Quantities, counts, measurements, or numeric expressions.
 	* Composite phrases encoding multiple concepts (e.g., subject + action + location).

@@ -156,6 +156,7 @@ Namibia
 Nauru
 Nepal
 Netherlands
+New Caledonia
 New Guinea
 New Zealand
 Nicaragua
@@ -164,7 +165,6 @@ Nigeria
 North Korea
 North Macedonia
 Norway
-
 Oman
 
 Pakistan
@@ -189,6 +189,8 @@ Rwanda
 
 Saint Kitts and Nevis
 Saint Lucia
+Saint Louis
+St Louis
 Saint Vincent and the Grenadines
 Samoa
 San Marino
@@ -252,6 +254,7 @@ Yemen
 Yugoslavia
 
 Zambia
+Zealand
 Zimbabwe
 State of Palestine
 Palestine
@@ -311,6 +314,7 @@ Wyoming
 
 Aberdeen
 Alturas
+Arlington
 Bakersfield
 Baltimore
 Baltimore, MD
@@ -350,7 +354,9 @@ Echo
 Echo, UT
 Echo UT
 El Paso
+Evansville
 Hartford
+Halifax
 Hollywood
 Houston
 Houston TX
@@ -393,6 +399,7 @@ UT
 UT.
 City of S.F.
 Indio
+Inglewood
 Jamestown
 Jacksonville
 Leadvale
@@ -404,6 +411,7 @@ Montclair, New Jersey
 Montclair New Jersey
 New York City
 Las Vegas
+Long Beach
 Los Angeles
 City of Las Vegas
 Philadelphia
@@ -450,6 +458,9 @@ Richmond
 St. Louis
 City of St. Louis
 Santa Barbara
+Santa Monica
+Santa Rosa
+Santa Paula
 San Diego
 San Antonio
 San Jose
@@ -459,8 +470,11 @@ Indianapolis
 Nashville
 Portland
 City of Portland
+Pacific Beach
 Sacramento
+Spartanburg
 Salt Lake City
+Savannah
 Sandusky
 San Francisco
 San Francisco, CA
@@ -468,18 +482,18 @@ San Francisco, Calif.
 San Jacinto
 San Jacinto, Texas
 San Jose
-Santa Rosa
 Seattle
 Spadra
 Spadra, CA.
 Tarrytown
 Texas City
+Toledo
 Trinidad
 Trinidad, CO
 Trinidad
 Nova Scotia
 Scotia
-Halifax
+Somerville
 Waterbury
 Washington DC
 Wash. D.C.
@@ -499,9 +513,11 @@ Peninsula
 Region
 Town
 
+Aalborg
 Abadan
 Aegean
 Algiers
+Alsace
 Ankara
 Antwerp
 Athens
@@ -512,6 +528,7 @@ Barcelona
 Basel
 Bavaria
 Beijing
+Belfast
 Berlin
 Bermuda
 Bogota
@@ -521,6 +538,7 @@ Bougainville
 Bremen
 Brasilia
 Bristol
+Brough
 Brussels
 Buenos Aires
 Buna
@@ -529,46 +547,67 @@ Budapest
 Burma
 Cadiz
 Cairo
+Cambridge
 Canberra
 Caracas
+Carlisle
 Cebu City
 Chania
+Christiansted
+Christianshavn
 Cleveland
 Coblenz
 Cologne
 Copenhagen
+Coventry
+Crimea
 Dessau
 Dorchester
 Dresden
 Dublin
+Duxford
+Eindhoven
 Essex
+Farnborough
+Fowlmere
 Frankfurt
 Gaza
 Geneva
 Hamburg
 Hong Kong
+Hanoi
+Havana
+Helsinki
+Helsingfors
+Hiroshima
+Hobsonville
 Incheon
 Indochina
 Ipswich
 Iwo Jima
 Jerusalem
+Karelia
 Karachi
 Kiev
 Kirkuk
-Kyoto
+Kirkby
+Kirkwood
 Kobe
 Koblenz
-Hanoi
-Havana
-Hiroshima
+Kurland
+Kyoto
+Lakewood
 Lancaster
+Lapland
 Leipzig
 Lille
 Liverpool
+Lindholmen
 London
 Madrid
 Majuro
 Manila
+Manston
 Marrakech
 Medina
 Mexico City
@@ -581,6 +620,7 @@ Nagoya
 Naples
 New Delhi
 Okinawa
+Orlando
 Oslo
 Paris
 Palermo
@@ -592,6 +632,7 @@ Rabat
 Rome
 San Gimignano
 Seville
+Stralsund
 Valencia
 Bilbao
 Gijon
@@ -602,6 +643,7 @@ Malaga
 Managua
 Manchester
 Marseille
+Norfolk
 Murcia
 Nuremberg
 Ottawa
@@ -615,31 +657,47 @@ Lima
 Lisbon
 Lleida
 Oviedo
+Oxford
 Pamplona
+Plymouth
+Praha
+Radlett
 Ravenna
 Rio de Janeiro
+Rochester
+Rovaniemi
+Rotterdam
 Salzburg
 Santander
+Sevastopol
 Seoul
 Shanghai
 Sinai
 Sicily
 Siena
 Southampton
+Stavanger
+Stockholm
 Strömsund
+Stumholmen
 Stuttgart
+Sydney
 Tarragona
 Tehachapi
 Tel Aviv
 Tokyo
 Transylvania
+Trondheim
+Truro
 Tunis
 Tuscany
 Valladolid
+Vancouver
 Venice
 Verona
 Vienna
 Warsaw
+Waterloo
 Wellington
 Zaragoza
 Åre

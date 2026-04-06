@@ -165,6 +165,7 @@ def get_canonical_labels_with_parallel_mapping(
 		print(f"   Canonical labels : {len(canonical_map):,}")
 		if missing_labels:
 			print(f"   Sample missing  : {list(missing_labels)[:10]}...")
+		print("-"*100)
 
 	return mapped_labels, canonical_map
 
@@ -2426,7 +2427,6 @@ def cluster_original(
 		precision='float32', # float32 is more stable than float16 for CPU stability
 	)
 
-	# After encoding
 	if np.isnan(X).any():
 		nan_count = np.isnan(X).sum()
 		nan_rows = np.where(np.isnan(X).any(axis=1))[0]
@@ -2462,13 +2462,10 @@ def cluster_original(
 	if np.allclose(X, 0):
 		raise ValueError("All embeddings are zero vectors")
 
-	print(f"Embeddings {type(X)} {X.shape} {X.dtype}")
+	print(f"\nEmbeddings {type(X)} {X.shape} {X.dtype}")
 	print(f"  ├─ Range: [{X.min():.4f}, {X.max():.4f}]")
-	print(f"  ├─ Mean: {X.mean()}")
-	print(f"  └─ Std: {X.std()}")
-
-	# Compute linkage matrix
-	print(f"[LINKAGE] {linkage_method} Agglomerative Clustering on: {X.shape} embeddings [takes a while...]")
+	print(f"  ├─ Mean: {X.mean()} | Std: {X.std()}")
+	print(f"  └─ ")
 
 	t0 = time.time()
 	# OPTION 1: Ward linkage (RECOMMENDED for preventing mega-clusters)
@@ -2499,7 +2496,7 @@ def cluster_original(
 	else:
 		raise ValueError(f"Unsupported distance metric: {distance_metric}")
 
-	print(f"[LINKAGE] Z[{linkage_method}]: {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes} | {time.time()-t0:.1f} sec")
+	print(f": {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes} | {time.time()-t0:.1f} sec")
 	
 	# Determine Optimal Number of Clusters
 	if nc is None:
@@ -3506,8 +3503,7 @@ def cluster(
 		print(f"Clustered {len(df)} labels into {df['cluster'].nunique()} clusters")
 		print(f"{type(df)} {df.shape} {list(df.columns)}")
 		print(df.info())
-		print(f"[CLUSTERING] Total Elapsed Time: {time.time()-st_t:.1f} sec")
-		print("=" * 60)
+		print(f"[CLUSTERING] Total Elapsed Time: {time.time()-st_t:.1f} sec\n")
 
 	# clear cache
 	torch.cuda.empty_cache()
