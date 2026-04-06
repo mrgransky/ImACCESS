@@ -1,7 +1,7 @@
 from utils import *
 import visualize as viz
 from nlp_utils import _post_process_
-from clustering import get_canonical_labels_parallel, cluster
+from clustering import get_canonical_labels_with_parallel_mapping, cluster
 
 # how to run:
 # local:
@@ -21,6 +21,7 @@ from clustering import get_canonical_labels_parallel, cluster
 def merge_csv_files(
 	dataset_dir: str,
 	num_workers: int,
+	batch_size: int,
 	embedding_model_id: str,
 	nc: int = None,
 	verbose: bool = False
@@ -63,7 +64,6 @@ def merge_csv_files(
 	if verbose:
 		print(f">> Merged {type(df)} from {len(csv_files)} CSV files: {df.shape}\n{list(df.columns)}")
 		print(df.info(verbose=True, memory_usage='deep'))
-		print(df.head(10))
 
 	if verbose:
 		print(f"Post-processing LLM-based labels...")
@@ -80,31 +80,34 @@ def merge_csv_files(
 	multimodal_labels = df['multimodal_labels'].tolist()
 	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=False)
 
-	llm_canonical_labels, _ = get_canonical_labels_parallel(
+	llm_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
 		labels=llm_based_labels,
 		model_id=embedding_model_id,
 		label_source="llm",
 		output_dir=OUTPUT_DIR,
+		batch_size=batch_size,
 		num_workers=num_workers,
 		nc=nc,
 		verbose=verbose,
 	)
 
-	vlm_canonical_labels, _ = get_canonical_labels_parallel(
+	vlm_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
 		labels=vlm_based_labels,
 		model_id=embedding_model_id,
 		label_source="vlm",
 		output_dir=OUTPUT_DIR,
+		batch_size=batch_size,
 		num_workers=num_workers,
 		nc=nc,
 		verbose=verbose,
 	)
 
-	multimodal_canonical_labels, _ = get_canonical_labels_parallel(
+	multimodal_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
 		labels=multimodal_labels,
 		model_id=embedding_model_id,
 		label_source="multimodal",
 		output_dir=OUTPUT_DIR,
+		batch_size=batch_size,
 		num_workers=num_workers,
 		nc=nc,
 		verbose=verbose,
@@ -216,6 +219,7 @@ def merge_csv_files(
 def main():
 	parser = argparse.ArgumentParser(description='Merge CSV files')
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Directory containing CSV files')
+	parser.add_argument('--batch_size', '-bs', type=int, default=128, help='Batch size')
 	parser.add_argument('--num_workers', '-nw', type=int, required=True, help='Number of workers for parallel processing')
 	parser.add_argument('--embedding_model_id', '-emb', type=str, default="sentence-transformers/all-MiniLM-L6-v2", help='HuggingFace model ID')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
@@ -230,7 +234,8 @@ def main():
 		print_args_table(args=args, parser=parser)
 
 	merge_csv_files(
-		dataset_dir=args.dataset_dir, 
+		dataset_dir=args.dataset_dir,
+		batch_size=args.batch_size,
 		num_workers=args.num_workers,
 		embedding_model_id=args.embedding_model_id,
 		nc=args.num_clusters,

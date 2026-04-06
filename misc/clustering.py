@@ -79,11 +79,12 @@ def parallel_canonical_mapping(labels_str):
 	
 	return canonical_labels_
 
-def get_canonical_labels_parallel(
+def get_canonical_labels_with_parallel_mapping(
 	labels: List[List[str]],
 	label_source: str,          # "llm", "vlm", or "multimodal"
 	output_dir: str,
 	model_id: str,
+	batch_size: int = 128,
 	num_workers: int = 4,
 	nc: int = None,
 	verbose: bool = False,
@@ -91,7 +92,7 @@ def get_canonical_labels_parallel(
 	clusters_fname = os.path.join(output_dir, f"{label_source}_clusters.csv")
 
 	if verbose:
-		print(f"\n>> Getting {label_source.upper()} Canonical Labels (Parallel Mapping: nw: {num_workers})")
+		print(f"\n>> Getting {label_source.upper()} Canonical Labels (Parallel Mapping: nw: {num_workers} bs: {batch_size})")
 		print(f"Input: {len(labels)} samples")
 		print(f"Examples: {labels[:7]}")
 		print(f"clusters_fname: {clusters_fname}")
@@ -100,6 +101,7 @@ def get_canonical_labels_parallel(
 		labels=labels,
 		model_id=model_id,
 		nc=nc,
+		batch_size=batch_size,
 		clusters_fname=clusters_fname,
 		verbose=verbose,
 	)
@@ -171,16 +173,18 @@ def get_canonical_labels(
 	label_source: str,  # "llm", "vlm", or "multimodal"
 	output_dir: str,
 	model_id: str,
+	batch_size: int = 128,
 	nc: int = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
 
-	print(f"\n>> Getting {label_source} Canonical Labels (Sequential Mapping)")
+	print(f"\n>> Getting {label_source} Canonical Labels (Sequential Mapping bs: {batch_size})")
 
 	clusters_fname = os.path.join(output_dir, f"{label_source}_clusters.csv")
 	clustered_df = cluster(
 		labels=labels,
 		model_id=model_id,
+		batch_size=batch_size,
 		nc=nc,
 		clusters_fname=clusters_fname,
 		verbose=verbose,

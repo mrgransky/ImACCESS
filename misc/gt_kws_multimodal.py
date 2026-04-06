@@ -1,6 +1,6 @@
 from utils import *
-from gt_kws_vlm import get_vlm_based_labels, get_vlm_based_labels_debug
-from gt_kws_llm import get_llm_based_labels, get_llm_based_labels_debug
+from gt_kws_vlm import get_vlm_based_labels
+from gt_kws_llm import get_llm_based_labels
 import visualize as viz
 from nlp_utils import _post_process_
 from clustering import get_canonical_labels
@@ -96,6 +96,7 @@ def get_multimodal_annotation(
 	embedding_model_id: str,
 	max_keywords: int,
 	device: str,
+	batch_size: int,
 	num_workers: int,
 	use_llm_quantization: bool = False,
 	use_vlm_quantization: bool = False,
@@ -203,6 +204,7 @@ def get_multimodal_annotation(
 			label_source="llm",
 			model_id=embedding_model_id,
 			output_dir=OUTPUT_DIR,
+			batch_size=batch_size,
 			nc=nc,
 			verbose=verbose,
 		)
@@ -213,6 +215,7 @@ def get_multimodal_annotation(
 			label_source="vlm",
 			model_id=embedding_model_id,
 			output_dir=OUTPUT_DIR,
+			batch_size=batch_size,
 			nc=nc,
 			verbose=verbose,
 		)
@@ -223,6 +226,7 @@ def get_multimodal_annotation(
 			model_id=embedding_model_id,
 			label_source="multimodal",
 			output_dir=OUTPUT_DIR,
+			batch_size=batch_size,
 			nc=nc,
 			verbose=verbose,
 		)
@@ -355,6 +359,7 @@ def main():
 	parser = argparse.ArgumentParser(description="Multimodal (LLM + VLM) annotation for Historical Archives Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--num_workers", '-nw', type=int, default=16, help="Number of workers for parallel processing")
+	parser.add_argument("--batch_size", '-bs', type=int, default=128, help="Batch size for multimodal processing")
 	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	parser.add_argument("--llm_model_id", '-llm', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace Text-Language model ID")
 	parser.add_argument("--llm_batch_size", '-llm_bs', type=int, default=2, help="Batch size for textual processing using LLM (adjust based on GPU memory)")
@@ -384,6 +389,7 @@ def main():
 		vlm_model_id=args.vlm_model_id,
 		device=args.device,
 		num_workers=args.num_workers,
+		batch_size=args.batch_size,
 		llm_batch_size=args.llm_batch_size,
 		llm_max_generated_tks=args.llm_max_generated_tks,
 		vlm_batch_size=args.vlm_batch_size,
