@@ -87,6 +87,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	* **Visually grounded**: tangible objects, agents, scene elements, or observable actions.
 	* **Generalized**: prefer the most general factual noun/verb that remains correct:
 		- use "nurse" instead of "nurse checking blood pressure"
+		- use "pilot" instead of "pilot Maj Charles Matheson"
 		- use "seaplane" instead of "seaplane on the water in the background"
 		- use "airplane" instead of "airplane in flight"
 		- use "smoking" instead of "a group of youngsters smoking outdoors"
@@ -98,6 +99,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 - **STRICTLY EXCLUDE**:
 	* Dates, times, years, decades, or any temporal references.
 	* Family relationship terms.
+	* Identifiers, equipment serial numbers, or model IDs.
 	* Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, or landmarks.
 	* Nationalities, ethnicities, or religions.
 	* Quantities, counts, measurements, or numeric expressions.
