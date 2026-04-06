@@ -33,7 +33,7 @@ from nlp_utils import get_enriched_description
 # nohup python -u gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 4 -mgt 64 > logs/llm_annotation_history_x4.txt &
 
 # with description:
-# python gt_kws_llm.py -desc "P.C. Stooksbury Sale - Shows Height And Volume Of Bl. And Ch. Oak Left - Gentle South Slope - Little Shade, The following geographic information is associated with this record: Norris Reservoir, Tennessee,reservoir,P.C. Stooksbury Sale - Shows Height And Volume Of Bl. And Ch. Oak Left - Gentle South Slope - Little Shade. Norris Reservoir, Tennessee." -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
+# python gt_kws_llm.py -desc Trondheim, "Norway From the Air, Original Caption: Trondheim, Norway From the Air. This aerial photo of Trondheim was taken by an R.A.F. reconnaissance aircraft from a height of 4,000 ft." -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
 
 
 if not hasattr(tfs.utils, "LossKwargs"):
