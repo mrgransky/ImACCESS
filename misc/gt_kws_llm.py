@@ -103,7 +103,6 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	* Quantities, counts, measurements, or numeric expressions.
 	* Composite phrases encoding multiple concepts (e.g., subject + action + location).
 	* Phrasal verbs, possessive constructions, or descriptive clauses.
-	* Explanatory text, punctuation, or output formatting beyond the Python list.
 	* abstract organizational/social events with no visual anchor (e.g., "meeting", "trip", "outing").
 	* Generic photography or image-related terminology.
 
@@ -132,6 +131,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 [/INST]"""
 
 # - When a term is a specific subtype of a broader, reusable category, prefer the broader canonical category unless the subtype is necessary for disambiguation.
+#	* Explanatory text, punctuation, or output formatting beyond the Python list.
 
 # # Too Specific which produces massive number of singleton labels
 # # self-contained and grammatically complete phrases
