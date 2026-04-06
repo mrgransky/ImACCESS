@@ -39,7 +39,7 @@ TEXT_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 python -u gt_kws_multimodal_merge.py \
 	--dataset_dir $DATASET_DIR \
 	--num_workers $SLURM_CPUS_PER_TASK \
-	--model_id $TEXT_EMBEDDING_MODEL \
+	--embedding_model_id $TEXT_EMBEDDING_MODEL \
 	--verbose
 
 done_txt="$user finished Slurm job: `date`"
