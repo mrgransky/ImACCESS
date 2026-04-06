@@ -6,6 +6,7 @@ from clustering import get_canonical_labels_parallel, cluster
 # how to run:
 # local:
 # $ python -u gt_kws_multimodal_merge.py -ddir /home/farid/datasets/WW_DATASETs/HISTORY_X4/ -nw 8 -emb "Qwen/Qwen3-Embedding-0.6B" -v
+# $ nohup python -u gt_kws_multimodal_merge.py -ddir /home/farid/datasets/WW_DATASETs/HISTORY_X4 -nw 8 -emb "Qwen/Qwen3-Embedding-0.6B" -v > logs/multimodal_merge.log 2>&1 &
 
 # Puhti/Mahti:
 # srun -J cpu --account=project_2004072 --partition=small --time=00-13:00:00 --mem=96G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
@@ -63,7 +64,6 @@ def merge_csv_files(
 		print(f">> Merged {type(df)} from {len(csv_files)} CSV files: {df.shape}\n{list(df.columns)}")
 		print(df.info(verbose=True, memory_usage='deep'))
 		print(df.head(10))
-
 
 	if verbose:
 		print(f"Post-processing LLM-based labels...")

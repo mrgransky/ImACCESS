@@ -164,19 +164,6 @@ def get_multimodal_annotation(
 		torch.cuda.empty_cache()
 	gc.collect()
 
-	# Post-process only multimodal labels
-	if verbose:
-		print(f"Post-processing LLM-based labels...")
-	llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
-
-	if verbose:
-		print(f"Post-processing VLM-based labels...")
-	vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
-
-	if verbose:
-		print(f"Post-processing Multimodal labels...")
-	multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=verbose)
-	
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
 		on_bad_lines='skip',
@@ -191,12 +178,24 @@ def get_multimodal_annotation(
 			# 'enriched_document_description', # misleading
 		],
 	)
+	
+	# Check if the dataset is a full dataset
+	is_full_dataset = "_chunk_" not in os.path.basename(csv_file)
+	if is_full_dataset:
+		if verbose:
+			print(f"{os.path.basename(csv_file)} is a full dataset => (post processing required!)")
 
-	df['llm_based_labels'] = llm_based_labels
-	df['vlm_based_labels'] = vlm_based_labels
-	df['multimodal_labels'] = multimodal_labels
+		if verbose:
+			print(f"Post-processing LLM-based labels...")
+		llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
 
-	if "_chunk_" not in os.path.basename(csv_file):
+		if verbose:
+			print(f"Post-processing VLM-based labels...")
+		vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
+
+		if verbose:
+			print(f"Post-processing Multimodal labels...")
+		multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=verbose)
 		
 		# --- LLM canonical labels ---
 		llm_canonical_labels, _ = get_canonical_labels(
@@ -248,15 +247,15 @@ def get_multimodal_annotation(
 
 			if empty_llm_canonical.any():
 				print(f"\n>> Rows with empty LLM canonical labels...")
-				print(df[empty_llm_canonical][['doc_url', 'llm_based_labels', 'llm_canonical_labels']].head(50))
+				print(df[empty_llm_canonical].head(50))
 
 			if empty_vlm_canonical.any():
 				print(f"\n>> Rows with empty VLM canonical labels...")
-				print(df[empty_vlm_canonical][['doc_url', 'vlm_based_labels', 'vlm_canonical_labels']].head(50))
+				print(df[empty_vlm_canonical].head(50))
 
 			if empty_multimodal_canonical.any():
 				print(f"\n>> Rows with empty multimodal canonical labels...")
-				print(df[empty_multimodal_canonical][['doc_url', 'multimodal_labels', 'multimodal_canonical_labels']].head(50))
+				print(df[empty_multimodal_canonical].head(50))
 		
 		before_count = len(df)
 		df = df[df['multimodal_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) > 0].copy()
@@ -320,6 +319,21 @@ def get_multimodal_annotation(
 
 			print(f"   ✓ Verified: 0 duplicates remaining")
 
+	df['llm_based_labels'] = llm_based_labels
+	df['vlm_based_labels'] = vlm_based_labels
+	df['multimodal_labels'] = multimodal_labels
+
+	df.to_csv(output_csv, index=False)
+	try:
+		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
+	
+	if verbose:
+		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
+
+	# EDA and stratified split only for full datasets:
+	if is_full_dataset:
 		viz.multilabel_eda(
 			df=df,
 			output_dir=OUTPUT_DIR,
@@ -333,15 +347,6 @@ def get_multimodal_annotation(
 			label_col='multimodal_canonical_labels',
 			min_label_frequency=5,
 		)
-
-	df.to_csv(output_csv, index=False)
-	try:
-		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-	except Exception as e:
-		print(f"Failed to write Excel file: {e}")
-	
-	if verbose:
-		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
 
 	return multimodal_labels
 

@@ -81,14 +81,6 @@ CRITICAL RULES:
 The clean, valid Python LIST must be the VERY LAST THING in your response.
 """
 
-# - PRIORITIZE:
-# 		• infrastructure (e.g., bridge, railway station, harbor)
-# 		• machinery and equipment (e.g., locomotive, crane, press machine)
-# 		• vehicles (e.g., freight car, aircraft, truck)
-# 		• architectural structures
-# 		• clearly defined industrial or military assets
-
-
 def verify(p: str):
 	if p is None or not os.path.exists(p):
 		return None
