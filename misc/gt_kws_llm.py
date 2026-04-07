@@ -102,17 +102,15 @@ that represent **core objects, entities, actions, or scene elements** which are 
 		- "harvest" instead of "farmers harvesting hay with wooden pitchforks"
  	* **Reusable**: likely to recur across many captions in a large archive.
 
-- **STRICTLY EXCLUDE**:
+- **STRICTLY EXCLUDE** KEYWORDS which are:
 	❌ Identifiers, equipment serial numbers, or model IDs.
 	❌ Dates, times, years, decades, or any temporal references.
 	❌ Family relationship terms.
-	❌ Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, or landmarks.
+	❌ Geographical names (e.g., continents, countries, states, provinces, cities, towns, islands, regions, or landmarks.)
 	❌ Nationalities, ethnicities, or religions.
 	❌ Quantities, counts, measurements, or numeric expressions.
 	❌ Complex phrases encoding multiple concepts (e.g., subject + action + location).
 	❌ Phrasal verbs, possessive constructions, or descriptive clauses.
-
-- Keywords MAY appear verbatim in the caption if they are the most precise and reusable label. Do NOT paraphrase just to avoid repetition.
 
 - Color handling:
 	Remove color only if it is purely descriptive (e.g., red car, blue sky).
@@ -124,11 +122,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	(e.g., military designation, chemical classification, organization name),
 	it MUST be treated as a single atomic label and MUST NOT be reduced.
 
-- Keyword priority order:
-	1) Physical objects (tangible, visually prominent)
-	2) Actions (if more reusable than objects present)
-	3) Human roles (only if visually salient)
-	4) Scene elements
+- Keywords MAY appear verbatim in the caption if they are the most precise and reusable label. Do NOT paraphrase just to avoid repetition.
 
 - ANTI-HALLUCINATION RULE:
 	Only use the exact information given in the caption for keyword extraction, without making assumptions based on implied meanings.
@@ -142,6 +136,12 @@ that represent **core objects, entities, actions, or scene elements** which are 
 #	* Explanatory text, punctuation, or output formatting beyond the Python list.
 #	x abstract organizational/social events with no visual anchor (e.g., "meeting", "trip", "outing").
 #	❌ Generic photography or image-related terminology.
+# - Keyword priority order:
+# 	1) Physical objects (tangible, visually prominent)
+# 	2) Actions (if more reusable than objects present)
+# 	3) Human roles (only if visually salient)
+# 	4) Scene elements
+
 
 # # Too Specific which produces massive number of singleton labels
 # # self-contained and grammatically complete phrases
