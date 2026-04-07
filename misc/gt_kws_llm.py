@@ -33,7 +33,7 @@ from nlp_utils import get_enriched_description
 # nohup python -u gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 4 -mgt 64 > logs/llm_annotation_history_x4.txt &
 
 # with description:
-# python gt_kws_llm.py -desc "Rome, Italy in 1958. Rome, Italy in 1958 from Rear Admiral Lewis S. Parks's scrapbook from his trip to Europe in 1958." -llm "google/gemma-4-E4B-it" -v
+# python gt_kws_llm.py -desc "Rome, Italy in 1958. Rome, Italy in 1958 from Rear Admiral Lewis S. Parks's scrapbook from his trip to Europe in 1958." -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
 
 
 if not hasattr(tfs.utils, "LossKwargs"):
@@ -760,10 +760,8 @@ def parse_llm_response(
 	verbose: bool = False
 ):
 	if verbose:
-		print(f"[DEBUG] Parsing {model_id} LLM response...")
-		# print(f"[DEBUG] Input prompt:\n{input_prompt}\n")
 		print(f"[DEBUG] Raw Caption:\n{caption}\n")
-		print(f"[LLM RESPONSE]\n{raw_llm_response}\n")
+		print(f"[LLM: {model_id} RESPONSE]\n{raw_llm_response}\n")
 
 	llm_response: Optional[str] = None
 	llm_response = _qwen_llm_response(model_id, input_prompt, raw_llm_response, max_kws, caption, verbose)
