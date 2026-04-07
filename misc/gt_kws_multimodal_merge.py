@@ -9,11 +9,11 @@ from clustering import get_canonical_labels_with_parallel_mapping, cluster
 # $ nohup python -u gt_kws_multimodal_merge.py -ddir /home/farid/datasets/WW_DATASETs/HISTORY_X4 -nw 8 -emb "Qwen/Qwen3-Embedding-0.6B" -v > logs/multimodal_merge.log 2>&1 &
 
 # Puhti/Mahti:
-# srun -J cpu --account=project_2004072 --partition=small --time=00-13:00:00 --mem=96G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
-# $ python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4/ -nw 8 -emb "nvidia/llama-embed-nemotron-8b" -v
+# srun -J cpu --account=project_2004072 --partition=large --time=00-13:00:00 --mem=96G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
+# $ python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4/ -nw 8 -emb "Qwen/Qwen3-Embedding-8B" -v
 
 # new dataset:
-# $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -emb "nvidia/llama-embed-nemotron-8b" -nw 8 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
+# $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -emb "Qwen/Qwen3-Embedding-8B" -nw 8 -v > /scratch/project_2004072/ImACCESS/trash/logs/interactive_multimodal_annotation_h4.txt &
 
 # old dataset:
 # $ nohup python -u gt_kws_multimodal_merge.py -ddir /scratch/project_2004072/ImACCESS/_WW_DATASETs/HISTORY_X4 -emb "intfloat/e5-mistral-7b-instruct" -nw 20 -v > /scratch/project_2004072/ImACCESS/trash/logs/_interactive_multimodal_annotation_h4.txt &
@@ -219,7 +219,7 @@ def merge_csv_files(
 def main():
 	parser = argparse.ArgumentParser(description='Merge CSV files')
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Directory containing CSV files')
-	parser.add_argument('--batch_size', '-bs', type=int, default=128, help='Batch size')
+	parser.add_argument('--batch_size', '-bs', type=int, default=512, help='Batch size')
 	parser.add_argument('--num_workers', '-nw', type=int, required=True, help='Number of workers for parallel processing')
 	parser.add_argument('--embedding_model_id', '-emb', type=str, default="sentence-transformers/all-MiniLM-L6-v2", help='HuggingFace model ID')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')

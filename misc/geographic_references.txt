@@ -196,6 +196,8 @@ St. Nazaire
 St Nazaire
 Saint Vincent and the Grenadines
 Samoa
+San Andrea
+San Andreas
 San Marino
 São Tomé and Príncipe
 Saudi Arabia
@@ -366,6 +368,8 @@ Houston TX
 Houston, TX
 Houston, Texas
 Houston Texas
+Gallipolis
+Guadalcanal
 CA
 CA.
 CZ.
@@ -521,6 +525,7 @@ Town
 Aalborg
 Abadan
 Aegean
+Anzio
 Algiers
 Alsace
 Ankara
@@ -570,6 +575,8 @@ Dessau
 Dorchester
 Dresden
 Dublin
+Dunkirk
+Dunkerque
 Duxford
 Eindhoven
 Essex
