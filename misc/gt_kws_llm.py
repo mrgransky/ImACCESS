@@ -83,17 +83,23 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	If the caption is sparse, return fewer keywords. A short accurate list is always better than a padded inferred one.
 
 - Extracted **KEYWORDS** must be:
-	* **Semantically atomic**: each keyword represents a core concept only.
-	* **Visually grounded**: tangible objects, agents, scene elements, or observable actions.
+	* **Semantically atomic**: 
+		Each keyword represents a core concept only.
+	* **Visually grounded**: 
+		Tangible objects, agents, scene elements, or observable actions.
+	* **Metadata vs. Content**: 
+		Captions often contain archival metadata (locations, dates, donor names). 
+		These describe *provenance*, not *visual content*. Ignore them unless the caption explicitly 
+		describes a visible scene element (e.g., "map of Berlin" → "map" is valid; "Berlin" alone is not).
 	* **Generalized**: prefer the most general factual noun/verb that remains correct:
-		- use "nurse" instead of "nurse checking blood pressure"
-		- use "pilot" instead of "pilot Charles Matheson"
-		- use "seaplane" instead of "seaplane on the water in the background"
-		- use "airplane" instead of "airplane in flight"
-		- use "smoking" instead of "a group of youngsters smoking outdoors"
-		- use "flag" instead of "german flag"
-		- use "red cross" instead of "american red cross"
-		- use "harvest" instead of "farmers harvesting hay with wooden pitchforks"
+		- "nurse" instead of "nurse checking blood pressure"
+		- "pilot" instead of "pilot Charles Matheson"
+		- "seaplane" instead of "seaplane on the water in the background"
+		- "airplane" instead of "airplane in flight"
+		- "smoking" instead of "a group of youngsters smoking outdoors"
+		- "flag" instead of "german flag"
+		- "red cross" instead of "american red cross"
+		- "harvest" instead of "farmers harvesting hay with wooden pitchforks"
  	* **Reusable**: likely to recur across many captions in a large archive.
 
 - **STRICTLY EXCLUDE**:
