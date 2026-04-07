@@ -96,6 +96,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 		- "flag" instead of "german flag"
 		- "red cross" instead of "american red cross"
 		- "harvest" instead of "farmers harvesting hay with wooden pitchforks"
+		- "aerial view" instead of "aerial view of Rome, Italy"
  	* **Reusable**: likely to recur across many captions in a large archive.
 
 - **STRICTLY EXCLUDE** KEYWORDS which are:
