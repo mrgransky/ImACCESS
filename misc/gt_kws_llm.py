@@ -79,18 +79,14 @@ that represent **core objects, entities, actions, or scene elements** which are 
 {caption}
 
 **CRITICAL RULES**:
-- Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS**.
-	If the caption is sparse, return fewer keywords. A short accurate list is always better than a padded inferred one.
+- Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
+	Opt for fewer keywords if the caption is minimal, since a short, reliable response is more valuable than a bloated, guessed one.
 
 - Extracted **KEYWORDS** must be:
 	* **Semantically atomic**: 
 		Each keyword represents a core concept only.
 	* **Visually grounded**: 
 		Tangible objects, agents, scene elements, or observable actions.
-	* **Metadata vs. Content**: 
-		Captions often contain archival metadata (locations, dates, donor names). 
-		These describe *provenance*, not *visual content*. Ignore them unless the caption explicitly 
-		describes a visible scene element (e.g., "map of Berlin" → "map" is valid; "Berlin" alone is not).
 	* **Generalized**: prefer the most general factual noun/verb that remains correct:
 		- "nurse" instead of "nurse checking blood pressure"
 		- "pilot" instead of "pilot Charles Matheson"
@@ -128,8 +124,6 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	Only use the exact information given in the caption for keyword extraction, without making assumptions based on implied meanings.
 	If, after applying all exclusion rules, no valid visually-grounded keywords remain, return an empty list: []
 	DO NOT invent, infer, or relax exclusion rules to fill the quota.
-
-- The standardized and parsable **Python LIST** must be the **VERY LAST THING** in your response without any explanatory text.
 [/INST]"""
 
 # - When a term is a specific subtype of a broader, reusable category, prefer the broader canonical category unless the subtype is necessary for disambiguation.
@@ -148,6 +142,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 # LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 # You function as a historical archivist whose expertise lies in the 20th century.
 # Given the caption below, extract no more than {k} highly prominent, factual, and distinct **KEYWORDS** that convey the primary actions, objects, or occurrences. 
+# - The standardized and parsable **Python LIST** must be the **VERY LAST THING** in your response without any explanatory text.
 
 # {caption}
 
