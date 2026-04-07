@@ -97,16 +97,15 @@ that represent **core objects, entities, actions, or scene elements** which are 
  	* **Reusable**: likely to recur across many captions in a large archive.
 
 - **STRICTLY EXCLUDE**:
-	* Identifiers, equipment serial numbers, or model IDs.
-	* Dates, times, years, decades, or any temporal references.
-	* Family relationship terms.
-	* Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, or landmarks.
-	* Nationalities, ethnicities, or religions.
-	* Quantities, counts, measurements, or numeric expressions.
-	* Complex phrases encoding multiple concepts (e.g., subject + action + location).
-	* Phrasal verbs, possessive constructions, or descriptive clauses.
-	* abstract organizational/social events with no visual anchor (e.g., "meeting", "trip", "outing").
-	* Generic photography or image-related terminology.
+	x Identifiers, equipment serial numbers, or model IDs.
+	x Dates, times, years, decades, or any temporal references.
+	x Family relationship terms.
+	x Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, or landmarks.
+	x Nationalities, ethnicities, or religions.
+	x Quantities, counts, measurements, or numeric expressions.
+	x Complex phrases encoding multiple concepts (e.g., subject + action + location).
+	x Phrasal verbs, possessive constructions, or descriptive clauses.
+	x Generic photography or image-related terminology.
 
 - Keywords MAY appear verbatim in the caption if they are the most precise and reusable label. Do NOT paraphrase just to avoid repetition.
 
@@ -134,6 +133,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 
 # - When a term is a specific subtype of a broader, reusable category, prefer the broader canonical category unless the subtype is necessary for disambiguation.
 #	* Explanatory text, punctuation, or output formatting beyond the Python list.
+#	x abstract organizational/social events with no visual anchor (e.g., "meeting", "trip", "outing").
 
 # # Too Specific which produces massive number of singleton labels
 # # self-contained and grammatically complete phrases
