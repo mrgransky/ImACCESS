@@ -33,7 +33,7 @@ from nlp_utils import get_enriched_description
 # nohup python -u gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 4 -mgt 64 > logs/llm_annotation_history_x4.txt &
 
 # with description:
-# python gt_kws_llm.py -desc "Rome, Italy in 1958. Rome, Italy in 1958 from Rear Admiral Lewis S. Parks's scrapbook from his trip to Europe in 1958." -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
+# python gt_kws_llm.py -desc "Rome, Italy in 1958. Rome, Italy in 1958 from Rear Admiral Lewis S. Parks's scrapbook from his trip to Europe in 1958." -llm "google/gemma-4-E4B-it" -v
 
 
 if not hasattr(tfs.utils, "LossKwargs"):
