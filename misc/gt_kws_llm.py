@@ -33,7 +33,7 @@ from nlp_utils import get_enriched_description
 # nohup python -u gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 4 -mgt 64 > logs/llm_annotation_history_x4.txt &
 
 # with description:
-# python gt_kws_llm.py -desc "Rear Admiral Forrest B. Royal aboard the USS Rocky Mount (AGC-3) during the attack on Saipan in the Marianas, Officers aboard the USS ROCKY MOUNT (AGC 3) during the Saipan attack, in the Marianas. R. Adm. F. B. Royal. Taken By: USS ROCKY MOUNT." -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
+# python gt_kws_llm.py -desc "Rome, Italy in 1958. Rome, Italy in 1958 from Rear Admiral Lewis S. Parks's scrapbook from his trip to Europe in 1958." -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
 
 
 if not hasattr(tfs.utils, "LossKwargs"):
@@ -128,7 +128,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	3) Human roles (only if visually salient)
 	4) Scene elements
 
-- The standardized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
+- The standardized and parsable **Python LIST** must be the **VERY LAST THING** in your response without any explanatory text.
 [/INST]"""
 
 # - When a term is a specific subtype of a broader, reusable category, prefer the broader canonical category unless the subtype is necessary for disambiguation.
