@@ -83,27 +83,27 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	If the caption is sparse, return fewer keywords. A short accurate list is always better than a padded inferred one.
 
 - Extracted **KEYWORDS** must be:
-	* **Semantically atomic**: each keyword represents one core concept only.
+	* **Semantically atomic**: each keyword represents a core concept only.
 	* **Visually grounded**: tangible objects, agents, scene elements, or observable actions.
 	* **Generalized**: prefer the most general factual noun/verb that remains correct:
 		- use "nurse" instead of "nurse checking blood pressure"
-		- use "pilot" instead of "pilot Maj Charles Matheson"
+		- use "pilot" instead of "pilot Charles Matheson"
 		- use "seaplane" instead of "seaplane on the water in the background"
 		- use "airplane" instead of "airplane in flight"
 		- use "smoking" instead of "a group of youngsters smoking outdoors"
 		- use "flag" instead of "german flag"
 		- use "red cross" instead of "american red cross"
-		- use "harvest" not "farmers harvesting hay with wooden pitchforks"
+		- use "harvest" instead of "farmers harvesting hay with wooden pitchforks"
  	* **Reusable**: likely to recur across many captions in a large archive.
 
 - **STRICTLY EXCLUDE**:
+	* Identifiers, equipment serial numbers, or model IDs.
 	* Dates, times, years, decades, or any temporal references.
 	* Family relationship terms.
-	* Identifiers, equipment serial numbers, or model IDs.
 	* Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, or landmarks.
 	* Nationalities, ethnicities, or religions.
 	* Quantities, counts, measurements, or numeric expressions.
-	* Composite phrases encoding multiple concepts (e.g., subject + action + location).
+	* Complex phrases encoding multiple concepts (e.g., subject + action + location).
 	* Phrasal verbs, possessive constructions, or descriptive clauses.
 	* abstract organizational/social events with no visual anchor (e.g., "meeting", "trip", "outing").
 	* Generic photography or image-related terminology.
