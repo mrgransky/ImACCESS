@@ -105,7 +105,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 - **STRICTLY EXCLUDE** KEYWORDS which are:
 	❌ Equipment identifiers, serial numbers, or models.
 	❌ Dates, times, years, decades, or any temporal references.
-	❌ First names, last names, or family relationship terms.
+	❌ First names, last names, or family relationship terms (e.g., Barbara C. Briggs, mother, father, son, uncle).
 	❌ Geographical names (e.g., continents, countries, states, provinces, cities, towns, islands, regions, or landmarks.)
 	❌ Nationalities, ethnicities, or religions.
 	❌ Ordinal numeral keywords (e.g., fourth marine division, 1st evacuation, 115th Texas Infantry).
