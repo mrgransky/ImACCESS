@@ -186,6 +186,7 @@ Qatar
 
 Romania
 Rumania
+Roumania
 Russia
 Rwanda
 
@@ -543,7 +544,9 @@ Bavaria
 Beijing
 Belfast
 Berlin
+Berline
 Bermuda
+Borsberg
 Bogota
 Bordaux
 Bordeaux
@@ -806,6 +809,7 @@ Papuan
 Persian
 Polish
 Portuguese
+Romanian
 Russian
 San Diegan
 Scandinavian
