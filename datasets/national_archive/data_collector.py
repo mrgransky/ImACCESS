@@ -104,6 +104,7 @@ useless_collection_terms = [
 	"Christmas Card",
 	"President Edouard Herriot",
 ]
+
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
 os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
@@ -355,6 +356,7 @@ def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFra
 			"letter" not in doc_title.lower(),
 			"telegrams" not in doc_title.lower(),
 			"art treasures" not in doc_title.lower(),
+			"spanish bayonet" not in doc_title.lower(),
 			"chart" not in doc_title.lower(),
 			"inboard profile" not in doc_title.lower(),
 			"reasons why" not in doc_title.lower(),

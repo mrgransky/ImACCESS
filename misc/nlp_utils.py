@@ -790,6 +790,7 @@ def basic_clean(txt: str):
 		r"This item consists of a photograph of ",
 		r'The original finding aid described this item as:',
 		r"This photograph includes the following: ",
+		r'Format: Digital Accession Only',
 		r"this photograph is a view of ",
 		r"View of bottom, showing ",
 		r"Steinheimer note",
@@ -868,6 +869,7 @@ def basic_clean(txt: str):
 		r'This image is one of ',
 		r'According to Shaffer: ',
 		r'Photo album with photo',
+		r'Type: BW-N \(Black and White Negative\)',
 		r'Photographs from ',
 		r'A+\s+photograph+\s+obtained+\s+by+\s+\w+\s+\w+\s+from film\s+\w+.',
 		r'A photograph obtained by ',
@@ -1002,6 +1004,7 @@ def basic_clean(txt: str):
 		r'\bWW2\b',
 		r'Ä\d+\/\d+(?:-\d+)?', # Ä123/456-789
 		r'\s+\d+\s+gg\w+', # 123 gg123
+		r'Blm\s+Sba\s+\d{8}\s+(?:[a-z]\s+)?\d{2}', # Blm Sba 12345678 a 12
 		r'\bWorld War 2\b',
 	]
 
