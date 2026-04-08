@@ -1000,6 +1000,8 @@ def basic_clean(txt: str):
 		r'\bWWII\b',
 		r'\bWorld War II\b',
 		r'\bWW2\b',
+		r'Ä\d+\/\d+(?:-\d+)?', # Ä123/456-789
+		r'\s+\d+\s+gg\w+', # 123 gg123
 		r'\bWorld War 2\b',
 	]
 
