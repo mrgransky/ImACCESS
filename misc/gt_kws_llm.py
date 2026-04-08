@@ -99,7 +99,8 @@ that represent **core objects, entities, actions, or scene elements** which are 
 		- "red cross" instead of "american red cross"
 		- "airport" instead of "airport in the background"
 		- "manufacturing loom" instead of "manufacturing looms for the government"
-		- "aerial view" instead of "aerial view of Rome, Italy"
+		- "aerial view" instead of "aerial view of Osaka, Japan"
+		- "red cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
  	* **Reusable**: likely to recur across many captions in a large archive.
 
 - **STRICTLY EXCLUDE** KEYWORDS which are:
