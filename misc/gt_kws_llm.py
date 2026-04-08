@@ -107,7 +107,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	❌ Family relationship terms.
 	❌ Geographical names (e.g., continents, countries, states, provinces, cities, towns, islands, regions, or landmarks.)
 	❌ Nationalities, ethnicities, or religions.
-	❌ Ordinal numeral keywords (e.g., fourth marine division, 1st battalion, 2nd platoon).
+	❌ Ordinal numeral keywords (e.g., fourth marine division, 1st evacuation, 115th Texas Infantry).
 	❌ Quantities, counts, measurements, or numeric expressions.
 	❌ Complex phrases encoding multiple concepts (e.g., subject + action + location).
 	❌ Phrasal verbs, possessive constructions, or descriptive clauses.
