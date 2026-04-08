@@ -91,6 +91,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 		- "nurse" instead of "nurse checking blood pressure"
 		- "pilot" instead of "pilot Charles Matheson"
 		- "Oberleutnant" instead of "Oberleutnant Bruno Kikillus"
+		- "Corporal" instead of "Corporal Genevieve Wade"
 		- "seaplane" instead of "seaplane on the water in the background"
 		- "airplane" instead of "airplane in flight"
 		- "smoking" instead of "a group of youngsters smoking outdoors"
@@ -104,7 +105,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 - **STRICTLY EXCLUDE** KEYWORDS which are:
 	❌ Equipment identifiers, serial numbers, or models.
 	❌ Dates, times, years, decades, or any temporal references.
-	❌ Family relationship terms.
+	❌ First names, last names, or family relationship terms.
 	❌ Geographical names (e.g., continents, countries, states, provinces, cities, towns, islands, regions, or landmarks.)
 	❌ Nationalities, ethnicities, or religions.
 	❌ Ordinal numeral keywords (e.g., fourth marine division, 1st evacuation, 115th Texas Infantry).
