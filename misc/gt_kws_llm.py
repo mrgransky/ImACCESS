@@ -33,7 +33,7 @@ from nlp_utils import get_enriched_description
 # nohup python -u gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 4 -mgt 64 > logs/llm_annotation_history_x4.txt &
 
 # with description:
-# python gt_kws_llm.py -desc "Churchill Ark and Sherman 52 “Spiteful”. Churchill Ark (Armoured Ramp Carrier) and Sherman 52 “Spiteful”,Churchill A22." -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
+# python gt_kws_llm.py -desc "Grossdeutschland 712 0474 03A Oberleutnant Bruno Kikillus,Grossdeutschland." -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
 
 
 if not hasattr(tfs.utils, "LossKwargs"):
@@ -107,7 +107,8 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	❌ Family relationship terms.
 	❌ Geographical names (e.g., continents, countries, states, provinces, cities, towns, islands, regions, or landmarks.)
 	❌ Nationalities, ethnicities, or religions.
-	❌ Ordinal numerals, ordinal number words, quantities, counts, measurements, or numeric expressions.
+	❌ Ordinal numeral keywords (e.g., fourth marine division, 1st battalion, 2nd platoon).
+	❌ Quantities, counts, measurements, or numeric expressions.
 	❌ Complex phrases encoding multiple concepts (e.g., subject + action + location).
 	❌ Phrasal verbs, possessive constructions, or descriptive clauses.
 
