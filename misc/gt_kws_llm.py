@@ -90,6 +90,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	* **Generalized**: prefer the most general factual noun/verb that remains correct:
 		- "nurse" instead of "nurse checking blood pressure"
 		- "pilot" instead of "pilot Charles Matheson"
+		- "Oberleutnant" instead of "Oberleutnant Bruno Kikillus"
 		- "seaplane" instead of "seaplane on the water in the background"
 		- "airplane" instead of "airplane in flight"
 		- "smoking" instead of "a group of youngsters smoking outdoors"
