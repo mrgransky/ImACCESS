@@ -100,7 +100,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
  	* **Reusable**: likely to recur across many captions in a large archive.
 
 - **STRICTLY EXCLUDE** KEYWORDS which are:
-	❌ Identifiers, equipment serial numbers, or model IDs.
+	❌ Identifiers, equipment serial numbers, or models.
 	❌ Dates, times, years, decades, or any temporal references.
 	❌ Family relationship terms.
 	❌ Geographical names (e.g., continents, countries, states, provinces, cities, towns, islands, regions, or landmarks.)
