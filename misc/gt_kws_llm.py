@@ -94,9 +94,6 @@ that represent **core objects, entities, actions, or scene elements** which are 
 		- "Corporal" instead of "Corporal Genevieve Wade"
 		- "seaplane" instead of "seaplane on the water in the background"
 		- "airplane" instead of "airplane in flight"
-		- "smoking" instead of "a group of youngsters smoking outdoors"
-		- "flag" instead of "german flag"
-		- "red cross" instead of "american red cross"
 		- "airport" instead of "airport in the background"
 		- "manufacturing loom" instead of "manufacturing looms for the government"
 		- "aerial view" instead of "aerial view of Osaka, Japan"
@@ -141,6 +138,9 @@ that represent **core objects, entities, actions, or scene elements** which are 
 # 	2) Actions (if more reusable than objects present)
 # 	3) Human roles (only if visually salient)
 # 	4) Scene elements
+#	- "flag" instead of "german flag"
+#	- "red cross" instead of "american red cross"
+# - "smoking" instead of "a group of youngsters smoking outdoors"
 
 
 # # Too Specific which produces massive number of singleton labels

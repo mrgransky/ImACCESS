@@ -67,17 +67,17 @@ def merge_csv_files(
 
 	if verbose:
 		print(f"Post-processing LLM-based labels...")
-	llm_based_labels = _post_process_(labels_list=df['llm_based_labels'].tolist(), verbose=False)
+	llm_based_labels = _post_process_(labels_list=df['llm_based_labels'].tolist(), verbose=verbose)
 	df['llm_based_labels'] = llm_based_labels  # Update the DataFrame column
 
 	if verbose:
 		print(f"Post-processing VLM-based labels...")
-	vlm_based_labels = _post_process_(labels_list=df['vlm_based_labels'].tolist(), verbose=False)
+	vlm_based_labels = _post_process_(labels_list=df['vlm_based_labels'].tolist(), verbose=verbose)
 	df['vlm_based_labels'] = vlm_based_labels  # Update the DataFrame column
 
 	if verbose:
 		print(f"Post-processing Multimodal labels...")
-	multimodal_labels = _post_process_(labels_list=df['multimodal_labels'].tolist(), verbose=False)
+	multimodal_labels = _post_process_(labels_list=df['multimodal_labels'].tolist(), verbose=verbose)
 	df['multimodal_labels'] = multimodal_labels  # Update the DataFrame column
 
 	llm_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(

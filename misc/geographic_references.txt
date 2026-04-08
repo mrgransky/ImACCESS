@@ -694,6 +694,8 @@ Luqa
 Oviedo
 Oxford
 Pamplona
+Peronne
+Péronne
 Plymouth
 Praha
 Radlett
@@ -723,6 +725,7 @@ Sydney
 Tarragona
 Tehachapi
 Tel Aviv
+Tokio
 Tokyo
 Transylvania
 Trondheim
@@ -738,6 +741,7 @@ Vienna
 Warsaw
 Waterloo
 Wellington
+Ypres
 Zaragoza
 Zeebrugge
 Zillebeke

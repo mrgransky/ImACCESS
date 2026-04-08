@@ -1256,3 +1256,6 @@ fall
 winter
 half
 etats
+rev
+black-and-white snapshot
+color snapshot

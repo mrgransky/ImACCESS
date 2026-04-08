@@ -1005,6 +1005,7 @@ def basic_clean(txt: str):
 		r'Ä\d+\/\d+(?:-\d+)?', # Ä123/456-789
 		r'\s+\d+\s+gg\w+', # 123 gg123
 		r'Blm\s+Sba\s+\d{8}\s+(?:[a-z]\s+)?\d{2}', # Blm Sba 12345678 a 12
+		r'Pix made about \d+', # Pix made about 1945
 		r'\bWorld War 2\b',
 	]
 
