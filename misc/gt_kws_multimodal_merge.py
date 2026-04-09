@@ -6,7 +6,7 @@ from clustering import get_canonical_labels_with_parallel_mapping, cluster
 # how to run:
 # local:
 # $ python -u gt_kws_multimodal_merge.py -ddir /home/farid/datasets/WW_DATASETs/HISTORY_X4/ -nw 8 -emb "Qwen/Qwen3-Embedding-0.6B" -v
-# $ nohup python -u gt_kws_multimodal_merge.py -ddir /home/farid/datasets/WW_DATASETs/HISTORY_X4 -nw 8 -emb "Qwen/Qwen3-Embedding-0.6B" -v > logs/multimodal_merge.log 2>&1 &
+# $ nohup python -u gt_kws_multimodal_merge.py -ddir /home/farid/datasets/WW_DATASETs/HISTORY_X4 -nw 8 -emb "Qwen/Qwen3-Embedding-0.6B" -v > logs/multimodal_annotation_merge.log 2>&1 &
 
 # Puhti/Mahti:
 # srun -J cpu --account=project_2004072 --partition=large --time=00-13:00:00 --mem=96G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
@@ -81,7 +81,7 @@ def merge_csv_files(
 	df['multimodal_labels'] = multimodal_labels  # Update the DataFrame column
 
 	llm_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
-		labels=llm_based_labels,
+		labels=df['llm_based_labels'],
 		model_id=embedding_model_id,
 		label_source="llm",
 		output_dir=OUTPUT_DIR,
@@ -92,7 +92,7 @@ def merge_csv_files(
 	)
 
 	vlm_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
-		labels=vlm_based_labels,
+		labels=df['vlm_based_labels'],
 		model_id=embedding_model_id,
 		label_source="vlm",
 		output_dir=OUTPUT_DIR,
@@ -103,7 +103,7 @@ def merge_csv_files(
 	)
 
 	multimodal_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
-		labels=multimodal_labels,
+		labels=df['multimodal_labels'],
 		model_id=embedding_model_id,
 		label_source="multimodal",
 		output_dir=OUTPUT_DIR,

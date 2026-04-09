@@ -33,6 +33,10 @@ from nlp_utils import get_enriched_description
 # nohup python -u gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 4 -mgt 64 > logs/llm_annotation_history_x4.txt &
 
 # with description:
+# small model for local testing:
+# python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3-4B-Instruct-2507" -v
+
+# large model:
 # python gt_kws_llm.py -desc "" -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
 
 
@@ -76,18 +80,15 @@ You function as a historical archivist whose expertise lies in the 20th century 
 Given the caption below, extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS**
 that represent **core objects, entities, actions, or scene elements** which are likely to **recur across many images**.
 
-{caption}
-
-**CRITICAL RULES**:
-- Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
-	Opt for fewer keywords if the caption is minimal, since a short, reliable response is more valuable than a bloated, guessed one.
+Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
+Opt for fewer keywords if the caption is short or lacks sufficient information.
 
 - Extracted **KEYWORDS** must be:
 	* **Semantically atomic**: 
 		Each keyword represents a core concept only.
 	* **Visually grounded**: 
 		Tangible objects, agents, scene elements, or observable actions.
-	* **Generalized**: prefer the most general factual noun/verb that remains correct:
+	* **ABSOLUTE MAXIMUM GENERALITY**:
 		- "nurse" instead of "nurse checking blood pressure"
 		- "pilot" instead of "pilot Charles Matheson"
 		- "Oberleutnant" instead of "Oberleutnant Bruno Kikillus"
@@ -97,14 +98,17 @@ that represent **core objects, entities, actions, or scene elements** which are 
 		- "airport" instead of "airport in the background"
 		- "manufacturing loom" instead of "manufacturing looms for the government"
 		- "aerial view" instead of "aerial view of Osaka, Japan"
-		- "red cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
+		- "Minister of War" instead of "Italian Minister of War Cipriano Facchinetti"	
+		- "Red Cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
+		- "animal" instead of "man riding a camel in the desert"
  	* **Reusable**: likely to recur across many captions in a large archive.
 
 - **STRICTLY EXCLUDE** KEYWORDS which are:
 	❌ Equipment identifiers, serial numbers, or models.
 	❌ Dates, times, years, decades, or any temporal references.
-	❌ First names, last names, or family relationship terms (e.g., Barbara C. Briggs, mother, father, son, uncle).
-	❌ Geographical names (e.g., continents, countries, states, provinces, cities, towns, islands, regions, or landmarks.)
+	❌ Names of individuals (e.g., Barbara Briggs, Allan M. Hardy, Josef Dietrich). 
+	❌ family relationship terms (e.g., mother, father, son, uncle).
+	❌ Geographical names (e.g., continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.)
 	❌ Nationalities, ethnicities, or religions.
 	❌ Ordinal numeral keywords (e.g., fourth marine division, 1st evacuation, 115th Texas Infantry).
 	❌ Quantities, counts, measurements, or numeric expressions.
@@ -113,7 +117,7 @@ that represent **core objects, entities, actions, or scene elements** which are 
 
 - Color handling:
 	Remove color only if it is purely descriptive (e.g., red car, blue sky).
-	Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas, Green Berets).
+	Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
 
 - Bias toward label reuse:
 	If a specific phrase can be reduced to a more general equivalent **without losing factual correctness**, opt for general form.
@@ -127,6 +131,8 @@ that represent **core objects, entities, actions, or scene elements** which are 
 	Only use the exact information given in the caption for keyword extraction, without making assumptions based on implied meanings.
 	If, after applying all exclusion rules, no valid visually-grounded keywords remain, return an empty list: []
 	DO NOT invent, infer, or relax exclusion rules to fill the quota.
+
+{caption}	
 [/INST]"""
 
 # - When a term is a specific subtype of a broader, reusable category, prefer the broader canonical category unless the subtype is necessary for disambiguation.
@@ -828,7 +834,7 @@ def _qwen_llm_response(
 	list_str = response_content[start_bracket:end_bracket + 1]
 	
 	if verbose:
-		print(f"[STEP 2] Extracted list string: {list_str}\n")
+		print(f"\n[STEP 2] Extracted list string: {list_str}\n")
 	
 	# Step 3: Parse with multiple strategies
 	keywords_list = None
@@ -993,12 +999,12 @@ def _qwen_llm_response(
 	
 	# Step 4: Post-process keywords
 	if verbose:
-		print(f"[POST-PROCESSING] {keywords_list} (max allowed: {max_kws})...")
+		print(f"\n[POST-PROCESSING] {keywords_list} (max allowed: {max_kws})...")
 	processed = []
 	seen = set()
 	for idx, kw in enumerate(keywords_list, 1):
 		if verbose:
-			print(f"\n  Processing [{idx}/{len(keywords_list)}]: {repr(kw)}")
+			print(f"\t[{idx}/{len(keywords_list)}]: {repr(kw)}")
 		
 		# Check if empty
 		if not kw or not str(kw).strip():
@@ -1011,7 +1017,7 @@ def _qwen_llm_response(
 		# Unescape any escaped characters
 		cleaned = cleaned.replace("\\'", "'").replace('\\"', '"')
 		if verbose:
-			print(f"    → Cleaned: {repr(cleaned)}")
+			print(f"\t=> Cleaned: {repr(cleaned)}")
 
 		# Check length
 		if len(cleaned) < 3:
@@ -1019,41 +1025,41 @@ def _qwen_llm_response(
 				print(f"    ✗ Skipped: too short (len={len(cleaned)})")
 			continue
 
-		# Check stopwords
-		if cleaned.lower() in STOPWORDS:
-			if verbose:
-				print(f"    ✗ Skipped: {kw} is a stopword!")
-			continue
+		# if cleaned.lower() in STOPWORDS:
+		# 	if verbose:
+		# 		print(f"    ✗ Skipped: {kw} is a stopword!")
+		# 	continue
 				
-		# Check if cleaned is a number # 1940
-		if cleaned.isdigit():
-			if verbose:
-				print(f"    ✗ Skipped: number detected! {cleaned}")
-			continue
+		# # Check if cleaned is a number # 1940
+		# if cleaned.isdigit():
+		# 	if verbose:
+		# 		print(f"    ✗ Skipped: number detected! {cleaned}")
+		# 	continue
 
 		# Check for duplicates (case-insensitive)
 		normalized = cleaned.lower()
 		if normalized in seen:
 			if verbose:
-				print(f"    ✗ Skipped: duplicate")
+				print(f"    ✗ Skipped: {normalized} is a duplicate")
 			continue
 		
 		seen.add(normalized)
 		processed.append(cleaned)
 		
-		if verbose:
-			print(f"    ✓ Accepted (total: {len(processed)})")
 		
 		# if len(processed) >= max_kws:
 		# 	if verbose:
 		# 		print(f"\n  [LIMIT] Reached max_kws={max_kws}, stopping")
 		# 	break
 	
-	# Step 5: Return results
 	if verbose:
-		print(f"\n[RESULT] Final keywords ({len(processed)}/{len(keywords_list)} kept):")
-		for i, kw in enumerate(processed, 1):
-			print(f"  [{i}] {kw}")
+		print(f"[RESULT] Processed keywords (total: {len(processed)}): {processed}")
+
+	# # Step 5: Return results
+	# if verbose:
+	# 	print(f"\n[RESULT] Final keywords ({len(processed)}/{len(keywords_list)} kept):")
+	# 	for i, kw in enumerate(processed, 1):
+	# 		print(f"  [{i}] {kw}")
 	
 	return processed if processed else None
 

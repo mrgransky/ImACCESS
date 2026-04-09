@@ -63,12 +63,23 @@ STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
 # stopwords = set(custom_stopwords_list.decode().splitlines())
 meaningless_words_path = os.path.join(MISC_DIR, 'meaningless_words.txt')
 with open(meaningless_words_path, 'r') as file_:
-	stopwords = set([line.strip().lower() for line in file_])
+	stopwords = set(
+		[
+			line.strip().lower() 
+			for line in file_
+		]
+	)
 STOPWORDS.update(stopwords)
 
 geographic_references_path = os.path.join(MISC_DIR, 'geographic_references.txt')
 with open(geographic_references_path, 'r') as file_:
-	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
+	geographic_references = set(
+		[
+			line.strip().lower()
+			for line in file_ 
+			if line.strip()
+		]
+	)
 STOPWORDS.update(geographic_references)
 
 # This DRASTICALLY improves accuracy on short text.
@@ -117,6 +128,17 @@ def _post_process_(
 	max_kw_word_length: int = 5,
 	verbose: bool = False
 ) -> List[List[str]]:
+
+	if verbose:
+		print(f"[POST-PROCESSING]")
+		print(f"  Input {type(labels_list)} length: {len(labels_list) if labels_list else 0}")
+		print(f"  Stopwords loaded: {len(STOPWORDS)}")
+		print(f"  Minimum keyword length: {min_kw_ch_length}")
+	
+	if not labels_list:
+		if verbose:
+			print("\tEmpty input, returning as-is")
+		return labels_list
 
 	# CONTEXT-AWARE FILTERING
 	NUMBER_WORDS = {
@@ -187,6 +209,29 @@ def _post_process_(
 		"teal", "cyan", "magenta", "crimson", "scarlet", "khaki",
 		"olive", "turquoise", "lavender", "coral", "salmon", "amber"
 	}
+
+	def is_stopword(phrase: str) -> bool:
+		"""
+		Check if phrase is a stopword or consists entirely of stopwords.
+		
+		Args:
+			phrase: The phrase to check
+			
+		Returns:
+			True if phrase should be filtered as stopword
+		"""
+		phrase_lower = phrase.lower()
+		
+		# Check 1: Entire phrase is a stopword
+		if phrase_lower in STOPWORDS:
+			return True
+		
+		# Check 2: All words in phrase are stopwords
+		words = phrase_lower.split()
+		if words and all(word in STOPWORDS for word in words):
+			return True
+		
+		return False
 
 	def is_named_facility(original_phrase: str) -> bool:
 		"""
@@ -348,17 +393,6 @@ def _post_process_(
 		# Has specific words → Keep
 		return False
 
-	if verbose:
-		print(f"Starting post-processing")
-		print(f"\tInput {type(labels_list)} length: {len(labels_list) if labels_list else 0}")
-		print(f"\tStopwords loaded: {len(STOPWORDS)}")
-		print(f"\tMinimum keyword length: {min_kw_ch_length}")
-	
-	if not labels_list:
-		if verbose:
-			print("\tEmpty input, returning as-is")
-		return labels_list
-
 	lemmatizer = nltk.stem.WordNetLemmatizer()
 
 	def get_wordnet_pos(treebank_tag):
@@ -428,7 +462,7 @@ def _post_process_(
 			# raise ValueError(f"labels must be list, got {type(labels)} {labels}")
 			# use eval for str to list conversion:
 			try:
-				labels = eval(labels)
+				labels = ast.literal_eval(labels)
 			except Exception as e:
 				print(f"Failed to convert {labels} to list: {e}")
 				raise e
@@ -491,10 +525,10 @@ def _post_process_(
 					print(f"        → Empty/false, skipping")
 				continue
 			
-			if str(item).isupper():
-				if verbose:
-					print(f"        → All uppercase detected, skipping")
-				continue
+			# if str(item).isupper():
+			# 	if verbose:
+			# 		print(f"        → All uppercase detected, skipping")
+			# 	continue
 
 			# Capture the raw string
 			original = str(item).strip()
@@ -502,22 +536,21 @@ def _post_process_(
 			# Create the "Logic String" (Preserves Case)
 			original_cleaned = original.strip('"').strip("'").strip('()').strip('[]')
 			original_cleaned = ' '.join(original_cleaned.split())
-
-			s = original_cleaned.lower()
-			if verbose:
-				print(f"        → After str/strip/lower: {repr(s)}")
+			s = original_cleaned#.lower()
+			# if verbose:
+			# 	print(f"        → After str/strip/lower: {repr(s)}")
 			
 			# --- Lemmatization with guards ---
 			if is_quantified_plural(original_cleaned):
 				# Skip this label entirely (don't even lemmatize)
 				if verbose:
-					print(f"        → Quantified plural detected, skipping")
+					print(f"        → Quantified plural detected: {repr(original_cleaned)} => skipping")
 				continue
 				# lemma = s  # Preserve "two women", "three soldiers"
 				# if verbose:
 				# 	print(f"        → Quantified plural detected, preserving: {repr(lemma)}")
 			elif is_title_like(original_cleaned):
-				lemma = s  # Preserve "As You Like It", "Gone With the Wind"
+				lemma = s  # Preserve "As You Like It", "United States Military Academy", "The Great Gatsby"
 				if verbose:
 					print(f"        → Title-like phrase detected, preserving: {repr(lemma)}")
 			elif is_named_facility(original_cleaned):
@@ -545,24 +578,30 @@ def _post_process_(
 					else:
 						print(f"        → {repr(s)}: Lemmatized → {repr(lemma)} (unchanged)")
 			
-			# # Check minimum length (but exempt abbreviations)
+			# Post-process the lemma
+			if verbose:
+				print(f">> Checking lemma: {repr(lemma)}")
+
+			# Check if the lemma is all uppercase (e.g., "NAS")
 			# if lemma.isupper():
 			# 	if verbose:
 			# 		print(f"        → {lemma} All uppercase detected, skipping")
 			# 	continue
 
-			if (
-				len(lemma) < min_kw_ch_length
-				# and not is_abbreviation(original_cleaned) # SMU, NAS
-			):
+			if len(lemma) < min_kw_ch_length:
 				if verbose:
-					print(f"        → {lemma} Too short and not abbreviation (len={len(lemma)} < {min_kw_ch_length}), skipping")
+					print(f"        → {lemma} Too short (len={len(lemma)} < {min_kw_ch_length}), skipping")
 				continue
 
 			if len(lemma.split()) > max_kw_word_length:
 				if verbose:
-					print(f"        → {lemma} Too short and not abbreviation (len={len(lemma)} < {max_kw_word_length}), skipping")
+					print(f"        → {lemma} Too long (len={len(lemma.split())} > {max_kw_word_length}), skipping")
 				continue
+
+			# if not is_abbreviation(original_cleaned): # SMU, NAS:
+			# 	if verbose:
+			# 		print(f"        → {lemma} not abbreviation, skipping")
+			# 	continue
 
 			# Replace & with and and remove extra spaces:
 			lemma = re.sub(r'\s&\s', ' and ', lemma).strip() # Replace & with and and remove extra spaces
@@ -584,10 +623,18 @@ def _post_process_(
 					print(f"        → {lemma} Number detected, skipping")
 				continue
 
-			# check for geographic references:
-			if any(lm in geographic_references for lm in lemma.split()):
+			# # check for geographic references:
+			# lemma_lower = lemma.lower()
+			# if any(elm in lemma_lower for elm in geographic_references):
+			# 	if verbose:
+			# 		# Find which geographic reference matched
+			# 		matched_refs = [elm for elm in geographic_references if elm in lemma_lower]
+			# 		print(f"        → {lemma} Geographic reference detected: {matched_refs}, skipping")
+			# 	continue
+
+			if any(lm in geographic_references for lm in lemma.lower().split()):
 				if verbose:
-					print(f"        → {lemma} Geographic reference detected, skipping")
+					print(f"        → {repr(lemma)} Geographic reference detected, skipping")
 				continue
 
 			if is_phrasal_verb(lemma):
@@ -595,12 +642,9 @@ def _post_process_(
 					print(f"        → {lemma} Phrasal verb detected, skipping")
 				continue
 
-			if (
-				all(lm in STOPWORDS for lm in lemma.split()) 
-				or lemma in STOPWORDS
-			):
+			if is_stopword(lemma):
 				if verbose:
-					print(f"        → {lemma} Stopword detected! skipping")
+					print(f"        → {repr(lemma)} Stopword detected, skipping")
 				continue
 
 			# Exclude pure color descriptors
@@ -609,11 +653,11 @@ def _post_process_(
 					print(f"        → {lemma} Color descriptor detected, skipping")
 				continue
 
-			# Exclude "black and white" specifically
-			if lemma in {"black and white", "black & white", "B/W", "B&W"}:
-				if verbose:
-					print(f"        → {lemma} Black and white detected, skipping")
-				continue
+			# # Exclude "black and white" specifically
+			# if lemma in {"black and white", "black & white", "B/W", "B&W"}:
+			# 	if verbose:
+			# 		print(f"        → {lemma} Black and white detected, skipping")
+			# 	continue
 
 			# # exclude if "unidentified" or "unknown" in the keyword "american unknown soldier", "unidentified ship" or irrelevant words
 			# if any(word in lemma for word in ["man", "men", "woman", "women", "people", "person", "child", "children", "boy", "girl", "boys", "girls", "brother", "brothers", "sister", "sisters", "sample", "analysis", "unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part", "series", "chart", "graph", "diagram", "tableau", "plot", "graf", "schematic", "sketch", "sketching", "number", "numbered", "model", "nickname", 'cousin', 'nephew', 'niece', 'sibling', 'uncle', "mother", "father", "daughter", "son", "godmother", "grandfather", "grandmother", "grandma", "grandpa", 'granddaughter', 'grandson', "godfather","aunt", "grandparent", "parent", "male", "female", "individual", "section", "date", "project", "program", "identifier", "segment", "service"]):
@@ -647,24 +691,24 @@ def _post_process_(
 			# 		print(f"        → Punctuation detected in {lemma}, skipping")
 			# 	continue
 
-			# Skip punctuation EXCEPT hyphens in compound words
-			invalid_punctuation = set(string.punctuation) - {'-'}  # Allow hyphens
-			if any(ch in invalid_punctuation for ch in lemma):
-					if verbose:
-							print(f"        → Punctuation detected in {lemma}, skipping")
-					continue
+			# # Skip punctuation EXCEPT hyphens in compound words
+			# invalid_punctuation = set(string.punctuation) - {'-'}  # Allow hyphens
+			# if any(ch in invalid_punctuation for ch in lemma):
+			# 	if verbose:
+			# 		print(f"        → Punctuation detected in {lemma}, skipping")
+			# 	continue
 
-			# Reject standalone hyphens or hyphen-only strings
-			if lemma == '-' or lemma.replace('-', '').strip() == '':
-					if verbose:
-							print(f"        → Invalid hyphen pattern, skipping")
-					continue
+			# # Reject standalone hyphens or hyphen-only strings
+			# if lemma == '-' or lemma.replace('-', '').strip() == '':
+			# 	if verbose:
+			# 		print(f"        → Invalid hyphen pattern, skipping")
+			# 	continue
 
-			# entire string must consist only of uppercase/lowercase English letters and spaces
-			if not re.match(r"^[a-zA-Z\s'\-]+$", lemma):
-				if verbose:
-					print(f"        → {lemma} Non-alphabetic character detected, skipping")
-				continue
+			# # entire string must consist only of uppercase/lowercase English letters and spaces
+			# if not re.match(r"^[a-zA-Z\s'\-]+$", lemma):
+			# 	if verbose:
+			# 		print(f"        → {lemma} Non-alphabetic character detected, skipping")
+			# 	continue
 
 			# Check duplicates
 			if lemma in clean_set:

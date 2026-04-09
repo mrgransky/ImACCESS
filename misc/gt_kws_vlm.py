@@ -51,14 +51,13 @@ Favor labels that represent **mid-level or domain-relevant visual categories** t
 - Extracted **KEYWORDS** must be:
 	* **Semantically atomic**: each keyword must represent **core concept only**.
 	* **Visually grounded**: tangible objects, agents, scene elements, or observable actions.
-	* **Generalized**: prefer the most general factual noun/verb that remains correct:
-		- use "nurse" instead of "nurse checking blood pressure"
-		- use "seaplane" instead of "seaplane on the water in the background"
-		- use "airplane" instead of "airplane in flight"
-		- use "smoking" instead of "a group of youngsters smoking outdoors"
-		- use "flag" instead of "german flag"
-		- use "red cross" instead of "american red cross"
-		- use "map" instead of "map of Europe"
+	* **ABSOLUTE MAXIMUM GENERALITY**:
+		- "nurse" instead of "nurse checking blood pressure"
+		- "seaplane" instead of "seaplane on the water in the background"
+		- "airplane" instead of "airplane in flight"
+		- "flag" instead of "german flag"
+		- "map" instead of "map of Europe"
+		- "animal" instead of "man riding a camel in the desert"
  	* **Reusable**: likely to recur across many captions in a large archive.
 
 CRITICAL RULES:
