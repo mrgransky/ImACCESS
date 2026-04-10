@@ -93,10 +93,9 @@ def get_canonical_labels_with_parallel_mapping(
 	clusters_fname = os.path.join(output_dir, f"{label_source}_clusters.csv")
 
 	if verbose:
-		print(f"\n>> Getting {label_source.upper()} Canonical Labels (Parallel Mapping: nw: {num_workers} bs: {batch_size})")
-		print(f"Input: {len(labels)} samples")
-		print(f"Examples: {labels[:7]}")
-		print(f"clusters_fname: {clusters_fname}")
+		print(f"\n[{label_source.upper()}] Canonical Labels (Parallel Mapping: nw: {num_workers} bs: {batch_size})")
+		print(f"Input: {len(labels)} {type(labels)} samples")
+		print(f"Examples:\n{labels[:7]}")
 
 	clustered_df = cluster(
 		labels=labels,

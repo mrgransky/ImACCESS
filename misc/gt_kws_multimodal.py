@@ -49,7 +49,7 @@ def merge_labels(
 	"""Naive Combination of LLM and VLM labels"""
 	assert len(llm_based_labels) == len(vlm_based_labels), "Label lists must have same length"
 	if verbose:
-		print(f">> [Naive Combination] {len(llm_based_labels)} LLM-based & {len(vlm_based_labels)} VLM-based labels")
+		print(f"\n[Naive Combination] {len(llm_based_labels)} LLM-based & {len(vlm_based_labels)} VLM-based labels")
 
 	multimodal_labels = []
 	for llm_labels, vlm_labels in zip(llm_based_labels, vlm_based_labels):

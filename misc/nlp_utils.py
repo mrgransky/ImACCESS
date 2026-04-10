@@ -624,15 +624,13 @@ def _post_process_(
 				continue
 
 			# # check for geographic references:
-			# lemma_lower = lemma.lower()
-			# if any(elm in lemma_lower for elm in geographic_references):
+			# if any(lm in geographic_references for lm in lemma.lower().split()):
 			# 	if verbose:
-			# 		# Find which geographic reference matched
-			# 		matched_refs = [elm for elm in geographic_references if elm in lemma_lower]
-			# 		print(f"        → {lemma} Geographic reference detected: {matched_refs}, skipping")
+			# 		print(f"        → {repr(lemma)} Geographic reference detected, skipping")
 			# 	continue
 
-			if any(lm in geographic_references for lm in lemma.lower().split()):
+			tokenized_lemma = re.split(r'[ .-]+', lemma.lower())   # split on space, hyphen or dot
+			if any(tok in geographic_references for tok in tokenized_lemma):
 				if verbose:
 					print(f"        → {repr(lemma)} Geographic reference detected, skipping")
 				continue
@@ -644,7 +642,7 @@ def _post_process_(
 
 			if is_stopword(lemma):
 				if verbose:
-					print(f"        → {repr(lemma)} Stopword detected, skipping")
+					print(f"        → {repr(lemma)} All stopword detected, skipping")
 				continue
 
 			# Exclude pure color descriptors
@@ -653,11 +651,11 @@ def _post_process_(
 					print(f"        → {lemma} Color descriptor detected, skipping")
 				continue
 
-			# # Exclude "black and white" specifically
-			# if lemma in {"black and white", "black & white", "B/W", "B&W"}:
-			# 	if verbose:
-			# 		print(f"        → {lemma} Black and white detected, skipping")
-			# 	continue
+			# Exclude "black and white" specifically
+			if lemma.lower() in {"black and white", "black & white", "B/W", "B&W", 'B and W'}:
+				if verbose:
+					print(f"        → {lemma} Black and white detected, skipping")
+				continue
 
 			# # exclude if "unidentified" or "unknown" in the keyword "american unknown soldier", "unidentified ship" or irrelevant words
 			# if any(word in lemma for word in ["man", "men", "woman", "women", "people", "person", "child", "children", "boy", "girl", "boys", "girls", "brother", "brothers", "sister", "sisters", "sample", "analysis", "unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part", "series", "chart", "graph", "diagram", "tableau", "plot", "graf", "schematic", "sketch", "sketching", "number", "numbered", "model", "nickname", 'cousin', 'nephew', 'niece', 'sibling', 'uncle', "mother", "father", "daughter", "son", "godmother", "grandfather", "grandmother", "grandma", "grandpa", 'granddaughter', 'grandson', "godfather","aunt", "grandparent", "parent", "male", "female", "individual", "section", "date", "project", "program", "identifier", "segment", "service"]):
@@ -808,6 +806,7 @@ def basic_clean(txt: str):
 
 	# Step 2: Remove known junk/phrase patterns
 	junk_phrases = [
+		r'blegen library archives',
 		r'view from upstream side of ',
 		r"view+\s+looking+\s+\w+\s+\w+\s+",
 		r"this is a general view of ",
@@ -1050,6 +1049,7 @@ def basic_clean(txt: str):
 		r'\s+\d+\s+gg\w+', # 123 gg123
 		r'Blm\s+Sba\s+\d{8}\s+(?:[a-z]\s+)?\d{2}', # Blm Sba 12345678 a 12
 		r'Pix made about \d+', # Pix made about 1945
+		r'written in pencil \w+[\s-]\d+', # Written in pencil D 61, Written in pencil 38-22
 		r'\bWorld War 2\b',
 	]
 

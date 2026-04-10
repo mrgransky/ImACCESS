@@ -40,7 +40,7 @@ process = psutil.Process(os.getpid())
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 
-VLM_INSTRUCTION_TEMPLATE = """You function as a historical archivist whose expertise lies in the 20th century. 
+VLM_INSTRUCTION_TEMPLATE = """You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century. 
 Your task is to produce **ontology-level, reusable semantic labels** suitable for **multi-label classification and representation learning**.
 
 Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and REUSABLE KEYWORDS** that capture stable objects, infrastructure, machinery, vehicles, architectural elements, tools, or clearly defined activities.

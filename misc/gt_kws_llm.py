@@ -74,7 +74,7 @@ with open('geographic_references.txt', 'r') as file_:
 STOPWORDS.update(geographic_references)
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
-You function as a historical archivist whose expertise lies in the 20th century and whose task is to produce
+You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century and whose task is to produce
 **general-purpose, reusable semantic labels** suitable for **multi-label classification**.
 
 Given the caption below, extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS**
@@ -99,6 +99,7 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 		- "manufacturing loom" instead of "manufacturing looms for the government"
 		- "aerial view" instead of "aerial view of Osaka, Japan"
 		- "Minister of War" instead of "Italian Minister of War Cipriano Facchinetti"	
+		- "Army Hospital" instead of "United States Army General Hospital"
 		- "Red Cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
 		- "animal" instead of "man riding a camel in the desert"
  	* **Reusable**: likely to recur across many captions in a large archive.
@@ -112,6 +113,7 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 	❌ Nationalities, ethnicities, or religions.
 	❌ Ordinal numeral keywords (e.g., fourth marine division, 1st evacuation, 115th Texas Infantry).
 	❌ Quantities, counts, measurements, or numeric expressions.
+	❌ Abbreviations, acronyms, or codes. 
 	❌ Complex phrases encoding multiple concepts (e.g., subject + action + location).
 	❌ Phrasal verbs, possessive constructions, or descriptive clauses.
 
