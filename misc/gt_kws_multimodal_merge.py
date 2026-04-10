@@ -81,7 +81,7 @@ def merge_csv_files(
 	df['multimodal_labels'] = multimodal_labels  # Update the DataFrame column
 
 	llm_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
-		labels=df['llm_based_labels'],
+		labels=df['llm_based_labels'].tolist(),
 		model_id=embedding_model_id,
 		label_source="llm",
 		output_dir=OUTPUT_DIR,
@@ -92,7 +92,7 @@ def merge_csv_files(
 	)
 
 	vlm_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
-		labels=df['vlm_based_labels'],
+		labels=df['vlm_based_labels'].tolist(),
 		model_id=embedding_model_id,
 		label_source="vlm",
 		output_dir=OUTPUT_DIR,
@@ -103,7 +103,7 @@ def merge_csv_files(
 	)
 
 	multimodal_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
-		labels=df['multimodal_labels'],
+		labels=df['multimodal_labels'].tolist(),
 		model_id=embedding_model_id,
 		label_source="multimodal",
 		output_dir=OUTPUT_DIR,

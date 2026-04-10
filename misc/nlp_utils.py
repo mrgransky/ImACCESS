@@ -582,11 +582,10 @@ def _post_process_(
 			if verbose:
 				print(f">> Checking lemma: {repr(lemma)}")
 
-			# Check if the lemma is all uppercase (e.g., "NAS")
-			# if lemma.isupper():
-			# 	if verbose:
-			# 		print(f"        → {lemma} All uppercase detected, skipping")
-			# 	continue
+			if lemma.isupper():
+				if verbose:
+					print(f"        → {lemma} All uppercase detected, skipping")
+				continue
 
 			if len(lemma) < min_kw_ch_length:
 				if verbose:
