@@ -223,10 +223,10 @@ def _load_llm_(
 	# ========== HuggingFace login ==========
 	try:
 		if verbose:
-			print(f"[INFO] Logging in to HuggingFace Hub...")
+			print(f"[LOGIN INFO] HuggingFace Hub...")
 		huggingface_hub.login(token=hf_tk)
 	except Exception as e:
-		print(f"<!> Failed to login to HuggingFace Hub: {e}")
+		print(f"<!> Failed to login to HuggingFace Hub:\n{e}")
 		raise e
 
 	# ========== Load config ==========
