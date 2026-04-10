@@ -114,7 +114,6 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 	❌ Ordinal numeral keywords (e.g., fourth marine division, 1st evacuation, 115th Texas Infantry).
 	❌ Quantities, counts, measurements, or numeric expressions.
 	❌ Abbreviations, acronyms, or codes. 
-	❌ Complex phrases that combine different entities (e.g., "soldier in a forest").
 	❌ Phrasal verbs, possessive constructions, or descriptive clauses.
 
 - Color handling:
