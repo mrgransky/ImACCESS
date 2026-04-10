@@ -37,7 +37,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3-4B-Instruct-2507" -v
 
 # large model:
-# python gt_kws_llm.py -desc "" -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
+# python gt_kws_llm.py -desc "Natural pasture fortification, presumably on the roaster. Natural pasture fortification, presumably on the roaster in." -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
 
 
 if not hasattr(tfs.utils, "LossKwargs"):
@@ -121,12 +121,6 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 	Remove color only if it is purely descriptive (e.g., red car, blue sky).
 	Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
 
-- Bias toward label reuse:
-	If a specific phrase can be reduced to a more general equivalent **without losing factual correctness**, opt for general form.
-	If a term represents a standardized domain-specific concept 
-	(e.g., military designation, chemical classification, organization name),
-	it MUST be treated as a single atomic label and MUST NOT be reduced.
-
 - Keywords MAY appear verbatim in the caption if they are the most precise and reusable label. Do NOT paraphrase just to avoid repetition.
 
 - ANTI-HALLUCINATION RULE:
@@ -149,6 +143,13 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 #	- "flag" instead of "german flag"
 #	- "red cross" instead of "american red cross"
 # - "smoking" instead of "a group of youngsters smoking outdoors"
+
+# - Bias toward label reuse:
+# 	If a specific phrase can be reduced to a more general equivalent **without losing factual correctness**, opt for general form.
+# 	If a term represents a standardized domain-specific concept 
+# 	(e.g., military designation, chemical classification, organization name),
+# 	it MUST be treated as a single atomic label and MUST NOT be reduced.
+
 
 
 # # Too Specific which produces massive number of singleton labels
