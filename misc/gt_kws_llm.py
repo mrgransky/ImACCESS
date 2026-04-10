@@ -134,6 +134,7 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 #	* Explanatory text, punctuation, or output formatting beyond the Python list.
 #	x abstract organizational/social events with no visual anchor (e.g., "meeting", "trip", "outing").
 #	❌ Generic photography or image-related terminology.
+# ❌ Complex phrases that combine different entities (e.g., "soldier in a forest").
 # - Keyword priority order:
 # 	1) Physical objects (tangible, visually prominent)
 # 	2) Actions (if more reusable than objects present)
