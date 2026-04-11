@@ -37,7 +37,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3-4B-Instruct-2507" -v
 
 # large model:
-# python gt_kws_llm.py -desc "Natural pasture fortification, presumably on the roaster. Natural pasture fortification, presumably on the roaster in." -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
+# python gt_kws_llm.py -desc "A. A. Robinson and infantry." -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
 
 
 if not hasattr(tfs.utils, "LossKwargs"):
@@ -100,6 +100,7 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 		- "aerial view" instead of "aerial view of Osaka, Japan"
 		- "Minister of War" instead of "Italian Minister of War Cipriano Facchinetti"	
 		- "Army Hospital" instead of "United States Army General Hospital"
+		- "Marine Corps" instead of "U.S. Marine Corps"
 		- "Red Cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
 		- "animal" instead of "man riding a camel in the desert"
  	* **Reusable**: likely to recur across many captions in a large archive.

@@ -246,6 +246,7 @@ United State
 United States of America
 USA
 U.S.
+US
 U.S.A.
 Uruguay
 Uzbekistan
@@ -813,6 +814,7 @@ Syrian
 Taiwanese
 Turkish
 Uzbek
+Ukrainian
 Vietnamese
 Yugoslav
 Yugoslavian
