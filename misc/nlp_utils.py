@@ -602,8 +602,8 @@ def _post_process_(
 			# 		print(f"        → {lemma} not abbreviation, skipping")
 			# 	continue
 
-			# Replace & with and and remove extra spaces:
-			lemma = re.sub(r'\s&\s', ' and ', lemma).strip() # Replace & with and and remove extra spaces
+			# # Replace & with and and remove extra spaces:
+			# lemma = re.sub(r'\s&\s', ' and ', lemma).strip() # Replace & with and and remove extra spaces
 
 			# check if digit is in the lemma:
 			if any(c.isdigit() for c in lemma):
@@ -628,7 +628,8 @@ def _post_process_(
 			# 		print(f"        → {repr(lemma)} Geographic reference detected, skipping")
 			# 	continue
 
-			tokenized_lemma = re.split(r'[ .-]+', lemma.lower())   # split on space, hyphen or dot
+			# tokenized_lemma = re.split(r'[ .-]+', lemma.lower())   # split on space, hyphen or dot
+			tokenized_lemma = re.split(r'[ -]+', lemma.lower())   # split on space or hyphen
 			if any(tok in geographic_references for tok in tokenized_lemma):
 				if verbose:
 					print(f"        → {repr(lemma)} Geographic reference detected, skipping")
