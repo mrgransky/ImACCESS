@@ -113,6 +113,7 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 	❌ Geographical names (e.g., continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.)
 	❌ Nationalities, ethnicities, or religions.
 	❌ Ordinal numeral keywords (e.g., fourth marine division, 1st evacuation, 115th Texas Infantry).
+	❌ Roman numeral keywords (e.g., Mark IV Panzer, Mk  II).
 	❌ Quantities, counts, measurements, or numeric expressions.
 	❌ Abbreviations, acronyms, or codes. 
 	❌ Phrasal verbs, possessive constructions, or descriptive clauses.
