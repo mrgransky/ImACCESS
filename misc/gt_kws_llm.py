@@ -106,6 +106,7 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
  	* **Reusable**: likely to recur across many captions in a large archive.
 
 - **STRICTLY EXCLUDE** KEYWORDS which are:
+	❌ Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 7.3mm, 3 Dodge trucks).
 	❌ Equipment identifiers, serial numbers, or models.
 	❌ Dates, times, years, decades, or any temporal references.
 	❌ Names of individuals (e.g., Barbara Briggs, Allan M. Hardy, Josef Dietrich). 
@@ -114,7 +115,6 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 	❌ Nationalities, ethnicities, or religions.
 	❌ Ordinal numeral keywords (e.g., fourth marine division, 1st evacuation, 115th Texas Infantry).
 	❌ Roman numeral keywords (e.g., Mark IV Panzer, Mk  II).
-	❌ Quantities, counts, measurements, or numeric expressions.
 	❌ Abbreviations, acronyms, or codes. 
 	❌ Phrasal verbs, possessive constructions, or descriptive clauses.
 

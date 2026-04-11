@@ -1051,6 +1051,7 @@ def basic_clean(txt: str):
 		r'Pix made about \d+', # Pix made about 1945
 		r'written in pencil \w+[\s-]\d+', # Written in pencil D 61, Written in pencil 38-22
 		r'\bWorld War 2\b',
+		r'(?i)\b\d{1,2}\s+(?:Jan(?:uary|.)?|Feb(?:ruary|.)?|Mar(?:ch|.)?|Apr(?:il|.)?|May|Jun(?:e|.)?|Jul(?:y|.)?|Aug(?:ust|.)?|Sep(?:tember|.)?|Oct(?:ober|.)?|Nov(?:ember|.)?|Dec(?:ember|.)?)\s+\d{4}\b', # 15 November 1945
 	]
 
 	for pattern in metadata_patterns:
