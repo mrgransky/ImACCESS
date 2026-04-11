@@ -39,7 +39,7 @@ TEXT_EMBEDDING_MODEL="nvidia/llama-embed-nemotron-8b"
 
 python -u gt_kws_multimodal_merge.py \
 	--dataset_dir $DATASET_DIR \
-	--batch_size 64 \
+	--batch_size 32 \
 	--num_workers $SLURM_CPUS_PER_TASK \
 	--embedding_model_id $TEXT_EMBEDDING_MODEL \
 	--verbose

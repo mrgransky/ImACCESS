@@ -91,6 +91,10 @@ def merge_csv_files(
 		verbose=verbose,
 	)
 
+	# clear cache
+	torch.cuda.empty_cache()
+	gc.collect()
+
 	vlm_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
 		labels=df['vlm_based_labels'].tolist(),
 		model_id=embedding_model_id,
@@ -102,6 +106,10 @@ def merge_csv_files(
 		verbose=verbose,
 	)
 
+	# clear cache
+	torch.cuda.empty_cache()
+	gc.collect()
+
 	multimodal_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
 		labels=df['multimodal_labels'].tolist(),
 		model_id=embedding_model_id,
@@ -112,6 +120,10 @@ def merge_csv_files(
 		nc=nc,
 		verbose=verbose,
 	)
+
+	# clear cache
+	torch.cuda.empty_cache()
+	gc.collect()
 
 	# check length of each before setting into column:
 	if verbose:
