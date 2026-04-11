@@ -210,6 +210,30 @@ def _post_process_(
 		"olive", "turquoise", "lavender", "coral", "salmon", "amber"
 	}
 
+	HONORIFICS = {
+		"mr", 
+		"mr.",
+		"mrs",
+		"mrs."
+		"ms", 
+		"miss",
+		"dr",
+		"dr.",
+		"prof",
+		"sir",
+		"shah",
+		"sultan",
+		"prince",
+		"princess",
+		"prins",
+		"king",
+		"queen",
+		"lord",
+		"madam",
+		"mme.", 
+		"mrs."
+	}
+
 	def is_stopword(phrase: str) -> bool:
 		"""
 		Check if phrase is a stopword or consists entirely of stopwords.
@@ -650,6 +674,13 @@ def _post_process_(
 				if verbose:
 					print(f"        → {lemma} Color descriptor detected, skipping")
 				continue
+
+			# exclude honorifics
+			if any(w in HONORIFICS for w in lemma.lower().split()):
+				if verbose:
+					print(f"        → {lemma} Honorific detected, skipping")
+				continue
+
 
 			# Exclude "black and white" specifically
 			if lemma.lower() in {"black and white", "black & white", "B/W", "B&W", 'B and W'}:

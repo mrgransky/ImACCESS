@@ -18,6 +18,7 @@ Andorra
 Angola
 Antigua and Barbuda
 Argentina
+Argentine
 Armenia
 Australia
 Austria
@@ -37,6 +38,7 @@ Bosnia and Herzegovina
 Botswana
 Bohemia
 Brazil
+Britain
 Brunei
 Bulgaria
 Burkina Faso
@@ -51,6 +53,7 @@ Chad
 Czechoslovakia
 Czechoslovak Republic
 Czech Republic
+Czech
 Chile
 China
 Colombia
@@ -88,6 +91,7 @@ Georgia
 Germany
 Ghana
 Gibraltar
+Great Britain
 Greece
 Greenland
 Grenada
@@ -178,6 +182,7 @@ Philippine
 Philippines
 Poland
 Portugal
+Porto Rico
 Puerto Rico
 
 Qatar
@@ -193,6 +198,8 @@ Saint Lucia
 Saint Louis
 St Louis
 Saint-Nazaire
+Saint Paul
+St. Paul
 St. Nazaire
 St Nazaire
 Saint Vincent and the Grenadines
@@ -224,6 +231,7 @@ Sweden
 Switzerland
 Syria
 
+Taiwan
 Tajikistan
 Tanzania
 Tasmania
@@ -246,15 +254,19 @@ United State
 United States of America
 USA
 U.S.
+U. S.
 US
 U.S.A.
 Uruguay
 Uzbekistan
 
 Vanuatu
-Vatican City (Holy See)
+Vatican
+Vatican City
 Venezuela
 Vietnam
+
+Wales
 
 Yemen
 Yugoslavia
@@ -343,6 +355,7 @@ Bridgeport
 Brook
 Brooklyn
 Brunswick
+Brownwood
 Buffalo
 Burbank
 Burlington
@@ -350,6 +363,7 @@ Centerville
 Centerville California
 Castroville
 Cayuta
+Cincinnati
 Cleveland
 Chicago
 Columbia
@@ -466,6 +480,7 @@ Richmond
 St. Louis
 City of St. Louis
 Santa Barbara
+Santa Cruz
 Santa Monica
 Santa Rosa
 Santa Paula
@@ -519,10 +534,13 @@ Anzio
 Algiers
 Alsace
 Ankara
+Amsterdam
 Antwerp
+Asansol
 Athens
 Baghdad
 Bagdad
+Bangalore
 Bangkok
 Barcelona
 Basel
@@ -532,8 +550,10 @@ Belfast
 Berlin
 Berline
 Bermuda
+Bilbao
 Borsberg
 Bogota
+Bombay
 Bordaux
 Bordeaux
 Bosphorus
@@ -552,7 +572,9 @@ Cadiz
 Cairo
 Cambridge
 Canberra
+Canso
 Caracas
+Cardiff
 Carlisle
 Cebu City
 Chania
@@ -562,10 +584,13 @@ Cleveland
 Coblenz
 Cologne
 Copenhagen
+Corpus Christi
 Corsica
 Coventry
 Crimea
+Calcutta
 Dardanelles
+Delhi
 Dessau
 Dorchester
 Dresden
@@ -579,22 +604,31 @@ Essex
 Farnborough
 Flensborg
 Flensburg
+Fort Collins
+Ft. Collins
+Fort Worth
+Ft. Worth
 Fowlmere
 Frankfurt
 Frihavn
 Gallipoli
 Gaza
 Geneva
+Glasgow
+Green Bay
+Greenock
 Hamburg
 Hong Kong
 Hanoi
 Havana
+Helensburgh
 Helsinki
 Helsingfors
 Hiroshima
 Hobsonville
 Incheon
 Indochina
+Inverness
 Ipswich
 Istanbul
 Istambul
@@ -611,10 +645,14 @@ Kobe
 Koblenz
 Kurland
 Kyoto
+Lafayette
 Lakewood
 Lancaster
+Langley
 Lapland
+La Crosse
 Leipzig
+Lexington
 Liatorp
 Lille
 Liverpool
@@ -629,7 +667,9 @@ Medina
 Mesopotamian
 Mexico City
 Milan
+Milwaukee
 Minsk
+Moscov
 Moscow
 Munich
 Nagasaki
@@ -645,6 +685,7 @@ Paris
 Palermo
 Perth
 Pisa
+Porto
 Prague
 Quito
 Rabat
@@ -653,12 +694,13 @@ San Gimignano
 San Sebastian
 Seville
 Stralsund
+Strathpeffer
 Valencia
-Bilbao
 Gijon
 Girona
 Granada
 Johannesburg
+Madison
 Malaga
 Managua
 Manchester
@@ -687,6 +729,7 @@ Praha
 Radlett
 Ravenna
 Rio de Janeiro
+Rockies
 Rochester
 Rovaniemi
 Rotterdam
@@ -707,6 +750,7 @@ Stockholm
 Strömsund
 Stumholmen
 Stuttgart
+Sunderland
 Sydney
 Tarragona
 Tehachapi
@@ -724,9 +768,11 @@ Venice
 Vera Cruz
 Verona
 Vienna
+Waco
 Warsaw
 Waterloo
 Wellington
+York
 Ypres
 Zaragoza
 Zeebrugge
@@ -769,6 +815,7 @@ Flemish
 French
 German
 Greek
+Haitian
 Hawaiian
 Hungarian
 Icelandic
@@ -791,7 +838,10 @@ Mediterranean
 Mexican
 Mongolian
 Moroccan
+Morval
+Newfoundland
 New Zealander
+Nigerian
 Norwegian
 North Korean
 Okinawan
@@ -800,6 +850,8 @@ Pusan
 Persian
 Polish
 Portuguese
+Puerto Rican
+Quebec
 Romanian
 Russian
 San Diegan
@@ -817,5 +869,6 @@ Turkish
 Uzbek
 Ukrainian
 Vietnamese
+Whitehorse
 Yugoslav
 Yugoslavian

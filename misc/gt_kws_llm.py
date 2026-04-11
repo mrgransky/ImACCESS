@@ -97,6 +97,7 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 		- "airplane" instead of "airplane in flight"
 		- "airport" instead of "airport in the background"
 		- "manufacturing loom" instead of "manufacturing looms for the government"
+		- "mountain" instead of "Eastern Mountains"
 		- "aerial view" instead of "aerial view of Osaka, Japan"
 		- "Minister of War" instead of "Italian Minister of War Cipriano Facchinetti"	
 		- "Army Hospital" instead of "United States Army General Hospital"
@@ -109,7 +110,7 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 	❌ Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 7.3mm, 3 Dodge trucks).
 	❌ Equipment identifiers, serial numbers, or models.
 	❌ Dates, times, years, decades, or any temporal references.
-	❌ Names of individuals (e.g., Barbara Briggs, Allan M. Hardy, Josef Dietrich). 
+	❌ Names of individuals or Honorifics (e.g., Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
 	❌ family relationship terms (e.g., mother, father, son, uncle).
 	❌ Geographical names (e.g., continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.)
 	❌ Nationalities, ethnicities, or religions.

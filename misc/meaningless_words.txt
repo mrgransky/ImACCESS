@@ -1237,3 +1237,4 @@ black-and-white snapshot
 color snapshot
 medresse
 coco-cola
+perfect
