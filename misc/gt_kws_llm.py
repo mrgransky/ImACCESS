@@ -183,6 +183,300 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 
 def _load_llm_(
 	model_id: str,
+	quantization_bits: Optional[int] = None,
+	force_multi_gpu: bool = False,
+	verbose: bool = False,
+):
+	"""
+	Load a Large Language Model with optimal device placement.
+	
+	Implements intelligent device strategy:
+	1. For small models (<20GB): Single GPU for speed
+	2. For large models (>=20GB): Multi-GPU distribution
+	3. Adaptive VRAM buffering based on GPU size
+	4. Quantization-aware memory allocation (via quantization_bits)
+	5. Avoids disk offloading at all costs
+	
+	Args:
+			model_id: HuggingFace model identifier
+			quantization_bits: Quantization bits (4 or 8). If None, loads in full precision.
+			force_multi_gpu: Force multi-GPU distribution (for large models)
+			verbose: Enable verbose logging
+	
+	Returns:
+			Tuple of (tokenizer, model)
+	"""
+	if verbose:
+			print(f"\n{'='*110}")
+			print(f"[MODEL] Loading {model_id} on cache_dir: {cache_directory.get(USER)}")
+	# ========== Version and CUDA info ==========
+	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
+	if verbose:
+			print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
+			print(f"[INFO] CUDA available?        : {torch.cuda.is_available()} {n_gpus} GPU(s) available: {[torch.cuda.get_device_name(i) for i in range(n_gpus)]}")
+			if torch.cuda.is_available():
+					cur = torch.cuda.current_device()
+					major, minor = torch.cuda.get_device_capability(cur)
+					print(f"[INFO] Compute capability     : {major}.{minor}")
+					print(f"[INFO] BF16 support?          : {torch.cuda.is_bf16_supported()}")
+					print(f"[INFO] CUDA memory allocated  : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+					print(f"[INFO] CUDA memory reserved   : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
+			else:
+					print("[INFO] Running on CPU only")
+	# ========== HuggingFace login ==========
+	try:
+		if verbose:
+			print(f"[LOGIN INFO] HuggingFace Hub...")
+		huggingface_hub.login(token=hf_tk)
+	except Exception as e:
+		print(f"<!> Failed to login to HuggingFace Hub:\n{e}")
+		raise e
+	
+	# ========== Load config ==========
+	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+	if verbose:
+		print(f"[INFO] {model_id} Config summary")
+		print(f"   • model_type        : {config.model_type}")
+		print(f"   • architectures     : {config.architectures}")
+		print(f"   • dtype (if set)    : {config.dtype}")
+		print()
+	
+	# ========== Determine model class ==========
+	model_cls = None
+	use_auto_model = False
+	
+	if config.architectures:
+			cls_name = config.architectures[0]
+			if hasattr(tfs, cls_name):
+					model_cls = getattr(tfs, cls_name)
+					if verbose:
+							print(f"[INFO] Resolved model class from transformers → {model_cls.__name__}\n")
+			else:
+					use_auto_model = True
+					if verbose:
+							print(f"[INFO] Custom architecture detected: {cls_name}")
+							print(f"[INFO] Will use AutoModelForCausalLM with trust_remote_code=True\n")
+	else:
+			use_auto_model = True
+			if verbose:
+					print(f"[INFO] No architecture specified in config")
+					print(f"[INFO] Will use AutoModelForCausalLM\n")
+	dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
+
+	if verbose:
+			print(f"[INFO] {model_id} Dtype selection: {dtype}")
+
+	def _optimal_attn_impl() -> str:
+		if not torch.cuda.is_available():
+			return "eager"
+		
+		major, minor = torch.cuda.get_device_capability()
+		compute_cap = major + minor / 10
+		
+		if compute_cap >= 8.0:
+			try:
+				import flash_attn
+				if verbose: print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
+				return "flash_attention_2"
+			except ImportError:
+				if verbose: print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
+		
+		if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
+			if verbose: print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
+			return "sdpa"		
+		
+		return "eager"
+
+	attn_impl = _optimal_attn_impl()
+
+	# ========== Quantization config ==========
+	quantization_config = None
+	if quantization_bits is not None:
+			if quantization_bits == 8:
+					quantization_config = tfs.BitsAndBytesConfig(
+							load_in_8bit=True,
+							bnb_8bit_compute_dtype=dtype,
+							llm_int8_enable_fp32_cpu_offload=False,
+					)
+			elif quantization_bits == 4:
+					quantization_config = tfs.BitsAndBytesConfig(
+							load_in_4bit=True,
+							bnb_4bit_quant_type="nf4",
+							bnb_4bit_compute_dtype=torch.bfloat16,
+							bnb_4bit_use_double_quant=True,
+					)
+			else:
+					raise ValueError(f"quantization_bits must be 4, 8, or None, got {quantization_bits}")
+			
+			if verbose:
+					print(f"[INFO] {model_id} Quantization enabled: {quantization_bits}-bit")
+	
+	# ========== Tokenizer loading ==========
+	tokenizer = None
+	try:
+		tokenizer = tfs.AutoTokenizer.from_pretrained(
+			model_id, 
+			use_fast=True, 
+			trust_remote_code=True, 
+			cache_dir=cache_directory[USER],
+		)
+	except (KeyError, ValueError, OSError) as exc:
+		if verbose: print(f"[WARN] AutoTokenizer failed: {exc}. Trying fallbacks...")
+		fallback_exc = None
+		candidate_tokenizer_classes = [
+				getattr(tfs, "MistralTokenizer", None), getattr(tfs, "MistralTokenizerFast", None),
+				getattr(tfs, "LlamaTokenizer", None), getattr(tfs, "LlamaTokenizerFast", None),
+		]
+		for TokCls in [cls for cls in candidate_tokenizer_classes if cls is not None]:
+				try:
+						tokenizer = TokCls.from_pretrained(model_id, trust_remote_code=True, cache_dir=cache_directory[USER])
+						break
+				except Exception as e: fallback_exc = e
+		if tokenizer is None:
+				try:
+						tokenizer = tfs.AutoTokenizer.from_pretrained(model_id, use_fast=False, trust_remote_code=True, cache_dir=cache_directory[USER])
+				except Exception as final_exc:
+						raise RuntimeError(f"Failed to load tokenizer for '{model_id}'. Final error: {final_exc}") from final_exc
+	
+	if tokenizer.pad_token is None:
+		tokenizer.pad_token = tokenizer.eos_token
+		tokenizer.pad_token_id = tokenizer.eos_token_id
+	
+	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
+		tokenizer.padding_side = "left"
+	
+	def get_estimated_gb_size(model_id: str) -> float:
+		try:
+			info = huggingface_hub.model_info(model_id, token=hf_tk, files_metadata=True)
+		except Exception as e:
+			raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
+		
+		print(type(info))
+		print(info)
+
+		disk_bytes = 0
+		param_count = None
+		if info.siblings:
+				for s in info.siblings:
+						if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin")):
+								disk_bytes += s.size
+		if hasattr(info, "safetensors") and info.safetensors:
+				safet = info.safetensors
+				param_count = safet.get("total") if isinstance(safet, dict) else getattr(safet, "total", None)
+		if disk_bytes > 0:
+				return (disk_bytes * 1.01) / (1024 ** 3)
+		if param_count:
+				return (param_count * 2.0 * 1.22) / (1024 ** 3)
+
+		raise ValueError(f"No usable size info for {model_id}.")
+	
+	estimated_size_gb = get_estimated_gb_size(model_id)
+	
+	if verbose:
+		print(f"\n[INFO] {model_id} Estimated size: {estimated_size_gb:.2f} GB (fp16)")
+	
+	max_memory = {}
+	if n_gpus > 0:
+			total_vram_available = 0
+			gpu_vram = []
+			for i in range(n_gpus):
+					props = torch.cuda.get_device_properties(i)
+					vram_gb = props.total_memory / (1024**3)
+					gpu_vram.append(vram_gb)
+					total_vram_available += vram_gb
+					
+			# ADAPTIVE BUFFER
+			if gpu_vram[0] < 10: vram_buffer_gb = 0.7
+			elif gpu_vram[0] < 20: vram_buffer_gb = 2.0
+			else: vram_buffer_gb = 4.0
+			# Reduce buffer if quantization is used
+			if quantization_bits is not None:
+					vram_buffer_gb = max(0.5, vram_buffer_gb * 0.5)
+							
+			# Adjust estimated size for quantization
+			adjusted_size = estimated_size_gb
+			if quantization_bits == 8:
+					adjusted_size = estimated_size_gb * 0.5
+			elif quantization_bits == 4:
+					adjusted_size = estimated_size_gb * 0.25
+			
+			# ========== PRE-FLIGHT VRAM VALIDATION ==========
+			INFERENCE_OVERHEAD_MULTIPLIER = 1.3
+			required_vram = adjusted_size * INFERENCE_OVERHEAD_MULTIPLIER
+			usable_vram = total_vram_available - (n_gpus * vram_buffer_gb)
+			if required_vram > usable_vram:
+					print("\n" + "="*80 + "\n❌ INSUFFICIENT VRAM ERROR\n" + "="*80)
+					print(f"Model: {model_id}\nRequired: {required_vram:.1f} GB | Available: {usable_vram:.1f} GB")
+					if quantization_bits is None:
+							print("\nSOLUTIONS: Try setting quantization_bits=8 or quantization_bits=4")
+					elif quantization_bits == 8:
+							print("\nSOLUTIONS: Try setting quantization_bits=4")
+					else:
+							print("\nSOLUTIONS: Use a larger GPU or a smaller model.")
+					raise RuntimeError(f"Insufficient VRAM. Required {required_vram:.2f} GB, found {usable_vram:.2f} GB.")
+			# Decision: Single GPU vs Multi GPU
+			single_gpu_capacity = gpu_vram[0] - vram_buffer_gb
+			is_large_model = adjusted_size >= 20
+			use_single_gpu = (
+					not force_multi_gpu and 
+					not is_large_model and 
+					adjusted_size < single_gpu_capacity * 0.8 and 
+					(n_gpus == 1 or adjusted_size < 20)
+			)
+			
+			if use_single_gpu:
+					max_memory[0] = f"{max(1, single_gpu_capacity):.0f}GB"
+					strategy_desc = f"Single GPU (GPU 0, limit: {max_memory[0]})"
+			else:
+					for i in range(n_gpus):
+							buffer = vram_buffer_gb if i == 0 else (0.5 if gpu_vram[i] < 10 else 2.0)
+							if quantization_bits is not None: buffer *= 0.5
+							max_memory[i] = f"{max(1, gpu_vram[i] - buffer):.0f}GB"
+					strategy_desc = f"Multi-GPU [Model Parallelism] ({n_gpus} GPUs)"
+	else:
+			strategy_desc = "CPU (no GPUs)"
+	
+	if verbose: print(f"\n[INFO] Strategy: {strategy_desc}")
+	# ========== Model loading kwargs ==========
+	model_kwargs: Dict[str, Any] = {
+			"low_cpu_mem_usage": True,
+			"trust_remote_code": True,
+			"cache_dir": cache_directory[USER],
+			"attn_implementation": attn_impl,
+			"dtype": dtype,
+	}
+	
+	if quantization_config:
+			model_kwargs["quantization_config"] = quantization_config
+	
+	if n_gpus > 0:
+			model_kwargs["device_map"] = "auto"
+			model_kwargs["max_memory"] = max_memory
+	# ========== Load Model ==========
+	try:
+			if use_auto_model:
+					model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+			else:
+					model = model_cls.from_pretrained(model_id, **model_kwargs)
+	except Exception as e:
+			if verbose: print(f"[ERROR] Error loading model: {e}")
+			raise e
+	model.eval()
+	# ========== Model Info & Verification ==========
+	if verbose:
+			print(f"\n[MODEL] {model_id} loading complete!")
+			if hasattr(model, "hf_device_map"):
+					dm = model.hf_device_map
+					disk_layers = [k for k, v in dm.items() if v == "disk"]
+					if disk_layers:
+							print(f"\n{'='*70}\n❌ CRITICAL WARNING: {len(disk_layers)} layers on DISK!\n{'='*70}")
+					elif not any(v == "cpu" for v in dm.values()):
+							print(f"\n✅ All layers on GPU - optimal performance!")
+			print(f"{'='*110}\n")
+	return tokenizer, model
+
+def _load_llm_old(
+	model_id: str,
 	use_quantization: bool = False,
 	quantization_bits: int = 8,
 	force_multi_gpu: bool = False,
@@ -1164,7 +1458,8 @@ def get_llm_based_labels_debug(
 	max_kws: int,
 	csv_file: str=None,
 	description: str=None,
-	use_quantization: bool = False,
+	use_quantization: bool=False,
+	quantization_bits: Optional[int]=None,
 	verbose: bool = False,
 ) -> List[List[str]]:
 
@@ -1195,8 +1490,9 @@ def get_llm_based_labels_debug(
 		return None
 
 	tokenizer, model = _load_llm_(
-		model_id=model_id, 
-		use_quantization=use_quantization,
+		model_id=model_id,
+		# use_quantization=use_quantization,
+		quantization_bits=quantization_bits,
 		verbose=verbose
 	)
 
@@ -1248,6 +1544,7 @@ def get_llm_based_labels(
 	do_dedup: bool = True,
 	max_retries: int = 2,
 	use_quantization: bool = False,
+	quantization_bits: Optional[int]=None,
 	verbose: bool = False,
 ) -> List[Optional[List[str]]]:
 
@@ -1309,7 +1606,8 @@ def get_llm_based_labels(
 	# Load tokenizer and model
 	tokenizer, model = _load_llm_(
 		model_id=model_id,
-		use_quantization=use_quantization,
+		# use_quantization=use_quantization,
+		quantization_bits=quantization_bits,
 		verbose=verbose,
 	)
 	if verbose:
@@ -1618,9 +1916,10 @@ def main():
 	parser.add_argument("--description", '-desc', type=str, help="Description")
 	parser.add_argument("--num_workers", '-nw', type=int, default=12, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing (adjust based on GPU memory)")
-	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=128, help="Max number of generated tokens")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
-	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
+	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=128, help="Max number of generated tokens")
+	# parser.add_argument("--use_quantization", '-q', action='store_true', help="whether/not to use quantization")
+	parser.add_argument("--quantization_bits", '-qb', type=int, default=None, help="Quantization bits")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
 
@@ -1642,7 +1941,8 @@ def main():
 			max_kws=args.max_keywords,
 			csv_file=args.csv_file,
 			description=args.description,
-			use_quantization=args.use_quantization,
+			# use_quantization=args.use_quantization,
+			quantization_bits=args.quantization_bits,
 			verbose=args.verbose,
 		)
 	elif args.csv_file:
@@ -1654,7 +1954,8 @@ def main():
 			max_kws=args.max_keywords,
 			csv_file=args.csv_file,
 			num_workers=args.num_workers,
-			use_quantization=args.use_quantization,
+			# use_quantization=args.use_quantization,
+			quantization_bits=args.quantization_bits,
 			verbose=args.verbose,
 		)
 	else:
