@@ -37,8 +37,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3-4B-Instruct-2507" -v
 
 # large model:
-# python gt_kws_llm.py -desc "A. A. Robinson and infantry." -llm "Qwen/Qwen3-30B-A3B-Instruct-2507" -v
-
+# python gt_kws_llm.py -desc "A. A. Robinson and infantry." -llm "google/gemma-4-E2B-it" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -542,8 +541,14 @@ def _load_llm_(
 				print(f"\n{'='*70}\n❌ CRITICAL WARNING: {len(disk_layers)} layers on DISK!\n{'='*70}")
 			elif not any(v == "cpu" for v in dm.values()):
 				print(f"\n[OK] All layers on GPU - optimal performance!")
+
 		print(f"{'='*110}\n")
+		print(model.config)
+
+		print(f"{'='*110}\n")
+
 	
+
 	return tokenizer, model
 
 def get_prompt(
@@ -868,14 +873,14 @@ def query_local_llm(
 	max_kws: int,
 	verbose: bool = False,
 ) -> List[str]:
-
-	start_time = time.time()
 	
 	if not isinstance(text, str) or not text.strip():
 		return None
 
 	keywords: Optional[List[str]] = None
 	prompt = get_prompt(tokenizer=tokenizer, description=text, max_kws=max_kws)
+
+	# print(model.config)
 
 	model_id = getattr(model.config, '_name_or_path', None)
 	if model_id is None:
