@@ -36,6 +36,10 @@ from utils import *
 # # model_id = "utter-project/EuroVLM-1.7B-Preview"
 # # model_id = "OpenGVLab/InternVL-Chat-V1-2"
 
+# how to run:
+# local:
+# python gt_kws_vlm.py -i "/home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH568SLASHitem_FGXB537CHLTVRLRXQLUDTDYLIU67RKN7.jpg" -vlm "Qwen/Qwen3-VL-2B-Instruct" -v
+
 process = psutil.Process(os.getpid())
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
@@ -80,22 +84,9 @@ CRITICAL RULES:
 The clean, valid Python LIST must be the VERY LAST THING in your response.
 """
 
-def verify(p: str):
-	if p is None or not os.path.exists(p):
-		return None
-	try:
-		with open(p, 'rb') as f:
-			header = f.read(3)
-			if header == b'\xff\xd8\xff':  # Valid JPEG SOI marker
-				return p
-		return None
-	except Exception:
-		return None
-
 def _load_vlm_(
 	model_id: str,
-	use_quantization: bool = False,
-	quantization_bits: int = 8,
+	quantization_bits: Optional[int] = None,  # None => no quantization; 4 or 8 => quantize
 	force_multi_gpu: bool = False,
 	verbose: bool = False,
 ) -> Tuple[tfs.PreTrainedTokenizerBase, torch.nn.Module]:
@@ -111,14 +102,15 @@ def _load_vlm_(
 	
 	Args:
 		model_id: HuggingFace model identifier
-		use_quantization: Whether to use quantization
-		quantization_bits: Quantization bits (4 or 8)
+		quantization_bits: None (no quant), or 4 / 8 for bitsandbytes quantization
 		force_multi_gpu: Force multi-GPU distribution (for large models)
 		verbose: Enable verbose logging
 	
 	Returns:
 		Tuple of (processor, model)
 	"""
+	if quantization_bits is not None and quantization_bits not in (4, 8):
+		raise ValueError(f"quantization_bits must be None, 4, or 8 (got {quantization_bits})")
 	if verbose:
 		print(f"\n{'='*110}")
 		print(f"[MODEL] Loading {model_id} on cache_dir: {cache_directory.get(USER)}")
@@ -203,12 +195,12 @@ def _load_vlm_(
 	
 	# ========== Quantization config ==========
 	quantization_config = None
-	if use_quantization:
+	if quantization_bits is not None:
 		if quantization_bits == 8:
 			quantization_config = tfs.BitsAndBytesConfig(
 				load_in_8bit=True,
 				bnb_8bit_compute_dtype=dtype,
-				llm_int8_enable_fp32_cpu_offload=False, # avoid offloading to CPU
+				llm_int8_enable_fp32_cpu_offload=False,
 			)
 		elif quantization_bits == 4:
 			quantization_config = tfs.BitsAndBytesConfig(
@@ -218,12 +210,10 @@ def _load_vlm_(
 				bnb_4bit_use_double_quant=True,
 			)
 		else:
-			raise ValueError(f"quantization_bits must be 4 or 8, got {quantization_bits}")
+			raise ValueError(f"quantization_bits must be 4, 8, or None, got {quantization_bits}")
 		
 		if verbose:
-			print(f"[INFO] {model_id} Quantization enabled")
-			print(f"\t• Bits                : {quantization_bits}")
-			print(f"\t• Config object type  : {type(quantization_config).__name__}")
+			print(f"[INFO] {model_id} Quantization enabled: {quantization_bits}-bit")
 	
 	# ========== Processor loading ==========
 	processor = tfs.AutoProcessor.from_pretrained(
@@ -245,55 +235,53 @@ def _load_vlm_(
 		raise ValueError("Unable to locate tokenizer in processor")
 	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
 		tokenizer.padding_side = "left"
-	
-	# def get_estimated_gb_size(m_id: str) -> float:
-	# 	info = huggingface_hub.model_info(m_id, token=hf_tk)
-	# 	try:
-	# 		if hasattr(info, "safetensors") and info.safetensors:
-	# 			total_bytes = info.safetensors.total
-	# 			if total_bytes > 0:
-	# 				size_gb = total_bytes / (1024 ** 3)
-	# 				return size_gb
-	# 	except Exception as e:
-	# 		print(f"<!> Failed to estimate model size from safetensors: {e}")
-	# 		raise e
 
+	def get_estimated_gb_size(model_id: str) -> float:
+		try:
+			info = huggingface_hub.model_info(model_id, token=hf_tk, files_metadata=True)
+		except Exception as e:
+			raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
 
-	def _model_info_to_dict(info):
-			"""Version‑agnostic conversion of ModelInfo → plain dict."""
-			if hasattr(info, "model_dump"):
-					return info.model_dump()
-			if hasattr(info, "dict"):
-					return info.dict()
-			if hasattr(info, "to_dict"):
-					return info.to_dict()
-			# Fallback – public attributes only
-			return {k: v for k, v in vars(info).items() if not k.startswith("_")}
-
-	def get_estimated_gb_size(m_id: str) -> float:
-		info = huggingface_hub.model_info(m_id, token=hf_tk, files_metadata=True)
 		print(type(info))
 		print(info)
-		# Method 1: safetensors metadata (some models have this)
-		if hasattr(info, "safetensors") and info.safetensors:
-			print(f"[INFO] {m_id} has safetensors metadata")
-			total_bytes = getattr(info.safetensors, "total", None)
-			if total_bytes and total_bytes > 0:
-				return total_bytes / (1024 ** 3)
-		
-		# Method 2: sum individual weight file sizes
+
+		disk_bytes = 0
+		param_count = None
+
+		# 1. Sum actual file sizes (most reliable when available)
 		if info.siblings:
-			print(f"[INFO] {m_id} has {len(info.siblings)} siblings")
-			total_bytes = sum(
-				s.size for s in info.siblings
-				if s.size is not None and (
-					s.rfilename.endswith(".safetensors") or
-					s.rfilename.endswith(".bin")
-				)
-			)
-			if total_bytes > 0:
-				return total_bytes / (1024 ** 3)
-		raise ValueError(f"Could not estimate size for {m_id}")
+			for s in info.siblings:
+				if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin")):
+					disk_bytes += s.size
+
+		# 2. Try safetensors metadata (parameter count)
+		if hasattr(info, "safetensors") and info.safetensors:
+			safet = info.safetensors
+			if isinstance(safet, dict):
+				param_count = safet.get("total")
+			elif hasattr(safet, "total"):
+				param_count = safet.total
+
+		# 3. Choose best source and apply realistic multiplier
+		if disk_bytes > 0:
+			print(f"disk_bytes: {disk_bytes}")
+			# Disk size already in target dtype → small overhead (1%) (alignment, buffers)
+			est_gb = (disk_bytes * 1.01) / (1024 ** 3)
+
+			return est_gb
+
+		if param_count:
+			print(f"param_count: {param_count}")
+			# fp16/bf16 = 2 bytes/param + 18–25% overhead
+			est_bytes = param_count * 2.0 * 1.22
+			est_gb = est_bytes / (1024 ** 3)
+
+			return est_gb
+
+		raise ValueError(
+			f"No usable size info for {model_id}. "
+			"No file sizes, parameter count, or safetensors metadata available."
+		)
 
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	
@@ -316,27 +304,22 @@ def _load_vlm_(
 			total_vram_available += vram_gb
 		
 		# ADAPTIVE BUFFER: Scale based on GPU size
-		# Small GPUs (<10GB): 0.7GB buffer
-		# Medium GPUs (10-20GB): 2GB buffer
-		# Large GPUs (>20GB): 4GB buffer
-		if gpu_vram[0] < 10:
-			vram_buffer_gb = 0.7
-		elif gpu_vram[0] < 20:
-			vram_buffer_gb = 2.0
-		else:
-			vram_buffer_gb = 4.0
+		if gpu_vram[0] < 10: vram_buffer_gb = 0.7
+		elif gpu_vram[0] < 20: vram_buffer_gb = 2.0
+		else: vram_buffer_gb = 3.5
+
 		if verbose:
 			print(f"[INFO] VRAM buffer: {vram_buffer_gb:.2f} GB")
 
 		# For quantization, reduce buffer further
-		if use_quantization:
+		if quantization_bits is not None:
 			vram_buffer_gb = max(0.5, vram_buffer_gb * 0.5)
 			if verbose:
 				print(f"[INFO] Quantization enabled - reducing VRAM buffer to {vram_buffer_gb:.1f} GB")
 				
 		# Adjust estimated size for quantization
 		adjusted_size = estimated_size_gb
-		if use_quantization:
+		if quantization_bits is not None:
 			if quantization_bits == 8:
 				adjusted_size = estimated_size_gb * 0.5
 			elif quantization_bits == 4:
@@ -348,15 +331,15 @@ def _load_vlm_(
 		# ========== PRE-FLIGHT VRAM VALIDATION ==========
 		# Account for overhead: model weights + activations + gradients + overhead
 		# Rule of thumb: need X.Xx model size for inference (2x for training)
-		INFERENCE_OVERHEAD_MULTIPLIER = 1.5
+		INFERENCE_OVERHEAD_MULTIPLIER = 1.2
 		required_vram = adjusted_size * INFERENCE_OVERHEAD_MULTIPLIER
 		usable_vram = total_vram_available - (n_gpus * vram_buffer_gb)
 
 		if verbose:
 			print(f"\n[VRAM CHECK] Pre-flight validation:")
-			print(f"\t• Estimated Model size (fp16): {adjusted_size:.1f} GB (with {INFERENCE_OVERHEAD_MULTIPLIER}x overhead): {required_vram:.1f} GB")
-			print(f"\t• Available VRAM (total):      {total_vram_available:.1f} GB")
-			print(f"\t• Available VRAM (usable):     {usable_vram:.1f} GB ({n_gpus}x GPU(s), {vram_buffer_gb:.1f} GB buffer per GPU)")
+			print(f"\t• Estimated Model size (fp16): {adjusted_size:.2f} GB (with {INFERENCE_OVERHEAD_MULTIPLIER}x overhead): {required_vram:.2f} GB")
+			print(f"\t• Available VRAM (total):      {total_vram_available:.2f} GB")
+			print(f"\t• Available VRAM (usable):     {usable_vram:.2f} GB ({n_gpus}x GPU(s), {vram_buffer_gb:.2f} GB buffer per GPU)")
 
 		# Check if model will fit
 		if required_vram > usable_vram:
@@ -372,7 +355,7 @@ def _load_vlm_(
 			
 			if not use_quantization:
 				print("\n1. ✅ ENABLE QUANTIZATION (Recommended):")
-				print("   use_quantization=True, quantization_bits=8")
+				print("   quantization_bits=8")
 				quant8_size = estimated_size_gb * 0.5
 				quant8_required = quant8_size * INFERENCE_OVERHEAD_MULTIPLIER
 				quant8_fits = "✅ YES" if quant8_required < usable_vram else "❌ NO, try 4-bit"
@@ -381,7 +364,7 @@ def _load_vlm_(
 				print(f"   → Will fit: {quant8_fits}")
 				
 				print("\n2. ⚠️  ENABLE 4-BIT QUANTIZATION (More aggressive):")
-				print("   use_quantization=True, quantization_bits=4")
+				print("   quantization_bits=4")
 				quant4_size = estimated_size_gb * 0.25
 				quant4_required = quant4_size * INFERENCE_OVERHEAD_MULTIPLIER
 				print(f"   → Reduces size to ~{quant4_size:.1f} GB")
@@ -416,11 +399,12 @@ def _load_vlm_(
 
 		# Decision: Single GPU vs Multi GPU
 		single_gpu_capacity = gpu_vram[0] - vram_buffer_gb
-		if verbose:
-			print(f"\t• Single GPU capacity: {single_gpu_capacity:.1f} GB (GPU VRAM: {gpu_vram[0]:.1f} GB - {vram_buffer_gb:.1f} GB buffer)")
 		is_large_model = adjusted_size >= 20
+
 		if verbose:
-			print(f"\t• is {model_id} Large? ({adjusted_size:.1f} > 20GB) : {is_large_model}")
+			print(f"\t• Single GPU capacity: {single_gpu_capacity:.2f} GB (GPU VRAM: {gpu_vram[0]:.2f} GB - {vram_buffer_gb:.2f} GB buffer)")
+			print(f"\t• is {model_id} Large? (adjusted_size: {adjusted_size:.2f} > 20GB) : {is_large_model}")
+
 		use_single_gpu = (
 			not force_multi_gpu and
 			not is_large_model and  # Don't use single GPU for large models
@@ -440,7 +424,7 @@ def _load_vlm_(
 				else:
 					buffer = vram_buffer_gb if i == 0 else 2
 				
-				if use_quantization:
+				if quantization_bits is not None:
 					buffer = buffer * 0.5
 				
 				max_memory[i] = f"{max(1, gpu_vram[i] - buffer):.0f}GB"
@@ -451,7 +435,7 @@ def _load_vlm_(
 			if verbose:
 				print(f"[INFO] Using multi-GPU strategy:")
 				print(f"• Estimated model size: {estimated_size_gb:.1f} GB (fp16)")
-				if use_quantization:
+				if quantization_bits is not None:
 					print(f"• Adjusted for quantization: {adjusted_size:.1f} GB")
 				print(f"• Single GPU capacity: {single_gpu_capacity:.1f} GB")
 				print(f"• Total VRAM: {total_vram_available:.1f} GB")
@@ -473,10 +457,10 @@ def _load_vlm_(
 		"trust_remote_code": True,
 		"cache_dir": cache_directory[USER],
 		"attn_implementation": attn_impl,
-		"dtype": dtype,
+		"torch_dtype": dtype,  # <-- use torch_dtype (not "dtype")
 	}
 	
-	if use_quantization:
+	if quantization_bits is not None:
 		base_model_kwargs["quantization_config"] = quantization_config
 	
 	# ========== Load Model ==========
@@ -518,7 +502,7 @@ def _load_vlm_(
 		
 		print(f"   • Total parameters: {total_params:,}")
 		print(f"   • Actual model size (fp16): {approx_fp16_gb:.2f} GB")
-		if use_quantization:
+		if quantization_bits is not None:
 			if quantization_bits == 8:
 				print(f"   • Actual model size (int8): {approx_fp8_gb:.2f} GB")
 			elif quantization_bits == 4:
@@ -578,6 +562,18 @@ def _load_vlm_(
 		print(f"{'='*110}\n")
 
 	return processor, model
+
+def verify(p: str):
+	if p is None or not os.path.exists(p):
+		return None
+	try:
+		with open(p, 'rb') as f:
+			header = f.read(3)
+			if header == b'\xff\xd8\xff':  # Valid JPEG SOI marker
+				return p
+		return None
+	except Exception:
+		return None
 
 def prepare_prompts_and_images(
 		unique_inputs, 
@@ -732,6 +728,7 @@ def get_vlm_based_labels_single(
 	max_kws: int,
 	img_resized_shape: int = 512,
 	use_quantization: bool = False,
+	quantization_bits: Optional[int]=None,
 	verbose: bool = False,
 ):
 
@@ -793,7 +790,8 @@ def get_vlm_based_labels_single(
 	# load model and processor
 	processor, model = _load_vlm_(
 		model_id=model_id, 
-		use_quantization=use_quantization,
+		# use_quantization=use_quantization,
+		quantization_bits=quantization_bits,
 		verbose=verbose
 	)
 
@@ -885,6 +883,7 @@ def get_vlm_based_labels_debug(
 		do_dedup: bool = True,
 		max_retries: int = 2,
 		use_quantization: bool = False,
+		quantization_bits: Optional[int]=None,
 		verbose: bool = False,
 	) -> List[Optional[List[str]]]:
 
@@ -935,7 +934,8 @@ def get_vlm_based_labels_debug(
 	model_start = time.time()
 	processor, model = _load_vlm_(
 		model_id=model_id, 
-		use_quantization=use_quantization,
+		# use_quantization=use_quantization,
+		quantization_bits=quantization_bits,
 		verbose=verbose
 	)
 	if verbose:
@@ -1189,6 +1189,7 @@ def get_vlm_based_labels(
 	mem_cleanup_th: int=95,
 	do_dedup: bool=True,
 	use_quantization: bool=False,
+	quantization_bits: Optional[int]=None,
 	verbose: bool=False,
 ):
 	t0 = time.time()
@@ -1266,7 +1267,7 @@ def get_vlm_based_labels(
 	# ========== Load model ==========
 	processor, model = _load_vlm_(
 		model_id=model_id,
-		use_quantization=use_quantization,
+		quantization_bits=quantization_bits,
 		verbose=verbose,
 	)
 	# ========== Prepare generation kwargs ==========
@@ -1523,7 +1524,7 @@ def main():
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Batch size for processing")
-	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
+	parser.add_argument("--quantization_bits", '-qb', type=int, default=None, help="Quantization bits")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
 
@@ -1540,7 +1541,7 @@ def main():
 			max_kws=args.max_keywords,
 			img_resized_shape=1024,
 			max_generated_tks=args.max_generated_tks,
-			use_quantization=args.use_quantization,
+			quantization_bits=args.quantization_bits,
 			verbose=args.verbose,
 		)
 	elif args.debug:
@@ -1551,7 +1552,7 @@ def main():
 			csv_file=args.csv_file,
 			max_kws=args.max_keywords,
 			max_generated_tks=args.max_generated_tks,
-			use_quantization=args.use_quantization,
+			quantization_bits=args.quantization_bits,
 			verbose=args.verbose,
 		)
 	else:
@@ -1563,7 +1564,7 @@ def main():
 			batch_size=args.batch_size,
 			max_kws=args.max_keywords,
 			max_generated_tks=args.max_generated_tks,
-			use_quantization=args.use_quantization,
+			quantization_bits=args.quantization_bits,
 			verbose=args.verbose,
 		)
 

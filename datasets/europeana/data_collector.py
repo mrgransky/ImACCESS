@@ -185,6 +185,7 @@ def get_data(europeana_api_key: str, start_date: str, end_date: str, hits_dir: s
 				break
 		if len(label_all_hits) == 0:
 			return
+
 		save_pickle(pkl=label_all_hits, fname=label_all_hits_fpth)
 
 	print(f"Total hit(s): {len(label_all_hits)} {type(label_all_hits)} for query: « {label} » found in {time.time()-t0:.2f} sec")
@@ -316,6 +317,8 @@ def get_dframe(
 				continue
 
 			if is_english(text=description_doc, confidence_threshold=0.03, verbose=verbose):
+				description_doc = re.sub(r'\s+', ' ', description_doc)
+				description_doc = description_doc.strip()
 				description_en = description_doc
 			else:
 				description_en = None

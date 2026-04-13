@@ -780,7 +780,7 @@ def is_english(
 			True if text is detected as English with confidence above threshold
 	"""
 	if not text or not str(text).strip():
-			return False
+		return False
 	
 	# Select detector based on use_shortlist flag
 	detector = detector_shortlist if use_shortlist else detector_all
@@ -1192,28 +1192,28 @@ def get_enriched_description(
 	
 	# Filter out samples with text < min_length
 	df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
-		lambda x: x if x and len(x.strip()) >= min_length else None
+		lambda x: x if isinstance(x, str) and x.strip() and len(x.strip()) >= min_length else None
 	)
 
 	# Ensure proper ending
 	df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
-		lambda x: x.rstrip('.') + '.' if x and not x.endswith('.') else x
+		lambda x: x.rstrip('.') + '.' if x and isinstance(x, str) and not x.endswith('.') else x
 	)
 
 	# length = 0 => None
 	df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
-		lambda x: x if x and x.strip() and x.strip() != '.' else None
+		lambda x: x if x and isinstance(x, str) and x.strip() and x.strip() != '.' else None
 	)
 
 	# exclude texts that are not English:
 	if check_english:
 		df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
-			lambda x: x if is_english(text=x, confidence_threshold=0.01, use_shortlist=True, verbose=verbose) else None
+			lambda x: x if isinstance(x, str) and is_english(text=x, confidence_threshold=0.01, use_shortlist=True, verbose=verbose) else None
 		)
 
-	# Filter out samples with text < min_length
+	# Filter out samples with text < min_length (final check)
 	df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
-		lambda x: x if x and len(x.strip()) >= min_length else None
+		lambda x: x if isinstance(x, str) and x.strip() and len(x.strip()) >= min_length else None
 	)
 		
 	if verbose:

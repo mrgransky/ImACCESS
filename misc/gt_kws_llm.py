@@ -426,8 +426,8 @@ def _load_llm_(
 				
 		# ADAPTIVE BUFFER
 		if gpu_vram[0] < 10: vram_buffer_gb = 0.7
-		elif gpu_vram[0] < 20: vram_buffer_gb = 1.5
-		else: vram_buffer_gb = 2.5
+		elif gpu_vram[0] < 20: vram_buffer_gb = 2.0
+		else: vram_buffer_gb = 3.5
 
 		# Reduce buffer if quantization is used
 		if quantization_bits is not None:
@@ -953,7 +953,6 @@ def get_llm_based_labels_debug(
 	max_kws: int,
 	csv_file: str=None,
 	description: str=None,
-	use_quantization: bool=False,
 	quantization_bits: Optional[int]=None,
 	verbose: bool = False,
 ) -> List[List[str]]:
@@ -986,7 +985,6 @@ def get_llm_based_labels_debug(
 
 	tokenizer, model = _load_llm_(
 		model_id=model_id,
-		# use_quantization=use_quantization,
 		quantization_bits=quantization_bits,
 		verbose=verbose
 	)
@@ -1038,7 +1036,6 @@ def get_llm_based_labels(
 	mem_cleanup_th: int=95,
 	do_dedup: bool = True,
 	max_retries: int = 2,
-	use_quantization: bool = False,
 	quantization_bits: Optional[int]=None,
 	verbose: bool = False,
 ) -> List[Optional[List[str]]]:
@@ -1101,7 +1098,6 @@ def get_llm_based_labels(
 	# Load tokenizer and model
 	tokenizer, model = _load_llm_(
 		model_id=model_id,
-		# use_quantization=use_quantization,
 		quantization_bits=quantization_bits,
 		verbose=verbose,
 	)
@@ -1413,7 +1409,6 @@ def main():
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing (adjust based on GPU memory)")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=128, help="Max number of generated tokens")
-	# parser.add_argument("--use_quantization", '-q', action='store_true', help="whether/not to use quantization")
 	parser.add_argument("--quantization_bits", '-qb', type=int, default=None, help="Quantization bits")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
@@ -1436,7 +1431,6 @@ def main():
 			max_kws=args.max_keywords,
 			csv_file=args.csv_file,
 			description=args.description,
-			# use_quantization=args.use_quantization,
 			quantization_bits=args.quantization_bits,
 			verbose=args.verbose,
 		)
@@ -1449,7 +1443,6 @@ def main():
 			max_kws=args.max_keywords,
 			csv_file=args.csv_file,
 			num_workers=args.num_workers,
-			# use_quantization=args.use_quantization,
 			quantization_bits=args.quantization_bits,
 			verbose=args.verbose,
 		)

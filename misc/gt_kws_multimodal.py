@@ -21,9 +21,9 @@ from clustering import get_canonical_labels
 # Qwen/Qwen3-VL-8B-Instruct # only fits Puhti and Mahti
 
 # how to run [local] interactive:
-# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -vlm_bs 4 -llm_bs 2 -llm_q -vlm_mgt 32 -nw 12 -v
+# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -vlm_bs 4 -llm_bs 2 -llm_qb 8 -nw 12 -v
 # with nohup:
-# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_q -vlm_bs 2 -llm_bs 2 -nw 12 -v > logs/multimodal_annotation_smu.txt & 
+# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -llm_qb 8 -llm_bs 2 -vlm "Qwen/Qwen3-VL-2B-Instruct" -vlm_bs 2 -nw 12 -v > logs/multimodal_annotation_smu.txt & 
 # one chunk:
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_0.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_q -vlm_q -vlm_bs 2 -llm_bs 2 -nw 8 -v > logs/multimodal_annotation_chunk_0.txt & 
 
@@ -98,8 +98,10 @@ def get_multimodal_annotation(
 	device: str,
 	batch_size: int,
 	num_workers: int,
-	use_llm_quantization: bool = False,
-	use_vlm_quantization: bool = False,
+	# use_llm_quantization: bool = False,
+	# use_vlm_quantization: bool = False,
+	llm_quantization_bits: Optional[int] = None,
+	vlm_quantization_bits: Optional[int] = None,
 	nc: int = None,
 	verbose: bool = False,
 ):
@@ -118,7 +120,8 @@ def get_multimodal_annotation(
 		batch_size=vlm_batch_size,
 		max_kws=max_keywords,
 		max_generated_tks=vlm_max_generated_tks,
-		use_quantization=use_vlm_quantization,
+		# use_quantization=use_vlm_quantization,
+		quantization_bits=vlm_quantization_bits,
 		verbose=verbose,
 	)
 	if verbose:
@@ -138,7 +141,8 @@ def get_multimodal_annotation(
 		max_generated_tks=llm_max_generated_tks,
 		max_kws=max_keywords,
 		num_workers=num_workers,
-		use_quantization=use_llm_quantization,
+		# use_quantization=use_llm_quantization,
+		quantization_bits=llm_quantization_bits,
 		verbose=verbose,
 	)
 	if verbose:
@@ -364,11 +368,13 @@ def main():
 	parser.add_argument("--llm_model_id", '-llm', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace Text-Language model ID")
 	parser.add_argument("--llm_batch_size", '-llm_bs', type=int, default=2, help="Batch size for textual processing using LLM (adjust based on GPU memory)")
 	parser.add_argument("--llm_max_generated_tks", '-llm_mgt', type=int, default=128, help="Max number of generated tokens using LLM")
-	parser.add_argument("--llm_use_quantization", '-llm_q', action='store_true', help="Use quantization for LLM")
+	# parser.add_argument("--llm_use_quantization", '-llm_q', action='store_true', help="Use quantization for LLM")
+	parser.add_argument("--llm_quantization_bits", '-llm_qb', type=int, default=None, help="LLM Quantization bits")
 	parser.add_argument("--vlm_model_id", '-vlm', type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace Vision-Language model ID")
 	parser.add_argument("--vlm_max_generated_tks", '-vlm_mgt', type=int, default=64, help="Max number of generated tokens using VLM")
 	parser.add_argument("--vlm_batch_size", '-vlm_bs', type=int, default=2, help="Batch size for visual processing using VLM (adjust based on GPU memory)")
-	parser.add_argument("--vlm_use_quantization", '-vlm_q', action='store_true', help="Use quantization for VLM")
+	# parser.add_argument("--vlm_use_quantization", '-vlm_q', action='store_true', help="Use quantization for VLM")
+	parser.add_argument("--vlm_quantization_bits", '-vlm_qb', type=int, default=None, help="LLM Quantization bits")
 	parser.add_argument("--embedding_model_id", '-emb_id', type=str, default="Qwen/Qwen3-Embedding-0.6B", help="HuggingFace Embedding model ID")
 	# parser.add_argument("--embedding_model_id", '-emb_id', type=str, default="Octen/Octen-Embedding-0.6B", help="HuggingFace Embedding model ID")
 
@@ -396,8 +402,10 @@ def main():
 		vlm_max_generated_tks=args.vlm_max_generated_tks,
 		max_keywords=args.max_keywords,
 		embedding_model_id=args.embedding_model_id,
-		use_llm_quantization=args.llm_use_quantization,
-		use_vlm_quantization=args.vlm_use_quantization,
+		# use_llm_quantization=args.llm_use_quantization,
+		# use_vlm_quantization=args.vlm_use_quantization,
+		llm_quantization_bits=args.llm_quantization_bits,
+		vlm_quantization_bits=args.vlm_quantization_bits,
 		nc=args.num_clusters,
 		verbose=args.verbose,
 	)
