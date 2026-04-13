@@ -104,6 +104,7 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 		- "Marine Corps" instead of "U.S. Marine Corps"
 		- "Red Cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
 		- "animal" instead of "man riding a camel in the desert"
+		- "reservoir" instead of "Fort Loudoun Reservoir"
  	* **Reusable**: likely to recur across many captions in a large archive.
 
 - **STRICTLY EXCLUDE** KEYWORDS which are:

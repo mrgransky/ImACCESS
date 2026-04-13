@@ -219,6 +219,7 @@ def _post_process_(
 		"miss",
 		"dr",
 		"dr.",
+		"d.r.",
 		"prof",
 		"sir",
 		"shah",
@@ -549,11 +550,6 @@ def _post_process_(
 					print(f"        → Empty/false, skipping")
 				continue
 			
-			# if str(item).isupper():
-			# 	if verbose:
-			# 		print(f"        → All uppercase detected, skipping")
-			# 	continue
-
 			# Capture the raw string
 			original = str(item).strip()
 
@@ -760,8 +756,7 @@ def _post_process_(
 				print(f"  Final output for sample {idx+1}: None (all items filtered)")
 				print(f"  Items: {len(current_items)} → 0 (removed {len(current_items)})")
 			else:
-				print(f"  Final output for sample {idx+1}: {type(result)} {len(result)}: {result}")
-				print(f"  Items: {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
+				print(f"[FINAL] {type(result)} {len(result)}: {result} {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
 		
 	return processed_batch
 
