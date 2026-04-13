@@ -207,22 +207,24 @@ def _load_llm_(
 			Tuple of (tokenizer, model)
 	"""
 	if verbose:
-			print(f"\n{'='*110}")
-			print(f"[MODEL] Loading {model_id} on cache_dir: {cache_directory.get(USER)}")
+		print(f"\n{'='*110}")
+		print(f"[MODEL] Loading {model_id} on cache_dir: {cache_directory.get(USER)}")
+	
 	# ========== Version and CUDA info ==========
 	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
 	if verbose:
-			print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
-			print(f"[INFO] CUDA available?        : {torch.cuda.is_available()} {n_gpus} GPU(s) available: {[torch.cuda.get_device_name(i) for i in range(n_gpus)]}")
-			if torch.cuda.is_available():
-					cur = torch.cuda.current_device()
-					major, minor = torch.cuda.get_device_capability(cur)
-					print(f"[INFO] Compute capability     : {major}.{minor}")
-					print(f"[INFO] BF16 support?          : {torch.cuda.is_bf16_supported()}")
-					print(f"[INFO] CUDA memory allocated  : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-					print(f"[INFO] CUDA memory reserved   : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
-			else:
-					print("[INFO] Running on CPU only")
+		print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
+		print(f"[INFO] CUDA available?        : {torch.cuda.is_available()} {n_gpus} GPU(s) available: {[torch.cuda.get_device_name(i) for i in range(n_gpus)]}")
+		if torch.cuda.is_available():
+			cur = torch.cuda.current_device()
+			major, minor = torch.cuda.get_device_capability(cur)
+			print(f"[INFO] Compute capability     : {major}.{minor}")
+			print(f"[INFO] BF16 support?          : {torch.cuda.is_bf16_supported()}")
+			print(f"[INFO] CUDA memory allocated  : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+			print(f"[INFO] CUDA memory reserved   : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
+		else:
+			print("[INFO] Running on CPU only")
+
 	# ========== HuggingFace login ==========
 	try:
 		if verbose:
@@ -345,105 +347,138 @@ def _load_llm_(
 	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
 		tokenizer.padding_side = "left"
 	
+
 	def get_estimated_gb_size(model_id: str) -> float:
 		try:
 			info = huggingface_hub.model_info(model_id, token=hf_tk, files_metadata=True)
 		except Exception as e:
 			raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
-		
+
 		print(type(info))
 		print(info)
 
 		disk_bytes = 0
 		param_count = None
-		if info.siblings:
-				for s in info.siblings:
-						if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin")):
-								disk_bytes += s.size
-		if hasattr(info, "safetensors") and info.safetensors:
-				safet = info.safetensors
-				param_count = safet.get("total") if isinstance(safet, dict) else getattr(safet, "total", None)
-		if disk_bytes > 0:
-				return (disk_bytes * 1.01) / (1024 ** 3)
-		if param_count:
-				return (param_count * 2.0 * 1.22) / (1024 ** 3)
 
-		raise ValueError(f"No usable size info for {model_id}.")
-	
+		# 1. Sum actual file sizes (most reliable when available)
+		if info.siblings:
+			for s in info.siblings:
+				if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin")):
+					disk_bytes += s.size
+
+		# 2. Try safetensors metadata (parameter count)
+		if hasattr(info, "safetensors") and info.safetensors:
+			safet = info.safetensors
+			if isinstance(safet, dict):
+				param_count = safet.get("total")
+			elif hasattr(safet, "total"):
+				param_count = safet.total
+
+		# 3. Choose best source and apply realistic multiplier
+		if disk_bytes > 0:
+			print(f"disk_bytes: {disk_bytes}")
+			# Disk size already in target dtype → small overhead (1%) (alignment, buffers)
+			est_gb = (disk_bytes * 1.01) / (1024 ** 3)
+
+			return est_gb
+
+		if param_count:
+			print(f"param_count: {param_count}")
+			# fp16/bf16 = 2 bytes/param + 18–25% overhead
+			est_bytes = param_count * 2.0 * 1.22
+			est_gb = est_bytes / (1024 ** 3)
+
+			return est_gb
+
+		raise ValueError(
+			f"No usable size info for {model_id}. "
+			"No file sizes, parameter count, or safetensors metadata available."
+		)
+
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	
 	if verbose:
 		print(f"\n[INFO] {model_id} Estimated size: {estimated_size_gb:.2f} GB (fp16)")
 	
-	max_memory = {}
 	if n_gpus > 0:
-			total_vram_available = 0
-			gpu_vram = []
-			for i in range(n_gpus):
-					props = torch.cuda.get_device_properties(i)
-					vram_gb = props.total_memory / (1024**3)
-					gpu_vram.append(vram_gb)
-					total_vram_available += vram_gb
-					
-			# ADAPTIVE BUFFER
-			if gpu_vram[0] < 10: vram_buffer_gb = 0.7
-			elif gpu_vram[0] < 20: vram_buffer_gb = 2.0
-			else: vram_buffer_gb = 4.0
-			# Reduce buffer if quantization is used
-			if quantization_bits is not None:
-					vram_buffer_gb = max(0.5, vram_buffer_gb * 0.5)
-							
-			# Adjust estimated size for quantization
-			adjusted_size = estimated_size_gb
-			if quantization_bits == 8:
-					adjusted_size = estimated_size_gb * 0.5
-			elif quantization_bits == 4:
-					adjusted_size = estimated_size_gb * 0.25
-			
-			# ========== PRE-FLIGHT VRAM VALIDATION ==========
-			INFERENCE_OVERHEAD_MULTIPLIER = 1.3
-			required_vram = adjusted_size * INFERENCE_OVERHEAD_MULTIPLIER
-			usable_vram = total_vram_available - (n_gpus * vram_buffer_gb)
-			if required_vram > usable_vram:
-					print("\n" + "="*80 + "\n❌ INSUFFICIENT VRAM ERROR\n" + "="*80)
-					print(f"Model: {model_id}\nRequired: {required_vram:.1f} GB | Available: {usable_vram:.1f} GB")
-					if quantization_bits is None:
-							print("\nSOLUTIONS: Try setting quantization_bits=8 or quantization_bits=4")
-					elif quantization_bits == 8:
-							print("\nSOLUTIONS: Try setting quantization_bits=4")
-					else:
-							print("\nSOLUTIONS: Use a larger GPU or a smaller model.")
-					raise RuntimeError(f"Insufficient VRAM. Required {required_vram:.2f} GB, found {usable_vram:.2f} GB.")
-			# Decision: Single GPU vs Multi GPU
-			single_gpu_capacity = gpu_vram[0] - vram_buffer_gb
-			is_large_model = adjusted_size >= 20
-			use_single_gpu = (
-					not force_multi_gpu and 
-					not is_large_model and 
-					adjusted_size < single_gpu_capacity * 0.8 and 
-					(n_gpus == 1 or adjusted_size < 20)
-			)
-			
-			if use_single_gpu:
-					max_memory[0] = f"{max(1, single_gpu_capacity):.0f}GB"
-					strategy_desc = f"Single GPU (GPU 0, limit: {max_memory[0]})"
+		total_vram_available = 0
+		gpu_vram = []
+		for i in range(n_gpus):
+			props = torch.cuda.get_device_properties(i)
+			vram_gb = props.total_memory / (1024**3)
+			gpu_vram.append(vram_gb)
+			total_vram_available += vram_gb
+				
+		# ADAPTIVE BUFFER
+		if gpu_vram[0] < 10: vram_buffer_gb = 0.7
+		elif gpu_vram[0] < 20: vram_buffer_gb = 2.0
+		else: vram_buffer_gb = 4.0
+		# Reduce buffer if quantization is used
+		if quantization_bits is not None:
+			vram_buffer_gb = max(0.5, vram_buffer_gb * 0.5)
+
+		# Adjust estimated size for quantization
+		adjusted_size = estimated_size_gb
+		if quantization_bits == 8:
+			adjusted_size = estimated_size_gb * 0.5
+		elif quantization_bits == 4:
+			adjusted_size = estimated_size_gb * 0.25
+		
+		# ========== PRE-FLIGHT VRAM VALIDATION ==========
+		INFERENCE_OVERHEAD_MULTIPLIER = 1.3
+		required_vram = adjusted_size * INFERENCE_OVERHEAD_MULTIPLIER
+		usable_vram = total_vram_available - (n_gpus * vram_buffer_gb)
+
+		if verbose:
+			print(f"\n[VRAM CHECK] Pre-flight validation:")
+			print(f"\t• Estimated Model size (fp16): {adjusted_size:.2f} GB (with {INFERENCE_OVERHEAD_MULTIPLIER}x overhead): {required_vram:.2f} GB")
+			print(f"\t• Available VRAM (total):      {total_vram_available:.1f} GB")
+			print(f"\t• Available VRAM (usable):     {usable_vram:.1f} GB ({n_gpus}x GPU(s), {vram_buffer_gb:.1f} GB buffer per GPU)")
+
+		if required_vram > usable_vram:
+			print("\n" + "="*80 + "\n❌ INSUFFICIENT VRAM ERROR\n" + "="*80)
+			print(f"Model: {model_id}\nRequired: {required_vram:.1f} GB | Available: {usable_vram:.1f} GB")
+			if quantization_bits is None:
+				print("\nSOLUTIONS: Try setting quantization_bits=8 or quantization_bits=4")
+			elif quantization_bits == 8:
+				print("\nSOLUTIONS: Try setting quantization_bits=4")
 			else:
-					for i in range(n_gpus):
-							buffer = vram_buffer_gb if i == 0 else (0.5 if gpu_vram[i] < 10 else 2.0)
-							if quantization_bits is not None: buffer *= 0.5
-							max_memory[i] = f"{max(1, gpu_vram[i] - buffer):.0f}GB"
-					strategy_desc = f"Multi-GPU [Model Parallelism] ({n_gpus} GPUs)"
+				print("\nSOLUTIONS: Use a larger GPU or a smaller model.")
+			
+			raise RuntimeError(f"Insufficient VRAM. Required {required_vram:.2f} GB, found {usable_vram:.2f} GB.")
+		
+		# Decision: Single GPU vs Multi GPU
+		single_gpu_capacity = gpu_vram[0] - vram_buffer_gb
+		is_large_model = adjusted_size >= 20
+		use_single_gpu = (
+			not force_multi_gpu and 
+			not is_large_model and 
+			adjusted_size < single_gpu_capacity * 0.8 and 
+			(n_gpus == 1 or adjusted_size < 20)
+		)
+		
+		max_memory = {}
+		if use_single_gpu:
+			max_memory[0] = f"{max(1, single_gpu_capacity):.0f}GB"
+			strategy_desc = f"Single GPU (GPU 0, limit: {max_memory[0]})"
+		else:
+			for i in range(n_gpus):
+				buffer = vram_buffer_gb if i == 0 else (0.5 if gpu_vram[i] < 10 else 2.0)
+				if quantization_bits is not None: buffer *= 0.5
+				max_memory[i] = f"{max(1, gpu_vram[i] - buffer):.0f}GB"
+			strategy_desc = f"Multi-GPU [Model Parallelism] ({n_gpus} GPUs)"
 	else:
-			strategy_desc = "CPU (no GPUs)"
+		strategy_desc = "CPU (no GPUs)"
 	
 	if verbose: print(f"\n[INFO] Strategy: {strategy_desc}")
+
 	# ========== Model loading kwargs ==========
 	model_kwargs: Dict[str, Any] = {
-			"low_cpu_mem_usage": True,
-			"trust_remote_code": True,
-			"cache_dir": cache_directory[USER],
-			"attn_implementation": attn_impl,
-			"dtype": dtype,
+		"low_cpu_mem_usage": True,
+		"trust_remote_code": True,
+		"cache_dir": cache_directory[USER],
+		"attn_implementation": attn_impl,
+		"dtype": dtype,
 	}
 	
 	if quantization_config:
@@ -750,9 +785,7 @@ def _load_llm_old(
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	if verbose:
 		print(f"\n[INFO] {model_id} Estimated size: {estimated_size_gb:.2f} GB (fp16)")
-	
-	max_memory = {}
-	
+		
 	if n_gpus > 0:
 		total_vram_available = 0
 		gpu_vram = []
@@ -777,6 +810,7 @@ def _load_llm_old(
 			vram_buffer_gb = 4.0
 		if verbose:
 			print(f"[INFO] VRAM buffer: {vram_buffer_gb:.2f} GB")
+
 
 		# For quantization, reduce buffer further
 		if use_quantization:
@@ -874,7 +908,8 @@ def _load_llm_old(
 			adjusted_size < single_gpu_capacity * 0.8 and
 			(n_gpus == 1 or adjusted_size < 20)
 		)
-		
+
+		max_memory = {}
 		if use_single_gpu:
 			max_memory[0] = f"{max(1, single_gpu_capacity):.0f}GB"
 			strategy_desc = f"Single GPU (GPU 0, limit: {max_memory[0]})"
@@ -1050,6 +1085,7 @@ def _load_llm_old(
 		print(f"{'='*110}\n")
 
 	return tokenizer, model
+
 
 def get_prompt(
 	tokenizer: tfs.PreTrainedTokenizer, 
