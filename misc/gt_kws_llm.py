@@ -208,7 +208,7 @@ def _load_llm_(
 	"""
 	if verbose:
 		print(f"\n{'='*110}")
-		print(f"[MODEL] Loading {model_id} on cache_dir: {cache_directory.get(USER)}")
+		print(f"[LOADING] {model_id} on cache_dir: {cache_directory.get(USER)}")
 	
 	# ========== Version and CUDA info ==========
 	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
@@ -405,6 +405,8 @@ def _load_llm_(
 		gpu_vram = []
 		for i in range(n_gpus):
 			props = torch.cuda.get_device_properties(i)
+			if verbose:
+				print(f"GPU {i}: {props}")
 			vram_gb = props.total_memory / (1024**3)
 			gpu_vram.append(vram_gb)
 			total_vram_available += vram_gb
@@ -482,32 +484,40 @@ def _load_llm_(
 	}
 	
 	if quantization_config:
-			model_kwargs["quantization_config"] = quantization_config
+		model_kwargs["quantization_config"] = quantization_config
 	
 	if n_gpus > 0:
-			model_kwargs["device_map"] = "auto"
-			model_kwargs["max_memory"] = max_memory
+		model_kwargs["device_map"] = "auto"
+		model_kwargs["max_memory"] = max_memory
+	
 	# ========== Load Model ==========
+	if verbose:
+		print(f"\n[MODEL] Loading {model_id}")
+		print(f"[MODEL] kwargs: {model_kwargs}")
+
 	try:
-			if use_auto_model:
-					model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
-			else:
-					model = model_cls.from_pretrained(model_id, **model_kwargs)
+		if use_auto_model:
+			model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+		else:
+			model = model_cls.from_pretrained(model_id, **model_kwargs)
 	except Exception as e:
-			if verbose: print(f"[ERROR] Error loading model: {e}")
-			raise e
+		if verbose: print(f"[ERROR] Error loading model: {e}")
+		raise e
+	
 	model.eval()
+	
 	# ========== Model Info & Verification ==========
 	if verbose:
-			print(f"\n[MODEL] {model_id} loading complete!")
-			if hasattr(model, "hf_device_map"):
-					dm = model.hf_device_map
-					disk_layers = [k for k, v in dm.items() if v == "disk"]
-					if disk_layers:
-							print(f"\n{'='*70}\n❌ CRITICAL WARNING: {len(disk_layers)} layers on DISK!\n{'='*70}")
-					elif not any(v == "cpu" for v in dm.values()):
-							print(f"\n✅ All layers on GPU - optimal performance!")
-			print(f"{'='*110}\n")
+		print(f"\n[MODEL] {model_id} loading complete!")
+		if hasattr(model, "hf_device_map"):
+			dm = model.hf_device_map
+			disk_layers = [k for k, v in dm.items() if v == "disk"]
+			if disk_layers:
+				print(f"\n{'='*70}\n❌ CRITICAL WARNING: {len(disk_layers)} layers on DISK!\n{'='*70}")
+			elif not any(v == "cpu" for v in dm.values()):
+				print(f"\n[OK] All layers on GPU - optimal performance!")
+		print(f"{'='*110}\n")
+	
 	return tokenizer, model
 
 def _load_llm_old(
