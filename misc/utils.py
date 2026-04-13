@@ -52,10 +52,13 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 
 warnings.filterwarnings('ignore')
 
-from skimage.filters.rank import entropy
-from skimage.morphology import disk
-from skimage.measure import shannon_entropy
-from skimage.transform import resize
+# from skimage.filters.rank import entropy
+# from skimage.morphology import disk
+# from skimage.measure import shannon_entropy
+# from skimage.transform import resize
+# from bs4 import BeautifulSoup
+# from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
 from joblib import Parallel, delayed
 from scipy.sparse import csr_matrix
 
@@ -67,7 +70,6 @@ from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
 from sklearn.neighbors import NearestNeighbors
 
-from bs4 import BeautifulSoup
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, TimeoutError
 from requests.exceptions import RequestException
 import torchvision.transforms as T
@@ -77,7 +79,6 @@ from functools import cache, partial
 from skmultilearn.model_selection import iterative_train_test_split, IterativeStratification
 from tqdm import tqdm
 from datetime import timedelta
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from natsort import natsorted
 from requests.adapters import HTTPAdapter
