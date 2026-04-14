@@ -334,7 +334,7 @@ def _load_vlm_(
 			print(f"\nDeficit: {required_vram - usable_vram:.1f} GB SHORT")
 			print("\nSOLUTIONS:")
 			
-			if not use_quantization:
+			if not quantization_bits:
 				print("\n1. ✅ ENABLE QUANTIZATION (Recommended):")
 				print("   quantization_bits=8")
 				quant8_size = estimated_size_gb * 0.5
@@ -508,7 +508,7 @@ def _load_vlm_(
 				print(f"{'='*70}")
 				print(f"This will cause 100-1000x slowdown!")
 				print(f"\nSOLUTIONS:")
-				print(f"  1. Use quantization: use_quantization=True, quantization_bits=8")
+				print(f"  1. Use quantization: ex) quantization_bits=8")
 				print(f"  2. Force multi-GPU: force_multi_gpu=True")
 				print(f"  3. Use smaller model variant")
 				print(f"  4. Use 4-bit quantization for even more memory savings")
@@ -767,7 +767,6 @@ def get_vlm_based_labels_single(
 	# load model and processor
 	processor, model = _load_vlm_(
 		model_id=model_id, 
-		# use_quantization=use_quantization,
 		quantization_bits=quantization_bits,
 		verbose=verbose
 	)
@@ -854,7 +853,6 @@ def get_vlm_based_labels_single(
 
 def get_vlm_based_labels_debug(
 	model_id: str,
-	device: str,
 	num_workers: int,
 	max_generated_tks: int,
 	max_kws: int,
@@ -871,7 +869,6 @@ def get_vlm_based_labels_debug(
 		print(f"\n{'='*100}")
 		print(f"[INIT] VLM-based keyword generation [DEBUG MODE]")
 		print(f"[INIT] Model: {model_id}")
-		print(f"[INIT] Device: {device}")
 		print(f"[INIT] Num workers: {num_workers}")
 		print(f"{'='*100}\n")
 	st_t = time.time()
@@ -911,8 +908,7 @@ def get_vlm_based_labels_debug(
 
 	model_start = time.time()
 	processor, model = _load_vlm_(
-		model_id=model_id, 
-		# use_quantization=use_quantization,
+		model_id=model_id,
 		quantization_bits=quantization_bits,
 		verbose=verbose
 	)
@@ -1159,7 +1155,6 @@ def get_vlm_based_labels_debug(
 
 def get_vlm_based_labels(
 	model_id: str,
-	device: str,
 	batch_size: int,
 	num_workers: int,
 	max_generated_tks: int,
@@ -1167,7 +1162,6 @@ def get_vlm_based_labels(
 	csv_file: str,
 	mem_cleanup_th: int=95,
 	do_dedup: bool=True,
-	use_quantization: bool=False,
 	quantization_bits: Optional[int]=None,
 	verbose: bool=False,
 ):
@@ -1528,7 +1522,6 @@ def main():
 	elif args.debug:
 		keywords = get_vlm_based_labels_debug(
 			model_id=args.model_id,
-			device=args.device,
 			num_workers=args.num_workers,
 			csv_file=args.csv_file,
 			max_kws=args.max_keywords,
@@ -1539,7 +1532,6 @@ def main():
 	else:
 		keywords = get_vlm_based_labels(
 			model_id=args.model_id,
-			device=args.device,
 			csv_file=args.csv_file,
 			num_workers=args.num_workers,
 			batch_size=args.batch_size,

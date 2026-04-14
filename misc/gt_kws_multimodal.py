@@ -98,8 +98,6 @@ def get_multimodal_annotation(
 	device: str,
 	batch_size: int,
 	num_workers: int,
-	# use_llm_quantization: bool = False,
-	# use_vlm_quantization: bool = False,
 	llm_quantization_bits: Optional[int] = None,
 	vlm_quantization_bits: Optional[int] = None,
 	nc: int = None,
@@ -115,12 +113,10 @@ def get_multimodal_annotation(
 	vlm_based_labels = get_vlm_based_labels(
 		csv_file=csv_file,
 		model_id=vlm_model_id,
-		device=device,
 		num_workers=num_workers,
 		batch_size=vlm_batch_size,
 		max_kws=max_keywords,
 		max_generated_tks=vlm_max_generated_tks,
-		# use_quantization=use_vlm_quantization,
 		quantization_bits=vlm_quantization_bits,
 		verbose=verbose,
 	)
@@ -141,7 +137,6 @@ def get_multimodal_annotation(
 		max_generated_tks=llm_max_generated_tks,
 		max_kws=max_keywords,
 		num_workers=num_workers,
-		# use_quantization=use_llm_quantization,
 		quantization_bits=llm_quantization_bits,
 		verbose=verbose,
 	)
@@ -266,7 +261,18 @@ def get_multimodal_annotation(
 				print(df[empty_multimodal_canonical].head(50))
 		
 		before_count = len(df)
-		df = df[df['multimodal_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) > 0].copy()
+		
+		# Create mask for valid samples (those with canonical labels)
+		valid_mask = df['multimodal_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) > 0
+		
+		# Filter dataframe
+		df = df[valid_mask].copy()
+		
+		# Filter label lists to match
+		llm_based_labels = [label for label, valid in zip(llm_based_labels, valid_mask) if valid]
+		vlm_based_labels = [label for label, valid in zip(vlm_based_labels, valid_mask) if valid]
+		multimodal_labels = [label for label, valid in zip(multimodal_labels, valid_mask) if valid]
+		
 		after_count = len(df)
 		if verbose:
 			print(f"\n[DONE] Canonical mapping:")
@@ -368,16 +374,12 @@ def main():
 	parser.add_argument("--llm_model_id", '-llm', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace Text-Language model ID")
 	parser.add_argument("--llm_batch_size", '-llm_bs', type=int, default=2, help="Batch size for textual processing using LLM (adjust based on GPU memory)")
 	parser.add_argument("--llm_max_generated_tks", '-llm_mgt', type=int, default=128, help="Max number of generated tokens using LLM")
-	# parser.add_argument("--llm_use_quantization", '-llm_q', action='store_true', help="Use quantization for LLM")
 	parser.add_argument("--llm_quantization_bits", '-llm_qb', type=int, default=None, help="LLM Quantization bits")
 	parser.add_argument("--vlm_model_id", '-vlm', type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace Vision-Language model ID")
 	parser.add_argument("--vlm_max_generated_tks", '-vlm_mgt', type=int, default=64, help="Max number of generated tokens using VLM")
 	parser.add_argument("--vlm_batch_size", '-vlm_bs', type=int, default=2, help="Batch size for visual processing using VLM (adjust based on GPU memory)")
-	# parser.add_argument("--vlm_use_quantization", '-vlm_q', action='store_true', help="Use quantization for VLM")
 	parser.add_argument("--vlm_quantization_bits", '-vlm_qb', type=int, default=None, help="LLM Quantization bits")
 	parser.add_argument("--embedding_model_id", '-emb_id', type=str, default="Qwen/Qwen3-Embedding-0.6B", help="HuggingFace Embedding model ID")
-	# parser.add_argument("--embedding_model_id", '-emb_id', type=str, default="Octen/Octen-Embedding-0.6B", help="HuggingFace Embedding model ID")
-
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--num_clusters", '-nc', type=int, default=None, help="Number of clusters")

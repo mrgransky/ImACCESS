@@ -128,7 +128,6 @@ def _post_process_(
 	max_kw_word_length: int = 5,
 	verbose: bool = False
 ) -> List[List[str]]:
-
 	if verbose:
 		print(f"[POST-PROCESSING]")
 		print(f"  Input {type(labels_list)} length: {len(labels_list) if labels_list else 0}")
@@ -162,7 +161,6 @@ def _post_process_(
 
 	GERUND_NOUNS = {'building', 'ceiling', 'flooring', 'siding', 'roofing'}
 
-	# Define generic word sets
 	GENERIC_PEOPLE_WORDS = {
 		"man", "men", "woman", "women", "people", "person", 
 		"child", "children", "individual", "male", "female"
