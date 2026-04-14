@@ -413,7 +413,7 @@ def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFra
 			and (doc_description is None or query not in doc_description.lower())
 		):
 			if verbose:
-				print(f"<!> Skipping: '{query}' not in doc_title or doc_description")
+				print(f"<!> Skipping: '{query}' neither in doc_title nor in doc_description")
 			continue
 
 		row = {
