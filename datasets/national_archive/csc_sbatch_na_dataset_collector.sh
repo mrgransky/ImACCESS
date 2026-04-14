@@ -7,9 +7,9 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
-#SBATCH --mem=48G
-#SBATCH --partition=small
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --partition=interactive
 #SBATCH --time=00-13:00:00
 
 user="`whoami`"

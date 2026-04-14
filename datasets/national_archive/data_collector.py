@@ -122,12 +122,13 @@ img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 def get_doc_year(text, raw_doc_date):
 	if not pd.isna(raw_doc_date):  # Check if raw_doc_date is missing (None or NaN)
 		return raw_doc_date
-	if text is None:  # Check if text is None
+	if text is None or pd.isna(text):  # Check if text is None or NaN
 		return None
-	# year_pattern = r'\b\d{4}\b'
+	if not isinstance(text, str):  # Ensure text is a string
+		return None
+	
 	year_pattern = re.compile(r'\b\d{4}\b')
-	match = re.search(year_pattern, text) # <re.Match object; span=(54, 58), match='1946'>
-	# print(match)
+	match = re.search(year_pattern, text)
 	if match:
 		return match.group()
 	else:
@@ -402,7 +403,6 @@ def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFra
 
 		doc_title = re.sub(r'\s+', ' ', doc_title).strip() if doc_title else None
 		doc_description = re.sub(r'\s+', ' ', doc_description).strip() if doc_description else None
-
 		
 		print(f"doc_title: {doc_title}")
 		print(f"doc_description: {doc_description}")
