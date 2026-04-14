@@ -60,10 +60,8 @@ STOPWORDS.update(geographic_references)
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century. 
 Your task is to extract semantic keywords from a given caption that are suitable for multi-label classification and representation learning.
-
 Given the caption below, extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS**
 that represent core objects, entities, actions, or scene elements.
-
 Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 
