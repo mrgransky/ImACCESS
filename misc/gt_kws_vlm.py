@@ -47,7 +47,7 @@ IMG_MAX_RES = 512
 VLM_INSTRUCTION_TEMPLATE = """You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century. 
 Your task is to extract semantic keywords from a given caption that are suitable for multi-label classification and representation learning.
 Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and PROMINENT KEYWORDS** that capture core objects, entities, actions, or scene elements in the image. 
-Return **ONLY** a standardized, valid, and parsable **LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
+Return **ONLY** a standardized, valid, and parsable **LIST** with **AT MOST {k} string KEYWORDS** without any explanatory text.
 
 - CRITICAL GUIDELINES:
 	* **Semantically atomic**: 
