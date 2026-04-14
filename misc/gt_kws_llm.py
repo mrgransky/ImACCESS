@@ -59,10 +59,10 @@ STOPWORDS.update(geographic_references)
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century and whose task is to produce
-**general-purpose, reusable semantic labels** suitable for **multi-label classification**.
+**ontology-level, semantic labels** suitable for **multi-label classification**.
 
 Given the caption below, extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS**
-that represent **core objects, entities, actions, or scene elements** which are likely to **recur across many images**.
+that represent core objects, entities, actions, or scene elements.
 
 Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
@@ -112,8 +112,6 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 
 - ANTI-HALLUCINATION RULE:
 	Only use the exact information given in the caption for keyword extraction, without making assumptions based on implied meanings.
-	If, after applying all exclusion rules, no valid visually-grounded keywords remain, return an empty list: []
-	DO NOT invent, infer, or relax exclusion rules to fill the quota.
 
 {caption}	
 [/INST]"""
@@ -206,27 +204,7 @@ def _load_llm_(
 	if verbose:
 		print(f"[INFO] {model_id} Dtype selection: {dtype}")
 
-	# def _optimal_attn_impl() -> str:
-	# 	if not torch.cuda.is_available():
-	# 		return "eager"
-		
-	# 	major, minor = torch.cuda.get_device_capability()
-	# 	compute_cap = major + minor / 10
-		
-	# 	if compute_cap >= 8.0:
-	# 		try:
-	# 			import flash_attn
-	# 			if verbose: print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
-	# 			return "flash_attention_2"
-	# 		except ImportError:
-	# 			if verbose: print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
-		
-	# 	if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
-	# 		if verbose: print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
-	# 		return "sdpa"		
-		
-	# 	return "eager"
-
+	# Attention implementation selection
 	def _optimal_attn_impl() -> str:
 		if not torch.cuda.is_available():
 			return "eager"
@@ -517,10 +495,7 @@ def _load_llm_(
 
 		print(f"{'='*110}\n")
 		print(model.config)
-
 		print(f"{'='*110}\n")
-
-	
 
 	return tokenizer, model
 

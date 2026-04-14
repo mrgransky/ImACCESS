@@ -45,16 +45,17 @@ EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 
 VLM_INSTRUCTION_TEMPLATE = """You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century. 
-Your task is to produce **ontology-level, reusable semantic labels** suitable for **multi-label classification and representation learning**.
+Your task is to produce **ontology-level, semantic labels** suitable for **multi-label classification and representation learning**.
 
-Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and REUSABLE KEYWORDS** that capture stable objects, infrastructure, machinery, vehicles, architectural elements, tools, or clearly defined activities.
+Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and PROMINENT KEYWORDS** that capture core objects, entities, actions, or scene elements in the image. 
 
-CRITICAL OBJECTIVE:
-Favor labels that represent **mid-level or domain-relevant visual categories** that could generalize across many images. Avoid generic demographic aggregates.
+Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
 
 - Extracted **KEYWORDS** must be:
-	* **Semantically atomic**: each keyword must represent **core concept only**.
-	* **Visually grounded**: tangible objects, agents, scene elements, or observable actions.
+	* **Semantically atomic**: 
+		Each keyword must represent a core concept only.
+	* **Visually grounded**: 
+		Tangible objects, agents, scene elements, or observable actions.
 	* **ABSOLUTE MAXIMUM GENERALITY**:
 		- "nurse" instead of "nurse checking blood pressure"
 		- "seaplane" instead of "seaplane on the water in the background"
@@ -64,25 +65,17 @@ Favor labels that represent **mid-level or domain-relevant visual categories** t
 		- "animal" instead of "man riding a camel in the desert"
  	* **Reusable**: likely to recur across many captions in a large archive.
 
-CRITICAL RULES:
-
-- Return ONLY a standardized, valid, and parsable Python LIST with AT MOST {k} KEYWORDS.
-	Return fewer keywords if the scene is simple. A short accurate list is always better than a padded inferred one.
-
-- DE-PRIORITIZE or EXCLUDE:
-		• generic human category nouns (e.g., man, men, woman, person, people, children) UNLESS they are semantically specialized (e.g., soldier, pilot, railway worker)
-		• vague container nouns (e.g., scene, group, event)
-		• counting-based phrases (e.g., three men, several people, two babies)
-		• purely demographic descriptors without contextual role
-
 - ANTI-HALLUCINATION RULE:
-		Avoid making assumptions or drawing conclusions that go beyond what is explicitly shown.
-
-- STRICTLY EXCLUDE:
-		verbs, possessives, abbreviations, time references, OCR, stylistic descriptions, or explanatory text outside the Python LIST.
-
-The clean, valid Python LIST must be the VERY LAST THING in your response.
+	Avoid making assumptions or drawing conclusions that go beyond what is explicitly shown.
 """
+
+# Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and REUSABLE KEYWORDS** that capture stable objects, infrastructure, machinery, vehicles, architectural elements, tools, or clearly defined activities.
+
+# - DE-PRIORITIZE or EXCLUDE:
+# 		• generic human category nouns (e.g., man, men, woman, person, people, children) UNLESS they are semantically specialized (e.g., soldier, pilot, railway worker)
+# 		• vague container nouns (e.g., scene, group, event)
+# 		• counting-based phrases (e.g., three men, several people, two babies)
+# 		• purely demographic descriptors without contextual role
 
 def _load_vlm_(
 	model_id: str,
@@ -163,33 +156,40 @@ def _load_vlm_(
 		print(f"[INFO] {model_id} Dtype selection: {dtype}")
 	
 	# ========== Optimal attention implementation ==========
-	def _optimal_attn_impl(m_id: str) -> str:
-		"""Select best available attention implementation."""
+	def _optimal_attn_impl() -> str:
 		if not torch.cuda.is_available():
 			return "eager"
 		
-		flash_ok = False
-		try:
-			import flash_attn
-			major, _ = torch.cuda.get_device_capability()
-			flash_ok = major >= 8
-		except Exception as e:
-			if verbose:
-				print(f"[WARN] Flash Attention unavailable: {type(e).__name__}")
-			traceback.print_exc()
+		# model config for FlashAttention dimension limits
+		max_head_dim = getattr(config, "head_dim", 0)
+		if hasattr(config, "text_config"):
+			max_head_dim = max(max_head_dim, getattr(config.text_config, "head_dim", 0))
+			max_head_dim = max(max_head_dim, getattr(config.text_config, "global_head_dim", 0))
+
+		major, minor = torch.cuda.get_device_capability()
+		compute_cap = major + minor / 10
 		
-		if flash_ok:
-			return "flash_attention_2"
-
-		# torch >= 2.0.0 has SDPA
-		if torch.__version__ >= "2.0.0":
-			if verbose:
-				print(f"[INFO] Using SDPA attention (torch {torch.__version__})")
-			return "sdpa"
-
+		if compute_cap >= 8.0:
+			# Only use Flash Attention 2 if the head dimensions are supported
+			if max_head_dim <= 256:
+				try:
+					import flash_attn
+					if verbose: print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
+					return "flash_attention_2"
+				except ImportError:
+					if verbose: print(f"[WARN] Flash Attention 2 not installed")
+			else:
+				if verbose: print(f"[INFO] Bypassing Flash Attention 2: max head_dim ({max_head_dim}) > 256")
+		
+		# Fallback to SDPA (which handles >256 dimensions automatically)
+		if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
+			if verbose: print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
+			return "sdpa"		
+		
 		return "eager"
-	
-	attn_impl = _optimal_attn_impl(model_id)
+
+	attn_impl = _optimal_attn_impl()
+
 	if verbose:
 		print(f"[INFO] {model_id} Attention implementation: {attn_impl}")
 	
@@ -557,8 +557,11 @@ def _load_vlm_(
 					if v in ["disk", "cpu"]:
 						print(f"   {k}: {v}")
 			elif not disk_layers and not cpu_layers:
-				print(f"\n✅ All layers on GPU - optimal performance!")
+				print(f"\nAll layers on GPU - optimal performance!")
 		print(f"[MODEL] Loading of {model_id} complete!")
+
+		print(f"{'='*110}\n")
+		print(model.config)
 		print(f"{'='*110}\n")
 
 	return processor, model
