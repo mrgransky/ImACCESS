@@ -45,10 +45,8 @@ EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 
 VLM_INSTRUCTION_TEMPLATE = """You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century. 
-Your task is to produce **ontology-level, semantic labels** suitable for **multi-label classification and representation learning**.
-
+Your task is to extract semantic keywords from a given caption that are suitable for multi-label classification and representation learning.
 Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and PROMINENT KEYWORDS** that capture core objects, entities, actions, or scene elements in the image. 
-
 Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
 
 - Extracted **KEYWORDS** must be:
@@ -60,15 +58,15 @@ Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MO
 		- "nurse" instead of "nurse checking blood pressure"
 		- "seaplane" instead of "seaplane on the water in the background"
 		- "airplane" instead of "airplane in flight"
-		- "flag" instead of "german flag"
+		- "flag" instead of "German flag"
 		- "map" instead of "map of Europe"
 		- "animal" instead of "man riding a camel in the desert"
  	* **Reusable**: likely to recur across many captions in a large archive.
 
-- **STRICTLY EXCLUDE** KEYWORDS which are:
+- STRICTLY EXCLUDE:
 	• generic human category nouns (e.g., man, men, woman, person, people, children).
 	• vague container nouns (e.g., scene, group, event).
-	• counting-based phrases (e.g., three men, several people, two babies).
+	• counting-based phrases (e.g., three men, several people, a group of young people).
 	• purely demographic descriptors without contextual role.
 
 - ANTI-HALLUCINATION RULE:

@@ -58,8 +58,8 @@ with open('geographic_references.txt', 'r') as file_:
 STOPWORDS.update(geographic_references)
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
-You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century and whose task is to produce
-**ontology-level, semantic labels** suitable for **multi-label classification**.
+You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century. 
+Your task is to extract semantic keywords from a given caption that are suitable for multi-label classification and representation learning.
 
 Given the caption below, extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS**
 that represent core objects, entities, actions, or scene elements.
