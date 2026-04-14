@@ -606,7 +606,6 @@ def parse_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
 	vlm_response = _qwen_vlm_response(raw_response, verbose=verbose)
 	return vlm_response
 
-
 def _qwen_vlm_response(response: str, verbose: bool = False) -> Optional[List[str]]:
 	if not isinstance(response, str):
 		if verbose:
@@ -711,7 +710,6 @@ def get_vlm_based_labels_single(
 	quantization_bits: Optional[int]=None,
 	verbose: bool = False,
 ):
-
 	# ========== Load image ==========
 	if verbose:
 		print(f"[LOAD] {image_path}")
@@ -790,6 +788,8 @@ def get_vlm_based_labels_single(
 		messages,
 		tokenize=False,
 		add_generation_prompt=True,
+		processor_kwargs={"enable_thinking": False},
+		# enable_thinking=False,
 	)
 	
 	input_single = processor(
@@ -1016,6 +1016,7 @@ def get_vlm_based_labels_debug(
 					messages,
 					tokenize=False,
 					add_generation_prompt=True,
+					enable_thinking=False,
 				)
 				
 				input_single = processor(
@@ -1251,6 +1252,7 @@ def get_vlm_based_labels(
 		quantization_bits=quantization_bits,
 		verbose=verbose,
 	)
+
 	# ========== Prepare generation kwargs ==========
 	gen_kwargs = dict(
 		max_new_tokens=max_generated_tks, 
@@ -1326,7 +1328,7 @@ def get_vlm_based_labels(
 		try:
 			# Build chat templates and process batch
 			chat_texts = [
-				processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
+				processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True, enable_thinking=False,)
 				for m in messages
 			]
 			if verbose:
@@ -1410,6 +1412,7 @@ def get_vlm_based_labels(
 						single_message,
 						tokenize=False,
 						add_generation_prompt=True,
+						enable_thinking=False,
 					)
 
 					input_single = processor(
