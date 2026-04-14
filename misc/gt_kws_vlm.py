@@ -789,7 +789,6 @@ def get_vlm_based_labels_single(
 		tokenize=False,
 		add_generation_prompt=True,
 		enable_thinking=False,
-		# enable_thinking=False,
 	)
 	
 	input_single = processor(
