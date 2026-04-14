@@ -58,8 +58,6 @@ with open('geographic_references.txt', 'r') as file_:
 STOPWORDS.update(geographic_references)
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
-You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century. 
-Your task is to extract semantic keywords from a given caption that are suitable for multi-label classification and representation learning.
 Given the caption below, extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS**
 that represent core objects, entities, actions, or scene elements.
 Return **ONLY** a standardized, valid, and parsable **LIST** with **AT MOST {k} string KEYWORDS** without any explanatory text.
@@ -120,25 +118,6 @@ def _load_llm_(
 	force_multi_gpu: bool = False,
 	verbose: bool = False,
 ):
-	"""
-	Load a Large Language Model with optimal device placement.
-	
-	Implements intelligent device strategy:
-	1. For small models (<20GB): Single GPU for speed
-	2. For large models (>=20GB): Multi-GPU distribution
-	3. Adaptive VRAM buffering based on GPU size
-	4. Quantization-aware memory allocation (via quantization_bits)
-	5. Avoids disk offloading at all costs
-	
-	Args:
-			model_id: HuggingFace model identifier
-			quantization_bits: Quantization bits (4 or 8). If None, loads in full precision.
-			force_multi_gpu: Force multi-GPU distribution (for large models)
-			verbose: Enable verbose logging
-	
-	Returns:
-			Tuple of (tokenizer, model)
-	"""
 	if verbose:
 		print(f"\n{'='*110}")
 		print(f"[LOADING] {model_id} on cache_dir: {cache_directory.get(USER)}")
@@ -313,10 +292,10 @@ def _load_llm_(
 		except Exception as e:
 			raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
 
-		print("="*100)
-		print(type(info))
-		print(info)
-		print("="*100)
+		# print("="*100)
+		# print(type(info))
+		# print(info)
+		# print("="*100)
 
 		disk_bytes = 0
 		param_count = None
@@ -497,13 +476,15 @@ def _load_llm_(
 
 	return tokenizer, model
 
+
+
 def get_prompt(
 	tokenizer: tfs.PreTrainedTokenizer, 
 	description: str, 
 	max_kws: int
 ):
 	messages = [
-		{"role": "system", "content": "You are a helpful assistant."},
+		{"role": "system", "content": "You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century."},
 		{"role": "user", "content": LLM_INSTRUCTION_TEMPLATE.format(k=max_kws, caption=description.strip())},
 	]
 	text = tokenizer.apply_chat_template(

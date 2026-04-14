@@ -14,27 +14,12 @@ from utils import *
 # model_id = "llava-hf/llava-v1.6-vicuna-13b-hf"
 # model_id = "llava-hf/llama3-llava-next-8b-hf"
 
-# Qwen 2.5x VL collection:
-# model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
-# model_id = "Qwen/Qwen2.5-VL-7B-Instruct" # only fits Puhti and Mahti
-
 # Qwen 3 VL collection:
 # Qwen/Qwen3-VL-2B-Instruct
 # Qwen/Qwen3-VL-4B-Instruct
 # Qwen/Qwen3-VL-8B-Instruct # only fits Puhti and Mahti
 # Qwen/Qwen3-VL-32B-Instruct # multiple gpus required
 # Qwen/Qwen3-VL-30B-A3B-Instruct # multiple gpus required
-
-# does not fit into VRAM:
-# model_id = "llava-hf/llava-v1.6-34b-hf"
-# model_id = "llava-hf/llava-next-72b-hf"
-# model_id = "llava-hf/llava-next-110b-hf"
-# model_id = "Qwen/Qwen2.5-VL-72B-Instruct"
-
-# debugging required:
-# # model_id = "tiiuae/falcon-11B-vlm"
-# # model_id = "utter-project/EuroVLM-1.7B-Preview"
-# # model_id = "OpenGVLab/InternVL-Chat-V1-2"
 
 # how to run:
 # local:
@@ -44,9 +29,7 @@ process = psutil.Process(os.getpid())
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 
-VLM_INSTRUCTION_TEMPLATE = """You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century. 
-Your task is to extract semantic keywords from a given caption that are suitable for multi-label classification and representation learning.
-Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and PROMINENT KEYWORDS** that capture core objects, entities, actions, or scene elements in the image. 
+VLM_INSTRUCTION_TEMPLATE = """Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and PROMINENT KEYWORDS** that capture core objects, entities, actions, or scene elements in the image. 
 Return **ONLY** a standardized, valid, and parsable **LIST** with **AT MOST {k} string KEYWORDS** without any explanatory text.
 
 - CRITICAL GUIDELINES:
@@ -262,14 +245,14 @@ def _load_vlm_(
 
 		# 3. Choose best source and apply realistic multiplier
 		if disk_bytes > 0:
-			print(f"disk_bytes: {disk_bytes}")
+			# print(f"disk_bytes: {disk_bytes}")
 			# Disk size already in target dtype → small overhead (1%) (alignment, buffers)
 			est_gb = (disk_bytes * 1.01) / (1024 ** 3)
 
 			return est_gb
 
 		if param_count:
-			print(f"param_count: {param_count}")
+			# print(f"param_count: {param_count}")
 			# fp16/bf16 = 2 bytes/param + 18–25% overhead
 			est_bytes = param_count * 2.0 * 1.22
 			est_gb = est_bytes / (1024 ** 3)
@@ -617,18 +600,22 @@ def prepare_prompts_and_images(
 	return valid_paths, unique_prompts
 
 def parse_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
-	if verbose: 
-		print(f"[DEBUG] Parsing VLM response for {model_id}")
-		print(f"[RESPONSE]\n{raw_response}\n")
-	
-	if "Qwen" in model_id:
-		return _qwen_vlm_(raw_response, verbose=verbose)
-	elif "llava" in model_id:
-		return _llava_vlm_(raw_response, verbose=verbose)
-	else:
-		raise NotImplementedError(f"VLM response parsing not implemented for {model_id}")
+	if verbose:
+		print(f"[VLM: {model_id}] [RESPONSE]\n{raw_response}\n")
 
-def _qwen_vlm_(response: str, verbose: bool = False) -> Optional[List[str]]:
+	# if "Qwen" in model_id:
+	# 	return _qwen_vlm_response(raw_response, verbose=verbose)
+	# elif "llava" in model_id:
+	# 	return _llava_vlm_(raw_response, verbose=verbose)
+	# else:
+	# 	raise NotImplementedError(f"VLM response parsing not implemented for {model_id}")
+
+	vlm_response: Optional[str] = None
+	vlm_response = _qwen_vlm_response(raw_response, verbose=verbose)
+	return vlm_response
+
+
+def _qwen_vlm_response(response: str, verbose: bool = False) -> Optional[List[str]]:
 	if not isinstance(response, str):
 		if verbose:
 			print("[ERROR] VLM output is not a string.")
@@ -797,6 +784,7 @@ def get_vlm_based_labels_single(
 	)
 
 	messages = [
+		{"role": "system", "content": "You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century."},
 		{
 			"role": "user",
 			"content": [
