@@ -307,7 +307,8 @@ def get_dframe(
 				):
 					title_en = title
 					break
-
+		title_en = re.sub(r'\s+', ' ', title_en).strip() if title_en else None
+		
 		description_doc = " ".join(doc.get("dcDescriptionLangAware", {}).get("en", [])) if doc.get("dcDescriptionLangAware", {}).get("en", []) else None
 		if description_doc:
 			description_lower = description_doc.lower()
@@ -317,8 +318,7 @@ def get_dframe(
 				continue
 
 			if is_english(text=description_doc, confidence_threshold=0.03, verbose=verbose):
-				description_doc = re.sub(r'\s+', ' ', description_doc)
-				description_doc = description_doc.strip()
+				description_doc = re.sub(r'\s+', ' ', description_doc).strip()
 				description_en = description_doc
 			else:
 				description_en = None
