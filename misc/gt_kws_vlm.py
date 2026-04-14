@@ -788,7 +788,7 @@ def get_vlm_based_labels_single(
 		messages,
 		tokenize=False,
 		add_generation_prompt=True,
-		processor_kwargs={"enable_thinking": False},
+		enable_thinking=False,
 		# enable_thinking=False,
 	)
 	
