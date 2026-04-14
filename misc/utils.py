@@ -157,6 +157,54 @@ dtypes = {
 	'user_query': str,
 }
 
+def get_singleton_in_uniques(df: pd.DataFrame):
+	cols = df.columns[-6:]
+	print(cols)
+
+	for i, col in enumerate(cols):
+		label_list: List[List[str]] = df[col].tolist()
+
+		print(f"\n[{col.upper()}] {len(label_list)} {type(label_list)} labels: {label_list[:3]}")
+		labels = list()
+
+		for i, lbl in enumerate(label_list):
+			# print(i, type(lbl), lbl)
+
+			if isinstance(lbl, list):
+				# It is a valid list of labels, proceed
+				pass
+			elif pd.isna(lbl):
+				# print(f"<!> {col} containing {labels} => skipping!")
+				continue
+			elif isinstance(lbl, str):
+				try:
+					lbl = ast.literal_eval(lbl)  # Parse string representation of list
+				except Exception as e:
+					print(f"<!> {col} containing {lbl} => skipping! {e}")
+					continue
+			else:
+				print(f"<!> containing {type(lbl)} {lbl} => skipping!")
+				continue
+
+			labels.extend(lbl)
+
+		print(f"{len(labels)} labels")
+		unique_labels = sorted(list(set(labels)))
+		print(f"unique_labels: {type(unique_labels)} {len(unique_labels)} {unique_labels[:10]}")
+
+		# Count frequencies
+		label_counts = Counter(labels)
+		label_counts_df = pd.DataFrame(
+			label_counts.items(), 
+			columns=['Label', 'Count']
+		).sort_values(by='Count', ascending=False)
+		
+		# Singleton analysis
+		label_singletons = label_counts_df[label_counts_df['Count'] == 1]['Label'].tolist()
+		print(f"[{col.upper()}] Singleton {type(label_singletons)}: {len(label_singletons)}/{len(unique_labels)} ({len(label_singletons) / len(unique_labels) * 100:.2f}%):")
+		print(label_singletons[:25])
+		print("="*100)
+
 def post_process(
 	df: pd.DataFrame, 
 	dataset_type: str, 

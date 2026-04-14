@@ -186,17 +186,17 @@ def get_multimodal_annotation(
 			print(f"{os.path.basename(csv_file)} is a full dataset => (post processing required!)")
 
 		if verbose:
-			print(f"Post-processing LLM-based labels...")
-		llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
-
-		if verbose:
 			print(f"Post-processing VLM-based labels...")
 		vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
 
 		if verbose:
+			print(f"Post-processing LLM-based labels...")
+		llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
+		
+		if verbose:
 			print(f"Post-processing Multimodal labels...")
 		multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=verbose)
-		
+
 		# --- LLM canonical labels ---
 		llm_canonical_labels, _ = get_canonical_labels(
 			labels=llm_based_labels,
@@ -292,7 +292,7 @@ def get_multimodal_annotation(
 
 		# Deduplicate canonical labels safely
 		if verbose:
-				print(f"\n>> Deduplicating canonical labels...")
+			print(f"\n>> Deduplicating canonical labels...")
 
 		# Use a helper to handle None values
 		def safe_dedup(labels):
@@ -336,6 +336,9 @@ def get_multimodal_annotation(
 	df['llm_based_labels'] = llm_based_labels
 	df['vlm_based_labels'] = vlm_based_labels
 	df['multimodal_labels'] = multimodal_labels
+
+	# singleton analysis
+	get_singleton_in_uniques(df=df)
 
 	df.to_csv(output_csv, index=False)
 	try:
@@ -404,8 +407,6 @@ def main():
 		vlm_max_generated_tks=args.vlm_max_generated_tks,
 		max_keywords=args.max_keywords,
 		embedding_model_id=args.embedding_model_id,
-		# use_llm_quantization=args.llm_use_quantization,
-		# use_vlm_quantization=args.vlm_use_quantization,
 		llm_quantization_bits=args.llm_quantization_bits,
 		vlm_quantization_bits=args.vlm_quantization_bits,
 		nc=args.num_clusters,

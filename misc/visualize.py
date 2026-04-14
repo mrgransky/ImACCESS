@@ -3021,8 +3021,8 @@ def multilabel_eda(
 	
 	unique_labels = sorted(list(set(all_individual_labels)))
 	print(f"\n[STATS] (Main Column: {label_column})")
-	print(f"  ├─ Total samples with valid '{label_column}': {len(df)}")
-	print(f"  ├─ Total unique labels across the dataset (from '{label_column}'): {len(unique_labels)}")
+	print(f"  ├─ Total samples: {len(df)}")
+	print(f"  ├─ Total unique labels: {len(unique_labels)}")
 	print(f"  └─ Sample unique labels: {unique_labels[:10]}")
 	
 	print(f"\nLabel Cardinality (Main Column: {label_column})")

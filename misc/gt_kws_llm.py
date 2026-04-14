@@ -477,7 +477,6 @@ def _load_llm_(
 	return tokenizer, model
 
 
-
 def get_prompt(
 	tokenizer: tfs.PreTrainedTokenizer, 
 	description: str, 
@@ -796,11 +795,11 @@ def _qwen_llm_response(
 def query_local_llm(
 	model: tfs.PreTrainedModel,
 	tokenizer: tfs.PreTrainedTokenizer, 
-	text: str, 
+	text: str,
 	device: str,
 	max_generated_tks: int,
 	max_kws: int,
-	verbose: bool = False,
+	verbose: bool=False,
 ) -> List[str]:
 	
 	if not isinstance(text, str) or not text.strip():
@@ -808,8 +807,6 @@ def query_local_llm(
 
 	keywords: Optional[List[str]] = None
 	prompt = get_prompt(tokenizer=tokenizer, description=text, max_kws=max_kws)
-
-	# print(model.config)
 
 	model_id = getattr(model.config, '_name_or_path', None)
 	if model_id is None:

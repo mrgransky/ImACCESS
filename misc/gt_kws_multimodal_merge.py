@@ -200,6 +200,9 @@ def merge_csv_files(
 		print(f"[Multimodal] Documents with duplicates: {multimodal_duplicate_count:,} ({multimodal_duplicate_count/len(df)*100:.1f}%)")
 		print(f"   ✓ Verified: 0 duplicates remaining")
 	
+	# singleton analysis
+	get_singleton_in_uniques(df=df)
+
 	if verbose:
 		print(f"Saving {type(df)} {df.shape}\n{list(df.columns)}")
 
