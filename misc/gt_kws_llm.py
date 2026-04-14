@@ -1,15 +1,6 @@
 from utils import *
 from nlp_utils import get_enriched_description
 
-# basic models:
-# model_id = "google/gemma-1.1-2b-it"
-# model_id = "google/gemma-1.1-7b-it"
-# model_id = "meta-llama/Llama-3.1-8B-Instruct"
-# model_id = "meta-llama/Llama-3.1-405B-Instruct"
-# model_id = "meta-llama/Llama-3.2-1B-Instruct" # default for local
-# model_id = "meta-llama/Llama-3.2-3B-Instruct"
-# model_id = "meta-llama/Llama-3.3-70B-Instruct"
-
 # better models:
 # model_id = "Qwen/Qwen3-4B-Instruct-2507"
 # model_id = "mistralai/Mistral-7B-Instruct-v0.3"
@@ -23,21 +14,15 @@ from nlp_utils import get_enriched_description
 # Qwen/Qwen3-30B-A3B-Instruct-2507 # multi-gpu required
 # Qwen/Qwen3-Next-80B-A3B-Instruct # multi-gpu required
 
-# not useful for instruction tuning:
-# model_id = "microsoft/DialoGPT-large"
-# model_id = "gpt2-xl"
-
-
 # how to run [local]:
 # python gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 2
-# nohup python -u gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 4 -mgt 64 > logs/llm_annotation_history_x4.txt &
 
 # with description:
 # small model for local testing:
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3-4B-Instruct-2507" -v
 
 # large model:
-# python gt_kws_llm.py -desc "A. A. Robinson and infantry." -llm "google/gemma-4-E2B-it" -v
+# python gt_kws_llm.py -desc "A. A. Robinson and infantry." -llm "google/gemma-4-31B-it" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -133,53 +118,6 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 {caption}	
 [/INST]"""
 
-# - When a term is a specific subtype of a broader, reusable category, prefer the broader canonical category unless the subtype is necessary for disambiguation.
-#	* Explanatory text, punctuation, or output formatting beyond the Python list.
-#	x abstract organizational/social events with no visual anchor (e.g., "meeting", "trip", "outing").
-#	❌ Generic photography or image-related terminology.
-# ❌ Complex phrases that combine different entities (e.g., "soldier in a forest").
-# - Keyword priority order:
-# 	1) Physical objects (tangible, visually prominent)
-# 	2) Actions (if more reusable than objects present)
-# 	3) Human roles (only if visually salient)
-# 	4) Scene elements
-#	- "flag" instead of "german flag"
-#	- "red cross" instead of "american red cross"
-# - "smoking" instead of "a group of youngsters smoking outdoors"
-
-# - Bias toward label reuse:
-# 	If a specific phrase can be reduced to a more general equivalent **without losing factual correctness**, opt for general form.
-# 	If a term represents a standardized domain-specific concept 
-# 	(e.g., military designation, chemical classification, organization name),
-# 	it MUST be treated as a single atomic label and MUST NOT be reduced.
-
-
-
-# # Too Specific which produces massive number of singleton labels
-# # self-contained and grammatically complete phrases
-# LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
-# You function as a historical archivist whose expertise lies in the 20th century.
-# Given the caption below, extract no more than {k} highly prominent, factual, and distinct **KEYWORDS** that convey the primary actions, objects, or occurrences. 
-# - The standardized and parsable **Python LIST** must be the **VERY LAST THING** in your response without any explanatory text.
-
-# {caption}
-
-# **CRITICAL RULES**:
-# - Return **ONLY** a standarized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** - fewer is **highly expected** if the caption is either short or lacks distinct concepts.
-# - Extracted **KEYWORDS** must be self-contained and grammatically complete phrases that actually appear in the caption:
-# 	* ALL GENERIC ABBREVIATIONS MUST BE FULLY EXPANDED TO THEIR STANDARD FULL FORMS UNLESS they are part of a proper name or named entity, in which case they must be preserved exactly as written in the caption.
-# 	* DUPLICATES AND VARIANTS MUST BE RESOLVED FOR CONSISTENCY.
-# - **STRICTLY EXCLUDE** phrases that include phrasal verbs, or possessive cases as standalone keywords.
-# - **STRICTLY EXCLUDE** keywords that start or end with prepositions or conjunctions.
-# - **STRICTLY EXCLUDE** keywords which contain number signs (59, #59, No.59, No. 59, No 59), or special characters EXCEPT periods used within initials that are part of proper names (e.g., "S.S. Berkeley", "Albert E. Jenner, Jr.").
-# - **STRICTLY EXCLUDE** dates, times, hours, minutes, calendar references, seasons, months, days, years, decades, centuries, or **ANY** time-related content.
-# - **STRICTLY EXCLUDE** geographic references, continents, countries, towns, cities, or states.
-# - **STRICTLY EXCLUDE** serial/reference numbers, geographic/infrastructure/operational identifiers, measurements, units, coordinates, or **ANY** quantitative keywords.
-# - **STRICTLY EXCLUDE** generic photography, image, picture, media keywords or **ANY** technical photo specifications.
-# - **STRICTLY EXCLUDE** explanatory texts, code blocks, punctuations, or tags before or after the **Python LIST**.
-# - The standarized and parsable **Python LIST** must be the **VERY LAST THING** in your response.
-# [/INST]"""
-
 def _load_llm_(
 	model_id: str,
 	quantization_bits: Optional[int] = None,
@@ -268,26 +206,59 @@ def _load_llm_(
 	if verbose:
 		print(f"[INFO] {model_id} Dtype selection: {dtype}")
 
+	# def _optimal_attn_impl() -> str:
+	# 	if not torch.cuda.is_available():
+	# 		return "eager"
+		
+	# 	major, minor = torch.cuda.get_device_capability()
+	# 	compute_cap = major + minor / 10
+		
+	# 	if compute_cap >= 8.0:
+	# 		try:
+	# 			import flash_attn
+	# 			if verbose: print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
+	# 			return "flash_attention_2"
+	# 		except ImportError:
+	# 			if verbose: print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
+		
+	# 	if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
+	# 		if verbose: print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
+	# 		return "sdpa"		
+		
+	# 	return "eager"
+
 	def _optimal_attn_impl() -> str:
 		if not torch.cuda.is_available():
 			return "eager"
 		
+		# model config for FlashAttention dimension limits
+		max_head_dim = getattr(config, "head_dim", 0)
+		if hasattr(config, "text_config"):
+			max_head_dim = max(max_head_dim, getattr(config.text_config, "head_dim", 0))
+			max_head_dim = max(max_head_dim, getattr(config.text_config, "global_head_dim", 0))
+
 		major, minor = torch.cuda.get_device_capability()
 		compute_cap = major + minor / 10
 		
 		if compute_cap >= 8.0:
-			try:
-				import flash_attn
-				if verbose: print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
-				return "flash_attention_2"
-			except ImportError:
-				if verbose: print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
+			# Only use Flash Attention 2 if the head dimensions are supported
+			if max_head_dim <= 256:
+				try:
+					import flash_attn
+					if verbose: print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
+					return "flash_attention_2"
+				except ImportError:
+					if verbose: print(f"[WARN] Flash Attention 2 not installed")
+			else:
+				if verbose: print(f"[INFO] Bypassing Flash Attention 2: max head_dim ({max_head_dim}) > 256")
 		
+		# Fallback to SDPA (which handles >256 dimensions automatically)
 		if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
 			if verbose: print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
 			return "sdpa"		
 		
 		return "eager"
+
 
 	attn_impl = _optimal_attn_impl()
 
@@ -366,8 +337,10 @@ def _load_llm_(
 		except Exception as e:
 			raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
 
+		print("="*100)
 		print(type(info))
 		print(info)
+		print("="*100)
 
 		disk_bytes = 0
 		param_count = None
@@ -388,14 +361,14 @@ def _load_llm_(
 
 		# 3. Choose best source and apply realistic multiplier
 		if disk_bytes > 0:
-			print(f"disk_bytes: {disk_bytes}")
+			# print(f"disk_bytes: {disk_bytes}")
 			# Disk size already in target dtype → small overhead (1%) (alignment, buffers)
 			est_gb = (disk_bytes * 1.01) / (1024 ** 3)
 
 			return est_gb
 
 		if param_count:
-			print(f"param_count: {param_count}")
+			# print(f"param_count: {param_count}")
 			# fp16/bf16 = 2 bytes/param + 18–25% overhead
 			est_bytes = param_count * 2.0 * 1.22
 			est_gb = est_bytes / (1024 ** 3)
