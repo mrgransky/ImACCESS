@@ -47,7 +47,7 @@ IMG_MAX_RES = 512
 VLM_INSTRUCTION_TEMPLATE = """You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century. 
 Your task is to extract semantic keywords from a given caption that are suitable for multi-label classification and representation learning.
 Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and PROMINENT KEYWORDS** that capture core objects, entities, actions, or scene elements in the image. 
-Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
+Return **ONLY** a standardized, valid, and parsable **LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
 
 - CRITICAL GUIDELINES:
 	* **Semantically atomic**: 
@@ -72,8 +72,6 @@ Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MO
 - ANTI-HALLUCINATION RULE:
 	Avoid making assumptions or drawing conclusions that go beyond what is explicitly shown.
 """
-
-# 	• generic human category nouns (e.g., man, men, woman, person, people, children) UNLESS they are semantically specialized (e.g., soldier, pilot, railway worker)
 
 def _load_vlm_(
 	model_id: str,
@@ -240,8 +238,10 @@ def _load_vlm_(
 		except Exception as e:
 			raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
 
-		print(type(info))
-		print(info)
+		# print("="*100)
+		# print(type(info))
+		# print(info)
+		# print("="*100)
 
 		disk_bytes = 0
 		param_count = None
