@@ -65,17 +65,17 @@ Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MO
 		- "animal" instead of "man riding a camel in the desert"
  	* **Reusable**: likely to recur across many captions in a large archive.
 
+- **STRICTLY EXCLUDE** KEYWORDS which are:
+	• generic human category nouns (e.g., man, men, woman, person, people, children).
+	• vague container nouns (e.g., scene, group, event).
+	• counting-based phrases (e.g., three men, several people, two babies).
+	• purely demographic descriptors without contextual role.
+
 - ANTI-HALLUCINATION RULE:
 	Avoid making assumptions or drawing conclusions that go beyond what is explicitly shown.
 """
 
-# Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and REUSABLE KEYWORDS** that capture stable objects, infrastructure, machinery, vehicles, architectural elements, tools, or clearly defined activities.
-
-# - DE-PRIORITIZE or EXCLUDE:
-# 		• generic human category nouns (e.g., man, men, woman, person, people, children) UNLESS they are semantically specialized (e.g., soldier, pilot, railway worker)
-# 		• vague container nouns (e.g., scene, group, event)
-# 		• counting-based phrases (e.g., three men, several people, two babies)
-# 		• purely demographic descriptors without contextual role
+# 	• generic human category nouns (e.g., man, men, woman, person, people, children) UNLESS they are semantically specialized (e.g., soldier, pilot, railway worker)
 
 def _load_vlm_(
 	model_id: str,
