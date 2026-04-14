@@ -67,7 +67,7 @@ that represent core objects, entities, actions, or scene elements.
 Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 
-- Extracted **KEYWORDS** must be:
+- CRITICAL GUIDELINES:
 	* **Semantically atomic**: 
 		Each keyword represents a core concept only.
 	* **Visually grounded**: 

@@ -49,7 +49,7 @@ Your task is to extract semantic keywords from a given caption that are suitable
 Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and PROMINENT KEYWORDS** that capture core objects, entities, actions, or scene elements in the image. 
 Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
 
-- Extracted **KEYWORDS** must be:
+- CRITICAL GUIDELINES:
 	* **Semantically atomic**: 
 		Each keyword must represent a core concept only.
 	* **Visually grounded**: 
