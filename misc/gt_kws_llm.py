@@ -507,16 +507,17 @@ def parse_llm_response(
 		print(f"[LLM: {model_id} RESPONSE]\n{raw_llm_response}\n")
 
 	llm_response: Optional[str] = None
-	llm_response = _qwen_llm_response(model_id, input_prompt, raw_llm_response, max_kws, caption, verbose)
+	llm_response = _qwen_llm_response(
+		raw_llm_response, 
+		max_kws, 
+		verbose
+	)
 
 	return llm_response
 
 def _qwen_llm_response(
-	model_id: str, 
-	input_prompt: str, 
 	llm_response: str, 
 	max_kws: int,
-	caption: str,
 	verbose: bool = False
 ) -> Optional[List[str]]:
 

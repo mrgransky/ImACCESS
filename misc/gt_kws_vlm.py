@@ -602,14 +602,6 @@ def prepare_prompts_and_images(
 def parse_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
 	if verbose:
 		print(f"[VLM: {model_id}] [RESPONSE]\n{raw_response}\n")
-
-	# if "Qwen" in model_id:
-	# 	return _qwen_vlm_response(raw_response, verbose=verbose)
-	# elif "llava" in model_id:
-	# 	return _llava_vlm_(raw_response, verbose=verbose)
-	# else:
-	# 	raise NotImplementedError(f"VLM response parsing not implemented for {model_id}")
-
 	vlm_response: Optional[str] = None
 	vlm_response = _qwen_vlm_response(raw_response, verbose=verbose)
 	return vlm_response
