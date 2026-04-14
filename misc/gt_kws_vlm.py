@@ -30,7 +30,7 @@ EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 
 VLM_INSTRUCTION_TEMPLATE = """Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and PROMINENT KEYWORDS** that capture core objects, entities, actions, or scene elements in the image. 
-Return **ONLY** a standardized, valid, and parsable **LIST** with **AT MOST {k} string KEYWORDS** without any explanatory text.
+Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
 
 - CRITICAL GUIDELINES:
 	* **Semantically atomic**: 
@@ -47,10 +47,10 @@ Return **ONLY** a standardized, valid, and parsable **LIST** with **AT MOST {k} 
  	* **Reusable**: likely to recur across many captions in a large archive.
 
 - STRICTLY EXCLUDE:
-	• generic human category nouns (e.g., man, men, woman, person, people, children).
-	• vague container nouns (e.g., scene, group, event).
-	• counting-based phrases (e.g., three men, several people, a group of young people).
-	• purely demographic descriptors without contextual role.
+	❌ generic human category nouns (e.g., man, men, woman, person, people, children).
+	❌ vague container nouns (e.g., scene, group, event).
+	❌ counting-based phrases (e.g., three men, several people, a group of young people).
+	❌ purely demographic descriptors without contextual role.
 
 - ANTI-HALLUCINATION RULE:
 	Avoid making assumptions or drawing conclusions that go beyond what is explicitly shown.
@@ -706,7 +706,6 @@ def get_vlm_based_labels_single(
 	max_generated_tks: int,
 	max_kws: int,
 	img_resized_shape: int = 512,
-	use_quantization: bool = False,
 	quantization_bits: Optional[int]=None,
 	verbose: bool = False,
 ):
@@ -854,18 +853,17 @@ def get_vlm_based_labels_single(
 	return [parsed]
 
 def get_vlm_based_labels_debug(
-		model_id: str,
-		device: str,
-		num_workers: int,
-		max_generated_tks: int,
-		max_kws: int,
-		csv_file: str,
-		do_dedup: bool = True,
-		max_retries: int = 2,
-		use_quantization: bool = False,
-		quantization_bits: Optional[int]=None,
-		verbose: bool = False,
-	) -> List[Optional[List[str]]]:
+	model_id: str,
+	device: str,
+	num_workers: int,
+	max_generated_tks: int,
+	max_kws: int,
+	csv_file: str,
+	do_dedup: bool = True,
+	max_retries: int = 2,
+	quantization_bits: Optional[int]=None,
+	verbose: bool = False,
+) -> List[Optional[List[str]]]:
 
 	# ========== Initialize =========
 	num_workers = min(os.cpu_count(), num_workers)

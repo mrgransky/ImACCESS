@@ -60,7 +60,7 @@ STOPWORDS.update(geographic_references)
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 Given the caption below, extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS**
 that represent core objects, entities, actions, or scene elements.
-Return **ONLY** a standardized, valid, and parsable **LIST** with **AT MOST {k} string KEYWORDS** without any explanatory text.
+Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 
 - CRITICAL GUIDELINES:
