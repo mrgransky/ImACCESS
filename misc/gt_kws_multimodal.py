@@ -340,6 +340,14 @@ def get_multimodal_annotation(
 	# singleton analysis
 	get_singleton_in_uniques(df=df)
 
+	print("="*100)
+	print(df.info(verbose=True, memory_usage=True))
+	print("="*100)
+
+	print("="*100)
+	print(df.describe())
+	print("="*100)
+
 	df.to_csv(output_csv, index=False)
 	try:
 		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
