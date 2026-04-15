@@ -158,7 +158,7 @@ dtypes = {
 }
 
 def get_singleton_in_uniques(df: pd.DataFrame):
-	cols = df.columns[-6:]
+	cols = df.columns[-6:].tolist()
 	print(cols)
 
 	for i, col in enumerate(cols):
