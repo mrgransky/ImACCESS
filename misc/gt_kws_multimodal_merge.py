@@ -202,6 +202,7 @@ def merge_csv_files(
 	
 	# singleton analysis
 	get_singleton_in_uniques(df=df)
+	compute_label_agreement_and_singletons(df=df)
 
 	if verbose:
 		print(f"Saving {type(df)} {df.shape}\n{list(df.columns)}")

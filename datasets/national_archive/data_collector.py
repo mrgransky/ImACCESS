@@ -299,10 +299,23 @@ def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFra
 		string=query,
 	)
 	df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_{START_DATE}_{END_DATE}.gz")
+	print(f"df_fpth: {df_fpth}")
 
 	if os.path.exists(df_fpth):
 		df = load_pickle(fpath=df_fpth)
-		return df	
+		if df.shape[0] == 0:
+			raise ValueError(f"Empty DF: {df.shape} => Exit...")
+
+		print(df[['id', 'img_path']].head(10))
+		print("#"*160)
+
+		# change img_path with current dataset directory
+		# if dataframe is created in another machine, then img_path is not valid
+		df['img_path'] = df['img_path'].apply(lambda x: x.replace(os.path.dirname(x), IMAGE_DIRECTORY))
+		print(df[['id', 'img_path']].head(10))
+		print("#"*160)
+
+		return df
 
 	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
 	df_st_time = time.time()
@@ -404,8 +417,8 @@ def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFra
 		doc_title = re.sub(r'\s+', ' ', doc_title).strip() if doc_title else None
 		doc_description = re.sub(r'\s+', ' ', doc_description).strip() if doc_description else None
 		
-		print(f"doc_title: {doc_title}")
-		print(f"doc_description: {doc_description}")
+		print(f"doc_title:\n{doc_title}\n")
+		print(f"doc_description:\n{doc_description}\n")
 
 		# Skip if query is not in either title or description
 		if (
@@ -426,7 +439,11 @@ def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFra
 			'title': doc_title,
 			'description': doc_description,
 		}
+		if verbose:
+			print(json.dumps(row, indent=4, ensure_ascii=False))
+
 		data.append(row)
+
 	df = pd.DataFrame(data)
 	
 	# Check if DataFrame is empty before processing

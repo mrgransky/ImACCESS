@@ -364,10 +364,18 @@ Centerville California
 Castroville
 Cayuta
 Cincinnati
+City of S.F.
 Cleveland
 Chicago
 Columbia
 Columbus
+CA.
+CZ.
+C.Z.
+D.C.
+Calif
+Calif.
+Cal.
 Dandridge
 Dakota
 Davenport
@@ -376,26 +384,20 @@ Echo, UT
 Echo UT
 El Paso
 Evansville
+FL.
+Gallipolis
+Guadalcanal
 Hartford
 Halifax
 Hollywood
+GA.
 Houston
 Houston TX
 Houston, TX
 Houston, Texas
 Houston Texas
-Gallipolis
-Guadalcanal
-CA.
-CZ.
-C.Z.
-D.C.
-Calif
-Calif.
-Cal.
-FL.
-GA.
 Ill.
+Key West
 L.A.
 L. A.
 Mass.
@@ -404,12 +406,12 @@ MO.
 Mont.
 MT.
 Nev.
-Okla.
 N.C.
 N.H.
 N.J.
 N.Y.
 N.Y.C.
+Okla.
 PA.
 P.A.
 N.Y. City
@@ -418,7 +420,6 @@ S.D.
 S.F.
 U.T.
 UT.
-City of S.F.
 Indio
 Inglewood
 Jamestown

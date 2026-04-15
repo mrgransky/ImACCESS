@@ -25,7 +25,7 @@ from clustering import get_canonical_labels
 # with nohup:
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -llm_qb 8 -llm_bs 2 -vlm "Qwen/Qwen3-VL-2B-Instruct" -vlm_bs 2 -nw 12 -v > logs/multimodal_annotation_smu.txt & 
 # one chunk:
-# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_0.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_qb 8 -vlm_bs 2 -llm_bs 2 -nw 8 -v > logs/multimodal_annotation_chunk_0.txt & 
+# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_0.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -llm_qb 8 -vlm_bs 2 -llm_bs 2 -nw 8 -v > logs/multimodal_annotation_chunk_0_tmp.txt & 
 
 # how to run [Pouta]:
 # $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 16 -llm_bs 18 -nw 54 -v > /media/volume/ImACCESS/trash/multimodal_annotation_h4.txt &
@@ -339,6 +339,7 @@ def get_multimodal_annotation(
 
 	# singleton analysis
 	get_singleton_in_uniques(df=df)
+	compute_label_agreement_and_singletons(df=df)
 
 	print("="*100)
 	print(df.info(verbose=True, memory_usage=True))
