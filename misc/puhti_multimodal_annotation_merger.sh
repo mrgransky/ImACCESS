@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=64G
+#SBATCH --mem=32G
 #SBATCH --partition=gpu
 #SBATCH --time=00-04:00:00
 #SBATCH --gres=gpu:v100:1,nvme:100
@@ -33,7 +33,7 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
-DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4"
+DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs/_HISTORY_X4"
 # TEXT_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 # TEXT_EMBEDDING_MODEL="nvidia/llama-embed-nemotron-8b"
 TEXT_EMBEDDING_MODEL="Octen/Octen-Embedding-8B"
