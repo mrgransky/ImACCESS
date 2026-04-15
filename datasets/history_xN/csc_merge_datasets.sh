@@ -8,8 +8,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH --partition=interactive
+#SBATCH --mem=46G
+#SBATCH --partition=small
 #SBATCH --time=0-05:00:00
 
 set -euo pipefail
