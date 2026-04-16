@@ -1038,9 +1038,7 @@ def basic_clean(txt: str):
 		r'Part of the documentary ensemble:\s\w+',
 		r'History:.*?(?=\bCategory:)',					# History: 8" x 10" print received 19 Jan. 1949 from Air Historical Group, AF, 386th Bomb Group, England. Copied 9 March 1949.
 		r'State:\s*[^.]+\.?', 									# State: New York.
-		# r'no\.\s\w+\s-\w+',											# No. 43 -C, no. 43 -C, no. 43-122
-		# r'no\.\s*\d+(?:-\d+)?', 								# no. 123, no. 123-125
-		r'\[No\.\s\w+\]', 											# [No. 123]
+		r'\[?\bno\.?\s+\d+(?:-\w+)*\b\]?', 			# no. 123, no. 123-125
 		r'vol\.\s\d+',                          # Vol. 5,
 		r'vol+\s+\d+',                          # Vol 5,
 		r'issue\s\d+',													# issue 1

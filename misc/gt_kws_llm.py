@@ -90,23 +90,22 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
  	* **Reusable**: likely to recur across many captions in a large archive.
 
 - **STRICTLY EXCLUDE**:
-	❌ Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 7.3mm, 3 Dodge trucks).
-	❌ Equipment identifiers, serial numbers, or models.
-	❌ Dates, times, years, decades, or any temporal references.
-	❌ Names of individuals or Honorifics (e.g., Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
-	❌ family relationship terms (e.g., mother, father, son, uncle).
-	❌ Geographical names (e.g., continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.)
-	❌ Nationalities, ethnicities, or religions.
-	❌ Ordinal numeral keywords (e.g., fourth marine division, 1st evacuation, 115th Texas Infantry).
-	❌ Roman numeral keywords (e.g., Mark IV Panzer, Mk  II).
-	❌ Abbreviations, acronyms, or codes. 
-	❌ Phrasal verbs, possessive constructions, or descriptive clauses.
+	- Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 7.3mm, 3 Dodge trucks).
+	- Equipment identifiers, serial numbers, or models.
+	- Dates, times, years, decades, or any temporal references.
+	- Names of individuals or Honorifics (e.g., Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
+	- family relationship terms (e.g., mother, father, son, uncle).
+	- Geographical names (e.g., continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.)
+	- Nationalities, ethnicities, or religions.
+	- Ordinal numeral keywords (e.g., fourth, 1st, 115th).
+	- Roman numerals (e.g., I, II, IV, VIII).
+	- Abbreviations, acronyms, or codes. 
+	- Phrasal verbs, possessive constructions, or descriptive clauses.
 
 - Color handling:
-	Remove color only if it is purely descriptive (e.g., red car, blue sky).
+	Remove color only if it is purely descriptive (e.g., white truck, blue sky).
 	Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
 
-- Keywords MAY appear verbatim in the caption if they are the most precise and reusable label. Do NOT paraphrase just to avoid repetition.
 
 - ANTI-HALLUCINATION RULE:
 	Only use the exact information given in the caption for keyword extraction, without making assumptions based on implied meanings.
