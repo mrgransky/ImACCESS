@@ -349,7 +349,18 @@ def get_multimodal_annotation(
 	print("="*100)
 
 	print("="*100)
-	print(df.describe())
+	print(
+		df[[
+			"title", 
+			"description", 
+			"llm_based_labels", 
+			"vlm_based_labels", 
+			"multimodal_labels", 
+			"llm_canonical_labels", 
+			"vlm_canonical_labels", 
+			"multimodal_canonical_labels"
+		]].describe()
+	)
 	print("="*100)
 
 	df.to_csv(output_csv, index=False)
