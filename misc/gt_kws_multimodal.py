@@ -2,6 +2,7 @@ from utils import *
 from gt_kws_vlm import get_vlm_based_labels
 from gt_kws_llm import get_llm_based_labels
 import visualize as viz
+import label_statistics as stats
 from nlp_utils import _post_process_
 from clustering import get_canonical_labels
 
@@ -338,8 +339,9 @@ def get_multimodal_annotation(
 	df['multimodal_labels'] = multimodal_labels
 
 	# singleton analysis
-	get_singleton_in_uniques(df=df)
-	compute_label_agreement_and_singletons(df=df)
+	stats.get_singleton_in_uniques(df=df)
+	stats.compute_label_agreement_and_singletons(df=df)
+	entropy_stats = stats.compute_entropy_vs_performance(df=df, verbose=verbose)
 
 	print("="*100)
 	print(df.info(verbose=True, memory_usage=True))
