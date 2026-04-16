@@ -620,25 +620,22 @@ def _post_process_(
 			# 		print(f"        → {lemma} not abbreviation, skipping")
 			# 	continue
 
-			# # Replace & with and and remove extra spaces:
-			# lemma = re.sub(r'\s&\s', ' and ', lemma).strip() # Replace & with and and remove extra spaces
-
-			# check if digit is in the lemma: (super strict)
+			# check if digit is in the lemma: (extremely strict)
 			if any(c.isdigit() for c in lemma):
 				if verbose:
 					print(f"        → {lemma} Digit detected, skipping")
 				continue
 
-			# Check if lemma is a number
-			if lemma.isdigit():
-				if verbose:
-					print(f"        → {lemma} Number detected, skipping")
-				continue
+			# # Check if lemma is a number
+			# if lemma.isdigit():
+			# 	if verbose:
+			# 		print(f"        → {lemma} Number detected, skipping")
+			# 	continue
 
-			if re.match(r'^number\s\d+$', lemma):
-				if verbose:
-					print(f"        → {lemma} Number detected, skipping")
-				continue
+			# if re.match(r'^number\s\d+$', lemma):
+			# 	if verbose:
+			# 		print(f"        → {lemma} Number detected, skipping")
+			# 	continue
 
 			# # check for geographic references:
 			# if any(lm in geographic_references for lm in lemma.lower().split()):
