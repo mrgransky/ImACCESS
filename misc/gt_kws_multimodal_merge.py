@@ -1,5 +1,6 @@
 from utils import *
 import visualize as viz
+import label_statistics as stats
 from nlp_utils import _post_process_
 from clustering import get_canonical_labels_with_parallel_mapping, cluster
 
@@ -201,9 +202,10 @@ def merge_csv_files(
 		print(f"   ✓ Verified: 0 duplicates remaining")
 	
 	# singleton analysis
-	get_singleton_in_uniques(df=df)
-	compute_label_agreement_and_singletons(df=df)
+	stats.get_singleton_in_uniques(df=df)
+	stats.compute_label_agreement_and_singletons(df=df)
 	entropy_stats = stats.compute_entropy_vs_performance(df=df, verbose=verbose)
+	stats.get_taxonomy_supervison(df=df)
 
 	if verbose:
 		print(f"Saving {type(df)} {df.shape}\n{list(df.columns)}")

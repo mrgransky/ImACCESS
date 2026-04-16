@@ -623,11 +623,11 @@ def _post_process_(
 			# # Replace & with and and remove extra spaces:
 			# lemma = re.sub(r'\s&\s', ' and ', lemma).strip() # Replace & with and and remove extra spaces
 
-			# # check if digit is in the lemma:
-			# if any(c.isdigit() for c in lemma):
-			# 	if verbose:
-			# 		print(f"        → {lemma} Digit detected, skipping")
-			# 	continue
+			# check if digit is in the lemma: (super strict)
+			if any(c.isdigit() for c in lemma):
+				if verbose:
+					print(f"        → {lemma} Digit detected, skipping")
+				continue
 
 			# Check if lemma is a number
 			if lemma.isdigit():
@@ -817,6 +817,7 @@ def is_english(
 		return False
 
 def basic_clean(txt: str):
+	# \b(?:No\.?\s+)?\d+\s+Squadron\b
 	if (
 		not txt
 		or not isinstance(txt, str)

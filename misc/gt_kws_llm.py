@@ -72,6 +72,7 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 		- "nurse" instead of "nurse checking blood pressure"
 		- "pilot" instead of "pilot Charles Matheson"
 		- "Oberleutnant" instead of "Oberleutnant Bruno Kikillus"
+		- "squadron" instead of "No. 10 Squadron RAAF"
 		- "Corporal" instead of "Corporal Genevieve Wade"
 		- "seaplane" instead of "seaplane on the water in the background"
 		- "airplane" instead of "airplane in flight"
@@ -85,9 +86,10 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 		- "Red Cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
 		- "animal" instead of "man riding a camel in the desert"
 		- "reservoir" instead of "Fort Loudoun Reservoir"
+		- "submarine" instead of "German submarine"
  	* **Reusable**: likely to recur across many captions in a large archive.
 
-- **STRICTLY EXCLUDE** KEYWORDS which are:
+- **STRICTLY EXCLUDE**:
 	❌ Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 7.3mm, 3 Dodge trucks).
 	❌ Equipment identifiers, serial numbers, or models.
 	❌ Dates, times, years, decades, or any temporal references.
