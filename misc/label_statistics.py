@@ -2,152 +2,253 @@ from utils import *
 
 
 def _mean_jaccard(sets_a: List[set], sets_b: List[set]) -> float:
-    """Mean Jaccard over rows where union is non-empty."""
-    if len(sets_a) != len(sets_b):
-        raise ValueError("Jaccard inputs must have the same number of rows.")
-    vals = []
-    for a, b in zip(sets_a, sets_b):
-        if not a and not b:
-            continue
-        u = a | b
-        if len(u) == 0:
-            continue
-        vals.append(len(a & b) / len(u))
-    return float(np.mean(vals)) if vals else 0.0
+		"""Mean Jaccard over rows where union is non-empty."""
+		if len(sets_a) != len(sets_b):
+				raise ValueError("Jaccard inputs must have the same number of rows.")
+		vals = []
+		for a, b in zip(sets_a, sets_b):
+				if not a and not b:
+						continue
+				u = a | b
+				if len(u) == 0:
+						continue
+				vals.append(len(a & b) / len(u))
+		return float(np.mean(vals)) if vals else 0.0
 
 def get_taxonomy_supervison(
-    df: pd.DataFrame,
-    sources: Optional[List[str]] = None,
-    anchor_vlm_col: str = "vlm_canonical_labels",
-    base: float = 2.0,
-    title: str = "Supervision Taxonomy Radar (normalized)",
-    normalize: str = "minmax",
-    fill_alpha: float = 0.12,
-    line_width: float = 2.0,
-    figsize: Tuple[int, int] = (7, 7),
+	df: pd.DataFrame,
+	output_directory: str,
+	sources: Optional[List[str]] = None,
+	anchor_vlm_col: str = "vlm_canonical_labels",
+	base: float = 2.0,
+	title: str = "Supervision Taxonomy Radar (normalized)",
+	normalize: str = "minmax",
+	fill_alpha: float = 0.12,
+	line_width: float = 2.0,
+	figsize: Tuple[int, int] = (7, 7),
+	verbose: bool = False,
 ) -> Tuple[pd.DataFrame, plt.Figure, plt.Axes]:
-    """
-    Compute and plot a 3-axis radar chart for:
-      (1) Semantic coverage
-      (2) Visual grounding
-      (3) Statistical density
+	"""
+	Compute and plot a 3-axis radar chart for:
+		(1) Semantic coverage
+		(2) Visual grounding
+		(3) Statistical density
+	Definitions (per supervision source):
+		- Semantic coverage: perplexity = base ** H, where H is Shannon entropy of the marginal label distribution.
+			(Interpretation: 'effective vocabulary size'.)
+		- Visual grounding: mean Jaccard(source_labels, vlm_canonical_labels) across samples.
+			(Interpretation: fraction of a source that is consistent with image-grounded concepts.)
+		- Statistical density: (avg occurrences per label) * (1 - singleton_rate)
+			where avg occurrences per label = total_occurrences / unique_labels.
+	Normalization:
+		- minmax: scales each axis across the provided sources to [0, 1].
+		- none: returns raw values but plots them after minmax anyway (radar needs comparable scale).
+	Returns
+	-------
+	scores_df : pd.DataFrame
+			Raw and normalized axis scores per source.
+	fig, ax : matplotlib figure/axes
+	"""
+	if verbose:
+			print("\n" + "="*80)
+			print("COMPUTING SUPERVISION TAXONOMY RADAR CHART")
+			print("="*80)
+			print(f"Dataset size: {len(df):,} samples")
+			print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
+			print(f"Anchor column (VLM): {anchor_vlm_col}")
+			print(f"Normalization: {normalize}")
+			print(f"Output directory: {output_directory}")
+	
+	if sources is None:
+			sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
+			if verbose:
+					print(f"Using default sources: {sources}")
+	else:
+			if verbose:
+					print(f"Using custom sources: {sources}")
+	missing = [c for c in ([anchor_vlm_col] + sources) if c not in df.columns]
+	if missing:
+			raise KeyError(f"Missing required columns: {missing}")
+	if verbose:
+			print(f"\n✓ All required columns present")
+			print(f"  Analyzing {len(sources)} supervision sources")
+			print(f"  Computing 3 axes: Semantic coverage, Visual grounding, Statistical density")
+	# Pre-parse per-row sets (needed for Jaccard grounding)
+	if verbose:
+			print(f"\nParsing label sets for all columns...")
+	
+	parsed_sets: Dict[str, List[set]] = {}
+	for col in set([anchor_vlm_col] + sources):
+			parsed_sets[col] = [set(_parse_label_cell(v)) for v in df[col].tolist()]
+			if verbose:
+					total_labels = sum(len(s) for s in parsed_sets[col])
+					avg_labels = total_labels / len(df) if len(df) > 0 else 0
+					print(f"  {col}: {total_labels:,} total labels, avg {avg_labels:.2f} per sample")
+	anchor_sets = parsed_sets[anchor_vlm_col]
+	if verbose:
+			print(f"\n" + "-"*80)
+			print("COMPUTING METRICS PER SOURCE")
+			print("-"*80)
+	rows = []
+	for idx, col in enumerate(sources, 1):
+			if verbose:
+					print(f"\n[{idx}/{len(sources)}] Source: {col}")
+					print("  " + "·"*76)
+			
+			# Marginal distribution stats
+			all_labels: List[str] = []
+			for s in parsed_sets[col]:
+					all_labels.extend(list(s))  # set -> unique per row; avoids duplicates inside a sample
+			counts = Counter(all_labels)
+			total_occ = sum(counts.values())
+			unique = len(counts)
+			singletons = sum(1 for _, c in counts.items() if c == 1)
+			singleton_rate = (singletons / unique) if unique > 0 else 0.0
+			if verbose:
+					print(f"  Label statistics:")
+					print(f"    Total occurrences: {total_occ:,}")
+					print(f"    Unique labels: {unique:,}")
+					print(f"    Singletons: {singletons:,} ({singleton_rate*100:.1f}%)")
+					
+					# Show top-3 most frequent labels
+					top_labels = counts.most_common(3)
+					print(f"    Top-3 labels:")
+					for rank, (label, count) in enumerate(top_labels, 1):
+							freq_pct = (count / total_occ * 100) if total_occ > 0 else 0
+							print(f"      {rank}. '{label}': {count:,} ({freq_pct:.2f}%)")
+			H = _shannon_entropy(counts, base=base)
+			perplexity = (base ** H) if H > 0 else 1.0  # effective vocabulary size
+			# Axis 1: semantic coverage proxy
+			semantic_coverage = perplexity
+			if verbose:
+					print(f"  Axis 1 - Semantic Coverage:")
+					print(f"    Entropy (H): {H:.3f} {'bits' if base == 2.0 else 'units'}")
+					print(f"    Perplexity: {perplexity:.1f} (effective vocabulary size)")
+			# Axis 2: visual grounding proxy (agreement with VLM canonical)
+			visual_grounding = _mean_jaccard(parsed_sets[col], anchor_sets) if col != anchor_vlm_col else 1.0
+			if verbose:
+					if col == anchor_vlm_col:
+							print(f"  Axis 2 - Visual Grounding:")
+							print(f"    Jaccard with VLM: 1.000 (self-comparison)")
+					else:
+							print(f"  Axis 2 - Visual Grounding:")
+							print(f"    Mean Jaccard with {anchor_vlm_col}: {visual_grounding:.3f}")
+							print(f"    Interpretation: {visual_grounding*100:.1f}% overlap with VLM labels")
+			# Axis 3: statistical density proxy
+			avg_occ_per_label = (total_occ / unique) if unique > 0 else 0.0
+			statistical_density = avg_occ_per_label * (1.0 - singleton_rate)
+			if verbose:
+					print(f"  Axis 3 - Statistical Density:")
+					print(f"    Avg occurrences per label: {avg_occ_per_label:.2f}")
+					print(f"    Non-singleton rate: {(1.0 - singleton_rate)*100:.1f}%")
+					print(f"    Statistical density: {statistical_density:.2f}")
+					
+					# Interpretation
+					if statistical_density < 2.0:
+							print(f"    📊 Density: LOW (sparse, many rare labels)")
+					elif statistical_density < 5.0:
+							print(f"    📊 Density: MODERATE")
+					else:
+							print(f"    📊 Density: HIGH (concentrated, frequent labels)")
+			rows.append(
+					{
+							"source": col,
+							"unique_labels": int(unique),
+							"total_occurrences": int(total_occ),
+							"singletons": int(singletons),
+							"singleton_rate": float(singleton_rate),
+							"semantic_coverage_raw": float(semantic_coverage),
+							"visual_grounding_raw": float(visual_grounding),
+							"statistical_density_raw": float(statistical_density),
+					}
+			)
+	scores_df = pd.DataFrame(rows)
+	if verbose:
+			print(f"\n" + "="*80)
+			print("RAW SCORES (before normalization)")
+			print("="*80)
+			print(scores_df[["source", "semantic_coverage_raw", "visual_grounding_raw", "statistical_density_raw"]].to_string(index=False))
+	# Normalize to [0,1] per axis across the chosen sources
+	axis_cols = ["semantic_coverage_raw", "visual_grounding_raw", "statistical_density_raw"]
+	
+	if verbose:
+			print(f"\n" + "-"*80)
+			print(f"NORMALIZING AXES (method: {normalize})")
+			print("-"*80)
+	
+	for c in axis_cols:
+			v = scores_df[c].to_numpy(dtype=float)
+			if normalize == "minmax":
+					vmin, vmax = float(np.min(v)), float(np.max(v))
+					if abs(vmax - vmin) < 1e-12:
+							scores_df[c.replace("_raw", "_norm")] = 0.5  # all equal => neutral
+							if verbose:
+									print(f"  {c}: All values equal ({vmin:.3f}), setting normalized to 0.5")
+					else:
+							scores_df[c.replace("_raw", "_norm")] = (v - vmin) / (vmax - vmin)
+							if verbose:
+									print(f"  {c}: min={vmin:.3f}, max={vmax:.3f}, range={vmax-vmin:.3f}")
+			else:
+					# still create *_norm for plotting convenience
+					vmin, vmax = float(np.min(v)), float(np.max(v))
+					scores_df[c.replace("_raw", "_norm")] = (v - vmin) / (vmax - vmin) if vmax > vmin else 0.5
+					if verbose:
+							print(f"  {c}: Using raw values (normalized for plotting only)")
+	if verbose:
+			print(f"\n" + "="*80)
+			print("NORMALIZED SCORES (for radar plot)")
+			print("="*80)
+			print(scores_df[["source", "semantic_coverage_norm", "visual_grounding_norm", "statistical_density_norm"]].to_string(index=False))
+	# Radar plot
+	if verbose:
+			print(f"\n" + "-"*80)
+			print("GENERATING RADAR PLOT")
+			print("-"*80)
+			print(f"  Figure size: {figsize}")
+			print(f"  Line width: {line_width}")
+			print(f"  Fill alpha: {fill_alpha}")
+	
+	categories = ["Semantic coverage", "Visual grounding", "Statistical density"]
+	norm_cols = ["semantic_coverage_norm", "visual_grounding_norm", "statistical_density_norm"]
+	angles = np.linspace(0, 2 * np.pi, len(categories), endpoint=False).tolist()
+	angles += angles[:1]  # close the loop
+	fig = plt.figure(figsize=figsize)
+	ax = plt.subplot(111, polar=True)
+	ax.set_title(title, y=1.08)
+	ax.set_xticks(angles[:-1])
+	ax.set_xticklabels(categories)
+	ax.set_yticks([0.25, 0.5, 0.75])
+	ax.set_yticklabels(["0.25", "0.50", "0.75"])
+	ax.set_ylim(0.0, 1.0)
 
-    Definitions (per supervision source):
-      - Semantic coverage: perplexity = base ** H, where H is Shannon entropy of the marginal label distribution.
-        (Interpretation: 'effective vocabulary size'.)
-      - Visual grounding: mean Jaccard(source_labels, vlm_canonical_labels) across samples.
-        (Interpretation: fraction of a source that is consistent with image-grounded concepts.)
-      - Statistical density: (avg occurrences per label) * (1 - singleton_rate)
-        where avg occurrences per label = total_occurrences / unique_labels.
+	for _, r in scores_df.iterrows():
+		vals = [float(r[c]) for c in norm_cols]
+		vals += vals[:1]
+		ax.plot(angles, vals, linewidth=line_width, label=r["source"])
+		ax.fill(angles, vals, alpha=fill_alpha)
+		
+		if verbose:
+			print(f"  Plotted: {r['source']}")
+			print(f"    Values: {[f'{v:.3f}' for v in vals[:-1]]}")
 
-    Normalization:
-      - minmax: scales each axis across the provided sources to [0, 1].
-      - none: returns raw values but plots them after minmax anyway (radar needs comparable scale).
+	ax.legend(loc="upper right", bbox_to_anchor=(1.35, 1.15))
+	plt.tight_layout()
+	output_path = os.path.join(output_directory, "taxonomy_radar_plot.png")
+	plt.savefig(output_path, dpi=200)
+	plt.close()
 
-    Returns
-    -------
-    scores_df : pd.DataFrame
-        Raw and normalized axis scores per source.
-    fig, ax : matplotlib figure/axes
-    """
-    if sources is None:
-        sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
+	if verbose:
+		print(f"\n✓ Radar plot saved to: {output_path}")
+		print(f"  Resolution: 200 DPI")
+		
+		print(f"\n" + "="*80)
+		print("ANALYSIS COMPLETE")
+		print("="*80)
+		print(f"  Sources analyzed: {len(sources)}")
+		print(f"  Metrics computed: 3 axes (semantic, grounding, density)")
+		print(f"  Output files: 1 (radar_plot.png)")
 
-    missing = [c for c in ([anchor_vlm_col] + sources) if c not in df.columns]
-    if missing:
-        raise KeyError(f"Missing required columns: {missing}")
-
-    # Pre-parse per-row sets (needed for Jaccard grounding)
-    parsed_sets: Dict[str, List[set]] = {}
-    for col in set([anchor_vlm_col] + sources):
-        parsed_sets[col] = [set(_parse_label_cell(v)) for v in df[col].tolist()]
-
-    anchor_sets = parsed_sets[anchor_vlm_col]
-
-    rows = []
-    for col in sources:
-        # Marginal distribution stats
-        all_labels: List[str] = []
-        for s in parsed_sets[col]:
-            all_labels.extend(list(s))  # set -> unique per row; avoids duplicates inside a sample
-
-        counts = Counter(all_labels)
-        total_occ = sum(counts.values())
-        unique = len(counts)
-
-        singletons = sum(1 for _, c in counts.items() if c == 1)
-        singleton_rate = (singletons / unique) if unique > 0 else 0.0
-
-        H = _shannon_entropy(counts, base=base)
-        perplexity = (base ** H) if H > 0 else 1.0  # effective vocabulary size
-
-        # Axis 1: semantic coverage proxy
-        semantic_coverage = perplexity
-
-        # Axis 2: visual grounding proxy (agreement with VLM canonical)
-        visual_grounding = _mean_jaccard(parsed_sets[col], anchor_sets) if col != anchor_vlm_col else 1.0
-
-        # Axis 3: statistical density proxy
-        avg_occ_per_label = (total_occ / unique) if unique > 0 else 0.0
-        statistical_density = avg_occ_per_label * (1.0 - singleton_rate)
-
-        rows.append(
-            {
-                "source": col,
-                "unique_labels": int(unique),
-                "total_occurrences": int(total_occ),
-                "singletons": int(singletons),
-                "singleton_rate": float(singleton_rate),
-                "semantic_coverage_raw": float(semantic_coverage),
-                "visual_grounding_raw": float(visual_grounding),
-                "statistical_density_raw": float(statistical_density),
-            }
-        )
-
-    scores_df = pd.DataFrame(rows)
-
-    # Normalize to [0,1] per axis across the chosen sources
-    axis_cols = ["semantic_coverage_raw", "visual_grounding_raw", "statistical_density_raw"]
-    for c in axis_cols:
-        v = scores_df[c].to_numpy(dtype=float)
-        if normalize == "minmax":
-            vmin, vmax = float(np.min(v)), float(np.max(v))
-            if abs(vmax - vmin) < 1e-12:
-                scores_df[c.replace("_raw", "_norm")] = 0.5  # all equal => neutral
-            else:
-                scores_df[c.replace("_raw", "_norm")] = (v - vmin) / (vmax - vmin)
-        else:
-            # still create *_norm for plotting convenience
-            vmin, vmax = float(np.min(v)), float(np.max(v))
-            scores_df[c.replace("_raw", "_norm")] = (v - vmin) / (vmax - vmin) if vmax > vmin else 0.5
-
-    # Radar plot
-    categories = ["Semantic coverage", "Visual grounding", "Statistical density"]
-    norm_cols = ["semantic_coverage_norm", "visual_grounding_norm", "statistical_density_norm"]
-
-    angles = np.linspace(0, 2 * np.pi, len(categories), endpoint=False).tolist()
-    angles += angles[:1]  # close the loop
-
-    fig = plt.figure(figsize=figsize)
-    ax = plt.subplot(111, polar=True)
-    ax.set_title(title, y=1.08)
-
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(categories)
-    ax.set_yticks([0.25, 0.5, 0.75])
-    ax.set_yticklabels(["0.25", "0.50", "0.75"])
-    ax.set_ylim(0.0, 1.0)
-
-    for _, r in scores_df.iterrows():
-        vals = [float(r[c]) for c in norm_cols]
-        vals += vals[:1]
-        ax.plot(angles, vals, linewidth=line_width, label=r["source"])
-        ax.fill(angles, vals, alpha=fill_alpha)
-
-    ax.legend(loc="upper right", bbox_to_anchor=(1.35, 1.15))
-    plt.tight_layout()
-
-    return scores_df, fig, ax
+	return scores_df, fig, ax
 
 def _parse_label_cell(val: Any) -> List[str]:
 		"""

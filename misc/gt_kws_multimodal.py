@@ -342,7 +342,7 @@ def get_multimodal_annotation(
 	stats.get_singleton_in_uniques(df=df)
 	stats.compute_label_agreement_and_singletons(df=df)
 	entropy_stats = stats.compute_entropy_vs_performance(df=df, verbose=verbose)
-	stats.get_taxonomy_supervison(df=df)
+	stats.get_taxonomy_supervison(df=df, output_directory=OUTPUT_DIR, verbose=verbose)
 
 	print("="*100)
 	print(df.info(verbose=True, memory_usage=True))
