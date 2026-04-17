@@ -643,7 +643,7 @@ def _post_process_(
 			# 		print(f"        → {repr(lemma)} Geographic reference detected, skipping")
 			# 	continue
 
-			# tokenized_lemma = re.split(r'[ .-]+', lemma.lower())   # split on space, hyphen or dot
+			# tokenized_lemma = re.split(r'[ .-]+', lemma.lower())   # split on space, hyphen or dot (U.S. Route 66)
 			tokenized_lemma = re.split(r'[ -]+', lemma.lower())   # split on space or hyphen
 			if any(tok in geographic_references for tok in tokenized_lemma):
 				if verbose:

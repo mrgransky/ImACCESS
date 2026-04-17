@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import scipy
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from PIL import Image, ImageDraw, ImageFont
@@ -52,6 +53,89 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 1000)
 pd.set_option('display.max_rows', 100)
 sns.set_style("whitegrid")
+
+def plot_taxonomy_radar(scores_df, value_cols, title, output_path):
+	figsize = (8, 8)
+	cmap = matplotlib.colormaps["Set1"] # or "viridis", "tab20"
+	categories = [
+		"Semantic\nCoverage",
+		"Visual\nGrounding",
+		"Statistical\nDensity",
+	]
+
+	N = len(categories)
+	angles = [n / float(N) * 2 * np.pi for n in range(N)]
+	angles_plot = angles + angles[:1]
+	fig, ax = plt.subplots(
+		figsize=figsize,
+		subplot_kw=dict(projection="polar")
+	)
+
+	# Polar orientation
+	ax.set_theta_offset(np.pi / 2)
+	ax.set_theta_direction(-1)
+	
+	# VALUES EXACTLY AS PROVIDED
+	data_matrix = scores_df[value_cols].to_numpy(dtype=float)
+	
+	# Determine dynamic radial limit
+	rmax = np.nanmax(data_matrix)
+	if rmax <= 0:
+		rmax = 1.0  # safeguard
+	ax.set_ylim(0, rmax * 1.01)
+
+	# Radial ticks
+	yticks = np.linspace(0, rmax, 5)[1:]
+	ax.set_yticks(yticks)
+	ax.set_yticklabels([f"{t:.1f}" for t in yticks], size=10)
+
+	# Angular labels
+	ax.set_xticks(angles)
+	ax.set_xticklabels([])
+	for angle, label in zip(angles, categories):
+		ax.text(
+			angle,
+			rmax * 1.1,
+			label,
+			size=10,
+			weight="bold",
+			ha="center",
+			va="center"
+		)
+
+	for idx, (_, row) in enumerate(scores_df.iterrows()):
+		values = data_matrix[idx].tolist()
+		values_plot = values + values[:1]
+		ax.plot(
+			angles_plot,
+			values_plot,
+			color=cmap(idx),
+			marker="o",
+			markersize=3.0,
+			linestyle="-",
+			linewidth=1.5,
+			label=row["source"],
+			alpha=0.85,
+			zorder=10
+		)
+		ax.fill(
+			angles_plot,
+			values_plot,
+			color=cmap(idx),
+			alpha=0.15,
+		)
+
+	ax.grid(True, linestyle="--", alpha=0.65)
+	ax.legend(
+		loc="upper left",
+		bbox_to_anchor=(-0.15, 1.1),
+		frameon=False,
+		fontsize=11
+	)
+	# ax.set_title(title, size=10, weight="bold")
+	plt.tight_layout()
+	plt.savefig(output_path, dpi=250, bbox_inches="tight")
+	plt.close()
 
 def plot_image_to_texts_separate_horizontal_bars(
 				models: dict,
@@ -2392,8 +2476,6 @@ def estimate_openimages_v7_metrics():
 def plot_comparative_radar_chart(
 	summary_stats_dict, 
 	output_dir, 
-	label_column, 
-	DPI=200
 ):
 	print("\n>> COMPARATIVE RADAR CHART")
 	print(f"summary_stats_dict:")
@@ -2592,7 +2674,6 @@ def plot_comparative_radar_chart(
 	ax.set_yticks([20, 40, 60, 80, 100])
 	ax.set_yticklabels(['20', '40', '60', '80', '100'], size=10, zorder=100)
 	ax.grid(True, linestyle='--', color="#464646", alpha=0.5)
-	
 	ax.legend(
 		loc='upper left',
 		fontsize=14,
@@ -2609,7 +2690,7 @@ def plot_comparative_radar_chart(
 	plt.tight_layout()
 	plt.savefig(
 		fname=os.path.join(output_dir, f"comparative_radar_chart.png"),
-		dpi=DPI,
+		dpi=250,
 		bbox_inches='tight'
 	)
 	plt.close()
@@ -2922,13 +3003,13 @@ def plot_multi_source_agreement(
 					ax.set_ylabel('Number of Samples')
 					ax.set_title('Sample-Level Agreement Categories')
 					for i, (cat, count) in enumerate(zip(categories, counts)):
-							ax.text(
-									i, 
-									count, 
-									f'{count}\n({count/min_len*100:.1f}%)', 
-									ha='center', 
-									va='bottom'
-							)
+						ax.text(
+							i, 
+							count, 
+							f'{count} ({count/min_len*100:.2f}%)', 
+							ha='center', 
+							va='bottom'
+						)
 					ax.grid(axis='y', alpha=0.3)
 					
 					# Venn diagram data
@@ -3476,9 +3557,7 @@ def multilabel_eda(
 
 	plot_comparative_radar_chart(
 		summary_stats_dict, 
-		output_dir, 
-		label_column, 
-		DPI
+		output_dir,
 	)
 
 	print("\nCOMPREHENSIVE SUMMARY STATISTICS")

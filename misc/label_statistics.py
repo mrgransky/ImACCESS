@@ -1,5 +1,5 @@
 from utils import *
-
+import visualize as viz
 
 def _mean_jaccard(sets_a: List[set], sets_b: List[set]) -> float:
 		"""Mean Jaccard over rows where union is non-empty."""
@@ -21,11 +21,7 @@ def get_taxonomy_supervison(
 	sources: Optional[List[str]] = None,
 	anchor_vlm_col: str = "vlm_canonical_labels",
 	base: float = 2.0,
-	title: str = "Supervision Taxonomy Radar (normalized)",
-	normalize: str = "minmax",
-	fill_alpha: float = 0.12,
-	line_width: float = 2.0,
-	figsize: Tuple[int, int] = (7, 7),
+	normalize: str = "L2",
 	verbose: bool = False,
 ) -> Tuple[pd.DataFrame, plt.Figure, plt.Axes]:
 	"""
@@ -166,93 +162,88 @@ def get_taxonomy_supervison(
 					}
 			)
 	scores_df = pd.DataFrame(rows)
+	
 	if verbose:
-			print(f"\n" + "="*80)
-			print("RAW SCORES (before normalization)")
-			print("="*80)
-			print(scores_df[["source", "semantic_coverage_raw", "visual_grounding_raw", "statistical_density_raw"]].to_string(index=False))
+		print("\nRAW SCORES (before normalization)")
+		# print(scores_df[["source", "semantic_coverage_raw", "visual_grounding_raw", "statistical_density_raw"]])
+		print(scores_df)
+	
 	# Normalize to [0,1] per axis across the chosen sources
 	axis_cols = ["semantic_coverage_raw", "visual_grounding_raw", "statistical_density_raw"]
 	
 	if verbose:
-			print(f"\n" + "-"*80)
-			print(f"NORMALIZING AXES (method: {normalize})")
-			print("-"*80)
-	
+		print(f"\n[NORMALIZATION] {normalize}")
+
 	for c in axis_cols:
-			v = scores_df[c].to_numpy(dtype=float)
-			if normalize == "minmax":
-					vmin, vmax = float(np.min(v)), float(np.max(v))
-					if abs(vmax - vmin) < 1e-12:
-							scores_df[c.replace("_raw", "_norm")] = 0.5  # all equal => neutral
-							if verbose:
-									print(f"  {c}: All values equal ({vmin:.3f}), setting normalized to 0.5")
-					else:
-							scores_df[c.replace("_raw", "_norm")] = (v - vmin) / (vmax - vmin)
-							if verbose:
-									print(f"  {c}: min={vmin:.3f}, max={vmax:.3f}, range={vmax-vmin:.3f}")
-			else:
-					# still create *_norm for plotting convenience
-					vmin, vmax = float(np.min(v)), float(np.max(v))
-					scores_df[c.replace("_raw", "_norm")] = (v - vmin) / (vmax - vmin) if vmax > vmin else 0.5
-					if verbose:
-							print(f"  {c}: Using raw values (normalized for plotting only)")
-	if verbose:
-			print(f"\n" + "="*80)
-			print("NORMALIZED SCORES (for radar plot)")
-			print("="*80)
-			print(scores_df[["source", "semantic_coverage_norm", "visual_grounding_norm", "statistical_density_norm"]].to_string(index=False))
-
-	# Radar plot
-	if verbose:
-			print(f"\n" + "-"*80)
-			print("GENERATING RADAR PLOT")
-			print("-"*80)
-			print(f"  Figure size: {figsize}")
-			print(f"  Line width: {line_width}")
-			print(f"  Fill alpha: {fill_alpha}")
-	
-	categories = ["Semantic coverage", "Visual grounding", "Statistical density"]
-	norm_cols = ["semantic_coverage_norm", "visual_grounding_norm", "statistical_density_norm"]
-	angles = np.linspace(0, 2 * np.pi, len(categories), endpoint=False).tolist()
-	angles += angles[:1]  # close the loop
-	fig = plt.figure(figsize=figsize)
-	ax = plt.subplot(111, polar=True)
-	ax.set_title(title, y=1.08)
-	ax.set_xticks(angles[:-1])
-	ax.set_xticklabels(categories)
-	ax.set_yticks([0.25, 0.5, 0.75])
-	ax.set_yticklabels(["0.25", "0.50", "0.75"])
-	ax.set_ylim(0.0, 1.0)
-
-	for _, r in scores_df.iterrows():
-		vals = [float(r[c]) for c in norm_cols]
-		vals += vals[:1]
-		ax.plot(angles, vals, linewidth=line_width, label=r["source"])
-		ax.fill(angles, vals, alpha=fill_alpha)
-		
-		if verbose:
-			print(f"  Plotted: {r['source']}")
-			print(f"    Values: {[f'{v:.3f}' for v in vals[:-1]]}")
-
-	ax.legend(loc="upper right", bbox_to_anchor=(1.35, 1.15))
-	plt.tight_layout()
-	output_path = os.path.join(output_directory, "taxonomy_radar_plot.png")
-	plt.savefig(output_path, dpi=200)
-	plt.close()
+		v = scores_df[c].to_numpy(dtype=float)
+		if normalize == "minmax":
+			vmin, vmax = np.min(v), np.max(v)
+			val_norm = (v - vmin) / (vmax - vmin) if abs(vmax - vmin) < 1e-12 else 0.5
+			scores_df[c.replace("_raw", f"{normalize}_norm")] = val_norm 
+			if verbose:
+				print(f"\n{c:<26}(min, max): ({vmin}, {vmax}) diff: {vmax - vmin}")
+				print(f"v = {v} => |v| = {val_norm}")
+		elif normalize == "zscore":
+			mean, std = np.mean(v), np.std(v)
+			val_norm = (v - mean) / std if std > 1e-12 else 0.5
+			scores_df[c.replace("_raw", f"_{normalize}_norm")] = val_norm
+			if verbose:
+				print(f"\n{c:<26}(mean, std): ({mean}, {std})")
+				print(f"v = {v} => |v| = {val_norm}")
+		elif normalize == "L2":
+			val_norm = v / np.linalg.norm(v)
+			scores_df[c.replace("_raw", f"_{normalize}_norm")] = val_norm
+			if verbose:
+				print(f"\n{c:<26}(L2 norm): {np.linalg.norm(v)}")
+				print(f"v = {v} => |v| = {val_norm}")
+		else:
+			# still create *_norm for plotting convenience
+			vmin, vmax = float(np.min(v)), float(np.max(v))
+			scores_df[c.replace("_raw", f"_{normalize}_norm")] = (v - vmin) / (vmax - vmin) if vmax > vmin else 0.5
+			if verbose:
+				print(f"  {c}: Using raw values (normalized for plotting only)")
 
 	if verbose:
-		print(f"\n✓ Radar plot saved to: {output_path}")
-		print(f"  Resolution: 200 DPI")
-		
-		print(f"\n" + "="*80)
-		print("ANALYSIS COMPLETE")
-		print("="*80)
-		print(f"  Sources analyzed: {len(sources)}")
-		print(f"  Metrics computed: 3 axes (semantic, grounding, density)")
-		print(f"  Output files: 1 (radar_plot.png)")
+		print("\nNORMALIZED SCORES")
+		print(scores_df)
 
-	return scores_df, fig, ax
+	if verbose:
+		print(f"\n>> GENERATING RADAR PLOT (Raw Comparison)")
+
+	raw_plot_cols = [
+		"semantic_coverage_raw",
+		"visual_grounding_raw",
+		"statistical_density_raw",
+	]
+
+	viz.plot_taxonomy_radar(
+		scores_df,
+		raw_plot_cols,
+		title="Supervision Taxonomy (Raw)",
+		output_path=os.path.join(output_directory, "taxonomy_radar_raw.png")
+	)
+
+
+	if verbose:
+		print(f"\n>> GENERATING {normalize} normalized RADAR PLOT")
+
+	norm_plot_cols = [
+		f"semantic_coverage_{normalize}_norm",
+		f"visual_grounding_{normalize}_norm",
+		f"statistical_density_{normalize}_norm",
+	]
+
+	viz.plot_taxonomy_radar(
+		scores_df,
+		norm_plot_cols,
+		title=f"Supervision Taxonomy ({normalize} Normalized)",
+		output_path=os.path.join(
+			output_directory,
+			f"taxonomy_radar_{normalize}_normalized.png"
+		)
+	)
+
+	return scores_df
 
 def _parse_label_cell(val: Any) -> List[str]:
 		"""
@@ -325,34 +316,34 @@ def compute_entropy_vs_performance(
 				One row per label source with entropy/statistics, merged with performance if provided.
 		"""
 		if verbose:
-				print("\n" + "="*80)
-				print("COMPUTING ENTROPY VS PERFORMANCE ANALYSIS")
-				print("="*80)
-				print(f"Dataset size: {len(df):,} samples")
-				print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
+			print("\n" + "="*80)
+			print("COMPUTING ENTROPY VS PERFORMANCE ANALYSIS")
+			print("="*80)
+			print(f"Dataset size: {len(df):,} samples")
+			print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
 		
 		if label_columns is None:
-				label_columns = [
-						"llm_based_labels",
-						"vlm_based_labels",
-						"multimodal_labels",
-						"llm_canonical_labels",
-						"vlm_canonical_labels",
-						"multimodal_canonical_labels",
-				]
-				if verbose:
-						print(f"Using default label columns: {len(label_columns)} sources")
+			label_columns = [
+				"llm_based_labels",
+				"vlm_based_labels",
+				"multimodal_labels",
+				"llm_canonical_labels",
+				"vlm_canonical_labels",
+				"multimodal_canonical_labels",
+			]
+			if verbose:
+				print(f"Default label columns: {len(label_columns)} sources: {label_columns}")
 		else:
-				if verbose:
-						print(f"Using custom label columns: {label_columns}")
+			if verbose:
+				print(f"Custom label columns: {label_columns}")
 
 		rows: List[Dict[str, Any]] = []
 
 		for idx, col in enumerate(label_columns, 1):
 				if col not in df.columns:
-						if verbose:
-								print(f"\n[{idx}/{len(label_columns)}] ⚠️  Column '{col}' not found, skipping")
-						continue
+					if verbose:
+						print(f"\n[{idx}/{len(label_columns)}] '{col}' not found, skipping")
+					continue
 
 				if verbose:
 						print(f"\n[{idx}/{len(label_columns)}] Processing: {col}")
@@ -361,7 +352,7 @@ def compute_entropy_vs_performance(
 				# Flatten all labels for marginal distribution
 				all_labels: List[str] = []
 				for v in df[col].tolist():
-						all_labels.extend(_parse_label_cell(v))
+					all_labels.extend(_parse_label_cell(v))
 
 				counts = Counter(all_labels)
 				total_occ = sum(counts.values())
@@ -523,8 +514,10 @@ def compute_label_agreement_and_singletons(df: pd.DataFrame):
 		print(f"\n[{col.upper()}]")
 		print(f"Total Labels: {len(all_labels)}")
 		print(f"Unique Labels: {len(unique_labels)}")
-		print(f"Singletons: {len(label_singletons)}/{len(unique_labels)} "
-					f"({len(label_singletons)/len(unique_labels)*100 if len(unique_labels)>0 else 0:.2f}%)")
+		print(
+			f"Singletons: {len(label_singletons)}/{len(unique_labels)} "
+			f"({len(label_singletons)/len(unique_labels)*100 if len(unique_labels)>0 else 0:.2f}%)"
+		)
 		print("-" * 50)
 	
 	# --- Agreement Analysis (The "Grounding" Metric) ---
@@ -541,23 +534,22 @@ def compute_label_agreement_and_singletons(df: pd.DataFrame):
 		exact_matches = 0
 		
 		for l_set, v_set in zip(llm_sets, vlm_sets):
-				intersection = l_set.intersection(v_set)
-				union = l_set.union(v_set)
-				
-				if len(union) > 0:
-						jaccard_scores.append(len(intersection) / len(union))
-						if len(intersection) > 0:
-								at_least_one_intersect += 1
-				
-				if l_set == v_set and len(l_set) > 0:
-						exact_matches += 1
-		print("\n" + "!" * 20 + " CROSS-MODAL AGREEMENT ANALYSIS " + "!" * 20)
-		print(f"System: {l_can[0]} <-> {v_can[0]}")
+			intersection = l_set.intersection(v_set)
+			union = l_set.union(v_set)
+			
+			if len(union) > 0:
+				jaccard_scores.append(len(intersection) / len(union))
+				if len(intersection) > 0:
+					at_least_one_intersect += 1
+			
+			if l_set == v_set and len(l_set) > 0:
+				exact_matches += 1
+		
 		avg_j = sum(jaccard_scores)/len(jaccard_scores) if jaccard_scores else 0
+		print(f"CROSS-MODAL AGREEMENT ANALYSIS {l_can[0]} <-> {v_can[0]}")
 		print(f"Mean Jaccard Index: {avg_j:.4f}")
 		print(f"Partial Agreement (>=1 shared label): {at_least_one_intersect/len(llm_sets)*100:.2f}%")
-		print(f"Exact Match Rate: {exact_matches/len(llm_sets)*100:.2f}%")
-		print("!" * 72)
+		print(f"Exact Match: {exact_matches}/{len(llm_sets)} ({exact_matches/len(llm_sets)*100:.2f}%)")
 	else:
 		print(f"l_can: {l_can}, v_can: {v_can} => no agreement could be computed!")
 

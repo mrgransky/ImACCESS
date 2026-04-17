@@ -86,6 +86,7 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 		- "Red Cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
 		- "animal" instead of "man riding a camel in the desert"
 		- "reservoir" instead of "Fort Loudoun Reservoir"
+		- "Ballon Gun" instead of "6-pounder Ballon Gun"
 		- "submarine" instead of "German submarine"
  	* **Reusable**: likely to recur across many captions in a large archive.
 
