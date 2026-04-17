@@ -316,9 +316,7 @@ def compute_entropy_vs_performance(
 				One row per label source with entropy/statistics, merged with performance if provided.
 		"""
 		if verbose:
-			print("\n" + "="*80)
 			print("COMPUTING ENTROPY VS PERFORMANCE ANALYSIS")
-			print("="*80)
 			print(f"Dataset size: {len(df):,} samples")
 			print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
 		
