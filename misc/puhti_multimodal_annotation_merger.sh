@@ -34,9 +34,9 @@ echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
 DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs/_HISTORY_X4"
-# TEXT_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
+TEXT_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 # TEXT_EMBEDDING_MODEL="nvidia/llama-embed-nemotron-8b"
-TEXT_EMBEDDING_MODEL="Octen/Octen-Embedding-8B"
+# TEXT_EMBEDDING_MODEL="Octen/Octen-Embedding-8B"
 
 python -u gt_kws_multimodal_merge.py \
 	--dataset_dir $DATASET_DIR \
