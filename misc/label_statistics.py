@@ -66,9 +66,12 @@ def get_taxonomy_supervison(
 	else:
 			if verbose:
 					print(f"Using custom sources: {sources}")
+
 	missing = [c for c in ([anchor_vlm_col] + sources) if c not in df.columns]
 	if missing:
-			raise KeyError(f"Missing required columns: {missing}")
+		print(f"Missing required columns: {missing} => Exit")
+		return
+
 	if verbose:
 			print(f"\n✓ All required columns present")
 			print(f"  Analyzing {len(sources)} supervision sources")
@@ -199,6 +202,7 @@ def get_taxonomy_supervison(
 			print("NORMALIZED SCORES (for radar plot)")
 			print("="*80)
 			print(scores_df[["source", "semantic_coverage_norm", "visual_grounding_norm", "statistical_density_norm"]].to_string(index=False))
+
 	# Radar plot
 	if verbose:
 			print(f"\n" + "-"*80)

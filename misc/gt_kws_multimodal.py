@@ -348,21 +348,6 @@ def get_multimodal_annotation(
 	print(df.info(verbose=True, memory_usage=True))
 	print("="*100)
 
-	print("="*100)
-	print(
-		df[[
-			"title", 
-			"description", 
-			"llm_based_labels", 
-			"vlm_based_labels", 
-			"multimodal_labels", 
-			"llm_canonical_labels", 
-			"vlm_canonical_labels", 
-			"multimodal_canonical_labels"
-		]].describe()
-	)
-	print("="*100)
-
 	df.to_csv(output_csv, index=False)
 	try:
 		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
