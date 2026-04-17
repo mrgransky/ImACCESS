@@ -78,89 +78,94 @@ def get_taxonomy_supervison(
 	
 	parsed_sets: Dict[str, List[set]] = {}
 	for col in set([anchor_vlm_col] + sources):
-			parsed_sets[col] = [set(_parse_label_cell(v)) for v in df[col].tolist()]
-			if verbose:
-					total_labels = sum(len(s) for s in parsed_sets[col])
-					avg_labels = total_labels / len(df) if len(df) > 0 else 0
-					print(f"  {col}: {total_labels:,} total labels, avg {avg_labels:.2f} per sample")
+		parsed_sets[col] = [set(_parse_label_cell(v)) for v in df[col].tolist()]
+		if verbose:
+			total_labels = sum(len(s) for s in parsed_sets[col])
+			avg_labels = total_labels / len(df) if len(df) > 0 else 0
+			print(f"  {col}: {total_labels:,} total labels, avg {avg_labels:.2f} per sample")
+	
 	anchor_sets = parsed_sets[anchor_vlm_col]
 	if verbose:
-			print(f"\n" + "-"*80)
-			print("COMPUTING METRICS PER SOURCE")
-			print("-"*80)
+		print("COMPUTING METRICS PER SOURCE")
+	
 	rows = []
 	for idx, col in enumerate(sources, 1):
-			if verbose:
-					print(f"\n[{idx}/{len(sources)}] Source: {col}")
-					print("  " + "·"*76)
+		if verbose:
+			print(f"\n[{idx}/{len(sources)}] Source: {col}")
+			print("  " + "·"*76)
+		
+		# Marginal distribution stats
+		all_labels: List[str] = []
+		for s in parsed_sets[col]:
+				all_labels.extend(list(s))  # set -> unique per row; avoids duplicates inside a sample
+		counts = Counter(all_labels)
+		total_occ = sum(counts.values())
+		unique = len(counts)
+		singletons = sum(1 for _, c in counts.items() if c == 1)
+		singleton_rate = (singletons / unique) if unique > 0 else 0.0
+		if verbose:
+			print(f"  Label statistics:")
+			print(f"    Total occurrences: {total_occ:,}")
+			print(f"    Unique labels: {unique:,}")
+			print(f"    Singletons: {singletons:,} ({singleton_rate*100:.1f}%)")
 			
-			# Marginal distribution stats
-			all_labels: List[str] = []
-			for s in parsed_sets[col]:
-					all_labels.extend(list(s))  # set -> unique per row; avoids duplicates inside a sample
-			counts = Counter(all_labels)
-			total_occ = sum(counts.values())
-			unique = len(counts)
-			singletons = sum(1 for _, c in counts.items() if c == 1)
-			singleton_rate = (singletons / unique) if unique > 0 else 0.0
-			if verbose:
-					print(f"  Label statistics:")
-					print(f"    Total occurrences: {total_occ:,}")
-					print(f"    Unique labels: {unique:,}")
-					print(f"    Singletons: {singletons:,} ({singleton_rate*100:.1f}%)")
-					
-					# Show top-3 most frequent labels
-					top_labels = counts.most_common(3)
-					print(f"    Top-3 labels:")
-					for rank, (label, count) in enumerate(top_labels, 1):
-							freq_pct = (count / total_occ * 100) if total_occ > 0 else 0
-							print(f"      {rank}. '{label}': {count:,} ({freq_pct:.2f}%)")
-			H = _shannon_entropy(counts, base=base)
-			perplexity = (base ** H) if H > 0 else 1.0  # effective vocabulary size
-			# Axis 1: semantic coverage proxy
-			semantic_coverage = perplexity
-			if verbose:
-					print(f"  Axis 1 - Semantic Coverage:")
-					print(f"    Entropy (H): {H:.3f} {'bits' if base == 2.0 else 'units'}")
-					print(f"    Perplexity: {perplexity:.1f} (effective vocabulary size)")
-			# Axis 2: visual grounding proxy (agreement with VLM canonical)
-			visual_grounding = _mean_jaccard(parsed_sets[col], anchor_sets) if col != anchor_vlm_col else 1.0
-			if verbose:
-					if col == anchor_vlm_col:
-							print(f"  Axis 2 - Visual Grounding:")
-							print(f"    Jaccard with VLM: 1.000 (self-comparison)")
-					else:
-							print(f"  Axis 2 - Visual Grounding:")
-							print(f"    Mean Jaccard with {anchor_vlm_col}: {visual_grounding:.3f}")
-							print(f"    Interpretation: {visual_grounding*100:.1f}% overlap with VLM labels")
-			# Axis 3: statistical density proxy
-			avg_occ_per_label = (total_occ / unique) if unique > 0 else 0.0
-			statistical_density = avg_occ_per_label * (1.0 - singleton_rate)
-			if verbose:
-					print(f"  Axis 3 - Statistical Density:")
-					print(f"    Avg occurrences per label: {avg_occ_per_label:.2f}")
-					print(f"    Non-singleton rate: {(1.0 - singleton_rate)*100:.1f}%")
-					print(f"    Statistical density: {statistical_density:.2f}")
-					
-					# Interpretation
-					if statistical_density < 2.0:
-							print(f"    📊 Density: LOW (sparse, many rare labels)")
-					elif statistical_density < 5.0:
-							print(f"    📊 Density: MODERATE")
-					else:
-							print(f"    📊 Density: HIGH (concentrated, frequent labels)")
-			rows.append(
-					{
-							"source": col,
-							"unique_labels": int(unique),
-							"total_occurrences": int(total_occ),
-							"singletons": int(singletons),
-							"singleton_rate": float(singleton_rate),
-							"semantic_coverage_raw": float(semantic_coverage),
-							"visual_grounding_raw": float(visual_grounding),
-							"statistical_density_raw": float(statistical_density),
-					}
-			)
+			# Show top-3 most frequent labels
+			top_labels = counts.most_common(3)
+			print(f"    Top-3 labels:")
+			for rank, (label, count) in enumerate(top_labels, 1):
+				freq_pct = (count / total_occ * 100) if total_occ > 0 else 0
+				print(f"      {rank}. '{label}': {count:,} ({freq_pct:.2f}%)")
+		
+		H = _shannon_entropy(counts, base=base)
+		perplexity = (base ** H) if H > 0 else 1.0  # effective vocabulary size
+
+		# Axis 1: semantic coverage proxy
+		semantic_coverage = perplexity
+		if verbose:
+			print(f"  Axis 1 - Semantic Coverage:")
+			print(f"    Entropy (H): {H:.3f} {'bits' if base == 2.0 else 'units'}")
+			print(f"    Perplexity: {perplexity:.1f} (effective vocabulary size)")
+
+		# Axis 2: visual grounding proxy (agreement with VLM canonical)
+		visual_grounding = _mean_jaccard(parsed_sets[col], anchor_sets) if col != anchor_vlm_col else 1.0
+		if verbose:
+			if col == anchor_vlm_col:
+				print(f"  Axis 2 - Visual Grounding:")
+				print(f"    Jaccard with VLM: 1.000 (self-comparison)")
+			else:
+				print(f"  Axis 2 - Visual Grounding:")
+				print(f"    Mean Jaccard with {anchor_vlm_col}: {visual_grounding:.3f}")
+				print(f"    Interpretation: {visual_grounding*100:.1f}% overlap with VLM labels")
+
+		# Axis 3: statistical density proxy
+		avg_occ_per_label = (total_occ / unique) if unique > 0 else 0.0
+		statistical_density = avg_occ_per_label * (1.0 - singleton_rate)
+		if verbose:
+			print(f"  Axis 3 - Statistical Density:")
+			print(f"    Avg occurrences per label: {avg_occ_per_label:.2f}")
+			print(f"    Non-singleton rate: {(1.0 - singleton_rate)*100:.1f}%")
+			print(f"    Statistical density: {statistical_density:.2f}")
+			
+			# Interpretation
+			if statistical_density < 2.0:
+				print(f"    📊 Density: LOW (sparse, many rare labels)")
+			elif statistical_density < 5.0:
+				print(f"    📊 Density: MODERATE")
+			else:
+				print(f"    📊 Density: HIGH (concentrated, frequent labels)")
+		
+		rows.append(
+			{
+				"source": col,
+				"unique_labels": int(unique),
+				"total_occurrences": int(total_occ),
+				"singletons": int(singletons),
+				"singleton_rate": float(singleton_rate),
+				"semantic_coverage_raw": float(semantic_coverage),
+				"visual_grounding_raw": float(visual_grounding),
+				"statistical_density_raw": float(statistical_density),
+			}
+		)
 	scores_df = pd.DataFrame(rows)
 	
 	if verbose:
