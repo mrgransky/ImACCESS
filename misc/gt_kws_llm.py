@@ -62,7 +62,7 @@ Given the caption below, extract **at most {k}** prominent, reusable, and semant
 Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 
-- CRITICAL GUIDELINES:
+Rules:
 	* **Semantically atomic**: 
 		Each keyword represents a core concept only.
 	* **Visually grounded**: 
@@ -89,7 +89,7 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 		- "submarine" instead of "German submarine"
  	* **Reusable**: likely to recur across many captions in a large archive.
 
-- **STRICTLY EXCLUDE**:
+**STRICTLY EXCLUDE**:
 	- Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 7.3mm, 3 Dodge trucks).
 	- Equipment identifiers, serial numbers, or models.
 	- Dates, times, years, decades, or any temporal references.
