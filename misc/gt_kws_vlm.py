@@ -23,20 +23,18 @@ from utils import *
 
 # how to run:
 # local:
-# python gt_kws_vlm.py -i "/home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH568SLASHitem_FGXB537CHLTVRLRXQLUDTDYLIU67RKN7.jpg" -vlm "Qwen/Qwen3-VL-2B-Instruct" -v
+# python gt_kws_vlm.py -i "/home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH568SLASHitem_FGXB537CHLTVRLRXQLUDTDYLIU67RKN7.jpg" -vlm "Qwen/Qwen3.6-35B-A3B" -v
 
 process = psutil.Process(os.getpid())
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 
-VLM_INSTRUCTION_TEMPLATE = """Extract no more than {k} **VISUALLY DISTINCT, STRUCTURAL, and PROMINENT KEYWORDS** that capture core objects, entities, actions, or scene elements in the image. 
-Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
+VLM_INSTRUCTION_TEMPLATE = """Extract **at most {k}** prominent, reusable, and semantically meaningful keywords.
+Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
 
-- CRITICAL GUIDELINES:
-	* **Semantically atomic**: 
-		Each keyword must represent a core concept only.
-	* **Visually grounded**: 
-		Tangible objects, agents, scene elements, or observable actions.
+Keywords must be:
+	* **Semantically atomic** which represents a core concept.
+	* **Visually grounded** such as tangible objects, agents, scene elements, or observable actions.
 	* **ABSOLUTE MAXIMUM GENERALITY**:
 		- "nurse" instead of "nurse checking blood pressure"
 		- "seaplane" instead of "seaplane on the water in the background"
@@ -44,7 +42,6 @@ Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MO
 		- "flag" instead of "German flag"
 		- "map" instead of "map of Europe"
 		- "animal" instead of "man riding a camel in the desert"
- 	* **Reusable**: likely to recur across many captions in a large archive.
 
 - STRICTLY EXCLUDE:
 	❌ generic human category nouns (e.g., man, men, woman, person, people, children).
