@@ -59,7 +59,7 @@ STOPWORDS.update(geographic_references)
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 Given the caption below, extract **at most {k}** prominent, reusable, and semantically meaningful keywords.
-Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
+Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 
 - CRITICAL GUIDELINES:
