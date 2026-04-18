@@ -38,7 +38,7 @@ echo "${stars// /*}"
 
 # chunk size based on cluster:
 if [ "$SLURM_CLUSTER_NAME" == "puhti" ]; then
-	chunk_size=12000
+	chunk_size=15000
 else
 	chunk_size=7000
 fi

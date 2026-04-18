@@ -2,18 +2,20 @@ from utils import *
 import visualize as viz
 
 def _mean_jaccard(sets_a: List[set], sets_b: List[set]) -> float:
-		"""Mean Jaccard over rows where union is non-empty."""
-		if len(sets_a) != len(sets_b):
-				raise ValueError("Jaccard inputs must have the same number of rows.")
-		vals = []
-		for a, b in zip(sets_a, sets_b):
-				if not a and not b:
-						continue
-				u = a | b
-				if len(u) == 0:
-						continue
-				vals.append(len(a & b) / len(u))
-		return float(np.mean(vals)) if vals else 0.0
+	"""Mean Jaccard over rows where union is non-empty."""
+	if len(sets_a) != len(sets_b):
+		raise ValueError("Jaccard inputs must have the same number of rows.")
+	
+	vals = []
+	for a, b in zip(sets_a, sets_b):
+		if not a and not b:
+			continue
+		u = a | b
+		if len(u) == 0:
+			continue
+		vals.append(len(a & b) / len(u))
+	
+	return float(np.mean(vals)) if vals else 0.0
 
 def get_taxonomy_supervison(
 	df: pd.DataFrame,
@@ -39,21 +41,22 @@ def get_taxonomy_supervison(
 	Normalization:
 		- minmax: scales each axis across the provided sources to [0, 1].
 		- none: returns raw values but plots them after minmax anyway (radar needs comparable scale).
+
+	Q: Why anchor is VLM canonical?
+	A: "Given what we can see in the images (VLM), 
+	how well do other supervision sources capture 
+	that visual information while also providing additional semantic value?"
+		
 	Returns
-	-------
 	scores_df : pd.DataFrame
-			Raw and normalized axis scores per source.
-	fig, ax : matplotlib figure/axes
 	"""
 	if verbose:
-			print("\n" + "="*80)
-			print("COMPUTING SUPERVISION TAXONOMY RADAR CHART")
-			print("="*80)
-			print(f"Dataset size: {len(df):,} samples")
-			print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
-			print(f"Anchor column (VLM): {anchor_vlm_col}")
-			print(f"Normalization: {normalize}")
-			print(f"Output directory: {output_directory}")
+		print("\nSUPERVISION TAXONOMY")
+		print(f"Dataset size: {len(df):,} samples")
+		print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
+		print(f"Anchor column: {anchor_vlm_col}")
+		print(f"Normalization: {normalize}")
+		print(f"Output directory: {output_directory}")
 	
 	if sources is None:
 			sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
@@ -68,13 +71,9 @@ def get_taxonomy_supervison(
 		print(f"Missing required columns: {missing} => Exit")
 		return
 
-	if verbose:
-			print(f"\n✓ All required columns present")
-			print(f"  Analyzing {len(sources)} supervision sources")
-			print(f"  Computing 3 axes: Semantic coverage, Visual grounding, Statistical density")
 	# Pre-parse per-row sets (needed for Jaccard grounding)
 	if verbose:
-			print(f"\nParsing label sets for all columns...")
+		print(f"\nParsing label sets for all columns...")
 	
 	parsed_sets: Dict[str, List[set]] = {}
 	for col in set([anchor_vlm_col] + sources):
@@ -92,12 +91,12 @@ def get_taxonomy_supervison(
 	for idx, col in enumerate(sources, 1):
 		if verbose:
 			print(f"\n[{idx}/{len(sources)}] Source: {col}")
-			print("  " + "·"*76)
 		
 		# Marginal distribution stats
 		all_labels: List[str] = []
 		for s in parsed_sets[col]:
-				all_labels.extend(list(s))  # set -> unique per row; avoids duplicates inside a sample
+			all_labels.extend(list(s))  # set -> unique per row; avoids duplicates inside a sample
+		
 		counts = Counter(all_labels)
 		total_occ = sum(counts.values())
 		unique = len(counts)
@@ -134,8 +133,7 @@ def get_taxonomy_supervison(
 				print(f"    Jaccard with VLM: 1.000 (self-comparison)")
 			else:
 				print(f"  Axis 2 - Visual Grounding:")
-				print(f"    Mean Jaccard with {anchor_vlm_col}: {visual_grounding:.3f}")
-				print(f"    Interpretation: {visual_grounding*100:.1f}% overlap with VLM labels")
+				print(f"    Mean Jaccard with {anchor_vlm_col}: {visual_grounding:.4f} ({visual_grounding*100:.2f}% overlap with VLM labels)")
 
 		# Axis 3: statistical density proxy
 		avg_occ_per_label = (total_occ / unique) if unique > 0 else 0.0
@@ -183,7 +181,8 @@ def get_taxonomy_supervison(
 		v = scores_df[c].to_numpy(dtype=float)
 		if normalize == "minmax":
 			vmin, vmax = np.min(v), np.max(v)
-			val_norm = (v - vmin) / (vmax - vmin) if abs(vmax - vmin) < 1e-12 else 0.5
+			diff = vmax - vmin
+			val_norm = (v - vmin) / diff if diff > 1e-12 else np.full_like(v, 0.5)
 			scores_df[c.replace("_raw", f"{normalize}_norm")] = val_norm 
 			if verbose:
 				print(f"\n{c:<26}(min, max): ({vmin}, {vmax}) diff: {vmax - vmin}")
@@ -321,7 +320,7 @@ def compute_entropy_vs_performance(
 				One row per label source with entropy/statistics, merged with performance if provided.
 		"""
 		if verbose:
-			print("COMPUTING ENTROPY VS PERFORMANCE ANALYSIS")
+			print("\nCOMPUTING ENTROPY VS PERFORMANCE ANALYSIS")
 			print(f"Dataset size: {len(df):,} samples")
 			print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
 		
@@ -371,14 +370,14 @@ def compute_entropy_vs_performance(
 				singleton_rate = (num_singletons / unique) if unique > 0 else 0.0
 
 				if verbose:
-						print(f"  Singletons: {num_singletons:,}/{unique:,} ({singleton_rate*100:.1f}%)")
+					print(f"  Singletons: {num_singletons}/{unique} ({singleton_rate*100:.2f}%)")
 						
-						# Show top-5 most frequent labels
-						top_labels = counts.most_common(5)
-						print(f"  Top-5 labels:")
-						for rank, (label, count) in enumerate(top_labels, 1):
-								freq_pct = (count / total_occ * 100) if total_occ > 0 else 0
-								print(f"    {rank}. '{label}': {count:,} ({freq_pct:.2f}%)")
+					# Show top-5 most frequent labels
+					top_labels = counts.most_common(5)
+					print(f"  Top-5 labels:")
+					for rank, (label, count) in enumerate(top_labels, 1):
+						freq_pct = (count / total_occ * 100) if total_occ > 0 else 0
+						print(f"    {rank}. '{label}': {count:,} ({freq_pct:.2f}%)")
 
 				H = _shannon_entropy(counts, base=base)
 				H_max = math.log(unique, base) if unique > 1 else 0.0  # max entropy if uniform over K
@@ -389,42 +388,40 @@ def compute_entropy_vs_performance(
 				eff_num_labels = perplexity  # same notion under this definition
 
 				if verbose:
-						print(f"  Entropy (H): {H:.3f} {'bits' if base == 2.0 else 'units'}")
-						print(f"  Max entropy (H_max): {H_max:.3f} (uniform distribution)")
-						print(f"  Normalized entropy: {H_norm:.3f} (0=concentrated, 1=uniform)")
-						print(f"  Perplexity: {perplexity:.1f} (effective vocabulary size)")
-						print(f"  Effective # labels: {eff_num_labels:.1f}")
-						
-						# Interpretation
-						if H_norm < 0.5:
-								print(f"  📊 Distribution: HIGHLY CONCENTRATED (few dominant labels)")
-						elif H_norm < 0.8:
-								print(f"  📊 Distribution: MODERATELY DIVERSE")
-						else:
-								print(f"  📊 Distribution: HIGHLY UNIFORM (well-balanced)")
+					print(f"  Entropy (H): {H:.3f} {'bits' if base == 2.0 else 'units'}")
+					print(f"  Max entropy (H_max): {H_max:.3f} (uniform distribution)")
+					print(f"  Normalized entropy: {H_norm:.3f} (0=concentrated, 1=uniform)")
+					print(f"  Perplexity: {perplexity:.1f} (effective vocabulary size)")
+					print(f"  Effective # labels: {eff_num_labels:.1f}")
+					
+					# Interpretation
+					if H_norm < 0.5:
+						print(f"  📊 Distribution: HIGHLY CONCENTRATED (few dominant labels)")
+					elif H_norm < 0.8:
+						print(f"  📊 Distribution: MODERATELY DIVERSE")
+					else:
+						print(f"  📊 Distribution: HIGHLY UNIFORM (well-balanced)")
 
 				rows.append(
-						{
-								"source": col,
-								"total_occurrences": int(total_occ),
-								"unique_labels": int(unique),
-								"singletons": int(num_singletons),
-								"singleton_rate": float(singleton_rate),
-								f"entropy_{'bits' if base == 2.0 else 'units'}": float(H),
-								"entropy_max": float(H_max),
-								"entropy_normalized": float(H_norm),
-								"perplexity": float(perplexity),
-								"effective_num_labels": float(eff_num_labels),
-						}
+					{
+						"source": col,
+						"total_occurrences": int(total_occ),
+						"unique_labels": int(unique),
+						"singletons": int(num_singletons),
+						"singleton_rate": float(singleton_rate),
+						f"entropy_{'bits' if base == 2.0 else 'units'}": float(H),
+						"entropy_max": float(H_max),
+						"entropy_normalized": float(H_norm),
+						"perplexity": float(perplexity),
+						"effective_num_labels": float(eff_num_labels),
+					}
 				)
 
 		stats_df = pd.DataFrame(rows).sort_values("source").reset_index(drop=True)
 
 		if verbose:
-				print("\n" + "="*80)
-				print("SUMMARY STATISTICS")
-				print("="*80)
-				print(stats_df.to_string(index=False))
+			print("\nSUMMARY STATISTICS\n")
+			print(stats_df)
 
 		# Merge performance if provided
 		if performance is None:
