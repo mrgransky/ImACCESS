@@ -54,6 +54,14 @@ def get_taxonomy_supervison(
 	if verbose:
 		print("\nSUPERVISION TAXONOMY")
 
+	if sources is None:
+		sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
+		if verbose:
+			print(f"Using default sources: {sources}")
+	else:
+		if verbose:
+			print(f"Using custom sources: {sources}")
+
 	missing = [c for c in ([anchor_vlm_col] + sources) if c not in df.columns]
 	if missing:
 		print(f"Missing required columns: {missing} => Exit")
@@ -66,14 +74,6 @@ def get_taxonomy_supervison(
 		print(f"Normalization: {normalize}")
 		print(f"Output directory: {output_directory}")
 	
-	if sources is None:
-		sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
-		if verbose:
-			print(f"Using default sources: {sources}")
-	else:
-		if verbose:
-			print(f"Using custom sources: {sources}")
-
 	# Pre-parse per-row sets (needed for Jaccard grounding)
 	if verbose:
 		print(f"\nParsing label sets for all columns...")
