@@ -86,7 +86,7 @@ Keywords must be:
 		- "Ballon Gun" instead of "6-pounder Ballon Gun"
 		- "submarine" instead of "German submarine"
 
-**STRICTLY EXCLUDE**:
+STRICTLY EXCLUDE:
 	- Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 7.3mm, 3 Dodge trucks).
 	- Equipment identifiers, serial numbers, or models.
 	- Dates, times, years, decades, or any temporal references.
@@ -98,11 +98,11 @@ Keywords must be:
 	- Nationalities, ethnicities, or religions.
 	- Abbreviations, acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
 
-- Color handling:
+Color handling:
 	Remove color only if it is purely descriptive (e.g., white truck, blue sky).
 	Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
 
-- ANTI-HALLUCINATION RULE:
+ANTI-HALLUCINATION RULE:
 	Only use the exact information given in the caption for keyword extraction, without making assumptions based on implied meanings.
 
 {caption}	

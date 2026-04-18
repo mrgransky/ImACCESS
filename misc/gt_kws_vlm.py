@@ -43,13 +43,13 @@ Keywords must be:
 		- "map" instead of "map of Europe"
 		- "animal" instead of "man riding a camel in the desert"
 
-- STRICTLY EXCLUDE:
-	❌ generic human category nouns (e.g., man, men, woman, person, people, children).
-	❌ vague container nouns (e.g., scene, group, event).
-	❌ counting-based phrases (e.g., three men, several people, a group of young people).
-	❌ purely demographic descriptors without contextual role.
+STRICTLY EXCLUDE:
+	- generic human category nouns (e.g., man, men, woman, person, people, children).
+	- vague container nouns (e.g., scene, group, event).
+	- counting-based phrases (e.g., three men, several people, a group of young people).
+	- purely demographic descriptors without contextual role.
 
-- ANTI-HALLUCINATION RULE:
+ANTI-HALLUCINATION RULE:
 	Avoid making assumptions or drawing conclusions that go beyond what is explicitly shown.
 """
 
