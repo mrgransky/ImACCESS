@@ -2865,18 +2865,28 @@ def assign_canonical_labels(
 	The core problem this solves
 	----------------------------
 	A cluster like ['black aircraft', 'white aircraft', 'yellow aircraft'] has
-	its centroid in "coloured-aircraft" embedding space.  Pure centroid-nearest
+	its centroid in 'coloured-aircraft' embedding space.  Pure centroid-nearest
 	therefore picks a colour variant rather than 'aircraft'.
 
 	Fix: derive a *virtual hypernym* ('aircraft') from the shared token core of
 	the cluster, encode it on-the-fly, and let it compete alongside the real
 	labels.  Five signals then vote:
 
-	  1. Cosine similarity to centroid          (w=0.30)
-	  2. Corpus frequency, log-normalised       (w=0.15)
-	  3. Head-noun dominance across the cluster (w=0.20)
-	  4. Lexical containment / hypernym-ness    (w=0.25)
-	  5. Brevity (shorter → more general)       (w=0.10)
+		1. Cosine similarity to centroid          (w=0.30)
+		2. Corpus frequency, log-normalised       (w=0.15)
+		3. Head-noun dominance across the cluster (w=0.20)
+		4. Lexical containment / hypernym-ness    (w=0.25)
+		5. Brevity (shorter -> more general)      (w=0.10)
+
+	Token normalisation
+	-------------------
+	All token-level comparisons (containment, head dominance, shared-core
+	extraction) operate on *normalised* tokens:
+		- lowercased
+		- trailing punctuation stripped  ('Ausf.' -> 'ausf')
+	This means 'Ausf', 'Ausf.', 'ausf' are treated as the same token, so
+	the containment signal correctly identifies 'Ausf' as a hypernym of all
+	'Ausf X' and 'Ausf. X' variants.
 
 	Only the canonical *assignment* changes; the clustering itself is untouched.
 
@@ -2910,55 +2920,92 @@ def assign_canonical_labels(
 		Trades with >10% sim loss or <3x freq gain, for inspection.
 	"""
 
+	# ── Token normalisation ───────────────────────────────────────────────────
+	# Applied before ALL token-level operations so that 'Ausf.' and 'Ausf'
+	# are treated as the same token.
+	import re as _re
+	_TRAILING_PUNCT = _re.compile(r'[^\w]+$')
+
+	def _norm_token(tok: str) -> str:
+		"""Lowercase and strip trailing punctuation from a single token."""
+		return _TRAILING_PUNCT.sub('', tok.lower())
+
+	def _norm_tokens(label: str) -> List[str]:
+		"""Normalised token list for a label."""
+		return [_norm_token(t) for t in label.split() if _norm_token(t)]
+
+	def _norm_token_set(label: str) -> set:
+		"""Normalised token set for a label."""
+		return set(_norm_tokens(label))
+
 	# ── Internal utilities ────────────────────────────────────────────────────
 
 	def _shared_token_core(lbls: List[str], min_support: float = 0.5) -> List[str]:
 		"""
-		Return ordered tokens shared by >= min_support fraction of labels.
+		Return ordered *normalised* tokens shared by >= min_support fraction
+		of labels.
+
+		Normalisation means 'Ausf.', 'ausf', 'AUSF' all count as the same
+		token, so the shared core is computed correctly even when the same
+		root appears with varying capitalisation or trailing punctuation.
 
 		Examples
 		--------
 		['black aircraft', 'white aircraft', 'yellow aircraft'] -> ['aircraft']
-		['red cross badge', 'red cross banner', 'red cross sign'] -> ['red', 'cross']
-		['bridge club', 'club', 'glee club'] -> ['club']
+		['Ausf', 'Ausf A', 'Ausf. A', 'Ausf. H']              -> ['ausf']
+		['red cross badge', 'red cross banner', 'blue cross']   -> ['cross']
 		"""
-		n = len(lbls)
+		n         = len(lbls)
 		threshold = max(2, int(np.ceil(min_support * n)))
+
 		token_support: dict = {}
 		for lbl in lbls:
-			for tok in set(lbl.split()):
+			for tok in set(_norm_tokens(lbl)):   # set: count each token once per label
 				token_support[tok] = token_support.get(tok, 0) + 1
+
 		shared = {tok for tok, cnt in token_support.items() if cnt >= threshold}
 		if not shared:
 			return []
+
 		# Recover left-to-right order from the longest label (most informative anchor)
 		anchor = max(lbls, key=lambda l: len(l.split()))
-		return [tok for tok in anchor.split() if tok in shared]
+		return [_norm_token(t) for t in anchor.split() if _norm_token(t) in shared]
 
 	def _virtual_hypernym(lbls: List[str], min_support: float = 0.5) -> Optional[str]:
 		"""
-		Synthesise a hypernym string from the shared token core, or return None
-		if no useful core exists or the result is already a cluster member.
+		Synthesise a hypernym string from the shared normalised token core,
+		or return None if no useful core exists.
+
+		The returned string uses normalised tokens (lowercase, no trailing
+		punctuation) so it is always a clean, consistent label.
 		"""
 		core = _shared_token_core(lbls, min_support=min_support)
 		if not core:
 			return None
-		candidate = " ".join(core)
-		if candidate == max(lbls, key=len):   # no reduction achieved
+		candidate = " ".join(core)   # e.g. 'ausf', 'red cross', 'aircraft'
+
+		# No benefit if the candidate (after normalisation) equals the
+		# normalised form of the longest label
+		longest_norm = " ".join(_norm_tokens(max(lbls, key=len)))
+		if candidate == longest_norm:
 			return None
+
 		return candidate
 
 	def _containment_scores(candidates: List[str], cluster_lbls: List[str]) -> np.ndarray:
 		"""
-		For each candidate, fraction of cluster members whose token set is a
-		superset of the candidate's tokens.  Direct measure of hypernym-ness:
-		'bridge' scores 1.0 in a cluster of 'X bridge' labels.
+		For each candidate, fraction of cluster members whose *normalised*
+		token set is a superset of the candidate's normalised tokens.
+
+		Normalisation means 'Ausf' correctly scores 1.0 in a cluster of
+		'Ausf X' and 'Ausf. X' variants, because norm('Ausf.') == 'ausf'
+		== norm('Ausf').
 		"""
-		cluster_token_sets = [set(lbl.split()) for lbl in cluster_lbls]
-		scores = list()
+		cluster_norm_sets = [_norm_token_set(lbl) for lbl in cluster_lbls]
+		scores = []
 		for cand in candidates:
-			cand_tokens = set(cand.split())
-			subsumers = sum(1 for ts in cluster_token_sets if cand_tokens.issubset(ts))
+			cand_norm = _norm_token_set(cand)
+			subsumers = sum(1 for ns in cluster_norm_sets if cand_norm.issubset(ns))
 			scores.append(subsumers / max(len(cluster_lbls), 1))
 		return np.array(scores)
 
@@ -2968,9 +3015,9 @@ def assign_canonical_labels(
 	cluster_canonicals    = {}
 	virtual_used_count    = 0
 	freq_changed_count    = 0
-	total_sim_loss        = list()
-	total_freq_gain       = list()
-	questionable_examples = list()
+	total_sim_loss        = []
+	total_freq_gain       = []
+	questionable_examples = []
 
 	for cid in sorted(df.cluster.unique()):
 		cluster_mask       = df.cluster == cid
@@ -2990,8 +3037,15 @@ def assign_canonical_labels(
 		virtual_hypernym = None
 		if cluster_size >= 3:
 			vh = _virtual_hypernym(cluster_texts, min_support=0.5)
-			if vh is not None and vh not in cluster_texts:
-				virtual_hypernym = vh
+			# Only add if not already present as a normalised match in the cluster
+			if vh is not None:
+				norm_vh         = set(_norm_tokens(vh))
+				already_present = any(
+					_norm_token_set(lbl) == norm_vh
+					for lbl in cluster_texts
+				)
+				if not already_present:
+					virtual_hypernym = vh
 
 		candidates    = cluster_texts + ([virtual_hypernym] if virtual_hypernym else [])
 		virtual_flags = [False] * cluster_size + ([True] if virtual_hypernym else [])
@@ -3021,17 +3075,18 @@ def assign_canonical_labels(
 			], dtype=float)
 			freq_scores = np.log1p(label_freqs) / np.log1p(label_freqs.max() + 1e-12)
 
-			# ── Score 3: head-noun dominance (proportional) ───────────────
+			# ── Score 3: head-noun dominance (normalised, proportional) ───
+			# Count normalised head tokens so 'Ausf.' and 'Ausf' share credit.
 			real_heads: dict = {}
 			for lbl in cluster_texts:
-				h = lbl.split()[-1]
+				h = _norm_token(lbl.split()[-1])
 				real_heads[h] = real_heads.get(h, 0) + 1
 			head_scores = np.array([
-				real_heads.get(c.split()[-1], 0) / cluster_size
+				real_heads.get(_norm_token(c.split()[-1]), 0) / cluster_size
 				for c in candidates
 			])
 
-			# ── Score 4: containment / hypernym-ness ─────────────────────
+			# ── Score 4: containment / hypernym-ness (normalised) ─────────
 			cont_scores = _containment_scores(candidates, cluster_texts)
 			if virtual_hypernym is not None:
 				# Virtual hypernym is contained in >= 50% of members by construction
@@ -3043,7 +3098,7 @@ def assign_canonical_labels(
 
 			# ── Composite score ───────────────────────────────────────────
 			# sim weight (0.30) is intentionally lower than the naive approach
-			# (0.35+) because over-trusting the centroid is what caused the
+			# (0.35+) because over-trusting the centroid caused the
 			# colour-variant canonical problem in the first place.
 			combined_scores = (
 				0.30 * similarities

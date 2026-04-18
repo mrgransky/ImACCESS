@@ -63,10 +63,8 @@ Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords,
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 
 Keywords must be:
-	* **Semantically atomic**: 
-		Each keyword represents a core concept only.
-	* **Visually grounded**: 
-		Tangible objects, agents, scene elements, or observable actions.
+	* **Semantically atomic** which represents a core concept.
+	* **Visually grounded**: such as tangible objects, agents, scene elements, or observable actions.
 	* **ABSOLUTE MAXIMUM GENERALITY**:
 		- "nurse" instead of "nurse checking blood pressure"
 		- "pilot" instead of "pilot Charles Matheson"
@@ -87,7 +85,6 @@ Keywords must be:
 		- "reservoir" instead of "Fort Loudoun Reservoir"
 		- "Ballon Gun" instead of "6-pounder Ballon Gun"
 		- "submarine" instead of "German submarine"
- 	* **Reusable**: likely to recur across many captions in a large archive.
 
 **STRICTLY EXCLUDE**:
 	- Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 7.3mm, 3 Dodge trucks).
