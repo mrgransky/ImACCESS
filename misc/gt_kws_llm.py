@@ -58,8 +58,7 @@ with open('geographic_references.txt', 'r') as file_:
 STOPWORDS.update(geographic_references)
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
-Given the caption below, extract no more than {k} **PROMINENT, FACTUAL, and DISTINCT KEYWORDS**
-that represent core objects, entities, actions, or scene elements.
+Given the caption below, extract **at most {k}** prominent, reusable, and semantically meaningful keywords.
 Return **ONLY** a standardized, valid, and parsable **Python LIST** with **AT MOST {k} KEYWORDS** without any explanatory text.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 
@@ -96,12 +95,11 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 	- Dates, times, years, decades, or any temporal references.
 	- Names of individuals or Honorifics (e.g., A. A. Robinson, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
 	- family relationship terms (e.g., mother, father, son, uncle).
-	- Geographical names (e.g., continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.)
-	- Nationalities, ethnicities, or religions.
+	- Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
 	- Ordinal numeral keywords (e.g., fourth, 1st, 115th).
 	- Roman numerals (e.g., I, II, IV, VIII).
-	- Abbreviations, acronyms, or codes. 
-	- Phrasal verbs, possessive constructions, or descriptive clauses.
+	- Nationalities, ethnicities, or religions.
+	- Abbreviations, acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
 
 - Color handling:
 	Remove color only if it is purely descriptive (e.g., white truck, blue sky).
