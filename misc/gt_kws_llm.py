@@ -58,7 +58,7 @@ with open('geographic_references.txt', 'r') as file_:
 STOPWORDS.update(geographic_references)
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
-Given the caption below, extract **at most {k}** prominent, reusable, and semantically meaningful keywords.
+Given the caption below, extract **no more than {k}** prominent and semantically meaningful keywords.
 Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 
@@ -471,7 +471,6 @@ def _load_llm_(
 		print(f"{'='*110}\n")
 
 	return tokenizer, model
-
 
 def get_prompt(
 	tokenizer: tfs.PreTrainedTokenizer, 

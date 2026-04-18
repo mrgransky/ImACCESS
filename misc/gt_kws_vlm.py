@@ -29,7 +29,7 @@ process = psutil.Process(os.getpid())
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 
-VLM_INSTRUCTION_TEMPLATE = """Extract **at most {k}** prominent, reusable, and semantically meaningful keywords.
+VLM_INSTRUCTION_TEMPLATE = """Extract **no more than {k}** prominent and semantically meaningful keywords.
 Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
 
 Keywords must be:

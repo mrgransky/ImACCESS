@@ -50,26 +50,29 @@ def get_taxonomy_supervison(
 	Returns
 	scores_df : pd.DataFrame
 	"""
+
 	if verbose:
 		print("\nSUPERVISION TAXONOMY")
-		print(f"Dataset size: {len(df):,} samples")
+
+	missing = [c for c in ([anchor_vlm_col] + sources) if c not in df.columns]
+	if missing:
+		print(f"Missing required columns: {missing} => Exit")
+		return
+
+	if verbose:
+		print(f"{type(df)} {df.shape}")
 		print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
 		print(f"Anchor column: {anchor_vlm_col}")
 		print(f"Normalization: {normalize}")
 		print(f"Output directory: {output_directory}")
 	
 	if sources is None:
-			sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
-			if verbose:
-					print(f"Using default sources: {sources}")
+		sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
+		if verbose:
+			print(f"Using default sources: {sources}")
 	else:
-			if verbose:
-					print(f"Using custom sources: {sources}")
-
-	missing = [c for c in ([anchor_vlm_col] + sources) if c not in df.columns]
-	if missing:
-		print(f"Missing required columns: {missing} => Exit")
-		return
+		if verbose:
+			print(f"Using custom sources: {sources}")
 
 	# Pre-parse per-row sets (needed for Jaccard grounding)
 	if verbose:
