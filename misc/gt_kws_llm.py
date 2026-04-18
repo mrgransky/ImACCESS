@@ -62,7 +62,7 @@ Given the caption below, extract **at most {k}** prominent, reusable, and semant
 Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 
-Rules:
+Keywords must be:
 	* **Semantically atomic**: 
 		Each keyword represents a core concept only.
 	* **Visually grounded**: 
@@ -104,7 +104,6 @@ Rules:
 - Color handling:
 	Remove color only if it is purely descriptive (e.g., white truck, blue sky).
 	Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
-
 
 - ANTI-HALLUCINATION RULE:
 	Only use the exact information given in the caption for keyword extraction, without making assumptions based on implied meanings.
