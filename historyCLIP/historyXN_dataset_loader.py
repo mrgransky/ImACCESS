@@ -1,3 +1,5 @@
+from tabnanny import verbose
+
 from utils import *
 
 dtypes={
@@ -285,7 +287,8 @@ def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 		dtype=dtypes, 
 		low_memory=False,
 	)
-	print(f"FULL Multi-label {type(df)} {df.shape} {list(df.columns)}")
+	print(f"Multi-label {type(df)} {df.shape}")
+	print(df.info(verbose=True, memory_usage=True))
 
 	metadata_train_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_train.csv'))
 	metadata_val_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_val.csv'))

@@ -3,7 +3,7 @@ from utils import *
 if USER == "farid":
 	from visualize import build_arch_flowchart
 
-def check_lora_weight_health(model, epoch, verbose=True):
+def check_lora_weight_health(model, verbose=True):
 	issues = []
 	stats = {"A": {}, "B": {}}
 	for name, param in model.named_parameters():
@@ -18,7 +18,7 @@ def check_lora_weight_health(model, epoch, verbose=True):
 		norm = param.data.norm().item()
 		
 		if has_nan or has_inf:
-			issues.append(f"  ✗ {name}: nan={has_nan} inf={has_inf} norm={norm:.4e}")
+			issues.append(f"  ✗ {name}: nan={has_nan} inf={has_inf} norm={norm}")
 		
 		stats[group][name] = norm
 	
@@ -26,17 +26,22 @@ def check_lora_weight_health(model, epoch, verbose=True):
 	B_norms = list(stats["B"].values())
 	
 	if verbose:
-		print(f"\n[Weight Health — Epoch {epoch+1}]")
+		print("-"*60)
+		print(f"[Weight Health]")
+
 		if A_norms:
-			print(f"  lora_A norms — min={min(A_norms):.4e} max={max(A_norms):.4e} mean={sum(A_norms)/len(A_norms):.4e}")
+			print(f"lora_A (min, max): ({min(A_norms):.4f}, {max(A_norms):.4f}) mean: {np.mean(A_norms):.4f}")
+
 		if B_norms:
-			print(f"  lora_B norms — min={min(B_norms):.4e} max={max(B_norms):.4e} mean={sum(B_norms)/len(B_norms):.4e}")
+			print(f"lora_B (min, max): ({min(B_norms):.4f}, {max(B_norms):.4f}) mean: {np.mean(B_norms):.4f}")
+
 		if issues:
 			print(f"  !! {len(issues)} corrupted tensors:")
-			for issue in issues[:10]:  # cap at 10
+			for issue in issues:
 				print(issue)
 		else:
-			print(f"  ✓ All weights healthy")
+			print(f"[OK] All weights healthy")
+		print("-"*60)
 	
 	return len(issues) == 0, A_norms, B_norms
 

@@ -2240,7 +2240,7 @@ def lora_plus_finetune_multi_label(
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
 		model.train()
-		print(f"Epoch [{epoch + 1}/{num_epochs}]")
+		print(f"\nEpoch [{epoch + 1}/{num_epochs}]")
 		
 		epoch_loss_total = 0.0
 		epoch_loss_i2t = 0.0
@@ -2276,9 +2276,11 @@ def lora_plus_finetune_multi_label(
 			
 			# Check for NaN loss
 			if torch.isnan(total_loss) or torch.isinf(total_loss):
-				print(f"[WARNING] NaN/Inf loss detected at epoch {epoch+1}, Skipping batch: {bidx+1}.")
-				print(f"total_loss: {total_loss} loss_i2t: {loss_i2t} loss_t2i: {loss_t2i}")
-				print(f"total_loss.isnan(): {torch.isnan(total_loss)} total_loss.isinf(): {torch.isinf(total_loss)}")
+				print(f"[WARNING] Batch {bidx+1}:")
+				print(f"total_loss: {total_loss} nan: {torch.isnan(total_loss)} inf: {torch.isinf(total_loss)}")
+				print(f"loss_i2t: {loss_i2t} nan: {torch.isnan(loss_i2t)} inf: {torch.isinf(loss_i2t)}")
+				print(f"loss_t2i: {loss_t2i} nan: {torch.isnan(loss_t2i)} inf: {torch.isinf(loss_t2i)}")
+
 				# no zero_grad needed here — already done above
 				continue # skip this batch
 			
@@ -2392,15 +2394,19 @@ def lora_plus_finetune_multi_label(
 		training_losses_breakdown["t2i"].append(avg_t2i_loss)
 		
 		# Track learning rates (now we have multiple parameter groups)
+		# for i, g in enumerate(optimizer.param_groups):
+		# (['params', 'lr', 'weight_decay', 'betas', 'eps', 'amsgrad', 'maximize', 'foreach', 'capturable', 'differentiable', 'fused', 'decoupled_weight_decay', 'initial_lr'])
+		# 	print(i, g.keys())
+
 		learning_rates_history.append([group['lr'] for group in optimizer.param_groups])
 		weight_decays_history.append([group['weight_decay'] for group in optimizer.param_groups])
 		
-		if verbose and epoch == 0:
-			print(f"[Epoch {epoch+1}] {len(learning_rates_history[-1])} LR groups: {learning_rates_history[-1]}")
-			print(f"[Epoch {epoch+1}] {len(weight_decays_history[-1])} WD groups: {weight_decays_history[-1]}")
+		if verbose:
+			print(f"{len(learning_rates_history[-1])} LR groups: {learning_rates_history[-1]}")
+			print(f"{len(weight_decays_history[-1])} WD groups: {weight_decays_history[-1]}")
 		
 		# Weight health check before validation
-		healthy, A_norms, B_norms = check_lora_weight_health(model, epoch, verbose=verbose)
+		healthy, A_norms, B_norms = check_lora_weight_health(model=model, verbose=verbose)
 		if not healthy:
 			print(f"[CRITICAL] Weight corruption detected at epoch {epoch+1} before validation.")
 			if early_stopping.best_weights is not None:
@@ -2409,7 +2415,6 @@ def lora_plus_finetune_multi_label(
 			else:
 				print(f"  No best weights stored yet (corruption at epoch {epoch+1}). Breaking without restoration.")
 			break
-
 
 		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")		
 		current_val_loss = compute_multilabel_validation_loss(
