@@ -19,7 +19,7 @@ from historyXN_dataset_loader import get_single_label_dataloaders, get_multi_lab
 # $ nohup python -u trainer.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_single_label.csv -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -fts progressive -a "ViT-B/32" -mphbs 3 -mepph 5 -tnp 8 > logs/europeana_ft_progressive.txt &
 
 # multi-label:
-# $ python trainer.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -fts full
+# $ python trainer.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -c multimodal_canonical_labels -stg full
 
 # Pouta:
 # pretrain:

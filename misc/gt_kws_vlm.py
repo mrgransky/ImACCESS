@@ -29,13 +29,13 @@ process = psutil.Process(os.getpid())
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 
-VLM_INSTRUCTION_TEMPLATE = """Extract **no more than {k}** prominent and semantically meaningful keywords.
+VLM_INSTRUCTION_TEMPLATE = """Extract **no more than {k}** prominent, factually grounded, and semantically meaningful keywords.
 Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
 
 Keywords must be:
-	* **Semantically atomic** which represents a core concept.
-	* **Visually grounded** such as tangible objects, agents, scene elements, or observable actions.
-	* **ABSOLUTE MAXIMUM GENERALITY**:
+	* **Semantically atomic**.
+	* **Visually grounded**.
+	* **BROAD with absolute maximum degree of breadth**:
 		- "nurse" instead of "nurse checking blood pressure"
 		- "seaplane" instead of "seaplane on the water in the background"
 		- "airplane" instead of "airplane in flight"
