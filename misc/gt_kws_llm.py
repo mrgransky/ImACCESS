@@ -86,6 +86,7 @@ Keywords must be:
 		- "Ballon Gun" instead of "6-pounder Ballon Gun"
 		- "Air Force Base" instead of "Templehof Air Force Base"
 		- "boulevard" instead of "Magheru Boulevard"
+		- "railway station" instead of "Terrassa railway station"
 		- "submarine" instead of "German submarine"
 
 STRICTLY EXCLUDE:
