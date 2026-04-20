@@ -54,7 +54,12 @@ pd.set_option('display.width', 1000)
 pd.set_option('display.max_rows', 100)
 sns.set_style("whitegrid")
 
-def plot_taxonomy_radar(scores_df, value_cols, title, output_path):
+def plot_taxonomy_radar(
+	scores_df, 
+	value_cols, 
+	title, 
+	output_path
+):
 	figsize = (8, 8)
 	cmap = matplotlib.colormaps["Set1"] # or "viridis", "tab20"
 	categories = [
@@ -66,10 +71,8 @@ def plot_taxonomy_radar(scores_df, value_cols, title, output_path):
 	N = len(categories)
 	angles = [n / float(N) * 2 * np.pi for n in range(N)]
 	angles_plot = angles + angles[:1]
-	fig, ax = plt.subplots(
-		figsize=figsize,
-		subplot_kw=dict(projection="polar")
-	)
+
+	fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(projection="polar"))
 
 	# Polar orientation
 	ax.set_theta_offset(np.pi / 2)
