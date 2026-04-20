@@ -60,7 +60,7 @@ def plot_taxonomy_radar(
 	title, 
 	output_path
 ):
-	figsize = (8, 8)
+	figsize = (6, 6)
 	cmap = matplotlib.colormaps["Set1"] # or "viridis", "tab20"
 	categories = [
 		"Semantic\nCoverage",
@@ -90,20 +90,39 @@ def plot_taxonomy_radar(
 	# Radial ticks
 	yticks = np.linspace(0, rmax, 5)[1:]
 	ax.set_yticks(yticks)
-	ax.set_yticklabels([f"{t:.1f}" for t in yticks], size=10)
+	ax.set_yticklabels([f"{t:.2f}" for t in yticks], size=10, zorder=100)
 
 	# Angular labels
 	ax.set_xticks(angles)
 	ax.set_xticklabels([])
 	for angle, label in zip(angles, categories):
+		# Convert angle to degrees for easier understanding
+		angle_deg = np.degrees(angle)
+		if angle_deg == 0 or angle_deg == 90 or angle_deg == 180 or angle_deg == 360:  # Special case for 'Scale' to avoid overlap
+			offset = 1.11
+		elif 0 < angle_deg < 90: # first quadrant (CW)
+			offset = 1.1
+		elif 91 < angle_deg < 180:  # second quadrant (CW)
+			offset = 1.21
+		elif 181 < angle_deg < 270:  # third quadrant (CW)
+			offset = 1.25
+		elif 271 < angle_deg < 360:  # fourth quadrant (CW)
+			offset = 1.15
+		else:
+			print(f"<!> {angle_deg} => Default offset: 1.0")
+			offset = 1.0
+		
+		print(f"Angle: {repr(angle_deg)}, Label: {label} => offset: {offset}")
+
 		ax.text(
 			angle,
-			rmax * 1.1,
+			rmax * offset,
 			label,
-			size=10,
+			size=12,
 			weight="bold",
 			ha="center",
-			va="center"
+			va="center",
+			zorder=10,
 		)
 
 	for idx, (_, row) in enumerate(scores_df.iterrows()):
@@ -114,10 +133,12 @@ def plot_taxonomy_radar(
 			values_plot,
 			color=cmap(idx),
 			marker="o",
-			markersize=3.0,
+			markersize=4.0,
 			linestyle="-",
-			linewidth=1.5,
-			label=row["source"],
+			linewidth=1.2,
+			label=row["source"].replace("_", " ").replace("labels", "").upper(),
+			markeredgecolor="black",
+			markeredgewidth=0,
 			alpha=0.85,
 			zorder=10
 		)
@@ -128,12 +149,12 @@ def plot_taxonomy_radar(
 			alpha=0.15,
 		)
 
-	ax.grid(True, linestyle="--", alpha=0.65)
+	ax.grid(True, linestyle="--", alpha=0.75, zorder=100)
 	ax.legend(
 		loc="upper left",
-		bbox_to_anchor=(-0.15, 1.1),
+		bbox_to_anchor=(-0.2, 1.1),
 		frameon=False,
-		fontsize=11
+		fontsize=9.0,
 	)
 	# ax.set_title(title, size=10, weight="bold")
 	plt.tight_layout()
