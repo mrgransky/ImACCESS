@@ -91,7 +91,7 @@ Keywords must be:
 
 STRICTLY EXCLUDE:
 	- Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 7.3mm, 3 Dodge trucks).
-	- Equipment identifiers, serial numbers, or models.
+	- Equipment identifiers, serial numbers, brands, or models.
 	- Dates, times, years, decades, or any temporal references.
 	- Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral, St. Louis Cathedral, St. Louis Cathedral).
 	- Names of individuals or Honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 

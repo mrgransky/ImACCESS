@@ -60,7 +60,7 @@ done
 ##############################################################################
 # DIMENSIONS:
 #   dataset(5) × strategy(14) × architecture(4) × column(3) = 840 jobs
-#
+
 # Per-dataset block  = 14 × 4 × 3 = 168 jobs
 # Per-strategy block =      4 × 3 =  12 jobs
 # Per-arch block     =          3 =   3 jobs
