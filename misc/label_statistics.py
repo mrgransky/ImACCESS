@@ -475,7 +475,7 @@ def compute_entropy_vs_performance(
 		return merged
 
 def compute_label_agreement_and_singletons(df: pd.DataFrame):
-	print(f"Computing label agreement and singletons for {len(df)}")
+	print(f"Computing label agreement and singletons for {len(df)} samples")
 	print(f"{list(df.columns)}")
 	COLUMNs = [
 		'llm_based_labels', 'vlm_based_labels', 'multimodal_labels',

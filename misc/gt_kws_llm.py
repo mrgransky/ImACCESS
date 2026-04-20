@@ -58,14 +58,14 @@ with open('geographic_references.txt', 'r') as file_:
 STOPWORDS.update(geographic_references)
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
-Given the caption below, extract **no more than {k}** prominent and semantically meaningful keywords.
+Given the caption below, extract **no more than {k}** prominent, factually grounded, and semantically meaningful keywords.
 Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 
 Keywords must be:
-	* **Semantically atomic** which represents a core concept.
-	* **Visually grounded**: such as tangible objects, agents, scene elements, or observable actions.
-	* **ABSOLUTE MAXIMUM GENERALITY**:
+	* **Semantically atomic**.
+	* **Visually grounded**.
+	* **BROAD with absolute maximum degree of breadth**:
 		- "nurse" instead of "nurse checking blood pressure"
 		- "pilot" instead of "pilot Charles Matheson"
 		- "Oberleutnant" instead of "Oberleutnant Bruno Kikillus"
@@ -84,13 +84,16 @@ Keywords must be:
 		- "animal" instead of "man riding a camel in the desert"
 		- "reservoir" instead of "Fort Loudoun Reservoir"
 		- "Ballon Gun" instead of "6-pounder Ballon Gun"
+		- "Air Force Base" instead of "Templehof Air Force Base"
+		- "boulevard" instead of "Magheru Boulevard"
 		- "submarine" instead of "German submarine"
 
 STRICTLY EXCLUDE:
 	- Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 7.3mm, 3 Dodge trucks).
 	- Equipment identifiers, serial numbers, or models.
 	- Dates, times, years, decades, or any temporal references.
-	- Names of individuals or Honorifics (e.g., A. A. Robinson, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
+	- Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral, St. Louis Cathedral, St. Louis Cathedral).
+	- Names of individuals or Honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
 	- family relationship terms (e.g., mother, father, son, uncle).
 	- Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
 	- Ordinal numeral keywords (e.g., fourth, 1st, 115th).
