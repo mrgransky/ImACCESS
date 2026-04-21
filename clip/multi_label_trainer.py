@@ -1653,11 +1653,11 @@ def lora_finetune_multi_label(
 					if b_norms:
 						b_norms_t = torch.tensor(b_norms)
 						print(
-							f"\t\t[B weight norms e{epoch+1} b{bidx+1}] "
-							f"min={b_norms_t.min()} "
-							f"max={b_norms_t.max()} "
-							f"mean={b_norms_t.mean()}"
+							f"\t\t[B weight norms] "
+							f"(min, max): ({b_norms_t.min():.4f}, {b_norms_t.max():.4f}) "
+							f"mean: {b_norms_t.mean():.4f} std: {b_norms_t.std():.4f}"
 						)
+						print()
 
 			avg_total = epoch_loss_total / num_batches if num_batches > 0 else 0.0
 			avg_i2t   = epoch_loss_i2t   / num_batches if num_batches > 0 else 0.0
@@ -1733,7 +1733,7 @@ def lora_finetune_multi_label(
 				print(f"  Embed — AlignScore: N/A")
 
 
-			# ── Training health check ────────────────────────────────────────────
+			# Training health check
 			# Run after epoch 1 and at mid-warmup — all signals now available
 			if epoch in {0, minimum_epochs // 2}:
 				should_abort = check_training_health(
@@ -2018,7 +2018,8 @@ def lora_plus_finetune_multi_label(
 			amp_dtype = torch.float16
 		if verbose:
 			print(f"   ├─ {gpu_name} {device}")
-			print(f"   ├─ Total Memory: {gpu_total_mem:.1f}GB")
+			print(f"   ├─ AMP dtype: {amp_dtype}")
+			print(f"   ├─ Total Memory: {gpu_total_mem:.2f}GB")
 			print(f"   └─ CUDA Capability: {cuda_capability}")
 	
 	# Apply LoRA+ to the model
@@ -2278,8 +2279,8 @@ def lora_plus_finetune_multi_label(
 			if torch.isnan(total_loss) or torch.isinf(total_loss):
 				print(f"[WARNING] Batch {bidx+1}:")
 				print(f"total_loss: {total_loss} nan: {torch.isnan(total_loss)} inf: {torch.isinf(total_loss)}")
-				print(f"loss_i2t: {loss_i2t} nan: {torch.isnan(loss_i2t)} inf: {torch.isinf(loss_i2t)}")
-				print(f"loss_t2i: {loss_t2i} nan: {torch.isnan(loss_t2i)} inf: {torch.isinf(loss_t2i)}")
+				print(f"loss_i2t: {loss_i2t} | isnan(): {torch.isnan(loss_i2t)} | isinf(): {torch.isinf(loss_i2t)}")
+				print(f"loss_t2i: {loss_t2i} | isnan(): {torch.isnan(loss_t2i)} | isinf(): {torch.isinf(loss_t2i)}")
 
 				# no zero_grad needed here — already done above
 				continue # skip this batch
@@ -2313,15 +2314,16 @@ def lora_plus_finetune_multi_label(
 				if grad_norms_A and grad_norms_B:
 					print(
 						f"\t\t[Grad norms e{epoch+1} b{bidx+1}] "
-						f"A: min={min(grad_norms_A)} max={max(grad_norms_A)} "
-						f"B: min={min(grad_norms_B)} max={max(grad_norms_B)}"
+						f"(min, max) "
+						f"A: ({min(grad_norms_A):.4f}, {max(grad_norms_A):.4f}) "
+						f"B: ({min(grad_norms_B):.4f}, {max(grad_norms_B):.4f})"
 					)
 
 			# Guard: skip optimizer step if grads are still corrupt post-unscale
 			if torch.isnan(grad_norm) or torch.isinf(grad_norm):
 				if verbose:
-					print(f"[WARNING] NaN/Inf grad norm detected at epoch {epoch+1}, Skipping batch: {bidx+1}.")
-					print(f"grad_norm: {grad_norm} grad_norm.isnan(): {torch.isnan(grad_norm)} grad_norm.isinf(): {torch.isinf(grad_norm)}")
+					print(f"[WARNING] Batch: {bidx+1}:")
+					print(f"grad_norm: {grad_norm} | isnan(): {torch.isnan(grad_norm)} | isinf(): {torch.isinf(grad_norm)}")
 
 				optimizer.zero_grad(set_to_none=True)
 
@@ -2352,14 +2354,13 @@ def lora_plus_finetune_multi_label(
 					for n, p in model.named_parameters()
 					if p.requires_grad and "lora_B" in n
 				]
+
 				if B_norms_current:
 					B_norms_t = torch.tensor(B_norms_current)
 					print(
 						f"\t\t[B weight norms post-clip e{epoch+1} b{bidx+1}] "
-						f"min={B_norms_t.min()} " 
-						f"max={B_norms_t.max()} "
-						f"mean={B_norms_t.mean()} "
-						f"std={B_norms_t.std()} "
+						f"(min, max): ({B_norms_t.min():.4f}, {B_norms_t.max():.4f}) "
+						f"mean: {B_norms_t.mean():.4f} std: {B_norms_t.std():.4f} "
 						f"clip_count={sum(1 for n in B_norms_current if n > B_MAX_NORM)} "
 						f"(ceiling={B_MAX_NORM})"
 					)
@@ -2382,6 +2383,7 @@ def lora_plus_finetune_multi_label(
 					f"Total Loss: {batch_loss_total:.6f} "
 					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
 				)
+				print()
 		
 		# average losses
 		avg_total_loss = epoch_loss_total / num_batches if num_batches > 0 else 0.0

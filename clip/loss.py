@@ -361,8 +361,15 @@ def compute_multilabel_contrastive_loss(
 ):
 	if loss_weights is None:
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
+
+	# # Embeddings (may be FP16 from autocast)
 	image_embeds = torch.nn.functional.normalize(model.encode_image(images), dim=-1)
 	class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
+
+	# Cast to FP32 BEFORE similarity computation
+	# prevents FP16 overflow in BCEWithLogitsLoss
+	image_embeds = image_embeds.float()
+	# class_embeds = class_embeds.float() # already FP32 — no cast needed
 
 	# I2T: [batch_size, num_classes]
 	i2t_sim = torch.matmul(image_embeds, class_embeds.T) / temperature
@@ -373,6 +380,8 @@ def compute_multilabel_contrastive_loss(
 	t2i_sim = torch.matmul(class_embeds, image_embeds.T) / temperature
 	t2i_loss_raw = criterion_t2i(t2i_sim, label_vectors.T.float())  # [C, batch]
 	loss_t2i = t2i_loss_raw[active_mask, :].mean()
+
+	# Total loss
 	total_loss = loss_weights["i2t"] * loss_i2t + loss_weights["t2i"] * loss_t2i
 
 	return total_loss, loss_i2t, loss_t2i

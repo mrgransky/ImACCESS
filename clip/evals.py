@@ -388,6 +388,10 @@ def compute_multilabel_validation_loss(
 			image_embeds = model.encode_image(images)
 			image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 			
+			# Cast to FP32 before similarity + BCE computation
+			image_embeds = image_embeds.float()
+			# all_class_embeds = all_class_embeds.float() # already FP32 — no cast needed
+
 			# Compute similarities
 			i2t_similarities = torch.matmul(image_embeds, all_class_embeds.T) / temperature
 			t2i_similarities = torch.matmul(all_class_embeds, image_embeds.T) / temperature

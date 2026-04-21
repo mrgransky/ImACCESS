@@ -73,7 +73,7 @@ def main():
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--log_dir', type=str, default=None, help='Directory to store log files (if not specified, logs will go to stdout)')
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
-	parser.add_argument('--print_every', type=int, default=500, help='Print loss')
+	parser.add_argument('--print_every', type=int, default=25, help='Print loss')
 	parser.add_argument('--temperature', '-t', type=float, default=0.07, help='Temperature [def: 0.07]')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
