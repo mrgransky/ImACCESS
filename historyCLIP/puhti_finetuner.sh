@@ -7,8 +7,8 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=192G
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=256G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --time=03-00:00:00
@@ -72,9 +72,6 @@
 
 set -euo pipefail
 
-##############################################################################
-# ENVIRONMENT INFO
-##############################################################################
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
 txt="$user began Slurm job: `date`"

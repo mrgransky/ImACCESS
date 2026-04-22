@@ -292,187 +292,173 @@ def _shannon_entropy(counts: Counter, base: float = 2.0) -> float:
 		return ent
 
 def compute_entropy_vs_performance(
-		df: pd.DataFrame,
-		performance: Optional[Union[pd.DataFrame, Dict[str, Dict[str, float]]]] = None,
-		label_columns: Optional[List[str]] = None,
-		base: float = 2.0,
-		verbose: bool = False
+	df: pd.DataFrame,
+	performance: Optional[Union[pd.DataFrame, Dict[str, Dict[str, float]]]] = None,
+	label_columns: Optional[List[str]] = None,
+	base: float = 2.0,
+	verbose: bool = False
 ) -> pd.DataFrame:
-		"""
-		Compute label-distribution entropy (and related stats) per supervision source,
-		and optionally merge with retrieval performance numbers.
-
-		Entropy here is the Shannon entropy of the *marginal label distribution*:
-				H = -sum_i p_i log p_i, where p_i = freq(label_i) / total_occurrences.
-
-		Parameters
-		----------
-		df : pd.DataFrame
-				Must contain the specified label columns.
-		performance : DataFrame or dict (optional)
-				If dict: {source_name: {"i2t_map10_overall": ..., "t2i_map10_overall": ..., ...}}
-				If DataFrame: must contain a column 'source' plus any metric columns you want.
-		label_columns : list[str] (optional)
-				Defaults to your 6 label sources.
-		base : float
-				Log base for entropy. base=2 => bits. base=math.e => nats.
-
-		Returns
-		-------
-		pd.DataFrame
-				One row per label source with entropy/statistics, merged with performance if provided.
-		"""
+	"""
+	Compute label-distribution entropy (and related stats) per supervision source,
+	and optionally merge with retrieval performance numbers.
+	Entropy here is the Shannon entropy of the *marginal label distribution*:
+			H = -sum_i p_i log p_i, where p_i = freq(label_i) / total_occurrences.
+	Parameters
+	----------
+	df : pd.DataFrame
+			Must contain the specified label columns.
+	performance : DataFrame or dict (optional)
+			If dict: {source_name: {"i2t_map10_overall": ..., "t2i_map10_overall": ..., ...}}
+			If DataFrame: must contain a column 'source' plus any metric columns you want.
+	label_columns : list[str] (optional)
+			Defaults to your 6 label sources.
+	base : float
+			Log base for entropy. base=2 => bits. base=math.e => nats.
+	Returns
+	-------
+	pd.DataFrame
+			One row per label source with entropy/statistics, merged with performance if provided.
+	"""
+	if verbose:
+		print("\nCOMPUTING ENTROPY VS PERFORMANCE ANALYSIS")
+		print(f"Dataset size: {len(df):,} samples")
+		print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
+	
+	if label_columns is None:
+		label_columns = [
+			"llm_based_labels",
+			"vlm_based_labels",
+			"multimodal_labels",
+			"llm_canonical_labels",
+			"vlm_canonical_labels",
+			"multimodal_canonical_labels",
+		]
 		if verbose:
-			print("\nCOMPUTING ENTROPY VS PERFORMANCE ANALYSIS")
-			print(f"Dataset size: {len(df):,} samples")
-			print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
+			print(f"Default label columns: {len(label_columns)} sources: {label_columns}")
+	else:
+		if verbose:
+			print(f"Custom label columns: {label_columns}")
+	rows: List[Dict[str, Any]] = []
+	for idx, col in enumerate(label_columns, 1):
+		if col not in df.columns:
+			if verbose:
+				print(f"\n[{idx}/{len(label_columns)}] '{col}' not found, skipping")
+			continue
+		if verbose:
+				print(f"\n[{idx}/{len(label_columns)}] Processing: {col}")
+				print("-" * 80)
+
+		# Flatten all labels for marginal distribution
+		all_labels: List[str] = []
+		for v in df[col].tolist():
+			all_labels.extend(_parse_label_cell(v))
+		counts = Counter(all_labels)
+		total_occ = sum(counts.values())
+		unique = len(counts)
+		if verbose:
+			print(f"  Total label occurrences: {total_occ:,}")
+			print(f"  Unique labels: {unique:,}")
+			print(f"  Average labels per sample: {total_occ/len(df):.2f}")
 		
-		if label_columns is None:
-			label_columns = [
-				"llm_based_labels",
-				"vlm_based_labels",
-				"multimodal_labels",
-				"llm_canonical_labels",
-				"vlm_canonical_labels",
-				"multimodal_canonical_labels",
-			]
-			if verbose:
-				print(f"Default label columns: {len(label_columns)} sources: {label_columns}")
-		else:
-			if verbose:
-				print(f"Custom label columns: {label_columns}")
-
-		rows: List[Dict[str, Any]] = []
-
-		for idx, col in enumerate(label_columns, 1):
-				if col not in df.columns:
-					if verbose:
-						print(f"\n[{idx}/{len(label_columns)}] '{col}' not found, skipping")
-					continue
-
-				if verbose:
-						print(f"\n[{idx}/{len(label_columns)}] Processing: {col}")
-						print("-" * 80)
-
-				# Flatten all labels for marginal distribution
-				all_labels: List[str] = []
-				for v in df[col].tolist():
-					all_labels.extend(_parse_label_cell(v))
-
-				counts = Counter(all_labels)
-				total_occ = sum(counts.values())
-				unique = len(counts)
-
-				if verbose:
-						print(f"  Total label occurrences: {total_occ:,}")
-						print(f"  Unique labels: {unique:,}")
-						print(f"  Average labels per sample: {total_occ/len(df):.2f}")
-
-				# Singletons (unique labels appearing exactly once in the entire dataset)
-				num_singletons = sum(1 for _, c in counts.items() if c == 1)
-				singleton_rate = (num_singletons / unique) if unique > 0 else 0.0
-
-				if verbose:
-					print(f"  Singletons: {num_singletons}/{unique} ({singleton_rate*100:.2f}%)")
-						
-					# Show top-5 most frequent labels
-					top_labels = counts.most_common(5)
-					print(f"  Top-5 labels:")
-					for rank, (label, count) in enumerate(top_labels, 1):
-						freq_pct = (count / total_occ * 100) if total_occ > 0 else 0
-						print(f"    {rank}. '{label}': {count:,} ({freq_pct:.2f}%)")
-
-				H = _shannon_entropy(counts, base=base)
-				H_max = math.log(unique, base) if unique > 1 else 0.0  # max entropy if uniform over K
-				H_norm = (H / H_max) if H_max > 0 else 0.0
-
-				# Interpretable transforms
-				perplexity = (base ** H) if H > 0 else 1.0  # "effective" support size in label space
-				eff_num_labels = perplexity  # same notion under this definition
-
-				if verbose:
-					print(f"  Entropy (H): {H:.3f} {'bits' if base == 2.0 else 'units'}")
-					print(f"  Max entropy (H_max): {H_max:.3f} (uniform distribution)")
-					print(f"  Normalized entropy: {H_norm:.3f} (0=concentrated, 1=uniform)")
-					print(f"  Perplexity: {perplexity:.1f} (effective vocabulary size)")
-					print(f"  Effective # labels: {eff_num_labels:.1f}")
-					
-					# Interpretation
-					if H_norm < 0.5:
-						print(f"  📊 Distribution: HIGHLY CONCENTRATED (few dominant labels)")
-					elif H_norm < 0.8:
-						print(f"  📊 Distribution: MODERATELY DIVERSE")
-					else:
-						print(f"  📊 Distribution: HIGHLY UNIFORM (well-balanced)")
-
-				rows.append(
-					{
-						"source": col,
-						"total_occurrences": int(total_occ),
-						"unique_labels": int(unique),
-						"singletons": int(num_singletons),
-						"singleton_rate": float(singleton_rate),
-						f"entropy_{'bits' if base == 2.0 else 'units'}": float(H),
-						"entropy_max": float(H_max),
-						"entropy_normalized": float(H_norm),
-						"perplexity": float(perplexity),
-						"effective_num_labels": float(eff_num_labels),
-					}
-				)
-
-		stats_df = pd.DataFrame(rows).sort_values("source").reset_index(drop=True)
-
+		# Singletons (unique labels appearing exactly once in the entire dataset)
+		num_singletons = sum(1 for _, c in counts.items() if c == 1)
+		singleton_rate = (num_singletons / unique) if unique > 0 else 0.0
 		if verbose:
-			print("\nSUMMARY STATISTICS\n")
-			print(stats_df)
-
-		# Merge performance if provided
-		if performance is None:
-				if verbose:
-						print("\n✓ No performance data provided, returning entropy statistics only")
-				return stats_df
-
-		if verbose:
-				print("\n" + "="*80)
-				print("MERGING WITH PERFORMANCE METRICS")
-				print("="*80)
-
-		if isinstance(performance, dict):
-				if verbose:
-						print(f"  Performance data type: dict with {len(performance)} sources")
-				perf_df = (
-						pd.DataFrame.from_dict(performance, orient="index")
-						.reset_index()
-						.rename(columns={"index": "source"})
-				)
-		else:
-				if verbose:
-						print(f"  Performance data type: DataFrame with {len(performance)} rows")
-				perf_df = performance.copy()
-				if "source" not in perf_df.columns:
-						raise ValueError("If performance is a DataFrame, it must contain a 'source' column.")
-
-		merged = stats_df.merge(perf_df, on="source", how="left")
-
-		if verbose:
-				print(f"  Merged shape: {merged.shape}")
-				print(f"  Columns: {list(merged.columns)}")
+			print(f"  Singletons: {num_singletons}/{unique} ({singleton_rate*100:.2f}%)")
 				
-				# Check for missing performance data
-				missing_perf = merged[merged.iloc[:, len(stats_df.columns):].isna().all(axis=1)]
-				if len(missing_perf) > 0:
-						print(f"\n  ⚠️  {len(missing_perf)} sources missing performance data:")
-						for src in missing_perf['source'].tolist():
-								print(f"    - {src}")
-				else:
-						print(f"\n  ✓ All sources have performance data")
-				
-				print("\n" + "="*80)
-				print("FINAL MERGED RESULTS")
-				print("="*80)
-				print(merged.to_string(index=False))
+			# Show top-5 most frequent labels
+			top_labels = counts.most_common(5)
+			print(f"  Top-5 labels:")
+			for rank, (label, count) in enumerate(top_labels, 1):
+				freq_pct = (count / total_occ * 100) if total_occ > 0 else 0
+				print(f"    {rank}. '{label}': {count:,} ({freq_pct:.2f}%)")
+		H = _shannon_entropy(counts, base=base)
+		H_max = math.log(unique, base) if unique > 1 else 0.0  # max entropy if uniform over K
+		H_norm = (H / H_max) if H_max > 0 else 0.0
+		# Interpretable transforms
+		perplexity = (base ** H) if H > 0 else 1.0  # "effective" support size in label space
+		eff_num_labels = perplexity  # same notion under this definition
+		if verbose:
+			print(f"  Entropy (H): {H:.3f} {'bits' if base == 2.0 else 'units'}")
+			print(f"  Max entropy (H_max): {H_max:.3f} (uniform distribution)")
+			print(f"  Normalized entropy: {H_norm:.3f} (0=concentrated, 1=uniform)")
+			print(f"  Perplexity: {perplexity:.1f} (effective vocabulary size)")
+			print(f"  Effective # labels: {eff_num_labels:.1f}")
+			
+			# Interpretation
+			if H_norm < 0.5:
+				print(f"  📊 Distribution: HIGHLY CONCENTRATED (few dominant labels)")
+			elif H_norm < 0.8:
+				print(f"  📊 Distribution: MODERATELY DIVERSE")
+			else:
+				print(f"  📊 Distribution: HIGHLY UNIFORM (well-balanced)")
+		rows.append(
+			{
+				"source": col,
+				"total_occurrences": int(total_occ),
+				"unique_labels": int(unique),
+				"singletons": int(num_singletons),
+				"singleton_rate": float(singleton_rate),
+				f"entropy_{'bits' if base == 2.0 else 'units'}": float(H),
+				"entropy_max": float(H_max),
+				"entropy_normalized": float(H_norm),
+				"perplexity": float(perplexity),
+				"effective_num_labels": float(eff_num_labels),
+			}
+		)
 
-		return merged
+	stats_df = pd.DataFrame(rows).sort_values("source").reset_index(drop=True)
+
+	if verbose:
+		print("\nSUMMARY STATISTICS\n")
+		print(stats_df)
+
+	# Merge performance if provided
+	if performance is None:
+		if verbose:
+			print("\n✓ No performance data provided, returning entropy statistics only")
+		return stats_df
+
+	if verbose:
+		print("\n" + "="*80)
+		print("MERGING WITH PERFORMANCE METRICS")
+		print("="*80)
+
+	if isinstance(performance, dict):
+		if verbose:
+			print(f"  Performance data type: dict with {len(performance)} sources")
+		perf_df = (
+			pd.DataFrame.from_dict(performance, orient="index")
+			.reset_index()
+			.rename(columns={"index": "source"})
+		)
+	else:
+		if verbose:
+			print(f"  Performance data type: DataFrame with {len(performance)} rows")
+		perf_df = performance.copy()
+		if "source" not in perf_df.columns:
+			raise ValueError("If performance is a DataFrame, it must contain a 'source' column.")
+
+	merged = stats_df.merge(perf_df, on="source", how="left")
+	if verbose:
+		print(f"  Merged shape: {merged.shape}")
+		print(f"  Columns: {list(merged.columns)}")
+		
+		# Check for missing performance data
+		missing_perf = merged[merged.iloc[:, len(stats_df.columns):].isna().all(axis=1)]
+		if len(missing_perf) > 0:
+			print(f"\n  ⚠️  {len(missing_perf)} sources missing performance data:")
+			for src in missing_perf['source'].tolist():
+				print(f"    - {src}")
+		else:
+			print(f"\n  ✓ All sources have performance data")
+		
+		print("\n" + "="*80)
+		print("FINAL MERGED RESULTS")
+		print("="*80)
+		print(merged)
+
+	return merged
 
 def compute_label_agreement_and_singletons(df: pd.DataFrame):
 	print(f"Computing label agreement and singletons for {len(df)} samples")

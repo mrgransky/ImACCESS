@@ -102,37 +102,68 @@ def extract_per_k_metrics(eval_result: Dict) -> Dict:
 						}
 		return out
 
-def append_retrieval_results(
+def save_tiered_retrieval_metrics(
 	tiered_i2t: Dict,
 	tiered_t2i: Dict,
-	strategy_name: str,
-	results_dir: str,
-	dataset_name: str,
+	strategy: str,
+	dataset_directory: str,
+	column: str,
 	verbose: bool = True,
-) -> str:
+):
+	result_dir = os.path.join(dataset_directory, column)
+	os.makedirs(result_dir, exist_ok=True)
+
+	output_dir = os.path.join(dataset_directory, "outputs")
+	os.makedirs(output_dir, exist_ok=True)
+
 	per_k = extract_per_k_metrics({"tiered_i2t": tiered_i2t, "tiered_t2i": tiered_t2i})
-	results_json_path = os.path.join(results_dir, f"{dataset_name}_retrieval_metrics_accumulated.json")
-	accumulated = {}
-	
-	if os.path.exists(results_json_path):
+
+	retrieval_tiered_fpath = os.path.join(result_dir, f"retrieval_metrics_accumulated.json")
+	retrieval_accumulated = {}
+	if os.path.exists(retrieval_tiered_fpath):
 		if verbose:
-			print(f"Loading existing results from {results_json_path}")
-		with open(results_json_path) as f:
-			accumulated = json.load(f)
+			print(f"Loading existing results from {retrieval_tiered_fpath}")
+		with open(retrieval_tiered_fpath) as f:
+			retrieval_accumulated = json.load(f)
 	
-	accumulated[strategy_name] = per_k
+	retrieval_accumulated[strategy] = per_k
 	
-	with open(results_json_path, "w") as f:
-		json.dump(accumulated, f, indent=2)
+	with open(retrieval_tiered_fpath, "w") as f:
+		json.dump(retrieval_accumulated, f, indent=2)
 	
+	performance_fpath = os.path.join(output_dir, f"performance.json")
+	performance_accumulated = {}
+	if os.path.exists(performance_fpath):
+		if verbose:
+			print(f"Loading existing results from {performance_fpath}")
+		with open(performance_fpath) as f:
+			performance_accumulated = json.load(f)
+	
+	# Ensure column key exists
+	if column not in performance_accumulated:
+		performance_accumulated[column] = {}
+	
+	performance_accumulated[column][strategy] = per_k
+	
+	with open(performance_fpath, "w") as f:
+		json.dump(performance_accumulated, f, indent=2)
+
 	if verbose:
-		collected_methods = list(accumulated.keys())
-		n_methods = len(collected_methods)
-		print(f"\nResults of strategy '{strategy_name}' appended to {results_json_path}")
-		print(f">> {n_methods} collected method(s): {collected_methods}")
-		print("="*140)
-	
-	return results_json_path
+		print("="*120)
+		print(strategy.upper())
+		print(json.dumps(per_k, indent=2, ensure_ascii=False))
+		print(f"\nRetrieval Tiered Metrics:")
+		collected_retrieval_methods = list(retrieval_accumulated.keys())
+		n_methods = len(collected_retrieval_methods)
+		print(f"'{strategy}' strategy results appended to {retrieval_tiered_fpath}")
+		print(f">> {n_methods} collected method(s): {collected_retrieval_methods}")
+
+		print(f"\nPerformance Metrics:")
+		collected_columns = list(performance_accumulated.keys())
+		n_columns = len(collected_columns)
+		print(f"'{column}' column results appended to {performance_fpath}")
+		print(f">> {n_columns} collected column(s): {collected_columns}")
+		print("="*120)
 
 def compute_slope(window: List[float]) -> float:
 	if len(window) < 2:

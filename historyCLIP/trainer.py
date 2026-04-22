@@ -237,7 +237,8 @@ def main():
 				'adapter': clip_adapter_finetune_multi_label if args.adapter_method and args.adapter_method.startswith('clip_adapter') else tip_adapter_finetune_multi_label,
 			}
 		}
-		finetune_functions[dataset_type][args.strategy](
+
+		tiered_i2t, tiered_t2i = finetune_functions[dataset_type][args.strategy](
 			model=model,
 			train_loader=train_loader,
 			validation_loader=validation_loader,
@@ -297,6 +298,23 @@ def main():
 				),
 		)
 		
+		# Reconstruct the original strategy name for storage
+		if args.strategy == 'adapter' and args.adapter_method:
+			strategy_name = args.adapter_method  # e.g., 'clip_adapter_v', 'tip_adapter_f'
+		elif args.strategy == 'baseline' and args.baseline_method:
+			strategy_name = args.baseline_method  # e.g., 'zero_shot', 'probe'
+		else:
+			strategy_name = args.strategy  # e.g., 'lora', 'full', 'dora'
+		
+		save_tiered_retrieval_metrics(
+			tiered_i2t=tiered_i2t, 
+			tiered_t2i=tiered_t2i, 
+			strategy=strategy_name,
+			dataset_directory=DATASET_DIRECTORY,
+			column=args.column,
+			verbose=args.verbose,
+		)
+
 		# # Clean up any available JSON/PT files before finishing
 		# json_files = glob.glob(os.path.join(RESULT_DIRECTORY, "*.json"))
 		# pt_files = glob.glob(os.path.join(RESULT_DIRECTORY, "*.pt"))
@@ -318,6 +336,7 @@ def main():
 			sys.stderr = original_stderr
 			log_file.close()
 
+	
 if __name__ == "__main__":
 	cleanup_old_temp_dirs()
 	main()

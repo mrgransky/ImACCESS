@@ -143,24 +143,7 @@ def zero_shot_multi_label(
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
-	append_retrieval_results(
-		tiered_i2t=final_tiered_i2t, 
-		tiered_t2i=final_tiered_t2i, 
-		strategy_name=mode,
-		results_dir=results_dir,
-		dataset_name=dataset_name,
-		verbose=verbose,
-	)
-
-
-
-	return {
-		"full_metrics":    validation_results["full_metrics"],
-		"img2txt_metrics": validation_results["img2txt_metrics"],
-		"txt2img_metrics": validation_results["txt2img_metrics"],
-		"tiered_i2t":      final_tiered_i2t,
-		"tiered_t2i":      final_tiered_t2i,
-	}
+	return final_tiered_i2t, final_tiered_t2i
 
 def probe_multi_label(
 	model: torch.nn.Module,
@@ -682,15 +665,6 @@ def probe_multi_label(
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
-	append_retrieval_results(
-		tiered_i2t=final_tiered_i2t, 
-		tiered_t2i=final_tiered_t2i, 
-		strategy_name=mode,
-		results_dir=results_dir,
-		dataset_name=dataset_name,
-		verbose=verbose,
-	)
-
 	# Generate plots
 	file_base_name = (
 		f"{mode}_{probe.probe_type}_"
@@ -736,7 +710,7 @@ def probe_multi_label(
 		fname=plot_paths["retrieval_best"],
 	)
 	
-	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+	return final_tiered_i2t, final_tiered_t2i
 
 def full_finetune_multi_label(
 	model: torch.nn.Module,
@@ -1248,15 +1222,6 @@ def full_finetune_multi_label(
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
-	append_retrieval_results(
-		tiered_i2t=final_tiered_i2t, 
-		tiered_t2i=final_tiered_t2i, 
-		strategy_name=mode,
-		results_dir=results_dir,
-		dataset_name=dataset_name,
-		verbose=verbose,
-	)
-
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
@@ -1314,7 +1279,7 @@ def full_finetune_multi_label(
 		fname=plot_paths["hp_evol"],
 	)
 
-	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+	return final_tiered_i2t, final_tiered_t2i
 
 def lora_finetune_multi_label(
 	model: torch.nn.Module,
@@ -1819,15 +1784,6 @@ def lora_finetune_multi_label(
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
-	append_retrieval_results(
-		tiered_i2t=final_tiered_i2t, 
-		tiered_t2i=final_tiered_t2i, 
-		strategy_name=mode,
-		results_dir=results_dir,
-		dataset_name=dataset_name,
-		verbose=verbose,
-	)
-
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
@@ -1878,7 +1834,7 @@ def lora_finetune_multi_label(
 		fname=plot_paths["losses"],
 	)
 
-	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+	return final_tiered_i2t, final_tiered_t2i
 
 def lora_plus_finetune_multi_label(
 	model: torch.nn.Module,
@@ -2180,13 +2136,23 @@ def lora_plus_finetune_multi_label(
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
-	scaler = torch.amp.GradScaler(
-		device=device,
-		init_scale=2**11,      # 2048 (Conservative start)
-		growth_factor=1.5,     # Smoother growth than default 2.0
-		backoff_factor=0.5,    # Standard
-		growth_interval=5000,  # Keep scale stable longer
-	)
+
+	if cuda_capability[0] >= 8:
+		scaler = torch.amp.GradScaler(
+			device=device,
+			init_scale=2**11,      # 2048 (Conservative start)
+			growth_factor=1.5,     # Smoother growth than default 2.0
+			backoff_factor=0.5,    # Standard
+			growth_interval=5000,  # Keep scale stable longer
+		)
+	else:
+		scaler = torch.amp.GradScaler(
+			device=device,
+			init_scale=2**8,       # 256 — very conservative for FP16 on V100
+			growth_factor=1.2,     # slow growth to avoid overflow in deep ViT layers
+			backoff_factor=0.5,
+			growth_interval=10000, # rarely grow
+		)
 
 	if verbose:
 		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
@@ -2195,7 +2161,7 @@ def lora_plus_finetune_multi_label(
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print(f"  └─ AMP dtype: {amp_dtype} (cuda_cap: {cuda_capability})")
 		print()
 
 	# scaler = None  # AMP disabled for LoRA+ — differential lr unstable with GradScaler
@@ -2580,15 +2546,6 @@ def lora_plus_finetune_multi_label(
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 	
-	append_retrieval_results(
-		tiered_i2t=final_tiered_i2t, 
-		tiered_t2i=final_tiered_t2i, 
-		strategy_name=mode,
-		results_dir=results_dir,
-		dataset_name=dataset_name,
-		verbose=verbose,
-	)
-
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
@@ -2651,7 +2608,7 @@ def lora_plus_finetune_multi_label(
 		fname=plot_paths["hp_evol"],
 	)
 
-	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+	return final_tiered_i2t, final_tiered_t2i
 
 def rslora_finetune_multi_label(
 	model: torch.nn.Module,
@@ -3196,15 +3153,6 @@ def rslora_finetune_multi_label(
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
-	append_retrieval_results(
-		tiered_i2t=final_tiered_i2t,
-		tiered_t2i=final_tiered_t2i,
-		strategy_name=mode,
-		results_dir=results_dir,
-		dataset_name=dataset_name,
-		verbose=verbose,
-	)
-
 	file_base_name = (
 		f"{mode}_"
 		f"{model_arch}_ep_{actual_trained_epochs}_"
@@ -3253,7 +3201,7 @@ def rslora_finetune_multi_label(
 		fname=plot_paths["losses"],
 	)
 
-	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+	return final_tiered_i2t, final_tiered_t2i
 
 def dora_finetune_multi_label(
 	model: torch.nn.Module,
@@ -3800,15 +3748,6 @@ def dora_finetune_multi_label(
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
-	append_retrieval_results(
-		tiered_i2t=final_tiered_i2t, 
-		tiered_t2i=final_tiered_t2i, 
-		strategy_name=mode,
-		results_dir=results_dir,
-		dataset_name=dataset_name,
-		verbose=verbose,
-	)
-
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
@@ -3868,7 +3807,7 @@ def dora_finetune_multi_label(
 		fname=plot_paths["losses"],
 	)
 
-	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+	return final_tiered_i2t, final_tiered_t2i
 
 def ia3_finetune_multi_label(
 	model: torch.nn.Module,
@@ -4423,15 +4362,6 @@ def ia3_finetune_multi_label(
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
-	append_retrieval_results(
-		tiered_i2t=final_tiered_i2t, 
-		tiered_t2i=final_tiered_t2i, 
-		strategy_name=mode,
-		results_dir=results_dir,
-		dataset_name=dataset_name,
-		verbose=verbose,
-	)
-
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
@@ -4488,7 +4418,7 @@ def ia3_finetune_multi_label(
 		fname=plot_paths["losses"],
 	)
 
-	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+	return final_tiered_i2t, final_tiered_t2i
 
 def vera_finetune_multi_label(
 	model: torch.nn.Module,
@@ -5110,15 +5040,6 @@ def vera_finetune_multi_label(
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
-	append_retrieval_results(
-		tiered_i2t=final_tiered_i2t, 
-		tiered_t2i=final_tiered_t2i, 
-		strategy_name=mode,
-		results_dir=results_dir,
-		dataset_name=dataset_name,
-		verbose=verbose,
-	)
-
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
@@ -5176,7 +5097,7 @@ def vera_finetune_multi_label(
 		fname=plot_paths["losses"],
 	)
 
-	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+	return final_tiered_i2t, final_tiered_t2i
 
 def clip_adapter_finetune_multi_label(
 	model: torch.nn.Module,
@@ -5711,15 +5632,6 @@ def clip_adapter_finetune_multi_label(
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
-	append_retrieval_results(
-		tiered_i2t=final_tiered_i2t, 
-		tiered_t2i=final_tiered_t2i, 
-		strategy_name=clip_adapter_method,
-		results_dir=results_dir,
-		dataset_name=dataset_name,
-		verbose=verbose,
-	)
-
 	# Generate plots
 	file_base = (
 		f"{clip_adapter_method}_{model_arch}_ep_{actual_trained_epochs}_"
@@ -5759,7 +5671,7 @@ def clip_adapter_finetune_multi_label(
 		fname=os.path.join(results_dir, f"{file_base}_losses.png"),
 	)
 
-	return final_metrics_full, final_img2txt, final_txt2img, mdl_fpth
+	return final_tiered_i2t, final_tiered_t2i
 
 def tip_adapter_finetune_multi_label(
 	model: torch.nn.Module,
@@ -6550,15 +6462,6 @@ def tip_adapter_finetune_multi_label(
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
-	append_retrieval_results(
-		tiered_i2t=final_tiered_i2t, 
-		tiered_t2i=final_tiered_t2i, 
-		strategy_name=tip_adapter_method,
-		results_dir=results_dir,
-		dataset_name=dataset_name,
-		verbose=verbose,
-	)
-
 	# Generate plots
 	file_base_name = (
 		f"{tip_adapter_method}_"
@@ -6627,4 +6530,4 @@ def tip_adapter_finetune_multi_label(
 		fname=plot_paths["alpha_beta_evol"],
 	)
 
-	return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics, mdl_fpth
+	return final_tiered_i2t, final_tiered_t2i
