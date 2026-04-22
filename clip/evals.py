@@ -210,6 +210,11 @@ def compute_adaptive_min_val_support(
 	
 	val_support = query_labels.sum(dim=0)          # [C] per-class image count
 	active_support = val_support[active_mask]      # only active classes
+	if verbose:
+		print(f"\nAdaptive min_val_support")
+		print(f"val_support: {type(val_support)} {val_support.shape} {val_support.device} (min, max): ({val_support.min().item()}, {val_support.max().item()})")
+		print(f"active_support:  {type(active_support)} {active_support.shape} {active_support.device} (min, max): ({active_support.min().item()}, {active_support.max().item()})")
+
 	if active_support.numel() == 0:
 		return absolute_min
 	
@@ -223,15 +228,15 @@ def compute_adaptive_min_val_support(
 	threshold = max(absolute_min, min(absolute_max, threshold))
 
 	if verbose:
-		print(f"\n[Adaptive min_val_support]")
 		print(
-			f"  Active class val frequencies — "
-			f"min={active_support.min().item()} "
-			f"max={active_support.max().item()} "
-			f"mean={active_support.float().mean().item()} "
+			f"Active class val frequencies "
+			f"(min, max): "
+			f"({active_support.min().item()}, {active_support.max().item()}) "
+			f"mean: {active_support.float().mean().item():.3f} "
+			f"std: {active_support.float().std().item():.3f} "
 			f"median={active_support.float().median().item()}"
 		)
-		print(f"  {percentile*100:.0f}th percentile = {threshold} (clamped to [{absolute_min}, {absolute_max}])")
+		print(f"{percentile*100:.0f}th percentile = {threshold} (clamped to [{absolute_min}, {absolute_max}])")
 
 	return threshold
 
@@ -335,6 +340,7 @@ def compute_tiered_retrieval_metrics(
 				device=similarity_matrix.device,
 			)
 			tier_candidate_labels = query_labels[:, tier_indices]  # [N, tier]
+
 		tier_metrics = compute_retrieval_metrics_from_similarity(
 			similarity_matrix=tier_sim,
 			query_labels=tier_query_labels,
@@ -343,7 +349,9 @@ def compute_tiered_retrieval_metrics(
 			mode=mode,
 			verbose=verbose,
 		)
+
 		results[tier_name] = tier_metrics
+
 		if verbose:
 			n_queries = tier_sim.shape[0]
 			print(
@@ -573,44 +581,49 @@ def compute_retrieval_metrics_from_similarity(
 		else len(query_labels.shape) == 2
 	)
 
+	# ├─ 
+	# └─ 
 	# Sanity check — relevant items per query should reflect tier size 
 	if verbose and is_multi_label:
 		if mode == "Image-to-Text":
 			# query_labels: [N_images, N_tier] — relevant = true classes per image
 			relevant_per_query = (query_labels > 0).sum(dim=1).float()
 			n_candidates = similarity_matrix.shape[1]
-			print(f"\n  [I2T Sanity] Relevant items per query (out of {n_candidates} candidates):")
-			print(f"    min={relevant_per_query.min():.0f} "
-					f"max={relevant_per_query.max():.0f} "
-					f"mean={relevant_per_query.mean():.2f} "
-					f"zero-relevant queries={( relevant_per_query == 0).sum().item()}")
+			print(f"\n[I2T Sanity] Relevant items per query (out of {n_candidates} candidates):")
+			print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
+			print(f"  ├─ mean: {relevant_per_query.mean():.2f} std: {relevant_per_query.std():.2f}")
+			print(f"  ├─ zero-relevant queries: {( relevant_per_query == 0).sum().item()}")
+
 			if relevant_per_query.max().item() > n_candidates:
-				print(f"    ⚠ WARNING: max relevant ({relevant_per_query.max():.0f}) "
+				print(f"  └─ [WARNING] max relevant ({relevant_per_query.max():.0f}) "
 						f"> num candidates ({n_candidates}) — "
 						f"full label vector may be leaking into tier computation")
 			else:
-				print(f"    ✓ max relevant ≤ num candidates — tier labels correctly restricted")
+				print(f"  └─ [OK] max relevant ≤ num candidates — tier labels correctly restricted")
 		else:  # Text-to-Image
 			# candidate_labels: [N_images, N_tier] — relevant = images per class
 			relevant_per_query = candidate_labels.sum(dim=0).float()  # [N_tier]
 			n_queries = similarity_matrix.shape[0]
-			print(f"\n  [T2I Sanity] Relevant items per query class (out of {similarity_matrix.shape[1]} images):")
-			print(
-				f"    min={relevant_per_query.min():.0f} "
-				f"max={relevant_per_query.max():.0f} "
-				f"mean={relevant_per_query.mean():.2f} "
-				f"zero-relevant classes={( relevant_per_query == 0).sum().item()}"
-			)
+			print(f"\n[T2I Sanity] Relevant items per query class (out of {similarity_matrix.shape[1]} images):")
+			print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
+			print(f"  ├─ mean: {relevant_per_query.mean():.2f} std: {relevant_per_query.std():.2f}")
+			print(f"  ├─ zero-relevant queries: {( relevant_per_query == 0).sum().item()}")
+			# print(
+			# 	f"    min={relevant_per_query.min():.0f} "
+			# 	f"max={relevant_per_query.max():.0f} "
+			# 	f"mean={relevant_per_query.mean():.2f} "
+			# 	f"zero-relevant classes={( relevant_per_query == 0).sum().item()}"
+			# )
 			if (relevant_per_query == 0).any():
 				zero_count = (relevant_per_query == 0).sum().item()
 				print(
-					f"    ⚠ {zero_count} classes have zero relevant images "
+					f"  └─ [WARNING] {zero_count} classes have zero relevant images "
 					f"— likely inactive classes (freq=0 in validation). "
 					f"These contribute 0 to mAP and are expected in full evaluation. "
 					f"Tiered evaluation will filter these via active_mask."
 				)
 			else:
-				print(f"    ✓ All query classes have ≥1 relevant image")
+				print(f"  └─ [OK] All query classes have ≥1 relevant image")
 
 	# Check cache
 	cache_file = None

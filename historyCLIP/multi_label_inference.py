@@ -1311,6 +1311,8 @@ def run_inference(
 
 @measure_execution_time
 def main():
+	set_seeds(seed=42)
+
 	parser = argparse.ArgumentParser(description="Evaluate CLIP for Historical Archives Dataset [Inference]")
 	parser.add_argument('--pth_files_directory', '-pth_dir', type=str, required=True, help='Directory containing the .pth files')
 	parser.add_argument('--model_architecture', '-a', type=str, required=True, help='CLIP architecture')
@@ -1329,11 +1331,12 @@ def main():
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
 	args, unknown = parser.parse_known_args()
+
 	args.device = torch.device(args.device)
 	args.pth_files_directory = os.path.normpath(args.pth_files_directory)
 	print_args_table(args=args, parser=parser)
 	print(args)
-	set_seeds(seed=42)
+
 	DATASET_DIRECTORY = os.path.dirname(args.pth_files_directory)
 	print(f"DATASET_DIRECTORY: {DATASET_DIRECTORY}")
 	
