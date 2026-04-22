@@ -1862,7 +1862,6 @@ def lora_plus_finetune_multi_label(
 	quantized: bool=False,
 	loss_weights: Dict[str, float]=None,
 	temperature: float = 0.07,
-	B_MAX_NORM = 50.0,
 	verbose: bool=True,
 ):
 	"""
@@ -2010,7 +2009,7 @@ def lora_plus_finetune_multi_label(
 	N = masks["N"]
 	train_freq = masks["train_freq"]
 
-	val_freq = diagnose_train_val_coverage(
+	diagnose_train_val_coverage(
 		train_freq=train_freq,
 		validation_loader=validation_loader,
 		num_classes=num_classes,
@@ -2136,8 +2135,8 @@ def lora_plus_finetune_multi_label(
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
-
 	if cuda_capability[0] >= 8:
+		B_MAX_NORM = 50.0  # BF16 on A100 — generous ceiling
 		scaler = torch.amp.GradScaler(
 			device=device,
 			init_scale=2**11,      # 2048 (Conservative start)
@@ -2146,6 +2145,7 @@ def lora_plus_finetune_multi_label(
 			growth_interval=5000,  # Keep scale stable longer
 		)
 	else:
+		B_MAX_NORM = 5.0   # FP16 on V100 — tight ceiling to prevent forward overflow
 		scaler = torch.amp.GradScaler(
 			device=device,
 			init_scale=2**8,       # 256 — very conservative for FP16 on V100
@@ -2219,7 +2219,12 @@ def lora_plus_finetune_multi_label(
 			
 			images = images.to(device, non_blocking=True)
 			label_vectors = label_vectors.to(device, non_blocking=True).float()
-						
+			
+			if torch.isnan(images).any():
+				if verbose:
+					print(f"[WARNING] Corrupted image detected in batch {bidx+1}. Skipping.")
+				continue
+
 			optimizer.zero_grad(set_to_none=True)
 			
 			with torch.amp.autocast(
@@ -2374,15 +2379,23 @@ def lora_plus_finetune_multi_label(
 			print(f"{len(weight_decays_history[-1])} WD groups: {weight_decays_history[-1]}")
 		
 		# Weight health check before validation
-		healthy, A_norms, B_norms = check_lora_weight_health(model=model, verbose=verbose)
+		healthy, A_norms, B_norms = check_lora_weight_health(
+			model=model, 
+			optimizer=optimizer,  # pass optimizer
+			verbose=verbose,
+		)
+
 		if not healthy:
-			print(f"[CRITICAL] Weight corruption detected at epoch {epoch+1} before validation.")
+			# Clear corrupted Adam states first
+			for group in optimizer.param_groups:
+					for p in group['params']:
+							if p in optimizer.state:
+									optimizer.state[p] = {}
+			# Then restore weights
 			if early_stopping.best_weights is not None:
-				print(f"  Restoring best weights from epoch {early_stopping.get_best_epoch()+1}.")
-				early_stopping._restore_best_weights(model)
-			else:
-				print(f"  No best weights stored yet (corruption at epoch {epoch+1}). Breaking without restoration.")
+					early_stopping._restore_best_weights(model)
 			break
+
 
 		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")		
 		current_val_loss = compute_multilabel_validation_loss(

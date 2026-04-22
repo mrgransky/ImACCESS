@@ -3,47 +3,55 @@ from utils import *
 if USER == "farid":
 	from visualize import build_arch_flowchart
 
-def check_lora_weight_health(model, verbose=True):
-	issues = []
-	stats = {"A": {}, "B": {}}
-	for name, param in model.named_parameters():
-		if not param.requires_grad:
-			continue
-		group = "A" if "lora_A" in name else "B" if "lora_B" in name else None
-		if group is None:
-			continue
-		
-		has_nan = torch.isnan(param.data).any().item()
-		has_inf = torch.isinf(param.data).any().item()
-		norm = param.data.norm().item()
-		
-		if has_nan or has_inf:
-			issues.append(f"  ✗ {name}: nan={has_nan} inf={has_inf} norm={norm}")
-		
-		stats[group][name] = norm
-	
-	A_norms = list(stats["A"].values())
-	B_norms = list(stats["B"].values())
-	
-	if verbose:
-		print("-"*60)
-		print(f"[Weight Health]")
+def check_lora_weight_health(model, optimizer=None, verbose=True):
+    issues = []
+    stats = {"A": {}, "B": {}}
+    
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        group = "A" if "lora_A" in name else "B" if "lora_B" in name else None
+        if group is None:
+            continue
+        has_nan = torch.isnan(param.data).any().item()
+        has_inf = torch.isinf(param.data).any().item()
+        norm = param.data.norm().item()
+        if has_nan or has_inf:
+            issues.append(f"  ✗ [weight] {name}: nan={has_nan} inf={has_inf} norm={norm:.4e}")
+        stats[group][name] = norm
 
-		if A_norms:
-			print(f"lora_A (min, max): ({min(A_norms):.4f}, {max(A_norms):.4f}) mean: {np.mean(A_norms):.4f}")
+        # Check optimizer state for this parameter
+        if optimizer is not None and param in optimizer.state:
+            state = optimizer.state[param]
+            for state_key in ("exp_avg", "exp_avg_sq"):  # Adam m and v
+                if state_key in state:
+                    s = state[state_key]
+                    if torch.isnan(s).any() or torch.isinf(s).any():
+                        issues.append(
+                            f"  ✗ [optim.{state_key}] {name}: "
+                            f"nan={torch.isnan(s).any().item()} "
+                            f"inf={torch.isinf(s).any().item()}"
+                        )
 
-		if B_norms:
-			print(f"lora_B (min, max): ({min(B_norms):.4f}, {max(B_norms):.4f}) mean: {np.mean(B_norms):.4f}")
-
-		if issues:
-			print(f"  !! {len(issues)} corrupted tensors:")
-			for issue in issues:
-				print(issue)
-		else:
-			print(f"[OK] All weights healthy")
-		print("-"*60)
-	
-	return len(issues) == 0, A_norms, B_norms
+    A_norms = list(stats["A"].values())
+    B_norms = list(stats["B"].values())
+    
+    if verbose:
+        print("-"*60)
+        print(f"[Weight Health]")
+        if A_norms:
+            print(f"lora_A (min, max): ({min(A_norms):.4f}, {max(A_norms):.4f}) mean: {np.mean(A_norms):.4f}")
+        if B_norms:
+            print(f"lora_B (min, max): ({min(B_norms):.4f}, {max(B_norms):.4f}) mean: {np.mean(B_norms):.4f}")
+        if issues:
+            print(f"  !! {len(issues)} corrupted tensors:")
+            for issue in issues[:20]:  # cap output
+                print(issue)
+        else:
+            print(f"[OK] All weights and optimizer states healthy")
+        print("-"*60)
+    
+    return len(issues) == 0, A_norms, B_norms
 
 def check_training_health(
 		model,
