@@ -632,8 +632,15 @@ def compute_retrieval_metrics_from_similarity(
 		raise ValueError("No valid K values provided")
 	
 	# Get top-K indices for all queries (memory efficient)
-	all_sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
-	
+	# all_sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
+	# Use chunked version:
+	chunk_size = 512
+	all_sorted_indices = torch.cat([
+		torch.argsort(similarity_matrix[i:i+chunk_size], dim=1, descending=True)
+		for i in range(0, similarity_matrix.shape[0], chunk_size)
+	], dim=0)	
+
+
 	metrics = {"mP": {}, "mAP": {}, "Recall": {}}
 	
 	for K in valid_K_values:

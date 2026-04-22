@@ -2256,7 +2256,7 @@ def lora_plus_finetune_multi_label(
 				# no zero_grad needed here — already done above
 				continue # skip this batch
 			
-			# Backward Pass (Generic for Scaler or None)
+			# Backward Pass
 			if scaler is not None:
 				scaler.scale(total_loss).backward()
 			else:
@@ -2291,15 +2291,28 @@ def lora_plus_finetune_multi_label(
 					)
 
 			# Guard: skip optimizer step if grads are still corrupt post-unscale
+			# fires only on FP16 (V100 and older) due to overflow.
+			# On BF16/Ampere this is defensive dead code — kept for correctness.
 			if torch.isnan(grad_norm) or torch.isinf(grad_norm):
 				if verbose:
-					print(f"[WARNING] Batch: {bidx+1}:")
-					print(f"grad_norm: {grad_norm} | isnan(): {torch.isnan(grad_norm)} | isinf(): {torch.isinf(grad_norm)}")
+					print(f"[WARNING] Corrupt grad_norm at epoch {epoch+1} batch {bidx+1}: {grad_norm} | isnan(): {torch.isnan(grad_norm)} | isinf(): {torch.isinf(grad_norm)}")
 
 				optimizer.zero_grad(set_to_none=True)
 
+				# purge Adam state for any param whose grad was NaN
+				for group in optimizer.param_groups:
+					for p in group['params']:
+						if p.grad is not None and (torch.isnan(p.grad).any() or torch.isinf(p.grad).any()):
+							if p in optimizer.state:
+								optimizer.state[p] = {}
+
 				if scaler is not None:
+					if cuda_capability[0] < 8:
+						if hasattr(scaler, '_scale') and scaler._scale is not None:
+							scaler._scale.mul_(0.5)
 					scaler.update()  # must still call to reset internal state
+					if verbose:
+						print(f"\t\t[Scaler] scale after corrupt grad recovery={scaler.get_scale():.1f}")
 
 				continue
 
@@ -2311,28 +2324,37 @@ def lora_plus_finetune_multi_label(
 				optimizer.step()
 
 			# Clip B matrix norms (magnitude control)
+			clipped_count = 0
 			with torch.no_grad():
 				for name, param in model.named_parameters():
 					if param.requires_grad and "lora_B" in name:
 						norm = param.data.norm()
 						if norm > B_MAX_NORM:
+							clipped_count += 1
+							if verbose:
+								print(
+									f"[WARNING] B-norm clip: {name} "
+									f"norm={norm:.4f} > ceiling={B_MAX_NORM} "
+									f"at e{epoch+1} b{bidx+1}"
+								)
 							param.data.mul_(B_MAX_NORM / norm)
 
 			# Post-step weight norm tracking
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+				if scaler is not None:
+					print(f"\t\t[Scaler] scale={scaler.get_scale():.1f}")
 				B_norms_current = [
 					p.data.norm().item()
 					for n, p in model.named_parameters()
 					if p.requires_grad and "lora_B" in n
 				]
-
 				if B_norms_current:
 					B_norms_t = torch.tensor(B_norms_current)
 					print(
 						f"\t\t[B weight norms post-clip e{epoch+1} b{bidx+1}] "
 						f"(min, max): ({B_norms_t.min():.4f}, {B_norms_t.max():.4f}) "
 						f"mean: {B_norms_t.mean():.4f} std: {B_norms_t.std():.4f} "
-						f"clip_count={sum(1 for n in B_norms_current if n > B_MAX_NORM)} "
+						f"clipped_this_step={clipped_count} "
 						f"(ceiling={B_MAX_NORM})"
 					)
 
@@ -2352,10 +2374,25 @@ def lora_plus_finetune_multi_label(
 				print(
 					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
 					f"Total Loss: {batch_loss_total:.6f} "
-					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
+					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})\n"
 				)
-				print()
 		
+		# Detect full NaN cascade — entire epoch was skipped
+		if num_batches == 0:
+			print(f"[CRITICAL] Epoch {epoch+1}: zero valid batches — full NaN cascade detected.")
+			# Clear corrupted Adam momentum buffers
+			for group in optimizer.param_groups:
+					for p in group['params']:
+							if p in optimizer.state:
+									optimizer.state[p] = {}
+			# Restore best weights if available
+			if early_stopping.best_weights is not None:
+					early_stopping._restore_best_weights(model)
+					print(f"  Restored weights from epoch {early_stopping.get_best_epoch()+1}.")
+			else:
+					print(f"  No checkpoint available. Aborting.")
+			break
+
 		# average losses
 		avg_total_loss = epoch_loss_total / num_batches if num_batches > 0 else 0.0
 		avg_i2t_loss = epoch_loss_i2t / num_batches if num_batches > 0 else 0.0
