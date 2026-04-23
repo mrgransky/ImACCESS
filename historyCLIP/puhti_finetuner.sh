@@ -213,9 +213,9 @@ column_index=$((remainder2 % NUM_COLUMNS))
 
 # Bounds check — catches misconfigured --array ranges immediately
 if [ $dataset_index      -ge $NUM_DATASETS      ] || \
-   [ $architecture_index -ge $NUM_ARCHITECTURES ] || \
-   [ $strategy_index     -ge $NUM_STRATEGIES    ] || \
-   [ $column_index       -ge $NUM_COLUMNS       ]; then
+	 [ $architecture_index -ge $NUM_ARCHITECTURES ] || \
+	 [ $strategy_index     -ge $NUM_STRATEGIES    ] || \
+	 [ $column_index       -ge $NUM_COLUMNS       ]; then
 	echo "Error: Index out of bounds for TASK_ID=$SLURM_ARRAY_TASK_ID" >&2
 	echo "  dataset_index=$dataset_index      (valid: 0–$((NUM_DATASETS-1)))"      >&2
 	echo "  architecture_index=$architecture_index (valid: 0–$((NUM_ARCHITECTURES-1)))" >&2
@@ -367,8 +367,8 @@ echo "EARLY_STOP_MIN_EPOCHS: $EARLY_STOPPING_MIN_EPOCHS"
 echo "BATCH_SIZE [default/adjusted]: ${BATCH_SIZES[$dataset_index]} / $ADJUSTED_BATCH_SIZE"
 # Print LoRA-specific params only when relevant
 if [ "$strategy" = "lora" ] || [ "$strategy" = "lora_plus" ] || \
-   [ "$strategy" = "dora" ] || [ "$strategy" = "vera"      ] || \
-   [ "$strategy" = "rslora" ]; then
+	 [ "$strategy" = "dora" ] || [ "$strategy" = "vera"      ] || \
+	 [ "$strategy" = "rslora" ]; then
 	echo "LORA_RANK           : ${LORA_RANKS[$dataset_index]}"
 	echo "LORA_ALPHA          : ${LORA_ALPHAS[$dataset_index]}"
 	echo "LORA_DROPOUT        : ${LORA_DROPOUTS[$dataset_index]}"
@@ -410,8 +410,8 @@ CMD="python -u trainer.py \
 # Applied to: lora, lora_plus, rslora, dora, vera
 # NOT applied to: ia3 (uses a different parameterisation with no rank/alpha)
 if [ "$strategy" = "lora"      ] || [ "$strategy" = "lora_plus" ] || \
-   [ "$strategy" = "dora"      ] || [ "$strategy" = "vera"      ] || \
-   [ "$strategy" = "rslora"    ]; then
+	 [ "$strategy" = "dora"      ] || [ "$strategy" = "vera"      ] || \
+	 [ "$strategy" = "rslora"    ]; then
 	CMD="$CMD --lora_rank    \"${LORA_RANKS[$dataset_index]}\""
 	CMD="$CMD --lora_alpha   \"${LORA_ALPHAS[$dataset_index]}\""
 	CMD="$CMD --lora_dropout \"${LORA_DROPOUTS[$dataset_index]}\""
