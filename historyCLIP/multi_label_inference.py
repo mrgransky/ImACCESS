@@ -37,7 +37,7 @@ import label_statistics as stats
 # local:
 # $ python multi_label_inference.py -pth_dir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/multimodal_canonical_labels/ -a 'ViT-B/32' -v
 
-# Puhti:
+# Puhti/Mahti:
 # $ python multi_label_inference.py -pth_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/multimodal_canonical_labels -a 'ViT-L/14@336px' -v
 
 def get_multi_label_head_torso_tail_samples(
