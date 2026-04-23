@@ -27,239 +27,298 @@ def _infer_performance_schema(perf: Dict[str, Any]) -> str:
 		return "flat_metrics_by_source"
 
 def _flatten_performance_json(
-		performance_json: Dict[str, Any],
-		strategy: Optional[str],
-		k: Union[int, str] = 10,
-		include_map: bool = True,
-		include_recall: bool = False,
-		tier_alias: Optional[Dict[str, str]] = None,
-		verbose: bool = False,
+    performance_json: Dict[str, Any],
+    strategy: Optional[str],
+    k: Union[int, str] = 10,
+    include_map: bool = True,
+    include_recall: bool = False,
+    tier_alias: Optional[Dict[str, str]] = None,
+    reference_source: str = "multimodal_canonical_labels",
+    verbose: bool = False,
 ) -> pd.DataFrame:
-		"""
-		Convert performance.json into a flat DataFrame with one row per source.
+    """
+    Convert performance.json into a flat DataFrame with one row per source.
 
-		Output columns (if include_map=True):
-			i2t_map10_overall, i2t_map10_head, i2t_map10_tail
-			t2i_map10_overall, t2i_map10_head, t2i_map10_tail
-		plus Recall analogs if include_recall=True.
-		"""
-		if tier_alias is None:
-				tier_alias = {"rare": "tail"}  # match paper terminology
+    Strategy selection (when strategy=None):
+        Auto-selects the best strategy by i2t+t2i mAP@k overall on `reference_source`.
+        The SAME strategy is then applied to ALL sources for a fair comparison.
+        reference_source should be your proposed method (default: multimodal_canonical_labels).
 
-		k_str = str(k)
+    Output columns (if include_map=True):
+        i2t_map{k}_overall, i2t_map{k}_head, i2t_map{k}_tail
+        t2i_map{k}_overall, t2i_map{k}_head, t2i_map{k}_tail
+    plus Recall analogs if include_recall=True.
+    """
+    if tier_alias is None:
+        tier_alias = {"rare": "tail"}
 
-		rows: List[Dict[str, Any]] = []
-		for source, source_blob in performance_json.items():
-				if not isinstance(source_blob, dict):
-						continue
+    k_str = str(k)
 
-				schema = _infer_performance_schema({source: source_blob})
-				if schema != "nested_by_source_then_strategy":
-						# not your performance.json structure
-						continue
+    # ------------------------------------------------------------------ #
+    # Step 1: Resolve which strategy to use (once, from reference_source) #
+    # ------------------------------------------------------------------ #
+    if strategy is not None:
+        chosen_strategy = strategy
+        if verbose:
+            print(f"[perf] Using provided strategy='{chosen_strategy}' for all sources")
+    else:
+        chosen_strategy = _select_best_strategy(
+            performance_json=performance_json,
+            reference_source=reference_source,
+            k_str=k_str,
+            verbose=verbose,
+        )
+        if verbose:
+            print(
+                f"[perf] Auto-selected strategy='{chosen_strategy}' "
+                f"(best on '{reference_source}' at k={k_str}, i2t+t2i mAP overall)"
+            )
 
-				# Pick strategy
-				if strategy is None:
-						# Deterministic fallback to avoid silent randomness
-						preferred = ["dora", "lora", "rslora", "vera", "lora_plus", "full", "probe", "zero_shot"]
-						available = list(source_blob.keys())
-						chosen = None
-						for s in preferred:
-								if s in source_blob:
-										chosen = s
-										break
-						if chosen is None and len(available) > 0:
-								chosen = sorted(available)[0]
-						if verbose:
-								print(f"[perf] strategy not provided; using '{chosen}' for source='{source}' (available={available[:8]}...)")
-				else:
-						chosen = strategy
-						if chosen not in source_blob:
-								if verbose:
-										print(f"[perf] missing strategy='{chosen}' for source='{source}' -> leaving NaNs")
-								rows.append({"source": source, "strategy": chosen})
-								continue
+    # ------------------------------------------------------------------ #
+    # Step 2: Extract metrics for each source using the chosen strategy   #
+    # ------------------------------------------------------------------ #
+    rows: List[Dict[str, Any]] = []
+    for source, source_blob in performance_json.items():
+        if not isinstance(source_blob, dict):
+            continue
 
-				per_k = source_blob[chosen]  # expects dict with i2t/t2i
+        schema = _infer_performance_schema({source: source_blob})
+        if schema != "nested_by_source_then_strategy":
+            continue
 
-				def get_metric(direction: str, tier: str, metric_name: str) -> Optional[float]:
-						try:
-								d = per_k[direction][tier][metric_name]
-								if k_str in d:
-										return float(d[k_str])
-								# sometimes keys could be ints; be robust
-								if int(k_str) in d:
-										return float(d[int(k_str)])
-						except Exception:
-								return None
-						return None
+        if chosen_strategy not in source_blob:
+            if verbose:
+                print(f"[perf] strategy='{chosen_strategy}' missing for source='{source}' -> NaNs")
+            rows.append({"source": source, "strategy": chosen_strategy})
+            continue
 
-				out: Dict[str, Any] = {"source": source, "strategy": chosen}
+        per_k = source_blob[chosen_strategy]
 
-				directions = ["i2t", "t2i"]
-				tiers = ["overall", "head", "rare"]
-				for direction in directions:
-						for tier in tiers:
-								tier_out = tier_alias.get(tier, tier)
+        def get_metric(direction: str, tier: str, metric_name: str) -> Optional[float]:
+            try:
+                d = per_k[direction][tier][metric_name]
+                if k_str in d:
+                    return float(d[k_str])
+                if int(k_str) in d:
+                    return float(d[int(k_str)])
+            except Exception:
+                return None
+            return None
 
-								if include_map:
-										v = get_metric(direction, tier, "mAP")
-										out[f"{direction}_map{k_str}_{tier_out}"] = v
+        out: Dict[str, Any] = {"source": source, "strategy": chosen_strategy}
+        for direction in ["i2t", "t2i"]:
+            for tier in ["overall", "head", "rare"]:
+                tier_out = tier_alias.get(tier, tier)
+                if include_map:
+                    out[f"{direction}_map{k_str}_{tier_out}"] = get_metric(direction, tier, "mAP")
+                if include_recall:
+                    out[f"{direction}_recall{k_str}_{tier_out}"] = get_metric(direction, tier, "Recall")
 
-								if include_recall:
-										v = get_metric(direction, tier, "Recall")
-										out[f"{direction}_recall{k_str}_{tier_out}"] = v
+        rows.append(out)
 
-				rows.append(out)
+    return pd.DataFrame(rows)
 
-		return pd.DataFrame(rows)
+def _select_best_strategy(
+    performance_json: Dict[str, Any],
+    reference_source: str,
+    k_str: str,
+    verbose: bool = False,
+) -> str:
+    """
+    From performance_json[reference_source], pick the strategy with the highest
+    combined (i2t + t2i) mAP@k overall score.
+    Falls back to a deterministic preferred list if scores are unavailable.
+    """
+    PREFERRED_FALLBACK = ["dora", "lora_plus", "rslora", "lora", "vera", "ia3", "full", "probe", "zero_shot"]
+
+    source_blob = performance_json.get(reference_source)
+    if source_blob is None:
+        if verbose:
+            print(
+                f"[perf] reference_source='{reference_source}' not found in performance.json. "
+                f"Falling back to preferred list."
+            )
+        available = list(next(iter(performance_json.values()), {}).keys())
+        for s in PREFERRED_FALLBACK:
+            if s in available:
+                return s
+        return sorted(available)[0] if available else "dora"
+
+    best_strategy = None
+    best_score = -1.0
+    score_table: Dict[str, float] = {}
+
+    for strat, per_k in source_blob.items():
+        try:
+            i2t_score = float(per_k["i2t"]["overall"]["mAP"].get(k_str, -1))
+            t2i_score = float(per_k["t2i"]["overall"]["mAP"].get(k_str, -1))
+            combined = i2t_score + t2i_score
+        except Exception:
+            combined = -1.0
+        score_table[strat] = combined
+        if combined > best_score:
+            best_score = combined
+            best_strategy = strat
+
+    if verbose:
+        print(f"[perf] Strategy scores on '{reference_source}' at k={k_str} (i2t+t2i mAP overall):")
+        for s, sc in sorted(score_table.items(), key=lambda x: -x[1]):
+            marker = " ← SELECTED" if s == best_strategy else ""
+            print(f"       {s:20s}: {sc:.4f}{marker}")
+
+    if best_strategy is None:
+        # Fallback
+        available = list(source_blob.keys())
+        for s in PREFERRED_FALLBACK:
+            if s in available:
+                return s
+        return sorted(available)[0]
+
+    return best_strategy
 
 def entropy_vs_performance(
-		df: pd.DataFrame,
-		performance: Optional[Union[pd.DataFrame, Dict[str, Any]]] = None,
-		label_columns: Optional[List[str]] = None,
-		base: float = 2.0,
-		verbose: bool = False,
-		perf_strategy: Optional[str] = None,
-		perf_k: Union[int, str] = 10,
-		perf_include_recall: bool = False,
-		perf_tier_alias: Optional[Dict[str, str]] = None,
+	df: pd.DataFrame,
+	performance: Optional[Union[pd.DataFrame, Dict[str, Any]]] = None,
+	label_columns: Optional[List[str]] = None,
+	base: float = 2.0,
+	verbose: bool = False,
+	perf_strategy: Optional[str] = None,
+	perf_k: Union[int, str] = 10,
+	perf_reference_source: str = "multimodal_canonical_labels",
+	perf_include_recall: bool = False,
+	perf_tier_alias: Optional[Dict[str, str]] = None,
 ) -> pd.DataFrame:
-		"""
-		Compute label-distribution entropy/stats per supervision source (label column),
-		and optionally merge with retrieval performance.
+	"""
+	Compute label-distribution entropy/stats per supervision source (label column),
+	and optionally merge with retrieval performance.
+	Supported performance formats:
+		1) DataFrame with 'source' column (already flat)
+		2) Old dict: {source: {metric: value, ...}} (flat)
+		3) performance.json dict: {source: {strategy: {i2t/t2i -> tier -> metric -> k -> value}}}
+	When using performance.json, set perf_strategy (recommended) and perf_k (default=10).
+	"""
 
-		Supported performance formats:
-			1) DataFrame with 'source' column (already flat)
-			2) Old dict: {source: {metric: value, ...}} (flat)
-			3) performance.json dict: {source: {strategy: {i2t/t2i -> tier -> metric -> k -> value}}}
+	if verbose:
+		print("\nCOMPUTING ENTROPY VS PERFORMANCE ANALYSIS")
+		print(f"Dataset size: {len(df):,} samples")
+		print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
+		print(f"reference_source: {perf_reference_source}")
+		print(f"strategy: {perf_strategy}")
+		print(f"include_recall: {perf_include_recall}")
+		print(f"k: {perf_k}")
 
-		When using performance.json, set perf_strategy (recommended) and perf_k (default=10).
-		"""
+	if label_columns is None:
+		label_columns = [
+			"llm_based_labels",
+			"vlm_based_labels",
+			"multimodal_labels",
+			"llm_canonical_labels",
+			"vlm_canonical_labels",
+			"multimodal_canonical_labels",
+		]
 		if verbose:
-				print("\nCOMPUTING ENTROPY VS PERFORMANCE ANALYSIS")
-				print(f"Dataset size: {len(df):,} samples")
-				print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
-
-		if label_columns is None:
-				label_columns = [
-						"llm_based_labels",
-						"vlm_based_labels",
-						"multimodal_labels",
-						"llm_canonical_labels",
-						"vlm_canonical_labels",
-						"multimodal_canonical_labels",
-				]
-				if verbose:
-						print(f"Default label columns: {len(label_columns)} sources: {label_columns}")
-
-		rows: List[Dict[str, Any]] = []
-		for idx, col in enumerate(label_columns, 1):
-				if col not in df.columns:
-						if verbose:
-								print(f"\n[{idx}/{len(label_columns)}] '{col}' not found, skipping")
-						continue
-
-				if verbose:
-						print(f"\n[{idx}/{len(label_columns)}] Processing: {col}")
-						print("-" * 80)
-
-				all_labels: List[str] = []
-				for v in df[col].tolist():
-						all_labels.extend(_parse_label_cell(v))
-
-				counts = Counter(all_labels)
-				total_occ = sum(counts.values())
-				unique = len(counts)
-
-				num_singletons = sum(1 for _, c in counts.items() if c == 1)
-				singleton_rate = (num_singletons / unique) if unique > 0 else 0.0
-
-				H = _shannon_entropy(counts, base=base)
-				H_max = math.log(unique, base) if unique > 1 else 0.0
-				H_norm = (H / H_max) if H_max > 0 else 0.0
-
-				perplexity = (base ** H) if H > 0 else 1.0
-
-				rows.append(
-						{
-								"source": col,
-								"total_occurrences": int(total_occ),
-								"unique_labels": int(unique),
-								"singletons": int(num_singletons),
-								"singleton_rate": float(singleton_rate),
-								f"entropy_{'bits' if base == 2.0 else 'units'}": float(H),
-								"entropy_max": float(H_max),
-								"entropy_normalized": float(H_norm),
-								"perplexity": float(perplexity),
-								"effective_num_labels": float(perplexity),
-						}
+			print(f"Default label columns: {len(label_columns)} sources: {label_columns}")
+	
+	rows: List[Dict[str, Any]] = []
+	for idx, col in enumerate(label_columns, 1):
+		if col not in df.columns:
+			if verbose:
+				print(f"\n[{idx}/{len(label_columns)}] '{col}' not found, skipping")
+			continue
+		if verbose:
+			print(f"\n[{idx}/{len(label_columns)}] Processing: {col}")
+			print("-" * 80)
+		
+		all_labels: List[str] = []
+		for v in df[col].tolist():
+			all_labels.extend(_parse_label_cell(v))
+		
+		counts = Counter(all_labels)
+		total_occ = sum(counts.values())
+		unique = len(counts)
+		num_singletons = sum(1 for _, c in counts.items() if c == 1)
+		singleton_rate = (num_singletons / unique) if unique > 0 else 0.0
+		
+		H = _shannon_entropy(counts, base=base)
+		H_max = math.log(unique, base) if unique > 1 else 0.0
+		H_norm = (H / H_max) if H_max > 0 else 0.0
+		perplexity = (base ** H) if H > 0 else 1.0
+		rows.append(
+			{
+				"source": col,
+				"total_occurrences": int(total_occ),
+				"unique_labels": int(unique),
+				"singletons": int(num_singletons),
+				"singleton_rate": float(singleton_rate),
+				f"entropy_{'bits' if base == 2.0 else 'units'}": float(H),
+				"entropy_max": float(H_max),
+				"entropy_normalized": float(H_norm),
+				"perplexity": float(perplexity),
+				"effective_num_labels": float(perplexity),
+			}
+		)
+	stats_df = pd.DataFrame(rows).sort_values("source").reset_index(drop=True)
+	
+	if verbose:
+		print("\nSUMMARY STATISTICS\n")
+		print(stats_df)
+	
+	if performance is None:
+		if verbose:
+			print("\n✓ No performance data provided, returning entropy statistics only")
+		return stats_df
+	
+	if verbose:
+		print("\n" + "=" * 80)
+		print("MERGING WITH PERFORMANCE METRICS")
+		print("=" * 80)
+	
+	# Build perf_df depending on input type
+	if isinstance(performance, pd.DataFrame):
+		perf_df = performance.copy()
+		if "source" not in perf_df.columns:
+			raise ValueError("If performance is a DataFrame, it must contain a 'source' column.")
+	elif isinstance(performance, dict):
+		schema = _infer_performance_schema(performance)
+		if schema == "nested_by_source_then_strategy":
+			perf_df = _flatten_performance_json(
+				performance_json=performance,
+				strategy=perf_strategy,
+				k=perf_k,
+				include_map=True,
+				reference_source=perf_reference_source,
+				include_recall=perf_include_recall,
+				tier_alias=perf_tier_alias,
+				verbose=verbose,
+			)
+		elif schema == "flat_metrics_by_source":
+				# Old-style dict: {source: {metric: value}}
+				perf_df = (
+						pd.DataFrame.from_dict(performance, orient="index")
+						.reset_index()
+						.rename(columns={"index": "source"})
 				)
-
-		stats_df = pd.DataFrame(rows).sort_values("source").reset_index(drop=True)
-
-		if verbose:
-				print("\nSUMMARY STATISTICS\n")
-				print(stats_df)
-
-		if performance is None:
-				if verbose:
-						print("\n✓ No performance data provided, returning entropy statistics only")
-				return stats_df
-
-		if verbose:
-				print("\n" + "=" * 80)
-				print("MERGING WITH PERFORMANCE METRICS")
-				print("=" * 80)
-
-		# Build perf_df depending on input type
-		if isinstance(performance, pd.DataFrame):
-				perf_df = performance.copy()
-				if "source" not in perf_df.columns:
-						raise ValueError("If performance is a DataFrame, it must contain a 'source' column.")
-		elif isinstance(performance, dict):
-				schema = _infer_performance_schema(performance)
-
-				if schema == "nested_by_source_then_strategy":
-						perf_df = _flatten_performance_json(
-								performance_json=performance,
-								strategy=perf_strategy,
-								k=perf_k,
-								include_map=True,
-								include_recall=perf_include_recall,
-								tier_alias=perf_tier_alias,
-								verbose=verbose,
-						)
-				elif schema == "flat_metrics_by_source":
-						# Old-style dict: {source: {metric: value}}
-						perf_df = (
-								pd.DataFrame.from_dict(performance, orient="index")
-								.reset_index()
-								.rename(columns={"index": "source"})
-						)
-				else:
-						raise ValueError(
-								"Unsupported dict schema for performance. Expected either performance.json "
-								"(source->strategy->i2t/t2i...) or flat {source:{metric:...}}."
-						)
 		else:
-				raise TypeError("performance must be a DataFrame, dict, or None.")
-
-		merged = stats_df.merge(perf_df, on="source", how="left")
-
-		if verbose:
-				print(f"  perf_df shape: {perf_df.shape}")
-				print(f"  merged shape: {merged.shape}")
-				missing = merged[merged.filter(regex=r"^(i2t|t2i)_").isna().all(axis=1)]
-				if len(missing) > 0:
-						print(f"\n  ⚠️  {len(missing)} sources missing performance data:")
-						for src in missing["source"].tolist():
-								print(f"    - {src}")
-
-				print("\nFINAL MERGED RESULTS\n")
-				print(merged)
-
-		return merged
+				raise ValueError(
+						"Unsupported dict schema for performance. Expected either performance.json "
+						"(source->strategy->i2t/t2i...) or flat {source:{metric:...}}."
+				)
+	else:
+		raise TypeError("performance must be a DataFrame, dict, or None.")
+	
+	merged = stats_df.merge(perf_df, on="source", how="left")
+	if verbose:
+		print(f"  perf_df shape: {perf_df.shape}")
+		print(f"  merged shape: {merged.shape}")
+		missing = merged[merged.filter(regex=r"^(i2t|t2i)_").isna().all(axis=1)]
+		if len(missing) > 0:
+			print(f"\n  ⚠️  {len(missing)} sources missing performance data:")
+			for src in missing["source"].tolist():
+				print(f"    - {src}")
+		print("\nFINAL MERGED RESULTS\n")
+		print(merged)
+	
+	return merged
 
 def _mean_jaccard(sets_a: List[set], sets_b: List[set]) -> float:
 	"""Mean Jaccard over rows where union is non-empty."""

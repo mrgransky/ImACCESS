@@ -901,14 +901,16 @@ def _load_models(
 			W_raw = ft_model.probe.weight.detach().float()
 			W     = torch.nn.functional.normalize(W_raw, dim=-1)
 			C, D  = W.shape
+			
 			# Reconstruct canonical class names from training metadata
 			full_meta_path  = os.path.join(
-					os.path.dirname(os.path.dirname(checkpoint_path)),
-					"metadata_multi_label_multimodal.csv"   # full dataset
+				os.path.dirname(os.path.dirname(checkpoint_path)),
+				"metadata_multi_label_multimodal.csv"   # full dataset
 			)
+			
 			train_meta_path = os.path.join(
-					os.path.dirname(os.path.dirname(checkpoint_path)),
-					"metadata_multi_label_multimodal_train.csv"
+				os.path.dirname(os.path.dirname(checkpoint_path)),
+				"metadata_multi_label_multimodal_train.csv"
 			)
 
 			canonical_vocab = set()
@@ -1235,7 +1237,7 @@ def run_inference(
 			df=df,
 			performance=perf,
 			label_columns=["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"],
-			perf_strategy="dora",   # choose the one used in the paper table
+			# perf_strategy="dora", # explicit
 			perf_k=10,
 			verbose=True,
 		)
