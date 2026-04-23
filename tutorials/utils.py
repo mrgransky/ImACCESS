@@ -37,7 +37,6 @@ import psutil
 import ast
 import shutil
 from functools import lru_cache
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import torchvision.transforms as T
 

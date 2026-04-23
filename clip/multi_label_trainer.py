@@ -1,7 +1,7 @@
 from utils import *
 from early_stopper import EarlyStopping
 from loss import *
-from peft import get_injected_peft_clip, get_adapter_peft_clip
+from clip_peft import get_injected_peft_clip, get_adapter_peft_clip
 from probe import get_probe_clip
 from evals import *
 import visualize as viz
@@ -2145,7 +2145,7 @@ def lora_plus_finetune_multi_label(
 			growth_interval=5000,  # Keep scale stable longer
 		)
 	else:
-		B_MAX_NORM = 5.0   # FP16 on V100 — tight ceiling to prevent forward overflow
+		B_MAX_NORM = 10.0   # FP16 on V100 — tight ceiling to prevent forward overflow
 		scaler = torch.amp.GradScaler(
 			device=device,
 			init_scale=2**8,       # 256 — very conservative for FP16 on V100
@@ -2248,10 +2248,12 @@ def lora_plus_finetune_multi_label(
 			
 			# Check for NaN loss
 			if torch.isnan(total_loss) or torch.isinf(total_loss):
-				print(f"[WARNING] Batch {bidx+1}:")
-				print(f"total_loss: {total_loss} nan: {torch.isnan(total_loss)} inf: {torch.isinf(total_loss)}")
-				print(f"loss_i2t: {loss_i2t} | isnan(): {torch.isnan(loss_i2t)} | isinf(): {torch.isinf(loss_i2t)}")
-				print(f"loss_t2i: {loss_t2i} | isnan(): {torch.isnan(loss_t2i)} | isinf(): {torch.isinf(loss_t2i)}")
+				print(
+					f"[WARNING] e{epoch+1} b{bidx+1}: "
+					f"total_loss: {total_loss} "
+					f"loss_i2t: {loss_i2t} "
+					f"loss_t2i: {loss_t2i}"
+				)
 
 				# no zero_grad needed here — already done above
 				continue # skip this batch
@@ -2309,7 +2311,11 @@ def lora_plus_finetune_multi_label(
 				if scaler is not None:
 					if cuda_capability[0] < 8:
 						if hasattr(scaler, '_scale') and scaler._scale is not None:
-							scaler._scale.mul_(0.5)
+							# scaler._scale.mul_(0.5)
+							current_scale = scaler._scale.item()
+							new_scale = max(current_scale * 0.5, 1.0)  # never go below 1.0
+							scaler._scale.fill_(new_scale)
+
 					scaler.update()  # must still call to reset internal state
 					if verbose:
 						print(f"\t\t[Scaler] scale after corrupt grad recovery={scaler.get_scale():.1f}")
@@ -2325,38 +2331,21 @@ def lora_plus_finetune_multi_label(
 
 			# Clip B matrix norms (magnitude control)
 			clipped_count = 0
+			clipped_details = []
 			with torch.no_grad():
 				for name, param in model.named_parameters():
 					if param.requires_grad and "lora_B" in name:
 						norm = param.data.norm()
 						if norm > B_MAX_NORM:
 							clipped_count += 1
-							if verbose:
-								print(
-									f"[WARNING] B-norm clip: {name} "
-									f"norm={norm:.4f} > ceiling={B_MAX_NORM} "
-									f"at e{epoch+1} b{bidx+1}"
-								)
+							clipped_details.append((name, norm.item()))
 							param.data.mul_(B_MAX_NORM / norm)
 
-			# Post-step weight norm tracking
-			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-				if scaler is not None:
-					print(f"\t\t[Scaler] scale={scaler.get_scale():.1f}")
-				B_norms_current = [
-					p.data.norm().item()
-					for n, p in model.named_parameters()
-					if p.requires_grad and "lora_B" in n
-				]
-				if B_norms_current:
-					B_norms_t = torch.tensor(B_norms_current)
-					print(
-						f"\t\t[B weight norms post-clip e{epoch+1} b{bidx+1}] "
-						f"(min, max): ({B_norms_t.min():.4f}, {B_norms_t.max():.4f}) "
-						f"mean: {B_norms_t.mean():.4f} std: {B_norms_t.std():.4f} "
-						f"clipped_this_step={clipped_count} "
-						f"(ceiling={B_MAX_NORM})"
-					)
+			# Only log clipping details at print_every intervals, not every batch
+			if clipped_count > 0 and (bidx % print_every == 0 or bidx + 1 == len(train_loader)):
+				print(f"\t\t[B-norm clip] {clipped_count} layers clipped at e{epoch+1} b{bidx+1}:")
+				for cname, cnorm in clipped_details[:5]:  # cap at 5 to avoid log spam
+					print(f"\t\t  {cname}: {cnorm:.4f} → {B_MAX_NORM}")
 
 			scheduler.step()
 

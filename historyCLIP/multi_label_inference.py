@@ -2,8 +2,14 @@ import os
 import sys
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
+
 CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
 sys.path.insert(0, CLIP_DIR)
+
+MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
+sys.path.insert(0, MISC_DIR)
+
+print(f"sys.path: {sys.path}")
 
 from utils import *
 from historyXN_dataset_loader import (
@@ -12,11 +18,12 @@ from historyXN_dataset_loader import (
 )
 
 # from clip directory:
-from peft import get_injected_peft_clip, get_adapter_peft_clip
+from clip_peft import get_injected_peft_clip, get_adapter_peft_clip
 from probe import get_probe_clip
 from loss import compute_loss_masks
 from evals import evaluate_best_model, get_validation_metrics, compute_tiered_retrieval_metrics
 import visualize as viz
+import label_statistics as stats
 
 # "https://pbs.twimg.com/media/GowwFwkbQAAaMs-?format=jpg"
 # "https://pbs.twimg.com/media/Gowu5zDaYAAZ2YK?format=jpg"
@@ -26,10 +33,10 @@ import visualize as viz
 
 # # run in local and Puhti for all fine-tuned models with image and label:
 # local:
-# $ python multi_label_inference.py -pth_dir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/multi_label/ -a 'ViT-B/32' -v
+# $ python multi_label_inference.py -pth_dir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/multimodal_canonical_labels/ -a 'ViT-B/32' -v
 
 # Puhti:
-# $ python multi_label_inference.py -pth_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/multi_label/ -a 'ViT-L/14@336px' -v
+# $ python multi_label_inference.py -pth_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/multimodal_canonical_labels -a 'ViT-L/14@336px' -v
 
 def get_multi_label_head_torso_tail_samples(
 	metadata_path: str,
@@ -1178,11 +1185,16 @@ def run_inference(
 	print(f"Number of classes: {len(class_names)}")
 
 	####################################### Quantitative Analysis #######################################
-	results_json_path = os.path.join(pth_files_directory, f"{dataset_name}_retrieval_metrics_accumulated.json")
+	if verbose:
+		print(f"[Quantitative Analysis]")
+
+	results_json_path = os.path.join(pth_files_directory, f"retrieval_metrics_accumulated.json")
 	if os.path.exists(results_json_path):
 		with open(results_json_path) as f:
 			all_results = json.load(f)
-		print(f"[Quantitative Analysis] {len(all_results)} methods: {list(all_results.keys())}")
+
+		print(f"{len(all_results)} methods: {list(all_results.keys())}")
+
 		viz.plot_quantitative_retrieval(
 			all_results=all_results,
 			output_dir=inference_dir,
@@ -1190,7 +1202,58 @@ def run_inference(
 		)
 	else:
 		print(f"WARNING: {results_json_path} not found. Skipping plotting...")
+
+	performance_fpath = os.path.join(dataset_dir, "outputs", "performance.json")
+	if os.path.exists(performance_fpath):
+		with open(performance_fpath) as f:
+			perf = json.load(f)
+
+		if verbose:
+			print(f"{len(perf)} methods: {list(perf.keys())}")
+
+		df = pd.read_csv(
+			filepath_or_buffer=os.path.join(dataset_dir, "metadata_multi_label_multimodal.csv"),
+			on_bad_lines='skip', 
+			dtype=dtypes,
+			low_memory=False,
+			# usecols=[
+			# 	'doc_url', 
+			# 	'img_path', 
+			# 	'title', 
+			# 	'description', 
+			# 	'llm_based_labels', 
+			# 	'vlm_based_labels', 
+			# 	'multimodal_labels',
+			# ]
+		)
+		print(df.shape, list(df.columns))
+		print(df.info(verbose=True, memory_usage=True))
+		print("="*100)
+
+
+		merged = stats.entropy_vs_performance(
+			df=df,
+			performance=perf,
+			label_columns=["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"],
+			perf_strategy="dora",   # choose the one used in the paper table
+			perf_k=10,
+			verbose=True,
+		)
+		x = merged["perplexity"].astype(float)
+		y = merged["t2i_map10_overall"].astype(float)
+
+		ok = x.notna() & y.notna()
+		rho, pval = scipy.stats.spearmanr(x[ok], y[ok])
+
+		if verbose:
+			print(f"Spearman rho(perplexity, t2i_map@10 overall) = {rho:.3f}, p = {pval:.3g}")
+	else:
+		print(f"WARNING: {performance_fpath} not found. Skipping...")
+
 	####################################### Quantitative Analysis #######################################
+	# return
+
+
 
 	####################################### Qualitative Analysis #######################################
 	i2t_samples, t2i_samples = get_tail_only_samples(

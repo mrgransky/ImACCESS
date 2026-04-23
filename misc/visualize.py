@@ -1,26 +1,33 @@
-import numpy as np
-import pandas as pd
-import scipy
-import matplotlib
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
-from PIL import Image, ImageDraw, ImageFont
+import os
+import torch
+import pprint
+import ast
 
-import seaborn as sns
 import inspect
 import time
 import random
 import json
+import scipy
+import numpy as np
+import pandas as pd
+
+import seaborn as sns
+import matplotlib
+import matplotlib.pyplot as plt
+
+import matplotlib.ticker as ticker
+from matplotlib.patches import Patch
+from matplotlib.gridspec import GridSpec
+from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.lines import Line2D
+
+from PIL import Image, ImageDraw, ImageFont
 from collections import Counter
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.metrics import pairwise_distances
-import os # For checking file existence
 from itertools import combinations # For pairwise label combinations
-import torch
 from torch.utils.data import DataLoader, Dataset
 
-import pprint
-import ast
 from typing import Tuple, Union, List, Dict, Any, Optional
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
@@ -43,6 +50,72 @@ dtypes = {
 	'country': str,
 }
 
+strategy_colors = {
+	'full': "#012894", 
+	'lora': '#f58320be', 
+	'progressive': '#cc40df',
+	'probe': "#00C468D3",
+}
+strategy_styles = {
+	'full': 's', 
+	'lora': '^', 
+	'progressive': 'd',
+	'probe': 'x',
+}
+pretrained_colors = {
+	'ViT-B/32': "#725151", 
+	'ViT-B/16': '#9467bd', 
+	'ViT-L/14': '#e377c2', 
+	'ViT-L/14@336px': '#696969'
+}
+
+segment_specs = {
+	'Head': {
+		'color': "#009670e4",
+		'label': 'Head'.upper(),
+		'opacity': 0.2,
+		'fontsize': 16,
+	},
+	'Torso': {
+		'color': "#d4ae02",
+		'label': 'Torso'.upper(),
+		'opacity': 0.2,
+		'fontsize': 16,
+	},
+	'Tail': {
+		'color': "#ee4747",
+		'label': 'Tail'.upper(),
+		'opacity': 0.2,
+		'fontsize': 16,
+	},
+}
+
+METHOD_STYLE = {
+	"zero_shot":        {"label": "Zero-Shot CLIP",     "color": "#979595",  "ls": "dashdot", "marker": "*"},
+	"probe":            {"label": "Linear Probe",       "color": "#019952FF","ls": "dashdot", "marker": "*"},
+	"full":             {"label": "Full-FT",            "color": "#181717",  "ls": "-",       "marker": "D"},
+	"lora":             {"label": "LoRA",               "color": "#0014C9",  "ls": "-",       "marker": "^"},
+	"rslora":           {"label": "rsLoRA",             "color": "#B1A041",  "ls": "-",       "marker": "^"},
+	"lora_plus":        {"label": "LoRA+",              "color": "#EBA101",  "ls": "-",       "marker": "^"},
+	"dora":             {"label": "DoRA",               "color": "#DA5DBA",  "ls": "-",       "marker": "^"},
+	"vera":             {"label": "VeRA",               "color": "#D53C00",  "ls": "-",       "marker": "^"},
+	"ia3":              {"label": "IA³",                "color": "#998787",  "ls": "-",       "marker": "X"},
+	"clip_adapter_v":   {"label": "CLIP-Adapter-V",     "color": "#0064B6",  "ls": "--",      "marker": "s"},
+	"tip_adapter_f":    {"label": "Tip-Adapter-F",      "color": "#7CCBFF",  "ls": "--",      "marker": "s"},
+}
+
+positive_pct_col = "#357402ff"
+negative_pct_col = "#c0003aff"
+transition_color = "#00A336"
+early_stop_color = "#1D0808"
+best_model_color = "#C002A7"
+train_loss_color = "#0010F3"
+val_loss_color = "#C27E00"
+loss_imp_color = "#004214"
+trainable_param_color = "#0104C9"
+
+modes = ["Image-to-Text", "Text-to-Image"]
+
 segment_colors = {
 	'Head': "#009670e4",
 	'Torso': "#d4ae02",
@@ -53,6 +126,650 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 1000)
 pd.set_option('display.max_rows', 100)
 sns.set_style("whitegrid")
+
+_FONT_FAMILY = "serif"
+_TITLE_SIZE  = 11
+_LABEL_SIZE  = 9
+_TICK_SIZE   = 8
+_ANNO_SIZE   = 10.0
+_DPI         = 300
+
+def _set_publication_rc():
+	plt.rcParams.update(
+		{
+			"font.family":       _FONT_FAMILY,
+			"font.size":         _LABEL_SIZE,
+			"axes.titlesize":    _TITLE_SIZE,
+			"axes.labelsize":    _LABEL_SIZE,
+			"xtick.labelsize":   _TICK_SIZE,
+			"ytick.labelsize":   _TICK_SIZE,
+			"legend.fontsize":   _TICK_SIZE,
+			"figure.titlesize":  _TITLE_SIZE + 1,
+			"axes.spines.top":   False,
+			"axes.spines.right": False,
+		}
+	)
+
+def plot_multilabel_loss_breakdown(
+		training_losses_breakdown: Dict[str, List[float]],
+		filepath: str,
+		figure_size=(12, 8),
+		DPI: int = 300,
+	):
+	# Find the number of epochs from the longest valid list in the dictionary
+	num_epochs = 0
+	if training_losses_breakdown:
+		valid_lists = [v for v in training_losses_breakdown.values() if isinstance(v, list) and v]
+		if valid_lists:
+			num_epochs = max(len(v) for v in valid_lists)
+
+	if num_epochs == 0:
+		print("[Warning] No valid loss data to plot. Skipping plot generation.")
+		return
+
+	epochs = range(1, num_epochs + 1)
+	plt.figure(figsize=figure_size)
+
+	# Define plotting styles for known loss components for consistency
+	styles = {
+		"total": {'color': "#0C00B1", 'linestyle': '-', 'linewidth': 1.5, 'label': 'Total Loss'},
+		"i2t": {'color': '#007f00', 'linestyle': '--', 'linewidth': 2.0, 'label': 'I2T Loss'},
+		"t2i": {'color': '#C0003A', 'linestyle': '--', 'linewidth': 2.0, 'label': 'T2I Loss'},
+	}
+
+	# Plot each loss component present in the dictionary
+	for key, loss_list in training_losses_breakdown.items():
+		if isinstance(loss_list, list) and len(loss_list) > 0:
+			# Pad with NaN if a list is shorter than the max number of epochs
+			padded_list = loss_list + [float('nan')] * (num_epochs - len(loss_list))
+
+			# Get style from the dictionary or use a default
+			plot_kwargs = styles.get(key, {'label': key.replace('_', ' ').title()})
+			plt.plot(epochs, padded_list, **plot_kwargs)
+
+	plt.xlabel('Epoch')
+	plt.ylabel('Loss')
+	plt.title('Training Loss Breakdown')
+	plt.legend(title='Loss Components', fontsize=10, title_fontsize=12, loc='upper right')
+	plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+	plt.tight_layout()
+	plt.savefig(filepath, dpi=DPI, bbox_inches='tight')
+	plt.close()
+
+def plot_hyperparameter_evolution(
+	eta_min: float,
+	learning_rates: List[float],
+	weight_decays: List[float],
+	fname: str,
+	nbins: int=15
+):
+	fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 7))
+	num_epochs = len(learning_rates)
+	if num_epochs == 1:
+		return
+	epochs = range(1, num_epochs + 1)
+
+	ax1.plot(epochs, learning_rates, color="#000ECC", linewidth=2.0, alpha=0.85, label="LR")
+	ax1.axhline(y=eta_min, color="#AD023B", linestyle="--", linewidth=1.0, alpha=0.8, label=f"eta_min = {eta_min}")
+	ax1.legend(
+		loc="best",
+		fontsize=10,
+		ncol=2,
+		frameon=False, 
+		fancybox=True, 
+		shadow=True, 
+		facecolor='white', 
+		edgecolor='none'
+	)
+	ax1.set_title("Learning Rate Evolution", fontsize=10, weight="bold")
+	ax1.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=nbins))
+	ax1.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
+	ax1.set_ylabel("LR", fontsize=10, weight="bold")
+	
+	ax2.plot(epochs, weight_decays, color="#0C0B0B", linewidth=1.0, alpha=0.8, label="WD")
+	ax2.set_title("Weight Decay Evolution", fontsize=10, weight="bold")
+	ax2.set_xlabel("Epoch", fontsize=10, weight="bold")
+	ax2.set_ylabel("WD", fontsize=10, weight="bold")
+	ax2.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=nbins))
+	ax2.legend(
+		loc='best',
+		fontsize=10,
+		ncol=1,
+		frameon=False, 
+		fancybox=True, 
+		shadow=True, 
+		facecolor='white', 
+		edgecolor='none'
+	)
+	ax2.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
+
+	plt.tight_layout()
+	plt.savefig(fname, dpi=200, bbox_inches='tight', facecolor='white')
+
+def _load_image_rgb(path: str) -> Optional[np.ndarray]:
+		try:
+				return np.array(Image.open(path).convert("RGB"))
+		except Exception:
+				return None
+
+def plot_alpha_beta_evolution(
+		alphas: List[float],
+		betas: List[float],
+		fname: str,
+):
+	fig, ax = plt.subplots(figsize=(7, 5))
+	ax.plot(alphas, label="α", color="#0010F3", linewidth=2)
+	ax.plot(betas, label="β", color="#C27E00", linewidth=2)
+	ax.set_xlabel("Epoch", fontsize=12)
+	ax.set_ylabel("Value", fontsize=12)
+	ax.set_title("α and β Evolution", fontsize=14)
+	ax.legend(fontsize=10)
+	plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+	plt.tight_layout()
+	plt.savefig(fname, dpi=200, bbox_inches='tight')
+	plt.close()
+
+def plot_train_val_losses(
+		train_losses: List[float],
+		val_losses: List[float],
+		fname: str,
+):
+	num_epochs = len(train_losses)
+	if num_epochs <= 1:  # No plot if only one epoch
+		return
+	epochs = range(1, num_epochs + 1)
+
+	fig, ax = plt.subplots(figsize=(10, 5))
+	ax.plot(epochs, train_losses, label="Train", color=train_loss_color, linewidth=2)
+	ax.plot(epochs, val_losses, label="Validation", color=val_loss_color, linewidth=2)
+	ax.set_xlabel("Epoch", fontsize=12)
+	ax.set_ylabel("Loss", fontsize=12)
+	ax.set_title("Train and Validation Losses", fontsize=14)
+	ax.legend(
+		fontsize=10, 
+		loc='best', 
+		ncol=2, 
+		frameon=False, 
+		fancybox=True, 
+		shadow=True, 
+		edgecolor='none', 
+		facecolor='white'
+	)
+	plt.grid(True, which="both", linestyle="--", linewidth=0.5, color="#8A8A8A", alpha=0.5)
+	plt.tight_layout()
+	plt.savefig(fname, dpi=200, bbox_inches='tight')
+	plt.close()
+
+def plot_score_distribution_kde(
+	results_by_strategy: Dict[str, Dict],
+	output_dir: str,
+	directions: List[str] = ["i2t", "t2i"],
+	figsize: Tuple[float, float] = (8, 6),
+	dpi: int = 300,
+	verbose: bool = False,
+) -> List[str]:
+	"""
+	Generates KDE plots showing score distributions for each strategy.
+	Each direction (I2T/T2I) gets its own figure with all strategies overlaid.
+	
+	Args:
+		results_by_strategy: Dict mapping strategy name to results dict with 'i2t' and 't2i' keys
+		output_dir: Directory to save plots
+		directions: List of directions to plot (default: ["i2t", "t2i"])
+		figsize: Figure size tuple
+		dpi: Resolution for saved figures
+		verbose: Print debug information
+		
+	Returns:
+		List of saved file paths
+	"""
+	# _set_publication_rc()
+	os.makedirs(output_dir, exist_ok=True)
+	saved_paths = []
+	
+	for direction in directions:
+		# Filter strategies that have data for this direction
+		valid_strategies = [
+			s for s in results_by_strategy.keys() 
+			if direction in results_by_strategy[s] and len(results_by_strategy[s][direction]) > 0
+		]
+		
+		if not valid_strategies:
+			if verbose:
+				print(f"[{direction.upper()} KDE] No valid strategies found, skipping...")
+			continue
+		
+		# Create single figure for this direction
+		fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+		
+		for strategy in valid_strategies:
+			results = results_by_strategy[strategy]
+			
+			# Extract all scores for this direction
+			all_scores = []
+			for item in results[direction]:
+				all_scores.extend(item['retrieved_scores'])
+			
+			if verbose:
+				print(f"[{direction.upper()}] {strategy}: {len(all_scores)} scores, "
+				      f"range=[{min(all_scores):.3f}, {max(all_scores):.3f}]")
+			
+			# Get styling from METHOD_STYLE
+			method_color = METHOD_STYLE.get(strategy, {}).get("color", "#000000")
+			method_label = METHOD_STYLE.get(strategy, {}).get("label", strategy.upper())
+			
+			# Plot KDE
+			sns.kdeplot(
+				all_scores,
+				ax=ax,
+				fill=True,
+				alpha=0.3,
+				linewidth=2.5,
+				color=method_color,
+				label=method_label,
+			)
+		
+		# Add vertical line at 0
+		ax.axvline(0, color='black', linewidth=1, linestyle='--', alpha=0.4)
+		
+		# Styling
+		direction_label = "Image-to-Text" if direction == "i2t" else "Text-to-Image"
+		ax.set_title(
+			f"{direction_label}: Score Distribution",
+			fontsize=14,
+			fontweight='bold'
+		)
+		ax.set_xlabel("Cosine Similarity", fontsize=12)
+		ax.set_ylabel("Density", fontsize=12)
+		ax.legend(frameon=True, loc='best', fontsize=10)
+		ax.grid(True, alpha=0.2, linestyle='--')
+		sns.despine(ax=ax)
+		
+		plt.tight_layout()
+		
+		# Save figure
+		out_path = os.path.join(output_dir, f"score_distribution_{direction}.png")
+		plt.savefig(out_path, dpi=dpi, bbox_inches='tight')
+		plt.close(fig)
+		saved_paths.append(out_path)
+		
+		if verbose:
+			print(f"[{direction.upper()} KDE] Saved → {out_path}")
+	
+	return saved_paths
+
+def plot_qualitative_retrieval_i2t(
+	results_by_strategy: Dict[str, Dict],
+	output_dir: str,
+	topk: int = 3,
+	verbose: bool = False,
+) -> str:
+	"""
+	I2T qualitative figure - Publication Ready.
+	"""
+	# _set_publication_rc()
+	strategies = list(results_by_strategy.keys())
+	if not strategies:
+		return ""
+
+	ref_i2t = results_by_strategy[strategies[0]]["i2t"]
+	num_images = len(ref_i2t)
+	if num_images == 0:
+		return ""
+	
+	n_strat = len(strategies)
+	
+	IMG_COL_W  = 1.5   
+	ROW_H      = 1.5   
+	GT_COL_W   = 2.0   # Made slightly wider for cleaner text wrapping
+	CELL_W     = 2.5
+	HEADER_H   = 0.5  
+	
+	fig_w = IMG_COL_W + GT_COL_W + n_strat * CELL_W
+	fig_h = HEADER_H + num_images * ROW_H
+	print(f"fig_w: {fig_w}, fig_h: {fig_h}")
+	fig = plt.figure(figsize=(fig_w, fig_h), dpi=_DPI)
+	
+	gs = GridSpec(
+		nrows=num_images + 1,
+		ncols=n_strat + 2,
+		figure=fig,
+		left=0.01, right=0.99,
+		top=0.97,  bottom=0.05,  # Added bottom margin for legend
+		hspace=0.08, wspace=0.05,
+		height_ratios=[HEADER_H / ROW_H] + [1.0] * num_images,
+		width_ratios=[IMG_COL_W / CELL_W, GT_COL_W / CELL_W] + [1.0] * n_strat,
+	)
+	
+	# Headers
+	ax_h_img = fig.add_subplot(gs[0, 0])
+	ax_h_img.axis("off")
+	ax_h_img.text(0.5, 0.5, "Query Image", ha="center", va="center", fontweight="bold", fontsize=_ANNO_SIZE, transform=ax_h_img.transAxes)
+	
+	ax_h_gt = fig.add_subplot(gs[0, 1])
+	ax_h_gt.axis("off")
+	ax_h_gt.text(0.5, 0.5, "Ground-Truth", ha="center", va="center", fontweight="bold", fontsize=_ANNO_SIZE, transform=ax_h_gt.transAxes)
+	
+	for j, strat in enumerate(strategies):
+		ax_h = fig.add_subplot(gs[0, j + 2])
+		ax_h.axis("off")
+		ax_h.text(
+			0.5, 
+			0.5, 
+			METHOD_STYLE[strat]["label"],
+			ha="center", 
+			va="center", 
+			fontsize=_TITLE_SIZE, 
+			fontweight="bold", 
+			color=METHOD_STYLE.get(strat, {"color": "#000000"})["color"], 
+			transform=ax_h.transAxes
+		)
+	
+	# Content
+	for i, sample_ref in enumerate(ref_i2t):
+		gt_set = set(sample_ref["ground_truth"])
+
+		# 1. Image
+		ax_img = fig.add_subplot(gs[i + 1, 0])
+		ax_img.axis("off")
+		img_arr = _load_image_rgb(sample_ref["image_path"])
+		if img_arr is not None:
+			ax_img.imshow(img_arr, aspect="auto")
+		else:
+			ax_img.set_facecolor("#DDDDDD")
+			ax_img.text(0.5, 0.5, "N/A", ha="center", va="center", transform=ax_img.transAxes)
+						
+		segment = sample_ref.get("segment", "")
+		bc = segment_specs.get(segment.capitalize(), {"color": "#AAAAAA"})["color"]
+		ax_img.text(0.02, 0.97, segment.upper(), ha="left", va="top", fontsize=max(_ANNO_SIZE - 1.5, 5.5), fontweight="bold", color="#ffffff", bbox=dict(boxstyle="round,pad=0.15", facecolor=bc, edgecolor="none", alpha=0.85), transform=ax_img.transAxes)
+		
+		# 2. Ground Truth
+		ax_gt = fig.add_subplot(gs[i + 1, 1])
+		ax_gt.axis("off")
+		gt_text = "\n".join(lb for lb in sample_ref["ground_truth"])
+		ax_gt.text(0.05, 0.5, gt_text, ha="left", va="center", fontsize=max(_ANNO_SIZE - 1, 6), color="#141212", transform=ax_gt.transAxes)
+		
+		# 3. Strategy Cells
+		for j, strat in enumerate(strategies):
+			ax = fig.add_subplot(gs[i + 1, j + 2])
+			ax.set_xlim(0, 1)
+			ax.set_ylim(-0.5, topk - 0.5)
+			ax.invert_yaxis()
+			ax.axis("off")
+						
+			strat_data = results_by_strategy[strat]["i2t"]
+			match = next((s for s in strat_data if s["image_path"] == sample_ref["image_path"]), None)
+						
+			if match is None:
+				ax.text(0.5, 0.5, "–", ha="center", va="center", transform=ax.transAxes)
+				continue
+								
+			labels = match["retrieved_labels"][:topk]
+			for k, lbl in enumerate(labels):
+				hit = lbl in gt_set
+								
+				# Modern Pill-Badge Styling
+				bg_col = "#E8F5E9" if hit else "#FFEBEE"   # Soft green / soft red
+				edge_col = "#4DAC26" if hit else "#F5695F" # Strong green / strong red
+				txt_col = "#1A5C10" if hit else "#8B1A0D"  # Dark green / dark red text
+				
+				ax.text(
+					0.05, 
+					k,
+					lbl,
+					ha="left", 
+					va="center",
+					fontsize=8.6,
+					color=txt_col,
+					fontweight="bold" if hit else "normal",
+					bbox=dict(
+						boxstyle="round,pad=0.3", 
+						facecolor=bg_col, 
+						edgecolor=edge_col, 
+						linewidth=1.2,
+						alpha=0.9
+					),
+				)
+			ax.axvline(0, color="#DDDDDD", linewidth=1.0) # Softened the divider line
+
+	# Legend
+	hit_patch = Patch(color="#E8F5E9", ec="#4DAC26", lw=1.5, label="Correct label (hit)")
+	miss_patch = Patch(color="#FFEBEE", ec="#F5695F", lw=1.5, label="Incorrect label (miss)")
+	fig.legend(
+			handles=[hit_patch, miss_patch],
+			loc="lower center",
+			ncol=2,
+			fontsize=_TICK_SIZE,
+			frameon=False,
+			bbox_to_anchor=(0.5, -0.01),
+	)
+
+	fname = os.path.join(output_dir, f"qualitative_i2t_tail.png")
+	fig.savefig(fname, dpi=_DPI, bbox_inches="tight")
+	plt.close(fig)
+	
+	if verbose:
+		print(f"[I2T qualitative] Saved → {fname}")
+	
+	return fname
+
+def plot_qualitative_retrieval_t2i(
+	results_by_strategy: Dict[str, Dict],
+	output_dir: str,
+	topk: int = 1,
+	verbose: bool = False,
+) -> str:
+	"""
+	T2I qualitative figure - Publication Ready.
+	"""
+	# _set_publication_rc()
+	strategies = list(results_by_strategy.keys())
+	if not strategies:
+		return ""
+	ref_t2i = results_by_strategy[strategies[0]]["t2i"]
+	
+	num_labels = len(ref_t2i)
+	if num_labels == 0:
+		return ""
+	
+	n_strat = len(strategies)
+	topk = max(1, topk)
+
+	QUERY_W  = 2.3   
+	CELL_W   = 1.7   
+	ROW_H    = 1.7   
+	HEADER_H = 0.5
+	fig_w = QUERY_W + n_strat * CELL_W + 0.0
+	fig_h = HEADER_H + num_labels * ROW_H * topk + 0.0
+	print(f"fig_w: {fig_w}, fig_h: {fig_h}")
+	fig = plt.figure(figsize=(fig_w, fig_h), dpi=_DPI)
+
+	gs = GridSpec(
+		nrows=num_labels + 1,
+		ncols=n_strat + 1,
+		figure=fig,
+		left=0.01, right=0.99,
+		top=0.97,  bottom=0.02,
+		hspace=0.08, wspace=0.06,
+		height_ratios=[HEADER_H / ROW_H] + [1.0] * num_labels,
+		width_ratios=[QUERY_W / CELL_W] + [1.0] * n_strat,
+	)
+	
+	ax_corner = fig.add_subplot(gs[0, 0])
+	ax_corner.axis("off")
+	ax_corner.text(
+		0.05, 
+		0.5, 
+		"Query Label", 
+		ha="left", 
+		va="center", 
+		fontsize=_ANNO_SIZE, 
+		fontweight="bold", 
+		transform=ax_corner.transAxes
+	)
+
+	for j, strat in enumerate(strategies):
+		ax_h = fig.add_subplot(gs[0, j + 1])
+		ax_h.axis("off")
+		ax_h.text(
+			0.5, 
+			0.5, 
+			METHOD_STYLE[strat]["label"], 
+			ha="center", 
+			va="center", 
+			fontsize=_TITLE_SIZE, 
+			fontweight="bold", 
+			color=METHOD_STYLE.get(strat, {"color": "#000000"})["color"], 
+			transform=ax_h.transAxes
+		)
+
+	for i, sample_ref in enumerate(ref_t2i):
+			query_label = sample_ref["query_label"]
+			
+			ax_q = fig.add_subplot(gs[i + 1, 0])
+			ax_q.axis("off")
+			ax_q.text(
+				0.05, 
+				0.5,
+				query_label,
+				ha="left", 
+				va="center",
+				fontsize=10,
+				fontweight="bold",
+				color="#1A1A2E",
+				wrap=True,
+				transform=ax_q.transAxes,
+			)
+
+			for j, strat in enumerate(strategies):
+				ax = fig.add_subplot(gs[i + 1, j + 1])
+				
+				# Remove axes ticks but keep the spines for the colored border
+				ax.set_xticks([])
+				ax.set_yticks([])
+				
+				strat_data = results_by_strategy[strat]["t2i"]
+				match = next((s for s in strat_data if s["query_label"] == query_label), None)
+				
+				if match is None or not match["retrieved_paths"]:
+					ax.set_facecolor("#EEEEEE")
+					ax.text(0.5, 0.5, "–", ha="center", va="center", transform=ax.transAxes)
+					# Hide spines for empty cells
+					for spine in ax.spines.values():
+						spine.set_visible(False)
+					continue
+										
+				img_path = match["retrieved_paths"][0]
+				img_arr = _load_image_rgb(img_path)
+				
+				if img_arr is not None:
+					ax.imshow(img_arr, aspect="auto")
+				else:
+					ax.set_facecolor("#DDDDDD")
+					ax.text(0.5, 0.5, "Image N/A", ha="center", va="center", transform=ax.transAxes)
+
+				# Apply colored strategy border, slightly thicker to make it pop
+				for spine in ax.spines.values():
+					spine.set_visible(True)
+					spine.set_color(METHOD_STYLE.get(strat, {"color": "#000000"})["color"])
+					spine.set_linewidth(2.0)
+
+				# REMOVED: the bottom right score badge. Let the image speak for itself.
+
+	out_fname = os.path.join(output_dir, f"qualitative_t2i_tail.png")
+	fig.savefig(out_fname, dpi=_DPI, bbox_inches="tight")
+	plt.close(fig)
+	
+	if verbose:
+		print(f"[T2I qualitative] Saved → {out_fname}")
+	
+	return out_fname
+
+def plot_quantitative_retrieval(
+	all_results: Dict[str, Dict],   # strategy → extract_per_k_metrics() output
+	output_dir: str,
+	dataset_name: str,
+	directions: List[str] = ["i2t", "t2i"],
+	tiers: List[str] = ["overall", "head", "rare"],
+	metrics: List[str] = ["mAP", "Recall"],
+	figsize: Tuple[float, float] = (6.5, 5.5),   # single-column IEEE width
+	dpi: int = 200,
+) -> List[str]:
+		matplotlib.rcParams.update(
+			{
+				"font.family":      "serif",
+				"font.size":        10,
+				"axes.titlesize":   11,
+				"axes.labelsize":   13,
+				"xtick.labelsize":  10,
+				"ytick.labelsize":  10,
+				"figure.dpi":       dpi,
+				"savefig.bbox":     "tight",
+				"savefig.pad_inches": 0.02,
+			}
+		)
+
+		os.makedirs(output_dir, exist_ok=True)
+		saved_paths = []
+		# print(json.dumps(all_results, indent=4, ensure_ascii=False))
+
+		for direction in directions:
+			dir_label = direction.upper() # I2T, T2I
+			for tier in tiers:
+				for metric in metrics:
+					fig, ax = plt.subplots(figsize=figsize)
+					plotted_any = False
+					for strategy, per_k in all_results.items():
+						tier_data = per_k.get(direction, {}).get(tier, {})
+						metric_data = tier_data.get(metric, {})
+						if not metric_data:
+							continue
+						# Sort by K numerically
+						ks = sorted(metric_data.keys(), key=lambda x: int(x))
+						ys = [metric_data[k] for k in ks]
+						xs = [int(k) for k in ks]
+						style = METHOD_STYLE.get(strategy, {"label": strategy, "color": "#b3acac", "ls": ":", "marker": "."})
+						ax.plot(
+							xs,
+							ys,
+							label=style["label"],
+							color=style["color"],
+							linestyle=style["ls"],
+							marker=style["marker"],
+							markersize=2.5,
+							linewidth=1.1,
+						)
+						plotted_any = True
+					if not plotted_any:
+						plt.close(fig)
+						continue
+					tier_label = tier.capitalize()
+					metric_label = "mAP" if metric == "mAP" else "Recall"
+
+					ax.set_xlabel("K")
+					ax.set_ylabel(f"{metric_label}@K")
+					# ax.set_title(f"{dir_label} — {tier_label} {metric_label}@K")
+					ax.legend(
+						loc="best",
+						ncol=3,
+						fontsize=8.5,
+						frameon=False,
+						fancybox=True,
+						edgecolor='black',
+						facecolor='white',
+					)
+					ax.set_xticks(xs)
+					ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.65)
+					ax.set_ylim(bottom=-0.01, top=1.0)
+					stem = f"{direction}_{tier}_{metric.lower()}"
+					for ext in ("pdf", "png"):
+						fpath = os.path.join(output_dir, f"quantitative_{stem}.{ext}")
+						fig.savefig(fpath)
+						if ext == "pdf":
+							saved_paths.append(fpath)
+					plt.close(fig)
+
+		return saved_paths
 
 def plot_taxonomy_radar(
 	scores_df, 

@@ -1,7 +1,7 @@
 from utils import *
 
-if USER == "farid":
-	from visualize import build_arch_flowchart
+# if USER == "farid":
+# 	from visualize import build_arch_flowchart
 
 def check_lora_weight_health(model, optimizer=None, verbose=True):
     issues = []
@@ -647,7 +647,7 @@ def compute_retrieval_metrics_from_similarity(
 	# Get top-K indices for all queries (memory efficient)
 	# all_sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
 	# Use chunked version:
-	chunk_size = 512
+	chunk_size = 256
 	all_sorted_indices = torch.cat([
 		torch.argsort(similarity_matrix[i:i+chunk_size], dim=1, descending=True)
 		for i in range(0, similarity_matrix.shape[0], chunk_size)

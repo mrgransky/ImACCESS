@@ -1,9 +1,16 @@
 import os
+from re import M
 import sys
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
+
 CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
 sys.path.insert(0, CLIP_DIR)
+
+MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
+sys.path.insert(0, MISC_DIR)
+
+print(f"sys.path: {sys.path}")
 
 from utils import *
 from single_label_trainer import *

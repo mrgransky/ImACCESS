@@ -3,7 +3,8 @@ import os
 import sys
 import time
 import json
-from tkinter.tix import COLUMN
+import clip
+
 import numpy as np
 import pandas as pd
 import torch
@@ -22,7 +23,7 @@ import seaborn as sns
 from typing import Tuple, Union, List, Dict, Any, Optional, Callable, TypedDict
 import certifi
 import networkx as nx
-from scipy.cluster.hierarchy import dendrogram, linkage
+import scipy
 import hashlib
 from torch.cuda import get_device_properties, memory_allocated
 from torch.utils.data import Dataset, DataLoader
@@ -49,8 +50,9 @@ import inspect
 import warnings
 import traceback
 import builtins
+import platform
 from sklearn.feature_extraction.text import TfidfVectorizer
-
+import concurrent.futures
 warnings.filterwarnings('ignore')
 
 # from skimage.filters.rank import entropy
@@ -61,7 +63,6 @@ warnings.filterwarnings('ignore')
 # from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from joblib import Parallel, delayed
-from scipy.sparse import csr_matrix
 
 from sklearn.cluster import KMeans
 from sklearn.model_selection import train_test_split
@@ -135,17 +136,18 @@ os.environ["HF_HOME"] = cache_directory[USER]
 os.environ["TRANSFORMERS_CACHE"] = cache_directory[USER]
 os.environ["HF_HUB_CACHE"] = cache_directory[USER]
 os.environ["HF_DATASETS_CACHE"] = cache_directory[USER]
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-# Set environment variable for memory optimization
-# os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-os.environ['TORCH_USE_CUDA_DSA'] = '1'  # Enables device-side assertions (as suggested in error)
-os.environ['TOKENIZERS_PARALLELISM'] = 'false'
-# # Verify environment variables
-# print(f"HF_HOME: {os.environ['HF_HOME']}")
-# print(f"TRANSFORMERS_CACHE: {os.environ['TRANSFORMERS_CACHE']}")
-# print(f"HF_HUB_CACHE: {os.environ['HF_HUB_CACHE']}")
-# print(f"HF_DATASETS_CACHE: {os.environ['HF_DATASETS_CACHE']}")
+
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+# # Set environment variable for memory optimization
+# # os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+# os.environ['TORCH_USE_CUDA_DSA'] = '1'  # Enables device-side assertions (as suggested in error)
+# os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+# # # Verify environment variables
+# # print(f"HF_HOME: {os.environ['HF_HOME']}")
+# # print(f"TRANSFORMERS_CACHE: {os.environ['TRANSFORMERS_CACHE']}")
+# # print(f"HF_HUB_CACHE: {os.environ['HF_HUB_CACHE']}")
+# # print(f"HF_DATASETS_CACHE: {os.environ['HF_DATASETS_CACHE']}")
 
 import transformers as tfs
 # tfs.logging.set_verbosity_info()
@@ -157,6 +159,432 @@ dtypes = {
 	'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
 	'user_query': str,
 }
+
+def compute_slope(window: List[float]) -> float:
+	if len(window) < 2:
+		return 0.0
+	x = np.arange(len(window))
+	y = np.asarray(window)
+	# slope = cov(x, y) / var(x)
+	var_x = np.var(x)
+	return np.cov(x, y, bias=True)[0, 1] / var_x
+
+def extract_per_k_metrics(eval_result: Dict) -> Dict:
+		"""
+		Extract per-K mAP and Recall from the return dict of any evaluation function.
+		Works with zero_shot_multi_label, evaluate_best_model, probe, etc.
+
+		Returns:
+				{
+					"i2t": {"overall": {"mAP": {k: v}, "Recall": {k: v}},
+									"head":    {"mAP": {k: v}, "Recall": {k: v}},
+									"rare":    {"mAP": {k: v}, "Recall": {k: v}}},
+					"t2i": { ... same structure ... }
+				}
+		"""
+		out = {}
+		for direction, tier_key in [("i2t", "tiered_i2t"), ("t2i", "tiered_t2i")]:
+				tiered = eval_result.get(tier_key, {})
+				out[direction] = {}
+				for tier in ("overall", "head", "rare"):
+						tier_data = tiered.get(tier, {})
+						out[direction][tier] = {
+								"mAP":    {str(k): float(v) for k, v in tier_data.get("mAP",    {}).items()},
+								"Recall": {str(k): float(v) for k, v in tier_data.get("Recall", {}).items()},
+						}
+		return out
+
+def save_tiered_retrieval_metrics(
+	tiered_i2t: Dict,
+	tiered_t2i: Dict,
+	strategy: str,
+	dataset_directory: str,
+	column: str,
+	verbose: bool = True,
+):
+	result_dir = os.path.join(dataset_directory, column)
+	os.makedirs(result_dir, exist_ok=True)
+
+	output_dir = os.path.join(dataset_directory, "outputs")
+	os.makedirs(output_dir, exist_ok=True)
+
+	per_k = extract_per_k_metrics({"tiered_i2t": tiered_i2t, "tiered_t2i": tiered_t2i})
+
+	retrieval_tiered_fpath = os.path.join(result_dir, f"retrieval_metrics_accumulated.json")
+	retrieval_accumulated = {}
+	if os.path.exists(retrieval_tiered_fpath):
+		if verbose:
+			print(f"Loading existing results from {retrieval_tiered_fpath}")
+		with open(retrieval_tiered_fpath) as f:
+			retrieval_accumulated = json.load(f)
+	
+	retrieval_accumulated[strategy] = per_k
+	
+	with open(retrieval_tiered_fpath, "w") as f:
+		json.dump(retrieval_accumulated, f, indent=2)
+	
+	performance_fpath = os.path.join(output_dir, f"performance.json")
+	performance_accumulated = {}
+	if os.path.exists(performance_fpath):
+		if verbose:
+			print(f"Loading existing results from {performance_fpath}")
+		with open(performance_fpath) as f:
+			performance_accumulated = json.load(f)
+	
+	# Ensure column key exists
+	if column not in performance_accumulated:
+		performance_accumulated[column] = {}
+	
+	performance_accumulated[column][strategy] = per_k
+	
+	with open(performance_fpath, "w") as f:
+		json.dump(performance_accumulated, f, indent=2)
+
+	if verbose:
+		print("="*120)
+		print(strategy.upper())
+		print(json.dumps(per_k, indent=2, ensure_ascii=False))
+		print(f"\nRetrieval Tiered Metrics:")
+		collected_retrieval_methods = list(retrieval_accumulated.keys())
+		n_methods = len(collected_retrieval_methods)
+		print(f"'{strategy}' strategy results appended to {retrieval_tiered_fpath}")
+		print(f">> {n_methods} collected method(s): {collected_retrieval_methods}")
+
+		print(f"\nPerformance Metrics:")
+		collected_columns = list(performance_accumulated.keys())
+		n_columns = len(collected_columns)
+		print(f"'{column}' column results appended to {performance_fpath}")
+		print(f">> {n_columns} collected column(s): {collected_columns}")
+		print("="*120)
+
+def get_updated_model_name(
+		original_path:str, 
+		actual_epochs:int, 
+		additional_info: dict=None
+	) -> str:
+
+	if not os.path.exists(original_path):
+		print(f"Warning: Original model file not found at {original_path}")
+		return original_path
+	
+	# Extract the directory and filename
+	directory, filename = os.path.split(original_path)
+	
+	# Check if the filename already contains actual_epochs
+	if f"aeps_{actual_epochs}" in filename:
+		print(f"File already contains actual epochs information: {filename}")
+		return original_path
+	
+	if "ieps_" in filename:
+		pattern = r"(ieps_\d+)"
+		replacement = f"\\1_aeps_{actual_epochs}"
+		new_filename = re.sub(pattern, replacement, filename)
+	else:
+		base, ext = os.path.splitext(filename)
+		new_filename = f"{base}_aeps_{actual_epochs}{ext}"
+	
+	# Add any additional information to the filename
+	if additional_info:
+		base, ext = os.path.splitext(new_filename)
+		for key, value in additional_info.items():
+			# Format numerical values with scientific notation if they're very small
+			if isinstance(value, float) and abs(value) < 0.1:
+				formatted_value = f"{value:.1e}"
+			else:
+				formatted_value = str(value)
+			base = f"{base}_{key}_{formatted_value}"
+		new_filename = f"{base}{ext}"
+	
+	# Create the new path
+	new_path = os.path.join(directory, new_filename)
+	
+	# rename file
+	try:
+		os.rename(original_path, new_path)
+		# print(f"Model saved as: {new_path}")
+		return new_path
+	except Exception as e:
+		print(f"Warning: Could not rename model file: {e}")
+		try:
+			# Try copying the file instead
+			import shutil
+			shutil.copy2(original_path, new_path)
+			print(f"Model copied to: {new_path}")
+			return new_path
+		except Exception as e2:
+			print(f"Error: Could not copy model file: {e2}")
+			return original_path
+
+def get_model_hash(model: torch.nn.Module) -> str:
+	"""
+	Generate a hash of model parameters to detect when model weights have changed.
+	This is used to determine if cached embeddings need to be recomputed.
+	
+	Args:
+			model: The model to hash
+			
+	Returns:
+			String hash of model parameters
+	"""
+	hasher = hashlib.md5()
+	# Only hash a subset of parameters for efficiency on very large models
+	param_sample = []
+	for i, param in enumerate(model.parameters()):
+			if i % 10 == 0:  # Sample every 10th parameter
+					param_sample.append(param.data.cpu().numpy().mean())  # Just use the mean for speed
+	
+	hasher.update(str(param_sample).encode())
+	return hasher.hexdigest()
+
+def get_parameters_info(model, mode):
+	# Helper function to calculate parameters for a submodule or parameter
+	def count_params(item):
+		if isinstance(item, torch.nn.Module):
+			trainable = sum(p.numel() for p in item.parameters() if p.requires_grad)
+			frozen = sum(p.numel() for p in item.parameters() if not p.requires_grad)
+			total = sum(p.numel() for p in item.parameters())
+		elif isinstance(item, torch.nn.Parameter):
+			trainable = item.numel() if item.requires_grad else 0
+			frozen = item.numel() if not item.requires_grad else 0
+			total = item.numel()
+		else:
+			raise ValueError(f"Unsupported type in text_submodules: {type(item)}")
+		
+		return trainable, frozen, total
+
+	# Total model parameters
+	total_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	total_frozen = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+	total_params = sum(p.numel() for p in model.parameters())
+	total_trainable_percent = (total_trainable / total_params) * 100 if total_params > 0 else 0
+	total_frozen_percent = (total_frozen / total_params) * 100 if total_params > 0 else 0
+
+	# Image encoder parameters (assuming 'visual' attribute)
+	img_trainable, img_frozen, img_total = count_params(model.visual)
+	img_trainable_percent = (img_trainable / img_total) * 100 if img_total > 0 else 0
+	img_frozen_percent = (img_frozen / img_total) * 100 if img_total > 0 else 0
+
+	# Text encoder parameters (assuming 'transformer', 'token_embedding', 'ln_final', 'text_projection')
+	text_submodules = [model.transformer, model.token_embedding, model.ln_final, model.text_projection]
+	text_trainable = sum(count_params(m)[0] for m in text_submodules)
+	text_frozen = sum(count_params(m)[1] for m in text_submodules)
+	text_total = sum(count_params(m)[2] for m in text_submodules)
+	text_trainable_percent = (text_trainable / text_total) * 100 if text_total > 0 else 0
+	text_frozen_percent = (text_frozen / text_total) * 100 if text_total > 0 else 0
+
+	# Logit scale (scalar parameter)
+	logit_scale_params = model.logit_scale.numel()
+
+	# Print detailed statistics
+	print(f"\n{model.__class__.__name__} {model.name} Parameters Statistics")
+	print(f"   ├─ {mode.upper()}")
+	print(f"   ├─ Image Encoder: Total: {img_total:,} (Trainable [Unfrozen]): {img_trainable:,} ({img_trainable_percent:.3f}%)  Frozen: {img_frozen:,} ({img_frozen_percent:.3f}%)")
+	print(f"   ├─ Text Encoder: Total: {text_total:,} (Trainable [Unfrozen]): {text_trainable:,} ({text_trainable_percent:.3f}%)  Frozen: {text_frozen:,} ({text_frozen_percent:.3f}%)")
+	print(f"   ├─ Logit Scale: {logit_scale_params}")
+	print(f"   └─ Total: {total_params:,}  (Trainable [Unfrozen]): {total_trainable:,} ({total_trainable_percent:.3f}%)  Frozen: {total_frozen:,} ({total_frozen_percent:.3f}%)")
+
+def cleanup_old_temp_dirs():	
+	temp_dirs = glob.glob("/tmp/pymp-*")
+	for temp_dir in temp_dirs:
+		try:
+			shutil.rmtree(temp_dir, ignore_errors=True)
+		except:
+			pass
+	if temp_dirs:
+		print(f"Cleaned up {len(temp_dirs)} old temp directories")
+
+
+def get_model_directory(path):
+	"""
+	Extracts the model directory from a given path.
+	
+	The model directory is defined as the path up to the 'WW_DATASETs' directory.
+	
+	Parameters:
+	path (str): The path to extract the model directory from.
+	
+	Returns:
+	str: The extracted model directory.
+	"""
+	# Split the path into directories
+	directories = path.split(os.sep)
+	
+	# Find the index of 'WW_DATASETs' in the directories list
+	ww_datasets_index = directories.index('WW_DATASETs')
+	
+	# Construct the model directory by joining all directories up to 'WW_DATASETs'
+	model_directory = os.sep.join(directories[:ww_datasets_index])
+	model_directory = os.path.join(model_directory, "models")
+	return model_directory
+
+def print_loader_info(loader):
+	batch_size = loader.batch_size
+	loader_num_samples = len(loader.dataset)
+	per_batch_samples = loader_num_samples // batch_size
+	last_batch_samples = loader_num_samples % batch_size
+	if last_batch_samples == 0:
+		last_batch_samples = batch_size
+	
+	# Try multiple ways to get class information
+	try:
+			# Case 1: Standard PyTorch dataset
+			class_names = loader.dataset.classes
+	except AttributeError:
+			try:
+					# Case 2: Subset or wrapped dataset
+					class_names = loader.dataset.dataset.classes
+			except AttributeError:
+					try:
+							# Case 3: Our custom attribute
+							class_names = loader.dataset.unique_labels
+					except AttributeError:
+							# Case 4: Multi-label dataset with label_dict
+							if hasattr(loader.dataset, 'label_dict'):
+									class_names = sorted(loader.dataset.label_dict.keys())
+							else:
+									class_names = ["unknown"]
+	
+	n_classes = len(class_names)
+	total_samples_calc = per_batch_samples * batch_size + last_batch_samples
+	
+	# Get loader name safely
+	loader_name = getattr(loader, 'name', 'UNNAMED_LOADER')
+	
+	print(
+			f"\n{loader_name}:\n"
+			f"\tWrapped in {len(loader)} batches\n"
+			f"\tSamples per batch (total batches: {batch_size}): {per_batch_samples}\n"
+			f"\tSamples in last batch: {last_batch_samples}\n"
+			f"\tTotal samples: {loader_num_samples} (calculated: {total_samples_calc} = {per_batch_samples} x {batch_size} + {last_batch_samples})\n"
+			f"\tUnique Label(s): {n_classes}\n"
+	)
+
+
+def get_config(architecture: str, dropout: float=0.0) -> dict:
+	configs = {
+		"RN50": {
+			"embed_dim": 1024,
+			"image_resolution": 224,
+			"vision_layers": (3, 4, 6, 3),  # (stage1, stage2, stage3, stage4)
+			"vision_width": 64,
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"RN101": {
+			"embed_dim": 1024,
+			"image_resolution": 224,
+			"vision_layers": (3, 4, 23, 3),
+			"vision_width": 64,
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"RN50x4": {
+			"embed_dim": 640,
+			"image_resolution": 288,
+			"vision_layers": (3, 4, 6, 3),
+			"vision_width": 256,  # 4× width
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"RN50x16": {
+			"embed_dim": 768,
+			"image_resolution": 384,
+			"vision_layers": (3, 4, 6, 3),
+			"vision_width": 1024,  # 16× width
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"RN50x64": {
+			"embed_dim": 1024,
+			"image_resolution": 448,
+			"vision_layers": (3, 4, 6, 3),
+			"vision_width": 4096,  # 64× width
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"ViT-B/32": {
+			"embed_dim": 512,
+			"image_resolution": 224,
+			"vision_layers": 12,  # transformer layers
+			"vision_width": 768,
+			"vision_patch_size": 32,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"ViT-B/16": {
+			"embed_dim": 512,
+			"image_resolution": 224,
+			"vision_layers": 12,
+			"vision_width": 768,
+			"vision_patch_size": 16,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"ViT-L/14": {
+			"embed_dim": 768,
+			"image_resolution": 224,
+			"vision_layers": 24,  # deeper transformer
+			"vision_width": 1024,
+			"vision_patch_size": 14,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 768,
+			"transformer_heads": 12,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"ViT-L/14@336px": {
+			"embed_dim": 768,
+			"image_resolution": 336,  # higher resolution variant
+			"vision_layers": 24,
+			"vision_width": 1024,
+			"vision_patch_size": 14,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 768,
+			"transformer_heads": 12,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		}
+	}
+
+	if architecture not in configs:
+		raise ValueError(f"{architecture} not found! Available models: {list(configs.keys())}")
+
+	return configs[architecture]
 
 def post_process(
 	df: pd.DataFrame, 
@@ -232,20 +660,21 @@ def post_process(
 	)
 	print(f"{dataset_type} dataset processing complete!")
 
-def monitor_memory_usage():
-	"""Monitor memory usage and return True if memory is critical"""
+def monitor_memory_usage(operation_name: str):
 	if torch.cuda.is_available():
-		gpu_alloc = torch.cuda.memory_allocated() / 1024**3
+		gpu_memory = torch.cuda.memory_allocated() / 1024**3
 		gpu_cached = torch.cuda.memory_reserved() / 1024**3
-		gpu_percent = (gpu_alloc / (gpu_alloc + gpu_cached)) * 100 if (gpu_alloc + gpu_cached) > 0 else 0
 	else:
-		gpu_percent = 0
-	
-	cpu_mem = psutil.virtual_memory()
-	cpu_percent = cpu_mem.percent
-	
-	if cpu_percent > 90 or gpu_percent > 90:
-		print(f"Memory warning - CPU: {cpu_percent:.1f}%, GPU: {gpu_percent:.1f}%")
+		gpu_memory = gpu_cached = 0
+	cpu_memory = psutil.virtual_memory()
+	cpu_used_gb = (cpu_memory.total - cpu_memory.available) / 1024**3
+	cpu_percent = cpu_memory.percent
+	if cpu_percent > 96:
+		print(
+			f"[{operation_name}] Memory - CPU Usage: {cpu_used_gb:.1f}GB ({cpu_percent:.1f}%), "
+			f"GPU: {gpu_memory:.1f}GB allocated, {gpu_cached:.1f}GB cached"
+		)
+		print(f"WARNING: High CPU usage ({cpu_percent:.1f}%) → Clearing GPU cache...")
 		return True
 	return False
 
