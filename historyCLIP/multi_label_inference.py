@@ -1153,44 +1153,19 @@ def run_inference(
 	assert len(available_checkpoints) > 0, f"No checkpoints found in {pth_files_directory}"
 
 	if verbose:
-		print(f"{len(available_checkpoints)} Available checkpoints")
+		print(f"\n{len(available_checkpoints)} Available checkpoints:")
 		for i, ft_path in enumerate(available_checkpoints):
 			print(f"Checkpoint[{i}]: {ft_path}")
 
 	# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 	# print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
-	print(f">> CLIP model configuration: {model_architecture}...")
+	print(f"\n{model_architecture} configuration:")
 	model_config = get_config(architecture=model_architecture)
 	print(json.dumps(model_config, indent=4, ensure_ascii=False))
 
-	train_loader, validation_loader = get_multi_label_dataloaders(
-		metadata_fpth=metadata_csv,
-		batch_size=batch_size,
-		num_workers=num_workers,
-		input_resolution=model_config["image_resolution"],
-		col=column,
-	)
-
-	print_loader_info(loader=train_loader)
-	print_loader_info(loader=validation_loader)
-
-	customized_preprocess = get_preprocess(
-		dataset_dir=dataset_dir, 
-		input_resolution=model_config["image_resolution"],
-	)
-
-	try:
-		class_names = validation_loader.dataset.unique_labels
-	except AttributeError:
-		try:
-			class_names = validation_loader.dataset.dataset.classes
-		except:
-			class_names = train_loader.dataset.unique_labels
-	print(f"Number of classes: {len(class_names)}")
-
 	####################################### Quantitative Analysis #######################################
 	if verbose:
-		print(f"[Quantitative Analysis]")
+		print(f"\nQuantitative Analysis")
 
 	results_json_path = os.path.join(pth_files_directory, f"retrieval_metrics_accumulated.json")
 	if os.path.exists(results_json_path):
@@ -1245,8 +1220,34 @@ def run_inference(
 	####################################### Quantitative Analysis #######################################
 
 
-
 	####################################### Qualitative Analysis #######################################
+	if verbose:
+		print(f"\nQualitative Analysis")
+	train_loader, validation_loader = get_multi_label_dataloaders(
+		metadata_fpth=metadata_csv,
+		batch_size=batch_size,
+		num_workers=num_workers,
+		input_resolution=model_config["image_resolution"],
+		col=column,
+	)
+
+	print_loader_info(loader=train_loader)
+	print_loader_info(loader=validation_loader)
+
+	customized_preprocess = get_preprocess(
+		dataset_dir=dataset_dir, 
+		input_resolution=model_config["image_resolution"],
+	)
+
+	try:
+		class_names = validation_loader.dataset.unique_labels
+	except AttributeError:
+		try:
+			class_names = validation_loader.dataset.dataset.classes
+		except:
+			class_names = train_loader.dataset.unique_labels
+	print(f"Number of classes: {len(class_names)}")
+
 	i2t_samples, t2i_samples = get_tail_only_samples(
 		metadata_val_path=metadata_csv.replace('.csv', '_val.csv'),
 		col=column,
