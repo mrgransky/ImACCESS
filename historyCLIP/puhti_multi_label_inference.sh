@@ -9,8 +9,8 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=72G
-#SBATCH --partition=gpu
-#SBATCH --time=00-05:00:00
+#SBATCH --partition=gputest
+#SBATCH --time=00-00:15:00
 #SBATCH --array=0
 #SBATCH --gres=gpu:v100:1
 ####SBATCH --begin=09:00:00
@@ -40,7 +40,20 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
-path_files_dir=${DATASETS[$SLURM_ARRAY_TASK_ID]}/multi_label
+COLUMNS=(
+	"llm_canonical_labels"         # col 0  — labels from a large language model
+	"vlm_canonical_labels"         # col 1  — labels from a vision-language model
+	"multimodal_canonical_labels"  # col 2  — labels fused from both modalities
+)
+
+MODEL_ARCHITECTURES=(
+	"ViT-L/14@336px"   # arch 0  — largest, highest resolution
+	"ViT-L/14"         # arch 1
+	"ViT-B/32"         # arch 2
+	"ViT-B/16"         # arch 3
+)
+
+path_files_dir=${DATASETS[$SLURM_ARRAY_TASK_ID]}/multimodal_canonical_labels
 
 echo "Processing: ${path_files_dir}"
 
@@ -48,7 +61,7 @@ python -u multi_label_inference.py \
 	--pth_files_directory ${path_files_dir} \
 	--batch_size 16 \
 	--num_workers $SLURM_CPUS_PER_TASK \
-	--model_architecture "ViT-L/14@336px" \
+	--model_architecture $MODEL_ARCHITECTURES[0] \
 	--verbose
 
 done_txt="$user finished Slurm job: `date`"
