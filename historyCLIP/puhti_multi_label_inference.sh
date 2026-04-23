@@ -61,7 +61,7 @@ python -u multi_label_inference.py \
 	--pth_files_directory ${path_files_dir} \
 	--batch_size 16 \
 	--num_workers $SLURM_CPUS_PER_TASK \
-	--model_architecture $MODEL_ARCHITECTURES[0] \
+	--model_architecture "${MODEL_ARCHITECTURES[0]}" \
 	--verbose
 
 done_txt="$user finished Slurm job: `date`"
