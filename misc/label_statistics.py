@@ -259,19 +259,19 @@ def entropy_vs_performance(
 		)
 	stats_df = pd.DataFrame(rows).sort_values("source").reset_index(drop=True)
 	
-	if verbose:
-		print("\nSUMMARY STATISTICS\n")
-		print(stats_df)
-	
 	if performance is None:
 		if verbose:
 			print("\n✓ No performance data provided, returning entropy statistics only")
+			print("\nSUMMARY STATISTICS\n")
+			print(stats_df)
+		
 		return stats_df
 	
 	if verbose:
-		print("\n" + "=" * 80)
-		print("MERGING WITH PERFORMANCE METRICS")
-		print("=" * 80)
+		print("\nMERGING WITH PERFORMANCE METRICS\n")
+		print(df.shape, list(df.columns))
+		print(df.info(verbose=True, memory_usage=True))
+		print()
 	
 	# Build perf_df depending on input type
 	if isinstance(performance, pd.DataFrame):
@@ -317,7 +317,17 @@ def entropy_vs_performance(
 				print(f"    - {src}")
 		print("\nFINAL MERGED RESULTS\n")
 		print(merged)
-	
+
+		x = merged["perplexity"].astype(float)
+		y = merged["t2i_map10_overall"].astype(float)
+
+		ok = x.notna() & y.notna()
+		rho, pval = scipy.stats.spearmanr(x[ok], y[ok])
+
+		if verbose:
+			print(f"\nSpearman rho(perplexity, t2i_map@10 overall) = {rho:.3f}, p = {pval:.3g}")
+			print("-" * 100)
+
 	return merged
 
 def _mean_jaccard(sets_a: List[set], sets_b: List[set]) -> float:

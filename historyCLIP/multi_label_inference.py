@@ -1230,12 +1230,8 @@ def run_inference(
 			# 	'multimodal_labels',
 			# ]
 		)
-		print(df.shape, list(df.columns))
-		print(df.info(verbose=True, memory_usage=True))
-		print("="*100)
 
-
-		merged = stats.entropy_vs_performance(
+		stats.entropy_vs_performance(
 			df=df,
 			performance=perf,
 			label_columns=["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"],
@@ -1243,19 +1239,10 @@ def run_inference(
 			perf_k=10,
 			verbose=True,
 		)
-		x = merged["perplexity"].astype(float)
-		y = merged["t2i_map10_overall"].astype(float)
-
-		ok = x.notna() & y.notna()
-		rho, pval = scipy.stats.spearmanr(x[ok], y[ok])
-
-		if verbose:
-			print(f"Spearman rho(perplexity, t2i_map@10 overall) = {rho:.3f}, p = {pval:.3g}")
 	else:
 		print(f"WARNING: {performance_fpath} not found. Skipping...")
 
 	####################################### Quantitative Analysis #######################################
-	# return
 
 
 
