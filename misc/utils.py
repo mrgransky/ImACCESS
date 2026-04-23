@@ -25,9 +25,7 @@ import certifi
 import networkx as nx
 import scipy
 import hashlib
-from torch.cuda import get_device_properties, memory_allocated
 from torch.utils.data import Dataset, DataLoader
-import torch.nn.functional as F
 import huggingface_hub
 import io
 import pprint
