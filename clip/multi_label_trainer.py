@@ -2422,7 +2422,6 @@ def lora_plus_finetune_multi_label(
 					early_stopping._restore_best_weights(model)
 			break
 
-
 		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")		
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
@@ -2437,6 +2436,9 @@ def lora_plus_finetune_multi_label(
 		)
 		validation_losses.append(current_val_loss)
 		
+		# empty cache:
+		torch.cuda.empty_cache()
+
 		validation_results = get_validation_metrics(
 			model=model,
 			validation_loader=validation_loader,
