@@ -2284,545 +2284,6 @@ def remove_problematic_cluster_labels(
 
 	return df_clean, embeddings_clean, removed_labels
 
-def cluster_original(
-	labels: List[List[str]],
-	model_id: str,
-	clusters_fname: str,
-	batch_size: int = 1024,
-	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
-	nc: int = None,
-	linkage_method: str = "ward",  # 'average', 'complete', 'single', 'ward'
-	distance_metric: str = "euclidean",  # 'cosine', 'euclidean'
-	verbose: bool = True,
-):
-	st_t = time.time()
-	if verbose:
-		print(f"\n[AGGLOMERATIVE CLUSTERING] {len(labels)} samples")
-		print(f"   ├─ {model_id} | {device} | batch_size: {batch_size}")
-		print(f"   ├─ linkage: {linkage_method}")
-		print(f"   ├─ sample: {labels[:5]}")
-
-		requires_type_exchange = isinstance(labels[0], str)
-
-		print(f"   ├─────> {type(labels[0])} requires_type_exchange: {requires_type_exchange}")
-		print(f"   └─ nc: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
-	
-	print(f"\n[DEDUP] {len(labels)} {type(labels)} raw labels")
-	documents = list()
-	for i, doc in enumerate(labels):
-		if doc is None:
-			# print(f"doc[{i}]: None (skipping)")
-			continue
-		
-		if isinstance(doc, str):
-			try:
-				doc = ast.literal_eval(doc)
-			except (ValueError, SyntaxError):
-				print(f"doc[{i}]: Failed to parse '{doc}' (skipping)")
-				continue
-		
-		if not isinstance(doc, list):
-			print(f"doc[{i}]: Invalid type {type(doc)} (skipping)")
-			continue
-		
-		# Deduplicate labels within document
-		documents.append(list(set(lbl for lbl in doc if lbl is not None)))
-	
-	# Flatten and deduplicate (deterministic and reproducible)
-	unique_labels = sorted(set(label for doc in documents for label in doc))
-	
-	print(f"Total {type(documents)} documents: {len(documents)}")
-	print(f"Unique {type(unique_labels)} labels: {len(unique_labels)}")
-	print(f"Sample unique labels: {unique_labels[:15]}")
-	print("-"*100)
-	
-	dtype = torch.float32  # More stable than float16
-	if torch.cuda.is_available():
-		if torch.cuda.is_bf16_supported():
-			dtype = torch.bfloat16  # bfloat16 is more stable than float16
-		else:
-			dtype = torch.float32
-	if verbose:
-		print(f"[INFO] {model_id} Dtype selection: {dtype}")
-
-	def _optimal_attn_impl() -> str:
-		if not torch.cuda.is_available():
-			return "eager"
-		
-		major, minor = torch.cuda.get_device_capability()
-		compute_cap = major + minor / 10
-		
-		# Flash Attention 2 requires Ampere or newer (compute >= 8.0)
-		if compute_cap >= 8.0:
-			try:
-				import flash_attn
-				if verbose:
-					print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
-				return "flash_attention_2"
-			except ImportError:
-				if verbose:
-					print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
-		
-		# For older GPUs (Volta/Turing), use SDPA (PyTorch native, faster than eager)
-		if compute_cap >= 7.0:
-			if torch.__version__ >= "2.0.0":
-				if verbose:
-					print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
-				return "sdpa"		
-
-		if verbose:
-			print(f"[INFO] Using eager attention (compute {compute_cap})")
-		return "eager"
-
-	attn_impl = _optimal_attn_impl()
-	if verbose:
-		print(f"[INFO] {model_id} with {attn_impl} attention")
-
-	print(f"\n[INIT] Loading Sentence Transformer {model_id}")
-	model = SentenceTransformer(
-		model_name_or_path=model_id,
-		trust_remote_code=True,
-		cache_folder=cache_directory[os.getenv('USER')],
-		model_kwargs={"attn_implementation": attn_impl, "dtype": dtype} if "Qwen" in model_id else {}, # "Qwen" in model_id else {}",
-		token=os.getenv("HUGGINGFACE_TOKEN"),
-		tokenizer_kwargs={"padding_side": "left"},
-	).to(device)
-	
-	print(f"[LOADED] {sum(p.numel() for p in model.parameters()):,} parameters")
-	
-	print(f"\n[ENCODING] {len(unique_labels)} labels | batch_size: {batch_size} | {device}")
-	X = model.encode(
-		unique_labels,
-		batch_size=batch_size,
-		show_progress_bar=verbose,
-		convert_to_numpy=True,
-		normalize_embeddings=True,
-		precision='float32', # float32 is more stable than float16 for CPU stability
-	)
-
-	if np.isnan(X).any():
-		nan_count = np.isnan(X).sum()
-		nan_rows = np.where(np.isnan(X).any(axis=1))[0]
-		
-		print("\n" + "="*80)
-		print(f"❌ ERROR: {nan_count} NaN values in embeddings!")
-		print("="*80)
-		print(f"Affected labels ({len(nan_rows)} total):")
-		for idx in nan_rows[:10]:  # Show first 10
-				print(f"  - {unique_labels[idx]}")
-		if len(nan_rows) > 10:
-				print(f"  ... and {len(nan_rows) - 10} more")
-		
-		print("\nROOT CAUSE:")
-		print("  1. Model dtype is float16 on CPU (use float32)")
-		print("  2. Model is too large for available memory")
-		print("  3. Numerical instability in model")
-		
-		print("\nFIX:")
-		print("  - Use torch_dtype=torch.float32 when loading model")
-		print("  - Use precision='float32' in model.encode()")
-		print("  - Or switch to GPU / smaller model")
-		
-		raise ValueError("Cannot proceed with NaN embeddings")
-
-	if np.isinf(X).any():
-		inf_count = np.isinf(X).sum()
-		raise ValueError(f"Infinite values detected ({inf_count}) - numerical overflow!")
-
-	if X.shape[0] == 0:
-		raise ValueError("No embeddings generated")
-
-	if np.allclose(X, 0):
-		raise ValueError("All embeddings are zero vectors")
-
-	print(f"\nEmbeddings {type(X)} {X.shape} {X.dtype}")
-	print(f"  ├─ Range: [{X.min():.4f}, {X.max():.4f}]")
-	print(f"  ├─ Mean: {X.mean()} | Std: {X.std()}")
-	print(f"  └─ ")
-
-	t0 = time.time()
-	# OPTION 1: Ward linkage (RECOMMENDED for preventing mega-clusters)
-	if linkage_method == "ward":
-		# Ward requires Euclidean distance
-		# For normalized embeddings, Euclidean ≈ Cosine
-		if use_fastcluster:
-			Z = fastcluster.linkage(X, method='ward', metric='euclidean')
-		else:
-			Z = linkage(X, method='ward', metric='euclidean')
-	elif distance_metric == "cosine":
-		# Efficient cosine distance computation
-		distance_matrix = 1 - (X @ X.T)
-		np.fill_diagonal(distance_matrix, 0)
-		distance_matrix = np.clip(distance_matrix, 0, 2)
-		condensed_dist = squareform(distance_matrix, checks=False)
-		if use_fastcluster:
-			Z = fastcluster.linkage(condensed_dist, method=linkage_method)
-		else:
-			Z = linkage(condensed_dist, method=linkage_method)
-		print(f"[LINKAGE] Using {linkage_method} linkage with {distance_metric} distance")
-	elif distance_metric == "euclidean":
-		if use_fastcluster:
-			Z = fastcluster.linkage(X, method=linkage_method, metric='euclidean')
-		else:
-			Z = linkage(X, method=linkage_method, metric='euclidean')
-		print(f"[LINKAGE] Using {linkage_method} linkage with Euclidean distance")
-	else:
-		raise ValueError(f"Unsupported distance metric: {distance_metric}")
-
-	print(f": {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes} | {time.time()-t0:.1f} sec")
-	
-	# Determine Optimal Number of Clusters
-	if nc is None:
-		# new dataset:
-		cluster_labels, stats = get_optimal_num_clusters(
-			X=X,
-			linkage_matrix=Z,
-			target_intra_similarity=0.69,
-			min_consolidation=3.8,
-			max_consolidation=5.0,
-			target_singleton_ratio=0.015,
-			quality_vs_consolidation_weight=0.5,
-			merge_singletons=True,
-			verbose=verbose,
-		)
-
-		# # old dataset:
-		# cluster_labels, stats = get_optimal_num_clusters(
-		# 	X=X,
-		# 	linkage_matrix=Z,
-		# 	target_intra_similarity=0.7,
-		# 	min_consolidation=4.0,
-		# 	max_consolidation=6.0,
-		# 	target_singleton_ratio=0.015,
-		# 	quality_vs_consolidation_weight=0.6,
-		# 	merge_singletons=True,
-		# 	verbose=verbose,
-		# )
-
-		best_k = stats['n_clusters']
-	else:
-		best_k = nc
-		print(f"\nUsing user-defined k={best_k} for {len(unique_labels)} labels")
-	
-		print(f"\nCutting dendrogram at k={best_k} for {len(unique_labels)} labels")
-		cluster_labels = fcluster(Z, best_k, criterion='maxclust') - 1 # Convert to 0-indexed
-
-	print(f"\n[CLUSTERING] {len(np.unique(cluster_labels))} clusters") 
-	print(f"{cluster_labels.shape} {type(cluster_labels)} labels.")
-	print(f"(min, max): ({cluster_labels.min()}, {cluster_labels.max()})")
-
-	# get_optimal_super_clusters(
-	# 	linkage_matrix=Z, 
-	# 	embeddings=X,
-	# 	cluster_labels=cluster_labels,
-	# 	unique_labels=unique_labels,
-	# 	linkage_method=linkage_method,
-	# 	clusters_fname=clusters_fname,
-	# 	n_thresholds=50,
-	# 	min_clusters=3,
-	# 	max_clusters=10,
-	# 	verbose=verbose
-	# )
-	
-	df = pd.DataFrame(
-		{
-			'label': unique_labels,
-			'cluster': cluster_labels
-		}
-	)
-	
-	# cluster_canonicals = {}
-	# for cid in sorted(df.cluster.unique()):
-	# 	cluster_mask = df.cluster == cid
-	# 	cluster_texts = df[cluster_mask]['label'].tolist()
-	# 	cluster_indices = df[cluster_mask].index.tolist()
-	# 	cluster_embeddings = X[cluster_indices]
-		
-	# 	# Centroid-nearest
-	# 	centroid = cluster_embeddings.mean(axis=0, keepdims=True)
-	# 	similarities = cosine_similarity(centroid, cluster_embeddings)[0]
-	# 	best_idx = similarities.argmax()
-	# 	canonical = cluster_texts[best_idx]
-		
-	# 	cluster_canonicals[cid] = {
-	# 		'canonical': canonical,
-	# 		'score': float(similarities[best_idx]),
-	# 		'size': len(cluster_texts)
-	# 	}
-
-	# 	if verbose:
-	# 		print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
-	# 		print(f"\tCanonical: {canonical} (sim={similarities[best_idx]:.4f})")
-
-	# Build label frequency dict from documents
-	print(f"\n[CLUSTERING] {len(np.unique(cluster_labels))} clusters for {cluster_labels.shape} {type(cluster_labels)} labels. {cluster_labels.min()} {cluster_labels.max()}")
-	label_freq_dict = {}
-	for doc in documents:
-		for label in doc:
-			label_freq_dict[label] = label_freq_dict.get(label, 0) + 1
-	# print(label_freq_dict)
-
-	original_label_counts = label_freq_dict
-	print(f"\tComputed frequencies for {len(original_label_counts)} labels")
-	print(f"\tTotal label instances: {sum(original_label_counts.values())}")
-	print(f"\tMost frequent: {max(original_label_counts.items(), key=lambda x: x[1])}")
-	print('-'*150)
-
-	print(f"\nCanonical labels per cluster")
-	cluster_canonicals = {}
-	freq_changed_count = 0
-	total_sim_loss = list()
-	total_freq_gain = list()
-	questionable_examples = list()
-
-	t0 = time.time()
-	for cid in sorted(df.cluster.unique()):
-		cluster_mask = df.cluster == cid
-		cluster_texts = df[cluster_mask]['label'].tolist()
-		cluster_indices = df[cluster_mask].index.tolist()
-		cluster_embeddings = X[cluster_indices]
-
-		if verbose:
-			print(f"\n[Cluster {cid}] {len(cluster_texts)} labels:\n{cluster_texts}")
-		
-		# Compute centroid
-		centroid = cluster_embeddings.mean(axis=0, keepdims=True)
-		similarities = cosine_similarity(centroid, cluster_embeddings)[0]
-		
-		# Frequency-Weighted Canonical Selection
-		if original_label_counts is not None and len(original_label_counts) > 0 and len(cluster_texts) > 1:
-			# Get label frequencies
-			label_freqs = np.array([original_label_counts.get(lbl, 1) for lbl in cluster_texts])
-			
-			# Normalize frequencies to [0, 1] using log-scale
-			freq_scores = np.log1p(label_freqs) / np.log1p(label_freqs.max())
-			
-			# Hybrid scoring: 70% similarity, 30% frequency
-			combined_scores = 0.7 * similarities + 0.3 * freq_scores
-			best_idx = combined_scores.argmax()
-			pure_sim_idx = similarities.argmax()
-			
-			# Safety check - require minimum 3x gain
-			if best_idx != pure_sim_idx:
-				freq_gain = label_freqs[best_idx] / max(label_freqs[pure_sim_idx], 1)
-				
-				# Only override similarity if frequency gain is meaningful (≥3x)
-				if freq_gain < 3.0:
-					best_idx = pure_sim_idx  # Revert to pure similarity choice
-			
-			# Track changes (after the safety check)
-			if best_idx != pure_sim_idx:
-				freq_changed_count += 1
-				
-				# Calculate impact metrics
-				sim_loss = (similarities[pure_sim_idx] - similarities[best_idx]) / similarities[pure_sim_idx]
-				freq_gain = label_freqs[best_idx] / max(label_freqs[pure_sim_idx], 1)
-				
-				total_sim_loss.append(sim_loss)
-				total_freq_gain.append(freq_gain)
-				
-				# Track questionable trades for inspection
-				if sim_loss > 0.10 or freq_gain < 3.0:
-						questionable_examples.append({
-							'cluster_id': cid,
-							'pure_choice': cluster_texts[pure_sim_idx],
-							'freq_choice': cluster_texts[best_idx],
-							'pure_freq': label_freqs[pure_sim_idx],
-							'freq_freq': label_freqs[best_idx],
-							'pure_sim': similarities[pure_sim_idx],
-							'freq_sim': similarities[best_idx],
-							'sim_loss': sim_loss,
-							'freq_gain': freq_gain,
-							'cluster_size': len(cluster_texts),
-							'cluster_labels': cluster_texts
-						})
-				
-				if verbose:
-					print(f"Frequency weighting changed selection:")
-					print(f"  Pure similarity would pick: {cluster_texts[pure_sim_idx]} (sim={similarities[pure_sim_idx]:.4f}, freq={label_freqs[pure_sim_idx]})")
-					print(f"  Frequency-weighted picks: {cluster_texts[best_idx]} (sim={similarities[best_idx]:.4f}, freq={label_freqs[best_idx]})")
-		else:
-			# Fallback: pure similarity (original method)
-			best_idx = similarities.argmax()
-		
-		canonical = cluster_texts[best_idx]
-		
-		cluster_canonicals[cid] = {
-			'canonical': canonical,
-			'score': float(similarities[best_idx]),
-			'size': len(cluster_texts)
-		}
-		
-		if verbose:
-			print(f"\t=> Selected Canonical: {canonical} (sim={similarities[best_idx]:.4f})")
-	
-	print(f"\n[CLUSTERING] {len(cluster_canonicals)} cluster canonicals computed in {time.time()-t0:.1f} sec.")
-	print(f"-"*100)
-
-	print("\nFREQUENCY WEIGHTING IMPACT ANALYSIS")
-	total_clusters = len(df.cluster.unique())
-	print(f"  Total clusters analyzed: {total_clusters}")
-	print(f"  Clusters where frequency changed the canonical: {freq_changed_count} ({freq_changed_count/total_clusters*100:.1f}%)")
-
-	if total_sim_loss:
-		print(f"\nSIMILARITY LOSS IMPACT:")
-		print(f"  Average  {np.mean(total_sim_loss)*100:.2f}%")
-		print(f"  Median   {np.median(total_sim_loss)*100:.2f}%")
-		print(f"  Max      {np.max(total_sim_loss)*100:.2f}%")
-		print(f"  Min      {np.min(total_sim_loss)*100:.2f}%")
-		
-		print(f"\nFREQUENCY GAIN BENEFIT:")
-		print(f"  Average {np.mean(total_freq_gain):.1f}x")
-		print(f"  Median  {np.median(total_freq_gain):.1f}x")
-		print(f"  Max     {np.max(total_freq_gain):.1f}x")
-		print(f"  Min     {np.min(total_freq_gain):.1f}x")
-		
-		print(f"\nQUALITY ASSESSMENT:")
-		excellent_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.03 and f > 10)
-		good_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.05 and f > 5)
-		questionable_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s > 0.10 or f < 2)
-		
-		print(f"  Excellent trades (<3% sim loss, >10x freq gain): {excellent_trades:<10} ({excellent_trades/freq_changed_count*100:.1f}%)")
-		print(f"  Good trades (<5% sim loss, >5x freq gain):       {good_trades:<10} ({good_trades/freq_changed_count*100:.1f}%)")
-		print(f"  Questionable trades (>10% sim loss or <2x gain): {questionable_trades:<10} ({questionable_trades/freq_changed_count*100:.1f}%)")
-		
-		if questionable_trades > 0 and verbose:
-			print(f"\n[WARNING] {questionable_trades} questionable trades detected:")
-			print(f"\t=> Consider adjusting weighting (currently 70/30) if this is high\n")
-			print(f"{'Cluster':<10} {'Pure Sim Choice':<35} {'Freq Weight Choice':<35} {'Sim Loss(%)':<15} {'Freq Gain'}")
-			print("-" * 110)
-
-			for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True):
-				pure_label = ex['pure_choice'][:32]
-				freq_label = ex['freq_choice'][:32]
-				print(f"{ex['cluster_id']:<10} {pure_label:<35} {freq_label:<35} {ex['sim_loss']*100:<15.1f} {ex['freq_gain']:.1f}x")
-
-			# Categorize questionable trades
-			high_loss_low_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] < 2]
-			high_loss_good_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] >= 2]
-			low_loss_low_gain = [ex for ex in questionable_examples if ex['sim_loss'] <= 0.10 and ex['freq_gain'] < 2]
-			
-			print(f"\nBREAKDOWN OF QUESTIONABLE TRADES:")
-			print(f"Type A: High loss (>10%) + Low gain (<2x):   {len(high_loss_low_gain):<10}{len(high_loss_low_gain)/questionable_trades:<10.4f}BAD")
-			print(f"Type B: High loss (>10%) + Good gain (≥2x):  {len(high_loss_good_gain):<10}{len(high_loss_good_gain)/questionable_trades:<10.4f}DEBATABLE")
-			print(f"Type C: Low loss  (≤10%) + Low gain (<2x):   {len(low_loss_low_gain):<10}{len(low_loss_low_gain)/questionable_trades:<10.4f}UNNECESSARY")
-		else:
-			print(f"\nAll trades are high-quality!")
-		
-		# Overall verdict
-		avg_sim_loss_pct = np.mean(total_sim_loss) * 100
-		avg_freq_gain = np.mean(total_freq_gain)
-		
-		print(f"\nOVERALL VERDICT:")
-		if avg_sim_loss_pct < 3 and avg_freq_gain > 50:
-				print(f"  ✅ EXCELLENT: Small quality cost ({avg_sim_loss_pct:.1f}%) for huge frequency benefit ({avg_freq_gain:.0f}x)")
-		elif avg_sim_loss_pct < 5 and avg_freq_gain > 10:
-				print(f"  ✅ GOOD: Acceptable quality cost ({avg_sim_loss_pct:.1f}%) for strong frequency benefit ({avg_freq_gain:.0f}x)")
-		elif avg_sim_loss_pct < 8 and avg_freq_gain > 5:
-				print(f"  ⚠️  ACCEPTABLE: Moderate quality cost ({avg_sim_loss_pct:.1f}%) for moderate frequency benefit ({avg_freq_gain:.0f}x)")
-		else:
-				print(f"  ❌ POOR: High quality cost ({avg_sim_loss_pct:.1f}%) for limited frequency benefit ({avg_freq_gain:.0f}x)")
-				print(f"     Consider reducing frequency weight from 0.3 to 0.2")
-	else:
-		print("\n  ℹ️  Frequency weighting made no changes (all clusters picked highest similarity)")
-
-	print("="*100)
-
-	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
-
-	# ── Sanity check: Verify canonical belongs to its cluster ──────────────
-	if verbose:
-		print("\n[SANITY CHECK] Verifying canonical labels belong to their clusters...")
-	
-	mismatches = 0
-	for cid, info in cluster_canonicals.items():
-		cluster_labels_for_cid = df[df['cluster'] == cid]['label'].tolist()
-		if info['canonical'] not in cluster_labels_for_cid:
-			mismatches += 1
-			# Fallback to the first label in the cluster
-			fallback = cluster_labels_for_cid[0]
-			if verbose:
-				print(f"  ⚠️  Cluster {cid}: canonical '{info['canonical']}' not in cluster {cluster_labels_for_cid[:5]}... — using fallback '{fallback}'")
-			cluster_canonicals[cid]['canonical'] = fallback
-			# Update dataframe
-			df.loc[df['cluster'] == cid, 'canonical'] = fallback
-	
-	if verbose:
-		if mismatches > 0:
-			print(f"  Fixed {mismatches} canonical mismatches")
-		else:
-			print(f"  ✅ All canonicals verified")
-
-	df, X_clean, removed_labels = remove_problematic_cluster_labels(
-		df=df,
-		embeddings=X,
-		low_cohesion_threshold=0.50,
-		poor_canonical_threshold=0.60,
-		verbose=True
-	)
-
-	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
-	df.to_csv(out_csv, index=False)
-	
-	unique_labels_array = df['label'].values  # 36,657 labels
-	cluster_labels = df['cluster'].values      # 36,657 cluster assignments
-	canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
-
-	print("\nCOMPREHENSIVE CLUSTER QUALITY")
-	print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
-	print(f"  ├─ Updated canonical_map: {len(canonical_map)} mappings")
-	print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
-	print(f"  ├─ cluster_labels: {type(cluster_labels)} {cluster_labels.shape}")
-	print(f"  ├─ label_freq_dict: {len(label_freq_dict)} labels with frequencies")
-	print(f"  ├─ df reports: {df['cluster'].nunique()} clusters")
-	print(f"  └─ cluster_labels reports: {len(np.unique(cluster_labels))} clusters")
-	
-	if df['cluster'].nunique() != len(np.unique(cluster_labels)):
-		print(f"[WARNING] Mismatch detected! Analysis may be stale!")
-	else:
-		print(f"All consistent!")
-
-	results = analyze_cluster_quality(
-		embeddings=X_clean,									# 36,657 embeddings (matches!)
-		labels=unique_labels_array,					# 36,657 labels
-		cluster_assignments=cluster_labels,	# 36,657 assignments
-		canonical_labels=canonical_map,
-		original_label_counts=label_freq_dict,
-		output_dir=os.path.dirname(clusters_fname),
-		verbose=verbose,
-	)
-
-	cluster_quality_csv = clusters_fname.replace(".csv", "_cluster_quality_metrics.csv")
-	results['per_cluster_metrics'].to_csv(cluster_quality_csv, index=False)
-
-	if results['problematic_clusters']:
-		if verbose:
-			print(f"\n[WARNING] {len(results['problematic_clusters'])} types of problematic clusters detected! => Exporting for manual review")
-		all_problematic_ids = list()
-		for issue in results['problematic_clusters']:
-			if issue['severity'] in ['HIGH', 'MEDIUM']:
-				all_problematic_ids.extend(issue['cluster_ids'])
-	
-		if all_problematic_ids:
-			problematic_csv = clusters_fname.replace(".csv", "_problematic_clusters_review.csv")
-			export_problematic_clusters(
-				labels=unique_labels_array,
-				cluster_assignments=cluster_labels,
-				canonical_labels=canonical_map,
-				problematic_cluster_ids=list(set(all_problematic_ids)),
-				output_path=problematic_csv
-			)
-
-	if verbose:
-		print(f"Clustered {len(df)} labels into {df['cluster'].nunique()} clusters")
-		print(f"{type(df)} {df.shape} {list(df.columns)}")
-		print(df.head(15))
-		print(df.info())
-		print(f"[CLUSTERING] Total Elapsed Time: {time.time()-st_t:.1f} sec")
-		print("="*60)
-
-	return df
-
 def assign_canonical_labels(
 	df: pd.DataFrame,
 	X: np.ndarray,
@@ -2844,18 +2305,18 @@ def assign_canonical_labels(
 	the cluster, encode it on-the-fly, and let it compete alongside the real
 	labels.  Five signals then vote:
 
-		1. Cosine similarity to centroid          (w=0.30)
-		2. Corpus frequency, log-normalised       (w=0.15)
-		3. Head-noun dominance across the cluster (w=0.20)
-		4. Lexical containment / hypernym-ness    (w=0.25)
-		5. Brevity (shorter -> more general)      (w=0.10)
+	  1. Cosine similarity to centroid          (w=0.30)
+	  2. Corpus frequency, log-normalised       (w=0.15)
+	  3. Head-noun dominance across the cluster (w=0.20)
+	  4. Lexical containment / hypernym-ness    (w=0.25)
+	  5. Brevity (shorter -> more general)      (w=0.10)
 
 	Token normalisation
 	-------------------
 	All token-level comparisons (containment, head dominance, shared-core
 	extraction) operate on *normalised* tokens:
-		- lowercased
-		- trailing punctuation stripped  ('Ausf.' -> 'ausf')
+	  - lowercased
+	  - trailing punctuation stripped  ('Ausf.' -> 'ausf')
 	This means 'Ausf', 'Ausf.', 'ausf' are treated as the same token, so
 	the containment signal correctly identifies 'Ausf' as a hypernym of all
 	'Ausf X' and 'Ausf. X' variants.
@@ -3006,8 +2467,15 @@ def assign_canonical_labels(
 
 		# ── Build candidate pool ──────────────────────────────────────────
 		# Real labels first; virtual hypernym appended if one can be derived.
+		#
+		# Gate is cluster_size >= 2 (not 3).
+		# Pairs like ['Potsdam Conference', 'Yalta Conference'] are the safest
+		# case for synthesis: with n=2, min_support requires BOTH labels to
+		# share the token (threshold = max(2, ceil(0.5×2)) = 2), which is
+		# strictly more conservative than for larger clusters where some
+		# non-sharing members are tolerated.
 		virtual_hypernym = None
-		if cluster_size >= 3:
+		if cluster_size >= 2:
 			vh = _virtual_hypernym(cluster_texts, min_support=0.5)
 			# Only add if not already present as a normalised match in the cluster
 			if vh is not None:
@@ -3017,7 +2485,29 @@ def assign_canonical_labels(
 					for lbl in cluster_texts
 				)
 				if not already_present:
-					virtual_hypernym = vh
+					# Restore surface capitalisation from the real labels so the
+					# virtual hypernym is not stored as a lowercase fragment.
+					# Strategy: for each normalised token in the core, find the
+					# most frequent real label that contains it and borrow its
+					# capitalisation.  Falls back to title-case if nothing matches.
+					core_toks_norm = _norm_tokens(vh)
+					restored = []
+					for ntok in core_toks_norm:
+						# Collect all surface forms of this normalised token
+						# across real cluster labels, weighted by corpus frequency.
+						surface_forms: dict = {}
+						for lbl in cluster_texts:
+							for raw_tok in lbl.split():
+								if _norm_token(raw_tok) == ntok:
+									freq = original_label_counts.get(lbl, 1)
+									surface_forms[raw_tok] = surface_forms.get(raw_tok, 0) + freq
+						if surface_forms:
+							# Pick the surface form with highest weighted frequency
+							best_surface = max(surface_forms, key=surface_forms.get)
+						else:
+							best_surface = ntok.title()   # safe fallback
+						restored.append(best_surface)
+					virtual_hypernym = " ".join(restored)
 
 		candidates    = cluster_texts + ([virtual_hypernym] if virtual_hypernym else [])
 		virtual_flags = [False] * cluster_size + ([True] if virtual_hypernym else [])
