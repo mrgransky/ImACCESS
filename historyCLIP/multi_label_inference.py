@@ -20,6 +20,7 @@ from historyXN_dataset_loader import (
 )
 
 # from clip directory:
+import clip
 from clip_peft import get_injected_peft_clip, get_adapter_peft_clip
 from probe import get_probe_clip
 from loss import compute_loss_masks
