@@ -127,29 +127,6 @@ pd.set_option('display.width', 1000)
 pd.set_option('display.max_rows', 100)
 sns.set_style("whitegrid")
 
-_FONT_FAMILY = "serif"
-_TITLE_SIZE  = 11
-_LABEL_SIZE  = 9
-_TICK_SIZE   = 8
-_ANNO_SIZE   = 10.0
-_DPI         = 300
-
-def _set_publication_rc():
-	plt.rcParams.update(
-		{
-			"font.family":       _FONT_FAMILY,
-			"font.size":         _LABEL_SIZE,
-			"axes.titlesize":    _TITLE_SIZE,
-			"axes.labelsize":    _LABEL_SIZE,
-			"xtick.labelsize":   _TICK_SIZE,
-			"ytick.labelsize":   _TICK_SIZE,
-			"legend.fontsize":   _TICK_SIZE,
-			"figure.titlesize":  _TITLE_SIZE + 1,
-			"axes.spines.top":   False,
-			"axes.spines.right": False,
-		}
-	)
-
 def plot_multilabel_loss_breakdown(
 		training_losses_breakdown: Dict[str, List[float]],
 		filepath: str,
@@ -323,7 +300,6 @@ def plot_score_distribution_kde(
 	Returns:
 		List of saved file paths
 	"""
-	# _set_publication_rc()
 	os.makedirs(output_dir, exist_ok=True)
 	saved_paths = []
 	
@@ -407,7 +383,6 @@ def plot_qualitative_retrieval_i2t(
 	"""
 	I2T qualitative figure - Publication Ready.
 	"""
-	# _set_publication_rc()
 	strategies = list(results_by_strategy.keys())
 	if not strategies:
 		return ""
@@ -562,7 +537,6 @@ def plot_qualitative_retrieval_t2i(
 	"""
 	T2I qualitative figure - Publication Ready.
 	"""
-	# _set_publication_rc()
 	strategies = list(results_by_strategy.keys())
 	if not strategies:
 		return ""
