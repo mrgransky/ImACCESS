@@ -1,5 +1,4 @@
 import os
-from re import M
 import sys
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
@@ -15,6 +14,7 @@ print(f"sys.path: {sys.path}")
 from utils import *
 from single_label_trainer import *
 from multi_label_trainer import *
+import clip
 
 from historyXN_dataset_loader import get_single_label_dataloaders, get_multi_label_dataloaders
 

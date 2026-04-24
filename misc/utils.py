@@ -3,7 +3,7 @@ import os
 import sys
 import time
 import json
-import clip
+# import clip
 
 import numpy as np
 import pandas as pd

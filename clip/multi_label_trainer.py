@@ -1,6 +1,7 @@
 from utils import *
 from early_stopper import EarlyStopping
 from loss import *
+import clip
 from clip_peft import get_injected_peft_clip, get_adapter_peft_clip
 from probe import get_probe_clip
 from evals import *

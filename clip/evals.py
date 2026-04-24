@@ -1,7 +1,5 @@
 from utils import *
-
-# if USER == "farid":
-# 	from visualize import build_arch_flowchart
+import clip
 
 def check_lora_weight_health(model, optimizer=None, verbose=True):
     issues = []

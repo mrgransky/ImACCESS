@@ -1,4 +1,5 @@
 from utils import *
+import clip
 
 dtypes={
 	'doc_id': str,
