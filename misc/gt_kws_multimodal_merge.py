@@ -226,6 +226,15 @@ def merge_csv_files(
 		label_column='multimodal_canonical_labels'
 	)
 
+	viz.plot_tier_cardinality_distribution(
+		df          = df,
+		label_col   = "multimodal_canonical_labels",
+		output_path = os.path.join(OUTPUT_DIR, "tier_cardinality.png"),
+		head_pct    = 0.10,
+		tail_pct    = 0.50,
+		verbose     = verbose,
+	)
+
 	get_multi_label_stratified_split(
 		df=df,
 		csv_file=output_fpath,

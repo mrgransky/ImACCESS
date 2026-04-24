@@ -2,7 +2,8 @@ import os
 import torch
 import pprint
 import ast
-
+import textwrap
+import time
 import inspect
 import time
 import random
@@ -18,7 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.patches import Patch
 from matplotlib.gridspec import GridSpec
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap, to_rgba
 from matplotlib.lines import Line2D
 
 from PIL import Image, ImageDraw, ImageFont
@@ -69,21 +70,24 @@ pretrained_colors = {
 	'ViT-L/14@336px': '#696969'
 }
 
-segment_specs = {
+SEGMENT_SPECS = {
 	'Head': {
 		'color': "#009670e4",
+		"facecolor":  "#00967033",
 		'label': 'Head'.upper(),
 		'opacity': 0.2,
 		'fontsize': 16,
 	},
 	'Torso': {
 		'color': "#d4ae02",
+		"facecolor":  "#d4ae0233",
 		'label': 'Torso'.upper(),
 		'opacity': 0.2,
 		'fontsize': 16,
 	},
 	'Tail': {
-		'color': "#ee4747",
+		'color': "#f53d3d",
+		"facecolor":  "#ee474733",
 		'label': 'Tail'.upper(),
 		'opacity': 0.2,
 		'fontsize': 16,
@@ -115,17 +119,462 @@ loss_imp_color = "#004214"
 trainable_param_color = "#0104C9"
 
 modes = ["Image-to-Text", "Text-to-Image"]
-
-segment_colors = {
-	'Head': "#009670e4",
-	'Torso': "#d4ae02",
-	'Tail': "#ee4747",
-}
+TIER_ORDER = list(SEGMENT_SPECS.keys())
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 1000)
 pd.set_option('display.max_rows', 100)
 sns.set_style("whitegrid")
+
+def _parse_label_col(series: pd.Series) -> list:
+	"""Safely parse a column of list-of-strings into a flat Python list."""
+	result = []
+	for entry in series:
+		if isinstance(entry, list):
+			result.append(entry)
+		elif isinstance(entry, str):
+			try:
+				parsed = ast.literal_eval(entry)
+				result.append(parsed if isinstance(parsed, list) else [])
+			except Exception:
+				result.append([])
+		else:
+			result.append([])
+
+	return result
+
+def _compute_label_freq(parsed_labels: list) -> pd.Series:
+	"""Return a pd.Series: label -> global frequency across all samples."""
+	counter = Counter()
+	for labels in parsed_labels:
+		counter.update(labels)
+	
+	return pd.Series(counter, name="frequency").sort_values(ascending=False)
+
+def _assign_tier(label: str, freq_map: dict, tau_head: int, tau_torso: int) -> str:
+	f = freq_map.get(label, 0)
+	if f >= tau_head:
+		return "Head"
+	elif f < tau_torso:
+		return "Tail"
+	else:
+		return "Torso"
+
+def plot_tier_cardinality_distribution(
+	df: pd.DataFrame,
+	label_col: str = "multimodal_canonical_labels",
+	output_path: str = "plots/tier_cardinality_distribution.png",
+	tau_head: Optional[int] = None,
+	tau_torso: Optional[int] = None,
+	head_pct: float = 0.1,
+	tail_pct: float = 0.5,
+	strip_sample_n: int = 2000,    # max points shown in strip overlay
+	figsize: Tuple[float, float] = (13, 6),
+	dpi: int = 200,
+	verbose: bool = True,
+) -> dict:
+	# 1. Parse labels
+	parsed = _parse_label_col(df[label_col])
+	freq_series = _compute_label_freq(parsed)
+	freq_map    = freq_series.to_dict()
+	N_labels    = len(freq_series)
+	N_images    = len(df)
+	if verbose:
+		print(f"\ntier cardinality Parsing column {label_col} from {type(df)} {df.shape}")
+		print(f"  ├─ Total images             : {N_images:,}")
+		print(f"  ├─ Unique canonical labels  : {N_labels:,}")
+		print(f"  └─ Total label occurrences  : {int(freq_series.sum()):,}")
+		print(df.info(verbose=True, memory_usage=True))
+
+	# 2. Tier thresholds
+	freqs_desc = freq_series.values  # already sorted descending
+	
+	if tau_head is None:
+		n_head   = max(1, int(np.ceil(N_labels * head_pct)))
+		tau_head = int(freqs_desc[n_head - 1])
+	
+	if tau_torso is None:
+		n_tail    = max(1, int(np.ceil(N_labels * tail_pct)))
+		tau_torso = int(freqs_desc[N_labels - n_tail])
+	
+	if verbose:
+		print(f"\nTier thresholds")
+		print(type(freq_series), freq_series.shape)
+		print(freq_series.value_counts().head(10))
+		print(f"  ├─ n_head: {n_head} n_tail: {n_tail} ")
+		print(f"  ├─ tau_head  (f >= tau_head({tau_head})  => HEAD)")
+		print(f"  └─ tau_torso (f <  tau_torso({tau_torso}) => TAIL)")
+		print(f"")
+
+	# 3. Per-sample tier cardinality computation
+	# For each image compute cardinality broken down by tier membership of its assigned labels.
+	records = []
+	for idx, labels in enumerate(parsed):
+		if not labels:
+			continue
+		tier_counts = {"Head": 0, "Torso": 0, "Tail": 0}
+		total_card  = len(labels)
+		for lbl in labels:
+			tier = _assign_tier(lbl, freq_map, tau_head, tau_torso)
+			tier_counts[tier] += 1
+		
+		records.append(
+			{
+				"image_idx":       idx,
+				"total_card":      total_card,
+				"head_card":       tier_counts["Head"],
+				"torso_card":      tier_counts["Torso"],
+				"tail_card":       tier_counts["Tail"],
+			}
+		)
+
+	card_df = pd.DataFrame(records)
+	if verbose:
+		print(f"\n[Cardinality] {type(card_df)} {card_df.shape}")
+		print(card_df.describe())
+		print(f"{card_df.head(5)}")
+	
+	# 4. Tier-level label stats
+	head_mask  = freq_series >= tau_head
+	torso_mask = (freq_series >= tau_torso) & (freq_series < tau_head)
+	tail_mask  = freq_series < tau_torso
+	tier_label_counts = {
+		"Head":  int(head_mask.sum()),
+		"Torso": int(torso_mask.sum()),
+		"Tail":  int(tail_mask.sum()),
+	}
+	tier_label_pct = {
+		t: round(tier_label_counts[t] / N_labels * 100, 1)
+		for t in TIER_ORDER
+	}
+
+	tier_occ = {
+		"Head":  int(freq_series[head_mask].sum()),
+		"Torso": int(freq_series[torso_mask].sum()),
+		"Tail":  int(freq_series[tail_mask].sum()),
+	}
+
+	total_occ = sum(tier_occ.values())
+	tier_occ_pct = {
+		t: round(tier_occ[t] / max(total_occ, 1) * 100, 1)
+		for t in TIER_ORDER
+	}
+
+	# Cardinality stats per tier column
+	card_col_map = {"Head": "head_card", "Torso": "torso_card", "Tail": "tail_card"}
+	tier_card_stats = {}
+	for tier in TIER_ORDER:
+		col  = card_col_map[tier]
+		vals = card_df[col]
+		tier_card_stats[tier] = {
+			"mean":   round(float(vals.mean()), 3),
+			"median": round(float(vals.median()), 3),
+			"std":    round(float(vals.std()), 3),
+			"q25":    round(float(vals.quantile(0.25)), 3),
+			"q75":    round(float(vals.quantile(0.75)), 3),
+			"max":    int(vals.max()),
+			"min":    int(vals.min()),
+			# fraction of images that have at least 1 label from this tier
+			"coverage_pct": round(float((vals > 0).mean() * 100), 1),
+			# fraction of images with ZERO labels from this tier
+			"zero_pct":     round(float((vals == 0).mean() * 100), 1),
+		}
+	
+	# Overall cardinality stats
+	total_card_stats = {
+		"mean":   round(float(card_df["total_card"].mean()), 3),
+		"median": round(float(card_df["total_card"].median()), 3),
+		"std":    round(float(card_df["total_card"].std()), 3),
+		"max":    int(card_df["total_card"].max()),
+		"min":    int(card_df["total_card"].min()),
+	}
+
+	# Images with zero tail labels → motivation for coverage argument
+	zero_tail_pct   = tier_card_stats["Tail"]["zero_pct"]
+	zero_head_pct   = tier_card_stats["Head"]["zero_pct"]
+	zero_torso_pct  = tier_card_stats["Torso"]["zero_pct"]
+
+	# 5. Build stats dict (every \PHNUM{})
+	stats = {
+		# Global
+		"N_images":                   N_images,
+		"N_labels":                   N_labels,
+		"label_col":									label_col, 
+		"total_occurrences":          total_occ,
+		"tau_head":                   tau_head,
+		"tau_torso":                  tau_torso,
+		"mean_total_cardinality":     total_card_stats["mean"],
+		"median_total_cardinality":   total_card_stats["median"],
+		"std_total_cardinality":      total_card_stats["std"],
+		"max_total_cardinality":      total_card_stats["max"],
+		"min_total_cardinality":      total_card_stats["min"],
+		# Tier label counts
+		"N_head_labels":              tier_label_counts["Head"],
+		"N_torso_labels":             tier_label_counts["Torso"],
+		"N_tail_labels":              tier_label_counts["Tail"],
+		"pct_head_vocab":             tier_label_pct["Head"],
+		"pct_torso_vocab":            tier_label_pct["Torso"],
+		"pct_tail_vocab":             tier_label_pct["Tail"],
+		# Tier occurrence shares
+		"occ_head":                   tier_occ["Head"],
+		"occ_torso":                  tier_occ["Torso"],
+		"occ_tail":                   tier_occ["Tail"],
+		"pct_occ_head":               tier_occ_pct["Head"],
+		"pct_occ_torso":              tier_occ_pct["Torso"],
+		"pct_occ_tail":               tier_occ_pct["Tail"],
+		# Per-tier cardinality
+		"head_card_mean":             tier_card_stats["Head"]["mean"],
+		"head_card_median":           tier_card_stats["Head"]["median"],
+		"head_card_std":              tier_card_stats["Head"]["std"],
+		"head_card_coverage_pct":     tier_card_stats["Head"]["coverage_pct"],
+		"head_card_zero_pct":         tier_card_stats["Head"]["zero_pct"],
+		"torso_card_mean":            tier_card_stats["Torso"]["mean"],
+		"torso_card_median":          tier_card_stats["Torso"]["median"],
+		"torso_card_std":             tier_card_stats["Torso"]["std"],
+		"torso_card_coverage_pct":    tier_card_stats["Torso"]["coverage_pct"],
+		"torso_card_zero_pct":        tier_card_stats["Torso"]["zero_pct"],
+		"tail_card_mean":             tier_card_stats["Tail"]["mean"],
+		"tail_card_median":           tier_card_stats["Tail"]["median"],
+		"tail_card_std":              tier_card_stats["Tail"]["std"],
+		"tail_card_coverage_pct":     tier_card_stats["Tail"]["coverage_pct"],
+		"tail_card_zero_pct":         tier_card_stats["Tail"]["zero_pct"],
+	}
+
+	# 6. Verbose printout
+	if verbose:
+			div = "=" * 72
+			print(f"\n{div}")
+			print("  PLACEHOLDER VALUES  —  copy into LaTeX \\PHNUM{{}}")
+			print(div)
+			groups = [
+				("GLOBAL", [
+					("N images",                         "N_images"),
+					("N canonical labels",               "N_labels"),
+					("Total label occurrences",          "total_occurrences"),
+					("tau_head (f >= tau_head => HEAD)", "tau_head"),
+					("tau_torso (f < tau_torso => TAIL)","tau_torso"),
+					("Mean total cardinality per image", "mean_total_cardinality"),
+					("Median total cardinality",         "median_total_cardinality"),
+					("Std total cardinality",            "std_total_cardinality"),
+					("Max total cardinality",            "max_total_cardinality"),
+					("Min total cardinality",            "min_total_cardinality"),
+				]),
+				("TIER LABEL COUNTS", [
+					("N head labels",   "N_head_labels"),
+					("N torso labels",  "N_torso_labels"),
+					("N tail labels",   "N_tail_labels"),
+					("Head vocab %",    "pct_head_vocab"),
+					("Torso vocab %",   "pct_torso_vocab"),
+					("Tail vocab %",    "pct_tail_vocab"),
+					("Head occ %",      "pct_occ_head"),
+					("Torso occ %",     "pct_occ_torso"),
+					("Tail occ %",      "pct_occ_tail"),
+				]),
+				("HEAD CARDINALITY (labels/image from head tier)", [
+					("Mean",                    "head_card_mean"),
+					("Median",                  "head_card_median"),
+					("Std",                     "head_card_std"),
+					("Images with >= 1 head label (%)",  "head_card_coverage_pct"),
+					("Images with 0 head labels (%)",    "head_card_zero_pct"),
+				]),
+				("TORSO CARDINALITY (labels/image from torso tier)", [
+					("Mean",                    "torso_card_mean"),
+					("Median",                  "torso_card_median"),
+					("Std",                     "torso_card_std"),
+					("Images with >= 1 torso label (%)", "torso_card_coverage_pct"),
+					("Images with 0 torso labels (%)",   "torso_card_zero_pct"),
+				]),
+				("TAIL CARDINALITY (labels/image from tail tier)", [
+					("Mean",                    "tail_card_mean"),
+					("Median",                  "tail_card_median"),
+					("Std",                     "tail_card_std"),
+					("Images with >= 1 tail label (%)",  "tail_card_coverage_pct"),
+					("Images with 0 tail labels (%)",    "tail_card_zero_pct"),
+				]),
+			]
+
+			for group_name, items in groups:
+				print(f"\n  [{group_name}]")
+				for desc, key in items:
+					val = stats[key]
+					if isinstance(val, float):
+						display = f"{val:,.3f}"
+					elif isinstance(val, int):
+						display = f"{val:,}"
+					else:
+						display = str(val)
+					print(f"    \\PHNUM{{{desc:<50}}}  =>  {display}")
+			
+			print(f"\n{div}")
+			print("  LATEX SNIPPET — ready for §4.3")
+			print(div)
+			msg = textwrap.dedent(f"""\
+				Figure~\\ref{{fig:tier_cardinality}} shows the per-sample label cardinality broken down by frequency tier.
+				
+				Head-tier labels ($f(l) \\geq {tau_head:,}$, {tier_label_counts['Head']:,} labels, 
+				{tier_label_pct['Head']:.1f}% of vocabulary) account for {tier_occ_pct['Head']:.1f}% of all 
+				label occurrences, yet are present in only {tier_card_stats['Head']['coverage_pct']:.1f}% of images 
+				(mean cardinality per image: {tier_card_stats['Head']['mean']:.2f}).
+				
+				By contrast, tail-tier labels ($f(l) < {tau_torso:,}$, {tier_label_counts['Tail']:,} labels, 
+				{tier_label_pct['Tail']:.1f}% of vocabulary) contribute only {tier_occ_pct['Tail']:.1f}% of 
+				occurrences, with {tier_card_stats['Tail']['zero_pct']:.1f}% of images carrying no tail-tier 
+				label at all (mean cardinality: {tier_card_stats['Tail']['mean']:.2f}).
+				
+				This asymmetry directly motivates the positive-class reweighting applied in the I2T direction 
+				of the training objective (Section~\\ref{{ssec:training}}): without reweighting, head-class 
+				gradient dominance would suppress learning signal for the {tier_label_pct['Tail']:.1f}% of 
+				the vocabulary that constitutes the tail.""")
+			print(msg)
+			print(div + "\n")
+
+	fig, axes = plt.subplots(1, 2, figsize=figsize, gridspec_kw={"width_ratios": [2, 1]},)
+	ax_box  = axes[0]   # left: box plots per tier
+	ax_bar  = axes[1]   # right: occurrence share stacked bar
+	rng = np.random.default_rng(42)
+
+	# Left panel: box plots with strip overlay
+	positions  = [1, 2, 3]
+	col_keys   = ["head_card", "torso_card", "tail_card"]
+	tier_data  = [card_df[c].values for c in col_keys]
+	bp = ax_box.boxplot(
+		tier_data,
+		positions    = positions,
+		widths       = 0.45,
+		patch_artist = True,
+		notch        = False,
+		showfliers   = False,   # outliers shown via strip instead
+		medianprops  = dict(color="black", linewidth=2.0),
+		whiskerprops = dict(linewidth=1.2),
+		capprops     = dict(linewidth=1.2),
+		boxprops     = dict(linewidth=1.2),
+		zorder       = 3,
+	)
+	
+	for patch, tier in zip(bp["boxes"], TIER_ORDER):
+		base_color = SEGMENT_SPECS[tier]["color"]
+		# Convert to RGBA and set alpha for transparency
+		face_rgba = to_rgba(base_color, alpha=0.5)
+		patch.set_facecolor(face_rgba)
+		patch.set_edgecolor(base_color)
+
+	for whisker, tier_idx in zip(bp["whiskers"], [0, 0, 1, 1, 2, 2]):
+		tier = TIER_ORDER[tier_idx]
+		whisker.set_color(SEGMENT_SPECS[tier]["color"])
+
+	for cap, tier_idx in zip(bp["caps"], [0, 0, 1, 1, 2, 2]):
+		tier = TIER_ORDER[tier_idx]
+		cap.set_color(SEGMENT_SPECS[tier]["color"])
+	
+	# Strip overlay (jittered scatter)
+	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
+		vals = card_df[col].values.astype(float)
+		if len(vals) > strip_sample_n:
+			idx_sample = rng.choice(len(vals), strip_sample_n, replace=False)
+			vals = vals[idx_sample]
+		jitter = rng.uniform(-0.14, 0.14, size=len(vals))
+		ax_box.scatter(
+			pos + jitter,
+			vals,
+			s         = 3,
+			alpha     = 0.25,
+			color     = SEGMENT_SPECS[tier]["color"],
+			linewidths= 0,
+			zorder    = 2,
+		)
+
+	# Mean marker
+	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
+		mean_val = card_df[col].mean()
+		ax_box.scatter(
+			pos, mean_val,
+			s         = 70,
+			marker    = "D",
+			color     = SEGMENT_SPECS[tier]["color"],
+			edgecolors= "black",
+			linewidths= 0.6,
+			zorder    = 5,
+			label     = f"{SEGMENT_SPECS[tier]['label']} (μ={mean_val:.2f}, med={card_df[col].median():.3f})",
+		)
+	ax_box.set_xticks(positions)
+	ax_box.set_xticklabels(
+		[f"{SEGMENT_SPECS[t]['label']}\n{tier_label_counts[t]:,} labels\n"
+		 f"({tier_label_pct[t]}% vocab)"
+		 for t in TIER_ORDER],
+		fontsize=10,
+	)
+	ax_box.set_ylabel("Labels per image (cardinality)", fontsize=12)
+	ax_box.set_title(
+		"Per-Sample Label Cardinality by Frequency Tier",
+		fontsize=12, fontweight="bold",
+	)
+	ax_box.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.6)
+	ax_box.legend(
+		loc="upper right",
+		fontsize=8.5,
+		frameon=True,
+		framealpha=0.9,
+		edgecolor="#cccccc",
+		title="◆ = mean",
+		title_fontsize=8,
+	)
+	for spine in ax_box.spines.values():
+		spine.set_linewidth(0.7)
+
+	# Right panel: occurrence share stacked horizontal bar
+	occ_vals  = [tier_occ_pct[t] for t in TIER_ORDER]
+	colors_bar = [SEGMENT_SPECS[t]["color"] for t in TIER_ORDER]
+	y_pos = [0]
+	left = 0.0
+	bar_handles = []
+	for i, (tier, val, col) in enumerate(zip(TIER_ORDER, occ_vals, colors_bar)):
+		bar = ax_bar.barh(
+			y_pos, val,
+			left   = left,
+			height = 0.45,
+			color  = col,
+			alpha  = 0.82,
+			label  = f"{SEGMENT_SPECS[tier]['label']} ({val:.1f}%)",
+		)
+		bar_handles.append(bar)
+		
+		# Label inside bar if wide enough
+		if val > 4:
+			ax_bar.text(
+				left + val / 2, 0,
+				f"{SEGMENT_SPECS[tier]['label']}\n{val:.1f}%",
+				ha="center", 
+				va="center",
+				fontsize=9, 
+				fontweight="bold",
+				color="#000000" if val > 10 else "black",
+			)
+		left += val
+	
+	ax_bar.set_xlim(0, 100)
+	ax_bar.set_yticks([])
+	ax_bar.set_xlabel("Share of total label occurrences (%)", fontsize=10)
+	ax_bar.set_title("Occurrence by Tier",fontsize=11, fontweight="bold",)
+	ax_bar.grid(axis="x", linestyle="--", linewidth=0.5, alpha=0.55)
+	for spine in ax_bar.spines.values():
+		spine.set_linewidth(0.7)
+	
+	# Shared annotation: zero-tail warning
+	print(
+		f"{zero_tail_pct:.1f}% of images carry zero tail-tier labels  |  "
+		f"{zero_head_pct:.1f}% carry zero head-tier labels  |  "
+		f"Mean total cardinality = {total_card_stats['mean']:.2f} ± {total_card_stats['std']:.2f}"
+	)
+
+	plt.tight_layout()
+	plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
+	plt.close(fig)
+
+	if verbose:
+		print(json.dumps(stats, indent=2, ensure_ascii=False))
+		print("="*50)
+
+	return stats
 
 def plot_multilabel_loss_breakdown(
 		training_losses_breakdown: Dict[str, List[float]],
@@ -403,7 +852,7 @@ def plot_qualitative_retrieval_i2t(
 	fig_w = IMG_COL_W + GT_COL_W + n_strat * CELL_W
 	fig_h = HEADER_H + num_images * ROW_H
 	print(f"fig_w: {fig_w}, fig_h: {fig_h}")
-	fig = plt.figure(figsize=(fig_w, fig_h), dpi=_DPI)
+	fig = plt.figure(figsize=(fig_w, fig_h), dpi=250)
 	
 	gs = GridSpec(
 		nrows=num_images + 1,
@@ -419,11 +868,20 @@ def plot_qualitative_retrieval_i2t(
 	# Headers
 	ax_h_img = fig.add_subplot(gs[0, 0])
 	ax_h_img.axis("off")
-	ax_h_img.text(0.5, 0.5, "Query Image", ha="center", va="center", fontweight="bold", fontsize=_ANNO_SIZE, transform=ax_h_img.transAxes)
+	ax_h_img.text(
+		0.5, 
+		0.5, 
+		"Query Image", 
+		ha="center", 
+		va="center", 
+		fontweight="bold", 
+		fontsize=11, 
+		transform=ax_h_img.transAxes
+	)
 	
 	ax_h_gt = fig.add_subplot(gs[0, 1])
 	ax_h_gt.axis("off")
-	ax_h_gt.text(0.5, 0.5, "Ground-Truth", ha="center", va="center", fontweight="bold", fontsize=_ANNO_SIZE, transform=ax_h_gt.transAxes)
+	ax_h_gt.text(0.5, 0.5, "Ground-Truth", ha="center", va="center", fontweight="bold", fontsize=11, transform=ax_h_gt.transAxes)
 	
 	for j, strat in enumerate(strategies):
 		ax_h = fig.add_subplot(gs[0, j + 2])
@@ -434,7 +892,7 @@ def plot_qualitative_retrieval_i2t(
 			METHOD_STYLE[strat]["label"],
 			ha="center", 
 			va="center", 
-			fontsize=_TITLE_SIZE, 
+			fontsize=12, 
 			fontweight="bold", 
 			color=METHOD_STYLE.get(strat, {"color": "#000000"})["color"], 
 			transform=ax_h.transAxes
@@ -455,14 +913,14 @@ def plot_qualitative_retrieval_i2t(
 			ax_img.text(0.5, 0.5, "N/A", ha="center", va="center", transform=ax_img.transAxes)
 						
 		segment = sample_ref.get("segment", "")
-		bc = segment_specs.get(segment.capitalize(), {"color": "#AAAAAA"})["color"]
-		ax_img.text(0.02, 0.97, segment.upper(), ha="left", va="top", fontsize=max(_ANNO_SIZE - 1.5, 5.5), fontweight="bold", color="#ffffff", bbox=dict(boxstyle="round,pad=0.15", facecolor=bc, edgecolor="none", alpha=0.85), transform=ax_img.transAxes)
+		bc = SEGMENT_SPECS.get(segment.capitalize(), {"color": "#AAAAAA"})["color"]
+		ax_img.text(0.02, 0.97, segment.upper(), ha="left", va="top", fontsize=max(11 - 1.5, 5.5), fontweight="bold", color="#ffffff", bbox=dict(boxstyle="round,pad=0.15", facecolor=bc, edgecolor="none", alpha=0.85), transform=ax_img.transAxes)
 		
 		# 2. Ground Truth
 		ax_gt = fig.add_subplot(gs[i + 1, 1])
 		ax_gt.axis("off")
 		gt_text = "\n".join(lb for lb in sample_ref["ground_truth"])
-		ax_gt.text(0.05, 0.5, gt_text, ha="left", va="center", fontsize=max(_ANNO_SIZE - 1, 6), color="#141212", transform=ax_gt.transAxes)
+		ax_gt.text(0.05, 0.5, gt_text, ha="left", va="center", fontsize=max(11 - 1, 6), color="#141212", transform=ax_gt.transAxes)
 		
 		# 3. Strategy Cells
 		for j, strat in enumerate(strategies):
@@ -511,16 +969,16 @@ def plot_qualitative_retrieval_i2t(
 	hit_patch = Patch(color="#E8F5E9", ec="#4DAC26", lw=1.5, label="Correct label (hit)")
 	miss_patch = Patch(color="#FFEBEE", ec="#F5695F", lw=1.5, label="Incorrect label (miss)")
 	fig.legend(
-			handles=[hit_patch, miss_patch],
-			loc="lower center",
-			ncol=2,
-			fontsize=_TICK_SIZE,
-			frameon=False,
-			bbox_to_anchor=(0.5, -0.01),
+		handles=[hit_patch, miss_patch],
+		loc="lower center",
+		ncol=2,
+		fontsize=10,
+		frameon=False,
+		bbox_to_anchor=(0.5, -0.01),
 	)
 
 	fname = os.path.join(output_dir, f"qualitative_i2t_tail.png")
-	fig.savefig(fname, dpi=_DPI, bbox_inches="tight")
+	fig.savefig(fname, dpi=250, bbox_inches="tight")
 	plt.close(fig)
 	
 	if verbose:
@@ -534,9 +992,7 @@ def plot_qualitative_retrieval_t2i(
 	topk: int = 1,
 	verbose: bool = False,
 ) -> str:
-	"""
-	T2I qualitative figure - Publication Ready.
-	"""
+	"""T2I qualitative figure"""
 	strategies = list(results_by_strategy.keys())
 	if not strategies:
 		return ""
@@ -556,7 +1012,7 @@ def plot_qualitative_retrieval_t2i(
 	fig_w = QUERY_W + n_strat * CELL_W + 0.0
 	fig_h = HEADER_H + num_labels * ROW_H * topk + 0.0
 	print(f"fig_w: {fig_w}, fig_h: {fig_h}")
-	fig = plt.figure(figsize=(fig_w, fig_h), dpi=_DPI)
+	fig = plt.figure(figsize=(fig_w, fig_h), dpi=250)
 
 	gs = GridSpec(
 		nrows=num_labels + 1,
@@ -577,7 +1033,7 @@ def plot_qualitative_retrieval_t2i(
 		"Query Label", 
 		ha="left", 
 		va="center", 
-		fontsize=_ANNO_SIZE, 
+		fontsize=11, 
 		fontweight="bold", 
 		transform=ax_corner.transAxes
 	)
@@ -591,67 +1047,63 @@ def plot_qualitative_retrieval_t2i(
 			METHOD_STYLE[strat]["label"], 
 			ha="center", 
 			va="center", 
-			fontsize=_TITLE_SIZE, 
+			fontsize=12, 
 			fontweight="bold", 
 			color=METHOD_STYLE.get(strat, {"color": "#000000"})["color"], 
 			transform=ax_h.transAxes
 		)
 
 	for i, sample_ref in enumerate(ref_t2i):
-			query_label = sample_ref["query_label"]
+		query_label = sample_ref["query_label"]
+		
+		ax_q = fig.add_subplot(gs[i + 1, 0])
+		ax_q.axis("off")
+		ax_q.text(
+			0.05, 
+			0.5,
+			query_label,
+			ha="left", 
+			va="center",
+			fontsize=10,
+			fontweight="bold",
+			color="#1A1A2E",
+			wrap=True,
+			transform=ax_q.transAxes,
+		)
+		for j, strat in enumerate(strategies):
+			ax = fig.add_subplot(gs[i + 1, j + 1])
 			
-			ax_q = fig.add_subplot(gs[i + 1, 0])
-			ax_q.axis("off")
-			ax_q.text(
-				0.05, 
-				0.5,
-				query_label,
-				ha="left", 
-				va="center",
-				fontsize=10,
-				fontweight="bold",
-				color="#1A1A2E",
-				wrap=True,
-				transform=ax_q.transAxes,
-			)
-
-			for j, strat in enumerate(strategies):
-				ax = fig.add_subplot(gs[i + 1, j + 1])
-				
-				# Remove axes ticks but keep the spines for the colored border
-				ax.set_xticks([])
-				ax.set_yticks([])
-				
-				strat_data = results_by_strategy[strat]["t2i"]
-				match = next((s for s in strat_data if s["query_label"] == query_label), None)
-				
-				if match is None or not match["retrieved_paths"]:
-					ax.set_facecolor("#EEEEEE")
-					ax.text(0.5, 0.5, "–", ha="center", va="center", transform=ax.transAxes)
-					# Hide spines for empty cells
-					for spine in ax.spines.values():
-						spine.set_visible(False)
-					continue
-										
-				img_path = match["retrieved_paths"][0]
-				img_arr = _load_image_rgb(img_path)
-				
-				if img_arr is not None:
-					ax.imshow(img_arr, aspect="auto")
-				else:
-					ax.set_facecolor("#DDDDDD")
-					ax.text(0.5, 0.5, "Image N/A", ha="center", va="center", transform=ax.transAxes)
-
-				# Apply colored strategy border, slightly thicker to make it pop
+			ax.set_xticks([])
+			ax.set_yticks([])
+			
+			strat_data = results_by_strategy[strat]["t2i"]
+			match = next((s for s in strat_data if s["query_label"] == query_label), None)
+			
+			if match is None or not match["retrieved_paths"]:
+				ax.set_facecolor("#FFFAFA")
+				ax.text(0.5, 0.5, "–", ha="center", va="center", transform=ax.transAxes)
+				# Hide spines for empty cells
 				for spine in ax.spines.values():
-					spine.set_visible(True)
-					spine.set_color(METHOD_STYLE.get(strat, {"color": "#000000"})["color"])
-					spine.set_linewidth(2.0)
+					spine.set_visible(False)
+				continue
+									
+			img_path = match["retrieved_paths"][0]
+			img_arr = _load_image_rgb(img_path)
+			
+			if img_arr is not None:
+				ax.imshow(img_arr, aspect="auto")
+			else:
+				ax.set_facecolor("#DDDDDD")
+				ax.text(0.5, 0.5, "Image N/A", ha="center", va="center", transform=ax.transAxes)
 
-				# REMOVED: the bottom right score badge. Let the image speak for itself.
+			# Apply colored strategy border, slightly thicker to make it pop
+			for spine in ax.spines.values():
+				spine.set_visible(True)
+				spine.set_color(METHOD_STYLE.get(strat, {"color": "#000000"})["color"])
+				spine.set_linewidth(2.0)
 
 	out_fname = os.path.join(output_dir, f"qualitative_t2i_tail.png")
-	fig.savefig(out_fname, dpi=_DPI, bbox_inches="tight")
+	fig.savefig(out_fname, dpi=250, bbox_inches="tight")
 	plt.close(fig)
 	
 	if verbose:
@@ -4737,27 +5189,6 @@ def plot_long_tailed_distribution(
 	tail_labels = label_counts[label_counts < tail_threshold].index.tolist()
 	torso_labels = label_counts[(label_counts >= tail_threshold) & (label_counts <= head_threshold)].index.tolist()
 
-	segment_specs = {
-		'Head': {
-			'color': "#009670e4",
-			'label': 'Head'.upper(),
-			'opacity': 0.2,
-			'fontsize': 16,
-		},
-		'Torso': {
-			'color': "#d4ae02",
-			'label': 'Torso'.upper(),
-			'opacity': 0.2,
-			'fontsize': 16,
-		},
-		'Tail': {
-			'color': "#ee4747",
-			'label': 'Tail'.upper(),
-			'opacity': 0.2,
-			'fontsize': 16,
-		},
-	}
-
 	fig, ax = plt.subplots(
 		figsize=FIGURE_SIZE, 
 		facecolor='white', 
@@ -4799,18 +5230,18 @@ def plot_long_tailed_distribution(
 		ax.axvspan(
 			min(head_indices) - 0.4, 
 			max(head_indices) + 0.4, 
-			alpha=segment_specs['Head']['opacity'],
-			color=segment_specs['Head']['color'],
+			alpha=SEGMENT_SPECS['Head']['opacity'],
+			color=SEGMENT_SPECS['Head']['color'],
 		)
 		ax.text(
 			np.mean(head_indices), 
 			ymax * segment_text_yoffset,
-			f"{segment_specs['Head']['label']}\n({len(head_labels)} labels)",
+			f"{SEGMENT_SPECS['Head']['label']}\n({len(head_labels)} labels)",
 			horizontalalignment='center',
 			verticalalignment='center',
-			fontsize=segment_specs['Head']['fontsize'],
+			fontsize=SEGMENT_SPECS['Head']['fontsize'],
 			fontweight='bold',
-			color=segment_specs['Head']['color'],
+			color=SEGMENT_SPECS['Head']['color'],
 			zorder=5,
 		)
 	
@@ -4818,18 +5249,18 @@ def plot_long_tailed_distribution(
 		ax.axvspan(
 			min(torso_indices) - 0.4, 
 			max(torso_indices) + 0.4, 
-			alpha=segment_specs['Torso']['opacity'],
-			color=segment_specs['Torso']['color'],
+			alpha=SEGMENT_SPECS['Torso']['opacity'],
+			color=SEGMENT_SPECS['Torso']['color'],
 		)
 		ax.text(
 			np.mean(torso_indices), 
 			ymax * segment_text_yoffset, 
-			f"{segment_specs['Torso']['label']}\n({len(torso_labels)} labels)",
+			f"{SEGMENT_SPECS['Torso']['label']}\n({len(torso_labels)} labels)",
 			horizontalalignment='center',
 			verticalalignment='center',
-			fontsize=segment_specs['Torso']['fontsize'],
+			fontsize=SEGMENT_SPECS['Torso']['fontsize'],
 			fontweight='bold',
-			color=segment_specs['Torso']['color'],
+			color=SEGMENT_SPECS['Torso']['color'],
 			zorder=5,
 		)
 	
@@ -4837,18 +5268,18 @@ def plot_long_tailed_distribution(
 		ax.axvspan(
 			min(tail_indices) - 0.4, 
 			max(tail_indices) + 0.4, 
-			alpha=segment_specs['Tail']['opacity'],
-			color=segment_specs['Tail']['color'],
+			alpha=SEGMENT_SPECS['Tail']['opacity'],
+			color=SEGMENT_SPECS['Tail']['color'],
 		)
 		ax.text(
 			np.mean(tail_indices), 
 			ymax * segment_text_yoffset,
-			f"{segment_specs['Tail']['label']}\n({len(tail_labels)} labels)",
+			f"{SEGMENT_SPECS['Tail']['label']}\n({len(tail_labels)} labels)",
 			horizontalalignment='center',
 			verticalalignment='center',
-			fontsize=segment_specs['Tail']['fontsize'],
+			fontsize=SEGMENT_SPECS['Tail']['fontsize'],
 			fontweight='bold',
-			color=segment_specs['Tail']['color'],
+			color=SEGMENT_SPECS['Tail']['color'],
 			zorder=5,
 		)
 	
@@ -4870,7 +5301,7 @@ def plot_long_tailed_distribution(
 	
 	# Add value labels on top of bars
 	for i, v in enumerate(label_counts):
-		text_color = segment_specs['Head']['color'] if i in head_indices else (segment_specs['Torso']['color'] if i in torso_indices else segment_specs['Tail']['color'])
+		text_color = SEGMENT_SPECS['Head']['color'] if i in head_indices else (SEGMENT_SPECS['Torso']['color'] if i in torso_indices else SEGMENT_SPECS['Tail']['color'])
 		ax.text(
 			i, 
 			v + (v * 0.015),  # Adjust vertical position relative to bar height
@@ -5145,7 +5576,8 @@ def plot_single_labeled_head_torso_tail_samples(
 	for r, segment_name in enumerate(rows):
 		row_center_y = r * tile_h_total + tile_h_total // 2
 		text = segment_name
-		color = segment_colors[segment_name]
+		# color = segment_colors[segment_name]
+		color = SEGMENT_SPECS[segment_name]['color']
 		
 		# Get text dimensions
 		if hasattr(row_font, "getbbox"):
