@@ -51,6 +51,11 @@ dtypes = {
 	'country': str,
 }
 
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', 1000)
+pd.set_option('display.max_rows', 100)
+sns.set_style("whitegrid")
+
 strategy_colors = {
 	'full': "#012894", 
 	'lora': '#f58320be', 
@@ -69,6 +74,18 @@ pretrained_colors = {
 	'ViT-L/14': '#e377c2', 
 	'ViT-L/14@336px': '#696969'
 }
+
+positive_pct_col = "#357402ff"
+negative_pct_col = "#c0003aff"
+transition_color = "#00A336"
+early_stop_color = "#1D0808"
+best_model_color = "#C002A7"
+train_loss_color = "#0010F3"
+val_loss_color = "#C27E00"
+loss_imp_color = "#004214"
+trainable_param_color = "#0104C9"
+
+modes = ["Image-to-Text", "Text-to-Image"]
 
 SEGMENT_SPECS = {
 	'Head': {
@@ -108,23 +125,7 @@ METHOD_STYLE = {
 	"tip_adapter_f":    {"label": "Tip-Adapter-F",      "color": "#7CCBFF",  "ls": "--",      "marker": "s"},
 }
 
-positive_pct_col = "#357402ff"
-negative_pct_col = "#c0003aff"
-transition_color = "#00A336"
-early_stop_color = "#1D0808"
-best_model_color = "#C002A7"
-train_loss_color = "#0010F3"
-val_loss_color = "#C27E00"
-loss_imp_color = "#004214"
-trainable_param_color = "#0104C9"
-
-modes = ["Image-to-Text", "Text-to-Image"]
 TIER_ORDER = list(SEGMENT_SPECS.keys())
-
-pd.set_option('display.max_columns', None)
-pd.set_option('display.width', 1000)
-pd.set_option('display.max_rows', 100)
-sns.set_style("whitegrid")
 
 def _parse_label_col(series: pd.Series) -> list:
 	"""Safely parse a column of list-of-strings into a flat Python list."""
@@ -201,7 +202,8 @@ def plot_tier_cardinality_distribution(
 		print(f"\nTier thresholds")
 		print(type(freq_series), freq_series.shape)
 		print(freq_series.value_counts().head(10))
-		print(f"  ├─ n_head: {n_head} n_tail: {n_tail} ")
+		print(f"  ├─ head_pct: {head_pct} n_head: {n_head}")
+		print(f"  └─ tail_pct: {tail_pct} n_tail: {n_tail}")
 		print(f"  ├─ tau_head  (f >= tau_head({tau_head})  => HEAD)")
 		print(f"  └─ tau_torso (f <  tau_torso({tau_torso}) => TAIL)")
 		print(f"")
@@ -494,7 +496,7 @@ def plot_tier_cardinality_distribution(
 			edgecolors= "black",
 			linewidths= 0.6,
 			zorder    = 5,
-			label     = f"{SEGMENT_SPECS[tier]['label']} (μ={mean_val:.2f}, med={card_df[col].median():.3f})",
+			label     = f"{SEGMENT_SPECS[tier]['label']} (μ={mean_val:.2f}, med={card_df[col].median()})",
 		)
 	ax_box.set_xticks(positions)
 	ax_box.set_xticklabels(
