@@ -2042,35 +2042,6 @@ def lora_plus_finetune_multi_label(
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 
-	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
-	model.eval()
-	all_class_embeds = []
-	text_batch_size = validation_loader.batch_size
-	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
-	with torch.no_grad():
-		with torch.amp.autocast(
-			device_type=device.type, 
-			enabled=torch.cuda.is_available(),
-			dtype=amp_dtype,
-		):
-			for i in range(0, num_classes, text_batch_size):
-				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
-				embeds = model.encode_text(batch_tokens)
-				embeds = torch.nn.functional.normalize(embeds, dim=-1)
-				all_class_embeds.append(embeds.cpu())
-
-				del batch_tokens, embeds
-				torch.cuda.empty_cache()
-
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
-
-	if verbose:
-		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
-		print(f"   ├─ {type(all_class_embeds)}")
-		print(f"   ├─ {all_class_embeds.shape}")
-		print(f"   ├─ {all_class_embeds.dtype}")
-		print(f"   └─ {all_class_embeds.device}")
-
 	# Separate LoRA A and B parameters for differential LR
 	lora_A_params = [p for n, p in model.named_parameters() if p.requires_grad and "lora_A" in n]
 	lora_B_params = [p for n, p in model.named_parameters() if p.requires_grad and "lora_B" in n]
@@ -2135,36 +2106,67 @@ def lora_plus_finetune_multi_label(
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
-	if cuda_capability[0] >= 8:
-		B_MAX_NORM = 50.0  # BF16 on A100 — generous ceiling
+	is_ampere_or_newer = cuda_capability[0] >= 8
+
+	if is_ampere_or_newer:
+		B_MAX_NORM = 50.0
+		amp_enabled = True
 		scaler = torch.amp.GradScaler(
 			device=device,
-			init_scale=2**11,      # 2048 (Conservative start)
-			growth_factor=1.5,     # Smoother growth than default 2.0
-			backoff_factor=0.5,    # Standard
-			growth_interval=5000,  # Keep scale stable longer
+			init_scale=2**11,
+			growth_factor=1.5,
+			backoff_factor=0.5,
+			growth_interval=5000,
 		)
 	else:
-		B_MAX_NORM = 10.0   # FP16 on V100 — tight ceiling to prevent forward overflow
-		scaler = torch.amp.GradScaler(
-			device=device,
-			init_scale=2**8,       # 256 — very conservative for FP16 on V100
-			growth_factor=1.2,     # slow growth to avoid overflow in deep ViT layers
-			backoff_factor=0.5,
-			growth_interval=10000, # rarely grow
-		)
+		B_MAX_NORM = 10.0
+		amp_enabled = False  # AMP disabled — FP16 on V100 is unstable for ViT-L LoRA+
+		scaler = None
 
 	if verbose:
-		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
-		scaler_state = scaler.state_dict()
-		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
-		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
-		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
-		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ AMP dtype: {amp_dtype} (cuda_cap: {cuda_capability})")
-		print()
+		print(f"\nAMP Configuration:")
+		print(f"  ├─ Enabled: {amp_enabled}")
+		print(f"  ├─ dtype: {amp_dtype if amp_enabled else 'FP32 (AMP disabled)'}")
+		print(f"  ├─ B_MAX_NORM: {B_MAX_NORM}")
+		if scaler is not None:
+			scaler_state = scaler.state_dict()
+			print(f"  ├─ GradScaler init_scale: {scaler_state.get('scale', 'N/A')}")
+			print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
+			print(f"  └─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
+		else:
+			print(f"  └─ GradScaler: disabled")
 
-	# scaler = None  # AMP disabled for LoRA+ — differential lr unstable with GradScaler
+	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
+	model.eval()
+	all_class_embeds = []
+	text_batch_size = validation_loader.batch_size
+	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	with torch.no_grad():
+		with torch.amp.autocast(
+			device_type=device.type, 
+			enabled=amp_enabled,#torch.cuda.is_available(),
+			dtype=amp_dtype,
+		):
+			for i in range(0, num_classes, text_batch_size):
+				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
+				embeds = model.encode_text(batch_tokens)
+				embeds = torch.nn.functional.normalize(embeds, dim=-1)
+				all_class_embeds.append(embeds.cpu())
+
+				del batch_tokens, embeds
+				torch.cuda.empty_cache()
+
+	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
+
+	if verbose:
+		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
+		print(f"   ├─ {type(all_class_embeds)}")
+		print(f"   ├─ {all_class_embeds.shape}")
+		print(f"   ├─ {all_class_embeds.dtype}")
+		print(f"   └─ {all_class_embeds.device}")
+
+
+
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -2229,7 +2231,7 @@ def lora_plus_finetune_multi_label(
 			
 			with torch.amp.autocast(
 				device_type=device.type,
-				enabled=torch.cuda.is_available(),
+				enabled=amp_enabled,#torch.cuda.is_available(),
 				dtype=amp_dtype,
 			):
 				# Multi-label contrastive loss computation
