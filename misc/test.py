@@ -63,20 +63,65 @@ Returns
 -------
 dict — all computed statistics keyed by placeholder description.
 """
+from pickle import STOP
+
 import visualize as viz
 from utils import *
 
-if __name__ == "__main__":
-	print("Running smoke-test with synthetic multi-label data …")
-	sim_df = pd.read_csv("/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv")
-	
-	viz.plot_tier_cardinality_distribution(
-		df          = sim_df,
-		label_col   = "multimodal_canonical_labels",
-		output_path = "smoke_test_tier_cardinality.png",
-		head_pct    = 0.10,
-		tail_pct    = 0.50,
-		verbose     = True,
-		figsize     = (13, 6),
-		dpi         = 200,
+# STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
+STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
+# custom_stopwords_list = requests.get("https://raw.githubusercontent.com/stopwords-iso/stopwords-en/refs/heads/master/stopwords-en.txt").content
+# stopwords = set(custom_stopwords_list.decode().splitlines())
+meaningless_words_path = 'meaningless_words.txt'
+with open(meaningless_words_path, 'r') as file_:
+	stopwords = set(
+		[
+			line.strip().lower() 
+			for line in file_
+		]
 	)
+STOPWORDS.update(stopwords)
+
+geographic_references_path = 'geographic_references.txt'
+with open(geographic_references_path, 'r') as file_:
+	geographic_references = set(
+		[
+			line.strip().lower()
+			for line in file_ 
+			if line.strip()
+		]
+	)
+STOPWORDS.update(geographic_references)
+print(len(STOPWORDS), type(STOPWORDS))
+# print(geographic_references)
+
+lemmatizer = nltk.stem.WordNetLemmatizer()
+# lemma = "Americans"
+lemma = "Middle Eastern"
+normalized_lemma = lemmatizer.lemmatize(lemma.lower())
+print(normalized_lemma)
+tokenized_lemma = re.split(r'[ -]+', lemma.lower())   # split on space or hyphen
+print(tokenized_lemma)
+
+if (
+	any(tok in geographic_references for tok in tokenized_lemma) 
+	or lemma in geographic_references
+	or lemmatizer.lemmatize(lemma.lower()) in geographic_references
+):
+	print(f"        → {repr(lemma)} Geographic reference detected, skipping")
+else:
+	print(f"{repr(lemma)} seems fine!")
+# if __name__ == "__main__":
+# 	print("Running smoke-test with synthetic multi-label data …")
+# 	sim_df = pd.read_csv("/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv")
+	
+# 	viz.plot_tier_cardinality_distribution(
+# 		df          = sim_df,
+# 		label_col   = "multimodal_canonical_labels",
+# 		output_path = "smoke_test_tier_cardinality.png",
+# 		head_pct    = 0.10,
+# 		tail_pct    = 0.50,
+# 		verbose     = True,
+# 		figsize     = (13, 6),
+# 		dpi         = 200,
+# 	)

@@ -38,6 +38,7 @@ nltk_modules = [
 	'omw-1.4',
 	'stopwords',
 ]
+lemmatizer = nltk.stem.WordNetLemmatizer()
 
 # check if nltk_data exists:
 try:
@@ -416,7 +417,6 @@ def _post_process_(
 		# Has specific words → Keep
 		return False
 
-	lemmatizer = nltk.stem.WordNetLemmatizer()
 
 	def get_wordnet_pos(treebank_tag):
 		"""Convert Penn Treebank POS tag to WordNet POS tag"""
@@ -600,9 +600,14 @@ def _post_process_(
 			if verbose:
 				print(f">> Checking lemma: {repr(lemma)}")
 
+			if lemma.endswith("ville"):
+				if verbose:
+					print(f"        → {repr(lemma)} ends with 'ville', skipping")
+				continue
+
 			if lemma.isupper():
 				if verbose:
-					print(f"        → {lemma} All uppercase detected, skipping")
+					print(f"        → {repr(lemma)} All uppercase detected, skipping")
 				continue
 
 			if len(lemma) < min_kw_ch_length:
@@ -645,7 +650,12 @@ def _post_process_(
 
 			# tokenized_lemma = re.split(r'[ .-]+', lemma.lower())   # split on space, hyphen or dot (U.S. Route 66)
 			tokenized_lemma = re.split(r'[ -]+', lemma.lower())   # split on space or hyphen
-			if any(tok in geographic_references for tok in tokenized_lemma):
+			# if any(tok in geographic_references for tok in tokenized_lemma):
+			if (
+				any(tok in geographic_references for tok in tokenized_lemma) 
+				or lemma in geographic_references
+				or lemmatizer.lemmatize(lemma.lower()) in geographic_references
+			):
 				if verbose:
 					print(f"        → {repr(lemma)} Geographic reference detected, skipping")
 				continue

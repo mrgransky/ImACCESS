@@ -6,6 +6,7 @@ Balkan
 Baltic
 Caribbean
 Europe
+Middle East
 Oceania
 North America
 South America
@@ -34,6 +35,7 @@ Belize
 Benin
 Bhutan
 Bolivia
+Bosnia
 Bosnia and Herzegovina
 Botswana
 Bohemia
@@ -187,10 +189,12 @@ Puerto Rico
 
 Qatar
 
+Rhodesia
 Romania
 Rumania
 Roumania
 Russia
+Russland
 Rwanda
 
 Saint Kitts and Nevis
@@ -379,13 +383,16 @@ Cal.
 Dandridge
 Dakota
 Davenport
+Duluth
 Echo
 Echo, UT
 Echo UT
 El Paso
+Ephrata
 Evansville
 FL.
 Gallipolis
+Gilbertsville
 Guadalcanal
 Hartford
 Halifax
@@ -478,6 +485,7 @@ Pomona
 Princeton
 Provo
 P. Rico
+Redwood
 Richmond
 St. Louis
 City of St. Louis
@@ -507,18 +515,20 @@ San Francisco, Calif.
 San Jacinto
 San Jacinto, Texas
 San Jose
+Scotia
 Seattle
 Spadra
 Spadra, CA.
+Somerville
+Tampa
 Tarrytown
 Texas City
 Toledo
 Trinidad
 Trinidad, CO
 Trinidad
+Tulsa
 Nova Scotia
-Scotia
-Somerville
 Waterbury
 Washington DC
 Wash. D.C.
@@ -562,6 +572,7 @@ Bosphorus
 Bougainville
 Bremen
 Brasilia
+Brisbane
 Bristol
 Brough
 Brussels
@@ -572,6 +583,7 @@ Budapest
 Burma
 Cadiz
 Cairo
+Calgary
 Cambridge
 Canberra
 Canso
@@ -603,6 +615,7 @@ Dunkerque
 Duxford
 Eindhoven
 Essex
+Exeter
 Farnborough
 Flensborg
 Flensburg
@@ -614,6 +627,7 @@ Fowlmere
 Frankfurt
 Frihavn
 Gallipoli
+Gander
 Gaza
 Geneva
 Glasgow
@@ -621,6 +635,7 @@ Green Bay
 Greenock
 Hamburg
 Hong Kong
+Hampshire
 Hanoi
 Havana
 Helensburgh
@@ -656,6 +671,7 @@ La Crosse
 Leipzig
 Lexington
 Liatorp
+Libourne
 Lille
 Liverpool
 Lindholmen
@@ -666,11 +682,14 @@ Manila
 Manston
 Marrakech
 Medina
+Melbourne
 Mesopotamian
 Mexico City
 Milan
 Milwaukee
 Minsk
+Montreal
+Moncton
 Moscov
 Moscow
 Munich
@@ -707,6 +726,7 @@ Malaga
 Managua
 Manchester
 Marseille
+Montpellier
 Norfolk
 Murcia
 Nuremberg
@@ -746,10 +766,13 @@ Shanghai
 Sinai
 Sicily
 Siena
+Shacktown 
+Shantytown
 Southampton
 Stavanger
 Stirling
 Stockholm
+Strasburg
 Strömsund
 Stumholmen
 Stuttgart
@@ -760,12 +783,14 @@ Tehachapi
 Tel Aviv
 Tokio
 Tokyo
+Townsville
 Transylvania
 Trondheim
 Truro
 Tunis
 Tuscany
 Valladolid
+Valparaíso
 Vancouver
 Venice
 Vera Cruz
@@ -790,6 +815,7 @@ Algerian
 American
 Arab
 Arabian
+Armenian
 Asian
 Aussie
 Australian
@@ -803,14 +829,18 @@ Brazilian
 Bulgarian
 British
 Canadian
+Czechoslovak
 Chinese
 Chilean
+Congolese
+Costa Rican
 Cuban
 Croatian
 Danish
 Dutch
 Egyptian
 English
+Eritrean
 European
 Finnish
 Filipino
@@ -829,6 +859,7 @@ Irish
 Italian
 Israeli
 Japanese
+Jordanian
 Korean
 Kurd
 Kurdish
@@ -839,6 +870,8 @@ Malian
 Malaysian
 Mediterranean
 Mexican
+Middle Eastern
+Moldovan
 Mongolian
 Moroccan
 Morval
@@ -848,6 +881,7 @@ Nigerian
 Norwegian
 North Korean
 Okinawan
+Palestinian
 Papuan
 Pusan
 Persian
@@ -860,6 +894,7 @@ Russian
 San Diegan
 Scandinavian
 Scottish
+Senegalese
 Serbian
 Slovenian
 Slovak

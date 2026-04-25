@@ -315,10 +315,10 @@ def probe_multi_label(
 	
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 (Conservative start)
-		growth_factor=1.5,     # Smoother growth than default 2.0
+		init_scale=2**15,      # 2048 (Conservative start)
+		growth_factor=2.0,     # Smoother growth than default 2.0
 		backoff_factor=0.5,    # Standard
-		growth_interval=5000,  # Keep scale stable longer
+		growth_interval=2000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -943,10 +943,10 @@ def full_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 (Conservative start)
-		growth_factor=1.5,     # Smoother growth than default 2.0
+		init_scale=2**15,      # 2048 (Conservative start)
+		growth_factor=2.0,     # Smoother growth than default 2.0
 		backoff_factor=0.5,    # Standard
-		growth_interval=5000,  # Keep scale stable longer
+		growth_interval=2000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -1513,10 +1513,10 @@ def lora_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 (Conservative start)
-		growth_factor=1.5,     # Smoother growth than default 2.0
+		init_scale=2**15,      # 2048 (Conservative start)
+		growth_factor=2.0,     # Smoother growth than default 2.0
 		backoff_factor=0.5,    # Standard
-		growth_interval=5000,  # Keep scale stable longer
+		growth_interval=2000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -2114,13 +2114,13 @@ def lora_plus_finetune_multi_label(
 		amp_enabled = True
 		scaler = torch.amp.GradScaler(
 			device=device,
-			init_scale=2**11,
-			growth_factor=1.5,
+			init_scale=2**15,
+			growth_factor=2.0,
 			backoff_factor=0.5,
-			growth_interval=5000,
+			growth_interval=2000,
 		)
 	else:
-		B_MAX_NORM = 10.0
+		B_MAX_NORM = 25.0
 		amp_enabled = False  # AMP disabled — FP16 on V100 is unstable for ViT-L LoRA+
 		scaler = None
 
@@ -2137,7 +2137,7 @@ def lora_plus_finetune_multi_label(
 		else:
 			print(f"  └─ GradScaler: disabled")
 
-	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
+	# Pre-encode class texts (frozen text encoder — valid for entire run)
 	model.eval()
 	all_class_embeds = []
 	text_batch_size = validation_loader.batch_size
@@ -2165,9 +2165,6 @@ def lora_plus_finetune_multi_label(
 		print(f"   ├─ {all_class_embeds.shape}")
 		print(f"   ├─ {all_class_embeds.dtype}")
 		print(f"   └─ {all_class_embeds.device}")
-
-
-
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -2891,10 +2888,10 @@ def rslora_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 (Conservative start)
-		growth_factor=1.5,     # Smoother growth than default 2.0
+		init_scale=2**15,      # 2048 (Conservative start)
+		growth_factor=2.0,     # Smoother growth than default 2.0
 		backoff_factor=0.5,    # Standard
-		growth_interval=5000,  # Keep scale stable longer
+		growth_interval=2000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -3496,10 +3493,10 @@ def dora_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 (Conservative start)
-		growth_factor=1.5,     # Smoother growth than default 2.0
+		init_scale=2**15,      # 2048 (Conservative start)
+		growth_factor=2.0,     # Smoother growth than default 2.0
 		backoff_factor=0.5,    # Standard
-		growth_interval=5000,  # Keep scale stable longer
+		growth_interval=2000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -4116,10 +4113,10 @@ def ia3_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 (Conservative start)
-		growth_factor=1.5,     # Smoother growth than default 2.0
+		init_scale=2**15,      # 2048 (Conservative start)
+		growth_factor=2.0,     # Smoother growth than default 2.0
 		backoff_factor=0.5,    # Standard
-		growth_interval=5000,  # Keep scale stable longer
+		growth_interval=2000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -4743,10 +4740,10 @@ def vera_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 (Conservative start)
-		growth_factor=1.5,     # Smoother growth than default 2.0
+		init_scale=2**15,      # 2048 (Conservative start)
+		growth_factor=2.0,     # Smoother growth than default 2.0
 		backoff_factor=0.5,    # Standard
-		growth_interval=5000,  # Keep scale stable longer
+		growth_interval=2000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -5350,10 +5347,10 @@ def clip_adapter_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 (Conservative start)
-		growth_factor=1.5,     # Smoother growth than default 2.0
+		init_scale=2**15,      # 2048 (Conservative start)
+		growth_factor=2.0,     # Smoother growth than default 2.0
 		backoff_factor=0.5,    # Standard
-		growth_interval=5000,  # Keep scale stable longer
+		growth_interval=2000,  # Keep scale stable longer
 	)
 
 	if verbose:
@@ -6151,10 +6148,10 @@ def tip_adapter_finetune_multi_label(
 	
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**11,      # 2048 (Conservative start)
-		growth_factor=1.5,     # Smoother growth than default 2.0
+		init_scale=2**15,      # 2048 (Conservative start)
+		growth_factor=2.0,     # Smoother growth than default 2.0
 		backoff_factor=0.5,    # Standard
-		growth_interval=5000,  # Keep scale stable longer
+		growth_interval=2000,  # Keep scale stable longer
 	)
 
 	if verbose:
