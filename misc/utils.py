@@ -24,7 +24,7 @@ import certifi
 import networkx as nx
 import scipy
 import hashlib
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, TensorDataset
 import huggingface_hub
 import io
 import pprint
@@ -66,7 +66,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import normalize, MultiLabelBinarizer
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, precision_recall_curve, roc_curve, auc, f1_score, hamming_loss
 from sklearn.neighbors import NearestNeighbors
 
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, TimeoutError
