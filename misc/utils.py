@@ -228,6 +228,7 @@ def save_tiered_retrieval_metrics(
 		print("="*120)
 		print(strategy.upper())
 		print(json.dumps(per_k, indent=2, ensure_ascii=False))
+
 		print(f"\nRetrieval Tiered Metrics:")
 		collected_retrieval_methods = list(retrieval_accumulated.keys())
 		n_methods = len(collected_retrieval_methods)
@@ -242,10 +243,10 @@ def save_tiered_retrieval_metrics(
 		print("="*120)
 
 def get_updated_model_name(
-		original_path:str, 
-		actual_epochs:int, 
-		additional_info: dict=None
-	) -> str:
+	original_path:str, 
+	actual_epochs:int, 
+	additional_info: dict=None
+) -> str:
 
 	if not os.path.exists(original_path):
 		print(f"Warning: Original model file not found at {original_path}")
