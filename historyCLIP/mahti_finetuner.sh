@@ -71,7 +71,8 @@
 #   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
-#SBATCH --array=0-32
+###SBATCH --array=0-32
+#SBATCH --array=3-5
 
 set -euo pipefail
 
