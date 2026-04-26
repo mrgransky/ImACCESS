@@ -1053,6 +1053,9 @@ downstream
 right
 left
 unidentified
+perfect
+A. A. Robinson
+A. Philip Randolph
 ne view
 se view
 sw view
@@ -1238,4 +1241,3 @@ black-and-white snapshot
 color snapshot
 medresse
 coco-cola
-perfect
