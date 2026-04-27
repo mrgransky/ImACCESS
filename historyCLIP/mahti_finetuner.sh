@@ -11,8 +11,6 @@
 #SBATCH --mem=248G
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1
-#SBATCH --array=0-131
-####SBATCH --array=0
 #SBATCH --time=1-12:00:00
 
 ##############################################################################
