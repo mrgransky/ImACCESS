@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=128G
+#SBATCH --mem=256G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --time=03-00:00:00
@@ -69,8 +69,9 @@
 #   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
-#SBATCH --array=0-32
+###SBATCH --array=0-32
 ###SBATCH --array=12-14 # only LoRA+
+#SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 
 set -euo pipefail
 
