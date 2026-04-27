@@ -169,19 +169,22 @@ def plot_tier_cardinality_distribution(
 	tau_torso: Optional[int] = None,
 	head_pct: float = 0.1,
 	tail_pct: float = 0.5,
-	strip_sample_n: int = 2000,    # max points shown in strip overlay
-	figsize: Tuple[float, float] = (13, 6),
-	dpi: int = 200,
+	strip_sample_n: int = 2000,
+	figsize: Tuple[float, float] = (8, 6),
+	dpi: int = 250,
 	verbose: bool = True,
 ) -> dict:
+
 	# 1. Parse labels
-	parsed = _parse_label_col(df[label_col])
+	parsed      = _parse_label_col(df[label_col])
 	freq_series = _compute_label_freq(parsed)
 	freq_map    = freq_series.to_dict()
 	N_labels    = len(freq_series)
 	N_images    = len(df)
 	if verbose:
-		print(f"\ntier cardinality Parsing column {label_col} from {type(df)} {df.shape}")
+		print(f"\nTier cardinality")
+		print(f"  ├─ column {label_col}")
+		print(f"  ├─ {type(df)} {df.shape}")
 		print(f"  ├─ Total images             : {N_images:,}")
 		print(f"  ├─ Unique canonical labels  : {N_labels:,}")
 		print(f"  └─ Total label occurrences  : {int(freq_series.sum()):,}")
@@ -189,15 +192,15 @@ def plot_tier_cardinality_distribution(
 
 	# 2. Tier thresholds
 	freqs_desc = freq_series.values  # already sorted descending
-	
+
 	if tau_head is None:
 		n_head   = max(1, int(np.ceil(N_labels * head_pct)))
 		tau_head = int(freqs_desc[n_head - 1])
-	
+
 	if tau_torso is None:
 		n_tail    = max(1, int(np.ceil(N_labels * tail_pct)))
 		tau_torso = int(freqs_desc[N_labels - n_tail])
-	
+
 	if verbose:
 		print(f"\nTier thresholds")
 		print(type(freq_series), freq_series.shape)
@@ -206,83 +209,70 @@ def plot_tier_cardinality_distribution(
 		print(f"  └─ tail_pct: {tail_pct} n_tail: {n_tail}")
 		print(f"  ├─ tau_head  (f >= tau_head({tau_head})  => HEAD)")
 		print(f"  └─ tau_torso (f <  tau_torso({tau_torso}) => TAIL)")
-		print(f"")
+		print()
 
-	# 3. Per-sample tier cardinality computation
-	# For each image compute cardinality broken down by tier membership of its assigned labels.
+	# 3. Per-sample tier cardinality
 	records = []
 	for idx, labels in enumerate(parsed):
 		if not labels:
 			continue
 		tier_counts = {"Head": 0, "Torso": 0, "Tail": 0}
-		total_card  = len(labels)
 		for lbl in labels:
-			tier = _assign_tier(lbl, freq_map, tau_head, tau_torso)
-			tier_counts[tier] += 1
-		
-		records.append(
-			{
-				"image_idx":       idx,
-				"total_card":      total_card,
-				"head_card":       tier_counts["Head"],
-				"torso_card":      tier_counts["Torso"],
-				"tail_card":       tier_counts["Tail"],
-			}
-		)
+			tier_counts[_assign_tier(lbl, freq_map, tau_head, tau_torso)] += 1
+		records.append({
+			"image_idx":  idx,
+			"total_card": len(labels),
+			"head_card":  tier_counts["Head"],
+			"torso_card": tier_counts["Torso"],
+			"tail_card":  tier_counts["Tail"],
+		})
 
 	card_df = pd.DataFrame(records)
 	if verbose:
 		print(f"\n[Cardinality] {type(card_df)} {card_df.shape}")
 		print(card_df.describe())
-		print(f"{card_df.head(5)}")
-	
+		print(card_df.head(5))
+
 	# 4. Tier-level label stats
 	head_mask  = freq_series >= tau_head
 	torso_mask = (freq_series >= tau_torso) & (freq_series < tau_head)
 	tail_mask  = freq_series < tau_torso
+
 	tier_label_counts = {
 		"Head":  int(head_mask.sum()),
 		"Torso": int(torso_mask.sum()),
 		"Tail":  int(tail_mask.sum()),
 	}
 	tier_label_pct = {
-		t: round(tier_label_counts[t] / N_labels * 100, 1)
-		for t in TIER_ORDER
+		t: round(tier_label_counts[t] / N_labels * 100, 1) for t in TIER_ORDER
 	}
-
 	tier_occ = {
 		"Head":  int(freq_series[head_mask].sum()),
 		"Torso": int(freq_series[torso_mask].sum()),
 		"Tail":  int(freq_series[tail_mask].sum()),
 	}
-
-	total_occ = sum(tier_occ.values())
+	total_occ    = sum(tier_occ.values())
 	tier_occ_pct = {
-		t: round(tier_occ[t] / max(total_occ, 1) * 100, 1)
-		for t in TIER_ORDER
+		t: round(tier_occ[t] / max(total_occ, 1) * 100, 1) for t in TIER_ORDER
 	}
 
-	# Cardinality stats per tier column
-	card_col_map = {"Head": "head_card", "Torso": "torso_card", "Tail": "tail_card"}
+	card_col_map   = {"Head": "head_card", "Torso": "torso_card", "Tail": "tail_card"}
 	tier_card_stats = {}
 	for tier in TIER_ORDER:
 		col  = card_col_map[tier]
 		vals = card_df[col]
 		tier_card_stats[tier] = {
-			"mean":   round(float(vals.mean()), 3),
-			"median": round(float(vals.median()), 3),
-			"std":    round(float(vals.std()), 3),
-			"q25":    round(float(vals.quantile(0.25)), 3),
-			"q75":    round(float(vals.quantile(0.75)), 3),
-			"max":    int(vals.max()),
-			"min":    int(vals.min()),
-			# fraction of images that have at least 1 label from this tier
+			"mean":         round(float(vals.mean()), 3),
+			"median":       round(float(vals.median()), 3),
+			"std":          round(float(vals.std()), 3),
+			"q25":          round(float(vals.quantile(0.25)), 3),
+			"q75":          round(float(vals.quantile(0.75)), 3),
+			"max":          int(vals.max()),
+			"min":          int(vals.min()),
 			"coverage_pct": round(float((vals > 0).mean() * 100), 1),
-			# fraction of images with ZERO labels from this tier
 			"zero_pct":     round(float((vals == 0).mean() * 100), 1),
 		}
-	
-	# Overall cardinality stats
+
 	total_card_stats = {
 		"mean":   round(float(card_df["total_card"].mean()), 3),
 		"median": round(float(card_df["total_card"].median()), 3),
@@ -291,277 +281,324 @@ def plot_tier_cardinality_distribution(
 		"min":    int(card_df["total_card"].min()),
 	}
 
-	# Images with zero tail labels → motivation for coverage argument
-	zero_tail_pct   = tier_card_stats["Tail"]["zero_pct"]
-	zero_head_pct   = tier_card_stats["Head"]["zero_pct"]
-	zero_torso_pct  = tier_card_stats["Torso"]["zero_pct"]
+	zero_tail_pct  = tier_card_stats["Tail"]["zero_pct"]
+	zero_head_pct  = tier_card_stats["Head"]["zero_pct"]
+	zero_torso_pct = tier_card_stats["Torso"]["zero_pct"]
 
-	# 5. Build stats dict (every \PHNUM{})
+	# 5. Stats dict
 	stats = {
-		# Global
-		"N_images":                   N_images,
-		"N_labels":                   N_labels,
-		"label_col":									label_col, 
-		"total_occurrences":          total_occ,
-		"tau_head":                   tau_head,
-		"tau_torso":                  tau_torso,
-		"mean_total_cardinality":     total_card_stats["mean"],
-		"median_total_cardinality":   total_card_stats["median"],
-		"std_total_cardinality":      total_card_stats["std"],
-		"max_total_cardinality":      total_card_stats["max"],
-		"min_total_cardinality":      total_card_stats["min"],
-		# Tier label counts
-		"N_head_labels":              tier_label_counts["Head"],
-		"N_torso_labels":             tier_label_counts["Torso"],
-		"N_tail_labels":              tier_label_counts["Tail"],
-		"pct_head_vocab":             tier_label_pct["Head"],
-		"pct_torso_vocab":            tier_label_pct["Torso"],
-		"pct_tail_vocab":             tier_label_pct["Tail"],
-		# Tier occurrence shares
-		"occ_head":                   tier_occ["Head"],
-		"occ_torso":                  tier_occ["Torso"],
-		"occ_tail":                   tier_occ["Tail"],
-		"pct_occ_head":               tier_occ_pct["Head"],
-		"pct_occ_torso":              tier_occ_pct["Torso"],
-		"pct_occ_tail":               tier_occ_pct["Tail"],
-		# Per-tier cardinality
-		"head_card_mean":             tier_card_stats["Head"]["mean"],
-		"head_card_median":           tier_card_stats["Head"]["median"],
-		"head_card_std":              tier_card_stats["Head"]["std"],
-		"head_card_coverage_pct":     tier_card_stats["Head"]["coverage_pct"],
-		"head_card_zero_pct":         tier_card_stats["Head"]["zero_pct"],
-		"torso_card_mean":            tier_card_stats["Torso"]["mean"],
-		"torso_card_median":          tier_card_stats["Torso"]["median"],
-		"torso_card_std":             tier_card_stats["Torso"]["std"],
-		"torso_card_coverage_pct":    tier_card_stats["Torso"]["coverage_pct"],
-		"torso_card_zero_pct":        tier_card_stats["Torso"]["zero_pct"],
-		"tail_card_mean":             tier_card_stats["Tail"]["mean"],
-		"tail_card_median":           tier_card_stats["Tail"]["median"],
-		"tail_card_std":              tier_card_stats["Tail"]["std"],
-		"tail_card_coverage_pct":     tier_card_stats["Tail"]["coverage_pct"],
-		"tail_card_zero_pct":         tier_card_stats["Tail"]["zero_pct"],
+		"N_images":                 N_images,
+		"N_labels":                 N_labels,
+		"label_col":                label_col,
+		"total_occurrences":        total_occ,
+		"tau_head":                 tau_head,
+		"tau_torso":                tau_torso,
+		"mean_total_cardinality":   total_card_stats["mean"],
+		"median_total_cardinality": total_card_stats["median"],
+		"std_total_cardinality":    total_card_stats["std"],
+		"max_total_cardinality":    total_card_stats["max"],
+		"min_total_cardinality":    total_card_stats["min"],
+		"N_head_labels":            tier_label_counts["Head"],
+		"N_torso_labels":           tier_label_counts["Torso"],
+		"N_tail_labels":            tier_label_counts["Tail"],
+		"pct_head_vocab":           tier_label_pct["Head"],
+		"pct_torso_vocab":          tier_label_pct["Torso"],
+		"pct_tail_vocab":           tier_label_pct["Tail"],
+		"occ_head":                 tier_occ["Head"],
+		"occ_torso":                tier_occ["Torso"],
+		"occ_tail":                 tier_occ["Tail"],
+		"pct_occ_head":             tier_occ_pct["Head"],
+		"pct_occ_torso":            tier_occ_pct["Torso"],
+		"pct_occ_tail":             tier_occ_pct["Tail"],
+		"head_card_mean":           tier_card_stats["Head"]["mean"],
+		"head_card_median":         tier_card_stats["Head"]["median"],
+		"head_card_std":            tier_card_stats["Head"]["std"],
+		"head_card_coverage_pct":   tier_card_stats["Head"]["coverage_pct"],
+		"head_card_zero_pct":       tier_card_stats["Head"]["zero_pct"],
+		"torso_card_mean":          tier_card_stats["Torso"]["mean"],
+		"torso_card_median":        tier_card_stats["Torso"]["median"],
+		"torso_card_std":           tier_card_stats["Torso"]["std"],
+		"torso_card_coverage_pct":  tier_card_stats["Torso"]["coverage_pct"],
+		"torso_card_zero_pct":      tier_card_stats["Torso"]["zero_pct"],
+		"tail_card_mean":           tier_card_stats["Tail"]["mean"],
+		"tail_card_median":         tier_card_stats["Tail"]["median"],
+		"tail_card_std":            tier_card_stats["Tail"]["std"],
+		"tail_card_coverage_pct":   tier_card_stats["Tail"]["coverage_pct"],
+		"tail_card_zero_pct":       tier_card_stats["Tail"]["zero_pct"],
 	}
 
 	# 6. Verbose printout
 	if verbose:
-			div = "=" * 72
-			print(f"\n{div}")
-			print("  PLACEHOLDER VALUES  —  copy into LaTeX \\PHNUM{{}}")
-			print(div)
-			groups = [
-				("GLOBAL", [
-					("N images",                         "N_images"),
-					("N canonical labels",               "N_labels"),
-					("Total label occurrences",          "total_occurrences"),
-					("tau_head (f >= tau_head => HEAD)", "tau_head"),
-					("tau_torso (f < tau_torso => TAIL)","tau_torso"),
-					("Mean total cardinality per image", "mean_total_cardinality"),
-					("Median total cardinality",         "median_total_cardinality"),
-					("Std total cardinality",            "std_total_cardinality"),
-					("Max total cardinality",            "max_total_cardinality"),
-					("Min total cardinality",            "min_total_cardinality"),
-				]),
-				("TIER LABEL COUNTS", [
-					("N head labels",   "N_head_labels"),
-					("N torso labels",  "N_torso_labels"),
-					("N tail labels",   "N_tail_labels"),
-					("Head vocab %",    "pct_head_vocab"),
-					("Torso vocab %",   "pct_torso_vocab"),
-					("Tail vocab %",    "pct_tail_vocab"),
-					("Head occ %",      "pct_occ_head"),
-					("Torso occ %",     "pct_occ_torso"),
-					("Tail occ %",      "pct_occ_tail"),
-				]),
-				("HEAD CARDINALITY (labels/image from head tier)", [
-					("Mean",                    "head_card_mean"),
-					("Median",                  "head_card_median"),
-					("Std",                     "head_card_std"),
-					("Images with >= 1 head label (%)",  "head_card_coverage_pct"),
-					("Images with 0 head labels (%)",    "head_card_zero_pct"),
-				]),
-				("TORSO CARDINALITY (labels/image from torso tier)", [
-					("Mean",                    "torso_card_mean"),
-					("Median",                  "torso_card_median"),
-					("Std",                     "torso_card_std"),
-					("Images with >= 1 torso label (%)", "torso_card_coverage_pct"),
-					("Images with 0 torso labels (%)",   "torso_card_zero_pct"),
-				]),
-				("TAIL CARDINALITY (labels/image from tail tier)", [
-					("Mean",                    "tail_card_mean"),
-					("Median",                  "tail_card_median"),
-					("Std",                     "tail_card_std"),
-					("Images with >= 1 tail label (%)",  "tail_card_coverage_pct"),
-					("Images with 0 tail labels (%)",    "tail_card_zero_pct"),
-				]),
-			]
+		div = "=" * 72
+		print(f"\n{div}")
+		print("  PLACEHOLDER VALUES  —  copy into LaTeX \\PHNUM{{}}")
+		print(div)
+		groups = [
+			("GLOBAL", [
+				("N images",                          "N_images"),
+				("N canonical labels",                "N_labels"),
+				("Total label occurrences",           "total_occurrences"),
+				("tau_head (f >= tau_head => HEAD)",  "tau_head"),
+				("tau_torso (f < tau_torso => TAIL)", "tau_torso"),
+				("Mean total cardinality per image",  "mean_total_cardinality"),
+				("Median total cardinality",          "median_total_cardinality"),
+				("Std total cardinality",             "std_total_cardinality"),
+				("Max total cardinality",             "max_total_cardinality"),
+				("Min total cardinality",             "min_total_cardinality"),
+			]),
+			("TIER LABEL COUNTS", [
+				("N head labels",  "N_head_labels"),
+				("N torso labels", "N_torso_labels"),
+				("N tail labels",  "N_tail_labels"),
+				("Head vocab %",   "pct_head_vocab"),
+				("Torso vocab %",  "pct_torso_vocab"),
+				("Tail vocab %",   "pct_tail_vocab"),
+				("Head occ %",     "pct_occ_head"),
+				("Torso occ %",    "pct_occ_torso"),
+				("Tail occ %",     "pct_occ_tail"),
+			]),
+			("HEAD CARDINALITY (labels/image from head tier)", [
+				("Mean",                            "head_card_mean"),
+				("Median",                          "head_card_median"),
+				("Std",                             "head_card_std"),
+				("Images with >= 1 head label (%)", "head_card_coverage_pct"),
+				("Images with 0 head labels (%)",   "head_card_zero_pct"),
+			]),
+			("TORSO CARDINALITY (labels/image from torso tier)", [
+				("Mean",                             "torso_card_mean"),
+				("Median",                           "torso_card_median"),
+				("Std",                              "torso_card_std"),
+				("Images with >= 1 torso label (%)", "torso_card_coverage_pct"),
+				("Images with 0 torso labels (%)",   "torso_card_zero_pct"),
+			]),
+			("TAIL CARDINALITY (labels/image from tail tier)", [
+				("Mean",                            "tail_card_mean"),
+				("Median",                          "tail_card_median"),
+				("Std",                             "tail_card_std"),
+				("Images with >= 1 tail label (%)", "tail_card_coverage_pct"),
+				("Images with 0 tail labels (%)",   "tail_card_zero_pct"),
+			]),
+		]
+		for group_name, items in groups:
+			print(f"\n  [{group_name}]")
+			for desc, key in items:
+				val = stats[key]
+				if isinstance(val, float):
+					display = f"{val:,.3f}"
+				elif isinstance(val, int):
+					display = f"{val:,}"
+				else:
+					display = str(val)
+				print(f"    \\PHNUM{{{desc:<50}}}  =>  {display}")
 
-			for group_name, items in groups:
-				print(f"\n  [{group_name}]")
-				for desc, key in items:
-					val = stats[key]
-					if isinstance(val, float):
-						display = f"{val:,.3f}"
-					elif isinstance(val, int):
-						display = f"{val:,}"
-					else:
-						display = str(val)
-					print(f"    \\PHNUM{{{desc:<50}}}  =>  {display}")
-			
-			print(f"\n{div}")
-			print("  LATEX SNIPPET — ready for §4.3")
-			print(div)
-			msg = textwrap.dedent(f"""\
-				Figure~\\ref{{fig:tier_cardinality}} shows the per-sample label cardinality broken down by frequency tier.
-				
-				Head-tier labels ($f(l) \\geq {tau_head:,}$, {tier_label_counts['Head']:,} labels, 
-				{tier_label_pct['Head']:.1f}% of vocabulary) account for {tier_occ_pct['Head']:.1f}% of all 
-				label occurrences, yet are present in only {tier_card_stats['Head']['coverage_pct']:.1f}% of images 
-				(mean cardinality per image: {tier_card_stats['Head']['mean']:.2f}).
-				
-				By contrast, tail-tier labels ($f(l) < {tau_torso:,}$, {tier_label_counts['Tail']:,} labels, 
-				{tier_label_pct['Tail']:.1f}% of vocabulary) contribute only {tier_occ_pct['Tail']:.1f}% of 
-				occurrences, with {tier_card_stats['Tail']['zero_pct']:.1f}% of images carrying no tail-tier 
-				label at all (mean cardinality: {tier_card_stats['Tail']['mean']:.2f}).
-				
-				This asymmetry directly motivates the positive-class reweighting applied in the I2T direction 
-				of the training objective (Section~\\ref{{ssec:training}}): without reweighting, head-class 
-				gradient dominance would suppress learning signal for the {tier_label_pct['Tail']:.1f}% of 
-				the vocabulary that constitutes the tail.""")
-			print(msg)
-			print(div + "\n")
+		print(f"\n{div}")
+		print("  LATEX SNIPPET — ready for §4.3")
+		print(div)
+		msg = textwrap.dedent(f"""\
+			Figure~\\ref{{fig:tier_cardinality}} shows the per-sample label cardinality broken down by frequency tier.
 
-	fig, axes = plt.subplots(1, 2, figsize=figsize, gridspec_kw={"width_ratios": [2, 1]},)
-	ax_box  = axes[0]   # left: box plots per tier
-	ax_bar  = axes[1]   # right: occurrence share stacked bar
-	rng = np.random.default_rng(42)
+			Head-tier labels ($f(l) \\geq {tau_head:,}$, {tier_label_counts['Head']:,} labels,
+			{tier_label_pct['Head']:.1f}% of vocabulary) account for {tier_occ_pct['Head']:.1f}% of all
+			label occurrences, yet are present in only {tier_card_stats['Head']['coverage_pct']:.1f}% of images
+			(mean cardinality per image: {tier_card_stats['Head']['mean']:.2f}).
 
-	# Left panel: box plots with strip overlay
-	positions  = [1, 2, 3]
-	col_keys   = ["head_card", "torso_card", "tail_card"]
-	tier_data  = [card_df[c].values for c in col_keys]
-	bp = ax_box.boxplot(
+			By contrast, tail-tier labels ($f(l) < {tau_torso:,}$, {tier_label_counts['Tail']:,} labels,
+			{tier_label_pct['Tail']:.1f}% of vocabulary) contribute only {tier_occ_pct['Tail']:.1f}% of
+			occurrences, with {tier_card_stats['Tail']['zero_pct']:.1f}% of images carrying no tail-tier
+			label at all (mean cardinality: {tier_card_stats['Tail']['mean']:.2f}).
+
+			This asymmetry directly motivates the positive-class reweighting applied in the I2T direction
+			of the training objective (Section~\\ref{{ssec:training}}): without reweighting, head-class
+			gradient dominance would suppress learning signal for the {tier_label_pct['Tail']:.1f}% of
+			the vocabulary that constitutes the tail.""")
+		print(msg)
+		print(div + "\n")
+
+	# ── 7. FIGURE: dual y-axis, shared x (tier positions) ────────────────────
+	#
+	#   ax_left  (primary)   : boxplot + strip overlay
+	#                          left y-axis  → labels per image (cardinality)
+	#   ax_right (secondary) : zero-label % line + markers
+	#                          right y-axis → images with 0 labels of that tier (%)
+	#
+	#   Both axes share the same x positions [1, 2, 3] → Head / Torso / Tail.
+	#   The sparsity line sits behind the boxplots (lower zorder) so it never
+	#   obscures the IQR boxes, but the markers and annotations float above.
+	# ─────────────────────────────────────────────────────────────────────────
+	fig, ax_left = plt.subplots(figsize=figsize)
+	ax_right     = ax_left.twinx()   # shares x-axis automatically
+
+	rng       = np.random.default_rng(42)
+	positions = [1, 2, 3]
+	col_keys  = ["head_card", "torso_card", "tail_card"]
+	tier_data = [card_df[c].values for c in col_keys]
+
+	# Boxplot on ax_left
+	bp = ax_left.boxplot(
 		tier_data,
 		positions    = positions,
-		widths       = 0.45,
+		widths       = 0.42,
 		patch_artist = True,
 		notch        = False,
-		showfliers   = False,   # outliers shown via strip instead
+		showfliers   = False,
 		medianprops  = dict(color="black", linewidth=2.0),
 		whiskerprops = dict(linewidth=1.2),
 		capprops     = dict(linewidth=1.2),
 		boxprops     = dict(linewidth=1.2),
 		zorder       = 3,
 	)
-	
+
 	for patch, tier in zip(bp["boxes"], TIER_ORDER):
-		base_color = SEGMENT_SPECS[tier]["color"]
-		# Convert to RGBA and set alpha for transparency
-		face_rgba = to_rgba(base_color, alpha=0.5)
-		patch.set_facecolor(face_rgba)
-		patch.set_edgecolor(base_color)
+		c = SEGMENT_SPECS[tier]["color"]
+		patch.set_facecolor(to_rgba(c, alpha=0.45))
+		patch.set_edgecolor(c)
 
-	for whisker, tier_idx in zip(bp["whiskers"], [0, 0, 1, 1, 2, 2]):
-		tier = TIER_ORDER[tier_idx]
-		whisker.set_color(SEGMENT_SPECS[tier]["color"])
+	for whisker, ti in zip(bp["whiskers"], [0, 0, 1, 1, 2, 2]):
+		whisker.set_color(SEGMENT_SPECS[TIER_ORDER[ti]]["color"])
 
-	for cap, tier_idx in zip(bp["caps"], [0, 0, 1, 1, 2, 2]):
-		tier = TIER_ORDER[tier_idx]
-		cap.set_color(SEGMENT_SPECS[tier]["color"])
-	
-	# Strip overlay (jittered scatter)
+	for cap, ti in zip(bp["caps"], [0, 0, 1, 1, 2, 2]):
+		cap.set_color(SEGMENT_SPECS[TIER_ORDER[ti]]["color"])
+
+	# ── Strip overlay on ax_left
 	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
 		vals = card_df[col].values.astype(float)
 		if len(vals) > strip_sample_n:
-			idx_sample = rng.choice(len(vals), strip_sample_n, replace=False)
-			vals = vals[idx_sample]
+			vals = vals[rng.choice(len(vals), strip_sample_n, replace=False)]
 		jitter = rng.uniform(-0.14, 0.14, size=len(vals))
-		ax_box.scatter(
-			pos + jitter,
+		ax_left.scatter(
+			pos + jitter, 
 			vals,
-			s         = 3,
-			alpha     = 0.25,
-			color     = SEGMENT_SPECS[tier]["color"],
-			linewidths= 0,
-			zorder    = 2,
+			s=3, 
+			alpha=0.20,
+			color=SEGMENT_SPECS[tier]["color"],
+			linewidths=0, 
+			zorder=2,
 		)
 
-	# Mean marker
+	# ── Mean diamond on ax_left
 	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
 		mean_val = card_df[col].mean()
-		ax_box.scatter(
+		ax_left.scatter(
 			pos, mean_val,
-			s         = 70,
-			marker    = "D",
-			color     = SEGMENT_SPECS[tier]["color"],
-			edgecolors= "black",
-			linewidths= 0.6,
-			zorder    = 5,
-			label     = f"{SEGMENT_SPECS[tier]['label']} (μ={mean_val:.2f}, med={card_df[col].median()})",
+			s=72, marker="D",
+			color=SEGMENT_SPECS[tier]["color"],
+			edgecolors="black", linewidths=0.7,
+			zorder=5,
+			label=(
+				f"{SEGMENT_SPECS[tier]['label']} "
+				f"(μ={mean_val:.2f}, med={card_df[col].median():.0f})"
+			),
 		)
-	ax_box.set_xticks(positions)
-	ax_box.set_xticklabels(
-		[f"{SEGMENT_SPECS[t]['label']}\n{tier_label_counts[t]:,} labels\n"
-		 f"({tier_label_pct[t]}% vocab)"
-		 for t in TIER_ORDER],
+
+	# Zero-label sparsity line + markers on ax_right
+	zero_pcts = [tier_card_stats[t]["zero_pct"] for t in TIER_ORDER]
+
+	ax_right.plot(
+		positions, 
+		zero_pcts,
+		color="#444444", 
+		linewidth=1.6,
+		linestyle="--", 
+		zorder=4,
+		label="Images with 0 labels (%)",
+	)
+
+	for pos, val, tier in zip(positions, zero_pcts, TIER_ORDER):
+		c = SEGMENT_SPECS[tier]["color"]
+		ax_right.scatter(
+			pos, 
+			val,
+			s=90, 
+			marker="o",
+			color=c,
+			edgecolors="black", 
+			linewidths=0.8,
+			zorder=6,
+		)
+		# Annotation: offset upward for head/torso, downward for tail to avoid clutter
+		v_offset = -5.0 if val < 50 else 5.0
+		ax_right.annotate(
+			f"{val:.1f}%",
+			xy=(pos, val),
+			xytext=(0, v_offset),
+			textcoords="offset points",
+			ha="left", 
+			va="bottom" if v_offset > 0 else "top",
+			fontsize=8.0, 
+			fontweight="bold",
+			color=c,
+		)
+
+	ax_left.set_ylabel("Labels per image (cardinality)", fontsize=12)
+	ax_left.set_ylim(bottom=-0.05)
+
+	ax_right.set_ylabel("Images with zero labels of tier (%)", fontsize=11, color="#444444")
+	ax_right.set_ylim(0, 100) # fixed 0–100 % scale with a little headroom
+	ax_right.tick_params(axis="y", labelcolor="#444444", labelsize=9)
+	ax_right.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0f}%"))
+
+	# Subtle right-axis spine to signal the secondary scale
+	ax_right.spines["right"].set_linewidth(0.8)
+	ax_right.spines["right"].set_color("#888888")
+
+	# ── X-axis tick labels (shared)
+	ax_left.set_xticks(positions)
+	ax_left.set_xticklabels(
+		[
+			f"{SEGMENT_SPECS[t]['label']}\n"
+			f"{tier_label_counts[t]:,} labels\n({tier_label_pct[t]}% vocab)"
+			for t in TIER_ORDER
+		],
 		fontsize=10,
 	)
-	ax_box.set_ylabel("Labels per image (cardinality)", fontsize=12)
-	ax_box.set_title(
-		"Per-Sample Label Cardinality by Frequency Tier",
-		fontsize=12, fontweight="bold",
+	ax_left.set_xlim(0.4, 3.6)
+
+	# ax_left.set_title(
+	# 	"Per-Sample Label Cardinality and Supervision Sparsity by Frequency Tier",
+	# 	fontsize=11, 
+	# 	fontweight="bold", 
+	# )
+
+	# ── Grid (left axis only, behind everything)
+	ax_left.grid(axis="y", linestyle="--", linewidth=0.3, alpha=0.75, zorder=0)
+	ax_right.set_axisbelow(False)   # don't let right-axis grid double up
+
+	# ── Combined legend
+	handles_left,  labels_left  = ax_left.get_legend_handles_labels()
+	# Manually build the sparsity legend entry (line + marker combined)
+	sparsity_handle = Line2D(
+		[0], 
+		[0],
+		color="#444444", 
+		linewidth=1.2, 
+		linestyle="--",
+		marker="o", 
+		markersize=6,
+		markerfacecolor="white", 
+		markeredgecolor="#444444",
+		label="Zero-label images (%)",
 	)
-	ax_box.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.6)
-	ax_box.legend(
+	all_handles = handles_left + [sparsity_handle]
+	all_labels  = labels_left  + ["Zero-label images (%)"]
+
+	ax_left.legend(
+		all_handles, 
+		all_labels,
 		loc="upper right",
-		fontsize=8.5,
-		frameon=True,
-		framealpha=0.9,
-		edgecolor="#cccccc",
-		title="◆ = mean",
-		title_fontsize=8,
+		fontsize=9.0,
+		frameon=False,
+		# framealpha=0.92,
+		# edgecolor="#cccccc",
+		title="◆ = mean cardinality   ● = sparsity",
+		title_fontsize=10.0,
+		ncol=1,
+		fancybox=True,
+		shadow=True,
 	)
-	for spine in ax_box.spines.values():
+
+	for spine in ax_left.spines.values():
 		spine.set_linewidth(0.7)
 
-	# Right panel: occurrence share stacked horizontal bar
-	occ_vals  = [tier_occ_pct[t] for t in TIER_ORDER]
-	colors_bar = [SEGMENT_SPECS[t]["color"] for t in TIER_ORDER]
-	y_pos = [0]
-	left = 0.0
-	bar_handles = []
-	for i, (tier, val, col) in enumerate(zip(TIER_ORDER, occ_vals, colors_bar)):
-		bar = ax_bar.barh(
-			y_pos, val,
-			left   = left,
-			height = 0.45,
-			color  = col,
-			alpha  = 0.82,
-			label  = f"{SEGMENT_SPECS[tier]['label']} ({val:.1f}%)",
-		)
-		bar_handles.append(bar)
-		
-		# Label inside bar if wide enough
-		if val > 4:
-			ax_bar.text(
-				left + val / 2, 0,
-				f"{SEGMENT_SPECS[tier]['label']}\n{val:.1f}%",
-				ha="center", 
-				va="center",
-				fontsize=9, 
-				fontweight="bold",
-				color="#000000" if val > 10 else "black",
-			)
-		left += val
-	
-	ax_bar.set_xlim(0, 100)
-	ax_bar.set_yticks([])
-	ax_bar.set_xlabel("Share of total label occurrences (%)", fontsize=10)
-	ax_bar.set_title("Occurrence by Tier",fontsize=11, fontweight="bold",)
-	ax_bar.grid(axis="x", linestyle="--", linewidth=0.5, alpha=0.55)
-	for spine in ax_bar.spines.values():
-		spine.set_linewidth(0.7)
-	
-	# Shared annotation: zero-tail warning
 	print(
 		f"{zero_tail_pct:.1f}% of images carry zero tail-tier labels  |  "
 		f"{zero_head_pct:.1f}% carry zero head-tier labels  |  "
@@ -574,7 +611,7 @@ def plot_tier_cardinality_distribution(
 
 	if verbose:
 		print(json.dumps(stats, indent=2, ensure_ascii=False))
-		print("="*50)
+		print("=" * 50)
 
 	return stats
 

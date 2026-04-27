@@ -106,20 +106,14 @@ def get_canonical_labels_with_parallel_mapping(
 		verbose=verbose,
 	)
 
+	canonical_map = clustered_df.set_index('label')['canonical'].to_dict()
+	# Parallel mapping
+	chunksize  = max(1, len(labels) // (num_workers * 4))  # 4 chunks per worker
 	if verbose:
 		print(f"[{label_source.upper()}]")
 		print(f"  ├─ {len(clustered_df)} unique labels ==>> {clustered_df['cluster'].nunique()} clusters")
-		print(clustered_df.head(10))
-
-	canonical_map = clustered_df.set_index('label')['canonical'].to_dict()
-	print(f"[{label_source.upper()}] canonical_map: {type(canonical_map)} {len(canonical_map)} entries")
-
-	# Parallel mapping
-	chunksize  = max(1, len(labels) // (num_workers * 4))  # 4 chunks per worker
-	print(
-		f"[{label_source.upper()}] Mapping {len(labels):,} samples → canonical labels "
-		f"| workers={num_workers} | chunksize={chunksize}"
-	)
+		print(f"  ├─  canonical_map: {type(canonical_map)} {len(canonical_map)} entries")
+		print(f"  ├─  Mapping {len(labels):,} samples → canonical labels | workers={num_workers} | chunksize={chunksize}")
 
 	t0 = time.time()
 	with multiprocessing.Pool(
@@ -134,10 +128,8 @@ def get_canonical_labels_with_parallel_mapping(
 		)
 	elapsed = time.time() - t0
 
-	print(
-		f"[{label_source.upper()}] Mapping done in {elapsed:.2f}s "
-		f"({len(labels)/elapsed:,.0f} rows/sec)"
-	)
+	if verbose:
+		print(f"  ├─  Mapping Elapsed_t: {elapsed:.2f}s ({len(labels)/elapsed:,.0f} rows/sec)")
 
 	# Post-processing stats
 	missing_labels: set = set()
