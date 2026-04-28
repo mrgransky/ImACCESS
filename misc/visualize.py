@@ -21,6 +21,9 @@ from matplotlib.patches import Patch
 from matplotlib.gridspec import GridSpec
 from matplotlib.colors import LinearSegmentedColormap, to_rgba
 from matplotlib.lines import Line2D
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
+import matplotlib.ticker as mticker
 
 from PIL import Image, ImageDraw, ImageFont
 from collections import Counter
@@ -161,6 +164,972 @@ def _assign_tier(label: str, freq_map: dict, tau_head: int, tau_torso: int) -> s
 	else:
 		return "Torso"
 
+def plot_tier_cardinality_boxplot(
+		card_df: pd.DataFrame,
+		tier_card_stats: dict,
+		tier_label_counts: dict,
+		tier_label_pct: dict,
+		total_card_stats: dict,
+		output_path: str = "plots/tier_cardinality_boxplot.png",
+		strip_sample_n: int = 2000,
+		figsize: Tuple[float, float] = (8, 6),
+		dpi: int = 250,
+):
+		col_keys  = ["head_card", "torso_card", "tail_card"]
+		positions = [1, 2, 3]
+		rng       = np.random.default_rng(42)
+		tier_data = [card_df[c].values for c in col_keys]
+
+		fig, ax = plt.subplots(figsize=figsize)
+
+		# Boxplot
+		bp = ax.boxplot(
+				tier_data,
+				positions=positions,
+				widths=0.42,
+				patch_artist=True,
+				notch=False,
+				showfliers=False,
+				medianprops=dict(color="black", linewidth=2.0),
+				whiskerprops=dict(linewidth=1.2),
+				capprops=dict(linewidth=1.2),
+				boxprops=dict(linewidth=1.2),
+				zorder=3,
+		)
+
+		for patch, tier in zip(bp["boxes"], TIER_ORDER):
+				c = SEGMENT_SPECS[tier]["color"]
+				patch.set_facecolor(to_rgba(c, alpha=0.45))
+				patch.set_edgecolor(c)
+
+		for whisker, ti in zip(bp["whiskers"], [0, 0, 1, 1, 2, 2]):
+				whisker.set_color(SEGMENT_SPECS[TIER_ORDER[ti]]["color"])
+
+		for cap, ti in zip(bp["caps"], [0, 0, 1, 1, 2, 2]):
+				cap.set_color(SEGMENT_SPECS[TIER_ORDER[ti]]["color"])
+
+		# Strip overlay
+		for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
+				vals = card_df[col].values.astype(float)
+				if len(vals) > strip_sample_n:
+						vals = vals[rng.choice(len(vals), strip_sample_n, replace=False)]
+				jitter = rng.uniform(-0.14, 0.14, size=len(vals))
+				ax.scatter(
+						pos + jitter, vals,
+						s=3, 
+						alpha=0.25,
+						color=SEGMENT_SPECS[tier]["color"],
+						linewidths=0, 
+						zorder=2,
+				)
+
+		# Mean diamond
+		for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
+				mean_val = card_df[col].mean()
+				std_val = card_df[col].std()
+				ax.scatter(
+						pos, mean_val,
+						s=72, 
+						marker="D",
+						color=SEGMENT_SPECS[tier]["color"],
+						edgecolors="black", 
+						linewidths=0.7,
+						zorder=5,
+						label=(
+							f"{SEGMENT_SPECS[tier]['label']} "
+							f"(μ={mean_val:.2f}, σ={std_val:.2f}, med={card_df[col].median():.0f})"
+						),
+				)
+
+		# Sparsity badges
+		ymax_data = max(float(np.max(card_df[c].values)) for c in col_keys)
+		y_top = ymax_data + max(0.9, 0.25 * ymax_data)
+		ax.set_ylim(-0.05, y_top)
+		print(ymax_data, y_top)
+
+		for pos, tier in zip(positions, TIER_ORDER):
+			zero_pct = tier_card_stats[tier]["zero_pct"]
+			cov_pct  = tier_card_stats[tier]["coverage_pct"]
+			ax.text(
+				pos, 
+				y_top - 0.13 * y_top,
+				f"0-label: {zero_pct:.1f}%\n≥1 label: {cov_pct:.1f}%",
+				ha="center", 
+				va="center",
+				fontsize=8.0, 
+				fontweight="bold",
+				color="#0A0A0A",
+				bbox=dict(
+					boxstyle="round,pad=0.24",
+					facecolor=SEGMENT_SPECS[tier]["facecolor"],
+					edgecolor=SEGMENT_SPECS[tier]["color"],
+					linewidth=0.9,
+					alpha=0.45,
+				),
+				zorder=7,
+			)
+
+		# Axes
+		ax.set_ylabel("Labels per image (cardinality)", fontsize=12)
+		ax.set_xticks(positions)
+		ax.set_xticklabels(
+			[
+				f"{SEGMENT_SPECS[t]['label']}\n"
+				f"{tier_label_counts[t]:,} labels\n({tier_label_pct[t]}% vocab)"
+				for t in TIER_ORDER
+			],
+			fontsize=10,
+		)
+		# ax.set_xlim(0.4, 3.6)
+		ax.grid(linestyle="--", linewidth=0.3, alpha=0.5, zorder=0)
+
+		# Legend
+		handles, labels = ax.get_legend_handles_labels()
+		ax.legend(
+			handles, labels,
+			loc="best",
+			title="◆ = mean cardinality",
+			fontsize=8.0,
+			frameon=False,
+			title_fontsize=10.0,
+			ncol=3,
+			fancybox=True,
+			shadow=True,
+		)
+
+		for spine in ax.spines.values():
+			spine.set_linewidth(0.7)
+
+		plt.tight_layout()
+		plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
+		plt.close(fig)
+		print(f"Saved boxplot → {output_path}")
+
+def plot_tier_coverage_bars(
+		tier_card_stats: dict,
+		tier_label_counts: dict,
+		tier_label_pct: dict,
+		output_path: str = "plots/tier_coverage_bars.png",
+		figsize: Tuple[float, float] = (8, 6),
+		dpi: int = 250,
+):
+		coverage_pcts = [tier_card_stats[t]["coverage_pct"] for t in TIER_ORDER]
+		zero_pcts     = [tier_card_stats[t]["zero_pct"]     for t in TIER_ORDER]
+		bar_colors    = [SEGMENT_SPECS[t]["color"]           for t in TIER_ORDER]
+		x             = np.arange(len(TIER_ORDER))
+
+		fig, ax = plt.subplots(figsize=figsize)
+
+		# Bottom bar: images with ≥1 label
+		ax.bar(
+				x, coverage_pcts,
+				color=bar_colors,
+				alpha=0.85,
+				width=0.62,
+				label="≥1 label",
+				zorder=3,
+		)
+
+		# Top bar: images with 0 labels
+		ax.bar(
+				x, zero_pcts,
+				bottom=coverage_pcts,
+				color="#C8C8C8",
+				edgecolor="#666666",
+				hatch="///",
+				alpha=0.95,
+				width=0.62,
+				label="0 labels",
+				zorder=3,
+		)
+
+		# Value annotations inside bars
+		for i, (cov, zero) in enumerate(zip(coverage_pcts, zero_pcts)):
+				# ≥1 label annotation
+				ax.text(
+						i, cov / 2,
+						f"{cov:.1f}%",
+						ha="center", 
+						va="center",
+						fontsize=9, 
+						color="white", 
+						fontweight="bold",
+				)
+				# 0-label annotation
+				ax.text(
+						i, cov + zero / 2,
+						f"{zero:.1f}%",
+						ha="center", va="center",
+						fontsize=9, color="#333333", fontweight="bold",
+				)
+
+		# Axes
+		ax.set_ylim(0, 102)  # small headroom for readability
+		# ax.set_yticks([0, 25, 50, 75, 100])
+		# ax.set_yticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=9)
+		ax.set_ylabel("Images (%)", fontsize=11, fontweight="bold")
+		ax.set_xticks(x)
+		ax.set_xticklabels(
+				[
+						f"{SEGMENT_SPECS[t]['label']}\n"
+						f"{tier_label_counts[t]:,} labels\n({tier_label_pct[t]}% vocab)"
+						for t in TIER_ORDER
+				],
+				fontsize=9,
+		)
+		ax.grid(axis="y", linestyle="--", linewidth=0.3, alpha=0.6, zorder=0)
+
+		ax.legend(
+				loc="best",
+				fontsize=9.0,
+				title="Tier Label Coverage",
+				title_fontsize=9.0,
+				ncol=2,
+				frameon=False,
+				fancybox=True,
+				shadow=True,
+		)
+
+		for spine in ax.spines.values():
+				spine.set_linewidth(0.7)
+
+		plt.tight_layout()
+		plt.savefig(output_path, dpi=dpi)
+		plt.close(fig)
+		print(f"Saved coverage bars → {output_path}")
+
+def plot_tier_cv_distribution(
+		freq_map: dict,
+		tier_label_counts: dict,
+		tier_label_pct: dict,
+		tau_head: int,
+		tau_torso: int,
+		output_path: str = "plots/tier_cv_distribution.png",
+		figsize: Tuple[float, float] = (7, 5),
+		dpi: int = 250,
+):
+		"""
+		Plots within-tier label frequency distribution with Coefficient of Variation (CV).
+
+		CV = std / mean
+			CV > 1.0  → High relative dispersion (a few labels dominate within tier)
+			CV ~ 0.5  → Moderate dispersion
+			CV < 0.3  → Low dispersion (roughly uniform within tier)
+
+		Combined with mean frequency per tier, this covers two narratives:
+			1. Cross-tier rarity     : mean freq drops Head → Torso → Tail
+			2. Within-tier dominance : CV shows how unequal the distribution is within each tier
+		"""
+
+		# ── 1. Per-tier frequencies & stats ──────────────────────────────────────
+		tier_freqs = {
+				"Head":  [f for f in freq_map.values() if f >= tau_head],
+				"Torso": [f for f in freq_map.values() if tau_torso <= f < tau_head],
+				"Tail":  [f for f in freq_map.values() if f < tau_torso],
+		}
+
+		mean_vals, median_vals, std_vals, cv_vals, skew_vals = {}, {}, {}, {}, {}
+		for t in TIER_ORDER:
+				freqs          = tier_freqs[t]
+				mean_vals[t]   = float(np.mean(freqs))
+				median_vals[t] = float(np.median(freqs))
+				std_vals[t]    = float(np.std(freqs))
+				cv_vals[t]     = std_vals[t] / mean_vals[t] if mean_vals[t] > 0 else 0.0
+				skew_vals[t]   = float(scipy.stats.skew(freqs)) if len(freqs) >= 2 else 0.0
+
+		print("\n[Tier CV + Distribution Statistics]")
+		for t in TIER_ORDER:
+				print(
+						f"  {t:<6}  n={len(tier_freqs[t]):>5,}  "
+						f"CV={cv_vals[t]:.3f}  "
+						f"skew={skew_vals[t]:+.3f}  "
+						f"mean={mean_vals[t]:.1f}  "
+						f"median={median_vals[t]:.1f}  "
+						f"std={std_vals[t]:.1f}"
+				)
+
+		# ── 2. Figure ─────────────────────────────────────────────────────────────
+		fig, ax = plt.subplots(figsize=figsize)
+		positions = [1, 2, 3]
+
+		# Violin
+		vp = ax.violinplot(
+				[tier_freqs[t] for t in TIER_ORDER],
+				positions=positions,
+				widths=0.65,
+				showmeans=False,
+				showmedians=False,
+				showextrema=False,
+		)
+		for body, tier in zip(vp["bodies"], TIER_ORDER):
+				c = SEGMENT_SPECS[tier]["color"]
+				body.set_facecolor(to_rgba(c, alpha=0.25))
+				body.set_edgecolor(c)
+				body.set_linewidth(1.0)
+				body.set_zorder(2)
+
+		# IQR bar + median + mean per tier
+		for pos, tier in zip(positions, TIER_ORDER):
+				freqs        = tier_freqs[tier]
+				q25, q75     = np.percentile(freqs, [25, 75])
+				c            = SEGMENT_SPECS[tier]["color"]
+
+				ax.plot([pos, pos], [q25, q75],
+								color=c, linewidth=3.0, solid_capstyle="round", zorder=3)
+
+				ax.scatter(pos, median_vals[tier],
+									 s=80, marker="o", color="white",
+									 edgecolors=c, linewidths=2.0, zorder=5)
+
+				ax.scatter(pos, mean_vals[tier],
+									 s=90, marker="D", color=c,
+									 edgecolors="black", linewidths=1.0, zorder=5)
+
+		# ── 3. CV badges ──────────────────────────────────────────────────────────
+		max_y     = max(max(tier_freqs[t]) for t in TIER_ORDER)
+		tier_maxs = {t: max(tier_freqs[t]) for t in TIER_ORDER}
+
+		for pos, tier in zip(positions, TIER_ORDER):
+				cv      = cv_vals[tier]
+				c       = SEGMENT_SPECS[tier]["color"]
+				t_max   = tier_maxs[tier]
+
+				# Log-proportional badge placement — avoids overlap across tiers
+				badge_y = t_max * (max_y / t_max) ** 0.18
+
+				if cv > 1.0:
+						interp = "High dispersion"
+				elif cv > 0.5:
+						interp = "Moderate dispersion"
+				else:
+						interp = "Low dispersion"
+
+				ax.annotate(
+						f"CV = {cv:.2f}  ({interp})\n"
+						f"μ = {mean_vals[tier]:.0f}   med = {median_vals[tier]:.0f}",
+						xy=(pos, t_max),
+						xytext=(pos, badge_y),
+						textcoords="data",
+						ha="center", va="bottom",
+						fontsize=7.8, fontweight="bold",
+						color="#0A0A0A",
+						arrowprops=dict(arrowstyle="-", color=c, lw=0.8, linestyle=":"),
+						bbox=dict(
+								boxstyle="round,pad=0.35",
+								facecolor=SEGMENT_SPECS[tier]["facecolor"],
+								edgecolor=c,
+								linewidth=1.0,
+								alpha=0.95,
+						),
+						zorder=7,
+				)
+
+		# ── 4. Axes ───────────────────────────────────────────────────────────────
+		ax.set_yscale("log")
+		ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{int(v):,}"))
+		ax.set_ylabel("Label frequency  (log scale)", fontsize=11)
+		ax.set_ylim(bottom=0.8, top=max_y * 2.2)
+
+		ax.set_xticks(positions)
+		ax.set_xticklabels(
+				[
+						f"{SEGMENT_SPECS[t]['label']}\n"
+						f"{tier_label_counts[t]:,} labels\n({tier_label_pct[t]}% vocab)"
+						for t in TIER_ORDER
+				],
+				fontsize=10,
+		)
+		ax.set_xlim(0.4, 3.6)
+		ax.grid(axis="y", linestyle="--", linewidth=0.3, alpha=0.6, zorder=0)
+
+		# 5. Legend
+		legend_elements = [
+			Line2D(
+				[0], 
+				[0], 
+				marker="D", 
+				color="w",
+				markerfacecolor="#555555", 
+				markeredgecolor="black",
+				markersize=9, 
+				label="Mean frequency (μ)"
+			),
+			Line2D(
+				[0], 
+				[0], 
+				marker="o", 
+				color="w",
+				markerfacecolor="white", 
+				markeredgecolor="#555555",
+				markersize=9, 
+				markeredgewidth=2.0, 
+				label="Median frequency"
+			),
+			Patch(
+				facecolor="#cccccc", 
+				edgecolor="#555555",
+				linewidth=3, 
+				label="IQR (25th–75th pct)"
+			),
+		]
+		ax.legend(
+				handles=legend_elements,
+				loc="best",
+				fontsize=8,
+				title="Within-tier distribution",
+				title_fontsize=9.0,
+				frameon=True,
+				fancybox=True,
+				shadow=False,
+				facecolor="white",
+				edgecolor="#dddddd",
+		)
+
+		for spine in ax.spines.values():
+				spine.set_linewidth(0.7)
+
+		plt.tight_layout()
+		plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
+		plt.close(fig)
+		print(f"Saved CV distribution plot → {output_path}")
+
+def plot_tier_skewness(
+		freq_map: dict,
+		tier_label_counts: dict,
+		tier_label_pct: dict,
+		tau_head: int,
+		tau_torso: int,
+		output_path: str = "plots/tier_skewness.png",
+		figsize: Tuple[float, float] = (7, 5),
+		dpi: int = 250,
+):
+		"""
+		Plots within-tier label frequency distribution as:
+			- Violin plot  : full frequency distribution shape per tier
+			- Skewness badge : annotated scipy skewness value
+			- Mean / median markers : shows the pull of the heavy tail within each tier
+
+		Skewness > 0  → right-skewed (a few very frequent labels dominate)
+		Skewness ~ 0  → roughly symmetric
+		Skewness < 0  → left-skewed (rare within this tier)
+		"""
+
+		# ── 1. Collect per-tier label frequencies ────────────────────────────────
+		tier_freqs = {
+				"Head":  [f for f in freq_map.values() if f >= tau_head],
+				"Torso": [f for f in freq_map.values() if tau_torso <= f < tau_head],
+				"Tail":  [f for f in freq_map.values() if f < tau_torso],
+		}
+
+		skewness_vals = {
+				t: float(scipy.stats.skew(tier_freqs[t])) if len(tier_freqs[t]) >= 2 else 0.0
+				for t in TIER_ORDER
+		}
+		mean_vals   = {t: float(np.mean(tier_freqs[t]))   for t in TIER_ORDER}
+		median_vals = {t: float(np.median(tier_freqs[t])) for t in TIER_ORDER}
+		max_vals    = {t: float(np.max(tier_freqs[t]))     for t in TIER_ORDER}
+
+		print("\n[Tier Skewness]")
+		for t in TIER_ORDER:
+				print(
+						f"  {t:<6}  n={len(tier_freqs[t]):>5,}  "
+						f"skew={skewness_vals[t]:+.3f}  "
+						f"mean={mean_vals[t]:.1f}  "
+						f"median={median_vals[t]:.1f}  "
+						f"max={max_vals[t]:.0f}"
+				)
+
+		# ── 2. Figure ─────────────────────────────────────────────────────────────
+		fig, ax = plt.subplots(figsize=figsize)
+
+		positions = [1, 2, 3]
+
+		# Violin plot — shows the full within-tier frequency distribution shape
+		vp = ax.violinplot(
+				[tier_freqs[t] for t in TIER_ORDER],
+				positions=positions,
+				widths=0.55,
+				showmeans=False,
+				showmedians=False,
+				showextrema=False,
+		)
+
+		for body, tier in zip(vp["bodies"], TIER_ORDER):
+				c = SEGMENT_SPECS[tier]["color"]
+				body.set_facecolor(to_rgba(c, alpha=0.30))
+				body.set_edgecolor(c)
+				body.set_linewidth(1.2)
+				body.set_zorder(2)
+
+		# IQR box (thin) on top of violin
+		for pos, tier in zip(positions, TIER_ORDER):
+				freqs = tier_freqs[tier]
+				q25, q75 = np.percentile(freqs, [25, 75])
+				med      = median_vals[tier]
+				c        = SEGMENT_SPECS[tier]["color"]
+
+				# IQR bar
+				ax.plot(
+						[pos, pos], [q25, q75],
+						color=c, linewidth=4.5,
+						solid_capstyle="round", zorder=3,
+				)
+				# Median tick
+				ax.scatter(
+						pos, med,
+						s=55, marker="o",
+						color="white",
+						edgecolors=c, linewidths=1.5,
+						zorder=5,
+				)
+				# Mean diamond
+				ax.scatter(
+						pos, mean_vals[tier],
+						s=65, marker="D",
+						color=c,
+						edgecolors="black", linewidths=0.7,
+						zorder=5,
+				)
+
+		# ── 3. Skewness badges ────────────────────────────────────────────────────
+		# Place badge at a fixed fraction above the violin top
+		y_tops = [max_vals[t] for t in TIER_ORDER]
+		global_max = max(y_tops)
+		badge_y = global_max * 1.2
+
+		for pos, tier in zip(positions, TIER_ORDER):
+				sk  = skewness_vals[tier]
+				c   = SEGMENT_SPECS[tier]["color"]
+
+				# Skewness direction label
+				if sk > 1.0:
+						direction = "strongly right-skewed"
+				elif sk > 0.5:
+						direction = "moderately right-skewed"
+				elif sk > 0.0:
+						direction = "slightly right-skewed"
+				elif sk > -0.5:
+						direction = "slightly left-skewed"
+				else:
+						direction = "left-skewed"
+
+				ax.annotate(
+						f"skew: {sk:+.2f}\n{direction}",
+						xy=(pos, max_vals[tier]),
+						xytext=(pos, badge_y),
+						textcoords="data",
+						ha="center", 
+						va="center",
+						fontsize=7.0, 
+						fontweight="bold",
+						color="#0A0A0A",
+						arrowprops=dict(
+								arrowstyle="-",
+								color=c,
+								lw=0.9,
+								linestyle="dotted",
+						),
+						bbox=dict(
+								boxstyle="round,pad=0.28",
+								facecolor=SEGMENT_SPECS[tier]["facecolor"],
+								edgecolor=c,
+								linewidth=0.9,
+								alpha=0.95,
+						),
+						zorder=7,
+				)
+
+		# ── 4. Axes & labels ──────────────────────────────────────────────────────
+		ax.set_ylabel("Label frequency  (# images containing label)", fontsize=11)
+		ax.set_ylim(-global_max * 0.04, badge_y * 1.22)
+
+		ax.set_xticks(positions)
+		ax.set_xticklabels(
+				[
+						f"{SEGMENT_SPECS[t]['label']}\n"
+						f"{tier_label_counts[t]:,} labels\n({tier_label_pct[t]}% vocab)"
+						for t in TIER_ORDER
+				],
+				fontsize=10,
+		)
+		# ax.set_xlim(0.4, 3.6)
+
+		# Log scale on y — essential because Head frequencies span orders of magnitude
+		ax.set_yscale("log")
+		ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{int(v):,}"))
+		ax.set_ylabel("Label frequency  (log scale)", fontsize=11)
+		ax.set_ylim(bottom=0.8)
+
+		ax.grid(axis="y", linestyle="--", linewidth=0.3, alpha=0.6, zorder=0)
+
+		# ── 5. Legend ─────────────────────────────────────────────────────────────
+		legend_elements = [
+				Line2D([0], [0], marker="D", color="w",
+							 markerfacecolor="#555555", markeredgecolor="black",
+							 markersize=7, label="Mean frequency"),
+				Line2D([0], [0], marker="o", color="w",
+							 markerfacecolor="white", markeredgecolor="#555555",
+							 markersize=7, label="Median frequency"),
+				Patch(facecolor="#cccccc", edgecolor="#555555",
+											 label="IQR (25th–75th pct)"),
+		]
+		ax.legend(
+				handles=legend_elements,
+				loc="best",
+				fontsize=8,
+				title="Within-tier frequency distribution",
+				title_fontsize=9.0,
+				ncol=1,
+				frameon=False,
+				fancybox=True,
+				shadow=True
+		)
+
+		for spine in ax.spines.values():
+				spine.set_linewidth(0.7)
+
+		plt.tight_layout()
+		plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
+		plt.close(fig)
+		print(f"Saved skewness plot → {output_path}")
+
+def plot_reweighting_analysis(
+		freq_map: Dict[str, int],
+		tier_label_counts: Dict[str, int],
+		tier_label_pct: Dict[str, float],
+		tau_head: int,
+		tau_torso: int,
+		output_path: str = "plots/reweighting_analysis.png",
+		figsize: Tuple[float, float] = (10, 5),
+		dpi: int = 250,
+) -> Dict[str, float]:
+	"""
+	Calculates and plots the Class-Balanced Loss Weights required to mitigate 
+	tier imbalance.
+	
+	This function maps the theoretical 'inverse frequency' to the practical 
+	'pos_weight' used in BCEWithLogitsLoss.
+	
+	Returns:
+			Dict containing the mean weight per tier.
+	"""
+	
+	# 1. Calculate Mean Inverse Frequency per Tier
+	tier_freqs = {
+			"Head":  [f for f in freq_map.values() if f >= tau_head],
+			"Torso": [f for f in freq_map.values() if tau_torso <= f < tau_head],
+			"Tail":  [f for f in freq_map.values() if f < tau_torso],
+	}
+	tier_mean_freqs = {}
+	tier_weights = {}
+	
+	for t, freqs in tier_freqs.items():
+		if len(freqs) > 0:
+			mean_f = np.mean(freqs)
+			tier_mean_freqs[t] = mean_f
+			# Weight = 1 / frequency
+			# This is the standard re-balancing coefficient
+			tier_weights[t] = 1.0 / mean_f
+		else:
+			tier_mean_freqs[t] = 0
+			tier_weights[t] = 0.0
+
+	# Normalize weights relative to Head (Head = 1.0)
+	# This shows how much MORE we weight the tail compared to the head
+	head_w = tier_weights.get("Head", 1.0)
+	if head_w > 0:
+		tier_weights_norm = {t: float(w / head_w) for t, w in tier_weights.items()}
+	else:
+		tier_weights_norm = tier_weights
+
+	# 2. Visualization: Data Availability vs. Loss Weight
+	fig, ax1 = plt.subplots(figsize=figsize)
+	
+	positions = [1, 2, 3]
+	labels = TIER_ORDER
+	
+	# --- Axis 1: Data Availability (Mean Frequency) ---
+	# We plot Log(Frequency) because Head/Tail spans orders of magnitude
+	log_freqs = [np.log10(tier_mean_freqs[t]) for t in TIER_ORDER]
+	
+	bars = ax1.bar(
+			positions, 
+			log_freqs, 
+			color=[SEGMENT_SPECS[t]["color"] for t in TIER_ORDER],
+			alpha=0.6,
+			width=0.5,
+			label="Log10(Mean Frequency)",
+			zorder=2
+	)
+	
+	ax1.set_ylabel("Data Availability: Log10(Frequency)", fontsize=12, color="black")
+	ax1.tick_params(axis='y', labelcolor="black")
+	
+	# Add frequency annotations on bars
+	for pos, t in zip(positions, TIER_ORDER):
+		ax1.text(
+			pos, 
+			log_freqs[pos-1] + 0.05, 
+			f"μ={tier_mean_freqs[t]:.1f}",
+			ha="center", 
+			va="bottom", 
+			fontsize=9, 
+			fontweight="bold"
+		)
+
+	# --- Axis 2: Required Loss Weight (Relative) ---
+	ax2 = ax1.twinx()
+	
+	weight_vals = [tier_weights_norm[t] for t in TIER_ORDER]
+	
+	# Plot the re-weighting line
+	ax2.plot(
+			positions, 
+			weight_vals,
+			color="#333333", linewidth=2.5, linestyle="--",
+			marker="o", markersize=8, markerfacecolor="white", markeredgecolor="#333333",
+			label="Required Loss Weight", zorder=3
+	)
+	
+	ax2.set_ylabel("Optimizing Weight (Relative to Head)", fontsize=12, color="#333333")
+	ax2.tick_params(axis='y', labelcolor="#333333")
+	
+	# Annotate the weight multiplier (Actionable insight)
+	for pos, val, t in zip(positions, weight_vals, TIER_ORDER):
+		ax2.annotate(
+			f"{val:.1f}×",
+			xy=(pos, val),
+			xytext=(5, 5),
+			textcoords="offset points",
+			ha="left", 
+			va="bottom",
+			fontsize=10, 
+			fontweight="bold", 
+			color="#333333",
+			bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8)
+		)
+
+	ax1.set_xticks(positions)
+	ax1.set_xticklabels(
+		[f"{SEGMENT_SPECS[t]['label']}\n({tier_label_counts[t]:,} labels)" for t in TIER_ORDER],
+		fontsize=10
+	)
+	ax1.set_title("Data Scarcity vs. Optimization Weight", fontsize=14, fontweight="bold", y=1.02)
+	
+	# Combined Legend
+	legend_elements = [
+		Patch(facecolor="#FFFFFF", edgecolor="#000000",alpha=0.6, label="Data Frequency (Availability)"),
+		Line2D([0], [0], markerfacecolor="#B6B6B6", markeredgecolor="black", linestyle="--", marker="o", label="Loss Weight (Gradient Scale)")
+	]
+	ax1.legend(handles=legend_elements, loc="best", fontsize=8, ncol=2, frameon=False, fancybox=True, shadow=True)
+	plt.tight_layout()
+	plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
+	plt.close(fig)
+	
+	print(f"Reweighting plot saved → {output_path}")
+	
+	reweight_stats = {
+		"mean_frequency": tier_mean_freqs,
+		"relative_weights": tier_weights_norm,
+		"raw_weights": tier_weights
+	}
+	print(json.dumps(reweight_stats, indent=2))
+	print("-"*60)
+	return reweight_stats
+
+def plot_tier_importance_vs_cardinality(
+	card_df: pd.DataFrame,
+	freq_map: dict,
+	tier_label_counts: dict,
+	tier_label_pct: dict,
+	tau_head: int,
+	tau_torso: int,
+	output_path: str = "plots/tier_importance_vs_cardinality.png",
+	strip_sample_n: int = 2000,
+	figsize: Tuple[float, float] = (9, 7),
+	dpi: int = 250,
+):
+	"""
+	Plots per-sample label cardinality (boxplot) against the 
+	Relative Sample Importance (inverse frequency weight) on a secondary axis.
+	"""
+	col_keys  = ["head_card", "torso_card", "tail_card"]
+	positions = [1, 2, 3]
+	rng       = np.random.default_rng(42)
+	tier_data = [card_df[c].values for c in col_keys]
+	fig, ax_left = plt.subplots(figsize=figsize)
+	ax_right     = ax_left.twinx()   # Secondary axis
+
+	# ── 1. Left Axis: Cardinality Boxplots ───────────────────────────────────
+	bp = ax_left.boxplot(
+					tier_data,
+					positions=positions,
+					widths=0.42,
+					patch_artist=True,
+					notch=False,
+					showfliers=False,
+					medianprops=dict(color="black", linewidth=2.0),
+					whiskerprops=dict(linewidth=1.2),
+					capprops=dict(linewidth=1.2),
+					boxprops=dict(linewidth=1.2),
+					zorder=3,
+	)
+	for patch, tier in zip(bp["boxes"], TIER_ORDER):
+					c = SEGMENT_SPECS[tier]["color"]
+					patch.set_facecolor(to_rgba(c, alpha=0.45))
+					patch.set_edgecolor(c)
+	for whisker, ti in zip(bp["whiskers"], [0, 0, 1, 1, 2, 2]):
+					whisker.set_color(SEGMENT_SPECS[TIER_ORDER[ti]]["color"])
+	for cap, ti in zip(bp["caps"], [0, 0, 1, 1, 2, 2]):
+					cap.set_color(SEGMENT_SPECS[TIER_ORDER[ti]]["color"])
+	# Strip overlay
+	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
+					vals = card_df[col].values.astype(float)
+					if len(vals) > strip_sample_n:
+									vals = vals[rng.choice(len(vals), strip_sample_n, replace=False)]
+					jitter = rng.uniform(-0.14, 0.14, size=len(vals))
+					ax_left.scatter(
+									pos + jitter, vals,
+									s=3, 
+									alpha=0.25,
+									color=SEGMENT_SPECS[tier]["color"],
+									linewidths=0, 
+									zorder=2,
+					)
+	# Mean diamond
+	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
+					mean_val = card_df[col].mean()
+					ax_left.scatter(
+									pos, mean_val,
+									s=72, 
+									marker="D",
+									color=SEGMENT_SPECS[tier]["color"],
+									edgecolors="black",
+									linewidths=0.7,
+									zorder=5,
+									label=f"{SEGMENT_SPECS[tier]['label']} (μ={mean_val:.2f})"
+					)
+	ax_left.set_ylabel("Labels per image (cardinality)", fontsize=12)
+	ax_left.set_ylim(bottom=-0.05)
+	ax_left.grid(axis="y", linestyle="--", linewidth=0.3, alpha=0.5, zorder=0)
+
+	# ── 2. Right Axis: Relative Importance (Weight)
+	# Calculate mean inverse frequency per tier
+	tier_freqs = {
+		"Head":  [f for f in freq_map.values() if f >= tau_head],
+		"Torso": [f for f in freq_map.values() if tau_torso <= f < tau_head],
+		"Tail":  [f for f in freq_map.values() if f < tau_torso],
+	}
+	print("="*100)
+	print(tier_freqs)
+	print("="*100)
+	
+	tier_weights = {}
+	for t, freqs in tier_freqs.items():
+		if len(freqs) > 0:
+			# Mean of (1/frequency)
+			tier_weights[t] = np.mean([1.0 / f for f in freqs])
+		else:
+			tier_weights[t] = 0.0
+
+	print(tier_weights)
+	print("="*100)
+	
+	# Normalize relative to Head (Head = 1.0)
+	head_w = tier_weights.get("Head", 1.0)
+	print(head_w)
+	if head_w > 0:
+		tier_weights_norm = {t: float(w / head_w) for t, w in tier_weights.items()}
+	else:
+		tier_weights_norm = tier_weights
+
+	weight_vals = [tier_weights_norm[t] for t in TIER_ORDER]
+
+	print(tier_weights_norm)
+	print("="*100)
+	
+	# Plot line
+	ax_right.plot(
+		positions, 
+		weight_vals,
+		color="#444444", 
+		linewidth=1.6,
+		linestyle="--", 
+		zorder=4,
+		marker="o",
+		markersize=6,
+		markerfacecolor="white",
+		markeredgecolor="#444444"
+	)
+
+	# Annotations for weights
+	for pos, val, tier in zip(positions, weight_vals, TIER_ORDER):
+		v_offset = 10 if val < 20 else -12
+		ax_right.annotate(
+			f"{val:.1f}×",
+			xy=(pos, val),
+			xytext=(0, v_offset),
+			textcoords="offset points",
+			ha="left", 
+			va="bottom" if v_offset > 0 else "top",
+			fontsize=8.0, 
+			fontweight="bold",
+			color="#333333",
+			bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.7, edgecolor="none")
+		)
+	
+	ax_right.set_ylabel("Relative Importance (vs. Head)", fontsize=11, color="#444444")
+	ax_right.tick_params(axis="y", labelcolor="#444444", labelsize=9)
+	ax_right.set_ylim(bottom=0)
+	
+	# Subtle right-axis spine
+	ax_right.spines["right"].set_linewidth(0.8)
+	ax_right.spines["right"].set_color("#888888")
+	
+	# 3. X-Axis & Layout
+	ax_left.set_xticks(positions)
+	ax_left.set_xticklabels(
+					[
+									f"{SEGMENT_SPECS[t]['label']}\n"
+									f"{tier_label_counts[t]:,} labels\n({tier_label_pct[t]}% vocab)"
+									for t in TIER_ORDER
+					],
+					fontsize=10,
+	)
+
+	handles_left, labels_left = ax_left.get_legend_handles_labels()
+	
+	weight_handle = Line2D(
+					[0], [0],
+					color="#444444", linewidth=1.2, linestyle="--",
+					marker="o", markersize=5, markerfacecolor="white", markeredgecolor="#444444",
+					label="Relative Weight"
+	)
+	
+	all_handles = handles_left + [weight_handle]
+	all_labels  = labels_left + ["Relative Weight"]
+	ax_left.legend(
+		all_handles, 
+		all_labels,
+		loc="best",
+		fontsize=9.0,
+		framealpha=0.9,
+		edgecolor="#cccccc",
+		title="◆ mean cardinality -- relative weight",
+		title_fontsize=9.0,
+		ncol=4,
+		frameon=False,
+		fancybox=True,
+		shadow=False,
+		facecolor="white",
+	)
+	for spine in ax_left.spines.values():
+					spine.set_linewidth(0.7)
+	plt.tight_layout()
+	plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
+	plt.close(fig)
+	print(f"Saved importance vs cardinality plot → {output_path}")
+
 def plot_tier_cardinality_distribution(
 	df: pd.DataFrame,
 	label_col: str = "multimodal_canonical_labels",
@@ -206,7 +1175,7 @@ def plot_tier_cardinality_distribution(
 		print(type(freq_series), freq_series.shape)
 		print(freq_series.value_counts().head(10))
 		print(f"  ├─ head_pct: {head_pct} n_head: {n_head}")
-		print(f"  └─ tail_pct: {tail_pct} n_tail: {n_tail}")
+		print(f"  ├─ tail_pct: {tail_pct} n_tail: {n_tail}")
 		print(f"  ├─ tau_head  (f >= tau_head({tau_head})  => HEAD)")
 		print(f"  └─ tau_torso (f <  tau_torso({tau_torso}) => TAIL)")
 		print()
@@ -280,10 +1249,6 @@ def plot_tier_cardinality_distribution(
 		"max":    int(card_df["total_card"].max()),
 		"min":    int(card_df["total_card"].min()),
 	}
-
-	zero_tail_pct  = tier_card_stats["Tail"]["zero_pct"]
-	zero_head_pct  = tier_card_stats["Head"]["zero_pct"]
-	zero_torso_pct = tier_card_stats["Torso"]["zero_pct"]
 
 	# 5. Stats dict
 	stats = {
@@ -414,200 +1379,66 @@ def plot_tier_cardinality_distribution(
 		print(msg)
 		print(div + "\n")
 
-	# ── 7. FIGURE: dual y-axis, shared x (tier positions) ────────────────────
-	#
-	#   ax_left  (primary)   : boxplot + strip overlay
-	#                          left y-axis  → labels per image (cardinality)
-	#   ax_right (secondary) : zero-label % line + markers
-	#                          right y-axis → images with 0 labels of that tier (%)
-	#
-	#   Both axes share the same x positions [1, 2, 3] → Head / Torso / Tail.
-	#   The sparsity line sits behind the boxplots (lower zorder) so it never
-	#   obscures the IQR boxes, but the markers and annotations float above.
-	# ─────────────────────────────────────────────────────────────────────────
-	fig, ax_left = plt.subplots(figsize=figsize)
-	ax_right     = ax_left.twinx()   # shares x-axis automatically
-
-	rng       = np.random.default_rng(42)
-	positions = [1, 2, 3]
-	col_keys  = ["head_card", "torso_card", "tail_card"]
-	tier_data = [card_df[c].values for c in col_keys]
-
-	# Boxplot on ax_left
-	bp = ax_left.boxplot(
-		tier_data,
-		positions    = positions,
-		widths       = 0.42,
-		patch_artist = True,
-		notch        = False,
-		showfliers   = False,
-		medianprops  = dict(color="black", linewidth=2.0),
-		whiskerprops = dict(linewidth=1.2),
-		capprops     = dict(linewidth=1.2),
-		boxprops     = dict(linewidth=1.2),
-		zorder       = 3,
+	# 7. FIGURES
+	plot_tier_cardinality_boxplot(
+			card_df=card_df,
+			tier_card_stats=tier_card_stats,
+			tier_label_counts=tier_label_counts,
+			tier_label_pct=tier_label_pct,
+			total_card_stats=total_card_stats,
+			output_path=output_path,
+			strip_sample_n=strip_sample_n,
+			figsize=figsize,
+			dpi=dpi,
 	)
 
-	for patch, tier in zip(bp["boxes"], TIER_ORDER):
-		c = SEGMENT_SPECS[tier]["color"]
-		patch.set_facecolor(to_rgba(c, alpha=0.45))
-		patch.set_edgecolor(c)
-
-	for whisker, ti in zip(bp["whiskers"], [0, 0, 1, 1, 2, 2]):
-		whisker.set_color(SEGMENT_SPECS[TIER_ORDER[ti]]["color"])
-
-	for cap, ti in zip(bp["caps"], [0, 0, 1, 1, 2, 2]):
-		cap.set_color(SEGMENT_SPECS[TIER_ORDER[ti]]["color"])
-
-	# ── Strip overlay on ax_left
-	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
-		vals = card_df[col].values.astype(float)
-		if len(vals) > strip_sample_n:
-			vals = vals[rng.choice(len(vals), strip_sample_n, replace=False)]
-		jitter = rng.uniform(-0.14, 0.14, size=len(vals))
-		ax_left.scatter(
-			pos + jitter, 
-			vals,
-			s=3, 
-			alpha=0.20,
-			color=SEGMENT_SPECS[tier]["color"],
-			linewidths=0, 
-			zorder=2,
-		)
-
-	# ── Mean diamond on ax_left
-	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
-		mean_val = card_df[col].mean()
-		ax_left.scatter(
-			pos, mean_val,
-			s=72, marker="D",
-			color=SEGMENT_SPECS[tier]["color"],
-			edgecolors="black", linewidths=0.7,
-			zorder=5,
-			label=(
-				f"{SEGMENT_SPECS[tier]['label']} "
-				f"(μ={mean_val:.2f}, med={card_df[col].median():.0f})"
-			),
-		)
-
-	# Zero-label sparsity line + markers on ax_right
-	zero_pcts = [tier_card_stats[t]["zero_pct"] for t in TIER_ORDER]
-
-	ax_right.plot(
-		positions, 
-		zero_pcts,
-		color="#444444", 
-		linewidth=1.6,
-		linestyle="--", 
-		zorder=4,
-		label="Images with 0 labels (%)",
+	plot_tier_coverage_bars(
+			tier_card_stats=tier_card_stats,
+			tier_label_counts=tier_label_counts,
+			tier_label_pct=tier_label_pct,
+			output_path=output_path.replace(".png", "_coverage_bars.png"),  # auto-derive second path
+			dpi=dpi,
 	)
 
-	for pos, val, tier in zip(positions, zero_pcts, TIER_ORDER):
-		c = SEGMENT_SPECS[tier]["color"]
-		ax_right.scatter(
-			pos, 
-			val,
-			s=90, 
-			marker="o",
-			color=c,
-			edgecolors="black", 
-			linewidths=0.8,
-			zorder=6,
-		)
-		# Annotation: offset upward for head/torso, downward for tail to avoid clutter
-		v_offset = -5.0 if val < 50 else 5.0
-		ax_right.annotate(
-			f"{val:.1f}%",
-			xy=(pos, val),
-			xytext=(0, v_offset),
-			textcoords="offset points",
-			ha="left", 
-			va="bottom" if v_offset > 0 else "top",
-			fontsize=8.0, 
-			fontweight="bold",
-			color=c,
-		)
-
-	ax_left.set_ylabel("Labels per image (cardinality)", fontsize=12)
-	ax_left.set_ylim(bottom=-0.05)
-
-	ax_right.set_ylabel("Images with zero labels of tier (%)", fontsize=11, color="#444444")
-	ax_right.set_ylim(0, 100) # fixed 0–100 % scale with a little headroom
-	ax_right.tick_params(axis="y", labelcolor="#444444", labelsize=9)
-	ax_right.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0f}%"))
-
-	# Subtle right-axis spine to signal the secondary scale
-	ax_right.spines["right"].set_linewidth(0.8)
-	ax_right.spines["right"].set_color("#888888")
-
-	# ── X-axis tick labels (shared)
-	ax_left.set_xticks(positions)
-	ax_left.set_xticklabels(
-		[
-			f"{SEGMENT_SPECS[t]['label']}\n"
-			f"{tier_label_counts[t]:,} labels\n({tier_label_pct[t]}% vocab)"
-			for t in TIER_ORDER
-		],
-		fontsize=10,
-	)
-	ax_left.set_xlim(0.4, 3.6)
-
-	# ax_left.set_title(
-	# 	"Per-Sample Label Cardinality and Supervision Sparsity by Frequency Tier",
-	# 	fontsize=11, 
-	# 	fontweight="bold", 
-	# )
-
-	# ── Grid (left axis only, behind everything)
-	ax_left.grid(axis="y", linestyle="--", linewidth=0.3, alpha=0.75, zorder=0)
-	ax_right.set_axisbelow(False)   # don't let right-axis grid double up
-
-	# ── Combined legend
-	handles_left,  labels_left  = ax_left.get_legend_handles_labels()
-	# Manually build the sparsity legend entry (line + marker combined)
-	sparsity_handle = Line2D(
-		[0], 
-		[0],
-		color="#444444", 
-		linewidth=1.2, 
-		linestyle="--",
-		marker="o", 
-		markersize=6,
-		markerfacecolor="white", 
-		markeredgecolor="#444444",
-		label="Zero-label images (%)",
-	)
-	all_handles = handles_left + [sparsity_handle]
-	all_labels  = labels_left  + ["Zero-label images (%)"]
-
-	ax_left.legend(
-		all_handles, 
-		all_labels,
-		loc="upper right",
-		fontsize=9.0,
-		frameon=False,
-		# framealpha=0.92,
-		# edgecolor="#cccccc",
-		title="◆ = mean cardinality   ● = sparsity",
-		title_fontsize=10.0,
-		ncol=1,
-		fancybox=True,
-		shadow=True,
+	plot_tier_skewness(
+			freq_map=freq_map,
+			tier_label_counts=tier_label_counts,
+			tier_label_pct=tier_label_pct,
+			tau_head=tau_head,
+			tau_torso=tau_torso,
+			output_path=output_path.replace(".png", "_skewness.png"),
+			dpi=dpi,
 	)
 
-	for spine in ax_left.spines.values():
-		spine.set_linewidth(0.7)
-
-	print(
-		f"{zero_tail_pct:.1f}% of images carry zero tail-tier labels  |  "
-		f"{zero_head_pct:.1f}% carry zero head-tier labels  |  "
-		f"Mean total cardinality = {total_card_stats['mean']:.2f} ± {total_card_stats['std']:.2f}"
+	plot_tier_cv_distribution(
+			freq_map=freq_map,
+			tier_label_counts=tier_label_counts,
+			tier_label_pct=tier_label_pct,
+			tau_head=tau_head,
+			tau_torso=tau_torso,
+			output_path=output_path.replace(".png", "_cv_distribution.png"),
+			dpi=dpi,
 	)
 
-	plt.tight_layout()
-	plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
-	plt.close(fig)
+	plot_tier_importance_vs_cardinality(
+		card_df=card_df,
+		freq_map=freq_map,
+		tier_label_counts=tier_label_counts,
+		tier_label_pct=tier_label_pct,
+		tau_head=tau_head,
+		tau_torso=tau_torso,
+		output_path=output_path.replace(".png", "_importance.png"),
+		strip_sample_n=strip_sample_n,
+	)
+
+	plot_reweighting_analysis(
+		freq_map=freq_map,
+		tier_label_counts=tier_label_counts,
+		tier_label_pct=tier_label_pct,
+		tau_head=tau_head,
+		tau_torso=tau_torso,
+		output_path=output_path.replace(".png", "_reweighting_analysis.png"),
+	)
 
 	if verbose:
 		print(json.dumps(stats, indent=2, ensure_ascii=False))
@@ -816,7 +1647,7 @@ def plot_score_distribution_kde(
 			
 			if verbose:
 				print(f"[{direction.upper()}] {strategy}: {len(all_scores)} scores, "
-				      f"range=[{min(all_scores):.3f}, {max(all_scores):.3f}]")
+							f"range=[{min(all_scores):.3f}, {max(all_scores):.3f}]")
 			
 			# Get styling from METHOD_STYLE
 			method_color = METHOD_STYLE.get(strategy, {}).get("color", "#000000")

@@ -189,7 +189,7 @@ def diagnose_train_val_coverage(
 	both_active  = (train_active & val_active).sum().item()
 	neither      = (~train_active & ~val_active).sum().item()
 	if verbose:
-		print(f"\n[Train/Val Class Coverage Diagnostic]")
+		print(f"\nTrain/Val Class Coverage")
 		print(f"  ├─ Active in both train and val : {both_active:,}")
 		print(f"  ├─ Active in train only         : {train_only:,}")
 		print(f"  ├─ Active in val only           : {val_only:,}")
@@ -236,10 +236,10 @@ def compute_loss_masks(
 	train_loader: DataLoader,
 	num_classes: int,
 	device: torch.device,
-	pareto_threshold: float = 0.80,
-	rare_percentile: float = 0.20,       # bottom X% of active classes by frequency → rare
 	pw_mode: str = "log",                # "log" | "sqrt" | "linear"
-	pw_max_cap: float = 100.0,           # only used when pw_mode="linear"
+	pw_max_cap: Optional[float]=None,
+	pareto_threshold: float = 0.8,
+	rare_percentile: float = 0.2,       # bottom X% of active classes by frequency → rare
 	verbose: bool = True,
 ) -> Dict[str, torch.Tensor]:
 	"""
@@ -283,7 +283,12 @@ def compute_loss_masks(
 	active_mask = (train_freq > 0).to(device)
 
 	# 3. pos_weight — training loss weighting only
+	print(f"train_freq: {type(train_freq)} {train_freq.shape} (min, max): ({train_freq.min():.2f}, {train_freq.max():.2f}) mean: {train_freq.mean():.2f} std: {train_freq.std():.2f}")
+	print(f"N: {N}")
 	ratio = (N - train_freq) / train_freq.clamp(min=1)
+	print(f"raw ration: {type(ratio)} {ratio.shape} (min, max): ({ratio.min():.2f}, {ratio.max():.2f}) mean: {ratio.mean():.2f} std: {ratio.std():.2f}")
+	# print(f">> pw_mode: {pw_mode} ...")
+
 	if pw_mode == "log":
 		# smooth, conservative — safe for probes / adapters / IA3 / VeRA
 		# range: ~[0, log1p(N)] ≈ [0, 11] for N~75k; no clamp needed
@@ -292,17 +297,24 @@ def compute_loss_masks(
 		# moderate — suitable for LoRA / LoRA+ / DoRA / RSLora
 		# range: ~[1, sqrt(N)] ≈ [1, 274] for N~75k => [1, 50.0]
 		# clamp needed to ensure gradient flow through the rare classes
-		if verbose:
-			print(f"pw_mode: {pw_mode} => clamp needed to ensure gradient flow through the rare classes")
-		scaled = torch.sqrt(ratio).clamp(min=1.0, max=pw_max_cap)
+		# if verbose:
+		# 	print(f"pw_mode: {pw_mode} => clamp needed to ensure gradient flow through the rare classes")
+		scaled = torch.sqrt(ratio)#.clamp(min=1.0, max=pw_max_cap)
 	elif pw_mode == "linear":
-		if verbose:
-			print(f"pw_mode: {pw_mode} => pw_max_cap: {pw_max_cap} to ensure gradient flow through the rare classes")
+		# if verbose:
+		# 	print(f"pw_mode: {pw_mode} => pw_max_cap: {pw_max_cap} to ensure gradient flow through the rare classes")
 		# strong — suitable for full fine-tuning where backbone absorbs gradients
 		# range: [1, pw_max_cap]
-		scaled = ratio.clamp(min=1.0, max=pw_max_cap)
+		scaled = ratio#.clamp(min=1.0, max=pw_max_cap)
 	else:
 		raise ValueError(f"Unknown pw_mode '{pw_mode}'. Choose from: 'log', 'sqrt', 'linear'.")
+
+	if pw_max_cap:
+		if verbose:
+			print(f"pw_max_cap: {pw_max_cap}")
+		scaled = scaled.clamp(min=1.0, max=pw_max_cap)
+
+	print(f"scaled: {type(scaled)} {scaled.shape} (min, max): ({scaled.min():.2f}, {scaled.max():.2f}) mean: {scaled.mean():.2f} std: {scaled.std():.2f}")
 
 	# inactive classes always get weight 1.0 (they are masked out in the loss anyway)
 	pos_weight = torch.where(
@@ -329,21 +341,27 @@ def compute_loss_masks(
 		# degenerate dataset — no rare classes
 		rare_mask = torch.zeros(num_classes, dtype=torch.bool, device=device)
 	
+	loader_name = getattr(train_loader, 'name', 'UNNAMED_LOADER')
 	if verbose:
-		print(f"\nLabel frequencies from training set")
+		print(f"\nLabel frequencies {loader_name}")
 		print(f"  ├─ Total samples (N):        {N:,}")
-		print(f"  ├─ pw_mode:                  {pw_mode}  cap={pw_max_cap if pw_mode == 'linear' else 'n/a'}")
-		print(f"  ├─ pos_weight range:         [{pos_weight[active_mask].min():.3f}, {pos_weight[active_mask].max():.3f}]")
+		print(f"  ├─ Total classes (C):        {num_classes:,}")
+		print(f"  ├─ Train freq:               [{train_freq.min():.1f}, {train_freq.max():.1f}] μ={train_freq.mean():.1f} σ={train_freq.std():.1f}")
+		print(f"  ├─ pw_mode:                  {pw_mode}")
+		if pw_max_cap:
+			print(f"  ├─ pw_max_cap:               {pw_max_cap}")
+		print(f"  ├─ Scaled:                   [{scaled.min():.1f}, {scaled.max():.1f}] μ={scaled.mean():.1f} σ={scaled.std():.1f}")
+		print(f"  ├─ pos_weight:               [{pos_weight.min():.1f}, {pos_weight.max():.1f}] μ={pos_weight.mean():.1f} σ={pos_weight.std():.1f}")
 		print(f"  ├─ Active classes (freq>0):  {active_mask.sum().item():,} / {num_classes:,}")
-		print(f"  ├─ Head  (Pareto {pareto_threshold:.0%}):       {head_mask.sum().item():,}")
-		print(f"  └─ Rare  (bottom {rare_percentile:.0%} freq):    {rare_mask.sum().item():,}")
+		print(f"  ├─ Head  (Pareto {pareto_threshold}):       {head_mask.sum().item():,}")
+		print(f"  └─ Rare  (bottom {rare_percentile}):       {rare_mask.sum().item():,}")
 
 	return {
-		"pos_weight":  pos_weight,
 		"active_mask": active_mask,
 		"head_mask":   head_mask,
 		"rare_mask":   rare_mask,
-		"train_freq":  train_freq,   # CPU — intentional, used for analysis
+		"train_freq":  train_freq,
+		"pos_weight":  pos_weight,
 		"N":           N,
 	}
 

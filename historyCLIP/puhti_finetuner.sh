@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=256G
+#SBATCH --mem=221G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --time=03-00:00:00
@@ -53,21 +53,21 @@
 #   strategy 12  clip_adapter_t  : arch_offset + 36 – 38
 #   strategy 13  tip_adapter     : arch_offset + 39 – 41
 #
-# ── Column offsets (within each strategy block of 3) ────────────────────
+# Column offsets (within each strategy block of 3)
 #   +0  llm_canonical_labels
 #   +1  vlm_canonical_labels
 #   +2  multimodal_canonical_labels
 #
-# ── COMMON SUBSET EXAMPLES ──────────────────────────────────────────────
+# COMMON SUBSET EXAMPLES
 #   All 840 jobs                                    : --array=0-839
 #   H4 only (all archs, strategies, cols)           : --array=0-167
-#   H4 + ViT-L/14@336px (all strategies, all cols) : --array=0-41
-#   H4 + ViT-L/14@336px + first 11 strats, all cols: --array=0-32   ✅
-#   H4 + ViT-L/14@336px + all strats + llm only    : --array=0-41:3
-#   H4 + ViT-L/14@336px + all strats + vlm only    : --array=1-41:3
-#   H4 + ViT-L/14@336px + all strats + multimodal  : --array=2-41:3
-#   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
-#   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
+#   H4 + ViT-L/14@336px (all strategies, all cols)  : --array=0-41
+#   H4 + ViT-L/14@336px + first 11 strats, all cols : --array=0-32   ✅
+#   H4 + ViT-L/14@336px + all strats + llm only     : --array=0-41:3
+#   H4 + ViT-L/14@336px + all strats + vlm only     : --array=1-41:3
+#   H4 + ViT-L/14@336px + all strats + multimodal   : --array=2-41:3
+#   H4 + ViT-L/14@336px + lora_plus + all cols      : --array=12-14
+#   H4 + ViT-L/14@336px + lora_plus + multimodal    : --array=14
 ##############################################################################
 ###SBATCH --array=0-32
 ###SBATCH --array=12-14 # only LoRA+

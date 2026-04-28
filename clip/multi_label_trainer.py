@@ -102,7 +102,7 @@ def zero_shot_multi_label(
 	rare_mask   = masks["rare_mask"]
 	train_freq = masks["train_freq"]
 
-	val_freq = diagnose_train_val_coverage(
+	diagnose_train_val_coverage(
 		train_freq=train_freq,
 		validation_loader=validation_loader,
 		num_classes=num_classes,
@@ -247,7 +247,6 @@ def probe_multi_label(
 		device=device,
 		verbose=verbose,
 	)
-
 	pos_weight = masks["pos_weight"]
 	active_mask = masks["active_mask"]
 	head_mask = masks["head_mask"]
@@ -826,8 +825,8 @@ def full_finetune_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		num_classes=num_classes,
-		pw_mode="linear", 
-		pw_max_cap=100.0,
+		pw_mode="linear",
+		# pw_max_cap=100.0,
 		device=device,
 		verbose=verbose,
 	)
@@ -835,8 +834,8 @@ def full_finetune_multi_label(
 	active_mask = masks["active_mask"]
 	head_mask   = masks["head_mask"]
 	rare_mask   = masks["rare_mask"]
-	N = masks["N"]
-	train_freq = masks["train_freq"]
+	N 					= masks["N"]
+	train_freq 	= masks["train_freq"]
 
 	val_freq = diagnose_train_val_coverage(
 		train_freq=train_freq,
@@ -854,8 +853,7 @@ def full_finetune_multi_label(
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
 		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
-		print(f"   ├─ number of samples: {N}")
-		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   ├─ samples: {N} classes: {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
@@ -1388,7 +1386,7 @@ def lora_finetune_multi_label(
 		train_loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="sqrt",
-		pw_max_cap=50.0,
+		# pw_max_cap=50.0,
 		device=device,
 		verbose=verbose,
 	)
@@ -1396,8 +1394,8 @@ def lora_finetune_multi_label(
 	active_mask = masks["active_mask"]
 	head_mask   = masks["head_mask"]
 	rare_mask   = masks["rare_mask"]
-	N = masks["N"]
-	train_freq = masks["train_freq"]
+	N 					= masks["N"]
+	train_freq 	= masks["train_freq"]
 
 	val_freq = diagnose_train_val_coverage(
 		train_freq=train_freq,
@@ -1999,7 +1997,7 @@ def lora_plus_finetune_multi_label(
 		train_loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="sqrt",
-		pw_max_cap=50.0,
+		# pw_max_cap=50.0,
 		device=device,
 		verbose=verbose,
 	)
@@ -2007,8 +2005,8 @@ def lora_plus_finetune_multi_label(
 	active_mask = masks["active_mask"]
 	head_mask   = masks["head_mask"]
 	rare_mask   = masks["rare_mask"]
-	N = masks["N"]
-	train_freq = masks["train_freq"]
+	N 					= masks["N"]
+	train_freq 	= masks["train_freq"]
 
 	diagnose_train_val_coverage(
 		train_freq=train_freq,
@@ -2770,7 +2768,7 @@ def rslora_finetune_multi_label(
 		train_loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="sqrt",
-		pw_max_cap=50.0,
+		# pw_max_cap=50.0,
 		device=device,
 		verbose=verbose,
 	)
@@ -3380,7 +3378,7 @@ def dora_finetune_multi_label(
 		train_loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="sqrt",
-		pw_max_cap=50.0,
+		# pw_max_cap=50.0,
 		device=device,
 		verbose=verbose,
 	)
@@ -3388,8 +3386,8 @@ def dora_finetune_multi_label(
 	active_mask = masks["active_mask"]
 	head_mask   = masks["head_mask"]
 	rare_mask   = masks["rare_mask"]
-	N = masks["N"]
-	train_freq = masks["train_freq"]
+	N 					= masks["N"]
+	train_freq 	= masks["train_freq"]
 
 	val_freq = diagnose_train_val_coverage(
 		train_freq=train_freq,
