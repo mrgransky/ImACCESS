@@ -2727,7 +2727,7 @@ def cluster(
 
 	print(f"[LOADED] {sum(p.numel() for p in model.parameters()):,} parameters")
 
-	print(f"\n[ENCODING] {len(unique_labels)} labels | batch_size: {batch_size} | {device}")
+	print(f"\n[ENCODING] {len(unique_labels)} unique labels | batch_size: {batch_size} | {device}")
 	X = model.encode(
 		unique_labels,
 		batch_size=batch_size,
