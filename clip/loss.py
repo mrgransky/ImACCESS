@@ -274,12 +274,12 @@ def compute_loss_masks(
 
 	train_freq = torch.zeros(num_classes, dtype=torch.float32)
 	for i, raw in enumerate(train_loader.dataset.labels):
-		print(i, raw) # 522 ['railroad', 'train', 'station']
+		# print(i, raw) # 522 ['railroad', 'train', 'station']
 		try:
 			for lbl in ast.literal_eval(raw):
 				if lbl in train_loader.dataset.label_dict:
 					idx = train_loader.dataset.label_dict[lbl]
-					print(f"\t{lbl}, {idx}") # railroad, 107
+					# print(f"\t{lbl}, {idx}") # railroad, 107
 					train_freq[idx] += 1
 		except (ValueError, SyntaxError):
 			pass
