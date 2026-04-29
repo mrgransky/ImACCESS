@@ -109,10 +109,6 @@ def merge_datasets(
 	num_unique_labels = merged_single_label_df['label'].nunique()
 	print(f"Unique labels in merged dataset: {num_unique_labels}")
 	print(merged_single_label_df["label"].value_counts())
-	# for label, count in merged_single_label_df['label'].value_counts().items():
-	# 	print(f"  - {label}: {count}")
-	
-	# print(merged_single_label_df.head())
 
 	merged_single_label_df_fpath = os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv')
 	print(f"Saving merged single-label dataset to: {merged_single_label_df_fpath}")
@@ -139,17 +135,6 @@ def merge_datasets(
 		DPI=300,
 		fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_grouped_bar_chart_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png")
 	)
-
-	# # Stratified train/val split
-	# if verbose:
-	# 	print("Stratified Splitting".center(150, "-"))
-	# single_label_train_df, single_label_val_df = train_test_split(
-	# 	merged_single_label_df,
-	# 	test_size=val_split_pct,
-	# 	shuffle=True,
-	# 	stratify=merged_single_label_df['label'],
-	# 	random_state=seed
-	# )
 
 	single_label_train_df, single_label_val_df = get_stratified_split(
 		df=merged_single_label_df, 

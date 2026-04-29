@@ -254,14 +254,14 @@ def probe_multi_label(
 	N = masks["N"]
 	train_freq = masks["train_freq"]
 
-	val_freq = diagnose_train_val_coverage(
+	diagnose_train_val_coverage(
 		train_freq=train_freq,
 		validation_loader=validation_loader,
 		num_classes=num_classes,
 		verbose=verbose,
 	)
 
-	# ── Criteria
+	# Criteria
 	# For the probe, loss is computed directly on logits [B, C] — same shape
 	# as i2t_sim — so criterion_i2t with pos_weight applies directly.
 	# No criterion_t2i needed: the probe has no T2I direction.
@@ -272,8 +272,7 @@ def probe_multi_label(
 	if verbose:
 		print(f"\n{criterion.__class__.__name__}")
 		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
-		print(f"   ├─ number of samples: {N}")
-		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   ├─ samples: {N} classes: {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")

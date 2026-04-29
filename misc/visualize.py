@@ -165,145 +165,141 @@ def _assign_tier(label: str, freq_map: dict, tau_head: int, tau_torso: int) -> s
 		return "Torso"
 
 def plot_tier_cardinality_boxplot(
-		card_df: pd.DataFrame,
-		tier_card_stats: dict,
-		tier_label_counts: dict,
-		tier_label_pct: dict,
-		total_card_stats: dict,
-		output_path: str = "plots/tier_cardinality_boxplot.png",
-		strip_sample_n: int = 2000,
-		figsize: Tuple[float, float] = (8, 6),
-		dpi: int = 250,
+	card_df: pd.DataFrame,
+	tier_card_stats: dict,
+	tier_label_counts: dict,
+	tier_label_pct: dict,
+	output_path: str = "plots/tier_cardinality_boxplot.png",
+	strip_sample_n: int = 2000,
+	figsize: Tuple[float, float] = (8, 5),
+	dpi: int = 250,
 ):
-		col_keys  = ["head_card", "torso_card", "tail_card"]
-		positions = [1, 2, 3]
-		rng       = np.random.default_rng(42)
-		tier_data = [card_df[c].values for c in col_keys]
+	col_keys  = ["head_card", "torso_card", "tail_card"]
+	positions = [1, 2, 3]
+	rng       = np.random.default_rng(42)
+	tier_data = [card_df[c].values for c in col_keys]
+	fig, ax = plt.subplots(figsize=figsize)
 
-		fig, ax = plt.subplots(figsize=figsize)
+	# Boxplot
+	bp = ax.boxplot(
+		tier_data,
+		positions=positions,
+		widths=0.5,
+		patch_artist=True,
+		notch=False,
+		showfliers=False,
+		medianprops=dict(color="black", linewidth=2.0),
+		whiskerprops=dict(linewidth=1.2),
+		capprops=dict(linewidth=1.2),
+		boxprops=dict(linewidth=1.2),
+		zorder=3,
+	)
 
-		# Boxplot
-		bp = ax.boxplot(
-				tier_data,
-				positions=positions,
-				widths=0.42,
-				patch_artist=True,
-				notch=False,
-				showfliers=False,
-				medianprops=dict(color="black", linewidth=2.0),
-				whiskerprops=dict(linewidth=1.2),
-				capprops=dict(linewidth=1.2),
-				boxprops=dict(linewidth=1.2),
-				zorder=3,
-		)
+	for patch, tier in zip(bp["boxes"], TIER_ORDER):
+		c = SEGMENT_SPECS[tier]["color"]
+		patch.set_facecolor(to_rgba(c, alpha=0.45))
+		patch.set_edgecolor(c)
 
-		for patch, tier in zip(bp["boxes"], TIER_ORDER):
-				c = SEGMENT_SPECS[tier]["color"]
-				patch.set_facecolor(to_rgba(c, alpha=0.45))
-				patch.set_edgecolor(c)
+	for whisker, ti in zip(bp["whiskers"], [0, 0, 1, 1, 2, 2]):
+		whisker.set_color(SEGMENT_SPECS[TIER_ORDER[ti]]["color"])
 
-		for whisker, ti in zip(bp["whiskers"], [0, 0, 1, 1, 2, 2]):
-				whisker.set_color(SEGMENT_SPECS[TIER_ORDER[ti]]["color"])
+	for cap, ti in zip(bp["caps"], [0, 0, 1, 1, 2, 2]):
+		cap.set_color(SEGMENT_SPECS[TIER_ORDER[ti]]["color"])
 
-		for cap, ti in zip(bp["caps"], [0, 0, 1, 1, 2, 2]):
-				cap.set_color(SEGMENT_SPECS[TIER_ORDER[ti]]["color"])
-
-		# Strip overlay
-		for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
-				vals = card_df[col].values.astype(float)
-				if len(vals) > strip_sample_n:
-						vals = vals[rng.choice(len(vals), strip_sample_n, replace=False)]
-				jitter = rng.uniform(-0.14, 0.14, size=len(vals))
-				ax.scatter(
-						pos + jitter, vals,
-						s=3, 
-						alpha=0.25,
-						color=SEGMENT_SPECS[tier]["color"],
-						linewidths=0, 
-						zorder=2,
-				)
-
-		# Mean diamond
-		for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
-				mean_val = card_df[col].mean()
-				std_val = card_df[col].std()
-				ax.scatter(
-						pos, mean_val,
-						s=72, 
-						marker="D",
-						color=SEGMENT_SPECS[tier]["color"],
-						edgecolors="black", 
-						linewidths=0.7,
-						zorder=5,
-						label=(
-							f"{SEGMENT_SPECS[tier]['label']} "
-							f"(μ={mean_val:.2f}, σ={std_val:.2f}, med={card_df[col].median():.0f})"
-						),
-				)
-
-		# Sparsity badges
-		ymax_data = max(float(np.max(card_df[c].values)) for c in col_keys)
-		y_top = ymax_data + max(0.9, 0.25 * ymax_data)
-		ax.set_ylim(-0.05, y_top)
-		print(ymax_data, y_top)
-
-		for pos, tier in zip(positions, TIER_ORDER):
-			zero_pct = tier_card_stats[tier]["zero_pct"]
-			cov_pct  = tier_card_stats[tier]["coverage_pct"]
-			ax.text(
-				pos, 
-				y_top - 0.13 * y_top,
-				f"0-label: {zero_pct:.1f}%\n≥1 label: {cov_pct:.1f}%",
-				ha="center", 
-				va="center",
-				fontsize=8.0, 
-				fontweight="bold",
-				color="#0A0A0A",
-				bbox=dict(
-					boxstyle="round,pad=0.24",
-					facecolor=SEGMENT_SPECS[tier]["facecolor"],
-					edgecolor=SEGMENT_SPECS[tier]["color"],
-					linewidth=0.9,
-					alpha=0.45,
-				),
-				zorder=7,
+	# Strip overlay
+	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
+			vals = card_df[col].values.astype(float)
+			if len(vals) > strip_sample_n:
+					vals = vals[rng.choice(len(vals), strip_sample_n, replace=False)]
+			jitter = rng.uniform(-0.14, 0.14, size=len(vals))
+			ax.scatter(
+					pos + jitter, vals,
+					s=3, 
+					alpha=0.25,
+					color=SEGMENT_SPECS[tier]["color"],
+					linewidths=0, 
+					zorder=2,
 			)
 
-		# Axes
-		ax.set_ylabel("Labels per image (cardinality)", fontsize=12)
-		ax.set_xticks(positions)
-		ax.set_xticklabels(
-			[
-				f"{SEGMENT_SPECS[t]['label']}\n"
-				f"{tier_label_counts[t]:,} labels\n({tier_label_pct[t]}% vocab)"
-				for t in TIER_ORDER
-			],
-			fontsize=10,
-		)
-		# ax.set_xlim(0.4, 3.6)
-		ax.grid(linestyle="--", linewidth=0.3, alpha=0.5, zorder=0)
-
-		# Legend
-		handles, labels = ax.get_legend_handles_labels()
-		ax.legend(
-			handles, labels,
-			loc="best",
-			title="◆ = mean cardinality",
-			fontsize=8.0,
-			frameon=False,
-			title_fontsize=10.0,
-			ncol=3,
-			fancybox=True,
-			shadow=True,
+	# Mean diamond
+	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
+		mean_val = card_df[col].mean()
+		std_val = card_df[col].std()
+		ax.scatter(
+			pos,
+			mean_val,
+			s=72, 
+			marker="D",
+			color=SEGMENT_SPECS[tier]["color"],
+			edgecolors="black", 
+			linewidths=0.7,
+			zorder=5,
+			label=(
+				f"{SEGMENT_SPECS[tier]['label']} "
+				f"(μ={mean_val:.2f}, σ={std_val:.2f}, med={card_df[col].median():.0f})"
+			),
 		)
 
-		for spine in ax.spines.values():
-			spine.set_linewidth(0.7)
+	# Sparsity badges
+	ymax_data = max(float(np.max(card_df[c].values)) for c in col_keys)
+	y_top = ymax_data + max(0.9, 0.3 * ymax_data)
+	ax.set_ylim(-0.05, y_top)
+	print(ymax_data, y_top, y_top - 0.1 * y_top)
 
-		plt.tight_layout()
-		plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
-		plt.close(fig)
-		print(f"Saved boxplot → {output_path}")
+	for pos, tier in zip(positions, TIER_ORDER):
+		zero_pct = tier_card_stats[tier]["zero_pct"]
+		cov_pct  = tier_card_stats[tier]["coverage_pct"]
+		ax.text(
+			pos, 
+			y_top - 0.15 * y_top,
+			f"0-label: {zero_pct:.1f}%\n≥1 label: {cov_pct:.1f}%",
+			ha="center", 
+			va="center",
+			fontsize=7.5,
+			fontweight="bold",
+			color="#0A0A0A",
+			bbox=dict(
+				boxstyle="round,pad=0.24",
+				facecolor=SEGMENT_SPECS[tier]["facecolor"],
+				edgecolor=SEGMENT_SPECS[tier]["color"],
+				linewidth=0.9,
+				alpha=0.45,
+			),
+			zorder=7,
+		)
+
+	ax.set_ylabel("Labels per image (cardinality)", fontsize=12)
+	ax.set_xticks(positions)
+	ax.set_xticklabels(
+		[
+			f"{SEGMENT_SPECS[t]['label']}\n"
+			f"{tier_label_counts[t]:,} labels\n({tier_label_pct[t]}% vocab)"
+			for t in TIER_ORDER
+		],
+		fontsize=10,
+	)
+	# ax.set_xlim(0.4, 3.6)
+	ax.grid(linestyle="--", linewidth=0.3, alpha=0.5, zorder=0)
+
+	# Legend
+	handles, labels = ax.get_legend_handles_labels()
+	ax.legend(
+		handles, labels,
+		loc="best",
+		title="◆ = mean cardinality",
+		fontsize=8.0,
+		frameon=False,
+		title_fontsize=10.0,
+		ncol=3,
+		fancybox=True,
+		shadow=True,
+	)
+	for spine in ax.spines.values():
+		spine.set_linewidth(0.7)
+
+	plt.tight_layout()
+	plt.savefig(output_path, dpi=dpi)
+	plt.close(fig)
 
 def plot_tier_coverage_bars(
 		tier_card_stats: dict,
@@ -1130,6 +1126,441 @@ def plot_tier_importance_vs_cardinality(
 	plt.close(fig)
 	print(f"Saved importance vs cardinality plot → {output_path}")
 
+def plot_zipfian_curve(
+	freq_series: pd.Series,
+	tau_head: int,
+	tau_torso: int,
+	tier_label_counts: dict,
+	tier_label_pct: dict,
+	tier_occ_pct: dict,
+	head_pct: float,
+	tail_pct: float,
+	output_path: str = "plots/tier_zipfian_curve.png",
+	figsize: Tuple[float, float] = (8, 5),
+	dpi: int = 250,
+	verbose: bool = True,
+) -> dict:
+	"""
+	Plots the Zipfian frequency curve (rank vs. frequency, log-log scale) for the
+	full label vocabulary, with tier regions shaded and threshold lines annotated.
+
+	Zipf's Law states that in a natural language corpus the r-th most frequent
+	token has frequency proportional to 1/r^s (s ≈ 1 for text).  Label
+	distributions in vision datasets are not pure Zipfian, but they follow the
+	same qualitative power-law shape: a handful of labels dominate, and most
+	labels are rare.  Plotting rank vs. frequency on a log-log scale makes this
+	power-law relationship visible as a straight (or near-straight) line.
+
+	The tier boundaries τ_head and τ_torso are horizontal cuts on this curve,
+	which translates to vertical cuts on the rank axis: the first n_head ranks
+	are HEAD, the last n_tail ranks are TAIL, and the rest are TORSO.  Showing
+	this visually motivates why vocabulary-fraction thresholds (head_pct=0.1,
+	tail_pct=0.5) are a natural way to define tiers on a power-law curve rather
+	than an arbitrary choice.
+
+	Args:
+		freq_series   : pd.Series (label -> frequency), sorted descending.
+		tau_head      : frequency threshold above which a label is HEAD.
+		tau_torso     : frequency threshold below which a label is TAIL.
+		tier_label_counts : dict  {Head/Torso/Tail -> int}  label counts per tier.
+		tier_label_pct    : dict  {Head/Torso/Tail -> float} vocab % per tier.
+		tier_occ_pct      : dict  {Head/Torso/Tail -> float} occurrence % per tier.
+		head_pct      : vocabulary fraction used to derive tau_head (e.g. 0.1).
+		tail_pct      : vocabulary fraction used to derive tau_torso (e.g. 0.5).
+		output_path   : file path for the saved figure.
+		figsize       : (width, height) in inches.
+		dpi           : dots per inch for saved figure.
+		verbose       : if True, print comprehensive diagnostics.
+
+	Returns:
+		dict with Zipf fit statistics and tier boundary positions on rank axis.
+	"""
+
+	# ── 0. Basic frequency array (already sorted descending by _compute_label_freq) ──
+	freqs  = freq_series.values.astype(float)   # shape (N_labels,)
+	ranks  = np.arange(1, len(freqs) + 1)        # 1-indexed ranks
+	N      = len(freqs)
+
+	# ── 1. Locate tier boundary ranks ─────────────────────────────────────────
+	#
+	#   HEAD  : labels with f >= tau_head  → the first n_head ranks
+	#   TAIL  : labels with f <  tau_torso → the last  n_tail  ranks
+	#   TORSO : everything in between
+	#
+	#   np.searchsorted works on the *ascending* array; since freqs is
+	#   descending we flip it, find the insertion point, then map back.
+	#
+	n_head  = tier_label_counts["Head"]
+	n_torso = tier_label_counts["Torso"]
+	n_tail  = tier_label_counts["Tail"]
+
+	# Last rank that is still HEAD (rank where freq drops below tau_head)
+	# freqs is descending so freqs[n_head-1] >= tau_head, freqs[n_head] < tau_head
+	rank_head_end  = n_head                           # inclusive, 1-indexed
+	rank_torso_end = n_head + n_torso                 # inclusive, 1-indexed
+	# TAIL occupies ranks rank_torso_end+1 .. N
+
+	if verbose:
+		div = "=" * 72
+		print(f"\n{div}")
+		print("  ZIPFIAN CURVE — diagnostic printout")
+		print(div)
+
+		print(f"\n  [VOCABULARY]")
+		print(f"    Total labels (N)          : {N:,}")
+		print(f"    Frequency range           : {int(freqs[0]):,}  →  {int(freqs[-1]):,}")
+		print(f"    Frequency sum (total occ) : {int(freqs.sum()):,}")
+
+		print(f"\n  [TIER THRESHOLDS]")
+		print(f"    head_pct  = {head_pct}  →  top {int(head_pct*100)}% of vocabulary")
+		print(f"    tail_pct  = {tail_pct}  →  bottom {int(tail_pct*100)}% of vocabulary")
+		print(f"    τ_head    = {tau_head}  (f >= {tau_head} → HEAD)")
+		print(f"    τ_torso   = {tau_torso}  (f <  {tau_torso} → TAIL)")
+
+		print(f"\n  [RANK BOUNDARIES ON ZIPF CURVE]")
+		print(f"    HEAD  : rank   1 – {rank_head_end:,}   ({n_head:,} labels, {tier_label_pct['Head']}% vocab)")
+		print(f"    TORSO : rank {rank_head_end+1:,} – {rank_torso_end:,}   ({n_torso:,} labels, {tier_label_pct['Torso']}% vocab)")
+		print(f"    TAIL  : rank {rank_torso_end+1:,} – {N:,}   ({n_tail:,} labels, {tier_label_pct['Tail']}% vocab)")
+
+		print(f"\n  [FREQUENCY AT BOUNDARY RANKS]")
+		print(f"    f(rank={rank_head_end:,})  = {int(freqs[rank_head_end-1]):,}   (should be >= τ_head={tau_head})")
+		print(f"    f(rank={rank_head_end+1:,})  = {int(freqs[rank_head_end]):,}   (should be <  τ_head={tau_head})")
+		print(f"    f(rank={rank_torso_end:,})  = {int(freqs[rank_torso_end-1]):,}   (should be >= τ_torso={tau_torso})")
+		if rank_torso_end < N:
+			print(f"    f(rank={rank_torso_end+1:,})  = {int(freqs[rank_torso_end]):,}   (should be <  τ_torso={tau_torso})")
+
+	# ── 2. Zipf / power-law fit on log-log scale ──────────────────────────────
+	#
+	#   log(f) = a - s * log(rank)
+	#   → OLS regression of log(rank) onto log(freq)
+	#   → slope -s is the Zipf exponent (s ≈ 1 for canonical Zipf)
+	log_ranks = np.log10(ranks)
+	log_freqs = np.log10(freqs)
+
+	# Full-vocabulary fit
+	coeffs_full     = np.polyfit(log_ranks, log_freqs, deg=1)
+	s_full          = -coeffs_full[0]          # Zipf exponent (positive)
+	intercept_full  = coeffs_full[1]
+	fitted_log_full = np.polyval(coeffs_full, log_ranks)
+	residuals_full  = log_freqs - fitted_log_full
+	ss_res          = np.sum(residuals_full ** 2)
+	ss_tot          = np.sum((log_freqs - log_freqs.mean()) ** 2)
+	r2_full         = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+
+	# HEAD-only fit (top n_head ranks) — often steeper
+	if n_head >= 2:
+		coeffs_head    = np.polyfit(log_ranks[:n_head], log_freqs[:n_head], deg=1)
+		s_head         = -coeffs_head[0]
+		r2_head_resid  = log_freqs[:n_head] - np.polyval(coeffs_head, log_ranks[:n_head])
+		r2_head        = 1.0 - np.sum(r2_head_resid**2) / max(
+			np.sum((log_freqs[:n_head] - log_freqs[:n_head].mean())**2), 1e-12
+		)
+	else:
+		s_head, r2_head = float("nan"), float("nan")
+
+	# TORSO-only fit
+	if n_torso >= 2:
+		sl = slice(n_head, n_head + n_torso)
+		coeffs_torso   = np.polyfit(log_ranks[sl], log_freqs[sl], deg=1)
+		s_torso        = -coeffs_torso[0]
+		r2_torso_resid = log_freqs[sl] - np.polyval(coeffs_torso, log_ranks[sl])
+		r2_torso       = 1.0 - np.sum(r2_torso_resid**2) / max(
+			np.sum((log_freqs[sl] - log_freqs[sl].mean())**2), 1e-12
+		)
+	else:
+		s_torso, r2_torso = float("nan"), float("nan")
+
+	# TAIL-only fit
+	if n_tail >= 2:
+		sl = slice(n_head + n_torso, None)
+		coeffs_tail    = np.polyfit(log_ranks[sl], log_freqs[sl], deg=1)
+		s_tail         = -coeffs_tail[0]
+		r2_tail_resid  = log_freqs[sl] - np.polyval(coeffs_tail, log_ranks[sl])
+		r2_tail        = 1.0 - np.sum(r2_tail_resid**2) / max(
+			np.sum((log_freqs[sl] - log_freqs[sl].mean())**2), 1e-12
+		)
+	else:
+		s_tail, r2_tail = float("nan"), float("nan")
+
+	if verbose:
+		print(f"\n  [ZIPF POWER-LAW FIT  —  log10(f) = a - s·log10(rank)]")
+		print(f"    Interpretation: s ≈ 1.0 → canonical Zipf")
+		print(f"                    s > 1.0 → steeper drop (more concentrated)")
+		print(f"                    s < 1.0 → shallower drop (more uniform)")
+		print(f"")
+		print(f"    {'Scope':<12}  {'s (exponent)':>14}  {'R²':>8}  {'Interpretation'}")
+		print(f"    {'-'*12}  {'-'*14}  {'-'*8}  {'-'*30}")
+		print(f"    {'Full vocab':<12}  {s_full:>14.4f}  {r2_full:>8.4f}  {'near-Zipfian' if 0.8 < s_full < 1.4 else 'non-Zipfian'}")
+		print(f"    {'HEAD only':<12}  {s_head:>14.4f}  {r2_head:>8.4f}  steeper within-tier drop")
+		print(f"    {'TORSO only':<12}  {s_torso:>14.4f}  {r2_torso:>8.4f}")
+		print(f"    {'TAIL only':<12}  {s_tail:>14.4f}  {r2_tail:>8.4f}  flattest (near-uniform)")
+
+		print(f"\n  [CUMULATIVE OCCURRENCE SHARE BY RANK]")
+		cum_occ   = np.cumsum(freqs) / freqs.sum() * 100
+		checkpoints = [
+			("top  10% vocab (HEAD)",  rank_head_end),
+			("top  50% vocab",         N // 2),
+			("top  60% vocab (TORSO)", rank_torso_end),
+			("full vocab",             N),
+		]
+		for label, r in checkpoints:
+			print(f"    {label:<28}: {cum_occ[min(r,N)-1]:.1f}% of occurrences")
+
+		print(f"\n  [TOP-20 LABELS  —  raw frequency]")
+		for i, (lbl, f) in enumerate(freq_series.head(20).items(), 1):
+			tier = (
+				"HEAD " if f >= tau_head else
+				"TAIL " if f < tau_torso else
+				"TORSO"
+			)
+			print(f"    rank {i:>3}  f={int(f):>7,}  [{tier}]  {lbl}")
+
+		print(f"\n  [BOTTOM-10 LABELS  —  raw frequency]")
+		for i, (lbl, f) in enumerate(freq_series.tail(10).items()):
+			rank = freq_series.index.get_loc(lbl) + 1
+			print(f"    rank {rank:>5}  f={int(f):>4,}  [TAIL ]  {lbl}")
+
+	# ── 3. Build stats dict
+	cum_occ = np.cumsum(freqs) / freqs.sum() * 100
+	stats = {
+		"N_labels":          N,
+		"tau_head":          tau_head,
+		"tau_torso":         tau_torso,
+		"rank_head_end":     rank_head_end,
+		"rank_torso_end":    rank_torso_end,
+		"zipf_s_full":       round(s_full,  4),
+		"zipf_r2_full":      round(r2_full, 4),
+		"zipf_s_head":       round(s_head,  4) if not np.isnan(s_head)  else None,
+		"zipf_r2_head":      round(r2_head, 4) if not np.isnan(r2_head) else None,
+		"zipf_s_torso":      round(s_torso,  4) if not np.isnan(s_torso)  else None,
+		"zipf_r2_torso":     round(r2_torso, 4) if not np.isnan(r2_torso) else None,
+		"zipf_s_tail":       round(s_tail,  4) if not np.isnan(s_tail)  else None,
+		"zipf_r2_tail":      round(r2_tail, 4) if not np.isnan(r2_tail) else None,
+		"cum_occ_at_head":   round(float(cum_occ[rank_head_end - 1]),  2),
+		"cum_occ_at_torso":  round(float(cum_occ[rank_torso_end - 1]), 2),
+	}
+
+	if verbose:
+		print(f"\n  [STATS DICT]")
+		print(json.dumps(stats, indent=4, ensure_ascii=False))
+		print(div + "\n")
+
+	# 4. FIGURES
+	# Fig 1: Zipfian frequency distribution
+	fig1, ax_zipf = plt.subplots(figsize=figsize, dpi=dpi)
+
+	# Tier shading regions (log-log space)
+	tier_regions = [
+		("Head", 1, rank_head_end),
+		("Torso", rank_head_end + 1, rank_torso_end),
+		("Tail", rank_torso_end + 1, N),
+	]
+
+	for tier, r_start, r_end in tier_regions:
+		ax_zipf.axvspan(
+			r_start, 
+			r_end,
+			color=SEGMENT_SPECS[tier]["facecolor"],
+			alpha=0.4,
+			zorder=0,
+			label=f"_{tier}_region",
+		)
+
+	# Raw frequency curve
+	ax_zipf.plot(
+		ranks, 
+		freqs,
+		color="#005BD3", 
+		linewidth=1.5,
+		zorder=3, 
+		label="Empirical frequency",
+	)
+	# Full-vocab power-law fit
+	fitted_freqs = 10 ** fitted_log_full
+	ax_zipf.plot(
+		ranks, 
+		fitted_freqs,
+		color="#7E7C7C", 
+		linewidth=1.2,
+		linestyle="--", 
+		zorder=2,
+		label=f"Power-law fit  (s={s_full:.2f}, R²={r2_full:.3f})",
+	)
+
+	# Threshold horizontal lines
+	ax_zipf.axhline(
+		tau_head,
+		color=SEGMENT_SPECS["Head"]["color"],
+		linewidth=1.6,
+		linestyle=":",
+		zorder=4,
+		label=f"τ_head = {tau_head:,}  (top {int(head_pct*100)}% vocab)",
+	)
+	ax_zipf.axhline(
+		tau_torso,
+		color=SEGMENT_SPECS["Torso"]["color"],
+		linewidth=1.6, 
+		linestyle=":",
+		zorder=4,
+		label=f"τ_torso = {tau_torso:,}  (bottom {int(tail_pct*100)}% vocab)",
+	)
+
+	# # Boundary vertical lines
+	# ax_zipf.axvline(
+	# 	rank_head_end,
+	# 	color=SEGMENT_SPECS["Head"]["color"],
+	# 	linewidth=0.9, 
+	# 	linestyle="--", 
+	# 	alpha=0.8, 
+	# 	zorder=4,
+	# )
+	# ax_zipf.axvline(
+	# 	rank_torso_end,
+	# 	color=SEGMENT_SPECS["Tail"]["color"],
+	# 	linewidth=0.9, 
+	# 	linestyle="--", 
+	# 	alpha=0.8, 
+	# 	zorder=4,
+	# )
+
+	# Tier annotations
+	region_centres_x = [
+		(1 + rank_head_end) / 2,
+		(rank_head_end + rank_torso_end) / 2,
+		(rank_torso_end + N) / 2,
+	]
+	y_anno = freqs.max() * 2.0
+	print(f"region_centres_x: {region_centres_x}")
+	print(f"Tier annotations: {y_anno}")
+	for tier, rx in zip(TIER_ORDER, region_centres_x):
+		ax_zipf.text(
+			rx, 
+			y_anno,
+			f"{SEGMENT_SPECS[tier]['label']}\n"
+			f"{tier_label_counts[tier]:,} labels\n"
+			f"{tier_label_pct[tier]}% vocab\n"
+			f"{tier_occ_pct[tier]}% occ.",
+			ha="center", 
+			va="center",
+			fontsize=7.0,
+			fontweight="bold",
+			color="#1D1D1D",#SEGMENT_SPECS[tier]["color"],
+			# bbox=dict(
+			# 		boxstyle="round,pad=0.30",
+			# 		facecolor="white",
+			# 		edgecolor=SEGMENT_SPECS[tier]["color"],
+			# 		linewidth=0.8,
+			# 		alpha=0.85,
+			# ),
+			zorder=6,
+		)
+	
+	ax_zipf.set_xscale("log")
+	ax_zipf.set_yscale("log")
+	ax_zipf.set_xlabel("Label Rank (log)", fontsize=11)
+	ax_zipf.set_ylabel("Label Freq. (log)", fontsize=11)
+	# ax_zipf.set_title(
+	# 	"Zipfian Frequency Distribution with Tier Boundaries",
+	# 	fontsize=11, 
+	# 	fontweight="bold",
+	# )
+	ax_zipf.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{int(v):,}"))
+	ax_zipf.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{int(v):,}"))
+	ax_zipf.grid(which="both", linestyle="--", linewidth=0.3, alpha=0.5, zorder=0)
+	ax_zipf.legend(
+		loc="best",
+		fontsize=8.0,
+		frameon=True,
+		framealpha=0.8,
+		edgecolor="#a8a8a8",
+	)
+	for spine in ax_zipf.spines.values():
+			spine.set_linewidth(0.7)
+	zipf_path = os.path.splitext(output_path)[0] + "_zipf.png"
+	fig1.tight_layout()
+	fig1.savefig(zipf_path, dpi=dpi, bbox_inches="tight")
+	plt.close(fig1)
+
+	# Fig 2: Cumulative occurrence share
+	fig2, ax_cum = plt.subplots(figsize=figsize, dpi=dpi)
+	cum_pct = np.cumsum(freqs) / freqs.sum() * 100
+	ax_cum.plot(
+		ranks / N * 100,
+		cum_pct,
+		color="#222222", 
+		linewidth=1.5,
+		label="Cumulative Occurrence",
+		zorder=3,
+	)
+	# Shade tier regions on linear x-axis
+	tier_x_regions = [
+		("Head",  0,                      head_pct * 100),
+		("Torso", head_pct * 100,         (1 - tail_pct) * 100),
+		("Tail",  (1 - tail_pct) * 100,   100),
+	]
+	for tier, x0, x1 in tier_x_regions:
+		ax_cum.axvspan(
+			x0, x1,
+			color=SEGMENT_SPECS[tier]["facecolor"],
+			alpha=0.55,
+			zorder=0,
+		)
+	# Annotate boundary points
+	for rank_b, label_b, tier_b in [
+		(rank_head_end,  f"{int(head_pct*100)}% vocab\n{cum_occ[rank_head_end-1]:.1f}% occurrence", "Head"),
+		(rank_torso_end, f"{int((1-tail_pct)*100)}% vocab\n{cum_occ[rank_torso_end-1]:.1f}% occurrence", "Torso"),
+	]:
+		x_pt = rank_b / N * 100
+		y_pt = cum_occ[rank_b - 1]
+		ax_cum.scatter(
+			x_pt, 
+			y_pt, 
+			s=55, 
+			zorder=5,
+			color=SEGMENT_SPECS[tier_b]["color"],
+			edgecolors="#1D1C1C",
+			linewidths=0.6,
+		)
+		ax_cum.annotate(
+			label_b,
+			xy=(x_pt, y_pt),
+			xytext=(x_pt + 6, y_pt - 12),
+			fontsize=7.5, 
+			fontweight="bold",
+			color=SEGMENT_SPECS[tier_b]["color"],
+			arrowprops=dict(
+				arrowstyle="-",
+				color=SEGMENT_SPECS[tier_b]["color"],
+				lw=0.8,
+			),
+			bbox=dict(
+				boxstyle="round,pad=0.30",
+				facecolor="#F3EAEA",
+				edgecolor=SEGMENT_SPECS[tier_b]["color"],
+				linewidth=0.8,
+				alpha=0.8,
+			),			
+		)
+	ax_cum.set_xlabel("Vocabulary fraction consumed (%)", fontsize=10)
+	ax_cum.set_ylabel("Cumulative occurrence share (%)", fontsize=10)
+	ax_cum.set_title("Cumulative Occurrence vs. Vocab Fraction", fontsize=10, fontweight="bold")
+	ax_cum.set_xlim(0, 100)
+	ax_cum.set_ylim(0, 101)
+	ax_cum.grid(linestyle="--", linewidth=0.3, alpha=0.55, zorder=0)
+	for spine in ax_cum.spines.values():
+		spine.set_linewidth(0.7)
+	
+	cum_path = os.path.splitext(output_path)[0] + "_cum.png"
+	fig2.tight_layout()
+	fig2.savefig(cum_path, dpi=dpi, bbox_inches="tight")
+	plt.close(fig2)
+	
+	if verbose:
+			print(f"Saved Zipfian curve → {zipf_path}")
+			print(f"Saved cumulative curve → {cum_path}")
+
+	return stats
+
 def plot_tier_cardinality_distribution(
 	df: pd.DataFrame,
 	label_col: str = "multimodal_canonical_labels",
@@ -1139,8 +1570,6 @@ def plot_tier_cardinality_distribution(
 	head_pct: float = 0.1,
 	tail_pct: float = 0.5,
 	strip_sample_n: int = 2000,
-	figsize: Tuple[float, float] = (8, 6),
-	dpi: int = 250,
 	verbose: bool = True,
 ) -> dict:
 
@@ -1176,8 +1605,8 @@ def plot_tier_cardinality_distribution(
 		print(freq_series.value_counts().head(10))
 		print(f"  ├─ head_pct: {head_pct} n_head: {n_head}")
 		print(f"  ├─ tail_pct: {tail_pct} n_tail: {n_tail}")
-		print(f"  ├─ tau_head  (f >= tau_head({tau_head})  => HEAD)")
-		print(f"  └─ tau_torso (f <  tau_torso({tau_torso}) => TAIL)")
+		print(f"  ├─ tau_head: {tau_head}  (f >= tau_head  => HEAD)")
+		print(f"  └─ tau_torso: {tau_torso} (f <  tau_torso => TAIL)")
 		print()
 
 	# 3. Per-sample tier cardinality
@@ -1188,18 +1617,22 @@ def plot_tier_cardinality_distribution(
 		tier_counts = {"Head": 0, "Torso": 0, "Tail": 0}
 		for lbl in labels:
 			tier_counts[_assign_tier(lbl, freq_map, tau_head, tau_torso)] += 1
-		records.append({
-			"image_idx":  idx,
-			"total_card": len(labels),
-			"head_card":  tier_counts["Head"],
-			"torso_card": tier_counts["Torso"],
-			"tail_card":  tier_counts["Tail"],
-		})
+		records.append(
+			{
+				"image_idx":  idx,
+				"total_card": len(labels),
+				"head_card":  tier_counts["Head"],
+				"torso_card": tier_counts["Torso"],
+				"tail_card":  tier_counts["Tail"],
+			}
+		)
 
 	card_df = pd.DataFrame(records)
+
 	if verbose:
 		print(f"\n[Cardinality] {type(card_df)} {card_df.shape}")
 		print(card_df.describe())
+		print("="*130)
 		print(card_df.head(5))
 
 	# 4. Tier-level label stats
@@ -1212,20 +1645,27 @@ def plot_tier_cardinality_distribution(
 		"Torso": int(torso_mask.sum()),
 		"Tail":  int(tail_mask.sum()),
 	}
+
 	tier_label_pct = {
-		t: round(tier_label_counts[t] / N_labels * 100, 1) for t in TIER_ORDER
+		t: round(tier_label_counts[t] / N_labels * 100, 1) 
+		for t in TIER_ORDER
 	}
+
 	tier_occ = {
 		"Head":  int(freq_series[head_mask].sum()),
 		"Torso": int(freq_series[torso_mask].sum()),
 		"Tail":  int(freq_series[tail_mask].sum()),
 	}
+
 	total_occ    = sum(tier_occ.values())
+
 	tier_occ_pct = {
-		t: round(tier_occ[t] / max(total_occ, 1) * 100, 1) for t in TIER_ORDER
+		t: round(tier_occ[t] / max(total_occ, 1) * 100, 1)
+		for t in TIER_ORDER
 	}
 
 	card_col_map   = {"Head": "head_card", "Torso": "torso_card", "Tail": "tail_card"}
+
 	tier_card_stats = {}
 	for tier in TIER_ORDER:
 		col  = card_col_map[tier]
@@ -1250,7 +1690,6 @@ def plot_tier_cardinality_distribution(
 		"min":    int(card_df["total_card"].min()),
 	}
 
-	# 5. Stats dict
 	stats = {
 		"N_images":                 N_images,
 		"N_labels":                 N_labels,
@@ -1292,7 +1731,6 @@ def plot_tier_cardinality_distribution(
 		"tail_card_zero_pct":       tier_card_stats["Tail"]["zero_pct"],
 	}
 
-	# 6. Verbose printout
 	if verbose:
 		div = "=" * 72
 		print(f"\n{div}")
@@ -1378,46 +1816,41 @@ def plot_tier_cardinality_distribution(
 			the vocabulary that constitutes the tail.""")
 		print(msg)
 		print(div + "\n")
+		print(json.dumps(stats, indent=2, ensure_ascii=False))
+		print("=" * 50)
 
-	# 7. FIGURES
 	plot_tier_cardinality_boxplot(
-			card_df=card_df,
-			tier_card_stats=tier_card_stats,
-			tier_label_counts=tier_label_counts,
-			tier_label_pct=tier_label_pct,
-			total_card_stats=total_card_stats,
-			output_path=output_path,
-			strip_sample_n=strip_sample_n,
-			figsize=figsize,
-			dpi=dpi,
+		card_df=card_df,
+		tier_card_stats=tier_card_stats,
+		tier_label_counts=tier_label_counts,
+		tier_label_pct=tier_label_pct,
+		output_path=output_path.replace(".png", "_boxplot.png"),
+		strip_sample_n=strip_sample_n,
 	)
 
 	plot_tier_coverage_bars(
-			tier_card_stats=tier_card_stats,
-			tier_label_counts=tier_label_counts,
-			tier_label_pct=tier_label_pct,
-			output_path=output_path.replace(".png", "_coverage_bars.png"),  # auto-derive second path
-			dpi=dpi,
+		tier_card_stats=tier_card_stats,
+		tier_label_counts=tier_label_counts,
+		tier_label_pct=tier_label_pct,
+		output_path=output_path.replace(".png", "_coverage_bars.png"),
 	)
 
 	plot_tier_skewness(
-			freq_map=freq_map,
-			tier_label_counts=tier_label_counts,
-			tier_label_pct=tier_label_pct,
-			tau_head=tau_head,
-			tau_torso=tau_torso,
-			output_path=output_path.replace(".png", "_skewness.png"),
-			dpi=dpi,
+		freq_map=freq_map,
+		tier_label_counts=tier_label_counts,
+		tier_label_pct=tier_label_pct,
+		tau_head=tau_head,
+		tau_torso=tau_torso,
+		output_path=output_path.replace(".png", "_skewness.png"),
 	)
 
 	plot_tier_cv_distribution(
-			freq_map=freq_map,
-			tier_label_counts=tier_label_counts,
-			tier_label_pct=tier_label_pct,
-			tau_head=tau_head,
-			tau_torso=tau_torso,
-			output_path=output_path.replace(".png", "_cv_distribution.png"),
-			dpi=dpi,
+		freq_map=freq_map,
+		tier_label_counts=tier_label_counts,
+		tier_label_pct=tier_label_pct,
+		tau_head=tau_head,
+		tau_torso=tau_torso,
+		output_path=output_path.replace(".png", "_cv_distribution.png"),
 	)
 
 	plot_tier_importance_vs_cardinality(
@@ -1440,9 +1873,18 @@ def plot_tier_cardinality_distribution(
 		output_path=output_path.replace(".png", "_reweighting_analysis.png"),
 	)
 
-	if verbose:
-		print(json.dumps(stats, indent=2, ensure_ascii=False))
-		print("=" * 50)
+	plot_zipfian_curve(
+		freq_series       = freq_series,
+		tau_head          = tau_head,
+		tau_torso         = tau_torso,
+		tier_label_counts = tier_label_counts,
+		tier_label_pct    = tier_label_pct,
+		tier_occ_pct      = tier_occ_pct,
+		head_pct          = head_pct,
+		tail_pct          = tail_pct,
+		output_path       = output_path.replace(".png", "_zipfian_curve.png"),
+		verbose           = verbose,
+	)
 
 	return stats
 
