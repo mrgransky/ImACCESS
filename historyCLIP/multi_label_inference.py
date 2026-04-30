@@ -1,3 +1,4 @@
+import itertools
 import os
 import sys
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
@@ -657,7 +658,8 @@ def run_qualitative_retrieval(
 	i2t_samples: List[Dict],
 	t2i_samples: List[str],
 	class_names: List[str],
-	all_val_image_paths: List[str],
+	# all_val_image_paths: List[str],
+	val_image_labels: Dict[str, List[str]],
 	preprocess,
 	device: torch.device,
 	i2t_topk: int = 3,
@@ -707,36 +709,38 @@ def run_qualitative_retrieval(
 			torch.cuda.empty_cache()
 
 		all_text_embeds = torch.cat(all_text_embeds, dim=0)
-		label_vocab        = class_names        # raw vocabulary for non-probe
+		label_vocab = class_names        # raw vocabulary for non-probe
 		all_text_embeds_active = all_text_embeds  # ← no masking for non-probe
-		label_vocab_active     = label_vocab      # ← same vocab, no masking
+		label_vocab_active = label_vocab      # ← same vocab, no masking
 
 	# I2T — use label_vocab for index→name mapping
 	i2t_results = []
 	for sample in i2t_samples:
-			image = preprocess(
-					Image.open(sample['image_path']).convert('RGB')
-			).unsqueeze(0).to(device)
-			with torch.no_grad():
-					img_embed = torch.nn.functional.normalize(
-							model.encode_image(image).float(), dim=-1
-					).cpu()
-			sims     = (img_embed @ all_text_embeds_active.T).squeeze(0)   # [C_active]
-			topk_idx = sims.topk(i2t_topk).indices.tolist()
-			i2t_results.append({
-					'image_path':       sample['image_path'],
-					'ground_truth':     sample['all_labels'],
-					'segment':          sample['segment'],
-					'retrieved_labels': [label_vocab_active[j] for j in topk_idx],
-					'retrieved_scores': [sims[j].item() for j in topk_idx],
-			})
-			del image, img_embed
-			torch.cuda.empty_cache()
+		img = Image.open(sample['image_path']).convert('RGB')
+		image = preprocess(img).unsqueeze(0).to(device)
+		with torch.no_grad():
+			img_embed = torch.nn.functional.normalize(model.encode_image(image).float(), dim=-1).cpu()
+		
+		sims = (img_embed @ all_text_embeds_active.T).squeeze(0) # [C_active]
+		topk_idx = sims.topk(i2t_topk).indices.tolist()
+		
+		i2t_results.append(
+			{
+				'image_path':       sample['image_path'],
+				'ground_truth':     sample['all_labels'],
+				'segment':          sample['segment'],
+				'retrieved_labels': [label_vocab_active[j] for j in topk_idx],
+				'retrieved_scores': [sims[j].item() for j in topk_idx],
+			}
+		)
+		del image, img_embed
+		torch.cuda.empty_cache()
 
 	# T2I: tail label → top-t2i_topk images from FULL val pool
-	# Encode val images in chunks, accumulate embeddings on CPU,          #
-	# then do the similarity matmul entirely on CPU to avoid OOM.         #
-	# For 41K images × 768-dim: ~120 MB on CPU — totally fine.           #
+	# Encode val images in chunks, accumulate embeddings on CPU,
+	# then do the similarity matmul entirely on CPU to avoid OOM.
+	# For 41K images × 768-dim: ~120 MB on CPU — totally fine.
+	all_val_image_paths = list(val_image_labels.keys())
 	all_img_embeds = []   # accumulate on CPU
 	for start in range(0, len(all_val_image_paths), image_batch_size):
 		batch_paths = all_val_image_paths[start : start + image_batch_size]
@@ -748,7 +752,9 @@ def run_qualitative_retrieval(
 		).to(device)
 		with torch.no_grad():
 			embs = torch.nn.functional.normalize(model.encode_image(imgs).float(), dim=-1)
+
 		all_img_embeds.append(embs.cpu())
+
 		del imgs, embs
 		torch.cuda.empty_cache()
 
@@ -784,13 +790,22 @@ def run_qualitative_retrieval(
 				'query_label':      query_label,
 				'retrieved_paths':  [all_val_image_paths[j] for j in topk_idx],
 				'retrieved_scores': [sims[j].item() for j in topk_idx],
+				'retrieved_labels': [
+						val_image_labels.get(all_val_image_paths[j], [])
+						for j in topk_idx
+				],
+				'hits': [
+						query_label.lower() in {
+								l.lower() for l in val_image_labels.get(all_val_image_paths[j], [])
+						}
+						for j in topk_idx
+				],
 			}
 		)
 
-
 	if verbose:
-		print(f"i2t_results: {len(i2t_results)}")
-		print(f"t2i_results: {len(t2i_results)}")
+		print(f"{len(i2t_results)} {type(i2t_results)} i2t_results")
+		print(f"{len(t2i_results)} {type(t2i_results)} t2i_results")
 
 	return {'i2t': i2t_results, 't2i': t2i_results}
 
@@ -1169,7 +1184,6 @@ def _load_models(
 			key = f"{strategy}_{i}"
 		fine_tuned_models[key] = ft_model
 		print(f"[OK] Loaded {key} in {time.time()-ft_start:.1f}s")
-		print("-"*100)
 	except Exception as e:
 		print(f"[ERROR] Failed to load {checkpoint_path}: {e}")
 		return {}, None, None
@@ -1299,8 +1313,29 @@ def run_inference(
 		seed=42,
 	)
 
-	# Build full val image path list for T2I pool
-	all_val_image_paths = sorted(validation_loader.dataset.data_frame['img_path'].tolist())
+	# # Build full val image path list for T2I pool
+	# all_val_image_paths = sorted(validation_loader.dataset.data_frame['img_path'].tolist())
+	# print(f"val_image_paths: {type(all_val_image_paths)} {len(all_val_image_paths)} images in total")
+	# print(all_val_image_paths[:10])
+
+	# ── Build image_path → canonical labels lookup for T2I ground truth ──────
+	# actual labels, enabling hit/miss coloring in plot_qualitative_retrieval_t2i.
+	val_image_labels: Dict[str, List[str]] = {}
+	_df_val_meta = pd.read_csv(
+		metadata_csv.replace('.csv', '_val.csv'),
+		on_bad_lines='skip',
+		low_memory=False,
+	)
+	print(f"_df_val_meta: {type(_df_val_meta)} {_df_val_meta.shape}")
+	for i, _row in _df_val_meta.iterrows():
+		print(f"{i} {_row['img_path']} {_row[column]}")
+		try:
+			val_image_labels[_row['img_path']] = sorted(ast.literal_eval(_row[column]))
+		except Exception:
+			continue
+	print(f"val_image_labels: {type(val_image_labels)} {len(val_image_labels)} images indexed")
+	print(dict(itertools.islice(val_image_labels.items(), 10)))
+	del _df_val_meta
 
 	# Separate top-K strategies selection I2T
 	i2t_strategies, i2t_checkpoints = get_top_k_strategies(
@@ -1325,9 +1360,9 @@ def run_inference(
 	# Union of checkpoints to avoid loading the same model twice
 	all_checkpoints = dict.fromkeys(i2t_checkpoints + t2i_checkpoints)
 	if verbose:
-		print("i2t_checkpoints:", i2t_checkpoints)
-		print("t2i_checkpoints:", t2i_checkpoints)
-		print(f"all_checkpoints: {len(all_checkpoints)} = (i2t: {len(i2t_checkpoints)}) + (t2i: {len(t2i_checkpoints)})")
+		print(f"{len(i2t_checkpoints)} i2t_checkpoints:\n{json.dumps(i2t_checkpoints, indent=2)}\n")
+		print(f"{len(t2i_checkpoints)} t2i_checkpoints:\n{json.dumps(t2i_checkpoints, indent=2)}\n")
+		print(f"all_checkpoints: {len(all_checkpoints)} (Duplicates are removed!)")
 		print(json.dumps(all_checkpoints, indent=4, ensure_ascii=False))
 
 	qualitative_results = {}
@@ -1354,7 +1389,8 @@ def run_inference(
 			i2t_samples=i2t_samples,
 			t2i_samples=t2i_samples,
 			class_names=class_names,
-			all_val_image_paths=all_val_image_paths,
+			# all_val_image_paths=all_val_image_paths,
+			val_image_labels=val_image_labels,
 			preprocess=customized_preprocess,
 			device=device,
 			i2t_topk=i2t_topk,
@@ -1369,10 +1405,10 @@ def run_inference(
 		del ft_model, model_dict
 		torch.cuda.empty_cache()
 
-	print("="*100)
-	print(f"{len(qualitative_results)} Qualitative Results:")
-	print(json.dumps(qualitative_results, indent=2, ensure_ascii=False))
-	print("="*100)
+	# print("="*100)
+	# print(f"{len(qualitative_results)} Qualitative Results:")
+	# print(json.dumps(qualitative_results, indent=2, ensure_ascii=False))
+	# print("="*100)
 
 	# Plot I2T qualitative results (only top-K I2T strategies)
 	viz.plot_qualitative_retrieval_i2t(

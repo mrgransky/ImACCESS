@@ -28,6 +28,8 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 import huggingface_hub
 import io
 import pprint
+import itertools
+import string
 import math
 import unicodedata
 import requests
@@ -1022,7 +1024,7 @@ def get_multi_label_stratified_split(
 	label_col: str = 'multimodal_labels',
 	min_label_frequency: int = 5,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-
+	print("-"*150)
 	print(f"\nStratified Split [Multi-label] {val_split_pct} train/val split (Min label freq: {min_label_frequency})")
 
 	t_st = time.time()
@@ -1061,11 +1063,8 @@ def get_multi_label_stratified_split(
 			print(f"   Removed {initial_rows - final_rows} rows with empty label lists.")
 	
 	print(f"   DataFrame shape: {df_filtered.shape}")
-	# ✅ 3. FILTER RARE LABELS (NEW!)
 	print(f"\n[3/5] Filtering rare labels (min frequency: {min_label_frequency})...")
-	
-	from collections import Counter
-	
+		
 	# Count label frequencies
 	all_labels = []
 	for label_list in df_filtered[label_col]:
@@ -1073,7 +1072,7 @@ def get_multi_label_stratified_split(
 	
 	label_counts = Counter(all_labels)
 	initial_unique_labels = len(label_counts)
-	print(f"   Total unique labels before filtering: {initial_unique_labels}")
+	print(f"\tTotal unique labels before filtering: {initial_unique_labels}")
 	
 	# Identify rare labels
 	rare_labels = {
@@ -1083,20 +1082,22 @@ def get_multi_label_stratified_split(
 	}
 	kept_labels = set(label_counts.keys()) - rare_labels
 	
-	print(f"   Rare labels (< {min_label_frequency}): {len(rare_labels)} ({len(rare_labels)/initial_unique_labels*100:.1f}%)")
-	print(f"   Labels to keep: {len(kept_labels)} ({len(kept_labels)/initial_unique_labels*100:.1f}%)")
+	print(f"\tRare labels (< {min_label_frequency}): {len(rare_labels)} ({len(rare_labels)/initial_unique_labels*100:.1f}%)")
+	print(f"\tLabels to keep: {len(kept_labels)} ({len(kept_labels)/initial_unique_labels*100:.1f}%)")
 	
 	if rare_labels:
-			# Show frequency distribution of rare labels
-			rare_freq_dist = Counter([label_counts[label] for label in rare_labels])
-			print(f"   Rare label frequency distribution:")
-			for freq in sorted(rare_freq_dist.keys()):
-					count = rare_freq_dist[freq]
-					print(f"     freq={freq}: {count} labels")
-			
-			# Show examples
-			rare_examples = sorted(rare_labels)[:20]
-			print(f"   Example rare labels being removed: {rare_examples}")
+		# Show frequency distribution of rare labels
+		rare_freq_dist = Counter([label_counts[label] for label in rare_labels])
+		print(f"\tRare label frequency/Occurences distribution:")
+		for freq in sorted(rare_freq_dist.keys()):
+			count = rare_freq_dist[freq]
+			# Get labels with this frequency
+			labels_with_freq = [label for label, lbl_count in label_counts.items() if lbl_count == freq]
+			print(f"\t\tfreq={freq}: {count} labels: {labels_with_freq[:20]}{' ...' if len(labels_with_freq) > 20 else ''}")
+		
+		# # Show examples
+		# rare_examples = sorted(rare_labels)[:20]
+		# print(f"   Example rare labels being removed: {rare_examples}")
 	
 	# Filter out rare labels from each sample
 	def remove_rare_labels(label_list):

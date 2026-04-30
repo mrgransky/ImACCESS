@@ -233,7 +233,7 @@ def diagnose_train_val_coverage(
 	return val_freq
 
 def compute_loss_masks(
-	train_loader: DataLoader,
+	loader: DataLoader,
 	num_classes: int,
 	device: torch.device,
 	pw_mode: str = "log",                # "log" | "sqrt" | "linear"
@@ -248,7 +248,7 @@ def compute_loss_masks(
 		1. pos_weight  — loss weighting, depends on pw_mode (training only)
 		2. head/rare   — evaluation tiers, based purely on frequency (all strategies)
 	Args:
-			train_loader     : DataLoader whose .dataset has .labels and .label_dict
+			loader     : DataLoader whose .dataset has .labels and .label_dict
 			num_classes      : Total number of classes (including inactive)
 			device           : Target device for returned tensors
 			pareto_threshold : Cumulative frequency fraction defining "head" classes (default 80%)
@@ -269,16 +269,16 @@ def compute_loss_masks(
 	"""
 	
 	# 1. Count label frequencies
-	N = len(train_loader.dataset)
+	N = len(loader.dataset)
 	print(f"N: {N}")
 
 	train_freq = torch.zeros(num_classes, dtype=torch.float32)
-	for i, raw in enumerate(train_loader.dataset.labels):
+	for i, raw in enumerate(loader.dataset.labels):
 		# print(i, raw) # 522 ['railroad', 'train', 'station']
 		try:
 			for lbl in ast.literal_eval(raw):
-				if lbl in train_loader.dataset.label_dict:
-					idx = train_loader.dataset.label_dict[lbl]
+				if lbl in loader.dataset.label_dict:
+					idx = loader.dataset.label_dict[lbl]
 					# print(f"\t{lbl}, {idx}") # railroad, 107
 					train_freq[idx] += 1
 		except (ValueError, SyntaxError):
@@ -333,7 +333,7 @@ def compute_loss_masks(
 		# degenerate dataset — no rare classes
 		rare_mask = torch.zeros(num_classes, dtype=torch.bool, device=device)
 	
-	loader_name = getattr(train_loader, 'name', 'UNNAMED_LOADER')
+	loader_name = getattr(loader, 'name', 'UNNAMED_LOADER')
 	if verbose:
 		print(f"\nLabel frequencies {loader_name}")
 		print(f"  ├─ samples (N):              {N:,}")

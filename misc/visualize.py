@@ -2304,123 +2304,322 @@ def plot_qualitative_retrieval_t2i(
 	topk: int = 1,
 	verbose: bool = False,
 ) -> str:
-	"""T2I qualitative figure"""
+	"""
+	T2I qualitative figure — Publication Ready.
+
+	Correctness indicator
+	─────────────────────
+	Hit/miss is read directly from match["hits"][0] (pre-computed field in the
+	t2i results dict).  No I2T cross-lookup needed.
+
+	Each cell shows:
+	  • The retrieved image
+	  • A strategy-coloured spine  (which method)
+	  • A top-right corner triangle badge  green ✓ = hit  |  red ✗ = miss
+	  • The retrieved image's GT labels as a small text overlay (bottom strip)
+	  • The similarity score in the bottom-left corner
+	"""
 	strategies = list(results_by_strategy.keys())
 	if not strategies:
 		return ""
+
 	ref_t2i = results_by_strategy[strategies[0]]["t2i"]
-	
+	if verbose:
+		print("="*100)
+		print(f"[T2I qualitative] {len(strategies)} strategies | {len(ref_t2i)} query labels")
+		for strat in strategies:
+			print(f"{strat:<20}n_t2i={len(results_by_strategy[strat]['t2i'])}")
+		print("."*50)
+
 	num_labels = len(ref_t2i)
 	if num_labels == 0:
 		return ""
-	
-	n_strat = len(strategies)
-	topk = max(1, topk)
 
-	QUERY_W  = 2.3   
-	CELL_W   = 1.7   
-	ROW_H    = 1.7   
+	n_strat  = len(strategies)
+	topk     = max(1, topk)
+
+	# ── Layout constants ──────────────────────────────────────────────────────
+	QUERY_W  = 2.3
+	CELL_W   = 1.7
+	ROW_H    = 1.7
 	HEADER_H = 0.5
-	fig_w = QUERY_W + n_strat * CELL_W + 0.0
-	fig_h = HEADER_H + num_labels * ROW_H * topk + 0.0
-	print(f"fig_w: {fig_w}, fig_h: {fig_h}")
-	fig = plt.figure(figsize=(fig_w, fig_h), dpi=250)
 
-	gs = GridSpec(
-		nrows=num_labels + 1,
-		ncols=n_strat + 1,
-		figure=fig,
+	fig_w = QUERY_W + n_strat * CELL_W
+	fig_h = HEADER_H + num_labels * ROW_H * topk
+	if verbose:
+		print(f"  fig_w={fig_w:.1f}  fig_h={fig_h:.1f}")
+
+	fig = plt.figure(figsize=(fig_w, fig_h), dpi=250)
+	gs  = GridSpec(
+		nrows         = num_labels + 1,
+		ncols         = n_strat + 1,
+		figure        = fig,
 		left=0.01, right=0.99,
-		top=0.97,  bottom=0.02,
+		top=0.97,  bottom=0.06,
 		hspace=0.08, wspace=0.06,
-		height_ratios=[HEADER_H / ROW_H] + [1.0] * num_labels,
-		width_ratios=[QUERY_W / CELL_W] + [1.0] * n_strat,
+		height_ratios = [HEADER_H / ROW_H] + [1.0] * num_labels,
+		width_ratios  = [QUERY_W / CELL_W]  + [1.0] * n_strat,
 	)
-	
+
+	# ── Corner header ─────────────────────────────────────────────────────────
 	ax_corner = fig.add_subplot(gs[0, 0])
 	ax_corner.axis("off")
 	ax_corner.text(
-		0.05, 
-		0.5, 
-		"Query Label", 
-		ha="left", 
-		va="center", 
-		fontsize=11, 
-		fontweight="bold", 
-		transform=ax_corner.transAxes
+		0.05, 0.5, "Query Label",
+		ha="left", va="center",
+		fontsize=11, fontweight="bold",
+		transform=ax_corner.transAxes,
 	)
 
+	# ── Column headers ────────────────────────────────────────────────────────
 	for j, strat in enumerate(strategies):
 		ax_h = fig.add_subplot(gs[0, j + 1])
 		ax_h.axis("off")
 		ax_h.text(
-			0.5, 
-			0.5, 
-			METHOD_STYLE[strat]["label"], 
-			ha="center", 
-			va="center", 
-			fontsize=12, 
-			fontweight="bold", 
-			color=METHOD_STYLE.get(strat, {"color": "#000000"})["color"], 
-			transform=ax_h.transAxes
+			0.5, 0.5,
+			METHOD_STYLE[strat]["label"],
+			ha="center", va="center",
+			fontsize=11, fontweight="bold",
+			color=METHOD_STYLE.get(strat, {"color": "#000000"})["color"],
+			transform=ax_h.transAxes,
 		)
+
+	# ── Badge constants ───────────────────────────────────────────────────────
+	BADGE_SIZE  = 0.22        # triangle occupies this fraction of cell edge
+	HIT_COLOR   = "#27AE60"   # green
+	MISS_COLOR  = "#E74C3C"   # red
+
+	# ── Content rows ──────────────────────────────────────────────────────────
+	hit_count  = 0
+	miss_count = 0
 
 	for i, sample_ref in enumerate(ref_t2i):
 		query_label = sample_ref["query_label"]
-		
+
+		# Query-label cell
 		ax_q = fig.add_subplot(gs[i + 1, 0])
 		ax_q.axis("off")
 		ax_q.text(
-			0.05, 
-			0.5,
+			0.05, 0.5,
 			query_label,
-			ha="left", 
-			va="center",
-			fontsize=10,
-			fontweight="bold",
+			ha="left", va="center",
+			fontsize=10, fontweight="bold",
 			color="#1A1A2E",
 			wrap=True,
 			transform=ax_q.transAxes,
 		)
+
 		for j, strat in enumerate(strategies):
 			ax = fig.add_subplot(gs[i + 1, j + 1])
-			
 			ax.set_xticks([])
 			ax.set_yticks([])
-			
-			strat_data = results_by_strategy[strat]["t2i"]
-			match = next((s for s in strat_data if s["query_label"] == query_label), None)
-			
-			if match is None or not match["retrieved_paths"]:
+
+			strat_t2i = results_by_strategy[strat]["t2i"]
+			match = next(
+				(s for s in strat_t2i if s["query_label"] == query_label),
+				None,
+			)
+
+			# ── Empty cell ────────────────────────────────────────────────────
+			if match is None or not match.get("retrieved_paths"):
 				ax.set_facecolor("#FFFAFA")
-				ax.text(0.5, 0.5, "–", ha="center", va="center", transform=ax.transAxes)
-				# Hide spines for empty cells
+				ax.text(0.5, 0.5, "–", ha="center", va="center",
+					transform=ax.transAxes, fontsize=14, color="#AAAAAA")
 				for spine in ax.spines.values():
 					spine.set_visible(False)
 				continue
-									
-			img_path = match["retrieved_paths"][0]
+
+			img_path   = match["retrieved_paths"][0]
+			img_score  = (match["retrieved_scores"][0]
+						  if match.get("retrieved_scores") else None)
+
+			# ── Hit/miss: read pre-computed field directly ────────────────────
+			#
+			#   match["hits"] is a list aligned with retrieved_paths.
+			#   match["hits"][0] → bool for the top-1 retrieved image.
+			#   match["retrieved_labels"][0] → GT labels of that image (list).
+			#
+			is_hit    = bool(match.get("hits", [False])[0])
+			img_gt    = match.get("retrieved_labels", [[]])[0]   # GT of retrieved image
+
+			if is_hit:
+				hit_count  += 1
+			else:
+				miss_count += 1
+
+			if verbose:
+				print(
+					f"row={i:<3}strat={strat:<15}"
+					f"query={query_label:<30}"
+					f"img={os.path.basename(img_path):<50}"
+					f"hit={is_hit:<4}"
+					f"img_GT: {img_gt}"
+				)
+
+			# ── Image ─────────────────────────────────────────────────────────
 			img_arr = _load_image_rgb(img_path)
-			
 			if img_arr is not None:
 				ax.imshow(img_arr, aspect="auto")
 			else:
 				ax.set_facecolor("#DDDDDD")
-				ax.text(0.5, 0.5, "Image N/A", ha="center", va="center", transform=ax.transAxes)
+				ax.text(0.5, 0.5, "N/A", ha="center", va="center",
+					transform=ax.transAxes, color="#888888")
 
-			# Apply colored strategy border, slightly thicker to make it pop
+			# ── Strategy-coloured spine ───────────────────────────────────────
+			strat_color = METHOD_STYLE.get(strat, {"color": "#000000"})["color"]
 			for spine in ax.spines.values():
 				spine.set_visible(True)
-				spine.set_color(METHOD_STYLE.get(strat, {"color": "#000000"})["color"])
-				spine.set_linewidth(2.0)
+				spine.set_color(strat_color)
+				spine.set_linewidth(2.2)
 
-	out_fname = os.path.join(output_dir, f"qualitative_t2i_tail.png")
+			# ── Corner triangle badge (top-right) ─────────────────────────────
+			#
+			#   Three vertices in axes-fraction space forming a right triangle
+			#   flush with the top-right corner:
+			#     (1-s, 1)  →  (1, 1)  →  (1, 1-s)
+			#
+			badge_color = HIT_COLOR if is_hit else MISS_COLOR
+			bx = [1.0 - BADGE_SIZE, 1.0,              1.0             ]
+			by = [1.0,              1.0,               1.0 - BADGE_SIZE]
+			ax.fill(
+				bx, by,
+				transform=ax.transAxes,
+				color=badge_color,
+				zorder=10,
+				clip_on=True,
+			)
+			# Icon centred on the visual centroid of the triangle
+			icon_x = 1.0 - BADGE_SIZE * 0.38
+			icon_y = 1.0 - BADGE_SIZE * 0.38
+			# ax.text(
+			# 	icon_x, icon_y,
+			# 	"✓" if is_hit else "✗",
+			# 	transform=ax.transAxes,
+			# 	ha="center", va="center",
+			# 	fontsize=7.0, fontweight="bold",
+			# 	color="white",
+			# 	zorder=11,
+			# )
+
+			# ── Correctness marker inside badge (matplotlib-native, no Unicode) ───
+			marker_style = dict(
+				transform   = ax.transAxes,
+				markersize  = 5.5,
+				clip_on     = True,
+				zorder      = 11,
+			)
+			if is_hit:
+				ax.plot(
+					icon_x, icon_y,
+					marker          = "D",      # filled diamond → clean "confirmed" symbol
+					color           = "white",
+					markeredgecolor = "white",
+					markeredgewidth = 0.5,
+					**marker_style,
+				)
+			else:
+				ax.plot(
+					icon_x, icon_y,
+					marker          = "x",      # cross → rejection / miss
+					color           = "white",
+					markeredgecolor = "white",
+					markeredgewidth = 1.8,      # thicker stroke makes "x" legible at small size
+					**marker_style,
+				)
+
+			# # ── Retrieved image GT labels (bottom strip) ──────────────────────
+			# #
+			# #   Highlight the query label in the GT list to make the hit/miss
+			# #   reason immediately legible.  Labels are comma-separated; the
+			# #   matching label is wrapped in brackets if it is a hit.
+			# #
+			# if img_gt:
+			# 	def _fmt_label(lbl: str) -> str:
+			# 		if lbl == query_label:
+			# 			return f"[{lbl}]" if is_hit else lbl
+			# 		return lbl
+
+			# 	gt_str = ",  ".join(_fmt_label(l) for l in img_gt)
+			# 	# Truncate if too long to fit
+			# 	max_chars = 38
+			# 	if len(gt_str) > max_chars:
+			# 		gt_str = gt_str[:max_chars - 1] + "…"
+
+			# 	ax.text(
+			# 		0.03, 0.03,
+			# 		gt_str,
+			# 		transform=ax.transAxes,
+			# 		ha="left", va="bottom",
+			# 		fontsize=5.2,
+			# 		color="white",
+			# 		fontweight="normal",
+			# 		bbox=dict(
+			# 			boxstyle="round,pad=0.20",
+			# 			facecolor="#000000",
+			# 			alpha=0.52,
+			# 			edgecolor="none",
+			# 		),
+			# 		zorder=9,
+			# 	)
+
+			# ── Similarity score (top-left, small) ───────────────────────────
+			# if img_score is not None:
+			# 	ax.text(
+			# 		0.03, 0.97,
+			# 		f"s={img_score:.3f}",
+			# 		transform=ax.transAxes,
+			# 		ha="left", va="top",
+			# 		fontsize=5.5,
+			# 		color="white",
+			# 		bbox=dict(
+			# 			boxstyle="round,pad=0.18",
+			# 			facecolor="#000000",
+			# 			alpha=0.42,
+			# 			edgecolor="none",
+			# 		),
+			# 		zorder=9,
+			# 	)
+
+	# ── Legend ────────────────────────────────────────────────────────────────
+	total = hit_count + miss_count
+	hit_patch  = Patch(
+		facecolor=HIT_COLOR,
+		edgecolor="none",
+		label=f"Hit  — query label ∈ retrieved image GT",
+	)
+	miss_patch = Patch(
+		facecolor=MISS_COLOR,
+		edgecolor="none",
+		label=f"Miss — query label ∉ retrieved image GT",
+	)
+	fig.legend(
+		handles=[hit_patch, miss_patch],
+		loc="lower center",
+		ncol=2,
+		fontsize=8.5,
+		frameon=False,
+		bbox_to_anchor=(0.5, 0.0),
+		title=(
+			f"Overall P@1 = {hit_count}/{total}"
+			f"  ({100 * hit_count / max(total, 1):.1f}%)"
+			f"  across {n_strat} strategies × {num_labels} queries"
+		),
+		title_fontsize=8.5,
+	)
+
+	if verbose:
+		print(
+			f"\n[T2I qualitative]  hits={hit_count}  misses={miss_count}"
+			f"  P@1={100*hit_count/max(total,1):.1f}%"
+		)
+
+	out_fname = os.path.join(output_dir, "qualitative_t2i_tail.png")
 	fig.savefig(out_fname, dpi=250, bbox_inches="tight")
 	plt.close(fig)
-	
+
 	if verbose:
 		print(f"[T2I qualitative] Saved → {out_fname}")
-	
+
 	return out_fname
 
 def plot_quantitative_retrieval(
@@ -2513,9 +2712,9 @@ def plot_taxonomy_radar(
 	scores_df, 
 	value_cols, 
 	title, 
-	output_path
+	output_path,
+	figsize=(6, 6),
 ):
-	figsize = (6, 6)
 	cmap = matplotlib.colormaps["Set1"] # or "viridis", "tab20"
 	categories = [
 		"Semantic\nCoverage",
@@ -2588,23 +2787,23 @@ def plot_taxonomy_radar(
 			values_plot,
 			color=cmap(idx),
 			marker="o",
-			markersize=4.0,
+			markersize=5.0,
 			linestyle="-",
-			linewidth=1.2,
+			linewidth=1.5,
 			label=row["source"].replace("_", " ").replace("labels", "").upper(),
-			markeredgecolor="black",
-			markeredgewidth=0,
-			alpha=0.85,
-			zorder=10
+			# markeredgecolor="black",
+			# markeredgewidth=0,
+			alpha=0.8,
+			zorder=1,
 		)
 		ax.fill(
 			angles_plot,
 			values_plot,
 			color=cmap(idx),
-			alpha=0.15,
+			alpha=0.20,
 		)
 
-	ax.grid(True, linestyle="--", alpha=0.75, zorder=100)
+	ax.grid(True, linestyle="--", alpha=0.75, zorder=0)
 	ax.legend(
 		loc="upper left",
 		bbox_to_anchor=(-0.2, 1.1),

@@ -91,7 +91,7 @@ def zero_shot_multi_label(
 	num_classes = len(class_names)
 
 	masks = compute_loss_masks(
-		train_loader=train_loader,
+		loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="log",
 		device=device,
@@ -241,7 +241,7 @@ def probe_multi_label(
 	)
 
 	masks = compute_loss_masks(
-		train_loader=train_loader,
+		loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="log",
 		device=device,
@@ -822,7 +822,7 @@ def full_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode)
 
 	masks = compute_loss_masks(
-		train_loader=train_loader,
+		loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="linear",
 		# pw_max_cap=100.0,
@@ -1382,7 +1382,7 @@ def lora_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode)
 	
 	masks = compute_loss_masks(
-		train_loader=train_loader,
+		loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="sqrt",
 		# pw_max_cap=50.0,
@@ -1993,7 +1993,7 @@ def lora_plus_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode)
 
 	masks = compute_loss_masks(
-		train_loader=train_loader,
+		loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="sqrt",
 		# pw_max_cap=50.0,
@@ -2764,7 +2764,7 @@ def rslora_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode)
 
 	masks = compute_loss_masks(
-		train_loader=train_loader,
+		loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="sqrt",
 		# pw_max_cap=50.0,
@@ -3374,7 +3374,7 @@ def dora_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode)
 
 	masks = compute_loss_masks(
-		train_loader=train_loader,
+		loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="sqrt",
 		# pw_max_cap=50.0,
@@ -3998,7 +3998,7 @@ def ia3_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode)
 
 	masks = compute_loss_masks(
-		train_loader=train_loader,
+		loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="log",
 		device=device,
@@ -4624,7 +4624,7 @@ def vera_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode)
 
 	masks = compute_loss_masks(
-		train_loader=train_loader,
+		loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="log",
 		device=device,
@@ -5274,7 +5274,7 @@ def clip_adapter_finetune_multi_label(
 
 	# Loss masks
 	masks = compute_loss_masks(
-		train_loader=train_loader,
+		loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="log",
 		device=device,
@@ -6044,7 +6044,7 @@ def tip_adapter_finetune_multi_label(
 	get_parameters_info(model=model, mode=tip_adapter_method)
 
 	masks = compute_loss_masks(
-		train_loader=train_loader,
+		loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="log",
 		device=device,
