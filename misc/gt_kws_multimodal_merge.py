@@ -237,10 +237,9 @@ def merge_csv_files(
 
 	get_multi_label_stratified_split(
 		df=df,
+		label_col='multimodal_canonical_labels',
 		csv_file=output_fpath,
 		val_split_pct=0.35,
-		label_col='multimodal_canonical_labels',
-		min_label_frequency=5,
 	)
 
 @measure_execution_time

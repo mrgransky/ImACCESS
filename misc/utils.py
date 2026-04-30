@@ -1017,58 +1017,276 @@ def get_stratified_split(
 
 	return train_df, val_df
 
+def new_get_multi_label_stratified_split(
+		df: pd.DataFrame,
+		csv_file: str,
+		val_split_pct: float,
+		label_col: str = 'multimodal_labels',
+		min_label_frequency: int = None,        # None triggers principled auto-threshold
+		min_val_label_count: int = 2,           # min expected occurrences in val set
+		stratification_order: int = 2,          # default to order=2 for better quality
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+	"""
+	Split a multi-label dataset into stratified train/val sets using IterativeStratification.
+	Args:
+			df:                    Input DataFrame.
+			csv_file:              Output CSV path stem (will produce _train.csv / _val.csv).
+			val_split_pct:         Fraction of data to place in validation set (e.g. 0.35).
+			label_col:             Column containing lists of string labels.
+			min_label_frequency:   Minimum global label count to be retained. If None, derived
+														 from min_val_label_count and val_split_pct (recommended).
+			min_val_label_count:   Minimum expected occurrences of a label in the val split.
+														 Only used when min_label_frequency is None.
+			stratification_order:  IterativeStratification order.
+														 1 = independent per-label (faster, lower quality).
+														 2 = pairwise co-occurrence (slower, recommended for <500k rows).
+	"""
+
+	# Auto-set min_label_frequency if not provided, using a principled frequency threshold
+	if min_label_frequency is None:
+		min_label_frequency = math.ceil(min_val_label_count / val_split_pct)
+		_freq_source = (
+			f"auto (ceil({min_val_label_count} / {val_split_pct}) "
+			f"= {min_label_frequency})"
+		)
+	else:
+		_freq_source = f"manual ({min_label_frequency})"
+	
+	print("-" * 150)
+	print(
+		f"Stratified Split [Multi-label] | val={val_split_pct} | "
+		f"order={stratification_order} | min_label_freq={min_label_frequency} [{_freq_source}]"
+	)
+	t_st = time.time()
+	# ── STEP 1: Robust label parsing ─────────────────────────────────────────
+	print(f"\n[1/6] Parsing '{label_col}' column...")
+	if label_col not in df.columns:
+			raise ValueError(f"Label column '{label_col}' not found in the DataFrame.")
+	def parse_label(x):
+			if isinstance(x, str):
+					try:
+							return ast.literal_eval(x)
+					except (ValueError, SyntaxError) as e:
+							raise ValueError(
+									f"Malformed string in '{label_col}': '{x}'. Error: {e}"
+							)
+			elif isinstance(x, list):
+					return x
+			else:
+					print(
+							f"   Warning: Unexpected type '{type(x)}' for value '{x}'. "
+							f"Treating as empty list."
+					)
+					return []
+	df_copy = df.copy()
+	try:
+			df_copy[label_col] = df_copy[label_col].apply(parse_label)
+			print(f"   ✓ Parsed '{label_col}' column.")
+	except ValueError as e:
+			raise ValueError(f"Error parsing multi-label column '{label_col}': {e}")
+
+	# ── STEP 2: Drop rows with empty label lists ──────────────────────────────
+	print(f"\n[2/6] Removing samples with empty labels...")
+	
+	# .copy() to avoid SettingWithCopyWarning on downstream mutations
+	df_filtered = df_copy[df_copy[label_col].apply(len) > 0].copy()
+	n_removed_empty = len(df_copy) - len(df_filtered)
+	
+	if n_removed_empty:
+		print(f"   Removed {n_removed_empty} rows with empty label lists.")
+	if len(df_filtered) == 0:
+		raise ValueError("No samples with non-empty label lists remain after parsing.")
+	
+	print(f"   DataFrame shape: {df_filtered.shape}")
+
+	# ── STEP 3: Filter rare labels
+	print(
+			f"\n[3/6] Filtering rare labels "
+			f"(min_label_frequency={min_label_frequency})..."
+	)
+	all_labels_flat = [l for labels in df_filtered[label_col] for l in labels]
+	label_counts = Counter(all_labels_flat)
+	initial_unique = len(label_counts)
+	print(f"   Total unique labels before filtering: {initial_unique}")
+	rare_labels = {l for l, c in label_counts.items() if c < min_label_frequency}
+	kept_labels = set(label_counts.keys()) - rare_labels
+	print(
+			f"   Rare labels (< {min_label_frequency}): {len(rare_labels)} "
+			f"({len(rare_labels) / initial_unique * 100:.1f}%)"
+	)
+	print(
+			f"   Labels to keep: {len(kept_labels)} "
+			f"({len(kept_labels) / initial_unique * 100:.1f}%)"
+	)
+	if rare_labels:
+			rare_freq_dist = Counter(label_counts[l] for l in rare_labels)
+			print(f"   Rare label frequency distribution:")
+			for freq in sorted(rare_freq_dist.keys()):
+					labels_at_freq = [l for l, c in label_counts.items() if c == freq]
+					print(
+							f"      freq={freq}: {rare_freq_dist[freq]} labels: "
+							f"{labels_at_freq[:20]}"
+							f"{'  ...' if len(labels_at_freq) > 20 else ''}"
+					)
+	
+	# assign via loc to avoid chained-assignment warning
+	df_filtered[label_col] = df_filtered[label_col].apply(
+		lambda llist: [l for l in llist if l not in rare_labels]
+	)
+	n_before = len(df_filtered)
+	df_filtered = df_filtered[df_filtered[label_col].apply(len) > 0].copy()
+	n_after = len(df_filtered)
+	
+	print(
+		f"   Samples after rare-label filtering: {n_after} "
+		f"(removed {n_before - n_after} that became label-empty)"
+	)
+	if n_after == 0:
+		raise ValueError(
+			"No samples remain after filtering rare labels. "
+			"Try lowering min_label_frequency or min_val_label_count."
+		)
+	final_unique = len({l for labels in df_filtered[label_col] for l in labels})
+	print(f"   Final unique labels: {final_unique}")
+
+	# ── STEP 4: Binarise label matrix
+	print(f"\n[4/6] Binarizing label matrix ({df_filtered.shape[0]} samples)...")
+	mlb = MultiLabelBinarizer(sparse_output=True)
+	label_matrix = mlb.fit_transform(df_filtered[label_col])
+	unique_labels = mlb.classes_
+	density = label_matrix.count_nonzero() / (label_matrix.shape[0] * label_matrix.shape[1])
+	print(
+			f"   Shape: {label_matrix.shape} | dtype: {label_matrix.dtype} | "
+			f"Density: {density * 100:.3f}% | "
+			f"Non-zeros: {label_matrix.count_nonzero()} | "
+			f"Data size: {label_matrix.data.nbytes / 1e6:.3f} MB"
+	)
+	if len(unique_labels) == 0:
+			raise ValueError("No unique labels after processing. Cannot stratify.")
+	print(f"   Sample labels: {unique_labels.tolist()[:20]}")
+
+	# ── STEP 5: Iterative stratification
+	# expose stratification_order as a parameter so callers can
+	# compare order=1 (fast) vs order=2 (better label-pair coverage).
+	print(f"\n[5/6] Iterative stratification (order={stratification_order}, n={len(df_filtered)})")
+	X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
+	try:
+		stratifier = IterativeStratification(
+			n_splits=2,
+			order=stratification_order,
+			sample_distribution_per_fold=[val_split_pct, 1.0 - val_split_pct],
+		)
+		train_indices, val_indices = next(stratifier.split(X_indices, label_matrix))
+	except Exception as e:
+		print(f"   ❌ Stratification failed: {e}")
+		print(
+			f"   Hint: some labels may still have too few samples. "
+			f"Try raising min_label_frequency or switching to order=1."
+		)
+		raise
+	train_df = df_filtered.iloc[train_indices].reset_index(drop=True)
+	val_df   = df_filtered.iloc[val_indices].reset_index(drop=True)
+	if train_df.empty or val_df.empty:
+		raise ValueError("Train or validation set is empty after splitting.")
+	
+	# ── STEP 6: Post-split label coverage audit ───────────────────────────────
+	# verify every retained label appears in both splits
+	print(f"\n[6/6] Post-split label coverage audit...")
+	train_label_set = {l for labels in train_df[label_col] for l in labels}
+	val_label_set   = {l for labels in val_df[label_col]   for l in labels}
+	train_only = train_label_set - val_label_set
+	val_only   = val_label_set   - train_label_set
+	both       = train_label_set & val_label_set
+	
+	print(f"   Labels in both splits : {len(both)}")
+	print(f"   Labels only in train  : {len(train_only)}")
+	print(f"   Labels only in val    : {len(val_only)}")
+	
+	if train_only:
+		print(f"   ⚠ Train-only label examples: {sorted(train_only)[:20]}")
+	if val_only:
+		print(f"   ⚠ Val-only label examples  : {sorted(val_only)[:20]}")
+	if len(train_only) == 0 and len(val_only) == 0:
+		print("   ✓ All labels present in both splits.")
+	
+	print(f"\nSPLIT SUMMARY")
+	print(f"   Original : {df_filtered.shape}")
+	print(f"   Train    : {train_df.shape} ({len(train_df) / len(df_filtered) * 100:.1f}%)")
+	print(f"   Val      : {val_df.shape} ({len(val_df) / len(df_filtered) * 100:.1f}%)")
+	
+	train_path = csv_file.replace('.csv', '_train.csv')
+	val_path   = csv_file.replace('.csv', '_val.csv')
+	
+	train_df.to_csv(train_path, index=False)
+	val_df.to_csv(val_path,   index=False)
+
+	print(f"\n   Total elapsed: {time.time() - t_st:.1f} s")
+	print("-" * 100)
+
+	return train_df, val_df
+
 def get_multi_label_stratified_split(
 	df: pd.DataFrame,
 	csv_file: str,
 	val_split_pct: float,
 	label_col: str = 'multimodal_labels',
-	min_label_frequency: int = 5,
+	min_val_label_count: int = 2, # minimum number of samples per label in validation set
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
 	print("-"*150)
-	print(f"\nStratified Split [Multi-label] {val_split_pct} train/val split (Min label freq: {min_label_frequency})")
+	print(f"Stratified Split [Multi-label] {val_split_pct} train/val split")
 
 	t_st = time.time()
 	df_copy = df.copy()
+
+	# Check if the label column exists
+	if label_col not in df_copy.columns:
+		raise ValueError(f"Label column '{label_col}' not found in the DataFrame.")
+
+	# Get min_label_frequency
+	min_label_frequency = math.ceil(min_val_label_count / val_split_pct)
+	print(f">> Min label frequency: {min_label_frequency} (= ceil({min_val_label_count}/{val_split_pct})")
+
 	# 1. Robust Label Parsing
 	print(f"\n[1/5] Parsing '{label_col}' column...")
 	if label_col not in df_copy.columns:
 		raise ValueError(f"Label column '{label_col}' not found in the DataFrame.")
 	def parse_label(x):
 		if isinstance(x, str):
-				try:
-						return ast.literal_eval(x)
-				except (ValueError, SyntaxError) as e:
-						raise ValueError(f"Malformed string found in '{label_col}': '{x}'. Error: {e}")
+			try:
+				return ast.literal_eval(x)
+			except (ValueError, SyntaxError) as e:
+				raise ValueError(f"Malformed string found in '{label_col}': '{x}'. Error: {e}")
 		elif isinstance(x, list):
-				return x
+			return x
 		else:
-				print(f"Warning: Unexpected type '{type(x)}' found in '{label_col}': {x}. Trying to convert to empty list.")
-				return []
+			print(f"Warning: Unexpected type '{type(x)}' found in '{label_col}': {x}. Trying to convert to empty list.")
+			return []
 	
 	try:
-			df_copy[label_col] = df_copy[label_col].apply(parse_label)
-			print(f"   ✓ Successfully processed '{label_col}' column.")
+		df_copy[label_col] = df_copy[label_col].apply(parse_label)
+		print(f"   ✓ Successfully processed '{label_col}' column.")
 	except ValueError as e:
-			raise ValueError(f"Error parsing multi-label column '{label_col}'. Error: {e}")
+		raise ValueError(f"Error parsing multi-label column '{label_col}'. Error: {e}")
+	
 	# 2. Remove rows with empty label lists
 	print(f"\n[2/5] Removing samples with empty labels...")
-	df_filtered = df_copy[df_copy[label_col].apply(len) > 0]
+	df_filtered = df_copy[df_copy[label_col].apply(len) > 0].copy()
 	initial_rows = len(df_copy)
 	final_rows = len(df_filtered)
 	
 	if final_rows == 0:
-			raise ValueError("No samples with non-empty label lists remain after parsing.")
+		raise ValueError("No samples with non-empty label lists remain after parsing.")
 	
 	if initial_rows != final_rows:
-			print(f"   Removed {initial_rows - final_rows} rows with empty label lists.")
+		print(f"   Removed {initial_rows - final_rows} rows with empty label lists.")
 	
-	print(f"   DataFrame shape: {df_filtered.shape}")
+	print(f"df_filtered: {df_filtered.shape}")
 	print(f"\n[3/5] Filtering rare labels (min frequency: {min_label_frequency})...")
 		
 	# Count label frequencies
 	all_labels = []
 	for label_list in df_filtered[label_col]:
-			all_labels.extend(label_list)
+		all_labels.extend(label_list)
 	
 	label_counts = Counter(all_labels)
 	initial_unique_labels = len(label_counts)
@@ -1080,6 +1298,7 @@ def get_multi_label_stratified_split(
 		for label, count in label_counts.items() 
 		if count < min_label_frequency
 	}
+
 	kept_labels = set(label_counts.keys()) - rare_labels
 	
 	print(f"\tRare labels (< {min_label_frequency}): {len(rare_labels)} ({len(rare_labels)/initial_unique_labels*100:.1f}%)")
@@ -1095,48 +1314,50 @@ def get_multi_label_stratified_split(
 			labels_with_freq = [label for label, lbl_count in label_counts.items() if lbl_count == freq]
 			print(f"\t\tfreq={freq}: {count} labels: {labels_with_freq[:20]}{' ...' if len(labels_with_freq) > 20 else ''}")
 		
-		# # Show examples
-		# rare_examples = sorted(rare_labels)[:20]
-		# print(f"   Example rare labels being removed: {rare_examples}")
+		# Show examples
+		rare_examples = sorted(rare_labels)[:20]
+		print(f"\trare labels being removed: {rare_examples}")
 	
 	# Filter out rare labels from each sample
 	def remove_rare_labels(label_list):
-			return [label for label in label_list if label not in rare_labels]
+		return [label for label in label_list if label not in rare_labels]
 	
 	df_filtered[label_col] = df_filtered[label_col].apply(remove_rare_labels)
 	
 	# Remove samples that became empty after rare label removal
 	samples_before = len(df_filtered)
 	df_filtered = df_filtered[df_filtered[label_col].apply(len) > 0]
+
 	samples_after = len(df_filtered)
 	
 	if samples_after == 0:
 		raise ValueError("No samples remain after filtering rare labels. Try lowering min_label_frequency.")
 	
-	print(f"   Samples after filtering: {samples_after} (removed {samples_before - samples_after})")
+	print(f"Samples after filtering: {samples_after} (removed {samples_before - samples_after})")
 	
 	# Verify final label count
 	final_labels = set([l for labels in df_filtered[label_col] for l in labels])
-	print(f"   Final unique labels: {len(final_labels)}")
+	print(f"Final unique labels: {len(final_labels)}")
 
-	print(f"\n[4/5] Binarizing Label matrix ({df_filtered[label_col].shape})...")
+	print(f"\n[4/5] Binarizing ({df_filtered[label_col].shape} labels using MultiLabelBinarizer")
 	mlb = MultiLabelBinarizer(sparse_output=True)
 	label_matrix = mlb.fit_transform(df_filtered[label_col])
-	print(f"   Label matrix: {type(label_matrix)} {label_matrix.shape} | {label_matrix.dtype} | Density: {label_matrix.count_nonzero() / np.prod(label_matrix.shape) * 100:.1f}% | Non-zeroes: {label_matrix.count_nonzero()} | Data size: ({label_matrix.data.nbytes / 1e6:.3f} MB)")
+	print(f"Label matrix: {type(label_matrix)} {label_matrix.shape} | {label_matrix.dtype} | Density: {label_matrix.count_nonzero() / np.prod(label_matrix.shape) * 100:.1f}% | Non-zeroes: {label_matrix.count_nonzero()} | Data size: ({label_matrix.data.nbytes / 1e6:.3f} MB)")
 	unique_labels = mlb.classes_
 	if len(unique_labels) == 0:
 		raise ValueError("No unique labels found after processing. Cannot perform stratification.")
 	
-	print(f"   {len(unique_labels)} unique labels")
-	print(f"   Sample unique labels: {unique_labels.tolist()[:20]}")
+	print(f"{len(unique_labels)} unique labels:\n{unique_labels.tolist()[:20]}")
 	
-	print(f"\n[5/5] Iterative stratification...")
+	# Stratify the data
+	stratification_order = 1 if len(df_filtered) > int(2e5) else 2 # 1 for large datasets, 2 for small datasets
+	print(f"\n[5/5] Iterative stratification (order={stratification_order} len(df_filtered): {len(df_filtered)} val: {val_split_pct})")
 	X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
 	
 	try:
 		stratifier = IterativeStratification(
 			n_splits=2,
-			order=1 if len(df_filtered) > int(1e5) else 2,
+			order=stratification_order,
 			sample_distribution_per_fold=[val_split_pct, 1-val_split_pct],
 		)
 		train_indices, val_indices = next(stratifier.split(X_indices, label_matrix))
@@ -1155,7 +1376,17 @@ def get_multi_label_stratified_split(
 	if train_df.empty or val_df.empty:
 		raise ValueError("Train or validation set is empty after splitting.")
 	
-	print(f"\n>> SPLIT SUMMARY")
+	print(f"\n[6/6] Post-split label coverage audit...")
+	train_labels = set(l for labels in train_df[label_col] for l in labels)
+	val_labels   = set(l for labels in val_df[label_col]   for l in labels)
+	train_only = train_labels - val_labels
+	val_only   = val_labels - train_labels
+	common_labels = train_labels & val_labels
+	print(f"{len(common_labels)} common labels in both train & val")
+	print(f"{len(train_only)} train_only labels: {train_only}")
+	print(f"{len(val_only)} val_only labels: {val_only}")
+
+	print(f"\nSPLIT SUMMARY")
 	print(f"   Original: {df_filtered.shape}")
 	print(f"   Train:    {train_df.shape} ({len(train_df)/len(df_filtered)*100:.1f}%)")
 	print(f"   Val:      {val_df.shape} ({len(val_df)/len(df_filtered)*100:.1f}%)")

@@ -379,7 +379,6 @@ def get_multimodal_annotation(
 			csv_file=output_csv,
 			val_split_pct=0.35,
 			label_col='multimodal_canonical_labels',
-			min_label_frequency=5,
 		)
 
 	return multimodal_labels
