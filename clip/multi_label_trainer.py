@@ -1,3 +1,5 @@
+import torch
+
 from utils import *
 from early_stopper import EarlyStopping
 from loss import *
@@ -1028,9 +1030,15 @@ def full_finetune_multi_label(
 				)
 
 			# Check for NaN loss
-			if torch.isnan(total_loss):
-				print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
-				continue
+			if torch.isnan(total_loss) or torch.isinf(total_loss):
+				print(
+					f"[WARNING] e{epoch+1} b{bidx+1}: "
+					f"total_loss: {total_loss} "
+					f"loss_i2t: {loss_i2t} "
+					f"loss_t2i: {loss_t2i}"
+				)
+				# no zero_grad needed here — already done above
+				continue # skip this batch
 
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
@@ -1582,9 +1590,16 @@ def lora_finetune_multi_label(
 						verbose=verbose,
 					)
 
-				if torch.isnan(total_loss):
-					print(f"Warning: NaN loss at epoch {epoch+1}, batch {bidx+1}. Skipping.")
-					continue
+				# Check for NaN loss
+				if torch.isnan(total_loss) or torch.isinf(total_loss):
+					print(
+						f"[WARNING] e{epoch+1} b{bidx+1}: "
+						f"total_loss: {total_loss} "
+						f"loss_i2t: {loss_i2t} "
+						f"loss_t2i: {loss_t2i}"
+					)
+					# no zero_grad needed here — already done above
+					continue # skip this batch
 
 				scaler.scale(total_loss).backward()
 				scaler.unscale_(optimizer)
@@ -2251,7 +2266,6 @@ def lora_plus_finetune_multi_label(
 					f"loss_i2t: {loss_i2t} "
 					f"loss_t2i: {loss_t2i}"
 				)
-
 				# no zero_grad needed here — already done above
 				continue # skip this batch
 			
@@ -2961,11 +2975,13 @@ def rslora_finetune_multi_label(
 					verbose=verbose,
 				)
 
+			# Check for NaN loss
 			if torch.isnan(total_loss) or torch.isinf(total_loss):
-				nan_loss_count += 1
 				print(
-					f"Warning: NaN/Inf loss at epoch {epoch+1}, "
-					f"batch {bidx+1} (total skipped: {nan_loss_count}). Skipping."
+					f"[WARNING] e{epoch+1} b{bidx+1}: "
+					f"total_loss: {total_loss} "
+					f"loss_i2t: {loss_i2t} "
+					f"loss_t2i: {loss_t2i}"
 				)
 				
 				# Abort epoch if NaN cascade is unrecoverable
@@ -2991,10 +3007,7 @@ def rslora_finetune_multi_label(
 			if has_bad_grad:
 				nan_grad_count += 1
 				if nan_grad_count % 50 == 1:
-					print(
-						f"Warning: NaN/Inf gradient at epoch {epoch+1}, "
-						f"batch {bidx+1} (total skipped: {nan_grad_count}). Skipping step."
-					)
+					print(f"Warning: NaN/Inf gradient: e{epoch+1} b{bidx+1} (total skipped: {nan_grad_count}). Skipping step.")
 				optimizer.zero_grad(set_to_none=True)
 				scaler.update()
 				continue
@@ -3579,9 +3592,15 @@ def dora_finetune_multi_label(
 				)
 
 			# Check for NaN loss
-			if torch.isnan(total_loss):
-				print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
-				continue
+			if torch.isnan(total_loss) or torch.isinf(total_loss):
+				print(
+					f"[WARNING] e{epoch+1} b{bidx+1}: "
+					f"total_loss: {total_loss} "
+					f"loss_i2t: {loss_i2t} "
+					f"loss_t2i: {loss_t2i}"
+				)
+				# no zero_grad needed here — already done above
+				continue # skip this batch
 
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
@@ -4195,9 +4214,15 @@ def ia3_finetune_multi_label(
 				)
 			
 			# Check for NaN loss
-			if torch.isnan(total_loss):
-				print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
-				continue
+			if torch.isnan(total_loss) or torch.isinf(total_loss):
+				print(
+					f"[WARNING] e{epoch+1} b{bidx+1}: "
+					f"total_loss: {total_loss} "
+					f"loss_i2t: {loss_i2t} "
+					f"loss_t2i: {loss_t2i}"
+				)
+				# no zero_grad needed here — already done above
+				continue # skip this batch
 			
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
@@ -4827,9 +4852,15 @@ def vera_finetune_multi_label(
 				)
 			
 			# Check for NaN loss
-			if torch.isnan(total_loss):
-				print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
-				continue
+			if torch.isnan(total_loss) or torch.isinf(total_loss):
+				print(
+					f"[WARNING] e{epoch+1} b{bidx+1}: "
+					f"total_loss: {total_loss} "
+					f"loss_i2t: {loss_i2t} "
+					f"loss_t2i: {loss_t2i}"
+				)
+				# no zero_grad needed here — already done above
+				continue # skip this batch
 			
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
@@ -5472,9 +5503,16 @@ def clip_adapter_finetune_multi_label(
 					verbose=verbose,
 				)
 
-			if torch.isnan(total_loss):
-				print(f"Warning: NaN loss at epoch {epoch+1} batch {bidx+1}. Skipping.")
-				continue
+			# Check for NaN loss
+			if torch.isnan(total_loss) or torch.isinf(total_loss):
+				print(
+					f"[WARNING] e{epoch+1} b{bidx+1}: "
+					f"total_loss: {total_loss} "
+					f"loss_i2t: {loss_i2t} "
+					f"loss_t2i: {loss_t2i}"
+				)
+				# no zero_grad needed here — already done above
+				continue # skip this batch
 
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
@@ -6291,13 +6329,22 @@ def tip_adapter_finetune_multi_label(
 				)
 
 			# Check for NaN loss
-			if torch.isnan(total_loss):
-				print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
-				continue
+			if torch.isnan(total_loss) or torch.isinf(total_loss):
+				print(
+					f"[WARNING] e{epoch+1} b{bidx+1}: "
+					f"total_loss: {total_loss} "
+					f"loss_i2t: {loss_i2t} "
+					f"loss_t2i: {loss_t2i}"
+				)
+				# no zero_grad needed here — already done above
+				continue # skip this batch
 
 			scaler.scale(total_loss).backward()
 			scaler.unscale_(optimizer)
-			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
+			torch.nn.utils.clip_grad_norm_(
+				[p for p in model.parameters() if p.requires_grad], 
+				max_norm=1.0
+			)
 			scaler.step(optimizer)
 			scaler.update()
 			scheduler.step()
