@@ -2759,9 +2759,6 @@ def rslora_finetune_multi_label(
 		if verbose:
 			print(f"   └─ {gpu_name} | {total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 
-	# ── rsLoRA injection — vision encoder only
-	# Text encoder stays frozen and un-injected.
-	# all_class_embeds pre-computed from frozen text encoder remains valid.
 	model = get_injected_peft_clip(
 		clip_model=model,
 		method=mode,
@@ -2899,7 +2896,7 @@ def rslora_finetune_multi_label(
 
 	scaler = torch.amp.GradScaler(
 		device=device,
-		init_scale=2**15,      # 2048 (Conservative start)
+		init_scale=2**15,      # 32768, default 
 		growth_factor=2.0,     # Smoother growth than default 2.0
 		backoff_factor=0.5,    # Standard
 		growth_interval=2000,  # Keep scale stable longer
