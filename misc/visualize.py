@@ -1437,7 +1437,7 @@ def plot_zipfian_curve(
 
 	max_f = freqs.max()
 	y_positions = [
-		max_f * 2.0,   # Head: highest
+		max_f * 2.5,   # Head: highest
 		max_f * 0.5,   # Torso: middle
 		max_f * 0.08,  # Tail: lower
 	]
