@@ -171,7 +171,7 @@ def plot_tier_cardinality_boxplot(
 	tier_label_pct: dict,
 	output_path: str = "plots/tier_cardinality_boxplot.png",
 	strip_sample_n: int = 2000,
-	figsize: Tuple[float, float] = (8, 5),
+	figsize: Tuple[float, float] = (9, 5),
 	dpi: int = 250,
 ):
 	col_keys  = ["head_card", "torso_card", "tail_card"]
@@ -1136,7 +1136,7 @@ def plot_zipfian_curve(
 	head_pct: float,
 	tail_pct: float,
 	output_path: str = "plots/tier_zipfian_curve.png",
-	figsize: Tuple[float, float] = (8, 5),
+	figsize: Tuple[float, float] = (9, 5),
 	dpi: int = 250,
 	verbose: bool = True,
 ) -> dict:
