@@ -1249,12 +1249,10 @@ def plot_zipfian_curve(
 
 	# HEAD-only fit (top n_head ranks) — often steeper
 	if n_head >= 2:
-		coeffs_head    = np.polyfit(log_ranks[:n_head], log_freqs[:n_head], deg=1)
-		s_head         = -coeffs_head[0]
-		r2_head_resid  = log_freqs[:n_head] - np.polyval(coeffs_head, log_ranks[:n_head])
-		r2_head        = 1.0 - np.sum(r2_head_resid**2) / max(
-			np.sum((log_freqs[:n_head] - log_freqs[:n_head].mean())**2), 1e-12
-		)
+		coeffs_head = np.polyfit(log_ranks[:n_head], log_freqs[:n_head], deg=1)
+		s_head = -coeffs_head[0]
+		r2_head_resid = log_freqs[:n_head] - np.polyval(coeffs_head, log_ranks[:n_head])
+		r2_head = 1.0 - np.sum(r2_head_resid**2) / max(np.sum((log_freqs[:n_head] - log_freqs[:n_head].mean())**2), 1e-12)
 	else:
 		s_head, r2_head = float("nan"), float("nan")
 
@@ -1423,26 +1421,47 @@ def plot_zipfian_curve(
 	# 	zorder=4,
 	# )
 
-	# Tier annotations
-	region_centres_x = [
-		(1 + rank_head_end) / 2,
-		(rank_head_end + rank_torso_end) / 2,
-		(rank_torso_end + N) / 2,
+	# # Tier annotations
+	# region_centres_x = [
+	# 	(1 + rank_head_end) / 2,
+	# 	(rank_head_end + rank_torso_end) / 2,
+	# 	(rank_torso_end + N) / 2,
+	# ]
+	# y_anno = freqs.max() * 2.0
+	# print(f"region_centres_x: {region_centres_x}")
+	# print(f"y_anno: {y_anno}")
+
+	# Calculate visual centers (geometric mean for log-scale axes)
+	def geom_mean(a, b):
+		return np.sqrt(a * b)
+
+	max_f = freqs.max()
+	y_positions = [
+		max_f * 2.0,   # Head: highest
+		max_f * 0.5,   # Torso: middle
+		max_f * 0.08,  # Tail: lower
 	]
-	y_anno = freqs.max() * 2.0
-	print(f"region_centres_x: {region_centres_x}")
-	print(f"Tier annotations: {y_anno}")
-	for tier, rx in zip(TIER_ORDER, region_centres_x):
+
+	centers_x = [
+		geom_mean(1, rank_head_end),
+		geom_mean(rank_head_end, rank_torso_end),
+		geom_mean(rank_torso_end, N)
+	]
+	print(f"max_f: {max_f}")
+	print(f"center_x: {centers_x}")
+	print(f"y_positions: {y_positions}")
+
+	# for tier, rx in zip(TIER_ORDER, region_centres_x):
+	for tier, rx, y_anno in zip(TIER_ORDER, centers_x, y_positions):
 		ax_zipf.text(
-			rx, 
-			y_anno,
+			rx, y_anno,
 			f"{SEGMENT_SPECS[tier]['label']}\n"
-			f"{tier_label_counts[tier]:,} labels\n"
+			f"{tier_label_counts[tier]} labels\n"
 			f"{tier_label_pct[tier]}% vocab\n"
 			f"{tier_occ_pct[tier]}% occ.",
 			ha="center", 
 			va="center",
-			fontsize=7.0,
+			fontsize=6.0,
 			fontweight="bold",
 			color="#1D1D1D",#SEGMENT_SPECS[tier]["color"],
 			# bbox=dict(
@@ -1459,23 +1478,35 @@ def plot_zipfian_curve(
 	ax_zipf.set_yscale("log")
 	ax_zipf.set_xlabel("Label Rank (log)", fontsize=11)
 	ax_zipf.set_ylabel("Label Freq. (log)", fontsize=11)
+
+	# Custom Y-axis formatter for 10^n
+	def log_formatter(x, pos):
+		if x == 0: return "0"
+		exponent = int(np.log10(x))
+		return r"$10^{%d}$" % exponent
+	
+	ax_zipf.yaxis.set_major_formatter(mticker.FuncFormatter(log_formatter))
+	ax_zipf.xaxis.set_major_formatter(mticker.FuncFormatter(log_formatter))
+
 	# ax_zipf.set_title(
 	# 	"Zipfian Frequency Distribution with Tier Boundaries",
 	# 	fontsize=11, 
 	# 	fontweight="bold",
 	# )
-	ax_zipf.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{int(v):,}"))
-	ax_zipf.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{int(v):,}"))
+	# ax_zipf.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{int(v):,}"))
+	# ax_zipf.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{int(v):,}"))
+
 	ax_zipf.grid(which="both", linestyle="--", linewidth=0.3, alpha=0.5, zorder=0)
 	ax_zipf.legend(
 		loc="best",
-		fontsize=8.0,
+		fontsize=8.5,
 		frameon=True,
-		framealpha=0.8,
-		edgecolor="#a8a8a8",
+		framealpha=0.7,
+		edgecolor="#c5c2c2",
 	)
 	for spine in ax_zipf.spines.values():
-			spine.set_linewidth(0.7)
+		spine.set_linewidth(0.7)
+	
 	zipf_path = os.path.splitext(output_path)[0] + "_zipf.png"
 	fig1.tight_layout()
 	fig1.savefig(zipf_path, dpi=dpi, bbox_inches="tight")
@@ -2338,7 +2369,6 @@ def plot_qualitative_retrieval_t2i(
 	n_strat  = len(strategies)
 	topk     = max(1, topk)
 
-	# ── Layout constants ──────────────────────────────────────────────────────
 	QUERY_W  = 2.3
 	CELL_W   = 1.7
 	ROW_H    = 1.7
@@ -2361,7 +2391,6 @@ def plot_qualitative_retrieval_t2i(
 		width_ratios  = [QUERY_W / CELL_W]  + [1.0] * n_strat,
 	)
 
-	# ── Corner header ─────────────────────────────────────────────────────────
 	ax_corner = fig.add_subplot(gs[0, 0])
 	ax_corner.axis("off")
 	ax_corner.text(
@@ -2371,7 +2400,6 @@ def plot_qualitative_retrieval_t2i(
 		transform=ax_corner.transAxes,
 	)
 
-	# ── Column headers ────────────────────────────────────────────────────────
 	for j, strat in enumerate(strategies):
 		ax_h = fig.add_subplot(gs[0, j + 1])
 		ax_h.axis("off")
@@ -2384,12 +2412,10 @@ def plot_qualitative_retrieval_t2i(
 			transform=ax_h.transAxes,
 		)
 
-	# ── Badge constants ───────────────────────────────────────────────────────
 	BADGE_SIZE  = 0.22        # triangle occupies this fraction of cell edge
 	HIT_COLOR   = "#27AE60"   # green
 	MISS_COLOR  = "#E74C3C"   # red
 
-	# ── Content rows ──────────────────────────────────────────────────────────
 	hit_count  = 0
 	miss_count = 0
 
@@ -2449,14 +2475,13 @@ def plot_qualitative_retrieval_t2i(
 
 			if verbose:
 				print(
-					f"row={i:<3}strat={strat:<15}"
-					f"query={query_label:<30}"
-					f"img={os.path.basename(img_path):<50}"
+					f"row: {i:<2}strat={strat:<12}"
+					f"query: {query_label:<30}"
+					f"img={os.path.basename(img_path):<80}"
 					f"hit={is_hit:<4}"
 					f"img_GT: {img_gt}"
 				)
 
-			# ── Image ─────────────────────────────────────────────────────────
 			img_arr = _load_image_rgb(img_path)
 			if img_arr is not None:
 				ax.imshow(img_arr, aspect="auto")
@@ -2465,7 +2490,6 @@ def plot_qualitative_retrieval_t2i(
 				ax.text(0.5, 0.5, "N/A", ha="center", va="center",
 					transform=ax.transAxes, color="#888888")
 
-			# ── Strategy-coloured spine ───────────────────────────────────────
 			strat_color = METHOD_STYLE.get(strat, {"color": "#000000"})["color"]
 			for spine in ax.spines.values():
 				spine.set_visible(True)
@@ -2580,7 +2604,6 @@ def plot_qualitative_retrieval_t2i(
 			# 		zorder=9,
 			# 	)
 
-	# ── Legend ────────────────────────────────────────────────────────────────
 	total = hit_count + miss_count
 	hit_patch  = Patch(
 		facecolor=HIT_COLOR,
