@@ -29,29 +29,35 @@ process = psutil.Process(os.getpid())
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 
-VLM_INSTRUCTION_TEMPLATE = """Extract **no more than {k}** prominent, factually grounded, and semantically meaningful keywords.
-Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
-
-Keywords must be:
-	* **Semantically atomic**.
-	* **Visually grounded**.
-	* **BROAD with absolute maximum degree of breadth**:
-		- "nurse" instead of "nurse checking blood pressure"
-		- "seaplane" instead of "seaplane on the water in the background"
-		- "airplane" instead of "airplane in flight"
-		- "flag" instead of "German flag"
-		- "map" instead of "map of Europe"
-		- "animal" instead of "man riding a camel in the desert"
-
-STRICTLY EXCLUDE:
-	- generic human category nouns (e.g., man, men, woman, person, people, children).
-	- vague container nouns (e.g., scene, group, event).
-	- counting-based phrases (e.g., three men, several people, a group of young people).
-	- purely demographic descriptors without contextual role.
-
-ANTI-HALLUCINATION RULE:
-	Avoid making assumptions or drawing conclusions that go beyond what is explicitly shown.
+VLM_INSTRUCTION_TEMPLATE = """Extract no more than {k} prominent, factually grounded, and semantically meaningful keywords.
+Return only a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
+Keywords must be semantically atomic, visually grounded and broad with absolute maximum degree of breadth.
+Exclude generic human category nouns, vague container nouns, counting-based phrases and purely demographic descriptors without contextual role.
 """
+
+# VLM_INSTRUCTION_TEMPLATE = """Extract **no more than {k}** prominent, factually grounded, and semantically meaningful keywords.
+# Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
+
+# Keywords must be:
+# 	* **Semantically atomic**.
+# 	* **Visually grounded**.
+# 	* **BROAD with absolute maximum degree of breadth**:
+# 		- "nurse" instead of "nurse checking blood pressure"
+# 		- "seaplane" instead of "seaplane on the water in the background"
+# 		- "airplane" instead of "airplane in flight"
+# 		- "flag" instead of "German flag"
+# 		- "map" instead of "map of Europe"
+# 		- "animal" instead of "man riding a camel in the desert"
+
+# STRICTLY EXCLUDE:
+# 	- generic human category nouns (e.g., man, men, woman, person, people, children).
+# 	- vague container nouns (e.g., scene, group, event).
+# 	- counting-based phrases (e.g., three men, several people, a group of young people).
+# 	- purely demographic descriptors without contextual role.
+
+# ANTI-HALLUCINATION RULE:
+# 	Avoid making assumptions or drawing conclusions that go beyond what is explicitly shown.
+# """
 
 def _load_vlm_(
 	model_id: str,

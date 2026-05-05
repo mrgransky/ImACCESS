@@ -118,6 +118,7 @@ Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords,
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 Keywords must be semantically atomic, visually grounded and broad with absolute maximum degree of breadth.
 Remove colors only if it is purely descriptive (e.g., white truck, blue sky), but preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
+Exclude generic human category nouns, vague container nouns, counting-based phrases and purely demographic descriptors without contextual role.
 
 {caption}	
 [/INST]"""

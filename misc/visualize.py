@@ -1181,7 +1181,7 @@ def plot_zipfian_curve(
 	ranks  = np.arange(1, len(freqs) + 1)        # 1-indexed ranks
 	N      = len(freqs)
 
-	# ── 1. Locate tier boundary ranks ─────────────────────────────────────────
+	# ── 1. Locate tier boundary ranks 
 	#
 	#   HEAD  : labels with f >= tau_head  → the first n_head ranks
 	#   TAIL  : labels with f <  tau_torso → the last  n_tail  ranks
@@ -1202,9 +1202,7 @@ def plot_zipfian_curve(
 
 	if verbose:
 		div = "=" * 72
-		print(f"\n{div}")
-		print("  ZIPFIAN CURVE — diagnostic printout")
-		print(div)
+		print("\nZIPFIAN CURVE")
 
 		print(f"\n  [VOCABULARY]")
 		print(f"    Total labels (N)          : {N:,}")
