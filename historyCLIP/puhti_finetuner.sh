@@ -337,20 +337,15 @@ else
 	LEARNING_RATE="${LR_PEFT_ALL[$dataset_index]}"
 fi
 
-##############################################################################
 # EARLY STOPPING MINIMUM EPOCHS
 # Enforce a floor of 3 epochs regardless of dataset setting, to avoid
 # stopping before any meaningful training has occurred.
-##############################################################################
 EARLY_STOPPING_MIN_EPOCHS="${EARLY_STOPPING_INIT_MIN_EPOCHS[$dataset_index]}"
 EARLY_STOPPING_MIN_EPOCHS=$((EARLY_STOPPING_MIN_EPOCHS < 3 ? 3 : EARLY_STOPPING_MIN_EPOCHS))
 
 # Batch size (currently 1:1 with default, reserved for future per-arch scaling)
 ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 
-##############################################################################
-# CONFIGURATION SUMMARY (printed to the SLURM log for traceability)
-##############################################################################
 echo "=== CONFIGURATION ==="
 echo "SLURM_ARRAY_TASK_ID : $SLURM_ARRAY_TASK_ID"
 echo "LABEL_TYPE          : $LABEL_TYPE"
@@ -378,11 +373,9 @@ if [ "$strategy" = "lora" ] || [ "$strategy" = "lora_plus" ] || \
 fi
 echo "====================="
 
-##############################################################################
-# BUILD TRAINER COMMAND
+# TRAINER COMMAND
 # All arguments common to every strategy are set here.
 # Strategy-specific arguments are appended conditionally below.
-##############################################################################
 CMD="python -u trainer.py \
 	--metadata_csv              \"$METADATA_CSV\" \
 	--model_architecture        \"$architecture\" \
@@ -431,9 +424,6 @@ fi
 # ── Baseline: pass zero_shot or probe as the baseline method ─────────────
 [ -n "$BASELINE_METHOD" ] && CMD="$CMD --baseline_method \"$BASELINE_METHOD\""
 
-##############################################################################
-# EXECUTE
-##############################################################################
 eval $CMD
 
 done_txt="$user finished Slurm job: $(date)"

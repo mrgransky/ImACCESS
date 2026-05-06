@@ -15,14 +15,14 @@ from nlp_utils import get_enriched_description
 # Qwen/Qwen3-Next-80B-A3B-Instruct # multi-gpu required
 
 # how to run [local]:
-# python gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -q -v -bs 2
+# python gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -qb 8 -v -bs 2
 
 # with description:
 # small model for local testing:
-# python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3-4B-Instruct-2507" -v
+# python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3-4B-Instruct-2507" -qb 8 -v
 
 # large model:
-# python gt_kws_llm.py -desc "A. A. Robinson and infantry." -llm "google/gemma-4-31B-it" -v
+# python gt_kws_llm.py -desc "A. A. Robinson and infantry." -llm "Qwen/Qwen3.6-35B-A3B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -57,71 +57,67 @@ with open('geographic_references.txt', 'r') as file_:
 	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
 STOPWORDS.update(geographic_references)
 
-# LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
-# Given the caption below, extract **no more than {k}** prominent, factually grounded, and semantically meaningful keywords.
-# Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
-# Opt for fewer keywords if the caption is short or lacks sufficient information.
-
-# Keywords must be:
-# 	* **Semantically atomic**.
-# 	* **Visually grounded**.
-# 	* **BROAD with absolute maximum degree of breadth**:
-# 		- "nurse" instead of "nurse checking blood pressure"
-# 		- "pilot" instead of "pilot Charles Matheson"
-# 		- "Oberleutnant" instead of "Oberleutnant Bruno Kikillus"
-# 		- "squadron" instead of "No. 10 Squadron RAAF"
-# 		- "Corporal" instead of "Corporal Genevieve Wade"
-# 		- "seaplane" instead of "seaplane on the water in the background"
-# 		- "airplane" instead of "airplane in flight"
-# 		- "airport" instead of "airport in the background"
-# 		- "manufacturing loom" instead of "manufacturing looms for the government"
-# 		- "mountain" instead of "Eastern Mountains"
-# 		- "aerial view" instead of "aerial view of Osaka, Japan"
-# 		- "Minister of War" instead of "Italian Minister of War Cipriano Facchinetti"
-# 		- "Army Hospital" instead of "United States Army General Hospital"
-# 		- "Marine Corps" instead of "U.S. Marine Corps"
-# 		- "Red Cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
-# 		- "animal" instead of "man riding a camel in the desert"
-# 		- "reservoir" instead of "Fort Loudoun Reservoir"
-# 		- "Ballon Gun" instead of "6-pounder Ballon Gun"
-# 		- "Air Force Base" instead of "Templehof Air Force Base"
-# 		- "boulevard" instead of "Magheru Boulevard"
-# 		- "railway station" instead of "Terrassa railway station"
-# 		- "submarine" instead of "German submarine"
-
-# STRICTLY EXCLUDE:
-# 	- Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
-# 	- Equipment identifiers, serial numbers, brands, or models.
-# 	- Dates, times, years, decades, or any temporal references.
-# 	- Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral, St. Louis Cathedral, St. Louis Cathedral).
-# 	- Names of individuals or Honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
-# 	- family relationship terms (e.g., mother, father, son, uncle).
-# 	- Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
-# 	- Ordinal numeral keywords (e.g., fourth, 1st, 115th).
-# 	- Roman numerals (e.g., I, II, IV, VIII).
-# 	- Nationalities, ethnicities, or religions.
-# 	- Abbreviations, acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
-
-# Color handling:
-# 	Remove color only if it is purely descriptive (e.g., white truck, blue sky).
-# 	Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
-
-# ANTI-HALLUCINATION RULE:
-# 	Only use the exact information given in the caption for keyword extraction, without making assumptions based on implied meanings.
-
-# {caption}	
-# [/INST]"""
-
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 Given the caption below, extract no more than {k} prominent, factually grounded, and semantically meaningful keywords.
-Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
+Return only a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
-Keywords must be semantically atomic, visually grounded and broad with absolute maximum degree of breadth.
-Remove colors only if it is purely descriptive (e.g., white truck, blue sky), but preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
-Exclude generic human category nouns, vague container nouns, counting-based phrases and purely demographic descriptors without contextual role.
+Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
+
+STRICTLY EXCLUDE:
+	- Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
+	- Equipment identifiers, serial numbers, brands, or models.
+	- Dates, times, years, decades, or any temporal references.
+	- Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral, St. Louis Cathedral, St. Louis Cathedral).
+	- Names of individuals or Honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
+	- family relationship terms (e.g., mother, father, son, uncle).
+	- Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
+	- Ordinal numeral keywords (e.g., fourth, 1st, 115th).
+	- Roman numerals (e.g., I, II, IV, VIII).
+	- Nationalities, ethnicities, or religions.
+	- Abbreviations, acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
+
+Color handling:
+	Remove color only if it is purely descriptive (e.g., white truck, blue sky).
+	Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
+
+Example:
+	- "truck" instead of "white truck"
+	- "nurse" instead of "nurse checking blood pressure"
+	- "pilot" instead of "pilot Charles Matheson"
+	- "Oberleutnant" instead of "Oberleutnant Bruno Kikillus"
+	- "squadron" instead of "No. 10 Squadron RAAF"
+	- "Corporal" instead of "Corporal Genevieve Wade"
+	- "seaplane" instead of "seaplane on the water in the background"
+	- "airplane" instead of "airplane in flight"
+	- "airport" instead of "airport in the background"
+	- "manufacturing loom" instead of "manufacturing looms for the government"
+	- "mountain" instead of "Eastern Mountains"
+	- "aerial view" instead of "aerial view of Osaka, Japan"
+	- "Minister of War" instead of "Italian Minister of War Cipriano Facchinetti"
+	- "Army Hospital" instead of "United States Army General Hospital"
+	- "Marine Corps" instead of "U.S. Marine Corps"
+	- "Red Cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
+	- "animal" instead of "man riding a camel in the desert"
+	- "reservoir" instead of "Fort Loudoun Reservoir"
+	- "Ballon Gun" instead of "6-pounder Ballon Gun"
+	- "Air Force Base" instead of "Templehof Air Force Base"
+	- "boulevard" instead of "Magheru Boulevard"
+	- "railway station" instead of "Terrassa railway station"
+	- "submarine" instead of "German submarine".
 
 {caption}	
 [/INST]"""
+
+# LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
+# Given the caption below, extract no more than {k} prominent, factually grounded, and semantically meaningful keywords.
+# Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
+# Opt for fewer keywords if the caption is short or lacks sufficient information.
+# Keywords must be semantically atomic, visually grounded and broad with absolute maximum degree of breadth.
+# Remove colors only if it is purely descriptive (e.g., white truck, blue sky), but preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
+# Exclude names, dates, locations, generic human category nouns, vague container nouns, counting-based phrases and purely demographic descriptors without contextual role.
+
+# {caption}	
+# [/INST]"""
 
 
 def _load_llm_(
