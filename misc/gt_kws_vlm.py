@@ -41,6 +41,7 @@ Return a Python list of keywords derived strictly from the visual content of the
 
 STRICTLY EXCLUDE:
 	- generic human category nouns (e.g., man, men, woman, person, people, children).
+	- generic environmental descriptions (sky, lighting, ground texture) unless they are historically significant (e.g., 'trench', 'crater').
 	- vague container nouns (e.g., scene, group, event).
 	- counting-based phrases (e.g., three men, several people, a group of young people).
 	- purely demographic descriptors without contextual role.
