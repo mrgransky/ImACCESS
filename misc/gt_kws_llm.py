@@ -58,18 +58,19 @@ with open('geographic_references.txt', 'r') as file_:
 STOPWORDS.update(geographic_references)
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
-Given the caption below, extract no more than {k} prominent, factually grounded, and semantically meaningful keywords.
-Return only a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
-Opt for fewer keywords if the caption is short or lacks sufficient information.
+Extract no more than {k} keywords.
 Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
+Return a Python list of keywords derived strictly from the caption.
+Opt for fewer keywords if the caption is short or lacks sufficient information.
 
 STRICTLY EXCLUDE:
 	- Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
 	- Equipment identifiers, serial numbers, brands, or models.
 	- Dates, times, years, decades, or any temporal references.
-	- Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral, St. Louis Cathedral, St. Louis Cathedral).
+	- Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
 	- Names of individuals or Honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
-	- family relationship terms (e.g., mother, father, son, uncle).
+	- Family relationship terms (e.g., mother, father, son, uncle).
+	- Generic human category nouns (e.g., man, men, woman, person, people, children).
 	- Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
 	- Ordinal numeral keywords (e.g., fourth, 1st, 115th).
 	- Roman numerals (e.g., I, II, IV, VIII).
@@ -92,7 +93,6 @@ Example:
 	- "airport" instead of "airport in the background"
 	- "manufacturing loom" instead of "manufacturing looms for the government"
 	- "mountain" instead of "Eastern Mountains"
-	- "aerial view" instead of "aerial view of Osaka, Japan"
 	- "Minister of War" instead of "Italian Minister of War Cipriano Facchinetti"
 	- "Army Hospital" instead of "United States Army General Hospital"
 	- "Marine Corps" instead of "U.S. Marine Corps"
@@ -103,11 +103,14 @@ Example:
 	- "Air Force Base" instead of "Templehof Air Force Base"
 	- "boulevard" instead of "Magheru Boulevard"
 	- "railway station" instead of "Terrassa railway station"
+	- "cathedral" instead of "St. Louis Cathedral"
+	- "aircraft factory" instead of "Pomilio Aircraft Factory"
 	- "submarine" instead of "German submarine".
 
 {caption}	
 [/INST]"""
 
+# medium size prompt:
 # LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 # Given the caption below, extract no more than {k} prominent, factually grounded, and semantically meaningful keywords.
 # Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
@@ -119,6 +122,13 @@ Example:
 # {caption}	
 # [/INST]"""
 
+# short size prompt:
+# LLM_INSTRUCTION_TEMPLATE= """<s>[INST]
+# Given:
+# Caption: {caption}
+
+# Goal: A Python list of keywords derived strictly from the caption.
+# [/INST]"""
 
 def _load_llm_(
 	model_id: str,

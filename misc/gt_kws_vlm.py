@@ -35,15 +35,16 @@ IMG_MAX_RES = 512
 # Exclude generic human category nouns, vague container nouns, counting-based phrases and purely demographic descriptors without contextual role.
 # """
 
-VLM_INSTRUCTION_TEMPLATE = """Extract no more than {k} prominent, factually grounded, and semantically meaningful keywords.
-Return only a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
+VLM_INSTRUCTION_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
+Return a Python list of keywords derived strictly from the visual content of the image.
 
 STRICTLY EXCLUDE:
 	- generic human category nouns (e.g., man, men, woman, person, people, children).
 	- vague container nouns (e.g., scene, group, event).
 	- counting-based phrases (e.g., three men, several people, a group of young people).
 	- purely demographic descriptors without contextual role.
+	- text/OCR extraction from the image.
 """
 
 def _load_vlm_(
