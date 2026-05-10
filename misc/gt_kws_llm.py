@@ -109,62 +109,6 @@ Example:
 caption: {caption}	
 """
 
-
-# PROMPT_TEMPLATE = """<s>[INST]
-# Extract no more than {k} keywords.
-# Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
-# Return a Python list of keywords derived strictly from the caption.
-# Opt for fewer keywords if the caption is short or lacks sufficient information.
-
-# STRICTLY EXCLUDE:
-# 	- Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
-# 	- Equipment identifiers, serial numbers, brands, or models.
-# 	- Dates, times, years, decades, or any temporal references.
-# 	- Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
-# 	- Names of individuals or Honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
-# 	- Family relationship terms (e.g., mother, father, son, uncle).
-# 	- Generic human category nouns (e.g., man, men, woman, person, people, children).
-# 	- Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
-# 	- Ordinal numeral keywords (e.g., fourth, 1st, 115th).
-# 	- Roman numerals (e.g., I, II, IV, VIII).
-# 	- Nationalities, ethnicities, or religions.
-# 	- Abbreviations, acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
-
-# Color handling:
-# 	Remove color only if it is purely descriptive (e.g., white truck, blue sky).
-# 	Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
-
-# Example:
-# 	- "truck" instead of "white truck"
-# 	- "nurse" instead of "nurse checking blood pressure"
-# 	- "pilot" instead of "pilot Charles Matheson"
-# 	- "Oberleutnant" instead of "Oberleutnant Bruno Kikillus"
-# 	- "squadron" instead of "No. 10 Squadron RAAF"
-# 	- "Corporal" instead of "Corporal Genevieve Wade"
-# 	- "seaplane" instead of "seaplane on the water in the background"
-# 	- "airplane" instead of "airplane in flight"
-# 	- "airport" instead of "airport in the background"
-# 	- "manufacturing loom" instead of "manufacturing looms for the government"
-# 	- "mountain" instead of "Eastern Mountains"
-# 	- "Minister of War" instead of "Italian Minister of War Cipriano Facchinetti"
-# 	- "Army Hospital" instead of "United States Army General Hospital"
-# 	- "Marine Corps" instead of "U.S. Marine Corps"
-# 	- "Red Cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
-# 	- "animal" instead of "man riding a camel in the desert"
-# 	- "reservoir" instead of "Fort Loudoun Reservoir"
-# 	- "Ballon Gun" instead of "6-pounder Ballon Gun"
-# 	- "Air Force Base" instead of "Templehof Air Force Base"
-# 	- "boulevard" instead of "Magheru Boulevard"
-# 	- "railway station" instead of "Terrassa railway station"
-# 	- "cathedral" instead of "St. Louis Cathedral"
-# 	- "aircraft factory" instead of "Pomilio Aircraft Factory"
-# 	- "submarine" instead of "German submarine".
-
-# {caption}	
-# [/INST]"""
-
-
-
 # medium size prompt:
 # PROMPT_TEMPLATE = """<s>[INST]
 # Given the caption below, extract no more than {k} prominent, factually grounded, and semantically meaningful keywords.
@@ -548,7 +492,6 @@ def _load_llm_(
 		print(f"{'='*110}\n")
 
 	return tokenizer, model
-
 
 def get_prompt(
 	tokenizer: tfs.PreTrainedTokenizer, 
