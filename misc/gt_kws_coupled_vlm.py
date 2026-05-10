@@ -1,51 +1,41 @@
 from utils import *
 
-# llama:
-# model_id = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
-
-# LLAVA 1.5x collection:
-# model_id = "llava-hf/llava-1.5-7b-hf"
-# model_id = "llava-hf/llava-1.5-13b-hf"
-# model_id =  "llava-hf/bakLlava-v1-hf"
-
-# LLaVa-NeXT (1.6x) collection:
-# model_id = "llava-hf/llava-v1.6-mistral-7b-hf"
-# model_id = "llava-hf/llava-v1.6-vicuna-7b-hf"
-# model_id = "llava-hf/llava-v1.6-vicuna-13b-hf"
-# model_id = "llava-hf/llama3-llava-next-8b-hf"
-
-# Qwen 3 VL collection:
-# Qwen/Qwen3-VL-2B-Instruct
-# Qwen/Qwen3-VL-4B-Instruct
-# Qwen/Qwen3-VL-8B-Instruct # only fits Puhti and Mahti
-# Qwen/Qwen3-VL-32B-Instruct # multiple gpus required
-# Qwen/Qwen3-VL-30B-A3B-Instruct # multiple gpus required
 
 # how to run:
 # local:
-# python gt_kws_vlm.py -i "/home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH568SLASHitem_FGXB537CHLTVRLRXQLUDTDYLIU67RKN7.jpg" -vlm "Qwen/Qwen3-VL-2B-Instruct" -v
+# python gt_kws_coupled_vlm.py -i "/home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH568SLASHitem_FGXB537CHLTVRLRXQLUDTDYLIU67RKN7.jpg" -vlm "Qwen/Qwen3.6-35B-A3B" -v
 
 process = psutil.Process(os.getpid())
 EXP_BACKOFF = 2  # seconds
 IMG_MAX_RES = 512
 
-# PROMPT_TEMPLATE = """Extract no more than {k} prominent, factually grounded, and semantically meaningful keywords.
-# Return only a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
-# Keywords must be semantically atomic, visually grounded and broad with absolute maximum degree of breadth.
-# Exclude generic human category nouns, vague container nouns, counting-based phrases and purely demographic descriptors without contextual role.
-# """
+VLM_INSTRUCTION_TEMPLATE = """
+You are an expert historical archivist specializing in multi-label annotation for 20th-century conflict photography.
 
-PROMPT_TEMPLATE = """Extract no more than {k} keywords.
-Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
-Return a Python list of keywords derived strictly from the visual content of the image.
+Your task is to analyze the provided historical B&W image alongside its historical caption and extract distinct concepts. You must categorize these concepts strictly into three lists of short keywords or short phrases (max 3 words per item).
 
-STRICTLY EXCLUDE:
-	- generic human category nouns (e.g., man, men, woman, person, people, children).
-	- generic environmental descriptions (sky, lighting, ground texture) unless they are historically significant (e.g., 'trench', 'crater').
-	- vague container nouns (e.g., scene, group, event).
-	- counting-based phrases (e.g., three men, several people, a group of young people).
-	- purely demographic descriptors without contextual role.
-	- text/OCR extraction from the image.
+CORE DOMAIN RULES:
+1. MULTI-LABEL EXTRACTION: Extract ALL historically relevant entities. Do not focus on just one object.
+2. ANTI-SCOPE-CREEP & OCR BAN: NEVER include generic environmental descriptions, textures, structural minutiae, or literal text reads of signs (e.g., strictly exclude: "clouds", "dirt", "DANGER", "wooden beams", "log", "curb"). ONLY include historically defining structures (e.g., "trench", "bunker").
+3. PROPER NOUN BAN & ROLE INFERENCE: NEVER output individual people's names (e.g., exclude "Melvin Shaffer"). NEVER output standalone years (e.g., exclude "1944"). However, if the text mentions specific units or groups, you MUST infer and include their generalized role (e.g., if text says "MAMAS unit", include "medical personnel").
+
+OUTPUT DEFINITIONS:
+- text_concepts: Keywords derived STRICTLY from the caption. Apply PROPER NOUN BAN, DATE BAN, and ROLE INFERENCE.
+- visual_concepts: Keywords derived STRICTLY from the pixel data. Apply ANTI-SCOPE-CREEP & OCR BAN. Extract visible historical actors, vehicles, and structures.
+- fused_concepts: 1 to 2 NEW, high-level synthesized short phrases requiring BOTH modalities.
+    - GRANULARITY RESOLUTION: If text is broad ("weapon") and image is specific ("rifle"), resolve to the specific term.
+    - BAD: A full sentence ("3rd detachment soldiers on log") or overly generic hypernyms ("wartime mobilization", "military activity").
+    - GOOD: Specific semantic phrases ("medical personnel resting", "military encampment", "damaged vehicles").
+    - CRITICAL RULE (CONFLICT DETECTION): If the text and image describe completely disjoint locations, vehicles, or actions (e.g., text says "aircraft" but image shows "ships"), you MUST output an empty list []. Do not attempt to force a fusion.
+
+Caption: {caption}
+
+Respond ONLY with a valid JSON object in the exact format below. Do not output any markdown formatting, backticks, or conversational text.
+{
+"text_concepts": [],
+"visual_concepts": [],
+"fused_concepts":[]
+}
 """
 
 def _load_vlm_(
@@ -561,7 +551,7 @@ def prepare_prompts_and_images(
 		print(f"[PREP] Preparing prompts and verifying {len(unique_inputs)} images...")
 	prep_start = time.time()
 	process = psutil.Process()
-	base_prompt = PROMPT_TEMPLATE.format(k=max_kws)
+	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
 	valid_paths, unique_prompts = [], []
 
 	def verify_path(img_path):
@@ -768,7 +758,7 @@ def get_vlm_based_labels_single(
 		{
 			"role": "user",
 			"content": [
-				{"type": "text", "text": PROMPT_TEMPLATE.format(k=max_kws)},
+				{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)},
 				{"type": "image", "image": img},
 			],
 		}
@@ -991,7 +981,7 @@ def get_vlm_based_labels_debug(
 					{
 						"role": "user",
 						"content": [
-							{"type": "text", "text": PROMPT_TEMPLATE.format(k=max_kws)},
+							{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)},
 							{"type": "image", "image": img},
 						],
 					}
@@ -1159,7 +1149,7 @@ def get_vlm_based_labels(
 ):
 	t0 = time.time()
 	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
-	base_prompt = PROMPT_TEMPLATE.format(k=max_kws)
+	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
 
 	try:
 		df = pd.read_csv(
