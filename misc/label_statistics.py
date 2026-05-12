@@ -898,9 +898,9 @@ def get_cgd_taxonomy_supervision(
 		
 		# Define axis columns
 		axis_cols = [
-				"semantic_coverage_raw",
-				"visual_grounding_raw",
-				"statistical_density_raw"
+			"semantic_coverage_raw",
+			"visual_grounding_raw",
+			"statistical_density_raw"
 		]
 		
 		# Apply normalization
@@ -955,50 +955,32 @@ def get_cgd_taxonomy_supervision(
 		# ==========================================================================
 		
 		if verbose:
-				print(f"\n{'='*80}")
-				print("STEP 6: Generating radar plots")
-				print("="*80)
+			print(f"\n{'='*80}")
+			print("STEP 6: Generating radar plots")
+			print("="*80)
 				
 		# Plot 1: Raw scores
 		viz.plot_taxonomy_radar(
-				scores_df,
-				value_cols=axis_cols,
-				title="Supervision Taxonomy (Raw Scores)",
-				output_path=os.path.join(output_directory, "taxonomy_radar_raw.png")
+			scores_df,
+			value_cols=axis_cols,
+			title="Supervision Taxonomy (Raw Scores)",
+			output_path=os.path.join(output_directory, "taxonomy_radar_raw.png")
 		)
-		
-		if verbose:
-				print(f"  ✓ Saved: taxonomy_radar_raw.png")
-		
+				
 		# Plot 2: Normalized scores
-		norm_cols = [f"semantic_coverage_{normalize}_norm",
-								 f"visual_grounding_{normalize}_norm",
-								 f"statistical_density_{normalize}_norm"]
+		norm_cols = [col.replace("_raw", f"_{normalize}_norm") for col in axis_cols]
 		
 		viz.plot_taxonomy_radar(
-				scores_df,
-				value_cols=norm_cols,
-				title=f"Supervision Taxonomy ({normalize} Normalized)",
-				output_path=os.path.join(output_directory, f"taxonomy_radar_{normalize}_normalized.png")
+			scores_df,
+			value_cols=norm_cols,
+			title=f"Supervision Taxonomy ({normalize} Normalized)",
+			output_path=os.path.join(output_directory, f"taxonomy_radar_{normalize}_normalized.png")
 		)
-		
+						
 		if verbose:
-				print(f"  ✓ Saved: taxonomy_radar_{normalize}_normalized.png")
-		
-		# ==========================================================================
-		# STEP 7: Final Summary
-		# ==========================================================================
-		
-		if verbose:
-				print(f"\n{'='*80}")
-				print("FINAL RESULTS")
-				print("="*80)
-				print("\nNormalized Scores:")
-				print(scores_df[["source"] + norm_cols].to_string(index=False))
+			print("\nFINAL RESULTS\n")
+			print(scores_df)
 				
-				print(f"\n{'='*80}")
-				print("✓ Analysis complete!")
-				print("="*80)
 		
 		return scores_df
 
@@ -1135,9 +1117,6 @@ def get_cgd_taxonomy_supervision_old(
 				print(f"  Axis 2 - Visual Grounding:")
 				print(f"    Mean Jaccard with {anchor_column}: {visual_grounding:.4f} ({visual_grounding*100:.2f}%)")
 
-
-
-
 		# Axis 3: statistical density proxy
 		avg_occ_per_label = (total_occ / unique) if unique > 0 else 0.0
 		statistical_density = avg_occ_per_label * (1.0 - singleton_rate)
@@ -1273,21 +1252,21 @@ def _parse_label_cell(val: Any) -> List[str]:
 	return []
 
 def _shannon_entropy(counts: Counter, base: float = 2.0) -> float:
-		"""
-		Shannon entropy of a discrete distribution defined by counts.
-		Returns 0.0 for empty counts.
-		"""
-		total = sum(counts.values())
-		if total <= 0:
-				return 0.0
-
-		log = math.log
-		ent = 0.0
-		for c in counts.values():
-				p = c / total
-				if p > 0:
-						ent -= p * (log(p) / log(base))
-		return ent
+	"""
+	Shannon entropy of a discrete distribution defined by counts.
+	Returns 0.0 for empty counts.
+	"""
+	total = sum(counts.values())
+	if total <= 0:
+		return 0.0
+	log = math.log
+	ent = 0.0
+	for c in counts.values():
+		p = c / total
+		if p > 0:
+			ent -= p * (log(p) / log(base))
+	
+	return ent
 
 def compute_entropy_vs_performance(
 	df: pd.DataFrame,
