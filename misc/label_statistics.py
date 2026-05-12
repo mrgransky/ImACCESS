@@ -2,121 +2,121 @@ from utils import *
 import visualize as viz
 
 def calibrate_semantic_threshold(
-		model: SentenceTransformer,
-		verbose: bool = False
+	model: SentenceTransformer,
+	verbose: bool = False
 ) -> float:
-		"""
-		Empirically calibrate the semantic similarity threshold for the given model.
+	"""
+	Empirically calibrate the semantic similarity threshold for the given model.
+	
+	Tests on curated synonym pairs vs. unrelated pairs to find optimal threshold.
+	
+	Returns:
+			Recommended threshold value
+	"""
+	# Synonym pairs (should be SIMILAR)
+	similar_pairs = [
+			("soldier", "infantry"),
+			("aircraft", "airplane"),
+			("military", "army"),
+			("vehicle", "car"),
+			("building", "structure"),
+			("weapon", "gun"),
+			("uniform", "clothing"),
+			("officer", "commander"),
+			("pilot", "aviator"),
+			("ship", "vessel"),
+			("tank", "armored vehicle"),
+			("photograph", "image"),
+			("portrait", "photo"),
+			("landscape", "scenery"),
+			("group", "crowd"),
+	]
+	
+	# Unrelated pairs (should be DISSIMILAR)
+	dissimilar_pairs = [
+			("soldier", "aircraft"),
+			("building", "weapon"),
+			("uniform", "landscape"),
+			("pilot", "tank"),
+			("photograph", "vehicle"),
+			("officer", "ship"),
+			("infantry", "scenery"),
+			("army", "portrait"),
+			("airplane", "clothing"),
+			("structure", "gun"),
+			("commander", "crowd"),
+			("aviator", "armored vehicle"),
+			("vessel", "image"),
+			("car", "photo"),
+			("military", "landscape"),
+	]
+	
+	# Compute similarities
+	similar_scores = []
+	for w1, w2 in similar_pairs:
+			emb1 = model.encode(w1, convert_to_tensor=False)
+			emb2 = model.encode(w2, convert_to_tensor=False)
+			sim = 1 - scipy.spatial.distance.cosine(emb1, emb2)
+			similar_scores.append(sim)
+	
+	dissimilar_scores = []
+	for w1, w2 in dissimilar_pairs:
+			emb1 = model.encode(w1, convert_to_tensor=False)
+			emb2 = model.encode(w2, convert_to_tensor=False)
+			sim = 1 - scipy.spatial.distance.cosine(emb1, emb2)
+			dissimilar_scores.append(sim)
+	
+	# Statistics
+	similar_mean = np.mean(similar_scores)
+	similar_std = np.std(similar_scores)
+	dissimilar_mean = np.mean(dissimilar_scores)
+	dissimilar_std = np.std(dissimilar_scores)
+	
+	# Find optimal threshold (midpoint between distributions)
+	optimal_threshold = (similar_mean + dissimilar_mean) / 2
+	
+	# Alternative: Use 1 std below similar mean (conservative)
+	conservative_threshold = similar_mean - similar_std
+
+	# Return recommended threshold (clipped to reasonable range)
+	recommended_threshold = max(0.5, min(0.8, optimal_threshold))
+	
+	if verbose:
+			print(f"\n{'='*80}")
+			print("THRESHOLD CALIBRATION")
+			print("="*80)
+			print(f"\nSimilar pairs (should match):")
+			print(f"  Mean similarity: {similar_mean:.4f}")
+			print(f"  Std deviation: {similar_std:.4f}")
+			print(f"  Range: [{min(similar_scores):.4f}, {max(similar_scores):.4f}]")
+			print(f"  Example: {similar_pairs[0]} → {similar_scores[0]:.4f}")
+			
+			print(f"\nDissimilar pairs (should NOT match):")
+			print(f"  Mean similarity: {dissimilar_mean:.4f}")
+			print(f"  Std deviation: {dissimilar_std:.4f}")
+			print(f"  Range: [{min(dissimilar_scores):.4f}, {max(dissimilar_scores):.4f}]")
+			print(f"  Example: {dissimilar_pairs[0]} → {dissimilar_scores[0]:.4f}")
+			
+			print(f"\nRecommendations:")
+			print(f"  Optimal threshold (midpoint): {optimal_threshold:.4f}")
+			print(f"  Conservative threshold (mean - 1σ): {conservative_threshold:.4f}")
+			print(f"  Suggested threshold: {recommended_threshold:.5f}")
+			
+			# Test at different thresholds
+			print(f"\nPerformance at different thresholds:")
+			for threshold in [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9]:
+					tp = sum(1 for s in similar_scores if s >= threshold)  # True positives
+					fp = sum(1 for s in dissimilar_scores if s >= threshold)  # False positives
+					fn = sum(1 for s in similar_scores if s < threshold)  # False negatives
+					tn = sum(1 for s in dissimilar_scores if s < threshold)  # True negatives
+					
+					precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+					recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+					f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+					
+					print(f"  Threshold={threshold:.2f}: Precision={precision:.2f}, Recall={recall:.2f}, F1={f1:.2f}")
 		
-		Tests on curated synonym pairs vs. unrelated pairs to find optimal threshold.
-		
-		Returns:
-				Recommended threshold value
-		"""
-		# Synonym pairs (should be SIMILAR)
-		similar_pairs = [
-				("soldier", "infantry"),
-				("aircraft", "airplane"),
-				("military", "army"),
-				("vehicle", "car"),
-				("building", "structure"),
-				("weapon", "gun"),
-				("uniform", "clothing"),
-				("officer", "commander"),
-				("pilot", "aviator"),
-				("ship", "vessel"),
-				("tank", "armored vehicle"),
-				("photograph", "image"),
-				("portrait", "photo"),
-				("landscape", "scenery"),
-				("group", "crowd"),
-		]
-		
-		# Unrelated pairs (should be DISSIMILAR)
-		dissimilar_pairs = [
-				("soldier", "aircraft"),
-				("building", "weapon"),
-				("uniform", "landscape"),
-				("pilot", "tank"),
-				("photograph", "vehicle"),
-				("officer", "ship"),
-				("infantry", "scenery"),
-				("army", "portrait"),
-				("airplane", "clothing"),
-				("structure", "gun"),
-				("commander", "crowd"),
-				("aviator", "armored vehicle"),
-				("vessel", "image"),
-				("car", "photo"),
-				("military", "landscape"),
-		]
-		
-		# Compute similarities
-		similar_scores = []
-		for w1, w2 in similar_pairs:
-				emb1 = model.encode(w1, convert_to_tensor=False)
-				emb2 = model.encode(w2, convert_to_tensor=False)
-				sim = 1 - scipy.spatial.distance.cosine(emb1, emb2)
-				similar_scores.append(sim)
-		
-		dissimilar_scores = []
-		for w1, w2 in dissimilar_pairs:
-				emb1 = model.encode(w1, convert_to_tensor=False)
-				emb2 = model.encode(w2, convert_to_tensor=False)
-				sim = 1 - scipy.spatial.distance.cosine(emb1, emb2)
-				dissimilar_scores.append(sim)
-		
-		# Statistics
-		similar_mean = np.mean(similar_scores)
-		similar_std = np.std(similar_scores)
-		dissimilar_mean = np.mean(dissimilar_scores)
-		dissimilar_std = np.std(dissimilar_scores)
-		
-		# Find optimal threshold (midpoint between distributions)
-		optimal_threshold = (similar_mean + dissimilar_mean) / 2
-		
-		# Alternative: Use 1 std below similar mean (conservative)
-		conservative_threshold = similar_mean - similar_std
-		
-		if verbose:
-				print(f"\n{'='*80}")
-				print("THRESHOLD CALIBRATION")
-				print("="*80)
-				print(f"\nSimilar pairs (should match):")
-				print(f"  Mean similarity: {similar_mean:.4f}")
-				print(f"  Std deviation: {similar_std:.4f}")
-				print(f"  Range: [{min(similar_scores):.4f}, {max(similar_scores):.4f}]")
-				print(f"  Example: {similar_pairs[0]} → {similar_scores[0]:.4f}")
-				
-				print(f"\nDissimilar pairs (should NOT match):")
-				print(f"  Mean similarity: {dissimilar_mean:.4f}")
-				print(f"  Std deviation: {dissimilar_std:.4f}")
-				print(f"  Range: [{min(dissimilar_scores):.4f}, {max(dissimilar_scores):.4f}]")
-				print(f"  Example: {dissimilar_pairs[0]} → {dissimilar_scores[0]:.4f}")
-				
-				print(f"\nRecommendations:")
-				print(f"  Optimal threshold (midpoint): {optimal_threshold:.4f}")
-				print(f"  Conservative threshold (mean - 1σ): {conservative_threshold:.4f}")
-				print(f"  Suggested threshold: {max(0.5, min(0.8, optimal_threshold)):.4f}")
-				
-				# Test at different thresholds
-				print(f"\nPerformance at different thresholds:")
-				for threshold in [0.5, 0.55, 0.6, 0.65, 0.7, 0.75]:
-						tp = sum(1 for s in similar_scores if s >= threshold)  # True positives
-						fp = sum(1 for s in dissimilar_scores if s >= threshold)  # False positives
-						fn = sum(1 for s in similar_scores if s < threshold)  # False negatives
-						tn = sum(1 for s in dissimilar_scores if s < threshold)  # True negatives
-						
-						precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-						recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-						f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
-						
-						print(f"  Threshold={threshold:.2f}: Precision={precision:.2f}, Recall={recall:.2f}, F1={f1:.2f}")
-		
-		# Return recommended threshold (clipped to reasonable range)
-		recommended = max(0.5, min(0.8, optimal_threshold))
-		
-		return recommended
+	return recommended_threshold
 
 def _infer_performance_schema(perf: Dict[str, Any]) -> str:
 		"""
@@ -643,6 +643,7 @@ def get_cgd_taxonomy_supervision(
 		if verbose:
 			print(f"\nConfiguration:")
 			print(f"  DataFrame shape: {df.shape}")
+			print(f"  Embedding model: {embedding_model_id}")
 			print(f"  Sources to analyze: {sources}")
 			print(f"  Visual anchor: {anchor_column}")
 			print(f"  Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
