@@ -1,7 +1,122 @@
-import scipy.spatial
-
 from utils import *
 import visualize as viz
+
+def calibrate_semantic_threshold(
+		model: SentenceTransformer,
+		verbose: bool = False
+) -> float:
+		"""
+		Empirically calibrate the semantic similarity threshold for the given model.
+		
+		Tests on curated synonym pairs vs. unrelated pairs to find optimal threshold.
+		
+		Returns:
+				Recommended threshold value
+		"""
+		# Synonym pairs (should be SIMILAR)
+		similar_pairs = [
+				("soldier", "infantry"),
+				("aircraft", "airplane"),
+				("military", "army"),
+				("vehicle", "car"),
+				("building", "structure"),
+				("weapon", "gun"),
+				("uniform", "clothing"),
+				("officer", "commander"),
+				("pilot", "aviator"),
+				("ship", "vessel"),
+				("tank", "armored vehicle"),
+				("photograph", "image"),
+				("portrait", "photo"),
+				("landscape", "scenery"),
+				("group", "crowd"),
+		]
+		
+		# Unrelated pairs (should be DISSIMILAR)
+		dissimilar_pairs = [
+				("soldier", "aircraft"),
+				("building", "weapon"),
+				("uniform", "landscape"),
+				("pilot", "tank"),
+				("photograph", "vehicle"),
+				("officer", "ship"),
+				("infantry", "scenery"),
+				("army", "portrait"),
+				("airplane", "clothing"),
+				("structure", "gun"),
+				("commander", "crowd"),
+				("aviator", "armored vehicle"),
+				("vessel", "image"),
+				("car", "photo"),
+				("military", "landscape"),
+		]
+		
+		# Compute similarities
+		similar_scores = []
+		for w1, w2 in similar_pairs:
+				emb1 = model.encode(w1, convert_to_tensor=False)
+				emb2 = model.encode(w2, convert_to_tensor=False)
+				sim = 1 - scipy.spatial.distance.cosine(emb1, emb2)
+				similar_scores.append(sim)
+		
+		dissimilar_scores = []
+		for w1, w2 in dissimilar_pairs:
+				emb1 = model.encode(w1, convert_to_tensor=False)
+				emb2 = model.encode(w2, convert_to_tensor=False)
+				sim = 1 - scipy.spatial.distance.cosine(emb1, emb2)
+				dissimilar_scores.append(sim)
+		
+		# Statistics
+		similar_mean = np.mean(similar_scores)
+		similar_std = np.std(similar_scores)
+		dissimilar_mean = np.mean(dissimilar_scores)
+		dissimilar_std = np.std(dissimilar_scores)
+		
+		# Find optimal threshold (midpoint between distributions)
+		optimal_threshold = (similar_mean + dissimilar_mean) / 2
+		
+		# Alternative: Use 1 std below similar mean (conservative)
+		conservative_threshold = similar_mean - similar_std
+		
+		if verbose:
+				print(f"\n{'='*80}")
+				print("THRESHOLD CALIBRATION")
+				print("="*80)
+				print(f"\nSimilar pairs (should match):")
+				print(f"  Mean similarity: {similar_mean:.4f}")
+				print(f"  Std deviation: {similar_std:.4f}")
+				print(f"  Range: [{min(similar_scores):.4f}, {max(similar_scores):.4f}]")
+				print(f"  Example: {similar_pairs[0]} → {similar_scores[0]:.4f}")
+				
+				print(f"\nDissimilar pairs (should NOT match):")
+				print(f"  Mean similarity: {dissimilar_mean:.4f}")
+				print(f"  Std deviation: {dissimilar_std:.4f}")
+				print(f"  Range: [{min(dissimilar_scores):.4f}, {max(dissimilar_scores):.4f}]")
+				print(f"  Example: {dissimilar_pairs[0]} → {dissimilar_scores[0]:.4f}")
+				
+				print(f"\nRecommendations:")
+				print(f"  Optimal threshold (midpoint): {optimal_threshold:.4f}")
+				print(f"  Conservative threshold (mean - 1σ): {conservative_threshold:.4f}")
+				print(f"  Suggested threshold: {max(0.5, min(0.8, optimal_threshold)):.4f}")
+				
+				# Test at different thresholds
+				print(f"\nPerformance at different thresholds:")
+				for threshold in [0.5, 0.55, 0.6, 0.65, 0.7, 0.75]:
+						tp = sum(1 for s in similar_scores if s >= threshold)  # True positives
+						fp = sum(1 for s in dissimilar_scores if s >= threshold)  # False positives
+						fn = sum(1 for s in similar_scores if s < threshold)  # False negatives
+						tn = sum(1 for s in dissimilar_scores if s < threshold)  # True negatives
+						
+						precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+						recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+						f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+						
+						print(f"  Threshold={threshold:.2f}: Precision={precision:.2f}, Recall={recall:.2f}, F1={f1:.2f}")
+		
+		# Return recommended threshold (clipped to reasonable range)
+		recommended = max(0.5, min(0.8, optimal_threshold))
+		
+		return recommended
 
 def _infer_performance_schema(perf: Dict[str, Any]) -> str:
 		"""
@@ -351,14 +466,14 @@ def _precompute_label_embeddings(
 		unique_labels = sorted(list(set(all_labels)))
 		
 		if verbose:
-				print(f"\n>>> Pre-computing embeddings for {len(unique_labels):,} unique labels...")
+			print(f"\n>>> Pre-computing embeddings for {len(unique_labels):,} unique labels...")
 		
 		# Batch encode all unique labels
 		embeddings = model.encode(
-				unique_labels, 
-				convert_to_tensor=False,
-				show_progress_bar=verbose,
-				batch_size=256  # Adjust based on your GPU/CPU
+			unique_labels, 
+			convert_to_tensor=False,
+			show_progress_bar=verbose,
+			batch_size=256  # Adjust based on your GPU/CPU
 		)
 		
 		# Create lookup dictionary
@@ -470,7 +585,7 @@ def get_cgd_taxonomy_supervision(
 	sources: Optional[List[str]] = None,
 	anchor_column: str = "vlm_canonical_labels",
 	embedding_model_id: str = 'all-MiniLM-L6-v2',
-	semantic_threshold: float = 0.7,
+	semantic_threshold: Optional[float] = None,
 	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
 	base: float = 2.0,
 	normalize: str = "L2",
@@ -503,7 +618,7 @@ def get_cgd_taxonomy_supervision(
 				output_directory: Where to save visualizations
 				sources: List of label columns to analyze (default: LLM/VLM/Multimodal)
 				anchor_column: Reference column for visual grounding (default: VLM)
-				semantic_threshold: Cosine similarity threshold for label equivalence (0.7 = fairly similar)
+				semantic_threshold: Cosine similarity threshold for label equivalence (auto-tuned if None)
 				base: Logarithm base for entropy (2.0 = bits, math.e = nats)
 				normalize: Normalization method ('L2', 'minmax', 'zscore', 'none')
 				verbose: Print detailed progress
@@ -517,22 +632,21 @@ def get_cgd_taxonomy_supervision(
 		# ==========================================================================
 		
 		if verbose:
-				print("="*80)
-				print("CGD TAXONOMY: Coverage-Grounding-Density Analysis")
-				print("="*80)
+			print("="*80)
+			print("CGD TAXONOMY: Coverage-Grounding-Density Analysis")
+			print("="*80)
 		
 		# Use default sources if not specified
 		if sources is None:
 				sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
 		
 		if verbose:
-				print(f"\nConfiguration:")
-				print(f"  DataFrame shape: {df.shape}")
-				print(f"  Sources to analyze: {sources}")
-				print(f"  Visual anchor: {anchor_column}")
-				print(f"  Semantic threshold: {semantic_threshold} (for label equivalence)")
-				print(f"  Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
-				print(f"  Normalization: {normalize}")
+			print(f"\nConfiguration:")
+			print(f"  DataFrame shape: {df.shape}")
+			print(f"  Sources to analyze: {sources}")
+			print(f"  Visual anchor: {anchor_column}")
+			print(f"  Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
+			print(f"  Normalization: {normalize}")
 		
 		# Validate columns exist
 		required_cols = [anchor_column] + sources
@@ -607,20 +721,35 @@ def get_cgd_taxonomy_supervision(
 		if verbose:
 			print(f"[INFO] {embedding_model_id} with {attn_impl} attention")
 
-		# Load lightweight embedding model
-		# model = SentenceTransformer(embedding_model_id)
+		model_kwargs = {}
+		if "Qwen" in embedding_model_id:
+			model_kwargs = {
+				"attn_implementation": attn_impl,
+				"torch_dtype": dtype,
+			}
+
 		model = SentenceTransformer(
 			model_name_or_path=embedding_model_id,
 			trust_remote_code=True,
-			cache_folder=cache_directory[os.getenv('USER')],
-			model_kwargs={"attn_implementation": attn_impl, "dtype": dtype} if "Qwen" in embedding_model_id else {},
+			cache_folder=cache_directory.get(os.getenv('USER'), None),
+			model_kwargs=model_kwargs,
 			token=os.getenv("HUGGINGFACE_TOKEN"),
 			tokenizer_kwargs={"padding_side": "left"},
 		).to(device)
 
 		if verbose:
-			print(f"[LOADED] Embedding model loaded: {embedding_model_id} {sum(p.numel() for p in model.parameters()):,} parameters")
+			total_params = sum(p.numel() for p in model.parameters())
+			print(f"[LOADED] Embedding model loaded: {embedding_model_id} with {total_params:,} parameters")
 		
+
+		# Auto-calibrate threshold if not provided
+		if semantic_threshold is None:
+			semantic_threshold = calibrate_semantic_threshold(model, verbose=verbose)
+		else:
+			if verbose:
+				print(f">> Using provided semantic threshold: {semantic_threshold}")
+
+
 		# Pre-compute embeddings for ALL unique labels across all sources
 		emb_cache = _precompute_label_embeddings(
 			all_labels=all_labels_for_embedding,
