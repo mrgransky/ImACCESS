@@ -1,123 +1,6 @@
 from utils import *
 import visualize as viz
 
-def calibrate_semantic_threshold(
-	model: SentenceTransformer,
-	verbose: bool = False
-) -> float:
-	"""
-	Empirically calibrate the semantic similarity threshold for the given model.
-	
-	Tests on curated synonym pairs vs. unrelated pairs to find optimal threshold.
-	
-	Returns:
-			Recommended threshold value
-	"""
-	# Synonym pairs (should be SIMILAR)
-	similar_pairs = [
-			("soldier", "infantry"),
-			("aircraft", "airplane"),
-			("military", "army"),
-			("vehicle", "car"),
-			("building", "structure"),
-			("weapon", "gun"),
-			("uniform", "clothing"),
-			("officer", "commander"),
-			("pilot", "aviator"),
-			("ship", "vessel"),
-			("tank", "armored vehicle"),
-			("photograph", "image"),
-			("portrait", "photo"),
-			("landscape", "scenery"),
-			("group", "crowd"),
-	]
-	
-	# Unrelated pairs (should be DISSIMILAR)
-	dissimilar_pairs = [
-			("soldier", "aircraft"),
-			("building", "weapon"),
-			("uniform", "landscape"),
-			("pilot", "tank"),
-			("photograph", "vehicle"),
-			("officer", "ship"),
-			("infantry", "scenery"),
-			("army", "portrait"),
-			("airplane", "clothing"),
-			("structure", "gun"),
-			("commander", "crowd"),
-			("aviator", "armored vehicle"),
-			("vessel", "image"),
-			("car", "photo"),
-			("military", "landscape"),
-	]
-	
-	# Compute similarities
-	similar_scores = []
-	for w1, w2 in similar_pairs:
-			emb1 = model.encode(w1, convert_to_tensor=False)
-			emb2 = model.encode(w2, convert_to_tensor=False)
-			sim = 1 - scipy.spatial.distance.cosine(emb1, emb2)
-			similar_scores.append(sim)
-	
-	dissimilar_scores = []
-	for w1, w2 in dissimilar_pairs:
-			emb1 = model.encode(w1, convert_to_tensor=False)
-			emb2 = model.encode(w2, convert_to_tensor=False)
-			sim = 1 - scipy.spatial.distance.cosine(emb1, emb2)
-			dissimilar_scores.append(sim)
-	
-	# Statistics
-	similar_mean = np.mean(similar_scores)
-	similar_std = np.std(similar_scores)
-	dissimilar_mean = np.mean(dissimilar_scores)
-	dissimilar_std = np.std(dissimilar_scores)
-	
-	# Find optimal threshold (midpoint between distributions)
-	optimal_threshold = (similar_mean + dissimilar_mean) / 2
-	
-	# Alternative: Use 1 std below similar mean (conservative)
-	conservative_threshold = similar_mean - similar_std
-
-	# Return recommended threshold (clipped to reasonable range)
-	recommended_threshold = max(0.5, min(0.8, optimal_threshold))
-	
-	if verbose:
-			print(f"\n{'='*80}")
-			print("THRESHOLD CALIBRATION")
-			print("="*80)
-			print(f"\nSimilar pairs (should match):")
-			print(f"  Mean similarity: {similar_mean:.4f}")
-			print(f"  Std deviation: {similar_std:.4f}")
-			print(f"  Range: [{min(similar_scores):.4f}, {max(similar_scores):.4f}]")
-			print(f"  Example: {similar_pairs[0]} → {similar_scores[0]:.4f}")
-			
-			print(f"\nDissimilar pairs (should NOT match):")
-			print(f"  Mean similarity: {dissimilar_mean:.4f}")
-			print(f"  Std deviation: {dissimilar_std:.4f}")
-			print(f"  Range: [{min(dissimilar_scores):.4f}, {max(dissimilar_scores):.4f}]")
-			print(f"  Example: {dissimilar_pairs[0]} → {dissimilar_scores[0]:.4f}")
-			
-			print(f"\nRecommendations:")
-			print(f"  Optimal threshold (midpoint): {optimal_threshold:.4f}")
-			print(f"  Conservative threshold (mean - 1σ): {conservative_threshold:.4f}")
-			print(f"  Suggested threshold: {recommended_threshold:.5f}")
-			
-			# Test at different thresholds
-			print(f"\nPerformance at different thresholds:")
-			for threshold in [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9]:
-					tp = sum(1 for s in similar_scores if s >= threshold)  # True positives
-					fp = sum(1 for s in dissimilar_scores if s >= threshold)  # False positives
-					fn = sum(1 for s in similar_scores if s < threshold)  # False negatives
-					tn = sum(1 for s in dissimilar_scores if s < threshold)  # True negatives
-					
-					precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-					recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-					f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
-					
-					print(f"  Threshold={threshold:.2f}: Precision={precision:.2f}, Recall={recall:.2f}, F1={f1:.2f}")
-		
-	return recommended_threshold
-
 def _infer_performance_schema(perf: Dict[str, Any]) -> str:
 		"""
 		Returns one of:
@@ -293,159 +176,163 @@ def _select_best_strategy(
 
 		return best_strategy
 
-def entropy_vs_performance(
-	df: pd.DataFrame,
-	performance: Optional[Union[pd.DataFrame, Dict[str, Any]]] = None,
-	label_columns: Optional[List[str]] = None,
-	base: float = 2.0,
-	verbose: bool = False,
-	perf_strategy: Optional[str] = None,
-	perf_k: Union[int, str] = 10,
-	perf_reference_source: str = "multimodal_canonical_labels",
-	perf_include_recall: bool = False,
-	perf_tier_alias: Optional[Dict[str, str]] = None,
-) -> pd.DataFrame:
+def _parse_label_cell(val: Any) -> List[str]:
 	"""
-	Compute label-distribution entropy/stats per supervision source (label column),
-	and optionally merge with retrieval performance.
-	Supported performance formats:
-		1) DataFrame with 'source' column (already flat)
-		2) Old dict: {source: {metric: value, ...}} (flat)
-		3) performance.json dict: {source: {strategy: {i2t/t2i -> tier -> metric -> k -> value}}}
-	When using performance.json, set perf_strategy (recommended) and perf_k (default=10).
+	Robustly parse a dataframe cell that should contain a list of labels.
+	Supports: list[str], string representation of list, NaN/None/""/"[]".
+	Returns a list (possibly empty). Never raises.
 	"""
+	if isinstance(val, list):
+		return [x for x in val if isinstance(x, str) and x != ""]
+	
+	if val is None or (isinstance(val, float) and pd.isna(val)):
+		return []
+	if isinstance(val, str):
+		if val.strip() in ("", "[]"):
+			return []
+		try:
+			parsed = ast.literal_eval(val)
+			if isinstance(parsed, list):
+				return [x for x in parsed if isinstance(x, str) and x != ""]
+			return []
+		except Exception:
+			return []
+	
+	return []
 
+def _shannon_entropy(counts: Counter, base: float = 2.0) -> float:
+	"""
+	Shannon entropy of a discrete distribution defined by counts.
+	Returns 0.0 for empty counts.
+	"""
+	total = sum(counts.values())
+	if total <= 0:
+		return 0.0
+	log = math.log
+	ent = 0.0
+	for c in counts.values():
+		p = c / total
+		if p > 0:
+			ent -= p * (log(p) / log(base))
+	
+	return ent
+
+def calibrate_semantic_threshold(
+	model: SentenceTransformer,
+	verbose: bool = False
+) -> float:
+	"""
+	Empirically calibrate the semantic similarity threshold for the given model.
+	
+	Tests on curated synonym pairs vs. unrelated pairs to find optimal threshold.
+	
+	Returns:
+			Recommended threshold value
+	"""
+	# Synonym pairs (should be SIMILAR)
+	similar_pairs = [
+			("soldier", "infantry"),
+			("aircraft", "airplane"),
+			("military", "army"),
+			("vehicle", "car"),
+			("building", "structure"),
+			("weapon", "gun"),
+			("uniform", "clothing"),
+			("officer", "commander"),
+			("pilot", "aviator"),
+			("ship", "vessel"),
+			("tank", "armored vehicle"),
+			("photograph", "image"),
+			("portrait", "photo"),
+			("landscape", "scenery"),
+			("group", "crowd"),
+	]
+	
+	# Unrelated pairs (should be DISSIMILAR)
+	dissimilar_pairs = [
+			("soldier", "aircraft"),
+			("building", "weapon"),
+			("uniform", "landscape"),
+			("pilot", "tank"),
+			("photograph", "vehicle"),
+			("officer", "ship"),
+			("infantry", "scenery"),
+			("army", "portrait"),
+			("airplane", "clothing"),
+			("structure", "gun"),
+			("commander", "crowd"),
+			("aviator", "armored vehicle"),
+			("vessel", "image"),
+			("car", "photo"),
+			("military", "landscape"),
+	]
+	
+	# Compute similarities
+	similar_scores = []
+	for w1, w2 in similar_pairs:
+			emb1 = model.encode(w1, convert_to_tensor=False)
+			emb2 = model.encode(w2, convert_to_tensor=False)
+			sim = 1 - scipy.spatial.distance.cosine(emb1, emb2)
+			similar_scores.append(sim)
+	
+	dissimilar_scores = []
+	for w1, w2 in dissimilar_pairs:
+			emb1 = model.encode(w1, convert_to_tensor=False)
+			emb2 = model.encode(w2, convert_to_tensor=False)
+			sim = 1 - scipy.spatial.distance.cosine(emb1, emb2)
+			dissimilar_scores.append(sim)
+	
+	# Statistics
+	similar_mean = np.mean(similar_scores)
+	similar_std = np.std(similar_scores)
+	dissimilar_mean = np.mean(dissimilar_scores)
+	dissimilar_std = np.std(dissimilar_scores)
+	
+	# Find optimal threshold (midpoint between distributions)
+	optimal_threshold = (similar_mean + dissimilar_mean) / 2
+	
+	# Alternative: Use 1 std below similar mean (conservative)
+	conservative_threshold = similar_mean - similar_std
+
+	# Return recommended threshold (clipped to reasonable range)
+	recommended_threshold = max(0.5, min(0.8, optimal_threshold))
+	
 	if verbose:
-		print("\nCOMPUTING ENTROPY VS PERFORMANCE ANALYSIS")
-		print(f"Dataset size: {len(df):,} samples")
-		print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
-		print(f"reference_source: {perf_reference_source}")
-		print(f"strategy: {perf_strategy}")
-		print(f"include_recall: {perf_include_recall}")
-		print(f"k: {perf_k}")
-
-	if label_columns is None:
-		label_columns = [
-			"llm_based_labels",
-			"vlm_based_labels",
-			"multimodal_labels",
-			"llm_canonical_labels",
-			"vlm_canonical_labels",
-			"multimodal_canonical_labels",
-		]
-		if verbose:
-			print(f"Default label columns: {len(label_columns)} sources: {label_columns}")
-	
-	rows: List[Dict[str, Any]] = []
-	for idx, col in enumerate(label_columns, 1):
-		if col not in df.columns:
-			if verbose:
-				print(f"\n[{idx}/{len(label_columns)}] '{col}' not found, skipping")
-			continue
-		if verbose:
-			print(f"\n[{idx}/{len(label_columns)}] Processing: {col}")
-			print("-" * 80)
+			print(f"\n{'='*80}")
+			print("THRESHOLD CALIBRATION")
+			print("="*80)
+			print(f"\nSimilar pairs (should match):")
+			print(f"  Mean similarity: {similar_mean:.4f}")
+			print(f"  Std deviation: {similar_std:.4f}")
+			print(f"  Range: [{min(similar_scores):.4f}, {max(similar_scores):.4f}]")
+			print(f"  Example: {similar_pairs[0]} → {similar_scores[0]:.4f}")
+			
+			print(f"\nDissimilar pairs (should NOT match):")
+			print(f"  Mean similarity: {dissimilar_mean:.4f}")
+			print(f"  Std deviation: {dissimilar_std:.4f}")
+			print(f"  Range: [{min(dissimilar_scores):.4f}, {max(dissimilar_scores):.4f}]")
+			print(f"  Example: {dissimilar_pairs[0]} → {dissimilar_scores[0]:.4f}")
+			
+			print(f"\nRecommendations:")
+			print(f"  Optimal threshold (midpoint): {optimal_threshold:.4f}")
+			print(f"  Conservative threshold (mean - 1σ): {conservative_threshold:.4f}")
+			print(f"  Suggested threshold: {recommended_threshold:.5f}")
+			
+			# Test at different thresholds
+			print(f"\nPerformance at different thresholds:")
+			for threshold in [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9]:
+					tp = sum(1 for s in similar_scores if s >= threshold)  # True positives
+					fp = sum(1 for s in dissimilar_scores if s >= threshold)  # False positives
+					fn = sum(1 for s in similar_scores if s < threshold)  # False negatives
+					tn = sum(1 for s in dissimilar_scores if s < threshold)  # True negatives
+					
+					precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+					recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+					f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+					
+					print(f"  Threshold={threshold:.2f}: Precision={precision:.2f}, Recall={recall:.2f}, F1={f1:.2f}")
 		
-		all_labels: List[str] = []
-		for v in df[col].tolist():
-			all_labels.extend(_parse_label_cell(v))
-		
-		counts = Counter(all_labels)
-		total_occ = sum(counts.values())
-		unique = len(counts)
-		num_singletons = sum(1 for _, c in counts.items() if c == 1)
-		singleton_rate = (num_singletons / unique) if unique > 0 else 0.0
-		
-		H = _shannon_entropy(counts, base=base)
-		H_max = math.log(unique, base) if unique > 1 else 0.0
-		H_norm = (H / H_max) if H_max > 0 else 0.0
-		perplexity = (base ** H) if H > 0 else 1.0
-		rows.append(
-			{
-				"source": col,
-				"total_occurrences": int(total_occ),
-				"unique_labels": int(unique),
-				"singletons": int(num_singletons),
-				"singleton_rate": float(singleton_rate),
-				f"entropy_{'bits' if base == 2.0 else 'units'}": float(H),
-				"entropy_max": float(H_max),
-				"entropy_normalized": float(H_norm),
-				"perplexity": float(perplexity),
-				"effective_num_labels": float(perplexity),
-			}
-		)
-	stats_df = pd.DataFrame(rows).sort_values("source").reset_index(drop=True)
-	
-	if performance is None:
-		if verbose:
-			print("\n✓ No performance data provided, returning entropy statistics only")
-			print("\nSUMMARY STATISTICS\n")
-			print(stats_df)
-		
-		return stats_df
-	
-	if verbose:
-		print("\nMERGING WITH PERFORMANCE METRICS\n")
-		print(df.shape, list(df.columns))
-		print(df.info(verbose=True, memory_usage=True))
-		print()
-	
-	# Build perf_df depending on input type
-	if isinstance(performance, pd.DataFrame):
-		perf_df = performance.copy()
-		if "source" not in perf_df.columns:
-			raise ValueError("If performance is a DataFrame, it must contain a 'source' column.")
-	elif isinstance(performance, dict):
-		schema = _infer_performance_schema(performance)
-		if schema == "nested_by_source_then_strategy":
-			perf_df = _flatten_performance_json(
-				performance_json=performance,
-				strategy=perf_strategy,
-				k=perf_k,
-				include_map=True,
-				reference_source=perf_reference_source,
-				include_recall=perf_include_recall,
-				tier_alias=perf_tier_alias,
-				verbose=verbose,
-			)
-		elif schema == "flat_metrics_by_source":
-				# Old-style dict: {source: {metric: value}}
-				perf_df = (
-						pd.DataFrame.from_dict(performance, orient="index")
-						.reset_index()
-						.rename(columns={"index": "source"})
-				)
-		else:
-				raise ValueError(
-						"Unsupported dict schema for performance. Expected either performance.json "
-						"(source->strategy->i2t/t2i...) or flat {source:{metric:...}}."
-				)
-	else:
-		raise TypeError("performance must be a DataFrame, dict, or None.")
-	
-	merged = stats_df.merge(perf_df, on="source", how="left")
-	if verbose:
-		print(f"  perf_df shape: {perf_df.shape}")
-		print(f"  merged shape: {merged.shape}")
-		missing = merged[merged.filter(regex=r"^(i2t|t2i)_").isna().all(axis=1)]
-		if len(missing) > 0:
-			print(f"\n  ⚠️  {len(missing)} sources missing performance data:")
-			for src in missing["source"].tolist():
-				print(f"    - {src}")
-		print("\nFINAL MERGED RESULTS\n")
-		print(merged)
-
-		x = merged["perplexity"].astype(float)
-		y = merged["t2i_map10_overall"].astype(float)
-
-		ok = x.notna() & y.notna()
-		rho, pval = scipy.stats.spearmanr(x[ok], y[ok])
-
-		if verbose:
-			print(f"\nSpearman rho(perplexity, t2i_map@10 overall) = {rho:.3f}, p = {pval:.3g}")
-			print("-" * 100)
-
-	return merged
+	return recommended_threshold
 
 def _precompute_label_embeddings(
 		all_labels: List[str], 
@@ -562,22 +449,6 @@ def _semantic_jaccard_cached(
 		print(f"    Computed semantic Jaccard for {len(jaccard_scores)} samples (skipped {skipped})")
 	
 	return float(np.mean(jaccard_scores)) if jaccard_scores else 0.0
-
-def _mean_jaccard(sets_a: List[set], sets_b: List[set]) -> float:
-	"""Mean Jaccard over rows where union is non-empty."""
-	if len(sets_a) != len(sets_b):
-		raise ValueError("Jaccard inputs must have the same number of rows.")
-	
-	vals = []
-	for a, b in zip(sets_a, sets_b):
-		if not a and not b:
-			continue
-		u = a | b
-		if len(u) == 0:
-			continue
-		vals.append(len(a & b) / len(u))
-	
-	return float(np.mean(vals)) if vals else 0.0
 
 def get_cgd_taxonomy_supervision(
 	df: pd.DataFrame,
@@ -984,6 +855,22 @@ def get_cgd_taxonomy_supervision(
 		
 		return scores_df
 
+def _mean_jaccard(sets_a: List[set], sets_b: List[set]) -> float:
+	"""Mean Jaccard over rows where union is non-empty."""
+	if len(sets_a) != len(sets_b):
+		raise ValueError("Jaccard inputs must have the same number of rows.")
+	
+	vals = []
+	for a, b in zip(sets_a, sets_b):
+		if not a and not b:
+			continue
+		u = a | b
+		if len(u) == 0:
+			continue
+		vals.append(len(a & b) / len(u))
+	
+	return float(np.mean(vals)) if vals else 0.0
+
 def get_cgd_taxonomy_supervision_old(
 	df: pd.DataFrame,
 	output_directory: str,
@@ -1227,46 +1114,159 @@ def get_cgd_taxonomy_supervision_old(
 
 	return scores_df
 
-def _parse_label_cell(val: Any) -> List[str]:
+def entropy_vs_performance(
+	df: pd.DataFrame,
+	performance: Optional[Union[pd.DataFrame, Dict[str, Any]]] = None,
+	label_columns: Optional[List[str]] = None,
+	base: float = 2.0,
+	verbose: bool = False,
+	perf_strategy: Optional[str] = None,
+	perf_k: Union[int, str] = 10,
+	perf_reference_source: str = "multimodal_canonical_labels",
+	perf_include_recall: bool = False,
+	perf_tier_alias: Optional[Dict[str, str]] = None,
+) -> pd.DataFrame:
 	"""
-	Robustly parse a dataframe cell that should contain a list of labels.
-	Supports: list[str], string representation of list, NaN/None/""/"[]".
-	Returns a list (possibly empty). Never raises.
+	Compute label-distribution entropy/stats per supervision source (label column),
+	and optionally merge with retrieval performance.
+	Supported performance formats:
+		1) DataFrame with 'source' column (already flat)
+		2) Old dict: {source: {metric: value, ...}} (flat)
+		3) performance.json dict: {source: {strategy: {i2t/t2i -> tier -> metric -> k -> value}}}
+	When using performance.json, set perf_strategy (recommended) and perf_k (default=10).
 	"""
-	if isinstance(val, list):
-		return [x for x in val if isinstance(x, str) and x != ""]
-	
-	if val is None or (isinstance(val, float) and pd.isna(val)):
-		return []
-	if isinstance(val, str):
-		if val.strip() in ("", "[]"):
-			return []
-		try:
-			parsed = ast.literal_eval(val)
-			if isinstance(parsed, list):
-				return [x for x in parsed if isinstance(x, str) and x != ""]
-			return []
-		except Exception:
-			return []
-	
-	return []
 
-def _shannon_entropy(counts: Counter, base: float = 2.0) -> float:
-	"""
-	Shannon entropy of a discrete distribution defined by counts.
-	Returns 0.0 for empty counts.
-	"""
-	total = sum(counts.values())
-	if total <= 0:
-		return 0.0
-	log = math.log
-	ent = 0.0
-	for c in counts.values():
-		p = c / total
-		if p > 0:
-			ent -= p * (log(p) / log(base))
+	if verbose:
+		print("\nCOMPUTING ENTROPY VS PERFORMANCE ANALYSIS")
+		print(f"Dataset size: {len(df):,} samples")
+		print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
+		print(f"reference_source: {perf_reference_source}")
+		print(f"strategy: {perf_strategy}")
+		print(f"include_recall: {perf_include_recall}")
+		print(f"k: {perf_k}")
+
+	if label_columns is None:
+		label_columns = [
+			"llm_based_labels",
+			"vlm_based_labels",
+			"multimodal_labels",
+			"llm_canonical_labels",
+			"vlm_canonical_labels",
+			"multimodal_canonical_labels",
+		]
+		if verbose:
+			print(f"Default label columns: {len(label_columns)} sources: {label_columns}")
 	
-	return ent
+	rows: List[Dict[str, Any]] = []
+	for idx, col in enumerate(label_columns, 1):
+		if col not in df.columns:
+			if verbose:
+				print(f"\n[{idx}/{len(label_columns)}] '{col}' not found, skipping")
+			continue
+		if verbose:
+			print(f"\n[{idx}/{len(label_columns)}] Processing: {col}")
+			print("-" * 80)
+		
+		all_labels: List[str] = []
+		for v in df[col].tolist():
+			all_labels.extend(_parse_label_cell(v))
+		
+		counts = Counter(all_labels)
+		total_occ = sum(counts.values())
+		unique = len(counts)
+		num_singletons = sum(1 for _, c in counts.items() if c == 1)
+		singleton_rate = (num_singletons / unique) if unique > 0 else 0.0
+		
+		H = _shannon_entropy(counts, base=base)
+		H_max = math.log(unique, base) if unique > 1 else 0.0
+		H_norm = (H / H_max) if H_max > 0 else 0.0
+		perplexity = (base ** H) if H > 0 else 1.0
+		rows.append(
+			{
+				"source": col,
+				"total_occurrences": int(total_occ),
+				"unique_labels": int(unique),
+				"singletons": int(num_singletons),
+				"singleton_rate": float(singleton_rate),
+				f"entropy_{'bits' if base == 2.0 else 'units'}": float(H),
+				"entropy_max": float(H_max),
+				"entropy_normalized": float(H_norm),
+				"perplexity": float(perplexity),
+				"effective_num_labels": float(perplexity),
+			}
+		)
+	stats_df = pd.DataFrame(rows).sort_values("source").reset_index(drop=True)
+	
+	if performance is None:
+		if verbose:
+			print("\n✓ No performance data provided, returning entropy statistics only")
+			print("\nSUMMARY STATISTICS\n")
+			print(stats_df)
+		
+		return stats_df
+	
+	if verbose:
+		print("\nMERGING WITH PERFORMANCE METRICS\n")
+		print(df.shape, list(df.columns))
+		print(df.info(verbose=True, memory_usage=True))
+		print()
+	
+	# Build perf_df depending on input type
+	if isinstance(performance, pd.DataFrame):
+		perf_df = performance.copy()
+		if "source" not in perf_df.columns:
+			raise ValueError("If performance is a DataFrame, it must contain a 'source' column.")
+	elif isinstance(performance, dict):
+		schema = _infer_performance_schema(performance)
+		if schema == "nested_by_source_then_strategy":
+			perf_df = _flatten_performance_json(
+				performance_json=performance,
+				strategy=perf_strategy,
+				k=perf_k,
+				include_map=True,
+				reference_source=perf_reference_source,
+				include_recall=perf_include_recall,
+				tier_alias=perf_tier_alias,
+				verbose=verbose,
+			)
+		elif schema == "flat_metrics_by_source":
+				# Old-style dict: {source: {metric: value}}
+				perf_df = (
+						pd.DataFrame.from_dict(performance, orient="index")
+						.reset_index()
+						.rename(columns={"index": "source"})
+				)
+		else:
+				raise ValueError(
+						"Unsupported dict schema for performance. Expected either performance.json "
+						"(source->strategy->i2t/t2i...) or flat {source:{metric:...}}."
+				)
+	else:
+		raise TypeError("performance must be a DataFrame, dict, or None.")
+	
+	merged = stats_df.merge(perf_df, on="source", how="left")
+	if verbose:
+		print(f"  perf_df shape: {perf_df.shape}")
+		print(f"  merged shape: {merged.shape}")
+		missing = merged[merged.filter(regex=r"^(i2t|t2i)_").isna().all(axis=1)]
+		if len(missing) > 0:
+			print(f"\n  ⚠️  {len(missing)} sources missing performance data:")
+			for src in missing["source"].tolist():
+				print(f"    - {src}")
+		print("\nFINAL MERGED RESULTS\n")
+		print(merged)
+
+		x = merged["perplexity"].astype(float)
+		y = merged["t2i_map10_overall"].astype(float)
+
+		ok = x.notna() & y.notna()
+		rho, pval = scipy.stats.spearmanr(x[ok], y[ok])
+
+		if verbose:
+			print(f"\nSpearman rho(perplexity, t2i_map@10 overall) = {rho:.3f}, p = {pval:.3g}")
+			print("-" * 100)
+
+	return merged
 
 def compute_entropy_vs_performance(
 	df: pd.DataFrame,
