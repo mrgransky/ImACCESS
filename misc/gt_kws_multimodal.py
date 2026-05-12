@@ -23,6 +23,7 @@ from clustering import get_canonical_labels
 
 # how to run [local] interactive:
 # $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-2B-Instruct" -vlm_bs 4 -llm_bs 2 -llm_qb 8 -nw 12 -v
+
 # with nohup:
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -llm_qb 8 -llm_bs 2 -vlm "Qwen/Qwen3-VL-2B-Instruct" -vlm_bs 2 -nw 12 -v > logs/multimodal_annotation_smu.txt & 
 # one chunk:
@@ -342,7 +343,12 @@ def get_multimodal_annotation(
 	stats.get_singleton_in_uniques(df=df)
 	stats.compute_label_agreement_and_singletons(df=df)
 	entropy_stats = stats.compute_entropy_vs_performance(df=df, verbose=verbose)
-	stats.get_taxonomy_supervison(df=df, output_directory=OUTPUT_DIR, verbose=verbose)
+	stats.get_cgd_taxonomy_supervision(
+		df=df,
+		embedding_model_id=embedding_model_id,
+		output_directory=OUTPUT_DIR, 
+		verbose=verbose
+	)
 
 	print("="*100)
 	print(df.info(verbose=True, memory_usage=True))

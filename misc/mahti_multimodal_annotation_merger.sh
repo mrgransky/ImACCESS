@@ -2,15 +2,15 @@
 
 #SBATCH --account=project_2009043
 #SBATCH --job-name=mm_annot_merge
-#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
+#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=18G
+#SBATCH --mem=16G
 #SBATCH --partition=gpusmall
-#SBATCH --time=00-05:00:00
+#SBATCH --time=00-03:00:00
 #SBATCH --gres=gpu:a100:1,nvme:100
 
 set -euo pipefail

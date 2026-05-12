@@ -205,7 +205,12 @@ def merge_csv_files(
 	stats.get_singleton_in_uniques(df=df)
 	stats.compute_label_agreement_and_singletons(df=df)
 	entropy_stats = stats.compute_entropy_vs_performance(df=df, verbose=verbose)
-	stats.get_taxonomy_supervison(df=df, output_directory=OUTPUT_DIR, verbose=verbose)
+	stats.get_cgd_taxonomy_supervision(
+		df=df, 
+		embedding_model_id=embedding_model_id,
+		output_directory=OUTPUT_DIR, 
+		verbose=verbose
+	)
 
 	if verbose:
 		print(f"Saving {type(df)} {df.shape}\n{list(df.columns)}")

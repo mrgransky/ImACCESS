@@ -12,7 +12,8 @@ IMG_MAX_RES = 512
 VLM_INSTRUCTION_TEMPLATE = """
 You are an expert historical archivist specializing in multi-label annotation for 20th-century conflict photography.
 
-Your task is to analyze the provided historical B&W image alongside its historical caption and extract distinct concepts. You must categorize these concepts strictly into three lists of short keywords or short phrases (max 3 words per item).
+Your task is to analyze the provided historical black and white image alongside its historical caption and extract distinct concepts. 
+You must categorize these concepts strictly into three lists of short keywords or short phrases (max 3 words per item).
 
 CORE DOMAIN RULES:
 1. MULTI-LABEL EXTRACTION: Extract ALL historically relevant entities. Do not focus on just one object.
