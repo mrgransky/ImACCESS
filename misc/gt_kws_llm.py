@@ -67,7 +67,7 @@ STRICTLY EXCLUDE:
 	- Equipment identifiers, serial numbers, brands, or models.
 	- Dates, times, years, decades, or any temporal references.
 	- Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
-	- Names of individuals or Honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
+	- Individual people's names or honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
 	- Family relationship terms (e.g., mother, father, son, uncle).
 	- Generic human category nouns (e.g., man, men, woman, person, people, children).
 	- Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.

@@ -85,7 +85,7 @@ from natsort import natsorted
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import warnings
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, CrossEncoder
 
 try:
 	import misc.visualize as viz  # For visualizations

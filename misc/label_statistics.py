@@ -217,122 +217,427 @@ def _shannon_entropy(counts: Counter, base: float = 2.0) -> float:
 	
 	return ent
 
-def calibrate_semantic_threshold(
-	model: SentenceTransformer,
-	verbose: bool = False
-) -> float:
-	"""
-	Empirically calibrate the semantic similarity threshold for the given model.
-	
-	Tests on curated synonym pairs vs. unrelated pairs to find optimal threshold.
-	
-	Returns:
-			Recommended threshold value
-	"""
-	# Synonym pairs (should be SIMILAR)
-	similar_pairs = [
-			("soldier", "infantry"),
-			("aircraft", "airplane"),
-			("military", "army"),
-			("vehicle", "car"),
-			("building", "structure"),
-			("weapon", "gun"),
-			("uniform", "clothing"),
-			("officer", "commander"),
-			("pilot", "aviator"),
-			("ship", "vessel"),
-			("tank", "armored vehicle"),
-			("photograph", "image"),
-			("portrait", "photo"),
-			("landscape", "scenery"),
-			("group", "crowd"),
-	]
-	
-	# Unrelated pairs (should be DISSIMILAR)
-	dissimilar_pairs = [
-			("soldier", "aircraft"),
-			("building", "weapon"),
-			("uniform", "landscape"),
-			("pilot", "tank"),
-			("photograph", "vehicle"),
-			("officer", "ship"),
-			("infantry", "scenery"),
-			("army", "portrait"),
-			("airplane", "clothing"),
-			("structure", "gun"),
-			("commander", "crowd"),
-			("aviator", "armored vehicle"),
-			("vessel", "image"),
-			("car", "photo"),
-			("military", "landscape"),
-	]
-	
-	# Compute similarities
-	similar_scores = []
-	for w1, w2 in similar_pairs:
-			emb1 = model.encode(w1, convert_to_tensor=False)
-			emb2 = model.encode(w2, convert_to_tensor=False)
-			sim = 1 - scipy.spatial.distance.cosine(emb1, emb2)
-			similar_scores.append(sim)
-	
-	dissimilar_scores = []
-	for w1, w2 in dissimilar_pairs:
-			emb1 = model.encode(w1, convert_to_tensor=False)
-			emb2 = model.encode(w2, convert_to_tensor=False)
-			sim = 1 - scipy.spatial.distance.cosine(emb1, emb2)
-			dissimilar_scores.append(sim)
-	
-	# Statistics
-	similar_mean = np.mean(similar_scores)
-	similar_std = np.std(similar_scores)
-	dissimilar_mean = np.mean(dissimilar_scores)
-	dissimilar_std = np.std(dissimilar_scores)
-	
-	# Find optimal threshold (midpoint between distributions)
-	optimal_threshold = (similar_mean + dissimilar_mean) / 2
-	
-	# Alternative: Use 1 std below similar mean (conservative)
-	conservative_threshold = similar_mean - similar_std
+def auto_calibrate_semantic_threshold(
+		model: SentenceTransformer,
+		verbose: bool = False
+) -> Tuple[float, Dict]:
 
-	# Return recommended threshold (clipped to reasonable range)
-	recommended_threshold = max(0.5, min(0.8, optimal_threshold))
+	# Extract model name/identifier
+	model_name = None
+
+	if verbose:
+		print("\n=== Debugging model attributes ===")
+		print(f"model type: {type(model)}")
+		print(f"Has model_card_data: {hasattr(model, 'model_card_data')}")
+		if hasattr(model, 'model_card_data') and model.model_card_data:
+			print(f"  model_card_data.model_id: {model.model_card_data.model_id}")
+		print(f"Has _model_card_data: {hasattr(model, '_model_card_data')}")
+		print(f"Has model_name: {hasattr(model, 'model_name')}")
+		print(f"Has name_or_path: {hasattr(model, 'name_or_path')}")
+		print(f"\nmodel[0] type: {type(model[0])}")
+		print(f"Has auto_model: {hasattr(model[0], 'auto_model')}")
+		if hasattr(model[0], 'auto_model'):
+			print(f"  auto_model type: {type(model[0].auto_model)}")
+			print(f"  Has config: {hasattr(model[0].auto_model, 'config')}")
+			if hasattr(model[0].auto_model, 'config'):
+				cfg = model[0].auto_model.config
+				print(f"  config._name_or_path: {getattr(cfg, '_name_or_path', 'NOT FOUND')}")
+				print(f"  config.name_or_path: {getattr(cfg, 'name_or_path', 'NOT FOUND')}")
+				print(f"  All config attrs: {[a for a in dir(cfg) if not a.startswith('_')]}")
+		print("=" * 40 + "\n")
+	
+	# Method 1: Check model_card_data (Public API)
+	if hasattr(model, 'model_card_data') and model.model_card_data:
+			# Sometimes model_card_data exists but model_id is None
+			m_id = getattr(model.model_card_data, 'model_id', None)
+			if m_id:
+					model_name = m_id
+					
+	# Method 2: Check private _model_card_data (Internal API)
+	if not model_name:
+			if hasattr(model, '_model_card_data') and model._model_card_data:
+					m_id = getattr(model._model_card_data, 'model_id', None)
+					if m_id:
+							model_name = m_id
+	# Method 3: Check direct attributes on the SentenceTransformer object
+	if not model_name:
+			for attr in ['name_or_path', 'model_name_or_path']:
+					if hasattr(model, attr):
+							val = getattr(model, attr)
+							if val:
+									model_name = val
+									break
+	# Method 4: Fallback - Extract from the underlying Transformer's Config
+	if not model_name:
+			try:
+					# SentenceTransformers models are usually a list of modules. 
+					# The first module [0] is typically the Transformer.
+					if len(model) > 0:
+							first_module = model[0]
+							
+							# Check if it has an auto_model (HuggingFace model)
+							if hasattr(first_module, 'auto_model'):
+									hf_model = first_module.auto_model
+									
+									# Check if it has a config
+									if hasattr(hf_model, 'config'):
+											cfg = hf_model.config
+											
+											# Try standard HuggingFace config attributes
+											if hasattr(cfg, '_name_or_path') and cfg._name_or_path:
+													model_name = cfg._name_or_path
+											elif hasattr(cfg, 'name_or_path') and cfg.name_or_path:
+													model_name = cfg.name_or_path
+			except Exception as e:
+					if verbose:
+							print(f"Fallback extraction error: {e}")
+	if not model_name or model_name == "None":
+		model_name = "unknown"
+	if verbose:
+		print(f"\nAUTOMATIC THRESHOLD CALIBRATION using embedding model: {model_name}\n")
+	
+	# TEST PAIRS - Diverse and challenging	
+	# CATEGORY 1: Direct Synonyms (MUST match)
+	direct_synonyms = [
+		("soldier", "infantry"),
+		("aircraft", "airplane"),
+		("military", "army"),
+		("vehicle", "car"),
+		("building", "structure"),
+		("weapon", "gun"),
+		("uniform", "clothing"),
+		("commandant", "commander"),
+		("pilot", "aviator"),
+		("ship", "vessel"),
+		("artillery", "weapon"),
+		("airfield", "airstrip"),
+		("commander", "captain"),
+		("admiral", "commander"),
+		("rifle", "shotgun"),
+	]
+	
+	# CATEGORY 2: Related Concepts (SHOULD match - semantic field overlap)
+	related_concepts = [
+		("soldier", "military base"),
+		("aircraft", "pilot"),
+		("tank", "armored vehicle"),
+		("photograph", "camera"),
+		("portrait", "face"),
+		("landscape", "scenery"),
+		("group", "crowd"),
+		("officer", "military"),
+		("uniform", "soldier"),
+		("propeller", "aircraft"),
+		("howitzer", "artillery"),
+		("mortar", "cannon"),
+		("ship", "navy"),
+		("M1 Garand", "rifle"),
+		("M4 Sherman", "tank"),
+	]
+	
+	# CATEGORY 3: Distant Relations (BORDERLINE - could go either way)
+	distant_relations = [
+		("soldier", "uniform"),      # Related but different semantic types
+		("aircraft", "propeller"),   # Part-whole relationship
+		("building", "city"),        # Part-whole
+		("photograph", "image"),     # Generic-specific
+		("pilot", "uniform"),        # Associated but different
+		("vehicle", "road"),         # Associated context
+		("weapon", "military"),      # Associated domain
+		("ship", "ocean"),           # Associated context
+		("portrait", "photography"), # Type-of relationship
+		("landscape", "nature"),     # Type-of relationship
+		("officer", "sherlock"),     # Distant association
+	]
+	
+	# CATEGORY 4: Unrelated Concepts (MUST NOT match)
+	unrelated_concepts = [
+		("soldier", "aircraft"),
+		("building", "weapon"),
+		("uniform", "landscape"),
+		("pilot", "tank"),
+		("photograph", "vehicle"),
+		("officer", "ship"),
+		("infantry", "scenery"),
+		("army", "portrait"),
+		("airplane", "clothing"),
+		("structure", "gun"),
+		("commander", "crowd"),
+		("aviator", "armored vehicle"),
+		("vessel", "image"),
+		("car", "face"),
+		("military", "camera"),
+		("volcano", "shopping"),
+	]
+	
+	# CATEGORY 5: Confusables (MUST NOT match - different but similar domain)
+	confusables = [
+		("soldier", "sailor"),       # Both military but different
+		("aircraft", "helicopter"),  # Both aerial but different specificity
+		("tank", "truck"),           # Both vehicles but very different
+		("rifle", "pistol"),         # Both weapons but different
+		("captain", "general"),      # Both ranks but different
+		("fighter", "bomber"),       # Both aircraft types but different
+		("navy", "army"),            # Both military branches but different
+		("portrait", "landscape"),   # Both photo types but opposite
+		("pilot", "driver"),         # Both operators but different
+		("ship", "submarine"),       # Both naval but different
+	]
+	
+	# COMPUTE SIMILARITIES FOR ALL CATEGORIES	
+	def compute_similarities(pairs, category_name):
+		"""Compute similarities and return scores with diagnostics."""
+		scores = []
+		details = []
+		
+		for w1, w2 in pairs:
+			emb1 = model.encode(w1, convert_to_tensor=False)
+			emb2 = model.encode(w2, convert_to_tensor=False)
+			sim = float(1 - scipy.spatial.distance.cosine(emb1, emb2))
+			scores.append(sim)
+			details.append((w1, w2, sim))
+		
+		return {
+			'scores': scores,
+			'mean': float(np.mean(scores)),
+			'std': float(np.std(scores)),
+			'min': float(np.min(scores)),
+			'max': float(np.max(scores)),
+			'details': details,
+			'category': category_name,
+		}
+
+	cat1_results = compute_similarities(direct_synonyms, "Direct Synonyms")
+	cat2_results = compute_similarities(related_concepts, "Related Concepts")
+	cat3_results = compute_similarities(distant_relations, "Distant Relations")
+	cat4_results = compute_similarities(unrelated_concepts, "Unrelated Concepts")
+	cat5_results = compute_similarities(confusables, "Confusables")
+	
+	# DETAILED CATEGORY ANALYSIS
+	if verbose:
+		print("CATEGORY ANALYSIS")
+		for cat_result in [cat1_results, cat2_results, cat3_results, cat4_results, cat5_results]:
+			print(f"{cat_result['category']} (n={len(cat_result['scores'])}):")
+			print(f"  Mean: {cat_result['mean']:.4f}")
+			print(f"  Std:  {cat_result['std']:.4f}")
+			print(f"  Range: [{cat_result['min']:.4f}, {cat_result['max']:.4f}]")
+			
+			# Show top-3 and bottom-3 examples
+			sorted_details = sorted(cat_result['details'], key=lambda x: x[2], reverse=True)
+
+			print(f"  Highest similarities:")
+			for w1, w2, sim in sorted_details[:3]:
+				print(f"    {w1:20} <-> {w2:20}: {sim:.4f}")
+			
+			print(f"  Lowest similarities:")
+			for w1, w2, sim in sorted_details[-3:]:
+				print(f"    {w1:20} <-> {w2:20}: {sim:.4f}")
+
+			print()
+	
+	# OVERLAP ANALYSIS - Check for distribution overlap
+	# Combine "should match" categories
+	should_match_scores = cat1_results['scores'] + cat2_results['scores']
+	should_match_mean = np.mean(should_match_scores)
+	should_match_std = np.std(should_match_scores)
+	
+	# Combine "should NOT match" categories
+	should_not_match_scores = cat4_results['scores'] + cat5_results['scores']
+	should_not_match_mean = np.mean(should_not_match_scores)
+	should_not_match_std = np.std(should_not_match_scores)
+	
+	# Calculate separation
+	gap = should_match_mean - should_not_match_mean
+	overlap_start = should_not_match_mean + should_not_match_std
+	overlap_end = should_match_mean - should_match_std
+	overlap_zone = max(0, overlap_start - overlap_end)
 	
 	if verbose:
-			print(f"\n{'='*80}")
-			print("THRESHOLD CALIBRATION")
-			print("="*80)
-			print(f"\nSimilar pairs (should match):")
-			print(f"  Mean similarity: {similar_mean:.4f}")
-			print(f"  Std deviation: {similar_std:.4f}")
-			print(f"  Range: [{min(similar_scores):.4f}, {max(similar_scores):.4f}]")
-			print(f"  Example: {similar_pairs[0]} → {similar_scores[0]:.4f}")
-			
-			print(f"\nDissimilar pairs (should NOT match):")
-			print(f"  Mean similarity: {dissimilar_mean:.4f}")
-			print(f"  Std deviation: {dissimilar_std:.4f}")
-			print(f"  Range: [{min(dissimilar_scores):.4f}, {max(dissimilar_scores):.4f}]")
-			print(f"  Example: {dissimilar_pairs[0]} → {dissimilar_scores[0]:.4f}")
-			
-			print(f"\nRecommendations:")
-			print(f"  Optimal threshold (midpoint): {optimal_threshold:.4f}")
-			print(f"  Conservative threshold (mean - 1σ): {conservative_threshold:.4f}")
-			print(f"  Suggested threshold: {recommended_threshold:.5f}")
-			
-			# Test at different thresholds
-			print(f"\nPerformance at different thresholds:")
-			for threshold in [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9]:
-					tp = sum(1 for s in similar_scores if s >= threshold)  # True positives
-					fp = sum(1 for s in dissimilar_scores if s >= threshold)  # False positives
-					fn = sum(1 for s in similar_scores if s < threshold)  # False negatives
-					tn = sum(1 for s in dissimilar_scores if s < threshold)  # True negatives
-					
-					precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-					recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-					f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
-					
-					print(f"  Threshold={threshold:.2f}: Precision={precision:.2f}, Recall={recall:.2f}, F1={f1:.2f}")
+		print("\nDISTRIBUTION OVERLAP ANALYSIS\n")
+		print(f"Should MATCH (Synonyms + Related):")
+		print(f"  Mean: {should_match_mean:.4f}")
+		print(f"  Std:  {should_match_std:.4f}")
+		print(f"  Range: [{np.min(should_match_scores):.4f}, {np.max(should_match_scores):.4f}]")
 		
-	return recommended_threshold
+		print(f"\nShould NOT match (Unrelated + Confusables):")
+		print(f"  Mean: {should_not_match_mean:.4f}")
+		print(f"  Std:  {should_not_match_std:.4f}")
+		print(f"  Range: [{np.min(should_not_match_scores):.4f}, {np.max(should_not_match_scores):.4f}]")
+		
+		print(f"\nSeparation Analysis:")
+		print(f"  Gap between means: {gap:.4f}")
+		print(f"  Overlap zone (±1σ): {overlap_zone:.4f}")
+		
+		if overlap_zone < 0.05:
+			print(f"  ✅ Excellent separation (minimal overlap)")
+		elif overlap_zone < 0.15:
+			print(f"  ✅ Good separation")
+		elif overlap_zone < 0.25:
+			print(f"  ⚠️  Moderate separation")
+		else:
+			print(f"  ❌ Poor separation (significant overlap)")
+	
+	# THRESHOLD OPTIMIZATION - Test multiple strategies
+	threshold_candidates = {
+		'midpoint': (should_match_mean + should_not_match_mean) / 2,
+		'mean_minus_1std': should_match_mean - should_match_std,
+		'mean_minus_0.5std': should_match_mean - 0.5 * should_match_std,
+		'optimal_f1': None,  # Will calculate below
+	}
+	
+	# Find threshold that maximizes F1 on combined "should match" vs "should not match"
+	range_ths = np.arange(0.15, 0.95, 0.01)
+	best_f1 = 0
+	best_th = 0.5
+	if verbose:
+		print(f"\nFinding optimal threshold ({len(range_ths)}) for F1 score on combined 'should match' vs 'should not...")
+	for th in range_ths:
+		# True positives: should_match scores >= threshold
+		tp = sum(1 for s in should_match_scores if s >= th)
+
+		# False positives: should_not_match scores >= threshold
+		fp = sum(1 for s in should_not_match_scores if s >= th)
+
+		# False negatives: should_match scores < threshold
+		fn = sum(1 for s in should_match_scores if s < th)
+		
+		precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+		recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+		f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+		
+		if f1 > best_f1:
+			best_f1 = f1
+			best_th = th
+	
+	threshold_candidates['optimal_f1'] = best_th
+	
+	if verbose:
+		print("\nTHRESHOLD CANDIDATES\n")
+		for name, thresh in threshold_candidates.items():
+			if thresh is not None:
+				print(f"{name:<25}{thresh:.4f}")
+	
+	# PERFORMANCE EVALUATION - Test each candidate threshold
+	if verbose:
+		print("\nPERFORMANCE AT CANDIDATE THRESHOLDS\n")
+		
+		for name, threshold in threshold_candidates.items():
+			if threshold is None:
+				continue
+			
+			# Evaluate on each category separately
+			results_by_cat = {}
+			
+			for cat_name, cat_result in [
+				("Direct Synonyms", cat1_results),
+				("Related Concepts", cat2_results),
+				("Distant Relations", cat3_results),
+				("Unrelated", cat4_results),
+				("Confusables", cat5_results),
+			]:
+				matches = sum(1 for s in cat_result['scores'] if s >= threshold)
+				total = len(cat_result['scores'])
+				pct = 100 * matches / total if total > 0 else 0
+				results_by_cat[cat_name] = (matches, total, pct)
+			
+			print(f"\tTh: {threshold:.4f} ({name})")
+			print(f"\tDirect Synonyms:   {results_by_cat['Direct Synonyms'][0]:2}/{results_by_cat['Direct Synonyms'][1]:2} matched ({results_by_cat['Direct Synonyms'][2]:5.1f}%) {'✅' if results_by_cat['Direct Synonyms'][2] >= 80 else '⚠️' if results_by_cat['Direct Synonyms'][2] >= 60 else '❌'}")
+			print(f"\tRelated Concepts:  {results_by_cat['Related Concepts'][0]:2}/{results_by_cat['Related Concepts'][1]:2} matched ({results_by_cat['Related Concepts'][2]:5.1f}%) {'✅' if results_by_cat['Related Concepts'][2] >= 70 else '⚠️' if results_by_cat['Related Concepts'][2] >= 50 else '❌'}")
+			print(f"\tDistant Relations: {results_by_cat['Distant Relations'][0]:2}/{results_by_cat['Distant Relations'][1]:2} matched ({results_by_cat['Distant Relations'][2]:5.1f}%) (ambiguous)")
+			print(f"\tUnrelated:         {results_by_cat['Unrelated'][0]:2}/{results_by_cat['Unrelated'][1]:2} matched ({results_by_cat['Unrelated'][2]:5.1f}%) {'✅' if results_by_cat['Unrelated'][2] <= 20 else '⚠️' if results_by_cat['Unrelated'][2] <= 40 else '❌'}")
+			print(f"\tConfusables:       {results_by_cat['Confusables'][0]:2}/{results_by_cat['Confusables'][1]:2} matched ({results_by_cat['Confusables'][2]:5.1f}%) {'✅' if results_by_cat['Confusables'][2] <= 30 else '⚠️' if results_by_cat['Confusables'][2] <= 50 else '❌'}")
+			
+			# Overall precision/recall
+			tp = sum(1 for s in should_match_scores if s >= threshold)
+			fp = sum(1 for s in should_not_match_scores if s >= threshold)
+			fn = sum(1 for s in should_match_scores if s < threshold)
+			tn = sum(1 for s in should_not_match_scores if s < threshold)
+			
+			precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+			recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+			f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+			accuracy = (tp + tn) / (tp + fp + fn + tn)
+			
+			print(f"\t\t→ Precision: {precision:.3f}, Recall: {recall:.3f}, F1: {f1:.3f}, Accuracy: {accuracy:.3f}\n")
+	
+	# IDENTIFY PROBLEMATIC PAIRS - Find borderline cases	
+	if verbose:
+		print("\nPROBLEMATIC PAIRS (Near Decision Boundary)\n")
+		
+		recommended_threshold = threshold_candidates['optimal_f1']
+		margin = 0.05
+		
+		print(f"Pairs near threshold {recommended_threshold:.4f} (±{margin}):")
+		
+		all_pairs_with_expected = []
+		all_pairs_with_expected.extend([(w1, w2, sim, "SHOULD_MATCH") for w1, w2, sim in cat1_results['details']])
+		all_pairs_with_expected.extend([(w1, w2, sim, "SHOULD_MATCH") for w1, w2, sim in cat2_results['details']])
+		all_pairs_with_expected.extend([(w1, w2, sim, "AMBIGUOUS") for w1, w2, sim in cat3_results['details']])
+		all_pairs_with_expected.extend([(w1, w2, sim, "SHOULD_NOT_MATCH") for w1, w2, sim in cat4_results['details']])
+		all_pairs_with_expected.extend([(w1, w2, sim, "SHOULD_NOT_MATCH") for w1, w2, sim in cat5_results['details']])
+		
+		borderline_pairs = [
+			(w1, w2, sim, expected) 
+			for w1, w2, sim, expected in all_pairs_with_expected
+			if abs(sim - recommended_threshold) < margin
+		]
+		
+		borderline_pairs.sort(key=lambda x: abs(x[2] - recommended_threshold))
+		
+		if borderline_pairs:
+			print(f"  Found {len(borderline_pairs)} borderline pairs:")
+			for w1, w2, sim, expected in borderline_pairs[:10]:  # Show top 10
+				decision = "MATCH" if sim >= recommended_threshold else "NO_MATCH"
+				correct = "✅" if (decision == "MATCH" and "SHOULD_MATCH" in expected) or \
+												(decision == "NO_MATCH" and "SHOULD_NOT_MATCH" in expected) else \
+								 "⚠️" if expected == "AMBIGUOUS" else "❌"
+				print(f"    {w1:20} <-> {w2:20}: {sim:.4f} → {decision:10} (expected: {expected:20}) {correct}")
+		else:
+			print(f"  ✅ No borderline pairs found (excellent separation!)")
+	
+	# FINAL RECOMMENDATION
+	recommended_threshold = threshold_candidates['optimal_f1']
+	if verbose:
+		print("\nRECOMMENDATION\n")
+		print(f"Optimal threshold: {recommended_threshold:.4f}")
+		print(f"  Based on: Maximum F1 score on synonym/related vs unrelated/confusable pairs")
+		print(f"  F1 score: {best_f1:.3f}")
+		print(f"  Gap between distributions: {gap:.4f}")
+		
+		if best_f1 >= 0.90:
+			print(f"  ✅ Excellent discriminative power")
+		elif best_f1 >= 0.80:
+			print(f"  ✅ Good discriminative power")
+		elif best_f1 >= 0.70:
+			print(f"  ⚠️  Moderate discriminative power")
+		else:
+			print(f"  ❌ Poor discriminative power - consider different model")
+		print("-"*100)
+	
+	diagnostics = {
+		'categories': {
+			'direct_synonyms': cat1_results,
+			'related_concepts': cat2_results,
+			'distant_relations': cat3_results,
+			'unrelated': cat4_results,
+			'confusables': cat5_results,
+		},
+		'separation': {
+			'should_match_mean': should_match_mean,
+			'should_not_match_mean': should_not_match_mean,
+			'gap': gap,
+			'overlap_zone': overlap_zone,
+		},
+		'thresholds': threshold_candidates,
+		'best_f1': best_f1,
+		'borderline_pairs': borderline_pairs if verbose else None,
+	}
+
+	if verbose:
+		print(f"Diagnostics for model {model_name}:")
+		print(json.dumps(diagnostics, indent=2, ensure_ascii=False))
+	
+	return recommended_threshold, diagnostics
 
 def _precompute_label_embeddings(
 		all_labels: List[str], 
@@ -616,11 +921,10 @@ def get_cgd_taxonomy_supervision(
 
 		# Auto-calibrate threshold if not provided
 		if semantic_threshold is None:
-			semantic_threshold = calibrate_semantic_threshold(model, verbose=verbose)
+			semantic_threshold, _ = auto_calibrate_semantic_threshold(model, verbose=verbose)
 		else:
 			if verbose:
 				print(f">> Using provided semantic threshold: {semantic_threshold}")
-
 
 		# Pre-compute embeddings for ALL unique labels across all sources
 		emb_cache = _precompute_label_embeddings(

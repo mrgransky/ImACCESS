@@ -346,7 +346,7 @@ def get_multimodal_annotation(
 
 	stats.get_cgd_taxonomy_supervision(
 		df=df,
-		# embedding_model_id=embedding_model_id,
+		embedding_model_id=embedding_model_id,
 		output_directory=OUTPUT_DIR, 
 		verbose=verbose
 	)

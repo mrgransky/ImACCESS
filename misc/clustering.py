@@ -468,9 +468,9 @@ def automated_cluster_validation(
 		
 		results = {}
 		
-		# =========================================================================
+		
 		# PART 1: CLUSTER QUALITY METRICS (Automated)
-		# =========================================================================
+		
 		if verbose:
 			print("\n[PART 1/2] Automated Cluster Quality Assessment")
 		
@@ -2152,9 +2152,9 @@ def remove_problematic_cluster_labels(
 	problematic_cluster_ids = set()
 	removed_labels = list()
 
-	# =========================================================================
+	
 	# PART 1: Identify Low-Cohesion Clusters
-	# =========================================================================
+	
 	low_cohesion_clusters = list()
 
 	for cluster_id in df['cluster'].unique():
@@ -2190,9 +2190,9 @@ def remove_problematic_cluster_labels(
 			for cluster in low_cohesion_clusters[:15]:
 				print(f"    Cluster {cluster['cluster_id']}: {cluster['labels']} (sim={cluster['intra_sim']:.4f})")
 
-	# =========================================================================
+	
 	# PART 2: Identify Poor Canonical Clusters
-	# =========================================================================
+	
 	poor_canonical_clusters = list()
 
 	for cluster_id in df['cluster'].unique():
@@ -2235,9 +2235,9 @@ def remove_problematic_cluster_labels(
 			for cluster in poor_canonical_clusters[:5]:
 				print(f"    Cluster {cluster['cluster_id']}: {cluster['labels']} (rep={cluster['representativeness']:.4f})")
 
-	# =========================================================================
+	
 	# PART 3: Remove Problematic Labels
-	# =========================================================================
+	
 	if verbose:
 		print(f"\n[REMOVAL SUMMARY]")
 		print(f"  Total problematic clusters: {len(problematic_cluster_ids)}")
@@ -2654,9 +2654,7 @@ def cluster(
 		print(f"   ├─────> {type(labels[0])} requires_type_exchange: {requires_type_exchange}")
 		print(f"   └─ nc: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
 
-	# =========================================================================
 	# STEP 1: DEDUP + FLATTEN
-	# =========================================================================
 	print(f"\n[DEDUP] {len(labels)} {type(labels)} raw labels")
 	documents = list()
 	for i, doc in enumerate(labels):
@@ -2680,9 +2678,9 @@ def cluster(
 	print(f"Sample unique labels: {unique_labels[:15]}")
 	print("-" * 100)
 
-	# =========================================================================
+	
 	# STEP 2: LOAD MODEL + ENCODE
-	# =========================================================================
+	
 	dtype = torch.float32
 	if torch.cuda.is_available():
 		dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
@@ -2718,9 +2716,9 @@ def cluster(
 	print(f"\n[INIT] Loading Sentence Transformer {model_id}")
 	model = SentenceTransformer(
 		model_name_or_path=model_id,
+		model_kwargs={"attn_implementation": attn_impl, "dtype": dtype} if "Qwen" in model_id else {},
 		trust_remote_code=True,
 		cache_folder=cache_directory[os.getenv('USER')],
-		model_kwargs={"attn_implementation": attn_impl, "dtype": dtype} if "Qwen" in model_id else {},
 		token=os.getenv("HUGGINGFACE_TOKEN"),
 		tokenizer_kwargs={"padding_side": "left"},
 	).to(device)
@@ -2755,9 +2753,8 @@ def cluster(
 	print(f"  ├─ Mean: {X.mean()}")
 	print(f"  └─ Std: {X.std()}")
 
-	# =========================================================================
+	
 	# STEP 3: LINKAGE MATRIX
-	# =========================================================================
 	print(f"[LINKAGE] {linkage_method} Agglomerative Clustering on: {X.shape} embeddings [takes a while...]")
 	t0 = time.time()
 	if linkage_method == "ward":
@@ -2779,9 +2776,8 @@ def cluster(
 
 	print(f"[LINKAGE] Z[{linkage_method}]: {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes} | {time.time()-t0:.1f} sec")
 
-	# =========================================================================
+	
 	# STEP 4: OPTIMAL NUMBER OF CLUSTERS
-	# =========================================================================
 	if nc is None:
 		cluster_labels, stats = get_optimal_num_clusters(
 			X=X,
@@ -2806,9 +2802,8 @@ def cluster(
 
 	df = pd.DataFrame({'label': unique_labels, 'cluster': cluster_labels})
 
-	# =========================================================================
+	
 	# STEP 5: LABEL FREQUENCY DICT
-	# =========================================================================
 	print(f"\n[CLUSTERING] {len(np.unique(cluster_labels))} clusters for {cluster_labels.shape} {type(cluster_labels)} labels. {cluster_labels.min()} {cluster_labels.max()}")
 	label_freq_dict: dict = {}
 	for doc in documents:
@@ -2820,9 +2815,8 @@ def cluster(
 	print(f"\tMost frequent: {max(label_freq_dict.items(), key=lambda x: x[1])}")
 	print('-' * 150)
 
-	# =========================================================================
+	
 	# STEP 6: CANONICAL SELECTION (with virtual hypernym synthesis)
-	# =========================================================================
 	t0 = time.time()
 	(
 		cluster_canonicals,
@@ -2841,9 +2835,8 @@ def cluster(
 	print(f"\n[CLUSTERING] {len(cluster_canonicals)} cluster canonicals computed in {time.time()-t0:.1f} sec.")
 	print("-" * 100)
 
-	# =========================================================================
+	
 	# STEP 7: IMPACT ANALYSIS
-	# =========================================================================
 	total_clusters = len(df.cluster.unique())
 	print("\nFREQUENCY WEIGHTING IMPACT ANALYSIS")
 	print(f"  Total clusters analyzed: {total_clusters}")
@@ -2905,10 +2898,8 @@ def cluster(
 		print("\n  ℹ️  Score-based selection made no changes (all clusters picked highest similarity)")
 
 	print("=" * 100)
-
-	# =========================================================================
-	# STEP 8: MAP CANONICALS + CLEAN PROBLEMATIC CLUSTERS
-	# =========================================================================
+	
+	# STEP 8: MAP CANONICALS + CLEAN PROBLEMATIC CLUSTERS	
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 
 	# ── Inject virtual hypernyms as real rows ────────────────────────────────
@@ -2958,10 +2949,7 @@ def cluster(
 	unique_labels_array = df['label'].values
 	cluster_labels      = df['cluster'].values
 	canonical_map       = df.groupby('cluster')['canonical'].first().to_dict()
-
-	# =========================================================================
-	# STEP 9: COMPREHENSIVE CLUSTER QUALITY
-	# =========================================================================
+	
 	print("\nCOMPREHENSIVE CLUSTER QUALITY")
 	print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
 	print(f"  ├─ Updated canonical_map: {len(canonical_map)} mappings")

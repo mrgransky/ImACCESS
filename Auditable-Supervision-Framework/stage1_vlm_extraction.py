@@ -1,43 +1,52 @@
-from utils import *
+import os
+import sys
+HOME, USER = os.getenv('HOME'), os.getenv('USER')
+IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
 
+CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
+sys.path.insert(0, CLIP_DIR)
+
+MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
+sys.path.insert(0, MISC_DIR)
+
+print(f"sys.path: {sys.path}")
+
+from utils import *
 
 # how to run:
 # local:
-# python gt_kws_coupled_vlm.py -i "/home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH568SLASHitem_FGXB537CHLTVRLRXQLUDTDYLIU67RKN7.jpg" -vlm "Qwen/Qwen3.6-35B-A3B" -v
+# python stage1_vlm_extraction.py -i /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3-VL-2B-Instruct" -v
 
-process = psutil.Process(os.getpid())
-EXP_BACKOFF = 2  # seconds
-IMG_MAX_RES = 512
+# python stage1_vlm_extraction.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -v
 
-VLM_INSTRUCTION_TEMPLATE = """
-You are an expert historical archivist specializing in multi-label annotation for 20th-century conflict photography.
+PROMPT_TEMPLATE = """Given an image and its caption, extract distinctive concepts and categorize them strictly into three lists of keywords.
 
-Your task is to analyze the provided historical black and white image alongside its historical caption and extract distinct concepts. 
-You must categorize these concepts strictly into three lists of short keywords or short phrases (max 3 words per item).
-
-CORE DOMAIN RULES:
-1. MULTI-LABEL EXTRACTION: Extract ALL historically relevant entities. Do not focus on just one object.
-2. ANTI-SCOPE-CREEP & OCR BAN: NEVER include generic environmental descriptions, textures, structural minutiae, or literal text reads of signs (e.g., strictly exclude: "clouds", "dirt", "DANGER", "wooden beams", "log", "curb"). ONLY include historically defining structures (e.g., "trench", "bunker").
-3. PROPER NOUN BAN & ROLE INFERENCE: NEVER output individual people's names (e.g., exclude "Melvin Shaffer"). NEVER output standalone years (e.g., exclude "1944"). However, if the text mentions specific units or groups, you MUST infer and include their generalized role (e.g., if text says "MAMAS unit", include "medical personnel").
+Constraints:
+	- Extract semantically relevant entities.
+	- Exclude 
+		- individual people's names (e.g., Melvin Shaffer).
+		- specific locations (e.g., Boulogne, Paris).
+		- super generic terms (e.g., war, battle, military).
+		- dates, times, or temporal references (e.g., 1945, September 1919, spring 1940).
+		- environmental conditions (e.g., rain, fog, clear sky).
 
 OUTPUT DEFINITIONS:
-- text_concepts: Keywords derived STRICTLY from the caption. Apply PROPER NOUN BAN, DATE BAN, and ROLE INFERENCE.
-- visual_concepts: Keywords derived STRICTLY from the pixel data. Apply ANTI-SCOPE-CREEP & OCR BAN. Extract visible historical actors, vehicles, and structures.
-- fused_concepts: 1 to 2 NEW, high-level synthesized short phrases requiring BOTH modalities.
-    - GRANULARITY RESOLUTION: If text is broad ("weapon") and image is specific ("rifle"), resolve to the specific term.
-    - BAD: A full sentence ("3rd detachment soldiers on log") or overly generic hypernyms ("wartime mobilization", "military activity").
-    - GOOD: Specific semantic phrases ("medical personnel resting", "military encampment", "damaged vehicles").
-    - CRITICAL RULE (CONFLICT DETECTION): If the text and image describe completely disjoint locations, vehicles, or actions (e.g., text says "aircraft" but image shows "ships"), you MUST output an empty list []. Do not attempt to force a fusion.
+- text_concepts: Keywords derived STRICTLY from the caption.
+- visual_concepts: Keywords derived STRICTLY from the pixel data.
+- fused_concepts: Inferred from BOTH modalities.
+	- GRANULARITY RESOLUTION: If text is broad ("weapon") and image is specific ("rifle"), resolve to the specific term.
+	- BAD: A full sentence ("3rd detachment soldiers on log") or overly generic hypernyms ("wartime mobilization", "military activity").
+	- GOOD: Specific, concrete, and semantic phrases ("medical personnel resting", "military encampment", "damaged vehicles").
+	- CRITICAL RULE (CONFLICT DETECTION): If the text and image are completely disjoint (e.g., text says "aircraft" but image shows "ships"), return an empty list []. NEVER enforce a fusion.
 
 Caption: {caption}
 
-Respond ONLY with a valid JSON object in the exact format below. Do not output any markdown formatting, backticks, or conversational text.
-{
+Return ONLY a valid JSON object in the exact format below.
+{{
 "text_concepts": [],
 "visual_concepts": [],
 "fused_concepts":[]
-}
-"""
+}}"""
 
 def _load_vlm_(
 	model_id: str,
@@ -542,159 +551,165 @@ def verify(p: str):
 	except Exception:
 		return None
 
-def prepare_prompts_and_images(
-		unique_inputs, 
-		max_kws, 
-		num_threads, 
-		verbose=False
-	):
+def parse_vlm_response(
+	model_id: str, 
+	response: str, 
+	verbose: bool = False
+) -> Optional[Dict[str, Any]]:
 	if verbose:
-		print(f"[PREP] Preparing prompts and verifying {len(unique_inputs)} images...")
-	prep_start = time.time()
-	process = psutil.Process()
-	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
-	valid_paths, unique_prompts = [], []
-
-	def verify_path(img_path):
-		if img_path is None or not os.path.exists(str(img_path)):
-			return None
-		try:
-			with Image.open(img_path) as img:
-				img.verify()
-			return img_path
-		except Exception:
-			return None
-
-	# Parallel verification
-	with ThreadPoolExecutor(max_workers=num_threads) as ex:
-		verified = list(tqdm(ex.map(verify_path, unique_inputs), total=len(unique_inputs), desc="Verifying images"))
-
-	for v in verified:
-		valid_paths.append(v)
-		unique_prompts.append(base_prompt if v else None)
-
-	mem_gb = process.memory_info().rss / (1024 ** 3)
-
-	if verbose:
-		print(f"[PREP] Completed in {time.time() - prep_start:.2f}s | Memory: {mem_gb:.2f} GB | {sum(v is not None for v in valid_paths)} valid images")
+		print(f"\nPARSING VLM: {model_id} RESPONSE")
 	
-	gc.collect()
-	
-	return valid_paths, unique_prompts
-
-def parse_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
-	if verbose:
-		print(f"[VLM: {model_id}] [RESPONSE]\n{raw_response}\n")
-	vlm_response: Optional[str] = None
-	vlm_response = _qwen_vlm_response(raw_response, verbose=verbose)
-	return vlm_response
-
-def _qwen_vlm_response(response: str, verbose: bool = False) -> Optional[List[str]]:
-	if not isinstance(response, str):
+	if not response or not isinstance(response, str):
 		if verbose:
-			print("[ERROR] VLM output is not a string.")
-		return None
-		
-	# Step 1: Find all balanced bracket expressions [...] in the response
-	list_pattern = r"\[[^\[\]]+\]"
-	matches = re.findall(list_pattern, response, re.DOTALL)
-	
-	if verbose:
-		print(f"[DEBUG] Found {len(matches)} list-like pattern(s)")
-		for i, m in enumerate(matches):
-			print(f"[DEBUG]   Match {i}: {m}")
-		print()
-	
-	if not matches:
-		if verbose:
-			print("[ERROR] No list pattern found in response")
+			print(f"ERROR: Invalid response input.")
+			print(f"  Type: {type(response)}")
+			print(f"  Value: {response}")
 		return None
 	
-	# Step 2: Pick the longest match (most likely to be the main list)
-	primary = max(matches, key=len)
+	response = response.strip()
 	
 	if verbose:
-		print(f"[DEBUG] Selected primary list ({len(primary)} chars):")
-		print(f"[DEBUG]   {primary}")
-		print()
+			print(f"\n[STEP 1] Raw response:")
+			print(f"{response}")
+			print(f"\n  Total length: {len(response)} characters")
+	# Step 1: Remove "assistant" prefix if present
+	if response.lower().startswith("assistant"):
+			response = response[len("assistant"):].strip()
+			if verbose:
+					print(f"\n[STEP 1b] Removed 'assistant' prefix")
+	# Step 2: Remove markdown code fences
+	response = re.sub(r'```json\s*', '', response, flags=re.IGNORECASE)
+	response = re.sub(r'```\s*', '', response)
 	
-	# Step 3: Try to parse it as a Python literal
+	if verbose:
+			print(f"\n[STEP 2] After removing markdown fences:")
+			print(f"{response}")
+	# Step 3: Extract the LAST valid JSON object (STRING-AWARE bracket matching)
+	start_idx = response.rfind('{')
+	
+	if verbose:
+			print(f"\n[STEP 3] JSON extraction:")
+			print(f"  Last left curly bracket found at index: {start_idx}")
+	
+	if start_idx == -1:
+			if verbose:
+					print("  ERROR: No JSON object found in response.")
+			return None
+	
+	# String-aware depth counter to ignore braces inside quotes
+	depth = 0
+	in_string = False
+	escape_next = False
+	json_str = None
+	
+	for i in range(start_idx, len(response)):
+			char = response[i]
+			
+			if escape_next:
+					escape_next = False
+					continue
+					
+			if char == '\\':
+					escape_next = True
+					continue
+					
+			if char == '"':
+					in_string = not in_string
+					continue
+					
+			if not in_string:
+					if char == '{':
+							depth += 1
+					elif char == '}':
+							depth -= 1
+							if depth == 0:
+									json_str = response[start_idx:i+1]
+									break
+	
+	if not json_str:
+			if verbose:
+					print(f"  ERROR: Unmatched JSON braces in response.")
+			return None
+	
+	if verbose:
+			print(f"  Extracted JSON string ({len(json_str)} chars):")
+			print(f"{json_str}")
+	# Step 4: Clean common JSON issues (trailing commas)
+	json_str = re.sub(r',\s*}', '}', json_str)
+	json_str = re.sub(r',\s*]', ']', json_str)
+	
+	# Step 5: Parse & Validate
+	if verbose:
+			print(f"\n[STEP 4] Parsing JSON...")
+	
 	try:
-		parsed = ast.literal_eval(primary)
+		parsed = json.loads(json_str)
+		
 		if verbose:
-			print(f"[DEBUG] ✓ ast.literal_eval succeeded")
-			print(f"[DEBUG]   Type: {type(parsed)}")
-			print(f"[DEBUG]   Content: {parsed}")
-			print()
-	except Exception as e:
+				print(f"  ✓ JSON parsed successfully")
+				print(f"  Type: {type(parsed)}")
+		
+		if not isinstance(parsed, dict):
+				if verbose:
+						print(f"  ERROR: Parsed JSON is not an object/dict. Got: {type(parsed)}")
+				return None
+		
 		if verbose:
-			print(f"[ERROR] ast.literal_eval failed: {type(e).__name__}: {e}")
+				print(f"  Keys found: {list(parsed.keys())}")
+		
+		# Ensure required keys exist and are clean lists
+		required_keys = ["text_concepts", "visual_concepts", "fused_concepts"]
+		
+		if verbose:
+				print(f"\n[STEP 5] Validating required keys: {required_keys}")
+		
+		for key in required_keys:
+				if key not in parsed:
+						if verbose:
+								print(f"  ⚠ Missing key '{key}' - adding empty list")
+						parsed[key] = []
+				else:
+						# Safely convert to list and filter out None/empty/whitespace
+						raw_list = parsed[key] if isinstance(parsed[key], list) else [parsed[key]]
+						cleaned = [
+								str(item).strip() for item in raw_list 
+								if item is not None and str(item).strip()
+						]
+						if verbose:
+								print(f"  ✓ Key '{key}': {len(cleaned)}/{len(raw_list)} valid items")
+						parsed[key] = cleaned
+		
+		if verbose:
+				print(f"\n[RESULT] Successfully parsed response:")
+				print(f"  text_concepts: {len(parsed['text_concepts'])} items")
+				print(f"  visual_concepts: {len(parsed['visual_concepts'])} items")
+				print(f"  fused_concepts: {len(parsed['fused_concepts'])} items")
+				print("="*80 + "\n")
+		return parsed
+	except json.JSONDecodeError as e:
+		if verbose:
+			print(f"  ERROR: Failed to parse JSON")
+			print(f"  Exception: {type(e).__name__}: {e}")
+			print(f"  Error at line {e.lineno}, column {e.colno}")
+			print(f"\n  Extracted string (first 500 chars):")
+			print(f"{json_str[:500]}...")
+			print("="*80 + "\n")        
 		return None
-	
-	# Step 4: Validate it's a list
-	if not isinstance(parsed, list):
-		if verbose:
-			print(f"[ERROR] Parsed result is not a list (got {type(parsed)})")
-		return None
-	
-	# Step 5: Convert all items to strings and clean
-	keywords = []
-	for i, item in enumerate(parsed):
-		# Convert to string
-		s = str(item).strip()
-		
-		if verbose:
-			print(f"[DEBUG] Item {i}: {repr(item)} -> {repr(s)}")
-		
-		# Skip empty strings
-		if not s:
-			if verbose:
-				print(f"[DEBUG]   → Skipped (empty)")
-			continue
-		
-		keywords.append(s)
-		
-		if verbose:
-			print(f"[DEBUG]   → Added")
-	
-	if verbose:
-		print()
-		print(f"[DEBUG] Extracted {len(keywords)} keyword(s): {keywords}")
-		print()
-	
-	# Step 6: Remove duplicates while preserving order
-	seen = set()
-	unique_keywords = []
-	
-	for i, kw in enumerate(keywords):
-		if kw not in seen:
-			unique_keywords.append(kw)
-			seen.add(kw)
-			if verbose:
-				print(f"[DEBUG] Dedup {i}: '{kw}' → kept (unique)")
-		else:
-			if verbose:
-				print(f"[DEBUG] Dedup {i}: '{kw}' → skipped (duplicate)")
-	
-	if verbose:
-		print()
-		print(f"[FINAL] Returning {len(unique_keywords)} unique keyword(s): {unique_keywords}")
-		print()
-	
-	return unique_keywords if unique_keywords else None
 
-def get_vlm_based_labels_single(
+def get_vlm_cot_labels_single(
 	model_id: str,
 	image_path: str,
 	max_generated_tks: int,
 	max_kws: int,
+	caption: str,
 	img_resized_shape: int = 512,
 	quantization_bits: Optional[int]=None,
 	verbose: bool = False,
 ):
 	# ========== Load image ==========
 	if verbose:
-		print(f"[LOAD] {image_path}")
+		print(f"[LOADING] {image_path}")
+		print(f"[CAPTION] {caption}")
 
 	img = None
 	try:
@@ -744,7 +759,8 @@ def get_vlm_based_labels_single(
 			f"NaN: {np.isnan(arr).any()} Inf: {np.isinf(arr).any()} Size: {arr.nbytes/(1024**2):.1f} MB\n")
 
 	if img.size[0] == 0 or img.size[1] == 0:
-		if verbose: print("[ERROR] Invalid image size")
+		if verbose: 
+			print("[ERROR] Invalid image size")
 		return None
 
 	# load model and processor
@@ -755,11 +771,11 @@ def get_vlm_based_labels_single(
 	)
 
 	messages = [
-		{"role": "system", "content": "You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century."},
+		{"role": "system", "content": "You are an expert historical archivist specializing in multi-label annotation for 20th-century conflict photography."},
 		{
 			"role": "user",
 			"content": [
-				{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)},
+				{"type": "text", "text": PROMPT_TEMPLATE.format(caption=caption)},
 				{"type": "image", "image": img},
 			],
 		}
@@ -816,327 +832,20 @@ def get_vlm_based_labels_single(
 		print(f"   • Generation ratio:  {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
 		print(f"   • Time per token:    {generation_time / breakdown['generated_tokens']:.3f}s")
 		print(f"   • Tokens per second: {breakdown['generated_tokens'] / generation_time:.1f}")
+		print("-"*100)
 
 	# Decode response
 	response = processor.decode(outputs[0], skip_special_tokens=True)
 
-	# ========== Parse the response ==========
-	try:
-		parsed = parse_vlm_response(
-			model_id=model_id,
-			raw_response=response,
-			verbose=verbose,
-		)
-		if verbose and parsed: print(f"✅ Parsed keywords: {parsed}")
-	except Exception as e:
-		if verbose: print(f"⚠️ Parsing error for image {image_path} {e}")
-		return None
+	parsed = parse_vlm_response(model_id=model_id, response=response, verbose=verbose)
+
+	if verbose:
+		print(f"Parsed Response: {type(parsed)} {len(parsed)} {parsed.keys()}")
+		print(json.dumps(parsed, indent=2, ensure_ascii=False))
 
 	return [parsed]
 
-def get_vlm_based_labels_debug(
-	model_id: str,
-	num_workers: int,
-	max_generated_tks: int,
-	max_kws: int,
-	csv_file: str,
-	do_dedup: bool = True,
-	max_retries: int = 2,
-	quantization_bits: Optional[int]=None,
-	verbose: bool = False,
-) -> List[Optional[List[str]]]:
-
-	# ========== Initialize =========
-	num_workers = min(os.cpu_count(), num_workers)
-	if verbose:
-		print(f"\n{'='*100}")
-		print(f"[INIT] VLM-based keyword generation [DEBUG MODE]")
-		print(f"[INIT] Model: {model_id}")
-		print(f"[INIT] Num workers: {num_workers}")
-		print(f"{'='*100}\n")
-	st_t = time.time()
-	
-	# ========== Check existing results ==========
-	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
-	if os.path.exists(output_csv):
-		df = pd.read_csv(
-			filepath_or_buffer=output_csv,
-			on_bad_lines='skip',
-			dtype=dtypes,
-			low_memory=False,
-		)
-		if 'vlm_keywords' in df.columns:
-			if verbose: 
-				print(f"[EXISTING] Found existing results! {type(df)} {df.shape} {list(df.columns)}")
-			return df['vlm_keywords'].tolist()
-
-	# ========== Load data ==========
-	load_start = time.time()
-	df = pd.read_csv(
-		filepath_or_buffer=csv_file,
-		on_bad_lines='skip',
-		dtype=dtypes,
-		low_memory=False,
-	)
-	if 'img_path' not in df.columns:
-		raise ValueError("CSV file must have 'img_path' column")
-	image_paths = df['img_path'].tolist()
-	if verbose:
-		print(f"[DATA] Loaded {len(image_paths)} image paths from CSV ({time.time() - load_start:.2f}s)")
-
-	# Store original inputs for later reference
-	original_inputs = image_paths
-	if len(original_inputs) == 0:
-		return None
-
-	model_start = time.time()
-	processor, model = _load_vlm_(
-		model_id=model_id,
-		quantization_bits=quantization_bits,
-		verbose=verbose
-	)
-	if verbose:
-		print(f"[MODEL] model & processor loaded in {time.time() - model_start:.2f}s")
-
-	if verbose:
-		print(f"[INPUT] Validating inputs...")
-		st_t = time.time()
-		valid_count = sum(1 for x in original_inputs if x is not None and os.path.exists(str(x)))
-		null_count = len(original_inputs) - valid_count
-		print(f"📊 Input stats: {len(original_inputs)} total, {valid_count} valid, {null_count} null")
-		print(f"[INPUT] Input validation: {time.time() - st_t:.2f}s")
-
-	# ========== Deduplication ==========
-	dedup_start = time.time()
-	if verbose:
-		print(f"[DEDUP] Deduplicating inputs...")
-	if do_dedup:
-		unique_map: Dict[str, int] = {}
-		unique_inputs = []
-		original_to_unique_idx = []
-		for img_path in original_inputs:
-			if img_path is None or not os.path.exists(str(img_path)):
-				key = "__NULL__"
-			else:
-				key = str(img_path)
-			if key in unique_map:
-				original_to_unique_idx.append(unique_map[key])
-			else:
-				idx = len(unique_inputs)
-				unique_map[key] = idx
-				unique_inputs.append(None if key == "__NULL__" else key)
-				original_to_unique_idx.append(idx)
-	else:
-		unique_inputs = []
-		for img_path in original_inputs:
-			if img_path is None or not os.path.exists(str(img_path)):
-				unique_inputs.append(None)
-			else:
-				unique_inputs.append(str(img_path))
-		original_to_unique_idx = list(range(len(unique_inputs)))
-	if verbose:
-		print(f"[DEDUP] Deduplication: {time.time() - dedup_start:.2f}s ({len(original_inputs)} → {len(unique_inputs)} unique)")
-
-	# ========== Prepare prompts and images ==========
-	unique_images, unique_prompts = prepare_prompts_and_images(
-		unique_inputs=unique_inputs,
-		max_kws=max_kws,
-		num_threads=num_workers,
-		verbose=verbose
-	)
-
-	# ========== Sequential processing ==========
-	# Will hold parsed results for unique inputs
-	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
-
-	if verbose:
-		print(f"[PROCESS] Generating valid indices for {len(unique_inputs)} unique images")
-
-	process_start = time.time()
-	valid_indices = [
-		i
-		for i, (p, img) in enumerate(zip(unique_prompts, unique_images)) 
-		if p is not None and img is not None
-	]
-
-	generation_time = 0
-	parsing_time = 0
-
-	if not valid_indices:
-		if verbose: print(f" <!> No valid indices found after deduplication => exiting")
-		return None
-		
-	for idx in tqdm(valid_indices, desc="Processing images"):
-		img_path = unique_images[idx]
-		for attempt in range(max_retries + 1):
-			try:
-				if attempt > 0 and verbose:
-					print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for image {idx + 1}")
-
-				# ========== Prepare inputs ==========
-				with Image.open(img_path).convert("RGB") as img_obj:
-					img = img_obj.copy()
-					img.thumbnail((IMG_MAX_RES, IMG_MAX_RES), Image.LANCZOS)
-				
-				messages = [
-					{
-						"role": "user",
-						"content": [
-							{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)},
-							{"type": "image", "image": img},
-						],
-					}
-				]
-				
-				chat_prompt = processor.apply_chat_template(
-					messages,
-					tokenize=False,
-					add_generation_prompt=True,
-					enable_thinking=False,
-				)
-				
-				input_single = processor(
-					images=img,
-					text=chat_prompt,
-					padding=True,
-					return_tensors="pt"
-				).to(next(model.parameters()).device)
-
-				if verbose:
-					print(f"[INPUT] Pixel: {input_single.pixel_values.shape} {input_single.pixel_values.dtype} {input_single.pixel_values.device}")
-
-				if input_single.pixel_values.numel() == 0:
-					raise ValueError(f"Pixel values of {img_path} are empty: {input_single.pixel_values.shape}")
-				
-				gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True,)
-				# Use model’s built-in defaults unless the user overrides
-				if hasattr(model, "generation_config"):
-					gen_config = model.generation_config
-					gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
-					gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
-				else:
-					gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
-				if verbose:
-					print(f"\n[GEN CONFIG] Using generation parameters:")
-					print(json.dumps(gen_kwargs, indent=2, ensure_ascii=False))
-
-				# ========== Generate response ==========
-				gen_start = time.time()
-				with torch.no_grad():
-					outputs = model.generate(**input_single, **gen_kwargs)
-				
-				# Decode response
-				response = processor.decode(outputs[0], skip_special_tokens=True)
-				
-				# ========== Parse the response ==========
-				parse_start = time.time()
-				try:
-					parsed = parse_vlm_response(
-						model_id=model_id,
-						raw_response=response,
-						verbose=verbose,
-					)
-					unique_results[idx] = parsed
-					parsing_time += time.time() - parse_start
-					if verbose and parsed:
-						print(f"✅ Parsed keywords: {parsed}")
-				except Exception as e:
-					parsing_time += time.time() - parse_start
-					if verbose:
-						print(f"⚠️ Parsing error for image {idx + 1}: {e}")
-					unique_results[idx] = None
-				break  # Break retry loop on success	
-			except Exception as e:
-				if verbose:
-					print(f"❌ Image {idx + 1} {img_path} attempt {attempt + 1} failed:\n{e}\n")
-				
-				if attempt < max_retries:
-					# Exponential backoff
-					sleep_time = EXP_BACKOFF ** attempt
-					if verbose:
-						print(f"⏳ Waiting {sleep_time}s before retry...")
-					time.sleep(sleep_time)
-					torch.cuda.empty_cache() if torch.cuda.is_available() else None
-				else:
-					# Final attempt failed
-					if verbose:
-						print(f"💥 Image {idx + 1} failed after {max_retries + 1} attempts")
-					unique_results[idx] = None
-		
-		# Clean up after each image
-		if 'input_single' in locals():
-			del input_single
-		if 'outputs' in locals():
-			del outputs
-		if 'response' in locals():
-			del response
-		
-		# Memory management - clear cache
-		if idx % 250 == 0 and torch.cuda.is_available():
-			torch.cuda.synchronize()
-			torch.cuda.empty_cache()
-			gc.collect()
-			if verbose:
-				print(f"\t>>> Memory cleared after image[{idx}] {img_path}")
-	
-	if verbose:
-		print(f"[PROCESS] Sequential processing: {time.time() - process_start:.2f}s")
-		print(f"  ├─ Generation time: {generation_time:.2f}s ({generation_time/len(valid_indices):.3f}s/img)")
-		print(f"  └─ Parsing time: {parsing_time:.2f}s ({parsing_time/len(valid_indices):.3f}s/img)")
-	
-	# ========== Map results back ==========
-	map_start = time.time()
-	results = [
-		[el.lower() for el in unique_results[uniq_idx]] if unique_results[uniq_idx] else None
-		for uniq_idx in original_to_unique_idx
-	]
-	if verbose:
-		print(f"[MAP] Result mapping: {time.time() - map_start:.2f}s")
-	
-	# ========== Final statistics ==========
-	stats_start = time.time()
-	if verbose:
-		n_ok = sum(1 for r in results if r is not None)
-		n_null = sum(
-			1 
-			for i, inp in enumerate(original_inputs) 
-			if inp is None or not os.path.exists(str(inp))
-		)
-		n_failed = len(results) - n_ok - n_null
-		success_rate = (n_ok / (len(results) - n_null)) * 100 if (len(results) - n_null) > 0 else 0
-
-		print(f"📊 Final results statistics")		
-		print(f"  ├─ {n_ok}/{len(results)-n_null} successful ({success_rate:.1f}%)")
-		print(f"  └─ {n_null} null inputs, {n_failed} failed")
-		print(f"[STATS] Statistics calculation: {time.time() - stats_start:.2f}s")
-	
-	# ========== Cleanup ==========
-	cleanup_start = time.time()
-	del model, processor
-	torch.cuda.empty_cache() if torch.cuda.is_available() else None
-	if verbose:
-		print(f"[CLEANUP] Model cleanup & cache cleanup: {time.time() - cleanup_start:.2f}s")
-
-	save_start = time.time()
-	if csv_file:
-		df['vlm_keywords'] = results
-		df.to_csv(output_csv, index=False)
-		try:
-			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-		except Exception as e:
-			print(f"Failed to write Excel file: {e}")
-		if verbose:
-			print(f"[SAVE] Saved {len(results)} keywords to {output_csv} ({time.time() - save_start:.2f}s)")
-			print(f"  ├─ {type(df)} {df.shape}")
-			print(f"  └─ {list(df.columns)}")
-
-	if verbose:
-		print(f"[FINAL] Total VLM time: {time.time() - st_t:.2f} sec")
-		print(f"{'='*100}")
-
-	return results
-
-def get_vlm_based_labels(
+def get_vlm_cot_labels(
 	model_id: str,
 	batch_size: int,
 	num_workers: int,
@@ -1149,8 +858,8 @@ def get_vlm_based_labels(
 	verbose: bool=False,
 ):
 	t0 = time.time()
-	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
-	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
+	output_csv = csv_file.replace(".csv", "_vlm_cot.csv")
+	output_jsonl = csv_file.replace(".csv", "_vlm_cot.jsonl")
 
 	try:
 		df = pd.read_csv(
@@ -1166,22 +875,27 @@ def get_vlm_based_labels(
 	
 	# ========== Load data ==========
 	if verbose:
-		print(f"[PREP] Loading data (col: img_path) from {csv_file}...")
+		print(f"[PREP] Loading {csv_file}")
 	try:
 		df = pd.read_csv(
 			filepath_or_buffer=csv_file,
 			on_bad_lines='skip',
 			dtype=dtypes,
 			low_memory=False,
-			usecols = ['doc_url', 'img_path'],
+			usecols = ['doc_url', 'img_path', 'enriched_document_description'],
 		)
 	except Exception as e:
 		raise ValueError(f"Error loading CSV file: {e}")
 
 	image_paths = [p if isinstance(p, str) and os.path.exists(p) else None for p in df["img_path"]]
+	descriptions = [desc  if desc and isinstance(desc, str) else None for desc in df["enriched_document_description"]]
+	assert len(image_paths) == len(descriptions), f"Length mismatch: {len(image_paths)} != {len(descriptions)}"
+
 	n_total = len(image_paths)
 	if verbose:
+		print(df.head())
 		print(f"[DATA] Loaded {type(df)} {df.shape} with {n_total} image paths from CSV ({time.time() - t0:.2f}s)")
+		print(f"IMAGES: {len(image_paths)} DESCRIPTIONS: {len(descriptions)}")
 
 	# ========== Prepare inputs (dedup + verification) ==========
 	if do_dedup:
@@ -1227,7 +941,6 @@ def get_vlm_based_labels(
 		verbose=verbose,
 	)
 
-	# ========== Prepare generation kwargs ==========
 	gen_kwargs = dict(
 		max_new_tokens=max_generated_tks, 
 		use_cache=True,
@@ -1256,24 +969,28 @@ def get_vlm_based_labels(
 			print(f"Error loading image {p}: {e}")
 			return None
 
-	# num_workers = min(8, num_workers)
 	if verbose:
 		print(f"[INIT] BATCHED PARALLEL OPTIMIZED VLM processing with {num_workers} workers")
 
 	total_batches = math.ceil(len(valid_indices) / batch_size)
+	# Open JSONL in append mode once
+	jsonl_file = open(output_jsonl, "a", encoding="utf-8")
+
 	if verbose:
 		print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
 
 	for b in tqdm(range(total_batches), desc="Processing (visual) batches", ncols=120):
 		batch_indices = valid_indices[b * batch_size:(b + 1) * batch_size]
 		batch_paths = [verified_paths[i] for i in batch_indices]
+		batch_descs = [descriptions[i] if descriptions[i] else "No caption available." for i in batch_indices]
 
+		# Parallel Image Loading
 		with ThreadPoolExecutor(max_workers=num_workers) as ex:
 			batch_imgs = list(ex.map(_load_, batch_paths))
 		
 		valid_pairs = [
-			(i, img)
-			for i, img in zip(batch_indices, batch_imgs)
+			(i, img, desc)
+			for i, img, desc in zip(batch_indices, batch_imgs, batch_descs)
 			if img
 		]
 		
@@ -1288,15 +1005,16 @@ def get_vlm_based_labels(
 		# Build per-sample messages
 		messages = [
 			[
+				{"role": "system", "content": "You are an expert historical archivist specializing in multi-label annotation for 20th-century conflict photography."},
 				{
 					"role": "user",
 					"content": [
-						{"type": "text", "text": base_prompt},
+						{"type": "text", "text": PROMPT_TEMPLATE.format(caption=desc)},
 						{"type": "image", "image": img},
 					],
 				}
 			]
-			for _, img in valid_pairs
+			for idx, img, desc in valid_pairs
 		]
 		
 		try:
@@ -1309,7 +1027,7 @@ def get_vlm_based_labels(
 				print(f"\n[BATCH {b}] Chat templates built: {type(chat_texts)} {len(chat_texts)} => Processing batch inputs in {next(model.parameters()).device}...")
 			inputs = processor(
 				text=chat_texts,
-				images=[img for _, img in valid_pairs],
+				images=[img for _, img,_ in valid_pairs],
 				return_tensors="pt",
 				padding=True,
 			).to(next(model.parameters()).device)
@@ -1324,13 +1042,12 @@ def get_vlm_based_labels(
 			generation_time = time.time() - tt
 
 			if verbose: 
-				print(f"\n[BATCH {b}]")
-				print(f"[RESPONSE] {type(outputs)} {outputs.shape}")
+				print(f"\n[BATCH {b}] Outputs: {type(outputs)} {outputs.shape}")
 				breakdown = get_token_breakdown(inputs, outputs)
 				print(f"   • Generation time:   {generation_time:.2f}s")
-				print(f"   • Generation ratio:  {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
 				print(f"   • Time per token:    {generation_time / breakdown['generated_tokens']:.3f}s")
 				print(f"   • Tokens per second: {breakdown['generated_tokens'] / generation_time:.1f}")
+				print("-"*60)
 
 			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
 
@@ -1338,13 +1055,25 @@ def get_vlm_based_labels(
 				print(f"\n[BATCH {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
 
 			# Sequential parsing
-			for (idx, _), resp in zip(valid_pairs, decoded):
+			for (idx, _, _), resp in zip(valid_pairs, decoded):
 				try:
-					results[idx] = parse_vlm_response(
+					parsed = parse_vlm_response(
 						model_id=model_id,
-						raw_response=resp,
+						response=resp,
 						verbose=verbose,
 					)
+					results[idx] = parsed
+
+					# Write to JSONL immediately after successful parse
+					if parsed:
+						receipt = {"id": idx, "cot_raw_concepts": parsed}
+						jsonl_file.write(json.dumps(receipt, ensure_ascii=False) + "\n")
+					else:
+						# Write empty structure so we don't re-process failed parses
+						receipt = {"id": idx, "cot_raw_concepts": {"text_concepts": [], "visual_concepts": [], "fused_concepts": []}}
+						jsonl_file.write(json.dumps(receipt, ensure_ascii=False) + "\n")
+					
+					jsonl_file.flush() # Force write to disk every sample
 				except Exception as e:
 					if verbose:
 						print(f"[WARN] Parse error for idx {idx}: {e}")
@@ -1367,15 +1096,17 @@ def get_vlm_based_labels(
 
 			if verbose:
 				print(f"\tFalling back to SEQUENTIAL processing for {len(valid_pairs)} images in this batch.")
-			for uniq_idx, img in tqdm(valid_pairs, desc="Processing batch images [SEQUENTIAL]", ncols=150):
+			
+			for uniq_idx, img, desc in tqdm(valid_pairs, desc="Processing batch images [SEQUENTIAL]", ncols=150):
 				if verbose:
 					print(f"\n[Fallback] Processing image {uniq_idx}: {type(img)} {img.size} {img.mode}\n")
 
 				single_message = [
+					{"role": "system", "content": "You are an expert historical archivist specializing in multi-label annotation for 20th-century conflict photography."},
 					{
 						"role": "user",
 						"content": [
-							{"type": "text", "text": base_prompt},
+							{"type": "text", "text": PROMPT_TEMPLATE.format(caption=desc)},
 							{"type": "image", "image": img},
 						],
 					}
@@ -1410,11 +1141,15 @@ def get_vlm_based_labels(
 					if verbose:
 						print(f"\n[Sequential Fallback] image {uniq_idx}:\n{type(decoded_single)} {len(decoded_single)}\n")
 
-					results[uniq_idx] = parse_vlm_response(
+					parsed = parse_vlm_response(
 						model_id=model_id,
-						raw_response=decoded_single,
+						response=decoded_single,
 						verbose=verbose,
 					)
+					results[uniq_idx] = parsed
+					receipt = {"id": uniq_idx, "cot_raw_concepts": parsed if parsed else {"text_concepts": [], "visual_concepts": [], "fused_concepts": []}}
+					jsonl_file.write(json.dumps(receipt, ensure_ascii=False) + "\n")
+					jsonl_file.flush()
 				except Exception as e_fallback:
 					print(f"\n[Sequential Fallback] image {uniq_idx}:\n{e_fallback}\nNO keywords extracted.\n")
 					results[uniq_idx] = None
@@ -1454,9 +1189,14 @@ def get_vlm_based_labels(
 			torch.cuda.empty_cache() # clears all GPUs
 			gc.collect()
 
+	jsonl_file.close()
+
 	# ========== Map back to original ordering ==========
 	final = [results[i] for i in orig_to_uniq]
-	df["vlm_keywords"] = final
+	df["vlm_cot_labels"] = final
+
+	print(df.head())
+	print(df.info(verbose=True, memory_usage=True))
 
 	df.to_csv(output_csv, index=False)
 	try:
@@ -1469,6 +1209,7 @@ def get_vlm_based_labels(
 		print(f"[STATS] ✅ Success {n_ok}/{len(final)}")
 		print(f"[TIME] {elapsed/3600:.2f}h | avg {len(final)/elapsed:.2f}/s")
 		print(f"[SAVE] Results written to: {output_csv}")
+	
 	return final
 
 @measure_execution_time
@@ -1476,44 +1217,35 @@ def main():
 	parser = argparse.ArgumentParser(description="VLLM-instruct-based keyword annotation for Historical Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, default=None, help="Path to the metadata CSV file")
 	parser.add_argument("--image_path", '-i', type=str, default=None, help="img path [or URL]")
+	parser.add_argument("--caption", '-c', type=str, default=None, help="caption")
 	parser.add_argument("--model_id", '-vlm', type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace Vision-Language model ID")
 	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device('cuda:0' or 'cpu')")
-	parser.add_argument("--num_workers", '-nw', type=int, default=12, help="Number of workers for parallel processing")
-	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing")
+	parser.add_argument("--num_workers", '-nw', type=int, default=8, help="Number of workers for parallel processing")
+	parser.add_argument("--batch_size", '-bs', type=int, default=2, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
-	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Batch size for processing")
+	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=256, help="Batch size for processing")
 	parser.add_argument("--quantization_bits", '-qb', type=int, default=None, help="Quantization bits")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
-	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
 
 	args = parser.parse_args()
-	set_seeds(seed=42, debug=args.debug)
+	set_seeds(seed=42)
 	args.device = torch.device(args.device)
 	args.num_workers = min(args.num_workers, os.cpu_count())
 	print(args)
 
 	if args.image_path:
-		keywords = get_vlm_based_labels_single(
+		keywords = get_vlm_cot_labels_single(
 			model_id=args.model_id,
 			image_path=args.image_path,
 			max_kws=args.max_keywords,
+			caption=args.caption,
 			img_resized_shape=1024,
 			max_generated_tks=args.max_generated_tks,
 			quantization_bits=args.quantization_bits,
 			verbose=args.verbose,
 		)
-	elif args.debug:
-		keywords = get_vlm_based_labels_debug(
-			model_id=args.model_id,
-			num_workers=args.num_workers,
-			csv_file=args.csv_file,
-			max_kws=args.max_keywords,
-			max_generated_tks=args.max_generated_tks,
-			quantization_bits=args.quantization_bits,
-			verbose=args.verbose,
-		)
 	else:
-		keywords = get_vlm_based_labels(
+		keywords = get_vlm_cot_labels(
 			model_id=args.model_id,
 			csv_file=args.csv_file,
 			num_workers=args.num_workers,
