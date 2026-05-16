@@ -1191,7 +1191,7 @@ def get_vlm_cot_labels(
 
 	jsonl_file.close()
 
-	# ========== Map back to original ordering ==========
+	# Map back to original ordering
 	final = [results[i] for i in orig_to_uniq]
 	df["vlm_cot_labels"] = final
 
