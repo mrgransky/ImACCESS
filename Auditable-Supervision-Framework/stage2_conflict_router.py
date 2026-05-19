@@ -1,5 +1,6 @@
 import os
 import sys
+from tabnanny import verbose
 
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
@@ -18,12 +19,13 @@ class ConflictQuantifier:
 	def __init__(
 		self,
 		sym_model_id: str = 'all-MiniLM-L6-v2',
-		nli_model_id: str = 'cross-encoder/nli-deberta-v3-small',
+		nli_model_id: str = 'cross-encoder/nli-deberta-v3-large',
 		device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
 		tau_match: float = 0.85,
 		tau_soft: float = 0.55,
 		tau_orphan: float = 0.60,
 		tau_asym: float = 0.25,
+		tau_fast_fail: float = 0.40,
 		verbose: bool = False
 	):
 		self.device = device
@@ -31,6 +33,7 @@ class ConflictQuantifier:
 		self.tau_soft = tau_soft
 		self.tau_orphan = tau_orphan
 		self.tau_asym = tau_asym
+		self.tau_fast_fail = tau_fast_fail
 		self.verbose = verbose
 		
 		if self.verbose:
@@ -40,7 +43,8 @@ class ConflictQuantifier:
 			print(f"  ├─ Symmetric Model : {sym_model_id}")
 			print(f"  ├─ NLI Model       : {nli_model_id}")
 			print(f"  ├─ Device          : {self.device}")
-			print(f"  └─ Thresholds      : Match={tau_match}, Soft={tau_soft}, Orphan={tau_orphan}, Asym={tau_asym}")
+			print(f"  └─ Thresholds      : Match={tau_match}, Soft={tau_soft}, Orphan={tau_orphan}, Asym={tau_asym}, FastFail={tau_fast_fail}")
+			print(f"{'='*80}\n")
 		
 		# Load Symmetric Embedder (Cosine Similarity)
 		self.sym_model = SentenceTransformer(
@@ -112,93 +116,122 @@ class ConflictQuantifier:
 		c_text = vlm_json.get("text_concepts", [])
 		c_vis = vlm_json.get("visual_concepts", [])
 		c_fused = vlm_json.get("fused_concepts", [])
-		
-		# Evidence Buckets
-		e_strong, e_density = [], []
-		o_text, o_vis = [], []
-		
-		# 1. The VLM-Driven Hard Conflict Short-Circuit
+				
+		# 1. VLM-Driven Hard Conflict Short-Circuit
 		if isinstance(c_fused, list) and len(c_fused) == 0:
-			# The prompt explicitly returned [] because modalities were disjoint
-			return self._build_receipt(sample_id, "HARD_CONFLICT", c_text, c_vis, "VLM short-circuit triggered ([])")
+			return self._build_receipt(
+				sample_id, 
+				"HARD_CONFLICT", 
+				c_text, 
+				c_vis, 
+				"VLM short-circuit triggered ([])"
+			)
 		
 		if not c_text or not c_vis:
-				return self._build_receipt(sample_id, "HARD_CONFLICT", c_text, c_vis, "Missing Modality")
+			return self._build_receipt(
+				sample_id, 
+				"HARD_CONFLICT", 
+				c_text, 
+				c_vis, 
+				"Missing Modality"
+			)
 
-		# 2. Symmetric Audit (Coverage vs Grounding Gaps)
-		# Encode concepts
+		# 2. TIER 1: SYMMETRIC GATE (FAST COMPUTE)
 		emb_t = self.sym_model.encode(c_text, convert_to_numpy=True, normalize_embeddings=True)
 		emb_v = self.sym_model.encode(c_vis, convert_to_numpy=True, normalize_embeddings=True)
-		# Cosine similarity matrix
+
+		# Mean-pooled set similarity (Shape: 1x1)
+		set_sim = float(1 - scipy.spatial.distance.cosine(emb_t.mean(axis=0), emb_v.mean(axis=0)))
+
+		# FAST SHORT-CIRCUIT: If sets are completely disjoint, skip NLI!
+		if set_sim < self.tau_fast_fail:
+			return self._build_receipt(
+				sample_id, 
+				"HARD_CONFLICT", 
+				c_text, 
+				c_vis, 
+				f"Fast fail (Set Sim={set_sim})"
+			)
+
+		# 3. Symmetric Matrix & Orphan Extraction
 		sim_matrix = 1 - scipy.spatial.distance.cdist(emb_t, emb_v, metric="cosine")
-		# Track matched indices to find orphans
 		matched_t, matched_v = set(), set()
-		# Extract Evidence Pairs
+		e_strong, e_density = [], []
+
 		for i, t in enumerate(c_text):
 			best_v_idx = int(np.argmax(sim_matrix[i]))
 			best_sim = float(sim_matrix[i][best_v_idx])
 			v = c_vis[best_v_idx]
 			if best_sim >= self.tau_match:
-				e_strong.append({"text": t, "vis": v, "sim": round(best_sim, 3)})
+				e_strong.append({"text": t, "vis": v, "sim": best_sim})
 				matched_t.add(i)
 				matched_v.add(best_v_idx)
 			elif best_sim >= self.tau_soft:
-				e_density.append({"text": t, "vis": v, "sim": round(best_sim, 3)})
+				e_density.append({"text": t, "vis": v, "sim": best_sim})
 				matched_t.add(i)
 				matched_v.add(best_v_idx)
 		
-		# Extract Orphans
 		o_text = [c_text[i] for i in range(len(c_text)) if i not in matched_t]
 		o_vis = [c_vis[j] for j in range(len(c_vis)) if j not in matched_v]
-		orphan_ratio = (len(o_text) + len(o_vis)) / (len(c_text) + len(c_vis))
-		# ---------------------------------------------------------
-		# 3. Asymmetric Audit (NLI Density Verification)
-		# ---------------------------------------------------------
+		orphan_ratio = (len(o_text) + len(o_vis)) / max(1, len(c_text) + len(c_vis))
+
+		# 4. TIER 2: Asymmetric Audit (NLI Density Verification)
 		asym_metrics = self.compute_asymmetry_gap(c_text, c_vis)
+		gap = abs(asym_metrics["gap"])
 		
-		# ---------------------------------------------------------
-		# 4. Deterministic Regime Router
-		# ---------------------------------------------------------
+		# 5. Deterministic Regime Router
 		regime = "AGREEMENT"
 		action = "Standard mapping."
+		
 		# Condition 1: Hard Conflict (Too many unverified concepts)
 		if orphan_ratio >= self.tau_orphan:
-				regime = "HARD_CONFLICT"
-				action = f"High orphan ratio ({orphan_ratio:.2f}). Modalities disjoint."
-				
+			regime = "HARD_CONFLICT"
+			action = f"High orphan ratio ({orphan_ratio}). Modalities disjoint."
 		# Condition 2: Soft Conflict (Topic matches, but density mismatches)
-		elif len(e_density) > 0 and abs(asym_metrics["gap"]) >= self.tau_asym:
-				regime = "SOFT_CONFLICT"
-				denser = "VISUAL" if asym_metrics["gap"] > 0 else "TEXT"
-				action = f"Density mismatch confirmed by NLI. {denser} is denser modality."
+		elif gap >= self.tau_asym:
+			regime = "SOFT_CONFLICT"
+			denser = "VISUAL" if asym_metrics["gap"] > 0 else "TEXT"
+			action = f"Density mismatch confirmed by NLI. {denser} is denser. Gap: {gap}"
+
 		return {
-				"id": sample_id,
-				"text_concepts": c_text,
-				"visual_concepts": c_vis,
-				"fused_concepts": c_fused,
-				"regime": regime,
-				"metrics": {
-						"orphan_ratio": round(orphan_ratio, 3),
-						"asymmetry_gap": asym_metrics["gap"],
-						"entail_V_to_T": asym_metrics["V_entails_T"],
-						"entail_T_to_V": asym_metrics["T_entails_V"],
-						"denser_modality": "VISUAL" if asym_metrics["gap"] > 0 else "TEXT" if asym_metrics["gap"] < 0 else "EQUAL"
-				},
-				"evidence": {
-						"E_strong_pairs": e_strong,
-						"E_density_pairs": e_density,
-						"O_text_unverified": o_text,
-						"O_vis_unmentioned": o_vis
-				},
-				"action": action
+			"id": sample_id,
+			"cot_raw_vlm": vlm_json,
+			"regime": regime,
+			"metrics": {
+				"set_similarity": set_sim,
+				"orphan_ratio": orphan_ratio,
+				"asymmetry_gap": asym_metrics["gap"],
+				"entail_V_to_T": asym_metrics["V_entails_T"],
+				"entail_T_to_V": asym_metrics["T_entails_V"],
+				"denser_modality": "VISUAL" if asym_metrics["gap"] > 0 else "TEXT" if asym_metrics["gap"] < 0 else "EQUAL"
+			},
+			"evidence": {
+				"E_strong_pairs": e_strong,
+				"E_density_pairs": e_density,
+				"O_text_unverified": o_text,
+				"O_vis_unmentioned": o_vis
+			},
+			"action": action
 		}
 
 	def _build_receipt(self, sample_id, regime, c_text, c_vis, action):
-		"""Helper for short-circuit conditions."""
+		"""Helper for short-circuit conditions. Updated to include set_similarity."""
 		return {
 			"id": sample_id,
+			"cot_raw_vlm": {
+				"text_concepts": c_text,
+				"visual_concepts": c_vis,
+				"fused_concepts": []
+			},
 			"regime": regime,
-			"metrics": {"orphan_ratio": 1.0, "asymmetry_gap": 0.0},
+			"metrics": {
+				"set_similarity": 0.0, # Defaulting to 0 for short-circuits
+				"orphan_ratio": 1.0, 
+				"asymmetry_gap": 0.0,
+				"entail_V_to_T": 0.0,
+				"entail_T_to_V": 0.0,
+				"denser_modality": "EQUAL"
+			},
 			"evidence": {
 				"E_strong_pairs": [], "E_density_pairs": [],
 				"O_text_unverified": c_text, "O_vis_unmentioned": c_vis
@@ -209,25 +242,36 @@ class ConflictQuantifier:
 def run_stage2_audit(
 	input_csv: str, 
 	output_jsonl: str, 
-	vlm_column: str = "vlm_cot_labels"
+	vlm_column: str = "vlm_cot_labels",
+	verbose: bool = False,
 ):
 	"""
 	Runs the Modality Conflict Quantifier over the dataset.
 	"""
 	print(f"[STAGE 2] Loading Stage 1 outputs from {input_csv}...")
-	df = pd.read_csv(input_csv)
+	df = pd.read_csv(
+		filepath_or_buffer=input_csv,
+		on_bad_lines='skip',
+		dtype=dtypes,
+		low_memory=False,
+		usecols = ['doc_url', vlm_column],
+	)
+	print(df.info(verbose=verbose, memory_usage=True))
 	
-	quantifier = ConflictQuantifier(verbose=True)
+	quantifier = ConflictQuantifier(verbose=verbose)
 	receipts = []
 	print(f"[STAGE 2] Auditing {len(df)} samples...")
 	for idx, row in tqdm(df.iterrows(), total=len(df)):
 		sample_id = str(row.get('doc_url', idx))
+		# print(type(sample_id), type(row.get('vlm_cot_labels')))
+		# print(sample_id, row.get('vlm_cot_labels'))
 		
 		# Safely load the JSON string from Stage 1
 		try:
 			# Assuming Stage 1 wrote valid JSON strings or dicts to the CSV
 			vlm_data = json.loads(row[vlm_column].replace("'", '"')) if isinstance(row[vlm_column], str) else row[vlm_column]
-		except Exception:
+		except Exception as e:
+			print(f"[ERROR] {e}")
 			vlm_data = None
 
 		receipt = quantifier.process_sample(sample_id, vlm_data)
@@ -246,9 +290,10 @@ def run_stage2_audit(
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="VLLM-instruct-based keyword annotation for Historical Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
+	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	args = parser.parse_args()
 	set_seeds(seed=42)
 
 	output_jsonl= args.csv_file.replace(".csv", "_raw_audit_receipts.jsonl")
 	
-	run_stage2_audit(input_csv=args.csv_file, output_jsonl=output_jsonl)
+	run_stage2_audit(input_csv=args.csv_file, output_jsonl=output_jsonl, verbose=args.verbose)

@@ -22,6 +22,10 @@ from nlp_utils import get_enriched_description
 # csv input:
 # python stage1_vlm_extraction.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
+# HPC:
+# one sample:
+# $ python stage1_vlm_extraction.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.6-35B-A3B" -v
+
 PROMPT_TEMPLATE = """Given an image and its caption, extract **NO MORE THAN {k}** distinct concepts, then categorize them precisely into three lists of keywords.
 Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
@@ -42,6 +46,7 @@ Output format:
 	- text_concepts: Keywords derived STRICTLY from the caption.
 	- visual_concepts: Keywords derived STRICTLY from the pixel data.
 	- fused_concepts: Inferred from BOTH modalities.
+		- CONFLICT DETECTION: If text and image are totally disjoint (e.g., text says "aircraft" but image shows "ships"), return an empty list []. Do not attempt to force a fusion.
 
 Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without any markdown, reasoning, or additional text:
 {{
@@ -65,36 +70,6 @@ def is_empty_concepts(concepts: Optional[Dict[str, Any]]) -> bool:
 		not concepts.get("visual_concepts") and
 		not concepts.get("fused_concepts")
 	)
-
-def _load_jsonl_state(jsonl_path: str, verbose: bool = False) -> Dict[int, Dict[str, Any]]:
-	"""
-	Load JSONL into a dict keyed by sample id.
-	Last occurrence wins if duplicates already exist from older runs.
-	"""
-	state: Dict[int, Dict[str, Any]] = {}
-
-	if not os.path.exists(jsonl_path):
-		if verbose:
-			print(f"[WARN] {jsonl_path} not found => Return empty state dict. This is fine if this is the first run.")
-		return state
-
-	with open(jsonl_path, "r", encoding="utf-8") as f:
-		for line_no, line in enumerate(f, start=1):
-			line = line.strip()
-			if not line:
-				continue
-			try:
-				rec = json.loads(line)
-				sid = rec.get("id")
-				if sid is None:
-					continue
-				state[sid] = rec
-			except Exception as e:
-				if verbose:
-					print(f"[WARN] Skipping malformed JSONL line {line_no}: {e}")
-				continue
-
-	return state
 
 def flush_jsonl_state(jsonl_path: str, state: Dict[int, Dict[str, Any]], verbose: bool = False):
 	"""
@@ -753,16 +728,15 @@ def parse_vlm_response(
 		parsed = json.loads(json_str)
 		
 		if verbose:
-				print(f"  ✓ JSON parsed successfully")
-				print(f"  Type: {type(parsed)}")
+			print(f" JSON parsed successfully: {type(parsed)}")
 		
 		if not isinstance(parsed, dict):
-				if verbose:
-						print(f"  ERROR: Parsed JSON is not an object/dict. Got: {type(parsed)}")
-				return None
+			if verbose:
+				print(f"  ERROR: Parsed JSON is not an object/dict. Got: {type(parsed)}")
+			return None
 		
 		if verbose:
-				print(f"  Keys found: {list(parsed.keys())}")
+			print(f"Keys: {list(parsed.keys())}")
 		
 		# Ensure required keys exist and are clean lists
 		required_keys = ["text_concepts", "visual_concepts", "fused_concepts"]
@@ -771,20 +745,21 @@ def parse_vlm_response(
 			print(f"\n[STEP 5] Validating required keys: {required_keys}")
 		
 		for key in required_keys:
-				if key not in parsed:
-						if verbose:
-								print(f"  ⚠ Missing key '{key}' - adding empty list")
-						parsed[key] = []
-				else:
-						# Safely convert to list and filter out None/empty/whitespace
-						raw_list = parsed[key] if isinstance(parsed[key], list) else [parsed[key]]
-						cleaned = [
-								str(item).strip() for item in raw_list 
-								if item is not None and str(item).strip()
-						]
-						if verbose:
-								print(f"  ✓ Key '{key}': {len(cleaned)}/{len(raw_list)} valid items")
-						parsed[key] = cleaned
+			if key not in parsed:
+				if verbose:
+					print(f"  ⚠ Missing key '{key}' - adding empty list")
+				parsed[key] = []
+			else:
+				# Safely convert to list and filter out None/empty/whitespace
+				raw_list = parsed[key] if isinstance(parsed[key], list) else [parsed[key]]
+				cleaned = [
+					str(item).strip() for item in raw_list 
+					if item is not None and str(item).strip()
+				]
+				if verbose:
+					print(f"{key} {len(cleaned)}/{len(raw_list)} valid")
+				
+				parsed[key] = cleaned
 		
 		if verbose:
 				print(f"\n[RESULT] Successfully parsed response:")
@@ -795,12 +770,8 @@ def parse_vlm_response(
 		return parsed
 	except json.JSONDecodeError as e:
 		if verbose:
-			print(f"  ERROR: Failed to parse JSON")
-			print(f"  Exception: {type(e).__name__}: {e}")
-			print(f"  Error at line {e.lineno}, column {e.colno}")
-			print(f"\n  Extracted string (first 500 chars):")
-			print(f"{json_str[:500]}...")
-			print("="*80 + "\n")        
+			print(f"[ERROR] Failed to parse JSON {type(e).__name__}: {e} at line {e.lineno}, column {e.colno}")
+			print(f"{json_str}")
 		return None
 
 def get_vlm_cot_labels_single(
@@ -1009,12 +980,13 @@ def get_vlm_cot_labels(
 	
 	if verbose:
 		print(f"[LOADED] {type(df)} {df.shape} {list(df.columns)}")
-		print(df.head())
 
 	# regenerate enriched_document_description
 	df = get_enriched_description(df=df, check_english=True, verbose=verbose)
 	if verbose:
 		print(f"[READY] {type(df)} {df.shape} {list(df.columns)} ({time.time() - t0:.2f}s)")
+		print(df.info(verbose=True, memory_usage=True))
+		print("-"*100)
 	
 	doc_urls = [url if isinstance(url, str) else None for url in df["doc_url"]]
 	image_paths = [p if isinstance(p, str) and os.path.exists(p) else None for p in df["img_path"]]
@@ -1061,7 +1033,7 @@ def get_vlm_cot_labels(
 	# Load JSONL into a dict keyed by id. Last occurrence wins for any duplicates
 	# from previous crash-restart cycles. Empty-concept entries are NOT restored
 	# into processed_ids so they will be retried and overwritten in-place.
-	jsonl_state: Dict[int, Dict] = load_jsonl_state(output_jsonl, verbose=verbose)
+	jsonl_state: Dict[str, Dict[str, Any]] = load_jsonl_state(output_jsonl, verbose=verbose)
 
 	processed_ids: set[int] = set()
 	retry_ids: set[int] = set()
@@ -1236,7 +1208,7 @@ def get_vlm_cot_labels(
 					
 					# Update in-memory state (flushed atomically to disk after the batch)
 					doc_url = doc_urls[idx] or f"__unknown_{idx}__"
-					jsonl_state[idx] = {
+					jsonl_state[doc_url] = {
 						"id": doc_url,
 						"cot_raw_concepts": parsed if parsed else {
 							"text_concepts": [], "visual_concepts": [], "fused_concepts": []
@@ -1317,7 +1289,7 @@ def get_vlm_cot_labels(
 					)
 					results[uniq_idx] = parsed
 					doc_url = doc_urls[uniq_idx] or f"__unknown_{idx}__"
-					jsonl_state[uniq_idx] = {
+					jsonl_state[doc_url] = {
 						"id": doc_url,
 						"cot_raw_concepts": parsed if parsed else {
 							"text_concepts": [], "visual_concepts": [], "fused_concepts": []
