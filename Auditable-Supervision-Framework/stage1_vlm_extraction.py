@@ -12,41 +12,146 @@ sys.path.insert(0, MISC_DIR)
 print(f"sys.path: {sys.path}")
 
 from utils import *
+from nlp_utils import get_enriched_description
 
 # how to run:
 # local:
-# python stage1_vlm_extraction.py -i /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3-VL-2B-Instruct" -v
+# one sample:
+# python stage1_vlm_extraction.py -i /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
-# python stage1_vlm_extraction.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -v
+# csv input:
+# python stage1_vlm_extraction.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
-PROMPT_TEMPLATE = """Given an image and its caption, extract distinctive concepts and categorize them strictly into three lists of keywords.
+PROMPT_TEMPLATE = """Given an image and its caption, extract **NO MORE THAN {k}** distinct concepts, then categorize them precisely into three lists of keywords.
+Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
-Constraints:
-	- Extract semantically relevant entities.
-	- Exclude 
-		- individual people's names (e.g., Melvin Shaffer).
-		- specific locations (e.g., Boulogne, Paris).
-		- super generic terms (e.g., war, battle, military).
-		- dates, times, or temporal references (e.g., 1945, September 1919, spring 1940).
-		- environmental conditions (e.g., rain, fog, clear sky).
+Forbidden:
+	- Dates, times, years, decades, or any temporal references (e.g., May 12, 1964, September 1919, spring 1940, 1950s era).
+	- Quantities, counts, measurements, or numerical expressions (e.g., 1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
+	- Equipment identifiers, serial numbers, brands, or models.
+	- Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
+	- Continents, countries, states, provinces, cities, towns, islands, regions, or roads.
+	- Individual people's names or honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
+	- Family relationship terms (e.g., mother, father, son, uncle).
+	- Ordinal numeral keywords (e.g., fourth, 1st, 115th).
+	- Roman numerals (e.g., I, II, IV, VIII).
+	- Nationalities, ethnicities, or religions.
+	- Abbreviations, acronyms, phrasal verbs, or descriptive clauses.
 
-OUTPUT DEFINITIONS:
-- text_concepts: Keywords derived STRICTLY from the caption.
-- visual_concepts: Keywords derived STRICTLY from the pixel data.
-- fused_concepts: Inferred from BOTH modalities.
-	- GRANULARITY RESOLUTION: If text is broad ("weapon") and image is specific ("rifle"), resolve to the specific term.
-	- BAD: A full sentence ("3rd detachment soldiers on log") or overly generic hypernyms ("wartime mobilization", "military activity").
-	- GOOD: Specific, concrete, and semantic phrases ("medical personnel resting", "military encampment", "damaged vehicles").
-	- CRITICAL RULE (CONFLICT DETECTION): If the text and image are completely disjoint (e.g., text says "aircraft" but image shows "ships"), return an empty list []. NEVER enforce a fusion.
+Output format:
+	- text_concepts: Keywords derived STRICTLY from the caption.
+	- visual_concepts: Keywords derived STRICTLY from the pixel data.
+	- fused_concepts: Inferred from BOTH modalities.
 
-Caption: {caption}
-
-Return ONLY a valid JSON object in the exact format below.
+Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without any markdown, reasoning, or additional text:
 {{
 "text_concepts": [],
 "visual_concepts": [],
 "fused_concepts":[]
-}}"""
+}}
+
+Caption: {caption}"""
+
+# - Environmental conditions (e.g., rain, fog, clear sky, cloud).
+# - GRANULARITY RESOLUTION: If text is broad ("weapon") and image is specific ("rifle"), resolve to the specific term.
+# - BAD: A full sentence ("3rd detachment soldiers on log") or overly generic hypernyms ("wartime mobilization", "military activity").
+# - GOOD: Specific, concrete, and semantic phrases ("medical personnel resting", "military encampment", "damaged vehicles").
+
+def is_empty_concepts(concepts: Optional[Dict[str, Any]]) -> bool:
+	if not concepts or not isinstance(concepts, dict):
+		return True
+	return (
+		not concepts.get("text_concepts") and
+		not concepts.get("visual_concepts") and
+		not concepts.get("fused_concepts")
+	)
+
+def _load_jsonl_state(jsonl_path: str, verbose: bool = False) -> Dict[int, Dict[str, Any]]:
+	"""
+	Load JSONL into a dict keyed by sample id.
+	Last occurrence wins if duplicates already exist from older runs.
+	"""
+	state: Dict[int, Dict[str, Any]] = {}
+
+	if not os.path.exists(jsonl_path):
+		if verbose:
+			print(f"[WARN] {jsonl_path} not found => Return empty state dict. This is fine if this is the first run.")
+		return state
+
+	with open(jsonl_path, "r", encoding="utf-8") as f:
+		for line_no, line in enumerate(f, start=1):
+			line = line.strip()
+			if not line:
+				continue
+			try:
+				rec = json.loads(line)
+				sid = rec.get("id")
+				if sid is None:
+					continue
+				state[sid] = rec
+			except Exception as e:
+				if verbose:
+					print(f"[WARN] Skipping malformed JSONL line {line_no}: {e}")
+				continue
+
+	return state
+
+def flush_jsonl_state(jsonl_path: str, state: Dict[int, Dict[str, Any]], verbose: bool = False):
+	"""
+	Atomically rewrite JSONL so there is exactly one row per id.
+	"""
+	tmp_path = f"{jsonl_path}.tmp"
+
+	with open(tmp_path, "w", encoding="utf-8") as f:
+		for sid in sorted(state.keys(), key=str):
+			f.write(json.dumps(state[sid], ensure_ascii=False) + "\n")
+
+	os.replace(tmp_path, jsonl_path)
+
+	if verbose:
+		print(f"[SAVE] Compacted JSONL written to: {jsonl_path} ({len(state)} rows)")
+
+def load_jsonl_state(jsonl_path: str, verbose: bool = False) -> Dict[str, Dict[str, Any]]:
+	state: Dict[str, Dict[str, Any]] = {}
+	if not os.path.exists(jsonl_path):
+		if verbose:
+			print(f"[WARN] {jsonl_path} not found => Return empty state dict.")
+		return state
+
+	with open(jsonl_path, "r", encoding="utf-8") as f:
+		for line_no, line in enumerate(f, start=1):
+			line = line.strip()
+			if not line:
+					continue
+			try:
+				rec = json.loads(line)
+				sid = rec.get("id")
+				if sid is None:
+					continue
+				# Skip legacy int-keyed rows
+				if isinstance(sid, int) or (isinstance(sid, str) and sid.lstrip('-').isdigit()):
+					if verbose:
+						print(f"[WARN] Skipping legacy int-keyed row: {sid}")
+					continue
+				
+				# Non-empty wins: only overwrite if incoming record is non-empty
+				# or if the key has never been seen before
+				incoming_concepts = rec.get("cot_raw_concepts", {})
+				if sid not in state:
+					state[sid] = rec
+				elif not is_empty_concepts(incoming_concepts):
+					state[sid] = rec  # upgrade empty → non-empty
+				# else: keep existing non-empty, discard incoming empty
+			except Exception as e:
+				if verbose:
+					print(f"[WARN] Skipping malformed JSONL line {line_no}: {e}")
+				continue
+	
+	if verbose:
+		n_empty = sum(1 for r in state.values() if is_empty_concepts(r.get("cot_raw_concepts", {})))
+		print(f"[LOAD] {len(state)} unique ids | {n_empty} empty (will retry)")
+	
+	return state
 
 def _load_vlm_(
 	model_id: str,
@@ -207,6 +312,7 @@ def _load_vlm_(
 	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
 		tokenizer.padding_side = "left"
 
+	@functools.lru_cache(maxsize=8)
 	def get_estimated_gb_size(model_id: str) -> float:
 		try:
 			info = huggingface_hub.model_info(model_id, token=hf_tk, files_metadata=True)
@@ -569,32 +675,32 @@ def parse_vlm_response(
 	response = response.strip()
 	
 	if verbose:
-			print(f"\n[STEP 1] Raw response:")
-			print(f"{response}")
-			print(f"\n  Total length: {len(response)} characters")
-	# Step 1: Remove "assistant" prefix if present
+		print(f"\nRaw response (Total length: {len(response)} characters):")
+		print(f"{response}")
+	
+	# Step 1a: Remove "assistant" prefix if present
 	if response.lower().startswith("assistant"):
-			response = response[len("assistant"):].strip()
-			if verbose:
-					print(f"\n[STEP 1b] Removed 'assistant' prefix")
-	# Step 2: Remove markdown code fences
+		response = response[len("assistant"):].strip()
+		if verbose:
+			print(f"[STEP 1a] Removed 'assistant' prefix")
+	
+	# Step 1b: Remove markdown code fences
 	response = re.sub(r'```json\s*', '', response, flags=re.IGNORECASE)
 	response = re.sub(r'```\s*', '', response)
-	
 	if verbose:
-			print(f"\n[STEP 2] After removing markdown fences:")
-			print(f"{response}")
+		print(f"[STEP 1b] After removing markdown fences: {len(response)} characters")
+
 	# Step 3: Extract the LAST valid JSON object (STRING-AWARE bracket matching)
 	start_idx = response.rfind('{')
 	
 	if verbose:
-			print(f"\n[STEP 3] JSON extraction:")
-			print(f"  Last left curly bracket found at index: {start_idx}")
+		print(f"\n[STEP 3] JSON extraction:")
+		print(f"  Last left curly bracket found at index: {start_idx}")
 	
 	if start_idx == -1:
-			if verbose:
-					print("  ERROR: No JSON object found in response.")
-			return None
+		if verbose:
+			print("  ERROR: No JSON object found in response.")
+		return None
 	
 	# String-aware depth counter to ignore braces inside quotes
 	depth = 0
@@ -632,15 +738,16 @@ def parse_vlm_response(
 			return None
 	
 	if verbose:
-			print(f"  Extracted JSON string ({len(json_str)} chars):")
-			print(f"{json_str}")
+		print(f"  Extracted JSON string ({len(json_str)} chars):")
+		print(f"{json_str}")
+	
 	# Step 4: Clean common JSON issues (trailing commas)
 	json_str = re.sub(r',\s*}', '}', json_str)
 	json_str = re.sub(r',\s*]', ']', json_str)
 	
 	# Step 5: Parse & Validate
 	if verbose:
-			print(f"\n[STEP 4] Parsing JSON...")
+		print(f"\n[STEP 4] Parsing JSON...")
 	
 	try:
 		parsed = json.loads(json_str)
@@ -661,7 +768,7 @@ def parse_vlm_response(
 		required_keys = ["text_concepts", "visual_concepts", "fused_concepts"]
 		
 		if verbose:
-				print(f"\n[STEP 5] Validating required keys: {required_keys}")
+			print(f"\n[STEP 5] Validating required keys: {required_keys}")
 		
 		for key in required_keys:
 				if key not in parsed:
@@ -775,7 +882,7 @@ def get_vlm_cot_labels_single(
 		{
 			"role": "user",
 			"content": [
-				{"type": "text", "text": PROMPT_TEMPLATE.format(caption=caption)},
+				{"type": "text", "text": PROMPT_TEMPLATE.format(caption=caption, k=max_kws)},
 				{"type": "image", "image": img},
 			],
 		}
@@ -836,6 +943,10 @@ def get_vlm_cot_labels_single(
 
 	# Decode response
 	response = processor.decode(outputs[0], skip_special_tokens=True)
+	# response = processor.decode(
+	# 	outputs[0][input_single["input_ids"].shape[1]:],
+	# 	skip_special_tokens=True
+	# )	
 
 	parsed = parse_vlm_response(model_id=model_id, response=response, verbose=verbose)
 
@@ -875,18 +986,37 @@ def get_vlm_cot_labels(
 	
 	# ========== Load data ==========
 	if verbose:
-		print(f"[PREP] Loading {csv_file}")
+		print(f"[PREP] Loading data (col: enriched_document_description) from {csv_file}...")
+	wanted_cols = {
+		'doc_url',
+		'title',
+		'description',
+		'keywords', # SMU dataset
+		'img_path',
+		'enriched_document_description',
+	}
+
 	try:
 		df = pd.read_csv(
 			filepath_or_buffer=csv_file,
 			on_bad_lines='skip',
 			dtype=dtypes,
 			low_memory=False,
-			usecols = ['doc_url', 'img_path', 'enriched_document_description'],
+			usecols = lambda c: c in wanted_cols, # automatically skips missing cols
 		)
 	except Exception as e:
 		raise ValueError(f"Error loading CSV file: {e}")
+	
+	if verbose:
+		print(f"[LOADED] {type(df)} {df.shape} {list(df.columns)}")
+		print(df.head())
 
+	# regenerate enriched_document_description
+	df = get_enriched_description(df=df, check_english=True, verbose=verbose)
+	if verbose:
+		print(f"[READY] {type(df)} {df.shape} {list(df.columns)} ({time.time() - t0:.2f}s)")
+	
+	doc_urls = [url if isinstance(url, str) else None for url in df["doc_url"]]
 	image_paths = [p if isinstance(p, str) and os.path.exists(p) else None for p in df["img_path"]]
 	descriptions = [desc  if desc and isinstance(desc, str) else None for desc in df["enriched_document_description"]]
 	assert len(image_paths) == len(descriptions), f"Length mismatch: {len(image_paths)} != {len(descriptions)}"
@@ -895,7 +1025,7 @@ def get_vlm_cot_labels(
 	if verbose:
 		print(df.head())
 		print(f"[DATA] Loaded {type(df)} {df.shape} with {n_total} image paths from CSV ({time.time() - t0:.2f}s)")
-		print(f"IMAGES: {len(image_paths)} DESCRIPTIONS: {len(descriptions)}")
+		print(f"IMAGES: {len(image_paths)} | DESCRIPTIONS: {len(descriptions)}")
 
 	# ========== Prepare inputs (dedup + verification) ==========
 	if do_dedup:
@@ -911,11 +1041,10 @@ def get_vlm_cot_labels(
 	else:
 		uniq_inputs = image_paths
 		orig_to_uniq = list(range(n_total))
-	
 	if verbose:
-		print(f"[INIT] Deduplication: {len(uniq_inputs)} unique images")
-	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
+		print(f"[DEDUP] {len(uniq_inputs)} unique images")
 
+	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
 	with ThreadPoolExecutor(max_workers=num_workers) as ex:
 		verified_paths = list(
 			tqdm(
@@ -925,9 +1054,47 @@ def get_vlm_cot_labels(
 			)
 		)
 	valid_indices = [i for i, v in enumerate(verified_paths) if v is not None]
+	if verbose:
+		print(f"[INIT] {len(valid_indices)} verified images")
+
+	# ========== JSONL Resume Logic (1 row per id, atomic rewrite) ==========
+	# Load JSONL into a dict keyed by id. Last occurrence wins for any duplicates
+	# from previous crash-restart cycles. Empty-concept entries are NOT restored
+	# into processed_ids so they will be retried and overwritten in-place.
+	jsonl_state: Dict[int, Dict] = load_jsonl_state(output_jsonl, verbose=verbose)
+
+	processed_ids: set[int] = set()
+	retry_ids: set[int] = set()
+
+	# Build reverse map: doc_url → uniq_idx
+	url_to_idx: Dict[str, int] = {
+		(doc_urls[i] or f"__unknown_{i}__"): i
+		for i in range(len(uniq_inputs))
+	}
+
+	for url_key, rec in jsonl_state.items():
+		idx = url_to_idx.get(url_key)
+		if idx is None:
+			continue
+		concepts = rec.get("cot_raw_concepts", {})
+		if is_empty_concepts(concepts):
+			retry_ids.add(idx)
+		else:
+			results[idx] = concepts
+			processed_ids.add(idx)
 
 	if verbose:
-		print(f"[INIT] Verification: {len(valid_indices)} verified images")
+		n_unseen = len([i for i in valid_indices if (doc_urls[i] or f"__unknown_{i}__") not in jsonl_state])
+		print(f"[RESUME] JSONL loaded: {len(jsonl_state)} unique ids found")
+		print(f"         ✅ Restored (non-empty) : {len(processed_ids)}")
+		print(f"         🔄 Will retry (empty)   : {len(retry_ids)}")
+		print(f"         🆕 Never seen           : {n_unseen}")
+
+	# Only skip ids with confirmed non-empty results
+	valid_indices = [i for i in valid_indices if i not in processed_ids]
+	if verbose:
+		print(f"[RESUME] {len(valid_indices)} images remaining to process")
+	# ========== End Resume Logic ==========
 
 	# # MEMORY INTENSIVE! (DO NOT USE)
 	# valid_imgs = [Image.open(p).convert("RGB") for p in verified_paths if p is not None]
@@ -973,9 +1140,6 @@ def get_vlm_cot_labels(
 		print(f"[INIT] BATCHED PARALLEL OPTIMIZED VLM processing with {num_workers} workers")
 
 	total_batches = math.ceil(len(valid_indices) / batch_size)
-	# Open JSONL in append mode once
-	jsonl_file = open(output_jsonl, "a", encoding="utf-8")
-
 	if verbose:
 		print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
 
@@ -1009,7 +1173,7 @@ def get_vlm_cot_labels(
 				{
 					"role": "user",
 					"content": [
-						{"type": "text", "text": PROMPT_TEMPLATE.format(caption=desc)},
+						{"type": "text", "text": PROMPT_TEMPLATE.format(caption=desc, k=max_kws)},
 						{"type": "image", "image": img},
 					],
 				}
@@ -1024,7 +1188,7 @@ def get_vlm_cot_labels(
 				for m in messages
 			]
 			if verbose:
-				print(f"\n[BATCH {b}] Chat templates built: {type(chat_texts)} {len(chat_texts)} => Processing batch inputs in {next(model.parameters()).device}...")
+				print(f"[BATCH {b}] Chat templates built: {type(chat_texts)} {len(chat_texts)} => Processing batch inputs in {next(model.parameters()).device}...")
 			inputs = processor(
 				text=chat_texts,
 				images=[img for _, img,_ in valid_pairs],
@@ -1033,7 +1197,7 @@ def get_vlm_cot_labels(
 			).to(next(model.parameters()).device)
 
 			if verbose:
-				print(f"\n[BATCH {b}] Generating responses for {len(valid_pairs)} images [takes a while]...")
+				print(f"[BATCH {b}] Generating responses for {len(valid_pairs)} images [takes a while]...")
 
 			# Generate response
 			tt = time.time()
@@ -1042,7 +1206,7 @@ def get_vlm_cot_labels(
 			generation_time = time.time() - tt
 
 			if verbose: 
-				print(f"\n[BATCH {b}] Outputs: {type(outputs)} {outputs.shape}")
+				print(f"[BATCH {b}] Outputs: {type(outputs)} {outputs.shape}")
 				breakdown = get_token_breakdown(inputs, outputs)
 				print(f"   • Generation time:   {generation_time:.2f}s")
 				print(f"   • Time per token:    {generation_time / breakdown['generated_tokens']:.3f}s")
@@ -1050,6 +1214,12 @@ def get_vlm_cot_labels(
 				print("-"*60)
 
 			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
+
+			# input_len = inputs["input_ids"].shape[1]
+			# decoded = processor.batch_decode(
+			# 	outputs[:, input_len:],  # slice off input tokens
+			# 	skip_special_tokens=True
+			# )
 
 			if verbose:
 				print(f"\n[BATCH {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
@@ -1063,17 +1233,16 @@ def get_vlm_cot_labels(
 						verbose=verbose,
 					)
 					results[idx] = parsed
-
-					# Write to JSONL immediately after successful parse
-					if parsed:
-						receipt = {"id": idx, "cot_raw_concepts": parsed}
-						jsonl_file.write(json.dumps(receipt, ensure_ascii=False) + "\n")
-					else:
-						# Write empty structure so we don't re-process failed parses
-						receipt = {"id": idx, "cot_raw_concepts": {"text_concepts": [], "visual_concepts": [], "fused_concepts": []}}
-						jsonl_file.write(json.dumps(receipt, ensure_ascii=False) + "\n")
 					
-					jsonl_file.flush() # Force write to disk every sample
+					# Update in-memory state (flushed atomically to disk after the batch)
+					doc_url = doc_urls[idx] or f"__unknown_{idx}__"
+					jsonl_state[idx] = {
+						"id": doc_url,
+						"cot_raw_concepts": parsed if parsed else {
+							"text_concepts": [], "visual_concepts": [], "fused_concepts": []
+						}
+					}
+
 				except Exception as e:
 					if verbose:
 						print(f"[WARN] Parse error for idx {idx}: {e}")
@@ -1106,7 +1275,7 @@ def get_vlm_cot_labels(
 					{
 						"role": "user",
 						"content": [
-							{"type": "text", "text": PROMPT_TEMPLATE.format(caption=desc)},
+							{"type": "text", "text": PROMPT_TEMPLATE.format(caption=desc, k=max_kws)},
 							{"type": "image", "image": img},
 						],
 					}
@@ -1147,9 +1316,13 @@ def get_vlm_cot_labels(
 						verbose=verbose,
 					)
 					results[uniq_idx] = parsed
-					receipt = {"id": uniq_idx, "cot_raw_concepts": parsed if parsed else {"text_concepts": [], "visual_concepts": [], "fused_concepts": []}}
-					jsonl_file.write(json.dumps(receipt, ensure_ascii=False) + "\n")
-					jsonl_file.flush()
+					doc_url = doc_urls[uniq_idx] or f"__unknown_{idx}__"
+					jsonl_state[uniq_idx] = {
+						"id": doc_url,
+						"cot_raw_concepts": parsed if parsed else {
+							"text_concepts": [], "visual_concepts": [], "fused_concepts": []
+						}
+					}
 				except Exception as e_fallback:
 					print(f"\n[Sequential Fallback] image {uniq_idx}:\n{e_fallback}\nNO keywords extracted.\n")
 					results[uniq_idx] = None
@@ -1188,8 +1361,12 @@ def get_vlm_cot_labels(
 			print(f"\n[WARN] High memory usage ({memory_consumed_percent:.1f}% > {mem_cleanup_th}%) => Clearing cache...")
 			torch.cuda.empty_cache() # clears all GPUs
 			gc.collect()
+		
+		# Atomically rewrite JSONL: exactly one row per id, no duplicates
+		flush_jsonl_state(output_jsonl, jsonl_state, verbose=verbose)
 
-	jsonl_file.close()
+	# Final flush to ensure any last-batch updates are persisted
+	flush_jsonl_state(output_jsonl, jsonl_state, verbose=verbose)
 
 	# Map back to original ordering
 	final = [results[i] for i in orig_to_uniq]
@@ -1197,6 +1374,8 @@ def get_vlm_cot_labels(
 
 	print(df.head())
 	print(df.info(verbose=True, memory_usage=True))
+	print(f'vlm_cot_labels column contains {df["vlm_cot_labels"].isna().sum()} None(s) (failed).')
+	print("-"*100)
 
 	df.to_csv(output_csv, index=False)
 	try:
@@ -1207,7 +1386,7 @@ def get_vlm_cot_labels(
 	if verbose:
 		n_ok = sum(1 for r in final if r)
 		print(f"[STATS] ✅ Success {n_ok}/{len(final)}")
-		print(f"[TIME] {elapsed/3600:.2f}h | avg {len(final)/elapsed:.2f}/s")
+		print(f"[TIME] {elapsed/3600:.3f}h | avg {len(final)/elapsed:.2f}/s")
 		print(f"[SAVE] Results written to: {output_csv}")
 	
 	return final
@@ -1223,7 +1402,7 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=8, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=2, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
-	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=256, help="Batch size for processing")
+	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=256, help="Max number of generated tokens")
 	parser.add_argument("--quantization_bits", '-qb', type=int, default=None, help="Quantization bits")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 

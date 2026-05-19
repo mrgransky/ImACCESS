@@ -75,7 +75,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExec
 from requests.exceptions import RequestException
 import torchvision.transforms as T
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
-from functools import cache, partial
+import functools
 
 from skmultilearn.model_selection import iterative_train_test_split, IterativeStratification
 from tqdm import tqdm

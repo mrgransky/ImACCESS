@@ -1,11 +1,13 @@
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model_id = "cross-encoder/nli-deberta-v3-large"
+print(f"loading: {model_id}")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = AutoModelForSequenceClassification.from_pretrained(model_id)
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 model.to(device)
+print(f"[LOADED] {model_id}")
 
 premises = [
 	"T-34 Tank",

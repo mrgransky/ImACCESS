@@ -417,7 +417,6 @@ def _post_process_(
 		# Has specific words → Keep
 		return False
 
-
 	def get_wordnet_pos(treebank_tag):
 		"""Convert Penn Treebank POS tag to WordNet POS tag"""
 		if treebank_tag.startswith('J'):
@@ -932,6 +931,7 @@ def basic_clean(txt: str):
 		r'Type: C-N \(Color Negative\) C-P \(Color Print\) ',
 		r'Picture documentation (small picture slideshow) about ',
 		r'Misc. shots of ',
+		r'misc. scenes',
 		r'Original caption: Miscellaneous',
 		r'Original caption: Photograph Of ',
 		r"Captured Japanese Photograph of ",
@@ -1225,12 +1225,12 @@ def get_enriched_description(
 		
 	if verbose:
 		print(
-			f"Number of empty enriched_document_description: "
+			f"\nNumber of empty enriched_document_description: "
 			f"{df_enriched['enriched_document_description'].isna().sum()} "
 			f"out of {df_enriched.shape[0]} total samples "
 			f"({df_enriched['enriched_document_description'].isna().sum()/df_enriched.shape[0]*100:.2f}%) "
 		)
-		print(f"{type(df_enriched)} {df_enriched.shape} {list(df_enriched.columns)}")
+		print(f"{type(df_enriched)} {df_enriched.shape} {list(df_enriched.columns)}\n")
 
 	return df_enriched
 
