@@ -170,9 +170,7 @@ def cluster_and_save_priors(
 	# Creates a dictionary mapping raw_concept string -> L2 normalized numpy embedding array
 	emb_cache = {lbl: emb for lbl, emb in zip(df_clean['label'].tolist(), X_clean)}
 	emb_path = os.path.join(output_dir, os.path.basename(receipts_jsonl.replace(".jsonl", "_emb_cache.pt")))
-	
-	# Save using standard PyTorch serializer (supports dict(str -> np.ndarray))
-	torch.save(emb_cache, emb_path)
+	torch.save(emb_cache, emb_path) # standard PyTorch serializer (supports dict(str -> np.ndarray))
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Stage 3: Global Aggregation & Ontology Builder")
