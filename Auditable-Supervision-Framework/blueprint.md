@@ -1,9 +1,7 @@
-***
-
-# 🗺️ THE BLUEPRINT: Supervision Transparency Framework 
+# BLUEPRINT: Supervision Transparency Framework 
 **Core Thesis (B $\rightarrow$ A $\rightarrow$ C):** Modality conflict is a structural dataset property (**B**). We build an auditable pipeline to detect and route it per label (**A**). We use these audits to dynamically condition downstream loss, safely integrating soft conflicts and repelling hallucinations (**C**).
 
-## ⚙️ PHASE 1: Stateless Map (GPU-Heavy / Per-Sample)
+## PHASE 1: Stateless Map (GPU-Heavy / Per-Sample)
 
 ### **Stage 1: Joint VLM Extraction with CoT Attribution**
 *   **The Goal:** Extract distinct semantic concepts while forcing the VLM to explicitly attribute their modality source.
@@ -22,13 +20,13 @@
 *   **The Output:** A mathematically auditable `Evidence_Receipt` JSON per sample.
 
 ---
-## 🌐 THE BRIDGE: Global Aggregation (CPU / Dataset-Level)
+## BRIDGE: Global Aggregation (CPU / Dataset-Level)
 *   **The Goal:** Discover the Target Canonical Vocabulary ($V$) and compute global dataset statistics.
 *   **The Mechanism:** Collect all raw concepts from Stage 1. Run your existing `clustering.py` engine (Agglomerative Linkage, Virtual Hypernym Synthesis, 5-Signal Canonical Assignment). 
 *   **The Output:** A universal `canonical_map.json`, a pre-computed `emb_cache.pt`, and global corpus frequencies for every concept.
 ---
 
-## ⚙️ PHASE 2: Stateful Map (Fast Vector Math / Per-Sample)
+## PHASE 2: Stateful Map (Fast Vector Math / Per-Sample)
 
 ### **Stage 3: The Micro-CGD Audit**
 *   **The Goal:** Assign a continuous quality score $[0,1]$ to every raw concept proposed in Stage 1 based on its Stage 2 receipt and Global Aggregation frequencies.
@@ -48,7 +46,7 @@
     *(Schema: `sample_id | positive_targets | hn_targets | w_pos | w_neg | regime`)*
 
 ---
-## 🚀 DOWNSTREAM: Representation Learning
+## DOWNSTREAM: Representation Learning (Fine-Tuning using PEFT)
 
 ### **Stage 5: Regime-Conditioned Dual-Encoder Training**
 *   **The Goal:** Train a VLR model (e.g., CLIP ViT-L/14) that safely learns from the long-tail, respects soft conflicts, and actively unlearns archival hallucinations.
@@ -58,5 +56,3 @@
         *   Multiply the positive target loss by **$\omega_{pos}$** (throttling learning from rescued/noisy labels).
         *   Multiply a repulsion loss by **$\omega_{neg}$** to explicitly push the image embedding *away* from hallucinated `hn_targets`.
 *   **The Output:** A fully trained, noise-resilient multimodal retrieval model achieving SOTA on the HISTORY-X4 benchmark. 
-
-***
