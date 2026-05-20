@@ -1,0 +1,79 @@
+[ Input: 110K Historical B&W Images + Archival Captions ]
+                             │
+                             ▼
+=========================================================================
+[ PHASE 1: Stateless Map (Compute Heavy / GPU Parallel) ]
+=========================================================================
+  ┌───────────────────────────────────────────────────────────────────┐
+  │ For Sample i:                                                     │
+  │  ├─ Stage 1: Joint VLM Extraction (JSON prompt)                   │
+  │  │           => C_text, C_vis, C_fused                            │
+  │  └─ Stage 2: Modality Conflict Quantification                     │
+  │              => E_sym (Cosine): Finds Orphans (O_text, O_vis)     │
+  │              => E_asym (NLI): Computes Asymmetry Gap (Δ_density)  │
+  │              => Output: Regime [AGREEMENT | SOFT | HARD]          │
+  └───────────────────────────────────────────────────────────────────┘
+                             │ (Append continuously to crash-safe disk)
+                             ▼
+                [ raw_audit_receipts.jsonl ]
+                             │
+                             ▼
+=========================================================================
+[ GLOBAL AGGREGATION: Corpus-Level Ontology Discovery ]
+=========================================================================
+  ┌───────────────────────────────────────────────────────────────────┐
+  │ 1. Extract & count all unique raw concepts => D_global frequencies│
+  │ 2. Pre-compute 'all-MiniLM' embedding cache.                      │
+  │ 3. Execute `clustering.py` Engine:                                │
+  │     ├─ Agglomerative Linkage & Adaptive k Search                  │
+  │     ├─ Virtual Hypernym Synthesis                                 │
+  │     └─ 5-Signal Composite Canonical Assignment                    │
+  └───────────────────────────────────────────────────────────────────┘
+                             │
+                             ├─► [ Discovered Target Vocabulary (V) ]
+                             │
+                             ▼
+     [ global_freqs.json, canonical_map.json, emb_cache.pt ]
+                             │
+                             ▼
+=========================================================================
+[ PHASE 2: Stateful Map (Instant Vector Math / CPU Parallel) ]
+=========================================================================
+  ┌───────────────────────────────────────────────────────────────────┐
+  │ For Sample i:                                                     │
+  │  ├─ Stage 3: Micro-CGD Audit                                      │
+  │  │           => Compute Coverage (C), Grounding (G)               │
+  │  │           => Compute Density D(c) = D_global * D_local (NLI)   │
+  │  └─ Stage 4: Regime-Aware Consolidation (Gating & Weights)        │
+  │              => Map raw concepts to V via canonical_map.json      │
+  │                                                                   │
+  │      [AGREEMENT]   => positive_targets = Union(Text, Vis)         │
+  │                       w_pos = 1.0, w_neg = 0.0                    │
+  │                                                                   │
+  │      [SOFT CONFLICT]=> positive_targets = Filter(Union, D(c) > τ) │
+  │                       w_pos = 1.0 - |Δ_density|, w_neg = 0.0      │
+  │                                                                   │
+  │      [HARD CONFLICT]=> positive_targets = Grounded Vis Only       │
+  │                       hn_targets = Suppressed Text Orphans        │
+  │                       w_pos = 0.3, w_neg = 1.0 - G(c)             │
+  └───────────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+        [ auditable_supervision_matrix.parquet ]
+ (Schema: sample_id | pos_targets | hn_targets | w_pos | w_neg | Regime)
+                             │
+                             ▼
+=========================================================================
+[ STAGE 5: Downstream Dual-Encoder Retrieval Training ]
+=========================================================================
+  ┌───────────────────────────────────────────────────────────────────┐
+  │ PyTorch DataLoader yields per batch:                              │
+  │ (images, texts, pos_targets, hn_targets, w_pos, w_neg)            │
+  │                                                                   │
+  │ 1. Forward Pass: logits_i2t = Model(images, texts)                │
+  │ 2. Base Loss: L_base = BCEWithLogits(logits_i2t, pos_targets,     │
+  │                                      pos_weight=class_balancer)   │
+  │ 3. Positive Scaling: L_pos = L_base * w_pos                       │
+  │ 4. HN Repulsion: L_hn = BCE(logits_i2t * hn_targets, 0) * w_neg   │
+  │ 5. Final Objective: Loss = mean(L_pos) + α * mean(L_hn)           │
+  └───────────────────────────────────────────────────────────────────┘

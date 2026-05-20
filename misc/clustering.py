@@ -2434,8 +2434,6 @@ def assign_canonical_labels(
 			scores.append(subsumers / max(len(cluster_lbls), 1))
 		return np.array(scores)
 
-	# ── Main loop ─────────────────────────────────────────────────────────────
-
 	print(f"\nCanonical labels per cluster")
 	cluster_canonicals    = {}
 	virtual_used_count    = 0
