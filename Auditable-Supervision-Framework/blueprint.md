@@ -60,5 +60,3 @@
 *   **The Output:** A fully trained, noise-resilient multimodal retrieval model achieving SOTA on the HISTORY-X4 benchmark. 
 
 ***
-
-Whenever we get bogged down in the Python tensor shapes or pandas dataframes, we will pull this document up. It ensures every line of code we write serves the overarching scientific narrative!
