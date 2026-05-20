@@ -41,7 +41,7 @@
 =========================================================================
   ┌───────────────────────────────────────────────────────────────────┐
   │ For Sample i:                                                     │
-  │  ├─ Stage 3: Micro-CGD Audit                                      │
+  │  ├─ Stage 3: Micro-CGD Audit vs (Macro-CGD in IEEE Access paper)  │
   │  │           => Compute Coverage (C), Grounding (G)               │
   │  │           => Compute Density D(c) = D_global * D_local (NLI)   │
   │  └─ Stage 4: Regime-Aware Consolidation (Gating & Weights)        │

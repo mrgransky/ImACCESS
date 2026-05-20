@@ -14,6 +14,45 @@ print(f"sys.path: {sys.path}")
 
 from utils import *
 
+def is_empty_concepts(concepts: Optional[Dict[str, Any]]) -> bool:
+	if not concepts or not isinstance(concepts, dict):
+		return True
+	return (
+		not concepts.get("text_concepts") and
+		not concepts.get("visual_concepts") and
+		not concepts.get("fused_concepts")
+	)
+
+def safe_parse_vlm_str(vlm_data_str: str) -> Optional[Dict]:
+	if not isinstance(vlm_data_str, str):
+		print(f"vlm_data_str is not a string: {vlm_data_str}")
+		return vlm_data_str
+	
+	# Normalize smart/curly quotes to ASCII equivalents BEFORE any JSON parsing
+	vlm_data_str = (
+		vlm_data_str
+		.replace('\u201c', '\u2018')  # " → ' (left double → left single)
+		.replace('\u201d', '\u2019')  # " → ' (right double → right single)
+		.replace('\u2018', "'")       # ' → '
+		.replace('\u2019', "'")       # ' → '
+	)
+	
+	# Try JSON first (clean path)
+	try:
+		return json.loads(vlm_data_str)
+	except json.JSONDecodeError as json_e:
+		print(f"[ERROR] JSON parsing failed: {json_e} - Attempting fallback: {type(vlm_data_str)} {vlm_data_str}")
+		pass
+	
+	# Fallback: ast.literal_eval for Python-style dicts
+	try:
+		return ast.literal_eval(vlm_data_str)
+	except Exception as e:
+		print(f"[ERROR] ast.literal_eval failed: {e}")
+		pass
+	
+	return None
+
 class ConflictQuantifier:
 	def __init__(
 		self,
@@ -194,7 +233,7 @@ class ConflictQuantifier:
 
 		return {
 			"id": sample_id,
-			"cot_raw_vlm": vlm_json,
+			"vlm_cot_raw": vlm_json,
 			"regime": regime,
 			"metrics": {
 				"set_similarity": set_sim,
@@ -217,7 +256,7 @@ class ConflictQuantifier:
 		"""Helper for short-circuit conditions. Updated to include set_similarity."""
 		return {
 			"id": sample_id,
-			"cot_raw_vlm": {
+			"vlm_cot_raw": {
 				"text_concepts": c_text,
 				"visual_concepts": c_vis,
 				"fused_concepts": []
@@ -238,45 +277,48 @@ class ConflictQuantifier:
 			"action": action
 		}
 
-def run_stage2_audit(
-	input_csv: str, 
-	output_jsonl: str, 
-	vlm_column: str = "vlm_cot_labels",
-	verbose: bool = False,
-):
-	"""
-	Runs the Modality Conflict Quantifier over the dataset.
-	"""
-	print(f"[STAGE 2] Loading Stage 1 outputs from {input_csv}...")
-	df = pd.read_csv(
-		filepath_or_buffer=input_csv,
-		on_bad_lines='skip',
-		dtype=dtypes,
-		low_memory=False,
-		usecols = ['doc_url', vlm_column],
-	)
-	print(df.info(verbose=verbose, memory_usage=True))
-	
-	quantifier = ConflictQuantifier(verbose=verbose)
-	receipts = []
-	print(f"[STAGE 2] Auditing {len(df)} samples...")
-	for idx, row in tqdm(df.iterrows(), total=len(df)):
-		sample_id = str(row.get('doc_url', idx))
-		# print(type(sample_id), type(row.get('vlm_cot_labels')))
-		# print(sample_id, row.get('vlm_cot_labels'))
-		
-		# Safely load the JSON string from Stage 1
-		try:
-			# Assuming Stage 1 wrote valid JSON strings or dicts to the CSV
-			vlm_data = json.loads(row[vlm_column].replace("'", '"')) if isinstance(row[vlm_column], str) else row[vlm_column]
-		except Exception as e:
-			print(f"[ERROR] {e}")
-			vlm_data = None
+def modality_conflict_audit(input_jsonl: str, column: str, verbose: bool = False,):
+	# Modality Conflict Quantifier over the dataset.
+	print(f"[STAGE 2] Loading Stage 1 outputs from {input_jsonl}")
+	records = []
+	skipped = 0
+	with open(input_jsonl, "r", encoding="utf-8") as f:
+		for line_no, line in enumerate(f, start=1):
+			line = line.strip()
+			if not line:
+				continue
+			try:
+				rec = json.loads(line)
+				sid = rec.get("id")
+				concepts = rec.get(column)
+				if sid is None or concepts is None:
+					skipped += 1
+					continue
+				records.append((sid, concepts))
+			except json.JSONDecodeError as e:
+				print(f"[WARN] Skipping malformed line {line_no:.4d} {e}")
+				print(f"{line}")
+				skipped += 1
 
-		receipt = quantifier.process_sample(sample_id, vlm_data)
-		receipts.append(receipt)
+	print(f"[STAGE 2] Loaded {len(records)} records ({skipped} skipped).")
+	quantifier = ConflictQuantifier(verbose=verbose)
+	
+	receipts = []
+	for sample_id, vlm_data in tqdm(records, desc="Auditing"):
+		if is_empty_concepts(vlm_data):
+			if verbose:
+				print(f"[SKIP] Empty concepts for {sample_id}")
+			continue
+		
+		try:
+			receipt = quantifier.process_sample(sample_id, vlm_data)
+			receipts.append(receipt)
+		except Exception as e:
+			print(f"[ERROR] quantifier failed for {sample_id}: {e}")
+
 	# Save Receipts to JSONL
-	print(f"[STAGE 2] Saving Evidence Receipts to {output_jsonl}...")
+	output_jsonl = input_jsonl.replace(".jsonl", "_modality_conflict_audit.jsonl")
+	print(f"[STAGE 2] Saving Evidence Receipts to {output_jsonl}")
 	with open(output_jsonl, 'w') as f:
 		for r in receipts:
 			f.write(json.dumps(r) + '\n')
@@ -288,11 +330,9 @@ def run_stage2_audit(
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="VLLM-instruct-based keyword annotation for Historical Dataset")
-	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
+	parser.add_argument("--jsonl_file", '-jsonl', type=str, required=True, help="Path to the VLM CoT")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	args = parser.parse_args()
 	set_seeds(seed=42)
-
-	output_jsonl= args.csv_file.replace(".csv", "_raw_audit_receipts.jsonl")
 	
-	run_stage2_audit(input_csv=args.csv_file, output_jsonl=output_jsonl, verbose=args.verbose)
+	modality_conflict_audit(input_jsonl=args.jsonl_file, column="vlm_cot_raw", verbose=args.verbose)

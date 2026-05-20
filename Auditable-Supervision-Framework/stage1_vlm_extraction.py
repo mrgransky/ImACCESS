@@ -27,25 +27,25 @@ from nlp_utils import get_enriched_description
 # $ python stage1_vlm_extraction.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.6-35B-A3B" -v
 
 PROMPT_TEMPLATE = """Given an image and its caption, extract **NO MORE THAN {k}** distinct concepts, then categorize them into three lists of keywords.
-Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
+The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
 Forbidden:
-	- Dates, times, years, decades, or any temporal references (e.g., May 12, 1964, September 1919, spring 1940, 1950s era).
-	- Quantities, counts, measurements, or numerical expressions (e.g., 1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
-	- Equipment identifiers, serial numbers, brands, or models.
-	- Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
-	- Continents, countries, states, provinces, cities, towns, islands, regions, or roads.
-	- Individual people's names or honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
-	- Family relationship terms (e.g., mother, father, son, uncle).
-	- Ordinal numeral keywords (e.g., fourth, 1st, 115th).
-	- Roman numerals (e.g., I, II, IV, VIII).
-	- Nationalities, ethnicities, or religions.
-	- Abbreviations, acronyms, phrasal verbs, or descriptive clauses.
+  - Dates, times, years, decades, or any temporal references (e.g., May 12, 1964, September 1919, spring 1940, 1950s era).
+  - Quantities, counts, measurements, or numerical expressions (e.g., 1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
+  - Equipment identifiers, serial numbers, brands, or models.
+  - Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
+  - Continents, countries, states, provinces, cities, towns, islands, regions, or roads.
+  - Individual people's names or honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
+  - Family relationship terms (e.g., mother, father, son, uncle).
+  - Ordinal numeral keywords (e.g., fourth, 1st, 115th).
+  - Roman numerals (e.g., I, II, IV, VIII).
+  - Nationalities, ethnicities, or religions.
+  - Abbreviations, acronyms, phrasal verbs, or descriptive clauses.
 
 Output format:
-	- text_concepts: Keywords derived STRICTLY from the caption.
-	- visual_concepts: Keywords derived STRICTLY from the pixel data.
-	- fused_concepts: Keywords inferred from BOTH modalities. In case the modalities are essentially disjoint (e.g., text says "aircraft" but image shows "ships"), return an empty list [] and refrain from forcing a fusion.
+  - text_concepts: Keywords derived STRICTLY from the caption.
+  - visual_concepts: Keywords derived STRICTLY from the pixel data.
+  - fused_concepts: Keywords inferred from BOTH modalities. In case the modalities are essentially disjoint (e.g., text says "aircraft" but image shows "ships"), return an empty list [] and refrain from forcing a fusion.
 
 Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without any markdown, reasoning, or additional text:
 {{
@@ -96,7 +96,7 @@ def load_jsonl_state(jsonl_path: str, verbose: bool = False) -> Dict[str, Dict[s
 		for line_no, line in enumerate(f, start=1):
 			line = line.strip()
 			if not line:
-					continue
+				continue
 			try:
 				rec = json.loads(line)
 				sid = rec.get("id")
@@ -110,7 +110,7 @@ def load_jsonl_state(jsonl_path: str, verbose: bool = False) -> Dict[str, Dict[s
 				
 				# Non-empty wins: only overwrite if incoming record is non-empty
 				# or if the key has never been seen before
-				incoming_concepts = rec.get("cot_raw_concepts", {})
+				incoming_concepts = rec.get("vlm_cot_raw", {})
 				if sid not in state:
 					state[sid] = rec
 				elif not is_empty_concepts(incoming_concepts):
@@ -122,7 +122,7 @@ def load_jsonl_state(jsonl_path: str, verbose: bool = False) -> Dict[str, Dict[s
 				continue
 	
 	if verbose:
-		n_empty = sum(1 for r in state.values() if is_empty_concepts(r.get("cot_raw_concepts", {})))
+		n_empty = sum(1 for r in state.values() if is_empty_concepts(r.get("vlm_cot_raw", {})))
 		print(f"[LOAD] {len(state)} unique ids | {n_empty} empty (will retry)")
 	
 	return state
@@ -718,16 +718,12 @@ def parse_vlm_response(
 	# Step 4: Clean common JSON issues (trailing commas)
 	json_str = re.sub(r',\s*}', '}', json_str)
 	json_str = re.sub(r',\s*]', ']', json_str)
-	
-	# Step 5: Parse & Validate
-	if verbose:
-		print(f"\n[STEP 4] Parsing JSON...")
-	
+
 	try:
 		parsed = json.loads(json_str)
 		
 		if verbose:
-			print(f" JSON parsed successfully: {type(parsed)}")
+			print(f"\n[STEP 4] JSON parsed successfully: {type(parsed)} ({len(parsed)} items) {parsed}")
 		
 		if not isinstance(parsed, dict):
 			if verbose:
@@ -746,7 +742,7 @@ def parse_vlm_response(
 		for key in required_keys:
 			if key not in parsed:
 				if verbose:
-					print(f"  ⚠ Missing key '{key}' - adding empty list")
+					print(f"  ⚠ Missing {key} - adding empty list for safety ([])")
 				parsed[key] = []
 			else:
 				# Safely convert to list and filter out None/empty/whitespace
@@ -1047,7 +1043,7 @@ def get_vlm_cot_labels(
 		idx = url_to_idx.get(url_key)
 		if idx is None:
 			continue
-		concepts = rec.get("cot_raw_concepts", {})
+		concepts = rec.get("vlm_cot_raw", {})
 		if is_empty_concepts(concepts):
 			retry_ids.add(idx)
 		else:
@@ -1209,7 +1205,7 @@ def get_vlm_cot_labels(
 					doc_url = doc_urls[idx] or f"__unknown_{idx}__"
 					jsonl_state[doc_url] = {
 						"id": doc_url,
-						"cot_raw_concepts": parsed if parsed else {
+						"vlm_cot_raw": parsed if parsed else {
 							"text_concepts": [], "visual_concepts": [], "fused_concepts": []
 						}
 					}
@@ -1290,7 +1286,7 @@ def get_vlm_cot_labels(
 					doc_url = doc_urls[uniq_idx] or f"__unknown_{idx}__"
 					jsonl_state[doc_url] = {
 						"id": doc_url,
-						"cot_raw_concepts": parsed if parsed else {
+						"vlm_cot_raw": parsed if parsed else {
 							"text_concepts": [], "visual_concepts": [], "fused_concepts": []
 						}
 					}

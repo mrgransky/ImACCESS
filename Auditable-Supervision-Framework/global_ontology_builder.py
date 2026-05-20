@@ -15,20 +15,19 @@ from utils import *
 from clustering import *
 
 def cluster_and_save_priors(
-	receipts_jsonl: str,
+	input_jsonl: str,
 	model_id: str,
 	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
 	verbose: bool = True
 ):
-
 	# Parse receipts JSONL to reconstruct all_sample_labels list-of-lists
 	all_sample_labels = []
-	print(f"[STAGE 3] Loading receipts from {receipts_jsonl}...")
-	with open(receipts_jsonl, 'r') as f:
+	print(f"\n[STAGE 3] Loading receipts from {input_jsonl}")
+	with open(input_jsonl, 'r') as f:
 		for line in f:
 			receipt = json.loads(line)
-			# Fetch the raw VLM concepts we backed up under 'cot_raw_vlm' in Stage 2
-			vlm_data = receipt.get("cot_raw_vlm", {})
+			# Fetch the raw VLM concepts we backed up under 'vlm_cot_raw' in Stage 2
+			vlm_data = receipt.get("vlm_cot_raw", {})
 			if isinstance(vlm_data, dict):
 				text_c = vlm_data.get("text_concepts", [])
 				vis_c = vlm_data.get("visual_concepts", [])
@@ -38,9 +37,9 @@ def cluster_and_save_priors(
 				sample_pool = text_c + vis_c + fused_c
 				all_sample_labels.append(sample_pool)
 	
-	DATASET_DIRECTORY = os.path.dirname(receipts_jsonl)
-	output_dir = os.path.join(DATASET_DIRECTORY, "outputs")
-	os.makedirs(output_dir, exist_ok=True)
+	DATASET_DIRECTORY = os.path.dirname(input_jsonl)
+	outputs_dir = os.path.join(DATASET_DIRECTORY, "outputs")
+	os.makedirs(outputs_dir, exist_ok=True)
 	
 	# Dedup and Flatten unique concepts
 	unique_labels = sorted(set(lbl for sample in all_sample_labels for lbl in sample if lbl))
@@ -48,7 +47,7 @@ def cluster_and_save_priors(
 	# Calculate raw frequencies (Global Reusability Prior)
 	label_freq_dict = Counter(lbl for sample in all_sample_labels for lbl in sample if lbl)
 	
-	freqs_path = os.path.join(output_dir, os.path.basename(receipts_jsonl.replace(".jsonl", "_global_label_frequency.json")))
+	freqs_path = os.path.join(outputs_dir, os.path.basename(input_jsonl.replace(".jsonl", "_global_label_frequency.json")))
 	with open(freqs_path, 'w') as f:
 		json.dump(label_freq_dict, f, indent=2)
 	
@@ -74,7 +73,7 @@ def cluster_and_save_priors(
 	)
 
 	# Linkage Matrix (Hierarchical)
-	print(f"\n[CLUSTERING] Building Linkage Matrix (Ward Linkage, Euclidean Distance)...")
+	print(f"\n[CLUSTERING] Building Linkage Matrix: {type(X)} {X.shape} (Ward Linkage, Euclidean Distance)...")
 	t0 = time.time()
 	if use_fastcluster:
 		Z = fastcluster.linkage(X, method='ward', metric='euclidean')
@@ -95,6 +94,7 @@ def cluster_and_save_priors(
 		verbose=verbose
 	)
 	df = pd.DataFrame({'label': unique_labels, 'cluster': cluster_labels})
+
 	# Execute 5-Signal Canonical Selection
 	print(f"\n[CLUSTERING] Executing 5-Signal Canonical Selection...")
 	(
@@ -159,32 +159,64 @@ def cluster_and_save_priors(
 		original_label_counts=label_freq_dict,
 		verbose=verbose
 	)
-	
-	# 1. Output canonical_map.json
+
+	# EXTRACT EMERGENT TARGET VOCABULARY (V)
+	# The sorted unique canonical labels that survived the clean-up audit is V!
+	target_vocab = sorted(list(df_clean['canonical'].unique()))
+	print(f"\n[VOCABULARY] Emergent Target Vocabulary size: {len(target_vocab)} unique canonical classes.")
+	print(f"  ├─ Sample classes: {target_vocab[:10]}...")
+
+	# Generate embeddings for the discovered canonical classes
+	print(f"[VOCABULARY] Pre-computing embeddings for the {len(target_vocab)} target classes...")
+	target_embeddings = model.encode(
+		target_vocab,
+		batch_size=1024,
+		convert_to_numpy=True,
+		normalize_embeddings=True,
+		precision='float32'
+	)
+
+	# 1. Output canonical_map.json (raw VLM concept -> clean discovered canonical)
 	final_canonical_dict = df_clean.set_index('label')['canonical'].to_dict()
-	map_path = os.path.join(output_dir, os.path.basename(receipts_jsonl.replace(".jsonl", "_canonical_map.json")))
+	map_path = os.path.join(outputs_dir, os.path.basename(input_jsonl.replace(".jsonl", "_canonical_map.json")))
 	with open(map_path, 'w') as f:
 		json.dump(final_canonical_dict, f, indent=2)
+	print(f"[BRIDGE] Saved final canonical map to: {map_path}")
 
-	# 2. Output emb_cache.pt
-	# Creates a dictionary mapping raw_concept string -> L2 normalized numpy embedding array
+	# 2. Output target_vocabulary.json (defines the multi-hot vector dimensions for Stage 4/5)
+	vocab_path = os.path.join(outputs_dir, os.path.basename(input_jsonl.replace(".jsonl", "_target_vocabulary.json")))
+	with open(vocab_path, 'w') as f:
+		json.dump(target_vocab, f, indent=2)
+	print(f"[BRIDGE] Saved target vocabulary (V) to: {vocab_path}")
+
+	# 3. Output emb_cache.pt
+	# We map raw VLM concepts -> embedding, and target_vocabulary -> embedding 
+	# so Stage 4 can resolve unseen concepts via fast vector lookup
 	emb_cache = {lbl: emb for lbl, emb in zip(df_clean['label'].tolist(), X_clean)}
-	emb_path = os.path.join(output_dir, os.path.basename(receipts_jsonl.replace(".jsonl", "_emb_cache.pt")))
-	torch.save(emb_cache, emb_path) # standard PyTorch serializer (supports dict(str -> np.ndarray))
+	
+	# Inject the target canonical classes and their embeddings
+	for target_class, target_emb in zip(target_vocab, target_embeddings):
+		emb_cache[target_class] = target_emb
+
+	emb_path = os.path.join(outputs_dir, os.path.basename(input_jsonl.replace(".jsonl", "_emb_cache.pt")))
+	torch.save(emb_cache, emb_path)
+	print(f"[CACHE] Saved emb_cache.pt with {len(emb_cache):,} total mapped embeddings to: {emb_path}")
 
 if __name__ == "__main__":
-	parser = argparse.ArgumentParser(description="Stage 3: Global Aggregation & Ontology Builder")
-	parser.add_argument("--receipts_jsonl", "-r", type=str, required=True, help="Path to Stage 2 JSONL audit receipts")
+	parser = argparse.ArgumentParser(description="Global Aggregation & Ontology Builder")
+	parser.add_argument("--jsonl_file", "-jsonl", type=str, required=True, help="Path to Stage 2 modality conflic audit JSONL file")
 	parser.add_argument("--model_id", "-m", type=str, default="all-MiniLM-L6-v2", help="SentenceTransformer model for canonical analysis")
 	parser.add_argument("--verbose", "-v", action='store_true', help="Verbose output")
 
 	args = parser.parse_args()
 	set_seeds(seed=42)
 
+	if "_modality_conflict_audit.jsonl" not in args.jsonl_file:
+		raise ValueError(f"Input JSONL file must be a Stage 2 modality conflict audit file. Got: {args.jsonl_file}")
 
 	# Run the main aggregation controller
 	cluster_and_save_priors(
-		receipts_jsonl=args.receipts_jsonl,
+		input_jsonl=args.jsonl_file,
 		model_id=args.model_id,
 		verbose=args.verbose
 	)

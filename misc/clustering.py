@@ -2751,7 +2751,6 @@ def cluster(
 	print(f"  ├─ Mean: {X.mean()}")
 	print(f"  └─ Std: {X.std()}")
 
-	
 	# STEP 3: LINKAGE MATRIX
 	print(f"[LINKAGE] {linkage_method} Agglomerative Clustering on: {X.shape} embeddings [takes a while...]")
 	t0 = time.time()
@@ -2813,7 +2812,6 @@ def cluster(
 	print(f"\tMost frequent: {max(label_freq_dict.items(), key=lambda x: x[1])}")
 	print('-' * 150)
 
-	
 	# STEP 6: CANONICAL SELECTION (with virtual hypernym synthesis)
 	t0 = time.time()
 	(
@@ -2833,7 +2831,6 @@ def cluster(
 	print(f"\n[CLUSTERING] {len(cluster_canonicals)} cluster canonicals computed in {time.time()-t0:.1f} sec.")
 	print("-" * 100)
 
-	
 	# STEP 7: IMPACT ANALYSIS
 	total_clusters = len(df.cluster.unique())
 	print("\nFREQUENCY WEIGHTING IMPACT ANALYSIS")
