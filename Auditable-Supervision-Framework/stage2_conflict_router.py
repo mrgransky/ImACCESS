@@ -334,5 +334,8 @@ if __name__ == "__main__":
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	args = parser.parse_args()
 	set_seeds(seed=42)
+
+	if not args.jsonl_file.endswith(".jsonl"):
+		raise ValueError(f"Input file must be a JSONL file, Got: {args.jsonl_file}")
 	
 	modality_conflict_audit(input_jsonl=args.jsonl_file, column="vlm_cot_raw", verbose=args.verbose)

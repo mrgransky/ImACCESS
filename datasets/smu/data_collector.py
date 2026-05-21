@@ -32,8 +32,8 @@ parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
 args, unknown = parser.parse_known_args()
 args.dataset_dir = os.path.normpath(args.dataset_dir)
-print(args)
 print_args_table(args=args, parser=parser)
+print(args)
 set_seeds(seed=args.seed, debug=False)
 
 SMU_BASE_URL:str = "https://digitalcollections.smu.edu/digital"
@@ -201,9 +201,16 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 	df_st_time = time.time()
 	data = []
 	for _, doc in enumerate(doc_hits):
-		doc_date = doc.get("metadataFields")[3].get("value")
+		# Safely extract doc_date from metadataFields
+		metadata_fields = doc.get("metadataFields", [])
+		doc_date = metadata_fields[3].get("value") if len(metadata_fields) > 3 else None
+		
+		if not doc_date:
+			print(f"Skipping document with missing date: {doc.get('itemId')}")
+			continue
+		
 		doc_type = doc.get('filetype')
-		doc_link = doc.get("itemLink") # /singleitem/collection/ryr/id/2479
+		doc_link = doc.get("itemLink")
 		doc_collection = doc.get("collectionAlias")
 		doc_id = doc.get("itemId")
 		doc_combined_identifier = f'{doc_collection}_{doc_id}' # agr_19
@@ -226,7 +233,8 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 				if kw not in REDUNDANT_KEYWORDS and len(kw) > 2
 			] # Exclude redundant terms
 			doc_cleaned_keywords = ", ".join(cleaned_keyword_list) if cleaned_keyword_list else None # Join the cleaned keywords back into a string
-			print(f"doc_cleaned_keywords: {doc_cleaned_keywords}")
+			if doc_cleaned_keywords:
+				print(f"doc_cleaned_keywords: {doc_cleaned_keywords}")
 
 		row = {
 			'id': doc_combined_identifier,
@@ -312,7 +320,7 @@ def scrape_item_metadata(doc_url: str) -> Dict:
 				metadata[key] = value
 		return metadata
 	except Exception as e:
-		print(f"<!> [ERROR] Failed to scrape metadata from {doc_url}: {e}")
+		print(f"[ERROR] Failed to scrape metadata {doc_url}: {e}")
 		return {}
 
 @measure_execution_time

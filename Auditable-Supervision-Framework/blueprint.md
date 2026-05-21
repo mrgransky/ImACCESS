@@ -1,4 +1,4 @@
-# BLUEPRINT: Supervision Transparency Framework 
+# Supervision Transparency Framework 
 **Core Thesis (B $\rightarrow$ A $\rightarrow$ C):** Modality conflict is a structural dataset property (**B**). We build an auditable pipeline to detect and route it per label (**A**). We use these audits to dynamically condition downstream loss, safely integrating soft conflicts and repelling hallucinations (**C**).
 
 ## PHASE 1: Stateless Map (GPU-Heavy / Per-Sample)

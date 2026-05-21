@@ -58,8 +58,8 @@ warnings.filterwarnings('ignore')
 # from skimage.morphology import disk
 # from skimage.measure import shannon_entropy
 # from skimage.transform import resize
-# from bs4 import BeautifulSoup
-# from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from bs4 import BeautifulSoup
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from joblib import Parallel, delayed
 

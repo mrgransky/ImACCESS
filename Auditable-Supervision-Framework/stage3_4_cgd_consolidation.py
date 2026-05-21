@@ -142,7 +142,13 @@ class CGDConsolidator:
 			if c not in self.canonical_map:
 				continue
 			audited_concepts[c] = self.audit_concept_CGD(
-				c, c_text, c_vis, regime, denser_modality, entail_V_to_T, entail_T_to_V
+				c, 
+				c_text, 
+				c_vis, 
+				regime, 
+				denser_modality, 
+				entail_V_to_T, 
+				entail_T_to_V
 			)
 
 		# Output Target Lists

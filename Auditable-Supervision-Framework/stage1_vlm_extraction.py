@@ -729,10 +729,7 @@ def parse_vlm_response(
 			if verbose:
 				print(f"  ERROR: Parsed JSON is not an object/dict. Got: {type(parsed)}")
 			return None
-		
-		if verbose:
-			print(f"Keys: {list(parsed.keys())}")
-		
+				
 		# Ensure required keys exist and are clean lists
 		required_keys = ["text_concepts", "visual_concepts", "fused_concepts"]
 		
@@ -1344,17 +1341,17 @@ def get_vlm_cot_labels(
 	print(f'vlm_cot_labels column contains {df["vlm_cot_labels"].isna().sum()} None(s) (failed).')
 	print("-"*100)
 
-	df.to_csv(output_csv, index=False)
-	try:
-		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-	except Exception as e:
-		print(f"Failed to write Excel file: {e}")
-	elapsed = time.time() - t0
-	if verbose:
-		n_ok = sum(1 for r in final if r)
-		print(f"[STATS] ✅ Success {n_ok}/{len(final)}")
-		print(f"[TIME] {elapsed/3600:.3f}h | avg {len(final)/elapsed:.2f}/s")
-		print(f"[SAVE] Results written to: {output_csv}")
+	# df.to_csv(output_csv, index=False)
+	# try:
+	# 	df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+	# except Exception as e:
+	# 	print(f"Failed to write Excel file: {e}")
+	# elapsed = time.time() - t0
+	# if verbose:
+	# 	n_ok = sum(1 for r in final if r)
+	# 	print(f"[STATS] ✅ Success {n_ok}/{len(final)}")
+	# 	print(f"[TIME] {elapsed/3600:.3f}h | avg {len(final)/elapsed:.2f}/s")
+	# 	print(f"[SAVE] Results written to: {output_csv}")
 	
 	return final
 
@@ -1378,6 +1375,9 @@ def main():
 	args.device = torch.device(args.device)
 	args.num_workers = min(args.num_workers, os.cpu_count())
 	print(args)
+
+	if not args.image_path and not args.csv_file:
+		raise ValueError("Either --image_path or --csv_file must be provided")
 
 	if args.image_path:
 		keywords = get_vlm_cot_labels_single(
