@@ -7,7 +7,7 @@
 
 **(B $\rightarrow$ A $\rightarrow$ C):** Modality conflict is a structural dataset property (**B**). We build an auditable pipeline to detect and route it per label (**A**). We use these audits to dynamically condition downstream loss, safely integrating soft conflicts and repelling hallucinations (**C**).
 
-To ensure computational tractability across N samples (N >> 10^6), we formalize our framework as a *two-phase* architecture. 
+To ensure computational tractability across N samples ($N >> 10**5$), we formalize our framework as a *two-phase* architecture. 
 * Phase 1 performs stateless modality extraction and conflict quantification. 
 * Phase 2 injects globally calibrated priors to perform stateful, per-label CGD auditing and consolidation.
 
@@ -34,8 +34,9 @@ This decoupling guarantees that our density metrics reflect true corpus-level st
 
 ---
 ## BRIDGE: Global Aggregation (CPU / Dataset-Level)
-*   **Goal:** Discover the Target Canonical Vocabulary ($V$) and compute global dataset statistics.
-*   **Mechanism:** Collect all raw concepts from Stage 1. Existing `clustering.py` engine (Agglomerative Linkage, Virtual Hypernym Synthesis, 5-Signal Canonical Assignment). 
+*   **Goal:** Target Canonical Vocabulary ($V$) and compute global dataset statistics.
+*   **Mechanism:** Collect all raw concepts from Stage 1. 
+    * Existing `clustering.py` engine (Agglomerative Linkage, Virtual Hypernym Synthesis, 5-Signal Canonical Assignment). 
 *   **Output:** A universal `canonical_map.json`, a pre-computed `emb_cache.pt`, and global corpus frequencies for every concept.
 ---
 
@@ -46,7 +47,8 @@ This decoupling guarantees that our density metrics reflect true corpus-level st
 *   **Mechanism:**
     *   **Coverage $C(c)$:** How strongly the concept is supported by the historical text.
     *   **Grounding $G(c)$:** How strongly the concept is supported by the visual pixels.
-    *   **Density $D(c)$:** Computed as $D_{global}$ (Corpus reusability) $\times$ $D_{local}$ (NLI Penalty). *If NLI proved a concept is an overly broad hypernym in a Soft Conflict, its Density score is penalized.*
+    *   **Density $D(c)$:** Computed as $D_{global}$ (Corpus reusability) $\times$ $D_{local}$ (NLI Penalty). 
+        *   *If NLI proved a concept is an overly broad hypernym in a Soft Conflict, its Density score is penalized.*
 *   **Output:** The raw concept list, enriched with exact $C, G, D$ float scores.
 
 ### **Stage 4: Regime-Aware Consolidation \& Weight Derivation**
