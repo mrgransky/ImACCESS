@@ -9,7 +9,8 @@
 
 To ensure computational tractability across N samples (N >> 10^6), we formalize our framework as a *two-phase* architecture. 
 * Phase 1 performs stateless modality extraction and conflict quantification. 
-* Phase 2 injects globally calibrated priors to perform stateful, per-label CGD auditing and consolidation. 
+* Phase 2 injects globally calibrated priors to perform stateful, per-label CGD auditing and consolidation.
+
 This decoupling guarantees that our density metrics reflect true corpus-level statistics rather than localized batch artifacts.
 
 ## PHASE 1: Stateless Map (GPU-Heavy / Per-Sample)
