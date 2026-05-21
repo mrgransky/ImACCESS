@@ -7,6 +7,11 @@
 
 **(B $\rightarrow$ A $\rightarrow$ C):** Modality conflict is a structural dataset property (**B**). We build an auditable pipeline to detect and route it per label (**A**). We use these audits to dynamically condition downstream loss, safely integrating soft conflicts and repelling hallucinations (**C**).
 
+To ensure computational tractability across N samples (N >> 10^6), we formalize our framework as a *two-phase* architecture. 
+* Phase 1 performs stateless modality extraction and conflict quantification. 
+* Phase 2 injects globally calibrated priors to perform stateful, per-label CGD auditing and consolidation. 
+This decoupling guarantees that our density metrics reflect true corpus-level statistics rather than localized batch artifacts.
+
 ## PHASE 1: Stateless Map (GPU-Heavy / Per-Sample)
 
 ### **Stage 1: Joint VLM Extraction with CoT Attribution**
