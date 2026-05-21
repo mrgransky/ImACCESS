@@ -193,9 +193,9 @@ class ConflictQuantifier:
 
 		# 3. Symmetric Matrix & Orphan Extraction
 		sim_matrix = 1 - scipy.spatial.distance.cdist(emb_t, emb_v, metric="cosine")
+
 		matched_t, matched_v = set(), set()
 		e_strong, e_density = [], []
-
 		for i, t in enumerate(c_text):
 			best_v_idx = int(np.argmax(sim_matrix[i]))
 			best_sim = float(sim_matrix[i][best_v_idx])

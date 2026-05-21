@@ -23,9 +23,10 @@ This decoupling guarantees that our density metrics reflect true corpus-level st
 ### **Stage 2: Modality Conflict Quantification \& Routing**
 *   **Goal:** Mathematically quantify cross-modal dissonance and route the sample into a "Conflict Regime."
 *   **Mechanism:** 
-    1.  **Symmetric Audit (Cosine):** Uses `all-MiniLM` to find semantic overlap between `C_text` and `C_vis`. Identifies unverified *Orphans* ($O_{text}, O_{vis}$).
+    1.  **Symmetric Audit (Cosine):** Uses `all-MiniLM` to find semantic overlap between `C_text` and `C_vis`. 
+       *   Identifies unverified *Orphans* ($O_{text}, O_{vis}$).
     2.  **Asymmetric Audit (NLI):** Uses `DeBERTa-NLI` cross-encoder to compute directional entailment. 
-        * Computes **Asymmetry Gap ($\Delta_{density}$)** to prove which modality is denser (Hyponym) vs broader (Hypernym).
+        * **Asymmetry Gap ($\Delta_{density}$)** proves which modality is denser (Hyponym) vs broader (Hypernym).
     3.  **Router:** Deterministically assigns the sample to:
         *   *Agreement:* High overlap, low orphans.
         *   *Soft Conflict:* Topic matches, but high $\Delta_{density}$ (abstraction mismatch).
