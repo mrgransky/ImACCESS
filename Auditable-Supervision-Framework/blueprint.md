@@ -1,15 +1,21 @@
 # Supervision Transparency Framework 
+
+### Core Contributions:
+* **A**: Supervision Auditability
+* **B**: Modality Conflict Detection
+* **C**: Regime-Conditioned Label Quality
+
 **Core Thesis (B $\rightarrow$ A $\rightarrow$ C):** Modality conflict is a structural dataset property (**B**). We build an auditable pipeline to detect and route it per label (**A**). We use these audits to dynamically condition downstream loss, safely integrating soft conflicts and repelling hallucinations (**C**).
 
 ## PHASE 1: Stateless Map (GPU-Heavy / Per-Sample)
 
 ### **Stage 1: Joint VLM Extraction with CoT Attribution**
-*   **The Goal:** Extract distinct semantic concepts while forcing the VLM to explicitly attribute their modality source.
+*   **Goal:** Extract distinct semantic concepts while forcing the VLM to explicitly attribute their modality source.
 *   **The Mechanism:** A highly structured System Prompt fed to a Joint VLM (Image + Caption). It enforces strict domain rules (Anti-Scope-Creep, Proper Noun Ban) and forces the VLM to categorize outputs.
 *   **The Output (JSON):** Three distinct lists of raw open-vocabulary concepts: `C_text` (Coverage), `C_vis` (Grounding), and `C_fused` (Density resolution). *Crucial constraint: outputs `[]` for `C_fused` if modalities are completely disjoint.*
 
 ### **Stage 2: Modality Conflict Quantification \& Routing**
-*   **The Goal:** Mathematically quantify cross-modal dissonance and route the sample into a "Conflict Regime."
+*   **Goal:** Mathematically quantify cross-modal dissonance and route the sample into a "Conflict Regime."
 *   **The Mechanism:** 
     1.  **Symmetric Audit (Cosine):** Uses `all-MiniLM` to find semantic overlap between `C_text` and `C_vis`. Identifies unverified *Orphans* ($O_{text}, O_{vis}$).
     2.  **Asymmetric Audit (NLI):** Uses `DeBERTa-NLI` cross-encoder to compute directional entailment. Computes the **Asymmetry Gap ($\Delta_{density}$)** to prove which modality is denser (Hyponym) vs broader (Hypernym).
@@ -21,7 +27,7 @@
 
 ---
 ## BRIDGE: Global Aggregation (CPU / Dataset-Level)
-*   **The Goal:** Discover the Target Canonical Vocabulary ($V$) and compute global dataset statistics.
+*   **Goal:** Discover the Target Canonical Vocabulary ($V$) and compute global dataset statistics.
 *   **The Mechanism:** Collect all raw concepts from Stage 1. Run your existing `clustering.py` engine (Agglomerative Linkage, Virtual Hypernym Synthesis, 5-Signal Canonical Assignment). 
 *   **The Output:** A universal `canonical_map.json`, a pre-computed `emb_cache.pt`, and global corpus frequencies for every concept.
 ---
@@ -29,7 +35,7 @@
 ## PHASE 2: Stateful Map (Fast Vector Math / Per-Sample)
 
 ### **Stage 3: The Micro-CGD Audit**
-*   **The Goal:** Assign a continuous quality score $[0,1]$ to every raw concept proposed in Stage 1 based on its Stage 2 receipt and Global Aggregation frequencies.
+*   **Goal:** Assign a continuous quality score $[0,1]$ to every raw concept proposed in Stage 1 based on its Stage 2 receipt and Global Aggregation frequencies.
 *   **The Mechanism:**
     *   **Coverage $C(c)$:** How strongly the concept is supported by the historical text.
     *   **Grounding $G(c)$:** How strongly the concept is supported by the visual pixels.
@@ -37,7 +43,7 @@
 *   **The Output:** The raw concept list, enriched with exact $C, G, D$ float scores.
 
 ### **Stage 4: Regime-Aware Consolidation \& Weight Derivation**
-*   **The Goal:** Map raw concepts to canonical vocabulary $V$, gate them using the Conflict Regime, and derive gradient scaling weights ($\omega_{pos}, \omega_{neg}$) for training.
+*   **Goal:** Map raw concepts to canonical vocabulary $V$, gate them using the Conflict Regime, and derive gradient scaling weights ($\omega_{pos}, \omega_{neg}$) for training.
 *   **The Mechanism:**
     *   **Agreement:** Union mapping. `w_pos = 1.0`, `w_neg = 0.0`.
     *   **Soft Conflict:** Map to $V$, but explicitly drop broad concepts failing the $D(c)$ audit. `w_pos = 1.0 - |\Delta_{density}|`, `w_neg = 0.0`.
@@ -49,7 +55,7 @@
 ## DOWNSTREAM: Representation Learning (Fine-Tuning using PEFT)
 
 ### **Stage 5: Regime-Conditioned Dual-Encoder Training**
-*   **The Goal:** Train a VLR model (e.g., CLIP ViT-L/14) that safely learns from the long-tail, respects soft conflicts, and actively unlearns archival hallucinations.
+*   **Goal:** Train a VLR model (e.g., CLIP ViT-L/14) that safely learns from the long-tail, respects soft conflicts, and actively unlearns archival hallucinations.
 *   **The Mechanism:** Modulate a standard `BCEWithLogitsLoss` using two orthogonal axes:
     1.  **Class-Level Balance:** Your existing `pos_weight` mask to handle long-tail rare classes.
     2.  **Sample-Level Regime Weights:** 
