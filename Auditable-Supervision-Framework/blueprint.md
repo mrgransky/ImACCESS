@@ -1,9 +1,9 @@
 # Supervision Transparency Framework 
 
 ### Core Contributions:
-* **A**: Supervision Auditability
-* **B**: Modality Conflict Detection
-* **C**: Regime-Conditioned Label Quality
+* **A**: Supervision Auditability Pipeline: produces per-label, per-sample supervision provenance in multi-label retrieval — tracing each label to its modality source, conflict regime, and CGD quality score.
+* **B**: Modality Conflict Detection: characterizes cross-modal conflict as a structural property of image-text data and systematically predicts supervision quality degradation.
+* **C**: Regime-Conditioned Label Quality: Conflict regime predicts supervision quality.
 
 **Core Thesis (B $\rightarrow$ A $\rightarrow$ C):** Modality conflict is a structural dataset property (**B**). We build an auditable pipeline to detect and route it per label (**A**). We use these audits to dynamically condition downstream loss, safely integrating soft conflicts and repelling hallucinations (**C**).
 
