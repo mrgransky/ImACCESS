@@ -37,7 +37,10 @@ This decoupling guarantees that our density metrics reflect true corpus-level st
 *   **Goal:** Target Canonical Vocabulary ($V$) and compute global dataset statistics.
 *   **Mechanism:** Collect all raw concepts from Stage 1. 
     * Existing `clustering.py` engine (Agglomerative Linkage, Virtual Hypernym Synthesis, 5-Signal Canonical Assignment). 
-*   **Output:** A universal `canonical_map.json`, a pre-computed `emb_cache.pt`, and global corpus frequencies for every concept.
+*   **Output:** 
+    *   universal `canonical_map.json` 
+    *   pre-computed `emb_cache.pt`
+    *   global corpus frequencies for every concept
 ---
 
 ## PHASE 2: Stateful Map (Fast Vector Math / Per-Sample)
