@@ -12,7 +12,7 @@
 ### **Stage 1: Joint VLM Extraction with CoT Attribution**
 *   **Goal:** Extract distinct semantic concepts while forcing the VLM to explicitly attribute their modality source.
 *   **Mechanism:** A highly structured System Prompt fed to a Joint VLM (Image + Caption). It enforces strict domain rules (Anti-Scope-Creep, Proper Noun Ban) and forces the VLM to categorize outputs.
-*   **The Output (JSON):** Three distinct lists of raw open-vocabulary concepts: `C_text` (Coverage), `C_vis` (Grounding), and `C_fused` (Density resolution). *Crucial constraint: outputs `[]` for `C_fused` if modalities are completely disjoint.*
+*   **Output (JSON):** Three distinct lists of raw open-vocabulary concepts: `C_text` (Coverage), `C_vis` (Grounding), and `C_fused` (Density resolution). *Crucial constraint: outputs `[]` for `C_fused` if modalities are completely disjoint.*
 
 ### **Stage 2: Modality Conflict Quantification \& Routing**
 *   **Goal:** Mathematically quantify cross-modal dissonance and route the sample into a "Conflict Regime."
@@ -23,13 +23,13 @@
         *   *Agreement:* High overlap, low orphans.
         *   *Soft Conflict:* Topic matches, but high $\Delta_{density}$ (abstraction mismatch).
         *   *Hard Conflict:* Disjoint modalities (high orphans or VLM `[]` short-circuit).
-*   **The Output:** A mathematically auditable `Evidence_Receipt` JSON per sample.
+*   **Output:** A mathematically auditable `Evidence_Receipt` JSON per sample.
 
 ---
 ## BRIDGE: Global Aggregation (CPU / Dataset-Level)
 *   **Goal:** Discover the Target Canonical Vocabulary ($V$) and compute global dataset statistics.
 *   **Mechanism:** Collect all raw concepts from Stage 1. Run your existing `clustering.py` engine (Agglomerative Linkage, Virtual Hypernym Synthesis, 5-Signal Canonical Assignment). 
-*   **The Output:** A universal `canonical_map.json`, a pre-computed `emb_cache.pt`, and global corpus frequencies for every concept.
+*   **Output:** A universal `canonical_map.json`, a pre-computed `emb_cache.pt`, and global corpus frequencies for every concept.
 ---
 
 ## PHASE 2: Stateful Map (Fast Vector Math / Per-Sample)
@@ -40,7 +40,7 @@
     *   **Coverage $C(c)$:** How strongly the concept is supported by the historical text.
     *   **Grounding $G(c)$:** How strongly the concept is supported by the visual pixels.
     *   **Density $D(c)$:** Computed as $D_{global}$ (Corpus reusability) $\times$ $D_{local}$ (NLI Penalty). *If NLI proved a concept is an overly broad hypernym in a Soft Conflict, its Density score is penalized.*
-*   **The Output:** The raw concept list, enriched with exact $C, G, D$ float scores.
+*   **Output:** The raw concept list, enriched with exact $C, G, D$ float scores.
 
 ### **Stage 4: Regime-Aware Consolidation \& Weight Derivation**
 *   **Goal:** Map raw concepts to canonical vocabulary $V$, gate them using the Conflict Regime, and derive gradient scaling weights ($\omega_{pos}, \omega_{neg}$) for training.
@@ -48,7 +48,7 @@
     *   **Agreement:** Union mapping. `w_pos = 1.0`, `w_neg = 0.0`.
     *   **Soft Conflict:** Map to $V$, but explicitly drop broad concepts failing the $D(c)$ audit. `w_pos = 1.0 - |\Delta_{density}|`, `w_neg = 0.0`.
     *   **Hard Conflict:** Block all text concepts. Map visual concepts to $V$ as positive targets (`w_pos = 0.3`). Map orphaned text concepts to $V$ as *Hard Negatives* (`w_neg = 1.0 - G(c)`).
-*   **The Output:** The `auditable_supervision_matrix.parquet`. 
+*   **Output:** The `auditable_supervision_matrix.parquet`. 
     *(Schema: `sample_id | positive_targets | hn_targets | w_pos | w_neg | regime`)*
 
 ---
@@ -61,4 +61,4 @@
     2.  **Sample-Level Regime Weights:** 
         *   Multiply the positive target loss by **$\omega_{pos}$** (throttling learning from rescued/noisy labels).
         *   Multiply a repulsion loss by **$\omega_{neg}$** to explicitly push the image embedding *away* from hallucinated `hn_targets`.
-*   **The Output:** A fully trained, noise-resilient multimodal retrieval model achieving SOTA on the HISTORY-X4 benchmark. 
+*   **Output:** A fully trained, noise-resilient multimodal retrieval model achieving SOTA on the HISTORY-X4 benchmark. 
