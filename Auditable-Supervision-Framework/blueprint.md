@@ -58,7 +58,7 @@ This decoupling guarantees that our density metrics reflect true corpus-level st
     *   **Soft Conflict:** Map to $V$, but explicitly drop broad concepts failing the $D(c)$ audit. 
         *   $\omega_{pos} = 1.0 - |\Delta_{density}|, \omega_{neg} = 0.0$.
     *   **Hard Conflict:** Block all text concepts. Map visual concepts to $V$ as positive targets ($\omega_{pos} = 0.3$). 
-        *   Map orphaned text concepts to $V$ as *Hard Negatives* ($\omega_{neg} = 1.0 - G(c)$).
+        *   Map orphaned text concepts to $V$ as *Hard Negatives* ($\omega_{neg} = 1.0 - G$).
 *   **Output:** The `auditable_supervision_matrix.parquet`. 
     *(Schema: `sample_id | positive_targets | hn_targets | w_pos | w_neg | regime`)*
 
