@@ -24,17 +24,18 @@ This decoupling guarantees that our density metrics reflect true corpus-level st
 *   **Goal:** Mathematically quantify cross-modal dissonance and route the sample into a "Conflict Regime."
 *   **Mechanism:** 
     1.  **Symmetric Audit (Cosine):** Uses `all-MiniLM` to find semantic overlap between `C_text` and `C_vis`. Identifies unverified *Orphans* ($O_{text}, O_{vis}$).
-    2.  **Asymmetric Audit (NLI):** Uses `DeBERTa-NLI` cross-encoder to compute directional entailment. Computes the **Asymmetry Gap ($\Delta_{density}$)** to prove which modality is denser (Hyponym) vs broader (Hypernym).
-    3.  **The Router:** Deterministically assigns the sample to:
+    2.  **Asymmetric Audit (NLI):** Uses `DeBERTa-NLI` cross-encoder to compute directional entailment. 
+        * => Computes **Asymmetry Gap ($\Delta_{density}$)** to prove which modality is denser (Hyponym) vs broader (Hypernym).
+    3.  **Router:** Deterministically assigns the sample to:
         *   *Agreement:* High overlap, low orphans.
         *   *Soft Conflict:* Topic matches, but high $\Delta_{density}$ (abstraction mismatch).
         *   *Hard Conflict:* Disjoint modalities (high orphans or VLM `[]` short-circuit).
-*   **Output:** A mathematically auditable `Evidence_Receipt` JSON per sample.
+*   **Output:** mathematically auditable `Evidence_Receipt` JSON per sample.
 
 ---
 ## BRIDGE: Global Aggregation (CPU / Dataset-Level)
 *   **Goal:** Discover the Target Canonical Vocabulary ($V$) and compute global dataset statistics.
-*   **Mechanism:** Collect all raw concepts from Stage 1. Run your existing `clustering.py` engine (Agglomerative Linkage, Virtual Hypernym Synthesis, 5-Signal Canonical Assignment). 
+*   **Mechanism:** Collect all raw concepts from Stage 1. Existing `clustering.py` engine (Agglomerative Linkage, Virtual Hypernym Synthesis, 5-Signal Canonical Assignment). 
 *   **Output:** A universal `canonical_map.json`, a pre-computed `emb_cache.pt`, and global corpus frequencies for every concept.
 ---
 
