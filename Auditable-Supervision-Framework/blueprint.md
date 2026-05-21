@@ -60,7 +60,7 @@ This decoupling guarantees that our density metrics reflect true corpus-level st
     *   **Hard Conflict:** Block all text concepts. Map visual concepts to $V$ as positive targets ($\omega_{pos} = 0.3$). 
         *   Map orphaned text concepts to $V$ as *Hard Negatives* ($\omega_{neg} = 1.0 - G$).
 *   **Output:** The `auditable_supervision_matrix.parquet`. 
-    *(Schema: `sample_id | positive_targets | hn_targets | w_pos | w_neg | regime`)*
+    *   *(Schema: `sample_id | positive_targets | hn_targets | w_pos | w_neg | regime`)*
 
 ---
 ## DOWNSTREAM: Representation Learning (Fine-Tuning using PEFT)
