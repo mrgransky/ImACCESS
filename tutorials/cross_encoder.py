@@ -10,12 +10,20 @@ model.to(device)
 print(f"[LOADED] {model_id}")
 
 premises = [
+	'A man is eating pizza',
+	"luxury brand-new shirt",
+	"Symptoms: productive or dry cough, chest pain, fever, and difficulty breathing.",
+	"forest fire",
 	"T-34 Tank",
 	"fighter aircraft",
 	"Howitzer",
 ]
 
 hypotheses = [
+	"a man eats some junk food",
+	"wrinkled discounted clothes",
+	"severe pneumonia",
+	"dry lake bed",
 	"vehicle",
 	"naval transport",
 	"large metal gun",
@@ -75,10 +83,10 @@ for i, (premise, hypothesis) in enumerate(zip(premises, hypotheses)):
 	print(f"\nPair {i+1}/{len(hypotheses)}")
 	print(f"Premise:     {premise}")
 	print(f"Hypothesis:  {hypothesis}")
-	print("\nProbabilities:")
-	print(f"  contradiction : {contradiction_probs[i].item():.4f}")
-	print(f"  neutral       : {neutral_probs[i].item():.4f}")
-	print(f"  entailment    : {entailment_probs[i].item():.4f}")
+	# print("\nProbabilities:")
+	# print(f"  contradiction : {contradiction_probs[i].item():.4f}")
+	# print(f"  neutral       : {neutral_probs[i].item():.4f}")
+	# print(f"  entailment    : {entailment_probs[i].item():.4f}")
 	print("\nPredictions:")
 	print(f"  Argmax label        : {predicted_labels[i]}")
 	print(f"  Threshold-based     : {threshold_labels[i]}")

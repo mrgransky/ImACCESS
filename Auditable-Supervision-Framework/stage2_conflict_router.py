@@ -131,14 +131,14 @@ class ConflictQuantifier:
 		t2v_entail_probs = t2v_preds[:, self.entail_idx].reshape(len(text_concepts), len(vis_concepts))
 		
 		# Average Maximum Entailment
-		avg_v_to_t = float(v2t_entail_probs.max(axis=1).mean())
-		avg_t_to_v = float(t2v_entail_probs.max(axis=1).mean())
+		v2t_mean = float(v2t_entail_probs.max(axis=1).mean())
+		t2v_mean = float(t2v_entail_probs.max(axis=1).mean())
 		
-		gap = avg_v_to_t - avg_t_to_v
+		gap = v2t_mean - t2v_mean
 
 		return {
-			"V_entails_T": avg_v_to_t,
-			"T_entails_V": avg_t_to_v,
+			"V_entails_T": v2t_mean,
+			"T_entails_V": t2v_mean,
 			"gap": gap
 		}
 
@@ -327,6 +327,17 @@ def modality_conflict_audit(input_jsonl: str, column: str, verbose: bool = False
 	df_receipts = pd.DataFrame(receipts)
 	print("\n[STAGE 2] DATASET HEALTH DIAGNOSTIC:")
 	print(df_receipts['regime'].value_counts(normalize=True).mul(100).round(1).astype(str) + '%')
+
+	# save to txt file:
+	txt_file = output_jsonl.replace(".jsonl", "_mod_conflict_stats.txt")
+	with open(txt_file, 'w') as f:
+		regim_stats = df_receipts['regime'].value_counts(normalize=True)
+		f.write("MODALITY CONFLICT REGIME DISTRIBUTION\n")
+		f.write("=" * 50 + "\n\n")
+		for regime, count in regim_stats.items():
+			f.write(f"{regime:<20}{count:.2f}\n")
+		f.write("=" * 50 + "\n\n")
+		f.write(f"Total samples: {len(df_receipts)}\n")
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="VLLM-instruct-based keyword annotation for Historical Dataset")
