@@ -56,11 +56,6 @@ Return ONLY a valid JSON object with standarized, valid and parsable **Python** 
 
 Caption: {caption}"""
 
-# - Environmental conditions (e.g., rain, fog, clear sky, cloud).
-# - GRANULARITY RESOLUTION: If text is broad ("weapon") and image is specific ("rifle"), resolve to the specific term.
-# - BAD: A full sentence ("3rd detachment soldiers on log") or overly generic hypernyms ("wartime mobilization", "military activity").
-# - GOOD: Specific, concrete, and semantic phrases ("medical personnel resting", "military encampment", "damaged vehicles").
-
 def is_empty_concepts(concepts: Optional[Dict[str, Any]]) -> bool:
 	if not concepts or not isinstance(concepts, dict):
 		return True
