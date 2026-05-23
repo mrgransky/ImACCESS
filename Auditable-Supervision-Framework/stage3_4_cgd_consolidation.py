@@ -438,17 +438,8 @@ def run_stateful_map_pipeline(input_jsonl: str, verbose: bool = False) -> None:
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Stage 3 & 4: Stateful CGD Audit & Regime-Aware Consolidation")
-	parser.add_argument(
-		"--jsonl_file", "-jsonl",
-		type=str,
-		required=True,
-		help="Path to Stage 2 modality conflict audit JSONL file (*_modality_conflict_audit.jsonl)"
-	)
-	parser.add_argument(
-		"--verbose", "-v",
-		action='store_true',
-		help="Print verbose diagnostics and per-regime statistics"
-	)
+	parser.add_argument("--jsonl_file", "-jsonl", type=str, required=True, help="Path to Stage 2 modality conflict audit JSONL file (*_modality_conflict_audit.jsonl)")
+	parser.add_argument("--verbose", "-v", action='store_true', help="Print verbose diagnostics and per-regime statistics")
 	args = parser.parse_args()
 
 	if "_modality_conflict_audit.jsonl" not in args.jsonl_file:
