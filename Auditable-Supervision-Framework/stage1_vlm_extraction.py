@@ -22,6 +22,9 @@ from nlp_utils import get_enriched_description
 # csv input:
 # python stage1_vlm_extraction.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
+# with nohup:
+# nohup python -u stage1_vlm_extraction.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v > logs/ww2_vlm_cot.log 2>&1 &
+
 # HPC:
 # one sample:
 # $ python stage1_vlm_extraction.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.6-35B-A3B" -v

@@ -23,36 +23,6 @@ def is_empty_concepts(concepts: Optional[Dict[str, Any]]) -> bool:
 		not concepts.get("fused_concepts")
 	)
 
-def safe_parse_vlm_str(vlm_data_str: str) -> Optional[Dict]:
-	if not isinstance(vlm_data_str, str):
-		print(f"vlm_data_str is not a string: {vlm_data_str}")
-		return vlm_data_str
-	
-	# Normalize smart/curly quotes to ASCII equivalents BEFORE any JSON parsing
-	vlm_data_str = (
-		vlm_data_str
-		.replace('\u201c', '\u2018')  # " → ' (left double → left single)
-		.replace('\u201d', '\u2019')  # " → ' (right double → right single)
-		.replace('\u2018', "'")       # ' → '
-		.replace('\u2019', "'")       # ' → '
-	)
-	
-	# Try JSON first (clean path)
-	try:
-		return json.loads(vlm_data_str)
-	except json.JSONDecodeError as json_e:
-		print(f"[ERROR] JSON parsing failed: {json_e} - Attempting fallback: {type(vlm_data_str)} {vlm_data_str}")
-		pass
-	
-	# Fallback: ast.literal_eval for Python-style dicts
-	try:
-		return ast.literal_eval(vlm_data_str)
-	except Exception as e:
-		print(f"[ERROR] ast.literal_eval failed: {e}")
-		pass
-	
-	return None
-
 class ConflictQuantifier:
 	def __init__(
 		self,
@@ -104,184 +74,385 @@ class ConflictQuantifier:
 			tokenizer_kwargs={"padding_side": "left"},
 		)
 		
-		# Determine Entailment Index (usually 1 for MNLI-trained CrossEncoders)
-		self.entail_idx = 1 
-		if hasattr(self.nli_model.config, 'label2id') and 'entailment' in self.nli_model.config.label2id:
-			self.entail_idx = self.nli_model.config.label2id['entailment']
+		# Robust, config-aware NLI Entailment Index Resolution.
+		# FIX: Iterate over label2id keys to catch any casing variant (e.g. "ENTAILMENT", "Entailment").
+		# Raise a hard error rather than silently defaulting to a wrong index.
+		self.entail_idx = None
+		if hasattr(self.nli_model.config, 'label2id'):
+			label2id = self.nli_model.config.label2id
+			for label_name, idx in label2id.items():
+				if 'entail' in label_name.lower():
+					self.entail_idx = int(idx)
+					if self.verbose:
+						print(f"  [NLI] Entailment index resolved: '{label_name}' → {self.entail_idx}")
+					break
+			if self.entail_idx is None:
+				raise ValueError(
+					f"[FATAL] NLI model '{nli_model_id}' label2id does not contain an "
+					f"'entailment' label. Found: {list(label2id.keys())}. "
+					f"Cannot safely resolve entailment index."
+				)
+		else:
+			# No label2id exposed — fall back to index 1 with an explicit warning.
+			# This is a known safe default for DeBERTa-v3 MNLI models.
+			self.entail_idx = 1
+			print(
+				f"[WARN] NLI model '{nli_model_id}' does not expose label2id. "
+				f"Defaulting entail_idx=1. Verify this is correct for your model."
+			)
 	
-	def compute_asymmetry_gap(self, text_concepts: List[str], vis_concepts: List[str]) -> Dict[str, float]:
+	def compute_asymmetry_gap(
+		self,
+		text_concepts: List[str],
+		vis_concepts: List[str],
+	) -> Dict[str, Any]:
 		"""
 		Computes Semantic Information Asymmetry using NLI Entailment.
+
+		FIX: Returns None for gap (not 0.0) when inputs are empty so the caller
+		can distinguish "no mutual matches found" from "gap measured as zero".
+		Adds 'computed_on' to record how many concept pairs were evaluated,
+		which is essential for per-sample auditability in the Evidence Receipt.
+
+		Returns:
+			dict with keys: V_entails_T, T_entails_V, gap (float | None), computed_on (int)
 		"""
 		if not text_concepts or not vis_concepts:
-			return {"V_entails_T": 0.0, "T_entails_V": 0.0, "gap": 0.0}
-		
-		# V -> T (Visual entails Text. Visual is Denser/Hyponym)
+			# FIX: Return None, not 0.0. A gap of 0.0 looks like AGREEMENT to the router.
+			# The caller must handle None explicitly and route to HARD_CONFLICT.
+			return {
+				"V_entails_T": None,
+				"T_entails_V": None,
+				"gap": None,
+				"computed_on": 0,
+			}
+
+		# V → T: Does the visual concept entail (subsume) the text concept?
+		# High V→T score means visual is more specific (hyponym) than text.
 		v_to_t_pairs = [[v, t] for v in vis_concepts for t in text_concepts]
-		
-		# T -> V (Text entails Visual. Text is Denser/Hyponym)
+
+		# T → V: Does the text concept entail (subsume) the visual concept?
+		# High T→V score means text is more specific (hyponym) than visual.
 		t_to_v_pairs = [[t, v] for t in text_concepts for v in vis_concepts]
-		
-		# Predict Entailment (Softmax probabilities)
+
+		# Predict entailment probabilities (softmax over [contradiction, entailment, neutral])
 		v2t_preds = self.nli_model.predict(v_to_t_pairs, apply_softmax=True)
 		t2v_preds = self.nli_model.predict(t_to_v_pairs, apply_softmax=True)
-		
-		# Extract entailment probabilities
+
+		# Extract entailment column and reshape to [n_vis × n_text] and [n_text × n_vis]
 		v2t_entail_probs = v2t_preds[:, self.entail_idx].reshape(len(vis_concepts), len(text_concepts))
 		t2v_entail_probs = t2v_preds[:, self.entail_idx].reshape(len(text_concepts), len(vis_concepts))
-		
-		# Average Maximum Entailment
+
+		# Average-of-max: for each source concept, take its best entailment score,
+		# then average across all source concepts. This is robust to list-length asymmetry.
 		v2t_mean = float(v2t_entail_probs.max(axis=1).mean())
 		t2v_mean = float(t2v_entail_probs.max(axis=1).mean())
-		
+
+		# gap > 0 → visual is denser / more specific than text (visual hyponym)
+		# gap < 0 → text is denser / more specific than visual (text hyponym)
 		gap = v2t_mean - t2v_mean
 
 		return {
-			"V_entails_T": v2t_mean,
-			"T_entails_V": t2v_mean,
-			"gap": gap
+			"V_entails_T": round(v2t_mean, 4),
+			"T_entails_V": round(t2v_mean, 4),
+			"gap": round(gap, 4),
+			"computed_on": len(v_to_t_pairs),
 		}
 
 	def process_sample(self, sample_id: str, vlm_json: Dict[str, Any]) -> Dict[str, Any]:
 		"""
 		Computes the Evidence Receipt and routes the sample to a Conflict Regime.
+
+		Routing authority: Stage 2 is the sole authority on regime assignment.
+		Stage 1 outputs (including fused_concepts) are evidence, never routing gates.
+
+		Regime hierarchy (evaluated in order):
+		  INVALID_JSON      → vlm_json is not a dict
+		  MISSING_MODALITY  → c_text or c_vis is empty (separate from conflict)
+		  HARD_CONFLICT     → orphan_ratio >= tau_orphan  (structural disjointness)
+		  HARD_CONFLICT     → no mutual matches survived  (NLI gap undefined)
+		  SOFT_CONFLICT     → |asym.gap| >= tau_asym      (density mismatch)
+		  AGREEMENT         → all signals within bounds
 		"""
-		# Ensure VLM JSON is valid
+		# ── STEP 0: INPUT VALIDATION ──────────────────────────────────────────────
 		if not isinstance(vlm_json, dict):
 			print(f"[ERROR] Invalid JSON for id: {sample_id}")
-			return {"id": sample_id, "regime": "HARD_CONFLICT", "error": "Invalid JSON"}
-		
-		c_text = vlm_json.get("text_concepts", [])
-		c_vis = vlm_json.get("visual_concepts", [])
+			return {
+				"id": sample_id,
+				"regime": "INVALID_JSON",
+				"failure_mode": "vlm_json is not a dict",
+				"metrics": None,
+				"evidence": None,
+				"advisory": None,
+				"action": "Discard. Cannot process non-dict input.",
+			}
+
+		c_text  = vlm_json.get("text_concepts", [])
+		c_vis   = vlm_json.get("visual_concepts", [])
 		c_fused = vlm_json.get("fused_concepts", [])
-				
-		# 1. VLM-Driven Hard Conflict Short-Circuit
-		if isinstance(c_fused, list) and len(c_fused) == 0:
-			return self._build_receipt(
-				sample_id, 
-				"HARD_CONFLICT", 
-				c_text, 
-				c_vis, 
-				"VLM short-circuit triggered ([])"
-			)
-		
+
+		# FIX: Record VLM fusion signal as a soft advisory flag, NOT a routing gate.
+		# Stage 1's fused_concepts=[] is informative but Stage 2 must verify independently.
+		vlm_fusion_empty = isinstance(c_fused, list) and len(c_fused) == 0
+
+		# FIX: MISSING_MODALITY is its own failure mode, not a HARD_CONFLICT variant.
+		# Conflating them would pollute corpus-level conflict statistics.
 		if not c_text or not c_vis:
-			return self._build_receipt(
-				sample_id, 
-				"HARD_CONFLICT", 
-				c_text, 
-				c_vis, 
-				"Missing Modality"
+			missing = (
+				"Missing Both"   if not c_text and not c_vis else
+				"Missing Visual" if not c_vis else
+				"Missing Text"
 			)
+			return {
+				"id": sample_id,
+				"vlm_cot_raw": vlm_json,
+				"regime": "MISSING_MODALITY",
+				"failure_mode": missing,
+				# FIX: Use None, not 0.0/1.0. Fake values pollute corpus-level metric distributions.
+				"metrics": {
+					"set_similarity": None,
+					"orphan_ratio": None,
+					"asymmetry_gap": None,
+					"entail_V_to_T": None,
+					"entail_T_to_V": None,
+					"denser_modality": None,
+					"nli_bypassed": None,
+					"nli_computed_on": None,
+				},
+				"evidence": {
+					"E_strong_pairs": [],
+					"E_density_pairs": [],
+					"O_text_unverified": c_text,
+					"O_vis_unmentioned": c_vis,
+				},
+				"advisory": {
+					"vlm_fusion_empty": vlm_fusion_empty,
+					"centroid_sim_low": None,
+				},
+				"action": f"Abstain from cross-modal routing. {missing}.",
+			}
 
-		# 2. TIER 1: SYMMETRIC GATE (FAST COMPUTE)
+		# ── STEP 1: SYMMETRIC AUDIT ───────────────────────────────────────────────
 		emb_t = self.sym_model.encode(c_text, convert_to_numpy=True, normalize_embeddings=True)
-		emb_v = self.sym_model.encode(c_vis, convert_to_numpy=True, normalize_embeddings=True)
+		emb_v = self.sym_model.encode(c_vis,  convert_to_numpy=True, normalize_embeddings=True)
 
-		# Mean-pooled set similarity (Shape: 1x1)
+		# Centroid similarity: cheap global coherence signal.
+		# FIX: This is advisory only. It must NOT gate the regime alone.
+		# A few unrelated concepts can drag the centroid down even when most pairs align.
 		set_sim = float(1 - scipy.spatial.distance.cosine(emb_t.mean(axis=0), emb_v.mean(axis=0)))
+		centroid_sim_low = set_sim < self.tau_fast_fail
 
-		# FAST SHORT-CIRCUIT: If sets are completely disjoint, skip NLI!
-		if set_sim < self.tau_fast_fail:
-			return self._build_receipt(
-				sample_id, 
-				"HARD_CONFLICT", 
-				c_text, 
-				c_vis, 
-				f"Fast fail (Set Sim={set_sim})"
-			)
-
-		# 3. Symmetric Matrix & Orphan Extraction
+		# Full pairwise similarity matrix: shape [|c_text| × |c_vis|]
 		sim_matrix = 1 - scipy.spatial.distance.cdist(emb_t, emb_v, metric="cosine")
 
-		matched_t, matched_v = set(), set()
-		e_strong, e_density = [], []
+		# FIX: True bidirectional (mutual) best-match.
+		# A pair (t_i, v_j) is accepted only if t_i's best match is v_j AND v_j's best match is t_i.
+		# One-sided greedy matching inflates matched_v and deflates orphan_ratio,
+		# causing the router to systematically under-report conflict.
+		t2v_best = {i: int(np.argmax(sim_matrix[i]))    for i in range(len(c_text))}
+		v2t_best = {j: int(np.argmax(sim_matrix[:, j])) for j in range(len(c_vis))}
+
+		matched_t: set = set()
+		matched_v: set = set()
+		e_strong:  List[Dict] = []
+		e_density: List[Dict] = []
+
 		for i, t in enumerate(c_text):
-			best_v_idx = int(np.argmax(sim_matrix[i]))
-			best_sim = float(sim_matrix[i][best_v_idx])
-			v = c_vis[best_v_idx]
-			if best_sim >= self.tau_match:
-				e_strong.append({"text": t, "vis": v, "sim": best_sim})
-				matched_t.add(i)
-				matched_v.add(best_v_idx)
-			elif best_sim >= self.tau_soft:
-				e_density.append({"text": t, "vis": v, "sim": best_sim})
-				matched_t.add(i)
-				matched_v.add(best_v_idx)
-		
+			j = t2v_best[i]
+			# Mutual confirmation gate: only accept if the match is reciprocal
+			if v2t_best[j] == i:
+				sim = float(sim_matrix[i][j])
+				if sim >= self.tau_match:
+					e_strong.append({"text": t, "vis": c_vis[j], "sim": round(sim, 4)})
+					matched_t.add(i)
+					matched_v.add(j)
+				elif sim >= self.tau_soft:
+					e_density.append({"text": t, "vis": c_vis[j], "sim": round(sim, 4)})
+					matched_t.add(i)
+					matched_v.add(j)
+
 		o_text = [c_text[i] for i in range(len(c_text)) if i not in matched_t]
-		o_vis = [c_vis[j] for j in range(len(c_vis)) if j not in matched_v]
+		o_vis  = [c_vis[j]  for j in range(len(c_vis))  if j not in matched_v]
 		orphan_ratio = (len(o_text) + len(o_vis)) / max(1, len(c_text) + len(c_vis))
 
-		# 4. TIER 2: Asymmetric Audit (NLI Density Verification)
-		asym_metrics = self.compute_asymmetry_gap(c_text, c_vis)
-		gap = abs(asym_metrics["gap"])
-		
-		# 5. Deterministic Regime Router
-		regime = "AGREEMENT"
-		action = "Standard mapping."
-		
-		# Condition 1: Hard Conflict (Too many unverified concepts)
+		# ── STEP 2: DETERMINISTIC HARD CONFLICT GATE (orphan_ratio only) ─────────
+		# FIX: set_sim is demoted to advisory. orphan_ratio is the sole structural gate.
+		# This makes the routing decision reproducible and independently verifiable.
 		if orphan_ratio >= self.tau_orphan:
-			regime = "HARD_CONFLICT"
-			action = f"High orphan ratio ({orphan_ratio}). Modalities disjoint."
-		# Condition 2: Soft Conflict (Topic matches, but density mismatches)
-		elif gap >= self.tau_asym:
-			regime = "SOFT_CONFLICT"
-			denser = "VISUAL" if asym_metrics["gap"] > 0 else "TEXT"
-			action = f"Density mismatch confirmed by NLI. {denser} is denser. Gap: {gap}"
+			return self._build_full_receipt(
+				sample_id=sample_id,
+				vlm_json=vlm_json,
+				regime="HARD_CONFLICT",
+				failure_mode=None,
+				set_sim=set_sim,
+				orphan_ratio=orphan_ratio,
+				asym_metrics={"V_entails_T": None, "T_entails_V": None, "gap": None, "computed_on": 0},
+				nli_bypassed=True,
+				e_strong=e_strong,
+				e_density=e_density,
+				o_text=o_text,
+				o_vis=o_vis,
+				vlm_fusion_empty=vlm_fusion_empty,
+				centroid_sim_low=centroid_sim_low,
+				action=(
+					f"HARD_CONFLICT: Structural disjointness confirmed by mutual matching. "
+					f"orphan_ratio={orphan_ratio:.3f} >= tau_orphan={self.tau_orphan}. NLI bypassed."
+				),
+			)
 
+		# ── STEP 3: ASYMMETRIC AUDIT (NLI) ───────────────────────────────────────
+		# Compute NLI only on mutually matched concepts.
+		# This isolates genuine density asymmetry from unrelated orphan noise.
+		matched_text_concepts = [c_text[i] for i in sorted(matched_t)]
+		matched_vis_concepts  = [c_vis[j]  for j in sorted(matched_v)]
+
+		asym_metrics = self.compute_asymmetry_gap(matched_text_concepts, matched_vis_concepts)
+
+		# FIX: Handle None gap explicitly. An empty mutual match set means no semantic
+		# overlap survived bidirectional filtering → treat as HARD_CONFLICT, data-driven.
+		if asym_metrics["gap"] is None:
+			return self._build_full_receipt(
+				sample_id=sample_id,
+				vlm_json=vlm_json,
+				regime="HARD_CONFLICT",
+				failure_mode="NO_MUTUAL_MATCHES",
+				set_sim=set_sim,
+				orphan_ratio=orphan_ratio,
+				asym_metrics=asym_metrics,
+				nli_bypassed=True,
+				e_strong=e_strong,
+				e_density=e_density,
+				o_text=o_text,
+				o_vis=o_vis,
+				vlm_fusion_empty=vlm_fusion_empty,
+				centroid_sim_low=centroid_sim_low,
+				action=(
+					"HARD_CONFLICT: No mutually matched concept pairs survived bidirectional "
+					"filtering. NLI asymmetry gap is undefined."
+				),
+			)
+
+		# ── STEP 4: REGIME ROUTER ─────────────────────────────────────────────────
+		abs_gap = abs(asym_metrics["gap"])
+
+		if abs_gap >= self.tau_asym:
+			denser = "VISUAL" if asym_metrics["gap"] > 0 else "TEXT"
+			regime = "SOFT_CONFLICT"
+			action = (
+				f"SOFT_CONFLICT: Density mismatch confirmed by NLI. "
+				f"{denser} modality is denser. "
+				f"gap={asym_metrics['gap']:.4f}, |gap|={abs_gap:.4f} >= tau_asym={self.tau_asym}."
+			)
+		else:
+			regime = "AGREEMENT"
+			action = (
+				f"AGREEMENT: Modalities structurally and semantically aligned. "
+				f"orphan_ratio={orphan_ratio:.3f}, |gap|={abs_gap:.4f}."
+			)
+
+		return self._build_full_receipt(
+			sample_id=sample_id,
+			vlm_json=vlm_json,
+			regime=regime,
+			failure_mode=None,
+			set_sim=set_sim,
+			orphan_ratio=orphan_ratio,
+			asym_metrics=asym_metrics,
+			nli_bypassed=False,
+			e_strong=e_strong,
+			e_density=e_density,
+			o_text=o_text,
+			o_vis=o_vis,
+			vlm_fusion_empty=vlm_fusion_empty,
+			centroid_sim_low=centroid_sim_low,
+			action=action,
+		)
+
+	def _build_full_receipt(
+		self,
+		sample_id: str,
+		vlm_json: Dict[str, Any],
+		regime: str,
+		failure_mode: Optional[str],
+		set_sim: float,
+		orphan_ratio: float,
+		asym_metrics: Dict[str, Any],
+		nli_bypassed: bool,
+		e_strong: List[Dict],
+		e_density: List[Dict],
+		o_text: List[str],
+		o_vis: List[str],
+		vlm_fusion_empty: bool,
+		centroid_sim_low: bool,
+		action: str,
+	) -> Dict[str, Any]:
+		"""
+		Constructs the canonical Evidence Receipt dict.
+
+		FIX: Replaces the old _build_receipt helper which used fake 0.0/1.0 metric
+		defaults for short-circuit paths. All metrics are now either real measurements
+		or explicit None, making the receipt safe for corpus-level statistical analysis.
+
+		The 'advisory' block carries soft signals that informed but did not determine
+		the regime. This separation is essential for ablation studies.
+		"""
+		gap = asym_metrics.get("gap")
+		denser_modality = (
+			None        if gap is None else
+			"VISUAL"    if gap > 0     else
+			"TEXT"      if gap < 0     else
+			"EQUAL"
+		)
 		return {
 			"id": sample_id,
 			"vlm_cot_raw": vlm_json,
 			"regime": regime,
+			"failure_mode": failure_mode,
 			"metrics": {
-				"set_similarity": set_sim,
-				"orphan_ratio": orphan_ratio,
-				"asymmetry_gap": asym_metrics["gap"],
-				"entail_V_to_T": asym_metrics["V_entails_T"],
-				"entail_T_to_V": asym_metrics["T_entails_V"],
-				"denser_modality": "VISUAL" if asym_metrics["gap"] > 0 else "TEXT" if asym_metrics["gap"] < 0 else "EQUAL"
+				"set_similarity":   round(set_sim, 4),
+				"orphan_ratio":     round(orphan_ratio, 4),
+				"asymmetry_gap":    gap,
+				"entail_V_to_T":    asym_metrics.get("V_entails_T"),
+				"entail_T_to_V":    asym_metrics.get("T_entails_V"),
+				"denser_modality":  denser_modality,
+				"nli_bypassed":     nli_bypassed,
+				"nli_computed_on":  asym_metrics.get("computed_on", 0),
 			},
 			"evidence": {
-				"E_strong_pairs": e_strong,
-				"E_density_pairs": e_density,
+				"E_strong_pairs":    e_strong,
+				"E_density_pairs":   e_density,
 				"O_text_unverified": o_text,
-				"O_vis_unmentioned": o_vis
+				"O_vis_unmentioned": o_vis,
 			},
-			"action": action
+			# FIX: Advisory block separates soft signals from routing decisions.
+			# vlm_fusion_empty and centroid_sim_low are recorded here for ablation
+			# but must never appear in the routing logic above.
+			"advisory": {
+				"vlm_fusion_empty": vlm_fusion_empty,
+				"centroid_sim_low": centroid_sim_low,
+			},
+			"action": action,
 		}
 
-	def _build_receipt(self, sample_id, regime, c_text, c_vis, action):
-		"""Helper for short-circuit conditions. Updated to include set_similarity."""
-		return {
-			"id": sample_id,
-			"vlm_cot_raw": {
-				"text_concepts": c_text,
-				"visual_concepts": c_vis,
-				"fused_concepts": []
-			},
-			"regime": regime,
-			"metrics": {
-				"set_similarity": 0.0, # Defaulting to 0 for short-circuits
-				"orphan_ratio": 1.0, 
-				"asymmetry_gap": 0.0,
-				"entail_V_to_T": 0.0,
-				"entail_T_to_V": 0.0,
-				"denser_modality": "EQUAL"
-			},
-			"evidence": {
-				"E_strong_pairs": [], "E_density_pairs": [],
-				"O_text_unverified": c_text, "O_vis_unmentioned": c_vis
-			},
-			"action": action
-		}
+def modality_conflict_audit(input_jsonl: str, column: str, verbose: bool = False):
+	"""
+	Runs ConflictQuantifier over all Stage 1 outputs in input_jsonl.
 
-def modality_conflict_audit(input_jsonl: str, column: str, verbose: bool = False,):
-	# Modality Conflict Quantifier over the dataset.
-	print(f"[STAGE 2] Loading Stage 1 outputs from {input_jsonl}")
+	FIX: Crash-safe incremental streaming writes with resume logic.
+	Previously, all receipts were accumulated in memory and written at the end.
+	For 110K+ samples with NLI inference, a crash at sample 90K would lose everything.
+	Now each receipt is written and flushed immediately after processing.
+	On restart, already-processed IDs are read from the output file and skipped.
+	"""
+	print(f"\n{'='*80}")
+	print(f"[STAGE 2] Modality Conflict Audit")
+	print(f"{'='*80}")
+	print(f"  ├─ Input  : {input_jsonl}")
+	print(f"  └─ Column : {column}")
+
+	# ── LOAD INPUT RECORDS ────────────────────────────────────────────────────
 	records = []
-	skipped = 0
+	skipped_load = 0
 	with open(input_jsonl, "r", encoding="utf-8") as f:
 		for line_no, line in enumerate(f, start=1):
 			line = line.strip()
@@ -292,52 +463,85 @@ def modality_conflict_audit(input_jsonl: str, column: str, verbose: bool = False
 				sid = rec.get("id")
 				concepts = rec.get(column)
 				if sid is None or concepts is None:
-					skipped += 1
+					skipped_load += 1
 					continue
 				records.append((sid, concepts))
 			except json.JSONDecodeError as e:
-				print(f"[WARN] Skipping malformed line {line_no:.4d} {e}")
-				print(f"{line}")
-				skipped += 1
+				print(f"[WARN] Skipping malformed line {line_no:05d}: {e}")
+				skipped_load += 1
 
-	print(f"[STAGE 2] Loaded {len(records)} records ({skipped} skipped).")
-	quantifier = ConflictQuantifier(verbose=verbose)
-	
-	receipts = []
-	for sample_id, vlm_data in tqdm(records, desc="Auditing"):
-		if is_empty_concepts(vlm_data):
-			if verbose:
-				print(f"[SKIP] Empty concepts for {sample_id}")
-			continue
-		
-		try:
-			receipt = quantifier.process_sample(sample_id, vlm_data)
-			receipts.append(receipt)
-		except Exception as e:
-			print(f"[ERROR] quantifier failed for {sample_id}: {e}")
+	print(f"[STAGE 2] Loaded {len(records):,} records ({skipped_load:,} skipped during load).")
 
-	# Save Receipts to JSONL
+	# ── RESUME LOGIC: collect already-processed IDs ───────────────────────────
 	output_jsonl = input_jsonl.replace(".jsonl", "_modality_conflict_audit.jsonl")
-	print(f"[STAGE 2] Saving Evidence Receipts to {output_jsonl}")
-	with open(output_jsonl, 'w') as f:
-		for r in receipts:
-			f.write(json.dumps(r) + '\n')
-					
-	# Quick Diagnostic
-	df_receipts = pd.DataFrame(receipts)
+	done_ids: set = set()
+	if os.path.exists(output_jsonl):
+		with open(output_jsonl, "r", encoding="utf-8") as f_done:
+			for line in f_done:
+				try:
+					done_ids.add(json.loads(line.strip())["id"])
+				except Exception:
+					pass
+		if done_ids:
+			print(f"[STAGE 2] Resume detected: {len(done_ids):,} samples already processed. Skipping.")
+
+	pending = [(sid, data) for sid, data in records if sid not in done_ids]
+	print(f"[STAGE 2] Pending: {len(pending):,} samples to process.")
+
+	if not pending:
+		print("[STAGE 2] Nothing to do. All records already processed.")
+	else:
+		quantifier = ConflictQuantifier(verbose=verbose)
+		skipped_empty = 0
+		errors = 0
+
+		# FIX: Stream-write each receipt immediately after processing.
+		# f.flush() after every write ensures the line is on disk before the next sample.
+		# This makes the output file a valid JSONL checkpoint at every sample boundary.
+		with open(output_jsonl, "a", encoding="utf-8") as f_out:
+			for sample_id, vlm_data in tqdm(pending, desc="[STAGE 2] Auditing"):
+				if is_empty_concepts(vlm_data):
+					skipped_empty += 1
+					if verbose:
+						print(f"  [SKIP] Empty concepts: {sample_id}")
+					continue
+				try:
+					receipt = quantifier.process_sample(sample_id, vlm_data)
+					f_out.write(json.dumps(receipt) + "\n")
+					f_out.flush()
+				except Exception as e:
+					errors += 1
+					print(f"  [ERROR] quantifier failed for {sample_id}: {e}")
+
+		print(f"[STAGE 2] Done. Skipped (empty): {skipped_empty:,} | Errors: {errors:,}")
+
+	# ── DIAGNOSTIC: read full output file for stats ───────────────────────────
+	print(f"\n[STAGE 2] Saving Evidence Receipts to: {output_jsonl}")
+	all_receipts = []
+	with open(output_jsonl, "r", encoding="utf-8") as f_read:
+		for line in f_read:
+			try:
+				all_receipts.append(json.loads(line.strip()))
+			except Exception:
+				pass
+
+	df_receipts = pd.DataFrame(all_receipts)
 	print("\n[STAGE 2] DATASET HEALTH DIAGNOSTIC:")
 	print(df_receipts['regime'].value_counts(normalize=True).mul(100).round(1).astype(str) + '%')
 
-	# save to txt file:
-	txt_file = output_jsonl.replace(".jsonl", "_mod_conflict_stats.txt")
-	with open(txt_file, 'w') as f:
-		regim_stats = df_receipts['regime'].value_counts(normalize=True)
-		f.write("MODALITY CONFLICT REGIME DISTRIBUTION\n")
-		f.write("=" * 50 + "\n\n")
-		for regime, count in regim_stats.items():
-			f.write(f"{regime:<20}{count:.2f}\n")
-		f.write("=" * 50 + "\n\n")
-		f.write(f"Total samples: {len(df_receipts)}\n")
+	txt_file = output_jsonl.replace(".jsonl", "_stats.txt")
+	with open(txt_file, "w", encoding="utf-8") as f_txt:
+		regime_stats = df_receipts['regime'].value_counts(normalize=True)
+		f_txt.write("MODALITY CONFLICT REGIME DISTRIBUTION\n")
+		f_txt.write("=" * 50 + "\n\n")
+
+		for regime_name, frac in regime_stats.items():
+			f_txt.write(f"{regime_name:<25}{frac:.4f}  ({frac*100:.1f}%)\n")
+
+		f_txt.write("\n" + "=" * 50 + "\n")
+		f_txt.write(f"Total processed : {len(df_receipts):,}\n")
+		f_txt.write(f"Input records   : {len(records):,}\n")
+	print(f"[STAGE 2] Stats written to: {txt_file}")
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="VLLM-instruct-based keyword annotation for Historical Dataset")
