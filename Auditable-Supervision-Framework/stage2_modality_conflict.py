@@ -76,7 +76,7 @@ class ConflictQuantifier:
 		)
 		
 		# Robust, config-aware NLI Entailment Index Resolution.
-		# FIX: Iterate over label2id keys to catch any casing variant (e.g. "ENTAILMENT", "Entailment").
+		# Iterate over label2id keys to catch any casing variant (e.g. "ENTAILMENT", "Entailment").
 		# Raise a hard error rather than silently defaulting to a wrong index.
 		self.entail_idx = None
 		if hasattr(self.nli_model.config, 'label2id'):
@@ -110,7 +110,7 @@ class ConflictQuantifier:
 		"""
 		Computes Semantic Information Asymmetry using NLI Entailment.
 
-		FIX: Returns None for gap (not 0.0) when inputs are empty so the caller
+		Returns None for gap (not 0.0) when inputs are empty so the caller
 		can distinguish "no mutual matches found" from "gap measured as zero".
 		Adds 'computed_on' to record how many concept pairs were evaluated,
 		which is essential for per-sample auditability in the Evidence Receipt.
@@ -119,7 +119,7 @@ class ConflictQuantifier:
 			dict with keys: V_entails_T, T_entails_V, gap (float | None), computed_on (int)
 		"""
 		if not text_concepts or not vis_concepts:
-			# FIX: Return None, not 0.0. A gap of 0.0 looks like AGREEMENT to the router.
+			# Return None, not 0.0. A gap of 0.0 looks like AGREEMENT to the router.
 			# The caller must handle None explicitly and route to HARD_CONFLICT.
 			return {
 				"V_entails_T": None,
@@ -192,11 +192,11 @@ class ConflictQuantifier:
 		c_vis   = vlm_json.get("visual_concepts", [])
 		c_fused = vlm_json.get("fused_concepts", [])
 
-		# FIX: Record VLM fusion signal as a soft advisory flag, NOT a routing gate.
+		# Record VLM fusion signal as a soft advisory flag, NOT a routing gate.
 		# Stage 1's fused_concepts=[] is informative but Stage 2 must verify independently.
 		vlm_fusion_empty = isinstance(c_fused, list) and len(c_fused) == 0
 
-		# FIX: MISSING_MODALITY is its own failure mode, not a HARD_CONFLICT variant.
+		# MISSING_MODALITY is its own failure mode, not a HARD_CONFLICT variant.
 		# Conflating them would pollute corpus-level conflict statistics.
 		if not c_text or not c_vis:
 			missing = (
@@ -209,7 +209,7 @@ class ConflictQuantifier:
 				"vlm_cot_raw": vlm_json,
 				"regime": "MISSING_MODALITY",
 				"failure_mode": missing,
-				# FIX: Use None, not 0.0/1.0. Fake values pollute corpus-level metric distributions.
+				# Use None, not 0.0/1.0. Fake values pollute corpus-level metric distributions.
 				"metrics": {
 					"set_similarity": None,
 					"orphan_ratio": None,
@@ -238,7 +238,7 @@ class ConflictQuantifier:
 		emb_v = self.sym_model.encode(c_vis,  convert_to_numpy=True, normalize_embeddings=True)
 
 		# Centroid similarity: cheap global coherence signal.
-		# FIX: This is advisory only. It must NOT gate the regime alone.
+		# This is advisory only. It must NOT gate the regime alone.
 		# A few unrelated concepts can drag the centroid down even when most pairs align.
 		set_sim = float(1 - scipy.spatial.distance.cosine(emb_t.mean(axis=0), emb_v.mean(axis=0)))
 		centroid_sim_low = set_sim < self.tau_fast_fail
@@ -246,7 +246,7 @@ class ConflictQuantifier:
 		# Full pairwise similarity matrix: shape [|c_text| × |c_vis|]
 		sim_matrix = 1 - scipy.spatial.distance.cdist(emb_t, emb_v, metric="cosine")
 
-		# FIX: True bidirectional (mutual) best-match.
+		# True bidirectional (mutual) best-match.
 		# A pair (t_i, v_j) is accepted only if t_i's best match is v_j AND v_j's best match is t_i.
 		# One-sided greedy matching inflates matched_v and deflates orphan_ratio,
 		# causing the router to systematically under-report conflict.
@@ -277,7 +277,7 @@ class ConflictQuantifier:
 		orphan_ratio = (len(o_text) + len(o_vis)) / max(1, len(c_text) + len(c_vis))
 
 		# ── STEP 2: DETERMINISTIC HARD CONFLICT GATE (orphan_ratio only) ─────────
-		# FIX: set_sim is demoted to advisory. orphan_ratio is the sole structural gate.
+		# set_sim is demoted to advisory. orphan_ratio is the sole structural gate.
 		# This makes the routing decision reproducible and independently verifiable.
 		if orphan_ratio >= self.tau_orphan:
 			return self._build_full_receipt(
@@ -309,7 +309,7 @@ class ConflictQuantifier:
 
 		asym_metrics = self.compute_asymmetry_gap(matched_text_concepts, matched_vis_concepts)
 
-		# FIX: Handle None gap explicitly. An empty mutual match set means no semantic
+		# Handle None gap explicitly. An empty mutual match set means no semantic
 		# overlap survived bidirectional filtering → treat as HARD_CONFLICT, data-driven.
 		if asym_metrics["gap"] is None:
 			return self._build_full_receipt(
@@ -390,7 +390,7 @@ class ConflictQuantifier:
 		"""
 		Constructs the canonical Evidence Receipt dict.
 
-		FIX: Replaces the old _build_receipt helper which used fake 0.0/1.0 metric
+		Replaces the old _build_receipt helper which used fake 0.0/1.0 metric
 		defaults for short-circuit paths. All metrics are now either real measurements
 		or explicit None, making the receipt safe for corpus-level statistical analysis.
 
@@ -425,7 +425,7 @@ class ConflictQuantifier:
 				"O_text_unverified": o_text,
 				"O_vis_unmentioned": o_vis,
 			},
-			# FIX: Advisory block separates soft signals from routing decisions.
+			# Advisory block separates soft signals from routing decisions.
 			# vlm_fusion_empty and centroid_sim_low are recorded here for ablation
 			# but must never appear in the routing logic above.
 			"advisory": {
@@ -445,7 +445,7 @@ def modality_conflict_audit(
 	"""
 	Runs ConflictQuantifier over all Stage 1 outputs in input_jsonl.
 
-	FIX: Crash-safe incremental streaming writes with resume logic.
+	Crash-safe incremental streaming writes with resume logic.
 	Previously, all receipts were accumulated in memory and written at the end.
 	For 110K+ samples with NLI inference, a crash at sample 90K would lose everything.
 	Now each receipt is written and flushed immediately after processing.
@@ -508,7 +508,7 @@ def modality_conflict_audit(
 		skipped_empty = 0
 		errors = 0
 
-		# FIX: Stream-write each receipt immediately after processing.
+		# Stream-write each receipt immediately after processing.
 		# f.flush() after every write ensures the line is on disk before the next sample.
 		# This makes the output file a valid JSONL checkpoint at every sample boundary.
 		with open(output_jsonl, "a", encoding="utf-8") as f_out:
