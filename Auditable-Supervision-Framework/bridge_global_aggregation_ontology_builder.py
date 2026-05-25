@@ -210,7 +210,7 @@ def cluster_and_save_priors(
 		unique_labels = np.load(ckpt_labels_path, allow_pickle=True).tolist()
 		print(f"[BRIDGE] Loaded embeddings {X.shape} for {len(unique_labels):,} labels.")
 	else:
-		print(f"\n[BRIDGE] Initialising embedding model: {model_id}")
+		print(f"\n[INIT] {model_id}")
 		model = SentenceTransformer(
 			model_id,
 			device=device,
@@ -228,7 +228,7 @@ def cluster_and_save_priors(
 			normalize_embeddings=True,
 			precision='float32',
 		)
-		print(f"[BRIDGE] Embeddings: {X.shape} {X.dtype}")
+		print(f"[BRIDGE] Embeddings: {type(X)} {X.shape} {X.dtype}")
 
 		# FIX-5a: Checkpoint immediately
 		np.save(ckpt_emb_path,    X)

@@ -554,7 +554,8 @@ def modality_conflict_audit(
 		f_txt.write("\n" + "=" * 50 + "\n")
 		f_txt.write(f"Total processed : {len(df_receipts):,}\n")
 		f_txt.write(f"Input records   : {len(records):,}\n")
-	print(f"[STAGE 2] Stats written to: {txt_file}")
+	
+	print(f"\n[STAGE 2] Stats written to: {txt_file}")
 
 def main():
 	parser = argparse.ArgumentParser(description="VLLM-instruct-based keyword annotation for Historical Dataset")

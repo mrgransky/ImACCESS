@@ -38,7 +38,7 @@ Forbidden:
   - Equipment identifiers, serial numbers, brands, or models.
   - Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
   - Continents, countries, states, provinces, cities, towns, islands, regions, or roads.
-  - Individual people's names or honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
+  - Individual people's names or honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Mr. Terry Duce, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
   - Family relationship terms (e.g., mother, father, son, uncle).
   - Ordinal numeral keywords (e.g., fourth, 1st, 115th).
   - Roman numerals (e.g., I, II, IV, VIII).
