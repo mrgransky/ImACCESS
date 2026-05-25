@@ -85,8 +85,9 @@ class ConflictQuantifier:
 				if 'entail' in label_name.lower():
 					self.entail_idx = int(idx)
 					if self.verbose:
-						print(f"  [NLI] Entailment index resolved: '{label_name}' → {self.entail_idx}")
+						print(f"\t[NLI] Entailment index resolved: '{label_name}' → {self.entail_idx}")
 					break
+
 			if self.entail_idx is None:
 				raise ValueError(
 					f"[FATAL] NLI model '{nli_model_id}' label2id does not contain an "
@@ -459,7 +460,6 @@ def modality_conflict_audit(
 	print(f"  ├─ Asymmetric Embedding Model : {asym_model_id}")
 	print(f"  └─ Column : {column}")
 
-	# ── LOAD INPUT RECORDS ────────────────────────────────────────────────────
 	records = []
 	skipped_load = 0
 	with open(input_jsonl, "r", encoding="utf-8") as f:
@@ -481,7 +481,7 @@ def modality_conflict_audit(
 
 	print(f"[STAGE 2] Loaded {len(records):,} records ({skipped_load:,} skipped during load).")
 
-	# ── RESUME LOGIC: collect already-processed IDs ───────────────────────────
+	# RESUME LOGIC: collect already-processed IDs
 	output_jsonl = input_jsonl.replace(".jsonl", "_modality_conflict_audit.jsonl")
 	done_ids: set = set()
 	if os.path.exists(output_jsonl):
