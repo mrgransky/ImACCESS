@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=pipeline_for_4_stages
+#SBATCH --job-name=H4_pipeline_4x_stages
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -33,8 +33,8 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
-# DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4"
-DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31"
+DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4"
+# DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31"
 CSV_FILE=$DATASET_DIR/metadata_multi_label.csv
 JSONL_COT_FILE="${CSV_FILE%.csv}_vlm_cot.jsonl"
 JSONL_MODALITY_CONFLICT_FILE="${JSONL_COT_FILE%.jsonl}_modality_conflict_audit.jsonl"
