@@ -7,10 +7,10 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
+#SBATCH --cpus-per-task=10
 #SBATCH --mem=192G
 #SBATCH --partition=gpu
-#SBATCH --time=00-03:00:00
+#SBATCH --time=03-00:00:00
 #SBATCH --gres=gpu:v100:4,nvme:100
 ####SBATCH --begin=08:00:00
 
@@ -46,7 +46,7 @@ SYMMETRICAL_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 ASYMMETRICAL_EMBEDDING_MODEL="cross-encoder/nli-deberta-v3-large"
 
 # stage 1: VLM with CoT:
-python -u stage1_vlm_cot.py -csv $CSV_FILE -vlm $VLM_MODEL -v
+python -u stage1_vlm_cot.py -csv $CSV_FILE -vlm $VLM_MODEL -bs 16 -v
 
 # stage 2: Modality Conflict Quantification
 python -u stage2_modality_conflict.py -jsonl $JSONL_COT_FILE -sym $SYMMETRICAL_EMBEDDING_MODEL -asym $ASYMMETRICAL_EMBEDDING_MODEL -v
