@@ -791,7 +791,7 @@ def is_english(
 	
 	if verbose:
 		detector_type = "shortlisted languages" if use_shortlist else "all languages"
-		print(f"Checking if text is in English (using {detector_type}):\n{text}\n")
+		print(f"\nChecking if text is in English (using {detector_type}):\n{text}\n")
 	
 	try:
 		cleaned_text = " ".join(str(text).split())

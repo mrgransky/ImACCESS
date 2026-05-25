@@ -3,7 +3,7 @@ import json
 import torch
 
 unmasker = tfs.pipeline('fill-mask', model='google-bert/bert-large-cased')
-unmasked_result = unmasker("This Deep Reinforcement Learning framework learns from [MASK] data.")
+unmasked_result = unmasker("Finnish Lapland is very well-known for its [MASK].")
 print(json.dumps(unmasked_result, indent=2))
 
 
