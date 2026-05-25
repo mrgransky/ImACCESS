@@ -436,11 +436,11 @@ class ConflictQuantifier:
 		}
 
 def modality_conflict_audit(
-		input_jsonl: str,
-		sym_model_id: str,
-		asym_model_id: str,
-		column: str, 
-		verbose: bool = False
+	input_jsonl: str,
+	sym_model_id: str,
+	asym_model_id: str,
+	column: str, 
+	verbose: bool = False
 ):
 	"""
 	Runs ConflictQuantifier over all Stage 1 outputs in input_jsonl.
@@ -502,7 +502,7 @@ def modality_conflict_audit(
 	else:
 		quantifier = ConflictQuantifier(
 			sym_model_id=sym_model_id,
-			asym_model_id=asym_model_id,
+			nli_model_id=asym_model_id,
 			verbose=verbose
 		)
 		skipped_empty = 0
