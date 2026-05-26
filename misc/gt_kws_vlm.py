@@ -35,8 +35,9 @@ Constraints:
 	- Exclude generic nouns for human classifications, (person, people, or men, women, children, boy, girl, etc).
 	- Refrain from using common environmental details (sky, lighting, ground texture) except when they hold historical importance, such as craters or trenches.
 	- Vague container nouns should be avoided (e.g., scene, group, event).
-	- One should refrain from using expressions centered on counting, such as a trio of men, various individuals, or a cluster of youths.
+	- Refrain from using expressions centered on counting, such as a trio of men, various individuals, or a cluster of youths.
 	- Purely demographic descriptors without contextual role should be avoided.
+	- Exclude generic keywords for image characteristics (e.g., photograph, image, black and white photograph)
 	- Text/OCR extraction from the image is not allowed."""
 
 def _load_vlm_(

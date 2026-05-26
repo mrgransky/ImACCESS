@@ -23,27 +23,29 @@ from nlp_utils import get_enriched_description
 # python stage1_vlm_cot.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # with nohup:
-# nohup python -u stage1_vlm_cot.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v > logs/ww2_vlm_cot.log 2>&1 &
+# nohup python -u stage1_vlm_cot.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -bs 4 -v > logs/ww2_vlm_cot.log 2>&1 &
 
 # HPC:
 # one sample:
 # $ python stage1_vlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.6-27B" -v
 
-PROMPT_TEMPLATE = """Given an image and its caption, extract a maximum of {k} distinct concepts, then categorize them into three lists of keywords.
+PROMPT_TEMPLATE = """Given an image and its caption, strictly extract **no more than {k}** prominent concepts, then categorize them into three lists of keywords.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
-Forbidden:
-  - Dates, times, years, decades, or any temporal references (e.g., May 12, 1964, September 1919, spring 1940, 1950s era).
+Forbidden keywords:
+  - Generic terms (e.g., post war era, Post-war, aftermath of World War II, war, battle).
+  - Dates, times, years, decades, or any temporal references (e.g., 'May 12, 1964', 'September 1919', 'spring 1940', '1950s era').
   - Quantities, counts, measurements, or numerical expressions (e.g., 1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
-  - Equipment identifiers, serial numbers, brands, or models.
+  - Identifiers, serial numbers, brands, or models.
   - Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
   - Continents, countries, states, provinces, cities, towns, islands, regions, or roads.
+  - Nationalities, ethnicities, or religions.
   - Individual people's names or honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Mr. Terry Duce, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
   - Family relationship terms (e.g., mother, father, son, uncle).
   - Ordinal numeral keywords (e.g., fourth, 1st, 115th).
   - Roman numerals (e.g., I, II, IV, VIII).
-  - Nationalities, ethnicities, or religions.
   - Abbreviations, acronyms, phrasal verbs, or descriptive clauses.
+  - Image types or characteristics (e.g., photograph, image, black and white photograph).
 
 Output format:
   - text_concepts: Keywords derived STRICTLY from the caption.
@@ -977,7 +979,6 @@ def get_vlm_cot_labels(
 		print(f"[READY] {type(df)} {df.shape} {list(df.columns)} ({time.time() - t0:.2f}s)")
 		print(df.info(verbose=True, memory_usage=True))
 		print(df.head())
-		print("-"*100)
 	
 	doc_urls = [url if isinstance(url, str) else None for url in df["doc_url"]]
 	image_paths = [p if isinstance(p, str) and os.path.exists(p) else None for p in df["img_path"]]
@@ -987,7 +988,7 @@ def get_vlm_cot_labels(
 	n_total = len(image_paths)
 	
 	if verbose:
-		print(f"[DATA] Loaded {n_total} image paths from CSV ({time.time() - t0:.2f}s)")
+		print(f"\n[LOAD] {n_total} image paths from {csv_file} ({time.time() - t0:.2f}s)")
 		print(f"IMAGES: {len(image_paths)} | DESCRIPTIONS: {len(descriptions)} | URLS: {len(doc_urls)}")
 		print("-"*100)
 
@@ -1006,7 +1007,7 @@ def get_vlm_cot_labels(
 		uniq_inputs = image_paths
 		orig_to_uniq = list(range(n_total))
 	if verbose:
-		print(f"[DEDUP] {len(uniq_inputs)} unique images")
+		print(f"[DEDUP] {len(uniq_inputs)} unique images after deduplication ({len(image_paths)} total)")
 
 	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
 	with ThreadPoolExecutor(max_workers=num_workers) as ex:

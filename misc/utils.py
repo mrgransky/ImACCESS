@@ -714,10 +714,10 @@ def get_token_breakdown(
 	}
 	
 	print(f"[TOKEN BREAKDOWN]")
-	print(f"   • Input tokens:      {breakdown['input_tokens']}")
-	print(f"   • Generated tokens:  {breakdown['generated_tokens']}")
-	print(f"   • Total tokens:      {breakdown['total_tokens']}")
-	print(f"   • Generation ratio:  {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
+	print(f"   • Input:     {breakdown['input_tokens']}")
+	print(f"   • Generated: {breakdown['generated_tokens']}")
+	print(f"   • Total:     {breakdown['total_tokens']}")
+	print(f"   • Ratio:     {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
 	
 	return breakdown
 
