@@ -754,11 +754,7 @@ def parse_vlm_response(
 				parsed[key] = cleaned
 		
 		if verbose:
-				print(f"\n[RESULT] Successfully parsed response:")
-				print(f"  text_concepts: {len(parsed['text_concepts'])} items")
-				print(f"  visual_concepts: {len(parsed['visual_concepts'])} items")
-				print(f"  fused_concepts: {len(parsed['fused_concepts'])} items")
-				print("="*80 + "\n")
+			print(f"\n[RESULT] text: {len(parsed['text_concepts'])} visual: {len(parsed['visual_concepts'])} fused: {len(parsed['fused_concepts'])}")
 		return parsed
 	except json.JSONDecodeError as e:
 		if verbose:
