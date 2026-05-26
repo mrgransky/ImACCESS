@@ -976,18 +976,19 @@ def get_vlm_cot_labels(
 	if verbose:
 		print(f"[READY] {type(df)} {df.shape} {list(df.columns)} ({time.time() - t0:.2f}s)")
 		print(df.info(verbose=True, memory_usage=True))
+		print(df.head())
 		print("-"*100)
 	
 	doc_urls = [url if isinstance(url, str) else None for url in df["doc_url"]]
 	image_paths = [p if isinstance(p, str) and os.path.exists(p) else None for p in df["img_path"]]
 	descriptions = [desc  if desc and isinstance(desc, str) else None for desc in df["enriched_document_description"]]
+	
 	assert len(image_paths) == len(descriptions), f"Length mismatch: {len(image_paths)} != {len(descriptions)}"
-
 	n_total = len(image_paths)
+	
 	if verbose:
-		print(df.head())
-		print(f"[DATA] Loaded {type(df)} {df.shape} with {n_total} image paths from CSV ({time.time() - t0:.2f}s)")
-		print(f"IMAGES: {len(image_paths)} | DESCRIPTIONS: {len(descriptions)}")
+		print(f"[DATA] Loaded {n_total} image paths from CSV ({time.time() - t0:.2f}s)")
+		print(f"IMAGES: {len(image_paths)} | DESCRIPTIONS: {len(descriptions)} | URLS: {len(doc_urls)}")
 
 	# ========== Prepare inputs (dedup + verification) ==========
 	if do_dedup:

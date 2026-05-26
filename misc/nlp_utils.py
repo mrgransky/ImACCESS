@@ -809,9 +809,7 @@ def is_english(
 			if res.language == Language.ENGLISH:
 				score = res.value
 				if verbose:
-					print(f"\nEnglish confidence: {score:.4f}")
-					print(f"Threshold: {confidence_threshold}")
-					print(f"Is English: {score > confidence_threshold}")
+					print(f"\nEnglish confidence: {score:.4f} English (> {confidence_threshold})? {score > confidence_threshold}")
 				
 				if score > confidence_threshold:
 					return True
