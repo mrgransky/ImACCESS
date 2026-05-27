@@ -22,7 +22,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "BT-5 Mariupol soviet Iight tank. BT-2 BT-5 BT-7." -llm "openai/gpt-oss-20b" -v
+# python gt_kws_llm.py -desc "BT-5 Mariupol soviet Iight tank. BT-2 BT-5 BT-7." -llm "Qwen/Qwen3.6-27B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
