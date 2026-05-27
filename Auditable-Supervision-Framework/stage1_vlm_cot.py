@@ -9,7 +9,9 @@ sys.path.insert(0, CLIP_DIR)
 MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
 sys.path.insert(0, MISC_DIR)
 
-print(f"sys.path: {sys.path}")
+print(f"{len(sys.path)} {type(sys.path)} sys.path:")
+for i, p in enumerate(sys.path):
+	print(f"\t{i} {p}")
 
 from utils import *
 from nlp_utils import get_enriched_description
@@ -27,7 +29,7 @@ from nlp_utils import get_enriched_description
 
 # HPC:
 # one sample:
-# $ python stage1_vlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.6-35B-A3B" -v
+# $ python stage1_vlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "google/gemma-4-31B-it" -v
 
 PROMPT_TEMPLATE = """Given an image and its caption, extract no more than {k} prominent concepts, then categorize them into three lists of keywords.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
