@@ -96,8 +96,7 @@ except ImportError:
 		viz = None  # Fallback if visualize module is not available
 
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
-os.environ["TRANSFORMERS_LOAD_THREADS"] = "1"  # Reduce the number of threads used by Hugging
-
+# os.environ["TRANSFORMERS_LOAD_THREADS"] = "1"  # Reduce the number of threads used by Hugging
 
 nltk_modules = [
 	'punkt',
