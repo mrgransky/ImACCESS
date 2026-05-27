@@ -444,10 +444,12 @@ def _load_llm_(
 
 	# ========== Load Model ==========
 	if verbose:
-		print(f"\n[LOADING] {model_id}")
+		print("-"*50)
+		print(f"[LOADING] {model_id}")
 		model_loader_name = "AutoModelForCausalLM" if use_auto_model else model_cls.__name__
-		print(f"\n[KWARGS] {model_loader_name}")
+		print(f"[KWARGS] {model_loader_name}")
 		pprint.pprint(model_kwargs)
+		print("-"*50)
 
 	try:
 		if use_auto_model:
