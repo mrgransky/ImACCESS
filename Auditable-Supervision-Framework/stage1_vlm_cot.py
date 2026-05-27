@@ -53,7 +53,7 @@ Output format:
 	- visual_concepts: Keywords derived STRICTLY from the pixel data.
 	- fused_concepts: Keywords inferred from BOTH modalities. In case the modalities are essentially disjoint (e.g., text says "aircraft" but image shows "ships"), return an empty list [] and refrain from forcing a fusion.
 
-Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without any additional text:
+Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without thoughts, reasoning or any additional text:
 {{
 "text_concepts": [],
 "visual_concepts": [],
@@ -658,7 +658,6 @@ def parse_vlm_response(model_id: str, response: str, verbose: bool=False) -> Opt
 			print("ERROR: Invalid response input.")
 			print(f"  Type: {type(response)}")
 			print(f"  Value: {response}")
-		
 		return None
 
 	if verbose:
