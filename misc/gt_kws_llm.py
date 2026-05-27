@@ -180,7 +180,13 @@ def _load_llm_(
 	def _optimal_attn_impl() -> str:
 		if not torch.cuda.is_available():
 			return "eager"
-		
+
+		# Custom/non-standard architectures often don't support sdpa/flash
+		if use_auto_model or (config.architectures and config.architectures[0] not in dir(tfs)):
+			if verbose:
+				print(f"[INFO] Custom architecture — defaulting to 'eager' attention")
+			return "eager"
+
 		# model config for FlashAttention dimension limits
 		max_head_dim = getattr(config, "head_dim", 0)
 		if hasattr(config, "text_config"):
@@ -448,25 +454,25 @@ def _load_llm_(
 		else:
 			model = model_cls.from_pretrained(model_id, **model_kwargs)
 			
-	except ValueError as e:
-		# Fallback for architectures that don't support the selected attention implementation (e.g., SDPA/FlashAttention)
-		if "does not support an attention implementation" in str(e) or "attn_implementation" in str(e):
-			if verbose:
-				print(f"\n[WARN] '{model_kwargs.get('attn_implementation')}' not supported for {model_id}. Falling back to 'eager' attention.")
-			model_kwargs["attn_implementation"] = "eager"
+	# except ValueError as e:
+	# 	# Fallback for architectures that don't support the selected attention implementation (e.g., SDPA/FlashAttention)
+	# 	if "does not support an attention implementation" in str(e) or "attn_implementation" in str(e):
+	# 		if verbose:
+	# 			print(f"\n[WARN] '{model_kwargs.get('attn_implementation')}' not supported for {model_id}. Falling back to 'eager' attention.")
+	# 		model_kwargs["attn_implementation"] = "eager"
 			
-			# Retry loading with eager attention
-			try:
-				if use_auto_model:
-					model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
-				else:
-					model = model_cls.from_pretrained(model_id, **model_kwargs)
-			except Exception as retry_e:
-				if verbose: print(f"[ERROR] Error loading model with eager attention:\n{retry_e}")
-				raise retry_e
-		else:
-			if verbose: print(f"[ERROR] ValueError loading model:\n{e}")
-			raise e
+	# 		# Retry loading with eager attention
+	# 		try:
+	# 			if use_auto_model:
+	# 				model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+	# 			else:
+	# 				model = model_cls.from_pretrained(model_id, **model_kwargs)
+	# 		except Exception as retry_e:
+	# 			if verbose: print(f"[ERROR] Error loading model with eager attention:\n{retry_e}")
+	# 			raise retry_e
+	# 	else:
+	# 		if verbose: print(f"[ERROR] ValueError loading model:\n{e}")
+	# 		raise e
 			
 	except Exception as e:
 		if verbose: print(f"[ERROR] Error loading model:\n{e}")
@@ -485,9 +491,9 @@ def _load_llm_(
 			elif not any(v == "cpu" for v in dm.values()):
 				print(f"\n[OK] All layers on GPU - optimal performance!")
 
-		print(f"{'='*110}\n")
+		print(f"{'='*110}")
 		print(model.config)
-		print(f"{'='*110}\n")
+		print(f"{'='*110}")
 
 	return tokenizer, model
 
