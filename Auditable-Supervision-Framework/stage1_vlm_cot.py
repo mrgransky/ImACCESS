@@ -35,23 +35,23 @@ PROMPT_TEMPLATE = """Given an image and its caption, extract no more than {k} pr
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
 Forbidden keywords:
-  - Generic terms (e.g., 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
-  - Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
-  - Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
-  - Identifiers, serial numbers, brands, or models.
-  - Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
-  - Continents, countries, states, provinces, cities, towns, islands, regions, or roads.
-  - Nationalities, ethnicities, or religions.
-  - Individual people's names or honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Mr. Terry Duce, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
-  - Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
-  - Roman numerals, fractions, or ordinal numeral keywords (e.g., IV, VIII, fourth, 1st, 115th).
-  - Abbreviations, acronyms, phrasal verbs, or descriptive clauses.
-  - Image types or characteristics (e.g., photograph, image, black and white photograph).
+	- Generic terms (e.g., 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
+	- Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
+	- Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
+	- Identifiers, serial numbers, brands, or models.
+	- Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
+	- Continents, countries, states, provinces, cities, towns, islands, regions, or roads.
+	- Nationalities, ethnicities, or religions.
+	- Individual people's names or honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Mr. Terry Duce, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
+	- Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
+	- Roman numerals, fractions, or ordinal numeral keywords (e.g., IV, VIII, fourth, 1st, 115th).
+	- Abbreviations, acronyms, phrasal verbs, or descriptive clauses.
+	- Image types or characteristics (e.g., photograph, image, black and white photograph).
 
 Output format:
-  - text_concepts: Keywords derived STRICTLY from the caption.
-  - visual_concepts: Keywords derived STRICTLY from the pixel data.
-  - fused_concepts: Keywords inferred from BOTH modalities. In case the modalities are essentially disjoint (e.g., text says "aircraft" but image shows "ships"), return an empty list [] and refrain from forcing a fusion.
+	- text_concepts: Keywords derived STRICTLY from the caption.
+	- visual_concepts: Keywords derived STRICTLY from the pixel data.
+	- fused_concepts: Keywords inferred from BOTH modalities. In case the modalities are essentially disjoint (e.g., text says "aircraft" but image shows "ships"), return an empty list [] and refrain from forcing a fusion.
 
 Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without any additional text:
 {{
@@ -642,6 +642,7 @@ def _load_vlm_(
 def verify(p: str):
 	if p is None or not os.path.exists(p):
 		return None
+
 	try:
 		with open(p, 'rb') as f:
 			header = f.read(3)
@@ -651,137 +652,130 @@ def verify(p: str):
 	except Exception:
 		return None
 
-def parse_vlm_response(
-	model_id: str, 
-	response: str, 
-	verbose: bool = False
-) -> Optional[Dict[str, Any]]:
-	if verbose:
-		print(f"\nPARSING VLM: {model_id} RESPONSE")
-	
+def parse_vlm_response(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[str, Any]]:
 	if not response or not isinstance(response, str):
 		if verbose:
-			print(f"ERROR: Invalid response input.")
+			print("ERROR: Invalid response input.")
 			print(f"  Type: {type(response)}")
 			print(f"  Value: {response}")
+		
 		return None
-	
+
+	if verbose:
+		print(f"\nPARSING VLM: {model_id} RESPONSE")
+
 	response = response.strip()
-	
+
 	if verbose:
 		print(f"\nRaw response (Total length: {len(response)} characters):")
-		print(f"{response}")
-	
-	# Step 1a: Remove "assistant" prefix if present
+		print(response)
+
+	# Step 1a: Remove leading assistant prefix if present
 	if response.lower().startswith("assistant"):
 		response = response[len("assistant"):].strip()
 		if verbose:
-			print(f"[STEP 1a] Removed 'assistant' prefix")
+			print("[STEP 1a] Removed 'assistant' prefix")
 	
-	# Step 1b: Remove markdown code fences
-	response = re.sub(r'```json\s*', '', response, flags=re.IGNORECASE)
-	response = re.sub(r'```\s*', '', response)
+	# Step 1b: Remove markdown fences only
+	response = re.sub(r"```json\s*", "", response, flags=re.IGNORECASE)
+	response = re.sub(r"```python\s*", "", response, flags=re.IGNORECASE)
+	response = re.sub(r"```\s*", "", response)
+	
 	if verbose:
 		print(f"[STEP 1b] After removing markdown fences: {len(response)} characters")
 
-	# Step 3: Extract the LAST valid JSON object (STRING-AWARE bracket matching)
-	start_idx = response.rfind('{')
-	
-	if verbose:
-		print(f"\n[STEP 3] JSON extraction:")
-		print(f"  Last left curly bracket found at index: {start_idx}")
-	
-	if start_idx == -1:
-		if verbose:
-			print("  ERROR: No JSON object found in response.")
-		return None
-	
-	# String-aware depth counter to ignore braces inside quotes
-	depth = 0
-	in_string = False
-	escape_next = False
-	json_str = None
-	
-	for i in range(start_idx, len(response)):
-			char = response[i]
-			
-			if escape_next:
-					escape_next = False
-					continue
-					
-			if char == '\\':
-					escape_next = True
-					continue
-					
-			if char == '"':
-					in_string = not in_string
-					continue
-					
-			if not in_string:
-					if char == '{':
-							depth += 1
-					elif char == '}':
-							depth -= 1
-							if depth == 0:
-									json_str = response[start_idx:i+1]
-									break
-	
-	if not json_str:
-			if verbose:
-					print(f"  ERROR: Unmatched JSON braces in response.")
-			return None
-	
-	if verbose:
-		print(f"  Extracted JSON string ({len(json_str)} chars):")
-		print(f"{json_str}")
-	
-	# Step 4: Clean common JSON issues (trailing commas)
-	json_str = re.sub(r',\s*}', '}', json_str)
-	json_str = re.sub(r',\s*]', ']', json_str)
+	required_keys = {"text_concepts", "visual_concepts", "fused_concepts"}
 
-	try:
-		parsed = json.loads(json_str)
-		
-		if verbose:
-			print(f"\n[STEP 4] JSON parsed successfully: {type(parsed)} ({len(parsed)} items) {parsed}")
-		
-		if not isinstance(parsed, dict):
+	def _extract_balanced_json_objects(text: str) -> List[str]:
+		objects = []
+		start_idx = None
+		depth = 0
+		in_string = False
+		escape_next = False
+		for i, ch in enumerate(text):
+				if escape_next:
+						escape_next = False
+						continue
+				if ch == "\\":
+						escape_next = True
+						continue
+				if ch == '"':
+						in_string = not in_string
+						continue
+				if in_string:
+						continue
+				if ch == "{":
+						if depth == 0:
+								start_idx = i
+						depth += 1
+				elif ch == "}":
+						if depth > 0:
+								depth -= 1
+								if depth == 0 and start_idx is not None:
+										objects.append(text[start_idx:i + 1])
+										start_idx = None
+		return objects
+
+	# Step 2: Extract all complete balanced JSON objects
+	candidates = _extract_balanced_json_objects(response)
+	if verbose:
+			print(f"\n[STEP 2] Found {len(candidates)} balanced JSON candidate(s)")
+	if not candidates:
 			if verbose:
-				print(f"  ERROR: Parsed JSON is not an object/dict. Got: {type(parsed)}")
+					print("  ERROR: No complete JSON object found in response.")
 			return None
-				
-		# Ensure required keys exist and are clean lists
-		required_keys = ["text_concepts", "visual_concepts", "fused_concepts"]
-		
-		if verbose:
-			print(f"\n[STEP 5] Validating required keys: {required_keys}")
-		
-		for key in required_keys:
-			if key not in parsed:
-				if verbose:
-					print(f"  ⚠ Missing {key} - adding empty list for safety ([])")
-				parsed[key] = []
+	parsed_candidates = []
+	for idx, json_str in enumerate(candidates):
+			# Clean common JSON issues
+			json_str = re.sub(r",\s*}", "}", json_str)
+			json_str = re.sub(r",\s*]", "]", json_str)
+			try:
+					parsed = json.loads(json_str)
+					if isinstance(parsed, dict):
+							parsed_candidates.append(parsed)
+							if verbose:
+									print(f"  Candidate {idx}: valid dict with keys {list(parsed.keys())}")
+			except json.JSONDecodeError as e:
+					if verbose:
+							print(f"  Candidate {idx}: invalid JSON ({e})")
+	if not parsed_candidates:
+			if verbose:
+					print("[ERROR] No valid JSON dict could be parsed.")
+			return None
+	# Prefer the last dict that contains any required key; otherwise last dict
+	selected = None
+	for parsed in reversed(parsed_candidates):
+			if required_keys & set(parsed.keys()):
+					selected = parsed
+					break
+	if selected is None:
+			selected = parsed_candidates[-1]
+	if verbose:
+			print(f"\n[STEP 3] Selected parsed object: {selected}")
+	# Step 4: Normalize required keys
+	for key in required_keys:
+			if key not in selected:
+					if verbose:
+							print(f"  ⚠ Missing {key} - adding empty list []")
+					selected[key] = []
 			else:
-				# Safely convert to list and filter out None/empty/whitespace
-				raw_list = parsed[key] if isinstance(parsed[key], list) else [parsed[key]]
-				cleaned = [
-					str(item).strip() for item in raw_list 
-					if item is not None and str(item).strip()
-				]
-				if verbose:
-					print(f"{key} {len(cleaned)}/{len(raw_list)} valid")
-				
-				parsed[key] = cleaned
-		
-		if verbose:
-			print(f"[RESULT] text: {len(parsed['text_concepts'])} visual: {len(parsed['visual_concepts'])} fused: {len(parsed['fused_concepts'])}")
-
-		return parsed
-	except json.JSONDecodeError as e:
-		if verbose:
-			print(f"[ERROR] Failed to parse JSON {type(e).__name__}: {e} at line {e.lineno}, column {e.colno}")
-			print(f"{json_str}")
-		return None
+					raw_value = selected[key]
+					raw_list = raw_value if isinstance(raw_value, list) else [raw_value]
+					cleaned = [
+							str(item).strip()
+							for item in raw_list
+							if item is not None and str(item).strip()
+					]
+					selected[key] = cleaned
+					if verbose:
+							print(f"  {key}: {len(cleaned)} item(s)")
+	if verbose:
+			print(
+					f"[RESULT] text: {len(selected['text_concepts'])} "
+					f"visual: {len(selected['visual_concepts'])} "
+					f"fused: {len(selected['fused_concepts'])}"
+			)
+	return selected
 
 def get_vlm_cot_labels_single(
 	model_id: str,
@@ -903,8 +897,7 @@ def get_vlm_cot_labels_single(
 		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
 
 	if verbose:
-		print(f"[GEN CONFIG] Using generation parameters:")
-		print(json.dumps(gen_kwargs, indent=2, ensure_ascii=False))
+		print(f"[GEN CONFIG] {gen_kwargs}")
 
 	# ========== Generate response ==========
 	tt = time.time()
@@ -931,7 +924,7 @@ def get_vlm_cot_labels_single(
 	parsed = parse_vlm_response(model_id=model_id, response=response, verbose=verbose)
 
 	if verbose:
-		print(f"Parsed Response: {type(parsed)} {len(parsed)} {parsed.keys()}")
+		print(f"Parsed Response: {type(parsed)}")
 		print(json.dumps(parsed, indent=2, ensure_ascii=False))
 
 	return [parsed]
