@@ -29,21 +29,20 @@ from nlp_utils import get_enriched_description
 # one sample:
 # $ python stage1_vlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.6-27B" -v
 
-PROMPT_TEMPLATE = """Given an image and its caption, strictly extract **no more than {k}** prominent concepts, then categorize them into three lists of keywords.
+PROMPT_TEMPLATE = """Given an image and its caption, extract no more than {k} prominent concepts, then categorize them into three lists of keywords.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
 Forbidden keywords:
-  - Generic terms (e.g., post war era, Post-war, aftermath of World War II, war, battle).
-  - Dates, times, years, decades, or any temporal references (e.g., 'May 12, 1964', 'September 1919', 'spring 1940', '1950s era').
-  - Quantities, counts, measurements, or numerical expressions (e.g., 1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
+  - Generic terms (e.g., 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
+  - Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
+  - Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
   - Identifiers, serial numbers, brands, or models.
   - Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
   - Continents, countries, states, provinces, cities, towns, islands, regions, or roads.
   - Nationalities, ethnicities, or religions.
   - Individual people's names or honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Mr. Terry Duce, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
-  - Family relationship terms (e.g., mother, father, son, uncle).
-  - Ordinal numeral keywords (e.g., fourth, 1st, 115th).
-  - Roman numerals (e.g., I, II, IV, VIII).
+  - Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
+  - Roman numerals, fractions, or ordinal numeral keywords (e.g., IV, VIII, fourth, 1st, 115th).
   - Abbreviations, acronyms, phrasal verbs, or descriptive clauses.
   - Image types or characteristics (e.g., photograph, image, black and white photograph).
 
@@ -52,7 +51,7 @@ Output format:
   - visual_concepts: Keywords derived STRICTLY from the pixel data.
   - fused_concepts: Keywords inferred from BOTH modalities. In case the modalities are essentially disjoint (e.g., text says "aircraft" but image shows "ships"), return an empty list [] and refrain from forcing a fusion.
 
-Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without any markdown, reasoning, or additional text:
+Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without any additional text:
 {{
 "text_concepts": [],
 "visual_concepts": [],
@@ -754,7 +753,8 @@ def parse_vlm_response(
 				parsed[key] = cleaned
 		
 		if verbose:
-			print(f"\n[RESULT] text: {len(parsed['text_concepts'])} visual: {len(parsed['visual_concepts'])} fused: {len(parsed['fused_concepts'])}")
+			print(f"[RESULT] text: {len(parsed['text_concepts'])} visual: {len(parsed['visual_concepts'])} fused: {len(parsed['fused_concepts'])}")
+
 		return parsed
 	except json.JSONDecodeError as e:
 		if verbose:
@@ -894,6 +894,7 @@ def get_vlm_cot_labels_single(
 	if verbose:
 		print(f"[RESPONSE] {type(outputs)} {outputs.shape}")
 		breakdown = get_token_breakdown(input_single, outputs)
+		generated_tokens.append(breakdown['generated_tokens'])
 		print(f"   • Generation time:   {generation_time:.2f}s")
 		print(f"   • Generation ratio:  {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
 		print(f"   • Time per token:    {generation_time / breakdown['generated_tokens']:.3f}s")
@@ -1084,8 +1085,7 @@ def get_vlm_cot_labels(
 		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
 
 	if verbose:
-		print(f"\n[GEN CONFIG] Using generation parameters:")
-		print(json.dumps(gen_kwargs, indent=2, ensure_ascii=False))
+		print(f"[GEN CONFIG] {gen_kwargs}")
 	
 	# ========== Process batches ==========
 	def _load_(p: str) -> Optional[Image.Image]:
@@ -1097,14 +1097,19 @@ def get_vlm_cot_labels(
 			print(f"Error loading image {p}: {e}")
 			return None
 
-	if verbose:
-		print(f"[INIT] BATCHED PARALLEL OPTIMIZED VLM processing with {num_workers} workers")
-
 	total_batches = math.ceil(len(valid_indices) / batch_size)
-	if verbose:
-		print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
 
-	for b in tqdm(range(total_batches), desc="Processing (visual) batches", ncols=120):
+	if verbose:
+		print(
+			f"[INIT] BATCHED PARALLEL OPTIMIZED VLM (nw: {num_workers}) "
+			f"{len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}"
+		)
+
+	batch_max_tokens = []
+	all_image_tokens = []
+
+	for b in range(total_batches):
+		print(f"\n[BATCH] {b}/{total_batches}")
 		batch_indices = valid_indices[b * batch_size:(b + 1) * batch_size]
 		batch_paths = [verified_paths[i] for i in batch_indices]
 		batch_descs = [descriptions[i] if descriptions[i] else "No caption available." for i in batch_indices]
@@ -1121,11 +1126,11 @@ def get_vlm_cot_labels(
 		
 		if not valid_pairs:
 			if verbose:
-				print(f"\n[BATCH {b}]: No valid images in batch => skipping")
+				print(f"[BATCH {b}]: No valid images in batch => skipping")
 			continue
 		else:
 			if verbose:
-				print(f"\n[BATCH {b}] contains {len(valid_pairs)} valid images.")
+				print(f"[BATCH {b}] {len(valid_pairs)} valid images")
 
 		# Build per-sample messages
 		messages = [
@@ -1150,6 +1155,7 @@ def get_vlm_cot_labels(
 			]
 			if verbose:
 				print(f"[BATCH {b}] Chat templates built: {type(chat_texts)} {len(chat_texts)} => Processing batch inputs in {next(model.parameters()).device}...")
+
 			inputs = processor(
 				text=chat_texts,
 				images=[img for _, img,_ in valid_pairs],
@@ -1166,13 +1172,48 @@ def get_vlm_cot_labels(
 				outputs = model.generate(**inputs, **gen_kwargs)
 			generation_time = time.time() - tt
 
+			breakdown = get_token_breakdown(inputs, outputs)
+
+			# Determine input length (handle both 1D and 2D input_ids safely)
+			input_len = inputs.input_ids.shape[1] if inputs.input_ids.dim() > 1 else inputs.input_ids.shape[0]
+			
+			# 1. Batch-level stats (Maximum generated tokens in this batch due to padding)
+			batch_max_generated = outputs.shape[1] - input_len
+			batch_max_tokens.append(batch_max_generated)
+			
+			# 2. Per-image stats (Actual generated tokens per image, excluding padding)
+			generated_sequences = outputs[:, input_len:]
+			
+			pad_token_id = getattr(processor.tokenizer, "pad_token_id", None)
+			eos_token_id = getattr(processor.tokenizer, "eos_token_id", None)
+			
+			if pad_token_id is not None:
+					# Accurately count non-padding tokens for each image in the batch
+					per_image_counts = (generated_sequences != pad_token_id).sum(dim=1).cpu().tolist()
+			elif eos_token_id is not None:
+					# Count up to the first EOS token if no pad token is defined
+					per_image_counts = []
+					for seq in generated_sequences:
+							eos_mask = (seq == eos_token_id)
+							if eos_mask.any():
+									# argmax finds the first True value (first EOS token)
+									per_image_counts.append(eos_mask.float().argmax().item() + 1) 
+							else:
+									per_image_counts.append(seq.shape[0])
+			else:
+					# Fallback: assume no padding was applied
+					per_image_counts = [generated_sequences.shape[1]] * generated_sequences.shape[0]
+					
+			all_image_tokens.extend(per_image_counts)
+
+
 			if verbose: 
-				print(f"[BATCH {b}] Outputs: {type(outputs)} {outputs.shape}")
-				breakdown = get_token_breakdown(inputs, outputs)
+				print(f"[BATCH {b}]")
+				print(f"   • Inputs:            {type(inputs)} {type(inputs.input_ids)} {inputs.input_ids.shape}")
+				print(f"   • Outputs:           {type(outputs)} {outputs.shape}")
 				print(f"   • Generation time:   {generation_time:.2f}s")
 				print(f"   • Time per token:    {generation_time / breakdown['generated_tokens']:.3f}s")
 				print(f"   • Tokens per second: {breakdown['generated_tokens'] / generation_time:.1f}")
-				print("-"*60)
 
 			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
 
@@ -1183,7 +1224,7 @@ def get_vlm_cot_labels(
 			# )
 
 			if verbose:
-				print(f"\n[BATCH {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
+				print(f"[BATCH {b}] Decoded responses: {type(decoded)} {len(decoded)}: {decoded}")
 
 			# Sequential parsing
 			for (idx, _, _), resp in zip(valid_pairs, decoded):
@@ -1322,7 +1363,8 @@ def get_vlm_cot_labels(
 			print(f"\n[WARN] High memory usage ({memory_consumed_percent:.1f}% > {mem_cleanup_th}%) => Clearing cache...")
 			torch.cuda.empty_cache() # clears all GPUs
 			gc.collect()
-		
+		print("="*100)
+
 		# Atomically rewrite JSONL: exactly one row per id, no duplicates
 		flush_jsonl_state(output_jsonl, jsonl_state, verbose=verbose)
 
@@ -1333,10 +1375,11 @@ def get_vlm_cot_labels(
 	final = [results[i] for i in orig_to_uniq]
 	df["vlm_cot_labels"] = final
 
-	print(df.head())
-	print(df.info(verbose=True, memory_usage=True))
-	print(f'vlm_cot_labels column contains {df["vlm_cot_labels"].isna().sum()} None(s) (failed).')
-	print("-"*100)
+	if verbose:
+		print(df.head())
+		print(df.info(verbose=True, memory_usage=True))
+		print(f'vlm_cot_labels column contains {df["vlm_cot_labels"].isna().sum()} None(s) (failed).')
+		print("-"*100)
 
 	# df.to_csv(output_csv, index=False)
 	# try:
@@ -1344,11 +1387,24 @@ def get_vlm_cot_labels(
 	# except Exception as e:
 	# 	print(f"Failed to write Excel file: {e}")
 	# elapsed = time.time() - t0
-	# if verbose:
-	# 	n_ok = sum(1 for r in final if r)
-	# 	print(f"[STATS] ✅ Success {n_ok}/{len(final)}")
-	# 	print(f"[TIME] {elapsed/3600:.3f}h | avg {len(final)/elapsed:.2f}/s")
-	# 	print(f"[SAVE] Results written to: {output_csv}")
+	if verbose:
+		# print(f"[SAVE] Results written to: {output_csv}")
+		n_ok = sum(1 for r in final if r)
+		print(f"[SUCCESS] {n_ok}/{len(final)}")
+		
+		print(f"{len(batch_max_tokens)} Total Batches: {batch_max_tokens}")
+		if batch_max_tokens:
+			print(f"  Batch Max Tokens (padded) -> Min: {min(batch_max_tokens)}, Max: {max(batch_max_tokens)}, Avg: {np.mean(batch_max_tokens):.2f}")
+
+		print(f"{len(all_image_tokens)} Total Images: {all_image_tokens}")
+		if all_image_tokens:
+			print(f"  Actual Image Tokens       -> Min: {min(all_image_tokens)}, Max: {max(all_image_tokens)}, Avg: {np.mean(all_image_tokens):.2f}")
+
+		# Count how many hit the max token limit
+		hits_max = sum(1 for t in all_image_tokens if t >= max_generated_tks)
+		print(f"  Hit max tokens ({max_generated_tks}): {hits_max}/{len(all_image_tokens)} ({hits_max/len(all_image_tokens)*100:.1f}%)")
+
+		print("-"*100)
 	
 	return final
 

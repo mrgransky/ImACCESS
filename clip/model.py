@@ -186,7 +186,8 @@ class ResidualAttentionBlock(torch.nn.Module):
 			OrderedDict(
 				[
 					("c_fc", nn.Linear(d_model, d_model * 4)),
-					("gelu", QuickGELU()),
+					# ("gelu", QuickGELU()),
+					("gelu", nn.GELU()), # TODO: check if this is correct
 					("dropout", nn.Dropout(dropout)),
 					("c_proj", nn.Linear(d_model * 4, d_model))
 				]

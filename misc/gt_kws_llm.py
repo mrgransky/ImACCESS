@@ -19,7 +19,7 @@ from nlp_utils import get_enriched_description
 
 # with description:
 # small model for local testing:
-# python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3-4B-Instruct-2507" -qb 8 -v
+# python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
 # python gt_kws_llm.py -desc "BT-5 Mariupol soviet Iight tank. BT-2 BT-5 BT-7." -llm "Qwen/Qwen3.5-35B-A3B" -v
@@ -106,8 +106,7 @@ Example:
 	- "aircraft factory" instead of "Pomilio Aircraft Factory"
 	- "submarine" instead of "German submarine".
 
-caption: {caption}	
-"""
+caption: {caption}"""
 
 # medium size prompt:
 # PROMPT_TEMPLATE = """<s>[INST]

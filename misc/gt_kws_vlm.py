@@ -23,7 +23,7 @@ from utils import *
 
 # how to run:
 # local:
-# python gt_kws_vlm.py -i "/home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH568SLASHitem_FGXB537CHLTVRLRXQLUDTDYLIU67RKN7.jpg" -vlm "Qwen/Qwen3-VL-2B-Instruct" -v
+# python gt_kws_vlm.py -i "/home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH568SLASHitem_FGXB537CHLTVRLRXQLUDTDYLIU67RKN7.jpg" -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # python gt_kws_vlm.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3-VL-2B-Instruct" -v
 
@@ -32,13 +32,16 @@ Keywords must be semantically atomic, visually grounded, and broad with absolute
 Return a Python list of keywords derived strictly from the visual content of the image.
 
 Constraints:
-	- Exclude generic nouns for human classifications, (person, people, or men, women, children, boy, girl, etc).
-	- Refrain from using common environmental details (sky, lighting, ground texture) except when they hold historical importance, such as craters or trenches.
-	- Vague container nouns should be avoided (e.g., scene, group, event).
-	- Refrain from using expressions centered on counting, such as a trio of men, various individuals, or a cluster of youths.
-	- Purely demographic descriptors without contextual role should be avoided.
-	- Exclude generic keywords for image characteristics (e.g., photograph, image, black and white photograph)
-	- Text/OCR extraction from the image is not allowed."""
+  - Exclude generic terms (e.g., 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
+  - Exclude generic nouns for human classifications, (person, people, or men, women, children, boy, girl, etc).
+  - Exclude generic nouns for geographical locations, such as continents, countries, states, provinces, cities, towns, islands, regions, or roads.
+  - Refrain from using common environmental details (sky, lighting, ground texture) except when they hold historical importance, such as craters or trenches.
+  - Vague container nouns should be avoided (e.g., scene, group, event).
+  - Refrain from using expressions centered on counting, such as a trio of men, various individuals, or a cluster of youths.
+  - Purely demographic descriptors without contextual role should be avoided.
+  - Dates, times, years, decades, or any temporal references must be excluded.
+  - Exclude generic keywords for image characteristics (e.g., photograph, image, black and white photograph)
+  - Text/OCR extraction from the image is not allowed."""
 
 def _load_vlm_(
 	model_id: str,
@@ -636,7 +639,7 @@ def parse_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
 	
 	if verbose:
 		print()
-		print(f"[FINAL] Returning {len(unique_keywords)} unique keyword(s): {unique_keywords}")
+		print(f"[FINAL] {len(unique_keywords)} unique keyword(s): {unique_keywords}")
 		print()
 	
 	vlm_response = unique_keywords if unique_keywords else None
@@ -903,6 +906,7 @@ def get_vlm_based_labels(
 	if verbose:
 		print(f"\n[GEN CONFIG] Using generation parameters:")
 		print(json.dumps(gen_kwargs, indent=2, ensure_ascii=False))
+		print("="*100)
 	
 	# ========== Process batches ==========
 	def _load_(p: str) -> Optional[Image.Image]:
@@ -922,6 +926,7 @@ def get_vlm_based_labels(
 	if verbose:
 		print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
 
+	generated_tokens = list()
 	for b in tqdm(range(total_batches), desc="Processing (visual) batches", ncols=120):
 		batch_indices = valid_indices[b * batch_size:(b + 1) * batch_size]
 		batch_paths = [verified_paths[i] for i in batch_indices]
@@ -981,11 +986,11 @@ def get_vlm_based_labels(
 			with torch.no_grad():
 				outputs = model.generate(**inputs, **gen_kwargs)
 			generation_time = time.time() - tt
-
+			breakdown = get_token_breakdown(inputs, outputs)
+			generated_tokens.append(breakdown['generated_tokens'])
 			if verbose: 
 				print(f"\n[BATCH {b}]")
 				print(f"[RESPONSE] {type(outputs)} {outputs.shape}")
-				breakdown = get_token_breakdown(inputs, outputs)
 				print(f"   • Generation time:   {generation_time:.2f}s")
 				print(f"   • Generation ratio:  {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
 				print(f"   • Time per token:    {generation_time / breakdown['generated_tokens']:.3f}s")
@@ -1123,11 +1128,14 @@ def get_vlm_based_labels(
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 	elapsed = time.time() - t0
+
 	if verbose:
 		n_ok = sum(1 for r in final if r)
 		print(f"[STATS] ✅ Success {n_ok}/{len(final)}")
 		print(f"[TIME] {elapsed/3600:.2f}h | avg {len(final)/elapsed:.2f}/s")
 		print(f"[SAVE] Results written to: {output_csv}")
+		print(f"{len(generated_tokens)} Gen Tokens: (min, max): ({min(generated_tokens)}, {max(generated_tokens)}) | avg: {np.mean(generated_tokens):.2f}")
+
 	return final
 
 @measure_execution_time

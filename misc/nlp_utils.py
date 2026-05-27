@@ -835,6 +835,7 @@ def basic_clean(txt: str):
 
 	# Step 2: Remove known junk/phrase patterns
 	junk_phrases = [
+		r'The date and location of the shooting are unknown',
 		r'blegen library archives',
 		r'view from upstream side of ',
 		r"view+\s+looking+\s+\w+\s+\w+\s+",
