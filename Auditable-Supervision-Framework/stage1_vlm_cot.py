@@ -27,7 +27,7 @@ from nlp_utils import get_enriched_description
 
 # HPC:
 # one sample:
-# $ python stage1_vlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Kwai-Keye/Keye-VL-2.0-30B-A3B" -v
+# $ python stage1_vlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.6-35B-A3B" -v
 
 PROMPT_TEMPLATE = """Given an image and its caption, extract no more than {k} prominent concepts, then categorize them into three lists of keywords.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
@@ -188,7 +188,6 @@ def _load_vlm_(
 		print(f"   • model_type        : {config.model_type}")
 		print(f"   • architectures     : {config.architectures}")
 		print(f"   • dtype (if set)    : {config.dtype}")
-		print()
 	
 	# ========== Determine model class ==========
 	model_cls = None
@@ -197,10 +196,6 @@ def _load_vlm_(
 		if hasattr(tfs, cls_name):
 			model_cls = getattr(tfs, cls_name)
 	
-	# if model_cls is None:
-	# 	raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
-	
-
 	if model_cls is None:
 		if verbose:
 			print(f"[INFO] Architecture {config.architectures} not natively in transformers. Checking auto_map for remote code...")
@@ -917,7 +912,6 @@ def get_vlm_cot_labels_single(
 	if verbose:
 		print(f"[RESPONSE] {type(outputs)} {outputs.shape}")
 		breakdown = get_token_breakdown(input_single, outputs)
-		generated_tokens.append(breakdown['generated_tokens'])
 		print(f"   • Generation time:   {generation_time:.2f}s")
 		print(f"   • Generation ratio:  {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
 		print(f"   • Time per token:    {generation_time / breakdown['generated_tokens']:.3f}s")
