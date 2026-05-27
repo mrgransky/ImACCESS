@@ -83,6 +83,7 @@ def flush_jsonl_state(jsonl_path: str, state: Dict[int, Dict[str, Any]], verbose
 
 	if verbose:
 		print(f"[SAVE] Compacted JSONL written to: {jsonl_path} ({len(state)} rows)")
+		print("="*100)
 
 def load_jsonl_state(jsonl_path: str, verbose: bool = False) -> Dict[str, Dict[str, Any]]:
 	state: Dict[str, Dict[str, Any]] = {}
@@ -1380,7 +1381,6 @@ def get_vlm_cot_labels(
 			print(f"\n[WARN] High memory usage ({memory_consumed_percent:.1f}% > {mem_cleanup_th}%) => Clearing cache...")
 			torch.cuda.empty_cache() # clears all GPUs
 			gc.collect()
-		print("="*100)
 
 		# Atomically rewrite JSONL: exactly one row per id, no duplicates
 		flush_jsonl_state(output_jsonl, jsonl_state, verbose=verbose)
