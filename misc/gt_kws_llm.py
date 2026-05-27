@@ -108,26 +108,6 @@ Example:
 
 caption: {caption}"""
 
-# medium size prompt:
-# PROMPT_TEMPLATE = """<s>[INST]
-# Given the caption below, extract no more than {k} prominent, factually grounded, and semantically meaningful keywords.
-# Return **ONLY** a standardized, valid, and parsable **Python LIST** of keywords, without any explanatory text.
-# Opt for fewer keywords if the caption is short or lacks sufficient information.
-# Keywords must be semantically atomic, visually grounded and broad with absolute maximum degree of breadth.
-# Remove colors only if it is purely descriptive (e.g., white truck, blue sky), but preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
-# Exclude names, dates, locations, generic human category nouns, vague container nouns, counting-based phrases and purely demographic descriptors without contextual role.
-
-# {caption}	
-# [/INST]"""
-
-# short size prompt:
-# PROMPT_TEMPLATE= """<s>[INST]
-# Given:
-# Caption: {caption}
-
-# Goal: A Python list of keywords derived strictly from the caption.
-# [/INST]"""
-
 def _load_llm_(
 	model_id: str,
 	quantization_bits: Optional[int] = None,
@@ -169,7 +149,6 @@ def _load_llm_(
 		print(f"   • model_type        : {config.model_type}")
 		print(f"   • architectures     : {config.architectures}")
 		print(f"   • dtype (if set)    : {config.dtype}")
-		print()
 	
 	# ========== Determine model class ==========
 	model_cls = None
@@ -229,7 +208,6 @@ def _load_llm_(
 			return "sdpa"		
 		
 		return "eager"
-
 
 	attn_impl = _optimal_attn_impl()
 
@@ -461,17 +439,39 @@ def _load_llm_(
 	if verbose:
 		print(f"\n[LOADING] {model_id}")
 		model_loader_name = "AutoModelForCausalLM" if use_auto_model else model_cls.__name__
-		print(f"\n[KWARGS] {model_loader_name} {model_kwargs}")
+		print(f"\n[KWARGS] {model_loader_name}")
+		pprint.pprint(model_kwargs)
 
 	try:
 		if use_auto_model:
 			model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
 		else:
 			model = model_cls.from_pretrained(model_id, **model_kwargs)
+			
+	except ValueError as e:
+		# Fallback for architectures that don't support the selected attention implementation (e.g., SDPA/FlashAttention)
+		if "does not support an attention implementation" in str(e) or "attn_implementation" in str(e):
+			if verbose:
+				print(f"\n[WARN] '{model_kwargs.get('attn_implementation')}' not supported for {model_id}. Falling back to 'eager' attention.")
+			model_kwargs["attn_implementation"] = "eager"
+			
+			# Retry loading with eager attention
+			try:
+				if use_auto_model:
+					model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+				else:
+					model = model_cls.from_pretrained(model_id, **model_kwargs)
+			except Exception as retry_e:
+				if verbose: print(f"[ERROR] Error loading model with eager attention:\n{retry_e}")
+				raise retry_e
+		else:
+			if verbose: print(f"[ERROR] ValueError loading model:\n{e}")
+			raise e
+			
 	except Exception as e:
 		if verbose: print(f"[ERROR] Error loading model:\n{e}")
-		raise e
-	
+		raise e	
+
 	model.eval()
 	
 	# ========== Model Info & Verification ==========
