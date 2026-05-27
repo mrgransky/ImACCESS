@@ -901,8 +901,10 @@ def get_llm_based_labels_debug(
 	)
 
 	all_keywords = list()
-	for i, desc in tqdm(enumerate(descriptions), total=len(descriptions), desc="Processing descriptions"):
-		if verbose: print(f"Processing description {i+1}/{len(descriptions)}: {repr(desc)}")
+	for i, desc in enumerate(descriptions):
+		if verbose: 
+			print(f"Processing description {i+1}/{len(descriptions)}: {repr(desc)}")
+		
 		if pd.notna(desc) and str(desc).strip():
 			desc_str = str(desc).strip()
 			kws = query_local_llm(
@@ -1185,7 +1187,6 @@ def get_llm_based_labels(
 					gc.collect()
 					if torch.cuda.is_available():
 						torch.cuda.empty_cache()
-					torch.cuda.synchronize()  # ← waits for all pending CUDA ops to finish before retry
 				else:
 					print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
 					for idx in batch_indices:
@@ -1215,7 +1216,6 @@ def get_llm_based_labels(
 			print(f"[WARN] High memory usage ({memory_consumed_percent:.1f}% > {mem_cleanup_th}%) => Clearing cache...")
 			gc.collect()
 			torch.cuda.empty_cache() # clears all GPUs
-			torch.cuda.synchronize() # waits for all kernels to finish
 
 	# HYBRID FALLBACK: Retry failed items individually with query_local_llm
 	failed_indices = [
@@ -1284,7 +1284,6 @@ def get_llm_based_labels(
 	gc.collect()
 	if torch.cuda.is_available():
 		torch.cuda.empty_cache()
-	torch.cuda.synchronize()  # ← waits for all pending CUDA ops to finish before retry
 
 	# Save results
 	if csv_file:
