@@ -453,27 +453,6 @@ def _load_llm_(
 			model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
 		else:
 			model = model_cls.from_pretrained(model_id, **model_kwargs)
-			
-	# except ValueError as e:
-	# 	# Fallback for architectures that don't support the selected attention implementation (e.g., SDPA/FlashAttention)
-	# 	if "does not support an attention implementation" in str(e) or "attn_implementation" in str(e):
-	# 		if verbose:
-	# 			print(f"\n[WARN] '{model_kwargs.get('attn_implementation')}' not supported for {model_id}. Falling back to 'eager' attention.")
-	# 		model_kwargs["attn_implementation"] = "eager"
-			
-	# 		# Retry loading with eager attention
-	# 		try:
-	# 			if use_auto_model:
-	# 				model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
-	# 			else:
-	# 				model = model_cls.from_pretrained(model_id, **model_kwargs)
-	# 		except Exception as retry_e:
-	# 			if verbose: print(f"[ERROR] Error loading model with eager attention:\n{retry_e}")
-	# 			raise retry_e
-	# 	else:
-	# 		if verbose: print(f"[ERROR] ValueError loading model:\n{e}")
-	# 		raise e
-			
 	except Exception as e:
 		if verbose: print(f"[ERROR] Error loading model:\n{e}")
 		raise e	
@@ -1198,26 +1177,19 @@ def get_llm_based_labels(
 					sleep_time = EXP_BACKOFF ** attempt
 					print(f"⏳ Waiting {sleep_time}s before retry...")
 					time.sleep(sleep_time)
+
+					# Clean up CUDA cache if available
+					gc.collect()
 					if torch.cuda.is_available():
 						torch.cuda.empty_cache()
+					torch.cuda.synchronize()  # ← waits for all pending CUDA ops to finish before retry
 				else:
 					print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
 					for idx in batch_indices:
 						unique_results[idx] = None
 		
 		# Clean up batch tensors immediately after use
-		try:
-			del tokenized
-		except NameError:
-			pass
-		try:
-			del outputs
-		except NameError:
-			pass
-		try:
-			del decoded
-		except NameError:
-			pass
+		del tokenized, outputs, decoded
 		
 		# memory management
 		need_cleanup = False
@@ -1238,8 +1210,9 @@ def get_llm_based_labels(
 
 		if need_cleanup:
 			print(f"[WARN] High memory usage ({memory_consumed_percent:.1f}% > {mem_cleanup_th}%) => Clearing cache...")
-			torch.cuda.empty_cache() # clears all GPUs
 			gc.collect()
+			torch.cuda.empty_cache() # clears all GPUs
+			torch.cuda.synchronize() # waits for all kernels to finish
 
 	# HYBRID FALLBACK: Retry failed items individually with query_local_llm
 	failed_indices = [
@@ -1304,10 +1277,12 @@ def get_llm_based_labels(
 	if verbose:
 		print(f"Cleaning up model and tokenizer...")
 	del model, tokenizer
+
+	gc.collect()
 	if torch.cuda.is_available():
 		torch.cuda.empty_cache()
-	gc.collect()
-	
+	torch.cuda.synchronize()  # ← waits for all pending CUDA ops to finish before retry
+
 	# Save results
 	if csv_file:
 		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
