@@ -25,7 +25,7 @@ from nlp_utils import get_enriched_description
 # python stage1_vlm_cot.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # with nohup:
-# nohup python -u stage1_vlm_cot.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -bs 4 -v > logs/ww2_vlm_cot.log 2>&1 &
+# nohup python -u stage1_vlm_cot.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -bs 4 -v > logs/smu_vlm_cot.log 2>&1 &
 
 # HPC:
 # one sample:
