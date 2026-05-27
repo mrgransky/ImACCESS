@@ -421,8 +421,8 @@ def _load_llm_(
 
 	# ========== Model loading kwargs ==========
 	model_kwargs: Dict[str, Any] = {
-		# "low_cpu_mem_usage": True,
-		"low_cpu_mem_usage": False, # avoid illegal memory access during weight materialization
+		"low_cpu_mem_usage": True,
+		# "low_cpu_mem_usage": False, # avoid illegal memory access during weight materialization
 		"trust_remote_code": True,
 		"cache_dir": cache_directory[USER],
 		"attn_implementation": attn_impl,
