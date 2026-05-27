@@ -234,15 +234,15 @@ def _load_llm_(
 		major, minor = torch.cuda.get_device_capability()
 		compute_cap = major + minor / 10
 		if compute_cap >= 8.0:
-				if max_head_dim <= 256:
-						try:
-								import flash_attn
-								if verbose: print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
-								return "flash_attention_2"
-						except ImportError:
-								if verbose: print(f"[WARN] Flash Attention 2 not installed")
-				else:
-						if verbose: print(f"[INFO] Bypassing Flash Attention 2: max head_dim ({max_head_dim}) > 256")
+			if max_head_dim <= 256:
+				try:
+					import flash_attn
+					if verbose: print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
+					return "flash_attention_2"
+				except ImportError:
+					if verbose: print(f"[WARN] Flash Attention 2 not installed")
+			else:
+				if verbose: print(f"[INFO] Bypassing Flash Attention 2: max head_dim ({max_head_dim}) > 256")
 		
 		# ── SDPA: probe whether this architecture actually supports it ──
 		if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
