@@ -27,7 +27,7 @@ from nlp_utils import get_enriched_description
 
 # HPC:
 # one sample:
-# $ python stage1_vlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.6-27B" -v
+# $ python stage1_vlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Kwai-Keye/Keye-VL-2.0-30B-A3B" -v
 
 PROMPT_TEMPLATE = """Given an image and its caption, extract no more than {k} prominent concepts, then categorize them into three lists of keywords.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
@@ -197,9 +197,32 @@ def _load_vlm_(
 		if hasattr(tfs, cls_name):
 			model_cls = getattr(tfs, cls_name)
 	
+	# if model_cls is None:
+	# 	raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
+	
+
 	if model_cls is None:
-		raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
+		if verbose:
+			print(f"[INFO] Architecture {config.architectures} not natively in transformers. Checking auto_map for remote code...")
 		
+		# For custom models requiring trust_remote_code=True, find the correct Auto class
+		auto_map = getattr(config, "auto_map", {})
+		if "AutoModelForCausalLM" in auto_map:
+			model_cls = tfs.AutoModelForCausalLM
+		elif "AutoModelForImageTextToText" in auto_map:
+			model_cls = getattr(tfs, "AutoModelForImageTextToText", tfs.AutoModelForCausalLM)
+		elif "AutoModel" in auto_map:
+			model_cls = tfs.AutoModel
+		else:
+			# Default fallback for generative models
+			if verbose:
+				print(f"[WARN] No specific auto_map found. Defaulting to AutoModelForCausalLM.")
+			model_cls = tfs.AutoModelForCausalLM
+
+	if verbose:
+		print(f"[INFO] Using model class: {model_cls.__name__}")
+
+
 	dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
 	if verbose:
 		print(f"[INFO] {model_id} Dtype selection: {dtype}")
