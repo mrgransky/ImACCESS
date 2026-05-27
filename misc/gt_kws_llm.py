@@ -176,43 +176,82 @@ def _load_llm_(
 	if verbose:
 		print(f"[INFO] {model_id} Dtype selection: {dtype}")
 
-	# Attention implementation selection
+	# def _optimal_attn_impl() -> str:
+	# 	if not torch.cuda.is_available():
+	# 		return "eager"
+
+	# 	# Custom/non-standard architectures often don't support sdpa/flash
+	# 	if use_auto_model or (config.architectures and config.architectures[0] not in dir(tfs)):
+	# 		if verbose:
+	# 			print(f"[INFO] Custom architecture — defaulting to 'eager' attention")
+	# 		return "eager"
+
+	# 	# model config for FlashAttention dimension limits
+	# 	max_head_dim = getattr(config, "head_dim", 0)
+	# 	if hasattr(config, "text_config"):
+	# 		max_head_dim = max(max_head_dim, getattr(config.text_config, "head_dim", 0))
+	# 		max_head_dim = max(max_head_dim, getattr(config.text_config, "global_head_dim", 0))
+
+	# 	major, minor = torch.cuda.get_device_capability()
+	# 	compute_cap = major + minor / 10
+		
+	# 	if compute_cap >= 8.0:
+	# 		# Only use Flash Attention 2 if the head dimensions are supported
+	# 		if max_head_dim <= 256:
+	# 			try:
+	# 				import flash_attn
+	# 				if verbose: print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
+	# 				return "flash_attention_2"
+	# 			except ImportError:
+	# 				if verbose: print(f"[WARN] Flash Attention 2 not installed")
+	# 		else:
+	# 			if verbose: print(f"[INFO] Bypassing Flash Attention 2: max head_dim ({max_head_dim}) > 256")
+		
+	# 	# Fallback to SDPA (which handles >256 dimensions automatically)
+	# 	if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
+	# 		if verbose: print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
+	# 		return "sdpa"		
+		
+	# 	return "eager"
+
+
 	def _optimal_attn_impl() -> str:
 		if not torch.cuda.is_available():
-			return "eager"
-
+				return "eager"
+		
 		# Custom/non-standard architectures often don't support sdpa/flash
 		if use_auto_model or (config.architectures and config.architectures[0] not in dir(tfs)):
-			if verbose:
-				print(f"[INFO] Custom architecture — defaulting to 'eager' attention")
-			return "eager"
-
+				if verbose:
+						print(f"[INFO] Custom architecture — defaulting to 'eager' attention")
+				return "eager"
+		
 		# model config for FlashAttention dimension limits
 		max_head_dim = getattr(config, "head_dim", 0)
 		if hasattr(config, "text_config"):
-			max_head_dim = max(max_head_dim, getattr(config.text_config, "head_dim", 0))
-			max_head_dim = max(max_head_dim, getattr(config.text_config, "global_head_dim", 0))
-
+				max_head_dim = max(max_head_dim, getattr(config.text_config, "head_dim", 0))
+				max_head_dim = max(max_head_dim, getattr(config.text_config, "global_head_dim", 0))
+		
 		major, minor = torch.cuda.get_device_capability()
 		compute_cap = major + minor / 10
-		
 		if compute_cap >= 8.0:
-			# Only use Flash Attention 2 if the head dimensions are supported
-			if max_head_dim <= 256:
-				try:
-					import flash_attn
-					if verbose: print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
-					return "flash_attention_2"
-				except ImportError:
-					if verbose: print(f"[WARN] Flash Attention 2 not installed")
-			else:
-				if verbose: print(f"[INFO] Bypassing Flash Attention 2: max head_dim ({max_head_dim}) > 256")
+				if max_head_dim <= 256:
+						try:
+								import flash_attn
+								if verbose: print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
+								return "flash_attention_2"
+						except ImportError:
+								if verbose: print(f"[WARN] Flash Attention 2 not installed")
+				else:
+						if verbose: print(f"[INFO] Bypassing Flash Attention 2: max head_dim ({max_head_dim}) > 256")
 		
-		# Fallback to SDPA (which handles >256 dimensions automatically)
+		# ── SDPA: probe whether this architecture actually supports it ──
 		if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
-			if verbose: print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
-			return "sdpa"		
-		
+				sdpa_supported = getattr(model_cls, "_supports_sdpa", False)
+				if sdpa_supported:
+						if verbose: print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
+						return "sdpa"
+				else:
+						if verbose: print(f"[INFO] {config.architectures[0]} does not declare _supports_sdpa — falling back to 'eager'")
 		return "eager"
 
 	attn_impl = _optimal_attn_impl()
