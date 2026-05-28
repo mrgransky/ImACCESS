@@ -34,8 +34,8 @@ from nlp_utils import get_enriched_description
 PROMPT_TEMPLATE = """Given an image and its caption, extract no more than {k} prominent concepts, then categorize them into three lists of keywords.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
-Forbidden keywords:
-	- Generic terms (e.g., 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
+STRICTLY forbidden keywords:
+	- Generic terms (e.g., 'people', 'group', 'crowd', 'women', 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
 	- Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
 	- Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
 	- Identifiers, serial numbers, brands, or models.
@@ -53,7 +53,7 @@ Output format:
 	- visual_concepts: Keywords derived STRICTLY from the pixel data.
 	- fused_concepts: Keywords inferred from BOTH modalities. In case the modalities are essentially disjoint (e.g., text says "aircraft" but image shows "ships"), return an empty list [] and refrain from forcing a fusion.
 
-Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without thoughts, reasoning or any additional text:
+Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without any additional text:
 {{
 "text_concepts": [],
 "visual_concepts": [],
@@ -660,14 +660,12 @@ def parse_vlm_response(model_id: str, response: str, verbose: bool=False) -> Opt
 			print(f"  Value: {response}")
 		return None
 
-	if verbose:
-		print(f"\nPARSING VLM: {model_id} RESPONSE")
-
 	response = response.strip()
 
 	if verbose:
-		print(f"\nRaw response (Total length: {len(response)} characters):")
+		print(f"\nPARSING {model_id} RESPONSE (Total length: {len(response)} characters):")
 		print(response)
+		print()
 
 	# Step 1a: Remove leading assistant prefix if present
 	if response.lower().startswith("assistant"):
@@ -692,55 +690,67 @@ def parse_vlm_response(model_id: str, response: str, verbose: bool=False) -> Opt
 		in_string = False
 		escape_next = False
 		for i, ch in enumerate(text):
-				if escape_next:
-						escape_next = False
-						continue
-				if ch == "\\":
-						escape_next = True
-						continue
-				if ch == '"':
-						in_string = not in_string
-						continue
-				if in_string:
-						continue
-				if ch == "{":
-						if depth == 0:
-								start_idx = i
-						depth += 1
-				elif ch == "}":
-						if depth > 0:
-								depth -= 1
-								if depth == 0 and start_idx is not None:
-										objects.append(text[start_idx:i + 1])
-										start_idx = None
+			if escape_next:
+				escape_next = False
+				continue
+			
+			if ch == "\\":
+				escape_next = True
+				continue
+			
+			if ch == '"':
+				in_string = not in_string
+				continue
+			
+			if in_string:
+				continue
+			
+			if ch == "{":
+				if depth == 0:
+					start_idx = i
+				depth += 1
+			elif ch == "}":
+				if depth > 0:
+					depth -= 1
+					if depth == 0 and start_idx is not None:
+						objects.append(text[start_idx:i + 1])
+						start_idx = None
+
 		return objects
 
 	# Step 2: Extract all complete balanced JSON objects
 	candidates = _extract_balanced_json_objects(response)
-	if verbose:
-			print(f"\n[STEP 2] Found {len(candidates)} balanced JSON candidate(s)")
+	
 	if not candidates:
-			if verbose:
-					print("  ERROR: No complete JSON object found in response.")
-			return None
+		if verbose:
+			print("[ERROR]: No complete JSON object found in response.")
+		return None
+
+	if verbose:
+		print(f"\n[STEP 2] Found {len(candidates)} balanced JSON candidate(s):")
+		print(candidates)
+
 	parsed_candidates = []
 	for idx, json_str in enumerate(candidates):
-			# Clean common JSON issues
-			json_str = re.sub(r",\s*}", "}", json_str)
-			json_str = re.sub(r",\s*]", "]", json_str)
-			try:
-					parsed = json.loads(json_str)
-					if isinstance(parsed, dict):
-							parsed_candidates.append(parsed)
-							if verbose:
-									print(f"  Candidate {idx}: valid dict with keys {list(parsed.keys())}")
-			except json.JSONDecodeError as e:
-					if verbose:
-							print(f"  Candidate {idx}: invalid JSON ({e})")
-	if not parsed_candidates:
+		# Clean common JSON issues
+		json_str = re.sub(r",\s*}", "}", json_str)
+		json_str = re.sub(r",\s*]", "]", json_str)
+		
+		try:
+			parsed = json.loads(json_str)
+			if isinstance(parsed, dict):
+				parsed_candidates.append(parsed)
+				if verbose:
+					print(f"Candidate[{idx}]: {parsed}")
+		except json.JSONDecodeError as e:
 			if verbose:
-					print("[ERROR] No valid JSON dict could be parsed.")
-			return None
+				print(f"  Candidate {idx}: invalid JSON ({e})")
+	
+	if not parsed_candidates:
+		if verbose:
+			print("[ERROR] No valid JSON dict could be parsed.")
+		return None
+	
 	# Prefer the last dict that contains any required key; otherwise last dict
 	selected = None
 	for parsed in reversed(parsed_candidates):
@@ -1218,7 +1228,6 @@ def get_vlm_cot_labels(
 					
 			all_image_tokens.extend(per_image_counts)
 
-
 			if verbose: 
 				print(f"[BATCH {b}]")
 				print(f"   • Inputs:            {type(inputs)} {type(inputs.input_ids)} {inputs.input_ids.shape}")
@@ -1236,7 +1245,7 @@ def get_vlm_cot_labels(
 			# )
 
 			if verbose:
-				print(f"[BATCH {b}] Decoded responses: {type(decoded)} {len(decoded)}: {decoded}")
+				print(f"[BATCH {b}] Decoded responses: {type(decoded)} {len(decoded)} first element: {type(decoded[0])}")
 
 			# Sequential parsing
 			for (idx, _, _), resp in zip(valid_pairs, decoded):
@@ -1250,13 +1259,8 @@ def get_vlm_cot_labels(
 					
 					# Update in-memory state (flushed atomically to disk after the batch)
 					doc_url = doc_urls[idx] or f"__unknown_{idx}__"
-					jsonl_state[doc_url] = {
-						"id": doc_url,
-						"vlm_cot_raw": parsed if parsed else {
-							"text_concepts": [], "visual_concepts": [], "fused_concepts": []
-						}
-					}
-
+					empty_listed_result = {"text_concepts": [], "visual_concepts": [], "fused_concepts": []}
+					jsonl_state[doc_url] = {"id": doc_url, "vlm_cot_raw": parsed if parsed else empty_listed_result}
 				except Exception as e:
 					if verbose:
 						print(f"[WARN] Parse error for idx {idx}: {e}")
@@ -1403,17 +1407,27 @@ def get_vlm_cot_labels(
 		n_ok = sum(1 for r in final if r)
 		print(f"[SUCCESS] {n_ok}/{len(final)}")
 		
-		print(f"{len(batch_max_tokens)} Total Batches: {batch_max_tokens}")
+		print(f"\n{len(batch_max_tokens)} Total Batches: {batch_max_tokens}")
 		if batch_max_tokens:
-			print(f"  Batch Max Tokens (padded) -> Min: {min(batch_max_tokens)}, Max: {max(batch_max_tokens)}, Avg: {np.mean(batch_max_tokens):.2f}")
+			print(f"\nBatch Max Tokens (padded)")
+			print(f"   ├─ (min, max): ({np.min(batch_max_tokens)}, {np.max(batch_max)}")
+			print(f"   ├─ mean: {np.mean(batch_max_tokens):.2f} ± {np.std(batch_max_tokens):.2f}")
+			print(f"   ├─ median: {np.median(batch_max_tokens):.2f}")
+			print(f"   ├─ 95%: {np.percentile(batch_max_tokens, 95)}")
+			print(f"   └─ 99%: {np.percentile(batch_max_tokens, 99)}")
 
-		print(f"{len(all_image_tokens)} Total Images: {all_image_tokens}")
+		print(f"\n{len(all_image_tokens)} Total Images: {all_image_tokens}")
 		if all_image_tokens:
-			print(f"  Actual Image Tokens       -> Min: {min(all_image_tokens)}, Max: {max(all_image_tokens)}, Avg: {np.mean(all_image_tokens):.2f}")
+			print(f"\nActual Image Tokens") 
+			print(f"   ├─ (min, max): ({min(all_image_tokens)}, {max(all_image_tokens)})")
+			print(f"   ├─ mean: {np.mean(all_image_tokens):.2f} ± {np.std(all_image_tokens):.2f}")
+			print(f"   ├─ median: {np.median(all_image_tokens):.2f}")
+			print(f"   ├─ 95%: {np.percentile(all_image_tokens, 95)}")
+			print(f"   └─ 99%: {np.percentile(all_image_tokens, 99)}")
 
 		# Count how many hit the max token limit
 		hits_max = sum(1 for t in all_image_tokens if t >= max_generated_tks)
-		print(f"  Hit max tokens ({max_generated_tks}): {hits_max}/{len(all_image_tokens)} ({hits_max/len(all_image_tokens)*100:.1f}%)")
+		print(f"Hit (max generated tokens={max_generated_tks}): {hits_max}/{len(all_image_tokens)} ({hits_max/len(all_image_tokens)*100:.2f}%)")
 
 		print("-"*100)
 	
