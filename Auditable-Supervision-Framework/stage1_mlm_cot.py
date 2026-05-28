@@ -38,7 +38,7 @@ Refrain from extracting the following types of keywords:
 	- Generic terms (e.g., 'people', 'group', 'crowd', 'women', 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
 	- Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
 	- Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
-	- Identifiers, serial numbers, codes, brands, or models.
+	- Identifiers, serial/reference numbers, codes, brands, or models.
 	- Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
 	- Continents, countries, states, provinces, cities, towns, islands, regions, or roads.
 	- Nationalities, ethnicities, or religions.

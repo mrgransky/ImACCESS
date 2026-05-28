@@ -1,18 +1,18 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=H4_pipeline_4x_stages
+#SBATCH --job-name=H4_mlm
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
+#SBATCH --cpus-per-task=20
 #SBATCH --mem=192G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
 #SBATCH --gres=gpu:v100:4,nvme:100
-####SBATCH --begin=08:00:00
+#SBATCH --begin=04:00:00
 
 set -euo pipefail
 
