@@ -31,7 +31,7 @@ from nlp_utils import get_enriched_description
 # one sample:
 # $ python stage1_vlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.6-27B" -v
 
-PROMPT_TEMPLATE = """Given an image and its caption, extract no more than {k} prominent concepts, then categorize them into three lists of keywords.
+PROMPT_TEMPLATE = """Extract **at most {k}** prominet keywords per category from the given image and caption.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
 STRICTLY forbidden keywords:
