@@ -34,11 +34,11 @@ from nlp_utils import get_enriched_description
 PROMPT_TEMPLATE = """Extract **at most {k}** prominet keywords per category from the given image and caption.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
-STRICTLY forbidden keywords:
+Strictly avoid the following forbidden keywords:
 	- Generic terms (e.g., 'people', 'group', 'crowd', 'women', 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
 	- Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
 	- Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
-	- Identifiers, serial numbers, brands, or models.
+	- Identifiers, serial numbers, codes, brands, or models.
 	- Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
 	- Continents, countries, states, provinces, cities, towns, islands, regions, or roads.
 	- Nationalities, ethnicities, or religions.
@@ -631,12 +631,8 @@ def _load_mlm_(
 						print(f"   {k}: {v}")
 			elif not disk_layers and not cpu_layers:
 				print(f"\nAll layers on GPU - optimal performance!")
-		print(f"[MODEL] Loading of {model_id} complete!")
-
-		print(f"{'='*110}\n")
-		print(model.config)
-		print(f"{'='*110}\n")
-
+		
+		print(f"\n[LOADED] {model_id}\n{model.config}")
 	return processor, model
 
 def verify(p: str):
@@ -663,7 +659,7 @@ def _parse_(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[
 	response = response.strip()
 
 	if verbose:
-		print(f"\nPARSING {model_id} RESPONSE (Total length: {len(response)} characters):")
+		print(f"\nParsing {model_id} raw response (Total length: {len(response)} characters):")
 		print(response)
 		print()
 
@@ -896,13 +892,14 @@ def get_mlm_cot_labels_single(
 		eos_token_id=processor.tokenizer.eos_token_id,
 		pad_token_id=processor.tokenizer.pad_token_id,
 	)
-	# Use model’s built-in defaults unless the user overrides
-	if hasattr(model, "generation_config"):
-		gen_config = model.generation_config
-		gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
-		gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
-	else:
-		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
+
+	# # Use model’s built-in defaults unless the user overrides
+	# if hasattr(model, "generation_config"):
+	# 	gen_config = model.generation_config
+	# 	gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
+	# 	gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
+	# # else:
+	# # 	gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
 
 	if verbose:
 		print(f"[GEN CONFIG] {gen_kwargs}")
@@ -1098,12 +1095,12 @@ def get_mlm_cot_labels(
 		pad_token_id=processor.tokenizer.pad_token_id,
 	)
 	
-	if hasattr(model, "generation_config"):
-		gen_config = model.generation_config
-		gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
-		gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
-	else:
-		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
+	# if hasattr(model, "generation_config"):
+	# 	gen_config = model.generation_config
+	# 	gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
+	# 	gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
+	# # else:
+	# # 	gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
 
 	if verbose:
 		print(f"[GEN CONFIG] {gen_kwargs}")
@@ -1409,11 +1406,11 @@ def get_mlm_cot_labels(
 		print(f"\n{len(batch_max_tokens)} Total Batches: {batch_max_tokens}")
 		if batch_max_tokens:
 			print(f"\nBatch Max Tokens (padded)")
-			print(f"   ├─ (min, max): ({np.min(batch_max_tokens)}, {np.max(batch_max)}")
+			print(f"   ├─ (min, max): ({np.min(batch_max_tokens)}, {np.max(batch_max_tokens)}")
 			print(f"   ├─ mean: {np.mean(batch_max_tokens):.2f} ± {np.std(batch_max_tokens):.2f}")
 			print(f"   ├─ median: {np.median(batch_max_tokens):.2f}")
-			print(f"   ├─ 95%: {np.percentile(batch_max_tokens, 95)}")
-			print(f"   └─ 99%: {np.percentile(batch_max_tokens, 99)}")
+			print(f"   ├─ 95%: {np.percentile(batch_max_tokens, 95):.2f}")
+			print(f"   └─ 99%: {np.percentile(batch_max_tokens, 99):.2f}")
 
 		print(f"\n{len(all_image_tokens)} Total Images: {all_image_tokens}")
 		if all_image_tokens:
@@ -1421,8 +1418,8 @@ def get_mlm_cot_labels(
 			print(f"   ├─ (min, max): ({min(all_image_tokens)}, {max(all_image_tokens)})")
 			print(f"   ├─ mean: {np.mean(all_image_tokens):.2f} ± {np.std(all_image_tokens):.2f}")
 			print(f"   ├─ median: {np.median(all_image_tokens):.2f}")
-			print(f"   ├─ 95%: {np.percentile(all_image_tokens, 95)}")
-			print(f"   └─ 99%: {np.percentile(all_image_tokens, 99)}")
+			print(f"   ├─ 95%: {np.percentile(all_image_tokens, 95):.2f}")
+			print(f"   └─ 99%: {np.percentile(all_image_tokens, 99):.2f}")
 
 		# Count how many hit the max token limit
 		hits_max = sum(1 for t in all_image_tokens if t >= max_generated_tks)
