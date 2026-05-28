@@ -34,7 +34,7 @@ from nlp_utils import get_enriched_description
 PROMPT_TEMPLATE = """Extract **at most {k}** prominet keywords per category from the given image and caption.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
-Strictly avoid the following forbidden keywords:
+Refrain from extracting the following types of keywords:
 	- Generic terms (e.g., 'people', 'group', 'crowd', 'women', 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
 	- Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
 	- Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
