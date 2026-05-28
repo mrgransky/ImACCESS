@@ -728,7 +728,6 @@ def parse_vlm_response(model_id: str, response: str, verbose: bool=False) -> Opt
 
 	if verbose:
 		print(f"\n[STEP 2] Found {len(candidates)} balanced JSON candidate(s):")
-		print(candidates)
 
 	parsed_candidates = []
 	for idx, json_str in enumerate(candidates):
