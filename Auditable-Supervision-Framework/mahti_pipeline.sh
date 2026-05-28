@@ -36,7 +36,7 @@ echo "${stars// /*}"
 DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4"
 # DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31"
 CSV_FILE=$DATASET_DIR/metadata_multi_label.csv
-JSONL_COT_FILE="${CSV_FILE%.csv}_vlm_cot.jsonl"
+JSONL_COT_FILE="${CSV_FILE%.csv}_mlm_cot.jsonl"
 JSONL_MODALITY_CONFLICT_FILE="${JSONL_COT_FILE%.jsonl}_modality_conflict_audit.jsonl"
 
 VLM_MODEL="Qwen/Qwen3.6-27B"
@@ -46,7 +46,7 @@ SYMMETRICAL_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 ASYMMETRICAL_EMBEDDING_MODEL="cross-encoder/nli-deberta-v3-large"
 
 # stage 1: VLM with CoT:
-python -u stage1_vlm_cot.py -csv $CSV_FILE -vlm $VLM_MODEL -bs 16 -mgt 128 -v
+python -u stage1_mlm_cot.py -csv $CSV_FILE -vlm $VLM_MODEL -bs 16 -mgt 128 -v
 
 # stage 2: Modality Conflict Quantification
 python -u stage2_modality_conflict.py -jsonl $JSONL_COT_FILE -sym $SYMMETRICAL_EMBEDDING_MODEL -asym $ASYMMETRICAL_EMBEDDING_MODEL -v

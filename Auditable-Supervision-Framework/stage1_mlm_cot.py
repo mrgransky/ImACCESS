@@ -19,17 +19,17 @@ from nlp_utils import get_enriched_description
 # how to run:
 # local:
 # one sample:
-# python stage1_vlm_cot.py -i /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
+# python stage1_mlm_cot.py -i /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # csv input:
-# python stage1_vlm_cot.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
+# python stage1_mlm_cot.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # with nohup:
-# nohup python -u stage1_vlm_cot.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -bs 4 -v > logs/smu_vlm_cot.log 2>&1 &
+# nohup python -u stage1_mlm_cot.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -bs 4 -v > logs/smu_mlm_cot.log 2>&1 &
 
 # HPC:
 # one sample:
-# $ python stage1_vlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.6-27B" -v
+# $ python stage1_mlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.6-27B" -v
 
 PROMPT_TEMPLATE = """Extract **at most {k}** prominet keywords per category from the given image and caption.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
@@ -129,7 +129,7 @@ def load_jsonl_state(jsonl_path: str, verbose: bool = False) -> Dict[str, Dict[s
 	
 	return state
 
-def _load_vlm_(
+def _load_mlm_(
 	model_id: str,
 	quantization_bits: Optional[int] = None,  # None => no quantization; 4 or 8 => quantize
 	force_multi_gpu: bool = False,
@@ -530,7 +530,7 @@ def _load_vlm_(
 		"trust_remote_code": True,
 		"cache_dir": cache_directory[USER],
 		"attn_implementation": attn_impl,
-		"torch_dtype": dtype,  # <-- use torch_dtype (not "dtype")
+		"dtype": dtype,
 	}
 	
 	if quantization_bits is not None:
@@ -652,7 +652,7 @@ def verify(p: str):
 	except Exception:
 		return None
 
-def parse_vlm_response(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[str, Any]]:
+def _parse_(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[str, Any]]:
 	if not response or not isinstance(response, str):
 		if verbose:
 			print("ERROR: Invalid response input.")
@@ -785,7 +785,7 @@ def parse_vlm_response(model_id: str, response: str, verbose: bool=False) -> Opt
 			)
 	return selected
 
-def get_vlm_cot_labels_single(
+def get_mlm_cot_labels_single(
 	model_id: str,
 	image_path: str,
 	max_generated_tks: int,
@@ -853,7 +853,7 @@ def get_vlm_cot_labels_single(
 		return None
 
 	# load model and processor
-	processor, model = _load_vlm_(
+	processor, model = _load_mlm_(
 		model_id=model_id, 
 		quantization_bits=quantization_bits,
 		verbose=verbose
@@ -929,7 +929,7 @@ def get_vlm_cot_labels_single(
 	# 	skip_special_tokens=True
 	# )	
 
-	parsed = parse_vlm_response(model_id=model_id, response=response, verbose=verbose)
+	parsed = _parse_(model_id=model_id, response=response, verbose=verbose)
 
 	if verbose:
 		print(f"Parsed Response: {type(parsed)}")
@@ -937,7 +937,7 @@ def get_vlm_cot_labels_single(
 
 	return [parsed]
 
-def get_vlm_cot_labels(
+def get_mlm_cot_labels(
 	model_id: str,
 	batch_size: int,
 	num_workers: int,
@@ -950,8 +950,8 @@ def get_vlm_cot_labels(
 	verbose: bool=False,
 ):
 	t0 = time.time()
-	output_csv = csv_file.replace(".csv", "_vlm_cot.csv")
-	output_jsonl = csv_file.replace(".csv", "_vlm_cot.jsonl")
+	output_csv = csv_file.replace(".csv", "_mlm_cot.csv")
+	output_jsonl = csv_file.replace(".csv", "_mlm_cot.jsonl")
 
 	try:
 		df = pd.read_csv(
@@ -1085,7 +1085,7 @@ def get_vlm_cot_labels(
 	# print(type(valid_imgs[0]), valid_imgs[0].size, valid_imgs[0].mode)
 
 	# ========== Load model ==========
-	processor, model = _load_vlm_(
+	processor, model = _load_mlm_(
 		model_id=model_id,
 		quantization_bits=quantization_bits,
 		verbose=verbose,
@@ -1249,7 +1249,7 @@ def get_vlm_cot_labels(
 			# Sequential parsing
 			for (idx, _, _), resp in zip(valid_pairs, decoded):
 				try:
-					parsed = parse_vlm_response(
+					parsed = _parse_(
 						model_id=model_id,
 						response=resp,
 						verbose=verbose,
@@ -1327,7 +1327,7 @@ def get_vlm_cot_labels(
 					if verbose:
 						print(f"\n[Sequential Fallback] image {uniq_idx}:\n{type(decoded_single)} {len(decoded_single)}\n")
 
-					parsed = parse_vlm_response(
+					parsed = _parse_(
 						model_id=model_id,
 						response=decoded_single,
 						verbose=verbose,
@@ -1457,7 +1457,7 @@ def main():
 		raise ValueError("Either --image_path or --csv_file must be provided")
 
 	if args.image_path:
-		keywords = get_vlm_cot_labels_single(
+		keywords = get_mlm_cot_labels_single(
 			model_id=args.model_id,
 			image_path=args.image_path,
 			max_kws=args.max_keywords,
@@ -1468,7 +1468,7 @@ def main():
 			verbose=args.verbose,
 		)
 	else:
-		keywords = get_vlm_cot_labels(
+		keywords = get_mlm_cot_labels(
 			model_id=args.model_id,
 			csv_file=args.csv_file,
 			num_workers=args.num_workers,
