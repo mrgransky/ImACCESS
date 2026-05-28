@@ -1071,16 +1071,16 @@ def basic_clean(txt: str):
 		r'(?:^|[,\s])\+(?!\d)[A-Za-z0-9]+[.,]?', # remove +B09. but not +123
 		r"\sW\.Nr\.\s\d+\s\d+\s", # W.Nr. 4920 3000
 		r"\sW\.Nr\.\s\d+\s", # W.Nr. 4920
-		r'\bWWII\b',
-		r'\bWorld War II\b',
-		r'\bWW2\b',
+		# r'\bWWII\b',
+		# r'\bWorld War II\b',
+		# r'\bWW2\b',
+		# r'\bWorld War 2\b',
 		r'Ä\d+\/\d+(?:-\d+)?', # Ä123/456-789
 		r'\s+\d+\s+gg\w+', # 123 gg123
 		r'Blm\s+Sba\s+\d{8}\s+(?:[a-z]\s+)?\d{2}', # Blm Sba 12345678 a 12
 		r'Pix made about \d+', # Pix made about 1945
 		r'written in pencil \w+[\s-]\d+', # Written in pencil D 61, Written in pencil 38-22
-		r'\bWorld War 2\b',
-		r'(?i)\b\d{1,2}\s+(?:Jan(?:uary|.)?|Feb(?:ruary|.)?|Mar(?:ch|.)?|Apr(?:il|.)?|May|Jun(?:e|.)?|Jul(?:y|.)?|Aug(?:ust|.)?|Sep(?:tember|.)?|Oct(?:ober|.)?|Nov(?:ember|.)?|Dec(?:ember|.)?)\s+\d{4}\b', # 15 November 1945
+		# r'(?i)\b\d{1,2}\s+(?:Jan(?:uary|.)?|Feb(?:ruary|.)?|Mar(?:ch|.)?|Apr(?:il|.)?|May|Jun(?:e|.)?|Jul(?:y|.)?|Aug(?:ust|.)?|Sep(?:tember|.)?|Oct(?:ober|.)?|Nov(?:ember|.)?|Dec(?:ember|.)?)\s+\d{4}\b', # 15 November 1945
 	]
 
 	for pattern in metadata_patterns:

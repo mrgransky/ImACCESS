@@ -756,29 +756,30 @@ def _parse_(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[
 			selected = parsed_candidates[-1]
 	if verbose:
 			print(f"\n[STEP 3] Selected parsed object: {selected}")
+
 	# Step 4: Normalize required keys
 	for key in required_keys:
-			if key not in selected:
-					if verbose:
-							print(f"  ⚠ Missing {key} - adding empty list []")
-					selected[key] = []
-			else:
-					raw_value = selected[key]
-					raw_list = raw_value if isinstance(raw_value, list) else [raw_value]
-					cleaned = [
-							str(item).strip()
-							for item in raw_list
-							if item is not None and str(item).strip()
-					]
-					selected[key] = cleaned
-					if verbose:
-							print(f"  {key}: {len(cleaned)} item(s)")
+		if key not in selected:
+			if verbose:
+				print(f"  ⚠ Missing {key} - adding empty list []")
+			selected[key] = []
+		else:
+			raw_value = selected[key]
+			raw_list = raw_value if isinstance(raw_value, list) else [raw_value]
+			cleaned = [
+				str(item).strip()
+				for item in raw_list
+				if item is not None and str(item).strip()
+			]
+			selected[key] = cleaned
+
 	if verbose:
-			print(
-					f"[RESULT] text: {len(selected['text_concepts'])} "
-					f"visual: {len(selected['visual_concepts'])} "
-					f"fused: {len(selected['fused_concepts'])}"
-			)
+		print(
+			f"[RESULT] text: {len(selected['text_concepts'])} "
+			f"visual: {len(selected['visual_concepts'])} "
+			f"fused: {len(selected['fused_concepts'])}"
+		)
+
 	return selected
 
 def get_mlm_cot_labels_single(
