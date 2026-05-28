@@ -25,7 +25,7 @@ from nlp_utils import get_enriched_description
 # python stage1_mlm_cot.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # with nohup:
-# nohup python -u stage1_mlm_cot.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -bs 4 -v > logs/smu_mlm_cot.log 2>&1 &
+# nohup python -u stage1_mlm_cot.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -bs 4 -v > logs/ww2_mlm_cot.log 2>&1 &
 
 # HPC:
 # one sample:
@@ -1440,7 +1440,7 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=8, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=2, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
-	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=256, help="Max number of generated tokens")
+	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=164, help="Max number of generated tokens")
 	parser.add_argument("--quantization_bits", '-qb', type=int, default=None, help="Quantization bits")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 
