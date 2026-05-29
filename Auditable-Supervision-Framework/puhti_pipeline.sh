@@ -46,7 +46,7 @@ SYMMETRICAL_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 ASYMMETRICAL_EMBEDDING_MODEL="cross-encoder/nli-deberta-v3-large"
 
 # stage 1: VLM with CoT:
-python -u stage1_mlm_cot.py -csv $CSV_FILE -vlm $VLM_MODEL -bs 16 -mgt 192 -v
+python -u stage1_mlm_cot.py -csv $CSV_FILE -vlm $VLM_MODEL -bs 20 -mgt 164 -v
 
 # stage 2: Modality Conflict Quantification
 python -u stage2_modality_conflict.py -jsonl $JSONL_COT_FILE -sym $SYMMETRICAL_EMBEDDING_MODEL -asym $ASYMMETRICAL_EMBEDDING_MODEL -v
