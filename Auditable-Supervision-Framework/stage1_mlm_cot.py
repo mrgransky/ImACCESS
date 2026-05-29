@@ -42,14 +42,14 @@ Refrain from extracting the following types of keywords:
   - Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
   - Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
   - Identifiers, serial/reference numbers, codes, brands, or models.
-  - Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
+  - Names of places, buildings, or structures (e.g., 'Plaza de Santiago', 'St. Louis Cathedral').
   - Continents, countries, states, provinces, cities, towns, islands, or regions.
   - Nationalities, ethnicities, or religions.
   - Individual people's names or honorifics (e.g., 'A. A. Robinson', 'A. Philip Randolph', 'Barbara Briggs', 'Mr. Terry Duce', 'Allan M. Hardy', Dr. Howard Russell). 
   - Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
   - Roman numerals, fractions, or ordinal numeral keywords.
   - Abbreviations, acronyms, phrasal verbs, or descriptive clauses.
-  - Image types or characteristics (e.g., 'black and white photograph').
+  - Image types or characteristics (e.g., 'photograph', 'black and white image').
 
 Output format:
   - text_concepts: Keywords derived STRICTLY from the caption.
