@@ -78,13 +78,13 @@ def available_models() -> List[str]:
 	return list(_MODELS.keys())
 
 def load(
-		name: str,
-		device: Union[str, torch.device], 
-		jit: bool = False, 
-		download_root: str = None,
-		dropout: float = 0.0,
-		random_weights: bool = False,
-	):
+	name: str,
+	device: Union[str, torch.device], 
+	jit: bool = False, 
+	download_root: str = None,
+	dropout: float = 0.0,
+	random_weights: bool = False,
+):
 	"""
 		Load a CLIP model, either from pre-trained OpenAI weights or initialized from scratch with random weights.
 		Parameters
@@ -109,8 +109,7 @@ def load(
 				The CLIP model.
 		preprocess : Callable[[PIL.Image], torch.Tensor]
 				A torchvision transform that converts a PIL image into a tensor that the returned model can take as its input.
-	"""
-
+	"""	
 	if random_weights:
 		print(f"Loading CLIP model: {name} from scratch with initialized random weights...")
 		model, preprocess = load_from_scratch(
@@ -118,7 +117,7 @@ def load(
 			device=device,
 			dropout=dropout,
 		)
-		return model, preprocess
+		return model, preprocess	
 
 	if name in _MODELS:
 		model_path = _download(
@@ -128,7 +127,7 @@ def load(
 	elif os.path.isfile(name):
 		model_path = name
 	else:
-		raise RuntimeError(f"Model {name} not found; available models = {available_models()}")
+		raise RuntimeError(f"Model {name} not found; available models = {available_models()}")	
 
 	with open(model_path, 'rb') as opened_file:
 		try:
@@ -140,61 +139,71 @@ def load(
 			if jit:
 				warnings.warn(f"File {model_path} is not a JIT archive. Loading as a state dict instead")
 				jit = False
-			state_dict = torch.load(opened_file, map_location="cpu")
+			state_dict = torch.load(opened_file, map_location="cpu")	
 
 	if not jit:
 		model = build_model(state_dict=state_dict or model.state_dict(), dropout=dropout).to(device)
 		if str(device) == "cpu":
 			model.float()
-		return model, _transform(n_px=model.visual.input_resolution)
+		return model, _transform(n_px=model.visual.input_resolution)	
 
 	# patch the device names
 	device_holder = torch.jit.trace(lambda: torch.ones([]).to(torch.device(device)), example_inputs=[])
-	device_node = [n for n in device_holder.graph.findAllNodes("prim::Constant") if "Device" in repr(n)][-1]
+	device_node = [n for n in device_holder.graph.findAllNodes("prim::Constant") if "Device" in repr(n)][-1]	
 
 	def _node_get(node: torch._C.Node, key: str):
-			"""Gets attributes of a node which is polymorphic over return type.
-			From https://github.com/pytorch/pytorch/pull/82628
-			"""
-			sel = node.kindOf(key)
-			return getattr(node, sel)(key)
+		"""Gets attributes of a node which is polymorphic over return type.
+		From https://github.com/pytorch/pytorch/pull/82628
+		"""
+		sel = node.kindOf(key)
+		return getattr(node, sel)(key)
+
 	def patch_device(module):
-			try:
-					graphs = [module.graph] if hasattr(module, "graph") else []
-			except RuntimeError:
-					graphs = []
-			if hasattr(module, "forward1"):
-					graphs.append(module.forward1.graph)
-			for graph in graphs:
-					for node in graph.findAllNodes("prim::Constant"):
-							if "value" in node.attributeNames() and str(_node_get(node, "value")).startswith("cuda"):
-									node.copyAttributes(device_node)
+		try:
+			graphs = [module.graph] if hasattr(module, "graph") else []
+		except RuntimeError:
+			graphs = []
+		
+		if hasattr(module, "forward1"):
+			graphs.append(module.forward1.graph)
+		
+		for graph in graphs:
+			for node in graph.findAllNodes("prim::Constant"):
+				if "value" in node.attributeNames() and str(_node_get(node, "value")).startswith("cuda"):
+					node.copyAttributes(device_node)
+
 	model.apply(patch_device)
 	patch_device(model.encode_image)
 	patch_device(model.encode_text)
+
 	# patch dtype to float32 on CPU
 	if str(device) == "cpu":
-			float_holder = torch.jit.trace(lambda: torch.ones([]).float(), example_inputs=[])
-			float_input = list(float_holder.graph.findNode("aten::to").inputs())[1]
-			float_node = float_input.node()
-			def patch_float(module):
-					try:
-							graphs = [module.graph] if hasattr(module, "graph") else []
-					except RuntimeError:
-							graphs = []
-					if hasattr(module, "forward1"):
-							graphs.append(module.forward1.graph)
-					for graph in graphs:
-							for node in graph.findAllNodes("aten::to"):
-									inputs = list(node.inputs())
-									for i in [1, 2]:  # dtype can be the second or third argument to aten::to()
-											if _node_get(inputs[i].node(), "value") == 5:
-													inputs[i].node().copyAttributes(float_node)
-			model.apply(patch_float)
-			patch_float(model.encode_image)
-			patch_float(model.encode_text)
-			model.float()
+		float_holder = torch.jit.trace(lambda: torch.ones([]).float(), example_inputs=[])
+		float_input = list(float_holder.graph.findNode("aten::to").inputs())[1]
+		float_node = float_input.node()
+		
+		def patch_float(module):
+			try:
+				graphs = [module.graph] if hasattr(module, "graph") else []
+			except RuntimeError:
+				graphs = []
+			
+			if hasattr(module, "forward1"):
+				graphs.append(module.forward1.graph)
+			for graph in graphs:
+				for node in graph.findAllNodes("aten::to"):
+					inputs = list(node.inputs())
+					for i in [1, 2]:  # dtype can be the second or third argument to aten::to()
+						if _node_get(inputs[i].node(), "value") == 5:
+							inputs[i].node().copyAttributes(float_node)
+		
+		model.apply(patch_float)
+		patch_float(model.encode_image)
+		patch_float(model.encode_text)
+		model.float()
+
 	preprocess = _transform(n_px=model.input_resolution.item())
+
 	return model, preprocess
 
 def load_from_scratch(

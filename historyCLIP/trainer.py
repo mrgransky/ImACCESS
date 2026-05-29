@@ -198,14 +198,15 @@ def main():
 			name=args.model_architecture,
 			device=args.device, 
 			jit=False, # training or finetuning => jit=False
-			random_weights=False, 
+			random_weights=False, # finetuning => random_weights=False
 			dropout=args.dropout,
 			download_root=get_model_directory(path=DATASET_DIRECTORY),
 		)
-		model = model.float() # Convert model parameters to FP32
+
 		model.name = args.model_architecture  # Custom attribute to store model name
 		model_name = model.__class__.__name__
 		print(f"Loaded {model_name} {model.name} in {args.device}")
+
 		dataset_functions = {
 			'single_label': get_single_label_dataloaders,
 			'multi_label': get_multi_label_dataloaders

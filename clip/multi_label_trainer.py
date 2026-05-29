@@ -887,7 +887,7 @@ def full_finetune_multi_label(
 				batch_class_texts = clip.tokenize(batch_class_names).to(device)
 				batch_embeds = model.encode_text(batch_class_texts)
 				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
-				all_class_embeds.append(batch_embeds.cpu())  # Move to CPU immediately to save GPU memory
+				all_class_embeds.append(batch_embeds.cpu()) # Move to CPU immediately to save GPU memory
 				
 				# Clean up
 				del batch_class_texts, batch_embeds
@@ -1007,7 +1007,7 @@ def full_finetune_multi_label(
 		for bidx, batch_data in enumerate(train_loader):
 			images, _, label_vectors = batch_data  # Ignore tokenized_labels, use pre-encoded
 			images = images.to(device, non_blocking=True)
-			label_vectors = label_vectors.to(device, non_blocking=True).float()
+			label_vectors = label_vectors.to(device, non_blocking=True)#.float()
 			
 			optimizer.zero_grad(set_to_none=True)
 			
@@ -1370,7 +1370,20 @@ def lora_finetune_multi_label(
 		
 		if verbose:
 			print(f"   └─ {gpu_name} | {total_mem:.1f}GB VRAM | cuda capability: {cuda_capability}")
-		
+	
+	early_stopping = EarlyStopping(
+		patience=patience,
+		min_delta=min_delta,
+		cumulative_delta=cumulative_delta,
+		window_size=window_size,
+		mode='min',
+		min_epochs=minimum_epochs,
+		restore_best_weights=True,
+		volatility_threshold=volatility_threshold,
+		slope_threshold=slope_threshold,
+		pairwise_imp_threshold=pairwise_imp_threshold,
+	)
+
 	# LoRA injection — vision encoder only
 	# Text encoder stays frozen and un-injected, consistent with full fine-tuning.
 	# all_class_embeds pre-computed from frozen text encoder remains valid.
@@ -1464,20 +1477,6 @@ def lora_finetune_multi_label(
 		print(f"   ├─ {all_class_embeds.shape}")
 		print(f"   ├─ {all_class_embeds.dtype}")
 		print(f"   └─ {all_class_embeds.device}")
-
-	# ── Early stopping
-	early_stopping = EarlyStopping(
-			patience=patience,
-			min_delta=min_delta,
-			cumulative_delta=cumulative_delta,
-			window_size=window_size,
-			mode='min',
-			min_epochs=minimum_epochs,
-			restore_best_weights=True,
-			volatility_threshold=volatility_threshold,
-			slope_threshold=slope_threshold,
-			pairwise_imp_threshold=pairwise_imp_threshold,
-	)
 
 	# Optimizer — LoRA parameters only
 	lora_params = [p for p in model.parameters() if p.requires_grad]	
@@ -2177,6 +2176,9 @@ def lora_plus_finetune_multi_label(
 		print(f"   ├─ {all_class_embeds.shape}")
 		print(f"   ├─ {all_class_embeds.dtype}")
 		print(f"   └─ {all_class_embeds.device}")
+
+	# switch back to training mode
+	model.train()
 
 	mdl_fpth = os.path.join(
 		results_dir,

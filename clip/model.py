@@ -160,17 +160,6 @@ class ModifiedResNet(torch.nn.Module):
 		x = self.attnpool(x)
 		return x
 
-class LayerNorm(nn.LayerNorm):
-	"""Subclass torch's LayerNorm to handle fp16."""
-	def forward(self, x: torch.Tensor):
-		orig_type = x.dtype
-		ret = super().forward(x.type(torch.float32))
-		return ret.type(orig_type)
-
-class QuickGELU(torch.nn.Module):
-	def forward(self, x: torch.Tensor):
-		return x * torch.sigmoid(1.702 * x)
-
 class ResidualAttentionBlock(torch.nn.Module):
 	def __init__(
 			self,
@@ -181,19 +170,18 @@ class ResidualAttentionBlock(torch.nn.Module):
 		):
 		super().__init__()
 		self.attn = nn.MultiheadAttention(d_model, n_head) # self-attention
-		self.ln_1 = LayerNorm(d_model) # Normalize inputs to stabilize learning and improve convergence
+		self.ln_1 = nn.LayerNorm(d_model)
 		self.mlp = nn.Sequential(
 			OrderedDict(
 				[
 					("c_fc", nn.Linear(d_model, d_model * 4)),
-					# ("gelu", QuickGELU()),
-					("gelu", nn.GELU()), # TODO: check if this is correct
+					("gelu", nn.GELU()),
 					("dropout", nn.Dropout(dropout)),
 					("c_proj", nn.Linear(d_model * 4, d_model))
 				]
 			)
 		)
-		self.ln_2 = LayerNorm(d_model)
+		self.ln_2 = nn.LayerNorm(d_model)
 		self.attn_mask = attn_mask
 	
 	def attention(self, x: torch.Tensor):
@@ -256,16 +244,14 @@ class VisionTransformer(torch.nn.Module):
 		scale = width ** -0.5
 		self.class_embedding = nn.Parameter(data=scale * torch.randn(width)) 
 		self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
-
-		self.ln_pre = LayerNorm(width) # to be applied before transformer
+		self.ln_pre = nn.LayerNorm(width) 
 		self.transformer = Transformer(
 			width=width, 
 			layers=layers, 
 			heads=heads,
 			dropout=dropout,
 		)
-		self.ln_post = LayerNorm(width) # to be applied after transformer
-		
+		self.ln_post = nn.LayerNorm(width)
 		self.proj = nn.Parameter(data=scale * torch.randn(width, output_dim)) # to be applied to the output of the transformer
 	
 	def forward(self, x: torch.Tensor):
@@ -341,15 +327,20 @@ class CLIP(torch.nn.Module):
 			################################ text encoder ################################
 
 			self.vocab_size = vocab_size
+
 			# token and positional embeddings
 			self.token_embedding = nn.Embedding(vocab_size, transformer_width)
 			self.positional_embedding = nn.Parameter(torch.empty(self.context_length, transformer_width))
-			# layernorm before transformer
-			self.ln_final = LayerNorm(transformer_width)
+
+			# layer normalization before transformer
+			self.ln_final = nn.LayerNorm(transformer_width)
+
 			# projection for the vision transformer output
 			self.text_projection = nn.Parameter(torch.empty(transformer_width, embed_dim))
+
 			# scale for cosine similarity
 			self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+
 			self.dropout = nn.Dropout(dropout)
 
 			self.initialize_parameters()
@@ -422,26 +413,6 @@ class CLIP(torch.nn.Module):
 		# shape = [global_batch_size, global_batch_size]
 		return logits_per_image, logits_per_text
 
-def convert_weights(model: torch.nn.Module):
-	"""Convert applicable model parameters to fp16"""
-	def _convert_weights_to_fp16(l):
-		if isinstance(l, (nn.Conv1d, nn.Conv2d, nn.Linear)):
-			l.weight.data = l.weight.data.half()
-			if l.bias is not None:
-				l.bias.data = l.bias.data.half()
-		if isinstance(l, nn.MultiheadAttention):
-			for attr in [*[f"{s}_proj_weight" for s in ["in", "q", "k", "v"]], "in_proj_bias", "bias_k", "bias_v"]:
-				tensor = getattr(l, attr)
-				if tensor is not None:
-					tensor.data = tensor.data.half()
-		for name in ["text_projection", "proj"]:
-			if hasattr(l, name):
-				attr = getattr(l, name)
-				if attr is not None:
-					attr.data = attr.data.half()
-	
-	model.apply(_convert_weights_to_fp16)
-
 def build_model(state_dict: dict, dropout: float):
 	vit = "visual.proj" in state_dict
 
@@ -478,7 +449,6 @@ def build_model(state_dict: dict, dropout: float):
 		if key in state_dict:
 			del state_dict[key]
 
-	convert_weights(model)
 	model.load_state_dict(state_dict)
 	return model.eval()
 

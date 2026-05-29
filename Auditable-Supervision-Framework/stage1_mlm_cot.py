@@ -21,6 +21,9 @@ from nlp_utils import get_enriched_description
 # one sample:
 # python stage1_mlm_cot.py -i /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
+# python stage1_mlm_cot.py -i /home/farid/datasets/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/348551054.jpg -c "Edwin Pauley Confers on a Train during the U.S. Reparations Tour. Edwin Pauley confers on a train during the U.S. Reparations tour. Military officer is in the group. Edwin Pauley was the U.S. Ambassador on the Allied Reparations Committee from 1945-47." -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
+
+
 # csv input:
 # python stage1_mlm_cot.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
@@ -42,11 +45,11 @@ Refrain from extracting the following types of keywords:
   - Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
   - Continents, countries, states, provinces, cities, towns, islands, or regions.
   - Nationalities, ethnicities, or religions.
-  - Individual people's names or honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Mr. Terry Duce, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
+  - Individual people's names or honorifics (e.g., 'A. A. Robinson', 'A. Philip Randolph', 'Barbara Briggs', 'Mr. Terry Duce', 'Allan M. Hardy', Dr. Howard Russell). 
   - Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
-  - Roman numerals, fractions, or ordinal numeral keywords (e.g., IV, VIII, fourth, 1st, 115th).
+  - Roman numerals, fractions, or ordinal numeral keywords.
   - Abbreviations, acronyms, phrasal verbs, or descriptive clauses.
-  - Image types or characteristics (e.g., photograph, image, black and white photograph).
+  - Image types or characteristics (e.g., 'black and white photograph').
 
 Output format:
   - text_concepts: Keywords derived STRICTLY from the caption.

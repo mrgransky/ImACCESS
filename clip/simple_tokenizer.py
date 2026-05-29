@@ -62,8 +62,10 @@ class SimpleTokenizer(object):
 		merges = [tuple(merge.split()) for merge in merges]
 		vocab = list(bytes_to_unicode().values())
 		vocab = vocab + [v+'</w>' for v in vocab]
+		
 		for merge in merges:
 			vocab.append(''.join(merge))
+		
 		vocab.extend(['<|startoftext|>', '<|endoftext|>'])
 		self.encoder = dict(zip(vocab, range(len(vocab))))
 		self.decoder = {v: k for k, v in self.encoder.items()}
