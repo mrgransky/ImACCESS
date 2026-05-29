@@ -59,7 +59,7 @@ STOPWORDS.update(geographic_references)
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
-Return a Python list of keywords derived strictly from the caption.
+Return a Python list of keywords derived strictly from the caption without thought, reasoning, explanation or any additional text.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 
 STRICTLY EXCLUDE:
