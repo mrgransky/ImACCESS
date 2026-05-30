@@ -483,7 +483,11 @@ def get_prompt(
 	tokenizer: tfs.PreTrainedTokenizer, 
 	description: str, 
 	max_kws: int,
+	verbose: bool = False,
 ):
+	if verbose:
+		print(f"Generating prompt for text with len={len(description.split()):<10}max_kws={min(max_kws, len(description.split()))}")
+
 	messages = [
 		{"role": "system", "content": "You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century."},
 		{"role": "user", "content": PROMPT_TEMPLATE.format(k=max_kws, caption=description.strip())},
@@ -786,7 +790,7 @@ def query_local_llm(
 		return None
 
 	keywords: Optional[List[str]] = None
-	prompt = get_prompt(tokenizer=tokenizer, description=text, max_kws=max_kws)
+	prompt = get_prompt(tokenizer=tokenizer, description=text, max_kws=max_kws, verbose=verbos)
 
 	model_id = getattr(model.config, '_name_or_path', None)
 	if model_id is None:
@@ -1056,8 +1060,6 @@ def get_llm_based_labels(
 		if s is None:
 			unique_prompts.append(None)
 		else:
-			if verbose:
-				print(f"Generating prompt for text with len={len(s.split()):<10}max_kws={min(max_kws, len(s.split()))}")
 			prompt = get_prompt(
 				tokenizer=tokenizer,
 				description=s,
