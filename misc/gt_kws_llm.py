@@ -486,18 +486,22 @@ def get_prompt(
 	verbose: bool = False,
 ):
 	if verbose:
-		print(f"Generating prompt for text with len={len(description.split()):<10}max_kws={min(max_kws, len(description.split()))}")
+		print(f"Generating prompt for text with len={len(description.split()):<10}max_kws={max_kws}")
 
 	messages = [
 		{"role": "system", "content": "You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century."},
 		{"role": "user", "content": PROMPT_TEMPLATE.format(k=max_kws, caption=description.strip())},
 	]
-	text = tokenizer.apply_chat_template(
-		messages,
-		tokenize=False,
-		add_generation_prompt=True,
-		enable_thinking=False,
-	)
+	try:
+		text = tokenizer.apply_chat_template(
+			messages,
+			tokenize=False,
+			add_generation_prompt=True,
+			enable_thinking=False,
+		)
+	except Exception as e:
+		print(f"[ERROR] {e}")
+		raise
 	return text
 
 def parse_llm_response(
