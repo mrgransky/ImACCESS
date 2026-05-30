@@ -501,7 +501,12 @@ def get_prompt(
 		)
 	except Exception as e:
 		print(f"[ERROR] {e}")
-		raise
+
+	# Fallback: manual formatting
+	system_msg = messages[0]["content"]
+	user_msg = messages[1]["content"]
+	text = f"System: {system_msg}\n\nUser: {user_msg}\n\nAssistant:"
+
 	return text
 
 def parse_llm_response(
