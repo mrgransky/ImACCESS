@@ -52,7 +52,7 @@ Refrain from extracting the following types of keywords:
   - Image types or characteristics (e.g., 'photograph', 'black and white image').
 
 Output format:
-  - text_concepts: Keywords derived STRICTLY from the caption.
+  - text_concepts: Keywords derived STRICTLY from the caption. Text inferencing is not allowed.
   - visual_concepts: Keywords derived STRICTLY from the pixel data.
   - fused_concepts: Keywords inferred from BOTH modalities. In case the modalities are essentially disjoint (e.g., text says "aircraft" but image shows "ships"), return an empty list [] and refrain from forcing a fusion.
 
