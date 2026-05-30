@@ -492,14 +492,15 @@ def get_prompt(
 		{"role": "system", "content": "You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century."},
 		{"role": "user", "content": PROMPT_TEMPLATE.format(k=max_kws, caption=description.strip())},
 	]
-	if hasattr(tokenizer, "apply_chat_template"):
+	try:
 		text = tokenizer.apply_chat_template(
 			messages,
 			tokenize=False,
 			add_generation_prompt=True,
 			enable_thinking=False,
 		)
-	else:
+	except Exception as e:
+		print(f"[ERROR] {e}")
 		# Fallback: manual formatting
 		system_msg = messages[0]["content"]
 		user_msg = messages[1]["content"]
