@@ -790,7 +790,7 @@ def query_local_llm(
 		return None
 
 	keywords: Optional[List[str]] = None
-	prompt = get_prompt(tokenizer=tokenizer, description=text, max_kws=max_kws, verbose=verbos)
+	prompt = get_prompt(tokenizer=tokenizer, description=text, max_kws=max_kws, verbose=verbose)
 
 	model_id = getattr(model.config, '_name_or_path', None)
 	if model_id is None:
@@ -1064,6 +1064,7 @@ def get_llm_based_labels(
 				tokenizer=tokenizer,
 				description=s,
 				max_kws=min(max_kws, len(s.split())),
+				verbose=verbose,
 			)
 			unique_prompts.append(prompt)
 	
