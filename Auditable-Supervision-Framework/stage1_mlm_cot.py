@@ -41,11 +41,11 @@ Refrain from extracting the following types of keywords:
   - Generic terms (e.g., 'people', 'group', 'crowd', 'women', 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
   - Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
   - Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
-  - Identifiers, serial/reference numbers, codes, brands, or models.
+  - Identifiers, serial/reference/model numbers, designated specification codes or brands.
   - Names of places, buildings, or structures (e.g., 'Plaza de Santiago', 'St. Louis Cathedral').
   - Continents, countries, states, provinces, cities, towns, islands, or regions.
   - Nationalities, ethnicities, or religions.
-  - Individual people's names or honorifics (e.g., 'A. A. Robinson', 'A. Philip Randolph', 'Barbara Briggs', 'Mr. Terry Duce', 'Allan M. Hardy', Dr. Howard Russell). 
+  - Individual people's names or honorifics (e.g., 'A. A. Robinson', 'Mr. Terry Duce', 'Allan M. Hardy', 'Dr. Howard Russell'). 
   - Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
   - Roman numerals, fractions, or ordinal numeral keywords.
   - Abbreviations, acronyms, phrasal verbs, or descriptive clauses.
@@ -56,7 +56,7 @@ Output format:
   - visual_concepts: Keywords derived STRICTLY from the pixel data.
   - fused_concepts: Keywords inferred from BOTH modalities. In case the modalities are essentially disjoint (e.g., text says "aircraft" but image shows "ships"), return an empty list [] and refrain from forcing a fusion.
 
-Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without any additional text:
+Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without thoughs, reasoning or any additional text:
 {{
 "text_concepts": [],
 "visual_concepts": [],

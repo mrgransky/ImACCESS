@@ -199,10 +199,12 @@ class Transformer(torch.nn.Module):
 			width: int,
 			layers: int,
 			heads: int,
+			head_dim: int,
 			dropout: float,
 			attn_mask: torch.Tensor=None,
 		):
 		super().__init__()
+		assert width == heads * head_dim, f"width ({width}) must equal heads ({heads}) * head_dim ({head_dim})"
 		self.width = width
 		self.layers = layers
 		self.resblocks = nn.Sequential(
@@ -226,11 +228,13 @@ class VisionTransformer(torch.nn.Module):
 			patch_size: int, 
 			width: int, 
 			layers: int, 
-			heads: int, 
+			heads: int,
+			head_dim: int,
 			output_dim: int, 
 			dropout: float,
 		):
 		super().__init__()
+		assert width == heads * head_dim, f"width ({width}) must equal heads ({heads}) * head_dim ({head_dim})"
 		self.input_resolution = input_resolution
 		self.output_dim = output_dim
 		self.dropout = nn.Dropout(dropout)
@@ -249,6 +253,7 @@ class VisionTransformer(torch.nn.Module):
 			width=width, 
 			layers=layers, 
 			heads=heads,
+			head_dim=head_dim,
 			dropout=dropout,
 		)
 		self.ln_post = nn.LayerNorm(width)
@@ -281,11 +286,13 @@ class CLIP(torch.nn.Module):
 			vision_layers: Union[Tuple[int, int, int, int], int],
 			vision_width: int,
 			vision_patch_size: int,
+			vision_head_dim: int,
 			# text
 			context_length: int,
 			vocab_size: int,
 			transformer_width: int,
 			transformer_heads: int,
+			transformer_head_dim: int,
 			transformer_layers: int,
 			dropout: float,
 		):
@@ -304,13 +311,14 @@ class CLIP(torch.nn.Module):
 					width=vision_width
 				)
 			else: # vison transformer (ViT)
-				vision_heads = vision_width // 64
+				vision_heads = vision_width // vision_head_dim
 				self.visual = VisionTransformer(
 					input_resolution=image_resolution,
 					patch_size=vision_patch_size,
 					width=vision_width,
 					layers=vision_layers,
 					heads=vision_heads,
+					head_dim=vision_head_dim,
 					output_dim=self.embed_dim,
 					dropout=dropout,
 				)
@@ -321,6 +329,7 @@ class CLIP(torch.nn.Module):
 				width=transformer_width,
 				layers=transformer_layers,
 				heads=transformer_heads,
+				head_dim=transformer_head_dim,
 				attn_mask=self.build_attention_mask(),
 				dropout=dropout,
 			)
@@ -420,6 +429,7 @@ def build_model(state_dict: dict, dropout: float):
 		vision_width = state_dict["visual.conv1.weight"].shape[0]
 		vision_layers = len([k for k in state_dict.keys() if k.startswith("visual.") and k.endswith(".attn.in_proj_weight")])
 		vision_patch_size = state_dict["visual.conv1.weight"].shape[-1]
+		vision_head_dim = 64
 		grid_size = round((state_dict["visual.positional_embedding"].shape[0] - 1) ** 0.5)
 		image_resolution = vision_patch_size * grid_size
 	else:
@@ -436,12 +446,13 @@ def build_model(state_dict: dict, dropout: float):
 	vocab_size = state_dict["token_embedding.weight"].shape[0]
 	transformer_width = state_dict["ln_final.weight"].shape[0]
 	transformer_heads = transformer_width // 64
+	transformer_head_dim = 64
 	transformer_layers = len(set(k.split(".")[2] for k in state_dict if k.startswith("transformer.resblocks")))
 
 	model = CLIP(
 		embed_dim,
-		image_resolution, vision_layers, vision_width, vision_patch_size,
-		context_length, vocab_size, transformer_width, transformer_heads, transformer_layers,
+		image_resolution, vision_layers, vision_width, vision_patch_size, vision_head_dim,
+		context_length, vocab_size, transformer_width, transformer_heads, transformer_head_dim, transformer_layers,
 		dropout=dropout,
 	)
 

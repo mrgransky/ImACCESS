@@ -1,11 +1,10 @@
 from transformers import AutoTokenizer
 
 class OpenCLIPTokenizer:
-	def __init__(self, hf_tokenizer_name):
-		# Loads the exact tokenizer from the HuggingFace Hub
-		self.tokenizer = AutoTokenizer.from_pretrained(hf_tokenizer_name)
+	def __init__(self, model_id):
+		self.tokenizer = AutoTokenizer.from_pretrained(model_id)
 			
-	def __call__(self, texts, context_length=77, truncate=True):
+	def __call__(self, texts, context_length=77, truncate=False):
 		if isinstance(texts, str):
 			texts = [texts]
 				
@@ -20,7 +19,8 @@ class OpenCLIPTokenizer:
 		
 		return encoding["input_ids"]
 
-tokenizer = OpenCLIPTokenizer("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
-tokens = tokenizer(["a photo of a cat"])
+tokenizer = OpenCLIPTokenizer(model_id="laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+tokens = tokenizer(["An orange cat is looking at its reflection in the mirror."])
+
 print(f"Type: {type(tokens)}, Shape: {tokens.shape}, Dtype: {tokens.dtype}")
 print(f"Max: {tokens.max()}, Min: {tokens.min()}, Mean: {tokens.float().mean():.2f}, Std: {tokens.float().std():.2f}")

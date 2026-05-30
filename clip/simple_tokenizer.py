@@ -4,7 +4,7 @@ import os
 from functools import lru_cache
 
 import ftfy
-import regex as re
+import re
 
 @lru_cache()
 def default_bpe():
@@ -33,25 +33,27 @@ def bytes_to_unicode():
 	return dict(zip(bs, cs))
 
 def get_pairs(word):
-		"""Return set of symbol pairs in a word.
-		Word is represented as tuple of symbols (symbols being variable-length strings).
-		"""
-		pairs = set()
-		prev_char = word[0]
-		for char in word[1:]:
-				pairs.add((prev_char, char))
-				prev_char = char
-		return pairs
+	"""
+	Return set of symbol pairs in a word.
+	Word is represented as tuple of symbols (symbols being variable-length strings).
+	"""
+	pairs = set()
+	prev_char = word[0]
+	for char in word[1:]:
+		pairs.add((prev_char, char))
+		prev_char = char
+	
+	return pairs
 
 def basic_clean(text):
-		text = ftfy.fix_text(text)
-		text = html.unescape(html.unescape(text))
-		return text.strip()
+	text = ftfy.fix_text(text)
+	text = html.unescape(html.unescape(text))
+	return text.strip()
 
 def whitespace_clean(text):
-		text = re.sub(r'\s+', ' ', text)
-		text = text.strip()
-		return text
+	text = re.sub(r'\s+', ' ', text)
+	text = text.strip()
+	return text
 
 class SimpleTokenizer(object):
 	def __init__(self, bpe_path: str = default_bpe()):
@@ -71,7 +73,7 @@ class SimpleTokenizer(object):
 		self.decoder = {v: k for k, v in self.encoder.items()}
 		self.bpe_ranks = dict(zip(merges, range(len(merges))))
 		self.cache = {'<|startoftext|>': '<|startoftext|>', '<|endoftext|>': '<|endoftext|>'}
-		self.pat = re.compile(r"""<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+""", re.IGNORECASE)
+		self.pat = re.compile(r"""<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'d|[^\W\d_]+|[0-9]|[^\s\w]+""", re.IGNORECASE | re.UNICODE)
 	
 	def bpe(self, token):
 		if token in self.cache:

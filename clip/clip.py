@@ -304,10 +304,12 @@ def load_from_scratch(
 			"vision_layers": 12,
 			"vision_width": 768,
 			"vision_patch_size": 32,
+			"vision_head_dim": 64,
 			"context_length": 77,
 			"vocab_size": 49408,
 			"transformer_width": 512,
 			"transformer_heads": 8,
+			"transformer_head_dim": 64,
 			"transformer_layers": 12,
 			"dropout": dropout,
 		},
@@ -317,10 +319,12 @@ def load_from_scratch(
 			"vision_layers": 12,
 			"vision_width": 768,
 			"vision_patch_size": 16,
+			"vision_head_dim": 64,
 			"context_length": 77,
 			"vocab_size": 49408,
 			"transformer_width": 512,
 			"transformer_heads": 8,
+			"transformer_head_dim": 64,
 			"transformer_layers": 12,
 			"dropout": dropout,
 		},
@@ -330,10 +334,12 @@ def load_from_scratch(
 			"vision_layers": 24,
 			"vision_width": 1024,
 			"vision_patch_size": 14,
+			"vision_head_dim": 64,
 			"context_length": 77,
 			"vocab_size": 49408,
 			"transformer_width": 768,
 			"transformer_heads": 12,
+			"transformer_head_dim": 64,
 			"transformer_layers": 12,
 			"dropout": dropout,
 		},
@@ -343,10 +349,12 @@ def load_from_scratch(
 			"vision_layers": 24,
 			"vision_width": 1024,
 			"vision_patch_size": 14,
+			"vision_head_dim": 64,
 			"context_length": 77,
 			"vocab_size": 49408,
 			"transformer_width": 768,
 			"transformer_heads": 12,
+			"transformer_head_dim": 64,
 			"transformer_layers": 12,
 			"dropout": dropout,
 		},
@@ -366,10 +374,10 @@ def load_from_scratch(
 	return model, preprocess
 
 def tokenize(
-		texts: Union[str, List[str]],
-		context_length: int = 77,
-		truncate: bool = False,
-	) -> Union[torch.IntTensor, torch.LongTensor]:
+	texts: Union[str, List[str]],
+	context_length: int = 77,
+	truncate: bool = False,
+) -> Union[torch.IntTensor, torch.LongTensor]:
 	"""
 		Returns the tokenized representation of given input string(s)
 		Parameters
@@ -386,9 +394,11 @@ def tokenize(
 	"""
 	if isinstance(texts, str):
 		texts = [texts]
+	
 	sot_token = _tokenizer.encoder["<|startoftext|>"]
 	eot_token = _tokenizer.encoder["<|endoftext|>"]
 	all_tokens = [[sot_token] + _tokenizer.encode(text) + [eot_token] for text in texts]
+	
 	# print(all_tokens)
 	result = torch.zeros(
 		len(all_tokens), 
@@ -403,4 +413,5 @@ def tokenize(
 			else:
 				raise RuntimeError(f"Input {texts[i]} is too long for context length {context_length}")
 		result[i, :len(tokens)] = torch.tensor(tokens)
+	
 	return result # <class 'list'>
