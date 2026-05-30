@@ -504,7 +504,7 @@ def get_prompt(
 		# Fallback: manual formatting
 		system_msg = messages[0]["content"]
 		user_msg = messages[1]["content"]
-		text = f"System: {system_msg}\n\nUser: {user_msg}\n\nAssistant:"
+		text = f"{system_msg}\n{user_msg}"
 
 	return text
 
