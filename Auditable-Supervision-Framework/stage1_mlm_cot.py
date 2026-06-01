@@ -33,27 +33,27 @@ from nlp_utils import get_enriched_description
 # one sample:
 # $ python stage1_mlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.6-27B" -v
 
-PROMPT_TEMPLATE = """Extract **at most {k}** prominet keywords per category from the given image and caption.
+PROMPT_TEMPLATE = """Extract **at most {k}** prominet keywords **per category** from the given image and caption.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
 Refrain from extracting the following types of keywords:
-  - Generic terms (e.g., 'people', 'group', 'crowd', 'women', 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
-  - Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
-  - Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
-  - Identifiers, serial/reference/model numbers, designated specification codes or brands.
-  - Names of places, buildings, or structures (e.g., 'Plaza de Santiago', 'St. Louis Cathedral').
-  - Continents, countries, states, provinces, cities, towns, islands, or regions.
-  - Nationalities, ethnicities, or religions.
-  - Individual people's names or honorifics (e.g., 'A. A. Robinson', 'Mr. Terry Duce', 'Allan M. Hardy', 'Dr. Howard Russell'). 
-  - Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
-  - Roman numerals, fractions, or ordinal numeral keywords.
-  - Abbreviations, acronyms, phrasal verbs, or descriptive clauses.
-  - Image types or characteristics (e.g., 'photograph', 'black and white image').
+	- Generic terms (e.g., 'people', 'group', 'crowd', 'women', 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
+	- Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
+	- Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
+	- Identifiers, serial/reference/model numbers, designated specification codes or brands.
+	- Names of places, buildings, or structures (e.g., 'Plaza de Santiago', 'St. Louis Cathedral').
+	- Continents, countries, states, provinces, cities, towns, islands, or regions.
+	- Nationalities, ethnicities, or religions.
+	- Individual people's names or honorifics (e.g., 'A. A. Robinson', 'Mr. Terry Duce', 'Allan M. Hardy', 'Dr. Howard Russell'). 
+	- Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
+	- Roman numerals, fractions, or ordinal numeral keywords.
+	- Abbreviations, acronyms, phrasal verbs, or descriptive clauses.
+	- Image types or characteristics (e.g., 'photograph', 'black and white image').
 
 Output format:
-  - text_concepts: Keywords derived STRICTLY from the caption. Text inferencing is not allowed.
-  - visual_concepts: Keywords derived STRICTLY from the pixel data.
-  - fused_concepts: Keywords inferred from BOTH textal and visual modalities. If the modalities are disjoint, return an empty list [] and refrain from forcing a fusion.
+	- text_concepts: Keywords derived STRICTLY from the caption. Text inferencing is not allowed.
+	- visual_concepts: Keywords derived STRICTLY from the pixel data.
+	- fused_concepts: Keywords inferred from BOTH textal and visual modalities. If the modalities are disjoint, return an empty list [] and refrain from forcing a fusion.
 
 Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without thoughs, reasoning or any additional text:
 {{
@@ -63,6 +63,17 @@ Return ONLY a valid JSON object with standarized, valid and parsable **Python** 
 }}
 
 Caption: {caption}"""
+
+def _check_path(p):
+	if isinstance(p, str) and os.path.exists(p):
+		return p
+	return None
+
+def _check_url(u):
+	return u if isinstance(u, str) else None
+
+def _check_desc(d):
+	return d if (d and isinstance(d, str)) else None
 
 def is_empty_concepts(concepts: Optional[Dict[str, Any]]) -> bool:
 	if not concepts or not isinstance(concepts, dict):
@@ -997,10 +1008,33 @@ def get_mlm_cot_labels(
 		print(df.info(verbose=True, memory_usage=True))
 		print(df.head())
 	
-	doc_urls = [url if isinstance(url, str) else None for url in df["doc_url"]]
-	image_paths = [p if isinstance(p, str) and os.path.exists(p) else None for p in df["img_path"]]
-	descriptions = [desc  if desc and isinstance(desc, str) else None for desc in df["enriched_document_description"]]
-	
+	# Time-consuming validation of paths/urls/descriptions
+	# doc_urls = [
+	# 	url 
+	# 	if isinstance(url, str) else None 
+	# 	for url in df["doc_url"]
+	# ]
+	# image_paths = [
+	# 	p 
+	# 	if isinstance(p, str) and os.path.exists(p) else None 
+	# 	for p in df["img_path"]
+	# ]
+	# descriptions = [
+	# 	desc 
+	# 	if desc and isinstance(desc, str) else None 
+	# 	for desc in df["enriched_document_description"]
+	# ]
+
+	print(f"[PREP] Parallel path/url/desc validation with {num_workers} threads...")
+	raw_urls  = df["doc_url"].tolist()
+	raw_paths = df["img_path"].tolist()
+	raw_descs = df["enriched_document_description"].tolist()
+	chunks = 2 ** 12
+	with ThreadPoolExecutor(max_workers=num_workers) as ex:
+		doc_urls    = list(ex.map(_check_url,  raw_urls,  chunksize=chunks))
+		image_paths = list(ex.map(_check_path, raw_paths, chunksize=chunks))  # ← the slow one
+		descriptions = list(ex.map(_check_desc, raw_descs, chunksize=chunks))
+
 	assert len(image_paths) == len(descriptions), f"Length mismatch: {len(image_paths)} != {len(descriptions)}"
 	n_total = len(image_paths)
 	
@@ -1099,13 +1133,6 @@ def get_mlm_cot_labels(
 		eos_token_id=processor.tokenizer.eos_token_id,
 		pad_token_id=processor.tokenizer.pad_token_id,
 	)
-	
-	# if hasattr(model, "generation_config"):
-	# 	gen_config = model.generation_config
-	# 	gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
-	# 	gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
-	# # else:
-	# # 	gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
 
 	if verbose:
 		print(f"[GEN CONFIG] {gen_kwargs}")
@@ -1188,7 +1215,7 @@ def get_mlm_cot_labels(
 			).to(next(model.parameters()).device)
 
 			if verbose:
-				print(f"[BATCH {b}] Generating responses for {len(valid_pairs)} images [takes a while]...")
+				print(f"[BATCH {b}] Generating responses for {len(valid_pairs)} samples [takes a while]...")
 
 			# Generate response
 			tt = time.time()
