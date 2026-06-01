@@ -14,7 +14,7 @@ for i, p in enumerate(sys.path):
 	print(f"\t{i} {p}")
 
 from utils import *
-from nlp_utils import get_enriched_description
+from nlp_utils import get_enriched_description, _post_process_
 
 # how to run:
 # local:
@@ -231,7 +231,6 @@ def _load_mlm_(
 
 	if verbose:
 		print(f"[INFO] Using model class: {model_cls.__name__}")
-
 
 	dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
 	if verbose:
@@ -645,6 +644,7 @@ def _load_mlm_(
 				print(f"\nAll layers on GPU - optimal performance!")
 		
 		print(f"\n[LOADED] {model_id}\n{model.config}")
+	
 	return processor, model
 
 def verify(p: str):
@@ -660,7 +660,7 @@ def verify(p: str):
 	except Exception:
 		return None
 
-def _parse_(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[str, Any]]:
+def _parse_(model_id: str, response: str, post_processed: bool=False, verbose: bool=False) -> Optional[Dict[str, Any]]:
 	if not response or not isinstance(response, str):
 		if verbose:
 			print("ERROR: Invalid response input.")
@@ -766,8 +766,9 @@ def _parse_(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[
 					break
 	if selected is None:
 			selected = parsed_candidates[-1]
+
 	if verbose:
-			print(f"\n[STEP 3] Selected parsed object: {selected}")
+		print(f"\n[STEP 3] Parsed {type(selected)} {len(selected)} object(s): {selected}")
 
 	# Step 4: Normalize required keys
 	for key in required_keys:
@@ -786,11 +787,18 @@ def _parse_(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[
 			selected[key] = cleaned
 
 	if verbose:
-		print(
-			f"[RESULT] text: {len(selected['text_concepts'])} "
-			f"visual: {len(selected['visual_concepts'])} "
-			f"fused: {len(selected['fused_concepts'])}"
-		)
+		print(f"[RESULT]")
+		for k, v in selected.items():
+			print(f"\t{k}: {len(v)}: {v}")
+
+	if post_processed:
+		post_processed_selected = {}
+		for k, v in selected.items():
+			post_processed_selected[k] = _post_process_(labels_list=[v], verbose=verbose)[0]
+		if verbose:
+			print(f"\n[POST-PROCESSED] {post_processed_selected}")
+			print("-"*100)
+		return post_processed_selected
 
 	return selected
 
@@ -939,7 +947,12 @@ def get_mlm_cot_labels_single(
 	# 	skip_special_tokens=True
 	# )	
 
-	parsed = _parse_(model_id=model_id, response=response, verbose=verbose)
+	parsed = _parse_(
+		model_id=model_id,
+		response=response,
+		post_processed=True,
+		verbose=verbose,
+	)
 
 	if verbose:
 		print(f"Parsed Response: {type(parsed)}")
@@ -1154,6 +1167,7 @@ def get_mlm_cot_labels(
 			f"[INIT] BATCHED PARALLEL OPTIMIZED VLM (nw: {num_workers}) "
 			f"{len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}"
 		)
+		print("-"*120)
 
 	batch_max_tokens = []
 	all_image_tokens = []
@@ -1282,6 +1296,7 @@ def get_mlm_cot_labels(
 					parsed = _parse_(
 						model_id=model_id,
 						response=resp,
+						post_processed=True,
 						verbose=verbose,
 					)
 					results[idx] = parsed
@@ -1360,6 +1375,7 @@ def get_mlm_cot_labels(
 					parsed = _parse_(
 						model_id=model_id,
 						response=decoded_single,
+						post_processed=True,
 						verbose=verbose,
 					)
 					results[uniq_idx] = parsed
@@ -1422,6 +1438,38 @@ def get_mlm_cot_labels(
 	final = [results[i] for i in orig_to_uniq]
 	df["vlm_cot_labels"] = final
 
+	# if verbose:
+	# 	print(f"Post-processing {len(results)} {type(results)} results...")
+	# final_post_processed_result = []
+	# for i, res in enumerate(results):
+	# 	post_processed_results = {}
+	# 	print(i, type(res), len(res), list(res.keys()), res)
+		
+	# 	# Wrap each concept list in another list for batch processing
+	# 	post_processed_results["text_concepts"] = _post_process_(
+	# 		labels_list=[res.get("text_concepts", [])],  # Wrap in list
+	# 		verbose=verbose
+	# 	)[0]  # Extract first result
+		
+	# 	post_processed_results["visual_concepts"] = _post_process_(
+	# 		labels_list=[res.get("visual_concepts", [])],
+	# 		verbose=verbose
+	# 	)[0]
+		
+	# 	post_processed_results["fused_concepts"] = _post_process_(
+	# 		labels_list=[res.get("fused_concepts", [])],
+	# 		verbose=verbose
+	# 	)[0]
+	# 	print(i, type(post_processed_results), len(post_processed_results), post_processed_results)
+	# 	final_post_processed_result.append(post_processed_results)
+
+	# if verbose:
+	# 	print(f"Post-processed {len(final_post_processed_result)} {type(final_post_processed_result)} final results")
+	# 	for i, res in enumerate(final_post_processed_result):
+	# 		print(i, type(res), len(res), res)
+
+	# df["vlm_cot_post_processed_labels"] = final_post_processed_result
+
 	# Check for empty concepts
 	total_empty_concepts = 0
 	for url_key, rec in jsonl_state.items():
@@ -1443,6 +1491,7 @@ def get_mlm_cot_labels(
 	# except Exception as e:
 	# 	print(f"Failed to write Excel file: {e}")
 	# elapsed = time.time() - t0
+
 	if verbose:
 		# print(f"[SAVE] Results written to: {output_csv}")
 		n_ok = sum(1 for r in final if r)
@@ -1469,7 +1518,6 @@ def get_mlm_cot_labels(
 		# Count how many hit the max token limit
 		hits_max = sum(1 for t in all_image_tokens if t >= max_generated_tks)
 		print(f"Hit (max generated tokens={max_generated_tks}): {hits_max}/{len(all_image_tokens)} ({hits_max/len(all_image_tokens)*100:.2f}%)")
-
 		print("-"*100)
 	
 	return final
