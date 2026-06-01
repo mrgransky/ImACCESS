@@ -44,20 +44,11 @@ class ConflictQuantifier:
 		self.tau_asym = tau_asym
 		self.tau_fast_fail = tau_fast_fail
 		self.verbose = verbose
-		
-		if self.verbose:
-			print(f"\n{'='*80}")
-			print(f"[STAGE 2] INIT: Modality Conflict Quantifier")
-			print(f"{'='*80}")
-			print(f"  ├─ Symmetric Model : {sym_model_id}")
-			print(f"  ├─ NLI Model       : {nli_model_id}")
-			print(f"  ├─ Device          : {self.device}")
-			print(f"  └─ Thresholds      : Match={tau_match}, Soft={tau_soft}, Orphan={tau_orphan}, Asym={tau_asym}, FastFail={tau_fast_fail}")
-			print(f"{'='*80}\n")
-		
+				
 		# Load Symmetric Embedder (Cosine Similarity)
 		self.sym_model = SentenceTransformer(
-			sym_model_id, 
+			sym_model_id,
+			model_kwargs={"attn_implementation": self.get_attention(), "dtype": self.get_dtype()} if "Qwen" in sym_model_id else {},
 			device=self.device,
 			trust_remote_code=True,
 			cache_folder=cache_directory[os.getenv('USER')],
@@ -103,6 +94,34 @@ class ConflictQuantifier:
 				f"Defaulting entail_idx=1. Verify this is correct for your model."
 			)
 	
+	def get_attention(self):
+		if not torch.cuda.is_available():
+			return "eager"
+		major, minor = torch.cuda.get_device_capability()
+		compute_cap = major + minor / 10
+		if compute_cap >= 8.0:
+			try:
+				import flash_attn
+				if verbose:
+					print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
+				return "flash_attention_2"
+			except ImportError:
+				if verbose:
+					print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
+		if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
+			if verbose:
+				print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
+			return "sdpa"
+		if verbose:
+			print(f"[INFO] Using eager attention (compute {compute_cap})")
+		return "eager"
+
+	def get_dtype(self):
+		dtype = torch.float32
+		if torch.cuda.is_available():
+			dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
+		return dtype
+
 	def compute_asymmetry_gap(
 		self,
 		text_concepts: List[str],
@@ -528,7 +547,7 @@ def modality_conflict_audit(
 
 		print(f"[STAGE 2] Done. Skipped (empty): {skipped_empty:,} | Errors: {errors:,}")
 
-	# ── DIAGNOSTIC: read full output file for stats ───────────────────────────
+	# ── DIAGNOSTIC: read full output file for stats
 	print(f"\n[STAGE 2] Saving Evidence Receipts to: {output_jsonl}")
 	all_receipts = []
 	with open(output_jsonl, "r", encoding="utf-8") as f_read:

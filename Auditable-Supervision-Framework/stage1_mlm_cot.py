@@ -23,9 +23,8 @@ from nlp_utils import get_enriched_description
 
 # python stage1_mlm_cot.py -i /home/farid/datasets/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/348551054.jpg -c "Edwin Pauley Confers on a Train during the U.S. Reparations Tour. Edwin Pauley confers on a train during the U.S. Reparations tour. Military officer is in the group. Edwin Pauley was the U.S. Ambassador on the Allied Reparations Committee from 1945-47." -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
-
 # csv input:
-# python stage1_mlm_cot.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
+# python stage1_mlm_cot.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -bs 6 -v
 
 # with nohup:
 # nohup python -u stage1_mlm_cot.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -bs 8 -v > logs/ww2_mlm_cot.log 2>&1 &
@@ -54,7 +53,7 @@ Refrain from extracting the following types of keywords:
 Output format:
   - text_concepts: Keywords derived STRICTLY from the caption. Text inferencing is not allowed.
   - visual_concepts: Keywords derived STRICTLY from the pixel data.
-  - fused_concepts: Keywords inferred from BOTH modalities. In case the modalities are essentially disjoint (e.g., text says "aircraft" but image shows "ships"), return an empty list [] and refrain from forcing a fusion.
+  - fused_concepts: Keywords inferred from BOTH textal and visual modalities. If the modalities are disjoint, return an empty list [] and refrain from forcing a fusion.
 
 Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without thoughs, reasoning or any additional text:
 {{
@@ -88,7 +87,6 @@ def flush_jsonl_state(jsonl_path: str, state: Dict[int, Dict[str, Any]], verbose
 
 	if verbose:
 		print(f"[SAVE] Compacted JSONL written to: {jsonl_path} ({len(state)} rows)")
-		print("="*100)
 
 def load_jsonl_state(jsonl_path: str, verbose: bool = False) -> Dict[str, Dict[str, Any]]:
 	state: Dict[str, Dict[str, Any]] = {}
@@ -1076,6 +1074,9 @@ def get_mlm_cot_labels(
 
 	# Only skip ids with confirmed non-empty results
 	valid_indices = [i for i in valid_indices if i not in processed_ids]
+	if not valid_indices:
+		return
+
 	if verbose:
 		print(f"[RESUME] {len(valid_indices)} images remaining to process")
 	# ========== End Resume Logic ==========
@@ -1131,6 +1132,7 @@ def get_mlm_cot_labels(
 	all_image_tokens = []
 
 	for b in range(total_batches):
+		start_time = time.time()
 		print(f"\n[BATCH] {b}/{total_batches}")
 		batch_indices = valid_indices[b * batch_size:(b + 1) * batch_size]
 		batch_paths = [verified_paths[i] for i in batch_indices]
@@ -1382,6 +1384,9 @@ def get_mlm_cot_labels(
 
 		# Atomically rewrite JSONL: exactly one row per id, no duplicates
 		flush_jsonl_state(output_jsonl, jsonl_state, verbose=verbose)
+		if verbose:
+			print(f"[BATCH {b}] with {len(batch_indices)} samples, elapsed time: {time.time() - start_time:.1f} sec")
+			print("="*150)
 
 	# Final flush to ensure any last-batch updates are persisted
 	flush_jsonl_state(output_jsonl, jsonl_state, verbose=verbose)
@@ -1390,11 +1395,20 @@ def get_mlm_cot_labels(
 	final = [results[i] for i in orig_to_uniq]
 	df["vlm_cot_labels"] = final
 
+	# Check for empty concepts
+	total_empty_concepts = 0
+	for url_key, rec in jsonl_state.items():
+		idx = url_to_idx.get(url_key)
+		if idx is None:
+			continue
+		concepts = rec.get("vlm_cot_raw", {})
+		if is_empty_concepts(concepts):
+			total_empty_concepts += 1
+
 	if verbose:
 		print(df.head())
 		print(df.info(verbose=True, memory_usage=True))
-		print(f'vlm_cot_labels column contains {df["vlm_cot_labels"].isna().sum()} None(s) (failed).')
-		print("-"*100)
+		print(f'vlm_cot_labels column contains {total_empty_concepts} empty concepts (failed).')		
 
 	# df.to_csv(output_csv, index=False)
 	# try:
@@ -1407,18 +1421,18 @@ def get_mlm_cot_labels(
 		n_ok = sum(1 for r in final if r)
 		print(f"[SUCCESS] {n_ok}/{len(final)}")
 		
-		print(f"\n{len(batch_max_tokens)} Total Batches: {batch_max_tokens}")
+		print(f"\n{len(batch_max_tokens)} Total Batches")
 		if batch_max_tokens:
 			print(f"\nBatch Max Tokens (padded)")
-			print(f"   ├─ (min, max): ({np.min(batch_max_tokens)}, {np.max(batch_max_tokens)}")
+			print(f"   ├─ (min, max): ({np.min(batch_max_tokens)}, {np.max(batch_max_tokens)})")
 			print(f"   ├─ mean: {np.mean(batch_max_tokens):.2f} ± {np.std(batch_max_tokens):.2f}")
 			print(f"   ├─ median: {np.median(batch_max_tokens):.2f}")
 			print(f"   ├─ 95%: {np.percentile(batch_max_tokens, 95):.2f}")
 			print(f"   └─ 99%: {np.percentile(batch_max_tokens, 99):.2f}")
 
-		print(f"\n{len(all_image_tokens)} Total Images: {all_image_tokens}")
+		print(f"\n{len(all_image_tokens)} Total Images")
 		if all_image_tokens:
-			print(f"\nActual Image Tokens") 
+			print(f"Statistics:")
 			print(f"   ├─ (min, max): ({min(all_image_tokens)}, {max(all_image_tokens)})")
 			print(f"   ├─ mean: {np.mean(all_image_tokens):.2f} ± {np.std(all_image_tokens):.2f}")
 			print(f"   ├─ median: {np.median(all_image_tokens):.2f}")
@@ -1444,7 +1458,7 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=8, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=2, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
-	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=164, help="Max number of generated tokens")
+	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=128, help="Max number of generated tokens")
 	parser.add_argument("--quantization_bits", '-qb', type=int, default=None, help="Quantization bits")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 

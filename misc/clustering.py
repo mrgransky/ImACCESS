@@ -2671,13 +2671,11 @@ def cluster(
 
 	unique_labels = sorted(set(label for doc in documents for label in doc))
 
-	print(f"Total {type(documents)} documents: {len(documents)}")
-	print(f"Unique {type(unique_labels)} labels: {len(unique_labels)}")
-	print(f"Sample unique labels: {unique_labels[:15]}")
-	print("-" * 100)
-
-	
-	# STEP 2: LOAD MODEL + ENCODE
+	if verbose:
+		print(f"Total {type(documents)} documents: {len(documents)}")
+		print(f"Unique {type(unique_labels)} labels: {len(unique_labels)}")
+		print(f"Sample unique labels: {unique_labels[:15]}")
+		print("-" * 100)
 	
 	dtype = torch.float32
 	if torch.cuda.is_available():
