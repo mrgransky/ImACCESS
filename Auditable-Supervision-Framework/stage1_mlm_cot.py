@@ -39,23 +39,23 @@ PROMPT_TEMPLATE = """Extract **at most {k}** prominet keywords **per category** 
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
 Refrain from extracting the following types of keywords:
-	- Generic terms (e.g., 'people', 'group', 'crowd', 'women', 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
-	- Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
-	- Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
-	- Identifiers, serial/reference/model numbers, designated specification codes or brands.
-	- Names of places, buildings, or structures (e.g., 'Plaza de Santiago', 'St. Louis Cathedral').
-	- Continents, countries, states, provinces, cities, towns, islands, or regions.
-	- Nationalities, ethnicities, or religions.
-	- Individual people's names or honorifics (e.g., 'A. A. Robinson', 'Mr. Terry Duce', 'Allan M. Hardy', 'Dr. Howard Russell'). 
-	- Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
-	- Roman numerals, fractions, or ordinal numeral keywords.
-	- Abbreviations, acronyms, or initialisms.
-	- Image types or characteristics (e.g., 'photograph', 'black and white image').
+  - Generic terms (e.g., 'people', 'group', 'crowd', 'women', 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
+  - Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
+  - Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
+  - Identifiers, serial/reference/model numbers, designated specification codes or brands.
+  - Names of places, buildings, or structures (e.g., 'Plaza de Santiago', 'St. Louis Cathedral').
+  - Continents, countries, states, provinces, cities, towns, islands, or regions.
+  - Nationalities, ethnicities, or religions.
+  - Individual people's names or honorifics (e.g., 'A. A. Robinson', 'Mr. Terry Duce', 'Allan M. Hardy', 'Dr. Howard Russell'). 
+  - Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
+  - Roman numerals, fractions, or ordinal numeral keywords.
+  - Abbreviations, acronyms, or initialisms.
+  - Image types or characteristics (e.g., 'photograph', 'black and white image').
 
 OUTPUT DEFINITIONS:
-	- text_concepts: Keywords derived STRICTLY from the caption. Text inferencing is not allowed.
-	- visual_concepts: Keywords derived STRICTLY from the pixel data. OCR, watermarks, or text overlays are not allowed.
-	- fused_concepts: Keywords inferred JOINTLY from BOTH textal and visual modalities. If the modalities are disjoint, return an empty list [] and refrain from forcing a fusion.
+  - text_concepts: Keywords derived STRICTLY from the caption. Text inferencing is not allowed.
+  - visual_concepts: Keywords derived STRICTLY from the pixel data. OCR, watermarks, or text overlays are not allowed.
+  - fused_concepts: Keywords inferred JOINTLY from BOTH textal and visual modalities. If the modalities are disjoint, return an empty list [] and refrain from forcing a fusion.
 
 Return ONLY a valid JSON object with standarized, valid and parsable **Python lists** without thoughs, reasoning or any additional text:
 {{
