@@ -13,7 +13,7 @@ sys.path.insert(0, MISC_DIR)
 print(f"sys.path: {sys.path}")
 
 from utils import *
-from nlp_utils import get_enriched_description, _post_process_
+from nlp_utils import _post_process_
 
 def is_empty_concepts(concepts: Optional[Dict[str, Any]]) -> bool:
 	if not concepts or not isinstance(concepts, dict):
@@ -30,8 +30,8 @@ class ConflictQuantifier:
 		sym_model_id: str = 'all-MiniLM-L6-v2',
 		nli_model_id: str = 'cross-encoder/nli-deberta-v3-large',
 		device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
-		tau_match: float = 0.85,
-		tau_soft: float = 0.55,
+		tau_match: float = 0.85, # exact semantic equivalence
+		tau_soft: float = 0.55, # related/hierarchical concepts
 		tau_orphan: float = 0.60,
 		tau_asym: float = 0.25,
 		tau_fast_fail: float = 0.40,
@@ -195,7 +195,8 @@ class ConflictQuantifier:
 		  SOFT_CONFLICT     → |asym.gap| >= tau_asym      (density mismatch)
 		  AGREEMENT         → all signals within bounds
 		"""
-		# ── STEP 0: INPUT VALIDATION ──────────────────────────────────────────────
+
+		# STEP 0: INPUT VALIDATION
 		if not isinstance(vlm_json, dict):
 			print(f"[ERROR] Invalid JSON for id: {sample_id}")
 			return {
@@ -220,7 +221,7 @@ class ConflictQuantifier:
 		# Conflating them would pollute corpus-level conflict statistics.
 		if not c_text or not c_vis:
 			missing = (
-				"Missing Both"   if not c_text and not c_vis else
+				"Missing Text & Visual" if not c_text and not c_vis else
 				"Missing Visual" if not c_vis else
 				"Missing Text"
 			)
@@ -253,13 +254,14 @@ class ConflictQuantifier:
 				"action": f"Abstain from cross-modal routing. {missing}.",
 			}
 
-		# ── STEP 1: SYMMETRIC AUDIT ───────────────────────────────────────────────
+		# STEP 1: SYMMETRIC AUDIT
 		emb_t = self.sym_model.encode(c_text, convert_to_numpy=True, normalize_embeddings=True)
 		emb_v = self.sym_model.encode(c_vis,  convert_to_numpy=True, normalize_embeddings=True)
 
-		# Centroid similarity: cheap global coherence signal.
-		# This is advisory only. It must NOT gate the regime alone.
-		# A few unrelated concepts can drag the centroid down even when most pairs align.
+		# Centroid similarity: 
+		# cheap global coherence signal.
+		# advisory only: it must NOT gate the regime alone.
+		# few unrelated concepts drag the centroid down even when most pairs align.
 		set_sim = float(1 - scipy.spatial.distance.cosine(emb_t.mean(axis=0), emb_v.mean(axis=0)))
 		centroid_sim_low = set_sim < self.tau_fast_fail
 
@@ -296,14 +298,15 @@ class ConflictQuantifier:
 		o_vis  = [c_vis[j]  for j in range(len(c_vis))  if j not in matched_v]
 		orphan_ratio = (len(o_text) + len(o_vis)) / max(1, len(c_text) + len(c_vis))
 
-		# ── STEP 2: DETERMINISTIC HARD CONFLICT GATE (orphan_ratio only) ─────────
+		# STEP 2: DETERMINISTIC HARD CONFLICT GATE (orphan_ratio only)
 		# set_sim is demoted to advisory. orphan_ratio is the sole structural gate.
 		# This makes the routing decision reproducible and independently verifiable.
 		if orphan_ratio >= self.tau_orphan:
+			regime = "HARD_CONFLICT"
 			return self._build_full_receipt(
 				sample_id=sample_id,
 				vlm_json=vlm_json,
-				regime="HARD_CONFLICT",
+				regime=regime,
 				failure_mode=None,
 				set_sim=set_sim,
 				orphan_ratio=orphan_ratio,
@@ -316,26 +319,26 @@ class ConflictQuantifier:
 				vlm_fusion_empty=vlm_fusion_empty,
 				centroid_sim_low=centroid_sim_low,
 				action=(
-					f"HARD_CONFLICT: Structural disjointness confirmed by mutual matching. "
+					f"Structural disjointness confirmed by mutual matching. "
 					f"orphan_ratio={orphan_ratio:.3f} >= tau_orphan={self.tau_orphan}. NLI bypassed."
 				),
 			)
 
-		# ── STEP 3: ASYMMETRIC AUDIT (NLI) ───────────────────────────────────────
-		# Compute NLI only on mutually matched concepts.
+		# STEP 3: ASYMMETRIC AUDIT (NLI)
+		# Compute Semantic Asymmetry only on mutually matched concepts.
 		# This isolates genuine density asymmetry from unrelated orphan noise.
 		matched_text_concepts = [c_text[i] for i in sorted(matched_t)]
 		matched_vis_concepts  = [c_vis[j]  for j in sorted(matched_v)]
-
 		asym_metrics = self.compute_asymmetry_gap(matched_text_concepts, matched_vis_concepts)
 
 		# Handle None gap explicitly. An empty mutual match set means no semantic
 		# overlap survived bidirectional filtering → treat as HARD_CONFLICT, data-driven.
 		if asym_metrics["gap"] is None:
+			regime = "HARD_CONFLICT"
 			return self._build_full_receipt(
 				sample_id=sample_id,
 				vlm_json=vlm_json,
-				regime="HARD_CONFLICT",
+				regime=regime,
 				failure_mode="NO_MUTUAL_MATCHES",
 				set_sim=set_sim,
 				orphan_ratio=orphan_ratio,
@@ -348,27 +351,32 @@ class ConflictQuantifier:
 				vlm_fusion_empty=vlm_fusion_empty,
 				centroid_sim_low=centroid_sim_low,
 				action=(
-					"HARD_CONFLICT: No mutually matched concept pairs survived bidirectional "
-					"filtering. NLI asymmetry gap is undefined."
+					"No mutually matched concept pairs survived bidirectional filtering. "
+					f"NLI asymmetry gap: {asym_metrics['gap']}."
 				),
 			)
 
-		# ── STEP 4: REGIME ROUTER ─────────────────────────────────────────────────
+		# STEP 4: REGIME ROUTER
+		# Specificity Gap = Entail_V2T − Entail_T2V
+		# Gap ≈ 0	: Both entailments are semantically equal (Agreement).
+		# Gap > 0	: Visual entails Text, but Text does not entail Visual. (Visual is denser/hyponym).
+		# Gap < 0	: Text entails Visual, but Visual does not entail Text. (Text is denser/hyponym).
 		abs_gap = abs(asym_metrics["gap"])
-
 		if abs_gap >= self.tau_asym:
 			denser = "VISUAL" if asym_metrics["gap"] > 0 else "TEXT"
 			regime = "SOFT_CONFLICT"
 			action = (
-				f"SOFT_CONFLICT: Density mismatch confirmed by NLI. "
-				f"{denser} modality is denser. "
-				f"gap={asym_metrics['gap']:.4f}, |gap|={abs_gap:.4f} >= tau_asym={self.tau_asym}."
+				f"Density mismatch confirmed by NLI: "
+				f"|gap|={abs_gap:.4f} >= tau_asym={self.tau_asym}. "
+				f"denser: {denser} "
+				f"(gap={asym_metrics['gap']:.4f})."
 			)
 		else:
 			regime = "AGREEMENT"
 			action = (
-				f"AGREEMENT: Modalities structurally and semantically aligned. "
-				f"orphan_ratio={orphan_ratio:.3f}, |gap|={abs_gap:.4f}."
+				f"Modalities structurally & semantically aligned. "
+				f"orphan_ratio={orphan_ratio:.3f} < tau_orphan={self.tau_orphan}. "
+				f"NLI asymmetry |gap|={abs_gap:.4f}."
 			)
 
 		return self._build_full_receipt(
@@ -426,6 +434,12 @@ class ConflictQuantifier:
 		return {
 			"id": sample_id,
 			"vlm_cot_raw": vlm_json,
+			"evidence": {
+				"E_strong_pairs":    e_strong,
+				"E_density_pairs":   e_density,
+				"O_text_unverified": o_text,
+				"O_vis_unmentioned": o_vis,
+			},
 			"regime": regime,
 			"failure_mode": failure_mode,
 			"metrics": {
@@ -437,12 +451,6 @@ class ConflictQuantifier:
 				"denser_modality":  denser_modality,
 				"nli_bypassed":     nli_bypassed,
 				"nli_computed_on":  asym_metrics.get("computed_on", 0),
-			},
-			"evidence": {
-				"E_strong_pairs":    e_strong,
-				"E_density_pairs":   e_density,
-				"O_text_unverified": o_text,
-				"O_vis_unmentioned": o_vis,
 			},
 			# Advisory block separates soft signals from routing decisions.
 			# vlm_fusion_empty and centroid_sim_low are recorded here for ablation
@@ -461,15 +469,6 @@ def modality_conflict_audit(
 	column: str, 
 	verbose: bool = False
 ):
-	"""
-	Runs ConflictQuantifier over all Stage 1 outputs in input_jsonl.
-
-	Crash-safe incremental streaming writes with resume logic.
-	Previously, all receipts were accumulated in memory and written at the end.
-	For 110K+ samples with NLI inference, a crash at sample 90K would lose everything.
-	Now each receipt is written and flushed immediately after processing.
-	On restart, already-processed IDs are read from the output file and skipped.
-	"""
 	if verbose:
 		print(f"\n[STAGE 2] Modality Conflict Audit")
 		print(f"  ├─ Input  : {input_jsonl}")
@@ -498,29 +497,29 @@ def modality_conflict_audit(
 	if verbose:
 		print(f"\n[LOADED] {len(records)} {type(records)} records ({skipped_load} skipped during load).")
 
-	# Post-process concepts using NLP utilities
-	post_processed_records = []
-	for i, (url, concepts) in enumerate(records):
-		# Validate concepts structure
-		if not isinstance(concepts, dict):
-			if verbose:
-				print(f"  [WARN] Record {i} ({url}): concepts is not a dict, skipping")
-			post_processed_records.append((url, {"text_concepts": [], "visual_concepts": [], "fused_concepts": []}))
-			continue
+	# # Post-process concepts using NLP utilities
+	# post_processed_records = []
+	# for i, (url, concepts) in enumerate(records):
+	# 	# Validate concepts structure
+	# 	if not isinstance(concepts, dict):
+	# 		if verbose:
+	# 			print(f"  [WARN] Record {i} ({url}): concepts is not a dict, skipping")
+	# 		post_processed_records.append((url, {"text_concepts": [], "visual_concepts": [], "fused_concepts": []}))
+	# 		continue
 		
-		post_processed_concept = {}
-		for key, value in concepts.items():
-			# _post_process_ expects List[List[str]], returns List[Optional[List[str]]]
-			result = _post_process_(labels_list=[value], verbose=False)[0]
-			post_processed_concept[key] = result if result is not None else []
+	# 	post_processed_concept = {}
+	# 	for key, value in concepts.items():
+	# 		# _post_process_ expects List[List[str]], returns List[Optional[List[str]]]
+	# 		result = _post_process_(labels_list=[value], verbose=False)[0]
+	# 		post_processed_concept[key] = result if result is not None else []
 		
-		post_processed_records.append((url, post_processed_concept))
+	# 	post_processed_records.append((url, post_processed_concept))
 
-	# Replace original records with post-processed version
-	records = post_processed_records
-	del post_processed_records  # Free memory
-	if verbose:
-		print(f"[POST-PROCESSED] {len(records)} {type(records)} valid records")
+	# # Replace original records with post-processed version
+	# records = post_processed_records
+	# del post_processed_records  # Free memory
+	# if verbose:
+	# 	print(f"[POST-PROCESSED] {len(records)} {type(records)} valid records")
 
 	# RESUME LOGIC: collect already-processed IDs
 	output_jsonl = input_jsonl.replace(".jsonl", "_modality_conflict_audit.jsonl")
@@ -546,12 +545,11 @@ def modality_conflict_audit(
 			nli_model_id=asym_model_id,
 			verbose=verbose
 		)
+
 		skipped_empty = 0
 		errors = 0
-
 		# Stream-write each receipt immediately after processing.
 		# f.flush() after every write ensures the line is on disk before the next sample.
-		# This makes the output file a valid JSONL checkpoint at every sample boundary.
 		with open(output_jsonl, "a", encoding="utf-8") as f_out:
 			for sample_id, vlm_data in tqdm(pending, desc="[STAGE 2] Auditing"):
 				if is_empty_concepts(vlm_data):
@@ -566,8 +564,7 @@ def modality_conflict_audit(
 				except Exception as e:
 					errors += 1
 					print(f"  [ERROR] quantifier failed for {sample_id}: {e}")
-
-		print(f"[STAGE 2] Done. Skipped (empty): {skipped_empty:,} | Errors: {errors:,}")
+		print(f"[STAGE 2] Done. Skipped (empty): {skipped_empty} | Errors: {errors}")
 
 	if verbose:
 		print(f"\n[STAGE 2] Saving Evidence Receipts to: {output_jsonl}")

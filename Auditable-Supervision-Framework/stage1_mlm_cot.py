@@ -39,7 +39,7 @@ PROMPT_TEMPLATE = """Extract **at most {k}** prominet keywords **per category** 
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
 Refrain from extracting the following types of keywords:
-  - Generic terms (e.g., 'people', 'group', 'crowd', 'women', 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
+  - Generic terms (e.g., 'World War I', 'World War II', 'war photo collection', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
   - Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
   - Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
   - Identifiers, serial/reference/model numbers, designated specification codes or brands.
@@ -50,7 +50,7 @@ Refrain from extracting the following types of keywords:
   - Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
   - Roman numerals, fractions, or ordinal numeral keywords.
   - Abbreviations, acronyms, or initialisms.
-  - Image types or characteristics (e.g., 'photograph', 'black and white image').
+  - Image types or characteristics (e.g., 'multiple exposure', 'superimposed photograph', 'blurred photo', 'black and white image').
 
 OUTPUT DEFINITIONS:
   - text_concepts: Keywords derived STRICTLY from the caption. Text inferencing is not allowed.
