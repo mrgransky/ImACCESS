@@ -23,6 +23,8 @@ from nlp_utils import get_enriched_description, _post_process_
 
 # python stage1_mlm_cot.py -i /home/farid/datasets/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/348551054.jpg -c "Edwin Pauley Confers on a Train during the U.S. Reparations Tour. Edwin Pauley confers on a train during the U.S. Reparations tour. Military officer is in the group. Edwin Pauley was the U.S. Ambassador on the Allied Reparations Committee from 1945-47." -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
+# python stage1_mlm_cot.py -i /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/images/M4_3reg_hussars_9tank_brig_7jul44.jpg -c "Sherman of 3rd Hussars, 9th Armoured Brigade 7 July 1944. M4 Sherman." -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
+
 # csv input:
 # python stage1_mlm_cot.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -bs 6 -v
 
@@ -47,7 +49,7 @@ Refrain from extracting the following types of keywords:
 	- Individual people's names or honorifics (e.g., 'A. A. Robinson', 'Mr. Terry Duce', 'Allan M. Hardy', 'Dr. Howard Russell'). 
 	- Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
 	- Roman numerals, fractions, or ordinal numeral keywords.
-	- Abbreviations, acronyms, phrasal verbs, or descriptive clauses.
+	- OCR, watermarks, or text overlays.
 	- Image types or characteristics (e.g., 'photograph', 'black and white image').
 
 Output format:
@@ -789,7 +791,7 @@ def _parse_(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[
 	if verbose:
 		print(f"[RESULT]")
 		for k, v in selected.items():
-			print(f"\t{k}: {len(v)}: {v}")
+			print(f"  {k:<15}{len(v):<5}{v}")
 
 	return selected
 
@@ -1502,9 +1504,6 @@ def main():
 	if not args.image_path and not args.csv_file:
 		raise ValueError("Either --image_path or --csv_file must be provided")
 
-	if not args.csv_file.endswith('.csv'):
-		raise ValueError("The input file must be a CSV file")
-
 	if args.image_path:
 		keywords = get_mlm_cot_labels_single(
 			model_id=args.model_id,
@@ -1517,6 +1516,8 @@ def main():
 			verbose=args.verbose,
 		)
 	else:
+		if not args.csv_file.endswith('.csv'):
+			raise ValueError("The input file must be a CSV file")
 		keywords = get_mlm_cot_labels(
 			model_id=args.model_id,
 			csv_file=args.csv_file,
