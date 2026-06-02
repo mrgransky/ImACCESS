@@ -49,16 +49,15 @@ Refrain from extracting the following types of keywords:
 	- Individual people's names or honorifics (e.g., 'A. A. Robinson', 'Mr. Terry Duce', 'Allan M. Hardy', 'Dr. Howard Russell'). 
 	- Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
 	- Roman numerals, fractions, or ordinal numeral keywords.
-	- OCR, watermarks, or text overlays.
 	- Abbreviations, acronyms, or initialisms.
 	- Image types or characteristics (e.g., 'photograph', 'black and white image').
 
-Output format:
+OUTPUT DEFINITIONS:
 	- text_concepts: Keywords derived STRICTLY from the caption. Text inferencing is not allowed.
-	- visual_concepts: Keywords derived STRICTLY from the pixel data.
+	- visual_concepts: Keywords derived STRICTLY from the pixel data. OCR, watermarks, or text overlays are not allowed.
 	- fused_concepts: Keywords inferred JOINTLY from BOTH textal and visual modalities. If the modalities are disjoint, return an empty list [] and refrain from forcing a fusion.
 
-Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without thoughs, reasoning or any additional text:
+Return ONLY a valid JSON object with standarized, valid and parsable **Python lists** without thoughs, reasoning or any additional text:
 {{
 "text_concepts": [],
 "visual_concepts": [],
@@ -792,7 +791,7 @@ def _parse_(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[
 	if verbose:
 		print(f"[RESULT]")
 		for k, v in selected.items():
-			print(f"  {k:<25}{len(v):<5}{v}")
+			print(f"  {k:<20}{len(v):<5}{v}")
 
 	return selected
 
