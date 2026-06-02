@@ -53,7 +53,7 @@ Refrain from extracting the following types of keywords:
 Output format:
 	- text_concepts: Keywords derived STRICTLY from the caption. Text inferencing is not allowed.
 	- visual_concepts: Keywords derived STRICTLY from the pixel data.
-	- fused_concepts: Keywords inferred from BOTH textal and visual modalities. If the modalities are disjoint, return an empty list [] and refrain from forcing a fusion.
+	- fused_concepts: Keywords jointly inferred from BOTH textal and visual modalities. If the modalities are disjoint, return an empty list [] and refrain from forcing a fusion.
 
 Return ONLY a valid JSON object with standarized, valid and parsable **Python** lists without thoughs, reasoning or any additional text:
 {{
