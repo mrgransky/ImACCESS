@@ -50,6 +50,7 @@ Refrain from extracting the following types of keywords:
 	- Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
 	- Roman numerals, fractions, or ordinal numeral keywords.
 	- OCR, watermarks, or text overlays.
+	- Abbreviations, acronyms, or initialisms.
 	- Image types or characteristics (e.g., 'photograph', 'black and white image').
 
 Output format:
