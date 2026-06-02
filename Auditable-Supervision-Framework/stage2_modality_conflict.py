@@ -1,4 +1,3 @@
-from email.policy import default
 import os
 import sys
 
@@ -14,6 +13,7 @@ sys.path.insert(0, MISC_DIR)
 print(f"sys.path: {sys.path}")
 
 from utils import *
+from nlp_utils import get_enriched_description, _post_process_
 
 def is_empty_concepts(concepts: Optional[Dict[str, Any]]) -> bool:
 	if not concepts or not isinstance(concepts, dict):
@@ -410,9 +410,8 @@ class ConflictQuantifier:
 		"""
 		Constructs the canonical Evidence Receipt dict.
 
-		Replaces the old _build_receipt helper which used fake 0.0/1.0 metric
-		defaults for short-circuit paths. All metrics are now either real measurements
-		or explicit None, making the receipt safe for corpus-level statistical analysis.
+		Metrics are either real measurements or explicit None, 
+		making the receipt safe for corpus-level statistical analysis.
 
 		The 'advisory' block carries soft signals that informed but did not determine
 		the regime. This separation is essential for ablation studies.
@@ -471,13 +470,12 @@ def modality_conflict_audit(
 	Now each receipt is written and flushed immediately after processing.
 	On restart, already-processed IDs are read from the output file and skipped.
 	"""
-	print(f"\n{'='*80}")
-	print(f"[STAGE 2] Modality Conflict Audit")
-	print(f"{'='*80}")
-	print(f"  ├─ Input  : {input_jsonl}")
-	print(f"  ├─ Symmetric Embedding Model  : {sym_model_id}")
-	print(f"  ├─ Asymmetric Embedding Model : {asym_model_id}")
-	print(f"  └─ Column : {column}")
+	if verbose:
+		print(f"\n[STAGE 2] Modality Conflict Audit")
+		print(f"  ├─ Input  : {input_jsonl}")
+		print(f"  ├─ Symmetric Embedding Model  : {sym_model_id}")
+		print(f"  ├─ Asymmetric Embedding Model : {asym_model_id}")
+		print(f"  └─ Column : {column}")
 
 	records = []
 	skipped_load = 0
@@ -497,8 +495,32 @@ def modality_conflict_audit(
 			except json.JSONDecodeError as e:
 				print(f"[WARN] Skipping malformed line {line_no:05d}: {e}")
 				skipped_load += 1
+	if verbose:
+		print(f"\n[LOADED] {len(records)} {type(records)} records ({skipped_load} skipped during load).")
 
-	print(f"[STAGE 2] Loaded {len(records):,} records ({skipped_load:,} skipped during load).")
+	# Post-process concepts using NLP utilities
+	post_processed_records = []
+	for i, (url, concepts) in enumerate(records):
+		# Validate concepts structure
+		if not isinstance(concepts, dict):
+			if verbose:
+				print(f"  [WARN] Record {i} ({url}): concepts is not a dict, skipping")
+			post_processed_records.append((url, {"text_concepts": [], "visual_concepts": [], "fused_concepts": []}))
+			continue
+		
+		post_processed_concept = {}
+		for key, value in concepts.items():
+			# _post_process_ expects List[List[str]], returns List[Optional[List[str]]]
+			result = _post_process_(labels_list=[value], verbose=False)[0]
+			post_processed_concept[key] = result if result is not None else []
+		
+		post_processed_records.append((url, post_processed_concept))
+
+	# Replace original records with post-processed version
+	records = post_processed_records
+	del post_processed_records  # Free memory
+	if verbose:
+		print(f"[POST-PROCESSED] {len(records)} {type(records)} valid records")
 
 	# RESUME LOGIC: collect already-processed IDs
 	output_jsonl = input_jsonl.replace(".jsonl", "_modality_conflict_audit.jsonl")
@@ -547,8 +569,8 @@ def modality_conflict_audit(
 
 		print(f"[STAGE 2] Done. Skipped (empty): {skipped_empty:,} | Errors: {errors:,}")
 
-	# ── DIAGNOSTIC: read full output file for stats
-	print(f"\n[STAGE 2] Saving Evidence Receipts to: {output_jsonl}")
+	if verbose:
+		print(f"\n[STAGE 2] Saving Evidence Receipts to: {output_jsonl}")
 	all_receipts = []
 	with open(output_jsonl, "r", encoding="utf-8") as f_read:
 		for line in f_read:
@@ -556,10 +578,11 @@ def modality_conflict_audit(
 				all_receipts.append(json.loads(line.strip()))
 			except Exception:
 				pass
-
 	df_receipts = pd.DataFrame(all_receipts)
-	print("\n[STAGE 2] DATASET HEALTH DIAGNOSTIC:")
-	print(df_receipts['regime'].value_counts(normalize=True).mul(100).round(1).astype(str) + '%')
+
+	if verbose:
+		print("\nDATASET HEALTH DIAGNOSTIC:")
+		print(df_receipts['regime'].value_counts(normalize=True).mul(100).round(1).astype(str) + '%')
 
 	txt_file = output_jsonl.replace(".jsonl", "_stats.txt")
 	with open(txt_file, "w", encoding="utf-8") as f_txt:
@@ -573,7 +596,6 @@ def modality_conflict_audit(
 		f_txt.write("\n" + "=" * 50 + "\n")
 		f_txt.write(f"Total processed : {len(df_receipts):,}\n")
 		f_txt.write(f"Input records   : {len(records):,}\n")
-	
 	print(f"\n[STAGE 2] Stats written to: {txt_file}")
 
 def main():

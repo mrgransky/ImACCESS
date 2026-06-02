@@ -660,7 +660,7 @@ def verify(p: str):
 	except Exception:
 		return None
 
-def _parse_(model_id: str, response: str, post_processed: bool=False, verbose: bool=False) -> Optional[Dict[str, Any]]:
+def _parse_(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[str, Any]]:
 	if not response or not isinstance(response, str):
 		if verbose:
 			print("ERROR: Invalid response input.")
@@ -790,15 +790,6 @@ def _parse_(model_id: str, response: str, post_processed: bool=False, verbose: b
 		print(f"[RESULT]")
 		for k, v in selected.items():
 			print(f"\t{k}: {len(v)}: {v}")
-
-	if post_processed:
-		post_processed_selected = {}
-		for k, v in selected.items():
-			post_processed_selected[k] = _post_process_(labels_list=[v], verbose=verbose)[0]
-		if verbose:
-			print(f"\n[POST-PROCESSED] {post_processed_selected}")
-			print("-"*100)
-		return post_processed_selected
 
 	return selected
 
@@ -950,7 +941,6 @@ def get_mlm_cot_labels_single(
 	parsed = _parse_(
 		model_id=model_id,
 		response=response,
-		post_processed=True,
 		verbose=verbose,
 	)
 
@@ -1296,7 +1286,6 @@ def get_mlm_cot_labels(
 					parsed = _parse_(
 						model_id=model_id,
 						response=resp,
-						post_processed=True,
 						verbose=verbose,
 					)
 					results[idx] = parsed
@@ -1375,7 +1364,6 @@ def get_mlm_cot_labels(
 					parsed = _parse_(
 						model_id=model_id,
 						response=decoded_single,
-						post_processed=True,
 						verbose=verbose,
 					)
 					results[uniq_idx] = parsed
@@ -1437,38 +1425,6 @@ def get_mlm_cot_labels(
 	# Map back to original ordering
 	final = [results[i] for i in orig_to_uniq]
 	df["vlm_cot_labels"] = final
-
-	# if verbose:
-	# 	print(f"Post-processing {len(results)} {type(results)} results...")
-	# final_post_processed_result = []
-	# for i, res in enumerate(results):
-	# 	post_processed_results = {}
-	# 	print(i, type(res), len(res), list(res.keys()), res)
-		
-	# 	# Wrap each concept list in another list for batch processing
-	# 	post_processed_results["text_concepts"] = _post_process_(
-	# 		labels_list=[res.get("text_concepts", [])],  # Wrap in list
-	# 		verbose=verbose
-	# 	)[0]  # Extract first result
-		
-	# 	post_processed_results["visual_concepts"] = _post_process_(
-	# 		labels_list=[res.get("visual_concepts", [])],
-	# 		verbose=verbose
-	# 	)[0]
-		
-	# 	post_processed_results["fused_concepts"] = _post_process_(
-	# 		labels_list=[res.get("fused_concepts", [])],
-	# 		verbose=verbose
-	# 	)[0]
-	# 	print(i, type(post_processed_results), len(post_processed_results), post_processed_results)
-	# 	final_post_processed_result.append(post_processed_results)
-
-	# if verbose:
-	# 	print(f"Post-processed {len(final_post_processed_result)} {type(final_post_processed_result)} final results")
-	# 	for i, res in enumerate(final_post_processed_result):
-	# 		print(i, type(res), len(res), res)
-
-	# df["vlm_cot_post_processed_labels"] = final_post_processed_result
 
 	# Check for empty concepts
 	total_empty_concepts = 0
@@ -1545,6 +1501,9 @@ def main():
 
 	if not args.image_path and not args.csv_file:
 		raise ValueError("Either --image_path or --csv_file must be provided")
+
+	if not args.csv_file.endswith('.csv'):
+		raise ValueError("The input file must be a CSV file")
 
 	if args.image_path:
 		keywords = get_mlm_cot_labels_single(
