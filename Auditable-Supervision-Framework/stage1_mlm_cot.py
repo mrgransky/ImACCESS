@@ -792,7 +792,7 @@ def _parse_(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[
 	if verbose:
 		print(f"[RESULT]")
 		for k, v in selected.items():
-			print(f"  {k:<15}{len(v):<5}{v}")
+			print(f"  {k:<25}{len(v):<5}{v}")
 
 	return selected
 
