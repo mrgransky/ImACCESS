@@ -206,15 +206,20 @@ class CGDConsolidator:
 
 		# Stage 3: CGD Audit
 		# Resolve canonical ONCE per concept and store alongside scores.
-		# Eliminates the second O(|V|) cosine scan that the original code triggered
+		# Eliminates second O(|V|) cosine scan that original code triggered
 		# inside every regime block.
 		all_concepts: List[str] = list(set(c_text + c_vis))
+
 		# audited_concepts: raw_concept -> {"scores": {G,C,D}, "canonical": str}
 		audited_concepts: Dict[str, Dict[str, Any]] = {}
 		for c in all_concepts:
 			resolved_c = self._resolve_to_canonical(c)
+			
 			if resolved_c is None:
+				if self.verbose:
+					print(f"[WARNING] Dropping out-of-domain concept: {c}")
 				continue  # Out-of-domain concept — drop silently
+			
 			scores = self.audit_concept_CGD(
 				c,
 				c_text,
@@ -231,13 +236,12 @@ class CGDConsolidator:
 		hn_targets:  set = set()
 		w_pos: float = 1.0
 		w_neg: float = 0.0
-
 		if regime == "AGREEMENT":
 			# Both modalities agree — accept all resolved concepts as positives.
-			for c, data in audited_concepts.items():
-				pos_targets.add(data["canonical"])
 			w_pos = 1.0
 			w_neg = 0.0
+			for c, data in audited_concepts.items():
+				pos_targets.add(data["canonical"])
 		elif regime == "SOFT_CONFLICT":
 			# Modalities share topic but differ in density.
 			# Gate by D(c) >= tau to suppress over-abstract hypernyms.
@@ -249,7 +253,7 @@ class CGDConsolidator:
 			w_neg = 0.0
 		elif regime == "HARD_CONFLICT":
 			# Modalities are semantically disjoint.
-			# FIX-3: Only ORPHANED text concepts (O_text_unverified from Stage 2)
+			# Only ORPHANED text concepts (O_text_unverified from Stage 2)
 			# become hard negatives. Text concepts that were matched to a visual
 			# concept in Stage 2 (E_strong / E_density) are NOT hard negatives —
 			# they have partial visual grounding and should not be repelled.
@@ -271,17 +275,15 @@ class CGDConsolidator:
 			w_pos = 0.30
 			w_neg = max(0.0, 1.0 - mean_hn_g)
 		else:
-			for c, data in audited_concepts.items():
-				pos_targets.add(data["canonical"])
 			w_pos = 0.50
 			w_neg = 0.0
+			for c, data in audited_concepts.items():
+				pos_targets.add(data["canonical"])
 			if self.verbose:
 				print(
-					f"[WARN] {sample_id:<85}{regime:<20}"
-					f"conservative fallback "
+					f"[WARN] {sample_id:<85}{regime:<20} conservative fallback "
 					f"(all resolved concepts → pos_targets, w_pos={w_pos}, w_neg={w_neg})"
 				)
-
 
 		# Robustness fallback
 		# If pos_targets is still empty after gating (e.g. all D(c) < tau in a
@@ -303,6 +305,7 @@ class CGDConsolidator:
 
 		return {
 			"id":               sample_id,
+			"mlm_cot_raw":			{},
 			"regime":           regime,
 			"positive_targets": sorted(pos_targets),
 			"hard_negatives":   sorted(hn_targets),
