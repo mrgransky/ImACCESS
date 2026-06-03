@@ -23,6 +23,7 @@
 =========================================================================
   ┌───────────────────────────────────────────────────────────────────┐
   │ 1. Extract & count all unique raw concepts => D_global frequencies│
+  │     ├─ D_global​(c)=1.0−exp(−α⋅Freq(c))                            │
   │ 2. Pre-compute 'all-MiniLM' embedding cache.                      │
   │ 3. Execute `clustering.py` Engine:                                │
   │     ├─ Agglomerative Linkage & Adaptive k Search                  │
@@ -44,7 +45,7 @@
   │  ├─ Stage 3: Micro-CGD Audit                                      │
   │  │           => Coverage (C)                                      │
   │  │           => Grounding (G)                                     │
-  │  │           => Density D(c) = D_global * D_local (NLI)           │
+  │  │           => Density D(c) = D_global x D_local (NLI)           │
   │  └─ Stage 4: Regime-Aware Consolidation (Gating & Weights)        │
   │              => Map raw concepts to V via canonical_map.json      │
   │                                                                   │

@@ -14,7 +14,7 @@ for i, p in enumerate(sys.path):
 	print(f"\t{i} {p}")
 
 from utils import *
-from nlp_utils import get_enriched_description, _post_process_
+from nlp_utils import get_enriched_description
 
 # how to run:
 # local:
@@ -53,8 +53,8 @@ Refrain from extracting the following types of keywords:
   - Image types or characteristics (e.g., 'multiple exposure', 'superimposed photograph', 'blurred photo', 'black and white image').
 
 OUTPUT DEFINITIONS:
-  - text_concepts: Keywords derived STRICTLY from the caption. Text inferencing is not allowed.
-  - visual_concepts: Keywords derived STRICTLY from the pixel data. OCR, watermarks, or text overlays are not allowed.
+  - text_concepts: Keywords derived EXCLUSIVELY from the caption. Text inferencing is not allowed.
+  - visual_concepts: Keywords derived EXCLUSIVELY from the pixel data. OCR, watermarks, or text overlays are not allowed.
   - fused_concepts: Keywords inferred JOINTLY from BOTH textal and visual modalities. If the modalities are disjoint, return an empty list [] and refrain from forcing a fusion.
 
 Return ONLY a valid JSON object with standarized, valid and parsable **Python lists** without thoughs, reasoning or any additional text:

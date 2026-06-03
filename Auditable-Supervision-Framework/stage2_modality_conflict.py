@@ -478,6 +478,9 @@ def modality_conflict_audit(
 		print(f"  ├─ Asymmetric Embedding Model : {asym_model_id}")
 		print(f"  └─ Column : {column}")
 
+	outputs_dir = os.path.join(os.path.dirname(input_jsonl), "outputs")
+	os.makedirs(outputs_dir, exist_ok=True)
+
 	records = []
 	skipped_load = 0
 	with open(input_jsonl, "r", encoding="utf-8") as f:
@@ -499,29 +502,32 @@ def modality_conflict_audit(
 	if verbose:
 		print(f"\n[LOADED] {len(records)} {type(records)} records ({skipped_load} skipped during load).")
 
-	# # Post-process concepts using NLP utilities
-	# post_processed_records = []
-	# for i, (url, concepts) in enumerate(records):
-	# 	# Validate concepts structure
-	# 	if not isinstance(concepts, dict):
-	# 		if verbose:
-	# 			print(f"  [WARN] Record {i} ({url}): concepts is not a dict, skipping")
-	# 		post_processed_records.append((url, {"text_concepts": [], "visual_concepts": [], "fused_concepts": []}))
-	# 		continue
+	#########################################################################################
+	# Post-process concepts using NLP utilities
+	post_processed_records = []
+	for i, (url, concepts) in enumerate(records):
+		if not isinstance(concepts, dict):
+			if verbose:
+				print(f"  [WARN] Record {i} ({url}): concepts is not a dict, skipping")
+			init_elm = (
+				url, 
+				{"text_concepts": [], "visual_concepts": [], "fused_concepts": []}
+			)
+			post_processed_records.append(init_elm)
+			continue
 		
-	# 	post_processed_concept = {}
-	# 	for key, value in concepts.items():
-	# 		# _post_process_ expects List[List[str]], returns List[Optional[List[str]]]
-	# 		result = _post_process_(labels_list=[value], verbose=False)[0]
-	# 		post_processed_concept[key] = result if result is not None else []
+		post_processed_concept = {}
+		for key, value in concepts.items():
+			result = _post_process_(labels_list=[value], verbose=False)[0]
+			post_processed_concept[key] = result if result is not None else []
 		
-	# 	post_processed_records.append((url, post_processed_concept))
-
-	# # Replace original records with post-processed version
-	# records = post_processed_records
-	# del post_processed_records  # Free memory
-	# if verbose:
-	# 	print(f"[POST-PROCESSED] {len(records)} {type(records)} valid records")
+		post_processed_records.append((url, post_processed_concept))
+	# Replace original records with post-processed version
+	records = post_processed_records
+	del post_processed_records  # Free memory
+	if verbose:
+		print(f"[POST-PROCESSED] {len(records)} {type(records)} valid records")
+	#########################################################################################
 
 	# RESUME LOGIC: collect already-processed IDs
 	output_jsonl = input_jsonl.replace(".jsonl", "_modality_conflict_audit.jsonl")
@@ -537,7 +543,7 @@ def modality_conflict_audit(
 			print(f"[STAGE 2] Resume detected: {len(done_ids):,} samples already processed. Skipping.")
 
 	pending = [(sid, data) for sid, data in records if sid not in done_ids]
-	print(f"[STAGE 2] Pending: {len(pending):,} samples to process.")
+	print(f"\n[STAGE 2] Pending: {len(pending):,} samples to process.")
 
 	if not pending:
 		print("[STAGE 2] Nothing to do. All records already processed.")
@@ -583,7 +589,7 @@ def modality_conflict_audit(
 		print("\nDATASET HEALTH DIAGNOSTIC:")
 		print(df_receipts['regime'].value_counts(normalize=True).mul(100).round(1).astype(str) + '%')
 
-	txt_file = output_jsonl.replace(".jsonl", "_stats.txt")
+	txt_file = os.path.join(outputs_dir, "modality_conflict_stats.txt")
 	with open(txt_file, "w", encoding="utf-8") as f_txt:
 		regime_stats = df_receipts['regime'].value_counts(normalize=True)
 		f_txt.write("MODALITY CONFLICT REGIME DISTRIBUTION\n")

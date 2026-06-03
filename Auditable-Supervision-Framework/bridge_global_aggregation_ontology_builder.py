@@ -13,15 +13,17 @@ print(f"sys.path: {sys.path}")
 
 from utils import *
 from clustering import *
+from nlp_utils import _post_process_
 
 def cluster_and_save_priors(
 	input_jsonl: str,
 	model_id: str,
 	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
+	column: str = "vlm_cot_raw",
 	verbose: bool = True,
 ):
 	"""
-	The Bridge: Corpus-Level Ontology Discovery.
+	Bridge: Corpus-Level Ontology Discovery.
 
 	Reads Stage 2 Evidence Receipts, pools raw VLM concepts per sample
 	(regime-gated), runs hierarchical clustering via clustering.py, and
@@ -33,43 +35,8 @@ def cluster_and_save_priors(
 
 	Intermediate checkpoints (embeddings, linkage matrix) are saved after
 	each expensive step so the function is crash-safe and resumable.
-
-	Fixes applied vs. original code
-	--------------------------------
-	FIX-1  Regime-gated concept pooling:
-	         MISSING_MODALITY / INVALID_JSON samples are skipped entirely.
-	         HARD_CONFLICT samples contribute text_concepts + visual_concepts
-	         only — fused_concepts is excluded because it is either empty or
-	         a hallucinated blend of two disjoint modalities.
-
-	FIX-2  Print labels renamed from [STAGE 3] → [BRIDGE] to avoid naming
-	         collision with the Micro-CGD Audit (Stage 3).
-
-	FIX-3  emb_cache built in a single encoding pass:
-	         target canonical embeddings that are already present as raw VLM
-	         concept rows in X_clean are reused directly; only genuinely new
-	         canonical strings (virtual hypernyms not in the raw concept set)
-	         are encoded in a second pass.  This eliminates the double-encoding
-	         overwrite that caused floating-point non-determinism.
-
-	FIX-4  label_freq_dict converted from Counter → plain dict before being
-	         passed to assign_canonical_labels (called inside cluster_and_save_priors
-	         via clustering.py).  Counter's default-zero behaviour silently
-	         disables the freq-gain safety check for unseen labels.
-
-	FIX-5  Crash-safe checkpointing:
-	         unique_label_embeddings.npy, unique_labels.npy, and
-	         linkage_matrix.npy are saved immediately after their respective
-	         expensive computations.  On restart the function detects these
-	         files and skips recomputation.
-
-	FIX-6  target_vocabulary.json stores a metadata wrapper dict instead of
-	         a bare list, making Stage 4 loading unambiguous and self-documenting.
 	"""
-
-	print(f"\n{'='*80}")
-	print(f"[BRIDGE] Corpus-Level Ontology Discovery")
-	print(f"{'='*80}")
+	print(f"\n[BRIDGE] Corpus-Level Ontology Discovery")
 	print(f"  ├─ Input  : {input_jsonl}")
 	print(f"  ├─ Model  : {model_id}")
 	print(f"  └─ Device : {device}")
@@ -80,13 +47,12 @@ def cluster_and_save_priors(
 
 	stem = os.path.basename(input_jsonl).replace(".jsonl", "")
 
-	# ── Checkpoint paths ──────────────────────────────────────────────────────
+	# Checkpoint paths
 	# Saved immediately after each expensive step so a crash never loses work.
 	ckpt_emb_path    = os.path.join(outputs_dir, f"{stem}_unique_label_embeddings.npy")
 	ckpt_labels_path = os.path.join(outputs_dir, f"{stem}_unique_labels.npy")
 	ckpt_Z_path      = os.path.join(outputs_dir, f"{stem}_linkage_matrix.npy")
 
-	# ── Output paths ──────────────────────────────────────────────────────────
 	freqs_path = os.path.join(outputs_dir, f"{stem}_global_label_frequency.json")
 	map_path   = os.path.join(outputs_dir, f"{stem}_canonical_map.json")
 	vocab_path = os.path.join(outputs_dir, f"{stem}_target_vocabulary.json")
@@ -94,11 +60,11 @@ def cluster_and_save_priors(
 
 	# =========================================================================
 	# STEP 1: REGIME-GATED CONCEPT POOLING
-	# FIX-1: Gate fused_concepts by regime. HARD_CONFLICT fused concepts are
+	# Gate fused_concepts by regime. HARD_CONFLICT fused concepts are
 	# excluded because they are either empty (VLM detected conflict) or a
 	# hallucinated blend of two disjoint modalities — including them would
 	# seed the clustering with incoherent concepts and inflate the vocabulary.
-	# FIX-2: All print labels use [BRIDGE] to avoid collision with [STAGE 3].
+	# All print labels use [BRIDGE] to avoid collision with [STAGE 3].
 	# =========================================================================
 	all_sample_labels: List[List[str]] = []
 	regime_counts: dict = {}
@@ -117,12 +83,12 @@ def cluster_and_save_priors(
 				continue
 
 			regime   = receipt.get("regime", "UNKNOWN")
-			vlm_data = receipt.get("vlm_cot_raw", {})
+			vlm_data = receipt.get(column, {})
 
 			# Track regime distribution for diagnostics
 			regime_counts[regime] = regime_counts.get(regime, 0) + 1
 
-			# FIX-1a: Skip samples with no usable modality signal entirely.
+			# Skip samples with no usable modality signal entirely.
 			# These contribute nothing to vocabulary induction and would add
 			# noise to the global frequency counts.
 			if regime in ("MISSING_MODALITY", "INVALID_JSON", "UNKNOWN"):
@@ -137,7 +103,7 @@ def cluster_and_save_priors(
 			vis_c   = vlm_data.get("visual_concepts",  []) or []
 			fused_c = vlm_data.get("fused_concepts",   []) or []
 
-			# FIX-1b: For HARD_CONFLICT, fused_concepts is unreliable.
+			# For HARD_CONFLICT, fused_concepts is unreliable.
 			# The two modalities are structurally disjoint (orphan_ratio >=
 			# tau_orphan), so any fused output is either empty or a blend
 			# that does not correspond to a real semantic concept.
@@ -150,17 +116,25 @@ def cluster_and_save_priors(
 				sample_pool = text_c + vis_c + fused_c
 
 			# Drop empty strings and None values
-			sample_pool = [lbl for lbl in sample_pool if lbl and isinstance(lbl, str)]
+			sample_pool = [
+				lbl 
+				for lbl in sample_pool 
+				if lbl and isinstance(lbl, str)
+			]
 
 			if sample_pool:
 				all_sample_labels.append(sample_pool)
 
-	total_loaded = sum(regime_counts.values())
-	print(f"[BRIDGE] Loaded {total_loaded:,} receipts | Skipped: {skipped_count:,}")
-	print(f"[BRIDGE] Regime distribution:")
-	for r, cnt in sorted(regime_counts.items(), key=lambda x: -x[1]):
-		print(f"  ├─ {r:<25} {cnt:>8,}  ({cnt/max(total_loaded,1)*100:.1f}%)")
-	print(f"[BRIDGE] Samples contributing to vocabulary: {len(all_sample_labels):,}")
+	if verbose:
+		total_loaded = sum(regime_counts.values())
+		print(f"[BRIDGE] Loaded {total_loaded} receipts | Skipped: {skipped_count}")
+		print(f"[BRIDGE] Regime distribution:")
+		for r, cnt in sorted(regime_counts.items(), key=lambda x: -x[1]):
+			print(f"  ├─ {r:<25} {cnt:>8,}  ({cnt/max(total_loaded,1)*100:.1f}%)")
+		print(f"[BRIDGE] Samples contributing to vocabulary: {len(all_sample_labels)}")
+		for i, sample in enumerate(all_sample_labels):
+			print(f"{i:<5}{sample}")
+		print("="*180)
 
 	if not all_sample_labels:
 		raise ValueError(
@@ -168,9 +142,19 @@ def cluster_and_save_priors(
 			"Check that the input JSONL contains AGREEMENT / SOFT_CONFLICT / HARD_CONFLICT receipts."
 		)
 
+	# # Post-process labels
+	# all_post_processed_sample_labels = _post_process_(labels_list=all_sample_labels, verbose=False)
+	# if verbose:
+	# 	for i, sample in enumerate(all_post_processed_sample_labels):
+	# 		print(f"{i:<5}{sample}")
+	# all_sample_labels = all_post_processed_sample_labels
+	# del all_post_processed_sample_labels
+
+	# return
+
 	# =========================================================================
 	# STEP 2: GLOBAL FREQUENCY COUNTS (Reusability Prior)
-	# FIX-4: Convert Counter → plain dict before saving and before passing to
+	# Convert Counter → plain dict before saving and before passing to
 	# any clustering.py function. Counter's default-zero behaviour silently
 	# disables the freq-gain safety check inside assign_canonical_labels for
 	# labels not seen in the corpus (Counter returns 0 for missing keys, so
@@ -180,7 +164,12 @@ def cluster_and_save_priors(
 	# =========================================================================
 	print(f"\n[BRIDGE] Computing global label frequencies...")
 	label_freq_dict: dict = dict(
-		Counter(lbl for sample in all_sample_labels for lbl in sample if lbl)
+		Counter(
+			lbl 
+			for sample in all_sample_labels 
+			for lbl in sample 
+			if lbl
+		)
 	)
 
 	with open(freqs_path, 'w', encoding='utf-8') as f:
@@ -196,7 +185,7 @@ def cluster_and_save_priors(
 
 	# =========================================================================
 	# STEP 3: EMBEDDING (with crash-safe checkpoint)
-	# FIX-5a: Save embeddings and label list immediately after encoding.
+	# Save embeddings and label list immediately after encoding.
 	# On restart, load from checkpoint and skip the ~10-30 min encoding step.
 	# =========================================================================
 	resume_emb = (
@@ -230,14 +219,14 @@ def cluster_and_save_priors(
 		)
 		print(f"[BRIDGE] Embeddings: {type(X)} {X.shape} {X.dtype}")
 
-		# FIX-5a: Checkpoint immediately
+		# Checkpoint immediately
 		np.save(ckpt_emb_path,    X)
 		np.save(ckpt_labels_path, np.array(unique_labels, dtype=object))
 		print(f"[BRIDGE] Checkpointed embeddings → {ckpt_emb_path}")
 
 	# =========================================================================
 	# STEP 4: LINKAGE MATRIX (with crash-safe checkpoint)
-	# FIX-5b: Save linkage matrix immediately after computation.
+	# Save linkage matrix immediately after computation.
 	# Ward linkage on 50K+ concepts can take 20-30 min; losing it to a crash
 	# is unacceptable.
 	# =========================================================================
@@ -254,7 +243,7 @@ def cluster_and_save_priors(
 			Z = linkage(X, method='ward', metric='euclidean')
 		print(f"[BRIDGE] Linkage complete in {time.time()-t0:.1f}s. Z: {Z.shape}")
 
-		# FIX-5b: Checkpoint immediately
+		# Checkpoint immediately
 		np.save(ckpt_Z_path, Z)
 		print(f"[BRIDGE] Checkpointed linkage matrix → {ckpt_Z_path}")
 
@@ -386,7 +375,7 @@ def cluster_and_save_priors(
 	# Only encode canonical strings that are NOT already present as raw VLM
 	# concept rows in X_clean.
 	#
-	# FIX-3: Build emb_cache in a single pass to avoid double-encoding.
+	# Build emb_cache in a single pass to avoid double-encoding.
 	# If a canonical string (e.g. "soldier") also appears as a raw VLM concept,
 	# its embedding is already in X_clean from the original encoding run.
 	# Re-encoding it in a separate model.encode() call introduces floating-point
@@ -448,7 +437,7 @@ def cluster_and_save_priors(
 	print(f"\n[BRIDGE] Saved canonical_map ({len(final_canonical_dict):,} entries) → {map_path}")
 
 	# 2. target_vocabulary.json — defines the multi-hot vector dimensions for Stage 4/5.
-	#    FIX-6: Wrap in a metadata dict so Stage 4 can load unambiguously and
+	#    Wrap in a metadata dict so Stage 4 can load unambiguously and
 	#    the file is self-documenting (size, source, timestamp).
 	vocab_payload = {
 		"vocabulary":  target_vocab,
@@ -473,23 +462,15 @@ def cluster_and_save_priors(
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Bridge: Global Aggregation & Ontology Discovery")
-	parser.add_argument(
-		"--jsonl_file", "-jsonl", type=str, required=True,
-		help="Path to Stage 2 modality conflict audit JSONL file",
-	)
-	parser.add_argument(
-		"--embedding_model", "-m", type=str, default="all-MiniLM-L6-v2",
-		help="SentenceTransformer model for canonical analysis",
-	)
+	parser.add_argument("--jsonl_file", "-jsonl", type=str, required=True, help="Stage 2 modality conflict audit JSONL file",)
+	parser.add_argument("--embedding_model", "-m", type=str, default="all-MiniLM-L6-v2", help="SentenceTransformer model for canonical analysis",)
 	parser.add_argument("--verbose", "-v", action='store_true', help="Verbose output")
 
 	args = parser.parse_args()
 	set_seeds(seed=42)
 
 	if "_modality_conflict_audit.jsonl" not in args.jsonl_file:
-		raise ValueError(
-			f"Input JSONL must be a Stage 2 modality conflict audit file. Got: {args.jsonl_file}"
-		)
+		raise ValueError(f"JSONL must be a Stage 2 modality conflict audit file. Got: {args.jsonl_file}")
 
 	cluster_and_save_priors(
 		input_jsonl=args.jsonl_file,
