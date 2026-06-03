@@ -54,9 +54,9 @@ def cluster_and_save_priors(
 	ckpt_Z_path      = os.path.join(outputs_dir, f"{stem}_linkage_matrix.npy")
 
 	freqs_path = os.path.join(outputs_dir, f"{stem}_global_label_frequency.json")
-	map_path   = os.path.join(outputs_dir, f"{stem}_canonical_map.json")
+	canonical_map_path = os.path.join(outputs_dir, f"{stem}_canonical_map.json")
 	vocab_path = os.path.join(outputs_dir, f"{stem}_target_vocabulary.json")
-	emb_path   = os.path.join(outputs_dir, f"{stem}_emb_cache.pt")
+	emb_path = os.path.join(outputs_dir, f"{stem}_emb_cache.pt")
 
 	# =========================================================================
 	# STEP 1: REGIME-GATED CONCEPT POOLING
@@ -134,7 +134,7 @@ def cluster_and_save_priors(
 		print(f"[BRIDGE] Samples contributing to vocabulary: {len(all_sample_labels)}")
 		for i, sample in enumerate(all_sample_labels):
 			print(f"{i:<5}{sample}")
-		print("="*180)
+		print("="*185)
 
 	if not all_sample_labels:
 		raise ValueError(
@@ -142,17 +142,26 @@ def cluster_and_save_priors(
 			"Check that the input JSONL contains AGREEMENT / SOFT_CONFLICT / HARD_CONFLICT receipts."
 		)
 
-	# # Post-process labels
-	# all_post_processed_sample_labels = _post_process_(labels_list=all_sample_labels, verbose=False)
-	# if verbose:
-	# 	for i, sample in enumerate(all_post_processed_sample_labels):
-	# 		print(f"{i:<5}{sample}")
-	# all_sample_labels = all_post_processed_sample_labels
-	# del all_post_processed_sample_labels
+	##################################################################################################
+	# Post-process labels
+	all_post_processed_sample_labels = _post_process_(
+		labels_list=all_sample_labels, 
+		verbose=False, # not to clutter the logs
+	)
+	
+	# Filter out None values returned by _post_process_
+	all_post_processed_sample_labels = [
+		sample for sample in all_post_processed_sample_labels 
+		if sample is not None
+	]
+	
+	if verbose:
+		for i, sample in enumerate(all_post_processed_sample_labels):
+			print(f"{i:<5}{sample}")
+	all_sample_labels = all_post_processed_sample_labels
+	del all_post_processed_sample_labels
+	##################################################################################################
 
-	# return
-
-	# =========================================================================
 	# STEP 2: GLOBAL FREQUENCY COUNTS (Reusability Prior)
 	# Convert Counter → plain dict before saving and before passing to
 	# any clustering.py function. Counter's default-zero behaviour silently
@@ -161,7 +170,6 @@ def cluster_and_save_priors(
 	# the .get(lbl, 1) fallback in the safety ratio never triggers, causing
 	# the ratio to always be 0/max(0,1)=0 and the safety check to always
 	# revert to pure centroid similarity).
-	# =========================================================================
 	print(f"\n[BRIDGE] Computing global label frequencies...")
 	label_freq_dict: dict = dict(
 		Counter(
@@ -370,7 +378,7 @@ def cluster_and_save_priors(
 	print(f"\n[BRIDGE] Emergent Target Vocabulary |V| = {len(target_vocab):,} canonical classes.")
 	print(f"  ├─ Sample: {target_vocab[:10]}...")
 
-	# =========================================================================
+# =========================================================================
 	# STEP 11: PRE-COMPUTE TARGET VOCABULARY EMBEDDINGS
 	# Only encode canonical strings that are NOT already present as raw VLM
 	# concept rows in X_clean.
@@ -432,9 +440,9 @@ def cluster_and_save_priors(
 	# 1. canonical_map.json — raw VLM concept → canonical label
 	#    Used by Stage 3 (Micro-CGD Audit) and Stage 4 (Consolidation).
 	final_canonical_dict: dict = df_clean.set_index('label')['canonical'].to_dict()
-	with open(map_path, 'w', encoding='utf-8') as f:
+	with open(canonical_map_path, 'w', encoding='utf-8') as f:
 		json.dump(final_canonical_dict, f, indent=2, ensure_ascii=False)
-	print(f"\n[BRIDGE] Saved canonical_map ({len(final_canonical_dict):,} entries) → {map_path}")
+	print(f"\n[BRIDGE] Saved canonical_map ({len(final_canonical_dict):,} entries) → {canonical_map_path}")
 
 	# 2. target_vocabulary.json — defines the multi-hot vector dimensions for Stage 4/5.
 	#    Wrap in a metadata dict so Stage 4 can load unambiguously and
@@ -456,9 +464,6 @@ def cluster_and_save_priors(
 	# 3. emb_cache.pt — {label: np.ndarray} for fast vector lookup in Stage 4.
 	torch.save(emb_cache, emb_path)
 	print(f"[BRIDGE] Saved emb_cache.pt ({len(emb_cache):,} entries) → {emb_path}")
-
-	print(f"\n[BRIDGE] Done. All outputs written to: {outputs_dir}")
-	print(f"{'='*80}\n")
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Bridge: Global Aggregation & Ontology Discovery")

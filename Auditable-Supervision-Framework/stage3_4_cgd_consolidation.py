@@ -9,8 +9,6 @@ sys.path.insert(0, CLIP_DIR)
 MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
 sys.path.insert(0, MISC_DIR)
 
-print(f"sys.path: {sys.path}")
-
 from utils import *
 
 class CGDConsolidator:
@@ -42,9 +40,7 @@ class CGDConsolidator:
 		target_vocab_path = _bridge_path("_target_vocabulary.json")
 
 		if self.verbose:
-			print(f"\n{'='*80}")
-			print(f"[STAGE 3 & 4] INIT: CGD Consolidator & Regime-Aware Router")
-			print(f"{'='*80}")
+			print(f"\n[STAGE 3 & 4] CGD Consolidator & Regime-Aware Router")
 			print(f"  ├─ Canonical Map   : {map_path}")
 			print(f"  ├─ Global Freqs    : {freqs_path}")
 			print(f"  ├─ Embedding Cache : {emb_path}")
@@ -78,13 +74,17 @@ class CGDConsolidator:
 				)
 		except Exception as e:
 			if "weights_only" in str(e):
-				print("[WARN] Falling back to weights_only=False due to compatibility issues.")
-				self.emb_cache = torch.load(emb_path, map_location="cpu", weights_only=False)
+				print(f"[WARN]\n{e}\nFalling back to weights_only=False due to compatibility issues.")
+				self.emb_cache = torch.load(
+					emb_path, 
+					map_location="cpu", 
+					weights_only=False
+				)
 			else:
 				raise
 
 		if self.verbose:
-			print(f"  └─ Loaded {len(self.emb_cache):,} embeddings | Vocab size: {len(self.target_vocabulary):,}")
+			print(f"  └─ [{self.__class__.__name__}] {len(self.emb_cache)} embeddings | Vocab size: {len(self.target_vocabulary)}")
 
 	def _get_embedding(self, label: str) -> Optional[np.ndarray]:
 		"""Safely fetch L2-normalized embedding from cache."""
@@ -238,7 +238,6 @@ class CGDConsolidator:
 				pos_targets.add(data["canonical"])
 			w_pos = 1.0
 			w_neg = 0.0
-
 		elif regime == "SOFT_CONFLICT":
 			# Modalities share topic but differ in density.
 			# Gate by D(c) >= tau to suppress over-abstract hypernyms.
@@ -248,7 +247,6 @@ class CGDConsolidator:
 			# w_pos discounted proportionally to the density asymmetry magnitude.
 			w_pos = max(0.5, 1.0 - (self.lambda_asym * asym_gap_abs))
 			w_neg = 0.0
-
 		elif regime == "HARD_CONFLICT":
 			# Modalities are semantically disjoint.
 			# FIX-3: Only ORPHANED text concepts (O_text_unverified from Stage 2)
@@ -272,19 +270,18 @@ class CGDConsolidator:
 			mean_hn_g = float(np.mean(hn_g_scores)) if hn_g_scores else 0.0
 			w_pos = 0.30
 			w_neg = max(0.0, 1.0 - mean_hn_g)
-
 		else:
-			if self.verbose:
-				print(
-					f"[WARN] consolidate_sample: unrecognised regime '{regime}' "
-					f"for sample '{sample_id}'. Applying conservative fallback "
-					f"(all resolved concepts → pos_targets, w_pos=0.50)."
-				)
-
 			for c, data in audited_concepts.items():
 				pos_targets.add(data["canonical"])
 			w_pos = 0.50
 			w_neg = 0.0
+			if self.verbose:
+				print(
+					f"[WARN] {sample_id:<85}{regime:<20}"
+					f"conservative fallback "
+					f"(all resolved concepts → pos_targets, w_pos={w_pos}, w_neg={w_neg})"
+				)
+
 
 		# Robustness fallback
 		# If pos_targets is still empty after gating (e.g. all D(c) < tau in a
@@ -364,7 +361,7 @@ def run_stateful_map_pipeline(input_jsonl: str, verbose: bool = False) -> None:
 
 	# Open output JSONL in append mode — safe for resume
 	with open(jsonl_path, 'a', encoding="utf-8") as out_f, open(input_jsonl, 'r', encoding="utf-8") as in_f:
-		for line_no, line in enumerate(tqdm(in_f, desc="[STAGE 3 & 4] Auditing"), start=1):
+		for line_no, line in enumerate(in_f, start=1):
 			line = line.strip()
 			if not line:
 				continue
@@ -396,10 +393,7 @@ def run_stateful_map_pipeline(input_jsonl: str, verbose: bool = False) -> None:
 			out_f.write(json.dumps(consolidated, ensure_ascii=False) + "\n")
 			rows_new.append(consolidated)
 
-	print(
-		f"[STAGE 3 & 4] Done. "
-		f"New: {len(rows_new):,} | Resumed: {skipped:,} | Errors: {errors:,}"
-	)
+	print(f"[DONE] New: {len(rows_new)} | Resumed: {skipped} | Errors: {errors}")
 
 	# Rebuild .parquet and .csv from the complete JSONL
 	# (Includes both resumed rows and newly processed rows for a consistent output)
@@ -441,6 +435,7 @@ if __name__ == "__main__":
 	parser.add_argument("--jsonl_file", "-jsonl", type=str, required=True, help="Path to Stage 2 modality conflict audit JSONL file (*_modality_conflict_audit.jsonl)")
 	parser.add_argument("--verbose", "-v", action='store_true', help="Print verbose diagnostics and per-regime statistics")
 	args = parser.parse_args()
+	print(args)
 
 	if "_modality_conflict_audit.jsonl" not in args.jsonl_file:
 		raise ValueError(

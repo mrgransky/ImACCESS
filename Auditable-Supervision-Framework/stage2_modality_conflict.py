@@ -502,32 +502,37 @@ def modality_conflict_audit(
 	if verbose:
 		print(f"\n[LOADED] {len(records)} {type(records)} records ({skipped_load} skipped during load).")
 
-	#########################################################################################
-	# Post-process concepts using NLP utilities
-	post_processed_records = []
-	for i, (url, concepts) in enumerate(records):
-		if not isinstance(concepts, dict):
-			if verbose:
-				print(f"  [WARN] Record {i} ({url}): concepts is not a dict, skipping")
-			init_elm = (
-				url, 
-				{"text_concepts": [], "visual_concepts": [], "fused_concepts": []}
-			)
-			post_processed_records.append(init_elm)
-			continue
+	# #########################################################################################
+	# # Post-process concepts using NLP utilities
+	# # --------------------------------
+	# # Wrong Place to do this:
+	# # 1. Destroys the Audit Trail
+	# # 2. Breaks Modality Attribution
+	# # --------------------------------
+	# post_processed_records = []
+	# for i, (url, concepts) in enumerate(records):
+	# 	if not isinstance(concepts, dict):
+	# 		if verbose:
+	# 			print(f"  [WARN] Record {i} ({url}): concepts is not a dict, skipping")
+	# 		init_elm = (
+	# 			url, 
+	# 			{"text_concepts": [], "visual_concepts": [], "fused_concepts": []}
+	# 		)
+	# 		post_processed_records.append(init_elm)
+	# 		continue
 		
-		post_processed_concept = {}
-		for key, value in concepts.items():
-			result = _post_process_(labels_list=[value], verbose=False)[0]
-			post_processed_concept[key] = result if result is not None else []
+	# 	post_processed_concept = {}
+	# 	for key, value in concepts.items():
+	# 		result = _post_process_(labels_list=[value], verbose=False)[0]
+	# 		post_processed_concept[key] = result if result is not None else []
 		
-		post_processed_records.append((url, post_processed_concept))
-	# Replace original records with post-processed version
-	records = post_processed_records
-	del post_processed_records  # Free memory
-	if verbose:
-		print(f"[POST-PROCESSED] {len(records)} {type(records)} valid records")
-	#########################################################################################
+	# 	post_processed_records.append((url, post_processed_concept))
+	# # Replace original records with post-processed version
+	# records = post_processed_records
+	# del post_processed_records  # Free memory
+	# if verbose:
+	# 	print(f"[POST-PROCESSED] {len(records)} {type(records)} valid records")
+	# #########################################################################################
 
 	# RESUME LOGIC: collect already-processed IDs
 	output_jsonl = input_jsonl.replace(".jsonl", "_modality_conflict_audit.jsonl")
