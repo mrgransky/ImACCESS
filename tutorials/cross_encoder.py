@@ -9,8 +9,29 @@ tokenizer = AutoTokenizer.from_pretrained(model_id)
 model.to(device)
 print(f"[LOADED] {model_id}")
 
+
+from sentence_transformers import CrossEncoder
+sent_model = CrossEncoder(model_id)
+scores = sent_model.predict(
+	[
+		('A man is eating pizza', 'A man eats something'),
+		('My Olde English Bulldogge is playing with a toy.', 'A dog with a collar'),
+		('A black race car starts up in front of a crowd of people.', 'A man is driving down a lonely road.')
+	],
+	apply_softmax=True,
+	convert_to_numpy=True,
+)
+print(type(scores), scores.shape)
+print(scores)
+#Convert scores to labels
+label_mapping = ['contradiction', 'entailment', 'neutral']
+labels = [label_mapping[score_max] for score_max in scores.argmax(axis=1)]
+print(labels)
+print("="*100)
+
 premises = [
-	'A man is eating pizza',
+	'My Olde English Bulldogge is playing with a toy.',
+	'A man is eating pizza.',
 	"luxury brand-new shirt",
 	"Symptoms: productive or dry cough, chest pain, fever, and difficulty breathing.",
 	"forest fire",
@@ -20,11 +41,12 @@ premises = [
 ]
 
 hypotheses = [
-	"a man eats some junk food",
+	'a dog with a collar on its neck',
+	"junk foods on the fridge",
 	"wrinkled discounted clothes",
 	"severe pneumonia",
 	"dry lake bed",
-	"vehicle",
+	"military vehicle",
 	"naval transport",
 	"large metal gun",
 ]
@@ -48,10 +70,8 @@ label_map = {
 }
 
 # Thresholds (optional — for fine control)
-theta_low = 0.4
-theta_high = 0.7
 
-def map_score_to_label(score: float) -> str:
+def map_score_to_label(score: float, theta_low = 0.4, theta_high = 0.7) -> str:
 	"""Map entailment probability to semantic label"""
 	if score >= theta_high: return "agreement"
 	elif score >= theta_low: return "soft conflict"
@@ -89,5 +109,5 @@ for i, (premise, hypothesis) in enumerate(zip(premises, hypotheses)):
 	# print(f"  entailment    : {entailment_probs[i].item():.4f}")
 	print("\nPredictions:")
 	print(f"  Argmax label        : {predicted_labels[i]}")
-	print(f"  Threshold-based     : {threshold_labels[i]}")
+	print(f"  Threshold-based     : {threshold_labels[i]} ({scores[i]:.4f})")
 	print("-" * 60)

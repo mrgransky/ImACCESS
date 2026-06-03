@@ -169,8 +169,8 @@ class ConflictQuantifier:
 		v2t_mean = float(v2t_entail_probs.max(axis=1).mean())
 		t2v_mean = float(t2v_entail_probs.max(axis=1).mean())
 
-		# gap > 0 → visual is denser / more specific than text (visual hyponym)
-		# gap < 0 → text is denser / more specific than visual (text hyponym)
+		# gap > 0 → visual is denser / more specific than text (visual hyponym) example: "a dog" vs "a dog with a collar"
+		# gap < 0 → text is denser / more specific than visual (text hyponym) example: "a dog with a collar" vs "a dog"
 		gap = v2t_mean - t2v_mean
 
 		return {
@@ -220,6 +220,7 @@ class ConflictQuantifier:
 		# MISSING_MODALITY is its own failure mode, not a HARD_CONFLICT variant.
 		# Conflating them would pollute corpus-level conflict statistics.
 		if not c_text or not c_vis:
+			regime = "MISSING_MODALITY"
 			missing = (
 				"Missing Text & Visual" if not c_text and not c_vis else
 				"Missing Visual" if not c_vis else
@@ -228,7 +229,7 @@ class ConflictQuantifier:
 			return {
 				"id": sample_id,
 				"vlm_cot_raw": vlm_json,
-				"regime": "MISSING_MODALITY",
+				"regime": regime,
 				"failure_mode": missing,
 				# Use None, not 0.0/1.0. Fake values pollute corpus-level metric distributions.
 				"metrics": {
@@ -296,6 +297,7 @@ class ConflictQuantifier:
 
 		o_text = [c_text[i] for i in range(len(c_text)) if i not in matched_t]
 		o_vis  = [c_vis[j]  for j in range(len(c_vis))  if j not in matched_v]
+		# ratio of unverified hallucinated or uncaptioned concepts
 		orphan_ratio = (len(o_text) + len(o_vis)) / max(1, len(c_text) + len(c_vis))
 
 		# STEP 2: DETERMINISTIC HARD CONFLICT GATE (orphan_ratio only)
@@ -319,8 +321,8 @@ class ConflictQuantifier:
 				vlm_fusion_empty=vlm_fusion_empty,
 				centroid_sim_low=centroid_sim_low,
 				action=(
-					f"Structural disjointness confirmed by mutual matching. "
-					f"orphan_ratio={orphan_ratio:.3f} >= tau_orphan={self.tau_orphan}. NLI bypassed."
+					f"Structural disjointness "
+					f"(orphan_ratio={orphan_ratio:.2f} >= tau_orphan={self.tau_orphan}) NLI bypassed."
 				),
 			)
 
@@ -356,7 +358,7 @@ class ConflictQuantifier:
 				),
 			)
 
-		# STEP 4: REGIME ROUTER
+		# STEP 4: REGIME ROUTER (AGGREEMENT | SOFT_CONFLICT | HARD_CONFLICT)
 		# Specificity Gap = Entail_V2T − Entail_T2V
 		# Gap ≈ 0	: Both entailments are semantically equal (Agreement).
 		# Gap > 0	: Visual entails Text, but Text does not entail Visual. (Visual is denser/hyponym).
@@ -366,7 +368,7 @@ class ConflictQuantifier:
 			denser = "VISUAL" if asym_metrics["gap"] > 0 else "TEXT"
 			regime = "SOFT_CONFLICT"
 			action = (
-				f"Density mismatch confirmed by NLI: "
+				f"NLI Density mismatch: "
 				f"|gap|={abs_gap:.4f} >= tau_asym={self.tau_asym}. "
 				f"denser: {denser} "
 				f"(gap={asym_metrics['gap']:.4f})."

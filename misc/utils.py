@@ -146,6 +146,75 @@ dtypes = {
 	'user_query': str,
 }
 
+def check_and_cleanup_gpu_memory(
+	batch_idx: int,
+	reserved_threshold: int = 95,
+	allocated_threshold: int = 80,
+	verbose: bool = False
+) -> bool:
+	"""
+	Monitor GPU memory usage and trigger cleanup if needed.
+	
+	Args:
+		batch_idx: Current batch number (for logging)
+		reserved_threshold: Trigger cleanup if reserved memory exceeds this % (default: 95)
+		allocated_threshold: Trigger cleanup if allocated memory exceeds this % (default: 80)
+		verbose: Print detailed memory stats
+	
+	Returns:
+		True if cleanup was triggered, False otherwise
+	"""
+	if not torch.cuda.is_available():
+		return False
+	
+	need_cleanup = False
+	gpu_memory_stats = []
+	gpu_allocated_stats = []
+	
+	for device_idx in range(torch.cuda.device_count()):
+		mem_total = torch.cuda.get_device_properties(device_idx).total_memory / (1024**3)
+		mem_allocated = torch.cuda.memory_allocated(device_idx) / (1024**3)
+		mem_reserved = torch.cuda.memory_reserved(device_idx) / (1024**3)
+		
+		# Use reserved for "what PyTorch is holding" (includes cached free memory)
+		mem_reserved_pct = (mem_reserved / mem_total) * 100 if mem_total > 0 else 0
+		# Use allocated for "what we're actually using right now"
+		mem_allocated_pct = (mem_allocated / mem_total) * 100 if mem_total > 0 else 0
+		
+		gpu_memory_stats.append(mem_reserved_pct)
+		gpu_allocated_stats.append(mem_allocated_pct)
+		
+		if verbose:
+			print(
+				f"[MEM] Batch {batch_idx} (GPU {device_idx}): {mem_reserved_pct:.2f}% reserved / "
+				f"{mem_allocated_pct:.2f}% allocated — "
+				f"{mem_allocated:.2f}GB alloc / {mem_reserved:.2f}GB reserved (Total: {mem_total:.1f}GB)"
+			)
+		
+		# Only trigger cleanup if BOTH reserved AND allocated are high
+		# This avoids clearing PyTorch's intentional cache when actual usage is low
+		if mem_reserved_pct > reserved_threshold and mem_allocated_pct > allocated_threshold:
+			need_cleanup = True
+	
+	if need_cleanup:
+		avg_reserved = np.mean(gpu_memory_stats)
+		max_reserved = max(gpu_memory_stats)
+
+		avg_allocated = np.mean(gpu_allocated_stats)
+		max_allocated = max(gpu_allocated_stats)
+		
+		print(
+			f"\n[WARN] High memory usage detected — "
+			f"Reserved: max={max_reserved:.1f}%, avg={avg_reserved:.1f}% | "
+			f"Allocated: max={max_allocated:.1f}%, avg={avg_allocated:.1f}% "
+			f"(thresholds: reserved>{reserved_threshold}%, allocated>{allocated_threshold}%) "
+			f"=> Clearing cache..."
+		)
+		torch.cuda.empty_cache()  # clears all GPUs
+		gc.collect()
+	
+	return need_cleanup
+
 def compute_slope(window: List[float]) -> float:
 	if len(window) < 2:
 		return 0.0

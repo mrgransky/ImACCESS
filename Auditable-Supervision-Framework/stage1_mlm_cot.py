@@ -737,7 +737,7 @@ def _parse_(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[
 		return None
 
 	if verbose:
-		print(f"\n[STEP 2] Found {len(candidates)} balanced JSON candidate(s):")
+		print(f"[STEP 2] Found {len(candidates)} balanced JSON candidate(s):")
 
 	parsed_candidates = []
 	for idx, json_str in enumerate(candidates):
@@ -791,7 +791,7 @@ def _parse_(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[
 	if verbose:
 		print(f"[RESULT]")
 		for k, v in selected.items():
-			print(f"  {k:<20}{len(v):<5}{v}")
+			print(f"  {k:<17}{len(v):<3}{v}")
 
 	return selected
 
@@ -959,7 +959,8 @@ def get_mlm_cot_labels(
 	max_generated_tks: int,
 	max_kws: int,
 	csv_file: str,
-	mem_cleanup_th: int=95,
+	mem_cleanup_th: int=95, # reserved memory threshold
+	mem_allocated_th: int = 80,  # Allocated memory threshold
 	do_dedup: bool=True,
 	quantization_bits: Optional[int]=None,
 	verbose: bool=False,
@@ -1156,10 +1157,10 @@ def get_mlm_cot_labels(
 
 	if verbose:
 		print(
-			f"[INIT] BATCHED PARALLEL OPTIMIZED VLM (nw: {num_workers}) "
-			f"{len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}"
+			f"BATCHED PARALLEL OPTIMIZED (nw: {num_workers}) "
+			f"{len(valid_indices)} valid unique images → {total_batches} batches of {batch_size} samples each."
 		)
-		print("-"*120)
+		print("-"*100)
 
 	batch_max_tokens = []
 	all_image_tokens = []
@@ -1393,27 +1394,12 @@ def get_mlm_cot_labels(
 					torch.cuda.empty_cache()
 				gc.collect()
 
-		# memory management
-		need_cleanup = False
-		memory_consumed_percent = 0
-		for device_idx in range(torch.cuda.device_count()):
-			mem_total = torch.cuda.get_device_properties(device_idx).total_memory / (1024**3) 
-			mem_allocated = torch.cuda.memory_allocated(device_idx) / (1024**3)
-			mem_reserved = torch.cuda.memory_reserved(device_idx) / (1024**3)	
-			mem_usage_pct = (mem_reserved / mem_total) * 100 if mem_total > 0 else 0
-			if verbose:
-				print(
-					f"[MEM] Batch {b} (GPU {device_idx}): {mem_usage_pct:.2f}% usage: "
-					f"{mem_allocated:.2f}GB alloc / {mem_reserved:.2f}GB reserved (Total: {mem_total:.1f}GB)"
-				)
-			if mem_usage_pct > mem_cleanup_th: 
-				need_cleanup = True
-				memory_consumed_percent += mem_usage_pct
-
-		if need_cleanup:
-			print(f"\n[WARN] High memory usage ({memory_consumed_percent:.1f}% > {mem_cleanup_th}%) => Clearing cache...")
-			torch.cuda.empty_cache() # clears all GPUs
-			gc.collect()
+		check_and_cleanup_gpu_memory(
+			batch_idx=b,
+			reserved_threshold=mem_cleanup_th,
+			allocated_threshold=mem_allocated_th,
+			verbose=verbose
+		)
 
 		# Atomically rewrite JSONL: exactly one row per id, no duplicates
 		flush_jsonl_state(output_jsonl, jsonl_state, verbose=verbose)
