@@ -1170,6 +1170,7 @@ def get_mlm_cot_labels(
 			f"BATCHED PARALLEL OPTIMIZED (nw: {num_workers}) "
 			f"{len(valid_indices)} valid unique images → {total_batches} batches of {batch_size} samples each."
 		)
+		print(f"[INITIALIZATION] total elapsed time: {time.time() - t0:.1f}")
 		print("-"*100)
 
 	batch_max_tokens = []
