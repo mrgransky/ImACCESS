@@ -3,7 +3,7 @@ import spacy
 model_id = "en_core_web_sm"
 
 nlp = spacy.load(model_id)
-print(f"Loaded model '{model_id}'")
+print(f"Loaded model '{model_id}' {nlp._path}")
 
 text = "I visted Los Angeles and Torre di Pisa last month. Next week, I will definitely visit Nova Scotia. I also visited Canada, the United Kingdom, the United States, City College of San Francisco, New York, Cape Verde, Canary Islands, and the United States of America."
 # text = text.lower()
