@@ -1043,15 +1043,16 @@ def get_mlm_cot_labels(
 	chunks = 2 ** 12
 	with ThreadPoolExecutor(max_workers=num_workers) as ex:
 		doc_urls    = list(ex.map(_check_url,  raw_urls,  chunksize=chunks))
-		image_paths = list(ex.map(_check_path, raw_paths, chunksize=chunks))  # ← the slow one
+		image_paths = list(ex.map(_check_path, raw_paths, chunksize=chunks)) # slow
 		descriptions = list(ex.map(_check_desc, raw_descs, chunksize=chunks))
 
 	assert len(image_paths) == len(descriptions), f"Length mismatch: {len(image_paths)} != {len(descriptions)}"
 	n_total = len(image_paths)
 	
 	if verbose:
-		print(f"\n[LOAD] {n_total} image paths from {csv_file} ({time.time() - t0:.2f}s)")
+		print(f"[LOADED] {n_total} image paths from {csv_file}")
 		print(f"IMAGES: {len(image_paths)} | DESCRIPTIONS: {len(descriptions)} | URLS: {len(doc_urls)}")
+		print(f"ELAPSED TIME: {time.time() - t0:.2f}s")
 		print("-"*100)
 
 	# ========== Prepare inputs (dedup + verification) ==========
