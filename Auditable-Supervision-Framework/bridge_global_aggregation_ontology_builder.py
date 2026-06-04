@@ -162,6 +162,7 @@ def cluster_and_save_priors(
 	del all_post_processed_sample_labels
 	##################################################################################################
 
+	# return
 	# STEP 2: GLOBAL FREQUENCY COUNTS (Reusability Prior)
 	# Convert Counter → plain dict before saving and before passing to
 	# any clustering.py function. Counter's default-zero behaviour silently

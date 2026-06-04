@@ -10,7 +10,14 @@ import json
 import time
 
 import nltk
+import spacy
 
+# Load spaCy model at module level (after other imports)
+try:
+	nlp_spacy = spacy.load("en_core_web_sm")
+except OSError:
+	print("[WARNING] spaCy model 'en_core_web_sm' not found. Run: python -m spacy download en_core_web_sm")
+	nlp_spacy = None
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
@@ -233,6 +240,33 @@ def _post_process_(
 		"mme.", 
 		"mrs."
 	}
+
+	def _extract_geographic_entities(text: str) -> Set[str]:
+		"""
+		Extract geographic entities using spaCy NER.
+		Returns set of lowercased geographic references.
+		"""
+		if nlp_spacy is None:
+			return set()
+		
+		GEO_LABELS = {"GPE", "LOC"}  # GPE: countries, cities, states; LOC: geographic features
+		
+		doc = nlp_spacy(text)
+		
+		# Direct geographic entities
+		gpe_spans = [ent for ent in doc.ents if ent.label_ in GEO_LABELS]
+		gpe_texts = {ent.text.lower() for ent in gpe_spans}
+		
+		# Embedded geographic entities in ORG labels (e.g., "City College of San Francisco")
+		org_spans = [ent for ent in doc.ents if ent.label_ == "ORG"]
+		embedded_gpes = set()
+		for org in org_spans:
+			org_doc = nlp_spacy(org.text)
+			for sub_ent in org_doc.ents:
+				if sub_ent.label_ in GEO_LABELS and sub_ent.text.lower() not in gpe_texts:
+					embedded_gpes.add(sub_ent.text.lower())
+		
+		return gpe_texts | embedded_gpes
 
 	def is_stopword(phrase: str) -> bool:
 		"""
@@ -566,10 +600,10 @@ def _post_process_(
 				# lemma = s  # Preserve "two women", "three soldiers"
 				# if verbose:
 				# 	print(f"        → Quantified plural detected, preserving: {repr(lemma)}")
-			elif is_title_like(original_cleaned):
-				lemma = s  # Preserve "As You Like It", "United States Military Academy", "The Great Gatsby"
-				if verbose:
-					print(f"        → Title-like phrase detected, preserving: {repr(lemma)}")
+			# elif is_title_like(original_cleaned):
+			# 	lemma = s  # Preserve "As You Like It", "United States Military Academy", "The Great Gatsby"
+			# 	if verbose:
+			# 		print(f"        → Title-like phrase detected, preserving: {repr(lemma)}")
 			elif is_named_facility(original_cleaned):
 				lemma = s  # Preserve "Pease Air Force Base", "Truax Field"
 				if verbose:
@@ -647,17 +681,28 @@ def _post_process_(
 			# 		print(f"        → {repr(lemma)} Geographic reference detected, skipping")
 			# 	continue
 
-			# tokenized_lemma = re.split(r'[ .-]+', lemma.lower())   # split on space, hyphen or dot (U.S. Route 66)
-			tokenized_lemma = re.split(r'[ -]+', lemma.lower())   # split on space or hyphen
-			# if any(tok in geographic_references for tok in tokenized_lemma):
-			if (
-				any(tok in geographic_references for tok in tokenized_lemma) 
-				or lemma in geographic_references
-				or lemmatizer.lemmatize(lemma.lower()) in geographic_references
-			):
-				if verbose:
-					print(f"        → {repr(lemma)} Geographic reference detected, skipping")
-				continue
+
+			if nlp_spacy is not None:
+				geo_entities = _extract_geographic_entities(lemma)
+				if geo_entities:
+					if verbose:
+						print(f"        → {repr(lemma)} Geographic entity detected by spaCy: {geo_entities}")
+					continue
+
+			# # tokenized_lemma = re.split(r'[ .-]+', lemma.lower())   # split on space, hyphen or dot (U.S. Route 66)
+			# tokenized_lemma = re.split(r'[ -]+', lemma.lower())   # split on space or hyphen
+			# if verbose:
+			# 	print(f"tokenized: {tokenized_lemma}")
+			# # if any(tok in geographic_references for tok in tokenized_lemma):
+			# if (
+			# 	any(tok in geographic_references for tok in tokenized_lemma) 
+			# 	or lemma in geographic_references
+			# 	or lemmatizer.lemmatize(lemma.lower()) in geographic_references
+			# ):
+			# 	if verbose:
+			# 		print(f"        → {repr(lemma)} Geographic reference detected, skipping")
+			# 	continue
+
 
 			if is_phrasal_verb(lemma):
 				if verbose:

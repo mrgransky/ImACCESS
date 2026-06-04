@@ -52,7 +52,7 @@ class CGDConsolidator:
 		with open(freqs_path, 'r') as f:
 			self.global_freqs: Dict[str, int] = json.load(f)
 
-		# Support both the new metadata-wrapped format (post-Bridge fix)
+		# Support both the new metadata-wrapped format (post-Bridge)
 		# and the legacy bare-list format so the code is backward-compatible.
 		with open(target_vocab_path, 'r') as f:
 			vocab_payload = json.load(f)
@@ -305,6 +305,7 @@ class CGDConsolidator:
 
 		return {
 			"id":               sample_id,
+			column: 						vlm_data,
 			"regime":           regime,
 			"positive_targets": sorted(pos_targets),
 			"hard_negatives":   sorted(hn_targets),
@@ -313,12 +314,12 @@ class CGDConsolidator:
 			"audit_trail":      audit_trail,
 		}
 
-def run_stateful_map_pipeline(input_jsonl: str, column: str, verbose: bool = False) -> None:
+def run(input_jsonl: str, column: str, verbose: bool = False) -> None:
 	"""
 	Streams Stage 2 receipts through the CGD Consolidator (Stages 3 & 4) and
 	writes the final auditable supervision matrix to .parquet / .csv / .jsonl.
 
-	FIX-7: Crash-safe resume via JSONL append-and-skip.
+	Crash-safe resume via JSONL append-and-skip.
 	If a partial output JSONL already exists, already-processed sample IDs are
 	loaded and skipped so a restart continues from where it left off.
 	The .parquet and .csv are rebuilt from the complete JSONL at the end.
@@ -446,7 +447,7 @@ if __name__ == "__main__":
 			f"Got: {args.jsonl_file}"
 		)
 
-	run_stateful_map_pipeline(
+	run(
 		input_jsonl=args.jsonl_file,
 		column=args.column,
 		verbose=args.verbose
