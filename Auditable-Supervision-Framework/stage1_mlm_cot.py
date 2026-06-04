@@ -33,13 +33,13 @@ from nlp_utils import get_enriched_description
 
 # HPC:
 # one sample:
-# $ python stage1_mlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/images/SBC-3_tail_wheel_extended.jpg -c "SBC-3 tail wheel extended. SBC-3 Helldiver tail wheel extended. SBC Helldiver." -vlm "Qwen/Qwen3.6-27B" -v
+# $ python stage1_mlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/images/SBC-3_tail_wheel_extended.jpg -c "SBC-3 tail wheel extended. SBC-3 Helldiver tail wheel extended. SBC Helldiver." -vlm "google/gemma-4-12B-it" -v
 
 PROMPT_TEMPLATE = """Extract **at most {k}** prominet keywords **per category** from the given image and caption.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
 Refrain from extracting the following types of keywords:
-  - Generic terms (e.g., 'World War I', 'World War II', 'war photo collection', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
+  - Generic terms (e.g., 'World War I', 'World War II', 'war photo collection', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battlefield').
   - Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
   - Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
   - Identifiers, serial/reference/model numbers, designated specification codes or brands.
@@ -205,10 +205,12 @@ def _load_mlm_(
 	# ========== Load config ==========
 	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True)
 	if verbose:
-		print(f"[INFO] {model_id} Config summary")
-		print(f"   • model_type        : {config.model_type}")
-		print(f"   • architectures     : {config.architectures}")
-		print(f"   • dtype (if set)    : {config.dtype}")
+		print(f"[INFO] {model_id}")
+		print(config)
+		print("-"*120)
+		# print(f"   • model_type        : {config.model_type}")
+		# print(f"   • architectures     : {config.architectures}")
+		# print(f"   • dtype (if set)    : {config.dtype}")
 	
 	# ========== Determine model class ==========
 	model_cls = None
@@ -649,7 +651,9 @@ def _load_mlm_(
 			elif not disk_layers and not cpu_layers:
 				print(f"\nAll layers on GPU - optimal performance!")
 		
-		print(f"\n[LOADED] {model_id}\n{model.config}")
+		# print(f"\n[LOADED] {model_id}\n{model.config}")
+		print(f"\n{model_id}")
+		print(processor)
 	
 	return processor, model
 
