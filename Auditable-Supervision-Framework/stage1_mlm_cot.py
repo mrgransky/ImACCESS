@@ -33,7 +33,7 @@ from nlp_utils import get_enriched_description
 
 # HPC:
 # one sample:
-# $ python stage1_mlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH76SLASHjlm_item_94084.jpg -c "The Defence. Norwegian refugees in the spring of 1940, on the border in Gäddede. Tasks: Ingvar Holmström, Lund, 1985." -vlm "Qwen/Qwen3.6-27B" -v
+# $ python stage1_mlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/images/SBC-3_tail_wheel_extended.jpg -c "SBC-3 tail wheel extended. SBC-3 Helldiver tail wheel extended. SBC Helldiver." -vlm "Qwen/Qwen3.6-27B" -v
 
 PROMPT_TEMPLATE = """Extract **at most {k}** prominet keywords **per category** from the given image and caption.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
@@ -101,7 +101,11 @@ def flush_jsonl_state(jsonl_path: str, state: Dict[int, Dict[str, Any]], verbose
 	if verbose:
 		print(f"[SAVE] Compacted JSONL written to: {jsonl_path} ({len(state)} rows)")
 
-def load_jsonl_state(jsonl_path: str, verbose: bool = False) -> Dict[str, Dict[str, Any]]:
+def load_jsonl_state(
+	jsonl_path: str, 
+	column: str, 
+	verbose: bool = False
+) -> Dict[str, Dict[str, Any]]:
 	state: Dict[str, Dict[str, Any]] = {}
 	if not os.path.exists(jsonl_path):
 		if verbose:
@@ -126,7 +130,7 @@ def load_jsonl_state(jsonl_path: str, verbose: bool = False) -> Dict[str, Dict[s
 				
 				# Non-empty wins: only overwrite if incoming record is non-empty
 				# or if the key has never been seen before
-				incoming_concepts = rec.get("vlm_cot_raw", {})
+				incoming_concepts = rec.get(column, {})
 				if sid not in state:
 					state[sid] = rec
 				elif not is_empty_concepts(incoming_concepts):
@@ -138,7 +142,7 @@ def load_jsonl_state(jsonl_path: str, verbose: bool = False) -> Dict[str, Dict[s
 				continue
 	
 	if verbose:
-		n_empty = sum(1 for r in state.values() if is_empty_concepts(r.get("vlm_cot_raw", {})))
+		n_empty = sum(1 for r in state.values() if is_empty_concepts(r.get(column, {})))
 		print(f"[LOAD] {len(state)} unique ids | {n_empty} empty (will retry)")
 	
 	return state
@@ -959,6 +963,7 @@ def get_mlm_cot_labels(
 	max_generated_tks: int,
 	max_kws: int,
 	csv_file: str,
+	column: str="mlm_cot_raw",
 	mem_cleanup_th: int=95, # reserved memory threshold
 	mem_allocated_th: int = 80,  # Allocated memory threshold
 	do_dedup: bool=True,
@@ -1083,7 +1088,11 @@ def get_mlm_cot_labels(
 	# Load JSONL into a dict keyed by id. Last occurrence wins for any duplicates
 	# from previous crash-restart cycles. Empty-concept entries are NOT restored
 	# into processed_ids so they will be retried and overwritten in-place.
-	jsonl_state: Dict[str, Dict[str, Any]] = load_jsonl_state(output_jsonl, verbose=verbose)
+	jsonl_state: Dict[str, Dict[str, Any]] = load_jsonl_state(
+		jsonl_path=output_jsonl, 
+		column=column, 
+		verbose=verbose
+	)
 
 	processed_ids: set[int] = set()
 	retry_ids: set[int] = set()
@@ -1098,7 +1107,7 @@ def get_mlm_cot_labels(
 		idx = url_to_idx.get(url_key)
 		if idx is None:
 			continue
-		concepts = rec.get("vlm_cot_raw", {})
+		concepts = rec.get(column, {})
 		if is_empty_concepts(concepts):
 			retry_ids.add(idx)
 		else:
@@ -1296,7 +1305,7 @@ def get_mlm_cot_labels(
 					# Update in-memory state (flushed atomically to disk after the batch)
 					doc_url = doc_urls[idx] or f"__unknown_{idx}__"
 					empty_listed_result = {"text_concepts": [], "visual_concepts": [], "fused_concepts": []}
-					jsonl_state[doc_url] = {"id": doc_url, "vlm_cot_raw": parsed if parsed else empty_listed_result}
+					jsonl_state[doc_url] = {"id": doc_url, column: parsed if parsed else empty_listed_result}
 				except Exception as e:
 					if verbose:
 						print(f"[WARN] Parse error for idx {idx}: {e}")
@@ -1373,7 +1382,7 @@ def get_mlm_cot_labels(
 					doc_url = doc_urls[uniq_idx] or f"__unknown_{idx}__"
 					jsonl_state[doc_url] = {
 						"id": doc_url,
-						"vlm_cot_raw": parsed if parsed else {
+						column: parsed if parsed else {
 							"text_concepts": [], "visual_concepts": [], "fused_concepts": []
 						}
 					}
@@ -1420,7 +1429,7 @@ def get_mlm_cot_labels(
 		idx = url_to_idx.get(url_key)
 		if idx is None:
 			continue
-		concepts = rec.get("vlm_cot_raw", {})
+		concepts = rec.get(column, {})
 		if is_empty_concepts(concepts):
 			total_empty_concepts += 1
 

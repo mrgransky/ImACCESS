@@ -1,3 +1,4 @@
+from email.policy import default
 import os
 import sys
 
@@ -9,18 +10,16 @@ sys.path.insert(0, CLIP_DIR)
 MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
 sys.path.insert(0, MISC_DIR)
 
-print(f"sys.path: {sys.path}")
-
 from utils import *
 from clustering import *
 from nlp_utils import _post_process_
 
 def cluster_and_save_priors(
-	input_jsonl: str,
-	model_id: str,
-	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
-	column: str = "vlm_cot_raw",
-	verbose: bool = True,
+		input_jsonl: str,
+		model_id: str,
+		column: str, 
+		device: str,
+		verbose: bool,
 ):
 	"""
 	Bridge: Corpus-Level Ontology Discovery.
@@ -39,6 +38,7 @@ def cluster_and_save_priors(
 	print(f"\n[BRIDGE] Corpus-Level Ontology Discovery")
 	print(f"  ├─ Input  : {input_jsonl}")
 	print(f"  ├─ Model  : {model_id}")
+	print(f"  ├─ Column : {column}")
 	print(f"  └─ Device : {device}")
 
 	DATASET_DIRECTORY = os.path.dirname(input_jsonl)
@@ -469,9 +469,12 @@ if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Bridge: Global Aggregation & Ontology Discovery")
 	parser.add_argument("--jsonl_file", "-jsonl", type=str, required=True, help="Stage 2 modality conflict audit JSONL file",)
 	parser.add_argument("--embedding_model", "-m", type=str, default="all-MiniLM-L6-v2", help="SentenceTransformer model for canonical analysis",)
+	parser.add_argument("--column", "-col", type=str, default="mlm_cot_raw", help="Column to use for canonical analysis",)
+	parser.add_argument("--device", "-dev", type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to use for computation",)
 	parser.add_argument("--verbose", "-v", action='store_true', help="Verbose output")
 
 	args = parser.parse_args()
+	print(args)
 	set_seeds(seed=42)
 
 	if "_modality_conflict_audit.jsonl" not in args.jsonl_file:
@@ -480,5 +483,7 @@ if __name__ == "__main__":
 	cluster_and_save_priors(
 		input_jsonl=args.jsonl_file,
 		model_id=args.embedding_model,
+		column=args.column,
+		device=args.device,
 		verbose=args.verbose,
 	)

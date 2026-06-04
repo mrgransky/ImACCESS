@@ -10,8 +10,6 @@ sys.path.insert(0, CLIP_DIR)
 MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
 sys.path.insert(0, MISC_DIR)
 
-print(f"sys.path: {sys.path}")
-
 from utils import *
 from nlp_utils import _post_process_
 
@@ -27,8 +25,8 @@ def is_empty_concepts(concepts: Optional[Dict[str, Any]]) -> bool:
 class ConflictQuantifier:
 	def __init__(
 		self,
-		sym_model_id: str = 'all-MiniLM-L6-v2',
-		nli_model_id: str = 'cross-encoder/nli-deberta-v3-large',
+		sym_model_id: str,
+		nli_model_id: str,
 		device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
 		tau_match: float = 0.85, # exact semantic equivalence
 		tau_soft: float = 0.55, # related/hierarchical concepts
@@ -102,17 +100,17 @@ class ConflictQuantifier:
 		if compute_cap >= 8.0:
 			try:
 				import flash_attn
-				if verbose:
+				if self.verbose:
 					print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
 				return "flash_attention_2"
 			except ImportError:
-				if verbose:
+				if self.verbose:
 					print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
 		if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
-			if verbose:
+			if self.verbose:
 				print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
 			return "sdpa"
-		if verbose:
+		if self.verbose:
 			print(f"[INFO] Using eager attention (compute {compute_cap})")
 		return "eager"
 
@@ -180,7 +178,7 @@ class ConflictQuantifier:
 			"computed_on": len(v_to_t_pairs),
 		}
 
-	def process_sample(self, sample_id: str, vlm_json: Dict[str, Any]) -> Dict[str, Any]:
+	def process_sample(self, sample_id: str, column: str, vlm_json: Dict[str, Any]) -> Dict[str, Any]:
 		"""
 		Computes the Evidence Receipt and routes the sample to a Conflict Regime.
 
@@ -228,7 +226,7 @@ class ConflictQuantifier:
 			)
 			return {
 				"id": sample_id,
-				"vlm_cot_raw": vlm_json,
+				column: vlm_json,
 				"regime": regime,
 				"failure_mode": missing,
 				# Use None, not 0.0/1.0. Fake values pollute corpus-level metric distributions.
@@ -307,6 +305,7 @@ class ConflictQuantifier:
 			regime = "HARD_CONFLICT"
 			return self._build_full_receipt(
 				sample_id=sample_id,
+				column=column,
 				vlm_json=vlm_json,
 				regime=regime,
 				failure_mode=None,
@@ -339,6 +338,7 @@ class ConflictQuantifier:
 			regime = "HARD_CONFLICT"
 			return self._build_full_receipt(
 				sample_id=sample_id,
+				column=column,
 				vlm_json=vlm_json,
 				regime=regime,
 				failure_mode="NO_MUTUAL_MATCHES",
@@ -383,6 +383,7 @@ class ConflictQuantifier:
 
 		return self._build_full_receipt(
 			sample_id=sample_id,
+			column=column,
 			vlm_json=vlm_json,
 			regime=regime,
 			failure_mode=None,
@@ -402,6 +403,7 @@ class ConflictQuantifier:
 	def _build_full_receipt(
 		self,
 		sample_id: str,
+		column: str,
 		vlm_json: Dict[str, Any],
 		regime: str,
 		failure_mode: Optional[str],
@@ -435,7 +437,7 @@ class ConflictQuantifier:
 		)
 		return {
 			"id": sample_id,
-			"vlm_cot_raw": vlm_json,
+			column: vlm_json,
 			"evidence": {
 				"E_strong_pairs":    e_strong,
 				"E_density_pairs":   e_density,
@@ -468,7 +470,7 @@ def modality_conflict_audit(
 	input_jsonl: str,
 	sym_model_id: str,
 	asym_model_id: str,
-	column: str, 
+	column: str,
 	verbose: bool = False
 ):
 	if verbose:
@@ -556,7 +558,7 @@ def modality_conflict_audit(
 		quantifier = ConflictQuantifier(
 			sym_model_id=sym_model_id,
 			nli_model_id=asym_model_id,
-			verbose=verbose
+			verbose=verbose,
 		)
 
 		skipped_empty = 0
@@ -571,7 +573,7 @@ def modality_conflict_audit(
 						print(f"  [SKIP] Empty concepts: {sample_id}")
 					continue
 				try:
-					receipt = quantifier.process_sample(sample_id, vlm_data)
+					receipt = quantifier.process_sample(sample_id=sample_id, column=column, vlm_json=vlm_data)
 					f_out.write(json.dumps(receipt) + "\n")
 					f_out.flush()
 				except Exception as e:
@@ -613,8 +615,10 @@ def main():
 	parser.add_argument("--jsonl_file", '-jsonl', type=str, required=True, help="Path to the VLM CoT output (JSONL file)")
 	parser.add_argument("--sym_emb_model", "-sym", type=str, default="all-MiniLM-L6-v2", help="Sentence embedding model (symmetrical embedding)")
 	parser.add_argument("--asym_nli_model", "-asym", type=str, default="cross-encoder/nli-deberta-v3-large", help="NLI model (asymmetrical embedding)")
+	parser.add_argument("--column", "-col", type=str, default="mlm_cot_raw", help="Column to use for canonical analysis",)
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	args = parser.parse_args()
+	print(args)
 	set_seeds(seed=42)
 
 	if not args.jsonl_file.endswith(".jsonl"):
@@ -622,7 +626,7 @@ def main():
 	
 	modality_conflict_audit(
 		input_jsonl=args.jsonl_file, 
-		column="vlm_cot_raw",
+		column=args.column,
 		sym_model_id=args.sym_emb_model,
 		asym_model_id=args.asym_nli_model,
 		verbose=args.verbose

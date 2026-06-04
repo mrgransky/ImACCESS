@@ -179,7 +179,7 @@ class CGDConsolidator:
 		return {"G": g_score, "C": c_score, "D": d_score}
 
 	# Stage 4: Regime-Aware Consolidation
-	def consolidate_sample(self, receipt: Dict[str, Any]) -> Dict[str, Any]:
+	def consolidate_sample(self, receipt: Dict[str, Any], column: str) -> Dict[str, Any]:
 		"""
 		STAGE 4: Maps audited concepts into canonical vocabulary V, applies
 		Regime-Aware Gating, and derives w_pos, w_neg, positive_targets,
@@ -188,7 +188,7 @@ class CGDConsolidator:
 		sample_id = receipt["id"]
 		regime    = receipt["regime"]
 		metrics   = receipt.get("metrics") or {}
-		vlm_data  = receipt.get("vlm_cot_raw", {})
+		vlm_data  = receipt.get(column, {})
 		evidence  = receipt.get("evidence", {})
 
 		c_text = vlm_data.get("text_concepts", [])
@@ -305,7 +305,6 @@ class CGDConsolidator:
 
 		return {
 			"id":               sample_id,
-			"mlm_cot_raw":			{},
 			"regime":           regime,
 			"positive_targets": sorted(pos_targets),
 			"hard_negatives":   sorted(hn_targets),
@@ -314,7 +313,7 @@ class CGDConsolidator:
 			"audit_trail":      audit_trail,
 		}
 
-def run_stateful_map_pipeline(input_jsonl: str, verbose: bool = False) -> None:
+def run_stateful_map_pipeline(input_jsonl: str, column: str, verbose: bool = False) -> None:
 	"""
 	Streams Stage 2 receipts through the CGD Consolidator (Stages 3 & 4) and
 	writes the final auditable supervision matrix to .parquet / .csv / .jsonl.
@@ -387,9 +386,9 @@ def run_stateful_map_pipeline(input_jsonl: str, verbose: bool = False) -> None:
 				continue
 
 			try:
-				consolidated = consolidator.consolidate_sample(receipt)
+				consolidated = consolidator.consolidate_sample(receipt=receipt, column=column)
 			except Exception as e:
-				print(f"[ERROR] consolidate_sample failed for '{sample_id}': {e}")
+				print(f"[ERROR] {sample_id}': {e}")
 				errors += 1
 				continue
 
@@ -436,6 +435,7 @@ def run_stateful_map_pipeline(input_jsonl: str, verbose: bool = False) -> None:
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Stage 3 & 4: Stateful CGD Audit & Regime-Aware Consolidation")
 	parser.add_argument("--jsonl_file", "-jsonl", type=str, required=True, help="Path to Stage 2 modality conflict audit JSONL file (*_modality_conflict_audit.jsonl)")
+	parser.add_argument("--column", "-col", type=str, default="mlm_cot_raw", help="Column to use for canonical analysis",)
 	parser.add_argument("--verbose", "-v", action='store_true', help="Print verbose diagnostics and per-regime statistics")
 	args = parser.parse_args()
 	print(args)
@@ -446,4 +446,8 @@ if __name__ == "__main__":
 			f"Got: {args.jsonl_file}"
 		)
 
-	run_stateful_map_pipeline(input_jsonl=args.jsonl_file, verbose=args.verbose)
+	run_stateful_map_pipeline(
+		input_jsonl=args.jsonl_file,
+		column=args.column,
+		verbose=args.verbose
+	)

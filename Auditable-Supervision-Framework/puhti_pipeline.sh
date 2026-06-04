@@ -39,7 +39,7 @@ CSV_FILE=$DATASET_DIR/metadata_multi_label.csv
 JSONL_COT_FILE="${CSV_FILE%.csv}_mlm_cot.jsonl"
 JSONL_MODALITY_CONFLICT_FILE="${JSONL_COT_FILE%.jsonl}_modality_conflict_audit.jsonl"
 
-VLM_MODEL="Qwen/Qwen3.6-27B"
+VLM_MODEL="Qwen/Qwen3.6-35B-A3B"
 SYMMETRICAL_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 # SYMMETRICAL_EMBEDDING_MODEL="nvidia/llama-embed-nemotron-8b"
 # SYMMETRICAL_EMBEDDING_MODEL="Octen/Octen-Embedding-8B"
@@ -54,7 +54,7 @@ python -u stage2_modality_conflict.py -jsonl $JSONL_COT_FILE -sym $SYMMETRICAL_E
 # Bridge Global Aggregation:
 python -u bridge_global_aggregation_ontology_builder.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -m $SYMMETRICAL_EMBEDDING_MODEL -v
 
-# stage 3 & 4: Regime-Conditioned Label Quality
+# stage 3 & 4: Regime-Aware Consolidation
 python -u stage3_4_cgd_consolidation.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -v
 
 
