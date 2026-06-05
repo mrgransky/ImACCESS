@@ -204,9 +204,6 @@ def _load_mlm_(
 		print(f"[INFO] {model_id}")
 		print(config)
 		print("-"*120)
-		# print(f"   • model_type        : {config.model_type}")
-		# print(f"   • architectures     : {config.architectures}")
-		# print(f"   • dtype (if set)    : {config.dtype}")
 	
 	# ========== Determine model class ==========
 	model_cls = None
@@ -303,7 +300,6 @@ def _load_mlm_(
 	# ========== Processor loading ==========
 	processor = tfs.AutoProcessor.from_pretrained(
 		model_id,
-		use_fast=True,
 		trust_remote_code=True,
 		cache_dir=cache_directory[USER],
 		quantization_config=quantization_config,
@@ -327,49 +323,35 @@ def _load_mlm_(
 			info = huggingface_hub.model_info(model_id, token=hf_tk, files_metadata=True)
 		except Exception as e:
 			raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
-
-		# print("="*100)
-		# print(type(info))
-		# print(info)
-		# print("="*100)
-
-		disk_bytes = 0
+		
 		param_count = None
-
-		# 1. Sum actual file sizes (most reliable when available)
-		if info.siblings:
-			for s in info.siblings:
-				if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin")):
-					disk_bytes += s.size
-
-		# 2. Try safetensors metadata (parameter count)
+		disk_bytes = 0
+		# 1. Try safetensors metadata (parameter count) - MOST ACCURATE
 		if hasattr(info, "safetensors") and info.safetensors:
-			safet = info.safetensors
-			if isinstance(safet, dict):
-				param_count = safet.get("total")
-			elif hasattr(safet, "total"):
-				param_count = safet.total
-
-		# 3. Choose best source and apply realistic multiplier
-		if disk_bytes > 0:
-			# print(f"disk_bytes: {disk_bytes}")
-			# Disk size already in target dtype → small overhead (1%) (alignment, buffers)
-			est_gb = (disk_bytes * 1.01) / (1024 ** 3)
-
-			return est_gb
-
+				safet = info.safetensors
+				if isinstance(safet, dict):
+						param_count = safet.get("total")
+				elif hasattr(safet, "total"):
+						param_count = safet.total
 		if param_count:
-			# print(f"param_count: {param_count}")
-			# fp16/bf16 = 2 bytes/param + 18–25% overhead
-			est_bytes = param_count * 2.0 * 1.22
-			est_gb = est_bytes / (1024 ** 3)
+				# 2 bytes per param for fp16/bf16 + 15% overhead for KV cache/activations
+				est_bytes = param_count * 2.0 * 1.15
+				return est_bytes / (1024 ** 3)
+		# 2. Fallback: Sum actual file sizes (Filtering out quantized/variant files)
+		if info.siblings:
+				valid_files = [
+						s for s in info.siblings 
+						if s.size and (s.rfilename.endswith(".safetensors") or s.rfilename.endswith(".bin"))
+						# Exclude quantized or alternative formats to avoid double counting
+						and not any(x in s.rfilename.lower() for x in ['int8', 'int4', 'fp8', 'gguf', 'onnx', 'awq', 'gptq'])
+				]
+				if valid_files:
+						disk_bytes = sum(s.size for s in valid_files)
+						
+		if disk_bytes > 0:
+			return (disk_bytes * 1.05) / (1024 ** 3)
 
-			return est_gb
-
-		raise ValueError(
-			f"No usable size info for {model_id}. "
-			"No file sizes, parameter count, or safetensors metadata available."
-		)
+		raise ValueError(f"No usable size info for {model_id}.")
 
 	estimated_size_gb = get_estimated_gb_size(model_id)
 	
@@ -387,6 +369,7 @@ def _load_mlm_(
 			props = torch.cuda.get_device_properties(i)
 			if verbose:
 				print(f"GPU {i}: {props}")
+
 			vram_gb = props.total_memory / (1024**3)
 			gpu_vram.append(vram_gb)
 			total_vram_available += vram_gb

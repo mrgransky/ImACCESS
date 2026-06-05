@@ -1,19 +1,38 @@
+import os
+from typing import Dict, Any
 from transformers import AutoProcessor, AutoModelForMultimodalLM
+HOME: str = os.getenv('HOME') # echo $HOME
+USER: str = os.getenv('USER') # echo $USER
+
+cache_directory = {
+	"farid": "/home/farid/datasets/models",
+	"alijanif": "/scratch/project_2004072/models",
+	"ubuntu": "/media/volume/models",
+}
 
 MODEL_ID = "google/gemma-4-E2B-it"
+base_model_kwargs: Dict[str, Any] = {
+	"low_cpu_mem_usage": True,
+	"trust_remote_code": True,
+	"cache_dir": cache_directory[USER],
+}
 
 # Load model
-processor = AutoProcessor.from_pretrained(MODEL_ID)
+processor = AutoProcessor.from_pretrained(
+  MODEL_ID,
+	trust_remote_code=True,
+	cache_dir=cache_directory[USER],  
+)
 model = AutoModelForMultimodalLM.from_pretrained(
-	MODEL_ID, 
-	dtype="auto", 
-	device_map="auto"
+	MODEL_ID,
+  **base_model_kwargs,
+	dtype="auto",
+	device_map="auto",
 )
 # Prompt - add image before text
 messages = [
  	{
 		"role": "user", "content": [
-			# {"type": "image", "url": "https://raw.githubusercontent.com/google-gemma/cookbook/refs/heads/main/apps/sample-data/GoldenGate.png"},
 			{"type": "image", "image": "/home/farid/Bilder/GoldenGate.png"},
 			{"type": "text", "text": "What is shown in this image?"}
 		]

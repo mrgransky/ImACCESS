@@ -307,11 +307,11 @@ class CGDConsolidator:
 			"id":               sample_id,
 			column: 						vlm_data,
 			"regime":           regime,
+			"audit_trail":      audit_trail,
 			"positive_targets": sorted(pos_targets),
 			"hard_negatives":   sorted(hn_targets),
 			"w_pos":            w_pos,
 			"w_neg":            w_neg,
-			"audit_trail":      audit_trail,
 		}
 
 def run(input_jsonl: str, column: str, verbose: bool = False) -> None:
