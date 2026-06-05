@@ -39,14 +39,14 @@ CSV_FILE=$DATASET_DIR/metadata_multi_label.csv
 JSONL_COT_FILE="${CSV_FILE%.csv}_mlm_cot.jsonl"
 JSONL_MODALITY_CONFLICT_FILE="${JSONL_COT_FILE%.jsonl}_modality_conflict_audit.jsonl"
 
-VLM_MODEL="Qwen/Qwen3.6-35B-A3B"
+MLM_MODEL="Qwen/Qwen3.6-35B-A3B"
 SYMMETRICAL_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 # SYMMETRICAL_EMBEDDING_MODEL="nvidia/llama-embed-nemotron-8b"
 # SYMMETRICAL_EMBEDDING_MODEL="Octen/Octen-Embedding-8B"
 ASYMMETRICAL_EMBEDDING_MODEL="cross-encoder/nli-deberta-v3-large"
 
 # stage 1: VLM with CoT:
-python -u stage1_mlm_cot.py -csv $CSV_FILE -vlm $VLM_MODEL -bs 36 -mgt 128 -nw $SLURM_CPUS_PER_TASK -v
+python -u stage1_mlm_cot.py -csv $CSV_FILE -mlm $MLM_MODEL -bs 36 -mgt 128 -nw $SLURM_CPUS_PER_TASK -v
 
 # stage 2: Modality Conflict Quantification
 python -u stage2_modality_conflict.py -jsonl $JSONL_COT_FILE -sym $SYMMETRICAL_EMBEDDING_MODEL -asym $ASYMMETRICAL_EMBEDDING_MODEL -v
