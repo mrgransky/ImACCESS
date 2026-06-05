@@ -9,10 +9,6 @@ sys.path.insert(0, CLIP_DIR)
 MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
 sys.path.insert(0, MISC_DIR)
 
-print(f"{len(sys.path)} {type(sys.path)} sys.path:")
-for i, p in enumerate(sys.path):
-	print(f"\t{i} {p}")
-
 from utils import *
 from nlp_utils import get_enriched_description
 
@@ -33,7 +29,7 @@ from nlp_utils import get_enriched_description
 
 # HPC:
 # one sample:
-# $ python stage1_mlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/images/SBC-3_tail_wheel_extended.jpg -c "SBC-3 tail wheel extended. SBC-3 Helldiver tail wheel extended. SBC Helldiver." -vlm "google/gemma-4-12B-it" -v
+# $ python stage1_mlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/images/SBC-3_tail_wheel_extended.jpg -c "SBC-3 tail wheel extended. SBC-3 Helldiver tail wheel extended. SBC Helldiver." -vlm "google/gemma-4-26B-A4B-it" -v
 
 PROMPT_TEMPLATE = """Extract **at most {k}** prominet keywords **per category** from the given image and caption.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
