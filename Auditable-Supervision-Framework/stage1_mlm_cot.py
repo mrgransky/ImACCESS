@@ -675,8 +675,8 @@ def _parse_(model_id: str, response: str, verbose: bool=False) -> Optional[Dict[
 	response = re.sub(r"```python\s*", "", response, flags=re.IGNORECASE)
 	response = re.sub(r"```\s*", "", response)
 	
-	if verbose:
-		print(f"[STEP 1b] After removing markdown fences: {len(response)} characters")
+	# if verbose:
+	# 	print(f"[STEP 1b] After removing markdown fences: {len(response)} characters")
 
 	required_keys = {"text_concepts", "visual_concepts", "fused_concepts"}
 

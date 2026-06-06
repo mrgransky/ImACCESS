@@ -33,6 +33,7 @@ class ConflictQuantifier:
 		tau_orphan: float = 0.60,
 		tau_asym: float = 0.25,
 		tau_fast_fail: float = 0.40,
+		batch_size: int = 2**10,
 		verbose: bool = False
 	):
 		self.device = device
@@ -41,6 +42,7 @@ class ConflictQuantifier:
 		self.tau_orphan = tau_orphan
 		self.tau_asym = tau_asym
 		self.tau_fast_fail = tau_fast_fail
+		self.batch_size = batch_size
 		self.verbose = verbose
 				
 		# Load Symmetric Embedder (Cosine Similarity)
@@ -254,8 +256,22 @@ class ConflictQuantifier:
 			}
 
 		# STEP 1: SYMMETRIC AUDIT
-		emb_t = self.sym_model.encode(c_text, convert_to_numpy=True, normalize_embeddings=True)
-		emb_v = self.sym_model.encode(c_vis,  convert_to_numpy=True, normalize_embeddings=True)
+		emb_t = self.sym_model.encode(
+			c_text, 
+			batch_size=self.batch_size,
+			show_progress_bar=self.verbose,
+			convert_to_numpy=True,
+			normalize_embeddings=True,
+			precision='float32',
+		)
+		emb_v = self.sym_model.encode(
+			c_vis,
+			batch_size=self.batch_size,
+			show_progress_bar=self.verbose,
+			convert_to_numpy=True,
+			normalize_embeddings=True,
+			precision='float32',
+		)
 
 		# Centroid similarity: 
 		# cheap global coherence signal.

@@ -48,7 +48,7 @@ import re
 import spacy
 from spacy.matcher import Matcher
 
-model_id = "en_core_web_sm"
+model_id = "en_core_web_md"
 nlp = spacy.load(model_id)
 
 text = "I visited Los Angeles Subway Terminal, and Torre di Pisa last month. Next week, I will definitely visit Nova Scotia. I also visited Canada, the United Kingdom, the United States, City College of San Francisco, New York, Cape Verde, Canary Islands, and the United States of America."
