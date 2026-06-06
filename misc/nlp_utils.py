@@ -247,26 +247,47 @@ def _post_process_(
 		Returns set of lowercased geographic references.
 		"""
 		if nlp_spacy is None:
+			print("[GEO] spaCy model not loaded, returning empty set")
 			return set()
+		
+		print(f"\n[GEO] Processing text: {repr(text)}")
 		
 		GEO_LABELS = {"GPE", "LOC"}  # GPE: countries, cities, states; LOC: geographic features
 		
 		doc = nlp_spacy(text)
+		print(f"[GEO] spaCy doc created with {len(doc.ents)} entities")
 		
 		# Direct geographic entities
 		gpe_spans = [ent for ent in doc.ents if ent.label_ in GEO_LABELS]
+		print(f"[GEO] Found {len(gpe_spans)} direct geographic entities:")
+		for ent in gpe_spans:
+			print(f"  ├─ {ent.text!r:30} → {ent.label_}")
+		
 		gpe_texts = {ent.text.lower() for ent in gpe_spans}
+		print(f"[GEO] Direct GPE/LOC set (lowercased): {gpe_texts}")
 		
 		# Embedded geographic entities in ORG labels (e.g., "City College of San Francisco")
 		org_spans = [ent for ent in doc.ents if ent.label_ == "ORG"]
+		print(f"\n[GEO] Found {len(org_spans)} ORG entities to check for embedded locations:")
+		
 		embedded_gpes = set()
 		for org in org_spans:
+			print(f"  [ORG] Analyzing: {org.text!r}")
 			org_doc = nlp_spacy(org.text)
+			print(f"    ├─ Sub-entities found: {len(org_doc.ents)}")
+			
 			for sub_ent in org_doc.ents:
+				print(f"    │  ├─ {sub_ent.text!r:25} → {sub_ent.label_}")
 				if sub_ent.label_ in GEO_LABELS and sub_ent.text.lower() not in gpe_texts:
 					embedded_gpes.add(sub_ent.text.lower())
+					print(f"    │  └─ ✓ Added as embedded GPE: {sub_ent.text.lower()!r}")
 		
-		return gpe_texts | embedded_gpes
+		print(f"\n[GEO] Embedded GPE/LOC set: {embedded_gpes}")
+		
+		final_result = gpe_texts | embedded_gpes
+		print(f"[GEO] Final combined result ({len(final_result)} items): {final_result}\n")
+		
+		return final_result
 
 	def is_stopword(phrase: str) -> bool:
 		"""

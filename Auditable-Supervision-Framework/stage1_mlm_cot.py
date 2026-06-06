@@ -53,7 +53,7 @@ OUTPUT DEFINITIONS:
   - visual_concepts: Keywords derived EXCLUSIVELY from the pixel data. OCR, watermarks, or text overlays are not allowed.
   - fused_concepts: Keywords inferred JOINTLY from BOTH textal and visual modalities. If the modalities are disjoint, return an empty list [] and refrain from forcing a fusion.
 
-Return ONLY a valid JSON object with standarized, valid and parsable **Python lists** without thoughs, reasoning or any additional text:
+Return ONLY a valid JSON object with standarized, valid and parsable **Python LISTS** without thoughs, reasoning or any additional text:
 {{
 "text_concepts": [],
 "visual_concepts": [],

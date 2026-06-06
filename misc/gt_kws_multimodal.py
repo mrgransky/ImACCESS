@@ -405,7 +405,7 @@ def main():
 	parser.add_argument("--vlm_max_generated_tks", '-vlm_mgt', type=int, default=36, help="Max number of generated tokens using VLM")
 	parser.add_argument("--vlm_batch_size", '-vlm_bs', type=int, default=2, help="Batch size for visual processing using VLM (adjust based on GPU memory)")
 	parser.add_argument("--vlm_quantization_bits", '-vlm_qb', type=int, default=None, help="LLM Quantization bits")
-	parser.add_argument("--embedding_model_id", '-emb_id', type=str, default="Qwen/Qwen3-Embedding-0.6B", help="HuggingFace Embedding model ID")
+	parser.add_argument("--embedding_model_id", '-emb_id', type=str, default="Qwen/Qwen3-Embedding-0.6B", help="Embedding model ID")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--num_clusters", '-nc', type=int, default=None, help="Number of clusters")

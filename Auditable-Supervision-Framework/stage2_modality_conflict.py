@@ -611,9 +611,9 @@ def modality_conflict_audit(
 	print(f"\n[STAGE 2] Stats written to: {txt_file}")
 
 def main():
-	parser = argparse.ArgumentParser(description="VLLM-instruct-based keyword annotation for Historical Dataset")
-	parser.add_argument("--jsonl_file", '-jsonl', type=str, required=True, help="Path to the VLM CoT output (JSONL file)")
-	parser.add_argument("--sym_emb_model", "-sym", type=str, default="all-MiniLM-L6-v2", help="Sentence embedding model (symmetrical embedding)")
+	parser = argparse.ArgumentParser(description="MLM-instruct-based keyword annotation")
+	parser.add_argument("--jsonl_file", '-jsonl', type=str, required=True, help="MLM CoT JSONL")
+	parser.add_argument("--sym_emb_model", "-sym", type=str, default="Qwen/Qwen3-Embedding-0.6B", help="Sentence embedding model (symmetrical embedding)")
 	parser.add_argument("--asym_nli_model", "-asym", type=str, default="cross-encoder/nli-deberta-v3-large", help="NLI model (asymmetrical embedding)")
 	parser.add_argument("--column", "-col", type=str, default="mlm_cot_raw", help="Column to use for canonical analysis",)
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")

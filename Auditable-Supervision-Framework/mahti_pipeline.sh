@@ -52,7 +52,7 @@ python -u stage1_mlm_cot.py -csv $CSV_FILE -mlm $MLM_MODEL -bs 36 -mgt 128 -nw $
 python -u stage2_modality_conflict.py -jsonl $JSONL_COT_FILE -sym $SYMMETRICAL_EMBEDDING_MODEL -asym $ASYMMETRICAL_EMBEDDING_MODEL -v
 
 # Bridge Global Aggregation:
-python -u bridge_global_aggregation_ontology_builder.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -m $SYMMETRICAL_EMBEDDING_MODEL -v
+python -u bridge_global_aggregation_ontology_builder.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -emb $SYMMETRICAL_EMBEDDING_MODEL -v
 
 # stage 3 & 4: Regime-Conditioned Label Quality
 python -u stage3_4_cgd_consolidation.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -v

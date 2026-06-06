@@ -34,19 +34,19 @@ class CGDConsolidator:
 			base = os.path.basename(self.input_jsonl).replace(".jsonl", suffix)
 			return os.path.join(self.outputs_dir, base)
 
-		map_path          = _bridge_path("_canonical_map.json")
-		freqs_path        = _bridge_path("_global_label_frequency.json")
-		emb_path          = _bridge_path("_emb_cache.pt")
-		target_vocab_path = _bridge_path("_target_vocabulary.json")
+		canonical_map_path	= _bridge_path("_canonical_map.json")
+		freqs_path        	= _bridge_path("_global_label_frequency.json")
+		emb_path          	= _bridge_path("_emb_cache.pt")
+		target_vocab_path 	= _bridge_path("_target_vocabulary.json")
 
 		if self.verbose:
 			print(f"\n[STAGE 3 & 4] CGD Consolidator & Regime-Aware Router")
-			print(f"  ├─ Canonical Map   : {map_path}")
+			print(f"  ├─ Canonical Map   : {canonical_map_path}")
 			print(f"  ├─ Global Freqs    : {freqs_path}")
 			print(f"  ├─ Embedding Cache : {emb_path}")
 			print(f"  ├─ Target Vocab    : {target_vocab_path}")
 
-		with open(map_path, 'r') as f:
+		with open(canonical_map_path, 'r') as f:
 			self.canonical_map: Dict[str, str] = json.load(f)
 
 		with open(freqs_path, 'r') as f:
@@ -87,11 +87,11 @@ class CGDConsolidator:
 			print(f"  └─ [{self.__class__.__name__}] {len(self.emb_cache)} embeddings | Vocab size: {len(self.target_vocabulary)}")
 
 	def _get_embedding(self, label: str) -> Optional[np.ndarray]:
-		"""Safely fetch L2-normalized embedding from cache."""
+		"""fetch L2-normalized embedding from cache."""
 		return self.emb_cache.get(label, None)
 
 	def _fast_cosine_sim(self, label_a: str, label_b: str) -> float:
-		"""Instant cosine similarity via dot product on pre-normalized vectors."""
+		"""cosine similarity via dot product on pre-normalized vectors."""
 		emb_a = self._get_embedding(label_a)
 		emb_b = self._get_embedding(label_b)
 		if emb_a is None or emb_b is None:
@@ -108,13 +108,16 @@ class CGDConsolidator:
 		     (O(|V|) dot products, all in-memory numpy — fast enough for |V|~1K)
 		  3. Returns None if best cosine similarity < 0.50 (concept is out-of-domain)
 		"""
+		print(f"Resolving {raw_concept}")
 		# Tier 1: direct map hit
 		if raw_concept in self.canonical_map:
+			print(f"Found {raw_concept} in canonical map")
 			return self.canonical_map[raw_concept]
 
 		# Tier 2: fallback nearest-neighbour search
 		emb_c = self._get_embedding(raw_concept)
 		if emb_c is None:
+			print(f"Failed to get embedding for {raw_concept}")
 			return None
 
 		best_class: Optional[str] = None
@@ -125,7 +128,10 @@ class CGDConsolidator:
 				best_sim = sim
 				best_class = target_class
 
-		return best_class if best_sim >= 0.50 else None
+		result = best_class if best_sim >= 0.50 else None
+		print(result)
+		print('-'*100)
+		return result
 
 	# Stage 3: Micro-CGD Audit
 	def audit_concept_CGD(
@@ -142,12 +148,12 @@ class CGDConsolidator:
 		Computes continuous Coverage (C), Grounding (G), and Density (D) scores
 		for a single raw concept.
 
-		  G(c) — Visual grounding: 1.0 if concept appears verbatim in c_vis,
-		          else max cosine similarity to any visual concept.
-		  C(c) — Coverage / rarity: log-normalised inverse frequency.
-		  D(c) — Density = D_global * D_local:
-		            D_global: exponential frequency prior (reusability).
-		            D_local : NLI-based abstraction penalty (SOFT_CONFLICT only).
+		  G(c) Visual grounding: 1.0 if concept appears verbatim in c_vis,
+		        else max cosine similarity to any visual concept.
+		  C(c) Coverage / rarity: log-normalised inverse frequency.
+		  D(c) Density = D_global * D_local:
+						D_global: exponential frequency prior (reusability).
+						D_local : NLI-based abstraction penalty (SOFT_CONFLICT only).
 		"""
 		# 1. Grounding Score G(c)
 		if concept in c_vis:
@@ -161,7 +167,6 @@ class CGDConsolidator:
 
 		# 3. Density Score D(c) = D_global * D_local
 		d_global = 1.0 - math.exp(-self.alpha * freq)
-
 		d_local = 1.0
 		if regime == "SOFT_CONFLICT":
 			# Safe unpack: Stage 2 short-circuit receipts default these to 0.0
@@ -196,7 +201,7 @@ class CGDConsolidator:
 
 		denser_modality = metrics.get("denser_modality", "EQUAL")
 
-		# metrics["asymmetry_gap"] is the SIGNED gap from Stage 2 (V_entails_T - T_entails_V).
+		# metrics["asymmetry_gap"] is the SIGNED gap from Stage 2: (V_entails_T - T_entails_V).
 		# We need the magnitude here for w_pos discounting.
 		raw_asym_gap    = metrics.get("asymmetry_gap", 0.0)
 		asym_gap_abs    = abs(raw_asym_gap) if raw_asym_gap is not None else 0.0

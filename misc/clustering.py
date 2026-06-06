@@ -1219,13 +1219,15 @@ def analyze_cluster_quality(
 	size_p95      = cluster_df['size'].quantile(0.95)
 	very_large    = cluster_df[cluster_df['size'] > size_p95]
 	if len(very_large) > 0:
-		problematic_clusters.append({
-			'issue':       'Very large clusters',
-			'count':       len(very_large),
-			'cluster_ids': very_large['cluster_id'].tolist(),
-			'severity':    'LOW',
-			'description': f'Size > 95th percentile ({size_p95:.0f}). May be over-merged.',
-		})
+		problematic_clusters.append(
+			{
+				'issue':       'Very large clusters',
+				'count':       len(very_large),
+				'cluster_ids': very_large['cluster_id'].tolist(),
+				'severity':    'LOW',
+				'description': f'Size > 95th percentile ({size_p95:.0f}). May be over-merged.',
+			}
+		)
 		very_large.to_csv(os.path.join(output_dir, "very_large_clusters.csv"), index=False)
 
 	if verbose:

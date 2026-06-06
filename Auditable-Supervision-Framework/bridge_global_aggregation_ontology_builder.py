@@ -15,11 +15,11 @@ from clustering import *
 from nlp_utils import _post_process_
 
 def cluster_and_save_priors(
-		input_jsonl: str,
-		model_id: str,
-		column: str, 
-		device: str,
-		verbose: bool,
+	input_jsonl: str,
+	model_id: str,
+	column: str, 
+	device: str,
+	verbose: bool,
 ):
 	"""
 	Bridge: Corpus-Level Ontology Discovery.
@@ -146,7 +146,7 @@ def cluster_and_save_priors(
 	# Post-process labels
 	all_post_processed_sample_labels = _post_process_(
 		labels_list=all_sample_labels, 
-		verbose=False, # not to clutter the logs
+		verbose=verbose, #False, # not to clutter the logs
 	)
 	
 	# Filter out None values returned by _post_process_
@@ -162,7 +162,7 @@ def cluster_and_save_priors(
 	del all_post_processed_sample_labels
 	##################################################################################################
 
-	# return
+	return
 	# STEP 2: GLOBAL FREQUENCY COUNTS (Reusability Prior)
 	# Convert Counter → plain dict before saving and before passing to
 	# any clustering.py function. Counter's default-zero behaviour silently
@@ -306,7 +306,7 @@ def cluster_and_save_priors(
 		df=df,
 		X=X,
 		model=model,
-		original_label_counts=label_freq_dict,   # plain dict (FIX-4)
+		original_label_counts=label_freq_dict,
 		verbose=verbose,
 	)
 	print(f"[BRIDGE] Canonical selection complete. "
@@ -353,8 +353,7 @@ def cluster_and_save_priors(
 		poor_canonical_threshold=0.60,
 		verbose=verbose,
 	)
-	print(f"[BRIDGE] Audit complete. "
-	      f"Removed {len(removed_labels):,} labels from problematic clusters.")
+	print(f"[BRIDGE] Removed {len(removed_labels)} labels from problematic clusters.")
 
 	# =========================================================================
 	# STEP 9: RE-EVALUATE FINAL CLUSTER QUALITY
@@ -376,10 +375,9 @@ def cluster_and_save_priors(
 	# STEP 10: EXTRACT EMERGENT TARGET VOCABULARY V
 	# =========================================================================
 	target_vocab: List[str] = sorted(df_clean['canonical'].unique().tolist())
-	print(f"\n[BRIDGE] Emergent Target Vocabulary |V| = {len(target_vocab):,} canonical classes.")
-	print(f"  ├─ Sample: {target_vocab[:10]}...")
+	print(f"[BRIDGE] Emergent Target Vocabulary |V| = {len(target_vocab)} canonical labels.")
 
-# =========================================================================
+	# =========================================================================
 	# STEP 11: PRE-COMPUTE TARGET VOCABULARY EMBEDDINGS
 	# Only encode canonical strings that are NOT already present as raw VLM
 	# concept rows in X_clean.
@@ -397,7 +395,7 @@ def cluster_and_save_priors(
 	#   c) Encode only those new strings in a single additional pass.
 	#   d) Merge into emb_cache.
 	# =========================================================================
-	print(f"\n[BRIDGE] Building emb_cache (single-pass, FIX-3)...")
+	print(f"[BRIDGE] Building emb_cache (single-pass)")
 
 	# (a) Seed cache from all raw concept embeddings in X_clean
 	emb_cache: dict = {
@@ -414,8 +412,10 @@ def cluster_and_save_priors(
 
 	# (c) Encode only the genuinely new strings
 	if new_canonicals:
-		print(f"[BRIDGE] Encoding {len(new_canonicals):,} new canonical strings "
-		      f"(virtual hypernyms not in raw concept set)...")
+		print(
+			f"[BRIDGE] Encoding {len(new_canonicals)} new canonical strings "
+		  f"(virtual hypernyms not in raw concept set)..."
+		)
 		new_embs = model.encode(
 			new_canonicals,
 			batch_size=1024,
@@ -428,16 +428,19 @@ def cluster_and_save_priors(
 		for lbl, emb in zip(new_canonicals, new_embs):
 			emb_cache[lbl] = emb
 	else:
-		print(f"[BRIDGE] All {len(target_vocab):,} target canonicals already in cache "
-		      f"(no virtual hypernyms needed separate encoding).")
+		print(
+			f"[BRIDGE] All {len(target_vocab):,} target canonicals already in cache "
+		  f"(no virtual hypernyms needed separate encoding)."
+		)
 
-	print(f"[BRIDGE] emb_cache size: {len(emb_cache):,} entries "
-	      f"(raw concepts + target canonicals, single encoding run).")
+	print(
+		f"[BRIDGE] emb_cache size: {len(emb_cache):,} entries "
+	  f"(raw concepts + target canonicals, single encoding run)."
+	)
 
 	# =========================================================================
 	# STEP 12: SAVE OUTPUTS
 	# =========================================================================
-
 	# 1. canonical_map.json — raw VLM concept → canonical label
 	#    Used by Stage 3 (Micro-CGD Audit) and Stage 4 (Consolidation).
 	final_canonical_dict: dict = df_clean.set_index('label')['canonical'].to_dict()
@@ -469,7 +472,7 @@ def cluster_and_save_priors(
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Bridge: Global Aggregation & Ontology Discovery")
 	parser.add_argument("--jsonl_file", "-jsonl", type=str, required=True, help="Stage 2 modality conflict audit JSONL file",)
-	parser.add_argument("--embedding_model", "-m", type=str, default="all-MiniLM-L6-v2", help="SentenceTransformer model for canonical analysis",)
+	parser.add_argument("--embedding_mode_id", "-emb", type=str, default="Qwen/Qwen3-Embedding-0.6B", help="SentenceTransformer model for canonical analysis",)
 	parser.add_argument("--column", "-col", type=str, default="mlm_cot_raw", help="Column to use for canonical analysis",)
 	parser.add_argument("--device", "-dev", type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to use for computation",)
 	parser.add_argument("--verbose", "-v", action='store_true', help="Verbose output")
@@ -483,7 +486,7 @@ if __name__ == "__main__":
 
 	cluster_and_save_priors(
 		input_jsonl=args.jsonl_file,
-		model_id=args.embedding_model,
+		model_id=args.embedding_mode_id,
 		column=args.column,
 		device=args.device,
 		verbose=args.verbose,
