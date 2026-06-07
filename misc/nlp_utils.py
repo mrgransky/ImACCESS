@@ -14,9 +14,10 @@ import spacy
 
 # Load spaCy model at module level (after other imports)
 try:
-	nlp_spacy = spacy.load("en_core_web_sm")
+	spacy_model_id = "en_core_web_md"
+	nlp_spacy = spacy.load(spacy_model_id)
 except OSError:
-	print("[WARNING] spaCy model 'en_core_web_sm' not found. Run: python -m spacy download en_core_web_sm")
+	print(f"[WARNING] spaCy model {spacy_model_id} not found. Run: python -m spacy download {spacy_model_id}")
 	nlp_spacy = None
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -247,45 +248,45 @@ def _post_process_(
 		Returns set of lowercased geographic references.
 		"""
 		if nlp_spacy is None:
-			print("[GEO] spaCy model not loaded, returning empty set")
+			print("\t\t[GEO] spaCy model not loaded, returning empty set")
 			return set()
 		
-		print(f"\n[GEO] Processing text: {repr(text)}")
+		print(f"\t\t[GEO] Processing text: {repr(text)} [spacy: {spacy_model_id}]")
 		
 		GEO_LABELS = {"GPE", "LOC"}  # GPE: countries, cities, states; LOC: geographic features
 		
 		doc = nlp_spacy(text)
-		print(f"[GEO] spaCy doc created with {len(doc.ents)} entities")
+		print(f"\t\t[GEO] spaCy doc created with {len(doc.ents)} entities")
 		
 		# Direct geographic entities
 		gpe_spans = [ent for ent in doc.ents if ent.label_ in GEO_LABELS]
-		print(f"[GEO] Found {len(gpe_spans)} direct geographic entities:")
+		print(f"\t\t[GEO] Found {len(gpe_spans)} direct geographic entities:")
 		for ent in gpe_spans:
-			print(f"  ├─ {ent.text!r:30} → {ent.label_}")
+			print(f"\t\t\t├─ {ent.text!r:30} → {ent.label_}")
 		
 		gpe_texts = {ent.text.lower() for ent in gpe_spans}
-		print(f"[GEO] Direct GPE/LOC set (lowercased): {gpe_texts}")
+		print(f"\t\t[GEO] Direct GPE/LOC set (lowercased): {gpe_texts}")
 		
 		# Embedded geographic entities in ORG labels (e.g., "City College of San Francisco")
 		org_spans = [ent for ent in doc.ents if ent.label_ == "ORG"]
-		print(f"\n[GEO] Found {len(org_spans)} ORG entities to check for embedded locations:")
+		print(f"\t\t[GEO] Found {len(org_spans)} ORG entities to check for embedded locations:")
 		
 		embedded_gpes = set()
 		for org in org_spans:
-			print(f"  [ORG] Analyzing: {org.text!r}")
+			print(f"\t\t[ORG] Analyzing: {org.text!r}")
 			org_doc = nlp_spacy(org.text)
-			print(f"    ├─ Sub-entities found: {len(org_doc.ents)}")
+			print(f"\t\t\t├─ Sub-entities found: {len(org_doc.ents)}")
 			
 			for sub_ent in org_doc.ents:
-				print(f"    │  ├─ {sub_ent.text!r:25} → {sub_ent.label_}")
+				print(f"\t\t\t│  ├─ {sub_ent.text!r:25} → {sub_ent.label_}")
 				if sub_ent.label_ in GEO_LABELS and sub_ent.text.lower() not in gpe_texts:
 					embedded_gpes.add(sub_ent.text.lower())
-					print(f"    │  └─ ✓ Added as embedded GPE: {sub_ent.text.lower()!r}")
+					print(f"\t\t\t│  └─ ✓ Added as embedded GPE: {sub_ent.text.lower()!r}")
 		
-		print(f"\n[GEO] Embedded GPE/LOC set: {embedded_gpes}")
+		print(f"\t\t[GEO] Embedded GPE/LOC set: {embedded_gpes}")
 		
 		final_result = gpe_texts | embedded_gpes
-		print(f"[GEO] Final combined result ({len(final_result)} items): {final_result}\n")
+		print(f"\t\t[GEO] Final combined result ({len(final_result)} items): {final_result}")
 		
 		return final_result
 
@@ -351,17 +352,6 @@ def _post_process_(
 		capitalized = sum(1 for t in tokens if t and t[0].isupper())
 		return capitalized / len(tokens) >= 0.6
 	
-	def is_abbreviation(original_phrase: str) -> bool:
-		"""
-		Check if phrase is an abbreviation or model code.
-		Abbreviations should be protected from lemmatization and length filtering.
-		"""
-		return (
-			original_phrase.isupper()
-			or "." in original_phrase
-			or any(c.isdigit() for c in original_phrase)
-		)
-
 	def is_adjectival_phrase(original_phrase: str) -> bool:
 		"""
 		Detect descriptive adjectival phrases like:
@@ -595,7 +585,7 @@ def _post_process_(
 		
 		for item_idx, item in enumerate(current_items):
 			if verbose:
-				print(f"    [{item_idx+1}] Original: {repr(item)} (type: {type(item).__name__})")
+				print(f"[{item_idx+1}] Original: {repr(item)} (type: {type(item).__name__})")
 			
 			if not item:
 				if verbose:
@@ -674,27 +664,11 @@ def _post_process_(
 					print(f"        → {lemma} Too long (len={len(lemma.split())} > {max_kw_word_length}), skipping")
 				continue
 
-			# if not is_abbreviation(original_cleaned): # SMU, NAS:
-			# 	if verbose:
-			# 		print(f"        → {lemma} not abbreviation, skipping")
-			# 	continue
-
 			# check if digit is in the lemma: (extremely strict)
 			if any(c.isdigit() for c in lemma):
 				if verbose:
 					print(f"        → {lemma} Digit detected, skipping")
 				continue
-
-			# # Check if lemma is a number
-			# if lemma.isdigit():
-			# 	if verbose:
-			# 		print(f"        → {lemma} Number detected, skipping")
-			# 	continue
-
-			# if re.match(r'^number\s\d+$', lemma):
-			# 	if verbose:
-			# 		print(f"        → {lemma} Number detected, skipping")
-			# 	continue
 
 			# # check for geographic references:
 			# if any(lm in geographic_references for lm in lemma.lower().split()):
@@ -702,12 +676,11 @@ def _post_process_(
 			# 		print(f"        → {repr(lemma)} Geographic reference detected, skipping")
 			# 	continue
 
-
 			if nlp_spacy is not None:
 				geo_entities = _extract_geographic_entities(lemma)
 				if geo_entities:
 					if verbose:
-						print(f"        → {repr(lemma)} Geographic entity detected by spaCy: {geo_entities}")
+						print(f"        → {repr(lemma)} Geographic entity [spaCy] {repr(geo_entities)}")
 					continue
 
 			# # tokenized_lemma = re.split(r'[ .-]+', lemma.lower())   # split on space, hyphen or dot (U.S. Route 66)
@@ -754,12 +727,6 @@ def _post_process_(
 					print(f"        → {lemma} Black and white detected, skipping")
 				continue
 
-			# # exclude if "unidentified" or "unknown" in the keyword "american unknown soldier", "unidentified ship" or irrelevant words
-			# if any(word in lemma for word in ["man", "men", "woman", "women", "people", "person", "child", "children", "boy", "girl", "boys", "girls", "brother", "brothers", "sister", "sisters", "sample", "analysis", "unknown", "unidentified", "system", "equipment", "component", "supply", "material", "piece", "variant", "part", "series", "chart", "graph", "diagram", "tableau", "plot", "graf", "schematic", "sketch", "sketching", "number", "numbered", "model", "nickname", 'cousin', 'nephew', 'niece', 'sibling', 'uncle', "mother", "father", "daughter", "son", "godmother", "grandfather", "grandmother", "grandma", "grandpa", 'granddaughter', 'grandson', "godfather","aunt", "grandparent", "parent", "male", "female", "individual", "section", "date", "project", "program", "identifier", "segment", "service"]):
-			# 	if verbose:
-			# 		print(f"    ✗ Skipped: irrelevant word detected! {lemma}")
-			# 	continue
-
 			if should_filter_label(lemma):
 				if verbose:
 					print(f"    ✗ Skipped: '{lemma}' as irrelevant!")
@@ -780,30 +747,6 @@ def _post_process_(
 				if verbose:
 					print(f"        → {lemma} Only NNNNN foot detected, skipping")
 				continue
-
-			# if any(ch in string.punctuation for ch in lemma):
-			# 	if verbose:
-			# 		print(f"        → Punctuation detected in {lemma}, skipping")
-			# 	continue
-
-			# # Skip punctuation EXCEPT hyphens in compound words
-			# invalid_punctuation = set(string.punctuation) - {'-'}  # Allow hyphens
-			# if any(ch in invalid_punctuation for ch in lemma):
-			# 	if verbose:
-			# 		print(f"        → Punctuation detected in {lemma}, skipping")
-			# 	continue
-
-			# # Reject standalone hyphens or hyphen-only strings
-			# if lemma == '-' or lemma.replace('-', '').strip() == '':
-			# 	if verbose:
-			# 		print(f"        → Invalid hyphen pattern, skipping")
-			# 	continue
-
-			# # entire string must consist only of uppercase/lowercase English letters and spaces
-			# if not re.match(r"^[a-zA-Z\s'\-]+$", lemma):
-			# 	if verbose:
-			# 		print(f"        → {lemma} Non-alphabetic character detected, skipping")
-			# 	continue
 
 			# Check duplicates
 			if lemma in clean_set:

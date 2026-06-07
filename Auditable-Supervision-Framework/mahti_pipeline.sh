@@ -39,20 +39,21 @@ CSV_FILE=$DATASET_DIR/metadata_multi_label.csv
 JSONL_COT_FILE="${CSV_FILE%.csv}_mlm_cot.jsonl"
 JSONL_MODALITY_CONFLICT_FILE="${JSONL_COT_FILE%.jsonl}_modality_conflict_audit.jsonl"
 
-MLM_MODEL="Qwen/Qwen3.5-35B-A3B"
+MLM_MODEL="Qwen/Qwen3.6-35B-A3B"
 SYMMETRICAL_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 # SYMMETRICAL_EMBEDDING_MODEL="nvidia/llama-embed-nemotron-8b"
 # SYMMETRICAL_EMBEDDING_MODEL="Octen/Octen-Embedding-8B"
 ASYMMETRICAL_EMBEDDING_MODEL="cross-encoder/nli-deberta-v3-large"
-
+BATCH_SIZE=36
+ENCODING_BATCH_SIZE=1024
 # stage 1: VLM with CoT:
-python -u stage1_mlm_cot.py -csv $CSV_FILE -mlm $MLM_MODEL -bs 36 -mgt 128 -nw $SLURM_CPUS_PER_TASK -v
+python -u stage1_mlm_cot.py -csv $CSV_FILE -mlm $MLM_MODEL -bs $BATCH_SIZE -mgt 128 -nw $SLURM_CPUS_PER_TASK -v
 
 # stage 2: Modality Conflict Quantification
-python -u stage2_modality_conflict.py -jsonl $JSONL_COT_FILE -sym $SYMMETRICAL_EMBEDDING_MODEL -asym $ASYMMETRICAL_EMBEDDING_MODEL -v
+python -u stage2_modality_conflict.py -jsonl $JSONL_COT_FILE -sym $SYMMETRICAL_EMBEDDING_MODEL -asym $ASYMMETRICAL_EMBEDDING_MODEL -bs $ENCODING_BATCH_SIZE -v
 
 # Bridge Global Aggregation:
-python -u bridge_global_aggregation_ontology_builder.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -emb $SYMMETRICAL_EMBEDDING_MODEL -v
+python -u bridge_global_aggregation_ontology_builder.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -emb $SYMMETRICAL_EMBEDDING_MODEL -bs $ENCODING_BATCH_SIZE -v
 
 # stage 3 & 4: Regime-Conditioned Label Quality
 python -u stage3_4_cgd_consolidation.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -v

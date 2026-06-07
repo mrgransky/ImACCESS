@@ -259,7 +259,6 @@ class ConflictQuantifier:
 		emb_t = self.sym_model.encode(
 			c_text, 
 			batch_size=self.batch_size,
-			show_progress_bar=self.verbose,
 			convert_to_numpy=True,
 			normalize_embeddings=True,
 			precision='float32',
@@ -267,7 +266,6 @@ class ConflictQuantifier:
 		emb_v = self.sym_model.encode(
 			c_vis,
 			batch_size=self.batch_size,
-			show_progress_bar=self.verbose,
 			convert_to_numpy=True,
 			normalize_embeddings=True,
 			precision='float32',
@@ -486,6 +484,7 @@ def modality_conflict_audit(
 	input_jsonl: str,
 	sym_model_id: str,
 	asym_model_id: str,
+	batch_size: int,
 	column: str,
 	verbose: bool = False
 ):
@@ -494,6 +493,7 @@ def modality_conflict_audit(
 		print(f"  ├─ Input  : {input_jsonl}")
 		print(f"  ├─ Symmetric Embedding Model  : {sym_model_id}")
 		print(f"  ├─ Asymmetric Embedding Model : {asym_model_id}")
+		print(f"  ├─ Batch Size : {batch_size}")
 		print(f"  └─ Column : {column}")
 
 	outputs_dir = os.path.join(os.path.dirname(input_jsonl), "outputs")
@@ -574,6 +574,7 @@ def modality_conflict_audit(
 		quantifier = ConflictQuantifier(
 			sym_model_id=sym_model_id,
 			nli_model_id=asym_model_id,
+			batch_size=batch_size,
 			verbose=verbose,
 		)
 
@@ -631,6 +632,7 @@ def main():
 	parser.add_argument("--jsonl_file", '-jsonl', type=str, required=True, help="MLM CoT JSONL")
 	parser.add_argument("--sym_emb_model", "-sym", type=str, default="Qwen/Qwen3-Embedding-0.6B", help="Sentence embedding model (symmetrical embedding)")
 	parser.add_argument("--asym_nli_model", "-asym", type=str, default="cross-encoder/nli-deberta-v3-large", help="NLI model (asymmetrical embedding)")
+	parser.add_argument("--batch_size", "-bs", type=int, default=2**10, help="Batch size for embedding")
 	parser.add_argument("--column", "-col", type=str, default="mlm_cot_raw", help="Column to use for canonical analysis",)
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	args = parser.parse_args()
@@ -645,6 +647,7 @@ def main():
 		column=args.column,
 		sym_model_id=args.sym_emb_model,
 		asym_model_id=args.asym_nli_model,
+		batch_size=args.batch_size,
 		verbose=args.verbose
 	)
 

@@ -1,4 +1,3 @@
-from email.policy import default
 import os
 import sys
 
@@ -10,6 +9,9 @@ sys.path.insert(0, CLIP_DIR)
 MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
 sys.path.insert(0, MISC_DIR)
 
+# local:
+# nohup python -u bridge_global_aggregation_ontology_builder.py -jsonl /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label_mlm_cot_modality_conflict_audit.jsonl -v > logs/global_aggregation.log 2>&1 &
+
 from utils import *
 from clustering import *
 from nlp_utils import _post_process_
@@ -17,6 +19,7 @@ from nlp_utils import _post_process_
 def cluster_and_save_priors(
 	input_jsonl: str,
 	model_id: str,
+	batch_size: int,
 	column: str, 
 	device: str,
 	verbose: bool,
@@ -38,6 +41,7 @@ def cluster_and_save_priors(
 	print(f"\n[BRIDGE] Corpus-Level Ontology Discovery")
 	print(f"  ├─ Input  : {input_jsonl}")
 	print(f"  ├─ Model  : {model_id}")
+	print(f"  ├─ Batch  : {batch_size}")
 	print(f"  ├─ Column : {column}")
 	print(f"  └─ Device : {device}")
 
@@ -133,7 +137,7 @@ def cluster_and_save_priors(
 			print(f"  ├─ {r:<25} {cnt:>8,}  ({cnt/max(total_loaded,1)*100:.1f}%)")
 		print(f"[BRIDGE] Samples contributing to vocabulary: {len(all_sample_labels)}")
 		for i, sample in enumerate(all_sample_labels):
-			print(f"{i:<5}{sample}")
+			print(f"{i:7d} {sample}")
 		print("="*185)
 
 	if not all_sample_labels:
@@ -157,12 +161,12 @@ def cluster_and_save_priors(
 	
 	if verbose:
 		for i, sample in enumerate(all_post_processed_sample_labels):
-			print(f"{i:<5}{sample}")
+			print(f"{i:7d} {sample}")
 	all_sample_labels = all_post_processed_sample_labels
 	del all_post_processed_sample_labels
 	##################################################################################################
 
-	return
+	# return
 	# STEP 2: GLOBAL FREQUENCY COUNTS (Reusability Prior)
 	# Convert Counter → plain dict before saving and before passing to
 	# any clustering.py function. Counter's default-zero behaviour silently
@@ -220,7 +224,7 @@ def cluster_and_save_priors(
 		print(f"[BRIDGE] Encoding {len(unique_labels):,} unique labels...")
 		X = model.encode(
 			unique_labels,
-			batch_size=1024,
+			batch_size=batch_size,
 			show_progress_bar=verbose,
 			convert_to_numpy=True,
 			normalize_embeddings=True,
@@ -473,6 +477,7 @@ if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Bridge: Global Aggregation & Ontology Discovery")
 	parser.add_argument("--jsonl_file", "-jsonl", type=str, required=True, help="Stage 2 modality conflict audit JSONL file",)
 	parser.add_argument("--embedding_mode_id", "-emb", type=str, default="Qwen/Qwen3-Embedding-0.6B", help="SentenceTransformer model for canonical analysis",)
+	parser.add_argument("--batch_size", "-bs", type=int, default=2**10, help="Batch size for embedding")
 	parser.add_argument("--column", "-col", type=str, default="mlm_cot_raw", help="Column to use for canonical analysis",)
 	parser.add_argument("--device", "-dev", type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to use for computation",)
 	parser.add_argument("--verbose", "-v", action='store_true', help="Verbose output")
@@ -487,6 +492,7 @@ if __name__ == "__main__":
 	cluster_and_save_priors(
 		input_jsonl=args.jsonl_file,
 		model_id=args.embedding_mode_id,
+		batch_size=args.batch_size,
 		column=args.column,
 		device=args.device,
 		verbose=args.verbose,
