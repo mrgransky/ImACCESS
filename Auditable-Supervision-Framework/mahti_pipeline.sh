@@ -46,6 +46,7 @@ SYMMETRICAL_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 ASYMMETRICAL_EMBEDDING_MODEL="cross-encoder/nli-deberta-v3-large"
 BATCH_SIZE=36
 ENCODING_BATCH_SIZE=1024
+
 # stage 1: VLM with CoT:
 python -u stage1_mlm_cot.py -csv $CSV_FILE -mlm $MLM_MODEL -bs $BATCH_SIZE -mgt 128 -nw $SLURM_CPUS_PER_TASK -v
 
