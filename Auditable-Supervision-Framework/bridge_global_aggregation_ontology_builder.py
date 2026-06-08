@@ -313,18 +313,16 @@ def cluster_and_save_priors(
 		original_label_counts=label_freq_dict,
 		verbose=verbose,
 	)
-	print(f"[BRIDGE] Canonical selection complete. "
-	      f"Virtual hypernyms synthesised: {virtual_used_count}")
+	print(f"\n[BRIDGE] Canonical selection complete, virtual hypernyms synthesised: {virtual_used_count}")
 
 	# Map raw concepts to canonical labels
+	print(f"[BRIDGE] Mapping {type(cluster_canonicals)} {len(cluster_canonicals)} raw concepts to canonical labels...")
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 
-	# =========================================================================
 	# STEP 7: INJECT VIRTUAL HYPERNYMS AS GENUINE ROWS
 	# Virtual hypernyms must be real rows in df+X before remove_problematic_
 	# cluster_labels runs, otherwise that function flags their clusters as
 	# "canonical not found" and drops them.
-	# =========================================================================
 	virtual_rows: List[dict] = []
 	virtual_embs: List[np.ndarray] = []
 
@@ -347,9 +345,7 @@ def cluster_and_save_priors(
 		X  = np.vstack([X, np.array(virtual_embs)])
 		print(f"[BRIDGE] Injected {len(virtual_rows)} virtual hypernym(s) into df+X.")
 
-	# =========================================================================
 	# STEP 8: AUDIT — DROP LOW-COHESION AND POOR-CANONICAL CLUSTERS
-	# =========================================================================
 	df_clean, X_clean, removed_labels = remove_problematic_cluster_labels(
 		df=df,
 		embeddings=X,
@@ -359,9 +355,7 @@ def cluster_and_save_priors(
 	)
 	print(f"[BRIDGE] Removed {len(removed_labels)} labels from problematic clusters.")
 
-	# =========================================================================
 	# STEP 9: RE-EVALUATE FINAL CLUSTER QUALITY
-	# =========================================================================
 	unique_labels_clean   = df_clean['label'].values
 	cluster_labels_clean  = df_clean['cluster'].values
 	canonical_map_int     = df_clean.groupby('cluster')['canonical'].first().to_dict()
@@ -375,13 +369,10 @@ def cluster_and_save_priors(
 		verbose=verbose,
 	)
 
-	# =========================================================================
 	# STEP 10: EXTRACT EMERGENT TARGET VOCABULARY V
-	# =========================================================================
 	target_vocab: List[str] = sorted(df_clean['canonical'].unique().tolist())
 	print(f"[BRIDGE] Emergent Target Vocabulary |V| = {len(target_vocab)} canonical labels.")
 
-	# =========================================================================
 	# STEP 11: PRE-COMPUTE TARGET VOCABULARY EMBEDDINGS
 	# Only encode canonical strings that are NOT already present as raw VLM
 	# concept rows in X_clean.
@@ -398,7 +389,6 @@ def cluster_and_save_priors(
 	#   b) Identify target canonicals NOT already in emb_cache (new strings only).
 	#   c) Encode only those new strings in a single additional pass.
 	#   d) Merge into emb_cache.
-	# =========================================================================
 	print(f"[BRIDGE] Building emb_cache (single-pass)")
 
 	# (a) Seed cache from all raw concept embeddings in X_clean
@@ -442,9 +432,7 @@ def cluster_and_save_priors(
 	  f"(raw concepts + target canonicals, single encoding run)."
 	)
 
-	# =========================================================================
 	# STEP 12: SAVE OUTPUTS
-	# =========================================================================
 	# 1. canonical_map.json — raw VLM concept → canonical label
 	#    Used by Stage 3 (Micro-CGD Audit) and Stage 4 (Consolidation).
 	final_canonical_dict: dict = df_clean.set_index('label')['canonical'].to_dict()
@@ -467,13 +455,14 @@ def cluster_and_save_priors(
 	}
 	with open(vocab_path, 'w', encoding='utf-8') as f:
 		json.dump(vocab_payload, f, indent=2, ensure_ascii=False)
-	print(f"[BRIDGE] Saved target_vocabulary V ({len(target_vocab):,} classes) → {vocab_path}")
+	print(f"[BRIDGE] Saved target_vocabulary (V) ({len(target_vocab):,} classes) → {vocab_path}")
 
 	# 3. emb_cache.pt — {label: np.ndarray} for fast vector lookup in Stage 4.
 	torch.save(emb_cache, emb_path)
 	print(f"[BRIDGE] Saved emb_cache.pt ({len(emb_cache):,} entries) → {emb_path}")
 
-if __name__ == "__main__":
+@measure_execution_time
+def main():
 	parser = argparse.ArgumentParser(description="Bridge: Global Aggregation & Ontology Discovery")
 	parser.add_argument("--jsonl_file", "-jsonl", type=str, required=True, help="Stage 2 modality conflict audit JSONL file",)
 	parser.add_argument("--embedding_mode_id", "-emb", type=str, default="Qwen/Qwen3-Embedding-0.6B", help="SentenceTransformer model for canonical analysis",)
@@ -497,3 +486,6 @@ if __name__ == "__main__":
 		device=args.device,
 		verbose=args.verbose,
 	)
+
+if __name__ == "__main__":
+	main()

@@ -627,6 +627,7 @@ def modality_conflict_audit(
 		f_txt.write(f"Input records   : {len(records):,}\n")
 	print(f"\n[STAGE 2] Stats written to: {txt_file}")
 
+@measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="MLM-instruct-based keyword annotation")
 	parser.add_argument("--jsonl_file", '-jsonl', type=str, required=True, help="MLM CoT JSONL")

@@ -39,13 +39,12 @@ Refrain from extracting the following types of keywords:
   - Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
   - Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
   - Identifiers, serial/reference/model numbers, designated specification codes or brands.
-  - Names of places, buildings, or structures (e.g., 'Torre pendente di Pisa', 'Plaza de Santiago', 'St. Louis Cathedral').
+  - Names of places, stations, buildings, locations, or structures (e.g., 'California Memorial Stadium', 'Berkeley station', 'Torre pendente di Pisa', 'Plaza de Santiago', 'St. Louis Cathedral').
   - Continents, countries, states, provinces, cities, towns, islands, or regions.
   - Nationalities, ethnicities, or religions.
-  - Individual people's names or honorifics (e.g., 'A. A. Robinson', 'Mr. Terry Duce', 'Allan M. Hardy', 'Dr. Howard Russell'). 
+  - Individual people's names or honorifics (e.g., 'Mr. Terry Duce', 'Allan M. Hardy', 'Dr. Howard Russell'). 
   - Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
   - Roman numerals, fractions, or ordinal numeral keywords.
-  - Abbreviations, acronyms, or initialisms.
   - Image types or characteristics (e.g., 'monochrome picture', 'multiple exposure', 'superimposed photograph', 'blurred photo', 'black and white image').
 
 OUTPUT DEFINITIONS:
@@ -53,12 +52,8 @@ OUTPUT DEFINITIONS:
   - visual_concepts: Keywords derived EXCLUSIVELY from the pixel data. OCR, watermarks, or text overlays are not allowed.
   - fused_concepts: Keywords inferred JOINTLY from BOTH textal and visual modalities. If the modalities are disjoint, return an empty list [] and refrain from forcing a fusion.
 
-Return ONLY a valid JSON object with standarized, valid and parsable **Python LISTS** without thoughs, reasoning or any additional text:
-{{
-"text_concepts": [],
-"visual_concepts": [],
-"fused_concepts":[]
-}}
+Return ONLY a valid JSON object with standarized and parsable **Python LISTS** without thoughs, reasoning or any additional text:
+{{"text_concepts": [], "visual_concepts": [], "fused_concepts":[]}}
 
 Caption: {caption}"""
 

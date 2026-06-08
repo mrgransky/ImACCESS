@@ -1,31 +1,22 @@
 import os
 import re
-import torch
-import pickle
 import ast
-import string
-# import hdbscan
 import math
 import json
-import time
-
 import nltk
-import spacy
 
 # Load spaCy model at module level (after other imports)
 try:
+	import spacy
 	spacy_model_id = "en_core_web_md"
 	nlp_spacy = spacy.load(spacy_model_id)
-except OSError:
+except Exception as e:
+	print(e)
 	print(f"[WARNING] spaCy model {spacy_model_id} not found. Run: python -m spacy download {spacy_model_id}")
 	nlp_spacy = None
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
 import pandas as pd
 from collections import Counter
-from typing import List, Tuple, Dict, Set, Any, Optional, Union, Callable, Iterable
-from joblib import Parallel, delayed
+from typing import List, Set
 
 # Install: pip install lingua-language-detector
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1

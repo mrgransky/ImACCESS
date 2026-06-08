@@ -141,8 +141,8 @@ class CGDConsolidator:
 		c_vis: List[str],
 		regime: str,
 		denser_modality: str,
-		entail_V_to_T: float,
-		entail_T_to_V: float,
+		entail_V2T: float,
+		entail_T2V: float,
 	) -> Dict[str, float]:
 		"""
 		Computes continuous Coverage (C), Grounding (G), and Density (D) scores
@@ -170,18 +170,19 @@ class CGDConsolidator:
 		d_local = 1.0
 		if regime == "SOFT_CONFLICT":
 			# Safe unpack: Stage 2 short-circuit receipts default these to 0.0
-			evt = entail_V_to_T if entail_V_to_T is not None else 0.0
-			etv = entail_T_to_V if entail_T_to_V is not None else 0.0
+			evt = entail_V2T if entail_V2T is not None else 0.0
+			etv = entail_T2V if entail_T2V is not None else 0.0
 			# Penalise the sparser modality's concepts proportionally to how
 			# strongly the denser modality entails them (hypernym penalty).
 			if denser_modality == "VISUAL" and concept in c_text:
 				d_local = 1.0 - (self.penalty_weight * evt)
 			elif denser_modality == "TEXT" and concept in c_vis:
 				d_local = 1.0 - (self.penalty_weight * etv)
-
 		d_score = max(0.0, d_global * d_local)
 
-		return {"G": g_score, "C": c_score, "D": d_score}
+		cgd_scores = {"C": c_score, "G": g_score, "D": d_score}
+
+		return cgd_scores
 
 	# Stage 4: Regime-Aware Consolidation
 	def consolidate_sample(self, receipt: Dict[str, Any], column: str) -> Dict[str, Any]:
@@ -206,17 +207,18 @@ class CGDConsolidator:
 		raw_asym_gap    = metrics.get("asymmetry_gap", 0.0)
 		asym_gap_abs    = abs(raw_asym_gap) if raw_asym_gap is not None else 0.0
 
-		entail_V_to_T = metrics.get("entail_V_to_T", 0.0)
-		entail_T_to_V = metrics.get("entail_T_to_V", 0.0)
+		entail_V2T = metrics.get("entail_V_to_T", 0.0)
+		entail_T2V = metrics.get("entail_T_to_V", 0.0)
 
 		# Stage 3: CGD Audit
+		# audited_concepts: raw_concept -> {"scores": {G,C,D}, "canonical": str}
+		audited_concepts: Dict[str, Dict[str, Any]] = {}
+
 		# Resolve canonical ONCE per concept and store alongside scores.
 		# Eliminates second O(|V|) cosine scan that original code triggered
 		# inside every regime block.
 		all_concepts: List[str] = list(set(c_text + c_vis))
-
-		# audited_concepts: raw_concept -> {"scores": {G,C,D}, "canonical": str}
-		audited_concepts: Dict[str, Dict[str, Any]] = {}
+		print(f"\nProcessing {len(all_concepts)} concepts: {all_concepts}")
 		for c in all_concepts:
 			resolved_c = self._resolve_to_canonical(c)
 			
@@ -231,10 +233,13 @@ class CGDConsolidator:
 				c_vis,
 				regime,
 				denser_modality,
-				entail_V_to_T,
-				entail_T_to_V,
+				entail_V2T,
+				entail_T2V,
 			)
 			audited_concepts[c] = {"scores": scores, "canonical": resolved_c}
+
+		print(f">> {len(all_concepts)} Total concepts: {all_concepts}")
+		print(f">> {len(audited_concepts)} Audited concepts: {list(audited_concepts.keys())}")
 
 		# Stage 4: Regime-Aware Gated Consolidation
 		pos_targets: set = set()
@@ -311,15 +316,16 @@ class CGDConsolidator:
 		return {
 			"id":               sample_id,
 			column: 						vlm_data,
-			"regime":           regime,
+			"audited_concepts": audited_concepts,
 			"audit_trail":      audit_trail,
+			"regime":           regime,
 			"positive_targets": sorted(pos_targets),
 			"hard_negatives":   sorted(hn_targets),
 			"w_pos":            w_pos,
 			"w_neg":            w_neg,
 		}
 
-def run(input_jsonl: str, column: str, verbose: bool = False) -> None:
+def regime_aware_consolidation(input_jsonl: str, column: str, verbose: bool = False) -> None:
 	"""
 	Streams Stage 2 receipts through the CGD Consolidator (Stages 3 & 4) and
 	writes the final auditable supervision matrix to .parquet / .csv / .jsonl.
@@ -401,8 +407,6 @@ def run(input_jsonl: str, column: str, verbose: bool = False) -> None:
 			out_f.write(json.dumps(consolidated, ensure_ascii=False) + "\n")
 			rows_new.append(consolidated)
 
-	print(f"[DONE] New: {len(rows_new)} | Resumed: {skipped} | Errors: {errors}")
-
 	# Rebuild .parquet and .csv from the complete JSONL
 	# (Includes both resumed rows and newly processed rows for a consistent output)
 	all_rows: List[Dict[str, Any]] = []
@@ -416,11 +420,17 @@ def run(input_jsonl: str, column: str, verbose: bool = False) -> None:
 					pass
 
 	df = pd.DataFrame(all_rows)
+	print(f"\nDF: {df.shape} {list(df.columns)}")
+	print(df.info(verbose=True, memory_usage=True))
+	# Convert complex nested columns to JSON strings for Parquet compatibility
+	for col in ['mlm_cot_raw', 'audited_concepts', 'audit_trail']:
+		if col in df.columns:
+			df[col] = df[col].apply(lambda x: json.dumps(x) if x is not None else None)
 	df.to_parquet(parquet_path, index=False)
 	df.to_csv(csv_path, index=False)
 
 	if verbose:
-		print(f"\n[STAGE 4 COMPLETE] Saved final supervision matrix ({len(df):,} rows) to:")
+		print(f"\n[STAGE 4 COMPLETE] New: {len(rows_new)} | Resumed: {skipped} | Errors: {errors} Saved final supervision matrix ({len(df):,} rows) to:")
 		print(f"  ├─ Parquet : {parquet_path}")
 		print(f"  ├─ CSV     : {csv_path}")
 		print(f"  └─ JSONL   : {jsonl_path}")
@@ -438,7 +448,8 @@ def run(input_jsonl: str, column: str, verbose: bool = False) -> None:
 		print(df.describe())
 		print(df)
 
-if __name__ == "__main__":
+@measure_execution_time
+def main():
 	parser = argparse.ArgumentParser(description="Stage 3 & 4: Stateful CGD Audit & Regime-Aware Consolidation")
 	parser.add_argument("--jsonl_file", "-jsonl", type=str, required=True, help="Path to Stage 2 modality conflict audit JSONL file (*_modality_conflict_audit.jsonl)")
 	parser.add_argument("--column", "-col", type=str, default="mlm_cot_raw", help="Column to use for canonical analysis",)
@@ -452,8 +463,11 @@ if __name__ == "__main__":
 			f"Got: {args.jsonl_file}"
 		)
 
-	run(
+	regime_aware_consolidation(
 		input_jsonl=args.jsonl_file,
 		column=args.column,
 		verbose=args.verbose
 	)
+
+if __name__ == "__main__":
+	main()
