@@ -28,6 +28,12 @@ MISC_DIR = os.path.dirname(os.path.abspath(__file__))
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # os.environ["PYTHONHASHSEED"] = "0"
 
+cache_directory = {
+	"farid": "/home/farid/datasets/models",
+	"alijanif": "/scratch/project_2004072/models",
+	"ubuntu": "/media/volume/models",
+}
+
 nltk_modules = [
 	'punkt',
 	'punkt_tab',
@@ -51,25 +57,30 @@ except LookupError:
 		raise_on_error=True,
 	)
 
-cache_directory = {
-	"farid": "/home/farid/datasets/models",
-	"alijanif": "/scratch/project_2004072/models",
-	"ubuntu": "/media/volume/models",
-}
-
 # STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
 STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
-# custom_stopwords_list = requests.get("https://raw.githubusercontent.com/stopwords-iso/stopwords-en/refs/heads/master/stopwords-en.txt").content
-# stopwords = set(custom_stopwords_list.decode().splitlines())
+# Load custom stopwords from file
 meaningless_words_path = os.path.join(MISC_DIR, 'meaningless_words.txt')
 with open(meaningless_words_path, 'r') as file_:
-	stopwords = set(
-		[
-			line.strip().lower() 
-			for line in file_
-		]
-	)
-STOPWORDS.update(stopwords)
+	# No need for list comprehension wrapper - update() accepts any iterable
+	STOPWORDS.update(line.strip().lower() for line in file_)
+
+# Add generic visual/metadata words
+GENERIC_WORDS = {
+	# Scene structure
+	"background", "foreground", "scene", "view", "area", "location",
+	"setting", "environment", "space", "place", "spot", "site",
+	# Generic objects
+	"object", "item", "thing", "element", "feature", "detail",
+	# Generic actions
+	"activity", "event", "action", "process", "operation",
+	# Generic descriptors
+	"various", "several", "multiple", "different", "similar",
+	# Photography / document artifacts
+	"photograph", "photo", "image", "picture", "shot", "frame",
+	"caption", "label", "text", "figure",
+}
+STOPWORDS.update(GENERIC_WORDS)
 
 geographic_references_path = os.path.join(MISC_DIR, 'geographic_references.txt')
 with open(geographic_references_path, 'r') as file_:
@@ -233,51 +244,63 @@ def _post_process_(
 		"mrs."
 	}
 
-	def _extract_geographic_entities(text: str) -> Set[str]:
+	def _extract_geographic_entities(text: str, verbose: bool = False) -> Set[str]:
 		"""
 		Extract geographic entities using spaCy NER.
 		Returns set of lowercased geographic references.
 		"""
 		if nlp_spacy is None:
-			print("\t\t[GEO] spaCy model not loaded, returning empty set")
+			if verbose:
+				print("\t\t[GEO] spaCy model not loaded, returning empty set")
 			return set()
 		
-		print(f"\t\t[GEO] Processing text: {repr(text)} [spacy: {spacy_model_id}]")
+		if verbose:
+			print(f"\t\t[GEO] Processing text: {repr(text)} [spacy: {spacy_model_id}]")
 		
 		GEO_LABELS = {"GPE", "LOC"}  # GPE: countries, cities, states; LOC: geographic features
 		
 		doc = nlp_spacy(text)
-		print(f"\t\t[GEO] spaCy doc created with {len(doc.ents)} entities")
+		if verbose:
+			print(f"\t\t[GEO] spaCy doc created with {len(doc.ents)} entities")
 		
 		# Direct geographic entities
 		gpe_spans = [ent for ent in doc.ents if ent.label_ in GEO_LABELS]
-		print(f"\t\t[GEO] Found {len(gpe_spans)} direct geographic entities:")
-		for ent in gpe_spans:
-			print(f"\t\t\t├─ {ent.text!r:30} → {ent.label_}")
+		if verbose:
+			print(f"\t\t[GEO] Found {len(gpe_spans)} direct geographic entities:")
+			for ent in gpe_spans:
+				print(f"\t\t\t├─ {ent.text!r:30} → {ent.label_}")
 		
 		gpe_texts = {ent.text.lower() for ent in gpe_spans}
-		print(f"\t\t[GEO] Direct GPE/LOC set (lowercased): {gpe_texts}")
+		if verbose:
+			print(f"\t\t[GEO] Direct GPE/LOC set (lowercased): {gpe_texts}")
 		
 		# Embedded geographic entities in ORG labels (e.g., "City College of San Francisco")
 		org_spans = [ent for ent in doc.ents if ent.label_ == "ORG"]
-		print(f"\t\t[GEO] Found {len(org_spans)} ORG entities to check for embedded locations:")
+		if verbose:
+			print(f"\t\t[GEO] Found {len(org_spans)} ORG entities to check for embedded locations:")
 		
 		embedded_gpes = set()
 		for org in org_spans:
-			print(f"\t\t[ORG] Analyzing: {org.text!r}")
+			if verbose:
+				print(f"\t\t[ORG] Analyzing: {org.text!r}")
 			org_doc = nlp_spacy(org.text)
-			print(f"\t\t\t├─ Sub-entities found: {len(org_doc.ents)}")
+			if verbose:
+				print(f"\t\t\t├─ Sub-entities found: {len(org_doc.ents)}")
 			
 			for sub_ent in org_doc.ents:
-				print(f"\t\t\t│  ├─ {sub_ent.text!r:25} → {sub_ent.label_}")
+				if verbose:
+					print(f"\t\t\t│  ├─ {sub_ent.text!r:25} → {sub_ent.label_}")
 				if sub_ent.label_ in GEO_LABELS and sub_ent.text.lower() not in gpe_texts:
 					embedded_gpes.add(sub_ent.text.lower())
-					print(f"\t\t\t│  └─ ✓ Added as embedded GPE: {sub_ent.text.lower()!r}")
+					if verbose:
+						print(f"\t\t\t│  └─ ✓ Added as embedded GPE: {sub_ent.text.lower()!r}")
 		
-		print(f"\t\t[GEO] Embedded GPE/LOC set: {embedded_gpes}")
+		if verbose and embedded_gpes:
+			print(f"\t\t[GEO] Embedded GPE/LOC set: {embedded_gpes}")
 		
 		final_result = gpe_texts | embedded_gpes
-		print(f"\t\t[GEO] Final combined result ({len(final_result)} items): {final_result}")
+		if verbose:
+			print(f"\t\t[GEO] Final combined result ({len(final_result)} items): {final_result}")
 		
 		return final_result
 
@@ -668,7 +691,7 @@ def _post_process_(
 			# 	continue
 
 			if nlp_spacy is not None:
-				geo_entities = _extract_geographic_entities(lemma)
+				geo_entities = _extract_geographic_entities(lemma, verbose=verbose)
 				if geo_entities:
 					if verbose:
 						print(f"        → {repr(lemma)} Geographic entity [spaCy] {repr(geo_entities)}")
@@ -746,7 +769,7 @@ def _post_process_(
 			else:
 				clean_set.add(lemma)
 				if verbose:
-					print(f"        → {lemma} Added to clean set")
+					print(f"        → {repr(lemma)} Added to clean set")
 
 		if verbose:
 			print(f"clean_set: {len(clean_set)} {type(clean_set)}")

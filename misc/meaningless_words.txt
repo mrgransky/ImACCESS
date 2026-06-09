@@ -373,6 +373,8 @@ everywhere
 exactly
 example
 except
+element
+feature
 face
 fact
 facts
@@ -678,6 +680,7 @@ parts
 past
 per
 perhaps
+spot
 place
 placed
 places
@@ -756,7 +759,6 @@ shant
 she'd
 she'll
 she's
-shell
 shes
 should've
 shouldn
@@ -1128,6 +1130,8 @@ te hachapi
 structure
 object
 scene
+location
+area
 hour
 minute
 time
@@ -1165,6 +1169,9 @@ square
 graf
 schedule
 setting
+environment
+space
+
 action
 imagery
 drawing

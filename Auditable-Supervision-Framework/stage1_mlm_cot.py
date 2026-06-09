@@ -22,7 +22,7 @@ from nlp_utils import get_enriched_description
 # python stage1_mlm_cot.py -i /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/images/M4_3reg_hussars_9tank_brig_7jul44.jpg -c "Sherman of 3rd Hussars, 9th Armoured Brigade 7 July 1944. M4 Sherman." -mlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # csv input:
-# python stage1_mlm_cot.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -mlm "Qwen/Qwen3.5-4B" -qb 4 -bs 6 -v
+# python stage1_mlm_cot.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/test.csv -mlm "Qwen/Qwen3.5-4B" -qb 4 -bs 6 -v
 
 # with nohup:
 # nohup python -u stage1_mlm_cot.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -mlm "Qwen/Qwen3.5-4B" -qb 4 -bs 8 -v > logs/ww2_mlm_cot.log 2>&1 &
@@ -31,7 +31,7 @@ from nlp_utils import get_enriched_description
 # one sample:
 # $ python stage1_mlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/images/SBC-3_tail_wheel_extended.jpg -c "SBC-3 tail wheel extended. SBC-3 Helldiver tail wheel extended. SBC Helldiver." -mlm "google/gemma-4-26B-A4B-it" -v
 
-PROMPT_TEMPLATE = """Extract **at most {k}** prominet keywords **per category** from the given image and caption.
+PROMPT_TEMPLATE = """Extract **at MOST {k}** prominet keywords **PER MODALITY** from the given image and caption.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
 Refrain from extracting the following types of keywords:
@@ -39,10 +39,9 @@ Refrain from extracting the following types of keywords:
   - Dates, times, years, decades, seasonal periods, or any temporal references (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
   - Quantities, counts, measurements, or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
   - Identifiers, serial/reference/model numbers, designated specification codes or brands.
-  - Names of places, stations, buildings, locations, or structures (e.g., 'California Memorial Stadium', 'Berkeley station', 'Torre pendente di Pisa', 'Plaza de Santiago', 'St. Louis Cathedral').
   - Continents, countries, states, provinces, cities, towns, islands, or regions.
   - Nationalities, ethnicities, or religions.
-  - Individual people's names or honorifics (e.g., 'Mr. Terry Duce', 'Allan M. Hardy', 'Dr. Howard Russell'). 
+  - Names of people or honorifics (e.g., 'Mr. Terry Duce', 'Allan M. Hardy', 'Dr. Howard Russell'). 
   - Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
   - Roman numerals, fractions, or ordinal numeral keywords.
   - Image types or characteristics (e.g., 'monochrome picture', 'multiple exposure', 'superimposed photograph', 'blurred photo', 'black and white image').
@@ -52,10 +51,10 @@ OUTPUT DEFINITIONS:
   - visual_concepts: Keywords derived EXCLUSIVELY from the pixel data. OCR, watermarks, or text overlays are not allowed.
   - fused_concepts: Keywords inferred JOINTLY from BOTH textal and visual modalities. If the modalities are disjoint, return an empty list [] and refrain from forcing a fusion.
 
-Return ONLY a valid JSON object with standarized and parsable **Python LISTS** without thoughs, reasoning or any additional text:
-{{"text_concepts": [], "visual_concepts": [], "fused_concepts":[]}}
+Return ONLY a valid JSON object with standarized and parsable Python lists without thoughs, reasoning or any additional text:
+{{"text_concepts": [], "visual_concepts": [], "fused_concepts":[]}}.
 
-Caption: {caption}"""
+Caption: '{caption}'"""
 
 def _check_path(p):
 	if isinstance(p, str) and os.path.exists(p):
@@ -1169,7 +1168,7 @@ def get_mlm_cot_labels(
 		# Build per-sample messages
 		messages = [
 			[
-				{"role": "system", "content": "You are an expert historical archivist specializing in multi-label annotation for 20th-century conflict photography."},
+				{"role": "system", "content": "You are an archivist specializing in multi-label annotation for 20th-century conflict photography."},
 				{
 					"role": "user",
 					"content": [

@@ -489,7 +489,7 @@ def get_prompt(
 		print(f"Generating prompt for text with len={len(description.split()):<10}max_kws={max_kws}")
 
 	messages = [
-		{"role": "system", "content": "You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century."},
+		{"role": "system", "content": "You are an archivist whose expertise lies in the 20th century."},
 		{"role": "user", "content": PROMPT_TEMPLATE.format(k=max_kws, caption=description.strip())},
 	]
 	try:

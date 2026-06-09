@@ -718,7 +718,7 @@ def get_vlm_based_labels_single(
 	)
 
 	messages = [
-		{"role": "system", "content": "You are an expert image tagger and function as a historical archivist whose expertise lies in the 20th century."},
+		{"role": "system", "content": "You are an expert image tagger and function as an archivist whose expertise lies in the 20th century."},
 		{
 			"role": "user",
 			"content": [

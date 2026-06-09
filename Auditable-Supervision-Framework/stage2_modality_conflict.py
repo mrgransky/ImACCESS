@@ -566,7 +566,7 @@ def modality_conflict_audit(
 			print(f"[STAGE 2] Resume detected: {len(done_ids):,} samples already processed. Skipping.")
 
 	pending = [(sid, data) for sid, data in records if sid not in done_ids]
-	print(f"\n[STAGE 2] Pending: {len(pending):,} samples to process.")
+	print(f"\n[STAGE 2] Pending {type(pending)} {len(pending)} samples to process.")
 
 	if not pending:
 		print("[STAGE 2] Nothing to do. All records already processed.")

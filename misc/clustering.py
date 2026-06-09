@@ -2274,7 +2274,7 @@ def remove_problematic_cluster_labels(
 		print(f"  Change: {(new_consolidation - original_consolidation):.2f}x")
 
 		print(f"\n{len(removed_labels)} problematic labels removed!")
-		print("=" * 80)
+		print("="*40)
 
 	return df_clean, embeddings_clean, removed_labels
 

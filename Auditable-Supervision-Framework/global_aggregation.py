@@ -10,11 +10,85 @@ MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
 sys.path.insert(0, MISC_DIR)
 
 # local:
-# nohup python -u bridge_global_aggregation_ontology_builder.py -jsonl /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label_mlm_cot_modality_conflict_audit.jsonl -v > logs/global_aggregation.log 2>&1 &
+# nohup python -u global_aggregation.py -jsonl /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label_mlm_cot_modality_conflict_audit.jsonl -v > logs/global_aggregation.log 2>&1 &
 
 from utils import *
 from clustering import *
-from nlp_utils import _post_process_
+from nlp_utils import STOPWORDS
+
+def filter_generic_vocabulary(
+	df_clean: pd.DataFrame,
+	canonical_freq_dict: Dict[str, int],
+	tau_hapax: int = 2,
+	tau_digit: int = 0.3,
+	remove_singletons: bool = True,
+	domain_blacklist: Optional[Set[str]] = None,
+	verbose: bool = False,
+) -> Tuple[pd.DataFrame, List[str], np.ndarray]:
+
+	if domain_blacklist is None:
+		domain_blacklist = set()
+	
+	def _has_digit_content(s: str) -> bool:
+		s = s.strip()
+		
+		# Pure year (1800–2099)
+		if re.match(r'^(1[89]\d{2}|20\d{2})$', s):
+			return True
+		
+		# Pure digit string
+		if s.isdigit():
+			return True
+		
+		# Mixed: digit ratio > tau_digit among alphanumeric chars
+		digits = sum(c.isdigit() for c in s)
+		alphas = sum(c.isalpha() for c in s)
+		if digits > 0 and (digits + alphas) > 0:
+			if digits / (digits + alphas) > tau_digit:
+				return True
+		
+		return False
+	
+	cluster_sizes  = df_clean.groupby('cluster').size().to_dict()
+	removed_labels, keep_mask = [], []
+	print(f"\n[VOCAB GATE] df_clean: {df_clean.shape}")
+	for _, row in df_clean.iterrows():
+		canonical    = row['canonical']
+		label        = row['label']
+		cluster      = row['cluster']
+		freq         = canonical_freq_dict.get(canonical, 0)
+		cluster_size = cluster_sizes.get(cluster, 1)
+		reason = None
+
+		if freq < tau_hapax:
+			reason = f"hapax (freq={freq})"
+		elif remove_singletons and cluster_size == 1:
+			reason = "singleton cluster"
+		elif _has_digit_content(canonical) or _has_digit_content(label):
+			reason = "digit-dominated"
+		elif canonical.lower() in domain_blacklist or label.lower() in domain_blacklist:
+			reason = "domain blacklist"
+
+		if reason:
+			removed_labels.append(label)
+			keep_mask.append(False)
+			if verbose:
+				print(f"{label:<35}canonical: {canonical:<35}{reason}")
+		else:
+			keep_mask.append(True)
+	
+	keep_mask    = np.array(keep_mask, dtype=bool)
+	kept_indices = np.where(keep_mask)[0]
+	df_filtered  = df_clean[keep_mask].reset_index(drop=True)
+	
+	if verbose:
+		print("-"*120)
+		n_before = df_clean['canonical'].nunique()
+		n_after  = df_filtered['canonical'].nunique()
+		print(f"\t{len(df_clean)} labels → {len(df_filtered)} (removed {len(removed_labels)})")
+		print(f"\t{n_before} canonicals → {n_after} (removed {n_before - n_after})")
+	
+	return df_filtered, removed_labels, kept_indices
 
 def cluster_and_save_priors(
 	input_jsonl: str,
@@ -27,13 +101,13 @@ def cluster_and_save_priors(
 	"""
 	Bridge: Corpus-Level Ontology Discovery.
 
-	Reads Stage 2 Evidence Receipts, pools raw VLM concepts per sample
+	Reads Stage 2 Evidence Receipts, pools raw MLM concepts per sample
 	(regime-gated), runs hierarchical clustering via clustering.py, and
 	emits three artefacts consumed by Stage 3 and Stage 4:
 
-	  1. <stem>_canonical_map.json        — raw VLM concept → canonical label
-	  2. <stem>_target_vocabulary.json    — the emergent vocabulary V (with metadata)
-	  3. <stem>_emb_cache.pt             — {label: embedding} for fast lookup
+		1. <stem>_canonical_map.json        — raw MLM concept → canonical label
+		2. <stem>_target_vocabulary.json    — the emergent vocabulary V (with metadata)
+		3. <stem>_emb_cache.pt             — {label: embedding} for fast lookup
 
 	Intermediate checkpoints (embeddings, linkage matrix) are saved after
 	each expensive step so the function is crash-safe and resumable.
@@ -62,19 +136,17 @@ def cluster_and_save_priors(
 	vocab_path = os.path.join(outputs_dir, f"{stem}_target_vocabulary.json")
 	emb_path = os.path.join(outputs_dir, f"{stem}_emb_cache.pt")
 
-	# =========================================================================
 	# STEP 1: REGIME-GATED CONCEPT POOLING
 	# Gate fused_concepts by regime. HARD_CONFLICT fused concepts are
-	# excluded because they are either empty (VLM detected conflict) or a
+	# excluded because they are either empty (MLM detected conflict) or a
 	# hallucinated blend of two disjoint modalities — including them would
 	# seed the clustering with incoherent concepts and inflate the vocabulary.
 	# All print labels use [BRIDGE] to avoid collision with [STAGE 3].
-	# =========================================================================
+
 	all_sample_labels: List[List[str]] = []
 	regime_counts: dict = {}
 	skipped_count = 0
-
-	print(f"\n[BRIDGE] Loading and pooling concepts from: {input_jsonl}")
+	print(f"\nLoading {input_jsonl}")
 	with open(input_jsonl, 'r', encoding='utf-8') as f:
 		for line_no, line in enumerate(f, start=1):
 			line = line.strip()
@@ -87,7 +159,7 @@ def cluster_and_save_priors(
 				continue
 
 			regime   = receipt.get("regime", "UNKNOWN")
-			vlm_data = receipt.get(column, {})
+			mlm_data = receipt.get(column, {})
 
 			# Track regime distribution for diagnostics
 			regime_counts[regime] = regime_counts.get(regime, 0) + 1
@@ -95,17 +167,17 @@ def cluster_and_save_priors(
 			# Skip samples with no usable modality signal entirely.
 			# These contribute nothing to vocabulary induction and would add
 			# noise to the global frequency counts.
-			if regime in ("MISSING_MODALITY", "INVALID_JSON", "UNKNOWN"):
+			if regime not in ("AGREEMENT", "HARD_CONFLICT", "SOFT_CONFLICT"):
 				skipped_count += 1
 				continue
 
-			if not isinstance(vlm_data, dict):
+			if not isinstance(mlm_data, dict):
 				skipped_count += 1
 				continue
 
-			text_c  = vlm_data.get("text_concepts",   []) or []
-			vis_c   = vlm_data.get("visual_concepts",  []) or []
-			fused_c = vlm_data.get("fused_concepts",   []) or []
+			text_c  = mlm_data.get("text_concepts",   []) or []
+			vis_c   = mlm_data.get("visual_concepts",  []) or []
+			fused_c = mlm_data.get("fused_concepts",   []) or []
 
 			# For HARD_CONFLICT, fused_concepts is unreliable.
 			# The two modalities are structurally disjoint (orphan_ratio >=
@@ -129,53 +201,31 @@ def cluster_and_save_priors(
 			if sample_pool:
 				all_sample_labels.append(sample_pool)
 
-	if verbose:
-		total_loaded = sum(regime_counts.values())
-		print(f"[BRIDGE] Loaded {total_loaded} receipts | Skipped: {skipped_count}")
-		print(f"[BRIDGE] Regime distribution:")
-		for r, cnt in sorted(regime_counts.items(), key=lambda x: -x[1]):
-			print(f"  ├─ {r:<25} {cnt:>8,}  ({cnt/max(total_loaded,1)*100:.1f}%)")
-		print(f"[BRIDGE] Samples contributing to vocabulary: {len(all_sample_labels)}")
-		for i, sample in enumerate(all_sample_labels):
-			print(f"{i:7d} {sample}")
-		print("="*185)
-
 	if not all_sample_labels:
 		raise ValueError(
 			"[BRIDGE] No samples survived regime gating. "
 			"Check that the input JSONL contains AGREEMENT / SOFT_CONFLICT / HARD_CONFLICT receipts."
 		)
 
-	##################################################################################################
-	# Post-process labels
-	all_post_processed_sample_labels = _post_process_(
-		labels_list=all_sample_labels, 
-		verbose=verbose, #False, # not to clutter the logs
-	)
-	
-	# Filter out None values returned by _post_process_
-	all_post_processed_sample_labels = [
-		sample for sample in all_post_processed_sample_labels 
-		if sample is not None
-	]
-	
 	if verbose:
-		for i, sample in enumerate(all_post_processed_sample_labels):
-			print(f"{i:7d} {sample}")
-	all_sample_labels = all_post_processed_sample_labels
-	del all_post_processed_sample_labels
-	##################################################################################################
+		total_loaded = sum(regime_counts.values())
+		print(f"[BRIDGE] Total receipts {total_loaded} | Skipped: {skipped_count}")
+		print(f"[BRIDGE] Regime distribution:")
+		for r, cnt in sorted(regime_counts.items(), key=lambda x: -x[1]):
+			print(f"  ├─ {r:<25} {cnt:>8,}  ({cnt/max(total_loaded,1)*100:.1f}%)")
+		print(f"{len(all_sample_labels)} Samples contributing to vocabulary:")
+		for i, sample in enumerate(all_sample_labels):
+			print(f"{i:7d} {len(sample)} {sample}")
+		print("="*185)
 
-	# return
 	# STEP 2: GLOBAL FREQUENCY COUNTS (Reusability Prior)
-	# Convert Counter → plain dict before saving and before passing to
-	# any clustering.py function. Counter's default-zero behaviour silently
+	# Convert Counter → plain dict before saving and before passing to clustering.py.
+	# Counter's default-zero behaviour silently
 	# disables the freq-gain safety check inside assign_canonical_labels for
 	# labels not seen in the corpus (Counter returns 0 for missing keys, so
 	# the .get(lbl, 1) fallback in the safety ratio never triggers, causing
 	# the ratio to always be 0/max(0,1)=0 and the safety check to always
 	# revert to pure centroid similarity).
-	print(f"\n[BRIDGE] Computing global label frequencies...")
 	label_freq_dict: dict = dict(
 		Counter(
 			lbl 
@@ -184,23 +234,19 @@ def cluster_and_save_priors(
 			if lbl
 		)
 	)
+	print(f"[BRIDGE] Found {len(label_freq_dict)} unique labels")
+	# print(json.dumps(label_freq_dict, indent=2, ensure_ascii=False))
 
 	with open(freqs_path, 'w', encoding='utf-8') as f:
 		json.dump(label_freq_dict, f, indent=2, ensure_ascii=False)
-	print(f"[BRIDGE] Saved global frequencies ({len(label_freq_dict):,} labels) → {freqs_path}")
+	print(f"[BRIDGE] Saved global frequencies ({len(label_freq_dict)} labels → {freqs_path})")
 
-	# Dedup and sort unique concepts (after regime gating, so no HARD_CONFLICT
-	# fused concepts are present)
-	unique_labels: List[str] = sorted(set(
-		lbl for sample in all_sample_labels for lbl in sample if lbl
-	))
-	print(f"[BRIDGE] Unique concepts for vocabulary induction: {len(unique_labels):,}")
+	unique_labels = sorted(label_freq_dict.keys())
+	print(f"[BRIDGE] Unique concepts for vocabulary induction: {type(unique_labels)} {len(unique_labels):,}")
 
-	# =========================================================================
 	# STEP 3: EMBEDDING (with crash-safe checkpoint)
 	# Save embeddings and label list immediately after encoding.
 	# On restart, load from checkpoint and skip the ~10-30 min encoding step.
-	# =========================================================================
 	resume_emb = (
 		os.path.exists(ckpt_emb_path) and
 		os.path.exists(ckpt_labels_path)
@@ -221,7 +267,7 @@ def cluster_and_save_priors(
 			token=os.getenv("HUGGINGFACE_TOKEN"),
 		).to(device)
 
-		print(f"[BRIDGE] Encoding {len(unique_labels):,} unique labels...")
+		print(f"[BRIDGE] Encoding {len(unique_labels)} unique labels (batch_size={batch_size})")
 		X = model.encode(
 			unique_labels,
 			batch_size=batch_size,
@@ -230,19 +276,17 @@ def cluster_and_save_priors(
 			normalize_embeddings=True,
 			precision='float32',
 		)
-		print(f"[BRIDGE] Embeddings: {type(X)} {X.shape} {X.dtype}")
+		print(f"[BRIDGE] Embeddings {type(X)} {X.shape} {X.dtype} (min, max): ({X.min():.3f}, {X.max():.3f}) mean ± std: {X.mean():.3f} ± {X.std():.3f}")
 
 		# Checkpoint immediately
 		np.save(ckpt_emb_path,    X)
 		np.save(ckpt_labels_path, np.array(unique_labels, dtype=object))
 		print(f"[BRIDGE] Checkpointed embeddings → {ckpt_emb_path}")
 
-	# =========================================================================
 	# STEP 4: LINKAGE MATRIX (with crash-safe checkpoint)
 	# Save linkage matrix immediately after computation.
-	# Ward linkage on 50K+ concepts can take 20-30 min; losing it to a crash
-	# is unacceptable.
-	# =========================================================================
+	# Ward linkage on 50K+ concepts can take 20-30 min; 
+	# losing it to a crash is unacceptable.
 	if os.path.exists(ckpt_Z_path):
 		print(f"\n[BRIDGE] Resuming: loading cached linkage matrix from checkpoint.")
 		Z = np.load(ckpt_Z_path)
@@ -260,10 +304,7 @@ def cluster_and_save_priors(
 		np.save(ckpt_Z_path, Z)
 		print(f"[BRIDGE] Checkpointed linkage matrix → {ckpt_Z_path}")
 
-	# =========================================================================
 	# STEP 5: ADAPTIVE OPTIMAL CLUSTER SEARCH
-	# Delegates entirely to clustering.py — no changes needed here.
-	# =========================================================================
 	print(f"\n[BRIDGE] Running adaptive optimal cluster search...")
 	cluster_labels_arr, stats = get_optimal_num_clusters(
 		X=X,
@@ -277,15 +318,15 @@ def cluster_and_save_priors(
 		verbose=verbose,
 	)
 	df = pd.DataFrame({'label': unique_labels, 'cluster': cluster_labels_arr})
-	print(f"[BRIDGE] Optimal k={stats['n_clusters']:,} clusters "
-	      f"(consolidation {stats['consolidation_ratio']:.2f}x, "
-	      f"intra_sim={stats['mean_intra_similarity']:.4f})")
+	print(
+		f"[BRIDGE] Optimal k={stats['n_clusters']:,} clusters "
+		f"(consolidation {stats['consolidation_ratio']:.2f}x, "
+		f"intra_sim={stats['mean_intra_similarity']:.4f})"
+	)
 
-	# =========================================================================
 	# STEP 6: 5-SIGNAL CANONICAL SELECTION
 	# Requires the embedding model — reload if we resumed from checkpoint
 	# (model was not loaded in the resume branch of STEP 3).
-	# =========================================================================
 	if resume_emb:
 		# Model was not loaded in the resume branch; load it now for canonical
 		# selection (virtual hypernym encoding) and target vocab embedding.
@@ -316,8 +357,10 @@ def cluster_and_save_priors(
 	print(f"\n[BRIDGE] Canonical selection complete, virtual hypernyms synthesised: {virtual_used_count}")
 
 	# Map raw concepts to canonical labels
-	print(f"[BRIDGE] Mapping {type(cluster_canonicals)} {len(cluster_canonicals)} raw concepts to canonical labels...")
+	print(f"[BRIDGE] Mapping {len(df)} raw concepts to {type(cluster_canonicals)} {len(cluster_canonicals)} canonical labels")
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
+	print(f"[BRIDGE] {df.shape} {list(df.columns)}")
+	print(df.head())
 
 	# STEP 7: INJECT VIRTUAL HYPERNYMS AS GENUINE ROWS
 	# Virtual hypernyms must be real rows in df+X before remove_problematic_
@@ -341,19 +384,41 @@ def cluster_and_save_priors(
 		virtual_embs.append(vh_emb)
 
 	if virtual_rows:
+		print(f"[BRIDGE] Injecting virtual hypernyms into the dataset: df: {df.shape}")
 		df = pd.concat([df, pd.DataFrame(virtual_rows)], ignore_index=True)
 		X  = np.vstack([X, np.array(virtual_embs)])
-		print(f"[BRIDGE] Injected {len(virtual_rows)} virtual hypernym(s) into df+X.")
+		print(f"[BRIDGE] Injected {len(virtual_rows)} virtual hypernym(s) into df({df.shape})+X({X.shape}).")
+		print(f"[BRIDGE] new {df.shape} {df.columns}")
 
 	# STEP 8: AUDIT — DROP LOW-COHESION AND POOR-CANONICAL CLUSTERS
 	df_clean, X_clean, removed_labels = remove_problematic_cluster_labels(
 		df=df,
 		embeddings=X,
-		low_cohesion_threshold=0.50,
-		poor_canonical_threshold=0.60,
 		verbose=verbose,
 	)
-	print(f"[BRIDGE] Removed {len(removed_labels)} labels from problematic clusters.")
+
+	# STEP 8b: BUILD CANONICAL FREQUENCY MAP
+	# label_freq_dict counts raw MLM concept occurrences.
+	# For the vocabulary gate we need the frequency of each *canonical*,
+	# which is the sum of all member raw concept frequencies.
+	canonical_freq_dict: dict = {}
+	for _, row in df_clean.iterrows():
+		canonical = row['canonical']
+		raw_freq  = label_freq_dict.get(row['label'], 0)
+		canonical_freq_dict[canonical] = canonical_freq_dict.get(canonical, 0) + raw_freq
+
+	# STEP 8c: VOCABULARY-LEVEL DENSITY GATE
+	df_clean, removed_labels, kept_indices = filter_generic_vocabulary(
+		df_clean=df_clean,
+		canonical_freq_dict=canonical_freq_dict,
+		domain_blacklist=STOPWORDS,
+		verbose=verbose,
+	)
+	if verbose:
+		print(f"[BRIDGE] Vocabulary gate removed {len(removed_labels)} labels. df_clean: {df_clean.shape}")
+
+	# Align embeddings to the surviving rows
+	X_clean = X_clean[kept_indices]
 
 	# STEP 9: RE-EVALUATE FINAL CLUSTER QUALITY
 	unique_labels_clean   = df_clean['label'].values
@@ -372,13 +437,14 @@ def cluster_and_save_priors(
 	# STEP 10: EXTRACT EMERGENT TARGET VOCABULARY V
 	target_vocab: List[str] = sorted(df_clean['canonical'].unique().tolist())
 	print(f"[BRIDGE] Emergent Target Vocabulary |V| = {len(target_vocab)} canonical labels.")
+	# print(target_vocab)
 
 	# STEP 11: PRE-COMPUTE TARGET VOCABULARY EMBEDDINGS
-	# Only encode canonical strings that are NOT already present as raw VLM
+	# Only encode canonical strings that are NOT already present as raw MLM
 	# concept rows in X_clean.
 	#
 	# Build emb_cache in a single pass to avoid double-encoding.
-	# If a canonical string (e.g. "soldier") also appears as a raw VLM concept,
+	# If a canonical string (e.g. "soldier") also appears as a raw MLM concept,
 	# its embedding is already in X_clean from the original encoding run.
 	# Re-encoding it in a separate model.encode() call introduces floating-point
 	# non-determinism (different batch context → slightly different output),
@@ -386,29 +452,32 @@ def cluster_and_save_priors(
 	#
 	# Strategy:
 	#   a) Build emb_cache from all (raw concept, embedding) pairs in X_clean.
-	#   b) Identify target canonicals NOT already in emb_cache (new strings only).
+	#   b) Identify target canonicals NOT already in the cache
 	#   c) Encode only those new strings in a single additional pass.
 	#   d) Merge into emb_cache.
-	print(f"[BRIDGE] Building emb_cache (single-pass)")
 
+	print(f"[BRIDGE] Building emb_cache (single-pass)")
 	# (a) Seed cache from all raw concept embeddings in X_clean
 	emb_cache: dict = {
 		lbl: emb
-		for lbl, emb in zip(df_clean['label'].tolist(), X_clean)
+		# for lbl, emb in zip(df_clean['label'].tolist(), X_clean)
+		for lbl, emb in zip(unique_labels, X)  # unique_labels and X from Step 3
 	}
 
 	# (b) Find target canonicals not yet in the cache
 	#     These are exclusively virtual hypernyms whose string was synthesised
-	#     and does not appear as a raw VLM concept in any sample.
+	#     and does not appear as a raw MLM concept in any sample.
 	new_canonicals: List[str] = [
-		tc for tc in target_vocab if tc not in emb_cache
+		tc 
+		for tc in target_vocab 
+		if tc not in emb_cache
 	]
 
 	# (c) Encode only the genuinely new strings
 	if new_canonicals:
 		print(
 			f"[BRIDGE] Encoding {len(new_canonicals)} new canonical strings "
-		  f"(virtual hypernyms not in raw concept set)..."
+			f"(virtual hypernyms not in raw concept set)..."
 		)
 		new_embs = model.encode(
 			new_canonicals,
@@ -424,21 +493,23 @@ def cluster_and_save_priors(
 	else:
 		print(
 			f"[BRIDGE] All {len(target_vocab):,} target canonicals already in cache "
-		  f"(no virtual hypernyms needed separate encoding)."
+			f"(no virtual hypernyms needed separate encoding)."
 		)
 
 	print(
-		f"[BRIDGE] emb_cache size: {len(emb_cache):,} entries "
-	  f"(raw concepts + target canonicals, single encoding run)."
+		f"[BRIDGE] emb_cache {type(emb_cache)} now has {len(emb_cache)} entries "
+		f"(raw concepts + target canonicals, single encoding run). "
+		f"Original df: {df.shape}"
 	)
 
 	# STEP 12: SAVE OUTPUTS
-	# 1. canonical_map.json — raw VLM concept → canonical label
+	print(f"\n[SAVE]")
+	# 1. canonical_map.json — raw MLM concept → canonical label
 	#    Used by Stage 3 (Micro-CGD Audit) and Stage 4 (Consolidation).
 	final_canonical_dict: dict = df_clean.set_index('label')['canonical'].to_dict()
 	with open(canonical_map_path, 'w', encoding='utf-8') as f:
 		json.dump(final_canonical_dict, f, indent=2, ensure_ascii=False)
-	print(f"\n[BRIDGE] Saved canonical_map ({len(final_canonical_dict):,} entries) → {canonical_map_path}")
+	print(f"  ├─ {type(final_canonical_dict)} canonical_map ({len(final_canonical_dict)} entries) → {canonical_map_path}")
 
 	# 2. target_vocabulary.json — defines the multi-hot vector dimensions for Stage 4/5.
 	#    Wrap in a metadata dict so Stage 4 can load unambiguously and
@@ -455,11 +526,11 @@ def cluster_and_save_priors(
 	}
 	with open(vocab_path, 'w', encoding='utf-8') as f:
 		json.dump(vocab_payload, f, indent=2, ensure_ascii=False)
-	print(f"[BRIDGE] Saved target_vocabulary (V) ({len(target_vocab):,} classes) → {vocab_path}")
+	print(f"  ├─ {type(target_vocab)} target_vocabulary (|V| = {len(target_vocab)} labels) → {vocab_path}")
 
 	# 3. emb_cache.pt — {label: np.ndarray} for fast vector lookup in Stage 4.
 	torch.save(emb_cache, emb_path)
-	print(f"[BRIDGE] Saved emb_cache.pt ({len(emb_cache):,} entries) → {emb_path}")
+	print(f"  └─ {type(emb_cache)} emb_cache ({len(emb_cache)} entries) → {emb_path}")
 
 @measure_execution_time
 def main():

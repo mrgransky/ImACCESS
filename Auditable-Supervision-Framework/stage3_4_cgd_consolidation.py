@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -10,6 +11,9 @@ MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
 sys.path.insert(0, MISC_DIR)
 
 from utils import *
+
+# local:
+# nohup python -u stage3_4_cgd_consolidation.py -jsonl /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label_mlm_cot_modality_conflict_audit.jsonl -v > logs/regime_aware_consolidation.log 2>&1 &
 
 class CGDConsolidator:
 	def __init__(
@@ -96,9 +100,10 @@ class CGDConsolidator:
 		emb_b = self._get_embedding(label_b)
 		if emb_a is None or emb_b is None:
 			return 0.0
-		return float(np.dot(emb_a, emb_b))
+		sim = np.dot(emb_a, emb_b).item()
+		return sim
 
-	def _resolve_to_canonical(self, raw_concept: str) -> Optional[str]:
+	def _resolve_to_canonical(self, raw_concept: str, tau_sim: float = 0.50) -> Optional[str]:
 		"""
 		Resolves a raw VLM concept to the discovered target vocabulary V.
 
@@ -108,16 +113,15 @@ class CGDConsolidator:
 		     (O(|V|) dot products, all in-memory numpy — fast enough for |V|~1K)
 		  3. Returns None if best cosine similarity < 0.50 (concept is out-of-domain)
 		"""
-		print(f"Resolving {raw_concept}")
 		# Tier 1: direct map hit
 		if raw_concept in self.canonical_map:
-			print(f"Found {raw_concept} in canonical map")
+			# print(f"Found {raw_concept} in canonical map")
 			return self.canonical_map[raw_concept]
 
 		# Tier 2: fallback nearest-neighbour search
 		emb_c = self._get_embedding(raw_concept)
 		if emb_c is None:
-			print(f"Failed to get embedding for {raw_concept}")
+			print(f"Failed to get embedding for {repr(raw_concept)}")
 			return None
 
 		best_class: Optional[str] = None
@@ -128,9 +132,7 @@ class CGDConsolidator:
 				best_sim = sim
 				best_class = target_class
 
-		result = best_class if best_sim >= 0.50 else None
-		print(result)
-		print('-'*100)
+		result = best_class if best_sim >= tau_sim else None
 		return result
 
 	# Stage 3: Micro-CGD Audit
@@ -148,8 +150,9 @@ class CGDConsolidator:
 		Computes continuous Coverage (C), Grounding (G), and Density (D) scores
 		for a single raw concept.
 
-		  G(c) Visual grounding: 1.0 if concept appears verbatim in c_vis,
-		        else max cosine similarity to any visual concept.
+		  G(c) Visual grounding 
+				1.0 if concept appears verbatim in c_vis,
+		    else max cosine similarity to any visual concept.
 		  C(c) Coverage / rarity: log-normalised inverse frequency.
 		  D(c) Density = D_global * D_local:
 						D_global: exponential frequency prior (reusability).
@@ -180,7 +183,11 @@ class CGDConsolidator:
 				d_local = 1.0 - (self.penalty_weight * etv)
 		d_score = max(0.0, d_global * d_local)
 
-		cgd_scores = {"C": c_score, "G": g_score, "D": d_score}
+		cgd_scores = {
+			"C": round(c_score, 4), 
+			"G": round(g_score, 4),
+			"D": round(d_score, 4)
+		}
 
 		return cgd_scores
 
@@ -218,13 +225,11 @@ class CGDConsolidator:
 		# Eliminates second O(|V|) cosine scan that original code triggered
 		# inside every regime block.
 		all_concepts: List[str] = list(set(c_text + c_vis))
-		print(f"\nProcessing {len(all_concepts)} concepts: {all_concepts}")
+		print(f"\n>> Processing {len(all_concepts)} concepts: {all_concepts}")
 		for c in all_concepts:
 			resolved_c = self._resolve_to_canonical(c)
 			
 			if resolved_c is None:
-				if self.verbose:
-					print(f"[WARNING] Dropping out-of-domain concept: {c}")
 				continue  # Out-of-domain concept — drop silently
 			
 			scores = self.audit_concept_CGD(
@@ -237,9 +242,6 @@ class CGDConsolidator:
 				entail_T2V,
 			)
 			audited_concepts[c] = {"scores": scores, "canonical": resolved_c}
-
-		print(f">> {len(all_concepts)} Total concepts: {all_concepts}")
-		print(f">> {len(audited_concepts)} Audited concepts: {list(audited_concepts.keys())}")
 
 		# Stage 4: Regime-Aware Gated Consolidation
 		pos_targets: set = set()
@@ -305,25 +307,26 @@ class CGDConsolidator:
 				if resolved:
 					pos_targets.add(resolved)
 
-		# Build audit_trail for interpretability / paper diagnostics
-		# Expose only the CGD scores (not the canonical string) to keep the
-		# audit_trail schema identical to the original for downstream readers.
-		audit_trail: Dict[str, Dict[str, float]] = {
-			c: data["scores"] 
-			for c, data in audited_concepts.items()
+		# {"label": {"C": 0.9, "G": 1.0, "D": 0.8, "canonical": "canonical_label}}
+		flattened_concepts = {
+			concept: {**data["scores"], "canonical": data["canonical"]}
+			for concept, data in audited_concepts.items()
 		}
+		print(json.dumps(flattened_concepts, indent=4))
 
-		return {
+		result = {
 			"id":               sample_id,
 			column: 						vlm_data,
-			"audited_concepts": audited_concepts,
-			"audit_trail":      audit_trail,
+			"audited_concepts": flattened_concepts,
 			"regime":           regime,
 			"positive_targets": sorted(pos_targets),
 			"hard_negatives":   sorted(hn_targets),
 			"w_pos":            w_pos,
 			"w_neg":            w_neg,
 		}
+		print(f">> {len(audited_concepts)} Audited concepts: {list(audited_concepts.keys())}")
+		print("-"*120)
+		return result
 
 def regime_aware_consolidation(input_jsonl: str, column: str, verbose: bool = False) -> None:
 	"""
@@ -347,7 +350,7 @@ def regime_aware_consolidation(input_jsonl: str, column: str, verbose: bool = Fa
 	csv_path   = parquet_path.replace(".parquet", ".csv")
 	jsonl_path = parquet_path.replace(".parquet", ".jsonl")
 
-	# Resume: load already-processed IDs
+	# load already-processed IDs
 	processed_ids: set = set()
 	if os.path.exists(jsonl_path):
 		with open(jsonl_path, 'r', encoding="utf-8") as f_existing:
@@ -361,7 +364,7 @@ def regime_aware_consolidation(input_jsonl: str, column: str, verbose: bool = Fa
 					pass
 		if processed_ids:
 			print(
-				f"[STAGE 3 & 4] Resume detected: {len(processed_ids):,} samples "
+				f"[STAGE 3 & 4] Resume detected: {len(processed_ids)} samples "
 				f"already processed. Skipping."
 			)
 
@@ -370,8 +373,7 @@ def regime_aware_consolidation(input_jsonl: str, column: str, verbose: bool = Fa
 	print(f"\n[STAGE 3 & 4] Streaming receipts and executing stateful CGD audit...")
 
 	rows_new: List[Dict[str, Any]] = []
-	skipped = 0
-	errors  = 0
+	skipped, errors = 0, 0
 
 	# Open output JSONL in append mode — safe for resume
 	with open(jsonl_path, 'a', encoding="utf-8") as out_f, open(input_jsonl, 'r', encoding="utf-8") as in_f:
@@ -422,15 +424,22 @@ def regime_aware_consolidation(input_jsonl: str, column: str, verbose: bool = Fa
 	df = pd.DataFrame(all_rows)
 	print(f"\nDF: {df.shape} {list(df.columns)}")
 	print(df.info(verbose=True, memory_usage=True))
-	# Convert complex nested columns to JSON strings for Parquet compatibility
-	for col in ['mlm_cot_raw', 'audited_concepts', 'audit_trail']:
-		if col in df.columns:
-			df[col] = df[col].apply(lambda x: json.dumps(x) if x is not None else None)
+
+	# # Convert complex nested columns to JSON strings for Parquet compatibility
+	# for col in ['mlm_cot_raw', 'audited_concepts', 'audit_trail']:
+	# 	if col in df.columns:
+	# 		df[col] = df[col].apply(lambda x: json.dumps(x) if x is not None else None)
+
+	for col in df.columns:
+		if df[col].dtype == object and df[col].apply(lambda x: isinstance(x, (dict, list))).any():
+			df[col] = df[col].apply(lambda x: json.dumps(x, ensure_ascii=False) if isinstance(x, (dict, list)) else x)
+
+
 	df.to_parquet(parquet_path, index=False)
 	df.to_csv(csv_path, index=False)
 
 	if verbose:
-		print(f"\n[STAGE 4 COMPLETE] New: {len(rows_new)} | Resumed: {skipped} | Errors: {errors} Saved final supervision matrix ({len(df):,} rows) to:")
+		print(f"\n[SAVE] Total: {len(all_rows)} | New: {len(rows_new)} | Resumed: {skipped} | Errors: {errors} | {df.shape}")
 		print(f"  ├─ Parquet : {parquet_path}")
 		print(f"  ├─ CSV     : {csv_path}")
 		print(f"  └─ JSONL   : {jsonl_path}")
