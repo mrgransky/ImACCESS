@@ -39,7 +39,7 @@ CSV_FILE=$DATASET_DIR/metadata_multi_label.csv
 JSONL_COT_FILE="${CSV_FILE%.csv}_mlm_cot.jsonl"
 JSONL_MODALITY_CONFLICT_FILE="${JSONL_COT_FILE%.jsonl}_modality_conflict_audit.jsonl"
 
-MLM_MODEL="Qwen/Qwen3.6-35B-A3B"
+MLM_MODEL="Qwen/Qwen3.5-27B"
 SYMMETRICAL_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 # SYMMETRICAL_EMBEDDING_MODEL="nvidia/llama-embed-nemotron-8b"
 # SYMMETRICAL_EMBEDDING_MODEL="Octen/Octen-Embedding-8B"

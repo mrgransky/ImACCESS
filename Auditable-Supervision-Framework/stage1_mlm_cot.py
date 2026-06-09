@@ -31,7 +31,7 @@ from nlp_utils import get_enriched_description
 # one sample:
 # $ python stage1_mlm_cot.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/images/SBC-3_tail_wheel_extended.jpg -c "SBC-3 tail wheel extended. SBC-3 Helldiver tail wheel extended. SBC Helldiver." -mlm "google/gemma-4-26B-A4B-it" -v
 
-PROMPT_TEMPLATE = """Extract **at MOST {k}** prominet keywords **PER MODALITY** from the given image and caption.
+PROMPT_TEMPLATE = """Extract **AT MOST {k}** prominet keywords **PER MODALITY** from the given image and caption.
 The extracted keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
 Refrain from extracting the following types of keywords:
@@ -47,11 +47,11 @@ Refrain from extracting the following types of keywords:
   - Image types or characteristics (e.g., 'monochrome picture', 'multiple exposure', 'superimposed photograph', 'blurred photo', 'black and white image').
 
 OUTPUT DEFINITIONS:
-  - text_concepts: Keywords derived EXCLUSIVELY from the caption. If caption is empty or "No caption available", text_concepts = [] without text inferencing.
+  - text_concepts: Keywords derived EXCLUSIVELY from the caption. If caption is empty or "No caption available", text_concepts = [].
   - visual_concepts: Keywords derived EXCLUSIVELY from the pixel data. OCR, watermarks, or text overlays are not allowed.
   - fused_concepts: Keywords inferred JOINTLY from BOTH textal and visual modalities. If the modalities are disjoint, fused_concepts = [] without forcing a fusion.
 
-Return ONLY a valid JSON object with standarized and parsable Python lists without thoughs, reasoning or any additional text:
+Return ONLY a valid JSON object with standarized and parsable Python lists. No thoughs, reasoning or any additional text.
 {{"text_concepts": [], "visual_concepts": [], "fused_concepts":[]}}.
 
 Caption: '{caption}'"""
