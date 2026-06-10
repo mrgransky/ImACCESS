@@ -669,6 +669,11 @@ def regime_aware_consolidation(input_jsonl: str, column: str, verbose: bool = Fa
 	os.makedirs(outputs_dir, exist_ok=True)
 
 	# Derive output paths
+	stage3_path = os.path.join(
+		outputs_dir, 
+		os.path.basename(input_jsonl.replace(".jsonl", "_auditable_cgd.jsonl"))
+	)
+
 	parquet_path = os.path.join(
 		outputs_dir,
 		os.path.basename(input_jsonl.replace(".jsonl", "_auditable_matrix.parquet"))
@@ -676,7 +681,9 @@ def regime_aware_consolidation(input_jsonl: str, column: str, verbose: bool = Fa
 	csv_path   = parquet_path.replace(".parquet", ".csv")
 	jsonl_path = parquet_path.replace(".parquet", ".jsonl")
 
-	# ── Load already-processed IDs for crash-safe resume ─────────────────────
+	# Load already-processed IDs for crash-safe resume
+	# Both Stage 4 JSONL and Stage 3 JSONL are checked so that on resume
+	# neither file gets duplicate records written.
 	processed_ids: set = set()
 	if os.path.exists(jsonl_path):
 		with open(jsonl_path, 'r', encoding="utf-8") as f_existing:
@@ -694,6 +701,21 @@ def regime_aware_consolidation(input_jsonl: str, column: str, verbose: bool = Fa
 				f"already processed — skipping."
 			)
 
+	# Stage 3 resume guard: collect IDs already written to the Stage 3 JSONL.
+	# On a clean run this set is empty; on resume it mirrors processed_ids so
+	# s3_f (opened in append mode below) never writes a duplicate record.
+	stage3_processed_ids: set = set()
+	if os.path.exists(stage3_path):
+		with open(stage3_path, 'r', encoding="utf-8") as f_s3:
+			for line in f_s3:
+				line = line.strip()
+				if not line:
+					continue
+				try:
+					stage3_processed_ids.add(json.loads(line)["id"])
+				except Exception:
+					pass
+
 	# One CGDConsolidator instance is scoped to one input_jsonl.
 	consolidator = CGDConsolidator(input_jsonl=input_jsonl, verbose=verbose)
 
@@ -705,6 +727,7 @@ def regime_aware_consolidation(input_jsonl: str, column: str, verbose: bool = Fa
 	# Open output JSONL in append mode — safe for resume
 	with (
 		open(jsonl_path,   'a', encoding="utf-8") as out_f,
+		open(stage3_path,  'a', encoding="utf-8") as s3_f,
 		open(input_jsonl,  'r', encoding="utf-8") as in_f,
 	):
 		for line_no, line in enumerate(in_f, start=1):
@@ -730,18 +753,32 @@ def regime_aware_consolidation(input_jsonl: str, column: str, verbose: bool = Fa
 
 			try:
 				consolidated = consolidator.consolidate_sample(
-					receipt=receipt, 
+					receipt=receipt,
 					column=column
 				)
+
+				# Export Stage 3 Specific Data.
+				# Guard prevents duplicate writes on crash-resume.
+				if sample_id not in stage3_processed_ids:
+					stage3_record = {
+						"id":         consolidated["id"],
+						"regime":     consolidated["regime"],
+						"cgd_scores": consolidated["audited_concepts"],
+					}
+					s3_f.write(json.dumps(stage3_record, ensure_ascii=False) + "\n")
+					stage3_processed_ids.add(sample_id)
+
+				# Stage 4 output — written exactly once per sample.
+				out_f.write(json.dumps(consolidated, ensure_ascii=False) + "\n")
+				rows_new.append(consolidated)
 			except Exception as e:
 				print(f"[ERROR] {sample_id}: {e}")
 				errors += 1
 				continue
 
-			out_f.write(json.dumps(consolidated, ensure_ascii=False) + "\n")
-			rows_new.append(consolidated)
 
-	# ── Rebuild .parquet and .csv from the complete JSONL ────────────────────
+
+	# Rebuild .parquet and .csv from the complete JSONL file.
 	# Includes both resumed rows and newly processed rows for a consistent output.
 	all_rows: List[Dict[str, Any]] = []
 	with open(jsonl_path, 'r', encoding="utf-8") as f:
@@ -780,8 +817,7 @@ def regime_aware_consolidation(input_jsonl: str, column: str, verbose: bool = Fa
 			df = df[~empty_mask].reset_index(drop=True)
 			print(f"  DataFrame after filter: {df.shape}")
 
-
-	# [FIX 9] Serialise nested dict/list columns to JSON strings for Parquet
+	# Serialise nested dict/list columns to JSON strings for Parquet
 	# compatibility, but SKIP positive_targets and hard_negatives so Stage 5
 	# can consume them as native Python lists without a json.loads() call.
 	# pyarrow handles list-of-string columns natively.
@@ -812,6 +848,7 @@ def regime_aware_consolidation(input_jsonl: str, column: str, verbose: bool = Fa
 	)
 	print(f"  ├─ Parquet : {parquet_path}")
 	print(f"  ├─ CSV     : {csv_path}")
+	print(f"  ├─ Stage 3 : {stage3_path}")
 	print(f"  └─ JSONL   : {jsonl_path}")
 
 	if verbose:

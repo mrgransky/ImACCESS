@@ -280,7 +280,7 @@ def cluster_and_save_priors(
 	if verbose:
 		print(f"\n[BRIDGE][STEP 1] Per-sample pools (first 20):")
 		for i, sample in enumerate(all_sample_labels):
-			print(f"  [{i:7d}] ({len(sample):3d} concepts) {sample}")
+			print(f"[{i:7d}] ({len(sample):3d} concepts) {sample}")
 
 	if not all_sample_labels:
 		raise ValueError(
@@ -369,7 +369,7 @@ def cluster_and_save_priors(
 	print(f"[BRIDGE][DIAG] MISSING_MODALITY vis_c concepts  : {len(mm_vis_concepts):,}")
 	print(f"[BRIDGE][DIAG] Not in corpus (orphaned)         : {len(orphaned):,}")
 	if orphaned:
-			print(f"[BRIDGE][DIAG] Orphaned sample: {sorted(orphaned)}")
+		print(f"[BRIDGE][DIAG] Orphaned sample: {sorted(orphaned)}")
 
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 3: EMBEDDING (with crash-safe checkpoint)
