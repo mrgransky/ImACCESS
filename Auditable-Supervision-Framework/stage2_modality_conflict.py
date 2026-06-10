@@ -11,7 +11,6 @@ MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
 sys.path.insert(0, MISC_DIR)
 
 from utils import *
-from nlp_utils import _post_process_
 
 def is_empty_concepts(concepts: Optional[Dict[str, Any]]) -> bool:
 	if not concepts or not isinstance(concepts, dict):
