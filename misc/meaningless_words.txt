@@ -375,7 +375,6 @@ example
 except
 element
 feature
-face
 fact
 facts
 fairly
@@ -436,6 +435,7 @@ greatest
 hadn't
 hadnt
 handing
+support
 happens
 hardly
 hasn
@@ -1158,7 +1158,6 @@ rot
 chart
 graph
 diagram
-table
 plot
 plotting
 figure
