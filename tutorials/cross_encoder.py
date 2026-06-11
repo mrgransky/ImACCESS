@@ -14,7 +14,7 @@ from sentence_transformers import CrossEncoder
 sent_model = CrossEncoder(model_id)
 scores = sent_model.predict(
 	[
-		('A man is eating pizza', 'Junk food on the fridge'),
+		('A man is eating pizza', 'junk food on the fridge'),
 		('My Olde English Bulldogge is playing with a toy.', 'A dog with a collar'),
 		('A black race car starts up in front of a crowd of people.', 'A man is driving down a lonely road.')
 	],
@@ -43,7 +43,7 @@ premises = [
 
 hypotheses = [
 	'a dog with a collar on its neck',
-	"junk foods on the fridge",
+	"junk food on the fridge",
 	"wrinkled discounted clothes",
 	"severe pneumonia",
 	"dry lake bed",
