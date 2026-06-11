@@ -36,19 +36,19 @@ def _load_jsonl(path: str) -> list[dict]:
 	return records
 
 def _to_list(x) -> list:
-    """Safely convert a parquet list cell (may be np.ndarray, list, None, NaN) to a plain Python list."""
-    if x is None:
-        return []
-    try:
-        if pd.isna(x):
-            return []
-    except (TypeError, ValueError):
-        pass
-    if isinstance(x, np.ndarray):
-        return x.tolist()
-    if isinstance(x, (list, tuple)):
-        return list(x)
-    return []
+		"""Safely convert a parquet list cell (may be np.ndarray, list, None, NaN) to a plain Python list."""
+		if x is None:
+				return []
+		try:
+				if pd.isna(x):
+						return []
+		except (TypeError, ValueError):
+				pass
+		if isinstance(x, np.ndarray):
+				return x.tolist()
+		if isinstance(x, (list, tuple)):
+				return list(x)
+		return []
 
 def _save(fig, out_path: Optional[str], name: str):
 	if out_path:
@@ -500,6 +500,265 @@ def viz_label_count_distribution(
 		plt.tight_layout()
 		_save(fig, out_dir, "V8_label_count_distribution")
 
+# ─────────────────────────────────────────────────────────────────────────────
+# V9 — Semantic Asymmetry & NLI Entailment Analysis
+# ─────────────────────────────────────────────────────────────────────────────
+
+def viz_semantic_asymmetry(
+		audit_jsonl: str,
+		tau_asym:   float = 0.25,   # Stage 2 default: |gap| >= tau_asym → SOFT_CONFLICT
+		tau_orphan: float = 0.60,   # Stage 2 default: orphan_ratio >= tau_orphan → HARD_CONFLICT (NLI bypassed)
+		out_dir: Optional[str] = None,
+):
+		"""
+		Four-panel deep-dive into Stage 2 Asymmetric NLI signals.
+
+		Panel A — Entailment Scatter (V→T vs T→V)
+				Each dot is one sample where NLI was computed (nli_bypassed=False).
+				Color = regime. Diagonal = perfect symmetry (gap=0).
+				Shaded band = |gap| < tau_asym (AGREEMENT zone).
+				Points above diagonal → VISUAL denser; below → TEXT denser.
+
+		Panel B — Signed Asymmetry Gap Distribution
+				Histogram of asymmetry_gap per regime (NLI-computed samples only).
+				Vertical lines at ±tau_asym mark the SOFT_CONFLICT threshold.
+				Reveals whether conflicts are systematically visual-heavy or text-heavy.
+
+		Panel C — Denser Modality Breakdown per Regime
+				Stacked horizontal bar: fraction of samples in each regime that are
+				VISUAL-denser / TEXT-denser / EQUAL / NLI_BYPASSED.
+				Exposes how the orphan_ratio gate interacts with the NLI gate.
+
+		Panel D — NLI Coverage & Pair-Count Distribution
+				Left y-axis: stacked bar of nli_computed vs nli_bypassed per regime.
+				Right y-axis (twin): box/strip of nli_computed_on (pair count) per regime,
+				showing how many concept pairs were evaluated when NLI ran.
+
+		Reads: Stage 2 Evidence Receipt JSONL.
+		Required fields per record:
+				regime, metrics.{entail_V_to_T, entail_T_to_V, asymmetry_gap,
+													denser_modality, nli_bypassed, nli_computed_on}
+		"""
+		records = _load_jsonl(audit_jsonl)
+
+		rows = []
+		for rec in records:
+				m = rec.get("metrics") or {}
+				rows.append({
+						"regime":          rec.get("regime", "UNKNOWN"),
+						"V_entails_T":     m.get("entail_V_to_T"),
+						"T_entails_V":     m.get("entail_T_to_V"),
+						"gap":             m.get("asymmetry_gap"),
+						"denser":          m.get("denser_modality"),
+						"nli_bypassed":    m.get("nli_bypassed", True),
+						"computed_on":     m.get("nli_computed_on", 0),
+						"orphan_ratio":    m.get("orphan_ratio"),
+				})
+
+		df = pd.DataFrame(rows)
+		df_nli = df[df["nli_bypassed"] == False].copy()   # samples where NLI ran
+		regimes_all = sorted(df["regime"].unique())
+
+		if df_nli.empty:
+				print("[VIZ][WARN] No NLI-computed samples found in receipts (all nli_bypassed=True). "
+							"V9 requires at least some AGREEMENT or SOFT_CONFLICT samples.")
+				return
+
+		fig = plt.figure(figsize=(13, 8), constrained_layout=True)
+		fig.suptitle(
+			"Stage 2 — Semantic Asymmetry & Asymmetric NLI Entailment Analysis",
+			fontsize=13, 
+			fontweight="bold",
+		)
+		gs = fig.add_gridspec(2, 2)
+		ax_scatter = fig.add_subplot(gs[0, 0])
+		ax_hist    = fig.add_subplot(gs[0, 1])
+		ax_stack   = fig.add_subplot(gs[1, 0])
+		ax_cov     = fig.add_subplot(gs[1, 1])
+
+		# ── Panel A: Entailment Scatter ───────────────────────────────────────────
+		ax = ax_scatter
+		ax.set_title("Entailment Scatter (V→T vs. T→V)", fontsize=10, fontweight="bold")
+
+		# AGREEMENT zone band: |gap| < tau_asym  ↔  |V→T − T→V| < tau_asym
+		x_band = np.linspace(0, 1, 200)
+		ax.fill_between(
+				x_band,
+				np.clip(x_band - tau_asym, 0, 1),
+				np.clip(x_band + tau_asym, 0, 1),
+				alpha=0.10, 
+				color="#4CAF50", 
+				label=f"AGREEMENT band (|gap|<{tau_asym})",
+		)
+		# Symmetry diagonal
+		ax.plot([0, 1], [0, 1], color="#555", linewidth=1.0, linestyle="--", alpha=0.6, label="gap = 0 (perfect symmetry)")
+
+		for regime in regimes_all:
+				sub = df_nli[df_nli["regime"] == regime].dropna(subset=["V_entails_T", "T_entails_V"])
+				if sub.empty:
+						continue
+				ax.scatter(
+						sub["T_entails_V"], sub["V_entails_T"],
+						c=REGIME_COLORS.get(regime, "#607D8B"),
+						label=f"{regime}  (n={len(sub):,})",
+						alpha=0.55, s=22, edgecolors="none",
+				)
+
+		ax.set_xlabel("T→V entailment (text entails visual)", fontsize=9)
+		ax.set_ylabel("V→T entailment (visual entails text)", fontsize=9)
+		ax.set_xlim(-0.02, 1.02)
+		ax.set_ylim(-0.02, 1.02)
+		ax.legend(fontsize=7.5, frameon=False, loc="best", ncol=2)
+		ax.spines[["top", "right"]].set_visible(False)
+
+		# Quadrant annotations
+		ax.text(0.82, 0.08, "TEXT\ndenser", fontsize=7, color="#1565C0", ha="center", style="italic")
+		ax.text(0.08, 0.82, "VISUAL\ndenser", fontsize=7, color="#E53935", ha="center", style="italic")
+
+		# ── Panel B: Signed Gap Histogram ─────────────────────────────────────────
+		ax = ax_hist
+		ax.set_title("Signed Asymmetry Gap Distribution", fontsize=11, fontweight="bold")
+
+		bins = np.linspace(-1, 1, 41)
+		for regime in regimes_all:
+				sub = df_nli[df_nli["regime"] == regime].dropna(subset=["gap"])
+				if sub.empty:
+						continue
+				ax.hist(
+						sub["gap"], bins=bins,
+						color=REGIME_COLORS.get(regime, "#607D8B"),
+						alpha=0.55, label=f"{regime}  (n={len(sub):,})",
+						density=True, edgecolor="none",
+				)
+				med = sub["gap"].median()
+				ax.axvline(med, color=REGIME_COLORS.get(regime, "#607D8B"),
+									 linestyle=":", linewidth=1.1, alpha=0.85)
+
+		# Threshold lines
+		ax.axvline( tau_asym, color="#E53935", linewidth=1.4, linestyle="--",
+								label=f"+τ_asym = +{tau_asym}")
+		ax.axvline(-tau_asym, color="#1565C0", linewidth=1.4, linestyle="--",
+								label=f"−τ_asym = −{tau_asym}")
+		ax.axvline(0, color="#555", linewidth=0.8, linestyle="-", alpha=0.5)
+
+		# Zone labels
+		ymax = ax.get_ylim()[1] if ax.get_ylim()[1] > 0 else 1
+		ax.text( 0.60, ymax * 0.88, "VISUAL\ndenser", fontsize=7.5,
+						 color="#E53935", ha="center", style="italic")
+		ax.text(-0.60, ymax * 0.88, "TEXT\ndenser",   fontsize=7.5,
+						 color="#1565C0", ha="center", style="italic")
+
+		ax.set_xlabel("asymmetry_gap  =  V→T  −  T→V", fontsize=9)
+		ax.set_ylabel("Density", fontsize=9)
+		ax.legend(fontsize=7.5, frameon=False)
+		ax.spines[["top", "right"]].set_visible(False)
+
+		# ── Panel C: Denser Modality Stacked Bar ──────────────────────────────────
+		ax = ax_stack
+		ax.set_title("Denser Modality Breakdown per Regime", fontsize=11, fontweight="bold")
+
+		denser_cats  = ["VISUAL", "TEXT", "EQUAL", "NLI_BYPASSED"]
+		denser_colors = ["#E53935", "#1565C0", "#4CAF50", "#9E9E9E"]
+
+		fracs = {cat: [] for cat in denser_cats}
+		for regime in regimes_all:
+				sub_all = df[df["regime"] == regime]
+				n = max(len(sub_all), 1)
+				bypassed_n = sub_all["nli_bypassed"].sum()
+				fracs["NLI_BYPASSED"].append(bypassed_n / n)
+				sub_nli = sub_all[sub_all["nli_bypassed"] == False]
+				for cat in ("VISUAL", "TEXT", "EQUAL"):
+						fracs[cat].append((sub_nli["denser"] == cat).sum() / n)
+
+		lefts = np.zeros(len(regimes_all))
+		for cat, color in zip(denser_cats, denser_colors):
+				vals = np.array(fracs[cat])
+				bars = ax.barh(regimes_all, vals, left=lefts, color=color,
+											 label=cat, height=0.55, edgecolor="white")
+				for bar, val in zip(bars, vals):
+						if val > 0.04:
+								ax.text(
+										bar.get_x() + bar.get_width() / 2,
+										bar.get_y() + bar.get_height() / 2,
+										f"{val:.0%}", va="center", ha="center",
+										fontsize=7.5, color="white", fontweight="bold",
+								)
+				lefts += vals
+
+		ax.set_xlabel("Fraction of samples", fontsize=9)
+		ax.set_xlim(0, 1)
+		ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=1))
+		ax.legend(fontsize=7, frameon=False, loc="best")
+		ax.spines[["top", "right"]].set_visible(False)
+
+		# ── Panel D: NLI Coverage & Pair-Count Distribution ───────────────────────
+		ax = ax_cov
+		ax.set_title("NLI Coverage & Evaluated Pair Count", fontsize=11, fontweight="bold")
+		computed_counts = []
+		bypassed_counts = []
+		for regime in regimes_all:
+				sub = df[df["regime"] == regime]
+				computed_counts.append((sub["nli_bypassed"] == False).sum())
+				bypassed_counts.append(sub["nli_bypassed"].sum())
+
+		y = np.arange(len(regimes_all))
+		bar_h = 0.45
+		b1 = ax.barh(
+			y + bar_h / 2, 
+			computed_counts, 
+			height=bar_h,
+			color="#4CAF50", 
+			alpha=0.85, 
+			label="NLI computed", 
+			edgecolor="white"
+		)
+		b2 = ax.barh(
+			y - bar_h / 2, 
+			bypassed_counts, 
+			height=bar_h,
+			color="#9E9E9E", 
+			alpha=0.75, 
+			label="NLI bypassed", 
+			edgecolor="white"
+		)
+
+		for bar, val in zip(list(b1) + list(b2), computed_counts + bypassed_counts):
+			if val > 0:
+				ax.text(
+					bar.get_width() + max(computed_counts + bypassed_counts) * 0.01,
+					bar.get_y() + bar.get_height() / 2,
+					f"{val:,}", 
+					va="center", 
+					fontsize=8
+				)
+
+		ax.set_yticks(y)
+		ax.set_yticklabels(regimes_all, fontsize=9)
+		ax.set_xlabel("Sample count", fontsize=9)
+		ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
+		ax.legend(fontsize=8, frameon=False)
+		ax.spines[["top", "right"]].set_visible(False)
+
+		# Overlay: mean nli_computed_on (pair count) as text annotation per regime
+		ax2 = ax.twiny()
+		ax2.set_xlim(ax.get_xlim())
+		ax2.set_xticks([])
+		for i, regime in enumerate(regimes_all):
+			sub_nli = df[(df["regime"] == regime) & (df["nli_bypassed"] == False)]
+			if not sub_nli.empty:
+				mean_pairs = sub_nli["computed_on"].mean()
+				ax.text(
+					max(computed_counts + bypassed_counts) * 0.5, i + bar_h / 2,
+					f"avg {mean_pairs:.1f} pairs/sample",
+					va="center", 
+					ha="center", 
+					fontsize=7,
+					color="#0B0B0C", 
+					fontweight="bold",
+				)
+
+		_save(fig, out_dir, "V9_semantic_asymmetry")
+
 def set_seeds(seed: int = 42):
 		random.seed(seed)
 		np.random.seed(seed)
@@ -603,7 +862,7 @@ def main():
 	os.makedirs(VIZ_DIR, exist_ok=True)
 	
 	# Resolve which visualizations to run
-	all_viz = {"V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8"}
+	all_viz = {"V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9"}
 	if args.select:
 		requested = {v.strip().upper() for v in args.select.split(",")}
 		invalid   = requested - all_viz
@@ -668,6 +927,13 @@ def main():
 	if "V8" in run_set:
 		print("[VIZ] V8 — Label Count Distribution")
 		viz_label_count_distribution(stage4_parquet, out_dir=VIZ_DIR)
+
+	if "V9" in run_set:
+		print("[VIZ] V9 — Semantic Asymmetry & NLI Entailment")
+		viz_semantic_asymmetry(
+			args.audit_jsonl,
+			out_dir=VIZ_DIR,
+		)
 
 if __name__ == "__main__":
 	main()

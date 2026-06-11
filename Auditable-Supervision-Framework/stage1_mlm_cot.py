@@ -49,7 +49,7 @@ Exclude the following types of keywords:
 OUTPUT DEFINITIONS:
   - text_concepts: Keywords derived EXCLUSIVELY from the caption. If caption is empty or "No caption available", text_concepts = [].
   - visual_concepts: Keywords derived EXCLUSIVELY from the pixel data. OCR, watermarks, or text overlays are not allowed.
-  - fused_concepts: Keywords inferred JOINTLY from BOTH textal and visual modalities. If the modalities are disjoint, fused_concepts = [] without forcing a fusion.
+  - fused_concepts: Keywords inferred JOINTLY from BOTH textal and visual modalities. If the modalities are fundamentally disjoint, fused_concepts = [] without forcing a fusion.
 
 Return ONLY valid, standarized, and parsable JSON with Python lists. No additional thoughts, reasoning or explanations.
 {{"text_concepts": [], "visual_concepts": [], "fused_concepts":[]}}.

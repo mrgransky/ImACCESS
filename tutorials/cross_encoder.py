@@ -14,7 +14,7 @@ from sentence_transformers import CrossEncoder
 sent_model = CrossEncoder(model_id)
 scores = sent_model.predict(
 	[
-		('A man is eating pizza', 'A man eats something'),
+		('A man is eating pizza', 'Junk food on the fridge'),
 		('My Olde English Bulldogge is playing with a toy.', 'A dog with a collar'),
 		('A black race car starts up in front of a crowd of people.', 'A man is driving down a lonely road.')
 	],
@@ -38,6 +38,7 @@ premises = [
 	"T-34 Tank",
 	"fighter aircraft",
 	"Howitzer",
+	"prisoners of war",
 ]
 
 hypotheses = [
@@ -49,6 +50,7 @@ hypotheses = [
 	"military vehicle",
 	"naval transport",
 	"large metal gun",
+	"wounded soldiers",
 ]
 
 features = tokenizer(

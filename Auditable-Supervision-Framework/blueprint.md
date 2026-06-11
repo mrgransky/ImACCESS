@@ -20,7 +20,7 @@ This decoupling guarantees that our density metrics reflect true corpus-level st
 *   **Mechanism:** A highly structured System Prompt fed to a Joint VLM (Image + Caption). It enforces strict domain rules (Anti-Scope-Creep, Proper Noun Ban) and forces the VLM to categorize outputs.
 *   **Output (JSON):** Three distinct lists of raw open-vocabulary concepts: `C_text` (Coverage), `C_vis` (Grounding), and `C_fused` (Density resolution). *Crucial constraint: outputs `[]` for `C_fused` if modalities are completely disjoint.*
 
-### **Stage 2: Modality Conflict Quantification \& Routing**
+### **Stage 2: Modality Conflict Quantification \& Routing** (Regime Classification \& Evidence Scoring)
 *   **Goal:** Mathematically quantify cross-modal dissonance and route the sample into a "Conflict Regime."
 *   **Mechanism:** 
     1.  **Symmetric Audit (Cosine):** Uses `all-MiniLM` to find semantic overlap between `C_text` and `C_vis`. 
