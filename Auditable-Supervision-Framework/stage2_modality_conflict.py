@@ -179,7 +179,12 @@ class ConflictQuantifier:
 			"computed_on": len(v_to_t_pairs),
 		}
 
-	def process_sample(self, sample_id: str, column: str, vlm_json: Dict[str, Any]) -> Dict[str, Any]:
+	def process_sample(
+		self, 
+		sample_id: str, 
+		column: str, 
+		vlm_json: Dict[str, Any]
+	) -> Dict[str, Any]:
 		"""
 		Computes the Evidence Receipt and routes the sample to a Conflict Regime.
 
@@ -519,7 +524,7 @@ def modality_conflict_audit(
 	if verbose:
 		print(f"\n[LOADED] {len(records)} {type(records)} records ({skipped_load} skipped during load).")
 
-	# RESUME LOGIC: collect already-processed IDs
+	# RESUME: read output file to collect already-processed IDs
 	output_jsonl = input_jsonl.replace(".jsonl", "_modality_conflict_audit.jsonl")
 	done_ids: set = set()
 	if os.path.exists(output_jsonl):

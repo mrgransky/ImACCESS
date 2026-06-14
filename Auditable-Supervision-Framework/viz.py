@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 # local:
-# python viz.py --audit_jsonl /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_mlm_cot_modality_conflict_audit.jsonl --freq_json /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/outputs/metadata_multi_label_mlm_cot_modality_conflict_audit_global_label_frequency.json --stage4_parquet /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/outputs/metadata_multi_label_mlm_cot_modality_conflict_audit_auditable_matrix.parquet --out_dir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/outputs --n_raw_concepts 172
+# python viz.py --audit_jsonl /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_mlm_cot_modality_conflict_audit.jsonl --n_raw_concepts 172
 
 REGIME_COLORS = {
 	"AGREEMENT":        "#028307",
@@ -219,72 +219,127 @@ def viz_zipf_curve(
 
 # V4 — Vocabulary Funnel (Waterfall bar)
 def viz_vocabulary_funnel(
-		n_raw_concepts: int,
-		n_after_clustering: int,
-		n_after_audit: int,
-		n_target_vocab: int,
-		n_emb_cache: int,
-		out_dir: Optional[str] = None,
+	audit_jsonl: str,
+	n_after_clustering: int,
+	n_after_audit: int,
+	n_target_vocab: int,
+	n_emb_cache: int,
+	out_dir: Optional[str]=None,
 ):
+	"""
+	Horizontal waterfall showing how many concepts survive each Bridge gate.
+	Pass the numbers directly from your Bridge printout.
+	Example:
+		viz_vocabulary_funnel(
+			n_after_clustering  = 45,
+			n_after_audit       = 38,
+			n_target_vocab      = 35,
+			n_emb_cache         = 207,
+		)
+	"""
+	def infer_n_raw_concepts(
+		jsonl_path: str,
+		column: str = "mlm_cot_raw",
+		include_fused: bool = False,
+		normalize: bool = True,
+	) -> int:
 		"""
-		Horizontal waterfall showing how many concepts survive each Bridge gate.
-		Pass the numbers directly from your Bridge printout.
-
-		Example:
-				viz_vocabulary_funnel(
-						n_raw_concepts      = 172,
-						n_after_clustering  = 45,
-						n_after_audit       = 38,
-						n_target_vocab      = 35,
-						n_emb_cache         = 207,
-				)
+		Infer the number of unique raw concepts across a dataset.
+		- Reads JSONL where each line has a dict containing `column`
+			with keys: text_concepts, visual_concepts, fused_concepts.
+		- Returns UNIQUE concept count (dataset-level vocabulary size).
 		"""
-		stages = [
-				"Raw VLM concepts\n(post-normalisation)",
-				"After clustering\n(optimal k)",
-				"After cluster audit\n(Step 8a/8c)",
-				"Target vocabulary |V|\n(canonical labels)",
-				"emb_cache\n(raw + canonical)",
-		]
-		values = [
-				n_raw_concepts,
-				n_after_clustering,
-				n_after_audit,
-				n_target_vocab,
-				n_emb_cache,
-		]
-		colors = ["#1565C0", "#1976D2", "#42A5F5", "#4CAF50", "#8BC34A"]
+		def _norm(s: str) -> str:
+				s = s.strip()
+				if normalize:
+						s = s.lower()
+				return s
+		vocab = set()
+		with open(jsonl_path, "r", encoding="utf-8") as f:
+				for line in f:
+						line = line.strip()
+						if not line:
+								continue
+						try:
+								rec = json.loads(line)
+						except Exception:
+								continue
+						blob = rec.get(column) or {}
+						if not isinstance(blob, dict):
+								continue
+						for key in ("text_concepts", "visual_concepts"):
+								concepts = blob.get(key) or []
+								if isinstance(concepts, list):
+										for c in concepts:
+												if isinstance(c, str) and c.strip():
+														vocab.add(_norm(c))
+						if include_fused:
+								concepts = blob.get("fused_concepts") or []
+								if isinstance(concepts, list):
+										for c in concepts:
+												if isinstance(c, str) and c.strip():
+														vocab.add(_norm(c))
+		return len(vocab)
 
-		fig, ax = plt.subplots(figsize=(14, 8))
-		fig.suptitle("Bridge — Vocabulary Funnel", fontsize=14, fontweight="bold")
+	n_raw_concepts = infer_n_raw_concepts(audit_jsonl, column="mlm_cot_raw", include_fused=False)
 
-		bars = ax.barh(stages[::-1], values[::-1], color=colors[::-1],
-									 edgecolor="white", height=0.55)
-		for bar, val in zip(bars, values[::-1]):
-				ax.text(
-						bar.get_width() + max(values) * 0.01,
-						bar.get_y() + bar.get_height() / 2,
-						f"{val:,}", va="center", fontsize=10, fontweight="bold",
-				)
-
-		# Reduction annotations
-		for i in range(len(values) - 2):  # skip emb_cache (it grows)
-				reduction = (values[i] - values[i + 1]) / max(values[i], 1) * 100
-				if reduction > 0:
-						y_pos = len(stages) - 1 - i - 0.5
-						ax.text(
-								max(values) * 0.5, y_pos,
-								f"▼ {reduction:.0f}% reduction",
-								va="center", ha="center", fontsize=8,
-								color="#E53935", style="italic",
-						)
-
-		ax.set_xlabel("Number of concepts / labels")
-		ax.spines[["top", "right"]].set_visible(False)
-		ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
-
-		plt.tight_layout()
-		_save(fig, out_dir, "V4_vocabulary_funnel")
+	stages = [
+		"Raw VLM concepts\n(post-normalisation)",
+		"After clustering\n(optimal k)",
+		"After cluster audit\n(Step 8a/8c)",
+		"Target vocabulary |V|\n(canonical labels)",
+		"emb_cache\n(raw + canonical)",
+	]
+	values = [
+		n_raw_concepts,
+		n_after_clustering,
+		n_after_audit,
+		n_target_vocab,
+		n_emb_cache,
+	]
+	colors = ["#1565C0", "#1976D2", "#42A5F5", "#4CAF50", "#8BC34A"]
+	fig, ax = plt.subplots(figsize=(14, 8))
+	fig.suptitle("Bridge — Vocabulary Funnel", fontsize=14, fontweight="bold")
+	bars = ax.barh(
+		stages[::-1], 
+		values[::-1], 
+		color=colors[::-1],
+		edgecolor="#F7F1F1",
+		height=0.55
+	)
+	
+	for bar, val in zip(bars, values[::-1]):
+		ax.text(
+			bar.get_width() + max(values) * 0.01,
+			bar.get_y() + bar.get_height() / 2,
+			f"{val:,}", 
+			va="center", 
+			fontsize=10, 
+			fontweight="bold",
+		)
+	
+	# Reduction annotations
+	for i in range(len(values) - 2):  # skip emb_cache (it grows)
+		reduction = (values[i] - values[i + 1]) / max(values[i], 1) * 100
+		if reduction > 0:
+			y_pos = len(stages) - 1 - i - 0.5
+			ax.text(
+				max(values) * 0.5, y_pos,
+				f"▼ {reduction:.0f}% reduction",
+				va="center", 
+				ha="center", 
+				fontsize=8,
+				color="#E53935", 
+				style="italic",
+			)
+	
+	ax.set_xlabel("Number of concepts / labels")
+	ax.spines[["top", "right"]].set_visible(False)
+	ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
+	
+	plt.tight_layout()
+	
+	_save(fig, out_dir, "V4_vocabulary_funnel")
 
 # V5 — CGD Score Heatmap per Regime
 def viz_cgd_heatmap(
@@ -500,10 +555,7 @@ def viz_label_count_distribution(
 		plt.tight_layout()
 		_save(fig, out_dir, "V8_label_count_distribution")
 
-# ─────────────────────────────────────────────────────────────────────────────
 # V9 — Semantic Asymmetry & NLI Entailment Analysis
-# ─────────────────────────────────────────────────────────────────────────────
-
 def viz_semantic_asymmetry(
 		audit_jsonl: str,
 		tau_asym:   float = 0.25,   # Stage 2 default: |gap| >= tau_asym → SOFT_CONFLICT
@@ -778,14 +830,6 @@ def main():
 		help="Path to Stage 2 Evidence Receipt JSONL (e.g. test_mlm_cot_modality_conflict_audit.jsonl)",
 	)
 
-	# ── Bridge funnel numbers (paste from Bridge printout) ────────────────────
-	parser.add_argument(
-		"--n_raw_concepts",
-		type=int,
-		default=0,
-		metavar="N",
-		help="Bridge Step 2: unique concepts post-normalisation.",
-	)
 	parser.add_argument(
 		"--n_after_clustering",
 		type=int,
@@ -904,7 +948,7 @@ def main():
 	if "V4" in run_set:
 		print("[VIZ] V4 — Vocabulary Funnel")
 		viz_vocabulary_funnel(
-			n_raw_concepts      = args.n_raw_concepts,
+			audit_jsonl					= args.audit_jsonl,
 			n_after_clustering  = args.n_after_clustering,
 			n_after_audit       = args.n_after_audit,
 			n_target_vocab      = args.n_target_vocab,
