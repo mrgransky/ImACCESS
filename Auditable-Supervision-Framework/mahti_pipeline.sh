@@ -59,6 +59,8 @@ python -u global_aggregation.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -emb $SYMME
 # stage 3 & 4: Regime-Conditioned Label Quality
 python -u stage3_4_cgd_consolidation.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -v
 
+# visualization:
+python -u viz.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -v
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
