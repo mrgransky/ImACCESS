@@ -824,7 +824,7 @@ def main():
 		formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 	)
 	parser.add_argument(
-		"--audit_jsonl", "-a",
+		"--audit_jsonl", "-jsonl",
 		type=str,
 		required=True,
 		help="Path to Stage 2 Evidence Receipt JSONL (e.g. test_mlm_cot_modality_conflict_audit.jsonl)",
