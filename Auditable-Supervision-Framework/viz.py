@@ -172,7 +172,7 @@ def viz_similarity_histograms(
 # V3 — Concept Frequency Rank-Log Plot (Zipf curve)
 def viz_zipf_curve(
 		freq_json: str,
-		top_n_labels: int = 30,
+		top_n_labels: int = 10,
 		out_dir: Optional[str] = None,
 ):
 		"""
@@ -180,34 +180,41 @@ def viz_zipf_curve(
 		Annotates the top-N most frequent concepts.
 		"""
 		with open(freq_json, encoding="utf-8") as f:
-				freq_dict: dict = json.load(f)
+			freq_dict: dict = json.load(f)
 
 		sorted_freqs = sorted(freq_dict.values(), reverse=True)
 		sorted_items = sorted(freq_dict.items(), key=lambda x: -x[1])
 		ranks = np.arange(1, len(sorted_freqs) + 1)
 
-		fig, ax = plt.subplots(figsize=(15, 8))
-		fig.suptitle("Bridge — Raw Concept Vocabulary: Zipf Distribution",
-								 fontsize=14, fontweight="bold")
+		fig, ax = plt.subplots(figsize=(12, 8))
+		fig.suptitle("Bridge — Raw Concept Vocabulary: Zipf Distribution", fontsize=14, fontweight="bold")
 
 		ax.loglog(ranks, sorted_freqs, color="#1565C0", linewidth=1.8, alpha=0.85)
-		ax.fill_between(ranks, sorted_freqs, alpha=0.08, color="#1565C0")
+		ax.fill_between(ranks, sorted_freqs, alpha=0.08, color="#90EB19")
 
 		# Annotate top-N
 		for rank, (label, freq) in enumerate(sorted_items[:top_n_labels], start=1):
-				ax.annotate(
-						label, xy=(rank, freq),
-						xytext=(rank * 1.3, freq * 1.15),
-						fontsize=6.5, color="#333",
-						arrowprops=dict(arrowstyle="-", color="#aaa", lw=0.6),
-				)
+			ax.annotate(
+				label, 
+				xy=(rank, freq),
+				xytext=(rank * 1.3, freq * 1.15),
+				fontsize=5.5, 
+				color="#333555",
+				arrowprops=dict(arrowstyle="-", color="#161624", lw=0.6),
+			)
 
 		# Singleton line
 		singleton_rank = next(
-				(i + 1 for i, v in enumerate(sorted_freqs) if v == 1), len(sorted_freqs)
+			(i + 1 for i, v in enumerate(sorted_freqs) if v == 1), 
+			len(sorted_freqs)
 		)
-		ax.axvline(singleton_rank, color="#E53935", linestyle=":", linewidth=1.2,
-							 label=f"Singletons start (rank {singleton_rank:,})")
+		ax.axvline(
+			singleton_rank, 
+			color="#E53935", 
+			linestyle=":", 
+			linewidth=1.2,
+			label=f"Singletons start (rank {singleton_rank:,})"
+		)
 
 		ax.set_xlabel("Rank (log scale)")
 		ax.set_ylabel("Frequency (log scale)")
@@ -883,7 +890,7 @@ def main():
 	parser.add_argument(
 		"--top_n_zipf",
 		type=int,
-		default=30,
+		default=15,
 		metavar="N",
 		help="Number of concept labels annotated on the Zipf curve (V3).",
 	)

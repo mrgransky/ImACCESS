@@ -25,7 +25,7 @@ class CGDConsolidator:
 		tau_sim: float = 0.60,                  # Minimum similarity score for Tier-2 NN resolution
 		lambda_asym: float = 1.0,               # Multiplier for Soft Conflict w_pos discount
 		hard_conflict_w_pos: float = 0.30,      # Ablation-exposed constant for HARD_CONFLICT
-		soft_conflict_w_pos_floor: float = 0.50,# [FIX 6] Exposed floor for SOFT_CONFLICT w_pos
+		soft_conflict_w_pos_floor: float = 0.50,# Exposed floor for SOFT_CONFLICT w_pos
 		verbose: bool = False,
 	):
 		"""
@@ -40,7 +40,7 @@ class CGDConsolidator:
 		self.tau_sim                    = tau_sim
 		self.lambda_asym                = lambda_asym
 		self.hard_conflict_w_pos        = hard_conflict_w_pos
-		self.soft_conflict_w_pos_floor  = soft_conflict_w_pos_floor  # [FIX 6]
+		self.soft_conflict_w_pos_floor  = soft_conflict_w_pos_floor
 		self.verbose                    = verbose
 		self.outputs_dir                = os.path.join(os.path.dirname(self.input_jsonl), "outputs")
 
@@ -50,7 +50,6 @@ class CGDConsolidator:
 			"low_similarity": [],   # (concept, best_match, sim_score)
 		}
 
-		# ── Derive Bridge artifact paths from the input JSONL stem ──────────────
 		def _bridge_path(suffix: str) -> str:
 			base = os.path.basename(self.input_jsonl).replace(".jsonl", suffix)
 			return os.path.join(self.outputs_dir, base)
@@ -60,6 +59,7 @@ class CGDConsolidator:
 		freqs_path          = _bridge_path("_global_label_frequency.json")
 		emb_path            = _bridge_path("_emb_cache.pt")
 		target_vocab_path   = _bridge_path("_target_vocabulary.json")
+		gmm_path            = _bridge_path("_conflict_gmm.pkl")
 
 		if self.verbose:
 			print(f"\n[STAGE 3 & 4] CGD Consolidator & Regime-Aware Router")
@@ -79,8 +79,6 @@ class CGDConsolidator:
 		with open(freqs_path, 'r') as f:
 			self.global_freqs: Dict[str, int] = json.load(f)
 
-		# Support both the new metadata-wrapped format (post-Bridge)
-		# and the legacy bare-list format so the code is backward-compatible.
 		with open(target_vocab_path, 'r') as f:
 			vocab_payload = json.load(f)
 		if isinstance(vocab_payload, dict):
@@ -88,9 +86,33 @@ class CGDConsolidator:
 		else:
 			self.target_vocabulary = vocab_payload  # legacy bare list
 
+		# Load Unsupervised GMM Model (Backward Compatible Fallback)
+		if os.path.exists(gmm_path):
+			try:
+				gmm_payload = joblib.load(gmm_path)
+				self.gmm = gmm_payload["gmm_model"]
+				self.class_mapping = gmm_payload["class_mapping"]
+				self.regime_to_idx = {v: k for k, v in self.class_mapping.items()}
+				if self.verbose:
+					print(f"  ├─ Discovered GMM Model: {gmm_path} (Loaded successfully ✓)")
+					print(f"       └─ Class Mapping: {self.class_mapping}")
+			except Exception as e:
+				print(f"[WARN] Failed to load GMM model from {gmm_path}: {e}. Falling back to heuristics.")
+				self.gmm = None
+				self.class_mapping = None
+				self.regime_to_idx = {}
+		else:
+			self.gmm = None
+			self.class_mapping = None
+			self.regime_to_idx = {}
+			if self.verbose:
+				print("  ├─ Discovered GMM Model: None (GMM pkl not found. Falling back to Heuristic Stage 2 routing.)")
+
 		if os.path.exists(blacklist_path):
 			with open(blacklist_path, 'r') as f:
 				self.blacklisted_concepts: set = set(json.load(f))
+			if self.verbose:
+				print(f"  └─ Discovered Blacklist: {blacklist_path} (Loaded successfully ✓)")
 		else:
 			raise FileNotFoundError(
 					f"[CGDConsolidator] _blacklisted_concepts.json not found at:\n"
@@ -102,11 +124,9 @@ class CGDConsolidator:
 		# Pre-compute normalised blacklist set ONCE — O(1) lookup per concept.
 		# The original code rebuilt this set inside _resolve_to_canonical() on every
 		# call (~770K times for 110K samples × 7 concepts), causing severe perf regression.
-		self.blacklisted_concepts_norm: set = {
-			c.lower().strip() for c in self.blacklisted_concepts
-		}
+		self.blacklisted_concepts_norm: set = {c.lower().strip() for c in self.blacklisted_concepts}
 		if self.verbose:
-			print(f"  [DEBUG] blacklisted_concepts_norm sample:\n{sorted(list(self.blacklisted_concepts_norm))}")
+			print(f"[DEBUG] {len(self.blacklisted_concepts)}  blacklisted_concepts_norm:\n{sorted(list(self.blacklisted_concepts_norm))}\n")
 
 		# Cache max_freq once — avoids O(|V|) scan per sample
 		self.max_freq: int = max(self.global_freqs.values()) if self.global_freqs else 1
@@ -136,8 +156,8 @@ class CGDConsolidator:
 		if self.verbose:
 			print(
 				f"  └─ [{self.__class__.__name__}] "
-				f"{len(self.emb_cache):,} embeddings | "
-				f"Vocab size: {len(self.target_vocabulary):,}"
+				f"{len(self.emb_cache)} embeddings | "
+				f"Vocab size: {len(self.target_vocabulary)}"
 			)
 
 	def _get_embedding(self, label: str) -> Optional[np.ndarray]:
@@ -243,7 +263,7 @@ class CGDConsolidator:
 	def audit_concept_CGD(
 		self,
 		concept: str,
-		source_modality: str,       # "TEXT" | "VISUAL" | "FUSED"
+		source_modality: str, # "TEXT" | "VISUAL" | "FUSED"
 		c_text: List[str],
 		c_vis: List[str],
 		regime: str,
@@ -278,8 +298,8 @@ class CGDConsolidator:
 		                  is used for the D_local penalty in SOFT_CONFLICT, and
 		                  which modalities are checked for G(c) verbatim match.
 		"""
-		# ── 1. Grounding Score G(c) ───────────────────────────────────────────
-		# [FIX 6] FUSED concepts are grounded in either modality.
+		# 1. Grounding Score G(c)
+		# FUSED concepts are grounded in either modality.
 		# Verbatim check: c_vis first, then c_text for FUSED.
 		# Cosine fallback: max over c_vis always; additionally max over c_text
 		# for FUSED so that text-grounded fused concepts are not penalised.
@@ -301,11 +321,11 @@ class CGDConsolidator:
 			)
 			g_score = max(vis_sim, text_sim)
 
-		# ── 2. Coverage Score C(c) ────────────────────────────────────────────
+		# 2. Coverage Score C(c)
 		freq    = self.global_freqs.get(concept, 1)
 		c_score = 1.0 - (math.log(1 + freq) / math.log(1 + self.max_freq))
 
-		# ── 3. Density Score D(c) = D_global * D_local ───────────────────────
+		# 3. Density Score D(c) = D_global * D_local 
 		d_global = 1.0 - math.exp(-self.alpha * freq)
 		d_local  = 1.0
 
@@ -337,7 +357,7 @@ class CGDConsolidator:
 		and hard_negatives for downstream BCE training.
 		"""
 		sample_id = receipt["id"]
-		regime    = receipt["regime"]
+		heuristic_regime = receipt["regime"]
 		metrics   = receipt.get("metrics") or {}
 		vlm_data  = receipt.get(column, {})
 		evidence  = receipt.get("evidence", {})
@@ -351,8 +371,31 @@ class CGDConsolidator:
 		asym_gap_abs    = abs(raw_asym_gap) if raw_asym_gap is not None else 0.0
 		entail_V2T      = metrics.get("entail_V_to_T", 0.0)
 		entail_T2V      = metrics.get("entail_T_to_V", 0.0)
+		set_sim         = metrics.get("set_similarity", 0.0)
+		orphan_ratio    = metrics.get("orphan_ratio", 0.0)
+		
+		# UNSUPERVISED CONFLICT REGIME ROUTING
+		regime = heuristic_regime
+		gmm_confidence = None
+		gmm_probabilities = None
 
-		# ── [FIX 2] Build concept pool with modality-of-origin tags ──────────
+		if (
+			self.gmm is not None 
+			and set_sim is not None 
+			and orphan_ratio is not None 
+			and raw_asym_gap is not None 
+			and heuristic_regime != "MISSING_MODALITY"
+		):
+			feat = np.array([[set_sim, orphan_ratio, asym_gap_abs]])
+			probs = self.gmm.predict_proba(feat)[0] # Shape: [3]
+			best_idx = int(np.argmax(probs))
+			
+			# Map the GMM cluster ID back to our semantic labels
+			regime = self.class_mapping[best_idx]
+			gmm_confidence = float(probs[best_idx])
+			gmm_probabilities = {self.class_mapping[k]: float(probs[k]) for k in range(3)}
+
+		# Build concept pool with modality-of-origin tags
 		# fused_concepts are trustworthy only for AGREEMENT and SOFT_CONFLICT.
 		# HARD_CONFLICT: fused is unreliable (empty or hallucinated blend) →
 		# exclude, consistent with the Bridge regime-gating logic.
@@ -377,7 +420,7 @@ class CGDConsolidator:
 				f"pool={len(concept_pool)} concepts"
 			)
 
-		# ── Stage 3: CGD Audit ────────────────────────────────────────────────
+		# Stage 3: CGD Audit
 		# Resolve canonical ONCE per concept and audit in a single pass.
 		# audited_concepts: raw_concept → {"scores": {C,G,D}, "canonical": str,
 		#                                  "source_modality": str}
@@ -404,7 +447,7 @@ class CGDConsolidator:
 				"source_modality": source_modality,
 			}
 
-		# [FIX 4] resolved_cache records the outcome of every concept in the pool,
+		# resolved_cache records the outcome of every concept in the pool,
 		# including those dropped (None). The robustness fallback must distinguish
 		# between "not yet attempted" (key absent) and "attempted but dropped"
 		# (key present, value None) to avoid re-resolving blacklisted concepts
@@ -420,7 +463,7 @@ class CGDConsolidator:
 				f"resolved to vocabulary"
 			)
 
-		# ── Stage 4: Regime-Aware Gated Consolidation ────────────────────────
+		# Stage 4: Regime-Aware Gated Consolidation
 		pos_targets: set = set()
 		hn_targets:  set = set()
 		w_pos: float = 1.0
@@ -522,14 +565,14 @@ class CGDConsolidator:
 				hn_targets -= canonical_collision  # pos always wins
 
 		# ── Sanity assertions (active in all runs, not just verbose) ─────────
-		# [FIX 2] Catch any future regression where w_neg > 0 with no negatives.
+		# Catch any future regression where w_neg > 0 with no negatives.
 		if regime == "HARD_CONFLICT" and len(hn_targets) == 0 and w_neg > 0:
 			print(
 				f"[BUG] HARD_CONFLICT with hn=0 but w_neg={w_neg:.4f} "
 				f"for {sample_id}"
 			)
 
-		# [FIX 7] Blacklist survival check uses self.blacklisted_concepts_norm
+		# Blacklist survival check uses self.blacklisted_concepts_norm
 		# instead of a hardcoded geo_like set — self-maintaining as blacklist grows.
 		for c in audited_concepts:
 			if c.lower().strip() in self.blacklisted_concepts_norm:
@@ -539,14 +582,14 @@ class CGDConsolidator:
 					f"for {sample_id}"
 				)
 
-		# ── Robustness fallback ───────────────────────────────────────────────
+		# Robustness fallback
 		# If pos_targets is still empty after gating (e.g. all D(c) < tau in a
 		# SOFT_CONFLICT sample with very abstract concepts), recover using raw
 		# visual concepts — the most grounded signal available.
 		# The density gate is intentionally bypassed here: this is a last-resort
 		# path to prevent empty supervision, not a quality gate.
 		#
-		# [FIX 4] resolved_cache distinguishes two None cases:
+		# resolved_cache distinguishes two None cases:
 		#   - key present, value None  → already attempted and dropped (blacklisted
 		#     or below tau); do NOT retry even with a softer threshold.
 		#   - key absent               → not yet attempted; safe to retry.
@@ -576,7 +619,6 @@ class CGDConsolidator:
 					f"from c_vis fallback."
 				)
 
-		# ── Flatten audited_concepts for output ───────────────────────────────
 		flattened_concepts = {
 			concept: {
 				**data["scores"],
@@ -602,8 +644,13 @@ class CGDConsolidator:
 			"regime":           regime,
 			"positive_targets": sorted(pos_targets),
 			"hard_negatives":   sorted(hn_targets),
-			"w_pos":            w_pos,
-			"w_neg":            w_neg,
+			"w_pos":            round(w_pos, 4),
+			"w_neg":            round(w_neg, 4),
+			"gmm": {
+				"regime_override": regime != heuristic_regime,
+				"confidence": round(gmm_confidence, 4),
+				"probabilities": {k: round(v, 4) for k, v in gmm_probabilities.items()}
+			} if gmm_probabilities else None
 		}
 
 	def export_rejection_report(self, output_path: str) -> None:

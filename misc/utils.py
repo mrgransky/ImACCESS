@@ -61,8 +61,8 @@ warnings.filterwarnings('ignore')
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-from joblib import Parallel, delayed
-
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import normalize, MultiLabelBinarizer
