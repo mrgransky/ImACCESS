@@ -51,7 +51,7 @@ OUTPUT DEFINITIONS:
   - visual_concepts: Keywords derived EXCLUSIVELY from the pixel data. OCR, watermarks, or text overlays are not allowed.
   - fused_concepts: Keywords inferred JOINTLY from BOTH textal and visual modalities. If the modalities are fundamentally disjoint, fused_concepts = [] without forcing a fusion.
 
-Return ONLY valid, parsable JSON: {{"text_concepts": [], "visual_concepts": [], "fused_concepts": []}}.
+Return ONLY valid and parsable JSON: {{"text_concepts": [], "visual_concepts": [], "fused_concepts": []}}.
 
 Caption: '{caption}'"""
 
