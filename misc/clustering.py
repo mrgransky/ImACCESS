@@ -2711,15 +2711,16 @@ def cluster(
 	if verbose:
 		print(f"[INFO] {model_id} with {attn_impl} attention")
 
-	print(f"\n[INIT] Loading Sentence Transformer {model_id}")
+	print(f"\n[INIT] Loading Sentence Transformer {model_id} | {device}")
 	model = SentenceTransformer(
 		model_name_or_path=model_id,
 		model_kwargs={"attn_implementation": attn_impl, "dtype": dtype} if "Qwen" in model_id else {},
 		trust_remote_code=True,
+		device=device,
 		cache_folder=cache_directory[os.getenv('USER')],
 		token=os.getenv("HUGGINGFACE_TOKEN"),
 		tokenizer_kwargs={"padding_side": "left"},
-	).to(device)
+	)
 
 	print(f"[LOADED] {sum(p.numel() for p in model.parameters()):,} parameters")
 

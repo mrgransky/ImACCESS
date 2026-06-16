@@ -134,38 +134,41 @@ def cluster_and_save_priors(
 	print(f"  ├─ Column  : {column}")
 	print(f"  ├─ Device  : {device}")
 	print(f"  └─ Verbose : {verbose}")
+
 	DATASET_DIRECTORY = os.path.dirname(os.path.abspath(input_jsonl))
 	outputs_dir = os.path.join(DATASET_DIRECTORY, "outputs")
 	os.makedirs(outputs_dir, exist_ok=True)
 	stem = os.path.basename(input_jsonl).replace(".jsonl", "")
-	# Checkpoint paths — saved immediately after each expensive step.
+
 	ckpt_emb_path    = os.path.join(outputs_dir, f"{stem}_unique_label_embeddings.npy")
 	ckpt_labels_path = os.path.join(outputs_dir, f"{stem}_unique_labels.npy")
 	ckpt_Z_path      = os.path.join(outputs_dir, f"{stem}_linkage_matrix.npy")
-	# Final output paths
+
 	freqs_path         = os.path.join(outputs_dir, f"{stem}_global_label_frequency.json")
 	canonical_map_path = os.path.join(outputs_dir, f"{stem}_canonical_map.json")
 	vocab_path         = os.path.join(outputs_dir, f"{stem}_target_vocabulary.json")
 	emb_path           = os.path.join(outputs_dir, f"{stem}_emb_cache.pt")
 	gmm_path           = os.path.join(outputs_dir, f"{stem}_conflict_gmm.pkl")
+
 	print(f"\n[BRIDGE] Output directory : {outputs_dir}")
 	print(f"[BRIDGE] Checkpoint paths :")
 	print(f"  ├─ Embeddings  : {ckpt_emb_path}")
 	print(f"  ├─ Labels      : {ckpt_labels_path}")
 	print(f"  └─ Linkage     : {ckpt_Z_path}")
+
 	print(f"[BRIDGE] Final output paths :")
 	print(f"  ├─ Frequencies : {freqs_path}")
 	print(f"  ├─ Canon map   : {canonical_map_path}")
 	print(f"  ├─ Vocabulary  : {vocab_path}")
 	print(f"  ├─ Emb cache   : {emb_path}")
 	print(f"  └─ GMM payload : {gmm_path}")
+
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 1: REGIME-GATED CONCEPT POOLING
 	# Gate fused_concepts by regime:
 	#   HARD_CONFLICT  → text_c + vis_c only (fused is empty or hallucinated blend)
 	#   SOFT_CONFLICT  → text_c + vis_c + fused_c (fused is trustworthy)
 	#   AGREEMENT      → text_c + vis_c + fused_c (fused is trustworthy)
-	# All print labels use [BRIDGE] to avoid collision with [STAGE 3].
 	# ══════════════════════════════════════════════════════════════════════════
 	print(f"\n{'─'*80}")
 	print(f"[BRIDGE][STEP 1] Regime-Gated Concept Pooling")
@@ -176,11 +179,11 @@ def cluster_and_save_priors(
 	skipped_count    = 0
 	malformed_count  = 0
 	empty_pool_count = 0
-	# ── GMM feature collection ────────────────────────────────────────────────
-	# FIX (Issue 4): Hard Conflict samples with orphan_ratio >= tau_orphan have
-	# NLI bypassed, so asym_gap is None. Including only the 3D subset would
-	# systematically exclude most Hard Conflict samples, biasing the GMM centroid
-	# toward the Agreement/Soft boundary.
+
+	# GMM feature collection
+	# Hard Conflict samples with orphan_ratio >= tau_orphan: NLI bypassed, so asym_gap is None. 
+	# Including only the 3D subset would systematically exclude most Hard Conflict samples, 
+	# biasing the GMM centroid toward the Agreement/Soft boundary.
 	#
 	# Strategy: collect two parallel lists.
 	#   gmm_features_3d — samples where all three metrics are valid floats.
@@ -197,89 +200,94 @@ def cluster_and_save_priors(
 	gmm_features_3d: List[List[float]] = []  # [set_sim, orphan_ratio, abs_gap]
 	gmm_features_2d: List[List[float]] = []  # [set_sim, orphan_ratio]
 	with open(input_jsonl, 'r', encoding='utf-8') as f:
-			for line_no, line in enumerate(f, start=1):
-					line = line.strip()
-					if not line:
-							continue
-					try:
-							receipt = json.loads(line)
-					except json.JSONDecodeError as e:
-							malformed_count += 1
-							if verbose:
-									print(f"[BRIDGE][WARN] Malformed JSON at line {line_no}: {e}")
-							continue
-					regime   = receipt.get("regime", "UNKNOWN")
-					mlm_data = receipt.get(column, {})
-					# Track regime distribution for diagnostics
-					regime_counts[regime] = regime_counts.get(regime, 0) + 1
-					# Skip samples with no usable modality signal.
-					if regime not in ("AGREEMENT", "HARD_CONFLICT", "SOFT_CONFLICT", "MISSING_MODALITY"):
-							skipped_count += 1
-							if verbose:
-									print(f"[BRIDGE][SKIP] line {line_no}: unknown regime '{regime}'")
-							continue
-					if not isinstance(mlm_data, dict):
-							skipped_count += 1
-							if verbose:
-									print(
-											f"[BRIDGE][SKIP] line {line_no}: column '{column}': "
-											f"{type(mlm_data).__name__}, expected dict"
-									)
-							continue
-					text_c  = mlm_data.get("text_concepts",  []) or []
-					vis_c   = mlm_data.get("visual_concepts", []) or []
-					fused_c = mlm_data.get("fused_concepts",  []) or []
-					# ── Collect continuous conflict metrics for GMM (Step 1B) ──────────
-					# Only collect from regimes that have meaningful conflict metrics.
-					# MISSING_MODALITY samples have no symmetric/asymmetric audit output.
-					if regime in ("AGREEMENT", "HARD_CONFLICT", "SOFT_CONFLICT"):
-							metrics = receipt.get("metrics", {})
-							if metrics:
-									set_sim      = metrics.get("set_similarity")
-									orphan_ratio = metrics.get("orphan_ratio")
-									asym_gap     = metrics.get("asymmetry_gap")
-									# 2D: include if at least set_sim and orphan_ratio are valid.
-									# This captures NLI-bypassed Hard Conflict samples (asym_gap=None).
-									if set_sim is not None and orphan_ratio is not None:
-											gmm_features_2d.append([float(set_sim), float(orphan_ratio)])
-											# 3D: additionally require a valid asym_gap.
-											if asym_gap is not None:
-													gmm_features_3d.append(
-															[float(set_sim), float(orphan_ratio), abs(float(asym_gap))]
-													)
-					# ── Regime-gated concept pooling ──────────────────────────────────
-					if regime == "HARD_CONFLICT":
-							# fused_concepts is unreliable: either empty (VLM detected conflict)
-							# or a hallucinated blend of two disjoint modalities.
-							# text_c and vis_c are individually coherent → include both.
-							sample_pool = text_c + vis_c
-					else:
-							# AGREEMENT and SOFT_CONFLICT: fused_concepts is trustworthy.
-							sample_pool = text_c + vis_c + fused_c
-					# ── _post_process_: normalise raw VLM strings ─────────────────────
-					# Strip whitespace, lowercase, drop pure-digit tokens, drop empty/None.
-					sample_pool = [
-							lbl.strip().lower()
-							for lbl in sample_pool
-							if lbl and isinstance(lbl, str) and lbl.strip()
-							and not lbl.strip().replace(" ", "").isdigit()
-					]
-					# Deduplicate within sample (preserve order via dict.fromkeys)
-					sample_pool = list(dict.fromkeys(sample_pool))
-					if not sample_pool:
-							empty_pool_count += 1
-							if verbose:
-									print(
-											f"[BRIDGE][SKIP] line {line_no}: regime={regime} "
-											f"but pool is empty after normalisation "
-											f"(text={len(text_c)}, vis={len(vis_c)}, fused={len(fused_c)})"
-									)
-							continue
-					all_sample_labels.append(sample_pool)
-					# Track pool size per regime for diagnostics
-					if regime not in pool_size_by_regime:
-							pool_size_by_regime[regime] = []
-					pool_size_by_regime[regime].append(len(sample_pool))
+		for line_no, line in enumerate(f, start=1):
+			line = line.strip()
+			if not line:
+				continue
+			try:
+				receipt = json.loads(line)
+			except json.JSONDecodeError as e:
+				malformed_count += 1
+				if verbose:
+					print(f"[BRIDGE][WARN] Malformed JSON at line {line_no}: {e}")
+				continue
+			regime   = receipt.get("regime", "UNKNOWN")
+			mlm_data = receipt.get(column, {})
+			
+			# Track regime distribution for diagnostics
+			regime_counts[regime] = regime_counts.get(regime, 0) + 1
+			
+			# Skip samples with no usable modality signal.
+			if regime not in ("AGREEMENT", "HARD_CONFLICT", "SOFT_CONFLICT", "MISSING_MODALITY"):
+				skipped_count += 1
+				if verbose:
+					print(f"[BRIDGE][SKIP] line {line_no}: unknown regime '{regime}'")
+				continue
+
+			if not isinstance(mlm_data, dict):
+				skipped_count += 1
+				if verbose:
+					print(f"[BRIDGE][SKIP] line {line_no}: column '{column}': {type(mlm_data).__name__} expected dict")
+				continue
+			
+			text_c  = mlm_data.get("text_concepts",  []) or []
+			vis_c   = mlm_data.get("visual_concepts", []) or []
+			fused_c = mlm_data.get("fused_concepts",  []) or []
+
+			# ── Collect continuous conflict metrics for GMM (Step 1B) ──────────
+			# Only collect from regimes that have meaningful conflict metrics.
+			# MISSING_MODALITY samples have no symmetric/asymmetric audit output.
+			if regime in ("AGREEMENT", "HARD_CONFLICT", "SOFT_CONFLICT"):
+				metrics = receipt.get("metrics", {})
+				if metrics:
+					set_sim      = metrics.get("set_similarity")
+					orphan_ratio = metrics.get("orphan_ratio")
+					asym_gap     = metrics.get("asymmetry_gap")
+					# 2D: include if at least set_sim and orphan_ratio are valid.
+					# This captures NLI-bypassed Hard Conflict samples (asym_gap=None).
+					if set_sim is not None and orphan_ratio is not None:
+						gmm_features_2d.append([float(set_sim), float(orphan_ratio)])
+						# 3D: additionally require a valid asym_gap.
+						if asym_gap is not None:
+							gmm_features_3d.append([float(set_sim), float(orphan_ratio), abs(float(asym_gap))])
+			
+			# Regime-gated concept pooling
+			if regime == "HARD_CONFLICT":
+				# fused_concepts is unreliable: either empty (VLM detected conflict)
+				# or a hallucinated blend of two disjoint modalities.
+				# text_c and vis_c are individually coherent → include both.
+				sample_pool = text_c + vis_c
+			else:
+				# AGREEMENT and SOFT_CONFLICT: fused_concepts is trustworthy.
+				sample_pool = text_c + vis_c + fused_c
+			
+			# _post_process_: normalise raw VLM strings
+			# Strip whitespace, lowercase, drop pure-digit tokens, drop empty/None.
+			sample_pool = [
+				lbl.strip().lower()
+				for lbl in sample_pool
+				if lbl and isinstance(lbl, str) and lbl.strip()
+				and not lbl.strip().replace(" ", "").isdigit()
+			]
+
+			# Deduplicate within sample (preserve order via dict.fromkeys)
+			sample_pool = list(dict.fromkeys(sample_pool))
+			if not sample_pool:
+				empty_pool_count += 1
+				if verbose:
+					print(
+						f"[BRIDGE][SKIP] line {line_no}: regime={regime} "
+						f"but pool is empty after normalisation "
+						f"(text={len(text_c)}, vis={len(vis_c)}, fused={len(fused_c)})"
+					)
+				continue
+			all_sample_labels.append(sample_pool)
+			
+			# Track pool size per regime for diagnostics
+			if regime not in pool_size_by_regime:
+				pool_size_by_regime[regime] = []
+			pool_size_by_regime[regime].append(len(sample_pool))
+	
 	total_receipts = sum(regime_counts.values())
 	print(f"\n[BRIDGE][STEP 1] Parsing complete")
 	print(f"  ├─ Total lines parsed    : {total_receipts:,}")
@@ -289,46 +297,50 @@ def cluster_and_save_priors(
 	print(f"  ├─ Samples → vocabulary  : {len(all_sample_labels):,}")
 	print(f"  ├─ GMM-eligible (2D)     : {len(gmm_features_2d):,}")
 	print(f"  └─ GMM-eligible (3D)     : {len(gmm_features_3d):,}")
+
 	print(f"\n[BRIDGE][STEP 1] Regime distribution:")
 	for r, cnt in sorted(regime_counts.items(), key=lambda x: -x[1]):
-			avg_pool = (
-					f"avg_pool={sum(pool_size_by_regime[r])/len(pool_size_by_regime[r]):.1f}"
-					if r in pool_size_by_regime else "avg_pool=N/A"
-			)
-			print(
-					f"  ├─ {r:<20} {cnt:>8,}  "
-					f"({cnt / max(total_receipts, 1) * 100:.1f}%)  {avg_pool}"
-			)
+		avg_pool = (
+			f"avg_pool={sum(pool_size_by_regime[r])/len(pool_size_by_regime[r]):.1f}"
+			if r in pool_size_by_regime else "avg_pool=N/A"
+		)
+		print(
+			f"  ├─ {r:<20} {cnt:>8,}  "
+			f"({cnt / max(total_receipts, 1) * 100:.1f}%)  {avg_pool}"
+		)
+
 	if verbose:
-			print(f"\n[BRIDGE][STEP 1] Per-sample pools (first 20):")
-			for i, sample in enumerate(all_sample_labels[:20]):
-					print(f"[{i:7d}] ({len(sample):3d} concepts) {sample}")
+		print(f"\n[BRIDGE][STEP 1] Per-sample pools (first 20):")
+		for i, sample in enumerate(all_sample_labels[:20]):
+			print(f"[{i:7d}] ({len(sample):3d} concepts) {sample}")
+	
 	if not all_sample_labels:
-			raise ValueError(
-					"[BRIDGE] No samples survived regime gating. "
-					"Check that the input JSONL contains AGREEMENT / SOFT_CONFLICT / "
-					"HARD_CONFLICT receipts and that the column name is correct."
-			)
+		raise ValueError(
+			"[BRIDGE] No samples survived regime gating. "
+			"Check that the input JSONL contains AGREEMENT / SOFT_CONFLICT / "
+			"HARD_CONFLICT receipts and that the column name is correct."
+		)
+
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 1B: UNSUPERVISED CONFLICT REGIME INDUCTION (GMM)
 	# ══════════════════════════════════════════════════════════════════════════
-	# FIX (Issue 5 — structural clarity): GMM induction is a logically distinct
+	# GMM induction is a logically distinct
 	# step from concept pooling. Placed here as Step 1B so it runs immediately
 	# after all receipts are parsed, before any embedding or clustering work.
 	#
-	# FIX (Issue 1 — feature scaling): StandardScaler is fitted on the chosen
+	# StandardScaler is fitted on the chosen
 	# feature matrix and saved in the GMM payload. Stage 3/4 MUST apply
 	# payload["scaler"].transform(f_raw) before calling gmm.predict_proba().
 	#
-	# FIX (Issue 2 — BIC/AIC model selection): BIC is computed over K∈{2,…,6}.
+	# BIC/AIC model selection): BIC is computed over K∈{2,…,6}.
 	# K=3 is used by design (three named regimes), but a warning is emitted if
 	# BIC selects a different K so the paper can address this explicitly.
 	#
-	# FIX (Issue 3 — centroid separation confidence): After labelling clusters,
+	# centroid separation confidence: After labelling clusters,
 	# the orphan_ratio gap between the top-2 clusters is checked. A gap < 0.05
 	# triggers a warning that manual inspection is recommended.
 	#
-	# FIX (Issue 4 — Hard Conflict underrepresentation): Feature dimensionality
+	# Hard Conflict underrepresentation: Feature dimensionality
 	# is chosen based on 3D coverage fraction. If >= GMM_3D_COVERAGE_THRESHOLD
 	# of valid-metric samples are 3D-eligible, use 3D; otherwise fall back to 2D.
 	# ══════════════════════════════════════════════════════════════════════════
@@ -369,7 +381,8 @@ def cluster_and_save_priors(
 							f"[set_sim, orphan_ratio] ({_n_valid:,} samples) to avoid systematic "
 							f"underrepresentation of NLI-bypassed Hard Conflict samples."
 					)
-			# ── FIX (Issue 1): Fit StandardScaler ────────────────────────────────
+
+			# Fit StandardScaler
 			# Features live on different scales and distributions. Without scaling,
 			# set_similarity dominates the GMM covariance structure.
 			scaler = StandardScaler()
@@ -380,7 +393,8 @@ def cluster_and_save_priors(
 					f"Means: {scaler.mean_.round(4).tolist()} | "
 					f"Stds: {scaler.scale_.round(4).tolist()}"
 			)
-			# ── FIX (Issue 2): BIC/AIC model selection over K∈{2,…,6} ───────────
+
+			# BIC/AIC model selection over K∈{2,…,6}
 			print(f"[BRIDGE][STEP 1B] BIC/AIC model selection over K∈{{2,…,6}}:")
 			bic_scores: dict = {}
 			aic_scores: dict = {}
@@ -411,13 +425,17 @@ def cluster_and_save_priors(
 							f"[BRIDGE][STEP 1B] BIC confirms K=3 ✓ — "
 							f"data-driven support for three conflict regimes."
 					)
+
 			# ── Fit the final K=3 GMM ─────────────────────────────────────────────
 			print(
 					f"[BRIDGE][STEP 1B] Fitting final 3-component GMM on "
 					f"{features_arr.shape[0]:,} scaled {feature_dim}D vectors..."
 			)
 			gmm = GaussianMixture(
-					n_components=3, covariance_type='full', random_state=42, max_iter=200
+				n_components=3, 
+				covariance_type='full', 
+				random_state=42, 
+				max_iter=200,
 			)
 			gmm.fit(features_scaled)
 			print(
