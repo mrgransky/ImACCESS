@@ -16,6 +16,22 @@
 
 set -euo pipefail
 
+# =====================================================================
+# Prevent OpenBLAS/MKL from seeing all 128 physical cores and 
+# crashing due to thread limit exhaustion. 
+# Forces them to use only the CPUs allocated by Slurm.
+# =====================================================================
+export OPENBLAS_NUM_THREADS=${SLURM_CPUS_PER_TASK}
+export MKL_NUM_THREADS=${SLURM_CPUS_PER_TASK}
+export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
+export NUMEXPR_NUM_THREADS=${SLURM_CPUS_PER_TASK}
+export BLIS_NUM_THREADS=${SLURM_CPUS_PER_TASK}
+export VECLIB_MAXIMUM_THREADS=${SLURM_CPUS_PER_TASK}
+export GOTO_NUM_THREADS=${SLURM_CPUS_PER_TASK}
+
+export OMP_PROC_BIND=spread
+export OMP_PLACES=cores
+
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
 txt="$user began Slurm job: `date`"
