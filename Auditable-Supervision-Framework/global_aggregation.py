@@ -171,7 +171,7 @@ def cluster_and_save_priors(
 	#   AGREEMENT      → text_c + vis_c + fused_c (fused is trustworthy)
 	# ══════════════════════════════════════════════════════════════════════════
 	print(f"\n{'─'*80}")
-	print(f"[BRIDGE][STEP 1] Regime-Gated Concept Pooling")
+	print(f"[BRIDGE][STEP 1A] Regime-Gated Concept Pooling")
 	print(f"{'─'*80}")
 	all_sample_labels: List[List[str]] = []
 	regime_counts: dict                = {}
@@ -243,7 +243,8 @@ def cluster_and_save_priors(
 					set_sim      = metrics.get("set_similarity")
 					orphan_ratio = metrics.get("orphan_ratio")
 					asym_gap     = metrics.get("asymmetry_gap")
-					# 2D: include if at least set_sim and orphan_ratio are valid.
+
+					# 2D: if at least set_sim and orphan_ratio are valid.
 					# This captures NLI-bypassed Hard Conflict samples (asym_gap=None).
 					if set_sim is not None and orphan_ratio is not None:
 						gmm_features_2d.append([float(set_sim), float(orphan_ratio)])
@@ -289,7 +290,7 @@ def cluster_and_save_priors(
 			pool_size_by_regime[regime].append(len(sample_pool))
 	
 	total_receipts = sum(regime_counts.values())
-	print(f"\n[BRIDGE][STEP 1] Parsing complete")
+	print(f"\n[BRIDGE][STEP 1A]")
 	print(f"  ├─ Total lines parsed    : {total_receipts:,}")
 	print(f"  ├─ Malformed JSON lines  : {malformed_count:,}")
 	print(f"  ├─ Skipped (bad regime)  : {skipped_count:,}")
@@ -298,19 +299,16 @@ def cluster_and_save_priors(
 	print(f"  ├─ GMM-eligible (2D)     : {len(gmm_features_2d):,}")
 	print(f"  └─ GMM-eligible (3D)     : {len(gmm_features_3d):,}")
 
-	print(f"\n[BRIDGE][STEP 1] Regime distribution:")
+	print(f"\n[BRIDGE][STEP 1A] Regime distribution:")
 	for r, cnt in sorted(regime_counts.items(), key=lambda x: -x[1]):
 		avg_pool = (
 			f"avg_pool={sum(pool_size_by_regime[r])/len(pool_size_by_regime[r]):.1f}"
 			if r in pool_size_by_regime else "avg_pool=N/A"
 		)
-		print(
-			f"  ├─ {r:<20} {cnt:>8,}  "
-			f"({cnt / max(total_receipts, 1) * 100:.1f}%)  {avg_pool}"
-		)
+		print(f"  ├─ {r:<15}{cnt:<10}({cnt / max(total_receipts, 1) * 100:.1f}%) {avg_pool}")
 
 	if verbose:
-		print(f"\n[BRIDGE][STEP 1] Per-sample pools (first 20):")
+		print(f"\n[BRIDGE][STEP 1A] Per-sample pools (first 20):")
 		for i, sample in enumerate(all_sample_labels[:20]):
 			print(f"[{i:7d}] ({len(sample):3d} concepts) {sample}")
 	
@@ -350,215 +348,222 @@ def cluster_and_save_priors(
 	_MIN_GMM_SAMPLES = 3  # absolute minimum to attempt a GMM fit
 	_n_valid = len(gmm_features_2d)  # 2D is always the superset
 	if _n_valid < _MIN_GMM_SAMPLES:
-			print(
-					f"[BRIDGE][STEP 1B][WARN] Insufficient samples ({_n_valid}) to train GMM "
-					f"(minimum={_MIN_GMM_SAMPLES}). Skipping GMM generation."
-			)
+		print(
+			f"[BRIDGE][STEP 1B][WARN] Insufficient samples ({_n_valid}) to train GMM "
+			f"(minimum={_MIN_GMM_SAMPLES}). Skipping GMM generation."
+		)
 	else:
-			# Choose feature dimensionality
-			_n_3d = len(gmm_features_3d)
-			_coverage_3d = _n_3d / max(_n_valid, 1)
-			print(
-					f"[BRIDGE][STEP 1B] Feature dimensionality decision: "
-					f"3D-eligible={_n_3d:,}/{_n_valid:,} ({_coverage_3d:.1%}) | "
-					f"threshold={GMM_3D_COVERAGE_THRESHOLD:.0%}"
-			)
-			if _coverage_3d >= GMM_3D_COVERAGE_THRESHOLD:
-					features_arr = np.array(gmm_features_3d)
-					feature_dim  = 3
-					feature_names = ["set_similarity", "orphan_ratio", "abs_asym_gap"]
-					print(
-							f"[BRIDGE][STEP 1B] Using 3D feature space "
-							f"[set_sim, orphan_ratio, abs_gap] ({_n_3d:,} samples)."
-					)
-			else:
-					features_arr = np.array(gmm_features_2d)
-					feature_dim  = 2
-					feature_names = ["set_similarity", "orphan_ratio"]
-					print(
-							f"[BRIDGE][STEP 1B][WARN] 3D coverage ({_coverage_3d:.1%}) below threshold "
-							f"({GMM_3D_COVERAGE_THRESHOLD:.0%}). Falling back to 2D feature space "
-							f"[set_sim, orphan_ratio] ({_n_valid:,} samples) to avoid systematic "
-							f"underrepresentation of NLI-bypassed Hard Conflict samples."
-					)
+		# Choose feature dimensionality
+		_n_3d = len(gmm_features_3d)
+		_coverage_3d = _n_3d / max(_n_valid, 1)
+		print(
+			f"[BRIDGE][STEP 1B] Feature dimensionality: "
+			f"3D-eligible: {_n_3d:,}/{_n_valid:,} ({_coverage_3d:.1%}) "
+			f"(threshold: {GMM_3D_COVERAGE_THRESHOLD:.0%})"
+		)
 
-			# Fit StandardScaler
-			# Features live on different scales and distributions. Without scaling,
-			# set_similarity dominates the GMM covariance structure.
-			scaler = StandardScaler()
-			features_scaled = scaler.fit_transform(features_arr)
+		if _coverage_3d >= GMM_3D_COVERAGE_THRESHOLD:
+			features_arr = np.array(gmm_features_3d)
+			feature_dim  = 3
+			feature_names = ["set_similarity", "orphan_ratio", "abs_asym_gap"]
 			print(
-					f"[BRIDGE][STEP 1B] StandardScaler fitted on {features_arr.shape[0]:,} samples "
-					f"(dim={feature_dim}). "
-					f"Means: {scaler.mean_.round(4).tolist()} | "
-					f"Stds: {scaler.scale_.round(4).tolist()}"
+				f"[BRIDGE][STEP 1B] Using 3D feature space "
+				f"[set_sim, orphan_ratio, abs_gap] ({_n_3d:,} samples)."
+			)
+		else:
+			features_arr = np.array(gmm_features_2d)
+			feature_dim  = 2
+			feature_names = ["set_similarity", "orphan_ratio"]
+			print(
+				f"[BRIDGE][STEP 1B][WARN] 3D coverage ({_coverage_3d:.1%}) < "
+				f"(thresh: {GMM_3D_COVERAGE_THRESHOLD:.0%}). "
+				f"Falling back to 2D feature space: [set_sim, orphan_ratio] "
+				f"({_n_valid:,} samples) to avoid systematic "
+				f"underrepresentation of NLI-bypassed Hard Conflict samples."
 			)
 
-			# BIC/AIC model selection over K∈{2,…,6}
-			print(f"[BRIDGE][STEP 1B] BIC/AIC model selection over K∈{{2,…,6}}:")
-			bic_scores: dict = {}
-			aic_scores: dict = {}
-			for k in range(2, 7):
-					_g = GaussianMixture(
-							n_components=k, covariance_type='full', random_state=42, max_iter=200
-					)
-					_g.fit(features_scaled)
-					bic_scores[k] = _g.bic(features_scaled)
-					aic_scores[k] = _g.aic(features_scaled)
-					print(
-							f"  ├─ K={k}: BIC={bic_scores[k]:>12.2f}  AIC={aic_scores[k]:>12.2f}"
-					)
-			optimal_k_bic = min(bic_scores, key=bic_scores.get)
-			optimal_k_aic = min(aic_scores, key=aic_scores.get)
-			print(
-					f"  └─ BIC-optimal K={optimal_k_bic} | AIC-optimal K={optimal_k_aic} | "
-					f"Design K=3 (three named conflict regimes)"
-			)
-			if optimal_k_bic != 3:
-					print(
-							f"[BRIDGE][STEP 1B][WARN] BIC selects K={optimal_k_bic}, not K=3. "
-							f"Proceeding with K=3 by design (Agreement / Soft Conflict / Hard Conflict). "
-							f"Report BIC curve in paper and justify K=3 via domain alignment."
-					)
-			else:
-					print(
-							f"[BRIDGE][STEP 1B] BIC confirms K=3 ✓ — "
-							f"data-driven support for three conflict regimes."
-					)
+		# Fit StandardScaler
+		# Features live on different scales and distributions. Without scaling,
+		# set_similarity dominates the GMM covariance structure.
+		scaler = StandardScaler()
+		features_scaled = scaler.fit_transform(features_arr)
+		print(
+			f"[BRIDGE][STEP 1B] StandardScaler fitted on {features_arr.shape[0]:,} samples "
+			f"(dim={feature_dim}). "
+			f"Means: {scaler.mean_.round(4).tolist()} | "
+			f"Stds: {scaler.scale_.round(4).tolist()}"
+		)
 
-			# Fit the final K=3 GMM
-			print(
-					f"[BRIDGE][STEP 1B] Fitting final 3-component GMM on "
-					f"{features_arr.shape[0]:,} scaled {feature_dim}D vectors..."
-			)
-			gmm = GaussianMixture(
-				n_components=3, 
+		# BIC/AIC model selection over K∈{2,…,6}
+		print(f"[BRIDGE][STEP 1B] BIC/AIC model selection over K∈{{2,…,6}}:")
+		bic_scores: dict = {}
+		aic_scores: dict = {}
+		for k in range(2, 7):
+			_g = GaussianMixture(
+				n_components=k, 
 				covariance_type='full', 
 				random_state=42, 
-				max_iter=200,
+				max_iter=200
 			)
-			gmm.fit(features_scaled)
+			_g.fit(features_scaled)
+			bic_scores[k] = _g.bic(features_scaled)
+			aic_scores[k] = _g.aic(features_scaled)
+			print(f"  ├─ K={k}: BIC={bic_scores[k]:>12.2f}  AIC={aic_scores[k]:>12.2f}")
+
+		optimal_k_bic = min(bic_scores, key=bic_scores.get)
+		optimal_k_aic = min(aic_scores, key=aic_scores.get)
+		print(
+			f"  └─ BIC-optimal K={optimal_k_bic} | AIC-optimal K={optimal_k_aic} | "
+			f"Design K=3 (three named conflict regimes)"
+		)
+
+		if optimal_k_bic != 3:
 			print(
-					f"[BRIDGE][STEP 1B] GMM converged={gmm.converged_} | "
-					f"n_iter={gmm.n_iter_} | "
-					f"log-likelihood={gmm.lower_bound_:.4f}"
+				f"[BRIDGE][STEP 1B][WARN] BIC selects K={optimal_k_bic}, not K=3. "
+				f"Proceeding with K=3 by design (Agreement / Soft Conflict / Hard Conflict). "
+				f"Report BIC curve in paper and justify K=3 via domain alignment."
 			)
-			# ── Deterministic cluster labelling via centroid rules ────────────────
-			# Unscaled means for interpretable reporting (inverse_transform).
-			means_scaled   = gmm.means_                          # shape [3, feature_dim]
-			means_unscaled = scaler.inverse_transform(means_scaled)
-			# Rule 1: HARD_CONFLICT → cluster with highest orphan_ratio (column 1)
-			orphan_col   = 1  # index of orphan_ratio in both 2D and 3D feature vectors
-			orphan_means = means_unscaled[:, orphan_col]
-			sorted_by_orphan = np.argsort(orphan_means)[::-1]  # descending
-			hard_cluster_idx = int(sorted_by_orphan[0])
-			
-			# Centroid separation confidence check
-			orphan_gap = float(orphan_means[sorted_by_orphan[0]] - orphan_means[sorted_by_orphan[1]])
-			if orphan_gap < 0.05:
-					print(
-							f"[BRIDGE][STEP 1B][WARN] Hard/Soft cluster separation is weak "
-							f"(orphan_ratio gap between top-2 clusters = {orphan_gap:.4f} < 0.05). "
-							f"GMM may not have found a clean Hard Conflict cluster. "
-							f"Manual inspection of cluster centroids is recommended before "
-							f"using regime labels in the paper."
-					)
-			else:
-					print(
-							f"[BRIDGE][STEP 1B] Hard Conflict cluster separation: "
-							f"orphan_ratio gap={orphan_gap:.4f} ✓"
-					)
-			# Rule 2: SOFT_CONFLICT → of the remaining two, highest abs_asym_gap (col 2)
-			#         If feature_dim==2 (fallback), use set_similarity (col 0) inverted:
-			#         lower set_sim among the two remaining → more conflict → SOFT.
-			remaining = [i for i in range(3) if i != hard_cluster_idx]
-			if feature_dim == 3:
-					gap_col = 2  # abs_asym_gap
-					soft_cluster_idx = (
-							remaining[0]
-							if means_unscaled[remaining[0], gap_col] > means_unscaled[remaining[1], gap_col]
-							else remaining[1]
-					)
-					print(
-							f"[BRIDGE][STEP 1B] Soft Conflict discriminator: "
-							f"abs_asym_gap (col {gap_col}) — "
-							f"cluster {remaining[0]}: {means_unscaled[remaining[0], gap_col]:.4f} | "
-							f"cluster {remaining[1]}: {means_unscaled[remaining[1], gap_col]:.4f}"
-					)
-			else:
-					# 2D fallback: lower set_similarity → more conflict → SOFT_CONFLICT
-					sim_col = 0
-					soft_cluster_idx = (
-							remaining[0]
-							if means_unscaled[remaining[0], sim_col] < means_unscaled[remaining[1], sim_col]
-							else remaining[1]
-					)
-					print(
-							f"[BRIDGE][STEP 1B] Soft Conflict discriminator (2D fallback): "
-							f"set_similarity (col {sim_col}, lower=more conflict) — "
-							f"cluster {remaining[0]}: {means_unscaled[remaining[0], sim_col]:.4f} | "
-							f"cluster {remaining[1]}: {means_unscaled[remaining[1], sim_col]:.4f}"
-					)
-			# Rule 3: AGREEMENT → the remaining cluster
-			agree_cluster_idx = [
-					i for i in range(3)
-					if i not in (hard_cluster_idx, soft_cluster_idx)
-			][0]
-			class_mapping = {
-					agree_cluster_idx: "AGREEMENT",
-					soft_cluster_idx:  "SOFT_CONFLICT",
-					hard_cluster_idx:  "HARD_CONFLICT",
-			}
-			# ── Report unscaled centroids for paper / LaTeX table ─────────────────
-			print(f"\n[BRIDGE][STEP 1B] Discovered Cluster Centroids (unscaled):")
-			header = "  ".join(f"{n:>18}" for n in feature_names)
-			print(f"  {'Regime':<20}  {header}")
-			for cluster_idx, regime_name in [
-					(agree_cluster_idx, "AGREEMENT"),
-					(soft_cluster_idx,  "SOFT_CONFLICT"),
-					(hard_cluster_idx,  "HARD_CONFLICT"),
-			]:
-					vals = "  ".join(f"{v:>18.4f}" for v in means_unscaled[cluster_idx])
-					print(f"  {regime_name:<20}  {vals}  (cluster {cluster_idx})")
-			# ── Package and serialise GMM payload ─────────────────────────────────
-			# Stage 3/4 must load this payload and call:
-			#   f_raw    = [[set_sim, orphan_ratio]] or [[set_sim, orphan_ratio, abs_gap]]
-			#              depending on payload["feature_dim"]
-			#   f_scaled = payload["scaler"].transform(f_raw)
-			#   probs    = payload["gmm_model"].predict_proba(f_scaled)  # shape [1, 3]
-			#   regime_probs = {payload["class_mapping"][k]: probs[0][k] for k in range(3)}
-			gmm_payload = {
-					"gmm_model":    gmm,
-					"scaler":       scaler,
-					"class_mapping": class_mapping,
-					"feature_dim":  feature_dim,
-					"feature_names": feature_names,
-					"bic_scores":   bic_scores,
-					"aic_scores":   aic_scores,
-					"optimal_k_bic": optimal_k_bic,
-					"optimal_k_aic": optimal_k_aic,
-					"n_samples_fit": int(features_arr.shape[0]),
-					"centroids_unscaled": {
-							regime_name: means_unscaled[cluster_idx].tolist()
-							for cluster_idx, regime_name in class_mapping.items()
-					},
-					"orphan_gap":   orphan_gap,
-			}
-			joblib.dump(gmm_payload, gmm_path)
-			print(f"\n[BRIDGE][STEP 1B] GMM payload saved → {gmm_path}")
+		else:
 			print(
-					f"[BRIDGE][STEP 1B] Payload keys: "
-					f"{list(gmm_payload.keys())}"
+				f"[BRIDGE][STEP 1B] BIC confirms K=3 ✓ — "
+				f"data-driven support for three conflict regimes."
+			)
+
+		# Fit the final K=3 GMM
+		print(
+			f"[BRIDGE][STEP 1B] Fitting final 3-component GMM on "
+			f"{features_arr.shape[0]:,} scaled {feature_dim}D vectors..."
+		)
+
+		gmm = GaussianMixture(
+			n_components=3, 
+			covariance_type='full', 
+			random_state=42, 
+			max_iter=200,
+		)
+		gmm.fit(features_scaled)
+		print(
+			f"[BRIDGE][STEP 1B] GMM converged={gmm.converged_} | "
+			f"n_iter={gmm.n_iter_} | "
+			f"log-likelihood={gmm.lower_bound_:.4f}"
+		)
+
+		# Deterministic cluster labelling via centroid rules
+		# Unscaled means for interpretable reporting (inverse_transform).
+		means_scaled   = gmm.means_ # [K=3, feature_dim]
+		means_unscaled = scaler.inverse_transform(means_scaled)
+		print(f"[BRIDGE][STEP 1B] means_scaled: {means_scaled.shape} | means_unscaled: {means_unscaled.shape}")
+
+		# Regime: HARD_CONFLICT → cluster with highest orphan_ratio (column 1)
+		orphan_col   = 1  # index of orphan_ratio in both 2D and 3D feature vectors
+		orphan_means = means_unscaled[:, orphan_col]
+		sorted_by_orphan = np.argsort(orphan_means)[::-1]  # descending
+		hard_cluster_idx = int(sorted_by_orphan[0])
+		
+		# Centroid separation confidence check
+		orphan_gap = float(orphan_means[sorted_by_orphan[0]] - orphan_means[sorted_by_orphan[1]])
+		if orphan_gap < 0.05:
+			print(
+				f"[BRIDGE][STEP 1B][WARN] Hard/Soft cluster separation is weak "
+				f"(orphan_ratio gap between top-2 clusters = {orphan_gap:.4f} < 0.05). "
+				f"GMM may not have found a clean Hard Conflict cluster. "
+				f"Manual inspection of cluster centroids is recommended before "
+				f"using regime labels in the paper."
+			)
+		else:
+			print(f"[BRIDGE][STEP 1B] Hard Conflict cluster separation: orphan_ratio gap={orphan_gap:.4f} ✓")
+
+		# Regime: SOFT_CONFLICT → of the remaining two, highest asymmetry_gap (col 2)
+		#         If feature_dim==2 (fallback), use set_similarity (col 0) inverted:
+		#         lower set_sim among the two remaining → more conflict → SOFT.
+		remaining = [i for i in range(3) if i != hard_cluster_idx]
+		if feature_dim == 3:
+			gap_col = 2  # abs_asym_gap
+			soft_cluster_idx = (
+				remaining[0]
+				if means_unscaled[remaining[0], gap_col] > means_unscaled[remaining[1], gap_col]
+				else remaining[1]
 			)
 			print(
-					f"[BRIDGE][STEP 1B] Usage in Stage 3/4:\n"
-					f"    payload   = joblib.load(gmm_path)\n"
-					f"    f_raw     = [[set_sim, orphan_ratio]]  "
-					f"# or 3D if payload['feature_dim']==3\n"
-					f"    f_scaled  = payload['scaler'].transform(f_raw)\n"
-					f"    probs     = payload['gmm_model'].predict_proba(f_scaled)  # [1, 3]\n"
-					f"    regime_probs = {{payload['class_mapping'][k]: probs[0][k] for k in range(3)}}"
+				f"[BRIDGE][STEP 1B] Soft Conflict discriminator: "
+				f"abs_asym_gap (col {gap_col}) — "
+				f"cluster {remaining[0]}: {means_unscaled[remaining[0], gap_col]:.4f} | "
+				f"cluster {remaining[1]}: {means_unscaled[remaining[1], gap_col]:.4f}"
 			)
+		else:
+			# 2D fallback: lower set_similarity → more conflict → SOFT_CONFLICT
+			sim_col = 0
+			soft_cluster_idx = (
+				remaining[0]
+				if means_unscaled[remaining[0], sim_col] < means_unscaled[remaining[1], sim_col]
+				else remaining[1]
+			)
+			print(
+				f"[BRIDGE][STEP 1B] Soft Conflict discriminator (2D fallback): "
+				f"set_similarity (col {sim_col}, lower=more conflict) — "
+				f"cluster {remaining[0]}: {means_unscaled[remaining[0], sim_col]:.4f} | "
+				f"cluster {remaining[1]}: {means_unscaled[remaining[1], sim_col]:.4f}"
+			)
+
+		# Regime: AGREEMENT → the remaining cluster
+		agree_cluster_idx = [
+			i for i in range(3)
+			if i not in (hard_cluster_idx, soft_cluster_idx)
+		][0]
+
+		class_mapping = {
+			agree_cluster_idx: "AGREEMENT",
+			soft_cluster_idx:  "SOFT_CONFLICT",
+			hard_cluster_idx:  "HARD_CONFLICT",
+		}
+		print(f"\n[BRIDGE][STEP 1B] Discovered Cluster Centroids (unscaled):")
+		header = "  ".join(f"{n:>18}" for n in feature_names)
+		print(f"  {'Regime':<20}  {header}")
+		for cluster_idx, regime_name in [
+			(agree_cluster_idx, "AGREEMENT"),
+			(soft_cluster_idx,  "SOFT_CONFLICT"),
+			(hard_cluster_idx,  "HARD_CONFLICT"),
+		]:
+			vals = "  ".join(f"{v:>18.4f}" for v in means_unscaled[cluster_idx])
+			print(f"  {regime_name:<20}  {vals}  (cluster {cluster_idx})")
+	
+		# serialise GMM payload
+		# used for stage 3/4 as they load this payload and call:
+		#   f_raw    = [[set_sim, orphan_ratio]] or [[set_sim, orphan_ratio, abs_gap]]
+		#              depending on payload["feature_dim"]
+		#   f_scaled = payload["scaler"].transform(f_raw)
+		#   probs    = payload["gmm_model"].predict_proba(f_scaled)  # shape [1, 3]
+		#   regime_probs = {payload["class_mapping"][k]: probs[0][k] for k in range(3)}
+		gmm_payload = {
+			"gmm_model":    gmm,
+			"scaler":       scaler,
+			"class_mapping": class_mapping,
+			"feature_dim":  feature_dim,
+			"feature_names": feature_names,
+			"bic_scores":   bic_scores,
+			"aic_scores":   aic_scores,
+			"optimal_k_bic": optimal_k_bic,
+			"optimal_k_aic": optimal_k_aic,
+			"n_samples_fit": int(features_arr.shape[0]),
+			"centroids_unscaled": {
+				regime_name: means_unscaled[cluster_idx].tolist()
+				for cluster_idx, regime_name in class_mapping.items()
+			},
+			"orphan_gap":   orphan_gap,
+		}
+		joblib.dump(gmm_payload, gmm_path)
+		print(f"\n[BRIDGE][STEP 1B] GMM payload saved → {gmm_path}")
+		print(f"[BRIDGE][STEP 1B] Payload keys: {list(gmm_payload.keys())}")
+		print(
+			f"[BRIDGE][STEP 1B] Usage in Stage 3/4:\n"
+			f"    payload   = joblib.load(gmm_path='{gmm_path}')\n"
+			f"    f_raw     = [[set_sim, orphan_ratio]]  "
+			f"# or 3D if payload['feature_dim']==3\n"
+			f"    f_scaled  = payload['scaler'].transform(f_raw)\n"
+			f"    probs     = payload['gmm_model'].predict_proba(f_scaled)  # [1, 3]\n"
+			f"    regime_probs = {{payload['class_mapping'][k]: probs[0][k] for k in range(3)}}"
+		)
+	
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 2: GLOBAL FREQUENCY COUNTS (Reusability Prior)
 	# Convert Counter → plain dict before saving and before passing to clustering.py.
@@ -572,14 +577,14 @@ def cluster_and_save_priors(
 	print(f"[BRIDGE][STEP 2] Global Frequency Counts (Reusability Prior)")
 	print(f"{'─'*80}")
 	label_freq_dict: dict = dict(
-			Counter(
-					lbl
-					for sample in all_sample_labels
-					for lbl in sample
-					if lbl
-			)
+		Counter(
+			lbl
+			for sample in all_sample_labels
+			for lbl in sample
+			if lbl
+		)
 	)
-	# ── Frequency diagnostics ─────────────────────────────────────────────────
+	# Frequency diagnostics
 	freq_values   = sorted(label_freq_dict.values(), reverse=True)
 	total_concept_occurrences = sum(freq_values)
 	singleton_count = sum(1 for v in freq_values if v == 1)
@@ -627,6 +632,7 @@ def cluster_and_save_priors(
 			
 			if not isinstance(mlm_data, dict):
 				continue
+
 			for c in mlm_data.get("visual_concepts", []) or []:
 				if c and isinstance(c, str):
 					mm_vis_concepts.add(c.strip().lower())
@@ -636,7 +642,8 @@ def cluster_and_save_priors(
 	print(f"[BRIDGE][DIAG] MISSING_MODALITY vis_c concepts  : {len(mm_vis_concepts):,}")
 	print(f"[BRIDGE][DIAG] Not in corpus (orphaned)         : {len(orphaned):,}")
 	if orphaned:
-			print(f"[BRIDGE][DIAG] Orphaned sample: {sorted(orphaned)[:20]}")
+		print(f"[BRIDGE][DIAG] Orphaned sample: {sorted(orphaned)[:20]}")
+	
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 3: EMBEDDING (with crash-safe checkpoint)
 	# ══════════════════════════════════════════════════════════════════════════
@@ -703,6 +710,7 @@ def cluster_and_save_priors(
 			np.save(ckpt_labels_path, np.array(unique_labels, dtype=object))
 			print(f"[BRIDGE][STEP 3] Checkpointed embeddings → {ckpt_emb_path}")
 			print(f"[BRIDGE][STEP 3] Checkpointed labels     → {ckpt_labels_path}")
+
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 4: LINKAGE MATRIX (with crash-safe checkpoint)
 	# ══════════════════════════════════════════════════════════════════════════
@@ -735,6 +743,7 @@ def cluster_and_save_priors(
 			)
 			np.save(ckpt_Z_path, Z)
 			print(f"[BRIDGE][STEP 4] Checkpointed linkage matrix → {ckpt_Z_path}")
+
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 5: ADAPTIVE OPTIMAL CLUSTER SEARCH
 	# ══════════════════════════════════════════════════════════════════════════
@@ -781,6 +790,7 @@ def cluster_and_save_priors(
 			for cid, sz in cluster_sizes.head(10).items():
 					members = df[df['cluster'] == cid]['label'].tolist()
 					print(f"  cluster {cid:5d}: {sz:4d} members | {members[:8]}")
+
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 6: 5-SIGNAL CANONICAL SELECTION
 	# ══════════════════════════════════════════════════════════════════════════
@@ -837,6 +847,7 @@ def cluster_and_save_priors(
 	print(f"\n[BRIDGE][STEP 6] df after canonical assignment: {df.shape}")
 	if verbose:
 			print(df.head(10).to_string())
+
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 7: INJECT VIRTUAL HYPERNYMS AS GENUINE ROWS
 	# ══════════════════════════════════════════════════════════════════════════
@@ -875,6 +886,7 @@ def cluster_and_save_priors(
 			)
 	else:
 			print(f"[BRIDGE][STEP 7] No virtual hypernyms to inject.")
+
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 8: AUDIT — DROP LOW-COHESION AND POOR-CANONICAL CLUSTERS
 	# ══════════════════════════════════════════════════════════════════════════

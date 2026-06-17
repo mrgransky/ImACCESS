@@ -26,13 +26,13 @@ class ConflictQuantifier:
 		self,
 		sym_model_id: str,
 		nli_model_id: str,
+		batch_size: int,
 		device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
-		tau_match: float = 0.85, # exact semantic equivalence
-		tau_soft: float = 0.55, # related/hierarchical concepts
-		tau_orphan: float = 0.60,
-		tau_asym: float = 0.25,
-		tau_fast_fail: float = 0.40,
-		batch_size: int = 2**10,
+		tau_match: float = 0.85,			# Cosine sim gate for strong mutual match → E_strong_pairs
+		tau_soft: float = 0.55,				# Cosine sim gate for soft/hierarchical match → E_density_pairs
+		tau_orphan: float = 0.60,			# Orphan ratio gate → Hard Conflict (sole structural routing gate)
+		tau_asym: float = 0.25,				# NLI absolute gap gate → Soft Conflict vs Agreement
+		tau_fast_fail: float = 0.40,	# Centroid cosine sim → ADVISORY only, never routes
 		verbose: bool = False
 	):
 		self.device = device
