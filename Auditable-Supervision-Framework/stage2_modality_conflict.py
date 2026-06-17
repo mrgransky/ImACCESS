@@ -188,7 +188,7 @@ class ConflictQuantifier:
 		"""
 		Computes the Evidence Receipt and routes the sample to a Conflict Regime.
 
-		Routing authority: Stage 2 is the sole authority on regime assignment.
+		Routing authority: Stage 2 is the sole authority on heuristic regime assignment.
 		Stage 1 outputs (including fused_concepts) are evidence, never routing gates.
 
 		Regime hierarchy (evaluated in order):
@@ -205,7 +205,7 @@ class ConflictQuantifier:
 			print(f"[ERROR] Invalid JSON for id: {sample_id}")
 			return {
 				"id": sample_id,
-				"regime": "INVALID_JSON",
+				"heuristic_regime": "INVALID_JSON",
 				"failure_mode": "vlm_json is not a dict",
 				"metrics": None,
 				"evidence": None,
@@ -224,7 +224,7 @@ class ConflictQuantifier:
 		# MISSING_MODALITY is its own failure mode, not a HARD_CONFLICT variant.
 		# Conflating them would pollute corpus-level conflict statistics.
 		if not c_text or not c_vis:
-			regime = "MISSING_MODALITY"
+			heuristic_regime = "MISSING_MODALITY"
 			missing = (
 				"Missing Text & Visual" if not c_text and not c_vis else
 				"Missing Visual" if not c_vis else
@@ -233,7 +233,7 @@ class ConflictQuantifier:
 			return {
 				"id": sample_id,
 				column: vlm_json,
-				"regime": regime,
+				"heuristic_regime": heuristic_regime,
 				"failure_mode": missing,
 				# Use None, not 0.0/1.0. Fake values pollute corpus-level metric distributions.
 				"metrics": {
@@ -277,7 +277,7 @@ class ConflictQuantifier:
 
 		# Centroid similarity: 
 		# cheap global coherence signal.
-		# advisory only: it must NOT gate the regime alone.
+		# advisory only: it must NOT gate the heuristic regime alone.
 		# few unrelated concepts drag the centroid down even when most pairs align.
 		set_sim = float(1 - scipy.spatial.distance.cosine(emb_t.mean(axis=0), emb_v.mean(axis=0)))
 		centroid_sim_low = set_sim < self.tau_fast_fail
@@ -320,12 +320,12 @@ class ConflictQuantifier:
 		# set_sim is demoted to advisory. orphan_ratio is the sole structural gate.
 		# This makes the routing decision reproducible and independently verifiable.
 		if orphan_ratio >= self.tau_orphan:
-			regime = "HARD_CONFLICT"
+			heuristic_regime = "HARD_CONFLICT"
 			return self._build_full_receipt(
 				sample_id=sample_id,
 				column=column,
 				vlm_json=vlm_json,
-				regime=regime,
+				heuristic_regime=heuristic_regime,
 				failure_mode=None,
 				set_sim=set_sim,
 				orphan_ratio=orphan_ratio,
@@ -353,12 +353,12 @@ class ConflictQuantifier:
 		# Handle None gap explicitly. An empty mutual match set means no semantic
 		# overlap survived bidirectional filtering → treat as HARD_CONFLICT, data-driven.
 		if asym_metrics["gap"] is None:
-			regime = "HARD_CONFLICT"
+			heuristic_regime = "HARD_CONFLICT"
 			return self._build_full_receipt(
 				sample_id=sample_id,
 				column=column,
 				vlm_json=vlm_json,
-				regime=regime,
+				heuristic_regime=heuristic_regime,
 				failure_mode="NO_MUTUAL_MATCHES",
 				set_sim=set_sim,
 				orphan_ratio=orphan_ratio,
@@ -384,7 +384,7 @@ class ConflictQuantifier:
 		abs_gap = abs(asym_metrics["gap"])
 		if abs_gap >= self.tau_asym:
 			denser = "VISUAL" if asym_metrics["gap"] > 0 else "TEXT"
-			regime = "SOFT_CONFLICT"
+			heuristic_regime = "SOFT_CONFLICT"
 			action = (
 				f"NLI Density mismatch: "
 				f"|gap|={abs_gap:.4f} >= tau_asym={self.tau_asym}. "
@@ -392,7 +392,7 @@ class ConflictQuantifier:
 				f"(gap={asym_metrics['gap']:.4f})."
 			)
 		else:
-			regime = "AGREEMENT"
+			heuristic_regime = "AGREEMENT"
 			action = (
 				f"Modalities structurally & semantically aligned. "
 				f"orphan_ratio={orphan_ratio:.3f} < tau_orphan={self.tau_orphan}. "
@@ -403,7 +403,7 @@ class ConflictQuantifier:
 			sample_id=sample_id,
 			column=column,
 			vlm_json=vlm_json,
-			regime=regime,
+			heuristic_regime=heuristic_regime,
 			failure_mode=None,
 			set_sim=set_sim,
 			orphan_ratio=orphan_ratio,
@@ -423,7 +423,7 @@ class ConflictQuantifier:
 		sample_id: str,
 		column: str,
 		vlm_json: Dict[str, Any],
-		regime: str,
+		heuristic_regime: str,
 		failure_mode: Optional[str],
 		set_sim: float,
 		orphan_ratio: float,
@@ -443,8 +443,9 @@ class ConflictQuantifier:
 		Metrics are either real measurements or explicit None, 
 		making the receipt safe for corpus-level statistical analysis.
 
-		The 'advisory' block carries soft signals that informed but did not determine
-		the regime. This separation is essential for ablation studies.
+		Aadvisory block carries soft signals that informed 
+		but did not determine heuristic regime. 
+		This separation is essential for ablation studies.
 		"""
 		gap = asym_metrics.get("gap")
 		denser_modality = (
@@ -462,7 +463,7 @@ class ConflictQuantifier:
 				"O_text_unverified": o_text,
 				"O_vis_unmentioned": o_vis,
 			},
-			"regime": regime,
+			"heuristic_regime": heuristic_regime,
 			"failure_mode": failure_mode,
 			"metrics": {
 				"set_similarity":   round(set_sim, 4),
@@ -583,16 +584,16 @@ def modality_conflict_audit(
 
 	if verbose:
 		print("\nDATASET HEALTH DIAGNOSTIC:")
-		print(df_receipts['regime'].value_counts(normalize=True).mul(100).round(1).astype(str) + '%')
+		print(df_receipts['heuristic_regime'].value_counts(normalize=True).mul(100).round(1).astype(str) + '%')
 
 	txt_file = os.path.join(outputs_dir, "modality_conflict_stats.txt")
 	with open(txt_file, "w", encoding="utf-8") as f_txt:
-		regime_stats = df_receipts['regime'].value_counts(normalize=True)
+		heuristic_regime_stats = df_receipts['heuristic_regime'].value_counts(normalize=True)
 		f_txt.write("MODALITY CONFLICT REGIME DISTRIBUTION\n")
 		f_txt.write("=" * 50 + "\n\n")
 
-		for regime_name, frac in regime_stats.items():
-			f_txt.write(f"{regime_name:<25}{frac:.4f}  ({frac*100:.1f}%)\n")
+		for heuristic_regime_name, frac in heuristic_regime_stats.items():
+			f_txt.write(f"{heuristic_regime_name:<25}{frac:.4f}  ({frac*100:.1f}%)\n")
 
 		f_txt.write("\n" + "=" * 50 + "\n")
 		f_txt.write(f"Total processed : {len(df_receipts):,}\n")

@@ -67,7 +67,7 @@ class CGDConsolidator:
 				self.soft_conflict_w_pos_floor = soft_conflict_w_pos_floor
 				self.verbose                   = verbose
 				self.outputs_dir               = os.path.join(
-						os.path.dirname(self.input_jsonl), "outputs"
+					os.path.dirname(self.input_jsonl), "outputs"
 				)
 
 				# Tier-2 rejection tracking
@@ -229,10 +229,6 @@ class CGDConsolidator:
 								f"Vocab size: {len(self.target_vocabulary):,}"
 						)
 
-		# ──────────────────────────────────────────────────────────────────────────
-		# Embedding helpers
-		# ──────────────────────────────────────────────────────────────────────────
-
 		def _get_embedding(self, label: str) -> Optional[np.ndarray]:
 				"""Fetch L2-normalized embedding from cache. Case-insensitive fallback."""
 				emb = self.emb_cache.get(label)
@@ -248,10 +244,7 @@ class CGDConsolidator:
 						return 0.0
 				return float(np.dot(emb_a, emb_b))
 
-		# ──────────────────────────────────────────────────────────────────────────
 		# Tier-0/1/2 resolution
-		# ──────────────────────────────────────────────────────────────────────────
-
 		def _resolve_to_canonical(
 				self,
 				raw_concept: str,
@@ -336,10 +329,7 @@ class CGDConsolidator:
 						)
 				return best_class
 
-		# ──────────────────────────────────────────────────────────────────────────
 		# Stage 3: Micro-CGD Audit
-		# ──────────────────────────────────────────────────────────────────────────
-
 		def audit_concept_CGD(
 				self,
 				concept: str,
@@ -414,10 +404,7 @@ class CGDConsolidator:
 						"D": round(d_score, 4),
 				}
 
-		# ──────────────────────────────────────────────────────────────────────────
 		# Stage 4: Regime-Aware Consolidation
-		# ──────────────────────────────────────────────────────────────────────────
-
 		def consolidate_sample(
 				self, receipt: Dict[str, Any], column: str
 		) -> Dict[str, Any]:
@@ -441,7 +428,7 @@ class CGDConsolidator:
 						"gmm.regime_override" — True when GMM disagrees with Stage 2.
 				"""
 				sample_id        = receipt["id"]
-				heuristic_regime = receipt["regime"]
+				heuristic_regime = receipt["heuristic_regime"]
 				metrics          = receipt.get("metrics") or {}
 				vlm_data         = receipt.get(column, {})
 				evidence         = receipt.get("evidence", {})
@@ -762,7 +749,6 @@ class CGDConsolidator:
 										f"from c_vis fallback."
 								)
 
-				# ── Flatten audited concepts for output ───────────────────────────────
 				flattened_concepts = {
 						concept: {
 								**data["scores"],
@@ -781,32 +767,23 @@ class CGDConsolidator:
 						)
 						print("-" * 120)
 
-				# Fix B: Always emit heuristic_regime alongside the (possibly GMM-
-				# overridden) regime so the auditable matrix carries a full audit trail.
-				# Also emit feature_dim inside the gmm field for downstream traceability.
 				return {
-						"id":               sample_id,
-						column:             vlm_data,
-						"audited_concepts": flattened_concepts,
-						"heuristic_regime": heuristic_regime,          # Fix B — always present
-						"regime":           regime,
-						"positive_targets": sorted(pos_targets),
-						"hard_negatives":   sorted(hn_targets),
-						"w_pos":            round(w_pos, 4),
-						"w_neg":            round(w_neg, 4),
-						"gmm": {
-								"regime_override": regime != heuristic_regime,
-								"confidence":      round(gmm_confidence, 4),
-								"feature_dim":     self.gmm_feature_dim,   # Fix B
-								"probabilities":   {
-										k: round(v, 4) for k, v in gmm_probabilities.items()
-								},
-						} if gmm_probabilities is not None else None,
+					"id":               sample_id,
+					column:             vlm_data,
+					"audited_concepts": flattened_concepts,
+					"heuristic_regime": heuristic_regime,
+					"regime":           regime,
+					"positive_targets": sorted(pos_targets),
+					"hard_negatives":   sorted(hn_targets),
+					"w_pos":            round(w_pos, 4),
+					"w_neg":            round(w_neg, 4),
+					"gmm": {
+						"regime_override": regime != heuristic_regime,
+						"confidence":      round(gmm_confidence, 4),
+						"feature_dim":     self.gmm_feature_dim,
+						"probabilities":   {k: round(v, 4) for k, v in gmm_probabilities.items()},
+					} if gmm_probabilities is not None else None,
 				}
-
-		# ──────────────────────────────────────────────────────────────────────────
-		# Rejection report
-		# ──────────────────────────────────────────────────────────────────────────
 
 		def export_rejection_report(self, output_path: str) -> None:
 				"""
@@ -879,8 +856,8 @@ def regime_aware_consolidation(
 
 		# Derive output paths
 		stage3_path  = os.path.join(
-				outputs_dir,
-				os.path.basename(input_jsonl.replace(".jsonl", "_auditable_cgd.jsonl"))
+			outputs_dir,
+			os.path.basename(input_jsonl.replace(".jsonl", "_auditable_cgd.jsonl"))
 		)
 		parquet_path = os.path.join(
 				outputs_dir,
@@ -930,7 +907,6 @@ def regime_aware_consolidation(
 								except Exception:
 										pass
 
-		# ── Instantiate consolidator ──────────────────────────────────────────────
 		consolidator = CGDConsolidator(input_jsonl=input_jsonl, verbose=verbose)
 
 		print(f"\n[STAGE 3 & 4] Streaming receipts and executing stateful CGD audit...")
@@ -938,69 +914,62 @@ def regime_aware_consolidation(
 		rows_new: List[Dict[str, Any]] = []
 		skipped, errors = 0, 0
 
-		# ── Stream and process ────────────────────────────────────────────────────
 		with (
-				open(jsonl_path,  'a', encoding="utf-8") as out_f,
-				open(stage3_path, 'a', encoding="utf-8") as s3_f,
-				open(input_jsonl, 'r', encoding="utf-8") as in_f,
+			open(jsonl_path,  'a', encoding="utf-8") as out_f,
+			open(stage3_path, 'a', encoding="utf-8") as s3_f,
+			open(input_jsonl, 'r', encoding="utf-8") as in_f,
 		):
-				for line_no, line in enumerate(in_f, start=1):
-						line = line.strip()
-						if not line:
-								continue
-						try:
-								receipt = json.loads(line)
-						except json.JSONDecodeError as e:
-								print(f"[WARN] Skipping malformed line {line_no}: {e}")
-								errors += 1
-								continue
+			for line_no, line in enumerate(in_f, start=1):
+				line = line.strip()
+				if not line:
+					continue
+				
+				try:
+					receipt = json.loads(line)
+				except json.JSONDecodeError as e:
+					print(f"[WARN] Skipping malformed line {line_no}: {e}")
+					errors += 1
+					continue
+				
+				sample_id = receipt.get("id")
+				if sample_id is None:
+					print(f"[WARN] Line {line_no} has no 'id' field — skipping.")
+					errors += 1
+					continue
+				if sample_id in processed_ids:
+					skipped += 1
+					continue
 
-						sample_id = receipt.get("id")
-						if sample_id is None:
-								print(f"[WARN] Line {line_no} has no 'id' field — skipping.")
-								errors += 1
-								continue
+				try:
+					consolidated = consolidator.consolidate_sample(receipt=receipt, column=column,)
+					# Stage 3 output — guard prevents duplicate writes on crash-resume.
+					if sample_id not in stage3_processed_ids:
+						stage3_record = {
+							"id":         consolidated["id"],
+							"regime":     consolidated["regime"],
+							"cgd_scores": consolidated["audited_concepts"],
+						}
+						s3_f.write(json.dumps(stage3_record, ensure_ascii=False) + "\n")
+						stage3_processed_ids.add(sample_id)
+					# Stage 4 output — written exactly once per sample.
+					out_f.write(json.dumps(consolidated, ensure_ascii=False) + "\n")
+					rows_new.append(consolidated)
+				except Exception as e:
+					print(f"[ERROR] {sample_id}: {e}")
+					errors += 1
+					continue
 
-						if sample_id in processed_ids:
-								skipped += 1
-								continue
-
-						try:
-								consolidated = consolidator.consolidate_sample(
-										receipt=receipt,
-										column=column,
-								)
-
-								# Stage 3 output — guard prevents duplicate writes on crash-resume.
-								if sample_id not in stage3_processed_ids:
-										stage3_record = {
-												"id":         consolidated["id"],
-												"regime":     consolidated["regime"],
-												"cgd_scores": consolidated["audited_concepts"],
-										}
-										s3_f.write(json.dumps(stage3_record, ensure_ascii=False) + "\n")
-										stage3_processed_ids.add(sample_id)
-
-								# Stage 4 output — written exactly once per sample.
-								out_f.write(json.dumps(consolidated, ensure_ascii=False) + "\n")
-								rows_new.append(consolidated)
-
-						except Exception as e:
-								print(f"[ERROR] {sample_id}: {e}")
-								errors += 1
-								continue
-
-		# ── Rebuild parquet + csv from complete JSONL ─────────────────────────────
+		# Rebuild parquet + csv from complete JSONL
 		# Includes both resumed rows and newly processed rows for a consistent output.
 		all_rows: List[Dict[str, Any]] = []
 		with open(jsonl_path, 'r', encoding="utf-8") as f:
-				for line in f:
-						line = line.strip()
-						if line:
-								try:
-										all_rows.append(json.loads(line))
-								except Exception:
-										pass
+			for line in f:
+				line = line.strip()
+				if line:
+					try:
+						all_rows.append(json.loads(line))
+					except Exception:
+						pass
 
 		df = pd.DataFrame(all_rows)
 		print(f"\n[STAGE 3 & 4] DataFrame: {df.shape} | columns: {list(df.columns)}")

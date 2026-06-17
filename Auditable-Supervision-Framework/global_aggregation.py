@@ -211,7 +211,7 @@ def cluster_and_save_priors(
 				if verbose:
 					print(f"[BRIDGE][WARN] Malformed JSON at line {line_no}: {e}")
 				continue
-			regime   = receipt.get("regime", "UNKNOWN")
+			regime   = receipt.get("heuristic_regime", "UNKNOWN")
 			mlm_data = receipt.get(column, {})
 			
 			# Track regime distribution for diagnostics
@@ -355,7 +355,7 @@ def cluster_and_save_priors(
 					f"(minimum={_MIN_GMM_SAMPLES}). Skipping GMM generation."
 			)
 	else:
-			# ── FIX (Issue 4): Choose feature dimensionality ──────────────────────
+			# Choose feature dimensionality
 			_n_3d = len(gmm_features_3d)
 			_coverage_3d = _n_3d / max(_n_valid, 1)
 			print(
@@ -426,7 +426,7 @@ def cluster_and_save_priors(
 							f"data-driven support for three conflict regimes."
 					)
 
-			# ── Fit the final K=3 GMM ─────────────────────────────────────────────
+			# Fit the final K=3 GMM
 			print(
 					f"[BRIDGE][STEP 1B] Fitting final 3-component GMM on "
 					f"{features_arr.shape[0]:,} scaled {feature_dim}D vectors..."
@@ -452,7 +452,8 @@ def cluster_and_save_priors(
 			orphan_means = means_unscaled[:, orphan_col]
 			sorted_by_orphan = np.argsort(orphan_means)[::-1]  # descending
 			hard_cluster_idx = int(sorted_by_orphan[0])
-			# ── FIX (Issue 3): Centroid separation confidence check ───────────────
+			
+			# Centroid separation confidence check
 			orphan_gap = float(orphan_means[sorted_by_orphan[0]] - orphan_means[sorted_by_orphan[1]])
 			if orphan_gap < 0.05:
 					print(
@@ -606,26 +607,32 @@ def cluster_and_save_priors(
 	print(f"\n[BRIDGE][STEP 2] Saved global frequencies → {freqs_path}")
 	unique_labels: List[str] = sorted(label_freq_dict.keys())
 	print(f"[BRIDGE][STEP 2] Unique concepts for vocabulary induction: {len(unique_labels):,}")
+
 	# ── MISSING_MODALITY coverage diagnostic ──────────────────────────────────
 	mm_vis_concepts: set = set()
 	with open(input_jsonl, 'r', encoding='utf-8') as f:
-			for line in f:
-					line = line.strip()
-					if not line:
-							continue
-					try:
-							receipt = json.loads(line)
-					except json.JSONDecodeError:
-							continue
-					if receipt.get("regime") != "MISSING_MODALITY":
-							continue
-					mlm_data = receipt.get(column, {})
-					if not isinstance(mlm_data, dict):
-							continue
-					for c in mlm_data.get("visual_concepts", []) or []:
-							if c and isinstance(c, str):
-									mm_vis_concepts.add(c.strip().lower())
+		for line in f:
+			line = line.strip()
+			if not line:
+				continue
+			try:
+				receipt = json.loads(line)
+			except json.JSONDecodeError:
+				continue
+			
+			if receipt.get("heuristic_regime") != "MISSING_MODALITY":
+				continue
+			
+			mlm_data = receipt.get(column, {})
+			
+			if not isinstance(mlm_data, dict):
+				continue
+			for c in mlm_data.get("visual_concepts", []) or []:
+				if c and isinstance(c, str):
+					mm_vis_concepts.add(c.strip().lower())
+
 	orphaned = mm_vis_concepts - set(label_freq_dict.keys())
+
 	print(f"[BRIDGE][DIAG] MISSING_MODALITY vis_c concepts  : {len(mm_vis_concepts):,}")
 	print(f"[BRIDGE][DIAG] Not in corpus (orphaned)         : {len(orphaned):,}")
 	if orphaned:
