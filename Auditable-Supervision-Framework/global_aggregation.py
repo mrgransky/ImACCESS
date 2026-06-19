@@ -473,7 +473,7 @@ def cluster_and_save_priors(
 		else:
 			print(f"[BRIDGE][STEP 1B] Hard Conflict cluster separation: orphan_ratio gap={orphan_gap:.4f} ✓")
 
-		# Regime: SOFT_CONFLICT → of the remaining two, highest asymmetry_gap (col 2)
+		# Regime: SOFT_CONFLICT → of the remaining two, highest |asymmetry_gap| (col 2)
 		#         If feature_dim==2 (fallback), use set_similarity (col 0) inverted:
 		#         lower set_sim among the two remaining → more conflict → SOFT.
 		remaining = [i for i in range(3) if i != hard_cluster_idx]

@@ -6,7 +6,7 @@
 =========================================================================
   ┌───────────────────────────────────────────────────────────────────┐
   │ For Sample i:                                                     │
-  │  ├─ Stage 1: Joint VLM Extraction with CoT (Prompt Engineering)   │
+  │  ├─ Stage 1: Joint MLM Extraction with CoT (Prompt Engineering)   │
   │  │           => C_text, C_vis, C_fused                            │
   │  └─ Stage 2: Modality Conflict Quantification                     │
   │              => E_sym (Cosine): Finds Orphans (O_text, O_vis)     │
@@ -24,7 +24,7 @@
   ┌───────────────────────────────────────────────────────────────────┐
   │ 1. Extract & count all unique raw concepts => D_global frequencies│
   │     ├─ D_global​(c)=1.0−exp(−α⋅Freq(c))                            │
-  │ 2. Pre-compute 'all-MiniLM' embedding cache.                      │
+  │ 2. Pre-compute 'EMBED_MODEL' embedding cache.                     │
   │ 3. Execute `clustering.py` Engine:                                │
   │     ├─ Agglomerative Linkage & Adaptive k Search                  │
   │     ├─ Virtual Hypernym Synthesis                                 │

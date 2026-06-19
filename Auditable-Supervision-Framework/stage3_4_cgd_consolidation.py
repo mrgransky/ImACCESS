@@ -406,384 +406,354 @@ class CGDConsolidator:
 
 		# Stage 4: Regime-Aware Consolidation
 		def consolidate_sample(
-				self, receipt: Dict[str, Any], column: str
+			self, receipt: Dict[str, Any], 
+			column: str
 		) -> Dict[str, Any]:
-				"""
-				STAGE 4: Maps audited concepts into canonical vocabulary V, applies
-				Regime-Aware Gating, and derives w_pos, w_neg, positive_targets,
-				and hard_negatives for downstream BCE training.
+			"""
+			STAGE 4: Maps audited concepts into canonical vocabulary V, applies
+			Regime-Aware Gating, and derives w_pos, w_neg, positive_targets,
+			and hard_negatives for downstream BCE training.
+			GMM Routing (Bridge Fix A + D):
+					- Features are scaled with self.gmm_scaler before predict_proba.
+					- Feature vector dimensionality matches self.gmm_feature_dim (2 or 3).
+					- For feature_dim=2, samples with asym_gap=None (NLI-bypassed Hard
+						Conflict) are valid GMM inputs — they are NOT excluded from routing.
+					- For feature_dim=3, samples with asym_gap=None cannot be routed —
+						heuristic regime is used for those samples only.
+					- A per-sample warning is emitted when GMM confidence < 0.60 (Fix C).
+			Output fields (Bridge Fix B):
+					"heuristic_regime" — always emitted for audit trail.
+					"gmm.feature_dim"  — 2 or 3, for downstream traceability.
+					"gmm.regime_override" — True when GMM disagrees with Stage 2.
+			"""
+			sample_id        = receipt["id"]
+			heuristic_regime = receipt["heuristic_regime"]
+			metrics          = receipt.get("metrics") or {}
+			vlm_data         = receipt.get(column, {})
+			evidence         = receipt.get("evidence", {})
+			c_text  = vlm_data.get("text_concepts",  []) or []
+			c_vis   = vlm_data.get("visual_concepts", []) or []
+			c_fused = vlm_data.get("fused_concepts",  []) or []
+			denser_modality = metrics.get("denser_modality", "EQUAL")
+			raw_asym_gap    = metrics.get("asymmetry_gap", 0.0)
+			asym_gap_abs    = abs(raw_asym_gap) if raw_asym_gap is not None else 0.0
+			entail_V2T      = metrics.get("entail_V_to_T", 0.0)
+			entail_T2V      = metrics.get("entail_T_to_V", 0.0)
+			set_sim         = metrics.get("set_similarity", 0.0)
+			orphan_ratio    = metrics.get("orphan_ratio", 0.0)
+			# ── GMM Regime Routing (Fix A + D) ────────────────────────────────────
+			# Fix D: The GMM guard condition no longer unconditionally requires
+			# raw_asym_gap is not None. For feature_dim=2, asym_gap is not part of
+			# the feature vector — NLI-bypassed Hard Conflict samples (asym_gap=None)
+			# are valid 2D inputs and must not be excluded from GMM routing.
+			# For feature_dim=3, asym_gap=None means the 3D vector cannot be
+			# constructed — fall back to heuristic regime for that sample only.
+			regime            = heuristic_regime
+			gmm_confidence    = None
+			gmm_probabilities = None
+			_gmm_inputs_valid = (
+					self.gmm is not None
+					and self.gmm_scaler is not None
+					and self.gmm_feature_dim is not None
+					and set_sim is not None
+					and orphan_ratio is not None
+					and heuristic_regime != "MISSING_MODALITY"
+					and (
+							self.gmm_feature_dim == 2          # asym_gap not needed
+							or raw_asym_gap is not None        # 3D: asym_gap required
+					)
+			)
+			if _gmm_inputs_valid:
+					# Fix A: Build feature vector matching the dimensionality the GMM
+					# was trained on, then apply the saved StandardScaler before
+					# predict_proba. Skipping scaling causes set_similarity to dominate
+					# the GMM covariance and produces unreliable regime assignments.
+					if self.gmm_feature_dim == 2:
+							feat_raw = np.array([[set_sim, orphan_ratio]])
+					else:
+							feat_raw = np.array([[set_sim, orphan_ratio, asym_gap_abs]])
+					feat_scaled = self.gmm_scaler.transform(feat_raw)          # Fix A
+					probs       = self.gmm.predict_proba(feat_scaled)[0]       # shape [3]
+					best_idx    = int(np.argmax(probs))
+					regime            = self.class_mapping[best_idx]
+					gmm_confidence    = float(probs[best_idx])
+					gmm_probabilities = {
+							self.class_mapping[k]: float(probs[k]) for k in range(3)
+					}
+					if self.verbose:
+							print(
+									f"  [GMM] {sample_id} | "
+									f"feat_raw={feat_raw.tolist()} | "
+									f"feat_scaled={feat_scaled.round(3).tolist()} | "
+									f"probs={{{', '.join(f'{r}:{p:.3f}' for r, p in gmm_probabilities.items())}}} | "
+									f"→ regime={regime} (conf={gmm_confidence:.4f})"
+							)
+					# Fix C: Warn on low-confidence GMM assignments.
+					# Mirrors the Bridge's orphan_gap < 0.05 centroid separation check
+					# at the per-sample level. Useful for identifying ambiguous samples
+					# in the auditable supervision matrix and for paper reporting.
+					_GMM_CONF_WARN_THRESHOLD = 0.60
+					if gmm_confidence < _GMM_CONF_WARN_THRESHOLD:
+							if self.verbose:
+									print(
+											f"  [GMM][WARN] {sample_id} | low-confidence assignment: "
+											f"regime={regime} conf={gmm_confidence:.4f} < "
+											f"{_GMM_CONF_WARN_THRESHOLD} | "
+											f"probs={gmm_probabilities}"
+									)
+			else:
+					# Log why GMM routing was skipped for this sample.
+					if self.verbose and self.gmm is not None:
+							_skip_reason = (
+									"MISSING_MODALITY (no conflict metrics)"
+									if heuristic_regime == "MISSING_MODALITY"
+									else f"asym_gap=None with feature_dim={self.gmm_feature_dim} "
+											 f"(NLI-bypassed; 3D GMM cannot route)"
+									if raw_asym_gap is None and self.gmm_feature_dim == 3
+									else "set_sim or orphan_ratio is None"
+							)
+							print(
+									f"  [GMM] {sample_id} | routing skipped → heuristic regime used | "
+									f"reason: {_skip_reason}"
+							)
+			# ── Build concept pool with modality-of-origin tags ───────────────────
+			# fused_concepts are trustworthy only for AGREEMENT and SOFT_CONFLICT.
+			# HARD_CONFLICT: fused is unreliable (empty or hallucinated blend) →
+			# exclude, consistent with the Bridge regime-gating logic.
+			concept_pool: List[Tuple[str, str]] = []  # (concept, source_modality)
+			seen: set = set()
+			def _add(concepts: List[str], modality: str) -> None:
+					for c in concepts:
+							if c and c not in seen:
+									concept_pool.append((c, modality))
+									seen.add(c)
+			_add(c_text, "TEXT")
+			_add(c_vis,  "VISUAL")
+			if regime in ("AGREEMENT", "SOFT_CONFLICT"):
+					_add(c_fused, "FUSED")  # fused included only for trustworthy regimes
+			if self.verbose:
+					print(
+							f"\n>> [{sample_id}] heuristic={heuristic_regime} | "
+							f"gmm_regime={regime} | "
+							f"text={len(c_text)} vis={len(c_vis)} fused={len(c_fused)} | "
+							f"pool={len(concept_pool)} concepts"
+					)
 
-				GMM Routing (Bridge Fix A + D):
-						- Features are scaled with self.gmm_scaler before predict_proba.
-						- Feature vector dimensionality matches self.gmm_feature_dim (2 or 3).
-						- For feature_dim=2, samples with asym_gap=None (NLI-bypassed Hard
-							Conflict) are valid GMM inputs — they are NOT excluded from routing.
-						- For feature_dim=3, samples with asym_gap=None cannot be routed —
-							heuristic regime is used for those samples only.
-						- A per-sample warning is emitted when GMM confidence < 0.60 (Fix C).
-
-				Output fields (Bridge Fix B):
-						"heuristic_regime" — always emitted for audit trail.
-						"gmm.feature_dim"  — 2 or 3, for downstream traceability.
-						"gmm.regime_override" — True when GMM disagrees with Stage 2.
-				"""
-				sample_id        = receipt["id"]
-				heuristic_regime = receipt["heuristic_regime"]
-				metrics          = receipt.get("metrics") or {}
-				vlm_data         = receipt.get(column, {})
-				evidence         = receipt.get("evidence", {})
-
-				c_text  = vlm_data.get("text_concepts",  []) or []
-				c_vis   = vlm_data.get("visual_concepts", []) or []
-				c_fused = vlm_data.get("fused_concepts",  []) or []
-
-				denser_modality = metrics.get("denser_modality", "EQUAL")
-				raw_asym_gap    = metrics.get("asymmetry_gap", 0.0)
-				asym_gap_abs    = abs(raw_asym_gap) if raw_asym_gap is not None else 0.0
-				entail_V2T      = metrics.get("entail_V_to_T", 0.0)
-				entail_T2V      = metrics.get("entail_T_to_V", 0.0)
-				set_sim         = metrics.get("set_similarity", 0.0)
-				orphan_ratio    = metrics.get("orphan_ratio", 0.0)
-
-				# ── GMM Regime Routing (Fix A + D) ────────────────────────────────────
-				# Fix D: The GMM guard condition no longer unconditionally requires
-				# raw_asym_gap is not None. For feature_dim=2, asym_gap is not part of
-				# the feature vector — NLI-bypassed Hard Conflict samples (asym_gap=None)
-				# are valid 2D inputs and must not be excluded from GMM routing.
-				# For feature_dim=3, asym_gap=None means the 3D vector cannot be
-				# constructed — fall back to heuristic regime for that sample only.
-				regime            = heuristic_regime
-				gmm_confidence    = None
-				gmm_probabilities = None
-
-				_gmm_inputs_valid = (
-						self.gmm is not None
-						and self.gmm_scaler is not None
-						and self.gmm_feature_dim is not None
-						and set_sim is not None
-						and orphan_ratio is not None
-						and heuristic_regime != "MISSING_MODALITY"
-						and (
-								self.gmm_feature_dim == 2          # asym_gap not needed
-								or raw_asym_gap is not None        # 3D: asym_gap required
-						)
+			# Stage 3: CGD Audit
+			# Resolve canonical ONCE per concept and audit in a single pass.
+			# audited_concepts: raw_concept → {
+			#     "scores": {C, G, D},
+			#     "canonical": str,
+			#     "source_modality": str
+			# }
+			audited_concepts: Dict[str, Dict[str, Any]] = {}
+			for concept, source_modality in concept_pool:
+				resolved = self._resolve_to_canonical(concept)
+				if resolved is None:
+					continue  # Out-of-domain or blacklisted — drop silently
+				scores = self.audit_concept_CGD(
+					concept=concept,
+					source_modality=source_modality,
+					c_text=c_text,
+					c_vis=c_vis,
+					regime=regime,
+					denser_modality=denser_modality,
+					entail_V2T=entail_V2T,
+					entail_T2V=entail_T2V,
 				)
-
-				if _gmm_inputs_valid:
-						# Fix A: Build feature vector matching the dimensionality the GMM
-						# was trained on, then apply the saved StandardScaler before
-						# predict_proba. Skipping scaling causes set_similarity to dominate
-						# the GMM covariance and produces unreliable regime assignments.
-						if self.gmm_feature_dim == 2:
-								feat_raw = np.array([[set_sim, orphan_ratio]])
-						else:
-								feat_raw = np.array([[set_sim, orphan_ratio, asym_gap_abs]])
-
-						feat_scaled = self.gmm_scaler.transform(feat_raw)          # Fix A
-						probs       = self.gmm.predict_proba(feat_scaled)[0]       # shape [3]
-						best_idx    = int(np.argmax(probs))
-
-						regime            = self.class_mapping[best_idx]
-						gmm_confidence    = float(probs[best_idx])
-						gmm_probabilities = {
-								self.class_mapping[k]: float(probs[k]) for k in range(3)
-						}
-
-						if self.verbose:
-								print(
-										f"  [GMM] {sample_id} | "
-										f"feat_raw={feat_raw.tolist()} | "
-										f"feat_scaled={feat_scaled.round(3).tolist()} | "
-										f"probs={{{', '.join(f'{r}:{p:.3f}' for r, p in gmm_probabilities.items())}}} | "
-										f"→ regime={regime} (conf={gmm_confidence:.4f})"
-								)
-
-						# Fix C: Warn on low-confidence GMM assignments.
-						# Mirrors the Bridge's orphan_gap < 0.05 centroid separation check
-						# at the per-sample level. Useful for identifying ambiguous samples
-						# in the auditable supervision matrix and for paper reporting.
-						_GMM_CONF_WARN_THRESHOLD = 0.60
-						if gmm_confidence < _GMM_CONF_WARN_THRESHOLD:
-								if self.verbose:
-										print(
-												f"  [GMM][WARN] {sample_id} | low-confidence assignment: "
-												f"regime={regime} conf={gmm_confidence:.4f} < "
-												f"{_GMM_CONF_WARN_THRESHOLD} | "
-												f"probs={gmm_probabilities}"
-										)
-				else:
-						# Log why GMM routing was skipped for this sample.
-						if self.verbose and self.gmm is not None:
-								_skip_reason = (
-										"MISSING_MODALITY (no conflict metrics)"
-										if heuristic_regime == "MISSING_MODALITY"
-										else f"asym_gap=None with feature_dim={self.gmm_feature_dim} "
-												 f"(NLI-bypassed; 3D GMM cannot route)"
-										if raw_asym_gap is None and self.gmm_feature_dim == 3
-										else "set_sim or orphan_ratio is None"
-								)
-								print(
-										f"  [GMM] {sample_id} | routing skipped → heuristic regime used | "
-										f"reason: {_skip_reason}"
-								)
-
-				# ── Build concept pool with modality-of-origin tags ───────────────────
-				# fused_concepts are trustworthy only for AGREEMENT and SOFT_CONFLICT.
-				# HARD_CONFLICT: fused is unreliable (empty or hallucinated blend) →
-				# exclude, consistent with the Bridge regime-gating logic.
-				concept_pool: List[Tuple[str, str]] = []  # (concept, source_modality)
-				seen: set = set()
-
-				def _add(concepts: List[str], modality: str) -> None:
-						for c in concepts:
-								if c and c not in seen:
-										concept_pool.append((c, modality))
-										seen.add(c)
-
-				_add(c_text, "TEXT")
-				_add(c_vis,  "VISUAL")
-				if regime in ("AGREEMENT", "SOFT_CONFLICT"):
-						_add(c_fused, "FUSED")  # fused included only for trustworthy regimes
-
-				if self.verbose:
-						print(
-								f"\n>> [{sample_id}] heuristic={heuristic_regime} | "
-								f"gmm_regime={regime} | "
-								f"text={len(c_text)} vis={len(c_vis)} fused={len(c_fused)} | "
-								f"pool={len(concept_pool)} concepts"
-						)
-
-				# ── Stage 3: CGD Audit ────────────────────────────────────────────────
-				# Resolve canonical ONCE per concept and audit in a single pass.
-				# audited_concepts: raw_concept → {
-				#     "scores": {C, G, D},
-				#     "canonical": str,
-				#     "source_modality": str
-				# }
-				audited_concepts: Dict[str, Dict[str, Any]] = {}
-
-				for concept, source_modality in concept_pool:
-						resolved = self._resolve_to_canonical(concept)
-						if resolved is None:
-								continue  # Out-of-domain or blacklisted — drop silently
-
-						scores = self.audit_concept_CGD(
-								concept=concept,
-								source_modality=source_modality,
-								c_text=c_text,
-								c_vis=c_vis,
-								regime=regime,
-								denser_modality=denser_modality,
-								entail_V2T=entail_V2T,
-								entail_T2V=entail_T2V,
-						)
-						audited_concepts[concept] = {
-								"scores":          scores,
-								"canonical":       resolved,
-								"source_modality": source_modality,
-						}
-
-				# resolved_cache records the outcome of every concept in the pool,
-				# including those dropped (None). The robustness fallback must distinguish
-				# between "not yet attempted" (key absent) and "attempted but dropped"
-				# (key present, value None) to avoid re-resolving blacklisted concepts
-				# with a softer threshold.
-				resolved_cache: Dict[str, Optional[str]] = {
-						c: audited_concepts[c]["canonical"] if c in audited_concepts else None
-						for c, _ in concept_pool
+				audited_concepts[concept] = {
+					"scores":          scores,
+					"canonical":       resolved,
+					"source_modality": source_modality,
 				}
+			# resolved_cache records the outcome of every concept in the pool,
+			# including those dropped (None). The robustness fallback must distinguish
+			# between "not yet attempted" (key absent) and "attempted but dropped"
+			# (key present, value None) to avoid re-resolving blacklisted concepts
+			# with a softer threshold.
+			resolved_cache: Dict[str, Optional[str]] = {
+					c: audited_concepts[c]["canonical"] if c in audited_concepts else None
+					for c, _ in concept_pool
+			}
+			if self.verbose:
+					print(
+							f"   Audited: {len(audited_concepts)}/{len(concept_pool)} concepts "
+							f"resolved to vocabulary"
+					)
+			# ── Stage 4: Regime-Aware Gated Consolidation ─────────────────────────
+			pos_targets: set = set()
+			hn_targets:  set = set()
+			w_pos: float = 1.0
+			w_neg: float = 0.0
+			if regime == "AGREEMENT":
+					# Both modalities agree — accept all resolved concepts as positives.
+					w_pos = 1.0
+					w_neg = 0.0
+					for c, data in audited_concepts.items():
+							pos_targets.add(data["canonical"])
+			elif regime == "SOFT_CONFLICT":
+					# Modalities share topic but differ in density.
+					# Gate by D(c) >= tau to suppress over-abstract hypernyms.
+					for c, data in audited_concepts.items():
+							if data["scores"]["D"] >= self.tau_density_filter:
+									pos_targets.add(data["canonical"])
+					w_pos = max(
+							self.soft_conflict_w_pos_floor,
+							1.0 - (self.lambda_asym * asym_gap_abs),
+					)
+					w_neg = 0.0
+			elif regime == "HARD_CONFLICT":
+					# Modalities are semantically disjoint.
+					# Only ORPHANED text concepts (O_text_unverified from Stage 2)
+					# become hard negatives. Text concepts matched to a visual concept
+					# in Stage 2 (E_strong / E_density) are NOT hard negatives — they
+					# have partial visual grounding and should not be repelled.
+					o_text_orphans: set = set(evidence.get("O_text_unverified", []))
+					if self.verbose:
+							print(
+									f"  [HARD_CONFLICT] O_text_unverified={sorted(o_text_orphans)} "
+									f"| evidence keys={list(evidence.keys())}"
+							)
+					hn_g_scores: List[float] = []
+					for c, data in audited_concepts.items():
+							resolved = data["canonical"]
+							if data["source_modality"] == "VISUAL":
+									pos_targets.add(resolved)
+							elif c in o_text_orphans:
+									hn_targets.add(resolved)
+									hn_g_scores.append(data["scores"]["G"])
+					w_pos = self.hard_conflict_w_pos
+					# w_neg must be 0.0 when hn_targets is empty.
+					# Without this guard, mean_hn_g=0.0 (empty list default) produces
+					# w_neg=1.0 — assigning maximum repulsion weight to a non-existent
+					# negative set, which is both incorrect and scientifically incoherent.
+					if hn_targets:
+							mean_hn_g = float(np.mean(hn_g_scores))
+							w_neg     = max(0.0, 1.0 - mean_hn_g)
+					else:
+							w_neg = 0.0
+			elif regime == "MISSING_MODALITY":
+					# Only visual signal is available; accept resolved visual concepts
+					# as positives with reduced confidence. No hard negatives.
+					w_pos = 0.50
+					w_neg = 0.0
+					for c, data in audited_concepts.items():
+							if data["source_modality"] == "VISUAL":
+									pos_targets.add(data["canonical"])
+					if self.verbose:
+							print(
+									f"  [MISSING_MODALITY] {sample_id} | "
+									f"visual-only supervision | w_pos={w_pos}"
+							)
+			else:
+					# Truly unknown regime — conservative fallback.
+					# This branch should never be reached in production; if it is,
+					# the regime string from Stage 2 has changed without updating Stage 4.
+					w_pos = 0.50
+					w_neg = 0.0
+					for c, data in audited_concepts.items():
+							pos_targets.add(data["canonical"])
+					if self.verbose:
+							print(
+									f"  [WARN] {sample_id} | regime='{regime}' unknown → "
+									f"conservative fallback (all resolved → pos_targets, "
+									f"w_pos={w_pos}, w_neg={w_neg})"
+							)
 
+			# ── Canonical collision guard ──────────────────────────────────────────
+			# A canonical cannot be both a positive target and a hard negative.
+			# pos always wins — remove from hn_targets.
+			canonical_collision = pos_targets & hn_targets
+			if canonical_collision:
+					if self.verbose:
+							print(
+									f"  [COLLISION] {sample_id} | "
+									f"{len(canonical_collision)} canonical(s) in both pos and hn — "
+									f"removing from hn_targets: {sorted(canonical_collision)}"
+							)
+					hn_targets -= canonical_collision
+
+			# ── Sanity assertions ─────────────────────────────────────────────────
+			if regime == "HARD_CONFLICT" and len(hn_targets) == 0 and w_neg > 0:
+					print(
+							f"[BUG] HARD_CONFLICT with hn=0 but w_neg={w_neg:.4f} "
+							f"for {sample_id}"
+					)
+			for c in audited_concepts:
+					if c.lower().strip() in self.blacklisted_concepts_norm:
+							print(
+									f"[BUG] blacklisted concept survived resolution: "
+									f"'{c}' → '{audited_concepts[c]['canonical']}' "
+									f"for {sample_id}"
+							)
+
+			# ── Robustness fallback ───────────────────────────────────────────────
+			# If pos_targets is still empty after gating (e.g. all D(c) < tau in a
+			# SOFT_CONFLICT sample with very abstract concepts), recover using raw
+			# visual concepts — the most grounded signal available.
+			# The density gate is intentionally bypassed here: this is a last-resort
+			# path to prevent empty supervision, not a quality gate.
+			#
+			# resolved_cache distinguishes two None cases:
+			#   - key present, value None  → already attempted and dropped (blacklisted
+			#     or below tau); do NOT retry even with a softer threshold.
+			#   - key absent               → not yet attempted; safe to retry.
+			if not pos_targets and c_vis:
 				if self.verbose:
-						print(
-								f"   Audited: {len(audited_concepts)}/{len(concept_pool)} concepts "
-								f"resolved to vocabulary"
-						)
-
-				# ── Stage 4: Regime-Aware Gated Consolidation ─────────────────────────
-				pos_targets: set = set()
-				hn_targets:  set = set()
-				w_pos: float = 1.0
-				w_neg: float = 0.0
-
-				if regime == "AGREEMENT":
-						# Both modalities agree — accept all resolved concepts as positives.
-						w_pos = 1.0
-						w_neg = 0.0
-						for c, data in audited_concepts.items():
-								pos_targets.add(data["canonical"])
-
-				elif regime == "SOFT_CONFLICT":
-						# Modalities share topic but differ in density.
-						# Gate by D(c) >= tau to suppress over-abstract hypernyms.
-						for c, data in audited_concepts.items():
-								if data["scores"]["D"] >= self.tau_density_filter:
-										pos_targets.add(data["canonical"])
-						w_pos = max(
-								self.soft_conflict_w_pos_floor,
-								1.0 - (self.lambda_asym * asym_gap_abs),
-						)
-						w_neg = 0.0
-
-				elif regime == "HARD_CONFLICT":
-						# Modalities are semantically disjoint.
-						# Only ORPHANED text concepts (O_text_unverified from Stage 2)
-						# become hard negatives. Text concepts matched to a visual concept
-						# in Stage 2 (E_strong / E_density) are NOT hard negatives — they
-						# have partial visual grounding and should not be repelled.
-						o_text_orphans: set = set(evidence.get("O_text_unverified", []))
-						if self.verbose:
-								print(
-										f"  [HARD_CONFLICT] O_text_unverified={sorted(o_text_orphans)} "
-										f"| evidence keys={list(evidence.keys())}"
-								)
-
-						hn_g_scores: List[float] = []
-						for c, data in audited_concepts.items():
-								resolved = data["canonical"]
-								if data["source_modality"] == "VISUAL":
-										pos_targets.add(resolved)
-								elif c in o_text_orphans:
-										hn_targets.add(resolved)
-										hn_g_scores.append(data["scores"]["G"])
-
-						w_pos = self.hard_conflict_w_pos
-						# w_neg must be 0.0 when hn_targets is empty.
-						# Without this guard, mean_hn_g=0.0 (empty list default) produces
-						# w_neg=1.0 — assigning maximum repulsion weight to a non-existent
-						# negative set, which is both incorrect and scientifically incoherent.
-						if hn_targets:
-								mean_hn_g = float(np.mean(hn_g_scores))
-								w_neg     = max(0.0, 1.0 - mean_hn_g)
-						else:
-								w_neg = 0.0
-
-				elif regime == "MISSING_MODALITY":
-						# Only visual signal is available; accept resolved visual concepts
-						# as positives with reduced confidence. No hard negatives.
-						w_pos = 0.50
-						w_neg = 0.0
-						for c, data in audited_concepts.items():
-								if data["source_modality"] == "VISUAL":
-										pos_targets.add(data["canonical"])
-						if self.verbose:
-								print(
-										f"  [MISSING_MODALITY] {sample_id} | "
-										f"visual-only supervision | w_pos={w_pos}"
-								)
-
-				else:
-						# Truly unknown regime — conservative fallback.
-						# This branch should never be reached in production; if it is,
-						# the regime string from Stage 2 has changed without updating Stage 4.
-						w_pos = 0.50
-						w_neg = 0.0
-						for c, data in audited_concepts.items():
-								pos_targets.add(data["canonical"])
-						if self.verbose:
-								print(
-										f"  [WARN] {sample_id} | regime='{regime}' unknown → "
-										f"conservative fallback (all resolved → pos_targets, "
-										f"w_pos={w_pos}, w_neg={w_neg})"
-								)
-
-				# ── Canonical collision guard ──────────────────────────────────────────
-				# A canonical cannot be both a positive target and a hard negative.
-				# pos always wins — remove from hn_targets.
-				canonical_collision = pos_targets & hn_targets
-				if canonical_collision:
-						if self.verbose:
-								print(
-										f"  [COLLISION] {sample_id} | "
-										f"{len(canonical_collision)} canonical(s) in both pos and hn — "
-										f"removing from hn_targets: {sorted(canonical_collision)}"
-								)
-						hn_targets -= canonical_collision
-
-				# ── Sanity assertions ─────────────────────────────────────────────────
-				if regime == "HARD_CONFLICT" and len(hn_targets) == 0 and w_neg > 0:
-						print(
-								f"[BUG] HARD_CONFLICT with hn=0 but w_neg={w_neg:.4f} "
-								f"for {sample_id}"
-						)
-
-				for c in audited_concepts:
-						if c.lower().strip() in self.blacklisted_concepts_norm:
-								print(
-										f"[BUG] blacklisted concept survived resolution: "
-										f"'{c}' → '{audited_concepts[c]['canonical']}' "
-										f"for {sample_id}"
-								)
-
-				# ── Robustness fallback ───────────────────────────────────────────────
-				# If pos_targets is still empty after gating (e.g. all D(c) < tau in a
-				# SOFT_CONFLICT sample with very abstract concepts), recover using raw
-				# visual concepts — the most grounded signal available.
-				# The density gate is intentionally bypassed here: this is a last-resort
-				# path to prevent empty supervision, not a quality gate.
-				#
-				# resolved_cache distinguishes two None cases:
-				#   - key present, value None  → already attempted and dropped (blacklisted
-				#     or below tau); do NOT retry even with a softer threshold.
-				#   - key absent               → not yet attempted; safe to retry.
-				if not pos_targets and c_vis:
-						if self.verbose:
-								print(
-										f"  [FALLBACK] {sample_id} | pos_targets empty after gating — "
-										f"recovering from c_vis ({len(c_vis)} concepts) with "
-										f"tau_sim_override={self.tau_sim * 0.85:.4f}"
-								)
-						for c in c_vis:
-								if c in resolved_cache:
-										# Already attempted — respect the earlier decision (may be None).
-										resolved = resolved_cache[c]
-								else:
-										# Not in pool (e.g. c_vis was excluded for this regime) — retry.
-										resolved = self._resolve_to_canonical(
-												c, tau_sim_override=self.tau_sim * 0.85
-										)
-								if resolved:
-										pos_targets.add(resolved)
-						if self.verbose:
-								print(
-										f"  [FALLBACK] Recovered {len(pos_targets)} pos_targets "
-										f"from c_vis fallback."
-								)
-
-				flattened_concepts = {
-						concept: {
-								**data["scores"],
-								"canonical":       data["canonical"],
-								"source_modality": data["source_modality"],
-						}
-						for concept, data in audited_concepts.items()
-				}
-
+					print(
+						f"  [FALLBACK] {sample_id} | pos_targets empty after gating — "
+						f"recovering from c_vis ({len(c_vis)} concepts) with "
+						f"tau_sim_override={self.tau_sim * 0.85:.4f}"
+					)
+				
+				for c in c_vis:
+					if c in resolved_cache:
+						# Already attempted — respect the earlier decision (may be None).
+						resolved = resolved_cache[c]
+					else:
+						# Not in pool (e.g. c_vis was excluded for this regime) — retry.
+						resolved = self._resolve_to_canonical(c, tau_sim_override=self.tau_sim * 0.85)
+					if resolved:
+						pos_targets.add(resolved)
+				
 				if self.verbose:
-						print(json.dumps(flattened_concepts, indent=2))
-						print(
-								f">> {len(audited_concepts)} audited | "
-								f"pos={len(pos_targets)} | hn={len(hn_targets)} | "
-								f"w_pos={w_pos:.4f} | w_neg={w_neg:.4f}"
-						)
-						print("-" * 120)
+					print(f"  [FALLBACK] Recovered {len(pos_targets)} pos_targets from c_vis fallback.")
 
-				return {
-					"id":               sample_id,
-					column:             vlm_data,
-					"audited_concepts": flattened_concepts,
-					"heuristic_regime": heuristic_regime,
-					"regime":           regime,
-					"positive_targets": sorted(pos_targets),
-					"hard_negatives":   sorted(hn_targets),
-					"w_pos":            round(w_pos, 4),
-					"w_neg":            round(w_neg, 4),
-					"gmm": {
-						"regime_override": regime != heuristic_regime,
-						"confidence":      round(gmm_confidence, 4),
-						"feature_dim":     self.gmm_feature_dim,
-						"probabilities":   {k: round(v, 4) for k, v in gmm_probabilities.items()},
-					} if gmm_probabilities is not None else None,
+			flattened_concepts = {
+				concept: {
+					**data["scores"],
+					"canonical":       data["canonical"],
+					"source_modality": data["source_modality"],
 				}
+				for concept, data in audited_concepts.items()
+			}
+
+			if self.verbose:
+					print(json.dumps(flattened_concepts, indent=2))
+					print(
+							f">> {len(audited_concepts)} audited | "
+							f"pos={len(pos_targets)} | hn={len(hn_targets)} | "
+							f"w_pos={w_pos:.4f} | w_neg={w_neg:.4f}"
+					)
+					print("-" * 120)
+
+			return {
+				"id":               sample_id,
+				column:             vlm_data,
+				"audited_concepts": flattened_concepts,
+				"heuristic_regime": heuristic_regime,
+				"regime":           regime,
+				"positive_targets": sorted(pos_targets),
+				"hard_negatives":   sorted(hn_targets),
+				"w_pos":            round(w_pos, 4),
+				"w_neg":            round(w_neg, 4),
+				"gmm": {
+					"regime_override": regime != heuristic_regime,
+					"confidence":      round(gmm_confidence, 4),
+					"feature_dim":     self.gmm_feature_dim,
+					"probabilities":   {k: round(v, 4) for k, v in gmm_probabilities.items()},
+				} if gmm_probabilities is not None else None,
+			}
 
 		def export_rejection_report(self, output_path: str) -> None:
 				"""
