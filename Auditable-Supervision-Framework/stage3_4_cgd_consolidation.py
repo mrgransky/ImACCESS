@@ -13,7 +13,7 @@ sys.path.insert(0, MISC_DIR)
 from utils import *
 
 # local:
-# nohup python -u stage3_4_cgd_consolidation.py -jsonl /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label_mlm_cot_modality_conflict_audit.jsonl -v > logs/regime_aware_consolidation.log 2>&1 &
+# nohup python -u stage3_4_cgd_consolidation.py -jsonl /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_mlm_cot_modality_conflict_audit.jsonl -v > logs/regime_aware_consolidation.log 2>&1 &
 
 class CGDConsolidator:
 		def __init__(
