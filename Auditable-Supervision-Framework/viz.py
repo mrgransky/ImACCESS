@@ -2550,13 +2550,15 @@ def viz_gmm_probability_simplex(
 						except Exception:
 								pass   # KDE can fail on degenerate data
 
+		ax_lowc.set_ylabel("Count", fontsize=9)
 		ax_lowc.set_title(
-				f"Low-confidence samples  (conf < {conf_threshold}, n={len(df_low):,})\n"
-				"colour=final regime | KDE contour overlay",
-				fontsize=8.5, fontweight="bold",
+			f"Low-Confidence Sample Distribution  (conf < {conf_threshold})\n"
+			f"n_low_conf={n_low_conf:,} ({n_low_conf / max(n_routed, 1) * 100:.1f}% of GMM-routed)",
+			fontsize=9, fontweight="bold",
 		)
-		ax_lowc.legend(fontsize=7, frameon=False, loc="upper right",
-									 bbox_to_anchor=(1.02, 1.0))
+		if n_low_conf > 0:
+			ax_lowc.legend(fontsize=7, frameon=False, loc="upper right")
+		ax_lowc.spines[["top", "right"]].set_visible(False)
 
 		# ── BL: Density hexbin ────────────────────────────────────────────────────
 		_draw_triangle(ax_hex)
@@ -2705,6 +2707,579 @@ def viz_gmm_probability_simplex(
 				f"n_low_conf={n_low_conf:,} | "
 				f"mean_margin={mean_margin:.4f} | "
 				f"feature_dim={feat_dim_str}"
+		)
+
+# V15 — Supervision Impact of Routing: w_pos/w_neg vs GMM Confidence & Overrides
+def viz_supervision_routing_impact(
+		stage4_parquet: str,
+		conf_threshold: float = 0.60,
+		n_bins:         int   = 12,       # bins for conf-binned weight profiles
+		max_scatter:    int   = 1500,     # max points per regime in scatter panels
+		out_dir:        Optional[str] = None,
+):
+		"""
+		Eight-panel deep-dive into how GMM routing decisions (confidence level,
+		override vs agreement) translate into concrete supervision weight outcomes.
+
+		This is the causal bridge between V13 (confidence diagnostics) and V6
+		(weight distributions): it asks "does routing quality actually matter for
+		what the model is trained on?"
+
+		Panel layout (4 × 2):
+
+				TL — w_pos vs GMM confidence  (scatter + rolling mean, per regime)
+							 • X: GMM confidence  Y: w_pos
+							 • Colour = final regime  |  shape = override (★) vs agree (·)
+							 • Rolling-mean trend line per regime
+							 • Vertical dashed line at conf_threshold
+							 • Reveals: do high-confidence assignments get higher w_pos?
+
+				TR — w_neg vs GMM confidence  (scatter + rolling mean, per regime)
+							 • Same layout as TL but for w_neg
+							 • Reveals: are hard-negatives down-weighted when GMM is uncertain?
+
+				ML — Δw = (w_pos − w_neg) vs GMM confidence  (scatter + trend, per regime)
+							 • Net supervision signal per sample
+							 • Δw > 0 → positive signal dominates; Δw < 0 → negative dominates
+							 • Horizontal zero line annotated
+							 • Reveals: does low GMM confidence collapse the net signal?
+
+				MR — Confidence-binned weight profile  (line chart, per regime)
+							 • X: GMM confidence bin (n_bins equal-width bins over [0,1])
+							 • Y: mean w_pos (solid) and mean w_neg (dashed) per bin
+							 • Error band = ±1 std
+							 • One subplot per regime (small multiples, 1 row × n_regimes cols)
+							 • Reveals: the functional shape of weight ← confidence coupling
+
+				BL — Override vs Agreement weight comparison  (paired violin)
+							 • Two groups per weight: override=True vs override=False
+							 • Colour = override group  |  faceted by w_pos / w_neg
+							 • Median annotated  |  Mann-Whitney U p-value annotated
+							 • Reveals: does the GMM override systematically shift weights?
+
+				BR — Supervision budget heatmap  (regime × conf-bin)
+							 • Rows = final regime  |  Cols = confidence bins
+							 • Cell = mean w_pos × n_samples in bin  (total positive signal mass)
+							 • Normalised per row (fraction of regime's total budget)
+							 • Reveals: which confidence tier contributes most to training signal?
+
+				BL2 — w_pos / w_neg ratio vs confidence  (per regime, log-scale y)
+							 • Ratio = w_pos / (w_neg + ε)  — supervision polarity
+							 • Rolling mean per regime  |  horizontal line at ratio=1
+							 • Reveals: at what confidence does positive signal overtake negative?
+
+				BR2 — Cumulative supervision weight vs confidence threshold
+							 (sensitivity / ablation curve)
+							 • X: confidence threshold τ  |  Y: fraction of total w_pos retained
+								 if all samples with conf < τ are zeroed out
+							 • One curve per regime + one "all regimes" curve
+							 • Annotated at τ = conf_threshold
+							 • Reveals: how much training signal is at risk from low-conf samples?
+
+		Footer strip:
+				n_total | n_routed | n_overrides | mean_w_pos | mean_w_neg |
+				mean_Δw | low-conf count | feature_dim
+
+		Reads:
+				stage4_parquet — auditable supervision matrix parquet
+												 Required columns: regime, heuristic_regime,
+																					 gmm (JSON str), w_pos, w_neg
+		"""
+		# ── Load & parse ──────────────────────────────────────────────────────────
+		try:
+				df_raw = pd.read_parquet(
+						stage4_parquet,
+						columns=["regime", "heuristic_regime", "gmm", "w_pos", "w_neg"],
+						engine="pyarrow",
+				)
+		except Exception as e:
+				print(f"[VIZ][V15][ERROR] Failed to read parquet: {e}")
+				return
+
+		def _parse_gmm(x):
+				if isinstance(x, dict):  return x
+				if isinstance(x, str):
+						try:    return json.loads(x)
+						except: return None
+				return None
+
+		df_raw["_gmm"]      = df_raw["gmm"].apply(_parse_gmm)
+		df_raw["_routed"]   = df_raw["_gmm"].apply(lambda x: isinstance(x, dict))
+		df_raw["_conf"]     = df_raw["_gmm"].apply(
+				lambda x: float(x["confidence"])
+				if isinstance(x, dict) and x.get("confidence") is not None else None
+		)
+		df_raw["_override"] = df_raw["_gmm"].apply(
+				lambda x: bool(x.get("regime_override", False))
+				if isinstance(x, dict) else False
+		)
+		df_raw["_feat_dim"] = df_raw["_gmm"].apply(
+				lambda x: x.get("feature_dim") if isinstance(x, dict) else None
+		)
+
+		# Work only on GMM-routed samples with valid weights and confidence
+		df = df_raw[
+				df_raw["_routed"] &
+				df_raw["_conf"].notna() &
+				df_raw["w_pos"].notna() &
+				df_raw["w_neg"].notna()
+		].copy()
+
+		if df.empty:
+				print("[VIZ][V15][WARN] No GMM-routed samples with valid w_pos/w_neg/conf. Nothing to plot.")
+				return
+
+		df["_delta_w"]  = df["w_pos"] - df["w_neg"]
+		df["_ratio_w"]  = df["w_pos"] / (df["w_neg"].clip(lower=1e-9))
+		df["_override_label"] = df["_override"].map(
+				{True: "Override", False: "Agreement"}
+		)
+
+		# ── Summary stats ─────────────────────────────────────────────────────────
+		n_total      = len(df_raw)
+		n_routed     = len(df)
+		n_overrides  = int(df["_override"].sum())
+		n_low_conf   = int((df["_conf"] < conf_threshold).sum())
+		mean_w_pos   = float(df["w_pos"].mean())
+		mean_w_neg   = float(df["w_neg"].mean())
+		mean_delta_w = float(df["_delta_w"].mean())
+		feat_dim_val = df["_feat_dim"].dropna().mode()
+		feat_dim_str = str(int(feat_dim_val.iloc[0])) if len(feat_dim_val) else "?"
+
+		REGIME_ORDER = ["AGREEMENT", "SOFT_CONFLICT", "HARD_CONFLICT", "MISSING_MODALITY"]
+		regimes      = [r for r in REGIME_ORDER if r in df["regime"].unique()]
+		rng          = np.random.default_rng(42)
+
+		# Confidence bins (shared across panels)
+		bin_edges = np.linspace(0, 1, n_bins + 1)
+		bin_mids  = (bin_edges[:-1] + bin_edges[1:]) / 2
+		df["_conf_bin"] = pd.cut(df["_conf"], bins=bin_edges, labels=bin_mids, include_lowest=True)
+		df["_conf_bin"] = df["_conf_bin"].astype(float)
+
+		# ── Figure: 4 rows × 2 cols ───────────────────────────────────────────────
+		fig = plt.figure(figsize=(18, 11), constrained_layout=True)
+		fig.suptitle(
+			f"Supervision Routing Impact: w_pos / w_neg vs GMM Confidence & Overrides\n"
+			f"(n_routed={n_routed:,}  |  overrides={n_overrides:,}  |  "
+			f"feature_dim={feat_dim_str}  |  threshold={conf_threshold})",
+			fontsize=10, 
+			fontweight="bold",
+		)
+		gs = fig.add_gridspec(4, 2, hspace=0.42, wspace=0.30)
+		ax_tl  = fig.add_subplot(gs[0, 0])   # TL: w_pos vs conf
+		ax_tr  = fig.add_subplot(gs[0, 1])   # TR: w_neg vs conf
+		ax_ml  = fig.add_subplot(gs[1, 0])   # ML: Δw vs conf
+		ax_mr  = fig.add_subplot(gs[1, 1])   # MR: conf-binned profile (placeholder — replaced by small multiples)
+		ax_bl  = fig.add_subplot(gs[2, 0])   # BL: override vs agreement violin
+		ax_br  = fig.add_subplot(gs[2, 1])   # BR: supervision budget heatmap
+		ax_bl2 = fig.add_subplot(gs[3, 0])   # BL2: w_pos/w_neg ratio vs conf
+		ax_br2 = fig.add_subplot(gs[3, 1])   # BR2: cumulative w_pos sensitivity curve
+
+		# ── Helper: scatter + rolling trend ──────────────────────────────────────
+		def _scatter_trend(ax, y_col, y_label, title):
+				for regime in regimes:
+						sub   = df[df["regime"] == regime].dropna(subset=[y_col, "_conf"])
+						if sub.empty: continue
+						color = REGIME_COLORS.get(regime, "#607D8B")
+
+						# Subsample scatter
+						idx   = rng.choice(len(sub), size=min(len(sub), max_scatter), replace=False)
+						sub_s = sub.iloc[idx]
+
+						# Override markers
+						mask_ov = sub_s["_override"]
+						ax.scatter(
+								sub_s.loc[~mask_ov, "_conf"], sub_s.loc[~mask_ov, y_col],
+								c=color, s=10, alpha=0.18, edgecolors="none",
+								label=f"{regime}  (n={len(sub):,})",
+						)
+						ax.scatter(
+								sub_s.loc[mask_ov, "_conf"], sub_s.loc[mask_ov, y_col],
+								c=color, s=40, alpha=0.55, marker="*", edgecolors="white",
+								linewidths=0.4, label=f"{regime} override",
+						)
+
+						# Rolling mean trend (on full sub, sorted by conf)
+						sub_sorted = sub.sort_values("_conf")
+						window     = max(len(sub_sorted) // 25, 5)
+						trend      = sub_sorted[y_col].rolling(window, center=True, min_periods=3).mean()
+						ax.plot(
+								sub_sorted["_conf"], trend,
+								color=color, linewidth=2.2, alpha=0.92, zorder=5,
+						)
+
+				ax.axvline(conf_threshold, color="#37474F", linewidth=1.4,
+									 linestyle=":", label=f"τ={conf_threshold}")
+				ax.axhline(0, color="#888", linewidth=0.8, linestyle="-", alpha=0.4)
+				ax.set_xlabel("GMM confidence", fontsize=9)
+				ax.set_ylabel(y_label, fontsize=9)
+				ax.set_title(title, fontsize=9, fontweight="bold")
+
+				# Deduplicate legend (agreement + override entries per regime)
+				handles, labels = ax.get_legend_handles_labels()
+				seen = {}
+				for h, l in zip(handles, labels):
+						base = l.replace(" override", "")
+						if base not in seen:
+								seen[base] = h
+				ax.legend(seen.values(), seen.keys(), fontsize=7.5, frameon=False, ncol=2)
+				ax.spines[["top", "right"]].set_visible(False)
+
+		# ── TL: w_pos vs conf ─────────────────────────────────────────────────────
+		_scatter_trend(
+				ax_tl, "w_pos",
+				"w_pos  (positive supervision weight)",
+				"w_pos vs GMM Confidence\n(★ = override | · = agreement | trend = rolling mean)",
+		)
+
+		# ── TR: w_neg vs conf ─────────────────────────────────────────────────────
+		_scatter_trend(
+				ax_tr, "w_neg",
+				"w_neg  (hard-negative supervision weight)",
+				"w_neg vs GMM Confidence\n(★ = override | · = agreement | trend = rolling mean)",
+		)
+
+		# ── ML: Δw = w_pos − w_neg vs conf ───────────────────────────────────────
+		_scatter_trend(
+				ax_ml, "_delta_w",
+				"Δw  =  w_pos − w_neg  (net supervision signal)",
+				"Net Supervision Signal (Δw) vs GMM Confidence\n"
+				"(Δw > 0 → positive dominates | Δw < 0 → negative dominates)",
+		)
+
+		# Extra: shade Δw < 0 zone
+		ax_ml.axhspan(
+				ax_ml.get_ylim()[0] if ax_ml.get_ylim()[0] < 0 else -0.05,
+				0,
+				alpha=0.04, color="#c62828",
+				label="Negative-signal zone (Δw < 0)",
+		)
+
+		# ── MR: Confidence-binned weight profile (small multiples) ───────────────
+		# Replace ax_mr with n_regimes sub-axes inside its bounding box
+		ax_mr.axis("off")
+		pos_mr  = ax_mr.get_position()
+		n_reg   = len(regimes)
+		sub_w   = pos_mr.width / n_reg
+		sub_h   = pos_mr.height
+		mr_axes = []
+		for i in range(n_reg):
+				sub_ax = fig.add_axes([
+						pos_mr.x0 + i * sub_w + sub_w * 0.04,
+						pos_mr.y0,
+						sub_w * 0.92,
+						sub_h,
+				])
+				mr_axes.append(sub_ax)
+
+		for sub_ax, regime in zip(mr_axes, regimes):
+				sub   = df[df["regime"] == regime].dropna(subset=["_conf_bin", "w_pos", "w_neg"])
+				color = REGIME_COLORS.get(regime, "#607D8B")
+
+				grp = sub.groupby("_conf_bin", observed=True)
+				bin_centers = sorted(grp.groups.keys())
+
+				mean_pos = [grp.get_group(b)["w_pos"].mean() for b in bin_centers]
+				std_pos  = [grp.get_group(b)["w_pos"].std()  for b in bin_centers]
+				mean_neg = [grp.get_group(b)["w_neg"].mean() for b in bin_centers]
+				std_neg  = [grp.get_group(b)["w_neg"].std()  for b in bin_centers]
+				counts   = [len(grp.get_group(b))             for b in bin_centers]
+
+				bc = np.array(bin_centers)
+				mp = np.array(mean_pos);  sp = np.array(std_pos)
+				mn = np.array(mean_neg);  sn = np.array(std_neg)
+
+				# w_pos solid, w_neg dashed
+				sub_ax.plot(bc, mp, color=color, linewidth=2.0, label="w_pos")
+				sub_ax.fill_between(bc, np.clip(mp - sp, 0, None), mp + sp, color=color, alpha=0.15)
+				sub_ax.plot(bc, mn, color=color, linewidth=1.5, linestyle="--", alpha=0.70, label="w_neg")
+				sub_ax.fill_between(bc, np.clip(mn - sn, 0, None), mn + sn, color=color, alpha=0.08)
+
+				sub_ax.axvline(conf_threshold, color="#37474F", linewidth=1.0, linestyle=":", alpha=0.70)
+				sub_ax.set_xlabel("conf", fontsize=7)
+				sub_ax.set_ylabel("weight" if regime == regimes[0] else "", fontsize=7)
+				sub_ax.set_title(
+					f"{regime}\n(n={len(sub)})",
+					fontsize=7, 
+					fontweight="bold", 
+					color=color,
+				)
+				sub_ax.legend(fontsize=6, frameon=False)
+				sub_ax.spines[["top", "right"]].set_visible(False)
+				sub_ax.tick_params(labelsize=6)
+
+		# Add a shared title above the small multiples row
+		fig.text(
+			pos_mr.x0 + pos_mr.width / 2,
+			pos_mr.y0 + pos_mr.height + 0.03,
+			"Confidence-Binned Weight Profile",
+			ha="center", 
+			va="bottom", 
+			fontsize=9, 
+			fontweight="bold",
+			transform=fig.transFigure,
+		)
+
+		# ── BL: Override vs Agreement paired violin ───────────────────────────────
+		try:
+				from scipy.stats import mannwhitneyu
+				HAS_SCIPY = True
+		except ImportError:
+				HAS_SCIPY = False
+
+		groups      = ["Agreement", "Override"]
+		grp_colors  = {"Agreement": "#1565C0", "Override": "#c62828"}
+		weight_cols = [("w_pos", "w_pos"), ("w_neg", "w_neg")]
+		x_positions = [0, 1, 3, 4]   # gap between w_pos and w_neg groups
+
+		for xi, (grp_label, grp_color) in enumerate([(g, grp_colors[g]) for g in groups]):
+			for wi, (wcol, _) in enumerate(weight_cols):
+				pos_x = x_positions[wi * 2 + xi]
+				data  = df[df["_override_label"] == grp_label][wcol].dropna().values
+				if len(data) == 0: continue
+				parts = ax_bl.violinplot(
+					data, 
+					positions=[pos_x],
+					widths=0.65, 
+					showmedians=False, 
+					showextrema=False,
+				)
+				for pc in parts["bodies"]:
+						pc.set_facecolor(grp_color)
+						pc.set_alpha(0.40)
+
+				# Jitter strip
+				n_strip = min(len(data), 600)
+				idx     = rng.choice(len(data), size=n_strip, replace=False)
+				jitter  = rng.uniform(-0.15, 0.15, size=n_strip)
+				ax_bl.scatter(
+					pos_x + jitter, 
+					data[idx],
+					alpha=0.20, 
+					s=6, 
+					color=grp_color, 
+					edgecolors="none", 
+					zorder=3,
+				)
+				# Median
+				med = float(np.median(data))
+				ax_bl.hlines(
+					med, 
+					pos_x - 0.28, 
+					pos_x + 0.28,
+					colors=grp_color, 
+					linewidths=2.2, 
+					zorder=5
+				)
+				ax_bl.text(
+					pos_x, 
+					med + 0.015,
+					f"{med:.3f}", 
+					ha="center", 
+					va="bottom",
+					fontsize=7, 
+					color=grp_color, 
+					fontweight="bold",
+				)
+
+		# Mann-Whitney U p-values between Agreement and Override for each weight
+		for wi, (wcol, wlabel) in enumerate(weight_cols):
+				d_agree  = df[df["_override_label"] == "Agreement"][wcol].dropna().values
+				d_over   = df[df["_override_label"] == "Override"][wcol].dropna().values
+				if HAS_SCIPY and len(d_agree) > 0 and len(d_over) > 0:
+						stat, pval = mannwhitneyu(d_agree, d_over, alternative="two-sided")
+						sig = "***" if pval < 0.001 else ("**" if pval < 0.01 else ("*" if pval < 0.05 else "ns"))
+						mid_x = x_positions[wi * 2] + 0.5
+						y_top = max(d_agree.max(), d_over.max()) * 1.05
+						ax_bl.annotate(
+								f"MWU {sig}\np={pval:.2e}",
+								xy=(mid_x, y_top),
+								ha="center", 
+								va="bottom", 
+								fontsize=7.5, 
+								color="#333333",
+						)
+
+		ax_bl.set_xticks(x_positions)
+		ax_bl.set_xticklabels(
+				["Agree\nw_pos", "Override\nw_pos", "Agree\nw_neg", "Override\nw_neg"],
+				fontsize=8,
+		)
+		ax_bl.set_ylabel("Supervision weight", fontsize=9)
+		ax_bl.set_title(
+				"Override vs Agreement: Weight Distribution Comparison\n"
+				"(violin + strip | median annotated | Mann-Whitney U p-value)",
+				fontsize=9, fontweight="bold",
+		)
+		ax_bl.spines[["top", "right"]].set_visible(False)
+
+		# ── BR: Supervision budget heatmap (regime × conf-bin) ────────────────────
+		budget_matrix = np.zeros((len(regimes), n_bins))
+		for ri, regime in enumerate(regimes):
+				sub_r = df[df["regime"] == regime]
+				total_budget = sub_r["w_pos"].sum()
+				if total_budget <= 0:
+						continue
+				for bi, bm in enumerate(bin_mids):
+						sub_b = sub_r[sub_r["_conf_bin"] == bm]
+						budget_matrix[ri, bi] = sub_b["w_pos"].sum() / total_budget
+
+		im = ax_br.imshow(
+			budget_matrix, 
+			cmap="YlOrRd",
+			vmin=0, 
+			vmax=budget_matrix.max(),
+			aspect="auto",
+		)
+		plt.colorbar(
+			im, 
+			ax=ax_br, 
+			fraction=0.035, 
+			pad=0.03,
+			label="Fraction of regime's total w_pos budget"
+		)
+
+		# Annotate cells
+		for ri in range(len(regimes)):
+				for bi in range(n_bins):
+						val = budget_matrix[ri, bi]
+						if val > 0.01:
+								ax_br.text(
+										bi, ri, f"{val:.2f}",
+										ha="center", va="center", fontsize=6.5,
+										color="white" if val > budget_matrix.max() * 0.6 else "black",
+								)
+
+		# Vertical line at conf_threshold bin
+		thr_bin_idx = np.searchsorted(bin_mids, conf_threshold)
+		ax_br.axvline(thr_bin_idx - 0.5, color="#37474F", linewidth=1.4, linestyle="--", label=f"τ={conf_threshold}")
+
+		ax_br.set_xticks(range(n_bins))
+		ax_br.set_xticklabels([f"{m:.2f}" for m in bin_mids], rotation=60, ha="right", fontsize=7)
+		ax_br.set_yticks(range(len(regimes)))
+		ax_br.set_yticklabels([r.replace("_", " ") for r in regimes], fontsize=8)
+		ax_br.set_xlabel("GMM confidence bin (mid-point)", fontsize=9)
+		ax_br.set_title(
+			"Supervision Budget Heatmap  (regime × confidence bin)\n"
+			"Cell = fraction of regime's total w_pos mass in that confidence tier",
+			fontsize=9, 
+			fontweight="bold",
+		)
+
+		# ── BL2: w_pos / w_neg ratio vs confidence ────────────────────────────────
+		for regime in regimes:
+				sub   = df[df["regime"] == regime].dropna(subset=["_conf", "_ratio_w"])
+				if sub.empty: continue
+				color = REGIME_COLORS.get(regime, "#607D8B")
+
+				sub_sorted = sub.sort_values("_conf")
+				window     = max(len(sub_sorted) // 25, 5)
+				trend      = sub_sorted["_ratio_w"].rolling(window, center=True, min_periods=3).mean()
+
+				ax_bl2.plot(
+						sub_sorted["_conf"], trend,
+						color=color, linewidth=2.2, alpha=0.90,
+						label=f"{regime}  (n={len(sub):,})",
+				)
+
+		ax_bl2.axhline(1.0, color="#37474F", linewidth=1.2,
+									 linestyle="--", alpha=0.70, label="ratio = 1  (balanced)")
+		ax_bl2.axvline(conf_threshold, color="#37474F", linewidth=1.4,
+									 linestyle=":", label=f"τ={conf_threshold}")
+		ax_bl2.set_yscale("log")
+		ax_bl2.set_xlabel("GMM confidence", fontsize=9)
+		ax_bl2.set_ylabel("w_pos / w_neg  (log scale)", fontsize=9)
+		ax_bl2.set_title(
+				"Supervision Polarity Ratio  (w_pos / w_neg) vs Confidence\n"
+				"(ratio > 1 → positive dominates | ratio < 1 → negative dominates)",
+				fontsize=9, fontweight="bold",
+		)
+		ax_bl2.legend(fontsize=7.5, frameon=False)
+		ax_bl2.spines[["top", "right"]].set_visible(False)
+
+		# ── BR2: Cumulative w_pos sensitivity curve ───────────────────────────────
+		tau_grid       = np.linspace(0, 1, 200)
+		total_w_pos    = df["w_pos"].sum()
+
+		# All-regimes curve
+		cum_all = np.array([
+				df.loc[df["_conf"] >= tau, "w_pos"].sum() / max(total_w_pos, 1e-9)
+				for tau in tau_grid
+		])
+		ax_br2.plot(
+				tau_grid, cum_all,
+				color="#37474F", linewidth=2.5, alpha=0.90,
+				label=f"All regimes  (total w_pos={total_w_pos:.2f})",
+				zorder=5,
+		)
+
+		# Per-regime curves
+		for regime in regimes:
+				sub_r       = df[df["regime"] == regime]
+				total_r     = sub_r["w_pos"].sum()
+				color       = REGIME_COLORS.get(regime, "#607D8B")
+				cum_r = np.array([
+						sub_r.loc[sub_r["_conf"] >= tau, "w_pos"].sum() / max(total_r, 1e-9)
+						for tau in tau_grid
+				])
+				ax_br2.plot(
+						tau_grid, cum_r,
+						color=color, linewidth=1.8, alpha=0.75,
+						label=f"{regime}  (Σw_pos={total_r:.2f})",
+				)
+
+		# Annotate at conf_threshold
+		idx_thr = np.searchsorted(tau_grid, conf_threshold)
+		frac_at_thr = float(cum_all[idx_thr])
+		ax_br2.axvline(conf_threshold, color="#37474F", linewidth=1.4, linestyle=":", zorder=4)
+		ax_br2.annotate(
+			f"{frac_at_thr:.1%} of w_pos\nretained at τ={conf_threshold}",
+			xy=(conf_threshold, frac_at_thr),
+			xytext=(conf_threshold + 0.06, frac_at_thr - 0.12),
+			fontsize=8, color="#37474F", fontweight="bold",
+			arrowprops=dict(arrowstyle="->", color="#37474F", lw=1.0),
+		)
+
+		ax_br2.set_xlabel("Confidence threshold τ (samples with conf ≥ τ retained)", fontsize=9)
+		ax_br2.set_ylabel("Fraction of total w_pos retained", fontsize=9)
+		ax_br2.set_title(
+				"Cumulative Supervision Weight Sensitivity\n"
+				"(how much training signal survives a confidence gate at τ?)",
+				fontsize=9, fontweight="bold",
+		)
+		ax_br2.set_xlim(0, 1)
+		ax_br2.set_ylim(0, 1.05)
+		ax_br2.legend(fontsize=7.5, frameon=False)
+		ax_br2.spines[["top", "right"]].set_visible(False)
+
+		# ── Footer ────────────────────────────────────────────────────────────────
+		footer = (
+				f"Total samples: {n_total:,}  |  "
+				f"GMM-routed (with weights): {n_routed:,}  |  "
+				f"Overrides: {n_overrides:,} ({n_overrides / max(n_routed, 1) * 100:.1f}%)  |  "
+				f"Low-conf (< {conf_threshold}): {n_low_conf:,} ({n_low_conf / max(n_routed, 1) * 100:.1f}%)  |  "
+				f"Mean w_pos: {mean_w_pos:.4f}  |  "
+				f"Mean w_neg: {mean_w_neg:.4f}  |  "
+				f"Mean Δw: {mean_delta_w:+.4f}  |  "
+				f"feature_dim={feat_dim_str}"
+		)
+		fig.text(
+				0.5, -0.005,
+				footer,
+				ha="center", va="top", fontsize=8,
+				color="#363636", style="italic",
+				transform=fig.transFigure,
+		)
+
+		_save(fig, out_dir, "V15_supervision_routing_impact")
+		print(
+				f"[VIZ][V15] Done. "
+				f"n_routed={n_routed:,} | "
+				f"overrides={n_overrides:,} ({n_overrides / max(n_routed, 1) * 100:.1f}%) | "
+				f"mean_w_pos={mean_w_pos:.4f} | "
+				f"mean_w_neg={mean_w_neg:.4f} | "
+				f"mean_Δw={mean_delta_w:+.4f} | "
+				f"low_conf={n_low_conf:,}"
 		)
 
 def set_seeds(seed: int = 42):
@@ -2887,6 +3462,7 @@ def main():
 		viz_heuristic_gmm_confusion(stage4_parquet=stage4_parquet, out_dir=VIZ_DIR,)
 		viz_gmm_confidence_diagnostics(stage4_parquet=stage4_parquet, out_dir=VIZ_DIR,)
 		viz_gmm_probability_simplex(stage4_parquet=stage4_parquet, out_dir=VIZ_DIR,)
+		viz_supervision_routing_impact(stage4_parquet=stage4_parquet, out_dir=VIZ_DIR,)
 
 if __name__ == "__main__":
 	main()
