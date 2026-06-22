@@ -2173,6 +2173,540 @@ def viz_gmm_confidence_diagnostics(
 				f"override_rate={override_pct:.1f}%"
 		)
 
+# V14 — Probability-Simplex View (Ternary) of GMM Outputs
+def viz_gmm_probability_simplex(
+		stage4_parquet: str,
+		conf_threshold: float = 0.60,
+		max_scatter:    int   = 4000,   # max points per sub-panel (random subsample)
+		out_dir:        Optional[str] = None,
+):
+		"""
+		Ternary-plot audit of the GMM's full probability distribution over the
+		three routable regimes (AGREEMENT, SOFT_CONFLICT, HARD_CONFLICT).
+		MISSING_MODALITY is never GMM-routed and is excluded from the simplex.
+
+		The ternary coordinate system maps each sample's (p_A, p_S, p_H) triplet
+		to a 2-D point inside an equilateral triangle:
+				• Bottom-left  vertex = pure AGREEMENT       (1, 0, 0)
+				• Bottom-right vertex = pure HARD_CONFLICT   (0, 0, 1)
+				• Top          vertex = pure SOFT_CONFLICT   (0, 1, 0)
+
+		Panel layout (2 × 3):
+				TL — Full simplex: all GMM-routed samples
+							 • Colour = final GMM regime (REGIME_COLORS)
+							 • Marker size ∝ GMM confidence
+							 • Iso-confidence contours at 0.50, 0.70, 0.90
+								 (regions where max-prob ≥ threshold)
+							 • Triangle vertices and edge labels annotated
+
+				TC — Override samples only (regime_override = True)
+							 • Colour = FINAL regime (where GMM moved the sample TO)
+							 • Marker shape = heuristic regime (where it came FROM):
+									 AGREEMENT      → circle  "o"
+									 SOFT_CONFLICT  → triangle "^"
+									 HARD_CONFLICT  → square  "s"
+							 • Reveals the geometric location of overridden samples
+
+				TR — Low-confidence samples (conf < conf_threshold)
+							 • Colour = final regime
+							 • Annotated with density contour (KDE)
+							 • Reveals whether low-conf samples cluster near edges or centre
+
+				BL — Density heatmap (2-D histogram in barycentric coords)
+							 • Hexbin of all GMM-routed samples
+							 • Colour = log-count
+							 • Overlaid regime boundary lines (equal-probability edges)
+
+				BC — Per-heuristic-regime simplex (small multiples, 3 sub-triangles)
+							 • One mini-ternary per heuristic regime
+							 • Colour = final GMM regime
+							 • Shows how each heuristic class spreads across the simplex
+
+				BR — Margin histogram (p_max − p_2nd)
+							 • Histogram of decision margin per final regime
+							 • Vertical lines at margin = 0.10, 0.20, 0.30
+							 • Annotated: % of samples with margin < 0.20 (ambiguous zone)
+
+		Footer strip:
+				n_total | n_routed | n_overrides | n_low_conf | mean_margin | feature_dim
+
+		Reads:
+				stage4_parquet — auditable supervision matrix parquet
+												 Required columns: regime, heuristic_regime, gmm (JSON str)
+		"""
+		import matplotlib.tri as mtri
+		from matplotlib.patches import Polygon as MplPolygon
+		from matplotlib.colors import Normalize
+		from scipy.stats import gaussian_kde
+
+		# ── Load & parse ──────────────────────────────────────────────────────────
+		try:
+				df_raw = pd.read_parquet(
+						stage4_parquet,
+						columns=["regime", "heuristic_regime", "gmm"],
+						engine="pyarrow",
+				)
+		except Exception as e:
+				print(f"[VIZ][V14][ERROR] Failed to read parquet: {e}")
+				return
+
+		def _parse_gmm(x):
+				if isinstance(x, dict):  return x
+				if isinstance(x, str):
+						try:    return json.loads(x)
+						except: return None
+				return None
+
+		df_raw["_gmm"]      = df_raw["gmm"].apply(_parse_gmm)
+		df_raw["_routed"]   = df_raw["_gmm"].apply(lambda x: isinstance(x, dict))
+		df_raw["_conf"]     = df_raw["_gmm"].apply(
+				lambda x: float(x["confidence"])
+				if isinstance(x, dict) and x.get("confidence") is not None else None
+		)
+		df_raw["_override"] = df_raw["_gmm"].apply(
+				lambda x: bool(x.get("regime_override", False))
+				if isinstance(x, dict) else False
+		)
+		df_raw["_probs"]    = df_raw["_gmm"].apply(
+				lambda x: x.get("probabilities") if isinstance(x, dict) else None
+		)
+		df_raw["_feat_dim"] = df_raw["_gmm"].apply(
+				lambda x: x.get("feature_dim") if isinstance(x, dict) else None
+		)
+
+		df = df_raw[df_raw["_routed"] & df_raw["_probs"].notna()].copy()
+
+		if df.empty:
+				print("[VIZ][V14][WARN] No GMM-routed samples with probability data found.")
+				return
+
+		# ── Extract (p_A, p_S, p_H) triplets ─────────────────────────────────────
+		TERNARY_REGIMES = ["AGREEMENT", "SOFT_CONFLICT", "HARD_CONFLICT"]
+
+		def _extract_triplet(probs_dict):
+				if not isinstance(probs_dict, dict):
+						return None
+				vals = [probs_dict.get(r, 0.0) for r in TERNARY_REGIMES]
+				s    = sum(vals)
+				if s <= 0:
+						return None
+				return [v / s for v in vals]   # re-normalise to sum=1 over 3 regimes
+
+		df["_triplet"] = df["_probs"].apply(_extract_triplet)
+		df = df[df["_triplet"].notna()].copy()
+
+		if df.empty:
+				print("[VIZ][V14][WARN] No valid (p_A, p_S, p_H) triplets found in probabilities.")
+				return
+
+		triplets = np.array(df["_triplet"].tolist())   # shape (N, 3)
+		p_A = triplets[:, 0]
+		p_S = triplets[:, 1]
+		p_H = triplets[:, 2]
+
+		# ── Barycentric → 2-D Cartesian conversion ────────────────────────────────
+		# Equilateral triangle:
+		#   vertex A (AGREEMENT)      = (0,   0)
+		#   vertex H (HARD_CONFLICT)  = (1,   0)
+		#   vertex S (SOFT_CONFLICT)  = (0.5, √3/2)
+		SQRT3_2 = np.sqrt(3) / 2
+
+		def bary_to_cart(pa, ps, ph):
+				"""Convert barycentric (p_A, p_S, p_H) → Cartesian (x, y)."""
+				x = ph * 1.0 + ps * 0.5   # H at (1,0), S at (0.5, √3/2), A at (0,0)
+				y = ps * SQRT3_2
+				return x, y
+
+		def _cart_all(pa, ps, ph):
+				return bary_to_cart(pa, ps, ph)
+
+		x_all, y_all = _cart_all(p_A, p_S, p_H)
+		df["_x"] = x_all
+		df["_y"] = y_all
+
+		# Confidence and margin
+		conf_all   = df["_conf"].values
+		sorted_p   = np.sort(triplets, axis=1)[:, ::-1]
+		margin_all = sorted_p[:, 0] - sorted_p[:, 1]
+		df["_margin"] = margin_all
+
+		# ── Summary stats ─────────────────────────────────────────────────────────
+		n_total     = len(df_raw)
+		n_routed    = len(df)
+		n_overrides = int(df["_override"].sum())
+		n_low_conf  = int((df["_conf"] < conf_threshold).sum())
+		mean_margin = float(np.nanmean(margin_all))
+		feat_dim_val = df["_feat_dim"].dropna().mode()
+		feat_dim_str = str(int(feat_dim_val.iloc[0])) if len(feat_dim_val) else "?"
+
+		rng = np.random.default_rng(42)
+
+		# ── Triangle drawing helper ───────────────────────────────────────────────
+		VERTICES = np.array([[0, 0], [1, 0], [0.5, SQRT3_2]])   # A, H, S
+		VERTEX_LABELS = [
+				("AGREEMENT",     -0.10, -0.06),
+				("HARD\nCONFLICT", 1.05, -0.06),
+				("SOFT\nCONFLICT", 0.50,  SQRT3_2 + 0.05),
+		]
+		EDGE_LABELS = [
+				# midpoint of each edge, label, rotation
+				(0.25, SQRT3_2 / 2 + 0.02, "A ↔ S",  60),
+				(0.75, SQRT3_2 / 2 + 0.02, "S ↔ H", -60),
+				(0.50, -0.06,               "A ↔ H",   0),
+		]
+
+		def _draw_triangle(ax, alpha=0.85, lw=1.4):
+				tri = MplPolygon(
+						VERTICES, closed=True,
+						fill=False, edgecolor="#37474F",
+						linewidth=lw, zorder=10,
+				)
+				ax.add_patch(tri)
+				for label, vx, vy in VERTEX_LABELS:
+						ax.text(vx, vy, label, ha="center", va="center",
+										fontsize=7.5, fontweight="bold", color="#37474F", zorder=11)
+				ax.set_xlim(-0.18, 1.18)
+				ax.set_ylim(-0.14, SQRT3_2 + 0.14)
+				ax.set_aspect("equal")
+				ax.axis("off")
+
+		def _draw_iso_confidence(ax, thresholds=(0.50, 0.70, 0.90)):
+				"""
+				Draw iso-confidence contours: locus of points where max(p_A,p_S,p_H)=t.
+				Each contour is a hexagon inscribed in the triangle.
+				"""
+				for t in thresholds:
+						# The region max(p) >= t is a triangle near each vertex.
+						# The boundary max(p) = t is a line segment parallel to the opposite edge.
+						# For vertex A (p_A = t): p_A = t, p_S + p_H = 1-t
+						# Segment from (t, (1-t), 0) to (t, 0, (1-t)) in barycentric
+						pts = []
+						for vi in range(3):
+								# vertex vi has p_vi = t, the other two split (1-t) equally at endpoints
+								for vj in range(3):
+										if vj == vi: continue
+										p = [0.0, 0.0, 0.0]
+										p[vi] = t
+										p[vj] = 1.0 - t
+										pts.append(bary_to_cart(p[0], p[1], p[2]))
+						# Sort by angle around centroid
+						cx = np.mean([p[0] for p in pts])
+						cy = np.mean([p[1] for p in pts])
+						pts_sorted = sorted(pts, key=lambda p: np.arctan2(p[1] - cy, p[0] - cx))
+						xs = [p[0] for p in pts_sorted] + [pts_sorted[0][0]]
+						ys = [p[1] for p in pts_sorted] + [pts_sorted[0][1]]
+						ax.plot(xs, ys, color="#37474F", linewidth=0.8,
+										linestyle="--", alpha=0.45, zorder=9)
+						ax.text(cx, cy, f"{t:.0%}", ha="center", va="center",
+										fontsize=6, color="#37474F", alpha=0.65, zorder=9)
+
+		def _draw_equal_prob_lines(ax):
+				"""
+				Draw the 3 equal-probability lines (p_i = p_j) that divide the simplex
+				into 3 Voronoi regions (one per regime).
+				Each line passes through the centroid (1/3, 1/3, 1/3) and a vertex midpoint.
+				"""
+				centroid = bary_to_cart(1/3, 1/3, 1/3)
+				# Midpoints of each edge
+				edge_mids_bary = [
+						(0.5, 0.5, 0.0),   # midpoint A-S edge
+						(0.0, 0.5, 0.5),   # midpoint S-H edge
+						(0.5, 0.0, 0.5),   # midpoint A-H edge
+				]
+				for bary in edge_mids_bary:
+						ep = bary_to_cart(*bary)
+						ax.plot(
+								[centroid[0], ep[0]], [centroid[1], ep[1]],
+								color="#78909C", linewidth=0.9, linestyle=":",
+								alpha=0.55, zorder=8,
+						)
+
+		# ── Figure ────────────────────────────────────────────────────────────────
+		fig = plt.figure(figsize=(18, 12), constrained_layout=True)
+		fig.suptitle(
+				f"V14 — GMM Probability Simplex (Ternary)  "
+				f"(n_routed={n_routed:,}  |  feature_dim={feat_dim_str}  |  "
+				f"threshold={conf_threshold})",
+				fontsize=12, fontweight="bold",
+		)
+		gs = fig.add_gridspec(2, 3, hspace=0.10, wspace=0.05)
+		ax_full   = fig.add_subplot(gs[0, 0])   # TL
+		ax_over   = fig.add_subplot(gs[0, 1])   # TC
+		ax_lowc   = fig.add_subplot(gs[0, 2])   # TR
+		ax_hex    = fig.add_subplot(gs[1, 0])   # BL
+		ax_small  = fig.add_subplot(gs[1, 1])   # BC  (small multiples)
+		ax_margin = fig.add_subplot(gs[1, 2])   # BR  (margin histogram — Cartesian)
+
+		# ── TL: Full simplex ──────────────────────────────────────────────────────
+		_draw_triangle(ax_full)
+		_draw_iso_confidence(ax_full, thresholds=(0.50, 0.70, 0.90))
+		_draw_equal_prob_lines(ax_full)
+
+		for regime in TERNARY_REGIMES:
+				mask  = df["regime"] == regime
+				sub   = df[mask]
+				if sub.empty: continue
+				color = REGIME_COLORS.get(regime, "#607D8B")
+				idx   = rng.choice(len(sub), size=min(len(sub), max_scatter), replace=False)
+				sub_s = sub.iloc[idx]
+				# Size ∝ confidence
+				sizes = np.clip(sub_s["_conf"].fillna(0.5).values * 30, 4, 40)
+				ax_full.scatter(
+						sub_s["_x"], sub_s["_y"],
+						c=color, s=sizes, alpha=0.30, edgecolors="none",
+						label=f"{regime}  (n={len(sub):,})",
+						zorder=5,
+				)
+
+		ax_full.set_title(
+				"All GMM-routed samples\n(size ∝ confidence | iso-conf contours)",
+				fontsize=8.5, fontweight="bold",
+		)
+		ax_full.legend(fontsize=7, frameon=False, loc="upper right",
+									 bbox_to_anchor=(1.02, 1.0))
+
+		# ── TC: Override samples ──────────────────────────────────────────────────
+		_draw_triangle(ax_over)
+		_draw_equal_prob_lines(ax_over)
+
+		df_over = df[df["_override"]].copy()
+		HEURISTIC_MARKERS = {
+				"AGREEMENT":     "o",
+				"SOFT_CONFLICT": "^",
+				"HARD_CONFLICT": "s",
+		}
+
+		if df_over.empty:
+				ax_over.text(0.5, SQRT3_2 / 2, "No overrides found",
+										 ha="center", va="center", fontsize=9, color="#555")
+		else:
+				for h_regime, marker in HEURISTIC_MARKERS.items():
+						sub_h = df_over[df_over["heuristic_regime"] == h_regime]
+						if sub_h.empty: continue
+						for f_regime in TERNARY_REGIMES:
+								sub_hf = sub_h[sub_h["regime"] == f_regime]
+								if sub_hf.empty: continue
+								color = REGIME_COLORS.get(f_regime, "#607D8B")
+								idx   = rng.choice(len(sub_hf),
+																	 size=min(len(sub_hf), max_scatter // 3),
+																	 replace=False)
+								sub_s = sub_hf.iloc[idx]
+								ax_over.scatter(
+										sub_s["_x"], sub_s["_y"],
+										c=color, marker=marker, s=28,
+										alpha=0.55, edgecolors="white", linewidths=0.4,
+										label=f"{h_regime[:3]}→{f_regime[:3]}  (n={len(sub_hf):,})",
+										zorder=5,
+								)
+
+		ax_over.set_title(
+				f"Override samples only  (n={len(df_over):,})\n"
+				"colour=final regime | shape=heuristic regime",
+				fontsize=8.5, fontweight="bold",
+		)
+		ax_over.legend(fontsize=6.5, frameon=False, loc="upper right",
+									 bbox_to_anchor=(1.02, 1.0))
+
+		# ── TR: Low-confidence samples + KDE contour ──────────────────────────────
+		_draw_triangle(ax_lowc)
+		_draw_equal_prob_lines(ax_lowc)
+
+		df_low = df[df["_conf"] < conf_threshold].copy()
+
+		if df_low.empty:
+				ax_lowc.text(0.5, SQRT3_2 / 2,
+										 f"No samples below\nthreshold {conf_threshold}",
+										 ha="center", va="center", fontsize=9, color="#555")
+		else:
+				for regime in TERNARY_REGIMES:
+						sub   = df_low[df_low["regime"] == regime]
+						if sub.empty: continue
+						color = REGIME_COLORS.get(regime, "#607D8B")
+						idx   = rng.choice(len(sub), size=min(len(sub), max_scatter), replace=False)
+						sub_s = sub.iloc[idx]
+						ax_lowc.scatter(
+								sub_s["_x"], sub_s["_y"],
+								c=color, s=14, alpha=0.40, edgecolors="none",
+								label=f"{regime}  (n={len(sub):,})",
+								zorder=5,
+						)
+
+				# KDE contour over all low-conf points
+				if len(df_low) >= 10:
+						try:
+								kde = gaussian_kde(
+										np.vstack([df_low["_x"].values, df_low["_y"].values]),
+										bw_method="scott",
+								)
+								gx = np.linspace(-0.05, 1.05, 120)
+								gy = np.linspace(-0.05, SQRT3_2 + 0.05, 120)
+								GX, GY = np.meshgrid(gx, gy)
+								Z = kde(np.vstack([GX.ravel(), GY.ravel()])).reshape(GX.shape)
+								ax_lowc.contour(
+										GX, GY, Z,
+										levels=5, cmap="Reds", alpha=0.55,
+										linewidths=1.0, zorder=6,
+								)
+						except Exception:
+								pass   # KDE can fail on degenerate data
+
+		ax_lowc.set_title(
+				f"Low-confidence samples  (conf < {conf_threshold}, n={len(df_low):,})\n"
+				"colour=final regime | KDE contour overlay",
+				fontsize=8.5, fontweight="bold",
+		)
+		ax_lowc.legend(fontsize=7, frameon=False, loc="upper right",
+									 bbox_to_anchor=(1.02, 1.0))
+
+		# ── BL: Density hexbin ────────────────────────────────────────────────────
+		_draw_triangle(ax_hex)
+		_draw_equal_prob_lines(ax_hex)
+
+		# Mask points outside the triangle (clip to valid barycentric region)
+		hb = ax_hex.hexbin(
+				df["_x"].values, df["_y"].values,
+				gridsize=35, cmap="YlOrRd",
+				bins="log", mincnt=1,
+				alpha=0.75, zorder=4,
+				extent=(-0.05, 1.05, -0.05, SQRT3_2 + 0.05),
+		)
+		plt.colorbar(hb, ax=ax_hex, fraction=0.035, pad=0.02,
+								 label="log(count)", shrink=0.75)
+		ax_hex.set_title(
+				"Density heatmap (log-count hexbin)\nall GMM-routed samples",
+				fontsize=8.5, fontweight="bold",
+		)
+
+		# ── BC: Small multiples — one mini-ternary per heuristic regime ───────────
+		ax_small.axis("off")
+		HEURISTIC_REGIMES = ["AGREEMENT", "SOFT_CONFLICT", "HARD_CONFLICT"]
+		n_hr = len(HEURISTIC_REGIMES)
+
+		# Manually place 3 sub-axes inside ax_small's bounding box
+		pos = ax_small.get_position()   # in figure coords
+		sub_w = pos.width  / n_hr
+		sub_h = pos.height
+
+		sub_axes = []
+		for i in range(n_hr):
+				sub_ax = fig.add_axes([
+						pos.x0 + i * sub_w + sub_w * 0.05,
+						pos.y0,
+						sub_w * 0.90,
+						sub_h,
+				])
+				sub_axes.append(sub_ax)
+
+		for sub_ax, h_regime in zip(sub_axes, HEURISTIC_REGIMES):
+				_draw_triangle(sub_ax)
+				_draw_equal_prob_lines(sub_ax)
+
+				sub_df = df[df["heuristic_regime"] == h_regime]
+				n_sub  = len(sub_df)
+
+				for f_regime in TERNARY_REGIMES:
+						sub_f = sub_df[sub_df["regime"] == f_regime]
+						if sub_f.empty: continue
+						color = REGIME_COLORS.get(f_regime, "#607D8B")
+						idx   = rng.choice(len(sub_f),
+															 size=min(len(sub_f), max_scatter // n_hr),
+															 replace=False)
+						sub_s = sub_f.iloc[idx]
+						sub_ax.scatter(
+								sub_s["_x"], sub_s["_y"],
+								c=color, s=8, alpha=0.35, edgecolors="none",
+								zorder=5,
+						)
+
+				short = h_regime.replace("_", "\n")
+				sub_ax.set_title(
+						f"Heuristic:\n{short}\n(n={n_sub:,})",
+						fontsize=7, fontweight="bold", pad=2,
+				)
+
+		# Shared legend for small multiples
+		legend_handles = [
+				plt.Line2D([0], [0], marker="o", color="w",
+									 markerfacecolor=REGIME_COLORS.get(r, "#607D8B"),
+									 markersize=7, label=r.replace("_", " "))
+				for r in TERNARY_REGIMES
+		]
+		sub_axes[-1].legend(
+				handles=legend_handles,
+				fontsize=6.5, frameon=False,
+				loc="lower right",
+				title="GMM regime", title_fontsize=6.5,
+				bbox_to_anchor=(1.05, -0.02),
+		)
+
+		# ── BR: Margin histogram ──────────────────────────────────────────────────
+		# ax_margin is a normal Cartesian axis
+		bins_m = np.linspace(0, 1, 31)
+		for regime in TERNARY_REGIMES:
+				sub   = df[df["regime"] == regime]
+				if sub.empty: continue
+				color = REGIME_COLORS.get(regime, "#607D8B")
+				ax_margin.hist(
+						sub["_margin"].values, bins=bins_m,
+						color=color, alpha=0.50, density=True, edgecolor="none",
+						label=f"{regime}  (n={len(sub):,})",
+				)
+				med = float(sub["_margin"].median())
+				ax_margin.axvline(med, color=color, linewidth=1.3,
+													linestyle="--", alpha=0.80)
+
+		# Ambiguity threshold lines
+		for mv, ls in [(0.10, ":"), (0.20, "--"), (0.30, "-.")]:
+				ax_margin.axvline(mv, color="#37474F", linewidth=1.0,
+													linestyle=ls, alpha=0.60, label=f"margin={mv}")
+
+		# Annotate % ambiguous (margin < 0.20)
+		n_ambig = int((df["_margin"] < 0.20).sum())
+		pct_amb = n_ambig / max(n_routed, 1) * 100
+		ax_margin.text(
+				0.10, 0.92,
+				f"{n_ambig:,} samples\n({pct_amb:.1f}%) margin < 0.20",
+				transform=ax_margin.transAxes,
+				fontsize=8, color="#c62828", fontweight="bold",
+				va="top", ha="left",
+		)
+
+		ax_margin.set_xlabel("Decision margin  (p_max − p_2nd)", fontsize=9)
+		ax_margin.set_ylabel("Density", fontsize=9)
+		ax_margin.set_title(
+				"Decision Margin Distribution\n(p_max − p_2nd per regime)",
+				fontsize=8.5, fontweight="bold",
+		)
+		ax_margin.legend(fontsize=7, frameon=False, ncol=2)
+		ax_margin.spines[["top", "right"]].set_visible(False)
+
+		# ── Footer ────────────────────────────────────────────────────────────────
+		footer = (
+				f"Total samples: {n_total:,}  |  "
+				f"GMM-routed: {n_routed:,} ({n_routed / max(n_total, 1) * 100:.1f}%)  |  "
+				f"Overrides: {n_overrides:,} ({n_overrides / max(n_routed, 1) * 100:.1f}%)  |  "
+				f"Low-conf (< {conf_threshold}): {n_low_conf:,} ({n_low_conf / max(n_routed, 1) * 100:.1f}%)  |  "
+				f"Mean margin: {mean_margin:.4f}  |  "
+				f"feature_dim={feat_dim_str}"
+		)
+		fig.text(
+				0.5, -0.01,
+				footer,
+				ha="center", va="top", fontsize=8,
+				color="#444", style="italic",
+				transform=fig.transFigure,
+		)
+
+		_save(fig, out_dir, "V14_gmm_probability_simplex")
+		print(
+				f"[VIZ][V14] Done. "
+				f"n_routed={n_routed:,} | "
+				f"n_overrides={n_overrides:,} | "
+				f"n_low_conf={n_low_conf:,} | "
+				f"mean_margin={mean_margin:.4f} | "
+				f"feature_dim={feat_dim_str}"
+		)
+
 def set_seeds(seed: int = 42):
 		random.seed(seed)
 		np.random.seed(seed)
@@ -2338,7 +2872,6 @@ def main():
 		viz_label_count_distribution(stage4_parquet, out_dir=VIZ_DIR)
 
 	if "V9" in run_set:
-		print("[VIZ] V9 — Semantic Asymmetry & NLI Entailment")
 		viz_semantic_asymmetry(args.audit_jsonl, out_dir=VIZ_DIR,)
 
 	if os.path.exists(gmm_pkl):
@@ -2353,6 +2886,7 @@ def main():
 	if os.path.exists(stage4_parquet):
 		viz_heuristic_gmm_confusion(stage4_parquet=stage4_parquet, out_dir=VIZ_DIR,)
 		viz_gmm_confidence_diagnostics(stage4_parquet=stage4_parquet, out_dir=VIZ_DIR,)
+		viz_gmm_probability_simplex(stage4_parquet=stage4_parquet, out_dir=VIZ_DIR,)
 
 if __name__ == "__main__":
 	main()
