@@ -3233,7 +3233,7 @@ def viz_supervision_routing_impact(
 		frac_at_thr = float(cum_all[idx_thr])
 		ax_br2.axvline(conf_threshold, color="#37474F", linewidth=1.4, linestyle=":", zorder=4)
 		ax_br2.annotate(
-			f"{frac_at_thr:.1%} of w_pos\nretained at τ={conf_threshold}",
+			f"{frac_at_thr:.1%} of w_pos (retained at τ={conf_threshold})",
 			xy=(conf_threshold, frac_at_thr),
 			xytext=(conf_threshold + 0.06, frac_at_thr - 0.12),
 			fontsize=8, color="#37474F", fontweight="bold",
@@ -3281,6 +3281,1315 @@ def viz_supervision_routing_impact(
 				f"mean_Δw={mean_delta_w:+.4f} | "
 				f"low_conf={n_low_conf:,}"
 		)
+
+# V16 — SOFT_CONFLICT Density-Gate Audit (does tau_density_filter behave?)
+def viz_density_gate_audit(
+		stage4_parquet:     str,
+		tau_density_filter: float = 0.30,
+		n_bins:             int   = 30,
+		out_dir:            Optional[str] = None,
+):
+		"""
+		Deep audit of the tau_density_filter gate that governs which concepts
+		survive into pos_targets for SOFT_CONFLICT samples.
+
+		The gate fires in consolidate_sample():
+				if data["scores"]["D"] >= tau_density_filter:
+						pos_targets.add(data["canonical"])
+
+		where D(c) = D_global × D_local
+				D_global = 1 − exp(−alpha × freq)          [frequency prior]
+				D_local  = 1 − penalty_weight × entail      [NLI abstraction penalty,
+																											SOFT_CONFLICT only]
+
+		This visualization answers six questions:
+				1. What is the empirical D-score distribution for SOFT_CONFLICT concepts?
+					 Is tau=0.30 cutting at the right place in the distribution?
+				2. How many concepts are dropped vs retained per sample?
+					 Is the gate too aggressive (many samples lose all concepts → fallback)?
+				3. Does D_global vs D_local decompose cleanly?
+					 Are dropped concepts failing on frequency (D_global) or NLI penalty (D_local)?
+				4. How does the gate interact with source modality?
+					 Are TEXT concepts disproportionately dropped vs VISUAL/FUSED?
+				5. What is the downstream impact on |pos_targets| and w_pos?
+					 Does a tighter tau produce fewer but higher-quality targets?
+				6. How many samples hit the robustness fallback (pos_targets empty after gate)?
+					 Is the fallback rate acceptable?
+
+		Panel layout (3 × 3):
+
+				TL — D-score histogram for SOFT_CONFLICT concepts
+							 • Full distribution of D(c) across all audited SOFT_CONFLICT concepts
+							 • Vertical line at tau_density_filter
+							 • Shaded: dropped zone (D < tau) in red, retained zone in green
+							 • Annotated: n_dropped, n_retained, drop rate %
+							 • KDE overlay
+
+				TC — D_global vs D_local scatter (SOFT_CONFLICT concepts only)
+							 • X: D_global  Y: D_local  Colour: pass/fail gate
+							 • Iso-D contours at D=tau (hyperbola D_global × D_local = tau)
+							 • Reveals which axis is responsible for most drops
+
+				TR — D-score CDF with multi-tau sensitivity
+							 • CDF of D(c) for SOFT_CONFLICT
+							 • Vertical lines at tau ∈ {0.10, 0.20, 0.30, 0.40, 0.50}
+							 • Y-axis: fraction of concepts retained at each tau
+							 • Annotated: retention rate at current tau_density_filter
+							 • Reveals: how sensitive is concept retention to tau choice?
+
+				ML — Concepts dropped vs retained per sample (stacked bar / scatter)
+							 • X: sample index (sorted by drop rate)  Y: concept count
+							 • Stacked: retained (green) + dropped (red)
+							 • Horizontal line at mean retained count
+							 • Annotated: n_samples with 0 retained (→ fallback triggered)
+							 • Reveals: is the gate uniformly aggressive or sample-specific?
+
+				MC — Drop rate by source modality (grouped bar)
+							 • Groups: TEXT, VISUAL, FUSED
+							 • Bars: n_dropped, n_retained per modality
+							 • Annotated with drop rate %
+							 • Reveals: are TEXT concepts disproportionately penalised?
+
+				MR — D-score distribution by source modality (violin)
+							 • One violin per modality (TEXT, VISUAL, FUSED)
+							 • Horizontal line at tau
+							 • Median annotated
+							 • Reveals: do modalities have structurally different D profiles?
+
+				BL — |pos_targets| vs fraction of concepts retained (scatter)
+							 • X: retention fraction per sample  Y: |pos_targets|
+							 • Colour: w_pos value
+							 • Trend line (rolling mean)
+							 • Reveals: does higher retention actually produce more targets?
+
+				BC — w_pos distribution: fallback vs non-fallback samples
+							 • Two histograms: samples that hit fallback vs those that did not
+							 • Annotated: mean w_pos for each group
+							 • Reveals: do fallback samples get systematically different weights?
+
+				BR — Tau sensitivity: |pos_targets| and fallback rate vs tau
+							 • X: tau ∈ [0.05, 0.70]  Y-left: mean |pos_targets|
+							 • Y-right: fallback rate (fraction of samples with 0 retained)
+							 • Vertical line at current tau_density_filter
+							 • Reveals: the operating point and whether tau should be adjusted
+
+		Footer strip:
+				n_soft_conflict | n_concepts_audited | n_dropped | n_retained |
+				drop_rate | n_fallback | fallback_rate | tau_density_filter
+
+		Reads:
+				stage4_parquet — auditable supervision matrix parquet
+												 Required columns: regime, heuristic_regime,
+																					 audited_concepts (JSON str),
+																					 positive_targets (list),
+																					 w_pos
+		"""
+		from scipy.stats import gaussian_kde
+
+		# ── Load parquet ──────────────────────────────────────────────────────────
+		try:
+				df_raw = pd.read_parquet(
+						stage4_parquet,
+						columns=["regime", "heuristic_regime",
+										 "audited_concepts", "positive_targets", "w_pos"],
+						engine="pyarrow",
+				)
+		except Exception as e:
+				print(f"[VIZ][V16][ERROR] Failed to read parquet: {e}")
+				return
+
+		# ── Filter to SOFT_CONFLICT only ──────────────────────────────────────────
+		df_sc = df_raw[df_raw["regime"] == "SOFT_CONFLICT"].copy()
+
+		if df_sc.empty:
+				print("[VIZ][V16][WARN] No SOFT_CONFLICT samples found. Nothing to plot.")
+				return
+
+		# ── Parse audited_concepts JSON ───────────────────────────────────────────
+		def _parse_ac(x):
+				if isinstance(x, dict):  return x
+				if isinstance(x, str):
+						try:    return json.loads(x)
+						except: return {}
+				return {}
+
+		df_sc["_ac"] = df_sc["audited_concepts"].apply(_parse_ac)
+
+		# ── Explode to concept-level rows ─────────────────────────────────────────
+		# Each row: one concept from one SOFT_CONFLICT sample
+		concept_rows = []
+		for idx, row in df_sc.iterrows():
+				ac      = row["_ac"]
+				pos_set = set(row["positive_targets"]) if isinstance(row["positive_targets"], list) else set()
+				w_pos   = float(row["w_pos"]) if pd.notna(row["w_pos"]) else 0.0
+
+				for concept, data in ac.items():
+						if not isinstance(data, dict):
+								continue
+						scores = data  # C, G, D are top-level keys (flattened in consolidate_sample)
+						D_val  = float(scores.get("D", 0.0))
+						G_val  = float(scores.get("G", 0.0))
+						C_val  = float(scores.get("C", 0.0))
+						src    = str(scores.get("source_modality", "UNKNOWN"))
+						canon  = str(scores.get("canonical", concept))
+
+						# Decompose D = D_global × D_local
+						# D_global = 1 − exp(−alpha × freq)
+						# We cannot recover freq directly, but we can infer D_global from G
+						# and D. Instead, we store D directly and flag pass/fail.
+						passed = D_val >= tau_density_filter
+
+						concept_rows.append({
+								"sample_idx":      idx,
+								"concept":         concept,
+								"canonical":       canon,
+								"D":               D_val,
+								"G":               G_val,
+								"C":               C_val,
+								"source_modality": src,
+								"passed":          passed,
+								"w_pos":           w_pos,
+								"in_pos_targets":  canon in pos_set,
+						})
+
+		if not concept_rows:
+				print("[VIZ][V16][WARN] No audited concepts found in SOFT_CONFLICT samples.")
+				return
+
+		df_c = pd.DataFrame(concept_rows)
+
+		# ── Per-sample stats ──────────────────────────────────────────────────────
+		sample_stats = df_c.groupby("sample_idx").agg(
+				n_total    = ("D", "count"),
+				n_retained = ("passed", "sum"),
+				n_dropped  = ("passed", lambda x: (~x).sum()),
+				mean_D     = ("D", "mean"),
+				w_pos      = ("w_pos", "first"),
+				n_pos_tgt  = ("in_pos_targets", "sum"),
+		).reset_index()
+		sample_stats["retain_frac"] = (
+				sample_stats["n_retained"] / sample_stats["n_total"].clip(lower=1)
+		)
+		sample_stats["fallback"] = sample_stats["n_retained"] == 0
+
+		# ── Summary stats ─────────────────────────────────────────────────────────
+		n_soft_conflict   = len(df_sc)
+		n_concepts        = len(df_c)
+		n_dropped         = int((~df_c["passed"]).sum())
+		n_retained        = int(df_c["passed"].sum())
+		drop_rate         = n_dropped / max(n_concepts, 1)
+		n_fallback        = int(sample_stats["fallback"].sum())
+		fallback_rate     = n_fallback / max(n_soft_conflict, 1)
+
+		print(
+				f"[VIZ][V16] SOFT_CONFLICT: {n_soft_conflict:,} samples | "
+				f"{n_concepts:,} concepts | "
+				f"drop_rate={drop_rate:.1%} | "
+				f"fallback={n_fallback:,} ({fallback_rate:.1%})"
+		)
+
+		# ── Figure ────────────────────────────────────────────────────────────────
+		fig = plt.figure(figsize=(15, 12), constrained_layout=True)
+		fig.suptitle(
+			f"SOFT_CONFLICT Density-Gate Audit  "
+			f"(tau_density_filter={tau_density_filter} | "
+			f"n_samples={n_soft_conflict:,} | "
+			f"n_concepts={n_concepts:,} | "
+			f"drop_rate={drop_rate:.1%} | "
+			f"fallback_rate={fallback_rate:.1%})",
+			fontsize=12, 
+			fontweight="bold",
+		)
+		gs = fig.add_gridspec(3, 3, hspace=0.1, wspace=0.1)
+		ax_tl = fig.add_subplot(gs[0, 0])   # TL: D histogram
+		ax_tc = fig.add_subplot(gs[0, 1])   # TC: D_global vs D_local scatter
+		ax_tr = fig.add_subplot(gs[0, 2])   # TR: D CDF + multi-tau
+		ax_ml = fig.add_subplot(gs[1, 0])   # ML: per-sample drop/retain
+		ax_mc = fig.add_subplot(gs[1, 1])   # MC: drop rate by modality
+		ax_mr = fig.add_subplot(gs[1, 2])   # MR: D violin by modality
+		ax_bl = fig.add_subplot(gs[2, 0])   # BL: |pos_targets| vs retain_frac
+		ax_bc = fig.add_subplot(gs[2, 1])   # BC: w_pos fallback vs non-fallback
+		ax_br = fig.add_subplot(gs[2, 2])   # BR: tau sensitivity curve
+
+		SC_COLOR   = REGIME_COLORS.get("SOFT_CONFLICT", "#FF9800")
+		DROP_COLOR = "#c62828"
+		PASS_COLOR = "#2e7d32"
+
+		# ── TL: D-score histogram ─────────────────────────────────────────────────
+		d_vals    = df_c["D"].values
+		bins_d    = np.linspace(0, 1, n_bins + 1)
+		d_dropped = df_c.loc[~df_c["passed"], "D"].values
+		d_passed  = df_c.loc[ df_c["passed"], "D"].values
+
+		ax_tl.hist(d_dropped, bins=bins_d, color=DROP_COLOR, alpha=0.55,
+							 label=f"Dropped (D < {tau_density_filter})  n={n_dropped:,}",
+							 edgecolor="none")
+		ax_tl.hist(d_passed,  bins=bins_d, color=PASS_COLOR, alpha=0.55,
+							 label=f"Retained (D ≥ {tau_density_filter})  n={n_retained:,}",
+							 edgecolor="none")
+
+		# KDE overlay
+		if len(d_vals) >= 5:
+				try:
+						kde_d = gaussian_kde(d_vals, bw_method="scott")
+						xd    = np.linspace(0, 1, 300)
+						yd    = kde_d(xd) * len(d_vals) * (bins_d[1] - bins_d[0])
+						ax_tl.plot(xd, yd, color="#37474F", linewidth=1.8,
+											 linestyle="-", alpha=0.80, label="KDE (all)")
+				except Exception:
+						pass
+
+		ax_tl.axvline(tau_density_filter, color="#37474F", linewidth=2.0,
+									linestyle="--", label=f"τ = {tau_density_filter}")
+		ax_tl.axvspan(0, tau_density_filter, alpha=0.06, color=DROP_COLOR)
+		ax_tl.axvspan(tau_density_filter, 1, alpha=0.06, color=PASS_COLOR)
+
+		ax_tl.set_xlabel("D(c)  =  D_global × D_local", fontsize=9)
+		ax_tl.set_ylabel("Concept count", fontsize=9)
+		ax_tl.set_title(
+				"D-Score Distribution  (SOFT_CONFLICT concepts)\n"
+				"red = dropped by gate | green = retained",
+				fontsize=9, fontweight="bold",
+		)
+		ax_tl.legend(fontsize=7.5, frameon=False)
+		ax_tl.spines[["top", "right"]].set_visible(False)
+
+		# ── TC: D_global vs D_local scatter ──────────────────────────────────────
+		# D_global and D_local are not stored separately in the parquet.
+		# We reconstruct them from D and G:
+		#   D_local  ≈ 1 − penalty_weight × entail  (not directly recoverable)
+		# Best proxy: use G as a grounding proxy for D_global (high G → well-grounded
+		# → D_global should be high), and infer D_local = D / max(D_global_proxy, ε).
+		# More honestly: plot D vs G as the two independent axes that drive D.
+		# Label axes clearly as proxies.
+		colors_tc = np.where(df_c["passed"].values, PASS_COLOR, DROP_COLOR)
+
+		# Subsample for scatter performance
+		rng    = np.random.default_rng(42)
+		n_plot = min(len(df_c), 4000)
+		idx_s  = rng.choice(len(df_c), size=n_plot, replace=False)
+		df_s   = df_c.iloc[idx_s]
+		col_s  = colors_tc[idx_s]
+
+		ax_tc.scatter(
+				df_s["G"].values, df_s["D"].values,
+				c=col_s, s=10, alpha=0.30, edgecolors="none",
+		)
+
+		# Iso-D line at tau: D = tau (horizontal line, since D is on Y)
+		ax_tc.axhline(tau_density_filter, color="#37474F", linewidth=1.8,
+									linestyle="--", label=f"D = τ = {tau_density_filter}")
+
+		# Annotate quadrants
+		for (gx, dy, label, ha) in [
+				(0.15, tau_density_filter + 0.05, "Low G, D≥τ\n(retained, ungrounded)", "left"),
+				(0.15, tau_density_filter - 0.05, "Low G, D<τ\n(dropped)", "left"),
+				(0.80, tau_density_filter + 0.05, "High G, D≥τ\n(retained, grounded)", "right"),
+				(0.80, tau_density_filter - 0.05, "High G, D<τ\n(dropped, grounded)", "right"),
+		]:
+				ax_tc.text(gx, dy, label, ha=ha, va="center",
+									 fontsize=6.5, color="#555", style="italic")
+
+		# Proxy legend patches
+		from matplotlib.patches import Patch
+		ax_tc.legend(
+				handles=[
+						Patch(facecolor=PASS_COLOR, alpha=0.6, label=f"Retained (D≥τ)  n={n_retained:,}"),
+						Patch(facecolor=DROP_COLOR, alpha=0.6, label=f"Dropped  (D<τ)   n={n_dropped:,}"),
+						plt.Line2D([0], [0], color="#37474F", linestyle="--", linewidth=1.5,
+											 label=f"τ = {tau_density_filter}"),
+				],
+				fontsize=7.5, frameon=False,
+		)
+		ax_tc.set_xlabel("G(c)  — Grounding score  (proxy for D_global quality)", fontsize=9)
+		ax_tc.set_ylabel("D(c)  =  D_global × D_local", fontsize=9)
+		ax_tc.set_title(
+				"D(c) vs G(c) Scatter  (SOFT_CONFLICT concepts)\n"
+				"Reveals whether drops are grounding-driven or NLI-penalty-driven",
+				fontsize=9, fontweight="bold",
+		)
+		ax_tc.set_xlim(-0.02, 1.02)
+		ax_tc.set_ylim(-0.02, 1.02)
+		ax_tc.spines[["top", "right"]].set_visible(False)
+
+		# ── TR: D-score CDF + multi-tau sensitivity ───────────────────────────────
+		d_sorted = np.sort(d_vals)
+		cdf      = np.arange(1, len(d_sorted) + 1) / len(d_sorted)
+		# CDF of retained fraction = 1 − CDF(tau)
+		retain_cdf = 1.0 - cdf
+
+		ax_tr.plot(d_sorted, retain_cdf, color=SC_COLOR, linewidth=2.2,
+							 label="Retention rate  (1 − CDF)")
+
+		tau_grid_cdf = [0.10, 0.20, 0.30, 0.40, 0.50, 0.60]
+		for tau_v in tau_grid_cdf:
+				retain_at_tau = float(np.mean(d_vals >= tau_v))
+				ls = "--" if tau_v == tau_density_filter else ":"
+				lw = 1.8  if tau_v == tau_density_filter else 1.0
+				ax_tr.axvline(tau_v, color="#37474F", linewidth=lw, linestyle=ls, alpha=0.70)
+				ax_tr.text(
+						tau_v + 0.005, 0.50,
+						f"τ={tau_v}\n{retain_at_tau:.1%}",
+						fontsize=6.5, color="#37474F", va="center",
+						rotation=90, alpha=0.80,
+				)
+
+		# Annotate current tau
+		retain_current = float(np.mean(d_vals >= tau_density_filter))
+		ax_tr.annotate(
+				f"{retain_current:.1%} retained\nat τ={tau_density_filter}",
+				xy=(tau_density_filter, retain_current),
+				xytext=(tau_density_filter + 0.12, retain_current + 0.08),
+				fontsize=8, color="#37474F", fontweight="bold",
+				arrowprops=dict(arrowstyle="->", color="#37474F", lw=1.0),
+		)
+
+		ax_tr.set_xlabel("D(c) threshold  τ", fontsize=9)
+		ax_tr.set_ylabel("Fraction of concepts retained  (1 − CDF)", fontsize=9)
+		ax_tr.set_title(
+				"D-Score CDF: Concept Retention vs Tau\n"
+				"(how sensitive is retention to tau choice?)",
+				fontsize=9, fontweight="bold",
+		)
+		ax_tr.set_xlim(0, 1)
+		ax_tr.set_ylim(0, 1.05)
+		ax_tr.legend(fontsize=8, frameon=False)
+		ax_tr.spines[["top", "right"]].set_visible(False)
+
+		# ── ML: Per-sample drop/retain stacked bar ────────────────────────────────
+		ss_sorted = sample_stats.sort_values("retain_frac").reset_index(drop=True)
+		x_idx     = np.arange(len(ss_sorted))
+
+		# Subsample if too many samples
+		max_bars = 300
+		if len(ss_sorted) > max_bars:
+				step    = len(ss_sorted) // max_bars
+				ss_plot = ss_sorted.iloc[::step].reset_index(drop=True)
+				x_idx   = np.arange(len(ss_plot))
+				ax_ml.set_xlabel(
+						f"Sample index (sorted by retain_frac, 1-in-{step} shown)", fontsize=9
+				)
+		else:
+				ss_plot = ss_sorted
+				ax_ml.set_xlabel("Sample index (sorted by retain_frac)", fontsize=9)
+
+		ax_ml.bar(x_idx, ss_plot["n_retained"], color=PASS_COLOR, alpha=0.70,
+							label="Retained", width=1.0, edgecolor="none")
+		ax_ml.bar(x_idx, ss_plot["n_dropped"],
+							bottom=ss_plot["n_retained"], color=DROP_COLOR, alpha=0.55,
+							label="Dropped", width=1.0, edgecolor="none")
+
+		mean_retained = float(sample_stats["n_retained"].mean())
+		ax_ml.axhline(mean_retained, color="#37474F", linewidth=1.4,
+									linestyle="--", label=f"Mean retained = {mean_retained:.1f}")
+
+		# Shade fallback zone (n_retained = 0)
+		fallback_x = x_idx[ss_plot["n_retained"].values == 0]
+		if len(fallback_x) > 0:
+				ax_ml.axvspan(
+						fallback_x[0] - 0.5, fallback_x[-1] + 0.5,
+						alpha=0.12, color=DROP_COLOR,
+						label=f"Fallback zone  (n={n_fallback:,})",
+				)
+
+		ax_ml.set_ylabel("Concept count per sample", fontsize=9)
+		ax_ml.set_title(
+				"Per-Sample Concept Retention  (sorted by retain_frac)\n"
+				f"Fallback triggered: {n_fallback:,} / {n_soft_conflict:,} samples "
+				f"({fallback_rate:.1%})",
+				fontsize=9, fontweight="bold",
+		)
+		ax_ml.legend(fontsize=7.5, frameon=False, ncol=2)
+		ax_ml.spines[["top", "right"]].set_visible(False)
+
+		# ── MC: Drop rate by source modality (grouped bar) ────────────────────────
+		modalities = ["TEXT", "VISUAL", "FUSED"]
+		mod_colors = {"TEXT": "#1565C0", "VISUAL": "#2e7d32", "FUSED": "#6A1B9A"}
+		x_mod      = np.arange(len(modalities))
+		bar_w      = 0.35
+
+		n_ret_mod  = []
+		n_drp_mod  = []
+		for mod in modalities:
+				sub_mod = df_c[df_c["source_modality"] == mod]
+				n_ret_mod.append(int(sub_mod["passed"].sum()))
+				n_drp_mod.append(int((~sub_mod["passed"]).sum()))
+
+		bars_ret = ax_mc.bar(x_mod - bar_w / 2, n_ret_mod, bar_w,
+												 color=PASS_COLOR, alpha=0.70, label="Retained", edgecolor="none")
+		bars_drp = ax_mc.bar(x_mod + bar_w / 2, n_drp_mod, bar_w,
+												 color=DROP_COLOR, alpha=0.70, label="Dropped",  edgecolor="none")
+
+		# Annotate drop rate %
+		for xi, (nr, nd) in enumerate(zip(n_ret_mod, n_drp_mod)):
+				total_m = nr + nd
+				if total_m > 0:
+						dr_pct = nd / total_m * 100
+						ax_mc.text(xi + bar_w / 2, nd + total_m * 0.01,
+											 f"{dr_pct:.1f}%", ha="center", va="bottom",
+											 fontsize=8, color=DROP_COLOR, fontweight="bold")
+						ax_mc.text(xi - bar_w / 2, nr + total_m * 0.01,
+											 f"n={nr:,}", ha="center", va="bottom",
+											 fontsize=7, color=PASS_COLOR)
+
+		ax_mc.set_xticks(x_mod)
+		ax_mc.set_xticklabels(modalities, fontsize=9)
+		ax_mc.set_ylabel("Concept count", fontsize=9)
+		ax_mc.set_title(
+				"Drop Rate by Source Modality\n"
+				"(are TEXT concepts disproportionately penalised?)",
+				fontsize=9, fontweight="bold",
+		)
+		ax_mc.legend(fontsize=8, frameon=False)
+		ax_mc.spines[["top", "right"]].set_visible(False)
+
+		# ── MR: D-score violin by source modality ────────────────────────────────
+		violin_data = [
+				df_c.loc[df_c["source_modality"] == mod, "D"].dropna().values
+				for mod in modalities
+		]
+		violin_data_nonempty = [(i, d) for i, d in enumerate(violin_data) if len(d) > 1]
+
+		if violin_data_nonempty:
+				positions = [i + 1 for i, _ in violin_data_nonempty]
+				vp = ax_mr.violinplot(
+						[d for _, d in violin_data_nonempty],
+						positions=positions,
+						widths=0.65, showmedians=False, showextrema=False,
+				)
+				for i_v, (pc, (orig_i, _)) in enumerate(zip(vp["bodies"], violin_data_nonempty)):
+						mod = modalities[orig_i]
+						pc.set_facecolor(mod_colors.get(mod, "#607D8B"))
+						pc.set_alpha(0.45)
+
+				# Median lines
+				for pos, (orig_i, d) in zip(positions, violin_data_nonempty):
+						med = float(np.median(d))
+						ax_mr.hlines(med, pos - 0.28, pos + 0.28,
+												 colors=mod_colors.get(modalities[orig_i], "#607D8B"),
+												 linewidths=2.2, zorder=5)
+						ax_mr.text(pos, med + 0.015, f"{med:.3f}",
+											 ha="center", va="bottom", fontsize=7.5,
+											 color=mod_colors.get(modalities[orig_i], "#607D8B"),
+											 fontweight="bold")
+
+		ax_mr.axhline(tau_density_filter, color="#37474F", linewidth=1.8,
+									linestyle="--", label=f"τ = {tau_density_filter}", zorder=6)
+		ax_mr.set_xticks(range(1, len(modalities) + 1))
+		ax_mr.set_xticklabels(modalities, fontsize=9)
+		ax_mr.set_ylabel("D(c)", fontsize=9)
+		ax_mr.set_title(
+				"D-Score Distribution by Source Modality\n"
+				"(do modalities have structurally different D profiles?)",
+				fontsize=9, fontweight="bold",
+		)
+		ax_mr.legend(fontsize=8, frameon=False)
+		ax_mr.spines[["top", "right"]].set_visible(False)
+
+		# ── BL: |pos_targets| vs retain_frac scatter ─────────────────────────────
+		sc_bl = ax_bl.scatter(
+				sample_stats["retain_frac"].values,
+				sample_stats["n_pos_tgt"].values,
+				c=sample_stats["w_pos"].values,
+				cmap="YlOrRd", s=18, alpha=0.45, edgecolors="none",
+				vmin=0, vmax=1,
+		)
+		plt.colorbar(sc_bl, ax=ax_bl, fraction=0.035, pad=0.03, label="w_pos")
+
+		# Rolling mean trend
+		ss_rf = sample_stats.sort_values("retain_frac")
+		window_bl = max(len(ss_rf) // 20, 5)
+		trend_bl  = ss_rf["n_pos_tgt"].rolling(window_bl, center=True, min_periods=3).mean()
+		ax_bl.plot(ss_rf["retain_frac"], trend_bl,
+							 color="#37474F", linewidth=2.2, alpha=0.85,
+							 label="Rolling mean", zorder=5)
+
+		ax_bl.axvline(0, color=DROP_COLOR, linewidth=1.2, linestyle=":",
+									alpha=0.70, label="retain_frac = 0 (fallback)")
+		ax_bl.set_xlabel("Fraction of concepts retained by gate", fontsize=9)
+		ax_bl.set_ylabel("|pos_targets|  (after gate + fallback)", fontsize=9)
+		ax_bl.set_title(
+				"|pos_targets| vs Concept Retention Fraction\n"
+				"(colour = w_pos | does higher retention → more targets?)",
+				fontsize=9, fontweight="bold",
+		)
+		ax_bl.legend(fontsize=7.5, frameon=False)
+		ax_bl.spines[["top", "right"]].set_visible(False)
+
+		# ── BC: w_pos distribution: fallback vs non-fallback ─────────────────────
+		w_fallback    = sample_stats.loc[ sample_stats["fallback"], "w_pos"].dropna().values
+		w_no_fallback = sample_stats.loc[~sample_stats["fallback"], "w_pos"].dropna().values
+
+		bins_w = np.linspace(0, 1, 25)
+		if len(w_no_fallback) > 0:
+				ax_bc.hist(w_no_fallback, bins=bins_w, color=PASS_COLOR, alpha=0.55,
+									 density=True, edgecolor="none",
+									 label=f"No fallback  (n={len(w_no_fallback):,}  "
+												 f"mean={np.mean(w_no_fallback):.3f})")
+		if len(w_fallback) > 0:
+				ax_bc.hist(w_fallback, bins=bins_w, color=DROP_COLOR, alpha=0.55,
+									 density=True, edgecolor="none",
+									 label=f"Fallback triggered  (n={len(w_fallback):,}  "
+												 f"mean={np.mean(w_fallback):.3f})")
+
+		# Median lines
+		for vals, color in [(w_no_fallback, PASS_COLOR), (w_fallback, DROP_COLOR)]:
+				if len(vals) > 0:
+						ax_bc.axvline(float(np.median(vals)), color=color,
+													linewidth=1.6, linestyle="--", alpha=0.80)
+
+		ax_bc.set_xlabel("w_pos", fontsize=9)
+		ax_bc.set_ylabel("Density", fontsize=9)
+		ax_bc.set_title(
+				"w_pos Distribution: Fallback vs Non-Fallback Samples\n"
+				"(do fallback samples get systematically different weights?)",
+				fontsize=9, fontweight="bold",
+		)
+		ax_bc.legend(fontsize=7.5, frameon=False)
+		ax_bc.spines[["top", "right"]].set_visible(False)
+
+		# ── BR: Tau sensitivity curve ─────────────────────────────────────────────
+		tau_sweep   = np.linspace(0.05, 0.70, 60)
+		mean_pos_tgt_sweep = []
+		fallback_rate_sweep = []
+
+		for tau_v in tau_sweep:
+				# Per-sample: how many concepts pass at this tau?
+				n_ret_per_sample = df_c.groupby("sample_idx")["D"].apply(
+						lambda d: int((d >= tau_v).sum())
+				)
+				mean_pos_tgt_sweep.append(float(n_ret_per_sample.mean()))
+				fallback_rate_sweep.append(float((n_ret_per_sample == 0).mean()))
+
+		ax_br2 = ax_br.twinx()
+
+		ax_br.plot(tau_sweep, mean_pos_tgt_sweep,
+							 color=PASS_COLOR, linewidth=2.2, alpha=0.90,
+							 label="Mean retained concepts per sample")
+		ax_br2.plot(tau_sweep, fallback_rate_sweep,
+								color=DROP_COLOR, linewidth=2.0, alpha=0.85,
+								linestyle="--", label="Fallback rate")
+
+		ax_br.axvline(tau_density_filter, color="#37474F", linewidth=1.8,
+									linestyle=":", label=f"Current τ = {tau_density_filter}")
+
+		# Annotate current operating point
+		idx_cur = int(np.argmin(np.abs(tau_sweep - tau_density_filter)))
+		ax_br.annotate(
+				f"τ={tau_density_filter}\n"
+				f"mean_ret={mean_pos_tgt_sweep[idx_cur]:.1f}\n"
+				f"fallback={fallback_rate_sweep[idx_cur]:.1%}",
+				xy=(tau_density_filter, mean_pos_tgt_sweep[idx_cur]),
+				xytext=(tau_density_filter + 0.06, mean_pos_tgt_sweep[idx_cur] * 0.85),
+				fontsize=8, color="#37474F", fontweight="bold",
+				arrowprops=dict(arrowstyle="->", color="#37474F", lw=1.0),
+		)
+
+		ax_br.set_xlabel("tau_density_filter  τ", fontsize=9)
+		ax_br.set_ylabel("Mean retained concepts per sample", fontsize=9, color=PASS_COLOR)
+		ax_br2.set_ylabel("Fallback rate  (fraction of samples)", fontsize=9, color=DROP_COLOR)
+		ax_br.set_title(
+				"Tau Sensitivity: Retention & Fallback Rate vs τ\n"
+				"(operating point and whether tau should be adjusted)",
+				fontsize=9, fontweight="bold",
+		)
+
+		# Combined legend
+		lines1, labels1 = ax_br.get_legend_handles_labels()
+		lines2, labels2 = ax_br2.get_legend_handles_labels()
+		ax_br.legend(lines1 + lines2, labels1 + labels2, fontsize=7.5, frameon=False)
+		ax_br.spines[["top"]].set_visible(False)
+		ax_br2.spines[["top"]].set_visible(False)
+		ax_br.tick_params(axis="y", labelcolor=PASS_COLOR)
+		ax_br2.tick_params(axis="y", labelcolor=DROP_COLOR)
+
+		# ── Footer ────────────────────────────────────────────────────────────────
+		footer = (
+				f"SOFT_CONFLICT samples: {n_soft_conflict:,}  |  "
+				f"Concepts audited: {n_concepts:,}  |  "
+				f"Dropped (D < τ): {n_dropped:,} ({drop_rate:.1%})  |  "
+				f"Retained (D ≥ τ): {n_retained:,} ({1 - drop_rate:.1%})  |  "
+				f"Fallback triggered: {n_fallback:,} ({fallback_rate:.1%})  |  "
+				f"tau_density_filter = {tau_density_filter}"
+		)
+		fig.text(
+				0.5, -0.005,
+				footer,
+				ha="center", va="top", fontsize=8,
+				color="#444", style="italic",
+				transform=fig.transFigure,
+		)
+
+		_save(fig, out_dir, "V16_density_gate_audit")
+		print(
+				f"[VIZ][V16] Done. "
+				f"n_soft_conflict={n_soft_conflict:,} | "
+				f"n_concepts={n_concepts:,} | "
+				f"drop_rate={drop_rate:.1%} | "
+				f"fallback={n_fallback:,} ({fallback_rate:.1%})"
+		)
+
+# V17 — 3D Coverage / Feature-Dim Decision Audit (Bridge Behavior)
+def viz_feature_dim_decision_audit(
+	audit_jsonl:str,
+	gmm_pkl:str,
+	gmm_3d_coverage_threshold:float=0.80,
+	out_dir:Optional[str]=None,
+):
+	"""
+	Full audit of the Bridge's feature-dimensionality decision for GMM training:
+			_coverage_3d = n_3d_eligible / n_2d_eligible
+			feature_dim  = 3  if _coverage_3d >= GMM_3D_COVERAGE_THRESHOLD (0.80)
+										 2  otherwise  (NLI-bypassed Hard Conflict underrepresentation guard)
+	where:
+			2D-eligible  — samples with valid set_similarity AND orphan_ratio
+											(includes NLI-bypassed HARD_CONFLICT where asym_gap=None)
+			3D-eligible  — subset of 2D where asym_gap is also non-None
+	The gap (2D − 3D) = NLI-bypassed HARD_CONFLICT samples.
+	This visualization answers eight questions:
+			1. What fraction of samples are 3D-eligible vs 2D-only?
+				 Is the 0.80 threshold comfortably met or narrowly passed/failed?
+			2. Which heuristic regime drives the 2D-only gap?
+				 Is it exclusively HARD_CONFLICT (expected) or are other regimes
+				 contributing (unexpected — would indicate a metrics bug)?
+			3. What is the feature-space geometry of the chosen dimensionality?
+				 Do the three GMM clusters separate cleanly in the chosen space?
+			4. How do the BIC/AIC curves look across K∈{2,…,6}?
+				 Does K=3 have data-driven support, or is BIC selecting a different K?
+			5. What are the learned centroid positions (unscaled)?
+				 Are the regime labels assigned correctly by the orphan_ratio rule?
+			6. How strong is the centroid separation (orphan_gap)?
+				 Is the 0.05 warning threshold comfortably exceeded?
+			7. What is the per-regime distribution of GMM confidence at inference?
+				 (from stage4_parquet gmm.confidence — loaded if available)
+			8. What would have changed if the threshold were different?
+				 Sensitivity: at what coverage fraction does the decision flip?
+	Panel layout (4 × 2):
+			TL — 3D vs 2D eligibility breakdown (stacked bar by heuristic regime)
+						 • Stacked bar: 3D-eligible (green) + 2D-only (red) per regime
+						 • Annotated: n per group, % 2D-only
+						 • Horizontal line at GMM_3D_COVERAGE_THRESHOLD
+						 • Title: actual coverage fraction + decision made
+			TR — Coverage sensitivity gauge
+						 • Horizontal gauge bar showing _coverage_3d vs threshold
+						 • Below: table of key counts (n_total, n_2d, n_3d, n_gap, coverage)
+						 • Large annotation: "3D CHOSEN" or "2D FALLBACK" with coverage %
+						 • Sensitivity: how many more NLI-bypassed samples would flip the decision?
+			ML — Feature-space scatter (chosen dimensionality)
+						 • If feature_dim=3: 3 panels (set_sim vs orphan_ratio,
+							 set_sim vs abs_asym_gap, orphan_ratio vs abs_asym_gap)
+						 • If feature_dim=2: 1 panel (set_sim vs orphan_ratio)
+						 • Points coloured by heuristic regime
+						 • GMM centroids (unscaled) overlaid as large ★ markers
+						 • Ellipses: 1σ and 2σ contours of each GMM component
+							 (drawn from gmm.covariances_ and gmm.means_ in scaled space,
+								then inverse-transformed for display)
+			MR — BIC / AIC model selection curves
+						 • X: K∈{2,…,6}  Y: BIC (solid) and AIC (dashed)
+						 • Vertical line at K=3 (design choice)
+						 • Vertical line at BIC-optimal K (if different from 3)
+						 • Annotated: BIC values, optimal K, delta BIC(3) − BIC(optimal)
+						 • Reveals: how much evidence is there for K≠3?
+			BL — GMM centroid heatmap (regime × feature)
+						 • Rows = AGREEMENT, SOFT_CONFLICT, HARD_CONFLICT
+						 • Cols = feature names (set_similarity, orphan_ratio, [abs_asym_gap])
+						 • Cell = unscaled centroid value
+						 • Colour: diverging from 0
+						 • Annotated with value
+						 • Reveals: are the centroids semantically coherent?
+			BC — Centroid separation (orphan_ratio axis)
+						 • Bar chart: orphan_ratio centroid per regime (sorted)
+						 • Annotated: orphan_gap between top-2 clusters
+						 • Horizontal line at orphan_gap = 0.05 (warning threshold)
+						 • Colour: green if gap ≥ 0.05, red if gap < 0.05
+						 • Reveals: is the HARD_CONFLICT cluster well-separated?
+			BR — 2D-only sample distribution in feature space
+						 • Scatter of 2D-only (NLI-bypassed) samples in
+							 set_sim vs orphan_ratio space
+						 • Coloured by heuristic regime
+						 • GMM centroids (2D projection) overlaid
+						 • Reveals: where do the NLI-bypassed samples land in feature space?
+							 Are they near the HARD_CONFLICT centroid (expected) or scattered?
+			BL2 — asym_gap distribution: 3D-eligible vs 2D-only
+						 • Histogram of abs(asym_gap) for 3D-eligible samples
+						 • Vertical annotation: "2D-only samples have asym_gap=None"
+						 • Reveals: what asym_gap values are the 2D-only samples missing?
+							 If 3D-eligible samples have high asym_gap, the 2D fallback
+							 loses important discriminative signal.
+	Footer strip:
+			n_total | n_2d_eligible | n_3d_eligible | n_gap | coverage_3d |
+			threshold | decision | feature_dim | orphan_gap | BIC-optimal K
+	Reads:
+			audit_jsonl — Stage 2 modality conflict audit JSONL
+										Required fields per line: heuristic_regime, metrics
+										(set_similarity, orphan_ratio, asymmetry_gap)
+			gmm_pkl     — Bridge GMM payload (joblib)
+										Required keys: gmm_model, scaler, class_mapping,
+										feature_dim, feature_names, bic_scores, aic_scores,
+										optimal_k_bic, centroids_unscaled, orphan_gap
+	"""
+	# ── Load GMM payload ──────────────────────────────────────────────────────
+	try:
+			gmm_payload = joblib.load(gmm_pkl)
+	except Exception as e:
+			print(f"[VIZ][V17][ERROR] Failed to load GMM pkl: {e}")
+			return
+	gmm_model         = gmm_payload["gmm_model"]
+	gmm_scaler        = gmm_payload["scaler"]
+	class_mapping     = gmm_payload["class_mapping"]       # {int: regime_name}
+	feature_dim       = int(gmm_payload["feature_dim"])
+	feature_names     = gmm_payload.get(
+			"feature_names",
+			["set_similarity", "orphan_ratio", "abs_asym_gap"]
+			if feature_dim == 3 else ["set_similarity", "orphan_ratio"],
+	)
+	bic_scores        = gmm_payload.get("bic_scores", {})
+	aic_scores        = gmm_payload.get("aic_scores", {})
+	optimal_k_bic     = gmm_payload.get("optimal_k_bic", None)
+	optimal_k_aic     = gmm_payload.get("optimal_k_aic", None)
+	n_samples_fit     = gmm_payload.get("n_samples_fit", None)
+	centroids_unscaled = gmm_payload.get("centroids_unscaled", {})
+	orphan_gap        = gmm_payload.get("orphan_gap", float("nan"))
+	print(
+			f"[VIZ][V17] GMM payload loaded: "
+			f"feature_dim={feature_dim} | "
+			f"feature_names={feature_names} | "
+			f"optimal_k_bic={optimal_k_bic} | "
+			f"orphan_gap={orphan_gap:.4f} | "
+			f"n_samples_fit={n_samples_fit}"
+	)
+	# ── Stream audit JSONL: collect per-sample feature eligibility ────────────
+	REGIMES_WITH_METRICS = {"AGREEMENT", "HARD_CONFLICT", "SOFT_CONFLICT"}
+	sample_rows = []
+	with open(audit_jsonl, "r", encoding="utf-8") as f:
+			for line in f:
+					line = line.strip()
+					if not line:
+							continue
+					try:
+							receipt = json.loads(line)
+					except json.JSONDecodeError:
+							continue
+					regime  = receipt.get("heuristic_regime", "UNKNOWN")
+					metrics = receipt.get("metrics") or {}
+					if regime not in REGIMES_WITH_METRICS:
+							continue
+					set_sim      = metrics.get("set_similarity")
+					orphan_ratio = metrics.get("orphan_ratio")
+					asym_gap     = metrics.get("asymmetry_gap")
+					is_2d = (set_sim is not None and orphan_ratio is not None)
+					is_3d = (is_2d and asym_gap is not None)
+					if not is_2d:
+							continue  # not even 2D-eligible — skip
+					sample_rows.append({
+							"regime":       regime,
+							"set_sim":      float(set_sim),
+							"orphan_ratio": float(orphan_ratio),
+							"asym_gap":     float(asym_gap) if asym_gap is not None else None,
+							"abs_asym_gap": abs(float(asym_gap)) if asym_gap is not None else None,
+							"is_3d":        is_3d,
+					})
+	if not sample_rows:
+			print("[VIZ][V17][WARN] No 2D-eligible samples found in JSONL. Nothing to plot.")
+			return
+	df = pd.DataFrame(sample_rows)
+	# ── Coverage stats ────────────────────────────────────────────────────────
+	n_2d       = len(df)
+	n_3d       = int(df["is_3d"].sum())
+	n_gap      = n_2d - n_3d
+	coverage   = n_3d / max(n_2d, 1)
+	decision   = "3D" if coverage >= gmm_3d_coverage_threshold else "2D"
+	print(
+		f"[VIZ][V17] n_2d={n_2d:,} | n_3d={n_3d:,} | "
+		f"n_gap={n_gap:,} | coverage={coverage:.3f} | "
+		f"threshold={gmm_3d_coverage_threshold} | decision={decision}"
+	)
+	REGIME_ORDER  = ["AGREEMENT", "SOFT_CONFLICT", "HARD_CONFLICT"]
+	regimes_found = [r for r in REGIME_ORDER if r in df["regime"].unique()]
+	rng           = np.random.default_rng(42)
+	# ── Figure ────────────────────────────────────────────────────────────────
+	fig = plt.figure(figsize=(17, 11), constrained_layout=True)
+	fig.suptitle(
+			f"V17 — 3D Coverage / Feature-Dim Decision Audit  (Bridge Behavior)\n"
+			f"coverage_3d={coverage:.3f}  |  threshold={gmm_3d_coverage_threshold}  |  "
+			f"decision={decision} → feature_dim={feature_dim}  |  "
+			f"n_2d={n_2d:,}  |  n_3d={n_3d:,}  |  n_gap={n_gap:,}  |  "
+			f"orphan_gap={orphan_gap:.4f}  |  BIC-optimal K={optimal_k_bic}",
+			fontsize=11, fontweight="bold",
+	)
+	gs = fig.add_gridspec(4, 2, hspace=0.15, wspace=0.1)
+	ax_tl  = fig.add_subplot(gs[0, 0])   # TL: stacked bar by regime
+	ax_tr  = fig.add_subplot(gs[0, 1])   # TR: coverage gauge + table
+	ax_ml  = fig.add_subplot(gs[1, 0])   # ML: feature-space scatter (main pair)
+	ax_mr  = fig.add_subplot(gs[1, 1])   # MR: BIC/AIC curves
+	ax_bl  = fig.add_subplot(gs[2, 0])   # BL: centroid heatmap
+	ax_bc  = fig.add_subplot(gs[2, 1])   # BC: centroid separation bar
+	ax_br  = fig.add_subplot(gs[3, 0])   # BR: 2D-only scatter
+	ax_bl2 = fig.add_subplot(gs[3, 1])   # BL2: asym_gap histogram
+	GAP_COLOR  = "#c62828"   # 2D-only (NLI-bypassed)
+	FULL_COLOR = "#2e7d32"   # 3D-eligible
+	# ── TL: Stacked bar by heuristic regime ───────────────────────────────────
+	regime_counts_3d  = df[df["is_3d"]].groupby("regime").size()
+	regime_counts_2d  = df[~df["is_3d"]].groupby("regime").size()
+	x_reg  = np.arange(len(regimes_found))
+	bar_w  = 0.55
+	n3_vals = [int(regime_counts_3d.get(r, 0)) for r in regimes_found]
+	n2_vals = [int(regime_counts_2d.get(r, 0)) for r in regimes_found]
+	bars3 = ax_tl.bar(x_reg, n3_vals, bar_w,
+										color=FULL_COLOR, alpha=0.72, label="3D-eligible", edgecolor="none")
+	bars2 = ax_tl.bar(x_reg, n2_vals, bar_w, bottom=n3_vals,
+										color=GAP_COLOR,  alpha=0.65, label="2D-only (NLI-bypassed)", edgecolor="none")
+	for xi, (n3, n2) in enumerate(zip(n3_vals, n2_vals)):
+			total = n3 + n2
+			if total > 0:
+					pct_2d = n2 / total * 100
+					ax_tl.text(xi, total + total * 0.01,
+										 f"n={total:,}\n{pct_2d:.1f}% 2D-only",
+										 ha="center", va="bottom", fontsize=7.5, color="#333")
+	# Threshold line (as fraction of total)
+	n_total_bar = sum(n3_vals) + sum(n2_vals)
+	ax_tl.axhline(
+			n_total_bar * gmm_3d_coverage_threshold,
+			color="#37474F", linewidth=1.4, linestyle=":",
+			label=f"80% threshold line (n={int(n_total_bar * gmm_3d_coverage_threshold):,})",
+	)
+	ax_tl.set_xticks(x_reg)
+	ax_tl.set_xticklabels([r.replace("_", "\n") for r in regimes_found], fontsize=9)
+	ax_tl.set_ylabel("Sample count", fontsize=9)
+	ax_tl.set_title(
+			"3D vs 2D-Only Eligibility by Heuristic Regime\n"
+			"(2D-only = NLI-bypassed, asym_gap=None)",
+			fontsize=9, fontweight="bold",
+	)
+	ax_tl.legend(fontsize=7.5, frameon=False)
+	ax_tl.spines[["top", "right"]].set_visible(False)
+	# ── TR: Coverage gauge + decision annotation ──────────────────────────────
+	ax_tr.set_xlim(0, 1)
+	ax_tr.set_ylim(0, 1)
+	ax_tr.axis("off")
+	# Gauge bar
+	gauge_y, gauge_h = 0.72, 0.10
+	ax_tr.add_patch(plt.Rectangle((0.05, gauge_y), 0.90, gauge_h,
+																 facecolor="#ECEFF1", edgecolor="#90A4AE",
+																 linewidth=1.2, transform=ax_tr.transAxes))
+	fill_w = 0.90 * coverage
+	fill_color = FULL_COLOR if coverage >= gmm_3d_coverage_threshold else GAP_COLOR
+	ax_tr.add_patch(plt.Rectangle((0.05, gauge_y), fill_w, gauge_h,
+																 facecolor=fill_color, alpha=0.75,
+																 transform=ax_tr.transAxes))
+	# Threshold tick
+	thr_x = 0.05 + 0.90 * gmm_3d_coverage_threshold
+	# ax_tr.axvline(thr_x, ymin=gauge_y - 0.02, ymax=gauge_y + gauge_h + 0.02,
+	# 							color="#37474F", linewidth=2.0, linestyle="--",
+	# 							transform=ax_tr.transAxes)
+	# ax_tr.text(thr_x, gauge_y + gauge_h + 0.04,
+	# 					 f"τ={gmm_3d_coverage_threshold:.0%}",
+	# 					 ha="center", va="bottom", fontsize=9, color="#37474F",
+	# 					 fontweight="bold", transform=ax_tr.transAxes)
+	# axvline in data coords (xlim is 0–1, so thr_x is already correct)
+	ax_tr.axvline(thr_x,
+								ymin=gauge_y - 0.02,
+								ymax=gauge_y + gauge_h + 0.02,
+								color="#37474F", linewidth=2.0, linestyle="--")
+	ax_tr.text(thr_x, gauge_y + gauge_h + 0.04,
+						f"τ={gmm_3d_coverage_threshold:.0%}",
+						ha="center", va="bottom", fontsize=9, color="#37474F",
+						fontweight="bold", transform=ax_tr.transAxes)
+	# Coverage label inside gauge
+	ax_tr.text(0.05 + fill_w / 2, gauge_y + gauge_h / 2,
+						 f"{coverage:.1%}",
+						 ha="center", va="center", fontsize=11, color="white",
+						 fontweight="bold", transform=ax_tr.transAxes)
+	# Decision annotation
+	dec_color = FULL_COLOR if decision == "3D" else GAP_COLOR
+	ax_tr.text(0.50, 0.55,
+						 f"{'✓' if decision == '3D' else '⚠'}  {decision} FEATURE SPACE CHOSEN",
+						 ha="center", va="center", fontsize=14, color=dec_color,
+						 fontweight="bold", transform=ax_tr.transAxes)
+	ax_tr.text(0.50, 0.46,
+						 f"feature_dim = {feature_dim}  |  "
+						 f"features: {', '.join(feature_names)}",
+						 ha="center", va="center", fontsize=9, color="#444",
+						 transform=ax_tr.transAxes)
+	# Sensitivity: how many more 2D-only samples would flip the decision?
+	flip_threshold_n = int(np.ceil(n_2d * gmm_3d_coverage_threshold)) - n_3d
+	if decision == "3D":
+			sensitivity_msg = (
+					f"Decision flips to 2D if {max(0, n_3d - int(n_2d * gmm_3d_coverage_threshold) + 1):,} "
+					f"more samples lose asym_gap"
+			)
+	else:
+			sensitivity_msg = (
+					f"Decision flips to 3D if {max(0, flip_threshold_n):,} "
+					f"more samples gain asym_gap"
+			)
+	ax_tr.text(0.50, 0.37, sensitivity_msg,
+						 ha="center", va="center", fontsize=8.5, color="#555",
+						 style="italic", transform=ax_tr.transAxes)
+	# Stats table
+	table_data = [
+			("n_2d_eligible",  f"{n_2d:,}"),
+			("n_3d_eligible",  f"{n_3d:,}"),
+			("n_gap (2D-only)", f"{n_gap:,}"),
+			("coverage_3d",    f"{coverage:.4f}"),
+			("threshold",      f"{gmm_3d_coverage_threshold:.2f}"),
+			("n_samples_fit",  f"{n_samples_fit:,}" if n_samples_fit else "N/A"),
+			("feature_dim",    str(feature_dim)),
+			("orphan_gap",     f"{orphan_gap:.4f}"),
+			("BIC-optimal K",  str(optimal_k_bic)),
+	]
+	y_row = 0.28
+	for key, val in table_data:
+			ax_tr.text(0.20, y_row, key, ha="right", va="center",
+								 fontsize=8, color="#555", transform=ax_tr.transAxes)
+			ax_tr.text(0.22, y_row, val, ha="left", va="center",
+								 fontsize=8, color="#111", fontweight="bold",
+								 transform=ax_tr.transAxes)
+			y_row -= 0.028
+	ax_tr.set_title(
+			"Coverage Gauge & Decision Summary\n"
+			f"(threshold = {gmm_3d_coverage_threshold:.0%})",
+			fontsize=9, fontweight="bold",
+	)
+	# ── ML: Feature-space scatter (set_sim vs orphan_ratio — always available) ─
+	# Draw GMM ellipses in the set_sim × orphan_ratio plane
+	def _draw_gmm_ellipses_2d(ax, col_x, col_y, n_std_list=(1.0, 2.0)):
+			"""
+			Draw GMM component ellipses in the (col_x, col_y) subspace.
+			col_x, col_y: indices into the feature vector used to train the GMM.
+			"""
+			from matplotlib.patches import Ellipse
+			import matplotlib.transforms as transforms
+			for k in range(gmm_model.n_components):
+					regime_name = class_mapping.get(k, f"C{k}")
+					color       = REGIME_COLORS.get(regime_name, "#607D8B")
+					mean_scaled = gmm_model.means_[k]          # shape [feature_dim]
+					cov_scaled  = gmm_model.covariances_[k]    # shape [feature_dim, feature_dim]
+					# Project to 2D subspace
+					mean_2d = mean_scaled[[col_x, col_y]]
+					cov_2d  = cov_scaled[np.ix_([col_x, col_y], [col_x, col_y])]
+					# Inverse-transform mean to unscaled space for display
+					mean_full_scaled = np.zeros(feature_dim)
+					mean_full_scaled[[col_x, col_y]] = mean_2d
+					mean_unscaled_full = gmm_scaler.inverse_transform(mean_full_scaled.reshape(1, -1))[0]
+					mean_display = mean_unscaled_full[[col_x, col_y]]
+					# Eigendecomposition for ellipse axes
+					eigvals, eigvecs = np.linalg.eigh(cov_2d)
+					eigvals = np.maximum(eigvals, 1e-10)
+					angle   = np.degrees(np.arctan2(eigvecs[1, 0], eigvecs[0, 0]))
+					# Scale eigenvalues back to unscaled space (approx: divide by scaler.scale_)
+					scale_x = gmm_scaler.scale_[col_x]
+					scale_y = gmm_scaler.scale_[col_y]
+					width_scale  = scale_x
+					height_scale = scale_y
+					for n_std in n_std_list:
+							width  = 2 * n_std * np.sqrt(eigvals[0]) * width_scale
+							height = 2 * n_std * np.sqrt(eigvals[1]) * height_scale
+							ell = Ellipse(
+									xy=mean_display,
+									width=width, height=height, angle=angle,
+									edgecolor=color, facecolor="none",
+									linewidth=1.5 if n_std == 1.0 else 0.8,
+									linestyle="-" if n_std == 1.0 else "--",
+									alpha=0.80, zorder=4,
+							)
+							ax.add_patch(ell)
+					# Centroid star
+					ax.scatter(
+							mean_display[0], mean_display[1],
+							marker="*", s=280, color=color, edgecolors="white",
+							linewidths=0.8, zorder=6,
+							label=f"{regime_name} centroid",
+					)
+	# Scatter: set_sim (col 0) vs orphan_ratio (col 1)
+	for regime in regimes_found:
+			sub   = df[df["regime"] == regime]
+			color = REGIME_COLORS.get(regime, "#607D8B")
+			n_plt = min(len(sub), 2000)
+			idx_s = rng.choice(len(sub), size=n_plt, replace=False)
+			sub_s = sub.iloc[idx_s]
+			# 3D-eligible: filled; 2D-only: hollow
+			mask_3d = sub_s["is_3d"].values
+			ax_ml.scatter(
+					sub_s.loc[sub_s["is_3d"], "set_sim"],
+					sub_s.loc[sub_s["is_3d"], "orphan_ratio"],
+					c=color, s=12, alpha=0.25, edgecolors="none",
+					label=f"{regime} (3D)",
+			)
+			ax_ml.scatter(
+					sub_s.loc[~sub_s["is_3d"], "set_sim"],
+					sub_s.loc[~sub_s["is_3d"], "orphan_ratio"],
+					facecolors="none", edgecolors=color, s=18, alpha=0.55,
+					linewidths=0.8, label=f"{regime} (2D-only)",
+			)
+	_draw_gmm_ellipses_2d(ax_ml, col_x=0, col_y=1)
+	ax_ml.set_xlabel("set_similarity", fontsize=9)
+	ax_ml.set_ylabel("orphan_ratio", fontsize=9)
+	ax_ml.set_title(
+			"Feature Space: set_similarity vs orphan_ratio\n"
+			"(filled=3D-eligible | hollow=2D-only | ★=GMM centroid | ellipses=1σ/2σ)",
+			fontsize=9, fontweight="bold",
+	)
+	# Deduplicate legend
+	handles, labels = ax_ml.get_legend_handles_labels()
+	seen = {}
+	for h, l in zip(handles, labels):
+			base = l.replace(" (3D)", "").replace(" (2D-only)", "").replace(" centroid", "")
+			if base not in seen:
+					seen[base] = h
+	ax_ml.legend(seen.values(), seen.keys(), fontsize=7.5, frameon=False, ncol=2)
+	ax_ml.spines[["top", "right"]].set_visible(False)
+	# ── MR: BIC / AIC model selection curves ─────────────────────────────────
+	if bic_scores and aic_scores:
+			k_vals  = sorted(bic_scores.keys())
+			bic_vals = [bic_scores[k] for k in k_vals]
+			aic_vals = [aic_scores[k] for k in k_vals]
+			ax_mr.plot(k_vals, bic_vals, color="#1565C0", linewidth=2.2,
+								 marker="o", markersize=6, label="BIC")
+			ax_mr.plot(k_vals, aic_vals, color="#c62828", linewidth=2.0,
+								 marker="s", markersize=5, linestyle="--", label="AIC")
+			# Annotate BIC values
+			for k, bv in zip(k_vals, bic_vals):
+					ax_mr.text(k, bv + (max(bic_vals) - min(bic_vals)) * 0.015,
+										 f"{bv:.0f}", ha="center", va="bottom",
+										 fontsize=7, color="#1565C0")
+			# Design K=3 line
+			ax_mr.axvline(3, color="#2e7d32", linewidth=1.8, linestyle="-",
+										alpha=0.80, label="Design K=3")
+			# BIC-optimal K line (if different)
+			if optimal_k_bic is not None and optimal_k_bic != 3:
+					ax_mr.axvline(optimal_k_bic, color="#FF6F00", linewidth=1.6,
+												linestyle="--", alpha=0.80,
+												label=f"BIC-optimal K={optimal_k_bic}")
+					delta_bic = bic_scores[3] - bic_scores[optimal_k_bic]
+					ax_mr.text(
+							optimal_k_bic + 0.08,
+							min(bic_vals) + (max(bic_vals) - min(bic_vals)) * 0.10,
+							f"ΔBIC(3−opt)={delta_bic:+.0f}",
+							fontsize=8, color="#FF6F00", fontweight="bold",
+					)
+			else:
+					ax_mr.text(
+							3.08,
+							min(bic_vals) + (max(bic_vals) - min(bic_vals)) * 0.10,
+							"BIC confirms K=3 ✓",
+							fontsize=8, color="#2e7d32", fontweight="bold",
+					)
+			ax_mr.set_xlabel("Number of GMM components  K", fontsize=9)
+			ax_mr.set_ylabel("Score (lower = better)", fontsize=9)
+			ax_mr.set_title(
+					"BIC / AIC Model Selection  K∈{2,…,6}\n"
+					"(design K=3 | does data support K=3?)",
+					fontsize=9, fontweight="bold",
+			)
+			ax_mr.set_xticks(k_vals)
+			ax_mr.legend(fontsize=8, frameon=False)
+			ax_mr.spines[["top", "right"]].set_visible(False)
+	else:
+			ax_mr.text(0.5, 0.5, "BIC/AIC scores not available\nin GMM payload",
+								 ha="center", va="center", fontsize=11, color="#888",
+								 transform=ax_mr.transAxes)
+			ax_mr.axis("off")
+	# ── BL: Centroid heatmap ──────────────────────────────────────────────────
+	regime_order_centroid = ["AGREEMENT", "SOFT_CONFLICT", "HARD_CONFLICT"]
+	centroid_matrix = np.full((len(regime_order_centroid), len(feature_names)), np.nan)
+	for ri, regime_name in enumerate(regime_order_centroid):
+			if regime_name in centroids_unscaled:
+					vals = centroids_unscaled[regime_name]
+					for fi in range(min(len(vals), len(feature_names))):
+							centroid_matrix[ri, fi] = vals[fi]
+	im_bl = ax_bl.imshow(
+			centroid_matrix, cmap="RdYlGn",
+			vmin=0, vmax=1, aspect="auto",
+	)
+	plt.colorbar(im_bl, ax=ax_bl, fraction=0.035, pad=0.03,
+							 label="Centroid value (unscaled)")
+	for ri in range(len(regime_order_centroid)):
+			for fi in range(len(feature_names)):
+					val = centroid_matrix[ri, fi]
+					if not np.isnan(val):
+							ax_bl.text(fi, ri, f"{val:.3f}",
+												 ha="center", va="center", fontsize=9,
+												 color="white" if val > 0.65 or val < 0.25 else "black",
+												 fontweight="bold")
+	ax_bl.set_xticks(range(len(feature_names)))
+	ax_bl.set_xticklabels(feature_names, fontsize=8.5, rotation=20, ha="right")
+	ax_bl.set_yticks(range(len(regime_order_centroid)))
+	ax_bl.set_yticklabels(
+			[r.replace("_", "\n") for r in regime_order_centroid], fontsize=8.5
+	)
+	ax_bl.set_title(
+			"GMM Centroid Heatmap  (regime × feature, unscaled)\n"
+			"(are centroid positions semantically coherent?)",
+			fontsize=9, fontweight="bold",
+	)
+	# ── BC: Centroid separation on orphan_ratio axis ──────────────────────────
+	orphan_centroids = {
+			regime_name: centroids_unscaled[regime_name][1]   # col 1 = orphan_ratio
+			for regime_name in regime_order_centroid
+			if regime_name in centroids_unscaled
+			and len(centroids_unscaled[regime_name]) > 1
+	}
+	if orphan_centroids:
+			sorted_regimes = sorted(orphan_centroids, key=orphan_centroids.get, reverse=True)
+			x_bc   = np.arange(len(sorted_regimes))
+			vals_bc = [orphan_centroids[r] for r in sorted_regimes]
+			gap_ok  = orphan_gap >= 0.05
+			bar_colors = [REGIME_COLORS.get(r, "#607D8B") for r in sorted_regimes]
+			ax_bc.bar(x_bc, vals_bc, color=bar_colors, alpha=0.72, edgecolor="none")
+			# Annotate values
+			for xi, (r, v) in enumerate(zip(sorted_regimes, vals_bc)):
+					ax_bc.text(xi, v + 0.005, f"{v:.4f}",
+										 ha="center", va="bottom", fontsize=8.5, fontweight="bold",
+										 color=REGIME_COLORS.get(r, "#607D8B"))
+			# orphan_gap annotation (between top-2 bars)
+			if len(vals_bc) >= 2:
+					y_gap = vals_bc[1] + (vals_bc[0] - vals_bc[1]) / 2
+					ax_bc.annotate(
+							"",
+							xy=(0, vals_bc[0]), 
+							xytext=(0, vals_bc[1]),
+							arrowprops=dict(arrowstyle="<->", color="#37474F", lw=1.5),
+					)
+					gap_color = FULL_COLOR if gap_ok else GAP_COLOR
+					ax_bc.text(
+							0.35, y_gap,
+							f"orphan_gap = {orphan_gap:.4f}\n"
+							f"{'✓ ≥ 0.05 (strong separation)' if gap_ok else '⚠ < 0.05 (weak separation)'}",
+							ha="left", va="center", fontsize=8.5, color=gap_color,
+							fontweight="bold",
+					)
+			ax_bc.axhline(0.05, color="#37474F", linewidth=1.2, linestyle=":",
+										alpha=0.70, label="Warning threshold (0.05)")
+			ax_bc.set_xticks(x_bc)
+			ax_bc.set_xticklabels(
+					[r.replace("_", "\n") for r in sorted_regimes], fontsize=8.5
+			)
+			ax_bc.set_ylabel("orphan_ratio centroid (unscaled)", fontsize=9)
+			ax_bc.set_title(
+					"Centroid Separation on orphan_ratio Axis\n"
+					"(gap between top-2 clusters — warning if < 0.05)",
+					fontsize=9, fontweight="bold",
+			)
+			ax_bc.legend(fontsize=8, frameon=False)
+			ax_bc.spines[["top", "right"]].set_visible(False)
+	# ── BR: 2D-only samples in feature space ─────────────────────────────────
+	df_2d_only = df[~df["is_3d"]]
+	df_3d_elig = df[ df["is_3d"]]
+	# Background: 3D-eligible (faint)
+	for regime in regimes_found:
+			sub   = df_3d_elig[df_3d_elig["regime"] == regime]
+			color = REGIME_COLORS.get(regime, "#607D8B")
+			n_bg  = min(len(sub), 800)
+			if n_bg > 0:
+					idx_bg = rng.choice(len(sub), size=n_bg, replace=False)
+					ax_br.scatter(
+							sub.iloc[idx_bg]["set_sim"],
+							sub.iloc[idx_bg]["orphan_ratio"],
+							c=color, s=8, alpha=0.10, edgecolors="none",
+					)
+	# Foreground: 2D-only (prominent)
+	for regime in regimes_found:
+			sub   = df_2d_only[df_2d_only["regime"] == regime]
+			if sub.empty: continue
+			color = REGIME_COLORS.get(regime, "#607D8B")
+			n_fg  = min(len(sub), 1500)
+			idx_fg = rng.choice(len(sub), size=n_fg, replace=False)
+			ax_br.scatter(
+					sub.iloc[idx_fg]["set_sim"],
+					sub.iloc[idx_fg]["orphan_ratio"],
+					c=color, s=22, alpha=0.60, edgecolors="white",
+					linewidths=0.4, zorder=4,
+					label=f"{regime} 2D-only  (n={len(sub):,})",
+			)
+	# GMM centroids (2D projection)
+	for k in range(gmm_model.n_components):
+			regime_name = class_mapping.get(k, f"C{k}")
+			color       = REGIME_COLORS.get(regime_name, "#607D8B")
+			if regime_name in centroids_unscaled:
+					cx = centroids_unscaled[regime_name][0]   # set_similarity
+					cy = centroids_unscaled[regime_name][1]   # orphan_ratio
+					ax_br.scatter(cx, cy, marker="*", s=300, color=color,
+												edgecolors="white", linewidths=0.8, zorder=7)
+	ax_br.set_xlabel("set_similarity", fontsize=9)
+	ax_br.set_ylabel("orphan_ratio", fontsize=9)
+	ax_br.set_title(
+			"2D-Only (NLI-Bypassed) Samples in Feature Space\n"
+			"(faint=3D-eligible background | bright=2D-only | ★=GMM centroid)\n"
+			"Are 2D-only samples near the HARD_CONFLICT centroid (expected)?",
+			fontsize=9, fontweight="bold",
+	)
+	ax_br.legend(fontsize=7.5, frameon=False)
+	ax_br.spines[["top", "right"]].set_visible(False)
+	# ── BL2: asym_gap histogram (3D-eligible only) ────────────────────────────
+	abs_gaps = df_3d_elig["abs_asym_gap"].dropna().values
+	if len(abs_gaps) > 0:
+			bins_gap = np.linspace(0, abs_gaps.max() * 1.05, 35)
+			ax_bl2.hist(abs_gaps, bins=bins_gap, color=FULL_COLOR, alpha=0.65,
+									edgecolor="none",
+									label=f"3D-eligible  (n={len(abs_gaps):,})")
+			# KDE overlay
+			try:
+					from scipy.stats import gaussian_kde
+					kde_g = gaussian_kde(abs_gaps, bw_method="scott")
+					xg    = np.linspace(0, abs_gaps.max() * 1.05, 300)
+					yg    = kde_g(xg) * len(abs_gaps) * (bins_gap[1] - bins_gap[0])
+					ax_bl2.plot(xg, yg, color="#37474F", linewidth=1.8, alpha=0.80,
+											label="KDE")
+			except Exception:
+					pass
+			# Median line
+			med_gap = float(np.median(abs_gaps))
+			ax_bl2.axvline(med_gap, color=FULL_COLOR, linewidth=1.6,
+										 linestyle="--", label=f"Median = {med_gap:.4f}")
+			# Mean line
+			mean_gap = float(np.mean(abs_gaps))
+			ax_bl2.axvline(mean_gap, color="#FF6F00", linewidth=1.4,
+										 linestyle=":", label=f"Mean = {mean_gap:.4f}")
+	# Annotation for 2D-only
+	ax_bl2.text(
+			0.97, 0.92,
+			f"2D-only samples (n={n_gap:,})\nhave asym_gap = None\n(NLI bypassed)",
+			ha="right", va="top", fontsize=8, color=GAP_COLOR,
+			fontweight="bold", transform=ax_bl2.transAxes,
+			bbox=dict(boxstyle="round,pad=0.3", facecolor="#FFEBEE",
+								edgecolor=GAP_COLOR, alpha=0.80),
+	)
+	ax_bl2.set_xlabel("|asymmetry_gap|  (3D-eligible samples only)", fontsize=9)
+	ax_bl2.set_ylabel("Concept count", fontsize=9)
+	ax_bl2.set_title(
+			"|asym_gap| Distribution  (3D-eligible samples)\n"
+			"What discriminative signal do 2D-only samples miss?",
+			fontsize=9, fontweight="bold",
+	)
+	ax_bl2.legend(fontsize=7.5, frameon=False)
+	ax_bl2.spines[["top", "right"]].set_visible(False)
+	# ── Footer ────────────────────────────────────────────────────────────────
+	footer = (
+			f"n_2d_eligible={n_2d:,}  |  "
+			f"n_3d_eligible={n_3d:,}  |  "
+			f"n_gap={n_gap:,} ({n_gap / max(n_2d, 1):.1%})  |  "
+			f"coverage_3d={coverage:.4f}  |  "
+			f"threshold={gmm_3d_coverage_threshold}  |  "
+			f"decision={decision}  |  "
+			f"feature_dim={feature_dim}  |  "
+			f"orphan_gap={orphan_gap:.4f}  |  "
+			f"BIC-optimal K={optimal_k_bic}  |  "
+			f"AIC-optimal K={optimal_k_aic}"
+	)
+	fig.text(
+			0.5, -0.005, footer,
+			ha="center", va="top", fontsize=8,
+			color="#444", style="italic",
+			transform=fig.transFigure,
+	)
+	_save(fig, out_dir, "V17_feature_dim_decision_audit")
+	print(
+			f"[VIZ][V17] Done. "
+			f"n_2d={n_2d:,} | n_3d={n_3d:,} | n_gap={n_gap:,} | "
+			f"coverage={coverage:.4f} | decision={decision} | "
+			f"feature_dim={feature_dim} | orphan_gap={orphan_gap:.4f}"
+	)
 
 def set_seeds(seed: int = 42):
 		random.seed(seed)
@@ -3357,6 +4666,13 @@ def main():
 		default=15,
 		metavar="N",
 		help="Number of concept labels annotated on the Zipf curve (V3).",
+	)
+
+	parser.add_argument(
+		"--tau_density_filter",
+		type=float,
+		default=0.3,
+		help="Density threshold for filtering out low-density regions in V",
 	)
 	parser.add_argument("--verbose", "-v", action="store_true", help="Verbosity")
 	args = parser.parse_args()
@@ -3456,6 +4772,12 @@ def main():
 			out_dir=VIZ_DIR,
 		)
 		viz_bic_aic(gmm_pkl=gmm_pkl, out_dir=VIZ_DIR,)
+		viz_feature_dim_decision_audit(
+			audit_jsonl              = args.audit_jsonl,
+			gmm_pkl                  = gmm_pkl,
+			gmm_3d_coverage_threshold = 0.80,
+			out_dir                  = VIZ_DIR,
+		)
 
 	stage4_parquet = os.path.join(OUTPUT_DIR, AUDIT_FILE.replace(".jsonl", "_auditable_matrix.parquet"))
 	if os.path.exists(stage4_parquet):
@@ -3463,6 +4785,11 @@ def main():
 		viz_gmm_confidence_diagnostics(stage4_parquet=stage4_parquet, out_dir=VIZ_DIR,)
 		viz_gmm_probability_simplex(stage4_parquet=stage4_parquet, out_dir=VIZ_DIR,)
 		viz_supervision_routing_impact(stage4_parquet=stage4_parquet, out_dir=VIZ_DIR,)
+		viz_density_gate_audit(
+			stage4_parquet=stage4_parquet,
+			tau_density_filter=args.tau_density_filter,
+			out_dir=VIZ_DIR,
+		)
 
 if __name__ == "__main__":
 	main()
