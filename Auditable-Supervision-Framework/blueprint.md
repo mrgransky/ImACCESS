@@ -18,7 +18,9 @@ This decoupling guarantees that our density metrics reflect true corpus-level st
 ## PHASE 1: Stateless Map (GPU-Heavy / Per-Sample)
 
 ### Stage 1: Joint VLM Extraction with CoT Attribution
-*(unchanged)*
+*   **Goal:** Extract distinct semantic concepts while forcing the VLM to explicitly attribute their modality source.
+*   **Mechanism:** A highly structured System Prompt fed to a Joint VLM (Image + Caption). It enforces strict domain rules (Anti-Scope-Creep, Proper Noun Ban) and forces the VLM to categorize outputs.
+*   **Output (JSON):** Three distinct lists of raw open-vocabulary concepts: `C_text` (Coverage), `C_vis` (Grounding), and `C_fused` (Density resolution). *Crucial constraint: outputs `[]` for `C_fused` if modalities are completely disjoint.*
 
 ### Stage 2: Modality Conflict Quantification ★ *(Measurement Only — Routing Deferred)*
 * **Goal:** Mathematically quantify cross-modal dissonance and emit a **continuous conflict feature vector** per sample. ★ *No regime label is assigned here.*
