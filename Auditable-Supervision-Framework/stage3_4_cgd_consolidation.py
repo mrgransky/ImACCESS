@@ -234,79 +234,85 @@ class CGDConsolidator:
 	
 	# Tier-0/1/2 resolution
 	def _resolve_to_canonical(
-			self,
-			raw_concept: str,
-			tau_sim_override: Optional[float] = None,
+		self,
+		raw_concept: str,
+		tau_sim_override: Optional[float] = None,
 	) -> Optional[str]:
-			"""
-			Resolves a raw VLM concept to the discovered target vocabulary V.
-			Lookup order:
-					Tier 0 — Blacklist guard: drop immediately if concept is blacklisted.
-										Uses pre-normalised set (self.blacklisted_concepts_norm)
-										for O(1) lookup.
-					Tier 1 — Direct hit in canonical_map.json (O(1) dict lookup).
-					Tier 2 — Nearest-neighbour cosine search over V using emb_cache
-										(O(|V|) dot products, all in-memory numpy).
-					None   — Best cosine similarity < tau (concept is out-of-domain).
-			Parameters
-			----------
-			raw_concept      : raw VLM string to resolve.
-			tau_sim_override : if provided, overrides self.tau_sim for this call only.
-												 Used by the robustness fallback in consolidate_sample
-												 to apply a softer threshold (self.tau_sim * 0.85)
-												 without mutating instance state.
-			"""
-			tau  = tau_sim_override if tau_sim_override is not None else self.tau_sim
-			norm = raw_concept.lower().strip()
-			# ── Tier 0: Blacklist guard ───────────────────────────────────────────
-			if norm in self.blacklisted_concepts_norm:
-					if self.verbose:
-							print(f"  [RESOLVE] ✗ '{raw_concept}' → blacklisted → dropped")
-					return None
-			# ── Tier 1: Direct canonical map hit ─────────────────────────────────
-			if raw_concept in self.canonical_map:
-					return self.canonical_map[raw_concept]
-			# Suppress Tier-2 for single short tokens — high ambiguity risk.
-			if len(raw_concept.split()) == 1 and len(raw_concept) <= 5:
-					if self.verbose:
-							print(
-									f"  [RESOLVE] ✗ '{raw_concept}' → single short token "
-									f"→ Tier-2 suppressed (ambiguity risk)"
-							)
-					self.rejection_stats["low_similarity"].append((raw_concept, None, 0.0))
-					return None
-			# ── Tier 2: Nearest-neighbour cosine search ───────────────────────────
-			emb_c = self._get_embedding(raw_concept)
-			if emb_c is None:
-					self.rejection_stats["no_embedding"].append(raw_concept)
-					if self.verbose:
-							print(
-									f"  [RESOLVE] ✗ '{raw_concept}' → no embedding available → dropped"
-							)
-					return None
-			best_class: Optional[str] = None
-			best_sim: float = -1.0
-			for target_class in self.target_vocabulary:
-					sim = self._fast_cosine_sim(raw_concept, target_class)
-					if sim > best_sim:
-							best_sim   = sim
-							best_class = target_class
-			if best_sim < tau:
-					self.rejection_stats["low_similarity"].append(
-							(raw_concept, best_class, best_sim)
-					)
-					if self.verbose:
-							print(
-									f"  [RESOLVE] ✗ '{raw_concept}' → best='{best_class}' "
-									f"sim={best_sim:.4f} < tau={tau:.4f} → dropped"
-							)
-					return None
+		"""
+		Resolves a raw VLM concept to the discovered target vocabulary V.
+		Lookup order:
+				Tier 0 — Blacklist guard: drop immediately if concept is blacklisted.
+									Uses pre-normalised set (self.blacklisted_concepts_norm)
+									for O(1) lookup.
+				Tier 1 — Direct hit in canonical_map.json (O(1) dict lookup).
+				Tier 2 — Nearest-neighbour cosine search over V using emb_cache
+									(O(|V|) dot products, all in-memory numpy).
+				None   — Best cosine similarity < tau (concept is out-of-domain).
+		Parameters
+		----------
+		raw_concept      : raw VLM string to resolve.
+		tau_sim_override : if provided, overrides self.tau_sim for this call only.
+											 Used by the robustness fallback in consolidate_sample
+											 to apply a softer threshold (self.tau_sim * 0.85)
+											 without mutating instance state.
+		"""
+		tau  = tau_sim_override if tau_sim_override is not None else self.tau_sim
+		norm = raw_concept.lower().strip()
+		
+		# ── Tier 0: Blacklist guard ───────────────────────────────────────────
+		if norm in self.blacklisted_concepts_norm:
 			if self.verbose:
-					print(
-							f"  [RESOLVE] ✓ '{raw_concept}' → '{best_class}' "
-							f"sim={best_sim:.4f} (nearest-neighbor)"
-					)
-			return best_class
+				print(f"  [RESOLVE] ✗ '{raw_concept}' → blacklisted → dropped")
+			return None
+		
+		# ── Tier 1: Direct canonical map hit ─────────────────────────────────
+		if raw_concept in self.canonical_map:
+			return self.canonical_map[raw_concept]
+		
+		# Suppress Tier-2 for single short tokens — high ambiguity risk.
+		if len(raw_concept.split()) == 1 and len(raw_concept) <= 5:
+				if self.verbose:
+						print(
+								f"  [RESOLVE] ✗ '{raw_concept}' → single short token "
+								f"→ Tier-2 suppressed (ambiguity risk)"
+						)
+				self.rejection_stats["low_similarity"].append((raw_concept, None, 0.0))
+				return None
+		
+		# ── Tier 2: Nearest-neighbour cosine search ───────────────────────────
+		emb_c = self._get_embedding(raw_concept)
+		if emb_c is None:
+			self.rejection_stats["no_embedding"].append(raw_concept)
+			if self.verbose:
+				print(f"  [RESOLVE] ✗ '{raw_concept}' → no embedding available → dropped")
+			return None
+		best_class: Optional[str] = None
+		best_sim: float = -1.0
+		
+		for target_class in self.target_vocabulary:
+				sim = self._fast_cosine_sim(raw_concept, target_class)
+				if sim > best_sim:
+						best_sim   = sim
+						best_class = target_class
+		
+		if best_sim < tau:
+			self.rejection_stats["low_similarity"].append(
+				(raw_concept, best_class, best_sim)
+			)
+			if self.verbose:
+				print(
+					f"  [RESOLVE] ✗ '{raw_concept}' → best='{best_class}' "
+					f"sim={best_sim:.4f} < tau={tau:.4f} → dropped"
+				)
+			return None
+		
+		if self.verbose:
+			print(
+				f"  [RESOLVE] ✓ '{raw_concept}' → '{best_class}' "
+				f"sim={best_sim:.4f} (nearest-neighbor)"
+			)
+		
+		return best_class
 	
 	# Stage 3: Micro-CGD Audit
 	def audit_concept_CGD(
@@ -462,11 +468,12 @@ class CGDConsolidator:
 			}
 			if self.verbose:
 				print(
-					f"  [GMM] {sample_id} | "
-					f"feat_raw={feat_raw.tolist()} | "
-					f"feat_scaled={feat_scaled.round(3).tolist()} | "
-					f"probs={{{', '.join(f'{r}:{p:.3f}' for r, p in gmm_probabilities.items())}}} | "
-					f"→ regime={regime} (conf={gmm_confidence:.4f})"
+					f"{sample_id}\n"
+					f"[GMM]\n"
+					f"  ├─ feat_raw: {feat_raw.tolist()}\n"
+					f"  ├─ feat_scaled: {feat_scaled.round(3).tolist()}\n"
+					f"  ├─ probs: {{{', '.join(f'{r}:{p:.3f}' for r, p in gmm_probabilities.items())}}}\n"
+					f"  └─ regime: {regime} (conf={gmm_confidence:.4f})"
 				)
 			
 			# Warn on low-confidence GMM assignments.
@@ -504,10 +511,10 @@ class CGDConsolidator:
 		seen: set = set()
 		
 		def _add(concepts: List[str], modality: str) -> None:
-				for c in concepts:
-						if c and c not in seen:
-								concept_pool.append((c, modality))
-								seen.add(c)
+			for c in concepts:
+				if c and c not in seen:
+					concept_pool.append((c, modality))
+					seen.add(c)
 		
 		_add(c_text, "TEXT")
 		_add(c_vis,  "VISUAL")
@@ -516,12 +523,12 @@ class CGDConsolidator:
 				_add(c_fused, "FUSED")  # fused included only for trustworthy regimes
 		
 		if self.verbose:
-				print(
-						f"\n>> [{sample_id}] heuristic={heuristic_regime} | "
-						f"gmm_regime={regime} | "
-						f"text={len(c_text)} vis={len(c_vis)} fused={len(c_fused)} | "
-						f"pool={len(concept_pool)} concepts"
-				)
+			print(
+				f"\n>> heuristic_regime={heuristic_regime} | "
+				f"gmm_regime={regime} | "
+				f"text={len(c_text)} vis={len(c_vis)} fused={len(c_fused)} | "
+				f"pool={len(concept_pool)} concepts"
+			)
 		
 		# Stage 3: CGD Audit
 		# Resolve canonical ONCE per concept and audit in a single pass.
@@ -561,23 +568,22 @@ class CGDConsolidator:
 			for c, _ in concept_pool
 		}
 		if self.verbose:
-			print(
-				f"   Audited: {len(audited_concepts)}/{len(concept_pool)} concepts "
-				f"resolved to vocabulary"
-			)
+			print(f"Audited: {len(audited_concepts)}/{len(concept_pool)} concepts resolved to vocab")
 		
-		# Stage 4: Regime-Aware Gated Consolidation
+		# Stage 4: 
+		# Regime-Aware Gated Consolidation & 
+		# Gradient Scaling Coordinate Derivation
 		pos_targets: set = set()
 		hn_targets:  set = set()
 		w_pos: float = 1.0
 		w_neg: float = 0.0
 		
 		if regime == "AGREEMENT":
-				# Both modalities agree — accept all resolved concepts as positives.
-				w_pos = 1.0
-				w_neg = 0.0
-				for c, data in audited_concepts.items():
-						pos_targets.add(data["canonical"])
+			# Both modalities agree — accept all resolved concepts as positives.
+			w_pos = 1.0
+			w_neg = 0.0
+			for c, data in audited_concepts.items():
+				pos_targets.add(data["canonical"])
 		elif regime == "SOFT_CONFLICT":
 				# Modalities share topic but differ in density.
 				# Gate by D(c) >= tau to suppress over-abstract hypernyms.
@@ -620,78 +626,71 @@ class CGDConsolidator:
 				else:
 						w_neg = 0.0
 		elif regime == "MISSING_MODALITY":
-				# Only visual signal is available; accept resolved visual concepts
-				# as positives with reduced confidence. No hard negatives.
-				w_pos = 0.50
-				w_neg = 0.0
-				for c, data in audited_concepts.items():
-						if data["source_modality"] == "VISUAL":
-								pos_targets.add(data["canonical"])
-				if self.verbose:
-						print(
-								f"  [MISSING_MODALITY] {sample_id} | "
-								f"visual-only supervision | w_pos={w_pos}"
-						)
+			# Only visual signal is available; accept resolved visual concepts
+			# as positives with reduced confidence. No hard negatives.
+			w_pos = 0.50
+			w_neg = 0.0
+			for c, data in audited_concepts.items():
+				if data["source_modality"] == "VISUAL":
+					pos_targets.add(data["canonical"])
+			if self.verbose:
+				print(f"  [{regime}] visual-only supervision | w_pos={w_pos}")
 		else:
-				# Truly unknown regime — conservative fallback.
-				# This branch should never be reached in production; if it is,
-				# the regime string from Stage 2 has changed without updating Stage 4.
-				w_pos = 0.50
-				w_neg = 0.0
-				for c, data in audited_concepts.items():
-						pos_targets.add(data["canonical"])
-				if self.verbose:
-						print(
-								f"  [WARN] {sample_id} | regime='{regime}' unknown → "
-								f"conservative fallback (all resolved → pos_targets, "
-								f"w_pos={w_pos}, w_neg={w_neg})"
-						)
+			# Truly unknown regime — conservative fallback.
+			# This branch should never be reached in production; if it is,
+			# the regime string from Stage 2 has changed without updating Stage 4.
+			w_pos = 0.50
+			w_neg = 0.0
+			for c, data in audited_concepts.items():
+				pos_targets.add(data["canonical"])
+			if self.verbose:
+				print(
+					f"  [WARN] {sample_id} | regime='{regime}' unknown → "
+					f"conservative fallback (all resolved → pos_targets, "
+					f"w_pos={w_pos}, w_neg={w_neg})"
+				)
 		
-		# Canonical collision guard
+		# Canonical collision guard:
 		# A canonical cannot be both a positive target and a hard negative.
 		# pos always wins — remove from hn_targets.
 		canonical_collision = pos_targets & hn_targets
 		if canonical_collision:
-				if self.verbose:
-						print(
-								f"  [COLLISION] {sample_id} | "
-								f"{len(canonical_collision)} canonical(s) in both pos and hn — "
-								f"removing from hn_targets: {sorted(canonical_collision)}"
-						)
-				hn_targets -= canonical_collision
-		
-		# ── Sanity assertions ─────────────────────────────────────────────────
-		if regime == "HARD_CONFLICT" and len(hn_targets) == 0 and w_neg > 0:
+			if self.verbose:
 				print(
-						f"[BUG] HARD_CONFLICT with hn=0 but w_neg={w_neg:.4f} "
-						f"for {sample_id}"
+					f"  [COLLISION] "
+					f"{len(canonical_collision)} canonical(s) in both pos and hn — "
+					f"removing from hn_targets: {sorted(canonical_collision)}"
 				)
-		for c in audited_concepts:
-				if c.lower().strip() in self.blacklisted_concepts_norm:
-						print(
-								f"[BUG] blacklisted concept survived resolution: "
-								f"'{c}' → '{audited_concepts[c]['canonical']}' "
-								f"for {sample_id}"
-						)
+			hn_targets -= canonical_collision
 		
-		# ── Robustness fallback ───────────────────────────────────────────────
+		# Sanity assertions
+		if regime == "HARD_CONFLICT" and len(hn_targets) == 0 and w_neg > 0:
+			print(f"  <!> [BUG] HARD_CONFLICT with hn=0 but w_neg={w_neg:.4f}")
+		
+		for c in audited_concepts:
+			if c.lower().strip() in self.blacklisted_concepts_norm:
+				print(
+					f"  <!> [BUG] blacklisted concept survived resolution: "
+					f"'{c}' → '{audited_concepts[c]['canonical']}' "
+				)
+		
+		# Robustness fallback:
 		# If pos_targets is still empty after gating (e.g. all D(c) < tau in a
 		# SOFT_CONFLICT sample with very abstract concepts), recover using raw
 		# visual concepts — the most grounded signal available.
 		# The density gate is intentionally bypassed here: this is a last-resort
 		# path to prevent empty supervision, not a quality gate.
-		#
+
 		# resolved_cache distinguishes two None cases:
 		#   - key present, value None  → already attempted and dropped (blacklisted
 		#     or below tau); do NOT retry even with a softer threshold.
 		#   - key absent               → not yet attempted; safe to retry.
-		
 		if not pos_targets and c_vis:
+			tau_sim_override = self.tau_sim * 0.85
 			if self.verbose:
 				print(
-					f"  [FALLBACK] {sample_id} | pos_targets empty after gating — "
-					f"recovering from c_vis ({len(c_vis)} concepts) with "
-					f"tau_sim_override={self.tau_sim * 0.85:.4f}"
+					f"  [FALLBACK] pos_targets empty after gating, recovering from "
+					f"c_vis (tau_sim_override={tau_sim_override:.4f})"
 				)
 			
 			for c in c_vis:
@@ -700,13 +699,14 @@ class CGDConsolidator:
 					resolved = resolved_cache[c]
 				else:
 					# Not in pool (e.g. c_vis was excluded for this regime) — retry.
-					resolved = self._resolve_to_canonical(c, tau_sim_override=self.tau_sim * 0.85)
+					resolved = self._resolve_to_canonical(c, tau_sim_override=tau_sim_override)
 				if resolved:
 					pos_targets.add(resolved)
 			
 			if self.verbose:
-				print(f"  [FALLBACK] Recovered {len(pos_targets)} pos_targets from c_vis fallback.")
+				print(f"  >> Recovered {len(pos_targets)} pos_targets: {pos_targets} from {len(c_vis)} c_vis: {c_vis}")
 		
+		# flatten concepts:
 		flattened_concepts = {
 			concept: {
 				**data["scores"],
@@ -717,13 +717,13 @@ class CGDConsolidator:
 		}
 		
 		if self.verbose:
-				print(json.dumps(flattened_concepts, indent=2))
-				print(
-						f">> {len(audited_concepts)} audited | "
-						f"pos={len(pos_targets)} | hn={len(hn_targets)} | "
-						f"w_pos={w_pos:.4f} | w_neg={w_neg:.4f}"
-				)
-				print("-" * 120)
+			print(json.dumps(flattened_concepts, indent=2))
+			print(
+				f">> {len(audited_concepts)} audited | "
+				f"pos={len(pos_targets)} | hn={len(hn_targets)} | "
+				f"w_pos={w_pos:.4f} | w_neg={w_neg:.4f}"
+			)
+			print("-" * 80)
 		
 		return {
 			"id":               sample_id,
