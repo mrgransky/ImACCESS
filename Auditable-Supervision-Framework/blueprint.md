@@ -36,13 +36,13 @@ This decoupling guarantees that our density metrics reflect true corpus-level st
 ### Stage 2: Modality Conflict Quantification ★ *(Measurement Only — Routing Deferred)*
 * **Goal:** Mathematically quantify cross-modal dissonance and emit a **continuous conflict feature vector** per sample. ★ *No regime label is assigned here.*
 * **Mechanism:**
-  1. **Symmetric Audit (Cosine):** Uses `all-MiniLM` to find semantic overlap between `C\_text` and `C\_vis`.
-     * Identifies unverified Orphans ($O\_{text}, O\_{vis}$); computes `set\_similarity` and `orphan\_ratio`.
+  1. **Symmetric Audit (Cosine):** Uses `all-MiniLM` to find semantic overlap between $C_{text}$ and $C_{vis}$.
+     * Identifies unverified Orphans ($O_{text}, O_{vis}$); computes $set\_similarity$ and $orphan\_ratio$.
   2. **Asymmetric Audit (NLI):** Uses `DeBERTa-NLI` cross-encoder to compute directional entailment.
-     * **Asymmetry Gap ($\Delta\_{density}$)** proves which modality is denser (Hyponym) vs. broader (Hypernym).
-     * ★ *NLI is bypassed when `orphan\_ratio` ≥ $\tau\_{orphan}$; $\Delta\_i$ is set to `None` in this case.*
-  3. ★ **Heuristic Regime Tag $\hat{\mathcal{R}}\_i$:** A deterministic label (*Agreement / Soft / Hard*) is stored as an **immutable audit field only** — it is never used as a routing gate downstream.
-* **Output:** ★ Continuous feature vector $\mathbf{f}\_i = [\text{set\_sim}\_i,\; \text{orphan\_ratio}\_i,\;  \Delta\_i|]$ (2D when $\Delta\_i = \text{None}$) serialised inside the `Evidence_Receipt` JSON alongside all raw metrics.
+     * **Asymmetry Gap ($\Delta_{density}$)** proves which modality is denser (Hyponym) vs. broader (Hypernym).
+     * ★ *NLI is bypassed when $orphan\_ratio$ ≥ $\tau_{orphan}$; $\Delta_i$ is set to `None` in this case.*
+  3. ★ **Heuristic Regime Tag $\hat{\mathcal{R}}_i$:** A deterministic label (*Agreement / Soft / Hard*) is stored as an **immutable audit field only** — it is never used as a routing gate downstream.
+* **Output:** ★ Continuous feature vector $\mathbf{f}_i = [set\_sim_i,\; orphan\_ratio_i,\;  \Delta_i|]$ (2D when $\Delta_i = \text{None}$) serialised inside the `Evidence_Receipt` JSON alongside all raw metrics.
 
 ---
 
