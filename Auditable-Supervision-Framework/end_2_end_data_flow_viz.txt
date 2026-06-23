@@ -8,10 +8,15 @@
   │ For Sample i:                                                     │
   │  ├─ Stage 1: Joint MLM Extraction with CoT (Prompt Engineering)   │
   │  │           => C_text, C_vis, C_fused                            │
-  │  └─ Stage 2: Modality Conflict Quantification                     │
-  │              => E_sym (Cosine): Finds Orphans (O_text, O_vis)     │
-  │              => E_asym (NLI): Computes Asymmetry Gap (Δ_density)  │
-  │              => Output: Regime [AGREEMENT | SOFT | HARD]          │
+  │  └─ Stage 2: Modality Conflict Quantification (STATELESS / NO GATE)│
+  │              => E_sym (Cosine): set_similarity, orphan_ratio      │
+  │              => E_asym (NLI): entail_V_to_T, entail_T_to_V        │
+  │              => Output: Continuous feature vector f_i             │
+  │                         f_i = [set_sim, orphan_ratio, |Δ|]        │
+  │              => Immutable Audit: heuristic_regime (R_i_heur)      │
+  │              * No routing decision here -- deferred to Bridge GMM *│
+  │              * NLI bypassed when orphan_ratio >= tau_orphan       │
+  │                leaving Δ = None (forces 2D GMM fallback) *        │
   └───────────────────────────────────────────────────────────────────┘
                              │ (Append continuously to crash-safe disk)
                              ▼
@@ -19,22 +24,30 @@
                              │
                              ▼
 =========================================================================
-[ GLOBAL AGGREGATION: Corpus-Level Ontology Discovery ]
+[ GLOBAL AGGREGATION: Corpus-Level Ontology Discovery + GMM Induction ]
 =========================================================================
   ┌───────────────────────────────────────────────────────────────────┐
-  │ 1. Extract & count all unique raw concepts => D_global frequencies│
-  │     ├─ D_global​(c)=1.0−exp(−α⋅Freq(c))                            │
-  │ 2. Pre-compute 'EMBED_MODEL' embedding cache.                     │
-  │ 3. Execute `clustering.py` Engine:                                │
-  │     ├─ Agglomerative Linkage & Adaptive k Search                  │
-  │     ├─ Virtual Hypernym Synthesis                                 │
-  │     └─ 5-Signal Composite Canonical Assignment                    │
+  │ Step 1A: Vocabulary Induction                                     │
+  │  ├─ Extract raw concepts -> compute D_global frequencies          │
+  │  │   D_global(c) = 1.0 - exp(-α * Freq(c))                        │
+  │  ├─ Pre-compute 'EMBED_MODEL' embedding cache                     │
+  │  └─ Execute global_ontology_builder.py (clustering.py)            │
+  │      ├─ Agglomerative Linkage & Adaptive k Search                 │
+  │      ├─ Virtual Hypernym Synthesis                                │
+  │      └─ 5-Signal Composite Canonical Assignment                   │
+  │                                                                   │
+  │ Step 1B: GMM Regime Induction [★ NEW]                             │
+  │  ├─ Collect f_i = [set_sim, orphan_ratio, |Δ|] for all samples    │
+  │  ├─ If Δ_i = None -> 2D fallback vector: [set_sim, orphan_ratio]  │
+  │  ├─ Fit GaussianMixture(K=3) via BIC search over K ∈ {2,...,6}    │
+  │  ├─ Fit StandardScaler (prevents cosine covariance distortion)    │
+  │  └─ Assign cluster semantics: AGREEMENT, SOFT, and HARD           │
   └───────────────────────────────────────────────────────────────────┘
                              │
                              ├─► [ Discovered Target Vocabulary (V) ]
                              │
                              ▼
-     [ global_freqs.json, canonical_map.json, emb_cache.pt ]
+  [ global_freqs.json, canonical_map.json, emb_cache.pt, _conflict_gmm.pkl ]
                              │
                              ▼
 =========================================================================
@@ -43,26 +56,39 @@
   ┌───────────────────────────────────────────────────────────────────┐
   │ For Sample i:                                                     │
   │  ├─ Stage 3: Micro-CGD Audit                                      │
-  │  │           => Coverage (C)                                      │
-  │  │           => Grounding (G)                                     │
-  │  │           => Density D(c) = D_global x D_local (NLI)           │
-  │  └─ Stage 4: Regime-Aware Consolidation (Gating & Weights)        │
+  │  │          => Coverage C(c) = 1 - log(1+D_global(c))/log(1+D_max)│
+  │  │          => Grounding G(c) = verbatim match OR max cosine sim  │
+  │  │          => Density D(c) = D_global * D_local (NLI penalty)    │
+  │  └─ Stage 4: Regime-Aware Consolidation & Weight Derivation       │
   │              => Map raw concepts to V via canonical_map.json      │
   │                                                                   │
-  │      [AGREEMENT]   => positive_targets = Union(Text, Vis)         │
-  │                       w_pos = 1.0, w_neg = 0.0                    │
+  │      GMM Regime Routing [★ NEW (replaces heuristic thresholds)]   │
+  │        - Load _conflict_gmm.pkl -> standardise f_i                │
+  │        - Compute posterior: p(R_k | f_i)                          │
+  │        - R_i = argmax_k p(R_k | f_i) (2D fallback if Δ = None)    │
+  │        - If Confidence < 0.60 -> Flag low-confidence              │
+  │        - If R_i != R_i_heur   -> Set gmm.regime_override = True   │
   │                                                                   │
-  │      [SOFT CONFLICT]=> positive_targets = Filter(Union, D(c) > τ) │
-  │                       w_pos = 1.0 - |Δ_density|, w_neg = 0.0      │
+  │      Regime-Aware Gating & Weights:                               │
+  │        [AGREEMENT]        => pos = Union(C_text, C_vis, C_fused)  │
+  │                              w_pos = 1.0, w_neg = 0.0             │
   │                                                                   │
-  │      [HARD CONFLICT]=> positive_targets = Grounded Vis Only       │
-  │                       hn_targets = Suppressed Text Orphans        │
-  │                       w_pos = 0.3, w_neg = 1.0 - G(c)             │
+  │        [SOFT CONFLICT]    => pos = Filter(Union, D(c) >= τ_D)     │
+  │                              w_pos = max(floor, 1.0 - λ|Δ|)       │
+  │                              w_neg = 0.0                          │
+  │                              * w_pos is GMM posterior-weighted    │
+  │                                                                   │
+  │        [HARD CONFLICT]    => pos = Grounded Visual concepts only  │
+  │                              hn_targets = Suppressed Text Orphans │
+  │                              w_pos = w_hard, w_neg = 1.0          │
+  │                              * Collision guard: pos wins          │
+  │                                                                   │
+  │        [MISSING MODALITY] => w_pos = 0.50, w_neg = 0.0            │
   └───────────────────────────────────────────────────────────────────┘
                              │
                              ▼
         [ auditable_supervision_matrix.parquet ]
- (Schema: sample_id | pos_targets | hn_targets | w_pos | w_neg | Regime)
+ (Schema: id | pos_targets | hn_targets | w_pos | w_neg | regime | gmm{conf, override})
                              │
                              ▼
 =========================================================================
@@ -76,6 +102,10 @@
   │ 2. Base Loss: L_base = BCEWithLogits(logits_i2t, pos_targets,     │
   │                                      pos_weight=class_balancer)   │
   │ 3. Positive Scaling: L_pos = L_base * w_pos                       │
+  │                      (w_pos derived from GMM-weighted regime)     │
   │ 4. HN Repulsion: L_hn = BCE(logits_i2t * hn_targets, 0) * w_neg   │
   │ 5. Final Objective: Loss = mean(L_pos) + α * mean(L_hn)           │
+  │                                                                   │
+  │ * Two orthogonal loss axes: class-level pos_weight (long-tail)    │
+  │   paired with sample-level w_pos/w_neg (regime-conditioned)       │
   └───────────────────────────────────────────────────────────────────┘
