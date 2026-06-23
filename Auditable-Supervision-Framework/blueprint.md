@@ -45,6 +45,16 @@ This decoupling guarantees that our density metrics reflect true corpus-level st
   * `canonical_map.json`, `emb_cache.pt`, global corpus frequencies *(unchanged)*
   * ★ `_conflict_gmm.pkl` — `{gmm_model, scaler, class_mapping, feature_dim, bic_scores, centroids_unscaled}`
 
+## BRIDGE: Global Aggregation (CPU / Dataset-Level) ★ *+ GMM Regime Induction*
+
+* **Goal:** Discover the Target Canonical Vocabulary ($V$), compute global dataset statistics, ★ *and induce data-driven conflict regime boundaries from the full corpus.*
+* **Mechanism:**
+  * **Step 1A — Vocabulary Induction:** Collect all raw concepts from Stage 1. Existing `clustering.py` engine (Agglomerative Linkage, Virtual Hypernym Synthesis, 5-Signal Canonical Assignment).
+  * ★ **Step 1B — GMM Regime Induction:** Collect $\mathbf{f}_i$ vectors for all $N$ samples. Fit `GaussianMixture($K^*$)` via BIC search over $K \in \{2,\ldots,6\}$ with `StandardScaler` normalisation. Assign cluster semantics by centroid geometry: *Agreement* (high sim, low orphan) · *Soft Conflict* · *Hard Conflict* (low sim, high orphan). ★ *2D fallback used when the fraction of 3D-eligible samples falls below coverage threshold $\theta_{3D}$, ensuring Hard Conflict samples are not systematically underrepresented.*
+* **Output:**
+  * `canonical_map.json`, `emb_cache.pt`, global corpus frequencies *(unchanged)*
+  * ★ `_conflict_gmm.pkl` — `{gmm_model, scaler, class_mapping, feature_dim, bic_scores, centroids_unscaled}`
+
 ---
 
 ## PHASE 2: Stateful Map (Fast Vector Math / Per-Sample)
