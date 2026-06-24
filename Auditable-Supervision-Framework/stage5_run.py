@@ -1,12 +1,10 @@
-# run_stage5.py
+import os
 import argparse
 from stage5_regime_conditioned_training import regime_conditioned_finetune
 
 def parse_args():
 	p = argparse.ArgumentParser(description="Stage 5: Regime-Conditioned Training")
 	p.add_argument("--metadata", '-csv',required=True,  help="Path to metadata.csv")
-	p.add_argument("--supervision", '-parquet',   required=True,  help="Path to auditable_supervision_matrix.parquet")
-	p.add_argument("--output_dir",    default="./stage5_outputs")
 	p.add_argument("--clip_model",    default="ViT-B/32")
 	p.add_argument("--peft_method",   default="lora",  choices=["lora","lora+","dora","rslora","ia3","vera","probe","adapter","full"])
 	p.add_argument("--epochs",        type=int,   default=30)
@@ -18,14 +16,36 @@ def parse_args():
 	p.add_argument("--patience",      type=int,   default=7)
 	p.add_argument("--resume_ckpt",   default=None,   help="Path to checkpoint to resume from")
 	p.add_argument("--seed",          type=int,   default=42)
+	p.add_argument("--verbose", "-v", action='store_true', help="Print verbose diagnostics")
+
 	return p.parse_args()
 
 if __name__ == "__main__":
 	args = parse_args()
+	DATASET_DIRECTORY = os.path.dirname(args.metadata)
+	print(DATASET_DIRECTORY)
+
+	OUTPUTs_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
+	os.makedirs(OUTPUTs_DIRECTORY, exist_ok=True)
+	print(OUTPUTs_DIRECTORY)
+
+	CHECKPOINTs_DIRECTORY = os.path.join(OUTPUTs_DIRECTORY, "checkpoints")
+	os.makedirs(CHECKPOINTs_DIRECTORY, exist_ok=True)
+	print(CHECKPOINTs_DIRECTORY)
+
+	metadata_fpath = os.path.basename(args.metadata)
+	supervision_fpath = os.path.join(
+		OUTPUTs_DIRECTORY, 
+		metadata_fpath.replace(".csv", "_mlm_cot_modality_conflict_audit_auditable_supervision_matrix.parquet")
+	)
+	
+	print(supervision_fpath)
+	assert os.path.exists(supervision_fpath), f"Supervision matrix not found at {supervision_fpath}"
+
 	regime_conditioned_finetune(
 		metadata_fpth    = args.metadata,
-		supervision_fpth = args.supervision,
-		output_dir       = args.output_dir,
+		supervision_fpth = supervision_fpath,
+		output_dir       = CHECKPOINTs_DIRECTORY,
 		clip_model_name  = args.clip_model,
 		peft_method      = args.peft_method,
 		num_epochs       = args.epochs,
@@ -37,4 +57,5 @@ if __name__ == "__main__":
 		patience         = args.patience,
 		resume_ckpt      = args.resume_ckpt,
 		seed             = args.seed,
+		verbose          = args.verbose,
 	)

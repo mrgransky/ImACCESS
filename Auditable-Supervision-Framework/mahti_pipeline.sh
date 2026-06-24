@@ -51,7 +51,7 @@ echo "${stars// /*}"
 
 DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4"
 # DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31"
-CSV_FILE=$DATASET_DIR/metadata_multi_label.csv
+CSV_FILE=$DATASET_DIR/metadata_multi_label_multimodal.csv
 JSONL_COT_FILE="${CSV_FILE%.csv}_mlm_cot.jsonl"
 JSONL_MODALITY_CONFLICT_FILE="${JSONL_COT_FILE%.jsonl}_modality_conflict_audit.jsonl"
 
@@ -63,7 +63,7 @@ ASYMMETRICAL_EMBEDDING_MODEL="cross-encoder/nli-deberta-v3-large"
 BATCH_SIZE=36
 ENCODING_BATCH_SIZE=2048
 
-# stage 1: VLM with CoT:
+# stage 1: MLM with CoT:
 python -u stage1_mlm_cot.py -csv $CSV_FILE -mlm $MLM_MODEL -bs $BATCH_SIZE -mgt 128 -nw $SLURM_CPUS_PER_TASK -v
 
 # stage 2: Modality Conflict Quantification
@@ -77,6 +77,9 @@ python -u stage3_4_cgd_consolidation.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -v
 
 # visualization:
 python -u viz.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -v
+
+# stage 5: Regime-Conditioned Training
+python -u stage5_run.py -csv $CSV_FILE -v
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

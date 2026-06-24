@@ -1,21 +1,3 @@
-# stage5_regime_conditioned_training.py
-#
-# Stage 5: Regime-Conditioned Dual-Encoder Training
-# ─────────────────────────────────────────────────────────────────────────────
-# Drop-in replacement for lora_finetune_multi_label() that wires in:
-#
-#   • Stage 4 supervision matrix  (via stage5_dataset_loader.py)
-#   • Regime-aware loss           (via stage5_regime_aware_loss.py)
-#   • Inherited loss utilities    (compute_loss_masks, diagnose_train_val_coverage)
-#
-# Training loop contract
-# ──────────────────────
-#   Axis 1 — Class-Level Balance  : pos_weight  (from compute_loss_masks)
-#   Axis 2 — Sample-Level Regime  : ω_pos, ω_neg (from Stage 4 parquet)
-#
-# Regime logging is emitted every epoch so the paper's ablation tables
-# can be reconstructed from the run logs alone.
-# ─────────────────────────────────────────────────────────────────────────────
 
 import os
 import sys
@@ -32,6 +14,7 @@ print(f"sys_path: {sys.path}")
 
 from utils import *
 import clip
+from clip_peft import get_injected_peft_clip, get_adapter_peft_clip
 from loss import compute_loss_masks, diagnose_train_val_coverage
 from stage5_dataset_loader import get_stage5_dataloaders
 from stage5_regime_aware_loss import (
@@ -43,20 +26,18 @@ from stage5_regime_aware_loss import (
 		SKIP_REGIMES,
 )
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONSTANTS
-# ─────────────────────────────────────────────────────────────────────────────
-
-SUPPORTED_PEFT = {"lora", "lora+", "dora", "rslora", "ia3", "vera", "probe", "adapter", "full"}
+SUPPORTED_PEFT = {
+		"lora", "lora_plus", "dora", "rslora", "ia3", "vera",   # injected PEFT (get_injected_peft_clip)
+		"tip_adapter", "tip_adapter_f",                          # adapter PEFT  (get_adapter_peft_clip)
+		"clip_adapter_v", "clip_adapter_t", "clip_adapter_vt",  # adapter PEFT  (get_adapter_peft_clip)
+		"probe",                                                  # linear probe
+		"full",                                                   # full fine-tuning
+}
 DEFAULT_TEMPERATURE = 0.07
 CHECKPOINT_FNAME    = "stage5_best_model.pt"
 METRICS_FNAME       = "stage5_training_metrics.json"
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 # 1. REGIME EPOCH DIAGNOSTICS
-# ─────────────────────────────────────────────────────────────────────────────
-
 def log_regime_epoch_stats(
 		regime_counters: Dict[str, int],
 		loss_by_regime:  Dict[str, List[float]],
@@ -95,11 +76,7 @@ def log_regime_epoch_stats(
 
 		return stats
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 # 2. EVALUATION (mirrors lora_finetune_multi_label eval block)
-# ─────────────────────────────────────────────────────────────────────────────
-
 @torch.no_grad()
 def evaluate_stage5(
 		model:            torch.nn.Module,
@@ -186,7 +163,7 @@ def evaluate_stage5(
 				all_scores.append(scores.cpu())
 				all_targets.append(label_vec.cpu())
 
-		# ── Aggregate retrieval metrics ───────────────────────────────────────────
+		# ── Aggregate retrieval metrics ────
 		all_scores  = torch.cat(all_scores,  dim=0)   # [N_val, C]
 		all_targets = torch.cat(all_targets, dim=0)   # [N_val, C]
 
@@ -220,7 +197,6 @@ def evaluate_stage5(
 				)
 
 		return metrics
-
 
 def _compute_retrieval_metrics(
 		scores:      torch.Tensor,   # [N, C]
@@ -260,7 +236,6 @@ def _compute_retrieval_metrics(
 				"val_ndcg@5":   ndcg_at5,
 		}
 
-
 def _mean_average_precision(scores: torch.Tensor, targets: torch.Tensor) -> float:
 		"""Macro-averaged AP over classes (column-wise AP)."""
 		if targets.sum() == 0:
@@ -278,13 +253,11 @@ def _mean_average_precision(scores: torch.Tensor, targets: torch.Tensor) -> floa
 				aps.append(ap)
 		return float(np.mean(aps)) if aps else float("nan")
 
-
 def _precision_at_k(scores: torch.Tensor, targets: torch.Tensor, k: int) -> float:
 		"""Sample-averaged P@K."""
 		topk = scores.topk(min(k, scores.shape[1]), dim=1).indices   # [N, k]
 		hits = targets.gather(1, topk).float()
 		return float(hits.mean().item())
-
 
 def _ndcg_at_k(scores: torch.Tensor, targets: torch.Tensor, k: int) -> float:
 		"""Sample-averaged nDCG@K."""
@@ -293,19 +266,15 @@ def _ndcg_at_k(scores: torch.Tensor, targets: torch.Tensor, k: int) -> float:
 		gains    = targets.gather(1, topk_idx).float()                   # [N, k]
 		discounts = torch.log2(
 				torch.arange(2, gains.shape[1] + 2, dtype=torch.float32)
-		)                                                                 # [k]
-		dcg  = (gains / discounts).sum(dim=1)                            # [N]
+		)                    # [k]
+		dcg  = (gains / discounts).sum(dim=1)                    # [N]
 		# Ideal DCG: sort targets descending, take top-k
 		ideal_gains = targets.float().sort(dim=1, descending=True).values[:, :k]
 		idcg = (ideal_gains / discounts[:ideal_gains.shape[1]]).sum(dim=1)
 		ndcg = torch.where(idcg > 0, dcg / idcg, torch.zeros_like(dcg))
 		return float(ndcg.mean().item())
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 # 3. CLASS EMBEDDING BUILDER
-# ─────────────────────────────────────────────────────────────────────────────
-
 @torch.no_grad()
 def build_class_embeddings(
 		model:      torch.nn.Module,
@@ -343,11 +312,7 @@ def build_class_embeddings(
 
 		return class_embeds
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 # 4. PEFT SETUP  (mirrors lora_finetune_multi_label)
-# ─────────────────────────────────────────────────────────────────────────────
-
 def setup_peft(
 		model:       torch.nn.Module,
 		peft_method: str,
@@ -356,10 +321,26 @@ def setup_peft(
 ) -> Tuple[torch.nn.Module, List[Dict]]:
 		"""
 		Apply PEFT to model and return (model, optimizer_param_groups).
-		Mirrors the PEFT dispatch logic from lora_finetune_multi_label().
+
+		Uses the custom clip_peft.py implementations exclusively — no dependency
+		on the HuggingFace `peft` package.
 
 		peft_config keys (all optional, sensible defaults provided):
-				rank, alpha, dropout, target_modules, lr_multiplier (for lora+)
+				rank            : LoRA / DoRA / VeRA / rsLoRA rank          (default: 16)
+				alpha           : LoRA scaling factor                        (default: 32)
+				dropout         : adapter dropout rate                       (default: 0.05)
+				lr_multiplier   : B-matrix LR multiplier for lora_plus       (default: 16.0)
+				target_text_modules   : text-encoder module names to inject  (default: see below)
+				target_vision_modules : vision-encoder module names to inject (default: see below)
+				quantized             : use bitsandbytes quantisation         (default: False)
+				quantization_bits     : 4 or 8                               (default: 8)
+				compute_dtype         : torch dtype for quantised compute     (default: torch.float16)
+				# adapter-specific (tip_adapter / tip_adapter_f)
+				initial_beta    : Tip-Adapter temperature                    (default: 1.0)
+				initial_alpha   : Tip-Adapter scaling                        (default: 1.0)
+				# adapter-specific (clip_adapter_*)
+				bottleneck_dim  : CLIP-Adapter bottleneck dimension          (default: 64)
+				activation      : CLIP-Adapter activation ('relu'/'gelu')    (default: 'relu')
 		"""
 		if peft_config is None:
 				peft_config = {}
@@ -368,43 +349,50 @@ def setup_peft(
 		assert peft_method in SUPPORTED_PEFT, \
 				f"[setup_peft] Unknown PEFT method '{peft_method}'. Choose from {SUPPORTED_PEFT}"
 
-		rank            = peft_config.get("rank",    16)
-		alpha           = peft_config.get("alpha",   32)
-		dropout         = peft_config.get("dropout", 0.05)
-		lr_multiplier   = peft_config.get("lr_multiplier", 16.0)   # for LoRA+
+		rank          = peft_config.get("rank",    16)
+		alpha         = peft_config.get("alpha",   32)
+		dropout       = peft_config.get("dropout", 0.05)
+		lr_multiplier = peft_config.get("lr_multiplier", 16.0)   # for lora_plus
+		quantized         = peft_config.get("quantized",         False)
+		quantization_bits = peft_config.get("quantization_bits", 8)
+		compute_dtype     = peft_config.get("compute_dtype",     torch.float16)
+
+		# Default target modules — mirrors lora_finetune_multi_label()
+		default_text_modules   = ["in_proj", "out_proj", "c_fc", "c_proj"]
+		default_vision_modules = ["in_proj", "out_proj", "c_fc", "c_proj"]
+		target_text_modules   = peft_config.get("target_text_modules",   default_text_modules)
+		target_vision_modules = peft_config.get("target_vision_modules", default_vision_modules)
 
 		if verbose:
 				print(f"\n[setup_peft] method={peft_method} | rank={rank} | alpha={alpha} | dropout={dropout}")
 
-		# ── Freeze everything first ───────────────────────────────────────────────
-		for p in model.parameters():
-				p.requires_grad_(False)
+		# ── Injected PEFT methods (get_injected_peft_clip) ────
+		# lora, lora_plus, rslora, dora, vera, ia3
+		if peft_method in {"lora", "lora_plus", "dora", "rslora", "vera", "ia3"}:
+				# lora_plus passes a lambda multiplier; others pass None
+				lora_plus_lambda = lr_multiplier if peft_method == "lora_plus" else None
 
-		# ── PEFT dispatch ─────────────────────────────────────────────────────────
-		if peft_method in {"lora", "lora+", "dora", "rslora"}:
-				from peft import get_peft_model, LoraConfig, TaskType
-				lora_cfg = LoraConfig(
-						r=rank,
-						lora_alpha=alpha,
-						lora_dropout=dropout,
-						use_dora=(peft_method == "dora"),
-						use_rslora=(peft_method == "rslora"),
-						target_modules=peft_config.get(
-								"target_modules",
-								["q_proj", "v_proj", "out_proj", "fc1", "fc2"],
-						),
-						bias="none",
+				model = get_injected_peft_clip(
+						clip_model=model,
+						method=peft_method,
+						rank=rank,
+						alpha=alpha,
+						dropout=dropout,
+						lora_plus_lambda=lora_plus_lambda,
+						target_text_modules=target_text_modules,
+						target_vision_modules=target_vision_modules,
+						quantized=quantized,
+						quantization_bits=quantization_bits,
+						compute_dtype=compute_dtype,
+						verbose=verbose,
 				)
-				model = get_peft_model(model, lora_cfg)
-				if verbose:
-						model.print_trainable_parameters()
 
-				if peft_method == "lora+":
-						# LoRA+: B matrices get lr_multiplier × base lr
+				if peft_method == "lora_plus":
+						# LoRA+: A matrices use base LR, B matrices use lr_multiplier × base LR
 						lora_a_params = [p for n, p in model.named_parameters()
-														 if p.requires_grad and "lora_A" in n]
+								if p.requires_grad and "lora_A" in n]
 						lora_b_params = [p for n, p in model.named_parameters()
-														 if p.requires_grad and "lora_B" in n]
+								if p.requires_grad and "lora_B" in n]
 						param_groups = [
 								{"params": lora_a_params, "lr_multiplier": 1.0},
 								{"params": lora_b_params, "lr_multiplier": lr_multiplier},
@@ -413,60 +401,63 @@ def setup_peft(
 						trainable = [p for p in model.parameters() if p.requires_grad]
 						param_groups = [{"params": trainable}]
 
-		elif peft_method == "ia3":
-				from peft import get_peft_model, IA3Config
-				ia3_cfg = IA3Config(
-						target_modules=peft_config.get(
-								"target_modules", ["k_proj", "v_proj", "fc2"]
-						),
-						feedforward_modules=peft_config.get("feedforward_modules", ["fc2"]),
-				)
-				model = get_peft_model(model, ia3_cfg)
 				if verbose:
-						model.print_trainable_parameters()
-				param_groups = [{"params": [p for p in model.parameters() if p.requires_grad]}]
+						n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+						n_total     = sum(p.numel() for p in model.parameters())
+						print(
+								f"[setup_peft][{peft_method}] trainable: {n_trainable:,} / {n_total:,} "
+								f"({100*n_trainable/max(n_total,1):.3f}%)"
+						)
 
-		elif peft_method == "vera":
-				from peft import get_peft_model, VeraConfig
-				vera_cfg = VeraConfig(
-						r=rank,
-						vera_dropout=dropout,
-						target_modules=peft_config.get(
-								"target_modules", ["q_proj", "v_proj"]
-						),
-				)
-				model = get_peft_model(model, vera_cfg)
-				if verbose:
-						model.print_trainable_parameters()
-				param_groups = [{"params": [p for p in model.parameters() if p.requires_grad]}]
+		# ── Adapter PEFT methods (get_adapter_peft_clip) ────
+		# tip_adapter, tip_adapter_f, clip_adapter_v, clip_adapter_t, clip_adapter_vt
+		elif peft_method in {"tip_adapter", "tip_adapter_f",
+				"clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"}:
 
+			is_clip_adapter = peft_method.startswith("clip_adapter")
+			is_tip_adapter  = peft_method.startswith("tip_adapter")
+
+			adapter_kwargs = dict(
+					clip_model=model,
+					method=peft_method,
+					verbose=verbose,
+			)
+			if is_tip_adapter:
+					adapter_kwargs["initial_beta"]  = peft_config.get("initial_beta",  1.0)
+					adapter_kwargs["initial_alpha"] = peft_config.get("initial_alpha", 1.0)
+			if is_clip_adapter:
+					adapter_kwargs["bottleneck_dim"] = peft_config.get("bottleneck_dim", 64)
+					adapter_kwargs["activation"]     = peft_config.get("activation",     "relu")
+
+			model = get_adapter_peft_clip(**adapter_kwargs)
+			trainable = [p for p in model.parameters() if p.requires_grad]
+			param_groups = [{"params": trainable}]
+
+			if verbose:
+					n_trainable = sum(p.numel() for p in trainable)
+					n_total     = sum(p.numel() for p in model.parameters())
+					print(
+							f"[setup_peft][{peft_method}] trainable: {n_trainable:,} / {n_total:,} "
+							f"({100*n_trainable/max(n_total,1):.3f}%)"
+					)
+
+		# ── Linear probe ────
 		elif peft_method == "probe":
-				# Linear probe: only final projection layers
-				for name, module in model.named_modules():
-						if isinstance(module, torch.nn.Linear) and any(
-								k in name for k in ["visual.proj", "text_projection"]
-						):
-								for p in module.parameters():
-										p.requires_grad_(True)
+				# Freeze everything, then unfreeze only the final projection parameters
+				for p in model.parameters():
+						p.requires_grad_(False)
+				# Unfreeze visual.proj and text_projection (both are nn.Parameter in CLIP)
+				if hasattr(model.visual, "proj") and isinstance(model.visual.proj, torch.nn.Parameter):
+						model.visual.proj.requires_grad_(True)
+				if hasattr(model, "text_projection") and isinstance(model.text_projection, torch.nn.Parameter):
+						model.text_projection.requires_grad_(True)
 				trainable = [p for p in model.parameters() if p.requires_grad]
 				param_groups = [{"params": trainable}]
 				if verbose:
 						n_trainable = sum(p.numel() for p in trainable)
 						print(f"[setup_peft][probe] trainable params: {n_trainable:,}")
 
-		elif peft_method == "adapter":
-				# Lightweight bottleneck adapters injected after each transformer block
-				from peft import get_peft_model, AdaptionPromptConfig
-				adapter_cfg = AdaptionPromptConfig(
-						adapter_len=peft_config.get("adapter_len", 10),
-						adapter_layers=peft_config.get("adapter_layers", 30),
-						task_type="FEATURE_EXTRACTION",
-				)
-				model = get_peft_model(model, adapter_cfg)
-				if verbose:
-						model.print_trainable_parameters()
-				param_groups = [{"params": [p for p in model.parameters() if p.requires_grad]}]
-
+		# ── Full fine-tuning ────
 		elif peft_method == "full":
 				for p in model.parameters():
 						p.requires_grad_(True)
@@ -477,11 +468,7 @@ def setup_peft(
 
 		return model, param_groups
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 # 5. CHECKPOINT HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
-
 def save_checkpoint(
 		model:       torch.nn.Module,
 		optimizer:   torch.optim.Optimizer,
@@ -529,42 +516,38 @@ def load_checkpoint(
 				print(f"[load_checkpoint] Resumed from epoch {epoch} | {ckpt_path}")
 		return epoch, metrics
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 # 6. MASTER TRAINING FUNCTION
-# ─────────────────────────────────────────────────────────────────────────────
-
 def regime_conditioned_finetune(
-		# ── Data ──────────────────────────────────────────────────────────────────
-		metadata_fpth:      str,
-		supervision_fpth:   str,           # auditable_supervision_matrix.parquet
-		id_col:             str  = "doc_url",
-		text_col:           str  = "multimodal_labels",
-		# ── Model ─────────────────────────────────────────────────────────────────
-		clip_model_name:    str  = "ViT-L/14",
-		peft_method:        str  = "lora",
-		peft_config:        Optional[Dict] = None,
-		resume_ckpt:        Optional[str]  = None,
-		# ── Training ──────────────────────────────────────────────────────────────
-		num_epochs:         int   = 30,
-		batch_size:         int   = 128,
-		num_workers:        int   = 4,
-		input_resolution:   int   = 224,
-		learning_rate:      float = 1e-4,
-		weight_decay:       float = 1e-4,
-		temperature:        float = DEFAULT_TEMPERATURE,
-		grad_clip:          float = 1.0,
-		warmup_epochs:      int   = 2,
-		patience:           int   = 7,
-		# ── Loss ──────────────────────────────────────────────────────────────────
-		pw_mode:            str   = "sqrt",
-		pw_max_cap:         Optional[float] = 50.0,
-		loss_weights:       Optional[Dict[str, float]] = None,
-		# ── Output ────────────────────────────────────────────────────────────────
-		output_dir:         str   = "./stage5_outputs",
-		# ── Misc ──────────────────────────────────────────────────────────────────
-		seed:               int   = 42,
-		verbose:            bool  = True,
+	# ── Data ────
+	metadata_fpth:      str,
+	supervision_fpth:   str,           # auditable_supervision_matrix.parquet
+	id_col:             str  = "doc_url",
+	text_col:           str  = "multimodal_labels",
+	# ── Model ────
+	clip_model_name:    str  = "ViT-L/14",
+	peft_method:        str  = "lora",
+	peft_config:        Optional[Dict] = None,
+	resume_ckpt:        Optional[str]  = None,
+	# ── Training ────
+	num_epochs:         int   = 30,
+	batch_size:         int   = 128,
+	num_workers:        int   = 4,
+	input_resolution:   int   = 224,
+	learning_rate:      float = 1e-4,
+	weight_decay:       float = 1e-4,
+	temperature:        float = DEFAULT_TEMPERATURE,
+	grad_clip:          float = 1.0,
+	warmup_epochs:      int   = 2,
+	patience:           int   = 7,
+	# ── Loss ────
+	pw_mode:            str   = "sqrt",
+	pw_max_cap:         Optional[float] = 50.0,
+	loss_weights:       Optional[Dict[str, float]] = None,
+	# ── Output ────
+	output_dir:         str   = "./stage5_outputs",
+	# ── Misc ────
+	seed:               int   = 42,
+	verbose:            bool  = False,
 ) -> Dict[str, Any]:
 		"""
 		Regime-conditioned fine-tuning of a CLIP dual-encoder.
@@ -574,13 +557,13 @@ def regime_conditioned_finetune(
 				2. Per-epoch regime diagnostics logged to metrics JSON
 
 		Returns
-		-------
+		----
 		results : dict with keys
 				best_epoch, best_val_loss, best_metrics,
 				all_train_metrics, all_val_metrics,
 				label_dict, output_dir
 		"""
-		# ── Reproducibility ───────────────────────────────────────────────────────
+		# ── Reproducibility ────
 		torch.manual_seed(seed)
 		np.random.seed(seed)
 		random.seed(seed)
@@ -602,7 +585,7 @@ def regime_conditioned_finetune(
 		print(f"  └─ Output dir    : {output_dir}")
 		print(f"{'='*80}\n")
 
-		# ── DataLoaders ───────────────────────────────────────────────────────────
+		# ── DataLoaders ────
 		train_loader, val_loader = get_stage5_dataloaders(
 			metadata_fpth=metadata_fpth,
 			supervision_fpth=supervision_fpth,
@@ -616,7 +599,7 @@ def regime_conditioned_finetune(
 		label_dict  = train_loader.dataset.label_dict
 		num_classes = len(label_dict)
 
-		# ── Loss masks (Axis 1: class-level balance) ──────────────────────────────
+		# ── Loss masks (Axis 1: class-level balance) ────
 		loss_masks = compute_loss_masks(
 			loader=train_loader,
 			num_classes=num_classes,
@@ -638,14 +621,14 @@ def regime_conditioned_finetune(
 				verbose=verbose,
 		)
 
-		# ── Criteria ──────────────────────────────────────────────────────────────
+		# ── Criteria ────
 		criterion_i2t = torch.nn.BCEWithLogitsLoss(
 				pos_weight=pos_weight,
 				reduction="none",
 		)
 		criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction="none")
 
-		# ── Model + PEFT ──────────────────────────────────────────────────────────
+		# ── Model + PEFT ────
 		model, _ = clip.load(clip_model_name, device=device)
 		model.float()
 
@@ -657,7 +640,7 @@ def regime_conditioned_finetune(
 		)
 		model = model.to(device)
 
-		# ── Optimizer ─────────────────────────────────────────────────────────────
+		# ── Optimizer ────
 		# Resolve per-group LR for LoRA+ (lr_multiplier stored in group dict)
 		for grp in param_groups:
 				mult = grp.pop("lr_multiplier", 1.0)
@@ -666,7 +649,7 @@ def regime_conditioned_finetune(
 
 		optimizer = torch.optim.AdamW(param_groups)
 
-		# ── Scheduler: linear warmup → cosine decay ───────────────────────────────
+		# ── Scheduler: linear warmup → cosine decay ────
 		total_steps   = num_epochs * len(train_loader)
 		warmup_steps  = warmup_epochs * len(train_loader)
 
@@ -678,7 +661,7 @@ def regime_conditioned_finetune(
 
 		scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
-		# ── Resume ────────────────────────────────────────────────────────────────
+		# ── Resume ────
 		start_epoch = 0
 		if resume_ckpt:
 				start_epoch, _ = load_checkpoint(
@@ -691,11 +674,11 @@ def regime_conditioned_finetune(
 				)
 				start_epoch += 1
 
-		# ── AMP scaler ────────────────────────────────────────────────────────────
+		# ── AMP scaler ────
 		use_amp   = torch.cuda.is_available()
 		scaler    = torch.cuda.amp.GradScaler(enabled=use_amp)
 
-		# ── Training state ────────────────────────────────────────────────────────
+		# ── Training state ────
 		best_val_loss    = float("inf")
 		best_epoch       = -1
 		best_metrics     = {}
@@ -703,7 +686,7 @@ def regime_conditioned_finetune(
 		all_train_metrics: List[Dict] = []
 		all_val_metrics:   List[Dict] = []
 
-		# ── Epoch loop ────────────────────────────────────────────────────────────
+		# ── Epoch loop ────
 		for epoch in range(start_epoch, num_epochs):
 				model.train()
 
@@ -782,7 +765,7 @@ def regime_conditioned_finetune(
 										f"lr={lr_now:.2e}"
 								)
 
-				# ── End-of-epoch train stats ──────────────────────────────────────────
+				# ── End-of-epoch train stats ────
 				n_b = max(n_batches, 1)
 				train_metrics = {
 						"epoch":            epoch,
@@ -798,7 +781,7 @@ def regime_conditioned_finetune(
 				train_metrics.update(regime_stats)
 				all_train_metrics.append(train_metrics)
 
-				# ── Validation ────────────────────────────────────────────────────────
+				# ── Validation ────
 				val_metrics = evaluate_stage5(
 						model=model,
 						val_loader=val_loader,
@@ -816,7 +799,7 @@ def regime_conditioned_finetune(
 				val_metrics["epoch"] = epoch
 				all_val_metrics.append(val_metrics)
 
-				# ── Early stopping + checkpoint ───────────────────────────────────────
+				# ── Early stopping + checkpoint ────
 				val_loss = val_metrics["val_loss"]
 				if val_loss < best_val_loss:
 						best_val_loss    = val_loss
@@ -846,7 +829,7 @@ def regime_conditioned_finetune(
 								print(f"\n[Stage5] Early stopping triggered at epoch {epoch}.")
 								break
 
-				# ── Persist metrics JSON ──────────────────────────────────────────────
+				# ── Persist metrics JSON ────
 				metrics_path = os.path.join(output_dir, METRICS_FNAME)
 				with open(metrics_path, "w") as f:
 						json.dump(
@@ -860,7 +843,7 @@ def regime_conditioned_finetune(
 								ensure_ascii=False,
 						)
 
-		# ── Final summary ─────────────────────────────────────────────────────────
+		# ── Final summary ────
 		print(f"\n{'='*80}")
 		print(f"[Stage5] Training complete")
 		print(f"  ├─ Best epoch    : {best_epoch}")

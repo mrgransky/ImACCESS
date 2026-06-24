@@ -51,7 +51,7 @@ echo "${stars// /*}"
 
 DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4"
 # DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31"
-CSV_FILE=$DATASET_DIR/metadata_multi_label.csv
+CSV_FILE=$DATASET_DIR/metadata_multi_label_multimodal.csv
 JSONL_COT_FILE="${CSV_FILE%.csv}_mlm_cot.jsonl"
 JSONL_MODALITY_CONFLICT_FILE="${JSONL_COT_FILE%.jsonl}_modality_conflict_audit.jsonl"
 
@@ -78,6 +78,9 @@ python -u stage3_4_cgd_consolidation.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -v
 
 # visualization:
 python -u viz.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -v
+
+# stage 5: Regime-Conditioned Training
+python -u stage5_run.py -csv $CSV_FILE -v
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

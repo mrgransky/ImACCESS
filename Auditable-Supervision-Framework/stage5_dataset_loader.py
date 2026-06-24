@@ -49,10 +49,6 @@ from historyXN_dataset_loader import (
 	dtypes,
 )
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONSTANTS
-# ─────────────────────────────────────────────────────────────────────────────
-
 PARQUET_SCHEMA = {
 	"doc_url",
 	"positive_targets",
@@ -65,11 +61,6 @@ PARQUET_SCHEMA = {
 FALLBACK_REGIME   = "MISSING_MODALITY"   # used when id not in parquet
 FALLBACK_W_POS    = 0.0
 FALLBACK_W_NEG    = 0.0
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. PARQUET LOADER & LABEL DICT BUILDER
-# ─────────────────────────────────────────────────────────────────────────────
 
 def load_supervision_matrix(parquet_path: str, verbose: bool = True,) -> Tuple[pd.DataFrame, Dict[str, int]]:
 	"""
@@ -92,24 +83,19 @@ def load_supervision_matrix(parquet_path: str, verbose: bool = True,) -> Tuple[p
 	df_sup["doc_url"] = df_sup["doc_url"].astype(str)
 	df_sup = df_sup.set_index("doc_url")
 	
-	sample_raw = df_sup["positive_targets"].iloc[4]  # row 4 has non-empty targets
-	print(type(sample_raw), repr(sample_raw))
-
 	# Parse list columns if stored as strings (parquet may serialise lists as str)
 	for col in ("positive_targets", "hard_negatives"):
-			df_sup[col] = df_sup[col].apply(
-					lambda x: list(x) if isinstance(x, (list, np.ndarray))
-					else ast.literal_eval(x) if isinstance(x, str)
-					else []
-			)
+		df_sup[col] = df_sup[col].apply(
+			lambda x: list(x) if isinstance(x, (list, np.ndarray))
+			else ast.literal_eval(x) if isinstance(x, str)
+			else []
+		)
 
 	# Build canonical vocabulary V from all positive + hard-negative targets
 	all_labels: set = set()
 	for targets in df_sup["positive_targets"]:
-		print(f"pos_tgt: {targets}")
 		all_labels.update(targets)
 	for targets in df_sup["hard_negatives"]:
-		print(f"hard_neg: {targets}")
 		all_labels.update(targets)
 
 	label_dict = {lbl: idx for idx, lbl in enumerate(sorted(all_labels))}
@@ -128,10 +114,6 @@ def load_supervision_matrix(parquet_path: str, verbose: bool = True,) -> Tuple[p
 		print(f"  └─ w_neg range      : [{df_sup['w_neg'].min():.3f}, {df_sup['w_neg'].max():.3f}]")
 	
 	return df_sup, label_dict
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. REGIME-AWARE DATASET
-# ─────────────────────────────────────────────────────────────────────────────
 
 class Stage5RegimeAwareDataset(Dataset):
 		"""
@@ -288,7 +270,7 @@ class Stage5RegimeAwareDataset(Dataset):
 				if sample_id in self.df_supervision.index:
 						row        = self.df_supervision.loc[sample_id]
 						label_vec  = self._targets_to_vector(row["positive_targets"])
-						hn_vec     = self._targets_to_vector(row["hn_targets"])
+						hn_vec     = self._targets_to_vector(row["hard_negatives"])
 						w_pos      = float(row["w_pos"])
 						w_neg      = float(row["w_neg"])
 						regime     = str(row["regime"])
@@ -385,11 +367,6 @@ class Stage5RegimeAwareDataset(Dataset):
 								"regime":    FALLBACK_REGIME,
 						}
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. COLLATE FUNCTION
-# ─────────────────────────────────────────────────────────────────────────────
-
 def stage5_collate_fn(batch: List[Dict]) -> Dict[str, Any]:
 		"""
 		Collates a list of per-sample dicts into batched tensors.
@@ -408,11 +385,6 @@ def stage5_collate_fn(batch: List[Dict]) -> Dict[str, Any]:
 				"w_neg":     torch.stack([s["w_neg"]     for s in valid]),
 				"regime":    [s["regime"] for s in valid],          # List[str]
 		}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. DATALOADER FACTORY
-# ─────────────────────────────────────────────────────────────────────────────
 
 def get_stage5_dataloaders(
 		metadata_fpth:      str,
@@ -490,34 +462,34 @@ def get_stage5_dataloaders(
 
 		# ── Datasets ──────────────────────────────────────────────────────────────
 		train_dataset = Stage5RegimeAwareDataset(
-				dataset_name=dataset_name,
-				train=True,
-				data_frame=df_train.sort_values("img_path").reset_index(drop=True),
-				transform=preprocess,
-				label_dict=label_dict,
-				df_supervision=df_supervision,
-				# id_col=id_col,
-				# text_col=text_col,
-				text_augmentation=True,
-				cache_size=train_cache,
-				cache_workers=min(4, num_workers),
-				verbose=verbose,
+			dataset_name=dataset_name,
+			train=True,
+			data_frame=df_train.sort_values("img_path").reset_index(drop=True),
+			transform=preprocess,
+			label_dict=label_dict,
+			df_supervision=df_supervision,
+			id_col=id_col,
+			text_col=text_col,
+			text_augmentation=True,
+			cache_size=train_cache,
+			cache_workers=min(12, num_workers),
+			verbose=verbose,
 		)
 		print(train_dataset)
 
 		val_dataset = Stage5RegimeAwareDataset(
-				dataset_name=dataset_name,
-				train=False,
-				data_frame=df_val.sort_values("img_path").reset_index(drop=True),
-				transform=preprocess,
-				label_dict=label_dict,
-				df_supervision=df_supervision,
-				# id_col=id_col,
-				# text_col=text_col,
-				text_augmentation=False,
-				cache_size=val_cache,
-				cache_workers=min(4, num_workers),
-				verbose=verbose,
+			dataset_name=dataset_name,
+			train=False,
+			data_frame=df_val.sort_values("img_path").reset_index(drop=True),
+			transform=preprocess,
+			label_dict=label_dict,
+			df_supervision=df_supervision,
+			id_col=id_col,
+			text_col=text_col,
+			text_augmentation=False,
+			cache_size=val_cache,
+			cache_workers=min(12, num_workers),
+			verbose=verbose,
 		)
 		print(val_dataset)
 

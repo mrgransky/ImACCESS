@@ -25,10 +25,6 @@
 
 from utils import *
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONSTANTS
-# ─────────────────────────────────────────────────────────────────────────────
-
 REGIME_OMEGA_POS_HARD   = 0.3   # ω_pos for HARD_CONFLICT positive targets
 REGIME_OMEGA_POS_FLOOR  = 0.05  # minimum ω_pos for SOFT_CONFLICT (prevents zero)
 REGIME_LAMBDA_I2T       = 0.5   # λ_i2t  (mirrors loss.py default)
@@ -37,10 +33,6 @@ REGIME_LAMBDA_REPEL     = 1.0   # λ_repel (repulsion arm weight)
 
 VALID_REGIMES = {"AGREEMENT", "SOFT_CONFLICT", "HARD_CONFLICT"}
 SKIP_REGIMES  = {"MISSING_MODALITY", "INVALID_JSON"}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. REGIME WEIGHT RESOLVER
-# ─────────────────────────────────────────────────────────────────────────────
 
 def resolve_regime_weights(
 		regimes:      List[str],
@@ -110,11 +102,6 @@ def resolve_regime_weights(
 
 		return omega_pos, omega_neg, valid_mask
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. REGIME-WEIGHTED I2T LOSS
-# ─────────────────────────────────────────────────────────────────────────────
-
 def compute_regime_weighted_i2t_loss(
 		i2t_sim:      torch.Tensor,   # [B, C]  — image-to-class cosine similarities / T
 		label_vectors: torch.Tensor,  # [B, C]  — multi-hot ground truth (float)
@@ -147,11 +134,6 @@ def compute_regime_weighted_i2t_loss(
 		n_valid = valid_mask.sum().clamp(min=1)
 		return weighted.sum() / n_valid
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. REGIME-WEIGHTED T2I LOSS
-# ─────────────────────────────────────────────────────────────────────────────
-
 def compute_regime_weighted_t2i_loss(
 		t2i_sim:      torch.Tensor,   # [C, B]  — class-to-image cosine similarities / T
 		label_vectors: torch.Tensor,  # [B, C]  — multi-hot ground truth (float)
@@ -178,11 +160,6 @@ def compute_regime_weighted_t2i_loss(
 
 		n_valid = valid_mask.sum().clamp(min=1)
 		return weighted.sum() / n_valid
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. HARD-NEGATIVE REPULSION LOSS
-# ─────────────────────────────────────────────────────────────────────────────
 
 def compute_hard_negative_repulsion_loss(
 		image_embeds:    torch.Tensor,   # [B, D]  — L2-normalised image embeddings
@@ -249,11 +226,6 @@ def compute_hard_negative_repulsion_loss(
 				)
 
 		return loss
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 5. MASTER STAGE 5 LOSS  (drop-in replacement for compute_multilabel_contrastive_loss)
-# ─────────────────────────────────────────────────────────────────────────────
 
 def compute_stage5_loss(
 		model:             torch.nn.Module,

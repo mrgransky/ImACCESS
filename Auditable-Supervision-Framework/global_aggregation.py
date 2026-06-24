@@ -10,7 +10,7 @@ MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
 sys.path.insert(0, MISC_DIR)
 
 # local:
-# nohup python -u global_aggregation.py -jsonl /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_mlm_cot_modality_conflict_audit.jsonl -v > logs/global_aggregation.log 2>&1 &
+# nohup python -u global_aggregation.py -jsonl /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal_mlm_cot_modality_conflict_audit.jsonl -v > logs/global_aggregation.log 2>&1 &
 
 from utils import *
 from clustering import *

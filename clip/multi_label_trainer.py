@@ -1,5 +1,3 @@
-import torch
-
 from utils import *
 from early_stopper import EarlyStopping
 from loss import *

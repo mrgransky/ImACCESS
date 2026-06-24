@@ -947,11 +947,11 @@ def get_mlm_cot_labels(
 	verbose: bool=False,
 ):
 	t0 = time.time()
-	output_csv = csv_file.replace(".csv", "_mlm_cot.csv")
 	output_jsonl = csv_file.replace(".csv", "_mlm_cot.jsonl")
 	# ========== Load data ==========
 	if verbose:
 		print(f"[PREP] Loading data (col: enriched_document_description) from {csv_file}...")
+
 	wanted_cols = {
 		'doc_url',
 		'title',

@@ -1197,7 +1197,9 @@ def get_enriched_description(
 			print("enriched_document_description column already exists. Dropped it...")
 			print(f"df: {df.shape} {type(df)} {list(df.columns)}")
 
+
 	df_enriched = df.copy(deep=True)
+
 	
 	if verbose:
 		print(f"df_enriched: {df_enriched.shape} {type(df_enriched)} {list(df_enriched.columns)}")
