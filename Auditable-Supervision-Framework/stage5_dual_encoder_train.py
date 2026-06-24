@@ -25,10 +25,6 @@ print(f"sys.path: {sys.path}")
 
 from utils import *
 
-# =========================================================================
-# PYTORCH DATASET IMPLEMENTATION
-# =========================================================================
-
 class HistoryX4AuditableDataset(Dataset):
 	def __init__(
 		self,
@@ -98,11 +94,6 @@ class HistoryX4AuditableDataset(Dataset):
 		w_neg = torch.tensor(row['w_neg'], dtype=torch.float32)
 
 		return pixel_values, pos_targets, hn_targets, w_pos, w_neg
-
-
-# =========================================================================
-# LOSS MASKS COMPUTATION (Your exact original long-tail balancing logic)
-# =========================================================================
 
 def compute_loss_masks(
 	loader: DataLoader,
@@ -177,11 +168,6 @@ def compute_loss_masks(
 		"pos_weight":  pos_weight,
 		"N":           N,
 	}
-
-
-# =========================================================================
-# CORE TRAINING ENGINE
-# =========================================================================
 
 def train_regime_aware_clip(
 	parquet_file: str,
@@ -316,7 +302,6 @@ def train_regime_aware_clip(
 	model.save_pretrained(save_path)
 	processor.save_pretrained(save_path)
 	print(f"\n[SUCCESS] Saved fine-tuned, conflict-resilient model to: {save_path}")
-
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Stage 5: Downstream Regime-Aware CLIP Fine-Tuning")

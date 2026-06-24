@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 # local:
-# python viz.py --audit_jsonl /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_mlm_cot_modality_conflict_audit.jsonl --n_raw_concepts 172
+# python viz.py --audit_jsonl /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_mlm_cot_modality_conflict_audit.jsonl -v
 
 REGIME_COLORS = {
 	"AGREEMENT":        "#028307",
