@@ -108,7 +108,7 @@ def load_jsonl_state(
 				continue
 			try:
 				rec = json.loads(line)
-				sid = rec.get("id")
+				sid = rec.get("doc_url")
 				if sid is None:
 					continue
 				# Skip legacy int-keyed rows
@@ -1270,7 +1270,7 @@ def get_mlm_cot_labels(
 					# Update in-memory state (flushed atomically to disk after the batch)
 					doc_url = doc_urls[idx] or f"__unknown_{idx}__"
 					empty_listed_result = {"text_concepts": [], "visual_concepts": [], "fused_concepts": []}
-					jsonl_state[doc_url] = {"id": doc_url, column: parsed if parsed else empty_listed_result}
+					jsonl_state[doc_url] = {"doc_url": doc_url, column: parsed if parsed else empty_listed_result}
 				except Exception as e:
 					if verbose:
 						print(f"[WARN] Parse error for idx {idx}: {e}")
@@ -1346,7 +1346,7 @@ def get_mlm_cot_labels(
 					results[uniq_idx] = parsed
 					doc_url = doc_urls[uniq_idx] or f"__unknown_{idx}__"
 					jsonl_state[doc_url] = {
-						"id": doc_url,
+						"doc_url": doc_url,
 						column: parsed if parsed else {
 							"text_concepts": [], "visual_concepts": [], "fused_concepts": []
 						}

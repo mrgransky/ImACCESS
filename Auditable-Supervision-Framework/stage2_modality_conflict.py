@@ -204,7 +204,7 @@ class ConflictQuantifier:
 		if not isinstance(vlm_json, dict):
 			print(f"[ERROR] Invalid JSON for id: {sample_id}")
 			return {
-				"id": sample_id,
+				"doc_url": sample_id,
 				"heuristic_regime": "INVALID_JSON",
 				"failure_mode": "vlm_json is not a dict",
 				"metrics": None,
@@ -231,7 +231,7 @@ class ConflictQuantifier:
 				"Missing Text"
 			)
 			return {
-				"id": sample_id,
+				"doc_url": sample_id,
 				column: vlm_json,
 				"heuristic_regime": heuristic_regime,
 				"failure_mode": missing,
@@ -455,7 +455,7 @@ class ConflictQuantifier:
 			"EQUAL"
 		)
 		return {
-			"id": sample_id,
+			"doc_url": sample_id,
 			column: vlm_json,
 			"evidence": {
 				"E_strong_pairs":    e_strong,
@@ -513,7 +513,7 @@ def modality_conflict_audit(
 				continue
 			try:
 				rec = json.loads(line)
-				sid = rec.get("id")
+				sid = rec.get("doc_url")
 				concepts = rec.get(column)
 				if sid is None or concepts is None:
 					skipped_load += 1
@@ -532,7 +532,7 @@ def modality_conflict_audit(
 		with open(output_jsonl, "r", encoding="utf-8") as f_done:
 			for line in f_done:
 				try:
-					done_ids.add(json.loads(line.strip())["id"])
+					done_ids.add(json.loads(line.strip())["doc_url"])
 				except Exception:
 					pass
 		if done_ids:

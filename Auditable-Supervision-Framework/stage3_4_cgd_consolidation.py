@@ -1,4 +1,3 @@
-import json
 import os
 import sys
 
@@ -407,7 +406,7 @@ class CGDConsolidator:
 			"gmm.regime_override" — True when GMM disagrees with Stage 2.
 		"""
 
-		sample_id        = receipt["id"]
+		sample_id        = receipt["doc_url"]
 		heuristic_regime = receipt["heuristic_regime"]
 		metrics          = receipt.get("metrics") or {}
 		vlm_data         = receipt.get(column, {})
@@ -726,7 +725,7 @@ class CGDConsolidator:
 			print("-" * 80)
 		
 		return {
-			"id":               sample_id,
+			"doc_url":               sample_id,
 			column:             vlm_data,
 			"audited_concepts": flattened_concepts,
 			"heuristic_regime": heuristic_regime,
@@ -813,11 +812,11 @@ def regime_aware_consolidation(
 		# Derive output paths
 		stage3_path  = os.path.join(
 			outputs_dir,
-			os.path.basename(input_jsonl.replace(".jsonl", "_auditable_cgd.jsonl"))
+			os.path.basename(input_jsonl.replace(".jsonl", "_auditable_supervision_cgd.jsonl"))
 		)
 		parquet_path = os.path.join(
-				outputs_dir,
-				os.path.basename(input_jsonl.replace(".jsonl", "_auditable_matrix.parquet"))
+			outputs_dir,
+			os.path.basename(input_jsonl.replace(".jsonl", "_auditable_supervision_matrix.parquet"))
 		)
 		csv_path   = parquet_path.replace(".parquet", ".csv")
 		jsonl_path = parquet_path.replace(".parquet", ".jsonl")
@@ -842,7 +841,7 @@ def regime_aware_consolidation(
 								if not line:
 										continue
 								try:
-										processed_ids.add(json.loads(line)["id"])
+										processed_ids.add(json.loads(line)["doc_url"])
 								except Exception:
 										pass
 				if processed_ids:
@@ -859,7 +858,7 @@ def regime_aware_consolidation(
 								if not line:
 										continue
 								try:
-										stage3_processed_ids.add(json.loads(line)["id"])
+										stage3_processed_ids.add(json.loads(line)["doc_url"])
 								except Exception:
 										pass
 
@@ -887,9 +886,9 @@ def regime_aware_consolidation(
 					errors += 1
 					continue
 				
-				sample_id = receipt.get("id")
+				sample_id = receipt.get("doc_url")
 				if sample_id is None:
-					print(f"[WARN] Line {line_no} has no 'id' field — skipping.")
+					print(f"[WARN] Line {line_no} has no 'doc_url' field — skipping.")
 					errors += 1
 					continue
 				if sample_id in processed_ids:
@@ -901,7 +900,7 @@ def regime_aware_consolidation(
 					# Stage 3 output — guard prevents duplicate writes on crash-resume.
 					if sample_id not in stage3_processed_ids:
 						stage3_record = {
-							"id":         consolidated["id"],
+							"doc_url":         consolidated["doc_url"],
 							"regime":     consolidated["regime"],
 							"cgd_scores": consolidated["audited_concepts"],
 						}
@@ -942,7 +941,7 @@ def regime_aware_consolidation(
 						f"\n[WARN] {len(empty_supervision):,} samples have empty positive_targets "
 						f"— excluded from training. IDs saved to rejection report."
 				)
-				empty_ids = empty_supervision['id'].tolist()
+				empty_ids = empty_supervision["doc_url"].tolist()
 				empty_ids_path = jsonl_path.replace(".jsonl", "_empty_supervision.json")
 				with open(empty_ids_path, 'w', encoding='utf-8') as f_empty:
 						json.dump(

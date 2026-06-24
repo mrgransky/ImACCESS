@@ -120,7 +120,17 @@ def compute_loss_masks(
 					train_freq[idx] += 1
 		except (ValueError, SyntaxError):
 			pass
-	print(f"train_freq: {type(train_freq)} {train_freq.shape} (min, max): ({train_freq.min():.2f}, {train_freq.max():.2f}) mean: {train_freq.mean():.2f} std: {train_freq.std():.2f}")
+
+	if train_freq.sum() == 0:
+		raise ValueError(
+			f"No valid labels found in dataset. Check that:\n"
+			f"  1. loader.dataset.labels contains valid data\n"
+			f"  2. loader.dataset.label_dict is populated\n"
+			f"  3. Labels in dataset match keys in label_dict"
+		)
+
+	if verbose:
+		print(f"train_freq: {type(train_freq)} {train_freq.shape} (min, max): ({train_freq.min():.2f}, {train_freq.max():.2f}) mean: {train_freq.mean():.2f} std: {train_freq.std():.2f}")
 
 	# 2. active_mask — classes with at least one training example
 	active_mask = (train_freq > 0).to(device)
