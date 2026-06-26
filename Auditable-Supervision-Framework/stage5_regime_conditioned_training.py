@@ -17,7 +17,7 @@ from clip_peft import get_injected_peft_clip, get_adapter_peft_clip
 from loss import compute_loss_masks, diagnose_train_val_coverage
 from stage5_dataset_loader import get_stage5_dataloaders
 from stage5_regime_aware_loss import (
-	compute_loss,
+	compute_regime_aware_contrastive_loss,
 	REGIME_LAMBDA_I2T,
 	REGIME_LAMBDA_T2I,
 	REGIME_LAMBDA_REPEL,
@@ -119,7 +119,7 @@ def evaluate(
 		w_neg      = batch["w_neg"].to(device)
 		regimes    = batch["regime"]
 
-		loss, l_i2t, l_t2i, l_repel = compute_loss(
+		loss, l_i2t, l_t2i, l_repel = compute_regime_aware_contrastive_loss(
 			model=model,
 			images=images,
 			all_class_embeds=class_embeds,
@@ -690,7 +690,7 @@ def regime_conditioned_finetune(
 				optimizer.zero_grad(set_to_none=True)
 				
 				with torch.cuda.amp.autocast(enabled=use_amp):
-					loss, l_i2t, l_t2i, l_repel = compute_loss(
+					loss, l_i2t, l_t2i, l_repel = compute_regime_aware_contrastive_loss(
 						model=model,
 						images=images,
 						all_class_embeds=all_class_embeds,

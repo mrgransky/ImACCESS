@@ -227,7 +227,7 @@ def compute_hard_negative_repulsion_loss(
 
 	return loss
 
-def compute_loss(
+def compute_regime_aware_contrastive_loss(
 	model:             torch.nn.Module,
 	images:            torch.Tensor,        # [B, 3, H, W]
 	all_class_embeds:  torch.Tensor,        # [C, D]  frozen text embeddings
@@ -245,7 +245,9 @@ def compute_loss(
 	verbose:           bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 	"""
-	Loss with three arms:
+	Regime-Aware Contrastive Loss (RACL) with three arms:
+	Arm 1 & 2: Weighted Alignment (Pull)
+	Arm 3: Active Weighted Repulsion (Push)
 		L_total = λ_i2t   * L_i2t(ω_pos)
 						+ λ_t2i   * L_t2i(ω_pos)
 						+ λ_repel * L_repulsion(ω_neg)
