@@ -1,4 +1,3 @@
-
 import os
 import sys
 
@@ -18,12 +17,12 @@ from clip_peft import get_injected_peft_clip, get_adapter_peft_clip
 from loss import compute_loss_masks, diagnose_train_val_coverage
 from stage5_dataset_loader import get_stage5_dataloaders
 from stage5_regime_aware_loss import (
-		compute_stage5_loss,
-		REGIME_LAMBDA_I2T,
-		REGIME_LAMBDA_T2I,
-		REGIME_LAMBDA_REPEL,
-		VALID_REGIMES,
-		SKIP_REGIMES,
+	compute_stage5_loss,
+	REGIME_LAMBDA_I2T,
+	REGIME_LAMBDA_T2I,
+	REGIME_LAMBDA_REPEL,
+	VALID_REGIMES,
+	SKIP_REGIMES,
 )
 
 SUPPORTED_PEFT = {
@@ -39,164 +38,162 @@ METRICS_FNAME       = "stage5_training_metrics.json"
 
 # 1. REGIME EPOCH DIAGNOSTICS
 def log_regime_epoch_stats(
-		regime_counters: Dict[str, int],
-		loss_by_regime:  Dict[str, List[float]],
-		epoch:           int,
-		split:           str = "TRAIN",
-		verbose:         bool = True,
+	regime_counters: Dict[str, int],
+	loss_by_regime:  Dict[str, List[float]],
+	epoch:           int,
+	split:           str = "TRAIN",
+	verbose:         bool = True,
 ) -> Dict[str, Any]:
-		"""
-		Emit per-regime loss and sample-count statistics for one epoch.
-		Returns a flat dict suitable for JSON serialisation into metrics log.
-		"""
-		total_samples = sum(regime_counters.values())
-		stats = {"epoch": epoch, "split": split, "total_samples": total_samples}
-
+	"""
+	Emit per-regime loss and sample-count statistics for one epoch.
+	Returns a flat dict suitable for JSON serialisation into metrics log.
+	"""
+	total_samples = sum(regime_counters.values())
+	stats = {"epoch": epoch, "split": split, "total_samples": total_samples}
+	
+	if verbose:
+		print(f"[{split}] Regime distribution")
+	
+	for regime in sorted(regime_counters.keys()):
+		count   = regime_counters[regime]
+		pct     = count / max(total_samples, 1) * 100
+		losses  = loss_by_regime.get(regime, [])
+		avg_loss = float(np.mean(losses)) if losses else float("nan")
+		stats[f"{regime}_count"]    = count
+		stats[f"{regime}_pct"]      = round(pct, 2)
+		stats[f"{regime}_avg_loss"] = round(avg_loss, 6)
 		if verbose:
-				print(f"\n[Stage5][Epoch {epoch}][{split}] Regime distribution")
-
-		for regime in sorted(regime_counters.keys()):
-				count   = regime_counters[regime]
-				pct     = count / max(total_samples, 1) * 100
-				losses  = loss_by_regime.get(regime, [])
-				avg_loss = float(np.mean(losses)) if losses else float("nan")
-
-				stats[f"{regime}_count"]    = count
-				stats[f"{regime}_pct"]      = round(pct, 2)
-				stats[f"{regime}_avg_loss"] = round(avg_loss, 6)
-
-				if verbose:
-						print(
-								f"  ├─ {regime:<20s}: {count:>6,} ({pct:5.1f}%) "
-								f"avg_loss={avg_loss:.6f}"
-						)
-
-		if verbose:
-				print(f"  └─ Total samples : {total_samples:,}")
-
-		return stats
+			print(
+				f"  ├─ {regime:<20s}: {count:>6,} ({pct:5.1f}%) "
+				f"avg_loss={avg_loss:.6f}"
+			)
+	
+	if verbose:
+		print(f"  └─ Total samples : {total_samples:,}")
+	
+	return stats
 
 # 2. EVALUATION (mirrors lora_finetune_multi_label eval block)
 @torch.no_grad()
-def evaluate_stage5(
-		model:            torch.nn.Module,
-		val_loader:       DataLoader,
-		all_class_embeds: torch.Tensor,
-		criterion_i2t:    torch.nn.BCEWithLogitsLoss,
-		criterion_t2i:    torch.nn.BCEWithLogitsLoss,
-		active_mask:      torch.Tensor,
-		head_mask:        torch.Tensor,
-		rare_mask:        torch.Tensor,
-		temperature:      float,
-		device:           torch.device,
-		epoch:            int,
-		verbose:          bool = True,
+def evaluate(
+	model:            torch.nn.Module,
+	val_loader:       DataLoader,
+	all_class_embeds: torch.Tensor,
+	criterion_i2t:    torch.nn.BCEWithLogitsLoss,
+	criterion_t2i:    torch.nn.BCEWithLogitsLoss,
+	active_mask:      torch.Tensor,
+	head_mask:        torch.Tensor,
+	rare_mask:        torch.Tensor,
+	temperature:      float,
+	device:           torch.device,
+	epoch:            int,
+	verbose:          bool = True,
 ) -> Dict[str, float]:
-		"""
-		Validation pass.  Returns a metrics dict with:
-				val_loss, val_loss_i2t, val_loss_t2i, val_loss_repel,
-				val_map_all, val_map_head, val_map_rare,
-				val_p@1, val_p@5, val_ndcg@5
-		"""
-		model.eval()
-		num_classes = all_class_embeds.shape[0]
+	"""
+	Validation pass.  Returns a metrics dict with:
+		val_loss, val_loss_i2t, val_loss_t2i, val_loss_repel,
+		val_map_all, val_map_head, val_map_rare,
+		val_p@1, val_p@5, val_ndcg@5
+	"""
+	model.eval()
+	num_classes = all_class_embeds.shape[0]
+	if verbose:
+		print(f"\n[VALIDATION EPOCH {epoch}] {len(val_loader.dataset)} samples (batch size: {val_loader.batch_size})")
 
-		total_loss = total_i2t = total_t2i = total_repel = 0.0
-		n_batches  = 0
+	total_loss = total_i2t = total_t2i = total_repel = 0.0
+	n_batches  = 0
+	all_scores  = []
+	all_targets = []
+	regime_counters: Dict[str, int]        = {}
+	loss_by_regime:  Dict[str, List[float]] = {}
+	class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1).to(device)
 
-		all_scores  = []
-		all_targets = []
+	for batch in val_loader:
+		if not batch:
+			continue
 
-		regime_counters: Dict[str, int]        = {}
-		loss_by_regime:  Dict[str, List[float]] = {}
+		images     = batch["image"].to(device)
+		label_vec  = batch["label_vec"].to(device)
+		hn_vec     = batch["hn_vec"].to(device)
+		w_pos      = batch["w_pos"].to(device)
+		w_neg      = batch["w_neg"].to(device)
+		regimes    = batch["regime"]
 
-		class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1).to(device)
-
-		for batch in val_loader:
-				if not batch:
-						continue
-
-				images     = batch["image"].to(device)
-				label_vec  = batch["label_vec"].to(device)
-				hn_vec     = batch["hn_vec"].to(device)
-				w_pos      = batch["w_pos"].to(device)
-				w_neg      = batch["w_neg"].to(device)
-				regimes    = batch["regime"]
-
-				loss, l_i2t, l_t2i, l_repel = compute_stage5_loss(
-						model=model,
-						images=images,
-						all_class_embeds=class_embeds,
-						label_vectors=label_vec,
-						hn_vectors=hn_vec,
-						regimes=regimes,
-						w_pos_raw=w_pos,
-						w_neg_raw=w_neg,
-						criterion_i2t=criterion_i2t,
-						criterion_t2i=criterion_t2i,
-						active_mask=active_mask,
-						temperature=temperature,
-						loss_weights={
-								"i2t":   REGIME_LAMBDA_I2T,
-								"t2i":   REGIME_LAMBDA_T2I,
-								"repel": REGIME_LAMBDA_REPEL,
-						},
-						verbose=False,
-				)
-
-				total_loss  += loss.item()
-				total_i2t   += l_i2t.item()
-				total_t2i   += l_t2i.item()
-				total_repel += l_repel.item()
-				n_batches   += 1
-
-				# Regime counters for val diagnostics
-				for r in regimes:
-						regime_counters[r] = regime_counters.get(r, 0) + 1
-						loss_by_regime.setdefault(r, []).append(loss.item())
-
-				# Retrieval scores: cosine sim image → class
-				image_embeds = torch.nn.functional.normalize(
-						model.encode_image(images), dim=-1
-				).float()
-				scores = torch.matmul(image_embeds, class_embeds.T)  # [B, C]
-				all_scores.append(scores.cpu())
-				all_targets.append(label_vec.cpu())
-
-		# ── Aggregate retrieval metrics ────
-		all_scores  = torch.cat(all_scores,  dim=0)   # [N_val, C]
-		all_targets = torch.cat(all_targets, dim=0)   # [N_val, C]
-
-		metrics = _compute_retrieval_metrics(
-				scores=all_scores,
-				targets=all_targets,
-				active_mask=active_mask.cpu(),
-				head_mask=head_mask.cpu(),
-				rare_mask=rare_mask.cpu(),
+		loss, l_i2t, l_t2i, l_repel = compute_stage5_loss(
+			model=model,
+			images=images,
+			all_class_embeds=class_embeds,
+			label_vectors=label_vec,
+			hn_vectors=hn_vec,
+			regimes=regimes,
+			w_pos_raw=w_pos,
+			w_neg_raw=w_neg,
+			criterion_i2t=criterion_i2t,
+			criterion_t2i=criterion_t2i,
+			active_mask=active_mask,
+			temperature=temperature,
+			loss_weights={
+				"i2t":   REGIME_LAMBDA_I2T,
+				"t2i":   REGIME_LAMBDA_T2I,
+				"repel": REGIME_LAMBDA_REPEL,
+			},
+			split="VAL",
+			verbose=verbose,
 		)
 
-		n_b = max(n_batches, 1)
-		metrics.update({
-				"val_loss":       total_loss  / n_b,
-				"val_loss_i2t":   total_i2t   / n_b,
-				"val_loss_t2i":   total_t2i   / n_b,
-				"val_loss_repel": total_repel / n_b,
-		})
+		total_loss  += loss.item()
+		total_i2t   += l_i2t.item()
+		total_t2i   += l_t2i.item()
+		total_repel += l_repel.item()
+		n_batches   += 1
 
-		if verbose:
-				log_regime_epoch_stats(regime_counters, loss_by_regime, epoch, split="VAL")
-				print(
-						f"\n[Stage5][Epoch {epoch}][VAL] "
-						f"loss={metrics['val_loss']:.6f} "
-						f"(i2t={metrics['val_loss_i2t']:.4f} "
-						f"t2i={metrics['val_loss_t2i']:.4f} "
-						f"repel={metrics['val_loss_repel']:.4f}) | "
-						f"mAP={metrics.get('val_map_all', float('nan')):.4f} "
-						f"P@1={metrics.get('val_p@1', float('nan')):.4f} "
-						f"nDCG@5={metrics.get('val_ndcg@5', float('nan')):.4f}"
-				)
+		# Regime counters for val diagnostics
+		for r in regimes:
+				regime_counters[r] = regime_counters.get(r, 0) + 1
+				loss_by_regime.setdefault(r, []).append(loss.item())
 
-		return metrics
+		# Retrieval scores: cosine sim image → class
+		image_embeds = torch.nn.functional.normalize(model.encode_image(images), dim=-1).float()
+		scores = torch.matmul(image_embeds, class_embeds.T)  # [B, C]
+		all_scores.append(scores.cpu())
+		all_targets.append(label_vec.cpu())
+
+	# Aggregate retrieval metrics
+	all_scores  = torch.cat(all_scores,  dim=0) # [N_val, C]
+	all_targets = torch.cat(all_targets, dim=0) # [N_val, C]
+
+	metrics = _compute_retrieval_metrics(
+		scores=all_scores,
+		targets=all_targets,
+		active_mask=active_mask.cpu(),
+		head_mask=head_mask.cpu(),
+		rare_mask=rare_mask.cpu(),
+	)
+
+	n_b = max(n_batches, 1)
+	metrics.update(
+		{
+			"val_loss":       total_loss  / n_b,
+			"val_loss_i2t":   total_i2t   / n_b,
+			"val_loss_t2i":   total_t2i   / n_b,
+			"val_loss_repel": total_repel / n_b,
+		}
+	)
+
+	if verbose:
+		log_regime_epoch_stats(regime_counters, loss_by_regime, epoch, split="VAL")
+		print(
+				f"Epoch {epoch} [VAL] "
+				f"loss={metrics['val_loss']:.6f} "
+				f"(i2t={metrics['val_loss_i2t']:.4f} "
+				f"t2i={metrics['val_loss_t2i']:.4f} "
+				f"repel={metrics['val_loss_repel']:.4f}) | "
+				f"mAP={metrics.get('val_map_all', float('nan')):.4f} "
+				f"P@1={metrics.get('val_p@1', float('nan')):.4f} "
+				f"nDCG@5={metrics.get('val_ndcg@5', float('nan')):.4f}"
+		)
+
+	return metrics
 
 def _compute_retrieval_metrics(
 		scores:      torch.Tensor,   # [N, C]
@@ -304,7 +301,7 @@ def build_class_embeddings(
 
 		if verbose:
 				print(
-						f"[build_class_embeddings] {class_embeds.shape[0]} classes | "
+						f"[EMBEDDINGS] {class_embeds.shape[0]} classes | "
 						f"dim={class_embeds.shape[1]} | "
 						f"norm range [{class_embeds.norm(dim=-1).min():.3f}, "
 						f"{class_embeds.norm(dim=-1).max():.3f}]"
@@ -314,159 +311,140 @@ def build_class_embeddings(
 
 # 4. PEFT SETUP  (mirrors lora_finetune_multi_label)
 def setup_peft(
-		model:       torch.nn.Module,
-		peft_method: str,
-		peft_config: Optional[Dict] = None,
-		verbose:     bool = True,
+	model:       torch.nn.Module,
+	peft_method: str,
+	peft_config: Optional[Dict] = None,
+	verbose:     bool = True,
 ) -> Tuple[torch.nn.Module, List[Dict]]:
-		"""
-		Apply PEFT to model and return (model, optimizer_param_groups).
-
-		Uses the custom clip_peft.py implementations exclusively — no dependency
-		on the HuggingFace `peft` package.
-
-		peft_config keys (all optional, sensible defaults provided):
-				rank            : LoRA / DoRA / VeRA / rsLoRA rank          (default: 16)
-				alpha           : LoRA scaling factor                        (default: 32)
-				dropout         : adapter dropout rate                       (default: 0.05)
-				lr_multiplier   : B-matrix LR multiplier for lora_plus       (default: 16.0)
-				target_text_modules   : text-encoder module names to inject  (default: see below)
-				target_vision_modules : vision-encoder module names to inject (default: see below)
-				quantized             : use bitsandbytes quantisation         (default: False)
-				quantization_bits     : 4 or 8                               (default: 8)
-				compute_dtype         : torch dtype for quantised compute     (default: torch.float16)
-				# adapter-specific (tip_adapter / tip_adapter_f)
-				initial_beta    : Tip-Adapter temperature                    (default: 1.0)
-				initial_alpha   : Tip-Adapter scaling                        (default: 1.0)
-				# adapter-specific (clip_adapter_*)
-				bottleneck_dim  : CLIP-Adapter bottleneck dimension          (default: 64)
-				activation      : CLIP-Adapter activation ('relu'/'gelu')    (default: 'relu')
-		"""
-		if peft_config is None:
-				peft_config = {}
-
-		peft_method = peft_method.lower()
-		assert peft_method in SUPPORTED_PEFT, \
-				f"[setup_peft] Unknown PEFT method '{peft_method}'. Choose from {SUPPORTED_PEFT}"
-
-		rank          = peft_config.get("rank",    16)
-		alpha         = peft_config.get("alpha",   32)
-		dropout       = peft_config.get("dropout", 0.05)
-		lr_multiplier = peft_config.get("lr_multiplier", 16.0)   # for lora_plus
-		quantized         = peft_config.get("quantized",         False)
-		quantization_bits = peft_config.get("quantization_bits", 8)
-		compute_dtype     = peft_config.get("compute_dtype",     torch.float16)
-
-		# Default target modules — mirrors lora_finetune_multi_label()
-		default_text_modules   = ["in_proj", "out_proj", "c_fc", "c_proj"]
-		default_vision_modules = ["in_proj", "out_proj", "c_fc", "c_proj"]
-		target_text_modules   = peft_config.get("target_text_modules",   default_text_modules)
-		target_vision_modules = peft_config.get("target_vision_modules", default_vision_modules)
-
-		if verbose:
-				print(f"\n[setup_peft] method={peft_method} | rank={rank} | alpha={alpha} | dropout={dropout}")
-
-		# ── Injected PEFT methods (get_injected_peft_clip) ────
-		# lora, lora_plus, rslora, dora, vera, ia3
-		if peft_method in {"lora", "lora_plus", "dora", "rslora", "vera", "ia3"}:
-				# lora_plus passes a lambda multiplier; others pass None
-				lora_plus_lambda = lr_multiplier if peft_method == "lora_plus" else None
-
-				model = get_injected_peft_clip(
-						clip_model=model,
-						method=peft_method,
-						rank=rank,
-						alpha=alpha,
-						dropout=dropout,
-						lora_plus_lambda=lora_plus_lambda,
-						target_text_modules=target_text_modules,
-						target_vision_modules=target_vision_modules,
-						quantized=quantized,
-						quantization_bits=quantization_bits,
-						compute_dtype=compute_dtype,
-						verbose=verbose,
-				)
-
-				if peft_method == "lora_plus":
-						# LoRA+: A matrices use base LR, B matrices use lr_multiplier × base LR
-						lora_a_params = [p for n, p in model.named_parameters()
-								if p.requires_grad and "lora_A" in n]
-						lora_b_params = [p for n, p in model.named_parameters()
-								if p.requires_grad and "lora_B" in n]
-						param_groups = [
-								{"params": lora_a_params, "lr_multiplier": 1.0},
-								{"params": lora_b_params, "lr_multiplier": lr_multiplier},
-						]
-				else:
-						trainable = [p for p in model.parameters() if p.requires_grad]
-						param_groups = [{"params": trainable}]
-
-				if verbose:
-						n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-						n_total     = sum(p.numel() for p in model.parameters())
-						print(
-								f"[setup_peft][{peft_method}] trainable: {n_trainable:,} / {n_total:,} "
-								f"({100*n_trainable/max(n_total,1):.3f}%)"
-						)
-
-		# ── Adapter PEFT methods (get_adapter_peft_clip) ────
-		# tip_adapter, tip_adapter_f, clip_adapter_v, clip_adapter_t, clip_adapter_vt
-		elif peft_method in {"tip_adapter", "tip_adapter_f",
-				"clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"}:
-
-			is_clip_adapter = peft_method.startswith("clip_adapter")
-			is_tip_adapter  = peft_method.startswith("tip_adapter")
-
-			adapter_kwargs = dict(
+	"""
+	Apply PEFT to model and return (model, optimizer_param_groups).
+	Uses the custom clip_peft.py implementations exclusively — no dependency
+	on the HuggingFace `peft` package.
+	peft_config keys (all optional, sensible defaults provided):
+			rank            : LoRA / DoRA / VeRA / rsLoRA rank          (default: 16)
+			alpha           : LoRA scaling factor                        (default: 32)
+			dropout         : adapter dropout rate                       (default: 0.05)
+			lr_multiplier   : B-matrix LR multiplier for lora_plus       (default: 16.0)
+			target_text_modules   : text-encoder module names to inject  (default: see below)
+			target_vision_modules : vision-encoder module names to inject (default: see below)
+			quantized             : use bitsandbytes quantisation         (default: False)
+			quantization_bits     : 4 or 8                               (default: 8)
+			compute_dtype         : torch dtype for quantised compute     (default: torch.float16)
+			# adapter-specific (tip_adapter / tip_adapter_f)
+			initial_beta    : Tip-Adapter temperature                    (default: 1.0)
+			initial_alpha   : Tip-Adapter scaling                        (default: 1.0)
+			# adapter-specific (clip_adapter_*)
+			bottleneck_dim  : CLIP-Adapter bottleneck dimension          (default: 64)
+			activation      : CLIP-Adapter activation ('relu'/'gelu')    (default: 'relu')
+	"""
+	if peft_config is None:
+			peft_config = {}
+	peft_method = peft_method.lower()
+	assert peft_method in SUPPORTED_PEFT, f"[PEFT] Unknown: '{peft_method}'. Choose: {SUPPORTED_PEFT}"
+	rank          = peft_config.get("rank",    16)
+	alpha         = peft_config.get("alpha",   32)
+	dropout       = peft_config.get("dropout", 0.05)
+	lr_multiplier = peft_config.get("lr_multiplier", 16.0)   # for lora_plus
+	quantized         = peft_config.get("quantized",         False)
+	quantization_bits = peft_config.get("quantization_bits", 8)
+	compute_dtype     = peft_config.get("compute_dtype",     torch.float16)
+	# Default target modules — mirrors lora_finetune_multi_label()
+	default_text_modules   = ["in_proj", "out_proj", "c_fc", "c_proj"]
+	default_vision_modules = ["in_proj", "out_proj", "c_fc", "c_proj"]
+	target_text_modules   = peft_config.get("target_text_modules",   default_text_modules)
+	target_vision_modules = peft_config.get("target_vision_modules", default_vision_modules)
+	if verbose:
+			print(f"\n[PEFT] method={peft_method} | rank={rank} | alpha={alpha} | dropout={dropout}")
+	# ── Injected PEFT methods (get_injected_peft_clip) ────
+	# lora, lora_plus, rslora, dora, vera, ia3
+	if peft_method in {"lora", "lora_plus", "dora", "rslora", "vera", "ia3"}:
+			# lora_plus passes a lambda multiplier; others pass None
+			lora_plus_lambda = lr_multiplier if peft_method == "lora_plus" else None
+			model = get_injected_peft_clip(
 					clip_model=model,
 					method=peft_method,
+					rank=rank,
+					alpha=alpha,
+					dropout=dropout,
+					lora_plus_lambda=lora_plus_lambda,
+					target_text_modules=target_text_modules,
+					target_vision_modules=target_vision_modules,
+					quantized=quantized,
+					quantization_bits=quantization_bits,
+					compute_dtype=compute_dtype,
 					verbose=verbose,
 			)
-			if is_tip_adapter:
-					adapter_kwargs["initial_beta"]  = peft_config.get("initial_beta",  1.0)
-					adapter_kwargs["initial_alpha"] = peft_config.get("initial_alpha", 1.0)
-			if is_clip_adapter:
-					adapter_kwargs["bottleneck_dim"] = peft_config.get("bottleneck_dim", 64)
-					adapter_kwargs["activation"]     = peft_config.get("activation",     "relu")
-
-			model = get_adapter_peft_clip(**adapter_kwargs)
-			trainable = [p for p in model.parameters() if p.requires_grad]
-			param_groups = [{"params": trainable}]
-
+			if peft_method == "lora_plus":
+					# LoRA+: A matrices use base LR, B matrices use lr_multiplier × base LR
+					lora_a_params = [p for n, p in model.named_parameters()
+							if p.requires_grad and "lora_A" in n]
+					lora_b_params = [p for n, p in model.named_parameters()
+							if p.requires_grad and "lora_B" in n]
+					param_groups = [
+							{"params": lora_a_params, "lr_multiplier": 1.0},
+							{"params": lora_b_params, "lr_multiplier": lr_multiplier},
+					]
+			else:
+					trainable = [p for p in model.parameters() if p.requires_grad]
+					param_groups = [{"params": trainable}]
 			if verbose:
-					n_trainable = sum(p.numel() for p in trainable)
+					n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
 					n_total     = sum(p.numel() for p in model.parameters())
 					print(
-							f"[setup_peft][{peft_method}] trainable: {n_trainable:,} / {n_total:,} "
+							f"[PEFT][{peft_method}] trainable: {n_trainable:,} / {n_total:,} "
 							f"({100*n_trainable/max(n_total,1):.3f}%)"
 					)
-
-		# ── Linear probe ────
-		elif peft_method == "probe":
-				# Freeze everything, then unfreeze only the final projection parameters
-				for p in model.parameters():
-						p.requires_grad_(False)
-				# Unfreeze visual.proj and text_projection (both are nn.Parameter in CLIP)
-				if hasattr(model.visual, "proj") and isinstance(model.visual.proj, torch.nn.Parameter):
-						model.visual.proj.requires_grad_(True)
-				if hasattr(model, "text_projection") and isinstance(model.text_projection, torch.nn.Parameter):
-						model.text_projection.requires_grad_(True)
-				trainable = [p for p in model.parameters() if p.requires_grad]
-				param_groups = [{"params": trainable}]
-				if verbose:
-						n_trainable = sum(p.numel() for p in trainable)
-						print(f"[setup_peft][probe] trainable params: {n_trainable:,}")
-
-		# ── Full fine-tuning ────
-		elif peft_method == "full":
-				for p in model.parameters():
-						p.requires_grad_(True)
-				param_groups = [{"params": list(model.parameters())}]
-				if verbose:
-						n = sum(p.numel() for p in model.parameters())
-						print(f"[setup_peft][full] trainable params: {n:,}")
-
-		return model, param_groups
+	# ── Adapter PEFT methods (get_adapter_peft_clip) ────
+	# tip_adapter, tip_adapter_f, clip_adapter_v, clip_adapter_t, clip_adapter_vt
+	elif peft_method in {"tip_adapter", "tip_adapter_f",
+			"clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"}:
+		is_clip_adapter = peft_method.startswith("clip_adapter")
+		is_tip_adapter  = peft_method.startswith("tip_adapter")
+		adapter_kwargs = dict(
+				clip_model=model,
+				method=peft_method,
+				verbose=verbose,
+		)
+		if is_tip_adapter:
+				adapter_kwargs["initial_beta"]  = peft_config.get("initial_beta",  1.0)
+				adapter_kwargs["initial_alpha"] = peft_config.get("initial_alpha", 1.0)
+		if is_clip_adapter:
+				adapter_kwargs["bottleneck_dim"] = peft_config.get("bottleneck_dim", 64)
+				adapter_kwargs["activation"]     = peft_config.get("activation",     "relu")
+		model = get_adapter_peft_clip(**adapter_kwargs)
+		trainable = [p for p in model.parameters() if p.requires_grad]
+		param_groups = [{"params": trainable}]
+		if verbose:
+				n_trainable = sum(p.numel() for p in trainable)
+				n_total     = sum(p.numel() for p in model.parameters())
+				print(
+						f"[PEFT][{peft_method}] trainable: {n_trainable:,} / {n_total:,} "
+						f"({100*n_trainable/max(n_total,1):.3f}%)"
+				)
+	# ── Linear probe ────
+	elif peft_method == "probe":
+			# Freeze everything, then unfreeze only the final projection parameters
+			for p in model.parameters():
+					p.requires_grad_(False)
+			# Unfreeze visual.proj and text_projection (both are nn.Parameter in CLIP)
+			if hasattr(model.visual, "proj") and isinstance(model.visual.proj, torch.nn.Parameter):
+					model.visual.proj.requires_grad_(True)
+			if hasattr(model, "text_projection") and isinstance(model.text_projection, torch.nn.Parameter):
+					model.text_projection.requires_grad_(True)
+			trainable = [p for p in model.parameters() if p.requires_grad]
+			param_groups = [{"params": trainable}]
+			if verbose:
+					n_trainable = sum(p.numel() for p in trainable)
+					print(f"[PEFT][probe] trainable params: {n_trainable:,}")
+	# ── Full fine-tuning ────
+	elif peft_method == "full":
+			for p in model.parameters():
+					p.requires_grad_(True)
+			param_groups = [{"params": list(model.parameters())}]
+			if verbose:
+					n = sum(p.numel() for p in model.parameters())
+					print(f"[PEFT][full] trainable params: {n:,}")
+	return model, param_groups
 
 # 5. CHECKPOINT HELPERS
 def save_checkpoint(
@@ -493,7 +471,6 @@ def save_checkpoint(
 		torch.save(state, ckpt_path)
 		if verbose:
 				print(f"[Checkpoint] Saved → {ckpt_path}  (epoch={epoch}  val_loss={metrics.get('val_loss', float('nan')):.6f})")
-
 
 def load_checkpoint(
 		ckpt_path:  str,
@@ -622,10 +599,7 @@ def regime_conditioned_finetune(
 		)
 
 		# ── Criteria ────
-		criterion_i2t = torch.nn.BCEWithLogitsLoss(
-				pos_weight=pos_weight,
-				reduction="none",
-		)
+		criterion_i2t = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction="none",)
 		criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction="none")
 
 		# ── Model + PEFT ────
@@ -633,10 +607,10 @@ def regime_conditioned_finetune(
 		model.float()
 
 		model, param_groups = setup_peft(
-				model=model,
-				peft_method=peft_method,
-				peft_config=peft_config,
-				verbose=verbose,
+			model=model,
+			peft_method=peft_method,
+			peft_config=peft_config,
+			verbose=verbose,
 		)
 		model = model.to(device)
 
@@ -664,15 +638,15 @@ def regime_conditioned_finetune(
 		# ── Resume ────
 		start_epoch = 0
 		if resume_ckpt:
-				start_epoch, _ = load_checkpoint(
-						ckpt_path=resume_ckpt,
-						model=model,
-						optimizer=optimizer,
-						scheduler=scheduler,
-						device=device,
-						verbose=verbose,
-				)
-				start_epoch += 1
+			start_epoch, _ = load_checkpoint(
+				ckpt_path=resume_ckpt,
+				model=model,
+				optimizer=optimizer,
+				scheduler=scheduler,
+				device=device,
+				verbose=verbose,
+			)
+			start_epoch += 1
 
 		# ── AMP scaler ────
 		use_amp   = torch.cuda.is_available()
@@ -686,166 +660,172 @@ def regime_conditioned_finetune(
 		all_train_metrics: List[Dict] = []
 		all_val_metrics:   List[Dict] = []
 
-		# ── Epoch loop ────
+		# Main training loop
+		start_time = time.time()
 		for epoch in range(start_epoch, num_epochs):
-				model.train()
+			t0 = time.time()
+			model.train()
+			print(f"\n[Epoch {epoch+1}/{num_epochs}]")
+			# Rebuild class embeddings each epoch (text encoder may have been updated)
+			all_class_embeds = build_class_embeddings(
+				model=model,
+				label_dict=label_dict,
+				device=device,
+				verbose=verbose,
+			).to(device)
+			epoch_loss = epoch_i2t = epoch_t2i = epoch_repel = 0.0
+			n_batches  = 0
+			regime_counters: Dict[str, int]        = {}
+			loss_by_regime:  Dict[str, List[float]] = {}
 
-				# Rebuild class embeddings each epoch (text encoder may have been updated)
-				all_class_embeds = build_class_embeddings(
+			for batch_idx, batch in enumerate(train_loader):
+				if not batch:
+					continue
+				
+				images    = batch["image"].to(device, non_blocking=True)
+				label_vec = batch["label_vec"].to(device, non_blocking=True)
+				hn_vec    = batch["hn_vec"].to(device, non_blocking=True)
+				w_pos     = batch["w_pos"].to(device, non_blocking=True)
+				w_neg     = batch["w_neg"].to(device, non_blocking=True)
+				regimes   = batch["regime"]
+				
+				optimizer.zero_grad(set_to_none=True)
+				
+				with torch.cuda.amp.autocast(enabled=use_amp):
+					loss, l_i2t, l_t2i, l_repel = compute_stage5_loss(
 						model=model,
-						label_dict=label_dict,
-						device=device,
-						verbose=(epoch == start_epoch),
-				).to(device)
-
-				epoch_loss = epoch_i2t = epoch_t2i = epoch_repel = 0.0
-				n_batches  = 0
-
-				regime_counters: Dict[str, int]        = {}
-				loss_by_regime:  Dict[str, List[float]] = {}
-
-				for batch_idx, batch in enumerate(train_loader):
-						if not batch:
-								continue
-
-						images    = batch["image"].to(device, non_blocking=True)
-						label_vec = batch["label_vec"].to(device, non_blocking=True)
-						hn_vec    = batch["hn_vec"].to(device, non_blocking=True)
-						w_pos     = batch["w_pos"].to(device, non_blocking=True)
-						w_neg     = batch["w_neg"].to(device, non_blocking=True)
-						regimes   = batch["regime"]
-
-						optimizer.zero_grad(set_to_none=True)
-
-						with torch.cuda.amp.autocast(enabled=use_amp):
-								loss, l_i2t, l_t2i, l_repel = compute_stage5_loss(
-										model=model,
-										images=images,
-										all_class_embeds=all_class_embeds,
-										label_vectors=label_vec,
-										hn_vectors=hn_vec,
-										regimes=regimes,
-										w_pos_raw=w_pos,
-										w_neg_raw=w_neg,
-										criterion_i2t=criterion_i2t,
-										criterion_t2i=criterion_t2i,
-										active_mask=active_mask,
-										temperature=temperature,
-										loss_weights=loss_weights,
-										verbose=(verbose and batch_idx == 0 and epoch == start_epoch),
-								)
-
-						scaler.scale(loss).backward()
-						scaler.unscale_(optimizer)
-						torch.nn.utils.clip_grad_norm_(
-								[p for p in model.parameters() if p.requires_grad],
-								max_norm=grad_clip,
-						)
-						scaler.step(optimizer)
-						scaler.update()
-						scheduler.step()
-
-						epoch_loss  += loss.item()
-						epoch_i2t   += l_i2t.item()
-						epoch_t2i   += l_t2i.item()
-						epoch_repel += l_repel.item()
-						n_batches   += 1
-
-						# Regime tracking
-						for r in regimes:
-								regime_counters[r] = regime_counters.get(r, 0) + 1
-								loss_by_regime.setdefault(r, []).append(loss.item())
-
-						if verbose and (batch_idx % max(1, len(train_loader) // 5) == 0):
-								lr_now = scheduler.get_last_lr()[0]
-								print(
-										f"  [Epoch {epoch:03d}][{batch_idx:04d}/{len(train_loader):04d}] "
-										f"loss={loss.item():.6f} "
-										f"(i2t={l_i2t.item():.4f} t2i={l_t2i.item():.4f} repel={l_repel.item():.4f}) "
-										f"lr={lr_now:.2e}"
-								)
-
-				# ── End-of-epoch train stats ────
-				n_b = max(n_batches, 1)
-				train_metrics = {
-						"epoch":            epoch,
-						"train_loss":       epoch_loss  / n_b,
-						"train_loss_i2t":   epoch_i2t   / n_b,
-						"train_loss_t2i":   epoch_t2i   / n_b,
-						"train_loss_repel": epoch_repel / n_b,
-						"lr":               scheduler.get_last_lr()[0],
-				}
-				regime_stats = log_regime_epoch_stats(
-						regime_counters, loss_by_regime, epoch, split="TRAIN", verbose=verbose
-				)
-				train_metrics.update(regime_stats)
-				all_train_metrics.append(train_metrics)
-
-				# ── Validation ────
-				val_metrics = evaluate_stage5(
-						model=model,
-						val_loader=val_loader,
+						images=images,
 						all_class_embeds=all_class_embeds,
+						label_vectors=label_vec,
+						hn_vectors=hn_vec,
+						regimes=regimes,
+						w_pos_raw=w_pos,
+						w_neg_raw=w_neg,
 						criterion_i2t=criterion_i2t,
 						criterion_t2i=criterion_t2i,
 						active_mask=active_mask,
-						head_mask=head_mask,
-						rare_mask=rare_mask,
 						temperature=temperature,
-						device=device,
-						epoch=epoch,
+						loss_weights=loss_weights,
+						split="TRAIN",
 						verbose=verbose,
+					)
+				
+				scaler.scale(loss).backward()
+				scaler.unscale_(optimizer)
+				torch.nn.utils.clip_grad_norm_(
+					[p for p in model.parameters() if p.requires_grad],
+					max_norm=grad_clip,
 				)
-				val_metrics["epoch"] = epoch
-				all_val_metrics.append(val_metrics)
+				
+				scaler.step(optimizer)
+				scaler.update()
+				scheduler.step()
+				
+				epoch_loss  += loss.item()
+				epoch_i2t   += l_i2t.item()
+				epoch_t2i   += l_t2i.item()
+				epoch_repel += l_repel.item()
+				n_batches   += 1
+				
+				# Regime tracking
+				for r in regimes:
+					regime_counters[r] = regime_counters.get(r, 0) + 1
+					loss_by_regime.setdefault(r, []).append(loss.item())
+				
+				if verbose and (batch_idx % max(1, len(train_loader) // 5) == 0):
+					lr_now = scheduler.get_last_lr()[0]
+					print(
+						f"\t[{batch_idx:04d}/{len(train_loader):04d}] "
+						f"loss={loss.item():.6f} "
+						f"(i2t={l_i2t.item():.4f} t2i={l_t2i.item():.4f} repel={l_repel.item():.4f}) "
+						f"lr={lr_now:.3e}"
+					)
+			
+			# ── End-of-epoch train stats ────
+			n_b = max(n_batches, 1)
+			train_metrics = {
+				"epoch":            epoch,
+				"train_loss":       epoch_loss  / n_b,
+				"train_loss_i2t":   epoch_i2t   / n_b,
+				"train_loss_t2i":   epoch_t2i   / n_b,
+				"train_loss_repel": epoch_repel / n_b,
+				"lr":               scheduler.get_last_lr()[0],
+			}
+			regime_stats = log_regime_epoch_stats(
+				regime_counters, 
+				loss_by_regime, 
+				epoch, 
+				split="TRAIN", 
+				verbose=verbose,
+			)
+			train_metrics.update(regime_stats)
+			all_train_metrics.append(train_metrics)
 
-				# ── Early stopping + checkpoint ────
-				val_loss = val_metrics["val_loss"]
-				if val_loss < best_val_loss:
-						best_val_loss    = val_loss
-						best_epoch       = epoch
-						best_metrics     = {**train_metrics, **val_metrics}
-						patience_counter = 0
-						save_checkpoint(
-								model=model,
-								optimizer=optimizer,
-								scheduler=scheduler,
-								epoch=epoch,
-								metrics=best_metrics,
-								label_dict=label_dict,
-								output_dir=output_dir,
-								fname=CHECKPOINT_FNAME,
-								verbose=verbose,
-						)
-				else:
-						patience_counter += 1
-						if verbose:
-								print(
-										f"[Stage5][Epoch {epoch}] No improvement "
-										f"({patience_counter}/{patience}). "
-										f"Best val_loss={best_val_loss:.6f} @ epoch {best_epoch}"
-								)
-						if patience_counter >= patience:
-								print(f"\n[Stage5] Early stopping triggered at epoch {epoch}.")
-								break
+			# ── Validation ────
+			val_metrics = evaluate(
+				model=model,
+				val_loader=val_loader,
+				all_class_embeds=all_class_embeds,
+				criterion_i2t=criterion_i2t,
+				criterion_t2i=criterion_t2i,
+				active_mask=active_mask,
+				head_mask=head_mask,
+				rare_mask=rare_mask,
+				temperature=temperature,
+				device=device,
+				epoch=epoch,
+				verbose=verbose,
+			)
+			val_metrics["epoch"] = epoch
+			all_val_metrics.append(val_metrics)
+			print(f"[ELAPSED] {time.time() - t0:.2f}s")
 
-				# ── Persist metrics JSON ────
-				metrics_path = os.path.join(output_dir, METRICS_FNAME)
-				with open(metrics_path, "w") as f:
-						json.dump(
-								{
-										"train": all_train_metrics,
-										"val":   all_val_metrics,
-										"best":  best_metrics,
-								},
-								f,
-								indent=2,
-								ensure_ascii=False,
-						)
+			# ── Early stopping + checkpoint ────
+			val_loss = val_metrics["val_loss"]
+			if val_loss < best_val_loss:
+				best_val_loss    = val_loss
+				best_epoch       = epoch
+				best_metrics     = {**train_metrics, **val_metrics}
+				patience_counter = 0
+				save_checkpoint(
+					model=model,
+					optimizer=optimizer,
+					scheduler=scheduler,
+					epoch=epoch,
+					metrics=best_metrics,
+					label_dict=label_dict,
+					output_dir=output_dir,
+					fname=CHECKPOINT_FNAME,
+					verbose=verbose,
+				)
+			else:
+				patience_counter += 1
+				if verbose:
+					print(
+						f"[Stage5][Epoch {epoch}] No improvement "
+						f"({patience_counter}/{patience}). "
+						f"Best val_loss={best_val_loss:.6f} @ epoch {best_epoch}"
+					)
+				if patience_counter >= patience:
+					print(f"\n[Stage5] Early stopping triggered at epoch {epoch}.")
+					break
 
-		# ── Final summary ────
+			# ── Persist metrics JSON ────
+			metrics_path = os.path.join(output_dir, METRICS_FNAME)
+			with open(metrics_path, "w") as f:
+				json.dump(
+					{
+						"train": all_train_metrics,
+						"val":   all_val_metrics,
+						"best":  best_metrics,
+					},
+					f,
+					indent=2,
+					ensure_ascii=False,
+				)
+
 		print(f"\n{'='*80}")
-		print(f"[Stage5] Training complete")
+		print(f"Training complete, Total Elapsed time: {time.time() - start_time:.1f} sec")
 		print(f"  ├─ Best epoch    : {best_epoch}")
 		print(f"  ├─ Best val_loss : {best_val_loss:.6f}")
 		print(f"  ├─ mAP (all)     : {best_metrics.get('val_map_all',  float('nan')):.4f}")

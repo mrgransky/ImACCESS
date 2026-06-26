@@ -449,7 +449,6 @@ def cleanup_old_temp_dirs():
 	if temp_dirs:
 		print(f"Cleaned up {len(temp_dirs)} old temp directories")
 
-
 def get_model_directory(path):
 	"""
 	Extracts the model directory from a given path.
@@ -514,7 +513,6 @@ def print_loader_info(loader):
 			f"\tTotal samples: {loader_num_samples} (calculated: {total_samples_calc} = {per_batch_samples} x {batch_size} + {last_batch_samples})\n"
 			f"\tUnique Label(s): {n_classes}\n"
 	)
-
 
 def get_config(architecture: str, dropout: float=0.0) -> dict:
 	configs = {
@@ -986,30 +984,53 @@ def print_args_table(args, parser):
 		table_data.append([key, value, arg_type])
 	print(tabulate.tabulate(table_data, headers=['Argument', 'Value', 'Type'], tablefmt='orgtbl'))
 
+import random
+import numpy as np
+import torch
+
 def set_seeds(
-	seed: int=42,
-	debug: bool=False,
-	enable_optimizations: bool=True
+	seed: int = 42,
+	debug: bool = False, # True = maximum reproducibility (slower)
+	enable_optimizations: bool = True
 ):
+	# Set random seeds for maximum reproducibility.
 	random.seed(seed)
 	np.random.seed(seed)
 	torch.manual_seed(seed)
+	
 	if torch.cuda.is_available():
 		torch.cuda.manual_seed(seed)
 		torch.cuda.manual_seed_all(seed)
 	
-	if debug:  # slows down training but ensures reproducibility
+	if debug:
+		# Maximum reproducibility mode (slowest)
 		torch.backends.cudnn.deterministic = True
 		torch.backends.cudnn.benchmark = False
-		# Disable optimizations for debug mode
+		torch.use_deterministic_algorithms(True, warn_only=True)
+		
+		# Disable TF32 for full determinism
 		torch.backends.cuda.matmul.allow_tf32 = False
-		print(f"Seeds set to {seed}")
-	elif enable_optimizations:  # Enable optimizations for performance
-		torch.backends.cudnn.benchmark = True
-		torch.backends.cuda.matmul.allow_tf32 = True
-		# Additional optimizations
-		torch.backends.cudnn.allow_tf32 = True
-		print(f"Seeds set to {seed}")
+		torch.backends.cudnn.allow_tf32 = False
+		
+		print(f"✅ Seeds set to {seed} | DEBUG MODE (Maximum Reproducibility)")		
+	else:
+		# Normal / Performance mode
+		torch.backends.cudnn.deterministic = False
+		torch.backends.cudnn.benchmark = enable_optimizations
+		
+		# Allow TF32 for better performance on Ampere+ GPUs
+		if enable_optimizations:
+				torch.backends.cuda.matmul.allow_tf32 = True
+				torch.backends.cudnn.allow_tf32 = True
+				print(f"✅ Seeds set to {seed} | Performance mode (TF32 enabled)")
+		else:
+				torch.backends.cuda.matmul.allow_tf32 = False
+				torch.backends.cudnn.allow_tf32 = False
+				print(f"✅ Seeds set to {seed} | Balanced mode")
+	# Optional: Print GPU status
+	if torch.cuda.is_available() and debug:
+			print(f"   CUDA deterministic: {torch.backends.cudnn.deterministic}")
+			print(f"   CUDNN benchmark: {torch.backends.cudnn.benchmark}")
 
 def format_elapsed_time(seconds):
 	"""

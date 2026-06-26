@@ -595,35 +595,38 @@ class CGDConsolidator:
 				)
 				w_neg = 0.0
 		elif regime == "HARD_CONFLICT":
-				# Modalities are semantically disjoint.
-				# Only ORPHANED text concepts (O_text_unverified from Stage 2)
-				# become hard negatives. Text concepts matched to a visual concept
-				# in Stage 2 (E_strong / E_density) are NOT hard negatives — they
-				# have partial visual grounding and should not be repelled.
-				o_text_orphans: set = set(evidence.get("O_text_unverified", []))
-				if self.verbose:
-						print(
-								f"  [HARD_CONFLICT] O_text_unverified={sorted(o_text_orphans)} "
-								f"| evidence keys={list(evidence.keys())}"
-						)
-				hn_g_scores: List[float] = []
-				for c, data in audited_concepts.items():
-						resolved = data["canonical"]
-						if data["source_modality"] == "VISUAL":
-								pos_targets.add(resolved)
-						elif c in o_text_orphans:
-								hn_targets.add(resolved)
-								hn_g_scores.append(data["scores"]["G"])
-				w_pos = self.hard_conflict_w_pos
-				# w_neg must be 0.0 when hn_targets is empty.
-				# Without this guard, mean_hn_g=0.0 (empty list default) produces
-				# w_neg=1.0 — assigning maximum repulsion weight to a non-existent
-				# negative set, which is both incorrect and scientifically incoherent.
-				if hn_targets:
-						mean_hn_g = float(np.mean(hn_g_scores))
-						w_neg     = max(0.0, 1.0 - mean_hn_g)
-				else:
-						w_neg = 0.0
+			# Modalities are semantically disjoint.
+			w_pos = self.hard_conflict_w_pos
+
+			# Only ORPHANED text concepts (O_text_unverified from Stage 2)
+			# become hard negatives. Text concepts matched to a visual concept
+			# in Stage 2 (E_strong / E_density) are NOT hard negatives — they
+			# have partial visual grounding and should not be repelled.
+			o_text_orphans: set = set(evidence.get("O_text_unverified", []))
+			if self.verbose:
+				print(
+					f"  [HARD_CONFLICT] O_text_unverified={sorted(o_text_orphans)} "
+					f"| evidence keys={list(evidence.keys())}"
+				)
+			
+			hn_g_scores: List[float] = []
+			for c, data in audited_concepts.items():
+				resolved = data["canonical"]
+				if data["source_modality"] == "VISUAL":
+					pos_targets.add(resolved)
+				elif c in o_text_orphans:
+					hn_targets.add(resolved)
+					hn_g_scores.append(data["scores"]["G"])
+			
+			# w_neg=0.0 when hn_targets is empty.
+			# Without this guard, mean_hn_g=0.0 (empty list default) produces
+			# w_neg=1.0 — assigning maximum repulsion weight to a non-existent
+			# negative set, which is both incorrect and scientifically incoherent.			
+			if hn_targets:
+				mean_hn_g = float(np.mean(hn_g_scores))
+				w_neg     = max(0.0, 1.0 - mean_hn_g)
+			else:
+				w_neg = 0.0
 		elif regime == "MISSING_MODALITY":
 			# Only visual signal is available; accept resolved visual concepts
 			# as positives with reduced confidence. No hard negatives.

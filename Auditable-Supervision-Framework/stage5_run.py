@@ -8,7 +8,7 @@ def parse_args():
 	p.add_argument("--clip_model",    default="ViT-B/32")
 	p.add_argument("--peft_method",   default="lora",  choices=["lora","lora+","dora","rslora","ia3","vera","probe","adapter","full"])
 	p.add_argument("--epochs",        type=int,   default=30)
-	p.add_argument("--batch_size",    type=int,   default=128)
+	p.add_argument("--batch_size",    type=int,   default=256)
 	p.add_argument("--num_workers",   type=int,   default=4)
 	p.add_argument("--lr",            type=float, default=1e-4)
 	p.add_argument("--pw_mode",       default="sqrt", choices=["log","sqrt","linear"])

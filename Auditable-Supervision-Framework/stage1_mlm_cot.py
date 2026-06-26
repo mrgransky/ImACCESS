@@ -35,21 +35,21 @@ PROMPT_TEMPLATE = """Given an image and its caption, extract **at MOST {k}** pro
 The extracted keywords must be semantically atomic, visually grounded and broad with absolute maximum degree of breadth.
 
 Exclude the following types of keywords:
-  - Too generic terms (e.g., 'World War I', 'World War II', 'war photo collection', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battlefield').
-  - Temporal references such as dates, times, years, decades or seasonal periods (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
-  - Quantities, counts, measurements or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
-  - Identifiers, serial/reference/model numbers, designated specification codes or brands.
-  - Continents, countries, states, provinces, cities, towns, islands or regions.
-  - Nationalities, ethnicities or religions.
-  - Names of people or honorifics (e.g., 'Mr. Terry Duce', 'Allan M. Hardy', 'Dr. Howard Russell'). 
-  - Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
-  - Roman numerals, fractions or ordinal numeral keywords.
-  - Image types or characteristics (e.g., 'monochrome picture', 'photographic negative', 'multiple exposure', 'superimposed photograph', 'blurred photo', 'black and white image').
+	- Too generic terms (e.g., 'World War I', 'World War II', 'war photo collection', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battlefield').
+	- Temporal references such as dates, times, years, decades or seasonal periods (e.g., 'winter', 'May 12, 1964', 'September 1919', '1950s era').
+	- Quantities, counts, measurements or numerical expressions (e.g., '1 1/2 ton truck', '1 kilovolt', '7.3mm', '3 Dodge trucks').
+	- Identifiers, serial/reference/model numbers, designated specification codes or brands.
+	- Continents, countries, states, provinces, cities, towns, islands or regions.
+	- Nationalities, ethnicities or religions.
+	- Names of people or honorifics (e.g., 'Mr. Terry Duce', 'Allan M. Hardy', 'Dr. Howard Russell'). 
+	- Family relationship terms (e.g., 'mother', 'father', 'son', 'uncle').
+	- Roman numerals, fractions or ordinal numeral keywords.
+	- Image types or characteristics (e.g., 'monochrome picture', 'photographic negative', 'multiple exposure', 'superimposed photograph', 'blurred photo', 'black and white image').
 
 OUTPUT DEFINITIONS:
-  - text_concepts: Keywords derived EXCLUSIVELY from the caption. If caption is empty or "No caption available", text_concepts = [].
-  - visual_concepts: Keywords derived EXCLUSIVELY from the pixel data. OCR, watermarks, or text overlays are not allowed.
-  - fused_concepts: Keywords inferred JOINTLY from BOTH textal and visual modalities. If the modalities are fundamentally disjoint, fused_concepts = [] without forcing a fusion.
+	- text_concepts: Keywords derived EXCLUSIVELY from the caption. If caption is empty or "No caption available", text_concepts = [].
+	- visual_concepts: Keywords derived EXCLUSIVELY from the pixel data. OCR, watermarks, or text overlays are not allowed.
+	- fused_concepts: Keywords inferred JOINTLY from BOTH textal and visual modalities. If the modalities are fundamentally disjoint, fused_concepts = [] without forcing a fusion.
 
 Return ONLY valid and parsable JSON: {{"text_concepts": [], "visual_concepts": [], "fused_concepts": []}}.
 
@@ -629,6 +629,91 @@ def _load_mlm_(
 	
 	return processor, model
 
+def build_safe_gen_kwargs(
+	model,
+	processor,
+	max_generated_tks: int,
+	verbose: bool=False,
+):
+	"""
+	Build safe generation kwargs by inspecting the model's generation_config.
+	Returns a clean dictionary ready to be passed to model.generate().
+	"""
+	if verbose:
+			print("=" * 80)
+			print("MODEL GENERATION CONFIG INSPECTION")
+			print("=" * 80)
+	gen_config = getattr(model, "generation_config", None)
+
+	# ── Inspection ─────────────────────────────────────────────────────
+	if gen_config is not None:
+			if verbose:
+					print("Declared in model's generation_config:")
+					declared = {k: v for k, v in vars(gen_config).items()
+											if not k.startswith("_") and v is not None}
+					for k, v in sorted(declared.items()):
+							print(f"  • {k:25} = {v}")
+	else:
+			if verbose:
+					print("No generation_config found.")
+	if verbose:
+			print("-" * 60)
+			print(f"Tokenizer eos_token_id : {getattr(processor.tokenizer, 'eos_token_id', None)}")
+			print(f"Tokenizer pad_token_id : {getattr(processor.tokenizer, 'pad_token_id', None)}")
+			print("=" * 80)
+
+	# Build gen_kwargs
+	gen_kwargs = {
+		"max_new_tokens": max_generated_tks,
+		"use_cache": True,
+	}
+
+	# eos_token_id - prefer model's config
+	if gen_config is not None and getattr(gen_config, "eos_token_id", None) is not None:
+			gen_kwargs["eos_token_id"] = gen_config.eos_token_id
+			if verbose:
+					print(f"✓ Using model's eos_token_id     = {gen_config.eos_token_id}")
+	else:
+			gen_kwargs["eos_token_id"] = processor.tokenizer.eos_token_id
+			if verbose:
+					print(f"→ Using tokenizer eos_token_id   = {processor.tokenizer.eos_token_id}")
+	# pad_token_id
+	if hasattr(processor.tokenizer, "pad_token_id") and processor.tokenizer.pad_token_id is not None:
+			gen_kwargs["pad_token_id"] = processor.tokenizer.pad_token_id
+			if verbose:
+					print(f"✓ Using tokenizer pad_token_id   = {processor.tokenizer.pad_token_id}")
+
+	# Sampling parameters
+	sampling_params = {
+		"temperature": 0.0, # removes randomness. Best for strict output format.
+		"top_p": 1.0, # No nucleus sampling — full vocabulary is considered, but greedy takes over.
+		"top_k": 1, # consider single most probable token (works with greedy).
+		"do_sample": False, # greedy decoding, deterministic mode. Critical for JSON.
+	}
+
+	for param, desired_value in sampling_params.items():
+		current_value = getattr(gen_config, param, None) if gen_config is not None else None
+		
+		if current_value is not None:
+			if verbose:
+				print(f"✓ Found default: {param:12} = {current_value}")
+			if current_value != desired_value:
+				gen_kwargs[param] = desired_value
+				if verbose:
+					print(f"  → Overriding to: {desired_value}")
+			else:
+				if verbose:
+					print(f"  → Keeping model's default")
+		else:
+			gen_kwargs[param] = desired_value
+			if verbose:
+				print(f"⚠️  Setting (was None): {param:12} = {desired_value}")
+	
+	if verbose:
+		print(f"\nFINAL gen_kwargs: {gen_kwargs}\n")
+
+	return gen_kwargs
+
 def verify(p: str):
 	if p is None or not os.path.exists(p):
 		return None
@@ -849,6 +934,13 @@ def get_mlm_cot_labels_single(
 		verbose=verbose
 	)
 
+	gen_kwargs = build_safe_gen_kwargs(
+		model=model,
+		processor=processor,
+		max_generated_tks=max_generated_tks,
+		verbose=verbose
+	)
+
 	messages = [
 		{"role": "system", "content": "You are an expert historical archivist specializing in multi-label annotation for 20th-century conflict photography."},
 		{
@@ -879,24 +971,6 @@ def get_mlm_cot_labels_single(
 
 	if input_single.pixel_values.numel() == 0:
 		raise ValueError(f"Pixel values of {image_path} are empty: {input_single.pixel_values.shape}")
-
-	gen_kwargs = dict(
-		max_new_tokens=max_generated_tks, 
-		use_cache=True,
-		eos_token_id=processor.tokenizer.eos_token_id,
-		pad_token_id=processor.tokenizer.pad_token_id,
-	)
-
-	# # Use model’s built-in defaults unless the user overrides
-	# if hasattr(model, "generation_config"):
-	# 	gen_config = model.generation_config
-	# 	gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
-	# 	gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
-	# # else:
-	# # 	gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
-
-	if verbose:
-		print(f"[GEN CONFIG] {gen_kwargs}")
 
 	# ========== Generate response ==========
 	tt = time.time()
@@ -1106,16 +1180,13 @@ def get_mlm_cot_labels(
 		verbose=verbose,
 	)
 
-	gen_kwargs = dict(
-		max_new_tokens=max_generated_tks, 
-		use_cache=True,
-		eos_token_id=processor.tokenizer.eos_token_id,
-		pad_token_id=processor.tokenizer.pad_token_id,
+	gen_kwargs = build_safe_gen_kwargs(
+		model=model,
+		processor=processor,
+		max_generated_tks=max_generated_tks,
+		verbose=verbose
 	)
 
-	if verbose:
-		print(f"[GEN CONFIG] {gen_kwargs}")
-	
 	# ========== Process batches ==========
 	def _load_(p: str) -> Optional[Image.Image]:
 		try:
