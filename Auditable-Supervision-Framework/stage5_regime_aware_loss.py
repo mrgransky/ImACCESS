@@ -227,7 +227,7 @@ def compute_hard_negative_repulsion_loss(
 
 	return loss
 
-def compute_stage5_loss(
+def compute_loss(
 	model:             torch.nn.Module,
 	images:            torch.Tensor,        # [B, 3, H, W]
 	all_class_embeds:  torch.Tensor,        # [C, D]  frozen text embeddings

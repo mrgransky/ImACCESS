@@ -17,7 +17,7 @@ from clip_peft import get_injected_peft_clip, get_adapter_peft_clip
 from loss import compute_loss_masks, diagnose_train_val_coverage
 from stage5_dataset_loader import get_stage5_dataloaders
 from stage5_regime_aware_loss import (
-	compute_stage5_loss,
+	compute_loss,
 	REGIME_LAMBDA_I2T,
 	REGIME_LAMBDA_T2I,
 	REGIME_LAMBDA_REPEL,
@@ -119,7 +119,7 @@ def evaluate(
 		w_neg      = batch["w_neg"].to(device)
 		regimes    = batch["regime"]
 
-		loss, l_i2t, l_t2i, l_repel = compute_stage5_loss(
+		loss, l_i2t, l_t2i, l_repel = compute_loss(
 			model=model,
 			images=images,
 			all_class_embeds=class_embeds,
@@ -617,9 +617,9 @@ def regime_conditioned_finetune(
 		# ── Optimizer ────
 		# Resolve per-group LR for LoRA+ (lr_multiplier stored in group dict)
 		for grp in param_groups:
-				mult = grp.pop("lr_multiplier", 1.0)
-				grp.setdefault("lr", learning_rate * mult)
-				grp.setdefault("weight_decay", weight_decay)
+			mult = grp.pop("lr_multiplier", 1.0)
+			grp.setdefault("lr", learning_rate * mult)
+			grp.setdefault("weight_decay", weight_decay)
 
 		optimizer = torch.optim.AdamW(param_groups)
 
@@ -628,10 +628,10 @@ def regime_conditioned_finetune(
 		warmup_steps  = warmup_epochs * len(train_loader)
 
 		def lr_lambda(step: int) -> float:
-				if step < warmup_steps:
-						return float(step) / max(warmup_steps, 1)
-				progress = (step - warmup_steps) / max(total_steps - warmup_steps, 1)
-				return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+			if step < warmup_steps:
+				return float(step) / max(warmup_steps, 1)
+			progress = (step - warmup_steps) / max(total_steps - warmup_steps, 1)
+			return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
 
 		scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
@@ -649,18 +649,16 @@ def regime_conditioned_finetune(
 			start_epoch += 1
 
 		# ── AMP scaler ────
-		use_amp   = torch.cuda.is_available()
-		scaler    = torch.cuda.amp.GradScaler(enabled=use_amp)
+		use_amp = torch.cuda.is_available()
+		scaler  = torch.cuda.amp.GradScaler(enabled=use_amp)
 
-		# ── Training state ────
+		# Main training loop
 		best_val_loss    = float("inf")
 		best_epoch       = -1
 		best_metrics     = {}
 		patience_counter = 0
 		all_train_metrics: List[Dict] = []
 		all_val_metrics:   List[Dict] = []
-
-		# Main training loop
 		start_time = time.time()
 		for epoch in range(start_epoch, num_epochs):
 			t0 = time.time()
@@ -692,7 +690,7 @@ def regime_conditioned_finetune(
 				optimizer.zero_grad(set_to_none=True)
 				
 				with torch.cuda.amp.autocast(enabled=use_amp):
-					loss, l_i2t, l_t2i, l_repel = compute_stage5_loss(
+					loss, l_i2t, l_t2i, l_repel = compute_loss(
 						model=model,
 						images=images,
 						all_class_embeds=all_class_embeds,
