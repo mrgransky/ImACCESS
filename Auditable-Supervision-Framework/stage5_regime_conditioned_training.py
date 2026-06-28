@@ -354,7 +354,8 @@ def setup_peft(
 	target_text_modules   = peft_config.get("target_text_modules",   default_text_modules)
 	target_vision_modules = peft_config.get("target_vision_modules", default_vision_modules)
 	if verbose:
-			print(f"\n[PEFT] method={peft_method} | rank={rank} | alpha={alpha} | dropout={dropout}")
+		print(f"\n[PEFT] method={peft_method} | rank={rank} | alpha={alpha} | dropout={dropout}")
+	
 	# ── Injected PEFT methods (get_injected_peft_clip) ────
 	# lora, lora_plus, rslora, dora, vera, ia3
 	if peft_method in {"lora", "lora_plus", "dora", "rslora", "vera", "ia3"}:
@@ -394,26 +395,29 @@ def setup_peft(
 							f"[PEFT][{peft_method}] trainable: {n_trainable:,} / {n_total:,} "
 							f"({100*n_trainable/max(n_total,1):.3f}%)"
 					)
+	
 	# ── Adapter PEFT methods (get_adapter_peft_clip) ────
 	# tip_adapter, tip_adapter_f, clip_adapter_v, clip_adapter_t, clip_adapter_vt
-	elif peft_method in {"tip_adapter", "tip_adapter_f",
-			"clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"}:
+	elif peft_method in {"tip_adapter", "tip_adapter_f", "clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"}:
 		is_clip_adapter = peft_method.startswith("clip_adapter")
 		is_tip_adapter  = peft_method.startswith("tip_adapter")
 		adapter_kwargs = dict(
-				clip_model=model,
-				method=peft_method,
-				verbose=verbose,
+			clip_model=model,
+			method=peft_method,
+			verbose=verbose,
 		)
 		if is_tip_adapter:
-				adapter_kwargs["initial_beta"]  = peft_config.get("initial_beta",  1.0)
-				adapter_kwargs["initial_alpha"] = peft_config.get("initial_alpha", 1.0)
+			adapter_kwargs["initial_beta"]  = peft_config.get("initial_beta",  1.0)
+			adapter_kwargs["initial_alpha"] = peft_config.get("initial_alpha", 1.0)
+		
 		if is_clip_adapter:
-				adapter_kwargs["bottleneck_dim"] = peft_config.get("bottleneck_dim", 64)
-				adapter_kwargs["activation"]     = peft_config.get("activation",     "relu")
+			adapter_kwargs["bottleneck_dim"] = peft_config.get("bottleneck_dim", 64)
+			adapter_kwargs["activation"]     = peft_config.get("activation",     "relu")
+		
 		model = get_adapter_peft_clip(**adapter_kwargs)
 		trainable = [p for p in model.parameters() if p.requires_grad]
 		param_groups = [{"params": trainable}]
+		
 		if verbose:
 				n_trainable = sum(p.numel() for p in trainable)
 				n_total     = sum(p.numel() for p in model.parameters())
@@ -421,29 +425,36 @@ def setup_peft(
 						f"[PEFT][{peft_method}] trainable: {n_trainable:,} / {n_total:,} "
 						f"({100*n_trainable/max(n_total,1):.3f}%)"
 				)
+
 	# ── Linear probe ────
 	elif peft_method == "probe":
-			# Freeze everything, then unfreeze only the final projection parameters
-			for p in model.parameters():
-					p.requires_grad_(False)
-			# Unfreeze visual.proj and text_projection (both are nn.Parameter in CLIP)
-			if hasattr(model.visual, "proj") and isinstance(model.visual.proj, torch.nn.Parameter):
-					model.visual.proj.requires_grad_(True)
-			if hasattr(model, "text_projection") and isinstance(model.text_projection, torch.nn.Parameter):
-					model.text_projection.requires_grad_(True)
-			trainable = [p for p in model.parameters() if p.requires_grad]
-			param_groups = [{"params": trainable}]
-			if verbose:
-					n_trainable = sum(p.numel() for p in trainable)
-					print(f"[PEFT][probe] trainable params: {n_trainable:,}")
+		# Freeze everything, then unfreeze only the final projection parameters
+		for p in model.parameters():
+			p.requires_grad_(False)
+		
+		# Unfreeze visual.proj and text_projection (both are nn.Parameter in CLIP)
+		if hasattr(model.visual, "proj") and isinstance(model.visual.proj, torch.nn.Parameter):
+			model.visual.proj.requires_grad_(True)
+		
+		if hasattr(model, "text_projection") and isinstance(model.text_projection, torch.nn.Parameter):
+			model.text_projection.requires_grad_(True)
+		
+		trainable = [p for p in model.parameters() if p.requires_grad]
+		param_groups = [{"params": trainable}]
+		
+		if verbose:
+			n_trainable = sum(p.numel() for p in trainable)
+			print(f"[PEFT][probe] trainable params: {n_trainable:,}")
+	
 	# ── Full fine-tuning ────
 	elif peft_method == "full":
-			for p in model.parameters():
-					p.requires_grad_(True)
-			param_groups = [{"params": list(model.parameters())}]
-			if verbose:
-					n = sum(p.numel() for p in model.parameters())
-					print(f"[PEFT][full] trainable params: {n:,}")
+		for p in model.parameters():
+			p.requires_grad_(True)
+		param_groups = [{"params": list(model.parameters())}]
+		if verbose:
+			n = sum(p.numel() for p in model.parameters())
+			print(f"[PEFT][full] trainable params: {n:,}")
+	
 	return model, param_groups
 
 # 5. CHECKPOINT HELPERS
