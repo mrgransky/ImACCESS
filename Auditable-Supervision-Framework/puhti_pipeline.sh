@@ -63,6 +63,7 @@ ASYMMETRICAL_EMBEDDING_MODEL="cross-encoder/nli-deberta-v3-large"
 
 BATCH_SIZE=28
 ENCODING_BATCH_SIZE=2048
+CLIP_ARCH="ViT-L/14@336px"
 
 # stage 1: VLM with CoT:
 python -u stage1_mlm_cot.py -csv $CSV_FILE -mlm $MLM_MODEL -bs $BATCH_SIZE -mgt 128 -nw $SLURM_CPUS_PER_TASK -v
@@ -80,7 +81,7 @@ python -u stage3_4_cgd_consolidation.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -v
 python -u viz.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -v
 
 # stage 5: Regime-Conditioned Training
-python -u stage5_run.py -csv $CSV_FILE -v
+python -u stage5_run.py -csv $CSV_FILE -cm $CLIP_ARCH -v
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

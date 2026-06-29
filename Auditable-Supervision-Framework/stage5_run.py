@@ -5,7 +5,7 @@ from stage5_regime_conditioned_training import regime_conditioned_finetune
 def parse_args():
 	p = argparse.ArgumentParser(description="Stage 5: Regime-Conditioned Training")
 	p.add_argument("--metadata", '-csv',required=True,  help="Path to metadata.csv")
-	p.add_argument("--clip_model",    default="ViT-B/32")
+	p.add_argument("--clip_model", '-cm', default="ViT-B/32")
 	p.add_argument("--peft_method", '-peft', default="lora",  choices=["lora","lora+","dora","rslora","ia3","vera","probe","adapter","full"])
 	p.add_argument("--epochs",'-e', type=int, default=30)
 	p.add_argument("--batch_size", '-bs', type=int,   default=256)

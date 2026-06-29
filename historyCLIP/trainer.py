@@ -121,6 +121,7 @@ def main():
 	DATASET_DIRECTORY = os.path.dirname(args.metadata_csv)
 	dataset_name = os.path.basename(DATASET_DIRECTORY)
 	dataset_type = "single_label" if "single_label" in args.metadata_csv else "multi_label"
+
 	# Original stdout/stderr
 	original_stdout = sys.stdout
 	original_stderr = sys.stderr
@@ -347,7 +348,6 @@ def main():
 			sys.stderr = original_stderr
 			log_file.close()
 
-	
 if __name__ == "__main__":
 	cleanup_old_temp_dirs()
 	main()
