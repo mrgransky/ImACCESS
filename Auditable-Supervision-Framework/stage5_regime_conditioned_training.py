@@ -811,8 +811,8 @@ def regime_conditioned_finetune(
 				print(f"\n[Stage5] Early stopping triggered at epoch {epoch}.")
 				break
 
-		# ── Persist metrics JSON ────
-		metrics_path = os.path.join(checkpoints_dir, "training_metrics.json")
+		# Persist metrics JSON
+		metrics_path = os.path.join(checkpoints_dir, f"training_metrics_{peft_method}.json")
 		with open(metrics_path, "w") as f:
 			json.dump(
 				{
