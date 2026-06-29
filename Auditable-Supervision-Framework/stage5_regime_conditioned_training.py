@@ -32,7 +32,6 @@ SUPPORTED_PEFT = {
 	"probe",                                                # linear probe
 	"full",                                                 # full fine-tuning
 }
-DEFAULT_TEMPERATURE = 0.07
 
 # 1. REGIME EPOCH DIAGNOSTICS
 def log_regime_epoch_stats(
@@ -457,55 +456,59 @@ def setup_peft(
 
 # 5. CHECKPOINT HELPERS
 def save_checkpoint(
-	model:       torch.nn.Module,
-	optimizer:   torch.optim.Optimizer,
+	model:torch.nn.Module,
+	peft_method:str,
+	optimizer:torch.optim.Optimizer,
 	scheduler,
-	epoch:       int,
-	metrics:     Dict[str, float],
-	label_dict:  Dict[str, int],
-	output_dir:  str,
-	fname:       str,
-	verbose:     bool = True,
+	epoch:int,
+	metrics:Dict[str, float],
+	label_dict:Dict[str, int],
+	checkpoints_dir:str,
+	verbose:bool=False,
 ):
-	os.makedirs(output_dir, exist_ok=True)
-	ckpt_path = os.path.join(output_dir, fname)
+	model_name = model.__class__.__name__
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	fname = f"checkpoint_{model_name}_{model_arch}_{peft_method}.pt"
+	os.makedirs(checkpoints_dir, exist_ok=True)
+	ckpt_path = os.path.join(checkpoints_dir, fname)
 	state = {
-		"epoch":      epoch,
-		"metrics":    metrics,
+		"epoch": epoch,
+		"metrics": metrics,
 		"label_dict": label_dict,
-		"model_state_dict":     model.state_dict(),
+		"model_state_dict": model.state_dict(),
 		"optimizer_state_dict": optimizer.state_dict(),
 		"scheduler_state_dict": scheduler.state_dict() if scheduler else None,
 	}
 	torch.save(state, ckpt_path)
 	if verbose:
-		print(f"[Checkpoint] Saved → {ckpt_path}  (epoch={epoch}  val_loss={metrics.get('val_loss', float('nan')):.6f})")
+		print(f"[Checkpoint] Saved {model_name}-{model_arch} → {ckpt_path} (epoch={epoch} val_loss={metrics.get('val_loss', float('nan')):.6f})")
 
 def load_checkpoint(
-		ckpt_path:  str,
-		model:      torch.nn.Module,
-		optimizer:  Optional[torch.optim.Optimizer] = None,
-		scheduler=None,
-		device:     torch.device = torch.device("cpu"),
-		verbose:    bool = True,
+	ckpt_path:str,
+	model:torch.nn.Module,
+	optimizer:Optional[torch.optim.Optimizer] = None,
+	scheduler=None,
+	device:torch.device = torch.device("cpu"),
+	verbose:bool = True,
 ) -> Tuple[int, Dict]:
-		assert os.path.isfile(ckpt_path), f"[load_checkpoint] Not found: {ckpt_path}"
-		state = torch.load(ckpt_path, map_location=device)
-		model.load_state_dict(state["model_state_dict"])
-		if optimizer and "optimizer_state_dict" in state:
-				optimizer.load_state_dict(state["optimizer_state_dict"])
-		if scheduler and state.get("scheduler_state_dict"):
-				scheduler.load_state_dict(state["scheduler_state_dict"])
-		epoch   = state.get("epoch", 0)
-		metrics = state.get("metrics", {})
-		if verbose:
-				print(f"[load_checkpoint] Resumed from epoch {epoch} | {ckpt_path}")
-		return epoch, metrics
+	assert os.path.isfile(ckpt_path), f"[load_checkpoint] Not found: {ckpt_path}"
+	state = torch.load(ckpt_path, map_location=device)
+	model.load_state_dict(state["model_state_dict"])
+	if optimizer and "optimizer_state_dict" in state:
+			optimizer.load_state_dict(state["optimizer_state_dict"])
+	if scheduler and state.get("scheduler_state_dict"):
+			scheduler.load_state_dict(state["scheduler_state_dict"])
+	epoch   = state.get("epoch", 0)
+	metrics = state.get("metrics", {})
+	if verbose:
+			print(f"[load_checkpoint] Resumed from epoch {epoch} | {ckpt_path}")
+	return epoch, metrics
 
 # 6. MASTER TRAINING FUNCTION
 def regime_conditioned_finetune(
 	# ── Data ────
 	metadata_fpth:      str,
+	checkpoints_dir:    str,
 	supervision_fpth:   str, # auditable_supervision_matrix.parquet
 	id_col:             str = "doc_url",
 	text_col:           str = "multimodal_labels",
@@ -521,7 +524,7 @@ def regime_conditioned_finetune(
 	input_resolution:   int   = 224,
 	learning_rate:      float = 1e-4,
 	weight_decay:       float = 1e-4,
-	temperature:        float = DEFAULT_TEMPERATURE,
+	temperature:        float = 0.07,
 	grad_clip:          float = 1.0,
 	warmup_epochs:      int   = 2,
 	patience:           int   = 7,
@@ -529,326 +532,317 @@ def regime_conditioned_finetune(
 	pw_mode:            str   = "sqrt",
 	pw_max_cap:         Optional[float] = 50.0,
 	loss_weights:       Optional[Dict[str, float]] = None,
-	# ── Output ────
-	output_dir:         str   = "./stage5_outputs",
 	# ── Misc ────
 	seed:               int   = 42,
 	verbose:            bool  = False,
 ) -> Dict[str, Any]:
-		"""
-		Regime-conditioned fine-tuning of a CLIP dual-encoder.
+	"""
+	Regime-conditioned fine-tuning of a CLIP dual-encoder.
+	Drop-in replacement for lora_finetune_multi_label() with two key additions:
+			1. Regime-aware loss (ω_pos, ω_neg, repulsion arm)
+			2. Per-epoch regime diagnostics logged to metrics JSON
+	Returns
+	----
+	results : dict with keys
+			best_epoch, best_val_loss, best_metrics,
+			all_train_metrics, all_val_metrics,
+			label_dict, checkpoints_dir
+	"""
+	# ── Reproducibility ────
+	set_seeds(seed=seed)
+	# ── Setup ────
+	DATASET_DIRECTORY = os.path.dirname(metadata_fpth)
+	os.makedirs(checkpoints_dir, exist_ok=True)
+	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-		Drop-in replacement for lora_finetune_multi_label() with two key additions:
-				1. Regime-aware loss (ω_pos, ω_neg, repulsion arm)
-				2. Per-epoch regime diagnostics logged to metrics JSON
+	print(f"\n{'='*80}")
+	print(f"[Stage5] Regime-Conditioned Fine-Tuning: {DATASET_DIRECTORY}")
+	print(f"  ├─ CLIP model    : {clip_model_name}")
+	print(f"  ├─ PEFT method   : {peft_method}")
+	print(f"  ├─ Supervision   : {supervision_fpth}")
+	print(f"  ├─ Device        : {device}")
+	print(f"  ├─ Epochs        : {num_epochs}")
+	print(f"  ├─ Batch size    : {batch_size}")
+	print(f"  ├─ LR            : {learning_rate}")
+	print(f"  └─ Checkpoints   : {checkpoints_dir}")
+	print(f"{'='*80}\n")
 
-		Returns
-		----
-		results : dict with keys
-				best_epoch, best_val_loss, best_metrics,
-				all_train_metrics, all_val_metrics,
-				label_dict, output_dir
-		"""
-		# ── Reproducibility ────
-		torch.manual_seed(seed)
-		np.random.seed(seed)
-		random.seed(seed)
-		if torch.cuda.is_available():
-				torch.cuda.manual_seed_all(seed)
+	# ── DataLoaders ────
+	train_loader, val_loader = get_stage5_dataloaders(
+		metadata_fpth=metadata_fpth,
+		supervision_fpth=supervision_fpth,
+		batch_size=batch_size,
+		num_workers=num_workers,
+		input_resolution=input_resolution,
+		id_col=id_col,
+		text_col=text_col,
+		verbose=verbose,
+	)
+	label_dict  = train_loader.dataset.label_dict
+	num_classes = len(label_dict)
 
-		os.makedirs(output_dir, exist_ok=True)
-		device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	# ── Loss masks (Axis 1: class-level balance) ────
+	loss_masks = compute_loss_masks(
+		loader=train_loader,
+		num_classes=num_classes,
+		device=device,
+		pw_mode=pw_mode,
+		pw_max_cap=pw_max_cap,
+		verbose=verbose,
+	)
+	active_mask = loss_masks["active_mask"]
+	head_mask   = loss_masks["head_mask"]
+	rare_mask   = loss_masks["rare_mask"]
+	pos_weight  = loss_masks["pos_weight"]
+	
+	# Train/val coverage diagnostic
+	diagnose_train_val_coverage(
+		train_freq=loss_masks["train_freq"],
+		validation_loader=val_loader,
+		num_classes=num_classes,
+		verbose=verbose,
+	)
+	
+	# ── Criteria ────
+	criterion_i2t = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction="none",)
+	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction="none")
+	
+	# ── Model + PEFT ────
+	model, _ = clip.load(
+		name=clip_model_name,
+		device=device,
+		jit=False, # training or finetuning => jit=False
+		random_weights=False, # finetuning => random_weights=False
+		dropout=0.0,
+		download_root=get_model_directory(path=DATASET_DIRECTORY),
+	)
+	model.name = clip_model_name # Custom attribute to store model name
+	model, param_groups = setup_peft(
+		model=model,
+		peft_method=peft_method,
+		peft_config=peft_config,
+		verbose=verbose,
+	)
+	model = model.to(device)
 
-		print(f"\n{'='*80}")
-		print(f"[Stage5] Regime-Conditioned Fine-Tuning")
-		print(f"  ├─ CLIP model    : {clip_model_name}")
-		print(f"  ├─ PEFT method   : {peft_method}")
-		print(f"  ├─ Supervision   : {supervision_fpth}")
-		print(f"  ├─ Device        : {device}")
-		print(f"  ├─ Epochs        : {num_epochs}")
-		print(f"  ├─ Batch size    : {batch_size}")
-		print(f"  ├─ LR            : {learning_rate}")
-		print(f"  └─ Output dir    : {output_dir}")
-		print(f"{'='*80}\n")
+	# ── Optimizer ────
+	# Resolve per-group LR for LoRA+ (lr_multiplier stored in group dict)
+	for grp in param_groups:
+		mult = grp.pop("lr_multiplier", 1.0)
+		grp.setdefault("lr", learning_rate * mult)
+		grp.setdefault("weight_decay", weight_decay)
+	optimizer = torch.optim.AdamW(param_groups)
 
-		# ── DataLoaders ────
-		train_loader, val_loader = get_stage5_dataloaders(
-			metadata_fpth=metadata_fpth,
-			supervision_fpth=supervision_fpth,
-			batch_size=batch_size,
-			num_workers=num_workers,
-			input_resolution=input_resolution,
-			id_col=id_col,
-			text_col=text_col,
-			verbose=verbose,
-		)
-		label_dict  = train_loader.dataset.label_dict
-		num_classes = len(label_dict)
+	# ── Scheduler: linear warmup → cosine decay ────
+	total_steps   = num_epochs * len(train_loader)
+	warmup_steps  = warmup_epochs * len(train_loader)
+	def lr_lambda(step: int) -> float:
+		if step < warmup_steps:
+			return float(step) / max(warmup_steps, 1)
+		progress = (step - warmup_steps) / max(total_steps - warmup_steps, 1)
+		return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+	scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
-		# ── Loss masks (Axis 1: class-level balance) ────
-		loss_masks = compute_loss_masks(
-			loader=train_loader,
-			num_classes=num_classes,
-			device=device,
-			pw_mode=pw_mode,
-			pw_max_cap=pw_max_cap,
-			verbose=verbose,
-		)
-		active_mask = loss_masks["active_mask"]
-		head_mask   = loss_masks["head_mask"]
-		rare_mask   = loss_masks["rare_mask"]
-		pos_weight  = loss_masks["pos_weight"]
-
-		# Train/val coverage diagnostic
-		diagnose_train_val_coverage(
-				train_freq=loss_masks["train_freq"],
-				validation_loader=val_loader,
-				num_classes=num_classes,
-				verbose=verbose,
-		)
-
-		# ── Criteria ────
-		criterion_i2t = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction="none",)
-		criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction="none")
-
-		# ── Model + PEFT ────
-		model, _ = clip.load(clip_model_name, device=device)
-		model.float()
-
-		model, param_groups = setup_peft(
+	# ── Resume ────
+	start_epoch = 0
+	if resume_ckpt:
+		start_epoch, _ = load_checkpoint(
+			ckpt_path=resume_ckpt,
 			model=model,
-			peft_method=peft_method,
-			peft_config=peft_config,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			device=device,
 			verbose=verbose,
 		)
-		model = model.to(device)
-
-		# ── Optimizer ────
-		# Resolve per-group LR for LoRA+ (lr_multiplier stored in group dict)
-		for grp in param_groups:
-			mult = grp.pop("lr_multiplier", 1.0)
-			grp.setdefault("lr", learning_rate * mult)
-			grp.setdefault("weight_decay", weight_decay)
-
-		optimizer = torch.optim.AdamW(param_groups)
-
-		# ── Scheduler: linear warmup → cosine decay ────
-		total_steps   = num_epochs * len(train_loader)
-		warmup_steps  = warmup_epochs * len(train_loader)
-
-		def lr_lambda(step: int) -> float:
-			if step < warmup_steps:
-				return float(step) / max(warmup_steps, 1)
-			progress = (step - warmup_steps) / max(total_steps - warmup_steps, 1)
-			return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
-
-		scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
-
-		# ── Resume ────
-		start_epoch = 0
-		if resume_ckpt:
-			start_epoch, _ = load_checkpoint(
-				ckpt_path=resume_ckpt,
-				model=model,
-				optimizer=optimizer,
-				scheduler=scheduler,
-				device=device,
-				verbose=verbose,
-			)
-			start_epoch += 1
-
-		# ── AMP scaler ────
-		use_amp = torch.cuda.is_available()
-		scaler  = torch.cuda.amp.GradScaler(enabled=use_amp)
-
-		# Main training loop
-		best_val_loss    = float("inf")
-		best_epoch       = -1
-		best_metrics     = {}
-		patience_counter = 0
-		all_train_metrics: List[Dict] = []
-		all_val_metrics:   List[Dict] = []
-		start_time = time.time()
-		for epoch in range(start_epoch, num_epochs):
-			t0 = time.time()
-			model.train()
-			print(f"\n[Epoch {epoch+1}/{num_epochs}]")
-			# Rebuild class embeddings each epoch (text encoder may have been updated)
-			all_class_embeds = build_class_embeddings(
-				model=model,
-				label_dict=label_dict,
-				device=device,
-				verbose=verbose,
-			).to(device)
-			epoch_loss = epoch_i2t = epoch_t2i = epoch_repel = 0.0
-			n_batches  = 0
-			regime_counters: Dict[str, int]        = {}
-			loss_by_regime:  Dict[str, List[float]] = {}
-
-			for batch_idx, batch in enumerate(train_loader):
-				if not batch:
-					continue
-				
-				images    = batch["image"].to(device, non_blocking=True)
-				label_vec = batch["label_vec"].to(device, non_blocking=True)
-				hn_vec    = batch["hn_vec"].to(device, non_blocking=True)
-				w_pos     = batch["w_pos"].to(device, non_blocking=True)
-				w_neg     = batch["w_neg"].to(device, non_blocking=True)
-				regimes   = batch["regime"]
-				
-				optimizer.zero_grad(set_to_none=True)
-				
-				with torch.cuda.amp.autocast(enabled=use_amp):
-					loss, l_i2t, l_t2i, l_repel = compute_regime_aware_contrastive_loss(
-						model=model,
-						images=images,
-						all_class_embeds=all_class_embeds,
-						label_vectors=label_vec,
-						hn_vectors=hn_vec,
-						regimes=regimes,
-						w_pos_raw=w_pos,
-						w_neg_raw=w_neg,
-						criterion_i2t=criterion_i2t,
-						criterion_t2i=criterion_t2i,
-						active_mask=active_mask,
-						temperature=temperature,
-						loss_weights=loss_weights,
-						split="TRAIN",
-						verbose=verbose,
-					)
-				
-				scaler.scale(loss).backward()
-				scaler.unscale_(optimizer)
-				torch.nn.utils.clip_grad_norm_(
-					[p for p in model.parameters() if p.requires_grad],
-					max_norm=grad_clip,
-				)
-				
-				scaler.step(optimizer)
-				scaler.update()
-				scheduler.step()
-				
-				epoch_loss  += loss.item()
-				epoch_i2t   += l_i2t.item()
-				epoch_t2i   += l_t2i.item()
-				epoch_repel += l_repel.item()
-				n_batches   += 1
-				
-				# Regime tracking
-				for r in regimes:
-					regime_counters[r] = regime_counters.get(r, 0) + 1
-					loss_by_regime.setdefault(r, []).append(loss.item())
-				
-				if verbose and (batch_idx % max(1, len(train_loader) // 5) == 0):
-					lr_now = scheduler.get_last_lr()[0]
-					print(
-						f"\t[{batch_idx:04d}/{len(train_loader):04d}] "
-						f"loss={loss.item():.6f} "
-						f"(i2t={l_i2t.item():.4f} t2i={l_t2i.item():.4f} repel={l_repel.item():.4f}) "
-						f"lr={lr_now:.3e}"
-					)
+		start_epoch += 1
+	# ── AMP scaler ────
+	use_amp = torch.cuda.is_available()
+	scaler  = torch.cuda.amp.GradScaler(enabled=use_amp)
+	# Main training loop
+	best_val_loss    = float("inf")
+	best_epoch       = -1
+	best_metrics     = {}
+	patience_counter = 0
+	all_train_metrics: List[Dict] = []
+	all_val_metrics:   List[Dict] = []
+	start_time = time.time()
+	for epoch in range(start_epoch, num_epochs):
+		t0 = time.time()
+		model.train()
+		print(f"\n[Epoch {epoch+1}/{num_epochs}]")
+		# Rebuild class embeddings each epoch (text encoder may have been updated)
+		all_class_embeds = build_class_embeddings(
+			model=model,
+			label_dict=label_dict,
+			device=device,
+			verbose=verbose,
+		).to(device)
+		epoch_loss = epoch_i2t = epoch_t2i = epoch_repel = 0.0
+		n_batches  = 0
+		regime_counters: Dict[str, int]        = {}
+		loss_by_regime:  Dict[str, List[float]] = {}
+		for batch_idx, batch in enumerate(train_loader):
+			if not batch:
+				continue
 			
-			# ── End-of-epoch train stats ────
-			n_b = max(n_batches, 1)
-			train_metrics = {
-				"epoch":            epoch,
-				"train_loss":       epoch_loss  / n_b,
-				"train_loss_i2t":   epoch_i2t   / n_b,
-				"train_loss_t2i":   epoch_t2i   / n_b,
-				"train_loss_repel": epoch_repel / n_b,
-				"lr":               scheduler.get_last_lr()[0],
-			}
-			regime_stats = log_regime_epoch_stats(
-				regime_counters, 
-				loss_by_regime, 
-				epoch, 
-				split="TRAIN", 
-				verbose=verbose,
-			)
-			train_metrics.update(regime_stats)
-			all_train_metrics.append(train_metrics)
-
-			# ── Validation ────
-			val_metrics = evaluate(
-				model=model,
-				val_loader=val_loader,
-				all_class_embeds=all_class_embeds,
-				criterion_i2t=criterion_i2t,
-				criterion_t2i=criterion_t2i,
-				active_mask=active_mask,
-				head_mask=head_mask,
-				rare_mask=rare_mask,
-				temperature=temperature,
-				device=device,
-				epoch=epoch,
-				verbose=verbose,
-			)
-			val_metrics["epoch"] = epoch
-			all_val_metrics.append(val_metrics)
-			print(f"[ELAPSED] {time.time() - t0:.2f}s")
-
-			# ── Early stopping + checkpoint ────
-			val_loss = val_metrics["val_loss"]
-			if val_loss < best_val_loss:
-				best_val_loss    = val_loss
-				best_epoch       = epoch
-				best_metrics     = {**train_metrics, **val_metrics}
-				patience_counter = 0
-				save_checkpoint(
+			images    = batch["image"].to(device, non_blocking=True)
+			label_vec = batch["label_vec"].to(device, non_blocking=True)
+			hn_vec    = batch["hn_vec"].to(device, non_blocking=True)
+			w_pos     = batch["w_pos"].to(device, non_blocking=True)
+			w_neg     = batch["w_neg"].to(device, non_blocking=True)
+			regimes   = batch["regime"]
+			
+			optimizer.zero_grad(set_to_none=True)
+			
+			with torch.cuda.amp.autocast(enabled=use_amp):
+				loss, l_i2t, l_t2i, l_repel = compute_regime_aware_contrastive_loss(
 					model=model,
-					optimizer=optimizer,
-					scheduler=scheduler,
-					epoch=epoch,
-					metrics=best_metrics,
-					label_dict=label_dict,
-					output_dir=output_dir,
-					fname="checkpoint_best.pt",
+					images=images,
+					all_class_embeds=all_class_embeds,
+					label_vectors=label_vec,
+					hn_vectors=hn_vec,
+					regimes=regimes,
+					w_pos_raw=w_pos,
+					w_neg_raw=w_neg,
+					criterion_i2t=criterion_i2t,
+					criterion_t2i=criterion_t2i,
+					active_mask=active_mask,
+					temperature=temperature,
+					loss_weights=loss_weights,
+					split="TRAIN",
 					verbose=verbose,
 				)
-			else:
-				patience_counter += 1
-				if verbose:
-					print(
-						f"[Stage5][Epoch {epoch}] No improvement "
-						f"({patience_counter}/{patience}). "
-						f"Best val_loss={best_val_loss:.6f} @ epoch {best_epoch}"
-					)
-				if patience_counter >= patience:
-					print(f"\n[Stage5] Early stopping triggered at epoch {epoch}.")
-					break
-
-			# ── Persist metrics JSON ────
-			metrics_path = os.path.join(output_dir, "training_metrics.json")
-			with open(metrics_path, "w") as f:
-				json.dump(
-					{
-						"train": all_train_metrics,
-						"val":   all_val_metrics,
-						"best":  best_metrics,
-					},
-					f,
-					indent=2,
-					ensure_ascii=False,
+			
+			scaler.scale(loss).backward()
+			scaler.unscale_(optimizer)
+			torch.nn.utils.clip_grad_norm_(
+				[p for p in model.parameters() if p.requires_grad],
+				max_norm=grad_clip,
+			)
+			
+			scaler.step(optimizer)
+			scaler.update()
+			scheduler.step()
+			
+			epoch_loss  += loss.item()
+			epoch_i2t   += l_i2t.item()
+			epoch_t2i   += l_t2i.item()
+			epoch_repel += l_repel.item()
+			n_batches   += 1
+			
+			# Regime tracking
+			for r in regimes:
+				regime_counters[r] = regime_counters.get(r, 0) + 1
+				loss_by_regime.setdefault(r, []).append(loss.item())
+			
+			if verbose and (batch_idx % max(1, len(train_loader) // 5) == 0):
+				lr_now = scheduler.get_last_lr()[0]
+				print(
+					f"\t[{batch_idx:04d}/{len(train_loader):04d}] "
+					f"loss={loss.item():.6f} "
+					f"(i2t={l_i2t.item():.4f} t2i={l_t2i.item():.4f} repel={l_repel.item():.4f}) "
+					f"lr={lr_now:.3e}"
 				)
-
-		print(f"\n{'='*80}")
-		print(f"Training complete, Total Elapsed time: {time.time() - start_time:.1f} sec")
-		print(f"  ├─ Best epoch    : {best_epoch}")
-		print(f"  ├─ Best val_loss : {best_val_loss:.6f}")
-		print(f"  ├─ mAP (all)     : {best_metrics.get('val_map_all',  float('nan')):.4f}")
-		print(f"  ├─ mAP (head)    : {best_metrics.get('val_map_head', float('nan')):.4f}")
-		print(f"  ├─ mAP (rare)    : {best_metrics.get('val_map_rare', float('nan')):.4f}")
-		print(f"  ├─ P@1           : {best_metrics.get('val_p@1',      float('nan')):.4f}")
-		print(f"  ├─ nDCG@5        : {best_metrics.get('val_ndcg@5',   float('nan')):.4f}")
-		print(f"  └─ Outputs       : {output_dir}")
-		print(f"{'='*80}\n")
-
-		return {
-				"best_epoch":        best_epoch,
-				"best_val_loss":     best_val_loss,
-				"best_metrics":      best_metrics,
-				"all_train_metrics": all_train_metrics,
-				"all_val_metrics":   all_val_metrics,
-				"label_dict":        label_dict,
-				"output_dir":        output_dir,
+		
+		# ── End-of-epoch train stats ────
+		n_b = max(n_batches, 1)
+		train_metrics = {
+			"epoch":            epoch,
+			"train_loss":       epoch_loss  / n_b,
+			"train_loss_i2t":   epoch_i2t   / n_b,
+			"train_loss_t2i":   epoch_t2i   / n_b,
+			"train_loss_repel": epoch_repel / n_b,
+			"lr":               scheduler.get_last_lr()[0],
 		}
+		regime_stats = log_regime_epoch_stats(
+			regime_counters, 
+			loss_by_regime, 
+			epoch, 
+			split="TRAIN", 
+			verbose=verbose,
+		)
+		train_metrics.update(regime_stats)
+		all_train_metrics.append(train_metrics)
+		# ── Validation ────
+		val_metrics = evaluate(
+			model=model,
+			val_loader=val_loader,
+			all_class_embeds=all_class_embeds,
+			criterion_i2t=criterion_i2t,
+			criterion_t2i=criterion_t2i,
+			active_mask=active_mask,
+			head_mask=head_mask,
+			rare_mask=rare_mask,
+			temperature=temperature,
+			device=device,
+			epoch=epoch,
+			verbose=verbose,
+		)
+		val_metrics["epoch"] = epoch
+		all_val_metrics.append(val_metrics)
+		print(f"[ELAPSED] {time.time() - t0:.2f}s")
+		# ── Early stopping + checkpoint ────
+		val_loss = val_metrics["val_loss"]
+		if val_loss < best_val_loss:
+			best_val_loss    = val_loss
+			best_epoch       = epoch
+			best_metrics     = {**train_metrics, **val_metrics}
+			patience_counter = 0
+			save_checkpoint(
+				model=model,
+				peft_method=peft_method,
+				optimizer=optimizer,
+				scheduler=scheduler,
+				epoch=epoch,
+				metrics=best_metrics,
+				label_dict=label_dict,
+				checkpoints_dir=checkpoints_dir,
+				verbose=verbose,
+			)
+		else:
+			patience_counter += 1
+			if verbose:
+				print(
+					f"[Stage5][Epoch {epoch}] No improvement "
+					f"({patience_counter}/{patience}). "
+					f"Best val_loss={best_val_loss:.6f} @ epoch {best_epoch}"
+				)
+			if patience_counter >= patience:
+				print(f"\n[Stage5] Early stopping triggered at epoch {epoch}.")
+				break
+
+		# ── Persist metrics JSON ────
+		metrics_path = os.path.join(checkpoints_dir, "training_metrics.json")
+		with open(metrics_path, "w") as f:
+			json.dump(
+				{
+					"train": all_train_metrics,
+					"val":   all_val_metrics,
+					"best":  best_metrics,
+				},
+				f,
+				indent=2,
+				ensure_ascii=False,
+			)
+
+	print(f"\n{'='*80}")
+	print(f"Training complete, Total Elapsed time: {time.time() - start_time:.1f} sec")
+	print(f"  ├─ Best epoch    : {best_epoch}")
+	print(f"  ├─ Best val_loss : {best_val_loss:.6f}")
+	print(f"  ├─ mAP (all)     : {best_metrics.get('val_map_all',  float('nan')):.4f}")
+	print(f"  ├─ mAP (head)    : {best_metrics.get('val_map_head', float('nan')):.4f}")
+	print(f"  ├─ mAP (rare)    : {best_metrics.get('val_map_rare', float('nan')):.4f}")
+	print(f"  ├─ P@1           : {best_metrics.get('val_p@1',      float('nan')):.4f}")
+	print(f"  ├─ nDCG@5        : {best_metrics.get('val_ndcg@5',   float('nan')):.4f}")
+	print(f"  └─ Outputs       : {checkpoints_dir}")
+	print(f"{'='*80}\n")
+
+	return {
+		"best_epoch":        best_epoch,
+		"best_val_loss":     best_val_loss,
+		"best_metrics":      best_metrics,
+		"all_train_metrics": all_train_metrics,
+		"all_val_metrics":   all_val_metrics,
+		"label_dict":        label_dict,
+		"checkpoints_dir":        checkpoints_dir,
+	}

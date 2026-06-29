@@ -45,7 +45,7 @@ if __name__ == "__main__":
 	regime_conditioned_finetune(
 		metadata_fpth    = args.metadata,
 		supervision_fpth = supervision_fpath,
-		output_dir       = CHECKPOINTs_DIRECTORY,
+		checkpoints_dir  = CHECKPOINTs_DIRECTORY,
 		clip_model_name  = args.clip_model,
 		peft_method      = args.peft_method,
 		num_epochs       = args.epochs,
