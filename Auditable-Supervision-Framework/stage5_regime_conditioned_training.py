@@ -26,15 +26,13 @@ from stage5_regime_aware_loss import (
 )
 
 SUPPORTED_PEFT = {
-		"lora", "lora_plus", "dora", "rslora", "ia3", "vera",   # injected PEFT (get_injected_peft_clip)
-		"tip_adapter", "tip_adapter_f",                          # adapter PEFT  (get_adapter_peft_clip)
-		"clip_adapter_v", "clip_adapter_t", "clip_adapter_vt",  # adapter PEFT  (get_adapter_peft_clip)
-		"probe",                                                  # linear probe
-		"full",                                                   # full fine-tuning
+	"lora", "lora_plus", "dora", "rslora", "ia3", "vera",   # injected PEFT (get_injected_peft_clip)
+	"tip_adapter", "tip_adapter_f",                         # adapter PEFT  (get_adapter_peft_clip)
+	"clip_adapter_v", "clip_adapter_t", "clip_adapter_vt",  # adapter PEFT  (get_adapter_peft_clip)
+	"probe",                                                # linear probe
+	"full",                                                 # full fine-tuning
 }
 DEFAULT_TEMPERATURE = 0.07
-CHECKPOINT_FNAME    = "stage5_best_model.pt"
-METRICS_FNAME       = "stage5_training_metrics.json"
 
 # 1. REGIME EPOCH DIAGNOSTICS
 def log_regime_epoch_stats(
@@ -459,29 +457,29 @@ def setup_peft(
 
 # 5. CHECKPOINT HELPERS
 def save_checkpoint(
-		model:       torch.nn.Module,
-		optimizer:   torch.optim.Optimizer,
-		scheduler,
-		epoch:       int,
-		metrics:     Dict[str, float],
-		label_dict:  Dict[str, int],
-		output_dir:  str,
-		fname:       str = CHECKPOINT_FNAME,
-		verbose:     bool = True,
+	model:       torch.nn.Module,
+	optimizer:   torch.optim.Optimizer,
+	scheduler,
+	epoch:       int,
+	metrics:     Dict[str, float],
+	label_dict:  Dict[str, int],
+	output_dir:  str,
+	fname:       str,
+	verbose:     bool = True,
 ):
-		os.makedirs(output_dir, exist_ok=True)
-		ckpt_path = os.path.join(output_dir, fname)
-		state = {
-				"epoch":      epoch,
-				"metrics":    metrics,
-				"label_dict": label_dict,
-				"model_state_dict":     model.state_dict(),
-				"optimizer_state_dict": optimizer.state_dict(),
-				"scheduler_state_dict": scheduler.state_dict() if scheduler else None,
-		}
-		torch.save(state, ckpt_path)
-		if verbose:
-				print(f"[Checkpoint] Saved → {ckpt_path}  (epoch={epoch}  val_loss={metrics.get('val_loss', float('nan')):.6f})")
+	os.makedirs(output_dir, exist_ok=True)
+	ckpt_path = os.path.join(output_dir, fname)
+	state = {
+		"epoch":      epoch,
+		"metrics":    metrics,
+		"label_dict": label_dict,
+		"model_state_dict":     model.state_dict(),
+		"optimizer_state_dict": optimizer.state_dict(),
+		"scheduler_state_dict": scheduler.state_dict() if scheduler else None,
+	}
+	torch.save(state, ckpt_path)
+	if verbose:
+		print(f"[Checkpoint] Saved → {ckpt_path}  (epoch={epoch}  val_loss={metrics.get('val_loss', float('nan')):.6f})")
 
 def load_checkpoint(
 		ckpt_path:  str,
@@ -508,12 +506,12 @@ def load_checkpoint(
 def regime_conditioned_finetune(
 	# ── Data ────
 	metadata_fpth:      str,
-	supervision_fpth:   str,           # auditable_supervision_matrix.parquet
-	id_col:             str  = "doc_url",
-	text_col:           str  = "multimodal_labels",
+	supervision_fpth:   str, # auditable_supervision_matrix.parquet
+	id_col:             str = "doc_url",
+	text_col:           str = "multimodal_labels",
 	# ── Model ────
-	clip_model_name:    str  = "ViT-L/14",
-	peft_method:        str  = "lora",
+	clip_model_name:    str = "ViT-L/14",
+	peft_method:        str = "lora",
 	peft_config:        Optional[Dict] = None,
 	resume_ckpt:        Optional[str]  = None,
 	# ── Training ────
@@ -804,7 +802,7 @@ def regime_conditioned_finetune(
 					metrics=best_metrics,
 					label_dict=label_dict,
 					output_dir=output_dir,
-					fname=CHECKPOINT_FNAME,
+					fname="checkpoint_best.pt",
 					verbose=verbose,
 				)
 			else:
@@ -820,7 +818,7 @@ def regime_conditioned_finetune(
 					break
 
 			# ── Persist metrics JSON ────
-			metrics_path = os.path.join(output_dir, METRICS_FNAME)
+			metrics_path = os.path.join(output_dir, "training_metrics.json")
 			with open(metrics_path, "w") as f:
 				json.dump(
 					{
