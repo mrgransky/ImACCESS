@@ -1025,7 +1025,6 @@ def get_mlm_cot_labels(
 	# ========== Load data ==========
 	if verbose:
 		print(f"[PREP] Loading data (col: enriched_document_description) from {csv_file}...")
-
 	wanted_cols = {
 		'doc_url',
 		'title',
@@ -1106,6 +1105,7 @@ def get_mlm_cot_labels(
 	else:
 		uniq_inputs = image_paths
 		orig_to_uniq = list(range(n_total))
+
 	if verbose:
 		print(f"[DEDUP] {len(uniq_inputs)} unique images after deduplication ({len(image_paths)} total)")
 

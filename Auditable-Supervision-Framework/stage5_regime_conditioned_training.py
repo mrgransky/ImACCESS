@@ -457,20 +457,14 @@ def setup_peft(
 # 5. CHECKPOINT HELPERS
 def save_checkpoint(
 	model:torch.nn.Module,
-	peft_method:str,
 	optimizer:torch.optim.Optimizer,
 	scheduler,
 	epoch:int,
 	metrics:Dict[str, float],
 	label_dict:Dict[str, int],
-	checkpoints_dir:str,
+	checkpoints_file_path:str,
 	verbose:bool=False,
 ):
-	model_name = model.__class__.__name__
-	model_arch = re.sub(r'[/@]', '_', model.name) if hasattr(model, 'name') else 'unknown_arch'
-	fname = f"checkpoint_{model_name}_{model_arch}_{peft_method}.pt"
-	os.makedirs(checkpoints_dir, exist_ok=True)
-	ckpt_path = os.path.join(checkpoints_dir, fname)
 	state = {
 		"epoch": epoch,
 		"metrics": metrics,
@@ -479,9 +473,9 @@ def save_checkpoint(
 		"optimizer_state_dict": optimizer.state_dict(),
 		"scheduler_state_dict": scheduler.state_dict() if scheduler else None,
 	}
-	torch.save(state, ckpt_path)
+	torch.save(state, checkpoints_file_path)
 	if verbose:
-		print(f"[Checkpoint] Saved {model_name}-{model_arch} → {ckpt_path} (epoch={epoch} val_loss={metrics.get('val_loss', float('nan')):.6f})")
+		print(f"[Checkpoint] Saved {checkpoints_file_path} (epoch={epoch} val_loss={metrics.get('val_loss', float('nan')):.6f})")
 
 def load_checkpoint(
 	ckpt_path:str,
@@ -617,6 +611,11 @@ def regime_conditioned_finetune(
 		download_root=get_model_directory(path=DATASET_DIRECTORY),
 	)
 	model.name = clip_model_name # Custom attribute to store model name
+	model_name = model.__class__.__name__
+	model_arch = re.sub(r'[/@]', '_', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	ckpt_fname = f"{model_name}_{model_arch}_{peft_method}_checkpoint.pt"
+	ckpt_fpath = os.path.join(checkpoints_dir, ckpt_fname)
+
 	model, param_groups = setup_peft(
 		model=model,
 		peft_method=peft_method,
@@ -658,6 +657,7 @@ def regime_conditioned_finetune(
 	# ── AMP scaler ────
 	use_amp = torch.cuda.is_available()
 	scaler  = torch.cuda.amp.GradScaler(enabled=use_amp)
+
 	# Main training loop
 	best_val_loss    = float("inf")
 	best_epoch       = -1
@@ -791,13 +791,12 @@ def regime_conditioned_finetune(
 			patience_counter = 0
 			save_checkpoint(
 				model=model,
-				peft_method=peft_method,
 				optimizer=optimizer,
 				scheduler=scheduler,
 				epoch=epoch,
 				metrics=best_metrics,
 				label_dict=label_dict,
-				checkpoints_dir=checkpoints_dir,
+				checkpoints_file_path=ckpt_fpath,
 				verbose=verbose,
 			)
 		else:
@@ -813,11 +812,8 @@ def regime_conditioned_finetune(
 				break
 
 		# Persist metrics JSON
-		metrics_path = os.path.join(
-			checkpoints_dir, 
-			f"ft_metrics_{peft_method}_{re.sub(r'[/@]', '_', model.name)}.json"
-		)
-		with open(metrics_path, "w") as f:
+		ft_metrics_fpath = ckpt_fpath.replace("checkpoint.pt", "ft_metrics.json") 
+		with open(ft_metrics_fpath, "w") as f:
 			json.dump(
 				{
 					"train": all_train_metrics,
