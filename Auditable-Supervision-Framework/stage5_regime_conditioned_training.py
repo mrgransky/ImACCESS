@@ -467,7 +467,7 @@ def save_checkpoint(
 	verbose:bool=False,
 ):
 	model_name = model.__class__.__name__
-	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_arch = re.sub(r'[/@]', '_', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	fname = f"checkpoint_{model_name}_{model_arch}_{peft_method}.pt"
 	os.makedirs(checkpoints_dir, exist_ok=True)
 	ckpt_path = os.path.join(checkpoints_dir, fname)
@@ -781,6 +781,7 @@ def regime_conditioned_finetune(
 		val_metrics["epoch"] = epoch
 		all_val_metrics.append(val_metrics)
 		print(f"[ELAPSED] {time.time() - t0:.2f}s")
+
 		# ── Early stopping + checkpoint ────
 		val_loss = val_metrics["val_loss"]
 		if val_loss < best_val_loss:
@@ -812,7 +813,10 @@ def regime_conditioned_finetune(
 				break
 
 		# Persist metrics JSON
-		metrics_path = os.path.join(checkpoints_dir, f"training_metrics_{peft_method}.json")
+		metrics_path = os.path.join(
+			checkpoints_dir, 
+			f"ft_metrics_{peft_method}_{re.sub(r'[/@]', '_', model.name)}.json"
+		)
 		with open(metrics_path, "w") as f:
 			json.dump(
 				{
