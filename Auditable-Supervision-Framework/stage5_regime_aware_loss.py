@@ -34,75 +34,6 @@ REGIME_LAMBDA_REPEL     = 1.0   # λ_repel (repulsion arm weight)
 VALID_REGIMES = {"AGREEMENT", "SOFT_CONFLICT", "HARD_CONFLICT"}
 SKIP_REGIMES  = {"MISSING_MODALITY", "INVALID_JSON"}
 
-def resolve_regime_weights(
-	regimes:      List[str],
-	w_pos_raw:    torch.Tensor,   # [B] — Stage 4 derived ω_pos (float)
-	w_neg_raw:    torch.Tensor,   # [B] — Stage 4 derived ω_neg (float)
-	device:       torch.device,
-	verbose:      bool = False,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-	"""
-	Converts per-sample regime strings + Stage 4 raw weights into
-	three clean tensors used by the loss functions.
-	
-	Returns
-	-------
-	omega_pos  : [B] float32  — positive target scaling weight
-	omega_neg  : [B] float32  — repulsion scaling weight
-	valid_mask : [B] bool     — False for MISSING/INVALID samples (skip entirely)
-	
-	Note
-	───────────
-	Stage 4 already encodes the regime logic into w_pos / w_neg.
-	This function's job is to:
-		(a) enforce the valid_mask so MISSING/INVALID samples contribute
-				zero gradient regardless of what Stage 4 stored, and
-		(b) clamp ω_pos to [REGIME_OMEGA_POS_FLOOR, 1.0] so SOFT_CONFLICT
-				samples never fully vanish from the gradient.
-	"""
-	B = len(regimes)
-	omega_pos  = w_pos_raw.clone().float().to(device) # [B]
-	omega_neg  = w_neg_raw.clone().float().to(device) # [B]
-	valid_mask = torch.ones(B, dtype=torch.bool, device=device)
-	for i, regime in enumerate(regimes):
-		if regime in SKIP_REGIMES:
-			omega_pos[i]  = 0.0
-			omega_neg[i]  = 0.0
-			valid_mask[i] = False
-		elif regime not in VALID_REGIMES:
-			# Unknown regime — treat conservatively as SOFT_CONFLICT
-			omega_pos[i]  = REGIME_OMEGA_POS_FLOOR
-			omega_neg[i]  = 0.0
-			if verbose:
-				print(
-					f"[WARN][resolve_regime_weights] Unknown regime '{regime}' at idx {i}. "
-					f"Defaulting to ω_pos={REGIME_OMEGA_POS_FLOOR}, ω_neg=0.0"
-				)
-
-	# Clamp ω_pos for valid samples to [floor, 1.0]
-	omega_pos = torch.where(
-		valid_mask,
-		omega_pos.clamp(min=REGIME_OMEGA_POS_FLOOR, max=1.0),
-		torch.zeros_like(omega_pos),
-	)
-
-	# Clamp ω_neg to [0, 1]
-	omega_neg = omega_neg.clamp(min=0.0, max=1.0)
-	if verbose:
-		n_valid = valid_mask.sum().item()
-		n_hard  = sum(r == "HARD_CONFLICT"  for r in regimes)
-		n_soft  = sum(r == "SOFT_CONFLICT"  for r in regimes)
-		n_agree = sum(r == "AGREEMENT"      for r in regimes)
-		n_skip  = B - n_valid
-		print(
-			f"[resolve_regime_weights] B={B} | "
-			f"AGREE={n_agree} SOFT={n_soft} HARD={n_hard} SKIP={n_skip} | "
-			f"ω_pos [{omega_pos[valid_mask].min():.3f}, {omega_pos[valid_mask].max():.3f}] "
-			f"ω_neg [{omega_neg.min():.3f}, {omega_neg.max():.3f}]"
-		)
-
-	return omega_pos, omega_neg, valid_mask
-
 def compute_regime_weighted_i2t_loss(
 		i2t_sim:      torch.Tensor,   # [B, C]  — image-to-class cosine similarities / T
 		label_vectors: torch.Tensor,  # [B, C]  — multi-hot ground truth (float)
@@ -227,6 +158,83 @@ def compute_hard_negative_repulsion_loss(
 
 	return loss
 
+def resolve_regime_weights(
+	regimes:      List[str],
+	w_pos_raw:    torch.Tensor,   # [B] — Stage 4 derived ω_pos (float)
+	w_neg_raw:    torch.Tensor,   # [B] — Stage 4 derived ω_neg (float)
+	device:       torch.device,
+	verbose:      bool = False,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+	"""
+	Converts per-sample regime strings + Stage 4 raw weights into
+	three clean tensors used by the loss functions.
+	
+	Returns
+	-------
+	omega_pos  : [B] float32  — positive target scaling weight
+	omega_neg  : [B] float32  — repulsion scaling weight
+	valid_mask : [B] bool     — False for MISSING/INVALID samples (skip entirely)
+	
+	Note
+	───────────
+	Stage 4 already encodes the regime logic into w_pos / w_neg.
+	This function's job is to:
+		(a) enforce the valid_mask so MISSING/INVALID samples contribute
+				zero gradient regardless of what Stage 4 stored, and
+		(b) clamp ω_pos to [REGIME_OMEGA_POS_FLOOR, 1.0] so SOFT_CONFLICT
+				samples never fully vanish from the gradient.
+	"""
+	B = len(regimes)
+	omega_pos  = w_pos_raw.clone().float().to(device) # [B]
+	omega_neg  = w_neg_raw.clone().float().to(device) # [B]
+	valid_mask = torch.ones(B, dtype=torch.bool, device=device)
+	for i, regime in enumerate(regimes):
+		if regime in SKIP_REGIMES:
+			omega_pos[i]  = 0.0
+			omega_neg[i]  = 0.0
+			valid_mask[i] = False
+		elif regime not in VALID_REGIMES:
+			# Unknown regime — treat conservatively as SOFT_CONFLICT
+			omega_pos[i]  = REGIME_OMEGA_POS_FLOOR
+			omega_neg[i]  = 0.0
+			if verbose:
+				print(
+					f"[WARN][resolve_regime_weights] Unknown regime '{regime}' at idx {i}. "
+					f"Defaulting to ω_pos={REGIME_OMEGA_POS_FLOOR}, ω_neg=0.0"
+				)
+
+	# Clamp ω_pos for valid samples to [floor, 1.0]
+	omega_pos = torch.where(
+		valid_mask,
+		omega_pos.clamp(min=REGIME_OMEGA_POS_FLOOR, max=1.0),
+		torch.zeros_like(omega_pos),
+	)
+
+	# Clamp ω_neg to [0, 1]
+	omega_neg = omega_neg.clamp(min=0.0, max=1.0)
+	if verbose:
+		n_valid = int(valid_mask.sum().item())
+		n_hard  = sum(r == "HARD_CONFLICT"  for r in regimes)
+		n_soft  = sum(r == "SOFT_CONFLICT"  for r in regimes)
+		n_agree = sum(r == "AGREEMENT"      for r in regimes)
+		n_skip  = B - n_valid
+		if n_valid > 0:
+			pos_valid = omega_pos[valid_mask]
+			print(
+				f"[resolve_regime_weights] B={B} | "
+				f"AGREE={n_agree} SOFT={n_soft} HARD={n_hard} SKIP={n_skip} | "
+				f"ω_pos [{pos_valid.min().item():.3f}, {pos_valid.max().item():.3f}] "
+				f"ω_neg [{omega_neg.min().item():.3f}, {omega_neg.max().item():.3f}]"
+			)
+		else:
+			print(
+				f"[resolve_regime_weights] B={B} | "
+				f"AGREE={n_agree} SOFT={n_soft} HARD={n_hard} SKIP={n_skip} | "
+				f"ω_pos [N/A, N/A] ω_neg [N/A, N/A] | valid=0/{B} — batch fully skipped"
+			)
+
+	return omega_pos, omega_neg, valid_mask
+
 def compute_regime_aware_contrastive_loss(
 	model:             torch.nn.Module,
 	images:            torch.Tensor,        # [B, 3, H, W]
@@ -280,6 +288,15 @@ def compute_regime_aware_contrastive_loss(
 		device=images.device,
 		verbose=verbose,
 	)
+
+	# Early exit: all samples in this batch are SKIP/MISSING — no gradient contribution
+	if not valid_mask.any():
+		zero = image_embeds.new_tensor(0.0)
+		if verbose:
+			print(
+				f"[LOSS] valid=0/{len(regimes)} — all samples skipped, returning zero loss."
+			)
+		return zero, zero, zero, zero
 
 	# Arm 1: I2T
 	loss_i2t = compute_regime_weighted_i2t_loss(
