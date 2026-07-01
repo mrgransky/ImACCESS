@@ -61,8 +61,6 @@ SYMMETRICAL_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 # SYMMETRICAL_EMBEDDING_MODEL="Octen/Octen-Embedding-8B"
 ASYMMETRICAL_EMBEDDING_MODEL="cross-encoder/nli-deberta-v3-large"
 
-CLIP_ARCH="ViT-L/14@336px"
-
 # stage 1: VLM with CoT:
 MLM_BATCH_SIZE=28
 python -u stage1_mlm_cot.py -csv $CSV_FILE -mlm $MLM_MODEL -bs $MLM_BATCH_SIZE -mgt 128 -nw $SLURM_CPUS_PER_TASK -v
@@ -83,6 +81,7 @@ python -u viz.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -v
 # stage 5: Regime-Conditioned Training
 TRAINING_BATCH_SIZE=16
 LEARNING_RATE=1e-4
+CLIP_ARCH="ViT-L/14@336px"
 python -u stage5_run.py -csv $CSV_FILE -cm $CLIP_ARCH -bs $TRAINING_BATCH_SIZE -lr $LEARNING_RATE -v
 
 done_txt="$user finished Slurm job: `date`"
