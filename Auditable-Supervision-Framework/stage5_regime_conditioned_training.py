@@ -515,7 +515,6 @@ def regime_conditioned_finetune(
 	num_epochs:         int   = 30,
 	batch_size:         int   = 128,
 	num_workers:        int   = 4,
-	input_resolution:   int   = 224,
 	learning_rate:      float = 1e-4,
 	weight_decay:       float = 1e-4,
 	temperature:        float = 0.07,
@@ -544,22 +543,49 @@ def regime_conditioned_finetune(
 	"""
 	# ── Reproducibility ────
 	set_seeds(seed=seed)
+
 	# ── Setup ────
 	DATASET_DIRECTORY = os.path.dirname(metadata_fpth)
 	os.makedirs(checkpoints_dir, exist_ok=True)
-	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-	print(f"\n{'='*80}")
-	print(f"[Stage5] Regime-Conditioned Fine-Tuning: {DATASET_DIRECTORY}")
-	print(f"  ├─ CLIP model    : {clip_model_name}")
-	print(f"  ├─ PEFT method   : {peft_method}")
-	print(f"  ├─ Supervision   : {supervision_fpth}")
-	print(f"  ├─ Device        : {device}")
-	print(f"  ├─ Epochs        : {num_epochs}")
-	print(f"  ├─ Batch size    : {batch_size}")
-	print(f"  ├─ LR            : {learning_rate}")
-	print(f"  └─ Checkpoints   : {checkpoints_dir}")
-	print(f"{'='*80}\n")
+	# ── Model + PEFT ────
+	model, _ = clip.load(
+		name=clip_model_name,
+		device=device,
+		jit=False, # training or finetuning => jit=False
+		random_weights=False, # finetuning => random_weights=False
+		dropout=0.0,
+		download_root=get_model_directory(path=DATASET_DIRECTORY),
+	)
+	model.name = clip_model_name # Custom attribute to store model name
+	model_name = model.__class__.__name__
+	model_arch = re.sub(r'[/@]', '_', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	input_resolution = getattr(model.visual, "input_resolution", None)
+	if verbose:
+		print(f"[Stage5] input_resolution: {input_resolution}")
+
+	ckpt_fname = f"{model_name}_{model_arch}_{peft_method}_checkpoint.pt"
+	ckpt_fpath = os.path.join(checkpoints_dir, ckpt_fname)
+
+	model, param_groups = setup_peft(
+		model=model,
+		peft_method=peft_method,
+		peft_config=peft_config,
+		verbose=verbose,
+	)
+	model = model.to(device)
+
+	print(f"\n[Stage5] Regime-Conditioned Fine-Tuning: {model.__class__.__name__} {clip_model_name}")
+	print(f"  ├─ input resolution : {input_resolution}")
+	print(f"  ├─ PEFT             : {peft_method}")
+	print(f"  ├─ Supervision      : {supervision_fpth}")
+	print(f"  ├─ Device           : {device}")
+	print(f"  ├─ Epochs           : {num_epochs}")
+	print(f"  ├─ Batch size       : {batch_size}")
+	print(f"  ├─ LR               : {learning_rate}")
+	print(f"  ├─ Dataset          : {DATASET_DIRECTORY}")
+	print(f"  └─ Checkpoints      : {checkpoints_dir}")
 
 	# ── DataLoaders ────
 	train_loader, val_loader = get_stage5_dataloaders(
@@ -601,28 +627,6 @@ def regime_conditioned_finetune(
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction="none",)
 	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction="none")
 	
-	# ── Model + PEFT ────
-	model, _ = clip.load(
-		name=clip_model_name,
-		device=device,
-		jit=False, # training or finetuning => jit=False
-		random_weights=False, # finetuning => random_weights=False
-		dropout=0.0,
-		download_root=get_model_directory(path=DATASET_DIRECTORY),
-	)
-	model.name = clip_model_name # Custom attribute to store model name
-	model_name = model.__class__.__name__
-	model_arch = re.sub(r'[/@]', '_', model.name) if hasattr(model, 'name') else 'unknown_arch'
-	ckpt_fname = f"{model_name}_{model_arch}_{peft_method}_checkpoint.pt"
-	ckpt_fpath = os.path.join(checkpoints_dir, ckpt_fname)
-
-	model, param_groups = setup_peft(
-		model=model,
-		peft_method=peft_method,
-		peft_config=peft_config,
-		verbose=verbose,
-	)
-	model = model.to(device)
 
 	# ── Optimizer ────
 	# Resolve per-group LR for LoRA+ (lr_multiplier stored in group dict)
