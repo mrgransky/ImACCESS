@@ -382,7 +382,6 @@ def customized_collate_fn(batch: List[Dict]) -> Dict[str, Any]:
 
 def get_stage5_dataloaders(
 	metadata_fpth:      str,
-	supervision_fpth:   str, # path to auditable_supervision_matrix.parquet
 	batch_size:         int,
 	num_workers:        int,
 	input_resolution:   int,
@@ -401,8 +400,17 @@ def get_stage5_dataloaders(
 	id_col            : column in the CSV that matches sample_id in the parquet
 	text_col          : label column used for text tokenisation & fallback vectors
 	"""
-	ddir         = os.path.dirname(metadata_fpth)
+	ddir = os.path.dirname(metadata_fpth)
 	dataset_name = os.path.basename(ddir)
+	outputs_dir = os.path.join(ddir, "outputs")
+	metadata_file = os.path.basename(metadata_fpth)
+	supervision_fpth = os.path.join(
+		outputs_dir,
+		metadata_file.replace(".csv", "_mlm_cot_modality_conflict_audit_auditable_supervision_matrix.parquet")
+	)
+	print(supervision_fpth)
+	assert os.path.exists(supervision_fpth), f"Supervision matrix not found at {supervision_fpth}"
+
 	print(f"\n[Stage5] Creating regime-aware dataloaders for {dataset_name}")
 	print(f"  ├─ Metadata      : {metadata_fpth}")
 	print(f"  ├─ Supervision   : {supervision_fpth}")

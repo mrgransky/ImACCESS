@@ -2,20 +2,23 @@ import os
 import argparse
 from stage5_regime_conditioned_training import regime_conditioned_finetune
 
+# how to run:
+# python stage5_run.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -v
+
 def parse_args():
 	p = argparse.ArgumentParser(description="Stage 5: Regime-Conditioned Training")
 	p.add_argument("--metadata", '-csv',required=True,  help="Path to metadata.csv")
 	p.add_argument("--clip_model", '-cm', default="ViT-B/32")
-	p.add_argument("--peft_method", '-peft', default="lora",  choices=["lora","lora+","dora","rslora","ia3","vera","probe","adapter","full"])
-	p.add_argument("--epochs",'-e', type=int, default=30)
-	p.add_argument("--batch_size", '-bs', type=int,   default=256)
-	p.add_argument("--num_workers", '-nw', type=int,   default=4)
+	p.add_argument("--peft_method", '-peft', default="lora", choices=["lora","lora+","dora","rslora","ia3","vera","probe","adapter","full"])
+	p.add_argument("--epochs",'-e', type=int, default=50)
+	p.add_argument("--batch_size", '-bs', type=int, default=256)
+	p.add_argument("--num_workers", '-nw', type=int, default=8)
 	p.add_argument("--learning_rate", '-lr', type=float, default=1e-4)
 	p.add_argument("--pw_mode",       default="sqrt", choices=["log","sqrt","linear"])
 	p.add_argument("--pw_max_cap",    type=float, default=50.0)
-	p.add_argument("--patience",      type=int,   default=7)
-	p.add_argument("--resume_ckpt",   default=None,   help="Resume training from a checkpoint")
-	p.add_argument("--seed",          type=int,   default=42)
+	p.add_argument("--patience",      type=int, default=7)
+	p.add_argument("--resume_ckpt",   default=None, help="Resume training from a checkpoint")
+	p.add_argument("--seed",          type=int, default=42)
 	p.add_argument("--verbose", "-v", action='store_true', help="Print verbose diagnostics")
 
 	return p.parse_args()
@@ -33,18 +36,8 @@ if __name__ == "__main__":
 	os.makedirs(CHECKPOINTs_DIRECTORY, exist_ok=True)
 	print(CHECKPOINTs_DIRECTORY)
 
-	metadata_fpath = os.path.basename(args.metadata)
-	supervision_fpath = os.path.join(
-		OUTPUTs_DIRECTORY, 
-		metadata_fpath.replace(".csv", "_mlm_cot_modality_conflict_audit_auditable_supervision_matrix.parquet")
-	)
-	
-	print(supervision_fpath)
-	assert os.path.exists(supervision_fpath), f"Supervision matrix not found at {supervision_fpath}"
-
 	regime_conditioned_finetune(
 		metadata_fpth    = args.metadata,
-		supervision_fpth = supervision_fpath,
 		checkpoints_dir  = CHECKPOINTs_DIRECTORY,
 		clip_model_name  = args.clip_model,
 		peft_method      = args.peft_method,

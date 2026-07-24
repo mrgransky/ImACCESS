@@ -13,7 +13,12 @@ sys.path.insert(0, MISC_DIR)
 # nohup python -u global_aggregation.py -jsonl /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal_mlm_cot_modality_conflict_audit.jsonl -v > logs/global_aggregation.log 2>&1 &
 
 from utils import *
-from clustering import *
+from clustering import (
+	get_optimal_num_clusters, 
+	assign_canonical_labels, 
+	remove_problematic_cluster_labels,
+	analyze_cluster_quality
+)
 from nlp_utils import STOPWORDS
 
 def filter_generic_vocabulary(
@@ -597,19 +602,21 @@ def cluster_and_save_priors(
 				f"max={freq_values[0] if freq_values else 0}, "
 				f"median={freq_values[len(freq_values)//2] if freq_values else 0}, "
 				f"mean={total_concept_occurrences/max(len(label_freq_dict),1):.2f}")
+
 	print(f"\n[BRIDGE][STEP 2] Top-{top_n} most frequent concepts:")
-	for rank, (lbl, cnt) in enumerate(
-			sorted(label_freq_dict.items(), key=lambda x: -x[1])[:top_n], start=1
-	):
-			bar = "█" * min(int(cnt / max(freq_values[0], 1) * 30), 30)
-			print(f"  {rank:3d}. {lbl:<40} {cnt:>6,}  {bar}")
+	for rank, (lbl, cnt) in enumerate(sorted(label_freq_dict.items(), key=lambda x: -x[1])[:top_n], start=1):
+		bar = "█" * min(int(cnt / max(freq_values[0], 1) * 30), 30)
+		print(f"  {rank:3d}. {lbl:<40} {cnt:>6,}  {bar}")
+
 	if verbose:
-			print(f"\n[BRIDGE][STEP 2] Bottom-10 least frequent concepts:")
-			for lbl, cnt in sorted(label_freq_dict.items(), key=lambda x: x[1])[:10]:
-					print(f"  {lbl:<40} {cnt:>6,}")
+		print(f"\n[BRIDGE][STEP 2] Bottom-10 least frequent concepts:")
+		for lbl, cnt in sorted(label_freq_dict.items(), key=lambda x: x[1])[:10]:
+			print(f"  {lbl:<40} {cnt:>6,}")
+
 	with open(freqs_path, 'w', encoding='utf-8') as f:
-			json.dump(label_freq_dict, f, indent=2, ensure_ascii=False)
+		json.dump(label_freq_dict, f, indent=2, ensure_ascii=False)
 	print(f"\n[BRIDGE][STEP 2] Saved global frequencies → {freqs_path}")
+
 	unique_labels: List[str] = sorted(label_freq_dict.keys())
 	print(f"[BRIDGE][STEP 2] Unique concepts for vocabulary induction: {len(unique_labels):,}")
 
@@ -714,35 +721,45 @@ def cluster_and_save_priors(
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 4: LINKAGE MATRIX (with crash-safe checkpoint)
 	# ══════════════════════════════════════════════════════════════════════════
+	try:
+		import fastcluster
+		use_fastcluster = True
+		print("[FASTCLUSTER] Using fastcluster for O(n² log n) performance")
+	except ImportError:
+		use_fastcluster = False
+		print("[SCIPY] Using scipy (slower for large n)")
+
 	print(f"\n{'─'*80}")
 	print(f"[BRIDGE][STEP 4] Hierarchical Linkage Matrix")
 	print(f"{'─'*80}")
 	if os.path.exists(ckpt_Z_path):
-			print(f"[BRIDGE][STEP 4] Checkpoint found — loading cached linkage matrix.")
-			Z = np.load(ckpt_Z_path)
-			print(f"[BRIDGE][STEP 4] Loaded Z={Z.shape} dtype={Z.dtype}")
+		print(f"[BRIDGE][STEP 4] Checkpoint found — loading cached linkage matrix.")
+		Z = np.load(ckpt_Z_path)
+		print(f"[BRIDGE][STEP 4] Loaded Z={Z.shape} dtype={Z.dtype}")
 	else:
-			backend = "fastcluster" if use_fastcluster else "scipy"
-			print(
-					f"[BRIDGE][STEP 4] Building Ward linkage matrix "
-					f"(n={len(unique_labels):,}, backend={backend})..."
-			)
-			t_link = time.time()
-			if use_fastcluster:
-					Z = fastcluster.linkage(X, method='ward', metric='euclidean')
-			else:
-					Z = linkage(X, method='ward', metric='euclidean')
-			link_time = time.time() - t_link
-			print(
-					f"[BRIDGE][STEP 4] Linkage complete in {link_time:.1f}s. "
-					f"Z={Z.shape} dtype={Z.dtype}"
-			)
-			print(
-					f"[BRIDGE][STEP 4] Linkage distance range: "
-					f"[{Z[:,2].min():.4f}, {Z[:,2].max():.4f}]"
-			)
-			np.save(ckpt_Z_path, Z)
-			print(f"[BRIDGE][STEP 4] Checkpointed linkage matrix → {ckpt_Z_path}")
+		backend = "fastcluster" if use_fastcluster else "scipy"
+		print(
+			f"[BRIDGE][STEP 4] Building Ward linkage matrix "
+			f"(n={len(unique_labels):,}, backend={backend})..."
+		)
+
+		t_link = time.time()
+		if use_fastcluster:
+			Z = fastcluster.linkage(X, method='ward', metric='euclidean')
+		else:
+			Z = linkage(X, method='ward', metric='euclidean')
+
+		link_time = time.time() - t_link
+		print(
+			f"[BRIDGE][STEP 4] Linkage complete in {link_time:.1f}s. "
+			f"Z={Z.shape} dtype={Z.dtype}"
+		)
+		print(
+			f"[BRIDGE][STEP 4] Linkage distance range: "
+			f"[{Z[:,2].min():.4f}, {Z[:,2].max():.4f}]"
+		)
+		np.save(ckpt_Z_path, Z)
+		print(f"[BRIDGE][STEP 4] Checkpointed linkage matrix → {ckpt_Z_path}")
 
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 5: ADAPTIVE OPTIMAL CLUSTER SEARCH
@@ -751,33 +768,35 @@ def cluster_and_save_priors(
 	print(f"[BRIDGE][STEP 5] Adaptive Optimal Cluster Search")
 	print(f"{'─'*80}")
 	print(
-			f"[BRIDGE][STEP 5] Hyperparameters: "
-			f"target_intra_sim=0.69, consolidation=[3.8, 5.0], "
-			f"singleton_ratio=0.015, quality_weight=0.5"
+		f"[BRIDGE][STEP 5] Hyperparameters: "
+		f"target_intra_sim=0.69, consolidation=[3.8, 5.0], "
+		f"singleton_ratio=0.015, quality_weight=0.5"
 	)
 	t_clust = time.time()
 	cluster_labels_arr, stats = get_optimal_num_clusters(
-			X=X,
-			linkage_matrix=Z,
-			target_intra_similarity=0.69,
-			min_consolidation=3.8,
-			max_consolidation=5.0,
-			target_singleton_ratio=0.015,
-			quality_vs_consolidation_weight=0.5,
-			merge_singletons=True,
-			verbose=verbose,
+		X=X,
+		linkage_matrix=Z,
+		target_intra_similarity=0.69,
+		min_consolidation=3.8,
+		max_consolidation=5.0,
+		target_singleton_ratio=0.015,
+		quality_vs_consolidation_weight=0.5,
+		merge_singletons=True,
+		verbose=verbose,
 	)
 	print(f"[BRIDGE][STEP 5] Cluster search complete in {time.time()-t_clust:.1f}s")
 	print(
-			f"[BRIDGE][STEP 5] Optimal k={stats['n_clusters']:,} clusters | "
-			f"consolidation={stats['consolidation_ratio']:.2f}x | "
-			f"intra_sim={stats['mean_intra_similarity']:.4f}"
+		f"[BRIDGE][STEP 5] Optimal k={stats['n_clusters']:,} clusters | "
+		f"consolidation={stats['consolidation_ratio']:.2f}x | "
+		f"intra_sim={stats['mean_intra_similarity']:.4f}"
 	)
+
 	df = pd.DataFrame({'label': unique_labels, 'cluster': cluster_labels_arr})
 	assert len(df) == len(unique_labels) == len(X), (
-			f"[BRIDGE][ASSERT] df/unique_labels/X length mismatch: "
-			f"{len(df)} / {len(unique_labels)} / {len(X)}"
+		f"[BRIDGE][ASSERT] df/unique_labels/X length mismatch: "
+		f"{len(df)} / {len(unique_labels)} / {len(X)}"
 	)
+
 	cluster_sizes = df['cluster'].value_counts()
 	print(f"\n[BRIDGE][STEP 5] Cluster size distribution:")
 	print(f"  ├─ Total clusters        : {stats['n_clusters']:,}")
@@ -785,11 +804,12 @@ def cluster_and_save_priors(
 	print(f"  ├─ Clusters with 2-5     : {((cluster_sizes >= 2) & (cluster_sizes <= 5)).sum():,}")
 	print(f"  ├─ Clusters with 6-20    : {((cluster_sizes >= 6) & (cluster_sizes <= 20)).sum():,}")
 	print(f"  └─ Clusters with >20     : {(cluster_sizes > 20).sum():,}")
+
 	if verbose:
-			print(f"\n[BRIDGE][STEP 5] Top-10 largest clusters:")
-			for cid, sz in cluster_sizes.head(10).items():
-					members = df[df['cluster'] == cid]['label'].tolist()
-					print(f"  cluster {cid:5d}: {sz:4d} members | {members[:8]}")
+		print(f"\n[BRIDGE][STEP 5] Top-10 largest clusters:")
+		for cid, sz in cluster_sizes.head(10).items():
+			members = df[df['cluster'] == cid]['label'].tolist()
+			print(f"  cluster {cid:5d}: {sz:4d} members | {members[:8]}")
 
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 6: 5-SIGNAL CANONICAL SELECTION
@@ -798,30 +818,32 @@ def cluster_and_save_priors(
 	print(f"[BRIDGE][STEP 6] 5-Signal Canonical Selection")
 	print(f"{'─'*80}")
 	if resume_emb:
-			print(f"[BRIDGE][STEP 6] Resume path: loading embedding model for canonical selection.")
-			model = SentenceTransformer(
-					model_id,
-					device=device,
-					trust_remote_code=True,
-					cache_folder=cache_directory[os.getenv('USER')],
-					token=os.getenv("HUGGINGFACE_TOKEN"),
-			).to(device)
-			print(f"[BRIDGE][STEP 6] Model loaded.")
+		print(f"[BRIDGE][STEP 6] Resume path: loading embedding model for canonical selection.")
+		model = SentenceTransformer(
+			model_id,
+			device=device,
+			trust_remote_code=True,
+			cache_folder=cache_directory[os.getenv('USER')],
+			token=os.getenv("HUGGINGFACE_TOKEN"),
+		).to(device)
+		print(f"[BRIDGE][STEP 6] Model loaded.")
+
 	t_canon = time.time()
 	(
-			cluster_canonicals,
-			virtual_used_count,
-			freq_changed_count,
-			total_sim_loss,
-			total_freq_gain,
-			questionable_examples,
+		cluster_canonicals,
+		virtual_used_count,
+		freq_changed_count,
+		total_sim_loss,
+		total_freq_gain,
+		questionable_examples,
 	) = assign_canonical_labels(
-			df=df,
-			X=X,
-			model=model,
-			original_label_counts=label_freq_dict,
-			verbose=verbose,
+		df=df,
+		X=X,
+		model=model,
+		original_label_counts=label_freq_dict,
+		verbose=verbose,
 	)
+
 	print(f"\n[BRIDGE][STEP 6] Canonical selection complete in {time.time()-t_canon:.1f}s")
 	print(f"  ├─ Total clusters processed  : {len(cluster_canonicals):,}")
 	print(f"  ├─ Virtual hypernyms used    : {virtual_used_count:,}")
@@ -829,24 +851,27 @@ def cluster_and_save_priors(
 	print(f"  ├─ Total similarity loss     : {sum(total_sim_loss):.4f}")
 	print(f"  ├─ Total frequency gain      : {sum(total_freq_gain):,}")
 	print(f"  └─ Questionable assignments  : {len(questionable_examples):,}")
+
 	if verbose and questionable_examples:
-			print(f"\n[BRIDGE][STEP 6] Questionable canonical assignments (review manually):")
-			for ex in questionable_examples[:15]:
-					print(f"  {ex}")
+		print(f"\n[BRIDGE][STEP 6] Questionable canonical assignments (review manually):")
+		for ex in questionable_examples[:15]:
+			print(f"  {ex}")
+
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 	nan_canonical_count = df['canonical'].isna().sum()
 	if nan_canonical_count > 0:
-			print(
-					f"[BRIDGE][WARN] {nan_canonical_count} rows have NaN canonical — "
-					f"cluster_canonicals may be missing entries for some cluster IDs."
-			)
-			if verbose:
-					print(df[df['canonical'].isna()].head(10).to_string())
+		print(
+			f"[BRIDGE][WARN] {nan_canonical_count} rows have NaN canonical — "
+			f"cluster_canonicals may be missing entries for some cluster IDs."
+		)
+		if verbose:
+			print(df[df['canonical'].isna()].head(10).to_string())
 	else:
-			print(f"[BRIDGE][STEP 6] All {len(df):,} rows have a valid canonical ✓")
+		print(f"[BRIDGE][STEP 6] All {len(df):,} rows have a valid canonical ✓")
 	print(f"\n[BRIDGE][STEP 6] df after canonical assignment: {df.shape}")
+
 	if verbose:
-			print(df.head(10).to_string())
+		print(df.head(10).to_string())
 
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 7: INJECT VIRTUAL HYPERNYMS AS GENUINE ROWS
@@ -854,38 +879,40 @@ def cluster_and_save_priors(
 	print(f"\n{'─'*80}")
 	print(f"[BRIDGE][STEP 7] Virtual Hypernym Injection")
 	print(f"{'─'*80}")
+
 	virtual_rows: List[dict]       = []
 	virtual_embs: List[np.ndarray] = []
 	for cid, meta in cluster_canonicals.items():
-			if not meta.get('virtual', False):
-					continue
-			vh = meta['canonical']
-			vh_emb = model.encode(
-					[vh],
-					batch_size=1,
-					convert_to_numpy=True,
-					normalize_embeddings=True,
-					precision='float32',
-			)[0]
-			virtual_rows.append({'label': vh, 'cluster': cid, 'canonical': vh})
-			virtual_embs.append(vh_emb)
-			if verbose:
-					print(f"  [VH] cluster {cid:5d}: '{vh}'")
+		if not meta.get('virtual', False):
+			continue
+		vh = meta['canonical']
+		vh_emb = model.encode(
+			[vh],
+			batch_size=1,
+			convert_to_numpy=True,
+			normalize_embeddings=True,
+			precision='float32',
+		)[0]
+		virtual_rows.append({'label': vh, 'cluster': cid, 'canonical': vh})
+		virtual_embs.append(vh_emb)
+		if verbose:
+			print(f"  [VH] cluster {cid:5d}: '{vh}'")
+
 	if virtual_rows:
-			df_before = df.shape
-			X_before  = X.shape
-			df = pd.concat([df, pd.DataFrame(virtual_rows)], ignore_index=True)
-			X  = np.vstack([X, np.array(virtual_embs)])
-			print(
-					f"[BRIDGE][STEP 7] Injected {len(virtual_rows)} virtual hypernym(s): "
-					f"df {df_before} → {df.shape} | X {X_before} → {X.shape}"
-			)
-			assert len(df) == len(X), (
-					f"[BRIDGE][ASSERT] df/X length mismatch after VH injection: "
-					f"{len(df)} / {len(X)}"
-			)
+		df_before = df.shape
+		X_before  = X.shape
+		df = pd.concat([df, pd.DataFrame(virtual_rows)], ignore_index=True)
+		X  = np.vstack([X, np.array(virtual_embs)])
+		print(
+			f"[BRIDGE][STEP 7] Injected {len(virtual_rows)} virtual hypernym(s): "
+			f"df {df_before} → {df.shape} | X {X_before} → {X.shape}"
+		)
+		assert len(df) == len(X), (
+			f"[BRIDGE][ASSERT] df/X length mismatch after VH injection: "
+			f"{len(df)} / {len(X)}"
+		)
 	else:
-			print(f"[BRIDGE][STEP 7] No virtual hypernyms to inject.")
+		print(f"[BRIDGE][STEP 7] No virtual hypernyms to inject.")
 
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 8: AUDIT — DROP LOW-COHESION AND POOR-CANONICAL CLUSTERS
@@ -895,80 +922,86 @@ def cluster_and_save_priors(
 	print(f"{'─'*80}")
 	print(f"[BRIDGE][STEP 8a] remove_problematic_cluster_labels: df={df.shape}, X={X.shape}")
 	df_clean, X_clean, removed_labels_8a = remove_problematic_cluster_labels(
-			df=df,
-			embeddings=X,
-			verbose=verbose,
+		df=df,
+		embeddings=X,
+		verbose=verbose,
 	)
 	print(
-			f"[BRIDGE][STEP 8a] After audit: df_clean={df_clean.shape} | "
-			f"X_clean={X_clean.shape} | removed={len(removed_labels_8a):,} labels"
+		f"[BRIDGE][STEP 8a] After audit: df_clean={df_clean.shape} | "
+		f"X_clean={X_clean.shape} | removed={len(removed_labels_8a):,} labels"
 	)
 	if verbose and removed_labels_8a:
-			print(f"[BRIDGE][STEP 8a] Removed labels (first 20): {removed_labels_8a[:20]}")
+		print(f"[BRIDGE][STEP 8a] Removed labels (first 20): {removed_labels_8a[:20]}")
+
 	print(f"\n[BRIDGE][STEP 8b] Building canonical frequency map...")
 	canonical_freq_dict: dict = {}
 	for _, row in df_clean.iterrows():
-			canonical = row['canonical']
-			raw_freq  = label_freq_dict.get(row['label'], 0)
-			canonical_freq_dict[canonical] = canonical_freq_dict.get(canonical, 0) + raw_freq
+		canonical = row['canonical']
+		raw_freq  = label_freq_dict.get(row['label'], 0)
+		canonical_freq_dict[canonical] = canonical_freq_dict.get(canonical, 0) + raw_freq
 	canon_freq_values = sorted(canonical_freq_dict.values(), reverse=True)
 	print(
-			f"[BRIDGE][STEP 8b] {len(canonical_freq_dict):,} canonicals | "
-			f"freq range: [{min(canon_freq_values)}, {max(canon_freq_values)}] | "
-			f"mean={sum(canon_freq_values)/max(len(canon_freq_values),1):.1f}"
+		f"[BRIDGE][STEP 8b] {len(canonical_freq_dict):,} canonicals | "
+		f"freq range: [{min(canon_freq_values)}, {max(canon_freq_values)}] | "
+		f"mean={sum(canon_freq_values)/max(len(canon_freq_values),1):.1f}"
 	)
 	if verbose:
-			print(f"[BRIDGE][STEP 8b] Top-15 canonicals by aggregated frequency:")
-			for canon, freq in sorted(canonical_freq_dict.items(), key=lambda x: -x[1])[:15]:
-					print(f"  {canon:<40} {freq:>6,}")
+		print(f"[BRIDGE][STEP 8b] Top-15 canonicals by aggregated frequency:")
+		for canon, freq in sorted(canonical_freq_dict.items(), key=lambda x: -x[1])[:15]:
+			print(f"  {canon:<40} {freq:>6,}")
 	print(f"\n[BRIDGE][STEP 8c] filter_generic_vocabulary: df_clean={df_clean.shape}")
 	df_before_gate = df_clean.shape
+
 	df_clean, removed_labels_8c, kept_indices = filter_generic_vocabulary(
-			df_clean=df_clean,
-			canonical_freq_dict=canonical_freq_dict,
-			domain_blacklist=STOPWORDS,
-			verbose=verbose,
+		df_clean=df_clean,
+		canonical_freq_dict=canonical_freq_dict,
+		domain_blacklist=STOPWORDS,
+		verbose=verbose,
 	)
 	print(
-			f"[BRIDGE][STEP 8c] Vocab gate: {df_before_gate} → {df_clean.shape} | "
-			f"removed {len(removed_labels_8c):,} labels | "
-			f"kept_indices: {len(kept_indices):,}"
+		f"[BRIDGE][STEP 8c] Vocab gate: {df_before_gate} → {df_clean.shape} | "
+		f"removed {len(removed_labels_8c):,} labels | "
+		f"kept_indices: {len(kept_indices):,}"
 	)
 	if verbose and removed_labels_8c:
-			print(f"[BRIDGE][STEP 8c] Removed labels (first 20): {removed_labels_8c[:20]}")
+		print(f"[BRIDGE][STEP 8c] Removed labels (first 20): {removed_labels_8c[:20]}")
+
 	blacklist_path = os.path.join(outputs_dir, f"{stem}_blacklisted_concepts.json")
 	with open(blacklist_path, "w", encoding="utf-8") as f:
-			json.dump(removed_labels_8c, f, indent=2, ensure_ascii=False)
+		json.dump(removed_labels_8c, f, indent=2, ensure_ascii=False)
 	print(f"[BRIDGE][STEP 8c] Blacklist written: {len(removed_labels_8c)} entries → {blacklist_path}")
 	print(f"\n[BRIDGE][STEP 8d] Building final canonical_map from df_clean...")
+
 	final_canonical_dict: dict = df_clean.set_index('label')['canonical'].to_dict()
-	valid_canonicals: set       = set(df_clean['canonical'].unique())
+	valid_canonicals: set = set(df_clean['canonical'].unique())
 	invalid_mappings = {
-			raw: canon
-			for raw, canon in final_canonical_dict.items()
-			if canon not in valid_canonicals
+		raw: canon
+		for raw, canon in final_canonical_dict.items()
+		if canon not in valid_canonicals
 	}
 	if invalid_mappings:
-			print(
-					f"[BRIDGE][WARN] {len(invalid_mappings)} mappings point to "
-					f"invalid canonicals (should be 0 — check filter_generic_vocabulary):"
-			)
-			for raw, canon in list(invalid_mappings.items())[:10]:
-					print(f"  '{raw}' → '{canon}' (NOT in valid_canonicals)")
+		print(
+			f"[BRIDGE][WARN] {len(invalid_mappings)} mappings point to "
+			f"invalid canonicals (should be 0 — check filter_generic_vocabulary):"
+		)
+		for raw, canon in list(invalid_mappings.items())[:10]:
+			print(f"  '{raw}' → '{canon}' (NOT in valid_canonicals)")
 	else:
-			print(
-					f"[BRIDGE][STEP 8d] All {len(final_canonical_dict):,} mappings point "
-					f"to valid canonicals ✓"
-			)
+		print(
+			f"[BRIDGE][STEP 8d] All {len(final_canonical_dict):,} mappings point "
+			f"to valid canonicals ✓"
+		)
+
 	print(
-			f"[BRIDGE][STEP 8d] final_canonical_dict: {len(final_canonical_dict):,} mappings | "
-			f"valid_canonicals: {len(valid_canonicals):,}"
+		f"[BRIDGE][STEP 8d] final_canonical_dict: {len(final_canonical_dict):,} mappings | "
+		f"valid_canonicals: {len(valid_canonicals):,}"
 	)
 	if verbose:
-			print(f"[BRIDGE][STEP 8d] Sample mappings (first 20):")
-			for raw, canon in list(final_canonical_dict.items())[:20]:
-					marker = "✓" if canon in valid_canonicals else "✗"
-					print(f"  {marker} '{raw:<40}' → '{canon}'")
+		print(f"[BRIDGE][STEP 8d] Sample mappings (first 20):")
+		for raw, canon in list(final_canonical_dict.items())[:20]:
+			marker = "✓" if canon in valid_canonicals else "✗"
+			print(f"  {marker} '{raw:<40}' → '{canon}'")
+
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 9: RE-EVALUATE FINAL CLUSTER QUALITY
 	# ══════════════════════════════════════════════════════════════════════════
@@ -980,22 +1013,24 @@ def cluster_and_save_priors(
 	cluster_labels_clean = df_clean['cluster'].values
 	canonical_map_int    = df_clean.groupby('cluster')['canonical'].first().to_dict()
 	assert len(X_clean_final) == len(df_clean), (
-			f"[BRIDGE][ASSERT] X_clean_final/df_clean length mismatch: "
-			f"{len(X_clean_final)} / {len(df_clean)}"
+		f"[BRIDGE][ASSERT] X_clean_final/df_clean length mismatch: "
+		f"{len(X_clean_final)} / {len(df_clean)}"
 	)
 	print(
-			f"[BRIDGE][STEP 9] Inputs: X_clean_final={X_clean_final.shape} | "
-			f"df_clean={df_clean.shape} | "
-			f"n_clusters={len(canonical_map_int):,}"
+		f"[BRIDGE][STEP 9] Inputs: X_clean_final={X_clean_final.shape} | "
+		f"df_clean={df_clean.shape} | "
+		f"n_clusters={len(canonical_map_int):,}"
 	)
 	analyze_cluster_quality(
-			embeddings=X_clean_final,
-			labels=unique_labels_clean,
-			cluster_assignments=cluster_labels_clean,
-			canonical_labels=canonical_map_int,
-			original_label_counts=label_freq_dict,
-			verbose=verbose,
+		embeddings=X_clean_final,
+		labels=unique_labels_clean,
+		cluster_assignments=cluster_labels_clean,
+		canonical_labels=canonical_map_int,
+		original_label_counts=label_freq_dict,
+		output_dir=outputs_dir,
+		verbose=verbose,
 	)
+
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 10: EXTRACT EMERGENT TARGET VOCABULARY V
 	# ══════════════════════════════════════════════════════════════════════════
@@ -1005,11 +1040,12 @@ def cluster_and_save_priors(
 	target_vocab: List[str] = sorted(df_clean['canonical'].unique().tolist())
 	print(f"[BRIDGE][STEP 10] |V| = {len(target_vocab):,} canonical labels")
 	if verbose:
-			print(f"[BRIDGE][STEP 10] Target vocabulary (first 40):")
-			for i, v in enumerate(target_vocab[:40]):
-					print(f"  {i:4d}. {v}")
-			if len(target_vocab) > 40:
-					print(f"  ... ({len(target_vocab) - 40} more)")
+		print(f"[BRIDGE][STEP 10] Target vocabulary (first 40):")
+		for i, v in enumerate(target_vocab[:40]):
+			print(f"  {i:4d}. {v}")
+		if len(target_vocab) > 40:
+			print(f"  ... ({len(target_vocab) - 40} more)")
+
 	# ══════════════════════════════════════════════════════════════════════════
 	# STEP 11: PRE-COMPUTE TARGET VOCABULARY EMBEDDINGS (emb_cache)
 	# ══════════════════════════════════════════════════════════════════════════

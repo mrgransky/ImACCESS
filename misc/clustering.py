@@ -90,12 +90,14 @@ def get_canonical_labels_with_parallel_mapping(
 	nc: int = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
+
 	clusters_fname = os.path.join(output_dir, f"{label_source}_clusters.csv")
 
 	if verbose:
 		print(f"\n[{label_source.upper()}] Canonical Labels (Parallel Mapping: nw: {num_workers} bs: {batch_size})")
 		print(f"Input: {len(labels)} {type(labels)} samples")
 		print(f"Examples:\n{labels[:7]}")
+		print(f"Cluster File: {clusters_fname}")
 
 	clustered_df = cluster(
 		labels=labels,
@@ -957,8 +959,8 @@ def analyze_cluster_quality(
 	labels: np.ndarray,
 	cluster_assignments: np.ndarray,
 	canonical_labels: Dict[int, str],
+	output_dir: str,
 	original_label_counts: Optional[Dict[str, int]] = None,
-	output_dir: str = "./",
 	verbose: bool = True,
 ) -> Dict:
 	"""
@@ -1228,7 +1230,10 @@ def analyze_cluster_quality(
 				'description': f'Size > 95th percentile ({size_p95:.0f}). May be over-merged.',
 			}
 		)
-		very_large.to_csv(os.path.join(output_dir, "very_large_clusters.csv"), index=False)
+		very_large.to_csv(
+			os.path.join(output_dir, "very_large_clusters.csv"), 
+			index=False
+		)
 
 	if verbose:
 		if not problematic_clusters:
@@ -1706,6 +1711,7 @@ def get_optimal_num_clusters(
 	valid_k_max = int(num_samples // min_consolidation)
 	if verbose:
 		print(f"\n[STAGE 1] COARSE SEARCH - Finding quality plateau: {valid_k_min} ≤ k ≤ {valid_k_max}")
+
 	# Adaptive coarse range based on dataset size
 	if num_samples > int(3e4):
 		coarse_step = 1000

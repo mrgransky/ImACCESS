@@ -12,6 +12,9 @@ sys.path.insert(0, MISC_DIR)
 
 from utils import *
 
+# how to run:
+# python stage2_modality_conflict.py -jsonl /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal_mlm_cot.jsonl -v
+
 def is_empty_concepts(concepts: Optional[Dict[str, Any]]) -> bool:
 	if not concepts or not isinstance(concepts, dict):
 		return True

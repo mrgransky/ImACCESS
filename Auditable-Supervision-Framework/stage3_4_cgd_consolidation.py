@@ -3,7 +3,6 @@ import sys
 
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
-
 CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
 sys.path.insert(0, CLIP_DIR)
 MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
@@ -11,7 +10,7 @@ sys.path.insert(0, MISC_DIR)
 
 from utils import *
 
-# local:
+# How to run [local]:
 # nohup python -u stage3_4_cgd_consolidation.py -jsonl /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal_mlm_cot_modality_conflict_audit.jsonl -v > logs/regime_aware_consolidation.log 2>&1 &
 
 class CGDConsolidator:
@@ -790,326 +789,305 @@ class CGDConsolidator:
 			print(f"  Saved to        : {output_path}")
 
 def regime_aware_consolidation(
-		input_jsonl: str,
-		column: str,
-		verbose: bool = False,
+	input_jsonl: str,
+	column: str,
+	verbose: bool = False,
 ) -> None:
-		"""
-		Streams Stage 2 receipts through the CGD Consolidator (Stages 3 & 4) and
-		writes the final auditable supervision matrix to .parquet / .csv / .jsonl.
+	"""
+	Streams Stage 2 receipts through the CGD Consolidator (Stages 3 & 4) and
+	writes the final auditable supervision matrix to .parquet / .csv / .jsonl.
+	Crash-safe resume via JSONL append-and-skip.
+	If a partial output JSONL already exists, already-processed sample IDs are
+	loaded and skipped so a restart continues from where it left off.
+	The .parquet and .csv are rebuilt from the complete JSONL at the end.
+	Fix F: Verbose diagnostics now include:
+			- GMM regime override rate (fraction where GMM disagreed with Stage 2)
+			- Low-confidence GMM assignment count (conf < 0.60)
+	These metrics are essential for the paper's methodology section.
+	"""
+	DATASET_DIRECTORY = os.path.dirname(input_jsonl)
+	outputs_dir       = os.path.join(DATASET_DIRECTORY, "outputs")
+	os.makedirs(outputs_dir, exist_ok=True)
 
-		Crash-safe resume via JSONL append-and-skip.
-		If a partial output JSONL already exists, already-processed sample IDs are
-		loaded and skipped so a restart continues from where it left off.
-		The .parquet and .csv are rebuilt from the complete JSONL at the end.
+	# Derive output paths
+	stage3_path  = os.path.join(
+		outputs_dir,
+		os.path.basename(input_jsonl.replace(".jsonl", "_auditable_supervision_cgd.jsonl"))
+	)
+	parquet_path = os.path.join(
+		outputs_dir,
+		os.path.basename(input_jsonl.replace(".jsonl", "_auditable_supervision_matrix.parquet"))
+	)
+	csv_path   = parquet_path.replace(".parquet", ".csv")
+	jsonl_path = parquet_path.replace(".parquet", ".jsonl")
 
-		Fix F: Verbose diagnostics now include:
-				- GMM regime override rate (fraction where GMM disagreed with Stage 2)
-				- Low-confidence GMM assignment count (conf < 0.60)
-		These metrics are essential for the paper's methodology section.
-		"""
-		DATASET_DIRECTORY = os.path.dirname(input_jsonl)
-		outputs_dir       = os.path.join(DATASET_DIRECTORY, "outputs")
-		os.makedirs(outputs_dir, exist_ok=True)
+	print(f"\n{'='*80}")
+	print(f"[STAGE 3 & 4] Regime-Aware CGD Consolidation")
+	print(f"{'='*80}")
+	print(f"  ├─ Input JSONL  : {input_jsonl}")
+	print(f"  ├─ Stage 3 out  : {stage3_path}")
+	print(f"  ├─ Stage 4 JSONL: {jsonl_path}")
+	print(f"  ├─ Parquet      : {parquet_path}")
+	print(f"  └─ CSV          : {csv_path}")
 
-		# Derive output paths
-		stage3_path  = os.path.join(
-			outputs_dir,
-			os.path.basename(input_jsonl.replace(".jsonl", "_auditable_supervision_cgd.jsonl"))
-		)
-		parquet_path = os.path.join(
-			outputs_dir,
-			os.path.basename(input_jsonl.replace(".jsonl", "_auditable_supervision_matrix.parquet"))
-		)
-		csv_path   = parquet_path.replace(".parquet", ".csv")
-		jsonl_path = parquet_path.replace(".parquet", ".jsonl")
-
-		print(f"\n{'='*80}")
-		print(f"[STAGE 3 & 4] Regime-Aware CGD Consolidation")
-		print(f"{'='*80}")
-		print(f"  ├─ Input JSONL  : {input_jsonl}")
-		print(f"  ├─ Stage 3 out  : {stage3_path}")
-		print(f"  ├─ Stage 4 JSONL: {jsonl_path}")
-		print(f"  ├─ Parquet      : {parquet_path}")
-		print(f"  └─ CSV          : {csv_path}")
-
-		# ── Crash-safe resume: load already-processed IDs ─────────────────────────
-		# Both Stage 4 JSONL and Stage 3 JSONL are checked so that on resume
-		# neither file gets duplicate records written.
-		processed_ids: set = set()
-		if os.path.exists(jsonl_path):
-				with open(jsonl_path, 'r', encoding="utf-8") as f_existing:
-						for line in f_existing:
-								line = line.strip()
-								if not line:
-										continue
-								try:
-										processed_ids.add(json.loads(line)["doc_url"])
-								except Exception:
-										pass
-				if processed_ids:
-						print(
-								f"\n[STAGE 3 & 4] Resume detected: {len(processed_ids):,} samples "
-								f"already processed — skipping."
-						)
-
-		stage3_processed_ids: set = set()
-		if os.path.exists(stage3_path):
-				with open(stage3_path, 'r', encoding="utf-8") as f_s3:
-						for line in f_s3:
-								line = line.strip()
-								if not line:
-										continue
-								try:
-										stage3_processed_ids.add(json.loads(line)["doc_url"])
-								except Exception:
-										pass
-
-		consolidator = CGDConsolidator(input_jsonl=input_jsonl, verbose=verbose)
-
-		print(f"\n[STAGE 3 & 4] Streaming receipts and executing stateful CGD audit...")
-
-		rows_new: List[Dict[str, Any]] = []
-		skipped, errors = 0, 0
-
-		with (
-			open(jsonl_path,  'a', encoding="utf-8") as out_f,
-			open(stage3_path, 'a', encoding="utf-8") as s3_f,
-			open(input_jsonl, 'r', encoding="utf-8") as in_f,
-		):
-			for line_no, line in enumerate(in_f, start=1):
+	# ── Crash-safe resume: load already-processed IDs ─────────────────────────
+	# Both Stage 4 JSONL and Stage 3 JSONL are checked so that on resume
+	# neither file gets duplicate records written.
+	processed_ids: set = set()
+	if os.path.exists(jsonl_path):
+		with open(jsonl_path, 'r', encoding="utf-8") as f_existing:
+			for line in f_existing:
 				line = line.strip()
 				if not line:
 					continue
-				
 				try:
-					receipt = json.loads(line)
-				except json.JSONDecodeError as e:
-					print(f"[WARN] Skipping malformed line {line_no}: {e}")
-					errors += 1
-					continue
-				
-				sample_id = receipt.get("doc_url")
-				if sample_id is None:
-					print(f"[WARN] Line {line_no} has no 'doc_url' field — skipping.")
-					errors += 1
-					continue
-				if sample_id in processed_ids:
-					skipped += 1
-					continue
+					processed_ids.add(json.loads(line)["doc_url"])
+				except Exception:
+					pass
+		if processed_ids:
+			print(
+				f"\n[STAGE 3 & 4] Resume detected: {len(processed_ids):,} samples "
+				f"already processed — skipping."
+			)
 
-				try:
-					consolidated = consolidator.consolidate_sample(receipt=receipt, column=column,)
-					# Stage 3 output — guard prevents duplicate writes on crash-resume.
-					if sample_id not in stage3_processed_ids:
-						stage3_record = {
-							"doc_url":         consolidated["doc_url"],
-							"regime":     consolidated["regime"],
-							"cgd_scores": consolidated["audited_concepts"],
-						}
-						s3_f.write(json.dumps(stage3_record, ensure_ascii=False) + "\n")
-						stage3_processed_ids.add(sample_id)
-					# Stage 4 output — written exactly once per sample.
-					out_f.write(json.dumps(consolidated, ensure_ascii=False) + "\n")
-					rows_new.append(consolidated)
-				except Exception as e:
-					print(f"[ERROR] {sample_id}: {e}")
-					errors += 1
-					continue
-
-		# Rebuild parquet + csv from complete JSONL
-		# Includes both resumed rows and newly processed rows for a consistent output.
-		all_rows: List[Dict[str, Any]] = []
-		with open(jsonl_path, 'r', encoding="utf-8") as f:
-			for line in f:
+	stage3_processed_ids: set = set()
+	if os.path.exists(stage3_path):
+		with open(stage3_path, 'r', encoding="utf-8") as f_s3:
+			for line in f_s3:
 				line = line.strip()
-				if line:
-					try:
-						all_rows.append(json.loads(line))
-					except Exception:
-						pass
+				if not line:
+					continue
+				try:
+					stage3_processed_ids.add(json.loads(line)["doc_url"])
+				except Exception:
+					pass
 
-		df = pd.DataFrame(all_rows)
-		print(f"\n[STAGE 3 & 4] DataFrame: {df.shape} | columns: {list(df.columns)}")
-		print(df.info(verbose=True, memory_usage=True))
+	consolidator = CGDConsolidator(input_jsonl=input_jsonl, verbose=verbose)
+	print(f"\n[STAGE 3 & 4] Streaming receipts and executing stateful CGD audit...")
+	rows_new: List[Dict[str, Any]] = []
+	skipped, errors = 0, 0
+	with (
+		open(jsonl_path,  'a', encoding="utf-8") as out_f,
+		open(stage3_path, 'a', encoding="utf-8") as s3_f,
+		open(input_jsonl, 'r', encoding="utf-8") as in_f,
+	):
+		for line_no, line in enumerate(in_f, start=1):
+			line = line.strip()
+			if not line:
+				continue
+			
+			try:
+				receipt = json.loads(line)
+			except json.JSONDecodeError as e:
+				print(f"[WARN] Skipping malformed line {line_no}: {e}")
+				errors += 1
+				continue
+			
+			sample_id = receipt.get("doc_url")
+			if sample_id is None:
+				print(f"[WARN] Line {line_no} has no 'doc_url' field — skipping.")
+				errors += 1
+				continue
+			if sample_id in processed_ids:
+				skipped += 1
+				continue
+			try:
+				consolidated = consolidator.consolidate_sample(receipt=receipt, column=column,)
+				# Stage 3 output — guard prevents duplicate writes on crash-resume.
+				if sample_id not in stage3_processed_ids:
+					stage3_record = {
+						"doc_url":         consolidated["doc_url"],
+						"regime":     consolidated["regime"],
+						"cgd_scores": consolidated["audited_concepts"],
+					}
+					s3_f.write(json.dumps(stage3_record, ensure_ascii=False) + "\n")
+					stage3_processed_ids.add(sample_id)
+				# Stage 4 output — written exactly once per sample.
+				out_f.write(json.dumps(consolidated, ensure_ascii=False) + "\n")
+				rows_new.append(consolidated)
+			except Exception as e:
+				print(f"[ERROR] {sample_id}: {e}")
+				errors += 1
+				continue
 
-		# ── Drop samples with empty positive_targets ──────────────────────────────
-		# These are genuinely out-of-vocabulary samples (all concepts failed
-		# embedding lookup or similarity gating). Passing them to Stage 5 would
-		# inject zero-supervision rows into BCE training.
-		empty_mask = df['positive_targets'].apply(len) == 0
-		empty_supervision = df[empty_mask]
-		if len(empty_supervision) > 0:
-				print(
-						f"\n[WARN] {len(empty_supervision):,} samples have empty positive_targets "
-						f"— excluded from training. IDs saved to rejection report."
-				)
-				empty_ids = empty_supervision["doc_url"].tolist()
-				empty_ids_path = jsonl_path.replace(".jsonl", "_empty_supervision.json")
-				with open(empty_ids_path, 'w', encoding='utf-8') as f_empty:
-						json.dump(
-								{"count": len(empty_ids), "sample_ids": empty_ids},
-								f_empty, indent=2, ensure_ascii=False,
-						)
-				print(f"  Saved {len(empty_ids):,} empty-supervision IDs → {empty_ids_path}")
-				df = df[~empty_mask].reset_index(drop=True)
-				print(f"  DataFrame after filter: {df.shape}")
+	# Rebuild parquet + csv from complete JSONL
+	# Includes both resumed rows and newly processed rows for a consistent output.
+	all_rows: List[Dict[str, Any]] = []
+	with open(jsonl_path, 'r', encoding="utf-8") as f:
+		for line in f:
+			line = line.strip()
+			if line:
+				try:
+					all_rows.append(json.loads(line))
+				except Exception:
+					pass
 
-		# ── Serialise nested columns for Parquet ──────────────────────────────────
-		# positive_targets and hard_negatives are kept as native Python lists —
-		# pyarrow handles list-of-string columns natively and Stage 5 can consume
-		# them without a json.loads() call.
-		SKIP_SERIALISE = {"positive_targets", "hard_negatives"}
-		for col in df.columns:
-				if col in SKIP_SERIALISE:
-						continue
-				if (
-						df[col].dtype == object and
-						df[col].apply(lambda x: isinstance(x, (dict, list))).any()
-				):
-						df[col] = df[col].apply(
-								lambda x: json.dumps(x, ensure_ascii=False)
-								if isinstance(x, (dict, list)) else x
-						)
+	df = pd.DataFrame(all_rows)
+	print(f"\n[STAGE 3 & 4] DataFrame: {df.shape} | columns: {list(df.columns)}")
+	print(df.info(verbose=True, memory_usage=True))
 
-		df.to_parquet(parquet_path, index=False, engine="pyarrow")
-		df.to_csv(csv_path, index=False)
-
-		# ── Export Tier-2 rejection report ────────────────────────────────────────
-		rejection_report_path = jsonl_path.replace(".jsonl", "_tier2_rejections.json")
-		consolidator.export_rejection_report(rejection_report_path)
-
+	# ── Drop samples with empty positive_targets ──────────────────────────────
+	# These are genuinely out-of-vocabulary samples (all concepts failed
+	# embedding lookup or similarity gating). Passing them to Stage 5 would
+	# inject zero-supervision rows into BCE training.
+	empty_mask = df['positive_targets'].apply(len) == 0
+	empty_supervision = df[empty_mask]
+	if len(empty_supervision) > 0:
 		print(
-				f"\n[STAGE 3 & 4] COMPLETE | "
-				f"Total={len(all_rows):,} | New={len(rows_new):,} | "
-				f"Resumed={skipped:,} | Errors={errors:,}"
+			f"\n[WARN] {len(empty_supervision):,} samples have empty positive_targets "
+			f"— excluded from training. IDs saved to rejection report."
 		)
-		print(f"  ├─ Parquet  : {parquet_path}")
-		print(f"  ├─ CSV      : {csv_path}")
-		print(f"  ├─ Stage 3  : {stage3_path}")
-		print(f"  └─ JSONL    : {jsonl_path}")
+		empty_ids = empty_supervision["doc_url"].tolist()
+		empty_ids_path = jsonl_path.replace(".jsonl", "_empty_supervision.json")
+		with open(empty_ids_path, 'w', encoding='utf-8') as f_empty:
+			json.dump(
+				{"count": len(empty_ids), "sample_ids": empty_ids},
+				f_empty, 
+				indent=2, 
+				ensure_ascii=False,
+			)
+		print(f"  Saved {len(empty_ids):,} empty-supervision IDs → {empty_ids_path}")
+		df = df[~empty_mask].reset_index(drop=True)
+		print(f"  DataFrame after filter: {df.shape}")
 
-		# ── Verbose diagnostics (Fix F) ───────────────────────────────────────────
-		if verbose:
-				print(f"\n{'─'*80}")
-				print(f"[DIAGNOSTICS] Regime distribution (GMM-routed):")
-				print(df['regime'].value_counts().to_string())
-
-				if 'heuristic_regime' in df.columns:
-						print(f"\n[DIAGNOSTICS] Heuristic regime distribution (Stage 2 raw):")
-						print(df['heuristic_regime'].value_counts().to_string())
-
-				print(f"\n[DIAGNOSTICS] Mean w_pos per regime:")
-				print(df.groupby('regime')['w_pos'].mean().round(4).to_string())
-
-				print(f"\n[DIAGNOSTICS] Mean w_neg per regime:")
-				print(df.groupby('regime')['w_neg'].mean().round(4).to_string())
-
-				print(f"\n[DIAGNOSTICS] Mean |pos_targets| per regime:")
-				print(
-						df.groupby('regime')['positive_targets']
-						.apply(lambda x: x.apply(len).mean())
-						.round(2)
-						.to_string()
-				)
-
-				print(f"\n[DIAGNOSTICS] Mean |hard_negatives| per regime:")
-				print(
-						df.groupby('regime')['hard_negatives']
-						.apply(lambda x: x.apply(len).mean())
-						.round(2)
-						.to_string()
-				)
-
-				# Fix F: GMM override rate and low-confidence count.
-				# These are the two key metrics for the paper's methodology section:
-				#   - Override rate: how often does the GMM disagree with Stage 2?
-				#     A high rate suggests Stage 2 thresholds need recalibration.
-				#   - Low-confidence rate: how often is the GMM uncertain?
-				#     Correlates with the Bridge's orphan_gap warning.
-				if 'gmm' in df.columns:
-						print(f"\n[DIAGNOSTICS] GMM routing statistics (Fix F):")
-
-						def _parse_gmm(x):
-								if isinstance(x, str):
-										try:
-												return json.loads(x)
-										except Exception:
-												return None
-								return x  # already dict or None
-
-						gmm_col = df['gmm'].apply(_parse_gmm)
-
-						# Override rate
-						override_mask = gmm_col.apply(
-								lambda x: bool(x.get("regime_override", False))
-								if isinstance(x, dict) else False
-						)
-						n_overrides  = int(override_mask.sum())
-						n_gmm_routed = int(gmm_col.apply(lambda x: isinstance(x, dict)).sum())
-						n_total      = len(df)
-						print(
-								f"  ├─ Samples with GMM routing    : {n_gmm_routed:,} / {n_total:,} "
-								f"({n_gmm_routed / max(n_total, 1) * 100:.1f}%)"
-						)
-						print(
-								f"  ├─ GMM regime overrides        : {n_overrides:,} / {n_gmm_routed:,} "
-								f"({n_overrides / max(n_gmm_routed, 1) * 100:.1f}% of GMM-routed samples)"
-						)
-
-						# Override breakdown: which heuristic regime was overridden to which GMM regime
-						if 'heuristic_regime' in df.columns:
-								override_df = df[override_mask][['heuristic_regime', 'regime']]
-								if len(override_df) > 0:
-										print(f"  ├─ Override breakdown (heuristic → GMM):")
-										for (h_reg, g_reg), cnt in (
-												override_df
-												.groupby(['heuristic_regime', 'regime'])
-												.size()
-												.sort_values(ascending=False)
-												.items()
-										):
-												print(f"  │    {h_reg:<20} → {g_reg:<20} : {cnt:,}")
-
-						# Low-confidence GMM assignments
-						_GMM_CONF_WARN_THRESHOLD = 0.60
-						low_conf_mask = gmm_col.apply(
-								lambda x: (
-										isinstance(x, dict)
-										and x.get("confidence") is not None
-										and x["confidence"] < _GMM_CONF_WARN_THRESHOLD
-								)
-						)
-						n_low_conf = int(low_conf_mask.sum())
-						print(
-								f"  ├─ Low-confidence GMM (< {_GMM_CONF_WARN_THRESHOLD}) : "
-								f"{n_low_conf:,} / {n_gmm_routed:,} "
-								f"({n_low_conf / max(n_gmm_routed, 1) * 100:.1f}% of GMM-routed samples)"
-						)
-
-						# Mean confidence per GMM-routed regime
-						conf_by_regime = (
-								df[gmm_col.apply(lambda x: isinstance(x, dict))]
-								.copy()
-						)
-						conf_by_regime['_gmm_conf'] = gmm_col[
-								gmm_col.apply(lambda x: isinstance(x, dict))
-						].apply(lambda x: x.get("confidence"))
-						print(f"  └─ Mean GMM confidence per regime:")
-						for reg, mean_conf in (
-								conf_by_regime.groupby('regime')['_gmm_conf']
-								.mean()
-								.round(4)
-								.items()
-						):
-								print(f"       {reg:<20} : {mean_conf:.4f}")
-				else:
-						print(f"\n[DIAGNOSTICS] GMM column not found in DataFrame — "
-									f"GMM routing statistics unavailable.")
-
-				print(f"\n[DIAGNOSTICS] Numeric summary:")
-				print(df.describe())
-				print(df)
+	# ── Serialise nested columns for Parquet ──────────────────────────────────
+	# positive_targets and hard_negatives are kept as native Python lists —
+	# pyarrow handles list-of-string columns natively and Stage 5 can consume
+	# them without a json.loads() call.
+	SKIP_SERIALISE = {"positive_targets", "hard_negatives"}
+	for col in df.columns:
+			if col in SKIP_SERIALISE:
+					continue
+			if (
+					df[col].dtype == object and
+					df[col].apply(lambda x: isinstance(x, (dict, list))).any()
+			):
+					df[col] = df[col].apply(
+							lambda x: json.dumps(x, ensure_ascii=False)
+							if isinstance(x, (dict, list)) else x
+					)
+	df.to_parquet(parquet_path, index=False, engine="pyarrow")
+	df.to_csv(csv_path, index=False)
+	# ── Export Tier-2 rejection report ────────────────────────────────────────
+	rejection_report_path = jsonl_path.replace(".jsonl", "_tier2_rejections.json")
+	consolidator.export_rejection_report(rejection_report_path)
+	print(
+			f"\n[STAGE 3 & 4] COMPLETE | "
+			f"Total={len(all_rows):,} | New={len(rows_new):,} | "
+			f"Resumed={skipped:,} | Errors={errors:,}"
+	)
+	print(f"  ├─ Parquet  : {parquet_path}")
+	print(f"  ├─ CSV      : {csv_path}")
+	print(f"  ├─ Stage 3  : {stage3_path}")
+	print(f"  └─ JSONL    : {jsonl_path}")
+	# ── Verbose diagnostics (Fix F) ───────────────────────────────────────────
+	if verbose:
+			print(f"\n{'─'*80}")
+			print(f"[DIAGNOSTICS] Regime distribution (GMM-routed):")
+			print(df['regime'].value_counts().to_string())
+			if 'heuristic_regime' in df.columns:
+					print(f"\n[DIAGNOSTICS] Heuristic regime distribution (Stage 2 raw):")
+					print(df['heuristic_regime'].value_counts().to_string())
+			print(f"\n[DIAGNOSTICS] Mean w_pos per regime:")
+			print(df.groupby('regime')['w_pos'].mean().round(4).to_string())
+			print(f"\n[DIAGNOSTICS] Mean w_neg per regime:")
+			print(df.groupby('regime')['w_neg'].mean().round(4).to_string())
+			print(f"\n[DIAGNOSTICS] Mean |pos_targets| per regime:")
+			print(
+					df.groupby('regime')['positive_targets']
+					.apply(lambda x: x.apply(len).mean())
+					.round(2)
+					.to_string()
+			)
+			print(f"\n[DIAGNOSTICS] Mean |hard_negatives| per regime:")
+			print(
+					df.groupby('regime')['hard_negatives']
+					.apply(lambda x: x.apply(len).mean())
+					.round(2)
+					.to_string()
+			)
+			# Fix F: GMM override rate and low-confidence count.
+			# These are the two key metrics for the paper's methodology section:
+			#   - Override rate: how often does the GMM disagree with Stage 2?
+			#     A high rate suggests Stage 2 thresholds need recalibration.
+			#   - Low-confidence rate: how often is the GMM uncertain?
+			#     Correlates with the Bridge's orphan_gap warning.
+			if 'gmm' in df.columns:
+					print(f"\n[DIAGNOSTICS] GMM routing statistics (Fix F):")
+					def _parse_gmm(x):
+							if isinstance(x, str):
+									try:
+											return json.loads(x)
+									except Exception:
+											return None
+							return x  # already dict or None
+					gmm_col = df['gmm'].apply(_parse_gmm)
+					# Override rate
+					override_mask = gmm_col.apply(
+							lambda x: bool(x.get("regime_override", False))
+							if isinstance(x, dict) else False
+					)
+					n_overrides  = int(override_mask.sum())
+					n_gmm_routed = int(gmm_col.apply(lambda x: isinstance(x, dict)).sum())
+					n_total      = len(df)
+					print(
+							f"  ├─ Samples with GMM routing    : {n_gmm_routed:,} / {n_total:,} "
+							f"({n_gmm_routed / max(n_total, 1) * 100:.1f}%)"
+					)
+					print(
+							f"  ├─ GMM regime overrides        : {n_overrides:,} / {n_gmm_routed:,} "
+							f"({n_overrides / max(n_gmm_routed, 1) * 100:.1f}% of GMM-routed samples)"
+					)
+					# Override breakdown: which heuristic regime was overridden to which GMM regime
+					if 'heuristic_regime' in df.columns:
+							override_df = df[override_mask][['heuristic_regime', 'regime']]
+							if len(override_df) > 0:
+									print(f"  ├─ Override breakdown (heuristic → GMM):")
+									for (h_reg, g_reg), cnt in (
+											override_df
+											.groupby(['heuristic_regime', 'regime'])
+											.size()
+											.sort_values(ascending=False)
+											.items()
+									):
+											print(f"  │    {h_reg:<20} → {g_reg:<20} : {cnt:,}")
+					# Low-confidence GMM assignments
+					_GMM_CONF_WARN_THRESHOLD = 0.60
+					low_conf_mask = gmm_col.apply(
+							lambda x: (
+									isinstance(x, dict)
+									and x.get("confidence") is not None
+									and x["confidence"] < _GMM_CONF_WARN_THRESHOLD
+							)
+					)
+					n_low_conf = int(low_conf_mask.sum())
+					print(
+							f"  ├─ Low-confidence GMM (< {_GMM_CONF_WARN_THRESHOLD}) : "
+							f"{n_low_conf:,} / {n_gmm_routed:,} "
+							f"({n_low_conf / max(n_gmm_routed, 1) * 100:.1f}% of GMM-routed samples)"
+					)
+					# Mean confidence per GMM-routed regime
+					conf_by_regime = (
+							df[gmm_col.apply(lambda x: isinstance(x, dict))]
+							.copy()
+					)
+					conf_by_regime['_gmm_conf'] = gmm_col[
+							gmm_col.apply(lambda x: isinstance(x, dict))
+					].apply(lambda x: x.get("confidence"))
+					print(f"  └─ Mean GMM confidence per regime:")
+					for reg, mean_conf in (
+							conf_by_regime.groupby('regime')['_gmm_conf']
+							.mean()
+							.round(4)
+							.items()
+					):
+							print(f"       {reg:<20} : {mean_conf:.4f}")
+			else:
+					print(f"\n[DIAGNOSTICS] GMM column not found in DataFrame — "
+								f"GMM routing statistics unavailable.")
+			print(f"\n[DIAGNOSTICS] Numeric summary:")
+			print(df.describe())
+			print(df)
 
 @measure_execution_time
 def main():

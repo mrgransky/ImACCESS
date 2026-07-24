@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -308,90 +309,102 @@ def build_class_embeddings(
 
 # 4. PEFT SETUP  (mirrors lora_finetune_multi_label)
 def setup_peft(
-	model:       torch.nn.Module,
+	model: torch.nn.Module,
 	peft_method: str,
 	peft_config: Optional[Dict] = None,
-	verbose:     bool = True,
+	verbose: bool = True,
 ) -> Tuple[torch.nn.Module, List[Dict]]:
 	"""
 	Apply PEFT to model and return (model, optimizer_param_groups).
 	Uses the custom clip_peft.py implementations exclusively — no dependency
 	on the HuggingFace `peft` package.
 	peft_config keys (all optional, sensible defaults provided):
-			rank            : LoRA / DoRA / VeRA / rsLoRA rank          (default: 16)
-			alpha           : LoRA scaling factor                        (default: 32)
-			dropout         : adapter dropout rate                       (default: 0.05)
-			lr_multiplier   : B-matrix LR multiplier for lora_plus       (default: 16.0)
-			target_text_modules   : text-encoder module names to inject  (default: see below)
-			target_vision_modules : vision-encoder module names to inject (default: see below)
-			quantized             : use bitsandbytes quantisation         (default: False)
-			quantization_bits     : 4 or 8                               (default: 8)
-			compute_dtype         : torch dtype for quantised compute     (default: torch.float16)
-			# adapter-specific (tip_adapter / tip_adapter_f)
-			initial_beta    : Tip-Adapter temperature                    (default: 1.0)
-			initial_alpha   : Tip-Adapter scaling                        (default: 1.0)
-			# adapter-specific (clip_adapter_*)
-			bottleneck_dim  : CLIP-Adapter bottleneck dimension          (default: 64)
-			activation      : CLIP-Adapter activation ('relu'/'gelu')    (default: 'relu')
+		rank          : LoRA / DoRA / VeRA / rsLoRA rank             (default: 16)
+		alpha         : LoRA scaling factor                          (default: 32)
+		dropout       : adapter dropout rate                         (default: 0.05)
+		lr_multiplier : B-matrix LR multiplier for lora_plus         (default: 16.0)
+		target_text_modules   : text-encoder module names to inject  (default: see below)
+		target_vision_modules : vision-encoder module names to inject (default: see below)
+		quantized             : use bitsandbytes quantisation         (default: False)
+		quantization_bits     : 4 or 8                               (default: 8)
+		compute_dtype         : torch dtype for quantised compute     (default: torch.float16)
+		# adapter-specific (tip_adapter / tip_adapter_f)
+		initial_beta    : Tip-Adapter temperature                    (default: 1.0)
+		initial_alpha   : Tip-Adapter scaling                        (default: 1.0)
+		# adapter-specific (clip_adapter_*)
+		bottleneck_dim  : CLIP-Adapter bottleneck dimension          (default: 64)
+		activation      : CLIP-Adapter activation ('relu'/'gelu')    (default: 'relu')
 	"""
 	if peft_config is None:
-			peft_config = {}
+		peft_config = {}
+
+	if verbose:
+		print(f"[PEFT CONFIG]\n{json.dumps(peft_config, indent=2)}")
+
 	peft_method = peft_method.lower()
 	assert peft_method in SUPPORTED_PEFT, f"[PEFT] Unknown: '{peft_method}'. Choose: {SUPPORTED_PEFT}"
-	rank          = peft_config.get("rank",    16)
-	alpha         = peft_config.get("alpha",   32)
+
+	rank          = peft_config.get("rank", 16)
+	alpha         = peft_config.get("alpha", 32)
 	dropout       = peft_config.get("dropout", 0.05)
-	lr_multiplier = peft_config.get("lr_multiplier", 16.0)   # for lora_plus
-	quantized         = peft_config.get("quantized",         False)
+
+	# LoRA+
+	lr_multiplier = peft_config.get("lr_multiplier", 16.0)
+
+	quantized         = peft_config.get("quantized", False)
 	quantization_bits = peft_config.get("quantization_bits", 8)
-	compute_dtype     = peft_config.get("compute_dtype",     torch.float16)
+	compute_dtype     = peft_config.get("compute_dtype", torch.float16)
+
 	# Default target modules — mirrors lora_finetune_multi_label()
 	default_text_modules   = ["in_proj", "out_proj", "c_fc", "c_proj"]
 	default_vision_modules = ["in_proj", "out_proj", "c_fc", "c_proj"]
 	target_text_modules   = peft_config.get("target_text_modules",   default_text_modules)
 	target_vision_modules = peft_config.get("target_vision_modules", default_vision_modules)
+
 	if verbose:
-		print(f"\n[PEFT] method={peft_method} | rank={rank} | alpha={alpha} | dropout={dropout}")
+		print(f"\n[PEFT] {peft_method} | rank={rank} | alpha={alpha} | dropout={dropout}")
 	
-	# ── Injected PEFT methods (get_injected_peft_clip) ────
+	# Injected PEFT methods 
 	# lora, lora_plus, rslora, dora, vera, ia3
 	if peft_method in {"lora", "lora_plus", "dora", "rslora", "vera", "ia3"}:
-			# lora_plus passes a lambda multiplier; others pass None
-			lora_plus_lambda = lr_multiplier if peft_method == "lora_plus" else None
-			model = get_injected_peft_clip(
-					clip_model=model,
-					method=peft_method,
-					rank=rank,
-					alpha=alpha,
-					dropout=dropout,
-					lora_plus_lambda=lora_plus_lambda,
-					target_text_modules=target_text_modules,
-					target_vision_modules=target_vision_modules,
-					quantized=quantized,
-					quantization_bits=quantization_bits,
-					compute_dtype=compute_dtype,
-					verbose=verbose,
+		# lora_plus passes a lambda multiplier; others pass None
+		lora_plus_lambda = lr_multiplier if peft_method == "lora_plus" else None
+		model = get_injected_peft_clip(
+			clip_model=model,
+			method=peft_method,
+			rank=rank,
+			alpha=alpha,
+			dropout=dropout,
+			lora_plus_lambda=lora_plus_lambda,
+			target_text_modules=target_text_modules,
+			target_vision_modules=target_vision_modules,
+			quantized=quantized,
+			quantization_bits=quantization_bits,
+			compute_dtype=compute_dtype,
+			verbose=verbose,
+		)
+
+		if peft_method == "lora_plus":
+			# LoRA+: A matrices use base LR, B matrices use lr_multiplier × base LR
+			lora_a_params = [p for n, p in model.named_parameters()
+				if p.requires_grad and "lora_A" in n]
+			lora_b_params = [p for n, p in model.named_parameters()
+				if p.requires_grad and "lora_B" in n]
+			param_groups = [
+				{"params": lora_a_params, "lr_multiplier": 1.0},
+				{"params": lora_b_params, "lr_multiplier": lr_multiplier},
+			]
+		else:
+			trainable = [p for p in model.parameters() if p.requires_grad]
+			param_groups = [{"params": trainable}]
+
+		if verbose:
+			n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+			n_total     = sum(p.numel() for p in model.parameters())
+			print(
+				f"[PEFT][{peft_method}] trainable: {n_trainable:,} / {n_total:,} "
+				f"({100*n_trainable/max(n_total,1):.3f}%)"
 			)
-			if peft_method == "lora_plus":
-					# LoRA+: A matrices use base LR, B matrices use lr_multiplier × base LR
-					lora_a_params = [p for n, p in model.named_parameters()
-							if p.requires_grad and "lora_A" in n]
-					lora_b_params = [p for n, p in model.named_parameters()
-							if p.requires_grad and "lora_B" in n]
-					param_groups = [
-							{"params": lora_a_params, "lr_multiplier": 1.0},
-							{"params": lora_b_params, "lr_multiplier": lr_multiplier},
-					]
-			else:
-					trainable = [p for p in model.parameters() if p.requires_grad]
-					param_groups = [{"params": trainable}]
-			if verbose:
-					n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-					n_total     = sum(p.numel() for p in model.parameters())
-					print(
-							f"[PEFT][{peft_method}] trainable: {n_trainable:,} / {n_total:,} "
-							f"({100*n_trainable/max(n_total,1):.3f}%)"
-					)
 	
 	# ── Adapter PEFT methods (get_adapter_peft_clip) ────
 	# tip_adapter, tip_adapter_f, clip_adapter_v, clip_adapter_t, clip_adapter_vt
@@ -416,12 +429,12 @@ def setup_peft(
 		param_groups = [{"params": trainable}]
 		
 		if verbose:
-				n_trainable = sum(p.numel() for p in trainable)
-				n_total     = sum(p.numel() for p in model.parameters())
-				print(
-						f"[PEFT][{peft_method}] trainable: {n_trainable:,} / {n_total:,} "
-						f"({100*n_trainable/max(n_total,1):.3f}%)"
-				)
+			n_trainable = sum(p.numel() for p in trainable)
+			n_total     = sum(p.numel() for p in model.parameters())
+			print(
+				f"[PEFT][{peft_method}] trainable: {n_trainable:,} / {n_total:,} "
+				f"({100*n_trainable/max(n_total,1):.3f}%)"
+			)
 
 	# ── Linear probe ────
 	elif peft_method == "probe":
@@ -485,17 +498,24 @@ def load_checkpoint(
 	device:torch.device = torch.device("cpu"),
 	verbose:bool = True,
 ) -> Tuple[int, Dict]:
+	if verbose:
+		print(f"[LOADING CHECKPOINT] {ckpt_path}")
+
 	assert os.path.isfile(ckpt_path), f"[load_checkpoint] Not found: {ckpt_path}"
 	state = torch.load(ckpt_path, map_location=device)
+
 	model.load_state_dict(state["model_state_dict"])
+
 	if optimizer and "optimizer_state_dict" in state:
-			optimizer.load_state_dict(state["optimizer_state_dict"])
+		optimizer.load_state_dict(state["optimizer_state_dict"])
 	if scheduler and state.get("scheduler_state_dict"):
-			scheduler.load_state_dict(state["scheduler_state_dict"])
-	epoch   = state.get("epoch", 0)
+		scheduler.load_state_dict(state["scheduler_state_dict"])
+
+	epoch = state.get("epoch", 0)
 	metrics = state.get("metrics", {})
 	if verbose:
-			print(f"[load_checkpoint] Resumed from epoch {epoch} | {ckpt_path}")
+		print(f"[load_checkpoint] Resumed from epoch {epoch} | {ckpt_path}")
+
 	return epoch, metrics
 
 # 6. MASTER TRAINING FUNCTION
@@ -503,7 +523,6 @@ def regime_conditioned_finetune(
 	# ── Data ────
 	metadata_fpth:      str,
 	checkpoints_dir:    str,
-	supervision_fpth:   str, # auditable_supervision_matrix.parquet
 	id_col:             str = "doc_url",
 	text_col:           str = "multimodal_labels",
 	# ── Model ────
@@ -541,10 +560,8 @@ def regime_conditioned_finetune(
 			all_train_metrics, all_val_metrics,
 			label_dict, checkpoints_dir
 	"""
-	# ── Reproducibility ────
 	set_seeds(seed=seed)
 
-	# ── Setup ────
 	DATASET_DIRECTORY = os.path.dirname(metadata_fpth)
 	os.makedirs(checkpoints_dir, exist_ok=True)
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -565,7 +582,7 @@ def regime_conditioned_finetune(
 	if verbose:
 		print(f"[Stage5] input_resolution: {input_resolution}")
 
-	ckpt_fname = f"{model_name}_{model_arch}_{peft_method}_checkpoint.pt"
+	ckpt_fname = f"{model_name}_{model_arch}_{peft_method}_best_model_checkpoint.pt"
 	ckpt_fpath = os.path.join(checkpoints_dir, ckpt_fname)
 
 	model, param_groups = setup_peft(
@@ -579,7 +596,6 @@ def regime_conditioned_finetune(
 	print(f"\n[Stage5] Regime-Conditioned Fine-Tuning: {model.__class__.__name__} {clip_model_name}")
 	print(f"  ├─ input resolution : {input_resolution}")
 	print(f"  ├─ PEFT             : {peft_method}")
-	print(f"  ├─ Supervision      : {supervision_fpth}")
 	print(f"  ├─ Device           : {device}")
 	print(f"  ├─ Epochs           : {num_epochs}")
 	print(f"  ├─ Batch size       : {batch_size}")
@@ -590,7 +606,7 @@ def regime_conditioned_finetune(
 	# ── DataLoaders ────
 	train_loader, val_loader = get_stage5_dataloaders(
 		metadata_fpth=metadata_fpth,
-		supervision_fpth=supervision_fpth,
+		# supervision_fpth=supervision_fpth,
 		batch_size=batch_size,
 		num_workers=num_workers,
 		input_resolution=input_resolution,

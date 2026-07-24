@@ -1,6 +1,4 @@
-# eval_regime_stratified.py
-#
-# Regime-Stratified Evaluation Script
+# Regime-Stratified Evaluation
 # ─────────────────────────────────────────────────────────────────────────────
 # Loads a trained Stage 5 checkpoint and evaluates retrieval metrics
 # stratified by modality-conflict regime (AGREEMENT / SOFT_CONFLICT /
@@ -12,17 +10,6 @@
 #   <output_dir>/regime_stratified_table.tex      — LaTeX-ready table
 #   <output_dir>/regime_stratified_results.csv    — flat CSV for plotting
 #
-# Usage
-# ─────
-#   python eval_regime_stratified.py \
-#       --checkpoint  /path/to/stage5_best_model.pt \
-#       --metadata    /path/to/dataset.csv \
-#       --supervision /path/to/auditable_supervision_matrix.parquet \
-#       --clip_model  ViT-L/14 \
-#       --peft_method lora \
-#       --batch_size  256 \
-#       --output_dir  ./eval_outputs \
-#       --verbose
 #
 # Design contract
 # ───────────────
@@ -32,72 +19,59 @@
 #   all per-regime tables but counted in a separate "skipped" row.
 # • Gap_rel = (mAP_rare - mAP_head) / (mAP_head + ε) is reported per bucket
 #   and globally.  A less-negative Gap_rel indicates better tail recovery.
-# • The script is read-only with respect to the checkpoint and parquet.
 # ─────────────────────────────────────────────────────────────────────────────
+
+# how to run:
+# python eval_regime_stratified.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -v
 
 import os
 import sys
-import json
-import argparse
-import csv
-from collections import defaultdict
-from typing import Dict, List, Tuple, Any, Optional
-
-import numpy as np
-import torch
-from torch.utils.data import DataLoader, Subset
 
 HOME = os.getenv("HOME", "")
 USER = os.getenv("USER", "")
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
 
 for _d in [
-		os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip"),
-		os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc"),
-		os.path.join(IMACCESS_PROJECT_WORKSPACE, "historyCLIP"),
-		os.path.join(IMACCESS_PROJECT_WORKSPACE, "Auditable-Supervision-Framework"),
+	os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip"),
+	os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc"),
+	os.path.join(IMACCESS_PROJECT_WORKSPACE, "historyCLIP"),
+	os.path.join(IMACCESS_PROJECT_WORKSPACE, "Auditable-Supervision-Framework"),
 ]:
-		if _d not in sys.path:
-				sys.path.insert(0, _d)
+	if _d not in sys.path:
+		sys.path.insert(0, _d)
+
+from utils import *
 
 import clip
 from stage5_dataset_loader import (
-		get_stage5_dataloaders,
-		load_supervision_matrix,
-		RegimeAwareDataset,
-		customized_collate_fn,
-		FALLBACK_REGIME,
+	get_stage5_dataloaders,
+	load_supervision_matrix,
+	RegimeAwareDataset,
+	customized_collate_fn,
+	FALLBACK_REGIME,
 )
 from stage5_regime_conditioned_training import (
-		build_class_embeddings,
-		load_checkpoint,
-		setup_peft,
-		_compute_retrieval_metrics,
-		_mean_average_precision,
-		_precision_at_k,
-		_ndcg_at_k,
+	build_class_embeddings,
+	load_checkpoint,
+	setup_peft,
+	_compute_retrieval_metrics,
+	_mean_average_precision,
+	_precision_at_k,
+	_ndcg_at_k,
 )
 from loss import compute_loss_masks
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Constants
-# ─────────────────────────────────────────────────────────────────────────────
 
 VALID_REGIMES  = ["AGREEMENT", "SOFT_CONFLICT", "HARD_CONFLICT"]
 SKIP_REGIMES   = {"MISSING_MODALITY", "INVALID_JSON", FALLBACK_REGIME}
 GAP_REL_EPS    = 1e-8   # denominator guard for Gap_rel
 
 REGIME_DISPLAY = {
-		"AGREEMENT":    "Agreement",
-		"SOFT_CONFLICT": "Soft Conflict",
-		"HARD_CONFLICT": "Hard Conflict",
-		"ALL":           "All (Global)",
-		"SKIPPED":       "Skipped",
+	"AGREEMENT":    "Agreement",
+	"SOFT_CONFLICT": "Soft Conflict",
+	"HARD_CONFLICT": "Hard Conflict",
+	"ALL":           "All (Global)",
+	"SKIPPED":       "Skipped",
 }
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. Regime-Bucketed Evaluation
-# ─────────────────────────────────────────────────────────────────────────────
 
 @torch.no_grad()
 def evaluate_regime_stratified(
@@ -181,7 +155,7 @@ def evaluate_regime_stratified(
 						print(f"  ├─ {r:<22s}: {cnt:>6,} ({pct:5.1f}%)")
 				print(f"  └─ Total: {n_total:,}")
 
-		# ── Compute metrics per bucket ────────────────────────────────────────────
+		# Compute metrics per bucket ────────────────────────────────────────────
 		results: Dict[str, Any] = {
 				"regime_counts": dict(regime_counts),
 				"n_total":       n_total,
@@ -224,7 +198,6 @@ def evaluate_regime_stratified(
 
 		return results
 
-
 def _compute_gap_rel(map_head: float, map_rare: float) -> float:
 		"""
 		Gap_rel = (mAP_rare - mAP_head) / (mAP_head + ε)
@@ -233,7 +206,6 @@ def _compute_gap_rel(map_head: float, map_rare: float) -> float:
 		if np.isnan(map_head) or np.isnan(map_rare):
 				return float("nan")
 		return (map_rare - map_head) / (map_head + GAP_REL_EPS)
-
 
 def _empty_metrics(bucket: str) -> Dict[str, Any]:
 		return {
@@ -247,11 +219,6 @@ def _empty_metrics(bucket: str) -> Dict[str, Any]:
 				"gap_rel":   float("nan"),
 				"note":      f"No samples in bucket '{bucket}'",
 		}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. Output Formatters
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _fmt(v: Any, decimals: int = 4) -> str:
 		"""Format a float for display; return '—' for NaN."""
@@ -359,38 +326,41 @@ def save_latex_table(results: Dict[str, Any], output_path: str) -> None:
 		print(f"[save_latex_table] Written → {output_path}")
 
 def save_csv(results: Dict[str, Any], output_path: str) -> None:
-		"""
-		Write a flat CSV for downstream plotting (e.g., matplotlib / seaborn).
-		One row per regime bucket.
-		"""
-		fieldnames = [
-				"regime", "n_samples",
-				"map_all", "map_head", "map_rare", "gap_rel",
-				"p@1", "p@5", "ndcg@5",
-		]
-		rows = []
-		for bucket in VALID_REGIMES + ["ALL"]:
-				m = results.get(bucket, {})
-				if not m:
-						continue
-				rows.append({
-						"regime":    bucket,
-						"n_samples": m.get("n_samples", 0),
-						"map_all":   m.get("map_all",  float("nan")),
-						"map_head":  m.get("map_head", float("nan")),
-						"map_rare":  m.get("map_rare", float("nan")),
-						"gap_rel":   m.get("gap_rel",  float("nan")),
-						"p@1":       m.get("p@1",      float("nan")),
-						"p@5":       m.get("p@5",      float("nan")),
-						"ndcg@5":    m.get("ndcg@5",   float("nan")),
-				})
+	"""
+	Write a flat CSV for downstream plotting (e.g., matplotlib / seaborn).
+	One row per regime bucket.
+	"""
+	fieldnames = [
+		"regime", "n_samples",
+		"map_all", "map_head", "map_rare", "gap_rel",
+		"p@1", "p@5", "ndcg@5",
+	]
 
-		with open(output_path, "w", newline="", encoding="utf-8") as f:
-				writer = csv.DictWriter(f, fieldnames=fieldnames)
-				writer.writeheader()
-				writer.writerows(rows)
+	rows = []
+	for bucket in VALID_REGIMES + ["ALL"]:
+		m = results.get(bucket, {})
+		if not m:
+			continue
+		rows.append(
+			{
+				"regime":    bucket,
+				"n_samples": m.get("n_samples", 0),
+				"map_all":   m.get("map_all",  float("nan")),
+				"map_head":  m.get("map_head", float("nan")),
+				"map_rare":  m.get("map_rare", float("nan")),
+				"gap_rel":   m.get("gap_rel",  float("nan")),
+				"p@1":       m.get("p@1",      float("nan")),
+				"p@5":       m.get("p@5",      float("nan")),
+				"ndcg@5":    m.get("ndcg@5",   float("nan")),
+			}
+		)
 
-		print(f"[save_csv] Written → {output_path}")
+	with open(output_path, "w", newline="", encoding="utf-8") as f:
+		writer = csv.DictWriter(f, fieldnames=fieldnames)
+		writer.writeheader()
+		writer.writerows(rows)
+
+	print(f"[save_csv] Written → {output_path}")
 
 def save_json(results: Dict[str, Any], output_path: str) -> None:
 		"""Serialise the full results dict to JSON (NaN → null)."""
@@ -409,10 +379,6 @@ def save_json(results: Dict[str, Any], output_path: str) -> None:
 
 		print(f"[save_json] Written → {output_path}")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. CLI Entry Point
-# ─────────────────────────────────────────────────────────────────────────────
-
 def parse_args() -> argparse.Namespace:
 	p = argparse.ArgumentParser(
 		description="Regime-Stratified Evaluation for Stage 5 RACL Model",
@@ -420,12 +386,10 @@ def parse_args() -> argparse.Namespace:
 	)
 
 	# Required
-	p.add_argument("--checkpoint", "-ckpt", required=True, help="Path to stage5_best_model.pt")
 	p.add_argument("--metadata", "-csv", required=True, help="Path to dataset.csv (train/val splits inferred from this)")
-	p.add_argument("--supervision", "-sup",  required=True, help="Path to auditable_supervision_matrix.parquet")
 
 	# Model
-	p.add_argument("--clip_model",  default="ViT-B/32",help="CLIP backbone used during training")
+	p.add_argument("--clip_model", '-cm', default="ViT-B/32",help="CLIP backbone")
 	p.add_argument(
 		"--peft_method", 
 		default="lora", 
@@ -437,10 +401,10 @@ def parse_args() -> argparse.Namespace:
 		],
 		help="PEFT method used during training"
 	)
+
 	# Data
 	p.add_argument("--batch_size",  type=int, default=256)
-	p.add_argument("--num_workers", type=int, default=4)
-	p.add_argument("--resolution",  type=int, default=224)
+	p.add_argument("--num_workers", type=int, default=8)
 	p.add_argument("--id_col",      default="doc_url")
 	p.add_argument("--text_col",    default="multimodal_labels")
 
@@ -448,130 +412,147 @@ def parse_args() -> argparse.Namespace:
 	p.add_argument("--pw_mode", default="sqrt", choices=["log", "sqrt", "linear"], help="pos_weight mode — must match training config")
 	p.add_argument("--pw_max_cap", type=float, default=50.0, help="pos_weight cap — must match training config")
 
-	# Output
-	p.add_argument("--output_dir", "-o", default="./eval_outputs", help="Directory for JSON / LaTeX / CSV outputs")
-
 	# Misc
 	p.add_argument("--verbose", "-v", action="store_true")
 
 	return p.parse_args()
 
-def main() -> None:
-		args = parse_args()
-		os.makedirs(args.output_dir, exist_ok=True)
-		device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def main():
+	args = parse_args()
+	ddir = os.path.dirname(args.metadata)
 
-		print(f"\n{'='*80}")
-		print(f"[eval_regime_stratified] Regime-Stratified Evaluation")
-		print(f"  ├─ Checkpoint  : {args.checkpoint}")
-		print(f"  ├─ Metadata    : {args.metadata}")
-		print(f"  ├─ Supervision : {args.supervision}")
-		print(f"  ├─ CLIP model  : {args.clip_model}")
-		print(f"  ├─ PEFT method : {args.peft_method}")
-		print(f"  ├─ Device      : {device}")
-		print(f"  └─ Output dir  : {args.output_dir}")
-		print(f"{'='*80}\n")
+	outputs_dir = os.path.join(ddir, "outputs")
+	os.makedirs(outputs_dir, exist_ok=True)
 
-		# ── 1. DataLoaders ────────────────────────────────────────────────────────
-		# We only need the val_loader for evaluation.
-		# train_loader is used solely to compute loss masks (head/rare split).
-		train_loader, val_loader = get_stage5_dataloaders(
-				metadata_fpth=args.metadata,
-				supervision_fpth=args.supervision,
-				batch_size=args.batch_size,
-				num_workers=args.num_workers,
-				input_resolution=args.resolution,
-				id_col=args.id_col,
-				text_col=args.text_col,
-				verbose=args.verbose,
-		)
-		label_dict  = train_loader.dataset.label_dict
-		num_classes = len(label_dict)
+	checkpoint_dir = Path(os.path.join(outputs_dir, "checkpoints"))
 
-		# ── 2. Loss masks (head / rare split) ─────────────────────────────────────
-		# Must use the same pw_mode and pw_max_cap as training to ensure
-		# head_mask / rare_mask are identical to those used during training.
-		loss_masks = compute_loss_masks(
-				loader=train_loader,
-				num_classes=num_classes,
-				device=device,
-				pw_mode=args.pw_mode,
-				pw_max_cap=args.pw_max_cap,
-				verbose=args.verbose,
-		)
-		active_mask = loss_masks["active_mask"]
-		head_mask   = loss_masks["head_mask"]
-		rare_mask   = loss_masks["rare_mask"]
+	# Find all files ending with .pt in that directory
+	pt_files = list(checkpoint_dir.glob("*.pt"))
 
-		# ── 3. Model + PEFT ───────────────────────────────────────────────────────
-		model, _ = clip.load(args.clip_model, device=device)
-		model.float()
-		model, _ = setup_peft(
-				model=model,
-				peft_method=args.peft_method,
-				verbose=args.verbose,
-		)
-		model = model.to(device)
+	if not pt_files:
+		raise FileNotFoundError(f"No .pt files found in {checkpoint_dir}")
 
-		# ── 4. Load checkpoint ────────────────────────────────────────────────────
-		epoch, ckpt_metrics = load_checkpoint(
-				ckpt_path=args.checkpoint,
-				model=model,
-				device=device,
-				verbose=True,
-		)
-		print(f"[eval] Evaluating checkpoint from epoch {epoch}")
-		if ckpt_metrics:
-				print(
-						f"  ├─ Checkpoint val_loss : {ckpt_metrics.get('val_loss', float('nan')):.6f}"
-				)
-				print(
-						f"  └─ Checkpoint mAP-all  : {ckpt_metrics.get('val_map_all', float('nan')):.4f}"
-				)
+	# If you want the full path as a string instead, use:
+	checkpoint_fpath = str(pt_files[0])
 
-		# ── 5. Build class embeddings ─────────────────────────────────────────────
-		all_class_embeds = build_class_embeddings(
-				model=model,
-				label_dict=label_dict,
-				device=device,
-				verbose=args.verbose,
-		).to(device)
+	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-		# ── 6. Regime-stratified evaluation ───────────────────────────────────────
-		results = evaluate_regime_stratified(
-				model=model,
-				val_loader=val_loader,
-				all_class_embeds=all_class_embeds,
-				active_mask=active_mask,
-				head_mask=head_mask,
-				rare_mask=rare_mask,
-				device=device,
-				verbose=args.verbose,
-		)
+	# 1. Model + PEFT
+	model, _ = clip.load(
+		name=args.clip_model,
+		device=device,
+		# jit=False, # training or finetuning => jit=False
+		# random_weights=False, # finetuning => random_weights=False
+		# dropout=0.0,
+		download_root=get_model_directory(path=ddir),
+	)
+	model.name = args.clip_model # Custom attribute to store model name
+	model_name = model.__class__.__name__
+	model_arch = re.sub(r'[/@]', '_', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	input_resolution = getattr(model.visual, "input_resolution", None)
 
-		# Attach checkpoint provenance to results
-		results["checkpoint"] = args.checkpoint
-		results["checkpoint_epoch"] = epoch
-		results["clip_model"]  = args.clip_model
-		results["peft_method"] = args.peft_method
+	print(f"\n{'='*80}")
+	print(f"[eval_regime_stratified] Regime-Stratified Evaluation")
+	print(f"  ├─ Metadata    : {args.metadata}")
+	print(f"  ├─ Output dir  : {outputs_dir}")
+	print(f"  ├─ Checkpoint  : {checkpoint_fpath}")
+	print(f"  ├─ CLIP model  : {args.clip_model}")
+	print(f"  ├─ resolution  : {input_resolution}")
+	print(f"  ├─ PEFT method : {args.peft_method}")
+	print(f"  └─ Device      : {device}")
+	print(f"{'='*80}")
 
-		# ── 7. Print table ────────────────────────────────────────────────────────
-		print_results_table(results)
+	model, _ = setup_peft(
+		model=model,
+		peft_method=args.peft_method,
+		verbose=args.verbose,
+	)
+	model = model.to(device)
 
-		# ── 8. Save outputs ───────────────────────────────────────────────────────
-		json_path  = os.path.join(args.output_dir, "regime_stratified_results.json")
-		latex_path = os.path.join(args.output_dir, "regime_stratified_table.tex")
-		csv_path   = os.path.join(args.output_dir, "regime_stratified_results.csv")
+	# 2. DataLoaders 
+	# We only need the val_loader for evaluation.
+	# train_loader is used solely to compute loss masks (head/rare split).
+	train_loader, val_loader = get_stage5_dataloaders(
+		metadata_fpth=args.metadata,
+		batch_size=args.batch_size,
+		num_workers=args.num_workers,
+		input_resolution=input_resolution,
+		id_col=args.id_col,
+		text_col=args.text_col,
+		verbose=args.verbose,
+	)
+	label_dict  = train_loader.dataset.label_dict
+	num_classes = len(label_dict)
 
-		save_json(results,  json_path)
-		save_latex_table(results, latex_path)
-		save_csv(results,   csv_path)
+	# 3. Loss masks (head / rare split)
+	# Must use the same pw_mode and pw_max_cap as training to ensure
+	# head_mask / rare_mask are identical to those used during training.
+	loss_masks = compute_loss_masks(
+		loader=train_loader,
+		num_classes=num_classes,
+		device=device,
+		pw_mode=args.pw_mode,
+		pw_max_cap=args.pw_max_cap,
+		verbose=args.verbose,
+	)
+	active_mask = loss_masks["active_mask"]
+	head_mask   = loss_masks["head_mask"]
+	rare_mask   = loss_masks["rare_mask"]
 
-		print(f"\n[eval_regime_stratified] Done.")
-		print(f"  ├─ JSON   → {json_path}")
-		print(f"  ├─ LaTeX  → {latex_path}")
-		print(f"  └─ CSV    → {csv_path}")
-		print(f"{'='*80}\n")
+	# 4. Load checkpoint ────────────────────────────────────────────────────
+	epoch, ckpt_metrics = load_checkpoint(
+		ckpt_path=checkpoint_fpath,
+		model=model,
+		device=device,
+		verbose=args.verbose,
+	)
+
+	print(f"[eval] Evaluating checkpoint from epoch {epoch}")
+	if ckpt_metrics:
+		print(f"  ├─ Checkpoint val_loss : {ckpt_metrics.get('val_loss', float('nan')):.6f}")
+		print(f"  └─ Checkpoint mAP-all  : {ckpt_metrics.get('val_map_all', float('nan')):.4f}")
+
+	# 5. Build class embeddings ─────────────────────────────────────────────
+	all_class_embeds = build_class_embeddings(
+		model=model,
+		label_dict=label_dict,
+		device=device,
+		verbose=args.verbose,
+	).to(device)
+
+	# 6. Regime-stratified evaluation ───────────────────────────────────────
+	results = evaluate_regime_stratified(
+		model=model,
+		val_loader=val_loader,
+		all_class_embeds=all_class_embeds,
+		active_mask=active_mask,
+		head_mask=head_mask,
+		rare_mask=rare_mask,
+		device=device,
+		verbose=args.verbose,
+	)
+
+	# Attach checkpoint provenance to results
+	results["checkpoint"] = checkpoint_fpath
+	results["checkpoint_epoch"] = epoch
+	results["clip_model"]  = args.clip_model
+	results["peft_method"] = args.peft_method
+
+	print_results_table(results)
+
+	json_path  = os.path.join(outputs_dir, "regime_stratified_results.json")
+	latex_path = os.path.join(outputs_dir, "regime_stratified_table.tex")
+	csv_path   = os.path.join(outputs_dir, "regime_stratified_results.csv")
+
+	save_json(results,  json_path)
+	save_latex_table(results, latex_path)
+	save_csv(results,   csv_path)
+
+	print(f"\n[eval_regime_stratified] Done.")
+	print(f"  ├─ JSON   → {json_path}")
+	print(f"  ├─ LaTeX  → {latex_path}")
+	print(f"  └─ CSV    → {csv_path}")
+	print(f"{'='*80}\n")
 
 if __name__ == "__main__":
-		main()
+	main()
