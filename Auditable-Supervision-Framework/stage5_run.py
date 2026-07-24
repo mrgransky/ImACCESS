@@ -25,16 +25,16 @@ def parse_args():
 
 if __name__ == "__main__":
 	args = parse_args()
+	if args.verbose:
+		print(args)
+
 	DATASET_DIRECTORY = os.path.dirname(args.metadata)
-	print(DATASET_DIRECTORY)
 
 	OUTPUTs_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
 	os.makedirs(OUTPUTs_DIRECTORY, exist_ok=True)
-	print(OUTPUTs_DIRECTORY)
 
 	CHECKPOINTs_DIRECTORY = os.path.join(OUTPUTs_DIRECTORY, "checkpoints")
 	os.makedirs(CHECKPOINTs_DIRECTORY, exist_ok=True)
-	print(CHECKPOINTs_DIRECTORY)
 
 	regime_conditioned_finetune(
 		metadata_fpth    = args.metadata,

@@ -10,7 +10,7 @@ sys.path.insert(0, CLIP_DIR)
 MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
 sys.path.insert(0, MISC_DIR)
 
-print(f"sys_path: {sys.path}")
+# print(f"sys_path: {sys.path}")
 
 from utils import *
 import clip
@@ -194,42 +194,44 @@ def evaluate(
 	return metrics
 
 def _compute_retrieval_metrics(
-		scores:      torch.Tensor,   # [N, C]
-		targets:     torch.Tensor,   # [N, C]
-		active_mask: torch.Tensor,   # [C] bool
-		head_mask:   torch.Tensor,   # [C] bool
-		rare_mask:   torch.Tensor,   # [C] bool
+	scores:      torch.Tensor,   # [N, C]
+	targets:     torch.Tensor,   # [N, C]
+	active_mask: torch.Tensor,   # [C] bool
+	head_mask:   torch.Tensor,   # [C] bool
+	rare_mask:   torch.Tensor,   # [C] bool
 ) -> Dict[str, float]:
-		"""
-		Compute mAP, P@K, nDCG@K over active classes.
-		Head / rare sub-metrics computed over the respective class subsets.
-		"""
-		# Restrict to active classes only
-		s = scores[:, active_mask]   # [N, C_active]
-		t = targets[:, active_mask]  # [N, C_active]
+	"""
+	Compute mAP, P@K, nDCG@K over active classes.
+	Head / rare sub-metrics computed over the respective class subsets.
+	"""
 
-		map_all  = _mean_average_precision(s, t)
-		p_at_1   = _precision_at_k(s, t, k=1)
-		p_at_5   = _precision_at_k(s, t, k=5)
-		ndcg_at5 = _ndcg_at_k(s, t, k=5)
+	# Restrict to active classes only
+	s = scores[:, active_mask]   # [N, C_active]
+	t = targets[:, active_mask]  # [N, C_active]
 
-		# Head / rare sub-metrics (within active classes)
-		head_sub = head_mask & active_mask
-		rare_sub = rare_mask & active_mask
+	map_all  = _mean_average_precision(s, t)
+	p_at_1   = _precision_at_k(s, t, k=1)
+	p_at_5   = _precision_at_k(s, t, k=5)
+	ndcg_at5 = _ndcg_at_k(s, t, k=5)
 
-		map_head = _mean_average_precision(scores[:, head_sub], targets[:, head_sub]) \
-				if head_sub.sum() > 0 else float("nan")
-		map_rare = _mean_average_precision(scores[:, rare_sub], targets[:, rare_sub]) \
-				if rare_sub.sum() > 0 else float("nan")
+	# Head / rare sub-metrics (within active classes)
+	head_sub = head_mask & active_mask
+	rare_sub = rare_mask & active_mask
 
-		return {
-				"val_map_all":  map_all,
-				"val_map_head": map_head,
-				"val_map_rare": map_rare,
-				"val_p@1":      p_at_1,
-				"val_p@5":      p_at_5,
-				"val_ndcg@5":   ndcg_at5,
-		}
+	map_head = _mean_average_precision(scores[:, head_sub], targets[:, head_sub]) \
+		if head_sub.sum() > 0 else float("nan")
+
+	map_rare = _mean_average_precision(scores[:, rare_sub], targets[:, rare_sub]) \
+		if rare_sub.sum() > 0 else float("nan")
+
+	return {
+		"val_map_all":  map_all,
+		"val_map_head": map_head,
+		"val_map_rare": map_rare,
+		"val_p@1":      p_at_1,
+		"val_p@5":      p_at_5,
+		"val_ndcg@5":   ndcg_at5,
+	}
 
 def _mean_average_precision(scores: torch.Tensor, targets: torch.Tensor) -> float:
 		"""Macro-averaged AP over classes (column-wise AP)."""
@@ -338,9 +340,6 @@ def setup_peft(
 	if peft_config is None:
 		peft_config = {}
 
-	if verbose:
-		print(f"[PEFT CONFIG]\n{json.dumps(peft_config, indent=2)}")
-
 	peft_method = peft_method.lower()
 	assert peft_method in SUPPORTED_PEFT, f"[PEFT] Unknown: '{peft_method}'. Choose: {SUPPORTED_PEFT}"
 
@@ -362,7 +361,7 @@ def setup_peft(
 	target_vision_modules = peft_config.get("target_vision_modules", default_vision_modules)
 
 	if verbose:
-		print(f"\n[PEFT] {peft_method} | rank={rank} | alpha={alpha} | dropout={dropout}")
+		print(f"\n[PEFT] {peft_method} config: {peft_config} | rank={rank} | alpha={alpha} | dropout={dropout}")
 	
 	# Injected PEFT methods 
 	# lora, lora_plus, rslora, dora, vera, ia3
@@ -579,11 +578,19 @@ def regime_conditioned_finetune(
 	model_name = model.__class__.__name__
 	model_arch = re.sub(r'[/@]', '_', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	input_resolution = getattr(model.visual, "input_resolution", None)
-	if verbose:
-		print(f"[Stage5] input_resolution: {input_resolution}")
 
 	ckpt_fname = f"{model_name}_{model_arch}_{peft_method}_best_model_checkpoint.pt"
 	ckpt_fpath = os.path.join(checkpoints_dir, ckpt_fname)
+
+	print(f"\n[Stage5] Regime-Conditioned Fine-Tuning: {model.__class__.__name__} {clip_model_name}")
+	print(f"  ├─ resolution : {input_resolution}")
+	print(f"  ├─ PEFT       : {peft_method} config: {peft_config}")
+	print(f"  ├─ Device     : {device}")
+	print(f"  ├─ Epochs     : {num_epochs}")
+	print(f"  ├─ Batch size : {batch_size}")
+	print(f"  ├─ LR         : {learning_rate}")
+	print(f"  ├─ Dataset    : {DATASET_DIRECTORY}")
+	print(f"  └─ Checkpoints: {checkpoints_dir}")
 
 	model, param_groups = setup_peft(
 		model=model,
@@ -592,16 +599,6 @@ def regime_conditioned_finetune(
 		verbose=verbose,
 	)
 	model = model.to(device)
-
-	print(f"\n[Stage5] Regime-Conditioned Fine-Tuning: {model.__class__.__name__} {clip_model_name}")
-	print(f"  ├─ input resolution : {input_resolution}")
-	print(f"  ├─ PEFT             : {peft_method}")
-	print(f"  ├─ Device           : {device}")
-	print(f"  ├─ Epochs           : {num_epochs}")
-	print(f"  ├─ Batch size       : {batch_size}")
-	print(f"  ├─ LR               : {learning_rate}")
-	print(f"  ├─ Dataset          : {DATASET_DIRECTORY}")
-	print(f"  └─ Checkpoints      : {checkpoints_dir}")
 
 	# ── DataLoaders ────
 	train_loader, val_loader = get_stage5_dataloaders(
@@ -783,6 +780,7 @@ def regime_conditioned_finetune(
 		)
 		train_metrics.update(regime_stats)
 		all_train_metrics.append(train_metrics)
+
 		# ── Validation ────
 		val_metrics = evaluate(
 			model=model,
@@ -846,15 +844,15 @@ def regime_conditioned_finetune(
 			)
 
 	print(f"\n{'='*80}")
-	print(f"Training complete, Total Elapsed time: {time.time() - start_time:.1f} sec")
+	print(f"Total Training Elapsed time: {time.time() - start_time:.1f} sec")
 	print(f"  ├─ Best epoch    : {best_epoch}")
-	print(f"  ├─ Best val_loss : {best_val_loss:.6f}")
+	print(f"  ├─ Best val_loss : {best_val_loss}")
 	print(f"  ├─ mAP (all)     : {best_metrics.get('val_map_all',  float('nan')):.4f}")
 	print(f"  ├─ mAP (head)    : {best_metrics.get('val_map_head', float('nan')):.4f}")
 	print(f"  ├─ mAP (rare)    : {best_metrics.get('val_map_rare', float('nan')):.4f}")
 	print(f"  ├─ P@1           : {best_metrics.get('val_p@1',      float('nan')):.4f}")
 	print(f"  ├─ nDCG@5        : {best_metrics.get('val_ndcg@5',   float('nan')):.4f}")
-	print(f"  └─ Outputs       : {checkpoints_dir}")
+	print(f"  └─ checkpoints   : {checkpoints_dir}")
 	print(f"{'='*80}\n")
 
 	return {

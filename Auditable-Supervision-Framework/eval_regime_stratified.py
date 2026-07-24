@@ -75,128 +75,120 @@ REGIME_DISPLAY = {
 
 @torch.no_grad()
 def evaluate_regime_stratified(
-		model:            torch.nn.Module,
-		val_loader:       DataLoader,
-		all_class_embeds: torch.Tensor,       # [C, D] — normalised, on device
-		active_mask:      torch.Tensor,       # [C] bool
-		head_mask:        torch.Tensor,       # [C] bool
-		rare_mask:        torch.Tensor,       # [C] bool
-		device:           torch.device,
-		verbose:          bool = True,
+	model:            torch.nn.Module,
+	val_loader:       DataLoader,
+	all_class_embeds: torch.Tensor,       # [C, D] — normalised, on device
+	active_mask:      torch.Tensor,       # [C] bool
+	head_mask:        torch.Tensor,       # [C] bool
+	rare_mask:        torch.Tensor,       # [C] bool
+	device:           torch.device,
+	verbose:          bool = True,
 ) -> Dict[str, Any]:
-		"""
-		Single forward pass over val_loader.
-		Accumulates scores and targets per regime bucket.
+	"""
+	Single forward pass over val_loader.
+	Accumulates scores and targets per regime bucket.
+	Returns
+	-------
+	results : dict with keys
+		"ALL"          → global metrics dict
+		"AGREEMENT"    → per-regime metrics dict
+		"SOFT_CONFLICT"→ per-regime metrics dict
+		"HARD_CONFLICT"→ per-regime metrics dict
+		"SKIPPED"      → {"count": int}
+		"regime_counts"→ {regime: int}
+		"n_total"      → int
+	"""
+	model.eval()
+	class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1).to(device)
 
-		Returns
-		-------
-		results : dict with keys
-				"ALL"          → global metrics dict
-				"AGREEMENT"    → per-regime metrics dict
-				"SOFT_CONFLICT"→ per-regime metrics dict
-				"HARD_CONFLICT"→ per-regime metrics dict
-				"SKIPPED"      → {"count": int}
-				"regime_counts"→ {regime: int}
-				"n_total"      → int
-		"""
-		model.eval()
-		class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1).to(device)
+	# Accumulators: regime → list of (scores [1,C], targets [1,C])
+	bucket_scores:  Dict[str, List[torch.Tensor]] = defaultdict(list)
+	bucket_targets: Dict[str, List[torch.Tensor]] = defaultdict(list)
+	regime_counts:  Dict[str, int]                = defaultdict(int)
+	n_total = 0
 
-		# Accumulators: regime → list of (scores [1,C], targets [1,C])
-		bucket_scores:  Dict[str, List[torch.Tensor]] = defaultdict(list)
-		bucket_targets: Dict[str, List[torch.Tensor]] = defaultdict(list)
-		regime_counts:  Dict[str, int]                = defaultdict(int)
-		n_total = 0
+	if verbose:
+		print(f"\n[EVAL] {len(val_loader.dataset):,} (VAL) samples [takes a while...]")
 
-		if verbose:
-				print(f"\n[eval_regime_stratified] Running inference on {len(val_loader.dataset):,} samples …")
+	for batch_idx, batch in enumerate(val_loader):
+		if not batch:
+			continue
+		images    = batch["image"].to(device, non_blocking=True)
+		label_vec = batch["label_vec"].to(device, non_blocking=True)
+		regimes   = batch["regime"]   # List[str], length B
 
-		for batch_idx, batch in enumerate(val_loader):
-				if not batch:
-						continue
+		# Forward: image embeddings → cosine similarities
+		image_embeds = torch.nn.functional.normalize(model.encode_image(images), dim=-1).float() # [B, D]
+		scores = torch.matmul(image_embeds, class_embeds.T)  # [B, C]
 
-				images    = batch["image"].to(device, non_blocking=True)
-				label_vec = batch["label_vec"].to(device, non_blocking=True)
-				regimes   = batch["regime"]   # List[str], length B
+		# Route each sample to its regime bucket
+		for i, regime in enumerate(regimes):
+			n_total += 1
+			regime_counts[regime] += 1
+			s = scores[i].unsqueeze(0).cpu()       # [1, C]
+			t = label_vec[i].unsqueeze(0).cpu()    # [1, C]
 
-				# Forward: image embeddings → cosine similarities
-				image_embeds = torch.nn.functional.normalize(
-						model.encode_image(images), dim=-1
-				).float()                                          # [B, D]
-				scores = torch.matmul(image_embeds, class_embeds.T)  # [B, C]
+			if regime in SKIP_REGIMES:
+				bucket_scores["SKIPPED"].append(s)
+				bucket_targets["SKIPPED"].append(t)
+			else:
+				# Normalise to canonical name (upper-case, underscore)
+				canonical = regime.upper().replace(" ", "_")
+				bucket_scores[canonical].append(s)
+				bucket_targets[canonical].append(t)
 
-				# Route each sample to its regime bucket
-				for i, regime in enumerate(regimes):
-						n_total += 1
-						regime_counts[regime] += 1
+				# Also accumulate into ALL
+				bucket_scores["ALL"].append(s)
+				bucket_targets["ALL"].append(t)
 
-						s = scores[i].unsqueeze(0).cpu()       # [1, C]
-						t = label_vec[i].unsqueeze(0).cpu()    # [1, C]
+	if verbose:
+		print(f"\nRegime distribution:")
 
-						if regime in SKIP_REGIMES:
-								bucket_scores["SKIPPED"].append(s)
-								bucket_targets["SKIPPED"].append(t)
-						else:
-								# Normalise to canonical name (upper-case, underscore)
-								canonical = regime.upper().replace(" ", "_")
-								bucket_scores[canonical].append(s)
-								bucket_targets[canonical].append(t)
-								# Also accumulate into ALL
-								bucket_scores["ALL"].append(s)
-								bucket_targets["ALL"].append(t)
+		for r, cnt in sorted(regime_counts.items()):
+			pct = cnt / max(n_total, 1) * 100
+			print(f"  ├─ {r:<22s}: {cnt:>6,} ({pct:5.1f}%)")
 
-				if verbose and (batch_idx % max(1, len(val_loader) // 10) == 0):
-						print(f"  [{batch_idx:04d}/{len(val_loader):04d}] processed {n_total:,} samples")
+		print(f"  └─ Total: {n_total:,}")
 
-		if verbose:
-				print(f"\n[eval_regime_stratified] Regime distribution:")
-				for r, cnt in sorted(regime_counts.items()):
-						pct = cnt / max(n_total, 1) * 100
-						print(f"  ├─ {r:<22s}: {cnt:>6,} ({pct:5.1f}%)")
-				print(f"  └─ Total: {n_total:,}")
+	# Compute metrics per bucket
+	results: Dict[str, Any] = {"regime_counts": dict(regime_counts), "n_total": n_total}
 
-		# Compute metrics per bucket ────────────────────────────────────────────
-		results: Dict[str, Any] = {
-				"regime_counts": dict(regime_counts),
-				"n_total":       n_total,
-		}
+	for bucket in VALID_REGIMES + ["ALL"]:
+		if bucket not in bucket_scores or len(bucket_scores[bucket]) == 0:
+			results[bucket] = _empty_metrics(bucket)
+			continue
 
-		for bucket in VALID_REGIMES + ["ALL"]:
-				if bucket not in bucket_scores or len(bucket_scores[bucket]) == 0:
-						results[bucket] = _empty_metrics(bucket)
-						continue
+		s_cat = torch.cat(bucket_scores[bucket],  dim=0)  # [N_bucket, C]
+		t_cat = torch.cat(bucket_targets[bucket], dim=0)  # [N_bucket, C]
 
-				s_cat = torch.cat(bucket_scores[bucket],  dim=0)  # [N_bucket, C]
-				t_cat = torch.cat(bucket_targets[bucket], dim=0)  # [N_bucket, C]
+		metrics = _compute_retrieval_metrics(
+			scores=s_cat,
+			targets=t_cat,
+			active_mask=active_mask.cpu(),
+			head_mask=head_mask.cpu(),
+			rare_mask=rare_mask.cpu(),
+		)
 
-				metrics = _compute_retrieval_metrics(
-						scores=s_cat,
-						targets=t_cat,
-						active_mask=active_mask.cpu(),
-						head_mask=head_mask.cpu(),
-						rare_mask=rare_mask.cpu(),
-				)
+		# Rename val_* keys → bucket-prefixed keys for clarity
+		renamed = {k.replace("val_", ""): v for k, v in metrics.items()}
 
-				# Rename val_* keys → bucket-prefixed keys for clarity
-				renamed = {k.replace("val_", ""): v for k, v in metrics.items()}
+		# Add Gap_rel
+		renamed["gap_rel"] = _compute_gap_rel(
+			renamed.get("map_head", float("nan")),
+			renamed.get("map_rare", float("nan")),
+		)
+		# Add sample count for this bucket
+		renamed["n_samples"] = len(bucket_scores[bucket])
+		results[bucket] = renamed
 
-				# Add Gap_rel
-				renamed["gap_rel"] = _compute_gap_rel(
-						renamed.get("map_head", float("nan")),
-						renamed.get("map_rare", float("nan")),
-				)
+	# Skipped count
+	results["SKIPPED"] = {
+		"count": regime_counts.get("MISSING_MODALITY", 0)
+		+ regime_counts.get("INVALID_JSON", 0)
+		+ regime_counts.get(FALLBACK_REGIME, 0)
+	}
 
-				# Add sample count for this bucket
-				renamed["n_samples"] = len(bucket_scores[bucket])
-
-				results[bucket] = renamed
-
-		# Skipped count
-		results["SKIPPED"] = {"count": regime_counts.get("MISSING_MODALITY", 0)
-																	+ regime_counts.get("INVALID_JSON", 0)
-																	+ regime_counts.get(FALLBACK_REGIME, 0)}
-
-		return results
+	return results
 
 def _compute_gap_rel(map_head: float, map_rare: float) -> float:
 		"""
@@ -323,7 +315,7 @@ def save_latex_table(results: Dict[str, Any], output_path: str) -> None:
 		with open(output_path, "w", encoding="utf-8") as f:
 				f.write("\n".join(lines) + "\n")
 
-		print(f"[save_latex_table] Written → {output_path}")
+		print(f"[save_latex_table] {output_path}")
 
 def save_csv(results: Dict[str, Any], output_path: str) -> None:
 	"""
@@ -360,7 +352,7 @@ def save_csv(results: Dict[str, Any], output_path: str) -> None:
 		writer.writeheader()
 		writer.writerows(rows)
 
-	print(f"[save_csv] Written → {output_path}")
+	print(f"[save_csv] {output_path}")
 
 def save_json(results: Dict[str, Any], output_path: str) -> None:
 		"""Serialise the full results dict to JSON (NaN → null)."""
@@ -377,7 +369,7 @@ def save_json(results: Dict[str, Any], output_path: str) -> None:
 		with open(output_path, "w", encoding="utf-8") as f:
 				json.dump(_nan_to_none(results), f, indent=2, ensure_ascii=False)
 
-		print(f"[save_json] Written → {output_path}")
+		print(f"[save_json] {output_path}")
 
 def parse_args() -> argparse.Namespace:
 	p = argparse.ArgumentParser(
@@ -397,9 +389,10 @@ def parse_args() -> argparse.Namespace:
 			"lora", "lora_plus", "dora", "rslora", "ia3", "vera",
 			"tip_adapter", "tip_adapter_f",
 			"clip_adapter_v", "clip_adapter_t", "clip_adapter_vt",
-			"probe", "full"
+			"probe", 
+			"full"
 		],
-		help="PEFT method used during training"
+		help="PEFT method — must match training config"
 	)
 
 	# Data
@@ -419,6 +412,9 @@ def parse_args() -> argparse.Namespace:
 
 def main():
 	args = parse_args()
+	if args.verbose:
+		print(args)
+
 	ddir = os.path.dirname(args.metadata)
 
 	outputs_dir = os.path.join(ddir, "outputs")
@@ -465,7 +461,7 @@ def main():
 	model, _ = setup_peft(
 		model=model,
 		peft_method=args.peft_method,
-		verbose=args.verbose,
+		verbose=False,
 	)
 	model = model.to(device)
 
@@ -547,12 +543,6 @@ def main():
 	save_json(results,  json_path)
 	save_latex_table(results, latex_path)
 	save_csv(results,   csv_path)
-
-	print(f"\n[eval_regime_stratified] Done.")
-	print(f"  ├─ JSON   → {json_path}")
-	print(f"  ├─ LaTeX  → {latex_path}")
-	print(f"  └─ CSV    → {csv_path}")
-	print(f"{'='*80}\n")
 
 if __name__ == "__main__":
 	main()

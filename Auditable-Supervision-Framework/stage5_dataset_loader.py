@@ -37,7 +37,7 @@ sys.path.insert(0, MISC_DIR)
 HISTORY_CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "historyCLIP")
 sys.path.insert(0, HISTORY_CLIP_DIR)
 
-print(f"sys_path: {sys.path}")
+# print(f"sys_path: {sys.path}")
 
 import clip
 from utils import *
@@ -290,7 +290,7 @@ class RegimeAwareDataset(Dataset):
 		matched        = ids_in_split & ids_in_parquet
 		missing        = ids_in_split - ids_in_parquet
 		
-		print(f"\n[Stage5Dataset][{self.split}] Supervision coverage")
+		print(f"\n[Dataset][{self.split}] Supervision coverage")
 		print(f"  ├─ Split samples        : {len(ids_in_split):,}")
 		print(f"  ├─ Matched in parquet   : {len(matched):,} ({len(matched)/max(len(ids_in_split),1)*100:.1f}%)")
 		print(f"  └─ Fallback (missing)   : {len(missing):,} ({len(missing)/max(len(ids_in_split),1)*100:.1f}%)")
@@ -411,7 +411,7 @@ def get_stage5_dataloaders(
 	print(supervision_fpth)
 	assert os.path.exists(supervision_fpth), f"Supervision matrix not found at {supervision_fpth}"
 
-	print(f"\n[Stage5] Creating regime-aware dataloaders for {dataset_name}")
+	print(f"\nRegime-aware dataloaders for {dataset_name}")
 	print(f"  ├─ Metadata      : {metadata_fpth}")
 	print(f"  ├─ Supervision   : {supervision_fpth}")
 	print(f"  ├─ id_col        : {id_col}")
@@ -426,8 +426,12 @@ def get_stage5_dataloaders(
 	# Load CSV splits:
 	train_csv = metadata_fpth.replace(".csv", "_train.csv")
 	val_csv   = metadata_fpth.replace(".csv", "_val.csv")
+	assert os.path.exists(train_csv), f"Train split not found at {train_csv}"
+	assert os.path.exists(val_csv),   f"Val split not found at {val_csv}"
+
 	df_train = pd.read_csv(train_csv, on_bad_lines="skip", dtype=dtypes, low_memory=False)
 	df_val   = pd.read_csv(val_csv,   on_bad_lines="skip", dtype=dtypes, low_memory=False)
+
 	print(f"[SPLITS] TRAIN: {df_train.shape} VAL: {df_val.shape}")
 
 	# Preprocessing
@@ -500,7 +504,7 @@ def get_stage5_dataloaders(
 		collate_fn=customized_collate_fn,
 		drop_last=False,
 	)
-	train_loader.name = f"{dataset_name.lower()}_stage5_train".upper()
+	train_loader.name = f"{dataset_name.lower()}_train".upper()
 
 	val_loader = DataLoader(
 		dataset=val_dataset,
@@ -513,10 +517,10 @@ def get_stage5_dataloaders(
 		collate_fn=customized_collate_fn,
 		drop_last=False,
 	)
-	val_loader.name = f"{dataset_name.lower()}_stage5_validation".upper()
+	val_loader.name = f"{dataset_name.lower()}_validation".upper()
 
 	if verbose:
-		print(f"\n[Stage5] DataLoaders ready")
+		print(f"\nDataLoaders")
 		print(f"  ├─ Train batches : {len(train_loader):,}")
 		print(f"  ├─ Val batches   : {len(val_loader):,}")
 		print(f"  └─ Canonical V   : {len(label_dict):,} labels")
