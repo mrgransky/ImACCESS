@@ -102,8 +102,9 @@ def evaluate(
 	n_batches  = 0
 	all_scores  = []
 	all_targets = []
-	regime_counters: Dict[str, int]        = {}
-	loss_by_regime:  Dict[str, List[float]] = {}
+	regime_counters: Dict[str, int] = {}
+	loss_by_regime: Dict[str, List[float]] = {}
+
 	class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1).to(device)
 
 	for batch in val_loader:
@@ -147,8 +148,8 @@ def evaluate(
 
 		# Regime counters for val diagnostics
 		for r in regimes:
-				regime_counters[r] = regime_counters.get(r, 0) + 1
-				loss_by_regime.setdefault(r, []).append(loss.item())
+			regime_counters[r] = regime_counters.get(r, 0) + 1
+			loss_by_regime.setdefault(r, []).append(loss.item())
 
 		# Retrieval scores: cosine sim image → class
 		image_embeds = torch.nn.functional.normalize(model.encode_image(images), dim=-1).float()
@@ -181,14 +182,14 @@ def evaluate(
 	if verbose:
 		log_regime_epoch_stats(regime_counters, loss_by_regime, epoch, split="VAL")
 		print(
-				f"Epoch {epoch} [VAL] "
-				f"loss={metrics['val_loss']:.6f} "
-				f"(i2t={metrics['val_loss_i2t']:.4f} "
-				f"t2i={metrics['val_loss_t2i']:.4f} "
-				f"repel={metrics['val_loss_repel']:.4f}) | "
-				f"mAP={metrics.get('val_map_all', float('nan')):.4f} "
-				f"P@1={metrics.get('val_p@1', float('nan')):.4f} "
-				f"nDCG@5={metrics.get('val_ndcg@5', float('nan')):.4f}"
+			f"Epoch {epoch} [VAL] "
+			f"loss={metrics['val_loss']:.6f} "
+			f"(i2t={metrics['val_loss_i2t']:.4f} "
+			f"t2i={metrics['val_loss_t2i']:.4f} "
+			f"repel={metrics['val_loss_repel']:.4f}) | "
+			f"mAP={metrics.get('val_map_all', float('nan')):.4f} "
+			f"P@1={metrics.get('val_p@1', float('nan')):.4f} "
+			f"nDCG@5={metrics.get('val_ndcg@5', float('nan')):.4f}"
 		)
 
 	return metrics

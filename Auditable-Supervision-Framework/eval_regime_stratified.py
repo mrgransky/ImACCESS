@@ -1,8 +1,8 @@
 # Regime-Stratified Evaluation
 # ─────────────────────────────────────────────────────────────────────────────
 # Loads a trained Stage 5 checkpoint and evaluates retrieval metrics
-# stratified by modality-conflict regime (AGREEMENT / SOFT_CONFLICT /
-# HARD_CONFLICT).
+# stratified by modality-conflict regime: 
+# AGREEMENT / SOFT_CONFLICT / HARD_CONFLICT
 #
 # Outputs
 # ───────
@@ -102,9 +102,9 @@ def evaluate_regime_stratified(
 	class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1).to(device)
 
 	# Accumulators: regime → list of (scores [1,C], targets [1,C])
-	bucket_scores:  Dict[str, List[torch.Tensor]] = defaultdict(list)
+	bucket_scores: Dict[str, List[torch.Tensor]] = defaultdict(list)
 	bucket_targets: Dict[str, List[torch.Tensor]] = defaultdict(list)
-	regime_counts:  Dict[str, int]                = defaultdict(int)
+	regime_counts: Dict[str, int] = defaultdict(int)
 	n_total = 0
 
 	if verbose:
@@ -113,13 +113,14 @@ def evaluate_regime_stratified(
 	for batch_idx, batch in enumerate(val_loader):
 		if not batch:
 			continue
-		images    = batch["image"].to(device, non_blocking=True)
+
+		images = batch["image"].to(device, non_blocking=True)
 		label_vec = batch["label_vec"].to(device, non_blocking=True)
-		regimes   = batch["regime"]   # List[str], length B
+		regimes = batch["regime"]   # List[str], length B
 
 		# Forward: image embeddings → cosine similarities
 		image_embeds = torch.nn.functional.normalize(model.encode_image(images), dim=-1).float() # [B, D]
-		scores = torch.matmul(image_embeds, class_embeds.T)  # [B, C]
+		scores = torch.matmul(image_embeds, class_embeds.T) # [B, C]
 
 		# Route each sample to its regime bucket
 		for i, regime in enumerate(regimes):
@@ -191,13 +192,15 @@ def evaluate_regime_stratified(
 	return results
 
 def _compute_gap_rel(map_head: float, map_rare: float) -> float:
-		"""
-		Gap_rel = (mAP_rare - mAP_head) / (mAP_head + ε)
-		Negative → head dominates; closer to 0 → better tail recovery.
-		"""
-		if np.isnan(map_head) or np.isnan(map_rare):
-				return float("nan")
-		return (map_rare - map_head) / (map_head + GAP_REL_EPS)
+	"""
+	Gap_rel = (mAP_rare - mAP_head) / (mAP_head + ε)
+	Negative → head dominates; 
+	closer to 0 → better tail recovery.
+	"""
+	if np.isnan(map_head) or np.isnan(map_rare):
+		return float("nan")
+
+	return (map_rare - map_head) / (map_head + GAP_REL_EPS)
 
 def _empty_metrics(bucket: str) -> Dict[str, Any]:
 		return {
@@ -355,21 +358,23 @@ def save_csv(results: Dict[str, Any], output_path: str) -> None:
 	print(f"[save_csv] {output_path}")
 
 def save_json(results: Dict[str, Any], output_path: str) -> None:
-		"""Serialise the full results dict to JSON (NaN → null)."""
+	"""Serialise the full results dict to JSON (NaN → null)."""
+	def _nan_to_none(obj):
+		if isinstance(obj, float) and np.isnan(obj):
+			return None
 
-		def _nan_to_none(obj):
-				if isinstance(obj, float) and np.isnan(obj):
-						return None
-				if isinstance(obj, dict):
-						return {k: _nan_to_none(v) for k, v in obj.items()}
-				if isinstance(obj, list):
-						return [_nan_to_none(v) for v in obj]
-				return obj
+		if isinstance(obj, dict):
+			return {k: _nan_to_none(v) for k, v in obj.items()}
 
-		with open(output_path, "w", encoding="utf-8") as f:
-				json.dump(_nan_to_none(results), f, indent=2, ensure_ascii=False)
+		if isinstance(obj, list):
+			return [_nan_to_none(v) for v in obj]
 
-		print(f"[save_json] {output_path}")
+		return obj
+
+	with open(output_path, "w", encoding="utf-8") as f:
+		json.dump(_nan_to_none(results), f, indent=2, ensure_ascii=False)
+
+	print(f"[save_json] {output_path}")
 
 def parse_args() -> argparse.Namespace:
 	p = argparse.ArgumentParser(
