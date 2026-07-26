@@ -60,7 +60,6 @@ SYMMETRICAL_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 # SYMMETRICAL_EMBEDDING_MODEL="nvidia/llama-embed-nemotron-8b"
 # SYMMETRICAL_EMBEDDING_MODEL="Octen/Octen-Embedding-8B"
 ASYMMETRICAL_EMBEDDING_MODEL="cross-encoder/nli-deberta-v3-large"
-
 ENCODING_BATCH_SIZE=2048
 
 # stage 1: MLM with CoT:
@@ -86,7 +85,7 @@ CLIP_ARCH="ViT-L/14@336px"
 python -u stage5_run.py -csv $CSV_FILE -cm $CLIP_ARCH -bs $TRAINING_BATCH_SIZE -lr $LEARNING_RATE -v
 
 # evaluation:
-python -u eval_regime_stratified.py -csv $CSV_FILE -cm $CLIP_ARCH -bs $TRAINING_BATCH_SIZE -v
+python -u eval_regime_stratified.py -csv $CSV_FILE -cm $CLIP_ARCH -bs $TRAINING_BATCH_SIZE -nw $SLURM_CPUS_PER_TASK -v
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

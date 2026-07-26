@@ -501,7 +501,7 @@ def load_checkpoint(
 	if verbose:
 		print(f"[LOADING CHECKPOINT] {ckpt_path}")
 
-	assert os.path.isfile(ckpt_path), f"[load_checkpoint] Not found: {ckpt_path}"
+	assert os.path.isfile(ckpt_path), f"checkpoint Not found: {ckpt_path}"
 	state = torch.load(ckpt_path, map_location=device)
 
 	model.load_state_dict(state["model_state_dict"])
@@ -514,7 +514,7 @@ def load_checkpoint(
 	epoch = state.get("epoch", 0)
 	metrics = state.get("metrics", {})
 	if verbose:
-		print(f"[load_checkpoint] Resumed from epoch {epoch} | {ckpt_path}")
+		print(f"checkpoint resumed from epoch {epoch} | {ckpt_path}")
 
 	return epoch, metrics
 
@@ -584,14 +584,17 @@ def regime_conditioned_finetune(
 	ckpt_fpath = os.path.join(checkpoints_dir, ckpt_fname)
 
 	print(f"\n[Stage5] Regime-Conditioned Fine-Tuning: {model.__class__.__name__} {clip_model_name}")
-	print(f"  ├─ resolution : {input_resolution}")
-	print(f"  ├─ PEFT       : {peft_method} config: {peft_config}")
-	print(f"  ├─ Device     : {device}")
-	print(f"  ├─ Epochs     : {num_epochs}")
-	print(f"  ├─ Batch size : {batch_size}")
-	print(f"  ├─ LR         : {learning_rate}")
-	print(f"  ├─ Dataset    : {DATASET_DIRECTORY}")
-	print(f"  └─ Checkpoints: {checkpoints_dir}")
+	print(f" ├─ resolution : {input_resolution}")
+	print(f" ├─ PEFT       : {peft_method} config: {peft_config}")
+	print(f" ├─ Device     : {device}")
+	print(f" ├─ Epochs     : {num_epochs}")
+	print(f" ├─ Batch size : {batch_size}")
+	print(f" ├─ LR         : {learning_rate}")
+	print(f" ├─ pw_mode    : {pw_mode}")
+	print(f" ├─ pw_max_cap : {pw_max_cap}")
+	print(f" ├─ loss_weight: {loss_weight}")
+	print(f" ├─ Dataset    : {DATASET_DIRECTORY}")
+	print(f" └─ Checkpoints: {checkpoints_dir}")
 
 	model, param_groups = setup_peft(
 		model=model,
@@ -601,10 +604,9 @@ def regime_conditioned_finetune(
 	)
 	model = model.to(device)
 
-	# ── DataLoaders ────
+	# DataLoaders:
 	train_loader, val_loader = get_stage5_dataloaders(
 		metadata_fpth=metadata_fpth,
-		# supervision_fpth=supervision_fpth,
 		batch_size=batch_size,
 		num_workers=num_workers,
 		input_resolution=input_resolution,
@@ -615,7 +617,7 @@ def regime_conditioned_finetune(
 	label_dict  = train_loader.dataset.label_dict
 	num_classes = len(label_dict)
 
-	# ── Loss masks (Axis 1: class-level balance) ────
+	# Loss masks (Axis 1: class-level balance)
 	loss_masks = compute_loss_masks(
 		loader=train_loader,
 		num_classes=num_classes,
@@ -625,9 +627,9 @@ def regime_conditioned_finetune(
 		verbose=verbose,
 	)
 	active_mask = loss_masks["active_mask"]
-	head_mask   = loss_masks["head_mask"]
-	rare_mask   = loss_masks["rare_mask"]
-	pos_weight  = loss_masks["pos_weight"]
+	head_mask = loss_masks["head_mask"]
+	rare_mask = loss_masks["rare_mask"]
+	pos_weight = loss_masks["pos_weight"]
 	
 	# Train/val coverage diagnostic
 	diagnose_train_val_coverage(
@@ -637,12 +639,11 @@ def regime_conditioned_finetune(
 		verbose=verbose,
 	)
 	
-	# ── Criteria ────
+	# Criteria
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction="none",)
 	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction="none")
 	
-
-	# ── Optimizer ────
+	# Optimizer
 	# Resolve per-group LR for LoRA+ (lr_multiplier stored in group dict)
 	for grp in param_groups:
 		mult = grp.pop("lr_multiplier", 1.0)
@@ -650,7 +651,7 @@ def regime_conditioned_finetune(
 		grp.setdefault("weight_decay", weight_decay)
 	optimizer = torch.optim.AdamW(param_groups)
 
-	# ── Scheduler: linear warmup → cosine decay ────
+	# Scheduler: linear warmup → cosine decay
 	total_steps   = num_epochs * len(train_loader)
 	warmup_steps  = warmup_epochs * len(train_loader)
 	def lr_lambda(step: int) -> float:
@@ -660,7 +661,7 @@ def regime_conditioned_finetune(
 		return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
 	scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
-	# ── Resume ────
+	# Resume checkpoint
 	start_epoch = 0
 	if resume_ckpt:
 		start_epoch, _ = load_checkpoint(
@@ -672,17 +673,19 @@ def regime_conditioned_finetune(
 			verbose=verbose,
 		)
 		start_epoch += 1
-	# ── AMP scaler ────
+
+	# AMP scaler
 	use_amp = torch.cuda.is_available()
-	scaler  = torch.cuda.amp.GradScaler(enabled=use_amp)
+	scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
 
 	# Main training loop
-	best_val_loss    = float("inf")
-	best_epoch       = -1
-	best_metrics     = {}
+	best_val_loss = float("inf")
+	best_epoch = -1
+	best_metrics = {}
 	patience_counter = 0
 	all_train_metrics: List[Dict] = []
-	all_val_metrics:   List[Dict] = []
+	all_val_metrics: List[Dict] = []
+
 	start_time = time.time()
 	for epoch in range(start_epoch, num_epochs):
 		t0 = time.time()
@@ -762,7 +765,7 @@ def regime_conditioned_finetune(
 					f"lr={lr_now:.3e}"
 				)
 		
-		# ── End-of-epoch train stats ────
+		# End-of-epoch train stats
 		n_b = max(n_batches, 1)
 		train_metrics = {
 			"epoch":            epoch,
@@ -782,7 +785,7 @@ def regime_conditioned_finetune(
 		train_metrics.update(regime_stats)
 		all_train_metrics.append(train_metrics)
 
-		# ── Validation ────
+		# per epoch validation
 		val_metrics = evaluate(
 			model=model,
 			val_loader=val_loader,
@@ -801,13 +804,14 @@ def regime_conditioned_finetune(
 		all_val_metrics.append(val_metrics)
 		print(f"[ELAPSED] {time.time() - t0:.2f}s")
 
-		# ── Early stopping + checkpoint ────
+		# Early stopping + checkpoint
 		val_loss = val_metrics["val_loss"]
 		if val_loss < best_val_loss:
-			best_val_loss    = val_loss
-			best_epoch       = epoch
-			best_metrics     = {**train_metrics, **val_metrics}
+			best_val_loss = val_loss
+			best_epoch = epoch
+			best_metrics = {**train_metrics, **val_metrics}
 			patience_counter = 0
+
 			save_checkpoint(
 				model=model,
 				optimizer=optimizer,

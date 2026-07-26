@@ -386,9 +386,10 @@ def parse_args() -> argparse.Namespace:
 	p.add_argument("--metadata", "-csv", required=True, help="Path to dataset.csv (train/val splits inferred from this)")
 
 	# Model
-	p.add_argument("--clip_model", '-cm', default="ViT-B/32",help="CLIP backbone")
+	p.add_argument("--clip_model", '-cm', default="ViT-B/32", help="CLIP backbone")
 	p.add_argument(
 		"--peft_method", 
+		'-peft', 
 		default="lora", 
 		choices=[
 			"lora", "lora_plus", "dora", "rslora", "ia3", "vera",
@@ -500,7 +501,7 @@ def main():
 	head_mask   = loss_masks["head_mask"]
 	rare_mask   = loss_masks["rare_mask"]
 
-	# 4. Load checkpoint ────────────────────────────────────────────────────
+	# 4. Load checkpoint
 	epoch, ckpt_metrics = load_checkpoint(
 		ckpt_path=checkpoint_fpath,
 		model=model,
@@ -513,7 +514,7 @@ def main():
 		print(f"  ├─ Checkpoint val_loss : {ckpt_metrics.get('val_loss', float('nan')):.6f}")
 		print(f"  └─ Checkpoint mAP-all  : {ckpt_metrics.get('val_map_all', float('nan')):.4f}")
 
-	# 5. Build class embeddings ─────────────────────────────────────────────
+	# 5. Build class embeddings
 	all_class_embeds = build_class_embeddings(
 		model=model,
 		label_dict=label_dict,
@@ -521,7 +522,7 @@ def main():
 		verbose=args.verbose,
 	).to(device)
 
-	# 6. Regime-stratified evaluation ───────────────────────────────────────
+	# 6. Regime-stratified evaluation
 	results = evaluate_regime_stratified(
 		model=model,
 		val_loader=val_loader,
@@ -536,18 +537,18 @@ def main():
 	# Attach checkpoint provenance to results
 	results["checkpoint"] = checkpoint_fpath
 	results["checkpoint_epoch"] = epoch
-	results["clip_model"]  = args.clip_model
+	results["clip_model"] = args.clip_model
 	results["peft_method"] = args.peft_method
 
 	print_results_table(results)
 
-	json_path  = os.path.join(outputs_dir, "regime_stratified_results.json")
+	json_path = os.path.join(outputs_dir, "regime_stratified_results.json")
 	latex_path = os.path.join(outputs_dir, "regime_stratified_table.tex")
-	csv_path   = os.path.join(outputs_dir, "regime_stratified_results.csv")
+	csv_path = os.path.join(outputs_dir, "regime_stratified_results.csv")
 
-	save_json(results,  json_path)
+	save_json(results, json_path)
 	save_latex_table(results, latex_path)
-	save_csv(results,   csv_path)
+	save_csv(results, csv_path)
 
 if __name__ == "__main__":
 	main()

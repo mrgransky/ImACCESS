@@ -8,18 +8,37 @@ from stage5_regime_conditioned_training import regime_conditioned_finetune
 def parse_args():
 	p = argparse.ArgumentParser(description="Stage 5: Regime-Conditioned Training")
 	p.add_argument("--metadata", '-csv',required=True,  help="Path to metadata.csv")
-	p.add_argument("--clip_model", '-cm', default="ViT-B/32")
-	p.add_argument("--peft_method", '-peft', default="lora", choices=["lora","lora+","dora","rslora","ia3","vera","probe","adapter","full"])
+
+	p.add_argument("--clip_model", '-cm', default="ViT-B/32", help="CLIP backbone")
+	p.add_argument(
+		"--peft_method", 
+		'-peft', 
+		default="lora", 
+		choices=[
+			"lora", "lora_plus", "dora", "rslora", "ia3", "vera",
+			"tip_adapter", "tip_adapter_f",
+			"clip_adapter_v", "clip_adapter_t", "clip_adapter_vt",
+			"probe", 
+			"full"
+		],
+		help="PEFT method"
+	)
+
 	p.add_argument("--epochs",'-e', type=int, default=50)
+
 	p.add_argument("--batch_size", '-bs', type=int, default=256)
 	p.add_argument("--num_workers", '-nw', type=int, default=8)
 	p.add_argument("--learning_rate", '-lr', type=float, default=1e-4)
-	p.add_argument("--pw_mode",       default="sqrt", choices=["log","sqrt","linear"])
-	p.add_argument("--pw_max_cap",    type=float, default=50.0)
-	p.add_argument("--patience",      type=int, default=7)
-	p.add_argument("--resume_ckpt",   default=None, help="Resume training from a checkpoint")
-	p.add_argument("--seed",          type=int, default=42)
-	p.add_argument("--verbose", "-v", action='store_true', help="Print verbose diagnostics")
+
+	p.add_argument("--pw_mode", default="sqrt", choices=["log","sqrt","linear"])
+	p.add_argument("--pw_max_cap", type=float, default=50.0)
+
+	p.add_argument("--patience", type=int, default=7)
+
+	p.add_argument("--resume_ckpt", default=None, help="Resume training from a checkpoint")
+
+	p.add_argument("--seed", type=int, default=42)
+	p.add_argument("--verbose", "-v", action='store_true', help="Verbosity")
 
 	return p.parse_args()
 
