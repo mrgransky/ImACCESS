@@ -592,7 +592,7 @@ def regime_conditioned_finetune(
 	print(f" ├─ LR         : {learning_rate}")
 	print(f" ├─ pw_mode    : {pw_mode}")
 	print(f" ├─ pw_max_cap : {pw_max_cap}")
-	print(f" ├─ loss_weight: {loss_weight}")
+	print(f" ├─ loss_weight: {loss_weights}")
 	print(f" ├─ Dataset    : {DATASET_DIRECTORY}")
 	print(f" └─ Checkpoints: {checkpoints_dir}")
 
