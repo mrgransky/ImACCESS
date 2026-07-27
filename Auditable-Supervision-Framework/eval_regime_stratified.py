@@ -402,8 +402,8 @@ def parse_args() -> argparse.Namespace:
 	)
 
 	# Data
-	p.add_argument("--batch_size",  type=int, default=256)
-	p.add_argument("--num_workers", type=int, default=8)
+	p.add_argument("--batch_size", '-bs',  type=int, default=256)
+	p.add_argument("--num_workers", '-nw', type=int, default=8)
 	p.add_argument("--id_col",      default="doc_url")
 	p.add_argument("--text_col",    default="multimodal_labels")
 
