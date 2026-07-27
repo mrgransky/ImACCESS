@@ -24,8 +24,7 @@ def parse_args():
 		help="PEFT method"
 	)
 
-	p.add_argument("--epochs",'-e', type=int, default=50)
-
+	p.add_argument("--epochs",'-ep', type=int, default=50)
 	p.add_argument("--batch_size", '-bs', type=int, default=256)
 	p.add_argument("--num_workers", '-nw', type=int, default=8)
 	p.add_argument("--learning_rate", '-lr', type=float, default=1e-4)

@@ -270,7 +270,7 @@ def compute_regime_aware_contrastive_loss(
 			"repel": REGIME_LAMBDA_REPEL,
 		}
 	if verbose:
-		print(f"[REGIME AWARE LOSS] {split.upper()}")
+		print(f"\n[REGIME AWARE LOSS] {split.upper()}")
 
 	# Embeddings
 	image_embeds = torch.nn.functional.normalize(model.encode_image(images), dim=-1).float() # [B, D] FP32
