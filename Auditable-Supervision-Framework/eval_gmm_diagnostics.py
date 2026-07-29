@@ -1,5 +1,6 @@
-# GMM Model-Selection Diagnostics  (Proving Claim B: "Conflict is a Dataset Property")
-# ─────────────────────────────────────────────────────────────────────────────
+# GMM Model-Selection Diagnostics  
+# (Proving Claim B: "Conflict is a Dataset Property")
+
 # Fits a Gaussian Mixture Model over the three continuous modality-conflict
 # axes and proves — via BIC and Silhouette — that k=3 (Agreement / Soft /
 # Hard) is the DATA-DRIVEN optimum, not an assumed hyper-parameter.
@@ -25,7 +26,6 @@
 #   reference labelling; we report the GMM-vs-heuristic override rate to
 #   quantify how often the soft probabilistic model disagrees with the
 #   hard thresholds.
-# ─────────────────────────────────────────────────────────────────────────────
 
 # how to run:
 # python eval_gmm_diagnostics.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -v
@@ -145,28 +145,81 @@ def _explode_evidence_receipt(df: pd.DataFrame, verbose: bool = True) -> pd.Data
 
 	return df
 
+def _load_df_from_source(source_path: str, verbose: bool = True) -> pd.DataFrame:
+	"""
+	Load a DataFrame from either a Stage 2 JSONL audit file or a parquet file.
+	For JSONL, the `metrics` sub-dict is exploded into flat columns so that
+	set_similarity / orphan_ratio / asymmetry_gap are directly accessible.
+	"""
+	ext = os.path.splitext(source_path)[1].lower()
+
+	if ext == ".jsonl":
+		if verbose:
+			print(f"\n[load_df_from_source] Reading JSONL: {source_path}")
+		records = []
+		with open(source_path, "r", encoding="utf-8") as fh:
+			for line in fh:
+				line = line.strip()
+				if not line:
+					continue
+				try:
+					records.append(json.loads(line))
+				except json.JSONDecodeError:
+					continue
+
+		df = pd.DataFrame(records)
+
+		# Explode the nested `metrics` dict into flat columns
+		if "metrics" in df.columns:
+			metrics_flat = pd.json_normalize(df["metrics"].apply(
+				lambda x: x if isinstance(x, dict) else {}
+			))
+			# Drop any metrics columns that already exist at the top level
+			new_cols = [c for c in metrics_flat.columns if c not in df.columns]
+			df = pd.concat([df.drop(columns=["metrics"]), metrics_flat[new_cols]], axis=1)
+
+		if verbose:
+			print(f"  ├─ records : {len(df):,}")
+			print(f"  └─ columns : {list(df.columns)}")
+		return df
+
+	else:
+		# Parquet (or any other format pandas can read)
+		if verbose:
+			print(f"\n[load_df_from_source] Reading parquet: {source_path}")
+		df = pd.read_parquet(source_path)
+		if verbose:
+			print(f"  ├─ df      : {df.shape}")
+			print(f"  └─ Columns : {list(df.columns)}")
+		return df
+
 def load_conflict_features(
-	audit_parquet: str,
+	audit_source: str,
 	verbose: bool = True,
 ) -> Tuple[np.ndarray, np.ndarray, pd.DataFrame]:
 	"""
-	Load the Stage 2 audit parquet and extract the (N, 3) conflict-feature
-	matrix plus the heuristic regime labels.
+	Load the Stage 2 audit file (JSONL **or** parquet) and extract the
+	(N, 3) conflict-feature matrix plus the heuristic regime labels.
+
+	Accepts:
+	  • *_modality_conflict_audit.jsonl   — preferred; metrics are nested
+	    under the ``metrics`` key and are exploded automatically.
+	  • *_modality_conflict_audit.parquet — flat parquet produced by Stage 2
+	    if the export block is present.
+	  • *_auditable_supervision_matrix.parquet — last-resort fallback (will
+	    fail if the axes were not carried forward into Stage 4).
+
 	Returns
 	-------
 	X          : (N, 3) float array  — [set_similarity, orphan_ratio, asymmetry_gap]
 	regimes    : (N,)   str array    — heuristic regime label per row
 	df_valid   : the filtered DataFrame (skip regimes + NaN rows removed)
 	"""
-	assert os.path.isfile(audit_parquet), f"[load_conflict_features] Not found: {audit_parquet}"
-	df = pd.read_parquet(audit_parquet)
+	assert os.path.isfile(audit_source), f"[load_conflict_features] Not found: {audit_source}"
 
-	if verbose:
-		print(f"\n[load_conflict_features] {audit_parquet}")
-		print(f"  ├─ df      : {df.shape}")
-		print(f"  └─ Columns : {list(df.columns)}")
+	df = _load_df_from_source(audit_source, verbose=verbose)
 
-	# Try nested receipt explosion first, then resolve flat columns
+	# Try nested receipt explosion first (parquet path), then resolve flat columns
 	df = _explode_evidence_receipt(df, verbose=verbose)
 	resolved = _resolve_feature_columns(df, verbose=verbose)
 
@@ -174,9 +227,9 @@ def load_conflict_features(
 	if missing:
 		raise KeyError(
 			f"[load_conflict_features] Could not locate conflict axes {missing} "
-			f"in {audit_parquet}.\nAvailable columns: {list(df.columns)}\n"
+			f"in {audit_source}.\nAvailable columns: {list(df.columns)}\n"
 			f"→ Ensure Stage 2 persisted set_similarity / orphan_ratio / "
-			f"asymmetry_gap (flat or inside Evidence_Receipt)."
+			f"asymmetry_gap (flat or inside the 'metrics' key of the JSONL)."
 		)
 
 	# Build the feature frame using resolved names (fall back to canonical)
@@ -184,10 +237,13 @@ def load_conflict_features(
 	feat_df = df[[col_map[a] for a in FEATURE_AXES]].copy()
 	feat_df.columns = FEATURE_AXES
 
-	# Regime column (heuristic reference labels)
-	regime_col = next((c for c in ("regime", "Regime", "regime_label") if c in df.columns), None)
+	# Regime column — prefer heuristic_regime (Stage 2 authority) over regime (Stage 4)
+	regime_col = next(
+		(c for c in ("heuristic_regime", "regime", "Regime", "regime_label") if c in df.columns),
+		None,
+	)
 	if regime_col is None:
-		raise KeyError(f"[load_conflict_features] No 'regime' column in {audit_parquet}")
+		raise KeyError(f"[load_conflict_features] No regime column found in {audit_source}")
 	feat_df["regime"] = df[regime_col].astype(str).str.upper().str.replace(" ", "_")
 
 	# Drop skip-regimes and NaN feature rows
@@ -200,7 +256,7 @@ def load_conflict_features(
 		print(f"\n[load_conflict_features] Filtering")
 		print(f"  ├─ Before        : {n_before:,}")
 		print(f"  ├─ After (valid) : {n_after:,}")
-		print(f"  └─ Dropped       : {n_before - n_after:,} (skip-regime / NaN)")
+		print(f"  └─ Dropped       : {n_before - n_after:,} (skip-regime / NaN asymmetry_gap)")
 		print(f"\n  Heuristic regime distribution:")
 		for r, c in feat_df["regime"].value_counts().items():
 			print(f"    ├─ {r:<16s}: {c:>7,} ({c/n_after*100:5.1f}%)")
@@ -208,7 +264,6 @@ def load_conflict_features(
 	X       = feat_df[FEATURE_AXES].to_numpy(dtype=np.float64)
 	regimes = feat_df["regime"].to_numpy()
 	return X, regimes, feat_df
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GMM model selection
@@ -293,7 +348,6 @@ def fit_gmm_sweep(
 		"Xz":          Xz,
 	}
 
-
 def align_gmm_to_regimes(
 	gmm: GaussianMixture,
 	scaler: StandardScaler,
@@ -353,7 +407,6 @@ def align_gmm_to_regimes(
 		"override_rate":  override_rate,
 		"centroids":      centroid_table,
 	}
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Plotting
@@ -467,7 +520,6 @@ def plot_pairwise(X: np.ndarray, regimes: np.ndarray, output_path: str, max_poin
 	plt.close(fig)
 	print(f"[plot_pairwise] {output_path}")
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Serialisation
 # ─────────────────────────────────────────────────────────────────────────────
@@ -490,7 +542,6 @@ def save_json(results: Dict[str, Any], output_path: str) -> None:
 	with open(output_path, "w", encoding="utf-8") as f:
 		json.dump(_clean(results), f, indent=2, ensure_ascii=False)
 	print(f"[save_json] {output_path}")
-
 
 def save_centroid_latex(centroids: Dict[str, Any], override_rate: float, best_k: int, output_path: str) -> None:
 	lines = [
@@ -521,7 +572,6 @@ def save_centroid_latex(centroids: Dict[str, Any], override_rate: float, best_k:
 		f.write("\n".join(lines) + "\n")
 	print(f"[save_centroid_latex] {output_path}")
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # CLI
 # ─────────────────────────────────────────────────────────────────────────────
@@ -547,32 +597,37 @@ def main():
 
 	metadata_file = os.path.basename(args.metadata)
 
-	# The Stage 2 audit parquet holds the continuous conflict axes.
-	# Same stem as the supervision matrix, WITHOUT the "_auditable_supervision_matrix" suffix.
-	audit_parquet = os.path.join(
+	stem = metadata_file.replace(".csv", "_mlm_cot_modality_conflict_audit")
+
+	# Priority 1 — Stage 2 JSONL (metrics nested under 'metrics' key, always present)
+	audit_jsonl   = os.path.join(ddir, f"{stem}.jsonl")
+	# Priority 2 — Stage 2 flat parquet (written only if the export block is present)
+	audit_parquet = os.path.join(outputs_dir, f"{stem}.parquet")
+	# Priority 3 — Stage 4 supervision matrix (last resort; axes usually absent)
+	audit_matrix  = os.path.join(
 		outputs_dir,
-		metadata_file.replace(".csv", "_mlm_cot_modality_conflict_audit.parquet"),
+		metadata_file.replace(".csv", "_mlm_cot_modality_conflict_audit_auditable_supervision_matrix.parquet"),
 	)
-	# Fallback: if the Stage 2 receipt file is absent, try the supervision matrix
-	# (in case the axes were carried forward into it).
-	if not os.path.isfile(audit_parquet):
-		fallback = os.path.join(
-			outputs_dir,
-			metadata_file.replace(".csv", "_mlm_cot_modality_conflict_audit_auditable_supervision_matrix.parquet"),
-		)
-		print(f"[main] Stage 2 audit parquet not found; falling back to:\n  {fallback}")
-		audit_parquet = fallback
+
+	if os.path.isfile(audit_jsonl):
+		audit_source = audit_jsonl
+	elif os.path.isfile(audit_parquet):
+		print(f"[main] Stage 2 JSONL not found; using flat audit parquet:\n  {audit_parquet}")
+		audit_source = audit_parquet
+	else:
+		print(f"[main] Stage 2 JSONL/parquet not found; falling back to supervision matrix:\n  {audit_matrix}")
+		audit_source = audit_matrix
 
 	print(f"\n{'='*80}")
 	print(f"[eval_gmm_diagnostics] GMM Model-Selection Diagnostics")
 	print(f"  ├─ Metadata     : {args.metadata}")
-	print(f"  ├─ Audit parquet: {audit_parquet}")
+	print(f"  ├─ Audit source : {audit_source}")
 	print(f"  ├─ Output dir   : {outputs_dir}")
 	print(f"  └─ k sweep      : 1 .. {args.k_max}")
 	print(f"{'='*80}")
 
 	# 1. Load conflict features + heuristic regimes
-	X, regimes, feat_df = load_conflict_features(audit_parquet, verbose=args.verbose)
+	X, regimes, feat_df = load_conflict_features(audit_source, verbose=args.verbose)
 
 	# 2. GMM sweep + model selection
 	sweep = fit_gmm_sweep(X, k_max=args.k_max, verbose=args.verbose)
@@ -595,7 +650,7 @@ def main():
 
 	# 5. Serialise results
 	results = {
-		"audit_parquet":   audit_parquet,
+		"audit_source":    audit_source,
 		"n_samples":       int(len(X)),
 		"feature_axes":    FEATURE_AXES,
 		"ks":              sweep["ks"],

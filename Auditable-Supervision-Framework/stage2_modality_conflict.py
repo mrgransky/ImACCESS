@@ -576,6 +576,7 @@ def modality_conflict_audit(
 
 	if verbose:
 		print(f"\n[STAGE 2] Saving Evidence Receipts to: {output_jsonl}")
+
 	all_receipts = []
 	with open(output_jsonl, "r", encoding="utf-8") as f_read:
 		for line in f_read:
