@@ -1006,7 +1006,7 @@ def regime_aware_consolidation(
 					.round(2)
 					.to_string()
 			)
-			# Fix F: GMM override rate and low-confidence count.
+			# GMM override rate and low-confidence count.
 			# These are the two key metrics for the paper's methodology section:
 			#   - Override rate: how often does the GMM disagree with Stage 2?
 			#     A high rate suggests Stage 2 thresholds need recalibration.
