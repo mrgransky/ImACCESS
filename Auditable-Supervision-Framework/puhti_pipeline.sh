@@ -79,8 +79,8 @@ python -u stage3_4_cgd_consolidation.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -v
 python -u viz.py -jsonl $JSONL_MODALITY_CONFLICT_FILE -v
 
 # stage 5: Regime-Conditioned Training
-TRAINING_BATCH_SIZE=24
-LEARNING_RATE=1e-4
+TRAINING_BATCH_SIZE=32
+LEARNING_RATE=5e-5
 CLIP_ARCH="ViT-L/14@336px"
 NUM_EPOCHS=30
 python -u stage5_run.py -csv $CSV_FILE -cm $CLIP_ARCH -bs $TRAINING_BATCH_SIZE -lr $LEARNING_RATE -ep $NUM_EPOCHS -v
