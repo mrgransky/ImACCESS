@@ -1,5 +1,4 @@
-# GMM Model-Selection Diagnostics  
-# (Proving Claim B: "Conflict is a Dataset Property")
+# GMM Model-Selection Diagnostics (Proving Claim B: "Conflict is a Dataset Property")
 
 # Fits a Gaussian Mixture Model over the three continuous modality-conflict
 # axes and proves — via BIC and Silhouette — that k=3 (Agreement / Soft /
@@ -411,7 +410,10 @@ def align_gmm_to_regimes(
 # ─────────────────────────────────────────────────────────────────────────────
 # Plotting
 # ─────────────────────────────────────────────────────────────────────────────
-def plot_bic_silhouette(sweep: Dict[str, Any], output_path: str) -> None:
+def plot_bic_silhouette(
+	sweep: Dict[str, Any], 
+	output_path: str
+):
 	ks  = sweep["ks"]
 	fig, ax1 = plt.subplots(figsize=(8, 5))
 
@@ -585,15 +587,18 @@ def parse_args() -> argparse.Namespace:
 	p.add_argument("--verbose", "-v", action="store_true")
 	return p.parse_args()
 
-
 def main():
 	args = parse_args()
 	if args.verbose:
 		print(args)
 
-	ddir        = os.path.dirname(args.metadata)
+	ddir = os.path.dirname(args.metadata)
+
 	outputs_dir = os.path.join(ddir, "outputs")
 	os.makedirs(outputs_dir, exist_ok=True)
+
+	viz_dir = os.path.join(outputs_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
 
 	metadata_file = os.path.basename(args.metadata)
 
@@ -644,9 +649,21 @@ def main():
 	)
 
 	# 4. Plots
-	plot_bic_silhouette(sweep, os.path.join(outputs_dir, "gmm_diagnostics_bic_silhouette.png"))
-	plot_3d_scatter(X, regimes, align["centroids"], os.path.join(outputs_dir, "gmm_diagnostics_3d_scatter.png"))
-	plot_pairwise(X, regimes, os.path.join(outputs_dir, "gmm_diagnostics_pairplot.png"))
+	plot_bic_silhouette(
+		sweep, 
+		os.path.join(viz_dir, "gmm_diagnostics_bic_silhouette.png")
+	)
+	plot_3d_scatter(
+		X, 
+		regimes, 
+		align["centroids"], 
+		os.path.join(viz_dir, "gmm_diagnostics_3d_scatter.png")
+	)
+	plot_pairwise(
+		X, 
+		regimes, 
+		os.path.join(viz_dir, "gmm_diagnostics_pairplot.png")
+	)
 
 	# 5. Serialise results
 	results = {
@@ -681,7 +698,6 @@ def main():
 		print(f"  ⚠  argmin(BIC)={sweep['best_k_bic']} ≠ 3 — discuss this honestly in the paper.")
 	print(f"  └─ GMM-vs-heuristic override rate: {align['override_rate']*100:.2f}%")
 	print(f"{'='*80}\n")
-
 
 if __name__ == "__main__":
 	main()

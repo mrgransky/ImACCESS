@@ -1,28 +1,37 @@
 # Regime-Stratified Evaluation
-# ─────────────────────────────────────────────────────────────────────────────
+# ────
 # Loads a trained Stage 5 checkpoint and evaluates retrieval metrics
-# stratified by modality-conflict regime: 
+# stratified by modality-conflict regime:
 # AGREEMENT / SOFT_CONFLICT / HARD_CONFLICT
 #
+# Optionally compares RACL against Vanilla CLIP (B0) zero-shot baseline
+# using --compare_baseline.  The Δ column (RACL − B0) is printed per regime
+# and included in all output artefacts.
+#
 # Outputs
-# ───────
+# ────
 #   <output_dir>/regime_stratified_results.json   — full metrics dict
 #   <output_dir>/regime_stratified_table.tex      — LaTeX-ready table
 #   <output_dir>/regime_stratified_results.csv    — flat CSV for plotting
 #
 #
 # Design contract
-# ───────────────
+# ────
 # • Regime buckets are determined by the parquet's `regime` column — the
 #   same authority used during training.  No re-routing is performed here.
 # • Samples with MISSING_MODALITY / INVALID_JSON regimes are excluded from
 #   all per-regime tables but counted in a separate "skipped" row.
 # • Gap_rel = (mAP_rare - mAP_head) / (mAP_head + ε) is reported per bucket
 #   and globally.  A less-negative Gap_rel indicates better tail recovery.
-# ─────────────────────────────────────────────────────────────────────────────
+# • --compare_baseline loads vanilla CLIP weights (no checkpoint) and runs
+#   the same evaluation pass.  No extra data loading is required.
+# ────
 
-# how to run:
+# how to run (RACL only):
 # python eval_regime_stratified.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -v
+#
+# how to run (RACL + B0 baseline comparison):
+# python eval_regime_stratified.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv --compare_baseline -v
 
 import os
 import sys
@@ -88,7 +97,7 @@ def evaluate_regime_stratified(
 	Single forward pass over val_loader.
 	Accumulates scores and targets per regime bucket.
 	Returns
-	-------
+	----
 	results : dict with keys
 		"ALL"          → global metrics dict
 		"AGREEMENT"    → per-regime metrics dict
@@ -223,132 +232,228 @@ def _fmt(v: Any, decimals: int = 4) -> str:
 				return f"{v:.{decimals}f}"
 		return str(v)
 
-def print_results_table(results: Dict[str, Any]) -> None:
-		"""Pretty-print a regime-stratified results table to stdout."""
-		header = (
-				f"\n{'─'*100}\n"
-				f"{'Regime':<22s} {'N':>7s} "
-				f"{'mAP-all':>9s} {'mAP-head':>9s} {'mAP-rare':>9s} "
-				f"{'Gap_rel':>9s} {'P@1':>7s} {'P@5':>7s} {'nDCG@5':>8s}\n"
-				f"{'─'*100}"
+def _delta_str(racl_val: float, b0_val: float) -> str:
+	"""Format Δ = RACL − B0 with sign; return '—' if either is NaN."""
+	if np.isnan(racl_val) or np.isnan(b0_val):
+		return "—"
+	delta = racl_val - b0_val
+	return f"{delta:+.4f}"
+
+def print_results_table(
+	results:    Dict[str, Any],
+	b0_results: Optional[Dict[str, Any]] = None,
+) -> None:
+	"""
+	Pretty-print a regime-stratified results table to stdout.
+	If b0_results is provided, a Δ(mAP-all) column is appended showing
+	RACL − B0 per regime bucket.
+	"""
+	has_b0 = b0_results is not None
+	width  = 120 if has_b0 else 100
+
+	header_cols = (
+		f"{'Regime':<22s} {'N':>7s} "
+		f"{'mAP-all':>9s} {'mAP-head':>9s} {'mAP-rare':>9s} "
+		f"{'Gap_rel':>9s} {'P@1':>7s} {'P@5':>7s} {'nDCG@5':>8s}"
+	)
+	if has_b0:
+		header_cols += f"  {'B0 mAP-all':>10s} {'Δ mAP-all':>10s}"
+
+	print(f"\n{'─'*width}\n{header_cols}\n{'─'*width}")
+
+	for bucket in VALID_REGIMES + ["ALL"]:
+		m = results.get(bucket, {})
+		if not m or m.get("n_samples", 0) == 0:
+			print(f"  {REGIME_DISPLAY.get(bucket, bucket):<20s}  (no samples)")
+			continue
+
+		row = (
+			f"  {REGIME_DISPLAY.get(bucket, bucket):<20s} "
+			f"{m['n_samples']:>7,} "
+			f"{_fmt(m.get('map_all')):>9s} "
+			f"{_fmt(m.get('map_head')):>9s} "
+			f"{_fmt(m.get('map_rare')):>9s} "
+			f"{_fmt(m.get('gap_rel')):>9s} "
+			f"{_fmt(m.get('p@1')):>7s} "
+			f"{_fmt(m.get('p@5')):>7s} "
+			f"{_fmt(m.get('ndcg@5')):>8s}"
 		)
-		print(header)
+		if has_b0:
+			b0_m    = b0_results.get(bucket, {})
+			b0_map  = b0_m.get("map_all", float("nan"))
+			row += f"  {_fmt(b0_map):>10s} {_delta_str(m.get('map_all', float('nan')), b0_map):>10s}"
+		print(row)
 
+	skipped = results.get("SKIPPED", {}).get("count", 0)
+	print(f"{'─'*width}")
+	print(f"  {'Skipped (MISSING/INVALID)':<20s} {skipped:>7,}")
+	print(f"  {'Total':<20s} {results.get('n_total', 0):>7,}")
+	print(f"{'─'*width}\n")
+
+	# Verdict block when baseline is present
+	if has_b0:
+		print(f"{'='*width}")
+		print(f"[VERDICT]  RACL vs. Vanilla CLIP (B0) — Regime-Stratified")
 		for bucket in VALID_REGIMES + ["ALL"]:
-				m = results.get(bucket, {})
-				if not m or m.get("n_samples", 0) == 0:
-						print(f"  {REGIME_DISPLAY.get(bucket, bucket):<20s}  (no samples)")
-						continue
-				print(
-						f"  {REGIME_DISPLAY.get(bucket, bucket):<20s} "
-						f"{m['n_samples']:>7,} "
-						f"{_fmt(m.get('map_all')):>9s} "
-						f"{_fmt(m.get('map_head')):>9s} "
-						f"{_fmt(m.get('map_rare')):>9s} "
-						f"{_fmt(m.get('gap_rel')):>9s} "
-						f"{_fmt(m.get('p@1')):>7s} "
-						f"{_fmt(m.get('p@5')):>7s} "
-						f"{_fmt(m.get('ndcg@5')):>8s}"
-				)
+			m    = results.get(bucket, {})
+			b0_m = b0_results.get(bucket, {})
+			racl_map = m.get("map_all", float("nan"))
+			b0_map   = b0_m.get("map_all", float("nan"))
+			if np.isnan(racl_map) or np.isnan(b0_map):
+				continue
+			delta  = racl_map - b0_map
+			symbol = "✓" if delta > 0 else "⚠"
+			label  = REGIME_DISPLAY.get(bucket, bucket)
+			print(f"  {symbol}  [{label:<16s}]  RACL={racl_map:.4f}  B0={b0_map:.4f}  Δ={delta:+.4f}")
+		print(f"{'='*width}\n")
 
-		skipped = results.get("SKIPPED", {}).get("count", 0)
-		print(f"{'─'*100}")
-		print(f"  {'Skipped (MISSING/INVALID)':<20s} {skipped:>7,}")
-		print(f"  {'Total':<20s} {results.get('n_total', 0):>7,}")
-		print(f"{'─'*100}\n")
+def save_latex_table(
+	results: Dict[str, Any],
+	output_path: str,
+	b0_results: Optional[Dict[str, Any]] = None,
+) -> None:
+	has_b0 = b0_results is not None
 
-def save_latex_table(results: Dict[str, Any], output_path: str) -> None:
-		"""
-		Write a LaTeX booktabs table to output_path.
-		Suitable for direct inclusion in the paper's experiments section.
-		"""
-		lines = [
-				r"\begin{table}[t]",
-				r"\centering",
-				r"\caption{Regime-Stratified Retrieval Metrics on HISTORY-X4 Test Set.}",
-				r"\label{tab:regime_stratified}",
-				r"\begin{tabular}{lrrrrrrrr}",
-				r"\toprule",
-				r"Regime & $N$ & mAP-all & mAP-head & mAP-rare & $\text{Gap}_{\text{rel}}$ "
-				r"& P@1 & P@5 & nDCG@5 \\",
-				r"\midrule",
-		]
+	if has_b0:
+			col_spec = r"lrrrrrrrrrr" # 1 + 10 = 11 cols
+			col_header = (
+					r"Regime & $N$ & \multicolumn{3}{c}{RACL (Ours)} & "
+					r"$\text{Gap}_{\text{rel}}$ & P@1 & P@5 & nDCG@5 & "
+					r"B0 mAP & $\Delta$mAP \\"
+			)
+			# SPLIT into two lines
+			sub_header = [
+					r"\cmidrule(lr){3-5}",
+					r"& & mAP-all & mAP-head & mAP-rare & & & & & & \\"
+			]
+	else:
+			col_spec = r"lrrrrrrrr" # 1 + 8 = 9 cols - FIXED
+			col_header = (
+					r"Regime & $N$ & mAP-all & mAP-head & mAP-rare & "
+					r"$\text{Gap}_{\text{rel}}$ & P@1 & P@5 & nDCG@5 \\"
+			)
+			sub_header = None
 
-		for bucket in VALID_REGIMES:
-				m = results.get(bucket, {})
-				if not m or m.get("n_samples", 0) == 0:
-						continue
-				row = (
-						f"{REGIME_DISPLAY.get(bucket, bucket)} & "
-						f"{m['n_samples']:,} & "
-						f"{_fmt(m.get('map_all'))} & "
-						f"{_fmt(m.get('map_head'))} & "
-						f"{_fmt(m.get('map_rare'))} & "
-						f"{_fmt(m.get('gap_rel'))} & "
-						f"{_fmt(m.get('p@1'))} & "
-						f"{_fmt(m.get('p@5'))} & "
-						f"{_fmt(m.get('ndcg@5'))} \\\\"
-				)
-				lines.append(row)
+	caption = (
+		r"Regime-Stratified Retrieval Metrics on HISTORY-X4 (val split). "
+		+ (r"$\Delta$mAP = RACL $-$ Vanilla CLIP (B0)." if has_b0 else "")
+	)
+	lines = [
+		r"\begin{table}[t]",
+		r"\centering",
+		rf"\caption{{{caption}}}",
+		r"\label{tab:regime_stratified}",
+		rf"\begin{{tabular}}{{{col_spec}}}",
+		r"\toprule",
+		col_header,
+	]
 
-		lines.append(r"\midrule")
+	if sub_header:
+		lines.extend(sub_header)
+	lines.append(r"\midrule")
+	for bucket in VALID_REGIMES:
+			m = results.get(bucket, {})
+			if not m or m.get("n_samples", 0) == 0:
+					continue
+			row = (
+					f"{REGIME_DISPLAY.get(bucket, bucket)} & "
+					f"{m['n_samples']:,} & "
+					f"{_fmt(m.get('map_all'))} & "
+					f"{_fmt(m.get('map_head'))} & "
+					f"{_fmt(m.get('map_rare'))} & "
+					f"{_fmt(m.get('gap_rel'))} & "
+					f"{_fmt(m.get('p@1'))} & "
+					f"{_fmt(m.get('p@5'))} & "
+					f"{_fmt(m.get('ndcg@5'))}"
+			)
+			if has_b0:
+					b0_m = b0_results.get(bucket, {})
+					b0_map = b0_m.get("map_all", float("nan"))
+					row += f" & {_fmt(b0_map)} & {_delta_str(m.get('map_all', float('nan')), b0_map)}"
+			row += r" \\"
+			lines.append(row)
+	lines.append(r"\midrule")
+	m_all = results.get("ALL", {})
+	if m_all and m_all.get("n_samples", 0) > 0:
+		def _b(v): return rf"\textbf{{{v}}}"
+		n_str = f"{m_all['n_samples']:,}"
+		row = (
+				f"{_b('All (Global)')} & "
+				f"{_b(n_str)} & "
+				f"{_b(_fmt(m_all.get('map_all')))} & "
+				f"{_b(_fmt(m_all.get('map_head')))} & "
+				f"{_b(_fmt(m_all.get('map_rare')))} & "
+				f"{_b(_fmt(m_all.get('gap_rel')))} & "
+				f"{_b(_fmt(m_all.get('p@1')))} & "
+				f"{_b(_fmt(m_all.get('p@5')))} & "
+				f"{_b(_fmt(m_all.get('ndcg@5')))}"
+		)
+		if has_b0:
+			b0_all = b0_results.get("ALL", {})
+			b0_map = b0_all.get("map_all", float("nan"))
+			row += f" & {_b(_fmt(b0_map))} & {_b(_delta_str(m_all.get('map_all', float('nan')), b0_map))}"
 
-		# Global row
-		m_all = results.get("ALL", {})
-		if m_all and m_all.get("n_samples", 0) > 0:
-				row = (
-						r"\textbf{All (Global)} & "
-						f"\\textbf{{{m_all['n_samples']:,}}} & "
-						f"\\textbf{{{_fmt(m_all.get('map_all'))}}} & "
-						f"\\textbf{{{_fmt(m_all.get('map_head'))}}} & "
-						f"\\textbf{{{_fmt(m_all.get('map_rare'))}}} & "
-						f"\\textbf{{{_fmt(m_all.get('gap_rel'))}}} & "
-						f"\\textbf{{{_fmt(m_all.get('p@1'))}}} & "
-						f"\\textbf{{{_fmt(m_all.get('p@5'))}}} & "
-						f"\\textbf{{{_fmt(m_all.get('ndcg@5'))}}} \\\\"
-				)
-				lines.append(row)
+		row += r" \\"
+		lines.append(row)
 
-		lines += [
-				r"\bottomrule",
-				r"\end{tabular}",
-				r"\end{table}",
-		]
+	lines += [
+		r"\bottomrule",
+		r"\end{tabular}",
+		r"\end{table}",
+	]
 
-		with open(output_path, "w", encoding="utf-8") as f:
-				f.write("\n".join(lines) + "\n")
+	with open(output_path, "w", encoding="utf-8") as f:
+		f.write("\n".join(lines) + "\n")
 
-		print(f"[save_latex_table] {output_path}")
-
-def save_csv(results: Dict[str, Any], output_path: str) -> None:
+def save_csv(
+	results:    Dict[str, Any],
+	output_path: str,
+	b0_results: Optional[Dict[str, Any]] = None,
+) -> None:
 	"""
 	Write a flat CSV for downstream plotting (e.g., matplotlib / seaborn).
-	One row per regime bucket.
+	One row per regime bucket.  When b0_results is provided, B0 metrics and
+	Δ columns are appended.
 	"""
+	has_b0 = b0_results is not None
 	fieldnames = [
 		"regime", "n_samples",
 		"map_all", "map_head", "map_rare", "gap_rel",
 		"p@1", "p@5", "ndcg@5",
 	]
+	if has_b0:
+		fieldnames += ["b0_map_all", "b0_map_head", "b0_map_rare", "b0_gap_rel", "delta_map_all"]
 
 	rows = []
 	for bucket in VALID_REGIMES + ["ALL"]:
 		m = results.get(bucket, {})
 		if not m:
 			continue
-		rows.append(
-			{
-				"regime":    bucket,
-				"n_samples": m.get("n_samples", 0),
-				"map_all":   m.get("map_all",  float("nan")),
-				"map_head":  m.get("map_head", float("nan")),
-				"map_rare":  m.get("map_rare", float("nan")),
-				"gap_rel":   m.get("gap_rel",  float("nan")),
-				"p@1":       m.get("p@1",      float("nan")),
-				"p@5":       m.get("p@5",      float("nan")),
-				"ndcg@5":    m.get("ndcg@5",   float("nan")),
-			}
-		)
+		row = {
+			"regime":    bucket,
+			"n_samples": m.get("n_samples", 0),
+			"map_all":   m.get("map_all",  float("nan")),
+			"map_head":  m.get("map_head", float("nan")),
+			"map_rare":  m.get("map_rare", float("nan")),
+			"gap_rel":   m.get("gap_rel",  float("nan")),
+			"p@1":       m.get("p@1",      float("nan")),
+			"p@5":       m.get("p@5",      float("nan")),
+			"ndcg@5":    m.get("ndcg@5",   float("nan")),
+		}
+		if has_b0:
+			b0_m = b0_results.get(bucket, {})
+			b0_map = b0_m.get("map_all", float("nan"))
+			racl_map = m.get("map_all", float("nan"))
+			row["b0_map_all"]   = b0_map
+			row["b0_map_head"]  = b0_m.get("map_head", float("nan"))
+			row["b0_map_rare"]  = b0_m.get("map_rare", float("nan"))
+			row["b0_gap_rel"]   = b0_m.get("gap_rel",  float("nan"))
+			row["delta_map_all"] = (
+				racl_map - b0_map
+				if not (np.isnan(racl_map) or np.isnan(b0_map))
+				else float("nan")
+			)
+		rows.append(row)
 
 	with open(output_path, "w", newline="", encoding="utf-8") as f:
 		writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -411,6 +516,17 @@ def parse_args() -> argparse.Namespace:
 	p.add_argument("--pw_mode", default="sqrt", choices=["log", "sqrt", "linear"], help="pos_weight mode — must match training config")
 	p.add_argument("--pw_max_cap", type=float, default=50.0, help="pos_weight cap — must match training config")
 
+	# Baseline comparison
+	p.add_argument(
+		"--compare_baseline", "-b0",
+		action="store_true",
+		help=(
+			"Also evaluate Vanilla CLIP (B0) zero-shot on the same val split "
+			"and report Δ = RACL − B0 per regime bucket. "
+			"No extra checkpoint is needed — B0 uses the original CLIP weights."
+		),
+	)
+
 	# Misc
 	p.add_argument("--verbose", "-v", action="store_true")
 
@@ -461,6 +577,7 @@ def main():
 	print(f"  ├─ CLIP model  : {args.clip_model}")
 	print(f"  ├─ resolution  : {input_resolution}")
 	print(f"  ├─ PEFT method : {args.peft_method}")
+	print(f"  ├─ B0 baseline : {'yes' if args.compare_baseline else 'no'}")
 	print(f"  └─ Device      : {device}")
 	print(f"{'='*80}")
 
@@ -534,21 +651,59 @@ def main():
 		verbose=args.verbose,
 	)
 
+	# 6b. Optional: Vanilla CLIP B0 baseline evaluation
+	b0_results = None
+	if args.compare_baseline:
+		print(f"\n[eval] Evaluating Vanilla CLIP {args.clip_model} (B0) zero-shot baseline")
+		model_b0, _ = clip.load(
+			name=args.clip_model,
+			device=device,
+			download_root=get_model_directory(path=ddir),
+		)
+		model_b0.name = args.clip_model
+		model_b0, _ = setup_peft(
+			model=model_b0, 
+			peft_method=args.peft_method, 
+			verbose=False
+		)
+		model_b0 = model_b0.to(device)
+
+		b0_class_embeds = build_class_embeddings(
+			model=model_b0,
+			label_dict=label_dict,
+			device=device,
+			verbose=args.verbose,
+		).to(device)
+
+		b0_results = evaluate_regime_stratified(
+			model=model_b0,
+			val_loader=val_loader,
+			all_class_embeds=b0_class_embeds,
+			active_mask=active_mask,
+			head_mask=head_mask,
+			rare_mask=rare_mask,
+			device=device,
+			verbose=args.verbose,
+		)
+		del model_b0
+		if args.verbose:
+			print(f"[eval] B0 global mAP-all: {b0_results.get('ALL', {}).get('map_all', float('nan')):.4f}")
+
 	# Attach checkpoint provenance to results
 	results["checkpoint"] = checkpoint_fpath
 	results["checkpoint_epoch"] = epoch
 	results["clip_model"] = args.clip_model
 	results["peft_method"] = args.peft_method
 
-	print_results_table(results)
+	print_results_table(results, b0_results=b0_results)
 
 	json_path = os.path.join(outputs_dir, "regime_stratified_results.json")
 	latex_path = os.path.join(outputs_dir, "regime_stratified_table.tex")
 	csv_path = os.path.join(outputs_dir, "regime_stratified_results.csv")
 
-	save_json(results, json_path)
-	save_latex_table(results, latex_path)
-	save_csv(results, csv_path)
+	save_json({"racl": results, "b0": b0_results} if b0_results else results, json_path)
+	save_latex_table(results, latex_path, b0_results=b0_results)
+	save_csv(results, csv_path, b0_results=b0_results)
 
 if __name__ == "__main__":
 	main()

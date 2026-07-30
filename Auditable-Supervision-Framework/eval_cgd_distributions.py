@@ -708,10 +708,8 @@ def parse_args() -> argparse.Namespace:
 		description="Micro-CGD Distribution & Compression Diagnostics (Pillar 2)",
 		formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 	)
-	p.add_argument("--metadata", "-csv", required=True,
-				   help="Path to dataset.csv (CGD source path derived from this)")
-	p.add_argument("--pareto_steps", "-ps", type=int, default=PARETO_N_STEPS,
-				   help="Number of tau_G grid points in the Pareto sweep")
+	p.add_argument("--metadata", "-csv", required=True, help="Path to dataset.csv (CGD source path derived from this)")
+	p.add_argument("--pareto_steps", "-ps", type=int, default=PARETO_N_STEPS, help="Number of tau_G grid points in the Pareto sweep")
 	p.add_argument("--verbose", "-v", action="store_true")
 	return p.parse_args()
 
@@ -721,9 +719,13 @@ def main():
 	if args.verbose:
 		print(args)
 
-	ddir         = os.path.dirname(args.metadata)
+	ddir = os.path.dirname(args.metadata)
+
 	outputs_dir  = os.path.join(ddir, "outputs")
 	os.makedirs(outputs_dir, exist_ok=True)
+
+	viz_dir = os.path.join(outputs_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
 
 	cgd_source = resolve_cgd_source(args.metadata, verbose=args.verbose)
 
@@ -739,16 +741,28 @@ def main():
 
 	# 2. (i) Per-regime moments + violins
 	moments = compute_cgd_moments(concept_df, verbose=args.verbose)
-	plot_cgd_violins(concept_df, os.path.join(outputs_dir, "cgd_violin_per_regime.png"))
-	plot_cgd_kde(concept_df, os.path.join(outputs_dir, "cgd_distributions_kde.png"))
+	plot_cgd_violins(
+		concept_df, 
+		os.path.join(viz_dir, "cgd_violin_per_regime.png")
+	)
+	plot_cgd_kde(
+		concept_df, 
+		os.path.join(viz_dir, "cgd_distributions_kde.png")
+	)
 
 	# 3. (ii) Vocabulary compression Phi
 	vocab = compute_vocab_compression(concept_df, sample_df, verbose=args.verbose)
-	plot_vocab_compression(vocab, os.path.join(outputs_dir, "cgd_vocab_compression.png"))
+	plot_vocab_compression(
+		vocab, 
+		os.path.join(viz_dir, "cgd_vocab_compression.png")
+	)
 
 	# 4. (iii) Pareto sweep of tau_G
 	pareto = compute_pareto_sweep(concept_df, n_steps=args.pareto_steps, verbose=args.verbose)
-	plot_pareto_sweep(pareto, os.path.join(outputs_dir, "cgd_pareto_sweep.png"))
+	plot_pareto_sweep(
+		pareto, 
+		os.path.join(viz_dir, "cgd_pareto_sweep.png")
+	)
 
 	# 5. Serialise
 	results = {
@@ -761,12 +775,17 @@ def main():
 		"pareto":       pareto,
 	}
 	save_json(results, os.path.join(outputs_dir, "cgd_distributions_results.json"))
-	save_summary_latex(moments, vocab, pareto,
-					   os.path.join(outputs_dir, "cgd_summary.tex"))
+	save_summary_latex(
+		moments, 
+		vocab, 
+		pareto,
+		os.path.join(outputs_dir, "cgd_summary.tex")
+	)
 
 	# 6. Headline verdict
 	print(f"\n{'='*80}")
 	print(f"[VERDICT]  Pillar 2 — Supervision Provenance is Real")
+
 	# regime separation sanity: Hard-Conflict grounding should be the lowest
 	g_by_reg = {r: moments[r]["G"]["mean"] for r in VALID_REGIMES if r in moments}
 	if g_by_reg:
@@ -777,11 +796,13 @@ def main():
 			print(f"  │   ✓ Hard Conflict has the LOWEST grounding — CGD separates regimes.")
 		else:
 			print(f"  │   ⚠ Hard Conflict is not the lowest-grounded — discuss in paper.")
-	print(f"  ├─ Vocabulary compression Phi_micro : {vocab['phi_micro']:.4f} "
-		  f"({vocab['phi_micro']*100:.1f}%)")
+
+	print(
+		f"  ├─ Vocabulary compression Phi_micro : {vocab['phi_micro']:.4f} "
+		f"({vocab['phi_micro']*100:.1f}%)"
+	)
 	print(f"  └─ Pareto knee tau_G                : {pareto['knee_tau']:.4f}")
 	print(f"{'='*80}\n")
-
 
 if __name__ == "__main__":
 	main()

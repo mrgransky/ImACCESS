@@ -85,8 +85,10 @@ CLIP_ARCH="ViT-L/14@336px"
 NUM_EPOCHS=30
 python -u stage5_run.py -csv $CSV_FILE -cm $CLIP_ARCH -bs $TRAINING_BATCH_SIZE -lr $LEARNING_RATE -ep $NUM_EPOCHS -v
 
-# evaluation:
-python -u eval_regime_stratified.py -csv $CSV_FILE -cm $CLIP_ARCH -bs $TRAINING_BATCH_SIZE -nw $SLURM_CPUS_PER_TASK -v
+# evaluations:
+python -u eval_regime_stratified.py -csv $CSV_FILE -cm $CLIP_ARCH -bs $TRAINING_BATCH_SIZE -nw $SLURM_CPUS_PER_TASK -b0 -v
+python -u eval_gmm_diagnostics.py -csv $CSV_FILE -v
+python -u eval_cgd_distributions.py -csv $CSV_FILE -v
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
