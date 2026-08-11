@@ -1,6 +1,5 @@
 from utils import *
 from early_stopper import EarlyStopping
-from loss import LossAnalyzer
 from clip_peft import get_injected_peft_clip, get_adapter_peft_clip
 from evals import *
 from apft import *
@@ -542,15 +541,6 @@ def progressive_finetune_single_label(
 		# auto_trim=False,
 		used_phases=max(phases_history),
 	)
-
-	analyzer = LossAnalyzer(
-		epochs=training_history['epochs'], 
-		train_loss=training_history['train_losses'], 
-		val_loss=training_history['val_losses']
-	)
-	analyzer.plot_analysis(fpth=plot_paths["loss_analyzer"])
-	signals = analyzer.get_training_signals()
-	print(f"\nEMA signal summary: {signals}\n")
 
 	viz.plot_phase_transition_analysis_individual(
 		training_history=training_history,

@@ -9,7 +9,8 @@ sys.path.insert(0, CLIP_DIR)
 MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
 sys.path.insert(0, MISC_DIR)
 
-print(f"sys.path: {sys.path}")
+for p in sys.path:
+	print(p)
 
 from utils import *
 from single_label_trainer import *
@@ -20,8 +21,7 @@ from historyXN_dataset_loader import get_single_label_dataloaders, get_multi_lab
 
 # $ python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=10))))"
 
-# run in local:
-# single-label:
+# single-label [local]:
 # $ python trainer.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_single_label.csv -fts progressive -mphbs 3 -mepph 5 -bs 128 -lr 3e-4 -wd 1e-2 -tnp 8
 # $ nohup python -u trainer.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_single_label.csv -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -fts progressive -a "ViT-B/32" -mphbs 3 -mepph 5 -tnp 8 > logs/europeana_ft_progressive.txt &
 

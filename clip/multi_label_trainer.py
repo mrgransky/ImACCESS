@@ -677,16 +677,19 @@ def probe_multi_label(
 	)
 	
 	# Plotting
+	viz_dir = os.path.join(results_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
 	plot_paths = {
-		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-		"hp_evol": os.path.join(results_dir, f"{file_base_name}_hyperparameter_evolution.png"),
+		"losses": os.path.join(viz_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(viz_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"alpha_beta_evol": os.path.join(viz_dir, f"{file_base_name}_alpha_beta_evol.png"),
+		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 	
 	viz.plot_hyperparameter_evolution(
@@ -1239,16 +1242,19 @@ def full_finetune_multi_label(
 		f"do_{dropout_val}"
 	)
 	
+	viz_dir = os.path.join(results_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
 	plot_paths = {
-		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-		"hp_evol": os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
+		"losses": os.path.join(viz_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(viz_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"alpha_beta_evol": os.path.join(viz_dir, f"{file_base_name}_alpha_beta_evol.png"),
+		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 	
 	viz.plot_multilabel_loss_breakdown(
@@ -1802,14 +1808,19 @@ def lora_finetune_multi_label(
 		f"bs_{train_loader.batch_size}_lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}"
 	)
 
+	viz_dir = os.path.join(results_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
 	plot_paths = {
-		"losses_breakdown":   os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-		"losses":             os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"full_val_topk_i2t":  os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-		"full_val_topk_t2i":  os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-		"retrieval_per_epoch":os.path.join(results_dir, f"{file_base_name}_retrieval_per_epoch.png"),
-		"retrieval_best":     os.path.join(results_dir, f"{file_base_name}_retrieval_best.png"),
-		"hp_evol":            os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
+		"losses": os.path.join(viz_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(viz_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"alpha_beta_evol": os.path.join(viz_dir, f"{file_base_name}_alpha_beta_evol.png"),
+		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 
 	viz.plot_multilabel_loss_breakdown(
@@ -2616,16 +2627,19 @@ def lora_plus_finetune_multi_label(
 		f"temp_{temperature}"
 	)
 	
+	viz_dir = os.path.join(results_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
 	plot_paths = {
-		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-		"hp_evol": os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
+		"losses": os.path.join(viz_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(viz_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"alpha_beta_evol": os.path.join(viz_dir, f"{file_base_name}_alpha_beta_evol.png"),
+		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 	
 	viz.plot_multilabel_loss_breakdown(
@@ -3211,38 +3225,47 @@ def rslora_finetune_multi_label(
 		f"lod_{lora_dropout}"
 	)
 
+	viz_dir = os.path.join(results_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
 	plot_paths = {
-		"losses_breakdown":    os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-		"losses":              os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"full_val_topk_i2t":   os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-		"full_val_topk_t2i":   os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_per_epoch.png"),
-		"retrieval_best":      os.path.join(results_dir, f"{file_base_name}_retrieval_best.png"),
-		"hp_evol":             os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
+		"losses": os.path.join(viz_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(viz_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"alpha_beta_evol": os.path.join(viz_dir, f"{file_base_name}_alpha_beta_evol.png"),
+		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 
 	viz.plot_multilabel_loss_breakdown(
 		training_losses_breakdown=training_losses_breakdown,
 		filepath=plot_paths["losses_breakdown"],
 	)
+
 	viz.plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
 		image_to_text_metrics_list=img2txt_metrics_all_epochs,
 		text_to_image_metrics_list=txt2img_metrics_all_epochs,
 		fname=plot_paths["retrieval_per_epoch"],
 	)
+
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=final_img2txt_metrics,
 		text_to_image_metrics=final_txt2img_metrics,
 		fname=plot_paths["retrieval_best"],
 	)
+
 	viz.plot_hyperparameter_evolution(
 		eta_min=eta_min,
 		learning_rates=learning_rates_history,
 		weight_decays=weight_decays_history,
 		fname=plot_paths["hp_evol"],
 	)
+
 	viz.plot_train_val_losses(
 		train_losses=training_losses,
 		val_losses=validation_losses,
@@ -3816,22 +3839,25 @@ def dora_finetune_multi_label(
 		f"temp_{temperature}"
 	)
 	
+	viz_dir = os.path.join(results_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
 	plot_paths = {
-		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"loss_breakdown": os.path.join(results_dir, f"{file_base_name}_loss_breakdown.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-		"hp_evol": os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
+		"losses": os.path.join(viz_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(viz_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"alpha_beta_evol": os.path.join(viz_dir, f"{file_base_name}_alpha_beta_evol.png"),
+		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 
 	# Plot loss breakdown (I2T vs T2I)
 	viz.plot_multilabel_loss_breakdown(
 		training_losses_breakdown=training_losses_breakdown,
-		filepath=plot_paths["loss_breakdown"],
+		filepath=plot_paths["losses_breakdown"],
 	)
 
 	viz.plot_retrieval_metrics_per_epoch(
@@ -4434,16 +4460,19 @@ def ia3_finetune_multi_label(
 		f"bs_{train_loader.batch_size}"
 	)
 	
+	viz_dir = os.path.join(results_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
 	plot_paths = {
-		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-		"hp_evol": os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
+		"losses": os.path.join(viz_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(viz_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"alpha_beta_evol": os.path.join(viz_dir, f"{file_base_name}_alpha_beta_evol.png"),
+		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 
 	viz.plot_multilabel_loss_breakdown(
@@ -5119,16 +5148,19 @@ def vera_finetune_multi_label(
 		f"lod_{lora_dropout}"
 	)
 	
+	viz_dir = os.path.join(results_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
 	plot_paths = {
-		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-		"hp_evol": os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
+		"losses": os.path.join(viz_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(viz_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"alpha_beta_evol": os.path.join(viz_dir, f"{file_base_name}_alpha_beta_evol.png"),
+		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 
 	viz.plot_multilabel_loss_breakdown(
@@ -5706,42 +5738,57 @@ def clip_adapter_finetune_multi_label(
 		print(f"{'='*50}")
 
 	# Generate plots
-	file_base = (
+	file_base_name = (
 		f"{clip_adapter_method}_{model_arch}_ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_"
 		f"cbd_{bottleneck_dim}_act_{activation}_temp_{temperature}"
 	)
 
+	viz_dir = os.path.join(results_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
+	plot_paths = {
+		"losses": os.path.join(viz_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(viz_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"alpha_beta_evol": os.path.join(viz_dir, f"{file_base_name}_alpha_beta_evol.png"),
+		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
+	}
+
 	viz.plot_multilabel_loss_breakdown(
 		training_losses_breakdown=training_losses_breakdown,
-		filepath=os.path.join(results_dir, f"{file_base}_loss_breakdown.png"),
+		filepath=plot_paths["losses_breakdown"],
 	)
 	
 	viz.plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
 		image_to_text_metrics_list=img2txt_metrics_all_epochs,
 		text_to_image_metrics_list=txt2img_metrics_all_epochs,
-		fname=os.path.join(results_dir, f"{file_base}_retrieval_per_epoch.png"),
+		fname=plot_paths["retrieval_per_epoch"],
 	)
 	
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=final_img2txt,
 		text_to_image_metrics=final_txt2img,
-		fname=os.path.join(results_dir, f"{file_base}_retrieval_best.png"),
+		fname=plot_paths["retrieval_best"],
 	)
 	
 	viz.plot_hyperparameter_evolution(
 		eta_min=eta_min,
 		learning_rates=learning_rates_history,
 		weight_decays=weight_decays_history,
-		fname=os.path.join(results_dir, f"{file_base}_hp_evol.png"),
+		fname=plot_paths["hp_evol"],
 	)
 
 	viz.plot_train_val_losses(
 		train_losses=training_losses,
 		val_losses=validation_losses,
-		fname=os.path.join(results_dir, f"{file_base}_losses.png"),
+		fname=plot_paths["losses"],
 	)
 
 	return final_tiered_i2t, final_tiered_t2i
@@ -6558,24 +6605,26 @@ def tip_adapter_finetune_multi_label(
 		f"temp_{temperature}"
 	)
 	
+	viz_dir = os.path.join(results_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
 	plot_paths = {
-		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"loss_breakdown": os.path.join(results_dir, f"{file_base_name}_loss_breakdown.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-		"hp_evol": os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
-		"alpha_beta_evol": os.path.join(results_dir, f"{file_base_name}_alpha_beta_evol.png"),
+		"losses": os.path.join(viz_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(viz_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"alpha_beta_evol": os.path.join(viz_dir, f"{file_base_name}_alpha_beta_evol.png"),
+		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 	
 	if actual_trained_epochs > 0:
 		# Plot loss breakdown (I2T vs T2I)
 		viz.plot_multilabel_loss_breakdown(
 			training_losses_breakdown=training_losses_breakdown,
-			filepath=plot_paths["loss_breakdown"],
+			filepath=plot_paths["losses_breakdown"],
 		)
 		
 		viz.plot_retrieval_metrics_per_epoch(
