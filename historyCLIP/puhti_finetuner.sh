@@ -12,7 +12,6 @@
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --time=03-00:00:00
-
 ##############################################################################
 # ARRAY INDEXING SCHEME
 # ──────────────────────────────────────────────────────────────────────────
@@ -69,7 +68,7 @@
 #   H4 + ViT-L/14@336px + lora_plus + all cols      : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal    : --array=14
 ##############################################################################
-#SBATCH --array=0-32
+#SBATCH --array=0-32 # first 11 strats, all cols
 ###SBATCH --array=12-14 # only LoRA+
 ###SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 
@@ -115,11 +114,11 @@ SAMPLINGS=(
 # and multi-label metadata CSV file.
 ##############################################################################
 BASE_DATASET_DIRECTORY=(
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4                       # dataset 0
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4                       				# dataset 0
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31  # dataset 1
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31         # dataset 2
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02             # dataset 3
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31              # dataset 4
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02             	# dataset 3
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31              	# dataset 4
 )
 
 SINGLE_LABEL_FILE="metadata_single_label.csv"
