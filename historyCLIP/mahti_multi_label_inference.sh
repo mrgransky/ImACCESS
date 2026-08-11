@@ -13,7 +13,7 @@
 #SBATCH --mem=72G
 #SBATCH --time=00-06:00:00
 #####SBATCH --begin=09:00:00
-#SBATCH --array=0
+#SBATCH --array=0-2
 
 set -euo pipefail
 
@@ -53,13 +53,18 @@ MODEL_ARCHITECTURES=(
 	"ViT-B/16"         # arch 3
 )
 
-path_files_dir=${DATASETS[$SLURM_ARRAY_TASK_ID]}/multimodal_canonical_labels
+if [ "$SLURM_ARRAY_TASK_ID" -ge "${#COLUMNS[@]}" ]; then
+	echo "Error: Array task ID $SLURM_ARRAY_TASK_ID out of bounds for COLUMNS" >&2
+	exit 1
+fi
+
+path_files_dir=${DATASETS[0]}/${COLUMNS[$SLURM_ARRAY_TASK_ID]} # array job for each column
 
 echo "Processing: ${path_files_dir}"
 echo "Model Arch: ${MODEL_ARCHITECTURES[0]}"
 
 python -u multi_label_inference.py \
-	--pth_files_directory ${path_files_dir} \
+	--pth_files_directory "${path_files_dir}" \
 	--batch_size 16 \
 	--num_workers $SLURM_CPUS_PER_TASK \
 	--model_architecture "${MODEL_ARCHITECTURES[0]}" \

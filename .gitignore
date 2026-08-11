@@ -39,6 +39,7 @@ wgui/media/*jpeg
 clip/cifar10
 clip/cifar100
 clip/imagenet
+CGD-Supervision-Taxonomy/reviewers_feedback.txt
 
 __pycache__/
 *.py[cod]
