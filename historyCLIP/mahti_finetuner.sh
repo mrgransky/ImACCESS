@@ -62,15 +62,16 @@
 #   All 840 jobs                                    : --array=0-839
 #   H4 only (all archs, strategies, cols)           : --array=0-167
 #   H4 + ViT-L/14@336px (all strategies, all cols) : --array=0-41
-#   H4 + ViT-L/14@336px + first 11 strats, all cols: --array=0-32   ✅
+#   H4 + ViT-L/14@336px + first 11 strats, all cols: --array=0-32
 #   H4 + ViT-L/14@336px + all strats + llm only    : --array=0-41:3
 #   H4 + ViT-L/14@336px + all strats + vlm only    : --array=1-41:3
 #   H4 + ViT-L/14@336px + all strats + multimodal  : --array=2-41:3
 #   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
-#SBATCH --array=0-32
-###SBATCH --array=3-5
+#SBATCH --array=0-32 # first 11 strats, all cols
+###SBATCH --array=12-14 # only LoRA+
+###SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 
 set -euo pipefail
 
