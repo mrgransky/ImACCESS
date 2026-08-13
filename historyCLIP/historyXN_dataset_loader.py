@@ -292,7 +292,7 @@ def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 	metadata_train_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_train.csv'))
 	metadata_val_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_val.csv'))
 
-	print(f">> Loading multi-label training dataset: {metadata_train_fpth}")
+	print(f">> Loading {metadata_train_fpth}")
 	df_train = pd.read_csv(
 		filepath_or_buffer=metadata_train_fpth, 
 		on_bad_lines='skip',
@@ -300,7 +300,7 @@ def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 		low_memory=False,
 	)
 	
-	print(f">> Loading multi-label validation dataset: {metadata_val_fpth}")
+	print(f">> Loading {metadata_val_fpth}")
 	df_val = pd.read_csv(
 		filepath_or_buffer=metadata_val_fpth,
 		on_bad_lines='skip',
@@ -320,7 +320,7 @@ def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 	# Convert to sorted list for deterministic ordering
 	all_labels = sorted(all_labels)
 	label_dict = {label: idx for idx, label in enumerate(all_labels)}
-	print(f"{len(label_dict)} {type(label_dict)} labels is created from {len(all_labels)} unique {type(all_labels)} {col}")
+	print(f"[VOCAB] {col}: {len(label_dict)} {type(label_dict)} unique labels is created from Total: {len(all_labels)} unique {type(all_labels)} labels")
 	# print(json.dumps(label_dict, indent=2, ensure_ascii=False))
 	# print("="*100)
 	
@@ -347,7 +347,6 @@ def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 	print(f"\n>> VAL {type(df_val)} {df_val.shape}\n{list(df_val.columns)}")
 	# print(df_val[['img_path', 'multimodal_canonical_labels', 'label_vector']].head(10))
 	print("="*100)
-
 
 	return df_train, df_val, label_dict
 
@@ -788,15 +787,18 @@ def get_multi_label_dataloaders(
 	train_loader.name = f"{dataset_name.lower()}_multilabel_train".upper()
 	
 	val_loader = DataLoader(
-			dataset=val_dataset,
-			batch_size=batch_size,
-			shuffle=False,
-			pin_memory=torch.cuda.is_available(),
-			num_workers=num_workers,
-			prefetch_factor=2 if num_workers > 0 else None,
-			persistent_workers=(num_workers > 0),
-			drop_last=False,
+		dataset=val_dataset,
+		batch_size=batch_size,
+		shuffle=False,
+		pin_memory=torch.cuda.is_available(),
+		num_workers=num_workers,
+		prefetch_factor=2 if num_workers > 0 else None,
+		persistent_workers=(num_workers > 0),
+		drop_last=False,
 	)
 	val_loader.name = f"{dataset_name.lower()}_multilabel_validation".upper()
 	
+	print_loader_info(loader=train_loader)
+	print_loader_info(loader=val_loader)
+
 	return train_loader, val_loader

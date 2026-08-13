@@ -185,7 +185,7 @@ def main():
 		# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 		# print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 		# RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{dataset_type}") # multi_label
-		RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{args.column}") # multimodal_canonical_labels
+		RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{args.column}") # ex) multimodal_canonical_labels
 		os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 
 		print(f">> CLIP Model Architecture: {args.model_architecture}...")
@@ -219,9 +219,6 @@ def main():
 			input_resolution=model_config["image_resolution"],
 			col=args.column,
 		)
-
-		print_loader_info(loader=train_loader)
-		print_loader_info(loader=validation_loader)
 
 		# viz.visualize_samples(validation_loader, num_samples=5)
 		

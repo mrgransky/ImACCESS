@@ -666,7 +666,7 @@ def post_process(
 			f"{dataset_name}_{dataset_type}_label_distribution_{df.shape[0]}_x_{df.shape[1]}.png"
 		)
 		# You might want to create a special multi-label visualization here
-		print(f"Multi-label visualization needs special handling - skipping for now")
+		print(f"[WARNING] Multi-label visualization needs special handling - skipping for now")
 
 	else:
 		# Single-label visualization
@@ -681,6 +681,7 @@ def post_process(
 			DPI=dpi,
 			label_column='label',
 		)
+
 	if not is_multi_label:
 		# Single-label stratified split
 		train_df, val_df = get_stratified_split(
@@ -692,7 +693,7 @@ def post_process(
 		train_df.to_csv(os.path.join(dataset_dir, f'metadata_{dataset_type}_train.csv'), index=False)
 		val_df.to_csv(os.path.join(dataset_dir, f'metadata_{dataset_type}_val.csv'), index=False)
 	else:
-		print(f"Multi-label stratified split not implemented yet!")
+		print(f"[WARNING] Multi-label stratified split not implemented yet!")
 	
 	# Train/val distribution plot
 	if not is_multi_label:  # Only for single-label for now
@@ -1320,7 +1321,7 @@ def get_multi_label_stratified_split(
 	df: pd.DataFrame,
 	csv_file: str,
 	val_split_pct: float,
-	label_col: str = 'multimodal_labels',
+	label_col: str,
 	min_val_label_count: int = 2, # minimum number of samples per label in validation set
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
 	print("-"*150)
