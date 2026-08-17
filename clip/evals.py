@@ -249,7 +249,7 @@ def compute_tiered_retrieval_metrics(
 	verbose: bool = False,
 ) -> Dict:
 	if verbose:
-		print(f"\n{mode}")
+		print(f"\nTiered retrieval metrics {mode}")
 		print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
 		print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
 		print(f"  ├─ Head mask: {head_mask.shape} {head_mask.device}")
@@ -360,75 +360,6 @@ def compute_tiered_retrieval_metrics(
 			)
 
 	return results
-
-def compute_multilabel_validation_loss(
-	model: torch.nn.Module,
-	validation_loader: DataLoader,
-	criterion_i2t,      # BCEWithLogitsLoss with pos_weight, reduction='none'
-	criterion_t2i,      # BCEWithLogitsLoss plain, reduction='none'
-	active_mask,        # [num_classes] bool
-	device: str,
-	all_class_embeds: torch.Tensor,
-	temperature: float,
-	verbose: bool = False,
-) -> float:
-
-	model.eval()
-	total_loss = 0.0
-	total_samples = 0
-	
-	max_batches = max(50, len(validation_loader) // 10)
-	if verbose:
-		print(f"\nMultilabel validation loss:")
-		print(f"  {type(model)} {model.name}")
-		print(f"  {validation_loader.name} {len(validation_loader)} batches")
-		print(f"  max_batches: {max_batches}")
-		print(f"  active_mask: {active_mask.shape} {active_mask.sum()}/{len(active_mask)}")
-		print(f"  all_class_embeds: {all_class_embeds.shape} {all_class_embeds.device}")
-
-	with torch.no_grad():
-		for batch_idx, (images, _, label_vectors) in enumerate(validation_loader):
-			if batch_idx >= max_batches:
-				break
-			
-			batch_size = images.size(0)
-			if batch_size == 0:  # Skip empty batches
-				continue
-					
-			images = images.to(device, non_blocking=True)
-			label_vectors = label_vectors.to(device, non_blocking=True).float()
-			
-			# Encode images
-			image_embeds = model.encode_image(images)
-			image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
-			
-			# Cast to FP32 before similarity + BCE computation
-			image_embeds = image_embeds.float()
-			# all_class_embeds = all_class_embeds.float() # already FP32 — no cast needed
-
-			# Compute similarities
-			i2t_similarities = torch.matmul(image_embeds, all_class_embeds.T) / temperature
-			t2i_similarities = torch.matmul(all_class_embeds, image_embeds.T) / temperature
-			
-			# Compute losses
-			i2t_targets = label_vectors
-			t2i_targets = label_vectors.T
-			
-			i2t_loss_raw = criterion_i2t(i2t_similarities, i2t_targets) # [B, C]
-			loss_i2t = i2t_loss_raw[:, active_mask].mean()
-
-			t2i_loss_raw = criterion_t2i(t2i_similarities, t2i_targets) # [C, B]
-			loss_t2i = t2i_loss_raw[active_mask, :].mean()
-
-			batch_loss = 0.5 * (loss_i2t + loss_t2i)
-			
-			# Correct accumulation
-			total_loss += batch_loss.item() * batch_size
-			total_samples += batch_size
-	
-	avg_loss = total_loss / total_samples if total_samples > 0 else 0.0
-
-	return avg_loss
 
 def chunked_similarity_computation(
 		query_embeddings: torch.Tensor,
@@ -1583,7 +1514,7 @@ def get_multilabel_alignment_score(
 	score = hits.float().mean().item()
 	
 	if verbose:
-		print(f"\n[Alignment Score @ top-{effective_k}] Temperature: {temperature}")
+		print(f"\nAlignment Score @ top-{effective_k} Temperature: {temperature}")
 		print(
 			f"Samples with ≥1 true class in top-{effective_k}: "
 			f"{hits.sum().item()} / {len(hits)} "
@@ -1653,6 +1584,7 @@ def get_multilabel_alignment_score(
 				print(f"rank≤10:  {(miss_ranks_t <= 10).float().mean():.3f}")
 				print(f"rank≤50:  {(miss_ranks_t <= 50).float().mean():.3f}")
 				print(f"rank≤100: {(miss_ranks_t <= 100).float().mean():.3f}")
+
 				if miss_ranks_t.mean() > 100:
 					print(f"mean rank: {miss_ranks_t.mean():.1f} high (>>100) class embeddings geometrically far from image embeddings.")
 				elif miss_ranks_t.mean() <= 50:
@@ -1768,7 +1700,6 @@ def evaluate_best_model(
 	i2t_similarity = validation_results["i2t_similarity"]
 	t2i_similarity = validation_results["t2i_similarity"]
 	device_labels  = validation_results["device_labels"]
-
 
 	tiered_i2t = compute_tiered_retrieval_metrics(
 		similarity_matrix=i2t_similarity,

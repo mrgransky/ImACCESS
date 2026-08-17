@@ -1,4 +1,5 @@
 import os
+from tabnanny import verbose
 import torch
 import pprint
 import ast
@@ -155,7 +156,12 @@ def _compute_label_freq(parsed_labels: list) -> pd.Series:
 	
 	return pd.Series(counter, name="frequency").sort_values(ascending=False)
 
-def _assign_tier(label: str, freq_map: dict, tau_head: int, tau_torso: int) -> str:
+def _assign_tier(
+	label: str, 
+	freq_map: dict, 
+	tau_head: int, 
+	tau_torso: int
+) -> str:
 	f = freq_map.get(label, 0)
 	if f >= tau_head:
 		return "Head"
@@ -169,7 +175,7 @@ def plot_tier_cardinality_boxplot(
 	tier_card_stats: dict,
 	tier_label_counts: dict,
 	tier_label_pct: dict,
-	output_path: str = "plots/tier_cardinality_boxplot.png",
+	output_path: str,
 	strip_sample_n: int = 2000,
 	figsize: Tuple[float, float] = (9, 5),
 	dpi: int = 250,
@@ -208,37 +214,62 @@ def plot_tier_cardinality_boxplot(
 
 	# Strip overlay
 	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
-			vals = card_df[col].values.astype(float)
-			if len(vals) > strip_sample_n:
-					vals = vals[rng.choice(len(vals), strip_sample_n, replace=False)]
-			jitter = rng.uniform(-0.14, 0.14, size=len(vals))
-			ax.scatter(
-					pos + jitter, vals,
-					s=3, 
-					alpha=0.25,
-					color=SEGMENT_SPECS[tier]["color"],
-					linewidths=0, 
-					zorder=2,
-			)
+		vals = card_df[col].values.astype(float)
 
-	# Mean diamond
-	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
-		mean_val = card_df[col].mean()
-		std_val = card_df[col].std()
+		if len(vals) > strip_sample_n:
+			vals = vals[rng.choice(len(vals), strip_sample_n, replace=False)]
+
+		jitter = rng.uniform(-0.14, 0.14, size=len(vals))
 		ax.scatter(
-			pos,
-			mean_val,
-			s=72, 
-			marker="D",
+			pos + jitter, 
+			vals,
+			s=3, 
+			alpha=0.25,
 			color=SEGMENT_SPECS[tier]["color"],
-			edgecolors="black", 
-			linewidths=0.7,
-			zorder=5,
-			label=(
-				f"{SEGMENT_SPECS[tier]['label']} "
-				f"(μ={mean_val:.2f}, σ={std_val:.2f}, med={card_df[col].median():.0f})"
-			),
+			linewidths=0, 
+			zorder=2,
 		)
+
+	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
+			mean_val = card_df[col].mean()
+			std_val = card_df[col].std()
+			
+			# Shaded region
+			ax.fill_between(
+					[pos - 0.35, pos + 0.35],
+					[mean_val - std_val] * 2,
+					[mean_val + std_val] * 2,
+					color=SEGMENT_SPECS[tier]['color'],
+					alpha=0.12,
+					zorder=1
+			)
+			
+			# Error bar
+			ax.errorbar(
+					pos,
+					mean_val,
+					yerr=std_val,
+					fmt='none',
+					ecolor=SEGMENT_SPECS[tier]['color'],
+					elinewidth=2,
+					capsize=6,
+					capthick=2,
+					alpha=0.7,
+					zorder=4
+			)
+			
+			# Mean marker
+			ax.scatter(
+					pos,
+					mean_val,
+					s=100,
+					marker="D",
+					color=SEGMENT_SPECS[tier]["color"],
+					edgecolors="none",
+					# linewidths=1.5,
+					zorder=5,
+					label = f"{tier.upper()} (μ ± σ = {mean_val:.2f} ± {std_val:.2f})"
+			)
 
 	# Sparsity badges
 	ymax_data = max(float(np.max(card_df[c].values)) for c in col_keys)
@@ -268,29 +299,30 @@ def plot_tier_cardinality_boxplot(
 			zorder=7,
 		)
 
-	ax.set_ylabel("Labels per image (cardinality)", fontsize=12)
+	ax.set_ylabel("Label cardinality per image", fontsize=12)
 	ax.set_xticks(positions)
 	ax.set_xticklabels(
 		[
 			f"{SEGMENT_SPECS[t]['label']}\n"
-			f"{tier_label_counts[t]:,} labels\n({tier_label_pct[t]}% vocab)"
+			f"{tier_label_counts[t]:,} labels\n~{tier_label_pct[t]}% of vocab"
 			for t in TIER_ORDER
 		],
 		fontsize=10,
 	)
-	# ax.set_xlim(0.4, 3.6)
+	print(ax.get_ylim())
+	ax.set_ylim(ax.get_ylim()[0], ax.get_ylim()[1] * 1.11)
 	ax.grid(linestyle="--", linewidth=0.3, alpha=0.5, zorder=0)
 
 	# Legend
 	handles, labels = ax.get_legend_handles_labels()
 	ax.legend(
-		handles, labels,
+		handles, 
+		labels,
 		loc="best",
 		title="◆ = mean cardinality",
 		fontsize=8.0,
 		frameon=False,
 		title_fontsize=10.0,
-		ncol=3,
 		fancybox=True,
 		shadow=True,
 	)
@@ -302,97 +334,101 @@ def plot_tier_cardinality_boxplot(
 	plt.close(fig)
 
 def plot_tier_coverage_bars(
-		tier_card_stats: dict,
-		tier_label_counts: dict,
-		tier_label_pct: dict,
-		output_path: str = "plots/tier_coverage_bars.png",
-		figsize: Tuple[float, float] = (8, 6),
-		dpi: int = 250,
+	tier_card_stats: dict,
+	tier_label_counts: dict,
+	tier_label_pct: dict,
+	output_path: str,
+	dpi: int = 250,
 ):
-		coverage_pcts = [tier_card_stats[t]["coverage_pct"] for t in TIER_ORDER]
-		zero_pcts     = [tier_card_stats[t]["zero_pct"]     for t in TIER_ORDER]
-		bar_colors    = [SEGMENT_SPECS[t]["color"]           for t in TIER_ORDER]
-		x             = np.arange(len(TIER_ORDER))
+	coverage_pcts = [tier_card_stats[t]["coverage_pct"] for t in TIER_ORDER]
+	zero_pcts = [tier_card_stats[t]["zero_pct"] for t in TIER_ORDER]
+	bar_colors = [SEGMENT_SPECS[t]["color"] for t in TIER_ORDER]
+	x = np.arange(len(TIER_ORDER))
 
-		fig, ax = plt.subplots(figsize=figsize)
+	fig, ax = plt.subplots(figsize=(13, 9))
 
-		# Bottom bar: images with ≥1 label
-		ax.bar(
-				x, coverage_pcts,
-				color=bar_colors,
-				alpha=0.85,
-				width=0.62,
-				label="≥1 label",
-				zorder=3,
+	# Bottom bar: images with ≥1 label
+	ax.bar(
+		x, 
+		coverage_pcts,
+		color=bar_colors,
+		alpha=0.90,
+		width=0.62,
+		label="≥1 label",
+		zorder=3,
+	)
+
+	# Top bar: images with 0 label
+	ax.bar(
+		x, 
+		zero_pcts,
+		bottom=coverage_pcts,
+		color="#C8C8C8",
+		edgecolor="#AAAAAA",
+		hatch="///",
+		alpha=0.95,
+		width=0.62,
+		label="0 label",
+		zorder=3,
+	)
+
+	# Value annotations inside bars
+	for i, (cov, zero) in enumerate(zip(coverage_pcts, zero_pcts)):
+		# ≥1 label annotation
+		ax.text(
+			i, 
+			cov / 2,
+			f"{cov:.1f}%",
+			ha="center", 
+			va="center",
+			fontsize=14, 
+			color="white", 
+			fontweight="bold",
 		)
 
-		# Top bar: images with 0 labels
-		ax.bar(
-				x, zero_pcts,
-				bottom=coverage_pcts,
-				color="#C8C8C8",
-				edgecolor="#666666",
-				hatch="///",
-				alpha=0.95,
-				width=0.62,
-				label="0 labels",
-				zorder=3,
+		# 0-label annotation
+		ax.text(
+			i, 
+			cov + zero / 2,
+			f"{zero:.1f}%",
+			ha="center", 
+			va="center",
+			fontsize=14, 
+			color="#333333", 
+			fontweight="bold",
 		)
 
-		# Value annotations inside bars
-		for i, (cov, zero) in enumerate(zip(coverage_pcts, zero_pcts)):
-				# ≥1 label annotation
-				ax.text(
-						i, cov / 2,
-						f"{cov:.1f}%",
-						ha="center", 
-						va="center",
-						fontsize=9, 
-						color="white", 
-						fontweight="bold",
-				)
-				# 0-label annotation
-				ax.text(
-						i, cov + zero / 2,
-						f"{zero:.1f}%",
-						ha="center", va="center",
-						fontsize=9, color="#333333", fontweight="bold",
-				)
+	ax.set_ylim(0, 110)  # small headroom for readability
+	# ax.set_yticks([0, 25, 50, 75, 100])
+	# ax.set_yticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=9)
+	ax.set_ylabel("Images (%)", fontsize=11, fontweight="bold")
+	ax.set_xticks(x)
+	ax.set_xticklabels(
+		[
+			f"{SEGMENT_SPECS[t]['label']}\n"
+			f"{tier_label_counts[t]:,} labels\n~{tier_label_pct[t]}% of vocab"
+			for t in TIER_ORDER
+		],
+		fontsize=15,
+	)
+	ax.grid(axis="y", linestyle="--", linewidth=0.3, alpha=0.6, zorder=0)
+	ax.legend(
+		loc="best",
+		title="Tier Label Coverage",
+		title_fontsize=14.0,
+		fontsize=12.0,
+		ncol=2,
+		frameon=False,
+		fancybox=True,
+		shadow=True,
+	)
 
-		# Axes
-		ax.set_ylim(0, 102)  # small headroom for readability
-		# ax.set_yticks([0, 25, 50, 75, 100])
-		# ax.set_yticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=9)
-		ax.set_ylabel("Images (%)", fontsize=11, fontweight="bold")
-		ax.set_xticks(x)
-		ax.set_xticklabels(
-				[
-						f"{SEGMENT_SPECS[t]['label']}\n"
-						f"{tier_label_counts[t]:,} labels\n({tier_label_pct[t]}% vocab)"
-						for t in TIER_ORDER
-				],
-				fontsize=9,
-		)
-		ax.grid(axis="y", linestyle="--", linewidth=0.3, alpha=0.6, zorder=0)
+	for spine in ax.spines.values():
+		spine.set_linewidth(0.7)
 
-		ax.legend(
-				loc="best",
-				fontsize=9.0,
-				title="Tier Label Coverage",
-				title_fontsize=9.0,
-				ncol=2,
-				frameon=False,
-				fancybox=True,
-				shadow=True,
-		)
-
-		for spine in ax.spines.values():
-				spine.set_linewidth(0.7)
-
-		plt.tight_layout()
-		plt.savefig(output_path, dpi=dpi)
-		plt.close(fig)
-		print(f"Saved coverage bars → {output_path}")
+	plt.tight_layout()
+	plt.savefig(output_path, dpi=dpi)
+	plt.close(fig)
 
 def plot_tier_cv_distribution(
 		freq_map: dict,
@@ -530,7 +566,7 @@ def plot_tier_cv_distribution(
 		ax.set_xticklabels(
 				[
 						f"{SEGMENT_SPECS[t]['label']}\n"
-						f"{tier_label_counts[t]:,} labels\n({tier_label_pct[t]}% vocab)"
+						f"{tier_label_counts[t]:,} labels\n~{tier_label_pct[t]}% of vocab"
 						for t in TIER_ORDER
 				],
 				fontsize=10,
@@ -743,7 +779,7 @@ def plot_tier_skewness(
 		ax.set_xticklabels(
 				[
 						f"{SEGMENT_SPECS[t]['label']}\n"
-						f"{tier_label_counts[t]:,} labels\n({tier_label_pct[t]}% vocab)"
+						f"{tier_label_counts[t]:,} labels\n~{tier_label_pct[t]}% of vocab"
 						for t in TIER_ORDER
 				],
 				fontsize=10,
@@ -1087,7 +1123,7 @@ def plot_tier_importance_vs_cardinality(
 	ax_left.set_xticklabels(
 					[
 									f"{SEGMENT_SPECS[t]['label']}\n"
-									f"{tier_label_counts[t]:,} labels\n({tier_label_pct[t]}% vocab)"
+									f"{tier_label_counts[t]:,} labels\n~{tier_label_pct[t]}% of vocab"
 									for t in TIER_ORDER
 					],
 					fontsize=10,
@@ -1390,7 +1426,7 @@ def plot_zipfian_curve(
 		linewidth=1.6,
 		linestyle=":",
 		zorder=4,
-		label=f"τ_head = {tau_head:,}  (top {int(head_pct*100)}% vocab)",
+		label=f"τ_head = {tau_head:,}  (top {int(head_pct*100)}% of vocab)",
 	)
 	ax_zipf.axhline(
 		tau_torso,
@@ -1398,7 +1434,7 @@ def plot_zipfian_curve(
 		linewidth=1.6, 
 		linestyle=":",
 		zorder=4,
-		label=f"τ_torso = {tau_torso:,}  (bottom {int(tail_pct*100)}% vocab)",
+		label=f"τ_torso = {tau_torso:,}  (bottom {int(tail_pct*100)}% of vocab)",
 	)
 
 	# # Boundary vertical lines
@@ -1592,8 +1628,8 @@ def plot_zipfian_curve(
 
 def plot_tier_cardinality_distribution(
 	df: pd.DataFrame,
-	label_col: str = "multimodal_canonical_labels",
-	output_path: str = "plots/tier_cardinality_distribution.png",
+	label_col: str,
+	output_dir: str,
 	tau_head: Optional[int] = None,
 	tau_torso: Optional[int] = None,
 	head_pct: float = 0.1,
@@ -1601,41 +1637,53 @@ def plot_tier_cardinality_distribution(
 	strip_sample_n: int = 2000,
 	verbose: bool = True,
 ) -> dict:
+	viz_dir = os.path.join(output_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
+	output_path=os.path.join(viz_dir, f"{label_col}_tier_cardinality.png")
 
 	# 1. Parse labels
-	parsed      = _parse_label_col(df[label_col])
-	freq_series = _compute_label_freq(parsed)
-	freq_map    = freq_series.to_dict()
-	N_labels    = len(freq_series)
-	N_images    = len(df)
+	parsed = _parse_label_col(df[label_col])
 	if verbose:
-		print(f"\nTier cardinality")
-		print(f"  ├─ column {label_col}")
-		print(f"  ├─ {type(df)} {df.shape}")
-		print(f"  ├─ Total images             : {N_images:,}")
-		print(f"  ├─ Unique canonical labels  : {N_labels:,}")
-		print(f"  └─ Total label occurrences  : {int(freq_series.sum()):,}")
-		print(df.info(verbose=True, memory_usage=True))
+		print(f"Parsed {len(parsed)} labels in {label_col}")
+
+	freq_series = _compute_label_freq(parsed)
+	if verbose:
+		print(f"Computed frequency occurrences of {len(freq_series)} labels")
+		print(freq_series)
+
+	freq_map = freq_series.to_dict()
+	N_unique_labels = len(freq_series)
+	N_images = len(df)
 
 	# 2. Tier thresholds
-	freqs_desc = freq_series.values  # already sorted descending
+	freqs_desc = freq_series.values # already sorted descending
+
+	if verbose:
+		print(f"\nTier cardinality")
+		print(f"  ├─ {type(df)} {df.shape}")
+		print(f"  ├─ Total samples: {N_images:,}")
+		print(f"  ├─ Unique labels: {N_unique_labels} in {label_col}")
+		print(f"  └─ Total label occurrences: {int(freq_series.sum())}")
+		print(df.info(verbose=True, memory_usage=True))
+		print(freqs_desc)
 
 	if tau_head is None:
-		n_head   = max(1, int(np.ceil(N_labels * head_pct)))
+		n_head   = max(1, int(np.ceil(N_unique_labels * head_pct)))
 		tau_head = int(freqs_desc[n_head - 1])
 
 	if tau_torso is None:
-		n_tail    = max(1, int(np.ceil(N_labels * tail_pct)))
-		tau_torso = int(freqs_desc[N_labels - n_tail])
+		n_tail    = max(1, int(np.ceil(N_unique_labels * tail_pct)))
+		tau_torso = int(freqs_desc[N_unique_labels - n_tail])
 
 	if verbose:
-		print(f"\nTier thresholds")
+		print(f"\nTier thresholds [col: {label_col}]")
 		print(type(freq_series), freq_series.shape)
+		print(f"  ├─ head_pct: {head_pct} n_head: {n_head} (unq_labels: {N_unique_labels} * head_pct: {head_pct})")
+		print(f"  ├─ tail_pct: {tail_pct} n_tail: {n_tail} (unq_labels: {N_unique_labels} * tail_pct: {tail_pct})")
+		print(f"  ├─ tau_head: {tau_head} tau_torso: {tau_torso}")
+		print(f"  ├─ f >= tau_head({tau_head}) => HEAD")
+		print(f"  └─ f <  tau_torso({tau_torso}) => TAIL")
 		print(freq_series.value_counts().head(10))
-		print(f"  ├─ head_pct: {head_pct} n_head: {n_head}")
-		print(f"  ├─ tail_pct: {tail_pct} n_tail: {n_tail}")
-		print(f"  ├─ tau_head: {tau_head}  (f >= tau_head  => HEAD)")
-		print(f"  └─ tau_torso: {tau_torso} (f <  tau_torso => TAIL)")
 		print()
 
 	# 3. Per-sample tier cardinality
@@ -1660,9 +1708,9 @@ def plot_tier_cardinality_distribution(
 
 	if verbose:
 		print(f"\n[Cardinality] {type(card_df)} {card_df.shape}")
-		print(card_df.describe())
-		print("="*130)
 		print(card_df.head(5))
+		print("="*80)
+		print(card_df.describe())
 
 	# 4. Tier-level label stats
 	head_mask  = freq_series >= tau_head
@@ -1676,7 +1724,7 @@ def plot_tier_cardinality_distribution(
 	}
 
 	tier_label_pct = {
-		t: round(tier_label_counts[t] / N_labels * 100, 1) 
+		t: round(tier_label_counts[t] / N_unique_labels * 100, 1) 
 		for t in TIER_ORDER
 	}
 
@@ -1686,7 +1734,7 @@ def plot_tier_cardinality_distribution(
 		"Tail":  int(freq_series[tail_mask].sum()),
 	}
 
-	total_occ    = sum(tier_occ.values())
+	total_occ = sum(tier_occ.values())
 
 	tier_occ_pct = {
 		t: round(tier_occ[t] / max(total_occ, 1) * 100, 1)
@@ -1721,7 +1769,7 @@ def plot_tier_cardinality_distribution(
 
 	stats = {
 		"N_images":                 N_images,
-		"N_labels":                 N_labels,
+		"N_unique_labels":          N_unique_labels,
 		"label_col":                label_col,
 		"total_occurrences":        total_occ,
 		"tau_head":                 tau_head,
@@ -1768,7 +1816,7 @@ def plot_tier_cardinality_distribution(
 		groups = [
 			("GLOBAL", [
 				("N images",                          "N_images"),
-				("N canonical labels",                "N_labels"),
+				("N canonical labels",                "N_unique_labels"),
 				("Total label occurrences",           "total_occurrences"),
 				("tau_head (f >= tau_head => HEAD)",  "tau_head"),
 				("tau_torso (f < tau_torso => TAIL)", "tau_torso"),
@@ -1826,6 +1874,7 @@ def plot_tier_cardinality_distribution(
 		print(f"\n{div}")
 		print("  LATEX SNIPPET — ready for §4.3")
 		print(div)
+
 		msg = textwrap.dedent(f"""\
 			Figure~\\ref{{fig:tier_cardinality}} shows the per-sample label cardinality broken down by frequency tier.
 
@@ -1843,6 +1892,7 @@ def plot_tier_cardinality_distribution(
 			of the training objective (Section~\\ref{{ssec:training}}): without reweighting, head-class
 			gradient dominance would suppress learning signal for the {tier_label_pct['Tail']:.1f}% of
 			the vocabulary that constitutes the tail.""")
+
 		print(msg)
 		print(div + "\n")
 		print(json.dumps(stats, indent=2, ensure_ascii=False))
@@ -5173,8 +5223,9 @@ def estimate_openimages_v7_metrics():
 		}
 
 def plot_comparative_radar_chart(
-	summary_stats_dict, 
-	output_dir, 
+	summary_stats_dict,
+	label_col,
+	output_dir,
 ):
 	print("\n>> COMPARATIVE RADAR CHART")
 	print(f"summary_stats_dict:")
@@ -5388,7 +5439,7 @@ def plot_comparative_radar_chart(
 	
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"comparative_radar_chart.png"),
+		fname=os.path.join(output_dir, f"{label_col}_comparative_radar_chart.png"),
 		dpi=250,
 		bbox_inches='tight'
 	)
@@ -5445,7 +5496,11 @@ def get_top_labels_per_source(
 		
 		# Singleton analysis
 		source_singletons = source_counts_df[source_counts_df['Count'] == 1]['Label'].tolist()
-		print(f"Singleton {col} {type(source_singletons)}: {len(source_singletons)}/{len(source_unique)} ({len(source_singletons) / len(source_unique) * 100:.2f}%):")
+		print(
+			f"[SINGLETONS] {col} {type(source_singletons)}: "
+			f"{len(source_singletons)}/{len(source_unique)} "
+			f"({len(source_singletons) / len(source_unique) * 100:.2f}%):"
+		)
 		print(source_singletons[:25])
 
 		# Create individual visualization for this source
@@ -5494,7 +5549,7 @@ def get_top_labels_per_source(
 	
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"comparative_top_labels_all_sources.png"),
+		fname=os.path.join(output_dir, f"top_{top_n}_comparative_labels_x{n_sources}_sources.png"),
 		dpi=DPI,
 		bbox_inches='tight'
 	)
@@ -5553,7 +5608,7 @@ def plot_multi_source_agreement(
 	output_dir, 
 	DPI=200
 ):
-	print("\n>> MULTI-SOURCE LABEL AGREEMENT ANALYSIS")
+	print("\nMULTI-SOURCE LABEL AGREEMENT ANALYSIS")
 	
 	# initialize keys with processed_dfs keys:
 	unique_labels_by_source = {key: set() for key in processed_dfs.keys()}
@@ -5571,7 +5626,7 @@ def plot_multi_source_agreement(
 		unique_labels_by_source[col_name] = set(current_all_labels)
 		sample_count_by_source[col_name] = len(labels_list)
 		
-		print(f"Unique labels in '{col_name}': {len(unique_labels_by_source[col_name])}")
+		print(f"{col_name:<50}{len(unique_labels_by_source[col_name])} unique labels")
 	
 	# Dynamically get the source sets based on available keys
 	source_keys = list(unique_labels_by_source.keys())
@@ -5676,7 +5731,7 @@ def plot_multi_source_agreement(
 					print(f"Median Jaccard Agreement: {np.median(agreement_scores):.3f}")
 					
 					# Visualize agreement distribution
-					fig, axes = plt.subplots(2, 2, figsize=(20, 14))
+					fig, axes = plt.subplots(2, 2, figsize=(21, 13))
 					
 					# Agreement score distribution
 					ax = axes[0, 0]
@@ -5777,21 +5832,18 @@ def multilabel_eda(
 	top_n: int=100,
 	n_top_labels_co_occurrence: int=50,
 	DPI: int=200,
+	verbose: bool=False
 ):
-	print(f"\nMulti-label EDA for {type(df)} {df.shape} (column: {label_column})")
+	print(f"\nMulti-label EDA {type(df)} {df.shape} (column: {label_column})")
 	eda_st = time.time()
 
 	dataset_dir = os.path.dirname(output_dir)
 	dataset_name = os.path.basename(dataset_dir) # HISTORY_X4
+	viz_dir = os.path.join(output_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
 
 	print(f"{dataset_name}: {type(df)} {df.shape}\n{list(df.columns)}")
 	print(df.info(verbose=True, memory_usage="deep"))
-
-	processed_dfs = {
-		"llm_based_labels": df["llm_based_labels"].tolist(),
-		"vlm_based_labels": df["vlm_based_labels"].tolist(),
-		f"{label_column}": 	df[label_column].tolist(),
-	}
 
 	all_individual_labels = list()
 	for labels in df[label_column].tolist():
@@ -5800,23 +5852,39 @@ def multilabel_eda(
 		all_individual_labels.extend(labels)
 	
 	unique_labels = sorted(list(set(all_individual_labels)))
-	print(f"\n[STATS] (Main Column: {label_column})")
-	print(f"  ├─ Total samples: {len(df)}")
-	print(f"  ├─ Total unique labels: {len(unique_labels)}")
-	print(f"  └─ Sample unique labels: {unique_labels[:10]}")
 	
-	print(f"\nLabel Cardinality (Main Column: {label_column})")
 	label_cardinality = df[label_column].apply(len)
-	print(label_cardinality.describe())
-	
+
+	if verbose:
+		print(f"\nLabel Cardinality ({label_column})")
+		print(f"  ├─ {type(df)} {df.shape}")
+		print(f"  ├─ unique labels: {len(unique_labels)}")
+		print(f"  └─ {unique_labels[:10]}")
+		print(label_cardinality.describe())
+
+	processed_dfs = {
+		"llm_based_labels": df["llm_based_labels"].tolist(),
+		"vlm_based_labels": df["vlm_based_labels"].tolist(),
+		f"{label_column}": 	df[label_column].tolist(),
+	}
+
 	all_label_counts = get_top_labels_per_source(
 		processed_dfs=processed_dfs,
 		top_n=top_n,
-		output_dir=output_dir,
+		output_dir=viz_dir,
 		DPI=DPI
 	)
 
-	print("\n>> POWER LAW ANALYSIS")
+	plot_multi_source_agreement(
+		processed_dfs=processed_dfs,
+		output_dir=viz_dir,
+		DPI=DPI,
+	)
+	
+	print(f"\n>> POWER LAW ANALYSIS: {label_column}")
+	print(type(all_label_counts))
+	print(all_label_counts)
+
 	freq_values = all_label_counts[label_column]['Count'].values
 	ranks = np.arange(1, len(freq_values) + 1)
 	
@@ -5852,7 +5920,7 @@ def multilabel_eda(
 	
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"power_law_analysis.png"),
+		fname=os.path.join(viz_dir, f"{label_column}_power_law_analysis.png"),
 		dpi=DPI,
 		bbox_inches='tight',
 	)
@@ -5963,7 +6031,7 @@ def multilabel_eda(
 			
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"diversity_metrics.png"),
+		fname=os.path.join(viz_dir, f"{label_column}_diversity_metrics.png"),
 		dpi=DPI,
 		bbox_inches='tight',
 	)
@@ -6075,7 +6143,7 @@ def multilabel_eda(
 	
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(output_dir, f"imbalance_analysis.png"),
+		fname=os.path.join(viz_dir, f"{label_column}_imbalance_analysis.png"),
 		dpi=DPI,
 		bbox_inches='tight',
 	)
@@ -6123,7 +6191,7 @@ def multilabel_eda(
 		plt.ylabel('Label Combination')
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"unique_label_combinations.png"),
+			fname=os.path.join(viz_dir, f"{label_column}_unique_label_combinations.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
@@ -6183,7 +6251,7 @@ def multilabel_eda(
 		ax_heatmap.set_title(f'Jaccard Similarity Heatmap')
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"jaccard_similarity_heatmap.png"),
+			fname=os.path.join(viz_dir, f"{label_column}_jaccard_similarity_heatmap.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
@@ -6223,7 +6291,7 @@ def multilabel_eda(
 		ax_network.set_title(f'Label Co-occurrence Network (Jaccard > {threshold})')
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"network_visualization.png"),
+			fname=os.path.join(viz_dir, f"{label_column}_network_visualization.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
@@ -6231,12 +6299,6 @@ def multilabel_eda(
 	else:
 		print("Not enough unique labels to display correlation analyses (need at least 2).")
 	
-	plot_multi_source_agreement(
-		processed_dfs=processed_dfs,
-		output_dir=output_dir,
-		DPI=DPI,
-	)
-
 	summary_stats_dict = {
 		'Dataset Name': dataset_name,
 		'Total Samples': len(df),
@@ -6255,8 +6317,9 @@ def multilabel_eda(
 	}
 
 	plot_comparative_radar_chart(
-		summary_stats_dict, 
-		output_dir,
+		summary_stats_dict=summary_stats_dict, 
+		label_col=label_column,
+		output_dir=viz_dir,
 	)
 
 	print("\nCOMPREHENSIVE SUMMARY STATISTICS")
@@ -6297,7 +6360,7 @@ def multilabel_eda(
 	
 	# Save summary to CSV
 	summary_df.to_csv(
-		os.path.join(output_dir, f"summary_statistics.csv"),
+		os.path.join(output_dir, f"{label_column}_summary_statistics.csv"),
 		index=False
 	)
 	

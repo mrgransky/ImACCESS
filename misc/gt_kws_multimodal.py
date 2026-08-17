@@ -5,6 +5,7 @@ import visualize as viz
 import label_statistics as stats
 from nlp_utils import _post_process_
 from clustering import get_canonical_labels
+from stratification import get_multi_label_stratified_split
 
 # LLM models:
 # Qwen/Qwen3-4B-Instruct-2507
@@ -245,23 +246,21 @@ def get_multimodal_annotation(
 		df['vlm_canonical_labels'] = vlm_canonical_labels
 		df['multimodal_canonical_labels'] = multimodal_canonical_labels
 
+		canonical_cols = [
+			'llm_canonical_labels',
+			'vlm_canonical_labels',
+			'multimodal_canonical_labels',
+		]
 		if verbose:
-			empty_llm_canonical = df['llm_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) == 0
-			empty_vlm_canonical = df['vlm_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) == 0
-			empty_multimodal_canonical = df['multimodal_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) == 0
+			for col in canonical_cols:
+				# Create boolean series for empty labels
+				empty_labels = df[col].apply(lambda x: len(x) if x is not None else 0) == 0
+				
+				# Print message and rows if any empty labels found
+				if empty_labels.any():
+					print(f"\n>> Rows with empty labels from: {col}:")
+					print(df[empty_labels].head(50))
 
-			if empty_llm_canonical.any():
-				print(f"\n>> Rows with empty LLM canonical labels...")
-				print(df[empty_llm_canonical].head(50))
-
-			if empty_vlm_canonical.any():
-				print(f"\n>> Rows with empty VLM canonical labels...")
-				print(df[empty_vlm_canonical].head(50))
-
-			if empty_multimodal_canonical.any():
-				print(f"\n>> Rows with empty multimodal canonical labels...")
-				print(df[empty_multimodal_canonical].head(50))
-		
 		before_count = len(df)
 		
 		# Create mask for valid samples (those with canonical labels)
@@ -364,28 +363,33 @@ def get_multimodal_annotation(
 	if verbose:
 		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
 
-	# EDA and stratified split only for full datasets:
+	# EDA, tier cardinality and stratified split only for full datasets:
 	if is_full_dataset:
 		viz.multilabel_eda(
 			df=df,
 			output_dir=OUTPUT_DIR,
-			label_column='multimodal_canonical_labels'
+			label_column="multimodal_canonical_labels",
+			verbose=verbose,
 		)
 
-		viz.plot_tier_cardinality_distribution(
-			df          = df,
-			label_col   = "multimodal_canonical_labels",
-			output_path = os.path.join(OUTPUT_DIR, "tier_cardinality.png"),
-			head_pct    = 0.10,
-			tail_pct    = 0.50,
-			verbose     = verbose,
-		)
+		for idx, col in enumerate(canonical_cols):
+			print(idx, col)
+			viz.plot_tier_cardinality_distribution(
+				df=df,
+				label_col=col,
+				output_dir=OUTPUT_DIR,
+				head_pct=0.10,
+				tail_pct=0.50,
+				verbose=verbose,
+			)
+			print("="*100)
+
 
 		get_multi_label_stratified_split(
 			df=df,
 			csv_file=output_csv,
-			val_split_pct=0.35,
 			label_col='multimodal_canonical_labels',
+			val_split_pct=0.35,
 		)
 
 	return multimodal_labels

@@ -3,6 +3,7 @@ import visualize as viz
 import label_statistics as stats
 from nlp_utils import _post_process_
 from clustering import get_canonical_labels_with_parallel_mapping, cluster
+from stratification import get_multi_label_stratified_split
 
 # how to run:
 # local:
@@ -242,9 +243,9 @@ def merge_csv_files(
 
 	get_multi_label_stratified_split(
 		df=df,
+		val_split_pct=0.35,
 		label_col='multimodal_canonical_labels',
 		csv_file=output_fpath,
-		val_split_pct=0.35,
 	)
 
 @measure_execution_time

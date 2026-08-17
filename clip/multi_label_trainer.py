@@ -1,9 +1,9 @@
 from utils import *
 from early_stopper import EarlyStopping
-from loss import *
 import clip
 from clip_peft import get_injected_peft_clip, get_adapter_peft_clip
 from probe import get_probe_clip
+from loss import *
 from evals import *
 import visualize as viz
 
@@ -1183,7 +1183,7 @@ def full_finetune_multi_label(
 
 	print(f"[{mode}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
 
-	evaluation_results = evaluate_best_model(
+	best_model_eval_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
 		active_mask=active_mask,
@@ -1200,12 +1200,12 @@ def full_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	final_metrics_full = evaluation_results["full_metrics"]
-	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
-	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t = evaluation_results["tiered_i2t"]
-	final_tiered_t2i = evaluation_results["tiered_t2i"]
-	model_source = evaluation_results["model_loaded_from"]
+	final_metrics_full = best_model_eval_results["full_metrics"]
+	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
+	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
+	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
+	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
+	model_source = best_model_eval_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
@@ -1216,7 +1216,7 @@ def full_finetune_multi_label(
 	if verbose:
 		print(f"{'='*50}")
 		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  Model: {model_arch}")
+		print(f"{model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
@@ -1750,7 +1750,7 @@ def lora_finetune_multi_label(
 
 	print(f"[{mode}] Total elapsed: {time.time()-train_start_time:.1f}s")
 
-	evaluation_results = evaluate_best_model(
+	best_model_eval_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
 		active_mask=active_mask,
@@ -1771,12 +1771,12 @@ def lora_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	final_metrics_full = evaluation_results["full_metrics"]
-	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
-	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t        = evaluation_results["tiered_i2t"]
-	final_tiered_t2i        = evaluation_results["tiered_t2i"]
-	model_source = evaluation_results["model_loaded_from"]
+	final_metrics_full = best_model_eval_results["full_metrics"]
+	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
+	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
+	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
+	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
+	model_source = best_model_eval_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
@@ -1787,7 +1787,7 @@ def lora_finetune_multi_label(
 	if verbose:
 		print(f"{'='*50}")
 		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  Model: {model_arch}")
+		print(f"{model_arch}")
 		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
