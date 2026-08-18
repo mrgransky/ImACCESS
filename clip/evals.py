@@ -495,183 +495,6 @@ def compute_multilabel_mrr(
 		
 		return np.mean(reciprocal_ranks) if reciprocal_ranks else 0.0
 
-def compute_retrieval_metrics_from_similarity_old(
-	similarity_matrix: torch.Tensor,
-	query_labels: torch.Tensor,
-	candidate_labels: torch.Tensor,
-	topK_values: List[int],
-	mode: str = "Image-to-Text",
-	class_counts: Optional[torch.Tensor] = None,
-	max_k: Optional[int] = None,
-	cache_dir: str = None,
-	cache_key: str = None,
-	is_training: bool = False,
-	chunk_size: int = 1000,
-	verbose: bool = False,
-) -> Dict:
-	"""
-	Compute retrieval metrics (mP, mAP, Recall) with memory optimization and proper multi-label support.
-	
-	Args:
-			similarity_matrix: [num_queries, num_candidates]
-			query_labels: [num_queries] for single-label or [num_queries, num_classes] for multi-label
-			candidate_labels: [num_candidates] for single-label or [num_candidates, num_classes] for multi-label  
-			topK_values: List of K values for evaluation
-			mode: "Image-to-Text" or "Text-to-Image"
-			class_counts: Number of samples per class (for single-label recall)
-			max_k: Maximum K to consider
-			cache_dir: Cache directory
-			cache_key: Cache identifier
-			is_training: Skip caching if True
-			verbose: Print progress
-			chunk_size: Chunk size for memory optimization
-			
-	Returns:
-			Dictionary with mP, mAP, and Recall metrics
-	"""
-	
-	num_queries, num_candidates = similarity_matrix.shape
-	device = similarity_matrix.device
-	
-	# Validate inputs
-	if query_labels.dim() not in [1, 2] or candidate_labels.dim() not in [1, 2]:
-		raise ValueError("Labels must be 1D (single-label) or 2D (multi-label)")
-	
-	# Determine if multi-label based on labels dimensionality
-	is_multi_label = (
-		len(candidate_labels.shape) == 2 if mode == "Text-to-Image" 
-		else len(query_labels.shape) == 2
-	)
-
-	# Sanity check — relevant items per query should reflect tier size 
-	if verbose and is_multi_label:
-		if mode == "Image-to-Text":
-			# query_labels: [N_images, N_tier] — relevant = true classes per image
-			relevant_per_query = (query_labels > 0).sum(dim=1).float()
-			n_candidates = similarity_matrix.shape[1]
-			print(f"\n[I2T Sanity] Relevant items per query (out of {n_candidates} candidates):")
-			print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
-			print(f"  ├─ mean: {relevant_per_query.mean():.2f} std: {relevant_per_query.std():.2f}")
-			print(f"  ├─ zero-relevant queries: {( relevant_per_query == 0).sum().item()}")
-
-			if relevant_per_query.max().item() > n_candidates:
-				print(f"  └─ [WARNING] max relevant ({relevant_per_query.max():.0f}) "
-						f"> num candidates ({n_candidates}) — "
-						f"full label vector may be leaking into tier computation")
-			else:
-				print(f"  └─ [OK] max relevant ≤ num candidates — tier labels correctly restricted")
-		else:  # Text-to-Image
-			# candidate_labels: [N_images, N_tier] — relevant = images per class
-			relevant_per_query = candidate_labels.sum(dim=0).float()  # [N_tier]
-			n_queries = similarity_matrix.shape[0]
-			print(f"\n[T2I Sanity] Relevant items per query class (out of {similarity_matrix.shape[1]} images):")
-			print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
-			print(f"  ├─ mean: {relevant_per_query.mean():.2f} std: {relevant_per_query.std():.2f}")
-			print(f"  ├─ zero-relevant queries: {( relevant_per_query == 0).sum().item()}")
-			# print(
-			# 	f"    min={relevant_per_query.min():.0f} "
-			# 	f"max={relevant_per_query.max():.0f} "
-			# 	f"mean={relevant_per_query.mean():.2f} "
-			# 	f"zero-relevant classes={( relevant_per_query == 0).sum().item()}"
-			# )
-			if (relevant_per_query == 0).any():
-				zero_count = (relevant_per_query == 0).sum().item()
-				print(
-					f"  └─ [WARNING] {zero_count} classes have zero relevant images "
-					f"— likely inactive classes (freq=0 in validation). "
-					f"These contribute 0 to mAP and are expected in full evaluation. "
-					f"Tiered evaluation will filter these via active_mask."
-				)
-			else:
-				print(f"  └─ [OK] All query classes have ≥1 relevant image")
-
-	# Check cache
-	cache_file = None
-	if cache_dir and cache_key and not is_training:
-		cache_file = os.path.join(cache_dir, f"{cache_key}_retrieval_metrics.json")
-		if os.path.exists(cache_file):
-			try:
-				if verbose:
-					print(f"Loading cached metrics from {cache_file}")
-				with open(cache_file, 'r') as f:
-					return json.load(f)
-			except Exception as e:
-				if verbose:
-					print(f"Cache loading failed: {e}. Computing metrics.")
-	
-	# Validate and filter K values
-	valid_K_values = [K for K in topK_values if K <= (max_k or num_candidates)]
-	if not valid_K_values:
-		raise ValueError("No valid K values provided")
-	
-	# Get top-K indices for all queries (memory efficient)
-	# all_sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
-	# Use chunked version:
-	chunk_size = 256
-	all_sorted_indices = torch.cat([
-		torch.argsort(similarity_matrix[i:i+chunk_size], dim=1, descending=True)
-		for i in range(0, similarity_matrix.shape[0], chunk_size)
-	], dim=0)	
-
-	metrics = {"mP": {}, "mAP": {}, "Recall": {}}
-	for K in valid_K_values:
-		top_k_indices = all_sorted_indices[:, :K]
-		
-		# Compute correctness mask based on dataset type
-		if is_multi_label:
-			correct_mask = compute_multilabel_correctness(
-				top_k_indices, 
-				query_labels, 
-				candidate_labels, 
-				mode, 
-				K, 
-				chunk_size,
-			)
-		else:
-			correct_mask = compute_singlelabel_correctness(
-				top_k_indices, 
-				query_labels, 
-				candidate_labels, 
-				K,
-			)
-		
-		# Compute metrics
-		metrics["mP"][str(K)] = correct_mask.float().mean().item()
-
-		# Compute Recall
-		if mode == "Image-to-Text":
-			metrics["Recall"][str(K)] = correct_mask.any(dim=1).float().mean().item()
-		else:  # Text-to-Image
-			if is_multi_label:
-				# candidate_labels: [N_images, N_tier] — already sliced to tier classes
-				# num_queries == N_tier (one query per class)
-				relevant_counts = candidate_labels.sum(dim=0).float()        # [num_queries]
-				retrieved_counts = correct_mask.float().sum(dim=1)           # [num_queries]
-				valid = relevant_counts > 0
-				recall_per_query = torch.where(
-					valid,
-					retrieved_counts / relevant_counts.clamp(min=1),
-					torch.zeros_like(retrieved_counts),
-				)
-				metrics["Recall"][str(K)] = recall_per_query[valid].mean().item() if valid.any() else 0.0
-			else:
-				if class_counts is None:
-					raise ValueError("class_counts required for single-label text-to-image")
-				relevant_counts = class_counts[query_labels]
-				recalled = correct_mask.sum(dim=1).float()
-				metrics["Recall"][str(K)] = (recalled / relevant_counts.clamp(min=1)).mean().item()
-
-		# Compute mAP (vectorized)
-		positions = torch.arange(1, K + 1, device=device).float().unsqueeze(0)
-		cumulative_correct = correct_mask.float().cumsum(dim=1)
-		precisions = cumulative_correct / positions
-		
-		# AP = sum(precision * relevance) / num_relevant
-		ap_scores = (precisions * correct_mask.float()).sum(dim=1) / correct_mask.sum(dim=1).clamp(min=1)
-		metrics["mAP"][str(K)] = ap_scores.nanmean().item()
-	
-	return metrics
-
 def compute_retrieval_metrics_from_similarity(
 	similarity_matrix: torch.Tensor,
 	query_labels: torch.Tensor,
@@ -692,10 +515,23 @@ def compute_retrieval_metrics_from_similarity(
 	mAP@K uses the standard truncated-AP definition:
 		AP@K(q) = sum_{r=1}^{K} P(r) * rel(r) / min(R_q, K)
 	where R_q is the TOTAL number of relevant items for query q (not just
-	those retrieved within the top-K). This is invariant to how many of
-	the relevant items happen to fall inside the top-K window, unlike
-	dividing by correct_mask.sum(dim=1), which incorrectly rewards
-	queries that only have relevant items outside the window.
+	those retrieved within the top-K), and K is the REQUESTED K — not the
+	number of candidates actually available in a (possibly small) tier.
+
+	Critical fix vs. earlier versions: previously, any requested K that
+	exceeded the number of available candidates (e.g. K=10 on a shared
+	"rare" tier with only 3 classes) was silently DROPPED from the output
+	dict entirely. Downstream code doing `tier_metrics['mAP'].get('10', 0)`
+	then rendered this as a false zero, which is what produced the zero
+	shared-tiered I2T values.
+
+	Fix: every requested K now always produces an entry in the output,
+	keyed by the REQUESTED K (not the effective one). Internally we clamp
+	to `effective_K = min(requested_K, num_candidates)` for indexing/
+	ranking, but the AP@K normalization still divides by
+	min(R_q, requested_K) per the standard definition — this correctly
+	reflects that the metric is well-defined but constrained by the tier
+	size, rather than silently disappearing.
 
 	Args:
 			similarity_matrix: [num_queries, num_candidates]
@@ -704,7 +540,7 @@ def compute_retrieval_metrics_from_similarity(
 			topK_values: List of K values for evaluation
 			mode: "Image-to-Text" or "Text-to-Image"
 			class_counts: Number of samples per class (for single-label recall / T2I R_q)
-			max_k: Maximum K to consider
+			max_k: Optional hard cap on K (rarely needed now that effective_K handles small tiers)
 			cache_dir: Cache directory
 			cache_key: Cache identifier
 			is_training: Skip caching if True
@@ -712,7 +548,7 @@ def compute_retrieval_metrics_from_similarity(
 			chunk_size: Chunk size for memory optimization
 
 	Returns:
-			Dictionary with mP, mAP, and Recall metrics
+			Dictionary with mP, mAP, and Recall metrics, one entry per REQUESTED K in topK_values.
 	"""
 
 	num_queries, num_candidates = similarity_matrix.shape
@@ -774,15 +610,28 @@ def compute_retrieval_metrics_from_similarity(
 				if verbose:
 					print(f"Cache loading failed: {e}. Computing metrics.")
 
-	# Validate and filter K values
-	valid_K_values = [K for K in topK_values if K <= (max_k or num_candidates)]
-	if not valid_K_values:
+	# ── Requested K values are NEVER dropped, even if they exceed num_candidates ──
+	# We only drop K if it exceeds max_k (an explicit user-imposed hard cap), never
+	# because a small tier happens to have fewer candidates than K.
+	requested_K_values = [K for K in topK_values if K <= (max_k or float("inf"))]
+	if not requested_K_values:
 		raise ValueError("No valid K values provided")
 
-	# Get top-K indices for all queries (memory efficient, chunked)
+	if verbose and any(K > num_candidates for K in requested_K_values):
+		dropped_effective = [K for K in requested_K_values if K > num_candidates]
+		print(
+			f"[K clamp] {mode}: requested K={dropped_effective} exceed "
+			f"num_candidates={num_candidates} in this tier — "
+			f"will compute at effective_K=min(K, num_candidates) but still "
+			f"report under the REQUESTED K key (previously these were dropped entirely)."
+		)
+
+	# Get top-K indices for all queries (memory efficient, chunked).
+	# Sort only once, using the LARGEST effective_K needed across all requested K.
+	max_effective_K = min(max(requested_K_values), num_candidates)
 	chunk_size = 256
 	all_sorted_indices = torch.cat([
-		torch.argsort(similarity_matrix[i:i + chunk_size], dim=1, descending=True)
+		torch.argsort(similarity_matrix[i:i + chunk_size], dim=1, descending=True)[:, :max_effective_K]
 		for i in range(0, similarity_matrix.shape[0], chunk_size)
 	], dim=0)
 
@@ -806,8 +655,10 @@ def compute_retrieval_metrics_from_similarity(
 	has_relevant = relevant_counts > 0   # queries with at least 1 relevant item
 
 	metrics = {"mP": {}, "mAP": {}, "Recall": {}}
-	for K in valid_K_values:
-		top_k_indices = all_sorted_indices[:, :K]
+	for requested_K in requested_K_values:
+		# effective_K: how many candidates we can ACTUALLY rank/retrieve in this tier
+		effective_K = min(requested_K, num_candidates)
+		top_k_indices = all_sorted_indices[:, :effective_K]
 
 		# Compute correctness mask based on dataset type
 		if is_multi_label:
@@ -816,7 +667,7 @@ def compute_retrieval_metrics_from_similarity(
 				query_labels,
 				candidate_labels,
 				mode,
-				K,
+				effective_K,
 				chunk_size,
 			)
 		else:
@@ -824,15 +675,17 @@ def compute_retrieval_metrics_from_similarity(
 				top_k_indices,
 				query_labels,
 				candidate_labels,
-				K,
+				effective_K,
 			)
 
+		key = str(requested_K)  # ALWAYS key by requested K, never silently dropped
+
 		# Compute metrics
-		metrics["mP"][str(K)] = correct_mask.float().mean().item()
+		metrics["mP"][key] = correct_mask.float().mean().item()
 
 		# Compute Recall
 		if mode == "Image-to-Text":
-			metrics["Recall"][str(K)] = correct_mask.any(dim=1).float().mean().item()
+			metrics["Recall"][key] = correct_mask.any(dim=1).float().mean().item()
 		else:  # Text-to-Image
 			if is_multi_label:
 				retrieved_counts = correct_mask.float().sum(dim=1)     # [num_queries]
@@ -841,25 +694,39 @@ def compute_retrieval_metrics_from_similarity(
 					retrieved_counts / relevant_counts.clamp(min=1),
 					torch.zeros_like(retrieved_counts),
 				)
-				metrics["Recall"][str(K)] = (
+				metrics["Recall"][key] = (
 					recall_per_query[has_relevant].mean().item() if has_relevant.any() else 0.0
 				)
 			else:
 				recalled = correct_mask.sum(dim=1).float()
-				metrics["Recall"][str(K)] = (recalled / relevant_counts.clamp(min=1)).mean().item()
+				metrics["Recall"][key] = (recalled / relevant_counts.clamp(min=1)).mean().item()
 
 		# ── Correct truncated mAP@K ──
-		# AP@K(q) = sum_{r=1}^{K} P(r) * rel(r) / min(R_q, K)
-		positions = torch.arange(1, K + 1, device=device, dtype=torch.float32).unsqueeze(0)
+		# AP@K(q) = sum_{r=1}^{effective_K} P(r) * rel(r) / min(R_q, requested_K)
+		# NOTE: normalization uses the REQUESTED K (standard definition), while the
+		# summation itself is only computed over the effective_K columns that
+		# actually exist. If effective_K < requested_K, this correctly yields a
+		# lower AP@K than would be achievable with more candidates — it does NOT
+		# silently vanish or get mis-keyed, unlike the previous implementation.
+		positions = torch.arange(1, effective_K + 1, device=device, dtype=torch.float32).unsqueeze(0)
 		cumulative_correct = correct_mask.float().cumsum(dim=1)
 		precisions = cumulative_correct / positions
 
-		ap_denominator = relevant_counts.clamp(min=1).clamp(max=K)     # min(R_q, K), guarded against 0
+		ap_denominator = relevant_counts.clamp(min=1).clamp(max=requested_K)  # min(R_q, requested_K)
 		ap_scores = (precisions * correct_mask.float()).sum(dim=1) / ap_denominator
 
-		metrics["mAP"][str(K)] = (
+		metrics["mAP"][key] = (
 			ap_scores[has_relevant].mean().item() if has_relevant.any() else 0.0
 		)
+
+	# Persist to cache
+	if cache_file:
+		try:
+			with open(cache_file, 'w') as f:
+				json.dump(metrics, f)
+		except Exception as e:
+			if verbose:
+				print(f"Cache write failed: {e}")
 
 	return metrics
 
