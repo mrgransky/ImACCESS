@@ -144,9 +144,11 @@ def merge_csv_files(
 		print(f"[FILTERING] samples with no valid canonical labels")
 
 	before_count = len(df)
-	df = df[df['multimodal_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) > 0].copy()
+	# Create mask for valid samples (those with canonical labels)
+	valid_mask = df['multimodal_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) > 0
+	# Filter dataframe
+	df = df[valid_mask].copy()
 	after_count = len(df)
-	
 	if verbose:
 		print(f"\n[DONE] Canonical mapping:")
 		print(f"   Samples before: {before_count:,}")
@@ -157,7 +159,7 @@ def merge_csv_files(
 		
 		# Show some statistics
 		label_counts = df['multimodal_canonical_labels'].apply(len)
-		print(f"\n   Labels per sample:")
+		print(f"\nLabels per sample:")
 		print(f"     Mean: {label_counts.mean():.2f}")
 		print(f"     Median: {label_counts.median():.0f}")
 		print(f"     Min: {label_counts.min()}")
@@ -184,22 +186,27 @@ def merge_csv_files(
 
 	if verbose:
 		print(f"   ✓ Deduplication complete")
+
 		llm_duplicate_count = sum(
 			1 for labels in df['llm_canonical_labels']
 			if labels is not None and len(labels) != len(set(labels))
 		)
+
 		vlm_duplicate_count = sum(
 			1 for labels in df['vlm_canonical_labels']
 			if labels is not None and len(labels) != len(set(labels))
 		)
+
 		multimodal_duplicate_count = sum(
 			1 for labels in df['multimodal_canonical_labels']
 			if labels is not None and len(labels) != len(set(labels))
 		)
 
-		print(f"[LLM] Documents with duplicates: {llm_duplicate_count:,} ({llm_duplicate_count/len(df)*100:.1f}%)")
-		print(f"[VLM] Documents with duplicates: {vlm_duplicate_count:,} ({vlm_duplicate_count/len(df)*100:.1f}%)")
-		print(f"[Multimodal] Documents with duplicates: {multimodal_duplicate_count:,} ({multimodal_duplicate_count/len(df)*100:.1f}%)")
+		print(f"\n>> Duplicate labels in canonical labels:")
+
+		print(f"[LLM] {llm_duplicate_count:,} ({llm_duplicate_count/len(df)*100:.1f}%)")
+		print(f"[VLM] {vlm_duplicate_count:,} ({vlm_duplicate_count/len(df)*100:.1f}%)")
+		print(f"[Multimodal] {multimodal_duplicate_count:,} ({multimodal_duplicate_count/len(df)*100:.1f}%)")
 		print(f"   ✓ Verified: 0 duplicates remaining")
 	
 	# singleton analysis
@@ -212,6 +219,9 @@ def merge_csv_files(
 		output_directory=OUTPUT_DIR, 
 		verbose=verbose
 	)
+	print("="*100)
+	print(df.info(verbose=True, memory_usage=True))
+	print("="*100)
 
 	if verbose:
 		print(f"Saving {type(df)} {df.shape}\n{list(df.columns)}")
@@ -232,14 +242,22 @@ def merge_csv_files(
 		label_column='multimodal_canonical_labels'
 	)
 
-	viz.plot_tier_cardinality_distribution(
-		df          = df,
-		label_col   = "multimodal_canonical_labels",
-		output_path = os.path.join(OUTPUT_DIR, "tier_cardinality.png"),
-		head_pct    = 0.10,
-		tail_pct    = 0.50,
-		verbose     = verbose,
-	)
+	canonical_cols = [
+		'llm_canonical_labels',
+		'vlm_canonical_labels',
+		'multimodal_canonical_labels',
+	]
+
+	for idx, col in enumerate(canonical_cols):
+		print(idx, col)
+		viz.plot_tier_cardinality_distribution(
+			df=df,
+			label_col=col,
+			output_dir=OUTPUT_DIR,
+			head_pct=0.10,
+			tail_pct=0.50,
+			verbose=verbose,
+		)
 
 	get_multi_label_stratified_split(
 		df=df,

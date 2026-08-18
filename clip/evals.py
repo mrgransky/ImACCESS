@@ -2,54 +2,54 @@ from utils import *
 import clip
 
 def check_lora_weight_health(model, optimizer=None, verbose=True):
-    issues = []
-    stats = {"A": {}, "B": {}}
-    
-    for name, param in model.named_parameters():
-        if not param.requires_grad:
-            continue
-        group = "A" if "lora_A" in name else "B" if "lora_B" in name else None
-        if group is None:
-            continue
-        has_nan = torch.isnan(param.data).any().item()
-        has_inf = torch.isinf(param.data).any().item()
-        norm = param.data.norm().item()
-        if has_nan or has_inf:
-            issues.append(f"  ✗ [weight] {name}: nan={has_nan} inf={has_inf} norm={norm:.4e}")
-        stats[group][name] = norm
+		issues = []
+		stats = {"A": {}, "B": {}}
+		
+		for name, param in model.named_parameters():
+				if not param.requires_grad:
+						continue
+				group = "A" if "lora_A" in name else "B" if "lora_B" in name else None
+				if group is None:
+						continue
+				has_nan = torch.isnan(param.data).any().item()
+				has_inf = torch.isinf(param.data).any().item()
+				norm = param.data.norm().item()
+				if has_nan or has_inf:
+						issues.append(f"  ✗ [weight] {name}: nan={has_nan} inf={has_inf} norm={norm:.4e}")
+				stats[group][name] = norm
 
-        # Check optimizer state for this parameter
-        if optimizer is not None and param in optimizer.state:
-            state = optimizer.state[param]
-            for state_key in ("exp_avg", "exp_avg_sq"):  # Adam m and v
-                if state_key in state:
-                    s = state[state_key]
-                    if torch.isnan(s).any() or torch.isinf(s).any():
-                        issues.append(
-                            f"  ✗ [optim.{state_key}] {name}: "
-                            f"nan={torch.isnan(s).any().item()} "
-                            f"inf={torch.isinf(s).any().item()}"
-                        )
+				# Check optimizer state for this parameter
+				if optimizer is not None and param in optimizer.state:
+						state = optimizer.state[param]
+						for state_key in ("exp_avg", "exp_avg_sq"):  # Adam m and v
+								if state_key in state:
+										s = state[state_key]
+										if torch.isnan(s).any() or torch.isinf(s).any():
+												issues.append(
+														f"  ✗ [optim.{state_key}] {name}: "
+														f"nan={torch.isnan(s).any().item()} "
+														f"inf={torch.isinf(s).any().item()}"
+												)
 
-    A_norms = list(stats["A"].values())
-    B_norms = list(stats["B"].values())
-    
-    if verbose:
-        print("-"*60)
-        print(f"[Weight Health]")
-        if A_norms:
-            print(f"lora_A (min, max): ({min(A_norms):.4f}, {max(A_norms):.4f}) mean: {np.mean(A_norms):.4f}")
-        if B_norms:
-            print(f"lora_B (min, max): ({min(B_norms):.4f}, {max(B_norms):.4f}) mean: {np.mean(B_norms):.4f}")
-        if issues:
-            print(f"  !! {len(issues)} corrupted tensors:")
-            for issue in issues[:20]:  # cap output
-                print(issue)
-        else:
-            print(f"[OK] All weights and optimizer states healthy")
-        print("-"*60)
-    
-    return len(issues) == 0, A_norms, B_norms
+		A_norms = list(stats["A"].values())
+		B_norms = list(stats["B"].values())
+		
+		if verbose:
+				print("-"*60)
+				print(f"[Weight Health]")
+				if A_norms:
+						print(f"lora_A (min, max): ({min(A_norms):.4f}, {max(A_norms):.4f}) mean: {np.mean(A_norms):.4f}")
+				if B_norms:
+						print(f"lora_B (min, max): ({min(B_norms):.4f}, {max(B_norms):.4f}) mean: {np.mean(B_norms):.4f}")
+				if issues:
+						print(f"  !! {len(issues)} corrupted tensors:")
+						for issue in issues[:20]:  # cap output
+								print(issue)
+				else:
+						print(f"[OK] All weights and optimizer states healthy")
+				print("-"*60)
+		
+		return len(issues) == 0, A_norms, B_norms
 
 def check_training_health(
 		model,
@@ -209,7 +209,7 @@ def compute_adaptive_min_val_support(
 	val_support = query_labels.sum(dim=0)          # [C] per-class image count
 	active_support = val_support[active_mask]      # only active classes
 	if verbose:
-		print(f"\nAdaptive min_val_support")
+		print(f"\nComputing Adaptive min_val_support")
 		print(f"val_support: {type(val_support)} {val_support.shape} {val_support.device} (min, max): ({val_support.min().item()}, {val_support.max().item()})")
 		print(f"active_support:  {type(active_support)} {active_support.shape} {active_support.device} (min, max): ({active_support.min().item()}, {active_support.max().item()})")
 
@@ -235,6 +235,11 @@ def compute_adaptive_min_val_support(
 			f"median={active_support.float().median().item()}"
 		)
 		print(f"{percentile*100:.0f}th percentile = {threshold} (clamped to [{absolute_min}, {absolute_max}])")
+		print(
+			f"Tiered retrieval metrics "
+			f"(Overall / Head / Rare) "
+			f"with min_val_support: {threshold} (adaptive)"
+		)
 
 	return threshold
 
@@ -266,13 +271,6 @@ def compute_tiered_retrieval_metrics(
 		verbose=verbose,
 	)
 
-	if verbose:
-		print(
-			f"\nComputing tiered retrieval metrics "
-			f"(Overall / Head / Rare) "
-			f"with min_val_support: {min_val_support} (adaptive)"
-		)
-
 	# Per-class validation support
 	# query_labels: [N_images, C] — col sum gives per-class image count
 	val_support = query_labels.sum(dim=0)  # [C]
@@ -287,7 +285,7 @@ def compute_tiered_retrieval_metrics(
 		"rare":    rare_mask & active_mask & supported_mask,
 	}
 	if verbose:
-		print(f"\n  [Support filter] min_val_support={min_val_support}")
+		print(f"\nSupport filter min_val_support={min_val_support}")
 		print(f"  ├─ Active classes before filter : {active_mask.sum().item()}")
 		print(f"  ├─ Active classes after  filter : {(active_mask & supported_mask).sum().item()}")
 		print(f"  ├─ Head   classes after  filter : {(head_mask & active_mask & supported_mask).sum().item()}")
@@ -510,8 +508,6 @@ def compute_retrieval_metrics_from_similarity(
 		else len(query_labels.shape) == 2
 	)
 
-	# ├─ 
-	# └─ 
 	# Sanity check — relevant items per query should reflect tier size 
 	if verbose and is_multi_label:
 		if mode == "Image-to-Text":
@@ -611,26 +607,26 @@ def compute_retrieval_metrics_from_similarity(
 
 		# Compute Recall
 		if mode == "Image-to-Text":
-				metrics["Recall"][str(K)] = correct_mask.any(dim=1).float().mean().item()
+			metrics["Recall"][str(K)] = correct_mask.any(dim=1).float().mean().item()
 		else:  # Text-to-Image
-				if is_multi_label:
-						# candidate_labels: [N_images, N_tier] — already sliced to tier classes
-						# num_queries == N_tier (one query per class)
-						relevant_counts = candidate_labels.sum(dim=0).float()        # [num_queries]
-						retrieved_counts = correct_mask.float().sum(dim=1)           # [num_queries]
-						valid = relevant_counts > 0
-						recall_per_query = torch.where(
-								valid,
-								retrieved_counts / relevant_counts.clamp(min=1),
-								torch.zeros_like(retrieved_counts),
-						)
-						metrics["Recall"][str(K)] = recall_per_query[valid].mean().item() if valid.any() else 0.0
-				else:
-						if class_counts is None:
-								raise ValueError("class_counts required for single-label text-to-image")
-						relevant_counts = class_counts[query_labels]
-						recalled = correct_mask.sum(dim=1).float()
-						metrics["Recall"][str(K)] = (recalled / relevant_counts.clamp(min=1)).mean().item()
+			if is_multi_label:
+				# candidate_labels: [N_images, N_tier] — already sliced to tier classes
+				# num_queries == N_tier (one query per class)
+				relevant_counts = candidate_labels.sum(dim=0).float()        # [num_queries]
+				retrieved_counts = correct_mask.float().sum(dim=1)           # [num_queries]
+				valid = relevant_counts > 0
+				recall_per_query = torch.where(
+					valid,
+					retrieved_counts / relevant_counts.clamp(min=1),
+					torch.zeros_like(retrieved_counts),
+				)
+				metrics["Recall"][str(K)] = recall_per_query[valid].mean().item() if valid.any() else 0.0
+			else:
+				if class_counts is None:
+					raise ValueError("class_counts required for single-label text-to-image")
+				relevant_counts = class_counts[query_labels]
+				recalled = correct_mask.sum(dim=1).float()
+				metrics["Recall"][str(K)] = (recalled / relevant_counts.clamp(min=1)).mean().item()
 
 		# Compute mAP (vectorized)
 		positions = torch.arange(1, K + 1, device=device).float().unsqueeze(0)
@@ -726,8 +722,7 @@ def get_validation_metrics(
 ) -> Dict:
 
 	if verbose:
-		print("\nComputing validation metrics")
-		print(f"└─ Temperature: {temperature}")
+		print(f"\nComputing validation metrics Temperature: {temperature}")
 
 	model.eval()
 	torch.cuda.empty_cache()
@@ -754,8 +749,10 @@ def get_validation_metrics(
 	
 	cache_file = os.path.join(
 		cache_dir,
-		f"{dataset_name}_{finetune_strategy}_bs_{validation_loader.batch_size}_"
-		f"nw_{num_workers}_{model_class_name}_{model_arch_name.replace('/', '_')}_"
+		f"{dataset_name}_{finetune_strategy}_"
+		f"bs_{validation_loader.batch_size}_"
+		f"nw_{num_workers}_"
+		f"{model_class_name}_{model_arch_name.replace('/', '_')}_"
 		f"validation_embeddings.pt"
 	)
 
@@ -791,8 +788,7 @@ def get_validation_metrics(
 			else:
 				if verbose:
 					print("Cache incompatible, recomputing...")
-				cache_loaded = False
-						
+				cache_loaded = False			
 		except Exception as e:
 			if verbose:
 				print(f"Cache loading failed: {e}. Recomputing...")
@@ -943,7 +939,11 @@ def get_validation_metrics(
 	)
 	
 	# Step 6: Compute retrieval metrics
-	cache_key_base = f"{dataset_name}_{finetune_strategy}_{model_class_name}_{model_arch_name.replace('/', '_')}"
+	cache_key_base = (
+		f"{dataset_name}_{finetune_strategy}_"
+		f"{model_class_name}_{model_arch_name.replace('/', '_')}_"
+		f"model_{model_hash}"
+	)
 	if lora_params:
 		lora_rank = lora_params.get("lora_rank")
 		lora_alpha = lora_params.get("lora_alpha")
@@ -1203,13 +1203,15 @@ def _prepare_labels_tensor(
 	
 	return all_labels.to(device)
 
-def _validate_cache_compatibility(cached_labels: torch.Tensor, expected_labels: torch.Tensor) -> bool:
-		"""Validate that cached labels are compatible with expected format."""
-		if cached_labels.shape != expected_labels.shape:
-				return False
-		if cached_labels.dtype != expected_labels.dtype:
-				return False
-		return True
+def _validate_cache_compatibility(
+	cached_labels: torch.Tensor,
+	expected_labels: torch.Tensor,
+) -> bool:
+	return (
+		cached_labels.shape == expected_labels.shape
+		and cached_labels.dtype == expected_labels.dtype
+		and torch.equal(cached_labels.cpu(), expected_labels.cpu())
+	)
 
 def _compute_image_embeddings(
 		model: torch.nn.Module,

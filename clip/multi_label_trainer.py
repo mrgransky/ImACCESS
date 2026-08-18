@@ -1560,6 +1560,7 @@ def lora_finetune_multi_label(
 	learning_rates_history = []
 	weight_decays_history = []
 	train_start_time = time.time()
+	model_hash=get_model_hash(model)
 
 	for epoch in range(num_epochs):
 			train_and_val_st_time = time.time()
@@ -1680,7 +1681,7 @@ def lora_finetune_multi_label(
 					"lora_dropout": lora_dropout,
 				},
 				is_training=True,
-				model_hash=get_model_hash(model),
+				model_hash=model_hash,
 				temperature=temperature,
 				verbose=verbose,
 			)

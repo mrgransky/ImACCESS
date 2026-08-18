@@ -387,8 +387,8 @@ def get_model_hash(model: torch.nn.Module) -> str:
 	# Only hash a subset of parameters for efficiency on very large models
 	param_sample = []
 	for i, param in enumerate(model.parameters()):
-			if i % 10 == 0:  # Sample every 10th parameter
-					param_sample.append(param.data.cpu().numpy().mean())  # Just use the mean for speed
+		if i % 10 == 0:  # Sample every 10th parameter
+			param_sample.append(param.data.cpu().numpy().mean())  # Just use the mean for speed
 	
 	hasher.update(str(param_sample).encode())
 	return hasher.hexdigest()

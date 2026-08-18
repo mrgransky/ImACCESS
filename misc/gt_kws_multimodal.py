@@ -28,7 +28,7 @@ from stratification import get_multi_label_stratified_split
 # with nohup:
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 2 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v > logs/multimodal_annotation_smu.txt & 
 # one chunk:
-# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_0.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3.5-4B" -llm_qb 8 -vlm_bs 2 -llm_bs 2 -nw 8 -v > logs/multimodal_annotation_chunk_0_tmp.txt & 
+# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_13.csv  -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 2 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v > logs/multimodal_annotation_chunk_13.txt & 
 
 # how to run [Pouta]:
 # $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 16 -llm_bs 18 -nw 54 -v > /media/volume/ImACCESS/trash/multimodal_annotation_h4.txt &
@@ -181,7 +181,9 @@ def get_multimodal_annotation(
 			# 'enriched_document_description', # misleading
 		],
 	)
-	
+
+	valid_mask = pd.Series(True, index=df.index)  # default: keep all rows
+
 	# Check if the dataset is a full dataset
 	is_full_dataset = "_chunk_" not in os.path.basename(csv_file)
 	if is_full_dataset:
@@ -235,12 +237,10 @@ def get_multimodal_annotation(
 
 		# check length of each before setting into column:
 		if verbose:
-			print("="*60)
-			print(f"Canonical labels length check:")
+			print(f"\nCanonical labels length check:")
 			print(f"LLM:        {type(llm_canonical_labels)} {len(llm_canonical_labels)}")
 			print(f"VLM:        {type(vlm_canonical_labels)} {len(vlm_canonical_labels)}")
 			print(f"Multimodal: {type(multimodal_canonical_labels)} {len(multimodal_canonical_labels)}")
-			print("="*60)
 
 		df['llm_canonical_labels'] = llm_canonical_labels
 		df['vlm_canonical_labels'] = vlm_canonical_labels
@@ -262,18 +262,10 @@ def get_multimodal_annotation(
 					print(df[empty_labels].head(50))
 
 		before_count = len(df)
-		
 		# Create mask for valid samples (those with canonical labels)
 		valid_mask = df['multimodal_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) > 0
-		
 		# Filter dataframe
 		df = df[valid_mask].copy()
-		
-		# Filter label lists to match
-		llm_based_labels = [label for label, valid in zip(llm_based_labels, valid_mask) if valid]
-		vlm_based_labels = [label for label, valid in zip(vlm_based_labels, valid_mask) if valid]
-		multimodal_labels = [label for label, valid in zip(multimodal_labels, valid_mask) if valid]
-		
 		after_count = len(df)
 		if verbose:
 			print(f"\n[DONE] Canonical mapping:")
@@ -285,12 +277,12 @@ def get_multimodal_annotation(
 			
 			# Show some statistics
 			label_counts = df['multimodal_canonical_labels'].apply(len)
-			print(f"\n   Labels per sample:")
+			print(f"\nLabels per sample:")
 			print(f"     Mean: {label_counts.mean():.2f}")
 			print(f"     Median: {label_counts.median():.0f}")
 			print(f"     Min: {label_counts.min()}")
 			print(f"     Max: {label_counts.max()}")
-
+				
 		# Deduplicate canonical labels safely
 		if verbose:
 			print(f"\n>> Deduplicating canonical labels...")
@@ -328,11 +320,17 @@ def get_multimodal_annotation(
 				if labels is not None and len(labels) != len(set(labels))
 			)
 
-			print(f"[LLM] Documents with duplicates: {llm_duplicate_count:,} ({llm_duplicate_count/len(df)*100:.1f}%)")
-			print(f"[VLM] Documents with duplicates: {vlm_duplicate_count:,} ({vlm_duplicate_count/len(df)*100:.1f}%)")
-			print(f"[Multimodal] Documents with duplicates: {multimodal_duplicate_count:,} ({multimodal_duplicate_count/len(df)*100:.1f}%)")
+			print(f"\n>> Duplicate labels in canonical labels:")
+			print(f"[LLM] {llm_duplicate_count:,} ({llm_duplicate_count/len(df)*100:.1f}%)")
+			print(f"[VLM] {vlm_duplicate_count:,} ({vlm_duplicate_count/len(df)*100:.1f}%)")
+			print(f"[Multimodal] {multimodal_duplicate_count:,} ({multimodal_duplicate_count/len(df)*100:.1f}%)")
 
 			print(f"   ✓ Verified: 0 duplicates remaining")
+
+	# Filter label lists to match
+	llm_based_labels = [label for label, valid in zip(llm_based_labels, valid_mask) if valid]
+	vlm_based_labels = [label for label, valid in zip(vlm_based_labels, valid_mask) if valid]
+	multimodal_labels = [label for label, valid in zip(multimodal_labels, valid_mask) if valid]
 
 	df['llm_based_labels'] = llm_based_labels
 	df['vlm_based_labels'] = vlm_based_labels
@@ -383,7 +381,6 @@ def get_multimodal_annotation(
 				verbose=verbose,
 			)
 			print("="*100)
-
 
 		get_multi_label_stratified_split(
 			df=df,

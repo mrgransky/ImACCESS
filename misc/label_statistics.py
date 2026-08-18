@@ -758,7 +758,6 @@ def _semantic_jaccard_cached(
 def get_cgd_taxonomy_supervision(
 	df: pd.DataFrame,
 	output_directory: str,
-	sources: Optional[List[str]] = None,
 	anchor_column: str = "vlm_canonical_labels",
 	embedding_model_id: str = 'all-MiniLM-L6-v2',
 	semantic_threshold: Optional[float] = None,
@@ -808,13 +807,14 @@ def get_cgd_taxonomy_supervision(
 		# ==========================================================================
 		
 		if verbose:
-			print("="*80)
-			print("CGD TAXONOMY: Coverage-Grounding-Density Analysis")
-			print("="*80)
+			print("\n[CGD TAXONOMY] Coverage-Grounding-Density Analysis")
 		
 		# Use default sources if not specified
-		if sources is None:
-				sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
+		sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
+		for i, s in enumerate(sources):
+			if s not in df.columns:
+				print(f"\n[ERROR] Missing required columns: {s}! available columns: {df.columns}")
+				return
 		
 		if verbose:
 			print(f"\nConfiguration:")
