@@ -725,7 +725,6 @@ def get_validation_metrics(
 	is_training: bool = False,
 	model_hash: str = None,
 	class_embeds_override: Optional[torch.Tensor] = None,
-	use_fixed_masks: bool = False,
 	verbose: bool = True,
 ) -> Dict:
 
@@ -970,7 +969,6 @@ def get_validation_metrics(
 		candidate_labels=torch.arange(n_classes, device=device),
 		topK_values=topK_values,
 		mode="Image-to-Text",
-		use_fixed_masks=use_fixed_masks,
 		cache_dir=cache_dir,
 		cache_key=f"{cache_key_base}_img2txt",
 		is_training=is_training,
@@ -989,7 +987,6 @@ def get_validation_metrics(
 		candidate_labels=device_labels,
 		topK_values=topK_values,
 		mode="Text-to-Image",
-		use_fixed_masks=use_fixed_masks,
 		class_counts=class_counts,
 		cache_dir=cache_dir,
 		cache_key=f"{cache_key_base}_txt2img",
@@ -1622,6 +1619,7 @@ def evaluate_best_model(
 	embeddings_cache=None,
 	lora_params: Optional[Dict] = None,
 	class_embeds_override: Optional[torch.Tensor] = None,
+	use_fixed_masks: bool = False,
 	verbose: bool = True,
 ):
 	model_source = "current"
@@ -1721,6 +1719,7 @@ def evaluate_best_model(
 		rare_mask=rare_mask,
 		active_mask=active_mask,
 		mode="Image-to-Text",
+		use_fixed_masks=use_fixed_masks,
 		verbose=verbose,
 	)
 
@@ -1732,6 +1731,7 @@ def evaluate_best_model(
 		rare_mask=rare_mask,
 		active_mask=active_mask,
 		mode="Text-to-Image",
+		use_fixed_masks=use_fixed_masks,
 		verbose=verbose,
 	)
 

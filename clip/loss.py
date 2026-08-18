@@ -77,7 +77,7 @@ def compute_loss_masks(
 	pw_mode: str = "log",                # "log" | "sqrt" | "linear"
 	pw_max_cap: Optional[float]=None,
 	pareto_threshold: float = 0.8,
-	rare_percentile: float = 0.2,       # bottom X% of active classes by frequency → rare
+	rare_percentile: float = 0.2, # bottom X% of active classes by frequency → rare
 	verbose: bool = True,
 ) -> Dict[str, torch.Tensor]:
 	"""
@@ -199,8 +199,8 @@ def compute_loss_masks(
 
 	return {
 		"active_mask": active_mask,
-		"head_mask":   head_mask,
-		"rare_mask":   rare_mask,
+		"head_mask":   head_mask, # smallest label set covering 80% of training-label occurrences
+		"rare_mask":   rare_mask, # labels at or below 20th percentile of positive training frequencies
 		"train_freq":  train_freq,
 		"pos_weight":  pos_weight,
 		"N":           N,

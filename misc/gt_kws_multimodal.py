@@ -5,7 +5,7 @@ import visualize as viz
 import label_statistics as stats
 from nlp_utils import _post_process_
 from clustering import get_canonical_labels
-from stratification import get_multi_label_stratified_split
+from data_prep import get_multi_label_stratified_split
 
 # LLM models:
 # Qwen/Qwen3-4B-Instruct-2507
