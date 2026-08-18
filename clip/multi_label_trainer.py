@@ -1778,8 +1778,13 @@ def lora_finetune_multi_label(
 	final_metrics_full = best_model_eval_results["full_metrics"]
 	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
 	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
+
 	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
 	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
+
+	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
+	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
+
 	model_source = best_model_eval_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
@@ -1796,11 +1801,20 @@ def lora_finetune_multi_label(
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
-		print("\n>> Tiered I2T Retrieval")
+
+		print("\n[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n>> Tiered T2I Retrieval")
+		print("\n[Tiered] T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print(f"{'='*50}")
+
+		print("\n[Shared Tiered] I2T Retrieval")
+		for tier, m in final_shared_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n[Shared Tiered] T2I Retrieval")
+		for tier, m in final_shared_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 

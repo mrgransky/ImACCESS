@@ -1691,7 +1691,7 @@ def evaluate_shared_protocol(
 		rare_mask=masks["rare_mask"],
 		active_mask=masks["shared_mask"],
 		mode="Image-to-Text",
-		use_fixed_masks=True,   # R1-C: no adaptive min_val_support, fixed at 1
+		use_fixed_masks=True, # no adaptive min_val_support, fixed at 1
 		verbose=verbose,
 	)
 
