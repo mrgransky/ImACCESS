@@ -1987,8 +1987,9 @@ def evaluate_best_model(
 		print(f"  └─  Checkpoint path: {checkpoint_path}")
 
 	if checkpoint_path is not None and os.path.exists(checkpoint_path):
-		# if verbose:
-		# 	print(f"Loading best model weights {checkpoint_path} for final evaluation...")
+		if verbose:
+			print(f"[LOADING] best model weights {checkpoint_path} for final evaluation...")
+
 		try:
 			checkpoint = torch.load(checkpoint_path, map_location=device)
 			if 'model_state_dict' in checkpoint:
@@ -2026,7 +2027,7 @@ def evaluate_best_model(
 					print("Warning: Loaded file format not recognized as a model checkpoint.")
 		except Exception as e:
 			if verbose:
-				print(f"Error loading checkpoint:\n{e}\nProceeding with current model weights.")
+				print(f"<!> Error loading checkpoint: {e}\nProceeding with current model weights.")
 	else:
 		if verbose:
 			if checkpoint_path is None:
@@ -2034,7 +2035,7 @@ def evaluate_best_model(
 			else:
 				print(f"Checkpoint not found at {checkpoint_path}. Proceeding with current model weights.")
 
-
+	# Restore best weights from early stopping if available
 	if (
 		model_source == "current" 
 		and early_stopping 
@@ -2044,18 +2045,21 @@ def evaluate_best_model(
 		try:
 			if verbose:
 				print(f"[LOADED] weights from early stopping (ep: {early_stopping.best_epoch+1})")
-			model.load_state_dict({k: v.to(device, non_blocking=True) for k, v in early_stopping.best_weights.items()})
+			model.load_state_dict(
+				{
+					k: v.to(device, non_blocking=True) 
+					for k, v in early_stopping.best_weights.items()
+				}
+			)
 			model_source = "early_stopping"
 		except Exception as e:
 			if verbose:
-				print(f"Error loading weights from early stopping: {e}")
+				print(f"<!> Error loading weights from early stopping: {e}")
 				print("Proceeding with current model weights.")
 
 	if verbose:
 		param_count = sum(p.numel() for p in model.parameters())
 		print(f"{type(model)} {model.name} Parameters: {param_count:,}")
-
-
 
 	validation_results = get_validation_metrics(
 		model=model,
