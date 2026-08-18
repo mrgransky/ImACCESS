@@ -251,6 +251,7 @@ def compute_tiered_retrieval_metrics(
 	rare_mask: torch.Tensor,
 	active_mask: torch.Tensor,
 	mode: str = "Image-to-Text",
+	use_fixed_masks: bool = False,
 	verbose: bool = False,
 ) -> Dict:
 	if verbose:
@@ -261,15 +262,21 @@ def compute_tiered_retrieval_metrics(
 		print(f"  ├─ Rare mask: {rare_mask.shape} {rare_mask.device}")
 		print(f"  └─ Active mask: {active_mask.shape} {active_mask.device}")
 
-	# Compute adaptive threshold from actual validation label distribution
-	min_val_support = compute_adaptive_min_val_support(
-		query_labels=query_labels,
-		active_mask=active_mask,
-		percentile=0.05,
-		absolute_min=1,
-		absolute_max=10,
-		verbose=verbose,
-	)
+	if use_fixed_masks:
+		# R1-C shared-vocabulary benchmark: no adaptive filtering,
+		# every shared class with ≥1 positive validation instance counts.
+		min_val_support = 1
+		if verbose:
+			print(f"[Shared Protocol] min_val_support fixed at 1 (adaptive rule bypassed)")
+	else:
+		min_val_support = compute_adaptive_min_val_support(
+			query_labels=query_labels,
+			active_mask=active_mask,
+			percentile=0.05,
+			absolute_min=1,
+			absolute_max=10,
+			verbose=verbose,
+		)
 
 	# Per-class validation support
 	# query_labels: [N_images, C] — col sum gives per-class image count
@@ -718,6 +725,7 @@ def get_validation_metrics(
 	is_training: bool = False,
 	model_hash: str = None,
 	class_embeds_override: Optional[torch.Tensor] = None,
+	use_fixed_masks: bool = False,
 	verbose: bool = True,
 ) -> Dict:
 
@@ -962,6 +970,7 @@ def get_validation_metrics(
 		candidate_labels=torch.arange(n_classes, device=device),
 		topK_values=topK_values,
 		mode="Image-to-Text",
+		use_fixed_masks=use_fixed_masks,
 		cache_dir=cache_dir,
 		cache_key=f"{cache_key_base}_img2txt",
 		is_training=is_training,
@@ -980,6 +989,7 @@ def get_validation_metrics(
 		candidate_labels=device_labels,
 		topK_values=topK_values,
 		mode="Text-to-Image",
+		use_fixed_masks=use_fixed_masks,
 		class_counts=class_counts,
 		cache_dir=cache_dir,
 		cache_key=f"{cache_key_base}_txt2img",
