@@ -1872,7 +1872,7 @@ def lora_finetune_multi_label(
 		fname=plot_paths["losses"],
 	)
 
-	return final_tiered_i2t, final_tiered_t2i
+	return best_model_eval_results
 
 def lora_plus_finetune_multi_label(
 	model: torch.nn.Module,

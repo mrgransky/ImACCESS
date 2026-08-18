@@ -147,6 +147,115 @@ dtypes = {
 	'user_query': str,
 }
 
+def extract_per_k_metrics(eval_result: Dict, tier_key: str) -> Dict:
+	"""
+	Extract per-K mAP and Recall from a tiered-metrics dict pair stored
+	under `eval_result[f"{tier_key}_i2t"]` / `eval_result[f"{tier_key}_t2i"]`.
+
+	Works for both the ordinary run-specific tiers (`tier_key="tiered"`)
+	and the R1-C shared-vocabulary tiers (`tier_key="shared_tiered"`).
+
+	Returns None if the underlying tiered dicts are missing/None (e.g.
+	shared_tiered_* when shared_protocol_path was not provided to
+	evaluate_best_model).
+
+	Returns:
+			{
+				"i2t": {"overall": {"mAP": {k: v}, "Recall": {k: v}},
+								"head":    {"mAP": {k: v}, "Recall": {k: v}},
+								"rare":    {"mAP": {k: v}, "Recall": {k: v}}},
+				"t2i": { ... same structure ... }
+			}
+	"""
+	i2t_tiered = eval_result.get(f"{tier_key}_i2t")
+	t2i_tiered = eval_result.get(f"{tier_key}_t2i")
+
+	if i2t_tiered is None or t2i_tiered is None:
+		return None
+
+	out = {}
+	for direction, tiered in [("i2t", i2t_tiered), ("t2i", t2i_tiered)]:
+		out[direction] = {}
+		for tier in ("overall", "head", "rare"):
+			tier_data = tiered.get(tier, {})
+			out[direction][tier] = {
+				"mAP":    {str(k): float(v) for k, v in tier_data.get("mAP",    {}).items()},
+				"Recall": {str(k): float(v) for k, v in tier_data.get("Recall", {}).items()},
+			}
+
+	return out
+
+def save_tiered_retrieval_metrics(
+	best_model_result: Dict,
+	strategy: str,
+	dataset_directory: str,
+	column: str,
+	verbose: bool = True,
+):
+	result_dir = os.path.join(dataset_directory, column)
+	os.makedirs(result_dir, exist_ok=True)
+
+	output_dir = os.path.join(dataset_directory, "outputs")
+	os.makedirs(output_dir, exist_ok=True)
+
+	per_k = extract_per_k_metrics(best_model_result, tier_key="tiered")
+	shared_per_k = extract_per_k_metrics(best_model_result, tier_key="shared_tiered")
+
+	combined = {"standard": per_k}
+	if shared_per_k is not None:
+		combined["shared"] = shared_per_k
+
+	retrieval_tiered_fpath = os.path.join(result_dir, f"retrieval_metrics_accumulated.json")
+	retrieval_accumulated = {}
+	if os.path.exists(retrieval_tiered_fpath):
+		if verbose:
+			print(f"Loading existing results from {retrieval_tiered_fpath}")
+		with open(retrieval_tiered_fpath) as f:
+			retrieval_accumulated = json.load(f)
+
+	retrieval_accumulated[strategy] = combined
+
+	with open(retrieval_tiered_fpath, "w") as f:
+		json.dump(retrieval_accumulated, f, indent=2)
+
+	performance_fpath = os.path.join(output_dir, f"performance.json")
+	performance_accumulated = {}
+	if os.path.exists(performance_fpath):
+		if verbose:
+			print(f"Loading existing results from {performance_fpath}")
+		with open(performance_fpath) as f:
+			performance_accumulated = json.load(f)
+
+	# Ensure column key exists
+	if column not in performance_accumulated:
+		performance_accumulated[column] = {}
+
+	performance_accumulated[column][strategy] = combined
+
+	with open(performance_fpath, "w") as f:
+		json.dump(performance_accumulated, f, indent=2)
+
+	if verbose:
+		print("="*120)
+		print(strategy.upper())
+		print(json.dumps(combined, indent=2, ensure_ascii=False))
+
+		print(f"\nRetrieval Tiered Metrics:")
+		collected_retrieval_methods = list(retrieval_accumulated.keys())
+		n_methods = len(collected_retrieval_methods)
+		print(f"'{strategy}' strategy results appended to {retrieval_tiered_fpath}")
+		print(f">> {n_methods} collected method(s): {collected_retrieval_methods}")
+		if shared_per_k is None:
+			print(f"  [NOTE] No shared-vocabulary protocol results present for this run "
+					f"(shared_protocol_path was not provided to evaluate_best_model)")
+
+		print(f"\nPerformance Metrics:")
+		collected_columns = list(performance_accumulated.keys())
+		n_columns = len(collected_columns)
+		print(f"'{column}' column results appended to {performance_fpath}")
+		print(f">> {n_columns} collected column(s): {collected_columns}")
+		print("="*120)
+
 def check_and_cleanup_gpu_memory(
 	batch_idx: int,
 	reserved_threshold: int = 95,
@@ -224,95 +333,6 @@ def compute_slope(window: List[float]) -> float:
 	# slope = cov(x, y) / var(x)
 	var_x = np.var(x)
 	return np.cov(x, y, bias=True)[0, 1] / var_x
-
-def extract_per_k_metrics(eval_result: Dict) -> Dict:
-		"""
-		Extract per-K mAP and Recall from the return dict of any evaluation function.
-		Works with zero_shot_multi_label, evaluate_best_model, probe, etc.
-
-		Returns:
-				{
-					"i2t": {"overall": {"mAP": {k: v}, "Recall": {k: v}},
-									"head":    {"mAP": {k: v}, "Recall": {k: v}},
-									"rare":    {"mAP": {k: v}, "Recall": {k: v}}},
-					"t2i": { ... same structure ... }
-				}
-		"""
-		out = {}
-		for direction, tier_key in [("i2t", "tiered_i2t"), ("t2i", "tiered_t2i")]:
-				tiered = eval_result.get(tier_key, {})
-				out[direction] = {}
-				for tier in ("overall", "head", "rare"):
-						tier_data = tiered.get(tier, {})
-						out[direction][tier] = {
-								"mAP":    {str(k): float(v) for k, v in tier_data.get("mAP",    {}).items()},
-								"Recall": {str(k): float(v) for k, v in tier_data.get("Recall", {}).items()},
-						}
-		return out
-
-def save_tiered_retrieval_metrics(
-	tiered_i2t: Dict,
-	tiered_t2i: Dict,
-	strategy: str,
-	dataset_directory: str,
-	column: str,
-	verbose: bool = True,
-):
-	result_dir = os.path.join(dataset_directory, column)
-	os.makedirs(result_dir, exist_ok=True)
-
-	output_dir = os.path.join(dataset_directory, "outputs")
-	os.makedirs(output_dir, exist_ok=True)
-
-	per_k = extract_per_k_metrics({"tiered_i2t": tiered_i2t, "tiered_t2i": tiered_t2i})
-
-	retrieval_tiered_fpath = os.path.join(result_dir, f"retrieval_metrics_accumulated.json")
-	retrieval_accumulated = {}
-	if os.path.exists(retrieval_tiered_fpath):
-		if verbose:
-			print(f"Loading existing results from {retrieval_tiered_fpath}")
-		with open(retrieval_tiered_fpath) as f:
-			retrieval_accumulated = json.load(f)
-	
-	retrieval_accumulated[strategy] = per_k
-	
-	with open(retrieval_tiered_fpath, "w") as f:
-		json.dump(retrieval_accumulated, f, indent=2)
-	
-	performance_fpath = os.path.join(output_dir, f"performance.json")
-	performance_accumulated = {}
-	if os.path.exists(performance_fpath):
-		if verbose:
-			print(f"Loading existing results from {performance_fpath}")
-		with open(performance_fpath) as f:
-			performance_accumulated = json.load(f)
-	
-	# Ensure column key exists
-	if column not in performance_accumulated:
-		performance_accumulated[column] = {}
-	
-	performance_accumulated[column][strategy] = per_k
-	
-	with open(performance_fpath, "w") as f:
-		json.dump(performance_accumulated, f, indent=2)
-
-	if verbose:
-		print("="*120)
-		print(strategy.upper())
-		print(json.dumps(per_k, indent=2, ensure_ascii=False))
-
-		print(f"\nRetrieval Tiered Metrics:")
-		collected_retrieval_methods = list(retrieval_accumulated.keys())
-		n_methods = len(collected_retrieval_methods)
-		print(f"'{strategy}' strategy results appended to {retrieval_tiered_fpath}")
-		print(f">> {n_methods} collected method(s): {collected_retrieval_methods}")
-
-		print(f"\nPerformance Metrics:")
-		collected_columns = list(performance_accumulated.keys())
-		n_columns = len(collected_columns)
-		print(f"'{column}' column results appended to {performance_fpath}")
-		print(f">> {n_columns} collected column(s): {collected_columns}")
-		print("="*120)
 
 def get_updated_model_name(
 	original_path:str, 

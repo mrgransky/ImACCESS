@@ -256,7 +256,7 @@ def main():
 			}
 		}
 
-		tiered_i2t, tiered_t2i = finetune_functions[dataset_type][args.strategy](
+		best_model_result = finetune_functions[dataset_type][args.strategy](
 			model=model,
 			train_loader=train_loader,
 			validation_loader=validation_loader,
@@ -326,8 +326,7 @@ def main():
 			strategy_name = args.strategy  # e.g., 'lora', 'full', 'dora'
 		
 		save_tiered_retrieval_metrics(
-			tiered_i2t=tiered_i2t, 
-			tiered_t2i=tiered_t2i, 
+			best_model_result=best_model_result,
 			strategy=strategy_name,
 			dataset_directory=DATASET_DIRECTORY,
 			column=args.column,
