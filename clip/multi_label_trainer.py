@@ -1301,6 +1301,7 @@ def lora_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
+	shared_protocol_path: str,
 	lora_rank: int,
 	lora_alpha: float,
 	lora_dropout: float,
@@ -1321,13 +1322,6 @@ def lora_finetune_multi_label(
 	window_size = minimum_epochs + 1
 	if loss_weights is None:
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
-
-	shared_protocol_path = os.path.join(results_dir, "outputs", "shared_eval_protocol.json")
-	if not os.path.exists(shared_protocol_path):
-		raise FileNotFoundError(
-			f"Shared evaluation protocol not found: {shared_protocol_path}\n"
-			"Build it once from the final training split before running fine-tuning."
-		)
 
 	# ── Dropout check 
 	non_zero_dropouts = [

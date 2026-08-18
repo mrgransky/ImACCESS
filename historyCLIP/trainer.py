@@ -189,6 +189,13 @@ def main():
 		RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{args.column}") # ex) multimodal_canonical_labels
 		os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 
+		shared_protocol_path = os.path.join(DATASET_DIRECTORY, "outputs", "shared_eval_protocol.json")
+		if not os.path.exists(shared_protocol_path):
+			raise FileNotFoundError(
+				f"Shared evaluation protocol not found: {shared_protocol_path}\n"
+				"Build it once from the final training split before running fine-tuning."
+			)
+
 		print(f">> CLIP Model Architecture: {args.model_architecture}...")
 		model_config = get_config(
 			architecture=args.model_architecture, 
@@ -268,6 +275,7 @@ def main():
 			topk_values=args.topK_values,
 			print_every=args.print_every,
 			temperature=args.temperature,
+			shared_protocol_path=shared_protocol_path,
 			**(
 					{
 						'lora_rank': args.lora_rank,
