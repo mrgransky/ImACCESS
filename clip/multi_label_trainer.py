@@ -1808,7 +1808,6 @@ def lora_finetune_multi_label(
 		print("\n[Tiered] T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"{'='*50}")
 
 		print("\n[Shared Tiered] I2T Retrieval")
 		for tier, m in final_shared_tiered_i2t.items():

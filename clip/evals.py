@@ -256,20 +256,13 @@ def compute_tiered_retrieval_metrics(
 	use_fixed_masks: bool = False,
 	verbose: bool = False,
 ) -> Dict:
-	if verbose:
-		print(f"\nTiered retrieval metrics {mode}")
-		print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
-		print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
-		print(f"  ├─ Head mask: {head_mask.shape} {head_mask.device}")
-		print(f"  ├─ Rare mask: {rare_mask.shape} {rare_mask.device}")
-		print(f"  └─ Active mask: {active_mask.shape} {active_mask.device}")
 
 	if use_fixed_masks:
 		# R1-C shared-vocabulary benchmark: no adaptive filtering,
 		# every shared class with ≥1 positive validation instance counts.
 		min_val_support = 1
 		if verbose:
-			print(f"[Shared Protocol] min_val_support fixed at 1 (adaptive rule bypassed)")
+			print(f"min_val_support fixed at 1 (adaptive rule bypassed)")
 	else:
 		min_val_support = compute_adaptive_min_val_support(
 			query_labels=query_labels,
@@ -280,6 +273,14 @@ def compute_tiered_retrieval_metrics(
 			verbose=verbose,
 		)
 
+	if verbose:
+		print(f"\nTiered retrieval metrics {mode}")
+		print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
+		print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
+		print(f"  ├─ Head mask: {head_mask.shape} {head_mask.device}")
+		print(f"  ├─ Rare mask: {rare_mask.shape} {rare_mask.device}")
+		print(f"  └─ Active mask: {active_mask.shape} {active_mask.device}")
+
 	# Per-class validation support
 	# query_labels: [N_images, C] — col sum gives per-class image count
 	val_support = query_labels.sum(dim=0)  # [C]
@@ -288,11 +289,36 @@ def compute_tiered_retrieval_metrics(
 	# Applied to ALL tiers for consistency, not just T2I rare
 	supported_mask = val_support >= min_val_support  # [C]
 
+	# Shared protocol validation
+	if use_fixed_masks and verbose:
+		shared_supported = active_mask & supported_mask
+		shared_head_supported = head_mask & active_mask & supported_mask
+		shared_rare_supported = rare_mask & active_mask & supported_mask
+
+		print(f"\n[Shared Protocol Validation — {mode}]")
+		print(f"  ├─ Shared labels in run              : {active_mask.sum().item()}")
+		print(f"  ├─ Shared labels with val support ≥1 : {shared_supported.sum().item()}")
+		print(f"  ├─ Shared head labels with support   : {shared_head_supported.sum().item()}")
+		print(f"  └─ Shared rare labels with support   : {shared_rare_supported.sum().item()}")
+
+		if mode == "Image-to-Text":
+			head_positive_images = (
+				query_labels[:, head_mask & active_mask].sum(dim=1) > 0
+			).sum().item()
+
+			rare_positive_images = (
+				query_labels[:, rare_mask & active_mask].sum(dim=1) > 0
+			).sum().item()
+
+			print(f"  ├─ I2T images with ≥1 shared-head label : {head_positive_images}")
+			print(f"  └─ I2T images with ≥1 shared-rare label : {rare_positive_images}")
+
 	tiers = {
 		"overall": active_mask & supported_mask,
 		"head":    head_mask & active_mask & supported_mask,
 		"rare":    rare_mask & active_mask & supported_mask,
 	}
+
 	if verbose:
 		print(f"\nSupport filter min_val_support={min_val_support}")
 		print(f"  ├─ Active classes before filter : {active_mask.sum().item()}")
@@ -469,7 +495,7 @@ def compute_multilabel_mrr(
 		
 		return np.mean(reciprocal_ranks) if reciprocal_ranks else 0.0
 
-def compute_retrieval_metrics_from_similarity(
+def compute_retrieval_metrics_from_similarity_old(
 	similarity_matrix: torch.Tensor,
 	query_labels: torch.Tensor,
 	candidate_labels: torch.Tensor,
@@ -587,9 +613,7 @@ def compute_retrieval_metrics_from_similarity(
 		for i in range(0, similarity_matrix.shape[0], chunk_size)
 	], dim=0)	
 
-
 	metrics = {"mP": {}, "mAP": {}, "Recall": {}}
-	
 	for K in valid_K_values:
 		top_k_indices = all_sorted_indices[:, :K]
 		
@@ -646,6 +670,197 @@ def compute_retrieval_metrics_from_similarity(
 		ap_scores = (precisions * correct_mask.float()).sum(dim=1) / correct_mask.sum(dim=1).clamp(min=1)
 		metrics["mAP"][str(K)] = ap_scores.nanmean().item()
 	
+	return metrics
+
+def compute_retrieval_metrics_from_similarity(
+	similarity_matrix: torch.Tensor,
+	query_labels: torch.Tensor,
+	candidate_labels: torch.Tensor,
+	topK_values: List[int],
+	mode: str = "Image-to-Text",
+	class_counts: Optional[torch.Tensor] = None,
+	max_k: Optional[int] = None,
+	cache_dir: str = None,
+	cache_key: str = None,
+	is_training: bool = False,
+	chunk_size: int = 1000,
+	verbose: bool = False,
+) -> Dict:
+	"""
+	Compute retrieval metrics (mP, mAP, Recall) with memory optimization and proper multi-label support.
+
+	mAP@K uses the standard truncated-AP definition:
+		AP@K(q) = sum_{r=1}^{K} P(r) * rel(r) / min(R_q, K)
+	where R_q is the TOTAL number of relevant items for query q (not just
+	those retrieved within the top-K). This is invariant to how many of
+	the relevant items happen to fall inside the top-K window, unlike
+	dividing by correct_mask.sum(dim=1), which incorrectly rewards
+	queries that only have relevant items outside the window.
+
+	Args:
+			similarity_matrix: [num_queries, num_candidates]
+			query_labels: [num_queries] for single-label or [num_queries, num_classes] for multi-label
+			candidate_labels: [num_candidates] for single-label or [num_candidates, num_classes] for multi-label
+			topK_values: List of K values for evaluation
+			mode: "Image-to-Text" or "Text-to-Image"
+			class_counts: Number of samples per class (for single-label recall / T2I R_q)
+			max_k: Maximum K to consider
+			cache_dir: Cache directory
+			cache_key: Cache identifier
+			is_training: Skip caching if True
+			verbose: Print progress
+			chunk_size: Chunk size for memory optimization
+
+	Returns:
+			Dictionary with mP, mAP, and Recall metrics
+	"""
+
+	num_queries, num_candidates = similarity_matrix.shape
+	device = similarity_matrix.device
+
+	# Validate inputs
+	if query_labels.dim() not in [1, 2] or candidate_labels.dim() not in [1, 2]:
+		raise ValueError("Labels must be 1D (single-label) or 2D (multi-label)")
+
+	# Determine if multi-label based on labels dimensionality
+	is_multi_label = (
+		len(candidate_labels.shape) == 2 if mode == "Text-to-Image"
+		else len(query_labels.shape) == 2
+	)
+
+	# Sanity check — relevant items per query should reflect tier size
+	if verbose and is_multi_label:
+		if mode == "Image-to-Text":
+			relevant_per_query = (query_labels > 0).sum(dim=1).float()
+			n_candidates = similarity_matrix.shape[1]
+			print(f"\n[I2T Sanity] Relevant items per query (out of {n_candidates} candidates):")
+			print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
+			print(f"  ├─ mean: {relevant_per_query.mean():.2f} std: {relevant_per_query.std():.2f}")
+			print(f"  ├─ zero-relevant queries: {(relevant_per_query == 0).sum().item()}")
+			if relevant_per_query.max().item() > n_candidates:
+				print(f"  └─ [WARNING] max relevant ({relevant_per_query.max():.0f}) "
+						f"> num candidates ({n_candidates}) — "
+						f"full label vector may be leaking into tier computation")
+			else:
+				print(f"  └─ [OK] max relevant ≤ num candidates — tier labels correctly restricted")
+		else:  # Text-to-Image
+			relevant_per_query = candidate_labels.sum(dim=0).float()  # [N_tier]
+			print(f"\n[T2I Sanity] Relevant items per query class (out of {similarity_matrix.shape[1]} images):")
+			print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
+			print(f"  ├─ mean: {relevant_per_query.mean():.2f} std: {relevant_per_query.std():.2f}")
+			print(f"  ├─ zero-relevant queries: {(relevant_per_query == 0).sum().item()}")
+			if (relevant_per_query == 0).any():
+				zero_count = (relevant_per_query == 0).sum().item()
+				print(
+					f"  └─ [WARNING] {zero_count} classes have zero relevant images "
+					f"— likely inactive classes (freq=0 in validation). "
+					f"These contribute 0 to mAP and are expected in full evaluation. "
+					f"Tiered evaluation will filter these via active_mask."
+				)
+			else:
+				print(f"  └─ [OK] All query classes have ≥1 relevant image")
+
+	# Check cache
+	cache_file = None
+	if cache_dir and cache_key and not is_training:
+		cache_file = os.path.join(cache_dir, f"{cache_key}_retrieval_metrics.json")
+		if os.path.exists(cache_file):
+			try:
+				if verbose:
+					print(f"Loading cached metrics from {cache_file}")
+				with open(cache_file, 'r') as f:
+					return json.load(f)
+			except Exception as e:
+				if verbose:
+					print(f"Cache loading failed: {e}. Computing metrics.")
+
+	# Validate and filter K values
+	valid_K_values = [K for K in topK_values if K <= (max_k or num_candidates)]
+	if not valid_K_values:
+		raise ValueError("No valid K values provided")
+
+	# Get top-K indices for all queries (memory efficient, chunked)
+	chunk_size = 256
+	all_sorted_indices = torch.cat([
+		torch.argsort(similarity_matrix[i:i + chunk_size], dim=1, descending=True)
+		for i in range(0, similarity_matrix.shape[0], chunk_size)
+	], dim=0)
+
+	# ── R_q: total relevant items per query — computed ONCE, independent of K ──
+	if is_multi_label:
+		if mode == "Image-to-Text":
+			# query_labels: [num_queries, num_candidates] — relevant classes per image
+			relevant_counts = query_labels.sum(dim=1).float()          # [num_queries]
+		else:  # Text-to-Image
+			# candidate_labels: [num_candidates_images, num_queries] — relevant images per class
+			relevant_counts = candidate_labels.sum(dim=0).float()      # [num_queries]
+	else:
+		if mode == "Image-to-Text":
+			# Single-label I2T — exactly one relevant class per image query
+			relevant_counts = torch.ones(num_queries, device=device, dtype=torch.float32)
+		else:  # Text-to-Image
+			if class_counts is None:
+				raise ValueError("class_counts required for single-label text-to-image")
+			relevant_counts = class_counts[query_labels].float()       # [num_queries]
+
+	has_relevant = relevant_counts > 0   # queries with at least 1 relevant item
+
+	metrics = {"mP": {}, "mAP": {}, "Recall": {}}
+	for K in valid_K_values:
+		top_k_indices = all_sorted_indices[:, :K]
+
+		# Compute correctness mask based on dataset type
+		if is_multi_label:
+			correct_mask = compute_multilabel_correctness(
+				top_k_indices,
+				query_labels,
+				candidate_labels,
+				mode,
+				K,
+				chunk_size,
+			)
+		else:
+			correct_mask = compute_singlelabel_correctness(
+				top_k_indices,
+				query_labels,
+				candidate_labels,
+				K,
+			)
+
+		# Compute metrics
+		metrics["mP"][str(K)] = correct_mask.float().mean().item()
+
+		# Compute Recall
+		if mode == "Image-to-Text":
+			metrics["Recall"][str(K)] = correct_mask.any(dim=1).float().mean().item()
+		else:  # Text-to-Image
+			if is_multi_label:
+				retrieved_counts = correct_mask.float().sum(dim=1)     # [num_queries]
+				recall_per_query = torch.where(
+					has_relevant,
+					retrieved_counts / relevant_counts.clamp(min=1),
+					torch.zeros_like(retrieved_counts),
+				)
+				metrics["Recall"][str(K)] = (
+					recall_per_query[has_relevant].mean().item() if has_relevant.any() else 0.0
+				)
+			else:
+				recalled = correct_mask.sum(dim=1).float()
+				metrics["Recall"][str(K)] = (recalled / relevant_counts.clamp(min=1)).mean().item()
+
+		# ── Correct truncated mAP@K ──
+		# AP@K(q) = sum_{r=1}^{K} P(r) * rel(r) / min(R_q, K)
+		positions = torch.arange(1, K + 1, device=device, dtype=torch.float32).unsqueeze(0)
+		cumulative_correct = correct_mask.float().cumsum(dim=1)
+		precisions = cumulative_correct / positions
+
+		ap_denominator = relevant_counts.clamp(min=1).clamp(max=K)     # min(R_q, K), guarded against 0
+		ap_scores = (precisions * correct_mask.float()).sum(dim=1) / ap_denominator
+
+		metrics["mAP"][str(K)] = (
+			ap_scores[has_relevant].mean().item() if has_relevant.any() else 0.0
+		)
+
 	return metrics
 
 def compute_multilabel_correctness(
@@ -1649,15 +1864,27 @@ def build_shared_masks_from_protocol(
 		if label in rare_labels:
 			rare_mask[idx] = True
 
+
 	if verbose:
-		print(f"\n[Shared Protocol] {shared_mask.sum().item()}/{len(shared_vocab)} "
-			f"shared labels found in this run's vocabulary ({num_classes} classes)")
-		print(f"  ├─ Head (shared): {head_mask.sum().item()}")
-		print(f"  └─ Rare (shared): {rare_mask.sum().item()}")
+		print(f"\n[Shared Protocol]")
+		print(f"  ├─ Shared labels in JSON      : {len(shared_vocab)}")
+		print(f"  ├─ Shared labels in this run  : {shared_mask.sum().item()}")
+		print(f"  ├─ Shared head labels         : {head_mask.sum().item()}")
+		print(f"  ├─ Shared rare labels         : {rare_mask.sum().item()}")
+		print(f"  ├─ Head/rare overlap          : {(head_mask & rare_mask).sum().item()}")
+		print(f"  └─ Labels missing from run    : {len(missing)}")
+
+		if head_mask.sum().item() == 0:
+			print("  [WARNING] Shared head mask is empty in this run.")
+
+		if rare_mask.sum().item() == 0:
+			print("  [WARNING] Shared rare mask is empty in this run.")
+
 		if missing:
-			print(f"  [WARNING] {len(missing)} shared labels NOT found in this run's class list "
-				f"— shared vocab should be a subset of every column's vocab, this is unexpected: "
-				f"{missing[:10]}{'...' if len(missing) > 10 else ''}")
+			print(
+				f"  [WARNING] Missing shared labels: "
+				f"{missing[:10]}{'...' if len(missing) > 10 else ''}"
+			)
 
 	return {"shared_mask": shared_mask, "head_mask": head_mask, "rare_mask": rare_mask}
 
@@ -1682,6 +1909,27 @@ def evaluate_shared_protocol(
 		device=device,
 		verbose=verbose,
 	)
+
+	if masks["shared_mask"].sum().item() == 0:
+		raise RuntimeError(
+			"Shared protocol evaluation has zero matched labels. "
+			"Check shared_class_names and this run's class_names."
+		)
+
+	if masks["head_mask"].sum().item() == 0:
+		raise RuntimeError(
+			"Shared protocol contains no head labels for this run. "
+			"Check the JSON head_mask and its alignment with shared_class_names."
+		)
+
+	if masks["rare_mask"].sum().item() == 0:
+		raise RuntimeError(
+			"Shared protocol contains no rare labels for this run. "
+			"Check the JSON rare_mask and its alignment with shared_class_names."
+		)
+
+	if (masks["head_mask"] & masks["rare_mask"]).any():
+		raise RuntimeError("Shared protocol has overlapping head and rare masks.")
 
 	shared_tiered_i2t = compute_tiered_retrieval_metrics(
 		similarity_matrix=i2t_similarity,
