@@ -1982,7 +1982,7 @@ def evaluate_best_model(
 	if verbose:
 		print(f"\n[BEST MODEL EVALUATION]")
 		print(f"  ├─ {dataset_name}")
-		print(f"  ├─  Model source: ({type(model)}")
+		print(f"  ├─  {type(model)}")
 		print(f"  ├─  Finetune strategy: {finetune_strategy}")
 		print(f"  └─  Checkpoint path: {checkpoint_path}")
 
