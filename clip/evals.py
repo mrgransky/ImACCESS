@@ -1,3 +1,5 @@
+import json
+
 from utils import *
 import clip
 
@@ -1621,9 +1623,15 @@ def build_shared_masks_from_protocol(
 
 	print(json.dumps(shared_protocol, indent=2, ensure_ascii=False))
 
-	shared_vocab = shared_protocol["shared_vocab"]
-	head_labels  = set(shared_protocol["head_labels"])
-	rare_labels  = set(shared_protocol["rare_labels"])
+	shared_vocab = shared_protocol["shared_class_names"]
+	head_labels  = {
+		label for label, is_head in zip(shared_vocab, shared_protocol["head_mask"])
+		if is_head
+	}
+	rare_labels  = {
+		label for label, is_rare in zip(shared_vocab, shared_protocol["rare_mask"])
+		if is_rare
+	}
 
 	shared_mask = torch.zeros(num_classes, dtype=torch.bool, device=device)
 	head_mask   = torch.zeros(num_classes, dtype=torch.bool, device=device)
