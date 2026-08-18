@@ -1619,6 +1619,8 @@ def build_shared_masks_from_protocol(
 	name_to_idx = {name: i for i, name in enumerate(class_names)}
 	num_classes = len(class_names)
 
+	print(json.dumps(shared_protocol, indent=2, ensure_ascii=False))
+
 	shared_vocab = shared_protocol["shared_vocab"]
 	head_labels  = set(shared_protocol["head_labels"])
 	rare_labels  = set(shared_protocol["rare_labels"])
