@@ -946,7 +946,7 @@ def get_validation_metrics(
 ) -> Dict:
 
 	if verbose:
-		print(f"\nComputing validation metrics Temperature: {temperature}")
+		print(f"\n[VALIDATION METRICS]")
 
 	model.eval()
 	torch.cuda.empty_cache()
@@ -1988,7 +1988,7 @@ def evaluate_best_model(
 
 	if checkpoint_path is not None and os.path.exists(checkpoint_path):
 		if verbose:
-			print(f"[LOADING] best model weights {checkpoint_path} for final evaluation...")
+			print(f"\n[LOADING] {checkpoint_path}")
 
 		try:
 			checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -2027,7 +2027,7 @@ def evaluate_best_model(
 					print("Warning: Loaded file format not recognized as a model checkpoint.")
 		except Exception as e:
 			if verbose:
-				print(f"<!> Error loading checkpoint: {e}\nProceeding with current model weights.")
+				print(f"<!> Error loading checkpoint: {e} => Proceeding with current model weights.")
 	else:
 		if verbose:
 			if checkpoint_path is None:
@@ -2044,7 +2044,7 @@ def evaluate_best_model(
 	):
 		try:
 			if verbose:
-				print(f"[LOADED] weights from early stopping (ep: {early_stopping.best_epoch+1})")
+				print(f"[LOADED] weights from early stopping (epoch: {early_stopping.best_epoch+1})")
 			model.load_state_dict(
 				{
 					k: v.to(device, non_blocking=True) 
@@ -2059,7 +2059,7 @@ def evaluate_best_model(
 
 	if verbose:
 		param_count = sum(p.numel() for p in model.parameters())
-		print(f"{type(model)} {model.name} Parameters: {param_count:,}")
+		print(f"\n{type(model)} {model.__class__.__name__} {model.name} Parameters: {param_count:,}")
 
 	validation_results = get_validation_metrics(
 		model=model,
@@ -2070,14 +2070,14 @@ def evaluate_best_model(
 		cache_dir=cache_dir,
 		embeddings_cache=embeddings_cache,
 		lora_params=lora_params,
-		is_training=False,  # Use cache for final evaluation/inference
+		is_training=False, # Use cache for final evaluation/inference
 		model_hash=get_model_hash(model),
 		temperature=temperature,
 		class_embeds_override=class_embeds_override,
 		verbose=verbose,
 	)
 
-
+	# Extract the validation results
 	full_metrics = validation_results["full_metrics"]
 	i2t_similarity = validation_results["i2t_similarity"]
 	t2i_similarity = validation_results["t2i_similarity"]
