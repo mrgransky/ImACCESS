@@ -1980,7 +1980,11 @@ def evaluate_best_model(
 	model_source = "current"
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	if verbose:
-		print(f"\n[BEST MODEL EVALUATION] {type(model)} | {dataset_name} | Strategy: {finetune_strategy}")
+		print(f"\n[BEST MODEL EVALUATION]")
+		print(f"  ├─ {dataset_name}")
+		print(f"  ├─  Model source: ({type(model)}")
+		print(f"  ├─  Finetune strategy: {finetune_strategy}")
+		print(f"  └─  Checkpoint path: {checkpoint_path}")
 
 	if checkpoint_path is not None and os.path.exists(checkpoint_path):
 		# if verbose:
@@ -2030,7 +2034,13 @@ def evaluate_best_model(
 			else:
 				print(f"Checkpoint not found at {checkpoint_path}. Proceeding with current model weights.")
 
-	if model_source == "current" and early_stopping and early_stopping.restore_best_weights and early_stopping.best_weights is not None:
+
+	if (
+		model_source == "current" 
+		and early_stopping 
+		and early_stopping.restore_best_weights 
+		and early_stopping.best_weights is not None
+	):
 		try:
 			if verbose:
 				print(f"[LOADED] weights from early stopping (ep: {early_stopping.best_epoch+1})")
@@ -2044,7 +2054,9 @@ def evaluate_best_model(
 	if verbose:
 		param_count = sum(p.numel() for p in model.parameters())
 		print(f"{type(model)} {model.name} Parameters: {param_count:,}")
-		
+
+
+
 	validation_results = get_validation_metrics(
 		model=model,
 		validation_loader=validation_loader,
@@ -2060,6 +2072,7 @@ def evaluate_best_model(
 		class_embeds_override=class_embeds_override,
 		verbose=verbose,
 	)
+
 
 	full_metrics = validation_results["full_metrics"]
 	i2t_similarity = validation_results["i2t_similarity"]
