@@ -403,7 +403,6 @@ def build_shared_eval_protocol(
 		json.dump(shared_protocol, file, indent=2)
 
 	if verbose:
-		print("\n[SHARED R1-C EVALUATION PROTOCOL]")
 		print(f"  ├─ Shared training classes : {len(shared_class_names):,}")
 		print(f"  ├─ Head classes (Pareto {pareto_threshold:.0%}): {head_mask.sum().item():,}")
 		print(f"  ├─ Rare classes (bottom {rare_percentile:.0%}) : {rare_mask.sum().item():,}")

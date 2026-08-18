@@ -1603,6 +1603,102 @@ def get_multilabel_alignment_score(
 
 	return score
 
+def build_shared_masks_from_protocol(
+	shared_protocol: Dict,
+	class_names: List[str],
+	device: str,
+	verbose: bool = True,
+) -> Dict[str, torch.Tensor]:
+	"""
+	Map the static shared_eval_protocol.json label lists onto THIS run's
+	class index space. By construction, shared_vocab is the intersection
+	of llm/vlm/multimodal vocabularies, so every shared label must exist
+	in class_names — a mismatch here signals a bug upstream, not a
+	normal condition.
+	"""
+	name_to_idx = {name: i for i, name in enumerate(class_names)}
+	num_classes = len(class_names)
+
+	shared_vocab = shared_protocol["shared_vocab"]
+	head_labels  = set(shared_protocol["head_labels"])
+	rare_labels  = set(shared_protocol["rare_labels"])
+
+	shared_mask = torch.zeros(num_classes, dtype=torch.bool, device=device)
+	head_mask   = torch.zeros(num_classes, dtype=torch.bool, device=device)
+	rare_mask   = torch.zeros(num_classes, dtype=torch.bool, device=device)
+
+	missing = []
+	for label in shared_vocab:
+		idx = name_to_idx.get(label)
+		if idx is None:
+			missing.append(label)
+			continue
+		shared_mask[idx] = True
+		if label in head_labels:
+			head_mask[idx] = True
+		if label in rare_labels:
+			rare_mask[idx] = True
+
+	if verbose:
+		print(f"\n[Shared Protocol] {shared_mask.sum().item()}/{len(shared_vocab)} "
+			f"shared labels found in this run's vocabulary ({num_classes} classes)")
+		print(f"  ├─ Head (shared): {head_mask.sum().item()}")
+		print(f"  └─ Rare (shared): {rare_mask.sum().item()}")
+		if missing:
+			print(f"  [WARNING] {len(missing)} shared labels NOT found in this run's class list "
+				f"— shared vocab should be a subset of every column's vocab, this is unexpected: "
+				f"{missing[:10]}{'...' if len(missing) > 10 else ''}")
+
+	return {"shared_mask": shared_mask, "head_mask": head_mask, "rare_mask": rare_mask}
+
+def evaluate_shared_protocol(
+	i2t_similarity: torch.Tensor,
+	t2i_similarity: torch.Tensor,
+	device_labels: torch.Tensor,
+	class_names: List[str],
+	shared_protocol: Dict,
+	topk_values: List[int],
+	device: str,
+	verbose: bool = True,
+) -> Tuple[Dict, Dict]:
+	"""
+	R1-C compliant evaluation: score this model's similarity matrices
+	restricted to the fixed shared vocabulary (identical labels and
+	identical head/rare membership across all three supervision runs).
+	"""
+	masks = build_shared_masks_from_protocol(
+		shared_protocol=shared_protocol,
+		class_names=class_names,
+		device=device,
+		verbose=verbose,
+	)
+
+	shared_tiered_i2t = compute_tiered_retrieval_metrics(
+		similarity_matrix=i2t_similarity,
+		query_labels=device_labels,
+		topK_values=topk_values,
+		head_mask=masks["head_mask"],
+		rare_mask=masks["rare_mask"],
+		active_mask=masks["shared_mask"],
+		mode="Image-to-Text",
+		use_fixed_masks=True,   # R1-C: no adaptive min_val_support, fixed at 1
+		verbose=verbose,
+	)
+
+	shared_tiered_t2i = compute_tiered_retrieval_metrics(
+		similarity_matrix=t2i_similarity,
+		query_labels=device_labels,
+		topK_values=topk_values,
+		head_mask=masks["head_mask"],
+		rare_mask=masks["rare_mask"],
+		active_mask=masks["shared_mask"],
+		mode="Text-to-Image",
+		use_fixed_masks=True,
+		verbose=verbose,
+	)
+
+	return shared_tiered_i2t, shared_tiered_t2i
+
 def evaluate_best_model(
 	model,
 	validation_loader,
@@ -1620,6 +1716,7 @@ def evaluate_best_model(
 	lora_params: Optional[Dict] = None,
 	class_embeds_override: Optional[torch.Tensor] = None,
 	use_fixed_masks: bool = False,
+	shared_protocol_path: str = None,
 	verbose: bool = True,
 ):
 	model_source = "current"
@@ -1667,8 +1764,7 @@ def evaluate_best_model(
 					print("Warning: Loaded file format not recognized as a model checkpoint.")
 		except Exception as e:
 			if verbose:
-				print(f"<!> Error loading checkpoint:\n{e}")
-				print("Proceeding with current model weights.")
+				print(f"Error loading checkpoint:\n{e}\nProceeding with current model weights.")
 	else:
 		if verbose:
 			if checkpoint_path is None:
@@ -1706,6 +1802,7 @@ def evaluate_best_model(
 		class_embeds_override=class_embeds_override,
 		verbose=verbose,
 	)
+
 	full_metrics = validation_results["full_metrics"]
 	i2t_similarity = validation_results["i2t_similarity"]
 	t2i_similarity = validation_results["t2i_similarity"]
@@ -1735,6 +1832,32 @@ def evaluate_best_model(
 		verbose=verbose,
 	)
 
+	# needed for both ordinary tiers (already available via caller) and shared protocol
+	try:
+		class_names = validation_loader.dataset.dataset.classes
+	except AttributeError:
+		class_names = validation_loader.dataset.unique_labels
+
+	if shared_protocol_path:
+		# load json file:
+		with open(shared_protocol_path, "r") as f:
+			shared_protocol = json.load(f)
+
+		# get the shared protocol:
+		shared_tiered_i2t, shared_tiered_t2i = evaluate_shared_protocol(
+			i2t_similarity=i2t_similarity,
+			t2i_similarity=t2i_similarity,
+			device_labels=device_labels,
+			class_names=class_names,
+			shared_protocol=shared_protocol,
+			topk_values=topk_values,
+			device=device,
+			verbose=verbose,
+		)
+	else:
+		shared_tiered_i2t = None
+		shared_tiered_t2i = None
+
 	# Clean up large tensors immediately after use
 	del i2t_similarity, t2i_similarity
 	torch.cuda.empty_cache()
@@ -1745,5 +1868,7 @@ def evaluate_best_model(
 		"txt2img_metrics":   validation_results["txt2img_metrics"],
 		"tiered_i2t":        tiered_i2t,
 		"tiered_t2i":        tiered_t2i,
+		"shared_tiered_i2t": shared_tiered_i2t,
+		"shared_tiered_t2i": shared_tiered_t2i,
 		"model_loaded_from": model_source,
 	}

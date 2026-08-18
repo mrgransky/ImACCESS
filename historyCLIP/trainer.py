@@ -86,6 +86,7 @@ def main():
 	parser.add_argument('--print_every', type=int, default=25, help='Print loss')
 	parser.add_argument('--temperature', '-t', type=float, default=0.07, help='Temperature [def: 0.07]')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
+	parser.add_argument('--seed', type=int, default=42, help='Random seed')
 
 	# Early stopping
 	parser.add_argument('--minimum_epochs', '-mep', type=int, default=7, help='Early stopping minimum epochs')
@@ -181,7 +182,7 @@ def main():
 		print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
 		print_args_table(args=args, parser=parser)
 		print(args)
-		set_seeds(seed=42)
+		set_seeds(seed=args.seed)
 		# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 		# print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 		# RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{dataset_type}") # multi_label
@@ -219,7 +220,7 @@ def main():
 			input_resolution=model_config["image_resolution"],
 			col=args.column,
 		)
-		# return
+		return
 
 		# viz.visualize_samples(validation_loader, num_samples=5)
 		

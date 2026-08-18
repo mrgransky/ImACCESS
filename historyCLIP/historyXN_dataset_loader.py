@@ -277,7 +277,7 @@ class HistoricalArchivesSingleLabelDataset(Dataset):
 		tokenized_label_tensor = clip.tokenize(texts=doc_label).squeeze(0)
 		return image_tensor, tokenized_label_tensor, doc_label_int
 
-def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
+def get_multi_label_datasets(metadata_fpth: str, col:str):
 	ddir = os.path.dirname(metadata_fpth)
 
 	df = pd.read_csv(
@@ -286,27 +286,8 @@ def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 		dtype=dtypes, 
 		low_memory=False,
 	)
-	print(f"Multi-label {type(df)} {df.shape}")
+	print(f"[MULTI-LABEL] {metadata_fpth} {df.shape}")
 	print(df.info(verbose=True, memory_usage=True))
-
-	metadata_train_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_train.csv'))
-	metadata_val_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_val.csv'))
-
-	print(f">> Loading {metadata_train_fpth}")
-	df_train = pd.read_csv(
-		filepath_or_buffer=metadata_train_fpth, 
-		on_bad_lines='skip',
-		dtype=dtypes, 
-		low_memory=False,
-	)
-	
-	print(f">> Loading {metadata_val_fpth}")
-	df_val = pd.read_csv(
-		filepath_or_buffer=metadata_val_fpth,
-		on_bad_lines='skip',
-		dtype=dtypes, 
-		low_memory=False,
-	)	
 
 	# Create label mapping from all unique labels in the dataset
 	all_labels = set()
@@ -320,11 +301,31 @@ def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 	# Convert to sorted list for deterministic ordering
 	all_labels = sorted(all_labels)
 	label_dict = {label: idx for idx, label in enumerate(all_labels)}
-	print(f"[VOCAB] {col}: {len(label_dict)} {type(label_dict)} unique labels is created from Total: {len(all_labels)} unique {type(all_labels)} labels")
+	print(f"[VOCAB] {col} {len(label_dict)} {type(label_dict)} unique labels")
 	# print(json.dumps(label_dict, indent=2, ensure_ascii=False))
 	# print("="*100)
+
+	metadata_train_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_train.csv'))
+	metadata_val_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_val.csv'))
+
+	print(f"Loading {metadata_train_fpth}")
+	df_train = pd.read_csv(
+		filepath_or_buffer=metadata_train_fpth, 
+		on_bad_lines='skip',
+		dtype=dtypes, 
+		low_memory=False,
+	)
 	
+	print(f"Loading {metadata_val_fpth}")
+	df_val = pd.read_csv(
+		filepath_or_buffer=metadata_val_fpth,
+		on_bad_lines='skip',
+		dtype=dtypes, 
+		low_memory=False,
+	)	
+
 	# Add label vectors to dataframes
+	print(f">> Adding label vectors to dataframes: df_train {df_train.shape}, df_val {df_val.shape}")
 	for df_split in [df_train, df_val]:
 		label_vectors = []
 		for labels_str in df_split[col]:
@@ -340,11 +341,12 @@ def get_multi_label_datasets(metadata_fpth: str, col:str='multimodal_labels'):
 		
 		df_split['label_vector'] = label_vectors
 	
-	print(f"\n>> TRAIN {type(df_train)} {df_train.shape}\n{list(df_train.columns)} ")
+	print(f"\nTRAIN {type(df_train)} {df_train.shape}\n{list(df_train.columns)}")
 	# print(df_train[['img_path', 'multimodal_canonical_labels', 'label_vector']].head(10))
 	# print(df_train['label_vector'].apply(lambda x: np.where(x==1)[0].tolist()).head(10)) # indices of 1s in label_vector
 	# print()
-	print(f"\n>> VAL {type(df_val)} {df_val.shape}\n{list(df_val.columns)}")
+
+	print(f"\nVAL {type(df_val)} {df_val.shape}\n{list(df_val.columns)}")
 	# print(df_val[['img_path', 'multimodal_canonical_labels', 'label_vector']].head(10))
 	print("="*100)
 
@@ -685,7 +687,7 @@ def get_multi_label_dataloaders(
 	batch_size: int,
 	num_workers: int,
 	input_resolution: int,
-	col:str='multimodal_labels',
+	col:str,
 	cache_size: int = None,
 ) -> Tuple[DataLoader, DataLoader]:
 	ddir = os.path.dirname(metadata_fpth)
@@ -775,14 +777,14 @@ def get_multi_label_dataloaders(
 	
 	# Create dataloaders
 	train_loader = DataLoader(
-			dataset=train_dataset,
-			batch_size=batch_size,
-			shuffle=True,
-			pin_memory=torch.cuda.is_available(),
-			num_workers=num_workers,
-			prefetch_factor=2 if num_workers > 0 else None,
-			persistent_workers=(num_workers > 0),
-			drop_last=False,
+		dataset=train_dataset,
+		batch_size=batch_size,
+		shuffle=True,
+		pin_memory=torch.cuda.is_available(),
+		num_workers=num_workers,
+		prefetch_factor=2 if num_workers > 0 else None,
+		persistent_workers=(num_workers > 0),
+		drop_last=False,
 	)
 	train_loader.name = f"{dataset_name.lower()}_multilabel_train".upper()
 	
