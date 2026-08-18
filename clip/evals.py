@@ -495,6 +495,12 @@ def compute_multilabel_mrr(
 		
 		return np.mean(reciprocal_ranks) if reciprocal_ranks else 0.0
 
+# Bump this whenever the metric DEFINITION changes (not the code style).
+# Any cache file written under a different version is treated as invalid,
+# so a stale AP@K computed with the old (incorrect) denominator can never
+# be silently reused after this fix.
+METRIC_VERSION = "apk_v2_minRqK"
+
 def compute_retrieval_metrics_from_similarity(
 	similarity_matrix: torch.Tensor,
 	query_labels: torch.Tensor,
@@ -512,26 +518,36 @@ def compute_retrieval_metrics_from_similarity(
 	"""
 	Compute retrieval metrics (mP, mAP, Recall) with memory optimization and proper multi-label support.
 
-	mAP@K uses the standard truncated-AP definition:
+	AP@K definition (standard, matches trec_eval / pytrec_eval):
 		AP@K(q) = sum_{r=1}^{K} P(r) * rel(r) / min(R_q, K)
 	where R_q is the TOTAL number of relevant items for query q (not just
-	those retrieved within the top-K), and K is the REQUESTED K — not the
-	number of candidates actually available in a (possibly small) tier.
+	those retrieved within the top-K), and K is the REQUESTED K.
 
-	Critical fix vs. earlier versions: previously, any requested K that
-	exceeded the number of available candidates (e.g. K=10 on a shared
-	"rare" tier with only 3 classes) was silently DROPPED from the output
-	dict entirely. Downstream code doing `tier_metrics['mAP'].get('10', 0)`
-	then rendered this as a false zero, which is what produced the zero
-	shared-tiered I2T values.
+	This is NOT the same as normalizing by the number of hits actually
+	found in the top-K (i.e. correct_mask.sum(dim=1)). That alternative —
+	used in an earlier version of this function — is not a recognized IR
+	metric: it cannot penalize a query for missing relevant items that
+	were achievable within K, which defeats the purpose of measuring
+	rare-tier retrieval quality. Example: R_q=5, K=10, hits at ranks 3
+	and 8 → numerator=0.583. Dividing by hits-found (2) gives 0.292;
+	dividing by min(R_q,K)=5 gives 0.117. The latter is correct AP@K.
 
-	Fix: every requested K now always produces an entry in the output,
-	keyed by the REQUESTED K (not the effective one). Internally we clamp
-	to `effective_K = min(requested_K, num_candidates)` for indexing/
-	ranking, but the AP@K normalization still divides by
-	min(R_q, requested_K) per the standard definition — this correctly
-	reflects that the metric is well-defined but constrained by the tier
-	size, rather than silently disappearing.
+	Queries with R_q=0 (no relevant items exist) are excluded from the
+	mAP average via `has_relevant`, since AP is undefined for them —
+	scoring them as 0 would penalize the model for an impossible task
+	and bias the mean downward.
+
+	Zero versioning note: cache files are keyed with METRIC_VERSION so
+	that caches written under the old (incorrect) denominator are never
+	loaded here — see `cache_key` construction below.
+
+	Critical fix vs. earlier versions (independent of the above): any
+	requested K exceeding the number of available candidates in a tier
+	(e.g. K=10 on a shared-rare tier with only 3 classes) is no longer
+	silently dropped from the output dict. Every requested K always
+	produces an entry, keyed by the REQUESTED K; ranking internally uses
+	effective_K = min(requested_K, num_candidates), but the AP@K
+	normalization still divides by min(R_q, requested_K).
 
 	Args:
 			similarity_matrix: [num_queries, num_candidates]
@@ -540,9 +556,9 @@ def compute_retrieval_metrics_from_similarity(
 			topK_values: List of K values for evaluation
 			mode: "Image-to-Text" or "Text-to-Image"
 			class_counts: Number of samples per class (for single-label recall / T2I R_q)
-			max_k: Optional hard cap on K (rarely needed now that effective_K handles small tiers)
+			max_k: Optional hard cap on K
 			cache_dir: Cache directory
-			cache_key: Cache identifier
+			cache_key: Cache identifier (will be suffixed with METRIC_VERSION)
 			is_training: Skip caching if True
 			verbose: Print progress
 			chunk_size: Chunk size for memory optimization
@@ -554,17 +570,14 @@ def compute_retrieval_metrics_from_similarity(
 	num_queries, num_candidates = similarity_matrix.shape
 	device = similarity_matrix.device
 
-	# Validate inputs
 	if query_labels.dim() not in [1, 2] or candidate_labels.dim() not in [1, 2]:
 		raise ValueError("Labels must be 1D (single-label) or 2D (multi-label)")
 
-	# Determine if multi-label based on labels dimensionality
 	is_multi_label = (
 		len(candidate_labels.shape) == 2 if mode == "Text-to-Image"
 		else len(query_labels.shape) == 2
 	)
 
-	# Sanity check — relevant items per query should reflect tier size
 	if verbose and is_multi_label:
 		if mode == "Image-to-Text":
 			relevant_per_query = (query_labels > 0).sum(dim=1).float()
@@ -572,34 +585,18 @@ def compute_retrieval_metrics_from_similarity(
 			print(f"\n[I2T Sanity] Relevant items per query (out of {n_candidates} candidates):")
 			print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
 			print(f"  ├─ mean: {relevant_per_query.mean():.2f} std: {relevant_per_query.std():.2f}")
-			print(f"  ├─ zero-relevant queries: {(relevant_per_query == 0).sum().item()}")
-			if relevant_per_query.max().item() > n_candidates:
-				print(f"  └─ [WARNING] max relevant ({relevant_per_query.max():.0f}) "
-						f"> num candidates ({n_candidates}) — "
-						f"full label vector may be leaking into tier computation")
-			else:
-				print(f"  └─ [OK] max relevant ≤ num candidates — tier labels correctly restricted")
-		else:  # Text-to-Image
-			relevant_per_query = candidate_labels.sum(dim=0).float()  # [N_tier]
+			print(f"  └─ zero-relevant queries: {(relevant_per_query == 0).sum().item()}")
+		else:
+			relevant_per_query = candidate_labels.sum(dim=0).float()
 			print(f"\n[T2I Sanity] Relevant items per query class (out of {similarity_matrix.shape[1]} images):")
 			print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
 			print(f"  ├─ mean: {relevant_per_query.mean():.2f} std: {relevant_per_query.std():.2f}")
-			print(f"  ├─ zero-relevant queries: {(relevant_per_query == 0).sum().item()}")
-			if (relevant_per_query == 0).any():
-				zero_count = (relevant_per_query == 0).sum().item()
-				print(
-					f"  └─ [WARNING] {zero_count} classes have zero relevant images "
-					f"— likely inactive classes (freq=0 in validation). "
-					f"These contribute 0 to mAP and are expected in full evaluation. "
-					f"Tiered evaluation will filter these via active_mask."
-				)
-			else:
-				print(f"  └─ [OK] All query classes have ≥1 relevant image")
+			print(f"  └─ zero-relevant queries: {(relevant_per_query == 0).sum().item()}")
 
-	# Check cache
+	# ── Cache — versioned so old (incorrect-denominator) caches are never reused ──
 	cache_file = None
 	if cache_dir and cache_key and not is_training:
-		cache_file = os.path.join(cache_dir, f"{cache_key}_retrieval_metrics.json")
+		cache_file = os.path.join(cache_dir, f"{cache_key}_{METRIC_VERSION}_retrieval_metrics.json")
 		if os.path.exists(cache_file):
 			try:
 				if verbose:
@@ -610,9 +607,6 @@ def compute_retrieval_metrics_from_similarity(
 				if verbose:
 					print(f"Cache loading failed: {e}. Computing metrics.")
 
-	# ── Requested K values are NEVER dropped, even if they exceed num_candidates ──
-	# We only drop K if it exceeds max_k (an explicit user-imposed hard cap), never
-	# because a small tier happens to have fewer candidates than K.
 	requested_K_values = [K for K in topK_values if K <= (max_k or float("inf"))]
 	if not requested_K_values:
 		raise ValueError("No valid K values provided")
@@ -623,11 +617,9 @@ def compute_retrieval_metrics_from_similarity(
 			f"[K clamp] {mode}: requested K={dropped_effective} exceed "
 			f"num_candidates={num_candidates} in this tier — "
 			f"will compute at effective_K=min(K, num_candidates) but still "
-			f"report under the REQUESTED K key (previously these were dropped entirely)."
+			f"report under the REQUESTED K key."
 		)
 
-	# Get top-K indices for all queries (memory efficient, chunked).
-	# Sort only once, using the LARGEST effective_K needed across all requested K.
 	max_effective_K = min(max(requested_K_values), num_candidates)
 	chunk_size = 256
 	all_sorted_indices = torch.cat([
@@ -638,57 +630,42 @@ def compute_retrieval_metrics_from_similarity(
 	# ── R_q: total relevant items per query — computed ONCE, independent of K ──
 	if is_multi_label:
 		if mode == "Image-to-Text":
-			# query_labels: [num_queries, num_candidates] — relevant classes per image
-			relevant_counts = query_labels.sum(dim=1).float()          # [num_queries]
-		else:  # Text-to-Image
-			# candidate_labels: [num_candidates_images, num_queries] — relevant images per class
-			relevant_counts = candidate_labels.sum(dim=0).float()      # [num_queries]
+			relevant_counts = query_labels.sum(dim=1).float()
+		else:
+			relevant_counts = candidate_labels.sum(dim=0).float()
 	else:
 		if mode == "Image-to-Text":
-			# Single-label I2T — exactly one relevant class per image query
 			relevant_counts = torch.ones(num_queries, device=device, dtype=torch.float32)
-		else:  # Text-to-Image
+		else:
 			if class_counts is None:
 				raise ValueError("class_counts required for single-label text-to-image")
-			relevant_counts = class_counts[query_labels].float()       # [num_queries]
+			relevant_counts = class_counts[query_labels].float()
 
-	has_relevant = relevant_counts > 0   # queries with at least 1 relevant item
+	has_relevant = relevant_counts > 0
 
 	metrics = {"mP": {}, "mAP": {}, "Recall": {}}
 	for requested_K in requested_K_values:
-		# effective_K: how many candidates we can ACTUALLY rank/retrieve in this tier
 		effective_K = min(requested_K, num_candidates)
 		top_k_indices = all_sorted_indices[:, :effective_K]
 
-		# Compute correctness mask based on dataset type
 		if is_multi_label:
 			correct_mask = compute_multilabel_correctness(
-				top_k_indices,
-				query_labels,
-				candidate_labels,
-				mode,
-				effective_K,
-				chunk_size,
+				top_k_indices, query_labels, candidate_labels, mode, effective_K, chunk_size,
 			)
 		else:
 			correct_mask = compute_singlelabel_correctness(
-				top_k_indices,
-				query_labels,
-				candidate_labels,
-				effective_K,
+				top_k_indices, query_labels, candidate_labels, effective_K,
 			)
 
-		key = str(requested_K)  # ALWAYS key by requested K, never silently dropped
+		key = str(requested_K)
 
-		# Compute metrics
 		metrics["mP"][key] = correct_mask.float().mean().item()
 
-		# Compute Recall
 		if mode == "Image-to-Text":
 			metrics["Recall"][key] = correct_mask.any(dim=1).float().mean().item()
-		else:  # Text-to-Image
+		else:
 			if is_multi_label:
-				retrieved_counts = correct_mask.float().sum(dim=1)     # [num_queries]
+				retrieved_counts = correct_mask.float().sum(dim=1)
 				recall_per_query = torch.where(
 					has_relevant,
 					retrieved_counts / relevant_counts.clamp(min=1),
@@ -701,13 +678,7 @@ def compute_retrieval_metrics_from_similarity(
 				recalled = correct_mask.sum(dim=1).float()
 				metrics["Recall"][key] = (recalled / relevant_counts.clamp(min=1)).mean().item()
 
-		# ── Correct truncated mAP@K ──
-		# AP@K(q) = sum_{r=1}^{effective_K} P(r) * rel(r) / min(R_q, requested_K)
-		# NOTE: normalization uses the REQUESTED K (standard definition), while the
-		# summation itself is only computed over the effective_K columns that
-		# actually exist. If effective_K < requested_K, this correctly yields a
-		# lower AP@K than would be achievable with more candidates — it does NOT
-		# silently vanish or get mis-keyed, unlike the previous implementation.
+		# ── Standard truncated AP@K: AP@K(q) = sum P(r)*rel(r) / min(R_q, requested_K) ──
 		positions = torch.arange(1, effective_K + 1, device=device, dtype=torch.float32).unsqueeze(0)
 		cumulative_correct = correct_mask.float().cumsum(dim=1)
 		precisions = cumulative_correct / positions
@@ -719,7 +690,6 @@ def compute_retrieval_metrics_from_similarity(
 			ap_scores[has_relevant].mean().item() if has_relevant.any() else 0.0
 		)
 
-	# Persist to cache
 	if cache_file:
 		try:
 			with open(cache_file, 'w') as f:
@@ -1763,6 +1733,7 @@ def evaluate_shared_protocol(
 	shared_protocol: Dict,
 	topk_values: List[int],
 	device: str,
+	use_fixed_masks: bool,
 	verbose: bool = True,
 ) -> Tuple[Dict, Dict]:
 	"""
@@ -1806,7 +1777,7 @@ def evaluate_shared_protocol(
 		rare_mask=masks["rare_mask"],
 		active_mask=masks["shared_mask"],
 		mode="Image-to-Text",
-		use_fixed_masks=True, # no adaptive min_val_support, fixed at 1
+		use_fixed_masks=use_fixed_masks, # no adaptive min_val_support, fixed at 1
 		verbose=verbose,
 	)
 
@@ -1818,7 +1789,7 @@ def evaluate_shared_protocol(
 		rare_mask=masks["rare_mask"],
 		active_mask=masks["shared_mask"],
 		mode="Text-to-Image",
-		use_fixed_masks=True,
+		use_fixed_masks=use_fixed_masks,
 		verbose=verbose,
 	)
 
@@ -1994,6 +1965,7 @@ def evaluate_best_model(
 			shared_protocol=shared_protocol,
 			topk_values=topk_values,
 			device=device,
+			use_fixed_masks=use_fixed_masks,
 			verbose=verbose,
 		)
 	else:
