@@ -5,7 +5,7 @@ import visualize as viz
 import label_statistics as stats
 from nlp_utils import _post_process_
 from clustering import get_canonical_labels
-from data_prep import get_multi_label_stratified_split
+from data_prep import get_multi_label_stratified_split, build_shared_eval_protocol
 
 # LLM models:
 # Qwen/Qwen3-4B-Instruct-2507
@@ -382,12 +382,19 @@ def get_multimodal_annotation(
 			)
 			print("="*100)
 
-		get_multi_label_stratified_split(
+		train_df, val_df = get_multi_label_stratified_split(
 			df=df,
 			csv_file=output_csv,
 			label_col='multimodal_canonical_labels',
 			val_split_pct=0.35,
 		)
+
+		build_shared_eval_protocol(
+			train_df=train_df,
+			output_dir=OUTPUT_DIR,
+			verbose=verbose,
+		)
+
 
 	return multimodal_labels
 

@@ -269,160 +269,145 @@ def get_multi_label_stratified_split(
 
 def build_shared_eval_protocol(
 		train_df: pd.DataFrame,
-		protocol_path: str = "shared_eval_protocol.json",
+		output_dir: str,
 		llm_col: str = "llm_canonical_labels",
 		vlm_col: str = "vlm_canonical_labels",
 		multimodal_col: str = "multimodal_canonical_labels",
 		pareto_threshold: float = 0.8,
 		rare_percentile: float = 0.2,
+		verbose: bool = False,
 ) -> dict:
-		"""
-		Build a fixed shared-vocabulary tier specification for R1-C evaluation.
+	"""
+	Build a fixed shared-vocabulary tier specification for R1-C evaluation.
+	The label vocabulary is the intersection of labels observed in all three
+	training regimes. Tier definitions reproduce compute_loss_masks():
+		- head: smallest set covering pareto_threshold of occurrences;
+		- rare: labels at or below rare_percentile of positive frequencies.
+	Reference frequencies are taken from multimodal training annotations.
+	"""
+	protocol_path = os.path.join(output_dir, "shared_eval_protocol.json")
 
-		The label vocabulary is the intersection of labels observed in all three
-		training regimes. Tier definitions reproduce compute_loss_masks():
-			- head: smallest set covering pareto_threshold of occurrences;
-			- rare: labels at or below rare_percentile of positive frequencies.
+	if verbose:
+		print(f"\n[SHARED EVAL PROTOCOL] train_df: {train_df.shape}")
 
-		Reference frequencies are taken from multimodal training annotations.
-		"""
+	def parse_labels(value):
+		if isinstance(value, str):
+				try:
+					parsed = ast.literal_eval(value)
+				except (ValueError, SyntaxError):
+					raise ValueError(f"Malformed label list encountered: {value!r}")
+				if not isinstance(parsed, list):
+					raise ValueError(f"Expected a list of labels, received: {type(parsed)}")
+				return parsed
+		if isinstance(value, list):
+			return value
+		if pd.isna(value):
+			return []
+		raise ValueError(f"Unsupported label value type: {type(value)}")
 
-		def parse_labels(value):
-				if isinstance(value, str):
-						try:
-								parsed = ast.literal_eval(value)
-						except (ValueError, SyntaxError):
-								raise ValueError(
-										f"Malformed label list encountered: {value!r}"
-								)
-						if not isinstance(parsed, list):
-								raise ValueError(
-										f"Expected a list of labels, received: {type(parsed)}"
-								)
-						return parsed
+	required_columns = [llm_col, vlm_col, multimodal_col]
+	missing_columns = [
+		column 
+		for column in required_columns
+		if column not in train_df.columns
+	]
+	if missing_columns:
+		raise ValueError(f"Missing required training-label columns: {missing_columns}")
 
-				if isinstance(value, list):
-						return value
+	parsed_train_df = train_df.copy()
+	for column in required_columns:
+		parsed_train_df[column] = parsed_train_df[column].apply(parse_labels)
 
-				if pd.isna(value):
-						return []
+	llm_counts = Counter(
+		label
+		for labels in parsed_train_df[llm_col]
+		for label in labels
+	)
 
-				raise ValueError(
-						f"Unsupported label value type: {type(value)}"
-				)
+	vlm_counts = Counter(
+		label
+		for labels in parsed_train_df[vlm_col]
+		for label in labels
+	)
 
-		required_columns = [llm_col, vlm_col, multimodal_col]
-		missing_columns = [
-				column for column in required_columns
-				if column not in train_df.columns
-		]
-		if missing_columns:
-				raise ValueError(
-						f"Missing required training-label columns: {missing_columns}"
-				)
+	multimodal_counts = Counter(
+		label
+		for labels in parsed_train_df[multimodal_col]
+		for label in labels
+	)
 
-		parsed_train_df = train_df.copy()
-		for column in required_columns:
-				parsed_train_df[column] = parsed_train_df[column].apply(parse_labels)
+	shared_class_names = sorted(
+		set(llm_counts)
+		& set(vlm_counts)
+		& set(multimodal_counts)
+	)
 
-		llm_counts = Counter(
-				label
-				for labels in parsed_train_df[llm_col]
-				for label in labels
-		)
-		vlm_counts = Counter(
-				label
-				for labels in parsed_train_df[vlm_col]
-				for label in labels
-		)
-		multimodal_counts = Counter(
-				label
-				for labels in parsed_train_df[multimodal_col]
-				for label in labels
-		)
-
-		shared_class_names = sorted(
-				set(llm_counts)
-				& set(vlm_counts)
-				& set(multimodal_counts)
-		)
-
-		if not shared_class_names:
-				raise ValueError(
-						"The training-label intersection across LLM, VLM, and "
-						"multimodal supervision is empty."
-				)
-
-		# Fixed reference frequency: multimodal training labels restricted to
-		# the shared label intersection.
-		shared_train_freq = torch.tensor(
-				[multimodal_counts[label] for label in shared_class_names],
-				dtype=torch.float32,
+	if not shared_class_names:
+		raise ValueError(
+			"The training-label intersection across LLM, VLM, and "
+			"multimodal supervision is empty."
 		)
 
-		active_mask = (shared_train_freq > 0)
+	# reference freq: multimodal training labels restricted to shared label intersection.
+	shared_train_freq = torch.tensor(
+		[multimodal_counts[label] for label in shared_class_names],
+		dtype=torch.float32,
+	)
 
-		# Identical to compute_loss_masks() Pareto-head logic.
-		sorted_freq, sorted_idx = torch.sort(
-				shared_train_freq,
-				descending=True,
-		)
-		cumulative_freq = sorted_freq.cumsum(0)
-		pareto_cutoff = (
-				int(
-						(
-								cumulative_freq
-								<= cumulative_freq[-1] * pareto_threshold
-						).sum().item()
-				)
-				+ 1
-		)
+	active_mask = (shared_train_freq > 0)
+	# Identical to compute_loss_masks() Pareto-head logic.
+	sorted_freq, sorted_idx = torch.sort(
+		shared_train_freq,
+		descending=True,
+	)
 
-		head_mask = torch.zeros(
-				len(shared_class_names),
-				dtype=torch.bool,
-		)
-		head_mask[sorted_idx[:pareto_cutoff]] = True
+	cumulative_freq = sorted_freq.cumsum(0)
 
-		# Identical to compute_loss_masks() rare-tier logic.
-		active_freq = shared_train_freq[active_mask]
-		rare_frequency_threshold = torch.quantile(
-				active_freq,
-				rare_percentile,
-		)
+	pareto_cutoff = (int((cumulative_freq <= cumulative_freq[-1] * pareto_threshold).sum().item())+1)
 
-		rare_mask = (
-				(shared_train_freq <= rare_frequency_threshold)
-				& active_mask
-		)
+	head_mask = torch.zeros(
+		len(shared_class_names),
+		dtype=torch.bool,
+	)
+	head_mask[sorted_idx[:pareto_cutoff]] = True
 
-		shared_protocol = {
-				"protocol_name": "shared_intersection_mm_reference_v1",
-				"reference_label_column": multimodal_col,
-				"pareto_threshold": pareto_threshold,
-				"rare_percentile": rare_percentile,
-				"shared_class_names": shared_class_names,
-				"shared_train_freq": shared_train_freq.tolist(),
-				"active_mask": active_mask.tolist(),
-				"head_mask": head_mask.tolist(),
-				"rare_mask": rare_mask.tolist(),
-				"n_classes": len(shared_class_names),
-				"n_head_classes": int(head_mask.sum().item()),
-				"n_rare_classes": int(rare_mask.sum().item()),
-				"rare_frequency_threshold": rare_frequency_threshold.item(),
-		}
+	# Identical to compute_loss_masks() rare-tier logic.
+	active_freq = shared_train_freq[active_mask]
 
-		with open(protocol_path, "w", encoding="utf-8") as file:
-				json.dump(shared_protocol, file, indent=2)
+	rare_frequency_threshold = torch.quantile(
+		active_freq,
+		rare_percentile,
+	)
 
+	rare_mask = (
+		(shared_train_freq <= rare_frequency_threshold)
+		& active_mask
+	)
+	shared_protocol = {
+		"protocol_name": "shared_intersection_mm_reference_v1",
+		"reference_label_column": multimodal_col,
+		"pareto_threshold": pareto_threshold,
+		"rare_percentile": rare_percentile,
+		"shared_class_names": shared_class_names,
+		"shared_train_freq": shared_train_freq.tolist(),
+		"active_mask": active_mask.tolist(),
+		"head_mask": head_mask.tolist(),
+		"rare_mask": rare_mask.tolist(),
+		"n_classes": len(shared_class_names),
+		"n_head_classes": int(head_mask.sum().item()),
+		"n_rare_classes": int(rare_mask.sum().item()),
+		"rare_frequency_threshold": rare_frequency_threshold.item(),
+	}
+
+	with open(protocol_path, "w", encoding="utf-8") as file:
+		json.dump(shared_protocol, file, indent=2)
+
+	if verbose:
 		print("\n[SHARED R1-C EVALUATION PROTOCOL]")
 		print(f"  ├─ Shared training classes : {len(shared_class_names):,}")
-		print(f"  ├─ Head classes (Pareto {pareto_threshold:.0%}) : "
-					f"{head_mask.sum().item():,}")
-		print(f"  ├─ Rare classes (bottom {rare_percentile:.0%}) : "
-					f"{rare_mask.sum().item():,}")
-		print(f"  ├─ Rare frequency threshold : "
-					f"{rare_frequency_threshold.item():.1f}")
+		print(f"  ├─ Head classes (Pareto {pareto_threshold:.0%}): {head_mask.sum().item():,}")
+		print(f"  ├─ Rare classes (bottom {rare_percentile:.0%}) : {rare_mask.sum().item():,}")
+		print(f"  ├─ Rare frequency threshold: {rare_frequency_threshold.item():.1f}")
 		print(f"  └─ Saved : {protocol_path}")
 
-		return shared_protocol
+	return shared_protocol
