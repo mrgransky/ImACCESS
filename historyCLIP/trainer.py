@@ -220,7 +220,7 @@ def main():
 			input_resolution=model_config["image_resolution"],
 			col=args.column,
 		)
-		return
+		# return
 
 		# viz.visualize_samples(validation_loader, num_samples=5)
 		
