@@ -3,12 +3,12 @@ import visualize as viz
 import label_statistics as stats
 from nlp_utils import _post_process_
 from clustering import get_canonical_labels_with_parallel_mapping, cluster
-from data_prep import get_multi_label_stratified_split
+from data_prep import get_multi_label_stratified_split, build_shared_eval_protocol
 
 # how to run:
 # local:
-# $ python -u gt_kws_multimodal_merge.py -ddir /home/farid/datasets/WW_DATASETs/HISTORY_X4/ -nw 8 -emb "Qwen/Qwen3-Embedding-0.6B" -v
-# $ nohup python -u gt_kws_multimodal_merge.py -ddir /home/farid/datasets/WW_DATASETs/HISTORY_X4 -nw 8 -emb "Qwen/Qwen3-Embedding-0.6B" -v > logs/multimodal_annotation_merge.log 2>&1 &
+# $ python -u gt_kws_multimodal_merge.py -ddir ~/datasets/WW_DATASETs/HISTORY_X4/ -nw 8 -emb "Qwen/Qwen3-Embedding-0.6B" -v
+# $ nohup python -u gt_kws_multimodal_merge.py -ddir ~/datasets/WW_DATASETs/HISTORY_X4 -nw 8 -emb "Qwen/Qwen3-Embedding-0.6B" -v > logs/multimodal_annotation_merge.log 2>&1 &
 
 # Puhti/Mahti:
 # srun -J cpu --account=project_2004072 --partition=large --time=00-13:00:00 --mem=96G --ntasks=1 --cpus-per-task=40 --pty /bin/bash -i
@@ -259,11 +259,17 @@ def merge_csv_files(
 			verbose=verbose,
 		)
 
-	get_multi_label_stratified_split(
+	train_df, val_df = get_multi_label_stratified_split(
 		df=df,
 		val_split_pct=0.35,
 		label_col='multimodal_canonical_labels',
 		csv_file=output_fpath,
+	)
+
+	build_shared_eval_protocol(
+		train_df=train_df,
+		output_dir=OUTPUT_DIR,
+		verbose=verbose,
 	)
 
 @measure_execution_time

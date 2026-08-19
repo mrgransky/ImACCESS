@@ -395,7 +395,6 @@ def get_multimodal_annotation(
 			verbose=verbose,
 		)
 
-
 	return multimodal_labels
 
 @measure_execution_time

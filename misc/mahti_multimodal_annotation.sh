@@ -7,11 +7,11 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=40
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=36G
 #SBATCH --array=0-4
 #SBATCH --partition=gpumedium
-#SBATCH --time=01-12:00:00
+#SBATCH --time=00-02:00:00
 #SBATCH --gres=gpu:a100:4,nvme:250
 
 set -euo pipefail

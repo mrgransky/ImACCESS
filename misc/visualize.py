@@ -471,14 +471,14 @@ def plot_tier_cv_distribution(
 
 		print("\n[Tier CV + Distribution Statistics]")
 		for t in TIER_ORDER:
-				print(
-						f"  {t:<6}  n={len(tier_freqs[t]):>5,}  "
-						f"CV={cv_vals[t]:.3f}  "
-						f"skew={skew_vals[t]:+.3f}  "
-						f"mean={mean_vals[t]:.1f}  "
-						f"median={median_vals[t]:.1f}  "
-						f"std={std_vals[t]:.1f}"
-				)
+			print(
+				f"  {t:<6}  n={len(tier_freqs[t]):5d} "
+				f"CV={cv_vals[t]:.3f} "
+				f"skew={skew_vals[t]:+.3f} "
+				f"mean={mean_vals[t]:.1f} "
+				f"std={std_vals[t]:.1f} "
+				f"median={median_vals[t]}"
+			)
 
 		# ── 2. Figure ─────────────────────────────────────────────────────────────
 		fig, ax = plt.subplots(figsize=figsize)

@@ -500,7 +500,7 @@ def compute_multilabel_mrr(
 # Any cache file written under a different version is treated as invalid,
 # so a stale AP@K computed with the old (incorrect) denominator can never
 # be silently reused after this fix.
-METRIC_VERSION = "apk_v2_minRqK"
+METRIC_VERSION = "apk_minRqK"
 
 def compute_retrieval_metrics_from_similarity(
 	similarity_matrix: torch.Tensor,
@@ -784,7 +784,7 @@ def get_validation_metrics(
 ) -> Dict:
 
 	if verbose:
-		print(f"\n[VALIDATION METRICS]")
+		print(f"\n[VALIDATION METRICS] is_training: {is_training}")
 
 	model.eval()
 	torch.cuda.empty_cache()
@@ -813,7 +813,7 @@ def get_validation_metrics(
 		print(f"  ├─ {finetune_strategy}")
 		print(f"  ├─ {num_samples} samples")
 		print(f"  ├─ {n_classes} classes")
-		print(f"  └─ {num_workers}")
+		print(f"  └─ nw: {num_workers}")
 	
 	cache_file = os.path.join(
 		cache_dir,
@@ -1015,10 +1015,12 @@ def get_validation_metrics(
 	
 	# Step 6: Compute retrieval metrics
 	cache_key_base = (
-		f"{dataset_name}_{finetune_strategy}_"
-		f"{model_class_name}_{model_arch_name.replace('/', '_')}_"
-		f"model_{model_hash}"
+		f"{finetune_strategy}_"
+		f"{model_class_name}_{model_arch_name.replace('/', '_')}"
 	)
+	if model_hash:
+		cache_key_base += f"_{model_hash}"
+
 	if lora_params:
 		lora_rank = lora_params.get("lora_rank")
 		lora_alpha = lora_params.get("lora_alpha")
@@ -1038,7 +1040,7 @@ def get_validation_metrics(
 		topK_values=topK_values,
 		mode="Image-to-Text",
 		cache_dir=cache_dir,
-		cache_key=f"{cache_key_base}_img2txt",
+		cache_key=f"{cache_key_base}_i2t",
 		is_training=is_training,
 		verbose=verbose,
 		chunk_size=chunk_size,
@@ -1057,7 +1059,7 @@ def get_validation_metrics(
 		mode="Text-to-Image",
 		class_counts=class_counts,
 		cache_dir=cache_dir,
-		cache_key=f"{cache_key_base}_txt2img",
+		cache_key=f"{cache_key_base}_t2i",
 		is_training=is_training,
 		verbose=verbose,
 		chunk_size=chunk_size,
