@@ -348,10 +348,7 @@ def get_multimodal_annotation(
 		verbose=verbose
 	)
 
-	print("="*100)
 	print(df.info(verbose=True, memory_usage=True))
-	print("="*100)
-
 	df.to_csv(output_csv, index=False)
 	try:
 		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)

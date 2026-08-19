@@ -813,7 +813,7 @@ def get_cgd_taxonomy_supervision(
 		sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
 		for i, s in enumerate(sources):
 			if s not in df.columns:
-				print(f"\n[ERROR] Missing required columns: {s}! available columns: {df.columns}")
+				print(f"\n[ERROR] Missing required columns: {s}\nAvailable columns: {list(df.columns)} => EXITING...")
 				return
 		
 		if verbose:
