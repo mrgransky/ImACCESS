@@ -212,9 +212,9 @@ def compute_adaptive_min_val_support(
 	val_support = query_labels.sum(dim=0)          # [C] per-class image count
 	active_support = val_support[active_mask]      # only active classes
 	if verbose:
-		print(f"\nComputing Adaptive min_val_support")
+		print(f"\nAdaptive min_val_support")
 		print(f"val_support: {type(val_support)} {val_support.shape} {val_support.device} (min, max): ({val_support.min().item()}, {val_support.max().item()})")
-		print(f"active_support:  {type(active_support)} {active_support.shape} {active_support.device} (min, max): ({active_support.min().item()}, {active_support.max().item()})")
+		print(f"active_support: {type(active_support)} {active_support.shape} {active_support.device} (min, max): ({active_support.min().item()}, {active_support.max().item()})")
 
 	if active_support.numel() == 0:
 		return absolute_min
@@ -230,7 +230,7 @@ def compute_adaptive_min_val_support(
 
 	if verbose:
 		print(
-			f"Active class val frequencies "
+			f"\n[ADAPTIVE] Active class val frequencies "
 			f"(min, max): "
 			f"({active_support.min().item()}, {active_support.max().item()}) "
 			f"mean: {active_support.float().mean().item():.3f} "
@@ -238,11 +238,7 @@ def compute_adaptive_min_val_support(
 			f"median={active_support.float().median().item()}"
 		)
 		print(f"{percentile*100:.0f}th percentile = {threshold} (clamped to [{absolute_min}, {absolute_max}])")
-		print(
-			f"Tiered retrieval metrics "
-			f"(Overall / Head / Rare) "
-			f"with min_val_support: {threshold} (adaptive)"
-		)
+		print(f"(Overall/Head/Rare) min_val_support: {threshold}")
 
 	return threshold
 
@@ -257,13 +253,13 @@ def compute_tiered_retrieval_metrics(
 	use_fixed_masks: bool = False,
 	verbose: bool = False,
 ) -> Dict:
+	if verbose:
+		print(f"\nTiered retrieval metrics {mode}")
 
 	if use_fixed_masks:
 		# R1-C shared-vocabulary benchmark: no adaptive filtering,
 		# every shared class with ≥1 positive validation instance counts.
 		min_val_support = 1
-		if verbose:
-			print(f"min_val_support fixed at 1 (adaptive rule bypassed)")
 	else:
 		min_val_support = compute_adaptive_min_val_support(
 			query_labels=query_labels,
@@ -274,14 +270,6 @@ def compute_tiered_retrieval_metrics(
 			verbose=verbose,
 		)
 
-	if verbose:
-		print(f"\nTiered retrieval metrics {mode}")
-		print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
-		print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
-		print(f"  ├─ Head mask: {head_mask.shape} {head_mask.device}")
-		print(f"  ├─ Rare mask: {rare_mask.shape} {rare_mask.device}")
-		print(f"  └─ Active mask: {active_mask.shape} {active_mask.device}")
-
 	# Per-class validation support
 	# query_labels: [N_images, C] — col sum gives per-class image count
 	val_support = query_labels.sum(dim=0)  # [C]
@@ -290,17 +278,26 @@ def compute_tiered_retrieval_metrics(
 	# Applied to ALL tiers for consistency, not just T2I rare
 	supported_mask = val_support >= min_val_support  # [C]
 
+	if verbose:
+		print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
+		print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
+		print(f"  ├─ use_fixed_masks: {use_fixed_masks} => min_val_support: {min_val_support}")
+		print(f"  ├─ Head mask: {type(head_mask)} {head_mask.shape} {head_mask.device}")
+		print(f"  ├─ Rare mask: {type(rare_mask)} {rare_mask.shape} {rare_mask.device}")
+		print(f"  ├─ Supported mask: {type(supported_mask)} {supported_mask.shape} {supported_mask.device}")
+		print(f"  └─ Active mask: {type(active_mask)} {active_mask.shape} {active_mask.device}")
+
 	# Shared protocol validation
 	if use_fixed_masks and verbose:
 		shared_supported = active_mask & supported_mask
 		shared_head_supported = head_mask & active_mask & supported_mask
 		shared_rare_supported = rare_mask & active_mask & supported_mask
 
-		print(f"\n[Shared Protocol Validation — {mode}]")
+		print(f"\nShared Protocol Validation {mode}")
 		print(f"  ├─ Shared labels in run              : {active_mask.sum().item()}")
 		print(f"  ├─ Shared labels with val support ≥1 : {shared_supported.sum().item()}")
 		print(f"  ├─ Shared head labels with support   : {shared_head_supported.sum().item()}")
-		print(f"  └─ Shared rare labels with support   : {shared_rare_supported.sum().item()}")
+		print(f"  ├─ Shared rare labels with support   : {shared_rare_supported.sum().item()}")
 
 		if mode == "Image-to-Text":
 			head_positive_images = (
@@ -311,8 +308,8 @@ def compute_tiered_retrieval_metrics(
 				query_labels[:, rare_mask & active_mask].sum(dim=1) > 0
 			).sum().item()
 
-			print(f"  ├─ I2T images with ≥1 shared-head label : {head_positive_images}")
-			print(f"  └─ I2T images with ≥1 shared-rare label : {rare_positive_images}")
+			print(f"  ├─ images with ≥1 shared-head label : {head_positive_images}")
+			print(f"  └─ images with ≥1 shared-rare label : {rare_positive_images}")
 
 	tiers = {
 		"overall": active_mask & supported_mask,
@@ -321,7 +318,7 @@ def compute_tiered_retrieval_metrics(
 	}
 
 	if verbose:
-		print(f"\nSupport filter min_val_support={min_val_support}")
+		print(f"\nsupported_mask: {supported_mask.shape} {supported_mask.sum().item()}")
 		print(f"  ├─ Active classes before filter : {active_mask.sum().item()}")
 		print(f"  ├─ Active classes after  filter : {(active_mask & supported_mask).sum().item()}")
 		print(f"  ├─ Head   classes after  filter : {(head_mask & active_mask & supported_mask).sum().item()}")
@@ -567,6 +564,11 @@ def compute_retrieval_metrics_from_similarity(
 	Returns:
 			Dictionary with mP, mAP, and Recall metrics, one entry per REQUESTED K in topK_values.
 	"""
+	if verbose:
+		print(f"\n[RETRIEVAL METRICS]")
+		print(f"  ├─ Mode: {mode}")
+		print(f"  ├─ Top-K: {topK_values}")
+		print(f"  ├─ similarity_matrix: {similarity_matrix.shape}")
 
 	num_queries, num_candidates = similarity_matrix.shape
 	device = similarity_matrix.device
@@ -813,6 +815,8 @@ def get_validation_metrics(
 		print(f"  ├─ {finetune_strategy}")
 		print(f"  ├─ {num_samples} samples")
 		print(f"  ├─ {n_classes} classes")
+		print(f"  ├─ bs: {validation_loader.batch_size}")
+		print(f"  ├─ temperature: {temperature}")
 		print(f"  └─ nw: {num_workers}")
 	
 	cache_file = os.path.join(
@@ -1570,10 +1574,12 @@ def get_multilabel_alignment_score(
 		
 		return float('nan')
 	
-	# [N, C] cosine similarity (no temperature for ranking — temperature distorts topk)
-	# Normalise both sides before ranking
+	# [N, C] cosine similarity
+	# Positive temperature scaling does not change Top-K rankings.
+	# It is retained only for consistency with the evaluation protocol.
 	image_embeds_n = torch.nn.functional.normalize(image_embeds, dim=1)
 	all_class_embeds_n = torch.nn.functional.normalize(all_class_embeds, dim=1)
+
 	logits = (image_embeds_n @ all_class_embeds_n.T) / temperature
 	
 	# Clamp topk to available classes

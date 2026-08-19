@@ -13,6 +13,7 @@ def zero_shot_multi_label(
 	validation_loader: DataLoader,
 	device: str,
 	results_dir: str,
+	shared_protocol_path: str,
 	num_epochs: int,
 	print_every: int,
 	learning_rate: float,
@@ -24,47 +25,73 @@ def zero_shot_multi_label(
 	volatility_threshold: float,
 	slope_threshold: float,
 	pairwise_imp_threshold: float,
-	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
+	loss_weights: Dict[str, float] = None,
 	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
-	temperature: float = 0.07,
+	temperature: float = 1.0, # not change ranking when it is a positive scalar
 	verbose: bool = True,
 ) -> Dict:
+	"""
+	Evaluate Zero-Shot CLIP under two explicitly separate tier protocols:
+
+	1. Per-run/original tiers:
+	   - Derived from this run's training labels via compute_loss_masks().
+	   - Retained for continuity with the original analysis.
+	   - Uses adaptive validation-support filtering.
+
+	2. Shared R1-C tiers:
+	   - Derived from the fixed shared_eval_protocol.json.
+	   - Uses the common vocabulary and common head/rare partitions shared
+	     across LLM, VLM, and multimodal supervision conditions.
+	   - Uses min_val_support=1; no run-specific adaptive tier alteration.
+
+	Returns a dictionary matching evaluate_best_model()'s result structure,
+	including both original and shared tiered I2T/T2I results.
+	"""
 
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 
-	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_arch = (
+		re.sub(r"[/@]", "-", model.name)
+		if hasattr(model, "name")
+		else "unknown_arch"
+	)
 	model_name = model.__class__.__name__
-	mode = inspect.stack()[0].function
-	mode = re.sub(r'_multi_label', '', mode)
-	if verbose:
-		print(f"{mode.upper()} {model_name} {model_arch} on {dataset_name}")
 
+	mode = inspect.stack()[0].function
+	mode = re.sub(r"_multi_label", "", mode)
+
+	if verbose:
+		print(f"\n{'=' * 70}")
+		print(f"{mode.upper()} | {model_name} | {model_arch} | {dataset_name}")
+		print(f"{'=' * 70}")
+
+	# ── Zero-shot checkpoint: base model state, no optimisation performed ──
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
 		f"{model_name}_"
 		f"{model_arch}_"
 		f"bs_{train_loader.batch_size}_"
-		f"temp_{temperature}"
-		f".pth"
+		f"temp_{temperature}.pth",
 	)
 
-	# Save zero-shot checkpoint (just the base model state)
 	checkpoint = {
-		"epoch": 0,  # No training epochs
+		"epoch": 0,
 		"model_state_dict": model.state_dict(),
-		"best_val_loss": None,  # No training loss
+		"best_val_loss": None,
 		"strategy": "zero_shot",
 		"temperature": temperature,
 		"model_architecture": model_arch,
 	}
 	torch.save(checkpoint, mdl_fpth)
-	if verbose:
-		print(f"\nSaved {mode} checkpoint: {mdl_fpth}")
 
+	if verbose:
+		print(f"[SAVED] Zero-shot checkpoint: {mdl_fpth}")
+
+	# ── Compute/retrieve validation embeddings and similarity matrices ──
 	validation_results = get_validation_metrics(
 		model=model,
 		validation_loader=validation_loader,
@@ -77,30 +104,66 @@ def zero_shot_multi_label(
 		verbose=verbose,
 	)
 
+	full_metrics = validation_results["full_metrics"]
 	i2t_similarity = validation_results["i2t_similarity"]
 	t2i_similarity = validation_results["t2i_similarity"]
 	device_labels = validation_results["device_labels"]
 
+	# This class order MUST be exactly the order used by get_validation_metrics()
+	# to construct class-text embeddings and similarity-matrix columns/rows.
 	try:
-		class_names = validation_loader.dataset.unique_labels
+		class_names = validation_loader.dataset.dataset.classes
 	except AttributeError:
 		try:
-			class_names = validation_loader.dataset.dataset.classes
-		except:
-			class_names = train_loader.dataset.unique_labels	
+			class_names = validation_loader.dataset.unique_labels
+		except AttributeError as error:
+			raise AttributeError(
+				"Could not recover validation class names. "
+				"The shared protocol can only be mapped if the class-name order "
+				"corresponding to the similarity-matrix columns is available."
+			) from error
+
 	num_classes = len(class_names)
 
-	masks = compute_loss_masks(
+	if i2t_similarity.shape[1] != num_classes:
+		raise ValueError(
+			"Class-name / I2T similarity mismatch: "
+			f"{len(class_names)} class names but "
+			f"{i2t_similarity.shape[1]} similarity columns."
+		)
+
+	if t2i_similarity.shape[0] != num_classes:
+		raise ValueError(
+			"Class-name / T2I similarity mismatch: "
+			f"{len(class_names)} class names but "
+			f"{t2i_similarity.shape[0]} similarity rows."
+		)
+
+	if verbose:
+		print(f"\n[Evaluation class space]")
+		print(f"  ├─ Class names             : {num_classes:,}")
+		print(f"  ├─ I2T similarity          : {tuple(i2t_similarity.shape)}")
+		print(f"  ├─ T2I similarity          : {tuple(t2i_similarity.shape)}")
+		print(f"  └─ Validation labels       : {tuple(device_labels.shape)}")
+
+	# =====================================================================
+	# A. ORIGINAL PER-RUN TIERED EVALUATION
+	# =====================================================================
+	# These masks belong to the zero-shot run's training-label configuration.
+	# They are retained as descriptive, within-run results, but must NOT be
+	# used for cross-supervision-condition claims.
+	per_run_masks = compute_loss_masks(
 		loader=train_loader,
 		num_classes=num_classes,
 		pw_mode="log",
 		device=device,
 		verbose=verbose,
 	)
-	active_mask = masks["active_mask"]
-	head_mask   = masks["head_mask"]
-	rare_mask   = masks["rare_mask"]
-	train_freq = masks["train_freq"]
+
+	per_run_active_mask = per_run_masks["active_mask"]
+	per_run_head_mask = per_run_masks["head_mask"]
+	per_run_rare_mask = per_run_masks["rare_mask"]
+	train_freq = per_run_masks["train_freq"]
 
 	diagnose_train_val_coverage(
 		train_freq=train_freq,
@@ -109,42 +172,196 @@ def zero_shot_multi_label(
 		verbose=verbose,
 	)
 
-	final_tiered_i2t = compute_tiered_retrieval_metrics(
+	# use_fixed_masks=True => min_val_support=1 prevents a run-specific 
+	# adaptive support threshold from redefining a shared tier.
+	tiered_i2t = compute_tiered_retrieval_metrics(
 		similarity_matrix=i2t_similarity,
 		query_labels=device_labels,
 		topK_values=topk_values,
-		head_mask=head_mask,
-		rare_mask=rare_mask,
-		active_mask=active_mask,
+		head_mask=per_run_head_mask,
+		rare_mask=per_run_rare_mask,
+		active_mask=per_run_active_mask,
 		mode="Image-to-Text",
+		use_fixed_masks=True,
 		verbose=verbose,
 	)
 
-	final_tiered_t2i = compute_tiered_retrieval_metrics(
+	tiered_t2i = compute_tiered_retrieval_metrics(
 		similarity_matrix=t2i_similarity,
 		query_labels=device_labels,
 		topK_values=topk_values,
-		head_mask=head_mask,
-		rare_mask=rare_mask,
-		active_mask=active_mask,
+		head_mask=per_run_head_mask,
+		rare_mask=per_run_rare_mask,
+		active_mask=per_run_active_mask,
 		mode="Text-to-Image",
+		use_fixed_masks=True,
 		verbose=verbose,
 	)
+
+	# B. SHARED-PROTOCOL EVALUATION — R1-C
+	if not shared_protocol_path:
+		raise ValueError(
+			"shared_protocol_path is required for R1-C shared-tier evaluation."
+		)
+
+	if not os.path.isfile(shared_protocol_path):
+		raise FileNotFoundError(
+			f"Shared evaluation protocol was not found: {shared_protocol_path}"
+		)
+
+	with open(shared_protocol_path, "r", encoding="utf-8") as file:
+		shared_protocol = json.load(file)
+
+	required_protocol_keys = {
+		"shared_class_names",
+		"head_mask",
+		"rare_mask",
+		"n_classes",
+		"n_head_classes",
+		"n_rare_classes",
+	}
+	missing_protocol_keys = required_protocol_keys - set(shared_protocol)
+	if missing_protocol_keys:
+		raise ValueError(
+			"Invalid shared evaluation protocol: missing keys "
+			f"{sorted(missing_protocol_keys)}"
+		)
+
+	if verbose:
+		print(f"\n[Shared Protocol: R1-C]")
+		print(f"  ├─ Path                    : {shared_protocol_path}")
+		print(f"  ├─ Protocol name           : {shared_protocol.get('protocol_name', 'unknown')}")
+		print(f"  ├─ Shared classes expected : {shared_protocol['n_classes']:,}")
+		print(f"  ├─ Shared head classes     : {shared_protocol['n_head_classes']:,}")
+		print(f"  └─ Shared rare classes     : {shared_protocol['n_rare_classes']:,}")
+
+	shared_masks = build_shared_masks_from_protocol(
+		shared_protocol=shared_protocol,
+		class_names=class_names,
+		device=device,
+		verbose=verbose,
+	)
+
+	shared_active_mask = shared_masks["shared_mask"]
+	shared_head_mask = shared_masks["head_mask"]
+	shared_rare_mask = shared_masks["rare_mask"]
+
+	expected_shared_classes = int(shared_protocol["n_classes"])
+	mapped_shared_classes = int(shared_active_mask.sum().item())
+
+	if mapped_shared_classes != expected_shared_classes:
+		raise ValueError(
+			"Shared-protocol mapping is incomplete: "
+			f"mapped {mapped_shared_classes}/{expected_shared_classes} shared classes. "
+			"Do not report these results: the baseline is not being evaluated "
+			"over the same vocabulary as the supervision conditions."
+		)
+
+	if (shared_head_mask & shared_rare_mask).any():
+		overlap_indices = torch.where(shared_head_mask & shared_rare_mask)[0].tolist()
+		overlap_names = [class_names[index] for index in overlap_indices[:10]]
+		raise ValueError(
+			"Invalid shared protocol: head and rare masks overlap. "
+			f"Examples: {overlap_names}"
+		)
+
+	if verbose:
+		shared_val_support = device_labels[:, shared_active_mask].sum(dim=0)
+		zero_support_shared = int((shared_val_support == 0).sum().item())
+		zero_support_head = int(
+			(device_labels[:, shared_head_mask].sum(dim=0) == 0).sum().item()
+		)
+		zero_support_rare = int(
+			(device_labels[:, shared_rare_mask].sum(dim=0) == 0).sum().item()
+		)
+
+		print(f"\n[Shared-protocol validation support]")
+		print(f"  ├─ Shared classes mapped   : {mapped_shared_classes:,}")
+		print(f"  ├─ Shared classes with 0 val positives : {zero_support_shared:,}")
+		print(f"  ├─ Head classes with 0 val positives   : {zero_support_head:,}")
+		print(f"  └─ Rare classes with 0 val positives   : {zero_support_rare:,}")
+
+		if zero_support_rare > 0:
+			print(
+				f"  [WARNING] {zero_support_rare} fixed shared-rare class(es) "
+				f"have no positive validation samples in this run. They remain "
+				f"part of the fixed protocol but cannot contribute T2I positives."
+			)
+
+	# use_fixed_masks=True => min_val_support=1 prevents a run-specific 
+	# adaptive support threshold from redefining a shared tier.
+	shared_tiered_i2t = compute_tiered_retrieval_metrics(
+		similarity_matrix=i2t_similarity,
+		query_labels=device_labels,
+		topK_values=topk_values,
+		head_mask=shared_head_mask,
+		rare_mask=shared_rare_mask,
+		active_mask=shared_active_mask,
+		mode="Image-to-Text",
+		use_fixed_masks=True,
+		verbose=verbose,
+	)
+
+	shared_tiered_t2i = compute_tiered_retrieval_metrics(
+		similarity_matrix=t2i_similarity,
+		query_labels=device_labels,
+		topK_values=topk_values,
+		head_mask=shared_head_mask,
+		rare_mask=shared_rare_mask,
+		active_mask=shared_active_mask,
+		mode="Text-to-Image",
+		use_fixed_masks=True,
+		verbose=verbose,
+	)
+
+	def print_tier_summary(title: str, tiered_metrics: Dict) -> None:
+		print(f"\n{title}")
+		for tier_name, metrics in tiered_metrics.items():
+			print(
+				f"  {tier_name:8s} "
+				f"mAP@10={metrics['mAP'].get('10', 0.0):.4f}  "
+				f"R@10={metrics['Recall'].get('10', 0.0):.4f}"
+			)
+
+	if verbose:
+		print(f"\n{'=' * 70}")
+		print_tier_summary(
+			f"{mode.upper()} original per-run I2T tiers",
+			tiered_i2t,
+		)
+		print_tier_summary(
+			f"{mode.upper()} original per-run T2I tiers",
+			tiered_t2i,
+		)
+		print_tier_summary(
+			f"{mode.upper()} fixed shared-protocol I2T tiers",
+			shared_tiered_i2t,
+		)
+		print_tier_summary(
+			f"{mode.upper()} fixed shared-protocol T2I tiers",
+			shared_tiered_t2i,
+		)
+		print(f"{'=' * 70}")
 
 	del i2t_similarity, t2i_similarity
 	torch.cuda.empty_cache()
 
-	if verbose:
-		print(f"{'='*50}")
-		print(f"\n{mode.upper()} Tiered I2T Retrieval")
-		for tier, m in final_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"\n{mode.upper()} Tiered T2I Retrieval")
-		for tier, m in final_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"{'='*50}")
+	return {
+		"full_metrics": full_metrics,
+		"img2txt_metrics": validation_results["img2txt_metrics"],
+		"txt2img_metrics": validation_results["txt2img_metrics"],
 
-	return final_tiered_i2t, final_tiered_t2i
+		# Original within-run tiers: descriptive only; not cross-condition comparable.
+		"tiered_i2t": tiered_i2t,
+		"tiered_t2i": tiered_t2i,
+
+		# common-vocabulary tiers: use these for R1-C comparisons/tables.
+		"shared_tiered_i2t": shared_tiered_i2t,
+		"shared_tiered_t2i": shared_tiered_t2i,
+
+		"model_loaded_from": "zero_shot_base_model",
+		"shared_protocol_path": shared_protocol_path,
+	}
 
 def probe_multi_label(
 	model: torch.nn.Module,
@@ -156,6 +373,7 @@ def probe_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
+	shared_protocol_path: str,
 	patience: int = 10,
 	min_delta: float = 1e-4,
 	cumulative_delta: float = 5e-3,
@@ -168,7 +386,7 @@ def probe_multi_label(
 	probe_hidden_dim: int = None,
 	probe_dropout: float = 0.1,
 	cache_features: bool = True,
-	temperature: float = 0.07,
+	temperature: float = 1.0,
 	verbose: bool = True,
 ):
 	window_size = minimum_epochs + 1
@@ -435,7 +653,7 @@ def probe_multi_label(
 				dtype=amp_dtype,
 			):
 				# Linear probe forward (multi-label logits)
-				logits = probe.probe(image_embeds)   
+				logits = probe.probe(image_embeds) / temperature
 				
 				# Apply pos_weight BCE, mask zero-count classes
 				loss_raw = criterion(logits, label_vectors)  # [B, C], reduction='none'
@@ -488,8 +706,9 @@ def probe_multi_label(
 					image_embeds = model.encode_image(images)
 					image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 				
-				# Get predictions from probe
-				logits = probe.probe(image_embeds)
+				# Get predictions from probe [Validation]
+				logits = probe.probe(image_embeds) / temperature
+
 				loss_raw = criterion(logits, label_vectors)
 				val_loss += loss_raw[:, active_mask].mean().item()
 				val_preds_list.append((torch.sigmoid(logits) > 0.5).float().cpu())
@@ -596,6 +815,7 @@ def probe_multi_label(
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f} sec")
 	
 	print(f"[{mode}] Total Time: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+
 	# Load best probe weights
 	if os.path.exists(mdl_fpth):
 		print(f"Loading best probe weights from {mdl_fpth}")
@@ -616,7 +836,7 @@ def probe_multi_label(
 	# The probe's W matrix is now the fine-tuned one; similarity is computed
 	# as probe.encode_image(img) @ probe.encode_text(class).T, which is
 	# equivalent to image_embed @ W.T since W was initialised from text embeds.
-	evaluation_results = evaluate_best_model(
+	best_model_eval_results = evaluate_best_model(
 		model=probe, # not model — probe wraps model with trained W
 		validation_loader=validation_loader,
 		active_mask=active_mask,
@@ -630,15 +850,22 @@ def probe_multi_label(
 		topk_values=topk_values,
 		temperature=temperature,
 		class_embeds_override=probe.probe.weight.detach().clone(),
+		use_fixed_masks=True,
+		shared_protocol_path=shared_protocol_path,
 		verbose=verbose,
 	)
 
-	final_metrics_full    = evaluation_results["full_metrics"]
-	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
-	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t      = evaluation_results["tiered_i2t"]
-	final_tiered_t2i      = evaluation_results["tiered_t2i"]
-	model_source          = evaluation_results["model_loaded_from"]
+	final_metrics_full    = best_model_eval_results["full_metrics"]
+	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
+	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
+
+	final_tiered_i2t      = best_model_eval_results["tiered_i2t"]
+	final_tiered_t2i      = best_model_eval_results["tiered_t2i"]
+
+	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
+	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
+
+	model_source          = best_model_eval_results["model_loaded_from"]
 
 	# Update model path
 	actual_trained_epochs = len(training_losses)
@@ -656,11 +883,19 @@ def probe_multi_label(
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
-		print("\n>> Tiered I2T Retrieval")
+
+		print("\n[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n>> Tiered T2I Retrieval")
+		print("\n[Tiered] T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+
+		print("\n[Shared Tiered] I2T Retrieval")
+		for tier, m in final_shared_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n[Shared Tiered] T2I Retrieval")
+		for tier, m in final_shared_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
@@ -712,7 +947,7 @@ def probe_multi_label(
 		fname=plot_paths["retrieval_best"],
 	)
 	
-	return final_tiered_i2t, final_tiered_t2i
+	return best_model_eval_results
 
 def full_finetune_multi_label(
 	model: torch.nn.Module,

@@ -84,7 +84,7 @@ def main():
 	parser.add_argument('--log_dir', type=str, default=None, help='Directory to store log files (if not specified, logs will go to stdout)')
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 	parser.add_argument('--print_every', type=int, default=25, help='Print loss')
-	parser.add_argument('--temperature', '-t', type=float, default=0.07, help='Temperature [def: 0.07]')
+	# parser.add_argument('--temperature', '-t', type=float, default=0.07, help='Temperature [def: 0.07]')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 	parser.add_argument('--seed', type=int, default=42, help='Random seed')
 
@@ -274,7 +274,7 @@ def main():
 			pairwise_imp_threshold=args.pairwise_imp_threshold,
 			topk_values=args.topK_values,
 			print_every=args.print_every,
-			temperature=args.temperature,
+			# temperature=args.temperature,
 			shared_protocol_path=shared_protocol_path,
 			**(
 					{
@@ -293,6 +293,7 @@ def main():
 			**(
 					{
 						'probe_dropout': args.probe_dropout,
+						'probe_temperature': args.probe_temperature,
 					} if args.strategy == 'probe' else {}
 				),
 			**(
