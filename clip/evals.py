@@ -857,7 +857,7 @@ def get_validation_metrics(
 	
 	if not cache_loaded:
 		if verbose:
-			print("Computing embeddings from scratch [takes a while] ...")
+			print("[EMBEDDINGS] from scratch [takes a while] ...")
 		t0 = time.time()
 		all_image_embeds, all_labels = _compute_image_embeddings(
 			model=model, 
@@ -867,7 +867,12 @@ def get_validation_metrics(
 		)
 		if verbose:
 			print(f"Elapsed: {time.time() - t0:.1f} s")
-			
+		try:
+			torch.save({'image_embeds': all_image_embeds, 'labels': all_labels}, cache_file)
+		except Exception as e:
+			if verbose:
+				print(f"Cache saving failed: {e}")
+
 	# Step 3: Compute class embeddings
 	if class_embeds_override is not None:
 		# Use probe's trained W instead of frozen text encoder
