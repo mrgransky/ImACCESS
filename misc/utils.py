@@ -392,25 +392,39 @@ def get_updated_model_name(
 			print(f"Error: Could not copy model file: {e2}")
 			return original_path
 
-def get_model_hash(model: torch.nn.Module) -> str:
+import hashlib
+import torch
+
+def get_model_hash(model: torch.nn.Module, exact: bool = False) -> str:
 	"""
-	Generate a hash of model parameters to detect when model weights have changed.
-	This is used to determine if cached embeddings need to be recomputed.
-	
+	Hash a model's architecture AND weights for cache invalidation.
 	Args:
-			model: The model to hash
-			
-	Returns:
-			String hash of model parameters
+			model: The model to hash.
+			exact: If True, hash the raw bytes of every tensor (slow but 100%
+						 accurate). If False, use a fast deterministic sample.
 	"""
 	hasher = hashlib.md5()
-	# Only hash a subset of parameters for efficiency on very large models
-	param_sample = []
-	for i, param in enumerate(model.parameters()):
-		if i % 10 == 0:  # Sample every 10th parameter
-			param_sample.append(param.data.cpu().numpy().mean())  # Just use the mean for speed
-	
-	hasher.update(str(param_sample).encode())
+	state = model.state_dict()  # captures BOTH parameters and buffers
+
+	for name, tensor in state.items():
+		# --- Architecture signal: name, shape, dtype ---
+		hasher.update(f"{name}|{tuple(tensor.shape)}|{tensor.dtype}\n".encode())
+		# --- Weight signal ---
+		t = tensor.detach().cpu().contiguous()
+		if exact:
+			# Fully accurate: hash raw bytes
+			hasher.update(t.numpy().tobytes())
+		else:
+			# Fast but robust sample: first/last 128 elements + aggregates
+			flat = t.flatten()
+			n = flat.numel()
+			head = flat[:128].numpy().tobytes()
+			tail = flat[-128:].numpy().tobytes() if n > 128 else b""
+			# Use sum + abs-sum as cheap distribution fingerprints
+			agg = f"{flat.sum().item():.9g}|{flat.abs().sum().item():.9g}|{n}\n"
+			hasher.update(head)
+			hasher.update(tail)
+			hasher.update(agg.encode())
 	return hasher.hexdigest()
 
 def get_parameters_info(model, mode):

@@ -1673,7 +1673,9 @@ def build_shared_masks_from_protocol(
 	name_to_idx = {name: i for i, name in enumerate(class_names)}
 	num_classes = len(class_names)
 
-	print(json.dumps(shared_protocol, indent=2, ensure_ascii=False))
+	if verbose:
+		print("\nBuilding shared masks from Shared Protocol:")
+		print(json.dumps(shared_protocol, indent=2, ensure_ascii=False))
 
 	shared_vocab = shared_protocol["shared_class_names"]
 	head_labels  = {
@@ -1701,9 +1703,8 @@ def build_shared_masks_from_protocol(
 		if label in rare_labels:
 			rare_mask[idx] = True
 
-
 	if verbose:
-		print(f"\n[Shared Protocol]")
+		print(f"\n[Shared masked labels from Shared Protocol]")
 		print(f"  ├─ Shared labels in JSON      : {len(shared_vocab)}")
 		print(f"  ├─ Shared labels in this run  : {shared_mask.sum().item()}")
 		print(f"  ├─ Shared head labels         : {head_mask.sum().item()}")
@@ -1789,7 +1790,7 @@ def evaluate_shared_protocol(
 		rare_mask=masks["rare_mask"],
 		active_mask=masks["shared_mask"],
 		mode="Text-to-Image",
-		use_fixed_masks=use_fixed_masks,
+		use_fixed_masks=use_fixed_masks, # no adaptive min_val_support, fixed at 1
 		verbose=verbose,
 	)
 
