@@ -813,7 +813,7 @@ def get_validation_metrics(
 		print(f"  ├─ {finetune_strategy}")
 		print(f"  ├─ {num_samples} samples")
 		print(f"  ├─ {n_classes} classes")
-		print(f"  └─ {num_workers}
+		print(f"  └─ {num_workers}")
 	
 	cache_file = os.path.join(
 		cache_dir,
