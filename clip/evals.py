@@ -1,4 +1,5 @@
 import json
+from tabnanny import verbose
 
 from utils import *
 import clip
@@ -875,9 +876,11 @@ def get_validation_metrics(
 			print(f"Elapsed: {time.time() - t0:.1f} s")
 		try:
 			torch.save({'image_embeds': all_image_embeds, 'labels': all_labels}, cache_file)
+			if verbose:
+				print(f"[SAVED] {cache_file}")
 		except Exception as e:
 			if verbose:
-				print(f"Cache saving failed: {e}")
+				print(f"<!> ERROR Cache saving failed: {e}")
 
 	# Step 3: Compute class embeddings
 	if class_embeds_override is not None:
