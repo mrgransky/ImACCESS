@@ -806,7 +806,13 @@ def get_validation_metrics(
 	num_samples = len(validation_loader.dataset)
 	
 	if verbose:
-		print(f"Dataset: {dataset_name}, Label(s): {n_classes}, Samples: {num_samples}")
+		print(f"  ├─ {dataset_name}")
+		print(f"  ├─ {model_class_name}")
+		print(f"  ├─ {model_arch_name}")
+		print(f"  ├─ {finetune_strategy}")
+		print(f"  ├─ {num_samples} samples")
+		print(f"  ├─ {n_classes} classes")
+		print(f"  └─ {num_workers}
 	
 	cache_file = os.path.join(
 		cache_dir,
