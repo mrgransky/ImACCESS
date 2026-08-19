@@ -821,7 +821,7 @@ def get_validation_metrics(
 		f"bs_{validation_loader.batch_size}_"
 		f"nw_{num_workers}_"
 		f"{model_class_name}_{model_arch_name.replace('/', '_')}_"
-		f"validation_embeddings.pt"
+		f"val_emb.pt"
 	)
 
 	if model_hash:

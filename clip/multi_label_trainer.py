@@ -1561,194 +1561,180 @@ def lora_finetune_multi_label(
 	learning_rates_history = []
 	weight_decays_history = []
 	train_start_time = time.time()
-	model_hash=get_model_hash(model)
 
 	for epoch in range(num_epochs):
-			train_and_val_st_time = time.time()
-			torch.cuda.empty_cache()
-			model.train()
-			print(f"Epoch [{epoch+1}/{num_epochs}]")
-			epoch_loss_total = epoch_loss_i2t = epoch_loss_t2i = 0.0
-			num_batches = 0
+		train_and_val_st_time = time.time()
+		torch.cuda.empty_cache()
+		model.train()
+		print(f"Epoch [{epoch+1}/{num_epochs}]")
+		epoch_loss_total = epoch_loss_i2t = epoch_loss_t2i = 0.0
+		num_batches = 0
 
-			for bidx, batch_data in enumerate(train_loader):
-				images, _, label_vectors = batch_data
-				images = images.to(device, non_blocking=True)
-				label_vectors = label_vectors.to(device, non_blocking=True).float()
-				optimizer.zero_grad(set_to_none=True)
-
-				with torch.amp.autocast(
-					device_type=device.type, 
-					enabled=torch.cuda.is_available(),
-					dtype=amp_dtype,
-				):
-					total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
-						model=model,
-						images=images,
-						all_class_embeds=all_class_embeds,
-						label_vectors=label_vectors,
-						criterion_i2t=criterion_i2t,
-						criterion_t2i=criterion_t2i,
-						active_mask=active_mask,
-						temperature=temperature,
-						loss_weights=loss_weights,
-						verbose=verbose,
-					)
-
-				# Check for NaN loss
-				if torch.isnan(total_loss) or torch.isinf(total_loss):
-					print(
-						f"[WARNING] e{epoch+1} b{bidx+1}: "
-						f"total_loss: {total_loss} "
-						f"loss_i2t: {loss_i2t} "
-						f"loss_t2i: {loss_t2i}"
-					)
-					# no zero_grad needed here — already done above
-					continue # skip this batch
-
-				scaler.scale(total_loss).backward()
-				scaler.unscale_(optimizer)
-				torch.nn.utils.clip_grad_norm_(
-					[p for p in model.parameters() if p.requires_grad], 
-					max_norm=1.0
-				)
-
-				scaler.step(optimizer)
-				scaler.update()
-				scheduler.step()
-				epoch_loss_total += total_loss.item()
-				epoch_loss_i2t   += loss_i2t.item()
-				epoch_loss_t2i   += loss_t2i.item()
-
-				num_batches += 1
-				if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-					print(
-						f"\t\tBatch [{bidx+1:04d}/{len(train_loader)}] "
-						f"Total: {total_loss.item():.6f} "
-						f"(I2T: {loss_i2t.item():.6f}, T2I: {loss_t2i.item():.6f})"
-					)
-
-					b_norms = [
-						p.data.norm().item()
-						for n, p in model.named_parameters()
-						if p.requires_grad and "lora_B" in n
-					]
-					if b_norms:
-						b_norms_t = torch.tensor(b_norms)
-						print(
-							f"\t\t[B weight norms] "
-							f"(min, max): ({b_norms_t.min():.4f}, {b_norms_t.max():.4f}) "
-							f"mean: {b_norms_t.mean():.4f} std: {b_norms_t.std():.4f}"
-						)
-						print()
-
-			avg_total = epoch_loss_total / num_batches if num_batches > 0 else 0.0
-			avg_i2t   = epoch_loss_i2t   / num_batches if num_batches > 0 else 0.0
-			avg_t2i   = epoch_loss_t2i   / num_batches if num_batches > 0 else 0.0
-
-			training_losses.append(avg_total)
-			training_losses_breakdown["total"].append(avg_total)
-			training_losses_breakdown["i2t"].append(avg_i2t)
-			training_losses_breakdown["t2i"].append(avg_t2i)
-
-			learning_rates_history.append([optimizer.param_groups[0]['lr']])
-			weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
-
-			print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
-
-			current_val_loss = compute_multilabel_validation_loss(
-				model=model,
-				validation_loader=validation_loader,
-				criterion_i2t=criterion_i2t,
-				criterion_t2i=criterion_t2i,
-				active_mask=active_mask,
-				device=device,
-				all_class_embeds=all_class_embeds,
-				temperature=temperature,
-				verbose=verbose,
-			)
-			validation_losses.append(current_val_loss)
-
-			validation_results = get_validation_metrics(
-				model=model,
-				validation_loader=validation_loader,
-				device=device,
-				topK_values=topk_values,
-				finetune_strategy=mode,
-				cache_dir=results_dir,
-				lora_params={
-					"lora_rank": lora_rank,
-					"lora_alpha": lora_alpha,
-					"lora_dropout": lora_dropout,
-				},
-				is_training=True,
-				model_hash=model_hash,
-				temperature=temperature,
-				verbose=verbose,
-			)
-			
-			full_val_metrics = validation_results["full_metrics"]
-			img2txt_metrics  = validation_results["img2txt_metrics"]
-			txt2img_metrics  = validation_results["txt2img_metrics"]
-			full_val_loss_acc_metrics_all_epochs.append(full_val_metrics)
-			cos_sim = full_val_metrics.get("cosine_similarity")
-			align_score = full_val_metrics.get("alignment_score")
-
-			img2txt_metrics_all_epochs.append(img2txt_metrics)
-			txt2img_metrics_all_epochs.append(txt2img_metrics)
-			i2t_map10 = img2txt_metrics.get("mAP", {}).get("10", float("nan"))
-			t2i_map10 = txt2img_metrics.get("mAP", {}).get("10", float("nan"))
-			i2t_r10 = img2txt_metrics.get("Recall", {}).get("10", float("nan"))
-			t2i_r10 = txt2img_metrics.get("Recall", {}).get("10", float("nan"))
-
-			print(
-				f"\nEpoch {epoch+1}:\n"
-				f"  [LOSS] — {mode.upper()}-FT Train: {avg_total:.4f} (I2T: {avg_i2t}, T2I: {avg_t2i}) Val: {current_val_loss}\n"
-				f"  I2T    — mAP@10: {i2t_map10:.4f}  R@10: {i2t_r10:.4f}\n"
-				f"  T2I    — mAP@10: {t2i_map10:.4f}  R@10: {t2i_r10:.4f}\n"
-				f"  LR     — {scheduler.get_last_lr()[0]}"
-			)
-			if align_score is not None:
-				print(f"  Embed — AlignScore@5: {align_score:.4f}")
-			elif cos_sim is not None:
-				print(f"  Embed — CosSim: {cos_sim:.4f}")
-			else:
-				print(f"  Embed — AlignScore: N/A")
-
-
-			# Training health check
-			# Run after epoch 1 and at mid-warmup — all signals now available
-			if epoch in {0, minimum_epochs // 2}:
-				should_abort = check_training_health(
+		for bidx, batch_data in enumerate(train_loader):
+			images, _, label_vectors = batch_data
+			images = images.to(device, non_blocking=True)
+			label_vectors = label_vectors.to(device, non_blocking=True).float()
+			optimizer.zero_grad(set_to_none=True)
+			with torch.amp.autocast(
+				device_type=device.type, 
+				enabled=torch.cuda.is_available(),
+				dtype=amp_dtype,
+			):
+				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
 					model=model,
-					epoch=epoch,
-					mode=mode,
-					training_losses=training_losses,
-					validation_losses=validation_losses,
-					align_score=align_score,
+					images=images,
+					all_class_embeds=all_class_embeds,
+					label_vectors=label_vectors,
+					criterion_i2t=criterion_i2t,
+					criterion_t2i=criterion_t2i,
+					active_mask=active_mask,
 					temperature=temperature,
-					learning_rate=learning_rate,
+					loss_weights=loss_weights,
 					verbose=verbose,
 				)
-				if should_abort:
-					print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
-					break
-
-			if early_stopping.should_stop(
-					current_value=current_val_loss,
-					model=model,
-					epoch=epoch,
-					optimizer=optimizer,
-					scheduler=scheduler,
-					checkpoint_path=mdl_fpth,
-			):
+			# Check for NaN loss
+			if torch.isnan(total_loss) or torch.isinf(total_loss):
+				print(
+					f"[WARNING] e{epoch+1} b{bidx+1}: "
+					f"total_loss: {total_loss} "
+					f"loss_i2t: {loss_i2t} "
+					f"loss_t2i: {loss_t2i}"
+				)
+				# no zero_grad needed here — already done above
+				continue # skip this batch
+			scaler.scale(total_loss).backward()
+			scaler.unscale_(optimizer)
+			torch.nn.utils.clip_grad_norm_(
+				[p for p in model.parameters() if p.requires_grad], 
+				max_norm=1.0
+			)
+			scaler.step(optimizer)
+			scaler.update()
+			scheduler.step()
+			epoch_loss_total += total_loss.item()
+			epoch_loss_i2t   += loss_i2t.item()
+			epoch_loss_t2i   += loss_t2i.item()
+			num_batches += 1
+			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+				print(
+					f"\t\tBatch [{bidx+1:04d}/{len(train_loader)}] "
+					f"Total: {total_loss.item():.6f} "
+					f"(I2T: {loss_i2t.item():.6f}, T2I: {loss_t2i.item():.6f})"
+				)
+				b_norms = [
+					p.data.norm().item()
+					for n, p in model.named_parameters()
+					if p.requires_grad and "lora_B" in n
+				]
+				if b_norms:
+					b_norms_t = torch.tensor(b_norms)
 					print(
-						f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
-						f"@ epoch {early_stopping.get_best_epoch()+1}"
+						f"\t\t[B weight norms] "
+						f"(min, max): ({b_norms_t.min():.4f}, {b_norms_t.max():.4f}) "
+						f"mean: {b_norms_t.mean():.4f} std: {b_norms_t.std():.4f}"
 					)
-					break
-			
-			print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time()-train_and_val_st_time:.1f}s")
+					print()
+
+		avg_total = epoch_loss_total / num_batches if num_batches > 0 else 0.0
+		avg_i2t   = epoch_loss_i2t   / num_batches if num_batches > 0 else 0.0
+		avg_t2i   = epoch_loss_t2i   / num_batches if num_batches > 0 else 0.0
+
+		training_losses.append(avg_total)
+		training_losses_breakdown["total"].append(avg_total)
+		training_losses_breakdown["i2t"].append(avg_i2t)
+		training_losses_breakdown["t2i"].append(avg_t2i)
+
+		learning_rates_history.append([optimizer.param_groups[0]['lr']])
+		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
+		print(f"[TRAIN ELAPSED TIME] epoch {epoch+1}: {time.time() - train_and_val_st_time:.1f}s.\nValidating Epoch {epoch+1}")
+
+		current_val_loss = compute_multilabel_validation_loss(
+			model=model,
+			validation_loader=validation_loader,
+			criterion_i2t=criterion_i2t,
+			criterion_t2i=criterion_t2i,
+			active_mask=active_mask,
+			device=device,
+			all_class_embeds=all_class_embeds,
+			temperature=temperature,
+			verbose=verbose,
+		)
+		validation_losses.append(current_val_loss)
+		validation_results = get_validation_metrics(
+			model=model,
+			validation_loader=validation_loader,
+			device=device,
+			topK_values=topk_values,
+			finetune_strategy=mode,
+			cache_dir=results_dir,
+			lora_params={
+				"lora_rank": lora_rank,
+				"lora_alpha": lora_alpha,
+				"lora_dropout": lora_dropout,
+			},
+			is_training=True,
+			model_hash=get_model_hash(model),
+			temperature=temperature,
+			verbose=verbose,
+		)
+		
+		full_val_metrics = validation_results["full_metrics"]
+		img2txt_metrics  = validation_results["img2txt_metrics"]
+		txt2img_metrics  = validation_results["txt2img_metrics"]
+		full_val_loss_acc_metrics_all_epochs.append(full_val_metrics)
+		cos_sim = full_val_metrics.get("cosine_similarity")
+		align_score = full_val_metrics.get("alignment_score")
+		img2txt_metrics_all_epochs.append(img2txt_metrics)
+		txt2img_metrics_all_epochs.append(txt2img_metrics)
+		i2t_map10 = img2txt_metrics.get("mAP", {}).get("10", float("nan"))
+		t2i_map10 = txt2img_metrics.get("mAP", {}).get("10", float("nan"))
+		i2t_r10 = img2txt_metrics.get("Recall", {}).get("10", float("nan"))
+		t2i_r10 = txt2img_metrics.get("Recall", {}).get("10", float("nan"))
+		print(
+			f"\nEpoch {epoch+1}:\n"
+			f"  [LOSS] — {mode.upper()}-FT Train: {avg_total:.4f} (I2T: {avg_i2t}, T2I: {avg_t2i}) Val: {current_val_loss}\n"
+			f"  I2T    — mAP@10: {i2t_map10:.4f}  R@10: {i2t_r10:.4f}\n"
+			f"  T2I    — mAP@10: {t2i_map10:.4f}  R@10: {t2i_r10:.4f}\n"
+			f"  LR     — {scheduler.get_last_lr()[0]}"
+		)
+		if align_score is not None:
+			print(f"  Embed — AlignScore@5: {align_score:.4f}")
+		elif cos_sim is not None:
+			print(f"  Embed — CosSim: {cos_sim:.4f}")
+		else:
+			print(f"  Embed — AlignScore: N/A")
+		# Training health check
+		# Run after epoch 1 and at mid-warmup — all signals now available
+		if epoch in {0, minimum_epochs // 2}:
+			should_abort = check_training_health(
+				model=model,
+				epoch=epoch,
+				mode=mode,
+				training_losses=training_losses,
+				validation_losses=validation_losses,
+				align_score=align_score,
+				temperature=temperature,
+				learning_rate=learning_rate,
+				verbose=verbose,
+			)
+			if should_abort:
+				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
+				break
+		if early_stopping.should_stop(
+				current_value=current_val_loss,
+				model=model,
+				epoch=epoch,
+				optimizer=optimizer,
+				scheduler=scheduler,
+				checkpoint_path=mdl_fpth,
+		):
+				print(
+					f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
+					f"@ epoch {early_stopping.get_best_epoch()+1}"
+				)
+				break
+		
+		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time()-train_and_val_st_time:.1f}s")
 
 	print(f"[{mode}] Total elapsed: {time.time()-train_start_time:.1f}s")
 
