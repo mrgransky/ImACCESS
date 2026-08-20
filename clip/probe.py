@@ -550,7 +550,13 @@ class MultiLabelProbe(torch.nn.Module):
 		"""Initialize probe with CLIP text embeddings for multi-label."""
 		if self.verbose:
 			print("Initializing multi-label probe with zero-shot CLIP embeddings...")
-		
+
+		with torch.no_grad():
+			w_norms = self.probe.weight.data.norm(dim=1)
+			print(f"[INIT] W row-norms (min, max): ({w_norms.min():.4f}, {w_norms.max():.4f}) mean={w_norms.mean():.4f}, std: {w_norms.std():.4f}")
+			# Store this for later drift comparisons
+			self._W_init = self.probe.weight.data.clone()
+
 		try:
 			# Tokenize class names
 			class_texts = clip.tokenize(self.class_names).to(self.device)

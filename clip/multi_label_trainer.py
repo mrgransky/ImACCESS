@@ -28,6 +28,7 @@ def zero_shot_multi_label(
 	loss_weights: Dict[str, float] = None,
 	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
 	temperature: float = 1.0, # not change ranking when it is a positive scalar
+	pw_mode: str = "log",
 	verbose: bool = True,
 ) -> Dict:
 	"""
@@ -72,9 +73,9 @@ def zero_shot_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
-		f"{model_name}_"
 		f"{model_arch}_"
 		f"bs_{train_loader.batch_size}_"
+		f"pw_{pw_mode}_"
 		f"temp_{temperature}.pth",
 	)
 
@@ -146,16 +147,14 @@ def zero_shot_multi_label(
 		print(f"  ├─ T2I similarity          : {tuple(t2i_similarity.shape)}")
 		print(f"  └─ Validation labels       : {tuple(device_labels.shape)}")
 
-	# =====================================================================
 	# A. ORIGINAL PER-RUN TIERED EVALUATION
-	# =====================================================================
 	# These masks belong to the zero-shot run's training-label configuration.
 	# They are retained as descriptive, within-run results, but must NOT be
 	# used for cross-supervision-condition claims.
 	per_run_masks = compute_loss_masks(
 		loader=train_loader,
 		num_classes=num_classes,
-		pw_mode="log",
+		pw_mode=pw_mode,
 		device=device,
 		verbose=verbose,
 	)
@@ -164,13 +163,6 @@ def zero_shot_multi_label(
 	per_run_head_mask = per_run_masks["head_mask"]
 	per_run_rare_mask = per_run_masks["rare_mask"]
 	train_freq = per_run_masks["train_freq"]
-
-	diagnose_train_val_coverage(
-		train_freq=train_freq,
-		validation_loader=validation_loader,
-		num_classes=num_classes,
-		verbose=verbose,
-	)
 
 	# use_fixed_masks=True => min_val_support=1 prevents a run-specific 
 	# adaptive support threshold from redefining a shared tier.
@@ -387,6 +379,7 @@ def probe_multi_label(
 	probe_dropout: float = 0.1,
 	cache_features: bool = True,
 	temperature: float = 1.0,
+	pw_mode: str="log",
 	verbose: bool = True,
 ):
 	window_size = minimum_epochs + 1
@@ -457,11 +450,12 @@ def probe_multi_label(
 		zero_shot_init=True, # faster convergence
 		verbose=verbose,
 	)
+	probe._W_init = probe.probe.weight.data.clone()
 
 	masks = compute_loss_masks(
 		loader=train_loader,
 		num_classes=num_classes,
-		pw_mode="log",
+		pw_mode=pw_mode,
 		device=device,
 		verbose=verbose,
 	)
@@ -471,13 +465,6 @@ def probe_multi_label(
 	rare_mask = masks["rare_mask"]
 	N = masks["N"]
 	train_freq = masks["train_freq"]
-
-	diagnose_train_val_coverage(
-		train_freq=train_freq,
-		validation_loader=validation_loader,
-		num_classes=num_classes,
-		verbose=verbose,
-	)
 
 	# Criteria
 	# For the probe, loss is computed directly on logits [B, C] — same shape
@@ -550,7 +537,6 @@ def probe_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_{probe.probe_type}_"
-		f"{model_name}_"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
@@ -563,6 +549,7 @@ def probe_multi_label(
 		f"cdt_{cumulative_delta:.1e}_"
 		f"vt_{volatility_threshold}_"
 		f"st_{slope_threshold:.1e}_"
+		f"pw_{pw_mode}_"
 		f"pit_{pairwise_imp_threshold:.1e}"
 		f".pth"
 	)
@@ -666,6 +653,14 @@ def probe_multi_label(
 			
 			scaler.scale(loss).backward()
 			scaler.unscale_(optimizer)
+			if bidx % 25 == 0:
+				grad_per_class = probe.probe.weight.grad.norm(dim=1)  # [C]
+				print(
+					f"[GRAD] Epoch {epoch+1} Batch {bidx+1} — "
+					f"total_norm={probe.probe.weight.grad.norm().item():.4f} "
+					f"max_class_grad={grad_per_class.max().item():.4f} "
+					f"argmax_class={grad_per_class.argmax().item()}"
+				)
 			torch.nn.utils.clip_grad_norm_(probe.probe.parameters(), max_norm=1.0)
 			scaler.step(optimizer)
 			scaler.update()
@@ -683,7 +678,23 @@ def probe_multi_label(
 		training_losses.append(avg_loss)
 		learning_rates_history.append([g['lr'] for g in optimizer.param_groups])
 		weight_decays_history.append([g['weight_decay'] for g in optimizer.param_groups])
-		print(f">> Training Elapsed Time: {time.time() - train_and_val_st_time:.1f}s. Validating Epoch {epoch+1} ...")
+		with torch.no_grad():
+			W = probe.probe.weight.data
+			b = probe.probe.bias.data
+			row_norms = W.norm(dim=1)
+			cos_to_init = torch.nn.functional.cosine_similarity(W, probe._W_init, dim=1)
+			print(f"[W DRIFT] Epoch {epoch + 1}")
+			print(f"  row_norms   — min={row_norms.min():.4f} max={row_norms.max():.4f} mean={row_norms.mean():.4f} std={row_norms.std():.4f}")
+			print(f"  cos_to_init — min={cos_to_init.min():.4f} max={cos_to_init.max():.4f} mean={cos_to_init.mean():.4f}")
+			print(f"  classes cos_to_init < 0   : {(cos_to_init < 0).sum().item()} / {W.shape[0]}")
+			print(f"  classes cos_to_init < 0.5 : {(cos_to_init < 0.5).sum().item()} / {W.shape[0]}")
+			print(f"  bias        — min={b.min():.4f} max={b.max():.4f} mean={b.mean():.4f} std={b.std():.4f}")
+
+
+
+		
+
+		print(f"Training Elapsed Time: {time.time() - train_and_val_st_time:.1f}s. Validating Epoch {epoch+1} ...")
 		
 		probe.probe.eval()
 		val_loss = 0.0
@@ -857,17 +868,17 @@ def probe_multi_label(
 		verbose=verbose,
 	)
 
-	final_metrics_full    = best_model_eval_results["full_metrics"]
+	final_metrics_full = best_model_eval_results["full_metrics"]
 	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
 	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
 
-	final_tiered_i2t      = best_model_eval_results["tiered_i2t"]
-	final_tiered_t2i      = best_model_eval_results["tiered_t2i"]
+	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
+	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
 
 	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
 	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
 
-	model_source          = best_model_eval_results["model_loaded_from"]
+	model_source = best_model_eval_results["model_loaded_from"]
 
 	# Update model path
 	actual_trained_epochs = len(training_losses)
@@ -879,13 +890,14 @@ def probe_multi_label(
 	if verbose:
 		print(f"{'='*50}")
 		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  Model: {model_arch}")
+		print(f"  pw_mode: {pw_mode}")
 		print(f"  {probe.probe_type} | Params: {sum(p.numel() for p in probe.probe.parameters()):,}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
+		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
 
+		print(f"{'='*50}")
 		print("\n[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
@@ -961,6 +973,7 @@ def full_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
+	shared_protocol_path: str,
 	patience: int,
 	min_delta: float,
 	cumulative_delta: float,
@@ -971,6 +984,7 @@ def full_finetune_multi_label(
 	temperature: float = 0.07,
 	topk_values: List[int] = [1, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
+	pw_mode: str = "log",
 	verbose: bool=True,
 ):
 	window_size = minimum_epochs + 1
@@ -1062,9 +1076,10 @@ def full_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode)
 
 	masks = compute_loss_masks(
-		loader=train_loader,
+		train_loader=train_loader,
+		validation_loader=validation_loader,
 		num_classes=num_classes,
-		pw_mode="linear",
+		pw_mode=pw_mode,
 		# pw_max_cap=100.0,
 		device=device,
 		verbose=verbose,
@@ -1076,13 +1091,7 @@ def full_finetune_multi_label(
 	N 					= masks["N"]
 	train_freq 	= masks["train_freq"]
 
-	val_freq = diagnose_train_val_coverage(
-		train_freq=train_freq,
-		validation_loader=validation_loader,
-		num_classes=num_classes,
-		verbose=verbose,
-	)
-
+	# sys.exit()
 	# I2T: pos_weight applies — rows are images, cols are classes
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
 		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
@@ -1199,7 +1208,6 @@ def full_finetune_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
-		f"{model_name}_"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
 		f"do_{dropout_val}_"
@@ -1213,6 +1221,7 @@ def full_finetune_multi_label(
 		f"cdelta_{cumulative_delta:.1e}_"
 		f"vt_{volatility_threshold}_"
 		f"st_{slope_threshold:.1e}_"
+		f"pw_{pw_mode}_"
 		f"pit_{pairwise_imp_threshold:.1e}"
 		f".pth"
 	)
@@ -1313,7 +1322,7 @@ def full_finetune_multi_label(
 		learning_rates_history.append([optimizer.param_groups[0]['lr']])
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
-		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1}")
+		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time()-train_and_val_st_time:.1f}s")
 
 		# clear cache before validation
 		torch.cuda.empty_cache()
@@ -1434,14 +1443,21 @@ def full_finetune_multi_label(
 		lora_params=None,
 		topk_values=topk_values,
 		temperature=temperature,
+		use_fixed_masks=True,
+		shared_protocol_path=shared_protocol_path,
 		verbose=verbose,
 	)
 
 	final_metrics_full = best_model_eval_results["full_metrics"]
 	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
 	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
+
 	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
 	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
+
+	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
+	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
+	
 	model_source = best_model_eval_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
@@ -1453,23 +1469,32 @@ def full_finetune_multi_label(
 	if verbose:
 		print(f"{'='*50}")
 		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"{model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
+		print(f"  pw_mode: {pw_mode}")
+		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
+		print(f"  pw_mode: {pw_mode}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
-		print("\n>> Tiered I2T Retrieval")
+
+		print(f"{'='*50}")
+		print("\n[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n>> Tiered T2I Retrieval")
+		print("\n[Tiered] T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+
+		print("\n[Shared Tiered] I2T Retrieval")
+		for tier, m in final_shared_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n[Shared Tiered] T2I Retrieval")
+		for tier, m in final_shared_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
-		f"{model_name}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
@@ -1526,7 +1551,7 @@ def full_finetune_multi_label(
 		fname=plot_paths["hp_evol"],
 	)
 
-	return final_tiered_i2t, final_tiered_t2i
+	return best_model_eval_results
 
 def lora_finetune_multi_label(
 	model: torch.nn.Module,
@@ -1554,6 +1579,7 @@ def lora_finetune_multi_label(
 	temperature: float = 0.07,
 	quantization_bits: int = 8,
 	quantized: bool = False,
+	pw_mode: str = "log", # orig: sqrt
 	verbose: bool = True,
 ):
 	window_size = minimum_epochs + 1
@@ -1645,9 +1671,10 @@ def lora_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode)
 	
 	masks = compute_loss_masks(
-		loader=train_loader,
+		train_loader=train_loader,
+		validation_loader=validation_loader,
 		num_classes=num_classes,
-		pw_mode="sqrt",
+		pw_mode=pw_mode, # orig: sqrt
 		# pw_max_cap=50.0,
 		device=device,
 		verbose=verbose,
@@ -1659,12 +1686,7 @@ def lora_finetune_multi_label(
 	N 					= masks["N"]
 	train_freq 	= masks["train_freq"]
 
-	val_freq = diagnose_train_val_coverage(
-		train_freq=train_freq,
-		validation_loader=validation_loader,
-		num_classes=num_classes,
-		verbose=verbose,
-	)
+	# sys.exit()
 
 	# Criteria
 	# I2T: pos_weight applies — rows are images, cols are classes
@@ -1778,7 +1800,6 @@ def lora_finetune_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
-		f"{model_name}_"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
 		f"lor_{lora_rank}_loa_{lora_alpha}_lod_{lora_dropout}_"
@@ -1786,6 +1807,7 @@ def lora_finetune_multi_label(
 		f"mep_{minimum_epochs}_pat_{patience}_"
 		f"mdt_{min_delta:.1e}_cdt_{cumulative_delta:.1e}_"
 		f"vt_{volatility_threshold}_st_{slope_threshold:.1e}_"
+		f"pw_{pw_mode}_"
 		f"pit_{pairwise_imp_threshold:.1e}.pth"
 	)
 
@@ -1883,7 +1905,8 @@ def lora_finetune_multi_label(
 
 		learning_rates_history.append([optimizer.param_groups[0]['lr']])
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
-		print(f"[TRAIN ELAPSED TIME] epoch {epoch+1}: {time.time() - train_and_val_st_time:.1f}s.\nValidating Epoch {epoch+1}")
+
+		print(f"[Epoch {epoch+1}] Training elapsed time: {time.time()-train_and_val_st_time:.1f}s\nValidating...")
 
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
@@ -2019,12 +2042,13 @@ def lora_finetune_multi_label(
 	if verbose:
 		print(f"{'='*50}")
 		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"{model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
+		print(f"  pw_mode: {pw_mode}")
+		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
 
+		print(f"{'='*50}")
 		print("\n[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
@@ -2107,6 +2131,7 @@ def lora_plus_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
+	shared_protocol_path: str,
 	lora_rank: int,
 	lora_alpha: float,
 	lora_dropout: float,
@@ -2123,7 +2148,8 @@ def lora_plus_finetune_multi_label(
 	quantized: bool=False,
 	loss_weights: Dict[str, float]=None,
 	temperature: float = 0.07,
-	verbose: bool=True,
+	pw_mode: str="log", # orig: "sqrt"
+	verbose: bool=False,
 ):
 	"""
 	LoRA+ fine-tuning for multi-label CLIP classification.
@@ -2256,9 +2282,10 @@ def lora_plus_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode)
 
 	masks = compute_loss_masks(
-		loader=train_loader,
+		train_loader=train_loader,
+		validation_loader=validation_loader,
 		num_classes=num_classes,
-		pw_mode="sqrt",
+		pw_mode=pw_mode, #orig: "sqrt",
 		# pw_max_cap=50.0,
 		device=device,
 		verbose=verbose,
@@ -2270,12 +2297,7 @@ def lora_plus_finetune_multi_label(
 	N 					= masks["N"]
 	train_freq 	= masks["train_freq"]
 
-	diagnose_train_val_coverage(
-		train_freq=train_freq,
-		validation_loader=validation_loader,
-		num_classes=num_classes,
-		verbose=verbose,
-	)
+	# sys.exit()
 
 	# Criteria
 	# I2T: pos_weight applies — rows are images, cols are classes
@@ -2306,6 +2328,7 @@ def lora_plus_finetune_multi_label(
 	# Separate LoRA A and B parameters for differential LR
 	lora_A_params = [p for n, p in model.named_parameters() if p.requires_grad and "lora_A" in n]
 	lora_B_params = [p for n, p in model.named_parameters() if p.requires_grad and "lora_B" in n]
+
 	# Sanity check — nothing should fall through
 	all_lora_params = set(id(p) for p in lora_A_params + lora_B_params)
 	ungrouped = [n for n, p in model.named_parameters() if p.requires_grad and id(p) not in all_lora_params]
@@ -2323,6 +2346,7 @@ def lora_plus_finetune_multi_label(
 	# Optimizer with differential learning rates
 	lora_A_lr = learning_rate
 	lora_A_wd = weight_decay
+
 	lora_B_lr = learning_rate * lora_plus_lambda
 	lora_B_wd = 0.0
 
@@ -2432,7 +2456,6 @@ def lora_plus_finetune_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
-		f"{model_name}_"
 		f"{'quantized_' + str(quantization_bits) + 'bit_' if quantized else ''}"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
@@ -2453,6 +2476,7 @@ def lora_plus_finetune_multi_label(
 		f"cdt_{cumulative_delta:.1e}_"
 		f"vt_{volatility_threshold}_"
 		f"st_{slope_threshold:.1e}_"
+		f"pw_{pw_mode}_"
 		f"pit_{pairwise_imp_threshold:.1e}"
 		f".pth"
 	)
@@ -2684,7 +2708,8 @@ def lora_plus_finetune_multi_label(
 					early_stopping._restore_best_weights(model)
 			break
 
-		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")		
+		print(f"[Epoch {epoch+1}] Training elapsed time: {time.time()-train_and_val_st_time:.1f}s\nValidating...")
+
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
 			validation_loader=validation_loader,
@@ -2798,7 +2823,7 @@ def lora_plus_finetune_multi_label(
 	
 	print(f"[{mode}] Total Elapsed Time: {time.time() - train_start_time:.1f}s")
 	
-	evaluation_results = evaluate_best_model(
+	best_model_eval_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
 		active_mask=active_mask,
@@ -2817,15 +2842,22 @@ def lora_plus_finetune_multi_label(
 		},
 		temperature=temperature,
 		topk_values=topk_values,
+		use_fixed_masks=True,
+		shared_protocol_path=shared_protocol_path,
 		verbose=verbose,
 	)
 	
-	final_metrics_full = evaluation_results["full_metrics"]
-	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
-	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t = evaluation_results["tiered_i2t"]
-	final_tiered_t2i = evaluation_results["tiered_t2i"]
-	model_source = evaluation_results["model_loaded_from"]
+	final_metrics_full = best_model_eval_results["full_metrics"]
+	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
+	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
+
+	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
+	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
+
+	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
+	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
+
+	model_source = best_model_eval_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
@@ -2836,19 +2868,29 @@ def lora_plus_finetune_multi_label(
 	if verbose:
 		print(f"{'='*50}")
 		print(f"{mode.upper()} Final evaluation from: {model_source}")
+		print(f"  pw_mode: {pw_mode}")
 		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Rank: {lora_rank} Alpha: {lora_alpha} Dropout: {lora_dropout} Lambda: {lora_plus_lambda} B_MAX_NORM: {B_MAX_NORM}")
 		print(f"  Total trained epochs: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
-		print("\n>> Tiered I2T Retrieval")
+
+		print(f"{'='*50}")
+		print("\n[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n>> Tiered T2I Retrieval")
+		print("\n[Tiered] T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+
+		print("\n[Shared Tiered] I2T Retrieval")
+		for tier, m in final_shared_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n[Shared Tiered] T2I Retrieval")
+		for tier, m in final_shared_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
-	
+
 	# Generate plots
 	file_base_name = (
 		f"{mode}_"
@@ -2914,7 +2956,7 @@ def lora_plus_finetune_multi_label(
 		fname=plot_paths["hp_evol"],
 	)
 
-	return final_tiered_i2t, final_tiered_t2i
+	return best_model_eval_results
 
 def rslora_finetune_multi_label(
 	model: torch.nn.Module,
@@ -2926,6 +2968,7 @@ def rslora_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
+	shared_protocol_path: str,
 	lora_rank: int,
 	lora_alpha: float,
 	lora_dropout: float,
@@ -2941,6 +2984,7 @@ def rslora_finetune_multi_label(
 	temperature: float = 0.07,
 	quantization_bits: int = 8,
 	quantized: bool = False,
+	pw_mode: str = "log", # orig: "sqrt"
 	verbose: bool = True,
 ):
 	"""
@@ -3029,9 +3073,10 @@ def rslora_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode)
 
 	masks = compute_loss_masks(
-		loader=train_loader,
+		train_loader=train_loader,
+		validation_loader=validation_loader,
 		num_classes=num_classes,
-		pw_mode="sqrt",
+		pw_mode=pw_mode, # orig: "sqrt",
 		# pw_max_cap=50.0,
 		device=device,
 		verbose=verbose,
@@ -3043,12 +3088,7 @@ def rslora_finetune_multi_label(
 	N           = masks["N"]
 	train_freq  = masks["train_freq"]
 
-	val_freq = diagnose_train_val_coverage(
-		train_freq=train_freq,
-		validation_loader=validation_loader,
-		num_classes=num_classes,
-		verbose=verbose,
-	)
+	# sys.exit()
 
 	# Criteria
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
@@ -3169,7 +3209,6 @@ def rslora_finetune_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
-		f"{model_name}_"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
 		f"lor_{lora_rank}_"
@@ -3179,6 +3218,7 @@ def rslora_finetune_multi_label(
 		f"mep_{minimum_epochs}_pat_{patience}_"
 		f"mdt_{min_delta:.1e}_cdt_{cumulative_delta:.1e}_"
 		f"vt_{volatility_threshold}_st_{slope_threshold:.1e}_"
+		f"pw_{pw_mode}_"
 		f"pit_{pairwise_imp_threshold:.1e}.pth"
 	)
 
@@ -3308,7 +3348,7 @@ def rslora_finetune_multi_label(
 		learning_rates_history.append([optimizer.param_groups[0]['lr']])
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
-		print(f"Training Epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f}s. Validating Epoch {epoch+1}...")
+		print(f"[Epoch {epoch+1}] Training elapsed time: {time.time()-train_and_val_st_time:.1f}s\nValidating...")
 
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
@@ -3405,7 +3445,7 @@ def rslora_finetune_multi_label(
 
 	print(f"[{mode}] Total elapsed: {time.time()-train_start_time:.1f}s")
 
-	evaluation_results = evaluate_best_model(
+	best_model_eval_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
 		active_mask=active_mask,
@@ -3423,15 +3463,22 @@ def rslora_finetune_multi_label(
 		},
 		temperature=temperature,
 		topk_values=topk_values,
+		use_fixed_masks=True,
+		shared_protocol_path=shared_protocol_path,
 		verbose=verbose,
 	)
 
-	final_metrics_full    = evaluation_results["full_metrics"]
-	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
-	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t      = evaluation_results["tiered_i2t"]
-	final_tiered_t2i      = evaluation_results["tiered_t2i"]
-	model_source          = evaluation_results["model_loaded_from"]
+	final_metrics_full    = best_model_eval_results["full_metrics"]
+	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
+	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
+
+	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
+	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
+
+	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
+	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
+
+	model_source = best_model_eval_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
@@ -3442,16 +3489,25 @@ def rslora_finetune_multi_label(
 	if verbose:
 		print(f"{'='*50}")
 		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  Model: {model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
+		print(f"  pw_mode: {pw_mode}")
+		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
-		print("\n>> Tiered I2T Retrieval")
+
+		print(f"{'='*50}")
+		print("\n[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n>> Tiered T2I Retrieval")
+		print("\n[Tiered] T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+
+		print("\n[Shared Tiered] I2T Retrieval")
+		for tier, m in final_shared_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n[Shared Tiered] T2I Retrieval")
+		for tier, m in final_shared_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
@@ -3512,7 +3568,7 @@ def rslora_finetune_multi_label(
 		fname=plot_paths["losses"],
 	)
 
-	return final_tiered_i2t, final_tiered_t2i
+	return best_model_eval_results
 
 def dora_finetune_multi_label(
 	model: torch.nn.Module,
@@ -3524,6 +3580,7 @@ def dora_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
+	shared_protocol_path: str,
 	lora_rank: int,
 	lora_alpha: float,
 	lora_dropout: float,
@@ -3539,6 +3596,7 @@ def dora_finetune_multi_label(
 	quantized: bool = False,
 	temperature: float = 0.07,
 	loss_weights: Dict[str, float] = None,
+	pw_mode: str = "log",
 	verbose: bool = True,
 ):
 	"""
@@ -3647,9 +3705,10 @@ def dora_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode)
 
 	masks = compute_loss_masks(
-		loader=train_loader,
+		train_loader=train_loader,
+		validation_loader=validation_loader,
 		num_classes=num_classes,
-		pw_mode="sqrt",
+		pw_mode=pw_mode, # orig: "sqrt",
 		# pw_max_cap=50.0,
 		device=device,
 		verbose=verbose,
@@ -3660,13 +3719,6 @@ def dora_finetune_multi_label(
 	rare_mask   = masks["rare_mask"]
 	N 					= masks["N"]
 	train_freq 	= masks["train_freq"]
-
-	val_freq = diagnose_train_val_coverage(
-		train_freq=train_freq,
-		validation_loader=validation_loader,
-		num_classes=num_classes,
-		verbose=verbose,
-	)
 
 	# Criteria
 	# I2T: pos_weight applies — rows are images, cols are classes
@@ -3783,7 +3835,6 @@ def dora_finetune_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
-		f"{model_name}_"
 		f"{'quantized_' + str(quantization_bits) + 'bit_' if quantized else ''}"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
@@ -3800,6 +3851,7 @@ def dora_finetune_multi_label(
 		f"cdt_{cumulative_delta:.1e}_"
 		f"vt_{volatility_threshold}_"
 		f"st_{slope_threshold:.1e}_"
+		f"pw_{pw_mode}_"
 		f"pit_{pairwise_imp_threshold:.1e}"
 		f".pth"
 	)
@@ -3893,7 +3945,8 @@ def dora_finetune_multi_label(
 		learning_rates_history.append([optimizer.param_groups[0]['lr']])
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
-		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
+		print(f"[Epoch {epoch+1}] Training elapsed time: {time.time()-train_and_val_st_time:.1f}s\nValidating...")
+
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
 			validation_loader=validation_loader,
@@ -4015,7 +4068,7 @@ def dora_finetune_multi_label(
 	print(f"[{mode}] Total Training Elapsed Time: {time.time() - train_start_time:.1f}s")
 
 	# Final evaluation
-	evaluation_results = evaluate_best_model(
+	best_model_eval_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
 		active_mask=active_mask,
@@ -4033,15 +4086,22 @@ def dora_finetune_multi_label(
 		},
 		temperature=temperature,
 		topk_values=topk_values,
+		use_fixed_masks=True,
+		shared_protocol_path=shared_protocol_path,
 		verbose=verbose,
 	)
 
-	final_metrics_full = evaluation_results["full_metrics"]
-	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
-	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t = evaluation_results["tiered_i2t"]
-	final_tiered_t2i = evaluation_results["tiered_t2i"]
-	model_source = evaluation_results["model_loaded_from"]
+	final_metrics_full = best_model_eval_results["full_metrics"]
+	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
+	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
+
+	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
+	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
+
+	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
+	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
+
+	model_source = best_model_eval_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
@@ -4052,16 +4112,25 @@ def dora_finetune_multi_label(
 	if verbose:
 		print(f"{'='*50}")
 		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  Model: {model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
+		print(f"  pw_mode: {pw_mode}")
+		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
-		print("\n>> Tiered I2T Retrieval")
+
+		print(f"{'='*50}")
+		print("\n[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n>> Tiered T2I Retrieval")
+		print("\n[Tiered] T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+
+		print("\n[Shared Tiered] I2T Retrieval")
+		for tier, m in final_shared_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n[Shared Tiered] T2I Retrieval")
+		for tier, m in final_shared_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
@@ -4127,627 +4196,7 @@ def dora_finetune_multi_label(
 		fname=plot_paths["losses"],
 	)
 
-	return final_tiered_i2t, final_tiered_t2i
-
-def ia3_finetune_multi_label(
-	model: torch.nn.Module,
-	train_loader: DataLoader,
-	validation_loader: DataLoader,
-	num_epochs: int,
-	print_every: int,
-	learning_rate: float,
-	weight_decay: float,
-	device: str,
-	results_dir: str,
-	patience: int,
-	min_delta: float,
-	cumulative_delta: float,
-	minimum_epochs: int,
-	volatility_threshold: float,
-	slope_threshold: float,
-	pairwise_imp_threshold: float,
-	topk_values: List[int] = [1, 5, 10, 15, 20],
-	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
-	temperature: float = 0.07,
-	quantization_bits: int = 8,
-	quantized: bool = False,
-	verbose: bool = True,
-):
-	"""
-	(IA)³ fine-tuning for multi-label CLIP classification.
-	
-	Key differences from single-label (IA)³ version:
-	1. Uses BCEWithLogitsLoss instead of CrossEntropyLoss
-	2. Handles bidirectional multi-label targets (I2T and T2I)
-	3. Pre-encodes class embeddings for efficiency
-	4. Uses multi-label specific loss computation
-	5. Proper multi-label evaluation metrics
-	
-	Args:
-			model: CLIP model to fine-tune with (IA)³
-			train_loader: Training DataLoader (must provide multi-label vectors)
-			validation_loader: Validation DataLoader  
-			num_epochs: Number of training epochs
-			print_every: Print loss every N batches
-			learning_rate: Learning rate for (IA)³ parameters
-			weight_decay: Weight decay for regularization
-			device: Training device (cuda/cpu)
-			results_dir: Directory to save results
-			patience: Early stopping patience
-			min_delta: Minimum change for improvement
-			cumulative_delta: Cumulative delta for early stopping
-			minimum_epochs: Minimum epochs before early stopping
-			volatility_threshold: Volatility threshold for early stopping
-			slope_threshold: Slope threshold for early stopping
-			pairwise_imp_threshold: Pairwise improvement threshold for early stopping
-			topk_values: K values for evaluation metrics
-			loss_weights: Optional weights for I2T and T2I losses
-			temperature: Temperature scaling for similarities
-			quantization_bits: Bits for quantization (if quantized=True)
-			quantized: Whether to use quantized base weights
-			verbose: Enable detailed logging
-	"""
-	window_size = minimum_epochs + 1
-	if loss_weights is None:
-		loss_weights = {"i2t": 0.5, "t2i": 0.5}
-	
-	# Inspect the model for dropout layers and validate for (IA)³
-	dropout_values = list()
-	for name, module in model.named_modules():
-		if isinstance(module, torch.nn.Dropout):
-			dropout_values.append((name, module.p))
-
-	# Check for non-zero dropout in the base model
-	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
-	if non_zero_dropouts:
-		dropout_info = ", ".join([f"{name}: p={p}" for name, p in non_zero_dropouts])
-		assert False, (
-			f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during (IA)³ fine-tuning:"
-			f"\n{dropout_info}\n"
-			"This adds stochasticity and noise to the frozen base model, which is unconventional for (IA)³ practices.\n"
-			"Fix: Set dropout=0.0 in clip.load() to enforce a deterministic base model behavior during (IA)³ fine-tuning "
-			"which gives you more control over (IA)³-specific regularization without affecting the base model.\n"
-		)
-
-	early_stopping = EarlyStopping(
-		patience=patience,
-		min_delta=min_delta,
-		cumulative_delta=cumulative_delta,
-		window_size=window_size,
-		mode='min',  # Monitoring validation loss
-		min_epochs=minimum_epochs,
-		restore_best_weights=True,
-		volatility_threshold=volatility_threshold,
-		slope_threshold=slope_threshold,  # Positive slope is bad for loss
-		pairwise_imp_threshold=pairwise_imp_threshold,
-	)
-
-	try:
-		dataset_name = validation_loader.dataset.dataset.__class__.__name__
-	except AttributeError:
-		dataset_name = validation_loader.dataset.dataset_name
-
-	# Get dataset information
-	try:
-		class_names = validation_loader.dataset.unique_labels
-	except AttributeError:
-		class_names = validation_loader.dataset.dataset.classes
-	num_classes = len(class_names)
-
-	mode = inspect.stack()[0].function
-	mode = re.sub(r'_finetune_multi_label', '', mode)
-
-	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
-	model_name = model.__class__.__name__
-		
-	if verbose:
-		print(f"\n{mode.upper()} [Multi-Label]")
-		print(f"   ├─ Model      : {model_name} {model_arch}")
-		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
-		print(f"   ├─ Batch size : {train_loader.batch_size}")
-		print(f"   ├─ Device     : {type(device)} {device}")
-		print(f"   ├─ Learning rate: {learning_rate}  Weight decay: {weight_decay}")
-		print(f"   ├─ Temperature: {temperature}")
-		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
-		if quantized:
-			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
-
-	if torch.cuda.is_available():
-		gpu_name = torch.cuda.get_device_name(device)
-		gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-		cuda_capability = torch.cuda.get_device_capability()
-		if cuda_capability[0] >= 8 and torch.cuda.is_bf16_supported():
-			amp_dtype = torch.bfloat16
-		else:
-			amp_dtype = torch.float16
-		if verbose:
-			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
-
-	model = get_injected_peft_clip(
-		clip_model=model,
-		method=mode,
-		rank=1,  # Not used for (IA)³, but required by function signature
-		alpha=1.0,  # Not used for (IA)³, but required by function signature
-		dropout=0.0,  # Not used for (IA)³, but required by function signature
-		target_text_modules=[], # no (IA)³ in text encoder
-		target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
-		quantization_bits=quantization_bits,
-		quantized=quantized,
-		verbose=verbose,
-	)
-	
-	model.to(device)
-	get_parameters_info(model=model, mode=mode)
-
-	masks = compute_loss_masks(
-		loader=train_loader,
-		num_classes=num_classes,
-		pw_mode="log",
-		device=device,
-		verbose=verbose,
-	)
-	pos_weight  = masks["pos_weight"]
-	active_mask = masks["active_mask"]
-	head_mask   = masks["head_mask"]
-	rare_mask   = masks["rare_mask"]
-	N = masks["N"]
-	train_freq = masks["train_freq"]
-
-	val_freq = diagnose_train_val_coverage(
-		train_freq=train_freq,
-		validation_loader=validation_loader,
-		num_classes=num_classes,
-		verbose=verbose,
-	)
-
-	# Criteria
-	# I2T: pos_weight applies — rows are images, cols are classes
-	criterion_i2t = torch.nn.BCEWithLogitsLoss(
-		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
-		reduction='none',
-	)
-	if verbose:
-		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
-		print(f"   ├─ number of samples: {N}")
-		print(f"   ├─ number of classes: {num_classes}")
-		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
-		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
-		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
-
-	# T2I: no pos_weight — rows are classes, cols are batch images
-	# The imbalance is already corrected via I2T; T2I provides directional symmetry
-	criterion_t2i = torch.nn.BCEWithLogitsLoss(
-		reduction='none',
-	)
-	if verbose:
-		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
-		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
-	
-	model.eval()
-	all_class_embeds = []
-	text_batch_size = validation_loader.batch_size
-	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
-	with torch.no_grad():
-		with torch.amp.autocast(
-			device_type=device.type, 
-			enabled=torch.cuda.is_available(),
-			dtype=amp_dtype,
-		):
-			for i in range(0, num_classes, text_batch_size):
-				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
-				embeds = model.encode_text(batch_tokens)
-				embeds = torch.nn.functional.normalize(embeds, dim=-1)
-				all_class_embeds.append(embeds.cpu())
-
-				del batch_tokens, embeds
-				torch.cuda.empty_cache()
-	
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
-
-	if verbose:
-		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
-		print(f"   ├─ {type(all_class_embeds)}")
-		print(f"   ├─ {all_class_embeds.shape}")
-		print(f"   ├─ {all_class_embeds.dtype}")
-		print(f"   └─ {all_class_embeds.device}")
-
-	# Optimizer setup
-	ia3_params = [p for p in model.parameters() if p.requires_grad]
-	optimizer = torch.optim.AdamW(
-		params=ia3_params,
-		lr=learning_rate,
-		betas=(0.9, 0.98),
-		eps=1e-6,
-		weight_decay=weight_decay,
-	)
-	
-	if verbose:
-		print(f"\n{optimizer.__class__.__name__}")
-		print(f"  ├─ Params: {sum(p.numel() for p in ia3_params):,}")
-		print(f"  ├─ LR: {learning_rate}")
-		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
-		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
-		print(f"  └─ Weight Decay: {weight_decay}")
-
-	# Scheduler
-	# approximate T_max: N epochs * minimum_epochs
-	estimated_epochs = 2 * minimum_epochs
-	T_max = estimated_epochs * len(train_loader)
-	ANNEALING_RATIO = 1e-2 # 1% of initial LR
-	eta_min = learning_rate * ANNEALING_RATIO
-	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-		optimizer=optimizer,
-		T_max=T_max,
-		eta_min=eta_min,
-		last_epoch=-1,
-	)
-	
-	if verbose:
-		print(f"\n{scheduler.__class__.__name__}")
-		print(f"  ├─ minimum_epochs = {minimum_epochs}")
-		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
-		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
-
-	scaler = torch.amp.GradScaler(
-		device=device,
-		init_scale=2**15,      # 2048 (Conservative start)
-		growth_factor=2.0,     # Smoother growth than default 2.0
-		backoff_factor=0.5,    # Standard
-		growth_interval=2000,  # Keep scale stable longer
-	)
-
-	if verbose:
-		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
-		scaler_state = scaler.state_dict()
-		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
-		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
-		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
-		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
-		print()
-
-	mdl_fpth = os.path.join(
-		results_dir,
-		f"{mode}_"
-		f"{model_name}_"
-		f"{model_arch}_"
-		f"ieps_{num_epochs}_"
-		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
-		f"temp_{temperature}_"
-		f"bs_{train_loader.batch_size}_"
-		f"mep_{minimum_epochs}_"
-		f"pat_{patience}_"
-		f"mdt_{min_delta:.1e}_"
-		f"cdt_{cumulative_delta:.1e}_"
-		f"vt_{volatility_threshold}_"
-		f"st_{slope_threshold:.1e}_"
-		f"pit_{pairwise_imp_threshold:.1e}"
-		f".pth"
-	)
-
-	training_losses = list()
-	validation_losses = list()
-	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
-	img2txt_metrics_all_epochs = list()
-	txt2img_metrics_all_epochs = list()
-	full_val_loss_acc_metrics_all_epochs = list()
-	learning_rates_history = list()
-	weight_decays_history = list()
-	train_start_time = time.time()
-	final_img2txt_metrics = None
-	final_txt2img_metrics = None
-
-	for epoch in range(num_epochs):
-		train_and_val_st_time = time.time()
-		torch.cuda.empty_cache()
-		model.train()
-		print(f"Epoch [{epoch + 1}/{num_epochs}]")
-		
-		epoch_loss_total = 0.0
-		epoch_loss_i2t = 0.0
-		epoch_loss_t2i = 0.0
-		num_batches = 0
-		
-		for bidx, batch_data in enumerate(train_loader):
-			optimizer.zero_grad(set_to_none=True)
-			images, _, label_vectors = batch_data
-
-			images = images.to(device, non_blocking=True)
-			label_vectors = label_vectors.to(device, non_blocking=True).float()
-						
-			with torch.amp.autocast(
-				device_type=device.type, 
-				enabled=torch.cuda.is_available(),
-				dtype=amp_dtype,
-			):
-				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
-					model=model,
-					images=images,
-					all_class_embeds=all_class_embeds,
-					label_vectors=label_vectors,
-					criterion_i2t=criterion_i2t,
-					criterion_t2i=criterion_t2i,
-					active_mask=active_mask,
-					temperature=temperature,
-					loss_weights=loss_weights,
-					verbose=verbose,
-				)
-			
-			# Check for NaN loss
-			if torch.isnan(total_loss) or torch.isinf(total_loss):
-				print(
-					f"[WARNING] e{epoch+1} b{bidx+1}: "
-					f"total_loss: {total_loss} "
-					f"loss_i2t: {loss_i2t} "
-					f"loss_t2i: {loss_t2i}"
-				)
-				# no zero_grad needed here — already done above
-				continue # skip this batch
-			
-			scaler.scale(total_loss).backward()
-			scaler.unscale_(optimizer)
-			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
-			scaler.step(optimizer)
-			scaler.update()
-			scheduler.step()
-			
-			# Track losses
-			batch_loss_total = total_loss.item()
-			batch_loss_i2t = loss_i2t.item()
-			batch_loss_t2i = loss_t2i.item()
-			
-			epoch_loss_total += batch_loss_total
-			epoch_loss_i2t += batch_loss_i2t
-			epoch_loss_t2i += batch_loss_t2i
-			num_batches += 1
-			
-			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-				print(
-					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
-					f"Total Loss: {batch_loss_total:.6f} "
-					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
-				)
-		
-		# Calculate average losses
-		avg_total_loss = epoch_loss_total / num_batches if num_batches > 0 else 0.0
-		avg_i2t_loss = epoch_loss_i2t / num_batches if num_batches > 0 else 0.0
-		avg_t2i_loss = epoch_loss_t2i / num_batches if num_batches > 0 else 0.0
-		
-		training_losses.append(avg_total_loss)
-		training_losses_breakdown["total"].append(avg_total_loss)
-		training_losses_breakdown["i2t"].append(avg_i2t_loss)
-		training_losses_breakdown["t2i"].append(avg_t2i_loss)
-
-		learning_rates_history.append([optimizer.param_groups[0]['lr']])
-		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
-
-		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
-		
-		# Compute validation loss using the same multi-label loss function
-		current_val_loss = compute_multilabel_validation_loss(
-			model=model,
-			validation_loader=validation_loader,
-			criterion_i2t=criterion_i2t,
-			criterion_t2i=criterion_t2i,
-			active_mask=active_mask,
-			device=device,
-			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
-			temperature=temperature,
-			verbose=verbose,
-		)
-		validation_losses.append(current_val_loss)
-
-		validation_results = get_validation_metrics(
-			model=model,
-			validation_loader=validation_loader,
-			device=device,
-			topK_values=topk_values,
-			finetune_strategy=mode,
-			cache_dir=results_dir,
-			is_training=True,
-			model_hash=get_model_hash(model),
-			temperature=temperature,
-			verbose=verbose,
-		)
-		
-		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
-		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity")
-		align_score   = full_val_loss_acc_metrics_per_epoch.get("alignment_score")
-
-		retrieval_metrics_per_epoch = {
-			"img2txt": validation_results["img2txt_metrics"],
-			"txt2img": validation_results["txt2img_metrics"]
-		}
-
-		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
-		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
-		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
-		
-		print(
-			f'\nEpoch {epoch+1}:\n'
-			f'   ├─ [LOSS] {mode}-FT: Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Validation: {current_val_loss:.6f}\n'
-			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
-			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
-			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-			f'      └─ [T2I] {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
-		)
-		if align_score is not None:
-			print(f'   ├─ Embed — AlignScore@5: {align_score:.4f}')
-		elif cos_sim is not None:
-			print(f'   ├─ Embed — CosSim: {cos_sim:.4f}')
-		else:
-			print(f'   ├─ Embed — AlignScore: N/A')
-		
-		print(f"   ├─ Retrieval Metrics:")
-		print(
-			f"      ├─ [I2T] mAP {retrieval_metrics_per_epoch['img2txt'].get('mAP', {})}, "
-			f"Recall: {retrieval_metrics_per_epoch['img2txt'].get('Recall', {})}"
-		)
-		print(
-			f"      └─ [T2I] mAP: {retrieval_metrics_per_epoch['txt2img'].get('mAP', {})}, "
-			f"Recall: {retrieval_metrics_per_epoch['txt2img'].get('Recall', {})}"
-		)
-
-		if full_val_loss_acc_metrics_per_epoch.get("hamming_loss") is not None:
-			print(f'   ├─ Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
-			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
-			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
-
-		# Training health check
-		# Run after epoch 1 and at mid-warmup — all signals now available
-		if epoch in {0, minimum_epochs // 2}:
-			should_abort = check_training_health(
-				model=model,
-				epoch=epoch,
-				mode=mode,
-				training_losses=training_losses,
-				validation_losses=validation_losses,
-				align_score=align_score,
-				temperature=temperature,
-				learning_rate=learning_rate,
-				verbose=verbose,
-			)
-			if should_abort:
-				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
-				break
-
-		if early_stopping.should_stop(
-			current_value=current_val_loss,
-			model=model,
-			epoch=epoch,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			checkpoint_path=mdl_fpth,
-		):
-			print(
-				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
-				f"@ epoch {early_stopping.get_best_epoch()+1}")
-			break
-
-		# # Cache stats
-		# if hasattr(train_loader.dataset, 'get_cache_stats'):
-		# 	cache_stats = train_loader.dataset.get_cache_stats()
-		# 	if cache_stats is not None:
-		# 		print(f"Train Cache: {cache_stats}")
-
-		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
-		# 	cache_stats = validation_loader.dataset.get_cache_stats()
-		# 	if cache_stats is not None:
-		# 		print(f"Validation Cache: {cache_stats}")
-
-		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
-	
-	print(f"[{mode}] Total Training Time: {time.time() - train_start_time:.1f} sec")
-
-	evaluation_results = evaluate_best_model(
-		model=model,
-		validation_loader=validation_loader,
-		active_mask=active_mask,
-		head_mask=head_mask,
-		rare_mask=rare_mask,
-		early_stopping=early_stopping,
-		checkpoint_path=mdl_fpth,
-		finetune_strategy=mode,
-		device=device,
-		cache_dir=results_dir,
-		lora_params=None,
-		temperature=temperature,
-		topk_values=topk_values,
-		verbose=verbose,
-	)
-
-	final_metrics_full = evaluation_results["full_metrics"]
-	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
-	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t = evaluation_results["tiered_i2t"]
-	final_tiered_t2i = evaluation_results["tiered_t2i"]
-	model_source = evaluation_results["model_loaded_from"]
-
-	actual_trained_epochs = len(training_losses)
-	mdl_fpth = get_updated_model_name(
-		original_path=mdl_fpth, 
-		actual_epochs=actual_trained_epochs
-	)
-
-	if verbose:
-		print(f"{'='*50}")
-		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  Model: {model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
-		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
-		print(f"  Best model: {mdl_fpth}")
-		print("\n>> Tiered I2T Retrieval")
-		for tier, m in final_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n>> Tiered T2I Retrieval")
-		for tier, m in final_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"{'='*50}")
-
-	# Generate plots
-	file_base_name = (
-		f"{mode}_"
-		f"{model_name}_"
-		f"{model_arch}_"
-		f"ep_{actual_trained_epochs}_"
-		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
-		f"temp_{temperature}_"
-		f"bs_{train_loader.batch_size}"
-	)
-	
-	viz_dir = os.path.join(results_dir, "viz")
-	os.makedirs(viz_dir, exist_ok=True)
-	plot_paths = {
-		"losses": os.path.join(viz_dir, f"{file_base_name}_losses.png"),
-		"losses_breakdown": os.path.join(viz_dir, f"{file_base_name}_losses_breakdown.png"),
-		"in_batch_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-		"in_batch_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-		"full_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-		"full_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-		"retrieval_per_epoch": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-		"retrieval_best": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-		"alpha_beta_evol": os.path.join(viz_dir, f"{file_base_name}_alpha_beta_evol.png"),
-		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
-	}
-
-	viz.plot_multilabel_loss_breakdown(
-		training_losses_breakdown=training_losses_breakdown,
-		filepath=plot_paths["losses_breakdown"]
-	)
-
-	viz.plot_retrieval_metrics_per_epoch(
-		dataset_name=dataset_name,
-		image_to_text_metrics_list=img2txt_metrics_all_epochs,
-		text_to_image_metrics_list=txt2img_metrics_all_epochs,
-		fname=plot_paths["retrieval_per_epoch"],
-	)
-
-	viz.plot_retrieval_metrics_best_model(
-		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
-		fname=plot_paths["retrieval_best"],
-	)
-
-	viz.plot_hyperparameter_evolution(
-		eta_min=eta_min,
-		learning_rates=learning_rates_history,
-		weight_decays=weight_decays_history,
-		fname=plot_paths["hp_evol"],
-	)
-
-	viz.plot_train_val_losses(
-		train_losses=training_losses,
-		val_losses=validation_losses,
-		fname=plot_paths["losses"],
-	)
-
-	return final_tiered_i2t, final_tiered_t2i
+	return best_model_eval_results
 
 def vera_finetune_multi_label(
 	model: torch.nn.Module,
@@ -4759,6 +4208,7 @@ def vera_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
+	shared_protocol_path: str,
 	lora_rank: int,
 	lora_alpha: float,
 	lora_dropout: float,
@@ -4774,7 +4224,8 @@ def vera_finetune_multi_label(
 	temperature: float = 0.07,
 	quantization_bits: int = 8,
 	quantized: bool = False,
-	verbose: bool = True,
+	pw_mode: str = "log", # orig: log
+	verbose: bool = False,
 ):
 	"""
 	VeRA fine-tuning for multi-label CLIP classification.
@@ -4915,25 +4366,19 @@ def vera_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode)
 
 	masks = compute_loss_masks(
-		loader=train_loader,
+		train_loader=train_loader,
+		validation_loader=validation_loader,
 		num_classes=num_classes,
-		pw_mode="log",
+		pw_mode=pw_mode,# orig: "log",
 		device=device,
 		verbose=verbose,
 	)
 	pos_weight  = masks["pos_weight"]
 	active_mask = masks["active_mask"]
-	head_mask   = masks["head_mask"]
-	rare_mask   = masks["rare_mask"]
+	head_mask = masks["head_mask"]
+	rare_mask = masks["rare_mask"]
 	N = masks["N"]
 	train_freq = masks["train_freq"]
-
-	val_freq = diagnose_train_val_coverage(
-		train_freq=train_freq,
-		validation_loader=validation_loader,
-		num_classes=num_classes,
-		verbose=verbose,
-	)
 
 	# Criteria
 	# I2T: pos_weight applies — rows are images, cols are classes
@@ -5047,7 +4492,6 @@ def vera_finetune_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
-		f"{model_name}_"
 		f"{'quantized_' + str(quantization_bits) + 'bit_' if quantized else ''}"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
@@ -5064,6 +4508,7 @@ def vera_finetune_multi_label(
 		f"cdt_{cumulative_delta:.1e}_"
 		f"vt_{volatility_threshold}_"
 		f"st_{slope_threshold:.1e}_"
+		f"pw_{pw_mode}_"
 		f"pit_{pairwise_imp_threshold:.1e}"
 		f".pth"
 	)
@@ -5165,7 +4610,7 @@ def vera_finetune_multi_label(
 		learning_rates_history.append([optimizer.param_groups[0]['lr']])
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
-		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
+		print(f"[Epoch {epoch+1}] Training elapsed time: {time.time()-train_and_val_st_time:.1f}s\nValidating...")
 		
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
@@ -5325,7 +4770,7 @@ def vera_finetune_multi_label(
 	
 	print(f"\n[{mode.upper()}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
 
-	evaluation_results = evaluate_best_model(
+	best_model_eval_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
 		active_mask=active_mask,
@@ -5343,15 +4788,22 @@ def vera_finetune_multi_label(
 		},
 		temperature=temperature,
 		topk_values=topk_values,
+		use_fixed_masks=True,
+		shared_protocol_path=shared_protocol_path,
 		verbose=verbose,
 	)
 
-	final_metrics_full = evaluation_results["full_metrics"]
-	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
-	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t = evaluation_results["tiered_i2t"]
-	final_tiered_t2i = evaluation_results["tiered_t2i"]
-	model_source = evaluation_results["model_loaded_from"]
+	final_metrics_full = best_model_eval_results["full_metrics"]
+	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
+	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
+
+	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
+	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
+
+	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
+	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
+
+	model_source = best_model_eval_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
@@ -5362,16 +4814,25 @@ def vera_finetune_multi_label(
 	if verbose:
 		print(f"{'='*50}")
 		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  Model: {model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
+		print(f"  pw_mode: {pw_mode}")
+		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Best model: {mdl_fpth}")
-		print("\n>> Tiered I2T Retrieval")
+
+		print(f"{'='*50}")
+		print("\n[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n>> Tiered T2I Retrieval")
+		print("\n[Tiered] T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+
+		print("\n[Shared Tiered] I2T Retrieval")
+		for tier, m in final_shared_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n[Shared Tiered] T2I Retrieval")
+		for tier, m in final_shared_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
@@ -5435,7 +4896,638 @@ def vera_finetune_multi_label(
 		fname=plot_paths["losses"],
 	)
 
-	return final_tiered_i2t, final_tiered_t2i
+	return best_model_eval_results
+
+def ia3_finetune_multi_label(
+	model: torch.nn.Module,
+	train_loader: DataLoader,
+	validation_loader: DataLoader,
+	num_epochs: int,
+	print_every: int,
+	learning_rate: float,
+	weight_decay: float,
+	device: str,
+	results_dir: str,
+	shared_protocol_path: str,
+	patience: int,
+	min_delta: float,
+	cumulative_delta: float,
+	minimum_epochs: int,
+	volatility_threshold: float,
+	slope_threshold: float,
+	pairwise_imp_threshold: float,
+	topk_values: List[int] = [1, 5, 10, 15, 20],
+	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
+	temperature: float = 0.07,
+	quantization_bits: int = 8,
+	quantized: bool = False,
+	pw_mode: str = "log",
+	verbose: bool = True,
+):
+	"""
+	(IA)³ fine-tuning for multi-label CLIP classification.
+	
+	Key differences from single-label (IA)³ version:
+	1. Uses BCEWithLogitsLoss instead of CrossEntropyLoss
+	2. Handles bidirectional multi-label targets (I2T and T2I)
+	3. Pre-encodes class embeddings for efficiency
+	4. Uses multi-label specific loss computation
+	5. Proper multi-label evaluation metrics
+	
+	Args:
+			model: CLIP model to fine-tune with (IA)³
+			train_loader: Training DataLoader (must provide multi-label vectors)
+			validation_loader: Validation DataLoader  
+			num_epochs: Number of training epochs
+			print_every: Print loss every N batches
+			learning_rate: Learning rate for (IA)³ parameters
+			weight_decay: Weight decay for regularization
+			device: Training device (cuda/cpu)
+			results_dir: Directory to save results
+			patience: Early stopping patience
+			min_delta: Minimum change for improvement
+			cumulative_delta: Cumulative delta for early stopping
+			minimum_epochs: Minimum epochs before early stopping
+			volatility_threshold: Volatility threshold for early stopping
+			slope_threshold: Slope threshold for early stopping
+			pairwise_imp_threshold: Pairwise improvement threshold for early stopping
+			topk_values: K values for evaluation metrics
+			loss_weights: Optional weights for I2T and T2I losses
+			temperature: Temperature scaling for similarities
+			quantization_bits: Bits for quantization (if quantized=True)
+			quantized: Whether to use quantized base weights
+			verbose: Enable detailed logging
+	"""
+	window_size = minimum_epochs + 1
+	if loss_weights is None:
+		loss_weights = {"i2t": 0.5, "t2i": 0.5}
+	
+	# Inspect the model for dropout layers and validate for (IA)³
+	dropout_values = list()
+	for name, module in model.named_modules():
+		if isinstance(module, torch.nn.Dropout):
+			dropout_values.append((name, module.p))
+
+	# Check for non-zero dropout in the base model
+	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
+	if non_zero_dropouts:
+		dropout_info = ", ".join([f"{name}: p={p}" for name, p in non_zero_dropouts])
+		assert False, (
+			f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during (IA)³ fine-tuning:"
+			f"\n{dropout_info}\n"
+			"This adds stochasticity and noise to the frozen base model, which is unconventional for (IA)³ practices.\n"
+			"Fix: Set dropout=0.0 in clip.load() to enforce a deterministic base model behavior during (IA)³ fine-tuning "
+			"which gives you more control over (IA)³-specific regularization without affecting the base model.\n"
+		)
+
+	early_stopping = EarlyStopping(
+		patience=patience,
+		min_delta=min_delta,
+		cumulative_delta=cumulative_delta,
+		window_size=window_size,
+		mode='min',  # Monitoring validation loss
+		min_epochs=minimum_epochs,
+		restore_best_weights=True,
+		volatility_threshold=volatility_threshold,
+		slope_threshold=slope_threshold,  # Positive slope is bad for loss
+		pairwise_imp_threshold=pairwise_imp_threshold,
+	)
+
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except AttributeError:
+		dataset_name = validation_loader.dataset.dataset_name
+
+	# Get dataset information
+	try:
+		class_names = validation_loader.dataset.unique_labels
+	except AttributeError:
+		class_names = validation_loader.dataset.dataset.classes
+	num_classes = len(class_names)
+
+	mode = inspect.stack()[0].function
+	mode = re.sub(r'_finetune_multi_label', '', mode)
+
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_name = model.__class__.__name__
+		
+	if verbose:
+		print(f"\n{mode.upper()} [Multi-Label]")
+		print(f"   ├─ Model      : {model_name} {model_arch}")
+		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
+		print(f"   ├─ Batch size : {train_loader.batch_size}")
+		print(f"   ├─ Device     : {type(device)} {device}")
+		print(f"   ├─ Learning rate: {learning_rate}  Weight decay: {weight_decay}")
+		print(f"   ├─ Temperature: {temperature}")
+		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
+		if quantized:
+			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
+
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+		cuda_capability = torch.cuda.get_device_capability()
+		if cuda_capability[0] >= 8 and torch.cuda.is_bf16_supported():
+			amp_dtype = torch.bfloat16
+		else:
+			amp_dtype = torch.float16
+		if verbose:
+			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
+
+	model = get_injected_peft_clip(
+		clip_model=model,
+		method=mode,
+		rank=1,  # Not used for (IA)³, but required by function signature
+		alpha=1.0,  # Not used for (IA)³, but required by function signature
+		dropout=0.0,  # Not used for (IA)³, but required by function signature
+		target_text_modules=[], # no (IA)³ in text encoder
+		target_vision_modules=["in_proj", "out_proj", "c_fc", "c_proj"],
+		quantization_bits=quantization_bits,
+		quantized=quantized,
+		verbose=verbose,
+	)
+	
+	model.to(device)
+	get_parameters_info(model=model, mode=mode)
+
+	masks = compute_loss_masks(
+		train_loader=train_loader,
+		validation_loader=validation_loader,
+		num_classes=num_classes,
+		pw_mode=pw_mode, # orig: "log",
+		device=device,
+		verbose=verbose,
+	)
+	pos_weight = masks["pos_weight"]
+	active_mask = masks["active_mask"]
+	head_mask = masks["head_mask"]
+	rare_mask = masks["rare_mask"]
+	N = masks["N"]
+	train_freq = masks["train_freq"]
+
+	# Criteria
+	# I2T: pos_weight applies — rows are images, cols are classes
+	criterion_i2t = torch.nn.BCEWithLogitsLoss(
+		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
+		reduction='none',
+	)
+	if verbose:
+		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
+		print(f"   ├─ number of samples: {N}")
+		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
+		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
+
+	# T2I: no pos_weight — rows are classes, cols are batch images
+	# The imbalance is already corrected via I2T; T2I provides directional symmetry
+	criterion_t2i = torch.nn.BCEWithLogitsLoss(
+		reduction='none',
+	)
+	if verbose:
+		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
+		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
+	
+	model.eval()
+	all_class_embeds = []
+	text_batch_size = validation_loader.batch_size
+	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	with torch.no_grad():
+		with torch.amp.autocast(
+			device_type=device.type, 
+			enabled=torch.cuda.is_available(),
+			dtype=amp_dtype,
+		):
+			for i in range(0, num_classes, text_batch_size):
+				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
+				embeds = model.encode_text(batch_tokens)
+				embeds = torch.nn.functional.normalize(embeds, dim=-1)
+				all_class_embeds.append(embeds.cpu())
+
+				del batch_tokens, embeds
+				torch.cuda.empty_cache()
+	
+	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
+
+	if verbose:
+		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
+		print(f"   ├─ {type(all_class_embeds)}")
+		print(f"   ├─ {all_class_embeds.shape}")
+		print(f"   ├─ {all_class_embeds.dtype}")
+		print(f"   └─ {all_class_embeds.device}")
+
+	# Optimizer setup
+	ia3_params = [p for p in model.parameters() if p.requires_grad]
+	optimizer = torch.optim.AdamW(
+		params=ia3_params,
+		lr=learning_rate,
+		betas=(0.9, 0.98),
+		eps=1e-6,
+		weight_decay=weight_decay,
+	)
+	
+	if verbose:
+		print(f"\n{optimizer.__class__.__name__}")
+		print(f"  ├─ Params: {sum(p.numel() for p in ia3_params):,}")
+		print(f"  ├─ LR: {learning_rate}")
+		print(f"  ├─ Betas: {optimizer.defaults['betas']}")
+		print(f"  ├─ Eps: {optimizer.defaults['eps']}")
+		print(f"  └─ Weight Decay: {weight_decay}")
+
+	# Scheduler
+	# approximate T_max: N epochs * minimum_epochs
+	estimated_epochs = 2 * minimum_epochs
+	T_max = estimated_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2 # 1% of initial LR
+	eta_min = learning_rate * ANNEALING_RATIO
+	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+		optimizer=optimizer,
+		T_max=T_max,
+		eta_min=eta_min,
+		last_epoch=-1,
+	)
+	
+	if verbose:
+		print(f"\n{scheduler.__class__.__name__}")
+		print(f"  ├─ minimum_epochs = {minimum_epochs}")
+		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
+		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+
+	scaler = torch.amp.GradScaler(
+		device=device,
+		init_scale=2**15,      # 2048 (Conservative start)
+		growth_factor=2.0,     # Smoother growth than default 2.0
+		backoff_factor=0.5,    # Standard
+		growth_interval=2000,  # Keep scale stable longer
+	)
+
+	if verbose:
+		print(f"\n{scaler.__class__.__name__} (enabled: {scaler.is_enabled()}) for AMP training")
+		scaler_state = scaler.state_dict()
+		print(f"  ├─ init_scale: {scaler_state.get('scale', 'N/A')}")
+		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
+		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
+		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print()
+
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{mode}_"
+		f"{model_arch}_"
+		f"ieps_{num_epochs}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"temp_{temperature}_"
+		f"bs_{train_loader.batch_size}_"
+		f"mep_{minimum_epochs}_"
+		f"pat_{patience}_"
+		f"mdt_{min_delta:.1e}_"
+		f"cdt_{cumulative_delta:.1e}_"
+		f"vt_{volatility_threshold}_"
+		f"st_{slope_threshold:.1e}_"
+		f"pw_{pw_mode}_"
+		f"pit_{pairwise_imp_threshold:.1e}"
+		f".pth"
+	)
+
+	training_losses = list()
+	validation_losses = list()
+	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
+	img2txt_metrics_all_epochs = list()
+	txt2img_metrics_all_epochs = list()
+	full_val_loss_acc_metrics_all_epochs = list()
+	learning_rates_history = list()
+	weight_decays_history = list()
+	train_start_time = time.time()
+	final_img2txt_metrics = None
+	final_txt2img_metrics = None
+
+	for epoch in range(num_epochs):
+		train_and_val_st_time = time.time()
+		torch.cuda.empty_cache()
+		model.train()
+		print(f"Epoch [{epoch + 1}/{num_epochs}]")
+		
+		epoch_loss_total = 0.0
+		epoch_loss_i2t = 0.0
+		epoch_loss_t2i = 0.0
+		num_batches = 0
+		
+		for bidx, batch_data in enumerate(train_loader):
+			optimizer.zero_grad(set_to_none=True)
+			images, _, label_vectors = batch_data
+
+			images = images.to(device, non_blocking=True)
+			label_vectors = label_vectors.to(device, non_blocking=True).float()
+						
+			with torch.amp.autocast(
+				device_type=device.type, 
+				enabled=torch.cuda.is_available(),
+				dtype=amp_dtype,
+			):
+				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
+					model=model,
+					images=images,
+					all_class_embeds=all_class_embeds,
+					label_vectors=label_vectors,
+					criterion_i2t=criterion_i2t,
+					criterion_t2i=criterion_t2i,
+					active_mask=active_mask,
+					temperature=temperature,
+					loss_weights=loss_weights,
+					verbose=verbose,
+				)
+			
+			# Check for NaN loss
+			if torch.isnan(total_loss) or torch.isinf(total_loss):
+				print(
+					f"[WARNING] e{epoch+1} b{bidx+1}: "
+					f"total_loss: {total_loss} "
+					f"loss_i2t: {loss_i2t} "
+					f"loss_t2i: {loss_t2i}"
+				)
+				# no zero_grad needed here — already done above
+				continue # skip this batch
+			
+			scaler.scale(total_loss).backward()
+			scaler.unscale_(optimizer)
+			torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], max_norm=1.0)
+			scaler.step(optimizer)
+			scaler.update()
+			scheduler.step()
+			
+			# Track losses
+			batch_loss_total = total_loss.item()
+			batch_loss_i2t = loss_i2t.item()
+			batch_loss_t2i = loss_t2i.item()
+			
+			epoch_loss_total += batch_loss_total
+			epoch_loss_i2t += batch_loss_i2t
+			epoch_loss_t2i += batch_loss_t2i
+			num_batches += 1
+			
+			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+				print(
+					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
+					f"Total Loss: {batch_loss_total:.6f} "
+					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
+				)
+		
+		# Calculate average losses
+		avg_total_loss = epoch_loss_total / num_batches if num_batches > 0 else 0.0
+		avg_i2t_loss = epoch_loss_i2t / num_batches if num_batches > 0 else 0.0
+		avg_t2i_loss = epoch_loss_t2i / num_batches if num_batches > 0 else 0.0
+		
+		training_losses.append(avg_total_loss)
+		training_losses_breakdown["total"].append(avg_total_loss)
+		training_losses_breakdown["i2t"].append(avg_i2t_loss)
+		training_losses_breakdown["t2i"].append(avg_t2i_loss)
+
+		learning_rates_history.append([optimizer.param_groups[0]['lr']])
+		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
+
+		print(f"[Epoch {epoch+1}] Training elapsed time: {time.time()-train_and_val_st_time:.1f}s\nValidating...")
+		
+		# Compute validation loss using the same multi-label loss function
+		current_val_loss = compute_multilabel_validation_loss(
+			model=model,
+			validation_loader=validation_loader,
+			criterion_i2t=criterion_i2t,
+			criterion_t2i=criterion_t2i,
+			active_mask=active_mask,
+			device=device,
+			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
+			temperature=temperature,
+			verbose=verbose,
+		)
+		validation_losses.append(current_val_loss)
+
+		validation_results = get_validation_metrics(
+			model=model,
+			validation_loader=validation_loader,
+			device=device,
+			topK_values=topk_values,
+			finetune_strategy=mode,
+			cache_dir=results_dir,
+			is_training=True,
+			model_hash=get_model_hash(model),
+			temperature=temperature,
+			verbose=verbose,
+		)
+		
+		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
+		cos_sim = full_val_loss_acc_metrics_per_epoch.get("cosine_similarity")
+		align_score   = full_val_loss_acc_metrics_per_epoch.get("alignment_score")
+
+		retrieval_metrics_per_epoch = {
+			"img2txt": validation_results["img2txt_metrics"],
+			"txt2img": validation_results["txt2img_metrics"]
+		}
+
+		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
+		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
+		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
+		
+		print(
+			f'\nEpoch {epoch+1}:\n'
+			f'   ├─ [LOSS] {mode}-FT: Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Validation: {current_val_loss:.6f}\n'
+			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
+			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
+			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'      └─ [T2I] {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+		)
+		if align_score is not None:
+			print(f'   ├─ Embed — AlignScore@5: {align_score:.4f}')
+		elif cos_sim is not None:
+			print(f'   ├─ Embed — CosSim: {cos_sim:.4f}')
+		else:
+			print(f'   ├─ Embed — AlignScore: N/A')
+		
+		print(f"   ├─ Retrieval Metrics:")
+		print(
+			f"      ├─ [I2T] mAP {retrieval_metrics_per_epoch['img2txt'].get('mAP', {})}, "
+			f"Recall: {retrieval_metrics_per_epoch['img2txt'].get('Recall', {})}"
+		)
+		print(
+			f"      └─ [T2I] mAP: {retrieval_metrics_per_epoch['txt2img'].get('mAP', {})}, "
+			f"Recall: {retrieval_metrics_per_epoch['txt2img'].get('Recall', {})}"
+		)
+
+		if full_val_loss_acc_metrics_per_epoch.get("hamming_loss") is not None:
+			print(f'   ├─ Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
+			print(f'   ├─ Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
+			print(f'   └─ F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
+
+		# Training health check
+		# Run after epoch 1 and at mid-warmup — all signals now available
+		if epoch in {0, minimum_epochs // 2}:
+			should_abort = check_training_health(
+				model=model,
+				epoch=epoch,
+				mode=mode,
+				training_losses=training_losses,
+				validation_losses=validation_losses,
+				align_score=align_score,
+				temperature=temperature,
+				learning_rate=learning_rate,
+				verbose=verbose,
+			)
+			if should_abort:
+				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
+				break
+
+		if early_stopping.should_stop(
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
+		):
+			print(
+				f"\n[EARLY STOPPING] best loss: {early_stopping.get_best_score():.6f} "
+				f"@ epoch {early_stopping.get_best_epoch()+1}")
+			break
+
+		# # Cache stats
+		# if hasattr(train_loader.dataset, 'get_cache_stats'):
+		# 	cache_stats = train_loader.dataset.get_cache_stats()
+		# 	if cache_stats is not None:
+		# 		print(f"Train Cache: {cache_stats}")
+
+		# if hasattr(validation_loader.dataset, 'get_cache_stats'):
+		# 	cache_stats = validation_loader.dataset.get_cache_stats()
+		# 	if cache_stats is not None:
+		# 		print(f"Validation Cache: {cache_stats}")
+
+		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f}s")
+	
+	print(f"[{mode}] Total Training Time: {time.time() - train_start_time:.1f} sec")
+
+	best_model_eval_results = evaluate_best_model(
+		model=model,
+		validation_loader=validation_loader,
+		active_mask=active_mask,
+		head_mask=head_mask,
+		rare_mask=rare_mask,
+		early_stopping=early_stopping,
+		checkpoint_path=mdl_fpth,
+		finetune_strategy=mode,
+		device=device,
+		cache_dir=results_dir,
+		lora_params=None,
+		temperature=temperature,
+		topk_values=topk_values,
+		use_fixed_masks=True,
+		shared_protocol_path=shared_protocol_path,
+		verbose=verbose,
+	)
+
+	final_metrics_full = best_model_eval_results["full_metrics"]
+	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
+	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
+
+	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
+	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
+
+	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
+	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
+
+	model_source = best_model_eval_results["model_loaded_from"]
+
+	actual_trained_epochs = len(training_losses)
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth, 
+		actual_epochs=actual_trained_epochs
+	)
+
+	if verbose:
+		print(f"{'='*50}")
+		print(f"{mode.upper()} Final evaluation from: {model_source}")
+		print(f"  pw_mode: {pw_mode}")
+		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
+		print(f"  Epochs trained: {actual_trained_epochs}")
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
+		print(f"  Best model: {mdl_fpth}")
+
+		print(f"{'='*50}")
+		print("\n[Tiered] I2T Retrieval")
+		for tier, m in final_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n[Tiered] T2I Retrieval")
+		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+
+		print("\n[Shared Tiered] I2T Retrieval")
+		for tier, m in final_shared_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n[Shared Tiered] T2I Retrieval")
+		for tier, m in final_shared_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print(f"{'='*50}")
+
+	# Generate plots
+	file_base_name = (
+		f"{mode}_"
+		f"{model_arch}_"
+		f"ep_{actual_trained_epochs}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"temp_{temperature}_"
+		f"bs_{train_loader.batch_size}"
+	)
+	
+	viz_dir = os.path.join(results_dir, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
+	plot_paths = {
+		"losses": os.path.join(viz_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(viz_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(viz_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(viz_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(viz_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"alpha_beta_evol": os.path.join(viz_dir, f"{file_base_name}_alpha_beta_evol.png"),
+		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
+	}
+
+	viz.plot_multilabel_loss_breakdown(
+		training_losses_breakdown=training_losses_breakdown,
+		filepath=plot_paths["losses_breakdown"]
+	)
+
+	viz.plot_retrieval_metrics_per_epoch(
+		dataset_name=dataset_name,
+		image_to_text_metrics_list=img2txt_metrics_all_epochs,
+		text_to_image_metrics_list=txt2img_metrics_all_epochs,
+		fname=plot_paths["retrieval_per_epoch"],
+	)
+
+	viz.plot_retrieval_metrics_best_model(
+		dataset_name=dataset_name,
+		image_to_text_metrics=final_img2txt_metrics,
+		text_to_image_metrics=final_txt2img_metrics,
+		fname=plot_paths["retrieval_best"],
+	)
+
+	viz.plot_hyperparameter_evolution(
+		eta_min=eta_min,
+		learning_rates=learning_rates_history,
+		weight_decays=weight_decays_history,
+		fname=plot_paths["hp_evol"],
+	)
+
+	viz.plot_train_val_losses(
+		train_losses=training_losses,
+		val_losses=validation_losses,
+		fname=plot_paths["losses"],
+	)
+
+	return best_model_eval_results
 
 def clip_adapter_finetune_multi_label(
 	model: torch.nn.Module,
@@ -5447,6 +5539,7 @@ def clip_adapter_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
+	shared_protocol_path: str,
 	clip_adapter_method: str,  # "clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"
 	bottleneck_dim: int = 256,
 	activation: str = "relu",
@@ -5460,6 +5553,7 @@ def clip_adapter_finetune_multi_label(
 	topk_values: List[int] = [1, 5, 10, 15, 20],
 	temperature: float = 0.07,
 	loss_weights: Dict[str, float] = None,
+	pw_mode: str = "log",
 	verbose: bool = True,
 ):
 	"""
@@ -5518,8 +5612,8 @@ def clip_adapter_finetune_multi_label(
 
 	if verbose:
 		print(f"{mode.upper()} [Multi-Label] variant: {clip_adapter_method} bottleneck={bottleneck_dim} act={activation}")
-		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
-		print(f"   ├─ Model      : {model_name} {model_arch}")
+		print(f"   ├─ {dataset_name} with {num_classes} labels")
+		print(f"   ├─ {model_name} {model_arch}")
 		print(f"   ├─ Batch size : {train_loader.batch_size}")
 		print(f"   ├─ Temperature: {temperature}")
 		print(f"   ├─ Loss weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
@@ -5563,18 +5657,16 @@ def clip_adapter_finetune_multi_label(
 
 	if verbose:
 		trainable = [(n, p.numel()) for n, p in model.named_parameters() if p.requires_grad]
-		frozen    = [(n, p.numel()) for n, p in model.named_parameters() if not p.requires_grad]
+		frozen = [(n, p.numel()) for n, p in model.named_parameters() if not p.requires_grad]
 		print(f"Trainable tensors: {len(trainable)} | Frozen tensors: {len(frozen)}")
-		for name, numel in trainable[:10]:
+		for name, numel in trainable:
 			print(f"  {name}: {numel:,}")
-		if len(trainable) > 10:
-			print(f"  ... and {len(trainable)-10} more")
-		print(f"Total trainable : {sum(n for _,n in trainable):,}")
-		print(f"Total frozen    : {sum(n for _,n in frozen):,}")
+		print(f"[TOTAL] trainable: {sum(n for _,n in trainable):,} frozen: {sum(n for _,n in frozen):,}")
 
 	# Loss masks
 	masks = compute_loss_masks(
-		loader=train_loader,
+		train_loader=train_loader,
+		validation_loader=validation_loader,
 		num_classes=num_classes,
 		pw_mode="log",
 		device=device,
@@ -5586,13 +5678,6 @@ def clip_adapter_finetune_multi_label(
 	rare_mask   = masks["rare_mask"]
 	N           = masks["N"]
 	train_freq  = masks["train_freq"]
-
-	val_freq = diagnose_train_val_coverage(
-		train_freq=train_freq,
-		validation_loader=validation_loader,
-		num_classes=num_classes,
-		verbose=verbose,
-	)
 
 	#Criteria
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction='none')
@@ -5664,19 +5749,21 @@ def clip_adapter_finetune_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{clip_adapter_method}_"
-		f"{model_name}_"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
 		f"cbd_{bottleneck_dim}_act_{activation}_temp_{temperature}_"
 		f"mep_{minimum_epochs}_pat_{patience}_mdt_{min_delta:.1e}_"
 		f"cdt_{cumulative_delta:.1e}_vt_{volatility_threshold}_"
-		f"st_{slope_threshold:.1e}_pit_{pairwise_imp_threshold:.1e}.pth"
+		f"st_{slope_threshold:.1e}_"
+		f"pw_{pw_mode}_"
+		f"pit_{pairwise_imp_threshold:.1e}"
+		f".pth"
 	)
 
 	# Pre-encode class texts
-	# For clip_adapter_v: text encoder is fully frozen → encode once, reuse forever.
-	# For clip_adapter_t / clip_adapter_vt: text adapter changes every step →
+	# clip_adapter_v: text encoder is fully frozen → encode once, reuse forever.
+	# clip_adapter_t / clip_adapter_vt: text adapter changes every step →
 	#   we keep the raw tokens and re-encode at the start of each epoch.
 	text_batch_size = validation_loader.batch_size
 	all_class_tokens = clip.tokenize(class_names).to(device)  # always kept
@@ -5799,7 +5886,8 @@ def clip_adapter_finetune_multi_label(
 				print(
 					f"\t\tBatch [{bidx+1:04d}/{len(train_loader)}] "
 					f"Total: {total_loss.item():.6f} "
-					f"(I2T: {loss_i2t.item():.6f}, T2I: {loss_t2i.item():.6f})"
+					f"(I2T: {loss_i2t.item():.6f} "
+					f"T2I: {loss_t2i.item():.6f})"
 				)
 
 		avg_total = epoch_loss_total / num_batches if num_batches > 0 else 0.0
@@ -5813,8 +5901,7 @@ def clip_adapter_finetune_multi_label(
 		learning_rates_history.append([optimizer.param_groups[0]['lr']])
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
-		# ── Validation ────────────────────────────────────────────────────────
-		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
+		print(f"[Epoch {epoch+1}] Training elapsed time: {time.time()-train_and_val_st_time:.1f}s\nValidating...")
 
 		# For validation loss: always use freshly encoded class embeds
 		# (for clip_adapter_t/vt, re-encode under no_grad with current adapter weights)
@@ -5928,7 +6015,7 @@ def clip_adapter_finetune_multi_label(
 
 	print(f"[{clip_adapter_method}] Total Training Elapsed Time: {time.time()-train_start_time:.1f} sec")
 
-	evaluation_results = evaluate_best_model(
+	best_model_eval_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
 		active_mask=active_mask,
@@ -5942,25 +6029,35 @@ def clip_adapter_finetune_multi_label(
 		lora_params=None,
 		topk_values=topk_values,
 		temperature=temperature,
+		use_fixed_masks=True,
+		shared_protocol_path=shared_protocol_path,
 		verbose=verbose,
 	)
 
-	final_metrics_full = evaluation_results["full_metrics"]
-	final_img2txt = evaluation_results["img2txt_metrics"]
-	final_txt2img = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t = evaluation_results["tiered_i2t"]
-	final_tiered_t2i = evaluation_results["tiered_t2i"]
-	model_source = evaluation_results["model_loaded_from"]
+	final_metrics_full = best_model_eval_results["full_metrics"]
+	final_img2txt = best_model_eval_results["img2txt_metrics"]
+	final_txt2img = best_model_eval_results["txt2img_metrics"]
+
+	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
+	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
+
+	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
+	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
+
+	model_source = best_model_eval_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
-	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth, 
+		actual_epochs=actual_trained_epochs
+	)
 
 	if verbose:
 		print(f"{'='*50}")
 		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  Method   : {clip_adapter_method}")
-		print(f"  Model: {model_arch}")
-		print(f"  CLIP frozen params: {sum(p.numel() for p in model.parameters()):,}")
+		print(f"  {clip_adapter_method}")
+		print(f"  pw_mode: {pw_mode}")
+		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
 		print(f"  Epochs trained: {actual_trained_epochs}")
 		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
 		print(f"  Bottleneck: {bottleneck_dim}  Activation: {activation}")
@@ -5969,17 +6066,27 @@ def clip_adapter_finetune_multi_label(
 		print(f"  Temperature: {temperature}")
 		print(f"  Best model: {mdl_fpth}")
 
-		print("\n>> Tiered I2T Retrieval")
+		print(f"{'='*50}")
+		print("\n[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n>> Tiered T2I Retrieval")
+		print("\n[Tiered] T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+
+		print("\n[Shared Tiered] I2T Retrieval")
+		for tier, m in final_shared_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n[Shared Tiered] T2I Retrieval")
+		for tier, m in final_shared_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
 	# Generate plots
 	file_base_name = (
-		f"{clip_adapter_method}_{model_arch}_ep_{actual_trained_epochs}_"
+		f"{clip_adapter_method}_"
+		f"{model_arch}_"
+		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_"
 		f"cbd_{bottleneck_dim}_act_{activation}_temp_{temperature}"
 	)
@@ -6031,7 +6138,7 @@ def clip_adapter_finetune_multi_label(
 		fname=plot_paths["losses"],
 	)
 
-	return final_tiered_i2t, final_tiered_t2i
+	return best_model_eval_results
 
 def tip_adapter_finetune_multi_label(
 	model: torch.nn.Module,
@@ -6043,6 +6150,7 @@ def tip_adapter_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
+	shared_protocol_path: str,
 	tip_adapter_method: str,  # "tip_adapter" or "tip_adapter_f"
 	patience: int,
 	min_delta: float,
@@ -6057,6 +6165,7 @@ def tip_adapter_finetune_multi_label(
 	support_shots: int=16,  # Number of support samples per class
 	temperature: float = 0.07,
 	loss_weights: Dict[str, float]=None,
+	pw_mode: str = "log",
 	verbose: bool=True,
 ):
 	"""
@@ -6366,9 +6475,10 @@ def tip_adapter_finetune_multi_label(
 	get_parameters_info(model=model, mode=tip_adapter_method)
 
 	masks = compute_loss_masks(
-		loader=train_loader,
+		train_loader=train_loader,
+		validation_loader=validation_loader,
 		num_classes=num_classes,
-		pw_mode="log",
+		pw_mode=pw_mode,#"log",
 		device=device,
 		verbose=verbose,
 	)
@@ -6378,13 +6488,6 @@ def tip_adapter_finetune_multi_label(
 	rare_mask   = masks["rare_mask"]
 	N = masks["N"]
 	train_freq = masks["train_freq"]
-
-	val_freq = diagnose_train_val_coverage(
-		train_freq=train_freq,
-		validation_loader=validation_loader,
-		num_classes=num_classes,
-		verbose=verbose,
-	)
 
 	# Criteria
 	# I2T: pos_weight applies — rows are images, cols are classes
@@ -6486,7 +6589,6 @@ def tip_adapter_finetune_multi_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{tip_adapter_method}_"
-		f"{model_name}_"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
@@ -6502,6 +6604,7 @@ def tip_adapter_finetune_multi_label(
 		f"cdt_{cumulative_delta:.1e}_"
 		f"vt_{volatility_threshold}_"
 		f"st_{slope_threshold:.1e}_"
+		f"pw_{pw_mode}_"
 		f"pit_{pairwise_imp_threshold:.1e}"
 		f".pth"
 	)
@@ -6525,7 +6628,7 @@ def tip_adapter_finetune_multi_label(
 		if verbose:
 			print(f"\n[{tip_adapter_method}] Training-free mode - proceeding directly to evaluation")
 		
-		evaluation_results = evaluate_best_model(
+		best_model_eval_results = evaluate_best_model(
 			model=model,
 			validation_loader=validation_loader,
 			active_mask=active_mask,
@@ -6538,24 +6641,38 @@ def tip_adapter_finetune_multi_label(
 			cache_dir=results_dir,
 			topk_values=topk_values,
 			temperature=temperature,
+			use_fixed_masks=True,
+			shared_protocol_path=shared_protocol_path,
 			verbose=verbose,
 		)
 		
-		final_metrics_full = evaluation_results["full_metrics"]
-		final_img2txt_metrics = evaluation_results["img2txt_metrics"]
-		final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-		final_tiered_i2t = evaluation_results["tiered_i2t"]
-		final_tiered_t2i = evaluation_results["tiered_t2i"]		
+		final_metrics_full = best_model_eval_results["full_metrics"]
+		final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
+		final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
+
+		final_tiered_i2t = best_model_eval_results["tiered_i2t"]
+		final_tiered_t2i = best_model_eval_results["tiered_t2i"]		
+
+		final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
+		final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
 
 		if verbose:
-			print("\n>> Tiered I2T Retrieval")
+			print(f"{'='*50}")
+			print("\n[Tiered] I2T Retrieval")
 			for tier, m in final_tiered_i2t.items():
 				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-			print("\n>> Tiered T2I Retrieval")
+			print("\n[Tiered] T2I Retrieval")
 			for tier, m in final_tiered_t2i.items():
 				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-			
-		
+
+			print("\n[Shared Tiered] I2T Retrieval")
+			for tier, m in final_shared_tiered_i2t.items():
+				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+			print("\n[Shared Tiered] T2I Retrieval")
+			for tier, m in final_shared_tiered_t2i.items():
+				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+			print(f"{'='*50}")
+
 		# Generate best model plot only
 		file_base_name = (
 			f"{tip_adapter_method}_"
@@ -6663,7 +6780,8 @@ def tip_adapter_finetune_multi_label(
 		learning_rates_history.append([optimizer.param_groups[0]['lr']])
 		weight_decays_history.append([optimizer.param_groups[0]['weight_decay']])
 
-		print(f">> Training epoch {epoch+1} took {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1} ...")
+		print(f"[Epoch {epoch+1}] Training elapsed time: {time.time()-train_and_val_st_time:.1f}s\nValidating...")
+
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
 			validation_loader=validation_loader,
@@ -6705,7 +6823,7 @@ def tip_adapter_finetune_multi_label(
 		
 		print(
 			f'\nEpoch {epoch+1}:\n'
-			f'   ├─ [LOSS] {tip_adapter_method.upper()}-FT: Train - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Val: {current_val_loss:.6f}\n'
+			f'   ├─ [LOSS] {tip_adapter_method.upper()}: Train - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f}) Val: {current_val_loss:.6f}\n'
 			f'   ├─ Learning Rate: {scheduler.get_last_lr()[0]:.2e}\n'
 			f'   ├─ Multi-label Validation Accuracy Metrics:\n'
 			f'      ├─ [I2T] {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
@@ -6785,7 +6903,7 @@ def tip_adapter_finetune_multi_label(
 	
 	print(f"[{tip_adapter_method}] Total Training Elapsed Time: {time.time() - train_start_time:.1f} sec")
 	
-	evaluation_results = evaluate_best_model(
+	best_model_eval_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
 		active_mask=active_mask,
@@ -6799,15 +6917,22 @@ def tip_adapter_finetune_multi_label(
 		topk_values=topk_values,
 		lora_params=None,
 		temperature=temperature,
+		use_fixed_masks=True,
+		shared_protocol_path=shared_protocol_path,
 		verbose=verbose,
 	)
 	
-	final_metrics_full = evaluation_results["full_metrics"]
-	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
-	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-	final_tiered_i2t = evaluation_results["tiered_i2t"]
-	final_tiered_t2i = evaluation_results["tiered_t2i"]
-	model_source = evaluation_results["model_loaded_from"]
+	final_metrics_full = best_model_eval_results["full_metrics"]
+	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
+	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
+
+	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
+	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
+
+	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
+	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
+
+	model_source = best_model_eval_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses) if training_losses else 0
 	if num_epochs > 0:
@@ -6816,18 +6941,27 @@ def tip_adapter_finetune_multi_label(
 	if verbose:
 		print(f"{'='*50}")
 		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  ├─ Model: {model_arch}")
-		print(f"  ├─ Method: {tip_adapter_method}")
+		print(f"  ├─ {model_arch}")
+		print(f"  ├─ {tip_adapter_method}")
 		print(f"  ├─ Beta[init]: {initial_beta}")
 		print(f"  ├─ Alpha[init]: {initial_alpha}")
 		print(f"  ├─ Epochs trained: {actual_trained_epochs}")
 		print(f"  ├─ Support Shots: {support_shots}")
-		print(f"  └─ Best model saved to: {mdl_fpth if num_epochs > 0 else 'N/A (training-free)'}")	
-		print("\n>> Tiered I2T Retrieval")
+		print(f"  └─ Best model saved to: {mdl_fpth if num_epochs > 0 else 'N/A (training-free)'}")
+
+		print(f"{'='*50}")
+		print("\n[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n>> Tiered T2I Retrieval")
+		print("\n[Tiered] T2I Retrieval")
 		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+
+		print("\n[Shared Tiered] I2T Retrieval")
+		for tier, m in final_shared_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n[Shared Tiered] T2I Retrieval")
+		for tier, m in final_shared_tiered_t2i.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print(f"{'='*50}")
 
@@ -6901,4 +7035,4 @@ def tip_adapter_finetune_multi_label(
 		fname=plot_paths["alpha_beta_evol"],
 	)
 
-	return final_tiered_i2t, final_tiered_t2i
+	return best_model_eval_results

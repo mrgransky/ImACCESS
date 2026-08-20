@@ -12,30 +12,37 @@ def diagnose_train_val_coverage(
 	Call once after compute_loss_masks() in each fine-tuning function.
 	"""
 	val_freq = torch.zeros(num_classes, dtype=torch.float32)
+
 	for raw in validation_loader.dataset.labels:
-			try:
-					for lbl in ast.literal_eval(raw):
-							if lbl in validation_loader.dataset.label_dict:
-									val_freq[validation_loader.dataset.label_dict[lbl]] += 1
-			except (ValueError, SyntaxError):
-					pass
+		try:
+			for lbl in ast.literal_eval(raw):
+				if lbl in validation_loader.dataset.label_dict:
+					val_freq[validation_loader.dataset.label_dict[lbl]] += 1
+		except (ValueError, SyntaxError):
+			pass
+
 	val_active   = (val_freq > 0)
 	train_active = (train_freq > 0)
 	train_only   = (train_active & ~val_active).sum().item()
 	val_only     = (val_active & ~train_active).sum().item()
 	both_active  = (train_active & val_active).sum().item()
 	neither      = (~train_active & ~val_active).sum().item()
+
 	if verbose:
-		print(f"\n[DIAGNOSTIC] Train/Val Class Coverage")
-		print(f"  ├─ Active in both train and val : {both_active:,}")
-		print(f"  ├─ Active in train only         : {train_only:,}")
-		print(f"  ├─ Active in val only           : {val_only:,}")
-		print(f"  └─ Inactive in both             : {neither:,}")
+		print(f"\n[COVERAGE DIAGNOSTIC]")
+		print(f"  ├─ Total train labels         : {len(train_freq>0)}")
+		print(f"  ├─ Total val labels           : {len(val_freq>0)}")
+		print(f"  ├─ Active in both train & val : {both_active:,}")
+		print(f"  ├─ Active in train only       : {train_only:,}")
+		print(f"  ├─ Active in val only         : {val_only:,}")
+		print(f"  └─ Inactive in both           : {neither:,}")
+
 		if train_only > 0:
-			print(f"\n  ⚠  {train_only} classes trained on but absent from val.")
+			print(f"\n{train_only} labels trained on but absent from val.")
+
 		if val_only > 0:
 			print(
-				f"\n  ⚠  {val_only} classes in val with no training samples — "
+				f"\n{val_only} labels in val with no training samples => "
 				f"pos_weight defaults to 1.0 for these."
 			)
 		
@@ -63,17 +70,18 @@ def diagnose_train_val_coverage(
 			print(f"  ├─ Val frequency max    : {val_only_freqs.max():.0f}")
 			print(f"  └─ Val frequency mean   : {val_only_freqs.mean():.1f}")
 			print(
-				f"  Note: these classes will appear in rare tier evaluation "
+				f" [NOTE]: these labels will appear in rare tier evaluation "
 				f"but model has no positive training signal for them."
 			)
 	
 	return val_freq
 
 def compute_loss_masks(
-	loader: DataLoader,
+	train_loader: DataLoader,
+	validation_loader: DataLoader,
 	num_classes: int,
 	device: torch.device,
-	pw_mode: str = "log",                # "log" | "sqrt" | "linear"
+	pw_mode: str = "log", # "log" | "sqrt" | "linear"
 	pw_max_cap: Optional[float]=None,
 	pareto_threshold: float = 0.8,
 	rare_percentile: float = 0.2, # bottom X% of active classes by frequency → rare
@@ -106,15 +114,15 @@ def compute_loss_masks(
 	"""
 	
 	# 1. Count label frequencies
-	N = len(loader.dataset)
+	N = len(train_loader.dataset)
 
 	train_freq = torch.zeros(num_classes, dtype=torch.float32)
-	for i, raw in enumerate(loader.dataset.labels):
+	for i, raw in enumerate(train_loader.dataset.labels):
 		# print(i, raw) # 522 ['railroad', 'train', 'station']
 		try:
 			for lbl in ast.literal_eval(raw):
-				if lbl in loader.dataset.label_dict:
-					idx = loader.dataset.label_dict[lbl]
+				if lbl in train_loader.dataset.label_dict:
+					idx = train_loader.dataset.label_dict[lbl]
 					# print(f"\t{lbl}, {idx}") # railroad, 107
 					train_freq[idx] += 1
 		except (ValueError, SyntaxError):
@@ -123,8 +131,8 @@ def compute_loss_masks(
 	if train_freq.sum() == 0:
 		raise ValueError(
 			f"No valid labels found in dataset. Check that:\n"
-			f"  1. loader.dataset.labels contains valid data\n"
-			f"  2. loader.dataset.label_dict is populated\n"
+			f"  1. train_loader.dataset.labels contains valid data\n"
+			f"  2. train_loader.dataset.label_dict is populated\n"
 			f"  3. Labels in dataset match keys in label_dict"
 		)
 
@@ -144,7 +152,6 @@ def compute_loss_masks(
 		print(f"  ├─ (min, max): ({ratio.min():.2f}, {ratio.max():.2f}) sum: {ratio.sum():.2f}")
 		print(f"  └─ mean: {ratio.mean():.2f}, std: {ratio.std():.2f} median: {ratio.median()}")
 
-
 	# 3. pos_weight — training loss weighting only
 	if pw_mode == "log":
 		scaled = torch.log1p(ratio)
@@ -160,11 +167,10 @@ def compute_loss_masks(
 			print(f"pw_max_cap: {pw_max_cap}")
 		scaled = scaled.clamp(min=1.0, max=pw_max_cap)
 
-
 	if verbose:
-		print(f"\n[LOSS MASKING] Scaled:")
+		print(f"\n[LOSS MASKING] Scaled: (pw_mode: {pw_mode})")
 		print(f"  ├─ {type(scaled)} {scaled.shape} {scaled.dtype} {scaled.device}")
-		print(f"  ├─ (min, max): ({scaled.min():.2f}, {scaled.max():.2f})")
+		print(f"  ├─ (min, max): ({scaled.min():.2f}, {scaled.max():.2f}) sum: {scaled.sum():.2f}")
 		print(f"  └─ mean: {scaled.mean():.2f}, std: {scaled.std():.2f} median: {scaled.median()}")
 
 	# inactive classes always get weight 1.0 (they are masked out in the loss anyway)
@@ -192,10 +198,10 @@ def compute_loss_masks(
 		# degenerate dataset — no rare classes
 		rare_mask = torch.zeros(num_classes, dtype=torch.bool, device=device)
 	
-	loader_name = getattr(loader, 'name', 'UNNAMED_LOADER')
+	train_loader_name = getattr(train_loader, 'name', 'UNNAMED_LOADER')
 	if verbose:
-		print(f"\n[LOSS MASKING] Label frequencies {loader_name}")
-		print(f"  ├─ samples (N):              {N:,}")
+		print(f"\n[LOSS MASKING] Label frequencies {train_loader_name}")
+		print(f"  ├─ Total samples:            {N:,}")
 		print(f"  ├─ Total labels:             {num_classes:,}")
 		print(f"  ├─ Train freq:               [{train_freq.min():.1f}, {train_freq.max():.1f}] μ={train_freq.mean():.1f} σ={train_freq.std():.1f} {type(train_freq)} {train_freq.shape} {train_freq.dtype}, {train_freq.device}")
 		print(f"  ├─ Raw Ratio:                [{ratio.min():.1f}, {ratio.max():.1f}] μ={ratio.mean():.1f} σ={ratio.std():.1f} {type(ratio)} {ratio.shape}")
@@ -207,6 +213,13 @@ def compute_loss_masks(
 		print(f"  ├─ Active classes (freq>0):  {active_mask.sum().item():,} / {num_classes:,} {type(active_mask)} {active_mask.shape}")
 		print(f"  ├─ Head  (Pareto {pareto_threshold}):       {head_mask.sum().item():,}")
 		print(f"  └─ Rare  (bottom {rare_percentile}):       {rare_mask.sum().item():,}")
+
+	diagnose_train_val_coverage(
+		train_freq=train_freq,
+		validation_loader=validation_loader,
+		num_classes=num_classes,
+		verbose=verbose,
+	)
 
 	return {
 		"active_mask": active_mask,

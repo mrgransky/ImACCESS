@@ -1,5 +1,6 @@
 import os
 import sys
+from tabnanny import verbose
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
 
@@ -26,7 +27,7 @@ from historyXN_dataset_loader import get_single_label_dataloaders, get_multi_lab
 # $ nohup python -u trainer.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_single_label.csv -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -fts progressive -a "ViT-B/32" -mphbs 3 -mepph 5 -tnp 8 > logs/europeana_ft_progressive.txt &
 
 # multi-label [local]:
-# $ python trainer.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -v -c multimodal_canonical_labels -stg lora -lor 8 -loa 16 -lod 0.05
+# python trainer.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -v -c multimodal_canonical_labels -stg lora -lor 8 -loa 16 -lod 0.05
 
 # multi-label [Puhti]:
 # $ python trainer.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_multimodal.csv -c multimodal_canonical_labels -stg full
@@ -274,8 +275,8 @@ def main():
 			pairwise_imp_threshold=args.pairwise_imp_threshold,
 			topk_values=args.topK_values,
 			print_every=args.print_every,
-			# temperature=args.temperature,
 			shared_protocol_path=shared_protocol_path,
+			verbose=args.verbose,
 			**(
 					{
 						'lora_rank': args.lora_rank,

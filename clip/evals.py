@@ -797,11 +797,10 @@ def get_validation_metrics(
 	
 	if verbose:
 		print(f"  ├─ {dataset_name}")
-		print(f"  ├─ {model_class_name}")
-		print(f"  ├─ {model_arch_name}")
+		print(f"  ├─ {model_class_name} {model_arch_name}")
 		print(f"  ├─ {finetune_strategy}")
 		print(f"  ├─ {num_samples} samples")
-		print(f"  ├─ {n_classes} classes")
+		print(f"  ├─ {n_classes} labels")
 		print(f"  ├─ bs: {validation_loader.batch_size}")
 		print(f"  ├─ temperature: {temperature}")
 		print(f"  └─ nw: {num_workers}")
@@ -963,25 +962,38 @@ def get_validation_metrics(
 				f"mean={sample_sims.mean():.4f}  std={sample_sims.std():.4f}")
 
 		# ── 4. Inter-class similarity — are class embeddings separated? ─
-		n_cls_sample = min(200, device_class_text_embeds.shape[0])
+		n_cls_sample = min(1500, device_class_text_embeds.shape[0])
 		cls_sample_idx = torch.randperm(
 			device_class_text_embeds.shape[0],
 			device=device_class_text_embeds.device,
 		)[:n_cls_sample]
+
 		cls_sample = sample_cls[cls_sample_idx]
-		inter_cls_sims = cls_sample @ cls_sample.T   # [200, 200]
+		inter_cls_sims = cls_sample @ cls_sample.T
 		off_diag_mask = ~torch.eye(
-			n_cls_sample, dtype=torch.bool,
+			n_cls_sample, 
+			dtype=torch.bool,
 			device=inter_cls_sims.device,
 		)
 		off_diag = inter_cls_sims[off_diag_mask]
+
 		print(f"  Inter-class cosine similarity ({n_cls_sample} sampled classes):")
-		print(f"    min={off_diag.min():.4f}  max={off_diag.max():.4f}  "
-				f"mean={off_diag.mean():.4f}  std={off_diag.std():.4f}")
-		print(f"    Fraction with sim > 0.5: {(off_diag > 0.5).float().mean():.4f}  "
-				f"(high → class embeddings cluster together)")
-		print(f"    Fraction with sim > 0.9: {(off_diag > 0.9).float().mean():.4f}  "
-				f"(high → near-duplicate class embeddings)")
+		print(f"    (min, max): ({off_diag.min():.4f}, {off_diag.max():.4f}) mean={off_diag.mean():.4f}  std={off_diag.std():.4f}")
+		print(f"    Fraction with sim > 0.5: {(off_diag > 0.5).float().mean():.4f} (high → class embeddings cluster together)")
+		print(f"    Fraction with sim > 0.9: {(off_diag > 0.9).float().mean():.4f} (high → near-duplicate class embeddings)")
+
+		flat_sims = inter_cls_sims.masked_fill(~off_diag_mask, -1)
+		top_pairs = torch.triu(flat_sims, diagonal=1).flatten().topk(20)
+		row_idx = top_pairs.indices // n_cls_sample
+		col_idx = top_pairs.indices % n_cls_sample
+
+		print(f"  Top-{len(top_pairs.values)} near-duplicate class pairs (sampled {n_cls_sample} classes):")
+		for val, r, c in zip(top_pairs.values.tolist(), row_idx.tolist(), col_idx.tolist()):
+			global_r = cls_sample_idx[r].item()
+			global_c = cls_sample_idx[c].item()
+			name_r = class_names[global_r]
+			name_c = class_names[global_c]
+			print(f"    sim={val:.4f} label[{global_r:5d}]: {name_r} <-> label[{global_c:5d}]: {name_c}")
 
 		# ── 5. Max similarity per image to any class ──────────────────
 		max_sims_per_image = sample_sims.max(dim=1).values
@@ -1015,7 +1027,7 @@ def get_validation_metrics(
 	# Step 6: Compute retrieval metrics
 	cache_key_base = (
 		f"{finetune_strategy}_"
-		f"{model_class_name}_{model_arch_name.replace('/', '_')}"
+		f"{model_arch_name.replace('/', '_')}"
 	)
 	if model_hash:
 		cache_key_base += f"_{model_hash}"
@@ -1599,6 +1611,14 @@ def get_multilabel_alignment_score(
 		print(f"  ├─ (min, max): ({logits.min().item():.2f}, {logits.max().item():.2f})")
 		print(f"  ├─ (mean, std): ({logits.mean().item():.2f}, {logits.std().item():.2f}) median: {logits.median().item()}")
 
+		per_class_hits = (topk_mask & labels.bool()).sum(dim=0).float()  # [C]
+		per_class_support = labels.sum(dim=0).float().clamp(min=1)       # [C]
+		per_class_hit_rate = per_class_hits / per_class_support
+		worst_classes = per_class_hit_rate.topk(10, largest=False)
+		print(
+			f"10 worst-recalled classes (idx, hit_rate): "
+			f"{list(zip(worst_classes.indices.tolist(), worst_classes.values.round(decimals=3).tolist()))}")
+
 		print(
 			f"Samples with ≥1 true class in top-{effective_k}: "
 			f"{hits.sum().item()} / {len(hits)} "
@@ -1664,7 +1684,7 @@ def get_multilabel_alignment_score(
 			if miss_true_ranks:
 				miss_ranks_t = torch.tensor(miss_true_ranks, dtype=torch.float32)
 				print(f"Best true class rank for MISS images (sample of {n_miss_sample}):")
-				print(f"mean={miss_ranks_t.mean():.1f}  median={miss_ranks_t.median():.1f}")
+				print(f"mean={miss_ranks_t.mean():.1f} std: {miss_ranks_t.std():.1f} median={miss_ranks_t.median():.1f}")
 				print(f"rank≤10:  {(miss_ranks_t <= 10).float().mean():.3f}")
 				print(f"rank≤50:  {(miss_ranks_t <= 50).float().mean():.3f}")
 				print(f"rank≤100: {(miss_ranks_t <= 100).float().mean():.3f}")
