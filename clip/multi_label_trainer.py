@@ -65,7 +65,7 @@ def zero_shot_multi_label(
 
 	if verbose:
 		print(f"\n{'=' * 70}")
-		print(f"{mode.upper()} | {model_name} | {model_arch} | {dataset_name}")
+		print(f"{mode.upper()} | {model_name} {model_arch} | {dataset_name}")
 		print(f"{'=' * 70}")
 
 	# ── Zero-shot checkpoint: base model state, no optimisation performed ──
@@ -716,6 +716,7 @@ def probe_multi_label(
 		
 		avg_val_loss = val_loss / len(val_iter)
 		validation_losses.append(avg_val_loss)
+
 		# Calculate multi-label metrics
 		val_preds = torch.cat(val_preds_list, dim=0)
 		val_labels = torch.cat(val_labels_list, dim=0)
@@ -724,6 +725,7 @@ def probe_multi_label(
 		f1 = f1_score(val_labels.numpy(), val_preds.numpy(), average='weighted', zero_division=0)
 		exact_match = (val_preds == val_labels).all(dim=1).float().mean().item()
 		partial_match = (val_preds == val_labels).float().mean().item()
+
 		epoch_metrics = {
 			"val_loss":       avg_val_loss,
 			"hamming_loss":   hamming,
@@ -731,6 +733,7 @@ def probe_multi_label(
 			"exact_match_acc": exact_match,
 			"partial_acc":    partial_match,
 		}
+
 		full_val_loss_acc_metrics_all_epochs.append(epoch_metrics)
 		if cache_features:
 			sample_feats = train_feats[:512].to(device)        # [512, 768] image features
@@ -797,7 +800,6 @@ def probe_multi_label(
 			if should_abort:
 				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
 				break
-
 
 		if early_stopping.should_stop(
 			current_value=avg_val_loss,

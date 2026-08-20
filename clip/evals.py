@@ -55,142 +55,129 @@ def check_lora_weight_health(model, optimizer=None, verbose=True):
 		return len(issues) == 0, A_norms, B_norms
 
 def check_training_health(
-		model,
-		epoch,
-		mode,
-		training_losses,
-		validation_losses,
-		align_score,
-		temperature,        # ← pass in so the abort message can report it
-		learning_rate,      # ← pass in for diagnostic message
-		verbose=True,
+	model,
+	epoch,
+	mode,
+	training_losses,
+	validation_losses,
+	align_score,
+	temperature,        # ← pass in so the abort message can report it
+	learning_rate,      # ← pass in for diagnostic message
+	verbose=True,
 ):
-		issues = []
+	issues = []
 
-		# ── Signal 1: Loss flatline (universal) ──────────────────────────────
-		if len(training_losses) >= 2:
-				loss_delta = abs(training_losses[0] - training_losses[-1])
-				relative_delta = loss_delta / (training_losses[0] + 1e-8)
-				if relative_delta < 0.005:
-						issues.append(
-								f"Loss flatline: {training_losses[0]:.6f} → "
-								f"{training_losses[-1]:.6f} "
-								f"({relative_delta*100:.3f}% change)"
-						)
+	# ── Signal 1: Loss flatline (universal) ──────────────────────────────
+	if len(training_losses) >= 2:
+		loss_delta = abs(training_losses[0] - training_losses[-1])
+		relative_delta = loss_delta / (training_losses[0] + 1e-8)
+		if relative_delta < 0.005:
+			issues.append(
+				f"Loss flatline: {training_losses[0]:.6f} → "
+				f"{training_losses[-1]:.6f} "
+				f"({relative_delta*100:.3f}% change)"
+			)
 
-		# ── Signal 2: AlignScore frozen (universal) ───────────────────────────
-		if (
-				align_score is not None
-				and align_score == align_score  # not NaN
-				and epoch >= 1
-				and align_score < 0.005
-		):
-				issues.append(
-						f"AlignScore@5 critically low: {align_score:.6f}"
-				)
+	# ── Signal 2: AlignScore frozen (universal) ───────────────────────────
+	if (
+		align_score is not None
+		and align_score == align_score  # not NaN
+		and epoch >= 1
+		and align_score < 0.005
+	):
+		issues.append(f"AlignScore@5 critically low: {align_score:.6f}")
 
-		# ── Signal 3: Method-specific parameter movement ──────────────────────
-		mode_lower = mode.lower()
+	# ── Signal 3: Method-specific parameter movement ──────────────────────
+	mode_lower = mode.lower()
+	if "probe" in mode_lower:
+		# Probe W should diverge from zero-shot initialisation
+		w_norms = [
+			p.data.norm().item()
+			for n, p in model.named_parameters()
+			if p.requires_grad and "weight" in n
+		]
+		if w_norms and max(w_norms) < 1e-03:
+			issues.append(f"Linear probe W has not moved: max norm={max(w_norms):.2e}")
+	elif "full" in mode_lower:
+		# Full FT — check that at least some vision layers have nonzero gradients
+		# Use weight norm change as proxy since gradients are only available
+		# during backward — compare to pretrained norms which should be ~O(1)
+		# This signal is weak for Full FT so we skip Signal 3 and rely on 1+2
+		pass  # Signals 1 and 2 are sufficient for Full FT
+	elif "lora" in mode_lower or "dora" in mode_lower:
+			B_norms = [
+					p.data.norm().item()
+					for n, p in model.named_parameters()
+					if p.requires_grad and "lora_B" in n
+			]
+			if B_norms:
+					mean_B = sum(B_norms) / len(B_norms)
+					if mean_B < 1e-03:
+							issues.append(
+									f"LoRA B matrices static: mean norm={mean_B:.2e} < 1e-03"
+							)
+	elif "vera" in mode_lower:
+			lb_vals = [
+					p.data.abs().mean().item()
+					for n, p in model.named_parameters()
+					if p.requires_grad and "lambda_b" in n
+			]
+			if lb_vals:
+					lb_mean = sum(lb_vals) / len(lb_vals)
+					if lb_mean < 5e-04:
+							issues.append(
+									f"VeRA λ_b static: mean|λ_b|={lb_mean:.2e} < 5e-04"
+							)
+	elif "ia3" in mode_lower:
+			deltas = [
+					(p.data - 1.0).abs().mean().item()
+					for n, p in model.named_parameters()
+					if p.requires_grad and "scaling" in n
+			]
+			if deltas:
+					delta_mean = sum(deltas) / len(deltas)
+					if delta_mean < 5e-04:
+							issues.append(
+									f"IA³ scaling vectors static: "
+									f"mean|s-1|={delta_mean:.2e} < 5e-04"
+							)
+	elif "adapter" in mode_lower or "tip" in mode_lower:
+			adapter_norms = [
+					p.data.norm().item()
+					for n, p in model.named_parameters()
+					if p.requires_grad
+			]
+			if adapter_norms:
+				mean_norm = sum(adapter_norms) / len(adapter_norms)
+				if mean_norm < 1e-03:
+					issues.append(f"Adapter weights static: mean norm={mean_norm:.2e} < 1e-03")
 
-		if "probe" in mode_lower:
-				# Probe W should diverge from zero-shot initialisation
-				w_norms = [
-						p.data.norm().item()
-						for n, p in model.named_parameters()
-						if p.requires_grad and "weight" in n
-				]
-				if w_norms and max(w_norms) < 1e-03:
-						issues.append(
-								f"Linear probe W has not moved: max norm={max(w_norms):.2e}"
-						)
+	# Decision logic
+	should_abort = len(issues) >= 2
+	if verbose:
+		print(f"\n{'─'*60}")
+		print(f"[Training Health Check — Epoch {epoch+1} | {mode.upper()}]")
+		print(f"  Config: temperature={temperature} lr={learning_rate:.1e}")
+		if issues:
+			for issue in issues:
+				print(f"  ⚠  {issue}")
+		else:
+			print(f"  ✓  All signals healthy — training proceeding normally")
 
-		elif "full" in mode_lower:
-				# Full FT — check that at least some vision layers have nonzero gradients
-				# Use weight norm change as proxy since gradients are only available
-				# during backward — compare to pretrained norms which should be ~O(1)
-				# This signal is weak for Full FT so we skip Signal 3 and rely on 1+2
-				pass  # Signals 1 and 2 are sufficient for Full FT
+		if should_abort:
+			print(f"\n  ❌ ABORT: {len(issues)}/3 signals indicate broken gradient.")
+			print(f"  Most likely causes given your config:")
+			if temperature >= 0.5:
+					print(f"    → temperature={temperature} is too high for "
+								f"4667-class L2-normalised BCE — use 0.07")
+			if learning_rate < 1e-05:
+					print(f"    → learning_rate={learning_rate:.1e} may be too low")
+			print(f"  Aborting to save GPU time.")
+		else:
+				print(f"  ✓  Training healthy — continuing.")
+		print(f"{'─'*60}\n")
 
-		elif "lora" in mode_lower or "dora" in mode_lower:
-				B_norms = [
-						p.data.norm().item()
-						for n, p in model.named_parameters()
-						if p.requires_grad and "lora_B" in n
-				]
-				if B_norms:
-						mean_B = sum(B_norms) / len(B_norms)
-						if mean_B < 1e-03:
-								issues.append(
-										f"LoRA B matrices static: mean norm={mean_B:.2e} < 1e-03"
-								)
-
-		elif "vera" in mode_lower:
-				lb_vals = [
-						p.data.abs().mean().item()
-						for n, p in model.named_parameters()
-						if p.requires_grad and "lambda_b" in n
-				]
-				if lb_vals:
-						lb_mean = sum(lb_vals) / len(lb_vals)
-						if lb_mean < 5e-04:
-								issues.append(
-										f"VeRA λ_b static: mean|λ_b|={lb_mean:.2e} < 5e-04"
-								)
-
-		elif "ia3" in mode_lower:
-				deltas = [
-						(p.data - 1.0).abs().mean().item()
-						for n, p in model.named_parameters()
-						if p.requires_grad and "scaling" in n
-				]
-				if deltas:
-						delta_mean = sum(deltas) / len(deltas)
-						if delta_mean < 5e-04:
-								issues.append(
-										f"IA³ scaling vectors static: "
-										f"mean|s-1|={delta_mean:.2e} < 5e-04"
-								)
-
-		elif "adapter" in mode_lower or "tip" in mode_lower:
-				adapter_norms = [
-						p.data.norm().item()
-						for n, p in model.named_parameters()
-						if p.requires_grad
-				]
-				if adapter_norms:
-						mean_norm = sum(adapter_norms) / len(adapter_norms)
-						if mean_norm < 1e-03:
-								issues.append(
-										f"Adapter weights static: mean norm={mean_norm:.2e} < 1e-03"
-								)
-
-		# ── Decision ─────────────────────────────────────────────────────────
-		should_abort = len(issues) >= 2
-
-		if verbose:
-				print(f"\n{'─'*60}")
-				print(f"[Training Health Check — Epoch {epoch+1} | {mode.upper()}]")
-				print(f"  Config: temperature={temperature} lr={learning_rate:.1e}")
-				if issues:
-						for issue in issues:
-								print(f"  ⚠  {issue}")
-				else:
-						print(f"  ✓  All signals healthy — training proceeding normally")
-
-				if should_abort:
-						print(f"\n  ❌ ABORT: {len(issues)}/3 signals indicate broken gradient.")
-						print(f"  Most likely causes given your config:")
-						if temperature >= 0.5:
-								print(f"    → temperature={temperature} is too high for "
-											f"4667-class L2-normalised BCE — use 0.07")
-						if learning_rate < 1e-05:
-								print(f"    → learning_rate={learning_rate:.1e} may be too low")
-						print(f"  Aborting to save GPU time.")
-				else:
-						print(f"  ✓  Training healthy — continuing.")
-				print(f"{'─'*60}\n")
-
-		return should_abort
+	return should_abort
 
 def compute_adaptive_min_val_support(
 	query_labels: torch.Tensor,   # [N, C]
@@ -934,8 +921,11 @@ def get_validation_metrics(
 	)
 
 	if verbose:
-		print(f"Similarity matrices: I2T {i2t_similarity.shape}, T2I {t2i_similarity.shape}")
-		print(f"[Embedding Geometry Diagnostics]")
+		print(f"\n[Embedding Geometry Diagnostics]")
+		print(f"  Similarity matrices:")
+		print(f"    I2T {type(i2t_similarity)} {i2t_similarity.shape}")
+		print(f"    T2I {type(t2i_similarity)} {t2i_similarity.shape}")
+
 		# ── 1. Norm distribution of image embeddings ──────────────────
 		img_norms = device_image_embeds.norm(dim=1)
 		print(f"  Image embedding norms:")
@@ -943,6 +933,7 @@ def get_validation_metrics(
 				f"mean={img_norms.mean():.4f}  std={img_norms.std():.4f}")
 		print(f"    Are unit normalised: "
 				f"{torch.allclose(img_norms, torch.ones_like(img_norms), atol=1e-3)}")
+
 		# ── 2. Norm distribution of class embeddings ──────────────────
 		cls_norms = device_class_text_embeds.norm(dim=1)
 		print(f"  Class embedding norms:")
@@ -950,6 +941,7 @@ def get_validation_metrics(
 				f"mean={cls_norms.mean():.4f}  std={cls_norms.std():.4f}")
 		print(f"    Are unit normalised: "
 				f"{torch.allclose(cls_norms, torch.ones_like(cls_norms), atol=1e-3)}")
+
 		# ── 3. Pairwise image-class similarity distribution ───────────
 		# Sample 1000 images for efficiency
 		n_sample = min(1000, device_image_embeds.shape[0])
@@ -963,11 +955,13 @@ def get_validation_metrics(
 		sample_cls = torch.nn.functional.normalize(
 			device_class_text_embeds, dim=1
 		)
+
 		# Raw cosine similarity without temperature
 		sample_sims = sample_img @ sample_cls.T   # [1000, C]
 		print(f"  Raw cosine similarity image@class ({n_sample} sampled images):")
 		print(f"    min={sample_sims.min():.4f}  max={sample_sims.max():.4f}  "
 				f"mean={sample_sims.mean():.4f}  std={sample_sims.std():.4f}")
+
 		# ── 4. Inter-class similarity — are class embeddings separated? ─
 		n_cls_sample = min(200, device_class_text_embeds.shape[0])
 		cls_sample_idx = torch.randperm(
@@ -988,6 +982,7 @@ def get_validation_metrics(
 				f"(high → class embeddings cluster together)")
 		print(f"    Fraction with sim > 0.9: {(off_diag > 0.9).float().mean():.4f}  "
 				f"(high → near-duplicate class embeddings)")
+
 		# ── 5. Max similarity per image to any class ──────────────────
 		max_sims_per_image = sample_sims.max(dim=1).values
 		print(f"  Max similarity per image to any class ({n_sample} sampled images):")
@@ -997,7 +992,8 @@ def get_validation_metrics(
 		print(f"    Images with max_sim < 0.1: "
 				f"{(max_sims_per_image < 0.1).float().mean():.4f}  "
 				f"← high means image embeddings far from all classes")
-		# Clean up diagnostic tensors — do not leave large temporaries
+
+		# Clean up diagnostic tensors
 		del sample_img, sample_cls, sample_sims, cls_sample
 		del inter_cls_sims, off_diag, max_sims_per_image
 		torch.cuda.empty_cache()
@@ -1013,7 +1009,6 @@ def get_validation_metrics(
 		device_image_embeds=device_image_embeds,
 		device_class_text_embeds=device_class_text_embeds,
 		temperature=temperature,
-		chunk_size=chunk_size,
 		verbose=verbose,
 	)
 	
@@ -1092,7 +1087,6 @@ def compute_full_set_metrics_from_cache(
 		device_image_embeds: torch.Tensor,
 		device_class_text_embeds: torch.Tensor,
 		temperature: float,
-		chunk_size: int = 1000,
 		verbose: bool = False,
 ) -> Dict:
 		"""
@@ -1529,8 +1523,8 @@ def get_multilabel_alignment_score(
 	image_embeds: torch.Tensor,       # [N, D] — L2 normalised
 	all_class_embeds: torch.Tensor,   # [C, D] — L2 normalised
 	labels: torch.Tensor,             # [N, C] — binary, long
-	temperature: float, # 0.07 only for Zero-Shot CLIP,
-	topk: int = 5,
+	temperature: float,
+	topk: int,
 	verbose: bool = False,
 ) -> float:
 
@@ -1600,6 +1594,11 @@ def get_multilabel_alignment_score(
 	
 	if verbose:
 		print(f"\nAlignment Score @ top-{effective_k} Temperature: {temperature}")
+		print(f"logits:")
+		print(f"  ├─ {type(logits)} {logits.shape} {logits.dtype} {logits.device}")
+		print(f"  ├─ (min, max): ({logits.min().item():.2f}, {logits.max().item():.2f})")
+		print(f"  ├─ (mean, std): ({logits.mean().item():.2f}, {logits.std().item():.2f}) median: {logits.median().item()}")
+
 		print(
 			f"Samples with ≥1 true class in top-{effective_k}: "
 			f"{hits.sum().item()} / {len(hits)} "

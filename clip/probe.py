@@ -1,4 +1,5 @@
 from utils import *
+import clip
 
 class SingleLabelLinearProbe(torch.nn.Module):
 		def __init__(
@@ -184,53 +185,52 @@ class SingleLabelLinearProbe(torch.nn.Module):
 						raise RuntimeError(f"Cannot detect CLIP feature dimension: {e}")
 		
 		def _zero_shot_initialization(self):
-				"""Initialize probe with CLIP text embeddings."""
+			"""Initialize probe with CLIP text embeddings."""
+			if self.verbose:
+					print("Initializing probe with zero-shot CLIP embeddings...")
+			
+			try:
+					# Tokenize class names
+					class_texts = clip.tokenize(self.class_names).to(self.device)
+					
+					# Get CLIP text embeddings
+					with torch.no_grad():
+							self.clip_model.eval()
+							class_embeds = self.clip_model.encode_text(class_texts)
+							class_embeds = torch.nn.functional.normalize(class_embeds, dim=-1)
+					
+					# Initialize based on probe type
+					if self.probe_type == "Linear":
+							# Direct initialization for linear probe
+							with torch.no_grad():
+									self.probe.weight.data = class_embeds.clone()
+									self.probe.bias.data.zero_()
+							
+							if self.verbose:
+									print("  ✓ Linear probe initialized with text embeddings")
+					
+					elif self.probe_type == "MLP":
+							# Initialize final layer of MLP
+							final_layer = self.probe[-1]  # Last linear layer
+							
+							if class_embeds.shape[1] == final_layer.weight.shape[1]:
+									# Direct initialization if dimensions match
+									with torch.no_grad():
+											final_layer.weight.data = class_embeds.clone()
+											final_layer.bias.data.zero_()
+							else:
+									# Scaled initialization if dimensions don't match
+									text_norm = class_embeds.norm(dim=1).mean().item()
+									with torch.no_grad():
+											final_layer.weight.data.normal_(0, text_norm * 0.1)
+											final_layer.bias.data.zero_()
+							
+							if self.verbose:
+									print("  ✓ MLP final layer initialized")
+			
+			except Exception as e:
 				if self.verbose:
-						print("Initializing probe with zero-shot CLIP embeddings...")
-				
-				try:
-						# Tokenize class names
-						class_texts = clip.tokenize(self.class_names).to(self.device)
-						
-						# Get CLIP text embeddings
-						with torch.no_grad():
-								self.clip_model.eval()
-								class_embeds = self.clip_model.encode_text(class_texts)
-								class_embeds = torch.nn.functional.normalize(class_embeds, dim=-1)
-						
-						# Initialize based on probe type
-						if self.probe_type == "Linear":
-								# Direct initialization for linear probe
-								with torch.no_grad():
-										self.probe.weight.data = class_embeds.clone()
-										self.probe.bias.data.zero_()
-								
-								if self.verbose:
-										print("  ✓ Linear probe initialized with text embeddings")
-						
-						elif self.probe_type == "MLP":
-								# Initialize final layer of MLP
-								final_layer = self.probe[-1]  # Last linear layer
-								
-								if class_embeds.shape[1] == final_layer.weight.shape[1]:
-										# Direct initialization if dimensions match
-										with torch.no_grad():
-												final_layer.weight.data = class_embeds.clone()
-												final_layer.bias.data.zero_()
-								else:
-										# Scaled initialization if dimensions don't match
-										text_norm = class_embeds.norm(dim=1).mean().item()
-										with torch.no_grad():
-												final_layer.weight.data.normal_(0, text_norm * 0.1)
-												final_layer.bias.data.zero_()
-								
-								if self.verbose:
-										print("  ✓ MLP final layer initialized")
-				
-				except Exception as e:
-						if self.verbose:
-								print(f"  ⚠ Zero-shot initialization failed: {e}")
-								print("  Using default random initialization")
+					print(f"<!> Zero-shot initialization failed: {e} => default random initialization")
 		
 		def _print_initialization_summary(self):
 				"""Print summary of probe initialization."""
@@ -386,7 +386,7 @@ class MultiLabelProbe(torch.nn.Module):
 		self.device = device
 		self.verbose = verbose
 		
-		# Step 1: Fix ViT positional embeddings if needed
+		# Step 1: ViT positional embeddings if needed
 		self._fix_vit_positional_embeddings(target_resolution)
 		
 		# Step 2: Detect feature dimension
@@ -547,53 +547,48 @@ class MultiLabelProbe(torch.nn.Module):
 					raise RuntimeError(f"Cannot detect CLIP feature dimension: {e}")
 	
 	def _zero_shot_initialization_multilabel(self):
-			"""Initialize probe with CLIP text embeddings for multi-label."""
-			if self.verbose:
-					print("Initializing multi-label probe with zero-shot CLIP embeddings...")
+		"""Initialize probe with CLIP text embeddings for multi-label."""
+		if self.verbose:
+			print("Initializing multi-label probe with zero-shot CLIP embeddings...")
+		
+		try:
+			# Tokenize class names
+			class_texts = clip.tokenize(self.class_names).to(self.device)
 			
-			try:
-					# Tokenize class names
-					class_texts = clip.tokenize(self.class_names).to(self.device)
-					
-					# Get CLIP text embeddings
+			# Get CLIP text embeddings
+			with torch.no_grad():
+				self.clip_model.eval()
+				class_embeds = self.clip_model.encode_text(class_texts)
+				class_embeds = torch.nn.functional.normalize(class_embeds, dim=-1)
+
+			# Initialize based on probe type
+			if self.probe_type == "Linear":
+				# For multi-label, use scaled initialization (less aggressive than single-label)
+				with torch.no_grad():
+					self.probe.weight.data = class_embeds.clone()
+					self.probe.bias.data.zero_()
+				
+				if self.verbose:
+					print("[OK] Linear probe initialized with unit-normalized text embeddings")
+			elif self.probe_type == "MLP":
+				# Initialize final layer of MLP
+				final_layer = self.probe[-1]  # Last linear layer
+				if class_embeds.shape[1] == final_layer.weight.shape[1]:
+					# Direct initialization if dimensions match (scaled for multi-label)
 					with torch.no_grad():
-							self.clip_model.eval()
-							class_embeds = self.clip_model.encode_text(class_texts)
-							class_embeds = torch.nn.functional.normalize(class_embeds, dim=-1)
-					
-					# Initialize based on probe type
-					if self.probe_type == "Linear":
-							# For multi-label, use scaled initialization (less aggressive than single-label)
-							with torch.no_grad():
-									self.probe.weight.data = class_embeds.clone()
-									self.probe.bias.data.zero_()
-							
-							if self.verbose:
-									print("  ✓ Linear probe initialized with scaled text embeddings")
-					
-					elif self.probe_type == "MLP":
-							# Initialize final layer of MLP
-							final_layer = self.probe[-1]  # Last linear layer
-							
-							if class_embeds.shape[1] == final_layer.weight.shape[1]:
-									# Direct initialization if dimensions match (scaled for multi-label)
-									with torch.no_grad():
-											final_layer.weight.data = class_embeds.clone() * 0.05  # Even more conservative
-											final_layer.bias.data.zero_()
-							else:
-									# Scaled initialization if dimensions don't match
-									text_norm = class_embeds.norm(dim=1).mean().item()
-									with torch.no_grad():
-											final_layer.weight.data.normal_(0, text_norm * 0.05)  # Conservative for multi-label
-											final_layer.bias.data.zero_()
-							
-							if self.verbose:
-									print("  ✓ MLP final layer initialized for multi-label")
-			
-			except Exception as e:
-					if self.verbose:
-							print(f"  ⚠ Zero-shot initialization failed: {e}")
-							print("  Using default random initialization")
+						final_layer.weight.data = class_embeds.clone() * 0.05  # Even more conservative
+						final_layer.bias.data.zero_()
+				else:
+					# Scaled initialization if dimensions don't match
+					text_norm = class_embeds.norm(dim=1).mean().item()
+					with torch.no_grad():
+						final_layer.weight.data.normal_(0, text_norm * 0.05)  # Conservative for multi-label
+						final_layer.bias.data.zero_()
+				if self.verbose:
+					print("[OK] MLP final layer initialized for multi-label")
+		except Exception as e:
+			if self.verbose:
+				print(f"<!> Zero-shot initialization failed: {e} => Using default random initialization")
 	
 	def _print_initialization_summary(self):
 		probe_params = sum(p.numel() for p in self.probe.parameters())

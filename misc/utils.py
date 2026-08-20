@@ -236,9 +236,9 @@ def save_tiered_retrieval_metrics(
 		json.dump(performance_accumulated, f, indent=2)
 
 	if verbose:
-		print("="*120)
-		print(strategy.upper())
-		print(json.dumps(combined, indent=2, ensure_ascii=False))
+		# print("="*120)
+		# print(strategy.upper())
+		# print(json.dumps(combined, indent=2, ensure_ascii=False))
 
 		print(f"\nRetrieval Tiered Metrics:")
 		collected_retrieval_methods = list(retrieval_accumulated.keys())
@@ -246,9 +246,8 @@ def save_tiered_retrieval_metrics(
 		print(f"'{strategy}' strategy results appended to {retrieval_tiered_fpath}")
 		print(f">> {n_methods} collected method(s): {collected_retrieval_methods}")
 		if shared_per_k is None:
-			print(f"  [NOTE] No shared-vocabulary protocol results present for this run "
+			print(f"[NOTE] No shared-vocabulary protocol results present for this run "
 					f"(shared_protocol_path was not provided to evaluate_best_model)")
-
 		print(f"\nPerformance Metrics:")
 		collected_columns = list(performance_accumulated.keys())
 		n_columns = len(collected_columns)
