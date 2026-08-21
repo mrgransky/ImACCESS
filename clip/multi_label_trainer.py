@@ -102,6 +102,7 @@ def zero_shot_multi_label(
 		is_training=False,
 		model_hash=get_model_hash(model),
 		temperature=temperature,
+		finetune_strategy=None,
 		verbose=verbose,
 	)
 
@@ -152,7 +153,8 @@ def zero_shot_multi_label(
 	# They are retained as descriptive, within-run results, but must NOT be
 	# used for cross-supervision-condition claims.
 	per_run_masks = compute_loss_masks(
-		loader=train_loader,
+		train_loader=train_loader,
+		validation_loader=validation_loader,
 		num_classes=num_classes,
 		pw_mode=pw_mode,
 		device=device,
@@ -453,7 +455,8 @@ def probe_multi_label(
 	probe._W_init = probe.probe.weight.data.clone()
 
 	masks = compute_loss_masks(
-		loader=train_loader,
+		train_loader=train_loader,
+		validation_loader=validation_loader,
 		num_classes=num_classes,
 		pw_mode=pw_mode,
 		device=device,

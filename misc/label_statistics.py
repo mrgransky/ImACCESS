@@ -758,423 +758,365 @@ def _semantic_jaccard_cached(
 def get_cgd_taxonomy_supervision(
 	df: pd.DataFrame,
 	output_directory: str,
+	embedding_model_id: str,
 	anchor_column: str = "vlm_canonical_labels",
-	embedding_model_id: str = 'all-MiniLM-L6-v2',
 	semantic_threshold: Optional[float] = None,
 	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
 	base: float = 2.0,
 	normalize: str = "L2",
 	verbose: bool = False,
 ) -> pd.DataFrame:
-		"""
-		Compute Coverage-Grounding-Density taxonomy for multi-source supervision.
+	"""
+	Compute Coverage-Grounding-Density taxonomy for multi-source supervision.
+	
+	THREE AXES:
+	
+	1. SEMANTIC COVERAGE (Axis 1):
+		 - Measures vocabulary richness via perplexity = 2^H (entropy)
+		 - Higher = more diverse/expressive vocabulary
+		 - Example: 500 means "effective vocabulary of 500 concepts"
+	
+	2. VISUAL GROUNDING (Axis 2):
+		 - Measures semantic overlap with VLM-generated labels (visual anchor)
+		 - Uses embedding similarity, NOT string matching
+		 - Higher = better captures what's visually present in images
+		 - Example: 0.65 means "65% semantic agreement with visual content"
+	
+	3. STATISTICAL DENSITY (Axis 3):
+		 - Measures label concentration/reusability
+		 - Formula: (avg occurrences per label) × (1 - singleton_rate)
+		 - Higher = labels appear frequently, lower = sparse/rare labels
+		 - Example: 100 means labels appear ~100 times on average
+	
+	Args:
+			df: DataFrame with label columns
+			output_directory: Where to save visualizations
+			sources: List of label columns to analyze (default: LLM/VLM/Multimodal)
+			anchor_column: Reference column for visual grounding (default: VLM)
+			semantic_threshold: Cosine similarity threshold for label equivalence (auto-tuned if None)
+			base: Logarithm base for entropy (2.0 = bits, math.e = nats)
+			normalize: Normalization method ('L2', 'minmax', 'zscore', 'none')
+			verbose: Print detailed progress
+	
+	Returns:
+			DataFrame with raw and normalized scores for each source
+	"""
+	
+	# Setup and Validation
+	if verbose:
+		print("\n[CGD TAXONOMY] Coverage-Grounding-Density Analysis")
+	
+	# Use default sources if not specified
+	sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
+	for i, s in enumerate(sources):
+		if s not in df.columns:
+			print(f"\n[ERROR] Missing required columns: {s}\nAvailable columns: {list(df.columns)} => skipping")
+			return
+	
+	if verbose:
+		print(f"\nConfiguration:")
+		print(f"  {df.shape}")
+		print(f"  Embedding model: {embedding_model_id}")
+		print(f"  Sources to analyze: {sources}")
+		print(f"  Visual anchor: {anchor_column}")
+		print(f"  Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
+		print(f"  Normalization: {normalize}")
+	
+	# Validate columns exist
+	required_cols = [anchor_column] + sources
+	missing = [c for c in required_cols if c not in df.columns]
+	if missing:
+		raise ValueError(f"Missing required columns: {missing}")
+	
+	# STEP 1: Parse Label Sets and Collect All Unique Labels
+	if verbose:
+		print(f"\n{'='*80}")
+		print("STEP 1: Parsing label sets...")
+		print("="*80)
+	
+	parsed_sets: Dict[str, List[Set[str]]] = {}
+	all_labels_for_embedding = []
+	
+	for col in required_cols:
+		# Parse each cell into a set of labels
+		parsed_sets[col] = [set(_parse_label_cell(v)) for v in df[col].tolist()]
 		
-		THREE AXES:
-		
-		1. SEMANTIC COVERAGE (Axis 1):
-			 - Measures vocabulary richness via perplexity = 2^H (entropy)
-			 - Higher = more diverse/expressive vocabulary
-			 - Example: 500 means "effective vocabulary of 500 concepts"
-		
-		2. VISUAL GROUNDING (Axis 2):
-			 - Measures semantic overlap with VLM-generated labels (visual anchor)
-			 - Uses embedding similarity, NOT string matching
-			 - Higher = better captures what's visually present in images
-			 - Example: 0.65 means "65% semantic agreement with visual content"
-		
-		3. STATISTICAL DENSITY (Axis 3):
-			 - Measures label concentration/reusability
-			 - Formula: (avg occurrences per label) × (1 - singleton_rate)
-			 - Higher = labels appear frequently, lower = sparse/rare labels
-			 - Example: 100 means labels appear ~100 times on average
-		
-		Args:
-				df: DataFrame with label columns
-				output_directory: Where to save visualizations
-				sources: List of label columns to analyze (default: LLM/VLM/Multimodal)
-				anchor_column: Reference column for visual grounding (default: VLM)
-				semantic_threshold: Cosine similarity threshold for label equivalence (auto-tuned if None)
-				base: Logarithm base for entropy (2.0 = bits, math.e = nats)
-				normalize: Normalization method ('L2', 'minmax', 'zscore', 'none')
-				verbose: Print detailed progress
-		
-		Returns:
-				DataFrame with raw and normalized scores for each source
-		"""
-		
-		# ==========================================================================
-		# STEP 1: Setup and Validation
-		# ==========================================================================
+		# Collect all labels from this column
+		col_labels = [label for label_set in parsed_sets[col] for label in label_set]
+		all_labels_for_embedding.extend(col_labels)
 		
 		if verbose:
-			print("\n[CGD TAXONOMY] Coverage-Grounding-Density Analysis")
-		
-		# Use default sources if not specified
-		sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
-		for i, s in enumerate(sources):
-			if s not in df.columns:
-				print(f"\n[ERROR] Missing required columns: {s}\nAvailable columns: {list(df.columns)} => EXITING...")
-				return
-		
-		if verbose:
-			print(f"\nConfiguration:")
-			print(f"  DataFrame shape: {df.shape}")
-			print(f"  Embedding model: {embedding_model_id}")
-			print(f"  Sources to analyze: {sources}")
-			print(f"  Visual anchor: {anchor_column}")
-			print(f"  Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
-			print(f"  Normalization: {normalize}")
-		
-		# Validate columns exist
-		required_cols = [anchor_column] + sources
-		missing = [c for c in required_cols if c not in df.columns]
-		if missing:
-				raise ValueError(f"Missing required columns: {missing}")
-		
-		# ==========================================================================
-		# STEP 2: Parse Label Sets and Collect All Unique Labels
-		# ==========================================================================
-		
-		if verbose:
-				print(f"\n{'='*80}")
-				print("STEP 1: Parsing label sets...")
-				print("="*80)
-		
-		parsed_sets: Dict[str, List[Set[str]]] = {}
-		all_labels_for_embedding = []
-		
-		for col in required_cols:
-				# Parse each cell into a set of labels
-				parsed_sets[col] = [set(_parse_label_cell(v)) for v in df[col].tolist()]
-				
-				# Collect all labels from this column
-				col_labels = [label for label_set in parsed_sets[col] for label in label_set]
-				all_labels_for_embedding.extend(col_labels)
-				
-				if verbose:
-						total_labels = len(col_labels)
-						avg_labels = total_labels / len(df) if len(df) > 0 else 0
-						unique_labels = len(set(col_labels))
-						print(f"  {col}:")
-						print(f"    Total labels: {total_labels:,}")
-						print(f"    Unique labels: {unique_labels:,}")
-						print(f"    Avg per sample: {avg_labels:.2f}")
-		
-		# ==========================================================================
-		# STEP 3: Pre-compute Embeddings for Semantic Grounding
-		# ==========================================================================
-		if verbose:
-			print(f"STEP 2: Computing semantic embeddings with {embedding_model_id}")
-		
-		dtype = torch.float32
-		if torch.cuda.is_available():
-			dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
-		if verbose:
-			print(f"[INFO] {embedding_model_id} Dtype selection: {dtype}")
+			total_labels = len(col_labels)
+			avg_labels = total_labels / len(df) if len(df) > 0 else 0
+			unique_labels = len(set(col_labels))
+			print(f"  {col}:")
+			print(f"    Total labels: {total_labels:,}")
+			print(f"    Unique labels: {unique_labels:,}")
+			print(f"    Avg per sample: {avg_labels:.2f}")
 
-		def _optimal_attn_impl() -> str:
-			if not torch.cuda.is_available():
-				return "eager"
-			major, minor = torch.cuda.get_device_capability()
-			compute_cap = major + minor / 10
-			if compute_cap >= 8.0:
-				try:
-					import flash_attn
-					if verbose:
-						print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
-					return "flash_attention_2"
-				except ImportError:
-					if verbose:
-						print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
-			if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
-				if verbose:
-					print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
-				return "sdpa"
-			if verbose:
-				print(f"[INFO] Using eager attention (compute {compute_cap})")
+	# STEP 2: Pre-compute Embeddings for Semantic Grounding
+	if verbose:
+		print(f"STEP 2: Computing semantic embeddings with {embedding_model_id}")
+	
+	dtype = torch.float32
+	if torch.cuda.is_available():
+		dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
+	if verbose:
+		print(f"[INFO] {embedding_model_id} Dtype selection: {dtype}")
+	def _optimal_attn_impl() -> str:
+		if not torch.cuda.is_available():
 			return "eager"
-
-		attn_impl = _optimal_attn_impl()
+		major, minor = torch.cuda.get_device_capability()
+		compute_cap = major + minor / 10
+		if compute_cap >= 8.0:
+			try:
+				import flash_attn
+				if verbose:
+					print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
+				return "flash_attention_2"
+			except ImportError:
+				if verbose:
+					print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
+		if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
+			if verbose:
+				print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
+			return "sdpa"
 		if verbose:
-			print(f"[INFO] {embedding_model_id} with {attn_impl} attention")
+			print(f"[INFO] Using eager attention (compute {compute_cap})")
+		return "eager"
+	attn_impl = _optimal_attn_impl()
+	if verbose:
+		print(f"[INFO] {embedding_model_id} with {attn_impl} attention")
 
-		model_kwargs = {}
-		if "Qwen" in embedding_model_id:
-			model_kwargs = {
-				"attn_implementation": attn_impl,
-				"torch_dtype": dtype,
-			}
+	model_kwargs = {}
+	if "Qwen" in embedding_model_id:
+		model_kwargs = {
+			"attn_implementation": attn_impl,
+			"torch_dtype": dtype,
+		}
 
-		model = SentenceTransformer(
-			model_name_or_path=embedding_model_id,
-			trust_remote_code=True,
-			cache_folder=cache_directory.get(os.getenv('USER'), None),
-			model_kwargs=model_kwargs,
-			token=os.getenv("HUGGINGFACE_TOKEN"),
-			tokenizer_kwargs={"padding_side": "left"},
-		).to(device)
+	model = SentenceTransformer(
+		model_name_or_path=embedding_model_id,
+		trust_remote_code=True,
+		cache_folder=cache_directory.get(os.getenv('USER'), None),
+		model_kwargs=model_kwargs,
+		token=os.getenv("HUGGINGFACE_TOKEN"),
+		tokenizer_kwargs={"padding_side": "left"},
+	).to(device)
 
+	if verbose:
+		total_params = sum(p.numel() for p in model.parameters())
+		print(f"[LOADED] {embedding_model_id} with {total_params:,} parameters")
+	
+	# Auto-calibrate threshold if not provided
+	if semantic_threshold is None:
+		semantic_threshold, _ = auto_calibrate_semantic_threshold(model=model, verbose=verbose)
+	else:
 		if verbose:
-			total_params = sum(p.numel() for p in model.parameters())
-			print(f"[LOADED] Embedding model loaded: {embedding_model_id} with {total_params:,} parameters")
+			print(f">> Using provided semantic threshold: {semantic_threshold}")
+
+	# Pre-compute embeddings for ALL unique labels across all sources
+	emb_cache = _precompute_label_embeddings(
+		all_labels=all_labels_for_embedding,
+		model=model,
+		verbose=verbose
+	)
+	
+	# Get anchor embeddings for visual grounding computation
+	anchor_sets = parsed_sets[anchor_column]
+	
+	# STEP 3: Compute Three Axes (CGD) for Each Source
+	if verbose:
+		print("\nSTEP 3: Computing CGD metrics for each source...")
+	
+	results = []
+	
+	for source_idx, source_col in enumerate(sources, 1):
+		if verbose:
+			print(f"\n[{source_idx}/{len(sources)}] Analyzing: {source_col}")
+			print("-" * 80)
 		
+		# Collect label statistics for this source
+		all_labels_in_source = []
+		for label_set in parsed_sets[source_col]:
+			all_labels_in_source.extend(list(label_set))
 
-		# Auto-calibrate threshold if not provided
-		if semantic_threshold is None:
-			semantic_threshold, _ = auto_calibrate_semantic_threshold(model, verbose=verbose)
+		counts = Counter(all_labels_in_source)
+		total_occurrences = sum(counts.values())
+		unique_labels = len(counts)
+		singletons = sum(1 for count in counts.values() if count == 1)
+		singleton_rate = (singletons / unique_labels) if unique_labels > 0 else 0.0
+		
+		if verbose:
+			print(f"Label Statistics:")
+			print(f"\tTotal occurrences: {total_occurrences:,}")
+			print(f"\tUnique labels: {unique_labels:,}")
+			print(f"\tSingletons: {singletons:,} ({singleton_rate*100:.1f}%)")
+			
+			# top-3 most frequent
+			if counts:
+				top_3 = counts.most_common(3)
+				print(f"\tTop-3 labels:")
+				for rank, (label, count) in enumerate(top_3, 1):
+					pct = (count / total_occurrences * 100) if total_occurrences > 0 else 0
+					print(f"\t\t{rank:<5}{label:<30}{count:<7}({pct:.2f}%)")
+		
+		# AXIS 1: SEMANTIC COVERAGE (Vocabulary Richness)
+		H = _shannon_entropy(counts, base=base)
+		perplexity = (base ** H) if H > 0 else 1.0
+		semantic_coverage = perplexity
+		if verbose:
+			print(f"\n  📚 AXIS 1 - Semantic Coverage (C):")
+			print(f"    Shannon entropy: {H:.3f} {'bits' if base == 2.0 else 'units'}")
+			print(f"    Perplexity: {perplexity:.1f}")
+			print(f"    Interpretation: Effective vocabulary of ~{int(perplexity)} concepts")
+		
+		# AXIS 2: VISUAL GROUNDING (Semantic Overlap with VLM)
+		if verbose:
+			print(f"\n  👁️  AXIS 2 - Visual Grounding (G): Semantic overlap with VLM [th: {semantic_threshold:.4f}]")
+
+		if source_col == anchor_column:
+			# Self-comparison = perfect grounding
+			visual_grounding = 1.0
 		else:
-			if verbose:
-				print(f">> Using provided semantic threshold: {semantic_threshold}")
-
-		# Pre-compute embeddings for ALL unique labels across all sources
-		emb_cache = _precompute_label_embeddings(
-			all_labels=all_labels_for_embedding,
-			model=model,
-			verbose=verbose
-		)
+			# Compute SEMANTIC Jaccard (not string matching!)
+			visual_grounding = _semantic_jaccard_cached(
+				sets_a=parsed_sets[source_col],
+				sets_b=anchor_sets,
+				emb_cache=emb_cache,
+				threshold=semantic_threshold,
+				verbose=verbose
+			)
+		if verbose:
+			print(f"    Semantic overlap with {anchor_column}: {visual_grounding:.4f} ({visual_grounding*100:.1f}%)")
+			print(f"    Interpretation: {visual_grounding*100:.1f}% of concepts align with visual content")
 		
-		# Get anchor embeddings for visual grounding computation
-		anchor_sets = parsed_sets[anchor_column]
-		
-		# ==========================================================================
-		# STEP 4: Compute Three Axes for Each Source
-		# ==========================================================================
+		# AXIS 3: STATISTICAL DENSITY (Label Concentration)
+		avg_occurrences_per_label = (total_occurrences / unique_labels) if unique_labels > 0 else 0.0
+		statistical_density = avg_occurrences_per_label * (1.0 - singleton_rate)
 		
 		if verbose:
-			print("\nSTEP 3: Computing CGD metrics for each source...")
-		
-		results = []
-		
-		for source_idx, source_col in enumerate(sources, 1):
-			if verbose:
-				print(f"\n[{source_idx}/{len(sources)}] Analyzing: {source_col}")
-				print("-" * 80)
+			print(f"\n  📊 AXIS 3 - Statistical Density (D):")
+			print(f"    Avg occurrences per label: {avg_occurrences_per_label:.2f}")
+			print(f"    Non-singleton rate: {(1.0 - singleton_rate)*100:.1f}%")
+			print(f"    Statistical density: {statistical_density:.2f}")
 			
-			# ──────────────────────────────────────────────────────────────────
-			# Collect label statistics for this source
-			# ──────────────────────────────────────────────────────────────────
-			
-			all_labels_in_source = []
-			for label_set in parsed_sets[source_col]:
-					all_labels_in_source.extend(list(label_set))
-			
-			counts = Counter(all_labels_in_source)
-			total_occurrences = sum(counts.values())
-			unique_labels = len(counts)
-			singletons = sum(1 for count in counts.values() if count == 1)
-			singleton_rate = (singletons / unique_labels) if unique_labels > 0 else 0.0
-			
-			if verbose:
-				print(f"Label Statistics:")
-				print(f"\tTotal occurrences: {total_occurrences:,}")
-				print(f"\tUnique labels: {unique_labels:,}")
-				print(f"\tSingletons: {singletons:,} ({singleton_rate*100:.1f}%)")
-				
-				# Show top-3 most frequent
-				if counts:
-					top_3 = counts.most_common(3)
-					print(f"\tTop-3 labels:")
-					for rank, (label, count) in enumerate(top_3, 1):
-						pct = (count / total_occurrences * 100) if total_occurrences > 0 else 0
-						print(f"\t\t{rank}. '{label}': {count:,} ({pct:.2f}%)")
-			
-			# ──────────────────────────────────────────────────────────────────
-			# AXIS 1: SEMANTIC COVERAGE (Vocabulary Richness)
-			# ──────────────────────────────────────────────────────────────────
-			
-			H = _shannon_entropy(counts, base=base)
-			perplexity = (base ** H) if H > 0 else 1.0
-			
-			semantic_coverage = perplexity
-			
-			if verbose:
-				print(f"\n  📚 AXIS 1 - Semantic Coverage:")
-				print(f"    Shannon entropy: {H:.3f} {'bits' if base == 2.0 else 'units'}")
-				print(f"    Perplexity: {perplexity:.1f}")
-				print(f"    Interpretation: Effective vocabulary of ~{int(perplexity)} concepts")
-			
-			# ──────────────────────────────────────────────────────────────────
-			# AXIS 2: VISUAL GROUNDING (Semantic Overlap with VLM)
-			# ──────────────────────────────────────────────────────────────────
-			
-			if source_col == anchor_column:
-				# Self-comparison = perfect grounding
-				visual_grounding = 1.0
-				
-				if verbose:
-					print(f"\n  👁️  AXIS 2 - Visual Grounding:")
-					print(f"    Semantic overlap with {anchor_column}: 1.000 (self-comparison)")
+			# Interpretation
+			if statistical_density < 2.0:
+				interpretation = "LOW (very sparse, many rare labels)"
+			elif statistical_density < 5.0:
+				interpretation = "MODERATE (balanced distribution)"
+			elif statistical_density < 20.0:
+				interpretation = "HIGH (concentrated, frequently reused labels)"
 			else:
-				# Compute SEMANTIC Jaccard (not string matching!)
-				visual_grounding = _semantic_jaccard_cached(
-					sets_a=parsed_sets[source_col],
-					sets_b=anchor_sets,
-					emb_cache=emb_cache,
-					threshold=semantic_threshold,
-					verbose=verbose
-				)
+				interpretation = "VERY HIGH (highly concentrated vocabulary)"
+			print(f"    Interpretation: {interpretation}")
+		
+		# Store results for this source
+		results.append({
+			"source": source_col,
+			"unique_labels": int(unique_labels),
+			"total_occurrences": int(total_occurrences),
+			"singletons": int(singletons),
+			"singleton_rate": float(singleton_rate),
+			"semantic_coverage_raw": float(semantic_coverage),
+			"visual_grounding_raw": float(visual_grounding),
+			"statistical_density_raw": float(statistical_density),
+		})
+	
+	# STEP 4: Create DataFrame and Normalize Scores
+	scores_df = pd.DataFrame(results)
+	if verbose:
+		print(f"\n{'='*80}")
+		print("STEP 4: Raw scores (before normalization)")
+		print("="*80)
+		print(scores_df.to_string(index=False))
+	
+	# Define axis columns
+	axis_cols = [
+		"semantic_coverage_raw",
+		"visual_grounding_raw",
+		"statistical_density_raw"
+	]
+	
+	# Apply normalization
+	if verbose:
+		print(f"\n{'='*80}")
+		print(f"STEP 5: Applying {normalize} normalization")
+		print("="*80)
+	
+	for col in axis_cols:
+		values = scores_df[col].to_numpy(dtype=float)
+		norm_col_name = col.replace("_raw", f"_{normalize}_norm")
+		
+		if normalize == "minmax":
+				vmin, vmax = np.min(values), np.max(values)
+				diff = vmax - vmin
+				normalized = (values - vmin) / diff if diff > 1e-12 else np.full_like(values, 0.5)
 				
 				if verbose:
-					print(f"\n  👁️  AXIS 2 - Visual Grounding:")
-					print(f"    Semantic overlap with {anchor_column}: {visual_grounding:.4f} ({visual_grounding*100:.1f}%)")
-					print(f"    Interpretation: {visual_grounding*100:.1f}% of concepts align with visual content")
-					print(f"    (Using embedding similarity, threshold={semantic_threshold})")
+						print(f"\n  {col}:")
+						print(f"    Range: [{vmin:.4f}, {vmax:.4f}]")
+						print(f"    Normalized: {normalized}")
+		
+		elif normalize == "zscore":
+				mean, std = np.mean(values), np.std(values)
+				normalized = (values - mean) / std if std > 1e-12 else np.full_like(values, 0.5)
+				
+				if verbose:
+						print(f"\n  {col}:")
+						print(f"    Mean: {mean:.4f}, Std: {std:.4f}")
+						print(f"    Normalized: {normalized}")
+		
+		elif normalize == "L2":
+				norm = np.linalg.norm(values)
+				normalized = values / norm if norm > 1e-12 else np.full_like(values, 0.0)
+				
+				if verbose:
+						print(f"\n  {col}:")
+						print(f"    L2 norm: {norm:.4f}")
+						print(f"    Normalized: {normalized}")
+		
+		else:  # none or unknown
+				vmin, vmax = float(np.min(values)), float(np.max(values))
+				normalized = (values - vmin) / (vmax - vmin) if (vmax - vmin) > 1e-12 else np.full_like(values, 0.5)
+				
+				if verbose:
+						print(f"\n  {col}: Using minmax for visualization")
+		
+		scores_df[norm_col_name] = normalized
+	
+	# STEP 5: Visualizations
+	viz_dir = os.path.join(output_directory, "viz")
+	os.makedirs(viz_dir, exist_ok=True)
+	if verbose:
+		print(f"\n{'='*80}")
+		print(f"STEP 6: Generating radar plots: {viz_dir}")
+		print("="*80)
 			
-			# ──────────────────────────────────────────────────────────────────
-			# AXIS 3: STATISTICAL DENSITY (Label Concentration)
-			# ──────────────────────────────────────────────────────────────────
+	# Plot 1: Raw scores
+	viz.plot_taxonomy_radar(
+		scores_df,
+		value_cols=axis_cols,
+		title="Supervision Taxonomy (Raw Scores)",
+		output_path=os.path.join(viz_dir, "taxonomy_radar_raw.png")
+	)
 			
-			avg_occurrences_per_label = (total_occurrences / unique_labels) if unique_labels > 0 else 0.0
-			statistical_density = avg_occurrences_per_label * (1.0 - singleton_rate)
-			
-			if verbose:
-					print(f"\n  📊 AXIS 3 - Statistical Density:")
-					print(f"    Avg occurrences per label: {avg_occurrences_per_label:.2f}")
-					print(f"    Non-singleton rate: {(1.0 - singleton_rate)*100:.1f}%")
-					print(f"    Statistical density: {statistical_density:.2f}")
+	# Plot 2: Normalized scores
+	norm_cols = [col.replace("_raw", f"_{normalize}_norm") for col in axis_cols]
+	
+	viz.plot_taxonomy_radar(
+		scores_df,
+		value_cols=norm_cols,
+		title=f"Supervision Taxonomy ({normalize} Normalized)",
+		output_path=os.path.join(viz_dir, f"taxonomy_radar_{normalize}_normalized.png")
+	)
 					
-					# Interpretation
-					if statistical_density < 2.0:
-							interpretation = "LOW (very sparse, many rare labels)"
-					elif statistical_density < 5.0:
-							interpretation = "MODERATE (balanced distribution)"
-					elif statistical_density < 20.0:
-							interpretation = "HIGH (concentrated, frequently reused labels)"
-					else:
-							interpretation = "VERY HIGH (highly concentrated vocabulary)"
-					print(f"    Interpretation: {interpretation}")
-			
-			# ──────────────────────────────────────────────────────────────────
-			# Store results for this source
-			# ──────────────────────────────────────────────────────────────────
-			
-			results.append({
-					"source": source_col,
-					"unique_labels": int(unique_labels),
-					"total_occurrences": int(total_occurrences),
-					"singletons": int(singletons),
-					"singleton_rate": float(singleton_rate),
-					"semantic_coverage_raw": float(semantic_coverage),
-					"visual_grounding_raw": float(visual_grounding),
-					"statistical_density_raw": float(statistical_density),
-			})
-		
-		# ==========================================================================
-		# STEP 5: Create DataFrame and Normalize Scores
-		# ==========================================================================
-		
-		scores_df = pd.DataFrame(results)
-		
-		if verbose:
-				print(f"\n{'='*80}")
-				print("STEP 4: Raw scores (before normalization)")
-				print("="*80)
-				print(scores_df.to_string(index=False))
-		
-		# Define axis columns
-		axis_cols = [
-			"semantic_coverage_raw",
-			"visual_grounding_raw",
-			"statistical_density_raw"
-		]
-		
-		# Apply normalization
-		if verbose:
-				print(f"\n{'='*80}")
-				print(f"STEP 5: Applying {normalize} normalization")
-				print("="*80)
-		
-		for col in axis_cols:
-				values = scores_df[col].to_numpy(dtype=float)
-				norm_col_name = col.replace("_raw", f"_{normalize}_norm")
-				
-				if normalize == "minmax":
-						vmin, vmax = np.min(values), np.max(values)
-						diff = vmax - vmin
-						normalized = (values - vmin) / diff if diff > 1e-12 else np.full_like(values, 0.5)
-						
-						if verbose:
-								print(f"\n  {col}:")
-								print(f"    Range: [{vmin:.4f}, {vmax:.4f}]")
-								print(f"    Normalized: {normalized}")
-				
-				elif normalize == "zscore":
-						mean, std = np.mean(values), np.std(values)
-						normalized = (values - mean) / std if std > 1e-12 else np.full_like(values, 0.5)
-						
-						if verbose:
-								print(f"\n  {col}:")
-								print(f"    Mean: {mean:.4f}, Std: {std:.4f}")
-								print(f"    Normalized: {normalized}")
-				
-				elif normalize == "L2":
-						norm = np.linalg.norm(values)
-						normalized = values / norm if norm > 1e-12 else np.full_like(values, 0.0)
-						
-						if verbose:
-								print(f"\n  {col}:")
-								print(f"    L2 norm: {norm:.4f}")
-								print(f"    Normalized: {normalized}")
-				
-				else:  # none or unknown
-						vmin, vmax = float(np.min(values)), float(np.max(values))
-						normalized = (values - vmin) / (vmax - vmin) if (vmax - vmin) > 1e-12 else np.full_like(values, 0.5)
-						
-						if verbose:
-								print(f"\n  {col}: Using minmax for visualization")
-				
-				scores_df[norm_col_name] = normalized
-		
-		# ==========================================================================
-		# STEP 6: Generate Visualizations
-		# ==========================================================================
-		viz_dir = os.path.join(output_directory, "viz")
-		os.makedirs(viz_dir, exist_ok=True)
-
-		if verbose:
-			print(f"\n{'='*80}")
-			print(f"STEP 6: Generating radar plots: {viz_dir}")
-			print("="*80)
-				
-		# Plot 1: Raw scores
-		viz.plot_taxonomy_radar(
-			scores_df,
-			value_cols=axis_cols,
-			title="Supervision Taxonomy (Raw Scores)",
-			output_path=os.path.join(viz_dir, "taxonomy_radar_raw.png")
-		)
-				
-		# Plot 2: Normalized scores
-		norm_cols = [col.replace("_raw", f"_{normalize}_norm") for col in axis_cols]
-		
-		viz.plot_taxonomy_radar(
-			scores_df,
-			value_cols=norm_cols,
-			title=f"Supervision Taxonomy ({normalize} Normalized)",
-			output_path=os.path.join(viz_dir, f"taxonomy_radar_{normalize}_normalized.png")
-		)
-						
-		if verbose:
-			print("\nFINAL RESULTS\n")
-			print(scores_df)
-		
-		return scores_df
-
-def _mean_jaccard(sets_a: List[set], sets_b: List[set]) -> float:
-	"""Mean Jaccard over rows where union is non-empty."""
-	if len(sets_a) != len(sets_b):
-		raise ValueError("Jaccard inputs must have the same number of rows.")
+	if verbose:
+		print("\nFINAL RESULTS\n")
+		print(scores_df)
 	
-	vals = []
-	for a, b in zip(sets_a, sets_b):
-		if not a and not b:
-			continue
-		u = a | b
-		if len(u) == 0:
-			continue
-		vals.append(len(a & b) / len(u))
-	
-	return float(np.mean(vals)) if vals else 0.0
+	return scores_df
 
 def entropy_vs_performance(
 	df: pd.DataFrame,

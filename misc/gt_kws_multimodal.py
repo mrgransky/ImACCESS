@@ -381,9 +381,10 @@ def get_multimodal_annotation(
 
 		train_df, val_df = get_multi_label_stratified_split(
 			df=df,
+			val_split_pct=0.35,
 			csv_file=output_csv,
 			label_col='multimodal_canonical_labels',
-			val_split_pct=0.35,
+			verbose=verbose,
 		)
 
 		build_shared_eval_protocol(

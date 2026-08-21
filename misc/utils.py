@@ -190,9 +190,10 @@ def save_tiered_retrieval_metrics(
 	strategy: str,
 	dataset_directory: str,
 	column: str,
+	seed: int,
 	verbose: bool = True,
 ):
-	result_dir = os.path.join(dataset_directory, column)
+	result_dir = os.path.join(dataset_directory, column, f"seed_{seed}")
 	os.makedirs(result_dir, exist_ok=True)
 
 	output_dir = os.path.join(dataset_directory, "outputs")
@@ -218,7 +219,7 @@ def save_tiered_retrieval_metrics(
 	with open(retrieval_tiered_fpath, "w") as f:
 		json.dump(retrieval_accumulated, f, indent=2)
 
-	performance_fpath = os.path.join(output_dir, f"performance.json")
+	performance_fpath = os.path.join(output_dir, f"seed_{seed}_performance.json")
 	performance_accumulated = {}
 	if os.path.exists(performance_fpath):
 		if verbose:

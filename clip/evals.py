@@ -780,7 +780,7 @@ def get_validation_metrics(
 	start_time = time.time()
 	
 	if finetune_strategy is None:
-		finetune_strategy = "pretrained"
+		finetune_strategy = "zero_shot"
 	
 	model_class_name = model.__class__.__name__
 	model_arch_name = getattr(model, 'name', 'unknown_arch')

@@ -264,6 +264,7 @@ def merge_csv_files(
 		val_split_pct=0.35,
 		label_col='multimodal_canonical_labels',
 		csv_file=output_fpath,
+		verbose=verbose,
 	)
 
 	build_shared_eval_protocol(

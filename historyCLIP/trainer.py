@@ -1,4 +1,5 @@
 import os
+from random import seed
 import sys
 from tabnanny import verbose
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
@@ -187,7 +188,7 @@ def main():
 		# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 		# print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 		# RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{dataset_type}") # multi_label
-		RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{args.column}") # ex) multimodal_canonical_labels
+		RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{args.column}/seed_{args.seed}") # ex) multimodal_canonical_labels
 		os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 
 		shared_protocol_path = os.path.join(DATASET_DIRECTORY, "outputs", "shared_eval_protocol.json")
@@ -332,6 +333,7 @@ def main():
 			strategy=strategy_name,
 			dataset_directory=DATASET_DIRECTORY,
 			column=args.column,
+			seed=args.seed,
 			verbose=args.verbose,
 		)
 

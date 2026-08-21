@@ -1,3 +1,5 @@
+from tabnanny import verbose
+
 from utils import *
 
 def get_single_label_stratified_split(
@@ -56,6 +58,7 @@ def get_multi_label_stratified_split(
 	min_label_frequency: int = None,        # None triggers principled auto-threshold
 	min_val_label_count: int = 2,           # min expected occurrences in val set
 	stratification_order: int = 2,          # 1=fast/independent, 2=co-occurrence aware
+	verbose: bool = False,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
 	"""
 	Split a multi-label dataset into stratified train/val sets using IterativeStratification.
@@ -87,12 +90,15 @@ def get_multi_label_stratified_split(
 	else:
 			_freq_source = f"manual override = {min_label_frequency}"
 
-	print(f"\n[MULTI-LABEL STRATIFIED SPLIT]")
-	print(f"  ├─ val_split_pct        : {val_split_pct}")
-	print(f"  ├─ stratification_order : {stratification_order}")
-	print(f"  ├─ min_label_frequency  : {min_label_frequency}  ({_freq_source})")
-	print(f"  ├─ label_col: {label_col}")
-	print(f"  └─ df: {df.shape} {df.columns.tolist()}")
+	if verbose:
+		print(f"\n{'='*70}")
+		print(f"\n[MULTI-LABEL STRATIFIED SPLIT]")
+		print(f"{'='*70}")
+		print(f"  ├─ val_split_pct        : {val_split_pct}")
+		print(f"  ├─ stratification_order : {stratification_order}")
+		print(f"  ├─ min_label_frequency  : {min_label_frequency}  ({_freq_source})")
+		print(f"  ├─ label_col: {label_col}")
+		print(f"  └─ df: {df.shape} {df.columns.tolist()}")
 
 	# ── STEP 1: Robust label parsing ─────────────────────────────────────────
 	print(f"\n[1/6] Parsing '{label_col}' column...")
