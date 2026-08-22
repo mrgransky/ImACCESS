@@ -1,21 +1,36 @@
-import os
-from pickle import NONE
-import sys
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-project_dir = os.path.dirname(parent_dir)
-sys.path.insert(0, project_dir)
+# import os
+# import sys
+# current_dir = os.path.dirname(os.path.abspath(__file__))
+# parent_dir = os.path.dirname(current_dir)
+# project_dir = os.path.dirname(parent_dir)
+# sys.path.insert(0, project_dir)
 
-from misc.utils import *
-from misc.visualize import *
-from misc.nlp_utils import get_enriched_description
+import sys
+import os
+HOME, USER = os.getenv('HOME'), os.getenv('USER')
+IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
+
+CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
+sys.path.insert(0, CLIP_DIR)
+
+MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
+sys.path.insert(0, MISC_DIR)
+
+for p in sys.path:
+	print(p)
+
+
+from utils import *
+import visualize as viz
+from nlp_utils import get_enriched_description
+from data_prep import get_single_label_stratified_split
 
 # how to run [local]:
 # $ python merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs
-# $ nohup python -u merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs --chunk_size 8000 -v > logs/history_xN_merged_datasets.out &
+# $ nohup python -u merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs --chunk_size 2500 -v > logs/history_xN_merged_datasets.out &
 
 # run in Pouta:
-# $ nohup python -u merge_datasets.py -ddir /media/volume/ImACCESS/datasets/WW_DATASETs --img_mean_std --chunk_size 8000 -v > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
+# $ nohup python -u merge_datasets.py -ddir /media/volume/ImACCESS/datasets/WW_DATASETs --img_mean_std --chunk_size 9000 -v > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
 
 def get_dataset(ddir: str):
 	# Patterns to match dataset directories
@@ -116,27 +131,27 @@ def merge_datasets(
 
 	if verbose:
 		print("\nGenerating label distribution plots...")
-	plot_label_distribution(
+	viz.plot_label_distribution(
 		df=merged_single_label_df,
 		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_{num_unique_labels}_labels_dist.png"),
 		FIGURE_SIZE=(15, 8),
 		DPI=300,
 		label_column='label',
 	)
-	plot_label_distribution_pie_chart(
+	viz.plot_label_distribution_pie_chart(
 		df=merged_single_label_df,
 		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_pie_chart_{merged_single_label_df.shape[0]}_samples.png"),
 		figure_size=(7, 11),
 		DPI=300,
 	)
-	plot_grouped_bar_chart(
+	viz.plot_grouped_bar_chart(
 		merged_df=merged_single_label_df,
 		FIGURE_SIZE=(15, 8),
 		DPI=300,
 		fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_grouped_bar_chart_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png")
 	)
 
-	single_label_train_df, single_label_val_df = get_stratified_split(
+	single_label_train_df, single_label_val_df = get_single_label_stratified_split(
 		df=merged_single_label_df, 
 		val_split_pct=val_split_pct,
 		label_col='label',
@@ -150,7 +165,7 @@ def merge_datasets(
 	single_label_train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'), index=False)
 	single_label_val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'), index=False)
 
-	plot_train_val_label_distribution(
+	viz.plot_train_val_label_distribution(
 		train_df=single_label_train_df,
 		val_df=single_label_val_df,
 		dataset_name=dataset_name,
@@ -160,21 +175,21 @@ def merge_datasets(
 		DPI=250,
 	)
 
-	plot_year_distribution(
+	viz.plot_year_distribution(
 		df=merged_single_label_df,
 		dname=dataset_name,
 		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_year_dist_{merged_single_label_df.shape[0]}_samples.png"),
 		BINs=bins,
 	)
 
-	plot_long_tailed_distribution(
+	viz.plot_long_tailed_distribution(
 		df=merged_single_label_df,
 		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_long_tailed_dist_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png"),
 		head_threshold=head_threshold,
 		tail_threshold=tail_threshold,
 	)
 
-	plot_single_labeled_head_torso_tail_samples(
+	viz.plot_single_labeled_head_torso_tail_samples(
 		metadata_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'),
 		metadata_train_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'),
 		metadata_val_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'),

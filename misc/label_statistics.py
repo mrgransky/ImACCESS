@@ -1,5 +1,6 @@
 from utils import *
 import visualize as viz
+import clip
 
 def _infer_performance_schema(perf: Dict[str, Any]) -> str:
 		"""
@@ -640,125 +641,521 @@ def auto_calibrate_semantic_threshold(
 	return recommended_threshold, diagnostics
 
 def _precompute_label_embeddings(
-		all_labels: List[str], 
-		model: SentenceTransformer,
-		verbose: bool = False
-) -> Dict[str, np.ndarray]:
-		"""
-		Pre-compute embeddings for all unique labels to avoid redundant computation.
-		
-		Args:
-				all_labels: List of all labels (may contain duplicates)
-				model: SentenceTransformer model
-				verbose: Print progress
-		
-		Returns:
-				Dictionary mapping label -> embedding vector
-		"""
-		unique_labels = sorted(list(set(all_labels)))
-		
-		if verbose:
-			print(f"\n>>> Pre-computing embeddings for {len(unique_labels):,} unique labels...")
-		
-		# Batch encode all unique labels
-		embeddings = model.encode(
-			unique_labels, 
-			convert_to_tensor=False,
-			show_progress_bar=verbose,
-			batch_size=256  # Adjust based on your GPU/CPU
-		)
-		
-		# Create lookup dictionary
-		emb_cache = {label: emb for label, emb in zip(unique_labels, embeddings)}
-		
-		if verbose:
-				print(f"✓ Embeddings cached for {len(emb_cache):,} labels")
-				print(f"  Embedding dimension: {embeddings[0].shape[0]}")
-		
-		return emb_cache
-
-def _semantic_jaccard_cached(
-	sets_a: List[Set[str]], 
-	sets_b: List[Set[str]], 
-	emb_cache: Dict[str, np.ndarray],
-	threshold: float = 0.7,
+	all_labels: List[str], 
+	model: SentenceTransformer,
+	batch_size: int = 512,
 	verbose: bool = False
-) -> float:
+) -> Dict[str, np.ndarray]:
 	"""
-	Compute semantic Jaccard similarity using pre-cached embeddings.
-	
-	Instead of exact string matching, two labels are considered "equivalent" 
-	if their cosine similarity >= threshold.
+	Pre-compute embeddings for all unique labels to avoid redundant computation.
 	
 	Args:
-			sets_a: List of label sets (one per sample) for source A
-			sets_b: List of label sets (one per sample) for source B  
-			emb_cache: Pre-computed embeddings {label: vector}
-			threshold: Cosine similarity threshold for equivalence (0.7 = fairly similar)
-			verbose: Print debugging info
+			all_labels: List of all labels (may contain duplicates)
+			model: SentenceTransformer model
+			verbose: Print progress
 	
 	Returns:
-			Mean semantic Jaccard across all samples
+			Dictionary mapping label -> embedding vector
 	"""
-	if len(sets_a) != len(sets_b):
-		raise ValueError(f"Input length mismatch: {len(sets_a)} vs {len(sets_b)}")
-	
-	jaccard_scores = []
-	skipped = 0
-	
-	for idx, (a, b) in enumerate(zip(sets_a, sets_b)):
-		# Skip samples where both are empty
-		if not a and not b:
-			skipped += 1
-			continue
-		
-		# Skip if no embeddings available
-		a_labels = [label for label in a if label in emb_cache]
-		b_labels = [label for label in b if label in emb_cache]
-		
-		if not a_labels or not b_labels:
-				skipped += 1
-				continue
-		
-		# Get embeddings for this sample's labels
-		a_embs = np.array([emb_cache[label] for label in a_labels])
-		b_embs = np.array([emb_cache[label] for label in b_labels])
-		
-		# Compute pairwise cosine similarities (vectorized)
-		# Shape: (len(a_labels), len(b_labels))
-		similarities = 1 - np.array(
-			[
-				[scipy.spatial.distance.cosine(a_emb, b_emb) for b_emb in b_embs]
-				for a_emb in a_embs
-			]
-		)
-		
-		# For each label in A, count as "matched" if best match in B >= threshold
-		matches_a_to_b = np.sum(np.max(similarities, axis=1) >= threshold)
-		
-		# For each label in B, count as "matched" if best match in A >= threshold
-		matches_b_to_a = np.sum(np.max(similarities, axis=0) >= threshold)
-		
-		# Semantic intersection: average of bidirectional matches
-		semantic_intersection = (matches_a_to_b + matches_b_to_a) / 2.0
-		
-		# Semantic union: total labels minus intersection (to avoid double-counting)
-		semantic_union = len(a_labels) + len(b_labels) - semantic_intersection
-		
-		# Compute Jaccard for this sample
-		if semantic_union > 0:
-			jaccard = semantic_intersection / semantic_union
-			jaccard_scores.append(jaccard)
+	unique_labels = sorted(list(set(all_labels)))
 	
 	if verbose:
-		print(f"    Computed semantic Jaccard for {len(jaccard_scores)} samples (skipped {skipped})")
+		print(f"\n[EMBEDDING] Pre-computing for {len(unique_labels):,} unique labels (batch_size={batch_size})")
 	
-	return float(np.mean(jaccard_scores)) if jaccard_scores else 0.0
+	# Batch encode all unique labels
+	embeddings = model.encode(
+		unique_labels, 
+		convert_to_tensor=False,
+		batch_size=batch_size,
+		normalize_embeddings=True,
+		show_progress_bar=verbose,
+	)
+	
+	# Create lookup dictionary
+	emb_cache = {label: emb for label, emb in zip(unique_labels, embeddings)}
+	
+	if verbose:
+		print(f"[DONE] Embeddings cached for {len(emb_cache):,} labels | Embedding: {embeddings[0].shape}")
+	
+	return emb_cache
+
+def _make_normalized_getter(emb_cache: Dict[str, np.ndarray]):
+		"""
+		Lazy, memoized L2-normalized embedding lookup.
+
+		Each label's vector is normalized once on first use (zero-vectors are
+		left unchanged via guard), so per-sample similarity computation is a
+		single matrix product of unit vectors.
+		"""
+		memo: Dict[str, np.ndarray] = {}
+
+		def get(label: str) -> np.ndarray:
+				e = memo.get(label)
+				if e is None:
+						v = np.asarray(emb_cache[label], dtype=float)
+						nrm = np.linalg.norm(v)
+						e = v / nrm if nrm > 0 else v
+						memo[label] = e
+				return e
+
+		return get
+
+def _cosine_sim_matrix(
+		a_labels: List[str],
+		b_labels: List[str],
+		get_emb,
+) -> np.ndarray:
+		"""Vectorized |A| x |B| cosine similarity, clipped to [-1, 1]."""
+		A = np.stack([get_emb(l) for l in a_labels])
+		B = np.stack([get_emb(l) for l in b_labels])
+		return np.clip(A @ B.T, -1.0, 1.0)
+
+def _sample_semantic_scores(
+	sim: np.ndarray,
+	threshold: float,
+	card_priority: Optional[float] = None,
+) -> Tuple[float, float, List[Tuple[int, int]], np.ndarray]:
+	"""
+	Per-sample scores. Returns (j_match, j_upper, matched_pairs, feasible).
+	j_match (rigorous):
+			One-to-one maximum-cardinality matching over edges with sim >= threshold
+			(similarity used only as tie-breaker). Intersection = |M|, so all
+			Jaccard axioms hold: |M| <= min(|A|, |B|); J = 1 iff a perfect one-to-one
+			correspondence covers both sets; reduces to exact set-theoretic Jaccard
+			when only identical strings exceed the threshold.
+	j_upper (upper bound):
+			The previous thresholded bidirectional-coverage overlap, retained ONLY
+			as a provable upper bound (j_match <= j_upper always) for interval
+			reporting. Not a Jaccard index (intersection can exceed min(|A|,|B|)).
+	Cardinality-first guarantee:
+			A k-edge matching must always outweigh any (k-1)-edge matching.
+			Worst case requires C > k(1-thr) - 1 for all k <= min(m, n), so
+			C = min(m, n) + 1 is safe for ANY threshold and ANY set size.
+			(A fixed C=10 is only safe up to ~36 edges at thr=0.7.)
+	"""
+
+	m, n = sim.shape
+	feasible = sim >= threshold
+	if card_priority is None:
+		card_priority = float(min(m, n)) + 1.0
+
+	# Padded LAP: zero blocks = "leave node unmatched"; -1e9 forbids
+	# below-threshold pairs; feasible edges get card_priority + sim so the
+	# solver maximizes cardinality first, similarity second.
+	W = np.zeros((m + n, m + n))
+	W[:m, :n] = np.where(feasible, card_priority + sim, -1e9)
+	row_ind, col_ind = scipy.optimize.linear_sum_assignment(W, maximize=True)
+
+	matched_pairs = [
+		(int(i), int(j)) for i, j in zip(row_ind, col_ind)
+		if i < m and j < n and feasible[i, j]
+	]
+	matched = len(matched_pairs)
+	union_m = m + n - matched
+	j_match = matched / union_m if union_m > 0 else 0.0
+
+	# Upper bound (previous heuristic, renamed)
+	m_ab = int(np.sum(feasible.any(axis=1)))   # A-labels with >= 1 match
+	m_ba = int(np.sum(feasible.any(axis=0)))   # B-labels with >= 1 match
+
+	I = (m_ab + m_ba) / 2.0
+	union_u = m + n - I
+	j_upper = I / union_u if union_u > 0 else 0.0
+
+	return j_match, j_upper, matched_pairs, feasible
+
+def _trace_sample(
+	idx: int,
+	a_labels: List[str],
+	b_labels: List[str],
+	sim: np.ndarray,
+	feasible: np.ndarray,
+	matched_pairs: List[Tuple[int, int]],
+	j_match: float,
+	j_upper: float,
+	threshold: float,
+) -> None:
+	"""Detailed per-sample debug trace (verbose mode only)."""
+	print(f"\n[trace] sample #{idx}: A={a_labels} B={b_labels}")
+	with np.printoptions(precision=3, suppress=True, linewidth=120):
+		print(f"cosine sim matrix:\n{sim}")
+		print(f"feasible mask (sim >= {threshold}):\n{feasible.astype(int)}")
+
+	edges = [
+		(a_labels[i], b_labels[j], float(sim[i, j]))
+		for i in range(sim.shape[0]) for j in range(sim.shape[1])
+		if feasible[i, j]
+	]
+	print(f"feasible edges : {edges}")
+	print(f"1-to-1 matching: {[(a_labels[i], b_labels[j]) for i, j in matched_pairs]}")
+	print(f"J_match={j_match:.3f} | J_upper={j_upper:.3f}")
+	print("."*40)
+
+def _semantic_jaccard_cached(
+	sets_a: List[Set[str]],
+	sets_b: List[Set[str]],
+	emb_cache: Dict[str, np.ndarray],
+	threshold: float = 0.7,
+	verbose: bool = False,
+	max_traced_samples: int = 10,
+	return_per_sample: bool = False,
+) -> Dict:
+	"""
+	Semantic label agreement via thresholded cosine matching.
+	Per sample, two scores are computed:
+		- j_match : rigorous one-to-one matching Jaccard (lower bound)
+		- j_upper : thresholded bidirectional coverage overlap (upper bound)
+	Denominator accounting (no silent skips):
+		- both label sets empty          -> excluded, counted in n_both_empty
+		- exactly one set empty          -> excluded from PRIMARY mean (identical
+			denominator to the original function; backward compatible), counted in
+			n_one_empty; the zero-policy mean (counting them as full disagreement)
+			is ALWAYS reported as a sensitivity analysis
+		- labels exist but none embeddable -> excluded, counted in n_missing_emb
+	Returns dict with keys:
+		'jaccard_matching', 'jaccard_coverage_upper'          (primary, skip policy)
+		'jaccard_matching_zero_policy',
+		'jaccard_coverage_upper_zero_policy'                  (sensitivity)
+		'median_matching', 'threshold',
+		'n_total', 'n_scored', 'n_both_empty', 'n_one_empty',
+		'n_missing_emb', 'n_many_to_many'
+		(+ 'per_sample_matching' / 'per_sample_upper' if return_per_sample)
+	"""
+
+	if len(sets_a) != len(sets_b):
+		raise ValueError(f"Input length mismatch: {len(sets_a)} vs {len(sets_b)}")
+
+	if not 0.0 < threshold <= 1.0:
+		raise ValueError(f"threshold must be in (0, 1], got {threshold}")
+
+	n_total = len(sets_a)
+	get_emb = _make_normalized_getter(emb_cache)
+	if verbose:
+		dim = np.asarray(next(iter(emb_cache.values()))).shape if emb_cache else None
+		print("=" * 78)
+		print(
+			f"[sem-jaccard] | n_samples={n_total} | threshold={threshold} "
+			f"| card_priority=adaptive(min(m,n)+1)"
+		)
+		print(f"[sem-jaccard] emb_cache: {len(emb_cache)} labels dim={dim}")
+		uniq_a: Set[str] = set()
+		uniq_b: Set[str] = set()
+		for a in sets_a:
+			uniq_a.update(a)
+		for b in sets_b:
+			uniq_b.update(b)
+		miss_a = uniq_a - emb_cache.keys()
+		miss_b = uniq_b - emb_cache.keys()
+		print(
+			f"[sem-jaccard] coverage A: {len(uniq_a) - len(miss_a)}/{len(uniq_a)} "
+			f"labels embeddable | missing e.g. {sorted(miss_a)[:5]}"
+		)
+		print(
+			f"[sem-jaccard] coverage B: {len(uniq_b) - len(miss_b)}/{len(uniq_b)} "
+			f"labels embeddable | missing e.g. {sorted(miss_b)[:5]}"
+		)
+		print("-" * 78)
+
+	# Main loop                                                          #
+	scores_match: List[float] = []
+	scores_upper: List[float] = []
+	n_both_empty = n_one_empty = n_missing_emb = n_many_to_many = 0
+	traced = 0
+	missing_examples: List[str] = []
+	step = max(1, n_total // 10)
+	for idx, (raw_a, raw_b) in enumerate(zip(sets_a, sets_b)):
+		a, b = set(raw_a), set(raw_b)
+		if not a and not b: # uninformative: exclude
+			n_both_empty += 1
+			continue
+		if not a or not b: # tracked; excluded from primary
+			n_one_empty += 1
+			continue
+
+		a_labels = sorted(l for l in a if l in emb_cache)
+		b_labels = sorted(l for l in b if l in emb_cache)
+		if len(missing_examples) < 10:
+			for l in (a | b) - emb_cache.keys():
+				if l not in missing_examples:
+					missing_examples.append(l)
+				if len(missing_examples) >= 10:
+					break
+
+		if not a_labels or not b_labels:          # cannot score: report, don't absorb
+			n_missing_emb += 1
+			continue
+
+		sim = _cosine_sim_matrix(a_labels, b_labels, get_emb)
+		j_m, j_u, matched_pairs, feasible = _sample_semantic_scores(sim, threshold)
+
+		if j_u - j_m > 1e-9:                      # many-to-many case: bounds diverge
+			n_many_to_many += 1
+
+		scores_match.append(j_m)
+		scores_upper.append(j_u)
+		if verbose and traced < max_traced_samples:
+			traced += 1
+			_trace_sample(
+				idx, 
+				a_labels, 
+				b_labels, 
+				sim, 
+				feasible,
+				matched_pairs, 
+				j_m, 
+				j_u, 
+				threshold
+			)
+		if verbose and (idx + 1) % step == 0:
+			print(
+				f"[sem-jaccard] progress {idx + 1:6d}/{n_total} | "
+				f"scored={len(scores_match):<10}one_empty={n_one_empty:<10}"
+				f"missing_emb={n_missing_emb}"
+			)
+
+	# Aggregation: BOTH denominators reported; no silent default         #
+	n_scored = len(scores_match)
+	sum_m = float(np.sum(scores_match)) if n_scored else 0.0
+	sum_u = float(np.sum(scores_upper)) if n_scored else 0.0
+	n_zero = n_scored + n_one_empty
+	result = {
+		# primary: same skip rules as the original function (backward compatible)
+		'jaccard_matching': sum_m / n_scored if n_scored else 0.0,
+		'jaccard_coverage_upper': sum_u / n_scored if n_scored else 0.0,
+		# sensitivity analysis: one-empty samples counted as full disagreement
+		'jaccard_matching_zero_policy': sum_m / n_zero if n_zero else 0.0,
+		'jaccard_coverage_upper_zero_policy': sum_u / n_zero if n_zero else 0.0,
+		'median_matching': float(np.median(scores_match)) if n_scored else 0.0,
+		'threshold': float(threshold),
+		'n_total': n_total,
+		'n_scored': n_scored,
+		'n_both_empty': n_both_empty,
+		'n_one_empty': n_one_empty,
+		'n_missing_emb': n_missing_emb,
+		'n_many_to_many': n_many_to_many,
+	}
+
+	if return_per_sample:
+		result['per_sample_matching'] = scores_match
+		result['per_sample_upper'] = scores_upper
+
+	if verbose:
+		print("-" * 80)
+		print(f"[sem-jaccard] SUMMARY | threshold={threshold}")
+		print(
+			f"  denominator accounting: total={n_total} scored={n_scored} "
+			f"both_empty={n_both_empty} one_empty={n_one_empty} "
+			f"missing_emb={n_missing_emb}"
+		)
+		if missing_examples:
+			print(f"  example labels without embedding: {missing_examples}")
+		if n_scored:
+			print(
+				f"  many-to-many samples (J_upper > J_match): {n_many_to_many} "
+				f"({100.0 * n_many_to_many / n_scored:.1f}% of scored)"
+			)
+		print(f"  primary (skip policy; backward-compatible denominator):")
+		print(
+			f"    J_match = {result['jaccard_matching']:.4f} "
+			f"(median {result['median_matching']:.4f})"
+		)
+		print(f"    J_upper = {result['jaccard_coverage_upper']:.4f}")
+		print(f"  sensitivity (one-empty counted as 0 disagreement):")
+		print(
+			f"    J_match = {result['jaccard_matching_zero_policy']:.4f} | "
+			f"J_upper = {result['jaccard_coverage_upper_zero_policy']:.4f}"
+		)
+		print(
+			f"  reported agreement interval: "
+			f"[{result['jaccard_matching']:.4f}, {result['jaccard_coverage_upper']:.4f}]"
+		)
+		print("=" * 80)
+
+	return result
+
+@torch.no_grad()
+def compute_clip_visual_grounding(
+	df: pd.DataFrame,
+	sources: List[str],
+	norm_stats: Dict[str, List[float]],
+	architecture: str = "ViT-B/32",
+	device: str = "cuda:0",
+	batch_size: int = 64,
+	label_chunk_size: int = 512,
+	max_failure_rate: float = 0.01,
+	verbose: bool = False,
+) -> Dict[str, Dict]:
+	"""
+	Independent replacement for AXIS 2. Never compares one label source's
+	text against another's — scores each source against the actual image
+	pixels via frozen CLIP, so no source can be a reference for another.
+	Grounding is a percentile rank, not raw cosine similarity: for each
+	(image, label) pair actually assigned by a source, we ask what
+	fraction of ALL images in the corpus this label matches worse than
+	its true image. This cancels out a label's baseline CLIP similarity
+	(abstract vs. concrete vocabulary sits at different baseline levels
+	regardless of grounding quality), which a raw mean would conflate
+	with actual grounding.
+	Images that fail to load are excluded entirely from both the ranking
+	pool and the scored pairs — never included as zero-vectors, since a
+	zero vector has a specific, non-neutral dot product with every label
+	and would silently bias every label's rank. If more than
+	`max_failure_rate` of images fail to load, this raises rather than
+	silently reporting numbers computed over an unverified subset.
+	Similarity/rank computation is chunked over the label dimension, so
+	the full [n_valid_images, n_unique_labels] matrix is never held more
+	than once at a time — peak memory is O(n_valid_images) plus one
+	chunk, not three full-size matrices simultaneously.
+	Returns a dict mapping source column -> {'visual_grounding_clip': float, 'n_scored_pairs': int}
+	"""
+	image_path_col = "img_path"
+	assert image_path_col in df.columns, f"Column {image_path_col} not found in DataFrame: available columns are {df.columns}"
+	print(f">> CLIP Model Architecture: {architecture}...")
+	try:
+			model_config = get_config(architecture=architecture)
+			if verbose:
+					print(json.dumps(model_config, indent=4, ensure_ascii=False))
+			model, _ = clip.load(name=architecture, device=device)
+			preprocess = clip.get_preprocess(
+					norm_stats=norm_stats,
+					input_resolution=model_config["image_resolution"],
+			)
+	except Exception as e:
+			print(f"[Warning] Custom CLIP preprocess failed ({e}). Falling back to standard OpenAI CLIP preprocess.")
+			import clip as openai_clip
+			model, preprocess = openai_clip.load(name=architecture, device=device)
+	model.name = architecture
+	model_name = model.__class__.__name__
+	print(f"Loaded {model_name} {model.name} on {device}")
+	model.eval()
+
+	# 1. Collect all unique labels across all provided sources
+	all_labels = sorted({l for col in sources for cell in df[col] for l in _parse_label_cell(cell)})
+	label_to_idx = {l: i for i, l in enumerate(all_labels)}
+	n_labels = len(all_labels)
+
+	# 2. Encode all labels
+	print(f"Encoding {n_labels} unique labels...")
+	text_embeds = []
+	for i in range(0, n_labels, batch_size):
+			toks = clip.tokenize(all_labels[i:i + batch_size]).to(device)
+			e = torch.nn.functional.normalize(model.encode_text(toks), dim=-1)
+			text_embeds.append(e.cpu())
+	text_embeds = torch.cat(text_embeds, dim=0)  # [n_labels, dim]
+
+	# 3. Encode all images. Track which rows actually produced a real
+	#    embedding — a failed row stays untouched rather than becoming
+	#    a zero-vector "image" that participates in every label's rank.
+	n_rows = len(df)
+	image_embeds = torch.zeros(n_rows, text_embeds.shape[1])
+	valid_mask = torch.zeros(n_rows, dtype=torch.bool)
+	print(f"Encoding {n_rows} images (batch size {batch_size})...")
+	for start in range(0, n_rows, batch_size):
+		paths = df[image_path_col].iloc[start:start + batch_size].tolist()
+		imgs, local_valid = [], []
+		for local_idx, p in enumerate(paths):
+			try:
+				if os.path.exists(p):
+					imgs.append(preprocess(Image.open(p).convert("RGB")))
+					local_valid.append(local_idx)
+			except Exception as e:
+				print(f"Error loading {p}: {e}")
+		if not imgs:
+			continue
+
+		imgs = torch.stack(imgs).to(device)
+		e = torch.nn.functional.normalize(model.encode_image(imgs), dim=-1)
+
+		for batch_pos, local_idx in enumerate(local_valid):
+			row = start + local_idx
+			image_embeds[row] = e[batch_pos].cpu()
+			valid_mask[row] = True
+
+	n_valid = int(valid_mask.sum().item())
+	n_failed = n_rows - n_valid
+	failure_rate = n_failed / n_rows if n_rows else 0.0
+
+	print(f"Image loading: {n_valid}/{n_rows} succeeded ({n_failed} failed, {failure_rate*100:.2f}%)")
+	if failure_rate > max_failure_rate:
+			raise RuntimeError(
+					f"{n_failed} images ({failure_rate*100:.2f}%) failed to load — exceeds "
+					f"max_failure_rate={max_failure_rate*100:.2f}%. Check image paths against "
+					f"this machine's filesystem before trusting grounding scores. "
+					f"(Common cause: absolute paths recorded on a different machine than this is running on.)"
+			)
+	if n_valid < 2:
+			raise RuntimeError(f"Only {n_valid} valid images — cannot compute a meaningful percentile rank.")
+	valid_idx = torch.where(valid_mask)[0]
+	image_embeds_valid = image_embeds[valid_idx]  # [n_valid, dim] — real embeddings only
+
+	# 4. Build (valid_row_position, label_idx) pairs per source, ONCE,
+	#    skipping any row whose image failed to load, then sort by label
+	#    index so they can be swept through in lockstep with the label
+	#    chunks below in a single linear pass.
+	row_to_valid_pos = {int(row.item()): pos for pos, row in enumerate(valid_idx)}
+	source_pairs = {col: [] for col in sources}
+	for col in sources:
+			for row_idx, cell in enumerate(df[col]):
+					if row_idx not in row_to_valid_pos:
+							continue  # image for this row failed to load — never scored
+					idxs = [label_to_idx[l] for l in _parse_label_cell(cell) if l in label_to_idx]
+					if idxs:
+							pos = row_to_valid_pos[row_idx]
+							source_pairs[col].extend((pos, label_idx) for label_idx in idxs)
+			source_pairs[col].sort(key=lambda pr: pr[1])
+
+	# 5. Rank/percentile computation, chunked over the label dimension.
+	print(
+		f"Computing similarity + percentile ranks in chunks of {label_chunk_size} labels "
+		f"({n_valid} valid images x {n_labels} labels)..."
+	)
+	sum_percentile = {col: 0.0 for col in sources}
+	cursor = {col: 0 for col in sources}
+	for chunk_start in range(0, n_labels, label_chunk_size):
+		chunk_end = min(chunk_start + label_chunk_size, n_labels)
+		text_chunk = text_embeds[chunk_start:chunk_end]                   # [C, dim]
+		sim_chunk = image_embeds_valid @ text_chunk.T                     # [n_valid, C]
+		ranks_chunk = sim_chunk.argsort(dim=0).argsort(dim=0).float()     # [n_valid, C]
+		pct_chunk = ranks_chunk / (n_valid - 1)                           # [n_valid, C]
+		for col in sources:
+			pairs = source_pairs[col]
+			j = cursor[col]
+			in_chunk = []
+			while j < len(pairs) and pairs[j][1] < chunk_end:
+				pos, lbl = pairs[j]
+				in_chunk.append((pos, lbl - chunk_start))
+				j += 1
+			cursor[col] = j
+			if in_chunk:
+				pos_t = torch.tensor([p for p, _ in in_chunk], dtype=torch.long)
+				lbl_t = torch.tensor([l for _, l in in_chunk], dtype=torch.long)
+				sum_percentile[col] += pct_chunk[pos_t, lbl_t].sum().item()
+		if verbose:
+			print(f"  labels [{chunk_start}:{chunk_end}) done")
+	results = {}
+
+	print(f"\n[VISUAL GROUNDING] {model_name} {model.name}")
+	for col in sources:
+		n_scored = len(source_pairs[col])
+		mean_percentile = sum_percentile[col] / n_scored if n_scored else 0.0
+		results[col] = {
+			"visual_grounding_clip": float(mean_percentile),
+			"n_scored_pairs": n_scored,
+		}
+		print(f"{col:<30} G={mean_percentile:.4f} over {n_scored} pairs")
+
+	del image_embeds, image_embeds_valid, text_embeds
+	if torch.cuda.is_available():
+		torch.cuda.empty_cache()
+
+	return results
 
 def get_cgd_taxonomy_supervision(
 	df: pd.DataFrame,
 	output_directory: str,
 	embedding_model_id: str,
+	architecture: str,
+	norm_stats: Dict[str, List[float]]=None,
 	anchor_column: str = "vlm_canonical_labels",
 	semantic_threshold: Optional[float] = None,
 	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
@@ -805,7 +1202,12 @@ def get_cgd_taxonomy_supervision(
 	# Setup and Validation
 	if verbose:
 		print("\n[CGD TAXONOMY] Coverage-Grounding-Density Analysis")
+		print(df.info(verbose=verbose, memory_usage="deep"))
+		# print(df.head(5).to_string(index=False))
 	
+	if norm_stats is None:
+		norm_stats = {"mean": [0.52, 0.50, 0.48], "std": [0.27, 0.27, 0.26]}
+
 	# Use default sources if not specified
 	sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
 	for i, s in enumerate(sources):
@@ -815,8 +1217,9 @@ def get_cgd_taxonomy_supervision(
 	
 	if verbose:
 		print(f"\nConfiguration:")
-		print(f"  {df.shape}")
+		print(f"  df: {df.shape}")
 		print(f"  Embedding model: {embedding_model_id}")
+		print(f"  {architecture} normalization stats: {norm_stats}")
 		print(f"  Sources to analyze: {sources}")
 		print(f"  Visual anchor: {anchor_column}")
 		print(f"  Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
@@ -915,22 +1318,26 @@ def get_cgd_taxonomy_supervision(
 		if verbose:
 			print(f">> Using provided semantic threshold: {semantic_threshold}")
 
+	# STEP 3: Compute Three Axes (CGD) for Each Source
+	if verbose:
+		print("\nSTEP 3: Computing CGD metrics for each source...")
+
 	# Pre-compute embeddings for ALL unique labels across all sources
 	emb_cache = _precompute_label_embeddings(
 		all_labels=all_labels_for_embedding,
 		model=model,
-		verbose=verbose
+		verbose=verbose,
 	)
-	
-	# Get anchor embeddings for visual grounding computation
-	anchor_sets = parsed_sets[anchor_column]
-	
-	# STEP 3: Compute Three Axes (CGD) for Each Source
-	if verbose:
-		print("\nSTEP 3: Computing CGD metrics for each source...")
-	
+
+	anchor_sets = parsed_sets[anchor_column] # anchor embeddings for visual grounding	
+	clip_grounding = compute_clip_visual_grounding(
+		df=df,
+		sources=sources,
+		norm_stats=norm_stats,
+		architecture=architecture,
+		verbose=verbose,
+	)
 	results = []
-	
 	for source_idx, source_col in enumerate(sources, 1):
 		if verbose:
 			print(f"\n[{source_idx}/{len(sources)}] Analyzing: {source_col}")
@@ -943,7 +1350,9 @@ def get_cgd_taxonomy_supervision(
 
 		counts = Counter(all_labels_in_source)
 		total_occurrences = sum(counts.values())
+
 		unique_labels = len(counts)
+
 		singletons = sum(1 for count in counts.values() if count == 1)
 		singleton_rate = (singletons / unique_labels) if unique_labels > 0 else 0.0
 		
@@ -971,25 +1380,44 @@ def get_cgd_taxonomy_supervision(
 			print(f"    Perplexity: {perplexity:.1f}")
 			print(f"    Interpretation: Effective vocabulary of ~{int(perplexity)} concepts")
 		
-		# AXIS 2: VISUAL GROUNDING (Semantic Overlap with VLM)
+		# AXIS 2: VISUAL GROUNDING (via CLIP)
 		if verbose:
-			print(f"\n  👁️  AXIS 2 - Visual Grounding (G): Semantic overlap with VLM [th: {semantic_threshold:.4f}]")
+			print(f"\n  👁️  AXIS 2 - Visual Grounding (G)")
 
-		if source_col == anchor_column:
-			# Self-comparison = perfect grounding
-			visual_grounding = 1.0
-		else:
-			# Compute SEMANTIC Jaccard (not string matching!)
-			visual_grounding = _semantic_jaccard_cached(
-				sets_a=parsed_sets[source_col],
-				sets_b=anchor_sets,
-				emb_cache=emb_cache,
-				threshold=semantic_threshold,
-				verbose=verbose
-			)
+		visual_grounding = clip_grounding[source_col]["visual_grounding_clip"]
+		# descriptive measure of inter-source agreement: Cross-Modal Concordance
+		vlm_concordance = _semantic_jaccard_cached(
+			sets_a=parsed_sets[source_col],
+			sets_b=anchor_sets,
+			emb_cache=emb_cache,
+			threshold=semantic_threshold,
+			verbose=verbose,
+		)["jaccard_matching"]
+
 		if verbose:
-			print(f"    Semantic overlap with {anchor_column}: {visual_grounding:.4f} ({visual_grounding*100:.1f}%)")
-			print(f"    Interpretation: {visual_grounding*100:.1f}% of concepts align with visual content")
+			print(f"    Interpretation: {visual_grounding*100:.1f}% semantic agreement")
+			print(f"    Cross-Modal Concordance (vs VLM): {vlm_concordance:.4f}")
+
+
+		# # AXIS 2: VISUAL GROUNDING (Semantic Overlap with VLM)
+		# if verbose:
+		# 	print(f"\n  👁️  AXIS 2 - Visual Grounding (G): Semantic overlap with VLM [th: {semantic_threshold:.4f}]")
+
+		# if source_col == anchor_column:
+		# 	# Self-comparison = perfect grounding
+		# 	visual_grounding = 1.0
+		# else:
+		# 	# Compute SEMANTIC Jaccard (not string matching!)
+		# 	visual_grounding = _semantic_jaccard_cached(
+		# 		sets_a=parsed_sets[source_col],
+		# 		sets_b=anchor_sets,
+		# 		emb_cache=emb_cache,
+		# 		threshold=semantic_threshold,
+		# 		verbose=verbose
+		# 	)["jaccard_matching"]
+		# if verbose:
+		# 	print(f"    Semantic overlap with {anchor_column}: {visual_grounding:.4f} ({visual_grounding*100:.1f}%)")
+		# 	print(f"    Interpretation: {visual_grounding*100:.1f}% semantic agreement with the VLM anchor: {anchor_column}")
 		
 		# AXIS 3: STATISTICAL DENSITY (Label Concentration)
 		avg_occurrences_per_label = (total_occurrences / unique_labels) if unique_labels > 0 else 0.0

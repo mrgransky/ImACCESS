@@ -66,8 +66,13 @@ else
 	VLM_MAX_GEN_TKs=64
 fi
 
+TEXT_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
+MODEL_ARCHITECTURE="ViT-L/14@336px"
+
 echo "LLM Model: $LLM_MODEL (batch size: $LLM_BATCH_SIZE) max generated tokens: $LLM_MAX_GEN_TKs"
 echo "VLM Model: $VLM_MODEL (batch size: $VLM_BATCH_SIZE) max generated tokens: $VLM_MAX_GEN_TKs"
+echo "Text Embedding Model: $TEXT_EMBEDDING_MODEL"
+echo "Model Architectures: $MODEL_ARCHITECTURE"
 
 DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 CSV_FILE=${DATASET_DIRECTORY}/HISTORY_X4/metadata_multi_label_chunk_$SLURM_ARRAY_TASK_ID.csv
@@ -82,10 +87,10 @@ python -u gt_kws_multimodal.py \
 	--vlm_batch_size $VLM_BATCH_SIZE \
 	--vlm_max_generated_tks $VLM_MAX_GEN_TKs \
 	--num_workers $SLURM_CPUS_PER_TASK \
+	--embedding_model_id $TEXT_EMBEDDING_MODEL \
+	--model_architecture $MODEL_ARCHITECTURE \
 	--max_keywords 3 \
-	--verbose \
-	# --llm_use_quantization \
-	# --vlm_use_quantization \
+	--verbose
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

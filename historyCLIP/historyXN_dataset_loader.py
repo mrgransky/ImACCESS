@@ -22,36 +22,6 @@ dtypes={
 	'multimodal_canonical_labels': str,
 }
 
-def _convert_image_to_rgb(image: Image) -> Image:
-	return image.convert("RGB")
-
-def get_preprocess(dataset_dir: str, input_resolution: int) -> T.Compose:
-	try:
-		mean = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_mean.gz"))
-		std = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_std.gz"))
-		print(f"{os.path.basename(dataset_dir)} mean: {mean} std: {std}")
-	except Exception as e:
-		mean = [0.52, 0.50, 0.48]
-		std = [0.27, 0.27, 0.26]
-		print(f"Could not load mean and std from {dataset_dir}. Using default values: mean={mean} std={std}")
-	
-	preprocess = T.Compose(
-		[
-			T.Resize(
-				# size=input_resolution, # 224/336 # RuntimeError: stack expects each tensor to be equal size, but got [3, 224, 224] at entry 0 and [3, 278, 224] at entry 1
-				size=(input_resolution, input_resolution), # 224/336
-				interpolation=T.InterpolationMode.BICUBIC, 
-				antialias=True
-			),
-			# T.CenterCrop(size=input_resolution), # Historical images may have important contextual information at the edges
-			_convert_image_to_rgb,
-			T.ToTensor(),
-			T.Normalize(mean=mean, std=std),
-		]
-	)
-	
-	return preprocess
-
 def get_single_label_datasets(metadata_fpth: str, col:str='label'):
 	ddir = os.path.dirname(metadata_fpth)
 	############################################################################
@@ -112,21 +82,30 @@ def get_single_label_datasets(metadata_fpth: str, col:str='label'):
 	return df_train, df_val
 
 def get_single_label_dataloaders(
-		metadata_fpth: str,
-		batch_size: int,
-		num_workers: int,
-		input_resolution: int,
-		col:str='label',
-		memory_threshold_gib: float = 500.0,  # Minimum available memory (GiB) to preload images
-	)-> Tuple[DataLoader, DataLoader]:
+	metadata_fpth: str,
+	batch_size: int,
+	num_workers: int,
+	input_resolution: int,
+	col:str='label',
+	memory_threshold_gib: float = 500.0,  # Minimum available memory (GiB) to preload images
+)-> Tuple[DataLoader, DataLoader]:
 	ddir = os.path.dirname(metadata_fpth)
 	dataset_name = os.path.basename(ddir)
 
 	print(f"\nCreating single-label dataloaders for {dataset_name} from {metadata_fpth}")
 	train_dataset, val_dataset = get_single_label_datasets(metadata_fpth=metadata_fpth, col=col)
 
-	preprocess = get_preprocess(dataset_dir=ddir, input_resolution=input_resolution)
-	
+	try:
+		mean = load_pickle(fpath=os.path.join(ddir, "img_rgb_mean.gz"))
+		std = load_pickle(fpath=os.path.join(ddir, "img_rgb_std.gz"))
+		print(f"{os.path.basename(ddir)} mean: {mean} std: {std}")
+	except Exception as e:
+		mean = [0.52, 0.50, 0.48]
+		std = [0.27, 0.27, 0.26]
+		print(f"Could not load mean and std from {ddir}. Using default values: mean={mean} std={std}")
+	norm_stats = {"mean": mean, "std": std}
+	preprocess = clip.get_preprocess(norm_stats=norm_stats, input_resolution=input_resolution)
+
 	train_dataset = HistoricalArchivesSingleLabelDataset(
 		dataset_name=dataset_name,
 		train=True,
@@ -696,7 +675,18 @@ def get_multi_label_dataloaders(
 	print(f"Column: {col}")
 	
 	train_dataset, val_dataset, label_dict = get_multi_label_datasets(metadata_fpth=metadata_fpth, col=col)
-	preprocess = get_preprocess(dataset_dir=ddir, input_resolution=input_resolution)
+
+	try:
+		mean = load_pickle(fpath=os.path.join(ddir, "img_rgb_mean.gz"))
+		std = load_pickle(fpath=os.path.join(ddir, "img_rgb_std.gz"))
+		print(f"{os.path.basename(ddir)} mean: {mean} std: {std}")
+	except Exception as e:
+		mean = [0.52, 0.50, 0.48]
+		std = [0.27, 0.27, 0.26]
+		print(f"Could not load mean and std from {ddir}. Using default values: mean={mean} std={std}")
+	norm_stats = {"mean": mean, "std": std}
+	preprocess = clip.get_preprocess(norm_stats=norm_stats, input_resolution=input_resolution)
+
 	total_samples = len(train_dataset) + len(val_dataset)
 
 	# Estimate memory per image

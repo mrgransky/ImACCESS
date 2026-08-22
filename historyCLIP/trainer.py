@@ -1,7 +1,5 @@
 import os
-from random import seed
 import sys
-from tabnanny import verbose
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
 

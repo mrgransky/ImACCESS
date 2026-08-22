@@ -1,3 +1,17 @@
+import sys
+import os
+HOME, USER = os.getenv('HOME'), os.getenv('USER')
+IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
+
+CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
+sys.path.insert(0, CLIP_DIR)
+
+MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
+sys.path.insert(0, MISC_DIR)
+
+for p in sys.path:
+	print(p)
+
 from utils import *
 import visualize as viz
 import label_statistics as stats
@@ -25,6 +39,7 @@ def merge_csv_files(
 	num_workers: int,
 	batch_size: int,
 	embedding_model_id: str,
+	clip_architecture: str,
 	nc: int = None,
 	verbose: bool = False
 ):
@@ -212,13 +227,32 @@ def merge_csv_files(
 	# singleton analysis
 	stats.get_singleton_in_uniques(df=df)
 	stats.compute_label_agreement_and_singletons(df=df)
+
 	entropy_stats = stats.compute_entropy_vs_performance(df=df, verbose=verbose)
+	# stats.get_cgd_taxonomy_supervision(
+	# 	df=df,
+	# 	embedding_model_id=embedding_model_id,
+	# 	output_directory=OUTPUT_DIR, 
+	# 	verbose=verbose
+	# )
+	try:
+		mean = load_pickle(fpath=os.path.join(os.path.dirname(dataset_dir), "img_rgb_mean.gz"))
+		std = load_pickle(fpath=os.path.join(os.path.dirname(dataset_dir), "img_rgb_std.gz"))
+	except Exception as e:
+		mean = [0.52, 0.50, 0.48]
+		std = [0.27, 0.27, 0.26]
+	
+	norm_stats = {"mean": mean, "std": std}
+	print(f"norm_stats: {norm_stats}")
 	stats.get_cgd_taxonomy_supervision(
-		df=df, 
+		df=df,
 		embedding_model_id=embedding_model_id,
+		architecture=clip_architecture,
+		norm_stats=norm_stats,
 		output_directory=OUTPUT_DIR, 
 		verbose=verbose
 	)
+
 	print("="*100)
 	print(df.info(verbose=True, memory_usage=True))
 	print("="*100)
@@ -280,6 +314,7 @@ def main():
 	parser.add_argument('--batch_size', '-bs', type=int, default=512, help='Batch size')
 	parser.add_argument('--num_workers', '-nw', type=int, required=True, help='Number of workers for parallel processing')
 	parser.add_argument('--embedding_model_id', '-emb', type=str, default="sentence-transformers/all-MiniLM-L6-v2", help='HuggingFace model ID')
+	parser.add_argument("--clip_architecture", '-clip_arch', type=str, default="ViT-B/32", help="CLIP architecture [Default: ViT-B/32]")
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
 	parser.add_argument('--num_clusters', '-nc', type=int, default=None, help='Number of clusters')
 	args = parser.parse_args()
@@ -296,6 +331,7 @@ def main():
 		batch_size=args.batch_size,
 		num_workers=args.num_workers,
 		embedding_model_id=args.embedding_model_id,
+		clip_architecture=args.clip_architecture,
 		nc=args.num_clusters,
 		verbose=args.verbose,
 	)

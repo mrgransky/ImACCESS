@@ -1,3 +1,17 @@
+import sys
+import os
+HOME, USER = os.getenv('HOME'), os.getenv('USER')
+IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
+
+CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
+sys.path.insert(0, CLIP_DIR)
+
+MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
+sys.path.insert(0, MISC_DIR)
+
+for p in sys.path:
+	print(p)
+
 from utils import *
 from gt_kws_vlm import get_vlm_based_labels
 from gt_kws_llm import get_llm_based_labels
@@ -97,6 +111,7 @@ def get_multimodal_annotation(
 	vlm_batch_size: int,
 	vlm_max_generated_tks: int,
 	embedding_model_id: str,
+	clip_architecture: str,
 	max_keywords: int,
 	device: str,
 	batch_size: int,
@@ -341,9 +356,20 @@ def get_multimodal_annotation(
 	stats.compute_label_agreement_and_singletons(df=df)
 	entropy_stats = stats.compute_entropy_vs_performance(df=df, verbose=verbose)
 
+	try:
+		mean = load_pickle(fpath=os.path.join(os.path.dirname(csv_file), "img_rgb_mean.gz"))
+		std = load_pickle(fpath=os.path.join(os.path.dirname(csv_file), "img_rgb_std.gz"))
+	except Exception as e:
+		mean = [0.52, 0.50, 0.48]
+		std = [0.27, 0.27, 0.26]
+
+	norm_stats = {"mean": mean, "std": std}
+	print(f"norm_stats: {norm_stats}")
 	stats.get_cgd_taxonomy_supervision(
 		df=df,
 		embedding_model_id=embedding_model_id,
+		architecture=clip_architecture,
+		norm_stats=norm_stats,
 		output_directory=OUTPUT_DIR, 
 		verbose=verbose
 	)
@@ -411,6 +437,7 @@ def main():
 	parser.add_argument("--vlm_batch_size", '-vlm_bs', type=int, default=2, help="Batch size for visual processing using VLM (adjust based on GPU memory)")
 	parser.add_argument("--vlm_quantization_bits", '-vlm_qb', type=int, default=None, help="LLM Quantization bits")
 	parser.add_argument("--embedding_model_id", '-emb_id', type=str, default="Qwen/Qwen3-Embedding-0.6B", help="Embedding model ID")
+	parser.add_argument("--clip_architecture", '-clip_arch', type=str, default="ViT-B/32", help="CLIP architecture [Default: ViT-B/32]")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--num_clusters", '-nc', type=int, default=None, help="Number of clusters")
@@ -435,6 +462,7 @@ def main():
 		vlm_max_generated_tks=args.vlm_max_generated_tks,
 		max_keywords=args.max_keywords,
 		embedding_model_id=args.embedding_model_id,
+		clip_architecture=args.clip_architecture,
 		llm_quantization_bits=args.llm_quantization_bits,
 		vlm_quantization_bits=args.vlm_quantization_bits,
 		nc=args.num_clusters,

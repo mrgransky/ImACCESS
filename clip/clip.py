@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from model import build_model, build_model_from_config
 from simple_tokenizer import SimpleTokenizer as _Tokenizer
+import torchvision.transforms as T
 
 try:
 	from torchvision.transforms import InterpolationMode
@@ -59,6 +60,26 @@ def _download(url: str, root: str):
 
 def _convert_image_to_rgb(image):
 	return image.convert("RGB")
+
+def get_preprocess(
+	norm_stats: Dict[str, List[float]], 
+	input_resolution: int
+) -> T.Compose:
+	preprocess = T.Compose(
+		[
+			T.Resize(
+				# size=input_resolution, # 224/336 # RuntimeError: stack expects each tensor to be equal size, but got [3, 224, 224] at entry 0 and [3, 278, 224] at entry 1
+				size=(input_resolution, input_resolution), # 224/336
+				interpolation=T.InterpolationMode.BICUBIC, 
+				antialias=True
+			),
+			# T.CenterCrop(size=input_resolution), # Historical images may have important contextual information at the edges
+			_convert_image_to_rgb,
+			T.ToTensor(),
+			T.Normalize(mean=norm_stats["mean"], std=norm_stats["std"]),
+		]
+	)
+	return preprocess
 
 def _transform(n_px: int):
 	return Compose(

@@ -32,13 +32,17 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
+
 DATASET_DIR="/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4"
 TEXT_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
+MODEL_ARCHITECTURE="ViT-L/14@336px"
+
 python -u gt_kws_multimodal_merge.py \
 	--dataset_dir $DATASET_DIR \
 	--batch_size 128 \
 	--num_workers $SLURM_CPUS_PER_TASK \
 	--embedding_model_id $TEXT_EMBEDDING_MODEL \
+	--clip_architecture $MODEL_ARCHITECTURE \
 	--verbose
 
 done_txt="$user finished Slurm job: `date`"
