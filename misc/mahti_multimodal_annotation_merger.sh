@@ -11,7 +11,7 @@
 #SBATCH --mem=16G
 #SBATCH --partition=gpumedium
 #SBATCH --time=00-04:00:00
-#SBATCH --gres=gpu:a100:2,nvme:100
+#SBATCH --gres=gpu:a100:4,nvme:100
 
 set -euo pipefail
 
