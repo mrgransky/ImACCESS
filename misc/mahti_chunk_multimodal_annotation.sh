@@ -7,11 +7,11 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=36G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=12G
 #SBATCH --array=0-15
 #SBATCH --partition=gpumedium
-#SBATCH --time=00-04:00:00
+#SBATCH --time=00-01:00:00
 #SBATCH --gres=gpu:a100:4,nvme:250
 
 set -euo pipefail
@@ -88,7 +88,7 @@ python -u gt_kws_multimodal.py \
 	--vlm_max_generated_tks $VLM_MAX_GEN_TKs \
 	--num_workers $SLURM_CPUS_PER_TASK \
 	--embedding_model_id $TEXT_EMBEDDING_MODEL \
-	--model_architecture $MODEL_ARCHITECTURE \
+	--clip_architecture $MODEL_ARCHITECTURE \
 	--max_keywords 3 \
 	--verbose
 
