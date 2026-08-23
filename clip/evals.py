@@ -611,11 +611,13 @@ def compute_retrieval_metrics_from_similarity(
 		)
 
 	max_effective_K = min(max(requested_K_values), num_candidates)
-	chunk_size = 256
-	all_sorted_indices = torch.cat([
-		torch.argsort(similarity_matrix[i:i + chunk_size], dim=1, descending=True)[:, :max_effective_K]
-		for i in range(0, similarity_matrix.shape[0], chunk_size)
-	], dim=0)
+	all_sorted_indices = torch.cat(
+		[
+			torch.argsort(similarity_matrix[i:i + chunk_size], dim=1, descending=True)[:, :max_effective_K]
+			for i in range(0, similarity_matrix.shape[0], chunk_size)
+		], 
+		dim=0
+	)
 
 	# ── R_q: total relevant items per query — computed ONCE, independent of K ──
 	if is_multi_label:
@@ -640,7 +642,12 @@ def compute_retrieval_metrics_from_similarity(
 
 		if is_multi_label:
 			correct_mask = compute_multilabel_correctness(
-				top_k_indices, query_labels, candidate_labels, mode, effective_K, chunk_size,
+				top_k_indices, 
+				query_labels, 
+				candidate_labels, 
+				mode, 
+				effective_K, 
+				chunk_size,
 			)
 		else:
 			correct_mask = compute_singlelabel_correctness(
@@ -691,47 +698,53 @@ def compute_retrieval_metrics_from_similarity(
 	return metrics
 
 def compute_multilabel_correctness(
-		top_k_indices: torch.Tensor,
-		query_labels: torch.Tensor, 
-		candidate_labels: torch.Tensor,
-		mode: str,
-		K: int,
-		chunk_size: int = 1000
+	top_k_indices: torch.Tensor,
+	query_labels: torch.Tensor, 
+	candidate_labels: torch.Tensor,
+	mode: str,
+	K: int,
+	chunk_size: int = 1000
 ) -> torch.Tensor:
-		"""
-		Compute correctness mask for multi-label scenarios with memory optimization.
-		"""
-		num_queries = top_k_indices.shape[0]
-		device = top_k_indices.device
-		
-		correct_mask = torch.zeros(num_queries, K, device=device, dtype=torch.bool)
-		
-		if mode == "Image-to-Text":
-				# Process in chunks to save memory
-				for i in range(0, num_queries, chunk_size):
-						end_i = min(i + chunk_size, num_queries)
-						chunk_indices = top_k_indices[i:end_i]  # [chunk_size, K]
-						chunk_queries = query_labels[i:end_i]   # [chunk_size, num_classes]
-						
-						# For each query in chunk, check if retrieved classes are relevant
-						for j, (retrieved_classes, true_classes) in enumerate(zip(chunk_indices, chunk_queries)):
-								true_class_indices = torch.where(true_classes == 1)[0]
-								# Check which retrieved classes are in true classes
-								chunk_correct = torch.isin(retrieved_classes, true_class_indices)
-								correct_mask[i + j] = chunk_correct
-								
-		else:  # Text-to-Image
-			# For each class query, check if retrieved samples have the class
-			for i in range(num_queries):
-				class_idx = i  # Assuming query i corresponds to class i
-				retrieved_samples = top_k_indices[i]  # [K]
-				
-				if class_idx < candidate_labels.shape[1]:
-					# Check which retrieved samples have this class
-					has_class = candidate_labels[retrieved_samples, class_idx]  # [K]
-					correct_mask[i] = has_class
-		
-		return correct_mask
+	"""
+	Compute correctness mask for multi-label scenarios 
+	in chunks to work with memory optimization.
+	"""
+	num_queries = top_k_indices.shape[0]
+	device = top_k_indices.device
+	
+	correct_mask = torch.zeros(
+		num_queries, 
+		K, 
+		device=device, 
+		dtype=torch.bool
+	)
+	
+	if mode == "Image-to-Text":
+		# Process in chunks to save memory
+		for i in range(0, num_queries, chunk_size):
+			end_i = min(i + chunk_size, num_queries)
+			chunk_indices = top_k_indices[i:end_i]  # [chunk_size, K]
+			chunk_queries = query_labels[i:end_i]   # [chunk_size, num_classes]
+			
+			# For each query in chunk, check if retrieved classes are relevant
+			for j, (retrieved_classes, true_classes) in enumerate(zip(chunk_indices, chunk_queries)):
+				true_class_indices = torch.where(true_classes == 1)[0]
+
+				# Check which retrieved classes are in true classes
+				chunk_correct = torch.isin(retrieved_classes, true_class_indices)
+				correct_mask[i + j] = chunk_correct
+	else:  # Text-to-Image
+		# For each class query, check if retrieved samples have the class
+		for i in range(num_queries):
+			class_idx = i  # Assuming query i corresponds to class i
+			retrieved_samples = top_k_indices[i]  # [K]
+			
+			if class_idx < candidate_labels.shape[1]:
+				# Check which retrieved samples have this class
+				has_class = candidate_labels[retrieved_samples, class_idx]  # [K]
+				correct_mask[i] = has_class
+	
+	return correct_mask
 
 def compute_singlelabel_correctness(
 		top_k_indices: torch.Tensor,
@@ -802,6 +815,7 @@ def get_validation_metrics(
 		print(f"  ├─ {num_samples} samples")
 		print(f"  ├─ {n_classes} labels")
 		print(f"  ├─ bs: {validation_loader.batch_size}")
+		print(f"  ├─ chunk_size: {chunk_size}")
 		print(f"  ├─ temperature: {temperature}")
 		print(f"  └─ nw: {num_workers}")
 	
