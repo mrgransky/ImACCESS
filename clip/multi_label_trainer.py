@@ -313,34 +313,39 @@ def zero_shot_multi_label(
 		for tier_name, metrics in tiered_metrics.items():
 			print(
 				f"  {tier_name:8s} "
-				f"mAP@10={metrics['mAP'].get('10', 0.0):.4f}  "
-				f"R@10={metrics['Recall'].get('10', 0.0):.4f}"
+				f"mAP@10={metrics['mAP'].get('10'):.4f}  "
+				f"R@10={metrics['Recall'].get('10'):.4f}"
 			)
 
 	if verbose:
 		print(f"\n{'=' * 70}")
+
 		print_tier_summary(
 			f"{mode.upper()} original per-run I2T tiers",
 			tiered_i2t,
 		)
+
 		print_tier_summary(
 			f"{mode.upper()} original per-run T2I tiers",
 			tiered_t2i,
 		)
+
 		print_tier_summary(
 			f"{mode.upper()} fixed shared-protocol I2T tiers",
 			shared_tiered_i2t,
 		)
+
 		print_tier_summary(
 			f"{mode.upper()} fixed shared-protocol T2I tiers",
 			shared_tiered_t2i,
 		)
+
 		print(f"{'=' * 70}")
 
 	del i2t_similarity, t2i_similarity
 	torch.cuda.empty_cache()
 
-	return {
+	result = {
 		"full_metrics": full_metrics,
 		"img2txt_metrics": validation_results["img2txt_metrics"],
 		"txt2img_metrics": validation_results["txt2img_metrics"],
@@ -356,6 +361,8 @@ def zero_shot_multi_label(
 		"model_loaded_from": "zero_shot_base_model",
 		"shared_protocol_path": shared_protocol_path,
 	}
+
+	return result
 
 def probe_multi_label(
 	model: torch.nn.Module,
@@ -381,7 +388,7 @@ def probe_multi_label(
 	probe_dropout: float = 0.1,
 	cache_features: bool = True,
 	temperature: float = 1.0,
-	pw_mode: str="log",
+	pw_mode: str = "log",
 	verbose: bool = True,
 ):
 	window_size = minimum_epochs + 1
@@ -693,12 +700,8 @@ def probe_multi_label(
 			print(f"  classes cos_to_init < 0.5 : {(cos_to_init < 0.5).sum().item()} / {W.shape[0]}")
 			print(f"  bias        — min={b.min():.4f} max={b.max():.4f} mean={b.mean():.4f} std={b.std():.4f}")
 
+		print(f"[Epoch {epoch+1}] Training elapsed time: {time.time()-train_and_val_st_time:.1f}s\nValidating...")	
 
-
-		
-
-		print(f"Training Elapsed Time: {time.time() - train_and_val_st_time:.1f}s. Validating Epoch {epoch+1} ...")
-		
 		probe.probe.eval()
 		val_loss = 0.0
 		val_preds_list, val_labels_list = list(), list()
@@ -2151,7 +2154,7 @@ def lora_plus_finetune_multi_label(
 	quantized: bool=False,
 	loss_weights: Dict[str, float]=None,
 	temperature: float = 0.07,
-	pw_mode: str="log", # orig: "sqrt"
+	pw_mode: str = "log", # orig: "sqrt"
 	verbose: bool=False,
 ):
 	"""

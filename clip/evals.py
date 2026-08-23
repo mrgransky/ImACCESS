@@ -853,24 +853,13 @@ def get_validation_metrics(
 			cache_loaded = False
 	
 	if not cache_loaded:
-		if verbose:
-			print("[EMBEDDINGS] from scratch [takes a while] ...")
-		t0 = time.time()
-		all_image_embeds, all_labels = _compute_image_embeddings(
+		all_image_embeds, all_labels = get_embeddings(
 			model=model, 
-			validation_loader=validation_loader, 
+			validation_loader=validation_loader,
 			device=device,
+			cache_file=cache_file,
 			verbose=verbose,
 		)
-		if verbose:
-			print(f"Elapsed: {time.time() - t0:.1f} s")
-		try:
-			torch.save({'image_embeds': all_image_embeds, 'labels': all_labels}, cache_file)
-			if verbose:
-				print(f"[SAVED] {cache_file}")
-		except Exception as e:
-			if verbose:
-				print(f"<!> ERROR Cache saving failed: {e}")
 
 	# Step 3: Compute class embeddings
 	if class_embeds_override is not None:
@@ -1300,13 +1289,18 @@ def _validate_cache_compatibility(
 		and torch.equal(cached_labels.cpu(), expected_labels.cpu())
 	)
 
-def _compute_image_embeddings(
-		model: torch.nn.Module,
-		validation_loader: DataLoader, 
-		device: torch.device, 
-		verbose: bool=False, 
-		max_batches=None,
-	):
+def get_embeddings(
+	model: torch.nn.Module,
+	validation_loader: DataLoader,
+	device: torch.device,
+	cache_file: str,
+	max_batches=None,
+	verbose: bool=False,
+):
+	if verbose:
+		print("[EMBEDDINGS] from scratch [takes a while] ...")
+
+	t0 = time.time()
 	all_image_embeds, all_labels = list(), []
 	model = model.to(device)
 	model.eval()
@@ -1349,6 +1343,17 @@ def _compute_image_embeddings(
 
 	all_image_embeds = torch.cat(all_image_embeds, dim=0)
 	all_labels = torch.cat(all_labels, dim=0)
+
+	if verbose:
+		print(f"Elapsed: {time.time() - t0:.1f} s")
+
+	try:
+		torch.save({'image_embeds': all_image_embeds, 'labels': all_labels}, cache_file)
+		if verbose:
+			print(f"[SAVED] {cache_file}")
+	except Exception as e:
+		if verbose:
+			print(f"<!> ERROR Cache saving failed: {e}")
 
 	return all_image_embeds, all_labels
 
