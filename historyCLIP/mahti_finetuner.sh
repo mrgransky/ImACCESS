@@ -407,7 +407,7 @@ CMD="python -u trainer.py \
 	--total_num_phases          \"${TOTAL_NUM_PHASES[$dataset_index]}\" \
 	--print_every               \"${PRINT_FREQUENCIES[$dataset_index]}\" \
 	--sampling                  \"${SAMPLINGS[1]}\" \
-	--seed                      \"$SEED\"
+	--seed                      \"$SEED\" \
 	--verbose"
 
 # ── LoRA family: append shared rank/alpha/dropout args ───────────────────
