@@ -908,9 +908,9 @@ def _semantic_jaccard_cached(
 			)
 		if verbose and (idx + 1) % step == 0:
 			print(
-				f"[sem-jaccard] progress {idx + 1:6d}/{n_total} | "
-				f"scored={len(scores_match):<10}one_empty={n_one_empty:<10}"
-				f"missing_emb={n_missing_emb}"
+				f"[sem-jaccard] {idx + 1:7d}/{n_total} "
+				f"scored: {len(scores_match):<10}one_empty: {n_one_empty:<10}"
+				f"missing_emb: {n_missing_emb}"
 			)
 
 	# Aggregation: BOTH denominators reported; no silent default         #
@@ -1012,14 +1012,14 @@ def compute_clip_visual_grounding(
 	assert image_path_col in df.columns, f"Column {image_path_col} not found in DataFrame: available columns are {df.columns}"
 	print(f">> CLIP Model Architecture: {architecture}...")
 	try:
-			model_config = get_config(architecture=architecture)
-			if verbose:
-					print(json.dumps(model_config, indent=4, ensure_ascii=False))
-			model, _ = clip.load(name=architecture, device=device)
-			preprocess = clip.get_preprocess(
-					norm_stats=norm_stats,
-					input_resolution=model_config["image_resolution"],
-			)
+		model_config = clip.get_config(architecture=architecture)
+		if verbose:
+			print(json.dumps(model_config, indent=4, ensure_ascii=False))
+		model, _ = clip.load(name=architecture, device=device)
+		preprocess = clip.get_preprocess(
+			norm_stats=norm_stats,
+			input_resolution=model_config["image_resolution"],
+		)
 	except Exception as e:
 			print(f"[Warning] Custom CLIP preprocess failed ({e}). Falling back to standard OpenAI CLIP preprocess.")
 			import clip as openai_clip
@@ -1330,6 +1330,7 @@ def get_cgd_taxonomy_supervision(
 	)
 
 	anchor_sets = parsed_sets[anchor_column] # anchor embeddings for visual grounding	
+
 	clip_grounding = compute_clip_visual_grounding(
 		df=df,
 		sources=sources,

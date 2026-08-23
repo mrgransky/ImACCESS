@@ -163,7 +163,11 @@ def load(
 			state_dict = torch.load(opened_file, map_location="cpu")	
 
 	if not jit:
-		model = build_model(state_dict=state_dict or model.state_dict(), dropout=dropout).to(device)
+		model = build_model(
+			state_dict=state_dict or model.state_dict(), 
+			dropout=dropout
+		).to(device)
+
 		if str(device) == "cpu":
 			model.float()
 		return model, _transform(n_px=model.visual.input_resolution)	
@@ -224,6 +228,9 @@ def load(
 		model.float()
 
 	preprocess = _transform(n_px=model.input_resolution.item())
+
+	if hasattr(torch, "compile"):
+		model = torch.compile(model, mode="reduce-overhead")
 
 	return model, preprocess
 
@@ -393,6 +400,132 @@ def load_from_scratch(
 	preprocess = _transform(n_px=config["image_resolution"])
 
 	return model, preprocess
+
+def get_config(architecture: str, dropout: float=0.0) -> dict:
+	configs = {
+		"RN50": {
+			"embed_dim": 1024,
+			"image_resolution": 224,
+			"vision_layers": (3, 4, 6, 3),  # (stage1, stage2, stage3, stage4)
+			"vision_width": 64,
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"RN101": {
+			"embed_dim": 1024,
+			"image_resolution": 224,
+			"vision_layers": (3, 4, 23, 3),
+			"vision_width": 64,
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"RN50x4": {
+			"embed_dim": 640,
+			"image_resolution": 288,
+			"vision_layers": (3, 4, 6, 3),
+			"vision_width": 256,  # 4× width
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"RN50x16": {
+			"embed_dim": 768,
+			"image_resolution": 384,
+			"vision_layers": (3, 4, 6, 3),
+			"vision_width": 1024,  # 16× width
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"RN50x64": {
+			"embed_dim": 1024,
+			"image_resolution": 448,
+			"vision_layers": (3, 4, 6, 3),
+			"vision_width": 4096,  # 64× width
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"ViT-B/32": {
+			"embed_dim": 512,
+			"image_resolution": 224,
+			"vision_layers": 12,  # transformer layers
+			"vision_width": 768,
+			"vision_patch_size": 32,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"ViT-B/16": {
+			"embed_dim": 512,
+			"image_resolution": 224,
+			"vision_layers": 12,
+			"vision_width": 768,
+			"vision_patch_size": 16,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"ViT-L/14": {
+			"embed_dim": 768,
+			"image_resolution": 224,
+			"vision_layers": 24,  # deeper transformer
+			"vision_width": 1024,
+			"vision_patch_size": 14,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 768,
+			"transformer_heads": 12,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"ViT-L/14@336px": {
+			"embed_dim": 768,
+			"image_resolution": 336,  # higher resolution variant
+			"vision_layers": 24,
+			"vision_width": 1024,
+			"vision_patch_size": 14,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 768,
+			"transformer_heads": 12,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		}
+	}
+
+	if architecture not in configs:
+		raise ValueError(f"{architecture} not found! Available models: {list(configs.keys())}")
+
+	return configs[architecture]
 
 def tokenize(
 	texts: Union[str, List[str]],

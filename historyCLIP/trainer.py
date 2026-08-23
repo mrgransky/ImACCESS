@@ -84,7 +84,6 @@ def main():
 	parser.add_argument('--log_dir', type=str, default=None, help='Directory to store log files (if not specified, logs will go to stdout)')
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 	parser.add_argument('--print_every', type=int, default=25, help='Print loss')
-	# parser.add_argument('--temperature', '-t', type=float, default=0.07, help='Temperature [def: 0.07]')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 	parser.add_argument('--seed', type=int, default=42, help='Random seed')
 
@@ -197,7 +196,7 @@ def main():
 			)
 
 		print(f">> CLIP Model Architecture: {args.model_architecture}...")
-		model_config = get_config(
+		model_config = clip.get_config(
 			architecture=args.model_architecture, 
 			dropout=args.dropout,
 		)
