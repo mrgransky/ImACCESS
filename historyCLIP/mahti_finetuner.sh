@@ -248,6 +248,7 @@ BATCH_SIZES=(16 64 64 64 64)
 
 # How often (in steps) to print training progress
 PRINT_FREQUENCIES=(500 1000 50 50 25)
+SEED="${SEED:-42}"
 
 # Learning rates — three groups based on fine-tuning strategy type:
 #   FULL_FT       : full model fine-tuning (all parameters updated)
@@ -354,6 +355,7 @@ ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 echo "=== CONFIGURATION ==="
 echo "SLURM_ARRAY_TASK_ID : $SLURM_ARRAY_TASK_ID"
 echo "LABEL_TYPE          : $LABEL_TYPE"
+echo "seed: $SEED"
 echo "DATASET[$dataset_index]      : ${BASE_DATASET_DIRECTORY[$dataset_index]}"
 echo "CSV_FILE            : $METADATA_CSV"
 echo "STRATEGY[$strategy_index]    : $strategy"
@@ -405,6 +407,7 @@ CMD="python -u trainer.py \
 	--total_num_phases          \"${TOTAL_NUM_PHASES[$dataset_index]}\" \
 	--print_every               \"${PRINT_FREQUENCIES[$dataset_index]}\" \
 	--sampling                  \"${SAMPLINGS[1]}\" \
+	--seed                      \"$SEED\"
 	--verbose"
 
 # ── LoRA family: append shared rank/alpha/dropout args ───────────────────
