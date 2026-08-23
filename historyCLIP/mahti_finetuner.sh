@@ -1,16 +1,16 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=ft_h4_multi_label
+#SBATCH --job-name=ft_h4_multi_label_seed_1
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
-#SBATCH --mem=248G
-#SBATCH --partition=gpumedium
-#SBATCH --gres=gpu:a100:4,nvme:200
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=192G
+#SBATCH --partition=gpusmall
+#SBATCH --gres=gpu:a100:1,nvme:200
 #SBATCH --time=1-12:00:00
 
 ##############################################################################
