@@ -21,7 +21,6 @@ from data_prep import get_multi_label_stratified_split, build_shared_eval_protoc
 
 # how to run:
 # local:
-# $ python -u gt_kws_multimodal_merge.py -ddir ~/datasets/WW_DATASETs/HISTORY_X4/ -nw 8 -emb "Qwen/Qwen3-Embedding-0.6B" -v
 # $ nohup python -u gt_kws_multimodal_merge.py -ddir ~/datasets/WW_DATASETs/HISTORY_X4 -nw 8 -emb "Qwen/Qwen3-Embedding-0.6B" -v > logs/multimodal_annotation_merge.log 2>&1 &
 
 # Puhti/Mahti:

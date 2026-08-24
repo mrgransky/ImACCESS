@@ -2861,7 +2861,7 @@ def plot_taxonomy_radar(
 			markersize=5.0,
 			linestyle="-",
 			linewidth=1.5,
-			label=row["source"].replace("_", " ").replace("labels", "").upper(),
+			label=row["source"].replace("_", " ").replace("canonical", "").replace("labels", "").upper(),
 			# markeredgecolor="black",
 			# markeredgewidth=0,
 			alpha=0.8,
@@ -2877,11 +2877,12 @@ def plot_taxonomy_radar(
 	ax.grid(True, linestyle="--", alpha=0.75, zorder=0)
 	ax.legend(
 		loc="upper left",
-		title="CANONICAL SOURCE"
+		title="CANONICAL SOURCE",
 		bbox_to_anchor=(-0.2, 1.1),
 		frameon=False,
 		fontsize=9.0,
 	)
+
 	# ax.set_title(title, size=10, weight="bold")
 	plt.tight_layout()
 	plt.savefig(output_path, dpi=250, bbox_inches="tight")
