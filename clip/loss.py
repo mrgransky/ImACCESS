@@ -42,7 +42,7 @@ def diagnose_train_val_coverage(
 
 		if val_only > 0:
 			print(
-				f"\n{val_only} labels ONLY present in val with no training samples => "
+				f"{val_only} labels ONLY present in val with no training samples => "
 				f"pos_weight defaults to 1.0 for these."
 			)
 		
