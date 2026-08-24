@@ -806,15 +806,15 @@ def plot_tier_skewness(
 											 label="IQR (25th–75th pct)"),
 		]
 		ax.legend(
-				handles=legend_elements,
-				loc="best",
-				fontsize=8,
-				title="Within-tier frequency distribution",
-				title_fontsize=9.0,
-				ncol=1,
-				frameon=False,
-				fancybox=True,
-				shadow=True
+			handles=legend_elements,
+			loc="best",
+			fontsize=8,
+			title="Within-tier frequency distribution",
+			title_fontsize=9.0,
+			ncol=1,
+			frameon=False,
+			fancybox=True,
+			shadow=True
 		)
 
 		for spine in ax.spines.values():
@@ -2878,6 +2878,7 @@ def plot_taxonomy_radar(
 	ax.legend(
 		loc="upper left",
 		title="CANONICAL SOURCE",
+		title_fontsize=11.0,
 		bbox_to_anchor=(-0.2, 1.1),
 		frameon=False,
 		fontsize=9.0,
