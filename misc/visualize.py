@@ -2877,6 +2877,7 @@ def plot_taxonomy_radar(
 	ax.grid(True, linestyle="--", alpha=0.75, zorder=0)
 	ax.legend(
 		loc="upper left",
+		title="CANONICAL SOURCE"
 		bbox_to_anchor=(-0.2, 1.1),
 		frameon=False,
 		fontsize=9.0,

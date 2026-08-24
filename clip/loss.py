@@ -39,14 +39,12 @@ def diagnose_train_val_coverage(
 
 		if train_only > 0:
 			print(f"\n{train_only} labels trained on but absent from val.")
-			print(train_only)
 
 		if val_only > 0:
 			print(
 				f"\n{val_only} labels ONLY present in val with no training samples => "
 				f"pos_weight defaults to 1.0 for these."
 			)
-			print(val_only)
 		
 		# Train-only class frequency analysis
 		if train_only > 0:

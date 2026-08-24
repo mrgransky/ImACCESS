@@ -486,8 +486,8 @@ def probe_multi_label(
 	)
 	if verbose:
 		print(f"\n{criterion.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
-		print(f"   ├─ samples: {N} classes: {num_classes}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ samples: {N} label(s): {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
@@ -1106,8 +1106,8 @@ def full_finetune_multi_label(
 
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
-		print(f"   ├─ samples: {N} classes: {num_classes}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ samples: {N} label(s): {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
@@ -1702,9 +1702,8 @@ def lora_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
-		print(f"   ├─ number of samples: {N}")
-		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ samples: {N} label(s): {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
@@ -2314,7 +2313,7 @@ def lora_plus_finetune_multi_label(
 
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
 		print(f"   ├─ number of samples: {N}")
 		print(f"   ├─ number of classes: {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
@@ -3103,7 +3102,7 @@ def rslora_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
 		print(f"   ├─ samples: {N} classes: {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item()}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item()}")
@@ -3735,9 +3734,9 @@ def dora_finetune_multi_label(
 
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
-		print(f"   ├─ number of samples: {N}")
-		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ samples: {N}")
+		print(f"   ├─ label(s): {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
@@ -4394,9 +4393,9 @@ def vera_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
-		print(f"   ├─ number of samples: {N}")
-		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ samples: {N}")
+		print(f"   ├─ labels: {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
@@ -5079,9 +5078,9 @@ def ia3_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
-		print(f"   ├─ number of samples: {N}")
-		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ samples: {N}")
+		print(f"   ├─ label(s): {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
@@ -5689,9 +5688,9 @@ def clip_adapter_finetune_multi_label(
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction='none')
 	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none')
 	if verbose:
-		print(f"\n[I2T] BCEWithLogitsLoss  pos_weight range: [{pos_weight.min()}, {pos_weight.max()}]")
+		print(f"\n[I2T] {criterion_i2t.__class__.__name__}  pos_weight range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
 		print(f"   ├─ N={N}  classes={num_classes}  active={active_mask.sum().item():,}")
-		print(f"[T2I] BCEWithLogitsLoss  no pos_weight")
+		print(f"[T2I] {criterion_t2i.__class__.__name__} no pos_weight")
 
 	# Optimizer
 	adapter_params = [p for p in model.parameters() if p.requires_grad]
@@ -6503,9 +6502,9 @@ def tip_adapter_finetune_multi_label(
 	)
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min()}, {pos_weight.max()}]")
-		print(f"   ├─ number of samples: {N}")
-		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ samples: {N}")
+		print(f"   ├─ label(s): {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
