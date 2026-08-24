@@ -931,87 +931,98 @@ def get_validation_metrics(
 		# ── 1. Norm distribution of image embeddings ──────────────────
 		img_norms = device_image_embeds.norm(dim=1)
 		print(f"  Image embedding norms:")
-		print(f"    min={img_norms.min():.4f}  max={img_norms.max():.4f}  "
-				f"mean={img_norms.mean():.4f}  std={img_norms.std():.4f}")
-		print(f"    Are unit normalised: "
-				f"{torch.allclose(img_norms, torch.ones_like(img_norms), atol=1e-3)}")
+		print(
+			f"    min={img_norms.min():.4f} max={img_norms.max():.4f}  "
+			f"mean={img_norms.mean():.4f} std={img_norms.std():.4f}"
+		)
+		print(
+			f"    Normalized? {torch.allclose(img_norms, torch.ones_like(img_norms), atol=1e-3)}"
+		)
 
 		# ── 2. Norm distribution of class embeddings ──────────────────
 		cls_norms = device_class_text_embeds.norm(dim=1)
 		print(f"  Class embedding norms:")
 		print(f"    min={cls_norms.min():.4f}  max={cls_norms.max():.4f}  "
 				f"mean={cls_norms.mean():.4f}  std={cls_norms.std():.4f}")
-		print(f"    Are unit normalised: "
-				f"{torch.allclose(cls_norms, torch.ones_like(cls_norms), atol=1e-3)}")
+		print(f"    Normalized? {torch.allclose(cls_norms, torch.ones_like(cls_norms), atol=1e-3)}")
 
 		# ── 3. Pairwise image-class similarity distribution ───────────
 		# Sample 1000 images for efficiency
-		n_sample = min(1000, device_image_embeds.shape[0])
+		n_sample = min(2500, device_image_embeds.shape[0])
+
 		sample_idx = torch.randperm(
 			device_image_embeds.shape[0],
 			device=device_image_embeds.device,
 		)[:n_sample]
+
 		sample_img = torch.nn.functional.normalize(
-			device_image_embeds[sample_idx], dim=1
+			device_image_embeds[sample_idx], 
+			dim=1
 		)
+
 		sample_cls = torch.nn.functional.normalize(
-			device_class_text_embeds, dim=1
+			device_class_text_embeds, 
+			dim=1
 		)
 
 		# Raw cosine similarity without temperature
-		sample_sims = sample_img @ sample_cls.T   # [1000, C]
+		sample_sims = sample_img @ sample_cls.T   # [n_sample, C]
 		print(f"  Raw cosine similarity image@class ({n_sample} sampled images):")
 		print(f"    min={sample_sims.min():.4f}  max={sample_sims.max():.4f}  "
 				f"mean={sample_sims.mean():.4f}  std={sample_sims.std():.4f}")
 
 		# ── 4. Inter-class similarity — are class embeddings separated? ─
-		n_cls_sample = min(1500, device_class_text_embeds.shape[0])
+		n_cls_sample = min(2500, device_class_text_embeds.shape[0])
 		cls_sample_idx = torch.randperm(
 			device_class_text_embeds.shape[0],
 			device=device_class_text_embeds.device,
 		)[:n_cls_sample]
 
 		cls_sample = sample_cls[cls_sample_idx]
+
 		inter_cls_sims = cls_sample @ cls_sample.T
+
 		off_diag_mask = ~torch.eye(
 			n_cls_sample, 
 			dtype=torch.bool,
 			device=inter_cls_sims.device,
 		)
+
 		off_diag = inter_cls_sims[off_diag_mask]
 
-		print(f"  Inter-class cosine similarity ({n_cls_sample} sampled classes):")
-		print(f"    (min, max): ({off_diag.min():.4f}, {off_diag.max():.4f}) mean={off_diag.mean():.4f}  std={off_diag.std():.4f}")
-		print(f"    Fraction with sim > 0.5: {(off_diag > 0.5).float().mean():.4f} (high → class embeddings cluster together)")
-		print(f"    Fraction with sim > 0.9: {(off_diag > 0.9).float().mean():.4f} (high → near-duplicate class embeddings)")
+		print(f"  Inter-class cosine similarity ({n_cls_sample} sampled labels):")
+		print(f"    (min, max): ({off_diag.min():.4f}, {off_diag.max():.4f}) mean={off_diag.mean():.4f} std={off_diag.std():.4f}")
+		print(f"    Fraction [sim > 0.5]: {(off_diag > 0.5).float().mean():.4f} (high → class embeddings cluster together)")
+		print(f"    Fraction [sim > 0.9]: {(off_diag > 0.9).float().mean():.4f} (high → near-duplicate class embeddings)")
 
 		flat_sims = inter_cls_sims.masked_fill(~off_diag_mask, -1)
 		top_pairs = torch.triu(flat_sims, diagonal=1).flatten().topk(20)
 		row_idx = top_pairs.indices // n_cls_sample
 		col_idx = top_pairs.indices % n_cls_sample
 
-		print(f"  Top-{len(top_pairs.values)} near-duplicate class pairs (sampled {n_cls_sample} classes):")
+		print(f"  Top-{len(top_pairs.values)} near-duplicate class pairs (sampled {n_cls_sample} labels):")
 		for val, r, c in zip(top_pairs.values.tolist(), row_idx.tolist(), col_idx.tolist()):
 			global_r = cls_sample_idx[r].item()
 			global_c = cls_sample_idx[c].item()
 			name_r = class_names[global_r]
 			name_c = class_names[global_c]
-			print(f"    sim={val:.4f} label[{global_r:5d}]: {name_r} <-> label[{global_c:5d}]: {name_c}")
+			print(f"    sim={val:.4f} label[{global_r:6d}] <-> label[{global_c:6d}] {name_r} <-> {name_c}")
 
 		# ── 5. Max similarity per image to any class ──────────────────
 		max_sims_per_image = sample_sims.max(dim=1).values
-		print(f"  Max similarity per image to any class ({n_sample} sampled images):")
+		print(f"  Max similarity per image to any label ({n_sample} sampled images):")
 		print(f"    min={max_sims_per_image.min():.4f}  "
 				f"max={max_sims_per_image.max():.4f}  "
-				f"mean={max_sims_per_image.mean():.4f}")
+				f"mean={max_sims_per_image.mean():.4f} std={max_sims_per_image.std():.4f}")
 		print(f"    Images with max_sim < 0.1: "
-				f"{(max_sims_per_image < 0.1).float().mean():.4f}  "
-				f"← high means image embeddings far from all classes")
+				f"{(max_sims_per_image < 0.1).float().mean()} "
+				f"← high means image embeddings far from all labels")
 
 		# Clean up diagnostic tensors
 		del sample_img, sample_cls, sample_sims, cls_sample
 		del inter_cls_sims, off_diag, max_sims_per_image
-		torch.cuda.empty_cache()
+		if torch.cuda.is_available():
+			torch.cuda.empty_cache()
 
 	# Step 5: Compute full-set metrics
 	full_metrics = compute_full_set_metrics_from_cache(
@@ -1881,7 +1892,7 @@ def evaluate_best_model(
 	if verbose:
 		print(f"\n[BEST MODEL EVALUATION]")
 		print(f"  ├─ {dataset_name}")
-		print(f"  ├─  {type(model)}")
+		print(f"  ├─  {type(model)} {model.__class__.__name__} {model.name}")
 		print(f"  ├─  Finetune strategy: {finetune_strategy}")
 		print(f"  └─  Checkpoint path: {checkpoint_path}")
 
