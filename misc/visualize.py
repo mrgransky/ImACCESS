@@ -1606,8 +1606,8 @@ def plot_zipfian_curve(
 				alpha=0.8,
 			),			
 		)
-	ax_cum.set_xlabel("Vocabulary fraction consumed (%)", fontsize=10)
-	ax_cum.set_ylabel("Cumulative occurrence share (%)", fontsize=10)
+	ax_cum.set_xlabel("Vocabulary fraction (%)", fontsize=10)
+	ax_cum.set_ylabel("Cumulative occurrence (%)", fontsize=10)
 	ax_cum.set_title("Cumulative Occurrence vs. Vocab Fraction", fontsize=10, fontweight="bold")
 	ax_cum.set_xlim(0, 100)
 	ax_cum.set_ylim(0, 101)

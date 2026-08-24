@@ -1734,8 +1734,8 @@ def build_shared_masks_from_protocol(
 	num_classes = len(class_names)
 
 	if verbose:
-		print("\nBuilding shared masks from Shared Protocol:")
-		print(json.dumps(shared_protocol, indent=2, ensure_ascii=False))
+		print("\nBuilding shared masks from Shared Protocol")
+		# print(json.dumps(shared_protocol, indent=2, ensure_ascii=False))
 
 	shared_vocab = shared_protocol["shared_class_names"]
 	head_labels  = {
