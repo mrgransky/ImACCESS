@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=164G
+#SBATCH --mem=260G
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1,nvme:200
 #SBATCH --time=1-12:00:00
@@ -69,9 +69,9 @@
 #   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
-#SBATCH --array=0-32 # first 11 strats, all cols
+###SBATCH --array=0-32 # first 11 strats, all cols
 ###SBATCH --array=12-14 # only LoRA+
-###SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
+#SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 
 set -euo pipefail
 
@@ -247,7 +247,7 @@ esac
 BATCH_SIZES=(16 64 64 64 64)
 
 # How often (in steps) to print training progress
-PRINT_FREQUENCIES=(500 1000 50 50 25)
+PRINT_FREQUENCIES=(1000 1000 50 50 25)
 SEED="${SEED:-42}"
 
 # Learning rates — three groups based on fine-tuning strategy type:

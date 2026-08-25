@@ -193,11 +193,11 @@ def save_tiered_retrieval_metrics(
 	seed: int,
 	verbose: bool = True,
 ):
-	result_dir = os.path.join(dataset_directory, column, f"seed_{seed}")
-	os.makedirs(result_dir, exist_ok=True)
-
 	output_dir = os.path.join(dataset_directory, "outputs")
 	os.makedirs(output_dir, exist_ok=True)
+
+	result_dir = os.path.join(output_dir, column, f"seed_{seed}")
+	os.makedirs(result_dir, exist_ok=True)
 
 	per_k = extract_per_k_metrics(best_model_result, tier_key="tiered")
 	shared_per_k = extract_per_k_metrics(best_model_result, tier_key="shared_tiered")

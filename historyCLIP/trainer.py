@@ -184,11 +184,19 @@ def main():
 		set_seeds(seed=args.seed)
 		# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 		# print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
+
+		OUTPUT_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
+		os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
+
 		# RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{dataset_type}") # multi_label
-		RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{args.column}/seed_{args.seed}") # ex) multimodal_canonical_labels
+		RESULT_DIRECTORY = os.path.join(
+			OUTPUT_DIRECTORY,
+			f"{args.column}",
+			f"seed_{args.seed}"
+		) # ex) multimodal_canonical_labels
 		os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 
-		shared_protocol_path = os.path.join(DATASET_DIRECTORY, "outputs", "shared_eval_protocol.json")
+		shared_protocol_path = os.path.join(OUTPUT_DIRECTORY, "shared_eval_protocol.json")
 		if not os.path.exists(shared_protocol_path):
 			raise FileNotFoundError(
 				f"Shared evaluation protocol not found: {shared_protocol_path}\n"
