@@ -1,3 +1,5 @@
+from tabnanny import verbose
+
 from utils import *
 import visualize as viz
 import clip
@@ -227,16 +229,19 @@ def auto_calibrate_semantic_threshold(
 	model_name = None
 
 	if verbose:
-		print("\n=== Debugging model attributes ===")
-		print(f"model type: {type(model)}")
+		print("\n[DEBUG] model attributes")
+		print(f"{type(model)}")
 		print(f"Has model_card_data: {hasattr(model, 'model_card_data')}")
+
 		if hasattr(model, 'model_card_data') and model.model_card_data:
 			print(f"  model_card_data.model_id: {model.model_card_data.model_id}")
+
 		print(f"Has _model_card_data: {hasattr(model, '_model_card_data')}")
 		print(f"Has model_name: {hasattr(model, 'model_name')}")
 		print(f"Has name_or_path: {hasattr(model, 'name_or_path')}")
 		print(f"\nmodel[0] type: {type(model[0])}")
 		print(f"Has auto_model: {hasattr(model[0], 'auto_model')}")
+
 		if hasattr(model[0], 'auto_model'):
 			print(f"  auto_model type: {type(model[0].auto_model)}")
 			print(f"  Has config: {hasattr(model[0].auto_model, 'config')}")
@@ -245,7 +250,8 @@ def auto_calibrate_semantic_threshold(
 				print(f"  config._name_or_path: {getattr(cfg, '_name_or_path', 'NOT FOUND')}")
 				print(f"  config.name_or_path: {getattr(cfg, 'name_or_path', 'NOT FOUND')}")
 				print(f"  All config attrs: {[a for a in dir(cfg) if not a.startswith('_')]}")
-		print("=" * 40 + "\n")
+
+		print("="*100)
 	
 	# Method 1: Check model_card_data (Public API)
 	if hasattr(model, 'model_card_data') and model.model_card_data:
@@ -260,6 +266,7 @@ def auto_calibrate_semantic_threshold(
 					m_id = getattr(model._model_card_data, 'model_id', None)
 					if m_id:
 							model_name = m_id
+
 	# Method 3: Check direct attributes on the SentenceTransformer object
 	if not model_name:
 			for attr in ['name_or_path', 'model_name_or_path']:
@@ -268,6 +275,7 @@ def auto_calibrate_semantic_threshold(
 							if val:
 									model_name = val
 									break
+
 	# Method 4: Fallback - Extract from the underlying Transformer's Config
 	if not model_name:
 			try:
@@ -294,10 +302,12 @@ def auto_calibrate_semantic_threshold(
 							print(f"Fallback extraction error: {e}")
 	if not model_name or model_name == "None":
 		model_name = "unknown"
+
 	if verbose:
-		print(f"\nAUTOMATIC THRESHOLD CALIBRATION using embedding model: {model_name}\n")
+		print(f"AUTOMATIC THRESHOLD CALIBRATION | embedding model: {model_name}\n")
 	
 	# TEST PAIRS - Diverse and challenging	
+
 	# CATEGORY 1: Direct Synonyms (MUST match)
 	direct_synonyms = [
 		("soldier", "infantry"),
@@ -408,19 +418,18 @@ def auto_calibrate_semantic_threshold(
 			'category': category_name,
 		}
 
-	cat1_results = compute_similarities(direct_synonyms, "Direct Synonyms")
-	cat2_results = compute_similarities(related_concepts, "Related Concepts")
-	cat3_results = compute_similarities(distant_relations, "Distant Relations")
-	cat4_results = compute_similarities(unrelated_concepts, "Unrelated Concepts")
-	cat5_results = compute_similarities(confusables, "Confusables")
+	cat1_results = compute_similarities(pairs=direct_synonyms, category_name="Direct Synonyms")
+	cat2_results = compute_similarities(pairs=related_concepts, category_name="Related Concepts")
+	cat3_results = compute_similarities(pairs=distant_relations, category_name="Distant Relations")
+	cat4_results = compute_similarities(pairs=unrelated_concepts, category_name="Unrelated Concepts")
+	cat5_results = compute_similarities(pairs=confusables, category_name="Confusables")
 	
 	# DETAILED CATEGORY ANALYSIS
 	if verbose:
 		print("CATEGORY ANALYSIS")
 		for cat_result in [cat1_results, cat2_results, cat3_results, cat4_results, cat5_results]:
 			print(f"{cat_result['category']} (n={len(cat_result['scores'])}):")
-			print(f"  Mean: {cat_result['mean']:.4f}")
-			print(f"  Std:  {cat_result['std']:.4f}")
+			print(f"  Mean±Std: {cat_result['mean']:.4f}±{cat_result['std']:.4f}")
 			print(f"  Range: [{cat_result['min']:.4f}, {cat_result['max']:.4f}]")
 			
 			# Show top-3 and bottom-3 examples
@@ -428,11 +437,11 @@ def auto_calibrate_semantic_threshold(
 
 			print(f"  Highest similarities:")
 			for w1, w2, sim in sorted_details[:3]:
-				print(f"    {w1:20} <-> {w2:20}: {sim:.4f}")
+				print(f"    {w1:35} <-> {w2:35}{sim:.4f}")
 			
 			print(f"  Lowest similarities:")
 			for w1, w2, sim in sorted_details[-3:]:
-				print(f"    {w1:20} <-> {w2:20}: {sim:.4f}")
+				print(f"    {w1:35} <-> {w2:35}{sim:.4f}")
 
 			print()
 	
@@ -833,28 +842,25 @@ def _semantic_jaccard_cached(
 	if verbose:
 		dim = np.asarray(next(iter(emb_cache.values()))).shape if emb_cache else None
 		print("=" * 78)
-		print(
-			f"[sem-jaccard] | n_samples={n_total} | threshold={threshold} "
-			f"| card_priority=adaptive(min(m,n)+1)"
-		)
-		print(f"[sem-jaccard] emb_cache: {len(emb_cache)} labels dim={dim}")
+		print(f"[sem-jaccard]")
+		print(f"  ├─ n_samples={n_total}")
+		print(f"  ├─ threshold={threshold}")
+		print(f"  ├─ card_priority=adaptive(min(m,n)+1)")
+		print(f"  ├─ emb_cache: {len(emb_cache)} labels dim={dim}")
 		uniq_a: Set[str] = set()
 		uniq_b: Set[str] = set()
+
 		for a in sets_a:
 			uniq_a.update(a)
+
 		for b in sets_b:
 			uniq_b.update(b)
+
 		miss_a = uniq_a - emb_cache.keys()
 		miss_b = uniq_b - emb_cache.keys()
-		print(
-			f"[sem-jaccard] coverage A: {len(uniq_a) - len(miss_a)}/{len(uniq_a)} "
-			f"labels embeddable | missing e.g. {sorted(miss_a)[:5]}"
-		)
-		print(
-			f"[sem-jaccard] coverage B: {len(uniq_b) - len(miss_b)}/{len(uniq_b)} "
-			f"labels embeddable | missing e.g. {sorted(miss_b)[:5]}"
-		)
-		print("-" * 78)
+
+		print(f"  ├─ coverage A: {len(uniq_a) - len(miss_a)}/{len(uniq_a)} labels embeddable, missing {sorted(miss_a)[:5]}")
+		print(f"  └─ coverage B: {len(uniq_b) - len(miss_b)}/{len(uniq_b)} labels embeddable, missing: {sorted(miss_b)[:5]}")
 
 	# Main loop                                                          #
 	scores_match: List[float] = []
@@ -1160,6 +1166,64 @@ def compute_clip_visual_grounding(
 
 	return results
 
+def get_embedding_model(embedding_model_id: str, device: str="cuda", verbose: bool=False):
+	if verbose:
+		print(f"STEP 2: Loading embedding model {embedding_model_id} on {device}")
+
+	dtype = torch.float32
+	if torch.cuda.is_available():
+		dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
+	if verbose:
+		print(f"[INFO] {embedding_model_id} Dtype selection: {dtype}")
+	def _optimal_attn_impl() -> str:
+		if not torch.cuda.is_available():
+			return "eager"
+		major, minor = torch.cuda.get_device_capability()
+		compute_cap = major + minor / 10
+		if compute_cap >= 8.0:
+			try:
+				import flash_attn
+				if verbose:
+					print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
+				return "flash_attention_2"
+			except ImportError:
+				if verbose:
+					print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
+		if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
+			if verbose:
+				print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
+			return "sdpa"
+		if verbose:
+			print(f"[INFO] Using eager attention (compute {compute_cap})")
+		return "eager"
+
+	attn_impl = _optimal_attn_impl()
+
+	if verbose:
+		print(f"[INFO] {embedding_model_id} with {attn_impl} attention")
+
+	model_kwargs = {}
+	if "Qwen" in embedding_model_id:
+		model_kwargs = {
+			"attn_implementation": attn_impl,
+			"torch_dtype": dtype,
+		}
+
+	model = SentenceTransformer(
+		model_name_or_path=embedding_model_id,
+		trust_remote_code=True,
+		cache_folder=cache_directory.get(os.getenv('USER'), None),
+		model_kwargs=model_kwargs,
+		token=os.getenv("HUGGINGFACE_TOKEN"),
+		tokenizer_kwargs={"padding_side": "left"},
+	).to(device)
+
+	if verbose:
+		total_params = sum(p.numel() for p in model.parameters())
+		print(f"[LOADED] {embedding_model_id} with {total_params:,} parameters")
+
+	return model
+
 def get_cgd_taxonomy_supervision(
 	df: pd.DataFrame,
 	output_directory: str,
@@ -1243,9 +1307,7 @@ def get_cgd_taxonomy_supervision(
 	
 	# STEP 1: Parse Label Sets and Collect All Unique Labels
 	if verbose:
-		print(f"\n{'='*80}")
-		print("STEP 1: Parsing label sets...")
-		print("="*80)
+		print("\nSTEP 1: Parsing label sets")
 	
 	parsed_sets: Dict[str, List[Set[str]]] = {}
 	all_labels_for_embedding = []
@@ -1262,64 +1324,18 @@ def get_cgd_taxonomy_supervision(
 			total_labels = len(col_labels)
 			avg_labels = total_labels / len(df) if len(df) > 0 else 0
 			unique_labels = len(set(col_labels))
-			print(f"  {col}:")
-			print(f"    Total labels: {total_labels:,}")
-			print(f"    Unique labels: {unique_labels:,}")
-			print(f"    Avg per sample: {avg_labels:.2f}")
+
+			print(f"{col}:")
+			print(f"  ├─ Total labels: {total_labels:,}")
+			print(f"  ├─ Unique labels: {unique_labels:,}")
+			print(f"  └─ Avg per sample: {avg_labels:.2f}\n")
 
 	# STEP 2: Pre-compute Embeddings for Semantic Grounding
-	if verbose:
-		print(f"STEP 2: Computing semantic embeddings with {embedding_model_id}")
-	
-	dtype = torch.float32
-	if torch.cuda.is_available():
-		dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
-	if verbose:
-		print(f"[INFO] {embedding_model_id} Dtype selection: {dtype}")
-	def _optimal_attn_impl() -> str:
-		if not torch.cuda.is_available():
-			return "eager"
-		major, minor = torch.cuda.get_device_capability()
-		compute_cap = major + minor / 10
-		if compute_cap >= 8.0:
-			try:
-				import flash_attn
-				if verbose:
-					print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
-				return "flash_attention_2"
-			except ImportError:
-				if verbose:
-					print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
-		if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
-			if verbose:
-				print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
-			return "sdpa"
-		if verbose:
-			print(f"[INFO] Using eager attention (compute {compute_cap})")
-		return "eager"
-	attn_impl = _optimal_attn_impl()
-	if verbose:
-		print(f"[INFO] {embedding_model_id} with {attn_impl} attention")
-
-	model_kwargs = {}
-	if "Qwen" in embedding_model_id:
-		model_kwargs = {
-			"attn_implementation": attn_impl,
-			"torch_dtype": dtype,
-		}
-
-	model = SentenceTransformer(
-		model_name_or_path=embedding_model_id,
-		trust_remote_code=True,
-		cache_folder=cache_directory.get(os.getenv('USER'), None),
-		model_kwargs=model_kwargs,
-		token=os.getenv("HUGGINGFACE_TOKEN"),
-		tokenizer_kwargs={"padding_side": "left"},
-	).to(device)
-
-	if verbose:
-		total_params = sum(p.numel() for p in model.parameters())
-		print(f"[LOADED] {embedding_model_id} with {total_params:,} parameters")
+	model = get_embedding_model(
+		embedding_model_id=embedding_model_id, 
+		device=device, 
+		verbose=verbose
+	)
 	
 	# Auto-calibrate threshold if not provided
 	if semantic_threshold is None:
@@ -1330,7 +1346,7 @@ def get_cgd_taxonomy_supervision(
 
 	# STEP 3: Compute Three Axes (CGD) for Each Source
 	if verbose:
-		print("\nSTEP 3: Computing CGD metrics for each source...")
+		print(f"\nSTEP 3: CGD metrics (sources: {sources})")
 
 	# Pre-compute embeddings for ALL unique labels across all sources
 	emb_cache = _precompute_label_embeddings(
@@ -1339,8 +1355,6 @@ def get_cgd_taxonomy_supervision(
 		verbose=verbose,
 	)
 
-	anchor_sets = parsed_sets[anchor_column] # anchor embeddings for visual grounding	
-
 	clip_grounding = compute_clip_visual_grounding(
 		df=df,
 		sources=sources,
@@ -1348,6 +1362,9 @@ def get_cgd_taxonomy_supervision(
 		architecture=architecture,
 		verbose=verbose,
 	)
+
+	# anchor embeddings for cross-modal concordance:
+	anchor_sets = parsed_sets[anchor_column]
 	results = []
 	for source_idx, source_col in enumerate(sources, 1):
 		if verbose:
@@ -1580,7 +1597,7 @@ def entropy_vs_performance(
 	"""
 
 	if verbose:
-		print("\nCOMPUTING ENTROPY VS PERFORMANCE ANALYSIS")
+		print("\n[ENTROPY VS PERFORMANCE]")
 		print(f"DF: {df.shape}")
 		print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
 		print(f"reference_source: {perf_reference_source}")
@@ -1615,15 +1632,23 @@ def entropy_vs_performance(
 			all_labels.extend(_parse_label_cell(v))
 		
 		counts = Counter(all_labels)
+
 		total_occ = sum(counts.values())
+
 		unique = len(counts)
+
 		num_singletons = sum(1 for _, c in counts.items() if c == 1)
+
 		singleton_rate = (num_singletons / unique) if unique > 0 else 0.0
 		
 		H = _shannon_entropy(counts, base=base)
+
 		H_max = math.log(unique, base) if unique > 1 else 0.0
+
 		H_norm = (H / H_max) if H_max > 0 else 0.0
+
 		perplexity = (base ** H) if H > 0 else 1.0
+
 		rows.append(
 			{
 				"source": col,
@@ -1638,6 +1663,7 @@ def entropy_vs_performance(
 				"effective_num_labels": float(perplexity),
 			}
 		)
+
 	stats_df = pd.DataFrame(rows).sort_values("source").reset_index(drop=True)
 	
 	if performance is None:
@@ -1673,17 +1699,17 @@ def entropy_vs_performance(
 				verbose=verbose,
 			)
 		elif schema == "flat_metrics_by_source":
-				# Old-style dict: {source: {metric: value}}
-				perf_df = (
-						pd.DataFrame.from_dict(performance, orient="index")
-						.reset_index()
-						.rename(columns={"index": "source"})
-				)
+			# Old-style dict: {source: {metric: value}}
+			perf_df = (
+				pd.DataFrame.from_dict(performance, orient="index")
+				.reset_index()
+				.rename(columns={"index": "source"})
+			)
 		else:
-				raise ValueError(
-						"Unsupported dict schema for performance. Expected either performance.json "
-						"(source->strategy->i2t/t2i...) or flat {source:{metric:...}}."
-				)
+			raise ValueError(
+				f"Unsupported dict schema for performance. Expected either performance.json "
+				f"(source->strategy->i2t/t2i...) or flat {source:{metric:...}}."
+			)
 	else:
 		raise TypeError("performance must be a DataFrame, dict, or None.")
 	
@@ -1714,9 +1740,9 @@ def entropy_vs_performance(
 def compute_entropy_vs_performance(
 	df: pd.DataFrame,
 	performance: Optional[Union[pd.DataFrame, Dict[str, Dict[str, float]]]] = None,
-	label_columns: Optional[List[str]] = None,
 	base: float = 2.0,
-	verbose: bool = False
+	label_columns: Optional[List[str]] = None,
+	verbose: bool = False,
 ) -> pd.DataFrame:
 	"""
 	Compute label-distribution entropy (and related stats) per supervision source,
@@ -1726,22 +1752,23 @@ def compute_entropy_vs_performance(
 	Parameters
 	----------
 	df : pd.DataFrame
-			Must contain the specified label columns.
+		Must contain the specified label columns.
 	performance : DataFrame or dict (optional)
-			If dict: {source_name: {"i2t_map10_overall": ..., "t2i_map10_overall": ..., ...}}
-			If DataFrame: must contain a column 'source' plus any metric columns you want.
+		If dict: {source_name: {"i2t_map10_overall": ..., "t2i_map10_overall": ..., ...}}
+		If DataFrame: must contain a column 'source' plus any metric columns you want.
 	label_columns : list[str] (optional)
-			Defaults to your 6 label sources.
+		Defaults to your 6 label sources.
 	base : float
-			Log base for entropy. base=2 => bits. base=math.e => nats.
+		Log base for entropy. base=2 => bits. base=math.e => nats.
+	
 	Returns
 	-------
 	pd.DataFrame
-			One row per label source with entropy/statistics, merged with performance if provided.
+		One row per label source with entropy/statistics, merged with performance if provided.
 	"""
 	if verbose:
-		print("\nCOMPUTING ENTROPY VS PERFORMANCE ANALYSIS")
-		print(f"Dataset size: {df.shape}")
+		print("\n[ENTROPY VS PERFORMANCE]")
+		print(f"{type(df)} {df.shape}")
 		print(f"Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
 	
 	if label_columns is None:
@@ -1773,32 +1800,39 @@ def compute_entropy_vs_performance(
 		all_labels: List[str] = []
 		for v in df[col].tolist():
 			all_labels.extend(_parse_label_cell(v))
+
 		counts = Counter(all_labels)
 		total_occ = sum(counts.values())
 		unique = len(counts)
+
 		if verbose:
-			print(f"  Total label occurrences: {total_occ:,}")
-			print(f"  Unique labels: {unique:,}")
+			print(f"  Total label occurrences: {total_occ}")
+			print(f"  Unique labels: {unique}")
 			print(f"  Average labels per sample: {total_occ/len(df):.2f}")
-		
+
 		# Singletons (unique labels appearing exactly once in the entire dataset)
 		num_singletons = sum(1 for _, c in counts.items() if c == 1)
 		singleton_rate = (num_singletons / unique) if unique > 0 else 0.0
+
 		if verbose:
 			print(f"  Singletons: {num_singletons}/{unique} ({singleton_rate*100:.2f}%)")
 				
-			# Show top-5 most frequent labels
-			top_labels = counts.most_common(5)
-			print(f"  Top-5 labels:")
+			# Show top-K most frequent labels
+			K: int = 7
+			top_labels = counts.most_common(K)
+			print(f"  Top-{len(top_labels)} labels:")
 			for rank, (label, count) in enumerate(top_labels, 1):
 				freq_pct = (count / total_occ * 100) if total_occ > 0 else 0
-				print(f"    {rank}. '{label}': {count:,} ({freq_pct:.2f}%)")
+				print(f"    {rank} {label:<35}{count:6d} ({freq_pct:.2f}%)")
+
 		H = _shannon_entropy(counts, base=base)
 		H_max = math.log(unique, base) if unique > 1 else 0.0  # max entropy if uniform over K
 		H_norm = (H / H_max) if H_max > 0 else 0.0
+
 		# Interpretable transforms
 		perplexity = (base ** H) if H > 0 else 1.0  # "effective" support size in label space
 		eff_num_labels = perplexity  # same notion under this definition
+
 		if verbose:
 			print(f"  Entropy (H): {H:.3f} {'bits' if base == 2.0 else 'units'}")
 			print(f"  Max entropy (H_max): {H_max:.3f} (uniform distribution)")
@@ -1813,6 +1847,7 @@ def compute_entropy_vs_performance(
 				print(f"  📊 Distribution: MODERATELY DIVERSE")
 			else:
 				print(f"  📊 Distribution: HIGHLY UNIFORM (well-balanced)")
+
 		rows.append(
 			{
 				"source": col,
@@ -1881,90 +1916,11 @@ def compute_entropy_vs_performance(
 
 	return merged
 
-def compute_label_agreement_and_singletons(df: pd.DataFrame):
-	print(f"Computing label agreement and singletons for {len(df)} samples")
-	print(f"{list(df.columns)}")
-	COLUMNs = [
-		'llm_based_labels', 'vlm_based_labels', 'multimodal_labels',
-		'llm_canonical_labels', 'vlm_canonical_labels', 'multimodal_canonical_labels',
-	]
-	# cols = df.columns[-6:].tolist()
-	# print(cols)
-
-	parsed_cols = {}
-	for col in COLUMNs:
-		if col not in df.columns:
-			print(f"Column {col} not found in the dataframe")
-			continue
-		label_list_raw = df[col].tolist()
-		all_labels = []
-		parsed_rows = []
-		for val in label_list_raw:
-				# Handle various data formats (list, string-list, or NaN)
-				if isinstance(val, list):
-						row_lbls = val
-				elif pd.isna(val) or val == "" or val == "[]":
-						row_lbls = []
-				elif isinstance(val, str):
-						try:
-								row_lbls = ast.literal_eval(val)
-						except:
-								row_lbls = []
-				else:
-						row_lbls = []
-				
-				all_labels.extend(row_lbls)
-				parsed_rows.append(set(row_lbls)) # Store as sets for agreement logic
-		
-		parsed_cols[col] = parsed_rows
-		unique_labels = sorted(list(set(all_labels)))
-		label_counts = Counter(all_labels)
-		label_singletons = [l for l, count in label_counts.items() if count == 1]
-		
-		print(f"\n[{col.upper()}]")
-		print(f"Total Labels: {len(all_labels)}")
-		print(f"Unique Labels: {len(unique_labels)}")
-		print(
-			f"Singletons: {len(label_singletons)}/{len(unique_labels)} "
-			f"({len(label_singletons)/len(unique_labels)*100 if len(unique_labels)>0 else 0:.2f}%)"
-		)
-		print("-" * 50)
-	
-	# --- Agreement Analysis (The "Grounding" Metric) ---
-	# Check if there are LLM and VLM canonical columns
-	l_can = [c for c in df.columns if 'LLM_CANONICAL' in c.upper()]
-	v_can = [c for c in df.columns if 'VLM_CANONICAL' in c.upper()]
-
-	if l_can and v_can:
-		llm_sets = parsed_cols[l_can[0]]
-		vlm_sets = parsed_cols[v_can[0]]
-		
-		jaccard_scores = []
-		at_least_one_intersect = 0
-		exact_matches = 0
-		
-		for l_set, v_set in zip(llm_sets, vlm_sets):
-			intersection = l_set.intersection(v_set)
-			union = l_set.union(v_set)
-			
-			if len(union) > 0:
-				jaccard_scores.append(len(intersection) / len(union))
-				if len(intersection) > 0:
-					at_least_one_intersect += 1
-			
-			if l_set == v_set and len(l_set) > 0:
-				exact_matches += 1
-		
-		avg_j = sum(jaccard_scores)/len(jaccard_scores) if jaccard_scores else 0
-		print(f"CROSS-MODAL AGREEMENT ANALYSIS {l_can[0]} <-> {v_can[0]}")
-		print(f"Mean Jaccard Index: {avg_j:.4f}")
-		print(f"Partial Agreement (>=1 shared label): {at_least_one_intersect/len(llm_sets)*100:.2f}%")
-		print(f"Exact Match: {exact_matches}/{len(llm_sets)} ({exact_matches/len(llm_sets)*100:.2f}%)")
-	else:
-		print(f"l_can: {l_can}, v_can: {v_can} => no agreement could be computed!")
-
-def get_singleton_in_uniques(df: pd.DataFrame):
-	print(f"\n[SINGETONS IN UNIQUES] {df.shape}")
+def get_singletons(df: pd.DataFrame, output_dir: str):
+	print("="*100)
+	print(f"[SINGETONS]")
+	print(type(df), df.shape)
+	print(df.info(verbose=True, memory_usage="deep"))
 	COLUMNs = [
 		'llm_based_labels', 'vlm_based_labels', 'multimodal_labels',
 		'llm_canonical_labels', 'vlm_canonical_labels', 'multimodal_canonical_labels',
@@ -1973,13 +1929,14 @@ def get_singleton_in_uniques(df: pd.DataFrame):
 	# print(cols)
 
 	for i, col in enumerate(COLUMNs):
+		print(f"\n{i} {col}")
 		if col not in df.columns:
 			print(f"<!> {col} not found in dataframe columns!")
 			continue
 
 		label_list: List[List[str]] = df[col].tolist()
 
-		print(f"\n[{col.upper()}] {len(label_list)} {type(label_list)} labels: {label_list[:3]}")
+		print(f"  ├─ {len(label_list)} {type(label_list)} {label_list[:5]}")
 		labels = list()
 
 		for i, lbl in enumerate(label_list):
@@ -2003,9 +1960,10 @@ def get_singleton_in_uniques(df: pd.DataFrame):
 
 			labels.extend(lbl)
 
-		print(f"Total labels: {len(labels)} {type(labels)}")
+		print(f"  ├─ Total parsed labels: {len(labels)} {type(labels)}")
+
 		unique_labels = sorted(list(set(labels)))
-		print(f"{len(unique_labels)} unique labels: {type(unique_labels)} {unique_labels[:10]}")
+		print(f"  ├─ unique labels: {len(unique_labels)} {type(unique_labels)}")
 
 		# Count frequencies
 		label_counts = Counter(labels)
@@ -2016,7 +1974,9 @@ def get_singleton_in_uniques(df: pd.DataFrame):
 		
 		# Singleton analysis
 		label_singletons = label_counts_df[label_counts_df['Count'] == 1]['Label'].tolist()
-		print(f"[{col.upper()}] Singleton {type(label_singletons)}: {len(label_singletons)}/{len(unique_labels)} ({len(label_singletons) / len(unique_labels) * 100:.2f}%):")
-		print(label_singletons[:25])
-		print("="*100)
+		print(f"  └─ Singleton {len(label_singletons)}/{len(unique_labels)} ({len(label_singletons) / len(unique_labels) * 100:.2f}%):")
+		print(f"{type(label_singletons)} {label_singletons[:25]}")
 
+		label_counts_df.to_csv(os.path.join(output_dir, f"{col}_unique_labels.csv"), index=False)
+
+	print("="*100)

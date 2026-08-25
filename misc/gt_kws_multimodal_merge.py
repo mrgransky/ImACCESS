@@ -223,20 +223,12 @@ def merge_csv_files(
 		print(f"[Multimodal] {multimodal_duplicate_count:,} ({multimodal_duplicate_count/len(df)*100:.1f}%)")
 		print(f"   ✓ Verified: 0 duplicates remaining")
 	
-	# singleton analysis
-	stats.get_singleton_in_uniques(df=df)
-	stats.compute_label_agreement_and_singletons(df=df)
+	stats.get_singletons(df=df, output_dir=OUTPUT_DIR)
+	stats.compute_entropy_vs_performance(df=df, verbose=verbose)
 
-	entropy_stats = stats.compute_entropy_vs_performance(df=df, verbose=verbose)
-	# stats.get_cgd_taxonomy_supervision(
-	# 	df=df,
-	# 	embedding_model_id=embedding_model_id,
-	# 	output_directory=OUTPUT_DIR, 
-	# 	verbose=verbose
-	# )
 	try:
-		mean = load_pickle(fpath=os.path.join(os.path.dirname(dataset_dir), "img_rgb_mean.gz"))
-		std = load_pickle(fpath=os.path.join(os.path.dirname(dataset_dir), "img_rgb_std.gz"))
+		mean = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_mean.gz"))
+		std = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_std.gz"))
 	except Exception as e:
 		mean = [0.52, 0.50, 0.48]
 		std = [0.27, 0.27, 0.26]

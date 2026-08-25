@@ -91,9 +91,7 @@ def get_multi_label_stratified_split(
 			_freq_source = f"manual override = {min_label_frequency}"
 
 	if verbose:
-		print(f"\n{'='*70}")
 		print(f"\n[MULTI-LABEL STRATIFIED SPLIT]")
-		print(f"{'='*70}")
 		print(f"  ├─ val_split_pct        : {val_split_pct}")
 		print(f"  ├─ stratification_order : {stratification_order}")
 		print(f"  ├─ min_label_frequency  : {min_label_frequency}  ({_freq_source})")
@@ -449,11 +447,14 @@ def build_shared_eval_protocol(
 		print(f"\n  [Tier assignment]")
 		print(f"  ├─ Shared classes          : {len(shared_class_names):,}")
 		print(f"  ├─ Head (Pareto {pareto_threshold:.0%})       : {n_head:,}  (cutoff idx = {pareto_cutoff})")
-		print(f"  ├─ Rare (bottom {rare_percentile:.0%})      : {n_rare:,}")
+		print(f"  ├─ Rare (bottom {rare_percentile:.0%})       : {n_rare:,}")
+
 		if not torch.isnan(rare_frequency_threshold):
 			print(f"  ├─ Rare freq threshold     : {rare_frequency_threshold.item():.1f}")
+
 		else:
 			print(f"  ├─ Rare freq threshold     : n/a (degenerate)")
+
 		# neither head nor rare == "body"
 		body_n = len(shared_class_names) - n_head - n_rare
 		print(f"  ├─ Body (neither)          : {body_n:,}")

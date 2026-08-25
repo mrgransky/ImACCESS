@@ -351,10 +351,8 @@ def get_multimodal_annotation(
 	df['vlm_based_labels'] = vlm_based_labels
 	df['multimodal_labels'] = multimodal_labels
 
-	# singleton analysis
-	stats.get_singleton_in_uniques(df=df)
-	stats.compute_label_agreement_and_singletons(df=df)
-	entropy_stats = stats.compute_entropy_vs_performance(df=df, verbose=verbose)
+	stats.get_singletons(df=df, output_dir=OUTPUT_DIR)
+	stats.compute_entropy_vs_performance(df=df, verbose=verbose)
 
 	try:
 		mean = load_pickle(fpath=os.path.join(os.path.dirname(csv_file), "img_rgb_mean.gz"))
