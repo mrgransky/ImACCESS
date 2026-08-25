@@ -1940,8 +1940,6 @@ def get_singletons(df: pd.DataFrame, output_dir: str):
 		labels = list()
 
 		for i, lbl in enumerate(label_list):
-			# print(i, type(lbl), lbl)
-
 			if isinstance(lbl, list):
 				# It is a valid list of labels, proceed
 				pass
@@ -1972,11 +1970,12 @@ def get_singletons(df: pd.DataFrame, output_dir: str):
 			columns=['Label', 'Count']
 		).sort_values(by='Count', ascending=False)
 		
-		# Singleton analysis
 		label_singletons = label_counts_df[label_counts_df['Count'] == 1]['Label'].tolist()
+
 		print(f"  └─ Singleton {len(label_singletons)}/{len(unique_labels)} ({len(label_singletons) / len(unique_labels) * 100:.2f}%):")
+
 		print(f"{type(label_singletons)} {label_singletons[:25]}")
 
-		label_counts_df.to_csv(os.path.join(output_dir, f"{col}_unique_labels.csv"), index=False)
+		label_counts_df.to_csv(os.path.join(output_dir, f"{col}_x_{len(unique_labels)}_unique_labels.csv"), index=False)
 
 	print("="*100)
