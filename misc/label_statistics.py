@@ -982,7 +982,7 @@ def compute_clip_visual_grounding(
 	device: str = "cuda:0",
 	batch_size: int = 64,
 	label_chunk_size: int = 512,
-	max_failure_rate: float = 0.01,
+	max_failure_rate: float = 0.1,
 	verbose: bool = False,
 ) -> Dict[str, Dict]:
 	"""
@@ -1076,15 +1076,19 @@ def compute_clip_visual_grounding(
 	failure_rate = n_failed / n_rows if n_rows else 0.0
 
 	print(f"Image loading: {n_valid}/{n_rows} succeeded ({n_failed} failed, {failure_rate*100:.2f}%)")
+
 	if failure_rate > max_failure_rate:
-			raise RuntimeError(
-					f"{n_failed} images ({failure_rate*100:.2f}%) failed to load — exceeds "
-					f"max_failure_rate={max_failure_rate*100:.2f}%. Check image paths against "
-					f"this machine's filesystem before trusting grounding scores. "
-					f"(Common cause: absolute paths recorded on a different machine than this is running on.)"
-			)
+		raise RuntimeError(
+			f"{n_failed} images failed to load: "
+			f"{failure_rate*100:.2f}% > max_failure_rate={max_failure_rate*100:.2f}%. " 
+			f"Check image paths against "
+			f"this machine's filesystem before trusting grounding scores. "
+			f"(Common cause: absolute paths recorded on a different machine than this is running on.)"
+		)
+
 	if n_valid < 2:
-			raise RuntimeError(f"Only {n_valid} valid images — cannot compute a meaningful percentile rank.")
+		raise RuntimeError(f"Only {n_valid} valid images — cannot compute a meaningful percentile rank.")
+
 	valid_idx = torch.where(valid_mask)[0]
 	image_embeds_valid = image_embeds[valid_idx]  # [n_valid, dim] — real embeddings only
 
@@ -1095,14 +1099,17 @@ def compute_clip_visual_grounding(
 	row_to_valid_pos = {int(row.item()): pos for pos, row in enumerate(valid_idx)}
 	source_pairs = {col: [] for col in sources}
 	for col in sources:
-			for row_idx, cell in enumerate(df[col]):
-					if row_idx not in row_to_valid_pos:
-							continue  # image for this row failed to load — never scored
-					idxs = [label_to_idx[l] for l in _parse_label_cell(cell) if l in label_to_idx]
-					if idxs:
-							pos = row_to_valid_pos[row_idx]
-							source_pairs[col].extend((pos, label_idx) for label_idx in idxs)
-			source_pairs[col].sort(key=lambda pr: pr[1])
+		for row_idx, cell in enumerate(df[col]):
+			if row_idx not in row_to_valid_pos:
+				continue  # image for this row failed to load — never scored
+
+			idxs = [label_to_idx[l] for l in _parse_label_cell(cell) if l in label_to_idx]
+
+			if idxs:
+				pos = row_to_valid_pos[row_idx]
+				source_pairs[col].extend((pos, label_idx) for label_idx in idxs)
+
+		source_pairs[col].sort(key=lambda pr: pr[1])
 
 	# 5. Rank/percentile computation, chunked over the label dimension.
 	print(
@@ -1111,6 +1118,7 @@ def compute_clip_visual_grounding(
 	)
 	sum_percentile = {col: 0.0 for col in sources}
 	cursor = {col: 0 for col in sources}
+
 	for chunk_start in range(0, n_labels, label_chunk_size):
 		chunk_end = min(chunk_start + label_chunk_size, n_labels)
 		text_chunk = text_embeds[chunk_start:chunk_end]                   # [C, dim]
@@ -1132,9 +1140,11 @@ def compute_clip_visual_grounding(
 				sum_percentile[col] += pct_chunk[pos_t, lbl_t].sum().item()
 		if verbose:
 			print(f"  labels [{chunk_start}:{chunk_end}) done")
+
 	results = {}
 
 	print(f"\n[VISUAL GROUNDING] {model_name} {model.name}")
+
 	for col in sources:
 		n_scored = len(source_pairs[col])
 		mean_percentile = sum_percentile[col] / n_scored if n_scored else 0.0

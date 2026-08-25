@@ -821,10 +821,12 @@ def get_validation_metrics(
 	
 	cache_file = os.path.join(
 		cache_dir,
-		f"{dataset_name}_{finetune_strategy}_"
+		# f"{dataset_name}_"
+		f"{finetune_strategy}_"
 		f"bs_{validation_loader.batch_size}_"
 		f"nw_{num_workers}_"
-		f"{model_class_name}_{model_arch_name.replace('/', '_')}_"
+		# f"{model_class_name}_"
+		f"{model_arch_name.replace('/', '_')}_"
 		f"val_emb.pt"
 	)
 

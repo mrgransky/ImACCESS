@@ -2579,8 +2579,8 @@ def lora_plus_finetune_multi_label(
 					print(
 						f"\t\t[Grad norms e{epoch+1} b{bidx+1}] "
 						f"(min, max) "
-						f"A: ({min(grad_norms_A):.4f}, {max(grad_norms_A):.4f}) "
-						f"B: ({min(grad_norms_B):.4f}, {max(grad_norms_B):.4f})"
+						f"A: ({min(grad_norms_A):.6f}, {max(grad_norms_A):.6f}) "
+						f"B: ({min(grad_norms_B):.6f}, {max(grad_norms_B):.6f})"
 					)
 
 			# Guard: skip optimizer step if grads are still corrupt post-unscale
