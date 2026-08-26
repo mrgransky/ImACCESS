@@ -1009,7 +1009,7 @@ def get_validation_metrics(
 		print(f"    Fraction [sim > 0.9]: {(off_diag > 0.9).float().mean():.4f} (high → near-duplicate class embeddings)")
 
 		flat_sims = inter_cls_sims.masked_fill(~off_diag_mask, -1)
-		top_pairs = torch.triu(flat_sims, diagonal=1).flatten().topk(20)
+		top_pairs = torch.triu(flat_sims, diagonal=1).flatten().topk(25)
 		row_idx = top_pairs.indices // n_cls_sample
 		col_idx = top_pairs.indices % n_cls_sample
 
@@ -1019,7 +1019,7 @@ def get_validation_metrics(
 			global_c = cls_sample_idx[c].item()
 			name_r = class_names[global_r]
 			name_c = class_names[global_c]
-			print(f"    sim={val:.4f} label[{global_r:6d}] <-> label[{global_c:6d}] {name_r} <-> {name_c}")
+			print(f"    sim: {val:.6f} label[{global_r:6d}] <-> label[{global_c:6d}] {name_r} <-> {name_c}")
 
 		# ── 5. Max similarity per image to any class ──────────────────
 		max_sims_per_image = sample_sims.max(dim=1).values
