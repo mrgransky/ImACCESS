@@ -49,6 +49,49 @@ cache_directory = {
 
 # Global variable for worker processes
 canonical_labels_global = None
+canonical_labels_global_lower = None
+
+def init_worker_canonical(canonical_dict):
+	global canonical_labels_global
+	global canonical_labels_global_lower
+	canonical_labels_global = canonical_dict
+
+	# Build a lowercase fallback map for the worker
+	canonical_labels_global_lower = {k.lower(): v for k, v in canonical_dict.items()}
+
+def _build_case_registry(original_label_counts: Dict[str, int]) -> Dict[str, str]:
+	"""
+	Build a lowercase -> preferred-surface-form registry from the corpus-wide
+	label frequency dict.
+
+	Since original_label_counts is built from documents that already passed
+	through _normalize_label_case() upstream (in cluster() Step 1), there
+	should be at most one real surface form per lowercase key already. This
+	function guards against the rare case where two forms slip through
+	(e.g. if this function is called with pre-fold data) by keeping the
+	higher-frequency form.
+
+	Parameters
+	----------
+	original_label_counts : Dict[str, int]
+		Corpus-wide frequency of every real (case-folded) label.
+
+	Returns
+	-------
+	Dict[str, str]
+		{lowercase_key: preferred_surface_form}
+	"""
+	registry: Dict[str, str] = {}
+	for label, freq in original_label_counts.items():
+		key = label.lower()
+		if key not in registry:
+			registry[key] = label
+		else:
+			# Guard: keep whichever surface form has higher corpus frequency
+			existing_freq = original_label_counts.get(registry[key], 0)
+			if freq > existing_freq:
+				registry[key] = label
+	return registry
 
 def _normalize_label_case(
 	documents: List[List[str]], 
@@ -115,12 +158,15 @@ def _normalize_label_case(
 	# Highest total frequency wins; ties broken alphabetically for determinism.
 	winner_map: Dict[str, str] = {}
 	collapsed_groups = 0
+
 	for key, surfaces in case_groups.items():
 		if len(surfaces) == 1:
 			winner_map[surfaces[0]] = surfaces[0]
 			continue
+
 		collapsed_groups += 1
 		winner = max(surfaces, key=lambda s: (surface_freq[s], s))
+
 		for s in surfaces:
 			winner_map[s] = winner
 
@@ -133,12 +179,15 @@ def _normalize_label_case(
 		print(f"  Unique labels after fold: {n_after:,} (was {n_before:,})")
 
 		if collapsed_groups > 0:
-			n_examples = min(25, collapsed_groups)
+			# n_examples = min(25, collapsed_groups)
+			n_examples = collapsed_groups
+
 			examples = [
 				(surfaces, winner_map[surfaces[0]])
 				for key, surfaces in list(case_groups.items())
 				if len(surfaces) > 1
 			][:n_examples]
+
 			print(f"\t{len(examples)} Examples:")
 			for surfaces, winner in examples:
 				print(f"\t\t{surfaces} -> '{winner}'")
@@ -150,10 +199,6 @@ def _normalize_label_case(
 	]
 
 	return normalized_documents
-
-def init_worker_canonical(canonical_dict):
-	global canonical_labels_global
-	canonical_labels_global = canonical_dict
 
 def parallel_canonical_mapping(labels_str):
 	if isinstance(labels_str, str):
@@ -177,6 +222,8 @@ def parallel_canonical_mapping(labels_str):
 	for label in labels:
 		if label in canonical_labels_global:
 			canonical_labels_.append(canonical_labels_global[label])
+		elif label.lower() in canonical_labels_global_lower: # FALLBACK
+			canonical_labels_.append(canonical_labels_global_lower[label.lower()])
 		# else: label was removed as problematic, skip it
 	
 	return canonical_labels_
@@ -295,6 +342,10 @@ def get_canonical_labels(
 		print(clustered_df.head(10))
 
 	canonical_map = clustered_df.set_index('label')['canonical'].to_dict()
+
+	# Build lowercase fallback map
+	lower_to_canonical = {k.lower(): v for k, v in canonical_map.items()}
+
 	canonical_labels = list()
 	missing_labels = set()
 
@@ -318,6 +369,8 @@ def get_canonical_labels(
 		for label in sample_labels:
 			if label in canonical_map:
 				mapped.append(canonical_map[label])
+			elif label.lower() in lower_to_canonical: # FALLBACK
+				mapped.append(lower_to_canonical[label.lower()])
 			else:
 				missing_labels.add(label)
 		
@@ -2543,6 +2596,11 @@ def assign_canonical_labels(
 			scores.append(subsumers / max(len(cluster_lbls), 1))
 		return np.array(scores)
 
+
+	# Corpus-wide case registry — built once, outside the loop, since it needs
+	# visibility across ALL clusters, not just the one currently being processed.
+	case_registry = _build_case_registry(original_label_counts)
+
 	print(f"\nCanonical labels per cluster")
 	cluster_canonicals    = {}
 	virtual_used_count    = 0
@@ -2608,6 +2666,15 @@ def assign_canonical_labels(
 						restored.append(best_surface)
 					virtual_hypernym = " ".join(restored)
 
+					# Global override: if this exact string already exists as a real label
+					# ANYWHERE in the corpus (case-insensitively), defer to that spelling
+					# instead of the locally-restored guess. This is what stops 'industrial'
+					# (virtual, synthesised here) from surviving next to 'Industrial' (a real
+					# label's canonical chosen in a completely different cluster).
+					vh_key = virtual_hypernym.lower()
+					if vh_key in case_registry:
+							virtual_hypernym = case_registry[vh_key]
+
 		candidates    = cluster_texts + ([virtual_hypernym] if virtual_hypernym else [])
 		virtual_flags = [False] * cluster_size + ([True] if virtual_hypernym else [])
 
@@ -2628,7 +2695,6 @@ def assign_canonical_labels(
 		similarities = cosine_similarity(centroid.reshape(1, -1), all_embeddings)[0]
 
 		if original_label_counts and cluster_size > 1:
-
 			# ── Score 2: frequency (log-normalised; virtual gets 0) ──────
 			label_freqs = np.array([
 				original_label_counts.get(c, 0) if not virtual_flags[i] else 0
@@ -2642,10 +2708,12 @@ def assign_canonical_labels(
 			for lbl in cluster_texts:
 				h = _norm_token(lbl.split()[-1])
 				real_heads[h] = real_heads.get(h, 0) + 1
-			head_scores = np.array([
-				real_heads.get(_norm_token(c.split()[-1]), 0) / cluster_size
-				for c in candidates
-			])
+			head_scores = np.array(
+				[
+					real_heads.get(_norm_token(c.split()[-1]), 0) / cluster_size
+					for c in candidates
+				]
+			)
 
 			# ── Score 4: containment / hypernym-ness (normalised) ─────────
 			cont_scores = _containment_scores(candidates, cluster_texts)

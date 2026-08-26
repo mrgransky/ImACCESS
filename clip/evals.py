@@ -1675,7 +1675,7 @@ def get_multilabel_alignment_score(
 			mask = pos_counts == n_pos
 			if mask.sum() > 0:
 				group_score = hits[mask].float().mean().item()
-				print(f"  └─ {n_pos:3d} positive labels ({mask.sum().item():5d} samples): {group_score:.3f}")
+				print(f"  └─ {n_pos:3d} positive labels ({mask.sum().item():6d} samples): {group_score:.3f}")
 
 		# breakdown by class frequency tier
 		# Requires class_freq to be passed in — add as optional parameter

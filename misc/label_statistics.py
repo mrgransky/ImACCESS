@@ -1918,15 +1918,13 @@ def compute_entropy_vs_performance(
 
 def get_singletons(df: pd.DataFrame, output_dir: str):
 	print("="*100)
-	print(f"[SINGETONS]")
-	print(type(df), df.shape)
+	print(f"[SINGETONS] {df.shape}")
 	print(df.info(verbose=True, memory_usage="deep"))
+
 	COLUMNs = [
 		'llm_based_labels', 'vlm_based_labels', 'multimodal_labels',
 		'llm_canonical_labels', 'vlm_canonical_labels', 'multimodal_canonical_labels',
 	]
-	# cols = df.columns[-6:].tolist()
-	# print(cols)
 
 	for i, col in enumerate(COLUMNs):
 		print(f"\n{i} {col}")
