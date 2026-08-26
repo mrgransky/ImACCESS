@@ -138,12 +138,6 @@ def get_multimodal_annotation(
 		quantization_bits=vlm_quantization_bits,
 		verbose=verbose,
 	)
-
-	# if torch.cuda.is_available():
-	# 	if verbose:
-	# 		print(f"[MEMORY] Clearing CUDA memory BEFORE running next pipeline...")
-	# 	gc.collect()
-	# 	torch.cuda.empty_cache()
 		
 	llm_based_labels = get_llm_based_labels(
 		csv_file=csv_file,
@@ -161,11 +155,6 @@ def get_multimodal_annotation(
 		print(f"{len(vlm_based_labels)} VLM-based {type(vlm_based_labels)} labels")
 		print(f"{len(llm_based_labels)} LLM-based {type(llm_based_labels)} labels")		
 	
-	# if torch.cuda.is_available():
-	# 	if verbose:
-	# 		print(f"[MEMORY] Clearing CUDA memory BEFORE merging labels...")
-	# 	torch.cuda.empty_cache()
-
 	if len(llm_based_labels) != len(vlm_based_labels):
 		raise ValueError("LLM and VLM based labels must have same length")
 	
@@ -175,12 +164,6 @@ def get_multimodal_annotation(
 		verbose=verbose,
 	)
 	
-	# if verbose:
-	# 	print(f"Clearing CUDA memory before post-processing...")
-	# if torch.cuda.is_available():
-	# 	torch.cuda.empty_cache()
-	# gc.collect()
-
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
 		on_bad_lines='skip',

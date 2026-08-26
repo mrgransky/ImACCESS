@@ -105,10 +105,6 @@ def merge_csv_files(
 		verbose=verbose,
 	)
 
-	# # clear cache
-	# torch.cuda.empty_cache()
-	# gc.collect()
-
 	vlm_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
 		labels=df['vlm_based_labels'].tolist(),
 		model_id=embedding_model_id,
@@ -119,10 +115,6 @@ def merge_csv_files(
 		nc=nc,
 		verbose=verbose,
 	)
-
-	# # clear cache
-	# torch.cuda.empty_cache()
-	# gc.collect()
 
 	multimodal_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
 		labels=df['multimodal_labels'].tolist(),
@@ -135,12 +127,8 @@ def merge_csv_files(
 		verbose=verbose,
 	)
 
-	# # clear cache
-	# torch.cuda.empty_cache()
-	# gc.collect()
-
 	if verbose:
-		print(f"[SUMMARY] Canonical labels")
+		print(f"\n[SUMMARY] Canonical labels")
 		print(f"LLM         {type(llm_canonical_labels)} {len(llm_canonical_labels)}")
 		print(f"VLM         {type(vlm_canonical_labels)} {len(vlm_canonical_labels)}")
 		print(f"Multimodal: {type(multimodal_canonical_labels)} {len(multimodal_canonical_labels)}")
@@ -150,29 +138,32 @@ def merge_csv_files(
 	df['multimodal_canonical_labels'] = multimodal_canonical_labels
 
 	if verbose:
-		print(f"[FILTERING] samples with no valid canonical labels")
+		print(f"\n[FILTERING] samples with no valid canonical labels")
 
 	before_count = len(df)
+
 	# Create mask for valid samples (those with canonical labels)
 	valid_mask = df['multimodal_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) > 0
+
 	# Filter dataframe
 	df = df[valid_mask].copy()
+
 	after_count = len(df)
+
 	if verbose:
 		print(f"\n[DONE] Canonical mapping:")
 		print(f"   Samples before: {before_count:,}")
 		print(f"   Samples after: {after_count:,}")
+
 		if before_count != after_count:
 			removed = before_count - after_count
 			print(f"   Removed {removed:,} samples with no valid labels ({removed/before_count*100:.2f}%)")
 		
-		# Show some statistics
 		label_counts = df['multimodal_canonical_labels'].apply(len)
+
 		print(f"\nLabels per sample:")
-		print(f"     Mean: {label_counts.mean():.2f}")
-		print(f"     Median: {label_counts.median():.0f}")
-		print(f"     Min: {label_counts.min()}")
-		print(f"     Max: {label_counts.max()}")
+		print(f"μ±σ: {label_counts.mean():.1f}±{label_counts.std():.1f} (median: {label_counts.median()})")
+		print(f"(min, max): ({label_counts.min()}, {label_counts.max()})")
 
 	# Deduplicate canonical labels safely
 	if verbose:
