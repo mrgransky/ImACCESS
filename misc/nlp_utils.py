@@ -134,15 +134,18 @@ detector_all = (
 )
 
 def _post_process_(
-	labels_list: List[List[str]], 
+	labels_list: List[List[str]],
+	col: str,
 	min_kw_ch_length: int = 3,
 	max_kw_word_length: int = 5,
-	verbose: bool = False
+	verbose: bool = False,
 ) -> List[List[str]]:
+
 	if verbose:
 		print(f"[POST-PROCESSING]")
-		print(f"  Input {type(labels_list)} length: {len(labels_list) if labels_list else 0}")
-		print(f"  Stopwords loaded: {len(STOPWORDS)}")
+		print(f"  Column: {col}")
+		print(f"  {len(labels_list) if labels_list else 0} labels_list: {type(labels_list)}")
+		print(f"  Stopwords: {len(STOPWORDS)}")
 		print(f"  Minimum keyword length: {min_kw_ch_length}")
 	
 	if not labels_list:

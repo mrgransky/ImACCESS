@@ -90,7 +90,7 @@ def compute_loss_masks(
 		1. pos_weight  — loss weighting, depends on pw_mode (training only)
 		2. head/rare   — evaluation tiers, based purely on frequency (all strategies)
 	Args:
-			loader     : DataLoader whose .dataset has .labels and .label_dict
+			loader           : DataLoader whose .dataset has .labels and .label_dict
 			num_classes      : Total number of classes (including inactive)
 			device           : Target device for returned tensors
 			pareto_threshold : Cumulative frequency fraction defining "head" classes (default 80%)
@@ -107,13 +107,18 @@ def compute_loss_masks(
 			head_mask    [num_classes] bool     cuda — Pareto top classes by cumulative frequency
 			rare_mask    [num_classes] bool     cuda — bottom rare_percentile of active classes
 			train_freq   [num_classes] float32  cpu  — raw per-class counts
-			N            int                        — total training samples
+			N            int                         — total training samples
 	"""
 	
 	# 1. Count label frequencies
 	N = len(train_loader.dataset)
+	train_loader_name = getattr(train_loader, 'name', 'UNNAMED_LOADER')
+	if verbose:
+		print("-"*120)
+		print(f"[LOSS MASKING] {train_loader_name} (N = {N})")
 
 	train_freq = torch.zeros(num_classes, dtype=torch.float32)
+
 	for i, raw in enumerate(train_loader.dataset.labels):
 		# print(i, raw) # 522 ['railroad', 'train', 'station']
 		try:
@@ -134,22 +139,24 @@ def compute_loss_masks(
 		)
 
 	if verbose:
-		print(f"\n[LOSS MASKING] Train Frequency:")
+		print(f"\nTrain Frequency f(l):")
 		print(f"  ├─ {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device}")
 		print(f"  ├─ (min, max): ({train_freq.min()}, {train_freq.max()}) sum: {train_freq.sum()}")
-		print(f"  └─ mean: {train_freq.mean():.2f}, std: {train_freq.std():.2f}, median: {train_freq.median()}")
+		print(f"  └─ μ±σ: {train_freq.mean():.2f}±{train_freq.std():.2f} (median: {train_freq.median()})")
 
-	# 2. active_mask — classes with at least one training example
+	# 2.1. active_mask — classes with at least one training example
 	active_mask = (train_freq > 0).to(device)
+
+	# 2.2. Raw inverse frequency ratio:
 	ratio = (N - train_freq) / train_freq.clamp(min=1)
 
 	if verbose:
-		print(f"\n[LOSS MASKING] Raw Ratio:")
+		print(f"\nRaw Ratio r(l) = ( (N - f(l)) / f(l) ) :")
 		print(f"  ├─ {type(ratio)} {ratio.shape} {ratio.dtype} {ratio.device}")
 		print(f"  ├─ (min, max): ({ratio.min():.2f}, {ratio.max():.2f}) sum: {ratio.sum():.2f}")
-		print(f"  └─ mean: {ratio.mean():.2f}, std: {ratio.std():.2f} median: {ratio.median()}")
+		print(f"  └─ μ±σ: {ratio.mean():.2f}±{ratio.std():.2f} (median: {ratio.median()})")
 
-	# 3. pos_weight — training loss weighting only
+	# 3.1. pos_weight — training loss weighting only
 	if pw_mode == "log":
 		scaled = torch.log1p(ratio)
 	elif pw_mode == "sqrt":
@@ -159,16 +166,17 @@ def compute_loss_masks(
 	else:
 		raise ValueError(f"Unknown pw_mode '{pw_mode}'. Choose from: 'log', 'sqrt', 'linear'.")
 
+	# 3.2. cap the max value of the pos_weight
 	if pw_max_cap:
 		if verbose:
-			print(f"pw_max_cap: {pw_max_cap}")
+			print(f"cap the max value of the pos_weight to pw_max_cap: {pw_max_cap}")
 		scaled = scaled.clamp(min=1.0, max=pw_max_cap)
 
 	if verbose:
-		print(f"\n[LOSS MASKING] Scaled: (pw_mode: {pw_mode})")
+		print(f"\nScaled: (pw_mode: {pw_mode}) w(l) = {pw_mode}(r(l)) :")
 		print(f"  ├─ {type(scaled)} {scaled.shape} {scaled.dtype} {scaled.device}")
 		print(f"  ├─ (min, max): ({scaled.min():.2f}, {scaled.max():.2f}) sum: {scaled.sum():.2f}")
-		print(f"  └─ mean: {scaled.mean():.2f}, std: {scaled.std():.2f} median: {scaled.median()}")
+		print(f"  └─ μ±σ: {scaled.mean():.2f}±{scaled.std():.2f} (median: {scaled.median()})")
 
 	# inactive classes always get weight 1.0 (they are masked out in the loss anyway)
 	pos_weight = torch.where(
@@ -195,9 +203,8 @@ def compute_loss_masks(
 		# degenerate dataset — no rare classes
 		rare_mask = torch.zeros(num_classes, dtype=torch.bool, device=device)
 	
-	train_loader_name = getattr(train_loader, 'name', 'UNNAMED_LOADER')
 	if verbose:
-		print(f"\n[LOSS MASKING] Label frequencies {train_loader_name}")
+		print(f"\nLabel frequencies for {train_loader_name}")
 		print(f"  ├─ Total samples:            {N:,}")
 		print(f"  ├─ Total labels:             {num_classes:,}")
 		print(f"  ├─ Train freq:               [{train_freq.min():.1f}, {train_freq.max():.1f}] μ={train_freq.mean():.1f} σ={train_freq.std():.1f} {type(train_freq)} {train_freq.shape} {train_freq.dtype}, {train_freq.device}")
@@ -210,6 +217,7 @@ def compute_loss_masks(
 		print(f"  ├─ Active classes (freq>0):  {active_mask.sum().item():,} / {num_classes:,} {type(active_mask)} {active_mask.shape}")
 		print(f"  ├─ Head  (Pareto {pareto_threshold}):       {head_mask.sum().item():,}")
 		print(f"  └─ Rare  (bottom {rare_percentile}):       {rare_mask.sum().item():,}")
+		print("-"*120)
 
 	diagnose_train_val_coverage(
 		train_freq=train_freq,

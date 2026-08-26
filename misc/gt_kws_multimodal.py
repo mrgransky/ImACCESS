@@ -138,14 +138,12 @@ def get_multimodal_annotation(
 		quantization_bits=vlm_quantization_bits,
 		verbose=verbose,
 	)
-	if verbose:
-		print(f"\n[DONE] Extracted {len(vlm_based_labels)} VLM-based {type(vlm_based_labels)} labels")
 
-	if torch.cuda.is_available():
-		if verbose:
-			print(f"[MEMORY] Clearing CUDA memory BEFORE running next pipeline...")
-		gc.collect()
-		torch.cuda.empty_cache()
+	# if torch.cuda.is_available():
+	# 	if verbose:
+	# 		print(f"[MEMORY] Clearing CUDA memory BEFORE running next pipeline...")
+	# 	gc.collect()
+	# 	torch.cuda.empty_cache()
 		
 	llm_based_labels = get_llm_based_labels(
 		csv_file=csv_file,
@@ -158,15 +156,16 @@ def get_multimodal_annotation(
 		quantization_bits=llm_quantization_bits,
 		verbose=verbose,
 	)
-	if verbose:
-		print(f"\n[DONE] Extracted {len(llm_based_labels)} LLM-based {type(llm_based_labels)} labels")		
-	
-	if torch.cuda.is_available():
-		if verbose:
-			print(f"[MEMORY] Clearing CUDA memory BEFORE merging labels...")
-		torch.cuda.empty_cache()
 
-	# Merge, post-process, save, and split
+	if verbose:
+		print(f"{len(vlm_based_labels)} VLM-based {type(vlm_based_labels)} labels")
+		print(f"{len(llm_based_labels)} LLM-based {type(llm_based_labels)} labels")		
+	
+	# if torch.cuda.is_available():
+	# 	if verbose:
+	# 		print(f"[MEMORY] Clearing CUDA memory BEFORE merging labels...")
+	# 	torch.cuda.empty_cache()
+
 	if len(llm_based_labels) != len(vlm_based_labels):
 		raise ValueError("LLM and VLM based labels must have same length")
 	
@@ -176,11 +175,11 @@ def get_multimodal_annotation(
 		verbose=verbose,
 	)
 	
-	if verbose:
-		print(f"Clearing CUDA memory before post-processing...")
-	if torch.cuda.is_available():
-		torch.cuda.empty_cache()
-	gc.collect()
+	# if verbose:
+	# 	print(f"Clearing CUDA memory before post-processing...")
+	# if torch.cuda.is_available():
+	# 	torch.cuda.empty_cache()
+	# gc.collect()
 
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
@@ -202,22 +201,31 @@ def get_multimodal_annotation(
 	# Check if the dataset is a full dataset
 	is_full_dataset = "_chunk_" not in os.path.basename(csv_file)
 	if is_full_dataset:
-		if verbose:
-			print(f"{os.path.basename(csv_file)} is a full dataset => (post processing required!)")
 
 		if verbose:
-			print(f"Post-processing VLM-based labels...")
-		vlm_based_labels = _post_process_(labels_list=vlm_based_labels, verbose=verbose)
+			print(f"[FULL DATASET] {os.path.basename(csv_file)} (post processing required!)")
 
-		if verbose:
-			print(f"Post-processing LLM-based labels...")
-		llm_based_labels = _post_process_(labels_list=llm_based_labels, verbose=verbose)
+		vlm_based_labels = _post_process_(
+			labels_list=vlm_based_labels, 
+			col="vlm_based_labels", 
+			verbose=verbose
+		)
+
+		llm_based_labels = _post_process_(
+			labels_list=llm_based_labels, 
+			col="llm_based_labels", 
+			verbose=verbose
+		)
 		
-		if verbose:
-			print(f"Post-processing Multimodal labels...")
-		multimodal_labels = _post_process_(labels_list=multimodal_labels, verbose=verbose)
+		multimodal_labels = _post_process_(
+			labels_list=multimodal_labels, 
+			col="multimodal_labels", 
+			verbose=verbose
+		)
 
-		# --- LLM canonical labels ---
+		########################################################
+		# Canonical labels:
+		########################################################
 		llm_canonical_labels, _ = get_canonical_labels(
 			labels=llm_based_labels,
 			label_source="llm",
@@ -227,8 +235,7 @@ def get_multimodal_annotation(
 			nc=nc,
 			verbose=verbose,
 		)
-		
-		# --- VLM canonical labels ---
+
 		vlm_canonical_labels, _ = get_canonical_labels(
 			labels=vlm_based_labels,
 			label_source="vlm",
@@ -239,7 +246,6 @@ def get_multimodal_annotation(
 			verbose=verbose,
 		)
 
-		# --- Multimodal (fused) canonical labels ---
 		multimodal_canonical_labels, _ = get_canonical_labels(
 			labels=multimodal_labels,
 			model_id=embedding_model_id,
@@ -252,7 +258,7 @@ def get_multimodal_annotation(
 
 		# check length of each before setting into column:
 		if verbose:
-			print(f"\nCanonical labels length check:")
+			print(f"\n[SUMMARY] Canonical labels")
 			print(f"LLM:        {type(llm_canonical_labels)} {len(llm_canonical_labels)}")
 			print(f"VLM:        {type(vlm_canonical_labels)} {len(vlm_canonical_labels)}")
 			print(f"Multimodal: {type(multimodal_canonical_labels)} {len(multimodal_canonical_labels)}")
@@ -443,6 +449,7 @@ def main():
 	args = parser.parse_args()
 	args.device = torch.device(args.device)
 	args.num_workers = min(args.num_workers, os.cpu_count())
+
 	if args.verbose:
 		print_args_table(args=args, parser=parser)
 		print(args)

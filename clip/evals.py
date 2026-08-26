@@ -5,54 +5,63 @@ from utils import *
 import clip
 
 def check_lora_weight_health(model, optimizer=None, verbose=True):
-		issues = []
-		stats = {"A": {}, "B": {}}
-		
-		for name, param in model.named_parameters():
-				if not param.requires_grad:
-						continue
-				group = "A" if "lora_A" in name else "B" if "lora_B" in name else None
-				if group is None:
-						continue
-				has_nan = torch.isnan(param.data).any().item()
-				has_inf = torch.isinf(param.data).any().item()
-				norm = param.data.norm().item()
-				if has_nan or has_inf:
-						issues.append(f"  ✗ [weight] {name}: nan={has_nan} inf={has_inf} norm={norm:.4e}")
-				stats[group][name] = norm
+	issues = []
+	stats = {"A": {}, "B": {}}
+	
+	for name, param in model.named_parameters():
+		if not param.requires_grad:
+			continue
 
-				# Check optimizer state for this parameter
-				if optimizer is not None and param in optimizer.state:
-						state = optimizer.state[param]
-						for state_key in ("exp_avg", "exp_avg_sq"):  # Adam m and v
-								if state_key in state:
-										s = state[state_key]
-										if torch.isnan(s).any() or torch.isinf(s).any():
-												issues.append(
-														f"  ✗ [optim.{state_key}] {name}: "
-														f"nan={torch.isnan(s).any().item()} "
-														f"inf={torch.isinf(s).any().item()}"
-												)
+		group = "A" if "lora_A" in name else "B" if "lora_B" in name else None
 
-		A_norms = list(stats["A"].values())
-		B_norms = list(stats["B"].values())
-		
-		if verbose:
-				print("-"*60)
-				print(f"[Weight Health]")
-				if A_norms:
-						print(f"lora_A (min, max): ({min(A_norms):.4f}, {max(A_norms):.4f}) mean: {np.mean(A_norms):.4f}")
-				if B_norms:
-						print(f"lora_B (min, max): ({min(B_norms):.4f}, {max(B_norms):.4f}) mean: {np.mean(B_norms):.4f}")
-				if issues:
-						print(f"  !! {len(issues)} corrupted tensors:")
-						for issue in issues[:20]:  # cap output
-								print(issue)
-				else:
-						print(f"[OK] All weights and optimizer states healthy")
-				print("-"*60)
-		
-		return len(issues) == 0, A_norms, B_norms
+		if group is None:
+			continue
+
+		has_nan = torch.isnan(param.data).any().item()
+		has_inf = torch.isinf(param.data).any().item()
+		norm = param.data.norm().item()
+
+		if has_nan or has_inf:
+			issues.append(f"  ✗ [weight] {name}: nan={has_nan} inf={has_inf} norm={norm:.4e}")
+
+		stats[group][name] = norm
+
+		# Check optimizer state for this parameter
+		if optimizer is not None and param in optimizer.state:
+			state = optimizer.state[param]
+			for state_key in ("exp_avg", "exp_avg_sq"):  # Adam m and v
+				if state_key in state:
+					s = state[state_key]
+					if torch.isnan(s).any() or torch.isinf(s).any():
+						issues.append(
+							f"  ✗ [optim.{state_key}] {name}: "
+							f"nan={torch.isnan(s).any().item()} "
+							f"inf={torch.isinf(s).any().item()}"
+						)
+
+	A_norms = list(stats["A"].values())
+	B_norms = list(stats["B"].values())
+	
+	if verbose:
+		print("-"*60)
+		print(f"[LoRA Family Weight Health Analysis]")
+
+		if A_norms:
+			print(f"lora_A (min, max): ({min(A_norms):.4f}, {max(A_norms):.4f}) μ±σ: {np.mean(A_norms):.2f}±{np.std(A_norms):.2f}")
+
+		if B_norms:
+			print(f"lora_B (min, max): ({min(B_norms):.4f}, {max(B_norms):.4f}) μ±σ: {np.mean(B_norms):.2f}±{np.std(B_norms):.2f}")
+
+		if issues:
+			print(f"  !! {len(issues)} corrupted tensors:")
+			for issue in issues[:20]:  # cap output
+				print(issue)
+		else:
+			print(f"[OK] All weights and optimizer states healthy")
+
+		print("-"*60)
+	
+	return len(issues) == 0, A_norms, B_norms
 
 def check_training_health(
 	model,
@@ -155,7 +164,7 @@ def check_training_health(
 	# Decision logic
 	should_abort = len(issues) >= 2
 	if verbose:
-		print(f"\n{'─'*60}")
+		print(f"{'─'*60}")
 		print(f"[Training Health Check — Epoch {epoch+1} | {mode.upper()}]")
 		print(f"  Config: temperature={temperature} lr={learning_rate:.1e}")
 		if issues:
@@ -175,7 +184,7 @@ def check_training_health(
 			print(f"  Aborting to save GPU time.")
 		else:
 				print(f"  ✓  Training healthy — continuing.")
-		print(f"{'─'*60}\n")
+		print(f"{'─'*60}")
 
 	return should_abort
 
@@ -241,7 +250,7 @@ def compute_tiered_retrieval_metrics(
 	verbose: bool = False,
 ) -> Dict:
 	if verbose:
-		print(f"\nTiered retrieval metrics {mode}")
+		print(f"\nTiered retrieval metrics")
 
 	if use_fixed_masks:
 		# R1-C shared-vocabulary benchmark: no adaptive filtering,
@@ -266,13 +275,14 @@ def compute_tiered_retrieval_metrics(
 	supported_mask = val_support >= min_val_support  # [C]
 
 	if verbose:
+		print(f"  ├─ {mode}")
 		print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
 		print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
 		print(f"  ├─ use_fixed_masks: {use_fixed_masks} => min_val_support: {min_val_support}")
-		print(f"  ├─ Head mask: {type(head_mask)} {head_mask.shape} {head_mask.device}")
-		print(f"  ├─ Rare mask: {type(rare_mask)} {rare_mask.shape} {rare_mask.device}")
-		print(f"  ├─ Supported mask: {type(supported_mask)} {supported_mask.shape} {supported_mask.device}")
-		print(f"  └─ Active mask: {type(active_mask)} {active_mask.shape} {active_mask.device}")
+		print(f"  ├─ Head mask: {head_mask.shape} (min, max): ({head_mask.min().item():.2f}, {head_mask.max().item():.2f})")
+		print(f"  ├─ Rare mask: {rare_mask.shape} (min, max): ({rare_mask.min().item():.2f}, {rare_mask.max().item():.2f})")
+		print(f"  ├─ Supported mask: {supported_mask.shape} (min, max): ({supported_mask.min().item():.2f}, {supported_mask.max().item():.2f})")
+		print(f"  └─ Active mask: {active_mask.shape} (min, max): ({active_mask.min().item():.2f}, {active_mask.max().item():.2f})")
 
 	# Shared protocol validation
 	if use_fixed_masks and verbose:
@@ -280,7 +290,8 @@ def compute_tiered_retrieval_metrics(
 		shared_head_supported = head_mask & active_mask & supported_mask
 		shared_rare_supported = rare_mask & active_mask & supported_mask
 
-		print(f"\nShared Protocol Validation {mode}")
+		print(f"\nShared Protocol Validation")
+		print(f"  ├─ {mode}")
 		print(f"  ├─ Shared labels in run              : {active_mask.sum().item()}")
 		print(f"  ├─ Shared labels with val support ≥1 : {shared_supported.sum().item()}")
 		print(f"  ├─ Shared head labels with support   : {shared_head_supported.sum().item()}")
@@ -553,9 +564,11 @@ def compute_retrieval_metrics_from_similarity(
 	"""
 	if verbose:
 		print(f"\n[RETRIEVAL METRICS]")
-		print(f"  ├─ Mode: {mode}")
+		print(f"  ├─ {mode}")
 		print(f"  ├─ Top-K: {topK_values}")
 		print(f"  ├─ similarity_matrix: {similarity_matrix.shape}")
+		print(f"  ├─ query_labels: {type(query_labels)} {query_labels.shape}")
+		print(f"  └─ candidate_labels: {type(candidate_labels)} {candidate_labels.shape}")
 
 	num_queries, num_candidates = similarity_matrix.shape
 	device = similarity_matrix.device
@@ -571,16 +584,15 @@ def compute_retrieval_metrics_from_similarity(
 	if verbose and is_multi_label:
 		if mode == "Image-to-Text":
 			relevant_per_query = (query_labels > 0).sum(dim=1).float()
-			n_candidates = similarity_matrix.shape[1]
-			print(f"\n[I2T Sanity] Relevant items per query (out of {n_candidates} candidates):")
+			print(f"\n[I2T Sanity] Relevant items per query (out of {similarity_matrix.shape[1]} labels):")
 			print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
-			print(f"  ├─ mean: {relevant_per_query.mean():.2f} std: {relevant_per_query.std():.2f}")
+			print(f"  ├─ μ±σ: {relevant_per_query.mean():.2f}±{relevant_per_query.std():.2f}")
 			print(f"  └─ zero-relevant queries: {(relevant_per_query == 0).sum().item()}")
 		else:
 			relevant_per_query = candidate_labels.sum(dim=0).float()
-			print(f"\n[T2I Sanity] Relevant items per query class (out of {similarity_matrix.shape[1]} images):")
+			print(f"\n[T2I Sanity] Relevant items per query (out of {similarity_matrix.shape[1]} images):")
 			print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
-			print(f"  ├─ mean: {relevant_per_query.mean():.2f} std: {relevant_per_query.std():.2f}")
+			print(f"  ├─ μ±σ: {relevant_per_query.mean():.2f}±{relevant_per_query.std():.2f}")
 			print(f"  └─ zero-relevant queries: {(relevant_per_query == 0).sum().item()}")
 
 	# ── Cache — versioned so old (incorrect-denominator) caches are never reused ──
@@ -812,8 +824,7 @@ def get_validation_metrics(
 		print(f"  ├─ {dataset_name}")
 		print(f"  ├─ {model_class_name} {model_arch_name}")
 		print(f"  ├─ {finetune_strategy}")
-		print(f"  ├─ {num_samples} samples")
-		print(f"  ├─ {n_classes} labels")
+		print(f"  ├─ {num_samples} samples x {n_classes} labels")
 		print(f"  ├─ bs: {validation_loader.batch_size}")
 		print(f"  ├─ chunk_size: {chunk_size}")
 		print(f"  ├─ temperature: {temperature}")
@@ -1664,7 +1675,7 @@ def get_multilabel_alignment_score(
 			mask = pos_counts == n_pos
 			if mask.sum() > 0:
 				group_score = hits[mask].float().mean().item()
-				print(f"  └─ {n_pos} positive labels ({mask.sum().item()} samples): {group_score}")
+				print(f"  └─ {n_pos:3d} positive labels ({mask.sum().item():5d} samples): {group_score:.3f}")
 
 		# breakdown by class frequency tier
 		# Requires class_freq to be passed in — add as optional parameter
@@ -1686,14 +1697,14 @@ def get_multilabel_alignment_score(
 			if first_hit_ranks:
 				first_hit_ranks_t = torch.tensor(first_hit_ranks, dtype=torch.float32)
 				print(f"First correct class rank (hit images only):")
-				print(f"mean={first_hit_ranks_t.mean():.2f}  median={first_hit_ranks_t.median():.2f}")
+				print(f"μ±σ: {first_hit_ranks_t.mean():.2f}±{first_hit_ranks_t.std():.2f} (median={first_hit_ranks_t.median():.2f})")
 				print(f"rank=1: {(first_hit_ranks_t == 1).float().mean():.3f}")
 				print(f"rank≤3: {(first_hit_ranks_t <= 3).float().mean():.3f}")
 
 		# Miss analysis — for non-hit images, how close was the nearest true class?
 		miss_indices = (~hits).nonzero(as_tuple=True)[0]
 		if len(miss_indices) > 0:
-			n_miss_sample = min(len(miss_indices), 1000)
+			n_miss_sample = min(len(miss_indices), 5000)
 			miss_sample = miss_indices[:n_miss_sample]
 			miss_sims_all = logits[miss_sample]             # [n_miss, C]
 			miss_labels_all = labels[miss_sample].bool()    # [n_miss, C]
@@ -1715,14 +1726,14 @@ def get_multilabel_alignment_score(
 			
 			if miss_true_ranks:
 				miss_ranks_t = torch.tensor(miss_true_ranks, dtype=torch.float32)
-				print(f"Best true class rank for MISS images (sample of {n_miss_sample}):")
-				print(f"mean={miss_ranks_t.mean():.1f} std: {miss_ranks_t.std():.1f} median={miss_ranks_t.median():.1f}")
+				print(f"\nBest true label rank for MISS images (sample of {n_miss_sample}):")
+				print(f"μ±σ: {miss_ranks_t.mean():.1f}±{miss_ranks_t.std():.1f} (median={miss_ranks_t.median():.1f})")
 				print(f"rank≤10:  {(miss_ranks_t <= 10).float().mean():.3f}")
 				print(f"rank≤50:  {(miss_ranks_t <= 50).float().mean():.3f}")
 				print(f"rank≤100: {(miss_ranks_t <= 100).float().mean():.3f}")
 
 				if miss_ranks_t.mean() > 100:
-					print(f"mean rank: {miss_ranks_t.mean():.1f} high (>>100) class embeddings geometrically far from image embeddings.")
+					print(f"mean rank: {miss_ranks_t.mean():.1f} high (>>100) label embeddings geometrically far from image embeddings.")
 				elif miss_ranks_t.mean() <= 50:
 					print(f"mean rank: {miss_ranks_t.mean():.1f} is low (≤50) images close but other classes rank higher (inter-class confusion).")
 				else:

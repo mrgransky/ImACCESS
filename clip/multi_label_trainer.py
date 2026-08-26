@@ -524,7 +524,7 @@ def probe_multi_label(
 		print(f"  ├─ minimum_epochs = {minimum_epochs}")
 		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR={learning_rate})")
 	
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -1191,7 +1191,7 @@ def full_finetune_multi_label(
 		print(f"  ├─ minimum_epochs = {minimum_epochs}")
 		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR={learning_rate})")
 
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -1782,7 +1782,7 @@ def lora_finetune_multi_label(
 		print(f"  ├─ minimum_epochs = {minimum_epochs}")
 		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR={learning_rate})")
 
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -2314,17 +2314,14 @@ def lora_plus_finetune_multi_label(
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
 		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"   ├─ number of samples: {N}")
-		print(f"   ├─ number of classes: {num_classes}")
+		print(f"   ├─ samples: {N} x label(s): {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
 
 	# T2I: no pos_weight — rows are classes, cols are batch images
 	# The imbalance is already corrected via I2T; T2I provides directional symmetry
-	criterion_t2i = torch.nn.BCEWithLogitsLoss(
-		reduction='none',
-	)
+	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none',)
 
 	if verbose:
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
@@ -2394,7 +2391,7 @@ def lora_plus_finetune_multi_label(
 		print(f"  ├─ minimum_epochs = {minimum_epochs}")
 		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR={learning_rate})")
 
 	is_ampere_or_newer = cuda_capability[0] >= 8
 
@@ -2430,7 +2427,7 @@ def lora_plus_finetune_multi_label(
 	model.eval()
 	all_class_embeds = []
 	text_batch_size = validation_loader.batch_size
-	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	print(f"\nPre-encoding {num_classes} class texts (batch_size: {text_batch_size})")
 	with torch.no_grad():
 		with torch.amp.autocast(
 			device_type=device.type, 
@@ -2449,14 +2446,11 @@ def lora_plus_finetune_multi_label(
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
 
 	if verbose:
-		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
+		print(f"All {num_classes} labels Embeddings (frozen text encoder)")
 		print(f"   ├─ {type(all_class_embeds)}")
-		print(f"   ├─ {all_class_embeds.shape}")
+		print(f"   ├─ {all_class_embeds.shape} [n_labels, embed_dim]")
 		print(f"   ├─ {all_class_embeds.dtype}")
 		print(f"   └─ {all_class_embeds.device}")
-
-	# switch back to training mode
-	model.train()
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -2498,6 +2492,7 @@ def lora_plus_finetune_multi_label(
 	
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
+		torch.cuda.empty_cache()
 		model.train()
 		print(f"\nEpoch [{epoch + 1}/{num_epochs}]")
 		
@@ -2587,8 +2582,7 @@ def lora_plus_finetune_multi_label(
 			# fires only on FP16 (V100 and older) due to overflow.
 			# On BF16/Ampere this is defensive dead code — kept for correctness.
 			if torch.isnan(grad_norm) or torch.isinf(grad_norm):
-				if verbose:
-					print(f"[WARNING] Corrupt grad_norm at epoch {epoch+1} batch {bidx+1}: {grad_norm} | isnan(): {torch.isnan(grad_norm)} | isinf(): {torch.isinf(grad_norm)}")
+				print(f"[WARNING] Corrupt grad_norm at epoch {epoch+1} batch {bidx+1}: {grad_norm} | isnan(): {torch.isnan(grad_norm)} | isinf(): {torch.isinf(grad_norm)}")
 
 				optimizer.zero_grad(set_to_none=True)
 
@@ -2662,15 +2656,17 @@ def lora_plus_finetune_multi_label(
 			print(f"[CRITICAL] Epoch {epoch+1}: zero valid batches — full NaN cascade detected.")
 			# Clear corrupted Adam momentum buffers
 			for group in optimizer.param_groups:
-					for p in group['params']:
-							if p in optimizer.state:
-									optimizer.state[p] = {}
+				for p in group['params']:
+					if p in optimizer.state:
+						optimizer.state[p] = {}
+
 			# Restore best weights if available
 			if early_stopping.best_weights is not None:
-					early_stopping._restore_best_weights(model)
-					print(f"  Restored weights from epoch {early_stopping.get_best_epoch()+1}.")
+				early_stopping._restore_best_weights(model)
+				print(f"  Restored weights from epoch {early_stopping.get_best_epoch()+1}.")
 			else:
-					print(f"  No checkpoint available. Aborting.")
+				print(f"  No checkpoint available. Aborting.")
+
 			break
 
 		# average losses
@@ -2698,7 +2694,7 @@ def lora_plus_finetune_multi_label(
 		# Weight health check before validation
 		healthy, A_norms, B_norms = check_lora_weight_health(
 			model=model, 
-			optimizer=optimizer,  # pass optimizer
+			optimizer=optimizer,
 			verbose=verbose,
 		)
 
@@ -3191,7 +3187,7 @@ def rslora_finetune_multi_label(
 		print(f"  ├─ minimum_epochs = {minimum_epochs}")
 		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR={learning_rate})")
 
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -3816,7 +3812,7 @@ def dora_finetune_multi_label(
 		print(f"  ├─ minimum_epochs = {minimum_epochs}")
 		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR={learning_rate})")
 
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -4474,7 +4470,7 @@ def vera_finetune_multi_label(
 		print(f"  ├─ minimum_epochs = {minimum_epochs}")
 		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR={learning_rate})")
 
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -5158,7 +5154,7 @@ def ia3_finetune_multi_label(
 		print(f"  ├─ minimum_epochs = {minimum_epochs}")
 		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR={learning_rate})")
 
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -5730,7 +5726,7 @@ def clip_adapter_finetune_multi_label(
 		print(f"  ├─ minimum_epochs = {minimum_epochs}")
 		print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
 		print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
-		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR={learning_rate})")
 
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -5930,7 +5926,7 @@ def clip_adapter_finetune_multi_label(
 			validation_loader=validation_loader,
 			device=device,
 			topK_values=topk_values,
-			finetune_strategy=mode,
+			finetune_strategy=clip_adapter_method,
 			cache_dir=results_dir,
 			is_training=True,
 			model_hash=get_model_hash(model),
@@ -6028,7 +6024,7 @@ def clip_adapter_finetune_multi_label(
 		rare_mask=rare_mask,
 		early_stopping=early_stopping,
 		checkpoint_path=mdl_fpth,
-		finetune_strategy=mode,
+		finetune_strategy=clip_adapter_method,
 		device=device,
 		cache_dir=results_dir,
 		lora_params=None,
@@ -6268,15 +6264,17 @@ def tip_adapter_finetune_multi_label(
 	
 	if verbose:
 		print(f"\n{mode.upper()} [Multi-Label]")
-		print(f"   ├─ Method: {tip_adapter_method}")
+		print(f"   ├─ {dataset_name}")
+		print(f"   ├─ train: {len(train_loader.dataset)} samples")
+		print(f"   ├─ val: {len(validation_loader.dataset)} samples")
+		print(f"   ├─ {model_name} {model_arch}")
+		print(f"   ├─ {tip_adapter_method}")
 		print(f"   ├─ Beta[init]: {initial_beta}")
 		print(f"   ├─ Alpha[init]: {initial_alpha}")
-		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
-		print(f"   ├─ Model      : {model_name} {model_arch}")
 		print(f"   ├─ Batch size : {train_loader.batch_size}")
 		print(f"   ├─ Device     : {type(device)} {device}")
 		print(f"   ├─ Temperature: {temperature}")
-		print(f"   ├─ Loss Weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
+		print(f"   ├─ Loss Weights: {loss_weights}")
 		print(f"   ├─ Support Shots: {support_shots}")
 	
 	if torch.cuda.is_available():
@@ -6432,6 +6430,7 @@ def tip_adapter_finetune_multi_label(
 	
 	# Access the adapter module from the visual encoder
 	adapter_module = getattr(model.visual, f"{tip_adapter_method.replace('-', '_')}_proj", None)
+
 	if adapter_module is None:
 		# Print available attributes to help debug
 		visual_attrs = [a for a in dir(model.visual) if not a.startswith('_')]
@@ -6503,8 +6502,7 @@ def tip_adapter_finetune_multi_label(
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
 		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"   ├─ samples: {N}")
-		print(f"   ├─ label(s): {num_classes}")
+		print(f"   ├─ samples: {N} x label(s): {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
@@ -6566,7 +6564,7 @@ def tip_adapter_finetune_multi_label(
 			print(f"  ├─ minimum_epochs = {minimum_epochs}")
 			print(f"  ├─ estimated_epochs = {estimated_epochs} ({estimated_epochs/minimum_epochs:.1f}x minimum_epochs)")
 			print(f"  ├─ T_max = {T_max} steps [({estimated_epochs} estimated epochs x {len(train_loader)} batches/epoch)]")
-			print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
+			print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR={learning_rate})")
 	else:
 		optimizer = None
 		scheduler = None
@@ -6641,7 +6639,7 @@ def tip_adapter_finetune_multi_label(
 			rare_mask=rare_mask,
 			early_stopping=None,
 			checkpoint_path=None,
-			finetune_strategy=mode,
+			finetune_strategy=tip_adapter_method,
 			device=device,
 			cache_dir=results_dir,
 			topk_values=topk_values,
@@ -6805,7 +6803,7 @@ def tip_adapter_finetune_multi_label(
 			validation_loader=validation_loader,
 			device=device,
 			topK_values=topk_values,
-			finetune_strategy=mode,
+			finetune_strategy=tip_adapter_method,
 			cache_dir=results_dir,
 			is_training=True,
 			model_hash=get_model_hash(model),
@@ -6866,7 +6864,7 @@ def tip_adapter_finetune_multi_label(
 			should_abort = check_training_health(
 				model=model,
 				epoch=epoch,
-				mode=mode,
+				mode=tip_adapter_method,
 				training_losses=training_losses,
 				validation_losses=validation_losses,
 				align_score=align_score,
@@ -6916,7 +6914,7 @@ def tip_adapter_finetune_multi_label(
 		rare_mask=rare_mask,
 		early_stopping=early_stopping,
 		checkpoint_path=mdl_fpth if num_epochs > 0 else None,
-		finetune_strategy=mode,
+		finetune_strategy=tip_adapter_method,
 		device=device,
 		cache_dir=results_dir,
 		topk_values=topk_values,

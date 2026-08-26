@@ -81,20 +81,18 @@ def merge_csv_files(
 		print(f">> Merged {type(df)} from {len(csv_files)} CSV files: {df.shape}\n{list(df.columns)}")
 		print(df.info(verbose=True, memory_usage='deep'))
 
-	if verbose:
-		print(f"Post-processing LLM-based labels...")
-	llm_based_labels = _post_process_(labels_list=df['llm_based_labels'].tolist(), verbose=verbose)
-	df['llm_based_labels'] = llm_based_labels  # Update the DataFrame column
+	raw_cols = [
+		"llm_based_labels",
+		"vlm_based_labels",
+		"multimodal_labels",
+	]
 
-	if verbose:
-		print(f"Post-processing VLM-based labels...")
-	vlm_based_labels = _post_process_(labels_list=df['vlm_based_labels'].tolist(), verbose=verbose)
-	df['vlm_based_labels'] = vlm_based_labels  # Update the DataFrame column
-
-	if verbose:
-		print(f"Post-processing Multimodal labels...")
-	multimodal_labels = _post_process_(labels_list=df['multimodal_labels'].tolist(), verbose=verbose)
-	df['multimodal_labels'] = multimodal_labels  # Update the DataFrame column
+	for _, col in enumerate(raw_cols):
+		df[col] = _post_process_(
+			labels_list=df[col].tolist(),
+			col=col,
+			verbose=verbose,
+		)
 
 	llm_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
 		labels=df['llm_based_labels'].tolist(),
@@ -107,9 +105,9 @@ def merge_csv_files(
 		verbose=verbose,
 	)
 
-	# clear cache
-	torch.cuda.empty_cache()
-	gc.collect()
+	# # clear cache
+	# torch.cuda.empty_cache()
+	# gc.collect()
 
 	vlm_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
 		labels=df['vlm_based_labels'].tolist(),
@@ -122,9 +120,9 @@ def merge_csv_files(
 		verbose=verbose,
 	)
 
-	# clear cache
-	torch.cuda.empty_cache()
-	gc.collect()
+	# # clear cache
+	# torch.cuda.empty_cache()
+	# gc.collect()
 
 	multimodal_canonical_labels, _ = get_canonical_labels_with_parallel_mapping(
 		labels=df['multimodal_labels'].tolist(),
@@ -137,18 +135,15 @@ def merge_csv_files(
 		verbose=verbose,
 	)
 
-	# clear cache
-	torch.cuda.empty_cache()
-	gc.collect()
+	# # clear cache
+	# torch.cuda.empty_cache()
+	# gc.collect()
 
-	# check length of each before setting into column:
 	if verbose:
-		print("="*60)
-		print(f"Canonical labels lengths:")
+		print(f"[SUMMARY] Canonical labels")
 		print(f"LLM         {type(llm_canonical_labels)} {len(llm_canonical_labels)}")
 		print(f"VLM         {type(vlm_canonical_labels)} {len(vlm_canonical_labels)}")
 		print(f"Multimodal: {type(multimodal_canonical_labels)} {len(multimodal_canonical_labels)}")
-		print("="*60)
 
 	df['llm_canonical_labels'] = llm_canonical_labels
 	df['vlm_canonical_labels'] = vlm_canonical_labels
