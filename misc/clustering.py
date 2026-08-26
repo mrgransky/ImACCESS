@@ -50,6 +50,107 @@ cache_directory = {
 # Global variable for worker processes
 canonical_labels_global = None
 
+def _normalize_label_case(
+	documents: List[List[str]], 
+	verbose: bool = False
+) -> List[List[str]]:
+	"""
+	Collapse case-only duplicates ('trench' / 'Trench' / 'TRENCH') into a
+	single surface form before unique_labels is computed.
+
+	Why this is needed
+	-------------------
+	The dedup in cluster() Step 1 is case-sensitive:
+
+	    documents.append(list(set(lbl for lbl in doc if lbl is not None)))
+	    unique_labels = sorted(set(label for doc in documents for label in doc))
+
+	Neither `set()` nor `sorted(set(...))` folds case, so 'trench' and 'Trench'
+	survive as two distinct unique labels.  Each gets its own row in the
+	embedding matrix, its own row in the linkage matrix, and — worse — each
+	gets its own (smaller) entry in label_freq_dict, which weakens the
+	frequency signal used later in assign_canonical_labels().
+
+	Why not just .lower() everything
+	---------------------------------
+	Blanket lowercasing would destroy meaningful capitalisation that the
+	canonical-selection pipeline depends on ('Ausf', 'GR Mk', 'Constitution').
+	Instead: group labels by their lowercase form, then pick the most
+	frequent *real* surface form within each group as the representative
+	spelling, and rewrite every occurrence to that form.  Ties are broken
+	deterministically (alphabetically) so the result is reproducible.
+
+	Parameters
+	----------
+	documents : List[List[str]]
+		Per-sample label lists, already None-filtered and per-doc deduped
+		(i.e. the `documents` list right after cluster() Step 1's first loop,
+		before unique_labels is computed).
+	verbose : bool
+		Print a summary of how many case-groups were collapsed.
+
+	Returns
+	-------
+	List[List[str]]
+		Same shape as the input, with every label replaced by its group's
+		winning surface form.  Downstream dedup (`unique_labels = sorted(set(...))`)
+		will now correctly collapse case-only variants into one entry.
+	"""
+	# ── Pass 1: count raw surface-form frequency across the corpus ──────────
+	# Count once per document occurrence (a label appearing twice in the same
+	# document was already deduped in Step 1's per-doc set(), so this matches
+	# how label_freq_dict is computed later).
+	surface_freq: Dict[str, int] = {}
+	for doc in documents:
+		for lbl in doc:
+			surface_freq[lbl] = surface_freq.get(lbl, 0) + 1
+
+	# ── Pass 2: group surface forms by lowercase key ─────────────────────────
+	case_groups: Dict[str, List[str]] = {}
+	for surface in surface_freq:
+		key = surface.lower()
+		case_groups.setdefault(key, []).append(surface)
+
+	# ── Pass 3: pick the winning surface form per group ──────────────────────
+	# Highest total frequency wins; ties broken alphabetically for determinism.
+	winner_map: Dict[str, str] = {}
+	collapsed_groups = 0
+	for key, surfaces in case_groups.items():
+		if len(surfaces) == 1:
+			winner_map[surfaces[0]] = surfaces[0]
+			continue
+		collapsed_groups += 1
+		winner = max(surfaces, key=lambda s: (surface_freq[s], s))
+		for s in surfaces:
+			winner_map[s] = winner
+
+	if verbose:
+		n_before = len(surface_freq)
+		n_after  = len(set(winner_map.values()))
+
+		print(f"\n[CASE NORMALISATION] {n_before:,} raw surface forms")
+		print(f"  Case-duplicate groups collapsed: {collapsed_groups:,}")
+		print(f"  Unique labels after fold: {n_after:,} (was {n_before:,})")
+
+		if collapsed_groups > 0:
+			n_examples = min(25, collapsed_groups)
+			examples = [
+				(surfaces, winner_map[surfaces[0]])
+				for key, surfaces in list(case_groups.items())
+				if len(surfaces) > 1
+			][:n_examples]
+			print(f"\t{len(examples)} Examples:")
+			for surfaces, winner in examples:
+				print(f"\t\t{surfaces} -> '{winner}'")
+
+	# ── Pass 4: rewrite every document using the winning surface form ────────
+	normalized_documents = [
+		[winner_map[lbl] for lbl in doc]
+		for doc in documents
+	]
+
+	return normalized_documents
+
 def init_worker_canonical(canonical_dict):
 	global canonical_labels_global
 	canonical_labels_global = canonical_dict
@@ -2662,6 +2763,7 @@ def cluster(
 
 	# STEP 1: DEDUP + FLATTEN
 	print(f"\n[DEDUP] {len(labels)} {type(labels)} raw labels")
+
 	documents = list()
 	for i, doc in enumerate(labels):
 		if doc is None:
@@ -2676,6 +2778,11 @@ def cluster(
 			print(f"doc[{i}]: Invalid type {type(doc)} (skipping)")
 			continue
 		documents.append(list(set(lbl for lbl in doc if lbl is not None)))
+
+	# Collapse case-only duplicates ('trench'/'Trench') 
+	# before computing unique_labels,
+	# so they are not embedded and clustered as if distinct.
+	documents = _normalize_label_case(documents, verbose=verbose)
 
 	unique_labels = sorted(set(label for doc in documents for label in doc))
 
