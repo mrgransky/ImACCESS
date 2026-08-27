@@ -984,9 +984,10 @@ def compute_clip_visual_grounding(
 	df: pd.DataFrame,
 	sources: List[str],
 	norm_stats: Dict[str, List[float]],
+	architecture: str,
 	device: str,
-	architecture: str = "ViT-B/32",
-	batch_size: int = 64,
+	num_workers: int,
+	batch_size: int = 128,
 	label_chunk_size: int = 512,
 	max_failure_rate: float = 0.1,
 	verbose: bool = False,
@@ -1016,20 +1017,19 @@ def compute_clip_visual_grounding(
 	"""
 	image_path_col = "img_path"
 	assert image_path_col in df.columns, f"Column {image_path_col} not found in DataFrame: available columns are {df.columns}"
-	print(f">> CLIP Model Architecture: {architecture}...")
-	try:
-		model_config = clip.get_config(architecture=architecture)
-		if verbose:
-			print(json.dumps(model_config, indent=4, ensure_ascii=False))
-		model, _ = clip.load(name=architecture, device=device)
-		preprocess = clip.get_preprocess(
-			norm_stats=norm_stats,
-			input_resolution=model_config["image_resolution"],
-		)
-	except Exception as e:
-			print(f"[Warning] Custom CLIP preprocess failed ({e}). Falling back to standard OpenAI CLIP preprocess.")
-			import clip as openai_clip
-			model, preprocess = openai_clip.load(name=architecture, device=device)
+	print(f"\n[LOADING] CLIP {architecture} | {device} | num_workers: {num_workers}")
+
+	model_config = clip.get_config(architecture=architecture)
+	if verbose:
+		print(json.dumps(model_config, indent=4, ensure_ascii=False))
+
+	model, _ = clip.load(name=architecture, device=device)
+
+	preprocess = clip.get_preprocess(
+		norm_stats=norm_stats,
+		input_resolution=model_config["image_resolution"],
+	)
+	
 	model.name = architecture
 	model_name = model.__class__.__name__
 	print(f"[LOADED] {model_name} {model.name} ({device})")
@@ -1041,15 +1041,23 @@ def compute_clip_visual_grounding(
 	n_labels = len(all_labels)
 
 	# 2. Encode all labels
-	print(f"Encoding {n_labels} unique labels (batch_size={batch_size})")
+	print(f"\nEncoding {n_labels} unique labels (batch_size={batch_size})")
 	t0 = time.time()
 	text_embeds = []
-	for i in range(0, n_labels, batch_size):
-		toks = clip.tokenize(all_labels[i:i + batch_size]).to(device)
-		e = torch.nn.functional.normalize(model.encode_text(toks), dim=-1)
+	for i in tqdm(range(0, n_labels, batch_size), desc="Encoding labels"):
+		toks = clip.tokenize(all_labels[i:i + batch_size]).to(device, non_blocking=True)
+
+		with torch.autocast(
+			device_type=device.type, 
+			enabled=torch.cuda.is_available(), 
+			dtype=torch.bfloat16,
+		):
+			e = torch.nn.functional.normalize(model.encode_text(toks), dim=-1)
+
 		text_embeds.append(e.cpu())
+
 	text_embeds = torch.cat(text_embeds, dim=0)  # [n_labels, dim]
-	print(f"[ELAPSED] {time.time() - t0:.1f}sec for {n_labels} labels: {text_embeds.shape}")
+	print(f"[ELAPSED] {time.time() - t0:.1f}sec for {n_labels} labels: {text_embeds.shape} {text_embeds.dtype} {text_embeds.device}")
 
 	# 3. Encode all images. Track which rows actually produced a real
 	#    embedding — a failed row stays untouched rather than becoming
@@ -1057,9 +1065,9 @@ def compute_clip_visual_grounding(
 	n_rows = len(df)
 	image_embeds = torch.zeros(n_rows, text_embeds.shape[1])
 	valid_mask = torch.zeros(n_rows, dtype=torch.bool)
-	print(f"Encoding {n_rows} images (batch size={batch_size})")
+	print(f"\nEncoding {n_rows} images (batch size={batch_size})")
 	t0 = time.time()
-	for start in range(0, n_rows, batch_size):
+	for start in tqdm(range(0, n_rows, batch_size), desc="Encoding images"):
 		paths = df[image_path_col].iloc[start:start + batch_size].tolist()
 		imgs, local_valid = [], []
 		for local_idx, p in enumerate(paths):
@@ -1072,8 +1080,14 @@ def compute_clip_visual_grounding(
 		if not imgs:
 			continue
 
-		imgs = torch.stack(imgs).to(device)
-		e = torch.nn.functional.normalize(model.encode_image(imgs), dim=-1)
+		imgs = torch.stack(imgs).to(device, non_blocking=True)
+
+		with torch.autocast(
+			device_type=device.type, 
+			enabled=torch.cuda.is_available(), 
+			dtype=torch.bfloat16
+		):
+			e = torch.nn.functional.normalize(model.encode_image(imgs).float(), dim=-1)
 
 		for batch_pos, local_idx in enumerate(local_valid):
 			row = start + local_idx
@@ -1085,7 +1099,8 @@ def compute_clip_visual_grounding(
 	failure_rate = n_failed / n_rows if n_rows else 0.0
 
 	print(f"Image loading: {n_valid}/{n_rows} succeeded ({n_failed} failed, {failure_rate*100:.2f}%)")
-	print(f"[ELAPSED: {time.time() - t0:.1f}sec for {n_rows} images]")
+	print(f"[ELAPSED] {time.time() - t0:.1f}sec for {n_rows} images: {image_embeds.shape} {image_embeds.dtype} {image_embeds.device}")
+
 	if failure_rate > max_failure_rate:
 		raise RuntimeError(
 			f"{n_failed} images failed to load: "
@@ -1122,18 +1137,19 @@ def compute_clip_visual_grounding(
 
 	# 5. Rank/percentile computation, chunked over the label dimension.
 	print(
-		f"Computing similarity + percentile ranks in chunks of {label_chunk_size} labels "
+		f"\nComputing similarity + percentile ranks in chunks of {label_chunk_size} labels "
 		f"({n_valid} valid images x {n_labels} labels)..."
 	)
+
 	sum_percentile = {col: 0.0 for col in sources}
 	cursor = {col: 0 for col in sources}
 
 	for chunk_start in range(0, n_labels, label_chunk_size):
 		chunk_end = min(chunk_start + label_chunk_size, n_labels)
-		text_chunk = text_embeds[chunk_start:chunk_end]                   # [C, dim]
-		sim_chunk = image_embeds_valid @ text_chunk.T                     # [n_valid, C]
-		ranks_chunk = sim_chunk.argsort(dim=0).argsort(dim=0).float()     # [n_valid, C]
-		pct_chunk = ranks_chunk / (n_valid - 1)                           # [n_valid, C]
+		text_chunk = text_embeds[chunk_start:chunk_end]               # [C, dim]
+		sim_chunk = image_embeds_valid @ text_chunk.T                 # [n_valid, C]
+		ranks_chunk = sim_chunk.argsort(dim=0).argsort(dim=0).float() # [n_valid, C]
+		pct_chunk = ranks_chunk / (n_valid - 1)                       # [n_valid, C]
 		for col in sources:
 			pairs = source_pairs[col]
 			j = cursor[col]
@@ -1147,8 +1163,9 @@ def compute_clip_visual_grounding(
 				pos_t = torch.tensor([p for p, _ in in_chunk], dtype=torch.long)
 				lbl_t = torch.tensor([l for _, l in in_chunk], dtype=torch.long)
 				sum_percentile[col] += pct_chunk[pos_t, lbl_t].sum().item()
+
 		if verbose:
-			print(f"  labels [{chunk_start}:{chunk_end}) done")
+			print(f"[DONE] labels [{chunk_start:6d}:{chunk_end:6d})")
 
 	results = {}
 
@@ -1169,7 +1186,11 @@ def compute_clip_visual_grounding(
 
 	return results
 
-def get_embedding_model(embedding_model_id: str, device: str="cuda", verbose: bool=False):
+def get_embedding_model(
+	embedding_model_id: str, 
+	device: str,
+	verbose: bool=False
+):
 	if verbose:
 		print(f"STEP 2: Loading embedding model {embedding_model_id} on {device}")
 
@@ -1232,7 +1253,8 @@ def get_cgd_taxonomy_supervision(
 	output_directory: str,
 	embedding_model_id: str,
 	architecture: str,
-	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
+	num_workers: int,
+	device: str,
 	norm_stats: Dict[str, List[float]]=None,
 	anchor_column: str = "vlm_canonical_labels",
 	semantic_threshold: Optional[float] = None,
@@ -1300,6 +1322,7 @@ def get_cgd_taxonomy_supervision(
 		print(f"  Sources to analyze: {sources}")
 		print(f"  Visual anchor: {anchor_column}")
 		print(f"  Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
+		print(f"  Number of Workers: {num_workers}")
 		print(f"  Normalization: {normalize}")
 	
 	# Validate columns exist
@@ -1364,6 +1387,7 @@ def get_cgd_taxonomy_supervision(
 		norm_stats=norm_stats,
 		architecture=architecture,
 		device=device,
+		num_workers=num_workers,
 		verbose=verbose,
 	)
 

@@ -891,28 +891,33 @@ def get_validation_metrics(
 	# Step 3: Compute class embeddings
 	if class_embeds_override is not None:
 		# Use probe's trained W instead of frozen text encoder
-		class_text_embeds = torch.nn.functional.normalize(class_embeds_override, dim=-1).to(device).float()
+		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.bfloat16):
+			class_text_embeds = torch.nn.functional.normalize(class_embeds_override, dim=-1).to(device).float()
 		if verbose:
 			print(f"class_text_embeds [probe W override]: {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
 	else:
 		# Standard path: encode class names with frozen text encoder
 		text_batch_size = validation_loader.batch_size
 		if verbose:
-			print(f"Pre-encoding {n_classes} classes in batch_size: {text_batch_size}")
+			print(f"Pre-encoding {n_classes} labels (batch_size={text_batch_size})")
+
 		class_text_embeds = []
 		model.eval()
 		with torch.no_grad():
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-				for i in range(0, n_classes, text_batch_size):
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.bfloat16):
+				for i in tqdm(range(0, n_classes, text_batch_size), desc="Encoding batched labels"):
 					end_idx = min(i + text_batch_size, n_classes)
 					batch_class_names = class_names[i:end_idx]
 					batch_class_texts = clip.tokenize(batch_class_names).to(device)
 					batch_embeds = model.encode_text(batch_class_texts)
 					batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
 					class_text_embeds.append(batch_embeds.cpu())
+
 					del batch_class_texts, batch_embeds
 					torch.cuda.empty_cache()
+
 		class_text_embeds = torch.cat(class_text_embeds, dim=0).to(device)
+
 		if verbose:
 			print(f"class_text_embeds: {type(class_text_embeds)} {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
 

@@ -116,7 +116,8 @@ def main():
 	parser.add_argument('--baseline_method', '-bm', type=str, choices=['zero_shot', 'probe'], default=None, help='Baseline method')
 
 	args, unknown = parser.parse_known_args()
-	args.device = torch.device(args.device)
+	if isinstance(args.device, str):
+		args.device = torch.device(args.device)
 
 	DATASET_DIRECTORY = os.path.dirname(args.metadata_csv)
 	dataset_name = os.path.basename(DATASET_DIRECTORY)

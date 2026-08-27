@@ -5884,14 +5884,12 @@ def multilabel_eda(
 		DPI=DPI,
 	)
 	
-	print(f"\n>> POWER LAW ANALYSIS: {label_column}")
+	print(f"\n[POWER LAW ANALYSIS] {label_column}")
 	print(type(all_label_counts), list(all_label_counts.keys()))
 	for k, v in all_label_counts.items():
 		print(k)
 		print(v)
-		print()
-
-	print(all_label_counts)
+		print("-"*40)
 
 	freq_values = all_label_counts[label_column]['Count'].values
 	ranks = np.arange(1, len(freq_values) + 1)

@@ -356,6 +356,7 @@ def get_multimodal_annotation(
 		df=df,
 		embedding_model_id=embedding_model_id,
 		architecture=clip_architecture,
+		num_workers=num_workers,
 		device=device,
 		norm_stats=norm_stats,
 		output_directory=OUTPUT_DIR, 
@@ -431,7 +432,9 @@ def main():
 	parser.add_argument("--num_clusters", '-nc', type=int, default=None, help="Number of clusters")
 
 	args = parser.parse_args()
-	args.device = torch.device(args.device)
+	if isinstance(args.device, str):
+		args.device = torch.device(args.device)
+
 	args.num_workers = min(args.num_workers, os.cpu_count())
 
 	if args.verbose:

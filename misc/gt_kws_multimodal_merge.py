@@ -226,6 +226,7 @@ def merge_csv_files(
 		df=df,
 		embedding_model_id=embedding_model_id,
 		architecture=clip_architecture,
+		num_workers=num_workers,
 		device=device,
 		norm_stats=norm_stats,
 		output_directory=OUTPUT_DIR, 
@@ -299,6 +300,9 @@ def main():
 	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 
 	args = parser.parse_args()
+	if isinstance(args.device, str):
+		args.device = torch.device(args.device)
+
 	args.dataset_dir = os.path.normpath(args.dataset_dir)
 	args.num_workers = min(args.num_workers, multiprocessing.cpu_count())
 	set_seeds(seed=42)
