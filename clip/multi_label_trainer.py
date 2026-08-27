@@ -1895,7 +1895,7 @@ def lora_finetune_multi_label(
 					print(
 						f"\t\t[B weight norms] "
 						f"(min, max): ({b_norms_t.min():.4f}, {b_norms_t.max():.4f}) "
-						f"mean: {b_norms_t.mean():.4f} std: {b_norms_t.std():.4f}"
+						f"μ±σ: {b_norms_t.mean():.4f} ± {b_norms_t.std():.4f}"
 					)
 					print()
 
