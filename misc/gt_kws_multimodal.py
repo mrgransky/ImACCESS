@@ -356,6 +356,7 @@ def get_multimodal_annotation(
 		df=df,
 		embedding_model_id=embedding_model_id,
 		architecture=clip_architecture,
+		device=device,
 		norm_stats=norm_stats,
 		output_directory=OUTPUT_DIR, 
 		verbose=verbose

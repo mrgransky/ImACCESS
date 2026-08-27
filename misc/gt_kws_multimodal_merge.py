@@ -39,6 +39,7 @@ def merge_csv_files(
 	batch_size: int,
 	embedding_model_id: str,
 	clip_architecture: str,
+	device: str,
 	nc: int = None,
 	verbose: bool = False
 ):
@@ -56,7 +57,7 @@ def merge_csv_files(
 
 	dfs = list()
 	for i, file_ in enumerate(csv_files):
-		print(f"{i:02d} {file_}", end="\t")
+		print(f"{i:02d} {file_:<150}", end="\t")
 		temp_df = pd.read_csv(
 			filepath_or_buffer=file_, 
 			on_bad_lines='skip', 
@@ -225,6 +226,7 @@ def merge_csv_files(
 		df=df,
 		embedding_model_id=embedding_model_id,
 		architecture=clip_architecture,
+		device=device,
 		norm_stats=norm_stats,
 		output_directory=OUTPUT_DIR, 
 		verbose=verbose
@@ -294,6 +296,8 @@ def main():
 	parser.add_argument("--clip_architecture", '-clip_arch', type=str, default="ViT-B/32", help="CLIP architecture [Default: ViT-B/32]")
 	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
 	parser.add_argument('--num_clusters', '-nc', type=int, default=None, help='Number of clusters')
+	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
+
 	args = parser.parse_args()
 	args.dataset_dir = os.path.normpath(args.dataset_dir)
 	args.num_workers = min(args.num_workers, multiprocessing.cpu_count())
@@ -310,6 +314,7 @@ def main():
 		embedding_model_id=args.embedding_model_id,
 		clip_architecture=args.clip_architecture,
 		nc=args.num_clusters,
+		device=args.device,
 		verbose=args.verbose,
 	)
 

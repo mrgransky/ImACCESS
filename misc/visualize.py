@@ -5885,7 +5885,12 @@ def multilabel_eda(
 	)
 	
 	print(f"\n>> POWER LAW ANALYSIS: {label_column}")
-	print(type(all_label_counts))
+	print(type(all_label_counts), list(all_label_counts.keys()))
+	for k, v in all_label_counts.items():
+		print(k)
+		print(v)
+		print()
+
 	print(all_label_counts)
 
 	freq_values = all_label_counts[label_column]['Count'].values

@@ -984,8 +984,8 @@ def compute_clip_visual_grounding(
 	df: pd.DataFrame,
 	sources: List[str],
 	norm_stats: Dict[str, List[float]],
+	device: str,
 	architecture: str = "ViT-B/32",
-	device: str = "cuda:0",
 	batch_size: int = 64,
 	label_chunk_size: int = 512,
 	max_failure_rate: float = 0.1,
@@ -1032,7 +1032,7 @@ def compute_clip_visual_grounding(
 			model, preprocess = openai_clip.load(name=architecture, device=device)
 	model.name = architecture
 	model_name = model.__class__.__name__
-	print(f"Loaded {model_name} {model.name} on {device}")
+	print(f"[LOADED] {model_name} {model.name} ({device})")
 	model.eval()
 
 	# 1. Collect all unique labels across all provided sources
@@ -1041,13 +1041,15 @@ def compute_clip_visual_grounding(
 	n_labels = len(all_labels)
 
 	# 2. Encode all labels
-	print(f"Encoding {n_labels} unique labels...")
+	print(f"Encoding {n_labels} unique labels (batch_size={batch_size})")
+	t0 = time.time()
 	text_embeds = []
 	for i in range(0, n_labels, batch_size):
-			toks = clip.tokenize(all_labels[i:i + batch_size]).to(device)
-			e = torch.nn.functional.normalize(model.encode_text(toks), dim=-1)
-			text_embeds.append(e.cpu())
+		toks = clip.tokenize(all_labels[i:i + batch_size]).to(device)
+		e = torch.nn.functional.normalize(model.encode_text(toks), dim=-1)
+		text_embeds.append(e.cpu())
 	text_embeds = torch.cat(text_embeds, dim=0)  # [n_labels, dim]
+	print(f"[ELAPSED] {time.time() - t0:.1f}sec for {n_labels} labels: {text_embeds.shape}")
 
 	# 3. Encode all images. Track which rows actually produced a real
 	#    embedding — a failed row stays untouched rather than becoming
@@ -1055,7 +1057,8 @@ def compute_clip_visual_grounding(
 	n_rows = len(df)
 	image_embeds = torch.zeros(n_rows, text_embeds.shape[1])
 	valid_mask = torch.zeros(n_rows, dtype=torch.bool)
-	print(f"Encoding {n_rows} images (batch size {batch_size})...")
+	print(f"Encoding {n_rows} images (batch size={batch_size})")
+	t0 = time.time()
 	for start in range(0, n_rows, batch_size):
 		paths = df[image_path_col].iloc[start:start + batch_size].tolist()
 		imgs, local_valid = [], []
@@ -1082,7 +1085,7 @@ def compute_clip_visual_grounding(
 	failure_rate = n_failed / n_rows if n_rows else 0.0
 
 	print(f"Image loading: {n_valid}/{n_rows} succeeded ({n_failed} failed, {failure_rate*100:.2f}%)")
-
+	print(f"[ELAPSED: {time.time() - t0:.1f}sec for {n_rows} images]")
 	if failure_rate > max_failure_rate:
 		raise RuntimeError(
 			f"{n_failed} images failed to load: "
@@ -1229,10 +1232,10 @@ def get_cgd_taxonomy_supervision(
 	output_directory: str,
 	embedding_model_id: str,
 	architecture: str,
+	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
 	norm_stats: Dict[str, List[float]]=None,
 	anchor_column: str = "vlm_canonical_labels",
 	semantic_threshold: Optional[float] = None,
-	device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
 	base: float = 2.0,
 	normalize: str = "L2",
 	verbose: bool = False,
@@ -1360,6 +1363,7 @@ def get_cgd_taxonomy_supervision(
 		sources=sources,
 		norm_stats=norm_stats,
 		architecture=architecture,
+		device=device,
 		verbose=verbose,
 	)
 

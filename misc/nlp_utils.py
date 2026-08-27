@@ -142,7 +142,7 @@ def _post_process_(
 ) -> List[List[str]]:
 
 	if verbose:
-		print(f"[POST-PROCESSING]")
+		print(f"\n[POST-PROCESSING]")
 		print(f"  Column: {col}")
 		print(f"  {len(labels_list) if labels_list else 0} labels_list: {type(labels_list)}")
 		print(f"  Stopwords: {len(STOPWORDS)}")
