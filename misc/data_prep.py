@@ -1,5 +1,3 @@
-from tabnanny import verbose
-
 from utils import *
 
 def get_single_label_stratified_split(
@@ -10,7 +8,7 @@ def get_single_label_stratified_split(
 	verbose: bool=True,
 ):
 	if verbose:
-		print(f"\n>> Stratified Splitting [Single-label dataset]")
+		print(f"\n[SINGLE-LABBEL] Stratified Splitting")
 
 	# Count the occurrences of each label
 	label_counts = df[label_col].value_counts()

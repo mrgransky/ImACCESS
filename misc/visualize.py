@@ -7243,15 +7243,32 @@ def plot_single_labeled_head_torso_tail_samples(
 	return flat_i2t, t2i_queries
 
 def plot_label_distribution(
-		df: pd.DataFrame,
-		fpth: str,
-		label_column: str,
-		FIGURE_SIZE: tuple,
-		DPI: int,
-		top_n: int = None  # Option to show only top N labels
-	):
-
-	label_counts = df[label_column].value_counts()
+	df: pd.DataFrame,
+	fpth: str,
+	label_column: str,
+	FIGURE_SIZE: tuple,
+	DPI: int,
+	top_n: int = None  # Option to show only top N labels
+):
+	# ---------- Safety checks ----------
+	if label_column not in df.columns:
+			raise ValueError(
+					f"Column '{label_column}' not found in DataFrame. "
+					f"Available columns: {list(df.columns)}"
+			)
+	label_counts = df[label_column].dropna().value_counts()
+	if label_counts.empty:
+			print(
+					f"[WARNING] No valid labels found in column '{label_column}'. "
+					f"Skipping plot: {fpth}"
+			)
+			return
+	if len(label_counts) == 1:
+			print(
+					f"[WARNING] Only one unique label found in '{label_column}'. "
+					f"Plot may not be very informative."
+			)
+	# -----------------------------------
 	
 	# Handle large number of labels
 	if top_n and len(label_counts) > top_n:
@@ -7316,7 +7333,7 @@ def plot_label_distribution(
 	
 	# Add a logarithmic scale option for highly imbalanced distributions
 	ax_log = None
-	if label_counts.max() / label_counts.min() > 50:
+	if len(label_counts) >= 2 and (label_counts.max() / label_counts.min() > 50):
 		ax_log = ax.twinx()
 		ax_log.set_yscale('log')
 		label_counts.plot(

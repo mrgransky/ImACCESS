@@ -1,14 +1,23 @@
-import os
 import sys
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-project_dir = os.path.dirname(parent_dir)
-print(project_dir)
-print(os.listdir(project_dir))
-sys.path.insert(0, project_dir) # add project directory to sys.path
-from misc.utils import *
-from misc.visualize import *
-from misc.nlp_utils import get_enriched_description, validate_text_cleaning_pipeline, is_english
+import os
+from tabnanny import verbose
+
+HOME, USER = os.getenv('HOME'), os.getenv('USER')
+IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
+
+CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
+sys.path.insert(0, CLIP_DIR)
+
+MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
+sys.path.insert(0, MISC_DIR)
+
+for p in sys.path:
+	print(p)
+
+from utils import *
+import visualize as viz
+from nlp_utils import get_enriched_description, validate_text_cleaning_pipeline, is_english
+from data_prep import get_single_label_stratified_split
 
 dataset_name: str = "europeana".upper()
 # europeana_api_key: str = "api2demo"
@@ -21,7 +30,7 @@ dataset_name: str = "europeana".upper()
 # run in Pouta:
 # $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -ak api2demo -nw 40 -bs 128 --img_mean_std --thumbnail_size 512,512 -v > /media/volume/ImACCESS/trash/europeana_dataset_collection.out &
 
-meaningless_words_fpth = os.path.join(project_dir, 'misc', 'meaningless_words.txt')
+meaningless_words_fpth = os.path.join(MISC_DIR, 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
 STOPWORDS = nltk.corpus.stopwords.words('english')
 with open(meaningless_words_fpth, 'r') as file_:
@@ -406,7 +415,7 @@ def main():
 	img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 	img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
-	with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
+	with open(os.path.join(MISC_DIR, 'query_labels.txt'), 'r') as file_:
 		search_labels = list(dict.fromkeys(line.strip() for line in file_))
 
 	print(f"Total of {len(search_labels)} {type(search_labels)} lables are being processed")
@@ -526,7 +535,7 @@ def main():
 	)
 
 	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
-	validate_text_cleaning_pipeline(df=multi_label_final_df, text_column='enriched_document_description')
+	# validate_text_cleaning_pipeline(df=multi_label_final_df, text_column='enriched_document_description')
 
 	print("Saving final MULTI-LABEL dataset...")
 	print(f"multi_label_final_df: {type(multi_label_final_df)} {multi_label_final_df.shape} {list(multi_label_final_df.columns)}")
@@ -555,19 +564,27 @@ def main():
 	except Exception as e:
 		print(f"Failed to write final single-label Excel file: {e}")	
 	
-	post_process(
-		df=single_label_final_df, 
-		dataset_type="single_label", 
-		is_multi_label=False,
-		output_dir=OUTPUT_DIRECTORY,
+
+	get_single_label_stratified_split(
+		df=single_label_final_df,
+		val_split_pct=args.val_split_pct,
+		seed=args.seed,
+		verbose=args.verbose,
 	)
+
+	# post_process(
+	# 	df=single_label_final_df, 
+	# 	dataset_type="single_label", 
+	# 	is_multi_label=False,
+	# 	output_dir=OUTPUT_DIRECTORY,
+	# )
 	
-	post_process(
-		df=multi_label_final_df, 
-		dataset_type="multi_label", 
-		is_multi_label=True,
-		output_dir=OUTPUT_DIRECTORY,
-	)
+	# post_process(
+	# 	df=multi_label_final_df, 
+	# 	dataset_type="multi_label", 
+	# 	is_multi_label=True,
+	# 	output_dir=OUTPUT_DIRECTORY,
+	# )
 
 	# if IMAGE_DIRECTORY is not empty, load it, else compute it
 	if args.img_mean_std and os.listdir(IMAGE_DIRECTORY):

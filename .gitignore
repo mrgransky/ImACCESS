@@ -23,7 +23,6 @@
 *.html
 *.tflite
 *.ipynb
-*.json
 *.jsonl
 
 logs/

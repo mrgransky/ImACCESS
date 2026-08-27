@@ -1,17 +1,22 @@
-import os
 import sys
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-project_dir = os.path.dirname(parent_dir)
-sys.path.insert(0, project_dir)
+import os
 
-from misc.utils import *
-import misc.visualize as viz
-from misc.nlp_utils import get_enriched_description, validate_text_cleaning_pipeline
+HOME, USER = os.getenv('HOME'), os.getenv('USER')
+IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
 
-# expand width and height of pandas dataframe
-pd.set_option('display.max_colwidth', None)
-# pd.set_option('display.max_rows', None)
+CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
+sys.path.insert(0, CLIP_DIR)
+
+MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
+sys.path.insert(0, MISC_DIR)
+
+for p in sys.path:
+	print(p)
+
+from utils import *
+import visualize as viz
+from nlp_utils import get_enriched_description, validate_text_cleaning_pipeline
+from data_prep import get_single_label_stratified_split
 
 # how to run in local:
 # $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 12 --img_mean_std --thumbnail_size 512,512 -v > logs/wwii_dataset_collection.out &
@@ -40,7 +45,7 @@ print(args)
 print_args_table(args=args, parser=parser)
 set_seeds(seed=args.seed, debug=False)
 
-meaningless_words_fpth = os.path.join(project_dir, 'misc', 'meaningless_words.txt')
+meaningless_words_fpth = os.path.join(IMACCESS_PROJECT_WORKSPACE, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
 STOPWORDS = list()
 with open(meaningless_words_fpth, 'r') as file_:
@@ -173,16 +178,324 @@ def extract_url_info(url:str)-> Dict:
 	}
 
 def get_dframe(
-	doc_idx: int,
-	doc_url: str, 
-	user_query: str,
-	num_workers: int=8,
-	thumbnail_size: tuple=None,
-	verbose: bool=False,
+        doc_idx: int,
+        doc_url: str,
+        user_query: str,
+        num_workers: int = 8,
+        thumbnail_size: tuple = None,
+        verbose: bool = False,
 ) -> pd.DataFrame:
 
+    print(f"\n>> Extracting DF for user_query[{doc_idx}]: « {user_query} » from {doc_url} with thumbnail_size={thumbnail_size}")
+
+    content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}"
+    print(f"content_to_hash: {content_to_hash}")
+    hash_digest = hashlib.md5(content_to_hash.encode('utf-8')).hexdigest()
+    query_prefix = user_query.replace(' ', '_') + '_' if user_query else ''
+    df_fpth = os.path.join(HITs_DIR, f"df_{query_prefix}{hash_digest}.gz")
+    print(f"df_fpth: {df_fpth}")
+
+    if os.path.exists(df_fpth):
+        df = load_pickle(fpath=df_fpth)
+
+        if df.shape[0] == 0:
+            # FIX: a stale/empty cache (e.g. from a run where every download
+            # failed) no longer aborts the pipeline — fall through and
+            # re-scrape. The non-empty DF produced below will overwrite it.
+            print(f"[WARNING] Cached DF is empty {df.shape} => ignoring cache, re-scraping {doc_url} ...")
+
+        else:
+            print(df[['id', 'img_path']].head(10))
+            print()
+
+            # change img_path with current dataset directory
+            df['img_path'] = df['img_path'].apply(lambda x: x.replace(os.path.dirname(x), IMAGE_DIRECTORY))
+            print(df[['id', 'img_path']].head(10))
+            print("#" * 160)
+
+            # FIX: legacy cached DFs (scraped before the urljoin fix) may hold
+            # root-relative img_urls — normalize them against each row's doc_url.
+            rel_mask = df['img_url'].fillna('').astype(str).str.startswith('/')
+            if rel_mask.any():
+                print(f"Normalizing {int(rel_mask.sum())} root-relative img_url(s) in cached DF...")
+                df.loc[rel_mask, 'img_url'] = [
+                    urllib.parse.urljoin(base, url)
+                    for base, url in zip(df.loc[rel_mask, 'doc_url'], df.loc[rel_mask, 'img_url'])
+                ]
+
+            img_paths = df['img_path'].tolist()
+            missing_indices = [i for i, path in enumerate(img_paths) if not os.path.exists(path)]
+            missing_paths = [img_paths[i] for i in missing_indices]  # FIX: typo (was "mising_paths")
+
+            if missing_indices:
+                if verbose:
+                    print(f"Downloading {len(missing_indices)} missing images using {num_workers} workers...")
+                    print(f"Missing paths:\n{missing_paths}\n")
+
+                def download_task(idx: int):
+                    img_path = df['img_path'].iloc[idx]
+                    img_url = df['img_url'].iloc[idx]
+                    success = _download_and_process_image(
+                        img_url=img_url,
+                        img_fpath=img_path,
+                        thumbnail_size=thumbnail_size,
+                        verbose=verbose,
+                    )
+                    return idx, img_url, success
+
+                failed = []
+                with ThreadPoolExecutor(max_workers=num_workers) as ex:
+                    futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
+                    for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading missing images", ncols=100):
+                        idx, url, ok = fut.result()
+                        if not ok:
+                            failed.append((idx, url))
+
+                if failed and verbose:
+                    print(f"Failed to download {len(failed)} {type(failed)} images.")
+                    for i, (idx, url) in enumerate(failed):
+                        print(f"{i} {idx} {url}")
+
+            return df
+
+    doc_url_info = extract_url_info(doc_url)
+    print(json.dumps(doc_url_info, indent=4, ensure_ascii=False))
+
+    session = requests.Session()
+    session.headers.update(HEADERS)
+
+    df_st_time = time.time()
+    try:
+        response = session.get(doc_url, timeout=30)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Try new layout first, fallback to old layout
+        # New layout: <h1>Title</h1>
+        # Old layout: <h2 class="entry-title">Title</h2>
+        header = None
+        header_el = soup.find('h1')
+        if header_el:
+            header = header_el.get_text(strip=True)
+        else:
+            header_el = soup.find('h2', class_="entry-title")
+            if header_el:
+                header = header_el.get_text(strip=True)
+
+        if not header:
+            print(f"[WARNING] Could not find title in {doc_url}")
+            header = doc_url_info.get('type', 'Unknown')
+
+        # Try new layout images first
+        # New layout: <article class="photo-card"><img src="...">
+        # Old layout: <img class="attachment-thumbnail" data-src="...">
+        hits = soup.find_all('article', class_='photo-card')
+        if not hits:
+            hits = soup.find_all('img', class_='attachment-thumbnail')
+
+    except Exception as e:
+        print(f"[ERROR] Failed to retrieve or parse {doc_url}: {e}")
+        return None
+
+    print("-" * 150)
+    print(f"\nDoc header:\n{header}")
+
+    # Try new layout description first
+    # New layout: <div class="folder-description">
+    # Old layout: <div class="entry-caption">
+    doc_description = ""
+    caption_element = soup.find('div', class_='folder-description')
+    if not caption_element:
+        caption_element = soup.find('div', class_='entry-caption')
+
+    if caption_element:
+        doc_description = caption_element.get_text(strip=True)
+        doc_description = re.sub(r'\s+', ' ', doc_description).strip()
+
+    if doc_description.lower() and header.lower() not in doc_description.lower():
+        doc_description = header + " " + doc_description
+    elif not doc_description.strip():
+        doc_description = header
+
+    print(f"\nDoc Description:\n{doc_description}\n")
+
+    # Try new layout captions first
+    # New layout: <h3>Caption</h3> inside <article class="photo-card">
+    # Old layout: <p class="wp-caption-text gallery-caption" id="...">
+    caption_map = {}
+
+    # Old layout caption map
+    for p in soup.find_all('p', class_='wp-caption-text gallery-caption'):
+        cid = p.get('id')
+        if cid:
+            caption_text = p.get_text(strip=True)
+            if caption_text:
+                caption_map[cid] = caption_text
+
+    print(f"{len(caption_map)} Caption Map(s):\n{json.dumps(caption_map, indent=4, ensure_ascii=False)}")
+
+    print(f"Found {len(hits)} Document(s) => Extracting information [might take a while]")
+
+    # NEW: download helper with fallback — try the cleaned URL first, then the
+    # original (un-cleaned) absolute URL. Returns the URL that succeeded, or None.
+    def _fetch_image(preferred_url, img_fpath, fallback_url=None):
+        if _download_and_process_image(img_url=preferred_url, img_fpath=img_fpath,
+                                       thumbnail_size=thumbnail_size, verbose=verbose):
+            return preferred_url
+        if fallback_url and fallback_url != preferred_url:
+            if verbose:
+                print(f"  Primary URL failed, retrying with original: {fallback_url}")
+            if _download_and_process_image(img_url=fallback_url, img_fpath=img_fpath,
+                                           thumbnail_size=thumbnail_size, verbose=verbose):
+                return fallback_url
+        return None
+
+    data = []
+
+    for idoc, vdoc in enumerate(hits):
+        print(f"[{idoc+1}/{len(hits)}] {vdoc}")
+
+        # Handle new layout
+        if vdoc.name == 'article':
+            img_tag = vdoc.find('img')
+            if not img_tag:
+                continue
+            # lazy-loaded <img> sometimes keeps the real URL in data-src
+            img_url = img_tag.get('src') or img_tag.get('data-src')
+            # Get caption from h3
+            caption_el = vdoc.find('h3')
+            doc_title = caption_el.get_text(strip=True) if caption_el else (img_tag.get('alt') or '')
+            # Get link
+            parent_a = vdoc.find('a')
+            doc_doc_url = parent_a.get('href') if parent_a else None
+
+        else:
+            # Old layout
+            img_tag = vdoc
+            img_url = img_tag.get('data-src')
+            if not img_url:
+                print(f"{img_url} not found, skipping...")
+                continue
+            parent_a = img_tag.find_parent('a')
+            doc_doc_url = parent_a.get('href') if parent_a else None
+
+            # Try to get caption from various sources
+            doc_title = img_tag.get("alt")
+            if doc_title == "Folder Icon":
+                doc_title = None
+
+            aria_id = img_tag.get("aria-describedby")
+            if aria_id:
+                caption_title = caption_map.get(aria_id)
+                if caption_title:
+                    doc_title = caption_title
+
+        if not img_url:
+            print(f"No image URL found, skipping...")
+            continue
+
+        # FIX: make the image URL absolute BEFORE anything else — the new layout
+        # uses root-relative srcs like "/wp-content/gallery/...", which
+        # requests.get() cannot handle. urljoin is a no-op for absolute URLs,
+        # so the old layout is unaffected.
+        img_url = urllib.parse.urljoin(doc_url, img_url)
+        # NEW: keep the un-cleaned absolute URL as a fallback in case the
+        # cleaned (de-hugoed / de-thumbnailed) path 404s on the server.
+        original_img_url = img_url
+
+        # Clean up image URL
+        img_url = img_url.replace("_cache/", "")
+        img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url)
+        img_url = re.sub(r'_hu_[a-f0-9]+\.jpg$', '.jpg', img_url)  # Remove Hugo hash suffix
+
+        filename = os.path.basename(img_url)
+        img_fpath = os.path.join(IMAGE_DIRECTORY, filename)
+        specific_doc_url = urllib.parse.urljoin(doc_url, doc_doc_url) if doc_doc_url else doc_url
+
+        # Extract year from various sources
+        date_sources = [doc_title, specific_doc_url, img_url, filename, doc_description]
+        extracted_year = None
+        for src in date_sources:
+            if src:
+                year = extract_year(src)
+                if year:
+                    extracted_year = year
+                    break
+
+        if verbose:
+            print(f"extracted_year: {extracted_year}")
+
+        # Download and process image
+        if not os.path.exists(img_fpath):
+            working_url = _fetch_image(img_url, img_fpath, fallback_url=original_img_url)
+            if working_url is None:
+                if verbose:
+                    print(f"Failed to download {img_url} to {img_fpath} => Skipping...")
+                continue
+            img_url = working_url  # record the URL that actually worked
+
+        else:
+            if not process_image_for_storage(img_path=img_fpath, thumbnail_size=thumbnail_size, verbose=verbose):
+                if os.path.exists(img_fpath):
+                    if verbose:
+                        print(f"Existing image {img_fpath} failed re-processing. Attempting re-download...")
+                    os.remove(img_fpath)
+
+                working_url = _fetch_image(img_url, img_fpath, fallback_url=original_img_url)
+                if working_url is None:
+                    if verbose:
+                        print(f"Failed to re-download {img_url} to {img_fpath} => Skipping...")
+                    continue
+                img_url = working_url
+            else:
+                if verbose:
+                    print(f"Existing image {img_fpath} re-processed successfully")
+
+        row = {
+                'id': filename,
+                'date': extracted_year,
+                'doc_url': specific_doc_url,
+                'img_url': img_url,
+                'title': doc_title,
+                'description': doc_description,
+                'country': doc_url_info.get("country"),
+                'user_query': [user_query] if user_query else None,
+                'label': user_query if user_query else None,
+                'img_path': img_fpath,
+        }
+        if verbose:
+                print(f"Appending Row[{idoc+1}/{len(hits)}]:")
+                print(f"{json.dumps(row, indent=4, ensure_ascii=False)}")
+                print("-" * 120)
+
+        data.append(row)
+
+    if verbose:
+        print(f"Creating DataFrame from {len(data)} rows...")
+    df = pd.DataFrame(data)
+
+    print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
+
+    # FIX: never cache an empty DF — otherwise the next run loads a poisoned
+    # cache (or aborts on the empty-cache check above).
+    if df.shape[0] > 0:
+        print(f"Saving DF to {df_fpth}")
+        save_pickle(pkl=df, fname=df_fpth)
+    else:
+        print(f"[WARNING] Scraped DF is empty {df.shape} — NOT caching to {df_fpth}")
+
+    return df
+
+def get_dframe_old(
+	doc_idx: int,
+	doc_url: str,
+	user_query: str,
+	num_workers: int,
+	thumbnail_size: tuple = None,
+	verbose: bool = False,
+) -> pd.DataFrame:
 	print(f"\n>> Extracting DF for user_query[{doc_idx}]: « {user_query} » from {doc_url} with thumbnail_size={thumbnail_size}")
-	
 	content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}"
 	print(f"content_to_hash: {content_to_hash}")
 	hash_digest = hashlib.md5(content_to_hash.encode('utf-8')).hexdigest()
@@ -190,284 +503,219 @@ def get_dframe(
 	df_fpth = os.path.join(HITs_DIR, f"df_{query_prefix}{hash_digest}.gz")
 	print(f"df_fpth: {df_fpth}")
 
+	# ── CACHE PATH ──────────────────────────────────────────────────────────
 	if os.path.exists(df_fpth):
-		df = load_pickle(fpath=df_fpth)
-
-		if df.shape[0] == 0:
-			raise ValueError(f"Empty DF: {df.shape} => Exit...")
-
-		print(df[['id', 'img_path']].head(10))
-		print()
-
-		# change img_path with current dataset directory
-		# if dataframe is created in another machine, then img_path is not valid
-		df['img_path'] = df['img_path'].apply(lambda x: x.replace(os.path.dirname(x), IMAGE_DIRECTORY))
-		print(df[['id', 'img_path']].head(10))
-		print("#"*160)
-
-
-		# parallelize the above for loop:
-		missing_indices = [
-			i 
-			for i, path in enumerate(df['img_path'].tolist()) 
-			if not os.path.exists(path)
-		]
-		mising_paths = [
-			path 
-			for path in df['img_path'].tolist() 
-			if not os.path.exists(path)
-		]
-
-		if missing_indices:
-			if verbose:
-				print(f"Downloading {len(missing_indices)} missing images using {num_workers} workers...")
-				print(f"Missing paths:\n{mising_paths}\n")
-			
-			def download_task(idx: int):
-				img_path = df['img_path'].iloc[idx]
-				img_url = df['img_url'].iloc[idx]
-				success = _download_and_process_image(
-					img_url=img_url,
-					img_fpath=img_path,
-					thumbnail_size=thumbnail_size,
-					verbose=verbose,   # keep per-image logs quiet here
-				)
-				return idx, img_url, success
-			
-			failed = []
-			with ThreadPoolExecutor(max_workers=num_workers) as ex:
-				futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
-				for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading missing images", ncols=100):
-					idx, url, ok = fut.result()
-					if not ok:
-						failed.append((idx, url))
-
-			if failed and verbose:
-				print(f"Failed to download {len(failed)} {type(failed)} images.")
-				for i, (idx, url) in enumerate(failed):
-					print(f"{i} {idx} {url}")
-
-		return df
-
+			df = load_pickle(fpath=df_fpth)
+			if df.shape[0] == 0:
+					raise ValueError(f"Empty DF: {df.shape} => Exit...")
+			print(df[['id', 'img_path']].head(10))
+			print()
+			# FIX #3: Reconstruct path from filename instead of string-replace
+			df['img_path'] = df['img_path'].apply(
+					lambda x: os.path.join(IMAGE_DIRECTORY, os.path.basename(x))
+			)
+			print(df[['id', 'img_path']].head(10))
+			print("#" * 160)
+			# Identify missing images
+			missing_indices = [
+					i
+					for i, path in enumerate(df['img_path'].tolist())
+					if not os.path.exists(path)
+			]
+			missing_paths = [
+					path
+					for path in df['img_path'].tolist()
+					if not os.path.exists(path)
+			]
+			if missing_indices:
+					if verbose:
+							print(f"Downloading {len(missing_indices)} missing images using {num_workers} workers...")
+							print(f"Missing paths:\n{missing_paths}\n")
+					def download_task(idx: int):
+							img_path = df['img_path'].iloc[idx]
+							img_url = df['img_url'].iloc[idx]
+							success = _download_and_process_image(
+									img_url=img_url,
+									img_fpath=img_path,
+									thumbnail_size=thumbnail_size,
+									verbose=verbose,
+							)
+							return idx, img_url, success
+					failed = []
+					with ThreadPoolExecutor(max_workers=num_workers) as ex:
+							futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
+							for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading missing images", ncols=100):
+									idx, url, ok = fut.result()
+									if not ok:
+											failed.append((idx, url))
+					if failed and verbose:
+							print(f"Failed to download {len(failed)} images.")
+							for i, (idx, url) in enumerate(failed):
+									print(f"{i} {idx} {url}")
+			return df
+	# ── FETCH DOCUMENT ──────────────────────────────────────────────────────
 	doc_url_info = extract_url_info(doc_url)
 	print(json.dumps(doc_url_info, indent=4, ensure_ascii=False))
-
 	session = requests.Session()
 	session.headers.update(HEADERS)
-	
 	df_st_time = time.time()
 	try:
-		response = session.get(doc_url, timeout=30)
-		response.raise_for_status()
-		
-		soup = BeautifulSoup(response.text, 'html.parser')
-		hits = soup.find_all('img', class_='attachment-thumbnail')
-		# descriptions = soup.find_all("p") # useless
-		header = soup.find('h2', class_="entry-title").text
+			response = session.get(doc_url, timeout=30)
+			response.raise_for_status()
+			soup = BeautifulSoup(response.text, 'html.parser')
+			# Try new layout first, fallback to old layout
+			header = None
+			header_el = soup.find('h1')
+			if header_el:
+					header = header_el.get_text(strip=True)
+			else:
+					header_el = soup.find('h2', class_="entry-title")
+					if header_el:
+							header = header_el.get_text(strip=True)
+			if not header:
+					print(f"[WARNING] Could not find title in {doc_url}")
+					header = doc_url_info.get('type', 'Unknown')
+			# Try new layout images first
+			hits = soup.find_all('article', class_='photo-card')
+			if not hits:
+					hits = soup.find_all('img', class_='attachment-thumbnail')
 	except Exception as e:
-		print(f"<!> Failed to retrieve or parse {doc_url}: {e}")
-		return None
-	
-	print("-"*150)
-
-	# parts = [
-	# 	header,
-	# 	# (doc_url_info.get("country") or "").strip(),
-	# 	(doc_url_info.get("main_label") or "").strip(),
-	# 	# (doc_url_info.get("type") or "").strip(),
-	# ]
-	# header = " ".join(filter(None, parts))
-
+			print(f"[ERROR] Failed to retrieve or parse {doc_url}: {e}")
+			return None
+	print("-" * 150)
 	print(f"\nDoc header:\n{header}")
-	# print(f"\nDoc Descriptions:\n{descriptions}") # useless
-
-	caption_element = soup.find('div', class_='entry-caption')
+	# ── DESCRIPTION ─────────────────────────────────────────────────────────
+	doc_description = ""
+	caption_element = soup.find('div', class_='folder-description')
+	if not caption_element:
+			caption_element = soup.find('div', class_='entry-caption')
 	if caption_element:
-		doc_description = caption_element.get_text(strip=True)
-		doc_description = re.sub(r'\s+', ' ', doc_description).strip()
-	else:
-		doc_description = ""
-
+			doc_description = caption_element.get_text(strip=True)
+			doc_description = re.sub(r'\s+', ' ', doc_description).strip()
 	if doc_description.lower() and header.lower() not in doc_description.lower():
-		doc_description = header + " " + doc_description
+			doc_description = header + " " + doc_description
 	elif not doc_description.strip():
-		doc_description = header
-
+			doc_description = header
 	print(f"\nDoc Description:\n{doc_description}\n")
-
+	# ── CAPTION MAP (old layout only) ───────────────────────────────────────
 	caption_map = {}
 	for p in soup.find_all('p', class_='wp-caption-text gallery-caption'):
-		cid = p.get('id')
-		if cid:
-			caption_text = p.get_text(strip=True)
-			if caption_text:
-				caption_map[cid] = caption_text	
+			cid = p.get('id')
+			if cid:
+					caption_text = p.get_text(strip=True)
+					if caption_text:
+							caption_map[cid] = caption_text
 	print(f"{len(caption_map)} Caption Map(s):\n{json.dumps(caption_map, indent=4, ensure_ascii=False)}")
-
 	print(f"Found {len(hits)} Document(s) => Extracting information [might take a while]")
 	data = []
 	for idoc, vdoc in enumerate(hits):
-		print(f"[{idoc+1}/{len(hits)}] {vdoc}")
-
-		img_tag = vdoc
-		img_url = img_tag.get('data-src')
-
-		if not img_url:
-			print(f"{img_url} not found, skipping...")
-			continue
-
-		parent_a = img_tag.find_parent('a')
-		# print(f"doc_url: {parent_a.get('href')}")
-
-		try:
-			doc_doc_url = parent_a.get('href')
-			response = requests.get(doc_doc_url)
-			response.raise_for_status()
-			soup = BeautifulSoup(response.text, 'html.parser')
-			if verbose:
-				print(f"\nAll available image(s) on {doc_doc_url}:")
-				for i, img in enumerate(soup.find_all('img')):
-					print(f"[{i}] src={img.get('src')}")
-					print(f"data-src={img.get('data-src')}")
-					print(f"class={img.get('class')}")
-					print(f"width={img.get('width')} height={img.get('height')}")
-
-			header_el = soup.find('h2', class_="entry-title")
-			caption_el = soup.find('div', class_='entry-caption')
-			local_header = header_el.get_text(strip=True) if header_el else ""
-			local_caption = caption_el.get_text(strip=True) if caption_el else ""
-		except Exception as e:
-			print(f"Failed to extract doc_url: {e}")
-			continue
-
-		doc_cap_x0 = local_caption if local_caption else None
-		doc_header_x0 = local_header if local_header else None
-		print(f"doc_header (0th try): {doc_header_x0}")
-		print(f"doc_caption(0th try): {doc_cap_x0}")
-		print("-"*50)
-
-		# join doc_title_x0 and doc_cap_x0 if they're not the same
-		if doc_header_x0 and doc_cap_x0 and doc_header_x0 != doc_cap_x0:
-			doc_title_x0 = ". ".join(filter(None, [doc_header_x0, doc_cap_x0]))
-		else:
-			doc_title_x0 = doc_header_x0 or doc_cap_x0
-		print(f"doc_title(0th try): {doc_title_x0}")
-
-		doc_title_x1 = img_tag.get("alt")
-		doc_title_x1 = doc_title_x1 if doc_title_x1 != "Folder Icon" else None
-		print(f"doc_title(1st try): {doc_title_x1}")
-		
-		doc_title_x2 = None
-		aria_id = img_tag.get("aria-describedby")
-		if aria_id:
-			caption_title = caption_map.get(aria_id)
-			if caption_title:
-				doc_title_x2 = caption_title
-
-		print(f"doc_title(2nd try): {doc_title_x2}")
-
-		# Select the most complete title or combine if they're truly different
-		titles = [doc_title_x0, doc_cap_x0, doc_title_x1, doc_title_x2]
-		valid_titles = [t for t in titles if t]
-		
-		if len(valid_titles) == 1:
-			doc_title = valid_titles[0]
-		elif len(valid_titles) > 1:
-			# Find the longest title (most descriptive)
-			doc_title = max(valid_titles, key=len)
-		else:
-			doc_title = None
-		print(f"doc_title(final)  : {doc_title}")
-
-		img_url = img_url.replace("_cache/", "")
-		img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url) # Remove the thumbnail size from the end of the URL
-		filename = os.path.basename(img_url)
-		img_fpath = os.path.join(IMAGE_DIRECTORY, filename)
-		specific_doc_url = urllib.parse.urljoin(doc_url, parent_a.get('href')) if parent_a and parent_a.get('href') else doc_url
-
-		# Attempt to extract date from multiple sources
-		date_sources = [
-			doc_title,
-			specific_doc_url,
-			img_url,
-			filename,
-			doc_description,  # assuming it's still accessible here
-		]
-		
-		# Try extracting year from all sources
-		extracted_year = None
-		for src in date_sources:
-			if src:
-				year = extract_year(src)
-				if year:
-					extracted_year = year
-					break
-		if verbose:
-			print(f"extracted_year: {extracted_year}")
-
-		if verbose:
-			print(f"img_fpath: {img_fpath}")
-		# Downloading & processing Images
-		if not os.path.exists(img_fpath):
-			# Fresh download
-			if not _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose):
-				if verbose:
-					print(f"Failed to download {img_url} to {img_fpath} => Skipping...")
-				continue
-		else:
-			# Image already exists - try re-processing
-			if not process_image_for_storage(
-				img_path=img_fpath, 
-				thumbnail_size=thumbnail_size, 
-				verbose=verbose
-			):
-				# Remove the existing image
-				if os.path.exists(img_fpath):
-					if verbose:
-						print(f"Existing image {img_fpath} failed re-processing. Attempting re-download...")
-					os.remove(img_fpath)
-				
-				# Re-download
-				if not _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose):
-					if verbose:
-						print(f"Failed to re-download {img_url} to {img_fpath} => Skipping...")
-					continue
+			print(f"[{idoc + 1}/{len(hits)}] {vdoc}")
+			# ── Extract metadata depending on layout ──────────────────────────
+			if vdoc.name == 'article':
+					# NEW layout
+					img_tag = vdoc.find('img')
+					if not img_tag:
+							continue
+					img_url = img_tag.get('src')
+					caption_el = vdoc.find('h3')
+					doc_title = caption_el.get_text(strip=True) if caption_el else img_tag.get('alt', '')
+					parent_a = vdoc.find('a')
+					doc_doc_url = parent_a.get('href') if parent_a else None
 			else:
-				if verbose:
-					print(f"Existing image {img_fpath} re-processed successfully")
-
-		row = {
-			'id': filename,
-			'date': extracted_year,
-			'doc_url': specific_doc_url,
-			'img_url': img_url,
-			'title': doc_title,
-			'description': doc_description,
-			'country': doc_url_info.get("country"),
-			'user_query': [user_query] if user_query else None,
-			'label': user_query if user_query else None,
-			'img_path': img_fpath,
-		}
-		if verbose:
-			print(f"Appending Row[{idoc+1}/{len(hits)}]:")
-			print(f"{json.dumps(row, indent=4, ensure_ascii=False)}")
-			print("-"*120)
-
-		data.append(row)
-
+					# OLD layout
+					img_tag = vdoc
+					img_url = img_tag.get('data-src')
+					if not img_url:
+							print(f"[WARNING] No data-src found, skipping...")
+							continue
+					parent_a = img_tag.find_parent('a')
+					doc_doc_url = parent_a.get('href') if parent_a else None
+					doc_title = img_tag.get("alt")
+					if doc_title == "Folder Icon":
+							doc_title = None
+					aria_id = img_tag.get("aria-describedby")
+					if aria_id:
+							caption_title = caption_map.get(aria_id)
+							if caption_title:
+									doc_title = caption_title
+			if not img_url:
+					print(f"[WARNING] No image URL found, skipping...")
+					continue
+			# ── FIX #1 & #2: Absolutize & clean URL ───────────────────────────
+			img_url = urllib.parse.urljoin(doc_url, img_url)
+			img_url = img_url.replace("_cache/", "")
+			img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url)
+			# NOTE: Do NOT strip Hugo _hu_ hash suffix — the hashed file is usually the only one deployed.
+			# If you need the original, add a fallback inside _download_and_process_image().
+			filename = os.path.basename(img_url)
+			img_fpath = os.path.join(IMAGE_DIRECTORY, filename)
+			specific_doc_url = urllib.parse.urljoin(doc_url, doc_doc_url) if doc_doc_url else doc_url
+			# ── Extract year ──────────────────────────────────────────────────
+			date_sources = [doc_title, specific_doc_url, img_url, filename, doc_description]
+			extracted_year = None
+			for src in date_sources:
+					if src:
+							year = extract_year(src)
+							if year:
+									extracted_year = year
+									break
+			if verbose:
+					print(f"extracted_year: {extracted_year}")
+			# ── Download & process image ────────────────────────────────────────
+			if not os.path.exists(img_fpath):
+					ok = _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose)
+					if not ok:
+							if verbose:
+									print(f"Failed to download {img_url} => Skipping...")
+							continue
+			else:
+					ok = process_image_for_storage(img_path=img_fpath, thumbnail_size=thumbnail_size, verbose=verbose)
+					if not ok:
+							if verbose:
+									print(f"Existing image {img_fpath} failed re-processing. Attempting re-download...")
+							os.remove(img_fpath)
+							ok = _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose)
+							if not ok:
+									if verbose:
+											print(f"Failed to re-download {img_url} => Skipping...")
+									continue
+					else:
+							if verbose:
+									print(f"Existing image {img_fpath} re-processed successfully")
+			# ── Build row ───────────────────────────────────────────────────────
+			row = {
+					'id': filename,
+					'date': extracted_year,
+					'doc_url': specific_doc_url,
+					'img_url': img_url,
+					'title': doc_title,
+					'description': doc_description,
+					'country': doc_url_info.get("country"),
+					'user_query': user_query if user_query else None,   # FIX #5: string, not list
+					'label': user_query if user_query else None,
+					'img_path': img_fpath,
+			}
+			if verbose:
+					print(f"Appending Row[{idoc + 1}/{len(hits)}]:")
+					print(f"{json.dumps(row, indent=4, ensure_ascii=False)}")
+					print("-" * 120)
+			data.append(row)
+	# ── FIX #6: Guard against empty data ──────────────────────────────────
+	if not data:
+			print("[WARNING] No images successfully downloaded or processed.")
+			return pd.DataFrame()
 	if verbose:
-		print(f"Creating DataFrame from {len(data)} rows...")
+			print(f"Creating DataFrame from {len(data)} rows...")
 	df = pd.DataFrame(data)
-	
-	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
+	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time() - df_st_time:.1f} sec")
 	print(f"Saving DF to {df_fpth}")
 	save_pickle(pkl=df, fname=df_fpth)
-
 	return df
 
 @measure_execution_time
 def main():
 	base_url = "https://www.worldwarphotos.info/gallery"
+
 	URLs = { # key: url : val: user_query
 		f"{base_url}/usa/pacific/kwajalein/": None,
 		f"{base_url}/usa/pacific/okinawa/": None,
@@ -888,8 +1136,8 @@ def main():
 		f"{base_url}/germany/units/sturmgeschutz_brigade_244/" : "armored fighting vehicles",
 		}
 	
-	# # slice[:N] URLs [JUST FOR TESTING]:
-	# URLs = {k:v for i, (k, v) in enumerate(URLs.items()) if i < 25}
+	# slice[:N] URLs [JUST FOR TESTING]:
+	# URLs = {k:v for i, (k, v) in enumerate(URLs.items()) if i < 3}
 
 	dfs_fname = os.path.join(HITs_DIR, f"{dataset_name}_{len(URLs)}_dfs.gz")
 	
@@ -916,36 +1164,46 @@ def main():
 	total_searched_labels = len(dfs)
 	print(f"Concatinating {total_searched_labels} x {type(dfs[0])} dfs...")
 	wwii_df = pd.concat(dfs, ignore_index=True)
-	print(f"wwii_df {type(wwii_df)} {wwii_df.shape}, {list(wwii_df.columns)}")
+	print(f"wwii_df {type(wwii_df)} {wwii_df.shape} {list(wwii_df.columns)}")
+	print(wwii_df.info(verbose=True, memory_usage="deep"))
+	print(wwii_df.head(5))
+	print("="*100)
 
 	# 1: multi label:
+	print(f"[MULTI-LABEL]")
 	multi_label_synched_df = wwii_df.copy()
-	multi_label_final_df = get_enriched_description(df=multi_label_synched_df, check_english=True, verbose=True)
-	validate_text_cleaning_pipeline(df=multi_label_final_df, text_column='enriched_document_description')
+	multi_label_final_df = get_enriched_description(df=multi_label_synched_df, check_english=True, verbose=args.verbose)
+	# validate_text_cleaning_pipeline(df=multi_label_final_df, text_column='enriched_document_description')
 
 	multi_label_fpath = os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv")
-	print(f"Saving {multi_label_fpath}...")
 	multi_label_final_df.to_csv(multi_label_fpath, index=False)
+	print(multi_label_final_df.info(verbose=True, memory_usage="deep"))
 	try:
 		multi_label_final_df.to_excel(multi_label_fpath.replace('.csv', '.xlsx'), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
+	print(f"[SUCCESS] saved {multi_label_fpath}")
 
 	# 2: single label:
+	print(f"[SINGLE-LABEL]")
 	# a) drop None from labels:
-	print(f"Checking for None labels... {wwii_df['label'].isna().sum()} None labels / {wwii_df.shape[0]} total samples")
+	print(f"Checking for None labels: {wwii_df['label'].isna().sum()} None labels / {wwii_df.shape[0]} total samples")
 	single_label_final_df = wwii_df.dropna(subset=['label'])
 	# b) save
 	single_label_fpath = multi_label_fpath.replace('multi_label', 'single_label')
+	unique_labels = single_label_final_df['label'].unique()
+	print(f"{len(unique_labels)} Unique labels ({type(unique_labels)}):\n{unique_labels}\n")
+	if unique_labels.size == 0:
+		print(f"[ERROR] No unique labels found in the dataset. => stopping.")
+		return
+
 	print(f"Saving SINGLE-LABEL dataset in {single_label_fpath}...")
 	single_label_final_df.to_csv(single_label_fpath, index=False)
 	try:
 		single_label_final_df.to_excel(single_label_fpath.replace('.csv', '.xlsx'), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
-
-	unique_labels = single_label_final_df['label'].unique()
-	print(f"{len(unique_labels)} Unique labels:\n{unique_labels}\n")
+	print(f"[SUCCESS] saved {single_label_fpath}")
 
 	print(single_label_final_df['label'].value_counts())
 
@@ -962,13 +1220,15 @@ def main():
 	)
 
 	# stratified splitting [single-label]:
-	train_df, val_df = get_stratified_split(
+	train_df, val_df = get_single_label_stratified_split(
 		df=single_label_final_df, 
 		val_split_pct=args.val_split_pct,
 		label_col='label',
+		seed=args.seed,
+		verbose=args.verbose,
 	)
 	print(f"Train/val split for {dataset_name} dataset complete!")
-	print(f"Full dataset: {wwii_df.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
+	print(f"Full: {wwii_df.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
 
 	train_df.to_csv(os.path.join(DATASET_DIRECTORY, single_label_fpath.replace('.csv', '_train.csv')), index=False)
 	val_df.to_csv(os.path.join(DATASET_DIRECTORY, single_label_fpath.replace('.csv', '_val.csv')), index=False)
