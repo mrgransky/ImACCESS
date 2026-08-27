@@ -27,7 +27,15 @@ echo "JOBname: $SLURM_JOB_NAME, ID: $SLURM_JOB_ID, WRK_DIR: $SLURM_SUBMIT_DIR"
 echo "nNODES: $SLURM_NNODES, NODELIST: $SLURM_JOB_NODELIST, NODE_ID: $SLURM_NODEID"
 echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_NPROCS"
 echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
-echo "GPU(s): $SLURM_GPUS_ON_NODE, Partition: $SLURM_JOB_PARTITION"
+
+# echo "GPU(s): $SLURM_GPUS_ON_NODE, Partition: $SLURM_JOB_PARTITION"
+
+if [[ -n "${SLURM_GPUS_ON_NODE:-}" ]]; then
+    echo "GPU(s): $SLURM_GPUS_ON_NODE, Partition: $SLURM_JOB_PARTITION"
+else
+    echo "Partition: $SLURM_JOB_PARTITION (no GPU requested)"
+fi
+
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
@@ -39,7 +47,7 @@ MODEL_ARCHITECTURE="ViT-L/14@336px"
 
 python -u gt_kws_multimodal_merge.py \
 	--dataset_dir $DATASET_DIR \
-	--batch_size 128 \
+	--batch_size 256 \
 	--num_workers $SLURM_CPUS_PER_TASK \
 	--embedding_model_id $TEXT_EMBEDDING_MODEL \
 	--clip_architecture $MODEL_ARCHITECTURE \
