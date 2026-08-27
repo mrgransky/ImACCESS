@@ -36,6 +36,8 @@ else
     echo "Partition: $SLURM_JOB_PARTITION (no GPU requested)"
 fi
 
+echo "GPU(s): ${SLURM_GPUS_ON_NODE:-N/A}, Partition: $SLURM_JOB_PARTITION"
+
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
