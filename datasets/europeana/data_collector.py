@@ -459,8 +459,8 @@ def main():
 	df_merged_raw = pd.concat(dfs, ignore_index=True)
 	print(f">> df_merged_raw: {df_merged_raw.shape} {type(df_merged_raw)} {list(df_merged_raw.columns)}")
 
-	# json_file_path = os.path.join(project_dir, 'misc', 'super_labels.json')
-	json_file_path = os.path.join(project_dir, 'misc', 'canonical_labels.json')
+	# json_file_path = os.path.join(MISC_DIR, 'super_labels.json')
+	json_file_path = os.path.join(MISC_DIR, 'canonical_labels.json')
 	print(f">> Loading super classes[canonical terms]: {json_file_path}")
 	if os.path.exists(json_file_path):
 		with open(json_file_path, 'r') as file_:
@@ -537,7 +537,7 @@ def main():
 	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
 	# validate_text_cleaning_pipeline(df=multi_label_final_df, text_column='enriched_document_description')
 
-	print("Saving final MULTI-LABEL dataset...")
+	print("MULTI-LABEL")
 	print(f"multi_label_final_df: {type(multi_label_final_df)} {multi_label_final_df.shape} {list(multi_label_final_df.columns)}")
 	multi_label_fpath = os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv")
 
@@ -547,7 +547,7 @@ def main():
 	except Exception as e:
 		print(f"Failed to write final multi-label Excel file: {e}")
 
-	print("\n3. Creating SINGLE-LABEL version (from successfully downloaded images)...")
+	print("\n[SINGLE-LABEL] (from successfully downloaded images)")
 	single_label_final_df = multi_label_synched_df.copy()
 	single_label_columns_to_keep = [
 		col 
@@ -564,27 +564,20 @@ def main():
 	except Exception as e:
 		print(f"Failed to write final single-label Excel file: {e}")	
 	
-
-	get_single_label_stratified_split(
-		df=single_label_final_df,
+	train_df, val_df = get_single_label_stratified_split(
+		csv_file=single_label_fpath,
 		val_split_pct=args.val_split_pct,
 		seed=args.seed,
 		verbose=args.verbose,
 	)
 
-	# post_process(
-	# 	df=single_label_final_df, 
-	# 	dataset_type="single_label", 
-	# 	is_multi_label=False,
-	# 	output_dir=OUTPUT_DIRECTORY,
-	# )
-	
-	# post_process(
-	# 	df=multi_label_final_df, 
-	# 	dataset_type="multi_label", 
-	# 	is_multi_label=True,
-	# 	output_dir=OUTPUT_DIRECTORY,
-	# )
+	viz.plot_train_val_label_distribution(
+		train_df=train_df,
+		val_df=val_df,
+		dataset_name=dataset_name,
+		VAL_SPLIT_PCT=args.val_split_pct,
+		fname=os.path.join(OUTPUT_DIRECTORY, f'simple_random_split_stratified_single_label_distribution_train_val_{args.val_split_pct}_pct.png'),
+	)
 
 	# if IMAGE_DIRECTORY is not empty, load it, else compute it
 	if args.img_mean_std and os.listdir(IMAGE_DIRECTORY):

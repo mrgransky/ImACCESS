@@ -1,13 +1,22 @@
-import os
 import sys
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-project_dir = os.path.dirname(parent_dir)
-sys.path.insert(0, project_dir)
+import os
 
-from misc.utils import *
-import misc.visualize as viz
-from misc.nlp_utils import get_enriched_description, validate_text_cleaning_pipeline
+HOME, USER = os.getenv('HOME'), os.getenv('USER')
+IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
+
+CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
+sys.path.insert(0, CLIP_DIR)
+
+MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
+sys.path.insert(0, MISC_DIR)
+
+for p in sys.path:
+	print(p)
+
+from utils import *
+import visualize as viz
+from nlp_utils import get_enriched_description, validate_text_cleaning_pipeline
+from data_prep import get_single_label_stratified_split
 
 # local:
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 --img_mean_std
@@ -45,14 +54,14 @@ CUSTOMIZED_COLLECTIONS_STR: str = "!".join(CUSTOMIZED_COLLECTIONS)
 FIGURE_SIZE = (12, 9)
 DPI = 350
 
-meaningless_words_fpth = os.path.join(project_dir, 'misc', 'meaningless_words.txt')
+meaningless_words_fpth = os.path.join(MISC_DIR, 'meaningless_words.txt')
 STOPWORDS = list()
 with open(meaningless_words_fpth, 'r') as file_:
 	customized_meaningless_words=[line.strip().lower() for line in file_]
 STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
 
-with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
+with open(os.path.join(MISC_DIR, 'query_labels.txt'), 'r') as file_:
 	search_labels = list(dict.fromkeys(line.strip() for line in file_))
 search_labels = list(set([lbl.lower() for lbl in search_labels]))
 
@@ -363,9 +372,9 @@ def main():
 	df_merged_raw = pd.concat(dfs, ignore_index=True)
 	print(f">> Concatinated dfs: {df_merged_raw.shape}")
 
-	json_file_path = os.path.join(project_dir, 'misc', 'canonical_labels.json')
+	json_file_path = os.path.join(MISC_DIR, 'canonical_labels.json')
 	print(f"<!> Replacing labels with canonical terms from {json_file_path}")
-	# json_file_path = os.path.join(project_dir, 'misc', 'super_labels.json')
+	# json_file_path = os.path.join(MISC_DIR, 'super_labels.json')
 
 	if os.path.exists(json_file_path):
 		with open(json_file_path, 'r') as file_:
@@ -461,7 +470,7 @@ def main():
 	except Exception as e:
 		print(f"Failed to write final multi-label Excel file: {e}")
 
-	print("\n3. Creating SINGLE-LABEL version (from successfully downloaded images)...")
+	print("\n3.[SINGLE-LABEL] (from successfully downloaded images)...")
 	single_label_final_df = multi_label_synched_df.copy()
 	single_label_columns_to_keep = [
 		col 
@@ -478,18 +487,20 @@ def main():
 	except Exception as e:
 		print(f"Failed to write final single-label Excel file: {e}")
 	
-	post_process(
-		df=single_label_final_df, 
-		dataset_type="single_label", 
-		is_multi_label=False,
-		output_dir=OUTPUT_DIRECTORY,
+	# stratified splitting [single-label]:
+	train_df, val_df = get_single_label_stratified_split(
+		csv_file=single_label_fpath,
+		val_split_pct=args.val_split_pct,
+		seed=args.seed,
+		verbose=args.verbose,
 	)
-	
-	post_process(
-		df=multi_label_final_df, 
-		dataset_type="multi_label", 
-		is_multi_label=True,
-		output_dir=OUTPUT_DIRECTORY,
+
+	viz.plot_train_val_label_distribution(
+		train_df=train_df,
+		val_df=val_df,
+		dataset_name=dataset_name,
+		VAL_SPLIT_PCT=args.val_split_pct,
+		fname=os.path.join(OUTPUT_DIRECTORY, f'simple_random_split_stratified_single_label_distribution_train_val_{args.val_split_pct}_pct.png'),
 	)
 
 	if args.img_mean_std and os.listdir(IMAGE_DIRECTORY):

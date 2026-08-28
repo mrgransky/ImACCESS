@@ -1,14 +1,22 @@
-import os
 import sys
+import os
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-project_dir = os.path.dirname(parent_dir)
-sys.path.insert(0, project_dir) # add project directory to sys.path
+HOME, USER = os.getenv('HOME'), os.getenv('USER')
+IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
 
-from misc.utils import *
-from misc.visualize import *
-from misc.nlp_utils import validate_text_cleaning_pipeline, get_enriched_description
+CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
+sys.path.insert(0, CLIP_DIR)
+
+MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
+sys.path.insert(0, MISC_DIR)
+
+for p in sys.path:
+	print(p)
+
+from utils import *
+import visualize as viz
+from nlp_utils import get_enriched_description, validate_text_cleaning_pipeline
+from data_prep import get_single_label_stratified_split
 
 dataset_name = "NATIONAL_ARCHIVE".upper()
 parser = argparse.ArgumentParser(description=f"U.S. National Archive Dataset")
@@ -43,7 +51,7 @@ END_DATE = args.end_date
 FIGURE_SIZE = (12, 9)
 DPI = 200
 
-meaningless_words_fpth = os.path.join(project_dir, 'misc', 'meaningless_words.txt')
+meaningless_words_fpth = os.path.join(MISC_DIR, 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
 STOPWORDS = list()
 with open(meaningless_words_fpth, 'r') as file_:
@@ -468,7 +476,7 @@ def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFra
 
 @measure_execution_time
 def main():
-	with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
+	with open(os.path.join(MISC_DIR, 'query_labels.txt'), 'r') as file_:
 		search_labels = list(dict.fromkeys(line.strip() for line in file_))
 
 	print(f"Total of {len(search_labels)} {type(search_labels)} lables are being processed...")
@@ -504,8 +512,8 @@ def main():
 	print(f">> Concatinated dfs: {df_merged_raw.shape} Elapsed time: {time.time()-concat_st:.1f} sec")
 
 	print(f">> Replacing labels with canonical terms")
-	# json_file_path = os.path.join(project_dir, 'misc', 'super_labels.json')
-	json_file_path = os.path.join(project_dir, 'misc', 'canonical_labels.json')
+	# json_file_path = os.path.join(MISC_DIR, 'super_labels.json')
+	json_file_path = os.path.join(MISC_DIR, 'canonical_labels.json')
 
 	if os.path.exists(json_file_path):
 		with open(json_file_path, 'r') as file_:
@@ -605,19 +613,24 @@ def main():
 	except Exception as e:
 		print(f"Failed to write final single-label Excel file: {e}")
 	
-	post_process(
-		df=single_label_final_df, 
-		dataset_type="single_label", 
-		is_multi_label=False,
-		output_dir=OUTPUT_DIRECTORY,
+
+	# stratified splitting [single-label]:
+	train_df, val_df = get_single_label_stratified_split(
+		csv_file=single_label_fpath,
+		val_split_pct=args.val_split_pct,
+		seed=args.seed,
+		verbose=args.verbose,
 	)
-	
-	post_process(
-		df=multi_label_final_df, 
-		dataset_type="multi_label", 
-		is_multi_label=True,
-		output_dir=OUTPUT_DIRECTORY,
+
+	viz.plot_train_val_label_distribution(
+		train_df=train_df,
+		val_df=val_df,
+		dataset_name=dataset_name,
+		VAL_SPLIT_PCT=args.val_split_pct,
+		fname=os.path.join(OUTPUT_DIRECTORY, f'simple_random_split_stratified_single_label_distribution_train_val_{args.val_split_pct}_pct.png'),
 	)
+
+
 
 	if args.img_mean_std and os.listdir(IMAGE_DIRECTORY):
 		try:

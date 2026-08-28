@@ -1,14 +1,18 @@
 from utils import *
 
 def get_single_label_stratified_split(
-	df: pd.DataFrame, 
+	csv_file: str,
 	val_split_pct: float, 
 	seed: int=42,
 	label_col: str='label',
 	verbose: bool=True,
 ):
+
+	df = pd.read_csv(csv_file)
 	if verbose:
 		print(f"\n[SINGLE-LABBEL] Stratified Splitting")
+		print(df.info(verbose=True, memory_usage="deep"))
+
 
 	# Count the occurrences of each label
 	label_counts = df[label_col].value_counts()
@@ -45,6 +49,15 @@ def get_single_label_stratified_split(
 		print("\nLabels per dataset in val split:")
 		print(val_df[label_col].value_counts())
 		print('-'*120)
+
+	train_fpath = csv_file.replace('.csv', '_train.csv')
+	print(f"[SAVING] {train_fpath}")
+	train_df.to_csv(train_fpath, index=False)
+
+	val_fpath = csv_file.replace('.csv', '_val.csv')
+	print(f"[SAVING] {val_fpath}")
+	val_df.to_csv(val_fpath, index=False)
+	print('-'*100)
 
 	return train_df, val_df
 

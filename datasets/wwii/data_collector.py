@@ -1221,27 +1221,18 @@ def main():
 
 	# stratified splitting [single-label]:
 	train_df, val_df = get_single_label_stratified_split(
-		df=single_label_final_df, 
+		csv_file=single_label_fpath,
 		val_split_pct=args.val_split_pct,
-		label_col='label',
 		seed=args.seed,
 		verbose=args.verbose,
 	)
-	print(f"Train/val split for {dataset_name} dataset complete!")
-	print(f"Full: {wwii_df.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
-
-	train_df.to_csv(os.path.join(DATASET_DIRECTORY, single_label_fpath.replace('.csv', '_train.csv')), index=False)
-	val_df.to_csv(os.path.join(DATASET_DIRECTORY, single_label_fpath.replace('.csv', '_val.csv')), index=False)
 
 	viz.plot_train_val_label_distribution(
 		train_df=train_df,
 		val_df=val_df,
 		dataset_name=dataset_name,
 		VAL_SPLIT_PCT=args.val_split_pct,
-		fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_simple_random_split_stratified_single_label_distribution_train_val_{args.val_split_pct}_pct.png'),
-		FIGURE_SIZE=(14, 8),
-		DPI=DPI,
-		label_column='label',
+		fname=os.path.join(OUTPUT_DIRECTORY, f'simple_random_split_stratified_single_label_distribution_train_val_{args.val_split_pct}_pct.png'),
 	)
 
 	if args.img_mean_std and os.listdir(IMAGE_DIRECTORY):

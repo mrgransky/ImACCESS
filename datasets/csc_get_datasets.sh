@@ -7,11 +7,11 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=60G
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=160G
 #SBATCH --array=0-3
-#SBATCH --partition=interactive
-#SBATCH --time=0-22:00:00
+#SBATCH --partition=large
+#SBATCH --time=0-23:55:00
 
 set -euo pipefail
 
