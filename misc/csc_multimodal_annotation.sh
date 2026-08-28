@@ -7,12 +7,12 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=36G
-#SBATCH --array=0-4
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=64G
+#SBATCH --array=0
 #SBATCH --partition=gpumedium
-#SBATCH --time=00-02:00:00
-#SBATCH --gres=gpu:a100:4,nvme:250
+#SBATCH --time=01-12:00:00
+#SBATCH --gres=gpu:gh200:4,nvme:250
 
 set -euo pipefail
 
@@ -72,8 +72,8 @@ DATASETS=(
 	${DATASET_DIRECTORY}/SMU_1900-01-01_1970-12-31
 )
 CSV_FILE=${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv
-LLM_BATCH_SIZES=(8 6 18 18 28)
-VLM_BATCH_SIZES=(12 8 8 8 8)
+LLM_BATCH_SIZES=(24 6 18 18 28)
+VLM_BATCH_SIZES=(30 8 8 8 8)
 
 echo "Running Multimodal Annotation on $CSV_FILE using $LLM_MODEL and $VLM_MODEL"
 echo "[LLM] batch sizes: ${LLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} max generated tokens: $LLM_MAX_GENERATED_TOKENS"

@@ -263,7 +263,7 @@ def merge_datasets(
 			chunk_df_fpth = merged_multi_label_df_fpath.replace('.csv', f'_chunk_{i}.csv')
 			chunk_df.to_csv(chunk_df_fpth, index=False)
 			if verbose:
-				print(f"Saved chunk {i+1:02d}/{total_num_chunks}: {chunk_df.shape[0]} rows -> {chunk_df_fpth}")
+				print(f"Saved chunk {i+1:2d}/{total_num_chunks}: {chunk_df.shape[0]} rows -> {chunk_df_fpth}")
 	
 	# 2.5 Save merged single-label and multi-label dataframes as Excel files
 	try:
