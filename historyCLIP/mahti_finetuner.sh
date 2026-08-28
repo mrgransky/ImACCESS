@@ -70,12 +70,11 @@
 #   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
-#SBATCH --array=0-32 # first 11 strats, all cols
+#SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
 ###SBATCH --array=12-14 # only LoRA+
 ###SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 
 set -euo pipefail
-
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
 txt="$user began Slurm job: `date`"
@@ -91,7 +90,6 @@ echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_N
 echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
-
 ##############################################################################
 # LABEL TYPE
 # Can be overridden at submission time via:
