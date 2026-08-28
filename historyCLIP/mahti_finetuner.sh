@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=seed_2_ft_h4_multi_label
+#SBATCH --job-name=ft_h4_multi_label_seed_42
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -12,6 +12,7 @@
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1,nvme:200
 #SBATCH --time=1-12:00:00
+#SBATCH --begin=08:45:00
 
 ##############################################################################
 # ARRAY INDEXING SCHEME
@@ -69,9 +70,9 @@
 #   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
-###SBATCH --array=0-32 # first 11 strats, all cols
+#SBATCH --array=0-32 # first 11 strats, all cols
 ###SBATCH --array=12-14 # only LoRA+
-#SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
+###SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 
 set -euo pipefail
 
