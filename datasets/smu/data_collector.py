@@ -1,5 +1,6 @@
 import sys
 import os
+from tabnanny import verbose
 
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
@@ -259,6 +260,14 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
+
+	print("-"*50)
+	print(df.shape)
+	print(df.info(verbose=True, memory_usage='deep'))
+	print("-"*50)
+
+
+
 	# Apply the function to the 'raw_doc_date' and 'doc_year' columns
 	df['doc_date'] = df.apply(lambda row: get_doc_year(row['raw_doc_date']), axis=1)
 
@@ -368,7 +377,7 @@ def main():
 		# 	fname=searched_listed_dfs_fpth
 		# )
 
-	print(f">> Concatinating {len(dfs)} x {type(dfs[0])} dfs ...")
+	print(f"\nConcatinating {len(dfs)} x {type(dfs[0])} dfs ...")
 	df_merged_raw = pd.concat(dfs, ignore_index=True)
 	print(f">> Concatinated dfs: {df_merged_raw.shape}")
 
@@ -456,10 +465,10 @@ def main():
 	)
 	
 	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
-	validate_text_cleaning_pipeline(
-		df=multi_label_final_df, 
-		text_column='enriched_document_description'
-	)
+	# validate_text_cleaning_pipeline(
+	# 	df=multi_label_final_df, 
+	# 	text_column='enriched_document_description'
+	# )
 
 	print(f"multi_label_final_df: {type(multi_label_final_df)} {multi_label_final_df.shape} {list(multi_label_final_df.columns)}")
 	multi_label_fpath = os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv")
