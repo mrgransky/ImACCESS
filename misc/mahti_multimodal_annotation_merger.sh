@@ -1,16 +1,16 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=mm_annot_merge_gpu
+#SBATCH --job-name=mm_annot_merge
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
+#SBATCH --cpus-per-task=40
 #SBATCH --mem=64G
-#SBATCH --partition=gpusmall
-#SBATCH --time=00-10:00:00
+#SBATCH --partition=small
+#SBATCH --time=00-20:00:00
 #SBATCH --gres=gpu:a100:1,nvme:150
 
 set -euo pipefail
