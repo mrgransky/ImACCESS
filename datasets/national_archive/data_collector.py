@@ -179,7 +179,7 @@ def get_data(
 		"q": label,
 		"startDate": start_date,
 		"typeOfMaterials": "Photographs and other Graphic Materials",
-		"abbreviated": "true",
+		# "abbreviated": "true",
 		"debug": "true",
 		"datesAgg": "TRUE"
 	}
@@ -472,166 +472,180 @@ def get_dframe_old(query: str, docs: List=[Dict], verbose: bool=False) -> pd.Dat
 
 	return df
 
-def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFrame:
-	query = query.lower()
+def get_dframe(query: str, docs: List[Dict] = None, verbose: bool = False) -> Optional[pd.DataFrame]:
+    query = query.lower()
 
-	# check if df already exists:
-	qv_processed = re.sub(
-		pattern=" ", 
-		repl="_", 
-		string=query,
-	)
-	df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_{START_DATE}_{END_DATE}.gz")
-	print(f"df_fpth: {df_fpth}")
+    # --- Step 1: Check if cached DataFrame already exists ---
+    qv_processed = re.sub(pattern=" ", repl="_", string=query)
+    df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_{START_DATE}_{END_DATE}.gz")
+    print(f"\n[DFRAME] Query: « {query} » | Cache path: {df_fpth}")
 
-	if os.path.exists(df_fpth):
-		df = load_pickle(fpath=df_fpth)
-		if df.shape[0] == 0:
-			raise ValueError(f"Empty DF: {df.shape} => Exit...")
+    if os.path.exists(df_fpth):
+        try:
+            df = load_pickle(fpath=df_fpth)
+            if df is None or df.empty:
+                print(f"[DFRAME][WARN] Cached DataFrame at {df_fpth} is empty or corrupted. Rebuilding from raw docs...")
+            else:
+                print(f"[DFRAME] Loaded cached DataFrame: {df.shape[0]} rows, {df.shape[1]} cols")
+                # Adjust img_path for the current environment
+                df['img_path'] = df['img_path'].apply(lambda x: os.path.join(IMAGE_DIRECTORY, os.path.basename(x)))
+                if verbose:
+                    print(df[['id', 'img_path']].head(5).to_string())
+                return df
+        except Exception as e:
+            print(f"[DFRAME][WARN] Failed reading cache {df_fpth}: {e}. Rebuilding from raw docs...")
 
-		print(df[['id', 'img_path']].head(10))
-		print("#"*160)
+    if not docs:
+        print(f"[DFRAME][WARN] No raw docs provided for query: « {query} »")
+        return None
 
-		# change img_path with current dataset directory
-		df['img_path'] = df['img_path'].apply(lambda x: x.replace(os.path.dirname(x), IMAGE_DIRECTORY))
-		print(df[['id', 'img_path']].head(10))
-		print("#"*160)
+    print(f"[DFRAME] Analyzing {len(docs):,} raw hit(s) for query: « {query} »...")
+    df_st_time = time.time()
+    
+    # Tracking counters for skipped documents
+    skip_stats = Counter()
+    data = []
 
-		return df
+    # Unwanted media types
+    unwanted_types = ["portable document file (pdf)", "pdf", "video", "audio"]
 
-	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
-	df_st_time = time.time()
-	data = []
-	for doc in docs:
-		record = doc.get('_source', {}).get('record', {})
-		na_identifier = record.get('naId')
-		raw_doc_date = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
-		
-		# --- Extract from record['digitalObjects'] instead of fields ---
-		digital_objects = record.get('digitalObjects', [])
-		if not digital_objects:
-			continue
+    # Term blacklists
+    title_blacklisted_terms = [
+        "wildflowers", "-sc-", "yard sub-surface survey", "blueprint", "notes", "page",
+        "exhibit", "ad:", "sheets", "report", "book", "map", "memorandum", "portrait of",
+        "poster", "scroll", "drawing", "sketch of", "layout", "postcard", "diary",
+        "table:", "sketch", "letter", "telegrams", "art treasures", "spanish bayonet",
+        "chart", "inboard profile", "reasons why", "we can do it!", "traffic statistics:",
+        "data card kit", "painting", "clipping from", "photomechanical print",
+        "roman surveying", "copy of german secret order", "prospectus", "guest log of"
+    ]
 
-		first_obj = digital_objects[0]
-		first_digital_object_url = first_obj.get('objectUrl')
-		obj_type = first_obj.get('objectType', '')
+    desc_blacklisted_terms = [
+        "certificate", "bookmark", "literary digest", "drawing", "sketch of", "newspaper",
+        "sketch", "report", "attachment", "illustrated family record",
+        "it is a plan that is labeled", "lithographic print", "advertisement for",
+        "photographer: american red cross activities"
+    ]
 
-		if verbose:
-			print(f"\nquery: {query}")
-			print(f"id: {na_identifier}")
-			print(f"digital_objects: {digital_objects}")
+    for idx, doc in enumerate(docs):
+        record = doc.get('_source', {}).get('record', {})
+        na_identifier = record.get('naId')
+        raw_doc_date = record.get('productionDates', [{}])[0].get("logicalDate") if record.get('productionDates') else None
+        
+        # 1. Digital objects presence
+        digital_objects = record.get('digitalObjects', [])
+        if not digital_objects:
+            skip_stats["missing_digital_objects"] += 1
+            if verbose:
+                print(f"[SKIP #{idx+1}][NAID: {na_identifier}] No 'digitalObjects' found in record")
+            continue
 
-		unwanted_types = ["Portable Document File (PDF)", "PDF", "Video", "Audio"]
-		if obj_type and any(unwanted.lower() in obj_type.lower() for unwanted in unwanted_types):
-			if verbose:
-				print(f"<!> Skipping: '{obj_type}'")
-			continue
+        first_obj = digital_objects[0]
+        first_digital_object_url = first_obj.get('objectUrl')
+        obj_type = str(first_obj.get('objectType', '')).strip()
 
-		ancesstor_collections = [f"{itm.get('title')}" for itm in (record.get('ancestors') or [])]
-		doc_title = record.get('title')
-		doc_description = record.get('scopeAndContentNote', None)
+        # 2. Media/Object type validation
+        if any(unwanted in obj_type.lower() for unwanted in unwanted_types):
+            skip_stats["unwanted_media_type"] += 1
+            if verbose:
+                print(f"[SKIP #{idx+1}][NAID: {na_identifier}] Unwanted objectType: '{obj_type}'")
+            continue
 
-		useless_title_terms = [
-			"wildflowers" not in doc_title.lower(), 
-			"-sc-" not in doc_title.lower(),
-			"yard sub-surface survey" not in doc_title.lower(),
-			"blueprint" not in doc_title.lower(),
-			"notes" not in doc_title.lower(),
-			"page" not in doc_title.lower(),
-			"exhibit" not in doc_title.lower(),
-			"ad:" not in doc_title.lower(),
-			"sheets" not in doc_title.lower(),
-			"report" not in doc_title.lower(),
-			"book" not in doc_title.lower(),
-			"map" not in doc_title.lower(),
-			"memorandum" not in doc_title.lower(),
-			"portrait of" not in doc_title.lower(),
-			"poster" not in doc_title.lower(),
-			"scroll" not in doc_title.lower(),
-			"drawing" not in doc_title.lower(),
-			"sketch of" not in doc_title.lower(),
-			"layout" not in doc_title.lower(),
-			"postcard" not in doc_title.lower(),
-			"diary" not in doc_title.lower(),
-			"table:" not in doc_title.lower(),
-			"sketch" not in doc_title.lower(),
-			"letter" not in doc_title.lower(),
-			"telegrams" not in doc_title.lower(),
-			"art treasures" not in doc_title.lower(),
-			"spanish bayonet" not in doc_title.lower(),
-			"chart" not in doc_title.lower(),
-			"inboard profile" not in doc_title.lower(),
-			"reasons why" not in doc_title.lower(),
-			"we can do it!" not in doc_title.lower(),
-			"traffic statistics:" not in doc_title.lower(),
-			"data card kit" not in doc_title.lower(),
-			"painting" not in doc_title.lower(),
-			"clipping from" not in doc_title.lower(),
-			"photomechanical print" not in doc_title.lower(),
-			"roman surveying" not in doc_title.lower(),
-			"copy of german secret order" not in doc_title.lower(),
-			"prospectus" not in doc_title.lower(),
-			"guest log of" not in doc_title.lower(),
-		] if doc_title is not None else []
+        # 3. Valid URL format / image extension
+        is_image_ext = bool(first_digital_object_url and any(first_digital_object_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png']))
+        is_image_type = "image" in obj_type.lower()
+        if not (first_digital_object_url and (is_image_ext or is_image_type)):
+            skip_stats["invalid_image_url"] += 1
+            if verbose:
+                print(f"[SKIP #{idx+1}][NAID: {na_identifier}] Invalid image URL or non-image format: url='{first_digital_object_url}', type='{obj_type}'")
+            continue
 
-		useless_description_terms = [
-			"certificate" not in doc_description.lower(),
-			"bookmark" not in doc_description.lower(),
-			"literary digest" not in doc_description.lower(),
-			"drawing" not in doc_description.lower(),
-			"sketch of" not in doc_description.lower(),
-			"newspaper" not in doc_description.lower(),
-			"sketch" not in doc_description.lower(),
-			"report" not in doc_description.lower(),
-			"attachment" not in doc_description.lower(),
-			"illustrated family record" not in doc_description.lower(),
-			"it is a plan that is labeled" not in doc_description.lower(),
-			"lithographic print" not in doc_description.lower(),
-			"advertisement for" not in doc_description.lower(),
-			"photographer: american red cross activities" not in doc_description.lower(),
-		] if doc_description is not None else []
+        # 4. Ancestor collections filter
+        ancestor_collections = [str(itm.get('title', '')) for itm in (record.get('ancestors') or [])]
+        if not is_desired(ancestor_collections, useless_collection_terms):
+            skip_stats["rejected_ancestor_collection"] += 1
+            if verbose:
+                print(f"[SKIP #{idx+1}][NAID: {na_identifier}] Rejected by ancestor collection filter")
+            continue
 
-		# Check that we have a URL and that it ends with a valid image extension or is marked as Image
-		is_image_ext = first_digital_object_url and any(first_digital_object_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png'])
-		is_image_type = "image" in obj_type.lower()
+        doc_title = record.get('title')
+        doc_description = record.get('scopeAndContentNote')
 
-		if (
-			first_digital_object_url 
-			and (is_image_ext or is_image_type)
-			and is_desired(ancesstor_collections, useless_collection_terms) 
-			and all(useless_title_terms)
-			and all(useless_description_terms)
-		):
-			pass
-		else:
-			continue
+        # Clean text
+        doc_title = re.sub(r'\s+', ' ', doc_title).strip() if doc_title else ""
+        doc_description = re.sub(r'\s+', ' ', doc_description).strip() if doc_description else ""
 
-		doc_title = re.sub(r'\s+', ' ', doc_title).strip() if doc_title else None
-		doc_description = re.sub(r'\s+', ' ', doc_description).strip() if doc_description else None
+        # 5. Title blacklist filter
+        matched_title_term = next((term for term in title_blacklisted_terms if term in doc_title.lower()), None)
+        if matched_title_term:
+            skip_stats["title_blacklist_term"] += 1
+            if verbose:
+                print(f"[SKIP #{idx+1}][NAID: {na_identifier}] Title contains blacklisted term '{matched_title_term}': \"{doc_title[:60]}...\"")
+            continue
 
-		# Skip if query is not in either title or description
-		if (
-			(doc_title is None or query not in doc_title.lower())
-			and (doc_description is None or query not in doc_description.lower())
-		):
-			if verbose:
-				print(f"<!> Skipping: '{query}' neither in doc_title nor in doc_description")
-			continue
+        # 6. Description blacklist filter
+        matched_desc_term = next((term for term in desc_blacklisted_terms if term in doc_description.lower()), None)
+        if matched_desc_term:
+            skip_stats["desc_blacklist_term"] += 1
+            if verbose:
+                print(f"[SKIP #{idx+1}][NAID: {na_identifier}] Description contains blacklisted term '{matched_desc_term}'")
+            continue
 
-		row = {
-			'id': na_identifier,
-			'doc_url': f"https://catalog.archives.gov/id/{na_identifier}",
-			'img_url': first_digital_object_url,
-			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(na_identifier) + '.jpg')}",
-			'raw_doc_date': raw_doc_date,
-			'user_query': query,
-			'title': doc_title,
-			'description': doc_description,
-		}
-		if verbose:
-			print(json.dumps(row, indent=4, ensure_ascii=False))
+        # 7. Query relevance check (must appear in title or description)
+        if query not in doc_title.lower() and query not in doc_description.lower():
+            skip_stats["query_not_in_text"] += 1
+            if verbose:
+                print(f"[SKIP #{idx+1}][NAID: {na_identifier}] Query '{query}' neither in title nor description")
+            continue
 
-		data.append(row)
+        # Survived all filters
+        data.append({
+            'id': na_identifier,
+            'doc_url': f"https://catalog.archives.gov/id/{na_identifier}",
+            'img_url': first_digital_object_url,
+            'img_path': os.path.join(IMAGE_DIRECTORY, f"{na_identifier}.jpg"),
+            'raw_doc_date': raw_doc_date,
+            'user_query': query,
+            'title': doc_title if doc_title else None,
+            'description': doc_description if doc_description else None,
+        })
+
+    # --- Summary of filter pass ---
+    print(f"\n[DFRAME] Raw Hits Filtering Breakdown for « {query} »:")
+    print(f"  ├─ Total raw hits evaluated    : {len(docs):,}")
+    print(f"  ├─ Survived document filters   : {len(data):,}")
+    for reason, count in skip_stats.most_common():
+        pct = (count / len(docs)) * 100
+        print(f"  ├─ Skipped ({reason:<28}): {count:>5,} ({pct:5.1f}%)")
+
+    if not data:
+        print(f"[DFRAME][WARN] 0 documents survived initial filtering for query: « {query} »\n")
+        return None
+
+    df = pd.DataFrame(data)
+
+    # --- Step 2: Date Parsing and Date Range Filtering ---
+    initial_rows = len(df)
+    df['doc_date'] = df.apply(lambda row: get_doc_year(row['description'], row['raw_doc_date']), axis=1)
+    
+    # Log date extraction metrics
+    null_dates = df['doc_date'].isna().sum()
+    df_valid_date = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
+    date_filtered_out = len(df) - len(df_valid_date)
+
+    print(f"  ├─ Dates successfully parsed  : {initial_rows - null_dates:,}/{initial_rows:,}")
+    print(f"  ├─ Excluded by date range     : {date_filtered_out:,} (outside {START_DATE} ~ {END_DATE})")
+    print(f"  └─ Final surviving samples    : {len(df_valid_date):,}")
+
+    if df_valid_date.empty:
+        print(f"[DFRAME][WARN] No documents remained after date validation [{START_DATE} to {END_DATE}] for query: « {query} »\n")
+        return None
+
+    # Save cache
+    save_pickle(pkl=df_valid_date, fname=df_fpth)
+    print(f"[DFRAME] Saved DataFrame ({df_valid_date.shape[0]} rows) → {df_fpth} in {time.time()-df_st_time:.2f}s\n")
+
+    return df_valid_date
 
 @measure_execution_time
 def main():
@@ -662,6 +676,10 @@ def main():
 			labels_with_ZERO_result.append(qv)
 
 	print(f">> {len(labels_with_ZERO_result)} labels with no results:{labels_with_ZERO_result}")
+
+	if not dfs:
+		print("<!> Error: No valid DataFrames were generated from any search query. Check get_dframe() filters and URL extraction.")
+		return
 
 	total_searched_labels = len(dfs)
 	print(f"\nConcatinating {total_searched_labels} x {type(dfs[0])} dfs ...")
