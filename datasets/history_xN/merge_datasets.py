@@ -152,9 +152,8 @@ def merge_datasets(
 	)
 
 	single_label_train_df, single_label_val_df = get_single_label_stratified_split(
-		df=merged_single_label_df, 
+		csv_file=merged_single_label_df, 
 		val_split_pct=val_split_pct,
-		label_col='label',
 		seed=seed,
 		verbose=verbose,
 	)

@@ -170,5 +170,5 @@ main() {
 	print_success "Pipeline execution completed!"
 }
 
-# Run main function
+# Run the main function
 main "$@"
