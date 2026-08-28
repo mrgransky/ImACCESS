@@ -1131,7 +1131,7 @@ def download_image(
 		'Pragma': 'no-cache',
 	}
 
-	# --- Step 1: Check if image already exists ---
+	# Step 1: Check if image already exists
 	if os.path.exists(image_path):
 		try:
 			with Image.open(image_path) as img:
@@ -1157,7 +1157,7 @@ def download_image(
 			print(f"Unexpected error checking {image_path}: {e}")
 			os.remove(image_path)
 
-	# --- Step 2: Attempt download ---
+	# Step 2: Attempt download
 	attempt = 0
 	while attempt < retries:
 		try:
