@@ -1091,10 +1091,6 @@ def process_image_for_storage(
 
 		return False
 
-
-
-
-
 def download_image(
 	row,
 	session, 
