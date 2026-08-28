@@ -1,7 +1,7 @@
 import json
-from tabnanny import verbose
 
 from utils import *
+from data_prep import diagnose_tier_masks
 import clip
 
 def check_lora_weight_health(model, optimizer=None, verbose=True):
@@ -245,8 +245,8 @@ def compute_tiered_retrieval_metrics(
 	head_mask: torch.Tensor,
 	rare_mask: torch.Tensor,
 	active_mask: torch.Tensor,
+	use_fixed_masks: bool,
 	mode: str = "Image-to-Text",
-	use_fixed_masks: bool = False,
 	verbose: bool = False,
 ) -> Dict:
 	if verbose:
@@ -1767,12 +1767,45 @@ def build_shared_masks_from_protocol(
 		# print(json.dumps(shared_protocol, indent=2, ensure_ascii=False))
 
 	shared_vocab = shared_protocol["shared_class_names"]
+	protocol_head_mask = shared_protocol["head_mask"]
+	protocol_rare_mask = shared_protocol["rare_mask"]
+
+	if len(protocol_head_mask) != len(shared_vocab):
+		raise ValueError(
+			"Shared protocol schema error: head_mask length does not match "
+			f"shared_class_names length: "
+			f"{len(protocol_head_mask)} != {len(shared_vocab)}"
+		)
+	if len(protocol_rare_mask) != len(shared_vocab):
+		raise ValueError(
+			"Shared protocol schema error: rare_mask length does not match "
+			f"shared_class_names length: "
+			f"{len(protocol_rare_mask)} != {len(shared_vocab)}"
+		)
+	protocol_overlap = [
+		label
+		for label, is_head, is_rare in zip(
+			shared_vocab,
+			protocol_head_mask,
+			protocol_rare_mask,
+		)
+		if bool(is_head) and bool(is_rare)
+	]
+	if protocol_overlap:
+		raise ValueError(
+			"Shared protocol JSON contains overlapping head/rare labels: "
+			f"{protocol_overlap}. "
+			"Regenerate shared_eval_protocol.json using the disjoint builder."
+		)
+
 	head_labels  = {
-		label for label, is_head in zip(shared_vocab, shared_protocol["head_mask"])
+		label 
+		for label, is_head in zip(shared_vocab, protocol_head_mask)
 		if is_head
 	}
 	rare_labels  = {
-		label for label, is_rare in zip(shared_vocab, shared_protocol["rare_mask"])
+		label 
+		for label, is_rare in zip(shared_vocab, protocol_rare_mask)
 		if is_rare
 	}
 
@@ -1808,9 +1841,22 @@ def build_shared_masks_from_protocol(
 			print("  [WARNING] Shared rare mask is empty in this run.")
 
 		if missing:
-			print(
-				f"  [WARNING] Missing shared labels: "
-				f"{missing[:10]}{'...' if len(missing) > 10 else ''}"
+			print(f"  [WARNING] Missing shared labels: {missing}")
+
+		protocol_freq = shared_protocol.get("shared_train_freq")
+		if protocol_freq is not None:
+			diagnose_tier_masks(
+				class_names=class_names,
+				freq=[
+					protocol_freq[shared_vocab.index(label)]
+					if label in shared_vocab else 0.0
+					for label in class_names
+				],
+				head_mask=head_mask,
+				rare_mask=rare_mask,
+				active_mask=shared_mask,
+				tag="SHARED EVAL PROTOCOL — CONSUMER",
+				max_rows=60,
 			)
 
 	return {"shared_mask": shared_mask, "head_mask": head_mask, "rare_mask": rare_mask}
@@ -1856,8 +1902,31 @@ def evaluate_shared_protocol(
 			"Check the JSON rare_mask and its alignment with shared_class_names."
 		)
 
-	if (masks["head_mask"] & masks["rare_mask"]).any():
-		raise RuntimeError("Shared protocol has overlapping head and rare masks.")
+	overlap_mask = masks["head_mask"] & masks["rare_mask"]
+
+	if bool(overlap_mask.any()):
+		overlap_indices = torch.nonzero(overlap_mask).flatten().tolist()
+		overlap_labels = [
+			class_names[index]
+			for index in overlap_indices
+		]
+		raise RuntimeError(
+			"Shared protocol has overlapping head and rare masks after "
+			"mapping into the current run's class space.\n"
+			f"  Overlap count : {len(overlap_labels)}\n"
+			f"  Labels        : {overlap_labels}\n"
+			f"  Protocol      : {shared_protocol.get('protocol_name', 'unknown')}\n"
+			"Regenerate the protocol using the disjoint tier builder."
+		)
+
+	if verbose:
+		print("\n[SHARED PROTOCOL EVALUATION]")
+		print(f"  ├─ Protocol name       : {shared_protocol.get('protocol_name', 'unknown')}")
+		print(f"  ├─ Shared classes      : {int(masks['shared_mask'].sum().item())}")
+		print(f"  ├─ Head classes        : {int(masks['head_mask'].sum().item())}")
+		print(f"  ├─ Rare classes        : {int(masks['rare_mask'].sum().item())}")
+		print(f"  ├─ Head/rare overlap   : {int(overlap_mask.sum().item())}")
+		print(f"  └─ Fixed masks         : {use_fixed_masks}")
 
 	shared_tiered_i2t = compute_tiered_retrieval_metrics(
 		similarity_matrix=i2t_similarity,
@@ -1897,11 +1966,11 @@ def evaluate_best_model(
 	device,
 	cache_dir: str,
 	temperature: float,
+	use_fixed_masks: bool,
 	topk_values: list[int] = [1, 5, 10],
 	embeddings_cache=None,
 	lora_params: Optional[Dict] = None,
 	class_embeds_override: Optional[torch.Tensor] = None,
-	use_fixed_masks: bool = False,
 	shared_protocol_path: str = None,
 	verbose: bool = True,
 ):
@@ -2045,6 +2114,19 @@ def evaluate_best_model(
 		# load json file:
 		with open(shared_protocol_path, "r") as f:
 			shared_protocol = json.load(f)
+
+		if verbose:
+			print("\n[LOADED SHARED PROTOCOL]")
+			print(f"  ├─ path              : {shared_protocol_path}")
+			print(f"  ├─ protocol_name     : {shared_protocol.get('protocol_name')}")
+			print(f"  ├─ n_classes         : {shared_protocol.get('n_classes')}")
+			print(f"  ├─ n_head_classes    : {shared_protocol.get('n_head_classes')}")
+			print(f"  ├─ n_rare_classes    : {shared_protocol.get('n_rare_classes')}")
+			print(f"  ├─ tiers_disjoint    : {shared_protocol.get('tiers_disjoint')}")
+			print(f"  ├─ Head labels count : {len(shared_protocol.get('head_labels', []))}")
+			print(f"  ├─ Rare labels count : {len(shared_protocol.get('rare_labels', []))}")
+			print(f"  ├─ head_labels       : {shared_protocol.get('head_labels')}")
+			print(f"  └─ rare_labels       : {shared_protocol.get('rare_labels')}")
 
 		# get the shared protocol:
 		shared_tiered_i2t, shared_tiered_t2i = evaluate_shared_protocol(

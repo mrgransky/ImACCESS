@@ -283,6 +283,112 @@ def get_multi_label_stratified_split(
 
 	return train_df, val_df
 
+def diagnose_tier_masks(
+	class_names: List[str],
+	freq,
+	head_mask,
+	rare_mask,
+	active_mask=None,
+	tag: str = "TIER DIAGNOSTIC",
+	max_rows: int = 60,
+) -> Dict[str, Any]:
+	"""
+	Print and validate per-label tier assignments.
+	"""
+	f = torch.as_tensor(freq, dtype=torch.float32).flatten().cpu()
+	h = torch.as_tensor(head_mask, dtype=torch.bool).flatten().cpu()
+	r = torch.as_tensor(rare_mask, dtype=torch.bool).flatten().cpu()
+
+	if active_mask is None:
+		a = torch.ones(len(class_names), dtype=torch.bool)
+	else:
+		a = torch.as_tensor(active_mask, dtype=torch.bool).flatten().cpu()
+
+	lengths = {
+		"class_names": len(class_names),
+		"freq": len(f),
+		"head_mask": len(h),
+		"rare_mask": len(r),
+		"active_mask": len(a),
+	}
+
+	if len(set(lengths.values())) != 1:
+		raise ValueError(
+			f"[{tag}] Length mismatch among class names, frequencies, and masks: "
+			f"{lengths}"
+		)
+
+	overlap = h & r
+	tiered = h | r
+	untiered_active = a & ~tiered
+	tiered_inactive = tiered & ~a
+
+	print(f"\n{'=' * 78}")
+	print(f"[{tag}]")
+	print(f"{'=' * 78}")
+	print(f"  ├─ Classes             : {len(class_names):,}")
+	print(f"  ├─ Active              : {int(a.sum().item()):,}")
+	print(f"  ├─ Head                : {int(h.sum().item()):,}")
+	print(f"  ├─ Rare                : {int(r.sum().item()):,}")
+	print(f"  ├─ Head ∩ Rare         : {int(overlap.sum().item()):,}")
+	print(f"  ├─ Active body         : {int(untiered_active.sum().item()):,}")
+	print(f"  └─ Tiered but inactive : {int(tiered_inactive.sum().item()):,}")
+
+	print(f"\n  [Per-label assignments]")
+	print(f"  {'#':>4s}  {'label':<32s} {'freq':>10s}  {'active':>7s}  {'head':>6s}  {'rare':>6s}")
+
+	order = torch.argsort(f, descending=True).tolist()
+
+	for rank, index in enumerate(order[:max_rows]):
+		print(
+			f"  {rank:>4d}  "
+			f"{str(class_names[index]):<32s} "
+			f"{f[index].item():>10.1f}  "
+			f"{str(bool(a[index])):>7s}  "
+			f"{str(bool(h[index])):>6s}  "
+			f"{str(bool(r[index])):>6s}"
+		)
+
+	if len(class_names) > max_rows:
+		print(
+			f"  ... {len(class_names) - max_rows:,} additional labels omitted "
+			f"(max_rows={max_rows})"
+		)
+
+	if bool(overlap.any()):
+		overlap_labels = [
+			class_names[index]
+			for index in torch.nonzero(overlap).flatten().tolist()
+		]
+
+		print("\n  [ERROR] Head/rare overlap detected:")
+		for label in overlap_labels:
+			index = class_names.index(label)
+			print(f"    ├─ {label!r}: frequency={f[index].item():.1f}")
+
+	if bool(tiered_inactive.any()):
+		inactive_labels = [
+			class_names[index]
+			for index in torch.nonzero(tiered_inactive).flatten().tolist()
+		]
+
+		print("\n  [WARNING] Tiered labels marked inactive:")
+		print(f"    {inactive_labels[:20]}")
+
+	return {
+		"n_classes": len(class_names),
+		"n_active": int(a.sum().item()),
+		"n_head": int(h.sum().item()),
+		"n_rare": int(r.sum().item()),
+		"n_overlap": int(overlap.sum().item()),
+		"overlap_labels": [
+			class_names[index]
+			for index in torch.nonzero(overlap).flatten().tolist()
+		],
+		"n_active_body": int(untiered_active.sum().item()),
+		"n_tiered_inactive": int(tiered_inactive.sum().item()),
+	}
+
 def build_shared_eval_protocol(
 	train_df: pd.DataFrame,
 	output_dir: str,
@@ -297,13 +403,22 @@ def build_shared_eval_protocol(
 	Build a fixed shared-vocabulary tier specification for R1-C evaluation.
 
 	The label vocabulary is the INTERSECTION of labels observed in all three
-	training regimes (LLM, VLM, multimodal). Tier definitions reproduce
-	compute_loss_masks() exactly so that the evaluation notion of head/rare
-	matches the training-time notion of rarity:
-		- head: smallest set of classes covering `pareto_threshold` of total
-		        occurrences (Pareto cumulative-frequency cutoff);
-		- rare: active classes at or below the `rare_percentile` quantile of
-		        positive frequencies.
+	training regimes (LLM, VLM, multimodal). Tier definitions are INSPIRED BY
+	compute_loss_masks() (Pareto-mass head / bottom-quantile rare) but, unlike
+	compute_loss_masks(), head and rare are derived from a SINGLE frequency
+	ordering so they are DISJOINT BY CONSTRUCTION:
+		- head: smallest rank-prefix (by frequency, descending) covering
+		        `pareto_threshold` of total shared-vocab occurrence mass;
+		- rare: bottom `rare_percentile` of active classes, drawn only from
+		        classes the head tier did NOT already claim.
+
+	On small/flat shared vocabularies, an independent Pareto rule and an
+	independent quantile rule (the original two-predicate design) can claim
+	the same classes — e.g. 5/7 head and 4/7 rare on a 7-class intersection,
+	which is incoherent (head ∩ rare should be empty for a tiered protocol).
+	This function forces disjointness explicitly and asserts it before
+	writing anything to disk, rather than letting the consumer discover the
+	collision at evaluation time.
 
 	Reference frequencies come from MULTIMODAL training annotations only.
 	Rarity is defined on TRAINING frequency by construction — using val
@@ -329,13 +444,13 @@ def build_shared_eval_protocol(
 
 	def parse_labels(value):
 		if isinstance(value, str):
-				try:
-					parsed = ast.literal_eval(value)
-				except (ValueError, SyntaxError):
-					raise ValueError(f"Malformed label list encountered: {value!r}")
-				if not isinstance(parsed, list):
-					raise ValueError(f"Expected a list of labels, received: {type(parsed)}")
-				return parsed
+			try:
+				parsed = ast.literal_eval(value)
+			except (ValueError, SyntaxError):
+				raise ValueError(f"Malformed label list encountered: {value!r}")
+			if not isinstance(parsed, list):
+				raise ValueError(f"Expected a list of labels, received: {type(parsed)}")
+			return parsed
 		if isinstance(value, list):
 			return value
 		if pd.isna(value):
@@ -390,7 +505,6 @@ def build_shared_eval_protocol(
 		print(f"  ├─ Shared (all 3 regimes)  : {len(shared_class_names):,}")
 		if union_vocab:
 			print(f"  ├─ Intersection / union    : {len(shared_class_names)/len(union_vocab):.1%}")
-		# how much of each regime survives into the shared vocab
 		if llm_vocab:
 			print(f"  ├─ LLM-only (dropped)      : {len(llm_vocab - set(shared_class_names)):,}")
 		if vlm_vocab:
@@ -420,32 +534,19 @@ def build_shared_eval_protocol(
 			  f"{int((~active_mask).sum().item())} inactive shared class(es) — "
 			  f"this violates the intersection invariant.")
 
-	# ── Head tier — Pareto cumulative-frequency cutoff (identical to compute_loss_masks) ──
+	n_active = int(active_mask.sum().item())
+
+	# ── Head tier — Pareto cumulative-frequency prefix ──────────────────────
 	sorted_freq, sorted_idx = torch.sort(shared_train_freq, descending=True)
 	cumulative_freq = sorted_freq.cumsum(0)
-	pareto_cutoff = int((cumulative_freq <= cumulative_freq[-1] * pareto_threshold).sum().item()) + 1
+	total_mass = cumulative_freq[-1]
 
-	head_mask = torch.zeros(len(shared_class_names), dtype=torch.bool)
-	head_mask[sorted_idx[:pareto_cutoff]] = True
+	# `>=` (not the old `<=` then `+1`): the previous formulation could take
+	# one class more than needed once the running sum already crosses the
+	# budget, inflating the head tier beyond the stated pareto_threshold.
+	reached = torch.nonzero(cumulative_freq >= total_mass * pareto_threshold).flatten()
+	pareto_cutoff_raw = int(reached[0].item()) + 1 if len(reached) else n_active
 
-	# ── Rare tier — bottom rare_percentile of ACTIVE classes (identical guard to compute_loss_masks) ──
-	active_freq = shared_train_freq[active_mask]
-	if active_freq.numel() > 1:
-		rare_frequency_threshold = torch.quantile(active_freq, rare_percentile)
-		rare_mask = (shared_train_freq <= rare_frequency_threshold) & active_mask
-	else:
-		# Degenerate intersection: a single (or zero) active class cannot define
-		# a meaningful quantile boundary. Mirror compute_loss_masks() and emit
-		# an empty rare tier rather than an ill-defined one.
-		rare_frequency_threshold = torch.tensor(float("nan"))
-		rare_mask = torch.zeros(len(shared_class_names), dtype=torch.bool)
-		if verbose:
-			print(f"\n  [WARNING] active_freq has only {active_freq.numel()} class(es) — "
-				  f"rare-tier quantile is degenerate/undefined; rare_mask forced to EMPTY.")
-
-	# ── Small-N surfacing — these numbers should appear in the response-to-reviewers letter (R1-F) ──
-	n_head = int(head_mask.sum().item())
-	n_rare = int(rare_mask.sum().item())
 	if verbose:
 		print(f"\n  [Reference frequency distribution (multimodal, shared vocab)]")
 		print(f"  ├─ freq [min, max]         : [{shared_train_freq.min():.0f}, {shared_train_freq.max():.0f}]")
@@ -454,32 +555,142 @@ def build_shared_eval_protocol(
 		print(f"  ├─ classes with freq == 1  : {(shared_train_freq == 1).sum().item():,}")
 		print(f"  ├─ classes with freq <= 5  : {(shared_train_freq <= 5).sum().item():,}")
 		print(f"  └─ classes with freq > 10  : {(shared_train_freq > 10).sum().item():,}")
+		print(f"\n  [Head-tier Pareto computation]")
+		print(f"  ├─ total occurrence mass   : {total_mass.item():.0f}")
+		print(f"  ├─ mass budget ({pareto_threshold:.0%})       : {(total_mass * pareto_threshold).item():.1f}")
+		print(f"  └─ raw Pareto cutoff       : {pareto_cutoff_raw} class(es) (before disjointness clamp)")
 
-		print(f"\n  [Tier assignment]")
+	# ── Rare tier — bottom rare_percentile of ACTIVE classes, taken ONLY from
+	#    classes the head tier did NOT already claim (identical guard to
+	#    compute_loss_masks() for the degenerate n<=1 case). This is the fix:
+	#    deriving rare from "what's left after head" makes the two tiers
+	#    disjoint BY CONSTRUCTION instead of by coincidence of vocab scale.
+	if n_active > 1:
+		# n_rare_target = max(1, int(round(rare_percentile * n_active)))
+		# more defensible for a “bottom rare_percentile*100%” specification 
+		# because it ensures the tier contains at least the requested proportion:
+		n_rare_target = max(1, math.ceil(rare_percentile * n_active)) 
+
+		# Never let the head tier swallow so much of the vocabulary that no
+		# room is left for a rare tier — this is exactly the 5-of-7 collision
+		# case observed on the small dataset.
+		max_head = max(1, n_active - n_rare_target)
+		pareto_cutoff = pareto_cutoff_raw
+		clamped = pareto_cutoff_raw > max_head
+		if clamped:
+			pareto_cutoff = max_head
+			if verbose:
+				print(
+					f"\n  [TIER ADJUST] Pareto head would cover {pareto_cutoff_raw}/{n_active} "
+					f"active classes, leaving fewer than {n_rare_target} for the rare tier. "
+					f"Clamping head to {max_head}. This shared vocabulary ({n_active} classes) "
+					f"is too small/flat for a {pareto_threshold:.0%} mass budget and a bottom-"
+					f"{rare_percentile:.0%} quantile to describe disjoint classes."
+				)
+
+		head_mask = torch.zeros(len(shared_class_names), dtype=torch.bool)
+		head_mask[sorted_idx[:pareto_cutoff]] = True
+
+		# Rare candidates = active, non-head classes, ordered ascending by
+		# frequency (sorted_idx is descending, so the remainder just needs
+		# flipping) — guarantees rare picks the LOWEST-frequency leftovers.
+		tail_idx = sorted_idx[pareto_cutoff:].flip(0)
+		n_rare = min(n_rare_target, len(tail_idx))
+
+		rare_mask = torch.zeros(len(shared_class_names), dtype=torch.bool)
+		rare_mask[tail_idx[:n_rare]] = True
+
+		rare_frequency_threshold = (
+			shared_train_freq[rare_mask].max()
+			if bool(rare_mask.any())
+			else torch.tensor(float("nan"))
+		)
+	else:
+		# Degenerate intersection: a single (or zero) active class cannot
+		# define a meaningful quantile boundary. Mirror compute_loss_masks()
+		# and emit an empty rare tier rather than an ill-defined one.
+		pareto_cutoff = pareto_cutoff_raw
+		clamped = False
+		head_mask = torch.zeros(len(shared_class_names), dtype=torch.bool)
+		head_mask[sorted_idx[:pareto_cutoff]] = True
+		rare_frequency_threshold = torch.tensor(float("nan"))
+		rare_mask = torch.zeros(len(shared_class_names), dtype=torch.bool)
+		if verbose:
+			print(f"\n  [WARNING] n_active={n_active} — rare-tier quantile is "
+				  f"degenerate/undefined; rare_mask forced to EMPTY.")
+
+	# ── Hard invariant, enforced HERE at construction time, not discovered
+	#    later inside evaluate_shared_protocol() ─────────────────────────────
+	overlap = head_mask & rare_mask
+
+	if bool(overlap.any()):
+		overlap_labels = [shared_class_names[i] for i in torch.nonzero(overlap).flatten().tolist()]
+		raise AssertionError(
+			f"head/rare overlap survived disjoint construction — this should be "
+			f"unreachable: {overlap_labels}"
+		)
+
+	if not bool(head_mask.any()):
+		raise AssertionError("Disjoint construction produced an empty head tier — check pareto_threshold.")
+
+	n_head = int(head_mask.sum().item())
+	n_rare = int(rare_mask.sum().item())
+	body_n = n_active - n_head - n_rare
+
+	if verbose:
+		print(f"\n  [Tier assignment — disjoint by construction]")
 		print(f"  ├─ Shared classes          : {len(shared_class_names):,}")
-		print(f"  ├─ Head (Pareto {pareto_threshold:.0%})       : {n_head:,}  (cutoff idx = {pareto_cutoff})")
+		print(f"  ├─ Active classes          : {n_active:,}")
+		print(f"  ├─ Head (Pareto {pareto_threshold:.0%})       : {n_head:,}"
+			  f"  (cutoff idx = {pareto_cutoff}{', clamped' if clamped else ''})")
 		print(f"  ├─ Rare (bottom {rare_percentile:.0%})       : {n_rare:,}")
-
+		print(f"  ├─ Head ∩ Rare             : {int(overlap.sum().item())}  (must be 0)")
 		if not torch.isnan(rare_frequency_threshold):
 			print(f"  ├─ Rare freq threshold     : {rare_frequency_threshold.item():.1f}")
-
 		else:
 			print(f"  ├─ Rare freq threshold     : n/a (degenerate)")
-
-		# neither head nor rare == "body"
-		body_n = len(shared_class_names) - n_head - n_rare
 		print(f"  ├─ Body (neither)          : {body_n:,}")
 
+		# Per-label tier table — makes the exact membership auditable at a glance
+		print(f"\n  [Per-label tier table] (sorted by frequency, descending)")
+		print(f"  {'#':>3s}  {'label':<28s} {'freq':>8s}  {'head':>5s} {'rare':>5s}")
+		order = torch.argsort(shared_train_freq, descending=True).tolist()
+		max_rows = 60
+		for rank, i in enumerate(order[:max_rows]):
+			print(
+				f"  {rank:>3d}  {shared_class_names[i]:<28s} {shared_train_freq[i].item():>8.0f}  "
+				f"{str(bool(head_mask[i])):>5s} {str(bool(rare_mask[i])):>5s}"
+			)
+		if len(shared_class_names) > max_rows:
+			print(f"  ... {len(shared_class_names) - max_rows} more labels suppressed (max_rows={max_rows})")
+
 		# Explicit small-N caveats — the exact things R1-F would flag if unremarked
-		if n_rare > 0 and n_rare < 10:
+		if 0 < n_rare < 10:
 			print(f"\n  ⚠  Rare tier has only {n_rare} class(es). Metrics over this tier "
 				  f"are HIGH-VARIANCE / small-sample; report n_rare prominently and "
 				  f"consider variance estimates in the writeup (R1-F).")
+		if n_rare == 0:
+			print(f"\n  ⚠  Rare tier is EMPTY. Any downstream shared-protocol rare-tier "
+				  f"metric will be undefined for this run.")
 		if n_head < 10:
 			print(f"  ⚠  Head tier has only {n_head} class(es) — also small-N.")
+		if len(shared_class_names) < 20:
+			print(f"  ⚠  Shared vocabulary itself has only {len(shared_class_names)} class(es) — "
+				  f"tiered metrics on this protocol will be noisy regardless of tier split; "
+				  f"consider reporting overall shared-vocab retrieval alongside tiers.")
+
+		diagnose_tier_masks(
+			class_names=shared_class_names,
+			freq=shared_train_freq,
+			head_mask=head_mask,
+			rare_mask=rare_mask,
+			active_mask=active_mask,
+			tag="SHARED EVAL PROTOCOL — BUILDER",
+			max_rows=60,
+		)
 
 	shared_protocol = {
-		"protocol_name": "shared_intersection_mm_reference_v1",
+		"protocol_name": "shared_intersection_mm_reference_v2_disjoint",
 		"reference_label_column": multimodal_col,
 		"pareto_threshold": pareto_threshold,
 		"rare_percentile": rare_percentile,
@@ -488,6 +699,9 @@ def build_shared_eval_protocol(
 		"active_mask": active_mask.tolist(),
 		"head_mask": head_mask.tolist(),
 		"rare_mask": rare_mask.tolist(),
+		# explicit name lists — removes all index-alignment ambiguity downstream
+		"head_labels": [c for c, m in zip(shared_class_names, head_mask.tolist()) if m],
+		"rare_labels": [c for c, m in zip(shared_class_names, rare_mask.tolist()) if m],
 		"n_classes": len(shared_class_names),
 		"n_head_classes": n_head,
 		"n_rare_classes": n_rare,
@@ -496,13 +710,15 @@ def build_shared_eval_protocol(
 			if not torch.isnan(rare_frequency_threshold)
 			else None
 		),
+		"tiers_disjoint": True,
+		"head_pareto_clamped": clamped,
 	}
 
 	with open(protocol_path, "w", encoding="utf-8") as file:
 		json.dump(shared_protocol, file, indent=2)
 
 	if verbose:
-		print(f"  └─ Saved protocol          : {protocol_path}")
+		print(f"\n  └─ Saved protocol          : {protocol_path}")
 		print(f"{'='*70}\n")
 
 	return shared_protocol
