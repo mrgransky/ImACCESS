@@ -7,12 +7,10 @@ def get_single_label_stratified_split(
 	label_col: str='label',
 	verbose: bool=True,
 ):
-
 	df = pd.read_csv(csv_file)
 	if verbose:
 		print(f"\n[SINGLE-LABBEL] Stratified Splitting")
 		print(df.info(verbose=True, memory_usage="deep"))
-
 
 	# Count the occurrences of each label
 	label_counts = df[label_col].value_counts()
