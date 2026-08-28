@@ -7,10 +7,10 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=20
 #SBATCH --mem=46G
 #SBATCH --partition=small
-#SBATCH --time=0-05:00:00
+#SBATCH --time=0-06:00:00
 
 set -euo pipefail
 
@@ -31,18 +31,20 @@ echo "${stars// /*}"
 
 echo "Current working directory: $PWD"
 dataset_dir="/scratch/project_2004072/ImACCESS/WW_DATASETs"
-echo "Dataset directory: $dataset_dir"
+chunk_size=35000
+
+# # chunk size based on cluster:
+# if [ "$SLURM_CLUSTER_NAME" == "puhti" ]; then
+# 	chunk_size=15000
+# else
+# 	chunk_size=7000
+# fi
+# echo "Chunk size: $chunk_size"
+
 # Ensure the dataset directory exists:
 mkdir -p "$dataset_dir"
-echo "${stars// /*}"
-
-# chunk size based on cluster:
-if [ "$SLURM_CLUSTER_NAME" == "puhti" ]; then
-	chunk_size=15000
-else
-	chunk_size=7000
-fi
-echo "Chunk size: $chunk_size"
+echo "Dataset directory: $dataset_dir"
+echo "chunk_size: $chunk_size"
 
 python -u merge_datasets.py \
   --dataset_dir $dataset_dir \
@@ -52,9 +54,9 @@ python -u merge_datasets.py \
   --val_split_pct 0.35 \
   --bins 60 \
   --batch_size 256 \
-  --verbose \
   --img_mean_std \
   --chunk_size $chunk_size \
+  --verbose \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
