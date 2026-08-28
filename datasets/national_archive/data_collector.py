@@ -48,8 +48,6 @@ set_seeds(seed=args.seed, debug=False)
 na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
 START_DATE = args.start_date
 END_DATE = args.end_date
-FIGURE_SIZE = (12, 9)
-DPI = 200
 
 meaningless_words_fpth = os.path.join(MISC_DIR, 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
@@ -297,7 +295,7 @@ def is_desired(collections, useless_terms):
 				return False
 	return True
 
-def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFrame:
+def get_dframe_old(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFrame:
 	query = query.lower()
 
 	# check if df already exists:
@@ -474,6 +472,167 @@ def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFra
 
 	return df
 
+def get_dframe(query: str, docs: List=[Dict], verbose: bool=False) -> pd.DataFrame:
+	query = query.lower()
+
+	# check if df already exists:
+	qv_processed = re.sub(
+		pattern=" ", 
+		repl="_", 
+		string=query,
+	)
+	df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_{START_DATE}_{END_DATE}.gz")
+	print(f"df_fpth: {df_fpth}")
+
+	if os.path.exists(df_fpth):
+		df = load_pickle(fpath=df_fpth)
+		if df.shape[0] == 0:
+			raise ValueError(f"Empty DF: {df.shape} => Exit...")
+
+		print(df[['id', 'img_path']].head(10))
+		print("#"*160)
+
+		# change img_path with current dataset directory
+		df['img_path'] = df['img_path'].apply(lambda x: x.replace(os.path.dirname(x), IMAGE_DIRECTORY))
+		print(df[['id', 'img_path']].head(10))
+		print("#"*160)
+
+		return df
+
+	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
+	df_st_time = time.time()
+	data = []
+	for doc in docs:
+		record = doc.get('_source', {}).get('record', {})
+		na_identifier = record.get('naId')
+		raw_doc_date = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
+		
+		# --- Extract from record['digitalObjects'] instead of fields ---
+		digital_objects = record.get('digitalObjects', [])
+		if not digital_objects:
+			continue
+
+		first_obj = digital_objects[0]
+		first_digital_object_url = first_obj.get('objectUrl')
+		obj_type = first_obj.get('objectType', '')
+
+		if verbose:
+			print(f"\nquery: {query}")
+			print(f"id: {na_identifier}")
+			print(f"digital_objects: {digital_objects}")
+
+		unwanted_types = ["Portable Document File (PDF)", "PDF", "Video", "Audio"]
+		if obj_type and any(unwanted.lower() in obj_type.lower() for unwanted in unwanted_types):
+			if verbose:
+				print(f"<!> Skipping: '{obj_type}'")
+			continue
+
+		ancesstor_collections = [f"{itm.get('title')}" for itm in (record.get('ancestors') or [])]
+		doc_title = record.get('title')
+		doc_description = record.get('scopeAndContentNote', None)
+
+		useless_title_terms = [
+			"wildflowers" not in doc_title.lower(), 
+			"-sc-" not in doc_title.lower(),
+			"yard sub-surface survey" not in doc_title.lower(),
+			"blueprint" not in doc_title.lower(),
+			"notes" not in doc_title.lower(),
+			"page" not in doc_title.lower(),
+			"exhibit" not in doc_title.lower(),
+			"ad:" not in doc_title.lower(),
+			"sheets" not in doc_title.lower(),
+			"report" not in doc_title.lower(),
+			"book" not in doc_title.lower(),
+			"map" not in doc_title.lower(),
+			"memorandum" not in doc_title.lower(),
+			"portrait of" not in doc_title.lower(),
+			"poster" not in doc_title.lower(),
+			"scroll" not in doc_title.lower(),
+			"drawing" not in doc_title.lower(),
+			"sketch of" not in doc_title.lower(),
+			"layout" not in doc_title.lower(),
+			"postcard" not in doc_title.lower(),
+			"diary" not in doc_title.lower(),
+			"table:" not in doc_title.lower(),
+			"sketch" not in doc_title.lower(),
+			"letter" not in doc_title.lower(),
+			"telegrams" not in doc_title.lower(),
+			"art treasures" not in doc_title.lower(),
+			"spanish bayonet" not in doc_title.lower(),
+			"chart" not in doc_title.lower(),
+			"inboard profile" not in doc_title.lower(),
+			"reasons why" not in doc_title.lower(),
+			"we can do it!" not in doc_title.lower(),
+			"traffic statistics:" not in doc_title.lower(),
+			"data card kit" not in doc_title.lower(),
+			"painting" not in doc_title.lower(),
+			"clipping from" not in doc_title.lower(),
+			"photomechanical print" not in doc_title.lower(),
+			"roman surveying" not in doc_title.lower(),
+			"copy of german secret order" not in doc_title.lower(),
+			"prospectus" not in doc_title.lower(),
+			"guest log of" not in doc_title.lower(),
+		] if doc_title is not None else []
+
+		useless_description_terms = [
+			"certificate" not in doc_description.lower(),
+			"bookmark" not in doc_description.lower(),
+			"literary digest" not in doc_description.lower(),
+			"drawing" not in doc_description.lower(),
+			"sketch of" not in doc_description.lower(),
+			"newspaper" not in doc_description.lower(),
+			"sketch" not in doc_description.lower(),
+			"report" not in doc_description.lower(),
+			"attachment" not in doc_description.lower(),
+			"illustrated family record" not in doc_description.lower(),
+			"it is a plan that is labeled" not in doc_description.lower(),
+			"lithographic print" not in doc_description.lower(),
+			"advertisement for" not in doc_description.lower(),
+			"photographer: american red cross activities" not in doc_description.lower(),
+		] if doc_description is not None else []
+
+		# Check that we have a URL and that it ends with a valid image extension or is marked as Image
+		is_image_ext = first_digital_object_url and any(first_digital_object_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png'])
+		is_image_type = "image" in obj_type.lower()
+
+		if (
+			first_digital_object_url 
+			and (is_image_ext or is_image_type)
+			and is_desired(ancesstor_collections, useless_collection_terms) 
+			and all(useless_title_terms)
+			and all(useless_description_terms)
+		):
+			pass
+		else:
+			continue
+
+		doc_title = re.sub(r'\s+', ' ', doc_title).strip() if doc_title else None
+		doc_description = re.sub(r'\s+', ' ', doc_description).strip() if doc_description else None
+
+		# Skip if query is not in either title or description
+		if (
+			(doc_title is None or query not in doc_title.lower())
+			and (doc_description is None or query not in doc_description.lower())
+		):
+			if verbose:
+				print(f"<!> Skipping: '{query}' neither in doc_title nor in doc_description")
+			continue
+
+		row = {
+			'id': na_identifier,
+			'doc_url': f"https://catalog.archives.gov/id/{na_identifier}",
+			'img_url': first_digital_object_url,
+			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(na_identifier) + '.jpg')}",
+			'raw_doc_date': raw_doc_date,
+			'user_query': query,
+			'title': doc_title,
+			'description': doc_description,
+		}
+		if verbose:
+			print(json.dumps(row, indent=4, ensure_ascii=False))
+
+		data.append(row)
+
 @measure_execution_time
 def main():
 	with open(os.path.join(MISC_DIR, 'query_labels.txt'), 'r') as file_:
@@ -502,10 +661,10 @@ def main():
 		else:
 			labels_with_ZERO_result.append(qv)
 
-	print(f">> {len(labels_with_ZERO_result)} labels with no results {START_DATE} - {END_DATE}\n{labels_with_ZERO_result}")
+	print(f">> {len(labels_with_ZERO_result)} labels with no results:{labels_with_ZERO_result}")
 
 	total_searched_labels = len(dfs)
-	print(f">> Concatinating {total_searched_labels} x {type(dfs[0])} dfs ...")
+	print(f"\nConcatinating {total_searched_labels} x {type(dfs[0])} dfs ...")
 
 	concat_st = time.time()
 	df_merged_raw = pd.concat(dfs, ignore_index=True)

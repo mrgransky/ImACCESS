@@ -1078,16 +1078,22 @@ def process_image_for_storage(
 		return True
 	except (IOError, SyntaxError, Image.DecompressionBombError) as e:
 		if verbose:
-			print(f"Error processing {img_path}: {e}")
+			print(f"[ERROR] {img_path}: {e}")
 		if os.path.exists(img_path):
 			os.remove(img_path)
 		return False
 	except Exception as e:
 		if verbose:
-			print(f"Unexpected error processing {img_path}: {e}")
+			print(f"[ERROR] {img_path}: {e}")
+
 		if os.path.exists(img_path):
 			os.remove(img_path)
+
 		return False
+
+
+
+
 
 def download_image(
 	row,
@@ -1146,7 +1152,7 @@ def download_image(
 			else:
 				if verbose:
 					mode = "thumbnailed" if thumbnail_size else "original"
-					print(f"{rIdx:05d} / {total_rows:<15}{image_id:<100} (Existing, {mode}) {time.time()-t0:.3f}s")
+					print(f"[{rIdx:6d}/{total_rows:6d}] {image_id:<100} (Existing, {mode}) {time.time()-t0:.3f}s")
 				return True							
 		except (IOError, SyntaxError, Image.DecompressionBombError) as e:
 			print(f"Existing image {image_path} is invalid: {e}, re-downloading...")
@@ -1167,7 +1173,7 @@ def download_image(
 			)
 			response.raise_for_status()
 		except requests.exceptions.SSLError as ssl_err:
-			print(f"[{rIdx:05d} / {total_rows}] SSL error. Retrying without verification: {ssl_err}")
+			print(f"[{rIdx:6dd}/{total_rows:6d}] SSL error. Retrying without verification: {ssl_err}")
 			try:
 				response = session.get(
 					url=image_url,
@@ -1177,14 +1183,14 @@ def download_image(
 				)
 				response.raise_for_status()
 			except Exception as fallback_err:
-				print(f"[{rIdx:05d} / {total_rows}] Retry without verification failed: {fallback_err}")
+				print(f"[{rIdx:6d}/{total_rows:6d}] Retry without verification failed: {fallback_err}")
 				attempt += 1
 				time.sleep(backoff_factor * (2 ** attempt))
 				continue
 						
 		except (RequestException, IOError) as e:
 			attempt += 1
-			print(f"[{rIdx:05d} / {total_rows}] {builtins.str(e):<180}retry: {attempt}/{retries}")
+			print(f"[{rIdx:6d}/{total_rows:6d}] {builtins.str(e):<180}retry: {attempt}/{retries}")
 			time.sleep(backoff_factor * (2 ** attempt))
 			continue
 
@@ -1206,14 +1212,14 @@ def download_image(
 			
 			if verbose:
 				mode = f"Thumbnailed" if thumbnail_size else "Original"
-				print(f"{rIdx:05d} / {total_rows:<10} {image_id:<100} ({mode}) {time.time()-t0:.1f}s")
+				print(f"[{rIdx:6d}/{total_rows:6d}] {image_id:<100} ({mode}) {time.time()-t0:.1f}s")
 			
 			return True
 		except (SyntaxError, Image.DecompressionBombError, ValueError) as e:
-			print(f"[{rIdx:05d} / {total_rows}] Downloaded image {image_id} is invalid: {e}")
+			print(f"[{rIdx:6d}/{total_rows:6d}] Downloaded image {image_id} is invalid: {e}")
 			break
 		except Exception as e:
-			print(f"[{rIdx:05d} / {total_rows}] {e}")
+			print(f"[{rIdx:6d}/{total_rows:6d}] {e}")
 			attempt += 1
 			time.sleep(backoff_factor * (2 ** attempt))
 
@@ -1224,7 +1230,8 @@ def download_image(
 		os.remove(image_path)
 	
 	if verbose:
-		print(f"[{rIdx:05d} / {total_rows}] Failed downloading {image_id} after {retries} attempts.")
+		print(f"[{rIdx:6d}/{total_rows:6d}] Failed downloading {image_id} after {retries} attempts.")
+
 	return False
 
 def get_synchronized_df_img(
