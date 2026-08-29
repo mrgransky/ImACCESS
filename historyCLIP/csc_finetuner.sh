@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=ft_h4_multi_label_seed_1
+#SBATCH --job-name=ft_h4_multi_label_seed_2
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -10,7 +10,7 @@
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=164G
 #SBATCH --partition=gpumedium
-#SBATCH --gres=gpu:gh200:4
+#SBATCH --gres=gpu:gh200:1
 #SBATCH --time=1-12:00:00
 ##SBATCH --begin=08:45:00
 
@@ -73,6 +73,10 @@
 #SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
 ###SBATCH --array=12-14 # only LoRA+
 ###SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
+
+# how to run:
+# ensure the job name aligns with the seed value
+# SEED=2 sbatch csc_finetuner.sh
 
 set -euo pipefail
 user="`whoami`"
