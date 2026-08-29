@@ -1392,8 +1392,8 @@ def get_embeddings(
 		print(f"Elapsed: {time.time() - t0:.1f} s")
 
 	# ========== DISK SPACE CHECK ==========
-	# FIX 1: Check the DIRECTORY, not the file, to avoid FileNotFoundError
 	cache_dir = os.path.dirname(os.path.abspath(cache_file))
+	should_save = True
 	
 	try:
 		# 1. Calculate exact tensor footprint in bytes
@@ -1401,40 +1401,50 @@ def get_embeddings(
 			(all_image_embeds.numel() * all_image_embeds.element_size()) +
 			(all_labels.numel() * all_labels.element_size())
 		)
-		# 2. Add 20% safety margin for PyTorch zip serialization overhead
-		estimated_bytes = int(tensor_bytes * 1.2)
+		
+		# 2. Add 20% safety margin + 300MB buffer for temp file during save
+		estimated_bytes = int(tensor_bytes * 1.2 + 300 * 1024**2)
 		estimated_gb = estimated_bytes / (1024 ** 3)
 		
 		# 3. Check free space on the target directory
 		free_bytes = shutil.disk_usage(cache_dir).free
+		
+		# 4. Account for existing file that will be overwritten
+		if os.path.exists(cache_file):
+			existing_size = os.path.getsize(cache_file)
+			free_bytes += existing_size
+			if verbose:
+				print(f"[DISK CHECK] Existing cache file will be overwritten: {existing_size / (1024**3):.2f} GB freed")
+		
 		free_gb = free_bytes / (1024 ** 3)
 		
 		if verbose:
-			print(f"[DISK CHECK] Est. cache size: {estimated_gb:.4f} GB | Free space: {free_gb:.1f} GB")
+			print(f"[DISK CHECK] Est. cache size: {estimated_gb:.2f} GB | Effective free space: {free_gb:.2f} GB")
 		
-		# 4. Raise error if insufficient space
+		# 5. If free space is below the required threshold, SKIP saving
 		if free_bytes < estimated_bytes:
-			raise RuntimeError(
-				f"Insufficient disk space to save cache! "
-				f"Estimated size: {estimated_gb:.2f} GB, "
-				f"Available space: {free_gb:.2f} GB at {cache_dir}"
-			)
+			if verbose:
+				print(f"[DISK CHECK] ⚠️ Skipping cache save: Insufficient disk space "
+					  f"(Need ~{estimated_gb:.2f} GB, have {free_gb:.2f} GB free at {cache_dir}).")
+			should_save = False
 			
 	except OSError as e:
-		# FIX 2: Only catch OS-level errors (e.g., permission denied, weird NFS quirks).
-		# Do NOT catch Exception, so the RuntimeError above properly halts execution.
+		# If OS-level check fails, warn but attempt to save anyway
 		if verbose:
 			print(f"[DISK CHECK] Warning: Could not verify disk space ({e}). Proceeding with save attempt...")
 
 	# ========== SAVE CACHE ==========
-	try:
-		torch.save({'image_embeds': all_image_embeds, 'labels': all_labels}, cache_file)
+	if should_save:
+		try:
+			torch.save({'image_embeds': all_image_embeds, 'labels': all_labels}, cache_file)
+			if verbose:
+				print(f"[SAVED] {cache_file}")
+		except Exception as e:
+			if verbose:
+				print(f"<!> ERROR Cache saving failed mid-write: {e}. Continuing without cache.")
+	else:
 		if verbose:
-			print(f"[SAVED] {cache_file}")
-	except Exception as e:
-		if verbose:
-			print(f"<!> ERROR Cache saving failed: {e}")
-		raise  # Re-raise to prevent silent failures downstream
+			print(f"[SKIP] Cache file intentionally NOT saved to disk: {cache_file}")
 
 	return all_image_embeds, all_labels
 
