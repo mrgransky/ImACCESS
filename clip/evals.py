@@ -1352,6 +1352,112 @@ def get_embeddings(
 	with torch.no_grad():
 		for images, _, labels_indices in validation_loader:
 			if max_batches and batch_count >= max_batches:
+				if verbose:
+					print(f"Stopping at batch {batch_count} due to max_batches limit")
+				break
+
+			if batch_count % 50 == 0:
+				high_mem = monitor_memory_usage(operation_name=f"Batch {batch_count}")
+				if high_mem:
+					torch.cuda.empty_cache()
+
+			images = images.to(device, non_blocking=True)
+			if device.type == "cuda":
+				images = images.half()
+
+			with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
+				image_embeds = model.encode_image(images)
+				image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
+
+			# offload to CPU
+			image_embeds = image_embeds.cpu()
+
+			all_image_embeds.append(image_embeds)
+			all_labels.append(labels_indices.cpu())
+
+			# Explicit cleanup
+			del images, image_embeds, labels_indices
+			if batch_count % 100 == 0:
+				torch.cuda.empty_cache()
+
+			batch_count += 1
+
+	if not all_image_embeds:
+		raise RuntimeError("No image embeddings computed — possible failure in all batches.")
+
+	all_image_embeds = torch.cat(all_image_embeds, dim=0)
+	all_labels = torch.cat(all_labels, dim=0)
+
+	if verbose:
+		print(f"Elapsed: {time.time() - t0:.1f} s")
+
+	# ========== DISK SPACE CHECK ==========
+	# FIX 1: Check the DIRECTORY, not the file, to avoid FileNotFoundError
+	cache_dir = os.path.dirname(os.path.abspath(cache_file))
+	
+	try:
+		# 1. Calculate exact tensor footprint in bytes
+		tensor_bytes = (
+			(all_image_embeds.numel() * all_image_embeds.element_size()) +
+			(all_labels.numel() * all_labels.element_size())
+		)
+		# 2. Add 20% safety margin for PyTorch zip serialization overhead
+		estimated_bytes = int(tensor_bytes * 1.2)
+		estimated_gb = estimated_bytes / (1024 ** 3)
+		
+		# 3. Check free space on the target directory
+		free_bytes = shutil.disk_usage(cache_dir).free
+		free_gb = free_bytes / (1024 ** 3)
+		
+		if verbose:
+			print(f"[DISK CHECK] Est. cache size: {estimated_gb:.4f} GB | Free space: {free_gb:.1f} GB")
+		
+		# 4. Raise error if insufficient space
+		if free_bytes < estimated_bytes:
+			raise RuntimeError(
+				f"Insufficient disk space to save cache! "
+				f"Estimated size: {estimated_gb:.2f} GB, "
+				f"Available space: {free_gb:.2f} GB at {cache_dir}"
+			)
+			
+	except OSError as e:
+		# FIX 2: Only catch OS-level errors (e.g., permission denied, weird NFS quirks).
+		# Do NOT catch Exception, so the RuntimeError above properly halts execution.
+		if verbose:
+			print(f"[DISK CHECK] Warning: Could not verify disk space ({e}). Proceeding with save attempt...")
+
+	# ========== SAVE CACHE ==========
+	try:
+		torch.save({'image_embeds': all_image_embeds, 'labels': all_labels}, cache_file)
+		if verbose:
+			print(f"[SAVED] {cache_file}")
+	except Exception as e:
+		if verbose:
+			print(f"<!> ERROR Cache saving failed: {e}")
+		raise  # Re-raise to prevent silent failures downstream
+
+	return all_image_embeds, all_labels
+
+def get_embeddings_without_disk_check(
+	model: torch.nn.Module,
+	validation_loader: DataLoader,
+	device: torch.device,
+	cache_file: str,
+	max_batches=None,
+	verbose: bool=False,
+):
+	if verbose:
+		print("[EMBEDDINGS] from scratch [takes a while] ...")
+
+	t0 = time.time()
+	all_image_embeds, all_labels = list(), []
+	model = model.to(device)
+	model.eval()
+
+	batch_count = 0
+	with torch.no_grad():
+		for images, _, labels_indices in validation_loader:
+			if max_batches and batch_count >= max_batches:
 				print(f"Stopping at batch {batch_count} due to max_batches limit")
 				break
 

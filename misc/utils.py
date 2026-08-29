@@ -51,6 +51,7 @@ import warnings
 import traceback
 import builtins
 import platform
+import shutil
 from sklearn.feature_extraction.text import TfidfVectorizer
 import concurrent.futures
 warnings.filterwarnings('ignore')
@@ -384,7 +385,6 @@ def get_updated_model_name(
 		print(f"Warning: Could not rename model file: {e}")
 		try:
 			# Try copying the file instead
-			import shutil
 			shutil.copy2(original_path, new_path)
 			print(f"Model copied to: {new_path}")
 			return new_path
