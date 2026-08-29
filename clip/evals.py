@@ -965,8 +965,9 @@ def get_validation_metrics(
 		print(f"    Normalized? {torch.allclose(cls_norms, torch.ones_like(cls_norms), atol=1e-3)}")
 
 		# ── 3. Pairwise image-class similarity distribution ───────────
-		# Sample 1000 images for efficiency
-		n_sample = min(2500, device_image_embeds.shape[0])
+		# Sample N images for efficiency
+		min_samples = int(5e3)
+		n_sample = min(min_samples, device_image_embeds.shape[0])
 
 		sample_idx = torch.randperm(
 			device_image_embeds.shape[0],
@@ -990,7 +991,7 @@ def get_validation_metrics(
 				f"mean={sample_sims.mean():.4f}  std={sample_sims.std():.4f}")
 
 		# ── 4. Inter-class similarity — are class embeddings separated? ─
-		n_cls_sample = min(2500, device_class_text_embeds.shape[0])
+		n_cls_sample = min(min_samples, device_class_text_embeds.shape[0])
 		cls_sample_idx = torch.randperm(
 			device_class_text_embeds.shape[0],
 			device=device_class_text_embeds.device,
@@ -1014,7 +1015,7 @@ def get_validation_metrics(
 		print(f"    Fraction [sim > 0.9]: {(off_diag > 0.9).float().mean():.4f} (high → near-duplicate class embeddings)")
 
 		flat_sims = inter_cls_sims.masked_fill(~off_diag_mask, -1)
-		top_pairs = torch.triu(flat_sims, diagonal=1).flatten().topk(25)
+		top_pairs = torch.triu(flat_sims, diagonal=1).flatten().topk(50)
 		row_idx = top_pairs.indices // n_cls_sample
 		col_idx = top_pairs.indices % n_cls_sample
 

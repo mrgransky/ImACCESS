@@ -666,7 +666,7 @@ def probe_multi_label(
 			if bidx % 25 == 0:
 				grad_per_class = probe.probe.weight.grad.norm(dim=1)  # [C]
 				print(
-					f"[GRAD] Epoch {epoch+1} Batch {bidx+1} — "
+					f"\t\t[GRAD] Epoch {epoch+1} Batch {bidx+1} — "
 					f"total_norm={probe.probe.weight.grad.norm().item():.4f} "
 					f"max_class_grad={grad_per_class.max().item():.4f} "
 					f"argmax_class={grad_per_class.argmax().item()}"
