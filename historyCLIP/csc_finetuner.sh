@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=ft_h4_multi_label_seed_01
+#SBATCH --job-name=ft_h4_multi_label_seed_02
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -75,7 +75,7 @@
 
 # how to run:
 # !!!!! xxxx ensure the job name aligns with the seed value xxxx
-# SEED=1 sbatch csc_finetuner.sh
+# SEED=2 sbatch csc_finetuner.sh
 
 set -euo pipefail
 user="`whoami`"
