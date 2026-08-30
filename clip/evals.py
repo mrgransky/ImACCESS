@@ -1403,8 +1403,8 @@ def get_embeddings(
 			(all_labels.numel() * all_labels.element_size())
 		)
 		
-		# 2. Add 20% safety margin + 300MB buffer for temp file during save
-		estimated_bytes = int(tensor_bytes * 1.2 + 300 * 1024**2)
+		# 2. Add 25% safety margin + 300MB buffer for temp file during save
+		estimated_bytes = int(tensor_bytes * 1.25 + 300 * 1024**2)
 		estimated_gb = estimated_bytes / (1024 ** 3)
 		
 		# 3. Check free space on the target directory
@@ -1434,18 +1434,18 @@ def get_embeddings(
 		if verbose:
 			print(f"[DISK CHECK] Warning: Could not verify disk space ({e}). Proceeding with save attempt...")
 
-	# ========== SAVE CACHE ==========
-	if should_save:
-		try:
-			torch.save({'image_embeds': all_image_embeds, 'labels': all_labels}, cache_file)
-			if verbose:
-				print(f"[SAVED] {cache_file}")
-		except Exception as e:
-			if verbose:
-				print(f"<!> ERROR Cache saving failed mid-write: {e}. Continuing without cache.")
-	else:
-		if verbose:
-			print(f"[SKIP] Cache file intentionally NOT saved to disk: {cache_file}")
+	# # ========== SAVE CACHE ==========
+	# if should_save:
+	# 	try:
+	# 		torch.save({'image_embeds': all_image_embeds, 'labels': all_labels}, cache_file)
+	# 		if verbose:
+	# 			print(f"[SAVED] {cache_file}")
+	# 	except Exception as e:
+	# 		if verbose:
+	# 			print(f"<!> ERROR Cache saving failed mid-write: {e}. Continuing without cache.")
+	# else:
+	# 	if verbose:
+	# 		print(f"[SKIP] Cache file intentionally NOT saved to disk: {cache_file}")
 
 	return all_image_embeds, all_labels
 

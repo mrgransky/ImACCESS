@@ -947,25 +947,25 @@ def probe_multi_label(
 		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 	
-	viz.plot_hyperparameter_evolution(
-		eta_min=eta_min,
-		learning_rates=learning_rates_history,
-		weight_decays=weight_decays_history,
-		fname=plot_paths["hp_evol"],
-	)
+	# viz.plot_hyperparameter_evolution(
+	# 	eta_min=eta_min,
+	# 	learning_rates=learning_rates_history,
+	# 	weight_decays=weight_decays_history,
+	# 	fname=plot_paths["hp_evol"],
+	# )
 
-	viz.plot_train_val_losses(
-		train_losses=training_losses,
-		val_losses=validation_losses,
-		fname=plot_paths["losses"],
-	)
+	# viz.plot_train_val_losses(
+	# 	train_losses=training_losses,
+	# 	val_losses=validation_losses,
+	# 	fname=plot_paths["losses"],
+	# )
 	
-	viz.plot_retrieval_metrics_best_model(
-		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
-		fname=plot_paths["retrieval_best"],
-	)
+	# viz.plot_retrieval_metrics_best_model(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics=final_img2txt_metrics,
+	# 	text_to_image_metrics=final_txt2img_metrics,
+	# 	fname=plot_paths["retrieval_best"],
+	# )
 	
 	return best_model_eval_results
 
@@ -1525,37 +1525,37 @@ def full_finetune_multi_label(
 		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 	
-	viz.plot_multilabel_loss_breakdown(
-		training_losses_breakdown=training_losses_breakdown,
-		filepath=plot_paths["losses_breakdown"]
-	)
+	# viz.plot_multilabel_loss_breakdown(
+	# 	training_losses_breakdown=training_losses_breakdown,
+	# 	filepath=plot_paths["losses_breakdown"]
+	# )
 	
-	viz.plot_retrieval_metrics_per_epoch(
-		dataset_name=dataset_name,
-		image_to_text_metrics_list=img2txt_metrics_all_epochs,
-		text_to_image_metrics_list=txt2img_metrics_all_epochs,
-		fname=plot_paths["retrieval_per_epoch"],
-	)
+	# viz.plot_retrieval_metrics_per_epoch(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics_list=img2txt_metrics_all_epochs,
+	# 	text_to_image_metrics_list=txt2img_metrics_all_epochs,
+	# 	fname=plot_paths["retrieval_per_epoch"],
+	# )
 	
-	viz.plot_retrieval_metrics_best_model(
-		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
-		fname=plot_paths["retrieval_best"],
-	)
+	# viz.plot_retrieval_metrics_best_model(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics=final_img2txt_metrics,
+	# 	text_to_image_metrics=final_txt2img_metrics,
+	# 	fname=plot_paths["retrieval_best"],
+	# )
 
-	viz.plot_train_val_losses(
-		train_losses=training_losses,
-		val_losses=validation_losses,
-		fname=plot_paths["losses"],
-	)
+	# viz.plot_train_val_losses(
+	# 	train_losses=training_losses,
+	# 	val_losses=validation_losses,
+	# 	fname=plot_paths["losses"],
+	# )
 
-	viz.plot_hyperparameter_evolution(
-		eta_min=eta_min,
-		learning_rates=learning_rates_history,
-		weight_decays=weight_decays_history,
-		fname=plot_paths["hp_evol"],
-	)
+	# viz.plot_hyperparameter_evolution(
+	# 	eta_min=eta_min,
+	# 	learning_rates=learning_rates_history,
+	# 	weight_decays=weight_decays_history,
+	# 	fname=plot_paths["hp_evol"],
+	# )
 
 	return best_model_eval_results
 
@@ -2092,37 +2092,37 @@ def lora_finetune_multi_label(
 		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 
-	viz.plot_multilabel_loss_breakdown(
-		training_losses_breakdown=training_losses_breakdown,
-		filepath=plot_paths["losses_breakdown"],
-	)
+	# viz.plot_multilabel_loss_breakdown(
+	# 	training_losses_breakdown=training_losses_breakdown,
+	# 	filepath=plot_paths["losses_breakdown"],
+	# )
 
-	viz.plot_retrieval_metrics_per_epoch(
-		dataset_name=dataset_name,
-		image_to_text_metrics_list=img2txt_metrics_all_epochs,
-		text_to_image_metrics_list=txt2img_metrics_all_epochs,
-		fname=plot_paths["retrieval_per_epoch"],
-	)
+	# viz.plot_retrieval_metrics_per_epoch(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics_list=img2txt_metrics_all_epochs,
+	# 	text_to_image_metrics_list=txt2img_metrics_all_epochs,
+	# 	fname=plot_paths["retrieval_per_epoch"],
+	# )
 
-	viz.plot_retrieval_metrics_best_model(
-		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
-		fname=plot_paths["retrieval_best"],
-	)
+	# viz.plot_retrieval_metrics_best_model(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics=final_img2txt_metrics,
+	# 	text_to_image_metrics=final_txt2img_metrics,
+	# 	fname=plot_paths["retrieval_best"],
+	# )
 
-	viz.plot_hyperparameter_evolution(
-		eta_min=eta_min,
-		learning_rates=learning_rates_history,
-		weight_decays=weight_decays_history,
-		fname=plot_paths["hp_evol"],
-	)
+	# viz.plot_hyperparameter_evolution(
+	# 	eta_min=eta_min,
+	# 	learning_rates=learning_rates_history,
+	# 	weight_decays=weight_decays_history,
+	# 	fname=plot_paths["hp_evol"],
+	# )
 
-	viz.plot_train_val_losses(
-		train_losses=training_losses,
-		val_losses=validation_losses,
-		fname=plot_paths["losses"],
-	)
+	# viz.plot_train_val_losses(
+	# 	train_losses=training_losses,
+	# 	val_losses=validation_losses,
+	# 	fname=plot_paths["losses"],
+	# )
 
 	return best_model_eval_results
 
@@ -2925,37 +2925,37 @@ def lora_plus_finetune_multi_label(
 		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 	
-	viz.plot_multilabel_loss_breakdown(
-		training_losses_breakdown=training_losses_breakdown,
-		filepath=plot_paths["losses_breakdown"]
-	)
+	# viz.plot_multilabel_loss_breakdown(
+	# 	training_losses_breakdown=training_losses_breakdown,
+	# 	filepath=plot_paths["losses_breakdown"]
+	# )
 	
-	viz.plot_retrieval_metrics_per_epoch(
-		dataset_name=dataset_name,
-		image_to_text_metrics_list=img2txt_metrics_all_epochs,
-		text_to_image_metrics_list=txt2img_metrics_all_epochs,
-		fname=plot_paths["retrieval_per_epoch"],
-	)
+	# viz.plot_retrieval_metrics_per_epoch(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics_list=img2txt_metrics_all_epochs,
+	# 	text_to_image_metrics_list=txt2img_metrics_all_epochs,
+	# 	fname=plot_paths["retrieval_per_epoch"],
+	# )
 	
-	viz.plot_retrieval_metrics_best_model(
-		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
-		fname=plot_paths["retrieval_best"],
-	)
+	# viz.plot_retrieval_metrics_best_model(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics=final_img2txt_metrics,
+	# 	text_to_image_metrics=final_txt2img_metrics,
+	# 	fname=plot_paths["retrieval_best"],
+	# )
 	
-	viz.plot_train_val_losses(
-		train_losses=training_losses,
-		val_losses=validation_losses,
-		fname=plot_paths["losses"],
-	)
+	# viz.plot_train_val_losses(
+	# 	train_losses=training_losses,
+	# 	val_losses=validation_losses,
+	# 	fname=plot_paths["losses"],
+	# )
 
-	viz.plot_hyperparameter_evolution(
-		eta_min=eta_min,
-		learning_rates=learning_rates_history,
-		weight_decays=weight_decays_history,
-		fname=plot_paths["hp_evol"],
-	)
+	# viz.plot_hyperparameter_evolution(
+	# 	eta_min=eta_min,
+	# 	learning_rates=learning_rates_history,
+	# 	weight_decays=weight_decays_history,
+	# 	fname=plot_paths["hp_evol"],
+	# )
 
 	return best_model_eval_results
 
@@ -3537,37 +3537,37 @@ def rslora_finetune_multi_label(
 		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 
-	viz.plot_multilabel_loss_breakdown(
-		training_losses_breakdown=training_losses_breakdown,
-		filepath=plot_paths["losses_breakdown"],
-	)
+	# viz.plot_multilabel_loss_breakdown(
+	# 	training_losses_breakdown=training_losses_breakdown,
+	# 	filepath=plot_paths["losses_breakdown"],
+	# )
 
-	viz.plot_retrieval_metrics_per_epoch(
-		dataset_name=dataset_name,
-		image_to_text_metrics_list=img2txt_metrics_all_epochs,
-		text_to_image_metrics_list=txt2img_metrics_all_epochs,
-		fname=plot_paths["retrieval_per_epoch"],
-	)
+	# viz.plot_retrieval_metrics_per_epoch(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics_list=img2txt_metrics_all_epochs,
+	# 	text_to_image_metrics_list=txt2img_metrics_all_epochs,
+	# 	fname=plot_paths["retrieval_per_epoch"],
+	# )
 
-	viz.plot_retrieval_metrics_best_model(
-		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
-		fname=plot_paths["retrieval_best"],
-	)
+	# viz.plot_retrieval_metrics_best_model(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics=final_img2txt_metrics,
+	# 	text_to_image_metrics=final_txt2img_metrics,
+	# 	fname=plot_paths["retrieval_best"],
+	# )
 
-	viz.plot_hyperparameter_evolution(
-		eta_min=eta_min,
-		learning_rates=learning_rates_history,
-		weight_decays=weight_decays_history,
-		fname=plot_paths["hp_evol"],
-	)
+	# viz.plot_hyperparameter_evolution(
+	# 	eta_min=eta_min,
+	# 	learning_rates=learning_rates_history,
+	# 	weight_decays=weight_decays_history,
+	# 	fname=plot_paths["hp_evol"],
+	# )
 
-	viz.plot_train_val_losses(
-		train_losses=training_losses,
-		val_losses=validation_losses,
-		fname=plot_paths["losses"],
-	)
+	# viz.plot_train_val_losses(
+	# 	train_losses=training_losses,
+	# 	val_losses=validation_losses,
+	# 	fname=plot_paths["losses"],
+	# )
 
 	return best_model_eval_results
 
@@ -4164,38 +4164,38 @@ def dora_finetune_multi_label(
 		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 
-	# Plot loss breakdown (I2T vs T2I)
-	viz.plot_multilabel_loss_breakdown(
-		training_losses_breakdown=training_losses_breakdown,
-		filepath=plot_paths["losses_breakdown"],
-	)
+	# # Plot loss breakdown (I2T vs T2I)
+	# viz.plot_multilabel_loss_breakdown(
+	# 	training_losses_breakdown=training_losses_breakdown,
+	# 	filepath=plot_paths["losses_breakdown"],
+	# )
 
-	viz.plot_retrieval_metrics_per_epoch(
-		dataset_name=dataset_name,
-		image_to_text_metrics_list=img2txt_metrics_all_epochs,
-		text_to_image_metrics_list=txt2img_metrics_all_epochs,
-		fname=plot_paths["retrieval_per_epoch"],
-	)
+	# viz.plot_retrieval_metrics_per_epoch(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics_list=img2txt_metrics_all_epochs,
+	# 	text_to_image_metrics_list=txt2img_metrics_all_epochs,
+	# 	fname=plot_paths["retrieval_per_epoch"],
+	# )
 
-	viz.plot_retrieval_metrics_best_model(
-		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
-		fname=plot_paths["retrieval_best"],
-	)
+	# viz.plot_retrieval_metrics_best_model(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics=final_img2txt_metrics,
+	# 	text_to_image_metrics=final_txt2img_metrics,
+	# 	fname=plot_paths["retrieval_best"],
+	# )
 
-	viz.plot_hyperparameter_evolution(
-		eta_min=eta_min,
-		learning_rates=learning_rates_history,
-		weight_decays=weight_decays_history,
-		fname=plot_paths["hp_evol"],
-	)
+	# viz.plot_hyperparameter_evolution(
+	# 	eta_min=eta_min,
+	# 	learning_rates=learning_rates_history,
+	# 	weight_decays=weight_decays_history,
+	# 	fname=plot_paths["hp_evol"],
+	# )
 
-	viz.plot_train_val_losses(
-		train_losses=training_losses,
-		val_losses=validation_losses,
-		fname=plot_paths["losses"],
-	)
+	# viz.plot_train_val_losses(
+	# 	train_losses=training_losses,
+	# 	val_losses=validation_losses,
+	# 	fname=plot_paths["losses"],
+	# )
 
 	return best_model_eval_results
 
@@ -4865,37 +4865,37 @@ def vera_finetune_multi_label(
 		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 
-	viz.plot_multilabel_loss_breakdown(
-		training_losses_breakdown=training_losses_breakdown,
-		filepath=plot_paths["losses_breakdown"]
-	)
+	# viz.plot_multilabel_loss_breakdown(
+	# 	training_losses_breakdown=training_losses_breakdown,
+	# 	filepath=plot_paths["losses_breakdown"]
+	# )
 
-	viz.plot_retrieval_metrics_per_epoch(
-		dataset_name=dataset_name,
-		image_to_text_metrics_list=img2txt_metrics_all_epochs,
-		text_to_image_metrics_list=txt2img_metrics_all_epochs,
-		fname=plot_paths["retrieval_per_epoch"],
-	)
+	# viz.plot_retrieval_metrics_per_epoch(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics_list=img2txt_metrics_all_epochs,
+	# 	text_to_image_metrics_list=txt2img_metrics_all_epochs,
+	# 	fname=plot_paths["retrieval_per_epoch"],
+	# )
 
-	viz.plot_retrieval_metrics_best_model(
-		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
-		fname=plot_paths["retrieval_best"],
-	)
+	# viz.plot_retrieval_metrics_best_model(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics=final_img2txt_metrics,
+	# 	text_to_image_metrics=final_txt2img_metrics,
+	# 	fname=plot_paths["retrieval_best"],
+	# )
 
-	viz.plot_hyperparameter_evolution(
-		eta_min=eta_min,
-		learning_rates=learning_rates_history,
-		weight_decays=weight_decays_history,
-		fname=plot_paths["hp_evol"],
-	)
+	# viz.plot_hyperparameter_evolution(
+	# 	eta_min=eta_min,
+	# 	learning_rates=learning_rates_history,
+	# 	weight_decays=weight_decays_history,
+	# 	fname=plot_paths["hp_evol"],
+	# )
 
-	viz.plot_train_val_losses(
-		train_losses=training_losses,
-		val_losses=validation_losses,
-		fname=plot_paths["losses"],
-	)
+	# viz.plot_train_val_losses(
+	# 	train_losses=training_losses,
+	# 	val_losses=validation_losses,
+	# 	fname=plot_paths["losses"],
+	# )
 
 	return best_model_eval_results
 
@@ -5496,37 +5496,37 @@ def ia3_finetune_multi_label(
 		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 
-	viz.plot_multilabel_loss_breakdown(
-		training_losses_breakdown=training_losses_breakdown,
-		filepath=plot_paths["losses_breakdown"]
-	)
+	# viz.plot_multilabel_loss_breakdown(
+	# 	training_losses_breakdown=training_losses_breakdown,
+	# 	filepath=plot_paths["losses_breakdown"]
+	# )
 
-	viz.plot_retrieval_metrics_per_epoch(
-		dataset_name=dataset_name,
-		image_to_text_metrics_list=img2txt_metrics_all_epochs,
-		text_to_image_metrics_list=txt2img_metrics_all_epochs,
-		fname=plot_paths["retrieval_per_epoch"],
-	)
+	# viz.plot_retrieval_metrics_per_epoch(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics_list=img2txt_metrics_all_epochs,
+	# 	text_to_image_metrics_list=txt2img_metrics_all_epochs,
+	# 	fname=plot_paths["retrieval_per_epoch"],
+	# )
 
-	viz.plot_retrieval_metrics_best_model(
-		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
-		fname=plot_paths["retrieval_best"],
-	)
+	# viz.plot_retrieval_metrics_best_model(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics=final_img2txt_metrics,
+	# 	text_to_image_metrics=final_txt2img_metrics,
+	# 	fname=plot_paths["retrieval_best"],
+	# )
 
-	viz.plot_hyperparameter_evolution(
-		eta_min=eta_min,
-		learning_rates=learning_rates_history,
-		weight_decays=weight_decays_history,
-		fname=plot_paths["hp_evol"],
-	)
+	# viz.plot_hyperparameter_evolution(
+	# 	eta_min=eta_min,
+	# 	learning_rates=learning_rates_history,
+	# 	weight_decays=weight_decays_history,
+	# 	fname=plot_paths["hp_evol"],
+	# )
 
-	viz.plot_train_val_losses(
-		train_losses=training_losses,
-		val_losses=validation_losses,
-		fname=plot_paths["losses"],
-	)
+	# viz.plot_train_val_losses(
+	# 	train_losses=training_losses,
+	# 	val_losses=validation_losses,
+	# 	fname=plot_paths["losses"],
+	# )
 
 	return best_model_eval_results
 
@@ -6107,37 +6107,37 @@ def clip_adapter_finetune_multi_label(
 		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 
-	viz.plot_multilabel_loss_breakdown(
-		training_losses_breakdown=training_losses_breakdown,
-		filepath=plot_paths["losses_breakdown"],
-	)
+	# viz.plot_multilabel_loss_breakdown(
+	# 	training_losses_breakdown=training_losses_breakdown,
+	# 	filepath=plot_paths["losses_breakdown"],
+	# )
 	
-	viz.plot_retrieval_metrics_per_epoch(
-		dataset_name=dataset_name,
-		image_to_text_metrics_list=img2txt_metrics_all_epochs,
-		text_to_image_metrics_list=txt2img_metrics_all_epochs,
-		fname=plot_paths["retrieval_per_epoch"],
-	)
+	# viz.plot_retrieval_metrics_per_epoch(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics_list=img2txt_metrics_all_epochs,
+	# 	text_to_image_metrics_list=txt2img_metrics_all_epochs,
+	# 	fname=plot_paths["retrieval_per_epoch"],
+	# )
 	
-	viz.plot_retrieval_metrics_best_model(
-		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt,
-		text_to_image_metrics=final_txt2img,
-		fname=plot_paths["retrieval_best"],
-	)
+	# viz.plot_retrieval_metrics_best_model(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics=final_img2txt,
+	# 	text_to_image_metrics=final_txt2img,
+	# 	fname=plot_paths["retrieval_best"],
+	# )
 	
-	viz.plot_hyperparameter_evolution(
-		eta_min=eta_min,
-		learning_rates=learning_rates_history,
-		weight_decays=weight_decays_history,
-		fname=plot_paths["hp_evol"],
-	)
+	# viz.plot_hyperparameter_evolution(
+	# 	eta_min=eta_min,
+	# 	learning_rates=learning_rates_history,
+	# 	weight_decays=weight_decays_history,
+	# 	fname=plot_paths["hp_evol"],
+	# )
 
-	viz.plot_train_val_losses(
-		train_losses=training_losses,
-		val_losses=validation_losses,
-		fname=plot_paths["losses"],
-	)
+	# viz.plot_train_val_losses(
+	# 	train_losses=training_losses,
+	# 	val_losses=validation_losses,
+	# 	fname=plot_paths["losses"],
+	# )
 
 	return best_model_eval_results
 
@@ -6688,12 +6688,12 @@ def tip_adapter_finetune_multi_label(
 			f"temp_{temperature}"
 		)
 		
-		viz.plot_retrieval_metrics_best_model(
-			dataset_name=dataset_name,
-			image_to_text_metrics=final_img2txt_metrics,
-			text_to_image_metrics=final_txt2img_metrics,
-			fname=os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-		)
+		# viz.plot_retrieval_metrics_best_model(
+		# 	dataset_name=dataset_name,
+		# 	image_to_text_metrics=final_img2txt_metrics,
+		# 	text_to_image_metrics=final_txt2img_metrics,
+		# 	fname=os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		# )
 		
 		return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics, mdl_fpth
 	
@@ -6997,45 +6997,45 @@ def tip_adapter_finetune_multi_label(
 		"hp_evol": os.path.join(viz_dir, f"{file_base_name}_hp_evol.png"),
 	}
 	
-	if actual_trained_epochs > 0:
-		# Plot loss breakdown (I2T vs T2I)
-		viz.plot_multilabel_loss_breakdown(
-			training_losses_breakdown=training_losses_breakdown,
-			filepath=plot_paths["losses_breakdown"],
-		)
+	# if actual_trained_epochs > 0:
+	# 	# Plot loss breakdown (I2T vs T2I)
+	# 	viz.plot_multilabel_loss_breakdown(
+	# 		training_losses_breakdown=training_losses_breakdown,
+	# 		filepath=plot_paths["losses_breakdown"],
+	# 	)
 		
-		viz.plot_retrieval_metrics_per_epoch(
-			dataset_name=dataset_name,
-			image_to_text_metrics_list=img2txt_metrics_all_epochs,
-			text_to_image_metrics_list=txt2img_metrics_all_epochs,
-			fname=plot_paths["retrieval_per_epoch"],
-		)
+	# 	viz.plot_retrieval_metrics_per_epoch(
+	# 		dataset_name=dataset_name,
+	# 		image_to_text_metrics_list=img2txt_metrics_all_epochs,
+	# 		text_to_image_metrics_list=txt2img_metrics_all_epochs,
+	# 		fname=plot_paths["retrieval_per_epoch"],
+	# 	)
 		
-		if learning_rates_history and weight_decays_history:
-			viz.plot_hyperparameter_evolution(
-				eta_min=eta_min,
-				learning_rates=learning_rates_history,
-				weight_decays=weight_decays_history,
-				fname=plot_paths["hp_evol"],
-			)
+	# 	if learning_rates_history and weight_decays_history:
+	# 		viz.plot_hyperparameter_evolution(
+	# 			eta_min=eta_min,
+	# 			learning_rates=learning_rates_history,
+	# 			weight_decays=weight_decays_history,
+	# 			fname=plot_paths["hp_evol"],
+	# 		)
 	
-	viz.plot_retrieval_metrics_best_model(
-		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
-		fname=plot_paths["retrieval_best"],
-	)
+	# viz.plot_retrieval_metrics_best_model(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics=final_img2txt_metrics,
+	# 	text_to_image_metrics=final_txt2img_metrics,
+	# 	fname=plot_paths["retrieval_best"],
+	# )
 	
-	viz.plot_train_val_losses(
-		train_losses=training_losses,
-		val_losses=validation_losses,
-		fname=plot_paths["losses"],
-	)
+	# viz.plot_train_val_losses(
+	# 	train_losses=training_losses,
+	# 	val_losses=validation_losses,
+	# 	fname=plot_paths["losses"],
+	# )
 
-	viz.plot_alpha_beta_evolution(
-		alphas=alphas,
-		betas=betas,
-		fname=plot_paths["alpha_beta_evol"],
-	)
+	# viz.plot_alpha_beta_evolution(
+	# 	alphas=alphas,
+	# 	betas=betas,
+	# 	fname=plot_paths["alpha_beta_evol"],
+	# )
 
 	return best_model_eval_results

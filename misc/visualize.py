@@ -4781,11 +4781,11 @@ def plot_retrieval_metrics_best_model(
 	plt.close(fig)
 
 def plot_retrieval_metrics_per_epoch(
-		dataset_name: str,
-		image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
-		text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
-		fname: str = "Retrieval_Performance_Metrics.png",
-	):
+	dataset_name: str,
+	image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
+	text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
+	fname: str = "Retrieval_Performance_Metrics.png",
+):
 	num_epochs = len(image_to_text_metrics_list)
 	num_xticks = min(10, num_epochs)
 	epochs = range(1, num_epochs + 1)
@@ -4815,8 +4815,15 @@ def plot_retrieval_metrics_per_epoch(
 	line_styles = ['-', '--', ':', '-.', '-']  # Varied line styles for clarity
 	# colors = plt.cm.tab10.colors  # Use a color map for distinct colors
 	colors = plt.cm.Set1.colors
-	fig, axs = plt.subplots(len(modes), len(metrics), figsize=(20, 11), constrained_layout=True)
+
+	fig, axs = plt.subplots(
+		len(modes), 
+		len(metrics), 
+		figsize=(20, 11), 
+		constrained_layout=True
+	)
 	fig.suptitle(suptitle_text, fontsize=15, fontweight='bold')
+
 	# Store legend handles and labels
 	legend_handles = []
 	legend_labels = []
@@ -4879,7 +4886,7 @@ def plot_retrieval_metrics_per_epoch(
 	# 	facecolor='white',
 	# )
 	# plt.tight_layout(rect=[0, 0.03, 0.9, 0.95])
-	plt.savefig(fname, dpi=300, bbox_inches='tight')
+	plt.savefig(fname, bbox_inches='tight')
 	plt.close(fig)
 
 def estimate_mirflickr_metrics():
