@@ -8,9 +8,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=264G
+#SBATCH --mem=200G
 #SBATCH --partition=gpumedium
-#SBATCH --gres=gpu:gh200:1
+#SBATCH --gres=gpu:gh200:2
 #SBATCH --time=1-12:00:00
 ####SBATCH --begin=08:45:00
 ##############################################################################
@@ -69,12 +69,11 @@
 #   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
-##SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
+#SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
 ###SBATCH --array=12-14 # only LoRA+
 ##SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 ##SBATCH --array=18-20 # only dora
-#SBATCH --array=25 # only ia3
-
+###SBATCH --array=25 # only ia3
 
 # how to run:
 # !!!!! xxxx ensure the job name aligns with the seed value xxxx
