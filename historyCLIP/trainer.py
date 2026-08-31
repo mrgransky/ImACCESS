@@ -346,8 +346,10 @@ def main():
 		# Clean up any available JSON/PT files before finishing
 		json_files = glob.glob(os.path.join(RESULT_DIRECTORY, "*.json"))
 		pt_files = glob.glob(os.path.join(RESULT_DIRECTORY, "*.pt"))
+		pth_files = glob.glob(os.path.join(RESULT_DIRECTORY, "*.pth"))
 		cleanup_files = (
 			pt_files 
+			+ pth_files
 			# + json_files
 		)
 		if cleanup_files:

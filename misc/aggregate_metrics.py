@@ -13,9 +13,11 @@
 
 import json
 import sys
+import os
 import statistics
+import numpy as np
 from collections import defaultdict
-
+from typing import Dict, List, Tuple
 # ----------------------------------------------------------------------
 # CONFIGURATION – adjust these lists to select which data to aggregate
 # ----------------------------------------------------------------------
@@ -51,7 +53,6 @@ def extract_value(data, keys):
 		except (KeyError, TypeError):
 				return 0.0
 
-
 def collect_values(file_paths):
 		"""Collect all leaf values across seeds."""
 		collection = defaultdict(list)  # key: (label_type, strategy, split, direction, subset, metric, k)
@@ -82,7 +83,6 @@ def collect_values(file_paths):
 																		key = (lt, st, sp, dr, su, met, k)
 																		collection[key].append(val)
 		return collection
-
 
 def compute_stats(collection):
 		"""Compute mean and std for each key."""
@@ -116,22 +116,532 @@ def print_summary(results):
 		for key in keys:
 			lt, st, sp, dr, su, met, k = key
 			mean, std = summary_dict[key]
-			print(f"{lt:<30} {st:<20} {sp:<15} {dr:<5} {su:<8} {met:7s}@{int(k):2d} = {mean:.4f} ± {std:.4f}")
+			print(f"{lt:<30} {st:<20} {sp:<15} {dr:<5} {su:<8} {met:7s}@{int(k):2d} = {mean:.3f} ± {std:.6f}")
 
+def cell(summary_dict, lt, st, sp, dr, su, met="mAP", k="10", bold=False, underline=False):
+		mean, std = summary_dict.get((lt, st, sp, dr, su, met, k), (0.0, 0.0))
+		s = f"{mean:.3f} $\\pm$ {std:.3f}"
+		if bold:
+				s = f"\\textbf{{{s}}}"
+		elif underline:
+				s = f"\\underline{{{s}}}"
+		return s
+
+def build_summary_dict(results):
+		return {(lt, st, sp, dr, su, met, k): (mean, std)
+						for (lt, st, sp, dr, su, met, k, mean, std) in results}
+
+def print_table5_row(name, summary_dict, st):
+		lt, sp = "multimodal_canonical_labels", "standard"
+		cols = []
+		for dr in ("i2t", "t2i"):
+				for su in ("overall", "head", "rare"):
+						cols.append(cell(summary_dict, lt, st, sp, dr, su))
+		print(f"{name} & " + " & ".join(cols) + " \\\\")
+
+def print_table6_row(name, summary_dict, lt):
+		sp, st = "shared", "lora"
+		cols = []
+		for dr in ("i2t", "t2i"):
+				for su in ("overall", "head", "rare"):
+						cols.append(cell(summary_dict, lt, st, sp, dr, su))
+		print(f"{name} & " + " & ".join(cols) + " \\\\")
+
+def select_table6_strategy_and_print_rows(summary_dict):
+		"""
+		Select the strategy for Table 6 using Table 5 conditions:
+			- multimodal canonical supervision
+			- standard tier protocol
+			- rare-class performance at mAP@10
+
+		Selection criterion:
+			mean of I2T-rare and T2I-rare mean mAP@10.
+
+		After selecting the strategy, print the corresponding shared-protocol
+		Table 6 retrieval values for LLM, VLM, and multimodal supervision.
+		"""
+		selection_label_type = "multimodal_canonical_labels"
+		selection_split = "standard"
+		metric = "mAP"
+		k = "10"
+
+		candidate_scores = []
+
+		for strategy in STRATEGIES:
+				i2t_key = (
+						selection_label_type, strategy, selection_split,
+						"i2t", "rare", metric, k
+				)
+				t2i_key = (
+						selection_label_type, strategy, selection_split,
+						"t2i", "rare", metric, k
+				)
+
+				if i2t_key not in summary_dict or t2i_key not in summary_dict:
+						print(
+								f"[WARNING] Skipping '{strategy}': missing standard-split "
+								f"multimodal rare I2T and/or T2I mAP@10."
+						)
+						continue
+
+				i2t_mean, i2t_std = summary_dict[i2t_key]
+				t2i_mean, t2i_std = summary_dict[t2i_key]
+				rare_score = (i2t_mean + t2i_mean) / 2.0
+
+				candidate_scores.append({
+						"strategy": strategy,
+						"i2t_mean": i2t_mean,
+						"i2t_std": i2t_std,
+						"t2i_mean": t2i_mean,
+						"t2i_std": t2i_std,
+						"rare_score": rare_score,
+				})
+
+		if not candidate_scores:
+				raise ValueError(
+						"Could not select a Table 6 strategy: no strategy has both "
+						"standard-split multimodal I2T-rare and T2I-rare mAP@10 values."
+				)
+
+		candidate_scores.sort(
+				key=lambda item: item["rare_score"],
+				reverse=True,
+		)
+		selected = candidate_scores[0]
+		selected_strategy = selected["strategy"]
+
+		print("\n=== Table 6 Strategy Selection ===")
+		print(
+				"Criterion: highest mean of standard-split multimodal "
+				"I2T-rare and T2I-rare mAP@10.\n"
+		)
+
+		for rank, item in enumerate(candidate_scores, start=1):
+				print(
+						f"{rank:>2}. {item['strategy']:<16} "
+						f"I2T-rare = {item['i2t_mean']:.3f} ± {item['i2t_std']:.3f}, "
+						f"T2I-rare = {item['t2i_mean']:.3f} ± {item['t2i_std']:.3f}, "
+						f"mean rare score = {item['rare_score']:.3f}"
+				)
+
+		print(
+				f"\nSelected Table 6 strategy: {selected_strategy} "
+				f"(mean rare score = {selected['rare_score']:.3f})"
+		)
+
+		print("\n=== Table 6 Retrieval Rows (shared-vocabulary protocol) ===")
+		print("Values are mAP@10, mean ± std over the three seeds.\n")
+
+		table6_label_types = [
+				("LLM", "llm_canonical_labels"),
+				("VLM", "vlm_canonical_labels"),
+				("Multimodal (Ours)", "multimodal_canonical_labels"),
+		]
+
+		for display_name, label_type in table6_label_types:
+				values = []
+
+				for direction in ("i2t", "t2i"):
+						for subset in ("overall", "head", "rare"):
+								key = (
+										label_type, selected_strategy, "shared",
+										direction, subset, metric, k
+								)
+
+								if key not in summary_dict:
+										values.append(r"\texttt{⟨missing⟩}")
+										print(
+												f"[WARNING] Missing Table 6 value: "
+												f"label_type={label_type}, strategy={selected_strategy}, "
+												f"split=shared, direction={direction}, subset={subset}"
+										)
+										continue
+
+								mean, std = summary_dict[key]
+								values.append(f"{mean:.3f} $\\pm$ {std:.3f}")
+
+				print(f"{display_name} & " + " & ".join(values) + r" \\")
+		
+		return selected_strategy
+
+def aggregate_seed_performance(
+    json_paths: List[str],
+    verbose: bool = True,
+) -> Tuple[
+    Dict[Tuple[str, ...], Tuple[float, float]],
+    Dict[Tuple[str, ...], int],
+]:
+    """
+    Aggregate retrieval metrics across multiple seed JSON files.
+
+    Returns
+    -------
+    summary_dict:
+        Dictionary keyed by:
+            (label_type, strategy, split, direction, subset, metric, k)
+
+        Each value is:
+            (mean, sample_std)
+
+    seed_counts:
+        Dictionary using the same keys as ``summary_dict``. Each value is
+        the number of seed JSON files containing that exact metric.
+
+    Notes
+    -----
+    - Metrics missing from a seed are NOT replaced with zero.
+    - Mean and sample standard deviation are calculated only from the seed
+      files that contain the metric.
+    - The caller should verify ``seed_counts[key] == len(json_paths)`` for
+      every reported manuscript value.
+    """
+    raw_values = defaultdict(list)
+
+    for path in json_paths:
+        with open(path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+
+        for label_type, strategies_data in data.items():
+            if not isinstance(strategies_data, dict):
+                continue
+
+            for strategy, splits_data in strategies_data.items():
+                if not isinstance(splits_data, dict):
+                    continue
+
+                for split, directions_data in splits_data.items():
+                    if not isinstance(directions_data, dict):
+                        continue
+
+                    for direction, subsets_data in directions_data.items():
+                        if not isinstance(subsets_data, dict):
+                            continue
+
+                        for subset, metrics_data in subsets_data.items():
+                            if not isinstance(metrics_data, dict):
+                                continue
+
+                            for metric, ks_data in metrics_data.items():
+                                if not isinstance(ks_data, dict):
+                                    continue
+
+                                for k, value in ks_data.items():
+                                    key = (
+                                        str(label_type),
+                                        str(strategy),
+                                        str(split),
+                                        str(direction),
+                                        str(subset),
+                                        str(metric),
+                                        str(k),
+                                    )
+
+                                    try:
+                                        raw_values[key].append(float(value))
+                                    except (TypeError, ValueError):
+                                        print(
+                                            "[WARNING] Skipping non-numeric value: "
+                                            f"file={path}, key={key}, value={value!r}"
+                                        )
+
+    summary_dict = {}
+    seed_counts = {}
+
+    for key, values in raw_values.items():
+        values_array = np.asarray(values, dtype=np.float64)
+        n_seeds = len(values_array)
+
+        mean = float(values_array.mean())
+        std = (
+            float(values_array.std(ddof=1))
+            if n_seeds > 1
+            else 0.0
+        )
+
+        summary_dict[key] = (mean, std)
+        seed_counts[key] = n_seeds
+
+    if verbose:
+        count_distribution = defaultdict(int)
+
+        for n_seeds in seed_counts.values():
+            count_distribution[n_seeds] += 1
+
+        incomplete_keys = sum(
+            1
+            for n_seeds in seed_counts.values()
+            if n_seeds != len(json_paths)
+        )
+
+        print("\n[AGGREGATE] Seed performance summary")
+        print(f"  ├─ JSON files           : {len(json_paths)}")
+        print(f"  ├─ Total unique keys    : {len(summary_dict)}")
+
+        for n_seeds, number_of_keys in sorted(count_distribution.items()):
+            print(
+                f"  ├─ Keys with {n_seeds} seed(s) "
+                f": {number_of_keys}"
+            )
+
+        if incomplete_keys == 0:
+            print(
+                "  └─ All metrics are present in every supplied seed file."
+            )
+        else:
+            print(
+                f"  └─ Incomplete keys      : {incomplete_keys} "
+                f"(missing from at least one seed file)"
+            )
+
+    return summary_dict, seed_counts
+
+def diagnose_table6_metric_coverage(
+    json_paths: List[str],
+    strategy: str = "dora",
+    metric: str = "mAP",
+    k: str = "10",
+) -> None:
+    """
+    Report per-file availability of every required Table 6 shared-protocol
+    metric for a fixed strategy.
+
+    This identifies exactly which seed JSON file lacks each required
+    LLM/VLM/multimodal Table 6 result.
+    """
+    split = "shared"
+
+    table6_label_types = [
+        ("LLM", "llm_canonical_labels"),
+        ("VLM", "vlm_canonical_labels"),
+        ("Multimodal (Ours)", "multimodal_canonical_labels"),
+    ]
+
+    required_keys = [
+        (
+            label_type,
+            strategy,
+            split,
+            direction,
+            subset,
+            metric,
+            k,
+        )
+        for _, label_type in table6_label_types
+        for direction in ("i2t", "t2i")
+        for subset in ("overall", "head", "rare")
+    ]
+
+    print("\n=== Table 6 Per-Seed Coverage Diagnostic ===")
+    print(
+        f"Required protocol: split={split!r}, strategy={strategy!r}, "
+        f"metric={metric}@{k}"
+    )
+
+    for path in json_paths:
+        with open(path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+
+        present_keys = set()
+
+        for label_type, strategies_data in data.items():
+            if not isinstance(strategies_data, dict):
+                continue
+
+            for current_strategy, splits_data in strategies_data.items():
+                if not isinstance(splits_data, dict):
+                    continue
+
+                for current_split, directions_data in splits_data.items():
+                    if not isinstance(directions_data, dict):
+                        continue
+
+                    for direction, subsets_data in directions_data.items():
+                        if not isinstance(subsets_data, dict):
+                            continue
+
+                        for subset, metrics_data in subsets_data.items():
+                            if not isinstance(metrics_data, dict):
+                                continue
+
+                            for current_metric, ks_data in metrics_data.items():
+                                if not isinstance(ks_data, dict):
+                                    continue
+
+                                for current_k in ks_data:
+                                    present_keys.add(
+                                        (
+                                            str(label_type),
+                                            str(current_strategy),
+                                            str(current_split),
+                                            str(direction),
+                                            str(subset),
+                                            str(current_metric),
+                                            str(current_k),
+                                        )
+                                    )
+
+        missing_keys = [
+            key for key in required_keys
+            if key not in present_keys
+        ]
+
+        print(f"\nFile: {path}")
+        print(
+            f"  ├─ Required Table 6 cells present : "
+            f"{len(required_keys) - len(missing_keys)}/{len(required_keys)}"
+        )
+        print(f"  └─ Required Table 6 cells missing : {len(missing_keys)}")
+
+        if missing_keys:
+            for key in missing_keys:
+                (
+                    label_type,
+                    current_strategy,
+                    current_split,
+                    direction,
+                    subset,
+                    current_metric,
+                    current_k,
+                ) = key
+
+                print(
+                    "     ├─ "
+                    f"label_type={label_type}, "
+                    f"strategy={current_strategy}, "
+                    f"split={current_split}, "
+                    f"direction={direction}, "
+                    f"subset={subset}, "
+                    f"metric={current_metric}@{current_k}"
+                )
+
+def print_table6_shared_aggregation(
+		summary_dict,
+		seed_counts,
+		strategy="dora",
+		metric="mAP",
+		k="10",
+):
+		"""
+		Print LaTex-ready Table 6 rows for a fixed strategy under the
+		shared-vocabulary protocol, while verifying the seed count for
+		every reported metric.
+		"""
+		split = "shared"
+
+		table6_label_types = [
+				("LLM", "llm_canonical_labels"),
+				("VLM", "vlm_canonical_labels"),
+				("Multimodal (Ours)", "multimodal_canonical_labels"),
+		]
+
+		invalid_keys = []
+
+		print(
+				f"\n--- Table 6 rows "
+				f"(shared split, fixed strategy = {strategy}) ---"
+		)
+		print(f"Metric: {metric}@{k}, mean $\\pm$ sample std.\n")
+
+		for display_name, label_type in table6_label_types:
+				values = []
+
+				for direction in ("i2t", "t2i"):
+						for subset in ("overall", "head", "rare"):
+								key = (
+										label_type,
+										strategy,
+										split,
+										direction,
+										subset,
+										metric,
+										k,
+								)
+
+								if key not in summary_dict:
+										values.append(r"\texttt{⟨missing⟩}")
+										invalid_keys.append((key, 0))
+										continue
+
+								n_seeds = seed_counts.get(key, 0)
+
+								if n_seeds != 3:
+										values.append(r"\texttt{⟨incomplete⟩}")
+										invalid_keys.append((key, n_seeds))
+										continue
+
+								mean, std = summary_dict[key]
+								values.append(f"${mean:.3f} \\pm {std:.3f}$")
+
+				print(f"{display_name} & " + " & ".join(values) + r" \\")
+
+		print(
+				"\nColumn order: "
+				"I2T Overall, I2T Head, I2T Rare, "
+				"T2I Overall, T2I Head, T2I Rare."
+		)
+
+		if invalid_keys:
+				print("\n[ERROR] Table 6 must not be reported as a three-seed result yet.")
+				print("The following required cells are missing or present in fewer than 3 seeds:")
+
+				for key, n_seeds in invalid_keys:
+						print(f"  seeds={n_seeds}: {key}")
+
+				raise ValueError(
+						"Table 6 contains incomplete seed coverage. "
+						"Regenerate the missing evaluation output before reporting it."
+				)
+
+		print("\n[OK] All 18 Table 6 values are present for all 3 seeds.")
 
 def main():
-		if len(sys.argv) != 4:
-				print("Usage: python aggregate_metrics.py seed1.json seed2.json seed3.json")
-				sys.exit(1)
+	if len(sys.argv) != 4:
+			print("Usage: python aggregate_metrics.py seed1.json seed2.json seed3.json")
+			sys.exit(1)
+	file_paths = sys.argv[1:4]
+	collection = collect_values(file_paths)
+	results = compute_stats(collection)
+	# # Print summary to console
+	# print_summary(results)
 
-		file_paths = sys.argv[1:4]
+	# summary_dict = build_summary_dict(results)
 
-		collection = collect_values(file_paths)
-		results = compute_stats(collection)
+	# print("\n--- Table 5 rows (standard split, multimodal supervision) ---")
+	# for st in STRATEGIES:
+	# 		print_table5_row(st, summary_dict, st)
 
-		# Print summary to console
-		print_summary(results)
+	# print("\n--- Table 6 rows (shared split, LoRA) ---")
+	# for lt in LABEL_TYPES:
+	# 		print_table6_row(lt, summary_dict, lt)
 
+
+
+	SEEDS_DIR = "/home/farid/datasets/trash/results/h4/output_roihu"
+	seed_json_paths = [
+		os.path.join(SEEDS_DIR, "seed_1_performance.json"),
+		os.path.join(SEEDS_DIR, "seed_2_performance.json"),
+		os.path.join(SEEDS_DIR, "seed_42_performance.json"),
+	]
+
+	summary_dict, seed_counts = aggregate_seed_performance(
+			json_paths=seed_json_paths,
+			verbose=True,
+	)
+
+	diagnose_table6_metric_coverage(
+			json_paths=seed_json_paths,
+			strategy="dora",
+			metric="mAP",
+			k="10",
+	)
+
+	print_table6_shared_aggregation(
+			summary_dict=summary_dict,
+			seed_counts=seed_counts,
+			strategy="dora",
+			metric="mAP",
+			k="10",
+	)
 
 if __name__ == "__main__":
 		main()
