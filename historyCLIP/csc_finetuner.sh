@@ -251,7 +251,7 @@ esac
 BATCH_SIZES=(16 64 64 64 64)
 
 # How often (in steps) to print training progress
-PRINT_FREQUENCIES=(1000 1000 50 50 25)
+PRINT_FREQUENCIES=(500 1000 50 50 25)
 SEED="${SEED:-42}"
 
 # # Learning rates — three groups based on fine-tuning strategy type:
@@ -327,21 +327,6 @@ if [[ "$strategy" == "zero_shot" ]] || [[ "$strategy" == "probe" ]]; then
 	strategy="baseline"
 fi
 
-# ##############################################################################
-# # LEARNING RATE SELECTION
-# # Chosen based on the resolved strategy group:
-# #   full     → LR_FULL_FT
-# #   probe    → LR_LINEAR_PROBE
-# #   all else → LR_PEFT_ALL  (LoRA family + adapters + zero_shot)
-# ##############################################################################
-# if [ "$strategy" = "full" ]; then
-# 	LEARNING_RATE="${LR_FULL_FT[$dataset_index]}"
-# elif [ "$BASELINE_METHOD" = "probe" ]; then
-# 	LEARNING_RATE="${LR_LINEAR_PROBE[$dataset_index]}"
-# else
-# 	# Covers: lora, lora_plus, rslora, dora, vera, ia3, adapter, baseline(zero_shot)
-# 	LEARNING_RATE="${LR_PEFT_ALL[$dataset_index]}"
-# fi
 LEARNING_RATE=${LRS[$dataset_index]}
 
 ##############################################################################
