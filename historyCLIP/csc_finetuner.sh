@@ -73,7 +73,6 @@
 ###SBATCH --array=12-14 # only LoRA+
 ##SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 ##SBATCH --array=18-20 # only dora
-###SBATCH --array=25 # only ia3
 
 # how to run:
 # !!!!! xxxx ensure the job name aligns with the seed value xxxx
