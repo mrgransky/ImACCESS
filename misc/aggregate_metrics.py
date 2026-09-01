@@ -132,12 +132,12 @@ def build_summary_dict(results):
 						for (lt, st, sp, dr, su, met, k, mean, std) in results}
 
 def print_table5_row(name, summary_dict, st):
-		lt, sp = "multimodal_canonical_labels", "standard"
-		cols = []
-		for dr in ("i2t", "t2i"):
-				for su in ("overall", "head", "rare"):
-						cols.append(cell(summary_dict, lt, st, sp, dr, su))
-		print(f"{name} & " + " & ".join(cols) + " \\\\")
+	lt, sp = "multimodal_canonical_labels", "standard"
+	cols = []
+	for dr in ("i2t", "t2i"):
+		for su in ("overall", "head", "rare"):
+			cols.append(cell(summary_dict, lt, st, sp, dr, su))
+	print(f"{name:<20} & " + " & ".join(cols) + " \\\\")
 
 def print_table6_row(name, summary_dict, lt):
 		sp, st = "shared", "lora"
@@ -659,23 +659,24 @@ def print_table6_shared_aggregation(
 
 def main():
 	if len(sys.argv) != 4:
-			print("Usage: python aggregate_metrics.py seed1.json seed2.json seed3.json")
-			sys.exit(1)
+		print("Usage: python aggregate_metrics.py seed1.json seed2.json seed3.json")
+		sys.exit(1)
+
 	file_paths = sys.argv[1:4]
 	collection = collect_values(file_paths)
 	results = compute_stats(collection)
-	# # Print summary to console
-	# print_summary(results)
+	# Print summary to console
+	print_summary(results)
 
-	# summary_dict = build_summary_dict(results)
+	summary_dict = build_summary_dict(results)
 
-	# print("\n--- Table 5 rows (standard split, multimodal supervision) ---")
-	# for st in STRATEGIES:
-	# 		print_table5_row(st, summary_dict, st)
+	print("\n--- Table 5 rows (standard split, multimodal supervision) ---")
+	for st in STRATEGIES:
+			print_table5_row(st, summary_dict, st)
 
-	# print("\n--- Table 6 rows (shared split, LoRA) ---")
-	# for lt in LABEL_TYPES:
-	# 		print_table6_row(lt, summary_dict, lt)
+	print("\n--- Table 6 rows (shared split, LoRA) ---")
+	for lt in LABEL_TYPES:
+			print_table6_row(lt, summary_dict, lt)
 
 
 	SEEDS_DIR = "/home/farid/datasets/trash/results/h4/output_roihu"
