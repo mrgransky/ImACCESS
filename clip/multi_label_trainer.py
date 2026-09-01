@@ -573,6 +573,7 @@ def probe_multi_label(
 
 		def extract_features(loader, desc):
 			feats, lbls = [], []
+
 			with torch.no_grad():
 				with torch.amp.autocast(
 					device_type=device.type, 
@@ -581,10 +582,13 @@ def probe_multi_label(
 				):
 					for images, _, label_vectors in tqdm(loader, desc=desc):
 						images = images.to(device, non_blocking=True)
+
 						emb = model.encode_image(images)
 						emb = torch.nn.functional.normalize(emb, dim=-1)
+
 						feats.append(emb.cpu())
 						lbls.append(label_vectors.cpu())
+
 			return torch.cat(feats, dim=0), torch.cat(lbls, dim=0)
 		
 		train_feats, train_lbls = extract_features(train_loader, "Train features")
@@ -6290,7 +6294,8 @@ def tip_adapter_finetune_multi_label(
 	
 	# === EXTRACT SUPPORT FEATURES ON THE FLY (Fixes System RAM OOM) ===
 	if verbose:
-		print(f"\n[ON-THE-FLY FEATURE EXTRACTION] support set with up to {support_shots} shots per class and extracting features")
+		print("-"*100)
+		print(f"[ON-THE-FLY FEATURE EXTRACTION] support set with up to {support_shots} shots per class and extracting features")
 	
 	class_to_feats = defaultdict(list)
 	class_to_lbls = defaultdict(list)
@@ -6301,9 +6306,20 @@ def tip_adapter_finetune_multi_label(
 			images = images.to(device, non_blocking=True)
 			label_vectors = label_vectors.to(device, non_blocking=True)
 			
-			# Extract features for the batch immediately using the GPU
-			batch_features = model.encode_image(images)
-			batch_features = torch.nn.functional.normalize(batch_features, dim=-1).cpu()
+			# # Extract features for the batch immediately using the GPU
+			# batch_features = model.encode_image(images)
+			# batch_features = torch.nn.functional.normalize(batch_features, dim=-1).cpu()
+
+			# Half-precision inference for speed + lower VRAM
+			with torch.amp.autocast(
+				device_type=device.type,
+				enabled=torch.cuda.is_available(),
+				dtype=torch.float16,  # bf16 on GH200, fp16 on cap<8 GPUs — same as training loop
+			):
+				batch_features = model.encode_image(images)
+
+			# Cast to FP32 *before* normalize+store: cache keeps full precision
+			batch_features = torch.nn.functional.normalize(batch_features.float(), dim=-1).cpu() 
 			label_vectors_cpu = label_vectors.cpu()
 			
 			# Distribute features to classes
@@ -6358,7 +6374,7 @@ def tip_adapter_finetune_multi_label(
 		print(f"Support set size: {len(support_features)} samples (Total cache entries)")
 		print(f"Support features shape: {support_features.shape}")
 		print(f"Support label vectors shape: {support_label_vectors.shape}")
-
+		print("-"*100)
 	
 	# === PRE-ENCODE CLASS EMBEDDINGS ===
 	if verbose:
