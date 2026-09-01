@@ -1,17 +1,17 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=ft_h4_multi_label_seed_02
+#SBATCH --job-name=ft_h4_multi_label_seed_01
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=150G
-#SBATCH --partition=gpumedium
+#SBATCH --mem=145G
+#SBATCH --partition=gpularge
 #SBATCH --gres=gpu:gh200:2
-#SBATCH --time=0-12:00:00
+#SBATCH --time=0-10:00:00
 ####SBATCH --begin=08:45:00
 ##############################################################################
 # ARRAY INDEXING SCHEME
@@ -69,15 +69,16 @@
 #   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
-#SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
+##SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
 ###SBATCH --array=12-14 # only LoRA+
 ##SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 ##SBATCH --array=18-20 # only dora
 ###SBATCH --array=25 # only ia3
+#SBATCH --array=24-32 # customized arrays
 
 # how to run:
 # !!!!! xxxx ensure the job name aligns with the seed value xxxx
-# SEED=2 sbatch csc_finetuner.sh
+# SEED=1 sbatch csc_finetuner.sh
 
 set -euo pipefail
 user="`whoami`"
@@ -253,14 +254,6 @@ BATCH_SIZES=(16 64 64 64 64)
 # How often (in steps) to print training progress
 PRINT_FREQUENCIES=(500 1000 50 50 25)
 SEED="${SEED:-42}"
-
-# # Learning rates — three groups based on fine-tuning strategy type:
-# #   FULL_FT       : full model fine-tuning (all parameters updated)
-# #   LINEAR_PROBE  : only the classification head is trained
-# #   PEFT_ALL      : all parameter-efficient methods (LoRA family + adapters)
-# LR_FULL_FT=(5.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
-# LR_LINEAR_PROBE=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
-# LR_PEFT_ALL=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 
 LRS=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 WEIGHT_DECAY=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
