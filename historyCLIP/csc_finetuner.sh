@@ -9,9 +9,9 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=164G
-#SBATCH --partition=gpularge
-#SBATCH --gres=gpu:gh200:2
-#SBATCH --time=0-08:00:00
+#SBATCH --partition=gpumedium
+#SBATCH --gres=gpu:gh200:1
+#SBATCH --time=0-05:00:00
 ####SBATCH --begin=08:45:00
 ##############################################################################
 # ARRAY INDEXING SCHEME
