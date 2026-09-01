@@ -6288,97 +6288,81 @@ def tip_adapter_finetune_multi_label(
 		if verbose:
 			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 	
-	# === SUPPORT SET CONSTRUCTION FOR MULTI-LABEL ===
+	# === EXTRACT SUPPORT FEATURES ON THE FLY (Fixes System RAM OOM) ===
 	if verbose:
-		print(f"\n>> Constructing support set with {support_shots} shots per class...")
+		print(f"\n[ON-THE-FLY FEATURE EXTRACTION] support set with up to {support_shots} shots per class and extracting features")
 	
-	# For multi-label, we need to collect samples that contain each class
-	class_to_samples = defaultdict(list)
-
-	for images, _, label_vectors in train_loader:
-		for img, label_vec in zip(images, label_vectors):
-			active_classes = torch.where(label_vec > 0)[0].tolist()
-			for class_idx in active_classes:
-				if len(class_to_samples[class_idx]) < support_shots:
-					class_to_samples[class_idx].append((img, label_vec))
-		
-		# Stop early if all classes have enough shots
-		if len(class_to_samples) == num_classes and all(len(v) >= support_shots for v in class_to_samples.values()):
-			break
-
-	# Flatten the support set — pick first shot per class for the cache key
-	support_images = []
-	support_label_vectors = []
-	missing_classes = []
-
-	# Get placeholder shapes from any existing class
-	_sample_list = next(iter(class_to_samples.values()))  # list of (img, label_vec)
-	_sample_img_shape = _sample_list[0][0].shape           # img tensor shape
-	_sample_lbl_shape = _sample_list[0][1].shape           # label_vec tensor shape
-
-	for class_idx in range(num_classes):
-			if class_idx in class_to_samples and len(class_to_samples[class_idx]) > 0:
-					img, label_vec = class_to_samples[class_idx][0]  # ← [0] to get first shot tuple
-					support_images.append(img)
-					support_label_vectors.append(label_vec)
-			else:
-					missing_classes.append(class_idx)
-					support_images.append(torch.zeros(_sample_img_shape))
-					support_label_vectors.append(torch.zeros(_sample_lbl_shape))
-
-	if missing_classes and verbose:
-			print(
-					f"WARNING: {len(missing_classes)} classes had no training samples "
-					f"and were zero-padded: {missing_classes[:10]}{'...' if len(missing_classes) > 10 else ''}"
-			)
-
-	if verbose:
-		print(f"Support set size: {len(support_images)} samples")
-		print(f"Support set breakdown by class:")
-		class_counts = [0] * num_classes
-		for label_vec in support_label_vectors:
-			active_classes = torch.where(label_vec > 0)[0].tolist()
-			for class_idx in active_classes:
-				class_counts[class_idx] += 1
-		
-		for class_idx in range(min(10, num_classes)):  # Show first 10 classes
-			print(f"  Class {class_idx} ({class_names[class_idx]}): {class_counts[class_idx]} samples")
-		if num_classes > 10:
-			print(f"  ... and {num_classes - 10} more classes")
-	
-	# Convert to tensors
-	support_images = torch.stack(support_images).to(device)
-	support_label_vectors = torch.stack(support_label_vectors).to(device)
-	
-	if verbose:
-		print(f"Support images shape: {support_images.shape}")
-		print(f"Support label vectors shape: {support_label_vectors.shape}")
-	
-	# === EXTRACT FEATURES BEFORE MODIFYING MODEL ===
-	if verbose:
-		print("\n[Tip-Adapter] Extracting support features from original CLIP model...")
+	class_to_feats = defaultdict(list)
+	class_to_lbls = defaultdict(list)
 	
 	with torch.no_grad():
 		model.eval()
-		# Extract features in batches to avoid OOM
-		batch_size = train_loader.batch_size
-		support_features_list = []
-		
-		for i in range(0, len(support_images), batch_size):
-			end_idx = min(i + batch_size, len(support_images))
-			batch_images = support_images[i:end_idx]
-			batch_features = model.encode_image(batch_images)
-			batch_features = torch.nn.functional.normalize(batch_features, dim=-1)
-			support_features_list.append(batch_features)
-		
-		support_features = torch.cat(support_features_list, dim=0)
+		for images, _, label_vectors in train_loader:
+			images = images.to(device, non_blocking=True)
+			label_vectors = label_vectors.to(device, non_blocking=True)
+			
+			# Extract features for the batch immediately using the GPU
+			batch_features = model.encode_image(images)
+			batch_features = torch.nn.functional.normalize(batch_features, dim=-1).cpu()
+			label_vectors_cpu = label_vectors.cpu()
+			
+			# Distribute features to classes
+			for feat, lbl in zip(batch_features, label_vectors_cpu):
+				active_classes = torch.where(lbl > 0)[0].tolist()
+				for class_idx in active_classes:
+					if len(class_to_feats[class_idx]) < support_shots:
+						class_to_feats[class_idx].append(feat)
+						class_to_lbls[class_idx].append(lbl)
+			
+			# Stop early if all classes have enough shots
+			if len(class_to_feats) == num_classes and all(len(v) >= support_shots for v in class_to_feats.values()):
+				if verbose:
+					print(f"All classes have {support_shots} shots => early stopping")
+				break
+
+	# Flatten the support set
+	support_features_list = []
+	support_label_vectors_list = []
+	missing_classes = []
+	
+	# Determine placeholder shapes safely
+	if class_to_feats:
+		_sample_feat_shape = next(iter(class_to_feats.values()))[0].shape
+		_sample_lbl_shape = next(iter(class_to_lbls.values()))[0].shape
+	else:
+		# Fallback if dataset is completely empty or no labels > 0 were found
+		_sample_feat_shape = (1024,) 
+		_sample_lbl_shape = (num_classes,)
+
+	for class_idx in range(num_classes):
+		if class_idx in class_to_feats and len(class_to_feats[class_idx]) > 0:
+			# FIX: Use ALL collected shots for this class (Standard Tip-Adapter behavior)
+			# Original code only took [0], which defeated the purpose of support_shots > 1.
+			support_features_list.extend(class_to_feats[class_idx])
+			support_label_vectors_list.extend(class_to_lbls[class_idx])
+		else:
+			missing_classes.append(class_idx)
+			support_features_list.append(torch.zeros(_sample_feat_shape))
+			support_label_vectors_list.append(torch.zeros(_sample_lbl_shape))
+
+	if missing_classes and verbose:
+		print(
+			f"[WARNING] {len(missing_classes)} labels with no training samples "
+			f"=> zero-padded: {missing_classes[:10]}{'...' if len(missing_classes) > 10 else ''}"
+		)
+
+	support_features = torch.stack(support_features_list).to(device)
+	support_label_vectors = torch.stack(support_label_vectors_list).to(device)
 	
 	if verbose:
+		print(f"Support set size: {len(support_features)} samples (Total cache entries)")
 		print(f"Support features shape: {support_features.shape}")
+		print(f"Support label vectors shape: {support_label_vectors.shape}")
+
 	
 	# === PRE-ENCODE CLASS EMBEDDINGS ===
 	if verbose:
-		print("Pre-encoding class embeddings for all classes...")
+		print("\nPre-encoding class embeddings for all classes...")
 	
 	# Pre-encode in batches
 	text_batch_size = train_loader.batch_size

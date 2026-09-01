@@ -1143,9 +1143,13 @@ class TipAdapterLinear(torch.nn.Module):
 		# For classification: output = x + alpha * retrieved
 		# The alpha controls the influence of the cache
 		output = x + self.alpha * retrieved
+
+		# cast the output back to the input dtype
+		output = output.to(x.dtype)
 		
 		if return_similarity:
 			return output, similarity
+
 		return output
 	
 	def get_memory_footprint(self) -> dict:
@@ -1234,9 +1238,15 @@ class TipAdapterFLinear(torch.nn.Module):
 
 			valid_mask = feat_valid & label_valid   # [num_classes]
 
+			# FIX: Filter out invalid samples entirely instead of zeroing them
+			support_features = support_features[valid_mask]
+			support_labels = support_labels[valid_mask]
+
 			# Normalize support features (keys)
 			cache_keys = torch.nn.functional.normalize(support_features, p=2, dim=-1)
-			cache_keys[~valid_mask] = 0.0
+
+			# # handle missing classes / zero-padded features by zeroing out the vectors:
+			# cache_keys[~valid_mask] = 0.0 # [x BUG x]
 
 			# Handle single-label or multi-label
 			if support_labels.dim() == 1:
@@ -1254,56 +1264,65 @@ class TipAdapterFLinear(torch.nn.Module):
 			# Normalize cache values
 			cache_values = torch.nn.functional.normalize(cache_values, p=2, dim=-1)
 
-			# Zero out value entries for missing classes too
-			cache_values[~valid_mask] = 0.0
+			# # Zero out value entries for missing classes too
+			# cache_values[~valid_mask] = 0.0 # [x BUG x]
 			
 			self.cache_keys = cache_keys.to(self.device)
 			self.cache_values = cache_values.to(self.device)
 
 			if self.verbose:
-				valid_mask_dev = valid_mask.to(self.device)
-				n_valid = valid_mask_dev.sum()
-				keys_norms = self.cache_keys[valid_mask_dev].norm(dim=-1)
-				vals_norms = self.cache_values[valid_mask_dev].norm(dim=-1)
-				keys_normalized = torch.allclose(keys_norms, torch.ones(n_valid, device=self.device), atol=1e-5)
-				vals_normalized = torch.allclose(vals_norms, torch.ones(n_valid, device=self.device), atol=1e-5)
-				print(f"\n[{self.__class__.__name__}] Cache set: {self.cache_keys.shape[0]} support samples")
+				n_total = valid_mask.shape[0]
+				n_valid = int(valid_mask.sum().item())
+				n_cache = self.cache_keys.shape[0]  # == n_valid after filtering
+
+				print(f"\n[{self.__class__.__name__}] Cache set: {n_cache} support samples (filtered from {n_total})")
 				print(f"    ├─ Keys: {self.cache_keys.shape}")
 				print(f"    ├─ Values: {self.cache_values.shape}")
-				print(f"    ├─ Valid entries (feat): {feat_valid.sum().item()} / {feat_valid.shape[0]}")
-				print(f"    ├─ Valid entries (label): {label_valid.sum().item()} / {label_valid.shape[0]}")
-				print(f"    ├─ Valid entries (both): {valid_mask.sum().item()} / {valid_mask.shape[0]}")
-				print(f"    ├─ Valid entries: {n_valid.item()} / {valid_mask.shape[0]}")
-				print(f"    ├─ Keys norms   — min: {keys_norms.min()} max: {keys_norms.max()} mean: {keys_norms.mean()}")
-				print(f"    ├─ Values norms — min: {vals_norms.min()} max: {vals_norms.max()} mean: {vals_norms.mean()}")
-				print(f"    ├─ Keys normalized: {keys_normalized}")
-				print(f"    └─ Values normalized: {vals_normalized}")
+				print(f"    ├─ Valid entries (feat): {int(feat_valid.sum().item())} / {n_total}")
+				print(f"    ├─ Valid entries (label): {int(label_valid.sum().item())} / {n_total}")
+				print(f"    └─ Valid entries (both): {n_valid} / {n_total}")
+
+				if n_cache > 0:
+					# After filtering, ALL cache entries are valid -> no masking needed
+					keys_norms = self.cache_keys.norm(dim=-1)
+					vals_norms = self.cache_values.norm(dim=-1)
+					keys_normalized = torch.allclose(keys_norms, torch.ones_like(keys_norms), atol=1e-5)
+					vals_normalized = torch.allclose(vals_norms, torch.ones_like(vals_norms), atol=1e-5)
+					print(f"    ├─ Keys norms   — min: {keys_norms.min():.6f} max: {keys_norms.max():.6f} mean: {keys_norms.mean():.6f}")
+					print(f"    ├─ Values norms — min: {vals_norms.min():.6f} max: {vals_norms.max():.6f} mean: {vals_norms.mean():.6f}")
+					print(f"    ├─ Keys normalized: {keys_normalized}")
+					print(f"    └─ Values normalized: {vals_normalized}")
+				else:
+					print("    └─ WARNING: Cache is EMPTY after filtering!")
 
 		def forward(self, x: torch.Tensor) -> torch.Tensor:
-				"""
-				Forward pass: Linear projection + normalization + cache adaptation
-				"""
-				# Project to embedding space
-				projected = self.linear(x)  # [batch, out_features]
-				
-				if self.cache_keys.shape[0] == 0:
-						# return projected features
-						return projected
-				
-				# CRITICAL: Normalize projected features
-				projected_norm = torch.nn.functional.normalize(projected, p=2, dim=-1)
-				
-				# Compute similarity with cache
-				similarity = projected_norm @ self.cache_keys.T  # [batch, N_support]
-				weights = torch.nn.functional.softmax(self.beta * similarity, dim=-1)
-				
-				# Retrieve cached text features
-				retrieved = weights @ self.cache_values  # [batch, out_features]
-				
-				# Combine (note: using projected, not projected_norm, to maintain scale)
-				output = projected + self.alpha * retrieved
-				
-				return output
+			"""
+			Forward pass: Linear projection + normalization + cache adaptation
+			"""
+			# Project to embedding space
+			projected = self.linear(x)  # [batch, out_features]
+			
+			if self.cache_keys.shape[0] == 0:
+				# return projected features
+				return projected
+			
+			# CRITICAL: Normalize projected features
+			projected_norm = torch.nn.functional.normalize(projected, p=2, dim=-1)
+			
+			# Compute similarity with cache
+			similarity = projected_norm @ self.cache_keys.T  # [batch, N_support]
+			weights = torch.nn.functional.softmax(self.beta * similarity, dim=-1)
+			
+			# Retrieve cached text features
+			retrieved = weights @ self.cache_values  # [batch, out_features]
+			
+			# Combine (note: using projected, not projected_norm, to maintain scale)
+			output = projected + self.alpha * retrieved
+
+			# cast the output back to the input dtype
+			output = output.to(x.dtype)
+			
+			return output
 		
 		def get_memory_footprint(self) -> dict:
 				linear_params = self.in_features * self.out_features + self.out_features

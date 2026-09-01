@@ -8,10 +8,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=145G
+#SBATCH --mem=164G
 #SBATCH --partition=gpularge
 #SBATCH --gres=gpu:gh200:2
-#SBATCH --time=0-10:00:00
+#SBATCH --time=0-08:00:00
 ####SBATCH --begin=08:45:00
 ##############################################################################
 # ARRAY INDEXING SCHEME
@@ -71,10 +71,9 @@
 ##############################################################################
 ##SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
 ###SBATCH --array=12-14 # only LoRA+
-##SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
+#SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 ##SBATCH --array=18-20 # only dora
 ###SBATCH --array=25 # only ia3
-#SBATCH --array=24-32 # customized arrays
 
 # how to run:
 # !!!!! xxxx ensure the job name aligns with the seed value xxxx
