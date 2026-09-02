@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=low_rank_seed_42
+#SBATCH --job-name=probe_seed_42
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -73,7 +73,8 @@
 ###SBATCH --array=12-14 # only LoRA+
 ##SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 ##SBATCH --array=18-20 # only dora
-#SBATCH --array=9-23 # low-rank adaptation
+##SBATCH --array=9-23 # low-rank adaptation
+#SBATCH --array=3-5 # probe
 
 # how to run:
 # !!!!! xxxx ensure the job name aligns with the seed value xxxx
