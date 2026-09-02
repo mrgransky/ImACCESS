@@ -504,7 +504,6 @@ def compute_retrieval_metrics_from_similarity(
 	topK_values: List[int],
 	mode: str = "Image-to-Text",
 	class_counts: Optional[torch.Tensor] = None,
-	max_k: Optional[int] = None,
 	cache_dir: str = None,
 	cache_key: str = None,
 	is_training: bool = False,
@@ -552,7 +551,6 @@ def compute_retrieval_metrics_from_similarity(
 			topK_values: List of K values for evaluation
 			mode: "Image-to-Text" or "Text-to-Image"
 			class_counts: Number of samples per class (for single-label recall / T2I R_q)
-			max_k: Optional hard cap on K
 			cache_dir: Cache directory
 			cache_key: Cache identifier (will be suffixed with METRIC_VERSION)
 			is_training: Skip caching if True
@@ -562,16 +560,26 @@ def compute_retrieval_metrics_from_similarity(
 	Returns:
 			Dictionary with mP, mAP, and Recall metrics, one entry per REQUESTED K in topK_values.
 	"""
-	if verbose:
-		print(f"\n[RETRIEVAL METRICS]")
-		print(f"  ├─ {mode}")
-		print(f"  ├─ Top-K: {topK_values}")
-		print(f"  ├─ similarity_matrix: {similarity_matrix.shape}")
-		print(f"  ├─ query_labels: {type(query_labels)} {query_labels.shape}")
-		print(f"  └─ candidate_labels: {type(candidate_labels)} {candidate_labels.shape}")
 
 	num_queries, num_candidates = similarity_matrix.shape
 	device = similarity_matrix.device
+	max_effective_K = min(max(topK_values), num_candidates)
+
+	if verbose:
+		print("-"*85)
+		print(f"[{mode.upper()} RETRIEVAL METRICS]")
+		print(f"  ├─ similarity_matrix: {similarity_matrix.shape} [num_queries x num_candidates]")
+		print(f"  ├─ Top-K: {topK_values} max_effective_K: {max_effective_K}")
+		if any(K > num_candidates for K in topK_values):
+			dropped_effective = [K for K in topK_values if K > num_candidates]
+			print(
+				f"  ├─ [K clamp] requested K={dropped_effective} > "
+				f"num_candidates={num_candidates} "
+				f"=> compute at effective_K=min(K, num_candidates) but still "
+				f"report under the REQUESTED K key."
+			)
+		print(f"  ├─ query_labels: {query_labels.shape}")
+		print(f"  └─ candidate_labels: {candidate_labels.shape}")
 
 	if query_labels.dim() not in [1, 2] or candidate_labels.dim() not in [1, 2]:
 		raise ValueError("Labels must be 1D (single-label) or 2D (multi-label)")
@@ -581,19 +589,21 @@ def compute_retrieval_metrics_from_similarity(
 		else len(query_labels.shape) == 2
 	)
 
+	# Sanity check for multi-label case
 	if verbose and is_multi_label:
 		if mode == "Image-to-Text":
 			relevant_per_query = (query_labels > 0).sum(dim=1).float()
-			print(f"\n[I2T Sanity] Relevant items per query (out of {similarity_matrix.shape[1]} labels):")
+			print(f"\n[SANITY CHECK] Relevant items per query (out of {similarity_matrix.shape[1]} labels):")
 			print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
-			print(f"  ├─ μ±σ: {relevant_per_query.mean():.2f}±{relevant_per_query.std():.2f}")
+			print(f"  ├─ μ±σ: {relevant_per_query.mean():.2f} ± {relevant_per_query.std():.2f}")
 			print(f"  └─ zero-relevant queries: {(relevant_per_query == 0).sum().item()}")
 		else:
 			relevant_per_query = candidate_labels.sum(dim=0).float()
-			print(f"\n[T2I Sanity] Relevant items per query (out of {similarity_matrix.shape[1]} images):")
+			print(f"\n[SANITY CHECK] Relevant items per query (out of {similarity_matrix.shape[1]} images):")
 			print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
-			print(f"  ├─ μ±σ: {relevant_per_query.mean():.2f}±{relevant_per_query.std():.2f}")
+			print(f"  ├─ μ±σ: {relevant_per_query.mean():.2f} ± {relevant_per_query.std():.2f}")
 			print(f"  └─ zero-relevant queries: {(relevant_per_query == 0).sum().item()}")
+		print("-"*85)
 
 	# ── Cache — versioned so old (incorrect-denominator) caches are never reused ──
 	cache_file = None
@@ -609,20 +619,7 @@ def compute_retrieval_metrics_from_similarity(
 				if verbose:
 					print(f"Cache loading failed: {e}. Computing metrics.")
 
-	requested_K_values = [K for K in topK_values if K <= (max_k or float("inf"))]
-	if not requested_K_values:
-		raise ValueError("No valid K values provided")
 
-	if verbose and any(K > num_candidates for K in requested_K_values):
-		dropped_effective = [K for K in requested_K_values if K > num_candidates]
-		print(
-			f"[K clamp] {mode}: requested K={dropped_effective} exceed "
-			f"num_candidates={num_candidates} in this tier — "
-			f"will compute at effective_K=min(K, num_candidates) but still "
-			f"report under the REQUESTED K key."
-		)
-
-	max_effective_K = min(max(requested_K_values), num_candidates)
 	all_sorted_indices = torch.cat(
 		[
 			torch.argsort(similarity_matrix[i:i + chunk_size], dim=1, descending=True)[:, :max_effective_K]
@@ -648,7 +645,7 @@ def compute_retrieval_metrics_from_similarity(
 	has_relevant = relevant_counts > 0
 
 	metrics = {"mP": {}, "mAP": {}, "Recall": {}}
-	for requested_K in requested_K_values:
+	for requested_K in topK_values:
 		effective_K = min(requested_K, num_candidates)
 		top_k_indices = all_sorted_indices[:, :effective_K]
 
@@ -696,8 +693,14 @@ def compute_retrieval_metrics_from_similarity(
 		ap_scores = (precisions * correct_mask.float()).sum(dim=1) / ap_denominator
 
 		metrics["mAP"][key] = (
-			ap_scores[has_relevant].mean().item() if has_relevant.any() else 0.0
+			ap_scores[has_relevant].mean().item() 
+			if has_relevant.any() 
+			else 0.0
 		)
+
+	# if verbose:
+	# 	print(json.dumps(metrics, indent=2, ensure_ascii=False))
+	# 	print("*"*55)
 
 	if cache_file:
 		try:
@@ -1774,7 +1777,7 @@ def get_multilabel_alignment_score(
 		print(f"logits:")
 		print(f"  ├─ {type(logits)} {logits.shape} {logits.dtype} {logits.device}")
 		print(f"  ├─ (min, max): ({logits.min().item():.2f}, {logits.max().item():.2f})")
-		print(f"  ├─ (mean, std): ({logits.mean().item():.2f}, {logits.std().item():.2f}) median: {logits.median().item()}")
+		print(f"  ├─ μ±σ: {logits.mean().item():.2f} ± {logits.std().item():.2f} (median: {logits.median().item()})")
 
 		per_class_hits = (topk_mask & labels.bool()).sum(dim=0).float()  # [C]
 		per_class_support = labels.sum(dim=0).float().clamp(min=1)       # [C]

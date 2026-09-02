@@ -454,12 +454,12 @@ def probe_multi_label(
 		clip_model=model,
 		validation_loader=validation_loader,
 		device=torch.device(device),
-		hidden_dim=probe_hidden_dim,  # creates MLP probe
+		hidden_dim=probe_hidden_dim, # if activated, it creates MLP probe (Not used in our experiments)
 		dropout=probe_dropout,
 		zero_shot_init=True, # faster convergence
 		verbose=verbose,
 	)
-	probe._W_init = probe.probe.weight.data.clone()
+	# probe._W_init = probe.probe.weight.data.clone()
 
 	masks = compute_loss_masks(
 		train_loader=train_loader,
@@ -658,8 +658,12 @@ def probe_multi_label(
 				
 				# Apply pos_weight BCE, mask zero-count classes
 				loss_raw = criterion(logits, label_vectors)  # [B, C], reduction='none'
-				loss = loss_raw[:, active_mask].mean()
-											
+				if active_mask.any():
+					loss = loss_raw[:, active_mask].mean()
+				else:
+					# Fallback to 0.0 loss with gradients enabled if no active classes exist
+					loss = torch.tensor(0.0, device=device, requires_grad=True) 
+
 			# Check for NaN loss
 			if torch.isnan(loss):
 				print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
@@ -667,11 +671,12 @@ def probe_multi_label(
 			
 			scaler.scale(loss).backward()
 			scaler.unscale_(optimizer)
-			if bidx % 25 == 0:
-				grad_per_class = probe.probe.weight.grad.norm(dim=1)  # [C]
+			if bidx % 10 == 0:
+				# grad_per_class = probe.probe.weight.grad.norm(dim=1)  # [C]
+				grad_per_class = probe.weight.grad.norm(dim=1)  # [C]
 				print(
-					f"\t\t[GRAD] Epoch {epoch+1} Batch {bidx+1} — "
-					f"total_norm={probe.probe.weight.grad.norm().item():.4f} "
+					f"\t\t[GRAD] b{bidx+1:5d} "
+					f"total_norm={probe.weight.grad.norm().item():.4f} "
 					f"max_class_grad={grad_per_class.max().item():.4f} "
 					f"argmax_class={grad_per_class.argmax().item()}"
 				)
@@ -692,17 +697,20 @@ def probe_multi_label(
 		training_losses.append(avg_loss)
 		learning_rates_history.append([g['lr'] for g in optimizer.param_groups])
 		weight_decays_history.append([g['weight_decay'] for g in optimizer.param_groups])
+
 		with torch.no_grad():
-			W = probe.probe.weight.data
-			b = probe.probe.bias.data
+			W = probe.weight.data
+			b = probe.bias.data
+
 			row_norms = W.norm(dim=1)
 			cos_to_init = torch.nn.functional.cosine_similarity(W, probe._W_init, dim=1)
+
 			print(f"[W DRIFT] Epoch {epoch + 1}")
-			print(f"  row_norms   — min={row_norms.min():.4f} max={row_norms.max():.4f} mean={row_norms.mean():.4f} std={row_norms.std():.4f}")
-			print(f"  cos_to_init — min={cos_to_init.min():.4f} max={cos_to_init.max():.4f} mean={cos_to_init.mean():.4f}")
-			print(f"  classes cos_to_init < 0   : {(cos_to_init < 0).sum().item()} / {W.shape[0]}")
-			print(f"  classes cos_to_init < 0.5 : {(cos_to_init < 0.5).sum().item()} / {W.shape[0]}")
-			print(f"  bias        — min={b.min():.4f} max={b.max():.4f} mean={b.mean():.4f} std={b.std():.4f}")
+			print(f"  row_norms   (min, max): ({row_norms.min():.4f}, {row_norms.max():.4f}) μ±σ: {row_norms.mean():.4f} ± {row_norms.std():.4f}")
+			print(f"  cos_to_init (min, max): ({cos_to_init.min():.4f}, {cos_to_init.max():.4f}) μ±σ: {cos_to_init.mean():.4f} ± {cos_to_init.std():.4f}")
+			print(f"  bias        (min, max): ({b.min():.4f}, {b.max():.4f}) μ±σ: {b.mean():.4f} ± {b.std():.4f}")
+			print(f"  cos_to_init < 0   : {(cos_to_init < 0).sum().item()} / {W.shape[0]}")
+			print(f"  cos_to_init < 0.5 : {(cos_to_init < 0.5).sum().item()} / {W.shape[0]}")
 
 		print(f"[Epoch {epoch+1}] Training elapsed time: {time.time()-train_and_val_st_time:.1f}s\nValidating...")	
 
@@ -762,7 +770,8 @@ def probe_multi_label(
 			# For each sample, average the W rows corresponding to its true labels
 			sample_labels = train_lbls[:512].to(device)  # [512, C] multi-hot
 			
-			W = torch.nn.functional.normalize(probe.probe.weight, dim=-1)        # [C, 768]
+			# W = torch.nn.functional.normalize(probe.probe.weight, dim=-1) # [C, 768]
+			W = torch.nn.functional.normalize(probe.weight, dim=-1) # [C, emb_dim]
 			matched_class_vecs = torch.zeros(512, W.shape[1], device=device)
 
 			for i in range(512):
@@ -808,7 +817,7 @@ def probe_multi_label(
 		# Run after epoch 1 and at mid-warmup — all signals now available
 		if epoch in {0, minimum_epochs // 2}:
 			should_abort = check_training_health(
-				model=probe.probe,  # ← probe weights, not full CLIP
+				model=probe,  # ← probe weights, not full CLIP
 				epoch=epoch,
 				mode=mode,
 				training_losses=training_losses,
@@ -872,7 +881,8 @@ def probe_multi_label(
 		cache_dir=results_dir,
 		topk_values=topk_values,
 		temperature=temperature,
-		class_embeds_override=probe.probe.weight.detach().clone(),
+		# class_embeds_override=probe.probe.weight.detach().clone(),
+		class_embeds_override=probe.weight.detach().clone(),
 		use_fixed_masks=True,
 		shared_protocol_path=shared_protocol_path,
 		verbose=verbose,
@@ -2565,6 +2575,7 @@ def lora_plus_finetune_multi_label(
 
 			# Grad norm check — post-clipping
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+				print(f"\tBatch {bidx+1}/{len(train_loader)}")
 				grad_norms_A, grad_norms_B = [], []
 				for name, param in model.named_parameters():
 					if param.requires_grad and param.grad is not None:
@@ -2576,8 +2587,7 @@ def lora_plus_finetune_multi_label(
 				
 				if grad_norms_A and grad_norms_B:
 					print(
-						f"\t\t[Grad norms e{epoch+1} b{bidx+1}] "
-						f"(min, max) "
+						f"\t\t[GRAD] (min, max) "
 						f"A: ({min(grad_norms_A):.6f}, {max(grad_norms_A):.6f}) "
 						f"B: ({min(grad_norms_B):.6f}, {max(grad_norms_B):.6f})"
 					)
@@ -2650,9 +2660,8 @@ def lora_plus_finetune_multi_label(
 			
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
-					f"Total Loss: {batch_loss_total:.6f} "
-					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})\n"
+					f"\t\t[LOSS] Total: {batch_loss_total:.6f} "
+					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
 				)
 		
 		# Detect full NaN cascade — entire epoch was skipped

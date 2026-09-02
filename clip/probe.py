@@ -231,7 +231,11 @@ class SingleLabelLinearProbe(torch.nn.Module):
 			except Exception as e:
 				if self.verbose:
 					print(f"<!> Zero-shot initialization failed: {e} => default random initialization")
-		
+
+		def state_dict(self, *args, **kwargs):
+			"""Only save the trainable probe weights, not the frozen CLIP model."""
+			return self.probe.state_dict(*args, **kwargs)
+
 		def _print_initialization_summary(self):
 				"""Print summary of probe initialization."""
 				probe_params = sum(p.numel() for p in self.probe.parameters())
@@ -257,7 +261,21 @@ class SingleLabelLinearProbe(torch.nn.Module):
 		
 		def __repr__(self):
 			return f"RobustLinearProbe(num_classes={self.num_classes}, input_dim={self.input_dim}, probe_type={self.probe_type})"
-		
+
+		@property
+		def weight(self):
+			"""Get the weight matrix of the final classification layer."""
+			if self.probe_type == "MLP":
+				return self.probe[-1].weight
+			return self.probe.weight
+
+		@property
+		def bias(self):
+			"""Get the bias vector of the final classification layer."""
+			if self.probe_type == "MLP":
+				return self.probe[-1].bias
+			return self.probe.bias
+
 		@property
 		def visual(self):
 			return self.clip_model.visual
@@ -399,14 +417,17 @@ class MultiLabelProbe(torch.nn.Module):
 				nn.Linear(self.input_dim, hidden_dim),
 				nn.ReLU(),
 				nn.Dropout(dropout),
-				nn.Linear(hidden_dim, num_classes)
+				nn.Linear(hidden_dim, num_classes) # final layer
 			)
 			self.probe_type = "MLP"
 		else:
 			# Simple linear probe
 			self.probe = torch.nn.Linear(self.input_dim, num_classes)
 			self.probe_type = "Linear"
-		
+
+		# Register as a buffer so it moves with .to(device)
+		self.register_buffer('_W_init', torch.empty(0))
+
 		# Step 4: Initialize probe weights for multi-label
 		if zero_shot_init:
 			self._zero_shot_initialization_multilabel()
@@ -595,7 +616,11 @@ class MultiLabelProbe(torch.nn.Module):
 		except Exception as e:
 			if self.verbose:
 				print(f"<!> Zero-shot initialization failed: {e} => Using default random initialization")
-	
+
+	def state_dict(self, *args, **kwargs):
+		"""Only save the trainable probe weights, not the frozen CLIP model."""
+		return self.probe.state_dict(*args, **kwargs)
+
 	def _print_initialization_summary(self):
 		probe_params = sum(p.numel() for p in self.probe.parameters())
 		clip_params = sum(p.numel() for p in self.clip_model.parameters())
@@ -620,6 +645,23 @@ class MultiLabelProbe(torch.nn.Module):
 
 	def encode_text(self, text):
 		return self.clip_model.encode_text(text)
+
+	def __repr__(self):
+		return f"Probe(num_classes={self.num_classes}, input_dim={self.input_dim}, probe_type={self.probe_type})"
+
+	@property
+	def weight(self):
+		"""Get the weight matrix of the final classification layer."""
+		if self.probe_type == "MLP":
+			return self.probe[-1].weight
+		return self.probe.weight
+
+	@property
+	def bias(self):
+		"""Get the bias vector of the final classification layer."""
+		if self.probe_type == "MLP":
+			return self.probe[-1].bias
+		return self.probe.bias
 
 	@property
 	def visual(self):
@@ -658,21 +700,21 @@ class MultiLabelProbe(torch.nn.Module):
 			self.clip_model.name = value
 
 	def parameters(self):
-			"""Return only probe parameters — CLIP stays frozen."""
-			return self.probe.parameters()
+		"""Return only probe parameters — CLIP stays frozen."""
+		return self.probe.parameters()
 
 	def named_parameters(self, prefix='', recurse=True):
-			return self.probe.named_parameters(prefix=prefix, recurse=recurse)
+		return self.probe.named_parameters(prefix=prefix, recurse=recurse)
 
 	def train(self, mode=True):
-			self.probe.train(mode)
-			self.clip_model.eval()
-			return self
+		self.probe.train(mode)
+		self.clip_model.eval()
+		return self
 
 	def eval(self):
-			self.probe.eval()
-			self.clip_model.eval()
-			return self
+		self.probe.eval()
+		self.clip_model.eval()
+		return self
 
 def get_probe_clip(
 	clip_model: torch.nn.Module,
@@ -765,7 +807,10 @@ def get_probe_clip(
 		
 	return probe
 
-def _detect_dataset_type(validation_loader: DataLoader, verbose: bool = True) -> Dict:
+def _detect_dataset_type(
+		validation_loader: DataLoader, 
+		verbose: bool=False,
+) -> Dict:
 	"""
 	Detect whether the dataset is single-label or multi-label by inspecting the DataLoader.
 	
