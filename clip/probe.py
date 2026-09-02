@@ -621,6 +621,10 @@ class MultiLabelProbe(torch.nn.Module):
 		"""Only save the trainable probe weights, not the frozen CLIP model."""
 		return self.probe.state_dict(*args, **kwargs)
 
+	def load_state_dict(self, state_dict, strict=True):
+		"""Load only the trainable probe weights, matching the overridden state_dict."""
+		return self.probe.load_state_dict(state_dict, strict=strict)
+
 	def _print_initialization_summary(self):
 		probe_params = sum(p.numel() for p in self.probe.parameters())
 		clip_params = sum(p.numel() for p in self.clip_model.parameters())

@@ -671,15 +671,16 @@ def probe_multi_label(
 			
 			scaler.scale(loss).backward()
 			scaler.unscale_(optimizer)
-			if bidx % 10 == 0:
+			if bidx % 100 == 0:
 				# grad_per_class = probe.probe.weight.grad.norm(dim=1)  # [C]
 				grad_per_class = probe.weight.grad.norm(dim=1)  # [C]
 				print(
-					f"\t\t[GRAD] b{bidx+1:5d} "
-					f"total_norm={probe.weight.grad.norm().item():.4f} "
-					f"max_class_grad={grad_per_class.max().item():.4f} "
-					f"argmax_class={grad_per_class.argmax().item()}"
+					f"\t\t[GRAD] b{bidx+1:6d} "
+					f"total_norm: {probe.weight.grad.norm().item():.4f} "
+					f"max_class_grad: {grad_per_class.max().item():.4f} "
+					f"argmax_class: {grad_per_class.argmax().item()}"
 				)
+
 			torch.nn.utils.clip_grad_norm_(probe.probe.parameters(), max_norm=1.0)
 			scaler.step(optimizer)
 			scaler.update()
