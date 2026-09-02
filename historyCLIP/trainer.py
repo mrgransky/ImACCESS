@@ -349,17 +349,18 @@ def main():
 		pth_files = glob.glob(os.path.join(RESULT_DIRECTORY, "*.pth"))
 		cleanup_files = (
 			pt_files 
-			# + pth_files
+			+ pth_files
 			# + json_files
 		)
 		if cleanup_files:
 			print(f"Cleaning up {len(cleanup_files)} file(s) from {RESULT_DIRECTORY}:")
 			for f in cleanup_files:
 				print(f)
-				try:
-					os.remove(f)
-				except Exception as e:
-					print(f"Warning: Failed to remove {f}: {e}")
+				if strategy_name in f:
+					try:
+						os.remove(f)
+					except Exception as e:
+						print(f"Warning: Failed to remove {f}: {e}")
 
 		print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))
 	finally:
