@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=probe_seed_42
+#SBATCH --job-name=lora_do0_seed_42
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -74,7 +74,8 @@
 ##SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 ##SBATCH --array=18-20 # only dora
 ##SBATCH --array=9-23 # low-rank adaptation
-#SBATCH --array=3-5 # probe
+##SBATCH --array=3-5 # probe
+##SBATCH --array=9-11 # lora
 
 # how to run:
 # !!!!! xxxx ensure the job name aligns with the seed value xxxx
@@ -272,7 +273,7 @@ LORA_ALPHAS=()
 for rank in "${LORA_RANKS[@]}"; do
 	LORA_ALPHAS+=("$(( rank * 2 )).0")
 done
-LORA_DROPOUTS=(0.05 0.1 0.05 0.05 0.05)
+LORA_DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
 # LORA_PLUS_LAMBDAS=(4.0 16.0 16.0 16.0 16.0)  # only used by lora_plus
 # LoRA+ lambda: ratio of B/A learning rates.
 # Per the LoRA+ paper (Hayou et al. 2024), effective range is ~16–256;

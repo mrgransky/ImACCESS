@@ -671,7 +671,7 @@ def probe_multi_label(
 			
 			scaler.scale(loss).backward()
 			scaler.unscale_(optimizer)
-			if bidx % 100 == 0:
+			if bidx % int(print_every * 0.05) == 0 or bidx + 1 == len(data_iter):
 				# grad_per_class = probe.probe.weight.grad.norm(dim=1)  # [C]
 				grad_per_class = probe.weight.grad.norm(dim=1)  # [C]
 				print(
