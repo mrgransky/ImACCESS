@@ -75,7 +75,7 @@
 ##SBATCH --array=18-20 # only dora
 ##SBATCH --array=9-23 # low-rank adaptation
 ##SBATCH --array=3-5 # probe
-##SBATCH --array=9-11 # lora
+#SBATCH --array=9-11 # lora
 
 # how to run:
 # !!!!! xxxx ensure the job name aligns with the seed value xxxx
