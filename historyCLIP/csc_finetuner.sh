@@ -279,7 +279,8 @@ LORA_DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
 # Per the LoRA+ paper (Hayou et al. 2024), effective range is ~16–256;
 # not strongly tied to dataset size — kept constant across datasets here,
 # since the same architectures are used for all datasets.
-LORA_PLUS_LAMBDAS=(16.0 16.0 16.0 16.0 16.0)
+LORA_PLUS_LAMBDAS=(8.0 16.0 16.0 16.0 16.0)
+
 # ── Progressive fine-tuning parameters ──────────────────────────────────
 # Controls the layer-by-layer unfreezing schedule used in "full" strategy
 MIN_PHASES_BEFORE_STOPPING=(3 3 3 3 3)
