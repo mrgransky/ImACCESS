@@ -384,7 +384,7 @@ def probe_multi_label(
 	volatility_threshold: float = 15.0,
 	slope_threshold: float = 1e-4,
 	pairwise_imp_threshold: float = 1e-4,
-	probe_hidden_dim: int = None,
+	probe_hidden_dim: int = None, # None: Linear or MLP (if not None)
 	probe_dropout: float = 0.1,
 	cache_features: bool = True,
 	temperature: float = 1.0,
@@ -459,7 +459,6 @@ def probe_multi_label(
 		zero_shot_init=True, # faster convergence
 		verbose=verbose,
 	)
-	# probe._W_init = probe.probe.weight.data.clone()
 
 	masks = compute_loss_masks(
 		train_loader=train_loader,
@@ -546,7 +545,8 @@ def probe_multi_label(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{mode}_{probe.probe_type}_"
+		f"{mode}_"
+		# f"{probe.probe_type}_" # LinearProbe or MLPProbe
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"

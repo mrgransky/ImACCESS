@@ -343,24 +343,12 @@ def main():
 			verbose=args.verbose,
 		)
 
-		# Clean up any available JSON/PT files before finishing
-		json_files = glob.glob(os.path.join(RESULT_DIRECTORY, "*.json"))
-		pt_files = glob.glob(os.path.join(RESULT_DIRECTORY, "*.pt"))
-		pth_files = glob.glob(os.path.join(RESULT_DIRECTORY, "*.pth"))
-		cleanup_files = (
-			pt_files 
-			+ pth_files
-			# + json_files
+		# # Temporary due to lack of disk space
+		clean_cache(
+			directory=RESULT_DIRECTORY, 
+			strategy=strategy_name, 
+			verbose=args.verbose
 		)
-		if cleanup_files:
-			print(f"Cleaning up {len(cleanup_files)} file(s) from {RESULT_DIRECTORY}:")
-			for f in cleanup_files:
-				print(f)
-				if strategy_name in f:
-					try:
-						os.remove(f)
-					except Exception as e:
-						print(f"Warning: Failed to remove {f}: {e}")
 
 		print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))
 	finally:

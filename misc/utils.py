@@ -186,6 +186,29 @@ def extract_per_k_metrics(eval_result: Dict, tier_key: str) -> Dict:
 
 	return out
 
+def clean_cache(directory: str, strategy: str, verbose: bool = False):
+	###########################################################################################
+	# Temporary due to lack of disk space
+	# Clean up any available JSON/PT files before finishing
+	json_files = glob.glob(os.path.join(directory, "*.json"))
+	pt_files = glob.glob(os.path.join(directory, "*.pt"))
+	pth_files = glob.glob(os.path.join(directory, "*.pth"))
+	cleanup_files = (
+		pt_files 
+		+ pth_files
+		# + json_files
+	)
+	if cleanup_files:
+		print(f"Cleaning cache in {directory}")
+		for f in cleanup_files:
+			if os.path.basename(f).startswith(f"{strategy}_ViT"):
+				print(f">> Removing {f}")
+				try:
+					os.remove(f)
+				except Exception as e:
+					print(f"Warning: Failed to remove {f}: {e}")
+	###########################################################################################
+
 def save_tiered_retrieval_metrics(
 	best_model_result: Dict,
 	strategy: str,
