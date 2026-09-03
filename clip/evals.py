@@ -44,13 +44,13 @@ def check_lora_weight_health(model, optimizer=None, verbose=True):
 	
 	if verbose:
 		print("-"*60)
-		print(f"[LoRA Family Weight Health Analysis]")
+		print(f"[LoRA Family Weight Health]")
 
 		if A_norms:
-			print(f"lora_A (min, max): ({min(A_norms):.4f}, {max(A_norms):.4f}) μ±σ: {np.mean(A_norms):.2f}±{np.std(A_norms):.2f}")
+			print(f"lora_A (min, max): ({min(A_norms):.4f}, {max(A_norms):.4f}) μ±σ: {np.mean(A_norms):.2f} ± {np.std(A_norms):.2f}")
 
 		if B_norms:
-			print(f"lora_B (min, max): ({min(B_norms):.4f}, {max(B_norms):.4f}) μ±σ: {np.mean(B_norms):.2f}±{np.std(B_norms):.2f}")
+			print(f"lora_B (min, max): ({min(B_norms):.4f}, {max(B_norms):.4f}) μ±σ: {np.mean(B_norms):.2f} ± {np.std(B_norms):.2f}")
 
 		if issues:
 			print(f"  !! {len(issues)} corrupted tensors:")
@@ -1717,8 +1717,8 @@ def get_multilabel_alignment_score(
 	if image_has_nan or class_has_nan or image_has_inf or class_has_inf:
 		if verbose:
 			print(f"\n[GUARD] NaN/Inf detected in embeddings:")
-			print(f"    image_embeds  — NaN: {image_has_nan.item():7s} Inf: {image_has_inf.item()}")
-			print(f"    class_embeds  — NaN: {class_has_nan.item():7s} Inf: {class_has_inf.item()}")
+			print(f"    image_embeds  — NaN: {str(image_has_nan.item()):10} Inf: {str(image_has_inf.item())}")
+			print(f"    class_embeds  — NaN: {str(class_has_nan.item()):10} Inf: {str(class_has_inf.item())}")
 			
 			if image_has_nan:
 				nan_mask = torch.isnan(image_embeds)

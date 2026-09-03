@@ -515,9 +515,7 @@ def get_parameters_info(model, mode, verbose=True, optimizer=None):
 		for _, p in named:
 			dtypes[str(p.dtype)] += 1
 
-		print(f"\n{'='*80}")
-		print(f"[INSPECT] {model.__class__.__name__} {getattr(model, 'name', '?')}")
-		print(f"{'='*80}")
+		print(f"\n[INSPECTION] {model.__class__.__name__} {getattr(model, 'name', '?')}")
 		print(f"  Mode           : {mode}")
 		print(f"  Training mode  : {model.training}  ({'model.train()' if model.training else 'model.eval()'})")
 		print(f"  Device         : {device}")
@@ -664,73 +662,77 @@ def get_parameters_info(model, mode, verbose=True, optimizer=None):
 		# 4b. Parameter size distribution
 		# ──────────────────────────────────────────────
 		if verbose:
-				print(f"\n  [Parameter size distribution]")
-				param_sizes = [p.numel() for _, p in named]
-				size_buckets = {
-						'tiny (<1K)':        sum(1 for s in param_sizes if s < 1_000),
-						'small (1K-10K)':    sum(1 for s in param_sizes if 1_000 <= s < 10_000),
-						'medium (10K-100K)': sum(1 for s in param_sizes if 10_000 <= s < 100_000),
-						'large (100K-1M)':   sum(1 for s in param_sizes if 100_000 <= s < 1_000_000),
-						'huge (>1M)':        sum(1 for s in param_sizes if s >= 1_000_000),
-				}
-				for bucket, count in size_buckets.items():
-						print(f"    {bucket:20s}: {count:4d} params ({count/len(param_sizes)*100:5.1f}%)")
+			print(f"\n[Parameter size distribution]")
+			param_sizes = [p.numel() for _, p in named]
+			size_buckets = {
+				'tiny   (<1K)':      sum(1 for s in param_sizes if s < 1_000),
+				'small  (1K-10K)':   sum(1 for s in param_sizes if 1_000 <= s < 10_000),
+				'medium (10K-100K)': sum(1 for s in param_sizes if 10_000 <= s < 100_000),
+				'large  (100K-1M)':  sum(1 for s in param_sizes if 100_000 <= s < 1_000_000),
+				'huge   (>1M)':      sum(1 for s in param_sizes if s >= 1_000_000),
+			}
+			for bucket, count in size_buckets.items():
+				print(f"    {bucket:20s}: {count:4d} params ({count/len(param_sizes)*100:5.1f}%)")
 
-				largest = sorted(named, key=lambda x: x[1].numel(), reverse=True)[:10]
-				print(f"\n    [Top 10 largest parameters]")
-				for i, (name, param) in enumerate(largest, 1):
-						print(f"      {i:>2d}. {name:50s} | {param.numel():>15,} | {tuple(param.shape)}")
+			largest = sorted(named, key=lambda x: x[1].numel(), reverse=True)[:100]
+			print(f"\n[Top-{len(largest)} largest parameters]")
+			for i, (name, param) in enumerate(largest, 1):
+				print(f"{i:5d}. {name:75s}{param.numel():<25,}{tuple(param.shape)}")
 
 		# ──────────────────────────────────────────────
 		# 5. Adapter module inspection (LoRA/DoRA/VeRA/IA3/Adapter/Tip)
 		# ──────────────────────────────────────────────
 		adapter_modules = []
 		for name, module in model.named_modules():
-				cls_name = module.__class__.__name__.lower()
-				if any(k in cls_name for k in ADAPTER_KEYWORDS):
-						adapter_modules.append((name, module))
+			cls_name = module.__class__.__name__.lower()
+			if any(k in cls_name for k in ADAPTER_KEYWORDS):
+				adapter_modules.append((name, module))
 
 		if adapter_modules:
-				print(f"\n  [Adapter modules detected] ({len(adapter_modules)})")
-				for name, mod in adapter_modules[:20]:
-						n_params = sum(p.numel() for p in mod.parameters())
-						n_train  = sum(p.numel() for p in mod.parameters() if p.requires_grad)
-						extra = ""
-						if hasattr(mod, 'r'):          extra += f" rank={mod.r}"
-						if hasattr(mod, 'lora_alpha'): extra += f" alpha={mod.lora_alpha}"
-						if hasattr(mod, 'lora_dropout'):
-								drop = mod.lora_dropout
-								extra += f" dropout={drop.p if hasattr(drop, 'p') else drop}"
-						print(f"    {name:60s} | {n_params:>10,} params | {n_train:>10,} train | {mod.__class__.__name__}{extra}")
-				if len(adapter_modules) > 20:
-						print(f"    ... and {len(adapter_modules) - 20} more adapter modules")
-
-				# LoRA-family configuration analysis (RSLoRA-aware scaling)
-				lora_ranks  = [mod.r for _, mod in adapter_modules if hasattr(mod, 'r')]
-				lora_alphas = [mod.lora_alpha for _, mod in adapter_modules if hasattr(mod, 'lora_alpha')]
-				if lora_ranks or lora_alphas:
-						print(f"\n  [LoRA configuration analysis]")
-						if lora_ranks:
-								print(f"    Rank distribution : min={min(lora_ranks)}, max={max(lora_ranks)}, "
-											f"mean={sum(lora_ranks)/len(lora_ranks):.1f}")
-						if lora_alphas:
-								print(f"    Alpha distribution: min={min(lora_alphas)}, max={max(lora_alphas)}, "
-											f"mean={sum(lora_alphas)/len(lora_alphas):.1f}")
-						if lora_ranks and lora_alphas:
-								if 'rslora' in mode_l:
-										scalings = [a / math.sqrt(r) for a, r in zip(lora_alphas, lora_ranks) if r > 0]
-										label = "alpha/√r"
-								else:
-										scalings = [a / r for a, r in zip(lora_alphas, lora_ranks) if r > 0]
-										label = "alpha/r"
-								if scalings:
-										print(f"    Scaling ({label:8s}): min={min(scalings):.2f}, max={max(scalings):.2f}, "
-													f"mean={sum(scalings)/len(scalings):.2f}")
+			print(f"\n[Adapter modules detected] ({len(adapter_modules)})")
+			for name, mod in adapter_modules:
+				n_params = sum(p.numel() for p in mod.parameters())
+				n_train  = sum(p.numel() for p in mod.parameters() if p.requires_grad)
+				extra = ""
+				if hasattr(mod, 'r'):          extra += f" rank={mod.r}"
+				if hasattr(mod, 'lora_alpha'): extra += f" alpha={mod.lora_alpha}"
+				if hasattr(mod, 'lora_dropout'):
+						drop = mod.lora_dropout
+						extra += f" dropout={drop.p if hasattr(drop, 'p') else drop}"
+				print(f"    {name:60s} | {n_params:>10,} params | {n_train:>10,} train | {mod.__class__.__name__}{extra}")
+			
+			# LoRA-family configuration analysis (RSLoRA-aware scaling)
+			lora_ranks  = [mod.r for _, mod in adapter_modules if hasattr(mod, 'r')]
+			lora_alphas = [mod.lora_alpha for _, mod in adapter_modules if hasattr(mod, 'lora_alpha')]
+			if lora_ranks or lora_alphas:
+				print(f"\n  [LoRA configuration analysis]")
+				if lora_ranks:
+					print(
+						f"    Rank distribution : min={min(lora_ranks)}, max={max(lora_ranks)}, "
+						f"mean={sum(lora_ranks)/len(lora_ranks):.1f}"
+					)
+				if lora_alphas:
+					print(
+						f"    Alpha distribution: min={min(lora_alphas)}, max={max(lora_alphas)}, "
+						f"mean={sum(lora_alphas)/len(lora_alphas):.1f}"
+					)
+				if lora_ranks and lora_alphas:
+					if 'rslora' in mode_l:
+						scalings = [a / math.sqrt(r) for a, r in zip(lora_alphas, lora_ranks) if r > 0]
+						label = "alpha/√r"
+					else:
+						scalings = [a / r for a, r in zip(lora_alphas, lora_ranks) if r > 0]
+						label = "alpha/r"
+					if scalings:
+						print(
+							f"    Scaling ({label:8s}): min={min(scalings):.2f}, max={max(scalings):.2f}, "
+							f"mean={sum(scalings)/len(scalings):.2f}"
+						)
 
 		# ──────────────────────────────────────────────
 		# 5b. Strategy-aware initialization contract checks
 		# ──────────────────────────────────────────────
-		print(f"\n  [Strategy contract checks]")
+		print(f"\n[Strategy contract checks]")
 		contract_checked = False
 
 		# IA3: scales MUST start at 1.0 (identity), otherwise step-0 output is corrupted
@@ -863,7 +865,7 @@ def get_parameters_info(model, mode, verbose=True, optimizer=None):
 								else:
 										unexpected_zero.append(n)
 
-		print(f"\n  [Numerical health check]")
+		print(f"\n[Numerical health check]")
 		print(f"    NaN in trainable params  : {'❌ ' + str(nan_params) if nan_params else '✅ None'}")
 		print(f"    Inf in trainable params  : {'❌ ' + str(inf_params) if inf_params else '✅ None'}")
 		print(f"    Expected zeros (init)    : {len(expected_zero)} params "

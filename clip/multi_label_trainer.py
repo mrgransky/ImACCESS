@@ -2652,9 +2652,9 @@ def lora_plus_finetune_multi_label(
 
 			# Only log clipping details at print_every intervals, not every batch
 			if clipped_count > 0:
-				print(f"\t\t[B-norm clip] {clipped_count} layers clipped at b{bidx+1}:")
+				print(f"\t\t[BATCH {bidx+1} B-norm] « {clipped_count} layer(s) » clipped:")
 				for cname, cnorm in clipped_details:
-					print(f"\t\t{cname:<75} {cnorm} → {B_MAX_NORM}")
+					print(f"\t\t\t{cname:<75} {cnorm} → {B_MAX_NORM}")
 
 			scheduler.step()
 

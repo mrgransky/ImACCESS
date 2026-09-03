@@ -217,7 +217,7 @@ class HistoricalArchivesSingleLabelDataset(Dataset):
 					with self.lock:
 						self.cache[idx] = img_array
 		
-		print(f"Successfully cached {len(self.cache)} images")
+		print(f"[SUCCESS] cached {len(self.cache)} images")
 	
 	def __len__(self):
 		return len(self.data_frame)
