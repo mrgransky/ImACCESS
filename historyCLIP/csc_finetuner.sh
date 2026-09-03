@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=ft_seed_01
+#SBATCH --job-name=ft_seed_42
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -70,7 +70,7 @@
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
 #SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
-###SBATCH --array=12-14 # only LoRA+
+#SBATCH --array=12-14 # only LoRA+
 ##SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 ##SBATCH --array=18-20 # only dora
 ##SBATCH --array=9-23 # low-rank adaptation
@@ -79,7 +79,7 @@
 
 # how to run:
 # !!!!!!! xxxx ensure the job name aligns with the seed value xxxx
-# SEED=1 sbatch csc_finetuner.sh
+# SEED=42 sbatch csc_finetuner.sh
 
 set -euo pipefail
 user="`whoami`"

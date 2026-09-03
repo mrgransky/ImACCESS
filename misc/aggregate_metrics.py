@@ -119,13 +119,13 @@ def print_summary(results):
 			print(f"{lt:<30} {st:<20} {sp:<15} {dr:<5} {su:<8} {met:7s}@{int(k):2d} = {mean:.3f} ± {std:.6f}")
 
 def cell(summary_dict, lt, st, sp, dr, su, met="mAP", k="10", bold=False, underline=False):
-		mean, std = summary_dict.get((lt, st, sp, dr, su, met, k), (0.0, 0.0))
-		s = f"{mean:.3f} $\\pm$ {std:.3f}"
-		if bold:
-				s = f"\\textbf{{{s}}}"
-		elif underline:
-				s = f"\\underline{{{s}}}"
-		return s
+	mean, std = summary_dict.get((lt, st, sp, dr, su, met, k), (0.0, 0.0))
+	s = f"{mean:.3f} ± {std:.3f}"
+	if bold:
+		s = f"\\textbf{{{s}}}"
+	elif underline:
+		s = f"\\underline{{{s}}}"
+	return s
 
 def build_summary_dict(results):
 		return {(lt, st, sp, dr, su, met, k): (mean, std)
@@ -137,7 +137,7 @@ def print_table5_row(name, summary_dict, st):
 	for dr in ("i2t", "t2i"):
 		for su in ("overall", "head", "rare"):
 			cols.append(cell(summary_dict, lt, st, sp, dr, su))
-	print(f"{name:<20} & " + " & ".join(cols) + " \\\\")
+	print(f"{name:<20} " + " | ".join(cols))
 
 def print_table6_row(name, summary_dict, lt):
 		sp, st = "shared", "lora"
@@ -611,10 +611,10 @@ def print_table6_shared_aggregation(
 								mean, std = summary_dict[key]
 
 								if n_seeds == expected_n_seeds and n_imputed == 0:
-										values.append(f"${mean:.3f} \\pm {std:.3f}$")
+										values.append(f"${mean:.3f} ± {std:.3f}$")
 								elif allow_incomplete:
 										values.append(
-												f"${mean:.3f} \\pm {std:.3f}$"
+												f"${mean:.3f} ± {std:.3f}$"
 												f"\\textsuperscript{{[{n_seeds}/{expected_n_seeds} real"
 												f"{', +' + str(n_imputed) + ' zero' if n_imputed else ''}]}}"
 										)

@@ -2349,7 +2349,7 @@ def get_injected_peft_clip(
 		for name, mod_id in vision_traversal_mha:
 			in_text = mod_id in text_mha_ids
 			in_vision = mod_id in vision_mha_ids
-			print(f"  {name} id={mod_id} in_text={in_text} in_vision={in_vision}")
+			print(f"{name:<35} id: {mod_id} in_text: {in_text} in_vision: {in_vision}")
 
 	replaced_modules = set()
 	memory_stats = {
@@ -2892,7 +2892,7 @@ def get_injected_peft_clip(
 									in_proj_info   = (
 											f"lora_A={in_proj_adapter.lora_A.weight.shape} "
 											f"lora_B={in_proj_adapter.lora_B.weight.shape} "
-											f"scale={scale_val:.4f} rslora={rslora_val} "
+											f"scale={scale_val} rslora={rslora_val} "
 											f"weight_aliased={weight_aliased}"
 									)
 					# ── per-method out_proj verification ─────────────────────────────
@@ -2916,7 +2916,7 @@ def get_injected_peft_clip(
 							out_proj_info = (
 									f"lora_A={module.out_proj.lora_A.weight.shape} "
 									f"lora_B={module.out_proj.lora_B.weight.shape} "
-									f"scale={scale_val:.4f}"
+									f"scale={scale_val}"
 							)
 					# ── weight delta shape check (method-aware) ───────────────────────
 					weight_shape_ok = False
@@ -2927,7 +2927,7 @@ def get_injected_peft_clip(
 									weight_shape_ok = delta.shape == module.in_proj_weight.shape
 									shape_info      = (
 											f"delta={delta.shape} matches_in_proj={weight_shape_ok} "
-											f"delta_norm={delta.norm().item():.6f}"
+											f"delta_norm={delta.norm().item()}"
 									)
 							elif isinstance(in_proj_adapter, VeRALinear):
 									BLd             = in_proj_adapter.vera_B * in_proj_adapter.lambda_d.unsqueeze(0)
@@ -2935,7 +2935,7 @@ def get_injected_peft_clip(
 									weight_shape_ok = delta.shape == module.in_proj_weight.shape
 									shape_info      = (
 											f"delta={delta.shape} matches_in_proj={weight_shape_ok} "
-											f"delta_norm={delta.norm().item():.6f}"
+											f"delta_norm={delta.norm().item()}"
 									)
 							else:
 									delta           = (
@@ -2945,7 +2945,7 @@ def get_injected_peft_clip(
 									weight_shape_ok = delta.shape == module.in_proj_weight.shape
 									shape_info      = (
 											f"delta={delta.shape} matches_in_proj={weight_shape_ok} "
-											f"delta_norm={delta.norm().item():.6f}"
+											f"delta_norm={delta.norm().item()}"
 									)
 					overall_ok = is_patched and in_proj_ok and out_proj_ok and weight_shape_ok
 					if overall_ok:

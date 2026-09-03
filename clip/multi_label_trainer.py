@@ -2299,48 +2299,6 @@ def lora_plus_finetune_multi_label(
 		verbose=verbose,
 	).to(device)
 	
-	get_parameters_info(model=model, mode=mode)
-
-	masks = compute_loss_masks(
-		train_loader=train_loader,
-		validation_loader=validation_loader,
-		num_classes=num_classes,
-		pw_mode=pw_mode, #orig: "sqrt",
-		# pw_max_cap=50.0,
-		device=device,
-		verbose=verbose,
-	)
-	pos_weight  = masks["pos_weight"]
-	active_mask = masks["active_mask"]
-	head_mask   = masks["head_mask"]
-	rare_mask   = masks["rare_mask"]
-	N 					= masks["N"]
-	train_freq 	= masks["train_freq"]
-
-	# sys.exit()
-
-	# Criteria
-	# I2T: pos_weight applies — rows are images, cols are classes
-	criterion_i2t = torch.nn.BCEWithLogitsLoss(
-		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
-		reduction='none',
-	)
-
-	if verbose:
-		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
-		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"   ├─ samples: {N} x label(s): {num_classes}")
-		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
-		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
-		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
-
-	# T2I: no pos_weight — rows are classes, cols are batch images
-	# The imbalance is already corrected via I2T; T2I provides directional symmetry
-	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none',)
-
-	if verbose:
-		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
-		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 
 	# Separate LoRA A and B parameters for differential LR
 	lora_A_params = [p for n, p in model.named_parameters() if p.requires_grad and "lora_A" in n]
@@ -2387,7 +2345,16 @@ def lora_plus_finetune_multi_label(
 		print(f"  ├─ LR: lora_A = {lora_A_lr} lora_B = {lora_B_lr} (λ={lora_plus_lambda})")
 		print(f"  ├─ WD: lora_A = {lora_A_wd} lora_B = {lora_B_wd}")
 		print(f"  └─ Params: lora_A: {sum(p.numel() for p in lora_A_params):,} lora_B: {sum(p.numel() for p in lora_B_params):,}")
-	
+		get_parameters_info(
+			model=model, 
+			mode=mode, 
+			optimizer=optimizer, 
+			verbose=verbose
+		)
+		get_parameters_info_orig(model=model, mode=mode)
+
+	# sys.exit()
+
 	# Scheduler
 	# approximate T_max: N epochs * minimum_epochs
 	estimated_epochs = 2 * minimum_epochs
@@ -2437,6 +2404,48 @@ def lora_plus_finetune_multi_label(
 			print(f"  └─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
 		else:
 			print(f"  └─ GradScaler: disabled")
+
+
+	masks = compute_loss_masks(
+		train_loader=train_loader,
+		validation_loader=validation_loader,
+		num_classes=num_classes,
+		pw_mode=pw_mode, #orig: "sqrt",
+		# pw_max_cap=50.0,
+		device=device,
+		verbose=verbose,
+	)
+	pos_weight  = masks["pos_weight"]
+	active_mask = masks["active_mask"]
+	head_mask   = masks["head_mask"]
+	rare_mask   = masks["rare_mask"]
+	N 					= masks["N"]
+	train_freq 	= masks["train_freq"]
+
+	# sys.exit()
+
+	# Criteria
+	# I2T: pos_weight applies — rows are images, cols are classes
+	criterion_i2t = torch.nn.BCEWithLogitsLoss(
+		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
+		reduction='none',
+	)
+
+	if verbose:
+		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
+		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
+		print(f"   ├─ samples: {N} x label(s): {num_classes}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
+		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
+
+	# T2I: no pos_weight — rows are classes, cols are batch images
+	# The imbalance is already corrected via I2T; T2I provides directional symmetry
+	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none',)
+
+	if verbose:
+		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
+		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 
 	# Pre-encode class texts (frozen text encoder — valid for entire run)
 	model.eval()
@@ -2642,10 +2651,10 @@ def lora_plus_finetune_multi_label(
 							param.data.mul_(B_MAX_NORM / norm)
 
 			# Only log clipping details at print_every intervals, not every batch
-			if clipped_count > 0 and (bidx % print_every == 0 or bidx + 1 == len(train_loader)):
-				print(f"\t\t[B-norm clip] {clipped_count} layers clipped at e{epoch+1} b{bidx+1}:")
-				for cname, cnorm in clipped_details[:5]:  # cap at 5 to avoid log spam
-					print(f"\t\t  {cname}: {cnorm:.4f} → {B_MAX_NORM}")
+			if clipped_count > 0:
+				print(f"\t\t[B-norm clip] {clipped_count} layers clipped at b{bidx+1}:")
+				for cname, cnorm in clipped_details:
+					print(f"\t\t{cname:<75} {cnorm} → {B_MAX_NORM}")
 
 			scheduler.step()
 

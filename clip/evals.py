@@ -1716,9 +1716,9 @@ def get_multilabel_alignment_score(
 	
 	if image_has_nan or class_has_nan or image_has_inf or class_has_inf:
 		if verbose:
-			print(f"\n  [GUARD] NaN/Inf detected in embeddings:")
-			print(f"    image_embeds  — NaN: {image_has_nan.item()} | Inf: {image_has_inf.item()}")
-			print(f"    class_embeds  — NaN: {class_has_nan.item()} | Inf: {class_has_inf.item()}")
+			print(f"\n[GUARD] NaN/Inf detected in embeddings:")
+			print(f"    image_embeds  — NaN: {image_has_nan.item():7s} Inf: {image_has_inf.item()}")
+			print(f"    class_embeds  — NaN: {class_has_nan.item():7s} Inf: {class_has_inf.item()}")
 			
 			if image_has_nan:
 				nan_mask = torch.isnan(image_embeds)
@@ -1784,7 +1784,7 @@ def get_multilabel_alignment_score(
 		per_class_hit_rate = per_class_hits / per_class_support
 		worst_classes = per_class_hit_rate.topk(10, largest=False)
 		print(
-			f"10 worst-recalled classes (idx, hit_rate): "
+			f"{worst_classes.values.numel()} worst-recalled classes (idx, hit_rate): "
 			f"{list(zip(worst_classes.indices.tolist(), worst_classes.values.round(decimals=3).tolist()))}")
 
 		print(
@@ -1814,7 +1814,7 @@ def get_multilabel_alignment_score(
 			hit_topk = topk_indices[hit_indices]          # [n_hits, K]
 			hit_labels = labels[hit_indices].bool()       # [n_hits, C]
 			first_hit_ranks = []
-			for i in range(min(len(hit_indices), 1000)):  # cap at 1000 for speed
+			for i in range(min(len(hit_indices), 5000)):  # cap at N for speed
 				for rank, cls_idx in enumerate(hit_topk[i].tolist()):
 					if hit_labels[i, cls_idx]:
 						first_hit_ranks.append(rank + 1)
@@ -1822,7 +1822,7 @@ def get_multilabel_alignment_score(
 			if first_hit_ranks:
 				first_hit_ranks_t = torch.tensor(first_hit_ranks, dtype=torch.float32)
 				print(f"First correct class rank (hit images only):")
-				print(f"μ±σ: {first_hit_ranks_t.mean():.2f}±{first_hit_ranks_t.std():.2f} (median={first_hit_ranks_t.median():.2f})")
+				print(f"μ±σ: {first_hit_ranks_t.mean():.2f} ± {first_hit_ranks_t.std():.2f} (median={first_hit_ranks_t.median()})")
 				print(f"rank=1: {(first_hit_ranks_t == 1).float().mean():.3f}")
 				print(f"rank≤3: {(first_hit_ranks_t <= 3).float().mean():.3f}")
 
@@ -1831,8 +1831,8 @@ def get_multilabel_alignment_score(
 		if len(miss_indices) > 0:
 			n_miss_sample = min(len(miss_indices), 5000)
 			miss_sample = miss_indices[:n_miss_sample]
-			miss_sims_all = logits[miss_sample]             # [n_miss, C]
-			miss_labels_all = labels[miss_sample].bool()    # [n_miss, C]
+			miss_sims_all = logits[miss_sample]          # [n_miss, C]
+			miss_labels_all = labels[miss_sample].bool() # [n_miss, C]
 			
 			# For each miss image, what rank did its true classes achieve?
 			miss_true_ranks = []
@@ -1852,17 +1852,17 @@ def get_multilabel_alignment_score(
 			if miss_true_ranks:
 				miss_ranks_t = torch.tensor(miss_true_ranks, dtype=torch.float32)
 				print(f"\nBest true label rank for MISS images (sample of {n_miss_sample}):")
-				print(f"μ±σ: {miss_ranks_t.mean():.1f}±{miss_ranks_t.std():.1f} (median={miss_ranks_t.median():.1f})")
-				print(f"rank≤10:  {(miss_ranks_t <= 10).float().mean():.3f}")
-				print(f"rank≤50:  {(miss_ranks_t <= 50).float().mean():.3f}")
+				print(f"μ±σ: {miss_ranks_t.mean():.1f} ± {miss_ranks_t.std():.1f} (median={miss_ranks_t.median()})")
+				print(f"rank≤10 : {(miss_ranks_t <= 10).float().mean():.3f}")
+				print(f"rank≤50 : {(miss_ranks_t <= 50).float().mean():.3f}")
 				print(f"rank≤100: {(miss_ranks_t <= 100).float().mean():.3f}")
 
 				if miss_ranks_t.mean() > 100:
-					print(f"mean rank: {miss_ranks_t.mean():.1f} high (>>100) label embeddings geometrically far from image embeddings.")
+					print(f"[HIGH] (μ = {miss_ranks_t.mean():.1f} >>100) label embeddings geometrically far from image embeddings.")
 				elif miss_ranks_t.mean() <= 50:
-					print(f"mean rank: {miss_ranks_t.mean():.1f} is low (≤50) images close but other classes rank higher (inter-class confusion).")
+					print(f"[LOW] (μ = {miss_ranks_t.mean():.1f} ≤50) images close but other classes rank higher (inter-class confusion).")
 				else:
-					print(f"mean rank: {miss_ranks_t.mean():.1f} is moderate (50 < mean < 100) images close but other classes rank higher (inter-class confusion).")
+					print(f"[MODERATE] (50 < μ = {miss_ranks_t.mean():.1f} < 100) images close but other classes rank higher (inter-class confusion).")
 
 	return score
 
