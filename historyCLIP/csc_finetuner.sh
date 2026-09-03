@@ -78,7 +78,7 @@
 ##SBATCH --array=9-11 # lora
 
 # how to run:
-# !!!!! xxxx ensure the job name aligns with the seed value xxxx
+# !!!!!!! xxxx ensure the job name aligns with the seed value xxxx
 # SEED=2 sbatch csc_finetuner.sh
 
 set -euo pipefail
