@@ -69,8 +69,8 @@
 #   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
-##SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
-#SBATCH --array=12-14 # only LoRA+
+#SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
+##SBATCH --array=12-14 # only LoRA+
 ##SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 ##SBATCH --array=18-20 # only dora
 ##SBATCH --array=9-23 # low-rank adaptation
@@ -121,9 +121,9 @@ SAMPLINGS=(
 # and multi-label metadata CSV file.
 ##############################################################################
 BASE_DATASET_DIRECTORY=(
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4                       # dataset 0
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31  # dataset 1
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31         # dataset 2
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4                             # dataset 0
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31 # dataset 1
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31        # dataset 2
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02             # dataset 3
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31              # dataset 4
 )
@@ -266,20 +266,20 @@ EPOCHS=(100 100 150 150 150)
 #   LORA_ALPHA   : scaling factor (typically 2× rank)
 #   LORA_DROPOUT : dropout applied inside LoRA layers
 #   LORA_PLUS_LAMBDA : ratio of learning rates (B matrix / A matrix) for LoRA+
-LORA_RANKS=(32 64 64 64 64)
+LORA_RANKS=(16 64 64 64 64)
 # LORA_ALPHAS=(32.0 128.0 128.0 128.0 128.0)
 # LORA_ALPHA is derived as 2× LORA_RANK per dataset (common LoRA convention)
 LORA_ALPHAS=()
 for rank in "${LORA_RANKS[@]}"; do
 	LORA_ALPHAS+=("$(( rank * 2 )).0")
 done
-LORA_DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
+LORA_DROPOUTS=(0.05 0.1 0.05 0.05 0.05)
 # LORA_PLUS_LAMBDAS=(4.0 16.0 16.0 16.0 16.0)  # only used by lora_plus
 # LoRA+ lambda: ratio of B/A learning rates.
 # Per the LoRA+ paper (Hayou et al. 2024), effective range is ~16–256;
 # not strongly tied to dataset size — kept constant across datasets here,
 # since the same architectures are used for all datasets.
-LORA_PLUS_LAMBDAS=(8.0 16.0 16.0 16.0 16.0)
+LORA_PLUS_LAMBDAS=(4.0 16.0 16.0 16.0 16.0)
 
 # ── Progressive fine-tuning parameters ──────────────────────────────────
 # Controls the layer-by-layer unfreezing schedule used in "full" strategy

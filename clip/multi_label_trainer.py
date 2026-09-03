@@ -691,7 +691,7 @@ def probe_multi_label(
 			num_batches += 1
 			
 			if bidx % print_every == 0 or bidx + 1 == len(data_iter):
-				print(f"\t\tBatch [{bidx+1:04d}/{len(data_iter)}] Loss: {loss.item():.6f}")
+				print(f"\tBatch[{bidx+1:6d}/{len(data_iter)}] Loss: {loss.item():.6f}")
 		
 		# Calculate average losses
 		avg_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
@@ -1094,7 +1094,8 @@ def full_finetune_multi_label(
 		print(f"{n:<60}{p.requires_grad:<5}{p.dtype}\t{p.shape}")
 	print("="*130)
 
-	get_parameters_info(model=model, mode=mode)
+	get_parameters_info(model=model, mode=mode, verbose=verbose)
+	get_parameters_info_orig(model=model, mode=mode)
 
 	masks = compute_loss_masks(
 		train_loader=train_loader,
@@ -1326,9 +1327,9 @@ def full_finetune_multi_label(
 			num_batches += 1
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
-					f"Total Loss: {batch_loss_total:.6f} "
-					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
+					f"\tBatch[{bidx + 1:6d}/{len(train_loader)}] "
+					f"[LOSS] Total: {batch_loss_total:.6f} "
+					f"(I2T: {batch_loss_i2t:.6f} T2I: {batch_loss_t2i:.6f})"
 				)
 
 		avg_total_loss = epoch_loss_total / num_batches if num_batches > 0 else 0.0
@@ -1689,8 +1690,11 @@ def lora_finetune_multi_label(
 		verbose=verbose,
 	).to(device)
 	
-	get_parameters_info(model=model, mode=mode)
-	
+	get_parameters_info(model=model, mode=mode, verbose=verbose)
+	get_parameters_info_orig(model=model, mode=mode)
+
+
+
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
@@ -1895,10 +1899,10 @@ def lora_finetune_multi_label(
 			epoch_loss_t2i   += loss_t2i.item()
 			num_batches += 1
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+				print(f"\tBatch[{bidx+1:6d}/{len(train_loader)}]")
 				print(
-					f"\t\tBatch [{bidx+1:04d}/{len(train_loader)}] "
-					f"Total: {total_loss.item():.6f} "
-					f"(I2T: {loss_i2t.item():.6f}, T2I: {loss_t2i.item():.6f})"
+					f"\t\t[LOSS] Total: {total_loss.item():.6f} "
+					f"(I2T: {loss_i2t.item():.6f} T2I: {loss_t2i.item():.6f})"
 				)
 				b_norms = [
 					p.data.norm().item()
@@ -1908,11 +1912,10 @@ def lora_finetune_multi_label(
 				if b_norms:
 					b_norms_t = torch.tensor(b_norms)
 					print(
-						f"\t\t[B weight norms] "
+						f"\t\t[NORM] lora_B: "
 						f"(min, max): ({b_norms_t.min():.4f}, {b_norms_t.max():.4f}) "
 						f"μ±σ: {b_norms_t.mean():.4f} ± {b_norms_t.std():.4f}"
 					)
-					print()
 
 		avg_total = epoch_loss_total / num_batches if num_batches > 0 else 0.0
 		avg_i2t   = epoch_loss_i2t   / num_batches if num_batches > 0 else 0.0
@@ -2351,8 +2354,6 @@ def lora_plus_finetune_multi_label(
 			verbose=verbose
 		)
 		get_parameters_info_orig(model=model, mode=mode)
-
-	# sys.exit()
 
 	# Scheduler
 	# approximate T_max: N epochs * minimum_epochs
@@ -3094,7 +3095,8 @@ def rslora_finetune_multi_label(
 		verbose=verbose,
 	).to(device)
 	
-	get_parameters_info(model=model, mode=mode)
+	get_parameters_info(model=model, mode=mode, verbose=verbose)
+	get_parameters_info_orig(model=model, mode=mode)
 
 	masks = compute_loss_masks(
 		train_loader=train_loader,
@@ -3342,9 +3344,9 @@ def rslora_finetune_multi_label(
 
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\t\tBatch [{bidx+1:04d}/{len(train_loader)}] "
-					f"Total: {total_loss.item():.6f} "
-					f"(I2T: {loss_i2t.item():.6f}, T2I: {loss_t2i.item():.6f})"
+					f"\tBatch[{bidx+1:6d}/{len(train_loader)}] "
+					f"[LOSS] Total: {total_loss.item():.6f} "
+					f"(I2T: {loss_i2t.item():.6f} T2I: {loss_t2i.item():.6f})"
 				)
 
 		if num_batches == 0:
@@ -3724,9 +3726,11 @@ def dora_finetune_multi_label(
 		quantization_bits=quantization_bits,
 		quantized=quantized,
 		verbose=verbose,
-	)
-	model.to(device)
-	get_parameters_info(model=model, mode=mode)
+	).to(device)
+	get_parameters_info(model=model, mode=mode, verbose=verbose)
+	get_parameters_info_orig(model=model, mode=mode)
+
+
 
 	masks = compute_loss_masks(
 		train_loader=train_loader,
@@ -3947,9 +3951,9 @@ def dora_finetune_multi_label(
 			
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
-					f"Loss: {total_loss.item():.7f} "
-					f"(I2T: {loss_i2t.item():.7f}, T2I: {loss_t2i.item():.7f})"
+					f"\tBatch[{bidx + 1:6d}/{len(train_loader)}] "
+					f"[LOSS] Total: {total_loss.item():.7f} "
+					f"(I2T: {loss_i2t.item():.7f} T2I: {loss_t2i.item():.7f})"
 				)
 			
 			epoch_loss_total += total_loss.item()
@@ -4384,10 +4388,11 @@ def vera_finetune_multi_label(
 		quantization_bits=quantization_bits,
 		quantized=quantized,
 		verbose=verbose,
-	)
-	
-	model.to(device)
-	get_parameters_info(model=model, mode=mode)
+	).to(device)
+
+	get_parameters_info(model=model, mode=mode, verbose=verbose)
+	get_parameters_info_orig(model=model, mode=mode)
+
 
 	masks = compute_loss_masks(
 		train_loader=train_loader,
@@ -4616,9 +4621,9 @@ def vera_finetune_multi_label(
 			
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
-					f"Total Loss: {batch_loss_total:.6f} "
-					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
+					f"\tBatch[{bidx + 1:6d}/{len(train_loader)}] "
+					f"[LOSS] Total: {batch_loss_total:.6f} "
+					f"(I2T: {batch_loss_i2t:.6f} T2I: {batch_loss_t2i:.6f})"
 				)
 		
 		# Calculate average losses
@@ -5069,10 +5074,10 @@ def ia3_finetune_multi_label(
 		quantization_bits=quantization_bits,
 		quantized=quantized,
 		verbose=verbose,
-	)
-	
-	model.to(device)
-	get_parameters_info(model=model, mode=mode)
+	).to(device)
+	get_parameters_info(model=model, mode=mode, verbose=verbose)
+	get_parameters_info_orig(model=model, mode=mode)
+
 
 	masks = compute_loss_masks(
 		train_loader=train_loader,
@@ -5295,9 +5300,9 @@ def ia3_finetune_multi_label(
 			
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\t\tBatch [{bidx + 1:6d}/{len(train_loader)}] "
-					f"Total Loss: {batch_loss_total:.6f} "
-					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
+					f"\tBatch[{bidx + 1:6d}/{len(train_loader)}] "
+					f"[LOSS] Total: {batch_loss_total:.6f} "
+					f"(I2T: {batch_loss_i2t:.6f} T2I: {batch_loss_t2i:.6f})"
 				)
 		
 		# Calculate average losses
@@ -5676,8 +5681,8 @@ def clip_adapter_finetune_multi_label(
 		activation=activation,
 		verbose=verbose,
 	).to(device)
-
-	get_parameters_info(model=model, mode=clip_adapter_method)
+	get_parameters_info(model=model, mode=clip_adapter_method, verbose=verbose)
+	get_parameters_info_orig(model=model, mode=clip_adapter_method)
 
 	if verbose:
 		trainable = [(n, p.numel()) for n, p in model.named_parameters() if p.requires_grad]
@@ -5908,8 +5913,8 @@ def clip_adapter_finetune_multi_label(
 
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\t\tBatch [{bidx+1:04d}/{len(train_loader)}] "
-					f"Total: {total_loss.item():.6f} "
+					f"\tBatch[{bidx+1:6d}/{len(train_loader)}] "
+					f"[LOSS] Total: {total_loss.item():.6f} "
 					f"(I2T: {loss_i2t.item():.6f} "
 					f"T2I: {loss_t2i.item():.6f})"
 				)
@@ -6495,7 +6500,8 @@ def tip_adapter_finetune_multi_label(
 		total_frozen = sum(numel for _, numel in frozen_params)
 		print(f"[TOTAL] Trainable: {total_trainable:,} Frozen: {total_frozen:,}")
 	
-	get_parameters_info(model=model, mode=tip_adapter_method)
+	get_parameters_info(model=model, mode=tip_adapter_method, verbose=verbose)
+	get_parameters_info_orig(model=model, mode=tip_adapter_method)
 
 	masks = compute_loss_masks(
 		train_loader=train_loader,
@@ -6784,9 +6790,9 @@ def tip_adapter_finetune_multi_label(
 			
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
-					f"Total Loss: {batch_loss_total:.6f} "
-					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
+					f"\tBatch[{bidx + 1:6d}/{len(train_loader)}] "
+					f"[LOSS] Total: {batch_loss_total:.6f} "
+					f"(I2T: {batch_loss_i2t:.6f} T2I: {batch_loss_t2i:.6f})"
 				)
 
 		# Calculate average losses

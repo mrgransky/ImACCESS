@@ -483,538 +483,489 @@ def _print_component_status(label, component, is_param=False):
 		print(f"    {icon} {label:40s} | {total:>12,} total | {train:>12,} train | {frozen:>12,} frozen")
 
 def get_parameters_info(model, mode, verbose=True, optimizer=None):
-		"""
-		Comprehensive pre-fine-tuning inspector for CLIP and its adapted variants.
+	"""
+	Comprehensive pre-fine-tuning inspector for CLIP and its adapted variants.
+	Covers: full, lora, rslora, lora_plus, dora, vera, ia3,
+					clip_adapter_v/t/vt, tip_adapter, tip_adapter_f.
+	(zero_shot / probe do not need to call this.)
+	Args:
+			model: the (possibly adapted) CLIP model.
+			mode: strategy label string, e.g. 'lora_plus', 'ia3', 'tip_adapter_f'.
+			verbose: extended per-layer breakdowns.
+			max_listed_params: cap for the explicit trainable-parameter list.
+			optimizer: optional; pass it to verify param-group setup (critical for LoRA+).
+	Returns:
+			dict with aggregate statistics.
+	"""
 
-		Covers: full, lora, rslora, lora_plus, dora, vera, ia3,
-						clip_adapter_v/t/vt, tip_adapter, tip_adapter_f.
-		(zero_shot / probe do not need to call this.)
+	named = list(model.named_parameters())
+	name_to_p = dict(named)
+	mode_l = mode.lower()
+	# ──────────────────────────────────────────────
+	# 0. Model metadata & memory bandwidth
+	# ──────────────────────────────────────────────
+	if mode=="lora_plus" and optimizer is None:
+		raise ValueError("LoRA+ requires passing the optimizer to verify param-group setup.")
+	device = next(model.parameters()).device
+	dtypes = defaultdict(int)
+	for _, p in named:
+		dtypes[str(p.dtype)] += 1
 
-		Args:
-				model: the (possibly adapted) CLIP model.
-				mode: strategy label string, e.g. 'lora_plus', 'ia3', 'tip_adapter_f'.
-				verbose: extended per-layer breakdowns.
-				max_listed_params: cap for the explicit trainable-parameter list.
-				optimizer: optional; pass it to verify param-group setup (critical for LoRA+).
-
-		Returns:
-				dict with aggregate statistics.
-		"""
-		named = list(model.named_parameters())
-		name_to_p = dict(named)
-		mode_l = mode.lower()
-
-		# ──────────────────────────────────────────────
-		# 0. Model metadata & memory bandwidth
-		# ──────────────────────────────────────────────
-		if mode=="lora_plus" and optimizer is None:
-			raise ValueError("LoRA+ requires passing the optimizer to verify param-group setup.")
-
-		device = next(model.parameters()).device
-		dtypes = defaultdict(int)
-		for _, p in named:
-			dtypes[str(p.dtype)] += 1
-
-		print(f"\n[INSPECTION] {model.__class__.__name__} {getattr(model, 'name', '?')}")
-		print(f"  Mode           : {mode}")
-		print(f"  Training mode  : {model.training}  ({'model.train()' if model.training else 'model.eval()'})")
-		print(f"  Device         : {device}")
-		print(f"  Dtype dist     : {dict(dtypes)}")
-		print(f"  Total params   : {sum(p.numel() for _, p in named):,}")
-		print(f"  Trainable      : {sum(p.numel() for _, p in named if p.requires_grad):,}")
-		print(f"  Frozen         : {sum(p.numel() for _, p in named if not p.requires_grad):,}")
-
-		total_bytes = sum(p.numel() * p.element_size() for _, p in named)
-		print(f"  Param memory   : {total_bytes / 1e6:.1f} MB  ({total_bytes / 1e9:.2f} GB)")
-
-		bytes_per_step = total_bytes * 3  # rough forward+backward traffic estimate
-		print(f"  Est. BW/step   : {bytes_per_step / 1e9:.2f} GB (forward+backward)")
-		if torch.cuda.is_available() and str(device).startswith("cuda"):
-				device_name = torch.cuda.get_device_name(device)
-				for gpu, bw in GPU_BANDWIDTH_GBPS.items():
-						if gpu in device_name:
-								print(f"  GPU bandwidth  : ~{bw} GB/s ({device_name})")
-								print(f"  Theoretical max steps/s: {bw / (bytes_per_step / 1e9):.1f}")
-								break
-
-		# ──────────────────────────────────────────────
-		# 1. Model configuration
-		# ──────────────────────────────────────────────
-		is_vit = hasattr(model, 'visual') and hasattr(model.visual, 'transformer')
-
-		print(f"\n  [Config]")
-		cfg_attrs = [
-				(model, 'context_length', 'Context length'),
-				(model, 'vocab_size',     'Vocab size'),
-				(model, 'embed_dim',      'Embed dim'),
-		]
-		if hasattr(model, 'visual'):
-				cfg_attrs += [
-						(model.visual, 'input_resolution', 'Image resolution'),
-						(model.visual, 'output_dim',       'Vision out dim'),
-				]
-		for obj, attr, label in cfg_attrs:
-				val = getattr(obj, attr, None)
-				if val is not None:
-						print(f"    {label:20s}: {val}")
-		if is_vit and hasattr(model.visual, 'conv1'):
-				print(f"    {'Patch size':20s}: {model.visual.conv1.kernel_size}")
-		elif hasattr(model, 'visual'):
-				print(f"    {'Vision backbone':20s}: ModifiedResNet")
-
-		if 'logit_scale' in name_to_p:
-				ls = name_to_p['logit_scale']
-				print(f"\n  [Logit scale]")
-				print(f"    raw value    : {ls.item():.6f}")
-				print(f"    exp (temp)   : {ls.exp().item():.4f}")
-				print(f"    requires_grad: {ls.requires_grad}")
-
-		# ──────────────────────────────────────────────
-		# 2. Prefix-based grouping (dynamic catch-all)
-		# ──────────────────────────────────────────────
-		def find(prefixes):
-				matched = []
-				for pref in prefixes:
-						matched += [n for n, _ in named if n.startswith(pref)]
-				# dedupe by id (LoRA params inside visual. must not be double-counted)
-				seen, uniq = set(), []
-				for n in matched:
-						pid = id(name_to_p[n])
-						if pid not in seen:
-								seen.add(pid)
-								uniq.append(n)
-				tr = sum(name_to_p[n].numel() for n in uniq if name_to_p[n].requires_grad)
-				fr = sum(name_to_p[n].numel() for n in uniq if not name_to_p[n].requires_grad)
-				return tr, fr, tr + fr, uniq, seen
-
-		visual_prefixes = ['visual.']
-		core_text_prefixes = ['transformer.', 'token_embedding', 'positional_embedding', 'ln_final', 'text_projection']
-
-		# DYNAMIC CATCH-ALL: any top-level param group that is not visual / logit_scale / core-text
-		# (ia3_text_projection, lora_plus_text_projection, probe heads, adapters, ...)
-		text_adapter_prefixes = sorted(set(
-				n.split('.')[0] for n in name_to_p
-				if not n.startswith('visual.')
-				and n != 'logit_scale'
-				and not any(n.startswith(p) for p in core_text_prefixes)
-		))
-
-		print(f"\n  [Prefix verification]")
-		for label, prefs in [('VISUAL', visual_prefixes), ('CORE_TEXT', core_text_prefixes), ('TEXT_ADAPTERS', text_adapter_prefixes)]:
-				for pref in prefs:
-						hits = [n for n in name_to_p if n.startswith(pref)]
-						if hits:
-								n_tr = sum(1 for n in hits if name_to_p[n].requires_grad)
-								n_fr = len(hits) - n_tr
-								print(f"    ✓ '{pref}' -> {len(hits)} params "
-											f"({n_tr} train / {n_fr} frozen), "
-											f"{sum(name_to_p[n].numel() for n in hits):,} numel")
-						else:
-								if label != 'TEXT_ADAPTERS':
-										print(f"    ✗ '{pref}' -> 0 matches")
-
-		img_tr, img_fr, img_to, _, _ = find(visual_prefixes)
-		txt_core_tr, txt_core_fr, txt_core_to, _, _ = find(core_text_prefixes)
-		txt_adapter_tr, txt_adapter_fr, txt_adapter_to, text_adapter_list, _ = find(text_adapter_prefixes)
-
-		total_tr = sum(p.numel() for _, p in named if p.requires_grad)
-		total_fr = sum(p.numel() for _, p in named if not p.requires_grad)
-		total_to = total_tr + total_fr
-		logit = name_to_p['logit_scale'].numel() if 'logit_scale' in name_to_p else 0
-
-		text_to = txt_core_to + txt_adapter_to
-		text_tr = txt_core_tr + txt_adapter_tr
-
-		# ──────────────────────────────────────────────
-		# 3. Per-module breakdown (top-level children)
-		# ──────────────────────────────────────────────
-		if verbose:
-			print(f"\n[Per-module breakdown]")
-			for child_name, child_module in model.named_children():
-				c_params = list(child_module.parameters())
-				if not c_params:
-					continue
-
-				c_total = sum(p.numel() for p in c_params)
-				c_train = sum(p.numel() for p in c_params if p.requires_grad)
-				c_frozen = c_total - c_train
-				pct = c_train / c_total * 100 if c_total > 0 else 0
-
-				status = (
-					"🔓 TRAINABLE" if c_train == c_total else
-					"🔒 FROZEN" if c_train == 0 else f"🔀 PARTIAL ({pct:.3f}%)")
-
-				print(
-					f"{child_name:28s}Total: {c_total:<15,} "
-					f"Trainable: {c_train:15,} Frozen: {c_frozen:<15,}{status}"
-				)
-
-		# ──────────────────────────────────────────────
-		# 4. Trainable parameter list
-		# ──────────────────────────────────────────────
-		trainable_names = [n for n, p in named if p.requires_grad]
-		print(f"\n[Trainable parameters] ({len(trainable_names)} tensors)")
-		for i, n in enumerate(trainable_names):
-			p = name_to_p[n]
-			print(f"{i+1:5d}. {n:75s}{str(p.shape):30s}{p.numel():<10,}{str(p.dtype)}")
-
-		# ──────────────────────────────────────────────
-		# 4b. Parameter size distribution
-		# ──────────────────────────────────────────────
-		if verbose:
-			print(f"\n[Parameter size distribution]")
-			param_sizes = [p.numel() for _, p in named]
-			size_buckets = {
-				'tiny   (<1K)':      sum(1 for s in param_sizes if s < 1_000),
-				'small  (1K-10K)':   sum(1 for s in param_sizes if 1_000 <= s < 10_000),
-				'medium (10K-100K)': sum(1 for s in param_sizes if 10_000 <= s < 100_000),
-				'large  (100K-1M)':  sum(1 for s in param_sizes if 100_000 <= s < 1_000_000),
-				'huge   (>1M)':      sum(1 for s in param_sizes if s >= 1_000_000),
-			}
-			for bucket, count in size_buckets.items():
-				print(f"    {bucket:20s}: {count:4d} params ({count/len(param_sizes)*100:5.1f}%)")
-
-			largest = sorted(named, key=lambda x: x[1].numel(), reverse=True)[:100]
-			print(f"\n[Top-{len(largest)} largest parameters]")
-			for i, (name, param) in enumerate(largest, 1):
-				print(f"{i:5d}. {name:75s}{param.numel():<25,}{tuple(param.shape)}")
-
-		# ──────────────────────────────────────────────
-		# 5. Adapter module inspection (LoRA/DoRA/VeRA/IA3/Adapter/Tip)
-		# ──────────────────────────────────────────────
-		adapter_modules = []
-		for name, module in model.named_modules():
-			cls_name = module.__class__.__name__.lower()
-			if any(k in cls_name for k in ADAPTER_KEYWORDS):
-				adapter_modules.append((name, module))
-
-		if adapter_modules:
-			print(f"\n[Adapter modules detected] ({len(adapter_modules)})")
-			for name, mod in adapter_modules:
-				n_params = sum(p.numel() for p in mod.parameters())
-				n_train  = sum(p.numel() for p in mod.parameters() if p.requires_grad)
-				extra = ""
-				if hasattr(mod, 'r'):          extra += f" rank={mod.r}"
-				if hasattr(mod, 'lora_alpha'): extra += f" alpha={mod.lora_alpha}"
-				if hasattr(mod, 'lora_dropout'):
-						drop = mod.lora_dropout
-						extra += f" dropout={drop.p if hasattr(drop, 'p') else drop}"
-				print(f"    {name:60s} | {n_params:>10,} params | {n_train:>10,} train | {mod.__class__.__name__}{extra}")
-			
-			# LoRA-family configuration analysis (RSLoRA-aware scaling)
-			lora_ranks  = [mod.r for _, mod in adapter_modules if hasattr(mod, 'r')]
-			lora_alphas = [mod.lora_alpha for _, mod in adapter_modules if hasattr(mod, 'lora_alpha')]
-			if lora_ranks or lora_alphas:
-				print(f"\n  [LoRA configuration analysis]")
-				if lora_ranks:
-					print(
-						f"    Rank distribution : min={min(lora_ranks)}, max={max(lora_ranks)}, "
-						f"mean={sum(lora_ranks)/len(lora_ranks):.1f}"
-					)
-				if lora_alphas:
-					print(
-						f"    Alpha distribution: min={min(lora_alphas)}, max={max(lora_alphas)}, "
-						f"mean={sum(lora_alphas)/len(lora_alphas):.1f}"
-					)
-				if lora_ranks and lora_alphas:
-					if 'rslora' in mode_l:
-						scalings = [a / math.sqrt(r) for a, r in zip(lora_alphas, lora_ranks) if r > 0]
-						label = "alpha/√r"
+	print(f"\n[INSPECTION] {model.__class__.__name__} {getattr(model, 'name', '?')}")
+	print(f"  Mode           : {mode}")
+	print(f"  Training mode  : {model.training}  ({'model.train()' if model.training else 'model.eval()'})")
+	print(f"  Device         : {device}")
+	print(f"  Dtype dist     : {dict(dtypes)}")
+	print(f"  Total params   : {sum(p.numel() for _, p in named):,}")
+	print(f"  Trainable      : {sum(p.numel() for _, p in named if p.requires_grad):,}")
+	print(f"  Frozen         : {sum(p.numel() for _, p in named if not p.requires_grad):,}")
+	total_bytes = sum(p.numel() * p.element_size() for _, p in named)
+	print(f"  Param memory   : {total_bytes / 1e6:.1f} MB  ({total_bytes / 1e9:.2f} GB)")
+	bytes_per_step = total_bytes * 3  # rough forward+backward traffic estimate
+	print(f"  Est. BW/step   : {bytes_per_step / 1e9:.2f} GB (forward+backward)")
+	if torch.cuda.is_available() and str(device).startswith("cuda"):
+			device_name = torch.cuda.get_device_name(device)
+			for gpu, bw in GPU_BANDWIDTH_GBPS.items():
+					if gpu in device_name:
+							print(f"  GPU bandwidth  : ~{bw} GB/s ({device_name})")
+							print(f"  Theoretical max steps/s: {bw / (bytes_per_step / 1e9):.1f}")
+							break
+	# ──────────────────────────────────────────────
+	# 1. Model configuration
+	# ──────────────────────────────────────────────
+	is_vit = hasattr(model, 'visual') and hasattr(model.visual, 'transformer')
+	print(f"\n  [Config]")
+	cfg_attrs = [
+			(model, 'context_length', 'Context length'),
+			(model, 'vocab_size',     'Vocab size'),
+			(model, 'embed_dim',      'Embed dim'),
+	]
+	if hasattr(model, 'visual'):
+			cfg_attrs += [
+					(model.visual, 'input_resolution', 'Image resolution'),
+					(model.visual, 'output_dim',       'Vision out dim'),
+			]
+	for obj, attr, label in cfg_attrs:
+			val = getattr(obj, attr, None)
+			if val is not None:
+					print(f"    {label:20s}: {val}")
+	if is_vit and hasattr(model.visual, 'conv1'):
+			print(f"    {'Patch size':20s}: {model.visual.conv1.kernel_size}")
+	elif hasattr(model, 'visual'):
+			print(f"    {'Vision backbone':20s}: ModifiedResNet")
+	if 'logit_scale' in name_to_p:
+			ls = name_to_p['logit_scale']
+			print(f"\n  [Logit scale]")
+			print(f"    raw value    : {ls.item():.6f}")
+			print(f"    exp (temp)   : {ls.exp().item():.4f}")
+			print(f"    requires_grad: {ls.requires_grad}")
+	# ──────────────────────────────────────────────
+	# 2. Prefix-based grouping (dynamic catch-all)
+	# ──────────────────────────────────────────────
+	def find(prefixes):
+			matched = []
+			for pref in prefixes:
+					matched += [n for n, _ in named if n.startswith(pref)]
+			# dedupe by id (LoRA params inside visual. must not be double-counted)
+			seen, uniq = set(), []
+			for n in matched:
+					pid = id(name_to_p[n])
+					if pid not in seen:
+							seen.add(pid)
+							uniq.append(n)
+			tr = sum(name_to_p[n].numel() for n in uniq if name_to_p[n].requires_grad)
+			fr = sum(name_to_p[n].numel() for n in uniq if not name_to_p[n].requires_grad)
+			return tr, fr, tr + fr, uniq, seen
+	visual_prefixes = ['visual.']
+	core_text_prefixes = ['transformer.', 'token_embedding', 'positional_embedding', 'ln_final', 'text_projection']
+	# DYNAMIC CATCH-ALL: any top-level param group that is not visual / logit_scale / core-text
+	# (ia3_text_projection, lora_plus_text_projection, probe heads, adapters, ...)
+	text_adapter_prefixes = sorted(set(
+			n.split('.')[0] for n in name_to_p
+			if not n.startswith('visual.')
+			and n != 'logit_scale'
+			and not any(n.startswith(p) for p in core_text_prefixes)
+	))
+	print(f"\n  [Prefix verification]")
+	for label, prefs in [('VISUAL', visual_prefixes), ('CORE_TEXT', core_text_prefixes), ('TEXT_ADAPTERS', text_adapter_prefixes)]:
+			for pref in prefs:
+					hits = [n for n in name_to_p if n.startswith(pref)]
+					if hits:
+							n_tr = sum(1 for n in hits if name_to_p[n].requires_grad)
+							n_fr = len(hits) - n_tr
+							print(f"    ✓ '{pref}' -> {len(hits)} params "
+										f"({n_tr} train / {n_fr} frozen), "
+										f"{sum(name_to_p[n].numel() for n in hits):,} numel")
 					else:
-						scalings = [a / r for a, r in zip(lora_alphas, lora_ranks) if r > 0]
-						label = "alpha/r"
-					if scalings:
-						print(
-							f"    Scaling ({label:8s}): min={min(scalings):.2f}, max={max(scalings):.2f}, "
-							f"mean={sum(scalings)/len(scalings):.2f}"
-						)
-
-		# ──────────────────────────────────────────────
-		# 5b. Strategy-aware initialization contract checks
-		# ──────────────────────────────────────────────
-		print(f"\n[Strategy contract checks]")
-		contract_checked = False
-
-		# IA3: scales MUST start at 1.0 (identity), otherwise step-0 output is corrupted
-		if 'ia3' in mode_l:
-				contract_checked = True
-				ia3_params = [(n, p) for n, p in named if 'ia3' in n.lower() and p.requires_grad]
-				if ia3_params:
-						n_ones = sum(1 for _, p in ia3_params if torch.allclose(p.detach(), torch.ones_like(p), atol=1e-4))
-						if n_ones == len(ia3_params):
-								print(f"    ✅ IA3: all {len(ia3_params)} scales initialized to 1.0 (identity preserved)")
-						else:
-								print(f"    ❌ IA3: only {n_ones}/{len(ia3_params)} scales are 1.0 — model output altered at step 0!")
-				else:
-						print(f"    ⚠️  IA3 mode but no trainable ia3 parameters found")
-
-		# LoRA family: ΔW = B·A must be zero at init → trainable B matrices must be all-zero
-		if any(k in mode_l for k in ('lora', 'rslora', 'dora', 'vera')):
-				contract_checked = True
-				b_mats = [p for n, p in named if 'lora_b' in n.lower() and p.requires_grad]
-				if b_mats:
-						n_zero_b = sum(1 for p in b_mats if (p == 0).all())
-						if n_zero_b == len(b_mats):
-								print(f"    ✅ LoRA family: all {len(b_mats)} trainable B-matrices are zero → ΔW=0 at step 0")
-						else:
-								print(f"    ❌ LoRA family: {len(b_mats) - n_zero_b}/{len(b_mats)} B-matrices NON-zero — "
-											f"pretrained output shifts at step 0")
-				else:
-						print(f"    ℹ️  No trainable lora_B matrices (expected for VeRA with frozen random matrices)")
-
-		# DoRA: magnitude vectors must equal column-norms of W_pretrained → strictly positive
-		if 'dora' in mode_l:
-				contract_checked = True
-				dora_scales = [(n, p) for n, p in named if 'dora_scale' in n.lower()]
-				if dora_scales:
-						all_pos = all((p.detach() > 0).all() for _, p in dora_scales)
-						print(f"    {'✅' if all_pos else '❌'} DoRA: {len(dora_scales)} magnitude vectors "
-									f"{'all positive' if all_pos else 'NOT all positive (must equal ||W|| columns)'}")
-				else:
-						print(f"    ⚠️  DoRA mode but no 'dora_scale' parameters found")
-
-		# VeRA: λb zero-init, λd small random
-		if 'vera' in mode_l:
-				contract_checked = True
-				lb = [p for n, p in named if 'lambda_b' in n.lower() and p.requires_grad]
-				ld = [p for n, p in named if 'lambda_d' in n.lower() and p.requires_grad]
-				if lb:
-						n_zero = sum(1 for p in lb if (p == 0).all())
-						print(f"    {'✅' if n_zero == len(lb) else '⚠️ '} VeRA: {n_zero}/{len(lb)} λb vectors zero-initialized")
-				if ld:
-						stds = [((p.detach() - p.detach().mean()) ** 2).mean().sqrt().item() for p in ld]
-						print(f"    ℹ️  VeRA: {len(ld)} λd vectors, std range [{min(stds):.4f}, {max(stds):.4f}]")
-
-		# Tip-Adapter(-F): adapter values come from the few-shot cache → must NOT be zero
-		if 'tip_adapter' in mode_l:
-				contract_checked = True
-				tip_params = [(n, p) for n, p in named
-											if ('adapter' in n.lower() or 'tip' in n.lower()) and p.requires_grad]
-				if tip_params:
-						n_nonzero = sum(1 for _, p in tip_params if (p != 0).any())
-						print(f"    {'✅' if n_nonzero == len(tip_params) else '⚠️ '} Tip-Adapter: "
-									f"{n_nonzero}/{len(tip_params)} adapter tensors non-zero (cache-initialized)")
-				else:
-						print(f"    ⚠️  Tip-Adapter mode but no trainable adapter parameters found")
-
-		# CLIP-Adapter: report zero-init status of the bottleneck (zero output layer is conventional)
-		if 'clip_adapter' in mode_l:
-				contract_checked = True
-				ad_params = [(n, p) for n, p in named if 'adapter' in n.lower() and p.requires_grad]
-				if ad_params:
-						n_zero = sum(1 for _, p in ad_params if (p == 0).all())
-						print(f"    ℹ️  CLIP-Adapter: {len(ad_params)} trainable adapter tensors, "
-									f"{n_zero} zero-initialized {'(residual identity init — OK)' if n_zero else ''}")
-				else:
-						print(f"    ⚠️  CLIP-Adapter mode but no trainable adapter parameters found")
-
-		if not contract_checked:
-				print(f"    ℹ️  No family-specific contract for mode '{mode}' (full fine-tuning has no init contract)")
-
-		# ──────────────────────────────────────────────
-		# 6 & 7. Layer-level freeze maps (visual + text)
-		# ──────────────────────────────────────────────
-		if verbose and hasattr(model, 'visual'):
-				vis = model.visual
-				if is_vit:
-						print(f"\n  [Visual Transformer — layer freeze map]")
-						_print_component_status("conv1 (patch embed)", vis.conv1)
-						if hasattr(vis, 'class_embedding'):
-								_print_component_status("class_embedding", vis.class_embedding, is_param=True)
-						_print_component_status("positional_embedding", vis.positional_embedding, is_param=True)
-						if hasattr(vis, 'ln_pre'):
-								_print_component_status("ln_pre", vis.ln_pre)
-						for i, block in enumerate(vis.transformer.resblocks):
-								_print_component_status(f"resblock[{i}]", block)
-						if hasattr(vis, 'ln_post'):
-								_print_component_status("ln_post", vis.ln_post)
-						if getattr(vis, 'proj', None) is not None:
-								_print_component_status("proj", vis.proj, is_param=True)
-				else:
-						print(f"\n  [Visual ResNet — layer freeze map]")
-						for stem in ('conv1', 'conv2', 'conv3'):
-								if hasattr(vis, stem):
-										_print_component_status(f"stem {stem}", getattr(vis, stem))
-						for lname in ('layer1', 'layer2', 'layer3', 'layer4'):
-								if hasattr(vis, lname):
-										_print_component_status(lname, getattr(vis, lname))
-						if hasattr(vis, 'attnpool'):
-								_print_component_status("attnpool", vis.attnpool)
-
-		if verbose and hasattr(model, 'transformer'):
-				print(f"\n  [Text Transformer — layer freeze map]")
-				_print_component_status("token_embedding", model.token_embedding)
-				_print_component_status("positional_embedding", model.positional_embedding, is_param=True)
-				for i, block in enumerate(model.transformer.resblocks):
-						_print_component_status(f"resblock[{i}]", block)
-				_print_component_status("ln_final", model.ln_final)
-				if model.text_projection is not None:
-						_print_component_status("text_projection", model.text_projection, is_param=True)
-
-		# ──────────────────────────────────────────────
-		# 8 & 9. Numerical health & gradient flow
-		# ──────────────────────────────────────────────
-		nan_params, inf_params, expected_zero, unexpected_zero = [], [], [], []
-		for n, p in named:
-				if p.requires_grad and p.numel() > 0:
-						if torch.isnan(p).any(): nan_params.append(n)
-						if torch.isinf(p).any(): inf_params.append(n)
-						if (p == 0).all():
-								if any(pat in n.lower() for pat in EXPECTED_ZERO_PATTERNS):
-										expected_zero.append(n)
-								else:
-										unexpected_zero.append(n)
-
-		print(f"\n[Numerical health check]")
-		print(f"    NaN in trainable params  : {'❌ ' + str(nan_params) if nan_params else '✅ None'}")
-		print(f"    Inf in trainable params  : {'❌ ' + str(inf_params) if inf_params else '✅ None'}")
-		print(f"    Expected zeros (init)    : {len(expected_zero)} params "
-					f"{'✅ (LoRA-B / VeRA λb preserve pretrained output at step 0)' if expected_zero else ''}")
-		if unexpected_zero:
-				print(f"    ⚠️  Unexpected zero params: {len(unexpected_zero)}")
-				for i, n in enumerate(unexpected_zero[:10]):
-						print(f"        {i+1}. {n}")
-				if len(unexpected_zero) > 10:
-						print(f"        ... and {len(unexpected_zero) - 10} more")
-		else:
-				print(f"    Unexpected zero params   : ✅ None")
-
-		print(f"\n  [Gradient flow check]")
-		print(f"    requires_grad=True  : {len(trainable_names)} params")
-		print(f"    requires_grad=False : {len(named) - len(trainable_names)} params")
-		stale_grads = [n for n, p in named if not p.requires_grad and p.grad is not None]
-		if stale_grads:
-				print(f"    ⚠️  Frozen params with stale .grad: {stale_grads[:5]}")
-		else:
-				print(f"    No stale gradients on frozen params ✅")
-
-		# ──────────────────────────────────────────────
-		# 10. Activation memory estimate (ViT only, rough)
-		# ──────────────────────────────────────────────
-		if is_vit:
-				vis_blocks = len(model.visual.transformer.resblocks)
-				text_blocks = len(model.transformer.resblocks) if hasattr(model, 'transformer') else 0
-				embed_dim = model.visual.output_dim if hasattr(model.visual, 'output_dim') else 768
-				n_patches = (model.visual.input_resolution // model.visual.conv1.kernel_size[0]) ** 2 + 1
-
-				text_activation_mem  = 2 * 32 * 77 * embed_dim * text_blocks * 4 / 1e6
-				image_activation_mem = 2 * 32 * n_patches * embed_dim * vis_blocks * 4 / 1e6
-
-				print(f"\n  [Activation memory estimate] (batch=32, approximate)")
-				print(f"    Text encoder activations : ~{text_activation_mem:.1f} MB")
-				print(f"    Image encoder activations: ~{image_activation_mem:.1f} MB")
-				print(f"    Total activations        : ~{text_activation_mem + image_activation_mem:.1f} MB")
-				print(f"    ⚠️  Actual memory will be higher due to intermediate states")
-
-		# ──────────────────────────────────────────────
-		# 11. Optimizer state estimate
-		# ──────────────────────────────────────────────
-		print(f"\n  [Optimizer state estimate] (AdamW)")
-		optimizer_state_bytes = total_tr * 4 * 2  # fp32 momentum + variance
-		print(f"    Trainable params     : {total_tr:,}")
-		print(f"    Optimizer states     : {optimizer_state_bytes / 1e6:.1f} MB (fp32)")
-		print(f"    Total training memory: {(total_bytes + optimizer_state_bytes) / 1e9:.2f} GB")
-
-		# ──────────────────────────────────────────────
-		# 11b. Optimizer inspection (optional, critical for LoRA+)
-		# ──────────────────────────────────────────────
-		frozen_in_opt = 0
-		missing_from_opt = set()
-		if optimizer is not None:
-			print(f"\n  [Optimizer inspection] ({optimizer.__class__.__name__})")
-			opt_param_ids = set()
-			for gi, group in enumerate(optimizer.param_groups):
-				n_total = sum(p.numel() for p in group['params'])
-				n_train = sum(p.numel() for p in group['params'] if p.requires_grad)
-				opt_param_ids.update(id(p) for p in group['params'])
-				print(
-					f"    group[{gi}] | lr={group['lr']:.2e} | wd={group.get('weight_decay', 0):.2e} | "
-					f"{n_total:>12,} params ({n_train:,} trainable)"
-				)
-			if 'lora_plus' in mode_l:
-				lrs = sorted(set(g['lr'] for g in optimizer.param_groups))
-				if len(lrs) >= 2:
-						print(f"    ✅ LoRA+ contract: distinct LR groups {lrs} (B/A ratio = {max(lrs)/min(lrs):.1f}×)")
-				else:
-						print(f"    ❌ LoRA+ contract VIOLATED: all param groups share lr={lrs[0]} — "
-									f"LoRA+ degenerates to plain LoRA")
-
-			frozen_in_opt = sum(1 for g in optimizer.param_groups for p in g['params'] if not p.requires_grad)
-
-			print(f"    {'✅' if frozen_in_opt == 0 else '❌'} Frozen params inside optimizer: {frozen_in_opt}")
-			model_train_ids = {id(p) for _, p in named if p.requires_grad}
-			missing_from_opt = model_train_ids - opt_param_ids
-
-			if missing_from_opt:
-				print(f"    ⚠️  {len(missing_from_opt)} trainable params are NOT in the optimizer (will never update)")
-			else:
-				print(f"    ✅ All trainable params are covered by the optimizer")
-
-		# ──────────────────────────────────────────────
-		# 12. Summary statistics
-		# ──────────────────────────────────────────────
-		print(f"\n  {'─'*60}")
-		print(f"  {mode.upper()} Statistics")
-		print(f"  {'─'*60}")
-		print(f"  Image: {img_to:>14,} total | trainable {img_tr:>12,} "
-					f"({img_tr/img_to*100:.3f}%)" if img_to else f"  Image: none")
-		print(f"  Text : {text_to:>14,} total | trainable {text_tr:>12,} "
-					f"({text_tr/text_to*100:.3f}%)" if text_to else f"  Text : none")
-		if text_adapter_list:
-				print(f"         Text-side adapter/extra groups: {text_adapter_list}")
-		print(f"  Logit: {logit}")
-		if img_to + text_to + logit == total_to:
-				print(f"  Total: {total_to:>14,} total | trainable {total_tr:>12,} -> [OK ✅]")
-		else:
-				diff = total_to - img_to - text_to - logit
-				print(f"  Total: {total_to:>14,} total | trainable {total_tr:>12,} -> [FAIL ❌] diff={diff:,}")
-
-		# ──────────────────────────────────────────────
-		# 13. Quick health summary
-		# ──────────────────────────────────────────────
-		print(f"\n[HEALTH SUMMARY]")
-
-		issues = []
-
-		if nan_params or inf_params:
-			issues.append("❌ Numerical issues detected in trainable params")
-
-		if total_tr == 0:
-			issues.append("❌ No trainable parameters")
-
-		if img_tr == 0 and text_tr == 0:
-			issues.append("⚠️  Both encoders fully frozen — verify this is intended (e.g. zero-shot/probe)")
-
-		ratio = 1e-3
-		if total_to > 0 and 0 < total_tr and (total_tr / total_to) < ratio:
-			issues.append(f"[WARNING] total_tr: {total_tr:,}, total_to: {total_to:,}:  Very low trainable ratio ({total_tr / total_to} < {ratio})")
-
-		if unexpected_zero:
-			issues.append(f"⚠️  {len(unexpected_zero)} unexpectedly zero-initialized trainable params")
-
-		if optimizer is not None:
-			if frozen_in_opt > 0:
-				issues.append(f"❌ {frozen_in_opt} frozen params registered in the optimizer")
-			if missing_from_opt:
-				issues.append(f"⚠️  {len(missing_from_opt)} trainable params missing from the optimizer")
-
-		if issues:
-			for issue in issues:
-				print(f"{issue}")
-		else:
-			print(f"✅ All checks passed — ready for training!")
-
-		return {
-				'total_params': total_to,
-				'trainable_params': total_tr,
-				'frozen_params': total_fr,
-				'image_trainable': img_tr,
-				'text_trainable': text_tr,
-				'trainable_pct': total_tr / total_to * 100 if total_to > 0 else 0,
-				'expected_zero_count': len(expected_zero),
-				'unexpected_zero_count': len(unexpected_zero),
-				'adapter_module_count': len(adapter_modules),
+							if label != 'TEXT_ADAPTERS':
+									print(f"    ✗ '{pref}' -> 0 matches")
+	img_tr, img_fr, img_to, _, _ = find(visual_prefixes)
+	txt_core_tr, txt_core_fr, txt_core_to, _, _ = find(core_text_prefixes)
+	txt_adapter_tr, txt_adapter_fr, txt_adapter_to, text_adapter_list, _ = find(text_adapter_prefixes)
+	total_tr = sum(p.numel() for _, p in named if p.requires_grad)
+	total_fr = sum(p.numel() for _, p in named if not p.requires_grad)
+	total_to = total_tr + total_fr
+	logit = name_to_p['logit_scale'].numel() if 'logit_scale' in name_to_p else 0
+	text_to = txt_core_to + txt_adapter_to
+	text_tr = txt_core_tr + txt_adapter_tr
+	# ──────────────────────────────────────────────
+	# 3. Per-module breakdown (top-level children)
+	# ──────────────────────────────────────────────
+	if verbose:
+		print(f"\n[Per-module breakdown]")
+		for child_name, child_module in model.named_children():
+			c_params = list(child_module.parameters())
+			if not c_params:
+				continue
+			c_total = sum(p.numel() for p in c_params)
+			c_train = sum(p.numel() for p in c_params if p.requires_grad)
+			c_frozen = c_total - c_train
+			pct = c_train / c_total * 100 if c_total > 0 else 0
+			status = (
+				"🔓 TRAINABLE" if c_train == c_total else
+				"🔒 FROZEN" if c_train == 0 else f"🔀 PARTIAL ({pct:.3f}%)")
+			print(
+				f"{child_name:28s}Total: {c_total:<15,} "
+				f"Trainable: {c_train:15,} Frozen: {c_frozen:<15,}{status}"
+			)
+	# ──────────────────────────────────────────────
+	# 4. Trainable parameter list
+	# ──────────────────────────────────────────────
+	trainable_names = [n for n, p in named if p.requires_grad]
+	print(f"\n[Trainable parameters] ({len(trainable_names)} tensors)")
+	for i, n in enumerate(trainable_names):
+		p = name_to_p[n]
+		print(f"{i+1:5d}. {n:75s}{str(p.shape):30s}{p.numel():<10,}{str(p.dtype)}")
+	# ──────────────────────────────────────────────
+	# 4b. Parameter size distribution
+	# ──────────────────────────────────────────────
+	if verbose:
+		print(f"\n[Parameter size distribution]")
+		param_sizes = [p.numel() for _, p in named]
+		size_buckets = {
+			'tiny   (<1K)':      sum(1 for s in param_sizes if s < 1_000),
+			'small  (1K-10K)':   sum(1 for s in param_sizes if 1_000 <= s < 10_000),
+			'medium (10K-100K)': sum(1 for s in param_sizes if 10_000 <= s < 100_000),
+			'large  (100K-1M)':  sum(1 for s in param_sizes if 100_000 <= s < 1_000_000),
+			'huge   (>1M)':      sum(1 for s in param_sizes if s >= 1_000_000),
 		}
+		for bucket, count in size_buckets.items():
+			print(f"    {bucket:20s}: {count:4d} params ({count/len(param_sizes)*100:5.1f}%)")
+		largest = sorted(named, key=lambda x: x[1].numel(), reverse=True)[:100]
+		print(f"\n[Top-{len(largest)} largest parameters]")
+		for i, (name, param) in enumerate(largest, 1):
+			print(f"{i:5d}. {name:75s}{param.numel():<25,}{tuple(param.shape)}")
+	# ──────────────────────────────────────────────
+	# 5. Adapter module inspection (LoRA/DoRA/VeRA/IA3/Adapter/Tip)
+	# ──────────────────────────────────────────────
+	adapter_modules = []
+	for name, module in model.named_modules():
+		cls_name = module.__class__.__name__.lower()
+		if any(k in cls_name for k in ADAPTER_KEYWORDS):
+			adapter_modules.append((name, module))
+	if adapter_modules:
+		print(f"\n[Adapter modules detected] ({len(adapter_modules)})")
+		for name, mod in adapter_modules:
+			n_params = sum(p.numel() for p in mod.parameters())
+			n_train  = sum(p.numel() for p in mod.parameters() if p.requires_grad)
+			extra = ""
+			if hasattr(mod, 'r'):          extra += f" rank={mod.r}"
+			if hasattr(mod, 'lora_alpha'): extra += f" alpha={mod.lora_alpha}"
+			if hasattr(mod, 'lora_dropout'):
+					drop = mod.lora_dropout
+					extra += f" dropout={drop.p if hasattr(drop, 'p') else drop}"
+			print(f"    {name:60s} | {n_params:>10,} params | {n_train:>10,} train | {mod.__class__.__name__}{extra}")
+		
+		# LoRA-family configuration analysis (RSLoRA-aware scaling)
+		lora_ranks  = [mod.r for _, mod in adapter_modules if hasattr(mod, 'r')]
+		lora_alphas = [mod.lora_alpha for _, mod in adapter_modules if hasattr(mod, 'lora_alpha')]
+		if lora_ranks or lora_alphas:
+			print(f"\n  [LoRA configuration analysis]")
+			if lora_ranks:
+				print(
+					f"    Rank distribution : min={min(lora_ranks)}, max={max(lora_ranks)}, "
+					f"mean={sum(lora_ranks)/len(lora_ranks):.1f}"
+				)
+			if lora_alphas:
+				print(
+					f"    Alpha distribution: min={min(lora_alphas)}, max={max(lora_alphas)}, "
+					f"mean={sum(lora_alphas)/len(lora_alphas):.1f}"
+				)
+			if lora_ranks and lora_alphas:
+				if 'rslora' in mode_l:
+					scalings = [a / math.sqrt(r) for a, r in zip(lora_alphas, lora_ranks) if r > 0]
+					label = "alpha/√r"
+				else:
+					scalings = [a / r for a, r in zip(lora_alphas, lora_ranks) if r > 0]
+					label = "alpha/r"
+				if scalings:
+					print(
+						f"    Scaling ({label:8s}): min={min(scalings):.2f}, max={max(scalings):.2f}, "
+						f"mean={sum(scalings)/len(scalings):.2f}"
+					)
+	# ──────────────────────────────────────────────
+	# 5b. Strategy-aware initialization contract checks
+	# ──────────────────────────────────────────────
+	print(f"\n[Strategy contract checks]")
+	contract_checked = False
+	# IA3: scales MUST start at 1.0 (identity), otherwise step-0 output is corrupted
+	if 'ia3' in mode_l:
+			contract_checked = True
+			ia3_params = [(n, p) for n, p in named if 'ia3' in n.lower() and p.requires_grad]
+			if ia3_params:
+					n_ones = sum(1 for _, p in ia3_params if torch.allclose(p.detach(), torch.ones_like(p), atol=1e-4))
+					if n_ones == len(ia3_params):
+							print(f"    ✅ IA3: all {len(ia3_params)} scales initialized to 1.0 (identity preserved)")
+					else:
+							print(f"    ❌ IA3: only {n_ones}/{len(ia3_params)} scales are 1.0 — model output altered at step 0!")
+			else:
+					print(f"    ⚠️  IA3 mode but no trainable ia3 parameters found")
+	# LoRA family: ΔW = B·A must be zero at init → trainable B matrices must be all-zero
+	if any(k in mode_l for k in ('lora', 'rslora', 'dora', 'vera')):
+			contract_checked = True
+			b_mats = [p for n, p in named if 'lora_b' in n.lower() and p.requires_grad]
+			if b_mats:
+					n_zero_b = sum(1 for p in b_mats if (p == 0).all())
+					if n_zero_b == len(b_mats):
+							print(f"    ✅ LoRA family: all {len(b_mats)} trainable B-matrices are zero → ΔW=0 at step 0")
+					else:
+							print(f"    ❌ LoRA family: {len(b_mats) - n_zero_b}/{len(b_mats)} B-matrices NON-zero — "
+										f"pretrained output shifts at step 0")
+			else:
+					print(f"    ℹ️  No trainable lora_B matrices (expected for VeRA with frozen random matrices)")
+	# DoRA: magnitude vectors must equal column-norms of W_pretrained → strictly positive
+	if 'dora' in mode_l:
+			contract_checked = True
+			dora_scales = [(n, p) for n, p in named if 'dora_scale' in n.lower()]
+			if dora_scales:
+					all_pos = all((p.detach() > 0).all() for _, p in dora_scales)
+					print(f"    {'✅' if all_pos else '❌'} DoRA: {len(dora_scales)} magnitude vectors "
+								f"{'all positive' if all_pos else 'NOT all positive (must equal ||W|| columns)'}")
+			else:
+					print(f"    ⚠️  DoRA mode but no 'dora_scale' parameters found")
+	# VeRA: λb zero-init, λd small random
+	if 'vera' in mode_l:
+			contract_checked = True
+			lb = [p for n, p in named if 'lambda_b' in n.lower() and p.requires_grad]
+			ld = [p for n, p in named if 'lambda_d' in n.lower() and p.requires_grad]
+			if lb:
+					n_zero = sum(1 for p in lb if (p == 0).all())
+					print(f"    {'✅' if n_zero == len(lb) else '⚠️ '} VeRA: {n_zero}/{len(lb)} λb vectors zero-initialized")
+			if ld:
+					stds = [((p.detach() - p.detach().mean()) ** 2).mean().sqrt().item() for p in ld]
+					print(f"    ℹ️  VeRA: {len(ld)} λd vectors, std range [{min(stds):.4f}, {max(stds):.4f}]")
+	# Tip-Adapter(-F): adapter values come from the few-shot cache → must NOT be zero
+	if 'tip_adapter' in mode_l:
+			contract_checked = True
+			tip_params = [(n, p) for n, p in named
+										if ('adapter' in n.lower() or 'tip' in n.lower()) and p.requires_grad]
+			if tip_params:
+					n_nonzero = sum(1 for _, p in tip_params if (p != 0).any())
+					print(f"    {'✅' if n_nonzero == len(tip_params) else '⚠️ '} Tip-Adapter: "
+								f"{n_nonzero}/{len(tip_params)} adapter tensors non-zero (cache-initialized)")
+			else:
+					print(f"    ⚠️  Tip-Adapter mode but no trainable adapter parameters found")
+	# CLIP-Adapter: report zero-init status of the bottleneck (zero output layer is conventional)
+	if 'clip_adapter' in mode_l:
+			contract_checked = True
+			ad_params = [(n, p) for n, p in named if 'adapter' in n.lower() and p.requires_grad]
+			if ad_params:
+					n_zero = sum(1 for _, p in ad_params if (p == 0).all())
+					print(f"    ℹ️  CLIP-Adapter: {len(ad_params)} trainable adapter tensors, "
+								f"{n_zero} zero-initialized {'(residual identity init — OK)' if n_zero else ''}")
+			else:
+					print(f"    ⚠️  CLIP-Adapter mode but no trainable adapter parameters found")
+	if not contract_checked:
+			print(f"    ℹ️  No family-specific contract for mode '{mode}' (full fine-tuning has no init contract)")
+
+	# ──────────────────────────────────────────────
+	# 6 & 7. Layer-level freeze maps (visual + text)
+	# ──────────────────────────────────────────────
+	if verbose and hasattr(model, 'visual'):
+		vis = model.visual
+		if is_vit:
+				print(f"\n[Visual Transformer — layer freeze map]")
+				_print_component_status("conv1 (patch embed)", vis.conv1)
+				if hasattr(vis, 'class_embedding'):
+						_print_component_status("class_embedding", vis.class_embedding, is_param=True)
+				_print_component_status("positional_embedding", vis.positional_embedding, is_param=True)
+				if hasattr(vis, 'ln_pre'):
+						_print_component_status("ln_pre", vis.ln_pre)
+				for i, block in enumerate(vis.transformer.resblocks):
+						_print_component_status(f"resblock[{i}]", block)
+				if hasattr(vis, 'ln_post'):
+						_print_component_status("ln_post", vis.ln_post)
+				if getattr(vis, 'proj', None) is not None:
+						_print_component_status("proj", vis.proj, is_param=True)
+		else:
+				print(f"\n  [Visual ResNet — layer freeze map]")
+				for stem in ('conv1', 'conv2', 'conv3'):
+						if hasattr(vis, stem):
+								_print_component_status(f"stem {stem}", getattr(vis, stem))
+				for lname in ('layer1', 'layer2', 'layer3', 'layer4'):
+						if hasattr(vis, lname):
+								_print_component_status(lname, getattr(vis, lname))
+				if hasattr(vis, 'attnpool'):
+						_print_component_status("attnpool", vis.attnpool)
+
+	if verbose and hasattr(model, 'transformer'):
+		print(f"\n  [Text Transformer — layer freeze map]")
+
+		_print_component_status("token_embedding", model.token_embedding)
+		_print_component_status("positional_embedding", model.positional_embedding, is_param=True)
+
+		for i, block in enumerate(model.transformer.resblocks):
+			_print_component_status(f"resblock[{i}]", block)
+
+		_print_component_status("ln_final", model.ln_final)
+
+		if model.text_projection is not None:
+			_print_component_status("text_projection", model.text_projection, is_param=True)
+
+	# ──────────────────────────────────────────────
+	# 8 & 9. Numerical health & gradient flow
+	# ──────────────────────────────────────────────
+	nan_params, inf_params, expected_zero, unexpected_zero = [], [], [], []
+	for n, p in named:
+			if p.requires_grad and p.numel() > 0:
+					if torch.isnan(p).any(): nan_params.append(n)
+					if torch.isinf(p).any(): inf_params.append(n)
+					if (p == 0).all():
+							if any(pat in n.lower() for pat in EXPECTED_ZERO_PATTERNS):
+									expected_zero.append(n)
+							else:
+									unexpected_zero.append(n)
+	print(f"\n[Numerical health check]")
+	print(f"    NaN in trainable params  : {'❌ ' + str(nan_params) if nan_params else '✅ None'}")
+	print(f"    Inf in trainable params  : {'❌ ' + str(inf_params) if inf_params else '✅ None'}")
+	print(f"    Expected zeros (init)    : {len(expected_zero)} params "
+				f"{'✅ (LoRA-B / VeRA λb preserve pretrained output at step 0)' if expected_zero else ''}")
+	if unexpected_zero:
+			print(f"    ⚠️  Unexpected zero params: {len(unexpected_zero)}")
+			for i, n in enumerate(unexpected_zero[:10]):
+					print(f"        {i+1}. {n}")
+			if len(unexpected_zero) > 10:
+					print(f"        ... and {len(unexpected_zero) - 10} more")
+	else:
+			print(f"    Unexpected zero params   : ✅ None")
+	print(f"\n  [Gradient flow check]")
+	print(f"    requires_grad=True  : {len(trainable_names)} params")
+	print(f"    requires_grad=False : {len(named) - len(trainable_names)} params")
+	stale_grads = [n for n, p in named if not p.requires_grad and p.grad is not None]
+	if stale_grads:
+			print(f"    ⚠️  Frozen params with stale .grad: {stale_grads[:5]}")
+	else:
+			print(f"    No stale gradients on frozen params ✅")
+	# ──────────────────────────────────────────────
+	# 10. Activation memory estimate (ViT only, rough)
+	# ──────────────────────────────────────────────
+	if is_vit:
+			vis_blocks = len(model.visual.transformer.resblocks)
+			text_blocks = len(model.transformer.resblocks) if hasattr(model, 'transformer') else 0
+			embed_dim = model.visual.output_dim if hasattr(model.visual, 'output_dim') else 768
+			n_patches = (model.visual.input_resolution // model.visual.conv1.kernel_size[0]) ** 2 + 1
+			text_activation_mem  = 2 * 32 * 77 * embed_dim * text_blocks * 4 / 1e6
+			image_activation_mem = 2 * 32 * n_patches * embed_dim * vis_blocks * 4 / 1e6
+			print(f"\n  [Activation memory estimate] (batch=32, approximate)")
+			print(f"    Text encoder activations : ~{text_activation_mem:.1f} MB")
+			print(f"    Image encoder activations: ~{image_activation_mem:.1f} MB")
+			print(f"    Total activations        : ~{text_activation_mem + image_activation_mem:.1f} MB")
+			print(f"    ⚠️  Actual memory will be higher due to intermediate states")
+	# ──────────────────────────────────────────────
+	# 11. Optimizer state estimate
+	# ──────────────────────────────────────────────
+	print(f"\n  [Optimizer state estimate] (AdamW)")
+	optimizer_state_bytes = total_tr * 4 * 2  # fp32 momentum + variance
+	print(f"    Trainable params     : {total_tr:,}")
+	print(f"    Optimizer states     : {optimizer_state_bytes / 1e6:.1f} MB (fp32)")
+	print(f"    Total training memory: {(total_bytes + optimizer_state_bytes) / 1e9:.2f} GB")
+	# ──────────────────────────────────────────────
+	# 11b. Optimizer inspection (optional, critical for LoRA+)
+	# ──────────────────────────────────────────────
+	frozen_in_opt = 0
+	missing_from_opt = set()
+	if optimizer is not None:
+		print(f"\n  [Optimizer inspection] ({optimizer.__class__.__name__})")
+		opt_param_ids = set()
+		for gi, group in enumerate(optimizer.param_groups):
+			n_total = sum(p.numel() for p in group['params'])
+			n_train = sum(p.numel() for p in group['params'] if p.requires_grad)
+			opt_param_ids.update(id(p) for p in group['params'])
+			print(
+				f"    group[{gi}] | lr={group['lr']:.2e} | wd={group.get('weight_decay', 0):.2e} | "
+				f"{n_total:>12,} params ({n_train:,} trainable)"
+			)
+		if 'lora_plus' in mode_l:
+			lrs = sorted(set(g['lr'] for g in optimizer.param_groups))
+			if len(lrs) >= 2:
+					print(f"    ✅ LoRA+ contract: distinct LR groups {lrs} (B/A ratio = {max(lrs)/min(lrs):.1f}×)")
+			else:
+					print(f"    ❌ LoRA+ contract VIOLATED: all param groups share lr={lrs[0]} — "
+								f"LoRA+ degenerates to plain LoRA")
+		frozen_in_opt = sum(1 for g in optimizer.param_groups for p in g['params'] if not p.requires_grad)
+		print(f"    {'✅' if frozen_in_opt == 0 else '❌'} Frozen params inside optimizer: {frozen_in_opt}")
+		model_train_ids = {id(p) for _, p in named if p.requires_grad}
+		missing_from_opt = model_train_ids - opt_param_ids
+		if missing_from_opt:
+			print(f"    ⚠️  {len(missing_from_opt)} trainable params are NOT in the optimizer (will never update)")
+		else:
+			print(f"    ✅ All trainable params are covered by the optimizer")
+	# ──────────────────────────────────────────────
+	# 12. Summary statistics
+	# ──────────────────────────────────────────────
+	print(f"\n  {'─'*60}")
+	print(f"  {mode.upper()} Statistics")
+	print(f"  {'─'*60}")
+	print(f"  Image: {img_to:>14,} total | trainable {img_tr:>12,} "
+				f"({img_tr/img_to*100:.3f}%)" if img_to else f"  Image: none")
+	print(f"  Text : {text_to:>14,} total | trainable {text_tr:>12,} "
+				f"({text_tr/text_to*100:.3f}%)" if text_to else f"  Text : none")
+	if text_adapter_list:
+			print(f"         Text-side adapter/extra groups: {text_adapter_list}")
+	print(f"  Logit: {logit}")
+	if img_to + text_to + logit == total_to:
+			print(f"  Total: {total_to:>14,} total | trainable {total_tr:>12,} -> [OK ✅]")
+	else:
+			diff = total_to - img_to - text_to - logit
+			print(f"  Total: {total_to:>14,} total | trainable {total_tr:>12,} -> [FAIL ❌] diff={diff:,}")
+	# ──────────────────────────────────────────────
+	# 13. Quick health summary
+	# ──────────────────────────────────────────────
+	print(f"\n[HEALTH SUMMARY]")
+	issues = []
+	if nan_params or inf_params:
+		issues.append("❌ Numerical issues detected in trainable params")
+	if total_tr == 0:
+		issues.append("❌ No trainable parameters")
+	if img_tr == 0 and text_tr == 0:
+		issues.append("⚠️  Both encoders fully frozen — verify this is intended (e.g. zero-shot/probe)")
+	ratio = 1e-3
+	if total_to > 0 and 0 < total_tr and (total_tr / total_to) < ratio:
+		issues.append(f"[WARNING] total_tr: {total_tr:,}, total_to: {total_to:,}:  Very low trainable ratio ({total_tr / total_to} < {ratio})")
+	if unexpected_zero:
+		issues.append(f"⚠️  {len(unexpected_zero)} unexpectedly zero-initialized trainable params")
+	if optimizer is not None:
+		if frozen_in_opt > 0:
+			issues.append(f"❌ {frozen_in_opt} frozen params registered in the optimizer")
+		if missing_from_opt:
+			issues.append(f"⚠️  {len(missing_from_opt)} trainable params missing from the optimizer")
+	if issues:
+		for issue in issues:
+			print(f"{issue}")
+	else:
+		print(f"✅ All checks passed — ready for training!")
+	print("="*100)
+	return {
+		'total_params': total_to,
+		'trainable_params': total_tr,
+		'frozen_params': total_fr,
+		'image_trainable': img_tr,
+		'text_trainable': text_tr,
+		'trainable_pct': total_tr / total_to * 100 if total_to > 0 else 0,
+		'expected_zero_count': len(expected_zero),
+		'unexpected_zero_count': len(unexpected_zero),
+		'adapter_module_count': len(adapter_modules),
+	}
 
 def get_parameters_info_orig(model, mode):
 	# Helper function to calculate parameters for a submodule or parameter
@@ -1058,10 +1009,11 @@ def get_parameters_info_orig(model, mode):
 	# Print detailed statistics
 	print(f"\n{model.__class__.__name__} {model.name} Parameters Statistics")
 	print(f"   ├─ {mode.upper()}")
-	print(f"   ├─ Image Encoder: Total: {img_total:,} (Trainable [Unfrozen]): {img_trainable:,} ({img_trainable_percent:.3f}%)  Frozen: {img_frozen:,} ({img_frozen_percent:.3f}%)")
-	print(f"   ├─ Text Encoder: Total: {text_total:,} (Trainable [Unfrozen]): {text_trainable:,} ({text_trainable_percent:.3f}%)  Frozen: {text_frozen:,} ({text_frozen_percent:.3f}%)")
+	print(f"   ├─ Image Encoder: Total: {img_total:12,d} (Trainable [Unfrozen]): {img_trainable:12,d} ({img_trainable_percent:.3f}%)  Frozen: {img_frozen:12,d} ({img_frozen_percent:.3f}%)")
+	print(f"   ├─ Text Encoder : Total: {text_total:12,d} (Trainable [Unfrozen]): {text_trainable:12,d} ({text_trainable_percent:.3f}%)  Frozen: {text_frozen:12,d} ({text_frozen_percent:.3f}%)")
 	print(f"   ├─ Logit Scale: {logit_scale_params}")
 	print(f"   └─ Total: {total_params:,}  (Trainable [Unfrozen]): {total_trainable:,} ({total_trainable_percent:.3f}%)  Frozen: {total_frozen:,} ({total_frozen_percent:.3f}%)")
+	print()
 
 def cleanup_old_temp_dirs():	
 	temp_dirs = glob.glob("/tmp/pymp-*")

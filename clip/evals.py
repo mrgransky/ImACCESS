@@ -796,6 +796,7 @@ def get_validation_metrics(
 	lora_params: Optional[Dict] = None,
 	is_training: bool = False,
 	model_hash: str = None,
+	min_number_samples: int = int(5e3),
 	class_embeds_override: Optional[torch.Tensor] = None,
 	verbose: bool = True,
 ) -> Dict:
@@ -972,23 +973,15 @@ def get_validation_metrics(
 
 		# ── 3. Pairwise image-class similarity distribution ───────────
 		# Sample N images for efficiency
-		min_samples = int(5e3)
-		n_sample = min(min_samples, device_image_embeds.shape[0])
+		n_sample = min(min_number_samples, device_image_embeds.shape[0])
 
 		sample_idx = torch.randperm(
 			device_image_embeds.shape[0],
 			device=device_image_embeds.device,
 		)[:n_sample]
 
-		sample_img = torch.nn.functional.normalize(
-			device_image_embeds[sample_idx], 
-			dim=1
-		)
-
-		sample_cls = torch.nn.functional.normalize(
-			device_class_text_embeds, 
-			dim=1
-		)
+		sample_img = torch.nn.functional.normalize(device_image_embeds[sample_idx], dim=1)
+		sample_cls = torch.nn.functional.normalize(device_class_text_embeds, dim=1)
 
 		# Raw cosine similarity without temperature
 		sample_sims = sample_img @ sample_cls.T   # [n_sample, C]
@@ -996,7 +989,7 @@ def get_validation_metrics(
 		print(f"    (min, max): ({sample_sims.min():.3f}, {sample_sims.max():.3f}) μ±σ: {sample_sims.mean():.3f} ± {sample_sims.std():.3f}")
 
 		# ── 4. Inter-class similarity — are class embeddings separated? ─
-		n_cls_sample = min(min_samples, device_class_text_embeds.shape[0])
+		n_cls_sample = min(min_number_samples, device_class_text_embeds.shape[0])
 		cls_sample_idx = torch.randperm(
 			device_class_text_embeds.shape[0],
 			device=device_class_text_embeds.device,
@@ -1030,7 +1023,7 @@ def get_validation_metrics(
 			global_c = cls_sample_idx[c].item()
 			name_r = class_names[global_r]
 			name_c = class_names[global_c]
-			print(f"    sim: {val:.6f} label[{global_r:6d}] <-> label[{global_c:6d}] {name_r} <-> {name_c}")
+			print(f"    sim: {val:.6f} label[{global_r:6d}] <-> label[{global_c:6d}] {name_r:35s} <-> {name_c}")
 
 		# ── 5. Max similarity per image to any class ──────────────────
 		max_sims_per_image = sample_sims.max(dim=1).values
@@ -1711,6 +1704,7 @@ def get_multilabel_alignment_score(
 	labels: torch.Tensor,             # [N, C] — binary, long
 	temperature: float,
 	topk: int,
+	min_number_samples: int = 5000,
 	verbose: bool = False,
 ) -> float:
 
@@ -1817,10 +1811,10 @@ def get_multilabel_alignment_score(
 		hit_indices = hits.nonzero(as_tuple=True)[0]
 		if len(hit_indices) > 0:
 			# Find rank of first correct class for hit images
-			hit_topk = topk_indices[hit_indices]          # [n_hits, K]
-			hit_labels = labels[hit_indices].bool()       # [n_hits, C]
+			hit_topk = topk_indices[hit_indices]    # [n_hits, K]
+			hit_labels = labels[hit_indices].bool() # [n_hits, C]
 			first_hit_ranks = []
-			for i in range(min(len(hit_indices), 5000)):  # cap at N for speed
+			for i in range(min(len(hit_indices), min_number_samples)):  # cap at N for speed
 				for rank, cls_idx in enumerate(hit_topk[i].tolist()):
 					if hit_labels[i, cls_idx]:
 						first_hit_ranks.append(rank + 1)
@@ -1835,7 +1829,7 @@ def get_multilabel_alignment_score(
 		# Miss analysis — for non-hit images, how close was the nearest true class?
 		miss_indices = (~hits).nonzero(as_tuple=True)[0]
 		if len(miss_indices) > 0:
-			n_miss_sample = min(len(miss_indices), 5000)
+			n_miss_sample = min(len(miss_indices), min_number_samples)
 			miss_sample = miss_indices[:n_miss_sample]
 			miss_sims_all = logits[miss_sample]          # [n_miss, C]
 			miss_labels_all = labels[miss_sample].bool() # [n_miss, C]
