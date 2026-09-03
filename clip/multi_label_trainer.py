@@ -2299,7 +2299,6 @@ def lora_plus_finetune_multi_label(
 		verbose=verbose,
 	).to(device)
 	
-
 	# Separate LoRA A and B parameters for differential LR
 	lora_A_params = [p for n, p in model.named_parameters() if p.requires_grad and "lora_A" in n]
 	lora_B_params = [p for n, p in model.named_parameters() if p.requires_grad and "lora_B" in n]
@@ -2378,7 +2377,7 @@ def lora_plus_finetune_multi_label(
 	is_ampere_or_newer = cuda_capability[0] >= 8
 
 	if is_ampere_or_newer:
-		B_MAX_NORM = 50.0
+		B_MAX_NORM = 100.0
 		amp_enabled = True
 		scaler = torch.amp.GradScaler(
 			device=device,
@@ -2626,6 +2625,7 @@ def lora_plus_finetune_multi_label(
 							scaler._scale.fill_(new_scale)
 
 					scaler.update()  # must still call to reset internal state
+
 					if verbose:
 						print(f"\t\t[Scaler] scale after corrupt grad recovery={scaler.get_scale():.1f}")
 
@@ -2652,9 +2652,9 @@ def lora_plus_finetune_multi_label(
 
 			# Only log clipping details at print_every intervals, not every batch
 			if clipped_count > 0:
-				print(f"\t\t[BATCH {bidx+1} B-norm] « {clipped_count} layer(s) » clipped:")
+				print(f"\t\t[BATCH {bidx+1} B-NORM] « {clipped_count} layer(s) » clipped:")
 				for cname, cnorm in clipped_details:
-					print(f"\t\t\t{cname:<75} {cnorm} → {B_MAX_NORM}")
+					print(f"\t\t\t{cname:<80}{cnorm:.6f} → {B_MAX_NORM}")
 
 			scheduler.step()
 
@@ -5295,7 +5295,7 @@ def ia3_finetune_multi_label(
 			
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\t\tBatch [{bidx + 1:04d}/{len(train_loader)}] "
+					f"\t\tBatch [{bidx + 1:6d}/{len(train_loader)}] "
 					f"Total Loss: {batch_loss_total:.6f} "
 					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
 				)

@@ -53,7 +53,7 @@ def diagnose_train_val_coverage(
 			print(f"\n[ANALYSIS] Train-only label frequency")
 			print(f"  ├─ Count            : {train_only_mask.sum().item():,}")
 			print(f"  ├─ Freq (min, max)  : ({train_only_freqs.min():.1f}, {train_only_freqs.max():.1f})")
-			print(f"  ├─ Freq (mean, std) : ({train_only_freqs.mean():.1f}, {train_only_freqs.std():.1f}) median: {train_only_freqs.median():.1f}")
+			print(f"  ├─ Freq μ±σ         : {train_only_freqs.mean():.1f} ± {train_only_freqs.std():.1f} (median: {train_only_freqs.median()})")
 			print(f"  ├─ label(s) freq=1  : {(train_only_freqs == 1).sum().item():,}")
 			print(f"  ├─ label(s) freq≤5  : {(train_only_freqs <= 5).sum().item():,}")
 			print(f"  └─ label(s) freq>10 : {(train_only_freqs > 10).sum().item():,}")
@@ -63,9 +63,9 @@ def diagnose_train_val_coverage(
 			val_only_mask  = (val_active & ~train_active)
 			val_only_freqs = val_freq[val_only_mask]
 			print(f"\n[ANALYSIS] Val-only label frequency")
-			print(f"  ├─ Count            : {val_only_mask.sum().item():,}")
-			print(f"  ├─ Freq (min, max)  : ({val_only_freqs.min():.1f}, {val_only_freqs.max():.1f})")
-			print(f"  └─ Freq (mean, std) : ({val_only_freqs.mean():.1f}, {val_only_freqs.std():.1f}) median: {val_only_freqs.median():.1f}")
+			print(f"  ├─ Count           : {val_only_mask.sum().item():,}")
+			print(f"  ├─ Freq (min, max) : ({val_only_freqs.min():.1f}, {val_only_freqs.max():.1f})")
+			print(f"  ├─ Freq μ±σ        : {val_only_freqs.mean():.1f} ± {val_only_freqs.std():.1f} (median: {val_only_freqs.median()})")
 			print(
 				f" [NOTE]: these labels will appear in rare tier evaluation "
 				f"but model has no positive training signal for them."

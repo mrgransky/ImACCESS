@@ -972,32 +972,37 @@ def get_parameters_info(model, mode, verbose=True, optimizer=None):
 		# ──────────────────────────────────────────────
 		# 13. Quick health summary
 		# ──────────────────────────────────────────────
-		print(f"\n  {'='*80}")
-		print(f"[HEALTH SUMMARY]")
-		print(f"  {'='*80}")
+		print(f"\n[HEALTH SUMMARY]")
+
 		issues = []
+
 		if nan_params or inf_params:
-				issues.append("❌ Numerical issues detected in trainable params")
+			issues.append("❌ Numerical issues detected in trainable params")
+
 		if total_tr == 0:
-				issues.append("❌ No trainable parameters")
+			issues.append("❌ No trainable parameters")
+
 		if img_tr == 0 and text_tr == 0:
-				issues.append("⚠️  Both encoders fully frozen — verify this is intended (e.g. zero-shot/probe)")
-		if total_to > 0 and 0 < total_tr and (total_tr / total_to) < 0.001:
-				issues.append("⚠️  Very low trainable ratio (<0.1%)")
+			issues.append("⚠️  Both encoders fully frozen — verify this is intended (e.g. zero-shot/probe)")
+
+		ratio = 1e-3
+		if total_to > 0 and 0 < total_tr and (total_tr / total_to) < ratio:
+			issues.append(f"[WARNING] total_tr: {total_tr:,}, total_to: {total_to:,}:  Very low trainable ratio ({total_tr / total_to} < {ratio})")
+
 		if unexpected_zero:
-				issues.append(f"⚠️  {len(unexpected_zero)} unexpectedly zero-initialized trainable params")
+			issues.append(f"⚠️  {len(unexpected_zero)} unexpectedly zero-initialized trainable params")
+
 		if optimizer is not None:
-				if frozen_in_opt > 0:
-						issues.append(f"❌ {frozen_in_opt} frozen params registered in the optimizer")
-				if missing_from_opt:
-						issues.append(f"⚠️  {len(missing_from_opt)} trainable params missing from the optimizer")
+			if frozen_in_opt > 0:
+				issues.append(f"❌ {frozen_in_opt} frozen params registered in the optimizer")
+			if missing_from_opt:
+				issues.append(f"⚠️  {len(missing_from_opt)} trainable params missing from the optimizer")
 
 		if issues:
-				for issue in issues:
-						print(f"  {issue}")
+			for issue in issues:
+				print(f"{issue}")
 		else:
-				print(f"  ✅ All checks passed — ready for training!")
-		print(f"  {'='*80}\n")
+			print(f"✅ All checks passed — ready for training!")
 
 		return {
 				'total_params': total_to,

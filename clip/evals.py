@@ -953,8 +953,8 @@ def get_validation_metrics(
 		img_norms = device_image_embeds.norm(dim=1)
 		print(f"  Image embedding norms:")
 		print(
-			f"    min={img_norms.min():.4f} max={img_norms.max():.4f}  "
-			f"mean={img_norms.mean():.4f} std={img_norms.std():.4f}"
+			f"    (min, max): ({img_norms.min():.3f}, {img_norms.max():.3f}) "
+			f"μ±σ: {img_norms.mean():.3f} ± {img_norms.std():.3f}"
 		)
 		print(
 			f"    Normalized? {torch.allclose(img_norms, torch.ones_like(img_norms), atol=1e-3)}"
@@ -962,9 +962,12 @@ def get_validation_metrics(
 
 		# ── 2. Norm distribution of class embeddings ──────────────────
 		cls_norms = device_class_text_embeds.norm(dim=1)
-		print(f"  Class embedding norms:")
-		print(f"    min={cls_norms.min():.4f}  max={cls_norms.max():.4f}  "
-				f"mean={cls_norms.mean():.4f}  std={cls_norms.std():.4f}")
+		print(f"  Label embedding norms:")
+		print(
+			f"    (min, max): ({cls_norms.min():.3f}, {cls_norms.max():.3f}) "
+			f"μ±σ: {cls_norms.mean():.3f} ± {cls_norms.std():.3f}"
+		)
+
 		print(f"    Normalized? {torch.allclose(cls_norms, torch.ones_like(cls_norms), atol=1e-3)}")
 
 		# ── 3. Pairwise image-class similarity distribution ───────────
@@ -990,8 +993,7 @@ def get_validation_metrics(
 		# Raw cosine similarity without temperature
 		sample_sims = sample_img @ sample_cls.T   # [n_sample, C]
 		print(f"  Raw cosine similarity image@class ({n_sample} sampled images):")
-		print(f"    min={sample_sims.min():.4f}  max={sample_sims.max():.4f}  "
-				f"mean={sample_sims.mean():.4f}  std={sample_sims.std():.4f}")
+		print(f"    (min, max): ({sample_sims.min():.3f}, {sample_sims.max():.3f}) μ±σ: {sample_sims.mean():.3f} ± {sample_sims.std():.3f}")
 
 		# ── 4. Inter-class similarity — are class embeddings separated? ─
 		n_cls_sample = min(min_samples, device_class_text_embeds.shape[0])
@@ -1013,7 +1015,7 @@ def get_validation_metrics(
 		off_diag = inter_cls_sims[off_diag_mask]
 
 		print(f"  Inter-class cosine similarity ({n_cls_sample} sampled labels):")
-		print(f"    (min, max): ({off_diag.min():.4f}, {off_diag.max():.4f}) mean={off_diag.mean():.4f} std={off_diag.std():.4f}")
+		print(f"    (min, max): ({off_diag.min():.3f}, {off_diag.max():.3f}) μ±σ: {off_diag.mean():.3f} ± {off_diag.std():.3f}")
 		print(f"    Fraction [sim > 0.5]: {(off_diag > 0.5).float().mean():.4f} (high → class embeddings cluster together)")
 		print(f"    Fraction [sim > 0.9]: {(off_diag > 0.9).float().mean():.4f} (high → near-duplicate class embeddings)")
 
@@ -1032,13 +1034,17 @@ def get_validation_metrics(
 
 		# ── 5. Max similarity per image to any class ──────────────────
 		max_sims_per_image = sample_sims.max(dim=1).values
-		print(f"  Max similarity per image to any label ({n_sample} sampled images):")
-		print(f"    min={max_sims_per_image.min():.4f}  "
-				f"max={max_sims_per_image.max():.4f}  "
-				f"mean={max_sims_per_image.mean():.4f} std={max_sims_per_image.std():.4f}")
-		print(f"    Images with max_sim < 0.1: "
-				f"{(max_sims_per_image < 0.1).float().mean()} "
-				f"← high means image embeddings far from all labels")
+		print(f"  Similarity per image to any label ({n_sample} sampled images):")
+		print(
+			f"    (min, max): ({max_sims_per_image.min():.3f}, {max_sims_per_image.max():.3f}) "
+			f"μ±σ: {max_sims_per_image.mean():.3f} ± {max_sims_per_image.std():.3f}"
+		)
+
+		print(
+			f"    Images with max_sim < 0.1: "
+			f"{(max_sims_per_image < 0.1).float().mean()} "
+			f"← high means image embeddings far from all labels"
+		)
 
 		# Clean up diagnostic tensors
 		del sample_img, sample_cls, sample_sims, cls_sample
@@ -1717,15 +1723,15 @@ def get_multilabel_alignment_score(
 	if image_has_nan or class_has_nan or image_has_inf or class_has_inf:
 		if verbose:
 			print(f"\n[GUARD] NaN/Inf detected in embeddings:")
-			print(f"    image_embeds  — NaN: {str(image_has_nan.item()):10} Inf: {str(image_has_inf.item())}")
-			print(f"    class_embeds  — NaN: {str(class_has_nan.item()):10} Inf: {str(class_has_inf.item())}")
+			print(f"    image_embeds — NaN: {str(image_has_nan.item()):7} Inf: {str(image_has_inf.item())}")
+			print(f"    class_embeds — NaN: {str(class_has_nan.item()):7} Inf: {str(class_has_inf.item())}")
 			
 			if image_has_nan:
 				nan_mask = torch.isnan(image_embeds)
 				nan_rows = nan_mask.any(dim=1).nonzero(as_tuple=True)[0]
 				nan_cols = nan_mask.any(dim=0).nonzero(as_tuple=True)[0]
 				print(f"    image_embeds NaN locations:")
-				print(f"      Affected samples (rows): {nan_rows.tolist()[:10]} {'...' if len(nan_rows) > 10 else ''} (total: {len(nan_rows)})")
+				print(f"      Affected samples    (rows): {nan_rows.tolist()[:10]} {'...' if len(nan_rows) > 10 else ''} (total: {len(nan_rows)})")
 				print(f"      Affected dimensions (cols): {nan_cols.tolist()[:10]} {'...' if len(nan_cols) > 10 else ''} (total: {len(nan_cols)})")
 			
 			if class_has_nan:
@@ -1733,7 +1739,7 @@ def get_multilabel_alignment_score(
 				nan_rows = nan_mask.any(dim=1).nonzero(as_tuple=True)[0]
 				nan_cols = nan_mask.any(dim=0).nonzero(as_tuple=True)[0]
 				print(f"    class_embeds NaN locations:")
-				print(f"      Affected classes (rows): {nan_rows.tolist()[:10]} {'...' if len(nan_rows) > 10 else ''} (total: {len(nan_rows)})")
+				print(f"      Affected labels     (rows): {nan_rows.tolist()[:10]} {'...' if len(nan_rows) > 10 else ''} (total: {len(nan_rows)})")
 				print(f"      Affected dimensions (cols): {nan_cols.tolist()[:10]} {'...' if len(nan_cols) > 10 else ''} (total: {len(nan_cols)})")
 			
 			if image_has_inf:
