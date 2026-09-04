@@ -2,7 +2,7 @@
 
 #SBATCH --account=project_2009043
 #SBATCH --job-name=ft_seed_42
-#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
+#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
