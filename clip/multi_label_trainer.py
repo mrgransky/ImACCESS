@@ -782,6 +782,7 @@ def probe_multi_label(
 		}
 
 		full_val_loss_acc_metrics_all_epochs.append(epoch_metrics)
+
 		if cache_features:
 			sample_feats = train_feats[:512].to(device)        # [512, 768] image features
 			# Get true class indices for these 512 samples from the loader
@@ -804,19 +805,8 @@ def probe_multi_label(
 				matched_class_vecs, 
 				dim=1
 			).mean().item()
-
-			# AlignScore@5 against learned W — comparable to PEFT methods
-			align_score = get_multilabel_alignment_score(
-				image_embeds=sample_feats_norm,
-				all_class_embeds=W, # probe W, not frozen text embeds
-				labels=sample_labels,
-				temperature=temperature,
-				topk=5,
-				verbose=verbose,
-			)
 		else:
 			cos_sim = 0
-			align_score = 0
 		
 		print(
 			f"\nEpoch {epoch+1}:\n"
@@ -826,29 +816,10 @@ def probe_multi_label(
 			f"  ExactMatch: {exact_match} PartialAcc: {partial_match:.4f}\n"
 			f"  LR: {scheduler.get_last_lr()}"
 		)
-		if align_score is not None:
-			print(f"  AlignScore@5 (W): {align_score:.4f}")
-		if cos_sim is not None:
-			print(f"  CosSim (W):: {cos_sim:.4f}")
-		
-		# Training health check
-		# Run after epoch 1 and at mid-warmup — all signals now available
-		if epoch in {0, minimum_epochs // 2}:
-			should_abort = check_training_health(
-				model=probe,  # ← probe weights, not full CLIP
-				epoch=epoch,
-				mode=mode,
-				training_losses=training_losses,
-				validation_losses=validation_losses,
-				align_score=align_score,
-				temperature=temperature,
-				learning_rate=learning_rate,
-				verbose=verbose,
-			)
-			if should_abort:
-				print(f"[{mode.upper()}] Aborting at epoch {epoch+1} due to broken gradient signal.")
-				break
 
+		if cos_sim is not None:
+			print(f"  CosSim (W): {cos_sim:.4f}")
+		
 		if early_stopping.should_stop(
 			current_value=avg_val_loss,
 			model=probe, # full MultiLabelProbe: saves {probe.weight, probe.bias, clip_model.*}
