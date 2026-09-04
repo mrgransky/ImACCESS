@@ -574,9 +574,7 @@ class MultiLabelProbe(torch.nn.Module):
 
 		with torch.no_grad():
 			w_norms = self.probe.weight.data.norm(dim=1)
-			print(f"[INIT] W row-norms (min, max): ({w_norms.min():.4f}, {w_norms.max():.4f}) mean={w_norms.mean():.4f}, std: {w_norms.std():.4f}")
-			# Store this for later drift comparisons
-			self._W_init = self.probe.weight.data.clone()
+			print(f"[INIT] W norms (min, max): ({w_norms.min():.4f}, {w_norms.max():.4f}) μ±σ: {w_norms.mean():.4f} ± {w_norms.std():.4f}")
 
 		try:
 			# Tokenize class names
@@ -596,7 +594,7 @@ class MultiLabelProbe(torch.nn.Module):
 					self.probe.bias.data.zero_()
 				
 				if self.verbose:
-					print("[OK] Linear probe initialized with unit-normalized text embeddings")
+					print(f"[OK] {self.probe_type} probe initialized with unit-normalized text embeddings")
 			elif self.probe_type == "MLP":
 				# Initialize final layer of MLP
 				final_layer = self.probe[-1]  # Last linear layer
@@ -612,10 +610,34 @@ class MultiLabelProbe(torch.nn.Module):
 						final_layer.weight.data.normal_(0, text_norm * 0.05)  # Conservative for multi-label
 						final_layer.bias.data.zero_()
 				if self.verbose:
-					print("[OK] MLP final layer initialized for multi-label")
+					print(f"[OK] {self.probe_type} final layer initialized for multi-label")
+
+			# Store W_init AFTER successful zero-shot initialization
+			with torch.no_grad():
+				if self.probe_type == "MLP":
+					self._W_init = self.probe[-1].weight.data.clone()
+				else:
+					self._W_init = self.probe.weight.data.clone()
+
+				w_norms_post = self._W_init.norm(dim=1)
+
+				print(
+					f"[INIT] Post-init W row-norms (text embeddings): "
+					f"(min, max): ({w_norms_post.min():.4f}, {w_norms_post.max():.4f}) "
+					f"μ±σ: {w_norms_post.mean():.4f} ± {w_norms_post.std():.4f}"
+				)
 		except Exception as e:
 			if self.verbose:
 				print(f"<!> Zero-shot initialization failed: {e} => Using default random initialization")
+			# Fallback: save the random init as baseline
+			with torch.no_grad():
+				if self.probe_type == "MLP":
+					self._W_init = self.probe[-1].weight.data.clone()
+				else:
+					self._W_init = self.probe.weight.data.clone()
+
+
+
 
 	def state_dict(self, *args, **kwargs):
 		"""Only save the trainable probe weights, not the frozen CLIP model."""

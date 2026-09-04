@@ -674,7 +674,7 @@ def probe_multi_label(
 			
 			scaler.scale(loss).backward()
 			scaler.unscale_(optimizer)
-			if bidx % max(5, int(print_every * 0.05)) == 0 or bidx + 1 == len(data_iter):
+			if bidx % max(5, int(print_every * 0.02)) == 0 or bidx + 1 == len(data_iter):
 				label_gradients = probe.weight.grad # [num_classes, embed_dim]
 				# print(
 				# 	label_gradients.shape, 							# [num_classes, embed_dim]
@@ -683,7 +683,7 @@ def probe_multi_label(
 				# )
 				label_gradients_per_class_norm = label_gradients.norm(dim=1) # [num_classes]
 				print(
-					f"\t\t[GRAD] b{bidx+1:5d} {label_gradients.shape} NORM_per_class: {label_gradients_per_class_norm.shape} "
+					f"\t\t[GRAD] b{bidx+1:6d} {label_gradients.shape} NORM_per_class: {label_gradients_per_class_norm.shape} "
 					f"(min, max): ({label_gradients_per_class_norm.min().item():.4f}, {label_gradients_per_class_norm.max().item():.4f}) "
 					f"μ±σ: {label_gradients_per_class_norm.mean():.4f} ± {label_gradients_per_class_norm.std():.4f} "
 					f"argmax: {label_gradients_per_class_norm.argmax().item()}"
@@ -713,14 +713,17 @@ def probe_multi_label(
 			b = probe.bias.data
 
 			W_label_norms = W.norm(dim=1)
+			W_init_label_norms = W_init.norm(dim=1)
+
 			cos_W_vs_Winit = torch.nn.functional.cosine_similarity(W, W_init, dim=1)
 
 			print(f"\n[W DRIFT] W_init: {W_init.shape} W: {W.shape} b: {b.shape}")
-			print(f"  b              (min, max): ({b.min():.4f}, {b.max():.4f}) μ±σ: {b.mean():.4f} ± {b.std():.4f}")
-			print(f"  W_label_norms  {W_label_norms.shape} (min, max): ({W_label_norms.min():.4f}, {W_label_norms.max():.4f}) μ±σ: {W_label_norms.mean():.4f} ± {W_label_norms.std():.4f}")
-			print(f"  cos(W, W_init) {cos_W_vs_Winit.shape} (min, max): ({cos_W_vs_Winit.min():.4f}, {cos_W_vs_Winit.max():.4f}) μ±σ: {cos_W_vs_Winit.mean():.4f} ± {cos_W_vs_Winit.std():.4f}")
+			print(f"  b                    (min, max): ({b.min():.4f}, {b.max():.4f}) μ±σ: {b.mean():.4f} ± {b.std():.4f}")
+			print(f"  W_init_label_norms   {W_init_label_norms.shape} (min, max): ({W_init_label_norms.min():.4f}, {W_init_label_norms.max():.4f}) μ±σ: {W_init_label_norms.mean():.4f} ± {W_init_label_norms.std():.4f}")
+			print(f"  W_label_norms        {W_label_norms.shape} (min, max): ({W_label_norms.min():.4f}, {W_label_norms.max():.4f}) μ±σ: {W_label_norms.mean():.4f} ± {W_label_norms.std():.4f}")
+			print(f"  cos(W, W_init)       {cos_W_vs_Winit.shape} (min, max): ({cos_W_vs_Winit.min():.4f}, {cos_W_vs_Winit.max():.4f}) μ±σ: {cos_W_vs_Winit.mean():.4f} ± {cos_W_vs_Winit.std():.4f}")
 			# how many classes have a negative cosine similarity (an angle greater than 90 degrees)
-			print(f"  cos(W, W_init) < 0   : {(cos_W_vs_Winit < 0).sum().item()} / {W.shape[0]}")
+			print(f"  cos(W, W_init) < 0.0 : {(cos_W_vs_Winit < 0).sum().item()} / {W.shape[0]}")
 			# how many classes have drifted more than 60 degrees away from their original semantic anchor:
 			print(f"  cos(W, W_init) < 0.5 : {(cos_W_vs_Winit < 0.5).sum().item()} / {W.shape[0]}")
 
