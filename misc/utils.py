@@ -1457,7 +1457,7 @@ def set_seeds(
 		torch.backends.cuda.matmul.allow_tf32 = False
 		torch.backends.cudnn.allow_tf32 = False
 		
-		print(f"✅ Seeds set to {seed} | DEBUG MODE (Maximum Reproducibility)")		
+		print(f"[SEED] set to {seed} | DEBUG MODE (Maximum Reproducibility)")		
 	else:
 		# Normal / Performance mode
 		torch.backends.cudnn.deterministic = False
@@ -1467,11 +1467,12 @@ def set_seeds(
 		if enable_optimizations:
 				torch.backends.cuda.matmul.allow_tf32 = True
 				torch.backends.cudnn.allow_tf32 = True
-				print(f"✅ Seeds set to {seed} | Performance mode (TF32 enabled)")
+				print(f"[SEED] set to {seed}  | Performance mode (TF32 enabled)")
 		else:
 				torch.backends.cuda.matmul.allow_tf32 = False
 				torch.backends.cudnn.allow_tf32 = False
-				print(f"✅ Seeds set to {seed} | Balanced mode")
+				print(f"[SEED] set to {seed} | Balanced mode")
+
 	# Optional: Print GPU status
 	if torch.cuda.is_available() and debug:
 			print(f"   CUDA deterministic: {torch.backends.cudnn.deterministic}")

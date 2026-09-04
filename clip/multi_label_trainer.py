@@ -492,7 +492,7 @@ def probe_multi_label(
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
 
 	optimizer = torch.optim.AdamW(
-		params=probe.probe.parameters(),
+		params=probe.parameters(),
 		lr=learning_rate,
 		betas=(0.9, 0.98),
 		eps=1e-6,
@@ -540,7 +540,7 @@ def probe_multi_label(
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'}")
 		print()
 
 	mdl_fpth = os.path.join(
@@ -620,7 +620,6 @@ def probe_multi_label(
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
-		# probe.probe.train()  # only the linear head
 		probe.train()  # only the linear head
 		model.eval() # CLIP stays frozen, no gradients
 		print(f"Epoch [{epoch + 1}/{num_epochs}]")
@@ -654,7 +653,6 @@ def probe_multi_label(
 				enabled=torch.cuda.is_available(),
 				dtype=amp_dtype,
 			):
-				# Linear probe forward (multi-label logits)
 				# logits = image_embeds @ W.T + b 
 				logits = probe.probe(image_embeds) / temperature # [B, num_classes]
 
@@ -674,7 +672,7 @@ def probe_multi_label(
 			
 			scaler.scale(loss).backward()
 			scaler.unscale_(optimizer)
-			if bidx % max(5, int(print_every * 0.02)) == 0 or bidx + 1 == len(data_iter):
+			if bidx % max(5, int(print_every * 0.07)) == 0 or bidx + 1 == len(data_iter):
 				label_gradients = probe.weight.grad # [num_classes, embed_dim]
 				# print(
 				# 	label_gradients.shape, 							# [num_classes, embed_dim]
@@ -716,12 +714,17 @@ def probe_multi_label(
 			W_init_label_norms = W_init.norm(dim=1)
 
 			cos_W_vs_Winit = torch.nn.functional.cosine_similarity(W, W_init, dim=1)
+			# Split drift by active vs inactive to confirm the partition
+			cos_active   = cos_W_vs_Winit[active_mask]
+			cos_inactive = cos_W_vs_Winit[~active_mask]
 
 			print(f"\n[W DRIFT] W_init: {W_init.shape} W: {W.shape} b: {b.shape}")
 			print(f"  b                    (min, max): ({b.min():.4f}, {b.max():.4f}) μ±σ: {b.mean():.4f} ± {b.std():.4f}")
 			print(f"  W_init_label_norms   {W_init_label_norms.shape} (min, max): ({W_init_label_norms.min():.4f}, {W_init_label_norms.max():.4f}) μ±σ: {W_init_label_norms.mean():.4f} ± {W_init_label_norms.std():.4f}")
 			print(f"  W_label_norms        {W_label_norms.shape} (min, max): ({W_label_norms.min():.4f}, {W_label_norms.max():.4f}) μ±σ: {W_label_norms.mean():.4f} ± {W_label_norms.std():.4f}")
 			print(f"  cos(W, W_init)       {cos_W_vs_Winit.shape} (min, max): ({cos_W_vs_Winit.min():.4f}, {cos_W_vs_Winit.max():.4f}) μ±σ: {cos_W_vs_Winit.mean():.4f} ± {cos_W_vs_Winit.std():.4f}")
+			print(f"  cos | ACTIVE   (n={cos_active.numel():5d}) μ±σ: {cos_active.mean():.4f} ± {cos_active.std():.4f}")
+			print(f"  cos | INACTIVE (n={cos_inactive.numel():5d}) μ±σ: {cos_inactive.mean():.4f} ± {cos_inactive.std():.4f}")
 			# how many classes have a negative cosine similarity (an angle greater than 90 degrees)
 			print(f"  cos(W, W_init) < 0.0 : {(cos_W_vs_Winit < 0).sum().item()} / {W.shape[0]}")
 			# how many classes have drifted more than 60 degrees away from their original semantic anchor:
@@ -1224,7 +1227,7 @@ def full_finetune_multi_label(
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'}")
 		print()
 
 	mdl_fpth = os.path.join(
@@ -1818,7 +1821,7 @@ def lora_finetune_multi_label(
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'}")
 		print()
 
 	mdl_fpth = os.path.join(
@@ -3229,7 +3232,7 @@ def rslora_finetune_multi_label(
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'}")
 		print()
 
 	mdl_fpth = os.path.join(
@@ -3856,7 +3859,7 @@ def dora_finetune_multi_label(
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'}")
 		print()
 
 	# Model checkpoint path
@@ -4515,7 +4518,7 @@ def vera_finetune_multi_label(
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'}")
 		print()
 
 	mdl_fpth = os.path.join(
@@ -5199,7 +5202,7 @@ def ia3_finetune_multi_label(
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'}")
 		print()
 
 	mdl_fpth = os.path.join(
@@ -5771,7 +5774,7 @@ def clip_adapter_finetune_multi_label(
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'}")
 		print()
 
 	# Checkpoint path
@@ -6611,7 +6614,7 @@ def tip_adapter_finetune_multi_label(
 		print(f"  ├─ growth_factor: {scaler_state.get('growth_factor', 'N/A')}")
 		print(f"  ├─ backoff_factor: {scaler_state.get('backoff_factor', 'N/A')}")
 		print(f"  ├─ growth_interval: {scaler_state.get('growth_interval', 'N/A')}")
-		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'} (cuda_cap: {cuda_capability})")
+		print(f"  └─ dtype: {amp_dtype if torch.cuda.is_available() else 'N/A'}")
 		print()
 
 	mdl_fpth = os.path.join(
