@@ -253,7 +253,7 @@ esac
 BATCH_SIZES=(16 64 64 64 64)
 
 # How often (in steps) to print training progress
-PRINT_FREQUENCIES=(500 1000 50 50 25)
+PRINT_FREQUENCIES=(1000 1000 50 50 25)
 SEED="${SEED:-42}"
 
 # LRS=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06) # orig
