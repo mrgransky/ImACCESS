@@ -69,12 +69,12 @@
 #   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
-##SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
+#SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
 ##SBATCH --array=12-14 # only LoRA+
 ##SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 ##SBATCH --array=18-20 # only dora
 ##SBATCH --array=9-23 # low-rank adaptation
-#SBATCH --array=3-5 # probe
+##SBATCH --array=3-5 # probe
 ##SBATCH --array=9-11 # lora
 
 # how to run:
@@ -256,7 +256,8 @@ BATCH_SIZES=(16 64 64 64 64)
 PRINT_FREQUENCIES=(500 1000 50 50 25)
 SEED="${SEED:-42}"
 
-LRS=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+# LRS=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06) # orig
+LRS=(5.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 WEIGHT_DECAY=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 EPOCHS=(100 100 150 150 150)
 
