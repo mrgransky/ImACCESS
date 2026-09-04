@@ -679,7 +679,7 @@ class MultiLabelProbe(torch.nn.Module):
 		print(f"{sep}")
 
 		# ── Architecture ─────────────────────────────────────────────────────
-		print(f"\n  📦 ARCHITECTURE")
+		print(f"\n📦 ARCHITECTURE")
 		print(f"     Base model      : {getattr(self.clip_model, 'name', 'Unknown CLIP')}")
 		print(f"     Probe type      : {self.probe_type}")
 		if self.probe_type == "MLP":
@@ -691,20 +691,18 @@ class MultiLabelProbe(torch.nn.Module):
 
 		# ── Parameters & Memory ──────────────────────────────────────────────
 		ratio = probe_params / total_params * 100
-		print(f"\n  🧮 PARAMETERS & MEMORY  (float32 estimate)")
-		print(f"     ┌─────────────────────────────────────────────────────────────┐")
-		print(f"     │  Probe head (TRAINABLE)  : {probe_params:>12,} params │ {probe_mem_mb:>8.2f} MB │")
-		print(f"     │  CLIP backbone (FROZEN)  : {clip_params:>12,} params │ {clip_mem_mb:>8.2f} MB │")
-		print(f"     │  ─────────────────────────────────────────────────────────── │")
-		print(f"     │  TOTAL                   : {total_params:>12,} params │ {(probe_mem_mb + clip_mem_mb):>8.2f} MB │")
-		print(f"     └─────────────────────────────────────────────────────────────┘")
+		print(f"\n🧮 PARAMETERS & MEMORY  (float32 estimate)")
+		print(f"     Probe head (TRAINABLE)  : {probe_params:>12,} params │ {probe_mem_mb:>8.2f} MB │")
+		print(f"     CLIP backbone (FROZEN)  : {clip_params:>12,} params │ {clip_mem_mb:>8.2f} MB │")
+		print(f"     TOTAL                   : {total_params:>12,} params │ {(probe_mem_mb + clip_mem_mb):>8.2f} MB │")
+
 		print(f"     Trainable ratio : {ratio:.4f}%")
 		print(f"     → Only the probe head ({probe_params:,} params) receives gradients.")
 		print(f"     → The {clip_params:,}-param CLIP backbone is frozen and acts as")
 		print(f"       a fixed feature extractor. No catastrophic forgetting risk.")
 
 		# ── Weight Initialization Stats ──────────────────────────────────────
-		print(f"\n  ⚖️  WEIGHT INITIALIZATION  (final classification layer)")
+		print(f"\n⚖️  WEIGHT INITIALIZATION  (final classification layer)")
 		print(f"     Weight matrix   : shape={list(w.shape)}")
 		print(f"       mean={w_mean:>+.6f}  std={w_std:.6f}  min={w_min:>+.6f}  max={w_max:>+.6f}")
 		print(f"     Row norms       : mean={w_norms.mean():.4f}  std={w_norms.std():.4f}  "
