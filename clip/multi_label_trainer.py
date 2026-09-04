@@ -620,7 +620,8 @@ def probe_multi_label(
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
-		probe.probe.train()  # only the linear head
+		# probe.probe.train()  # only the linear head
+		probe.train()  # only the linear head
 		model.eval() # CLIP stays frozen, no gradients
 		print(f"Epoch [{epoch + 1}/{num_epochs}]")
 		
@@ -643,9 +644,9 @@ def probe_multi_label(
 				
 				# Extract image embeddings (frozen)
 				with torch.no_grad():
-					image_embeds = model.encode_image(images)
+					image_embeds = model.encode_image(images) # [B, embed_dim]
 					image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
-			
+
 			optimizer.zero_grad(set_to_none=True)
 			
 			with torch.amp.autocast(
@@ -654,10 +655,12 @@ def probe_multi_label(
 				dtype=amp_dtype,
 			):
 				# Linear probe forward (multi-label logits)
-				logits = probe.probe(image_embeds) / temperature
-				
+				# logits = image_embeds @ W.T + b 
+				logits = probe.probe(image_embeds) / temperature # [B, num_classes]
+
 				# Apply pos_weight BCE, mask zero-count classes
-				loss_raw = criterion(logits, label_vectors)  # [B, C], reduction='none'
+				loss_raw = criterion(logits, label_vectors)  # [B, num_classes], reduction='none'
+
 				if active_mask.any():
 					loss = loss_raw[:, active_mask].mean()
 				else:
@@ -666,21 +669,27 @@ def probe_multi_label(
 
 			# Check for NaN loss
 			if torch.isnan(loss):
-				print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
+				print(f"[WARNING] loss={loss} detected at epoch {epoch+1}, batch {bidx+1} => Skipping...")
 				continue
 			
 			scaler.scale(loss).backward()
 			scaler.unscale_(optimizer)
-			if bidx % max(1, int(print_every * 0.05)) == 0 or bidx + 1 == len(data_iter):
-				grad_per_class = probe.weight.grad.norm(dim=1) # [C]
+			if bidx % max(5, int(print_every * 0.05)) == 0 or bidx + 1 == len(data_iter):
+				label_gradients = probe.weight.grad # [num_classes, embed_dim]
+				# print(
+				# 	label_gradients.shape, 							# [num_classes, embed_dim]
+				# 	label_gradients.norm(dim=0).shape,	# [embed_dim] 
+				# 	label_gradients.norm(dim=1).shape 	# [num_classes]
+				# )
+				label_gradients_per_class_norm = label_gradients.norm(dim=1) # [num_classes]
 				print(
-					f"\t\t[GRAD] b{bidx+1:6d} "
-					f"total_norm: {probe.weight.grad.norm().item():.4f} "
-					f"max_class_grad: {grad_per_class.max().item():.4f} "
-					f"argmax_class: {grad_per_class.argmax().item()}"
+					f"\t\t[GRAD] b{bidx+1:5d} {label_gradients.shape} NORM_per_class: {label_gradients_per_class_norm.shape} "
+					f"(min, max): ({label_gradients_per_class_norm.min().item():.4f}, {label_gradients_per_class_norm.max().item():.4f}) "
+					f"μ±σ: {label_gradients_per_class_norm.mean():.4f} ± {label_gradients_per_class_norm.std():.4f} "
+					f"argmax: {label_gradients_per_class_norm.argmax().item()}"
 				)
 
-			torch.nn.utils.clip_grad_norm_(probe.probe.parameters(), max_norm=1.0)
+			torch.nn.utils.clip_grad_norm_(probe.parameters(), max_norm=1.0)
 			scaler.step(optimizer)
 			scaler.update()
 			scheduler.step()
@@ -699,18 +708,21 @@ def probe_multi_label(
 		weight_decays_history.append([g['weight_decay'] for g in optimizer.param_groups])
 
 		with torch.no_grad():
+			W_init = probe._W_init
 			W = probe.weight.data
 			b = probe.bias.data
 
-			row_norms = W.norm(dim=1)
-			cos_to_init = torch.nn.functional.cosine_similarity(W, probe._W_init, dim=1)
+			W_label_norms = W.norm(dim=1)
+			cos_W_vs_Winit = torch.nn.functional.cosine_similarity(W, W_init, dim=1)
 
-			print(f"[W DRIFT] Epoch {epoch + 1}")
-			print(f"  row_norms   (min, max): ({row_norms.min():.4f}, {row_norms.max():.4f}) μ±σ: {row_norms.mean():.4f} ± {row_norms.std():.4f}")
-			print(f"  cos_to_init (min, max): ({cos_to_init.min():.4f}, {cos_to_init.max():.4f}) μ±σ: {cos_to_init.mean():.4f} ± {cos_to_init.std():.4f}")
-			print(f"  bias        (min, max): ({b.min():.4f}, {b.max():.4f}) μ±σ: {b.mean():.4f} ± {b.std():.4f}")
-			print(f"  cos_to_init < 0   : {(cos_to_init < 0).sum().item()} / {W.shape[0]}")
-			print(f"  cos_to_init < 0.5 : {(cos_to_init < 0.5).sum().item()} / {W.shape[0]}")
+			print(f"\n[W DRIFT] W_init: {W_init.shape} W: {W.shape} b: {b.shape}")
+			print(f"  b              (min, max): ({b.min():.4f}, {b.max():.4f}) μ±σ: {b.mean():.4f} ± {b.std():.4f}")
+			print(f"  W_label_norms  {W_label_norms.shape} (min, max): ({W_label_norms.min():.4f}, {W_label_norms.max():.4f}) μ±σ: {W_label_norms.mean():.4f} ± {W_label_norms.std():.4f}")
+			print(f"  cos(W, W_init) {cos_W_vs_Winit.shape} (min, max): ({cos_W_vs_Winit.min():.4f}, {cos_W_vs_Winit.max():.4f}) μ±σ: {cos_W_vs_Winit.mean():.4f} ± {cos_W_vs_Winit.std():.4f}")
+			# how many classes have a negative cosine similarity (an angle greater than 90 degrees)
+			print(f"  cos(W, W_init) < 0   : {(cos_W_vs_Winit < 0).sum().item()} / {W.shape[0]}")
+			# how many classes have drifted more than 60 degrees away from their original semantic anchor:
+			print(f"  cos(W, W_init) < 0.5 : {(cos_W_vs_Winit < 0.5).sum().item()} / {W.shape[0]}")
 
 		print(f"[Epoch {epoch+1}] Training elapsed time: {time.time()-train_and_val_st_time:.1f}s\nValidating...")	
 
@@ -847,20 +859,6 @@ def probe_multi_label(
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f} sec")
 	
 	print(f"[{mode}] Total Time: {time.time() - train_start_time:.1f} sec".center(170, "-"))
-
-	# Load best probe weights
-	if os.path.exists(mdl_fpth):
-		print(f"Loading best probe weights from {mdl_fpth}")
-		checkpoint = torch.load(mdl_fpth, map_location=device)
-		state_dict = checkpoint.get('model_state_dict', checkpoint)
-		probe.load_state_dict(state_dict, strict=False)
-	elif early_stopping.best_weights is not None:
-		print(f"Loading best weights from early stopping (epoch {early_stopping.best_epoch+1})")
-		probe.load_state_dict(
-			{k: v.to(device) for k, v in early_stopping.best_weights.items()}
-		)
-	else:
-		print("Warning: No best weights found - using final weights")
 	
 	# Final evaluation
 	# pass probe (not model) — probe.encode_image and probe.encode_text
@@ -881,7 +879,6 @@ def probe_multi_label(
 		cache_dir=results_dir,
 		topk_values=topk_values,
 		temperature=temperature,
-		# class_embeds_override=probe.probe.weight.detach().clone(),
 		class_embeds_override=probe.weight.detach().clone(),
 		use_fixed_masks=True,
 		shared_protocol_path=shared_protocol_path,
@@ -935,8 +932,9 @@ def probe_multi_label(
 
 	# Generate plots
 	file_base_name = (
-		f"{mode}_{probe.probe_type}_"
-		f"{model_name}_"
+		f"{mode}_"
+		# f"{probe.probe_type}_"
+		# f"{model_name}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"

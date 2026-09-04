@@ -120,7 +120,7 @@ def print_summary(results):
 
 def cell(summary_dict, lt, st, sp, dr, su, met="mAP", k="10", bold=False, underline=False):
 	mean, std = summary_dict.get((lt, st, sp, dr, su, met, k), (0.0, 0.0))
-	s = f"{mean:.3f} ± {std:.3f}"
+	s = f"{mean:.3f} ± {std:.4f}"
 	if bold:
 		s = f"\\textbf{{{s}}}"
 	elif underline:

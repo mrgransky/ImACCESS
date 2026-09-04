@@ -871,16 +871,9 @@ def get_parameters_info(model, mode, verbose=True, optimizer=None):
 			print(f"    Image encoder activations: ~{image_activation_mem:.1f} MB")
 			print(f"    Total activations        : ~{text_activation_mem + image_activation_mem:.1f} MB")
 			print(f"    ⚠️  Actual memory will be higher due to intermediate states")
+
 	# ──────────────────────────────────────────────
-	# 11. Optimizer state estimate
-	# ──────────────────────────────────────────────
-	print(f"\n  [Optimizer state estimate] (AdamW)")
-	optimizer_state_bytes = total_tr * 4 * 2  # fp32 momentum + variance
-	print(f"    Trainable params     : {total_tr:,}")
-	print(f"    Optimizer states     : {optimizer_state_bytes / 1e6:.1f} MB (fp32)")
-	print(f"    Total training memory: {(total_bytes + optimizer_state_bytes) / 1e9:.2f} GB")
-	# ──────────────────────────────────────────────
-	# 11b. Optimizer inspection (optional, critical for LoRA+)
+	# 11. Optimizer inspection (ONLY for LoRA+)
 	# ──────────────────────────────────────────────
 	frozen_in_opt = 0
 	missing_from_opt = set()
@@ -910,6 +903,7 @@ def get_parameters_info(model, mode, verbose=True, optimizer=None):
 			print(f"    ⚠️  {len(missing_from_opt)} trainable params are NOT in the optimizer (will never update)")
 		else:
 			print(f"    ✅ All trainable params are covered by the optimizer")
+
 	# ──────────────────────────────────────────────
 	# 12. Summary statistics
 	# ──────────────────────────────────────────────
@@ -1009,10 +1003,10 @@ def get_parameters_info_orig(model, mode):
 	# Print detailed statistics
 	print(f"\n{model.__class__.__name__} {model.name} Parameters Statistics")
 	print(f"   ├─ {mode.upper()}")
-	print(f"   ├─ Image Encoder: Total: {img_total:12,d} (Trainable [Unfrozen]): {img_trainable:12,d} ({img_trainable_percent:.3f}%)  Frozen: {img_frozen:12,d} ({img_frozen_percent:.3f}%)")
-	print(f"   ├─ Text Encoder : Total: {text_total:12,d} (Trainable [Unfrozen]): {text_trainable:12,d} ({text_trainable_percent:.3f}%)  Frozen: {text_frozen:12,d} ({text_frozen_percent:.3f}%)")
+	print(f"   ├─ Image Encoder: Total: {img_total:12,d} (Trainable [Unfrozen]): {img_trainable:12,d} ({img_trainable_percent:<8.3f}%) Frozen: {img_frozen:12,d} ({img_frozen_percent:<8.3f}%)")
+	print(f"   ├─ Text Encoder : Total: {text_total:12,d} (Trainable [Unfrozen]): {text_trainable:12,d} ({text_trainable_percent:<8.3f}%) Frozen: {text_frozen:12,d} ({text_frozen_percent:<8.3f}%)")
 	print(f"   ├─ Logit Scale: {logit_scale_params}")
-	print(f"   └─ Total: {total_params:,}  (Trainable [Unfrozen]): {total_trainable:,} ({total_trainable_percent:.3f}%)  Frozen: {total_frozen:,} ({total_frozen_percent:.3f}%)")
+	print(f"   └─ Total: {total_params:,}  (Trainable [Unfrozen]): {total_trainable:,} ({total_trainable_percent:.3f}%) Frozen: {total_frozen:,} ({total_frozen_percent:.3f}%)")
 	print()
 
 def cleanup_old_temp_dirs():	

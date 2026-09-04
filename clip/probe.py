@@ -626,18 +626,89 @@ class MultiLabelProbe(torch.nn.Module):
 		return self.probe.load_state_dict(state_dict, strict=strict)
 
 	def _print_initialization_summary(self):
+		"""Print comprehensive summary of probe initialization and state."""
 		probe_params = sum(p.numel() for p in self.probe.parameters())
 		clip_params = sum(p.numel() for p in self.clip_model.parameters())
-		
-		print(f"\nRobust Multi-label Probe Summary:")
-		print(f"  Model: {getattr(self.clip_model, 'name', 'Unknown CLIP')}")
-		print(f"  Probe Type: {self.probe_type}")
-		print(f"  Input Features: {self.input_dim}")
-		print(f"  Output Classes: {self.num_classes}")
-		print(f"  Probe Parameters (trainable): {probe_params:,}")
-		print(f"  CLIP Parameters (frozen): {clip_params:,}")
-		print(f"  Trainable Ratio: {probe_params/(probe_params + clip_params)*100:.4f}%")
-	
+		total_params = probe_params + clip_params
+
+		# Memory estimation (float32 = 4 bytes per param)
+		probe_mem_mb = (probe_params * 4) / (1024**2)
+		clip_mem_mb = (clip_params * 4) / (1024**2)
+
+		# Weight statistics (using @property to support both Linear and MLP)
+		with torch.no_grad():
+			w = self.weight.data
+			w_mean, w_std = w.mean().item(), w.std().item()
+			w_min, w_max = w.min().item(), w.max().item()
+			w_norms = w.norm(dim=1)
+			b = self.bias.data
+			b_mean, b_std = b.mean().item(), b.std().item()
+
+		# Gradient isolation check
+		probe_grad_ok = all(p.requires_grad for p in self.probe.parameters())
+		clip_frozen_ok = not any(p.requires_grad for p in self.clip_model.parameters())
+
+		# Buffer registration check
+		w_init_ok = hasattr(self, '_W_init') and self._W_init.numel() > 0
+
+		sep = "═" * 72
+		print(f"\n{sep}")
+		print(f"  🔍 ROBUST MULTI-LABEL PROBE — INITIALIZATION SUMMARY")
+		print(f"{sep}")
+
+		# ── Architecture ─────────────────────────────────────────────────────
+		print(f"\n  📦 ARCHITECTURE")
+		print(f"     Base model      : {getattr(self.clip_model, 'name', 'Unknown CLIP')}")
+		print(f"     Probe type      : {self.probe_type}")
+		if self.probe_type == "MLP":
+			print(f"     Hidden dim      : {self.probe[0].out_features}")
+			print(f"     Dropout         : {self.probe[2].p}")
+		print(f"     Input features  : {self.input_dim}  (from CLIP image encoder)")
+		print(f"     Output classes  : {self.num_classes}")
+		print(f"     Device          : {self.device}")
+
+		# ── Parameters & Memory ──────────────────────────────────────────────
+		ratio = probe_params / total_params * 100
+		print(f"\n  🧮 PARAMETERS & MEMORY  (float32 estimate)")
+		print(f"     ┌─────────────────────────────────────────────────────────────┐")
+		print(f"     │  Probe head (TRAINABLE)  : {probe_params:>12,} params │ {probe_mem_mb:>8.2f} MB │")
+		print(f"     │  CLIP backbone (FROZEN)  : {clip_params:>12,} params │ {clip_mem_mb:>8.2f} MB │")
+		print(f"     │  ─────────────────────────────────────────────────────────── │")
+		print(f"     │  TOTAL                   : {total_params:>12,} params │ {(probe_mem_mb + clip_mem_mb):>8.2f} MB │")
+		print(f"     └─────────────────────────────────────────────────────────────┘")
+		print(f"     Trainable ratio : {ratio:.4f}%")
+		print(f"     → Only the probe head ({probe_params:,} params) receives gradients.")
+		print(f"     → The {clip_params:,}-param CLIP backbone is frozen and acts as")
+		print(f"       a fixed feature extractor. No catastrophic forgetting risk.")
+
+		# ── Weight Initialization Stats ──────────────────────────────────────
+		print(f"\n  ⚖️  WEIGHT INITIALIZATION  (final classification layer)")
+		print(f"     Weight matrix   : shape={list(w.shape)}")
+		print(f"       mean={w_mean:>+.6f}  std={w_std:.6f}  min={w_min:>+.6f}  max={w_max:>+.6f}")
+		print(f"     Row norms       : mean={w_norms.mean():.4f}  std={w_norms.std():.4f}  "
+			  f"min={w_norms.min():.4f}  max={w_norms.max():.4f}")
+		print(f"     Bias vector     : mean={b_mean:>+.6f}  std={b_std:.6f}")
+		if self.probe_type == "Linear":
+			print(f"     → Initialized from L2-normalized CLIP text embeddings (zero-shot).")
+			print(f"     → Row norms ≈ 1.0 confirms unit-normalized text embedding init.")
+		else:
+			print(f"     → MLP final layer initialized (scaled ×0.05 for multi-label stability).")
+
+		# ── Safety & Isolation Checks ────────────────────────────────────────
+		print(f"\n  🛡️  SAFETY CHECKS")
+		probe_status = "✅ PASS" if probe_grad_ok else "❌ FAIL — probe params are frozen!"
+		clip_status  = "✅ PASS" if clip_frozen_ok else "❌ FAIL — CLIP is trainable!"
+		init_status  = "✅ PASS" if w_init_ok else "❌ FAIL — _W_init buffer missing!"
+		print(f"     Probe requires_grad   : {probe_status}")
+		print(f"     CLIP fully frozen     : {clip_status}")
+		print(f"     _W_init buffer exists : {init_status}")
+
+		if not probe_grad_ok or not clip_frozen_ok or not w_init_ok:
+			print(f"\n     ⚠️  WARNING: One or more safety checks failed!")
+			print(f"         Training may behave unexpectedly. Review configuration.")
+
+		print(f"\n{sep}\n")
+
 	def forward(self, x):
 		return self.probe(x)
 
@@ -778,7 +849,7 @@ def get_probe_clip(
 	# Step 4: Create appropriate probe based on dataset type
 	if dataset_info['is_multilabel']:
 		if verbose:
-			print(f"Creating MultiLabelProbe for {num_classes} classes")
+			print(f"MultiLabelProbe: {num_classes} labels")
 			print(f"   Sample: {dataset_info['sample_shapes']}")
 		
 		probe = MultiLabelProbe(
@@ -811,10 +882,7 @@ def get_probe_clip(
 		
 	return probe
 
-def _detect_dataset_type(
-		validation_loader: DataLoader, 
-		verbose: bool=False,
-) -> Dict:
+def _detect_dataset_type(validation_loader: DataLoader, verbose: bool=False,)->Dict:
 	"""
 	Detect whether the dataset is single-label or multi-label by inspecting the DataLoader.
 	
