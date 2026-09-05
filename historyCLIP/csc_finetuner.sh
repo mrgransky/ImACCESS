@@ -8,9 +8,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=128G
-#SBATCH --partition=gpularge
-#SBATCH --gres=gpu:gh200:2
+#SBATCH --mem=256G
+#SBATCH --partition=gpumedium
+#SBATCH --gres=gpu:gh200:1
 #SBATCH --time=0-10:00:00
 ####SBATCH --begin=08:45:00
 ##############################################################################
