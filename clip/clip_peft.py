@@ -1,9 +1,9 @@
 import bitsandbytes as bnb
 import torch
 import copy
-from typing import Tuple, Union, List, Optional, Dict
+import math
+from typing import Union, List, Optional, Tuple
 import types
-import traceback
 
 class IA3Linear(torch.nn.Module):
 		"""
@@ -439,9 +439,11 @@ class DoRALinear(torch.nn.Module):
 			self.magnitude = torch.nn.Parameter(magnitude)
 		
 		# [6] Initialize LoRA weights
-		torch.nn.init.normal_(self.lora_A.weight, mean=0.0, std=1/rank) # Random Gaussian: N(0, 1/rank)
+		# Parity with official Microsoft LoRA / HF PEFT default:
+		torch.nn.init.kaiming_uniform_(self.lora_A.weight, a=math.sqrt(5))
+		# torch.nn.init.normal_(self.lora_A.weight, mean=0.0, std=1/rank) # Random Gaussian: N(0, 1/rank)
 		torch.nn.init.zeros_(self.lora_B.weight)
-		
+
 		# [7] Freeze base weights (direction V is frozen)
 		self.linear.weight.requires_grad = False
 		if bias and self.linear.bias is not None:
@@ -2041,98 +2043,228 @@ def get_adapter_peft_clip(
 
 	return model
 
-def bind_mha_lora_forward(mha_module: torch.nn.Module, method_name: str) -> None:
-	"""
-	Monkey-patch a nn.MultiheadAttention instance so that its forward pass
-	applies the LoRA delta for in_proj and out_proj.
-	Must be called after:
-		- module.in_proj_weight is reassigned to adapter_layer.linear.weight
-		- module.register_module(f"{method_name}_in_proj", adapter_layer)
-		- out_proj has been replaced with a LoRALinear via replace_linear()
-	Args:
-			mha_module  : the nn.MultiheadAttention instance to patch
-			method_name : PEFT method string ("lora", "rslora", "lora_plus", ...)
-										used to look up the registered in_proj adapter submodule
-	"""
-	
-	def forward(
-		self,
-		query,
-		key,
-		value,
-		key_padding_mask=None,
-		need_weights=True,
-		attn_mask=None,
-		average_attn_weights=True,
-		is_causal=False,
-	):
-		# in_proj
-		in_proj_adapter = getattr(self, f"{method_name}_in_proj", None)
-		if in_proj_adapter is not None:
-			if isinstance(in_proj_adapter, IA3Linear):
-				# IA³: element-wise row scaling on the weight matrix
-				in_weight = (self.in_proj_weight * in_proj_adapter.ia3_scale.unsqueeze(1))
-			elif isinstance(in_proj_adapter, VeRALinear):
-				# VeRA: W + Λ_b * B * Λ_d * A  (all in weight space)
-				BLd = in_proj_adapter.vera_B * in_proj_adapter.lambda_d.unsqueeze(0)  # [out, rank]
-				delta_W = BLd @ in_proj_adapter.vera_A                                # [out, in]
-				delta_W = delta_W * in_proj_adapter.lambda_b.unsqueeze(1)             # [out, in]
-				in_weight = self.in_proj_weight + delta_W
-			else:
-				# LoRA / rsLoRA / LoRA+ / DoRA — all have .scale, .lora_A, .lora_B
-				# Materialise W_full = W_base + scale * (B @ A)
-				# Overhead: one [rank × in] @ [out × rank] matmul per forward pass.
-				# For rank=16, in=1024, out=3072: 16*1024 + 3072*16 = 65k MACs — negligible.
-				in_weight = (
-					self.in_proj_weight
-					+ in_proj_adapter.scale * (in_proj_adapter.lora_B.weight @ in_proj_adapter.lora_A.weight)
-				)
-			in_bias = self.in_proj_bias
-		else:
-			in_weight = self.in_proj_weight
-			in_bias   = self.in_proj_bias
+def bind_mha_lora_forward(mha_module: torch.nn.Module, method_name: str, verbose: bool = False) -> None:
+    """
+    Patches an nn.MultiheadAttention instance to compute PEFT (LoRA, DoRA, VeRA, IA3) in activation space,
+    maintaining strict behavioral parity with PyTorch's native MHA.
+    
+    Args:
+        mha_module: The nn.MultiheadAttention module to patch.
+        method_name: The name of the PEFT method (e.g., 'lora', 'dora', 'vera', 'ia3').
+        verbose: If True, print detailed debugging information during the forward pass.
+    """
 
-		# out_proj 
-		# After replace_linear(), self.out_proj is a LoRALinear instance.
-		# F.multi_head_attention_forward accesses self.out_proj.weight directly,
-		# which resolves to adapter.linear.weight (frozen base only).
-		# We must compose the full weight here.
-		if isinstance(self.out_proj, IA3Linear):
-			out_weight = self.out_proj.linear.weight * self.out_proj.ia3_scale.unsqueeze(1)
-			out_bias = self.out_proj.linear.bias
-		elif isinstance(self.out_proj, VeRALinear):
-			B_scaled   = self.out_proj.vera_B * self.out_proj.lambda_d         # [out, rank]
-			vera_delta = (B_scaled @ self.out_proj.vera_A)                     # [out, in]
-			vera_delta = vera_delta * self.out_proj.lambda_b.unsqueeze(1)
-			out_weight = self.out_proj.linear.weight + vera_delta
-			out_bias   = self.out_proj.linear.bias
-		elif hasattr(self.out_proj, 'lora_A'):
-			out_weight = (
-				self.out_proj.linear.weight
-				+ self.out_proj.scale * (self.out_proj.lora_B.weight @ self.out_proj.lora_A.weight)
-			)
-			out_bias = self.out_proj.linear.bias
-		else:
-			out_weight = self.out_proj.weight
-			out_bias   = self.out_proj.bias
+    def forward(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        key_padding_mask: Optional[torch.Tensor] = None,
+        need_weights: bool = True,
+        attn_mask: Optional[torch.Tensor] = None,
+        average_attn_weights: bool = True,
+        is_causal: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
 
-		return torch.nn.functional.multi_head_attention_forward(
-			query, key, value,
-			self.embed_dim, self.num_heads,
-			in_weight, in_bias,
-			self.bias_k, self.bias_v, self.add_zero_attn,
-			self.dropout,
-			out_weight, out_bias,
-			training=self.training,
-			key_padding_mask=key_padding_mask,
-			need_weights=need_weights,
-			attn_mask=attn_mask,
-			use_separate_proj_weight=False,
-			average_attn_weights=average_attn_weights,
-			is_causal=is_causal,
-		)
+        if verbose:
+            print(f"\n{'='*20} MHA FORWARD START ({method_name}) {'='*20}")
+            print(f"[Input Shapes] query: {query.shape}, key: {key.shape}, value: {value.shape}")
+            print(f"[Input Dtypes] query: {query.dtype}, key: {key.dtype}, value: {value.dtype}")
+            print(f"[Flags] need_weights: {need_weights}, is_causal: {is_causal}, training: {self.training}")
 
-	mha_module.forward = types.MethodType(forward, mha_module)
+        # ---------------------------------------------------------------------
+        # 1. Handle Unbatched Inputs [L, D] -> [L, 1, D]
+        # ---------------------------------------------------------------------
+        is_batched = query.dim() == 3
+        if not is_batched:
+            if verbose:
+                print("[1. Shape Handling] Unbatched input detected. Adding batch dimension: [L, D] -> [L, 1, D]")
+            query = query.unsqueeze(1)
+            key = key.unsqueeze(1)
+            value = value.unsqueeze(1)
+
+        batch_first = getattr(self, "batch_first", False)
+        if batch_first:
+            if verbose:
+                print(f"[1. Shape Handling] batch_first=True. Transposing inputs from [B, L, D] to [L, B, D]")
+            # Native order internally is [L, B, D]
+            query, key, value = [x.transpose(0, 1) for x in (query, key, value)]
+
+        tgt_len, bsz, embed_dim = query.shape
+        src_len = key.shape[0]
+        num_heads = self.num_heads
+        head_dim = embed_dim // num_heads
+
+        if verbose:
+            print(f"[Dimensions] tgt_len={tgt_len}, src_len={src_len}, bsz={bsz}, embed_dim={embed_dim}, num_heads={num_heads}, head_dim={head_dim}")
+
+        # ---------------------------------------------------------------------
+        # 2. in_proj in Activation Space (Supports LoRA, VeRA, DoRA, etc.)
+        # ---------------------------------------------------------------------
+        in_proj_adapter = getattr(self, f"{method_name}_in_proj", None)
+        if in_proj_adapter is not None:
+            if verbose:
+                print(f"[2. in_proj] Found adapter: {type(in_proj_adapter).__name__}. Applying in activation space.")
+                print(f"             Input to adapter: {query.shape}")
+            # Runs adapter.forward -> includes dropout and activation-space rank path
+            qkv = in_proj_adapter(query)
+            if verbose:
+                print(f"             Output from adapter (QKV combined): {qkv.shape}")
+        else:
+            if verbose:
+                print(f"[2. in_proj] No adapter found. Using standard torch.nn.functional.linear with frozen base weights.")
+            qkv = torch.nn.functional.linear(query, self.in_proj_weight, self.in_proj_bias)
+            if verbose:
+                print(f"             Output from torch.nn.functional.linear (QKV combined): {qkv.shape}")
+
+        # Split Q, K, V and reshape for SDPA: [B, num_heads, L, head_dim]
+        q, k, v = qkv.chunk(3, dim=-1)
+        
+        # FIXED: Use permute instead of transpose+view to avoid contiguity crashes
+        q = q.view(tgt_len, bsz, num_heads, head_dim).permute(1, 2, 0, 3)
+        k = k.view(src_len, bsz, num_heads, head_dim).permute(1, 2, 0, 3)
+        v = v.view(src_len, bsz, num_heads, head_dim).permute(1, 2, 0, 3)
+        
+        if verbose:
+            print(f"[2. Reshape] Split and reshaped Q, K, V for SDPA.")
+            print(f"             Q shape: {q.shape}")
+            print(f"             K shape: {k.shape}")
+            print(f"             V shape: {v.shape}")
+
+        # ---------------------------------------------------------------------
+        # 3. Resolve Masks (Merge key_padding_mask into attn_mask)
+        # ---------------------------------------------------------------------
+        # Format attn_mask to float if boolean
+        if attn_mask is not None and attn_mask.dtype == torch.bool:
+            if verbose:
+                print(f"[3. Masks] Converting boolean attn_mask to float additive mask (-inf for True).")
+            new_attn_mask = torch.zeros_like(attn_mask, dtype=q.dtype)
+            new_attn_mask.masked_fill_(attn_mask, float("-inf"))
+            attn_mask = new_attn_mask
+
+        # Broadcast and combine key_padding_mask [B, S] -> [B, 1, 1, S]
+        if key_padding_mask is not None:
+            if verbose:
+                print(f"[3. Masks] Processing key_padding_mask of shape {key_padding_mask.shape}.")
+            if key_padding_mask.dtype == torch.bool:
+                kpm_float = torch.zeros((bsz, 1, 1, src_len), dtype=q.dtype, device=query.device)
+                kpm_float.masked_fill_(key_padding_mask.view(bsz, 1, 1, src_len), float("-inf"))
+            else:
+                kpm_float = key_padding_mask.view(bsz, 1, 1, src_len).to(dtype=q.dtype)
+
+            attn_mask = kpm_float if attn_mask is None else (attn_mask + kpm_float)
+            if verbose:
+                print(f"           Merged key_padding_mask into attn_mask. Final attn_mask shape: {attn_mask.shape if attn_mask is not None else None}")
+
+        dropout_p = self.dropout if self.training else 0.0
+        if verbose:
+            print(f"[Attention] Dropout probability: {dropout_p}")
+
+        # ---------------------------------------------------------------------
+        # 4. Attention Computation: Fast Path vs. Weights Path
+        # ---------------------------------------------------------------------
+        attn_weights = None
+
+        if not need_weights:
+            # FIXED: Handle PyTorch SDPA restriction on is_causal + attn_mask
+            if is_causal and attn_mask is not None:
+                if verbose:
+                    print(f"[4. Attention] Detected both is_causal=True and attn_mask. Merging causal mask into attn_mask to bypass SDPA restriction.")
+                causal_mask = torch.zeros((tgt_len, src_len), dtype=q.dtype, device=query.device)
+                causal_mask.masked_fill_(
+                    torch.ones((tgt_len, src_len), dtype=torch.bool, device=query.device).triu(diagonal=1), 
+                    float("-inf")
+                )
+                attn_mask = attn_mask + causal_mask
+                is_causal = False
+
+            if verbose:
+                print(f"[4. Attention] FAST PATH: Using torch.nn.functional.scaled_dot_product_attention (FlashAttention/MemEfficient).")
+            # FAST PATH: Fused FlashAttention / Memory-Efficient SDPA
+            attn_output = torch.nn.functional.scaled_dot_product_attention(
+                q, k, v,
+                attn_mask=attn_mask,
+                dropout_p=dropout_p,
+                is_causal=is_causal
+            )  # [B, num_heads, L, head_dim]
+        else:
+            if verbose:
+                print(f"[4. Attention] WEIGHTS PATH: Explicit matrix computation to return attention maps.")
+            # FALLBACK PATH: Explicit matrix computation to return attention maps
+            scale_factor = 1.0 / math.sqrt(head_dim)
+            attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale_factor  # [B, num_heads, L, S]
+            if verbose:
+                print(f"             Computed attention scores: {attn_scores.shape}")
+
+            if is_causal:
+                if verbose:
+                    print(f"             Applying causal mask (lower triangular).")
+                causal_mask = torch.ones((tgt_len, src_len), dtype=torch.bool, device=query.device).tril()
+                attn_scores.masked_fill_(~causal_mask, float("-inf"))
+
+            if attn_mask is not None:
+                if verbose:
+                    print(f"             Applying additive attn_mask.")
+                attn_scores = attn_scores + attn_mask
+
+            attn_probs = torch.nn.functional.softmax(attn_scores, dim=-1)
+            attn_probs = torch.nn.functional.dropout(attn_probs, p=dropout_p, training=self.training)
+            if verbose:
+                print(f"             Applied softmax and dropout. Attention probs shape: {attn_probs.shape}")
+
+            attn_output = torch.matmul(attn_probs, v)  # [B, num_heads, L, head_dim]
+
+            if average_attn_weights:
+                attn_weights = attn_probs.mean(dim=1)  # [B, L, S]
+                if verbose:
+                    print(f"             Averaged attention weights across heads: {attn_weights.shape}")
+            else:
+                attn_weights = attn_probs               # [B, num_heads, L, S]
+                if verbose:
+                    print(f"             Kept per-head attention weights: {attn_weights.shape}")
+
+        if verbose:
+            print(f"[4. Attention] Output from attention mechanism: {attn_output.shape}")
+
+        # ---------------------------------------------------------------------
+        # 5. out_proj in Activation Space
+        # ---------------------------------------------------------------------
+        # Reshape [B, num_heads, L, head_dim] -> [L, B, embed_dim]
+        attn_output = attn_output.permute(2, 0, 1, 3).contiguous().view(tgt_len, bsz, embed_dim)
+        if verbose:
+            print(f"[5. Reshape] Reshaped attention output to [L, B, embed_dim]: {attn_output.shape}")
+
+        # self.out_proj was already replaced by LoRALinear instance during peft injection
+        if verbose:
+            print(f"[5. out_proj] Applying out_proj adapter: {type(self.out_proj).__name__}")
+        attn_output = self.out_proj(attn_output)
+        if verbose:
+            print(f"             Output from out_proj: {attn_output.shape}")
+
+        # ---------------------------------------------------------------------
+        # 6. Restore Original Input Layout (batch_first & unbatched)
+        # ---------------------------------------------------------------------
+        if batch_first:
+            if verbose:
+                print(f"[6. Shape Restore] batch_first=True. Transposing output back to [B, L, D].")
+            attn_output = attn_output.transpose(0, 1)  # [B, L, D]
+
+        if not is_batched:
+            if verbose:
+                print(f"[6. Shape Restore] Unbatched input was used. Squeezing batch dimension from output.")
+            attn_output = attn_output.squeeze(0 if batch_first else 1)  # [L, D]
+            if attn_weights is not None:
+                attn_weights = attn_weights.squeeze(0)
+
+        if verbose:
+            print(f"[Final Output] attn_output shape: {attn_output.shape}, dtype: {attn_output.dtype}")
+            if attn_weights is not None:
+                print(f"[Final Output] attn_weights shape: {attn_weights.shape}")
+            print(f"{'='*20} MHA FORWARD END {'='*20}\n")
+
+        return attn_output, attn_weights
+
+    mha_module.forward = types.MethodType(forward, mha_module)
 
 def get_injected_peft_clip(
 	clip_model: torch.nn.Module,
@@ -2474,7 +2606,8 @@ def get_injected_peft_clip(
 			module.in_proj_bias = adapter_layer.linear.bias
 			module.register_module(f"{method}_in_proj", adapter_layer)
 			replaced_modules.add(f"Text: {name}.in_proj")
-			bind_mha_lora_forward(module, method) # Patch MHA forward to apply LoRA delta
+
+			bind_mha_lora_forward(mha_module=module, method_name=method, verbose=verbose) # Patch MHA forward to apply LoRA delta
 
 			mem_info = adapter_layer.get_memory_footprint()
 			memory_stats['text_encoder']['base_mb'] += mem_info['base_memory_mb']
@@ -2544,7 +2677,8 @@ def get_injected_peft_clip(
 			module.in_proj_bias = adapter_layer.linear.bias
 			module.register_module(f"{method}_in_proj", adapter_layer)
 			replaced_modules.add(f"Vision: {name}.in_proj")
-			bind_mha_lora_forward(module, method) # Patch MHA forward to apply LoRA delta
+
+			bind_mha_lora_forward(mha_module=module, method_name=method, verbose=verbose) # Patch MHA forward to apply LoRA delta
 
 			mem_info = adapter_layer.get_memory_footprint()
 			memory_stats['vision_encoder']['base_mb'] += mem_info['base_memory_mb']
@@ -2636,7 +2770,7 @@ def get_injected_peft_clip(
 			x = x.permute(1, 0, 2)
 			x = self.transformer(x)
 			x = x.permute(1, 0, 2)
-			x = self.ln_final(x)
+			x = self.ln_final(x).type(self.dtype)
 			x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
 			return getattr(self, f"{method}_text_projection")(x)
 		
@@ -2836,145 +2970,155 @@ def get_injected_peft_clip(
 			patched = 0
 			issues  = []
 			for name, module in encoder_module.named_modules():
-					if not isinstance(module, torch.nn.MultiheadAttention):
-							continue
-					total += 1
-					is_patched      = 'forward' in module.__dict__
-					in_proj_adapter = getattr(module, f"{method_name}_in_proj", None)
-					has_in_proj     = in_proj_adapter is not None
-					if not expect_adapters:
-							if is_patched:
-									issues.append(f"{encoder_name}.{name} — patched but no adapters injected")
-									status = "⚠"
-							else:
-									status = "✓ (correctly unpatched)"
-									patched += 1
-							if verbose:
-									print(f"    {status} {encoder_name}.{name}")
-									print(f"        └─ forward patched: {is_patched} (expected: False)")
-							continue
-					# ── per-method in_proj verification ──────────────────────────────
-					in_proj_ok   = False
-					in_proj_info = "NOT FOUND"
-					if has_in_proj:
-							if isinstance(in_proj_adapter, IA3Linear):
-									weight_aliased = module.in_proj_weight is in_proj_adapter.linear.weight
-									in_proj_ok     = hasattr(in_proj_adapter, 'ia3_scale') and weight_aliased
-									in_proj_info   = (
-											f"ia3_scale={in_proj_adapter.ia3_scale.shape} "
-											f"weight_aliased={weight_aliased}"
-									)
-							elif isinstance(in_proj_adapter, VeRALinear):
-									weight_aliased = module.in_proj_weight is in_proj_adapter.linear.weight
-									in_proj_ok     = (
-											hasattr(in_proj_adapter, 'vera_A')
-											and hasattr(in_proj_adapter, 'vera_B')
-											and hasattr(in_proj_adapter, 'lambda_d')
-											and hasattr(in_proj_adapter, 'lambda_b')
-											and weight_aliased
-									)
-									in_proj_info   = (
-											f"vera_A={in_proj_adapter.vera_A.shape} "
-											f"vera_B={in_proj_adapter.vera_B.shape} "
-											f"lambda_d={in_proj_adapter.lambda_d.shape} "
-											f"lambda_b={in_proj_adapter.lambda_b.shape} "
-											f"weight_aliased={weight_aliased}"
-									)
-							else:  # LoRA / rsLoRA / LoRA+ / DoRA
-									scale_val      = getattr(in_proj_adapter, 'scale', None)
-									rslora_val     = getattr(in_proj_adapter, 'rslora', False)
-									weight_aliased = module.in_proj_weight is in_proj_adapter.linear.weight
-									in_proj_ok     = (
-											hasattr(in_proj_adapter, 'lora_A')
-											and hasattr(in_proj_adapter, 'lora_B')
-											and weight_aliased
-									)
-									in_proj_info   = (
-											f"lora_A={in_proj_adapter.lora_A.weight.shape} "
-											f"lora_B={in_proj_adapter.lora_B.weight.shape} "
-											f"scale={scale_val} rslora={rslora_val} "
-											f"weight_aliased={weight_aliased}"
-									)
-					# ── per-method out_proj verification ─────────────────────────────
-					out_proj_ok   = False
-					out_proj_info = "NOT adapted"
-					if isinstance(module.out_proj, IA3Linear):
-							out_proj_ok   = hasattr(module.out_proj, 'ia3_scale')
-							out_proj_info = f"ia3_scale={module.out_proj.ia3_scale.shape}"
-					elif isinstance(module.out_proj, VeRALinear):
-							out_proj_ok   = (
-									hasattr(module.out_proj, 'vera_A')
-									and hasattr(module.out_proj, 'vera_B')
-							)
-							out_proj_info = (
-									f"vera_A={module.out_proj.vera_A.shape} "
-									f"vera_B={module.out_proj.vera_B.shape}"
-							)
-					elif hasattr(module.out_proj, 'lora_A'):
-							scale_val     = getattr(module.out_proj, 'scale', None)
-							out_proj_ok   = True
-							out_proj_info = (
-									f"lora_A={module.out_proj.lora_A.weight.shape} "
-									f"lora_B={module.out_proj.lora_B.weight.shape} "
-									f"scale={scale_val}"
-							)
-					# ── weight delta shape check (method-aware) ───────────────────────
-					weight_shape_ok = False
-					shape_info      = "N/A"
-					if has_in_proj and in_proj_ok:
-							if isinstance(in_proj_adapter, IA3Linear):
-									delta          = in_proj_adapter.ia3_scale.unsqueeze(1) * in_proj_adapter.linear.weight
-									weight_shape_ok = delta.shape == module.in_proj_weight.shape
-									shape_info      = (
-											f"delta={delta.shape} matches_in_proj={weight_shape_ok} "
-											f"delta_norm={delta.norm().item()}"
-									)
-							elif isinstance(in_proj_adapter, VeRALinear):
-									BLd             = in_proj_adapter.vera_B * in_proj_adapter.lambda_d.unsqueeze(0)
-									delta           = (BLd @ in_proj_adapter.vera_A) * in_proj_adapter.lambda_b.unsqueeze(1)
-									weight_shape_ok = delta.shape == module.in_proj_weight.shape
-									shape_info      = (
-											f"delta={delta.shape} matches_in_proj={weight_shape_ok} "
-											f"delta_norm={delta.norm().item()}"
-									)
-							else:
-									delta           = (
-											in_proj_adapter.scale
-											* (in_proj_adapter.lora_B.weight @ in_proj_adapter.lora_A.weight)
-									)
-									weight_shape_ok = delta.shape == module.in_proj_weight.shape
-									shape_info      = (
-											f"delta={delta.shape} matches_in_proj={weight_shape_ok} "
-											f"delta_norm={delta.norm().item()}"
-									)
-					overall_ok = is_patched and in_proj_ok and out_proj_ok and weight_shape_ok
-					if overall_ok:
-							patched += 1
-					else:
-							issues.append(f"{encoder_name}.{name}")
-					if verbose:
-							status = "✓" if overall_ok else "✗"
-							print(f"    {status} {encoder_name}.{name}")
-							print(f"        ├─ forward patched  : {is_patched}")
-							print(f"        ├─ in_proj  adapter : {in_proj_info}")
-							print(f"        ├─ out_proj adapter : {out_proj_info}")
-							print(f"        └─ weight delta     : {shape_info}")
+				if not isinstance(module, torch.nn.MultiheadAttention):
+						continue
+				total += 1
+				is_patched      = 'forward' in module.__dict__
+				in_proj_adapter = getattr(module, f"{method_name}_in_proj", None)
+				has_in_proj     = in_proj_adapter is not None
+				if not expect_adapters:
+						if is_patched:
+								issues.append(f"{encoder_name}.{name} — patched but no adapters injected")
+								status = "⚠"
+						else:
+								status = "✓ (correctly unpatched)"
+								patched += 1
+						if verbose:
+								print(f"\t{status} {encoder_name}.{name}")
+								print(f"\t\t└─ forward patched: {is_patched} (expected: False)")
+						continue
+				# ── per-method in_proj verification ──────────────────────────────
+				in_proj_ok   = False
+				in_proj_info = "NOT FOUND"
+				if has_in_proj:
+						if isinstance(in_proj_adapter, IA3Linear):
+								weight_aliased = module.in_proj_weight is in_proj_adapter.linear.weight
+								in_proj_ok     = hasattr(in_proj_adapter, 'ia3_scale') and weight_aliased
+								in_proj_info   = (
+										f"ia3_scale={in_proj_adapter.ia3_scale.shape} "
+										f"weight_aliased={weight_aliased}"
+								)
+						elif isinstance(in_proj_adapter, VeRALinear):
+								weight_aliased = module.in_proj_weight is in_proj_adapter.linear.weight
+								in_proj_ok     = (
+										hasattr(in_proj_adapter, 'vera_A')
+										and hasattr(in_proj_adapter, 'vera_B')
+										and hasattr(in_proj_adapter, 'lambda_d')
+										and hasattr(in_proj_adapter, 'lambda_b')
+										and weight_aliased
+								)
+								in_proj_info   = (
+										f"vera_A={in_proj_adapter.vera_A.shape} "
+										f"vera_B={in_proj_adapter.vera_B.shape} "
+										f"lambda_d={in_proj_adapter.lambda_d.shape} "
+										f"lambda_b={in_proj_adapter.lambda_b.shape} "
+										f"weight_aliased={weight_aliased}"
+								)
+						else:  # LoRA / rsLoRA / LoRA+ / DoRA
+								scale_val      = getattr(in_proj_adapter, 'scale', None)
+								rslora_val     = getattr(in_proj_adapter, 'rslora', False)
+								weight_aliased = module.in_proj_weight is in_proj_adapter.linear.weight
+								in_proj_ok     = (
+										hasattr(in_proj_adapter, 'lora_A')
+										and hasattr(in_proj_adapter, 'lora_B')
+										and weight_aliased
+								)
+								in_proj_info   = (
+										f"lora_A={in_proj_adapter.lora_A.weight.shape} "
+										f"lora_B={in_proj_adapter.lora_B.weight.shape} "
+										f"scale={scale_val} rslora={rslora_val} "
+										f"weight_aliased={weight_aliased}"
+								)
+				# ── per-method out_proj verification ─────────────────────────────
+				out_proj_ok   = False
+				out_proj_info = "NOT adapted"
+				if isinstance(module.out_proj, IA3Linear):
+						out_proj_ok   = hasattr(module.out_proj, 'ia3_scale')
+						out_proj_info = f"ia3_scale={module.out_proj.ia3_scale.shape}"
+				elif isinstance(module.out_proj, VeRALinear):
+						out_proj_ok   = (
+								hasattr(module.out_proj, 'vera_A')
+								and hasattr(module.out_proj, 'vera_B')
+						)
+						out_proj_info = (
+								f"vera_A={module.out_proj.vera_A.shape} "
+								f"vera_B={module.out_proj.vera_B.shape}"
+						)
+				elif hasattr(module.out_proj, 'lora_A'):
+						scale_val     = getattr(module.out_proj, 'scale', None)
+						out_proj_ok   = True
+						out_proj_info = (
+								f"lora_A={module.out_proj.lora_A.weight.shape} "
+								f"lora_B={module.out_proj.lora_B.weight.shape} "
+								f"scale={scale_val}"
+						)
+				# ── weight delta shape check (method-aware) ───────────────────────
+				weight_shape_ok = False
+				shape_info      = "N/A"
+				if has_in_proj and in_proj_ok:
+						if isinstance(in_proj_adapter, IA3Linear):
+								delta          = in_proj_adapter.ia3_scale.unsqueeze(1) * in_proj_adapter.linear.weight
+								weight_shape_ok = delta.shape == module.in_proj_weight.shape
+								shape_info      = (
+										f"delta={delta.shape} matches_in_proj={weight_shape_ok} "
+										f"delta_norm={delta.norm().item()}"
+								)
+						elif isinstance(in_proj_adapter, VeRALinear):
+								BLd             = in_proj_adapter.vera_B * in_proj_adapter.lambda_d.unsqueeze(0)
+								delta           = (BLd @ in_proj_adapter.vera_A) * in_proj_adapter.lambda_b.unsqueeze(1)
+								weight_shape_ok = delta.shape == module.in_proj_weight.shape
+								shape_info      = (
+										f"delta={delta.shape} matches_in_proj={weight_shape_ok} "
+										f"delta_norm={delta.norm().item()}"
+								)
+						else:
+								delta           = (
+										in_proj_adapter.scale
+										* (in_proj_adapter.lora_B.weight @ in_proj_adapter.lora_A.weight)
+								)
+								weight_shape_ok = delta.shape == module.in_proj_weight.shape
+								shape_info      = (
+										f"delta={delta.shape} matches_in_proj={weight_shape_ok} "
+										f"delta_norm={delta.norm().item()}"
+								)
+				overall_ok = is_patched and in_proj_ok and out_proj_ok and weight_shape_ok
+
+				if overall_ok:
+					patched += 1
+				else:
+					issues.append(f"{encoder_name}.{name}")
+
+				if verbose:
+					status = "✓" if overall_ok else "✗"
+					print(f"\t{status} {encoder_name}.{name}")
+					print(f"\t\t├─ forward patched  : {is_patched}")
+					print(f"\t\t├─ in_proj  adapter : {in_proj_info}")
+					print(f"\t\t├─ out_proj adapter : {out_proj_info}")
+					print(f"\t\t└─ weight delta     : {shape_info}")
 			return total, patched, issues
 
 		# Call sites — pass expect_adapters based on whether text modules were targeted
 		text_has_adapters = len(target_text_modules) > 0 and "in_proj" in target_text_modules
+
 		text_total, text_patched, text_issues = verify_mha_patches(
-				model.transformer, "Text", method, expect_adapters=text_has_adapters
+			model.transformer, 
+			"Text", 
+			method, 
+			expect_adapters=text_has_adapters
 		)
+
 		vis_total, vis_patched, vis_issues = verify_mha_patches(
-				model.visual, "Vision", method, expect_adapters=True
+			model.visual, 
+			"Vision", 
+			method, 
+			expect_adapters=True
 		)
 
 		print(f"\n[MHA PATCH SUMMARY]")
 		text_label = (
-				f"{text_patched}/{text_total} patched correctly"
-				if text_has_adapters
-				else f"{text_patched}/{text_total} correctly unpatched (target_text_modules={target_text_modules})"
+			f"{text_patched}/{text_total} patched correctly"
+			if text_has_adapters
+			else f"{text_patched}/{text_total} correctly unpatched (target_text_modules={target_text_modules})"
 		)
 		print(f"    ├─ Text  encoder : {text_label}")
 		print(f"    ├─ Vision encoder: {vis_patched}/{vis_total} patched correctly")
