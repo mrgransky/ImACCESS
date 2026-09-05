@@ -2607,7 +2607,11 @@ def get_injected_peft_clip(
 			module.register_module(f"{method}_in_proj", adapter_layer)
 			replaced_modules.add(f"Text: {name}.in_proj")
 
-			bind_mha_lora_forward(mha_module=module, method_name=method, verbose=verbose) # Patch MHA forward to apply LoRA delta
+			bind_mha_lora_forward(
+				mha_module=module, 
+				method_name=method, 
+				verbose=False,
+			) # Patch MHA forward to apply LoRA delta
 
 			mem_info = adapter_layer.get_memory_footprint()
 			memory_stats['text_encoder']['base_mb'] += mem_info['base_memory_mb']
@@ -2678,7 +2682,11 @@ def get_injected_peft_clip(
 			module.register_module(f"{method}_in_proj", adapter_layer)
 			replaced_modules.add(f"Vision: {name}.in_proj")
 
-			bind_mha_lora_forward(mha_module=module, method_name=method, verbose=verbose) # Patch MHA forward to apply LoRA delta
+			bind_mha_lora_forward(
+				mha_module=module, 
+				method_name=method, 
+				verbose=False,
+			) # Patch MHA forward to apply LoRA delta
 
 			mem_info = adapter_layer.get_memory_footprint()
 			memory_stats['vision_encoder']['base_mb'] += mem_info['base_memory_mb']
