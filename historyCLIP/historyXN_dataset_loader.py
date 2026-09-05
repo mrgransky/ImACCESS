@@ -414,8 +414,8 @@ def estimate_image_size_mb(path: str) -> float:
 
 def get_estimated_image_size_mb(
 	image_paths: Union[List[str], pd.Series],
-	sample_size: int = 100,
-	num_workers: int = 8
+	num_workers: int,
+	sample_size: int,
 ) -> float:
 	if isinstance(image_paths, pd.Series):
 		image_paths = image_paths.dropna().tolist()
@@ -425,13 +425,15 @@ def get_estimated_image_size_mb(
 		return 7.0
 
 	actual_sample_size = min(sample_size, len(image_paths))
-	print(f"Estimating average image RAM size: {actual_sample_size}/{len(image_paths)} total images ({actual_sample_size/len(image_paths)*100:.1f}%)")
+	print("-"*75)
+	print(f"Average image RAM size: {actual_sample_size}/{len(image_paths)} total images ({actual_sample_size/len(image_paths)*100:.1f}%)")
 
 	sample_paths = random.sample(image_paths, actual_sample_size)
 
 	t0 = time.time()
 	sizes = []
 
+	print(f"concurrent feature extraction ({num_workers} workers)")
 	with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
 		for size in executor.map(estimate_image_size_mb, sample_paths):
 			if size is not None:
@@ -442,9 +444,9 @@ def get_estimated_image_size_mb(
 		return 7.0
 
 	avg_mb = sum(sizes) / len(sizes)
-	print(f"Successfully estimated {len(sizes)}/{actual_sample_size} images.")
-	print(f"Estimated avg image RAM size: {avg_mb:.2f} MB | Elapsed: {time.time() - t0:.2f} sec")
-
+	print(f"Successfully estimated {len(sizes)}/{actual_sample_size} images")
+	print(f"Estimated avgerage image RAM size: {avg_mb:.2f} MB | Elapsed: {time.time() - t0:.1f} sec")
+	print("-"*75)
 	return avg_mb
 
 def get_cache_size(
@@ -506,9 +508,9 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 			data_frame: pd.DataFrame,
 			transform,
 			label_dict: dict,
+			cache_workers: int,
 			text_augmentation: bool = True,
 			cache_size: int = 0,
-			cache_workers: int = 4,
 			col:str='multimodal_labels',
 		):
 		self.dataset_name = dataset_name
@@ -693,6 +695,7 @@ def get_multi_label_dataloaders(
 	average_image_size_mb = get_estimated_image_size_mb(
 		image_paths=train_dataset["img_path"].values.tolist()+val_dataset["img_path"].values.tolist(),
 		sample_size=int(total_samples*0.1) if total_samples > int(1e5) else 5000,
+		num_workers=num_workers,
 	)
 	
 	is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID'])
@@ -746,7 +749,7 @@ def get_multi_label_dataloaders(
 		transform=preprocess,
 		label_dict=label_dict,
 		cache_size=train_cache_size,
-		cache_workers=min(4, num_workers),
+		cache_workers=min(8, num_workers),
 		col=col,
 	)
 	
@@ -759,7 +762,7 @@ def get_multi_label_dataloaders(
 		transform=preprocess,
 		label_dict=label_dict,
 		cache_size=val_cache_size,
-		cache_workers=min(4, num_workers),
+		cache_workers=min(8, num_workers),
 		col=col,
 	)
 	
