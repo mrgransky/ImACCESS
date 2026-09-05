@@ -892,7 +892,7 @@ def probe_multi_label(
 		print(f"  Best model: {mdl_fpth}")
 
 		print(f"{'='*50}")
-		print("\n[Tiered] I2T Retrieval")
+		print("[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n[Tiered] T2I Retrieval")
@@ -1473,7 +1473,7 @@ def full_finetune_multi_label(
 		print(f"  Best model: {mdl_fpth}")
 
 		print(f"{'='*50}")
-		print("\n[Tiered] I2T Retrieval")
+		print("[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n[Tiered] T2I Retrieval")
@@ -2046,7 +2046,7 @@ def lora_finetune_multi_label(
 		print(f"  Best model: {mdl_fpth}")
 
 		print(f"{'='*50}")
-		print("\n[Tiered] I2T Retrieval")
+		print("[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n[Tiered] T2I Retrieval")
@@ -2875,7 +2875,7 @@ def lora_plus_finetune_multi_label(
 		print(f"  Best model: {mdl_fpth}")
 
 		print(f"{'='*50}")
-		print("\n[Tiered] I2T Retrieval")
+		print("[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n[Tiered] T2I Retrieval")
@@ -3496,7 +3496,7 @@ def rslora_finetune_multi_label(
 		print(f"  Best model: {mdl_fpth}")
 
 		print(f"{'='*50}")
-		print("\n[Tiered] I2T Retrieval")
+		print("[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n[Tiered] T2I Retrieval")
@@ -4121,7 +4121,7 @@ def dora_finetune_multi_label(
 		print(f"  Best model: {mdl_fpth}")
 
 		print(f"{'='*50}")
-		print("\n[Tiered] I2T Retrieval")
+		print("[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n[Tiered] T2I Retrieval")
@@ -4824,7 +4824,7 @@ def vera_finetune_multi_label(
 		print(f"  Best model: {mdl_fpth}")
 
 		print(f"{'='*50}")
-		print("\n[Tiered] I2T Retrieval")
+		print("[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n[Tiered] T2I Retrieval")
@@ -5457,7 +5457,7 @@ def ia3_finetune_multi_label(
 		print(f"  Best model: {mdl_fpth}")
 
 		print(f"{'='*50}")
-		print("\n[Tiered] I2T Retrieval")
+		print("[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n[Tiered] T2I Retrieval")
@@ -6070,7 +6070,7 @@ def clip_adapter_finetune_multi_label(
 		print(f"  Best model: {mdl_fpth}")
 
 		print(f"{'='*50}")
-		print("\n[Tiered] I2T Retrieval")
+		print("[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n[Tiered] T2I Retrieval")
@@ -6660,7 +6660,7 @@ def tip_adapter_finetune_multi_label(
 
 		if verbose:
 			print(f"{'='*50}")
-			print("\n[Tiered] I2T Retrieval")
+			print("[Tiered] I2T Retrieval")
 			for tier, m in final_tiered_i2t.items():
 				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 			print("\n[Tiered] T2I Retrieval")
@@ -6952,7 +6952,7 @@ def tip_adapter_finetune_multi_label(
 		print(f"  └─ Best model saved to: {mdl_fpth if num_epochs > 0 else 'N/A (training-free)'}")
 
 		print(f"{'='*50}")
-		print("\n[Tiered] I2T Retrieval")
+		print("[Tiered] I2T Retrieval")
 		for tier, m in final_tiered_i2t.items():
 			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 		print("\n[Tiered] T2I Retrieval")

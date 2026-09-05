@@ -946,29 +946,27 @@ def get_validation_metrics(
 
 	if verbose:
 		print(f"\n[Embedding Geometry Diagnostics]")
-		print(f"  Similarity matrices:")
-		print(f"    I2T {type(i2t_similarity)} {i2t_similarity.shape} T2I {type(t2i_similarity)} {t2i_similarity.shape}")
+		print(
+			f"  Similarity matrices: "
+			f"I2T {type(i2t_similarity)} {i2t_similarity.shape} T2I {type(t2i_similarity)} {t2i_similarity.shape}"
+		)
 
 		# ── 1. Norm distribution of image embeddings ──────────────────
 		img_norms = device_image_embeds.norm(dim=1)
-		print(f"  Image embedding norms:")
 		print(
-			f"    (min, max): ({img_norms.min():.3f}, {img_norms.max():.3f}) "
-			f"μ±σ: {img_norms.mean():.3f} ± {img_norms.std():.3f}"
-		)
-		print(
-			f"    Normalized? {torch.allclose(img_norms, torch.ones_like(img_norms), atol=1e-3)}"
+			f"  Image embedding norms: "
+			f"(min, max): ({img_norms.min():.3f}, {img_norms.max():.3f}) "
+			f"μ±σ: {img_norms.mean():.3f} ± {img_norms.std():.3f} "
+			f"Normalized? {torch.allclose(img_norms, torch.ones_like(img_norms), atol=1e-3)}"
 		)
 
 		# ── 2. Norm distribution of class embeddings ──────────────────
 		cls_norms = device_class_text_embeds.norm(dim=1)
-		print(f"  Label embedding norms:")
-		print(
-			f"    (min, max): ({cls_norms.min():.3f}, {cls_norms.max():.3f}) "
-			f"μ±σ: {cls_norms.mean():.3f} ± {cls_norms.std():.3f}"
+		print(f"  Label embedding norms: " 
+			f"(min, max): ({cls_norms.min():.3f}, {cls_norms.max():.3f}) "
+			f"μ±σ: {cls_norms.mean():.3f} ± {cls_norms.std():.3f} "
+			f"Normalized? {torch.allclose(cls_norms, torch.ones_like(cls_norms), atol=1e-3)}"
 		)
-
-		print(f"    Normalized? {torch.allclose(cls_norms, torch.ones_like(cls_norms), atol=1e-3)}")
 
 		# ── 3. Pairwise image-class similarity distribution ───────────
 		# Sample N images for efficiency
@@ -984,8 +982,11 @@ def get_validation_metrics(
 
 		# Raw cosine similarity without temperature
 		sample_sims = sample_img @ sample_cls.T   # [n_sample, C]
-		print(f"  Raw cosine similarity image@class ({n_sample} sampled images):")
-		print(f"    (min, max): ({sample_sims.min():.3f}, {sample_sims.max():.3f}) μ±σ: {sample_sims.mean():.3f} ± {sample_sims.std():.3f}")
+		print(f"  Raw cosine similarity image@class "
+			f"({n_sample} sampled images): "
+			f"(min, max): ({sample_sims.min():.3f}, {sample_sims.max():.3f}) "
+			f"μ±σ: {sample_sims.mean():.3f} ± {sample_sims.std():.3f}"
+		)
 
 		# ── 4. Inter-class similarity — are class embeddings separated? ─
 		n_cls_sample = min(min_number_samples, device_class_text_embeds.shape[0])
@@ -1006,8 +1007,12 @@ def get_validation_metrics(
 
 		off_diag = inter_cls_sims[off_diag_mask]
 
-		print(f"  Inter-class cosine similarity ({n_cls_sample} sampled labels):")
-		print(f"    (min, max): ({off_diag.min():.3f}, {off_diag.max():.3f}) μ±σ: {off_diag.mean():.3f} ± {off_diag.std():.3f}")
+		print(
+			f"  Inter-class cosine similarity "
+			f"({n_cls_sample} sampled labels): "
+			f"(min, max): ({off_diag.min():.3f}, {off_diag.max():.3f}) "
+			f"μ±σ: {off_diag.mean():.3f} ± {off_diag.std():.3f}"
+		)
 		print(f"    Fraction [sim > 0.5]: {(off_diag > 0.5).float().mean():.4f} (high → class embeddings cluster together)")
 		print(f"    Fraction [sim > 0.9]: {(off_diag > 0.9).float().mean():.4f} (high → near-duplicate class embeddings)")
 
