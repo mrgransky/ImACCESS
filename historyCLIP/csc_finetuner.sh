@@ -11,7 +11,7 @@
 #SBATCH --mem=256G
 #SBATCH --partition=gpumedium
 #SBATCH --gres=gpu:gh200:1
-#SBATCH --time=0-10:00:00
+#SBATCH --time=0-08:00:00
 ####SBATCH --begin=08:45:00
 ##############################################################################
 # ARRAY INDEXING SCHEME
@@ -69,11 +69,11 @@
 #   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
-##SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
+#SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
 ##SBATCH --array=12-14 # only LoRA+
 ##SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
 ##SBATCH --array=18-20 # only dora
-#SBATCH --array=9-23 # low-rank adaptation
+##SBATCH --array=9-23 # low-rank adaptation
 ##SBATCH --array=3-5 # probe
 ##SBATCH --array=9-11 # lora
 
