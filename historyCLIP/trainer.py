@@ -112,6 +112,14 @@ def main():
 	# Adapter-based FT
 	parser.add_argument('--adapter_method', '-am', type=str, choices=['clip_adapter_v', 'clip_adapter_t', 'clip_adapter_vt', 'tip_adapter', 'tip_adapter_f'], default=None, help='Adapter method (used if strategy=adapter)')
 
+	# clip-adapter-v, clip-adapter-t, clip-adapter-vt:
+	parser.add_argument('--bottleneck_dim', type=int, default=256, help='Bottleneck dimension (used if strategy=adapter)')
+
+
+	parser.add_argument('--initial_beta', type=float, default=1.0, help='initial_beta')
+	parser.add_argument('--initial_alpha', type=float, default=1.0, help='initial_alpha')
+	parser.add_argument('--support_shots', type=int, default=16, help='support_shots')
+
 	# Baselines
 	parser.add_argument('--baseline_method', '-bm', type=str, choices=['zero_shot', 'probe'], default=None, help='Baseline method')
 
@@ -312,40 +320,20 @@ def main():
 			**(
 					{
 						'clip_adapter_method': args.adapter_method,
-						'bottleneck_dim': 256,
+						'bottleneck_dim': args.bottleneck_dim,
 						'activation': 'relu',
 					} if args.strategy == 'adapter' and args.adapter_method and args.adapter_method.startswith('clip_adapter') else {}
 				),
 			**(
 					{
 						'tip_adapter_method': args.adapter_method,
-						'initial_beta': 1.0,
-						'initial_alpha': 1.0,
-						'support_shots': 16,
+						'initial_beta': args.initial_beta,
+						'initial_alpha': args.initial_alpha,
+						'support_shots': args.support_shots,
 					} if args.strategy == 'adapter' and args.adapter_method and args.adapter_method.startswith('tip_adapter') else {}
 				),
 		)
 		
-
-
-		# # Reconstruct the original strategy name for storage
-		# if args.strategy == 'adapter' and args.adapter_method:
-		# 	strategy_name = args.adapter_method  # e.g., 'clip_adapter_v', 'tip_adapter_f'
-		# elif args.strategy == 'baseline' and args.baseline_method:
-		# 	strategy_name = args.baseline_method  # e.g., 'zero_shot', 'probe'
-		# else:
-		# 	strategy_name = args.strategy  # e.g., 'lora', 'full', 'dora'
-		
-		# save_tiered_retrieval_metrics(
-		# 	best_model_result=best_model_result,
-		# 	strategy=strategy_name,
-		# 	dataset_directory=DATASET_DIRECTORY,
-		# 	column=args.column,
-		# 	seed=args.seed,
-		# 	verbose=args.verbose,
-		# )
-
-
 		# Reconstruct the original strategy name for storage
 		if args.strategy == 'adapter' and args.adapter_method:
 			strategy_name = args.adapter_method  # e.g., 'clip_adapter_v', 'tip_adapter_f'
@@ -392,16 +380,16 @@ def main():
 			if args.adapter_method and args.adapter_method.startswith('clip_adapter'):
 					strategy_hyperparams.update(
 						{
-							"bottleneck_dim": 256,
+							"bottleneck_dim": args.bottleneck_dim,
 							"activation": "relu"
 						}
 					)
 			elif args.adapter_method and args.adapter_method.startswith('tip_adapter'):
 				strategy_hyperparams.update(
 					{
-						"initial_beta": 1.0,
-						"initial_alpha": 1.0,
-						"support_shots": 16
+						"initial_beta": args.initial_beta,
+						"initial_alpha": args.initial_alpha,
+						"support_shots": args.support_shots
 					}
 				)
 						
@@ -414,17 +402,14 @@ def main():
 				}
 			)
 
-		# ---------------------------------------------------------
-		# Save Metrics & Hyperparameters
-		# ---------------------------------------------------------
 		save_tiered_retrieval_metrics(
-				best_model_result=best_model_result,
-				strategy=strategy_name,
-				dataset_directory=DATASET_DIRECTORY,
-				column=args.column,
-				seed=args.seed,
-				strategy_hyperparams=strategy_hyperparams,  # <--- Passed here
-				verbose=args.verbose,
+			best_model_result=best_model_result,
+			strategy=strategy_name,
+			dataset_directory=DATASET_DIRECTORY,
+			column=args.column,
+			seed=args.seed,
+			strategy_hyperparams=strategy_hyperparams,
+			verbose=args.verbose,
 		)
 
 
