@@ -412,9 +412,7 @@ def main():
 			verbose=args.verbose,
 		)
 
-
-
-		# # Temporary due to lack of disk space
+		# Temporary due to lack of disk space
 		clean_cache(
 			directory=RESULT_DIRECTORY, 
 			strategy=strategy_name, 

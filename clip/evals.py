@@ -495,7 +495,13 @@ def compute_multilabel_mrr(
 # Any cache file written under a different version is treated as invalid,
 # so a stale AP@K computed with the old (incorrect) denominator can never
 # be silently reused after this fix.
-METRIC_VERSION = "apk_minRqK"
+#
+# History:
+#   "apk_minRqK"                 -> AP@K denominator fixed to min(R_q, requested_K)
+#   "apk_minRqK_i2t_recallRq"    -> I2T Recall@K changed from Hit-Rate (any hit)
+#                                   to |hits| / R_q; HitRate@K split out as its
+#                                   own metric key.
+METRIC_VERSION="retrieval_metrics_v1"
 
 def compute_retrieval_metrics_from_similarity(
 	similarity_matrix: torch.Tensor,
@@ -509,9 +515,13 @@ def compute_retrieval_metrics_from_similarity(
 	is_training: bool = False,
 	chunk_size: int = 1000,
 	verbose: bool = False,
+	debug_query_indices: Optional[List[int]] = None,
+	debug_max_rank_print: int = 20,
+	strict: bool = True,
 ) -> Dict:
 	"""
-	Compute retrieval metrics (mP, mAP, Recall) with memory optimization and proper multi-label support.
+	Compute retrieval metrics (mP, mAP, Recall, HitRate)
+	with memory optimization and proper multi-label support.
 
 	AP@K definition (standard, matches trec_eval / pytrec_eval):
 		AP@K(q) = sum_{r=1}^{K} P(r) * rel(r) / min(R_q, K)
@@ -519,22 +529,36 @@ def compute_retrieval_metrics_from_similarity(
 	those retrieved within the top-K), and K is the REQUESTED K.
 
 	This is NOT the same as normalizing by the number of hits actually
-	found in the top-K (i.e. correct_mask.sum(dim=1)). That alternative —
-	used in an earlier version of this function — is not a recognized IR
-	metric: it cannot penalize a query for missing relevant items that
+	found in the top-K (i.e. correct_mask.sum(dim=1)).
+	That alternative — used in an earlier version of this function —
+	is not a recognized IR metric:
+	it cannot penalize a query for missing relevant items that
 	were achievable within K, which defeats the purpose of measuring
-	rare-tier retrieval quality. Example: R_q=5, K=10, hits at ranks 3
-	and 8 → numerator=0.583. Dividing by hits-found (2) gives 0.292;
+	rare-tier retrieval quality.
+	Example: R_q=5, K=10, hits at ranks 3 and 8 →
+	numerator=0.583. Dividing by hits-found (2) gives 0.292;
 	dividing by min(R_q,K)=5 gives 0.117. The latter is correct AP@K.
 
+	Recall@K definition (BOTH directions, since the I2T fix):
+		Recall@K(q) = |relevant items retrieved in top-K| / R_q
+	Previously the Image-to-Text branch computed
+		correct_mask.any(dim=1).float().mean()
+	which is Hit-Rate@K (a.k.a. Success@K) — a BINARY "did at least one
+	relevant item land in the top-K?" — NOT recall. For single-label I2T
+	(R_q = 1) the two coincide, which is why the bug was invisible there;
+	for multi-label I2T it inflates the reported number (an image with
+	R_q=4 and 1 hit scored 1.0 instead of 0.25). Hit-Rate is still a
+	legitimate quantity, so it is now reported separately under the
+	"HitRate" key for BOTH modes, under its correct name.
+
 	Queries with R_q=0 (no relevant items exist) are excluded from the
-	mAP average via `has_relevant`, since AP is undefined for them —
-	scoring them as 0 would penalize the model for an impossible task
-	and bias the mean downward.
+	mAP / Recall averages via `has_relevant`, since those metrics are
+	undefined for them — scoring them as 0 would penalize the model for
+	an impossible task and bias the mean downward.
 
 	Zero versioning note: cache files are keyed with METRIC_VERSION so
-	that caches written under the old (incorrect) denominator are never
-	loaded here — see `cache_key` construction below.
+	that caches written under the old (incorrect) denominator or the old
+	I2T hit-rate-as-recall are never loaded here.
 
 	Critical fix vs. earlier versions (independent of the above): any
 	requested K exceeding the number of available candidates in a tier
@@ -554,22 +578,34 @@ def compute_retrieval_metrics_from_similarity(
 			cache_dir: Cache directory
 			cache_key: Cache identifier (will be suffixed with METRIC_VERSION)
 			is_training: Skip caching if True
-			verbose: Print progress
+			verbose: Print progress + diagnostics
 			chunk_size: Chunk size for memory optimization
+			debug_query_indices: Query rows to fully decompose (numerator/denominator/
+				per-rank precision). Requires verbose=True. If None and verbose=True,
+				defaults to the highest-R_q query (the "Head" query) plus query 0.
+			debug_max_rank_print: Cap on how many ranks are printed per debug query.
+			strict: Raise on alignment-invariant violations instead of warning.
 
 	Returns:
-			Dictionary with mP, mAP, and Recall metrics, one entry per REQUESTED K in topK_values.
+			Dictionary with mP, mAP, Recall and HitRate, one entry per REQUESTED K.
 	"""
 
 	num_queries, num_candidates = similarity_matrix.shape
 	device = similarity_matrix.device
 	max_effective_K = min(max(topK_values), num_candidates)
 
+	def _flag(msg: str):
+		"""Alignment / sanity violation: raise under strict, else warn loudly."""
+		if strict:
+			raise ValueError(f"[{mode}] {msg}")
+		print(f"  [!! ALIGNMENT WARNING !!] [{mode}] {msg}")
+
 	if verbose:
-		print("-"*85)
-		print(f"[{mode.upper()} RETRIEVAL METRICS]")
-		print(f"  ├─ similarity_matrix: {similarity_matrix.shape} [num_queries x num_candidates]")
-		print(f"  ├─ Top-K: {topK_values} max_effective_K: {max_effective_K}")
+		print("-" * 85)
+		print(f"[{mode.upper()} RETRIEVAL METRICS]  (METRIC_VERSION={METRIC_VERSION})")
+		print(f"  ├─ similarity_matrix: {tuple(similarity_matrix.shape)} [num_queries x num_candidates]")
+		print(f"  ├─ dtype/device: {similarity_matrix.dtype} / {similarity_matrix.device}")
+		print(f"  ├─ Top-K requested: {topK_values} | max_effective_K: {max_effective_K}")
 		if any(K > num_candidates for K in topK_values):
 			dropped_effective = [K for K in topK_values if K > num_candidates]
 			print(
@@ -578,8 +614,8 @@ def compute_retrieval_metrics_from_similarity(
 				f"=> compute at effective_K=min(K, num_candidates) but still "
 				f"report under the REQUESTED K key."
 			)
-		print(f"  ├─ query_labels: {query_labels.shape}")
-		print(f"  └─ candidate_labels: {candidate_labels.shape}")
+		print(f"  ├─ query_labels: {tuple(query_labels.shape)} ({query_labels.dtype})")
+		print(f"  └─ candidate_labels: {tuple(candidate_labels.shape)} ({candidate_labels.dtype})")
 
 	if query_labels.dim() not in [1, 2] or candidate_labels.dim() not in [1, 2]:
 		raise ValueError("Labels must be 1D (single-label) or 2D (multi-label)")
@@ -589,21 +625,77 @@ def compute_retrieval_metrics_from_similarity(
 		else len(query_labels.shape) == 2
 	)
 
+	# ── Similarity-matrix health check ───────────────────────────────────────
+	# Catches NaN/Inf, degenerate (constant) rows, and collapsed embeddings
+	# before they silently turn into "zero recall" downstream.
+	if verbose:
+		n_nan = torch.isnan(similarity_matrix).sum().item()
+		n_inf = torch.isinf(similarity_matrix).sum().item()
+		sm_min = similarity_matrix.min().item()
+		sm_max = similarity_matrix.max().item()
+		sm_mean = similarity_matrix.mean().item()
+		sm_std = similarity_matrix.std().item()
+		row_span = (similarity_matrix.max(dim=1).values - similarity_matrix.min(dim=1).values)
+		n_flat_rows = (row_span < 1e-6).sum().item()
+		print(f"\n[SIMILARITY HEALTH] ({mode})")
+		print(f"  ├─ min/max: ({sm_min:.4f}, {sm_max:.4f})  μ±σ: {sm_mean:.4f} ± {sm_std:.4f}")
+		print(f"  ├─ NaN: {n_nan}  Inf: {n_inf}")
+		print(f"  └─ degenerate rows (max-min < 1e-6): {n_flat_rows} / {num_queries}")
+		if n_nan or n_inf:
+			print("      ^ NaN/Inf present -> argsort order is undefined; metrics are meaningless.")
+		if n_flat_rows:
+			print("      ^ flat rows -> ranking is arbitrary for those queries (embedding collapse?).")
+
+	# ── Axis-alignment invariants ────────────────────────────────────────────
+	# The single most common source of "mysteriously low" retrieval numbers is
+	# a query/candidate axis mismatch, NOT the metric formula. Assert loudly.
+	if mode == "Image-to-Text":
+		if query_labels.shape[0] != num_queries:
+			_flag(
+				f"query_labels has {query_labels.shape[0]} rows but similarity_matrix "
+				f"has {num_queries} query rows."
+			)
+		if is_multi_label and query_labels.shape[1] != num_candidates:
+			# Not necessarily fatal: candidate_labels may map candidate positions
+			# -> global class IDs. But it MUST be handled inside
+			# compute_multilabel_correctness, so surface it.
+			print(
+				f"  [AXIS NOTE] query_labels has {query_labels.shape[1]} class columns "
+				f"but there are {num_candidates} text candidates. This is only valid if "
+				f"compute_multilabel_correctness maps candidate positions -> global class "
+				f"IDs via candidate_labels. Verify explicitly."
+			)
+	else:  # Text-to-Image
+		if is_multi_label and candidate_labels.shape[0] != num_candidates:
+			_flag(
+				f"candidate_labels has {candidate_labels.shape[0]} rows but "
+				f"similarity_matrix has {num_candidates} candidate columns."
+			)
+		if is_multi_label and candidate_labels.shape[1] != num_queries:
+			# relevant_counts = candidate_labels.sum(dim=0) yields one entry per
+			# CLASS COLUMN; that is only a valid per-query R_q if class column q
+			# IS query row q. Under tier subsetting (Head/Medium/Tail/Shared-Rare)
+			# this silently breaks.
+			_flag(
+				f"candidate_labels has {candidate_labels.shape[1]} class columns but "
+				f"similarity_matrix has {num_queries} text queries. "
+				f"relevant_counts = candidate_labels.sum(dim=0) would be misaligned "
+				f"with the query axis. Slice candidate_labels to the evaluated class "
+				f"subset (and in the SAME order as the queries) before calling this."
+			)
+
 	# Sanity check for multi-label case
 	if verbose and is_multi_label:
 		if mode == "Image-to-Text":
 			relevant_per_query = (query_labels > 0).sum(dim=1).float()
 			print(f"\n[SANITY CHECK] Relevant items per query (out of {similarity_matrix.shape[1]} labels):")
-			print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
-			print(f"  ├─ μ±σ: {relevant_per_query.mean():.2f} ± {relevant_per_query.std():.2f}")
-			print(f"  └─ zero-relevant queries: {(relevant_per_query == 0).sum().item()}")
 		else:
 			relevant_per_query = candidate_labels.sum(dim=0).float()
 			print(f"\n[SANITY CHECK] Relevant items per query (out of {similarity_matrix.shape[1]} images):")
-			print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
-			print(f"  ├─ μ±σ: {relevant_per_query.mean():.2f} ± {relevant_per_query.std():.2f}")
-			print(f"  └─ zero-relevant queries: {(relevant_per_query == 0).sum().item()}")
-		print("-"*85)
+		print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
+		print(f"  ├─ μ±σ: {relevant_per_query.mean():.2f} ± {relevant_per_query.std():.2f}")
+		print(f"  └─ zero-relevant queries: {(relevant_per_query == 0).sum().item()}")
+		print("-" * 85)
 
 	# ── Cache — versioned so old (incorrect-denominator) caches are never reused ──
 	cache_file = None
@@ -612,19 +704,25 @@ def compute_retrieval_metrics_from_similarity(
 		if os.path.exists(cache_file):
 			try:
 				if verbose:
-					print(f"Loading cached metrics from {cache_file}")
+					print(f"[CACHE HIT] Loading cached metrics from {cache_file}")
+					print("            ^ Metrics below were NOT recomputed. Delete this file "
+						  "(or pass is_training=True) to force recomputation while debugging.")
 				with open(cache_file, 'r') as f:
 					return json.load(f)
 			except Exception as e:
 				if verbose:
 					print(f"Cache loading failed: {e}. Computing metrics.")
-
+		elif verbose:
+			print(f"[CACHE MISS] Will compute and write -> {cache_file}")
+	elif verbose:
+		reason = "is_training=True" if is_training else "no cache_dir/cache_key"
+		print(f"[CACHE DISABLED] ({reason}) -> metrics computed fresh.")
 
 	all_sorted_indices = torch.cat(
 		[
 			torch.argsort(similarity_matrix[i:i + chunk_size], dim=1, descending=True)[:, :max_effective_K]
 			for i in range(0, similarity_matrix.shape[0], chunk_size)
-		], 
+		],
 		dim=0
 	)
 
@@ -632,30 +730,64 @@ def compute_retrieval_metrics_from_similarity(
 	if is_multi_label:
 		if mode == "Image-to-Text":
 			relevant_counts = query_labels.sum(dim=1).float()
+			rq_source = "query_labels.sum(dim=1)  [# positive classes per image]"
 		else:
 			relevant_counts = candidate_labels.sum(dim=0).float()
+			rq_source = "candidate_labels.sum(dim=0)  [# positive images per class]"
 	else:
 		if mode == "Image-to-Text":
 			relevant_counts = torch.ones(num_queries, device=device, dtype=torch.float32)
+			rq_source = "ones(num_queries)  [single-label: exactly 1 correct class]"
 		else:
 			if class_counts is None:
 				raise ValueError("class_counts required for single-label text-to-image")
 			relevant_counts = class_counts[query_labels].float()
+			rq_source = "class_counts[query_labels]  [# images of that class]"
+
+	# R_q MUST be one value per query row. If not, every AP/Recall below is
+	# comparing query q against some other query's relevance count.
+	if relevant_counts.numel() != num_queries:
+		_flag(
+			f"relevant_counts has {relevant_counts.numel()} entries but there are "
+			f"{num_queries} queries (R_q source: {rq_source}). "
+			f"AP/Recall would be normalized by the wrong query's R_q."
+		)
 
 	has_relevant = relevant_counts > 0
 
-	metrics = {"mP": {}, "mAP": {}, "Recall": {}}
+	if verbose:
+		print(f"\n[R_q CONSTRUCTION] ({mode})")
+		print(f"  ├─ source: {rq_source}")
+		print(f"  ├─ shape: {tuple(relevant_counts.shape)} (must equal num_queries={num_queries}) "
+			  f"-> {'OK' if relevant_counts.numel() == num_queries else 'MISMATCH'}")
+		print(f"  ├─ (min, max): ({relevant_counts.min().item():.1f}, {relevant_counts.max().item():.1f})")
+		print(f"  ├─ μ±σ: {relevant_counts.mean().item():.2f} ± {relevant_counts.std().item():.2f}")
+		print(f"  └─ queries with R_q=0 (excluded from mAP/Recall): "
+			  f"{(~has_relevant).sum().item()} / {num_queries}")
+
+	# ── Pick the queries to fully decompose ──────────────────────────────────
+	if verbose:
+		if debug_query_indices is None:
+			# Head query = largest R_q (the case where a wrongly-uncapped
+			# denominator would be most visible), plus query 0 as a control.
+			head_idx = int(torch.argmax(relevant_counts).item())
+			debug_query_indices = sorted({0, head_idx})
+		debug_query_indices = [q for q in debug_query_indices if 0 <= q < num_queries]
+	else:
+		debug_query_indices = []
+
+	metrics = {"mP": {}, "mAP": {}, "Recall": {}, "HitRate": {}}
 	for requested_K in topK_values:
 		effective_K = min(requested_K, num_candidates)
 		top_k_indices = all_sorted_indices[:, :effective_K]
 
 		if is_multi_label:
 			correct_mask = compute_multilabel_correctness(
-				top_k_indices, 
-				query_labels, 
-				candidate_labels, 
-				mode, 
-				effective_K, 
+				top_k_indices,
+				query_labels,
+				candidate_labels,
+				mode,
+				effective_K,
 				chunk_size,
 			)
 		else:
@@ -663,13 +795,44 @@ def compute_retrieval_metrics_from_similarity(
 				top_k_indices, query_labels, candidate_labels, effective_K,
 			)
 
+		# The correctness mask must be [num_queries, effective_K]; a wrong shape
+		# here means the gather/index-mapping inside the helper is broken.
+		if tuple(correct_mask.shape) != (num_queries, effective_K):
+			_flag(
+				f"correct_mask shape {tuple(correct_mask.shape)} != "
+				f"(num_queries={num_queries}, effective_K={effective_K}) at K={requested_K}."
+			)
+
 		key = str(requested_K)
 
 		metrics["mP"][key] = correct_mask.float().mean().item()
 
+		# ── Hit-Rate@K: fraction of queries with >= 1 relevant item in top-K ──
+		# This is exactly what the OLD Image-to-Text "Recall" branch computed:
+		#
+		#   if mode == "Image-to-Text":
+		#       metrics["Recall"][key] = correct_mask.any(dim=1).float().mean().item()
+		#
+		# It is a legitimate metric, but it is NOT recall: `.any()` returns True
+		# as soon as ONE relevant item lands, so an image with R_q=4 that found
+		# only 1 relevant class scored 1.0 instead of 0.25. Kept here under its
+		# correct name, and now reported for BOTH modes so the two directions
+		# are directly comparable.
+		metrics["HitRate"][key] = correct_mask.any(dim=1).float().mean().item()
+
+		# ── Recall@K = |hits in top-K| / R_q — identical definition in BOTH modes ──
 		if mode == "Image-to-Text":
-			metrics["Recall"][key] = correct_mask.any(dim=1).float().mean().item()
-		else:
+			retrieved_counts = correct_mask.float().sum(dim=1)
+			recall_per_query = torch.where(
+				has_relevant,
+				retrieved_counts / relevant_counts.clamp(min=1),
+				torch.zeros_like(retrieved_counts),
+			)
+			metrics["Recall"][key] = (
+				recall_per_query[has_relevant].mean().item()
+				if has_relevant.any() else 0.0
+			)
+		else:  # Text-to-Image
 			if is_multi_label:
 				retrieved_counts = correct_mask.float().sum(dim=1)
 				recall_per_query = torch.where(
@@ -682,7 +845,8 @@ def compute_retrieval_metrics_from_similarity(
 				)
 			else:
 				recalled = correct_mask.sum(dim=1).float()
-				metrics["Recall"][key] = (recalled / relevant_counts.clamp(min=1)).mean().item()
+				recall_per_query = recalled / relevant_counts.clamp(min=1)
+				metrics["Recall"][key] = recall_per_query.mean().item()
 
 		# ── Standard truncated AP@K: AP@K(q) = sum P(r)*rel(r) / min(R_q, requested_K) ──
 		positions = torch.arange(1, effective_K + 1, device=device, dtype=torch.float32).unsqueeze(0)
@@ -690,22 +854,105 @@ def compute_retrieval_metrics_from_similarity(
 		precisions = cumulative_correct / positions
 
 		ap_denominator = relevant_counts.clamp(min=1).clamp(max=requested_K)  # min(R_q, requested_K)
-		ap_scores = (precisions * correct_mask.float()).sum(dim=1) / ap_denominator
+		ap_numerator = (precisions * correct_mask.float()).sum(dim=1)
+		ap_scores = ap_numerator / ap_denominator
 
 		metrics["mAP"][key] = (
-			ap_scores[has_relevant].mean().item() 
-			if has_relevant.any() 
+			ap_scores[has_relevant].mean().item()
+			if has_relevant.any()
 			else 0.0
 		)
 
-	# if verbose:
-	# 	print(json.dumps(metrics, indent=2, ensure_ascii=False))
-	# 	print("*"*55)
+		# ── Aggregate diagnostics for this K ────────────────────────────────
+		if verbose:
+			hits_per_query = correct_mask.float().sum(dim=1)
+			denom_max = ap_denominator.max().item()
+			print(f"\n[K={requested_K}] ({mode})  effective_K={effective_K}")
+			print(f"  ├─ hits/query: (min,max)=({hits_per_query.min().item():.0f},"
+				  f"{hits_per_query.max().item():.0f})  μ={hits_per_query.mean().item():.3f}")
+			print(f"  ├─ queries with 0 hits: "
+				  f"{(hits_per_query == 0).sum().item()} / {num_queries}")
+			print(f"  ├─ AP denominator = min(R_q, {requested_K}): "
+				  f"(min,max)=({ap_denominator.min().item():.1f},{denom_max:.1f})  "
+				  f"μ={ap_denominator.mean().item():.3f}")
+			if denom_max > requested_K + 1e-6:
+				print(f"  │   [!! BUG !!] denominator exceeds requested_K={requested_K} "
+					  f"-> the min(R_q, K) cap is NOT being applied.")
+			else:
+				print(f"  │   OK: denominator never exceeds requested_K={requested_K} "
+					  f"(cap is applied).")
+			print(f"  ├─ AP numerator: (min,max)="
+				  f"({ap_numerator.min().item():.4f},{ap_numerator.max().item():.4f})  "
+				  f"μ={ap_numerator.mean().item():.4f}")
+			if (ap_scores > 1.0 + 1e-6).any():
+				n_bad = (ap_scores > 1.0 + 1e-6).sum().item()
+				print(f"  │   [!! BUG !!] {n_bad} queries have AP > 1.0 "
+					  f"-> numerator/denominator inconsistency.")
+			print(f"  ├─ mP@{requested_K}:       {metrics['mP'][key]:.6f}")
+			print(f"  ├─ mAP@{requested_K}:      {metrics['mAP'][key]:.6f}")
+			print(f"  ├─ Recall@{requested_K}:   {metrics['Recall'][key]:.6f}   "
+				  f"(|hits| / R_q)")
+			print(f"  └─ HitRate@{requested_K}:  {metrics['HitRate'][key]:.6f}   "
+				  f"(>=1 hit; == old I2T 'Recall')")
+			if metrics["HitRate"][key] > metrics["Recall"][key] + 1e-9:
+				delta = metrics["HitRate"][key] - metrics["Recall"][key]
+				print(f"      ^ HitRate exceeds Recall by {delta:.6f} — this gap is exactly "
+					  f"the inflation the old I2T branch reported as 'Recall'.")
+
+		# ── Per-query decomposition ─────────────────────────────────────────
+		for q in debug_query_indices:
+			q_hits = correct_mask[q].float()
+			q_prec = precisions[q]
+			q_rank_hits = torch.nonzero(q_hits, as_tuple=False).flatten() + 1  # 1-indexed ranks
+			n_print = min(effective_K, debug_max_rank_print)
+
+			print(f"\n  [QUERY DEBUG] q={q}  mode={mode}  requested_K={requested_K}  "
+				  f"effective_K={effective_K}")
+			print(f"    ├─ R_q (total relevant):        {relevant_counts[q].item():.1f}")
+			print(f"    ├─ has_relevant (in mean?):     {bool(has_relevant[q].item())}")
+			print(f"    ├─ hits in top-K:               {q_hits.sum().item():.0f}")
+			print(f"    ├─ hit ranks (1-indexed):       "
+				  f"{q_rank_hits[:debug_max_rank_print].tolist()}"
+				  f"{' ...' if q_rank_hits.numel() > debug_max_rank_print else ''}")
+			print(f"    ├─ rel(r) first {n_print}:      {q_hits[:n_print].int().tolist()}")
+			print(f"    ├─ P(r)  first {n_print}:      "
+				  f"{[round(v, 4) for v in q_prec[:n_print].tolist()]}")
+			print(f"    ├─ retrieved cand. idx:         "
+				  f"{top_k_indices[q][:n_print].tolist()}")
+			print(f"    ├─ top-K sims:                  "
+				  f"{[round(v, 4) for v in similarity_matrix[q][top_k_indices[q][:n_print]].tolist()]}")
+			print(f"    ├─ AP numerator  Σ P(r)·rel(r): {ap_numerator[q].item():.6f}")
+			print(f"    ├─ AP denominator min(R_q,K):   {ap_denominator[q].item():.6f}"
+				  f"   [expected {min(relevant_counts[q].item(), requested_K):.6f}]")
+			print(f"    ├─ AP@{requested_K}:                     {ap_scores[q].item():.6f}")
+			print(f"    ├─ Recall@{requested_K} (this q):        "
+				  f"{(q_hits.sum() / max(relevant_counts[q].item(), 1.0)).item():.6f}")
+			print(f"    └─ HitRate@{requested_K} (this q):       "
+				  f"{float(bool(q_hits.any().item())):.1f}")
+
+			# Hard invariants for this query.
+			exp_denom = min(max(relevant_counts[q].item(), 1.0), float(requested_K))
+			if abs(ap_denominator[q].item() - exp_denom) > 1e-5:
+				print(f"       [!! BUG !!] denominator {ap_denominator[q].item():.6f} != "
+					  f"min(R_q, requested_K)={exp_denom:.6f}")
+			if ap_scores[q].item() > 1.0 + 1e-6:
+				print(f"       [!! BUG !!] AP@{requested_K}={ap_scores[q].item():.6f} > 1.0")
+			if q_hits.sum().item() > relevant_counts[q].item() + 1e-6:
+				print(f"       [!! BUG !!] hits ({q_hits.sum().item():.0f}) > R_q "
+					  f"({relevant_counts[q].item():.1f}) -> correctness mask is counting "
+					  f"items that are not actually relevant (index-mapping error?).")
+
+	if verbose:
+		print("\n[FINAL METRICS]")
+		print(json.dumps(metrics, indent=2, ensure_ascii=False))
+		print("-" * 85)
 
 	if cache_file:
 		try:
 			with open(cache_file, 'w') as f:
 				json.dump(metrics, f)
+			if verbose:
+				print(f"[CACHE WRITE] {cache_file}")
 		except Exception as e:
 			if verbose:
 				print(f"Cache write failed: {e}")
@@ -2096,7 +2343,7 @@ def evaluate_best_model(
 	lora_params: Optional[Dict] = None,
 	class_embeds_override: Optional[torch.Tensor] = None,
 	shared_protocol_path: str = None,
-	verbose: bool = True,
+	verbose: bool = False,
 ):
 	model_source = "current"
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
