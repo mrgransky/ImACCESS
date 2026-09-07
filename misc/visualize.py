@@ -4806,10 +4806,10 @@ def plot_retrieval_metrics_per_epoch(
 	modes = ["Image-to-Text", "Text-to-Image"]
 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
 	
-	suptitle_text = f"{dataset_name} Retrieval Performance Metrics [per epoch]: "
-	for metric in metrics:
-		suptitle_text += f"{metric}@K | "
-	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
+	suptitle_text = f"Retrieval Performance Metrics "
+	# for metric in metrics:
+	# 	suptitle_text += f"{metric}@K | "
+	# suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
 	
 	markers = ['o', 's', '^', 'D', 'v', 'p', 'h', '*', 'H', 'x']  # Larger, distinct markers for each line
 	line_styles = ['-', '--', ':', '-.', '-']  # Varied line styles for clarity

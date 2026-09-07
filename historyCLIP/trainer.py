@@ -73,7 +73,7 @@ def main():
 	parser.add_argument('--column', '-c', type=str, choices=['llm_canonical_labels', 'vlm_canonical_labels', 'multimodal_canonical_labels'], required=True, help='Column for loading label')	
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--strategy', '-stg', type=str, choices=['full', 'lora', 'rslora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'adapter', 'baseline'], default=None, help='Strategy')
-	parser.add_argument('--epochs', '-e', type=int, default=100, help='Number of epochs')
+	parser.add_argument('--epochs', '-ep', type=int, default=100, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=4, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=5e-5, help='learning rate [def: 5e-5]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 1e-2]')
@@ -326,6 +326,26 @@ def main():
 				),
 		)
 		
+
+
+		# # Reconstruct the original strategy name for storage
+		# if args.strategy == 'adapter' and args.adapter_method:
+		# 	strategy_name = args.adapter_method  # e.g., 'clip_adapter_v', 'tip_adapter_f'
+		# elif args.strategy == 'baseline' and args.baseline_method:
+		# 	strategy_name = args.baseline_method  # e.g., 'zero_shot', 'probe'
+		# else:
+		# 	strategy_name = args.strategy  # e.g., 'lora', 'full', 'dora'
+		
+		# save_tiered_retrieval_metrics(
+		# 	best_model_result=best_model_result,
+		# 	strategy=strategy_name,
+		# 	dataset_directory=DATASET_DIRECTORY,
+		# 	column=args.column,
+		# 	seed=args.seed,
+		# 	verbose=args.verbose,
+		# )
+
+
 		# Reconstruct the original strategy name for storage
 		if args.strategy == 'adapter' and args.adapter_method:
 			strategy_name = args.adapter_method  # e.g., 'clip_adapter_v', 'tip_adapter_f'
@@ -333,15 +353,81 @@ def main():
 			strategy_name = args.baseline_method  # e.g., 'zero_shot', 'probe'
 		else:
 			strategy_name = args.strategy  # e.g., 'lora', 'full', 'dora'
-		
+
+		# ---------------------------------------------------------
+		# Collect Strategy-Specific Hyperparameters
+		# ---------------------------------------------------------
+		strategy_hyperparams = {
+			"learning_rate": args.learning_rate,
+			"weight_decay": args.weight_decay,
+			"dropout": args.dropout,
+			"epochs": args.epochs,
+			"batch_size": args.batch_size,
+		}
+
+		# LoRA Family (lora, rslora, dora, vera, lora_plus)
+		if args.strategy in LORA_FAMILY_STRATEGIES:
+			strategy_hyperparams.update(
+				{
+					"lora_rank": args.lora_rank,
+					"lora_alpha": args.lora_alpha,
+					"lora_dropout": args.lora_dropout,
+					"lora_plus_lambda": args.lora_plus_lambda if args.strategy == 'lora_plus' else None
+				}
+			)
+				
+		# Progressive Unfreezing
+		if args.strategy == 'progressive':
+			strategy_hyperparams.update(
+				{
+					"min_phases_before_stopping": args.min_phases_before_stopping,
+					"min_epochs_per_phase": args.min_epochs_per_phase,
+					"total_num_phases": args.total_num_phases,
+				}
+			)
+				
+		# Adapter-based Finetuning
+		if args.strategy == 'adapter':
+			strategy_hyperparams["adapter_method"] = args.adapter_method
+			if args.adapter_method and args.adapter_method.startswith('clip_adapter'):
+					strategy_hyperparams.update(
+						{
+							"bottleneck_dim": 256,
+							"activation": "relu"
+						}
+					)
+			elif args.adapter_method and args.adapter_method.startswith('tip_adapter'):
+				strategy_hyperparams.update(
+					{
+						"initial_beta": 1.0,
+						"initial_alpha": 1.0,
+						"support_shots": 16
+					}
+				)
+						
+		# Probe (Baseline)
+		if args.strategy == 'probe' or (args.strategy == 'baseline' and args.baseline_method == 'probe'):
+			strategy_hyperparams.update(
+				{
+					"probe_dropout": getattr(args, 'probe_dropout', None),
+					"probe_temperature": getattr(args, 'probe_temperature', None)
+				}
+			)
+
+		# ---------------------------------------------------------
+		# Save Metrics & Hyperparameters
+		# ---------------------------------------------------------
 		save_tiered_retrieval_metrics(
-			best_model_result=best_model_result,
-			strategy=strategy_name,
-			dataset_directory=DATASET_DIRECTORY,
-			column=args.column,
-			seed=args.seed,
-			verbose=args.verbose,
+				best_model_result=best_model_result,
+				strategy=strategy_name,
+				dataset_directory=DATASET_DIRECTORY,
+				column=args.column,
+				seed=args.seed,
+				strategy_hyperparams=strategy_hyperparams,  # <--- Passed here
+				verbose=args.verbose,
 		)
+
+
 
 		# # Temporary due to lack of disk space
 		clean_cache(
