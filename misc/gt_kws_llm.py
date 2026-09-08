@@ -61,50 +61,55 @@ PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 Return a Python list of keywords derived strictly from the caption without thought, reasoning, explanation or any additional text.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
+Write keywords as ordinary natural-language labels, not code identifiers.
 
 STRICTLY EXCLUDE:
-	- Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
-	- Equipment identifiers, serial numbers, brands, or models.
-	- Dates, times, years, decades, or any temporal references.
-	- Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
-	- Individual people's names or honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
-	- Family relationship terms (e.g., mother, father, son, uncle).
-	- Generic human category nouns (e.g., man, men, woman, person, people, children).
-	- Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
-	- Ordinal numeral keywords (e.g., fourth, 1st, 115th).
-	- Roman numerals (e.g., I, II, IV, VIII).
-	- Nationalities, ethnicities, or religions.
-	- Abbreviations, acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
+  - Generic keywords such as 'World War I', 'Vietnam War', 'post war era', 'Post-war', 'aftermath of World War II', 'War', 'battle'.
+  - Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
+  - Equipment identifiers, serial numbers, brands, or models.
+  - Dates, times, years, decades, or any temporal references.
+  - Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
+  - Individual people's names or honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
+  - Family relationship terms (e.g., mother, father, son, uncle).
+  - Generic human category nouns (e.g., man, men, woman, person, people, children).
+  - Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
+  - Ordinal numeral keywords (e.g., fourth, 1st, 115th).
+  - Roman numerals (e.g., I, II, IV, VIII).
+  - Nationalities, ethnicities, or religions.
+  - Abbreviations, acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
+	- Underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
+  - Labels containing underscores or other non-space separators (e.g., shell_hole, storage_tank, anti_aircraft).
+  - Duplicate labels or normalized variants of the same label.
 
 Color handling:
-	Remove color only if it is purely descriptive (e.g., white truck, blue sky).
-	Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
+  - Remove color only if it is purely descriptive (e.g., white truck, blue sky).
+  - Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
 
 Example:
-	- "truck" instead of "white truck"
-	- "nurse" instead of "nurse checking blood pressure"
-	- "pilot" instead of "pilot Charles Matheson"
-	- "Oberleutnant" instead of "Oberleutnant Bruno Kikillus"
-	- "squadron" instead of "No. 10 Squadron RAAF"
-	- "Corporal" instead of "Corporal Genevieve Wade"
-	- "seaplane" instead of "seaplane on the water in the background"
-	- "airplane" instead of "airplane in flight"
-	- "airport" instead of "airport in the background"
-	- "manufacturing loom" instead of "manufacturing looms for the government"
-	- "mountain" instead of "Eastern Mountains"
-	- "Minister of War" instead of "Italian Minister of War Cipriano Facchinetti"
-	- "Army Hospital" instead of "United States Army General Hospital"
-	- "Marine Corps" instead of "U.S. Marine Corps"
-	- "Red Cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
-	- "animal" instead of "man riding a camel in the desert"
-	- "reservoir" instead of "Fort Loudoun Reservoir"
-	- "Ballon Gun" instead of "6-pounder Ballon Gun"
-	- "Air Force Base" instead of "Templehof Air Force Base"
-	- "boulevard" instead of "Magheru Boulevard"
-	- "railway station" instead of "Terrassa railway station"
-	- "cathedral" instead of "St. Louis Cathedral"
-	- "aircraft factory" instead of "Pomilio Aircraft Factory"
-	- "submarine" instead of "German submarine".
+  - "truck" instead of "white truck"
+  - "nurse" instead of "nurse checking blood pressure"
+  - "pilot" instead of "pilot Charles Matheson"
+  - "Oberleutnant" instead of "Oberleutnant Bruno Kikillus"
+  - "squadron" instead of "No. 10 Squadron RAAF"
+  - "Corporal" instead of "Corporal Genevieve Wade"
+  - "seaplane" instead of "seaplane on the water in the background"
+  - "airplane" instead of "airplane in flight"
+  - "airport" instead of "airport in the background"
+  - "manufacturing loom" instead of "manufacturing looms for the government"
+  - "mountain" instead of "Eastern Mountains"
+  - "Minister of War" instead of "Italian Minister of War Cipriano Facchinetti"
+  - "Army Hospital" instead of "United States Army General Hospital"
+  - "Marine Corps" instead of "U.S. Marine Corps"
+  - "Red Cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
+  - "animal" instead of "man riding a camel in the desert"
+  - "reservoir" instead of "Fort Loudoun Reservoir"
+  - "Ballon Gun" instead of "6-pounder Ballon Gun"
+  - "Air Force Base" instead of "Templehof Air Force Base"
+  - "boulevard" instead of "Magheru Boulevard"
+  - "railway station" instead of "Terrassa railway station"
+  - "cathedral" instead of "St. Louis Cathedral"
+  - "aircraft factory" instead of "Pomilio Aircraft Factory"
+  - "submarine" instead of "German submarine".
 
 caption: {caption}"""
 
@@ -937,10 +942,12 @@ def get_llm_based_labels_debug(
 		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
 		df['llm_keywords'] = all_keywords
 		df.to_csv(output_csv, index=False)
-		try:
-			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-		except Exception as e:
-			print(f"Failed to write Excel file: {e}")
+
+		# try:
+		# 	df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+		# except Exception as e:
+		# 	print(f"Failed to write Excel file: {e}")
+
 		if verbose:
 			print(f"Saved {len(all_keywords)} keywords to {output_csv}")
 			print(f"Done! dataframe: {df.shape} {list(df.columns)}")
@@ -1303,10 +1310,12 @@ def get_llm_based_labels(
 			print(f"Saving results to {output_csv}...")
 		df['llm_keywords'] = results
 		df.to_csv(output_csv, index=False)
-		try:
-			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-		except Exception as e:
-			print(f"Failed to write Excel file: {e}")
+
+		# try:
+		# 	df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+		# except Exception as e:
+		# 	print(f"Failed to write Excel file: {e}")
+
 		if verbose:
 			print(f"Saved {len(results)} keywords to {output_csv} {df.shape}\n{list(df.columns)}")
 

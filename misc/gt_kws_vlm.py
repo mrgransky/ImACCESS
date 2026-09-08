@@ -30,17 +30,19 @@ from utils import *
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 Return a Python list of keywords derived strictly from the visual content of the image.
+Write keywords as ordinary natural-language labels, not code identifiers.
 
 Constraints:
-  - Exclude generic terms (e.g., 'World War I', 'post war era', 'Post-war', 'aftermath of World War II', 'war', 'battle').
-  - Exclude generic nouns for human classifications, (person, people, or men, women, children, boy, girl, etc).
-  - Exclude generic nouns for geographical locations, such as continents, countries, states, provinces, cities, towns, islands, regions, or roads.
+  - EXCLUDE generic keywords such as 'World War I', 'Vietnam War', 'post war era', 'Post-war', 'aftermath of World War II', 'War', 'battle'.
+  - EXCLUDE generic nouns for human classifications, (person, people, or men, women, children, boy, girl, etc).
+  - EXCLUDE generic nouns for geographical locations, such as continents, countries, states, provinces, cities, towns, islands, regions, or roads.
+  - EXCLUDE dates, times, years, decades, or any temporal references.
+  - EXCLUDE generic keywords for image characteristics (e.g., photograph, image, black and white photograph)
   - Refrain from using common environmental details (sky, lighting, ground texture) except when they hold historical importance, such as craters or trenches.
-  - Vague container nouns should be avoided (e.g., scene, group, event).
   - Refrain from using expressions centered on counting, such as a trio of men, various individuals, or a cluster of youths.
+  - Vague container nouns should be avoided such as 'scene', 'group', or 'event'.
   - Purely demographic descriptors without contextual role should be avoided.
-  - Dates, times, years, decades, or any temporal references must be excluded.
-  - Exclude generic keywords for image characteristics (e.g., photograph, image, black and white photograph)
+	- Do NOT use underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
   - Text/OCR extraction from the image is not allowed."""
 
 def _load_vlm_(

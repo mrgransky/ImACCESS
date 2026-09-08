@@ -330,6 +330,46 @@ def _post_process_(
 		
 		return False
 
+	def normalize_label_format(raw: str) -> str:
+		"""
+		Normalize LLM/VLM-generated label formatting to a canonical form.
+		
+		Handles:
+			- underscores  → spaces:  'shell_hole'    → 'shell hole'
+			- hyphens      → spaces:  'shell-hole'    → 'shell hole'
+			- camelCase    → spaces:  'storageTank'   → 'storage Tank'
+			- PascalCase   → spaces:  'StorageTank'   → 'Storage Tank'
+			- dots         → spaces:  'shell.hole'    → 'shell hole'
+			- multiple spaces → single space
+			- strip leading/trailing whitespace
+		
+		Does NOT lowercase (case decisions are handled downstream
+		by is_named_facility, is_title_like, etc.)
+		"""
+		s = raw.strip()
+		
+		# 1. Replace common separators with spaces
+		s = s.replace('_', ' ')
+		s = s.replace('-', ' ')
+
+		# Only replace dots that are NOT part of abbreviations
+		# example: 
+		# text = "a.o.n. ready to go. version 2.0. U.S.A. is large. wait... done."
+		# clean_text = "a.o.n. ready to go  version 2.0  U.S.A. is large  wait   done"
+		s = re.sub(r'(?<![A-Za-z])\.(?![A-Za-z])', ' ', s)
+
+		# 2. Split camelCase / PascalCase boundaries
+		#    'storageTank'  → 'storage Tank'
+		#    'AntiAircraft' → 'Anti Aircraft'
+		s = re.sub(r'([a-z])([A-Z])', r'\1 \2', s)
+		# Handle consecutive uppercase followed by lowercase: 'USAFBase' → 'USAF Base'
+		s = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', s)
+		
+		# 3. Collapse whitespace
+		s = re.sub(r'\s+', ' ', s).strip()
+		
+		return s
+
 	def is_named_facility(original_phrase: str) -> bool:
 		"""
 		Check if phrase is a named facility/location.
@@ -615,6 +655,11 @@ def _post_process_(
 			# Create the "Logic String" (Preserves Case)
 			original_cleaned = original.strip('"').strip("'").strip('()').strip('[]')
 			original_cleaned = ' '.join(original_cleaned.split())
+
+			original_cleaned = normalize_label_format(original_cleaned)
+			if verbose:
+				print(f"        → After format normalization: {repr(original_cleaned)}")
+
 			s = original_cleaned#.lower()
 			# if verbose:
 			# 	print(f"        → After str/strip/lower: {repr(s)}")
@@ -765,14 +810,14 @@ def _post_process_(
 					print(f"        → {lemma} Only NNNNN foot detected, skipping")
 				continue
 
-			# Check duplicates
-			if lemma in clean_set:
+			lemma_key = lemma.lower().strip()
+			if lemma_key in clean_set:
 				if verbose:
-					print(f"        → {lemma} Duplicate detected, skipping")
+					print(f"        → {lemma} Duplicate detected (key={lemma_key!r}), skipping")
 			else:
-				clean_set.add(lemma)
+				clean_set.add(lemma_key)
 				if verbose:
-					print(f"        → {repr(lemma)} Added to clean set")
+					print(f"        → {repr(lemma)} Added to clean set (key={lemma_key!r})")
 
 		if verbose:
 			print(f"clean_set: {len(clean_set)} {type(clean_set)}")

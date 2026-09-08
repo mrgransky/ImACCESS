@@ -365,10 +365,10 @@ def get_multimodal_annotation(
 
 	print(df.info(verbose=True, memory_usage=True))
 	df.to_csv(output_csv, index=False)
-	try:
-		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-	except Exception as e:
-		print(f"Failed to write Excel file: {e}")
+	# try:
+	# 	df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+	# except Exception as e:
+	# 	print(f"Failed to write Excel file: {e}")
 	
 	if verbose:
 		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")

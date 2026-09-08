@@ -250,7 +250,8 @@ def compute_tiered_retrieval_metrics(
 	verbose: bool = False,
 ) -> Dict:
 	if verbose:
-		print(f"\nTiered retrieval metrics")
+		print("-"*80)
+		print(f"Tiered retrieval metrics")
 
 	if use_fixed_masks:
 		# R1-C shared-vocabulary benchmark: no adaptive filtering,
@@ -495,13 +496,8 @@ def compute_multilabel_mrr(
 # Any cache file written under a different version is treated as invalid,
 # so a stale AP@K computed with the old (incorrect) denominator can never
 # be silently reused after this fix.
-#
-# History:
-#   "apk_minRqK"                 -> AP@K denominator fixed to min(R_q, requested_K)
-#   "apk_minRqK_i2t_recallRq"    -> I2T Recall@K changed from Hit-Rate (any hit)
-#                                   to |hits| / R_q; HitRate@K split out as its
-#                                   own metric key.
-METRIC_VERSION="retrieval_metrics_v1"
+
+METRIC_VERSION="debugging_metrics_v1"
 
 def compute_retrieval_metrics_from_similarity(
 	similarity_matrix: torch.Tensor,
@@ -602,7 +598,8 @@ def compute_retrieval_metrics_from_similarity(
 
 	if verbose:
 		print("-" * 85)
-		print(f"[{mode.upper()} RETRIEVAL METRICS]  (METRIC_VERSION={METRIC_VERSION})")
+		print(f"[{mode.upper()} RETRIEVAL METRICS]")
+		print(f"  ├─ METRIC_VERSION={METRIC_VERSION}")
 		print(f"  ├─ similarity_matrix: {tuple(similarity_matrix.shape)} [num_queries x num_candidates]")
 		print(f"  ├─ dtype/device: {similarity_matrix.dtype} / {similarity_matrix.device}")
 		print(f"  ├─ Top-K requested: {topK_values} | max_effective_K: {max_effective_K}")
@@ -1346,6 +1343,8 @@ def get_validation_metrics(
 	# Prepare class counts for single-label datasets
 	class_counts = None
 	if len(device_labels.shape) == 1:  # Single-label
+		if verbose:
+			print(f"Single-label dataset detected. class counts with bincount...")
 		class_counts = torch.bincount(device_labels.long(), minlength=n_classes)
 	
 	txt2img_metrics = compute_retrieval_metrics_from_similarity(
@@ -2248,6 +2247,9 @@ def evaluate_shared_protocol(
 	restricted to the fixed shared vocabulary (identical labels and
 	identical head/rare membership across all three supervision runs).
 	"""
+	if verbose:
+		print(f"\n[EVALUATION] shared protocol")
+
 	masks = build_shared_masks_from_protocol(
 		shared_protocol=shared_protocol,
 		class_names=class_names,
@@ -2348,6 +2350,7 @@ def evaluate_best_model(
 	model_source = "current"
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	if verbose:
+		print("-"*100)
 		print(f"\n[BEST MODEL EVALUATION]")
 		print(f"  ├─ {dataset_name}")
 		print(f"  ├─  {type(model)} {model.__class__.__name__} {model.name}")
