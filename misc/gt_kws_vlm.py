@@ -29,8 +29,7 @@ from utils import *
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
-Return a Python list of keywords derived strictly from the visual content of the image.
-Write keywords as ordinary natural-language labels, not code identifiers.
+Return a Python LIST of keywords derived strictly from the visual content of the image.
 
 Constraints:
   - EXCLUDE generic keywords such as 'World War I', 'Vietnam War', 'post war era', 'Post-war', 'aftermath of World War II', 'War', 'battle'.
@@ -825,7 +824,7 @@ def get_vlm_based_labels(
 		)
 		return df['vlm_keywords'].tolist()
 	except Exception as e:
-		print(f"<!> {e} Generating from scratch...")
+		print(f"{e} Generating from scratch...")
 	
 	# ========== Load data ==========
 	if verbose:

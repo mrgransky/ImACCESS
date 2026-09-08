@@ -59,9 +59,8 @@ STOPWORDS.update(geographic_references)
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
-Return a Python list of keywords derived strictly from the caption without thought, reasoning, explanation or any additional text.
+Return a Python LIST of keywords derived strictly from the caption without thought, reasoning, explanation or any additional text.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
-Write keywords as ordinary natural-language labels, not code identifiers.
 
 STRICTLY EXCLUDE:
   - Generic keywords such as 'World War I', 'Vietnam War', 'post war era', 'Post-war', 'aftermath of World War II', 'War', 'battle'.
@@ -983,7 +982,7 @@ def get_llm_based_labels(
 		)
 		return df['llm_keywords'].tolist()
 	except Exception as e:
-		print(f"<!> {e} Generating from scratch...")
+		print(f"{e} Generating from scratch...")
 	
 	num_workers = min(os.cpu_count(), num_workers)
 	if verbose:
