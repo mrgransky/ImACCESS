@@ -84,33 +84,33 @@ Color handling:
   - Remove color only if it is purely descriptive (e.g., white truck, blue sky).
   - Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
 
-Example:
-  - "truck" instead of "white truck"
-  - "nurse" instead of "nurse checking blood pressure"
-  - "pilot" instead of "pilot Charles Matheson"
-  - "Oberleutnant" instead of "Oberleutnant Bruno Kikillus"
-  - "squadron" instead of "No. 10 Squadron RAAF"
-  - "Corporal" instead of "Corporal Genevieve Wade"
-  - "seaplane" instead of "seaplane on the water in the background"
-  - "airplane" instead of "airplane in flight"
-  - "airport" instead of "airport in the background"
-  - "manufacturing loom" instead of "manufacturing looms for the government"
-  - "mountain" instead of "Eastern Mountains"
-  - "Minister of War" instead of "Italian Minister of War Cipriano Facchinetti"
-  - "Army Hospital" instead of "United States Army General Hospital"
-  - "Marine Corps" instead of "U.S. Marine Corps"
-  - "Red Cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
-  - "animal" instead of "man riding a camel in the desert"
-  - "reservoir" instead of "Fort Loudoun Reservoir"
-  - "Ballon Gun" instead of "6-pounder Ballon Gun"
-  - "Air Force Base" instead of "Templehof Air Force Base"
-  - "boulevard" instead of "Magheru Boulevard"
-  - "railway station" instead of "Terrassa railway station"
-  - "cathedral" instead of "St. Louis Cathedral"
-  - "aircraft factory" instead of "Pomilio Aircraft Factory"
-  - "submarine" instead of "German submarine".
+Caption: {caption}"""
 
-caption: {caption}"""
+# Example:
+#   - "truck" instead of "white truck"
+#   - "nurse" instead of "nurse checking blood pressure"
+#   - "pilot" instead of "pilot Charles Matheson"
+#   - "Oberleutnant" instead of "Oberleutnant Bruno Kikillus"
+#   - "squadron" instead of "No. 10 Squadron RAAF"
+#   - "Corporal" instead of "Corporal Genevieve Wade"
+#   - "seaplane" instead of "seaplane on the water in the background"
+#   - "airplane" instead of "airplane in flight"
+#   - "airport" instead of "airport in the background"
+#   - "manufacturing loom" instead of "manufacturing looms for the government"
+#   - "mountain" instead of "Eastern Mountains"
+#   - "Minister of War" instead of "Italian Minister of War Cipriano Facchinetti"
+#   - "Army Hospital" instead of "United States Army General Hospital"
+#   - "Marine Corps" instead of "U.S. Marine Corps"
+#   - "Red Cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
+#   - "animal" instead of "man riding a camel in the desert"
+#   - "reservoir" instead of "Fort Loudoun Reservoir"
+#   - "Ballon Gun" instead of "6-pounder Ballon Gun"
+#   - "Air Force Base" instead of "Templehof Air Force Base"
+#   - "boulevard" instead of "Magheru Boulevard"
+#   - "railway station" instead of "Terrassa railway station"
+#   - "cathedral" instead of "St. Louis Cathedral"
+#   - "aircraft factory" instead of "Pomilio Aircraft Factory"
+#   - "submarine" instead of "German submarine".
 
 def _load_llm_(
 	model_id: str,
@@ -492,7 +492,7 @@ def get_prompt(
 	verbose: bool = False,
 ):
 	if verbose:
-		print(f"Generating prompt for text with len={len(description.split()):<10}max_kws={max_kws}")
+		print(f"Generating prompt for text (length: {len(description.split()):7d}) max_kws: {max_kws}")
 
 	messages = [
 		{"role": "system", "content": "You are an archivist whose expertise lies in the 20th century."},
@@ -522,8 +522,9 @@ def parse_llm_response(
 	verbose: bool = False
 ):
 	if verbose:
-		print(f"Raw Caption:\n{caption}\n")
-		print(f"[LLM: {model_id} RESPONSE]\n{llm_response}\n")
+		# print(f"\nRaw Caption:\n{caption}")
+		print(f"\n[LLM: {model_id} RESPONSE]")
+		print(llm_response)
 
 	# Step 1: Find the assistant's response
 	# Try multiple patterns for different model families
@@ -558,20 +559,21 @@ def parse_llm_response(
 	start_bracket = response_content.find('[')
 	if start_bracket == -1:
 		if verbose:
-			print("[ERROR] No opening bracket '[' found")
+			print("[ERROR] No opening bracket '[' found in the response => skipping...")
+
 		return None
 	
 	# Find matching closing bracket
 	bracket_count = 0
 	end_bracket = -1
 	for i in range(start_bracket, len(response_content)):
-			if response_content[i] == '[':
-					bracket_count += 1
-			elif response_content[i] == ']':
-					bracket_count -= 1
-					if bracket_count == 0:
-							end_bracket = i
-							break
+		if response_content[i] == '[':
+			bracket_count += 1
+		elif response_content[i] == ']':
+			bracket_count -= 1
+			if bracket_count == 0:
+				end_bracket = i
+				break
 	
 	if end_bracket == -1:
 		if verbose:
@@ -584,8 +586,7 @@ def parse_llm_response(
 		print(f"[STEP 2] Extracted list string: {list_str}\n")
 	
 	# Step 3: Parse with multiple strategies
-	keywords_list = None
-	parsing_method = None
+	keywords_list, parsing_method = None, None
 	
 	# Strategy 1: Try ast.literal_eval directly
 	try:
@@ -781,7 +782,12 @@ def query_local_llm(
 		return None
 
 	keywords: Optional[List[str]] = None
-	prompt = get_prompt(tokenizer=tokenizer, description=text, max_kws=max_kws, verbose=verbose)
+	prompt = get_prompt(
+		tokenizer=tokenizer, 
+		description=text, 
+		max_kws=max_kws, 
+		verbose=verbose
+	)
 
 	model_id = getattr(model.config, '_name_or_path', None)
 	if model_id is None:
@@ -808,9 +814,8 @@ def query_local_llm(
 			token_ids = inputs.get("input_ids", None) 
 			print(type(token_ids), token_ids.shape, token_ids.dtype, token_ids.device)
 
-		tokenization_time = time.time() - tokenization_start
-		if verbose: 
-			print(f"Tokenization: {tokenization_time:.5f}s")
+		if verbose:
+			print(f"[ELAPSED_t] Tokenization: {time.time() - tokenization_start:.4f} sec")
 
 		with torch.no_grad():
 			with torch.amp.autocast(
@@ -828,7 +833,6 @@ def query_local_llm(
 					eos_token_id=tokenizer.eos_token_id,
 					use_cache=True,
 				)
-
 		raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)	
 	except Exception as e:
 		print(f"<!> Error {e}")
@@ -1021,7 +1025,6 @@ def get_llm_based_labels(
 		print(f"Input stats: {type(inputs)} {len(inputs)} total, {valid_count} valid, {null_count} null")
 	
 	# NULL-SAFE DEDUPLICATION
-	
 	if do_dedup:
 			unique_map: Dict[str, int] = {}
 			unique_inputs: List[Optional[str]] = []
@@ -1240,63 +1243,52 @@ def get_llm_based_labels(
 			if verbose and individual_result:
 				print(f"OK: Individual retry successful: {individual_result}")
 			elif verbose:
-				print(f"<!> Individual retry FAILED for item {idx}:\n{desc}\n")
+				print(f"[FAILED] item {idx}:\n{desc}\n")
 		except Exception as e:
 			if verbose:
-				print(f"Individual retry error for item {idx}: {e}")
+				print(f"[FAILED] Individual retry, item {idx}: {e}")
 			unique_results[idx] = None
+
+	# Cleanup model and tokenizer
+	if torch.cuda.is_available():
+		torch.cuda.empty_cache()
+	del model, tokenizer
+	# gc.collect()
 
 	# Map unique_results back to original order
 	results: List[Optional[List[str]]] = []
-	for orig_i, uniq_idx in tqdm(enumerate(original_to_unique_idx), desc="Mapping results", ncols=150,):
+	for _, uniq_idx in tqdm(enumerate(original_to_unique_idx), desc="Mapping results", ncols=150,):
 		results.append(unique_results[uniq_idx])
-	
-	# Stats
+
+	# Save results
+	if csv_file:
+		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
+		df['llm_keywords'] = results
+		df.to_csv(output_csv, index=False)
+		if verbose:
+			print(f"Saved {len(results)} keywords to {output_csv} {df.shape}\n{list(df.columns)}")
+			print(df.info(verbose=verbose, memory_usage="deep"))
+
 	if verbose:
-		stats_start = time.time()
-		n_ok = 0
-		n_null = 0
+		n_ok, n_null = 0, 0
+
 		for inp, res in zip(inputs, results):
 			if res is not None:
 				n_ok += 1
 			if inp is None or str(inp).strip() in ("", "nan", "None"):
 				n_null += 1
+
 		total_results = len(results)
+
 		valid_inputs_count = total_results - n_null
 		n_failed = valid_inputs_count - n_ok
+
 		success_rate = (n_ok / valid_inputs_count) * 100 if valid_inputs_count > 0 else 0
+
 		print(
 			f"[STATS] {n_ok}/{valid_inputs_count} successful ({success_rate:.1f}%) "
-			f"{n_null} null inputs {n_failed} failed "
-			f"Elapsed_t: {time.time() - stats_start:.2f}s"
-		)
-	
-	# Cleanup model and tokenizer
-	if verbose:
-		print(f"Cleaning up model and tokenizer...")
-	del model, tokenizer
+			f"{n_null} null inputs {n_failed} failed")
 
-	gc.collect()
-	if torch.cuda.is_available():
-		torch.cuda.empty_cache()
-
-	# Save results
-	if csv_file:
-		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
-		if verbose:
-			print(f"Saving results to {output_csv}...")
-		df['llm_keywords'] = results
-		df.to_csv(output_csv, index=False)
-
-		# try:
-		# 	df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-		# except Exception as e:
-		# 	print(f"Failed to write Excel file: {e}")
-
-		if verbose:
-			print(f"Saved {len(results)} keywords to {output_csv} {df.shape}\n{list(df.columns)}")
-
-	if verbose:
 		print(f"Total Extracted LLM-based keywords: {len(results)} {type(results)} | Elapsed time: {time.time() - st_t:.1f} sec")
 		print("="*100)
 
