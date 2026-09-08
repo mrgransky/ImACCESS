@@ -547,7 +547,204 @@ def verify(p: str):
 	except Exception:
 		return None
 
-def parse_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
+def parse_vlm_response(
+	model_id: str,
+	raw_response: str,
+	verbose: bool = False,
+) -> Optional[List[str]]:
+	"""
+	Extract a keyword list from a VLM response.
+
+	Parsing is attempted in three escalating tiers:
+	  1. strict  : ast.literal_eval on the candidate list
+	  2. repaired: ast.literal_eval after normalizing quote defects
+	  3. split   : structural comma split (quoting-agnostic, cannot
+	               fail on apostrophes or bare identifiers)
+
+	Tier 3 exists because instruction-tuned VLMs routinely emit
+	list-SHAPED text that is not valid Python:
+	  - ['Children's Home']  -> unterminated string literal
+	  - [automobile, door]   -> ast.Name, not a str literal
+	Discarding these is a silent annotation-loss bug, not a
+	correctness safeguard.
+	"""
+	if not isinstance(raw_response, str):
+		if verbose:
+			print(f"[VLM: {model_id}] [ERROR] Output is not a string. Skipping...")
+		return None
+
+	if verbose:
+		print(f"[VLM: {model_id}] [RESPONSE]\n{raw_response}\n")
+
+	# ------------------------------------------------------------------
+	# Step 0: strip reasoning blocks so <think>...</think> content can
+	# never contribute a candidate list.
+	# ------------------------------------------------------------------
+	cleaned_response = re.sub(
+		r"<think>.*?</think>",
+		" ",
+		raw_response,
+		flags=re.DOTALL | re.IGNORECASE,
+	)
+
+	if verbose and cleaned_response != raw_response:
+		print("[DEBUG] Removed <think>...</think> block(s) before matching")
+
+	# ------------------------------------------------------------------
+	# Step 1: locate candidate bracketed spans
+	# ------------------------------------------------------------------
+	list_pattern = r"\[[^\[\]]*\]"
+	matches = re.findall(list_pattern, cleaned_response, re.DOTALL)
+
+	if verbose:
+		print(f"[DEBUG] Found {len(matches)} list-like pattern(s)")
+		for index, match in enumerate(matches):
+			print(f"[DEBUG]   Match {index}: {match}")
+		print()
+
+	if not matches:
+		if verbose:
+			print("[ERROR] No list pattern found in response")
+		return None
+
+	# The assistant's answer always follows the echoed prompt, so the
+	# LAST bracketed span is the answer. Selecting the longest span is
+	# unsafe: prompt text may contain longer bracketed content.
+	primary = matches[-1].strip()
+
+	if verbose:
+		print(f"[DEBUG] Selected primary list ({len(primary)} chars): {primary}\n")
+
+	inner = primary[1:-1].strip()
+
+	if not inner:
+		if verbose:
+			print("[ERROR] Selected list is empty")
+		return None
+
+	parsed_items: Optional[List[str]] = None
+	parse_tier: Optional[str] = None
+
+	# ------------------------------------------------------------------
+	# Tier 1: strict literal_eval
+	# ------------------------------------------------------------------
+	try:
+		candidate = ast.literal_eval(primary)
+		if isinstance(candidate, (list, tuple, set)):
+			parsed_items = [str(item) for item in candidate]
+			parse_tier = "strict"
+			if verbose:
+				print(f"[DEBUG] ✓ Tier 1 (strict) succeeded: {parsed_items}")
+	except Exception as exception:
+		if verbose:
+			print(
+				f"[DEBUG] ✗ Tier 1 (strict) failed: "
+				f"{type(exception).__name__}: {exception}"
+			)
+
+	# ------------------------------------------------------------------
+	# Tier 2: repaired literal_eval
+	#
+	# Normalize smart quotes, then re-quote each comma-separated field
+	# with double quotes after escaping internal double quotes. This
+	# repairs apostrophe defects such as 'Children's Home'.
+	# ------------------------------------------------------------------
+	if parsed_items is None:
+		normalized = (
+			inner
+			.replace("\u2018", "'")
+			.replace("\u2019", "'")
+			.replace("\u201c", '"')
+			.replace("\u201d", '"')
+		)
+
+		fields = [field.strip() for field in normalized.split(",")]
+		repaired_fields = []
+
+		for field in fields:
+			if not field:
+				continue
+
+			# Remove one symmetric layer of surrounding quotes, if present.
+			if len(field) >= 2 and field[0] == field[-1] and field[0] in {"'", '"'}:
+				field = field[1:-1]
+
+			field = field.strip()
+			if not field:
+				continue
+
+			repaired_fields.append('"' + field.replace('"', '\\"') + '"')
+
+		repaired = "[" + ", ".join(repaired_fields) + "]"
+
+		if verbose:
+			print(f"[DEBUG] Tier 2 repaired candidate: {repaired}")
+
+		try:
+			candidate = ast.literal_eval(repaired)
+			if isinstance(candidate, list):
+				parsed_items = [str(item) for item in candidate]
+				parse_tier = "repaired"
+				if verbose:
+					print(f"[DEBUG] ✓ Tier 2 (repaired) succeeded: {parsed_items}")
+		except Exception as exception:
+			if verbose:
+				print(
+					f"[DEBUG] ✗ Tier 2 (repaired) failed: "
+					f"{type(exception).__name__}: {exception}"
+				)
+
+	# ------------------------------------------------------------------
+	# Tier 3: structural comma split (never invokes the Python parser)
+	# ------------------------------------------------------------------
+	if parsed_items is None:
+		parsed_items = [field.strip() for field in inner.split(",")]
+		parse_tier = "split"
+		if verbose:
+			print(f"[DEBUG] ✓ Tier 3 (split) applied: {parsed_items}")
+
+	# ------------------------------------------------------------------
+	# Step 2: clean, filter, de-duplicate
+	# ------------------------------------------------------------------
+	keywords = []
+	seen = set()
+
+	for index, item in enumerate(parsed_items):
+		keyword = str(item).strip()
+
+		# Strip residual quotes/brackets left by tier 3.
+		keyword = keyword.strip("'\"`[]").strip()
+
+		# Collapse internal whitespace.
+		keyword = re.sub(r"\s+", " ", keyword)
+
+		if not keyword:
+			if verbose:
+				print(f"[DEBUG] Item {index}: skipped (empty after cleaning)")
+			continue
+
+		dedup_key = keyword.casefold()
+
+		if dedup_key in seen:
+			if verbose:
+				print(f"[DEBUG] Item {index}: {keyword!r} skipped (duplicate)")
+			continue
+
+		seen.add(dedup_key)
+		keywords.append(keyword)
+
+		if verbose:
+			print(f"[DEBUG] Item {index}: {keyword!r} kept")
+
+	if verbose:
+		print(
+			f"\n[FINAL] tier={parse_tier}, "
+			f"{len(keywords)} unique keyword(s): {keywords}\n"
+		)
+
+	return keywords if keywords else None
+
+def parse_vlm_response_old(model_id: str, raw_response: str, verbose: bool=False):
 	if verbose:
 		print(f"[VLM: {model_id}] [RESPONSE]\n{raw_response}\n")
 	vlm_response: Optional[str] = None
