@@ -76,7 +76,7 @@ STRICTLY EXCLUDE:
   - Roman numerals (e.g., I, II, IV, VIII).
   - Nationalities, ethnicities, or religions.
   - Abbreviations, acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
-	- Underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
+  - Underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
   - Labels containing underscores or other non-space separators (e.g., shell_hole, storage_tank, anti_aircraft).
   - Duplicate labels or normalized variants of the same label.
 
@@ -459,6 +459,8 @@ def _load_llm_(
 		if use_auto_model:
 			model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
 		else:
+			if verbose:
+				print(f"[LOADING] {model_cls.__name__}")
 			model = model_cls.from_pretrained(model_id, **model_kwargs)
 	except Exception as e:
 		if verbose: print(f"[ERROR] Error loading model:\n{e}")
@@ -477,9 +479,9 @@ def _load_llm_(
 			elif not any(v == "cpu" for v in dm.values()):
 				print(f"\n[OK] All layers on GPU - optimal performance!")
 
-		print(f"{'='*110}")
+		print(f"{'='*75}")
 		print(model.config)
-		print(f"{'='*110}")
+		print(f"{'='*75}")
 
 	return tokenizer, model
 
@@ -513,31 +515,16 @@ def get_prompt(
 	return text
 
 def parse_llm_response(
-	model_id: str, 
-	input_prompt: str, 
-	raw_llm_response: str, 
+	model_id: str,
+	llm_response: str,
 	max_kws: int,
 	caption: str,
 	verbose: bool = False
 ):
 	if verbose:
-		print(f"[DEBUG] Raw Caption:\n{caption}\n")
-		print(f"[LLM: {model_id} RESPONSE]\n{raw_llm_response}\n")
+		print(f"Raw Caption:\n{caption}\n")
+		print(f"[LLM: {model_id} RESPONSE]\n{llm_response}\n")
 
-	llm_response: Optional[str] = None
-	llm_response = _parse(
-		raw_llm_response, 
-		max_kws, 
-		verbose
-	)
-
-	return llm_response
-
-def _parse(
-	llm_response: str, 
-	max_kws: int,
-	verbose: bool = False
-) -> Optional[List[str]]:
 	# Step 1: Find the assistant's response
 	# Try multiple patterns for different model families
 	response_content = None
@@ -545,33 +532,34 @@ def _parse(
 	# Pattern 1: Mistral/Llama style with [/INST]
 	inst_end_match = re.search(r'\[/INST\]\s*', llm_response)
 	if inst_end_match:
-			response_content = llm_response[inst_end_match.end():].strip()
-			if verbose:
-					print(f"[STEP 1] Found [/INST] tag at position {inst_end_match.end()}")
+		response_content = llm_response[inst_end_match.end():].strip()
+		if verbose:
+			print(f"[STEP 1] Found [/INST] tag at position {inst_end_match.end()}")
 	
 	# Pattern 2: ChatML style (Qwen, Yi, etc.) - look for "assistant\n"
 	if response_content is None:
-			assistant_match = re.search(r'\nassistant\s*\n', llm_response, re.IGNORECASE)
-			if assistant_match:
-					response_content = llm_response[assistant_match.end():].strip()
-					if verbose:
-							print(f"[STEP 1] Found assistant tag at position {assistant_match.end()}")
+		assistant_match = re.search(r'\nassistant\s*\n', llm_response, re.IGNORECASE)
+		if assistant_match:
+			response_content = llm_response[assistant_match.end():].strip()
+			if verbose:
+				print(f"[STEP 1] Found assistant tag at position {assistant_match.end()}")
 	
 	# Pattern 3: Direct response - look for the last occurrence of a list pattern
 	if response_content is None:
-			# Just use the entire response
-			response_content = llm_response.strip()
-			if verbose:
-					print(f"[STEP 1] No specific tag found, using entire response")
+		# Just use the entire response
+		response_content = llm_response.strip()
+		if verbose:
+			print(f"[STEP 1] No specific tag found, using entire response")
+
 	if verbose:
-			print(f"[STEP 1] Content to parse:\n{response_content}\n")
+		print(f"[STEP 1] Content to parse:\n{response_content}\n")
 	
 	# Step 2: Extract the Python list
 	start_bracket = response_content.find('[')
 	if start_bracket == -1:
-			if verbose:
-					print("[ERROR] No opening bracket '[' found")
-			return None
+		if verbose:
+			print("[ERROR] No opening bracket '[' found")
+		return None
 	
 	# Find matching closing bracket
 	bracket_count = 0
@@ -586,14 +574,14 @@ def _parse(
 							break
 	
 	if end_bracket == -1:
-			if verbose:
-					print("[ERROR] No matching closing bracket ']' found")
-			return None
+		if verbose:
+			print("[ERROR] No matching closing bracket ']' found")
+		return None
 	
 	list_str = response_content[start_bracket:end_bracket + 1]
 	
 	if verbose:
-			print(f"[STEP 2] Extracted list string: {list_str}\n")
+		print(f"[STEP 2] Extracted list string: {list_str}\n")
 	
 	# Step 3: Parse with multiple strategies
 	keywords_list = None
@@ -601,190 +589,181 @@ def _parse(
 	
 	# Strategy 1: Try ast.literal_eval directly
 	try:
-			keywords_list = ast.literal_eval(list_str)
-			if isinstance(keywords_list, list):
-					parsing_method = "ast.literal_eval (direct)"
-					if verbose:
-							print(f"[STEP 3.1] Success with ast.literal_eval")
+		keywords_list = ast.literal_eval(list_str)
+		if isinstance(keywords_list, list):
+			parsing_method = "ast.literal_eval (direct)"
 	except Exception as e:
-			if verbose:
-					print(f"[STEP 3.1] ast.literal_eval failed: {e}")
+		if verbose:
+			print(f"[FAILURE] ast.literal_eval {e}")
 	
 	# Strategy 2: Convert single quotes to double quotes for JSON
 	if keywords_list is None:
-			try:
-					# Simple replacement works when there are no apostrophes inside strings
-					json_str = list_str.replace("'", '"')
-					keywords_list = json.loads(json_str)
-					if isinstance(keywords_list, list):
-							parsing_method = "json.loads (quote replacement)"
-							if verbose:
-									print(f"[STEP 3.2] Success with JSON parsing")
-			except Exception as e:
-					if verbose:
-							print(f"[STEP 3.2] JSON parsing failed: {e}")
+		try:
+			# Simple replacement works when there are no apostrophes inside strings
+			json_str = list_str.replace("'", '"')
+			keywords_list = json.loads(json_str)
+			if isinstance(keywords_list, list):
+				parsing_method = "json.loads (quote replacement)"
+		except Exception as e:
+			if verbose:
+				print(f"[FAILURE] JSON parsing {e}")
 	
 	# Strategy 3: Smart quote conversion - handle apostrophes properly
 	if keywords_list is None:
-			try:
-					if verbose:
-							print(f"[STEP 3.3] Attempting smart quote conversion...")
-					
-					# Use a state machine approach
-					result = []
-					i = 0
-					in_string = False
-					
-					while i < len(list_str):
-							char = list_str[i]
-							
-							if char == '[':
-									result.append(char)
-									i += 1
-									# Skip whitespace
-									while i < len(list_str) and list_str[i].isspace():
-											result.append(list_str[i])
-											i += 1
-									# Expect a quote to start a string
-									if i < len(list_str) and list_str[i] in ('"', "'"):
-											in_string = True
-											result.append('"')  # Use double quote
-											i += 1
-									continue
-							
-							elif char == ']':
-									if in_string:
-											result.append('"')
-											in_string = False
-									result.append(char)
-									i += 1
-									continue
-							
-							elif char == ',' and not in_string:
-									result.append(char)
-									i += 1
-									# Skip whitespace
-									while i < len(list_str) and list_str[i].isspace():
-											result.append(list_str[i])
-											i += 1
-									# Expect a quote to start next string
-									if i < len(list_str) and list_str[i] in ('"', "'"):
-											in_string = True
-											result.append('"')  # Use double quote
-											i += 1
-									continue
-							
-							elif in_string:
-									# Check if this is the closing quote
-									if char in ('"', "'"):
-											# Look ahead to see if this could be a closing quote
-											j = i + 1
-											while j < len(list_str) and list_str[j].isspace():
-													j += 1
-											
-											if j < len(list_str) and list_str[j] in (',', ']'):
-													# This is a closing quote
-													result.append('"')  # Use double quote
-													in_string = False
-													i += 1
-											else:
-													# This is an apostrophe or quote inside the string
-													result.append(char)
-													i += 1
-									else:
-											result.append(char)
-											i += 1
-							else:
-									result.append(char)
-									i += 1
-					
-					normalized_list_str = ''.join(result)
-					
-					if verbose:
-							print(f"[STEP 3.3] Converted to: {normalized_list_str}")
-					
-					keywords_list = ast.literal_eval(normalized_list_str)
-					if isinstance(keywords_list, list):
-							parsing_method = "smart quote conversion"
-							if verbose:
-									print(f"[STEP 3.3] Success with smart conversion")
-			except Exception as e:
-					if verbose:
-							print(f"[STEP 3.3] Smart conversion failed: {e}")
+		try:
+			if verbose:
+				print(f"[STEP 3.3] Attempting smart quote conversion...")
+			
+			# Use a state machine approach
+			result = []
+			i = 0
+			in_string = False
+			
+			while i < len(list_str):
+				char = list_str[i]
+				
+				if char == '[':
+					result.append(char)
+					i += 1
+					# Skip whitespace
+					while i < len(list_str) and list_str[i].isspace():
+						result.append(list_str[i])
+						i += 1
+					# Expect a quote to start a string
+					if i < len(list_str) and list_str[i] in ('"', "'"):
+						in_string = True
+						result.append('"')  # Use double quote
+						i += 1
+					continue
+				elif char == ']':
+					if in_string:
+						result.append('"')
+						in_string = False
+					result.append(char)
+					i += 1
+					continue
+				elif char == ',' and not in_string:
+					result.append(char)
+					i += 1
+					# Skip whitespace
+					while i < len(list_str) and list_str[i].isspace():
+						result.append(list_str[i])
+						i += 1
+					# Expect a quote to start next string
+					if i < len(list_str) and list_str[i] in ('"', "'"):
+						in_string = True
+						result.append('"')  # Use double quote
+						i += 1
+					continue
+				elif in_string:
+					# Check if this is the closing quote
+					if char in ('"', "'"):
+						# Look ahead to see if this could be a closing quote
+						j = i + 1
+						while j < len(list_str) and list_str[j].isspace():
+							j += 1
+						
+						if j < len(list_str) and list_str[j] in (',', ']'):
+							# This is a closing quote
+							result.append('"')  # Use double quote
+							in_string = False
+							i += 1
+						else:
+							# This is an apostrophe or quote inside the string
+							result.append(char)
+							i += 1
+					else:
+						result.append(char)
+						i += 1
+				else:
+					result.append(char)
+					i += 1
+			
+			normalized_list_str = ''.join(result)
+			
+			if verbose:
+				print(f"[STEP 3.3] Converted to: {normalized_list_str}")
+			
+			keywords_list = ast.literal_eval(normalized_list_str)
+			if isinstance(keywords_list, list):
+				parsing_method = "smart quote conversion"
+		except Exception as e:
+			if verbose:
+				print(f"[FAILURE] Smart conversion {e}")
 	
 	# Strategy 4: Regex extraction (most robust fallback)
 	if keywords_list is None:
-			try:
-					if verbose:
-							print(f"[STEP 3.4] Attempting regex extraction...")
-					
-					# Extract all quoted strings (handles both single and double quotes)
-					pattern = r'''['"]([^'"\\]*(?:\\.[^'"\\]*)*)['"]'''
-					matches = re.findall(pattern, list_str)
-					
-					if matches:
-							keywords_list = matches
-							parsing_method = "regex extraction"
-							if verbose:
-									print(f"[STEP 3.4] Success with regex extraction")
-			except Exception as e:
-					if verbose:
-							print(f"[STEP 3.4] Regex extraction failed: {e}")
+		try:
+			if verbose:
+				print(f"[STEP 3.4] Attempting regex extraction...")
+			
+			# Extract all quoted strings (handles both single and double quotes)
+			pattern = r'''['"]([^'"\\]*(?:\\.[^'"\\]*)*)['"]'''
+			matches = re.findall(pattern, list_str)
+			
+			if matches:
+				keywords_list = matches
+				parsing_method = "regex extraction"
+		except Exception as e:
+			if verbose:
+				print(f"[FAILURE] Regex extraction {e}")
 	
 	# Validation
 	if keywords_list is None or not isinstance(keywords_list, list):
-			if verbose:
-					print(f"[ERROR] All parsing strategies failed")
-					print(f"[ERROR] Problematic string: {list_str}")
-			return None
+		if verbose:
+			print(f"[ERROR] All parsing strategies failed")
+			print(f"[ERROR] Problematic string: {list_str}")
+		return None
 	
 	if verbose:
-			print(f"\n[STEP 3] Parsing method: {parsing_method}")
-			print(f"[STEP 3] Successfully parsed list with {len(keywords_list)} items:")
-			for i, kw in enumerate(keywords_list, 1):
-					print(f"  [{i}] {kw}")
+		print(f"\n[STEP 3] Parsing method: {parsing_method}")
+		print(f"[STEP 3] Successfully parsed list with {len(keywords_list)} items:")
+		for i, kw in enumerate(keywords_list, 1):
+			print(f"  [{i}] {kw}")
 	
 	# Step 4: Post-process keywords
 	if verbose:
-			print(f"\n[POST-PROCESSING] {keywords_list} (max allowed: {max_kws})...")
+		print(f"\n[POST-PROCESSING] {keywords_list} (max allowed: {max_kws})")
 	
 	processed = []
 	seen = set()
-	
 	for idx, kw in enumerate(keywords_list, 1):
+		if verbose:
+			print(f"\t[{idx}/{len(keywords_list)}]: {repr(kw)}")
+		
+		# Check if empty
+		if not kw or not str(kw).strip():
 			if verbose:
-					print(f"\t[{idx}/{len(keywords_list)}]: {repr(kw)}")
-			
-			# Check if empty
-			if not kw or not str(kw).strip():
-					if verbose:
-							print(f"    ✗ Skipped: empty/whitespace")
-					continue
-			
-			# Normalize whitespace
-			cleaned = re.sub(r'\s+', ' ', str(kw).strip())
-			# Unescape any escaped characters
-			cleaned = cleaned.replace("\\'", "'").replace('\\"', '"')
-			
+				print(f"    ✗ Skipped: empty/whitespace")
+			continue
+		
+		# Normalize whitespace
+		cleaned = re.sub(r'\s+', ' ', str(kw).strip())
+
+		# Unescape any escaped characters
+		cleaned = cleaned.replace("\\'", "'").replace('\\"', '"')
+		
+		if verbose:
+			print(f"\t=> Cleaned: {repr(cleaned)}")
+
+		# Check length
+		if len(cleaned) < 3:
 			if verbose:
-					print(f"\t=> Cleaned: {repr(cleaned)}")
-			# Check length
-			if len(cleaned) < 3:
-					if verbose:
-							print(f"    ✗ Skipped: too short (len={len(cleaned)})")
-					continue
-			# Check for duplicates (case-insensitive)
-			normalized = cleaned.lower()
-			if normalized in seen:
-					if verbose:
-							print(f"    ✗ Skipped: {normalized} is a duplicate")
-					continue
-			
-			seen.add(normalized)
-			processed.append(cleaned)
+				print(f"    ✗ Skipped: too short (len={len(cleaned)})")
+			continue
+
+		# Check for duplicates (case-insensitive)
+		normalized = cleaned.lower()
+		if normalized in seen:
+			if verbose:
+				print(f"    ✗ Skipped: {normalized} is a duplicate")
+			continue
+		
+		seen.add(normalized)
+		processed.append(cleaned)
 	
 	if verbose:
-			print(f"[RESULT] Processed keywords (total: {len(processed)}): {processed}")
+		print(f"[RESULT] Processed keywords (total: {len(processed)}): {processed}")
 	
 	return processed if processed else None
 
@@ -861,9 +840,8 @@ def query_local_llm(
 	
 	parsing_start = time.time()
 	keywords = parse_llm_response(
-		model_id=model_id, 
-		input_prompt=prompt, 
-		raw_llm_response=raw_llm_response,
+		model_id=model_id,
+		llm_response=raw_llm_response,
 		caption=text,
 		max_kws=max_kws,
 		verbose=verbose,
@@ -972,6 +950,7 @@ def get_llm_based_labels(
 ) -> List[Optional[List[str]]]:
 
 	output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
+
 	try:
 		df = pd.read_csv(
 			filepath_or_buffer=output_csv,
@@ -984,7 +963,7 @@ def get_llm_based_labels(
 	except Exception as e:
 		print(f"{e} Generating from scratch...")
 	
-	num_workers = min(os.cpu_count(), num_workers)
+	# num_workers = min(os.cpu_count(), num_workers)
 	if verbose:
 		print(f"[INIT] Starting OPTIMIZED batch LLM processing with {num_workers} workers")
 
@@ -1112,8 +1091,7 @@ def get_llm_based_labels(
 			try:
 				parsed = parse_llm_response(
 					model_id=model_id_,
-					input_prompt=batch_prompts[local_i],
-					raw_llm_response=decoded_batch[local_i],
+					llm_response=decoded_batch[local_i],
 					caption=unique_inputs[idx],
 					max_kws=max_kws_,
 					verbose=verbose_,
@@ -1121,7 +1099,7 @@ def get_llm_based_labels(
 				return idx, parsed
 			except Exception as e:
 				if verbose_:
-					print(f"⚠️ Parsing error for batch index {idx}: {e}")
+					print(f"[FAILED] Parsing batch index {idx}: {e}")
 				return idx, None
 		
 		with ThreadPoolExecutor(max_workers=num_workers) as executor:

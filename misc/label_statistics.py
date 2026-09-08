@@ -1023,7 +1023,11 @@ def compute_clip_visual_grounding(
 	if verbose:
 		print(json.dumps(model_config, indent=4, ensure_ascii=False))
 
-	model, _ = clip.load(name=architecture, device=device)
+	model, _ = clip.load(
+		name=architecture, 
+		device=device,
+		download_root=cache_directory.get(USER),
+	)
 
 	preprocess = clip.get_preprocess(
 		norm_stats=norm_stats,

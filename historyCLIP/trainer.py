@@ -221,7 +221,7 @@ def main():
 
 		model, _ = clip.load(
 			name=args.model_architecture,
-			device=args.device, 
+			device=args.device,
 			jit=False, # training or finetuning => jit=False
 			random_weights=False, # finetuning => random_weights=False
 			dropout=args.dropout,

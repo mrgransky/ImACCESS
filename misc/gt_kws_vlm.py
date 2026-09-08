@@ -39,7 +39,7 @@ Constraints:
   - EXCLUDE generic keywords for image characteristics (e.g., photograph, image, black and white photograph)
   - Refrain from using common environmental details (sky, lighting, ground texture) except when they hold historical importance, such as craters or trenches.
   - Refrain from using expressions centered on counting, such as a trio of men, various individuals, or a cluster of youths.
-  - Vague container nouns should be avoided such as 'scene', 'group', or 'event'.
+  - Vague container nouns should be avoided such as 'scene', 'group', 'crowd', or 'event'.
   - Purely demographic descriptors without contextual role should be avoided.
   - Do NOT use underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
   - Text/OCR extraction from the image is not allowed."""
@@ -634,13 +634,10 @@ def parse_vlm_response(
 			parsed_items = [str(item) for item in candidate]
 			parse_tier = "strict"
 			if verbose:
-				print(f"[DEBUG] ✓ Tier 1 (strict) succeeded: {parsed_items}")
-	except Exception as exception:
+				print(f"[SUCCESS] Tier 1 (strict): {parsed_items}")
+	except Exception as e:
 		if verbose:
-			print(
-				f"[DEBUG] ✗ Tier 1 (strict) failed: "
-				f"{type(exception).__name__}: {exception}"
-			)
+			print(f"[FAILED] Tier 1 (strict) {type(e).__name__}: {e}")
 
 	# ------------------------------------------------------------------
 	# Tier 2: repaired literal_eval
@@ -686,13 +683,10 @@ def parse_vlm_response(
 				parsed_items = [str(item) for item in candidate]
 				parse_tier = "repaired"
 				if verbose:
-					print(f"[DEBUG] ✓ Tier 2 (repaired) succeeded: {parsed_items}")
-		except Exception as exception:
+					print(f"[SUCCESS] Tier 2 (repaired): {parsed_items}")
+		except Exception as e:
 			if verbose:
-				print(
-					f"[DEBUG] ✗ Tier 2 (repaired) failed: "
-					f"{type(exception).__name__}: {exception}"
-				)
+				print(f"[FAILED] Tier 2 (repaired): {type(e).__name__}: {e}")
 
 	# ------------------------------------------------------------------
 	# Tier 3: structural comma split (never invokes the Python parser)
@@ -1321,10 +1315,12 @@ def get_vlm_based_labels(
 	df["vlm_keywords"] = final
 
 	df.to_csv(output_csv, index=False)
-	try:
-		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-	except Exception as e:
-		print(f"Failed to write Excel file: {e}")
+
+	# try:
+	# 	df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+	# except Exception as e:
+	# 	print(f"Failed to write Excel file: {e}")
+
 	elapsed = time.time() - t0
 
 	if verbose:
