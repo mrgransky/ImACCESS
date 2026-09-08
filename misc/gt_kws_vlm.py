@@ -42,7 +42,7 @@ Constraints:
   - Refrain from using expressions centered on counting, such as a trio of men, various individuals, or a cluster of youths.
   - Vague container nouns should be avoided such as 'scene', 'group', or 'event'.
   - Purely demographic descriptors without contextual role should be avoided.
-	- Do NOT use underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
+  - Do NOT use underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
   - Text/OCR extraction from the image is not allowed."""
 
 def _load_vlm_(
