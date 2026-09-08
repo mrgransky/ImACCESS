@@ -33,8 +33,8 @@ Return your response as a Python list of double-quoted strings containing keywor
 
 Constraints:
   - EXCLUDE generic keywords such as 'World War I', 'Vietnam War', 'post war era', 'Post-war', 'aftermath of World War II', 'War', 'battle'.
-  - EXCLUDE generic nouns for human classifications, (person, people, or men, women, children, boy, girl, etc).
-  - EXCLUDE generic nouns for geographical locations, such as continents, countries, states, provinces, cities, towns, islands, regions, or roads.
+  - EXCLUDE human classifications, (person, people, or men, women, children, boy, girl, etc).
+  - EXCLUDE geographical locations, such as continents, countries, states, provinces, cities, towns, islands, regions, or roads.
   - EXCLUDE dates, times, years, decades, or any temporal references.
   - EXCLUDE generic keywords for image characteristics (e.g., photograph, image, black and white photograph)
   - Refrain from using common environmental details (sky, lighting, ground texture) except when they hold historical importance, such as craters or trenches.
