@@ -56,7 +56,8 @@ else
 	LLM_MAX_GENERATED_TOKENS=256
 	VLM_MAX_GENERATED_TOKENS=96
 fi
-
+TEXT_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
+CLIP_MODEL="ViT-L/14@336px"
 DATASET_DIRECTORY="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 DATASETS=(
 	${DATASET_DIRECTORY}/HISTORY_X4
@@ -69,9 +70,11 @@ CSV_FILE=${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv
 LLM_BATCH_SIZES=(20 6 18 18 28)
 VLM_BATCH_SIZES=(24 8 8 8 8)
 
-echo "Running Multimodal Annotation on $CSV_FILE using $MLM_MODEL"
+echo "Running Multimodal Annotation on $CSV_FILE"
+echo "MLM: $MLM_MODEL"
 echo "[LLM] batch sizes: ${LLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} max generated tokens: $LLM_MAX_GENERATED_TOKENS"
 echo "[VLM] batch sizes: ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} max generated tokens: $VLM_MAX_GENERATED_TOKENS"
+echo "CLIP: $CLIP_MODEL"
 
 python -u gt_kws_multimodal.py \
 	--csv_file $CSV_FILE \
@@ -82,6 +85,8 @@ python -u gt_kws_multimodal.py \
 	--vlm_model_id $MLM_MODEL \
 	--vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
 	--vlm_max_generated_tks $VLM_MAX_GENERATED_TOKENS \
+	--embedding_model_id $TEXT_EMBEDDING_MODEL \
+	--clip_architecture $CLIP_MODEL \
 	--max_keywords 3 \
 	--verbose \
 	# --llm_use_quantization \
