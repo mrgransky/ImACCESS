@@ -29,7 +29,7 @@ from utils import *
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
-Return a Python LIST of keywords derived strictly from the visual content of the image.
+Return your response as a Python list of double-quoted strings containing keywords derived strictly from the visual content of the image.
 
 Constraints:
   - EXCLUDE generic keywords such as 'World War I', 'Vietnam War', 'post war era', 'Post-war', 'aftermath of World War II', 'War', 'battle'.
