@@ -1211,7 +1211,6 @@ def get_vlm_based_labels(
 				del inputs, outputs, decoded, valid_pairs, messages, chat_texts
 			except NameError:
 				pass
-
 		except Exception as e_batch:
 			print(f"\n[BATCH {b}]: {e_batch}\n")
 
@@ -1291,6 +1290,8 @@ def get_vlm_based_labels(
 		# memory management
 		need_cleanup = False
 		memory_consumed_percent = 0
+		if verbose:
+			print(f"[MEM] Batch {b}")
 		for device_idx in range(torch.cuda.device_count()):
 			mem_total = torch.cuda.get_device_properties(device_idx).total_memory / (1024**3) 
 			mem_allocated = torch.cuda.memory_allocated(device_idx) / (1024**3)
@@ -1298,7 +1299,7 @@ def get_vlm_based_labels(
 			mem_usage_pct = (mem_reserved / mem_total) * 100 if mem_total > 0 else 0
 			if verbose:
 				print(
-					f"[MEM] Batch {b} (GPU {device_idx}): {mem_usage_pct:.2f}% usage: "
+					f"  └─ GPU [{device_idx}] {mem_usage_pct:.2f}% usage: "
 					f"{mem_allocated:.2f}GB alloc / {mem_reserved:.2f}GB reserved (Total: {mem_total:.1f}GB)"
 				)
 			if mem_usage_pct > mem_cleanup_th: 
