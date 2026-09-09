@@ -1587,7 +1587,7 @@ def process_image_for_storage(
 				
 				if img.size[0] > target_w or img.size[1] > target_h:
 					img.thumbnail((target_w, target_h), resample=Image.Resampling.LANCZOS)
-					action = f"\t\t => [SUCCESS] thumbnailed: ≤{target_w}×{target_h}"
+					action = f"[THUMBNAILED] ≤{target_w}×{target_h}"
 			
 			# Always save as optimized JPEG
 			img.save(

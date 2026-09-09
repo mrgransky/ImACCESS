@@ -1252,41 +1252,17 @@ def get_enriched_description(
 	if verbose:
 		print(f"df_enriched: {df_enriched.shape} {type(df_enriched)} {list(df_enriched.columns)}")
 
-	# df_enriched['enriched_document_description'] = df_enriched.apply(
-	# 	lambda row: ". ".join(
-	# 		filter(
-	# 			None, 
-	# 			[
-	# 				basic_clean(str(row['title'])) if pd.notna(row['title']) and str(row['title']).strip() else None, 
-	# 				basic_clean(str(row['description'])) if pd.notna(row['description']) and str(row['description']).strip() else None,
-	# 				# basic_clean(str(row['keywords'])) if 'keywords' in df_enriched.columns and pd.notna(row['keywords']) and str(row['keywords']).strip() else None
-	# 			]
-	# 		)
-	# 	),
-	# 	axis=1
-	# )
-	
-	def combine_title_description(row):
-		title = (
-				basic_clean(str(row['title']))
-				if pd.notna(row['title']) and str(row['title']).strip()
-				else None
-		)
-		description = (
-				basic_clean(str(row['description']))
-				if pd.notna(row['description']) and str(row['description']).strip()
-				else None
-		)
-		# If title and description are identical, keep only one copy
-		if title and description:
-				if title == description:
-						return title
-				return f"{title}. {description}"
-		# Only one of them exists
-		return title or description
-
 	df_enriched['enriched_document_description'] = df_enriched.apply(
-		combine_title_description,
+		lambda row: ". ".join(
+			filter(
+				None, 
+				[
+					basic_clean(str(row['title'])) if pd.notna(row['title']) and str(row['title']).strip() else None, 
+					basic_clean(str(row['description'])) if pd.notna(row['description']) and str(row['description']).strip() else None,
+					# basic_clean(str(row['keywords'])) if 'keywords' in df_enriched.columns and pd.notna(row['keywords']) and str(row['keywords']).strip() else None
+				]
+			)
+		),
 		axis=1
 	)
 

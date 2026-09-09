@@ -543,11 +543,12 @@ def _download_and_process_image(
 				verbose=verbose,
 			):
 				if verbose:
-					print(f"Failed to process image {img_fpath}")
+					print(f"[FAILED] processing {img_fpath}")
+
 				return False
 
 			if verbose:
-				print(f"{img_fpath} downloaded and processed successfully")
+				print(f"[DOWNLOADED & PROCESSED] {img_fpath}")
 
 			return True
 		except Exception as e:
@@ -623,47 +624,47 @@ def get_dframe(
 
 	# ── 1. Cache path ─────────────────────────────────────────────────────
 	if os.path.exists(df_fpth):
-			if verbose:
-					print(f"  [CACHE] {df_fpth} exists => loading...")
-			df = load_pickle(fpath=df_fpth)
-			if df.shape[0] == 0:
-					print(f"  [WARNING] Cached DF is empty {df.shape} => ignoring cache, re-scraping...")
-			else:
-					# Normalize legacy root-relative img_urls
-					rel_mask = df['img_url'].fillna('').astype(str).str.startswith('/')
-					if rel_mask.any():
-							print(f"  Normalizing {int(rel_mask.sum())} root-relative img_url(s) in cached DF...")
-							df.loc[rel_mask, 'img_url'] = [
-									urllib.parse.urljoin(base, url)
-									for base, url in zip(df.loc[rel_mask, 'doc_url'], df.loc[rel_mask, 'img_url'])
-							]
-					img_paths = df['img_path'].tolist()
-					missing_indices = [i for i, p in enumerate(img_paths) if not os.path.exists(p)]
-					missing_paths = [img_paths[i] for i in missing_indices]
-					if missing_indices:
-							if verbose:
-								print(f"Downloading {len(missing_indices)} missing images ({num_workers} workers)...")
-								print(f"Missing paths: {len(missing_paths)}")
-							def download_task(idx: int):
-									return idx, df['img_url'].iloc[idx], _download_and_process_image(
-											img_url=df['img_url'].iloc[idx],
-											img_fpath=df['img_path'].iloc[idx],
-											thumbnail_size=thumbnail_size,
-											verbose=verbose,
-									)
-							failed = []
-							with ThreadPoolExecutor(max_workers=num_workers) as ex:
-									futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
-									for fut in tqdm(as_completed(futures), total=len(futures),
-																	desc="Downloading missing images", ncols=100):
-											idx, url, ok = fut.result()
-											if not ok:
-													failed.append((idx, url))
-							if failed and verbose:
-									print(f"  Failed to download {len(failed)} image(s).")
-									for i, (idx, url) in enumerate(failed):
-											print(f"    {i}: idx={idx} url={url}")
-					return df
+		if verbose:
+			print(f"  [CACHE] {df_fpth} exists => loading...")
+		df = load_pickle(fpath=df_fpth)
+		if df.shape[0] == 0:
+			print(f"  [WARNING] Cached DF is empty {df.shape} => ignoring cache, re-scraping...")
+		else:
+			# Normalize legacy root-relative img_urls
+			rel_mask = df['img_url'].fillna('').astype(str).str.startswith('/')
+			if rel_mask.any():
+					print(f"  Normalizing {int(rel_mask.sum())} root-relative img_url(s) in cached DF...")
+					df.loc[rel_mask, 'img_url'] = [
+							urllib.parse.urljoin(base, url)
+							for base, url in zip(df.loc[rel_mask, 'doc_url'], df.loc[rel_mask, 'img_url'])
+					]
+			img_paths = df['img_path'].tolist()
+			missing_indices = [i for i, p in enumerate(img_paths) if not os.path.exists(p)]
+			missing_paths = [img_paths[i] for i in missing_indices]
+			if missing_indices:
+				if verbose:
+					print(f"Downloading {len(missing_indices)} missing images ({num_workers} workers)...")
+					print(f"Missing paths: {len(missing_paths)}")
+				def download_task(idx: int):
+					return idx, df['img_url'].iloc[idx], _download_and_process_image(
+						img_url=df['img_url'].iloc[idx],
+						img_fpath=df['img_path'].iloc[idx],
+						thumbnail_size=thumbnail_size,
+						verbose=verbose,
+					)
+				failed = []
+				with ThreadPoolExecutor(max_workers=num_workers) as ex:
+					futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
+					for fut in as_completed(futures):
+					# for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading missing images", ncols=100):
+						idx, url, ok = fut.result()
+						if not ok:
+							failed.append((idx, url))
+				if failed and verbose:
+					print(f"  Failed to download {len(failed)} image(s).")
+					for i, (idx, url) in enumerate(failed):
+						print(f"    {i}: idx={idx} url={url}")
+			return df
 
 	# ── 2. Scrape gallery index page ──────────────────────────────────────
 	doc_url_info = extract_url_info(doc_url)
@@ -914,231 +915,6 @@ def get_dframe(
 
 	return df
 
-def get_dframe_old(
-	doc_idx: int,
-	doc_url: str,
-	user_query: str,
-	num_workers: int,
-	thumbnail_size: tuple = None,
-	verbose: bool = False,
-) -> pd.DataFrame:
-	print(f"\n>> Extracting DF for user_query[{doc_idx}]: « {user_query} » from {doc_url} with thumbnail_size={thumbnail_size}")
-	content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}"
-	print(f"content_to_hash: {content_to_hash}")
-	hash_digest = hashlib.md5(content_to_hash.encode('utf-8')).hexdigest()
-	query_prefix = user_query.replace(' ', '_') + '_' if user_query else ''
-	df_fpth = os.path.join(HITs_DIR, f"df_{query_prefix}{hash_digest}.gz")
-	print(f"df_fpth: {df_fpth}")
-
-	# ── CACHE PATH ──────────────────────────────────────────────────────────
-	if os.path.exists(df_fpth):
-			df = load_pickle(fpath=df_fpth)
-			if df.shape[0] == 0:
-					raise ValueError(f"Empty DF: {df.shape} => Exit...")
-			print(df[['id', 'img_path']].head(10))
-			print()
-			# FIX #3: Reconstruct path from filename instead of string-replace
-			df['img_path'] = df['img_path'].apply(
-					lambda x: os.path.join(IMAGE_DIRECTORY, os.path.basename(x))
-			)
-			print(df[['id', 'img_path']].head(10))
-			print("#" * 160)
-			# Identify missing images
-			missing_indices = [
-					i
-					for i, path in enumerate(df['img_path'].tolist())
-					if not os.path.exists(path)
-			]
-			missing_paths = [
-					path
-					for path in df['img_path'].tolist()
-					if not os.path.exists(path)
-			]
-			if missing_indices:
-					if verbose:
-							print(f"Downloading {len(missing_indices)} missing images using {num_workers} workers...")
-							print(f"Missing paths:\n{missing_paths}\n")
-					def download_task(idx: int):
-							img_path = df['img_path'].iloc[idx]
-							img_url = df['img_url'].iloc[idx]
-							success = _download_and_process_image(
-									img_url=img_url,
-									img_fpath=img_path,
-									thumbnail_size=thumbnail_size,
-									verbose=verbose,
-							)
-							return idx, img_url, success
-					failed = []
-					with ThreadPoolExecutor(max_workers=num_workers) as ex:
-							futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
-							for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading missing images", ncols=100):
-									idx, url, ok = fut.result()
-									if not ok:
-											failed.append((idx, url))
-					if failed and verbose:
-							print(f"Failed to download {len(failed)} images.")
-							for i, (idx, url) in enumerate(failed):
-									print(f"{i} {idx} {url}")
-			return df
-	# ── FETCH DOCUMENT ──────────────────────────────────────────────────────
-	doc_url_info = extract_url_info(doc_url)
-	print(json.dumps(doc_url_info, indent=4, ensure_ascii=False))
-	session = requests.Session()
-	session.headers.update(HEADERS)
-	df_st_time = time.time()
-	try:
-			response = session.get(doc_url, timeout=30)
-			response.raise_for_status()
-			soup = BeautifulSoup(response.text, 'html.parser')
-			# Try new layout first, fallback to old layout
-			header = None
-			header_el = soup.find('h1')
-			if header_el:
-					header = header_el.get_text(strip=True)
-			else:
-					header_el = soup.find('h2', class_="entry-title")
-					if header_el:
-							header = header_el.get_text(strip=True)
-			if not header:
-					print(f"[WARNING] Could not find title in {doc_url}")
-					header = doc_url_info.get('type', 'Unknown')
-			# Try new layout images first
-			hits = soup.find_all('article', class_='photo-card')
-			if not hits:
-					hits = soup.find_all('img', class_='attachment-thumbnail')
-	except Exception as e:
-			print(f"[ERROR] Failed to retrieve or parse {doc_url}: {e}")
-			return None
-	print("-" * 150)
-	print(f"\nDoc header:\n{header}")
-	# ── DESCRIPTION ─────────────────────────────────────────────────────────
-	doc_description = ""
-	caption_element = soup.find('div', class_='folder-description')
-	if not caption_element:
-			caption_element = soup.find('div', class_='entry-caption')
-	if caption_element:
-			doc_description = caption_element.get_text(strip=True)
-			doc_description = re.sub(r'\s+', ' ', doc_description).strip()
-	if doc_description.lower() and header.lower() not in doc_description.lower():
-			doc_description = header + " " + doc_description
-	elif not doc_description.strip():
-			doc_description = header
-	print(f"\nDoc Description:\n{doc_description}\n")
-	# ── CAPTION MAP (old layout only) ───────────────────────────────────────
-	caption_map = {}
-	for p in soup.find_all('p', class_='wp-caption-text gallery-caption'):
-			cid = p.get('id')
-			if cid:
-					caption_text = p.get_text(strip=True)
-					if caption_text:
-							caption_map[cid] = caption_text
-	print(f"{len(caption_map)} Caption Map(s):\n{json.dumps(caption_map, indent=4, ensure_ascii=False)}")
-	print(f"Found {len(hits)} Document(s) => Extracting information [might take a while]")
-	data = []
-	for idoc, vdoc in enumerate(hits):
-			print(f"[{idoc + 1}/{len(hits)}] {vdoc}")
-			# ── Extract metadata depending on layout ──────────────────────────
-			if vdoc.name == 'article':
-					# NEW layout
-					img_tag = vdoc.find('img')
-					if not img_tag:
-							continue
-					img_url = img_tag.get('src')
-					caption_el = vdoc.find('h3')
-					doc_title = caption_el.get_text(strip=True) if caption_el else img_tag.get('alt', '')
-					parent_a = vdoc.find('a')
-					doc_doc_url = parent_a.get('href') if parent_a else None
-			else:
-					# OLD layout
-					img_tag = vdoc
-					img_url = img_tag.get('data-src')
-					if not img_url:
-							print(f"[WARNING] No data-src found, skipping...")
-							continue
-					parent_a = img_tag.find_parent('a')
-					doc_doc_url = parent_a.get('href') if parent_a else None
-					doc_title = img_tag.get("alt")
-					if doc_title == "Folder Icon":
-							doc_title = None
-					aria_id = img_tag.get("aria-describedby")
-					if aria_id:
-							caption_title = caption_map.get(aria_id)
-							if caption_title:
-									doc_title = caption_title
-			if not img_url:
-					print(f"[WARNING] No image URL found, skipping...")
-					continue
-			# ── FIX #1 & #2: Absolutize & clean URL ───────────────────────────
-			img_url = urllib.parse.urljoin(doc_url, img_url)
-			img_url = img_url.replace("_cache/", "")
-			img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url)
-			# NOTE: Do NOT strip Hugo _hu_ hash suffix — the hashed file is usually the only one deployed.
-			# If you need the original, add a fallback inside _download_and_process_image().
-			filename = os.path.basename(img_url)
-			img_fpath = os.path.join(IMAGE_DIRECTORY, filename)
-			specific_doc_url = urllib.parse.urljoin(doc_url, doc_doc_url) if doc_doc_url else doc_url
-			# ── Extract year ──────────────────────────────────────────────────
-			date_sources = [doc_title, specific_doc_url, img_url, filename, doc_description]
-			extracted_year = None
-			for src in date_sources:
-					if src:
-							year = extract_year(src)
-							if year:
-									extracted_year = year
-									break
-			if verbose:
-					print(f"extracted_year: {extracted_year}")
-			# ── Download & process image ────────────────────────────────────────
-			if not os.path.exists(img_fpath):
-					ok = _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose)
-					if not ok:
-							if verbose:
-									print(f"Failed to download {img_url} => Skipping...")
-							continue
-			else:
-					ok = process_image_for_storage(img_path=img_fpath, thumbnail_size=thumbnail_size, verbose=verbose)
-					if not ok:
-							if verbose:
-									print(f"Existing image {img_fpath} failed re-processing. Attempting re-download...")
-							os.remove(img_fpath)
-							ok = _download_and_process_image(img_url, img_fpath, thumbnail_size, verbose)
-							if not ok:
-									if verbose:
-											print(f"Failed to re-download {img_url} => Skipping...")
-									continue
-					else:
-							if verbose:
-									print(f"Existing image {img_fpath} re-processed successfully")
-			# ── Build row ───────────────────────────────────────────────────────
-			row = {
-					'id': filename,
-					'date': extracted_year,
-					'doc_url': specific_doc_url,
-					'img_url': img_url,
-					'title': doc_title,
-					'description': doc_description,
-					'country': doc_url_info.get("country"),
-					'user_query': user_query if user_query else None,   # FIX #5: string, not list
-					'label': user_query if user_query else None,
-					'img_path': img_fpath,
-			}
-			if verbose:
-					print(f"Appending Row[{idoc + 1}/{len(hits)}]:")
-					print(f"{json.dumps(row, indent=4, ensure_ascii=False)}")
-					print("-" * 120)
-			data.append(row)
-	# ── FIX #6: Guard against empty data ──────────────────────────────────
-	if not data:
-			print("[WARNING] No images successfully downloaded or processed.")
-			return pd.DataFrame()
-	if verbose:
-			print(f"Creating DataFrame from {len(data)} rows...")
-	df = pd.DataFrame(data)
-	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time() - df_st_time:.1f} sec")
-	print(f"Saving DF to {df_fpth}")
-	save_pickle(pkl=df, fname=df_fpth)
-	return df
-
 @measure_execution_time
 def main():
 	# slice[:N] URLs [JUST FOR TESTING]:
@@ -1163,6 +939,7 @@ def main():
 			) for i, (k, v) in enumerate(URLs.items())
 		]
 		dfs = [df for df in dfs if df is not None]
+		# causes confusion if one or multiple dfs are deleted
 		# save_pickle(pkl=dfs, fname=dfs_fname,)
 		# print(f"Saved {len(dfs)} dfs to {dfs_fname}")
 
