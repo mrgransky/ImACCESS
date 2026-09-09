@@ -464,7 +464,12 @@ def main():
 		verbose=args.verbose,
 	)
 	
-	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
+	multi_label_final_df = get_enriched_description(
+		df=multi_label_synched_df,
+		eng_confidence_th=1e-2,
+		verbose=args.verbose,
+	)
+
 	# validate_text_cleaning_pipeline(
 	# 	df=multi_label_final_df, 
 	# 	text_column='enriched_document_description'

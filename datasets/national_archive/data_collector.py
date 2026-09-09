@@ -1,5 +1,6 @@
 import sys
 import os
+from tabnanny import verbose
 
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
@@ -757,7 +758,12 @@ def main():
 		thumbnail_size=args.thumbnail_size,
 		verbose=args.verbose,
 	)
-	multi_label_final_df = get_enriched_description(df=multi_label_synched_df)
+
+	multi_label_final_df = get_enriched_description(
+		df=multi_label_synched_df,
+		eng_confidence_th=1e-2,
+		verbose=args.verbose,
+	)
 
 	# === MAIN USAGE ===
 	results = validate_text_cleaning_pipeline(

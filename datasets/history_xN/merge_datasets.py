@@ -237,7 +237,11 @@ def merge_datasets(
 	# print(merged_multi_label_df.head())
 	
 	# 2.2 Add enriched_document_description column to merged_multi_label_df
-	merged_multi_label_df = get_enriched_description(df=merged_multi_label_df, check_english=True, verbose=verbose)
+	merged_multi_label_df = get_enriched_description(
+		df=merged_multi_label_df,
+		eng_confidence_th=1e-2,
+		verbose=verbose
+	)
 
 	if "enriched_document_description" not in merged_multi_label_df.columns:
 		raise ValueError("enriched_document_description column not found in merged_multi_label_df")
