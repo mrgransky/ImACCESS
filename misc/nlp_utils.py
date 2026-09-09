@@ -17,7 +17,7 @@ except Exception as e:
 
 import pandas as pd
 from collections import Counter
-from typing import List, Set
+from typing import List, Optional, Set
 
 # Install: pip install lingua-language-detector
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
@@ -838,7 +838,7 @@ def _post_process_(
 
 def is_english(
 	text: str,
-	confidence_threshold: float = 0.05,
+	confidence_threshold: float,
 	use_shortlist: bool = True,  # use shortlist of European languages for detection
 	verbose: bool = False,
 ) -> bool:
@@ -881,7 +881,7 @@ def is_english(
 			if res.language == Language.ENGLISH:
 				score = res.value
 				if verbose:
-					print(f"\nEnglish confidence: {score:.4f} [English (> {confidence_threshold})? {score > confidence_threshold}]")
+					print(f"\nEnglish confidence: {score:.6f} [English (> {confidence_threshold})? {score > confidence_threshold}]")
 				
 				if score > confidence_threshold:
 					return True
@@ -1214,8 +1214,8 @@ def basic_clean(txt: str):
 	return txt
 
 def get_enriched_description(
-	df: pd.DataFrame, 
-	check_english: bool=False, 
+	df: pd.DataFrame,
+	eng_confidence_th: Optional[float]=None,
 	min_length: int=3,
 	verbose: bool=False
 )-> pd.DataFrame:
@@ -1223,7 +1223,7 @@ def get_enriched_description(
 		print(f"\nEnriching document description")
 		print(f"  ├─ {type(df)} {df.shape}")
 		print(f"  ├─ {list(df.columns)}")
-		print(f"  ├─ check_english: {check_english}")
+		print(f"  ├─ eng_confidence_th: {eng_confidence_th}")
 		print(f"  ├─ min_length: {min_length}")
 
 	# check if title and description are in df.columns:
@@ -1303,9 +1303,11 @@ def get_enriched_description(
 	)
 
 	# exclude texts that are not English:
-	if check_english:
+	if eng_confidence_th:
 		df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
-			lambda x: x if isinstance(x, str) and is_english(text=x, confidence_threshold=0.01, use_shortlist=True, verbose=verbose) else None
+			lambda x: x 
+			if isinstance(x, str) and is_english(text=x, confidence_threshold=eng_confidence_th, use_shortlist=True, verbose=verbose) 
+			else None
 		)
 
 	# Filter out samples with text < min_length (final check)
