@@ -1971,10 +1971,13 @@ def save_pickle(pkl, fname:str):
 	fsize_dump = os.path.getsize(fname) / 1e6
 	print(f"Elapsed_t: {elpt:.3f} s | {fsize_dump:.2f} MB".center(120, " "))
 
-def load_pickle(fpath: str) -> object:
-	print(f"Loading {fpath}")
+def load_pickle(fpath: str, verbose: bool=False) -> object:
+	if verbose:
+		print(f"[LOADING] {fpath}")
+
 	if not os.path.exists(fpath):
 		raise FileNotFoundError(f"File not found: {fpath}")
+
 	start_time = time.time()
 	try:
 		with open(fpath, mode='r') as f:
@@ -1998,6 +2001,7 @@ def load_pickle(fpath: str) -> object:
 		
 	file_size_mb = os.path.getsize(fpath) / 1e6
 	
-	print(f"Elapsed_t: {time.time() - start_time:.3f} s | {type(pickle_obj)} | {file_size_mb:.3f} MB".center(150, " "))
+	if verbose:
+		print(f"[ELAPSED_TIME] {time.time() - start_time:.3f} sec, {type(pickle_obj)} {file_size_mb:.3f}MB")
 	
 	return pickle_obj

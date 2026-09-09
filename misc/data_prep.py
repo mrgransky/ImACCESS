@@ -40,22 +40,23 @@ def get_single_label_stratified_split(
 		random_state=seed,
 	)
 
-	if verbose:
-		print("\nLabels per dataset in train split:")
-		print(train_df[label_col].value_counts())
-		print('-'*120)
-		print("\nLabels per dataset in val split:")
-		print(val_df[label_col].value_counts())
-		print('-'*120)
 
 	train_fpath = csv_file.replace('.csv', '_train.csv')
-	print(f"[SAVING] {train_fpath}")
 	train_df.to_csv(train_fpath, index=False)
 
 	val_fpath = csv_file.replace('.csv', '_val.csv')
-	print(f"[SAVING] {val_fpath}")
 	val_df.to_csv(val_fpath, index=False)
-	print('-'*100)
+
+	if verbose:
+		print("\nLabels per dataset in train split:")
+		print(train_df[label_col].value_counts())
+		print('-'*50)
+		print("\nLabels per dataset in val split:")
+		print(val_df[label_col].value_counts())
+		print('-'*50)
+
+		print(f"[SAVED] {train_fpath}")
+		print(f"[SAVED] {val_fpath}")
 
 	return train_df, val_df
 

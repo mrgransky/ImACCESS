@@ -625,8 +625,8 @@ def get_dframe(
 	# ── 1. Cache path ─────────────────────────────────────────────────────
 	if os.path.exists(df_fpth):
 		if verbose:
-			print(f"  [CACHE] {df_fpth} exists => loading...")
-		df = load_pickle(fpath=df_fpth)
+			print(f"[CACHE] {df_fpth} exists => loading...")
+		df = load_pickle(fpath=df_fpth, verbose=verbose)
 		if df.shape[0] == 0:
 			print(f"  [WARNING] Cached DF is empty {df.shape} => ignoring cache, re-scraping...")
 		else:
@@ -639,20 +639,20 @@ def get_dframe(
 					for base, url in zip(df.loc[rel_mask, 'doc_url'], df.loc[rel_mask, 'img_url'])
 				]
 
+			##############################################################################################
+			# Replacing absolute path with relative path
 			if verbose:
 				print(f"BEFORE REPLACING ROOT:")
 				print(df[["doc_url", "img_path"]].head(5).to_string())
 
-			df.img_path = df.img_path.apply(lambda path: path.replace(os.path.dirname(path), IMAGE_DIRECTORY))
-
-			img_paths = df['img_path'].tolist()
+			df.img_path = df.img_path.apply(lambda p: p.replace(os.path.dirname(p), IMAGE_DIRECTORY))
 
 			if verbose:
 				print(f"AFTER REPLACING ROOT:")
 				print(df[["doc_url", "img_path"]].head(5).to_string())
-				print(f"Checking {len(img_paths)} image paths\n{img_paths[:10]}")
+			##############################################################################################
 
-
+			img_paths = df['img_path'].tolist()
 			missing_indices = [
 				i 
 				for i, p in enumerate(img_paths) 
@@ -950,7 +950,6 @@ def main():
 	# URLs = {k:v for i, (k, v) in enumerate(URLs.items()) if i < 3}
 
 	dfs_fname = os.path.join(HITs_DIR, f"{dataset_name}_{len(URLs)}_dfs.gz")
-	
 	try:
 		dfs = load_pickle(fpath=dfs_fname,)
 		print(f"Loaded {len(dfs)} dfs from {os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_dfs.gz')}")

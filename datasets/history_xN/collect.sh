@@ -31,7 +31,7 @@ echo "${stars// /*}"
 
 echo "Current working directory: $PWD"
 dataset_dir="/scratch/project_2004072/ImACCESS/WW_DATASETs"
-chunk_size=35000
+chunk_size=30000
 
 # # chunk size based on cluster:
 # if [ "$SLURM_CLUSTER_NAME" == "puhti" ]; then
