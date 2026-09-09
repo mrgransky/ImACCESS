@@ -633,14 +633,36 @@ def get_dframe(
 			# Normalize legacy root-relative img_urls
 			rel_mask = df['img_url'].fillna('').astype(str).str.startswith('/')
 			if rel_mask.any():
-					print(f"  Normalizing {int(rel_mask.sum())} root-relative img_url(s) in cached DF...")
-					df.loc[rel_mask, 'img_url'] = [
-							urllib.parse.urljoin(base, url)
-							for base, url in zip(df.loc[rel_mask, 'doc_url'], df.loc[rel_mask, 'img_url'])
-					]
+				print(f"  Normalizing {int(rel_mask.sum())} root-relative img_url(s) in cached DF...")
+				df.loc[rel_mask, 'img_url'] = [
+					urllib.parse.urljoin(base, url)
+					for base, url in zip(df.loc[rel_mask, 'doc_url'], df.loc[rel_mask, 'img_url'])
+				]
+
+			if verbose:
+				print(f"BEFORE REPLACING ROOT:")
+				print(df[["doc_url", "img_path"]].head(5).to_string())
+
+			df.img_path = df.img_path.apply(lambda path: path.replace(os.path.dirname(path), IMAGE_DIRECTORY))
+
 			img_paths = df['img_path'].tolist()
-			missing_indices = [i for i, p in enumerate(img_paths) if not os.path.exists(p)]
-			missing_paths = [img_paths[i] for i in missing_indices]
+
+			if verbose:
+				print(f"AFTER REPLACING ROOT:")
+				print(df[["doc_url", "img_path"]].head(5).to_string())
+				print(f"Checking {len(img_paths)} image paths\n{img_paths[:10]}")
+
+
+			missing_indices = [
+				i 
+				for i, p in enumerate(img_paths) 
+				if not os.path.exists(p)
+			]
+			missing_paths = [
+				img_paths[i] 
+				for i in missing_indices
+			]
+
 			if missing_indices:
 				if verbose:
 					print(f"Downloading {len(missing_indices)} missing images ({num_workers} workers)...")
@@ -720,7 +742,6 @@ def get_dframe(
 					if txt:
 							caption_map[cid] = txt
 	print(f"{len(caption_map)} Caption Map(s): {json.dumps(caption_map, indent=2, ensure_ascii=False)}")
-
 
 	# ── 3. Helper: extract lightweight metadata from a hit (no I/O) ───────
 	def _extract_hit_meta(vdoc):
@@ -838,51 +859,58 @@ def get_dframe(
 		if not img_url:
 				print(f"    No image URL found, skipping...")
 				continue
+
 		# Absolutize
 		img_url = urllib.parse.urljoin(doc_url, img_url)
 		original_img_url = img_url
+
 		# Clean
 		img_url = img_url.replace("_cache/", "")
 		img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url)
 		img_url = re.sub(r'_hu_[a-f0-9]+\.jpg$', '.jpg', img_url)
+
 		filename = os.path.basename(img_url)
 		img_fpath = os.path.join(IMAGE_DIRECTORY, filename)
 		specific_doc_url = meta['specific_doc_url']
+
 		# Extract year
 		extracted_year = None
 		for src in [meta['doc_title'], specific_doc_url, img_url, filename, gallery_description]:
-				if src:
-						y = extract_year(src)
-						if y:
-								extracted_year = y
-								break
+			if src:
+				y = extract_year(src)
+				if y:
+					extracted_year = y
+					break
+
 		# ── Description: photo-specific > gallery fallback ─────────────────
 		row_description = photo_descriptions.get(specific_doc_url, gallery_description)
+
 		# Download / process image
 		if not os.path.exists(img_fpath):
+			working_url = _fetch_image(img_url, img_fpath, fallback_url=original_img_url)
+			if working_url is None:
+				if verbose:
+					print(f"[FAILED] downloading {img_url} => Skipping...")
+				continue
+			img_url = working_url
+		else:
+			if not process_image_for_storage(img_path=img_fpath, thumbnail_size=thumbnail_size, verbose=verbose):
+				if os.path.exists(img_fpath):
+					if verbose:
+						print(f"    Existing image {img_fpath} failed re-processing. Re-downloading...")
+					os.remove(img_fpath)
+
 				working_url = _fetch_image(img_url, img_fpath, fallback_url=original_img_url)
+
 				if working_url is None:
 					if verbose:
-						print(f"[FAILED] downloading {img_url} => Skipping...")
+						print(f"[FAILED] re-download {img_url} => Skipping...")
 					continue
 				img_url = working_url
-		else:
-				if not process_image_for_storage(
-						img_path=img_fpath, thumbnail_size=thumbnail_size, verbose=verbose
-				):
-						if os.path.exists(img_fpath):
-								if verbose:
-										print(f"    Existing image {img_fpath} failed re-processing. Re-downloading...")
-								os.remove(img_fpath)
-						working_url = _fetch_image(img_url, img_fpath, fallback_url=original_img_url)
-						if working_url is None:
-							if verbose:
-								print(f"[FAILED] re-download {img_url} => Skipping...")
-							continue
-						img_url = working_url
-				else:
-						if verbose:
-							print(f"[SUCCESS] Existing image {img_fpath} re-processed!")
+			else:
+				if verbose:
+					print(f"[SUCCESS] Existing image {img_fpath} re-processed!")
+
 		row = {
 			'id': filename,
 			'date': extracted_year,
@@ -895,6 +923,7 @@ def get_dframe(
 			'label': user_query if user_query else None,
 			'img_path': img_fpath,
 		}
+
 		if verbose:
 			print(f"Appending row:")
 			print(json.dumps(row, indent=6, ensure_ascii=False))
