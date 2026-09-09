@@ -36,7 +36,7 @@ Constraints:
   - EXCLUDE human classifications, (person, people, or men, women, children, boy, girl, etc).
   - EXCLUDE geographical locations, such as continents, countries, states, provinces, cities, towns, islands, regions, or roads.
   - EXCLUDE dates, times, years, decades, or any temporal references.
-  - EXCLUDE generic keywords for image characteristics (e.g., photograph, image, black and white photograph)
+  - EXCLUDE generic keywords for image characteristics (e.g., photograph, image, black and white photograph, stereoscopy, stereograph)
   - Refrain from using common environmental details (sky, lighting, ground texture) except when they hold historical importance, such as craters or trenches.
   - Refrain from using expressions centered on counting, such as a trio of men, various individuals, or a cluster of youths.
   - Vague container nouns should be avoided such as 'scene', 'group', 'crowd', or 'event'.
@@ -1326,7 +1326,7 @@ def get_vlm_based_labels(
 	if verbose:
 		print("-"*100)
 		n_ok = sum(1 for r in final if r)
-		print(f"[STATS] Success {n_ok}/{len(final)} ({n_ok/len(final)*100:.1f}%)")
+		print(f"[STATS] Success {n_ok}/{len(final)} ({n_ok/len(final)*100:.2f}%)")
 		print(f"[TIME] {elapsed/3600:.2f}h | avg {len(final)/elapsed:.2f}/s")
 		print(f"[SAVE] {output_csv}")
 		print(
