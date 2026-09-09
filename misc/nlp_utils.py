@@ -101,7 +101,7 @@ languages_to_check = [
 	IsoCode639_1.FR, # French
 	IsoCode639_1.ES, # Spanish
 	IsoCode639_1.IT, # Italian
-	# IsoCode639_1.NL, # Dutch
+	IsoCode639_1.NL, # Dutch
 	IsoCode639_1.PT, # Portuguese
 	IsoCode639_1.SV, # Swedish
 	IsoCode639_1.FI, # Finnish
@@ -1252,17 +1252,38 @@ def get_enriched_description(
 	if verbose:
 		print(f"df_enriched: {df_enriched.shape} {type(df_enriched)} {list(df_enriched.columns)}")
 
+	# df_enriched['enriched_document_description'] = df_enriched.apply(
+	# 	lambda row: ". ".join(
+	# 		filter(
+	# 			None, 
+	# 			[
+	# 				basic_clean(str(row['title'])) if pd.notna(row['title']) and str(row['title']).strip() else None, 
+	# 				basic_clean(str(row['description'])) if pd.notna(row['description']) and str(row['description']).strip() else None,
+	# 				# basic_clean(str(row['keywords'])) if 'keywords' in df_enriched.columns and pd.notna(row['keywords']) and str(row['keywords']).strip() else None
+	# 			]
+	# 		)
+	# 	),
+	# 	axis=1
+	# )
+
+	def combine_enriched_description(row):
+		# Easily add 'keywords' or other columns to this list later
+		columns_to_check = ['title', 'description'] 
+		parts = []
+		
+		for col in columns_to_check:
+			# Safely check for NaNs and empty strings
+			if col in row and pd.notna(row[col]) and str(row[col]).strip():
+				cleaned = basic_clean(str(row[col]))
+				
+				# Only append if it's valid AND not already in our list (prevents duplicates)
+				if cleaned and cleaned not in parts:
+					parts.append(cleaned)
+								
+		return ". ".join(parts)
+
 	df_enriched['enriched_document_description'] = df_enriched.apply(
-		lambda row: ". ".join(
-			filter(
-				None, 
-				[
-					basic_clean(str(row['title'])) if pd.notna(row['title']) and str(row['title']).strip() else None, 
-					basic_clean(str(row['description'])) if pd.notna(row['description']) and str(row['description']).strip() else None,
-					# basic_clean(str(row['keywords'])) if 'keywords' in df_enriched.columns and pd.notna(row['keywords']) and str(row['keywords']).strip() else None
-				]
-			)
-		),
+		combine_enriched_description, 
 		axis=1
 	)
 
