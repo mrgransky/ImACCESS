@@ -1324,11 +1324,17 @@ def get_vlm_based_labels(
 	elapsed = time.time() - t0
 
 	if verbose:
+		print("-"*100)
 		n_ok = sum(1 for r in final if r)
-		print(f"[STATS] ✅ Success {n_ok}/{len(final)}")
+		print(f"[STATS] Success {n_ok}/{len(final)} ({n_ok/len(final)*100:.1f}%)")
 		print(f"[TIME] {elapsed/3600:.2f}h | avg {len(final)/elapsed:.2f}/s")
-		print(f"[SAVE] Results written to: {output_csv}")
-		print(f"{len(generated_tokens)} Gen Tokens: (min, max): ({min(generated_tokens)}, {max(generated_tokens)}) | avg: {np.mean(generated_tokens):.2f}")
+		print(f"[SAVE] {output_csv}")
+		print(
+			f"Generated Tokens in {len(generated_tokens)} batches: "
+			f"(min, max): ({min(generated_tokens)}, {max(generated_tokens)}) "
+			f"μ±σ: {np.mean(generated_tokens):.2f} ± {np.std(generated_tokens):.2f}"
+		)
+		print("-"*100)
 
 	return final
 

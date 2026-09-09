@@ -372,6 +372,7 @@ def get_multimodal_annotation(
 	
 	if verbose:
 		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
+		print(df.info(verbose=verbose, memory_usage="deep"))
 
 	# EDA, tier cardinality and stratified split only for full datasets:
 	if is_full_dataset:

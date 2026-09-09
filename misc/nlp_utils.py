@@ -1220,9 +1220,11 @@ def get_enriched_description(
 	verbose: bool=False
 )-> pd.DataFrame:
 	if verbose:
-		print(f"\nGenerating enriched_document_description for {type(df)} {df.shape}...")
-		print(f"\t{list(df.columns)}")
-		print(f"\tcheck_english: {check_english} min_length: {min_length}")
+		print(f"\nEnriching document description")
+		print(f"  ├─ {type(df)} {df.shape}")
+		print(f"  ├─ {list(df.columns)}")
+		print(f"  ├─ check_english: {check_english}")
+		print(f"  ├─ min_length: {min_length}")
 
 	# check if title and description are in df.columns:
 	if "title" not in df.columns:
@@ -1232,10 +1234,9 @@ def get_enriched_description(
 
 	# check if how many empty(Nones) exist in title and description:
 	if verbose:
-		print(f"\tEmpty title: {df['title'].isna().sum()}/{df.shape[0]} "
-			f"({df['title'].isna().sum()/df.shape[0]*100:.2f}%)"
-		)
-		print(f"\tEmpty description: {df['description'].isna().sum()}/{df.shape[0]} "
+		print(f"  └─ [EMPTY] title: {df['title'].isna().sum()}/{df.shape[0]} "
+			f"({df['title'].isna().sum()/df.shape[0]*100:.2f}%) "
+			f"description: {df['description'].isna().sum()}/{df.shape[0]} "
 			f"({df['description'].isna().sum()/df.shape[0]*100:.2f}%)"
 		)
 
@@ -1246,27 +1247,49 @@ def get_enriched_description(
 			print("enriched_document_description column already exists. Dropped it...")
 			print(f"df: {df.shape} {type(df)} {list(df.columns)}")
 
-
 	df_enriched = df.copy(deep=True)
-
 	
 	if verbose:
 		print(f"df_enriched: {df_enriched.shape} {type(df_enriched)} {list(df_enriched.columns)}")
 
+	# df_enriched['enriched_document_description'] = df_enriched.apply(
+	# 	lambda row: ". ".join(
+	# 		filter(
+	# 			None, 
+	# 			[
+	# 				basic_clean(str(row['title'])) if pd.notna(row['title']) and str(row['title']).strip() else None, 
+	# 				basic_clean(str(row['description'])) if pd.notna(row['description']) and str(row['description']).strip() else None,
+	# 				# basic_clean(str(row['keywords'])) if 'keywords' in df_enriched.columns and pd.notna(row['keywords']) and str(row['keywords']).strip() else None
+	# 			]
+	# 		)
+	# 	),
+	# 	axis=1
+	# )
+	
+	def combine_title_description(row):
+		title = (
+				basic_clean(str(row['title']))
+				if pd.notna(row['title']) and str(row['title']).strip()
+				else None
+		)
+		description = (
+				basic_clean(str(row['description']))
+				if pd.notna(row['description']) and str(row['description']).strip()
+				else None
+		)
+		# If title and description are identical, keep only one copy
+		if title and description:
+				if title == description:
+						return title
+				return f"{title}. {description}"
+		# Only one of them exists
+		return title or description
+
 	df_enriched['enriched_document_description'] = df_enriched.apply(
-		lambda row: ". ".join(
-			filter(
-				None, 
-				[
-					basic_clean(str(row['title'])) if pd.notna(row['title']) and str(row['title']).strip() else None, 
-					basic_clean(str(row['description'])) if pd.notna(row['description']) and str(row['description']).strip() else None,
-					# basic_clean(str(row['keywords'])) if 'keywords' in df_enriched.columns and pd.notna(row['keywords']) and str(row['keywords']).strip() else None
-				]
-			)
-		),
+		combine_title_description,
 		axis=1
 	)
-	
+
 	# Filter out samples with text < min_length
 	df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
 		lambda x: x if isinstance(x, str) and x.strip() and len(x.strip()) >= min_length else None
@@ -1294,16 +1317,18 @@ def get_enriched_description(
 	)
 		
 	if verbose:
-		print(f"Samples filtered (too short): {df_enriched['enriched_document_description'].isna().sum()}")
-		
-	if verbose:
+		print("-"*60)
+		print(type(df_enriched), df_enriched.shape)
 		print(
-			f"\nNumber of empty enriched_document_description: "
+			f"\n[EMPTY] enriched_document_description: "
 			f"{df_enriched['enriched_document_description'].isna().sum()} "
 			f"out of {df_enriched.shape[0]} total samples "
 			f"({df_enriched['enriched_document_description'].isna().sum()/df_enriched.shape[0]*100:.2f}%) "
 		)
-		print(f"{type(df_enriched)} {df_enriched.shape} {list(df_enriched.columns)}\n")
+		print(f"[TOO-SHORT] enriched_document_description: {df_enriched['enriched_document_description'].isna().sum()}")
+		print(f"")
+		print(df_enriched.info(verbose=verbose, memory_usage="deep"))
+		print("-"*60)
 
 	return df_enriched
 

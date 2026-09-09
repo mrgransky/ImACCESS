@@ -1180,7 +1180,7 @@ def monitor_memory_usage(operation_name: str):
 		return True
 	return False
 
-def get_conversation_token_breakdown(text: str, model_name: str = "bert-base-uncased") -> dict:
+def get_conversation_token_breakdown(text: str, model_name: str) -> dict:
 	tokenizer = tfs.AutoTokenizer.from_pretrained(model_name)
 	
 	parts = {}

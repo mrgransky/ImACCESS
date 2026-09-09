@@ -518,7 +518,6 @@ def parse_llm_response(
 	model_id: str,
 	llm_response: str,
 	max_kws: int,
-	caption: str,
 	verbose: bool = False
 ):
 	if verbose:
@@ -715,12 +714,15 @@ def parse_llm_response(
 			print(f"[ERROR] All parsing strategies failed")
 			print(f"[ERROR] Problematic string: {list_str}")
 		return None
-	
+
+	if not keywords_list: # len() == 0
+		if verbose:
+			print(f"[WARNING] Empty list extracted: {keywords_list} text: {list_str}")
+		return None
+
 	if verbose:
-		print(f"\n[STEP 3] Parsing method: {parsing_method}")
-		print(f"[STEP 3] Successfully parsed list with {len(keywords_list)} items:")
-		for i, kw in enumerate(keywords_list, 1):
-			print(f"  [{i}] {kw}")
+		print(f"\n[STEP 3] parsing method: {parsing_method}")
+		print(f"[SUCCESS] parsed {len(keywords_list)} items: {keywords_list}")
 	
 	# Step 4: Post-process keywords
 	if verbose:
@@ -835,23 +837,20 @@ def query_local_llm(
 				)
 		raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)	
 	except Exception as e:
-		print(f"<!> Error {e}")
+		print(f"[ERROR] {e}")
 		return None
-
-	if verbose:
-		output_tokens = get_conversation_token_breakdown(raw_llm_response, model_id)
-		print(f"[INFO] Token breakdown: {output_tokens}")
 	
 	parsing_start = time.time()
 	keywords = parse_llm_response(
 		model_id=model_id,
 		llm_response=raw_llm_response,
-		caption=text,
 		max_kws=max_kws,
 		verbose=verbose,
 	)
 	if verbose: 
-		print(f"Response parsing elapsed time: {time.time() - parsing_start:.5f}s")
+		output_tokens = get_conversation_token_breakdown(raw_llm_response, model_id)
+		print(f"[INFO] Token breakdown: {output_tokens}")
+		print(f"[ELAPSED_TIME] Response parsing: {time.time() - parsing_start:.4f} sec")
 	
 	return keywords
 
@@ -1026,29 +1025,29 @@ def get_llm_based_labels(
 	
 	# NULL-SAFE DEDUPLICATION
 	if do_dedup:
-			unique_map: Dict[str, int] = {}
-			unique_inputs: List[Optional[str]] = []
-			original_to_unique_idx: List[int] = []
-			for s in inputs:
-					if s is None or str(s).strip() in ("", "nan", "None"):
-							key = "__NULL__"
-					else:
-							key = str(s).strip()
-					if key in unique_map:
-							original_to_unique_idx.append(unique_map[key])
-					else:
-							idx = len(unique_inputs)
-							unique_map[key] = idx
-							unique_inputs.append(None if key == "__NULL__" else key)
-							original_to_unique_idx.append(idx)
+		unique_map: Dict[str, int] = {}
+		unique_inputs: List[Optional[str]] = []
+		original_to_unique_idx: List[int] = []
+		for s in inputs:
+			if s is None or str(s).strip() in ("", "nan", "None"):
+				key = "__NULL__"
+			else:
+				key = str(s).strip()
+			if key in unique_map:
+				original_to_unique_idx.append(unique_map[key])
+			else:
+				idx = len(unique_inputs)
+				unique_map[key] = idx
+				unique_inputs.append(None if key == "__NULL__" else key)
+				original_to_unique_idx.append(idx)
 	else:
-			unique_inputs = []
-			for s in inputs:
-					if s is None or str(s).strip() in ("", "nan", "None"):
-							unique_inputs.append(None)
-					else:
-							unique_inputs.append(str(s).strip())
-			original_to_unique_idx = list(range(len(unique_inputs)))
+		unique_inputs = []
+		for s in inputs:
+			if s is None or str(s).strip() in ("", "nan", "None"):
+				unique_inputs.append(None)
+			else:
+				unique_inputs.append(str(s).strip())
+		original_to_unique_idx = list(range(len(unique_inputs)))
 	
 	# Build prompts
 	unique_prompts: List[Optional[str]] = []
@@ -1095,7 +1094,6 @@ def get_llm_based_labels(
 				parsed = parse_llm_response(
 					model_id=model_id_,
 					llm_response=decoded_batch[local_i],
-					caption=unique_inputs[idx],
 					max_kws=max_kws_,
 					verbose=verbose_,
 				)
@@ -1223,12 +1221,15 @@ def get_llm_based_labels(
 	]
 
 	if failed_indices and verbose:
-		print(f"Retrying {len(failed_indices)} failed {type(failed_indices)} items individually using query_local_llm [sequential processing]...")
+		print(
+			f"Retrying {len(failed_indices)} failed {type(failed_indices)} item(s) "
+			f"=> query_local_llm [sequential processing]..."
+		)
 	
 	for idx in failed_indices:
 		desc = unique_inputs[idx]
-		if verbose:
-			print(f"Retrying individual item {idx}:\n{desc}\n")
+		# if verbose:
+		# 	print(f"Retrying item {idx}/{len(unique_inputs)}:\n{desc}\n")
 		try:
 			individual_result = query_local_llm(
 				model=model,
@@ -1241,12 +1242,13 @@ def get_llm_based_labels(
 			)
 			unique_results[idx] = individual_result
 			if verbose and individual_result:
-				print(f"OK: Individual retry successful: {individual_result}")
+				print(f"[SUCCES] Individual retry: {individual_result}")
 			elif verbose:
 				print(f"[FAILED] item {idx}:\n{desc}\n")
+				print("-"*100)
 		except Exception as e:
 			if verbose:
-				print(f"[FAILED] Individual retry, item {idx}: {e}")
+				print(f"[FAILED] Individual retry for item {idx}: {e}")
 			unique_results[idx] = None
 
 	# Cleanup model and tokenizer
@@ -1256,8 +1258,10 @@ def get_llm_based_labels(
 	# gc.collect()
 
 	# Map unique_results back to original order
+	if verbose:
+		print(f"Mapping {len(original_to_unique_idx)} original_to_unique_idx unique results back to original order: {len(unique_results)}")
 	results: List[Optional[List[str]]] = []
-	for _, uniq_idx in tqdm(enumerate(original_to_unique_idx), desc="Mapping results", ncols=150,):
+	for _, uniq_idx in enumerate(original_to_unique_idx):
 		results.append(unique_results[uniq_idx])
 
 	# Save results
@@ -1286,10 +1290,11 @@ def get_llm_based_labels(
 		success_rate = (n_ok / valid_inputs_count) * 100 if valid_inputs_count > 0 else 0
 
 		print(
-			f"[STATS] {n_ok}/{valid_inputs_count} successful ({success_rate:.1f}%) "
-			f"{n_null} null inputs {n_failed} failed")
+			f"[STATS] {n_ok}/{valid_inputs_count} successful ({success_rate:.2f}%) "
+			f"{n_null} null, {n_failed} failed")
 
-		print(f"Total Extracted LLM-based keywords: {len(results)} {type(results)} | Elapsed time: {time.time() - st_t:.1f} sec")
+		print(f"Total Extracted LLM-based keywords: {len(results)} {type(results)}")
+		print(f"[ELAPSED_TIME] {time.time() - st_t:.1f} sec")
 		print("="*100)
 
 	return results

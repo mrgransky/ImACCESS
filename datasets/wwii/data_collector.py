@@ -18,6 +18,427 @@ import visualize as viz
 from nlp_utils import get_enriched_description, validate_text_cleaning_pipeline
 from data_prep import get_single_label_stratified_split
 
+DATASET_BASE_URL = "https://www.worldwarphotos.info/gallery"
+URLs = { # key: url : val: user_query
+	f"{DATASET_BASE_URL}/usa/pacific/kwajalein/": None,
+	f"{DATASET_BASE_URL}/usa/pacific/okinawa/": None,
+	f"{DATASET_BASE_URL}/usa/pacific/peleliu/": None,
+	f"{DATASET_BASE_URL}/usa/pacific/philippines/": None,
+	f"{DATASET_BASE_URL}/usa/pacific/biak/": None, # small
+	f"{DATASET_BASE_URL}/usa/pacific/makin/": None, # small
+	f"{DATASET_BASE_URL}/usa/pacific/new-guinea/": None, # small
+	f"{DATASET_BASE_URL}/usa/pacific/tarawa/": None,
+	f"{DATASET_BASE_URL}/usa/pacific/gloucester/": None,
+	f"{DATASET_BASE_URL}/usa/pacific/tinian/": None,
+	f"{DATASET_BASE_URL}/usa/pacific/saipan/": None,
+	f"{DATASET_BASE_URL}/usa/pacific/bougainville/": None,
+	f"{DATASET_BASE_URL}/usa/pacific/eniwetok/": None,
+	f"{DATASET_BASE_URL}/usa/pacific/guadalcanal/": None,
+	f"{DATASET_BASE_URL}/usa/pacific/guam/": None,
+	f"{DATASET_BASE_URL}/usa/pacific/iwo-jima/": None,
+	f"{DATASET_BASE_URL}/usa/pacific/iwo-jima2/": None,
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/a-17/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/a-18/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/a-19/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/a-20-havoc-boston/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/a-20/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/a20/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/a-26/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/a-36/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-17/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-17-flying-fortress/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-17b/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-17g/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b17/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-17raf/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-18/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-23/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-24/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-24-liberator/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-24-bomber/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b24/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-25-mitchell/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-25/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b25/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-26-marauder/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-29/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-32-dominator/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/bt/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/c-106/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/c-109/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/c-46/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/c-47/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/c47/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/c-54/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/c-69/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/c-73/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/c-76/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/c-87/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/f2a/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/f4f-wildcat/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/f4f/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/f4u-corsair/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/f4u/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/f6f-hellcat/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/f7f/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/f8f/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/fr1/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/lodestar/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/o-38/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/o-46/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/o-47/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/o-52/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/os2u/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/ose/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-26/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-35/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-36/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-38-lightning/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-38/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-39/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-39-2/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-40-warhawk/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-40raf/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-40/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-43/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-47/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-47-thunderbolt/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p47/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-47d/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-51-mustang/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-51/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p51-raf/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-59-airacomet/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-61/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-63/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-66/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-70/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xp-75/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/p-80-shooting-star/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/pb2y/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/pb4y/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/pbm/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/pby/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/pby5/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/pq-14/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/pv/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/r-4/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/sb2a/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/sb2c/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/sb2u-vindicator/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/sbc/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/sbd/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/sbd1/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/sc-seahawk/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/so3c/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/soc/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/tbd/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/tbf/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/tbm/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/tbu-tby/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/uc-61/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xa-21/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xa-38/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-15/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/b-19/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xb-38/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xb-39/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xb-42/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xb-43/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xf-12/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xf8b/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xfl/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xp-42/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xp-46/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xp-54/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xp-55/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xp-56/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xp-58/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xp-83/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/xpb2m/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/pbb/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/tb2f/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/yb-40/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/aircrafts-2-3/yfm/": "aircraft",
+	f"{DATASET_BASE_URL}/usa/armoured-vehicles-2/m12/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/armoured-vehicles-2/m2-half-track/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/armoured-vehicles-2/m3_halftrack-2/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/armoured-vehicles-2/m3_scout/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/armoured-vehicles-2/m31/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/armoured-vehicles-2/m32/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/armoured-vehicles-2/m7_priest/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/armoured-vehicles-2/m8_greyhound/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m1/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m10-wolverine/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m18-hellcat/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m2/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m2-medium/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m24/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m26/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m3_lee/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m3_stuart/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m3_m5/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m36-jackson/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m4_sherman/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m4-sherman-tank/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/sherman/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/sherman-tank/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m6-tank/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/tanks/m8/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/usa/us-navy/": "naval ship",
+	f"{DATASET_BASE_URL}/usa/vehicles/g506/": "military vehicles",
+	f"{DATASET_BASE_URL}/usa/vehicles/m29/": "military vehicles",
+	f"{DATASET_BASE_URL}/italy/spg2/75-18/" : "armored fighting vehicles", # https://en.wikipedia.org/wiki/Armoured_fighting_vehicle
+	f"{DATASET_BASE_URL}/italy/spg2/l40/" : "armored fighting vehicles", # https://en.wikipedia.org/wiki/Armoured_fighting_vehicle
+	f"{DATASET_BASE_URL}/france/tanks-france/" : "armored fighting vehicles", # French Tanks of World War II
+	f"{DATASET_BASE_URL}/france/normandy-1944/": "normandy invasion", # Invasion of Normandy 1944 photo gallery
+	f"{DATASET_BASE_URL}/japan/aircrafts/b7a/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/d3a/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/e13a/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/e16a": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/m6a/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/h8k/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/ki-100/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/ki-45/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/ki-48/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/ki-60/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/ki-61-hien/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/q1w/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/l2d/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/a5m/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/a6m-zero/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/g3m/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/g4m/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/j2m-raiden/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/ki-21/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/ki-46/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/ki-57/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/ki-67/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/a2n/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/b5n/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/b6n/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/c6n/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/g5n/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/g8n/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/ki-115/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/ki-43/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/ki-44/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/ki-84-hayate/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/ki-54/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/wrecks/": "wreck", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/d4y/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/yokosuka_mxy7_ohka/": "aircraft", #
+	f"{DATASET_BASE_URL}/japan/aircrafts/p1y/": "aircraft",
+	f"{DATASET_BASE_URL}/japan/ijn/midget/": "submarine",
+	f"{DATASET_BASE_URL}/japan/japanese-tanks/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/british-tanks/cruiser-mk-iii-a13-mk-i-cruiser-mk-iv-a13-mk-ii/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/british-tanks/challenger/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/british-tanks/churchill-a22/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/british-tanks/comet/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/british-tanks/covenanter/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/british-tanks/a9-tank/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/british-tanks/cruiser-mk-ii-a10/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/british-tanks/crusader-tank/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/british-tanks/vickers/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/british-tanks/matilda-i-a11-tank/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/british-tanks/matilda-ii-a12/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/british-tanks/matilda-a12/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/british-tanks/tetrarch/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/armoured-vehicles/aec_dorchester/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/armoured-vehicles/humber/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/armoured-vehicles/marmon_herrington_-armoured_car/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/armoured-vehicles/universal-carrier-bren-gun-carrier/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/uk/raf/aw23/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/albacore/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/baltimore/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/barracuda/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/fairey-battle/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/beaufighter/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/beau/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/beaufort/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/blenheim1/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/blenheim/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/brigand/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/buckingham/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/buckmaster/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/defiant/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/firebrand/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/dh95/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/halifax/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/hamilcar/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/harrow/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/hudson/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/hurricane/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/hurricane2/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/hurricane1/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/lancaster/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/lanc/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/lincoln/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/london/": "water-based aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/lysander/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/manchester/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/maryland/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/monitor/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/mosquito/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/mosquito2/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/mossie/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/roc/": "aircraft", # remove 2 flying boat
+	f"{DATASET_BASE_URL}/uk/raf/seafang/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/seafire/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/shetland/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/singapore/": "water-based aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/skua/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/spiteful/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/spitfire/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/spitfire2/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/spitfire5/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/spitfire9/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/spit/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/short-stirling/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/stirling/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/sunderland/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/sund/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/swordfish/": "water-based aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/tempest/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/tornado/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/typhoon/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/vickers432/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/welkin/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/wellington/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/wellington1/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/whirlwind/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/whitley/": "aircraft",
+	f"{DATASET_BASE_URL}/uk/raf/windsor/": "aircraft",
+	f"{DATASET_BASE_URL}/ussr/vvs/ar-2/": "aircraft",
+	f"{DATASET_BASE_URL}/ussr/vvs/i153/": "aircraft",
+	f"{DATASET_BASE_URL}/ussr/vvs/il2-sturmovik/": "aircraft",
+	f"{DATASET_BASE_URL}/ussr/vvs/il2/": "aircraft",
+	f"{DATASET_BASE_URL}/ussr/vvs/lagg3/": "aircraft",
+	f"{DATASET_BASE_URL}/ussr/vvs/li2/": "aircraft",
+	f"{DATASET_BASE_URL}/ussr/vvs/mig/": "aircraft",
+	f"{DATASET_BASE_URL}/ussr/vvs/pe8/": "aircraft",
+	f"{DATASET_BASE_URL}/ussr/vvs/po-2/": "aircraft",
+	f"{DATASET_BASE_URL}/ussr/vvs/r-10/": "aircraft",
+	f"{DATASET_BASE_URL}/ussr/vvs/su-2/": "aircraft",
+	f"{DATASET_BASE_URL}/ussr/armoured-vehicles-2-3/ba-10/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/armoured-vehicles-2-3/ba-20/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/armoured-vehicles-2-3/ba-27/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/spg/isu-122/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/spg/isu-152/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/spg/su-100/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/spg/su-122/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/spg/su-152/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/spg/su-85/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/bt-2-bt-5-bt-7-tank/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/is-2/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/kv-1/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/kv-1-tank/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/kv-1s/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/kv-2/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/t-26/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/t-27/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/t-28-tank/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/t-34/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/t-34_tank/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/t-34-85/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/t-35-tank/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/t-37-tank/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/t-38-tank/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/t-40/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/t-50/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/t-60/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/tanks-2/t-70/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/ussr/artillery_tractor/": "military vehicles",
+	f"{DATASET_BASE_URL}/ussr/rkka/red_army/": "military personnel",
+	f"{DATASET_BASE_URL}/germany/armored_vehicles/adgz/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/germany/armored_vehicles/kfz13/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/germany/armored_vehicles/sdkfz_221_222_223/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/germany/armored_vehicles/sdkfz_231_232_233/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/germany/armored_vehicles/sdkfz_247/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/germany/armored_vehicles/sdkfz_263/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/germany/kriegsmarine/": "kriegsmarine",
+	f"{DATASET_BASE_URL}/germany/german_army_soldiers/": "military personnel",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/bussing-nag/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/einheitsdiesel/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/faun/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/ford-lkw/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/ford-pkw/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/hanomag/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/henschel-33/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/horch_830/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/horch-901/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/krupp/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/krupp_protze_l2h_143/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/kubelwagen/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/mercedes-benz/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/opel_blitz/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/wehrmacht_trucks/schwimmwagen/": "military vehicles",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/ar-65/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/ar-66/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/arado_234/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/messerschmitt_bf_110/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/me_110/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/bf110/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/messerschmitt_bf109/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/messerschmitt-bf-109/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/bf109/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/bf_109/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/bv142/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/bv222/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/dornier_do_215/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/do217/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/do_335/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/dornier_do17/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/fw_189/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/fw190/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/focke_wulf_fw_190/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/fw190d/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/focke_wulf_fw200/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/he115/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/he116/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/heinkel_he111/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/he-112/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/he_162/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/he_177/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/hs123/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/hs_129/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/junkers-ju87-stuka/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/ju87/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/junkers_ju188/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/ju-290/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/junkers_ju_52/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/junkers_ju88/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/ju-88/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/ju-90/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/me261/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/me321/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/messerschmitt-me323-gigant/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/me-323-gigant/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/messerschmitt-me262/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/aircrafts-2/mistel/": "aircraft",
+	f"{DATASET_BASE_URL}/germany/artillery/sturmpanzer_iii/": "artillery",
+	f"{DATASET_BASE_URL}/germany/artillery/17-cm-k18/": "artillery",
+	f"{DATASET_BASE_URL}/germany/artillery/flak-105/": "artillery",
+	f"{DATASET_BASE_URL}/germany/artillery/flak-88/": "artillery",
+	f"{DATASET_BASE_URL}/germany/artillery/flakpanzer-38/": "artillery",
+	f"{DATASET_BASE_URL}/germany/artillery/grille/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/germany/artillery/hummel/": "artillery",
+	f"{DATASET_BASE_URL}/germany/artillery/karl-gerat/": "artillery",
+	f"{DATASET_BASE_URL}/germany/artillery/lorraine-schlepper/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/germany/artillery/pak43/": "artillery",
+	f"{DATASET_BASE_URL}/germany/artillery/sig33b/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/germany/artillery/sig33-bison/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/germany/artillery/sturmpanzer_ii/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/germany/artillery/wespe/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/germany/armored-trains/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/germany/railway_gun/": "armored fighting vehicles",
+	f"{DATASET_BASE_URL}/germany/units/afrika_korps/" : "military unit",
+	f"{DATASET_BASE_URL}/germany/units/waffen-ss/" : "military unit",
+	f"{DATASET_BASE_URL}/germany/units/grossdeutschland/" : "military unit",
+	f"{DATASET_BASE_URL}/germany/units/sturmgeschutz_brigade_244/" : "armored fighting vehicles",
+}
+
 # how to run in local:
 # $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 12 --img_mean_std --thumbnail_size 512,512 -v > logs/wwii_dataset_collection.out &
 
@@ -153,7 +574,7 @@ def extract_year(text):
 
 def extract_url_info(url:str)-> Dict:
 	parsed_url = urllib.parse.urlparse(url)
-	base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/gallery" # Extract the base URL
+	url_base = f"{parsed_url.scheme}://{parsed_url.netloc}/gallery" # Extract the base URL
 	path_components = parsed_url.path.strip('/').split('/') # Split the path into components		
 
 	# Extract country, main_label, and type
@@ -171,321 +592,327 @@ def extract_url_info(url:str)-> Dict:
 		type_ = urllib.parse.unquote(type_)
 
 	return {
-		"base_url": base_url,
+		"url_base": url_base,
 		"country": country,
 		"main_label": main_label,
 		"type": type_
 	}
 
 def get_dframe(
-        doc_idx: int,
-        doc_url: str,
-        user_query: str,
-        num_workers: int = 8,
-        thumbnail_size: tuple = None,
-        verbose: bool = False,
+	doc_idx: int,
+	doc_url: str,
+	user_query: str,
+	num_workers: int = 8,
+	thumbnail_size: tuple = None,
+	verbose: bool = False,
 ) -> pd.DataFrame:
 
-    print(f"\n>> Extracting DF for user_query[{doc_idx}]: « {user_query} » from {doc_url} with thumbnail_size={thumbnail_size}")
+	# ── 0. Setup & cache key ──────────────────────────────────────────────
+	content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}"
+	hash_digest = hashlib.md5(content_to_hash.encode('utf-8')).hexdigest()
+	query_prefix = user_query.replace(' ', '_') + '_' if user_query else ''
+	df_fpth = os.path.join(HITs_DIR, f"df_{query_prefix}{hash_digest}.gz")
+	if verbose:
+		print(f"\n[EXTRACTING DOCUMENT {doc_idx+1:3d}/{len(URLs)}]")
+		print(f"  ├─ DOC_URL         : {doc_url}")
+		print(f"  ├─ user_query      : « {user_query} »")
+		print(f"  ├─ thumbnail_size  : {thumbnail_size}")
+		print(f"  ├─ content_to_hash : {content_to_hash}")
+		print(f"  ├─ df_fpath        : {df_fpth}")
+		print(f"  └─ num_workers     : {num_workers}")
 
-    content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}"
-    print(f"content_to_hash: {content_to_hash}")
-    hash_digest = hashlib.md5(content_to_hash.encode('utf-8')).hexdigest()
-    query_prefix = user_query.replace(' ', '_') + '_' if user_query else ''
-    df_fpth = os.path.join(HITs_DIR, f"df_{query_prefix}{hash_digest}.gz")
-    print(f"df_fpth: {df_fpth}")
+	# ── 1. Cache path ─────────────────────────────────────────────────────
+	if os.path.exists(df_fpth):
+			if verbose:
+					print(f"  [CACHE] {df_fpth} exists => loading...")
+			df = load_pickle(fpath=df_fpth)
+			if df.shape[0] == 0:
+					print(f"  [WARNING] Cached DF is empty {df.shape} => ignoring cache, re-scraping...")
+			else:
+					# Normalize legacy root-relative img_urls
+					rel_mask = df['img_url'].fillna('').astype(str).str.startswith('/')
+					if rel_mask.any():
+							print(f"  Normalizing {int(rel_mask.sum())} root-relative img_url(s) in cached DF...")
+							df.loc[rel_mask, 'img_url'] = [
+									urllib.parse.urljoin(base, url)
+									for base, url in zip(df.loc[rel_mask, 'doc_url'], df.loc[rel_mask, 'img_url'])
+							]
+					img_paths = df['img_path'].tolist()
+					missing_indices = [i for i, p in enumerate(img_paths) if not os.path.exists(p)]
+					missing_paths = [img_paths[i] for i in missing_indices]
+					if missing_indices:
+							if verbose:
+								print(f"Downloading {len(missing_indices)} missing images ({num_workers} workers)...")
+								print(f"Missing paths: {len(missing_paths)}")
+							def download_task(idx: int):
+									return idx, df['img_url'].iloc[idx], _download_and_process_image(
+											img_url=df['img_url'].iloc[idx],
+											img_fpath=df['img_path'].iloc[idx],
+											thumbnail_size=thumbnail_size,
+											verbose=verbose,
+									)
+							failed = []
+							with ThreadPoolExecutor(max_workers=num_workers) as ex:
+									futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
+									for fut in tqdm(as_completed(futures), total=len(futures),
+																	desc="Downloading missing images", ncols=100):
+											idx, url, ok = fut.result()
+											if not ok:
+													failed.append((idx, url))
+							if failed and verbose:
+									print(f"  Failed to download {len(failed)} image(s).")
+									for i, (idx, url) in enumerate(failed):
+											print(f"    {i}: idx={idx} url={url}")
+					return df
 
-    if os.path.exists(df_fpth):
-        df = load_pickle(fpath=df_fpth)
+	# ── 2. Scrape gallery index page ──────────────────────────────────────
+	doc_url_info = extract_url_info(doc_url)
+	print(json.dumps(doc_url_info, indent=4, ensure_ascii=False))
+	session = requests.Session()
+	session.headers.update(HEADERS)
+	df_st_time = time.time()
+	try:
+			response = session.get(doc_url, timeout=30)
+			response.raise_for_status()
+			soup = BeautifulSoup(response.text, 'html.parser')
+			header = None
+			header_el = soup.find('h1')
+			if not header_el:
+					header_el = soup.find('h2', class_="entry-title")
+			if header_el:
+					header = header_el.get_text(strip=True)
+			if not header:
+					print(f"  [WARNING] Could not find title in {doc_url}")
+					header = doc_url_info.get('type', 'Unknown')
+			hits = soup.find_all('article', class_='photo-card')
+			if not hits:
+					hits = soup.find_all('img', class_='attachment-thumbnail')
+	except Exception as e:
+			print(f"  [ERROR] Failed to retrieve or parse {doc_url}: {e}")
+			return None
+	print(f"\nGallery header: {header}")
 
-        if df.shape[0] == 0:
-            # FIX: a stale/empty cache (e.g. from a run where every download
-            # failed) no longer aborts the pipeline — fall through and
-            # re-scrape. The non-empty DF produced below will overwrite it.
-            print(f"[WARNING] Cached DF is empty {df.shape} => ignoring cache, re-scraping {doc_url} ...")
+	# Gallery-level description (used as fallback)
+	gallery_description = ""
+	caption_element = soup.find('div', class_='folder-description')
 
-        else:
-            print(df[['id', 'img_path']].head(10))
-            print()
+	if not caption_element:
+		caption_element = soup.find('div', class_='entry-caption')
 
-            # change img_path with current dataset directory
-            df['img_path'] = df['img_path'].apply(lambda x: x.replace(os.path.dirname(x), IMAGE_DIRECTORY))
-            print(df[['id', 'img_path']].head(10))
-            print("#" * 160)
+	if caption_element:
+		gallery_description = caption_element.get_text(strip=True)
+		gallery_description = re.sub(r'\s+', ' ', gallery_description).strip()
 
-            # FIX: legacy cached DFs (scraped before the urljoin fix) may hold
-            # root-relative img_urls — normalize them against each row's doc_url.
-            rel_mask = df['img_url'].fillna('').astype(str).str.startswith('/')
-            if rel_mask.any():
-                print(f"Normalizing {int(rel_mask.sum())} root-relative img_url(s) in cached DF...")
-                df.loc[rel_mask, 'img_url'] = [
-                    urllib.parse.urljoin(base, url)
-                    for base, url in zip(df.loc[rel_mask, 'doc_url'], df.loc[rel_mask, 'img_url'])
-                ]
+	# if gallery_description.lower() and header.lower() not in gallery_description.lower():
+	# 	gallery_description = header + " " + gallery_description
+	# elif not gallery_description.strip():
+	# 	gallery_description = header
 
-            img_paths = df['img_path'].tolist()
-            missing_indices = [i for i, path in enumerate(img_paths) if not os.path.exists(path)]
-            missing_paths = [img_paths[i] for i in missing_indices]  # FIX: typo (was "mising_paths")
+	print(f"\nGallery description:\n{gallery_description}\n")
 
-            if missing_indices:
-                if verbose:
-                    print(f"Downloading {len(missing_indices)} missing images using {num_workers} workers...")
-                    print(f"Missing paths:\n{missing_paths}\n")
+	# Old-layout caption map
+	caption_map = {}
+	for p in soup.find_all('p', class_='wp-caption-text gallery-caption'):
+			cid = p.get('id')
+			if cid:
+					txt = p.get_text(strip=True)
+					if txt:
+							caption_map[cid] = txt
+	print(f"{len(caption_map)} Caption Map(s): {json.dumps(caption_map, indent=2, ensure_ascii=False)}")
 
-                def download_task(idx: int):
-                    img_path = df['img_path'].iloc[idx]
-                    img_url = df['img_url'].iloc[idx]
-                    success = _download_and_process_image(
-                        img_url=img_url,
-                        img_fpath=img_path,
-                        thumbnail_size=thumbnail_size,
-                        verbose=verbose,
-                    )
-                    return idx, img_url, success
 
-                failed = []
-                with ThreadPoolExecutor(max_workers=num_workers) as ex:
-                    futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
-                    for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading missing images", ncols=100):
-                        idx, url, ok = fut.result()
-                        if not ok:
-                            failed.append((idx, url))
+	# ── 3. Helper: extract lightweight metadata from a hit (no I/O) ───────
+	def _extract_hit_meta(vdoc):
+		"""Return {img_url_raw, doc_title, doc_doc_url} or None."""
+		if vdoc.name == 'article':
+			img_tag = vdoc.find('img')
+			if not img_tag:
+				return None
+			img_url = img_tag.get('src') or img_tag.get('data-src')
+			caption_el = vdoc.find('h3')
+			doc_title = caption_el.get_text(strip=True) if caption_el else (img_tag.get('alt') or '')
+			parent_a = vdoc.find('a')
+			doc_doc_url = parent_a.get('href') if parent_a else None
+		else:
+			img_tag = vdoc
+			img_url = img_tag.get('data-src')
+			if not img_url:
+				return None
+			parent_a = img_tag.find_parent('a')
+			doc_doc_url = parent_a.get('href') if parent_a else None
+			doc_title = img_tag.get("alt")
+			if doc_title == "Folder Icon":
+				doc_title = None
+			aria_id = img_tag.get("aria-describedby")
+			if aria_id:
+				ct = caption_map.get(aria_id)
+				if ct:
+					doc_title = ct
+		return {
+			'img_url_raw': img_url,
+			'doc_title': doc_title,
+			'doc_doc_url': doc_doc_url,
+		}
 
-                if failed and verbose:
-                    print(f"Failed to download {len(failed)} {type(failed)} images.")
-                    for i, (idx, url) in enumerate(failed):
-                        print(f"{i} {idx} {url}")
+	# ── 4. First pass: collect hit metadata & unique photo page URLs ──────
+	print(f"Found {len(hits)} image(s) on index page")
+	hit_metas = []
+	unique_photo_urls = set()
+	for vdoc in hits:
+		meta = _extract_hit_meta(vdoc)
+		if meta is None:
+			continue
+		specific_doc_url = urllib.parse.urljoin(doc_url, meta['doc_doc_url']) if meta['doc_doc_url'] else doc_url
+		meta['specific_doc_url'] = specific_doc_url
+		hit_metas.append(meta)
+		if specific_doc_url != doc_url:
+			unique_photo_urls.add(specific_doc_url)
 
-            return df
+	# ── 5. Parallel fetch: photo-specific descriptions ────────────────────
+	photo_descriptions = {}
+	def _fetch_photo_desc(url: str):
+			"""Scrape a single photo page and return its caption text."""
+			try:
+					# Each thread gets its own short-lived session to avoid
+					# race conditions on the shared `session` object.
+					s = requests.Session()
+					s.headers.update(HEADERS)
+					r = s.get(url, timeout=15)
+					r.raise_for_status()
+					bs = BeautifulSoup(r.text, 'html.parser')
+					# Try multiple common caption containers (theme-dependent)
+					el = (
+							bs.find('div', class_='photo-description') or
+							bs.find('div', class_='entry-caption') or
+							bs.find('figcaption') or
+							bs.find('div', class_='wp-caption-text') or
+							bs.find('p', class_='wp-caption-text')
+					)
+					if el:
+							txt = el.get_text(strip=True)
+							txt = re.sub(r'\s+', ' ', txt).strip()
+							if txt:
+									return url, txt
+					# Fallback: meta description
+					meta_tag = bs.find('meta', attrs={'name': 'description'})
+					if meta_tag and meta_tag.get('content'):
+							return url, meta_tag['content'].strip()
+			except Exception as e:
+					if verbose:
+							print(f"  [WARN] Could not fetch photo description from {url}: {e}")
+			return url, None
+	if unique_photo_urls:
+		if verbose:
+			print(f"  Fetching descriptions from {len(unique_photo_urls)} photo page(s)...")
+		with ThreadPoolExecutor(max_workers=min(num_workers, len(unique_photo_urls))) as ex:
+			futures = [ex.submit(_fetch_photo_desc, url) for url in unique_photo_urls]
+			for fut in as_completed(futures):
+			# for fut in tqdm(as_completed(futures), total=len(futures), desc="Photo descriptions", ncols=100, disable=not verbose):
+				url, desc = fut.result()
+				if desc:
+					photo_descriptions[url] = desc
 
-    doc_url_info = extract_url_info(doc_url)
-    print(json.dumps(doc_url_info, indent=4, ensure_ascii=False))
+	# ── 6. Second pass: download images & build rows ──────────────────────
+	data = []
+	def _fetch_image(preferred_url, img_fpath, fallback_url=None):
+			"""Try preferred URL, then fallback if it fails."""
+			if _download_and_process_image(
+					img_url=preferred_url, img_fpath=img_fpath,
+					thumbnail_size=thumbnail_size, verbose=verbose
+			):
+					return preferred_url
+			if fallback_url and fallback_url != preferred_url:
+					if verbose:
+							print(f"  Primary URL failed, retrying with original: {fallback_url}")
+					if _download_and_process_image(
+							img_url=fallback_url, img_fpath=img_fpath,
+							thumbnail_size=thumbnail_size, verbose=verbose
+					):
+							return fallback_url
+			return None
 
-    session = requests.Session()
-    session.headers.update(HEADERS)
+	for idoc, meta in enumerate(hit_metas):
+		print(f"\n[{idoc+1:4d}/{len(hit_metas)}] {meta['doc_title'] or 'Untitled'}")
+		img_url = meta['img_url_raw']
+		if not img_url:
+				print(f"    No image URL found, skipping...")
+				continue
+		# Absolutize
+		img_url = urllib.parse.urljoin(doc_url, img_url)
+		original_img_url = img_url
+		# Clean
+		img_url = img_url.replace("_cache/", "")
+		img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url)
+		img_url = re.sub(r'_hu_[a-f0-9]+\.jpg$', '.jpg', img_url)
+		filename = os.path.basename(img_url)
+		img_fpath = os.path.join(IMAGE_DIRECTORY, filename)
+		specific_doc_url = meta['specific_doc_url']
+		# Extract year
+		extracted_year = None
+		for src in [meta['doc_title'], specific_doc_url, img_url, filename, gallery_description]:
+				if src:
+						y = extract_year(src)
+						if y:
+								extracted_year = y
+								break
+		# ── Description: photo-specific > gallery fallback ─────────────────
+		row_description = photo_descriptions.get(specific_doc_url, gallery_description)
+		# Download / process image
+		if not os.path.exists(img_fpath):
+				working_url = _fetch_image(img_url, img_fpath, fallback_url=original_img_url)
+				if working_url is None:
+					if verbose:
+						print(f"[FAILED] downloading {img_url} => Skipping...")
+					continue
+				img_url = working_url
+		else:
+				if not process_image_for_storage(
+						img_path=img_fpath, thumbnail_size=thumbnail_size, verbose=verbose
+				):
+						if os.path.exists(img_fpath):
+								if verbose:
+										print(f"    Existing image {img_fpath} failed re-processing. Re-downloading...")
+								os.remove(img_fpath)
+						working_url = _fetch_image(img_url, img_fpath, fallback_url=original_img_url)
+						if working_url is None:
+							if verbose:
+								print(f"[FAILED] re-download {img_url} => Skipping...")
+							continue
+						img_url = working_url
+				else:
+						if verbose:
+							print(f"[SUCCESS] Existing image {img_fpath} re-processed!")
+		row = {
+			'id': filename,
+			'date': extracted_year,
+			'doc_url': specific_doc_url,
+			'img_url': img_url,
+			'title': meta['doc_title'],
+			'description': row_description,
+			'country': doc_url_info.get("country"),
+			'user_query': [user_query] if user_query else None,
+			'label': user_query if user_query else None,
+			'img_path': img_fpath,
+		}
+		if verbose:
+			print(f"Appending row:")
+			print(json.dumps(row, indent=6, ensure_ascii=False))
+			print("-" * 120)
 
-    df_st_time = time.time()
-    try:
-        response = session.get(doc_url, timeout=30)
-        response.raise_for_status()
+		data.append(row)
 
-        soup = BeautifulSoup(response.text, 'html.parser')
+	# ── 7. Build DataFrame ────────────────────────────────────────────────
+	if verbose:
+		print(f"  Creating DataFrame from {len(data)} row(s)...")
+	df = pd.DataFrame(data)
+	print(f"  DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
+	if df.shape[0] > 0:
+			print(f"  Saving DF to {df_fpth}")
+			save_pickle(pkl=df, fname=df_fpth)
+	else:
+			print(f"  [WARNING] Scraped DF is empty {df.shape} — NOT caching to {df_fpth}")
 
-        # Try new layout first, fallback to old layout
-        # New layout: <h1>Title</h1>
-        # Old layout: <h2 class="entry-title">Title</h2>
-        header = None
-        header_el = soup.find('h1')
-        if header_el:
-            header = header_el.get_text(strip=True)
-        else:
-            header_el = soup.find('h2', class_="entry-title")
-            if header_el:
-                header = header_el.get_text(strip=True)
-
-        if not header:
-            print(f"[WARNING] Could not find title in {doc_url}")
-            header = doc_url_info.get('type', 'Unknown')
-
-        # Try new layout images first
-        # New layout: <article class="photo-card"><img src="...">
-        # Old layout: <img class="attachment-thumbnail" data-src="...">
-        hits = soup.find_all('article', class_='photo-card')
-        if not hits:
-            hits = soup.find_all('img', class_='attachment-thumbnail')
-
-    except Exception as e:
-        print(f"[ERROR] Failed to retrieve or parse {doc_url}: {e}")
-        return None
-
-    print("-" * 150)
-    print(f"\nDoc header:\n{header}")
-
-    # Try new layout description first
-    # New layout: <div class="folder-description">
-    # Old layout: <div class="entry-caption">
-    doc_description = ""
-    caption_element = soup.find('div', class_='folder-description')
-    if not caption_element:
-        caption_element = soup.find('div', class_='entry-caption')
-
-    if caption_element:
-        doc_description = caption_element.get_text(strip=True)
-        doc_description = re.sub(r'\s+', ' ', doc_description).strip()
-
-    if doc_description.lower() and header.lower() not in doc_description.lower():
-        doc_description = header + " " + doc_description
-    elif not doc_description.strip():
-        doc_description = header
-
-    print(f"\nDoc Description:\n{doc_description}\n")
-
-    # Try new layout captions first
-    # New layout: <h3>Caption</h3> inside <article class="photo-card">
-    # Old layout: <p class="wp-caption-text gallery-caption" id="...">
-    caption_map = {}
-
-    # Old layout caption map
-    for p in soup.find_all('p', class_='wp-caption-text gallery-caption'):
-        cid = p.get('id')
-        if cid:
-            caption_text = p.get_text(strip=True)
-            if caption_text:
-                caption_map[cid] = caption_text
-
-    print(f"{len(caption_map)} Caption Map(s):\n{json.dumps(caption_map, indent=4, ensure_ascii=False)}")
-
-    print(f"Found {len(hits)} Document(s) => Extracting information [might take a while]")
-
-    # NEW: download helper with fallback — try the cleaned URL first, then the
-    # original (un-cleaned) absolute URL. Returns the URL that succeeded, or None.
-    def _fetch_image(preferred_url, img_fpath, fallback_url=None):
-        if _download_and_process_image(img_url=preferred_url, img_fpath=img_fpath,
-                                       thumbnail_size=thumbnail_size, verbose=verbose):
-            return preferred_url
-        if fallback_url and fallback_url != preferred_url:
-            if verbose:
-                print(f"  Primary URL failed, retrying with original: {fallback_url}")
-            if _download_and_process_image(img_url=fallback_url, img_fpath=img_fpath,
-                                           thumbnail_size=thumbnail_size, verbose=verbose):
-                return fallback_url
-        return None
-
-    data = []
-
-    for idoc, vdoc in enumerate(hits):
-        print(f"[{idoc+1}/{len(hits)}] {vdoc}")
-
-        # Handle new layout
-        if vdoc.name == 'article':
-            img_tag = vdoc.find('img')
-            if not img_tag:
-                continue
-            # lazy-loaded <img> sometimes keeps the real URL in data-src
-            img_url = img_tag.get('src') or img_tag.get('data-src')
-            # Get caption from h3
-            caption_el = vdoc.find('h3')
-            doc_title = caption_el.get_text(strip=True) if caption_el else (img_tag.get('alt') or '')
-            # Get link
-            parent_a = vdoc.find('a')
-            doc_doc_url = parent_a.get('href') if parent_a else None
-
-        else:
-            # Old layout
-            img_tag = vdoc
-            img_url = img_tag.get('data-src')
-            if not img_url:
-                print(f"{img_url} not found, skipping...")
-                continue
-            parent_a = img_tag.find_parent('a')
-            doc_doc_url = parent_a.get('href') if parent_a else None
-
-            # Try to get caption from various sources
-            doc_title = img_tag.get("alt")
-            if doc_title == "Folder Icon":
-                doc_title = None
-
-            aria_id = img_tag.get("aria-describedby")
-            if aria_id:
-                caption_title = caption_map.get(aria_id)
-                if caption_title:
-                    doc_title = caption_title
-
-        if not img_url:
-            print(f"No image URL found, skipping...")
-            continue
-
-        # FIX: make the image URL absolute BEFORE anything else — the new layout
-        # uses root-relative srcs like "/wp-content/gallery/...", which
-        # requests.get() cannot handle. urljoin is a no-op for absolute URLs,
-        # so the old layout is unaffected.
-        img_url = urllib.parse.urljoin(doc_url, img_url)
-        # NEW: keep the un-cleaned absolute URL as a fallback in case the
-        # cleaned (de-hugoed / de-thumbnailed) path 404s on the server.
-        original_img_url = img_url
-
-        # Clean up image URL
-        img_url = img_url.replace("_cache/", "")
-        img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url)
-        img_url = re.sub(r'_hu_[a-f0-9]+\.jpg$', '.jpg', img_url)  # Remove Hugo hash suffix
-
-        filename = os.path.basename(img_url)
-        img_fpath = os.path.join(IMAGE_DIRECTORY, filename)
-        specific_doc_url = urllib.parse.urljoin(doc_url, doc_doc_url) if doc_doc_url else doc_url
-
-        # Extract year from various sources
-        date_sources = [doc_title, specific_doc_url, img_url, filename, doc_description]
-        extracted_year = None
-        for src in date_sources:
-            if src:
-                year = extract_year(src)
-                if year:
-                    extracted_year = year
-                    break
-
-        if verbose:
-            print(f"extracted_year: {extracted_year}")
-
-        # Download and process image
-        if not os.path.exists(img_fpath):
-            working_url = _fetch_image(img_url, img_fpath, fallback_url=original_img_url)
-            if working_url is None:
-                if verbose:
-                    print(f"Failed to download {img_url} to {img_fpath} => Skipping...")
-                continue
-            img_url = working_url  # record the URL that actually worked
-
-        else:
-            if not process_image_for_storage(img_path=img_fpath, thumbnail_size=thumbnail_size, verbose=verbose):
-                if os.path.exists(img_fpath):
-                    if verbose:
-                        print(f"Existing image {img_fpath} failed re-processing. Attempting re-download...")
-                    os.remove(img_fpath)
-
-                working_url = _fetch_image(img_url, img_fpath, fallback_url=original_img_url)
-                if working_url is None:
-                    if verbose:
-                        print(f"Failed to re-download {img_url} to {img_fpath} => Skipping...")
-                    continue
-                img_url = working_url
-            else:
-                if verbose:
-                    print(f"Existing image {img_fpath} re-processed successfully")
-
-        row = {
-                'id': filename,
-                'date': extracted_year,
-                'doc_url': specific_doc_url,
-                'img_url': img_url,
-                'title': doc_title,
-                'description': doc_description,
-                'country': doc_url_info.get("country"),
-                'user_query': [user_query] if user_query else None,
-                'label': user_query if user_query else None,
-                'img_path': img_fpath,
-        }
-        if verbose:
-                print(f"Appending Row[{idoc+1}/{len(hits)}]:")
-                print(f"{json.dumps(row, indent=4, ensure_ascii=False)}")
-                print("-" * 120)
-
-        data.append(row)
-
-    if verbose:
-        print(f"Creating DataFrame from {len(data)} rows...")
-    df = pd.DataFrame(data)
-
-    print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
-
-    # FIX: never cache an empty DF — otherwise the next run loads a poisoned
-    # cache (or aborts on the empty-cache check above).
-    if df.shape[0] > 0:
-        print(f"Saving DF to {df_fpth}")
-        save_pickle(pkl=df, fname=df_fpth)
-    else:
-        print(f"[WARNING] Scraped DF is empty {df.shape} — NOT caching to {df_fpth}")
-
-    return df
+	return df
 
 def get_dframe_old(
 	doc_idx: int,
@@ -714,428 +1141,6 @@ def get_dframe_old(
 
 @measure_execution_time
 def main():
-	base_url = "https://www.worldwarphotos.info/gallery"
-
-	URLs = { # key: url : val: user_query
-		f"{base_url}/usa/pacific/kwajalein/": None,
-		f"{base_url}/usa/pacific/okinawa/": None,
-		f"{base_url}/usa/pacific/peleliu/": None,
-		f"{base_url}/usa/pacific/philippines/": None,
-		f"{base_url}/usa/pacific/biak/": None, # small
-		f"{base_url}/usa/pacific/makin/": None, # small
-		f"{base_url}/usa/pacific/new-guinea/": None, # small
-		f"{base_url}/usa/pacific/tarawa/": None,
-		f"{base_url}/usa/pacific/gloucester/": None,
-		f"{base_url}/usa/pacific/tinian/": None,
-		f"{base_url}/usa/pacific/saipan/": None,
-		f"{base_url}/usa/pacific/bougainville/": None,
-		f"{base_url}/usa/pacific/eniwetok/": None,
-		f"{base_url}/usa/pacific/guadalcanal/": None,
-		f"{base_url}/usa/pacific/guam/": None,
-		f"{base_url}/usa/pacific/iwo-jima/": None,
-		f"{base_url}/usa/pacific/iwo-jima2/": None,
-		f"{base_url}/usa/aircrafts-2-3/a-17/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/a-18/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/a-19/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/a-20-havoc-boston/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/a-20/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/a20/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/a-26/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/a-36/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-17/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-17-flying-fortress/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-17b/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-17g/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b17/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-17raf/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-18/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-23/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-24/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-24-liberator/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-24-bomber/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b24/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-25-mitchell/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-25/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b25/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-26-marauder/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-29/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-32-dominator/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/bt/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/c-106/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/c-109/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/c-46/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/c-47/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/c47/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/c-54/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/c-69/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/c-73/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/c-76/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/c-87/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/f2a/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/f4f-wildcat/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/f4f/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/f4u-corsair/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/f4u/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/f6f-hellcat/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/f7f/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/f8f/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/fr1/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/lodestar/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/o-38/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/o-46/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/o-47/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/o-52/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/os2u/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/ose/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-26/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-35/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-36/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-38-lightning/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-38/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-39/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-39-2/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-40-warhawk/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-40raf/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-40/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-43/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-47/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-47-thunderbolt/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p47/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-47d/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-51-mustang/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-51/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p51-raf/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-59-airacomet/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-61/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-63/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-66/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-70/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xp-75/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/p-80-shooting-star/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/pb2y/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/pb4y/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/pbm/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/pby/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/pby5/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/pq-14/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/pv/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/r-4/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/sb2a/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/sb2c/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/sb2u-vindicator/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/sbc/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/sbd/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/sbd1/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/sc-seahawk/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/so3c/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/soc/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/tbd/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/tbf/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/tbm/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/tbu-tby/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/uc-61/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xa-21/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xa-38/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-15/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/b-19/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xb-38/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xb-39/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xb-42/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xb-43/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xf-12/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xf8b/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xfl/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xp-42/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xp-46/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xp-54/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xp-55/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xp-56/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xp-58/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xp-83/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/xpb2m/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/pbb/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/tb2f/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/yb-40/": "aircraft",
-		f"{base_url}/usa/aircrafts-2-3/yfm/": "aircraft",
-		f"{base_url}/usa/armoured-vehicles-2/m12/": "armored fighting vehicles",
-		f"{base_url}/usa/armoured-vehicles-2/m2-half-track/": "armored fighting vehicles",
-		f"{base_url}/usa/armoured-vehicles-2/m3_halftrack-2/": "armored fighting vehicles",
-		f"{base_url}/usa/armoured-vehicles-2/m3_scout/": "armored fighting vehicles",
-		f"{base_url}/usa/armoured-vehicles-2/m31/": "armored fighting vehicles",
-		f"{base_url}/usa/armoured-vehicles-2/m32/": "armored fighting vehicles",
-		f"{base_url}/usa/armoured-vehicles-2/m7_priest/": "armored fighting vehicles",
-		f"{base_url}/usa/armoured-vehicles-2/m8_greyhound/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m1/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m10-wolverine/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m18-hellcat/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m2/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m2-medium/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m24/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m26/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m3_lee/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m3_stuart/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m3_m5/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m36-jackson/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m4_sherman/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m4-sherman-tank/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/sherman/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/sherman-tank/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m6-tank/": "armored fighting vehicles",
-		f"{base_url}/usa/tanks/m8/": "armored fighting vehicles",
-		f"{base_url}/usa/us-navy/": "naval ship",
-		f"{base_url}/usa/vehicles/g506/": "military vehicles",
-		f"{base_url}/usa/vehicles/m29/": "military vehicles",
-		f"{base_url}/italy/spg2/75-18/" : "armored fighting vehicles", # https://en.wikipedia.org/wiki/Armoured_fighting_vehicle
-		f"{base_url}/italy/spg2/l40/" : "armored fighting vehicles", # https://en.wikipedia.org/wiki/Armoured_fighting_vehicle
-		f"{base_url}/france/tanks-france/" : "armored fighting vehicles", # French Tanks of World War II
-		f"{base_url}/france/normandy-1944/": "normandy invasion", # Invasion of Normandy 1944 photo gallery
-		f"{base_url}/japan/aircrafts/b7a/": "aircraft", #
-		f"{base_url}/japan/aircrafts/d3a/": "aircraft", #
-		f"{base_url}/japan/aircrafts/e13a/": "aircraft", #
-		f"{base_url}/japan/aircrafts/e16a": "aircraft", #
-		f"{base_url}/japan/aircrafts/m6a/": "aircraft", #
-		f"{base_url}/japan/aircrafts/h8k/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-100/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-45/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-48/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-60/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-61-hien/": "aircraft", #
-		f"{base_url}/japan/aircrafts/q1w/": "aircraft", #
-		f"{base_url}/japan/aircrafts/l2d/": "aircraft", #
-		f"{base_url}/japan/aircrafts/a5m/": "aircraft", #
-		f"{base_url}/japan/aircrafts/a6m-zero/": "aircraft", #
-		f"{base_url}/japan/aircrafts/g3m/": "aircraft", #
-		f"{base_url}/japan/aircrafts/g4m/": "aircraft", #
-		f"{base_url}/japan/aircrafts/j2m-raiden/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-21/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-46/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-57/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-67/": "aircraft", #
-		f"{base_url}/japan/aircrafts/a2n/": "aircraft", #
-		f"{base_url}/japan/aircrafts/b5n/": "aircraft", #
-		f"{base_url}/japan/aircrafts/b6n/": "aircraft", #
-		f"{base_url}/japan/aircrafts/c6n/": "aircraft", #
-		f"{base_url}/japan/aircrafts/g5n/": "aircraft", #
-		f"{base_url}/japan/aircrafts/g8n/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-115/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-43/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-44/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-84-hayate/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-54/": "aircraft", #
-		f"{base_url}/japan/aircrafts/wrecks/": "wreck", #
-		f"{base_url}/japan/aircrafts/d4y/": "aircraft", #
-		f"{base_url}/japan/aircrafts/yokosuka_mxy7_ohka/": "aircraft", #
-		f"{base_url}/japan/aircrafts/p1y/": "aircraft",
-		f"{base_url}/japan/ijn/midget/": "submarine",
-		f"{base_url}/japan/japanese-tanks/": "armored fighting vehicles",
-		f"{base_url}/uk/british-tanks/cruiser-mk-iii-a13-mk-i-cruiser-mk-iv-a13-mk-ii/": "armored fighting vehicles",
-		f"{base_url}/uk/british-tanks/challenger/": "armored fighting vehicles",
-		f"{base_url}/uk/british-tanks/churchill-a22/": "armored fighting vehicles",
-		f"{base_url}/uk/british-tanks/comet/": "armored fighting vehicles",
-		f"{base_url}/uk/british-tanks/covenanter/": "armored fighting vehicles",
-		f"{base_url}/uk/british-tanks/a9-tank/": "armored fighting vehicles",
-		f"{base_url}/uk/british-tanks/cruiser-mk-ii-a10/": "armored fighting vehicles",
-		f"{base_url}/uk/british-tanks/crusader-tank/": "armored fighting vehicles",
-		f"{base_url}/uk/british-tanks/vickers/": "armored fighting vehicles",
-		f"{base_url}/uk/british-tanks/matilda-i-a11-tank/": "armored fighting vehicles",
-		f"{base_url}/uk/british-tanks/matilda-ii-a12/": "armored fighting vehicles",
-		f"{base_url}/uk/british-tanks/matilda-a12/": "armored fighting vehicles",
-		f"{base_url}/uk/british-tanks/tetrarch/": "armored fighting vehicles",
-		f"{base_url}/uk/armoured-vehicles/aec_dorchester/": "armored fighting vehicles",
-		f"{base_url}/uk/armoured-vehicles/humber/": "armored fighting vehicles",
-		f"{base_url}/uk/armoured-vehicles/marmon_herrington_-armoured_car/": "armored fighting vehicles",
-		f"{base_url}/uk/armoured-vehicles/universal-carrier-bren-gun-carrier/": "armored fighting vehicles",
-		f"{base_url}/uk/raf/aw23/": "aircraft",
-		f"{base_url}/uk/raf/albacore/": "aircraft",
-		f"{base_url}/uk/raf/baltimore/": "aircraft",
-		f"{base_url}/uk/raf/barracuda/": "aircraft",
-		f"{base_url}/uk/raf/fairey-battle/": "aircraft",
-		f"{base_url}/uk/raf/beaufighter/": "aircraft",
-		f"{base_url}/uk/raf/beau/": "aircraft",
-		f"{base_url}/uk/raf/beaufort/": "aircraft",
-		f"{base_url}/uk/raf/blenheim1/": "aircraft",
-		f"{base_url}/uk/raf/blenheim/": "aircraft",
-		f"{base_url}/uk/raf/brigand/": "aircraft",
-		f"{base_url}/uk/raf/buckingham/": "aircraft",
-		f"{base_url}/uk/raf/buckmaster/": "aircraft",
-		f"{base_url}/uk/raf/defiant/": "aircraft",
-		f"{base_url}/uk/raf/firebrand/": "aircraft",
-		f"{base_url}/uk/raf/dh95/": "aircraft",
-		f"{base_url}/uk/raf/halifax/": "aircraft",
-		f"{base_url}/uk/raf/hamilcar/": "aircraft",
-		f"{base_url}/uk/raf/harrow/": "aircraft",
-		f"{base_url}/uk/raf/hudson/": "aircraft",
-		f"{base_url}/uk/raf/hurricane/": "aircraft",
-		f"{base_url}/uk/raf/hurricane2/": "aircraft",
-		f"{base_url}/uk/raf/hurricane1/": "aircraft",
-		f"{base_url}/uk/raf/lancaster/": "aircraft",
-		f"{base_url}/uk/raf/lanc/": "aircraft",
-		f"{base_url}/uk/raf/lincoln/": "aircraft",
-		f"{base_url}/uk/raf/london/": "water-based aircraft",
-		f"{base_url}/uk/raf/lysander/": "aircraft",
-		f"{base_url}/uk/raf/manchester/": "aircraft",
-		f"{base_url}/uk/raf/maryland/": "aircraft",
-		f"{base_url}/uk/raf/monitor/": "aircraft",
-		f"{base_url}/uk/raf/mosquito/": "aircraft",
-		f"{base_url}/uk/raf/mosquito2/": "aircraft",
-		f"{base_url}/uk/raf/mossie/": "aircraft",
-		f"{base_url}/uk/raf/roc/": "aircraft", # remove 2 flying boat
-		f"{base_url}/uk/raf/seafang/": "aircraft",
-		f"{base_url}/uk/raf/seafire/": "aircraft",
-		f"{base_url}/uk/raf/shetland/": "aircraft",
-		f"{base_url}/uk/raf/singapore/": "water-based aircraft",
-		f"{base_url}/uk/raf/skua/": "aircraft",
-		f"{base_url}/uk/raf/spiteful/": "aircraft",
-		f"{base_url}/uk/raf/spitfire/": "aircraft",
-		f"{base_url}/uk/raf/spitfire2/": "aircraft",
-		f"{base_url}/uk/raf/spitfire5/": "aircraft",
-		f"{base_url}/uk/raf/spitfire9/": "aircraft",
-		f"{base_url}/uk/raf/spit/": "aircraft",
-		f"{base_url}/uk/raf/short-stirling/": "aircraft",
-		f"{base_url}/uk/raf/stirling/": "aircraft",
-		f"{base_url}/uk/raf/sunderland/": "aircraft",
-		f"{base_url}/uk/raf/sund/": "aircraft",
-		f"{base_url}/uk/raf/swordfish/": "water-based aircraft",
-		f"{base_url}/uk/raf/tempest/": "aircraft",
-		f"{base_url}/uk/raf/tornado/": "aircraft",
-		f"{base_url}/uk/raf/typhoon/": "aircraft",
-		f"{base_url}/uk/raf/vickers432/": "aircraft",
-		f"{base_url}/uk/raf/welkin/": "aircraft",
-		f"{base_url}/uk/raf/wellington/": "aircraft",
-		f"{base_url}/uk/raf/wellington1/": "aircraft",
-		f"{base_url}/uk/raf/whirlwind/": "aircraft",
-		f"{base_url}/uk/raf/whitley/": "aircraft",
-		f"{base_url}/uk/raf/windsor/": "aircraft",
-		f"{base_url}/ussr/vvs/ar-2/": "aircraft",
-		f"{base_url}/ussr/vvs/i153/": "aircraft",
-		f"{base_url}/ussr/vvs/il2-sturmovik/": "aircraft",
-		f"{base_url}/ussr/vvs/il2/": "aircraft",
-		f"{base_url}/ussr/vvs/lagg3/": "aircraft",
-		f"{base_url}/ussr/vvs/li2/": "aircraft",
-		f"{base_url}/ussr/vvs/mig/": "aircraft",
-		f"{base_url}/ussr/vvs/pe8/": "aircraft",
-		f"{base_url}/ussr/vvs/po-2/": "aircraft",
-		f"{base_url}/ussr/vvs/r-10/": "aircraft",
-		f"{base_url}/ussr/vvs/su-2/": "aircraft",
-		f"{base_url}/ussr/armoured-vehicles-2-3/ba-10/": "armored fighting vehicles",
-		f"{base_url}/ussr/armoured-vehicles-2-3/ba-20/": "armored fighting vehicles",
-		f"{base_url}/ussr/armoured-vehicles-2-3/ba-27/": "armored fighting vehicles",
-		f"{base_url}/ussr/spg/isu-122/": "armored fighting vehicles",
-		f"{base_url}/ussr/spg/isu-152/": "armored fighting vehicles",
-		f"{base_url}/ussr/spg/su-100/": "armored fighting vehicles",
-		f"{base_url}/ussr/spg/su-122/": "armored fighting vehicles",
-		f"{base_url}/ussr/spg/su-152/": "armored fighting vehicles",
-		f"{base_url}/ussr/spg/su-85/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/bt-2-bt-5-bt-7-tank/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/is-2/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/kv-1/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/kv-1-tank/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/kv-1s/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/kv-2/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/t-26/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/t-27/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/t-28-tank/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/t-34/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/t-34_tank/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/t-34-85/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/t-35-tank/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/t-37-tank/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/t-38-tank/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/t-40/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/t-50/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/t-60/": "armored fighting vehicles",
-		f"{base_url}/ussr/tanks-2/t-70/": "armored fighting vehicles",
-		f"{base_url}/ussr/artillery_tractor/": "military vehicles",
-		f"{base_url}/ussr/rkka/red_army/": "military personnel",
-		f"{base_url}/germany/armored_vehicles/adgz/": "armored fighting vehicles",
-		f"{base_url}/germany/armored_vehicles/kfz13/": "armored fighting vehicles",
-		f"{base_url}/germany/armored_vehicles/sdkfz_221_222_223/": "armored fighting vehicles",
-		f"{base_url}/germany/armored_vehicles/sdkfz_231_232_233/": "armored fighting vehicles",
-		f"{base_url}/germany/armored_vehicles/sdkfz_247/": "armored fighting vehicles",
-		f"{base_url}/germany/armored_vehicles/sdkfz_263/": "armored fighting vehicles",
-		f"{base_url}/germany/kriegsmarine/": "kriegsmarine",
-		f"{base_url}/germany/german_army_soldiers/": "military personnel",
-		f"{base_url}/germany/wehrmacht_trucks/bussing-nag/": "military vehicles",
-		f"{base_url}/germany/wehrmacht_trucks/einheitsdiesel/": "military vehicles",
-		f"{base_url}/germany/wehrmacht_trucks/faun/": "military vehicles",
-		f"{base_url}/germany/wehrmacht_trucks/ford-lkw/": "military vehicles",
-		f"{base_url}/germany/wehrmacht_trucks/ford-pkw/": "military vehicles",
-		f"{base_url}/germany/wehrmacht_trucks/hanomag/": "military vehicles",
-		f"{base_url}/germany/wehrmacht_trucks/henschel-33/": "military vehicles",
-		f"{base_url}/germany/wehrmacht_trucks/horch_830/": "military vehicles",
-		f"{base_url}/germany/wehrmacht_trucks/horch-901/": "military vehicles",
-		f"{base_url}/germany/wehrmacht_trucks/krupp/": "military vehicles",
-		f"{base_url}/germany/wehrmacht_trucks/krupp_protze_l2h_143/": "military vehicles",
-		f"{base_url}/germany/wehrmacht_trucks/kubelwagen/": "military vehicles",
-		f"{base_url}/germany/wehrmacht_trucks/mercedes-benz/": "military vehicles",
-		f"{base_url}/germany/wehrmacht_trucks/opel_blitz/": "military vehicles",
-		f"{base_url}/germany/wehrmacht_trucks/schwimmwagen/": "military vehicles",
-		f"{base_url}/germany/aircrafts-2/ar-65/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/ar-66/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/arado_234/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/messerschmitt_bf_110/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/me_110/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/bf110/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/messerschmitt_bf109/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/messerschmitt-bf-109/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/bf109/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/bf_109/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/bv142/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/bv222/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/dornier_do_215/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/do217/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/do_335/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/dornier_do17/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/fw_189/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/fw190/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/focke_wulf_fw_190/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/fw190d/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/focke_wulf_fw200/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/he115/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/he116/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/heinkel_he111/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/he-112/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/he_162/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/he_177/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/hs123/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/hs_129/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/junkers-ju87-stuka/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/ju87/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/junkers_ju188/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/ju-290/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/junkers_ju_52/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/junkers_ju88/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/ju-88/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/ju-90/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/me261/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/me321/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/messerschmitt-me323-gigant/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/me-323-gigant/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/messerschmitt-me262/": "aircraft",
-		f"{base_url}/germany/aircrafts-2/mistel/": "aircraft",
-		f"{base_url}/germany/artillery/sturmpanzer_iii/": "artillery",
-		f"{base_url}/germany/artillery/17-cm-k18/": "artillery",
-		f"{base_url}/germany/artillery/flak-105/": "artillery",
-		f"{base_url}/germany/artillery/flak-88/": "artillery",
-		f"{base_url}/germany/artillery/flakpanzer-38/": "artillery",
-		f"{base_url}/germany/artillery/grille/": "armored fighting vehicles",
-		f"{base_url}/germany/artillery/hummel/": "artillery",
-		f"{base_url}/germany/artillery/karl-gerat/": "artillery",
-		f"{base_url}/germany/artillery/lorraine-schlepper/": "armored fighting vehicles",
-		f"{base_url}/germany/artillery/pak43/": "artillery",
-		f"{base_url}/germany/artillery/sig33b/": "armored fighting vehicles",
-		f"{base_url}/germany/artillery/sig33-bison/": "armored fighting vehicles",
-		f"{base_url}/germany/artillery/sturmpanzer_ii/": "armored fighting vehicles",
-		f"{base_url}/germany/artillery/wespe/": "armored fighting vehicles",
-		f"{base_url}/germany/armored-trains/": "armored fighting vehicles",
-		f"{base_url}/germany/railway_gun/": "armored fighting vehicles",
-		f"{base_url}/germany/units/afrika_korps/" : "military unit",
-		f"{base_url}/germany/units/waffen-ss/" : "military unit",
-		f"{base_url}/germany/units/grossdeutschland/" : "military unit",
-		f"{base_url}/germany/units/sturmgeschutz_brigade_244/" : "armored fighting vehicles",
-		}
-	
 	# slice[:N] URLs [JUST FOR TESTING]:
 	# URLs = {k:v for i, (k, v) in enumerate(URLs.items()) if i < 3}
 
@@ -1172,20 +1177,26 @@ def main():
 	# 1: multi label:
 	print(f"[MULTI-LABEL]")
 	multi_label_synched_df = wwii_df.copy()
-	multi_label_final_df = get_enriched_description(df=multi_label_synched_df, check_english=True, verbose=args.verbose)
+	multi_label_final_df = get_enriched_description(
+		df=multi_label_synched_df, 
+		check_english=True, 
+		verbose=args.verbose
+	)
 	# validate_text_cleaning_pipeline(df=multi_label_final_df, text_column='enriched_document_description')
 
 	multi_label_fpath = os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv")
 	multi_label_final_df.to_csv(multi_label_fpath, index=False)
-	print(multi_label_final_df.info(verbose=True, memory_usage="deep"))
 	try:
 		multi_label_final_df.to_excel(multi_label_fpath.replace('.csv', '.xlsx'), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
-	print(f"[SUCCESS] saved {multi_label_fpath}")
+
+	if args.verbose:
+		print(f"[SAVED] {multi_label_fpath}")
+		print(f"-"*100)
 
 	# 2: single label:
-	print(f"[SINGLE-LABEL]")
+	print(f"\n[SINGLE-LABEL]")
 	# a) drop None from labels:
 	print(f"Checking for None labels: {wwii_df['label'].isna().sum()} None labels / {wwii_df.shape[0]} total samples")
 	single_label_final_df = wwii_df.dropna(subset=['label'])
