@@ -50,7 +50,7 @@ if [ "$NUM_GPUS" -gt 1 ]; then
 	#MLM_MODEL="Qwen/Qwen3.6-35B-A3B" # not a good model
 	MLM_MODEL="Qwen/Qwen3.6-27B"
 	LLM_MAX_GENERATED_TOKENS=192
-	VLM_MAX_GENERATED_TOKENS=164
+	VLM_MAX_GENERATED_TOKENS=192
 else
 	echo "SMALL models (single-GPU configuration)"
 	MLM_MODEL="Qwen/Qwen3.5-9B"
@@ -68,7 +68,7 @@ DATASETS=(
 	${DATASET_DIRECTORY}/SMU_1900-01-01_1970-12-31
 )
 CSV_FILE=${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv
-LLM_BATCH_SIZES=(24 6 18 24 28)
+LLM_BATCH_SIZES=(64 6 18 24 28)
 VLM_BATCH_SIZES=(92 48 48 48 48)
 
 echo "Running Multimodal Annotation on $CSV_FILE"
