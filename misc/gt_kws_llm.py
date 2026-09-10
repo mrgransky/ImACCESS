@@ -22,7 +22,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "BT-5 Mariupol soviet Iight tank. BT-2 BT-5 BT-7." -llm "Qwen/Qwen3.6-27B" -v
+# python gt_kws_llm.py -desc "Miltiano flag marching towards the Aragon front with the first columns of fighters, in Barcelona. A young militia officer with an abadera amongst the first columns of Republican fighters on his way to the front of Zaragoza, Barcelona." -llm "Qwen/Qwen3.6-27B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -59,30 +59,30 @@ STOPWORDS.update(geographic_references)
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
-Return your response as a Python list of double-quoted strings containing keywords derived strictly from the caption without thought, reasoning, explanation or any additional text.
+Return your response as a Python list of double-quoted strings containing keywords derived strictly from the caption.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
+Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
 
-STRICTLY EXCLUDE:
-  - Generic keywords such as 'World War I', 'Vietnam War', 'post war era', 'Post-war', 'aftermath of World War II', 'War', 'battle'.
-  - Quantities, counts, measurements, or numeric expressions (e.g., 1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
+EXCLUDE:
+  - Generic war terms ('World War I', 'Vietnam War', 'post war era', 'Post-war', 'aftermath of World War II', 'War', 'battle').
+  - Quantities, counts, measurements, or numeric expressions (1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
   - Equipment identifiers, serial numbers, brands, or models.
   - Dates, times, years, decades, or any temporal references.
-  - Names of places, buildings, or structures (e.g., Plaza de Santiago, St. Louis Cathedral).
-  - Individual people's names or honorifics (e.g., A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
-  - Family relationship terms (e.g., mother, father, son, uncle).
-  - Generic human category nouns (e.g., man, men, woman, person, people, children).
+  - Names of places, buildings, or structures (Plaza de Santiago, St. Louis Cathedral).
+  - Individual people's names or honorifics (A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
+  - Family relationship terms (mother, father, son, uncle).
+  - Generic human category nouns (man, men, woman, person, people, children).
   - Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
-  - Ordinal numeral keywords (e.g., fourth, 1st, 115th).
-  - Roman numerals (e.g., I, II, IV, VIII).
+  - Ordinal numeral keywords (fourth, 1st, 115th).
+  - Roman numerals (I, II, IV, VIII).
   - Nationalities, ethnicities, or religions.
-  - Abbreviations, acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
+  - Misspelled keywords or non-standard spellings.
+  - Acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
   - Underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
-  - Labels containing underscores or other non-space separators (e.g., shell_hole, storage_tank, anti_aircraft).
-  - Duplicate labels or normalized variants of the same label.
 
 Color handling:
-  - Remove color only if it is purely descriptive (e.g., white truck, blue sky).
-  - Preserve color terms when they are part of a standardized or semantic label (e.g., Red Cross, Blue Cross gas shell, Green Berets).
+  - Remove color only if it is purely descriptive (white truck, blue sky).
+  - Preserve color terms when they are part of a standardized or semantic label (Red Cross, Blue Cross gas shell, Green Berets).
 
 Caption: {caption}"""
 
@@ -717,7 +717,7 @@ def parse_llm_response(
 
 	if not keywords_list: # len() == 0
 		if verbose:
-			print(f"[WARNING] Empty list extracted: {keywords_list} text: {list_str}")
+			print(f"[WARNING] Empty list extracted: {keywords_list} => skipping...")
 		return None
 
 	if verbose:
@@ -1126,7 +1126,7 @@ def get_llm_based_labels(
 		print(f"Batched {len(batches)} prompts into {len(batches)} batches of {batch_size} samples")
 
 	for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing (textual) batches", ncols=100)):
-		# Retry whole batch on failure (e.g., OOM or generation error)
+		# Retry whole batch on failure (OOM or generation error)
 		for attempt in range(max_retries + 1):
 			if attempt > 0 and verbose:
 				print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for batch {batch_num + 1}")

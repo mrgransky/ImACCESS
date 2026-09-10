@@ -768,7 +768,7 @@ def _post_process_(
 
 			if is_stopword(lemma):
 				if verbose:
-					print(f"        → {repr(lemma)} All stopword detected, skipping")
+					print(f"        → {repr(lemma)} stopword detected, skipping")
 				continue
 
 			# Exclude pure color descriptors
@@ -780,7 +780,7 @@ def _post_process_(
 			# exclude honorifics
 			if any(w in HONORIFICS for w in lemma.lower().split()):
 				if verbose:
-					print(f"        → {lemma} Honorific detected, skipping")
+					print(f"        → {lemma} honorific detected, skipping")
 				continue
 
 

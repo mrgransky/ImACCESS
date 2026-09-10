@@ -182,6 +182,7 @@ Paraguay
 Peru
 Philippine
 Philippines
+Philippine Islands
 Poland
 Portugal
 Porto Rico
@@ -189,6 +190,7 @@ Puerto Rico
 
 Qatar
 
+Republic of the Philippines
 Rhodesia
 Romania
 Rumania
@@ -591,6 +593,7 @@ Canso
 Caracas
 Cardiff
 Carlisle
+Catania
 Cebu City
 Chania
 Christiansted
@@ -688,6 +691,8 @@ Melbourne
 Mesopotamian
 Mexico City
 Milan
+Milovice
+Miltenberg
 Milwaukee
 Minsk
 Montreal
