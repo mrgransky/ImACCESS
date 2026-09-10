@@ -25,6 +25,7 @@ air force commander
 special force commander
 munitions manufacturing base
 army day parade
+armed forces
 ordnance factory
 munitions factory
 airforce commander
