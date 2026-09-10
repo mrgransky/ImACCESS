@@ -2006,6 +2006,6 @@ def get_singletons(df: pd.DataFrame, output_dir: str):
 
 		print(f"{type(label_singletons)} {label_singletons[:25]}")
 
-		label_counts_df.to_csv(os.path.join(output_dir, f"{col}_x_{len(unique_labels)}_unique_labels.csv"), index=False)
+		label_counts_df.to_csv(os.path.join(output_dir, f"{len(unique_labels)}_unique_labels_{col}.csv"), index=False)
 
 	print("="*100)

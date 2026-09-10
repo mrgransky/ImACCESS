@@ -329,7 +329,7 @@ def get_canonical_labels(
 		print(f"  ├─ Batch size  : {batch_size}")
 		print(f"  └─ ||Clusters||: {nc}")
 
-	clusters_fname = os.path.join(output_dir, f"{label_source}_clusters.csv")
+	clusters_fname = os.path.join(output_dir, f"clustering_{label_source}.csv")
 
 	clustered_df = cluster(
 		labels=labels,
@@ -469,7 +469,7 @@ def dissolve_low_cohesion_clusters(
 		
 		df['cluster'] = df['cluster'].map(cluster_mapping)
 		
-		# Compute statistics
+		# statistics
 		old_n_clusters = max_cluster_id + 1
 		new_n_clusters = df['cluster'].nunique()
 		old_consolidation = len(df) / old_n_clusters
@@ -1005,7 +1005,6 @@ def automated_cluster_validation(
 						'action': "Review low-cohesion clusters; may need manual splitting or different distance metric"
 				})
 		
-
 		# Issue 5: Poor canonical representativeness
 		if canonical_quality['mean_representativeness'] < 0.75:
 			recommendations.append(
@@ -1056,9 +1055,9 @@ def automated_cluster_validation(
 				print(f"[OK] No critical issues detected. Clustering quality is acceptable.")
 			else:
 				for i, rec in enumerate(recommendations, 1):
-					print(f"\n    [{i}] {rec['severity']:6s} | {rec['issue']}")
-					print(f"        Metric: {rec['metric']}")
-					print(f"        Action: {rec['action']}")
+					print(f"\n[{i}] {rec['severity']:6s} | {rec['issue']}")
+					print(f"  Metric: {rec['metric']}")
+					print(f"  Action: {rec['action']}")
 			print()
 		
 		summary = f"""

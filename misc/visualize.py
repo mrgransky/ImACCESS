@@ -6373,7 +6373,7 @@ def multilabel_eda(
 	
 	# Save summary to CSV
 	summary_df.to_csv(
-		os.path.join(output_dir, f"{label_column}_summary_statistics.csv"),
+		os.path.join(output_dir, f"summary_statistics_{label_column}.csv"),
 		index=False
 	)
 	
