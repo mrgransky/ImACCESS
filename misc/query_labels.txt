@@ -315,3 +315,5 @@ dugout
 dug-out
 barracks
 marching
+militia
+militiaman
