@@ -818,12 +818,14 @@ def query_local_llm(
 
 		if verbose:
 			print(f"[ELAPSED_t] Tokenization: {time.time() - tokenization_start:.4f} sec")
+			print(f"Generating {max_generated_tks} tokens [model.generate(..)]")
 
+		t0 = time.time()
 		with torch.no_grad():
 			with torch.amp.autocast(
 				device_type=device.type, 
 				enabled=torch.cuda.is_available(),
-				dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+				dtype=torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 and torch.cuda.is_bf16_supported() else torch.float16,
 			):
 				outputs = model.generate(
 					**inputs,
@@ -835,6 +837,8 @@ def query_local_llm(
 					eos_token_id=tokenizer.eos_token_id,
 					use_cache=True,
 				)
+		if verbose:
+			print(f"[ELAPSED_t] model.generate(..): {time.time() - t0:.4f} sec")
 		raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)	
 	except Exception as e:
 		print(f"[ERROR] {e}")
