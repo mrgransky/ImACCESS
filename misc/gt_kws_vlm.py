@@ -23,7 +23,10 @@ from utils import *
 
 # how to run:
 # local:
-# python gt_kws_vlm.py -i "/home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images/SLASH568SLASHitem_FGXB537CHLTVRLRXQLUDTDYLIU67RKN7.jpg" -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
+# python gt_kws_vlm.py -i "/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/45496890.jpg" -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
+
+# Roihu:
+# python gt_kws_vlm.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/45496890.jpg -vlm "Qwen/Qwen3.5-4B" -v
 
 # python gt_kws_vlm.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3-VL-2B-Instruct" -v
 
