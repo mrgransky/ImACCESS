@@ -652,9 +652,6 @@ one's
 ones
 onto
 open
-opened
-opening
-opens
 ord
 order
 ordered
@@ -670,7 +667,6 @@ outside
 overall
 owing
 page
-pages
 part
 parted
 particular
@@ -1164,7 +1160,6 @@ figure
 figurine
 curve
 shape
-square
 graf
 schedule
 setting
@@ -1210,3 +1205,7 @@ etats
 rev
 medresse
 coco-cola
+spring
+summer
+autumn
+winter

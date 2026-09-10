@@ -313,17 +313,24 @@ def get_canonical_labels_with_parallel_mapping(
 
 def get_canonical_labels(
 	labels: List[List[str]],
-	label_source: str,  # "llm", "vlm", or "multimodal"
+	label_source: str,
 	output_dir: str,
 	model_id: str,
-	batch_size: int = 128,
+	batch_size: int,
 	nc: int = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
 
-	print(f"\n>> Getting {label_source} Canonical Labels (Sequential Mapping bs: {batch_size})")
+	if verbose:
+		print("-"*50)
+		print(f"[CANOCALIZATION] Sequential Mapping")
+		print(f"  ├─ Label source: {label_source}")
+		print(f"  ├─ Model ID    : {model_id}")
+		print(f"  ├─ Batch size  : {batch_size}")
+		print(f"  └─ ||Clusters||: {nc}")
 
 	clusters_fname = os.path.join(output_dir, f"{label_source}_clusters.csv")
+
 	clustered_df = cluster(
 		labels=labels,
 		model_id=model_id,
@@ -2017,7 +2024,7 @@ def get_optimal_num_clusters(
 		plateau_k = best_coarse['k']
 	
 	if verbose:
-		print(f"[DONE STAGE 1] Plateau region centered around k={plateau_k}")
+		print(f"[DONE] Plateau region centered around k={plateau_k}")
 	
 	if verbose:
 		print(f"\n[STAGE 2] FINE SEARCH - Optimizing around plateau: k={plateau_k}")
@@ -2031,7 +2038,7 @@ def get_optimal_num_clusters(
 	)
 	
 	if verbose:
-		print(f"[PROPOSAL] Fine search range(using Pareto Principle[80:20]): {fine_min} ≤ k ≤ {fine_max}")
+		print(f"[PROPOSAL] range(Pareto Principle [80:20]): {fine_min} ≤ k ≤ {fine_max}")
 
 	# Guard: if plateau_k was outside valid range, just search the valid range
 	if fine_min >= fine_max:
@@ -2097,12 +2104,13 @@ def get_optimal_num_clusters(
 		
 		# Final composite score
 		score = (
-				quality_vs_consolidation_weight * quality_score +
-				(1 - quality_vs_consolidation_weight) * 0.7 * consol_score +
-				(1 - quality_vs_consolidation_weight) * 0.3 * singleton_score
+			quality_vs_consolidation_weight * quality_score +
+			(1 - quality_vs_consolidation_weight) * 0.7 * consol_score +
+			(1 - quality_vs_consolidation_weight) * 0.3 * singleton_score
 		)
 		
-		fine_results.append({
+		fine_results.append(
+			{
 				'k': n_clusters,
 				'intra_sim': mean_intra_sim,
 				'consolidation': consolidation,
@@ -2112,7 +2120,8 @@ def get_optimal_num_clusters(
 				'consol_score': consol_score,
 				'singleton_score': singleton_score,
 				'composite_score': score
-		})
+			}
+		)
 		
 		# Status + Reason
 		status = ""
@@ -2120,14 +2129,14 @@ def get_optimal_num_clusters(
 		if quality_score >= 0.95 and consol_score >= 0.9:
 			status = "EXCELLENT"
 			reason = (
-				f"QualScore {quality_score:.3f} ≥ 0.95 "
+				f"QualityScore {quality_score:.3f} ≥ 0.95 "
 				f"AND ConsolScore {consol_score:.3f} ≥ 0.90 "
 				f"| SingletonScore {singleton_score:.3f}"
 			)
 		elif quality_score >= 0.90 and consol_score >= 0.8:
 			status = "✓ GOOD"
 			reason = (
-				f"QualScore {quality_score:.3f} ≥ 0.90 "
+				f"QualityScore {quality_score:.3f} ≥ 0.90 "
 				f"AND ConsolScore {consol_score:.3f} ≥ 0.80 "
 				f"| SingletonScore {singleton_score:.3f}"
 			)
@@ -2135,7 +2144,7 @@ def get_optimal_num_clusters(
 			status = "→ Acceptable"
 			reason = (
 				f"CompositeScore {score:.3f} ≥ 0.70 "
-				f"| QualScore {quality_score:.3f} ConsolScore {consol_score:.3f} SingletonScore {singleton_score:.3f}"
+				f"| QualityScore {quality_score:.3f} ConsolScore {consol_score:.3f} SingletonScore {singleton_score:.3f}"
 			)
 		else:
 			status = "✗ Below target"
@@ -2203,10 +2212,10 @@ def get_optimal_num_clusters(
 					labels = np.array([label_map[l] for l in new_labels])
 					
 					if verbose:
-						if merged_count > 15:
-							print(f"  ├─ ... ({merged_count - 15} more)")
+						if merged_count > 50:
+							print(f"  ├─ ... ({merged_count - 50} more)")
 						print(f"  ├─ Total merged: {merged_count} singletons")
-						print(f"  └─ Final clusters: {len(unique_new)} (was {len(unique_labels)})")
+						print(f"  └─ Final clusters: {len(unique_new)} (initial: {len(unique_labels)})")
 	
 	# FINAL STATISTICS
 	final_cluster_sizes = np.bincount(labels)
@@ -2225,6 +2234,7 @@ def get_optimal_num_clusters(
 			final_intra_sims.append(intra_sim)
 	
 	final_mean_intra_sim = np.mean(final_intra_sims) if final_intra_sims else 0
+	final_std_intra_sim = np.std(final_intra_sims) if final_intra_sims else 0
 	
 	stats = {
 		'n_clusters': final_n_clusters,
@@ -2234,16 +2244,17 @@ def get_optimal_num_clusters(
 		'max_size_ratio': final_max_size / num_samples,
 		'mean_cluster_size': num_samples / final_n_clusters,
 		'consolidation_ratio': num_samples / final_n_clusters,
-		'mean_intra_similarity': final_mean_intra_sim
+		'mean_intra_similarity': final_mean_intra_sim,
+		'std_intra_similarity': final_std_intra_sim,
 	}
 	
 	if verbose:
 		print("\n[STATISTICS]")
 		print(f"  ├─ Total clusters: {stats['n_clusters']}")
 		print(f"  ├─ Singletons: {stats['n_singletons']} ({stats['singleton_ratio']*100:.1f}%)")
-		print(f"  ├─ Mean intra-similarity: {stats['mean_intra_similarity']:.4f}")
-		print(f"  ├─ Largest cluster: {stats['max_cluster_size']} items ({stats['max_size_ratio']*100:.1f}%)")
-		print(f"  ├─ Mean cluster size: {stats['mean_cluster_size']:.2f}")
+		print(f"  ├─ intra-similarity: {stats['mean_intra_similarity']:.4f} ± {stats['std_intra_similarity']:.4f}")
+		print(f"  ├─ Largest cluster: {stats['max_cluster_size']} items ({stats['max_size_ratio']*100:.2f}%)")
+		print(f"  ├─ (Avg) cluster size: {stats['mean_cluster_size']:.2f}")
 		print(f"  └─ Consolidation ratio: {stats['consolidation_ratio']:.2f}:1")
 		
 		if stats['mean_intra_similarity'] >= target_intra_similarity:
@@ -2253,7 +2264,9 @@ def get_optimal_num_clusters(
 		else:
 			quality_status = "ACCEPTABLE"
 		
-		print(f"\n  Quality Status: {quality_status}")
+		print(f"\nClustering quality status: {quality_status}")
+		print(f"  └─ mean_intra_similarity: {stats['mean_intra_similarity']:.4f} vs. target: {target_intra_similarity}")
+		print("=" * 80)
 	
 	return labels, stats
 
@@ -2443,7 +2456,7 @@ def assign_canonical_labels(
 	X: np.ndarray,
 	model,
 	original_label_counts: Dict[str, int],
-	verbose: bool = True,
+	verbose: bool = False,
 ) -> Tuple[Dict[int, Dict], int, int, List[float], List[float], List[Dict]]:
 	"""
 	Assign a canonical label to every cluster using a five-signal composite
@@ -2601,13 +2614,16 @@ def assign_canonical_labels(
 	# visibility across ALL clusters, not just the one currently being processed.
 	case_registry = _build_case_registry(original_label_counts)
 
-	print(f"\nCanonical labels per cluster")
+
 	cluster_canonicals    = {}
 	virtual_used_count    = 0
 	freq_changed_count    = 0
 	total_sim_loss        = []
 	total_freq_gain       = []
 	questionable_examples = []
+
+	if verbose:
+		print(f"\nCanonical labels per cluster")
 
 	for cid in sorted(df.cluster.unique()):
 		cluster_mask       = df.cluster == cid
@@ -2817,7 +2833,7 @@ def cluster(
 	nc: int = None,
 	linkage_method: str = "ward",
 	distance_metric: str = "euclidean",
-	verbose: bool = True,
+	verbose: bool = False,
 ):
 	st_t = time.time()
 	if verbose:
@@ -2830,7 +2846,8 @@ def cluster(
 		print(f"   └─ nc: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
 
 	# STEP 1: DEDUP + FLATTEN
-	print(f"\n[DEDUP] {len(labels)} {type(labels)} raw labels")
+	if verbose:
+		print(f"\n[DEDUP] {len(labels)} {type(labels)} raw labels")
 
 	documents = list()
 	for i, doc in enumerate(labels):
@@ -2857,14 +2874,12 @@ def cluster(
 	if verbose:
 		print(f"Total {type(documents)} documents: {len(documents)}")
 		print(f"Unique {type(unique_labels)} labels: {len(unique_labels)}")
-		print(f"Sample unique labels: {unique_labels[:15]}")
+		print(f"Sample unique: {unique_labels[:15]}")
 		print("-" * 100)
 	
 	dtype = torch.float32
 	if torch.cuda.is_available():
 		dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
-	if verbose:
-		print(f"[INFO] {model_id} Dtype selection: {dtype}")
 
 	def _optimal_attn_impl() -> str:
 		if not torch.cuda.is_available():
@@ -2874,8 +2889,8 @@ def cluster(
 		if compute_cap >= 8.0:
 			try:
 				import flash_attn
-				if verbose:
-					print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
+				# if verbose:
+					# print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
 				return "flash_attention_2"
 			except ImportError:
 				if verbose:
@@ -2889,13 +2904,13 @@ def cluster(
 		return "eager"
 
 	attn_impl = _optimal_attn_impl()
-	if verbose:
-		print(f"[INFO] {model_id} with {attn_impl} attention")
 
-	print(f"\n[INIT] Loading Sentence Transformer {model_id} | {device}")
+	if verbose:
+		print(f"[INFO] {model_id} (dtype: {dtype} attention: {attn_impl} {device})")
+
 	model = SentenceTransformer(
 		model_name_or_path=model_id,
-		model_kwargs={"attn_implementation": attn_impl, "dtype": dtype} if "Qwen" in model_id else {},
+		model_kwargs={"attn_implementation": attn_impl, "dtype": dtype, "device_map": "auto"} if "Qwen" in model_id else {},
 		trust_remote_code=True,
 		device=device,
 		cache_folder=cache_directory[os.getenv('USER')],
@@ -2903,13 +2918,14 @@ def cluster(
 		tokenizer_kwargs={"padding_side": "left"},
 	)
 
-	print(f"[LOADED] {sum(p.numel() for p in model.parameters()):,} parameters")
+	if verbose:
+		print(f"[LOADED] {sum(p.numel() for p in model.parameters()):,} parameters")
+		print(f"\n[ENCODING] {len(unique_labels)} unique labels (bs: {batch_size} {device})")
 
-	print(f"\n[ENCODING] {len(unique_labels)} unique labels | batch_size: {batch_size} | {device}")
 	X = model.encode(
 		unique_labels,
 		batch_size=batch_size,
-		show_progress_bar=verbose,
+		show_progress_bar=False,#verbose
 		convert_to_numpy=True,
 		normalize_embeddings=True,
 		precision='float32',
@@ -2928,13 +2944,14 @@ def cluster(
 	if np.allclose(X, 0):
 		raise ValueError("All embeddings are zero vectors")
 
-	print(f"Embeddings {type(X)} {X.shape} {X.dtype}")
-	print(f"  ├─ Range: [{X.min():.4f}, {X.max():.4f}]")
-	print(f"  ├─ Mean: {X.mean()}")
-	print(f"  └─ Std: {X.std()}")
+	if verbose:
+		print(f"[EMBEDDING] {type(X)} {X.shape} {X.dtype}")
+		print(f"  ├─ (min, max): [{X.min():.4f}, {X.max():.4f}]")
+		print(f"  └─ μ±σ: {X.mean()} ± {X.std()}")
 
 	# STEP 3: LINKAGE MATRIX
-	print(f"[LINKAGE] {linkage_method} Agglomerative Clustering on: {X.shape} embeddings [takes a while...]")
+	if verbose:
+		print(f"\n[LINKAGE] {linkage_method} Agglomerative Clustering {X.shape} embeddings [takes a while...]")
 	t0 = time.time()
 	if linkage_method == "ward":
 		Z = fastcluster.linkage(X, method='ward', metric='euclidean') if use_fastcluster \
@@ -2953,9 +2970,9 @@ def cluster(
 	else:
 		raise ValueError(f"Unsupported distance metric: {distance_metric}")
 
-	print(f"[LINKAGE] Z[{linkage_method}]: {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes} | {time.time()-t0:.1f} sec")
+	if verbose:
+		print(f"[LINKAGE] Z[{linkage_method}] {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes} | {time.time()-t0:.1f} sec")
 
-	
 	# STEP 4: OPTIMAL NUMBER OF CLUSTERS
 	if nc is None:
 		cluster_labels, stats = get_optimal_num_clusters(
@@ -2975,24 +2992,21 @@ def cluster(
 		print(f"\nUsing user-defined k={best_k} for {len(unique_labels)} labels")
 		cluster_labels = fcluster(Z, best_k, criterion='maxclust') - 1
 
-	print(f"\n[CLUSTERING] {len(np.unique(cluster_labels))} clusters")
-	print(f"{cluster_labels.shape} {type(cluster_labels)} labels.")
-	print(f"(min, max): ({cluster_labels.min()}, {cluster_labels.max()})")
-
 	df = pd.DataFrame({'label': unique_labels, 'cluster': cluster_labels})
-
 	
 	# STEP 5: LABEL FREQUENCY DICT
-	print(f"\n[CLUSTERING] {len(np.unique(cluster_labels))} clusters for {cluster_labels.shape} {type(cluster_labels)} labels. {cluster_labels.min()} {cluster_labels.max()}")
+	if verbose:
+		print(f"\n[CLUSTERING] {len(np.unique(cluster_labels))} clusters for {cluster_labels.shape} {type(cluster_labels)} labels")
 	label_freq_dict: dict = {}
 	for doc in documents:
 		for label in doc:
 			label_freq_dict[label] = label_freq_dict.get(label, 0) + 1
 
-	print(f"\tComputed frequencies for {len(label_freq_dict)} labels")
-	print(f"\tTotal label instances: {sum(label_freq_dict.values())}")
-	print(f"\tMost frequent: {max(label_freq_dict.items(), key=lambda x: x[1])}")
-	print('-' * 150)
+	if verbose:
+		print(f"  ├─ Frequency dict has {len(label_freq_dict)} labels")
+		print(f"  ├─ Total label instances: {sum(label_freq_dict.values())}")
+		print(f"  └─ Most frequent: {max(label_freq_dict.items(), key=lambda x: x[1])}")
+		print('-' * 80)
 
 	# STEP 6: CANONICAL SELECTION (with virtual hypernym synthesis)
 	t0 = time.time()
@@ -3010,17 +3024,19 @@ def cluster(
 		original_label_counts=label_freq_dict,
 		verbose=verbose,
 	)
-	print(f"\n[CLUSTERING] {len(cluster_canonicals)} cluster canonicals computed in {time.time()-t0:.1f} sec.")
-	print("-" * 100)
+	if verbose:
+		print(f"\n[CLUSTERING] {len(cluster_canonicals)} cluster canonicals computed in {time.time()-t0:.1f} sec.")
+		print("-" * 100)
 
 	# STEP 7: IMPACT ANALYSIS
 	total_clusters = len(df.cluster.unique())
-	print("\nFREQUENCY WEIGHTING IMPACT ANALYSIS")
-	print(f"  Total clusters analyzed: {total_clusters}")
-	print(f"  Virtual hypernym used as canonical: {virtual_used_count} ({virtual_used_count/total_clusters*100:.1f}%)")
-	print(f"  Clusters where score changed the canonical: {freq_changed_count} ({freq_changed_count/total_clusters*100:.1f}%)")
+	if verbose:
+		print("\nFREQUENCY WEIGHTING IMPACT ANALYSIS")
+		print(f"  Total clusters analyzed: {total_clusters}")
+		print(f"  Virtual hypernym used as canonical: {virtual_used_count} ({virtual_used_count/total_clusters*100:.1f}%)")
+		print(f"  Clusters where score changed the canonical: {freq_changed_count} ({freq_changed_count/total_clusters*100:.1f}%)")
 
-	if total_sim_loss:
+	if total_sim_loss and verbose:
 		print(f"\nSIMILARITY LOSS IMPACT:")
 		print(f"  Average  {np.mean(total_sim_loss)*100:.2f}%")
 		print(f"  Median   {np.median(total_sim_loss)*100:.2f}%")
@@ -3072,9 +3088,9 @@ def cluster(
 			print(f"  ❌ POOR: High quality cost ({avg_sim_loss_pct:.1f}%) for limited frequency benefit ({avg_freq_gain:.0f}x)")
 			print(f"     Consider reducing frequency weight")
 	else:
-		print("\n  ℹ️  Score-based selection made no changes (all clusters picked highest similarity)")
-
-	print("=" * 100)
+		if verbose:
+			print("\n  ℹ️  Score-based selection made no changes (all clusters picked highest similarity)")
+			print("=" * 100)
 	
 	# STEP 8: MAP CANONICALS + CLEAN PROBLEMATIC CLUSTERS	
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
@@ -3117,7 +3133,7 @@ def cluster(
 		embeddings=X,
 		low_cohesion_threshold=0.50,
 		poor_canonical_threshold=0.60,
-		verbose=True,
+		verbose=verbose,
 	)
 
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
@@ -3127,19 +3143,20 @@ def cluster(
 	cluster_labels      = df['cluster'].values
 	canonical_map       = df.groupby('cluster')['canonical'].first().to_dict()
 	
-	print("\nCOMPREHENSIVE CLUSTER QUALITY")
-	print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
-	print(f"  ├─ Updated canonical_map: {len(canonical_map)} mappings")
-	print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
-	print(f"  ├─ cluster_labels: {type(cluster_labels)} {cluster_labels.shape}")
-	print(f"  ├─ label_freq_dict: {len(label_freq_dict)} labels with frequencies")
-	print(f"  ├─ df reports: {df['cluster'].nunique()} clusters")
-	print(f"  └─ cluster_labels reports: {len(np.unique(cluster_labels))} clusters")
+	if verbose:
+		print("\nCOMPREHENSIVE CLUSTER QUALITY")
+		print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
+		print(f"  ├─ Updated canonical_map: {len(canonical_map)} mappings")
+		print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
+		print(f"  ├─ cluster_labels: {type(cluster_labels)} {cluster_labels.shape}")
+		print(f"  ├─ label_freq_dict: {len(label_freq_dict)} labels with frequencies")
+		print(f"  ├─ df reports: {df['cluster'].nunique()} clusters")
+		print(f"  └─ cluster_labels reports: {len(np.unique(cluster_labels))} clusters")
 
-	if df['cluster'].nunique() != len(np.unique(cluster_labels)):
-		print(f"[WARNING] Mismatch detected! Analysis may be stale!")
-	else:
-		print(f"All consistent!")
+		if df['cluster'].nunique() != len(np.unique(cluster_labels)):
+			print(f"[WARNING] Mismatch detected! Analysis may be stale!")
+		else:
+			print(f"All consistent!")
 
 	results = analyze_cluster_quality(
 		embeddings=X_clean,
@@ -3180,7 +3197,8 @@ def cluster(
 		print(f"[CLUSTERING] Total Elapsed Time: {time.time()-st_t:.1f} sec\n")
 
 	# clear cache
-	torch.cuda.empty_cache()
+	if torch.cuda.is_available():
+		torch.cuda.empty_cache()
 	gc.collect()
 
 	return df

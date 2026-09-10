@@ -191,13 +191,13 @@ def get_multimodal_annotation(
 		vlm_based_labels = _post_process_(
 			labels_list=vlm_based_labels, 
 			col="vlm_based_labels", 
-			verbose=verbose
+			verbose=False
 		)
 
 		llm_based_labels = _post_process_(
 			labels_list=llm_based_labels, 
 			col="llm_based_labels", 
-			verbose=verbose
+			verbose=False
 		)
 		
 		multimodal_labels = _post_process_(
@@ -211,28 +211,28 @@ def get_multimodal_annotation(
 		########################################################
 		llm_canonical_labels, _ = get_canonical_labels(
 			labels=llm_based_labels,
-			label_source="llm",
+			label_source="llm_based_labels",
 			model_id=embedding_model_id,
 			output_dir=OUTPUT_DIR,
 			batch_size=batch_size,
 			nc=nc,
-			verbose=verbose,
+			verbose=False,
 		)
 
 		vlm_canonical_labels, _ = get_canonical_labels(
 			labels=vlm_based_labels,
-			label_source="vlm",
+			label_source="vlm_based_labels",
 			model_id=embedding_model_id,
 			output_dir=OUTPUT_DIR,
 			batch_size=batch_size,
 			nc=nc,
-			verbose=verbose,
+			verbose=False,
 		)
 
 		multimodal_canonical_labels, _ = get_canonical_labels(
 			labels=multimodal_labels,
 			model_id=embedding_model_id,
-			label_source="multimodal",
+			label_source="multimodal_labels",
 			output_dir=OUTPUT_DIR,
 			batch_size=batch_size,
 			nc=nc,
@@ -416,7 +416,7 @@ def main():
 	parser = argparse.ArgumentParser(description="Multimodal (LLM + VLM) annotation for Historical Archives Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--num_workers", '-nw', type=int, default=16, help="Number of workers for parallel processing")
-	parser.add_argument("--batch_size", '-bs', type=int, default=128, help="Batch size for multimodal processing")
+	parser.add_argument("--batch_size", '-bs', type=int, default=512, help="Batch size for multimodal processing")
 	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	parser.add_argument("--llm_model_id", '-llm', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace Text-Language model ID")
 	parser.add_argument("--llm_batch_size", '-llm_bs', type=int, default=2, help="Batch size for textual processing using LLM (adjust based on GPU memory)")

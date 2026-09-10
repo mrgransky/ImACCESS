@@ -8,7 +8,7 @@ import nltk
 # Load spaCy model at module level (after other imports)
 try:
 	import spacy
-	spacy_model_id = "en_core_web_md"
+	spacy_model_id = "en_core_web_trf" #"en_core_web_md"
 	nlp_spacy = spacy.load(spacy_model_id)
 except Exception as e:
 	print(e)
@@ -66,22 +66,22 @@ with open(meaningless_words_path, 'r') as file_:
 	# No need for list comprehension wrapper - update() accepts any iterable
 	STOPWORDS.update(line.strip().lower() for line in file_)
 
-# Add generic visual/metadata words
-GENERIC_WORDS = {
-	# Scene structure
-	"background", "foreground", "scene", "view", "area", "location",
-	"setting", "environment", "space", "place", "spot", "site",
-	# Generic objects
-	"object", "item", "thing", "element", "feature", "detail",
-	# Generic actions
-	"activity", "event", "action", "process", "operation",
-	# Generic descriptors
-	"various", "several", "multiple", "different", "similar",
-	# Photography / document artifacts
-	"photograph", "photo", "image", "picture", "shot", "frame",
-	"caption", "label", "text", "figure",
-}
-STOPWORDS.update(GENERIC_WORDS)
+# # Add generic visual/metadata words
+# GENERIC_WORDS = {
+# 	# Scene structure
+# 	"background", "foreground", "scene", "view", "area", "location",
+# 	"setting", "environment", "space", "place", "spot", "site",
+# 	# Generic objects
+# 	"object", "item", "thing", "element", "feature", "detail",
+# 	# Generic actions
+# 	"activity", "event", "action", "process", "operation",
+# 	# Generic descriptors
+# 	"various", "several", "multiple", "different", "similar",
+# 	# Photography / document artifacts
+# 	"photograph", "photo", "image", "picture", "shot", "frame",
+# 	"caption", "label", "text", "figure",
+# }
+# STOPWORDS.update(GENERIC_WORDS)
 
 geographic_references_path = os.path.join(MISC_DIR, 'geographic_references.txt')
 with open(geographic_references_path, 'r') as file_:
@@ -174,7 +174,11 @@ def _post_process_(
 		"corps",              # standalone too
 	}
 
-	GERUND_NOUNS = {'building', 'ceiling', 'flooring', 'siding', 'roofing'}
+	GERUND_NOUNS = {
+		'building', 'ceiling', 'flooring', 'siding', 'roofing',
+		'clothing', 'seating', 'spring', 'evening', 'morning',
+		'beginning', 'ending', 'feeling', 'meaning', 'wedding',
+	}
 
 	GENERIC_PEOPLE_WORDS = {
 		"man", "men", "woman", "women", "people", "person", 
@@ -227,84 +231,85 @@ def _post_process_(
 		"mr", 
 		"mr.",
 		"mrs",
-		"mrs."
+		"mrs.",
 		"ms", 
 		"miss",
 		"dr",
 		"dr.",
 		"d.r.",
 		"prof",
-		"sir",
-		"shah",
-		"sultan",
-		"prince",
-		"princess",
-		"prins",
-		"king",
-		"queen",
+		# "sir",
+		# "shah",
+		# "sultan",
+		# "prince",
+		# "princess",
+		# "prins",
+		# "king",
+		# "queen",
 		"lord",
 		"madam",
 		"mme.", 
-		"mrs."
+		"madame",
 	}
 
 	def _extract_geographic_entities(text: str, verbose: bool = False) -> Set[str]:
 		"""
 		Extract geographic entities using spaCy NER.
-		Returns set of lowercased geographic references.
+		Returns set of geographic references, PRESERVING ORIGINAL CASE.
 		"""
 		if nlp_spacy is None:
-			if verbose:
-				print("\t\t[GEO] spaCy model not loaded, returning empty set")
-			return set()
+				if verbose:
+						print(f"\t\t[spaCy: {spacy_model_id} NER] model not loaded, returning empty set")
+				return set()
 		
-		if verbose:
-			print(f"\t\t[GEO] Processing text: {repr(text)} [spacy: {spacy_model_id}]")
-		
-		GEO_LABELS = {"GPE", "LOC"}  # GPE: countries, cities, states; LOC: geographic features
+		GEO_LABELS = {"GPE", "LOC"}
 		
 		doc = nlp_spacy(text)
-		if verbose:
-			print(f"\t\t[GEO] spaCy doc created with {len(doc.ents)} entities")
 		
-		# Direct geographic entities
+		# 1. Direct geographic entities
 		gpe_spans = [ent for ent in doc.ents if ent.label_ in GEO_LABELS]
-		if verbose:
-			print(f"\t\t[GEO] Found {len(gpe_spans)} direct geographic entities:")
-			for ent in gpe_spans:
-				print(f"\t\t\t├─ {ent.text!r:30} → {ent.label_}")
 		
-		gpe_texts = {ent.text.lower() for ent in gpe_spans}
-		if verbose:
-			print(f"\t\t[GEO] Direct GPE/LOC set (lowercased): {gpe_texts}")
+		if len(gpe_spans) > 0 and verbose:
+				print(f"\t\t[spaCy: {spacy_model_id} NER] Found {len(gpe_spans)} GPE/LOC entities:")
+				for ent in gpe_spans:
+						print(f"\t\t\t├─ {ent.text!r:30} → {ent.label_}")
 		
-		# Embedded geographic entities in ORG labels (e.g., "City College of San Francisco")
+		# Store original case for the final result
+		gpe_texts = {ent.text for ent in gpe_spans}
+		# Store lowercased versions PURELY for deduplication checks
+		gpe_texts_lower = {ent.text.lower() for ent in gpe_spans}
+
+		# 2. Embedded geographic entities in ORG labels
 		org_spans = [ent for ent in doc.ents if ent.label_ == "ORG"]
-		if verbose:
-			print(f"\t\t[GEO] Found {len(org_spans)} ORG entities to check for embedded locations:")
+		if len(org_spans) > 0 and verbose:
+				print(f"\t\t[spaCy: {spacy_model_id} NER] Found {len(org_spans)} ORG entities. Checking Embedded locations...")
 		
 		embedded_gpes = set()
 		for org in org_spans:
-			if verbose:
-				print(f"\t\t[ORG] Analyzing: {org.text!r}")
-			org_doc = nlp_spacy(org.text)
-			if verbose:
-				print(f"\t\t\t├─ Sub-entities found: {len(org_doc.ents)}")
-			
-			for sub_ent in org_doc.ents:
 				if verbose:
-					print(f"\t\t\t│  ├─ {sub_ent.text!r:25} → {sub_ent.label_}")
-				if sub_ent.label_ in GEO_LABELS and sub_ent.text.lower() not in gpe_texts:
-					embedded_gpes.add(sub_ent.text.lower())
-					if verbose:
-						print(f"\t\t\t│  └─ ✓ Added as embedded GPE: {sub_ent.text.lower()!r}")
+						print(f"\t\t[ORG] Analyzing: {org.text!r}")
+				org_doc = nlp_spacy(org.text)
+				
+				for sub_ent in org_doc.ents:
+						if verbose:
+								print(f"\t\t\t│  ├─ {sub_ent.text!r:30} → {sub_ent.label_}")
+								
+						# Check against the lowercased shadow set to prevent case-mismatched duplicates
+						if sub_ent.label_ in GEO_LABELS and sub_ent.text.lower() not in gpe_texts_lower:
+								embedded_gpes.add(sub_ent.text) # Add original case to final set
+								gpe_texts_lower.add(sub_ent.text.lower()) # Update shadow set to prevent future duplicates
+								
+								if verbose:
+										print(f"\t\t\t│  └─ ✓ Added as embedded GPE: {sub_ent.text!r}")
 		
 		if verbose and embedded_gpes:
-			print(f"\t\t[GEO] Embedded GPE/LOC set: {embedded_gpes}")
+			print(f"\t\t[spaCy: {spacy_model_id} NER] Embedded GPE/LOC set: {embedded_gpes}")
 		
+		# Combine both sets (original case preserved)
 		final_result = gpe_texts | embedded_gpes
-		if verbose:
-			print(f"\t\t[GEO] Final combined result ({len(final_result)} items): {final_result}")
+		
+		if len(final_result) > 0 and verbose:
+			print(f"\t\t[spaCy: {spacy_model_id} NER] Final combined result ({len(final_result)} items): {final_result}")
 		
 		return final_result
 
@@ -343,9 +348,6 @@ def _post_process_(
 			- dots         → spaces:  'shell.hole'    → 'shell hole'
 			- multiple spaces → single space
 			- strip leading/trailing whitespace
-		
-		Does NOT lowercase (case decisions are handled downstream
-		by is_named_facility, is_title_like, etc.)
 		"""
 		s = raw.strip()
 		
@@ -399,17 +401,6 @@ def _post_process_(
 		
 		return is_number and is_plural
 
-	def is_title_like(original_phrase: str) -> bool:
-		"""
-		Check if phrase looks like a title or proper name.
-		If 60%+ of tokens start with uppercase, treat as title.
-		"""
-		tokens = original_phrase.split()
-		if len(tokens) < 2:
-			return False
-		capitalized = sum(1 for t in tokens if t and t[0].isupper())
-		return capitalized / len(tokens) >= 0.6
-	
 	def is_adjectival_phrase(original_phrase: str) -> bool:
 		"""
 		Detect descriptive adjectival phrases like:
@@ -534,6 +525,51 @@ def _post_process_(
 			return nltk.corpus.wordnet.NOUN  # Default to noun
 
 	def lemmatize_phrase(phrase: str, original_phrase: str) -> str:
+			tokens = phrase.split()
+			original_tokens = original_phrase.split()
+			pos_tags = nltk.pos_tag(tokens)
+			lemmatized_tokens = []
+
+			protected_indices = set()
+			for protected in PROTECTED_PHRASES:
+					p_tokens = protected.split()
+					p_len = len(p_tokens)
+					for start in range(len(tokens) - p_len + 1):
+							# ── FIX: case-insensitive comparison for protected phrases ──
+							if [t.lower() for t in tokens[start:start + p_len]] == p_tokens:
+									for j in range(start, start + p_len):
+											protected_indices.add(j)
+
+			for i, (token, pos) in enumerate(pos_tags):
+					original_token = original_tokens[i] if i < len(original_tokens) else token
+					is_abbr = original_token.isupper() or '.' in original_token
+
+					# ── NEW: detect proper nouns and capitalized words ──
+					is_proper_noun = pos.startswith("NNP")       # NNP or NNPS
+					starts_capital = bool(original_token) and original_token[0].isupper()
+
+					if (is_abbr
+							or token.lower() in PROTECTED_ABBREVIATIONS   # ── FIX: case-insensitive ──
+							or i in protected_indices
+							or is_proper_noun                              # ── NEW ──
+							or starts_capital                              # ── NEW ──
+					):
+							lemmatized_tokens.append(token)  # Keep original case
+					else:
+							if len(tokens) > 1 and i < len(tokens) - 1:
+									wordnet_pos = nltk.corpus.wordnet.NOUN
+							else:
+									wordnet_pos = get_wordnet_pos(pos)
+
+							candidate = lemmatizer.lemmatize(token, pos=wordnet_pos)
+							if token.endswith("ss") and candidate == token[:-1]:
+									lemmatized_tokens.append(token)
+							else:
+									lemmatized_tokens.append(candidate)
+
+			return ' '.join(lemmatized_tokens)
+
+	def lemmatize_phrase_(phrase: str, original_phrase: str) -> str:
 		tokens = phrase.split()
 		original_tokens = original_phrase.split()		
 		pos_tags = nltk.pos_tag(tokens)
@@ -595,8 +631,7 @@ def _post_process_(
 				# continue
 
 		if verbose:
-			print(f"\n[Sample {idx+1}/{len(labels_list)}]")
-			print(f"{len(labels)} {type(labels)} {type(labels).__name__} {labels}")
+			print(f"\n[Sample {idx+1:8d}/{len(labels_list)}]\n{labels}")
 
 		# --- 1. Standardization: Ensure we have a list of strings ---
 		current_items = []
@@ -607,8 +642,6 @@ def _post_process_(
 			continue
 		elif isinstance(labels, list):
 			current_items = labels
-			if verbose:
-				print(f"  → Already a list with {len(current_items)} items")
 		elif isinstance(labels, str):
 			if verbose:
 				print(f"  → String detected, attempting to parse...")
@@ -632,18 +665,17 @@ def _post_process_(
 			if verbose:
 				print(f"  → Non-standard type ({type(labels)}), converting to string and wrapping")
 
-		if verbose:
-			print(f"  Current items after standardization: {current_items}")
+		if current_items != labels and verbose:
+			print(f"[STANDARDIZED] {len(current_items)} {type(current_items)} {current_items}")
 
 		# --- 2. Normalization & Lemmatization ---
-		clean_set = set() # Use set for automatic deduplication
-		
-		if verbose:
-			print(f"  Processing {len(current_items)} items...")
-		
+		clean_set = set()       # stores ORIGINAL case for output
+		seen_lower = set()      # stores lowercase keys for dedup
+
+
 		for item_idx, item in enumerate(current_items):
 			if verbose:
-				print(f"[{item_idx+1}] Original: {repr(item)} (type: {type(item).__name__})")
+				print(f"[{item_idx+1}/{len(current_items)}] {repr(item)}")
 			
 			if not item:
 				if verbose:
@@ -657,13 +689,13 @@ def _post_process_(
 			original_cleaned = original.strip('"').strip("'").strip('()').strip('[]')
 			original_cleaned = ' '.join(original_cleaned.split())
 
-			original_cleaned = normalize_label_format(original_cleaned)
-			if verbose:
-				print(f"        → After format normalization: {repr(original_cleaned)}")
+			original_cleaned_normalized = normalize_label_format(original_cleaned)
+			if original_cleaned != original_cleaned_normalized:
+				if verbose:
+					print(f"[NORMALIZED] {repr(original_cleaned_normalized)}")
+				original_cleaned = original_cleaned_normalized
 
-			s = original_cleaned#.lower()
-			# if verbose:
-			# 	print(f"        → After str/strip/lower: {repr(s)}")
+			s = original_cleaned
 			
 			# --- Lemmatization with guards ---
 			if is_quantified_plural(original_cleaned):
@@ -674,14 +706,10 @@ def _post_process_(
 				# lemma = s  # Preserve "two women", "three soldiers"
 				# if verbose:
 				# 	print(f"        → Quantified plural detected, preserving: {repr(lemma)}")
-			# elif is_title_like(original_cleaned):
-			# 	lemma = s  # Preserve "As You Like It", "United States Military Academy", "The Great Gatsby"
+			# elif is_named_facility(original_cleaned):
+			# 	lemma = s  # Preserve "Pease Air Force Base", "Truax Field"
 			# 	if verbose:
-			# 		print(f"        → Title-like phrase detected, preserving: {repr(lemma)}")
-			elif is_named_facility(original_cleaned):
-				lemma = s  # Preserve "Pease Air Force Base", "Truax Field"
-				if verbose:
-					print(f"        → Named facility detected, preserving: {repr(lemma)}")	
+			# 		print(f"        → Named facility detected, preserving: {repr(lemma)}")	
 			elif is_adjectival_phrase(original_cleaned):
 				lemma = s  # Preserve "newly built", "recently completed"
 				if verbose:
@@ -699,13 +727,13 @@ def _post_process_(
 				lemma = lemmatize_phrase(s, original_cleaned)
 				if verbose:
 					if lemma != s:
-						print(f"        → {repr(s)}: Lemmatized → {repr(lemma)} (changed)")
-					else:
-						print(f"        → {repr(s)}: Lemmatized → {repr(lemma)} (unchanged)")
+						print(f"[LEMMATIZED] {repr(lemma)}")
+					# else:
+					# 	print(f"        → {repr(s)}: Lemmatized → {repr(lemma)} (unchanged)")
 			
 			# Post-process the lemma
-			if verbose:
-				print(f">> Checking lemma: {repr(lemma)}")
+			# if verbose:
+			# 	print(f"[PROCESSING] {repr(lemma)}")
 
 			if lemma.endswith("ville"):
 				if verbose:
@@ -743,7 +771,7 @@ def _post_process_(
 				geo_entities = _extract_geographic_entities(lemma, verbose=verbose)
 				if geo_entities:
 					if verbose:
-						print(f"        → {repr(lemma)} Geographic entity [spaCy] {repr(geo_entities)}")
+						print(f"\t\t{repr(lemma)} [spaCy] GE detected {repr(geo_entities)} skipping")
 					continue
 
 			# # tokenized_lemma = re.split(r'[ .-]+', lemma.lower())   # split on space, hyphen or dot (U.S. Route 66)
@@ -768,11 +796,11 @@ def _post_process_(
 
 			if is_stopword(lemma):
 				if verbose:
-					print(f"        → {repr(lemma)} stopword detected, skipping")
+					print(f"        → {repr(lemma)} stopword, skipping")
 				continue
 
 			# Exclude pure color descriptors
-			if all(w in COLORS for w in lemma.split()):
+			if all(w.lower() in COLORS for w in lemma.split()):
 				if verbose:
 					print(f"        → {lemma} Color descriptor detected, skipping")
 				continue
@@ -780,7 +808,7 @@ def _post_process_(
 			# exclude honorifics
 			if any(w in HONORIFICS for w in lemma.lower().split()):
 				if verbose:
-					print(f"        → {lemma} honorific detected, skipping")
+					print(f"        → {repr(lemma)} honorific, skipping")
 				continue
 
 
@@ -812,16 +840,19 @@ def _post_process_(
 				continue
 
 			lemma_key = lemma.lower().strip()
-			if lemma_key in clean_set:
+			if lemma_key in seen_lower:
 				if verbose:
 					print(f"        → {lemma} Duplicate detected (key={lemma_key!r}), skipping")
 			else:
-				clean_set.add(lemma_key)
-				if verbose:
-					print(f"        → {repr(lemma)} Added to clean set (key={lemma_key!r})")
+				seen_lower.add(lemma_key)
+				clean_set.add(lemma)          # ← stores ORIGINAL case
+				# if verbose:
+				# 		print(f"\t\t[ADDED] {clean_set}")
 
-		if verbose:
-			print(f"clean_set: {len(clean_set)} {type(clean_set)}")
+
+
+		# if verbose:
+		# 	print(f"clean_set: {len(clean_set)} {type(clean_set)}")
 
 		# Convert back to list
 		result = list(clean_set) if clean_set else None
@@ -832,7 +863,7 @@ def _post_process_(
 				print(f"  Final output for sample {idx+1}: None (all items filtered)")
 				print(f"  Items: {len(current_items)} → 0 (removed {len(current_items)})")
 			else:
-				print(f"[FINAL] {type(result)} {len(result)}: {result} {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
+				print(f"[FINAL] {result} {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
 		
 	return processed_batch
 
