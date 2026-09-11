@@ -11,7 +11,7 @@ import threading
 import queue
 import pickle
 import multiprocessing
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 import matplotlib.pyplot as plt
 import nltk
 from tqdm import tqdm
@@ -54,6 +54,7 @@ import platform
 import shutil
 from sklearn.feature_extraction.text import TfidfVectorizer
 import concurrent.futures
+# from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, TimeoutError
 warnings.filterwarnings('ignore')
 
 # from skimage.filters.rank import entropy
@@ -73,7 +74,6 @@ from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score, precision_recall_curve, roc_curve, auc, f1_score, hamming_loss
 from sklearn.neighbors import NearestNeighbors
 
-from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, TimeoutError
 from requests.exceptions import RequestException
 import torchvision.transforms as T
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
@@ -1919,7 +1919,7 @@ def get_mean_std_rgb_img_multiprocessing(
 	sum_of_squares = torch.zeros(3, dtype=torch.float64)
 	count = 0
 
-	with ThreadPoolExecutor(max_workers=num_workers) as executor:  # Switch to threads for I/O
+	with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:  # Switch to threads for I/O
 		futures = []
 		for i in range(0, total_images, batch_size):
 			batch_paths = image_paths[i:i + batch_size]

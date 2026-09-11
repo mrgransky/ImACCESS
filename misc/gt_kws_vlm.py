@@ -1058,7 +1058,7 @@ def get_vlm_based_labels(
 		print(f"[INIT] Deduplication: {len(uniq_inputs)} unique images")
 	results: List[Optional[List[str]]] = [None] * len(uniq_inputs)
 
-	with ThreadPoolExecutor(max_workers=num_workers) as ex:
+	with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as ex:
 		verified_paths = list(
 			tqdm(
 				ex.map(verify, uniq_inputs), 
@@ -1126,7 +1126,7 @@ def get_vlm_based_labels(
 		batch_indices = valid_indices[b * batch_size:(b + 1) * batch_size]
 		batch_paths = [verified_paths[i] for i in batch_indices]
 
-		with ThreadPoolExecutor(max_workers=num_workers) as ex:
+		with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as ex:
 			batch_imgs = list(ex.map(_load_, batch_paths))
 		
 		valid_pairs = [

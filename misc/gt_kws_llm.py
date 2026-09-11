@@ -22,7 +22,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "Miltiano flag marching towards the Aragon front with the first columns of fighters, in Barcelona. A young militia officer with an abadera amongst the first columns of Republican fighters on his way to the front of Zaragoza, Barcelona." -llm "Qwen/Qwen3.6-27B" -v
+# python gt_kws_llm.py -desc "Miltiano flag marching towards the Aragon front with the first columns of fighters, in Barcelona. A young militia officer with an abadera amongst the first columns of Republican fighters on his way to the front of Zaragoza, Barcelona." -llm "Qwen/Qwen3.5-122B-A10B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -64,25 +64,25 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
 
 EXCLUDE:
-  - Generic war terms ('World War I', 'Vietnam War', 'post war era', 'Post-war', 'aftermath of World War II', 'War', 'battle').
-  - Quantities, counts, measurements, or numeric expressions (1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
-  - Equipment identifiers, serial numbers, brands, or models.
-  - Dates, times, years, decades, or any temporal references.
-  - Names of places, buildings, or structures (Plaza de Santiago, St. Louis Cathedral).
-  - Individual people's names or honorifics (A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
-  - Family relationship terms (mother, father, son, uncle).
-  - Generic human category nouns (man, men, woman, person, people, children).
-  - Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
-  - Ordinal numeral keywords (fourth, 1st, 115th).
-  - Roman numerals (I, II, IV, VIII).
-  - Nationalities, ethnicities, or religions.
-  - Misspelled keywords or non-standard spellings.
-  - Acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
-  - Underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
+	- Generic war terms ('World War I', 'Vietnam War', 'post war era', 'Post-war', 'aftermath of World War II', 'War', 'battle').
+	- Quantities, counts, measurements, or numeric expressions (1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
+	- Equipment identifiers, serial numbers, brands, or models.
+	- Dates, times, years, decades, or any temporal references.
+	- Names of places, buildings, or structures (Plaza de Santiago, St. Louis Cathedral).
+	- Individual people's names or honorifics (A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
+	- Family relationship terms (mother, father, son, uncle).
+	- Generic human category nouns (man, men, woman, person, people, children).
+	- Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
+	- Ordinal numeral keywords (fourth, 1st, 115th).
+	- Roman numerals (I, II, IV, VIII).
+	- Nationalities, ethnicities, or religions.
+	- Misspelled keywords or non-standard spellings.
+	- Acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
+	- Underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
 
 Color handling:
-  - Remove color only if it is purely descriptive (white truck, blue sky).
-  - Preserve color terms when they are part of a standardized or semantic label (Red Cross, Blue Cross gas shell, Green Berets).
+	- Remove color only if it is purely descriptive (white truck, blue sky).
+	- Preserve color terms when they are part of a standardized or semantic label (Red Cross, Blue Cross gas shell, Green Berets).
 
 Caption: {caption}"""
 
@@ -941,6 +941,17 @@ def get_llm_based_labels_debug(
 
 	return all_keywords
 
+def _split_batch(
+	indices: List[int],
+	prompts: List[str],
+) -> Tuple[List[int], List[str], List[int], List[str]]:
+	"""Split a batch into two roughly equal halves."""
+	mid = len(indices) // 2
+	return (
+		indices[:mid], prompts[:mid],
+		indices[mid:], prompts[mid:],
+	)
+
 def get_llm_based_labels(
 	model_id: str,
 	device: str,
@@ -949,7 +960,6 @@ def get_llm_based_labels(
 	max_kws: int,
 	csv_file: str,
 	num_workers: int,
-	mem_cleanup_th: int=95,
 	do_dedup: bool = True,
 	max_retries: int = 2,
 	quantization_bits: Optional[int]=None,
@@ -1111,7 +1121,7 @@ def get_llm_based_labels(
 					print(f"[FAILED] Parsing batch index {idx}: {e}")
 				return idx, None
 		
-		with ThreadPoolExecutor(max_workers=num_workers) as executor:
+		with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
 			futures = {executor.submit(_parse_one, i): i for i in range(len(decoded_batch))}
 			for future in as_completed(futures):
 				idx, parsed = future.result()
@@ -1129,99 +1139,118 @@ def get_llm_based_labels(
 	if verbose:
 		print(f"Batched {len(batches)} prompts into {len(batches)} batches of {batch_size} samples")
 
-	for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing (textual) batches", ncols=100)):
-		# Retry whole batch on failure (OOM or generation error)
-		for attempt in range(max_retries + 1):
-			if attempt > 0 and verbose:
-				print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for batch {batch_num + 1}")
-			try:
-				tokenized = tokenizer(
-					batch_prompts,
-					return_tensors="pt",
-					truncation=True,
-					max_length=4096,
-					padding=True,
-				)
-				if device != 'cpu':
-					tokenized = {k: v.to(device) for k, v in tokenized.items()}
+	# resilient batch processing loop
+	for bn, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing (textual) batches", ncols=120)):
+		# Use deque for O(1) popleft / appendleft
+		queue = deque([(batch_indices, batch_prompts)])
 
-				gen_kwargs = dict(
-					**tokenized,
-					max_new_tokens=max_generated_tks,
-					do_sample=TEMPERATURE > 0.0,
-					temperature=TEMPERATURE,
-					top_p=TOP_P,
-					pad_token_id=tokenizer.pad_token_id,
-					eos_token_id=tokenizer.eos_token_id,
-					use_cache=True,
-				)
-				# Generate response
-				with torch.no_grad():
-					with torch.amp.autocast(
-						device_type=device.type,
-						enabled=torch.cuda.is_available(),
-						dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-					):
-						outputs = model.generate(**gen_kwargs)
+		while queue:
+			current_indices, current_prompts = queue.popleft()
+			current_size = len(current_indices)
+			if current_size == 0:
+				continue
 
-				decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-				
-				# Parallel parsing per batch
-				parsed_dict = _parse_batch_parallel(
-					decoded_batch=decoded,
-					batch_indices=batch_indices,
-					batch_prompts=batch_prompts,
-					model_id_=model_id,
-					max_kws_=max_kws,
-					verbose_=verbose,
-				)
-				# Assign results back to unique_results
-				for idx, parsed in parsed_dict.items():
-					unique_results[idx] = parsed
-				# Successful batch => break out of retry loop
-				break
-			except Exception as e:
-				print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed:\n{e}")
-				if attempt < max_retries:
-					sleep_time = EXP_BACKOFF ** attempt
-					print(f"⏳ Waiting {sleep_time}s before retry...")
-					time.sleep(sleep_time)
+			tokenized = outputs = decoded = None
+			success = False
+			for attempt in range(max_retries + 1):
+					if attempt > 0 and verbose:
+							print(f"  🔄 Retry {attempt}/{max_retries} for sub-batch (size={current_size})")
+					try:
+							tokenized = tokenizer(
+									current_prompts,
+									return_tensors="pt",
+									truncation=True,
+									max_length=4096,
+									padding=True,
+							)
+							if device.type != "cpu":
+									tokenized = {k: v.to(device) for k, v in tokenized.items()}
+							gen_kwargs = dict(
+									**tokenized,
+									max_new_tokens=max_generated_tks,
+									do_sample=TEMPERATURE > 0.0,
+									temperature=TEMPERATURE,
+									top_p=TOP_P,
+									pad_token_id=tokenizer.pad_token_id,
+									eos_token_id=tokenizer.eos_token_id,
+									use_cache=True,
+							)
+							with torch.no_grad():
+									with torch.amp.autocast(
+											device_type=device.type,
+											enabled=torch.cuda.is_available(),
+											dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+									):
+											outputs = model.generate(**gen_kwargs)
+							decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+							parsed_dict = _parse_batch_parallel(
+									decoded_batch=decoded,
+									batch_indices=current_indices,
+									batch_prompts=current_prompts,
+									model_id_=model_id,
+									max_kws_=max_kws,
+									verbose_=verbose,
+							)
+							for idx, parsed in parsed_dict.items():
+									unique_results[idx] = parsed
+							success = True
+							break  # Success
+					except RuntimeError as e:
+							err_msg = str(e).lower()
+							is_oom = "out of memory" in err_msg or "cuda out of memory" in err_msg
+							if not is_oom:
+								raise  # Re-raise non-OOM errors
+							if verbose:
+								print(f"  ❌ OOM on sub-batch size={current_size}, attempt {attempt+1}")
+							# Heavy cleanup only on OOM
+							if tokenized is not None:
+								del tokenized
+							if outputs is not None:
+								del outputs
+							if decoded is not None:
+								del decoded
+							tokenized = outputs = decoded = None
+							gc.collect()
+							if torch.cuda.is_available():
+								torch.cuda.empty_cache()
+								torch.cuda.synchronize()
+							if attempt < max_retries:
+									sleep_time = EXP_BACKOFF ** attempt
+									time.sleep(sleep_time)
+							else:
+								# Retries exhausted → split
+								if current_size > 1:
+									left_idx, left_prompt, right_idx, right_prompt = _split_batch(current_indices, current_prompts)
+									queue.appendleft((right_idx, right_prompt))
+									queue.appendleft((left_idx, left_prompt))
+									if verbose:
+										print(f"Splitting size {current_size} → {len(left_idx)} + {len(right_idx)}")
+								else:
+										# Truly failed single sample
+										idx = current_indices[0]
+										unique_results[idx] = None
+										if verbose:
+											print(f"  💥 Single sample {idx} failed with OOM")
+								break
+					finally:
+						# Lightweight guaranteed cleanup (no heavy GC here)
+						if tokenized is not None:
+							del tokenized
+						if outputs is not None:
+							del outputs
+						if decoded is not None:
+							del decoded
+						tokenized = outputs = decoded = None
 
-					# Clean up CUDA cache if available
-					gc.collect()
-					if torch.cuda.is_available():
-						torch.cuda.empty_cache()
-				else:
-					print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
-					for idx in batch_indices:
-						unique_results[idx] = None
-		
-		# Clean up batch tensors immediately after use
-		del tokenized, outputs, decoded
-		
-		# memory management
-		need_cleanup = False
-		memory_consumed_percent = 0
-		if verbose:
-			print(f"[MEM] BATCH {batch_num}")
-		for device_idx in range(torch.cuda.device_count()):
-			mem_total = torch.cuda.get_device_properties(device_idx).total_memory / (1024**3) 
-			mem_allocated = torch.cuda.memory_allocated(device_idx) / (1024**3)
-			mem_reserved = torch.cuda.memory_reserved(device_idx) / (1024**3)	
-			mem_usage_pct = (mem_reserved / mem_total) * 100 if mem_total > 0 else 0
-			if verbose:
-				print(
-					f"  └─ GPU [{device_idx}] {mem_usage_pct:.2f}% usage: "
-					f"{mem_allocated:.2f}GB alloc / {mem_reserved:.2f}GB reserved (Total: {mem_total:.1f}GB)"
-				)
-			if mem_usage_pct > mem_cleanup_th: 
-				need_cleanup = True
-				memory_consumed_percent += mem_usage_pct
-
-		if need_cleanup:
-			print(f"[WARN] High memory usage ({memory_consumed_percent:.1f}% > {mem_cleanup_th}%) => Clearing cache...")
+		# Periodic heavier cleanup (every 25 batches) to limit fragmentation
+		if torch.cuda.is_available() and (bn + 1) % 25 == 0:
 			gc.collect()
-			torch.cuda.empty_cache() # clears all GPUs
+			torch.cuda.empty_cache()
+			if verbose:
+				for device_idx in range(torch.cuda.device_count()):
+					mem_reserved = torch.cuda.memory_reserved(device_idx) / (1024**3)
+					mem_total = torch.cuda.get_device_properties(device_idx).total_memory / (1024**3)
+					print(f"  [MEM] GPU [{device_idx}] reserved: {mem_reserved:.1f}/{mem_total:.1f} GB")
 
 	# HYBRID FALLBACK: Retry failed items individually with query_local_llm
 	failed_indices = [
