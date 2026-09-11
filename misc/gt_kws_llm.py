@@ -462,13 +462,9 @@ def _load_llm_(
 		pprint.pprint(model_kwargs)
 		print("-"*70)
 
+	loader = tfs.AutoModelForCausalLM if use_auto_model else model_cls
 	try:
-		if use_auto_model:
-			model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
-		else:
-			if verbose:
-				print(f"[WARNING] Using non-AutoModel class [ {model_cls.__name__} ]")
-			model = model_cls.from_pretrained(model_id, **model_kwargs)
+		model = loader.from_pretrained(model_id, **model_kwargs)
 	except Exception as e:
 		if verbose: print(f"[ERROR] Error loading model {model_id}:\n{e}")
 		raise e	
