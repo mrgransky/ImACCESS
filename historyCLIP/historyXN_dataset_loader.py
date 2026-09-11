@@ -208,7 +208,7 @@ class HistoricalArchivesSingleLabelDataset(Dataset):
 				return idx, None
 		
 		# Load images in parallel
-		with ThreadPoolExecutor(max_workers=num_workers) as executor:
+		with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
 			futures = [executor.submit(load_image, idx) for idx in indices_to_load]
 			
 			for future in concurrent.futures.as_completed(futures):
@@ -380,7 +380,7 @@ class ImageCache:
 				return idx, None
 		
 		# Load images in parallel
-		with ThreadPoolExecutor(max_workers=num_workers) as executor:
+		with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
 			futures = [executor.submit(load_image, idx) for idx in indices_to_load]
 			
 			for future in concurrent.futures.as_completed(futures):

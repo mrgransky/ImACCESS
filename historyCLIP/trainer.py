@@ -26,7 +26,7 @@ from historyXN_dataset_loader import get_single_label_dataloaders, get_multi_lab
 # $ nohup python -u trainer.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_single_label.csv -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -fts progressive -a "ViT-B/32" -mphbs 3 -mepph 5 -tnp 8 > logs/europeana_ft_progressive.txt &
 
 # multi-label [local]:
-# python trainer.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -v -c multimodal_canonical_labels -stg lora -lor 4 -loa 8 -lod 0.05
+# python trainer.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -v -c multimodal_canonical_labels -stg rslora -lor 4 -loa 8 -lod 0.05
 
 # multi-label [Puhti]:
 # $ python trainer.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_multimodal.csv -c multimodal_canonical_labels -stg full
@@ -412,7 +412,6 @@ def main():
 			verbose=args.verbose,
 		)
 
-		# Temporary due to lack of disk space
 		clean_cache(
 			directory=RESULT_DIRECTORY, 
 			strategy=strategy_name, 

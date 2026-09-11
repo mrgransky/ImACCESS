@@ -182,8 +182,14 @@ def _load_llm_(
 
 	def _optimal_attn_impl() -> str:
 		if not torch.cuda.is_available():
-				return "eager"
+			return "eager"
 		
+		# Bypass flash-attn for gpt-oss to prevent transformers hub_kernels version-locking crashes
+		if getattr(config, "model_type", None) == "gpt_oss" or "gpt-oss" in model_id.lower():
+			if verbose:
+				print("[INFO] gpt_oss detected: defaulting to 'sdpa' to bypass hub `kernels` requirement")
+			return "sdpa"
+
 		# Custom/non-standard architectures often don't support sdpa/flash
 		if use_auto_model or (config.architectures and config.architectures[0] not in dir(tfs)):
 			if verbose:
@@ -211,12 +217,13 @@ def _load_llm_(
 		
 		# ── SDPA: probe whether this architecture actually supports it ──
 		if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
-				sdpa_supported = getattr(model_cls, "_supports_sdpa", False)
-				if sdpa_supported:
-						if verbose: print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
-						return "sdpa"
-				else:
-						if verbose: print(f"[INFO] {config.architectures[0]} does not declare _supports_sdpa — falling back to 'eager'")
+			sdpa_supported = getattr(model_cls, "_supports_sdpa", False)
+			if sdpa_supported:
+				if verbose: print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
+				return "sdpa"
+			else:
+				if verbose: print(f"[INFO] {config.architectures[0]} does not declare _supports_sdpa — falling back to 'eager'")
+
 		return "eager"
 
 	attn_impl = _optimal_attn_impl()
@@ -460,10 +467,10 @@ def _load_llm_(
 			model = tfs.AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
 		else:
 			if verbose:
-				print(f"[LOADING] {model_cls.__name__}")
+				print(f"[WARNING] Using non-AutoModel class [ {model_cls.__name__} ]")
 			model = model_cls.from_pretrained(model_id, **model_kwargs)
 	except Exception as e:
-		if verbose: print(f"[ERROR] Error loading model:\n{e}")
+		if verbose: print(f"[ERROR] Error loading model {model_id}:\n{e}")
 		raise e	
 
 	model.eval()
