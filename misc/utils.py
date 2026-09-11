@@ -1827,7 +1827,7 @@ def get_synchronized_df_img(
 				): idx for idx, row in df.iterrows()
 			}
 			
-			for future in as_completed(futures):
+			for future in concurrent.futures.as_completed(futures):
 				original_df_idx = futures[future]
 				try:
 					success = future.result()
@@ -1926,7 +1926,7 @@ def get_mean_std_rgb_img_multiprocessing(
 			batch_futures = [executor.submit(process_rgb_image, path, transform) for path in batch_paths]
 			futures.extend(batch_futures)
 
-		for future in tqdm(as_completed(futures), total=len(futures), desc="Processing Batches"):
+		for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing Batches"):
 			try:
 				result = future.result(timeout=TIMEOUT)
 				if result:

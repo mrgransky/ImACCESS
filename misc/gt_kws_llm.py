@@ -1123,7 +1123,7 @@ def get_llm_based_labels(
 		
 		with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
 			futures = {executor.submit(_parse_one, i): i for i in range(len(decoded_batch))}
-			for future in as_completed(futures):
+			for future in concurrent.futures.as_completed(futures):
 				idx, parsed = future.result()
 				results_dict[idx] = parsed
 		

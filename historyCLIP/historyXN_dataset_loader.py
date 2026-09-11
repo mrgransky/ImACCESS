@@ -211,7 +211,7 @@ class HistoricalArchivesSingleLabelDataset(Dataset):
 		with ThreadPoolExecutor(max_workers=num_workers) as executor:
 			futures = [executor.submit(load_image, idx) for idx in indices_to_load]
 			
-			for future in as_completed(futures):
+			for future in concurrent.futures.as_completed(futures):
 				idx, img_array = future.result()
 				if img_array is not None:
 					with self.lock:
@@ -383,7 +383,7 @@ class ImageCache:
 		with ThreadPoolExecutor(max_workers=num_workers) as executor:
 			futures = [executor.submit(load_image, idx) for idx in indices_to_load]
 			
-			for future in as_completed(futures):
+			for future in concurrent.futures.as_completed(futures):
 				idx, img_array = future.result()
 				if img_array is not None:
 					with self.lock:
