@@ -465,8 +465,8 @@ def _load_llm_(
 	loader = tfs.AutoModelForCausalLM if use_auto_model else model_cls
 	try:
 		model = loader.from_pretrained(model_id, **model_kwargs)
-	except Exception as e:
-		if verbose: print(f"[ERROR] Error loading model {model_id}:\n{e}")
+	except (ImportError, ValueError) as e:
+		if verbose: print(f"[ERROR] loading model {model_id}:\n{e}")
 		raise e	
 
 	model.eval()
