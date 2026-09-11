@@ -466,8 +466,18 @@ def _load_llm_(
 	try:
 		model = loader.from_pretrained(model_id, **model_kwargs)
 	except (ImportError, ValueError) as e:
-		if verbose: print(f"[ERROR] loading model {model_id}:\n{e}")
-		raise e	
+		if verbose: print(f"[ERROR] loading model {model_id}\n{e}")
+		err_text = str(e).lower()
+		if any(term in err_text for term in ["kernel", "flash", "attn"]) and model_kwargs.get("attn_implementation") != "eager":
+			fallback = "sdpa" if model_kwargs["attn_implementation"] != "sdpa" else "eager"
+			if verbose:
+				print(f"\n[WARN] Failed with attn_implementation='{model_kwargs['attn_implementation']}'. Retrying with '{fallback}'...")
+			model_kwargs["attn_implementation"] = fallback
+			model = loader.from_pretrained(model_id, **model_kwargs)
+		else:
+			if verbose: print(f"[ERROR] loading model {model_id}\n{e}")
+			raise e
+
 
 	model.eval()
 	
