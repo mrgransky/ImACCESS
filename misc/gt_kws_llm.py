@@ -59,7 +59,7 @@ STOPWORDS.update(geographic_references)
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
-Return your response as a Python list of double-quoted strings containing keywords derived strictly from the caption.
+Return your response as a Python list of double-quoted strings containing keywords derived strictly from the caption without any reasoning, thinking, or explanation.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
 
@@ -188,7 +188,7 @@ def _load_llm_(
 		if getattr(config, "model_type", None) == "gpt_oss" or "gpt-oss" in model_id.lower():
 			if verbose:
 				print("[INFO] gpt_oss detected: defaulting to 'sdpa' to bypass hub `kernels` requirement")
-			return "sdpa"
+			return "eager"
 
 		# Custom/non-standard architectures often don't support sdpa/flash
 		if use_auto_model or (config.architectures and config.architectures[0] not in dir(tfs)):
@@ -466,7 +466,7 @@ def _load_llm_(
 	try:
 		model = loader.from_pretrained(model_id, **model_kwargs)
 	except (ImportError, ValueError) as e:
-		if verbose: print(f"[ERROR] loading model {model_id}\n{e}")
+		# if verbose: print(f"[ERROR] loading model {model_id}\n{e}")
 		err_text = str(e).lower()
 		if any(term in err_text for term in ["kernel", "flash", "attn"]) and model_kwargs.get("attn_implementation") != "eager":
 			fallback = "sdpa" if model_kwargs["attn_implementation"] != "sdpa" else "eager"
