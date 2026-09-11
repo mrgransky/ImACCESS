@@ -12,7 +12,7 @@
 #SBATCH --partition=gpularge
 #SBATCH --time=01-12:00:00
 #SBATCH --gres=gpu:gh200:4
-#SBATCH --array=0
+#SBATCH --array=3
 
 set -euo pipefail
 
@@ -48,7 +48,7 @@ echo "Detected $NUM_GPUS GPUs, selecting model configuration"
 if [ "$NUM_GPUS" -gt 1 ]; then
 	echo "LARGE models (multi-GPU configuration)"
 	#MLM_MODEL="Qwen/Qwen3.6-35B-A3B" # not a good model
-	MLM_MODEL="Qwen/Qwen3.6-27B"
+	MLM_MODEL="Qwen/Qwen3.5-122B-A10B"
 	LLM_MAX_GENERATED_TOKENS=192
 	VLM_MAX_GENERATED_TOKENS=192
 else
@@ -69,7 +69,7 @@ DATASETS=(
 )
 CSV_FILE=${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv
 LLM_BATCH_SIZES=(32 6 18 24 28)
-VLM_BATCH_SIZES=(92 48 48 48 48)
+VLM_BATCH_SIZES=(92 48 48 32 48)
 
 echo "Running Multimodal Annotation on $CSV_FILE"
 echo "MLM: $MLM_MODEL"
