@@ -1082,10 +1082,10 @@ def get_validation_metrics(
 		cache_dir,
 		# f"{dataset_name}_"
 		f"{finetune_strategy}_"
+		f"{model_arch_name.replace('/', '_')}_"
 		f"bs_{validation_loader.batch_size}_"
 		f"nw_{num_workers}_"
 		# f"{model_class_name}_"
-		f"{model_arch_name.replace('/', '_')}_"
 		f"val_emb.pt"
 	)
 
@@ -1698,74 +1698,6 @@ def get_embeddings(
 	else:
 		if verbose:
 			print(f"[SKIP] Cache file intentionally NOT saved to disk: {cache_file}")
-
-	return all_image_embeds, all_labels
-
-def get_embeddings_without_disk_check(
-	model: torch.nn.Module,
-	validation_loader: DataLoader,
-	device: torch.device,
-	cache_file: str,
-	max_batches=None,
-	verbose: bool=False,
-):
-	if verbose:
-		print("[EMBEDDINGS] from scratch [takes a while] ...")
-
-	t0 = time.time()
-	all_image_embeds, all_labels = list(), []
-	model = model.to(device)
-	model.eval()
-
-	batch_count = 0
-	with torch.no_grad():
-		for images, _, labels_indices in validation_loader:
-			if max_batches and batch_count >= max_batches:
-				print(f"Stopping at batch {batch_count} due to max_batches limit")
-				break
-
-			if batch_count % 50 == 0:
-				high_mem = monitor_memory_usage(operation_name=f"Batch {batch_count}")
-				if high_mem:
-					torch.cuda.empty_cache()
-
-			images = images.to(device, non_blocking=True)
-			if device.type == "cuda":
-				images = images.half() # 
-
-			with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
-				image_embeds = model.encode_image(images)
-				image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
-
-			# offload to CPU
-			image_embeds = image_embeds.cpu()
-
-			all_image_embeds.append(image_embeds)
-			all_labels.append(labels_indices.cpu())
-
-			# Explicit cleanup
-			del images, image_embeds, labels_indices
-			if batch_count % 100 == 0:
-				torch.cuda.empty_cache()
-
-			batch_count += 1
-
-	if not all_image_embeds:
-		raise RuntimeError("No image embeddings computed — possible failure in all batches.")
-
-	all_image_embeds = torch.cat(all_image_embeds, dim=0)
-	all_labels = torch.cat(all_labels, dim=0)
-
-	if verbose:
-		print(f"Elapsed: {time.time() - t0:.1f} s")
-
-	try:
-		torch.save({'image_embeds': all_image_embeds, 'labels': all_labels}, cache_file)
-		if verbose:
-			print(f"[SAVED] {cache_file}")
-	except Exception as e:
-		if verbose:
-			print(f"<!> ERROR Cache saving failed: {e}")
 
 	return all_image_embeds, all_labels
 
