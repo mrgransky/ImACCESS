@@ -419,9 +419,7 @@ def _load_vlm_(
 	if verbose:
 		print(f"\n[INFO] {strategy_desc}")
 		if max_memory:
-			print(f"Max memory per GPU:")
-			for gpu_id, limit in max_memory.items():
-				print(f"\tGPU {gpu_id}: {limit}")
+			print(f"Max memory per GPU: {max_memory}")
 	
 	# ========== Base Model Loading Kwargs ==========
 	base_model_kwargs: Dict[str, Any] = {
