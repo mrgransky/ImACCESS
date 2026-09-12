@@ -4,7 +4,7 @@ import ast
 import math
 import json
 import nltk
-
+import time
 # Load spaCy model at module level (after other imports)
 try:
 	import spacy
@@ -18,7 +18,6 @@ except Exception as e:
 import pandas as pd
 from collections import Counter
 from typing import List, Optional, Set
-
 # Install: pip install lingua-language-detector
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
 
@@ -141,7 +140,7 @@ def _post_process_(
 	max_kw_word_length: int = 5,
 	verbose: bool = False,
 ) -> List[List[str]]:
-
+	t0 = time.time()
 	if verbose:
 		print(f"\n[POST-PROCESSING]")
 		print(f"  Column: {col}")
@@ -155,11 +154,6 @@ def _post_process_(
 		return labels_list
 
 	# CONTEXT-AWARE FILTERING
-	NUMBER_WORDS = {
-		"one", "two", "three", "four", "five",
-		"six", "seven", "eight", "nine", "ten"
-	}
-
 	PROTECTED_ABBREVIATIONS = {
 		'us', 'uk', 'un', 'eu', 'nato', 'usaf', 'usn', 'raf',
 		'ussr', 'usa', 'uss', 'hms', 'rms', 'nasa', 'fbi', 'cia'
@@ -252,15 +246,20 @@ def _post_process_(
 		"madame",
 	}
 
+	_spacy_cache: Dict[str, Set[str]] = {}
+
 	def _extract_geographic_entities(text: str, verbose: bool = False) -> Set[str]:
-		"""
-		Extract geographic entities using spaCy NER.
-		Returns set of geographic references, PRESERVING ORIGINAL CASE.
-		"""
+		# Check cache first
+		cache_key = text.lower().strip()
+		if cache_key in _spacy_cache:
+			if verbose:
+				print(f"\t\t[spaCy NER] CACHE HIT: {text!r}")
+			return _spacy_cache[cache_key]
+
 		if nlp_spacy is None:
-				if verbose:
-						print(f"\t\t[spaCy: {spacy_model_id} NER] model not loaded, returning empty set")
-				return set()
+			if verbose:
+				print(f"\t\t[spaCy: {spacy_model_id} NER] model not loaded, returning empty set")
+			return set()
 		
 		GEO_LABELS = {"GPE", "LOC"}
 		
@@ -307,7 +306,8 @@ def _post_process_(
 		
 		# Combine both sets (original case preserved)
 		final_result = gpe_texts | embedded_gpes
-		
+		_spacy_cache[cache_key] = final_result
+
 		if len(final_result) > 0 and verbose:
 			print(f"\t\t[spaCy: {spacy_model_id} NER] Final combined result ({len(final_result)} items): {final_result}")
 		
@@ -709,13 +709,6 @@ def _post_process_(
 			# 		print(f"        → {repr(lemma)} Geographic reference detected, skipping")
 			# 	continue
 
-			if nlp_spacy is not None:
-				geo_entities = _extract_geographic_entities(lemma, verbose=verbose)
-				if geo_entities:
-					if verbose:
-						print(f"\t\t{repr(lemma)} [spaCy] GE detected {repr(geo_entities)} skipping")
-					continue
-
 			if is_phrasal_verb(lemma):
 				if verbose:
 					print(f"        → {lemma} Phrasal verb detected, skipping")
@@ -765,6 +758,13 @@ def _post_process_(
 					print(f"        → {lemma} Only NNNNN foot detected, skipping")
 				continue
 
+			if nlp_spacy is not None:
+				geo_entities = _extract_geographic_entities(lemma, verbose=verbose)
+				if geo_entities:
+					if verbose:
+						print(f"\t\t{repr(lemma)} [spaCy] GE detected {repr(geo_entities)} skipping")
+					continue
+
 			lemma_key = lemma.lower().strip()
 			if lemma_key in seen_lower:
 				if verbose:
@@ -783,7 +783,8 @@ def _post_process_(
 				print(f"  Items: {len(current_items)} → 0 (removed {len(current_items)})")
 			else:
 				print(f"[FINAL] {result} {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
-		
+			print(f"[ELAPSED] {time.time() - t0:.1f} sec")
+
 	return processed_batch
 
 def is_english(
