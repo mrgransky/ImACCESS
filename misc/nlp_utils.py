@@ -626,7 +626,7 @@ def _post_process_(
 			
 			if not item:
 				if verbose:
-					print(f"        → Empty/false, skipping")
+					print(f"        [SKIP] Empty/false")
 				continue
 			
 			# Capture the raw string
@@ -680,96 +680,96 @@ def _post_process_(
 			
 			if lemma.endswith("ville"):
 				if verbose:
-					print(f"        → {repr(lemma)} ends with 'ville', skipping")
+					print(f"\t\t[SKIPPED] {repr(lemma)} ends with 'ville'")
 				continue
 
 			if lemma.isupper():
 				if verbose:
-					print(f"        → {repr(lemma)} All uppercase detected, skipping")
+					print(f"\t\t[SKIPPED] {repr(lemma)} All uppercase")
 				continue
 
 			if len(lemma) < min_kw_ch_length:
 				if verbose:
-					print(f"        → {lemma} Too short (len={len(lemma)} < {min_kw_ch_length}), skipping")
+					print(f"\t\t[SKIPPED] {repr(lemma)} Too short (len={len(lemma)} < {min_kw_ch_length})")
 				continue
 
 			if len(lemma.split()) > max_kw_word_length:
 				if verbose:
-					print(f"        → {lemma} Too long (len={len(lemma.split())} > {max_kw_word_length}), skipping")
+					print(f"\t\t[SKIPPED] {repr(lemma)} Too long (len={len(lemma.split())} > {max_kw_word_length})")
 				continue
 
 			# check if digit is in the lemma: (extremely strict)
 			if any(c.isdigit() for c in lemma):
 				if verbose:
-					print(f"        → {lemma} Digit detected, skipping")
+					print(f"\t\t[SKIPPED] {repr(lemma)} digit")
 				continue
 
 			# # check for geographic references:
 			# if any(lm in geographic_references for lm in lemma.lower().split()):
 			# 	if verbose:
-			# 		print(f"        → {repr(lemma)} Geographic reference detected, skipping")
+			# 		print(f"\t\t[SKIPPED] {repr(lemma)} Geographic reference")
 			# 	continue
 
 			if is_phrasal_verb(lemma):
 				if verbose:
-					print(f"        → {lemma} Phrasal verb detected, skipping")
+					print(f"\t\t[SKIPPED] {repr(lemma)} Phrasal verb")
 				continue
 
 			if is_stopword(lemma):
 				if verbose:
-					print(f"        → {repr(lemma)} stopword, skipping")
+					print(f"\t\t[SKIPPED] {repr(lemma)} {repr(lemma)} stopword")
 				continue
 
 			# Exclude pure color descriptors
 			if all(w.lower() in COLORS for w in lemma.split()):
 				if verbose:
-					print(f"        → {lemma} Color descriptor detected, skipping")
+					print(f"\t\t[SKIPPED] {repr(lemma)} Color descriptor")
 				continue
 
 			# exclude honorifics
 			if any(w in HONORIFICS for w in lemma.lower().split()):
 				if verbose:
-					print(f"        → {repr(lemma)} honorific, skipping")
+					print(f"\t\t[SKIPPED] {repr(lemma)} {repr(lemma)} honorific")
 				continue
 
 			# Exclude "black and white" specifically
 			if lemma.lower() in {"black and white", "black & white", "B/W", "B&W", 'B and W'}:
 				if verbose:
-					print(f"        → {lemma} Black and white detected, skipping")
+					print(f"\t\t[SKIPPED] {repr(lemma)}")
 				continue
 
 			if should_filter_label(lemma):
 				if verbose:
-					print(f"    ✗ Skipped: '{lemma}' as irrelevant!")
+					print(f"\t\t[SKIPPED] {repr(lemma)} irrelevant!")
 				continue
 
 			# only No. NNNNN ex) No. X1657 or No. 1657
 			if re.match(r"^No\.\s\w+$", lemma, re.IGNORECASE):
 				if verbose:
-					print(f"        → {lemma} Only No. NNNNN detected, skipping")
+					print(f"\t\t[SKIPPED] {repr(lemma)} Only No. NNNNN")
 				continue
 
 			if re.match(r'^\d+\sfeet$', lemma, re.IGNORECASE) or re.match(r'^\d+\sft$', lemma, re.IGNORECASE):
 				if verbose:
-					print(f"        → {lemma} Only NNNNN feet/ft detected, skipping")
+					print(f"\t\t[SKIPPED] {repr(lemma)} Only NNNNN feet/ft")
 				continue
 
 			if re.match(r'^\d+\sfoot$', lemma, re.IGNORECASE):
 				if verbose:
-					print(f"        → {lemma} Only NNNNN foot detected, skipping")
+					print(f"\t\t[SKIPPED] {repr(lemma)} Only NNNNN foot")
 				continue
 
 			if nlp_spacy is not None:
 				geo_entities = _extract_geographic_entities(lemma, verbose=verbose)
 				if geo_entities:
 					if verbose:
-						print(f"\t\t{repr(lemma)} [spaCy] GE detected {repr(geo_entities)} skipping")
+						print(f"\t\t[SKIPPED] {repr(lemma)} [spaCy] GE detected {repr(geo_entities)}")
 					continue
 
 			lemma_key = lemma.lower().strip()
 			if lemma_key in seen_lower:
 				if verbose:
-					print(f"        → {lemma} Duplicate detected (key={lemma_key!r}), skipping")
+					print(f"\t\t[SKIPPED] {repr(lemma)} Duplicate detected (key={lemma_key!r})")
 			else:
 				seen_lower.add(lemma_key)
 				clean_set.add(lemma)          # ← stores ORIGINAL case
@@ -779,11 +779,11 @@ def _post_process_(
 		processed_batch.append(result)
 		
 		if verbose:
+			print("[FINAL]", end="\t")
 			if result is None:
-				print(f"  Final output for sample {idx+1}: None (all items filtered)")
-				print(f"  Items: {len(current_items)} → 0 (removed {len(current_items)})")
+				print(f"Sample {idx+1}: None (all items filtered) {len(current_items)} → 0 (removed {len(current_items)})")
 			else:
-				print(f"[FINAL] {result} {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
+				print(f"{result} {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
 			print(f"[ELAPSED] {time.time() - t0:.5f} sec")
 
 	return processed_batch
