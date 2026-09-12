@@ -140,7 +140,7 @@ def _post_process_(
 	max_kw_word_length: int = 5,
 	verbose: bool = False,
 ) -> List[List[str]]:
-	t0 = time.time()
+	
 	if verbose:
 		print(f"\n[POST-PROCESSING]")
 		print(f"  Column: {col}")
@@ -557,6 +557,7 @@ def _post_process_(
 
 	processed_batch = []
 	for idx, labels in enumerate(labels_list):
+		t0 = time.time()
 		if labels is None:
 			processed_batch.append(None)
 			continue
@@ -783,7 +784,7 @@ def _post_process_(
 				print(f"  Items: {len(current_items)} → 0 (removed {len(current_items)})")
 			else:
 				print(f"[FINAL] {result} {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
-			print(f"[ELAPSED] {time.time() - t0:.1f} sec")
+			print(f"[ELAPSED] {time.time() - t0:.5f} sec")
 
 	return processed_batch
 
