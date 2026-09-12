@@ -2909,19 +2909,19 @@ def cluster(
 
 	model = SentenceTransformer(
 		model_name_or_path=model_id,
-		model_kwargs={"attn_implementation": attn_impl, "dtype": dtype, "device_map": "auto"} if "Qwen" in model_id else {},
+		model_kwargs={"attn_implementation": attn_impl, "dtype": dtype},  # ← no device_map
 		trust_remote_code=True,
-		device=device,
+		device=device,                                                     # ← single device
 		cache_folder=cache_directory[os.getenv('USER')],
 		token=os.getenv("HUGGINGFACE_TOKEN"),
-		tokenizer_kwargs={"padding_side": "left"},
+		processor_kwargs={"padding_side": "left"},                        # ← renamed from tokenizer_kwargs
 	)
 
 	if verbose:
 		print(
 			f"[ENCODING] {len(unique_labels)} unique labels "
-			f"with {model_id} :"
-			f"{sum(p.numel() for p in model.parameters()):,} parameters"
+			f"with {model_id} "
+			f"({sum(p.numel() for p in model.parameters()):,} parameters)"
 		)
 
 	X = model.encode(
