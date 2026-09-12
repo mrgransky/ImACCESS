@@ -1,19 +1,6 @@
 from utils import *
 from nlp_utils import get_enriched_description
 
-# better models:
-# model_id = "Qwen/Qwen3-4B-Instruct-2507"
-# model_id = "mistralai/Mistral-7B-Instruct-v0.3"
-# model_id = "mistralai/Mixtral-8x7B-Instruct-v0.1"
-# model_id = "microsoft/Phi-4-mini-instruct"
-# model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
-# model_id = "NousResearch/Hermes-2-Pro-Mistral-7B"
-# model_id = "allenai/Olmo-3-7B-Instruct"
-# model_id = "google/flan-t5-xxl"
-
-# Qwen/Qwen3-30B-A3B-Instruct-2507 # multi-gpu required
-# Qwen/Qwen3-Next-80B-A3B-Instruct # multi-gpu required
-
 # how to run [local]:
 # python gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -qb 8 -v -bs 2
 
@@ -40,10 +27,13 @@ if not hasattr(tfs.utils, "FlashAttentionKwargs"):
 		pass
 	tfs.utils.FlashAttentionKwargs = FlashAttentionKwargs
 
+# Hyperparameter defaults from module scope (falls back if undefined)
 TEMPERATURE = 1e-8
 TOP_P = 0.9
 MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
+RETRY_BATCH_SIZE = 8       # Safe micro-batch size for retries
+RETRY_MAX_LENGTH = 4096    # Full prompt length preserved to avoid cutting off captions
 
 # STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
 STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
@@ -64,53 +54,27 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
 
 EXCLUDE:
-	- Generic war terms ('World War I', 'Vietnam War', 'post war era', 'Post-war', 'aftermath of World War II', 'War', 'battle').
-	- Quantities, counts, measurements, or numeric expressions (1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
-	- Equipment identifiers, serial numbers, brands, or models.
-	- Dates, times, years, decades, or any temporal references.
-	- Names of places, buildings, or structures (Plaza de Santiago, St. Louis Cathedral).
-	- Individual people's names or honorifics (A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
-	- Family relationship terms (mother, father, son, uncle).
-	- Generic human category nouns (man, men, woman, person, people, children).
-	- Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
-	- Ordinal numeral keywords (fourth, 1st, 115th).
-	- Roman numerals (I, II, IV, VIII).
-	- Nationalities, ethnicities, or religions.
-	- Misspelled keywords or non-standard spellings.
-	- Acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
-	- Underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
+  - Generic war terms ('World War I', 'Vietnam War', 'post war era', 'Post-war', 'aftermath of World War II', 'War', 'battle').
+  - Quantities, counts, measurements, or numeric expressions (1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
+  - Equipment identifiers, serial numbers, brands, or models.
+  - Dates, times, years, decades, or any temporal references.
+  - Names of locations, places, buildings, or structures (Plaza de Santiago, St. Louis Cathedral).
+  - Individual people's names or honorifics (A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
+  - Family relationship terms (mother, father, son, uncle).
+  - Generic human category nouns (man, men, woman, person, people, children).
+  - Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
+  - Ordinal numeral keywords (fourth, 1st, 115th).
+  - Roman numerals (I, II, IV, VIII).
+  - Nationalities, ethnicities, or religions.
+  - Misspelled keywords or non-standard spellings.
+  - Acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
+  - Underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
 
 Color handling:
-	- Remove color only if it is purely descriptive (white truck, blue sky).
-	- Preserve color terms when they are part of a standardized or semantic label (Red Cross, Blue Cross gas shell, Green Berets).
+  - Remove color only if it is purely descriptive (white truck, blue sky).
+  - Preserve color terms when they are part of a standardized or semantic label (Red Cross, Blue Cross gas shell, Green Berets).
 
 Caption: {caption}"""
-
-# Example:
-#   - "truck" instead of "white truck"
-#   - "nurse" instead of "nurse checking blood pressure"
-#   - "pilot" instead of "pilot Charles Matheson"
-#   - "Oberleutnant" instead of "Oberleutnant Bruno Kikillus"
-#   - "squadron" instead of "No. 10 Squadron RAAF"
-#   - "Corporal" instead of "Corporal Genevieve Wade"
-#   - "seaplane" instead of "seaplane on the water in the background"
-#   - "airplane" instead of "airplane in flight"
-#   - "airport" instead of "airport in the background"
-#   - "manufacturing loom" instead of "manufacturing looms for the government"
-#   - "mountain" instead of "Eastern Mountains"
-#   - "Minister of War" instead of "Italian Minister of War Cipriano Facchinetti"
-#   - "Army Hospital" instead of "United States Army General Hospital"
-#   - "Marine Corps" instead of "U.S. Marine Corps"
-#   - "Red Cross headquarter" instead of "American Red Cross headquarters in Rome, Italy"
-#   - "animal" instead of "man riding a camel in the desert"
-#   - "reservoir" instead of "Fort Loudoun Reservoir"
-#   - "Ballon Gun" instead of "6-pounder Ballon Gun"
-#   - "Air Force Base" instead of "Templehof Air Force Base"
-#   - "boulevard" instead of "Magheru Boulevard"
-#   - "railway station" instead of "Terrassa railway station"
-#   - "cathedral" instead of "St. Louis Cathedral"
-#   - "aircraft factory" instead of "Pomilio Aircraft Factory"
-#   - "submarine" instead of "German submarine".
 
 def _load_llm_(
 	model_id: str,
@@ -965,7 +929,250 @@ def _split_batch(
 		indices[mid:], prompts[mid:],
 	)
 
-def get_llm_based_labels(
+def _generate_one_batch(
+	tokenizer,
+	model,
+	device: torch.device,
+	prompts: List[str],
+	max_generated_tks: int,
+	max_length: int,
+	temperature: float,
+	top_p: float = TOP_P,
+) -> List[str]:
+	"""
+	Executes a single tokenize -> generate -> decode pass.
+	
+	Guarantees:
+		- Strips token_type_ids to prevent crashes on causal decoder models.
+		- Slices off prompt tokens (outputs[:, prompt_len:]) so callers receive 
+			ONLY the model completion, preventing prompt leakage into regex parsers.
+		- Propagates RuntimeError (including CUDA OOM) to the caller for handling.
+	"""
+	tokenized = tokenizer(
+		prompts,
+		return_tensors="pt",
+		truncation=True,
+		max_length=max_length,
+		padding=True,
+	)
+
+	# Critical fix: Fast tokenizers often add token_type_ids, causing causal models to crash
+	tokenized.pop("token_type_ids", None)
+	prompt_len = tokenized["input_ids"].shape[1]
+	if device.type != "cpu":
+		tokenized = {k: v.to(device) for k, v in tokenized.items()}
+	sampling = temperature > 1e-4
+	gen_kwargs: Dict[str, Any] = {
+		**tokenized,
+		"max_new_tokens": max_generated_tks,
+		"do_sample": sampling,
+		"pad_token_id": tokenizer.pad_token_id,
+		"eos_token_id": tokenizer.eos_token_id,
+		"use_cache": True,
+	}
+	if sampling:
+		gen_kwargs["temperature"] = temperature
+		gen_kwargs["top_p"] = top_p
+
+	use_amp = torch.cuda.is_available()
+	amp_dtype = (
+		torch.bfloat16
+		if (use_amp and torch.cuda.is_bf16_supported())
+		else torch.float16
+	)
+	with torch.no_grad():
+		with torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=amp_dtype):
+			outputs = model.generate(**gen_kwargs)
+
+	# Critical fix: Slice off prompt tokens to decode ONLY newly generated text
+	generated_tokens = outputs[:, prompt_len:]
+	decoded = tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
+	del tokenized, outputs, generated_tokens
+
+	return decoded
+
+def parse_lenient(text: Optional[str], max_kws: int) -> Optional[List[str]]:
+		"""
+		Zero-GPU fallback parser for Cohort A:
+		Recovers valid keywords when completions fail strict JSON or bracket parsing 
+		(e.g., Markdown bullets, comma lists, unbracketed quotes).
+		"""
+		if not text or not isinstance(text, str):
+				return None
+		cleaned = text.strip()
+
+		# Strip header/intro if model labeled the output
+		m = re.search(r"keywords?\s*[:\-]\s*(.+)", cleaned, flags=re.IGNORECASE | re.DOTALL)
+		if m:
+				cleaned = m.group(1)
+
+		# Clean markdown tokens and leading bullets/numbers
+		cleaned = cleaned.replace("**", "").replace("__", "").replace("`", "")
+		cleaned = re.sub(r"^\s*(?:[#>*\-•]+|\d+[.)])\s*", "", cleaned, flags=re.MULTILINE)
+
+		# Strategy 1: Quoted strings anywhere in the completion
+		quotes = re.findall(r'["\']([^"\'\n\\]{2,50})["\']', cleaned)
+		candidates = quotes if quotes else re.split(r"[,;\n|]+", cleaned)
+
+		kws: List[str] = []
+		seen = set()
+		for item in candidates:
+				token = item.strip().strip("\"'().").strip()
+				if not token:
+						continue
+				token_lower = token.lower()
+				if (
+						1 <= len(token.split()) <= 5
+						and token_lower not in ("keywords", "keyword", "none", "n/a", "na", "[]", "null")
+						and token_lower not in seen
+				):
+						seen.add(token_lower)
+						kws.append(token)
+
+		return kws[:max_kws] if kws else None
+
+def _lenient_salvage(
+		indices: List[int],
+		results: List[Optional[List[str]]],
+		raw_responses: List[Optional[str]],
+		max_kws: int,
+) -> List[int]:
+		"""
+		Cohort A pass: Free CPU re-parse of retained raw generations.
+		Returns the list of indices that remain unresolved.
+		"""
+		for idx in indices:
+				if results[idx] is None and raw_responses[idx] is not None:
+						salvaged = parse_lenient(raw_responses[idx], max_kws=max_kws)
+						if salvaged:
+								results[idx] = salvaged
+
+		return [i for i in indices if results[i] is None]
+
+def _run_generation_pass(
+	*,
+	tokenizer,
+	model,
+	device: torch.device,
+	indices: List[int],
+	prompts: List[Optional[str]],
+	results: List[Optional[List[str]]],      # Mutated in place
+	raw_responses: List[Optional[str]],      # Mutated in place
+	batch_size: int,
+	max_generated_tks: int,
+	max_length: int,
+	max_kws: int,
+	model_id: str,
+	max_retries: int,
+	temperature: float,
+	pass_name: str,
+	checkpoint_fn: Optional[Callable[[], None]] = None,
+	checkpoint_every: int = 50,
+	verbose: bool = False,
+) -> List[int]:
+	"""
+	Unified split-on-OOM generation loop used by both main pass and retry pass.
+	Singletons emerge naturally when sub-batches are halved down to size 1.
+	"""
+	todo = [i for i in indices if results[i] is None]
+	if not todo:
+		return []
+
+	# Length-homogeneous batching minimizes padding tokens and memory spikes
+	todo.sort(key=lambda i: len(prompts[i] or ""))
+	queue: deque = deque(
+		(todo[i:i + batch_size], [prompts[j] for j in todo[i:i + batch_size]])
+		for i in range(0, len(todo), batch_size)
+	)
+
+	if verbose:
+		print(
+			f"[{pass_name.upper()}] {len(todo)} prompts | batch_size={batch_size} | "
+			f"temp={temperature} | max_length={max_length}"
+		)
+
+	pbar = tqdm(total=len(todo), desc=pass_name, ncols=100)
+	n_pops = 0
+	while queue:
+		cur_idx, cur_prompts = queue.popleft()
+		size = len(cur_idx)
+		if size == 0:
+			continue
+		n_pops += 1
+		for attempt in range(max_retries + 1):
+			decoded: Optional[List[str]] = None
+			try:
+				decoded = _generate_one_batch(
+					tokenizer=tokenizer,
+					model=model,
+					device=device,
+					prompts=cur_prompts,
+					max_generated_tks=max_generated_tks,
+					max_length=max_length,
+					temperature=temperature,
+				)
+
+				# Store completions immediately before parsing so failures can be salvaged
+				for local_i, idx in enumerate(cur_idx):
+					raw_text = decoded[local_i]
+					raw_responses[idx] = raw_text
+					try:
+						results[idx] = parse_llm_response(
+							model_id=model_id,
+							llm_response=raw_text,
+							max_kws=max_kws,
+							verbose=verbose,
+						)
+					except Exception:
+						results[idx] = None
+
+				pbar.update(size)
+				break  # Batch processed successfully
+			except RuntimeError as e:
+				err_msg = str(e).lower()
+				is_oom = "out of memory" in err_msg or "cuda out of memory" in err_msg
+				if not is_oom:
+					raise  # Surface non-OOM errors
+
+				if verbose:
+					print(f"  ❌ [{pass_name}] OOM size={size}, attempt {attempt + 1}/{max_retries + 1}")
+
+				decoded = None
+				gc.collect()
+				if torch.cuda.is_available():
+					torch.cuda.empty_cache()
+					torch.cuda.synchronize()
+
+				if attempt < max_retries:
+					time.sleep(EXP_BACKOFF ** attempt)
+					continue
+
+				# Halve the batch size recursively
+				if size > 1:
+					left_idx, left_p, right_idx, right_p = _split_batch(cur_idx, cur_prompts)
+					queue.appendleft((right_idx, right_p))
+					queue.appendleft((left_idx, left_p))
+				else:
+					# Single sample truly failed with OOM
+					results[cur_idx[0]] = None
+					pbar.update(1)
+				break
+
+		# Periodic cache cleanup & checkpointing
+		if n_pops % checkpoint_every == 0:
+			if torch.cuda.is_available():
+				torch.cuda.empty_cache()
+			if checkpoint_fn is not None:
+				checkpoint_fn()
+
+	pbar.close()
+	if checkpoint_fn is not None:
+		checkpoint_fn()
+
+	return [i for i in todo if results[i] is None]
+
+def get_llm_based_labels_old(
 	model_id: str,
 	device: str,
 	batch_size: int,
@@ -1348,6 +1555,278 @@ def get_llm_based_labels(
 		print(f"Total Extracted LLM-based keywords: {len(results)} {type(results)}")
 		print(f"[ELAPSED_TIME] {time.time() - st_t:.1f} sec")
 		print("="*100)
+
+	return results
+
+def get_llm_based_labels(
+	model_id: str,
+	device: Any,
+	batch_size: int,
+	max_generated_tks: int,
+	max_kws: int,
+	csv_file: str,
+	num_workers: int = 12,              # Retained for signature compatibility
+	do_dedup: bool = True,
+	max_retries: int = 2,
+	quantization_bits: Optional[int] = None,
+	verbose: bool = False,
+) -> List[Optional[List[str]]]:
+	"""
+	Robust batch keyword extraction with:
+		1. Sliced completion decoding (zero prompt leakage).
+		2. Cohort A: Free CPU lenient recovery.
+		3. Cohort B: Length-sorted micro-batched GPU retry with recursive OOM halving.
+		4. Atomic .pkl checkpointing to prevent progress loss.
+	"""
+	output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
+	ckpt_path = csv_file.replace(".csv", "_llm_keywords_ckpt.pkl") if csv_file else None
+
+	# 1. Return cached results if file already exists
+	try:
+		df_cached = pd.read_csv(
+			filepath_or_buffer=output_csv,
+			on_bad_lines="skip",
+			dtype=globals().get("dtypes", None),
+			low_memory=False,
+			usecols=["llm_keywords"],
+		)
+		if verbose:
+			print(f"[CACHE] Found completed results in {output_csv}")
+		return df_cached["llm_keywords"].tolist()
+	except Exception:
+		if verbose:
+			print(f"[INIT] Output CSV not found. Generating keywords from scratch...")
+
+	# 2. Load and prepare source data
+	st_t = time.time()
+	wanted_cols = {
+		"doc_url", 
+		"title", 
+		"description", 
+		"keywords",
+		"enriched_document_description",
+	}
+	try:
+		df = pd.read_csv(
+			filepath_or_buffer=csv_file,
+			on_bad_lines="skip",
+			dtype=globals().get("dtypes", None),
+			low_memory=False,
+			usecols=lambda c: c in wanted_cols,
+		)
+	except Exception as e:
+		raise ValueError(f"Error loading CSV file {csv_file}: {e}")
+
+	df = get_enriched_description(df=df, eng_confidence_th=1e-2, verbose=verbose)
+	inputs = df["enriched_document_description"].tolist()
+	if len(inputs) == 0:
+		return None
+
+	# 3. Model & Tokenizer loading
+	tokenizer, model = _load_llm_(
+		model_id=model_id,
+		quantization_bits=quantization_bits,
+		verbose=verbose,
+	)
+
+	# Ensure left-padding for causal/decoder LLM batch inference
+	tokenizer.padding_side = "left"
+	if tokenizer.pad_token is None:
+		tokenizer.pad_token = tokenizer.eos_token
+		tokenizer.pad_token_id = tokenizer.eos_token_id
+
+	# 4. Input Deduplication
+	if do_dedup:
+		unique_map: Dict[str, int] = {}
+		unique_inputs: List[Optional[str]] = []
+		original_to_unique_idx: List[int] = []
+		for s in inputs:
+			key = "__NULL__" if (s is None or str(s).strip() in ("", "nan", "None")) else str(s).strip()
+			if key in unique_map:
+				original_to_unique_idx.append(unique_map[key])
+			else:
+				idx = len(unique_inputs)
+				unique_map[key] = idx
+				unique_inputs.append(None if key == "__NULL__" else key)
+				original_to_unique_idx.append(idx)
+	else:
+		unique_inputs = [
+			None if (s is None or str(s).strip() in ("", "nan", "None")) else str(s).strip()
+			for s in inputs
+		]
+		original_to_unique_idx = list(range(len(unique_inputs)))
+
+	# 5. Build prompts
+	unique_prompts: List[Optional[str]] = []
+	for s in unique_inputs:
+		if s is None:
+			unique_prompts.append(None)
+		else:
+			unique_prompt = get_prompt(
+				tokenizer=tokenizer,
+				description=s,
+				max_kws=min(max_kws, len(s.split())),
+				verbose=verbose,
+			)
+			unique_prompts.append(unique_prompt)
+
+	# Pre-allocate tracking buffers
+	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
+	raw_responses: List[Optional[str]] = [None] * len(unique_prompts)
+
+	# 6. Atomic checkpointing helpers
+	def _save_checkpoint() -> None:
+			if not ckpt_path:
+					return
+			tmp_path = f"{ckpt_path}.tmp"
+			try:
+					with open(tmp_path, "wb") as f:
+							pickle.dump(
+									{"results": unique_results, "raw": raw_responses},
+									f, protocol=pickle.HIGHEST_PROTOCOL,
+							)
+					os.replace(tmp_path, ckpt_path)
+			except Exception as err:
+					if verbose:
+							print(f"[CHECKPOINT WARN] Failed to save checkpoint: {err}")
+
+	# Resume from checkpoint if present
+	if ckpt_path and os.path.exists(ckpt_path):
+			try:
+					with open(ckpt_path, "rb") as f:
+							saved = pickle.load(f)
+					saved_res = saved.get("results", [])
+					saved_raw = saved.get("raw", [])
+					if len(saved_res) == len(unique_results):
+							for i, r in enumerate(saved_res):
+									if r is not None and unique_results[i] is None:
+											unique_results[i] = r
+							for i, r in enumerate(saved_raw):
+									if i < len(raw_responses) and r is not None and raw_responses[i] is None:
+											raw_responses[i] = r
+							if verbose:
+									recovered_cnt = sum(r is not None for r in unique_results)
+									print(f"[RESUME] Restored {recovered_cnt} item(s) from {ckpt_path}")
+					elif verbose:
+							print("[RESUME] Checkpoint size mismatch with current dataset. Starting fresh.")
+			except Exception as e:
+					if verbose:
+							print(f"[RESUME WARN] Checkpoint unreadable ({e}). Starting fresh.")
+	valid_indices = [i for i, p in enumerate(unique_prompts) if p is not None]
+	if not valid_indices:
+			return None
+
+	# =========================================================================
+	# PASS 1: Main Batched Generation
+	# =========================================================================
+	_run_generation_pass(
+		tokenizer=tokenizer,
+		model=model,
+		device=device,
+		indices=valid_indices,
+		prompts=unique_prompts,
+		results=unique_results,
+		raw_responses=raw_responses,
+		batch_size=batch_size,
+		max_generated_tks=max_generated_tks,
+		max_length=4096,
+		max_kws=max_kws,
+		model_id=model_id,
+		max_retries=max_retries,
+		temperature=TEMPERATURE,
+		pass_name="main",
+		checkpoint_fn=_save_checkpoint,
+		checkpoint_every=50,
+		verbose=verbose,
+	)
+
+	# =========================================================================
+	# OPTIMIZED TWO-STAGE FALLBACK LADDER
+	# =========================================================================
+	failed = [
+		i for i, r in enumerate(unique_results)
+		if r is None and unique_inputs[i] is not None
+	]
+
+	# --- Cohort A: Free CPU Salvage on Retained Generations ---
+	if failed:
+		n_before = len(failed)
+		failed = _lenient_salvage(failed, unique_results, raw_responses, max_kws)
+		if verbose:
+			print(f"[FALLBACK-A] Lenient extraction recovered {n_before - len(failed)}/{n_before} items (0 GPU compute)")
+
+	# --- Cohort B: Micro-Batch GPU Retry with Flipped Decoding Mode ---
+	if failed:
+		# Flipped decoding: if primary was deterministic (temp near 0), sample mildly to escape loops
+		is_greedy = TEMPERATURE < 1e-4
+		retry_temperature = 0.7 if is_greedy else 0.0
+		if verbose:
+			print(
+				f"[FALLBACK-B] {len(failed)} item(s) sent to GPU micro-batch retry "
+				f"(bs={RETRY_BATCH_SIZE}, temp={retry_temperature}, max_len={RETRY_MAX_LENGTH})"
+			)
+		failed = _run_generation_pass(
+			tokenizer=tokenizer,
+			model=model,
+			device=device,
+			indices=failed,
+			prompts=unique_prompts,
+			results=unique_results,
+			raw_responses=raw_responses,
+			batch_size=RETRY_BATCH_SIZE,
+			max_generated_tks=max_generated_tks,
+			max_length=RETRY_MAX_LENGTH,
+			max_kws=max_kws,
+			model_id=model_id,
+			max_retries=max_retries,
+			temperature=retry_temperature,
+			pass_name="retry",
+			checkpoint_fn=_save_checkpoint,
+			checkpoint_every=25,
+			verbose=verbose,
+		)
+		# Final sweep: Salvage whatever was generated during the retry pass
+		if failed:
+			n_before_retry_salvage = len(failed)
+			failed = _lenient_salvage(failed, unique_results, raw_responses, max_kws)
+			if verbose:
+				print(f"[FALLBACK-B] Final lenient sweep recovered {n_before_retry_salvage - len(failed)} items")
+
+	if failed and verbose:
+		print(f"[UNRESOLVED] {len(failed)} item(s) could not be parsed and are set to None")
+
+	# 7. Cleanup GPU resources
+	del model, tokenizer
+	if torch.cuda.is_available():
+		torch.cuda.empty_cache()
+	gc.collect()
+
+	# 8. Reconstruct original order and save results
+	results: List[Optional[List[str]]] = [
+		unique_results[uniq_idx] 
+		for uniq_idx in original_to_unique_idx
+	]
+
+	if csv_file:
+		df["llm_keywords"] = results
+		df.to_csv(output_csv, index=False)
+		# Remove checkpoint file on successful completion
+		if ckpt_path and os.path.exists(ckpt_path):
+			try:
+				os.remove(ckpt_path)
+			except OSError:
+				pass
+		if verbose:
+			print(f"Saved {len(results)} keyword lists to {output_csv}")
+
+	# 9. Summary stats
+	if verbose:
+		n_null = sum(1 for inp in inputs if inp is None or str(inp).strip() in ("", "nan", "None"))
+		n_ok = sum(1 for r in results if r is not None)
+		valid_count = len(results) - n_null
+		rate = (n_ok / valid_count) * 100 if valid_count else 0.0
+		print(f"\n[SUMMARY] {n_ok}/{valid_count} successful ({rate:.2f}%) | {n_null} null inputs | {valid_count - n_ok} failed")
+		print(f"[ELAPSED TIME] {time.time() - st_t:.1f} sec\n{'=' * 100}")
 
 	return results
 

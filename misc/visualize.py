@@ -1808,95 +1808,95 @@ def plot_tier_cardinality_distribution(
 		"tail_card_zero_pct":       tier_card_stats["Tail"]["zero_pct"],
 	}
 
-	if verbose:
-		div = "=" * 72
-		print(f"\n{div}")
-		print("  PLACEHOLDER VALUES  —  copy into LaTeX \\PHNUM{{}}")
-		print(div)
-		groups = [
-			("GLOBAL", [
-				("N images",                          "N_images"),
-				("N canonical labels",                "N_unique_labels"),
-				("Total label occurrences",           "total_occurrences"),
-				("tau_head (f >= tau_head => HEAD)",  "tau_head"),
-				("tau_torso (f < tau_torso => TAIL)", "tau_torso"),
-				("Mean total cardinality per image",  "mean_total_cardinality"),
-				("Median total cardinality",          "median_total_cardinality"),
-				("Std total cardinality",             "std_total_cardinality"),
-				("Max total cardinality",             "max_total_cardinality"),
-				("Min total cardinality",             "min_total_cardinality"),
-			]),
-			("TIER LABEL COUNTS", [
-				("N head labels",  "N_head_labels"),
-				("N torso labels", "N_torso_labels"),
-				("N tail labels",  "N_tail_labels"),
-				("Head vocab %",   "pct_head_vocab"),
-				("Torso vocab %",  "pct_torso_vocab"),
-				("Tail vocab %",   "pct_tail_vocab"),
-				("Head occ %",     "pct_occ_head"),
-				("Torso occ %",    "pct_occ_torso"),
-				("Tail occ %",     "pct_occ_tail"),
-			]),
-			("HEAD CARDINALITY (labels/image from head tier)", [
-				("Mean",                            "head_card_mean"),
-				("Median",                          "head_card_median"),
-				("Std",                             "head_card_std"),
-				("Images with >= 1 head label (%)", "head_card_coverage_pct"),
-				("Images with 0 head labels (%)",   "head_card_zero_pct"),
-			]),
-			("TORSO CARDINALITY (labels/image from torso tier)", [
-				("Mean",                             "torso_card_mean"),
-				("Median",                           "torso_card_median"),
-				("Std",                              "torso_card_std"),
-				("Images with >= 1 torso label (%)", "torso_card_coverage_pct"),
-				("Images with 0 torso labels (%)",   "torso_card_zero_pct"),
-			]),
-			("TAIL CARDINALITY (labels/image from tail tier)", [
-				("Mean",                            "tail_card_mean"),
-				("Median",                          "tail_card_median"),
-				("Std",                             "tail_card_std"),
-				("Images with >= 1 tail label (%)", "tail_card_coverage_pct"),
-				("Images with 0 tail labels (%)",   "tail_card_zero_pct"),
-			]),
-		]
-		for group_name, items in groups:
-			print(f"\n  [{group_name}]")
-			for desc, key in items:
-				val = stats[key]
-				if isinstance(val, float):
-					display = f"{val:,.3f}"
-				elif isinstance(val, int):
-					display = f"{val:,}"
-				else:
-					display = str(val)
-				print(f"    \\PHNUM{{{desc:<50}}}  =>  {display}")
+	# if verbose:
+	# 	div = "=" * 72
+	# 	print(f"\n{div}")
+	# 	print("  PLACEHOLDER VALUES  —  copy into LaTeX \\PHNUM{{}}")
+	# 	print(div)
+	# 	groups = [
+	# 		("GLOBAL", [
+	# 			("N images",                          "N_images"),
+	# 			("N canonical labels",                "N_unique_labels"),
+	# 			("Total label occurrences",           "total_occurrences"),
+	# 			("tau_head (f >= tau_head => HEAD)",  "tau_head"),
+	# 			("tau_torso (f < tau_torso => TAIL)", "tau_torso"),
+	# 			("Mean total cardinality per image",  "mean_total_cardinality"),
+	# 			("Median total cardinality",          "median_total_cardinality"),
+	# 			("Std total cardinality",             "std_total_cardinality"),
+	# 			("Max total cardinality",             "max_total_cardinality"),
+	# 			("Min total cardinality",             "min_total_cardinality"),
+	# 		]),
+	# 		("TIER LABEL COUNTS", [
+	# 			("N head labels",  "N_head_labels"),
+	# 			("N torso labels", "N_torso_labels"),
+	# 			("N tail labels",  "N_tail_labels"),
+	# 			("Head vocab %",   "pct_head_vocab"),
+	# 			("Torso vocab %",  "pct_torso_vocab"),
+	# 			("Tail vocab %",   "pct_tail_vocab"),
+	# 			("Head occ %",     "pct_occ_head"),
+	# 			("Torso occ %",    "pct_occ_torso"),
+	# 			("Tail occ %",     "pct_occ_tail"),
+	# 		]),
+	# 		("HEAD CARDINALITY (labels/image from head tier)", [
+	# 			("Mean",                            "head_card_mean"),
+	# 			("Median",                          "head_card_median"),
+	# 			("Std",                             "head_card_std"),
+	# 			("Images with >= 1 head label (%)", "head_card_coverage_pct"),
+	# 			("Images with 0 head labels (%)",   "head_card_zero_pct"),
+	# 		]),
+	# 		("TORSO CARDINALITY (labels/image from torso tier)", [
+	# 			("Mean",                             "torso_card_mean"),
+	# 			("Median",                           "torso_card_median"),
+	# 			("Std",                              "torso_card_std"),
+	# 			("Images with >= 1 torso label (%)", "torso_card_coverage_pct"),
+	# 			("Images with 0 torso labels (%)",   "torso_card_zero_pct"),
+	# 		]),
+	# 		("TAIL CARDINALITY (labels/image from tail tier)", [
+	# 			("Mean",                            "tail_card_mean"),
+	# 			("Median",                          "tail_card_median"),
+	# 			("Std",                             "tail_card_std"),
+	# 			("Images with >= 1 tail label (%)", "tail_card_coverage_pct"),
+	# 			("Images with 0 tail labels (%)",   "tail_card_zero_pct"),
+	# 		]),
+	# 	]
+	# 	for group_name, items in groups:
+	# 		print(f"\n  [{group_name}]")
+	# 		for desc, key in items:
+	# 			val = stats[key]
+	# 			if isinstance(val, float):
+	# 				display = f"{val:,.3f}"
+	# 			elif isinstance(val, int):
+	# 				display = f"{val:,}"
+	# 			else:
+	# 				display = str(val)
+	# 			print(f"    \\PHNUM{{{desc:<50}}}  =>  {display}")
 
-		print(f"\n{div}")
-		print("  LATEX SNIPPET — ready for §4.3")
-		print(div)
+	# 	print(f"\n{div}")
+	# 	print("  LATEX SNIPPET — ready for §4.3")
+	# 	print(div)
 
-		msg = textwrap.dedent(f"""\
-			Figure~\\ref{{fig:tier_cardinality}} shows the per-sample label cardinality broken down by frequency tier.
+	# 	msg = textwrap.dedent(f"""\
+	# 		Figure~\\ref{{fig:tier_cardinality}} shows the per-sample label cardinality broken down by frequency tier.
 
-			Head-tier labels ($f(l) \\geq {tau_head:,}$, {tier_label_counts['Head']:,} labels,
-			{tier_label_pct['Head']:.1f}% of vocabulary) account for {tier_occ_pct['Head']:.1f}% of all
-			label occurrences, yet are present in only {tier_card_stats['Head']['coverage_pct']:.1f}% of images
-			(mean cardinality per image: {tier_card_stats['Head']['mean']:.2f}).
+	# 		Head-tier labels ($f(l) \\geq {tau_head:,}$, {tier_label_counts['Head']:,} labels,
+	# 		{tier_label_pct['Head']:.1f}% of vocabulary) account for {tier_occ_pct['Head']:.1f}% of all
+	# 		label occurrences, yet are present in only {tier_card_stats['Head']['coverage_pct']:.1f}% of images
+	# 		(mean cardinality per image: {tier_card_stats['Head']['mean']:.2f}).
 
-			By contrast, tail-tier labels ($f(l) < {tau_torso:,}$, {tier_label_counts['Tail']:,} labels,
-			{tier_label_pct['Tail']:.1f}% of vocabulary) contribute only {tier_occ_pct['Tail']:.1f}% of
-			occurrences, with {tier_card_stats['Tail']['zero_pct']:.1f}% of images carrying no tail-tier
-			label at all (mean cardinality: {tier_card_stats['Tail']['mean']:.2f}).
+	# 		By contrast, tail-tier labels ($f(l) < {tau_torso:,}$, {tier_label_counts['Tail']:,} labels,
+	# 		{tier_label_pct['Tail']:.1f}% of vocabulary) contribute only {tier_occ_pct['Tail']:.1f}% of
+	# 		occurrences, with {tier_card_stats['Tail']['zero_pct']:.1f}% of images carrying no tail-tier
+	# 		label at all (mean cardinality: {tier_card_stats['Tail']['mean']:.2f}).
 
-			This asymmetry directly motivates the positive-class reweighting applied in the I2T direction
-			of the training objective (Section~\\ref{{ssec:training}}): without reweighting, head-class
-			gradient dominance would suppress learning signal for the {tier_label_pct['Tail']:.1f}% of
-			the vocabulary that constitutes the tail.""")
+	# 		This asymmetry directly motivates the positive-class reweighting applied in the I2T direction
+	# 		of the training objective (Section~\\ref{{ssec:training}}): without reweighting, head-class
+	# 		gradient dominance would suppress learning signal for the {tier_label_pct['Tail']:.1f}% of
+	# 		the vocabulary that constitutes the tail.""")
 
-		print(msg)
-		print(div + "\n")
-		print(json.dumps(stats, indent=2, ensure_ascii=False))
-		print("=" * 50)
+	# 	print(msg)
+	# 	print(div + "\n")
+	# 	print(json.dumps(stats, indent=2, ensure_ascii=False))
+	# 	print("=" * 50)
 
 	plot_tier_cardinality_boxplot(
 		card_df=card_df,

@@ -2918,8 +2918,11 @@ def cluster(
 	)
 
 	if verbose:
-		print(f"[LOADED] {sum(p.numel() for p in model.parameters()):,} parameters")
-		print(f"\n[ENCODING] {len(unique_labels)} unique labels (bs: {batch_size} {device})")
+		print(
+			f"[ENCODING] {len(unique_labels)} unique labels "
+			f"with {model_id} :"
+			f"{sum(p.numel() for p in model.parameters()):,} parameters"
+		)
 
 	X = model.encode(
 		unique_labels,

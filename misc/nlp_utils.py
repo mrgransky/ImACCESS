@@ -373,23 +373,6 @@ def _post_process_(
 		
 		return s
 
-	def is_named_facility(original_phrase: str) -> bool:
-		"""
-		Check if phrase is a named facility/location.
-		These are proper nouns and should not be lemmatized.
-		"""
-		phrase_lower = original_phrase.lower()
-		
-		# Common facility/location keywords
-		facility_keywords = {
-			'air force base', 'naval air station', 'army depot', 'navy yard',
-			'national park', 'state park', 'memorial', 'monument',
-			'air station', 'naval base', 'military base', 'fort',
-			'airport', 'airfield', 'field', 'station'
-		}
-		
-		return any(keyword in phrase_lower for keyword in facility_keywords)
-
 	def is_quantified_plural(original_phrase: str) -> bool:
 		tokens = original_phrase.lower().split()
 		if len(tokens) < 2:
@@ -569,45 +552,9 @@ def _post_process_(
 
 			return ' '.join(lemmatized_tokens)
 
-	def lemmatize_phrase_(phrase: str, original_phrase: str) -> str:
-		tokens = phrase.split()
-		original_tokens = original_phrase.split()		
-		pos_tags = nltk.pos_tag(tokens)
-		lemmatized_tokens = []
+	def exclude_digits(keywords: list) -> list:
+		return [keyword for keyword in keywords if not any(char.isdigit() for char in keyword)]
 
-		# Build a set of token indices that belong to a protected phrase
-		protected_indices = set()
-		for protected in PROTECTED_PHRASES:
-			p_tokens = protected.split()
-			p_len = len(p_tokens)
-			for start in range(len(tokens) - p_len + 1):
-				if tokens[start:start + p_len] == p_tokens:
-					for j in range(start, start + p_len):
-						protected_indices.add(j)
-		
-		for i, (token, pos) in enumerate(pos_tags):
-			original_token = original_tokens[i] if i < len(original_tokens) else token
-			is_abbr = original_token.isupper() or '.' in original_token
-			
-			if is_abbr or token in PROTECTED_ABBREVIATIONS or i in protected_indices:
-				lemmatized_tokens.append(token)  # Keep as-is
-			else:
-				# For multi-word phrases, treat non-final words as nouns to preserve compound nouns
-				# This prevents "diving board" → "dive board", "shipping container" → "ship container"
-				if len(tokens) > 1 and i < len(tokens) - 1:
-					wordnet_pos = nltk.corpus.wordnet.NOUN
-				else:
-					wordnet_pos = get_wordnet_pos(pos)
-
-				candidate = lemmatizer.lemmatize(token, pos=wordnet_pos)
-				# Reject WordNet bug: boss → bos, pass → pas, glass → glas, grass → gras
-				if token.endswith("ss") and candidate == token[:-1]:
-					lemmatized_tokens.append(token)
-				else:
-					lemmatized_tokens.append(candidate)
-
-		return ' '.join(lemmatized_tokens)
-	
 	processed_batch = []
 	for idx, labels in enumerate(labels_list):
 		if labels is None:
@@ -627,11 +574,9 @@ def _post_process_(
 			except Exception as e:
 				print(f"Failed to convert {labels} to list: {e}")
 				raise e
-				# processed_batch.append(None)
-				# continue
 
 		if verbose:
-			print(f"\n[Sample {idx+1:8d}/{len(labels_list)}]\n{labels}")
+			print(f"\nSample {idx+1:8d}/{len(labels_list):<25} {labels}")
 
 		# --- 1. Standardization: Ensure we have a list of strings ---
 		current_items = []
@@ -665,13 +610,14 @@ def _post_process_(
 			if verbose:
 				print(f"  → Non-standard type ({type(labels)}), converting to string and wrapping")
 
+		current_items = exclude_digits(keywords=current_items)
+
 		if current_items != labels and verbose:
 			print(f"[STANDARDIZED] {len(current_items)} {type(current_items)} {current_items}")
 
 		# --- 2. Normalization & Lemmatization ---
 		clean_set = set()       # stores ORIGINAL case for output
 		seen_lower = set()      # stores lowercase keys for dedup
-
 
 		for item_idx, item in enumerate(current_items):
 			if verbose:
@@ -731,10 +677,6 @@ def _post_process_(
 					# else:
 					# 	print(f"        → {repr(s)}: Lemmatized → {repr(lemma)} (unchanged)")
 			
-			# Post-process the lemma
-			# if verbose:
-			# 	print(f"[PROCESSING] {repr(lemma)}")
-
 			if lemma.endswith("ville"):
 				if verbose:
 					print(f"        → {repr(lemma)} ends with 'ville', skipping")
@@ -774,21 +716,6 @@ def _post_process_(
 						print(f"\t\t{repr(lemma)} [spaCy] GE detected {repr(geo_entities)} skipping")
 					continue
 
-			# # tokenized_lemma = re.split(r'[ .-]+', lemma.lower())   # split on space, hyphen or dot (U.S. Route 66)
-			# tokenized_lemma = re.split(r'[ -]+', lemma.lower())   # split on space or hyphen
-			# if verbose:
-			# 	print(f"tokenized: {tokenized_lemma}")
-			# # if any(tok in geographic_references for tok in tokenized_lemma):
-			# if (
-			# 	any(tok in geographic_references for tok in tokenized_lemma) 
-			# 	or lemma in geographic_references
-			# 	or lemmatizer.lemmatize(lemma.lower()) in geographic_references
-			# ):
-			# 	if verbose:
-			# 		print(f"        → {repr(lemma)} Geographic reference detected, skipping")
-			# 	continue
-
-
 			if is_phrasal_verb(lemma):
 				if verbose:
 					print(f"        → {lemma} Phrasal verb detected, skipping")
@@ -810,7 +737,6 @@ def _post_process_(
 				if verbose:
 					print(f"        → {repr(lemma)} honorific, skipping")
 				continue
-
 
 			# Exclude "black and white" specifically
 			if lemma.lower() in {"black and white", "black & white", "B/W", "B&W", 'B and W'}:
@@ -846,13 +772,6 @@ def _post_process_(
 			else:
 				seen_lower.add(lemma_key)
 				clean_set.add(lemma)          # ← stores ORIGINAL case
-				# if verbose:
-				# 		print(f"\t\t[ADDED] {clean_set}")
-
-
-
-		# if verbose:
-		# 	print(f"clean_set: {len(clean_set)} {type(clean_set)}")
 
 		# Convert back to list
 		result = list(clean_set) if clean_set else None

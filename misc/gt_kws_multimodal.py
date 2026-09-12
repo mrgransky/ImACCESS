@@ -37,10 +37,15 @@ from data_prep import get_multi_label_stratified_split, build_shared_eval_protoc
 # Qwen/Qwen3-VL-8B-Instruct # only fits Puhti and Mahti
 
 # how to run [local] interactive:
-# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/test.csv -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 4 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v
+# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/test.csv -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 12 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v
 
 # with nohup:
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 8 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v > logs/mm_annot_smu.txt & 
+
+# wwii_small
+# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/test.csv -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 8 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v > logs/mm_annot_wwii_small.txt & 
+
+
 # one chunk:
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label_chunk_0.csv  -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 2 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v > logs/multimodal_annotation_chunk_0.txt & 
 
@@ -65,6 +70,7 @@ def merge_labels(
 ):
 	"""Naive Combination of LLM and VLM labels"""
 	assert len(llm_based_labels) == len(vlm_based_labels), "Label lists must have same length"
+	t0 = time.time()
 	if verbose:
 		print(f"\n[Naive Combination] {len(llm_based_labels)} LLM-based & {len(vlm_based_labels)} VLM-based labels")
 
@@ -98,7 +104,7 @@ def merge_labels(
 		multimodal_labels.append(combined)
 
 	if verbose:
-		print(f"[DONE] {len(multimodal_labels)} {type(multimodal_labels)} multimodal labels")
+		print(f"[DONE] {len(multimodal_labels)} {type(multimodal_labels)} Elapsed: {time.time() - t0:.2f}")
 
 	return multimodal_labels
 
@@ -186,18 +192,18 @@ def get_multimodal_annotation(
 	if is_full_dataset:
 
 		if verbose:
-			print(f"[FULL DATASET] {os.path.basename(csv_file)} (post processing required!)")
+			print(f"[FULL DATASET] {csv_file} post processing [might take a while...]")
 
 		vlm_based_labels = _post_process_(
 			labels_list=vlm_based_labels, 
 			col="vlm_based_labels", 
-			verbose=False
+			verbose=verbose,#False,
 		)
 
 		llm_based_labels = _post_process_(
 			labels_list=llm_based_labels, 
 			col="llm_based_labels", 
-			verbose=False
+			verbose=verbose,#False,
 		)
 		
 		multimodal_labels = _post_process_(
@@ -216,7 +222,7 @@ def get_multimodal_annotation(
 			output_dir=OUTPUT_DIR,
 			batch_size=batch_size,
 			nc=nc,
-			verbose=False,
+			verbose=verbose,#False,
 		)
 
 		vlm_canonical_labels, _ = get_canonical_labels(
@@ -226,7 +232,7 @@ def get_multimodal_annotation(
 			output_dir=OUTPUT_DIR,
 			batch_size=batch_size,
 			nc=nc,
-			verbose=False,
+			verbose=verbose,#False,
 		)
 
 		multimodal_canonical_labels, _ = get_canonical_labels(

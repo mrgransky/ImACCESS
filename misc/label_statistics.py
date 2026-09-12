@@ -465,14 +465,12 @@ def auto_calibrate_semantic_threshold(
 	if verbose:
 		print("\nDISTRIBUTION OVERLAP ANALYSIS\n")
 		print(f"Should MATCH (Synonyms + Related):")
-		print(f"  Mean: {should_match_mean:.4f}")
-		print(f"  Std:  {should_match_std:.4f}")
 		print(f"  Range: [{np.min(should_match_scores):.4f}, {np.max(should_match_scores):.4f}]")
+		print(f"  μ±σ: {should_match_mean:.4f} ± {should_match_std:.4f}")
 		
 		print(f"\nShould NOT match (Unrelated + Confusables):")
-		print(f"  Mean: {should_not_match_mean:.4f}")
-		print(f"  Std:  {should_not_match_std:.4f}")
 		print(f"  Range: [{np.min(should_not_match_scores):.4f}, {np.max(should_not_match_scores):.4f}]")
+		print(f"  μ±σ: {should_not_match_mean:.4f} ± {should_not_match_std:.4f}")
 		
 		print(f"\nSeparation Analysis:")
 		print(f"  Gap between means: {gap:.4f}")
@@ -622,7 +620,7 @@ def auto_calibrate_semantic_threshold(
 			print(f"  ⚠️  Moderate discriminative power")
 		else:
 			print(f"  ❌ Poor discriminative power - consider different model")
-		print("-"*100)
+		print("-"*110)
 	
 	diagnostics = {
 		'categories': {
@@ -643,9 +641,9 @@ def auto_calibrate_semantic_threshold(
 		'borderline_pairs': borderline_pairs if verbose else None,
 	}
 
-	if verbose:
-		print(f"Diagnostics for model {model_name}:")
-		print(json.dumps(diagnostics, indent=2, ensure_ascii=False))
+	# if verbose:
+	# 	print(f"Diagnostics for model {model_name}:")
+	# 	print(json.dumps(diagnostics, indent=2, ensure_ascii=False))
 	
 	return recommended_threshold, diagnostics
 
@@ -797,7 +795,7 @@ def _trace_sample(
 	]
 	print(f"feasible edges : {edges}")
 	print(f"1-to-1 matching: {[(a_labels[i], b_labels[j]) for i, j in matched_pairs]}")
-	print(f"J_match={j_match:.3f} | J_upper={j_upper:.3f}")
+	print(f"J_match={j_match:<15} J_upper={j_upper}")
 	print("."*40)
 
 def _semantic_jaccard_cached(
