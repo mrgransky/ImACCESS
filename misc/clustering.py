@@ -2909,12 +2909,12 @@ def cluster(
 
 	model = SentenceTransformer(
 		model_name_or_path=model_id,
-		model_kwargs={"attn_implementation": attn_impl, "dtype": dtype},  # ← no device_map
+		model_kwargs={"attn_implementation": attn_impl, "dtype": dtype}, # no device_map
 		trust_remote_code=True,
-		device=device,                                                     # ← single device
+		device=device, # single device
 		cache_folder=cache_directory[os.getenv('USER')],
 		token=os.getenv("HUGGINGFACE_TOKEN"),
-		processor_kwargs={"padding_side": "left"},                        # ← renamed from tokenizer_kwargs
+		processor_kwargs={"padding_side": "left"}, # renamed from tokenizer_kwargs
 	)
 
 	if verbose:

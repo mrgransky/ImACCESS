@@ -607,19 +607,19 @@ def auto_calibrate_semantic_threshold(
 	recommended_threshold = threshold_candidates['optimal_f1']
 	if verbose:
 		print("\nRECOMMENDATION\n")
-		print(f"Optimal threshold: {recommended_threshold:.4f}")
-		print(f"  Based on: Maximum F1 score on synonym/related vs unrelated/confusable pairs")
-		print(f"  F1 score: {best_f1:.3f}")
-		print(f"  Gap between distributions: {gap:.4f}")
+		print(f"Optimal threshold: {recommended_threshold}")
+		print(f"Based on: Maximum F1 score on synonym/related vs unrelated/confusable pairs")
+		print(f"F1 score: {best_f1:.4f}")
+		print(f"Gap between distributions: {gap:.4f}")
 		
 		if best_f1 >= 0.90:
-			print(f"  ✅ Excellent discriminative power")
+			print(f"Excellent discriminative power")
 		elif best_f1 >= 0.80:
-			print(f"  ✅ Good discriminative power")
+			print(f"Good discriminative power")
 		elif best_f1 >= 0.70:
-			print(f"  ⚠️  Moderate discriminative power")
+			print(f"Moderate discriminative power")
 		else:
-			print(f"  ❌ Poor discriminative power - consider different model")
+			print(f"Poor discriminative power - consider different model")
 		print("-"*110)
 	
 	diagnostics = {

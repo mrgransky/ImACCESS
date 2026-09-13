@@ -577,7 +577,7 @@ def _post_process_(
 				raise e
 
 		if verbose:
-			print(f"\nSample {idx+1:8d}/{len(labels_list):<25} {labels}")
+			print(f"\n[Sample {idx+1:8d}/{len(labels_list)}] {labels}")
 
 		# --- 1. Standardization: Ensure we have a list of strings ---
 		current_items = []
@@ -769,21 +769,17 @@ def _post_process_(
 			lemma_key = lemma.lower().strip()
 			if lemma_key in seen_lower:
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} Duplicate detected (key={lemma_key!r})")
+					print(f"\t\t[SKIPPED] {repr(lemma)} Duplicate")
 			else:
 				seen_lower.add(lemma_key)
-				clean_set.add(lemma)          # ← stores ORIGINAL case
+				clean_set.add(lemma)
 
 		# Convert back to list
 		result = list(clean_set) if clean_set else None
 		processed_batch.append(result)
 		
 		if verbose:
-			print("[FINAL]", end="\t")
-			if result is None:
-				print(f"Sample {idx+1}: None (all items filtered) {len(current_items)} → 0 (removed {len(current_items)})")
-			else:
-				print(f"{result} {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
+			print(f"[FINAL] {result} {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
 			print(f"[ELAPSED] {time.time() - t0:.5f} sec")
 
 	return processed_batch
