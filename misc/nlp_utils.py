@@ -542,6 +542,7 @@ def _post_process_(
 					wordnet_pos = nltk.corpus.wordnet.NOUN
 				else:
 					wordnet_pos = get_wordnet_pos(pos)
+
 				# lemmatize on the lowercase form (WordNet index is lowercase-only) ──
 				candidate = lemmatizer.lemmatize(token.lower(), pos=wordnet_pos)
 				if token.endswith("ss") and candidate == token[:-1]:
