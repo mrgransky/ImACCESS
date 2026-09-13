@@ -197,13 +197,13 @@ def get_multimodal_annotation(
 		vlm_based_labels = _post_process_(
 			labels_list=vlm_based_labels, 
 			col="vlm_based_labels", 
-			verbose=verbose,#False,
+			verbose=False,
 		)
 
 		llm_based_labels = _post_process_(
 			labels_list=llm_based_labels, 
 			col="llm_based_labels", 
-			verbose=verbose,#False,
+			verbose=False,
 		)
 		
 		multimodal_labels = _post_process_(
@@ -212,9 +212,7 @@ def get_multimodal_annotation(
 			verbose=verbose
 		)
 
-		########################################################
 		# Canonical labels:
-		########################################################
 		llm_canonical_labels, _ = get_canonical_labels(
 			labels=llm_based_labels,
 			label_source="llm_based_labels",
@@ -222,7 +220,7 @@ def get_multimodal_annotation(
 			output_dir=OUTPUT_DIR,
 			batch_size=batch_size,
 			nc=nc,
-			verbose=verbose,#False,
+			verbose=False,
 		)
 
 		vlm_canonical_labels, _ = get_canonical_labels(
@@ -232,7 +230,7 @@ def get_multimodal_annotation(
 			output_dir=OUTPUT_DIR,
 			batch_size=batch_size,
 			nc=nc,
-			verbose=verbose,#False,
+			verbose=False,
 		)
 
 		multimodal_canonical_labels, _ = get_canonical_labels(
