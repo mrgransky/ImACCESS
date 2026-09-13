@@ -104,7 +104,7 @@ def merge_labels(
 		multimodal_labels.append(combined)
 
 	if verbose:
-		print(f"[DONE] {len(multimodal_labels)} {type(multimodal_labels)} Elapsed: {time.time() - t0:.2f}")
+		print(f"[DONE] {len(multimodal_labels)} {type(multimodal_labels)} Elapsed: {time.time() - t0:.2f} sec")
 
 	return multimodal_labels
 

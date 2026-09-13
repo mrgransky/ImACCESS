@@ -216,9 +216,9 @@ def _post_process_(
 	COLORS = {
 		"red", "orange", "yellow", "green", "blue", "indigo", "violet",
 		"purple", "pink", "brown", "black", "white", "gray", "grey",
-		"gold", "silver", "beige", "ivory", "tan", "maroon", "navy",
-		"teal", "cyan", "magenta", "crimson", "scarlet", "khaki",
-		"olive", "turquoise", "lavender", "coral", "salmon", "amber"
+		"beige",
+		"teal", "cyan", "magenta", "crimson", "khaki",
+		"turquoise", "lavender", "coral",
 	}
 
 	HONORIFICS = {
