@@ -835,7 +835,7 @@ def probe_multi_label(
 			break
 		print(f"[Epoch {epoch+1} ELAPSED TIME (Train + Validation)]: {time.time() - train_and_val_st_time:.1f} sec")
 	
-	print(f"[{mode}] Total Time: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+	print(f"Total Training Time: {time.time() - train_start_time:.1f} sec")
 	
 	# Final evaluation
 	# pass probe (not model) — probe.encode_image and probe.encode_text

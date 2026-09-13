@@ -221,11 +221,10 @@ def _shannon_entropy(counts: Counter, base: float = 2.0) -> float:
 	return ent
 
 def auto_calibrate_semantic_threshold(
-		model: SentenceTransformer,
-		verbose: bool = False
+	model: SentenceTransformer,
+	verbose: bool = False
 ) -> Tuple[float, Dict]:
 
-	# Extract model name/identifier
 	model_name = None
 
 	if verbose:
@@ -247,9 +246,9 @@ def auto_calibrate_semantic_threshold(
 			print(f"  Has config: {hasattr(model[0].auto_model, 'config')}")
 			if hasattr(model[0].auto_model, 'config'):
 				cfg = model[0].auto_model.config
-				print(f"  config._name_or_path: {getattr(cfg, '_name_or_path', 'NOT FOUND')}")
-				print(f"  config.name_or_path: {getattr(cfg, 'name_or_path', 'NOT FOUND')}")
-				print(f"  All config attrs: {[a for a in dir(cfg) if not a.startswith('_')]}")
+				print(f"config._name_or_path: {getattr(cfg, '_name_or_path', 'NOT FOUND')}")
+				print(f"config.name_or_path: {getattr(cfg, 'name_or_path', 'NOT FOUND')}")
+				print(f"All config attrs: {[a for a in dir(cfg) if not a.startswith('_')]}")
 
 		print("="*100)
 	
@@ -300,14 +299,13 @@ def auto_calibrate_semantic_threshold(
 			except Exception as e:
 					if verbose:
 							print(f"Fallback extraction error: {e}")
+
 	if not model_name or model_name == "None":
 		model_name = "unknown"
 
 	if verbose:
 		print(f"AUTOMATIC THRESHOLD CALIBRATION | embedding model: {model_name}\n")
 	
-	# TEST PAIRS - Diverse and challenging	
-
 	# CATEGORY 1: Direct Synonyms (MUST match)
 	direct_synonyms = [
 		("soldier", "infantry"),

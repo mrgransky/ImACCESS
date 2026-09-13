@@ -507,18 +507,65 @@ def _post_process_(
 		else:
 			return nltk.corpus.wordnet.NOUN  # Default to noun
 
+	def lemmatize_phrase_(phrase: str, original_phrase: str) -> str:
+		tokens = phrase.split()
+		original_tokens = original_phrase.split()
+		pos_tags = nltk.pos_tag(tokens)
+
+		lemmatized_tokens = []
+		protected_indices = set()
+
+		for protected in PROTECTED_PHRASES:
+			p_tokens = protected.split()
+			p_len = len(p_tokens)
+			for start in range(len(tokens) - p_len + 1):
+					# ── FIX: case-insensitive comparison for protected phrases ──
+					if [t.lower() for t in tokens[start:start + p_len]] == p_tokens:
+							for j in range(start, start + p_len):
+									protected_indices.add(j)
+
+		for i, (token, pos) in enumerate(pos_tags):
+			original_token = original_tokens[i] if i < len(original_tokens) else token
+			is_abbr = original_token.isupper() or '.' in original_token
+
+			# ── Detect proper nouns and capitalized words ──
+			is_proper_noun = pos.startswith("NNP") # NNP or NNPS
+			# starts_capital = bool(original_token) and original_token[0].isupper()
+			if (
+				is_abbr
+				or token.lower() in PROTECTED_ABBREVIATIONS # case-insensitive
+				or i in protected_indices
+				or is_proper_noun
+				# or starts_capital
+			):
+				lemmatized_tokens.append(token)  # Keep original case
+			else:
+				if len(tokens) > 1 and i < len(tokens) - 1:
+					wordnet_pos = nltk.corpus.wordnet.NOUN
+				else:
+					wordnet_pos = get_wordnet_pos(pos)
+
+				candidate = lemmatizer.lemmatize(token, pos=wordnet_pos)
+
+				if token.endswith("ss") and candidate == token[:-1]:
+					lemmatized_tokens.append(token)
+				else:
+					lemmatized_tokens.append(candidate)
+
+		return ' '.join(lemmatized_tokens)
+
 	def lemmatize_phrase(phrase: str, original_phrase: str) -> str:
 			tokens = phrase.split()
 			original_tokens = original_phrase.split()
 			pos_tags = nltk.pos_tag(tokens)
-			lemmatized_tokens = []
 
+			lemmatized_tokens = []
 			protected_indices = set()
+
 			for protected in PROTECTED_PHRASES:
 					p_tokens = protected.split()
 					p_len = len(p_tokens)
 					for start in range(len(tokens) - p_len + 1):
-							# ── FIX: case-insensitive comparison for protected phrases ──
 							if [t.lower() for t in tokens[start:start + p_len]] == p_tokens:
 									for j in range(start, start + p_len):
 											protected_indices.add(j)
@@ -527,15 +574,17 @@ def _post_process_(
 					original_token = original_tokens[i] if i < len(original_tokens) else token
 					is_abbr = original_token.isupper() or '.' in original_token
 
-					# ── NEW: detect proper nouns and capitalized words ──
-					is_proper_noun = pos.startswith("NNP")       # NNP or NNPS
-					starts_capital = bool(original_token) and original_token[0].isupper()
+					# ── FIX: only trust NNP if the word has no common-noun sense in WordNet ──
+					# nltk's tagger biases toward NNP for any capitalized/isolated token,
+					# so re-check against WordNet before trusting that tag.
+					has_common_sense = bool(nltk.corpus.wordnet.synsets(token.lower(), pos=nltk.corpus.wordnet.NOUN))
+					is_proper_noun = pos.startswith("NNP") and not has_common_sense
 
-					if (is_abbr
-							or token.lower() in PROTECTED_ABBREVIATIONS   # ── FIX: case-insensitive ──
+					if (
+							is_abbr
+							or token.lower() in PROTECTED_ABBREVIATIONS
 							or i in protected_indices
-							or is_proper_noun                              # ── NEW ──
-							or starts_capital                              # ── NEW ──
+							or is_proper_noun
 					):
 							lemmatized_tokens.append(token)  # Keep original case
 					else:
@@ -544,10 +593,15 @@ def _post_process_(
 							else:
 									wordnet_pos = get_wordnet_pos(pos)
 
-							candidate = lemmatizer.lemmatize(token, pos=wordnet_pos)
+							# ── FIX: lemmatize on the lowercase form (WordNet index is lowercase-only) ──
+							candidate = lemmatizer.lemmatize(token.lower(), pos=wordnet_pos)
+
 							if token.endswith("ss") and candidate == token[:-1]:
 									lemmatized_tokens.append(token)
 							else:
+									# ── FIX: restore original capitalization pattern ──
+									if token[:1].isupper():
+											candidate = candidate[:1].upper() + candidate[1:]
 									lemmatized_tokens.append(candidate)
 
 			return ' '.join(lemmatized_tokens)
@@ -778,8 +832,8 @@ def _post_process_(
 		result = list(clean_set) if clean_set else None
 		processed_batch.append(result)
 		
-		if verbose:
-			print(f"[FINAL] {result} {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})")
+		if verbose and result:
+			print(f"[FINAL] {result} {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})", end="\t")
 			print(f"[ELAPSED] {time.time() - t0:.5f} sec")
 
 	return processed_batch
