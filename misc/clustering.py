@@ -8,6 +8,7 @@ import ast
 import json
 import time
 import gc
+import re
 import math
 import multiprocessing
 from sklearn.metrics import (
@@ -1845,8 +1846,8 @@ def get_optimal_super_clusters(
 def get_optimal_num_clusters(
 	X,
 	linkage_matrix,
-	min_cluster_size=2,
-	merge_singletons=True,
+	min_cluster_size: int=2,
+	merge_singletons: bool=True,
 	target_intra_similarity=0.70,
 	min_consolidation=4.0,  
 	max_consolidation=6.0,
@@ -2172,49 +2173,54 @@ def get_optimal_num_clusters(
 		print()
 	
 	# STAGE 3: POST-PROCESSING - Merge singletons
-	optimal_k = best['k']
-	labels = fcluster(linkage_matrix, optimal_k, criterion='maxclust') - 1
-	
-	if merge_singletons:
-			cluster_sizes = np.bincount(labels)
-			singleton_ids = np.where(cluster_sizes == 1)[0]
+	labels = fcluster(
+		linkage_matrix, 
+		best['k'], 
+		criterion='maxclust'
+	) - 1 # <class 'numpy.ndarray'> (num_samples,)
+
+	# Count number of occurrences of each value in array of non-negative ints.
+	cluster_sizes = np.bincount(labels)
+	singleton_clusters_indices = np.where(cluster_sizes == 1)[0]
+	if len(singleton_clusters_indices) > 0:
+		if verbose:
+			print(f"[WARNING] Found {len(singleton_clusters_indices)} singleton cluster(s)")
+
+	if len(singleton_clusters_indices) > 0 and merge_singletons:
+		if verbose:
+			print(f"\n[STAGE 3] MERGING {len(singleton_clusters_indices)} SINGLETON CLUSTERS")
+		
+		unique_labels = np.unique(labels)
+		centroids = np.array([X[labels == cid].mean(axis=0) for cid in unique_labels])
+		
+		new_labels = labels.copy()
+		merged_count = 0
+		
+		for singleton_id in singleton_clusters_indices:
+			singleton_idx = np.where(labels == singleton_id)[0][0]
+			singleton_vec = X[singleton_idx].reshape(1, -1)
+			sims = cosine_similarity(singleton_vec, centroids)[0]
+			sorted_ids = np.argsort(sims)[::-1]
 			
-			if len(singleton_ids) > 0:
+			# Find nearest non-singleton cluster
+			for nearest_id in sorted_ids:
+				if cluster_sizes[nearest_id] >= min_cluster_size:
+					new_labels[singleton_idx] = nearest_id
+					merged_count += 1
 					if verbose:
-						print(f"\n[STAGE 3] MERGING SINGLETON CLUSTERS")
-						print(f"  Found {len(singleton_ids)} singleton clusters")
-					
-					unique_labels = np.unique(labels)
-					centroids = np.array([X[labels == cid].mean(axis=0) for cid in unique_labels])
-					
-					new_labels = labels.copy()
-					merged_count = 0
-					
-					for singleton_id in singleton_ids:
-							singleton_idx = np.where(labels == singleton_id)[0][0]
-							singleton_vec = X[singleton_idx].reshape(1, -1)
-							sims = cosine_similarity(singleton_vec, centroids)[0]
-							sorted_ids = np.argsort(sims)[::-1]
-							
-							# Find nearest non-singleton cluster
-							for nearest_id in sorted_ids:
-									if cluster_sizes[nearest_id] >= min_cluster_size:
-											new_labels[singleton_idx] = nearest_id
-											merged_count += 1
-											if verbose and merged_count <= 5:  # Only print first 5
-													print(f"  ├─ Merged singleton {singleton_id} → "
-																f"cluster {nearest_id} (sim={sims[nearest_id]:.4f})")
-											break
-					
-					unique_new = np.unique(new_labels)
-					label_map = {old: new for new, old in enumerate(unique_new)}
-					labels = np.array([label_map[l] for l in new_labels])
-					
-					if verbose:
-						if merged_count > 50:
-							print(f"  ├─ ... ({merged_count - 50} more)")
-						print(f"  ├─ Total merged: {merged_count} singletons")
-						print(f"  └─ Final clusters: {len(unique_new)} (initial: {len(unique_labels)})")
+						print(
+							f"  ├─ Merged singleton cluster {singleton_id:5d} → "
+							f"cluster {nearest_id:5d} (sim={sims[nearest_id]:.4f})"
+						)
+					break
+		
+		unique_new = np.unique(new_labels)
+		label_map = {old: new for new, old in enumerate(unique_new)}
+		labels = np.array([label_map[l] for l in new_labels])
+		
+		if verbose:
+			print(f"  ├─ Total merged: {merged_count} singletons")
+			print(f"  └─ Final clusters: {len(unique_new)} (initial: {len(unique_labels)})")
 	
 	# FINAL STATISTICS
 	final_cluster_sizes = np.bincount(labels)
@@ -2254,7 +2260,7 @@ def get_optimal_num_clusters(
 		print(f"  ├─ intra-similarity: {stats['mean_intra_similarity']:.4f} ± {stats['std_intra_similarity']:.4f}")
 		print(f"  ├─ Largest cluster: {stats['max_cluster_size']} items ({stats['max_size_ratio']*100:.2f}%)")
 		print(f"  ├─ (Avg) cluster size: {stats['mean_cluster_size']:.2f}")
-		print(f"  └─ Consolidation ratio: {stats['consolidation_ratio']:.2f}:1")
+		print(f"  ├─ Consolidation ratio: {stats['consolidation_ratio']:.2f}:1")
 		
 		if stats['mean_intra_similarity'] >= target_intra_similarity:
 			quality_status = "EXCELLENT"
@@ -2263,9 +2269,8 @@ def get_optimal_num_clusters(
 		else:
 			quality_status = "ACCEPTABLE"
 		
-		print(f"\nClustering quality status: {quality_status}")
-		print(f"  └─ mean_intra_similarity: {stats['mean_intra_similarity']:.4f} vs. target: {target_intra_similarity}")
-		print("=" * 80)
+		print(f"  └─ Quality assessment: {quality_status} mean_intra_similarity: {stats['mean_intra_similarity']:.4f} vs. target: {target_intra_similarity}")
+		print("=" * 90)
 	
 	return labels, stats
 
@@ -2522,9 +2527,7 @@ def assign_canonical_labels(
 	# ── Token normalisation ───────────────────────────────────────────────────
 	# Applied before ALL token-level operations so that 'Ausf.' and 'Ausf'
 	# are treated as the same token.
-	import re as _re
-	_TRAILING_PUNCT = _re.compile(r'[^\w]+$')
-
+	_TRAILING_PUNCT = re.compile(r'[^\w]+$')
 	def _norm_token(tok: str) -> str:
 		"""Lowercase and strip trailing punctuation from a single token."""
 		return _TRAILING_PUNCT.sub('', tok.lower())
@@ -2536,8 +2539,6 @@ def assign_canonical_labels(
 	def _norm_token_set(label: str) -> set:
 		"""Normalised token set for a label."""
 		return set(_norm_tokens(label))
-
-	# ── Internal utilities ────────────────────────────────────────────────────
 
 	def _shared_token_core(lbls: List[str], min_support: float = 0.5) -> List[str]:
 		"""
@@ -2608,7 +2609,6 @@ def assign_canonical_labels(
 			scores.append(subsumers / max(len(cluster_lbls), 1))
 		return np.array(scores)
 
-
 	# Corpus-wide case registry — built once, outside the loop, since it needs
 	# visibility across ALL clusters, not just the one currently being processed.
 	case_registry = _build_case_registry(original_label_counts)
@@ -2620,9 +2620,6 @@ def assign_canonical_labels(
 	total_freq_gain       = []
 	questionable_examples = []
 
-	if verbose:
-		print(f"\nCanonical labels per cluster")
-
 	for cid in sorted(df.cluster.unique()):
 		cluster_mask       = df.cluster == cid
 		cluster_texts      = df[cluster_mask]['label'].tolist()
@@ -2631,7 +2628,7 @@ def assign_canonical_labels(
 		cluster_size       = len(cluster_texts)
 
 		if verbose:
-			print(f"\n[Cluster {cid:5d}/{len(df.cluster.unique())}] {cluster_size} labels:\n{cluster_texts}")
+			print(f"\n[Cluster {cid:5d}/{len(df.cluster.unique())}] {cluster_size} label(s):\n{cluster_texts}")
 
 		# Centroid is always computed from real members only
 		centroid = cluster_embeddings.mean(axis=0)
@@ -2984,7 +2981,7 @@ def cluster(
 			max_consolidation=5.0,
 			target_singleton_ratio=0.015,
 			quality_vs_consolidation_weight=0.5,
-			merge_singletons=True,
+			# merge_singletons=True,
 			verbose=verbose,
 		)
 		best_k = stats['n_clusters']

@@ -546,6 +546,7 @@ Abadan
 Adinkerke
 Aegean
 Anzio
+Alicante
 Algiers
 Alsace
 Ankara
@@ -591,6 +592,7 @@ Calgary
 Cambridge
 Canberra
 Canso
+Caceres
 Caracas
 Cardiff
 Carlisle
@@ -605,6 +607,7 @@ Cologne
 Copenhagen
 Corpus Christi
 Corsica
+Cordoba
 Coventry
 Crimea
 Calcutta
@@ -710,6 +713,30 @@ Orlando
 Oslo
 Oostende
 Ostend
+Gijon
+Girona
+Granada
+Johannesburg
+Madison
+Malaga
+Managua
+Manchester
+Marseille
+Montpellier
+Norfolk
+Murcia
+Nuremberg
+Orly
+Ottawa
+Panama
+Palma de Mallorca
+Jaen
+Lima
+Lisbon
+Lleida
+Luqa
+Oviedo
+Oxford
 Paris
 Palermo
 Perth
@@ -725,32 +752,6 @@ Seville
 Stralsund
 Strathpeffer
 Valencia
-Gijon
-Girona
-Granada
-Johannesburg
-Madison
-Malaga
-Managua
-Manchester
-Marseille
-Montpellier
-Norfolk
-Murcia
-Nuremberg
-Ottawa
-Panama
-Palma de Mallorca
-Alicante
-Caceres
-Cordoba
-Jaen
-Lima
-Lisbon
-Lleida
-Luqa
-Oviedo
-Oxford
 Pamplona
 Peronne
 Péronne
@@ -771,6 +772,7 @@ Santander
 Sevastopol
 Seoul
 Shanghai
+Schiphol
 Sinai
 Sicily
 Siena
