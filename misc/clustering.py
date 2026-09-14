@@ -1846,6 +1846,7 @@ def get_optimal_super_clusters(
 def get_optimal_num_clusters(
 	X,
 	linkage_matrix,
+	label_texts,
 	min_cluster_size: int=2,
 	merge_singletons: bool=True,
 	target_intra_similarity=0.70,
@@ -2185,6 +2186,14 @@ def get_optimal_num_clusters(
 	if len(singleton_clusters_indices) > 0:
 		if verbose:
 			print(f"[WARNING] Found {len(singleton_clusters_indices)} singleton cluster(s)")
+			print("[SINGLETONS BEFORE MERGING]")
+			for singleton_id in singleton_clusters_indices:
+				singleton_idx = np.where(labels == singleton_id)[0][0]
+				print(
+					f"  ├─ Singleton cluster {singleton_id:5d}: "
+					f"'{label_texts[singleton_idx]}'"
+				)
+
 
 	if len(singleton_clusters_indices) > 0 and merge_singletons:
 		if verbose:
@@ -2976,6 +2985,7 @@ def cluster(
 		cluster_labels, stats = get_optimal_num_clusters(
 			X=X,
 			linkage_matrix=Z,
+			label_texts=unique_labels,
 			target_intra_similarity=0.69,
 			min_consolidation=3.8,
 			max_consolidation=5.0,
