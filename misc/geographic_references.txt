@@ -187,10 +187,11 @@ Poland
 Portugal
 Porto Rico
 Puerto Rico
-
+Puerto
 Qatar
 
 Republic of the Philippines
+Rico
 Rhodesia
 Romania
 Rumania
@@ -433,6 +434,7 @@ Indio
 Inglewood
 Jamestown
 Jacksonville
+Kings Point
 Leadvale
 Montclair
 Montclair NJ
@@ -491,6 +493,9 @@ Redwood
 Richmond
 St. Louis
 City of St. Louis
+Sand Point
+Sandpoint
+Sands Point
 Santa Barbara
 Santa Cruz
 Santa Monica
@@ -503,6 +508,8 @@ San Juan
 Austin
 Indianapolis
 Nashville
+Niagara
+Niagara Falls
 Portland
 City of Portland
 Pacific Beach
@@ -662,6 +669,8 @@ Jerusalem
 Karelia
 Karachi
 Karlskrona
+Kasaan
+Kastrup
 Kiev
 Kirkuk
 Kirkby
@@ -769,12 +778,14 @@ Salonika
 Saloniki
 Salzburg
 Santander
+Seclin
 Sevastopol
 Seoul
 Shanghai
 Schiphol
 Sinai
 Sicily
+Sidi Barrani
 Siena
 Shacktown 
 Shantytown
@@ -800,6 +811,7 @@ Trondheim
 Truro
 Tunis
 Tuscany
+Uman
 Valladolid
 Valparaíso
 Vancouver
@@ -812,8 +824,10 @@ Waco
 Warsaw
 Waterloo
 Wellington
+Wyncote
 York
 Ypres
+Zaporoze
 Zaragoza
 Zeebrugge
 Zillebeke
@@ -847,6 +861,7 @@ Chilean
 Congolese
 Costa Rican
 Cuban
+Cutella
 Croatian
 Danish
 Dutch
@@ -908,6 +923,8 @@ Scandinavian
 Scottish
 Senegalese
 Serbian
+Siberian
+Sicilian
 Slovenian
 Slovak
 Spanish

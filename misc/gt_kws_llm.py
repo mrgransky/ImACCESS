@@ -9,7 +9,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "Miltiano flag marching towards the Aragon front with the first columns of fighters, in Barcelona. A young militia officer with an abadera amongst the first columns of Republican fighters on his way to the front of Zaragoza, Barcelona." -llm "Qwen/Qwen3.5-122B-A10B" -v
+# python gt_kws_llm.py -desc "Canopy (India). Tourists visiting the Ghat of the Massacre of English Families in 1857." -llm "Qwen/Qwen3.5-122B-A10B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -58,7 +58,7 @@ EXCLUDE:
   - Quantities, counts, measurements, or numeric expressions (1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
   - Equipment identifiers, serial numbers, brands, or models.
   - Dates, times, years, decades, or any temporal references.
-  - Names of locations, places, buildings, or structures (Plaza de Santiago, St. Louis Cathedral).
+  - Names of locations, neighborhoods, places, buildings, or structures (Plaza de Santiago, St. Louis Cathedral).
   - Individual people's names or honorifics (A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
   - Family relationship terms (mother, father, son, uncle).
   - Generic human category nouns (man, men, woman, person, people, children).

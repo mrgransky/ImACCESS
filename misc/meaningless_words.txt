@@ -897,7 +897,6 @@ twenty
 twice
 two
 type
-unit
 undoing
 unfortunately
 unless
@@ -1165,7 +1164,7 @@ schedule
 setting
 environment
 space
-
+furiou
 action
 imagery
 drawing
@@ -1191,7 +1190,6 @@ icon
 symbol
 direction
 orientation
-war
 upward
 downward
 sentence
@@ -1209,3 +1207,15 @@ spring
 summer
 autumn
 winter
+january
+february
+march
+april
+may
+june
+july
+august
+september
+october
+november
+december

@@ -161,11 +161,35 @@ def _post_process_(
 
 	PROTECTED_PHRASES = {
 		"united states",
+		"niagara falls",
 		"united kingdom",
+		"airlines",
+		"air lines",
+		"limited",
+		"life savers",
+		"pyrotechnics",
+		# "american airlines",
+		# "delta airlines",
+		# "delta air lines",
+		"general motors",
 		"united nations",
 		"soviet union",
 		"marine corps",       # → "marine corp" bug
 		"corps",              # standalone too
+	}
+
+	PLURALE_TANTUM = {
+		"pants", "shorts", "glasses", "scissors", "pliers",
+		"tongs", "trousers", "binoculars", "goggles", "barracks",
+		"headquarters", "clothes", "belongings", "remains",
+		"surroundings", "outskirts", "archives",
+	}
+
+	PARTICIPAL_ADJECTIVES = {
+		"abandoned", "restored", "destroyed", "damaged", "ruined",
+		"burned", "broken", "painted", "carved", "decorated",
+		"fortified", "occupied", "liberated", "bombed", "shelled",
+		"camouflaged", "abandoned", "deserted", "flooded",
 	}
 
 	GERUND_NOUNS = {
@@ -213,6 +237,12 @@ def _post_process_(
 		"twenty", "thirty", "hundred"
 	}
 
+	ORDINALS = {
+		"first", "second", "third", "fourth", "fifth", "sixth",
+		"seventh", "eighth", "ninth", "tenth", "eleventh", "twelfth",
+		"twentieth", "thirtieth", "hundredth",
+	}
+
 	COLORS = {
 		"red", "orange", "yellow", "green", "blue", "indigo", "violet",
 		"purple", "pink", "brown", "black", "white", "gray", "grey",
@@ -220,6 +250,8 @@ def _post_process_(
 		"teal", "cyan", "magenta", "crimson", "khaki",
 		"turquoise", "lavender", "coral",
 	}
+
+	IMAGE_DESCRIPTORS = {"black and white", "black & white", "B/W", "B&W", 'B and W'}
 
 	HONORIFICS = {
 		"mr", 
@@ -530,11 +562,20 @@ def _post_process_(
 			# so re-check against WordNet before trusting that tag.
 			has_common_sense = bool(nltk.corpus.wordnet.synsets(token.lower(), pos=nltk.corpus.wordnet.NOUN))
 			is_proper_noun = pos.startswith("NNP") and not has_common_sense
+
+			# uppercase at start OR after apostrophe:
+			starts_capital = bool(original_token) and original_token[0].isupper()
+			has_apostrophe_capital = bool(re.search(r"['\u2019][A-Z]", original_token))
+
 			if (
 				is_abbr
 				or token.lower() in PROTECTED_ABBREVIATIONS
+				or token.lower() in PLURALE_TANTUM
+				or token.lower() in PARTICIPAL_ADJECTIVES
 				or i in protected_indices
 				or is_proper_noun
+				# or starts_capital # too aggressive
+				or has_apostrophe_capital
 			):
 				lemmatized_tokens.append(token)  # Keep original case
 			else:
@@ -543,15 +584,31 @@ def _post_process_(
 				else:
 					wordnet_pos = get_wordnet_pos(pos)
 
-				# lemmatize on the lowercase form (WordNet index is lowercase-only) ──
-				candidate = lemmatizer.lemmatize(token.lower(), pos=wordnet_pos)
-				if token.endswith("ss") and candidate == token[:-1]:
-					lemmatized_tokens.append(token)
+				token_lower = token.lower()
+				candidate = lemmatizer.lemmatize(token_lower, pos=wordnet_pos)
+
+				# Reject WordNet bug: boss→bos, pass→pas, glass→glas, grass→gras
+				if token_lower.endswith("ss") and candidate == token_lower[:-1]:
+						lemmatized_tokens.append(token)  # keep original
 				else:
-					# restore original capitalization pattern ──
-					if token[:1].isupper():
-						candidate = candidate[:1].upper() + candidate[1:]
-					lemmatized_tokens.append(candidate)
+						if token[:1].isupper():
+								candidate = candidate[:1].upper() + candidate[1:]
+						lemmatized_tokens.append(candidate)
+
+
+				# # lemmatize on the lowercase form (WordNet index is lowercase-only) ──
+				# candidate = lemmatizer.lemmatize(token.lower(), pos=wordnet_pos)
+				# if token.endswith("ss") and candidate == token[:-1]:
+				# 	lemmatized_tokens.append(token)
+				# else:
+				# 	# restore original capitalization pattern ──
+				# 	if token[:1].isupper():
+				# 		candidate = candidate[:1].upper() + candidate[1:]
+				# 	lemmatized_tokens.append(candidate)
+
+
+
+
 
 		return ' '.join(lemmatized_tokens)
 
@@ -629,7 +686,7 @@ def _post_process_(
 			
 			if not item:
 				if verbose:
-					print(f"        [SKIP] Empty/false")
+					print(f"\t\t[SKIPPED] Empty/false")
 				continue
 			
 			# Capture the raw string
@@ -647,11 +704,22 @@ def _post_process_(
 
 			s = original_cleaned
 			
-			# --- Lemmatization with guards ---
+			if nlp_spacy is not None:
+				geo_entities = _extract_geographic_entities(original_cleaned, verbose=verbose)
+				if geo_entities:
+					if verbose:
+						print(f"\t\t[SKIPPED] {repr(original_cleaned)} [spaCy] GE detected {repr(geo_entities)}")
+					continue
+
+			if is_stopword(original_cleaned):
+				if verbose:
+					print(f"\t\t[SKIPPED] {repr(original_cleaned)} stopword (or georaphic reference)")
+				continue
+
 			if is_quantified_plural(original_cleaned):
 				# Skip this label entirely (don't even lemmatize)
 				if verbose:
-					print(f"        → Quantified plural detected: {repr(original_cleaned)} => skipping")
+					print(f"\t\t[SKIPPED] {repr(original_cleaned)} Quantified plural ")
 				continue
 				# lemma = s  # Preserve "two women", "three soldiers"
 				# if verbose:
@@ -718,10 +786,10 @@ def _post_process_(
 					print(f"\t\t[SKIPPED] {repr(lemma)} Phrasal verb")
 				continue
 
-			if is_stopword(lemma):
-				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} {repr(lemma)} stopword")
-				continue
+			# if is_stopword(lemma):
+			# 	if verbose:
+			# 		print(f"\t\t[SKIPPED] {repr(lemma)} stopword")
+			# 	continue
 
 			# Exclude pure color descriptors
 			if all(w.lower() in COLORS for w in lemma.split()):
@@ -736,9 +804,14 @@ def _post_process_(
 				continue
 
 			# Exclude "black and white" specifically
-			if lemma.lower() in {"black and white", "black & white", "B/W", "B&W", 'B and W'}:
+			if lemma.lower() in IMAGE_DESCRIPTORS:
 				if verbose:
 					print(f"\t\t[SKIPPED] {repr(lemma)}")
+				continue
+
+			if lemma.lower() in ORDINALS:
+				if verbose:
+					print(f"\t\t[SKIPPED] {repr(lemma)} ordinal")
 				continue
 
 			if should_filter_label(lemma):
@@ -761,13 +834,6 @@ def _post_process_(
 				if verbose:
 					print(f"\t\t[SKIPPED] {repr(lemma)} Only NNNNN foot")
 				continue
-
-			if nlp_spacy is not None:
-				geo_entities = _extract_geographic_entities(lemma, verbose=verbose)
-				if geo_entities:
-					if verbose:
-						print(f"\t\t[SKIPPED] {repr(lemma)} [spaCy] GE detected {repr(geo_entities)}")
-					continue
 
 			lemma_key = lemma.lower().strip()
 			if lemma_key in seen_lower:
@@ -1144,10 +1210,34 @@ def basic_clean(txt: str):
 	# txt = txt.replace(r'#', ' ') # not always safe!
 	# txt = txt.replace(',', ' ')
 
-	# remove everything inside parantheses
-	txt = re.sub(r'\([^)]*\)', ' ', txt)
+	# remove everything inside parantheses (Aggresive)
+	# txt = re.sub(r'\([^)]*\)', ' ', txt)
+	# === REMOVE ONLY PARENTHETICAL IDs / ARCHIVE REFERENCES (preserve useful ones like (India)) ===
 
-	# # remove everything inside brackets
+	# 1. Remove parentheses that contain typical ID / catalog trigger words
+	txt = re.sub(
+		r'\s*\([^()]*\b(?:'
+		r'number|no\.?|photo|negative|neg\.?|item|record|file|ref\.?|reference|'
+		r'usaf|usaaf|nara|gp-|aal-|serial|catalog|accession|print|slide|frame|'
+		r'envelope|note|caption'
+		r')[^()]*\)',
+		' ',
+		txt,
+		flags=re.IGNORECASE
+	)
+
+	# 2. Remove pure alphanumeric / numeric codes in parentheses
+	#    Matches: (B25604AC), (74399AC), (12345), (GP-1234), (A12345B), etc.
+	txt = re.sub(r'\s*\([^()]*[A-Za-z]{0,5}\d{4,}[A-Za-z0-9-]*\)', ' ', txt)
+	txt = re.sub(r'\s*\([^()]*\d{5,}[A-Za-z]?\)', ' ', txt)
+
+	# 3. Remove very short pure-code parentheses (e.g. (A1), (B24), (X-12))
+	txt = re.sub(r'\s*\([A-Za-z]{1,3}[- ]?\d{1,4}[A-Za-z]?\)', ' ', txt)
+
+	# 4. Clean up any leftover empty parentheses
+	txt = re.sub(r'\s*\(\s*\)', ' ', txt)
+
+	# # remove everything inside brackets (Aggressive)
 	# txt = re.sub(r'\[[^\]]*\]', ' ', txt)
 
 	txt = re.sub(r'-{2,}', ' ', txt)   # multiple dashes
@@ -1202,20 +1292,6 @@ def get_enriched_description(
 	
 	if verbose:
 		print(f"df_enriched: {df_enriched.shape} {type(df_enriched)} {list(df_enriched.columns)}")
-
-	# df_enriched['enriched_document_description'] = df_enriched.apply(
-	# 	lambda row: ". ".join(
-	# 		filter(
-	# 			None, 
-	# 			[
-	# 				basic_clean(str(row['title'])) if pd.notna(row['title']) and str(row['title']).strip() else None, 
-	# 				basic_clean(str(row['description'])) if pd.notna(row['description']) and str(row['description']).strip() else None,
-	# 				# basic_clean(str(row['keywords'])) if 'keywords' in df_enriched.columns and pd.notna(row['keywords']) and str(row['keywords']).strip() else None
-	# 			]
-	# 		)
-	# 	),
-	# 	axis=1
-	# )
 
 	def combine_enriched_description(row):
 		# Easily add 'keywords' or other columns to this list later
