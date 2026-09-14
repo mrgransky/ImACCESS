@@ -1,5 +1,3 @@
-from tabnanny import verbose
-
 from utils import *
 import visualize as viz
 import clip
@@ -220,7 +218,7 @@ def _shannon_entropy(counts: Counter, base: float = 2.0) -> float:
 	
 	return ent
 
-def auto_calibrate_semantic_threshold(
+def auto_calibrate_semantic_threshold_(
 	model: SentenceTransformer,
 	verbose: bool = False
 ) -> Tuple[float, Dict]:
@@ -478,6 +476,237 @@ def auto_calibrate_semantic_threshold(
 		'strict_dedup_threshold': float(hard_neg_max + 0.01) if hard_neg_max >= pos_min else float(best_th),
 		'best_f1_score': float(best_f1)
 	}
+
+	return float(best_th), diagnostics
+
+def auto_calibrate_semantic_threshold(
+	model: SentenceTransformer,
+	verbose: bool = False
+) -> Tuple[float, Dict]:
+
+	# ---------------------------------------------------------------------------------
+	# MODEL NAME EXTRACTION (single pass)
+	model_name = None
+	
+	# Method 1: model_card_data
+	if hasattr(model, 'model_card_data') and model.model_card_data:
+		m_id = getattr(model.model_card_data, 'model_id', None)
+		if m_id:
+			model_name = m_id
+	
+	# Method 2: _model_card_data
+	if not model_name and hasattr(model, '_model_card_data') and model._model_card_data:
+		m_id = getattr(model._model_card_data, 'model_id', None)
+		if m_id:
+			model_name = m_id
+	
+	# Method 3: Direct attributes
+	if not model_name:
+		for attr in ['name_or_path', 'model_name_or_path']:
+			if hasattr(model, attr):
+				val = getattr(model, attr)
+				if val:
+					model_name = val
+					break
+	
+	# Method 4: Fallback via config
+	if not model_name:
+		try:
+			if len(model) > 0:
+				first_module = model[0]
+				if hasattr(first_module, 'auto_model') and hasattr(first_module.auto_model, 'config'):
+					cfg = first_module.auto_model.config
+					model_name = getattr(cfg, '_name_or_path', None) or getattr(cfg, 'name_or_path', None)
+		except Exception:
+			pass
+	
+	if not model_name or model_name == "None":
+		model_name = "unknown"
+	# ---------------------------------------------------------------------------------
+	
+	if verbose:
+		print(f"\n{'-'*90}")
+		print(f"AUTOMATIC THRESHOLD CALIBRATION ({model_name})")
+		print(f"{'-'*90}")
+	
+	# ==========================================
+	# DETECT INSTRUCTION-TUNED MODELS
+	# ==========================================
+	# Qwen3-Embedding, GTE, and similar models need task instructions
+	instruction_prefix = ""
+	if any(kw in model_name.lower() for kw in ['qwen', 'gte', 'instruct', 'e5']):
+			instruction_prefix = (
+					"Instruct: Given two short keyword phrases, determine if they refer "
+					"to the same concept for deduplication purposes.\nQuery: "
+			)
+			if verbose:
+					print(f"[INFO] Instruction-tuned model detected. Using task instruction.")
+	
+	# ==========================================
+	# CALIBRATION PAIRS
+	# ==========================================
+	lexical_variations = [
+			("tank", "tanks"), ("aircraft", "airplanes"), ("soldier", "soldiers"),
+			("rifle", "rifles"), ("ship", "ships"), ("base", "bases"),
+			("fly", "flying"), ("destroy", "destroyed"), ("bomb", "bombing")
+	]
+	acronyms = [
+			("UAV", "drone"), ("USA", "United States"), ("NATO", "North Atlantic Treaty Organization"),
+			("UFO", "unidentified flying object"), ("POW", "prisoner of war"), ("AA", "anti-aircraft"),
+			("HQ", "headquarters"), ("CO", "commanding officer")
+	]
+	direct_synonyms = [
+			("aircraft", "airplane"), ("soldier", "infantryman"), ("submarine", "U-boat"),
+			("tank", "armor"), ("rifle", "firearm"), ("base", "military installation"),
+			("pilot", "aviator"), ("ship", "vessel"), ("artillery", "ordnance")
+	]
+	taxonomic = [
+			("weapon", "rifle"), ("vehicle", "tank"), ("aircraft", "helicopter"),
+			("soldier", "sniper"), ("ship", "destroyer"), ("building", "bunker"),
+			("uniform", "camouflage"), ("officer", "general")
+	]
+	co_hyponyms = [
+			("navy", "army"), ("rifle", "pistol"), ("fighter", "bomber"),
+			("tank", "truck"), ("submarine", "aircraft carrier"), ("sniper", "medic"),
+			("helicopter", "airplane"), ("sword", "bayonet"), ("captain", "general")
+	]
+	antonyms = [
+			("advance", "retreat"), ("victory", "defeat"), ("attack", "defend"),
+			("peace", "war"), ("ally", "enemy"), ("takeoff", "landing"),
+			("armistice", "declaration of war"), ("build", "destroy")
+	]
+	entity_vs_generic = [
+			("M4 Sherman", "tank"), ("Einstein", "physicist"), ("Berlin", "city"),
+			("Normandy", "beach"), ("Enola Gay", "bomber"), ("Patton", "general"),
+			("Katana", "sword"), ("Pearl Harbor", "naval base")
+	]
+	unrelated = [
+			("volcano", "shopping"), ("soldier", "butterfly"), ("tank", "symphony"),
+			("rifle", "ocean"), ("general", "pancake"), ("submarine", "forest"),
+			("artillery", "mathematics"), ("pilot", "agriculture")
+	]
+	# ==========================================
+	# SIMILARITY COMPUTATION (with instruction)
+	# ==========================================
+	def compute_similarities(pairs, category_name):
+			if not pairs:
+					return {'scores': [], 'mean': 0, 'std': 0, 'min': 0, 'max': 0, 'details': [], 'category': category_name}
+			
+			# Collect all unique words
+			words = list(set([w for pair in pairs for w in pair]))
+			
+			# Apply instruction prefix if needed
+			if instruction_prefix:
+					encoded_words = [instruction_prefix + w for w in words]
+			else:
+					encoded_words = words
+			
+			# Batch encode
+			embeddings = model.encode(encoded_words, convert_to_tensor=False, show_progress_bar=False)
+			emb_dict = dict(zip(words, embeddings))
+			
+			scores, details = [], []
+			for w1, w2 in pairs:
+					sim = float(1 - scipy.spatial.distance.cosine(emb_dict[w1], emb_dict[w2]))
+					scores.append(sim)
+					details.append((w1, w2, sim))
+			
+			return {
+					'scores': scores,
+					'mean': float(np.mean(scores)),
+					'std': float(np.std(scores)),
+					'min': float(np.min(scores)),
+					'max': float(np.max(scores)),
+					'details': details,
+					'category': category_name,
+			}
+	results = {
+			'lexical': compute_similarities(lexical_variations, "Lexical Variations"),
+			'acronyms': compute_similarities(acronyms, "Acronyms"),
+			'synonyms': compute_similarities(direct_synonyms, "Direct Synonyms"),
+			'taxonomic': compute_similarities(taxonomic, "Taxonomic"),
+			'co_hyponyms': compute_similarities(co_hyponyms, "Co-Hyponyms (Siblings)"),
+			'antonyms': compute_similarities(antonyms, "Antonyms"),
+			'entity_generic': compute_similarities(entity_vs_generic, "Entity vs Generic"),
+			'unrelated': compute_similarities(unrelated, "Unrelated"),
+	}
+	# ==========================================
+	# STRATEGIC GROUPING
+	# ==========================================
+	positive_scores = results['lexical']['scores'] + results['acronyms']['scores'] + results['synonyms']['scores']
+	hard_negative_scores = results['co_hyponyms']['scores'] + results['antonyms']['scores'] + results['taxonomic']['scores']
+	easy_negative_scores = results['unrelated']['scores'] + results['entity_generic']['scores']
+	if verbose:
+			print("\nCATEGORY BREAKDOWN:")
+			for key, res in results.items():
+					if res['scores']:
+							print(f"  {res['category']:<28} μ±σ: {res['mean']:.3f} ± {res['std']:.3f} | Range: [{res['min']:.3f}, {res['max']:.3f}]")
+			
+			print("\nSTRATEGIC DISTRIBUTIONS:")
+			print(f"  POSITIVES (Mergeable):        μ={np.mean(positive_scores):.3f} | Min={np.min(positive_scores):.3f} | Max={np.max(positive_scores):.3f}")
+			print(f"  HARD NEGATIVES (Danger Zone): μ={np.mean(hard_negative_scores):.3f} | Min={np.min(hard_negative_scores):.3f} | Max={np.max(hard_negative_scores):.3f}")
+			print(f"  EASY NEGATIVES (Unrelated):   μ={np.mean(easy_negative_scores):.3f} | Min={np.min(easy_negative_scores):.3f} | Max={np.max(easy_negative_scores):.3f}")
+	# ==========================================
+	# THRESHOLD OPTIMIZATION
+	# ==========================================
+	range_ths = np.arange(0.30, 0.99, 0.005)
+	best_f1 = 0
+	best_th = 0.5
+	
+	for th in range_ths:
+			tp = sum(1 for s in positive_scores if s >= th)
+			fp = sum(1 for s in hard_negative_scores if s >= th)
+			fn = sum(1 for s in positive_scores if s < th)
+			
+			precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+			recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+			f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+			
+			if f1 > best_f1:
+					best_f1 = f1
+					best_th = th
+	# Danger Zone calculation
+	pos_min = float(np.min(positive_scores)) if positive_scores else 0
+	hard_neg_max = float(np.max(hard_negative_scores)) if hard_negative_scores else 0
+	overlap_exists = hard_neg_max >= pos_min
+	danger_zone_width = max(0, hard_neg_max - pos_min) if overlap_exists else 0
+	if verbose:
+		print("\nRECOMMENDATION & DIAGNOSTICS")
+		print(f"  Optimal F1 Threshold: {best_th:.4f} (F1: {best_f1:.3f})")
+		
+		if overlap_exists:
+			print(f"\n  ⚠️  OVERLAP DETECTED (Danger Zone width: {danger_zone_width:.3f})")
+			print(f"     Lowest Positive: {pos_min:.3f} | Highest Hard Negative: {hard_neg_max:.3f}")
+			print(f"     → A single global threshold WILL cause false merges.")
+			print(f"     → RECOMMENDED STRATEGY:")
+			print(f"        1. Strict Dedup:  > {hard_neg_max + 0.01:.3f}")
+			print(f"        2. Loose Cluster: > {best_th:.3f}")
+			print(f"        3. LLM-in-loop:   pairs in [{best_th:.3f}, {hard_neg_max:.3f}] need verification")
+		else:
+			print(f"\n  ✅ EXCELLENT SEPARATION (no overlap)")
+			print(f"     Safe global threshold: {best_th:.4f}")
+
+
+	diagnostics = {
+		'model_name': model_name,
+		'instruction_prefix_used': instruction_prefix if instruction_prefix else None,
+		'category_stats': {k: {kk: vv for kk, vv in v.items() if kk != 'details'} for k, v in results.items()},
+		'distributions': {
+			'positive_min': pos_min,
+			'positive_max': float(np.max(positive_scores)) if positive_scores else 0,
+			'hard_negative_max': hard_neg_max,
+			'hard_negative_min': float(np.min(hard_negative_scores)) if hard_negative_scores else 0,
+			'easy_negative_max': float(np.max(easy_negative_scores)) if easy_negative_scores else 0,
+			'overlap_exists': overlap_exists,
+			'danger_zone_width': danger_zone_width,
+		},
+		'optimal_f1_threshold': float(best_th),
+		'strict_dedup_threshold': float(hard_neg_max + 0.01) if overlap_exists else float(best_th),
+		'best_f1_score': float(best_f1),
+	}
+	if verbose:
+		pprint.pprint(diagnostics)
+		print(f"{'-'*90}")
 
 	return float(best_th), diagnostics
 
@@ -1277,7 +1506,8 @@ def get_cgd_taxonomy_supervision(
 			print(f"\n  👁️  AXIS 2 - Visual Grounding (G)")
 
 		visual_grounding = clip_grounding[source_col]["visual_grounding_clip"]
-		# descriptive measure of inter-source agreement: Cross-Modal Concordance
+		# descriptive measure of inter-source agreement: 
+		# Cross-Modal Concordance
 		vlm_concordance = _semantic_jaccard_cached(
 			sets_a=parsed_sets[source_col],
 			sets_b=anchor_sets,
@@ -1289,7 +1519,6 @@ def get_cgd_taxonomy_supervision(
 		if verbose:
 			print(f"    Interpretation: {visual_grounding*100:.1f}% semantic agreement")
 			print(f"    Cross-Modal Concordance (vs VLM): {vlm_concordance:.4f}")
-
 
 		# # AXIS 2: VISUAL GROUNDING (Semantic Overlap with VLM)
 		# if verbose:

@@ -777,6 +777,7 @@ Siena
 Shacktown 
 Shantytown
 Southampton
+Stalingrad
 Stavanger
 Stirling
 Stockholm
@@ -804,6 +805,7 @@ Venice
 Vera Cruz
 Verona
 Vienna
+Volgograd
 Waco
 Warsaw
 Waterloo

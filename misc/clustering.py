@@ -2613,7 +2613,6 @@ def assign_canonical_labels(
 	# visibility across ALL clusters, not just the one currently being processed.
 	case_registry = _build_case_registry(original_label_counts)
 
-
 	cluster_canonicals    = {}
 	virtual_used_count    = 0
 	freq_changed_count    = 0
@@ -2632,7 +2631,7 @@ def assign_canonical_labels(
 		cluster_size       = len(cluster_texts)
 
 		if verbose:
-			print(f"\n[Cluster {cid}] {cluster_size} labels:\n{cluster_texts}")
+			print(f"\n[Cluster {cid:5d}/{len(df.cluster.unique())}] {cluster_size} labels:\n{cluster_texts}")
 
 		# Centroid is always computed from real members only
 		centroid = cluster_embeddings.mean(axis=0)
