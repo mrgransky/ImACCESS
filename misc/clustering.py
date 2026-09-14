@@ -28,8 +28,10 @@ from sklearn.utils import resample
 from sklearn.metrics import adjusted_rand_score
 from sklearn.cluster import AgglomerativeClustering
 
-from sentence_transformers import SentenceTransformer
+from collections import defaultdict
 from typing import List, Tuple, Dict, Set, Any, Optional, Union, Callable, Iterable
+
+from sentence_transformers import SentenceTransformer
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -2464,6 +2466,114 @@ def remove_problematic_cluster_labels(
 
 	return df_clean, embeddings_clean, removed_labels
 
+def _resolve_cross_cluster_case_collisions(
+	cluster_canonicals: Dict[int, Dict],
+	original_label_counts: Dict[str, int],
+	verbose: bool = False,
+) -> Dict[int, Dict]:
+	"""
+	Post-processing pass: resolve case-only collisions BETWEEN DIFFERENT
+	clusters' final canonicals (e.g. cluster 33 -> 'war', cluster 37 -> 'War').
+
+	Why the earlier case_registry fix does not catch this
+	-------------------------------------------------------
+	case_registry is built from original_label_counts, which only contains
+	REAL corpus labels. 'war' and 'War' are both SYNTHESISED strings -- e.g.
+	cluster 33's real members are ['guerre','war game','war paint',
+	'war picture','war zone'], none of which IS the standalone word 'war'.
+	There is nothing in original_label_counts to align either spelling to,
+	so the in-loop check never fires and the two clusters never see each
+	other's choice.
+
+	Resolution rule
+	---------------
+	Group ALL cluster canonicals by their lowercase form. For any group
+	containing more than one distinct spelling:
+	  1. If any spelling in the group is itself a real corpus label (a key
+	     in original_label_counts), that spelling wins outright -- real
+	     corpus text always beats a synthesised guess.
+	  2. Otherwise (every spelling in the group is synthesised), the
+	     spelling backed by the LARGEST total cluster size wins -- more
+	     member labels means more corpus evidence supporting that
+	     particular capitalisation.
+	  3. Ties are broken alphabetically for determinism.
+	Every cluster on the losing side is rewritten to the winning spelling.
+
+	This subsumes the earlier case_registry check (rule 1 covers the same
+	real-vs-virtual case) while additionally covering virtual-vs-virtual
+	collisions that case_registry structurally cannot see. It is safe to
+	run this in ADDITION to the existing in-loop case_registry check --
+	rule 1 will simply be a no-op wherever case_registry already resolved
+	things, and rule 2 handles what's left over.
+
+	Parameters
+	----------
+	cluster_canonicals : Dict[int, Dict]
+		{cid: {'canonical': str, 'score': float, 'size': int, 'virtual': bool}}
+		as produced by the main per-cluster loop, BEFORE this function runs.
+	original_label_counts : Dict[str, int]
+		Corpus-wide frequency of every real (case-folded) label.
+	verbose : bool
+		Print each collision found and how it was resolved.
+
+	Returns
+	-------
+	Dict[int, Dict]
+		The same dict, mutated in place, with colliding canonicals
+		realigned to a single winning spelling per collision group.
+	"""
+	groups: Dict[str, list] = defaultdict(list)
+	for cid, meta in cluster_canonicals.items():
+		groups[meta['canonical'].lower()].append(cid)
+
+	n_resolved = 0
+	n_groups_with_collision = 0
+
+	for key, cids in groups.items():
+		spellings = {cluster_canonicals[cid]['canonical'] for cid in cids}
+		if len(spellings) <= 1:
+			continue  # no collision in this group
+
+		n_groups_with_collision += 1
+
+		# Rule 1: a real-label spelling anchors the whole group
+		real_spelling = next(
+			(s for s in spellings if s in original_label_counts), None
+		)
+		if real_spelling is not None:
+			winner = real_spelling
+			reason = "real corpus label"
+		else:
+			# Rule 2: largest total cluster size wins; alphabetical tiebreak
+			size_by_spelling: Dict[str, int] = defaultdict(int)
+			for cid in cids:
+				size_by_spelling[cluster_canonicals[cid]['canonical']] += cluster_canonicals[cid]['size']
+			winner = max(size_by_spelling, key=lambda s: (size_by_spelling[s], s))
+			reason = f"largest cluster-size evidence ({size_by_spelling[winner]} labels)"
+
+		if verbose:
+			print(f"\n[CASE COLLISION] group '{key}': spellings={sorted(spellings)}")
+			print(f"  -> winner: '{winner}'  ({reason})")
+
+		for cid in cids:
+			old = cluster_canonicals[cid]['canonical']
+			if old != winner:
+				if verbose:
+					print(f"    cluster {cid}: '{old}' -> '{winner}'")
+				cluster_canonicals[cid]['canonical'] = winner
+				n_resolved += 1
+
+	if verbose:
+		if n_resolved:
+			print(
+				f"\n[CASE COLLISION RESOLUTION] {n_resolved} cluster(s) realigned "
+			  f"across {n_groups_with_collision} collision group(s)"
+			)
+		else:
+			print("\n[CASE COLLISION RESOLUTION] no cross-cluster case collisions found")
+
+	return cluster_canonicals
+
 def assign_canonical_labels(
 	df: pd.DataFrame,
 	X: np.ndarray,
@@ -2818,6 +2928,12 @@ def assign_canonical_labels(
 		if verbose:
 			tag = " [VIRTUAL]" if virtual_flags[best_idx] else ""
 			print(f"\t=> Selected Canonical: {canonical} (sim={similarities[best_idx]:.4f}){tag}")
+
+	cluster_canonicals = _resolve_cross_cluster_case_collisions(
+		cluster_canonicals, 
+		original_label_counts, 
+		verbose=verbose,
+	)
 
 	return (
 		cluster_canonicals,
