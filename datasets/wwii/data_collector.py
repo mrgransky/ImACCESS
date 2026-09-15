@@ -599,7 +599,7 @@ def extract_url_info(url:str)-> Dict:
 		"type": type_
 	}
 
-def get_dframe(
+def get_dframe_old(
 	doc_idx: int,
 	doc_url: str,
 	user_query: str,
@@ -675,10 +675,9 @@ def get_dframe(
 						verbose=verbose,
 					)
 				failed = []
-				with ThreadPoolExecutor(max_workers=num_workers) as ex:
+				with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as ex:
 					futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
-					for fut in as_completed(futures):
-					# for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading missing images", ncols=100):
+					for fut in concurrent.futures.as_completed(futures):
 						idx, url, ok = fut.result()
 						if not ok:
 							failed.append((idx, url))
@@ -793,43 +792,95 @@ def get_dframe(
 	# ── 5. Parallel fetch: photo-specific descriptions ────────────────────
 	photo_descriptions = {}
 	def _fetch_photo_desc(url: str):
-			"""Scrape a single photo page and return its caption text."""
-			try:
-					# Each thread gets its own short-lived session to avoid
-					# race conditions on the shared `session` object.
-					s = requests.Session()
-					s.headers.update(HEADERS)
-					r = s.get(url, timeout=15)
-					r.raise_for_status()
-					bs = BeautifulSoup(r.text, 'html.parser')
-					# Try multiple common caption containers (theme-dependent)
-					el = (
-							bs.find('div', class_='photo-description') or
-							bs.find('div', class_='entry-caption') or
-							bs.find('figcaption') or
-							bs.find('div', class_='wp-caption-text') or
-							bs.find('p', class_='wp-caption-text')
-					)
-					if el:
-							txt = el.get_text(strip=True)
-							txt = re.sub(r'\s+', ' ', txt).strip()
-							if txt:
-									return url, txt
-					# Fallback: meta description
-					meta_tag = bs.find('meta', attrs={'name': 'description'})
-					if meta_tag and meta_tag.get('content'):
-							return url, meta_tag['content'].strip()
-			except Exception as e:
+		"""Scrape a single photo page and return its caption text."""
+		try:
+			s = requests.Session()
+			s.headers.update(HEADERS)
+			r = s.get(url, timeout=15)
+			r.raise_for_status()
+			bs = BeautifulSoup(r.text, 'html.parser')
+			desc_data = {
+				'title': None,
+				'excerpt': None,
+				'content': None,
+				'meta_description': None,
+				'alt_text': None,
+			}
+
+			# ── Source 1: H1 Title ────────────────────────────────────────────
+			photo_container = bs.find('div', class_='photo-container')
+			if photo_container:
+				h1 = photo_container.find('h1')
+			else:
+				# Fallback: find h1 that's NOT inside site-header
+				h1 = None
+				for h in bs.find_all('h1'):
+					if not h.find_parent('header', class_='site-header'):
+						h1 = h
+						break
+			if h1:
+				desc_data['title'] = h1.get_text(strip=True)
+				if verbose:
+					print(f"\n[{url}] SOURCE: h1 {repr(desc_data['title'])}")
+
+			# ── Source 2: Photo Excerpt ───────────────────────────────────────
+			excerpt = bs.find('p', class_='photo-excerpt')
+			if excerpt:
+				desc_data['excerpt'] = excerpt.get_text(strip=True)
+				if verbose:
+					print(f"\n[{url}] SOURCE: photo-excerpt {repr(desc_data['excerpt'])}")
+
+			# ── Source 3: Photo Content ───────────────────────────────────────
+			content = bs.find('div', class_='photo-content')
+			if content:
+				txt = content.get_text(strip=True)
+				if txt and len(txt) > 10:
+					desc_data['content'] = txt
 					if verbose:
-							print(f"  [WARN] Could not fetch photo description from {url}: {e}")
-			return url, None
+						print(f"\n[{url}] SOURCE: photo-content {repr(desc_data['content'])}")
+
+			# ── Source 4: Meta Description ────────────────────────────────────
+			meta_tag = bs.find('meta', attrs={'name': 'description'})
+			if meta_tag and meta_tag.get('content'):
+				desc_data['meta_description'] = meta_tag['content'].strip()
+				if verbose:
+					print(f"\n[{url}] SOURCE: meta-desc {repr(desc_data['meta_description'])}")
+
+			# ── Source 5: Image Alt Text ──────────────────────────────────────
+			img = bs.find('img', id='main-photo')
+			if img and img.get('alt'):
+				desc_data['alt_text'] = img['alt'].strip()
+				if verbose:
+					print(f"\n[{url}] SOURCE: alt-text {repr(desc_data['alt_text'])}")
+
+			# Build combined description
+			parts = []
+			if desc_data['title']:
+				parts.append(desc_data['title'])
+			
+			if desc_data['excerpt'] and desc_data['excerpt'] != desc_data['title']:
+				parts.append(desc_data['excerpt'])
+			
+			if desc_data['content'] and desc_data['content'] not in parts:
+				parts.append(desc_data['content'])
+
+			if parts:
+				final_desc = '. '.join(parts)
+				if verbose:
+					print(f"\n[{url}] RESULT {repr(final_desc)}")
+				return url, final_desc
+		except Exception as e:
+			if verbose:
+				print(f"[ERROR] Failed to fetch description: {e}")
+		
+		return url, None
+
 	if unique_photo_urls:
 		if verbose:
 			print(f"  Fetching descriptions from {len(unique_photo_urls)} photo page(s)...")
-		with ThreadPoolExecutor(max_workers=min(num_workers, len(unique_photo_urls))) as ex:
+		with concurrent.futures.ThreadPoolExecutor(max_workers=min(num_workers, len(unique_photo_urls))) as ex:
 			futures = [ex.submit(_fetch_photo_desc, url) for url in unique_photo_urls]
-			for fut in as_completed(futures):
-			# for fut in tqdm(as_completed(futures), total=len(futures), desc="Photo descriptions", ncols=100, disable=not verbose):
+			for fut in concurrent.futures.as_completed(futures):
 				url, desc = fut.result()
 				if desc:
 					photo_descriptions[url] = desc
@@ -918,6 +969,432 @@ def get_dframe(
 			'img_url': img_url,
 			'title': meta['doc_title'],
 			'description': row_description,
+			'country': doc_url_info.get("country"),
+			'user_query': [user_query] if user_query else None,
+			'label': user_query if user_query else None,
+			'img_path': img_fpath,
+		}
+
+		if verbose:
+			print(f"Appending row:")
+			print(json.dumps(row, indent=6, ensure_ascii=False))
+			print("-" * 120)
+
+		data.append(row)
+
+	# ── 7. Build DataFrame ────────────────────────────────────────────────
+	if verbose:
+		print(f"  Creating DataFrame from {len(data)} row(s)...")
+	df = pd.DataFrame(data)
+	print(f"  DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
+	if df.shape[0] > 0:
+			print(f"  Saving DF to {df_fpth}")
+			save_pickle(pkl=df, fname=df_fpth)
+	else:
+			print(f"  [WARNING] Scraped DF is empty {df.shape} — NOT caching to {df_fpth}")
+
+	return df
+
+def get_dframe(
+	doc_idx: int,
+	doc_url: str,
+	user_query: str,
+	num_workers: int = 8,
+	thumbnail_size: tuple = None,
+	verbose: bool = False,
+) -> pd.DataFrame:
+
+	# ── 0. Setup & cache key ──────────────────────────────────────────────
+	content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}"
+	hash_digest = hashlib.md5(content_to_hash.encode('utf-8')).hexdigest()
+	query_prefix = user_query.replace(' ', '_') + '_' if user_query else ''
+	df_fpth = os.path.join(HITs_DIR, f"df_{query_prefix}{hash_digest}.gz")
+	if verbose:
+		print(f"\n[EXTRACTING DOCUMENT {doc_idx+1:3d}/{len(URLs)}]")
+		print(f"  ├─ DOC_URL         : {doc_url}")
+		print(f"  ├─ user_query      : « {user_query} »")
+		print(f"  ├─ thumbnail_size  : {thumbnail_size}")
+		print(f"  ├─ content_to_hash : {content_to_hash}")
+		print(f"  ├─ df_fpath        : {df_fpth}")
+		print(f"  └─ num_workers     : {num_workers}")
+
+	# ── 1. Cache path ─────────────────────────────────────────────────────
+	if os.path.exists(df_fpth):
+		if verbose:
+			print(f"[CACHE] {df_fpth} exists => loading...")
+		df = load_pickle(fpath=df_fpth, verbose=verbose)
+		if df.shape[0] == 0:
+			print(f"  [WARNING] Cached DF is empty {df.shape} => ignoring cache, re-scraping...")
+		else:
+			# Normalize legacy root-relative img_urls
+			rel_mask = df['img_url'].fillna('').astype(str).str.startswith('/')
+			if rel_mask.any():
+				print(f"  Normalizing {int(rel_mask.sum())} root-relative img_url(s) in cached DF...")
+				df.loc[rel_mask, 'img_url'] = [
+					urllib.parse.urljoin(base, url)
+					for base, url in zip(df.loc[rel_mask, 'doc_url'], df.loc[rel_mask, 'img_url'])
+				]
+
+			##############################################################################################
+			# Replacing absolute path with relative path
+			if verbose:
+				print(f"BEFORE REPLACING ROOT:")
+				print(df[["doc_url", "img_path"]].head(5).to_string())
+
+			df.img_path = df.img_path.apply(lambda p: p.replace(os.path.dirname(p), IMAGE_DIRECTORY))
+
+			if verbose:
+				print(f"AFTER REPLACING ROOT:")
+				print(df[["doc_url", "img_path"]].head(5).to_string())
+			##############################################################################################
+
+			img_paths = df['img_path'].tolist()
+			missing_indices = [
+				i 
+				for i, p in enumerate(img_paths) 
+				if not os.path.exists(p)
+			]
+			missing_paths = [
+				img_paths[i] 
+				for i in missing_indices
+			]
+
+			if missing_indices:
+				if verbose:
+					print(f"Downloading {len(missing_indices)} missing images ({num_workers} workers)...")
+					print(f"Missing paths: {len(missing_paths)}")
+				def download_task(idx: int):
+					return idx, df['img_url'].iloc[idx], _download_and_process_image(
+						img_url=df['img_url'].iloc[idx],
+						img_fpath=df['img_path'].iloc[idx],
+						thumbnail_size=thumbnail_size,
+						verbose=verbose,
+					)
+				failed = []
+				with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as ex:
+					futures = {ex.submit(download_task, idx): idx for idx in missing_indices}
+					for fut in concurrent.futures.as_completed(futures):
+						idx, url, ok = fut.result()
+						if not ok:
+							failed.append((idx, url))
+				if failed and verbose:
+					print(f"  Failed to download {len(failed)} image(s).")
+					for i, (idx, url) in enumerate(failed):
+						print(f"    {i}: idx={idx} url={url}")
+			return df
+
+	# ── 2. Scrape gallery index page ──────────────────────────────────────
+	doc_url_info = extract_url_info(doc_url)
+	print(json.dumps(doc_url_info, indent=4, ensure_ascii=False))
+	session = requests.Session()
+	session.headers.update(HEADERS)
+	df_st_time = time.time()
+	try:
+			response = session.get(doc_url, timeout=30)
+			response.raise_for_status()
+			soup = BeautifulSoup(response.text, 'html.parser')
+			header = None
+			header_el = soup.find('h1')
+			if not header_el:
+					header_el = soup.find('h2', class_="entry-title")
+			if header_el:
+					header = header_el.get_text(strip=True)
+			if not header:
+					print(f"  [WARNING] Could not find title in {doc_url}")
+					header = doc_url_info.get('type', 'Unknown')
+			hits = soup.find_all('article', class_='photo-card')
+			if not hits:
+					hits = soup.find_all('img', class_='attachment-thumbnail')
+	except Exception as e:
+			print(f"  [ERROR] Failed to retrieve or parse {doc_url}: {e}")
+			return None
+	print(f"\nGallery header: {header}")
+
+	# Gallery-level description (used as fallback)
+	gallery_description = ""
+	caption_element = soup.find('div', class_='folder-description')
+
+	if not caption_element:
+		caption_element = soup.find('div', class_='entry-caption')
+
+	if caption_element:
+		gallery_description = caption_element.get_text(strip=True)
+		gallery_description = re.sub(r'\s+', ' ', gallery_description).strip()
+
+	print(f"\nGallery description:\n{gallery_description}\n")
+
+	# Old-layout caption map
+	caption_map = {}
+	for p in soup.find_all('p', class_='wp-caption-text gallery-caption'):
+			cid = p.get('id')
+			if cid:
+					txt = p.get_text(strip=True)
+					if txt:
+							caption_map[cid] = txt
+	print(f"{len(caption_map)} Caption Map(s): {json.dumps(caption_map, indent=2, ensure_ascii=False)}")
+
+	# ── 3. Helper: extract lightweight metadata from a hit (no I/O) ───────
+	def _extract_hit_meta(vdoc):
+		"""Return {img_url_raw, doc_title, doc_doc_url} or None."""
+		if vdoc.name == 'article':
+			img_tag = vdoc.find('img')
+			if not img_tag:
+				return None
+			img_url = img_tag.get('src') or img_tag.get('data-src')
+			caption_el = vdoc.find('h3')
+			doc_title = caption_el.get_text(strip=True) if caption_el else (img_tag.get('alt') or '')
+			parent_a = vdoc.find('a')
+			doc_doc_url = parent_a.get('href') if parent_a else None
+		else:
+			img_tag = vdoc
+			img_url = img_tag.get('data-src')
+			if not img_url:
+				return None
+			parent_a = img_tag.find_parent('a')
+			doc_doc_url = parent_a.get('href') if parent_a else None
+			doc_title = img_tag.get("alt")
+			if doc_title == "Folder Icon":
+				doc_title = None
+			aria_id = img_tag.get("aria-describedby")
+			if aria_id:
+				ct = caption_map.get(aria_id)
+				if ct:
+					doc_title = ct
+		return {
+			'img_url_raw': img_url,
+			'doc_title': doc_title,
+			'doc_doc_url': doc_doc_url,
+		}
+
+	# ── 4. First pass: collect hit metadata & unique photo page URLs ──────
+	print(f"Found {len(hits)} image(s) on index page")
+	hit_metas = []
+	unique_photo_urls = set()
+	for vdoc in hits:
+		meta = _extract_hit_meta(vdoc)
+		if meta is None:
+			continue
+		specific_doc_url = urllib.parse.urljoin(doc_url, meta['doc_doc_url']) if meta['doc_doc_url'] else doc_url
+		meta['specific_doc_url'] = specific_doc_url
+		hit_metas.append(meta)
+		if specific_doc_url != doc_url:
+			unique_photo_urls.add(specific_doc_url)
+
+	# ── 5. Parallel fetch: photo-specific descriptions ────────────────────
+	photo_descriptions = {}
+	def _fetch_photo_desc(url: str):
+		"""Scrape a single photo page and return its structured metadata."""
+		try:
+			s = requests.Session()
+			s.headers.update(HEADERS)
+			r = s.get(url, timeout=15)
+			r.raise_for_status()
+			bs = BeautifulSoup(r.text, 'html.parser')
+			desc_data = {
+				'title': None,
+				'excerpt': None,
+				'content': None,
+				'meta_description': None,
+				'alt_text': None,
+			}
+
+			# ── Source 1: H1 Title ────────────────────────────────────────────
+			photo_container = bs.find('div', class_='photo-container')
+			if photo_container:
+				h1 = photo_container.find('h1')
+			else:
+				# Fallback: find h1 that's NOT inside site-header
+				h1 = None
+				for h in bs.find_all('h1'):
+					if not h.find_parent('header', class_='site-header'):
+						h1 = h
+						break
+			if h1:
+				desc_data['title'] = h1.get_text(strip=True)
+				if verbose:
+					print(f"\n[{url}] SOURCE: h1 {repr(desc_data['title'])}")
+
+			# ── Source 2: Photo Excerpt ───────────────────────────────────────
+			excerpt = bs.find('p', class_='photo-excerpt')
+			if excerpt:
+				desc_data['excerpt'] = excerpt.get_text(strip=True)
+				if verbose:
+					print(f"\n[{url}] SOURCE: photo-excerpt {repr(desc_data['excerpt'])}")
+
+			# ── Source 3: Photo Content ───────────────────────────────────────
+			content = bs.find('div', class_='photo-content')
+			if content:
+				txt = content.get_text(strip=True)
+				if txt and len(txt) > 10:
+					desc_data['content'] = txt
+					if verbose:
+						print(f"\n[{url}] SOURCE: photo-content {repr(desc_data['content'])}")
+
+			# ── Source 4: Meta Description ────────────────────────────────────
+			meta_tag = bs.find('meta', attrs={'name': 'description'})
+			if meta_tag and meta_tag.get('content'):
+				desc_data['meta_description'] = meta_tag['content'].strip()
+				if verbose:
+					print(f"\n[{url}] SOURCE: meta-desc {repr(desc_data['meta_description'])}")
+
+			# ── Source 5: Image Alt Text ──────────────────────────────────────
+			img = bs.find('img', id='main-photo')
+			if img and img.get('alt'):
+				desc_data['alt_text'] = img['alt'].strip()
+				if verbose:
+					print(f"\n[{url}] SOURCE: alt-text {repr(desc_data['alt_text'])}")
+
+			# ═════════════════════════════════════════════════════════════════
+			# CLEAN AND STRUCTURE METADATA (FIX FOR REDUNDANCY)
+			# ═════════════════════════════════════════════════════════════════
+			title = desc_data['title'] or ''
+			
+			def strip_title(text):
+				if not text or not title: return text
+				# Remove the title if it appears at the very beginning of the text
+				if text.startswith(title):
+					return text[len(title):].lstrip('. ')
+				return text
+
+			desc_parts = []
+			
+			excerpt = strip_title(desc_data['excerpt'])
+			if excerpt and excerpt != title:
+				desc_parts.append(excerpt)
+				
+			content = strip_title(desc_data['content'])
+			if content and content not in desc_parts and content != title:
+				desc_parts.append(content)
+
+			clean_description = '. '.join(desc_parts).strip()
+			
+			# Fallbacks if clean_description is empty
+			if not clean_description:
+				if desc_data['meta_description']:
+					clean_description = strip_title(desc_data['meta_description'])
+				elif desc_data['alt_text']:
+					clean_description = strip_title(desc_data['alt_text'])
+					
+			# Absolute fallback to title if no description exists
+			if not clean_description and title:
+				clean_description = title
+				
+			desc_data['cleaned_description'] = clean_description
+			
+			if verbose:
+				print(f"\n[{url}] CLEAN TITLE: {repr(title)}")
+				print(f"[{url}] CLEAN DESC : {repr(clean_description)}")
+				
+			return url, desc_data
+
+		except Exception as e:
+			if verbose:
+				print(f"[ERROR] Failed to fetch description: {e}")
+		
+		return url, None
+
+	if unique_photo_urls:
+		if verbose:
+			print(f"  Fetching descriptions from {len(unique_photo_urls)} photo page(s)...")
+		with concurrent.futures.ThreadPoolExecutor(max_workers=min(num_workers, len(unique_photo_urls))) as ex:
+			futures = [ex.submit(_fetch_photo_desc, url) for url in unique_photo_urls]
+			for fut in concurrent.futures.as_completed(futures):
+				url, desc = fut.result()
+				if desc:
+					photo_descriptions[url] = desc
+
+	# ── 6. Second pass: download images & build rows ──────────────────────
+	data = []
+	def _fetch_image(preferred_url, img_fpath, fallback_url=None):
+			"""Try preferred URL, then fallback if it fails."""
+			if _download_and_process_image(
+					img_url=preferred_url, img_fpath=img_fpath,
+					thumbnail_size=thumbnail_size, verbose=verbose
+			):
+					return preferred_url
+			if fallback_url and fallback_url != preferred_url:
+					if verbose:
+							print(f"  Primary URL failed, retrying with original: {fallback_url}")
+					if _download_and_process_image(
+							img_url=fallback_url, img_fpath=img_fpath,
+							thumbnail_size=thumbnail_size, verbose=verbose
+					):
+							return fallback_url
+			return None
+
+	for idoc, meta in enumerate(hit_metas):
+		print(f"\n[{idoc+1:4d}/{len(hit_metas)}] {meta['doc_title'] or 'Untitled'}")
+		img_url = meta['img_url_raw']
+		if not img_url:
+				print(f"    No image URL found, skipping...")
+				continue
+
+		# Absolutize
+		img_url = urllib.parse.urljoin(doc_url, img_url)
+		original_img_url = img_url
+
+		# Clean
+		img_url = img_url.replace("_cache/", "")
+		img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url)
+		img_url = re.sub(r'_hu_[a-f0-9]+\.jpg$', '.jpg', img_url)
+
+		filename = os.path.basename(img_url)
+		img_fpath = os.path.join(IMAGE_DIRECTORY, filename)
+		specific_doc_url = meta['specific_doc_url']
+
+		# Extract year
+		extracted_year = None
+		for src in [meta['doc_title'], specific_doc_url, img_url, filename, gallery_description]:
+			if src:
+				y = extract_year(src)
+				if y:
+					extracted_year = y
+					break
+
+		# ── Metadata: photo-specific > gallery fallback ─────────────────
+		photo_meta = photo_descriptions.get(specific_doc_url)
+		
+		final_title = meta['doc_title']
+		if photo_meta and photo_meta.get('title'):
+			final_title = photo_meta['title']
+			
+		final_description = gallery_description
+		if photo_meta and photo_meta.get('cleaned_description'):
+			final_description = photo_meta['cleaned_description']
+
+		# Download / process image
+		if not os.path.exists(img_fpath):
+			working_url = _fetch_image(img_url, img_fpath, fallback_url=original_img_url)
+			if working_url is None:
+				if verbose:
+					print(f"[FAILED] downloading {img_url} => Skipping...")
+				continue
+			img_url = working_url
+		else:
+			if not process_image_for_storage(img_path=img_fpath, thumbnail_size=thumbnail_size, verbose=verbose):
+				if os.path.exists(img_fpath):
+					if verbose:
+						print(f"    Existing image {img_fpath} failed re-processing. Re-downloading...")
+					os.remove(img_fpath)
+
+				working_url = _fetch_image(img_url, img_fpath, fallback_url=original_img_url)
+
+				if working_url is None:
+					if verbose:
+						print(f"[FAILED] re-download {img_url} => Skipping...")
+					continue
+				img_url = working_url
+			else:
+				if verbose:
+					print(f"[SUCCESS] Existing image {img_fpath} re-processed!")
+
+		row = {
+			'id': filename,
+			'date': extracted_year,
+			'doc_url': specific_doc_url,
+			'img_url': img_url,
+			'title': final_title,
+			'description': final_description,
 			'country': doc_url_info.get("country"),
 			'user_query': [user_query] if user_query else None,
 			'label': user_query if user_query else None,

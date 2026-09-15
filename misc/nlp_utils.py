@@ -140,18 +140,20 @@ def _post_process_(
 	max_kw_word_length: int = 5,
 	verbose: bool = False,
 ) -> List[List[str]]:
-	
+	pp_st = time.time()
 	if verbose:
 		print(f"\n[POST-PROCESSING]")
-		print(f"  Column: {col}")
-		print(f"  {len(labels_list) if labels_list else 0} labels_list: {type(labels_list)}")
-		print(f"  Stopwords: {len(STOPWORDS)}")
-		print(f"  Minimum keyword length: {min_kw_ch_length}")
+		print(f"  ├─ {col}")
+		print(f"  ├─ {len(labels_list) if labels_list else 0} labels_list: {type(labels_list)}")
+		print(f"  ├─ Stopwords: {len(STOPWORDS)}")
+		print(f"  └─ Minimum keyword length: {min_kw_ch_length}")
 	
 	if not labels_list:
 		if verbose:
 			print("\tEmpty input, returning as-is")
 		return labels_list
+
+	_spacy_cache: Dict[str, Set[str]] = {}
 
 	# CONTEXT-AWARE FILTERING
 	PROTECTED_ABBREVIATIONS = {
@@ -160,17 +162,13 @@ def _post_process_(
 	}
 
 	PROTECTED_PHRASES = {
-		"united states",
-		"niagara falls",
-		"united kingdom",
+		"united nations",
 		"airlines",
 		"air lines",
 		"limited",
 		"life savers",
 		"pyrotechnics",
 		"general motors",
-		"united nations",
-		"soviet union",
 		"marine corps",       # → "marine corp" bug
 		"corps",              # standalone too
 	}
@@ -226,7 +224,10 @@ def _post_process_(
 		"model", "nickname",
 	}
 
-	ALWAYS_REMOVE = {"unknown", "unidentified"}
+	ALWAYS_REMOVE = {
+		"unknown", 
+		"unidentified"
+	}
 
 	NUMBER_WORDS = {
 		"one", "two", "three", "four", "five", "six", "seven", 
@@ -275,7 +276,25 @@ def _post_process_(
 		"madame",
 	}
 
-	_spacy_cache: Dict[str, Set[str]] = {}
+	# generous margin above PROTECTED_ABBREVIATIONS (2-4 chars)
+	# and STAMCO (6 chars); catches likely-noise beyond this
+	MAX_ACRONYM_LENGTH = 8   
+                          
+	def should_skip_all_caps(lemma: str, max_acronym_length: int = MAX_ACRONYM_LENGTH) -> bool:
+		"""
+		Replacement for the bare `lemma.isupper()` check.
+
+		Returns True (skip/filter) only for multi-word all-caps phrases or
+		single all-caps words longer than max_acronym_length.
+		"""
+		if not lemma.isupper():
+			return False   # not all-caps at all -- never skip
+
+		words = lemma.split()
+		if len(words) > 1:
+			return True    # multi-word all-caps phrase -- likely formatting noise
+
+		return len(lemma) > max_acronym_length   # single word: only skip if unusually long
 
 	def _extract_geographic_entities(text: str, verbose: bool = False) -> Set[str]:
 		# Check cache first
@@ -383,7 +402,8 @@ def _post_process_(
 		# 1. Replace common separators with spaces
 		s = s.replace('_', ' ')
 		s = s.replace('-', ' ')
-
+		s = s.replace('@', ' ') # National Archives @ College Park
+				
 		# Only replace dots that are NOT part of abbreviations
 		# example: 
 		# text = "a.o.n. ready to go. version 2.0. U.S.A. is large. wait... done."
@@ -609,6 +629,10 @@ def _post_process_(
 
 		return ' '.join(lemmatized_tokens)
 
+	def _capitalization_score(text: str) -> int:
+		"""Count uppercase letters to prefer 'Drum' over 'drum'."""
+		return sum(1 for c in text if c.isupper())
+
 	def exclude_digits(keywords: list) -> list:
 		return [keyword for keyword in keywords if not any(char.isdigit() for char in keyword)]
 
@@ -674,8 +698,9 @@ def _post_process_(
 			print(f"[STANDARDIZED] {len(current_items)} {type(current_items)} {current_items}")
 
 		# --- 2. Normalization & Lemmatization ---
-		clean_set = set()       # stores ORIGINAL case for output
-		seen_lower = set()      # stores lowercase keys for dedup
+		# clean_set = set()       # stores ORIGINAL case for output
+		# seen_lower = set()      # stores lowercase keys for dedup
+		clean_dict = {}   # lowercase_key → preferred-case label
 
 		for item_idx, item in enumerate(current_items):
 			if verbose:
@@ -701,8 +726,15 @@ def _post_process_(
 
 			s = original_cleaned
 			
+			# check if digit is in the lemma: (extremely strict)
+			if any(c.isdigit() for c in original_cleaned):
+				if verbose:
+					print(f"\t\t[SKIPPED] {repr(original_cleaned)} digit")
+				continue
+
 			if nlp_spacy is not None:
-				geo_entities = _extract_geographic_entities(original_cleaned, verbose=verbose)
+				ner_input = original_cleaned.title() if original_cleaned.isupper() else original_cleaned
+				geo_entities = _extract_geographic_entities(ner_input, verbose=verbose)
 				if geo_entities:
 					if verbose:
 						print(f"\t\t[SKIPPED] {repr(original_cleaned)} [spaCy] GE detected {repr(geo_entities)}")
@@ -714,17 +746,9 @@ def _post_process_(
 				continue
 
 			if is_quantified_plural(original_cleaned):
-				# Skip this label entirely (don't even lemmatize)
 				if verbose:
 					print(f"\t\t[SKIPPED] {repr(original_cleaned)} Quantified plural ")
 				continue
-				# lemma = s  # Preserve "two women", "three soldiers"
-				# if verbose:
-				# 	print(f"        → Quantified plural detected, preserving: {repr(lemma)}")
-			# elif is_named_facility(original_cleaned):
-			# 	lemma = s  # Preserve "Pease Air Force Base", "Truax Field"
-			# 	if verbose:
-			# 		print(f"        → Named facility detected, preserving: {repr(lemma)}")	
 			elif is_adjectival_phrase(original_cleaned):
 				lemma = s  # Preserve "newly built", "recently completed"
 				if verbose:
@@ -751,9 +775,15 @@ def _post_process_(
 					print(f"\t\t[SKIPPED] {repr(lemma)} ends with 'ville'")
 				continue
 
-			if lemma.isupper():
+			# dangerous:
+			# if lemma.isupper():
+			# 	if verbose:
+			# 		print(f"\t\t[SKIPPED] {repr(lemma)} All uppercase")
+			# 	continue
+
+			if should_skip_all_caps(lemma):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} All uppercase")
+					print(f"\t\t[SKIPPED] {repr(lemma)} All uppercase (multi-word or > {MAX_ACRONYM_LENGTH} chars)")
 				continue
 
 			if len(lemma) < min_kw_ch_length:
@@ -766,11 +796,11 @@ def _post_process_(
 					print(f"\t\t[SKIPPED] {repr(lemma)} Too long (len={len(lemma.split())} > {max_kw_word_length})")
 				continue
 
-			# check if digit is in the lemma: (extremely strict)
-			if any(c.isdigit() for c in lemma):
-				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} digit")
-				continue
+			# # check if digit is in the lemma: (extremely strict)
+			# if any(c.isdigit() for c in lemma):
+			# 	if verbose:
+			# 		print(f"\t\t[SKIPPED] {repr(lemma)} digit")
+			# 	continue
 
 			# # check for geographic references:
 			# if any(lm in geographic_references for lm in lemma.lower().split()):
@@ -783,10 +813,10 @@ def _post_process_(
 					print(f"\t\t[SKIPPED] {repr(lemma)} Phrasal verb")
 				continue
 
-			# if is_stopword(lemma):
-			# 	if verbose:
-			# 		print(f"\t\t[SKIPPED] {repr(lemma)} stopword")
-			# 	continue
+			if is_stopword(lemma):
+				if verbose:
+					print(f"\t\t[SKIPPED] {repr(lemma)} stopword")
+				continue
 
 			# Exclude pure color descriptors
 			if all(w.lower() in COLORS for w in lemma.split()):
@@ -833,20 +863,30 @@ def _post_process_(
 				continue
 
 			lemma_key = lemma.lower().strip()
-			if lemma_key in seen_lower:
-				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} Duplicate")
+			if lemma_key in clean_dict:
+					# Prefer the version with MORE capitalization
+					existing = clean_dict[lemma_key]
+					if _capitalization_score(lemma) > _capitalization_score(existing):
+							if verbose:
+									print(f"\t\t[REPLACED] {repr(existing)} → {repr(lemma)} (more capitals)")
+							clean_dict[lemma_key] = lemma
+					else:
+							if verbose:
+									print(f"\t\t[SKIPPED] {repr(lemma)} Duplicate of {repr(existing)}")
 			else:
-				seen_lower.add(lemma_key)
-				clean_set.add(lemma)
+					clean_dict[lemma_key] = lemma
 
 		# Convert back to list
-		result = list(clean_set) if clean_set else None
+		result = list(clean_dict.values()) if clean_dict else None
 		processed_batch.append(result)
 		
 		if verbose and result:
 			print(f"[FINAL] {result} {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})", end="\t")
 			print(f"[ELAPSED] {time.time() - t0:.5f} sec")
+
+	if verbose:
+		print(f"\n[POST-PROCESSED] {len(processed_batch)} samples [ELAPSED_TIME] {time.time() - pp_st:.1f} sec")
+		print("-"*100)
 
 	return processed_batch
 

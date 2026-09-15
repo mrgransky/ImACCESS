@@ -1082,25 +1082,22 @@ def get_vlm_based_labels(
 	)
 
 	# ========== Prepare generation kwargs ==========
+	# FORCE deterministic (greedy) decoding to prevent label drift between runs
 	gen_kwargs = dict(
 		max_new_tokens=max_generated_tks, 
 		use_cache=True,
 		eos_token_id=processor.tokenizer.eos_token_id,
 		pad_token_id=processor.tokenizer.pad_token_id,
+		do_sample=False, # CRITICAL: Disables sampling for deterministic output
+		# Note: Do NOT set `temperature` when do_sample=False. 
+		# HuggingFace ignores it or throws a warning when sampling is disabled.
 	)
-	
-	if hasattr(model, "generation_config"):
-		gen_config = model.generation_config
-		gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
-		gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
-	else:
-		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
 
 	if verbose:
-		print(f"\n[GEN CONFIG] Using generation parameters:")
+		print(f"\n[GEN CONFIG] Using generation parameters (FORCED DETERMINISTIC):")
 		print(json.dumps(gen_kwargs, indent=2, ensure_ascii=False))
 		print("="*100)
-	
+			
 	# ========== Process batches ==========
 	def _load_(p: str) -> Optional[Image.Image]:
 		try:
@@ -1353,13 +1350,15 @@ def main():
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Batch size for processing")
 	parser.add_argument("--quantization_bits", '-qb', type=int, default=None, help="Quantization bits")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
+	parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility [Default: 42]")
 	# parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
 
 	args = parser.parse_args()
-	set_seeds(seed=42)
 	args.device = torch.device(args.device)
-	args.num_workers = min(args.num_workers, os.cpu_count())
-	print(args)
+	if args.verbose:
+		print_args_table(args=args, parser=parser)
+		print(args)
+	set_seeds(seed=args.seed)
 
 	if args.image_path:
 		keywords = get_vlm_based_labels_single(

@@ -1843,17 +1843,16 @@ def main():
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=128, help="Max number of generated tokens")
 	parser.add_argument("--quantization_bits", '-qb', type=int, default=None, help="Quantization bits")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
+	parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility [Default: 42]")
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
 
 	args = parser.parse_args()
-
-	set_seeds(seed=42, debug=args.debug)
 	args.device = torch.device(args.device)
-	args.num_workers = min(args.num_workers, os.cpu_count())
 
 	if args.verbose:
 		print_args_table(args=args, parser=parser)
 		print(args)
+	set_seeds(seed=args.seed)
 
 	if args.debug or args.description:
 		keywords = get_llm_based_labels_debug(

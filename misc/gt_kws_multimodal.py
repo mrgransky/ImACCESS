@@ -82,7 +82,7 @@ def merge_labels(
 				llm_labels = []
 			elif isinstance(llm_labels, str):
 				try:
-					llm_labels = eval(llm_labels)  # Parse string representation of list
+					llm_labels = ast.literal_eval(llm_labels)  # Parse string representation of list
 				except:
 					llm_labels = []
 			else:
@@ -93,7 +93,7 @@ def merge_labels(
 				vlm_labels = []
 			elif isinstance(vlm_labels, str):
 				try:
-					vlm_labels = eval(vlm_labels)  # Parse string representation of list
+					vlm_labels = ast.literal_eval(vlm_labels)  # Parse string representation of list
 				except:
 					vlm_labels = []
 			else:
@@ -169,7 +169,7 @@ def get_multimodal_annotation(
 		vlm_based_labels=vlm_based_labels,
 		verbose=verbose,
 	)
-	
+
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
 		on_bad_lines='skip',
@@ -193,26 +193,13 @@ def get_multimodal_annotation(
 
 		if verbose:
 			print(f"[FULL DATASET] {csv_file} post processing [might take a while...]")
-
-		vlm_based_labels = _post_process_(
-			labels_list=vlm_based_labels, 
-			col="vlm_based_labels", 
-			verbose=False,
-		)
-
+		
 		llm_based_labels = _post_process_(
 			labels_list=llm_based_labels, 
 			col="llm_based_labels", 
 			verbose=False,
 		)
-		
-		multimodal_labels = _post_process_(
-			labels_list=multimodal_labels, 
-			col="multimodal_labels", 
-			verbose=verbose
-		)
 
-		# Canonical labels:
 		llm_canonical_labels, _ = get_canonical_labels(
 			labels=llm_based_labels,
 			label_source="llm_based_labels",
@@ -220,6 +207,12 @@ def get_multimodal_annotation(
 			output_dir=OUTPUT_DIR,
 			batch_size=batch_size,
 			nc=nc,
+			verbose=False,
+		)
+
+		vlm_based_labels = _post_process_(
+			labels_list=vlm_based_labels, 
+			col="vlm_based_labels", 
 			verbose=False,
 		)
 
@@ -231,6 +224,12 @@ def get_multimodal_annotation(
 			batch_size=batch_size,
 			nc=nc,
 			verbose=False,
+		)
+
+		multimodal_labels = _post_process_(
+			labels_list=multimodal_labels, 
+			col="multimodal_labels", 
+			verbose=verbose
 		)
 
 		multimodal_canonical_labels, _ = get_canonical_labels(
@@ -434,17 +433,17 @@ def main():
 	parser.add_argument("--clip_architecture", '-clip_arch', type=str, default="ViT-B/32", help="CLIP architecture [Default: ViT-B/32]")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
+	parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility [Default: 42]")
 	parser.add_argument("--num_clusters", '-nc', type=int, default=None, help="Number of clusters")
 
 	args = parser.parse_args()
 	if isinstance(args.device, str):
 		args.device = torch.device(args.device)
 
-	args.num_workers = min(args.num_workers, os.cpu_count())
-
 	if args.verbose:
 		print_args_table(args=args, parser=parser)
 		print(args)
+	set_seeds(seed=args.seed)
 
 	get_multimodal_annotation(
 		csv_file=args.csv_file,

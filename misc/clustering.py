@@ -1,13 +1,13 @@
 import torch
 import numpy as np
 import pandas as pd
-from collections import Counter
 import warnings
 import os
 import ast
 import json
 import time
 import gc
+import sys
 import re
 import math
 import multiprocessing
@@ -28,7 +28,7 @@ from sklearn.utils import resample
 from sklearn.metrics import adjusted_rand_score
 from sklearn.cluster import AgglomerativeClustering
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import List, Tuple, Dict, Set, Any, Optional, Union, Callable, Iterable
 
 from sentence_transformers import SentenceTransformer
@@ -97,109 +97,171 @@ def _build_case_registry(original_label_counts: Dict[str, int]) -> Dict[str, str
 	return registry
 
 def _normalize_label_case(
-	documents: List[List[str]], 
-	verbose: bool = False
+	documents: List[List[str]],
+	verbose: bool = False,
 ) -> List[List[str]]:
 	"""
-	Collapse case-only duplicates ('trench' / 'Trench' / 'TRENCH') into a
-	single surface form before unique_labels is computed.
-
+	Collapse case-only duplicate labels ('trench' / 'Trench' / 'TRENCH')
+	into a single winning surface form, BEFORE `unique_labels` is computed
+	in cluster().
 	Why this is needed
-	-------------------
-	The dedup in cluster() Step 1 is case-sensitive:
-
-	    documents.append(list(set(lbl for lbl in doc if lbl is not None)))
-	    unique_labels = sorted(set(label for doc in documents for label in doc))
-
-	Neither `set()` nor `sorted(set(...))` folds case, so 'trench' and 'Trench'
-	survive as two distinct unique labels.  Each gets its own row in the
-	embedding matrix, its own row in the linkage matrix, and — worse — each
-	gets its own (smaller) entry in label_freq_dict, which weakens the
-	frequency signal used later in assign_canonical_labels().
-
-	Why not just .lower() everything
-	---------------------------------
-	Blanket lowercasing would destroy meaningful capitalisation that the
-	canonical-selection pipeline depends on ('Ausf', 'GR Mk', 'Constitution').
-	Instead: group labels by their lowercase form, then pick the most
-	frequent *real* surface form within each group as the representative
-	spelling, and rewrite every occurrence to that form.  Ties are broken
-	deterministically (alphabetically) so the result is reproducible.
-
+	------------------
+	cluster() Step 1 deduplicates case-SENSITIVELY:
+			documents.append(list(set(lbl for lbl in doc if lbl is not None)))
+			unique_labels = sorted(set(label for doc in documents for label in doc))
+	Neither `set()` nor `sorted(set(...))` folds case, so 'trench' and
+	'Trench' survive as two distinct unique labels.  Each then gets its own
+	row in the embedding matrix X, its own leaf in the linkage matrix, and —
+	worse — each contributes a separate (smaller) entry to label_freq_dict
+	(STEP 5 of cluster()), weakening the frequency signal that
+	assign_canonical_labels() relies on to pick cluster representatives.
+	Why not blanket .lower()
+	-----------------------
+	Lowercasing everything would destroy meaningful capitalisation that
+	canonical selection depends on ('Ausf', 'GR Mk', 'Constitution', proper
+	nouns like 'Pepperell').  Instead, surface forms are grouped by their
+	lowercase key and the most frequent REAL surface form in each group
+	becomes the representative; every occurrence is rewritten to it.
+	Determinism guarantees (reproducibility)
+	-----------------------------------------
+	1. Pass 1 counts frequencies — an order-free sum over documents.
+	2. Pass 2 iterates surfaces in SORTED order, so group construction,
+		 dict insertion order, and the verbose printout are functions of
+		 input CONTENT only — immune to the hash-randomised per-document
+		 label order produced by `list(set(...))` upstream (PYTHONHASHSEED).
+	3. Pass 3 picks winners with a TOTAL-order key (frequency, surface).
+		 Within a group all surfaces are distinct strings, so no two keys
+		 can tie: the argmax is unique and cannot depend on iteration order.
+		 Frequency ties are broken by the LEXICOGRAPHICALLY GREATEST surface
+		 (under ASCII, lowercase > uppercase, so 'trench' beats 'Trench').
+	4. Pass 4 output is a pure function of the input's content and
+		 per-document order (first-occurrence order is preserved).
+	What this function canNOT do
+	-----------------------------
+	It cannot create or destroy surface forms: the distinct raw string
+	count (printed as "raw surface forms") is fixed by the caller's input.
+	A run-to-run difference in that number therefore PROVES the input
+	changed upstream — use the verbose block as a cheap drift detector.
 	Parameters
 	----------
 	documents : List[List[str]]
-		Per-sample label lists, already None-filtered and per-doc deduped
-		(i.e. the `documents` list right after cluster() Step 1's first loop,
-		before unique_labels is computed).
+			Per-sample label lists, expected to be None-filtered and per-doc
+			deduplicated (case-sensitively) by cluster() Step 1.  A defensive
+			Pass 0 additionally drops non-string / empty / whitespace-only
+			labels in case that contract is violated (e.g. by a CSV round-trip).
 	verbose : bool
-		Print a summary of how many case-groups were collapsed.
-
+			Print a reproducible summary of the fold (sorted examples, capped).
 	Returns
 	-------
 	List[List[str]]
-		Same shape as the input, with every label replaced by its group's
-		winning surface form.  Downstream dedup (`unique_labels = sorted(set(...))`)
-		will now correctly collapse case-only variants into one entry.
+			Same number of documents; every label replaced by its group's
+			winning surface form; each document re-deduplicated, ordered by
+			first occurrence of each winner (documents may shrink: invalid
+			labels dropped, case-variants collapsed onto one entry).
 	"""
-	# ── Pass 1: count raw surface-form frequency across the corpus ──────────
-	# Count once per document occurrence (a label appearing twice in the same
-	# document was already deduped in Step 1's per-doc set(), so this matches
-	# how label_freq_dict is computed later).
+
+	# ── Pass 0 (defensive): enforce the input contract ───────────────────
+	# cluster() Step 1 filters None, but a CSV round-trip can smuggle in
+	# NaN floats or whitespace-only strings.  Dropping them here — with a
+	# count, so nothing disappears silently — keeps the frequency counts
+	# and the embeddings honest.  Note: surfaces are NOT stripped;
+	# ' trench' stays ' trench' — only unusable labels are removed.
+	if verbose:
+		print(f"\n[CASE NORMALISATION]")
+		print(f"  ├─ documents: {type(documents)} {len(documents)} {type(documents[0])} {len(documents[0])} {documents[0]}")
+	clean_documents: List[List[str]] = []
+	n_invalid = 0
+	for doc in documents:
+		kept = [lbl for lbl in doc if isinstance(lbl, str) and lbl.strip()]
+		n_invalid += len(doc) - len(kept)
+		clean_documents.append(kept)
+	if n_invalid and verbose:
+		print(f"[CASE NORMALISATION] dropped {n_invalid} non-string/empty label(s)")
+	documents = clean_documents
+
+	# ── Pass 1: corpus-wide surface-form frequency (order-free) ──────────
+	# Counted once per document occurrence, matching label_freq_dict in
+	# cluster() STEP 5 (input is per-doc deduped, so this equals "number of
+	# documents containing the surface").  Counted BEFORE folding:
+	# 'trench' and 'Trench' accrue separate frequencies, which Pass 3
+	# then compares to elect the winner.
 	surface_freq: Dict[str, int] = {}
 	for doc in documents:
-		for lbl in doc:
-			surface_freq[lbl] = surface_freq.get(lbl, 0) + 1
+			for lbl in doc:
+					surface_freq[lbl] = surface_freq.get(lbl, 0) + 1
 
-	# ── Pass 2: group surface forms by lowercase key ─────────────────────────
+	# ── Pass 2: group surface forms by lowercase key (SORTED iteration) ──
+	# Iterating sorted(surface_freq) instead of the dict's insertion order
+	# makes group construction AND the verbose example printout fully
+	# deterministic.  This matters: the per-document label order upstream
+	# comes from `list(set(...))`, which is hash-randomised per process —
+	# without this sort, the log churns between runs (example lines swap
+	# places) and log diffs become useless for spotting real input drift.
+	#
+	# str.lower() (not casefold()): sufficient for the ASCII English labels
+	# in this corpus; casefold's extra aggressiveness ('ß'->'ss') is not
+	# needed and would alter grouping for non-ASCII text.
 	case_groups: Dict[str, List[str]] = {}
-	for surface in surface_freq:
-		key = surface.lower()
-		case_groups.setdefault(key, []).append(surface)
+	for surface in sorted(surface_freq):
+			case_groups.setdefault(surface.lower(), []).append(surface)
 
-	# ── Pass 3: pick the winning surface form per group ──────────────────────
-	# Highest total frequency wins; ties broken alphabetically for determinism.
+	# ── Pass 3: elect one winning surface form per group ─────────────────
+	# Highest raw frequency wins; ties broken by the lexicographically
+	# GREATEST surface (max() over the tuple (frequency, surface); ASCII
+	# lowercase code points > uppercase, so 'trench' beats 'Trench').
+	# Surfaces within a group are unique strings => the key is a total
+	# order => the argmax is unique => the winner is iteration-order-
+	# independent.  This is the core reproducibility property of the fold.
+	#
+	# sorted(case_groups) is redundant determinism-wise (insertion order is
+	# already fixed by Pass 2) but keeps this pass self-evidently
+	# order-independent even if Pass 2 is edited later.
 	winner_map: Dict[str, str] = {}
 	collapsed_groups = 0
-
-	for key, surfaces in case_groups.items():
+	for key in sorted(case_groups):
+		surfaces = case_groups[key]
 		if len(surfaces) == 1:
+			# No case variants: identity mapping, so Pass 4 can look up
+			# every label unconditionally.
 			winner_map[surfaces[0]] = surfaces[0]
 			continue
-
 		collapsed_groups += 1
 		winner = max(surfaces, key=lambda s: (surface_freq[s], s))
-
 		for s in surfaces:
 			winner_map[s] = winner
 
+	# ── Pass 4: rewrite every document, RE-DEDUPLICATING on the way ──────
+	# Two jobs, one comprehension:
+	#
+	#  (a) REPLACE each label with its group winner.
+	#  (b) RE-DEDUP each document.  The upstream per-doc dedup in
+	#      cluster() was case-SENSITIVE, so a document holding both
+	#      'Trench' and 'trench' (e.g. human annotation + LLM keywords
+	#      disagreeing on casing) would collapse to
+	#      ['trench', 'trench'] after mapping.  Left in, that double-counts
+	#      in label_freq_dict (STEP 5) and skews the frequency signal used
+	#      by assign_canonical_labels().
+	#
+	# dict.fromkeys() removes duplicates while preserving FIRST-OCCURRENCE
+	# order — deterministic given the input document's order, and O(n).
+	normalized_documents: List[List[str]] = [
+		list(dict.fromkeys(winner_map[lbl] for lbl in doc))
+		for doc in documents
+	]
 	if verbose:
-		n_before = len(surface_freq)
-		n_after  = len(set(winner_map.values()))
-
+		n_before = len(surface_freq)             # distinct RAW surface forms
+		n_after = len(set(winner_map.values()))  # distinct post-fold labels
 		print(f"\n[CASE NORMALISATION] {n_before:,} raw surface forms")
 		print(f"  Case-duplicate groups collapsed: {collapsed_groups:,}")
 		print(f"  Unique labels after fold: {n_after:,} (was {n_before:,})")
-
 		if collapsed_groups > 0:
-			# n_examples = min(25, collapsed_groups)
-			n_examples = collapsed_groups
-
-			examples = [
+			examples = sorted(
 				(surfaces, winner_map[surfaces[0]])
-				for key, surfaces in list(case_groups.items())
+				for surfaces in case_groups.values()
 				if len(surfaces) > 1
-			][:n_examples]
-
-			print(f"\t{len(examples)} Examples:")
+			)
 			for surfaces, winner in examples:
 				print(f"\t\t{surfaces} -> '{winner}'")
-
-	# ── Pass 4: rewrite every document using the winning surface form ────────
-	normalized_documents = [
-		[winner_map[lbl] for lbl in doc]
-		for doc in documents
-	]
 
 	return normalized_documents
 
@@ -233,11 +295,11 @@ def parallel_canonical_mapping(labels_str):
 
 def get_canonical_labels_with_parallel_mapping(
 	labels: List[List[str]],
-	label_source: str,          # "llm", "vlm", or "multimodal"
+	label_source: str,
 	output_dir: str,
 	model_id: str,
-	batch_size: int = 128,
-	num_workers: int = 4,
+	num_workers: int,
+	batch_size: int,
 	nc: int = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
@@ -327,9 +389,11 @@ def get_canonical_labels(
 	if verbose:
 		print("-"*50)
 		print(f"[CANOCALIZATION] Sequential Mapping")
-		print(f"  ├─ Label source: {label_source}")
+		print(f"  ├─ {label_source}")
+		print(f"  ├─ labels      : {type(labels)} {len(labels)} {type(labels[0])} {len(labels[0])} {labels[0]}")
 		print(f"  ├─ Model ID    : {model_id}")
 		print(f"  ├─ Batch size  : {batch_size}")
+		print(f"  ├─ Output dir  : {output_dir}")
 		print(f"  └─ ||Clusters||: {nc}")
 
 	clusters_fname = os.path.join(output_dir, f"clustering_{label_source}.csv")
@@ -345,7 +409,7 @@ def get_canonical_labels(
 
 	if verbose:
 		print(
-			f"[{label_source.upper()}] Clustered into "
+			f"[{label_source}] Clustered into "
 			f"{clustered_df['cluster'].nunique()} clusters "
 			f"from {len(clustered_df)} unique labels"
 		)
@@ -1270,11 +1334,11 @@ def analyze_cluster_quality(
 	if verbose:
 		print(f"\tAnalyzed {n_clusters:,} clusters")
 		print(f"\tAvg cluster size:               {cluster_df['size'].mean():.1f} "
-		      f"(median: {cluster_df['size'].median():.0f})")
+					f"(median: {cluster_df['size'].median():.0f})")
 		print(f"\tAvg intra-cluster similarity:   {cluster_df['intra_cluster_similarity'].mean():.4f}  "
-		      f"← primary quality signal (target ≥ 0.80)")
+					f"← primary quality signal (target ≥ 0.80)")
 		print(f"\tAvg canonical representativeness: {cluster_df['canonical_representativeness'].mean():.4f}  "
-		      f"← how well canonical speaks for its cluster (target ≥ 0.85)")
+					f"← how well canonical speaks for its cluster (target ≥ 0.85)")
 
 	# ── Section 2: Dataset-level aggregates ───────────────────────────────────
 	if verbose:
@@ -1308,7 +1372,7 @@ def analyze_cluster_quality(
 	if verbose:
 		print(f"\tMean intra-cluster similarity:  {global_summary['mean_intra_sim']:.4f}")
 		print(f"\tWeighted intra-cluster sim:     {global_summary['weighted_intra_sim']:.4f}  "
-		      f"(weighted by corpus coverage)")
+					f"(weighted by corpus coverage)")
 		print(f"\tClusters with intra_sim ≥ 0.80: {pct_tight*100:.1f}%")
 		print(f"\tClusters with canon_rep ≥ 0.85: {pct_rep_ok*100:.1f}%")
 
@@ -1414,7 +1478,7 @@ def analyze_cluster_quality(
 			cid    = int(row['cluster_id'])
 			member = labels[cluster_assignments == cid].tolist()
 			print(f"  Cluster {cid}: canonical='{row['canonical_label']}' | "
-			      f"intra_sim={row['intra_cluster_similarity']:.4f} | size={int(row['size'])}")
+						f"intra_sim={row['intra_cluster_similarity']:.4f} | size={int(row['size'])}")
 			print(f"  labels: {member}")
 		print("─" * 60)
 
@@ -1425,7 +1489,7 @@ def analyze_cluster_quality(
 			cid    = int(row['cluster_id'])
 			member = labels[cluster_assignments == cid].tolist()
 			print(f"  Cluster {cid}: canonical='{row['canonical_label']}' | "
-			      f"rep={row['canonical_representativeness']:.4f} | size={int(row['size'])}")
+						f"rep={row['canonical_representativeness']:.4f} | size={int(row['size'])}")
 			print(f"  labels: {member}")
 		print("─" * 60)
 
@@ -1454,12 +1518,12 @@ def analyze_cluster_quality(
 
 	if verbose:
 		print(f"\tLabel reduction:    {n_samples:,} → {n_clusters:,} "
-		      f"({consolidation_impact['reduction_percentage']:.1f}% reduction, "
-		      f"{consolidation_impact['reduction_ratio']:.2f}x consolidation)")
+					f"({consolidation_impact['reduction_percentage']:.1f}% reduction, "
+					f"{consolidation_impact['reduction_ratio']:.2f}x consolidation)")
 		print(f"\tSingleton clusters: {len(singletons):,} ({consolidation_impact['singleton_percentage']:.1f}%)")
 		if original_label_counts:
 			print(f"\tAvg corpus instances per cluster: "
-			      f"{consolidation_impact['avg_instances_per_cluster']:.1f}")
+						f"{consolidation_impact['avg_instances_per_cluster']:.1f}")
 
 	# ── Section 5: Size distribution ──────────────────────────────────────────
 	if verbose:
@@ -1478,11 +1542,11 @@ def analyze_cluster_quality(
 
 	if verbose:
 		print(f"\tMin={size_distribution['min']}  "
-		      f"Q25={size_distribution['q25']}  "
-		      f"Median={size_distribution['median']}  "
-		      f"Q75={size_distribution['q75']}  "
-		      f"Q95={size_distribution['q95']}  "
-		      f"Max={size_distribution['max']}")
+					f"Q25={size_distribution['q25']}  "
+					f"Median={size_distribution['median']}  "
+					f"Q75={size_distribution['q75']}  "
+					f"Q95={size_distribution['q95']}  "
+					f"Max={size_distribution['max']}")
 
 	recommendations = generate_recommendations(
 		global_summary, 
@@ -1860,7 +1924,7 @@ def get_optimal_num_clusters(
 ):
 	num_samples = X.shape[0]
 	if verbose:
-		print("\nADAPTIVE OPTIMAL CLUSTER SELECTION")
+		print("\n[ADAPTIVE OPTIMAL CLUSTER SELECTION]")
 		print(f"   ├─ Target intra-cluster similarity: {target_intra_similarity}")
 		print(f"   ├─ Min cluster size: {min_cluster_size}")
 		print(f"   ├─ Merge singletons: {merge_singletons}")
@@ -2281,7 +2345,6 @@ def get_optimal_num_clusters(
 			quality_status = "ACCEPTABLE"
 		
 		print(f"  └─ Quality assessment: {quality_status} mean_intra_similarity: {stats['mean_intra_similarity']:.4f} vs. target: {target_intra_similarity}")
-		print("=" * 90)
 	
 	return labels, stats
 
@@ -2466,6 +2529,106 @@ def remove_problematic_cluster_labels(
 
 	return df_clean, embeddings_clean, removed_labels
 
+def _demote_colliding_virtual_canonicals(
+	cluster_canonicals: Dict[int, Dict],
+	verbose: bool = False,
+) -> Dict[int, Dict]:
+	"""
+	Post-processing pass: when a VIRTUAL hypernym exactly matches another
+	cluster's REAL-label canonical, the virtual one is demoted to its own
+	cluster's best real-label fallback instead.
+
+	Concrete example this catches
+	------------------------------
+	Cluster 4096 (real members: architect, architectural, architectural
+	design, ...) selects the real label 'architectural' as its canonical.
+	Cluster 4097 (real members: architectural arcade, courtyard, detail,
+	fragment, ...) has no real label equal to 'architectural', so it
+	synthesises a VIRTUAL hypernym 'architectural' -- which happens to be
+	the exact string cluster 4096 already legitimately owns. Both clusters
+	now emit the identical final label 'architectural', even though their
+	member labels represent different sub-concepts (architecture as a
+	discipline vs. architectural decorative elements).
+
+	This is a different failure mode from the case-insensitive collision
+	pass (_resolve_cross_cluster_case_collisions): there the two spellings
+	differ only by case ('war' vs 'War'); here the strings are IDENTICAL,
+	so a case-insensitive grouping sees only one distinct spelling and
+	takes no action. This pass must run separately, and should run BEFORE
+	the case-insensitive pass so that the set of "claimed real labels" it
+	relies on is maximally accurate.
+
+	Rule
+	----
+	Real-label canonicals are always authoritative and are never touched.
+	A virtual canonical that exactly matches ANY real-label canonical
+	elsewhere is demoted to its own cluster's best real-label fallback
+	(the highest-composite-scoring REAL member of that same cluster --
+	i.e. what the cluster would have chosen if the virtual candidate had
+	never existed).
+
+	Requires
+	--------
+	Each cluster's dict in cluster_canonicals must additionally carry
+	'real_fallback' and 'real_fallback_score', computed in the main loop
+	as the best-composite-scoring REAL candidate (index < cluster_size),
+	independent of whether a virtual candidate ultimately won. See the
+	MAIN-LOOP PATCH below for exactly where to compute and store these.
+
+	Parameters
+	----------
+	cluster_canonicals : Dict[int, Dict]
+		{cid: {'canonical', 'score', 'size', 'virtual',
+					 'real_fallback', 'real_fallback_score'}}
+	verbose : bool
+		Print each demotion.
+
+	Returns
+	-------
+	Dict[int, Dict]
+		The same dict, mutated in place.
+	"""
+	if verbose:
+		print("-"*120)
+		print(f"[EXACT COLLISION] Demoting {len(cluster_canonicals)} clusters' virtuals...")
+
+	claimed_real = {
+		meta['canonical']
+		for meta in cluster_canonicals.values()
+		if not meta['virtual']
+	}
+
+	n_demoted = 0
+	for cid, meta in cluster_canonicals.items():
+		if not meta['virtual']:
+			continue
+		if meta['canonical'] not in claimed_real:
+			continue
+
+		old = meta['canonical']
+		fallback = meta.get('real_fallback')
+		if fallback is None:
+			# No stored fallback (shouldn't happen if the main-loop patch
+			# below is applied) -- skip rather than guess.
+			continue
+
+		if verbose:
+			print(
+				f"cluster {cid:6d} virtual {repr(old)} already "
+				f"claimed by a real label elsewhere -> demoted to {repr(fallback)}"
+			)
+
+		meta['canonical'] = fallback
+		meta['score'] = meta.get('real_fallback_score', meta['score'])
+		meta['virtual'] = False
+		n_demoted += 1
+
+	if verbose:
+		print(f"\n[EXACT COLLISION DEMOTION] {n_demoted:6d} virtual canonical(s) demoted to their cluster's own real fallback")
+		print("-"*120)
+
+	return cluster_canonicals
+
 def _resolve_cross_cluster_case_collisions(
 	cluster_canonicals: Dict[int, Dict],
 	original_label_counts: Dict[str, int],
@@ -2489,14 +2652,14 @@ def _resolve_cross_cluster_case_collisions(
 	---------------
 	Group ALL cluster canonicals by their lowercase form. For any group
 	containing more than one distinct spelling:
-	  1. If any spelling in the group is itself a real corpus label (a key
-	     in original_label_counts), that spelling wins outright -- real
-	     corpus text always beats a synthesised guess.
-	  2. Otherwise (every spelling in the group is synthesised), the
-	     spelling backed by the LARGEST total cluster size wins -- more
-	     member labels means more corpus evidence supporting that
-	     particular capitalisation.
-	  3. Ties are broken alphabetically for determinism.
+		1. If any spelling in the group is itself a real corpus label (a key
+			 in original_label_counts), that spelling wins outright -- real
+			 corpus text always beats a synthesised guess.
+		2. Otherwise (every spelling in the group is synthesised), the
+			 spelling backed by the LARGEST total cluster size wins -- more
+			 member labels means more corpus evidence supporting that
+			 particular capitalisation.
+		3. Ties are broken alphabetically for determinism.
 	Every cluster on the losing side is rewritten to the winning spelling.
 
 	This subsumes the earlier case_registry check (rule 1 covers the same
@@ -2567,7 +2730,7 @@ def _resolve_cross_cluster_case_collisions(
 		if n_resolved:
 			print(
 				f"\n[CASE COLLISION RESOLUTION] {n_resolved} cluster(s) realigned "
-			  f"across {n_groups_with_collision} collision group(s)"
+				f"across {n_groups_with_collision} collision group(s)"
 			)
 		else:
 			print("\n[CASE COLLISION RESOLUTION] no cross-cluster case collisions found")
@@ -2595,18 +2758,18 @@ def assign_canonical_labels(
 	the cluster, encode it on-the-fly, and let it compete alongside the real
 	labels.  Five signals then vote:
 
-	  1. Cosine similarity to centroid          (w=0.30)
-	  2. Corpus frequency, log-normalised       (w=0.15)
-	  3. Head-noun dominance across the cluster (w=0.20)
-	  4. Lexical containment / hypernym-ness    (w=0.25)
-	  5. Brevity (shorter -> more general)      (w=0.10)
+		1. Cosine similarity to centroid          (w=0.30)
+		2. Corpus frequency, log-normalised       (w=0.15)
+		3. Head-noun dominance across the cluster (w=0.20)
+		4. Lexical containment / hypernym-ness    (w=0.25)
+		5. Brevity (shorter -> more general)      (w=0.10)
 
 	Token normalisation
 	-------------------
 	All token-level comparisons (containment, head dominance, shared-core
 	extraction) operate on *normalised* tokens:
-	  - lowercased
-	  - trailing punctuation stripped  ('Ausf.' -> 'ausf')
+		- lowercased
+		- trailing punctuation stripped  ('Ausf.' -> 'ausf')
 	This means 'Ausf', 'Ausf.', 'ausf' are treated as the same token, so
 	the containment signal correctly identifies 'Ausf' as a hypernym of all
 	'Ausf X' and 'Ausf. X' variants.
@@ -2643,7 +2806,7 @@ def assign_canonical_labels(
 		Trades with >10% sim loss or <3x freq gain, for inspection.
 	"""
 
-	# ── Token normalisation ───────────────────────────────────────────────────
+	# Token normalisation
 	# Applied before ALL token-level operations so that 'Ausf.' and 'Ausf'
 	# are treated as the same token.
 	_TRAILING_PUNCT = re.compile(r'[^\w]+$')
@@ -2867,8 +3030,9 @@ def assign_canonical_labels(
 				+ 0.10 * brevity_scores
 			)
 
-			best_idx     = int(combined_scores.argmax())
+			best_idx = int(combined_scores.argmax())
 			pure_sim_idx = int(similarities[:cluster_size].argmax())  # real labels only
+			best_real_idx = int(combined_scores[:cluster_size].argmax())
 
 			# Safety: only allow a real label to override pure-sim when freq gain >= 3x
 			if best_idx != pure_sim_idx and not virtual_flags[best_idx]:
@@ -2920,14 +3084,21 @@ def assign_canonical_labels(
 		canonical = candidates[best_idx]
 		cluster_canonicals[cid] = {
 			'canonical': canonical,
-			'score':     float(similarities[best_idx]),
-			'size':      cluster_size,
-			'virtual':   virtual_flags[best_idx],
+			'score': float(similarities[best_idx]),
+			'size': cluster_size,
+			'virtual': virtual_flags[best_idx],
+			'real_fallback': cluster_texts[best_real_idx],
+			'real_fallback_score': float(similarities[best_real_idx]),
 		}
 
 		if verbose:
 			tag = " [VIRTUAL]" if virtual_flags[best_idx] else ""
 			print(f"\t=> Selected Canonical: {canonical} (sim={similarities[best_idx]:.4f}){tag}")
+
+	cluster_canonicals = _demote_colliding_virtual_canonicals(
+		cluster_canonicals, 
+		verbose=verbose
+	)
 
 	cluster_canonicals = _resolve_cross_cluster_case_collisions(
 		cluster_canonicals, 
@@ -2935,14 +3106,71 @@ def assign_canonical_labels(
 		verbose=verbose,
 	)
 
-	return (
-		cluster_canonicals,
-		virtual_used_count,
-		freq_changed_count,
-		total_sim_loss,
-		total_freq_gain,
-		questionable_examples,
-	)
+	if verbose:
+		print("-"*100)
+		print("[CLUSTERING] FREQUENCY WEIGHTING IMPACT")
+		total_clusters = len(df.cluster.unique())
+		print(f"  Total clusters analyzed: {total_clusters}")
+		print(f"  Virtual hypernym used as canonical: {virtual_used_count} ({virtual_used_count/total_clusters*100:.1f}%)")
+		print(f"  Clusters where score changed the canonical: {freq_changed_count} ({freq_changed_count/total_clusters*100:.1f}%)")
+
+	if total_sim_loss and verbose:
+		print(f"\nSIMILARITY LOSS IMPACT:")
+		print(f"  Average  {np.mean(total_sim_loss)*100:.2f}%")
+		print(f"  Median   {np.median(total_sim_loss)*100:.2f}%")
+		print(f"  Max      {np.max(total_sim_loss)*100:.2f}%")
+		print(f"  Min      {np.min(total_sim_loss)*100:.2f}%")
+
+		print(f"\nFREQUENCY GAIN BENEFIT:")
+		print(f"  Average {np.mean(total_freq_gain):.1f}x")
+		print(f"  Median  {np.median(total_freq_gain):.1f}x")
+		print(f"  Max     {np.max(total_freq_gain):.1f}x")
+		print(f"  Min     {np.min(total_freq_gain):.1f}x")
+
+		print(f"\nQUALITY ASSESSMENT:")
+		excellent_trades    = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.03 and f > 10)
+		good_trades         = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.05 and f > 5)
+		questionable_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s > 0.10 or f < 2)
+		print(f"  Excellent trades (<3% sim loss, >10x freq gain): {excellent_trades:<10} ({excellent_trades/freq_changed_count*100:.1f}%)")
+		print(f"  Good trades (<5% sim loss, >5x freq gain):       {good_trades:<10} ({good_trades/freq_changed_count*100:.1f}%)")
+		print(f"  Questionable trades (>10% sim loss or <2x gain): {questionable_trades:<10} ({questionable_trades/freq_changed_count*100:.1f}%)")
+
+		if questionable_trades > 0 and verbose:
+			print(f"\n[WARNING] {questionable_trades} questionable trades detected:")
+			print(f"\t=> Consider adjusting weighting if this is high\n")
+			print(f"{'Cluster':<10} {'Pure Sim Choice':<35} {'Score-Weighted Choice':<35} {'Sim Loss(%)':<15} {'Freq Gain'}")
+			print("-" * 110)
+			for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True):
+				print(f"{ex['cluster_id']:<10} {ex['pure_choice'][:32]:<35} {ex['freq_choice'][:32]:<35} {ex['sim_loss']*100:<15.1f} {ex['freq_gain']:.1f}x")
+
+			high_loss_low_gain  = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] < 2]
+			high_loss_good_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] >= 2]
+			low_loss_low_gain   = [ex for ex in questionable_examples if ex['sim_loss'] <= 0.10 and ex['freq_gain'] < 2]
+			print(f"\nBREAKDOWN OF QUESTIONABLE TRADES:")
+			print(f"Type A: High loss (>10%)  + Low gain  (<2x) : {len(high_loss_low_gain):<10}{len(high_loss_low_gain)/questionable_trades:<10.4f}BAD")
+			print(f"Type B: High loss (>10%)  + Good gain (>=2x): {len(high_loss_good_gain):<10}{len(high_loss_good_gain)/questionable_trades:<10.4f}DEBATABLE")
+			print(f"Type C: Low loss  (<=10%) + Low gain  (<2x) : {len(low_loss_low_gain):<10}{len(low_loss_low_gain)/questionable_trades:<10.4f}UNNECESSARY")
+		else:
+			print(f"\nAll trades are high-quality!")
+
+		avg_sim_loss_pct = np.mean(total_sim_loss) * 100
+		avg_freq_gain    = np.mean(total_freq_gain)
+		print(f"\nOVERALL VERDICT:")
+		if avg_sim_loss_pct < 3 and avg_freq_gain > 50:
+			print(f"  ✅ EXCELLENT: Small quality cost ({avg_sim_loss_pct:.1f}%) for huge frequency benefit ({avg_freq_gain:.0f}x)")
+		elif avg_sim_loss_pct < 5 and avg_freq_gain > 10:
+			print(f"  ✅ GOOD: Acceptable quality cost ({avg_sim_loss_pct:.1f}%) for strong frequency benefit ({avg_freq_gain:.0f}x)")
+		elif avg_sim_loss_pct < 8 and avg_freq_gain > 5:
+			print(f"  ⚠️  ACCEPTABLE: Moderate quality cost ({avg_sim_loss_pct:.1f}%) for moderate frequency benefit ({avg_freq_gain:.0f}x)")
+		else:
+			print(f"  ❌ POOR: High quality cost ({avg_sim_loss_pct:.1f}%) for limited frequency benefit ({avg_freq_gain:.0f}x)")
+			print(f"     Consider reducing frequency weight")
+	else:
+		if verbose:
+			print("\n  ℹ️  Score-based selection made no changes (all clusters picked highest similarity)")
+			print("=" * 100)
+
+	return cluster_canonicals
 
 def cluster(
 	labels: List[List[str]],
@@ -2962,13 +3190,10 @@ def cluster(
 		print(f"   ├─ linkage: {linkage_method}")
 		print(f"   ├─ sample: {labels[:5]}")
 		requires_type_exchange = isinstance(labels[0], str)
-		print(f"   ├─────> {type(labels[0])} requires_type_exchange: {requires_type_exchange}")
+		print(f"   ├─────> {type(labels[0])} requires_type_exchange? {requires_type_exchange}")
 		print(f"   └─ nc: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
 
 	# STEP 1: DEDUP + FLATTEN
-	if verbose:
-		print(f"\n[DEDUP] {len(labels)} {type(labels)} raw labels")
-
 	documents = list()
 	for i, doc in enumerate(labels):
 		if doc is None:
@@ -2994,9 +3219,12 @@ def cluster(
 	if verbose:
 		print(f"Total {type(documents)} documents: {len(documents)}")
 		print(f"Unique {type(unique_labels)} labels: {len(unique_labels)}")
-		print(f"Sample unique: {unique_labels[:15]}")
+		print(f"Sample unique labels: {unique_labels[:15]}")
 		print("-" * 100)
-	
+
+	# sys.exit()
+
+
 	dtype = torch.float32
 	if torch.cuda.is_available():
 		dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
@@ -3040,8 +3268,7 @@ def cluster(
 
 	if verbose:
 		print(
-			f"[ENCODING] {len(unique_labels)} unique labels "
-			f"with {model_id} "
+			f"[ENCODING] {len(unique_labels)} unique labels | {model_id} | "
 			f"({sum(p.numel() for p in model.parameters()):,} parameters)"
 		)
 
@@ -3107,7 +3334,7 @@ def cluster(
 			max_consolidation=5.0,
 			target_singleton_ratio=0.015,
 			quality_vs_consolidation_weight=0.5,
-			# merge_singletons=True,
+			merge_singletons=True,
 			verbose=verbose,
 		)
 		best_k = stats['n_clusters']
@@ -3117,7 +3344,8 @@ def cluster(
 		cluster_labels = fcluster(Z, best_k, criterion='maxclust') - 1
 
 	df = pd.DataFrame({'label': unique_labels, 'cluster': cluster_labels})
-	
+	# sys.exit()
+
 	# STEP 5: LABEL FREQUENCY DICT
 	if verbose:
 		print(f"\n[CLUSTERING] {len(np.unique(cluster_labels))} clusters for {cluster_labels.shape} {type(cluster_labels)} labels")
@@ -3133,90 +3361,15 @@ def cluster(
 		print('-' * 80)
 
 	# STEP 6: CANONICAL SELECTION (with virtual hypernym synthesis)
-	t0 = time.time()
-	(
-		cluster_canonicals,
-		virtual_used_count,
-		freq_changed_count,
-		total_sim_loss,
-		total_freq_gain,
-		questionable_examples,
-	) = assign_canonical_labels(
+	cluster_canonicals = assign_canonical_labels(
 		df=df,
 		X=X,
 		model=model,
 		original_label_counts=label_freq_dict,
 		verbose=verbose,
 	)
-	if verbose:
-		print(f"\n[CLUSTERING] {len(cluster_canonicals)} cluster canonicals computed in {time.time()-t0:.1f} sec.")
-		print("-" * 100)
 
-	# STEP 7: IMPACT ANALYSIS
-	total_clusters = len(df.cluster.unique())
-	if verbose:
-		print("\nFREQUENCY WEIGHTING IMPACT ANALYSIS")
-		print(f"  Total clusters analyzed: {total_clusters}")
-		print(f"  Virtual hypernym used as canonical: {virtual_used_count} ({virtual_used_count/total_clusters*100:.1f}%)")
-		print(f"  Clusters where score changed the canonical: {freq_changed_count} ({freq_changed_count/total_clusters*100:.1f}%)")
-
-	if total_sim_loss and verbose:
-		print(f"\nSIMILARITY LOSS IMPACT:")
-		print(f"  Average  {np.mean(total_sim_loss)*100:.2f}%")
-		print(f"  Median   {np.median(total_sim_loss)*100:.2f}%")
-		print(f"  Max      {np.max(total_sim_loss)*100:.2f}%")
-		print(f"  Min      {np.min(total_sim_loss)*100:.2f}%")
-
-		print(f"\nFREQUENCY GAIN BENEFIT:")
-		print(f"  Average {np.mean(total_freq_gain):.1f}x")
-		print(f"  Median  {np.median(total_freq_gain):.1f}x")
-		print(f"  Max     {np.max(total_freq_gain):.1f}x")
-		print(f"  Min     {np.min(total_freq_gain):.1f}x")
-
-		print(f"\nQUALITY ASSESSMENT:")
-		excellent_trades    = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.03 and f > 10)
-		good_trades         = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.05 and f > 5)
-		questionable_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s > 0.10 or f < 2)
-		print(f"  Excellent trades (<3% sim loss, >10x freq gain): {excellent_trades:<10} ({excellent_trades/freq_changed_count*100:.1f}%)")
-		print(f"  Good trades (<5% sim loss, >5x freq gain):       {good_trades:<10} ({good_trades/freq_changed_count*100:.1f}%)")
-		print(f"  Questionable trades (>10% sim loss or <2x gain): {questionable_trades:<10} ({questionable_trades/freq_changed_count*100:.1f}%)")
-
-		if questionable_trades > 0 and verbose:
-			print(f"\n[WARNING] {questionable_trades} questionable trades detected:")
-			print(f"\t=> Consider adjusting weighting if this is high\n")
-			print(f"{'Cluster':<10} {'Pure Sim Choice':<35} {'Score-Weighted Choice':<35} {'Sim Loss(%)':<15} {'Freq Gain'}")
-			print("-" * 110)
-			for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True):
-				print(f"{ex['cluster_id']:<10} {ex['pure_choice'][:32]:<35} {ex['freq_choice'][:32]:<35} {ex['sim_loss']*100:<15.1f} {ex['freq_gain']:.1f}x")
-
-			high_loss_low_gain  = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] < 2]
-			high_loss_good_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] >= 2]
-			low_loss_low_gain   = [ex for ex in questionable_examples if ex['sim_loss'] <= 0.10 and ex['freq_gain'] < 2]
-			print(f"\nBREAKDOWN OF QUESTIONABLE TRADES:")
-			print(f"Type A: High loss (>10%) + Low gain (<2x):   {len(high_loss_low_gain):<10}{len(high_loss_low_gain)/questionable_trades:<10.4f}BAD")
-			print(f"Type B: High loss (>10%) + Good gain (>=2x): {len(high_loss_good_gain):<10}{len(high_loss_good_gain)/questionable_trades:<10.4f}DEBATABLE")
-			print(f"Type C: Low loss  (<=10%) + Low gain (<2x):  {len(low_loss_low_gain):<10}{len(low_loss_low_gain)/questionable_trades:<10.4f}UNNECESSARY")
-		else:
-			print(f"\nAll trades are high-quality!")
-
-		avg_sim_loss_pct = np.mean(total_sim_loss) * 100
-		avg_freq_gain    = np.mean(total_freq_gain)
-		print(f"\nOVERALL VERDICT:")
-		if avg_sim_loss_pct < 3 and avg_freq_gain > 50:
-			print(f"  ✅ EXCELLENT: Small quality cost ({avg_sim_loss_pct:.1f}%) for huge frequency benefit ({avg_freq_gain:.0f}x)")
-		elif avg_sim_loss_pct < 5 and avg_freq_gain > 10:
-			print(f"  ✅ GOOD: Acceptable quality cost ({avg_sim_loss_pct:.1f}%) for strong frequency benefit ({avg_freq_gain:.0f}x)")
-		elif avg_sim_loss_pct < 8 and avg_freq_gain > 5:
-			print(f"  ⚠️  ACCEPTABLE: Moderate quality cost ({avg_sim_loss_pct:.1f}%) for moderate frequency benefit ({avg_freq_gain:.0f}x)")
-		else:
-			print(f"  ❌ POOR: High quality cost ({avg_sim_loss_pct:.1f}%) for limited frequency benefit ({avg_freq_gain:.0f}x)")
-			print(f"     Consider reducing frequency weight")
-	else:
-		if verbose:
-			print("\n  ℹ️  Score-based selection made no changes (all clusters picked highest similarity)")
-			print("=" * 100)
-	
-	# STEP 8: MAP CANONICALS + CLEAN PROBLEMATIC CLUSTERS	
+	# STEP 7 MAP CANONICALS + CLEAN PROBLEMATIC CLUSTERS	
 	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
 
 	# ── Inject virtual hypernyms as real rows ────────────────────────────────
@@ -3244,13 +3397,13 @@ def cluster(
 
 	if virtual_rows:
 		virtual_df = pd.DataFrame(virtual_rows)
-		df         = pd.concat([df, virtual_df], ignore_index=True)
-		X          = np.vstack([X, np.array(virtual_embs)])
+		df = pd.concat([df, virtual_df], ignore_index=True)
+		X = np.vstack([X, np.array(virtual_embs)])
 
 		if verbose:
-			print(f"\n[STEP 8] Injected {len(virtual_rows)} virtual hypernym row(s) into df+X")
+			print(f"\nInjected {len(virtual_rows)} virtual hypernym row(s) into df+X")
 			for r in virtual_rows:
-				print(f"cluster {r['cluster']:>6d} canonical: {r['label']}")
+				print(f"cluster {r['cluster']:6d} canonical: {r['label']}")
 
 	df, X_clean, removed_labels = remove_problematic_cluster_labels(
 		df=df,
@@ -3264,11 +3417,11 @@ def cluster(
 	df.to_csv(out_csv, index=False)
 
 	unique_labels_array = df['label'].values
-	cluster_labels      = df['cluster'].values
-	canonical_map       = df.groupby('cluster')['canonical'].first().to_dict()
+	cluster_labels = df['cluster'].values
+	canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
 	
 	if verbose:
-		print("\nCOMPREHENSIVE CLUSTER QUALITY")
+		print("\n[CLUSTER QUALITY]")
 		print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
 		print(f"  ├─ Updated canonical_map: {len(canonical_map)} mappings")
 		print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
@@ -3315,10 +3468,12 @@ def cluster(
 			)
 
 	if verbose:
+		print("-"*80)
 		print(f"Clustered {len(df)} labels into {df['cluster'].nunique()} clusters")
-		print(f"{type(df)} {df.shape} {list(df.columns)}")
-		print(df.info())
-		print(f"[CLUSTERING] Total Elapsed Time: {time.time()-st_t:.1f} sec\n")
+		print(f"{df.shape} {list(df.columns)}")
+		print(df.info(verbose=verbose, memory_usage="deep"))
+		print(f"[TOTAL ELAPSED TIME] {time.time()-st_t:.2f} sec.")
+		print("-"*80)
 
 	# clear cache
 	if torch.cuda.is_available():

@@ -1261,7 +1261,7 @@ def get_validation_metrics(
 		print(f"    Fraction [sim > 0.9]: {(off_diag > 0.9).float().mean():.4f} (high → near-duplicate class embeddings)")
 
 		flat_sims = inter_cls_sims.masked_fill(~off_diag_mask, -1)
-		top_pairs = torch.triu(flat_sims, diagonal=1).flatten().topk(50)
+		top_pairs = torch.triu(flat_sims, diagonal=1).flatten().topk(150)
 		row_idx = top_pairs.indices // n_cls_sample
 		col_idx = top_pairs.indices % n_cls_sample
 

@@ -6,11 +6,14 @@
 import spacy
 
 test_labels = [
-	"tugboat", "lighthouse", "Basilica", "Casablanca",
+	"Norwegian", "Finnish", "Armenians", "Swedish", "Dutch", "American", "Americans", "British", "French Soldiers", "German", "Italians", "German flag",
+	"tugboat", "lighthouse", "Basilica", "Casablanca", "Red Cross",
 	"Montauk", "Apennines", "Bay of Algiers", "Cajon Pass", "Kings Point",
 	"Gulf of Mexico", "Queen Mary", "Pisa", "Niagara Falls", "Niagara",
-	"Dallas Love Field Airport", "Long Island", "Kansas City", "Great Falls", "Sioux Falls",
+	"Dallas Love Field Airport", "Long Island", "Kansas City", "Great Falls", "Sioux Falls", "United States", "United States of America", "USA", "Guantanamo Bay",
 ]
+
+# test_labels = ["STAMCO", "Stamco"]
 
 for model_name in ["en_core_web_md", "en_core_web_lg", "en_core_web_trf"]:
 	try:
