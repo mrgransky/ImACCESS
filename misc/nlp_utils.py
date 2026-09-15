@@ -168,9 +168,6 @@ def _post_process_(
 		"limited",
 		"life savers",
 		"pyrotechnics",
-		# "american airlines",
-		# "delta airlines",
-		# "delta air lines",
 		"general motors",
 		"united nations",
 		"soviet union",
@@ -226,7 +223,7 @@ def _post_process_(
 		"chart", "graph", "diagram", "plot", "tableau",
 		"sketch", "sketching", "schematic",
 		"date", "project", "program", "series",
-		"model", "nickname", "service"  # Add these
+		"model", "nickname",
 	}
 
 	ALWAYS_REMOVE = {"unknown", "unidentified"}
