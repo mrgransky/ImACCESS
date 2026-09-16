@@ -7,11 +7,11 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=72  # 72 per GH200, 288 for 4x
-#SBATCH --mem=0             # whole node on GH200, don't request 64G
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=264G
 #SBATCH --partition=gpumedium
-#SBATCH --time=01-12:00:00
 #SBATCH --gres=gpu:gh200:4
+#SBATCH --time=01-12:00:00
 #SBATCH --array=0
 
 set -euo pipefail
