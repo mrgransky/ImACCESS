@@ -194,6 +194,22 @@ def get_multimodal_annotation(
 		if verbose:
 			print(f"[FULL DATASET] {csv_file} post processing [might take a while...]")
 		
+		multimodal_labels = _post_process_(
+			labels_list=multimodal_labels, 
+			col="multimodal_labels", 
+			verbose=verbose
+		)
+
+		multimodal_canonical_labels, _ = get_canonical_labels(
+			labels=multimodal_labels,
+			model_id=embedding_model_id,
+			label_source="multimodal_labels",
+			output_dir=OUTPUT_DIR,
+			batch_size=batch_size,
+			nc=nc,
+			verbose=verbose,
+		)
+
 		llm_based_labels = _post_process_(
 			labels_list=llm_based_labels, 
 			col="llm_based_labels", 
@@ -224,22 +240,6 @@ def get_multimodal_annotation(
 			batch_size=batch_size,
 			nc=nc,
 			verbose=False,
-		)
-
-		multimodal_labels = _post_process_(
-			labels_list=multimodal_labels, 
-			col="multimodal_labels", 
-			verbose=verbose
-		)
-
-		multimodal_canonical_labels, _ = get_canonical_labels(
-			labels=multimodal_labels,
-			model_id=embedding_model_id,
-			label_source="multimodal_labels",
-			output_dir=OUTPUT_DIR,
-			batch_size=batch_size,
-			nc=nc,
-			verbose=verbose,
 		)
 
 		# check length of each before setting into column:
