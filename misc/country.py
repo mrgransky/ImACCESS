@@ -15,8 +15,12 @@ import spacy
 
 # test_labels = ["STAMCO", "Stamco"]
 # test_labels = ["Romanian", "Romanian soldiers", "Roumanians", "UCLA"]
-test_labels = ["Eastern Front", "Western Front", "Belgian Front", 'Belorussian Front', 'Soviet front', 'Volkhov Front', 'Klidi Pass', 'Battle of the Klidi Pass']
 # test_labels = ["Panzerzug", "Panzerfaust", "Grossdeutschland", "Großdeutschland", "Afrika Korps", "Afrika", "Korps", "korps", "Feldwerft"]
+test_labels = [
+	"Eastern Front", "Western Front", "Belgian Front", 'Belorussian Front', 'Soviet front', 'Volkhov Front', 
+	'Klidi Pass', 'Battle of the Klidi Pass',
+	'International Federation of Agricultural Producers',
+]
 
 for model_name in ["en_core_web_md", "en_core_web_lg", "en_core_web_trf"]:
 	try:
@@ -27,6 +31,6 @@ for model_name in ["en_core_web_md", "en_core_web_lg", "en_core_web_trf"]:
 		for label in test_labels:
 			doc = nlp(label)
 			ents = [(ent.text, ent.label_) for ent in doc.ents]
-			print(f"{label:40s} → {ents}")
+			print(f"{label:60s} → {ents}")
 	except OSError:
 		print(f"\n  ⚠ {model_name} not installed, skipping")

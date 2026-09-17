@@ -296,7 +296,7 @@ def _post_process_(
 	)
 
 	COUNTRY_MODIFIERS = re.compile(
-		r'^(?:U\.?S\.?|U\.?K\.?|U\.?S\.?S\.?R\.?|U\.?N\.?)\s+\w',
+		r'^(?:U\.?S\.?|United States|U\.?K\.?|United Kingdom|U\.?S\.?S\.?R\.?|Soviet Union|U\.?N\.?)\s+\w',
 		re.IGNORECASE
 	)
 
@@ -382,122 +382,148 @@ def _post_process_(
 		return False
 
 	def _extract_geopolitical_entities(text: str, verbose: bool = False) -> Set[str]:
-		"""
-		Extract geopolitical entities using spaCy NER.
-		Returns set of:
-			- Geographic locations (GPE, LOC) → for ALL inputs
-			- Nationalities / religious / political groups (NORP) → ONLY for single-word inputs
-		
-		Rationale:
-			- "American" (single word) → too generic, filter it
-			- "American soldiers" (multi-word) → meaningful visual concept, keep it
-		
-		Original case is PRESERVED in the returned set.
-		Results are cached to avoid redundant spaCy calls.
-		"""
+			"""
+			Extract geopolitical entities using spaCy NER.
+			Returns set of:
+					- Geographic locations (GPE, LOC) → for ALL inputs
+					- Nationalities / religious / political groups (NORP) → ONLY for single-word inputs
+			
+			Rationale:
+					- "American" (single word) → too generic, filter it
+					- "American soldiers" (multi-word) → meaningful visual concept, keep it
+			
+			Original case is PRESERVED in the returned set.
+			Results are cached to avoid redundant spaCy calls.
+			"""
+			if WW_THEATRE_PHRASES.match(text):
+					if verbose:
+							print(f"\t[PRESERVED] {repr(text):<25} WW theatre phrase")
+					return None
 
-		if WW_THEATRE_PHRASES.match(text):
-			if verbose:
-				print(f"\t\t[PRESERVED] {repr(text):<25} WW theatre phrase")
-			return None
+			if text.lower() in MILITARY_PROTECTED_PHRASES:
+					if verbose:
+							print(f"\t[PRESERVED] {repr(text):<25} military specific phrase")
+					return None
 
-		if text.lower() in MILITARY_PROTECTED_PHRASES:
-			if verbose:
-				print(f"\t\t[PRESERVED] {repr(text):<25} military specific phrase")
-			return None
+			if COUNTRY_MODIFIERS.match(text):
+					if verbose:
+							print(f"\t[PRESERVED] {repr(text):<25} country modifier")
+					return None
 
-		if COUNTRY_MODIFIERS.match(text):
-			if verbose:
-				print(f"\t\t[PRESERVED] {repr(text):<25} country modifier")
-			return None
+			# Check cache first
+			cache_key = text.lower().strip()
+			if cache_key in _spacy_cache:
+					if verbose:
+							print(f"\t\t[spaCy NER] CACHE HIT: {repr(text):<25}")
+					return _spacy_cache[cache_key]
 
-		# Check cache first
-		cache_key = text.lower().strip()
-		if cache_key in _spacy_cache:
-				if verbose:
-						print(f"\t\t[spaCy NER] CACHE HIT: {repr(text):<25}")
-				return _spacy_cache[cache_key]
-		if nlp_spacy is None:
-				if verbose:
-						print(f"\t\t[spaCy: {spacy_model_id} NER] model not loaded, returning empty set")
-				return set()
-		GEO_LABELS = {"GPE", "LOC"}
-		NORP_LABELS = {"NORP"}
+			if nlp_spacy is None:
+					if verbose:
+							print(f"\t\t[spaCy NER] model not loaded, returning empty set")
+					return set()
 
-		# ── KEY DECISION: NORP only applies to single-word inputs ──
-		is_single_word = len(text.strip().split()) == 1
-		if is_single_word:
-			target_labels = GEO_LABELS | NORP_LABELS  # GPE + LOC + NORP
-		else:
-			target_labels = GEO_LABELS                 # GPE + LOC only
+			GEO_LABELS = {"GPE", "LOC"}
+			NORP_LABELS = {"NORP"}
 
-		# if verbose:
-		# 	mode = "GEO+NORP (single word)" if is_single_word else "GEO only (multi-word)"
-		# 	print(f"\t\t[spaCy: {spacy_model_id} NER] Mode: {mode} | Input: {repr(text):<25}")
+			# ── KEY DECISION: NORP only applies to single-word inputs ──
+			is_single_word = len(text.strip().split()) == 1
+			if is_single_word:
+					target_labels = GEO_LABELS | NORP_LABELS  # GPE + LOC + NORP
+			else:
+					target_labels = GEO_LABELS                 # GPE + LOC only
 
-		doc = nlp_spacy(text)
+			doc = nlp_spacy(text)
 
-		# 1. Direct entities
-		target_spans = [ent for ent in doc.ents if ent.label_ in target_labels]
-		if len(target_spans) > 0 and verbose:
-				print(f"\t\t[spaCy: {spacy_model_id} NER] Found {len(target_spans)} target entities:")
-				for ent in target_spans:
-						print(f"\t\t\t├─ {ent.text} → {ent.label_}")
-		# Store original case for the final result
-		result_texts = {ent.text for ent in target_spans}
-		# Store lowercased versions PURELY for deduplication checks
-		result_texts_lower = {ent.text.lower() for ent in target_spans}
+			# 1. Direct entities
+			target_spans = [ent for ent in doc.ents if ent.label_ in target_labels]
+			if len(target_spans) > 0 and verbose:
+					print(f"\t\t[spaCy NER] Found {len(target_spans)} target entities:")
+					for ent in target_spans:
+							print(f"\t\t\t├─ {ent.text} → {ent.label_}")
 
-		# 2. Embedded geographic entities in ORG labels
-		#    Only search for GPE/LOC inside ORGs (never NORP here,
-		#    since ORG re-parsing implies multi-word context)
-		org_spans = [ent for ent in doc.ents if ent.label_ == "ORG"]
-		if len(org_spans) > 0 and verbose:
-				print(f"\t\t[spaCy: {spacy_model_id} NER] Found {len(org_spans)} ORG entities. Checking embedded...")
-		embedded_entities = set()
-		# Regex fallback for extracting locations from ORG names
-		# captures up to 2 capitalized words (e.g., "San Francisco", "Texas")
-		_PLACE_RE = re.compile(r'(?:\bof\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)')
-		_ORG_IGNORE = {
-			"College", "University", "Institute", "School", "Department",
-			"Company", "Corporation", "Railway", "Railroad", "Air", "Force"
-		}
-		for org in org_spans:
-				if verbose:
-						print(f"\t\t[ORG] Analyzing: {org.text}")
-				org_doc = nlp_spacy(org.text)
-				found_nested = False
-				for sub_ent in org_doc.ents:
-						if verbose:
-								print(f"\t\t\t│  ├─ {sub_ent.text} → {sub_ent.label_}")
-						if sub_ent.label_ in GEO_LABELS and sub_ent.text.lower() not in result_texts_lower:
-								embedded_entities.add(sub_ent.text)
-								result_texts_lower.add(sub_ent.text.lower())
-								found_nested = True
-								if verbose:
-										print(f"\t\t\t│  └─ ✓ Added embedded {sub_ent.label_}: {sub_ent.text}")
-				# ── Regex fallback: only if NER re-parse found no GPE/LOC ──
-				if not found_nested:
-						candidates = _PLACE_RE.findall(org.text)
-						for candidate in candidates:
-								first_word = candidate.split()[0]
-								if (candidate.lower() not in result_texts_lower
-										and first_word not in _ORG_IGNORE
-										and len(candidate) > 2):
-										embedded_entities.add(candidate)
-										result_texts_lower.add(candidate.lower())
-										if verbose:
-												print(f"\t\t\t│  └─ ✓ Regex extracted: {candidate!r}")
-		if verbose and embedded_entities:
-				print(f"\t\t[spaCy: {spacy_model_id} NER] Embedded entities: {embedded_entities}")
+			result_texts = {ent.text for ent in target_spans}
+			result_texts_lower = {ent.text.lower() for ent in target_spans}
 
-		# 3. Combine & cache
-		final_result = result_texts | embedded_entities
-		_spacy_cache[cache_key] = final_result
-		if len(final_result) > 0 and verbose:
-			print(f"\t\t[spaCy: {spacy_model_id} NER] Final result ({len(final_result)} items): {final_result}")
+			# 2. Embedded geographic entities in ORG labels
+			org_spans = [ent for ent in doc.ents if ent.label_ == "ORG"]
+			if len(org_spans) > 0 and verbose:
+					print(f"\t\t[spaCy NER] Found {len(org_spans)} ORG entities. Checking embedded...")
 
-		return final_result
+			embedded_entities = set()
+			
+			# Matches words following "of", capturing up to 2 capitalized words
+			_PLACE_RE = re.compile(r'(?:\bof\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)')
+			_ORG_IGNORE = {
+					"College", "University", "Institute", "School", "Department",
+					"Company", "Corporation", "Railway", "Railroad", "Air", "Force",
+					"Federation", "Association", "Society", "Committee"
+			}
+
+			for org in org_spans:
+					if verbose:
+							print(f"\t\t[ORG] Analyzing: {org.text}")
+					
+					org_doc = nlp_spacy(org.text)
+					found_nested = False
+					
+					for sub_ent in org_doc.ents:
+							if verbose:
+									print(f"\t\t\t│  ├─ {sub_ent.text} → {sub_ent.label_}")
+							if sub_ent.label_ in GEO_LABELS and sub_ent.text.lower() not in result_texts_lower:
+									embedded_entities.add(sub_ent.text)
+									result_texts_lower.add(sub_ent.text.lower())
+									found_nested = True
+									if verbose:
+											print(f"\t\t\t│  └─ ✓ Added embedded {sub_ent.label_}: {sub_ent.text}")
+
+					# ── Regex fallback: only if direct NER parse found no GPE/LOC ──
+					if not found_nested:
+							candidates = _PLACE_RE.findall(org.text)
+							for candidate in candidates:
+									words = candidate.split()
+									first_word = words[0]
+
+									if (candidate.lower() in result_texts_lower 
+													or first_word in _ORG_IGNORE 
+													or len(candidate) <= 2):
+											continue
+
+									# Step A: Validate candidate as a whole
+									cand_doc = nlp_spacy(candidate)
+									verified_geos = [
+											ent.text for ent in cand_doc.ents if ent.label_ in GEO_LABELS
+									]
+
+									# Step B: If multi-word check failed due to regex truncation 
+									# (e.g. "California Santa" chopped off "Barbara"), test the first token
+									if not verified_geos and len(words) > 1 and first_word.lower() not in result_texts_lower:
+											first_doc = nlp_spacy(first_word)
+											verified_geos = [
+													ent.text for ent in first_doc.ents if ent.label_ in GEO_LABELS
+											]
+
+									# Step C: Register only if verified by NER
+									if verified_geos:
+											for geo in verified_geos:
+													embedded_entities.add(geo)
+													result_texts_lower.add(geo.lower())
+											if verbose:
+													print(f"\t\t\t│  └─ ✓ Regex candidate verified as geo: {verified_geos}")
+									else:
+											if verbose:
+													print(f"\t\t\t│  └─ ✗ Regex candidate rejected (not geo): {candidate!r}")
+
+			if verbose and embedded_entities:
+					print(f"\t\t[spaCy NER] Embedded entities: {embedded_entities}")
+
+			# 3. Combine & cache
+			final_result = result_texts | embedded_entities
+			_spacy_cache[cache_key] = final_result
+
+			if len(final_result) > 0 and verbose:
+					print(f"\t\t[spaCy NER] Final result ({len(final_result)} items): {final_result}")
+
+			return final_result
 
 	def is_stopword(phrase: str) -> bool:
 		"""
@@ -839,7 +865,7 @@ def _post_process_(
 			
 			if not item:
 				if verbose:
-					print(f"\t\t[SKIPPED] Empty/false")
+					print(f"\t[SKIPPED] Empty/false")
 				continue
 			
 			# Capture the raw string
@@ -860,7 +886,7 @@ def _post_process_(
 			# check if digit is in the lemma: (extremely strict)
 			if any(c.isdigit() for c in original_cleaned):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(original_cleaned):<45} digit")
+					print(f"\t[SKIPPED] {repr(original_cleaned):<70} digit")
 				continue
 
 			if nlp_spacy is not None:
@@ -868,17 +894,17 @@ def _post_process_(
 				geo_entities = _extract_geopolitical_entities(ner_input, verbose=verbose)
 				if geo_entities:
 					if verbose:
-						print(f"\t\t[SKIPPED] {repr(ner_input):<45} GPE/LOC/NORP {geo_entities}")
+						print(f"\t[SKIPPED] {repr(ner_input):<70} GPE/LOC/NORP {geo_entities}")
 					continue
 
 			if is_stopword(original_cleaned):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(original_cleaned):<45} stopword (or georaphic reference)")
+					print(f"\t[SKIPPED] {repr(original_cleaned):<70} stopword (or georaphic reference)")
 				continue
 
 			if is_quantified_plural(original_cleaned):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(original_cleaned):<45} Quantified plural ")
+					print(f"\t[SKIPPED] {repr(original_cleaned):<70} Quantified plural ")
 				continue
 			elif is_adjectival_phrase(original_cleaned):
 				lemma = s  # Preserve "newly built", "recently completed"
@@ -900,94 +926,94 @@ def _post_process_(
 			
 			if lemma.endswith("ville"):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma):<45} ends with 'ville'")
+					print(f"\t[SKIPPED] {repr(lemma):<70} ends with 'ville'")
 				continue
 
 			# # Aggressive but do not contaminate the clustering with all uppercase words:
 			# if lemma.isupper() and lemma not in ALLOWED_ACRONYMS:
 			# 	if verbose:
-			# 		print(f"\t\t[SKIPPED] {repr(lemma):<45} All uppercase")
+			# 		print(f"\t[SKIPPED] {repr(lemma):<70} All uppercase")
 			# 	continue
 
 			if should_skip_by_case(lemma, ALLOWED_ACRONYMS, max_upper_pct=75.0, verbose=verbose):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma):<45} case-based filter")
+					print(f"\t[SKIPPED] {repr(lemma):<70} case-based filter")
 				continue
 
 			if len(lemma) < min_kw_ch_length:
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma):<45} (len={len(lemma)} < {min_kw_ch_length})")
+					print(f"\t[SKIPPED] {repr(lemma):<70} (len={len(lemma)} < {min_kw_ch_length})")
 				continue
 
 			if len(lemma.split()) > max_kw_word_length:
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma):<45} (len={len(lemma.split())} > {max_kw_word_length})")
+					print(f"\t[SKIPPED] {repr(lemma):<70} (len={len(lemma.split())} > {max_kw_word_length})")
 				continue
 
 			# # check if digit is in the lemma: (extremely strict)
 			# if any(c.isdigit() for c in lemma):
 			# 	if verbose:
-			# 		print(f"\t\t[SKIPPED] {repr(lemma):<45} digit")
+			# 		print(f"\t[SKIPPED] {repr(lemma):<70} digit")
 			# 	continue
 
 			# # check for geographic references:
 			# if any(lm in geographic_references for lm in lemma.lower().split()):
 			# 	if verbose:
-			# 		print(f"\t\t[SKIPPED] {repr(lemma):<45} Geographic reference")
+			# 		print(f"\t[SKIPPED] {repr(lemma):<70} Geographic reference")
 			# 	continue
 
 			if is_phrasal_verb(lemma):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma):<45} Phrasal verb")
+					print(f"\t[SKIPPED] {repr(lemma):<70} Phrasal verb")
 				continue
 
 			if is_stopword(lemma):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma):<45} stopword")
+					print(f"\t[SKIPPED] {repr(lemma):<70} stopword")
 				continue
 
 			# Exclude pure color descriptors
 			if all(w.lower() in COLORS for w in lemma.split()):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma):<45} Color descriptor")
+					print(f"\t[SKIPPED] {repr(lemma):<70} Color descriptor")
 				continue
 
 			# exclude honorifics
 			if any(w in HONORIFICS for w in lemma.lower().split()):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma):<45} honorific")
+					print(f"\t[SKIPPED] {repr(lemma):<70} honorific")
 				continue
 
 			# Exclude "black and white" specifically
 			if lemma.lower() in IMAGE_DESCRIPTORS:
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma):<45} image descriptor")
+					print(f"\t[SKIPPED] {repr(lemma):<70} image descriptor")
 				continue
 
 			if lemma.lower() in ORDINALS:
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma):<45} ordinal")
+					print(f"\t[SKIPPED] {repr(lemma):<70} ordinal")
 				continue
 
 			if should_filter_label(lemma):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma):<45} irrelevant!")
+					print(f"\t[SKIPPED] {repr(lemma):<70} irrelevant!")
 				continue
 
 			# only No. NNNNN ex) No. X1657 or No. 1657
 			if re.match(r"^No\.\s\w+$", lemma, re.IGNORECASE):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma):<45} Only No. NNNNN")
+					print(f"\t[SKIPPED] {repr(lemma):<70} Only No. NNNNN")
 				continue
 
 			if re.match(r'^\d+\sfeet$', lemma, re.IGNORECASE) or re.match(r'^\d+\sft$', lemma, re.IGNORECASE):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma):<45} Only NNNNN feet/ft")
+					print(f"\t[SKIPPED] {repr(lemma):<70} Only NNNNN feet/ft")
 				continue
 
 			if re.match(r'^\d+\sfoot$', lemma, re.IGNORECASE):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma):<45} Only NNNNN foot")
+					print(f"\t[SKIPPED] {repr(lemma):<70} Only NNNNN foot")
 				continue
 
 			lemma_key = lemma.lower().strip()
@@ -1000,7 +1026,7 @@ def _post_process_(
 					clean_dict[lemma_key] = lemma
 				else:
 					if verbose:
-						print(f"\t\t[SKIPPED] {repr(lemma):<45} duplicate of {repr(existing)}")
+						print(f"\t[SKIPPED] {repr(lemma):<70} duplicate of {repr(existing)}")
 			else:
 				clean_dict[lemma_key] = lemma
 
