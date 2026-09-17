@@ -9,7 +9,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "Canopy (India). Tourists visiting the Ghat of the Massacre of English Families in 1857." -llm "Qwen/Qwen3.5-122B-A10B" -v
+# python gt_kws_llm.py -desc "Wellington OJ-J 26 April 1940 Alborg force landed. Wellington OJ-J of Squadron RAF 26 April 1940 Alborg." -llm "Qwen/Qwen3.5-122B-A10B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):

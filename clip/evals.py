@@ -1271,7 +1271,7 @@ def get_validation_metrics(
 			global_c = cls_sample_idx[c].item()
 			name_r = class_names[global_r]
 			name_c = class_names[global_c]
-			print(f"    sim: {val:.6f} label[{global_r:6d}] <-> label[{global_c:6d}] {repr(name_r):35s} <-> {repr(name_c)}")
+			print(f"    sim: {val:.6f} label[{global_r:6d}] <-> label[{global_c:6d}] {repr(name_r):45s} <-> {repr(name_c)}")
 
 		# ── 5. Max similarity per image to any class ──────────────────
 		max_sims_per_image = sample_sims.max(dim=1).values

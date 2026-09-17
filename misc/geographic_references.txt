@@ -553,6 +553,7 @@ Abadan
 Adinkerke
 Aegean
 Anzio
+Alborg
 Alicante
 Algiers
 Alsace
@@ -934,6 +935,7 @@ Swiss
 Syrian
 Taiwanese
 Turkish
+Turk
 Uzbek
 Ukrainian
 Vietnamese
