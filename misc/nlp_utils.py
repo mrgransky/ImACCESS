@@ -41,6 +41,8 @@ nltk_modules = [
 	'averaged_perceptron_tagger',
 	'averaged_perceptron_tagger_eng',
 	'omw-1.4',
+	'universal_tagset',
+	'tagsets_json',
 	'stopwords',
 ]
 lemmatizer = nltk.stem.WordNetLemmatizer()
@@ -64,23 +66,6 @@ meaningless_words_path = os.path.join(MISC_DIR, 'meaningless_words.txt')
 with open(meaningless_words_path, 'r') as file_:
 	# No need for list comprehension wrapper - update() accepts any iterable
 	STOPWORDS.update(line.strip().lower() for line in file_)
-
-# # Add generic visual/metadata words
-# GENERIC_WORDS = {
-# 	# Scene structure
-# 	"background", "foreground", "scene", "view", "area", "location",
-# 	"setting", "environment", "space", "place", "spot", "site",
-# 	# Generic objects
-# 	"object", "item", "thing", "element", "feature", "detail",
-# 	# Generic actions
-# 	"activity", "event", "action", "process", "operation",
-# 	# Generic descriptors
-# 	"various", "several", "multiple", "different", "similar",
-# 	# Photography / document artifacts
-# 	"photograph", "photo", "image", "picture", "shot", "frame",
-# 	"caption", "label", "text", "figure",
-# }
-# STOPWORDS.update(GENERIC_WORDS)
 
 geographic_references_path = os.path.join(MISC_DIR, 'geographic_references.txt')
 with open(geographic_references_path, 'r') as file_:
@@ -133,20 +118,48 @@ detector_all = (
 	.build()
 )
 
+def case_stats(s: str):
+	"""Return counts and percentages of lower/upper case letters."""
+	l = u = 0
+	for ch in s:
+			if 'a' <= ch <= 'z':
+					l += 1
+			elif 'A' <= ch <= 'Z':
+					u += 1
+	total = len(s)
+	total_letters = l + u
+
+	stats = {
+		'lower': l,
+		'upper': u,
+		'lower_pct_total': l / total * 100 if total else 0,
+		'upper_pct_total': u / total * 100 if total else 0,
+		'lower_pct_letters': l / total_letters * 100 if total_letters else 0,
+		'upper_pct_letters': u / total_letters * 100 if total_letters else 0,
+	} 
+
+	# if verbose:
+	# 	print(stats)
+
+	return stats
+
 def _post_process_(
 	labels_list: List[List[str]],
 	col: str,
 	min_kw_ch_length: int = 3,
-	max_kw_word_length: int = 5,
+	max_kw_word_length: int = 10,
 	verbose: bool = False,
 ) -> List[List[str]]:
 	pp_st = time.time()
+
 	if verbose:
-		print(f"\n[POST-PROCESSING]")
+		print("-"*50)
+		print(f"[POST-PROCESSING]")
 		print(f"  ├─ {col}")
 		print(f"  ├─ {len(labels_list) if labels_list else 0} labels_list: {type(labels_list)}")
 		print(f"  ├─ Stopwords: {len(STOPWORDS)}")
-		print(f"  └─ Minimum keyword length: {min_kw_ch_length}")
+		print(f"  └─ min kw length: {min_kw_ch_length} | max kw length: {max_kw_word_length}")
+		print("-"*50)
 	
 	if not labels_list:
 		if verbose:
@@ -161,11 +174,14 @@ def _post_process_(
 		'ussr', 'usa', 'uss', 'hms', 'rms', 'nasa', 'fbi', 'cia'
 	}
 
-	PROTECTED_PHRASES = {
+	MILITARY_PROTECTED_PHRASES = {
+		"panzerzug", "panzerfaust", "grossdeutschland", "großdeutschland", "feldwerft", "schwalbe",
+	}
+
+	PROTECTED_PLURALS = {
 		"united nations",
 		"airlines",
 		"air lines",
-		"limited",
 		"life savers",
 		"pyrotechnics",
 		"general motors",
@@ -184,7 +200,8 @@ def _post_process_(
 		"abandoned", "restored", "destroyed", "damaged", "ruined",
 		"burned", "broken", "painted", "carved", "decorated",
 		"fortified", "occupied", "liberated", "bombed", "shelled",
-		"camouflaged", "abandoned", "deserted", "flooded",
+		"camouflaged", "abandoned", "deserted", "flooded", "coded",
+		"limited",
 	}
 
 	GERUND_NOUNS = {
@@ -194,12 +211,10 @@ def _post_process_(
 	}
 
 	GENERIC_PEOPLE_WORDS = {
-		"man", "men", "woman", "women", "people", "person", 
-		"child", "children", "individual", "male", "female"
+		"people", "person", "individual",
 	}
 
 	GENERIC_FAMILY_WORDS = {
-		"boy", "girl", "boys", "girls",
 		"brother", "sister", "brothers", "sisters",
 		"cousin", "nephew", "niece", "sibling",
 		"mother", "father", "daughter", "son",
@@ -252,16 +267,12 @@ def _post_process_(
 	IMAGE_DESCRIPTORS = {"black and white", "black & white", "B/W", "B&W", 'B and W'}
 
 	HONORIFICS = {
-		"mr", 
-		"mr.",
-		"mrs",
-		"mrs.",
-		"ms", 
+		"mr", "mr.",
+		"mrs", "mrs.",
+		"ms",
 		"miss",
-		"dr",
-		"dr.",
-		"d.r.",
-		"prof",
+		"dr", "dr.", "d.r.",
+		"prof", "prof.", "proffs", "proffs.", "professor",
 		# "sir",
 		# "shah",
 		# "sultan",
@@ -276,89 +287,216 @@ def _post_process_(
 		"madame",
 	}
 
-	# generous margin above PROTECTED_ABBREVIATIONS (2-4 chars)
-	# and STAMCO (6 chars); catches likely-noise beyond this
-	MAX_ACRONYM_LENGTH = 8   
-                          
-	def should_skip_all_caps(lemma: str, max_acronym_length: int = MAX_ACRONYM_LENGTH) -> bool:
-		"""
-		Replacement for the bare `lemma.isupper()` check.
+	# Matches "[Adjective/Direction] Front" or "[Adjective/Direction] Theater"
+	WW_THEATRE_PHRASES = re.compile(
+		r'^(?:eastern|western|northern|southern|pacific|european|african|'
+		r'italian|balkan|caucasus|north african|home|island)\s+'
+		r'(?:front|theater|theatre|campaign)$',
+		re.IGNORECASE
+	)
 
-		Returns True (skip/filter) only for multi-word all-caps phrases or
-		single all-caps words longer than max_acronym_length.
-		"""
-		if not lemma.isupper():
-			return False   # not all-caps at all -- never skip
+	COUNTRY_MODIFIERS = re.compile(
+		r'^(?:U\.?S\.?|U\.?K\.?|U\.?S\.?S\.?R\.?|U\.?N\.?)\s+\w',
+		re.IGNORECASE
+	)
 
+	ALLOWED_ACRONYMS = {
+		"NASA", "NATO", "ANZUS", "SEATO",
+		"USAAF", "USAF", "USAAC", "USMC",
+		"RAF", 'RAAF', 'SAAF', "IDF", 'RCAF', 'USSR', 'FASF',
+		"U.S.N.", "USN", "NAS", 
+		"USCG", "USO", "USMA",'USCGC',
+		"AAA",
+		"CIA", "FBI", "AFGE",
+		'WAAC', 'WAAF', 'WACS', 'WRNS',
+		"WAC",
+		"WAVES",
+		"ANZAC","RCAF",
+		"RNZAF", "SAAF", "CARE",
+		"HOLC",
+		"NAACP",
+		"NCO",
+		"PWO",
+		'CBS', 'NBC', 'ABC', 'CNN', 'BBC',
+		'USPHS',
+		'NACA',
+		'AWACS',
+		'USS',
+		'ASW',
+		'HMS', 'H.M.S.',
+		'IJN',
+		'SS', 'S.S.',
+		'USAT',
+		'SHAEF',
+		'AMCOM',
+		'AMVETS',
+		'USO',
+		'ROTC', 'R.O.T.C.',
+		'LLD', 'L.L.D.', 'LL.D.',
+	}
+
+	def should_skip_by_case(
+		lemma: str,
+		allowed_acronyms: set,
+		max_upper_pct: float = 75.0,
+		verbose: bool = False,
+	) -> bool:
+		"""
+		Decide whether to skip a label based on its uppercase ratio.
+		Rules (applied in order):
+			1. Single word, all-caps, in allowed_acronyms  → KEEP
+			2. Single word, all-caps, NOT in allowed       → SKIP
+			3. Multi-word, upper% > max_upper_pct          → SKIP  (formatting noise)
+			4. Otherwise                                   → KEEP
+		Args:
+				lemma:            The label to evaluate.
+				allowed_acronyms: Set of UPPERCASE acronyms to always keep.
+				max_upper_pct:    Threshold (0–100). Labels with a higher
+													percentage of uppercase *letters* are skipped.
+		Returns:
+				True  → skip / filter this label
+				False → keep this label
+		"""
+		# Only consider alphabetic characters for the ratio
+		letters = [ch for ch in lemma if ch.isalpha()]
+		if not letters:
+				return False  # no letters at all; let other filters handle it
+		upper_count = sum(1 for ch in letters if ch.isupper())
+		upper_pct   = upper_count / len(letters) * 100
 		words = lemma.split()
-		if len(words) > 1:
-			return True    # multi-word all-caps phrase -- likely formatting noise
+		# ── Rule 1 & 2: single-word all-caps → acronym check ──
+		if len(words) == 1 and upper_pct == 100.0:
+				if lemma in allowed_acronyms:
+						if verbose:
+								print(f"\t\t[CASE] {lemma!r}: allowed acronym, keeping")
+						return False
+				if verbose:
+						print(f"\t\t[CASE] {lemma!r}: unlisted acronym (100% upper), skipping")
+				return True
+		# ── Rule 3: multi-word (or single-word partial caps) above threshold ──
+		if upper_pct > max_upper_pct:
+				if verbose:
+						print(f"\t\t[CASE] {lemma!r}: {upper_pct:.0f}% upper > {max_upper_pct}%, skipping")
+				return True
+		# ── Rule 4: below threshold → keep ──
+		return False
 
-		return len(lemma) > max_acronym_length   # single word: only skip if unusually long
+	def _extract_geopolitical_entities(text: str, verbose: bool = False) -> Set[str]:
+		"""
+		Extract geopolitical entities using spaCy NER.
+		Returns set of:
+			- Geographic locations (GPE, LOC) → for ALL inputs
+			- Nationalities / religious / political groups (NORP) → ONLY for single-word inputs
+		
+		Rationale:
+			- "American" (single word) → too generic, filter it
+			- "American soldiers" (multi-word) → meaningful visual concept, keep it
+		
+		Original case is PRESERVED in the returned set.
+		Results are cached to avoid redundant spaCy calls.
+		"""
 
-	def _extract_geographic_entities(text: str, verbose: bool = False) -> Set[str]:
+		if WW_THEATRE_PHRASES.match(text):
+			if verbose:
+				print(f"\t\t[PRESERVED] {repr(text):<25} WW theatre phrase")
+			return None
+
+		if text.lower() in MILITARY_PROTECTED_PHRASES:
+			if verbose:
+				print(f"\t\t[PRESERVED] {repr(text):<25} military specific phrase")
+			return None
+
+		if COUNTRY_MODIFIERS.match(text):
+			if verbose:
+				print(f"\t\t[PRESERVED] {repr(text):<25} country modifier")
+			return None
+
 		# Check cache first
 		cache_key = text.lower().strip()
 		if cache_key in _spacy_cache:
-			if verbose:
-				print(f"\t\t[spaCy NER] CACHE HIT: {text!r}")
-			return _spacy_cache[cache_key]
-
+				if verbose:
+						print(f"\t\t[spaCy NER] CACHE HIT: {repr(text):<25}")
+				return _spacy_cache[cache_key]
 		if nlp_spacy is None:
-			if verbose:
-				print(f"\t\t[spaCy: {spacy_model_id} NER] model not loaded, returning empty set")
-			return set()
-		
+				if verbose:
+						print(f"\t\t[spaCy: {spacy_model_id} NER] model not loaded, returning empty set")
+				return set()
 		GEO_LABELS = {"GPE", "LOC"}
-		
+		NORP_LABELS = {"NORP"}
+
+		# ── KEY DECISION: NORP only applies to single-word inputs ──
+		is_single_word = len(text.strip().split()) == 1
+		if is_single_word:
+			target_labels = GEO_LABELS | NORP_LABELS  # GPE + LOC + NORP
+		else:
+			target_labels = GEO_LABELS                 # GPE + LOC only
+
+		# if verbose:
+		# 	mode = "GEO+NORP (single word)" if is_single_word else "GEO only (multi-word)"
+		# 	print(f"\t\t[spaCy: {spacy_model_id} NER] Mode: {mode} | Input: {repr(text):<25}")
+
 		doc = nlp_spacy(text)
-		
-		# 1. Direct geographic entities
-		gpe_spans = [ent for ent in doc.ents if ent.label_ in GEO_LABELS]
-		
-		if len(gpe_spans) > 0 and verbose:
-				print(f"\t\t[spaCy: {spacy_model_id} NER] Found {len(gpe_spans)} GPE/LOC entities:")
-				for ent in gpe_spans:
-						print(f"\t\t\t├─ {ent.text!r:30} → {ent.label_}")
-		
+
+		# 1. Direct entities
+		target_spans = [ent for ent in doc.ents if ent.label_ in target_labels]
+		if len(target_spans) > 0 and verbose:
+				print(f"\t\t[spaCy: {spacy_model_id} NER] Found {len(target_spans)} target entities:")
+				for ent in target_spans:
+						print(f"\t\t\t├─ {ent.text} → {ent.label_}")
 		# Store original case for the final result
-		gpe_texts = {ent.text for ent in gpe_spans}
+		result_texts = {ent.text for ent in target_spans}
 		# Store lowercased versions PURELY for deduplication checks
-		gpe_texts_lower = {ent.text.lower() for ent in gpe_spans}
+		result_texts_lower = {ent.text.lower() for ent in target_spans}
 
 		# 2. Embedded geographic entities in ORG labels
+		#    Only search for GPE/LOC inside ORGs (never NORP here,
+		#    since ORG re-parsing implies multi-word context)
 		org_spans = [ent for ent in doc.ents if ent.label_ == "ORG"]
 		if len(org_spans) > 0 and verbose:
-				print(f"\t\t[spaCy: {spacy_model_id} NER] Found {len(org_spans)} ORG entities. Checking Embedded locations...")
-		
-		embedded_gpes = set()
+				print(f"\t\t[spaCy: {spacy_model_id} NER] Found {len(org_spans)} ORG entities. Checking embedded...")
+		embedded_entities = set()
+		# Regex fallback for extracting locations from ORG names
+		# captures up to 2 capitalized words (e.g., "San Francisco", "Texas")
+		_PLACE_RE = re.compile(r'(?:\bof\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)')
+		_ORG_IGNORE = {
+			"College", "University", "Institute", "School", "Department",
+			"Company", "Corporation", "Railway", "Railroad", "Air", "Force"
+		}
 		for org in org_spans:
 				if verbose:
-						print(f"\t\t[ORG] Analyzing: {org.text!r}")
+						print(f"\t\t[ORG] Analyzing: {org.text}")
 				org_doc = nlp_spacy(org.text)
-				
+				found_nested = False
 				for sub_ent in org_doc.ents:
 						if verbose:
-								print(f"\t\t\t│  ├─ {sub_ent.text!r:30} → {sub_ent.label_}")
-								
-						# Check against the lowercased shadow set to prevent case-mismatched duplicates
-						if sub_ent.label_ in GEO_LABELS and sub_ent.text.lower() not in gpe_texts_lower:
-								embedded_gpes.add(sub_ent.text) # Add original case to final set
-								gpe_texts_lower.add(sub_ent.text.lower()) # Update shadow set to prevent future duplicates
-								
+								print(f"\t\t\t│  ├─ {sub_ent.text} → {sub_ent.label_}")
+						if sub_ent.label_ in GEO_LABELS and sub_ent.text.lower() not in result_texts_lower:
+								embedded_entities.add(sub_ent.text)
+								result_texts_lower.add(sub_ent.text.lower())
+								found_nested = True
 								if verbose:
-										print(f"\t\t\t│  └─ ✓ Added as embedded GPE: {sub_ent.text!r}")
-		
-		if verbose and embedded_gpes:
-			print(f"\t\t[spaCy: {spacy_model_id} NER] Embedded GPE/LOC set: {embedded_gpes}")
-		
-		# Combine both sets (original case preserved)
-		final_result = gpe_texts | embedded_gpes
-		_spacy_cache[cache_key] = final_result
+										print(f"\t\t\t│  └─ ✓ Added embedded {sub_ent.label_}: {sub_ent.text}")
+				# ── Regex fallback: only if NER re-parse found no GPE/LOC ──
+				if not found_nested:
+						candidates = _PLACE_RE.findall(org.text)
+						for candidate in candidates:
+								first_word = candidate.split()[0]
+								if (candidate.lower() not in result_texts_lower
+										and first_word not in _ORG_IGNORE
+										and len(candidate) > 2):
+										embedded_entities.add(candidate)
+										result_texts_lower.add(candidate.lower())
+										if verbose:
+												print(f"\t\t\t│  └─ ✓ Regex extracted: {candidate!r}")
+		if verbose and embedded_entities:
+				print(f"\t\t[spaCy: {spacy_model_id} NER] Embedded entities: {embedded_entities}")
 
+		# 3. Combine & cache
+		final_result = result_texts | embedded_entities
+		_spacy_cache[cache_key] = final_result
 		if len(final_result) > 0 and verbose:
-			print(f"\t\t[spaCy: {spacy_model_id} NER] Final combined result ({len(final_result)} items): {final_result}")
-		
+			print(f"\t\t[spaCy: {spacy_model_id} NER] Final result ({len(final_result)} items): {final_result}")
+
 		return final_result
 
 	def is_stopword(phrase: str) -> bool:
@@ -563,7 +701,7 @@ def _post_process_(
 		lemmatized_tokens = []
 		protected_indices = set()
 
-		for protected in PROTECTED_PHRASES:
+		for protected in PROTECTED_PLURALS:
 			p_tokens = protected.split()
 			p_len = len(p_tokens)
 			for start in range(len(tokens) - p_len + 1):
@@ -623,10 +761,6 @@ def _post_process_(
 				# 		candidate = candidate[:1].upper() + candidate[1:]
 				# 	lemmatized_tokens.append(candidate)
 
-
-
-
-
 		return ' '.join(lemmatized_tokens)
 
 	def _capitalization_score(text: str) -> int:
@@ -636,7 +770,7 @@ def _post_process_(
 	def exclude_digits(keywords: list) -> list:
 		return [keyword for keyword in keywords if not any(char.isdigit() for char in keyword)]
 
-	processed_batch = []
+	processed_batch = list()
 	for idx, labels in enumerate(labels_list):
 		t0 = time.time()
 		if labels is None:
@@ -658,10 +792,10 @@ def _post_process_(
 				raise e
 
 		if verbose:
-			print(f"\n[Sample {idx+1:8d}/{len(labels_list)}] {labels}")
+			print(f"\n[Sample{idx+1:9d}/{len(labels_list)}] {labels}")
 
-		# --- 1. Standardization: Ensure we have a list of strings ---
-		current_items = []
+		# 1. Standardization: Ensure we have a list of strings
+		current_items = list()
 		if labels is None:
 			if verbose:
 				print(f"  → None detected, appending None to output")
@@ -697,11 +831,8 @@ def _post_process_(
 		if current_items != labels and verbose:
 			print(f"[STANDARDIZED] {len(current_items)} {type(current_items)} {current_items}")
 
-		# --- 2. Normalization & Lemmatization ---
-		# clean_set = set()       # stores ORIGINAL case for output
-		# seen_lower = set()      # stores lowercase keys for dedup
-		clean_dict = {}   # lowercase_key → preferred-case label
-
+		# 2. Normalization & Lemmatization
+		clean_dict = dict()
 		for item_idx, item in enumerate(current_items):
 			if verbose:
 				print(f"[{item_idx+1}/{len(current_items)}] {repr(item)}")
@@ -729,25 +860,25 @@ def _post_process_(
 			# check if digit is in the lemma: (extremely strict)
 			if any(c.isdigit() for c in original_cleaned):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(original_cleaned)} digit")
+					print(f"\t\t[SKIPPED] {repr(original_cleaned):<45} digit")
 				continue
 
 			if nlp_spacy is not None:
 				ner_input = original_cleaned.title() if original_cleaned.isupper() else original_cleaned
-				geo_entities = _extract_geographic_entities(ner_input, verbose=verbose)
+				geo_entities = _extract_geopolitical_entities(ner_input, verbose=verbose)
 				if geo_entities:
 					if verbose:
-						print(f"\t\t[SKIPPED] {repr(original_cleaned)} [spaCy] GE detected {repr(geo_entities)}")
+						print(f"\t\t[SKIPPED] {repr(ner_input):<45} GPE/LOC/NORP {geo_entities}")
 					continue
 
 			if is_stopword(original_cleaned):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(original_cleaned)} stopword (or georaphic reference)")
+					print(f"\t\t[SKIPPED] {repr(original_cleaned):<45} stopword (or georaphic reference)")
 				continue
 
 			if is_quantified_plural(original_cleaned):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(original_cleaned)} Quantified plural ")
+					print(f"\t\t[SKIPPED] {repr(original_cleaned):<45} Quantified plural ")
 				continue
 			elif is_adjectival_phrase(original_cleaned):
 				lemma = s  # Preserve "newly built", "recently completed"
@@ -762,121 +893,117 @@ def _post_process_(
 				if verbose:
 					print(f"        → Event gerund phrase detected, preserving: {repr(lemma)}")
 			else:
-				# Lemmatize each word in the phrase (with abbreviation protection)
 				lemma = lemmatize_phrase(s, original_cleaned)
 				if verbose:
 					if lemma != s:
 						print(f"[LEMMATIZED] {repr(lemma)}")
-					# else:
-					# 	print(f"        → {repr(s)}: Lemmatized → {repr(lemma)} (unchanged)")
 			
 			if lemma.endswith("ville"):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} ends with 'ville'")
+					print(f"\t\t[SKIPPED] {repr(lemma):<45} ends with 'ville'")
 				continue
 
-			# dangerous:
-			# if lemma.isupper():
+			# # Aggressive but do not contaminate the clustering with all uppercase words:
+			# if lemma.isupper() and lemma not in ALLOWED_ACRONYMS:
 			# 	if verbose:
-			# 		print(f"\t\t[SKIPPED] {repr(lemma)} All uppercase")
+			# 		print(f"\t\t[SKIPPED] {repr(lemma):<45} All uppercase")
 			# 	continue
 
-			if should_skip_all_caps(lemma):
+			if should_skip_by_case(lemma, ALLOWED_ACRONYMS, max_upper_pct=75.0, verbose=verbose):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} All uppercase (multi-word or > {MAX_ACRONYM_LENGTH} chars)")
+					print(f"\t\t[SKIPPED] {repr(lemma):<45} case-based filter")
 				continue
 
 			if len(lemma) < min_kw_ch_length:
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} Too short (len={len(lemma)} < {min_kw_ch_length})")
+					print(f"\t\t[SKIPPED] {repr(lemma):<45} (len={len(lemma)} < {min_kw_ch_length})")
 				continue
 
 			if len(lemma.split()) > max_kw_word_length:
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} Too long (len={len(lemma.split())} > {max_kw_word_length})")
+					print(f"\t\t[SKIPPED] {repr(lemma):<45} (len={len(lemma.split())} > {max_kw_word_length})")
 				continue
 
 			# # check if digit is in the lemma: (extremely strict)
 			# if any(c.isdigit() for c in lemma):
 			# 	if verbose:
-			# 		print(f"\t\t[SKIPPED] {repr(lemma)} digit")
+			# 		print(f"\t\t[SKIPPED] {repr(lemma):<45} digit")
 			# 	continue
 
 			# # check for geographic references:
 			# if any(lm in geographic_references for lm in lemma.lower().split()):
 			# 	if verbose:
-			# 		print(f"\t\t[SKIPPED] {repr(lemma)} Geographic reference")
+			# 		print(f"\t\t[SKIPPED] {repr(lemma):<45} Geographic reference")
 			# 	continue
 
 			if is_phrasal_verb(lemma):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} Phrasal verb")
+					print(f"\t\t[SKIPPED] {repr(lemma):<45} Phrasal verb")
 				continue
 
 			if is_stopword(lemma):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} stopword")
+					print(f"\t\t[SKIPPED] {repr(lemma):<45} stopword")
 				continue
 
 			# Exclude pure color descriptors
 			if all(w.lower() in COLORS for w in lemma.split()):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} Color descriptor")
+					print(f"\t\t[SKIPPED] {repr(lemma):<45} Color descriptor")
 				continue
 
 			# exclude honorifics
 			if any(w in HONORIFICS for w in lemma.lower().split()):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} {repr(lemma)} honorific")
+					print(f"\t\t[SKIPPED] {repr(lemma):<45} honorific")
 				continue
 
 			# Exclude "black and white" specifically
 			if lemma.lower() in IMAGE_DESCRIPTORS:
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)}")
+					print(f"\t\t[SKIPPED] {repr(lemma):<45} image descriptor")
 				continue
 
 			if lemma.lower() in ORDINALS:
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} ordinal")
+					print(f"\t\t[SKIPPED] {repr(lemma):<45} ordinal")
 				continue
 
 			if should_filter_label(lemma):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} irrelevant!")
+					print(f"\t\t[SKIPPED] {repr(lemma):<45} irrelevant!")
 				continue
 
 			# only No. NNNNN ex) No. X1657 or No. 1657
 			if re.match(r"^No\.\s\w+$", lemma, re.IGNORECASE):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} Only No. NNNNN")
+					print(f"\t\t[SKIPPED] {repr(lemma):<45} Only No. NNNNN")
 				continue
 
 			if re.match(r'^\d+\sfeet$', lemma, re.IGNORECASE) or re.match(r'^\d+\sft$', lemma, re.IGNORECASE):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} Only NNNNN feet/ft")
+					print(f"\t\t[SKIPPED] {repr(lemma):<45} Only NNNNN feet/ft")
 				continue
 
 			if re.match(r'^\d+\sfoot$', lemma, re.IGNORECASE):
 				if verbose:
-					print(f"\t\t[SKIPPED] {repr(lemma)} Only NNNNN foot")
+					print(f"\t\t[SKIPPED] {repr(lemma):<45} Only NNNNN foot")
 				continue
 
 			lemma_key = lemma.lower().strip()
 			if lemma_key in clean_dict:
-					# Prefer the version with MORE capitalization
-					existing = clean_dict[lemma_key]
-					if _capitalization_score(lemma) > _capitalization_score(existing):
-							if verbose:
-									print(f"\t\t[REPLACED] {repr(existing)} → {repr(lemma)} (more capitals)")
-							clean_dict[lemma_key] = lemma
-					else:
-							if verbose:
-									print(f"\t\t[SKIPPED] {repr(lemma)} Duplicate of {repr(existing)}")
-			else:
+				# Prefer the version with MORE capitalization
+				existing = clean_dict[lemma_key]
+				if _capitalization_score(lemma) > _capitalization_score(existing):
+					if verbose:
+						print(f"\t\t[REPLACED] {repr(existing)} → {repr(lemma)} (more capitals)")
 					clean_dict[lemma_key] = lemma
+				else:
+					if verbose:
+						print(f"\t\t[SKIPPED] {repr(lemma):<45} duplicate of {repr(existing)}")
+			else:
+				clean_dict[lemma_key] = lemma
 
-		# Convert back to list
 		result = list(clean_dict.values()) if clean_dict else None
 		processed_batch.append(result)
 		
@@ -1688,9 +1815,8 @@ def compare_cleaning_versions(df: pd.DataFrame, before_col: str = 'description',
 				print(textwrap.fill(after, width=110))
 				print("-"*120)
 
-def validate_text_cleaning_pipeline(df: pd.DataFrame, text_column: str = 'enriched_document_description'):
+def validate_text_cleaning_pipeline(df: pd.DataFrame, text_column: str):
 	print("\nTEXT CLEANING QUALITY VALIDATION PIPELINE")
-	
 	# Step 1: N-gram analysis
 	print("\n[1/5] Running N-gram frequency analysis...")
 	validation_results = validate_cleaning_quality(df, text_column)

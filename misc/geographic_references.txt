@@ -52,6 +52,7 @@ Canada
 Cape Verde
 Central African Republic
 Chad
+Czecho Slav
 Czechoslovakia
 Czechoslovak Republic
 Czech Republic
@@ -136,6 +137,7 @@ Lesotho
 Liberia
 Libya
 Liechtenstein
+Lichtenstein
 Lithuania
 Luxembourg
 
@@ -620,6 +622,8 @@ Cordoba
 Coventry
 Crimea
 Calcutta
+Czernovitz
+Czernowitz
 Dardanelles
 Delhi
 Dessau
@@ -759,6 +763,7 @@ Rabat
 Rome
 San Gimignano
 San Sebastian
+Sevilla
 Seville
 Stralsund
 Strathpeffer
@@ -823,6 +828,7 @@ Verona
 Vienna
 Volgograd
 Waco
+Warnemunde
 Warsaw
 Waterloo
 Wellington
@@ -835,6 +841,51 @@ Zeebrugge
 Zillebeke
 Åre
 Östersund
+Artemowsk
+Kursk
+Shitomir
+Smolensk
+Vladivostok
+Insterburg
+Kulmbach
+Volkel
+Weimar
+Znojmo
+Doberitz
+Biarritz
+Brest
+Cannes
+Menton
+Vannes
+Vichy
+Graz
+Trieste
+Wien
+Genoa
+Grottaglie
+Messina
+Otranto
+Padua
+torino
+Aichi
+Kanoya
+Naha
+Yokosuka
+Chongqing
+Mukden
+Nanking
+Peiping
+Inchon
+Tarakan
+Nordland
+Agra
+Jodhpur
+Bodo
+Munda
+Rhodes
+Capri
+Crete
+Pantelleria
 
 Afghan
 African
@@ -842,6 +893,7 @@ African-American
 Algerian
 American
 Arab
+Arabic
 Arabian
 Armenian
 Asian
@@ -888,6 +940,7 @@ Irish
 Italian
 Israeli
 Japanese
+Jewish
 Jordanian
 Korean
 Kurd
@@ -919,6 +972,7 @@ Portuguese
 Puerto Rican
 Quebec
 Romanian
+Roumanian
 Russian
 San Diegan
 Scandinavian

@@ -1172,7 +1172,7 @@ def _run_generation_pass(
 
 	return [i for i in todo if results[i] is None]
 
-def get_llm_based_labels_old(
+def get_llm_based_labels_slow(
 	model_id: str,
 	device: str,
 	batch_size: int,

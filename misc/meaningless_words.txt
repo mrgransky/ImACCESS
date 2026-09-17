@@ -40,11 +40,9 @@ beneath
 between
 opposite
 among
-cross
 across
 along
 behind
-off
 toward
 within
 about
@@ -135,8 +133,6 @@ against
 through
 before
 after
-out
-off
 again
 further
 then
@@ -809,9 +805,7 @@ suggest
 sup
 sure
 t's
-take
 taken
-taking
 tell
 ten
 tends
@@ -891,10 +885,6 @@ turned
 turning
 turns
 twas
-twelve
-twenty
-twice
-two
 type
 undoing
 unfortunately
@@ -1014,8 +1004,6 @@ yourselves
 youve
 zero
 collection
-black and white photograph
-color photograph
 miscellaneous items
 miscellaneous
 misc
@@ -1024,9 +1012,6 @@ okla
 housten
 background
 foreground
-photograph
-photographs
-photo
 image
 album
 published
@@ -1170,20 +1155,17 @@ drawing
 sketch
 graphic
 pre
-view
 overview
 review
 viewpoint
 perspective
 portion
-photography
 print
 reprint
 reproduction
 open
 close
 caption
-system
 icon
 symbol
 direction

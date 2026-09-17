@@ -5,15 +5,18 @@
 
 import spacy
 
-test_labels = [
-	"Norwegian", "Finnish", "Armenians", "Swedish", "Dutch", "American", "Americans", "British", "French Soldiers", "German", "Italians", "German flag",
-	"tugboat", "lighthouse", "Basilica", "Casablanca", "Red Cross",
-	"Montauk", "Apennines", "Bay of Algiers", "Cajon Pass", "Kings Point",
-	"Gulf of Mexico", "Queen Mary", "Pisa", "Niagara Falls", "Niagara",
-	"Dallas Love Field Airport", "Long Island", "Kansas City", "Great Falls", "Sioux Falls", "United States", "United States of America", "USA", "Guantanamo Bay",
-]
+# test_labels = [
+# 	"Norwegian", "Finnish", "Armenians", "Swedish", "Dutch", "American", "Americans", "British", "French Soldiers", "German", "Italians", "German flag",
+# 	"tugboat", "lighthouse", "Basilica", "Casablanca", "Red Cross", "U.S. Troops", "Kulmbach",
+# 	"Montauk", "Apennines", "Bay of Algiers", "Cajon Pass", "Kings Point",
+# 	"Gulf of Mexico", "Queen Mary", "Pisa", "Niagara Falls", "Niagara",
+# 	"Dallas Love Field Airport", "Long Island", "Kansas City", "Great Falls", "Sioux Falls", "United States", "United States of America", "USA", "Guantanamo Bay",
+# ]
 
 # test_labels = ["STAMCO", "Stamco"]
+# test_labels = ["Romanian", "Romanian soldiers", "Roumanians", "UCLA"]
+test_labels = ["Eastern Front", "Western Front", "Belgian Front", 'Belorussian Front', 'Soviet front', 'Volkhov Front', 'Klidi Pass', 'Battle of the Klidi Pass']
+# test_labels = ["Panzerzug", "Panzerfaust", "Grossdeutschland", "Großdeutschland", "Afrika Korps", "Afrika", "Korps", "korps", "Feldwerft"]
 
 for model_name in ["en_core_web_md", "en_core_web_lg", "en_core_web_trf"]:
 	try:
@@ -24,6 +27,6 @@ for model_name in ["en_core_web_md", "en_core_web_lg", "en_core_web_trf"]:
 		for label in test_labels:
 			doc = nlp(label)
 			ents = [(ent.text, ent.label_) for ent in doc.ents]
-			print(f"  {label:40s} → {ents}")
+			print(f"{label:40s} → {ents}")
 	except OSError:
 		print(f"\n  ⚠ {model_name} not installed, skipping")

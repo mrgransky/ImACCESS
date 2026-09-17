@@ -2744,6 +2744,7 @@ def assign_canonical_labels(
 	original_label_counts: Dict[str, int],
 	verbose: bool = False,
 ) -> Tuple[Dict[int, Dict], int, int, List[float], List[float], List[Dict]]:
+
 	"""
 	Assign a canonical label to every cluster using a five-signal composite
 	score, with optional virtual hypernym synthesis for modifier-only clusters.
