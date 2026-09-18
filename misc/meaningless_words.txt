@@ -563,15 +563,12 @@ mean
 means
 meantime
 meanwhile
-member
-members
 merely
 microsoft
 might've
 mightn't
 mightnt
 mil
-mill
 million
 minus
 miss
@@ -663,12 +660,10 @@ outside
 overall
 owing
 page
-part
 parted
 particular
 particularly
 parting
-parts
 past
 per
 perhaps
@@ -724,8 +719,6 @@ respectively
 resulted
 resulting
 right
-ring
-round
 said
 say
 saying
@@ -809,7 +802,6 @@ taken
 tell
 ten
 tends
-test
 thank
 thanks
 thanx

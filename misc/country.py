@@ -20,6 +20,7 @@ test_labels = [
 	"Eastern Front", "Western Front", "Belgian Front", 'Belorussian Front', 'Soviet front', 'Volkhov Front', 
 	'Klidi Pass', 'Battle of the Klidi Pass',
 	'International Federation of Agricultural Producers',
+	'U.S.S. Indiana', 'Battle of Cantigny', 'Battle of the Somme', 'Battle of the Marne', 'Marble Arch',
 ]
 
 for model_name in ["en_core_web_md", "en_core_web_lg", "en_core_web_trf"]:

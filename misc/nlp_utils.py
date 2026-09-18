@@ -180,6 +180,7 @@ def _post_process_(
 
 	PROTECTED_PLURALS = {
 		"united nations",
+		"united states",
 		"airlines",
 		"air lines",
 		"life savers",
@@ -231,12 +232,27 @@ def _post_process_(
 	}
 
 	GENERIC_META_WORDS = {
-		"sample", "analysis", "section", "segment",
-		"identifier", "number", "numbered",
-		"chart", "graph", "diagram", "plot", "tableau",
-		"sketch", "sketching", "schematic",
-		"date", "project", "program", "series",
-		"model", "nickname",
+		"sample", 
+		"analysis", 
+		"section", 
+		"segment",
+		"identifier", 
+		"number", 
+		"numbered",
+		"chart", "graph", "graf", 
+		"diagram", 
+		"plot", 
+		"tableau",
+		"sketch", 
+		"sketching", 
+		"schematic",
+		"date", 
+		"version", "revision", "edition",
+		"project", 
+		"program", 
+		"series",
+		"model", 
+		"nickname",
 	}
 
 	ALWAYS_REMOVE = {
@@ -287,8 +303,8 @@ def _post_process_(
 		"madame",
 	}
 
-	# Matches "[Adjective/Direction] Front" or "[Adjective/Direction] Theater"
 	WW_THEATRE_PHRASES = re.compile(
+		# Matches "[Adjective/Direction] Front" or "[Adjective/Direction] Theater"
 		r'^(?:eastern|western|northern|southern|pacific|european|african|'
 		r'italian|balkan|caucasus|north african|home|island)\s+'
 		r'(?:front|theater|theatre|campaign)$',
@@ -297,6 +313,11 @@ def _post_process_(
 
 	COUNTRY_MODIFIERS = re.compile(
 		r'^(?:U\.?S\.?|United States|U\.?K\.?|United Kingdom|U\.?S\.?S\.?R\.?|Soviet Union|U\.?N\.?)\s+\w',
+		re.IGNORECASE
+	)
+
+	SHIP_PREFIXES = re.compile(
+		r'^(?:U\.?S\.?S\.?|H\.?M\.?S\.?|S\.?S\.?)\s+', 
 		re.IGNORECASE
 	)
 
@@ -334,6 +355,18 @@ def _post_process_(
 		'ROTC', 'R.O.T.C.',
 		'LLD', 'L.L.D.', 'LL.D.',
 	}
+
+	FULL_SPAN_FALSE_POSITIVES = {
+			"luncheon",
+			"victory garden",
+			"mine crater",
+			"first aid",
+			"first aid rest room",
+			"wild west",
+			"wild west show",
+			# add more as they appear in your data
+	}
+
 
 	def should_skip_by_case(
 		lemma: str,
@@ -381,149 +414,585 @@ def _post_process_(
 		# ── Rule 4: below threshold → keep ──
 		return False
 
-	def _extract_geopolitical_entities(text: str, verbose: bool = False) -> Set[str]:
-			"""
-			Extract geopolitical entities using spaCy NER.
-			Returns set of:
-					- Geographic locations (GPE, LOC) → for ALL inputs
-					- Nationalities / religious / political groups (NORP) → ONLY for single-word inputs
-			
-			Rationale:
-					- "American" (single word) → too generic, filter it
-					- "American soldiers" (multi-word) → meaningful visual concept, keep it
-			
-			Original case is PRESERVED in the returned set.
-			Results are cached to avoid redundant spaCy calls.
-			"""
-			if WW_THEATRE_PHRASES.match(text):
-					if verbose:
-							print(f"\t[PRESERVED] {repr(text):<25} WW theatre phrase")
-					return None
+	def _extract_geopolitical_entities_old(text: str, verbose: bool = False) -> Set[str]:
+		"""
+		Extract geopolitical entities using spaCy NER.
+		Returns set of:
+				- Geographic locations (GPE, LOC) → for ALL inputs
+				- Nationalities / religious / political groups (NORP) → ONLY for single-word inputs
+		
+		Rationale:
+				- "American" (single word) → too generic, filter it
+				- "American soldiers" (multi-word) → meaningful visual concept, keep it
+		
+		Original case is PRESERVED in the returned set.
+		Results are cached to avoid redundant spaCy calls.
+		"""
+		if WW_THEATRE_PHRASES.match(text):
+			if verbose:
+				print(f"\t[PRESERVED] {repr(text):<25} WW theatre phrase")
+			return None
+		if text.lower() in MILITARY_PROTECTED_PHRASES:
+			if verbose:
+				print(f"\t[PRESERVED] {repr(text):<25} military specific phrase")
+			return None
+		if COUNTRY_MODIFIERS.match(text):
+			if verbose:
+				print(f"\t[PRESERVED] {repr(text):<25} country modifier")
+			return None
+		if SHIP_PREFIXES.match(text):
+			if verbose:
+				print(f"\t[PRESERVED] {repr(text):<25} ship prefix")
+			return None
+		# Check cache first
+		cache_key = text.lower().strip()
+		if cache_key in _spacy_cache:
+				if verbose:
+						print(f"\t\t[spaCy NER] CACHE HIT: {repr(text):<25}")
+				return _spacy_cache[cache_key]
+		if nlp_spacy is None:
+				if verbose:
+						print(f"\t\t[spaCy NER] model not loaded, returning empty set")
+				return set()
+		GEO_LABELS = {"GPE", "LOC"}
+		NORP_LABELS = {"NORP"}
+		# ── KEY DECISION: NORP only applies to single-word inputs ──
+		is_single_word = len(text.strip().split()) == 1
+		if is_single_word:
+				target_labels = GEO_LABELS | NORP_LABELS  # GPE + LOC + NORP
+		else:
+				target_labels = GEO_LABELS                 # GPE + LOC only
+		doc = nlp_spacy(text)
+		# 1. Direct entities
+		target_spans = [ent for ent in doc.ents if ent.label_ in target_labels]
+		if len(target_spans) > 0 and verbose:
+				print(f"\t\t[spaCy NER] Found {len(target_spans)} target entities:")
+				for ent in target_spans:
+						print(f"\t\t\t├─ {ent.text} → {ent.label_}")
+		result_texts = {ent.text for ent in target_spans}
+		result_texts_lower = {ent.text.lower() for ent in target_spans}
+		# 2. Embedded geographic entities in ORG labels
+		org_spans = [ent for ent in doc.ents if ent.label_ == "ORG"]
+		if len(org_spans) > 0 and verbose:
+				print(f"\t\t[spaCy NER] Found {len(org_spans)} ORG entities. Checking embedded...")
+		embedded_entities = set()
+		
+		# Matches words following "of", capturing up to 2 capitalized words
+		_PLACE_RE = re.compile(r'(?:\bof\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)')
+		_ORG_IGNORE = {
+				"College", "University", "Institute", "School", "Department",
+				"Company", "Corporation", "Railway", "Railroad", "Air", "Force",
+				"Federation", "Association", "Society", "Committee"
+		}
+		for org in org_spans:
+				if verbose:
+						print(f"\t\t[ORG] Analyzing: {org.text}")
+				
+				org_doc = nlp_spacy(org.text)
+				found_nested = False
+				
+				for sub_ent in org_doc.ents:
+						if verbose:
+								print(f"\t\t\t│  ├─ {sub_ent.text} → {sub_ent.label_}")
+						if sub_ent.label_ in GEO_LABELS and sub_ent.text.lower() not in result_texts_lower:
+								embedded_entities.add(sub_ent.text)
+								result_texts_lower.add(sub_ent.text.lower())
+								found_nested = True
+								if verbose:
+										print(f"\t\t\t│  └─ ✓ Added embedded {sub_ent.label_}: {sub_ent.text}")
+				# ── Regex fallback: only if direct NER parse found no GPE/LOC ──
+				if not found_nested:
+						candidates = _PLACE_RE.findall(org.text)
+						for candidate in candidates:
+								words = candidate.split()
+								first_word = words[0]
+								if (candidate.lower() in result_texts_lower 
+												or first_word in _ORG_IGNORE 
+												or len(candidate) <= 2):
+										continue
+								# Step A: Validate candidate as a whole
+								cand_doc = nlp_spacy(candidate)
+								verified_geos = [
+										ent.text for ent in cand_doc.ents if ent.label_ in GEO_LABELS
+								]
+								# Step B: If multi-word check failed due to regex truncation 
+								# (e.g. "California Santa" chopped off "Barbara"), test the first token
+								if not verified_geos and len(words) > 1 and first_word.lower() not in result_texts_lower:
+										first_doc = nlp_spacy(first_word)
+										verified_geos = [
+												ent.text for ent in first_doc.ents if ent.label_ in GEO_LABELS
+										]
+								# Step C: Register only if verified by NER
+								if verified_geos:
+										for geo in verified_geos:
+												embedded_entities.add(geo)
+												result_texts_lower.add(geo.lower())
+										if verbose:
+												print(f"\t\t\t│  └─ ✓ Regex candidate verified as geo: {verified_geos}")
+								else:
+										if verbose:
+												print(f"\t\t\t│  └─ ✗ Regex candidate rejected (not geo): {candidate!r}")
+		if verbose and embedded_entities:
+				print(f"\t\t[spaCy NER] Embedded entities: {embedded_entities}")
+		# 3. Combine & cache
+		final_result = result_texts | embedded_entities
+		_spacy_cache[cache_key] = final_result
+		if len(final_result) > 0 and verbose:
+				print(f"\t\t[spaCy NER] Final result ({len(final_result)} items): {final_result}")
+		return final_result
 
-			if text.lower() in MILITARY_PROTECTED_PHRASES:
-					if verbose:
-							print(f"\t[PRESERVED] {repr(text):<25} military specific phrase")
-					return None
+	def _extract_geopolitical_entities(text: str, verbose: bool = False) -> dict | None:
+		"""
+		Extract geopolitical entities using spaCy NER with contextual signals.
 
-			if COUNTRY_MODIFIERS.match(text):
-					if verbose:
-							print(f"\t[PRESERVED] {repr(text):<25} country modifier")
-					return None
+		Design goals (historical-image keyword pipeline):
+			1. Strong filtering of pure geographic labels (places, rivers, fronts, etc.).
+			2. Minimal false positives on historical / military / organizational phrases.
+			3. Clear distinction between:
+					- full-span geo entities: the whole label is a location
+					- embedded geo entities: a place appears inside a larger phrase
+					- ORG-contained geo entities: a place appears inside an organization
+			4. Early protection for known safe patterns (ships, military terms,
+				theatres, acronyms, etc.).
+			5. Multi-word labels are considered strong geographic noise only when
+				the geographic entity spans the entire label.
 
-			# Check cache first
-			cache_key = text.lower().strip()
-			if cache_key in _spacy_cache:
-					if verbose:
-							print(f"\t\t[spaCy NER] CACHE HIT: {repr(text):<25}")
-					return _spacy_cache[cache_key]
+		Returns
+		-------
+		None
+				The label is explicitly protected → caller must KEEP it.
 
-			if nlp_spacy is None:
-					if verbose:
-							print(f"\t\t[spaCy NER] model not loaded, returning empty set")
-					return set()
+		dict
+				{
+						"entities": set[str],
+						"is_full_span": bool,
+						"is_embedded_only": bool,
+						"has_strong_geo": bool,
+						"reason": str
+				}
 
-			GEO_LABELS = {"GPE", "LOC"}
-			NORP_LABELS = {"NORP"}
+		Notes
+		-----
+		For single-word labels:
+				GPE / LOC / NORP → strong geographic signal.
 
-			# ── KEY DECISION: NORP only applies to single-word inputs ──
-			is_single_word = len(text.strip().split()) == 1
-			if is_single_word:
-					target_labels = GEO_LABELS | NORP_LABELS  # GPE + LOC + NORP
-			else:
-					target_labels = GEO_LABELS                 # GPE + LOC only
+		For multi-word labels:
+				Only a full-span GPE / LOC → strong geographic signal.
 
-			doc = nlp_spacy(text)
+		Therefore, an embedded geographic entity such as:
 
-			# 1. Direct entities
-			target_spans = [ent for ent in doc.ents if ent.label_ in target_labels]
-			if len(target_spans) > 0 and verbose:
-					print(f"\t\t[spaCy NER] Found {len(target_spans)} target entities:")
-					for ent in target_spans:
-							print(f"\t\t\t├─ {ent.text} → {ent.label_}")
+				"Hastings plant"
+				"Battle of Cantigny"
+				"Washington Elm"
+				"Alpine soldiers"
 
-			result_texts = {ent.text for ent in target_spans}
-			result_texts_lower = {ent.text.lower() for ent in target_spans}
+		does NOT automatically cause the complete label to be removed.
 
-			# 2. Embedded geographic entities in ORG labels
-			org_spans = [ent for ent in doc.ents if ent.label_ == "ORG"]
-			if len(org_spans) > 0 and verbose:
-					print(f"\t\t[spaCy NER] Found {len(org_spans)} ORG entities. Checking embedded...")
+		Organization names such as:
 
-			embedded_entities = set()
-			
-			# Matches words following "of", capturing up to 2 capitalized words
-			_PLACE_RE = re.compile(r'(?:\bof\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)')
-			_ORG_IGNORE = {
-					"College", "University", "Institute", "School", "Department",
-					"Company", "Corporation", "Railway", "Railroad", "Air", "Force",
-					"Federation", "Association", "Society", "Committee"
+				"Boy Scouts of America"
+				"Locomobile Co. of America"
+				"Aero Club of America"
+
+		are not analyzed with an "of <Place>" regex fallback. This prevents
+		"America" from being incorrectly manufactured as a geographic entity.
+		"""
+
+		# ==================================================================
+		# 0. EARLY PROTECTION
+		# ==================================================================
+		#
+		# These patterns are known to be semantically meaningful in the
+		# historical-image keyword pipeline and must not be treated as
+		# geographic noise.
+		# ==================================================================
+
+		if WW_THEATRE_PHRASES.match(text):
+			if verbose:
+				print(
+					f"\t[PRESERVED] {repr(text):<55} "
+					f"reason=WW theatre phrase"
+				)
+			return None
+
+		if text.lower() in MILITARY_PROTECTED_PHRASES:
+			if verbose:
+				print(
+					f"\t[PRESERVED] {repr(text):<55} "
+					f"reason=military protected phrase"
+				)
+			return None
+
+		if COUNTRY_MODIFIERS.match(text):
+			if verbose:
+				print(
+					f"\t[PRESERVED] {repr(text):<55} "
+					f"reason=country modifier (U.S./U.K./…)"
+				)
+			return None
+
+		if SHIP_PREFIXES.match(text):
+			if verbose:
+				print(
+					f"\t[PRESERVED] {repr(text):<55} "
+					f"reason=ship prefix (USS/HMS/SS)"
+				)
+			return None
+
+		# # ==================================================================
+		# # 0b. EARLY ACRONYM PROTECTION
+		# # ==================================================================
+		# #
+		# # spaCy can incorrectly classify unusual acronym formatting such as:
+		# #
+		# #     Usmc
+		# #     D.S.C.
+		# #     U.S.M.C.
+		# #
+		# # as GPE/LOC.
+		# #
+		# # Normalize only for comparison; preserve the original text.
+		# # ==================================================================
+
+		# normalized_upper = re.sub(
+		# 	r"\s+",
+		# 	"",
+		# 	text.strip()
+		# ).upper()
+
+		# normalized_allowed_acronyms = {
+		# 	re.sub(r"\s+", "", acronym.upper())
+		# 	for acronym in ALLOWED_ACRONYMS
+		# }
+
+		# if normalized_upper in normalized_allowed_acronyms:
+		# 	if verbose:
+		# 		print(
+		# 			f"\t[PRESERVED] {repr(text):<55} "
+		# 			f"reason=allowed acronym"
+		# 		)
+		# 	return None
+
+		# ==================================================================
+		# 0b. EARLY ACRONYM PROTECTION
+		# ==================================================================
+		# Normalize by removing spaces *and* periods so that
+		# "D.S.C.", "D.S.C", "DSC", "U.S.M.C." all match.
+		# ==================================================================
+
+		normalized_upper = re.sub(r"[\s.]+", "", text.strip()).upper()
+
+		normalized_allowed_acronyms = {
+				re.sub(r"[\s.]+", "", acronym.upper())
+				for acronym in ALLOWED_ACRONYMS
+		}
+
+		if normalized_upper in normalized_allowed_acronyms:
+				if verbose:
+						print(f"\t[PRESERVED] {repr(text):<55} reason=allowed acronym")
+				return None
+
+
+		# ==================================================================
+		# 1. CACHE LOOKUP
+		# ==================================================================
+		cache_key = text.lower().strip()
+
+		if cache_key in _spacy_cache:
+			if verbose:
+				print(
+					f"\t\t[spaCy NER] CACHE HIT for {repr(text)}"
+				)
+
+			return _spacy_cache[cache_key]
+
+		# ==================================================================
+		# 2. SPAcy AVAILABILITY
+		# ==================================================================
+
+		if nlp_spacy is None:
+			if verbose:
+				print(
+					f"\t\t[spaCy NER] model not loaded → empty result"
+				)
+
+			empty = {
+				"entities": set(),
+				"is_full_span": False,
+				"is_embedded_only": False,
+				"has_strong_geo": False,
+				"reason": "spaCy not loaded"
 			}
 
+			_spacy_cache[cache_key] = empty
+
+			return empty
+
+		# ==================================================================
+		# 3. DETERMINE TARGET ENTITY TYPES
+		# ==================================================================
+		#
+		# Single-word labels:
+		#     GPE + LOC + NORP
+		#
+		# Multi-word labels:
+		#     GPE + LOC
+		#
+		# NORP is intentionally excluded from multi-word labels so that
+		# semantically useful phrases such as:
+		#
+		#     American Soldiers
+		#     Alpine soldiers
+		#
+		# are not rejected merely because spaCy identifies a nationality
+		# or adjective.
+		# ==================================================================
+
+		GEO_LABELS = {"GPE", "LOC"}
+		NORP_LABELS = {"NORP"}
+
+		is_single_word = len(text.strip().split()) == 1
+
+		target_labels = (
+			GEO_LABELS | NORP_LABELS
+			if is_single_word
+			else GEO_LABELS
+		)
+
+		if verbose:
+			print(
+				f"\t\t[spaCy NER] input={repr(text)}  "
+				f"single_word={is_single_word}  "
+				f"target_labels={sorted(target_labels)}"
+			)
+
+		# ==================================================================
+		# 4. RUN SPACY NER
+		# ==================================================================
+
+		doc = nlp_spacy(text)
+
+		# ==================================================================
+		# 5. COLLECT DIRECT GEO ENTITIES
+		# ==================================================================
+
+		direct_spans = [
+			ent
+			for ent in doc.ents
+			if ent.label_ in target_labels
+		]
+
+		direct_texts = {
+			ent.text
+			for ent in direct_spans
+		}
+
+		if verbose and direct_spans:
+			print(
+				f"\t\t[spaCy NER] direct entities "
+				f"({len(direct_spans)}):"
+			)
+
+			for ent in direct_spans:
+				print(
+					f"\t\t\t├─ {ent.text!r:30} → {ent.label_} "
+					f"[tokens {ent.start}:{ent.end}]"
+				)
+
+		# ==================================================================
+		# 6. DETECT FULL-SPAN GEOGRAPHIC ENTITY
+		# ==================================================================
+		#
+		# This is the critical distinction.
+		#
+		# Example:
+		#
+		#     "North Sea"
+		#         └───────── LOC
+		#
+		#     "Hastings plant"
+		#         └────── GPE
+		#
+		# Only the first case is a full-span geo.
+		# ==================================================================
+
+		full_span_entities = [
+			ent
+			for ent in direct_spans
+			if ent.start == 0 and ent.end == len(doc)
+		]
+
+		is_full_span = bool(full_span_entities)
+
+		if verbose and is_full_span:
+			for ent in full_span_entities:
+				print(
+					f"\t\t[spaCy NER] FULL-SPAN GEO → "
+					f"{ent.text!r} ({ent.label_})"
+				)
+
+		# ==================================================================
+		# 7. IDENTIFY GEO ENTITIES EMBEDDED INSIDE ORG SPANS
+		# ==================================================================
+		#
+		# We deliberately DO NOT use an "of <Place>" regex here.
+		#
+		# spaCy's explicit ORG + GPE/LOC annotations are enough to identify
+		# actual nested geographic entities without manufacturing false
+		# positives.
+		#
+		# Example:
+		#
+		#     Boy Scouts of America
+		#     └────────────── ORG
+		#
+		# "America" must NOT be extracted merely because it follows "of".
+		# ==================================================================
+
+		org_spans = [
+			ent
+			for ent in doc.ents
+			if ent.label_ == "ORG"
+		]
+
+		embedded = set()
+
+		if verbose and org_spans:
+			print(
+				f"\t\t[spaCy NER] examining "
+				f"{len(org_spans)} ORG span(s) for nested geo…"
+			)
+
+		for geo in direct_spans:
+
 			for org in org_spans:
+
+				if (
+					geo.start >= org.start
+					and geo.end <= org.end
+				):
+					embedded.add(geo.text)
+
 					if verbose:
-							print(f"\t\t[ORG] Analyzing: {org.text}")
-					
-					org_doc = nlp_spacy(org.text)
-					found_nested = False
-					
-					for sub_ent in org_doc.ents:
-							if verbose:
-									print(f"\t\t\t│  ├─ {sub_ent.text} → {sub_ent.label_}")
-							if sub_ent.label_ in GEO_LABELS and sub_ent.text.lower() not in result_texts_lower:
-									embedded_entities.add(sub_ent.text)
-									result_texts_lower.add(sub_ent.text.lower())
-									found_nested = True
-									if verbose:
-											print(f"\t\t\t│  └─ ✓ Added embedded {sub_ent.label_}: {sub_ent.text}")
+						print(
+							f"\t\t\t✓ geo inside ORG: "
+							f"{geo.text!r} ({geo.label_}) "
+							f"inside {org.text!r}"
+						)
 
-					# ── Regex fallback: only if direct NER parse found no GPE/LOC ──
-					if not found_nested:
-							candidates = _PLACE_RE.findall(org.text)
-							for candidate in candidates:
-									words = candidate.split()
-									first_word = words[0]
+					break
 
-									if (candidate.lower() in result_texts_lower 
-													or first_word in _ORG_IGNORE 
-													or len(candidate) <= 2):
-											continue
+		# ==================================================================
+		# 8. CLASSIFY EMBEDDED GEO
+		# ==================================================================
+		#
+		# A geo entity is "embedded" whenever it does not cover the entire
+		# input label.
+		#
+		# The ORG-specific `embedded` set is retained separately because it
+		# is useful diagnostic information.
+		# ==================================================================
 
-									# Step A: Validate candidate as a whole
-									cand_doc = nlp_spacy(candidate)
-									verified_geos = [
-											ent.text for ent in cand_doc.ents if ent.label_ in GEO_LABELS
-									]
+		is_embedded_only = (
+			bool(direct_spans)
+			and not is_full_span
+		)
 
-									# Step B: If multi-word check failed due to regex truncation 
-									# (e.g. "California Santa" chopped off "Barbara"), test the first token
-									if not verified_geos and len(words) > 1 and first_word.lower() not in result_texts_lower:
-											first_doc = nlp_spacy(first_word)
-											verified_geos = [
-													ent.text for ent in first_doc.ents if ent.label_ in GEO_LABELS
-											]
+		# ==================================================================
+		# 9. STRONG GEO DECISION
+		# ==================================================================
+		#
+		# Single-word:
+		#     Any GPE / LOC / NORP → strong.
+		#
+		# Multi-word:
+		#     ONLY a full-span GPE / LOC → strong.
+		#
+		# This prevents false removal of labels such as:
+		#
+		#     Hastings plant
+		#     Battle of Cantigny
+		#     Washington Elm
+		#     Alpine soldiers
+		#
+		# while still removing:
+		#
+		#     Boston Common
+		#     North Sea
+		#     Hudson River
+		#
+		# when spaCy identifies those entire phrases as LOC.
+		# ==================================================================
 
-									# Step C: Register only if verified by NER
-									if verified_geos:
-											for geo in verified_geos:
-													embedded_entities.add(geo)
-													result_texts_lower.add(geo.lower())
-											if verbose:
-													print(f"\t\t\t│  └─ ✓ Regex candidate verified as geo: {verified_geos}")
-									else:
-											if verbose:
-													print(f"\t\t\t│  └─ ✗ Regex candidate rejected (not geo): {candidate!r}")
+		if is_single_word:
+			has_strong_geo = bool(direct_spans)
+		else:
+			has_strong_geo = is_full_span
 
-			if verbose and embedded_entities:
-					print(f"\t\t[spaCy NER] Embedded entities: {embedded_entities}")
+		# ------------------------------------------------------------------
+		# 9b. Domain-aware override for known full-span false positives
+		# ------------------------------------------------------------------
+		if has_strong_geo and text.lower() in FULL_SPAN_FALSE_POSITIVES:
+			has_strong_geo = False
+			reason = "full-span false positive (domain exception)"
+			if verbose:
+				print(
+					f"\t\t[spaCy NER] OVERRIDE → {repr(text)} treated as non-geo "
+					f"(domain exception)"
+				)
 
-			# 3. Combine & cache
-			final_result = result_texts | embedded_entities
-			_spacy_cache[cache_key] = final_result
+		# ==================================================================
+		# 10. REASON
+		# ==================================================================
 
-			if len(final_result) > 0 and verbose:
-					print(f"\t\t[spaCy NER] Final result ({len(final_result)} items): {final_result}")
+		if is_full_span:
+			reason = "full-span geo"
 
-			return final_result
+		elif is_single_word and direct_spans:
+			reason = "single-word geo/NORP"
+
+		elif embedded:
+			reason = "embedded geo (inside ORG)"
+
+		elif direct_spans:
+			reason = "partial geo (not full-span)"
+
+		else:
+			reason = "no significant geo"
+
+		# ==================================================================
+		# 11. ASSEMBLE RESULT
+		# ==================================================================
+
+		result = {
+			"entities": direct_texts,
+			"is_full_span": is_full_span,
+			"is_embedded_only": is_embedded_only,
+			"has_strong_geo": has_strong_geo,
+			"reason": reason
+		}
+
+		# ==================================================================
+		# 12. CACHE
+		# ==================================================================
+
+		_spacy_cache[cache_key] = result
+
+		# ==================================================================
+		# 13. VERBOSE SUMMARY
+		# ==================================================================
+
+		if verbose:
+			print(
+				f"\t\t[spaCy NER] FINAL → "
+				f"entities={direct_texts or '{}'}  "
+				f"full_span={is_full_span}  "
+				f"embedded_only={is_embedded_only}  "
+				f"strong={has_strong_geo}  "
+				f"reason={reason}"
+			)
+
+		return result
 
 	def is_stopword(phrase: str) -> bool:
 		"""
@@ -796,6 +1265,18 @@ def _post_process_(
 	def exclude_digits(keywords: list) -> list:
 		return [keyword for keyword in keywords if not any(char.isdigit() for char in keyword)]
 
+	def is_proper_title(text: str) -> bool:
+			"""Checks if text looks like a proper title/entity, allowing lowercase connectors."""
+			LOWERCASE_CONNECTORS = {"of", "and", "the", "in", "on", "at", "for", "to", "de", "von", "van"}
+			words = text.split()
+			if len(words) < 2:
+					return False
+			# First and last words must be capitalized
+			if not (words[0][0].isupper() and words[-1][0].isupper()):
+					return False
+			# All intermediate words must be capitalized OR be a valid connector
+			return all(w[0].isupper() or w.lower() in LOWERCASE_CONNECTORS for w in words)
+
 	processed_batch = list()
 	for idx, labels in enumerate(labels_list):
 		t0 = time.time()
@@ -889,13 +1370,36 @@ def _post_process_(
 					print(f"\t[SKIPPED] {repr(original_cleaned):<70} digit")
 				continue
 
+			# if nlp_spacy is not None:
+			# 	ner_input = original_cleaned.title() if original_cleaned.isupper() else original_cleaned
+			# 	geo_entities = _extract_geopolitical_entities(ner_input, verbose=verbose)
+			# 	if geo_entities:
+			# 		if verbose:
+			# 			print(f"\t[SKIPPED] {repr(ner_input):<70} GPE/LOC/NORP {geo_entities}")
+			# 		continue
+
 			if nlp_spacy is not None:
-				ner_input = original_cleaned.title() if original_cleaned.isupper() else original_cleaned
-				geo_entities = _extract_geopolitical_entities(ner_input, verbose=verbose)
-				if geo_entities:
+				ner_input = (
+					original_cleaned.title()
+					if original_cleaned.isupper()
+					else original_cleaned
+				)
+
+				geo_result = _extract_geopolitical_entities(
+					ner_input,
+					verbose=verbose
+				)
+
+				if geo_result is not None and geo_result["has_strong_geo"]:
 					if verbose:
-						print(f"\t[SKIPPED] {repr(ner_input):<70} GPE/LOC/NORP {geo_entities}")
+						print(
+							f"\t[SKIPPED] {repr(ner_input):<70} "
+							f"GPE/LOC/NORP → {geo_result}"
+						)
 					continue
+
+
+
 
 			if is_stopword(original_cleaned):
 				if verbose:
@@ -917,7 +1421,11 @@ def _post_process_(
 			elif is_event_gerund_phrase(original_cleaned):
 				lemma = s  # Preserve "flag raising", "ship launching", "troop landing"
 				if verbose:
-					print(f"        → Event gerund phrase detected, preserving: {repr(lemma)}")
+					print(f"\t[PRESERVED] {repr(lemma)} Event gerund phrase")
+			elif is_proper_title(original_cleaned):
+				lemma = s  # Preserve proper titles like "International Federation of Agricultural Producers"
+				if verbose:
+					print(f"\t[PRESERVED] {repr(lemma)} Proper title")
 			else:
 				lemma = lemmatize_phrase(s, original_cleaned)
 				if verbose:

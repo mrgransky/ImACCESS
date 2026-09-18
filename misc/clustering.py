@@ -2531,66 +2531,99 @@ def remove_problematic_cluster_labels(
 
 def _demote_colliding_virtual_canonicals(
 	cluster_canonicals: Dict[int, Dict],
+	cluster_members: Dict[int, list],   # {cid: [real member label strings]}
 	verbose: bool = False,
 ) -> Dict[int, Dict]:
 	"""
 	Post-processing pass: when a VIRTUAL hypernym exactly matches another
-	cluster's REAL-label canonical, the virtual one is demoted to its own
-	cluster's best real-label fallback instead.
+	cluster's REAL-label canonical, decide whether to demote it based on
+	the cluster's actual STRUCTURE, not on surface features of the
+	fallback string alone.
 
-	Concrete example this catches
-	------------------------------
-	Cluster 4096 (real members: architect, architectural, architectural
-	design, ...) selects the real label 'architectural' as its canonical.
-	Cluster 4097 (real members: architectural arcade, courtyard, detail,
-	fragment, ...) has no real label equal to 'architectural', so it
-	synthesises a VIRTUAL hypernym 'architectural' -- which happens to be
-	the exact string cluster 4096 already legitimately owns. Both clusters
-	now emit the identical final label 'architectural', even though their
-	member labels represent different sub-concepts (architecture as a
-	discipline vs. architectural decorative elements).
+	Why the capitalization heuristic was wrong
+	--------------------------------------------
+	The previous version demoted whenever the fallback added a new
+	capitalised token, on the theory that capitalisation signals a proper
+	noun worth keeping specific. That works for a cluster genuinely about
+	ONE entity described several ways. It fails badly for a cluster like
+	['USS Aaron Ward', 'USS Bayfield', 'USS Boxer', ... 25 more ships]:
+	the fallback 'USS Charger' IS capitalised, so the old rule demoted --
+	but 'USS Charger' is just one of 28 EQUALLY WEIGHTED, unrelated ships.
+	Demoting to it is not "more specific and accurate", it is an arbitrary
+	pick that happens to win a composite-score tiebreak, and is no more
+	representative of the cluster than any of the other 27 ships.
 
-	This is a different failure mode from the case-insensitive collision
-	pass (_resolve_cross_cluster_case_collisions): there the two spellings
-	differ only by case ('war' vs 'War'); here the strings are IDENTICAL,
-	so a case-insensitive grouping sees only one distinct spelling and
-	takes no action. This pass must run separately, and should run BEFORE
-	the case-insensitive pass so that the set of "claimed real labels" it
-	relies on is maximally accurate.
+	The real distinguishing question
+	----------------------------------
+	Is the cluster "vertically deep" (many descriptions of ONE entity --
+	e.g. 'USS Enterprise', 'USS Enterprise flight deck', 'USS Enterprise
+	crew' all share the residual token 'Enterprise') or "horizontally
+	broad" (many DIFFERENT entities sharing only the hypernym prefix --
+	e.g. 28 different ship names, each with a completely distinct
+	residual)? Demoting only makes sense in the first case. In the second,
+	no single real member can fairly represent the cluster, and the
+	virtual hypernym IS the most honest available summary -- the
+	exact-string overlap with another cluster's canonical elsewhere is an
+	acceptable, arguably even desirable, side effect of consolidation
+	(more images under one well-populated label, rather than dozens of
+	near-singleton labels).
 
-	Rule
-	----
-	Real-label canonicals are always authoritative and are never touched.
-	A virtual canonical that exactly matches ANY real-label canonical
-	elsewhere is demoted to its own cluster's best real-label fallback
-	(the highest-composite-scoring REAL member of that same cluster --
-	i.e. what the cluster would have chosen if the virtual candidate had
-	never existed).
-
-	Requires
-	--------
-	Each cluster's dict in cluster_canonicals must additionally carry
-	'real_fallback' and 'real_fallback_score', computed in the main loop
-	as the best-composite-scoring REAL candidate (index < cluster_size),
-	independent of whether a virtual candidate ultimately won. See the
-	MAIN-LOOP PATCH below for exactly where to compute and store these.
+	Measurement
+	-----------
+	For each cluster with a candidate virtual hypernym, strip the
+	hypernym's own tokens from every member to get each member's
+	"residual" tokens. Find the most common residual token across the
+	cluster. If it appears in >= `dominance_threshold` fraction of
+	members, one entity dominates -> safe to demote to the real fallback.
+	Otherwise the cluster is a flat collection of siblings -> keep the
+	virtual hypernym regardless of the collision.
 
 	Parameters
 	----------
 	cluster_canonicals : Dict[int, Dict]
 		{cid: {'canonical', 'score', 'size', 'virtual',
-					 'real_fallback', 'real_fallback_score'}}
+		       'real_fallback', 'real_fallback_score'}}
+	cluster_members : Dict[int, list]
+		{cid: [real member label strings]} -- needed to measure residual
+		dominance; NOT available from cluster_canonicals alone, since that
+		only stores the single winning canonical per cluster, not the full
+		member list. Pass df.groupby('cluster')['label'].apply(list) (or
+		equivalent) computed in the main loop before this pass runs.
 	verbose : bool
-		Print each demotion.
+		Print each decision and why.
 
 	Returns
 	-------
 	Dict[int, Dict]
 		The same dict, mutated in place.
 	"""
+
+	def _tokens(s: str) -> set:
+		return set(re.sub(r'[^\w\s]', '', s.lower()).split())
+
+	def _residual_dominance(virtual: str, members: list) -> float:
+		"""
+		Fraction of members whose residual (tokens outside the virtual
+		hypernym's own tokens) contains the single most common residual
+		token across the whole cluster. High = one entity dominates.
+		"""
+		virtual_tokens = _tokens(virtual)
+		residuals = [_tokens(m) - virtual_tokens for m in members]
+		residuals = [r for r in residuals if r]   # drop empty residuals
+		if not residuals:
+			return 0.0
+
+		token_counts = Counter(tok for r in residuals for tok in r)
+		if not token_counts:
+			return 0.0
+
+		top_token, top_count = token_counts.most_common(1)[0]
+		return top_count / len(members)
+
 	if verbose:
-		print("-"*120)
-		print(f"[EXACT COLLISION] Demoting {len(cluster_canonicals)} clusters' virtuals...")
+		print("-" * 120)
+		print(f"[EXACT COLLISION] Reviewing {len(cluster_canonicals)} clusters for "
+		      f"virtual-vs-real exact-string collisions...")
 
 	claimed_real = {
 		meta['canonical']
@@ -2598,34 +2631,50 @@ def _demote_colliding_virtual_canonicals(
 		if not meta['virtual']
 	}
 
+	DOMINANCE_THRESHOLD = 0.5   # majority of members must share one residual entity
+
 	n_demoted = 0
+	n_kept    = 0
+
 	for cid, meta in cluster_canonicals.items():
 		if not meta['virtual']:
 			continue
 		if meta['canonical'] not in claimed_real:
 			continue
 
-		old = meta['canonical']
+		old      = meta['canonical']
 		fallback = meta.get('real_fallback')
 		if fallback is None:
-			# No stored fallback (shouldn't happen if the main-loop patch
-			# below is applied) -- skip rather than guess.
+			continue
+
+		members    = cluster_members.get(cid, [])
+		dominance  = _residual_dominance(old, members)
+
+		if dominance < DOMINANCE_THRESHOLD:
+			# Flat collection of siblings -- no single member represents
+			# the group. Keep the virtual hypernym; the exact-string
+			# overlap with another cluster is acceptable.
+			n_kept += 1
+			if verbose:
+				print(f"  cluster {cid:6d} virtual {old!r} collides, but no residual "
+				      f"entity dominates (top={dominance:.2f} < {DOMINANCE_THRESHOLD}) "
+				      f"-> KEPT as '{old}' ({len(members)} members)")
 			continue
 
 		if verbose:
-			print(
-				f"cluster {cid:6d} virtual {repr(old)} already "
-				f"claimed by a real label elsewhere -> demoted to {repr(fallback)}"
-			)
+			print(f"  cluster {cid:6d} virtual {old!r} collides, and one residual "
+			      f"entity dominates ({dominance:.2f} >= {DOMINANCE_THRESHOLD}) "
+			      f"-> demoted to {fallback!r}")
 
 		meta['canonical'] = fallback
-		meta['score'] = meta.get('real_fallback_score', meta['score'])
-		meta['virtual'] = False
+		meta['score']     = meta.get('real_fallback_score', meta['score'])
+		meta['virtual']   = False
 		n_demoted += 1
 
 	if verbose:
-		print(f"\n[EXACT COLLISION DEMOTION] {n_demoted:6d} virtual canonical(s) demoted to their cluster's own real fallback")
-		print("-"*120)
+		print(f"\n[EXACT COLLISION] {n_demoted} demoted (one entity dominates), "
+		      f"{n_kept} kept general (flat sibling collection)")
+		print("-" * 120)
 
 	return cluster_canonicals
 
@@ -2985,7 +3034,7 @@ def assign_canonical_labels(
 		else:
 			all_embeddings = cluster_embeddings
 
-		# ── Score 1: cosine similarity to centroid ────────────────────────
+		# Score 1: cosine similarity to centroid
 		similarities = cosine_similarity(centroid.reshape(1, -1), all_embeddings)[0]
 
 		if original_label_counts and cluster_size > 1:
@@ -3096,10 +3145,10 @@ def assign_canonical_labels(
 			tag = " [VIRTUAL]" if virtual_flags[best_idx] else ""
 			print(f"\t=> Selected Canonical: {canonical} (sim={similarities[best_idx]:.4f}){tag}")
 
-	cluster_canonicals = _demote_colliding_virtual_canonicals(
-		cluster_canonicals, 
-		verbose=verbose
-	)
+	# cluster_canonicals = _demote_colliding_virtual_canonicals(
+	# 	cluster_canonicals, 
+	# 	verbose=verbose
+	# )
 
 	cluster_canonicals = _resolve_cross_cluster_case_collisions(
 		cluster_canonicals, 
