@@ -130,6 +130,8 @@ def case_stats(s: str):
 	total_letters = l + u
 
 	stats = {
+		'total_text_length': total,
+		'total_letters': total_letters,
 		'lower': l,
 		'upper': u,
 		'lower_pct_total': l / total * 100 if total else 0,
@@ -327,11 +329,9 @@ def _post_process_(
 		"RAF", 'RAAF', 'SAAF', "IDF", 'RCAF', 'USSR', 'FASF',
 		"U.S.N.", "USN", "NAS", 
 		"USCG", "USO", "USMA",'USCGC',
-		"AAA",
 		"CIA", "FBI", "AFGE",
 		'WAAC', 'WAAF', 'WACS', 'WRNS',
 		"WAC",
-		"WAVES",
 		"ANZAC","RCAF",
 		"RNZAF", "SAAF", "CARE",
 		"HOLC",
