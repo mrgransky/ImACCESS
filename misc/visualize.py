@@ -1373,7 +1373,7 @@ def plot_zipfian_curve(
 	}
 
 	if verbose:
-		print(f"\n  [STATS DICT]")
+		print(f"\n[STATS DICT]")
 		print(json.dumps(stats, indent=4, ensure_ascii=False))
 		print(div + "\n")
 

@@ -17,7 +17,11 @@ from gt_kws_vlm import get_vlm_based_labels
 from gt_kws_llm import get_llm_based_labels
 import visualize as viz
 import label_statistics as stats
-from nlp_utils import _post_process_
+from nlp_utils import (
+	_post_process_,
+	load_spacy_cache, 
+	save_spacy_cache,
+)
 from clustering import get_canonical_labels
 from data_prep import get_multi_label_stratified_split, build_shared_eval_protocol
 
@@ -193,54 +197,115 @@ def get_multimodal_annotation(
 
 		if verbose:
 			print(f"[FULL DATASET] {csv_file} post processing [might take a while...]")
-		
-		multimodal_labels = _post_process_(
-			labels_list=multimodal_labels, 
-			col="multimodal_labels", 
-			verbose=verbose
-		)
 
-		multimodal_canonical_labels, _ = get_canonical_labels(
-			labels=multimodal_labels,
-			model_id=embedding_model_id,
-			label_source="multimodal_labels",
-			output_dir=OUTPUT_DIR,
-			batch_size=batch_size,
-			nc=nc,
-			verbose=verbose,
-		)
+		# 1. Load cache from disk once at script start
+		cache_file = os.path.join(OUTPUT_DIR, "spacy_ner_cache.json")
+		load_spacy_cache(cache_file)
 
-		llm_based_labels = _post_process_(
-			labels_list=llm_based_labels, 
-			col="llm_based_labels", 
-			verbose=False,
-		)
+		# multimodal_labels = _post_process_(
+		# 	labels_list=multimodal_labels, 
+		# 	col="multimodal_labels", 
+		# 	verbose=verbose
+		# )
 
-		llm_canonical_labels, _ = get_canonical_labels(
-			labels=llm_based_labels,
-			label_source="llm_based_labels",
-			model_id=embedding_model_id,
-			output_dir=OUTPUT_DIR,
-			batch_size=batch_size,
-			nc=nc,
-			verbose=False,
-		)
+		# multimodal_canonical_labels, _ = get_canonical_labels(
+		# 	labels=multimodal_labels,
+		# 	model_id=embedding_model_id,
+		# 	label_source="multimodal_labels",
+		# 	output_dir=OUTPUT_DIR,
+		# 	batch_size=batch_size,
+		# 	nc=nc,
+		# 	verbose=verbose,
+		# )
 
-		vlm_based_labels = _post_process_(
-			labels_list=vlm_based_labels, 
-			col="vlm_based_labels", 
-			verbose=False,
-		)
+		# llm_based_labels = _post_process_(
+		# 	labels_list=llm_based_labels, 
+		# 	col="llm_based_labels", 
+		# 	verbose=False,
+		# )
 
-		vlm_canonical_labels, _ = get_canonical_labels(
-			labels=vlm_based_labels,
-			label_source="vlm_based_labels",
-			model_id=embedding_model_id,
-			output_dir=OUTPUT_DIR,
-			batch_size=batch_size,
-			nc=nc,
-			verbose=False,
-		)
+		# llm_canonical_labels, _ = get_canonical_labels(
+		# 	labels=llm_based_labels,
+		# 	label_source="llm_based_labels",
+		# 	model_id=embedding_model_id,
+		# 	output_dir=OUTPUT_DIR,
+		# 	batch_size=batch_size,
+		# 	nc=nc,
+		# 	verbose=False,
+		# )
+
+		# vlm_based_labels = _post_process_(
+		# 	labels_list=vlm_based_labels, 
+		# 	col="vlm_based_labels", 
+		# 	verbose=False,
+		# )
+
+		# vlm_canonical_labels, _ = get_canonical_labels(
+		# 	labels=vlm_based_labels,
+		# 	label_source="vlm_based_labels",
+		# 	model_id=embedding_model_id,
+		# 	output_dir=OUTPUT_DIR,
+		# 	batch_size=batch_size,
+		# 	nc=nc,
+		# 	verbose=False,
+		# )
+
+
+		try:
+			# ── Call 1: Multimodal ──
+			# Populates the in-memory cache for all shared image concepts
+			multimodal_labels = _post_process_(
+				labels_list=multimodal_labels, 
+				col="multimodal_labels", 
+				verbose=verbose
+			)
+			multimodal_canonical_labels, _ = get_canonical_labels(
+				labels=multimodal_labels,
+				model_id=embedding_model_id,
+				label_source="multimodal_labels",
+				output_dir=OUTPUT_DIR,
+				batch_size=batch_size,
+				nc=nc,
+				verbose=verbose,
+			)
+
+			# ── Call 2: LLM ──
+			# Almost all duplicate labels hit the in-memory cache instantaneously!
+			llm_based_labels = _post_process_(
+				labels_list=llm_based_labels, 
+				col="llm_based_labels", 
+				verbose=False,
+			)
+			llm_canonical_labels, _ = get_canonical_labels(
+				labels=llm_based_labels,
+				label_source="llm_based_labels",
+				model_id=embedding_model_id,
+				output_dir=OUTPUT_DIR,
+				batch_size=batch_size,
+				nc=nc,
+				verbose=False,
+			)
+
+			# ── Call 3: VLM ──
+			# Same instant cache hits
+			vlm_based_labels = _post_process_(
+				labels_list=vlm_based_labels, 
+				col="vlm_based_labels", 
+				verbose=False,
+			)
+			vlm_canonical_labels, _ = get_canonical_labels(
+				labels=vlm_based_labels,
+				label_source="vlm_based_labels",
+				model_id=embedding_model_id,
+				output_dir=OUTPUT_DIR,
+				batch_size=batch_size,
+				nc=nc,
+				verbose=False,
+			)
+		finally:
+			# 2. Persist to disk so future pipeline runs are instantaneous
+			save_spacy_cache(cache_file)
+
 
 		# check length of each before setting into column:
 		if verbose:

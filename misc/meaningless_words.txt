@@ -841,7 +841,6 @@ thick
 thin
 thing
 things
-think
 thinks
 third
 thirty
@@ -1059,7 +1058,6 @@ looking northeast
 looking northwest
 looking southwest
 looking southeast
-aerial vehicle
 eastward
 westward
 northward
@@ -1157,15 +1155,10 @@ reprint
 reproduction
 open
 close
-caption
-icon
-symbol
 direction
 orientation
 upward
 downward
-sentence
-offer
 bookmark
 urging
 weekly
@@ -1173,7 +1166,6 @@ monthly
 yearly
 etats
 rev
-medresse
 coco-cola
 spring
 summer
@@ -1181,7 +1173,6 @@ autumn
 winter
 january
 february
-march
 april
 may
 june

@@ -5,6 +5,7 @@ import math
 import json
 import nltk
 import time
+from functools import lru_cache
 # Load spaCy model at module level (after other imports)
 try:
 	import spacy
@@ -17,7 +18,7 @@ except Exception as e:
 
 import pandas as pd
 from collections import Counter
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Any, Dict
 # Install: pip install lingua-language-detector
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
 
@@ -145,6 +146,46 @@ def case_stats(s: str):
 
 	return stats
 
+# Module-level in-memory cache
+_SPACY_CACHE: Dict[str, Any] = {}
+_CACHE_DIRTY = False  # Tracks if new entities were added to avoid unnecessary disk writes
+
+def load_spacy_cache(cache_path: str = "spacy_ner_cache.json") -> None:
+    """Load persistent spaCy NER cache from disk into memory."""
+    global _SPACY_CACHE
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                raw_cache = json.load(f)
+            # Reconstruct sets (JSON stores sets as lists)
+            _SPACY_CACHE = {
+                k: {**v, "entities": set(v.get("entities", []))}
+                for k, v in raw_cache.items()
+            }
+        except Exception as e:
+            print(f"[CACHE] Warning: Failed to load spaCy cache from {cache_path}: {e}")
+            _SPACY_CACHE = {}
+    else:
+        _SPACY_CACHE = {}
+
+def save_spacy_cache(cache_path: str = "spacy_ner_cache.json") -> None:
+    """Save in-memory spaCy NER cache to disk if modified."""
+    global _SPACY_CACHE, _CACHE_DIRTY
+    if not _CACHE_DIRTY:
+        return
+
+    try:
+        # Convert sets to lists for JSON serialization
+        serializable_cache = {
+            k: {**v, "entities": list(v.get("entities", []))}
+            for k, v in _SPACY_CACHE.items()
+        }
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(serializable_cache, f, indent=2, ensure_ascii=False)
+        _CACHE_DIRTY = False
+    except Exception as e:
+        print(f"[CACHE] Warning: Failed to save spaCy cache to {cache_path}: {e}")
+
 def _post_process_(
 	labels_list: List[List[str]],
 	col: str,
@@ -230,7 +271,7 @@ def _post_process_(
 	GENERIC_TECH_WORDS = {
 		"equipment", "component", "system", 
 		"material", "piece", "part", "variant",
-		"supply"  # Add supply here as generic tech term
+		"supply",
 	}
 
 	GENERIC_META_WORDS = {
@@ -282,7 +323,13 @@ def _post_process_(
 		"turquoise", "lavender", "coral",
 	}
 
-	IMAGE_DESCRIPTORS = {"black and white", "black & white", "B/W", "B&W", 'B and W'}
+	IMAGE_DESCRIPTORS = {
+		"black and white", 
+		"black & white", 
+		"B/W", 
+		"B&W", ''
+		'B and W'
+	}
 
 	HONORIFICS = {
 		"mr", "mr.",
@@ -323,39 +370,6 @@ def _post_process_(
 		re.IGNORECASE
 	)
 
-	ALLOWED_ACRONYMS = {
-		"NASA", "NATO", "ANZUS", "SEATO",
-		"USAAF", "USAF", "USAAC", "USMC",
-		"RAF", 'RAAF', 'SAAF', "IDF", 'RCAF', 'USSR', 'FASF',
-		"U.S.N.", "USN", "NAS", 
-		"USCG", "USO", "USMA",'USCGC',
-		"CIA", "FBI", "AFGE",
-		'WAAC', 'WAAF', 'WACS', 'WRNS',
-		"WAC",
-		"ANZAC","RCAF",
-		"RNZAF", "SAAF", "CARE",
-		"HOLC",
-		"NAACP",
-		"NCO",
-		"PWO",
-		'CBS', 'NBC', 'ABC', 'CNN', 'BBC',
-		'USPHS',
-		'NACA',
-		'AWACS',
-		'USS',
-		'ASW',
-		'HMS', 'H.M.S.',
-		'IJN',
-		'SS', 'S.S.',
-		'USAT',
-		'SHAEF',
-		'AMCOM',
-		'AMVETS',
-		'USO',
-		'ROTC', 'R.O.T.C.',
-		'LLD', 'L.L.D.', 'LL.D.',
-	}
-
 	FULL_SPAN_FALSE_POSITIVES = {
 			"luncheon",
 			"victory garden",
@@ -367,181 +381,123 @@ def _post_process_(
 			# add more as they appear in your data
 	}
 
+	ALLOWED_ACRONYMS = {
+		"NASA", "NATO", "ANZUS", "SEATO",
+		"USAAF", "USAF", "USAAC", "USMC",
+		"RAF", 'RAAF', 'SAAF', "IDF", 'RCAF', 'USSR', 'FASF',
+		"USN", "NAS",
+		"USCG", "USO", "USMA",'USCGC',
+		"CIA", "FBI", "AFGE",
+		'WAAC', 'WAAF', 'WACS', 'WRNS',
+		"WAC",
+		"ANZAC",
+		"RCAF",
+		"RNZAF", "SAAF", "CARE",
+		"HOLC",
+		"NAACP",
+		"NCO",
+		"PWO",
+		'CBS', 'NBC', 'ABC', 'CNN', 'BBC',
+		'USPHS', 'USAAMC',
+		'NACA',
+		'AWACS',
+		'USS',
+		'ASW',
+		'HMS',
+		'IJN',
+		'SS',
+		'USAT',
+		'SHAEF',
+		'AMCOM',
+		'AMVETS',
+		'USO',
+		'ROTC',
+		'LLD',
+		'AMTRACS',
+		'WWII',
+		'WWI',
+	}
+
+	def build_normalized_acronym_set(allowed_acronyms: set) -> set:
+		"""Precompute ONCE when the module loads."""
+		return {
+			re.sub(r"[^A-Za-z0-9]", "", acr).upper()
+			for acr in allowed_acronyms
+			if acr
+		}
+	ALLOWED_ACRONYMS_NORMALIZED = build_normalized_acronym_set(ALLOWED_ACRONYMS)
 
 	def should_skip_by_case(
-		lemma: str,
-		allowed_acronyms: set,
-		max_upper_pct: float = 75.0,
+		label: str,
+		uppercase_bound_thresh: float=0.75,
+		min_meaningful_word_length: int=7,
 		verbose: bool = False,
 	) -> bool:
 		"""
 		Decide whether to skip a label based on its uppercase ratio.
 		Rules (applied in order):
-			1. Single word, all-caps, in allowed_acronyms  → KEEP
-			2. Single word, all-caps, NOT in allowed       → SKIP
-			3. Multi-word, upper% > max_upper_pct          → SKIP  (formatting noise)
-			4. Otherwise                                   → KEEP
+			1. Single word, all-caps, 											→ KEEP
+			2. Single word, all-caps, 											→ SKIP
+			3. Multi-word, upper_ration > uppercase_bound_thresh 	→ SKIP  (formatting noise)
+			4. Otherwise                                   	→ KEEP
 		Args:
-				lemma:            The label to evaluate.
-				allowed_acronyms: Set of UPPERCASE acronyms to always keep.
-				max_upper_pct:    Threshold (0–100). Labels with a higher
+				label:            The label to evaluate.
+				uppercase_bound_thresh:    Threshold (0–100). Labels with a higher
 													percentage of uppercase *letters* are skipped.
 		Returns:
 				True  → skip / filter this label
 				False → keep this label
 		"""
+
+		# Legitimate standalone single letters / prefixes in English and historical military text
+		ALLOWED_SINGLE_LETTERS = {"a", "i", "u", "b", "p", "c", "d", "v", "x", "k"}
+		words_to_check = [s for s in label.split() if s.lower() not in ALLOWED_SINGLE_LETTERS]
+		# If there's STILL an unknown 1-letter fragment left, it's OCR garbage
+		if words_to_check and min(len(s) for s in words_to_check) == 1:
+			if verbose:
+				stray_chars = [s for s in words_to_check if len(s) == 1]
+				print(f"\t[CASE SKIPPED] {repr(label):<55} stray 1-letter fragment(s): {stray_chars}")
+			return True
+
 		# Only consider alphabetic characters for the ratio
-		letters = [ch for ch in lemma if ch.isalpha()]
+		letters = [ch for ch in label if ch.isalpha()]
 		if not letters:
-				return False  # no letters at all; let other filters handle it
+			return False  # no letters at all; let other filters handle it
+
 		upper_count = sum(1 for ch in letters if ch.isupper())
-		upper_pct   = upper_count / len(letters) * 100
-		words = lemma.split()
+		uppercase_ratio   = upper_count / len(letters)
+		words = label.split()
+
 		# ── Rule 1 & 2: single-word all-caps → acronym check ──
-		if len(words) == 1 and upper_pct == 100.0:
-				if lemma in allowed_acronyms:
-						if verbose:
-								print(f"\t\t[CASE] {lemma!r}: allowed acronym, keeping")
-						return False
+		if len(words) == 1 and uppercase_ratio == 1.0 and len(label) <= min_meaningful_word_length:
+			if label in ALLOWED_ACRONYMS_NORMALIZED:
 				if verbose:
-						print(f"\t\t[CASE] {lemma!r}: unlisted acronym (100% upper), skipping")
-				return True
+					print(f"\t[CASE PRESERVED] {repr(label):<55} allowed acronym")
+				return False
+
+			if verbose:
+				print(f"\t[CASE SKIPPED] {repr(label):<55} unlisted acronym (ratio=1.0 uppercase & len() <= {min_meaningful_word_length})")
+			return True
+
 		# ── Rule 3: multi-word (or single-word partial caps) above threshold ──
-		if upper_pct > max_upper_pct:
-				if verbose:
-						print(f"\t\t[CASE] {lemma!r}: {upper_pct:.0f}% upper > {max_upper_pct}%, skipping")
-				return True
-		# ── Rule 4: below threshold → keep ──
+		if uppercase_ratio > uppercase_bound_thresh and len(label) <= min_meaningful_word_length:
+			if verbose:
+				print(f"\t[CASE SKIPPED] {repr(label):<55} ratio={uppercase_ratio:.3f} uppercase > {uppercase_bound_thresh} & len() <= {min_meaningful_word_length}")
+			return True
+
+		# ── Rule 4: below threshold or long enough → keep ──
+		if verbose:
+			if len(label) > min_meaningful_word_length:
+				print(f"\t[CASE PASSED] {repr(label):<55} len={len(label)} > {min_meaningful_word_length}")
+			else:
+				print(f"\t[CASE PASSED] {repr(label):<55} ratio={uppercase_ratio:.3f} <= {uppercase_bound_thresh}")
+
 		return False
 
-	def _extract_geopolitical_entities_old(text: str, verbose: bool = False) -> Set[str]:
-		"""
-		Extract geopolitical entities using spaCy NER.
-		Returns set of:
-				- Geographic locations (GPE, LOC) → for ALL inputs
-				- Nationalities / religious / political groups (NORP) → ONLY for single-word inputs
-		
-		Rationale:
-				- "American" (single word) → too generic, filter it
-				- "American soldiers" (multi-word) → meaningful visual concept, keep it
-		
-		Original case is PRESERVED in the returned set.
-		Results are cached to avoid redundant spaCy calls.
-		"""
-		if WW_THEATRE_PHRASES.match(text):
-			if verbose:
-				print(f"\t[PRESERVED] {repr(text):<25} WW theatre phrase")
-			return None
-		if text.lower() in MILITARY_PROTECTED_PHRASES:
-			if verbose:
-				print(f"\t[PRESERVED] {repr(text):<25} military specific phrase")
-			return None
-		if COUNTRY_MODIFIERS.match(text):
-			if verbose:
-				print(f"\t[PRESERVED] {repr(text):<25} country modifier")
-			return None
-		if SHIP_PREFIXES.match(text):
-			if verbose:
-				print(f"\t[PRESERVED] {repr(text):<25} ship prefix")
-			return None
-		# Check cache first
-		cache_key = text.lower().strip()
-		if cache_key in _spacy_cache:
-				if verbose:
-						print(f"\t\t[spaCy NER] CACHE HIT: {repr(text):<25}")
-				return _spacy_cache[cache_key]
-		if nlp_spacy is None:
-				if verbose:
-						print(f"\t\t[spaCy NER] model not loaded, returning empty set")
-				return set()
-		GEO_LABELS = {"GPE", "LOC"}
-		NORP_LABELS = {"NORP"}
-		# ── KEY DECISION: NORP only applies to single-word inputs ──
-		is_single_word = len(text.strip().split()) == 1
-		if is_single_word:
-				target_labels = GEO_LABELS | NORP_LABELS  # GPE + LOC + NORP
-		else:
-				target_labels = GEO_LABELS                 # GPE + LOC only
-		doc = nlp_spacy(text)
-		# 1. Direct entities
-		target_spans = [ent for ent in doc.ents if ent.label_ in target_labels]
-		if len(target_spans) > 0 and verbose:
-				print(f"\t\t[spaCy NER] Found {len(target_spans)} target entities:")
-				for ent in target_spans:
-						print(f"\t\t\t├─ {ent.text} → {ent.label_}")
-		result_texts = {ent.text for ent in target_spans}
-		result_texts_lower = {ent.text.lower() for ent in target_spans}
-		# 2. Embedded geographic entities in ORG labels
-		org_spans = [ent for ent in doc.ents if ent.label_ == "ORG"]
-		if len(org_spans) > 0 and verbose:
-				print(f"\t\t[spaCy NER] Found {len(org_spans)} ORG entities. Checking embedded...")
-		embedded_entities = set()
-		
-		# Matches words following "of", capturing up to 2 capitalized words
-		_PLACE_RE = re.compile(r'(?:\bof\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)')
-		_ORG_IGNORE = {
-				"College", "University", "Institute", "School", "Department",
-				"Company", "Corporation", "Railway", "Railroad", "Air", "Force",
-				"Federation", "Association", "Society", "Committee"
-		}
-		for org in org_spans:
-				if verbose:
-						print(f"\t\t[ORG] Analyzing: {org.text}")
-				
-				org_doc = nlp_spacy(org.text)
-				found_nested = False
-				
-				for sub_ent in org_doc.ents:
-						if verbose:
-								print(f"\t\t\t│  ├─ {sub_ent.text} → {sub_ent.label_}")
-						if sub_ent.label_ in GEO_LABELS and sub_ent.text.lower() not in result_texts_lower:
-								embedded_entities.add(sub_ent.text)
-								result_texts_lower.add(sub_ent.text.lower())
-								found_nested = True
-								if verbose:
-										print(f"\t\t\t│  └─ ✓ Added embedded {sub_ent.label_}: {sub_ent.text}")
-				# ── Regex fallback: only if direct NER parse found no GPE/LOC ──
-				if not found_nested:
-						candidates = _PLACE_RE.findall(org.text)
-						for candidate in candidates:
-								words = candidate.split()
-								first_word = words[0]
-								if (candidate.lower() in result_texts_lower 
-												or first_word in _ORG_IGNORE 
-												or len(candidate) <= 2):
-										continue
-								# Step A: Validate candidate as a whole
-								cand_doc = nlp_spacy(candidate)
-								verified_geos = [
-										ent.text for ent in cand_doc.ents if ent.label_ in GEO_LABELS
-								]
-								# Step B: If multi-word check failed due to regex truncation 
-								# (e.g. "California Santa" chopped off "Barbara"), test the first token
-								if not verified_geos and len(words) > 1 and first_word.lower() not in result_texts_lower:
-										first_doc = nlp_spacy(first_word)
-										verified_geos = [
-												ent.text for ent in first_doc.ents if ent.label_ in GEO_LABELS
-										]
-								# Step C: Register only if verified by NER
-								if verified_geos:
-										for geo in verified_geos:
-												embedded_entities.add(geo)
-												result_texts_lower.add(geo.lower())
-										if verbose:
-												print(f"\t\t\t│  └─ ✓ Regex candidate verified as geo: {verified_geos}")
-								else:
-										if verbose:
-												print(f"\t\t\t│  └─ ✗ Regex candidate rejected (not geo): {candidate!r}")
-		if verbose and embedded_entities:
-				print(f"\t\t[spaCy NER] Embedded entities: {embedded_entities}")
-		# 3. Combine & cache
-		final_result = result_texts | embedded_entities
-		_spacy_cache[cache_key] = final_result
-		if len(final_result) > 0 and verbose:
-				print(f"\t\t[spaCy NER] Final result ({len(final_result)} items): {final_result}")
-		return final_result
-
-	def _extract_geopolitical_entities(text: str, verbose: bool = False) -> dict | None:
+	def _extract_geopolitical_entities(
+		text: str, 
+		verbose: bool = False
+	) -> dict | None:
 		"""
 		Extract geopolitical entities using spaCy NER with contextual signals.
 
@@ -597,123 +553,65 @@ def _post_process_(
 		are not analyzed with an "of <Place>" regex fallback. This prevents
 		"America" from being incorrectly manufactured as a geographic entity.
 		"""
+		global _SPACY_CACHE, _CACHE_DIRTY
 
 		# ==================================================================
 		# 0. EARLY PROTECTION
 		# ==================================================================
-		#
 		# These patterns are known to be semantically meaningful in the
 		# historical-image keyword pipeline and must not be treated as
 		# geographic noise.
 		# ==================================================================
-
 		if WW_THEATRE_PHRASES.match(text):
 			if verbose:
-				print(
-					f"\t[PRESERVED] {repr(text):<55} "
-					f"reason=WW theatre phrase"
-				)
+				print(f"\t[PRESERVED] {repr(text):<55} WW theatre/front phrase")
 			return None
 
 		if text.lower() in MILITARY_PROTECTED_PHRASES:
 			if verbose:
-				print(
-					f"\t[PRESERVED] {repr(text):<55} "
-					f"reason=military protected phrase"
-				)
+				print(f"\t[PRESERVED] {repr(text):<55} military protected phrase")
 			return None
 
 		if COUNTRY_MODIFIERS.match(text):
 			if verbose:
-				print(
-					f"\t[PRESERVED] {repr(text):<55} "
-					f"reason=country modifier (U.S./U.K./…)"
-				)
+				print(f"\t[PRESERVED] {repr(text):<55} country modifier (U.S./U.K./…)")
 			return None
 
 		if SHIP_PREFIXES.match(text):
 			if verbose:
-				print(
-					f"\t[PRESERVED] {repr(text):<55} "
-					f"reason=ship prefix (USS/HMS/SS)"
-				)
+				print(f"\t[PRESERVED] {repr(text):<55} ship prefix (USS/HMS/SS)")
 			return None
-
-		# # ==================================================================
-		# # 0b. EARLY ACRONYM PROTECTION
-		# # ==================================================================
-		# #
-		# # spaCy can incorrectly classify unusual acronym formatting such as:
-		# #
-		# #     Usmc
-		# #     D.S.C.
-		# #     U.S.M.C.
-		# #
-		# # as GPE/LOC.
-		# #
-		# # Normalize only for comparison; preserve the original text.
-		# # ==================================================================
-
-		# normalized_upper = re.sub(
-		# 	r"\s+",
-		# 	"",
-		# 	text.strip()
-		# ).upper()
-
-		# normalized_allowed_acronyms = {
-		# 	re.sub(r"\s+", "", acronym.upper())
-		# 	for acronym in ALLOWED_ACRONYMS
-		# }
-
-		# if normalized_upper in normalized_allowed_acronyms:
-		# 	if verbose:
-		# 		print(
-		# 			f"\t[PRESERVED] {repr(text):<55} "
-		# 			f"reason=allowed acronym"
-		# 		)
-		# 	return None
 
 		# ==================================================================
 		# 0b. EARLY ACRONYM PROTECTION
 		# ==================================================================
-		# Normalize by removing spaces *and* periods so that
-		# "D.S.C.", "D.S.C", "DSC", "U.S.M.C." all match.
+		# Normalize incoming text by stripping spaces and non-alphanumeric chars
+		# so "D.S.C.", "D.S.C", "DSC", "U.S.M.C." all match in O(1) time.
 		# ==================================================================
-
-		normalized_upper = re.sub(r"[\s.]+", "", text.strip()).upper()
-
-		normalized_allowed_acronyms = {
-				re.sub(r"[\s.]+", "", acronym.upper())
-				for acronym in ALLOWED_ACRONYMS
-		}
-
-		if normalized_upper in normalized_allowed_acronyms:
-				if verbose:
-						print(f"\t[PRESERVED] {repr(text):<55} reason=allowed acronym")
-				return None
-
+		clean_text_key = re.sub(r"[^A-Za-z0-9]", "", text.strip()).upper()
+		if clean_text_key in ALLOWED_ACRONYMS_NORMALIZED:
+			if verbose:
+				print(f"\t[PRESERVED] {repr(text):<55} allowed acronym ({clean_text_key})")
+			return None
 
 		# ==================================================================
-		# 1. CACHE LOOKUP
+		# 1. Check Global In-Memory Cache
 		# ==================================================================
 		cache_key = text.lower().strip()
 
-		if cache_key in _spacy_cache:
+		if cache_key in _SPACY_CACHE:
 			if verbose:
-				print(
-					f"\t\t[spaCy NER] CACHE HIT for {repr(text)}"
-				)
+				print(f"\t[CACHE HIT] {repr(text)}")
 
-			return _spacy_cache[cache_key]
+			return _SPACY_CACHE[cache_key]
 
 		# ==================================================================
 		# 2. SPAcy AVAILABILITY
 		# ==================================================================
-
 		if nlp_spacy is None:
 			if verbose:
 				print(
-					f"\t\t[spaCy NER] model not loaded → empty result"
+					f"\t[spaCy NER] model not loaded → empty result"
 				)
 
 			empty = {
@@ -731,7 +629,6 @@ def _post_process_(
 		# ==================================================================
 		# 3. DETERMINE TARGET ENTITY TYPES
 		# ==================================================================
-		#
 		# Single-word labels:
 		#     GPE + LOC + NORP
 		#
@@ -747,7 +644,6 @@ def _post_process_(
 		# are not rejected merely because spaCy identifies a nationality
 		# or adjective.
 		# ==================================================================
-
 		GEO_LABELS = {"GPE", "LOC"}
 		NORP_LABELS = {"NORP"}
 
@@ -761,7 +657,7 @@ def _post_process_(
 
 		if verbose:
 			print(
-				f"\t\t[spaCy NER] input={repr(text)}  "
+				f"\t[spaCy NER] input={repr(text)}  "
 				f"single_word={is_single_word}  "
 				f"target_labels={sorted(target_labels)}"
 			)
@@ -769,13 +665,11 @@ def _post_process_(
 		# ==================================================================
 		# 4. RUN SPACY NER
 		# ==================================================================
-
 		doc = nlp_spacy(text)
 
 		# ==================================================================
 		# 5. COLLECT DIRECT GEO ENTITIES
 		# ==================================================================
-
 		direct_spans = [
 			ent
 			for ent in doc.ents
@@ -789,7 +683,7 @@ def _post_process_(
 
 		if verbose and direct_spans:
 			print(
-				f"\t\t[spaCy NER] direct entities "
+				f"\t[spaCy NER] direct entities "
 				f"({len(direct_spans)}):"
 			)
 
@@ -802,8 +696,7 @@ def _post_process_(
 		# ==================================================================
 		# 6. DETECT FULL-SPAN GEOGRAPHIC ENTITY
 		# ==================================================================
-		#
-		# This is the critical distinction.
+		# Critical distinction.
 		#
 		# Example:
 		#
@@ -815,7 +708,6 @@ def _post_process_(
 		#
 		# Only the first case is a full-span geo.
 		# ==================================================================
-
 		full_span_entities = [
 			ent
 			for ent in direct_spans
@@ -826,15 +718,11 @@ def _post_process_(
 
 		if verbose and is_full_span:
 			for ent in full_span_entities:
-				print(
-					f"\t\t[spaCy NER] FULL-SPAN GEO → "
-					f"{ent.text!r} ({ent.label_})"
-				)
+				print(f"\t[spaCy NER] FULL-SPAN GEO →  {ent.text!r} ({ent.label_})")
 
 		# ==================================================================
 		# 7. IDENTIFY GEO ENTITIES EMBEDDED INSIDE ORG SPANS
 		# ==================================================================
-		#
 		# We deliberately DO NOT use an "of <Place>" regex here.
 		#
 		# spaCy's explicit ORG + GPE/LOC annotations are enough to identify
@@ -859,49 +747,35 @@ def _post_process_(
 
 		if verbose and org_spans:
 			print(
-				f"\t\t[spaCy NER] examining "
+				f"\t[spaCy NER] examining "
 				f"{len(org_spans)} ORG span(s) for nested geo…"
 			)
 
 		for geo in direct_spans:
-
 			for org in org_spans:
-
-				if (
-					geo.start >= org.start
-					and geo.end <= org.end
-				):
+				if geo.start >= org.start and geo.end <= org.end:
 					embedded.add(geo.text)
-
 					if verbose:
 						print(
 							f"\t\t\t✓ geo inside ORG: "
 							f"{geo.text!r} ({geo.label_}) "
 							f"inside {org.text!r}"
 						)
-
 					break
 
 		# ==================================================================
 		# 8. CLASSIFY EMBEDDED GEO
 		# ==================================================================
+		# geo entity is embedded whenever it does not cover entire input label.
 		#
-		# A geo entity is "embedded" whenever it does not cover the entire
-		# input label.
-		#
-		# The ORG-specific `embedded` set is retained separately because it
+		# ORG-specific `embedded` set is retained separately because it
 		# is useful diagnostic information.
 		# ==================================================================
-
-		is_embedded_only = (
-			bool(direct_spans)
-			and not is_full_span
-		)
+		is_embedded_only = bool(direct_spans) and not is_full_span
 
 		# ==================================================================
 		# 9. STRONG GEO DECISION
 		# ==================================================================
-		#
 		# Single-word:
 		#     Any GPE / LOC / NORP → strong.
 		#
@@ -923,47 +797,37 @@ def _post_process_(
 		#
 		# when spaCy identifies those entire phrases as LOC.
 		# ==================================================================
+		has_strong_geo = bool(direct_spans) if is_single_word else is_full_span
 
-		if is_single_word:
-			has_strong_geo = bool(direct_spans)
-		else:
-			has_strong_geo = is_full_span
-
-		# ------------------------------------------------------------------
+		# ==================================================================
 		# 9b. Domain-aware override for known full-span false positives
-		# ------------------------------------------------------------------
+		# ==================================================================
 		if has_strong_geo and text.lower() in FULL_SPAN_FALSE_POSITIVES:
 			has_strong_geo = False
 			reason = "full-span false positive (domain exception)"
 			if verbose:
 				print(
-					f"\t\t[spaCy NER] OVERRIDE → {repr(text)} treated as non-geo "
+					f"\t[spaCy NER] OVERRIDE → {repr(text)} treated as non-geo "
 					f"(domain exception)"
 				)
 
 		# ==================================================================
 		# 10. REASON
 		# ==================================================================
-
 		if is_full_span:
 			reason = "full-span geo"
-
 		elif is_single_word and direct_spans:
 			reason = "single-word geo/NORP"
-
 		elif embedded:
 			reason = "embedded geo (inside ORG)"
-
 		elif direct_spans:
 			reason = "partial geo (not full-span)"
-
 		else:
 			reason = "no significant geo"
 
 		# ==================================================================
 		# 11. ASSEMBLE RESULT
 		# ==================================================================
-
 		result = {
 			"entities": direct_texts,
 			"is_full_span": is_full_span,
@@ -973,18 +837,12 @@ def _post_process_(
 		}
 
 		# ==================================================================
-		# 12. CACHE
-		# ==================================================================
-
-		_spacy_cache[cache_key] = result
-
-		# ==================================================================
-		# 13. VERBOSE SUMMARY
+		# 12. CACHE & RETURN
 		# ==================================================================
 
 		if verbose:
 			print(
-				f"\t\t[spaCy NER] FINAL → "
+				f"\t[spaCy NER] FINAL → "
 				f"entities={direct_texts or '{}'}  "
 				f"full_span={is_full_span}  "
 				f"embedded_only={is_embedded_only}  "
@@ -992,6 +850,8 @@ def _post_process_(
 				f"reason={reason}"
 			)
 
+		_SPACY_CACHE[cache_key] = result
+		_CACHE_DIRTY = True  # Flag that we have new data to save
 		return result
 
 	def is_stopword(phrase: str) -> bool:
@@ -1367,16 +1227,8 @@ def _post_process_(
 			# check if digit is in the lemma: (extremely strict)
 			if any(c.isdigit() for c in original_cleaned):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(original_cleaned):<70} digit")
+					print(f"\t[SKIPPED] {repr(original_cleaned):<55} digit")
 				continue
-
-			# if nlp_spacy is not None:
-			# 	ner_input = original_cleaned.title() if original_cleaned.isupper() else original_cleaned
-			# 	geo_entities = _extract_geopolitical_entities(ner_input, verbose=verbose)
-			# 	if geo_entities:
-			# 		if verbose:
-			# 			print(f"\t[SKIPPED] {repr(ner_input):<70} GPE/LOC/NORP {geo_entities}")
-			# 		continue
 
 			if nlp_spacy is not None:
 				ner_input = (
@@ -1393,22 +1245,19 @@ def _post_process_(
 				if geo_result is not None and geo_result["has_strong_geo"]:
 					if verbose:
 						print(
-							f"\t[SKIPPED] {repr(ner_input):<70} "
+							f"\t[SKIPPED] {repr(ner_input):<55} "
 							f"GPE/LOC/NORP → {geo_result}"
 						)
 					continue
 
-
-
-
 			if is_stopword(original_cleaned):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(original_cleaned):<70} stopword (or georaphic reference)")
+					print(f"\t[SKIPPED] {repr(original_cleaned):<55} stopword (or georaphic reference)")
 				continue
 
 			if is_quantified_plural(original_cleaned):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(original_cleaned):<70} Quantified plural ")
+					print(f"\t[SKIPPED] {repr(original_cleaned):<55} Quantified plural ")
 				continue
 			elif is_adjectival_phrase(original_cleaned):
 				lemma = s  # Preserve "newly built", "recently completed"
@@ -1421,107 +1270,88 @@ def _post_process_(
 			elif is_event_gerund_phrase(original_cleaned):
 				lemma = s  # Preserve "flag raising", "ship launching", "troop landing"
 				if verbose:
-					print(f"\t[PRESERVED] {repr(lemma)} Event gerund phrase")
-			elif is_proper_title(original_cleaned):
-				lemma = s  # Preserve proper titles like "International Federation of Agricultural Producers"
-				if verbose:
-					print(f"\t[PRESERVED] {repr(lemma)} Proper title")
+					print(f"\t[PRESERVED] {repr(lemma):<55} Event gerund phrase")
+			# elif is_proper_title(original_cleaned):
+			# 	lemma = s  # Preserve proper titles like "International Federation of Agricultural Producers"
+			# 	if verbose:
+			# 		print(f"\t[PRESERVED] {repr(lemma):<55} Proper title")
 			else:
 				lemma = lemmatize_phrase(s, original_cleaned)
 				if verbose:
 					if lemma != s:
 						print(f"[LEMMATIZED] {repr(lemma)}")
 			
-			if lemma.endswith("ville"):
-				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<70} ends with 'ville'")
-				continue
-
-			# # Aggressive but do not contaminate the clustering with all uppercase words:
-			# if lemma.isupper() and lemma not in ALLOWED_ACRONYMS:
-			# 	if verbose:
-			# 		print(f"\t[SKIPPED] {repr(lemma):<70} All uppercase")
-			# 	continue
-
-			if should_skip_by_case(lemma, ALLOWED_ACRONYMS, max_upper_pct=75.0, verbose=verbose):
-				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<70} case-based filter")
-				continue
-
 			if len(lemma) < min_kw_ch_length:
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<70} (len={len(lemma)} < {min_kw_ch_length})")
+					print(f"\t[SKIPPED] {repr(lemma):<55} (len={len(lemma)} < {min_kw_ch_length})")
 				continue
 
 			if len(lemma.split()) > max_kw_word_length:
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<70} (len={len(lemma.split())} > {max_kw_word_length})")
+					print(f"\t[SKIPPED] {repr(lemma):<55} (len={len(lemma.split())} > {max_kw_word_length})")
 				continue
 
-			# # check if digit is in the lemma: (extremely strict)
-			# if any(c.isdigit() for c in lemma):
-			# 	if verbose:
-			# 		print(f"\t[SKIPPED] {repr(lemma):<70} digit")
-			# 	continue
-
-			# # check for geographic references:
-			# if any(lm in geographic_references for lm in lemma.lower().split()):
-			# 	if verbose:
-			# 		print(f"\t[SKIPPED] {repr(lemma):<70} Geographic reference")
-			# 	continue
+			if should_skip_by_case(
+				label=lemma,
+				uppercase_bound_thresh=0.75,
+				verbose=verbose,
+			):
+				if verbose:
+					print(f"\t[SKIPPED] {repr(lemma):<55} case-based filter")
+				continue
 
 			if is_phrasal_verb(lemma):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<70} Phrasal verb")
+					print(f"\t[SKIPPED] {repr(lemma):<55} Phrasal verb")
 				continue
 
 			if is_stopword(lemma):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<70} stopword")
+					print(f"\t[SKIPPED] {repr(lemma):<55} stopword")
 				continue
 
 			# Exclude pure color descriptors
 			if all(w.lower() in COLORS for w in lemma.split()):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<70} Color descriptor")
+					print(f"\t[SKIPPED] {repr(lemma):<55} Color descriptor")
 				continue
 
 			# exclude honorifics
 			if any(w in HONORIFICS for w in lemma.lower().split()):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<70} honorific")
+					print(f"\t[SKIPPED] {repr(lemma):<55} honorific")
 				continue
 
 			# Exclude "black and white" specifically
 			if lemma.lower() in IMAGE_DESCRIPTORS:
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<70} image descriptor")
+					print(f"\t[SKIPPED] {repr(lemma):<55} image descriptor")
 				continue
 
 			if lemma.lower() in ORDINALS:
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<70} ordinal")
+					print(f"\t[SKIPPED] {repr(lemma):<55} ordinal")
 				continue
 
 			if should_filter_label(lemma):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<70} irrelevant!")
+					print(f"\t[SKIPPED] {repr(lemma):<55} irrelevant!")
 				continue
 
 			# only No. NNNNN ex) No. X1657 or No. 1657
 			if re.match(r"^No\.\s\w+$", lemma, re.IGNORECASE):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<70} Only No. NNNNN")
+					print(f"\t[SKIPPED] {repr(lemma):<55} Only No. NNNNN")
 				continue
 
 			if re.match(r'^\d+\sfeet$', lemma, re.IGNORECASE) or re.match(r'^\d+\sft$', lemma, re.IGNORECASE):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<70} Only NNNNN feet/ft")
+					print(f"\t[SKIPPED] {repr(lemma):<55} Only NNNNN feet/ft")
 				continue
 
 			if re.match(r'^\d+\sfoot$', lemma, re.IGNORECASE):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<70} Only NNNNN foot")
+					print(f"\t[SKIPPED] {repr(lemma):<55} Only NNNNN foot")
 				continue
 
 			lemma_key = lemma.lower().strip()
@@ -1534,7 +1364,7 @@ def _post_process_(
 					clean_dict[lemma_key] = lemma
 				else:
 					if verbose:
-						print(f"\t[SKIPPED] {repr(lemma):<70} duplicate of {repr(existing)}")
+						print(f"\t[SKIPPED] {repr(lemma):<55} duplicate of {repr(existing)}")
 			else:
 				clean_dict[lemma_key] = lemma
 
@@ -1544,9 +1374,10 @@ def _post_process_(
 		if verbose and result:
 			print(f"[FINAL] {result} {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})", end="\t")
 			print(f"[ELAPSED] {time.time() - t0:.5f} sec")
+			print('-'*125)
 
 	if verbose:
-		print(f"\n[POST-PROCESSED] {len(processed_batch)} samples [ELAPSED_TIME] {time.time() - pp_st:.1f} sec")
+		print(f"\n[POST-PROCESSED] {len(processed_batch)} samples [TOTAL ELAPSED TIME] {time.time() - pp_st:.1f} sec")
 		print("-"*100)
 
 	return processed_batch

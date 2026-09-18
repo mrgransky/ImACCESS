@@ -494,6 +494,7 @@ P. Rico
 Redwood
 Richmond
 St. Louis
+St. Lo
 City of St. Louis
 Sand Point
 Sandpoint
@@ -886,6 +887,7 @@ Rhodes
 Capri
 Crete
 Pantelleria
+Dieppe
 
 Afghan
 African

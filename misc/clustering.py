@@ -3518,12 +3518,12 @@ def cluster(
 			)
 
 	if verbose:
-		print("-"*80)
+		print("-"*50)
 		print(f"Clustered {len(df)} labels into {df['cluster'].nunique()} clusters")
 		print(f"{df.shape} {list(df.columns)}")
 		print(df.info(verbose=verbose, memory_usage="deep"))
-		print(f"[TOTAL ELAPSED TIME] {time.time()-st_t:.2f} sec.")
-		print("-"*80)
+		print(f"[TOTAL CLUSTERING ELAPSED TIME] {time.time()-st_t:.2f} sec.")
+		print("-"*50)
 
 	# clear cache
 	if torch.cuda.is_available():
