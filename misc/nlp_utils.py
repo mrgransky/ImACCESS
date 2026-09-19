@@ -1,5 +1,6 @@
 import os
 import re
+import string
 import ast
 import math
 import json
@@ -417,11 +418,12 @@ def _post_process_(
 		'POW',
 		'MEDEVAC',
 		'CASEVAC',
+		'DSC',
 	}
-
-		# Legitimate standalone single letters / prefixes in English and historical military text
 	
-	ALLOWED_SINGLE_LETTERS = {"a", "i", "u", "b", "p", "c", "d", "v", "x", "k", "w", "n"}
+	ALLOWED_SINGLE_LETTERS = {"a", "b", "c", "d", "e", "i", "j", "k", "n", "u", "p", "v", "x", "w", "t", "o"}
+	FULL_ENGLISH_ALPHABET = set(string.ascii_lowercase) # 26 English alphabet letters
+	# ALLOWED_SINGLE_LETTERS = FULL_ENGLISH_ALPHABET
 
 	def build_normalized_acronym_set(allowed_acronyms: set) -> set:
 		"""Precompute ONCE when the module loads."""
@@ -434,78 +436,79 @@ def _post_process_(
 
 	def should_skip_by_case(
 		label: str,
-		uppercase_bound_thresh: float=0.75,
-		min_meaningful_word_length: int=7,
+		uppercase_bound_thresh: float = 0.75,
+		min_meaningful_word_length: int = 7,
 		verbose: bool = False,
 	) -> bool:
 		"""
-		Decide whether to skip a label based on its uppercase ratio.
+		Decide whether to skip a label based on capitalization patterns and OCR noise.
 		Rules (applied in order):
-			1. Single word, all-caps, 											→ KEEP
-			2. Single word, all-caps, 											→ SKIP
-			3. Multi-word, upper_ration > uppercase_bound_thresh 	→ SKIP  (formatting noise)
-			4. Otherwise                                   	→ KEEP
+				1. Fast Path: In ALLOWED_ACRONYMS_NORMALIZED                → KEEP (False)
+				2. Stray 1-letter fragment (not in ALLOWED_SINGLE_LETTERS)  → SKIP (True)
+				3. Single-word, all-caps in PROTECTED_PLURALS               → KEEP (False)
+				4. Single-word, all-caps short noise (<= min_length)        → SKIP (True)
+				5. High uppercase ratio (> thresh) on short text (<= min)   → SKIP (True)
+				6. Otherwise (TitleCase, lowercase, or long text)           → KEEP (False)
 		Args:
-				label:            The label to evaluate.
-				uppercase_bound_thresh:    Threshold (0–100). Labels with a higher
-													percentage of uppercase *letters* are skipped.
+				label: The phrase/word to evaluate.
+				uppercase_bound_thresh: Ratio threshold (0.0–1.0) above which short text is skipped.
+				min_meaningful_word_length: Minimum character length to bypass uppercase filtering.
+				verbose: Print diagnostic log messages.
 		Returns:
-				True  → skip / filter this label
+				True  → skip / drop this label
 				False → keep this label
 		"""
 
-		# Only flag single alphabetic letters (ignores symbols like & or +)
+		# 1. FAST PATH: Normalized Acronym Allowlist 
+		# Matches 'D.S.C.', 'D.S.C', 'DSC', 'PO W', 'U.S.A.F.' in O(1) time
+		clean_acronym_key = re.sub(r"[^A-Za-z0-9]", "", label.strip()).upper()
+		if clean_acronym_key in ALLOWED_ACRONYMS_NORMALIZED:
+				if verbose:
+						print(f"\t[CASE PRESERVED] {repr(label):<55} allowed acronym ({clean_acronym_key})")
+				return False
+
+		# 2. STRAY SINGLE-LETTER FRAGMENT FILTER 
+		# Flags OCR artifacts like "Tank j" while allowing "Stu G", "G string", "Plan B"
 		words = label.split()
 		words_to_check = [
-			s 
-			for s in words 
+			s for s in words 
 			if s.isalpha() and s.lower() not in ALLOWED_SINGLE_LETTERS
 		]
-
-		# If there's STILL an unknown 1-letter fragment left, it's OCR garbage
 		if words_to_check and min(len(s) for s in words_to_check) == 1:
 			if verbose:
 				stray_chars = [s for s in words_to_check if len(s) == 1]
 				print(f"\t[SKIPPED CASE] {repr(label):<55} stray 1-letter fragment(s): {stray_chars}")
 			return True
 
-		# Only consider alphabetic characters for the ratio
+		# 3. COMPUTE UPPERCASE RATIO 
 		letters = [ch for ch in label if ch.isalpha()]
 		if not letters:
-			return False  # no letters at all; let other filters handle it
-
+			return False  # No letters; let downstream filters handle it
 		upper_count = sum(1 for ch in letters if ch.isupper())
-		uppercase_ratio   = upper_count / len(letters)
+		uppercase_ratio = upper_count / len(letters)
 
-		# ── Rule 1 & 2: single-word all-caps → acronym check ──
+		# 4. SINGLE-WORD ALL-CAPS CHECK
 		if len(words) == 1 and uppercase_ratio == 1.0 and len(label) <= min_meaningful_word_length:
-			if label.lower() in PROTECTED_PLURALS:
+				if label.lower() in PROTECTED_PLURALS:
+						if verbose:
+								print(f"\t[CASE PRESERVED] {repr(label):<55} protected plural")
+						return False
 				if verbose:
-					print(f"\t[CASE PRESERVED] {repr(label):<55} protected plural")
-				return False	
+						print(f"\t[SKIPPED CASE] {repr(label):<55} unlisted acronym (len={len(label)} <= {min_meaningful_word_length})")
+				return True
 
-			if label in ALLOWED_ACRONYMS_NORMALIZED:
-				if verbose:
-					print(f"\t[CASE PRESERVED] {repr(label):<55} allowed acronym")
-				return False
-
-			if verbose:
-				print(f"\t[SKIPPED CASE] {repr(label):<55} unlisted acronym (ratio=1.0 uppercase & len() <= {min_meaningful_word_length})")
-			return True
-
-		# ── Rule 3: multi-word (or single-word partial caps) above threshold ──
+		# 5. MULTI-WORD / PARTIAL HIGH UPPERCASE RATIO
 		if uppercase_ratio > uppercase_bound_thresh and len(label) <= min_meaningful_word_length:
 			if verbose:
-				print(f"\t[SKIPPED CASE] {repr(label):<55} ratio={uppercase_ratio:.3f} uppercase > {uppercase_bound_thresh} & len() <= {min_meaningful_word_length}")
+				print(f"\t[SKIPPED CASE] {repr(label):<55} ratio={uppercase_ratio:.3f} > {uppercase_bound_thresh} & len <= {min_meaningful_word_length}")
 			return True
 
-		# ── Rule 4: below threshold or long enough → keep ──
+		# 6. PASSED
 		if verbose:
 			if len(label) > min_meaningful_word_length:
 				print(f"\t[CASE PASSED] {repr(label):<55} len={len(label)} > {min_meaningful_word_length}")
 			else:
 				print(f"\t[CASE PASSED] {repr(label):<55} ratio={uppercase_ratio:.3f} <= {uppercase_bound_thresh}")
-
 		return False
 
 	def _extract_geopolitical_entities(
@@ -636,7 +639,7 @@ def _post_process_(
 				"reason": "spaCy not loaded"
 			}
 
-			_spacy_cache[cache_key] = empty
+			_SPACY_CACHE[cache_key] = empty
 
 			return empty
 
@@ -959,7 +962,8 @@ def _post_process_(
 		"""
 		tokens = original_phrase.lower().split()
 		if len(tokens) < 2:
-				return False
+			return False
+
 		return tokens[0].endswith("ly")
 
 	def is_activity_gerund(original_phrase: str) -> bool:
