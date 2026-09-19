@@ -124,7 +124,6 @@ def _load_llm_(
 			raise ValueError(f"Unknown quantization config type: {type(q_cfg)}")
 
 	if verbose:
-		print(f"[INFO] {model_id} Config")
 		print(pprint.pprint(config.to_dict()))
 	
 	# ========== Determine model class ==========
