@@ -218,13 +218,15 @@ def _post_process_(
 	}
 
 	MILITARY_PROTECTED_PHRASES = {
-		"panzerzug", "panzerfaust", "grossdeutschland", "großdeutschland", "feldwerft", "schwalbe",
+		"panzerzug", "panzerfaust", "grossdeutschland", "großdeutschland", "feldwerft", "schwalbe", "stables",
 	}
 
 	PROTECTED_PLURALS = {
 		"united nations",
 		"united states",
 		"airlines",
+		"marines",
+		"stables",
 		"air lines",
 		"life savers",
 		"pyrotechnics",
@@ -296,11 +298,6 @@ def _post_process_(
 		"series",
 		"model", 
 		"nickname",
-	}
-
-	ALWAYS_REMOVE = {
-		"unknown", 
-		"unidentified"
 	}
 
 	NUMBER_WORDS = {
@@ -416,7 +413,15 @@ def _post_process_(
 		'AMTRACS',
 		'WWII',
 		'WWI',
+		'YMCA',
+		'POW',
+		'MEDEVAC',
+		'CASEVAC',
 	}
+
+		# Legitimate standalone single letters / prefixes in English and historical military text
+	
+	ALLOWED_SINGLE_LETTERS = {"a", "i", "u", "b", "p", "c", "d", "v", "x", "k", "w", "n"}
 
 	def build_normalized_acronym_set(allowed_acronyms: set) -> set:
 		"""Precompute ONCE when the module loads."""
@@ -449,14 +454,19 @@ def _post_process_(
 				False → keep this label
 		"""
 
-		# Legitimate standalone single letters / prefixes in English and historical military text
-		ALLOWED_SINGLE_LETTERS = {"a", "i", "u", "b", "p", "c", "d", "v", "x", "k"}
-		words_to_check = [s for s in label.split() if s.lower() not in ALLOWED_SINGLE_LETTERS]
+		# Only flag single alphabetic letters (ignores symbols like & or +)
+		words = label.split()
+		words_to_check = [
+			s 
+			for s in words 
+			if s.isalpha() and s.lower() not in ALLOWED_SINGLE_LETTERS
+		]
+
 		# If there's STILL an unknown 1-letter fragment left, it's OCR garbage
 		if words_to_check and min(len(s) for s in words_to_check) == 1:
 			if verbose:
 				stray_chars = [s for s in words_to_check if len(s) == 1]
-				print(f"\t[CASE SKIPPED] {repr(label):<55} stray 1-letter fragment(s): {stray_chars}")
+				print(f"\t[SKIPPED CASE] {repr(label):<55} stray 1-letter fragment(s): {stray_chars}")
 			return True
 
 		# Only consider alphabetic characters for the ratio
@@ -466,23 +476,27 @@ def _post_process_(
 
 		upper_count = sum(1 for ch in letters if ch.isupper())
 		uppercase_ratio   = upper_count / len(letters)
-		words = label.split()
 
 		# ── Rule 1 & 2: single-word all-caps → acronym check ──
 		if len(words) == 1 and uppercase_ratio == 1.0 and len(label) <= min_meaningful_word_length:
+			if label.lower() in PROTECTED_PLURALS:
+				if verbose:
+					print(f"\t[CASE PRESERVED] {repr(label):<55} protected plural")
+				return False	
+
 			if label in ALLOWED_ACRONYMS_NORMALIZED:
 				if verbose:
 					print(f"\t[CASE PRESERVED] {repr(label):<55} allowed acronym")
 				return False
 
 			if verbose:
-				print(f"\t[CASE SKIPPED] {repr(label):<55} unlisted acronym (ratio=1.0 uppercase & len() <= {min_meaningful_word_length})")
+				print(f"\t[SKIPPED CASE] {repr(label):<55} unlisted acronym (ratio=1.0 uppercase & len() <= {min_meaningful_word_length})")
 			return True
 
 		# ── Rule 3: multi-word (or single-word partial caps) above threshold ──
 		if uppercase_ratio > uppercase_bound_thresh and len(label) <= min_meaningful_word_length:
 			if verbose:
-				print(f"\t[CASE SKIPPED] {repr(label):<55} ratio={uppercase_ratio:.3f} uppercase > {uppercase_bound_thresh} & len() <= {min_meaningful_word_length}")
+				print(f"\t[SKIPPED CASE] {repr(label):<55} ratio={uppercase_ratio:.3f} uppercase > {uppercase_bound_thresh} & len() <= {min_meaningful_word_length}")
 			return True
 
 		# ── Rule 4: below threshold or long enough → keep ──
@@ -882,37 +896,49 @@ def _post_process_(
 		Normalize LLM/VLM-generated label formatting to a canonical form.
 		
 		Handles:
-			- underscores  → spaces:  'shell_hole'    → 'shell hole'
-			- hyphens      → spaces:  'shell-hole'    → 'shell hole'
-			- camelCase    → spaces:  'storageTank'   → 'storage Tank'
-			- PascalCase   → spaces:  'StorageTank'   → 'Storage Tank'
-			- dots         → spaces:  'shell.hole'    → 'shell hole'
-			- multiple spaces → single space
-			- strip leading/trailing whitespace
+			- Trailing caption punctuation (commas, sentence-ending periods, colons)
+			- Common compound nouns ('take-off' -> 'takeoff')
+			- Preserves plural acronyms ('DUKWs' stays 'DUKWs', not 'DUK Ws')
+			- Splits true camelCase ('storageTank' -> 'storage Tank')
+			- Splits true PascalCase ('AntiAircraft' -> 'Anti Aircraft')
+			- Preserves German capitalization ('FlaK' stays 'FlaK', not 'Fla K')
+			- Preserves abbreviation dots ('U.S.A.', 'R.O.T.C.') while stripping ellipses ('...')
+			- Collapses whitespace
 		"""
 		s = raw.strip()
-		
-		# 1. Replace common separators with spaces
+
+		# 1. Normalize common aviation/military compound nouns before splitting hyphens
+		# Prevents them from turning into phrasal verbs ('take-off' -> 'take off' -> dropped)
+		s = re.sub(r'\btake[- ]off\b', 'takeoff', s, flags=re.IGNORECASE)
+		s = re.sub(r'\btouch[- ]down\b', 'touchdown', s, flags=re.IGNORECASE)
+
+		# 2. Replace separators with spaces
 		s = s.replace('_', ' ')
 		s = s.replace('-', ' ')
-		s = s.replace('@', ' ') # National Archives @ College Park
-				
-		# Only replace dots that are NOT part of abbreviations
-		# example: 
-		# text = "a.o.n. ready to go. version 2.0. U.S.A. is large. wait... done."
-		# clean_text = "a.o.n. ready to go  version 2.0  U.S.A. is large  wait   done"
-		s = re.sub(r'(?<![A-Za-z])\.(?![A-Za-z])', ' ', s)
+		s = s.replace('&', ' and ')
+		s = s.replace('@', ' ')  # National Archives @ College Park
+		s = s.replace('/', ' ')
 
-		# 2. Split camelCase / PascalCase boundaries
-		#    'storageTank'  → 'storage Tank'
-		#    'AntiAircraft' → 'Anti Aircraft'
-		s = re.sub(r'([a-z])([A-Z])', r'\1 \2', s)
-		# Handle consecutive uppercase followed by lowercase: 'USAFBase' → 'USAF Base'
-		s = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', s)
-		
-		# 3. Collapse whitespace
+		# 3. Collapse ellipses or repeated dots (wait... done -> wait done)
+		s = re.sub(r'\.{2,}', ' ', s)
+
+		# 4. Remove sentence-ending / trailing punctuation from caption prose (e.g., "parade.", "soldiers,")
+		# But PRESERVE multi-dot acronyms like "U.S.A." or "R.O.T.C."
+		# If it ends with a dot but doesn't look like an acronym (has <= 1 dot), strip trailing dot
+		if s.endswith('.') and s.count('.') == 1:
+				s = s[:-1]
+		s = s.strip(" ,;:!?\"'()[]{}")
+
+		# 5. Split True camelCase: lowercase followed by Titlecase (storageTank -> storage Tank)
+		# Requires [A-Z] to be followed by at least one lowercase letter to avoid breaking 'FlaK'
+		s = re.sub(r'([a-z])([A-Z][a-z])', r'\1 \2', s)
+		# 6. Split True PascalCase acronym boundaries (USAFBase -> USAF Base)
+		# Requires the lowercase word to have length >= 2 to avoid breaking plural acronyms like 'DUKWs' or 'LCTs'
+		s = re.sub(r'([A-Z]{2,})([A-Z][a-z]{2,})', r'\1 \2', s)
+
+		# 7. Collapse whitespace
 		s = re.sub(r'\s+', ' ', s).strip()
-		
+
 		return s
 
 	def is_quantified_plural(original_phrase: str) -> bool:
@@ -993,11 +1019,7 @@ def _post_process_(
 	def should_filter_label(lemma: str) -> bool:
 		"""Context-aware filtering."""
 		words = lemma.lower().split()
-		
-		# Rule 1: Always remove uninformative terms
-		if any(term in words for term in ALWAYS_REMOVE):
-			return True
-		
+				
 		# Rule 2: Single-word generic terms
 		if len(words) == 1:
 			word = words[0]
@@ -1124,18 +1146,6 @@ def _post_process_(
 
 	def exclude_digits(keywords: list) -> list:
 		return [keyword for keyword in keywords if not any(char.isdigit() for char in keyword)]
-
-	def is_proper_title(text: str) -> bool:
-			"""Checks if text looks like a proper title/entity, allowing lowercase connectors."""
-			LOWERCASE_CONNECTORS = {"of", "and", "the", "in", "on", "at", "for", "to", "de", "von", "van"}
-			words = text.split()
-			if len(words) < 2:
-					return False
-			# First and last words must be capitalized
-			if not (words[0][0].isupper() and words[-1][0].isupper()):
-					return False
-			# All intermediate words must be capitalized OR be a valid connector
-			return all(w[0].isupper() or w.lower() in LOWERCASE_CONNECTORS for w in words)
 
 	processed_batch = list()
 	for idx, labels in enumerate(labels_list):
@@ -1271,10 +1281,6 @@ def _post_process_(
 				lemma = s  # Preserve "flag raising", "ship launching", "troop landing"
 				if verbose:
 					print(f"\t[PRESERVED] {repr(lemma):<55} Event gerund phrase")
-			# elif is_proper_title(original_cleaned):
-			# 	lemma = s  # Preserve proper titles like "International Federation of Agricultural Producers"
-			# 	if verbose:
-			# 		print(f"\t[PRESERVED] {repr(lemma):<55} Proper title")
 			else:
 				lemma = lemmatize_phrase(s, original_cleaned)
 				if verbose:

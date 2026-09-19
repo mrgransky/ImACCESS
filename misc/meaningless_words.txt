@@ -30,7 +30,6 @@ above
 Aracmo
 under
 near
-address
 surrounded
 surrounded by
 unknown
@@ -597,7 +596,6 @@ needn't
 neednt
 needs
 neither
-net
 netscape
 never
 neverf
@@ -1096,7 +1094,6 @@ rare
 left
 right
 te hachapi
-structure
 object
 scene
 location
