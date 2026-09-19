@@ -9,7 +9,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "Wellington OJ-J 26 April 1940 Alborg force landed. Wellington OJ-J of Squadron RAF 26 April 1940 Alborg." -llm "Qwen/Qwen3.5-397B-A17B-FP8" -v
+# python gt_kws_llm.py -desc "Wellington OJ-J 26 April 1940 Alborg force landed. Wellington OJ-J of Squadron RAF 26 April 1940 Alborg." -llm "Qwen/Qwen3.5-122B-A10B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -114,14 +114,14 @@ def _load_llm_(
 	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True)
 	# --- FP8 Fix ---
 	if hasattr(config, "quantization_config"):
-			q_cfg = config.quantization_config
-			if isinstance(q_cfg, dict):
-					if q_cfg.get("layer_overrides") is None:
-							q_cfg["layer_overrides"] = {}
-			elif hasattr(q_cfg, "layer_overrides") and q_cfg.layer_overrides is None:
-					q_cfg.layer_overrides = {}
-	# ---------------
-
+		q_cfg = config.quantization_config
+		if isinstance(q_cfg, dict):
+			if q_cfg.get("layer_overrides") is None:
+				q_cfg["layer_overrides"] = {}
+		elif hasattr(q_cfg, "layer_overrides") and q_cfg.layer_overrides is None:
+			q_cfg.layer_overrides = {}
+		else:
+			raise ValueError(f"Unknown quantization config type: {type(q_cfg)}")
 
 	if verbose:
 		print(f"[INFO] {model_id} Config summary")
