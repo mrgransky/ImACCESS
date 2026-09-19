@@ -112,7 +112,7 @@ def _load_llm_(
 	
 	# ========== Load config ==========
 	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True)
-	# --- FP8 Fix ---
+	# FP8 support
 	if hasattr(config, "quantization_config"):
 		q_cfg = config.quantization_config
 		if isinstance(q_cfg, dict):
@@ -124,10 +124,8 @@ def _load_llm_(
 			raise ValueError(f"Unknown quantization config type: {type(q_cfg)}")
 
 	if verbose:
-		print(f"[INFO] {model_id} Config summary")
-		print(f"   • model_type        : {config.model_type}")
-		print(f"   • architectures     : {config.architectures}")
-		print(f"   • dtype (if set)    : {config.dtype}")
+		print(f"[INFO] {model_id} Config")
+		print(pprint.pprint(config.to_dict()))
 	
 	# ========== Determine model class ==========
 	model_cls = None
