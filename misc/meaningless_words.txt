@@ -1000,6 +1000,7 @@ ne view
 se view
 sw view
 nw view
+view
 looking e
 looking s
 looking w
@@ -1137,3 +1138,5 @@ lcts
 lsis
 lsts
 lvts
+front
+frontal

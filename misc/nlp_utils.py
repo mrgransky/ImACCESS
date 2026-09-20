@@ -243,10 +243,11 @@ def _post_process_(
 	PROTECTED_PLURALS = {
 		"united nations",
 		"united states",
+		"howards",
 		"airlines",
 		"marines",
 		"stables",
-		"air lines",
+		"lines",
 		"life savers",
 		"pyrotechnics",
 		"general motors",
@@ -469,8 +470,28 @@ def _post_process_(
 	}
 
 	IRRELEVANT_NAMES={
+		'allison', 'ally',
 		"abdullah",
-		'prince faisal',
+		'angus',
+		'earl',
+		'faisal',
+		'andrew',
+		'philip', 'phillip'
+		'william',
+		'robert',
+		'jill', 'jillian', 'jillianne',
+		'edwin',
+		'felix',
+		'frank',
+		'george',
+		'holger',
+		'henry',
+		'james',
+		'john',
+		'braden', 'frank', 'jake', 'jonah',
+		'natanya', 'nathans', 'nevin', 'thio', 'thompson', 'tiffany', 'tiffany',
+		'riker',
+		'harvey',
 	}
 
 	ALLOWED_ACRONYMS = _normalize_(ALLOWED_ACRONYMS)
