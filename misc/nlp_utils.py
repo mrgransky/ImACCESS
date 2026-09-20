@@ -457,8 +457,8 @@ def _post_process_(
 	}
 
 	IRRELEVANT_NAMES={
-		"Abdullah",
-		'Prince Faisal',
+		"abdullah",
+		'prince faisal',
 	}
 
 	ALLOWED_ACRONYMS = _normalize_(ALLOWED_ACRONYMS)
@@ -1106,7 +1106,10 @@ def _post_process_(
 			first_word = words[0]
 			second_word = words[1]
 			
-			is_number = first_word.isdigit() or first_word in NUMBER_WORDS
+			is_number = (
+				first_word.isdigit() 
+				or first_word in NUMBER_WORDS
+			)
 			is_generic_person = (
 				second_word in GENERIC_PEOPLE_WORDS or 
 				second_word in GENERIC_FAMILY_WORDS
@@ -1117,8 +1120,10 @@ def _post_process_(
 		
 		# Rule 4: Multi-word compounds - keep if has specific words
 		all_generic = (
-			GENERIC_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | 
-			GENERIC_TECH_WORDS | GENERIC_META_WORDS
+			GENERIC_PEOPLE_WORDS 
+			| GENERIC_FAMILY_WORDS 
+			| GENERIC_TECH_WORDS 
+			| GENERIC_META_WORDS 
 		)
 		
 		generic_count = sum(1 for w in words if w in all_generic)
@@ -1399,10 +1404,10 @@ def _post_process_(
 					print(f"\t[SKIPPED] {repr(lemma):<55} honorific")
 				continue
 
-			if any(w in IRRELEVANT_NAMES for w in lemma.lower().split()):
-				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} irrelevant name")
-				continue
+			# if any(w in IRRELEVANT_NAMES for w in lemma.lower().split()):
+			# 	if verbose:
+			# 		print(f"\t[SKIPPED] {repr(lemma):<55} irrelevant name")
+			# 	continue
 
 			# Exclude "black and white" specifically
 			if lemma.lower() in IMAGE_DESCRIPTORS:
