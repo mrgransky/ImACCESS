@@ -436,9 +436,11 @@ def _post_process_(
 		"miss",
 		"dr", "dr.", "d.r.",
 		"prof", "prof.", "proffs", "proffs.", "professor",
-		# "sir",
-		# "shah",
-		# "sultan",
+		"sir",
+		"shah",
+		"sultan",
+		"emir",
+		'czar',
 		# "prince",
 		# "princess",
 		# "prins",
@@ -448,12 +450,15 @@ def _post_process_(
 		"madam",
 		"mme.", 
 		"madame",
-		'agha', 
+		'agha',
 		'sheikh',
+		'maharaja', 'maharani', 
+		'mughal',
 	}
 
 	IRRELEVANT_NAMES={
 		"Abdullah",
+		'Prince Faisal',
 	}
 
 	ALLOWED_ACRONYMS = _normalize_(ALLOWED_ACRONYMS)
@@ -1389,10 +1394,14 @@ def _post_process_(
 					print(f"\t[SKIPPED] {repr(lemma):<55} Color descriptor")
 				continue
 
-			# exclude honorifics
 			if any(w in HONORIFICS for w in lemma.lower().split()):
 				if verbose:
 					print(f"\t[SKIPPED] {repr(lemma):<55} honorific")
+				continue
+
+			if any(w in IRRELEVANT_NAMES for w in lemma.lower().split()):
+				if verbose:
+					print(f"\t[SKIPPED] {repr(lemma):<55} irrelevant name")
 				continue
 
 			# Exclude "black and white" specifically
