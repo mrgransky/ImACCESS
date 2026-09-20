@@ -603,7 +603,7 @@ def _post_process_(
 		# 5. MULTI-WORD / PARTIAL HIGH UPPERCASE RATIO
 		if uppercase_ratio > uppercase_bound_thresh and len(label) <= min_meaningful_word_length:
 			if verbose:
-				print(f"\t[SKIPPED CASE] {repr(label):<55} ratio={uppercase_ratio:.3f} > {uppercase_bound_thresh} & len <= {min_meaningful_word_length}")
+				print(f"\t[SKIPPED CASE] {repr(label):<55} ratio={uppercase_ratio:.3f} > {uppercase_bound_thresh} and len() {len(label) }<= {min_meaningful_word_length}")
 			return True
 
 		# 6. PASSED
@@ -1026,7 +1026,7 @@ def _post_process_(
 		# 2. Replace separators with spaces
 		s = s.replace('_', ' ')
 		s = s.replace('-', ' ')
-		s = s.replace('&', ' and ')
+		s = s.replace(' & ', ' and ')
 		s = s.replace('@', ' ')  # National Archives @ College Park
 		s = s.replace('/', ' ')
 
