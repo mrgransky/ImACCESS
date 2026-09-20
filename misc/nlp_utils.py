@@ -238,6 +238,7 @@ def _post_process_(
 		"redwing",
 		"seaplane",
 		"flakstop",
+		"sea sled",
 	}
 
 	PROTECTED_PLURALS = {
@@ -343,7 +344,7 @@ def _post_process_(
 		"black and white", 
 		"black & white", 
 		"B/W", 
-		"B&W", ''
+		"B&W",
 		'B and W'
 	}
 
@@ -378,7 +379,7 @@ def _post_process_(
 
 	ALLOWED_ACRONYMS = {
 		"NASA", "NATO", "ANZUS", "SEATO",
-		"USAAF", "USAF", "USAAC", "USMC",
+		"USAAF","SAAF", "AAF", "USAF", "USAAC", "USMC",
 		"RAF", 'RAAF', 'SAAF', "IDF", 'RCAF', 'USSR', 'FASF',
 		"USN", "NAS",
 		"USCG", "USO", "USMA",'USCGC',
@@ -387,7 +388,7 @@ def _post_process_(
 		"WAC",
 		"ANZAC",
 		"RCAF",
-		"RNZAF", "SAAF", "CARE",
+		"RNZAF", "CARE",
 		"HOLC",
 		"NAACP",
 		"NCO",
@@ -415,6 +416,7 @@ def _post_process_(
 		'MEDEVAC',
 		'CASEVAC',
 		'DSC',
+		'AEF',
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
@@ -428,13 +430,14 @@ def _post_process_(
 		"k",
 		"m", # 'Marder III Ausf. M'
 		"n", 
-		"u", 
 		"p", 
 		"v", 
 		"x", 
 		"w", 
+		"s",
 		"t", 
-		"o"
+		"u", 
+		"o",
 	}
 
 	FULL_ENGLISH_ALPHABET = set(string.ascii_lowercase) # 26 English alphabet letters
