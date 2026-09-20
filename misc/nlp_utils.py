@@ -415,6 +415,7 @@ def _post_process_(
 		'MEDEVAC',
 		'CASEVAC',
 		'DSC',
+		'AAA',
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
