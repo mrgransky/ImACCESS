@@ -248,6 +248,7 @@ def _post_process_(
 		"marines",
 		"stables",
 		"lines",
+		"pews",
 		"life savers",
 		"pyrotechnics",
 		"general motors",
@@ -477,7 +478,7 @@ def _post_process_(
 		'faisal',
 		'andrew',
 		'philip', 
-		'phillip'
+		'phillip',
 		'william',
 		'robert',
 		'jill', 'jillian', 'jillianne',
