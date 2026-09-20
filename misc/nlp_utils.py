@@ -248,7 +248,6 @@ def _post_process_(
 		"marines",
 		"stables",
 		"lines",
-		"pews",
 		"life savers",
 		"pyrotechnics",
 		"general motors",
@@ -416,7 +415,6 @@ def _post_process_(
 		'MEDEVAC',
 		'CASEVAC',
 		'DSC',
-		'POW',
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
