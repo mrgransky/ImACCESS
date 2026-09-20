@@ -496,7 +496,6 @@ def _post_process_(
 		r'\bdrop[- ]zone\b': 'dropzone',
 	}
 
-
 	def should_skip_by_case(
 		label: str,
 		uppercase_bound_thresh: float = 0.75,
@@ -1091,7 +1090,11 @@ def _post_process_(
 	def should_filter_label(lemma: str) -> bool:
 		"""Context-aware filtering."""
 		words = lemma.lower().split()
-				
+
+		if any(w in IRRELEVANT_NAMES for w in words):
+			return True
+
+
 		# Rule 2: Single-word generic terms
 		if len(words) == 1:
 			word = words[0]
@@ -1404,11 +1407,6 @@ def _post_process_(
 					print(f"\t[SKIPPED] {repr(lemma):<55} honorific")
 				continue
 
-			# if any(w in IRRELEVANT_NAMES for w in lemma.lower().split()):
-			# 	if verbose:
-			# 		print(f"\t[SKIPPED] {repr(lemma):<55} irrelevant name")
-			# 	continue
-
 			# Exclude "black and white" specifically
 			if lemma.lower() in IMAGE_DESCRIPTORS:
 				if verbose:
@@ -1422,7 +1420,7 @@ def _post_process_(
 
 			if should_filter_label(lemma):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} irrelevant!")
+					print(f"\t[SKIPPED] {repr(lemma):<55} filtered out!")
 				continue
 
 			# only No. NNNNN ex) No. X1657 or No. 1657
