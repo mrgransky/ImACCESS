@@ -225,7 +225,17 @@ def _post_process_(
 	}
 
 	MILITARY_PROTECTED_PHRASES = {
-		"panzerzug", "panzerfaust", "grossdeutschland", "großdeutschland", "feldwerft", "schwalbe", "stables",
+		"panzerzug", 
+		"panzerfaust", 
+		"grossdeutschland", 
+		"großdeutschland", 
+		"feldwerft", 
+		"schwalbe", 
+		"stables",
+		"medical",
+		"steamer",
+		"runway",
+		"redwing",
 	}
 
 	PROTECTED_PLURALS = {
@@ -354,14 +364,14 @@ def _post_process_(
 	)
 
 	FULL_SPAN_FALSE_POSITIVES = {
-			"luncheon",
-			"victory garden",
-			"mine crater",
-			"first aid",
-			"first aid rest room",
-			"wild west",
-			"wild west show",
-			# add more as they appear in your data
+		"luncheon",
+		"victory garden",
+		"mine crater",
+		"first aid",
+		"first aid rest room",
+		"wild west",
+		"wild west show",
+		# add more as they appear in your data
 	}
 
 	ALLOWED_ACRONYMS = {
@@ -494,12 +504,17 @@ def _post_process_(
 		r'\bfly[- ]over\b': 'flyover',
 		r'\bair[- ]strip\b': 'airstrip',
 		r'\bdrop[- ]zone\b': 'dropzone',
+
+		# Aviation compounds
+		r'\btaxi[- ]ing\b': 'taxiing',
+		r'\btaxi[- ]way\b': 'taxiway',
+		r'\bski[- ]ing\b': 'skiing',
 	}
 
 	def should_skip_by_case(
 		label: str,
 		uppercase_bound_thresh: float = 0.75,
-		min_meaningful_word_length: int = 7,
+		min_meaningful_word_length: int = 8,
 		verbose: bool = False,
 	) -> bool:
 		"""
@@ -1093,7 +1108,6 @@ def _post_process_(
 
 		if any(w in IRRELEVANT_NAMES for w in words):
 			return True
-
 
 		# Rule 2: Single-word generic terms
 		if len(words) == 1:

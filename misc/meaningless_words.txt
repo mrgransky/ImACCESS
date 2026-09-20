@@ -1132,3 +1132,8 @@ september
 october
 november
 december
+lcm
+lcts
+lsis
+lsts
+lvts
