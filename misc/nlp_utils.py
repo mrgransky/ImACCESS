@@ -236,6 +236,8 @@ def _post_process_(
 		"steamer",
 		"runway",
 		"redwing",
+		"seaplane",
+		"flakstop",
 	}
 
 	PROTECTED_PLURALS = {
@@ -410,10 +412,10 @@ def _post_process_(
 		'WWII',
 		'WWI',
 		'YMCA',
-		'POW',
 		'MEDEVAC',
 		'CASEVAC',
 		'DSC',
+		'POW',
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
@@ -535,6 +537,11 @@ def _post_process_(
 				True  → skip / drop this label
 				False → keep this label
 		"""
+
+		if label.lower() in MILITARY_PROTECTED_PHRASES:
+			if verbose:
+				print(f"\t[CASE PRESERVED] {repr(label):<55} protected military phrase")
+			return False
 
 		# 1. FAST PATH: Normalized Acronym Allowlist 
 		# Matches 'D.S.C.', 'D.S.C', 'DSC', 'PO W', 'U.S.A.F.' in O(1) time
@@ -1183,6 +1190,13 @@ def _post_process_(
 		for i, (token, pos) in enumerate(pos_tags):
 			original_token = original_tokens[i] if i < len(original_tokens) else token
 			is_abbr = original_token.isupper() or '.' in original_token
+
+			# ── 1. Plural Acronyms: Strip 's' and keep base acronym in uppercase ──
+			# 'PBYs' -> 'PBY', 'POWs' -> 'POW', 'LCTs' -> 'LCT', 'DUKWs' -> 'DUKW'
+			if re.match(r'^[A-Z]{2,}s$', original_token):
+				lemmatized_tokens.append(original_token[:-1])
+				continue
+
 			# only trust NNP if the word has no common-noun sense in WordNet ──
 			# nltk's tagger biases toward NNP for any capitalized/isolated token,
 			# so re-check against WordNet before trusting that tag.
