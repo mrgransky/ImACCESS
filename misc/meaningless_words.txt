@@ -78,7 +78,6 @@ auf
 hinter
 neben
 vor
-die
 has
 had
 who
@@ -159,7 +158,6 @@ too
 very
 s
 t
-can
 will
 jap
 cal
@@ -728,12 +726,10 @@ should've
 shouldn
 shouldn't
 shouldnt
-show
 showed
 showing
 shown
 showns
-shows
 side
 sides
 significant

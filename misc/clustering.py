@@ -1585,7 +1585,9 @@ def analyze_cluster_quality(
 	)
 
 	if verbose:
-		print(f"\n{summary}\n")
+		print("-"*100)
+		print(f"{summary}")
+		print("-"*100)
 
 	return {
 		'global_summary':         global_summary,
