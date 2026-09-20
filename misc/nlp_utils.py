@@ -492,7 +492,7 @@ def _post_process_(
 		'tiffany', 'tiffany',
 		'riker',
 		'harvey',
-		'george',
+		'savannah',
 	}
 
 	ALLOWED_ACRONYMS = _normalize_(ALLOWED_ACRONYMS)
