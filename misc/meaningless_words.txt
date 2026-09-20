@@ -266,17 +266,13 @@ besides
 best
 better
 beyond
-big
-bill
 billion
 biol
-bo
 bottom
 brief
 briefly
 broadside
 buy
-bv
 c'mon
 c's
 call
@@ -292,12 +288,10 @@ certainly
 clear
 clearly
 cmon
-co
-co.
+collection
 com
 come
 comes
-computer
 con
 consequently
 copy
@@ -307,7 +301,6 @@ could've
 couldn
 couldn't
 couldnt
-course
 cry
 currently
 dare
@@ -407,7 +400,6 @@ furthering
 furthermore
 furthers
 gave
-general
 generally
 get
 gets
@@ -420,7 +412,6 @@ goes
 going
 gone
 good
-goods
 got
 gotten
 gov
@@ -516,7 +507,6 @@ kansa
 keep
 keeps
 kept
-keys
 kind
 knew
 know
@@ -574,7 +564,6 @@ miss
 moreover
 mostly
 move
-mrs
 msie
 much
 must
@@ -625,8 +614,6 @@ general
 now
 nowhere
 null
-number
-numbers
 volume
 volumes
 obtain
@@ -672,8 +659,6 @@ places
 please
 plus
 pmid
-pointed
-pointing
 poorly
 possible
 possibly
@@ -759,7 +744,6 @@ similar
 similarly
 since
 sincere
-site
 six
 sixty
 slightly
@@ -784,7 +768,6 @@ specifying
 state
 states
 still
-stop
 strongly
 sub
 substantially
@@ -849,7 +832,6 @@ thoughh
 thought
 thoughts
 thousand
-three
 throug
 throughout
 thru
@@ -905,8 +887,6 @@ wants
 wasn
 wasn't
 wasnt
-way
-ways
 we'd
 we'll
 we're
@@ -990,7 +970,6 @@ yours
 yourselves
 youve
 zero
-collection
 miscellaneous items
 miscellaneous
 misc
@@ -1000,7 +979,6 @@ housten
 background
 foreground
 image
-album
 published
 awers
 avers
@@ -1016,7 +994,6 @@ nnw
 nne
 sse
 ssw
-up
 down
 downstream
 right
@@ -1029,7 +1006,6 @@ ne view
 se view
 sw view
 nw view
-looking
 looking e
 looking s
 looking w
@@ -1083,18 +1059,12 @@ beverly hill
 clevland
 boyleston
 photog
-enter
-entering
-exit
-exiting
 chev
 rare
 left
 right
 te hachapi
 object
-scene
-location
 area
 hour
 minute
@@ -1119,15 +1089,11 @@ leftbound
 worst
 fig
 rot
-chart
-graph
-diagram
 plot
 plotting
 figure
 figurine
 curve
-shape
 graf
 schedule
 setting
@@ -1136,12 +1102,9 @@ space
 furiou
 action
 imagery
-drawing
-sketch
 graphic
 pre
 overview
-review
 viewpoint
 perspective
 portion
@@ -1149,9 +1112,7 @@ print
 reprint
 reproduction
 open
-close
 direction
-orientation
 upward
 downward
 bookmark

@@ -210,7 +210,13 @@ def _post_process_(
 			print("\tEmpty input, returning as-is")
 		return labels_list
 
-	_spacy_cache: Dict[str, Set[str]] = {}
+	def _normalize_(allowed_acronyms: set) -> set:
+		"""Precompute ONCE when the module loads."""
+		return {
+			re.sub(r"[^A-Za-z0-9]", "", acr).upper()
+			for acr in allowed_acronyms
+			if acr
+		}
 
 	# CONTEXT-AWARE FILTERING
 	PROTECTED_ABBREVIATIONS = {
@@ -329,27 +335,6 @@ def _post_process_(
 		'B and W'
 	}
 
-	HONORIFICS = {
-		"mr", "mr.",
-		"mrs", "mrs.",
-		"ms",
-		"miss",
-		"dr", "dr.", "d.r.",
-		"prof", "prof.", "proffs", "proffs.", "professor",
-		# "sir",
-		# "shah",
-		# "sultan",
-		# "prince",
-		# "princess",
-		# "prins",
-		# "king",
-		# "queen",
-		"lord",
-		"madam",
-		"mme.", 
-		"madame",
-	}
-
 	WW_THEATRE_PHRASES = re.compile(
 		# Matches "[Adjective/Direction] Front" or "[Adjective/Direction] Theater"
 		r'^(?:eastern|western|northern|southern|pacific|european|african|'
@@ -421,18 +406,86 @@ def _post_process_(
 		'DSC',
 	}
 	
-	ALLOWED_SINGLE_LETTERS = {"a", "b", "c", "d", "e", "i", "j", "k", "n", "u", "p", "v", "x", "w", "t", "o"}
+	ALLOWED_SINGLE_LETTERS = {
+		"a", 
+		"b", 
+		"c", 
+		"d", 
+		"e", 
+		"i", 
+		"j", 
+		"k",
+		"m", # 'Marder III Ausf. M'
+		"n", 
+		"u", 
+		"p", 
+		"v", 
+		"x", 
+		"w", 
+		"t", 
+		"o"
+	}
+
+	HONORIFICS = {
+		"mr", "mr.",
+		"mrs", "mrs.",
+		"ms",
+		"miss",
+		"dr", "dr.", "d.r.",
+		"prof", "prof.", "proffs", "proffs.", "professor",
+		# "sir",
+		# "shah",
+		# "sultan",
+		# "prince",
+		# "princess",
+		# "prins",
+		# "king",
+		# "queen",
+		"lord",
+		"madam",
+		"mme.", 
+		"madame",
+	}
+
+
 	FULL_ENGLISH_ALPHABET = set(string.ascii_lowercase) # 26 English alphabet letters
 	# ALLOWED_SINGLE_LETTERS = FULL_ENGLISH_ALPHABET
 
-	def build_normalized_acronym_set(allowed_acronyms: set) -> set:
-		"""Precompute ONCE when the module loads."""
-		return {
-			re.sub(r"[^A-Za-z0-9]", "", acr).upper()
-			for acr in allowed_acronyms
-			if acr
-		}
-	ALLOWED_ACRONYMS_NORMALIZED = build_normalized_acronym_set(ALLOWED_ACRONYMS)
+	ALLOWED_ACRONYMS = _normalize_(ALLOWED_ACRONYMS)
+
+	# Common archival/military/aviation compound nouns that VLMs frequently hyphenate or space out
+	CANONICAL_COMPOUNDS = {
+		# -off compounds
+		r'\btake[- ]off\b': 'takeoff',
+		r'\blift[- ]off\b': 'liftoff',
+		r'\bblast[- ]off\b': 'blastoff',
+		r'\bdrop[- ]off\b': 'dropoff',
+		r'\bstand[- ]off\b': 'standoff',
+		
+		# -down compounds
+		r'\btouch[- ]down\b': 'touchdown',
+		r'\bcount[- ]down\b': 'countdown',
+		r'\bshut[- ]down\b': 'shutdown',
+		
+		# -out compounds (critical wartime / military concepts)
+		r'\bblack[- ]out\b': 'blackout',    # Wartime light blackouts
+		r'\bfall[- ]out\b': 'fallout',      # Nuclear / radiation fallout
+		r'\bdug[- ]out\b': 'dugout',        # Trenches / military dugouts
+		r'\blook[- ]out\b': 'lookout',
+		r'\bhide[- ]out\b': 'hideout',
+		
+		# -up compounds
+		r'\bmock[- ]up\b': 'mockup',        # Aircraft / weapon prototypes
+		r'\bclose[- ]up\b': 'closeup',      # Photographic shots
+		r'\bline[- ]up\b': 'lineup',
+		r'\bbuild[- ]up\b': 'buildup',      # Troop / military buildup
+		
+		# Spatial / aviation compounds
+		r'\bfly[- ]over\b': 'flyover',
+		r'\bair[- ]strip\b': 'airstrip',
+		r'\bdrop[- ]zone\b': 'dropzone',
+	}
+
 
 	def should_skip_by_case(
 		label: str,
@@ -443,7 +496,7 @@ def _post_process_(
 		"""
 		Decide whether to skip a label based on capitalization patterns and OCR noise.
 		Rules (applied in order):
-				1. Fast Path: In ALLOWED_ACRONYMS_NORMALIZED                → KEEP (False)
+				1. Fast Path: In ALLOWED_ACRONYMS                → KEEP (False)
 				2. Stray 1-letter fragment (not in ALLOWED_SINGLE_LETTERS)  → SKIP (True)
 				3. Single-word, all-caps in PROTECTED_PLURALS               → KEEP (False)
 				4. Single-word, all-caps short noise (<= min_length)        → SKIP (True)
@@ -462,7 +515,7 @@ def _post_process_(
 		# 1. FAST PATH: Normalized Acronym Allowlist 
 		# Matches 'D.S.C.', 'D.S.C', 'DSC', 'PO W', 'U.S.A.F.' in O(1) time
 		clean_acronym_key = re.sub(r"[^A-Za-z0-9]", "", label.strip()).upper()
-		if clean_acronym_key in ALLOWED_ACRONYMS_NORMALIZED:
+		if clean_acronym_key in ALLOWED_ACRONYMS:
 				if verbose:
 						print(f"\t[CASE PRESERVED] {repr(label):<55} allowed acronym ({clean_acronym_key})")
 				return False
@@ -606,7 +659,7 @@ def _post_process_(
 		# so "D.S.C.", "D.S.C", "DSC", "U.S.M.C." all match in O(1) time.
 		# ==================================================================
 		clean_text_key = re.sub(r"[^A-Za-z0-9]", "", text.strip()).upper()
-		if clean_text_key in ALLOWED_ACRONYMS_NORMALIZED:
+		if clean_text_key in ALLOWED_ACRONYMS:
 			if verbose:
 				print(f"\t[PRESERVED] {repr(text):<55} allowed acronym ({clean_text_key})")
 			return None
@@ -910,10 +963,15 @@ def _post_process_(
 		"""
 		s = raw.strip()
 
-		# 1. Normalize common aviation/military compound nouns before splitting hyphens
-		# Prevents them from turning into phrasal verbs ('take-off' -> 'take off' -> dropped)
-		s = re.sub(r'\btake[- ]off\b', 'takeoff', s, flags=re.IGNORECASE)
-		s = re.sub(r'\btouch[- ]down\b', 'touchdown', s, flags=re.IGNORECASE)
+		# # 1. Normalize common aviation/military compound nouns before splitting hyphens
+		# # Prevents them from turning into phrasal verbs ('take-off' -> 'take off' -> dropped)
+		# s = re.sub(r'\btake[- ]off\b', 'takeoff', s, flags=re.IGNORECASE)
+		# s = re.sub(r'\btouch[- ]down\b', 'touchdown', s, flags=re.IGNORECASE)
+
+		# 1. Normalize compound nouns to their canonical closed form
+		# Prevents vocabulary fragmentation in clustering ('take-off' vs 'takeoff')
+		for pattern, replacement in CANONICAL_COMPOUNDS.items():
+			s = re.sub(pattern, replacement, s, flags=re.IGNORECASE)
 
 		# 2. Replace separators with spaces
 		s = s.replace('_', ' ')
@@ -1266,7 +1324,7 @@ def _post_process_(
 
 			if is_stopword(original_cleaned):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(original_cleaned):<55} stopword (or georaphic reference)")
+					print(f"\t[SKIPPED] {repr(original_cleaned):<55} stopword/georaphic reference")
 				continue
 
 			if is_quantified_plural(original_cleaned):
