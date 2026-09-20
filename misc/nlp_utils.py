@@ -426,6 +426,9 @@ def _post_process_(
 		"o"
 	}
 
+	FULL_ENGLISH_ALPHABET = set(string.ascii_lowercase) # 26 English alphabet letters
+	# ALLOWED_SINGLE_LETTERS = FULL_ENGLISH_ALPHABET
+
 	HONORIFICS = {
 		"mr", "mr.",
 		"mrs", "mrs.",
@@ -445,11 +448,13 @@ def _post_process_(
 		"madam",
 		"mme.", 
 		"madame",
+		'agha', 
+		'sheikh',
 	}
 
-
-	FULL_ENGLISH_ALPHABET = set(string.ascii_lowercase) # 26 English alphabet letters
-	# ALLOWED_SINGLE_LETTERS = FULL_ENGLISH_ALPHABET
+	IRRELEVANT_NAMES={
+		"Abdullah",
+	}
 
 	ALLOWED_ACRONYMS = _normalize_(ALLOWED_ACRONYMS)
 
@@ -1302,6 +1307,11 @@ def _post_process_(
 					print(f"\t[SKIPPED] {repr(original_cleaned):<55} digit")
 				continue
 
+			if is_stopword(original_cleaned):
+				if verbose:
+					print(f"\t[SKIPPED] {repr(original_cleaned):<55} stopword/georaphic reference")
+				continue
+
 			if nlp_spacy is not None:
 				ner_input = (
 					original_cleaned.title()
@@ -1321,11 +1331,6 @@ def _post_process_(
 							f"GPE/LOC/NORP → {geo_result}"
 						)
 					continue
-
-			if is_stopword(original_cleaned):
-				if verbose:
-					print(f"\t[SKIPPED] {repr(original_cleaned):<55} stopword/georaphic reference")
-				continue
 
 			if is_quantified_plural(original_cleaned):
 				if verbose:
@@ -1375,7 +1380,7 @@ def _post_process_(
 
 			if is_stopword(lemma):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} stopword")
+					print(f"\t[SKIPPED] {repr(lemma):<55} stopword/georaphic reference")
 				continue
 
 			# Exclude pure color descriptors

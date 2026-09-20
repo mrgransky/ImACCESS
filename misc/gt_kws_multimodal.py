@@ -202,55 +202,6 @@ def get_multimodal_annotation(
 		cache_file = os.path.join(OUTPUT_DIR, "spacy_ner_cache.json")
 		load_spacy_cache(cache_file)
 
-		# multimodal_labels = _post_process_(
-		# 	labels_list=multimodal_labels, 
-		# 	col="multimodal_labels", 
-		# 	verbose=verbose
-		# )
-
-		# multimodal_canonical_labels, _ = get_canonical_labels(
-		# 	labels=multimodal_labels,
-		# 	model_id=embedding_model_id,
-		# 	label_source="multimodal_labels",
-		# 	output_dir=OUTPUT_DIR,
-		# 	batch_size=batch_size,
-		# 	nc=nc,
-		# 	verbose=verbose,
-		# )
-
-		# llm_based_labels = _post_process_(
-		# 	labels_list=llm_based_labels, 
-		# 	col="llm_based_labels", 
-		# 	verbose=False,
-		# )
-
-		# llm_canonical_labels, _ = get_canonical_labels(
-		# 	labels=llm_based_labels,
-		# 	label_source="llm_based_labels",
-		# 	model_id=embedding_model_id,
-		# 	output_dir=OUTPUT_DIR,
-		# 	batch_size=batch_size,
-		# 	nc=nc,
-		# 	verbose=False,
-		# )
-
-		# vlm_based_labels = _post_process_(
-		# 	labels_list=vlm_based_labels, 
-		# 	col="vlm_based_labels", 
-		# 	verbose=False,
-		# )
-
-		# vlm_canonical_labels, _ = get_canonical_labels(
-		# 	labels=vlm_based_labels,
-		# 	label_source="vlm_based_labels",
-		# 	model_id=embedding_model_id,
-		# 	output_dir=OUTPUT_DIR,
-		# 	batch_size=batch_size,
-		# 	nc=nc,
-		# 	verbose=False,
-		# )
-
-
 		try:
 			# ── Call 1: Multimodal ──
 			# Populates the in-memory cache for all shared image concepts
@@ -305,7 +256,6 @@ def get_multimodal_annotation(
 		finally:
 			# 2. Persist to disk so future pipeline runs are instantaneous
 			save_spacy_cache(cache_file)
-
 
 		# check length of each before setting into column:
 		if verbose:
@@ -425,6 +375,7 @@ def get_multimodal_annotation(
 		embedding_model_id=embedding_model_id,
 		architecture=clip_architecture,
 		num_workers=num_workers,
+		batch_size=batch_size,
 		device=device,
 		norm_stats=norm_stats,
 		output_directory=OUTPUT_DIR, 
@@ -484,7 +435,7 @@ def main():
 	parser = argparse.ArgumentParser(description="Multimodal (LLM + VLM) annotation for Historical Archives Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--num_workers", '-nw', type=int, default=16, help="Number of workers for parallel processing")
-	parser.add_argument("--batch_size", '-bs', type=int, default=512, help="Batch size for multimodal processing")
+	parser.add_argument("--batch_size", '-bs', type=int, default=1024, help="Batch size for multimodal processing")
 	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	parser.add_argument("--llm_model_id", '-llm', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace Text-Language model ID")
 	parser.add_argument("--llm_batch_size", '-llm_bs', type=int, default=2, help="Batch size for textual processing using LLM (adjust based on GPU memory)")

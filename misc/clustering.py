@@ -3346,8 +3346,6 @@ def cluster(
 
 	if verbose:
 		print(f"[EMBEDDING] {type(X)} {X.shape} {X.dtype}")
-		print(f"  ├─ (min, max): [{X.min():.4f}, {X.max():.4f}]")
-		print(f"  └─ μ±σ: {X.mean()} ± {X.std()}")
 
 	# STEP 3: LINKAGE MATRIX
 	if verbose:

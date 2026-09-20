@@ -118,10 +118,8 @@ am
 are
 being
 having
-do
 does
 did
-doing
 a
 the
 but
@@ -400,6 +398,7 @@ furthering
 furthermore
 furthers
 gave
+general
 generally
 get
 gets
@@ -610,7 +609,6 @@ noted
 nothing
 notwithstanding
 novel
-general
 now
 nowhere
 null
