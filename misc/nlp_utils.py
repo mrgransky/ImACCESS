@@ -291,8 +291,8 @@ def _post_process_(
 	}
 
 	GENERIC_TECH_WORDS = {
-		"equipment", "component", "system", 
-		"material", "piece", "part", "variant",
+		"equipment", "system", 
+		"piece", "variant",
 		"supply",
 	}
 
@@ -313,8 +313,7 @@ def _post_process_(
 		"schematic",
 		"date", 
 		"version", "revision", "edition",
-		"project", 
-		"program", 
+		"project",
 		"series",
 		"model", 
 		"nickname",
@@ -470,28 +469,30 @@ def _post_process_(
 	}
 
 	IRRELEVANT_NAMES={
-		'allison', 'ally',
+		'allison', 
+		'ally',
 		"abdullah",
 		'angus',
 		'earl',
 		'faisal',
 		'andrew',
-		'philip', 'phillip'
+		'philip', 
+		'phillip'
 		'william',
 		'robert',
 		'jill', 'jillian', 'jillianne',
 		'edwin',
 		'felix',
 		'frank',
-		'george',
 		'holger',
-		'henry',
 		'james',
 		'john',
 		'braden', 'frank', 'jake', 'jonah',
-		'natanya', 'nathans', 'nevin', 'thio', 'thompson', 'tiffany', 'tiffany',
+		'natanya', 'nathans', 'nevin', 'thio', 
+		'tiffany', 'tiffany',
 		'riker',
 		'harvey',
+		'george',
 	}
 
 	ALLOWED_ACRONYMS = _normalize_(ALLOWED_ACRONYMS)
