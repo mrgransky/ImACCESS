@@ -1392,7 +1392,10 @@ def analyze_cluster_quality(
 			'severity':    'HIGH',
 			'description': 'Intra-cluster similarity < 0.50. Labels may be semantically unrelated.',
 		})
-		low_cohesion.to_csv(os.path.join(output_dir, "low_cohesion_clusters.csv"), index=False)
+		low_cohesion.to_csv(
+			os.path.join(output_dir, "low_cohesion_clusters.csv"), 
+			index=False
+		)
 		# Also export full label lists for manual review
 		low_cohesion_dict = {}
 		for _, row in low_cohesion.iterrows():
@@ -1403,6 +1406,7 @@ def analyze_cluster_quality(
 				'intra_similarity': float(row['intra_cluster_similarity']),
 				'size':             int(row['size']),
 			}
+
 		json_path = os.path.join(output_dir, "low_cohesion_clusters.json")
 		with open(json_path, 'w', encoding='utf-8') as f:
 			json.dump(low_cohesion_dict, f, indent=2, ensure_ascii=False)
