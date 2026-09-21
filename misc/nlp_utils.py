@@ -243,6 +243,10 @@ def _post_process_(
 		"x ray",
 		"seal",
 		"runaway",
+		"truck",
+		"hotel",
+		"hospital",
+		"soldiers",
 	}
 
 	PROTECTED_PLURALS = {
@@ -383,6 +387,7 @@ def _post_process_(
 	}
 
 	ALLOWED_ACRONYMS = {
+		"UCLA",
 		"NASA", "NATO", "ANZUS", "SEATO",
 		"USAAF","SAAF", "AAF", "USAF", "USAAC", "USMC",
 		"RAF", 'RAAF', 'SAAF', "IDF", 'RCAF', 'USSR', 'FASF',
@@ -424,8 +429,8 @@ def _post_process_(
 		'CASEVAC',
 		'DSC',
 		'AEF',
-		'AEC',
-		'AEC ACV',
+		'AEC', 'AEC ACV',
+		'CIO', "CIO PAC",
 		'TNT',
 		'AFHQ',
 		'USIS',
@@ -437,6 +442,14 @@ def _post_process_(
 		'PBM',
 		'NATS PBM',
 		'HVAR', # High Velocity Aircraft Rocket
+		'DUKW',
+		'LCVP', # landing craft, vehicle, personnel 
+		'AAMVA', # American Association of Motor Vehicle Administrators
+		'UNRRA', # United Nations Relief and Rehabilitation Administration
+		'RATOG', # Rocket Assisted Take Off Gear
+		'JATO', #  jet-assisted take-off
+		'RATO', # ocket-assisted take-off
+		'AFDU', # Air Fighting Development Unit
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
