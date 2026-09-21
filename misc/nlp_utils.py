@@ -450,6 +450,7 @@ def _post_process_(
 		'JATO', #  jet-assisted take-off
 		'RATO', # ocket-assisted take-off
 		'AFDU', # Air Fighting Development Unit
+		'AFDS', # Air Fighting Development Squadron
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
