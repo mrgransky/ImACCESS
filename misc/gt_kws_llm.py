@@ -50,8 +50,8 @@ STOPWORDS.update(geographic_references)
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be concrete, semantically atomic, visually grounded and reusable across archives.
-Return your response as a Python list of double-quoted strings containing keywords derived strictly from the caption without any reasoning, thinking, or explanation.
-Prefer multi-word noun phrases when the caption contains meaningful adjectives or descriptors.
+Return your response as a Python list of double-quoted strings containing keywords derived strictly from the caption without any markdown, reasoning, thinking, or explanation.
+Prioritize multi-word noun phrases when the caption contains meaningful adjectives or descriptors.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
 
@@ -65,10 +65,10 @@ EXCLUDE:
   - Family relationship terms (mother, father, son, uncle).
   - Generic human category nouns (man, men, woman, person, people, children).
   - Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
-  - Ordinal numeral keywords (fourth, 1st, 115th).
+  - Ordinal numeral (fourth, 1st, 115th).
   - Roman numerals (I, II, IV, VIII).
   - Nationalities, ethnicities, or religions.
-  - Misspelled keywords or non-standard spellings.
+  - Misspelled words, typos, or non-standard spellings.
   - Acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
   - Underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
 
