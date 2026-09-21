@@ -9,7 +9,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "Boeing B-17 Flying Fortress of the 452nd Bomb Group Lady Stardust,"B-17F Flying Fortress of the 452nd Bomb Group, 728th Bomb Squadron ""Lady Stardust"" nose art. Combat Wing Assignment: 45th CBW 7D - “A+” - 731st Bomb Squadron" -llm "Qwen/Qwen3.5-122B-A10B" -v
+# python gt_kws_llm.py -desc 'Boeing B-17 Flying Fortress of the 452nd Bomb Group Lady Stardust, B-17F Flying Fortress of the 452nd Bomb Group, 728th Bomb Squadron ""Lady Stardust"" nose art. Combat Wing Assignment: 45th CBW 7D - “A+” - 731st Bomb Squadron' -llm "Qwen/Qwen3.5-122B-A10B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -47,8 +47,10 @@ with open('geographic_references.txt', 'r') as file_:
 	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
 STOPWORDS.update(geographic_references)
 
+# Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
+
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
-Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
+Keywords must be concrete, semantically atomic, visually grounded and reusable across archives.
 Return your response as a Python list of double-quoted strings containing keywords derived strictly from the caption without any reasoning, thinking, or explanation.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
