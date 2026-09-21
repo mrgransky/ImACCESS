@@ -1300,7 +1300,9 @@ def _post_process_(
 				lemmatized_tokens.append(original_token[:-1])
 				continue
 
-			is_abbr = original_token.isupper() or '.' in original_token
+			has_multiple_caps = sum(1 for c in original_token if c.isupper()) >= 2
+			is_abbr = original_token.isupper() or '.' in original_token or has_multiple_caps
+			# is_abbr = original_token.isupper() or '.' in original_token
 
 			# only trust NNP if the word has no common-noun sense in WordNet ──
 			# nltk's tagger biases toward NNP for any capitalized/isolated token,
@@ -1501,7 +1503,7 @@ def _post_process_(
 				lemma = lemmatize_phrase(s, original_cleaned)
 				if verbose:
 					if lemma != s:
-						print(f"[LEMMATIZED] {repr(lemma)}")
+						print(f"[LEMMATIZED] {repr(s):<55} ==>> {repr(lemma)}")
 			
 			if len(lemma) < min_kw_ch_length:
 				if verbose:
