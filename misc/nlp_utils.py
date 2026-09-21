@@ -428,6 +428,9 @@ def _post_process_(
 		'AFHQ',
 		'USIS',
 		'ATS',
+		'RNAS',
+		'FAA',
+		'NARS',
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
