@@ -418,9 +418,6 @@ def _post_process_(
 		'USPHS', 'USAAMC',
 		'NACA',
 		'AWACS',
-		'USS',
-		'USS LCI',
-		'LCI', # Landing Craft Infantry
 		'ASW',
 		'HMS',
 		'HMNZS', # His Majesty's New Zealand Ship
@@ -469,6 +466,11 @@ def _post_process_(
 		'AFL', # American Federation of Labor
 		'CIC', # Central Intelligence Corps
 		'CCC', # Civilian Conservation Corps
+		'USS',
+		'USS LCI',
+		'DAK', # Destroyer, Anti-Submarine, Kamikaze
+		'DShK',
+		# 'LCI', # Landing Craft Infantry
 		# 'HVAR', # High Velocity Aircraft Rocket
 	}
 	
@@ -547,6 +549,7 @@ def _post_process_(
 		'riker',
 		'harvey',
 		'savannah',
+		'matildas',
 	}
 
 	ALLOWED_ACRONYMS = _normalize_(ALLOWED_ACRONYMS)
