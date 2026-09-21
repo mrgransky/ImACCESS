@@ -1302,7 +1302,6 @@ def _post_process_(
 
 			has_multiple_caps = sum(1 for c in original_token if c.isupper()) >= 2
 			is_abbr = original_token.isupper() or '.' in original_token or has_multiple_caps
-			# is_abbr = original_token.isupper() or '.' in original_token
 
 			# only trust NNP if the word has no common-noun sense in WordNet ──
 			# nltk's tagger biases toward NNP for any capitalized/isolated token,

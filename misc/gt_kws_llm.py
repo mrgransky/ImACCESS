@@ -47,11 +47,11 @@ with open('geographic_references.txt', 'r') as file_:
 	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
 STOPWORDS.update(geographic_references)
 
-# Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be concrete, semantically atomic, visually grounded and reusable across archives.
 Return your response as a Python list of double-quoted strings containing keywords derived strictly from the caption without any reasoning, thinking, or explanation.
+Prefer multi-word noun phrases when the caption contains meaningful adjectives or descriptors.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
 
@@ -77,6 +77,7 @@ Color handling:
   - Preserve color terms when they are part of a standardized or semantic label (Red Cross, Blue Cross gas shell, Green Berets).
 
 Caption: {caption}"""
+
 
 def _load_llm_(
 	model_id: str,
