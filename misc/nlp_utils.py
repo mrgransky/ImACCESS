@@ -255,6 +255,7 @@ def _post_process_(
 		"united nations",
 		"united states",
 		"howards",
+		"reins",
 		"airlines",
 		"marines",
 		"stables",
@@ -278,7 +279,7 @@ def _post_process_(
 		"burned", "broken", "painted", "carved", "decorated",
 		"fortified", "occupied", "liberated", "bombed", "shelled",
 		"camouflaged", "abandoned", "deserted", "flooded", "coded",
-		"limited",
+		"limited", "fined",
 	}
 
 	GERUND_NOUNS = {
@@ -318,7 +319,9 @@ def _post_process_(
 		"numbered",
 		"chart", "graph", "graf", 
 		"diagram", 
-		"plot", 
+		"plot",
+		"issue",
+		"problem",
 		"tableau",
 		"sketch", 
 		"sketching", 
@@ -356,7 +359,9 @@ def _post_process_(
 		"black & white", 
 		"B/W", 
 		"B&W",
-		'B and W'
+		'B and W',
+		'album',
+		'photograph',
 	}
 
 	WW_THEATRE_PHRASES = re.compile(
@@ -448,7 +453,6 @@ def _post_process_(
 		'NATS',
 		'PBM',
 		'NATS PBM',
-		'HVAR', # High Velocity Aircraft Rocket
 		'DUKW', 'DUCK',
 		'LCVP', # landing craft, vehicle, personnel 
 		'AAMVA', # American Association of Motor Vehicle Administrators
@@ -459,13 +463,13 @@ def _post_process_(
 		'AFDU', # Air Fighting Development Unit
 		'AFDS', # Air Fighting Development Squadron
 		'NRAB', # National Railroad Adjustment Board
-		'ALSIB', # 
 		'GHQAF', # General Headquarters Air Force
 		'JABO', # Jagdbomber
 		'AHEPA', # American Hellenic Educational Progressive Association
 		'AFL', # American Federation of Labor
 		'CIC', # Central Intelligence Corps
 		'CCC', # Civilian Conservation Corps
+		# 'HVAR', # High Velocity Aircraft Rocket
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
