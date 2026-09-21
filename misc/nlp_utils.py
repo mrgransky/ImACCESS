@@ -224,7 +224,7 @@ def _post_process_(
 		'ussr', 'usa', 'uss', 'hms', 'rms', 'nasa', 'fbi', 'cia'
 	}
 
-	MILITARY_PROTECTED_PHRASES = {
+	PROTECTED_PHRASES = {
 		"panzerzug", 
 		"panzerfaust", 
 		"grossdeutschland", 
@@ -238,7 +238,11 @@ def _post_process_(
 		"redwing",
 		"seaplane",
 		"flakstop",
+		"flak",
 		"sea sled",
+		"x ray",
+		"seal",
+		"runaway",
 	}
 
 	PROTECTED_PLURALS = {
@@ -417,6 +421,13 @@ def _post_process_(
 		'CASEVAC',
 		'DSC',
 		'AEF',
+		'AEC',
+		'AEC ACV',
+		'TNT',
+		'NATS',
+		'AFHQ',
+		'USIS',
+		'ATS',
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
@@ -560,7 +571,7 @@ def _post_process_(
 				False → keep this label
 		"""
 
-		if label.lower() in MILITARY_PROTECTED_PHRASES:
+		if label.lower() in PROTECTED_PHRASES:
 			if verbose:
 				print(f"\t[CASE PRESERVED] {repr(label):<55} protected military phrase")
 			return False
@@ -690,7 +701,7 @@ def _post_process_(
 				print(f"\t[PRESERVED] {repr(text):<55} WW theatre/front phrase")
 			return None
 
-		if text.lower() in MILITARY_PROTECTED_PHRASES:
+		if text.lower() in PROTECTED_PHRASES:
 			if verbose:
 				print(f"\t[PRESERVED] {repr(text):<55} military protected phrase")
 			return None
