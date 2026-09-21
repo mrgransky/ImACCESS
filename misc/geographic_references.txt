@@ -556,6 +556,7 @@ Abadan
 Acheson
 Adinkerke
 Aegean
+Agadir
 Anzio
 Alborg
 Alicante
@@ -651,6 +652,7 @@ Fowlmere
 Frankfurt
 Frihavn
 Gallipoli
+Gambut
 Gander
 Gaza
 Geneva
@@ -727,6 +729,7 @@ Nagoya
 Naples
 New Delhi
 Okinawa
+Oran
 Orlando
 Oslo
 Oostende

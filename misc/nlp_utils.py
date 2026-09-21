@@ -463,7 +463,6 @@ def _post_process_(
 		'GHQAF', # General Headquarters Air Force
 		'JABO', # Jagdbomber
 		'AHEPA', # American Hellenic Educational Progressive Association
-		'AFL', # American Federation of Labor
 		'CIC', # Central Intelligence Corps
 		'CCC', # Civilian Conservation Corps
 		'USS',
@@ -474,7 +473,10 @@ def _post_process_(
 		"TAIC", # 
 		"AVRE", # Aerial Vehicle Reconnaissance Equipment
 		"CNAF", # Commercial National Financial Corporation
-		# 'LCI', # Landing Craft Infantry
+		"ARV", # Aerial Rocket Vehicle
+		"AFC", # Air Force Command
+		'AFL', # American Federation of Labor
+		'LCI', # Landing Craft Infantry
 		# 'HVAR', # High Velocity Aircraft Rocket
 	}
 	
@@ -554,6 +556,8 @@ def _post_process_(
 		'harvey',
 		'savannah',
 		'matildas',
+		'vanessa',
+		'linnaeus',
 	}
 
 	ALLOWED_ACRONYMS = _normalize_(ALLOWED_ACRONYMS)
