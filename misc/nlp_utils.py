@@ -247,6 +247,8 @@ def _post_process_(
 		"hotel",
 		"hospital",
 		"soldiers",
+		"eagle",
+		"engine",
 	}
 
 	PROTECTED_PLURALS = {
@@ -387,6 +389,8 @@ def _post_process_(
 	}
 
 	ALLOWED_ACRONYMS = {
+		"ACA", # Aero Club of America
+		"NAA", # National Aeronautic Association
 		"UCLA",
 		"NASA", "NATO", "ANZUS", "SEATO",
 		"USAAF","SAAF", "AAF", "USAF", "USAAC", "USMC",
@@ -410,6 +414,8 @@ def _post_process_(
 		'NACA',
 		'AWACS',
 		'USS',
+		'USS LCI',
+		'LCI', # Landing Craft Infantry
 		'ASW',
 		'HMS',
 		'HMNZS', # His Majesty's New Zealand Ship
@@ -425,6 +431,7 @@ def _post_process_(
 		'WWII',
 		'WWI',
 		'YMCA',
+		'YWCA',
 		'MEDEVAC',
 		'CASEVAC',
 		'DSC',
@@ -442,7 +449,7 @@ def _post_process_(
 		'PBM',
 		'NATS PBM',
 		'HVAR', # High Velocity Aircraft Rocket
-		'DUKW',
+		'DUKW', 'DUCK',
 		'LCVP', # landing craft, vehicle, personnel 
 		'AAMVA', # American Association of Motor Vehicle Administrators
 		'UNRRA', # United Nations Relief and Rehabilitation Administration
@@ -451,6 +458,14 @@ def _post_process_(
 		'RATO', # ocket-assisted take-off
 		'AFDU', # Air Fighting Development Unit
 		'AFDS', # Air Fighting Development Squadron
+		'NRAB', # National Railroad Adjustment Board
+		'ALSIB', # 
+		'GHQAF', # General Headquarters Air Force
+		'JABO', # Jagdbomber
+		'AHEPA', # American Hellenic Educational Progressive Association
+		'AFL', # American Federation of Labor
+		'CIC', # Central Intelligence Corps
+		'CCC', # Civilian Conservation Corps
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
@@ -505,10 +520,11 @@ def _post_process_(
 	}
 
 	IRRELEVANT_NAMES={
-		'allison', 
+		'allison',
 		'ally',
 		"abdullah",
 		'angus',
+		'beth',
 		'earl',
 		'faisal',
 		'andrew',
@@ -1301,13 +1317,16 @@ def _post_process_(
 				token_lower = token.lower()
 				candidate = lemmatizer.lemmatize(token_lower, pos=wordnet_pos)
 
-				# Reject WordNet bug: boss→bos, pass→pas, glass→glas, grass→gras
+				# 1. Reject WordNet bug: boss→bos, pass→pas, glass→glas, grass→gras
 				if token_lower.endswith("ss") and candidate == token_lower[:-1]:
-						lemmatized_tokens.append(token)  # keep original
+					lemmatized_tokens.append(token)  # keep original
+				# 2. Reject WordNet 1-letter reduction bug: as→a, us→u, ms→m, os→o
+				elif len(candidate) == 1 and len(token_lower) > 1:
+					lemmatized_tokens.append(token)  # keep original 'As'
 				else:
-						if token[:1].isupper():
-								candidate = candidate[:1].upper() + candidate[1:]
-						lemmatized_tokens.append(candidate)
+					if token[:1].isupper():
+						candidate = candidate[:1].upper() + candidate[1:]
+					lemmatized_tokens.append(candidate)
 
 
 				# # lemmatize on the lowercase form (WordNet index is lowercase-only) ──
