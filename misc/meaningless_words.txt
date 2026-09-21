@@ -1122,6 +1122,7 @@ january
 february
 april
 may
+maj
 june
 july
 august
@@ -1133,7 +1134,6 @@ lcm
 lcts
 lsis
 lsts
-lvts
 frontal
 top
 peak

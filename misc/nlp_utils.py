@@ -396,7 +396,6 @@ def _post_process_(
 		"HOLC",
 		"NAACP",
 		"NCO",
-		"PWO",
 		'CBS', 'NBC', 'ABC', 'CNN', 'BBC',
 		'USPHS', 'USAAMC',
 		'NACA',
@@ -405,7 +404,6 @@ def _post_process_(
 		'ASW',
 		'HMS',
 		'IJN',
-		'SS',
 		'USAT',
 		'SHAEF',
 		'AMCOM',
@@ -424,13 +422,15 @@ def _post_process_(
 		'AEC',
 		'AEC ACV',
 		'TNT',
-		'NATS',
 		'AFHQ',
 		'USIS',
 		'ATS',
 		'RNAS',
 		'FAA',
 		'NARS',
+		'NATS',
+		'PBM',
+		'NATS PBM',
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
