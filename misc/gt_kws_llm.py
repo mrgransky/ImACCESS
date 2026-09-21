@@ -9,7 +9,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "Wellington OJ-J 26 April 1940 Alborg force landed. Wellington OJ-J of Squadron RAF 26 April 1940 Alborg." -llm "Qwen/Qwen3.5-122B-A10B" -v
+# python gt_kws_llm.py -desc "Boeing B-17 Flying Fortress of the 452nd Bomb Group Lady Stardust,"B-17F Flying Fortress of the 452nd Bomb Group, 728th Bomb Squadron ""Lady Stardust"" nose art. Combat Wing Assignment: 45th CBW 7D - “A+” - 731st Bomb Squadron" -llm "Qwen/Qwen3.5-122B-A10B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -54,7 +54,7 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
 
 EXCLUDE:
-  - Generic war terms ('World War I', 'Vietnam War', 'post war era', 'Post-war', 'aftermath of World War II', 'War', 'battle').
+  - Generic war terms ('World War I', 'post war era', 'Post-war', 'aftermath of World War II').
   - Quantities, counts, measurements, or numeric expressions (1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
   - Equipment identifiers, serial numbers, brands, or models.
   - Dates, times, years, decades, or any temporal references.

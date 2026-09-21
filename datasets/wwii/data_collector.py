@@ -725,11 +725,6 @@ def get_dframe_old(
 		gallery_description = caption_element.get_text(strip=True)
 		gallery_description = re.sub(r'\s+', ' ', gallery_description).strip()
 
-	# if gallery_description.lower() and header.lower() not in gallery_description.lower():
-	# 	gallery_description = header + " " + gallery_description
-	# elif not gallery_description.strip():
-	# 	gallery_description = header
-
 	print(f"\nGallery description:\n{gallery_description}\n")
 
 	# Old-layout caption map
@@ -792,7 +787,7 @@ def get_dframe_old(
 	# ── 5. Parallel fetch: photo-specific descriptions ────────────────────
 	photo_descriptions = {}
 	def _fetch_photo_desc(url: str):
-		"""Scrape a single photo page and return its caption text."""
+		"""Scrape a single photo page and return its structured metadata."""
 		try:
 			s = requests.Session()
 			s.headers.update(HEADERS)
@@ -853,22 +848,49 @@ def get_dframe_old(
 				if verbose:
 					print(f"\n[{url}] SOURCE: alt-text {repr(desc_data['alt_text'])}")
 
-			# Build combined description
-			parts = []
-			if desc_data['title']:
-				parts.append(desc_data['title'])
+			# ═════════════════════════════════════════════════════════════════
+			# CLEAN AND STRUCTURE METADATA (FIX FOR REDUNDANCY)
+			# ═════════════════════════════════════════════════════════════════
+			title = desc_data['title'] or ''
 			
-			if desc_data['excerpt'] and desc_data['excerpt'] != desc_data['title']:
-				parts.append(desc_data['excerpt'])
-			
-			if desc_data['content'] and desc_data['content'] not in parts:
-				parts.append(desc_data['content'])
+			def strip_title(text):
+				if not text or not title: return text
+				# Remove the title if it appears at the very beginning of the text
+				if text.startswith(title):
+					return text[len(title):].lstrip('. ')
+				return text
 
-			if parts:
-				final_desc = '. '.join(parts)
-				if verbose:
-					print(f"\n[{url}] RESULT {repr(final_desc)}")
-				return url, final_desc
+			desc_parts = []
+			
+			excerpt = strip_title(desc_data['excerpt'])
+			if excerpt and excerpt != title:
+				desc_parts.append(excerpt)
+				
+			content = strip_title(desc_data['content'])
+			if content and content not in desc_parts and content != title:
+				desc_parts.append(content)
+
+			clean_description = '. '.join(desc_parts).strip()
+			
+			# Fallbacks if clean_description is empty
+			if not clean_description:
+				if desc_data['meta_description']:
+					clean_description = strip_title(desc_data['meta_description'])
+				elif desc_data['alt_text']:
+					clean_description = strip_title(desc_data['alt_text'])
+					
+			# Absolute fallback to title if no description exists
+			if not clean_description and title:
+				clean_description = title
+				
+			desc_data['cleaned_description'] = clean_description
+			
+			if verbose:
+				print(f"\n[{url}] CLEAN TITLE: {repr(title)}")
+				print(f"[{url}] CLEAN DESC : {repr(clean_description)}")
+				
+			return url, desc_data
+
 		except Exception as e:
 			if verbose:
 				print(f"[ERROR] Failed to fetch description: {e}")
@@ -933,8 +955,16 @@ def get_dframe_old(
 					extracted_year = y
 					break
 
-		# ── Description: photo-specific > gallery fallback ─────────────────
-		row_description = photo_descriptions.get(specific_doc_url, gallery_description)
+		# ── Metadata: photo-specific > gallery fallback ─────────────────
+		photo_meta = photo_descriptions.get(specific_doc_url)
+		
+		final_title = meta['doc_title']
+		if photo_meta and photo_meta.get('title'):
+			final_title = photo_meta['title']
+			
+		final_description = gallery_description
+		if photo_meta and photo_meta.get('cleaned_description'):
+			final_description = photo_meta['cleaned_description']
 
 		# Download / process image
 		if not os.path.exists(img_fpath):
@@ -967,8 +997,8 @@ def get_dframe_old(
 			'date': extracted_year,
 			'doc_url': specific_doc_url,
 			'img_url': img_url,
-			'title': meta['doc_title'],
-			'description': row_description,
+			'title': final_title,
+			'description': final_description,
 			'country': doc_url_info.get("country"),
 			'user_query': [user_query] if user_query else None,
 			'label': user_query if user_query else None,
@@ -1198,6 +1228,11 @@ def get_dframe(
 				'alt_text': None,
 			}
 
+			# Helper to normalize whitespace (removes newlines, tabs, extra spaces)
+			def normalize_ws(text):
+				if not text: return text
+				return re.sub(r'\s+', ' ', text).strip()
+
 			# ── Source 1: H1 Title ────────────────────────────────────────────
 			photo_container = bs.find('div', class_='photo-container')
 			if photo_container:
@@ -1210,21 +1245,21 @@ def get_dframe(
 						h1 = h
 						break
 			if h1:
-				desc_data['title'] = h1.get_text(strip=True)
+				desc_data['title'] = h1.get_text(separator=' ', strip=True)
 				if verbose:
 					print(f"\n[{url}] SOURCE: h1 {repr(desc_data['title'])}")
 
 			# ── Source 2: Photo Excerpt ───────────────────────────────────────
 			excerpt = bs.find('p', class_='photo-excerpt')
 			if excerpt:
-				desc_data['excerpt'] = excerpt.get_text(strip=True)
+				desc_data['excerpt'] = excerpt.get_text(separator=' ', strip=True)
 				if verbose:
 					print(f"\n[{url}] SOURCE: photo-excerpt {repr(desc_data['excerpt'])}")
 
 			# ── Source 3: Photo Content ───────────────────────────────────────
 			content = bs.find('div', class_='photo-content')
 			if content:
-				txt = content.get_text(strip=True)
+				txt = content.get_text(separator=' ', strip=True)
 				if txt and len(txt) > 10:
 					desc_data['content'] = txt
 					if verbose:
@@ -1245,15 +1280,21 @@ def get_dframe(
 					print(f"\n[{url}] SOURCE: alt-text {repr(desc_data['alt_text'])}")
 
 			# ═════════════════════════════════════════════════════════════════
-			# CLEAN AND STRUCTURE METADATA (FIX FOR REDUNDANCY)
+			# CLEAN AND STRUCTURE METADATA (FIX FOR REDUNDANCY & SPACES)
 			# ═════════════════════════════════════════════════════════════════
+			
+			# Normalize all extracted text fields first
+			for k in desc_data:
+				if desc_data[k]:
+					desc_data[k] = normalize_ws(desc_data[k])
+			
 			title = desc_data['title'] or ''
 			
 			def strip_title(text):
 				if not text or not title: return text
 				# Remove the title if it appears at the very beginning of the text
 				if text.startswith(title):
-					return text[len(title):].lstrip('. ')
+					return normalize_ws(text[len(title):].lstrip('. '))
 				return text
 
 			desc_parts = []
@@ -1266,7 +1307,7 @@ def get_dframe(
 			if content and content not in desc_parts and content != title:
 				desc_parts.append(content)
 
-			clean_description = '. '.join(desc_parts).strip()
+			clean_description = '. '.join(desc_parts)
 			
 			# Fallbacks if clean_description is empty
 			if not clean_description:
@@ -1279,6 +1320,8 @@ def get_dframe(
 			if not clean_description and title:
 				clean_description = title
 				
+			# Final normalization pass to ensure single line
+			clean_description = normalize_ws(clean_description)
 			desc_data['cleaned_description'] = clean_description
 			
 			if verbose:

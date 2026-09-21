@@ -307,7 +307,8 @@ def _post_process_(
 		"section", 
 		"segment",
 		"identifier", 
-		"number", 
+		"number",
+		"volume",
 		"numbered",
 		"chart", "graph", "graf", 
 		"diagram", 
@@ -385,14 +386,17 @@ def _post_process_(
 		"NASA", "NATO", "ANZUS", "SEATO",
 		"USAAF","SAAF", "AAF", "USAF", "USAAC", "USMC",
 		"RAF", 'RAAF', 'SAAF', "IDF", 'RCAF', 'USSR', 'FASF',
-		"USN", "NAS",
+		"USN", 
+		"NAS", # Naval Air Station
 		"USCG", "USO", "USMA",'USCGC',
 		"CIA", "FBI", "AFGE",
-		'WAAC', 'WAAF', 'WACS', 'WRNS',
+		"RNZN",
+		'WAAC', 'WAAF', 'WACS', 'WRNS', 'WASP','WAFS', 'WFTD', 'WAF',
 		"WAC",
 		"ANZAC",
 		"RCAF",
-		"RNZAF", "CARE",
+		"RNZAF", 
+		"CARE",
 		"HOLC",
 		"NAACP",
 		"NCO",
@@ -403,6 +407,7 @@ def _post_process_(
 		'USS',
 		'ASW',
 		'HMS',
+		'HMNZS', # His Majesty's New Zealand Ship
 		'IJN',
 		'USAT',
 		'SHAEF',
@@ -431,6 +436,7 @@ def _post_process_(
 		'NATS',
 		'PBM',
 		'NATS PBM',
+		'HVAR', # High Velocity Aircraft Rocket
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
@@ -449,7 +455,7 @@ def _post_process_(
 		"x", 
 		"w", 
 		"s",
-		"t", 
+		"t", # T Bone
 		"u", 
 		"o",
 	}
@@ -580,12 +586,18 @@ def _post_process_(
 			return False
 
 		# 1. FAST PATH: Normalized Acronym Allowlist 
-		# Matches 'D.S.C.', 'D.S.C', 'DSC', 'PO W', 'U.S.A.F.' in O(1) time
+		# Matches 'D.S.C.', 'D.S.C', 'DSC', 'PO W', 'U.S.A.F.', 'WASP', 'DSC', 'WAFS', 'POW' in O(1) time
 		clean_acronym_key = re.sub(r"[^A-Za-z0-9]", "", label.strip()).upper()
 		if clean_acronym_key in ALLOWED_ACRONYMS:
-				if verbose:
-						print(f"\t[CASE PRESERVED] {repr(label):<55} allowed acronym ({clean_acronym_key})")
-				return False
+			if verbose:
+				print(f"\t[CASE PRESERVED] {repr(label):<55} allowed acronym ({clean_acronym_key})")
+			return False
+
+		# Plural of allowed acronym in ALL-CAPS (e.g. 'WASPS' -> 'WASP', 'POWS' -> 'POW', 'NCOS' -> 'NCO')
+		if clean_acronym_key.endswith("S") and clean_acronym_key[:-1] in ALLOWED_ACRONYMS:
+			if verbose:
+				print(f"\t[CASE PRESERVED] {repr(label):<55} allowed acronym plural ({clean_acronym_key[:-1]} + S)")
+			return False
 
 		# 2. STRAY SINGLE-LETTER FRAGMENT FILTER 
 		# Flags OCR artifacts like "Tank j" while allowing "Stu G", "G string", "Plan B"
@@ -1229,6 +1241,17 @@ def _post_process_(
 			# ── 1. Plural Acronyms: Strip 's' and keep base acronym in uppercase ──
 			# 'PBYs' -> 'PBY', 'POWs' -> 'POW', 'LCTs' -> 'LCT', 'DUKWs' -> 'DUKW'
 			if re.match(r'^[A-Z]{2,}s$', original_token):
+				lemmatized_tokens.append(original_token[:-1])
+				continue
+
+			# ── 2. Plural Acronym in ALL-CAPS: 'WASPS' -> 'WASP', 'POWS' -> 'POW', 'NCOS' -> 'NCO' ──
+			# Guard ensures 'WAFS', 'USS', 'AWACS', and 'AMTRACS' are not accidentally truncated
+			if (
+				original_token.isupper() 
+				and original_token.endswith('S') 
+				and original_token not in ALLOWED_ACRONYMS 
+				and original_token[:-1] in ALLOWED_ACRONYMS
+			):
 				lemmatized_tokens.append(original_token[:-1])
 				continue
 
