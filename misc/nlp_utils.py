@@ -470,6 +470,8 @@ def _post_process_(
 		'USS LCI',
 		'DAK', # Destroyer, Anti-Submarine, Kamikaze
 		'DShK',
+		"DDT", 
+		"CNAF", # Commercial National Financial Corporation
 		# 'LCI', # Landing Craft Infantry
 		# 'HVAR', # High Velocity Aircraft Rocket
 	}
