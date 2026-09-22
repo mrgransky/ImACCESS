@@ -328,7 +328,7 @@ def get_canonical_labels_with_parallel_mapping(
 		print(f"[{label_source.upper()}]")
 		print(f"  ├─ {len(clustered_df)} unique labels ==>> {clustered_df['cluster'].nunique()} clusters")
 		print(f"  ├─  canonical_map: {type(canonical_map)} {len(canonical_map)} entries")
-		print(f"  ├─  Mapping {len(labels):,} samples → canonical labels | workers={num_workers} | chunksize={chunksize}")
+		print(f"  ├─  Mapping {len(labels):,} samples → canonical labels, workers={num_workers}, chunksize={chunksize}")
 
 	t0 = time.time()
 	with multiprocessing.Pool(
@@ -1186,7 +1186,7 @@ def analyze_cluster_quality(
 	labels: np.ndarray,
 	cluster_assignments: np.ndarray,
 	canonical_labels: Dict[int, str],
-	output_dir: str,
+	file_path: str,
 	original_label_counts: Optional[Dict[str, int]] = None,
 	verbose: bool = True,
 ) -> Dict:
@@ -1228,7 +1228,7 @@ def analyze_cluster_quality(
 		Corpus frequency of each label.
 	distance_metric : str
 		'cosine' (default) or 'euclidean' — used only for diameter computation.
-	output_dir : str
+	file_path : str
 		Directory for CSV / JSON exports of problematic clusters.
 	verbose : bool
 		Print section-by-section progress.
@@ -1385,15 +1385,17 @@ def analyze_cluster_quality(
 	# Flag 1: Low cohesion
 	low_cohesion = cluster_df[cluster_df['intra_cluster_similarity'] < 0.50]
 	if len(low_cohesion) > 0:
-		problematic_clusters.append({
-			'issue':       'Low cohesion',
-			'count':       len(low_cohesion),
-			'cluster_ids': low_cohesion['cluster_id'].tolist(),
-			'severity':    'HIGH',
-			'description': 'Intra-cluster similarity < 0.50. Labels may be semantically unrelated.',
-		})
+		problematic_clusters.append(
+			{
+				'issue':       'Low cohesion',
+				'count':       len(low_cohesion),
+				'cluster_ids': low_cohesion['cluster_id'].tolist(),
+				'severity':    'HIGH',
+				'description': 'Intra-cluster similarity < 0.50. Labels may be semantically unrelated.',
+			}
+		)
 		low_cohesion.to_csv(
-			os.path.join(output_dir, "low_cohesion_clusters.csv"), 
+			file_path.replace(".csv", "low_cohesion_clusters.csv"),
 			index=False
 		)
 		# Also export full label lists for manual review
@@ -1407,35 +1409,45 @@ def analyze_cluster_quality(
 				'size':             int(row['size']),
 			}
 
-		json_path = os.path.join(output_dir, "low_cohesion_clusters.json")
+		json_path = file_path.replace(".csv", "low_cohesion_clusters.json")
 		with open(json_path, 'w', encoding='utf-8') as f:
 			json.dump(low_cohesion_dict, f, indent=2, ensure_ascii=False)
 		if verbose:
-			print(f"  ✓ Exported {len(low_cohesion_dict)} low-cohesion clusters → {json_path}")
+			print(f"[EXPORTED] {len(low_cohesion_dict)} low-cohesion clusters → {json_path}")
 
 	# Flag 2: Poor canonical representativeness
 	poor_canon = cluster_df[cluster_df['canonical_representativeness'] < 0.60]
 	if len(poor_canon) > 0:
-		problematic_clusters.append({
-			'issue':       'Poor canonical representativeness',
-			'count':       len(poor_canon),
-			'cluster_ids': poor_canon['cluster_id'].tolist(),
-			'severity':    'MEDIUM',
-			'description': 'Canonical similarity to cluster mean < 0.60.',
-		})
-		poor_canon.to_csv(os.path.join(output_dir, "poor_canonical_clusters.csv"), index=False)
+		problematic_clusters.append(
+			{
+				'issue':       'Poor canonical representativeness',
+				'count':       len(poor_canon),
+				'cluster_ids': poor_canon['cluster_id'].tolist(),
+				'severity':    'MEDIUM',
+				'description': 'Canonical similarity to cluster mean < 0.60.',
+			}
+		)
+		poor_canon.to_csv(
+			file_path.replace(".csv", "_poor_canonical_clusters.csv"),
+			index=False,
+		)
 
 	# Flag 3: Large diameter — cluster spans a wide semantic range
 	large_diam = cluster_df[cluster_df['cluster_diameter'] > 0.80]
 	if len(large_diam) > 0:
-		problematic_clusters.append({
-			'issue':       'Large cluster diameter',
-			'count':       len(large_diam),
-			'cluster_ids': large_diam['cluster_id'].tolist(),
-			'severity':    'MEDIUM',
-			'description': 'Max pairwise cosine distance > 0.80. Cluster may span multiple sub-concepts.',
-		})
-		large_diam.to_csv(os.path.join(output_dir, "large_diameter_clusters.csv"), index=False)
+		problematic_clusters.append(
+			{
+				'issue':       'Large cluster diameter',
+				'count':       len(large_diam),
+				'cluster_ids': large_diam['cluster_id'].tolist(),
+				'severity':    'MEDIUM',
+				'description': 'Max pairwise cosine distance > 0.80. Cluster may span multiple sub-concepts.',
+			}
+		)
+		large_diam.to_csv(
+			file_path.replace(".csv", "_large_diameter_clusters.csv"),
+			index=False,
+		)
 
 	# Flag 4: Singletons — no consolidation benefit
 	singletons = cluster_df[cluster_df['size'] == 1]
@@ -1462,8 +1474,8 @@ def analyze_cluster_quality(
 			}
 		)
 		very_large.to_csv(
-			os.path.join(output_dir, "very_large_clusters.csv"), 
-			index=False
+			file_path.replace(".csv", "_very_large_clusters.csv"),
+			index=False,
 		)
 
 	if verbose:
@@ -3495,7 +3507,7 @@ def cluster(
 		cluster_assignments=cluster_labels,
 		canonical_labels=canonical_map,
 		original_label_counts=label_freq_dict,
-		output_dir=os.path.dirname(clusters_fname),
+		file_path=clusters_fname,
 		verbose=verbose,
 	)
 

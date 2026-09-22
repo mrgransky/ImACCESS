@@ -538,6 +538,20 @@ def _post_process_(
 		'VDCN',
 		'LKW',
 		'LSSAH',
+		'USMCR',
+		'QMC',
+		'BDSW',
+		'SPD',
+		'EAC',
+		'OJE',
+		'LCV',
+		'LCP',
+		'TBD',
+		'PTRB',
+		'PTRD',
+		'PKW',
+		'XPBB',
+		'NKVD',
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
@@ -685,17 +699,18 @@ def _post_process_(
 	)
 
 	# 3. High-Value Military / Aviation / Armor Designations
-	# Matches: B-17, B-17G, Bf 109, Fw 190, P-51, U-505, T-34, M4 Sherman, PT-109, 101st Airborne
 	MILITARY_DESIGNATION_RE = re.compile(
-			r'\b(?:'
-			# Aircraft & armored vehicles: B-17, P-51, C-47, A-20, T-34, M4, U-505, PT-109, V-1, V-2, F-86, MiG-15
-			r'[A-Za-z]{1,4}[- ]?\d{1,4}[A-Za-z]?(?:/\d{1,3})?|'
-			# German Luftwaffe / Wehrmacht models: Bf 109, Fw 190, Ju 87, He 111, Me 262, Flak 18, Flak 88, Pak 40, JG 53
-			r'(?:Bf|Fw|Ju|He|Me|Ar|Do|Hs|Ta|Flak|Pak|Kwk|JG|KG|ZG|StG|SG|LG|NJG)[- ]?\d{1,4}[A-Za-z]?|'
-			# Numbered military units: 101st Airborne, 82nd Airborne, 1st Division, 8th Air Force
-			r'\d+(?:st|nd|rd|th)\s+(?:Airborne|Infantry|Armored|Armoured|Division|Regiment|Battalion|Army|Corps|Squadron|Group|Wing|Fleet)'
-			r')\b',
-			re.IGNORECASE
+		r'\b(?:'
+		# 1. Interleaved military models (M4A1, M4A3E8, M32B1, A6M2, A6M5, B5N2, G4M1, H8K2, D3A1, C6N1, P1Y1, E16A1)
+		r'[A-Za-z]{1,4}\d{1,4}[A-Za-z]{1,3}\d{0,3}[A-Za-z]{0,2}|'
+		# 2. Standard hyphenated/spaced models (B-17, B-17G, P-51, C-47, A-20, T-34, U-505, PT-109, F-6D-15-NA)
+		r'[A-Za-z]{1,4}[- ]\d{1,4}[A-Za-z]?(?:/\d{1,3})?|'
+		# 3. German models & wings (Bf 109, Fw 190, Ju 87, He 111, Me 262, Flak 18, Pak 40, JG 53)
+		r'(?:Bf|Fw|Ju|He|Me|Ar|Do|Hs|Ta|Flak|Pak|Kwk|JG|KG|ZG|StG|SG|LG|NJG)[- ]?\d{1,4}[A-Za-z]?|'
+		# 4. Standalone unit ordinals or numbered divisions (369th, 101st Airborne, 82nd, 761st Tank Battalion)
+		r'\d{1,4}(?:st|nd|rd|th)(?:\s+(?:Airborne|Infantry|Armored|Armoured|Division|Regiment|Battalion|Army|Corps|Squadron|Group|Wing|Fleet))?'
+		r')\b',
+		re.IGNORECASE
 	)
 
 	def should_keep_numeric_label(label: str, max_digit_ratio: float = 0.45) -> bool:
