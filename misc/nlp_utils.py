@@ -482,6 +482,11 @@ def _post_process_(
 		'AFL', # American Federation of Labor
 		'LCI', # Landing Craft Infantry
 		'LVT', # Landing Vehicle Tracked
+		'SATC', # 
+		'WAC',
+		'UHF',
+		'POW',
+		'VIP',
 		# 'HVAR', # High Velocity Aircraft Rocket
 	}
 	
