@@ -3256,9 +3256,9 @@ def cluster(
 		print(f"\n[AGGLOMERATIVE CLUSTERING] {len(labels)} samples")
 		print(f"   ├─ {model_id} | {device} | batch_size: {batch_size}")
 		print(f"   ├─ linkage: {linkage_method}")
-		print(f"   ├─ sample: {labels[:5]}")
+		print(f"   ├─ sample: {labels[:3]}")
 		requires_type_exchange = isinstance(labels[0], str)
-		print(f"   ├─────> {type(labels[0])} requires_type_exchange? {requires_type_exchange}")
+		print(f"   ├───> {type(labels[0])} requires_type_exchange? {requires_type_exchange}")
 		print(f"   └─ nc: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
 
 	# STEP 1: DEDUP + FLATTEN

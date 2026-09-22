@@ -399,6 +399,7 @@ def _post_process_(
 	}
 
 	ALLOWED_ACRONYMS = {
+		"NWP",
 		"ACA", # Aero Club of America
 		"NAA", # National Aeronautic Association
 		"UCLA",
@@ -820,7 +821,7 @@ def _post_process_(
 		# Plural of allowed acronym in ALL-CAPS (e.g. 'WASPS' -> 'WASP', 'POWS' -> 'POW', 'NCOS' -> 'NCO')
 		if clean_acronym_key.endswith("S") and clean_acronym_key[:-1] in ALLOWED_ACRONYMS:
 			if verbose:
-				print(f"\t[CASE PRESERVED] {repr(label):<55} allowed acronym plural ({clean_acronym_key[:-1]} + S)")
+				print(f"\t[CASE PRESERVED] {repr(label):<55} allowed plural acronym ({clean_acronym_key[:-1]} + S)")
 			return False
 
 		# 2. STRAY SINGLE-LETTER FRAGMENT FILTER 
@@ -833,7 +834,7 @@ def _post_process_(
 		if words_to_check and min(len(s) for s in words_to_check) == 1:
 			if verbose:
 				stray_chars = [s for s in words_to_check if len(s) == 1]
-				print(f"\t[SKIPPED CASE] {repr(label):<55} stray 1-letter fragment(s): {stray_chars}")
+				print(f"\t[SKIPPED CASE] {repr(label):<50} stray 1-letter fragment(s): {stray_chars}")
 			return True
 
 		# 3. COMPUTE UPPERCASE RATIO 
@@ -850,13 +851,13 @@ def _post_process_(
 								print(f"\t[CASE PRESERVED] {repr(label):<55} protected plural")
 						return False
 				if verbose:
-						print(f"\t[SKIPPED CASE] {repr(label):<55} unlisted acronym (len={len(label)} <= {min_meaningful_word_length})")
+						print(f"\t[SKIPPED CASE] {repr(label):<50} unlisted acronym (len={len(label)} <= {min_meaningful_word_length})")
 				return True
 
 		# 5. MULTI-WORD / PARTIAL HIGH UPPERCASE RATIO
 		if uppercase_ratio > uppercase_bound_thresh and len(label) <= min_meaningful_word_length:
 			if verbose:
-				print(f"\t[SKIPPED CASE] {repr(label):<55} ratio={uppercase_ratio:.3f} > {uppercase_bound_thresh} and len() {len(label) }<= {min_meaningful_word_length}")
+				print(f"\t[SKIPPED CASE] {repr(label):<50} ratio={uppercase_ratio:.3f} > {uppercase_bound_thresh} and len() {len(label) }<= {min_meaningful_word_length}")
 			return True
 
 		# 6. PASSED
@@ -1453,7 +1454,23 @@ def _post_process_(
 		else:
 			return nltk.corpus.wordnet.NOUN  # Default to noun
 
-	def lemmatize_phrase(phrase: str, original_phrase: str) -> str:
+	def lemmatize_phrase(phrase: str, original_phrase: str, verbose: bool = False) -> str:
+
+		if is_adjectival_phrase(phrase):
+			if verbose:
+				print(f"\t[PRESERVED] {repr(lemma):<55} constructed with adjective")
+			return phrase # "newly built", "recently completed"
+
+		if is_activity_gerund(phrase):
+			if verbose:
+				print(f"\t[PRESERVED] {repr(lemma):<55} activity gerund")
+			return phrase  # "snowshoeing", "skiing", "fishing"
+
+		if is_event_gerund_phrase(phrase):
+			if verbose:
+				print(f"\t[PRESERVED] {repr(lemma):<55} event gerund")
+			return phrase # "flag raising", "ship launching", "troop landing"
+
 		tokens = phrase.split()
 		original_tokens = original_phrase.split()
 		pos_tags = nltk.pos_tag(tokens)
@@ -1629,7 +1646,7 @@ def _post_process_(
 			
 			if is_stopword(original_cleaned):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(original_cleaned):<55} stopword/georaphic ref")
+					print(f"\t[SKIPPED] {repr(original_cleaned):<55} stopword/georaphic")
 				continue
 
 			if nlp_spacy is not None:
@@ -1647,12 +1664,15 @@ def _post_process_(
 						print(f"\t[SKIPPED] {repr(ner_input):<55} GPE/LOC/NORP → {geo_result}")
 					continue
 
-			if is_quantified_plural(original_cleaned):
-				if verbose:
-					print(f"\t[SKIPPED] {repr(original_cleaned):<55} quantified plural ")
-				continue
-
 			# ################### LEMMATIZATION ################### 
+			#################################################
+			# only required when lemmatization is applied:
+			# if is_quantified_plural(original_cleaned):
+			# 	if verbose:
+			# 		print(f"\t[SKIPPED] {repr(original_cleaned):<55} quantified plural ")
+			# 	continue
+			#################################################
+
 			# if is_adjectival_phrase(original_cleaned):
 			# 	lemma = s  # Preserve "newly built", "recently completed"
 			# 	if verbose:
@@ -1672,6 +1692,8 @@ def _post_process_(
 			# 			print(f"[LEMMATIZED] {repr(s):<55} ==>> {repr(lemma)}")
 			# ################### LEMMATIZATION ################### 
 
+			# lemma = lemmatize_phrase(s, original_cleaned, verbose=verbose) # buggy s and original_cleaned are different
+
 			lemma = s	# no lemmatization
 
 			if len(lemma) < min_kw_ch_length:
@@ -1689,8 +1711,6 @@ def _post_process_(
 				uppercase_bound_thresh=0.75,
 				verbose=verbose,
 			):
-				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} case-based filter")
 				continue
 
 			if is_phrasal_verb(lemma):
