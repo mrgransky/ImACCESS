@@ -720,12 +720,12 @@ def parse_llm_response(
 	seen = set()
 	for idx, kw in enumerate(keywords_list, 1):
 		if verbose:
-			print(f"\t[{idx}/{len(keywords_list)}]: {repr(kw)}")
+			print(f"[{idx}/{len(keywords_list)}] {repr(kw)}", end="\t")
 		
 		# Check if empty
 		if not kw or not str(kw).strip():
 			if verbose:
-				print(f"    ✗ Skipped: empty/whitespace")
+				print(f"\t[SKIPPED] empty/whitespace")
 			continue
 		
 		# Normalize whitespace
@@ -735,26 +735,26 @@ def parse_llm_response(
 		cleaned = cleaned.replace("\\'", "'").replace('\\"', '"')
 		
 		if verbose:
-			print(f"\t=> Cleaned: {repr(cleaned)}")
+			print(f"=> Cleaned: {repr(cleaned)}")
 
 		# Check length
 		if len(cleaned) < 3:
 			if verbose:
-				print(f"    ✗ Skipped: too short (len={len(cleaned)})")
+				print(f"\t[SKIPPED] too short (len={len(cleaned)})")
 			continue
 
 		# Check for duplicates (case-insensitive)
 		normalized = cleaned.lower()
 		if normalized in seen:
 			if verbose:
-				print(f"    ✗ Skipped: {normalized} is a duplicate")
+				print(f"\t[SKIPPED] duplicate: {repr(normalized)}")
 			continue
 		
 		seen.add(normalized)
 		processed.append(cleaned)
 	
 	if verbose:
-		print(f"[RESULT] Processed keywords (total: {len(processed)}): {processed}")
+		print(f"[RESULT] (total: {len(processed)}): {processed}")
 	
 	return processed if processed else None
 
@@ -972,7 +972,9 @@ def _generate_one_batch(
 	prompt_len = tokenized["input_ids"].shape[1]
 	if device.type != "cpu":
 		tokenized = {k: v.to(device) for k, v in tokenized.items()}
+
 	sampling = temperature > 1e-4
+
 	gen_kwargs: Dict[str, Any] = {
 		**tokenized,
 		"max_new_tokens": max_generated_tks,
@@ -1382,50 +1384,48 @@ def get_llm_based_labels_slow(
 				continue
 
 			tokenized = outputs = decoded = None
-			success = False
 			for attempt in range(max_retries + 1):
 					if attempt > 0 and verbose:
-							print(f"  🔄 Retry {attempt}/{max_retries} for sub-batch (size={current_size})")
+						print(f"  🔄 Retry {attempt}/{max_retries} for sub-batch (size={current_size})")
 					try:
-							tokenized = tokenizer(
-									current_prompts,
-									return_tensors="pt",
-									truncation=True,
-									max_length=4096,
-									padding=True,
-							)
-							if device.type != "cpu":
-									tokenized = {k: v.to(device) for k, v in tokenized.items()}
-							gen_kwargs = dict(
-									**tokenized,
-									max_new_tokens=max_generated_tks,
-									do_sample=TEMPERATURE > 0.0,
-									temperature=TEMPERATURE,
-									top_p=TOP_P,
-									pad_token_id=tokenizer.pad_token_id,
-									eos_token_id=tokenizer.eos_token_id,
-									use_cache=True,
-							)
-							with torch.no_grad():
-									with torch.amp.autocast(
-											device_type=device.type,
-											enabled=torch.cuda.is_available(),
-											dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-									):
-											outputs = model.generate(**gen_kwargs)
-							decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-							parsed_dict = _parse_batch_parallel(
-									decoded_batch=decoded,
-									batch_indices=current_indices,
-									batch_prompts=current_prompts,
-									model_id_=model_id,
-									max_kws_=max_kws,
-									verbose_=verbose,
-							)
-							for idx, parsed in parsed_dict.items():
-									unique_results[idx] = parsed
-							success = True
-							break  # Success
+						tokenized = tokenizer(
+							current_prompts,
+							return_tensors="pt",
+							truncation=True,
+							max_length=4096,
+							padding=True,
+						)
+						if device.type != "cpu":
+							tokenized = {k: v.to(device) for k, v in tokenized.items()}
+						gen_kwargs = dict(
+							**tokenized,
+							max_new_tokens=max_generated_tks,
+							do_sample=TEMPERATURE > 0.0,
+							temperature=TEMPERATURE,
+							top_p=TOP_P,
+							pad_token_id=tokenizer.pad_token_id,
+							eos_token_id=tokenizer.eos_token_id,
+							use_cache=True,
+						)
+						with torch.no_grad():
+							with torch.amp.autocast(
+								device_type=device.type,
+								enabled=torch.cuda.is_available(),
+								dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+							):
+								outputs = model.generate(**gen_kwargs)
+						decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+						parsed_dict = _parse_batch_parallel(
+							decoded_batch=decoded,
+							batch_indices=current_indices,
+							batch_prompts=current_prompts,
+							model_id_=model_id,
+							max_kws_=max_kws,
+							verbose_=verbose,
+						)
+						for idx, parsed in parsed_dict.items():
+							unique_results[idx] = parsed
+						break  # Success
 					except RuntimeError as e:
 							err_msg = str(e).lower()
 							is_oom = "out of memory" in err_msg or "cuda out of memory" in err_msg

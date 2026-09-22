@@ -241,6 +241,7 @@ def _post_process_(
 		"flak",
 		"sea sled",
 		"x ray",
+		"u boat",
 		"seal",
 		"runaway",
 		"truck",
@@ -249,6 +250,9 @@ def _post_process_(
 		"soldiers",
 		"eagle",
 		"engine",
+		"aricraft",
+		"infantry",
+		"sparrow",
 	}
 
 	PROTECTED_PLURALS = {
@@ -477,6 +481,7 @@ def _post_process_(
 		"AFC", # Air Force Command
 		'AFL', # American Federation of Labor
 		'LCI', # Landing Craft Infantry
+		'LVT', # Landing Vehicle Tracked
 		# 'HVAR', # High Velocity Aircraft Rocket
 	}
 	
@@ -502,7 +507,7 @@ def _post_process_(
 	}
 
 	FULL_ENGLISH_ALPHABET = set(string.ascii_lowercase) # 26 English alphabet letters
-	# ALLOWED_SINGLE_LETTERS = FULL_ENGLISH_ALPHABET
+	ALLOWED_SINGLE_LETTERS = FULL_ENGLISH_ALPHABET
 
 	HONORIFICS = {
 		"mr", "mr.",
@@ -600,6 +605,88 @@ def _post_process_(
 		r'\bski[- ]ing\b': 'skiing',
 	}
 
+	# 1. Date, Season, and Temporal Noise Patterns
+	# Matches: "1936", "1940s", "1930's", "November 1962", "Spring 1943", "circa 1942", "c. 1945"
+	_MONTHS_SEASONS = (
+			r'(?:january|february|march|april|may|june|july|august|september|'
+			r'october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|'
+			r'spring|summer|autumn|fall|winter)'
+	)
+
+	TEMPORAL_NOISE_RE = re.compile(
+			rf'(?:^|\b)(?:c\.|circa|early|mid|late)?\s*'
+			rf'(?:\d{{1,2}}\s+)?{_MONTHS_SEASONS}\s+(?:\d{{1,2}},?\s+)?(?:18|19|20)\d{{2}}\b|'
+			rf'\b(?:18|19|20)\d{{2}}\s+{_MONTHS_SEASONS}\b|'
+			rf'^\b(?:18|19|20)\d{{2}}(?:s|\'s)?\b$',
+			re.IGNORECASE
+	)
+
+	# 2. Metadata, Serial Numbers, and Dimensions
+	# Matches: "No. 1234", "Photo 12", "50 feet", "100 ft", "12 mm"
+	METADATA_DIMENSION_RE = re.compile(
+			r'^(?:no\.?|number|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)\s*\d+$|'
+			r'^\d+\s*(?:feet|foot|ft|inch|inches|in|meters?|m|mm|cm|miles?|km|lbs?|pounds?|kg|tons?)$',
+			re.IGNORECASE
+	)
+
+	# 3. High-Value Military / Aviation / Armor Designations
+	# Matches: B-17, B-17G, Bf 109, Fw 190, P-51, U-505, T-34, M4 Sherman, PT-109, 101st Airborne
+	MILITARY_DESIGNATION_RE = re.compile(
+			r'\b(?:'
+			# Aircraft & armored vehicles: B-17, P-51, C-47, A-20, T-34, M4, U-505, PT-109, V-1, V-2, F-86, MiG-15
+			r'[A-Za-z]{1,4}[- ]?\d{1,4}[A-Za-z]?(?:/\d{1,3})?|'
+			# German Luftwaffe / Wehrmacht models: Bf 109, Fw 190, Ju 87, He 111, Me 262, Flak 18, Flak 88, Pak 40, JG 53
+			r'(?:Bf|Fw|Ju|He|Me|Ar|Do|Hs|Ta|Flak|Pak|Kwk|JG|KG|ZG|StG|SG|LG|NJG)[- ]?\d{1,4}[A-Za-z]?|'
+			# Numbered military units: 101st Airborne, 82nd Airborne, 1st Division, 8th Air Force
+			r'\d+(?:st|nd|rd|th)\s+(?:Airborne|Infantry|Armored|Armoured|Division|Regiment|Battalion|Army|Corps|Squadron|Group|Wing|Fleet)'
+			r')\b',
+			re.IGNORECASE
+	)
+
+	def should_keep_numeric_label(label: str, max_digit_ratio: float = 0.45) -> bool:
+			"""
+			Decide whether to keep a label that contains digits.
+			Returns:
+					True  -> Label is a valid historical/military concept (e.g. 'B-17G Flying Fortress', 'T-34')
+					False -> Label is noise (e.g. '1936', '2-8-4', 'November 1962', 'No. 1234')
+			"""
+			# If no digits exist, it's not a numeric label; keep it
+			if not any(c.isdigit() for c in label):
+					return True
+
+			# 1. Pure numbers, code strings, or punctuation with no letters ("1936", "2-8-4", "100/50") -> DROP
+			letters = [c for c in label if c.isalpha()]
+			if not letters:
+					return False
+
+			# 2. Date expressions ("November 1962", "Spring 1943", "1940s", "circa 1944") -> DROP
+			if TEMPORAL_NOISE_RE.search(label):
+					return False
+
+			# 3. Metadata or pure dimension markers ("No. 1234", "50 ft") -> DROP
+			if METADATA_DIMENSION_RE.search(label):
+					return False
+
+			# 4. Recognized military aircraft, armor, weapon, or unit pattern -> KEEP
+			if MILITARY_DESIGNATION_RE.search(label):
+					return True
+
+			# 5. Fallback: If label has lots of words but low digit ratio ("Boeing model 307 stratoliner") -> KEEP
+			# But discard if digits dominate the string (> max_digit_ratio)
+			digit_count = sum(1 for c in label if c.isdigit())
+			digit_ratio = digit_count / len(label)
+			if digit_ratio > max_digit_ratio:
+					return False
+
+			return True
+
+	def filter_digit_labels(keywords: list) -> list:
+			"""Drop-in replacement for exclude_digits()"""
+			return [kw for kw in keywords if should_keep_numeric_label(kw)]
+
+	def exclude_digits(keywords: list) -> list:
+		return [keyword for keyword in keywords if not any(char.isdigit() for char in keyword)]
+
 	def should_skip_by_case(
 		label: str,
 		uppercase_bound_thresh: float = 0.75,
@@ -630,7 +717,14 @@ def _post_process_(
 				print(f"\t[CASE PRESERVED] {repr(label):<55} protected military phrase")
 			return False
 
-		# 1. FAST PATH: Normalized Acronym Allowlist 
+		# ── FAST PATH: Military & Alphanumeric Models ──
+		# Protects C-47, B-17, D.H. 4, S.E-5, R-6, T-34 from being killed by the <= 8 char shouting rule
+		if any(c.isdigit() for c in label) and MILITARY_DESIGNATION_RE.search(label):
+			if verbose:
+				print(f"\t[CASE PRESERVED] {repr(label):<55} recognized military designation")
+			return False
+
+		# Normalized Acronym Allowlist 
 		# Matches 'D.S.C.', 'D.S.C', 'DSC', 'PO W', 'U.S.A.F.', 'WASP', 'DSC', 'WAFS', 'POW' in O(1) time
 		clean_acronym_key = re.sub(r"[^A-Za-z0-9]", "", label.strip()).upper()
 		if clean_acronym_key in ALLOWED_ACRONYMS:
@@ -1099,7 +1193,11 @@ def _post_process_(
 
 		# 2. Replace separators with spaces
 		s = s.replace('_', ' ')
-		s = s.replace('-', ' ')
+
+		# Only split word-to-word hyphens (anti-aircraft -> anti aircraft)
+		# But PRESERVE alphanumeric model hyphens (B-17, C-47, P-51, F-5-L, S.E-5, U-505)
+		s = re.sub(r'(?<=[A-Za-z])-(?=[A-Za-z])', ' ', s)
+
 		s = s.replace(' & ', ' and ')
 		s = s.replace('@', ' ')  # National Archives @ College Park
 		s = s.replace('/', ' ')
@@ -1361,9 +1459,6 @@ def _post_process_(
 		"""Count uppercase letters to prefer 'Drum' over 'drum'."""
 		return sum(1 for c in text if c.isupper())
 
-	def exclude_digits(keywords: list) -> list:
-		return [keyword for keyword in keywords if not any(char.isdigit() for char in keyword)]
-
 	processed_batch = list()
 	for idx, labels in enumerate(labels_list):
 		t0 = time.time()
@@ -1420,7 +1515,8 @@ def _post_process_(
 			if verbose:
 				print(f"  → Non-standard type ({type(labels)}), converting to string and wrapping")
 
-		current_items = exclude_digits(keywords=current_items)
+		# current_items = exclude_digits(keywords=current_items)
+		current_items = filter_digit_labels(keywords=current_items)
 
 		if current_items != labels and verbose:
 			print(f"[STANDARDIZED] {len(current_items)} {type(current_items)} {current_items}")
@@ -1444,6 +1540,7 @@ def _post_process_(
 			original_cleaned = ' '.join(original_cleaned.split())
 
 			original_cleaned_normalized = normalize_label_format(original_cleaned)
+
 			if original_cleaned != original_cleaned_normalized:
 				if verbose:
 					print(f"[NORMALIZED] {repr(original_cleaned_normalized)}")
@@ -1451,12 +1548,6 @@ def _post_process_(
 
 			s = original_cleaned
 			
-			# check if digit is in the lemma: (extremely strict)
-			if any(c.isdigit() for c in original_cleaned):
-				if verbose:
-					print(f"\t[SKIPPED] {repr(original_cleaned):<55} digit")
-				continue
-
 			if is_stopword(original_cleaned):
 				if verbose:
 					print(f"\t[SKIPPED] {repr(original_cleaned):<55} stopword/georaphic reference")
