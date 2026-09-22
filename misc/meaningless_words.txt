@@ -17,14 +17,12 @@ me
 we
 mar
 was
-1st
 from
 beside
 until
 for
 inside
 below
-loco
 over
 above
 Aracmo
@@ -273,9 +271,8 @@ c'mon
 c's
 call
 came
-can't
-cannot
 cant
+cannot
 case
 cases
 cause
@@ -302,7 +299,6 @@ currently
 dare
 daren't
 darent
-date
 dear
 definitely
 describe
@@ -396,7 +392,6 @@ furthering
 furthermore
 furthers
 gave
-general
 generally
 get
 gets
@@ -763,7 +758,6 @@ state
 states
 still
 strongly
-sub
 substantially
 successfully
 sufficiently
@@ -885,7 +879,6 @@ we'd
 we'll
 we're
 we've
-web
 wed
 well
 wells
@@ -1087,7 +1080,6 @@ figurine
 curve
 graf
 schedule
-setting
 environment
 space
 furiou
@@ -1126,14 +1118,10 @@ september
 october
 november
 december
-lcm
-lcts
 lsis
-lsts
 frontal
 top
 peak
 hyrib
-pact
 rune
 damung

@@ -552,6 +552,10 @@ def _post_process_(
 		'PKW',
 		'XPBB',
 		'NKVD',
+		'YANK',
+		'SES',
+		'LCM',
+		'SPAR',
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
