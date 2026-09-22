@@ -1087,6 +1087,7 @@ action
 imagery
 graphic
 pre
+aramaco
 overview
 viewpoint
 perspective

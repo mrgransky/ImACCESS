@@ -339,9 +339,10 @@ def _post_process_(
 	}
 
 	NUMBER_WORDS = {
-		"one", "two", "three", "four", "five", "six", "seven", 
-		"eight", "nine", "ten", "eleven", "twelve", 
-		"twenty", "thirty", "hundred"
+		"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", 
+		"eleven", "twelve", 
+		"twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety", 
+		"hundred", "thousand", "million", "billion",
 	}
 
 	ORDINALS = {
@@ -621,7 +622,8 @@ def _post_process_(
 		'philip', 
 		'phillip',
 		'robert',
-		'jill', 'jillian', 'jillianne',
+		'jill', 
+		'jillian', 'jillianne',
 		'edwin',
 		'felix',
 		'frank',
@@ -633,9 +635,14 @@ def _post_process_(
 		'riker',
 		'harvey',
 		'savannah',
-		'matildas',
 		'vanessa',
 		'linnaeus',
+		'douglas', 
+		'dorris',
+		'jim', 'tyler', 'Joe', 'william', 'derrick', 'baldwin', 'james', 'jameson',
+		'ethel',
+		'marina',
+		'christie',
 	}
 
 	ALLOWED_ACRONYMS = _normalize_(ALLOWED_ACRONYMS)
@@ -654,7 +661,7 @@ def _post_process_(
 		r'\bcount[- ]down\b': 'countdown',
 		r'\bshut[- ]down\b': 'shutdown',
 		
-		# -out compounds (critical wartime / military concepts)
+		# -out compounds
 		r'\bblack[- ]out\b': 'blackout',    # Wartime light blackouts
 		r'\bfall[- ]out\b': 'fallout',      # Nuclear / radiation fallout
 		r'\bdug[- ]out\b': 'dugout',        # Trenches / military dugouts
@@ -662,20 +669,24 @@ def _post_process_(
 		r'\bhide[- ]out\b': 'hideout',
 		
 		# -up compounds
+		r'\bpin[- ]up\b': 'pinup',          # Nose art / morale topic
 		r'\bmock[- ]up\b': 'mockup',        # Aircraft / weapon prototypes
 		r'\bclose[- ]up\b': 'closeup',      # Photographic shots
 		r'\bline[- ]up\b': 'lineup',
 		r'\bbuild[- ]up\b': 'buildup',      # Troop / military buildup
 		
-		# Spatial / aviation compounds
-		r'\bfly[- ]over\b': 'flyover',
-		r'\bair[- ]strip\b': 'airstrip',
-		r'\bdrop[- ]zone\b': 'dropzone',
-
-		# Aviation compounds
+		# Aviation & military equipment compounds
+		r'\bbi[- ]plane\b': 'biplane',
+		r'\btri[- ]plane\b': 'triplane',
+		r'\bsea[- ]plane\b': 'seaplane',
 		r'\btaxi[- ]ing\b': 'taxiing',
 		r'\btaxi[- ]way\b': 'taxiway',
 		r'\bski[- ]ing\b': 'skiing',
+		r'\bfly[- ]over\b': 'flyover',
+		r'\bair[- ]strip\b': 'airstrip',
+		r'\bdrop[- ]zone\b': 'dropzone',
+		r'\bpill[- ]box\b': 'pillbox',
+		r'\bflame[- ]thrower\b': 'flamethrower',
 	}
 
 	# 1. Date, Season, and Temporal Noise Patterns
@@ -695,9 +706,9 @@ def _post_process_(
 	)
 
 	# 2. Metadata, Serial Numbers, and Dimensions
-	# Matches: "No. 1234", "Photo 12", "50 feet", "100 ft", "12 mm"
+	# Matches: "No. 1234", "Photo 12", "model 18", "50 feet", "100 ft", "12 mm"
 	METADATA_DIMENSION_RE = re.compile(
-			r'^(?:no\.?|number|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)\s*\d+$|'
+			r'^(?:no\.?|number|model|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)\s*\d+$|'
 			r'^\d+\s*(?:feet|foot|ft|inch|inches|in|meters?|m|mm|cm|miles?|km|lbs?|pounds?|kg|tons?)$',
 			re.IGNORECASE
 	)
@@ -1265,6 +1276,9 @@ def _post_process_(
 		for pattern, replacement in CANONICAL_COMPOUNDS.items():
 			s = re.sub(pattern, replacement, s, flags=re.IGNORECASE)
 
+		# Normalize aviation shorthand 'A/C' before slashes are replaced
+		s = re.sub(r'\bA/C\b', ' ', s)
+
 		# 2. Replace separators with spaces
 		s = s.replace('_', ' ')
 
@@ -1378,7 +1392,8 @@ def _post_process_(
 		"""Context-aware filtering."""
 		words = lemma.lower().split()
 
-		if any(w in IRRELEVANT_NAMES for w in words):
+		# if all(w in IRRELEVANT_NAMES for w in words):
+		if lemma.lower() in IRRELEVANT_NAMES:
 			return True
 
 		# Rule 2: Single-word generic terms
@@ -1390,7 +1405,7 @@ def _post_process_(
 			)
 			return word in all_generic
 		
-		# Rule 3: Quantified plurals (your main concern!)
+		# Rule 3: quantified plurals (your main concern!)
 		if len(words) == 2:
 			first_word = words[0]
 			second_word = words[1]
@@ -1399,9 +1414,10 @@ def _post_process_(
 				first_word.isdigit() 
 				or first_word in NUMBER_WORDS
 			)
+
 			is_generic_person = (
-				second_word in GENERIC_PEOPLE_WORDS or 
-				second_word in GENERIC_FAMILY_WORDS
+				second_word in GENERIC_PEOPLE_WORDS 
+				or second_word in GENERIC_FAMILY_WORDS
 			)
 			
 			if is_number and is_generic_person:
@@ -1516,17 +1532,6 @@ def _post_process_(
 						candidate = candidate[:1].upper() + candidate[1:]
 					lemmatized_tokens.append(candidate)
 
-
-				# # lemmatize on the lowercase form (WordNet index is lowercase-only) ──
-				# candidate = lemmatizer.lemmatize(token.lower(), pos=wordnet_pos)
-				# if token.endswith("ss") and candidate == token[:-1]:
-				# 	lemmatized_tokens.append(token)
-				# else:
-				# 	# restore original capitalization pattern ──
-				# 	if token[:1].isupper():
-				# 		candidate = candidate[:1].upper() + candidate[1:]
-				# 	lemmatized_tokens.append(candidate)
-
 		return ' '.join(lemmatized_tokens)
 
 	def _capitalization_score(text: str) -> int:
@@ -1617,14 +1622,14 @@ def _post_process_(
 
 			if original_cleaned != original_cleaned_normalized:
 				if verbose:
-					print(f"[NORMALIZED] {repr(original_cleaned_normalized)}")
+					print(f"[NORMALIZED] {repr(original_cleaned):<55} ==>> {repr(original_cleaned_normalized)}")
 				original_cleaned = original_cleaned_normalized
 
 			s = original_cleaned
 			
 			if is_stopword(original_cleaned):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(original_cleaned):<55} stopword/georaphic reference")
+					print(f"\t[SKIPPED] {repr(original_cleaned):<55} stopword/georaphic ref")
 				continue
 
 			if nlp_spacy is not None:
@@ -1633,42 +1638,42 @@ def _post_process_(
 					if original_cleaned.isupper()
 					else original_cleaned
 				)
-
 				geo_result = _extract_geopolitical_entities(
 					ner_input,
 					verbose=verbose
 				)
-
 				if geo_result is not None and geo_result["has_strong_geo"]:
 					if verbose:
-						print(
-							f"\t[SKIPPED] {repr(ner_input):<55} "
-							f"GPE/LOC/NORP → {geo_result}"
-						)
+						print(f"\t[SKIPPED] {repr(ner_input):<55} GPE/LOC/NORP → {geo_result}")
 					continue
 
 			if is_quantified_plural(original_cleaned):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(original_cleaned):<55} Quantified plural ")
+					print(f"\t[SKIPPED] {repr(original_cleaned):<55} quantified plural ")
 				continue
-			elif is_adjectival_phrase(original_cleaned):
-				lemma = s  # Preserve "newly built", "recently completed"
-				if verbose:
-					print(f"        → Adjectival phrase detected, preserving: {repr(lemma)}")
-			elif is_activity_gerund(original_cleaned):
-				lemma = s  # Preserve "snowshoeing", "skiing", "fishing"
-				if verbose:
-					print(f"        → Activity gerund detected, preserving: {repr(lemma)}")
-			elif is_event_gerund_phrase(original_cleaned):
-				lemma = s  # Preserve "flag raising", "ship launching", "troop landing"
-				if verbose:
-					print(f"\t[PRESERVED] {repr(lemma):<55} Event gerund phrase")
-			else:
-				lemma = lemmatize_phrase(s, original_cleaned)
-				if verbose:
-					if lemma != s:
-						print(f"[LEMMATIZED] {repr(s):<55} ==>> {repr(lemma)}")
-			
+
+			# ################### LEMMATIZATION ################### 
+			# if is_adjectival_phrase(original_cleaned):
+			# 	lemma = s  # Preserve "newly built", "recently completed"
+			# 	if verbose:
+			# 		print(f"\t[PRESERVED] {repr(lemma):<55} constructed with adjective")
+			# elif is_activity_gerund(original_cleaned):
+			# 	lemma = s  # Preserve "snowshoeing", "skiing", "fishing"
+			# 	if verbose:
+			# 		print(f"\t[PRESERVED] {repr(lemma):<55} activity gerund")
+			# elif is_event_gerund_phrase(original_cleaned):
+			# 	lemma = s  # Preserve "flag raising", "ship launching", "troop landing"
+			# 	if verbose:
+			# 		print(f"\t[PRESERVED] {repr(lemma):<55} event gerund")
+			# else:
+			# 	lemma = lemmatize_phrase(s, original_cleaned)
+			# 	if verbose:
+			# 		if lemma != s:
+			# 			print(f"[LEMMATIZED] {repr(s):<55} ==>> {repr(lemma)}")
+			# ################### LEMMATIZATION ################### 
+
+			lemma = s	# no lemmatization
+
 			if len(lemma) < min_kw_ch_length:
 				if verbose:
 					print(f"\t[SKIPPED] {repr(lemma):<55} (len={len(lemma)} < {min_kw_ch_length})")
@@ -1722,7 +1727,7 @@ def _post_process_(
 
 			if should_filter_label(lemma):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} filtered out!")
+					print(f"\t[SKIPPED] {repr(lemma):<55} Generic label")
 				continue
 
 			# only No. NNNNN ex) No. X1657 or No. 1657
@@ -1764,7 +1769,8 @@ def _post_process_(
 			print('-'*125)
 
 	if verbose:
-		print(f"\n[POST-PROCESSED] {len(processed_batch)} samples [TOTAL ELAPSED TIME] {time.time() - pp_st:.1f} sec")
+		print(f"\n[POST-PROCESSED] {len(processed_batch)} samples")
+		print(f"[TOTAL ELAPSED TIME] {time.time() - pp_st:.1f} sec")
 		print("-"*100)
 
 	return processed_batch

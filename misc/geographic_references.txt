@@ -620,6 +620,7 @@ Cleveland
 Coblenz
 Cologne
 Copenhagen
+Cornay
 Corpus Christi
 Corsica
 Cordoba
@@ -896,6 +897,7 @@ Capri
 Crete
 Pantelleria
 Dieppe
+Willits
 
 Afghan
 African
