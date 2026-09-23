@@ -67,6 +67,35 @@ from data_prep import get_multi_label_stratified_split, build_shared_eval_protoc
 # large models:
 # $ python gt_kws_multimodal.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3.5-4B" -vlm "Qwen/Qwen3.5-4B" -vlm_bs 16 -llm_bs 96 -nw 40 -v
 
+from rapidfuzz import fuzz
+import spacy
+
+nlp = spacy.load("en_core_web_trf", disable=["parser", "ner"])
+
+def normalize_label(label: str) -> str:
+	"""Normalize a label for comparison."""
+	doc = nlp(
+		label#.lower()
+	)
+	lemmatized = [token.lemma_ for token in doc]
+	return " ".join(lemmatized).strip()
+
+def merge_similar(labels: List[str], threshold: int = 80) -> List[str]:
+	"""Merge labels that are fuzzy matches after normalization."""
+	# Normalize all labels first
+	normalized_labels = [normalize_label(label) for label in labels]
+	# normalized_labels = labels
+	unique_labels = list(set(normalized_labels))
+	merged = []
+	for label in unique_labels:
+		if not any(fuzz.ratio(label, m) > threshold for m in merged):
+			merged.append(label)
+
+	# Return the original labels (not normalized) for the merged set
+	# This requires mapping back to the original labels
+	# For simplicity, we return the normalized merged labels here
+	return merged
+
 def merge_labels(
 	llm_based_labels: List[List[str]], 
 	vlm_based_labels: List[List[str]], 
@@ -75,8 +104,16 @@ def merge_labels(
 	"""Naive Combination of LLM and VLM labels"""
 	assert len(llm_based_labels) == len(vlm_based_labels), "Label lists must have same length"
 	t0 = time.time()
+	num_samples = min(len(vlm_based_labels), 5)
 	if verbose:
-		print(f"\n[Naive Combination] {len(llm_based_labels)} LLM-based & {len(vlm_based_labels)} VLM-based labels")
+		print("-"*100)
+		print(f"[NAIVE CONCATINATION]")
+		print(f"  ├─ LLM {type(llm_based_labels)} {len(llm_based_labels)}")
+		for lbl in llm_based_labels[:num_samples]:
+			print(f"  │   ├─ {lbl}")
+		print(f"  ├─ VLM {type(vlm_based_labels)} {len(vlm_based_labels)}")
+		for lbl in vlm_based_labels[:num_samples]:
+			print(f"  │   ├─ {lbl}")
 
 	multimodal_labels = []
 	for llm_labels, vlm_labels in zip(llm_based_labels, vlm_based_labels):
@@ -105,10 +142,18 @@ def merge_labels(
 		
 		# Combine and deduplicate labels for this sample
 		combined = list(set(llm_labels + vlm_labels))
+
+		# normalize + lemmatize
+		# combined = 
+
 		multimodal_labels.append(combined)
 
 	if verbose:
-		print(f"[DONE] {len(multimodal_labels)} {type(multimodal_labels)} Elapsed: {time.time() - t0:.2f} sec")
+		print(f"  ├─ Multimodal {type(multimodal_labels)} {len(multimodal_labels)}")
+		for lbl in multimodal_labels[:num_samples]:
+			print(f"  │   └─ {lbl}")
+		print(f"  └─ TOTAL ELAPSED TIME: {time.time() - t0:.2f} sec")
+		print("-"*100)
 
 	return multimodal_labels
 
@@ -160,13 +205,12 @@ def get_multimodal_annotation(
 		quantization_bits=llm_quantization_bits,
 		verbose=verbose,
 	)
-
-	if verbose:
-		print(f"{len(vlm_based_labels)} VLM-based {type(vlm_based_labels)} labels")
-		print(f"{len(llm_based_labels)} LLM-based {type(llm_based_labels)} labels")		
 	
 	if len(llm_based_labels) != len(vlm_based_labels):
-		raise ValueError("LLM and VLM based labels must have same length")
+		raise ValueError(
+			f"LLM and VLM labels must have same length: "
+			f"LLM: {len(llm_based_labels)} != VLM: {len(vlm_based_labels)}"
+		)
 	
 	multimodal_labels = merge_labels(
 		llm_based_labels=llm_based_labels,
@@ -280,7 +324,7 @@ def get_multimodal_annotation(
 				
 				# Print message and rows if any empty labels found
 				if empty_labels.any():
-					print(f"\n>> Rows with empty labels from: {col}:")
+					print(f"\n{col} {len(df[empty_labels])} rows with empty labels:")
 					print(df[empty_labels].head(50))
 
 		before_count = len(df)
@@ -290,9 +334,7 @@ def get_multimodal_annotation(
 		df = df[valid_mask].copy()
 		after_count = len(df)
 		if verbose:
-			print(f"\n[DONE] Canonical mapping:")
-			print(f"   Samples before: {before_count:,}")
-			print(f"   Samples after: {after_count:,}")
+			print(f"\n[DONE] Canonical Mapping (before: {before_count:,} after: {after_count:,})")
 			if before_count != after_count:
 				removed = before_count - after_count
 				print(f"   Removed {removed:,} samples with no valid labels ({removed/before_count*100:.2f}%)")
@@ -300,54 +342,29 @@ def get_multimodal_annotation(
 			# Show some statistics
 			label_counts = df['multimodal_canonical_labels'].apply(len)
 			print(f"\nLabels per sample:")
-			print(f"     Mean: {label_counts.mean():.2f}")
-			print(f"     Median: {label_counts.median():.0f}")
-			print(f"     Min: {label_counts.min()}")
-			print(f"     Max: {label_counts.max()}")
+			print(f"  ├─ (min, max): ({label_counts.min()}, {label_counts.max()})")
+			print(f"  ├─ μ±σ: {label_counts.mean():.2f} ± {label_counts.std():.2f}")
+			print(f"  ├─ Median: {label_counts.median()}")
 				
-		# Deduplicate canonical labels safely
-		if verbose:
-			print(f"\n>> Deduplicating canonical labels...")
-
-		# Use a helper to handle None values
+		# helper to handle None values
 		def safe_dedup(labels):
 			if labels is None:
 				return None
 			return list(dict.fromkeys(labels))
 
-		df['llm_canonical_labels'] = df['llm_canonical_labels'].apply(safe_dedup)
-		df['vlm_canonical_labels'] = df['vlm_canonical_labels'].apply(safe_dedup)
-		df['multimodal_canonical_labels'] = df['multimodal_canonical_labels'].apply(safe_dedup)
+		# Deduplicate canonical labels safely
+		if verbose:
+			print(f"\n>> Deduplicating canonical labels...")
 
-		# Update assertions to handle the empty lists we just created
-		assert sum(1 for labels in df['llm_canonical_labels'] if labels is not None and len(labels) != len(set(labels))) == 0
-		assert sum(1 for labels in df['vlm_canonical_labels'] if labels is not None and len(labels) != len(set(labels))) == 0
-		assert sum(1 for labels in df['multimodal_canonical_labels'] if labels is not None and len(labels) != len(set(labels))) == 0
+		for col in canonical_cols:
+			df[col] = df[col].apply(safe_dedup)
+			assert sum(1 for labels in df[col] if labels is not None and len(labels) != len(set(labels))) == 0, f"Deduplication failed for {col}"
 
 		if verbose:
 			print(f"   ✓ Deduplication complete")
-
-			llm_duplicate_count = sum(
-				1 for labels in df['llm_canonical_labels']
-				if labels is not None and len(labels) != len(set(labels))
-			)
-
-			vlm_duplicate_count = sum(
-				1 for labels in df['vlm_canonical_labels']
-				if labels is not None and len(labels) != len(set(labels))
-			)
-
-			multimodal_duplicate_count = sum(
-				1 for labels in df['multimodal_canonical_labels']
-				if labels is not None and len(labels) != len(set(labels))
-			)
-
-			print(f"\n>> Duplicate labels in canonical labels:")
-			print(f"[LLM] {llm_duplicate_count:,} ({llm_duplicate_count/len(df)*100:.1f}%)")
-			print(f"[VLM] {vlm_duplicate_count:,} ({vlm_duplicate_count/len(df)*100:.1f}%)")
-			print(f"[Multimodal] {multimodal_duplicate_count:,} ({multimodal_duplicate_count/len(df)*100:.1f}%)")
-
-			print(f"   ✓ Verified: 0 duplicates remaining")
+			for col in canonical_cols:
+				duplicate_count = sum(1 for labels in df[col] if labels is not None and len(labels) != len(set(labels)))
+				print(f"{col:<30} has {duplicate_count} row(s) with duplicate labels after deduplication ({duplicate_count / len(df) * 100:.2f}%)")
 
 	# Filter label lists to match
 	llm_based_labels = [label for label, valid in zip(llm_based_labels, valid_mask) if valid]

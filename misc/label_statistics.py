@@ -2051,10 +2051,10 @@ def get_singletons(df: pd.DataFrame, output_dir: str):
 
 			labels.extend(lbl)
 
-		print(f"  ├─ Total parsed labels: {len(labels)} {type(labels)}")
+		print(f"  ├─ Total parsed {len(labels)} {type(labels)}")
 
 		unique_labels = sorted(list(set(labels)))
-		print(f"  ├─ unique labels: {len(unique_labels)} {type(unique_labels)}")
+		print(f"  ├─ unique {len(unique_labels)} {type(unique_labels)}")
 
 		# Count frequencies
 		label_counts = Counter(labels)
@@ -2065,10 +2065,8 @@ def get_singletons(df: pd.DataFrame, output_dir: str):
 		
 		label_singletons = label_counts_df[label_counts_df['Count'] == 1]['Label'].tolist()
 
-		print(f"  └─ Singleton {len(label_singletons)}/{len(unique_labels)} ({len(label_singletons) / len(unique_labels) * 100:.2f}%):")
+		print(f"  └─ Singleton(s) {len(label_singletons):6d}/{len(unique_labels):6d} ({len(label_singletons)/len(unique_labels)*100:.2f}%) {label_singletons[:10]}")
 
-		print(f"{type(label_singletons)} {label_singletons[:25]}")
-
-		label_counts_df.to_csv(os.path.join(output_dir, f"{len(unique_labels)}_unique_labels_{col}.csv"), index=False)
+		label_counts_df.to_csv(os.path.join(output_dir, f"unique_labels_{len(unique_labels)}_{col}.csv"), index=False)
 
 	print("="*100)

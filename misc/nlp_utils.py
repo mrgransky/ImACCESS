@@ -558,6 +558,9 @@ def _post_process_(
 		'SES',
 		'LCM',
 		'SPAR',
+		'MAMAS',
+		'SRE',
+		'LCA',
 	}
 	
 	ALLOWED_SINGLE_LETTERS = {
@@ -866,6 +869,58 @@ def _post_process_(
 				print(f"\t[CASE PASSED] {repr(label):<55} len={len(label)} > {min_meaningful_word_length}")
 			else:
 				print(f"\t[CASE PASSED] {repr(label):<55} ratio={uppercase_ratio:.3f} <= {uppercase_bound_thresh}")
+		return False
+
+	def should_filter_label(lemma: str) -> bool:
+		"""Context-aware filtering."""
+		words = lemma.lower().split()
+
+		# if all(w in IRRELEVANT_NAMES for w in words):
+		if lemma.lower() in IRRELEVANT_NAMES:
+			return True
+
+		# Rule 2: Single-word generic terms
+		if len(words) == 1:
+			word = words[0]
+			all_generic = (
+				GENERIC_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | 
+				GENERIC_TECH_WORDS | GENERIC_META_WORDS
+			)
+			return word in all_generic
+		
+		# Rule 3: quantified plurals (your main concern!)
+		if len(words) == 2:
+			first_word = words[0]
+			second_word = words[1]
+			
+			is_number = (
+				first_word.isdigit() 
+				or first_word in NUMBER_WORDS
+			)
+
+			is_generic_person = (
+				second_word in GENERIC_PEOPLE_WORDS 
+				or second_word in GENERIC_FAMILY_WORDS
+			)
+			
+			if is_number and is_generic_person:
+				return True  # Remove "three men", "two women"
+		
+		# Rule 4: Multi-word compounds - keep if has specific words
+		all_generic = (
+			GENERIC_PEOPLE_WORDS 
+			| GENERIC_FAMILY_WORDS 
+			| GENERIC_TECH_WORDS 
+			| GENERIC_META_WORDS 
+		)
+		
+		generic_count = sum(1 for w in words if w in all_generic)
+		
+		# All words generic → Remove
+		if generic_count == len(words):
+			return True
+		
+		# Has specific words → Keep
 		return False
 
 	def _extract_geopolitical_entities(
@@ -1251,6 +1306,39 @@ def _post_process_(
 		
 		return False
 
+	def is_phrasal_verb(lemma: str) -> bool:
+		"""
+		Detect true phrasal verbs like:
+		- "take off", "put on", "look up", "turn around"
+		
+		NOT:
+		- "congested area" (adjective + noun)
+		- "military base" (adjective + noun)
+		"""
+		tokens = lemma.split()
+		if len(tokens) != 2:  # Phrasal verbs are exactly 2 words
+			return False
+		
+		# Common phrasal verb particles
+		PARTICLES = {
+			'up', 'down', 'out', 'in', 'on', 'off', 
+			'away', 'back', 'over', 'around', 'through'
+		}
+		
+		# Check if second word is a particle
+		if tokens[1] not in PARTICLES:
+			return False
+		
+		# Use POS tagging to verify first word is a verb
+		pos_tags = nltk.pos_tag(tokens)
+		first_word_pos = pos_tags[0][1]
+		
+		# First word should be a verb (VB, VBD, VBG, VBN, VBP, VBZ)
+		if not first_word_pos.startswith('VB'):
+			return False
+		
+		return True
+
 	def normalize_label_format(raw: str) -> str:
 		"""
 		Normalize LLM/VLM-generated label formatting to a canonical form.
@@ -1324,7 +1412,7 @@ def _post_process_(
 		
 		return is_number and is_plural
 
-	def is_adjectival_phrase(original_phrase: str) -> bool:
+	def is_adjectival(original_phrase: str) -> bool:
 		"""
 		Detect descriptive adjectival phrases like:
 		'newly built', 'recently completed', 'partially destroyed'
@@ -1343,7 +1431,7 @@ def _post_process_(
 			and phrase not in GERUND_NOUNS
 		)
 
-	def is_event_gerund_phrase(original_phrase: str) -> bool:
+	def is_event_gerund(original_phrase: str) -> bool:
 		"""
 		Detect event phrases like:
 		'flag raising', 'ship launching', 'troop landing'
@@ -1355,91 +1443,6 @@ def _post_process_(
 			and tokens[-1].endswith("ing")
 			and not tokens[0].endswith("ly")  # excludes 'newly built'
 		)
-
-	def is_phrasal_verb(lemma: str) -> bool:
-		"""
-		Detect true phrasal verbs like:
-		- "take off", "put on", "look up", "turn around"
-		
-		NOT:
-		- "congested area" (adjective + noun)
-		- "military base" (adjective + noun)
-		"""
-		tokens = lemma.split()
-		if len(tokens) != 2:  # Phrasal verbs are exactly 2 words
-			return False
-		
-		# Common phrasal verb particles
-		PARTICLES = {
-			'up', 'down', 'out', 'in', 'on', 'off', 
-			'away', 'back', 'over', 'around', 'through'
-		}
-		
-		# Check if second word is a particle
-		if tokens[1] not in PARTICLES:
-			return False
-		
-		# Use POS tagging to verify first word is a verb
-		pos_tags = nltk.pos_tag(tokens)
-		first_word_pos = pos_tags[0][1]
-		
-		# First word should be a verb (VB, VBD, VBG, VBN, VBP, VBZ)
-		if not first_word_pos.startswith('VB'):
-			return False
-		
-		return True
-
-	def should_filter_label(lemma: str) -> bool:
-		"""Context-aware filtering."""
-		words = lemma.lower().split()
-
-		# if all(w in IRRELEVANT_NAMES for w in words):
-		if lemma.lower() in IRRELEVANT_NAMES:
-			return True
-
-		# Rule 2: Single-word generic terms
-		if len(words) == 1:
-			word = words[0]
-			all_generic = (
-				GENERIC_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | 
-				GENERIC_TECH_WORDS | GENERIC_META_WORDS
-			)
-			return word in all_generic
-		
-		# Rule 3: quantified plurals (your main concern!)
-		if len(words) == 2:
-			first_word = words[0]
-			second_word = words[1]
-			
-			is_number = (
-				first_word.isdigit() 
-				or first_word in NUMBER_WORDS
-			)
-
-			is_generic_person = (
-				second_word in GENERIC_PEOPLE_WORDS 
-				or second_word in GENERIC_FAMILY_WORDS
-			)
-			
-			if is_number and is_generic_person:
-				return True  # Remove "three men", "two women"
-		
-		# Rule 4: Multi-word compounds - keep if has specific words
-		all_generic = (
-			GENERIC_PEOPLE_WORDS 
-			| GENERIC_FAMILY_WORDS 
-			| GENERIC_TECH_WORDS 
-			| GENERIC_META_WORDS 
-		)
-		
-		generic_count = sum(1 for w in words if w in all_generic)
-		
-		# All words generic → Remove
-		if generic_count == len(words):
-			return True
-		
-		# Has specific words → Keep
-		return False
 
 	def get_wordnet_pos(treebank_tag):
 		"""Convert Penn Treebank POS tag to WordNet POS tag"""
@@ -1454,27 +1457,30 @@ def _post_process_(
 		else:
 			return nltk.corpus.wordnet.NOUN  # Default to noun
 
-	def lemmatize_phrase(phrase: str, original_phrase: str, verbose: bool = False) -> str:
-
-		if is_adjectival_phrase(phrase):
+	def _lemmatize_(phrase: str, verbose: bool = False) -> str:
+		if is_quantified_plural(phrase):
 			if verbose:
-				print(f"\t[PRESERVED] {repr(lemma):<55} constructed with adjective")
+				print(f"\t[SKIPPED] {repr(phrase):<55} quantified plural")
+			return phrase
+
+		if is_adjectival(phrase):
+			if verbose:
+				print(f"\t[PRESERVED] {repr(phrase):<55} constructed with adjective")
 			return phrase # "newly built", "recently completed"
 
 		if is_activity_gerund(phrase):
 			if verbose:
-				print(f"\t[PRESERVED] {repr(lemma):<55} activity gerund")
+				print(f"\t[PRESERVED] {repr(phrase):<55} activity gerund")
 			return phrase  # "snowshoeing", "skiing", "fishing"
 
-		if is_event_gerund_phrase(phrase):
+		if is_event_gerund(phrase):
 			if verbose:
-				print(f"\t[PRESERVED] {repr(lemma):<55} event gerund")
+				print(f"\t[PRESERVED] {repr(phrase):<55} event gerund")
 			return phrase # "flag raising", "ship launching", "troop landing"
 
 		tokens = phrase.split()
-		original_tokens = original_phrase.split()
 		pos_tags = nltk.pos_tag(tokens)
-		lemmatized_tokens = []
+		lemmatized_tokens = list()
 		protected_indices = set()
 
 		for protected in PROTECTED_PLURALS:
@@ -1486,27 +1492,25 @@ def _post_process_(
 						protected_indices.add(j)
 
 		for i, (token, pos) in enumerate(pos_tags):
-			original_token = original_tokens[i] if i < len(original_tokens) else token
-
 			# ── 1. Plural Acronyms: Strip 's' and keep base acronym in uppercase ──
 			# 'PBYs' -> 'PBY', 'POWs' -> 'POW', 'LCTs' -> 'LCT', 'DUKWs' -> 'DUKW'
-			if re.match(r'^[A-Z]{2,}s$', original_token):
-				lemmatized_tokens.append(original_token[:-1])
+			if re.match(r'^[A-Z]{2,}s$', token):
+				lemmatized_tokens.append(token[:-1])
 				continue
 
 			# ── 2. Plural Acronym in ALL-CAPS: 'WASPS' -> 'WASP', 'POWS' -> 'POW', 'NCOS' -> 'NCO' ──
 			# Guard ensures 'WAFS', 'USS', 'AWACS', and 'AMTRACS' are not accidentally truncated
 			if (
-				original_token.isupper() 
-				and original_token.endswith('S') 
-				and original_token not in ALLOWED_ACRONYMS 
-				and original_token[:-1] in ALLOWED_ACRONYMS
+				token.isupper() 
+				and token.endswith('S') 
+				and token not in ALLOWED_ACRONYMS 
+				and token[:-1] in ALLOWED_ACRONYMS
 			):
-				lemmatized_tokens.append(original_token[:-1])
+				lemmatized_tokens.append(token[:-1])
 				continue
 
-			has_multiple_caps = sum(1 for c in original_token if c.isupper()) >= 2
-			is_abbr = original_token.isupper() or '.' in original_token or has_multiple_caps
+			has_multiple_caps = sum(1 for c in token if c.isupper()) >= 2
+			is_abbr = token.isupper() or '.' in token or has_multiple_caps
 
 			# only trust NNP if the word has no common-noun sense in WordNet ──
 			# nltk's tagger biases toward NNP for any capitalized/isolated token,
@@ -1515,8 +1519,8 @@ def _post_process_(
 			is_proper_noun = pos.startswith("NNP") and not has_common_sense
 
 			# uppercase at start OR after apostrophe:
-			starts_capital = bool(original_token) and original_token[0].isupper()
-			has_apostrophe_capital = bool(re.search(r"['\u2019][A-Z]", original_token))
+			starts_capital = bool(token) and token[0].isupper()
+			has_apostrophe_capital = bool(re.search(r"['\u2019][A-Z]", token))
 
 			if (
 				is_abbr
@@ -1549,7 +1553,12 @@ def _post_process_(
 						candidate = candidate[:1].upper() + candidate[1:]
 					lemmatized_tokens.append(candidate)
 
-		return ' '.join(lemmatized_tokens)
+		lemmatized_phrase = ' '.join(lemmatized_tokens)
+
+		if verbose and lemmatized_phrase != phrase:
+			print(f"[LEMMATIZED] {repr(phrase):<55} → {repr(lemmatized_phrase)}")
+
+		return lemmatized_phrase
 
 	def _capitalization_score(text: str) -> int:
 		"""Count uppercase letters to prefer 'Drum' over 'drum'."""
@@ -1639,10 +1648,8 @@ def _post_process_(
 
 			if original_cleaned != original_cleaned_normalized:
 				if verbose:
-					print(f"[NORMALIZED] {repr(original_cleaned):<55} ==>> {repr(original_cleaned_normalized)}")
+					print(f"[NORMALIZED] {repr(original_cleaned):<55} → {repr(original_cleaned_normalized)}")
 				original_cleaned = original_cleaned_normalized
-
-			s = original_cleaned
 			
 			if is_stopword(original_cleaned):
 				if verbose:
@@ -1664,37 +1671,11 @@ def _post_process_(
 						print(f"\t[SKIPPED] {repr(ner_input):<55} GPE/LOC/NORP → {geo_result}")
 					continue
 
-			# ################### LEMMATIZATION ################### 
-			#################################################
-			# only required when lemmatization is applied:
-			# if is_quantified_plural(original_cleaned):
-			# 	if verbose:
-			# 		print(f"\t[SKIPPED] {repr(original_cleaned):<55} quantified plural ")
-			# 	continue
-			#################################################
+			# # with lemmatization:
+			# lemma = _lemmatize_(phrase=original_cleaned, verbose=verbose)
 
-			# if is_adjectival_phrase(original_cleaned):
-			# 	lemma = s  # Preserve "newly built", "recently completed"
-			# 	if verbose:
-			# 		print(f"\t[PRESERVED] {repr(lemma):<55} constructed with adjective")
-			# elif is_activity_gerund(original_cleaned):
-			# 	lemma = s  # Preserve "snowshoeing", "skiing", "fishing"
-			# 	if verbose:
-			# 		print(f"\t[PRESERVED] {repr(lemma):<55} activity gerund")
-			# elif is_event_gerund_phrase(original_cleaned):
-			# 	lemma = s  # Preserve "flag raising", "ship launching", "troop landing"
-			# 	if verbose:
-			# 		print(f"\t[PRESERVED] {repr(lemma):<55} event gerund")
-			# else:
-			# 	lemma = lemmatize_phrase(s, original_cleaned)
-			# 	if verbose:
-			# 		if lemma != s:
-			# 			print(f"[LEMMATIZED] {repr(s):<55} ==>> {repr(lemma)}")
-			# ################### LEMMATIZATION ################### 
-
-			# lemma = lemmatize_phrase(s, original_cleaned, verbose=verbose) # buggy s and original_cleaned are different
-
-			lemma = s	# no lemmatization
+			# without lemmatization:
+			lemma = original_cleaned
 
 			if len(lemma) < min_kw_ch_length:
 				if verbose:
@@ -1715,7 +1696,7 @@ def _post_process_(
 
 			if is_phrasal_verb(lemma):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} Phrasal verb")
+					print(f"\t[SKIPPED] {repr(lemma):<55} phrasal verb")
 				continue
 
 			if is_stopword(lemma):
