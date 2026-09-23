@@ -192,6 +192,8 @@ def _post_process_(
 	col: str,
 	min_kw_ch_length: int = 3,
 	max_kw_word_length: int = 10,
+	apply_lemmatization: bool = False, # let embedding-based canonicalization merge singulars, plurals, and casing variations.
+	apply_normalization: bool = False, # let embedding-based canonicalization merge synonyms and near-synonym
 	verbose: bool = False,
 ) -> List[List[str]]:
 	pp_st = time.time()
@@ -202,7 +204,8 @@ def _post_process_(
 		print(f"  ├─ {col}")
 		print(f"  ├─ {len(labels_list) if labels_list else 0} labels_list: {type(labels_list)}")
 		print(f"  ├─ Stopwords: {len(STOPWORDS)}")
-		print(f"  └─ min kw length: {min_kw_ch_length} | max kw length: {max_kw_word_length}")
+		print(f"  ├─ min kw length: {min_kw_ch_length} | max kw length: {max_kw_word_length}")
+		print(f"  └─ apply_lemmatization: {apply_lemmatization}")
 		print("-"*50)
 	
 	if not labels_list:
@@ -1339,7 +1342,7 @@ def _post_process_(
 		
 		return True
 
-	def normalize_label_format(raw: str) -> str:
+	def normalize_label_format(raw: str, verbose: bool = False) -> str:
 		"""
 		Normalize LLM/VLM-generated label formatting to a canonical form.
 		
@@ -1386,7 +1389,8 @@ def _post_process_(
 		# But PRESERVE multi-dot acronyms like "U.S.A." or "R.O.T.C."
 		# If it ends with a dot but doesn't look like an acronym (has <= 1 dot), strip trailing dot
 		if s.endswith('.') and s.count('.') == 1:
-				s = s[:-1]
+			s = s[:-1]
+
 		s = s.strip(" ,;:!?\"'()[]{}")
 
 		# 5. Split True camelCase: lowercase followed by Titlecase (storageTank -> storage Tank)
@@ -1398,6 +1402,10 @@ def _post_process_(
 
 		# 7. Collapse whitespace
 		s = re.sub(r'\s+', ' ', s).strip()
+
+		if s != raw:
+			if verbose:
+				print(f"[NORMALIZED] {repr(raw):<55} → {repr(s)}")
 
 		return s
 
@@ -1565,6 +1573,7 @@ def _post_process_(
 		return sum(1 for c in text if c.isupper())
 
 	processed_batch = list()
+	vocab = Counter()
 	for idx, labels in enumerate(labels_list):
 		t0 = time.time()
 		if labels is None:
@@ -1626,8 +1635,7 @@ def _post_process_(
 		if current_items != labels and verbose:
 			print(f"[STANDARDIZED] {len(current_items)} {type(current_items)} {current_items}")
 
-		# 2. Normalization & Lemmatization
-		clean_dict = dict()
+		clean_dict_per_sample = dict()
 		for item_idx, item in enumerate(current_items):
 			if verbose:
 				print(f"[{item_idx+1}/{len(current_items)}] {repr(item)}")
@@ -1644,12 +1652,8 @@ def _post_process_(
 			original_cleaned = original.strip('"').strip("'").strip('()').strip('[]')
 			original_cleaned = ' '.join(original_cleaned.split())
 
-			original_cleaned_normalized = normalize_label_format(original_cleaned)
-
-			if original_cleaned != original_cleaned_normalized:
-				if verbose:
-					print(f"[NORMALIZED] {repr(original_cleaned):<55} → {repr(original_cleaned_normalized)}")
-				original_cleaned = original_cleaned_normalized
+			if apply_normalization:
+				original_cleaned = normalize_label_format(original_cleaned, verbose=verbose)
 			
 			if is_stopword(original_cleaned):
 				if verbose:
@@ -1671,11 +1675,10 @@ def _post_process_(
 						print(f"\t[SKIPPED] {repr(ner_input):<55} GPE/LOC/NORP → {geo_result}")
 					continue
 
-			# # with lemmatization:
-			# lemma = _lemmatize_(phrase=original_cleaned, verbose=verbose)
-
-			# without lemmatization:
-			lemma = original_cleaned
+			if apply_lemmatization:
+				lemma = _lemmatize_(phrase=original_cleaned, verbose=verbose)
+			else:
+				lemma = original_cleaned
 
 			if len(lemma) < min_kw_ch_length:
 				if verbose:
@@ -1748,31 +1751,84 @@ def _post_process_(
 				continue
 
 			lemma_key = lemma.lower().strip()
-			if lemma_key in clean_dict:
-				# Prefer the version with MORE capitalization
-				existing = clean_dict[lemma_key]
+
+			# 1. EXACT CASE-INSENSITIVE MATCH
+			if lemma_key in clean_dict_per_sample:
+				existing = clean_dict_per_sample[lemma_key]
+				# Prefer the version with MORE capitalization ('Officer Training Camp' > 'officer training camp')
 				if _capitalization_score(lemma) > _capitalization_score(existing):
 					if verbose:
 						print(f"\t\t[REPLACED] {repr(existing)} → {repr(lemma)} (more capitals)")
-					clean_dict[lemma_key] = lemma
+					clean_dict_per_sample[lemma_key] = lemma
 				else:
 					if verbose:
 						print(f"\t[SKIPPED] {repr(lemma):<55} duplicate of {repr(existing)}")
-			else:
-				clean_dict[lemma_key] = lemma
+				continue
 
-		result = list(clean_dict.values()) if clean_dict else None
-		processed_batch.append(result)
+			# SINGULAR / PLURAL WITHIN-SAMPLE COLLAPSING
+			# 2A: Plural arrives, but singular is ALREADY stored 
+			# (e.g. current is 'Locomotives', 'locomotive' is stored)
+			if (
+				lemma_key.endswith('s') 
+				and not lemma_key.endswith('ss') 
+				and lemma_key not in PLURALE_TANTUM 
+				and lemma_key not in PROTECTED_PLURALS
+			):
+				singular_key = lemma_key[:-1]
+				if singular_key in clean_dict_per_sample:
+					if verbose:
+						print(f"\t[SKIPPED] {repr(lemma):<55} plural duplicate of {repr(clean_dict_per_sample[singular_key])}")
+					continue
+
+			# 2B: Singular arrives, but plural was stored FIRST 
+			# (e.g. current is 'locomotive', 'Locomotives' was stored)
+			# prefer singular form, so replace the plural!
+			plural_key = lemma_key + 's'
+			if plural_key in clean_dict_per_sample:
+				existing_plural = clean_dict_per_sample.pop(plural_key)
+				if verbose:
+					print(f"\t\t[REPLACED] {repr(existing_plural)} → {repr(lemma)} (prefer singular)")
+				clean_dict_per_sample[lemma_key] = lemma
+				continue
+
+			# 3. NEW DISTINCT KEY
+			clean_dict_per_sample[lemma_key] = lemma
+
+		results_per_sample = list(clean_dict_per_sample.values()) if clean_dict_per_sample else None
+		if results_per_sample:
+			# Efficiently update the vocabulary
+			vocab.update(results_per_sample) 
+			# Inefficiently update the vocabulary
+			# for idx, lbl in enumerate(results_per_sample):
+			# 	if vocab.get(lbl):
+			# 		# increment the occureance as its value
+			# 		vocab[lbl] += 1
+			# 	else:
+			# 		vocab[lbl] = 1
+
+		processed_batch.append(results_per_sample)
 		
-		if verbose and result:
-			print(f"[FINAL] {result} {len(current_items)} → {len(result)} (removed {len(current_items) - len(result)})", end="\t")
+		if verbose and results_per_sample:
+			print(f"[FINAL] {results_per_sample} {len(current_items)} → {len(results_per_sample)} (removed {len(current_items) - len(results_per_sample)})", end="\t")
 			print(f"[ELAPSED] {time.time() - t0:.5f} sec")
 			print('-'*125)
 
 	if verbose:
-		print(f"\n[POST-PROCESSED] {len(processed_batch)} samples")
+		print(f"[POST-PROCESSED] {len(processed_batch)} samples")
 		print(f"[TOTAL ELAPSED TIME] {time.time() - pp_st:.1f} sec")
-		print("-"*100)
+
+		total_unique = len(vocab)
+		total_occurrences = sum(vocab.values())
+		singletons = sum(1 for count in vocab.values() if count == 1)
+		singleton_rate = (singletons / total_unique * 100) if total_unique > 0 else 0.0
+
+		print("=" * 50)
+		print(f"📊 DATASET STATISTICS ({col}):")
+		print(f"  ├─ Unique Labels      : {total_unique:,}")
+		print(f"  ├─ Total Occurrences  : {total_occurrences:,}")
+		print(f"  ├─ Singletons (freq=1): {singletons:,}")
+		print(f"  └─ Singleton Rate     : {singleton_rate:.2f}%")
+		print("=" * 50)
 
 	return processed_batch
 

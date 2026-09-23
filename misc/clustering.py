@@ -261,7 +261,7 @@ def _normalize_label_case(
 				if len(surfaces) > 1
 			)
 			for surfaces, winner in examples:
-				print(f"\t\t{surfaces} -> '{winner}'")
+				print(f"\t{surfaces} -> {repr(winner)}")
 
 	return normalized_documents
 

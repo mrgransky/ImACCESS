@@ -1321,7 +1321,6 @@ def get_cgd_taxonomy_supervision(
 	num_workers: int,
 	device: str,
 	batch_size: int,
-	norm_stats: Dict[str, List[float]]=None,
 	anchor_column: str = "vlm_canonical_labels",
 	semantic_threshold: Optional[float] = None,
 	base: float = 2.0,
@@ -1365,13 +1364,17 @@ def get_cgd_taxonomy_supervision(
 	"""
 	
 	# Setup and Validation
+	try:
+		mean = load_pickle(fpath=os.path.join(os.path.dirname(output_directory), "img_rgb_mean.gz"))
+		std = load_pickle(fpath=os.path.join(os.path.dirname(output_directory), "img_rgb_std.gz"))
+	except Exception as e:
+		mean = [0.52, 0.50, 0.48]
+		std = [0.27, 0.27, 0.26]
+
+	norm_stats = {"mean": mean, "std": std}
 	if verbose:
-		print("\n[CGD TAXONOMY] Coverage-Grounding-Density Analysis")
-		print(df.info(verbose=verbose, memory_usage="deep"))
-		# print(df.head(5).to_string(index=False))
-	
-	if norm_stats is None:
-		norm_stats = {"mean": [0.52, 0.50, 0.48], "std": [0.27, 0.27, 0.26]}
+		print("-"*100)
+		print("[CGD TAXONOMY] Coverage-Grounding-Density Analysis")
 
 	# Use default sources if not specified
 	sources = ["llm_canonical_labels", "vlm_canonical_labels", "multimodal_canonical_labels"]
@@ -1381,15 +1384,17 @@ def get_cgd_taxonomy_supervision(
 			return
 	
 	if verbose:
-		print(f"\nConfiguration:")
-		print(f"  df: {df.shape}")
-		print(f"  Embedding model: {embedding_model_id}")
-		print(f"  {architecture} normalization stats: {norm_stats}")
-		print(f"  Sources to analyze: {sources}")
-		print(f"  Visual anchor: {anchor_column}")
-		print(f"  Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
-		print(f"  Number of Workers: {num_workers}")
-		print(f"  Normalization: {normalize}")
+		print(f"  ├─ df: {df.shape}")
+		print(f"  ├─ Embedding model: {embedding_model_id}")
+		print(f"  ├─ {architecture} normalization")
+		print(f"  ├─ stats: {norm_stats}")
+		print(f"  ├─ Sources to analyze: {sources}")
+		print(f"  ├─ Visual anchor: {anchor_column}")
+		print(f"  ├─ Entropy base: {base} ({'bits' if base == 2.0 else 'nats' if base == math.e else 'units'})")
+		print(f"  ├─ Number of Workers: {num_workers}")
+		print(f"  └─ Normalization: {normalize}")
+		print(df.info(verbose=verbose, memory_usage="deep"))
+		print("-"*100)
 	
 	# Validate columns exist
 	required_cols = [anchor_column] + sources

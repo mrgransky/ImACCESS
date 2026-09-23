@@ -67,34 +67,34 @@ from data_prep import get_multi_label_stratified_split, build_shared_eval_protoc
 # large models:
 # $ python gt_kws_multimodal.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3.5-4B" -vlm "Qwen/Qwen3.5-4B" -vlm_bs 16 -llm_bs 96 -nw 40 -v
 
-from rapidfuzz import fuzz
-import spacy
+# from rapidfuzz import fuzz
+# import spacy
 
-nlp = spacy.load("en_core_web_trf", disable=["parser", "ner"])
+# nlp = spacy.load("en_core_web_trf", disable=["parser", "ner"])
 
-def normalize_label(label: str) -> str:
-	"""Normalize a label for comparison."""
-	doc = nlp(
-		label#.lower()
-	)
-	lemmatized = [token.lemma_ for token in doc]
-	return " ".join(lemmatized).strip()
+# def normalize_label(label: str) -> str:
+# 	"""Normalize a label for comparison."""
+# 	doc = nlp(
+# 		label#.lower()
+# 	)
+# 	lemmatized = [token.lemma_ for token in doc]
+# 	return " ".join(lemmatized).strip()
 
-def merge_similar(labels: List[str], threshold: int = 80) -> List[str]:
-	"""Merge labels that are fuzzy matches after normalization."""
-	# Normalize all labels first
-	normalized_labels = [normalize_label(label) for label in labels]
-	# normalized_labels = labels
-	unique_labels = list(set(normalized_labels))
-	merged = []
-	for label in unique_labels:
-		if not any(fuzz.ratio(label, m) > threshold for m in merged):
-			merged.append(label)
+# def merge_similar(labels: List[str], threshold: int = 80) -> List[str]:
+# 	"""Merge labels that are fuzzy matches after normalization."""
+# 	# Normalize all labels first
+# 	normalized_labels = [normalize_label(label) for label in labels]
+# 	# normalized_labels = labels
+# 	unique_labels = list(set(normalized_labels))
+# 	merged = []
+# 	for label in unique_labels:
+# 		if not any(fuzz.ratio(label, m) > threshold for m in merged):
+# 			merged.append(label)
 
-	# Return the original labels (not normalized) for the merged set
-	# This requires mapping back to the original labels
-	# For simplicity, we return the normalized merged labels here
-	return merged
+# 	# Return the original labels (not normalized) for the merged set
+# 	# This requires mapping back to the original labels
+# 	# For simplicity, we return the normalized merged labels here
+# 	return merged
 
 def merge_labels(
 	llm_based_labels: List[List[str]], 
@@ -233,73 +233,69 @@ def get_multimodal_annotation(
 		],
 	)
 
-	valid_mask = pd.Series(True, index=df.index)  # default: keep all rows
+	# post processing for both chunked and full dataset:
+	# 1. Load cache from disk once at script start
+	cache_file = os.path.join(OUTPUT_DIR, "spacy_ner_cache.json")
+	load_spacy_cache(cache_file)
+	try:
+		# ── Call 1: Multimodal ──
+		# Populates the in-memory cache for all shared image concepts
+		multimodal_labels = _post_process_(
+			labels_list=multimodal_labels, 
+			col="multimodal_labels", 
+			verbose=verbose
+		)
+		# ── Call 2: LLM ──
+		# Almost all duplicate labels hit the in-memory cache instantaneously!
+		llm_based_labels = _post_process_(
+			labels_list=llm_based_labels, 
+			col="llm_based_labels", 
+			verbose=False,
+		)
+		# ── Call 3: VLM ──
+		# Same instant cache hits
+		vlm_based_labels = _post_process_(
+			labels_list=vlm_based_labels, 
+			col="vlm_based_labels", 
+			verbose=False,
+		)
+	finally:
+		# 2. Persist to disk so future pipeline runs are instantaneous
+		save_spacy_cache(cache_file)
 
-	# Check if the dataset is a full dataset
+	valid_mask = pd.Series(True, index=df.index) # default: keep all rows
 	is_full_dataset = "_chunk_" not in os.path.basename(csv_file)
 	if is_full_dataset:
-
 		if verbose:
 			print(f"[FULL DATASET] {csv_file} post processing [might take a while...]")
 
-		# 1. Load cache from disk once at script start
-		cache_file = os.path.join(OUTPUT_DIR, "spacy_ner_cache.json")
-		load_spacy_cache(cache_file)
-
-		try:
-			# ── Call 1: Multimodal ──
-			# Populates the in-memory cache for all shared image concepts
-			multimodal_labels = _post_process_(
-				labels_list=multimodal_labels, 
-				col="multimodal_labels", 
-				verbose=verbose
-			)
-			multimodal_canonical_labels, _ = get_canonical_labels(
-				labels=multimodal_labels,
-				model_id=embedding_model_id,
-				label_source="multimodal_labels",
-				output_dir=OUTPUT_DIR,
-				batch_size=batch_size,
-				nc=nc,
-				verbose=verbose,
-			)
-
-			# ── Call 2: LLM ──
-			# Almost all duplicate labels hit the in-memory cache instantaneously!
-			llm_based_labels = _post_process_(
-				labels_list=llm_based_labels, 
-				col="llm_based_labels", 
-				verbose=False,
-			)
-			llm_canonical_labels, _ = get_canonical_labels(
-				labels=llm_based_labels,
-				label_source="llm_based_labels",
-				model_id=embedding_model_id,
-				output_dir=OUTPUT_DIR,
-				batch_size=batch_size,
-				nc=nc,
-				verbose=False,
-			)
-
-			# ── Call 3: VLM ──
-			# Same instant cache hits
-			vlm_based_labels = _post_process_(
-				labels_list=vlm_based_labels, 
-				col="vlm_based_labels", 
-				verbose=False,
-			)
-			vlm_canonical_labels, _ = get_canonical_labels(
-				labels=vlm_based_labels,
-				label_source="vlm_based_labels",
-				model_id=embedding_model_id,
-				output_dir=OUTPUT_DIR,
-				batch_size=batch_size,
-				nc=nc,
-				verbose=False,
-			)
-		finally:
-			# 2. Persist to disk so future pipeline runs are instantaneous
-			save_spacy_cache(cache_file)
+		multimodal_canonical_labels, _ = get_canonical_labels(
+			labels=multimodal_labels,
+			model_id=embedding_model_id,
+			label_source="multimodal_labels",
+			output_dir=OUTPUT_DIR,
+			batch_size=batch_size,
+			nc=nc,
+			verbose=verbose,
+		)
+		llm_canonical_labels, _ = get_canonical_labels(
+			labels=llm_based_labels,
+			label_source="llm_based_labels",
+			model_id=embedding_model_id,
+			output_dir=OUTPUT_DIR,
+			batch_size=batch_size,
+			nc=nc,
+			verbose=False,
+		)
+		vlm_canonical_labels, _ = get_canonical_labels(
+			labels=vlm_based_labels,
+			label_source="vlm_based_labels",
+			model_id=embedding_model_id,
+			output_dir=OUTPUT_DIR,
+			batch_size=batch_size,
+			nc=nc,
+			verbose=False,
+		)
 
 		# check length of each before setting into column:
 		if verbose:
@@ -328,11 +324,14 @@ def get_multimodal_annotation(
 					print(df[empty_labels].head(50))
 
 		before_count = len(df)
+
 		# Create mask for valid samples (those with canonical labels)
 		valid_mask = df['multimodal_canonical_labels'].apply(lambda x: len(x) if x is not None else 0) > 0
+
 		# Filter dataframe
 		df = df[valid_mask].copy()
 		after_count = len(df)
+
 		if verbose:
 			print(f"\n[DONE] Canonical Mapping (before: {before_count:,} after: {after_count:,})")
 			if before_count != after_count:
@@ -377,16 +376,6 @@ def get_multimodal_annotation(
 
 	stats.get_singletons(df=df, output_dir=OUTPUT_DIR)
 	stats.compute_entropy_vs_performance(df=df, verbose=verbose)
-
-	try:
-		mean = load_pickle(fpath=os.path.join(os.path.dirname(csv_file), "img_rgb_mean.gz"))
-		std = load_pickle(fpath=os.path.join(os.path.dirname(csv_file), "img_rgb_std.gz"))
-	except Exception as e:
-		mean = [0.52, 0.50, 0.48]
-		std = [0.27, 0.27, 0.26]
-
-	norm_stats = {"mean": mean, "std": std}
-	print(f"norm_stats: {norm_stats}")
 	stats.get_cgd_taxonomy_supervision(
 		df=df,
 		embedding_model_id=embedding_model_id,
@@ -394,17 +383,11 @@ def get_multimodal_annotation(
 		num_workers=num_workers,
 		batch_size=batch_size,
 		device=device,
-		norm_stats=norm_stats,
 		output_directory=OUTPUT_DIR, 
-		verbose=verbose
+		verbose=verbose,
 	)
 
-	print(df.info(verbose=True, memory_usage=True))
 	df.to_csv(output_csv, index=False)
-	# try:
-	# 	df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-	# except Exception as e:
-	# 	print(f"Failed to write Excel file: {e}")
 	
 	if verbose:
 		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
