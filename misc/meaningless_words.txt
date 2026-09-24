@@ -1,20 +1,3 @@
-en
-in
-be
-by
-on
-or
-of
-is
-at
-to
-it
-as
-an
-no
-my
-me
-we
 mar
 was
 from
@@ -43,8 +26,6 @@ behind
 toward
 within
 about
-with
-and
 approx
 into
 sta
@@ -117,7 +98,6 @@ being
 having
 does
 did
-a
 the
 but
 if
@@ -406,7 +386,6 @@ gone
 good
 got
 gotten
-gov
 great
 greater
 greatest
@@ -1126,3 +1105,9 @@ peak
 hyrib
 rune
 damung
+decca air lines
+luoye
+photograph
+framed
+black
+white

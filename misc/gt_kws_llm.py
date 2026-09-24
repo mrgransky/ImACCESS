@@ -50,7 +50,7 @@ STOPWORDS.update(geographic_references)
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be concrete, semantically atomic, visually grounded and reusable across archives.
-Return your response as a Python list of double-quoted strings containing keywords derived strictly from the caption without any markdown, reasoning, thinking, or explanation.
+Response must be a Python list of double-quoted strings containing keywords derived strictly from the caption without any markdown, reasoning, thinking, or explanation.
 Prioritize multi-word noun phrases when the caption contains meaningful adjectives or descriptors.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.

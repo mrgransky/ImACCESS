@@ -28,22 +28,23 @@ from utils import *
 # Roihu:
 # python gt_kws_vlm.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/45496890.jpg -vlm "Qwen/Qwen3.5-4B" -v
 
-# python gt_kws_vlm.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3-VL-2B-Instruct" -v
+# python gt_kws_vlm.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
-Keywords must be semantically atomic, visually grounded, and broad with absolute maximum degree of breadth.
-Return your response as a Python list of double-quoted strings containing keywords derived strictly from the visual content of the image.
+Keywords must be semantically atomic, visually grounded, and and reusable across archives.
+Response must be a Python list of double-quoted strings containing keywords derived strictly from the visual content of the image.
+Prioritize multi-word noun phrases when possible.
 
 Constraints:
-  - EXCLUDE generic war-related terms ('World War I', 'Vietnam War', 'post war era', 'Post-war', 'aftermath of World War II', 'War', 'battle').
-  - EXCLUDE human classifications ('person', 'people', 'men', 'women', 'children', 'boy', 'girl').
-  - EXCLUDE geographical locations (continents, countries, states, provinces, cities, towns, islands, regions, or roads).
-  - EXCLUDE dates, times, years, decades, or any temporal references.
-  - EXCLUDE generic keywords for image characteristics (photograph, image, black and white photograph, stereoscopy, stereograph)
-  - Refrain from using common environmental details (sky, lighting, ground texture) except when they hold historical importance, such as craters or trenches.
-  - Refrain from using counting expressions ('a trio of men', 'various individuals', or 'a cluster of youths').
   - Refrain from using underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
-  - Avoid vague container nouns ('scene', 'group', 'crowd', or 'event').
+  - Exclude generic war terms ('World War I', 'Vietnam War', 'post war era', 'Post-war','war damage', 'aftermath of World War II', 'War', 'battle').
+  - Exclude human human category nouns and classifications ('person', 'people', 'men', 'women', 'children', 'boy', 'girl').
+  - Exclude geographical locations (continents, countries, states, provinces, cities, towns, islands, regions, or roads).
+  - Exclude dates, times, years, decades, or any temporal references.
+  - Exclude generic keywords for image characteristics ('photograph', 'image', 'black and white photograph', 'stereoscopy', 'stereograph').
+  - Refrain from using common environmental details (sky, lighting, ground texture).
+  - Refrain from using counting expressions ('a trio of men', 'various individuals', or 'a cluster of youths').
+  - Avoid vague and generic descriptor or container nouns which lack detail ('equipment', 'system', 'scene', 'group', 'crowd', or 'event').
   - Avoid purely demographic descriptors without contextual role.
   - Text/OCR extraction from the image is not allowed."""
 

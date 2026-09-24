@@ -18,8 +18,8 @@ except Exception as e:
 	nlp_spacy = None
 
 import pandas as pd
-from collections import Counter
-from typing import List, Optional, Set, Any, Dict
+from collections import Counter, defaultdict
+from typing import List, Optional, Set, Any, Dict, Tuple
 # Install: pip install lingua-language-detector
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
 
@@ -66,19 +66,25 @@ STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
 # Load custom stopwords from file
 meaningless_words_path = os.path.join(MISC_DIR, 'meaningless_words.txt')
 with open(meaningless_words_path, 'r') as file_:
-	# No need for list comprehension wrapper - update() accepts any iterable
-	STOPWORDS.update(line.strip().lower() for line in file_)
+	MEANINGLESS_PHRASES = set(
+		[	
+			line.strip().lower() 
+			for line in file_
+			if line.strip()
+		]	
+	)
+STOPWORDS.update(MEANINGLESS_PHRASES)
 
 geographic_references_path = os.path.join(MISC_DIR, 'geographic_references.txt')
 with open(geographic_references_path, 'r') as file_:
-	geographic_references = set(
+	GEOGRAPHIC_REFERENCES = set(
 		[
 			line.strip().lower()
 			for line in file_ 
 			if line.strip()
 		]
 	)
-STOPWORDS.update(geographic_references)
+# STOPWORDS.update(GEOGRAPHIC_REFERENCES)
 
 # This DRASTICALLY improves accuracy on short text.
 languages_to_check = [
@@ -152,40 +158,40 @@ _SPACY_CACHE: Dict[str, Any] = {}
 _CACHE_DIRTY = False  # Tracks if new entities were added to avoid unnecessary disk writes
 
 def load_spacy_cache(cache_path: str = "spacy_ner_cache.json") -> None:
-    """Load persistent spaCy NER cache from disk into memory."""
-    global _SPACY_CACHE
-    if os.path.exists(cache_path):
-        try:
-            with open(cache_path, "r", encoding="utf-8") as f:
-                raw_cache = json.load(f)
-            # Reconstruct sets (JSON stores sets as lists)
-            _SPACY_CACHE = {
-                k: {**v, "entities": set(v.get("entities", []))}
-                for k, v in raw_cache.items()
-            }
-        except Exception as e:
-            print(f"[CACHE] Warning: Failed to load spaCy cache from {cache_path}: {e}")
-            _SPACY_CACHE = {}
-    else:
-        _SPACY_CACHE = {}
+		"""Load persistent spaCy NER cache from disk into memory."""
+		global _SPACY_CACHE
+		if os.path.exists(cache_path):
+				try:
+						with open(cache_path, "r", encoding="utf-8") as f:
+								raw_cache = json.load(f)
+						# Reconstruct sets (JSON stores sets as lists)
+						_SPACY_CACHE = {
+								k: {**v, "entities": set(v.get("entities", []))}
+								for k, v in raw_cache.items()
+						}
+				except Exception as e:
+						print(f"[CACHE] Warning: Failed to load spaCy cache from {cache_path}: {e}")
+						_SPACY_CACHE = {}
+		else:
+				_SPACY_CACHE = {}
 
 def save_spacy_cache(cache_path: str = "spacy_ner_cache.json") -> None:
-    """Save in-memory spaCy NER cache to disk if modified."""
-    global _SPACY_CACHE, _CACHE_DIRTY
-    if not _CACHE_DIRTY:
-        return
+		"""Save in-memory spaCy NER cache to disk if modified."""
+		global _SPACY_CACHE, _CACHE_DIRTY
+		if not _CACHE_DIRTY:
+				return
 
-    try:
-        # Convert sets to lists for JSON serialization
-        serializable_cache = {
-            k: {**v, "entities": list(v.get("entities", []))}
-            for k, v in _SPACY_CACHE.items()
-        }
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(serializable_cache, f, indent=2, ensure_ascii=False)
-        _CACHE_DIRTY = False
-    except Exception as e:
-        print(f"[CACHE] Warning: Failed to save spaCy cache to {cache_path}: {e}")
+		try:
+				# Convert sets to lists for JSON serialization
+				serializable_cache = {
+						k: {**v, "entities": list(v.get("entities", []))}
+						for k, v in _SPACY_CACHE.items()
+				}
+				with open(cache_path, "w", encoding="utf-8") as f:
+						json.dump(serializable_cache, f, indent=2, ensure_ascii=False)
+				_CACHE_DIRTY = False
+		except Exception as e:
+				print(f"[CACHE] Warning: Failed to save spaCy cache to {cache_path}: {e}")
 
 def _post_process_(
 	labels_list: List[List[str]],
@@ -239,23 +245,18 @@ def _post_process_(
 		"steamer",
 		"runway",
 		"redwing",
-		"seaplane",
 		"flakstop",
 		"flak",
 		"sea sled",
 		"x ray",
 		"u boat",
 		"seal",
-		"runaway",
 		"truck",
 		"hotel",
-		"hospital",
-		"soldiers",
 		"eagle",
 		"engine",
-		"aricraft",
-		"infantry",
-		"sparrow",
+		"runaway",
+		"snail",
 	}
 
 	PROTECTED_PLURALS = {
@@ -278,7 +279,7 @@ def _post_process_(
 		"pants", "shorts", "glasses", "scissors", "pliers",
 		"tongs", "trousers", "binoculars", "goggles", "barracks",
 		"headquarters", "clothes", "belongings", "remains",
-		"surroundings", "outskirts", "archives",
+		"surroundings", "outskirts", "archives", "overalls",
 	}
 
 	PARTICIPAL_ADJECTIVES = {
@@ -302,7 +303,8 @@ def _post_process_(
 	GENERIC_FAMILY_WORDS = {
 		"brother", "sister", "brothers", "sisters",
 		"cousin", "nephew", "niece", "sibling",
-		"mother", "father", "daughter", "son",
+		"mother", "father", 
+		"daughter", "son",
 		"uncle", "aunt",
 		"grandfather", "grandmother", "grandma", "grandpa",
 		"granddaughter", "grandson", "godfather", "godmother",
@@ -363,7 +365,7 @@ def _post_process_(
 	}
 
 	IMAGE_DESCRIPTORS = {
-		"black and white", 
+		"black and white",
 		"black & white", 
 		"B/W", 
 		"B&W",
@@ -699,28 +701,28 @@ def _post_process_(
 	# 1. Date, Season, and Temporal Noise Patterns
 	# Matches: "1936", "1940s", "1930's", "November 1962", "Spring 1943", "circa 1942", "c. 1945"
 	_MONTHS_SEASONS = (
-			r'(?:january|february|march|april|may|june|july|august|september|'
-			r'october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|'
-			r'spring|summer|autumn|fall|winter)'
+		r'(?:january|february|march|april|may|june|july|august|september|'
+		r'october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|'
+		r'spring|summer|autumn|fall|winter)'
 	)
 
 	TEMPORAL_NOISE_RE = re.compile(
-			rf'(?:^|\b)(?:c\.|circa|early|mid|late)?\s*'
-			rf'(?:\d{{1,2}}\s+)?{_MONTHS_SEASONS}\s+(?:\d{{1,2}},?\s+)?(?:18|19|20)\d{{2}}\b|'
-			rf'\b(?:18|19|20)\d{{2}}\s+{_MONTHS_SEASONS}\b|'
-			rf'^\b(?:18|19|20)\d{{2}}(?:s|\'s)?\b$',
-			re.IGNORECASE
+		rf'(?:^|\b)(?:c\.|circa|early|mid|late)?\s*'
+		rf'(?:\d{{1,2}}\s+)?{_MONTHS_SEASONS}\s+(?:\d{{1,2}},?\s+)?(?:18|19|20)\d{{2}}\b|'
+		rf'\b(?:18|19|20)\d{{2}}\s+{_MONTHS_SEASONS}\b|'
+		rf'^\b(?:18|19|20)\d{{2}}(?:s|\'s)?\b$',
+		re.IGNORECASE
 	)
 
 	# 2. Metadata, Serial Numbers, and Dimensions
-	# Matches: "No. 1234", "Photo 12", "model 18", "50 feet", "100 ft", "12 mm"
+	# "No. 1234", "Photo 12", "model 18", "50 feet", "100 ft", "12 mm"
 	METADATA_DIMENSION_RE = re.compile(
-			r'^(?:no\.?|number|model|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)\s*\d+$|'
-			r'^\d+\s*(?:feet|foot|ft|inch|inches|in|meters?|m|mm|cm|miles?|km|lbs?|pounds?|kg|tons?)$',
-			re.IGNORECASE
+		r'^(?:no\.?|number|model|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)\s*\d+$|'
+		r'^\d+\s*(?:feet|foot|ft|inch|inches|in|meters?|m|mm|cm|miles?|km|lbs?|pounds?|kg|tons?)$',
+		re.IGNORECASE
 	)
 
-	# 3. High-Value Military / Aviation / Armor Designations
+	# 3. High-Value Military/Aviation/Armor Designations
 	MILITARY_DESIGNATION_RE = re.compile(
 		r'\b(?:'
 		# 1. Interleaved military models (M4A1, M4A3E8, M32B1, A6M2, A6M5, B5N2, G4M1, H8K2, D3A1, C6N1, P1Y1, E16A1)
@@ -736,53 +738,68 @@ def _post_process_(
 	)
 
 	def should_keep_numeric_label(label: str, max_digit_ratio: float = 0.45) -> bool:
-			"""
-			Decide whether to keep a label that contains digits.
-			Returns:
-					True  -> Label is a valid historical/military concept (e.g. 'B-17G Flying Fortress', 'T-34')
-					False -> Label is noise (e.g. '1936', '2-8-4', 'November 1962', 'No. 1234')
-			"""
-			# If no digits exist, it's not a numeric label; keep it
-			if not any(c.isdigit() for c in label):
-					return True
+		"""
+		keeps or drops a label that contains digits.
 
-			# 1. Pure numbers, code strings, or punctuation with no letters ("1936", "2-8-4", "100/50") -> DROP
-			letters = [c for c in label if c.isalpha()]
-			if not letters:
-					return False
+		Returns:
+			True  -> valid historical/military concept (e.g. 'B-17G Flying Fortress', 'T-34')
+			False -> noise (e.g. '1936', '2-8-4', 'November 1962', 'No. 1234')
+		"""
+		# If no digits exist, it's not a numeric label; keep it
+		if not any(c.isdigit() for c in label):
+				return True
+		# 1. Pure numbers, code strings, or punctuation with no letters ("1936", "2-8-4", "100/50") -> DROP
+		letters = [c for c in label if c.isalpha()]
+		if not letters:
+				return False
+		# 2. Date expressions ("November 1962", "Spring 1943", "1940s", "circa 1944") -> DROP
+		if TEMPORAL_NOISE_RE.search(label):
+				return False
+		# 3. Metadata or pure dimension markers ("No. 1234", "50 ft") -> DROP
+		if METADATA_DIMENSION_RE.search(label):
+				return False
+		# 4. Recognized military aircraft, armor, weapon, or unit pattern -> KEEP
+		if MILITARY_DESIGNATION_RE.search(label):
+				return True
+		# 5. Fallback: If label has lots of words but low digit ratio ("Boeing model 307 stratoliner") -> KEEP
+		# But discard if digits dominate the string (> max_digit_ratio)
+		digit_count = sum(1 for c in label if c.isdigit())
+		digit_ratio = digit_count / len(label)
+		if digit_ratio > max_digit_ratio:
+				return False
 
-			# 2. Date expressions ("November 1962", "Spring 1943", "1940s", "circa 1944") -> DROP
-			if TEMPORAL_NOISE_RE.search(label):
-					return False
+		return True
 
-			# 3. Metadata or pure dimension markers ("No. 1234", "50 ft") -> DROP
-			if METADATA_DIMENSION_RE.search(label):
-					return False
+	def filter_digits(keywords: list, verbose: bool = False) -> list:
 
-			# 4. Recognized military aircraft, armor, weapon, or unit pattern -> KEEP
-			if MILITARY_DESIGNATION_RE.search(label):
-					return True
+		standarized_labels = [
+			kw 
+			for kw in keywords 
+			if should_keep_numeric_label(kw)
+		]
 
-			# 5. Fallback: If label has lots of words but low digit ratio ("Boeing model 307 stratoliner") -> KEEP
-			# But discard if digits dominate the string (> max_digit_ratio)
-			digit_count = sum(1 for c in label if c.isdigit())
-			digit_ratio = digit_count / len(label)
-			if digit_ratio > max_digit_ratio:
-					return False
+		if standarized_labels != keywords and verbose:
+			print(f"[STANDARDIZED] {keywords} -> {standarized_labels}")
 
-			return True
+		return standarized_labels
 
-	def filter_digit_labels(keywords: list) -> list:
-			"""Drop-in replacement for exclude_digits()"""
-			return [kw for kw in keywords if should_keep_numeric_label(kw)]
+	def exclude_digits(keywords: list, verbose: bool = False) -> list:
 
-	def exclude_digits(keywords: list) -> list:
-		return [keyword for keyword in keywords if not any(char.isdigit() for char in keyword)]
+		standarized_labels = [
+			keyword 
+			for keyword in keywords 
+			if not any(char.isdigit() for char in keyword)
+		]
+
+		if standarized_labels != keywords and verbose:
+			print(f"[STANDARDIZED] {keywords} -> {standarized_labels}")
+
+		return standarized_labels
 
 	def should_skip_by_case(
 		label: str,
 		uppercase_bound_thresh: float = 0.75,
-		min_meaningful_word_length: int = 7,
+		min_meaningful_word_length: int = 5,
 		verbose: bool = False,
 	) -> bool:
 		"""
@@ -863,7 +880,7 @@ def _post_process_(
 		# 5. MULTI-WORD / PARTIAL HIGH UPPERCASE RATIO
 		if uppercase_ratio > uppercase_bound_thresh and len(label) <= min_meaningful_word_length:
 			if verbose:
-				print(f"\t[SKIPPED CASE] {repr(label):<50} ratio={uppercase_ratio:.3f} > {uppercase_bound_thresh} and len() {len(label) }<= {min_meaningful_word_length}")
+				print(f"\t[SKIPPED CASE] {repr(label):<50} uppercase_ratio={uppercase_ratio:.3f} > {uppercase_bound_thresh} and len={len(label) }<= {min_meaningful_word_length}")
 			return True
 
 		# 6. PASSED
@@ -1286,27 +1303,19 @@ def _post_process_(
 		_CACHE_DIRTY = True  # Flag that we have new data to save
 		return result
 
-	def is_stopword(phrase: str) -> bool:
-		"""
-		Check if phrase is a stopword or consists entirely of stopwords.
-		
-		Args:
-			phrase: The phrase to check
-			
-		Returns:
-			True if phrase should be filtered as stopword
-		"""
+	def is_stopword(phrase: str, verbose: bool = False) -> bool:
 		phrase_lower = phrase.lower()
-		
-		# Check 1: Entire phrase is a stopword
-		if phrase_lower in STOPWORDS:
-			return True
-		
-		# Check 2: All words in phrase are stopwords
 		words = phrase_lower.split()
-		if words and all(word in STOPWORDS for word in words):
+		if all(word in STOPWORDS for word in words) or phrase_lower in STOPWORDS:
+			if verbose:
+				print(f"\t[SKIPPED] {repr(phrase):<55} stopword")
 			return True
-		
+
+		if phrase_lower in GEOGRAPHIC_REFERENCES:
+			if verbose:
+				print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference")
+			return True
+
 		return False
 
 	def is_phrasal_verb(lemma: str) -> bool:
@@ -1433,11 +1442,12 @@ def _post_process_(
 
 	def is_activity_gerund(original_phrase: str) -> bool:
 		phrase = original_phrase.lower()
-		return (
+		result = (
 			" " not in phrase
 			and phrase.endswith("ing")
 			and phrase not in GERUND_NOUNS
 		)
+		return result
 
 	def is_event_gerund(original_phrase: str) -> bool:
 		"""
@@ -1572,6 +1582,295 @@ def _post_process_(
 		"""Count uppercase letters to prefer 'Drum' over 'drum'."""
 		return sum(1 for c in text if c.isupper())
 
+	def _get_singular_candidates(label_lower: str) -> list[str]:
+		"""
+		Generates plausible morphological singular forms for a label.
+		Supports:
+			- Sibilant / O '-es' (trenches -> trench, heroes -> hero, boxes -> box)
+			- Consonant + Y '-ies' (batteries -> battery, armies -> army)
+			- Standard '-s' (seaplanes -> seaplane, bridges -> bridge)
+			- Head nouns in prepositional phrases (heroes of the war -> hero of the war)
+		"""
+		candidates = []
+		words = label_lower.split()
+		
+		# ── CASE 1: Standard noun / phrase ending in plural (e.g. 'trenches', 'anti aircraft guns') ──
+		if label_lower.endswith('s') and not label_lower.endswith('ss'):
+				# A. -ies -> -y (batteries -> battery)
+				if label_lower.endswith('ies') and len(label_lower) > 4:
+						candidates.append(label_lower[:-3] + 'y')
+				# B. -es after sibilants (ch, sh, x, z) or 'o' (trenches -> trench, heroes -> hero, boxes -> box)
+				if label_lower.endswith(('ches', 'shes', 'xes', 'zes', 'oes')) and len(label_lower) > 4:
+						candidates.append(label_lower[:-2])
+				# C. Standard -s stripping (seaplanes -> seaplane, bridges -> bridge, crates -> crate)
+				candidates.append(label_lower[:-1])
+				# D. General -es fallback (torpedoes -> torpedo)
+				if label_lower.endswith('es') and len(label_lower) > 3:
+						cand = label_lower[:-2]
+						if cand not in candidates:
+								candidates.append(cand)
+		
+		# ── CASE 2: Prepositional phrase with plural HEAD noun (e.g. 'heroes of the war', 'prisoners of war') ──
+		if len(words) >= 3 and words[1] in {"of", "in", "de"}:
+				head = words[0]
+				tail = " ".join(words[1:])
+				if head.endswith('s') and not head.endswith('ss'):
+						head_cands = []
+						if head.endswith('ies') and len(head) > 4:
+								head_cands.append(head[:-3] + 'y')
+						if head.endswith(('ches', 'shes', 'xes', 'zes', 'oes')) and len(head) > 4:
+								head_cands.append(head[:-2])
+						head_cands.append(head[:-1])
+						if head.endswith('es') and len(head) > 3:
+								cand = head[:-2]
+								if cand not in head_cands:
+										head_cands.append(cand)
+						for hc in head_cands:
+								candidates.append(f"{hc} {tail}")
+		return candidates
+
+	def global_corpus_harmonization(
+		processed_batch: List[List[str]],
+		vocab: Counter,
+		col: str,
+		plurale_tantum: Optional[Set[str]] = None,
+		protected_plurals: Optional[Set[str]] = None,
+		min_relative_singleton_drop: float = 2.0,   # Require >= 2.0% relative drop in singletons
+		min_attested_merges: int = 10,              # Require >= 10 total merges
+		max_allowed_occurrence_loss: float = 2.0,   # Safety guard: abort if occurrences drop by > 2%
+		verbose: bool = False,
+	) -> Tuple[List[List[str]], Counter, bool]:
+		"""
+		Perform a two-step global harmonization (attested plurals + case consensus)
+		across the entire dataset vocabulary in a single unified remapping pass.
+
+		Design Goals & Motivation:
+		--------------------------
+		1. Cross-Sample Plural Resolution Without Dictionary Bugs:
+			Rule-based lemmatizers (like WordNet) blindly apply suffix rules, corrupting
+			domain entities (e.g. 'As Pik' -> 'A Pik', 'boss' -> 'bos', 'PBYs' -> 'Pbys').
+			Conversely, leaving lemmatization disabled causes artificial singleton explosion
+			when different images extract 'seaplane' vs 'seaplanes', 'trench' vs 'trenches'.
+			
+			Solution: Corpus-Attested Plural Harmonization.
+			A candidate plural 'Xs' is ONLY rewritten to 'X' if the singular 'X' was
+			already independently extracted elsewhere in the dataset. Unattested terms
+			and protected entities ('As Pik', 'WASP', 'boss') are 100% immune from corruption.
+		2. Cross-Sample Casing Consensus:
+			Different models (or prompt variants) frequently output the exact same concept
+			in different casing across different images (e.g., Image A: 'locomotive',
+			Image B: 'Locomotive'). This step unifies all casing variants under the single
+			statistically dominant consensus representation across the corpus.
+		3. Unified Single-Pass Remapping:
+			Chains both morphological singulars and casing consensus into a single global
+			remapping table, updating all samples in `processed_batch` in one pass with
+			zero order-dependence or sequential bias.
+		4. Dynamic Acceptance Gate:
+			Evaluates the statistical delta (relative reduction in singletons, number of
+			attested merges, total occurrence conservation). Automatically adopts the
+			harmonized batch if thresholds are met, or safely discards it if gains are
+			negligible.
+		
+		Harmonization Categories & Examples:
+		------------------------------------
+		A. Plural Harmonization (Requires singular to exist in dataset):
+			• Standard '-s':
+					- 'seaplanes'               ──► 'seaplane'
+					- 'propellers'              ──► 'Propeller'
+					- 'tanks'                   ──► 'Tank'
+					- 'hangars'                 ──► 'Hangar'
+					- 'Locomotives'             ──► 'Locomotive'
+					- 'Floatplanes'             ──► 'floatplane'
+					- 'rifles'                  ──► 'rifle'
+			• Sibilant & O '-es' (ch, sh, x, z, o):
+					- 'trenches'                ──► 'trench'
+					- 'churches'                ──► 'church'
+					- 'heroes'                  ──► 'hero'
+					- 'torpedoes'               ──► 'torpedo'
+					- 'boxes'                   ──► 'box'
+			• Consonant + Y '-ies' -> '-y':
+					- 'batteries'               ──► 'battery'
+					- 'armies'                  ──► 'army'
+					- 'factories'               ──► 'factory'
+			• Multi-Word Phrases with Plural Heads:
+					- 'anti-aircraft guns'      ──► 'anti-aircraft gun'
+					- 'fighter planes'          ──► 'fighter plane'
+					- 'quonset huts'            ──► 'quonset hut'
+					- 'passenger cars'          ──► 'passenger car'
+					- 'wooden crates'           ──► 'wooden crate'
+					- 'industrial smokestacks'  ──► 'industrial smokestack'
+			• Prepositional Phrases with Plural Head Noun:
+					- 'heroes of the war'       ──► 'hero of the war'
+					- 'prisoners of war'        ──► 'prisoner of war'
+		
+		B. Case Consensus Resolution (Majority Vote + Capitalization Tie-Breaker):
+			• Frequency Majority Wins:
+					- 'steam locomotive' (175) vs 'Steam Locomotive' (3) ──► 'steam locomotive'
+					- 'aircraft' (49) vs 'Aircraft' (10)                 ──► 'aircraft'
+					- 'hangar' (20) vs 'Hangar' (3)                      ──► 'hangar'
+					- 'dock' (11) vs 'Dock' (2)                          ──► 'dock'
+			• Capitalization Score Tie-Breaker:
+					- 'Locomotive' (63) vs 'locomotive' (58)             ──► 'Locomotive'
+					- 'Tank' (3) vs 'tank' (2)                           ──► 'Tank'
+		
+		C. Protected Terms (Guaranteed NOT Touched):
+			• Plurale Tantum:
+					- 'barracks', 'scissors', 'binoculars', 'trousers', 'archives', 'headquarters'
+			• Protected Plurals:
+					- 'marines', 'corps', 'united states', 'united nations', 'stables'
+			• Double 's' Endings:
+					- 'boss', 'grass', 'fortress', 'pass', 'wireless'
+			• Unattested Plurals (No singular exists in dataset):
+					- If 'howitzers' appears, but 'howitzer' was never extracted in any sample,
+						'howitzers' is preserved as-is with zero blind guessing.
+		
+		Parameters:
+		-----------
+		processed_batch : List[List[str]]
+				The list of per-sample cleaned label lists from Pass 1.
+		vocab : Counter
+				The global frequency counter of all labels accumulated across `processed_batch`.
+		col : str, default="labels"
+				The name of the label column/modality being processed (used for logging).
+		plurale_tantum : Set[str], optional
+				Set of nouns that only exist in plural form and must never have trailing 's' removed.
+		protected_plurals : Set[str], optional
+				Domain-specific plural terms that must be shielded from singularization.
+		min_relative_singleton_drop : float, default=2.0
+				Minimum percentage reduction in total singletons (freq=1) required to adopt Pass 2.
+		min_attested_merges : int, default=10
+				Minimum number of distinct plural-to-singular or casing merges required to adopt.
+		max_allowed_occurrence_loss : float, default=2.0
+				Safety guard: maximum allowable percentage loss of total label occurrences.
+				Aborts adoption if occurrences drop beyond this threshold.
+		verbose : bool, default=False
+				If True, prints detailed mapping tables and comparative statistical deltas.
+		
+		Returns:
+		--------
+		Tuple[List[List[str]], Counter, bool]
+				- final_batch: Harmonized list of sample labels (or original batch if rejected).
+				- final_vocab: Updated global frequency Counter (or original vocab if rejected).
+				- was_adopted: True if the dynamic gate accepted Pass 2; False otherwise.
+		"""
+
+		if plurale_tantum is None:
+				plurale_tantum = set()
+		if protected_plurals is None:
+				protected_plurals = set()
+		if not processed_batch or not vocab:
+				return processed_batch, vocab, False
+		
+		# STEP 1: Attested Plural-to-Singular Mapping (Multi-Candidate)
+		all_vocab_lower = {k.lower(): k for k in vocab.keys()}
+		plural_to_base_lower = {}
+		for label_lower, original_cased in all_vocab_lower.items():
+			if (
+				label_lower not in plurale_tantum 
+				and label_lower not in protected_plurals
+			):
+				# Check all plausible morphological singulars in priority order
+				for singular_candidate in _get_singular_candidates(label_lower):
+					# CRITICAL GUARD: Only merge if the singular ACTUALLY exists in the corpus!
+					if singular_candidate in all_vocab_lower and singular_candidate != label_lower:
+						plural_to_base_lower[label_lower] = singular_candidate
+						break  # Found the attested singular; stop checking candidates
+		
+		# STEP 2: Case Consensus & Concept Aggregation
+		# Group all raw variants under their canonical base concept:
+		# e.g., 'Locomotive', 'locomotive', and 'Locomotives' all pool their counts!
+		canonical_clusters = defaultdict(lambda: Counter())
+		for raw_label, count in vocab.items():
+				lower_k = raw_label.lower()
+				# If it's an attested plural, route it to its singular base
+				canonical_base = plural_to_base_lower.get(lower_k, lower_k)
+				canonical_clusters[canonical_base][raw_label] += count
+		# Determine the consensus winner for each concept:
+		# Primary sort: highest frequency in corpus. Secondary: more capitalization
+		remapping_table = {}
+		plural_merge_count = 0
+		case_merge_count = 0
+		for canonical_base, variant_counts in canonical_clusters.items():
+				# Sort variants by (total_frequency, capitalization_score)
+				sorted_variants = sorted(
+						variant_counts.items(),
+						key=lambda item: (item[1], _capitalization_score(item[0])),
+						reverse=True
+				)
+				winner_cased = sorted_variants[0][0]
+				for variant, _ in sorted_variants:
+						if variant != winner_cased:
+								remapping_table[variant] = winner_cased
+								# Track merge types for diagnostics
+								if variant.lower() != winner_cased.lower():
+										plural_merge_count += 1
+								else:
+										case_merge_count += 1
+		if not remapping_table:
+				if verbose:
+						print(f"\n[GLOBAL HARMONIZATION] No plural or casing variants to merge for '{col}'.")
+				return processed_batch, vocab, False
+		
+		# STEP 3: Remap Batch & Calculate Candidate Vocab
+		candidate_batch = []
+		candidate_vocab = Counter()
+		for sample_labels in processed_batch:
+				if not sample_labels:
+						candidate_batch.append(sample_labels)
+						continue
+				# Remap and deduplicate within sample preserving original order
+				seen_lower = set()
+				remapped_sample = []
+				for lbl in sample_labels:
+						target = remapping_table.get(lbl, lbl)
+						if target.lower() not in seen_lower:
+								seen_lower.add(target.lower())
+								remapped_sample.append(target)
+				candidate_batch.append(remapped_sample)
+				candidate_vocab.update(remapped_sample)
+		
+		# STEP 4: Statistical Delta & Dynamic Acceptance Gate
+		old_unique = len(vocab)
+		old_singletons = sum(1 for c in vocab.values() if c == 1)
+		old_occurrences = sum(vocab.values())
+		old_rate = (old_singletons / old_unique * 100) if old_unique > 0 else 0.0
+		new_unique = len(candidate_vocab)
+		new_singletons = sum(1 for c in candidate_vocab.values() if c == 1)
+		new_occurrences = sum(candidate_vocab.values())
+		new_rate = (new_singletons / new_unique * 100) if new_unique > 0 else 0.0
+		singleton_delta = old_singletons - new_singletons
+		rel_singleton_drop = (singleton_delta / old_singletons * 100) if old_singletons > 0 else 0.0
+		occurrence_loss = ((old_occurrences - new_occurrences) / old_occurrences * 100) if old_occurrences > 0 else 0.0
+		total_merges = len(remapping_table)
+		is_adopted = (
+				total_merges >= min_attested_merges
+				and rel_singleton_drop >= min_relative_singleton_drop
+				and occurrence_loss <= max_allowed_occurrence_loss
+		)
+		if is_adopted:
+				final_batch = candidate_batch
+				final_vocab = candidate_vocab
+				decision_msg = f"[ADOPTED] (Singletons reduced by {singleton_delta:,} / -{rel_singleton_drop:.2f}%)"
+		else:
+				final_batch = processed_batch
+				final_vocab = vocab
+				decision_msg = f"[REJECTED] (Statistical gain below threshold or guard triggered)"
+		
+		if verbose:
+				print("=" * 65)
+				print(f"📊 TWO-STEP GLOBAL HARMONIZATION ANALYSIS ({col})")
+				print(f"  ├─ Attested Plural Merges : {plural_merge_count:,}")
+				print(f"  ├─ Case Consensus Merges  : {case_merge_count:,}")
+				print(f"  ├─ Total Remapped Pairs   : {total_merges:,}")
+				print(f"  ├─ Unique Labels          : {old_unique:,} → {new_unique:,} ({new_unique - old_unique:+,})")
+				print(f"  ├─ Singletons (freq=1)    : {old_singletons:,} → {new_singletons:,} (-{singleton_delta:,})")
+				print(f"  ├─ Singleton Rate         : {old_rate:.2f}% → {new_rate:.2f}% ({new_rate - old_rate:+.2f}% pts)")
+				print(f"  ├─ Total Occurrences      : {old_occurrences:,} → {new_occurrences:,} (loss: {occurrence_loss:.2f}%)")
+				print(f"  └─ {decision_msg}")
+				print("=" * 65)
+		
+		return final_batch, final_vocab, is_adopted
+
 	processed_batch = list()
 	vocab = Counter()
 	for idx, labels in enumerate(labels_list):
@@ -1629,11 +1928,16 @@ def _post_process_(
 			if verbose:
 				print(f"  → Non-standard type ({type(labels)}), converting to string and wrapping")
 
-		# current_items = exclude_digits(keywords=current_items)
-		current_items = filter_digit_labels(keywords=current_items)
-
-		if current_items != labels and verbose:
-			print(f"[STANDARDIZED] {len(current_items)} {type(current_items)} {current_items}")
+		# aggressive filtering to exclude digits
+		# current_items = exclude_digits(
+			# keywords=current_items, 
+			# verbose=verbose
+		# )
+	
+		current_items = filter_digits(
+			keywords=current_items, 
+			verbose=verbose,
+		)
 
 		clean_dict_per_sample = dict()
 		for item_idx, item in enumerate(current_items):
@@ -1655,9 +1959,7 @@ def _post_process_(
 			if apply_normalization:
 				original_cleaned = normalize_label_format(original_cleaned, verbose=verbose)
 			
-			if is_stopword(original_cleaned):
-				if verbose:
-					print(f"\t[SKIPPED] {repr(original_cleaned):<55} stopword/georaphic")
+			if is_stopword(phrase=original_cleaned, verbose=verbose):
 				continue
 
 			if nlp_spacy is not None:
@@ -1672,7 +1974,7 @@ def _post_process_(
 				)
 				if geo_result is not None and geo_result["has_strong_geo"]:
 					if verbose:
-						print(f"\t[SKIPPED] {repr(ner_input):<55} GPE/LOC/NORP → {geo_result}")
+						print(f"\t[SKIPPED GPE/LOC/NORP] {repr(ner_input):<55} {geo_result}")
 					continue
 
 			if apply_lemmatization:
@@ -1702,9 +2004,7 @@ def _post_process_(
 					print(f"\t[SKIPPED] {repr(lemma):<55} phrasal verb")
 				continue
 
-			if is_stopword(lemma):
-				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} stopword/georaphic reference")
+			if is_stopword(phrase=lemma, verbose=verbose):
 				continue
 
 			# Exclude pure color descriptors
@@ -1794,10 +2094,15 @@ def _post_process_(
 			# 3. NEW DISTINCT KEY
 			clean_dict_per_sample[lemma_key] = lemma
 
-		results_per_sample = list(clean_dict_per_sample.values()) if clean_dict_per_sample else None
+		results_per_sample = (
+			list(clean_dict_per_sample.values()) 
+			if clean_dict_per_sample 
+			else None
+		)
+
 		if results_per_sample:
-			# Efficiently update the vocabulary
-			vocab.update(results_per_sample) 
+			vocab.update(results_per_sample) # efficient
+
 			# Inefficiently update the vocabulary
 			# for idx, lbl in enumerate(results_per_sample):
 			# 	if vocab.get(lbl):
@@ -1811,24 +2116,40 @@ def _post_process_(
 		if verbose and results_per_sample:
 			print(f"[FINAL] {results_per_sample} {len(current_items)} → {len(results_per_sample)} (removed {len(current_items) - len(results_per_sample)})", end="\t")
 			print(f"[ELAPSED] {time.time() - t0:.5f} sec")
-			print('-'*125)
+			print('-'*150)
 
 	if verbose:
-		print(f"[POST-PROCESSED] {len(processed_batch)} samples")
-		print(f"[TOTAL ELAPSED TIME] {time.time() - pp_st:.1f} sec")
-
+		vocab = dict(sorted(vocab.items(), key=lambda item: item[1], reverse=True))
 		total_unique = len(vocab)
 		total_occurrences = sum(vocab.values())
 		singletons = sum(1 for count in vocab.values() if count == 1)
 		singleton_rate = (singletons / total_unique * 100) if total_unique > 0 else 0.0
 
 		print("=" * 50)
+		print(f"[POST-PROCESSED] {len(processed_batch)} samples")
 		print(f"📊 DATASET STATISTICS ({col}):")
 		print(f"  ├─ Unique Labels      : {total_unique:,}")
 		print(f"  ├─ Total Occurrences  : {total_occurrences:,}")
 		print(f"  ├─ Singletons (freq=1): {singletons:,}")
 		print(f"  └─ Singleton Rate     : {singleton_rate:.2f}%")
+		print(f"[TOTAL ELAPSED TIME] {time.time() - pp_st:.1f} sec")
+		# print(json.dumps(vocab, indent=2))
 		print("=" * 50)
+
+	# TWO-STEP GLOBAL HARMONIZATION (Plurals + Casing)
+	# 'seaplanes' → 'seaplane'
+	# Locomotive vs locomotive
+	processed_batch, vocab, was_adopted = global_corpus_harmonization(
+		processed_batch=processed_batch,
+		vocab=vocab,
+		col=col,
+		plurale_tantum=PLURALE_TANTUM,
+		protected_plurals=PROTECTED_PLURALS,
+		min_relative_singleton_drop=2.0,
+		min_attested_merges=10,
+		max_allowed_occurrence_loss=2.0,
+		verbose=verbose,
+	)
 
 	return processed_batch
 

@@ -264,7 +264,6 @@ United States of America
 USA
 U.S.
 U. S.
-US
 U.S.A.
 Uruguay
 Uzbekistan
@@ -381,13 +380,14 @@ Columbus
 CA.
 CZ.
 C.Z.
-D.C.
 Calif
 Calif.
 Cal.
+D.C.
 Dandridge
 Dakota
 Davenport
+Downtown Houston
 Duluth
 Echo
 Echo, UT
@@ -443,6 +443,7 @@ Montclair NJ
 Montclair, NJ
 Montclair, New Jersey
 Montclair New Jersey
+Marshall, Texas
 New York City
 Las Vegas
 Long Beach
@@ -478,6 +479,7 @@ Miami
 Mooresville
 Norristown
 Norwood
+Nova Scotia
 Omaha
 Ogden
 Owego
@@ -540,7 +542,7 @@ Trinidad
 Trinidad, CO
 Trinidad
 Tulsa
-Nova Scotia
+Ukiah
 Waterbury
 Washington DC
 Wash. D.C.

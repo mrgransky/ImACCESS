@@ -253,7 +253,8 @@ def _normalize_label_case(
 		n_after = len(set(winner_map.values()))  # distinct post-fold labels
 		print(f"\n[CASE NORMALISATION] {n_before:,} raw surface forms")
 		print(f"  Case-duplicate groups collapsed: {collapsed_groups:,}")
-		print(f"  Unique labels after fold: {n_after:,} (was {n_before:,})")
+		if n_after < n_before:
+			print(f"  Unique labels after fold: {n_after:,} (was {n_before:,})")
 		if collapsed_groups > 0:
 			examples = sorted(
 				(surfaces, winner_map[surfaces[0]])
@@ -413,7 +414,8 @@ def get_canonical_labels(
 			f"{clustered_df['cluster'].nunique()} clusters "
 			f"from {len(clustered_df)} unique labels"
 		)
-		print(clustered_df.head(10))
+		print(clustered_df.info(verbose=verbose, memory_usage="deep"))
+		print(clustered_df.head(50))
 
 	canonical_map = clustered_df.set_index('label')['canonical'].to_dict()
 
