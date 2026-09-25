@@ -795,7 +795,7 @@ def _post_process_(
 			raise ValueError(f"Invalid approach: {approach} - choose from ['aggressive', 'strategic']")
 
 		if standarized_labels != keywords and verbose:
-			print(f"[STANDARDIZED ({approach})] {keywords} -> {standarized_labels}")
+			print(f"[STANDARIZED ({approach})] {keywords} -> {standarized_labels}")
 
 		return standarized_labels
 
