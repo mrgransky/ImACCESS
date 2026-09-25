@@ -2551,412 +2551,199 @@ def remove_problematic_cluster_labels(
 
 	return df_clean, embeddings_clean, removed_labels
 
-def _demote_colliding_virtual_canonicals(
+def _label_tokens(label: str) -> set:
+	"""Lowercased tokens with trailing punctuation stripped (same as selection)."""
+	return {t for t in (re.sub(r'[^\w]+$', '', w.lower()) for w in label.split()) if t}
+
+def _resolve_shared_canonicals(
 	cluster_canonicals: Dict[int, Dict],
-	cluster_members: Dict[int, list],   # {cid: [real member label strings]}
-	verbose: bool = False,
-) -> Dict[int, Dict]:
-	"""
-	Post-processing pass: when a VIRTUAL hypernym exactly matches another
-	cluster's REAL-label canonical, decide whether to demote it based on
-	the cluster's actual STRUCTURE, not on surface features of the
-	fallback string alone.
-
-	Why the capitalization heuristic was wrong
-	--------------------------------------------
-	The previous version demoted whenever the fallback added a new
-	capitalised token, on the theory that capitalisation signals a proper
-	noun worth keeping specific. That works for a cluster genuinely about
-	ONE entity described several ways. It fails badly for a cluster like
-	['USS Aaron Ward', 'USS Bayfield', 'USS Boxer', ... 25 more ships]:
-	the fallback 'USS Charger' IS capitalised, so the old rule demoted --
-	but 'USS Charger' is just one of 28 EQUALLY WEIGHTED, unrelated ships.
-	Demoting to it is not "more specific and accurate", it is an arbitrary
-	pick that happens to win a composite-score tiebreak, and is no more
-	representative of the cluster than any of the other 27 ships.
-
-	The real distinguishing question
-	----------------------------------
-	Is the cluster "vertically deep" (many descriptions of ONE entity --
-	e.g. 'USS Enterprise', 'USS Enterprise flight deck', 'USS Enterprise
-	crew' all share the residual token 'Enterprise') or "horizontally
-	broad" (many DIFFERENT entities sharing only the hypernym prefix --
-	e.g. 28 different ship names, each with a completely distinct
-	residual)? Demoting only makes sense in the first case. In the second,
-	no single real member can fairly represent the cluster, and the
-	virtual hypernym IS the most honest available summary -- the
-	exact-string overlap with another cluster's canonical elsewhere is an
-	acceptable, arguably even desirable, side effect of consolidation
-	(more images under one well-populated label, rather than dozens of
-	near-singleton labels).
-
-	Measurement
-	-----------
-	For each cluster with a candidate virtual hypernym, strip the
-	hypernym's own tokens from every member to get each member's
-	"residual" tokens. Find the most common residual token across the
-	cluster. If it appears in >= `dominance_threshold` fraction of
-	members, one entity dominates -> safe to demote to the real fallback.
-	Otherwise the cluster is a flat collection of siblings -> keep the
-	virtual hypernym regardless of the collision.
-
-	Parameters
-	----------
-	cluster_canonicals : Dict[int, Dict]
-		{cid: {'canonical', 'score', 'size', 'virtual',
-					 'real_fallback', 'real_fallback_score'}}
-	cluster_members : Dict[int, list]
-		{cid: [real member label strings]} -- needed to measure residual
-		dominance; NOT available from cluster_canonicals alone, since that
-		only stores the single winning canonical per cluster, not the full
-		member list. Pass df.groupby('cluster')['label'].apply(list) (or
-		equivalent) computed in the main loop before this pass runs.
-	verbose : bool
-		Print each decision and why.
-
-	Returns
-	-------
-	Dict[int, Dict]
-		The same dict, mutated in place.
-	"""
-
-	def _tokens(s: str) -> set:
-		return set(re.sub(r'[^\w\s]', '', s.lower()).split())
-
-	def _residual_dominance(virtual: str, members: list) -> float:
-		"""
-		Fraction of members whose residual (tokens outside the virtual
-		hypernym's own tokens) contains the single most common residual
-		token across the whole cluster. High = one entity dominates.
-		"""
-		virtual_tokens = _tokens(virtual)
-		residuals = [_tokens(m) - virtual_tokens for m in members]
-		residuals = [r for r in residuals if r]   # drop empty residuals
-		if not residuals:
-			return 0.0
-
-		token_counts = Counter(tok for r in residuals for tok in r)
-		if not token_counts:
-			return 0.0
-
-		top_token, top_count = token_counts.most_common(1)[0]
-		return top_count / len(members)
-
-	if verbose:
-		print("-" * 120)
-		print(f"[EXACT COLLISION] Reviewing {len(cluster_canonicals)} clusters for "
-					f"virtual-vs-real exact-string collisions...")
-
-	claimed_real = {
-		meta['canonical']
-		for meta in cluster_canonicals.values()
-		if not meta['virtual']
-	}
-
-	DOMINANCE_THRESHOLD = 0.5   # majority of members must share one residual entity
-
-	n_demoted = 0
-	n_kept    = 0
-
-	for cid, meta in cluster_canonicals.items():
-		if not meta['virtual']:
-			continue
-		if meta['canonical'] not in claimed_real:
-			continue
-
-		old      = meta['canonical']
-		fallback = meta.get('real_fallback')
-		if fallback is None:
-			continue
-
-		members    = cluster_members.get(cid, [])
-		dominance  = _residual_dominance(old, members)
-
-		if dominance < DOMINANCE_THRESHOLD:
-			# Flat collection of siblings -- no single member represents
-			# the group. Keep the virtual hypernym; the exact-string
-			# overlap with another cluster is acceptable.
-			n_kept += 1
-			if verbose:
-				print(f"  cluster {cid:6d} virtual {old!r} collides, but no residual "
-							f"entity dominates (top={dominance:.2f} < {DOMINANCE_THRESHOLD}) "
-							f"-> KEPT as '{old}' ({len(members)} members)")
-			continue
-
-		if verbose:
-			print(f"  cluster {cid:6d} virtual {old!r} collides, and one residual "
-						f"entity dominates ({dominance:.2f} >= {DOMINANCE_THRESHOLD}) "
-						f"-> demoted to {fallback!r}")
-
-		meta['canonical'] = fallback
-		meta['score']     = meta.get('real_fallback_score', meta['score'])
-		meta['virtual']   = False
-		n_demoted += 1
-
-	if verbose:
-		print(f"\n[EXACT COLLISION] {n_demoted} demoted (one entity dominates), "
-					f"{n_kept} kept general (flat sibling collection)")
-		print("-" * 120)
-
-	return cluster_canonicals
-
-def _resolve_cross_cluster_case_collisions(
-	cluster_canonicals: Dict[int, Dict],
+	cluster_centroids: Dict[int, np.ndarray],
+	cluster_members: Dict[int, List[str]],
 	original_label_counts: Dict[str, int],
+	threshold: float = 0.70,
 	verbose: bool = False,
 ) -> Dict[int, Dict]:
 	"""
-	Post-processing pass: resolve case-only collisions BETWEEN DIFFERENT
-	clusters' final canonicals (e.g. cluster 33 -> 'war', cluster 37 -> 'War').
+	Post-pass over all clusters whose final canonicals share a name
+	(compared case-insensitively). Three steps per group:
 
-	Why the earlier case_registry fix does not catch this
-	-------------------------------------------------------
-	case_registry is built from original_label_counts, which only contains
-	REAL corpus labels. 'war' and 'War' are both SYNTHESISED strings -- e.g.
-	cluster 33's real members are ['guerre','war game','war paint',
-	'war picture','war zone'], none of which IS the standalone word 'war'.
-	There is nothing in original_label_counts to align either spelling to,
-	so the in-loop check never fires and the two clusters never see each
-	other's choice.
+	1. Spelling: unify case variants ('nurse' / 'Nurse'). A real corpus
+		 spelling wins; otherwise the spelling backed by the most member labels.
 
-	Resolution rule
-	---------------
-	Group ALL cluster canonicals by their lowercase form. For any group
-	containing more than one distinct spelling:
-		1. If any spelling in the group is itself a real corpus label (a key
-			 in original_label_counts), that spelling wins outright -- real
-			 corpus text always beats a synthesised guess.
-		2. Otherwise (every spelling in the group is synthesised), the
-			 spelling backed by the LARGEST total cluster size wins -- more
-			 member labels means more corpus evidence supporting that
-			 particular capitalisation.
-		3. Ties are broken alphabetically for determinism.
-	Every cluster on the losing side is rewritten to the winning spelling.
+	2. Primary group, chosen by NAME EVIDENCE, not embedding closeness.
+		 A cluster's name evidence is the number of images whose label contains
+		 the name ('Pneumonia Ward', 'general ward' for 'ward'). For each cluster,
+		 its neighbourhood is the set of group clusters with centroid similarity
+		 >= threshold. The neighbourhood with the most name evidence is the
+		 primary. This keeps 'tank' with the armoured-tank clusters and 'ward'
+		 with the hospital wards, rather than giving the name to whichever
+		 (possibly noisy) cluster happens to contain the bare word.
 
-	This subsumes the earlier case_registry check (rule 1 covers the same
-	real-vs-virtual case) while additionally covering virtual-vs-virtual
-	collisions that case_registry structurally cannot see. It is safe to
-	run this in ADDITION to the existing in-loop case_registry check --
-	rule 1 will simply be a no-op wherever case_registry already resolved
-	things, and rule 2 handles what's left over.
+	3. Anchored membership, not chaining. The anchor is the mean centroid of
+		 the primary neighbourhood. A cluster keeps the name only if its own
+		 centroid is within threshold of the ANCHOR. Clusters are never linked
+		 through intermediates, so 'saddle tank' cannot bridge armoured tanks to
+		 fuel tanks. A large benign group (building x21) keeps the name for
+		 every cluster near the anchor; only outliers are demoted.
 
-	Parameters
-	----------
-	cluster_canonicals : Dict[int, Dict]
-		{cid: {'canonical': str, 'score': float, 'size': int, 'virtual': bool}}
-		as produced by the main per-cluster loop, BEFORE this function runs.
-	original_label_counts : Dict[str, int]
-		Corpus-wide frequency of every real (case-folded) label.
-	verbose : bool
-		Print each collision found and how it was resolved.
+	Demoted clusters get their stored real_fallback and are marked
+	virtual=False. That flag matters: Step 7 of cluster() injects every
+	virtual canonical as a new row, so a demoted cluster left virtual=True
+	would have its fallback label inserted twice. If the fallback equals the
+	shared name (a real-label canonical), the second-best real member
+	('real_runner_up') is used instead; only if neither differs from the
+	name is the cluster recorded as 'kept_no_alternative'.
 
-	Returns
-	-------
-	Dict[int, Dict]
-		The same dict, mutated in place, with colliding canonicals
-		realigned to a single winning spelling per collision group.
+	Every cluster in a shared group gets these fields (all end up in the JSON):
+		shared_resolution         'kept' | 'demoted' | 'kept_no_alternative'
+		shared_group_size, shared_anchor_similarity, shared_name_evidence,
+		shared_threshold, shared_demoted_from (demoted only),
+		spelling_unified_from     (spelling changed only)
 	"""
-	groups: Dict[str, list] = defaultdict(list)
+	registry = _build_case_registry(original_label_counts)
+
+	groups: Dict[str, List[int]] = defaultdict(list)
 	for cid, meta in cluster_canonicals.items():
 		groups[meta['canonical'].lower()].append(cid)
 
-	n_resolved = 0
-	n_groups_with_collision = 0
+	stats = Counter()
+	for key in sorted(groups):
+		cids = sorted(groups[key])
 
-	for key, cids in groups.items():
-		spellings = {cluster_canonicals[cid]['canonical'] for cid in cids}
-		if len(spellings) <= 1:
-			continue  # no collision in this group
-
-		n_groups_with_collision += 1
-
-		# Rule 1: a real-label spelling anchors the whole group
-		real_spelling = next(
-			(s for s in spellings if s in original_label_counts), None
-		)
-		if real_spelling is not None:
-			winner = real_spelling
-			reason = "real corpus label"
+		# ── 1. Spelling unification ───────────────────────────────────────
+		spellings = {cluster_canonicals[c]['canonical'] for c in cids}
+		if len(spellings) > 1:
+			if key in registry:
+				surface = registry[key]
+			else:
+				weight = Counter()
+				for c in cids:
+					weight[cluster_canonicals[c]['canonical']] += cluster_canonicals[c]['size']
+				surface = max(weight, key=lambda s: (weight[s], s))
+			for c in cids:
+				meta = cluster_canonicals[c]
+				if meta['canonical'] != surface:
+					meta['spelling_unified_from'] = meta['canonical']
+					meta['canonical'] = surface
+					stats['spelling_unified'] += 1
 		else:
-			# Rule 2: largest total cluster size wins; alphabetical tiebreak
-			size_by_spelling: Dict[str, int] = defaultdict(int)
-			for cid in cids:
-				size_by_spelling[cluster_canonicals[cid]['canonical']] += cluster_canonicals[cid]['size']
-			winner = max(size_by_spelling, key=lambda s: (size_by_spelling[s], s))
-			reason = f"largest cluster-size evidence ({size_by_spelling[winner]} labels)"
+			surface = next(iter(spellings))
 
-		if verbose:
-			print(f"\n[CASE COLLISION] group '{key}': spellings={sorted(spellings)}")
-			print(f"  -> winner: '{winner}'  ({reason})")
+		if len(cids) == 1:
+			continue
+		stats['shared_groups'] += 1
 
-		for cid in cids:
-			old = cluster_canonicals[cid]['canonical']
-			if old != winner:
-				if verbose:
-					print(f"    cluster {cid}: '{old}' -> '{winner}'")
-				cluster_canonicals[cid]['canonical'] = winner
-				n_resolved += 1
+		# ── 2. Name evidence and primary neighbourhood ────────────────────
+		name_toks = _label_tokens(surface)
+		evidence = {c: sum(original_label_counts.get(m, 1)
+											 for m in cluster_members[c] if name_toks <= _label_tokens(m))
+								for c in cids}
+		volume = {c: sum(original_label_counts.get(m, 1) for m in cluster_members[c]) for c in cids}
+
+		V = np.vstack([cluster_centroids[c] for c in cids]).astype(float)
+		V /= np.linalg.norm(V, axis=1, keepdims=True) + 1e-12
+		S = V @ V.T
+
+		best = None
+		for i, c in enumerate(cids):
+			nb = [j for j in range(len(cids)) if S[i, j] >= threshold]
+			score = (sum(evidence[cids[j]] for j in nb),
+							 sum(volume[cids[j]] for j in nb),
+							 len(nb), -c)
+			if best is None or score > best[0]:
+				best = (score, i, nb)
+		_, seed, nb = best
+
+		# ── 3. Anchored membership ────────────────────────────────────────
+		anchor = V[nb].mean(axis=0)
+		anchor /= np.linalg.norm(anchor) + 1e-12
+		anchor_sim = V @ anchor
+		keep = {j for j in range(len(cids)) if anchor_sim[j] >= threshold} | {seed}
+		stats['groups_kept_whole' if len(keep) == len(cids) else 'groups_split'] += 1
+
+		changes = []
+		for j, c in enumerate(cids):
+			meta = cluster_canonicals[c]
+			meta.update(
+				shared_group_size=len(cids),
+				shared_anchor_similarity=float(anchor_sim[j]),
+				shared_name_evidence=int(evidence[c]),
+				shared_threshold=float(threshold),
+			)
+			if j in keep:
+				meta['shared_resolution'] = 'kept'
+				continue
+			# First real alternative that differs from the shared name. When the
+			# canonical is itself the real label (e.g. a noise cluster holding the
+			# bare word 'ward'), real_fallback equals the name, so fall back further
+			# to the second-best real member.
+			fallback = next((f for f in (meta.get('real_fallback'), meta.get('real_runner_up'))
+											 if f and f.lower() != key), None)
+			if fallback is None:
+				meta['shared_resolution'] = 'kept_no_alternative'
+				stats['kept_no_alternative'] += 1
+				continue
+			meta['shared_resolution']   = 'demoted'
+			meta['shared_demoted_from'] = meta['canonical']
+			meta['canonical']           = fallback
+			meta['virtual']             = False          # prevents duplicate injection in Step 7
+			meta['score']               = meta.get('real_fallback_score', meta['score'])
+			stats['demoted'] += 1
+			changes.append((c, fallback, anchor_sim[j]))
+
+		if verbose and changes:
+			print(f"\n[SHARED NAME] {surface!r}: {len(cids)} clusters, kept {len(keep)} "
+						f"(primary evidence={evidence[cids[seed]]}, threshold={threshold:.2f})")
+			for c, fb, s in changes:
+				print(f"    cluster {c:6d} -> {fb!r:40} (anchor sim {s:.3f})")
 
 	if verbose:
-		if n_resolved:
-			print(
-				f"\n[CASE COLLISION RESOLUTION] {n_resolved} cluster(s) realigned "
-				f"across {n_groups_with_collision} collision group(s)"
-			)
-		else:
-			print("\n[CASE COLLISION RESOLUTION] no cross-cluster case collisions found")
-
+		print("\n[SHARED-NAME RESOLUTION]")
+		for k in ('shared_groups', 'groups_kept_whole', 'groups_split',
+							'demoted', 'kept_no_alternative', 'spelling_unified'):
+			print(f"  {k:<22} {stats[k]:6d}")
 	return cluster_canonicals
 
-def _resolve_cross_cluster_shared_canonicals(
+def report_shared_group_similarities(
 	cluster_canonicals: Dict[int, Dict],
 	cluster_centroids: Dict[int, np.ndarray],
-	df: pd.DataFrame,
-	X: np.ndarray,
-	model,
-	verbose: bool = False,
-	semantic_threshold: float = 0.75,
-) -> Dict[int, Dict]:
+	cluster_members: Dict[int, List[str]],
+	names: List[str],
+	n_members: int = 3,
+) -> Dict[str, Dict]:
 	"""
-	Resolve canonical labels shared by multiple semantically distinct
-	clusters.
+	Print centroid similarities for named shared-canonical groups, BEFORE the
+	post-pass. Run it once with groups you have already judged, e.g.
 
-	Unlike the previous case-collision pass, this function does not assume
-	that identical canonical strings imply identical concepts.
+		stay together : camera, suit, cap, camp, debris
+		should split  : tank, float, race, gear, party
 
-	For every canonical used by multiple clusters:
-
-	  1. Compute semantic similarity between the participating cluster
-	     centroids.
-	  2. If the clusters are semantically close, preserve the shared
-	     canonical (benign consolidation: camera, landscape, missile).
-	  3. If the participating clusters are semantically separated, retain
-	     the canonical only for the cluster whose centroid is closest to
-	     the canonical embedding.
-	  4. Other clusters are demoted to their already-selected real fallback
-	     label.
-
-	This operates AFTER per-cluster canonical selection, so the clustering
-	itself is never changed. Only the final canonical name is adjusted.
+	and choose the threshold between the two sets. For each cluster it shows
+	its mean similarity to the rest of the group and its first members, so you
+	can see where the natural break lies. If the stay and split groups overlap
+	heavily, centroid similarity is not a reliable signal on its own.
 	"""
-	groups: Dict[str, List[int]] = defaultdict(list)
-
-	for cid, meta in cluster_canonicals.items():
-		canonical = meta.get('canonical')
-		if canonical:
-			groups[canonical.lower()].append(cid)
-
-	n_resolved = 0
-	n_shared = 0
-	n_split = 0
-
-	label_to_embedding = {
-		label: X[idx]
-		for idx, label in enumerate(df['label'].tolist())
-	}
-
-	for canonical_key, cids in groups.items():
-		if len(cids) <= 1:
+	out = {}
+	for name in names:
+		cids = sorted(
+			c for c, m in cluster_canonicals.items()
+			if m['canonical'].lower() == name.lower()
+		)
+		if len(cids) < 2:
+			print(f"[SKIPPED] {name!r}: < {len(cids)} clusters!")
 			continue
-
-		n_shared += 1
-		canonical_surface = cluster_canonicals[cids[0]]['canonical']
-
-		canonical_embedding = label_to_embedding.get(canonical_surface)
-		if canonical_embedding is None:
-			canonical_embedding = model.encode(
-				[canonical_surface],
-				batch_size=1,
-				convert_to_numpy=True,
-				normalize_embeddings=True,
-				precision='float32',
-			)[0]
-
-		canonical_embedding = canonical_embedding / (
-			np.linalg.norm(canonical_embedding) + 1e-12
-		)
-
-		centroids = np.vstack([cluster_centroids[cid] for cid in cids])
-		centroids = centroids / (
-			np.linalg.norm(centroids, axis=1, keepdims=True) + 1e-12
-		)
-
-		pairwise_similarity = centroids @ centroids.T
-		off_diag = pairwise_similarity[~np.eye(len(cids), dtype=bool)]
-		min_pair_similarity = float(off_diag.min()) if len(off_diag) else 1.0
-
-		# Semantically coherent → keep shared
-		if min_pair_similarity >= semantic_threshold:
-			if verbose:
-				print(
-					f"\n[SHARED CANONICAL] '{canonical_surface}' "
-					f"kept across {len(cids)} clusters "
-					f"(min centroid similarity={min_pair_similarity:.3f})"
-				)
-			for cid in cids:
-				cluster_canonicals[cid]['shared_canonical_resolution'] = (
-					'kept_semantically_shared'
-				)
-			continue
-
-		# Semantically separated → keep only the closest to the name embedding
-		canonical_similarities = centroids @ canonical_embedding
-		best_pos = int(np.argmax(canonical_similarities))
-		keeper_cid = cids[best_pos]
-		n_split += 1
-
-		if verbose:
-			print(
-				f"\n[SEMANTIC CANONICAL COLLISION] "
-				f"'{canonical_surface}' shared by {len(cids)} clusters"
-			)
-			print(f"  Minimum centroid similarity: {min_pair_similarity:.3f}")
-			print(f"  Threshold: {semantic_threshold:.3f}")
-			print(
-				f"  Keeping canonical in cluster {keeper_cid} "
-				f"(similarity to canonical={canonical_similarities[best_pos]:.4f})"
-			)
-
-		for pos, cid in enumerate(cids):
-			meta = cluster_canonicals[cid]
-
-			if cid == keeper_cid:
-				meta['shared_canonical_resolution'] = 'semantic_keeper'
-				meta['shared_canonical_similarity'] = float(
-					canonical_similarities[pos]
-				)
-				continue
-
-			old = meta['canonical']
-			fallback = meta.get('real_fallback')
-			if not fallback:
-				continue
-
-			meta['canonical'] = fallback
-			meta['shared_canonical_resolution'] = (
-				'semantic_demoted_to_real_fallback'
-			)
-			meta['shared_canonical_similarity'] = float(
-				canonical_similarities[pos]
-			)
-			n_resolved += 1
-
-			if verbose:
-				print(
-					f"    cluster {cid}: '{old}' -> '{fallback}' "
-					f"(canonical similarity={canonical_similarities[pos]:.4f})"
-				)
-
-	if verbose:
-		print(
-			f"\n[SEMANTIC SHARED-CANONICAL RESOLUTION] "
-			f"{n_shared} shared-name groups examined"
-		)
-		print(f"  Semantically coherent groups kept shared: {n_shared - n_split}")
-		print(f"  Semantically separated groups split: {n_split}")
-		print(f"  Cluster canonicals demoted to real fallback: {n_resolved}")
-
-	return cluster_canonicals
+		V = np.vstack([cluster_centroids[c] for c in cids]).astype(float)
+		V /= np.linalg.norm(V, axis=1, keepdims=True) + 1e-12
+		S = V @ V.T
+		off = S[~np.eye(len(cids), dtype=bool)]
+		mean_to_others = (S.sum(axis=1) - 1.0) / (len(cids) - 1)
+		print(f"\n[{name!r}] {len(cids)} clusters | pairwise sim min {off.min():.3f} "
+					f"median {np.median(off):.3f} max {off.max():.3f}")
+		for i, c in sorted(enumerate(cids), key=lambda x: -mean_to_others[x[0]]):
+			print(f"    cluster {c:6d}  mean sim to others {mean_to_others[i]:.3f} | "
+						f"{cluster_members[c][:n_members]}")
+		out[name] = {'cluster_ids': cids, 'pairwise': S.tolist()}
+	return out
 
 def assign_canonical_labels(
 	df: pd.DataFrame,
@@ -2965,6 +2752,8 @@ def assign_canonical_labels(
 	original_label_counts: Dict[str, int],
 	debug_json_path: Optional[str] = None,
 	debug_top_k: int = 6,
+	shared_threshold: float = 0.70,
+	shared_calibration_names: Optional[List[str]] = None,
 	verbose: bool = False,
 ) -> Dict[int, Dict]:
 	"""
@@ -2974,27 +2763,27 @@ def assign_canonical_labels(
 	Composite score (per candidate)
 	-------------------------------
 		0.30 * cosine similarity to the cluster centroid
-	  + 0.15 * corpus frequency (log-normalised; virtual candidates get 0)
-	  + 0.20 * head-noun dominance across the cluster
-	  + 0.25 * lexical containment (fraction of members containing ALL of
-			   the candidate's tokens)
-	  + 0.10 * brevity (shorter -> more general)
+		+ 0.15 * corpus frequency (log-normalised; virtual candidates get 0)
+		+ 0.20 * head-noun dominance across the cluster
+		+ 0.25 * lexical containment (fraction of members containing ALL of
+				 the candidate's tokens)
+		+ 0.10 * brevity (shorter -> more general)
  
 	Virtual hypernym synthesis (two routes, tried in order)
 	--------------------------------------------------------
 	1. head_suffix : the members share a head noun phrase at the END of
-	   their head phrase, e.g.
-		   ['black aircraft', 'white aircraft']           -> 'aircraft'
-		   ['aerial view of harbor', 'aerial view of lake'] -> 'aerial view'
-	   A label's head phrase is everything before its first preposition,
-	   so 'aerial view of harbor' has head phrase 'aerial view'.
+		 their head phrase, e.g.
+			 ['black aircraft', 'white aircraft']           -> 'aircraft'
+			 ['aerial view of harbor', 'aerial view of lake'] -> 'aerial view'
+		 A label's head phrase is everything before its first preposition,
+		 so 'aerial view of harbor' has head phrase 'aerial view'.
 	2. title_prefix : the members share a leading title followed by a
-	   proper-noun-like residual, e.g.
-		   ['USS Arizona', 'USS Iowa']       -> 'USS'
-		   ['World War I', 'World War II']   -> 'World War'
-	   Rejected when any residual is lowercase: a shared lowercase
-	   prefix is a MODIFIER ('aerial cityscape', 'war paint'), not a
-	   category, so 'aerial' / 'war' are never synthesised from it.
+		 proper-noun-like residual, e.g.
+			 ['USS Arizona', 'USS Iowa']       -> 'USS'
+			 ['World War I', 'World War II']   -> 'World War'
+		 Rejected when any residual is lowercase: a shared lowercase
+		 prefix is a MODIFIER ('aerial cityscape', 'war paint'), not a
+		 category, so 'aerial' / 'war' are never synthesised from it.
  
 	Both routes require JOINT support (the whole core, contiguous, in at
 	least max(2, ceil(0.5 * n)) members), prefer the core covering the
@@ -3038,7 +2827,7 @@ def assign_canonical_labels(
 	-------
 	cluster_canonicals : Dict[int, Dict]
 		{cid: {'canonical', 'score', 'size', 'virtual',
-			   'real_fallback', 'real_fallback_score', 'method'}}
+				 'real_fallback', 'real_fallback_score', 'method'}}
 	"""
  
 	W_SIM, W_FREQ, W_HEAD, W_CONT, W_BREV = 0.30, 0.15, 0.20, 0.25, 0.10
@@ -3121,150 +2910,68 @@ def assign_canonical_labels(
 		else:
 			note = "head_suffix: no shared head"
 		return None, 0, note
- 
-	def _title_prefix_core_old(lbls: List[str], threshold: int):
-		"""Route 2: shared leading title followed by proper-noun residuals."""
-		n = len(lbls)
-		pairs = [_token_pairs(l) for l in lbls]
-		max_len = max((len(p) for p in pairs), default=0)
-		best, rejected = None, None        # rejected: (support, length, core, reason)
-		for k in range(1, max_len):
-			groups: Dict[tuple, List[str]] = defaultdict(list)
-			for p in pairs:
-				if len(p) > k:
-					groups[tuple(nt for _, nt in p[:k])].append(p[k][0])
-			for prefix, residual_heads in groups.items():
-				support = len(residual_heads)
-				if support < threshold:
-					continue
-				if prefix[0] in FUNCTION_WORDS or prefix[-1] in FUNCTION_WORDS:
-					reason = "ends/starts with a function word"
-				elif not all(r[:1].isupper() for r in residual_heads):
-					lower = sorted({r for r in residual_heads if not r[:1].isupper()})[:4]
-					reason = f"residuals are not proper nouns ({', '.join(lower)})"
-				else:
-					cand = (support, len(prefix), prefix)
-					if best is None or cand > best:
-						best = cand
-					continue
-				cand = (support, len(prefix), prefix, reason)
-				if rejected is None or cand[:3] > rejected[:3]:
-					rejected = cand
-		if best:
-			return list(best[2]), best[0], ''
-		if rejected:
-			note = (f"title_prefix: '{' '.join(rejected[2])}' {rejected[0]}/{n} "
-					f"rejected, {rejected[3]}")
-		else:
-			note = f"title_prefix: no prefix in >= {threshold}/{n}"
-		return None, 0, note
 
 	def _title_prefix_core(lbls: List[str], threshold: int):
 		"""
-		Route 2: conservative title/designation prefix synthesis.
+		Route 2: conservative title / designation prefix synthesis.
 
-		This route deliberately does NOT use capitalization of the residual
-		token. Historical metadata is frequently title-cased, so capitalization
-		is not reliable evidence that a prefix is a title/category.
+		Allowed prefixes (nothing else):
+			1. Named-vessel / transport designators:
+					USS, HMS, HMCS, HMAS, HMNZS, USAT, USNS, USCGC, RMS, MV, and dotted
+					S.S. (undotted 'SS' is excluded: in this corpus it is mostly the
+					Schutzstaffel, an organisation).
+			2. 'Operation', as an explicit archival designation.
+			3. A base name followed by Mk / Ausf: 'Sunderland Mk', 'Grille Ausf'.
+				A bare 'Mk' or 'Ausf' is never allowed.
 
-		Allowed prefix families:
-			1. Abbreviation-style prefixes:
-				USS, HMS, USAT, S.S., etc.
-			2. Designation prefixes ending in Mk or Ausf:
-				Sunderland Mk I / Sunderland Mk II -> Sunderland Mk
-				Tempest Mk II / Tempest Mk V       -> Tempest Mk
-				Grille Ausf A / Grille Ausf M      -> Grille Ausf
-			3. "Operation" as an explicit archival designation prefix.
+		Deliberately NOT allowed: organisations (RAF, NATO, NASA, AAF, USMC),
+		countries (U.S., British, Italian), and generic acronyms (VIP, TWA, NBC).
+		As a canonical, those name the owner or origin, not the thing pictured.
 
-		The prefix must be maximal: if a longer valid prefix has the same
-		support as a shorter prefix, the longer prefix wins.
-
-		Importantly, ordinary lexical prefixes such as:
-				Red, British, Republican, Italian, National,
-				Young, Emergency, Naval, sea
-		are never synthesized merely because the following token is capitalized.
+		Dotted and undotted spellings are grouped together ('U.S.S. Luzon' and
+		'USS Leyte' support the same prefix). The prefix is maximal: on equal
+		support, the longer prefix wins.
 		"""
 		n = len(lbls)
 		pairs = [_token_pairs(l) for l in lbls]
+		max_len = max((len(p) for p in pairs), default=0)
 
-		if not pairs:
-			return None, 0, f"title_prefix: no prefix in >= {threshold}/{n}"
-
-		ABBREVIATION_PREFIXES = {
-			'uss', 'hms', 'usat', 'ss', 's.s', 'u.s.s', 'u.s.',
+		DESIGNATOR_PREFIXES = {
+			'uss', 'hms', 'hmcs', 'hmas', 'hmnzs', 'usat', 'usns', 'uscgc', 'rms', 'mv',
 		}
+		EXPLICIT_PREFIXES   = {'operation'}
 		DESIGNATION_ENDINGS = {'mk', 'ausf'}
-		EXPLICIT_DESIGNATION_PREFIXES = {'operation'}
 
-		def _is_abbreviation_token(raw: str, norm: str) -> bool:
-			raw_clean = raw.strip().rstrip('.,')
-			norm_clean = norm.rstrip('.')
+		def _key_token(raw: str, norm: str) -> str:
+			"""Dot-insensitive key; undotted 'SS' gets a key that is never allowed."""
+			k = norm.replace('.', '')
+			if k == 'ss' and '.' not in raw:
+				return 'ss#undotted'
+			return k
 
-			if norm_clean in ABBREVIATION_PREFIXES:
-				return True
-
-			# Dotted initialism, e.g. U.S.S / S.S / U.S.
-			if '.' in raw_clean:
-				parts = [p for p in raw_clean.split('.') if p]
-				if len(parts) >= 2 and all(len(p) <= 3 and p.isalpha() for p in parts):
-					return True
-
-			# Compact all-uppercase abbreviation, e.g. USS / HMS / USAT
-			if (
-				len(raw_clean) >= 2
-				and raw_clean.isalpha()
-				and raw_clean.upper() == raw_clean
-			):
-				return True
-
+		def _is_allowed(key: tuple) -> bool:
+			if len(key) == 1:
+				return key[0] in DESIGNATOR_PREFIXES or key[0] in EXPLICIT_PREFIXES or key[0] == 'ss'
+			if key[-1] in DESIGNATION_ENDINGS:
+				base = key[:-1]
+				return all(t not in FUNCTION_WORDS and t not in DESIGNATION_ENDINGS for t in base)
 			return False
 
-		def _is_allowed_prefix(prefix_pairs: List[Tuple[str, str]]) -> bool:
-			if not prefix_pairs:
-				return False
-
-			norm = [p[1] for p in prefix_pairs]
-
-			if len(norm) == 1 and norm[0] in EXPLICIT_DESIGNATION_PREFIXES:
-				return True
-
-			if norm[-1] in DESIGNATION_ENDINGS:
-				return True
-
-			if all(_is_abbreviation_token(r, t) for r, t in prefix_pairs):
-				return True
-
-			return False
-
-		best = None
-		best_below = None
-		max_len = max(len(p) for p in pairs)
-
+		best, best_below = None, None            # (support, length, core_tuple)
 		for k in range(1, max_len):
-			groups: Dict[tuple, int] = Counter()
-
+			groups: Dict[tuple, List[tuple]] = defaultdict(list)
 			for p in pairs:
-				if len(p) <= k:
+				if len(p) > k:
+					key = tuple(_key_token(r, t) for r, t in p[:k])
+					groups[key].append(tuple(t for _, t in p[:k]))
+			for key, variants in groups.items():
+				if not _is_allowed(key):
 					continue
-				prefix = tuple(nt for _, nt in p[:k])
-				groups[prefix] += 1
-
-			for prefix, support in groups.items():
-				rep = next(
-					p for p in pairs
-					if len(p) > k and tuple(nt for _, nt in p[:k]) == prefix
-				)
-				prefix_pairs = rep[:k]
-
-				if not _is_allowed_prefix(prefix_pairs):
-					continue
-				if prefix[0] in FUNCTION_WORDS or prefix[-1] in FUNCTION_WORDS:
-					continue
-
-				cand = (support, len(prefix), prefix)
-
+				support = len(variants)
+				counts = Counter(variants)
+				core = max(counts, key=lambda v: (counts[v], v))   # most common spelling
+				cand = (support, k, core)
 				if support >= threshold:
-					# support first, then length → longer wins on equal support
 					if best is None or cand > best:
 						best = cand
 				elif best_below is None or cand > best_below:
@@ -3272,19 +2979,11 @@ def assign_canonical_labels(
 
 		if best:
 			return list(best[2]), best[0], ''
-
 		if best_below:
-			note = (
-				f"title_prefix: best allowed prefix "
-				f"'{' '.join(best_below[2])}' "
-				f"{best_below[0]}/{n} (need {threshold})"
-			)
+			note = (f"title_prefix: best allowed prefix '{' '.join(best_below[2])}' "
+							f"only {best_below[0]}/{n} (need {threshold})")
 		else:
-			note = (
-				f"title_prefix: no allowed abbreviation/designation prefix "
-				f"in >= {threshold}/{n}"
-			)
-
+			note = "title_prefix: no allowed designator prefix"
 		return None, 0, note
 
 	def _virtual_hypernym(lbls: List[str]):
@@ -3370,7 +3069,8 @@ def assign_canonical_labels(
 	questionable_examples = []
 	selection_records     = []   # one per cluster -> debug CSV
 	candidate_records     = []   # one per candidate -> nested into the JSON
- 
+	cluster_centroids: Dict[int, np.ndarray] = {}
+	cluster_members:   Dict[int, List[str]]  = {}
 	n_clusters_total = df.cluster.nunique()
  
 	for cid in sorted(df.cluster.unique()):
@@ -3384,7 +3084,10 @@ def assign_canonical_labels(
 			print(f"\n[Cluster {cid:5d}/{n_clusters_total}] {cluster_size} labels{'\n' if cluster_size>10 else ' '}{cluster_texts}")
  
 		centroid = cluster_embeddings.mean(axis=0)   # real members only
- 
+		cluster_centroids[cid] = centroid
+		cluster_members[cid]   = cluster_texts
+
+
 		# ── Virtual hypernym candidate ────────────────────────────────────
 		virtual_hypernym = None
 		vh_raw = None
@@ -3573,13 +3276,18 @@ def assign_canonical_labels(
  
 		canonical = candidates[best_idx]
 		cluster_canonicals[cid] = {
-			'canonical':           canonical,
-			'score':               float(similarities[best_idx]),
-			'size':                cluster_size,
-			'virtual':             virtual_flags[best_idx],
-			'real_fallback':       cluster_texts[best_real_idx],
+			'canonical': canonical,
+			'score': float(similarities[best_idx]),
+			'size': cluster_size,
+			'virtual': virtual_flags[best_idx],
+			'real_fallback': cluster_texts[best_real_idx],
 			'real_fallback_score': float(similarities[best_real_idx]),
-			'method':              method,
+			'real_runner_up': (
+				cluster_texts[int(np.argsort(-combined_scores[:cluster_size])[1])]
+				if composite_idx is not None and cluster_size > 1
+				else None
+			),
+			'method': method,
 		}
  
 		selection_records.append(
@@ -3616,43 +3324,41 @@ def assign_canonical_labels(
 			tag = " [VIRTUAL]" if virtual_flags[best_idx] else ""
 			print(f"\t=> Selected Canonical: {canonical!r} (sim={similarities[best_idx]:.4f}){tag}")
  
+	pre_postpass = {cid: meta['canonical'] for cid, meta in cluster_canonicals.items()}
 
-	# Intentioannly commented out:
-	# cluster_canonicals = _demote_colliding_virtual_canonicals(
-	#     cluster_canonicals,
-	#     verbose=verbose
-	# )
+	if shared_calibration_names and verbose:
+		report_shared_group_similarities(
+			cluster_canonicals, 
+			cluster_centroids,
+			cluster_members,
+			names=shared_calibration_names,
+		)
 
-	pre_postpass = {
-		cid: meta['canonical']
-		for cid, meta in cluster_canonicals.items()
-	}
-
-	#################################################################
-	# New: Semantic shared-name post-pass.
-	# Cluster centroids are already available from X + df.
-	# Compute them once for the semantic shared-name post-pass.
-	cluster_centroids = {
-		cid: X[df['cluster'].values == cid].mean(axis=0)
-		for cid in cluster_canonicals
-	}
-	#################################################################
-
-	cluster_canonicals = _resolve_cross_cluster_shared_canonicals(
-		cluster_canonicals=cluster_canonicals,
+	cluster_canonicals = _resolve_shared_canonicals(
+		cluster_canonicals,
 		cluster_centroids=cluster_centroids,
-		df=df,
-		X=X,
-		model=model,
-		semantic_threshold=0.75,
+		cluster_members=cluster_members,
+		original_label_counts=original_label_counts,
+		threshold=shared_threshold,
 		verbose=verbose,
-	)	
+	)
 
 	# ── Write the debug JSON (final canonicals, after post-passes) ────────
 	for rec in selection_records:
 		final = cluster_canonicals[rec['cluster_id']]['canonical']
 		rec['canonical_selected'] = final
 		rec['changed_by_postpass'] = final != pre_postpass[rec['cluster_id']]
+		meta = cluster_canonicals[rec['cluster_id']]
+		rec['is_virtual'] = meta['virtual']          # final state, not pre-post-pass
+		rec['shared'] = {
+			'resolution':        meta.get('shared_resolution'),
+			'group_size':        meta.get('shared_group_size'),
+			'anchor_similarity': meta.get('shared_anchor_similarity'),
+			'name_evidence':     meta.get('shared_name_evidence'),
+			'threshold':         meta.get('shared_threshold'),
+			'demoted_from':      meta.get('shared_demoted_from'),
+			'spelling_unified_from': meta.get('spelling_unified_from'),
+		}
  
 	if debug_json_path:
 		def _clean(v, ndigits: int = 4):
@@ -3673,6 +3379,7 @@ def assign_canonical_labels(
 		for rec in selection_records:
 			cid = rec['cluster_id']
 			cands = sorted(cands_by_cluster[cid], key=lambda r: r['rank'])
+
 			clusters_json.append({
 				'cluster_id': _clean(cid),
 				'size': _clean(rec['cluster_size']),
@@ -3683,6 +3390,10 @@ def assign_canonical_labels(
 				'is_virtual': _clean(rec['is_virtual']),
 				'selection_method': rec['selection_method'],
 				'freq_guard': rec['freq_guard'],
+				'shared_canonical': {
+					k: (_clean(v) if not isinstance(v, str) else v)
+					for k, v in rec['shared'].items()
+				},
 				'margin_to_runner_up': _clean(rec['margin_to_runner_up']),
 				'winners': {
 					'selected': rec['canonical_pre_postpass'],
@@ -3730,20 +3441,36 @@ def assign_canonical_labels(
 			'meta': {
 				'n_clusters': len(clusters_json),
 				'n_candidates': len(candidate_records),
-				'weights': {'similarity': W_SIM, 'frequency': W_FREQ, 'head': W_HEAD,
-				            'containment': W_CONT, 'brevity': W_BREV},
+				'weights': {
+					'similarity': W_SIM, 
+					'frequency': W_FREQ, 
+					'head': W_HEAD,
+					'containment': W_CONT, 
+					'brevity': W_BREV
+				},
 				'min_support': MIN_SUPPORT,
 				'freq_gain_guard': FREQ_GAIN_GUARD,
 				'selection_method_counts': dict(method_counts.most_common()),
 				'virtual_winners': sum(1 for c in clusters_json if c['is_virtual']),
 				'changed_by_postpass': sum(1 for c in clusters_json if c['changed_by_postpass']),
+				'shared_resolution_counts': dict(
+					Counter(
+						rec['shared']['resolution']
+						for rec in selection_records
+						if rec['shared'].get('resolution')
+					).most_common()
+				),
 			},
 			'clusters': clusters_json,
 		}
+
 		with open(debug_json_path, 'w', encoding='utf-8') as f:
 			json.dump(payload, f, indent=2, ensure_ascii=False)
-		print(f"[CANONICAL SELECTION] {len(clusters_json)} clusters, "
-		      f"{len(candidate_records)} candidates -> {debug_json_path}")
+
+		print(
+			f"[CANONICAL SELECTION] {len(clusters_json)} clusters, "
+			f"{len(candidate_records)} candidates -> {debug_json_path}"
+		)
  
 	if verbose and selection_records:
 		sel = pd.DataFrame(selection_records)
@@ -3761,9 +3488,9 @@ def assign_canonical_labels(
 		dup = dup[dup > 1]
 		if len(dup):
 			print(f"  Canonicals shared by >1 cluster: {len(dup)} "
-				  f"(top: {', '.join(f'{k!r}x{v}' for k, v in dup.head(8).items())})")
+					f"(top: {', '.join(f'{k!r}x{v}' for k, v in dup.head(8).items())})")
 		print(f"  Postpass (case-collision) changed: {int(sel['changed_by_postpass'].sum())} cluster(s)")
-  
+	
 	if total_sim_loss and verbose:
 		print(f"\nSIMILARITY LOSS IMPACT:")
 		print(f"  Average  {np.mean(total_sim_loss)*100:.2f}%")
@@ -4022,6 +3749,10 @@ def cluster(
 		model=model,
 		original_label_counts=label_freq_dict,
 		debug_json_path=os.path.splitext(clusters_fname)[0] + "_canonical_selection.json",
+		shared_calibration_names=[ # detailed report
+			'camera', 'suit', 'cap', 'camp', 'debris',   # should stay together
+			'tank', 'float', 'race', 'gear', 'party',    # should split
+		],
 		verbose=verbose,
 	)
 
