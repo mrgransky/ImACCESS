@@ -44,7 +44,7 @@ Constraints:
   - Exclude generic keywords for image characteristics ('photograph', 'image', 'black and white photograph', 'stereoscopy', 'stereograph').
   - Refrain from using common environmental details (sky, lighting, ground texture).
   - Refrain from using counting expressions ('a trio of men', 'various individuals', or 'a cluster of youths').
-  - Avoid vague and generic descriptor or container nouns which lack detail ('equipment', 'system', 'scene', 'group', 'crowd', or 'event').
+  - Avoid vague and generic descriptor or container nouns which lack detail ('equipment', 'instrument', 'system', 'scene', 'group', 'crowd', or 'event').
   - Avoid purely demographic descriptors without contextual role.
   - Text/OCR extraction from the image is not allowed."""
 

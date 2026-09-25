@@ -248,7 +248,7 @@ def get_multimodal_annotation(
 		# Almost all duplicate labels hit the in-memory cache instantaneously!
 		llm_based_labels = _post_process_(
 			labels_list=llm_based_labels, 
-			col="llm_based_labels", 
+			col="llm_based_labels",
 			verbose=False,
 		)
 		# ── Call 3: VLM ──
@@ -277,6 +277,7 @@ def get_multimodal_annotation(
 			label_source="multimodal_labels",
 			output_dir=OUTPUT_DIR,
 			batch_size=batch_size,
+			device=device,
 			nc=nc,
 			verbose=verbose,
 		)
@@ -286,6 +287,7 @@ def get_multimodal_annotation(
 			model_id=embedding_model_id,
 			output_dir=OUTPUT_DIR,
 			batch_size=batch_size,
+			device=device,
 			nc=nc,
 			verbose=False,
 		)
@@ -295,6 +297,7 @@ def get_multimodal_annotation(
 			model_id=embedding_model_id,
 			output_dir=OUTPUT_DIR,
 			batch_size=batch_size,
+			device=device,
 			nc=nc,
 			verbose=False,
 		)

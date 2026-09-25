@@ -200,6 +200,7 @@ def _post_process_(
 	max_kw_word_length: int = 10,
 	apply_lemmatization: bool = False, # let embedding-based canonicalization merge singulars, plurals, and casing variations.
 	apply_normalization: bool = False, # let embedding-based canonicalization merge synonyms and near-synonym
+	digit_filtering_approach: str = "aggressive", # 'aggressive' or 'strategic' filtering of digitized keywords
 	verbose: bool = False,
 ) -> List[List[str]]:
 	pp_st = time.time()
@@ -209,9 +210,11 @@ def _post_process_(
 		print(f"[POST-PROCESSING]")
 		print(f"  ├─ {col}")
 		print(f"  ├─ {len(labels_list) if labels_list else 0} labels_list: {type(labels_list)}")
-		print(f"  ├─ Stopwords: {len(STOPWORDS)}")
-		print(f"  ├─ min kw length: {min_kw_ch_length} | max kw length: {max_kw_word_length}")
-		print(f"  └─ apply_lemmatization: {apply_lemmatization}")
+		print(f"  ├─ Stopwords                    : {len(STOPWORDS)}")
+		print(f"  ├─ min keyword character length : {min_kw_ch_length}, max keyword length: {max_kw_word_length}")
+		print(f"  ├─ apply_lemmatization          : {apply_lemmatization}")
+		print(f"  ├─ apply_normalization          : {apply_normalization}")
+		print(f"  └─ digit_filtering_approach     : {digit_filtering_approach}")
 		print("-"*50)
 	
 	if not labels_list:
@@ -257,6 +260,7 @@ def _post_process_(
 		"engine",
 		"runaway",
 		"snail",
+		"stuka",
 	}
 
 	PROTECTED_PLURALS = {
@@ -404,6 +408,10 @@ def _post_process_(
 	}
 
 	ALLOWED_ACRONYMS = {
+		"USOMC",
+		"DAF",
+		"SNJ",
+		"LSM",
 		"NWP",
 		"ACA", # Aero Club of America
 		"NAA", # National Aeronautic Association
@@ -770,29 +778,24 @@ def _post_process_(
 
 		return True
 
-	def filter_digits(keywords: list, verbose: bool = False) -> list:
-
-		standarized_labels = [
-			kw 
-			for kw in keywords 
-			if should_keep_numeric_label(kw)
-		]
-
-		if standarized_labels != keywords and verbose:
-			print(f"[STANDARDIZED] {keywords} -> {standarized_labels}")
-
-		return standarized_labels
-
-	def exclude_digits(keywords: list, verbose: bool = False) -> list:
-
-		standarized_labels = [
-			keyword 
-			for keyword in keywords 
-			if not any(char.isdigit() for char in keyword)
-		]
+	def filter_digits(keywords: list, approach: str, verbose: bool = False) -> list:
+		if approach=="aggressive":
+			standarized_labels = [
+				keyword 
+				for keyword in keywords 
+				if not any(char.isdigit() for char in keyword)
+			]
+		elif approach=="strategic":
+			standarized_labels = [
+				kw 
+				for kw in keywords 
+				if should_keep_numeric_label(kw)
+			]
+		else:
+			raise ValueError(f"Invalid approach: {approach} - choose from ['aggressive', 'strategic']")
 
 		if standarized_labels != keywords and verbose:
-			print(f"[STANDARDIZED] {keywords} -> {standarized_labels}")
+			print(f"[STANDARDIZED ({approach})] {keywords} -> {standarized_labels}")
 
 		return standarized_labels
 
@@ -1859,13 +1862,16 @@ def _post_process_(
 		if verbose:
 				print("=" * 65)
 				print(f"📊 TWO-STEP GLOBAL HARMONIZATION ANALYSIS ({col})")
-				print(f"  ├─ Attested Plural Merges : {plural_merge_count:,}")
-				print(f"  ├─ Case Consensus Merges  : {case_merge_count:,}")
-				print(f"  ├─ Total Remapped Pairs   : {total_merges:,}")
-				print(f"  ├─ Unique Labels          : {old_unique:,} → {new_unique:,} ({new_unique - old_unique:+,})")
-				print(f"  ├─ Singletons (freq=1)    : {old_singletons:,} → {new_singletons:,} (-{singleton_delta:,})")
-				print(f"  ├─ Singleton Rate         : {old_rate:.2f}% → {new_rate:.2f}% ({new_rate - old_rate:+.2f}% pts)")
-				print(f"  ├─ Total Occurrences      : {old_occurrences:,} → {new_occurrences:,} (loss: {occurrence_loss:.2f}%)")
+				print(f"  ├─ min_relative_singleton_drop : {min_relative_singleton_drop}")
+				print(f"  ├─ min_attested_merges         : {min_attested_merges}")
+				print(f"  ├─ max_allowed_occurrence_loss : {max_allowed_occurrence_loss}")
+				print(f"  ├─ Attested Plural Merges      : {plural_merge_count:,}")
+				print(f"  ├─ Case Consensus Merges       : {case_merge_count:,}")
+				print(f"  ├─ Total Remapped Pairs        : {total_merges:,}")
+				print(f"  ├─ Unique Labels               : {old_unique:,} → {new_unique:,} ({new_unique - old_unique:+,})")
+				print(f"  ├─ Singletons (freq=1)         : {old_singletons:,} → {new_singletons:,} (-{singleton_delta:,})")
+				print(f"  ├─ Singleton Rate              : {old_rate:.2f}% → {new_rate:.2f}% ({new_rate - old_rate:+.2f}% pts)")
+				print(f"  ├─ Total Occurrences           : {old_occurrences:,} → {new_occurrences:,} (loss: {occurrence_loss:.2f}%)")
 				print(f"  └─ {decision_msg}")
 				print("=" * 65)
 		
@@ -1928,14 +1934,9 @@ def _post_process_(
 			if verbose:
 				print(f"  → Non-standard type ({type(labels)}), converting to string and wrapping")
 
-		# aggressive filtering to exclude digits
-		# current_items = exclude_digits(
-			# keywords=current_items, 
-			# verbose=verbose
-		# )
-	
 		current_items = filter_digits(
-			keywords=current_items, 
+			keywords=current_items,
+			approach=digit_filtering_approach,
 			verbose=verbose,
 		)
 

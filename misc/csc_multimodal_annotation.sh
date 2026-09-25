@@ -9,8 +9,8 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
 #SBATCH --mem=264G
-#SBATCH --partition=gpularge
-#SBATCH --gres=gpu:gh200:4
+#SBATCH --partition=gpumedium
+#SBATCH --gres=gpu:gh200:1
 #SBATCH --time=01-12:00:00
 #SBATCH --array=0
 
@@ -70,7 +70,7 @@ DATASETS=(
 )
 CSV_FILE=${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv
 LLM_BATCH_SIZES=(28 6 18 16 28)
-VLM_BATCH_SIZES=(92 48 48 32 48)
+VLM_BATCH_SIZES=(128 48 48 32 48)
 
 echo "Running Multimodal Annotation on $CSV_FILE"
 echo "MLM: $MLM_MODEL"
