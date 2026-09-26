@@ -3515,10 +3515,10 @@ def assign_canonical_labels(
 		if questionable_trades > 0 and verbose:
 			print(f"\n[WARNING] {questionable_trades} questionable trades detected:")
 			print(f"\t=> Consider adjusting weighting if this is high\n")
-			print(f"{'Cluster':<10} {'Pure Sim Choice':<35} {'Score-Weighted Choice':<35} {'Sim Loss(%)':<15} {'Freq Gain'}")
-			print("-" * 110)
+			print(f"{'Cluster':7s} {'Pure Sim Choice':<55} {'Score-Weighted Choice':<55} {'Sim Loss(%)':<15} {'Freq Gain'}")
+			print("-" * 140)
 			for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True):
-				print(f"{ex['cluster_id']:<10} {ex['pure_choice'][:32]:<35} {ex['freq_choice'][:32]:<35} {ex['sim_loss']*100:<15.1f} {ex['freq_gain']:.1f}x")
+				print(f"{ex['cluster_id']:7d} {ex['pure_choice'][:32]:<55} {ex['freq_choice'][:32]:<55} {ex['sim_loss']*100:<15.2f} {ex['freq_gain']:.2f}x")
  
 			high_loss_low_gain  = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] < 2]
 			high_loss_good_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] >= 2]
@@ -3750,8 +3750,8 @@ def cluster(
 		original_label_counts=label_freq_dict,
 		debug_json_path=os.path.splitext(clusters_fname)[0] + "_canonical_selection.json",
 		shared_calibration_names=[ # detailed report
-			'camera', 'suit', 'cap', 'camp', 'debris',   # should stay together
-			'tank', 'float', 'race', 'gear', 'party',    # should split
+			'camera', 'suit', 'cap', 'camp', 'debris', 'building', 'hospital', # should stay together
+			'arm', 'press', 'bay', 'ward', 'tank', 'float', 'race', 'gear', 'party', # should split
 		],
 		verbose=verbose,
 	)

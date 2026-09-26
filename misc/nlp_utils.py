@@ -716,7 +716,7 @@ def _post_process_(
 
 	TEMPORAL_NOISE_RE = re.compile(
 		rf'(?:^|\b)(?:c\.|circa|early|mid|late)?\s*'
-		rf'(?:\d{{1,2}}\s+)?{_MONTHS_SEASONS}\s+(?:\d{{1,2}},?\s+)?(?:18|19|20)\d{{2}}\b|'
+		rf'(?:\d{{1,2}}\s+)?{_MONTHS_SEASONS}\.?\s+(?:\d{{1,2}},?\s+)?(?:18|19|20)\d{{2}}\b|'
 		rf'\b(?:18|19|20)\d{{2}}\s+{_MONTHS_SEASONS}\b|'
 		rf'^\b(?:18|19|20)\d{{2}}(?:s|\'s)?\b$',
 		re.IGNORECASE
@@ -734,7 +734,7 @@ def _post_process_(
 	MILITARY_DESIGNATION_RE = re.compile(
 		r'\b(?:'
 		# 1. Interleaved military models (M4A1, M4A3E8, M32B1, A6M2, A6M5, B5N2, G4M1, H8K2, D3A1, C6N1, P1Y1, E16A1)
-		r'[A-Za-z]{1,4}\d{1,4}[A-Za-z]{1,3}\d{0,3}[A-Za-z]{0,2}|'
+		r'[A-Za-z]{1,4}\d{1,4}(?:[A-Za-z]{1,3}\d{0,3})*|'
 		# 2. Standard hyphenated/spaced models (B-17, B-17G, P-51, C-47, A-20, T-34, U-505, PT-109, F-6D-15-NA)
 		r'[A-Za-z]{1,4}[- ]\d{1,4}[A-Za-z]?(?:/\d{1,3})?|'
 		# 3. German models & wings (Bf 109, Fw 190, Ju 87, He 111, Me 262, Flak 18, Pak 40, JG 53)
@@ -1983,7 +1983,8 @@ def _post_process_(
 			else:
 				lemma = original_cleaned
 
-			if len(lemma) < min_kw_ch_length:
+			is_short_designation = any(c.isdigit() for c in lemma) and MILITARY_DESIGNATION_RE.search(lemma)
+			if len(lemma) < min_kw_ch_length and not is_short_designation:
 				if verbose:
 					print(f"\t[SKIPPED] {repr(lemma):<55} (len={len(lemma)} < {min_kw_ch_length})")
 				continue

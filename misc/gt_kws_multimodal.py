@@ -241,7 +241,8 @@ def get_multimodal_annotation(
 		# Populates the in-memory cache for all shared image concepts
 		multimodal_labels = _post_process_(
 			labels_list=multimodal_labels, 
-			col="multimodal_labels", 
+			col="multimodal_labels",
+			digit_filtering_approach="strategic",
 			verbose=verbose
 		)
 		# ── Call 2: LLM ──
@@ -249,6 +250,7 @@ def get_multimodal_annotation(
 		llm_based_labels = _post_process_(
 			labels_list=llm_based_labels, 
 			col="llm_based_labels",
+			digit_filtering_approach="strategic",
 			verbose=False,
 		)
 		# ── Call 3: VLM ──
@@ -256,6 +258,7 @@ def get_multimodal_annotation(
 		vlm_based_labels = _post_process_(
 			labels_list=vlm_based_labels, 
 			col="vlm_based_labels", 
+			digit_filtering_approach="strategic",
 			verbose=False,
 		)
 	finally:
