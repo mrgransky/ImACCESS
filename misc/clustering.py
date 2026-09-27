@@ -396,7 +396,7 @@ def get_canonical_labels(
 		print(f"  ├─ Batch size  : {batch_size}")
 		print(f"  ├─ labels      : {type(labels)} {len(labels)} {type(labels[0])} {len(labels[0])} {labels[0]}")
 		print(f"  ├─ Output dir  : {output_dir}")
-		print(f"  └─ ||Clusters||: {f'Manually defined' if nc else '=> Adaptive Search'}")
+		print(f"  └─ ||Clusters||: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
 
 	clusters_fname = os.path.join(output_dir, f"clustering_{label_source}.csv")
 
@@ -3683,7 +3683,8 @@ def cluster(
 
 	# STEP 3: LINKAGE MATRIX
 	if verbose:
-		print(f"\n[LINKAGE] {linkage_method} {X.shape} embeddings [takes a while...]")
+		print(f"[LINKAGE] {linkage_method} {X.shape} embeddings [takes a while...]")
+	
 	t0 = time.time()
 	if linkage_method == "ward":
 		Z = fastcluster.linkage(X, method='ward', metric='euclidean') if use_fastcluster \

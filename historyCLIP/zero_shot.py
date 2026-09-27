@@ -5,26 +5,6 @@ from dataset_loader import HistoricalDataset
 # how to run:
 # $ python zero_shot_classification.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1 --batch_size 22
 
-parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
-parser.add_argument('--processed_image_path', type=str, default="my_img.png", help='Path to resulted image with topk images')
-parser.add_argument('--dataset_dir', type=str, default="myntradataset", help='Dataset DIR')
-parser.add_argument('--image_size', type=int, default=160, help='Image size')
-parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
-parser.add_argument('--num_workers', type=int, default=multiprocessing.cpu_count(), help='Number of CPUs [def: max cpus]')
-parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
-parser.add_argument('--embedding_size', type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
-parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
-parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set')
-parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning Rate')
-parser.add_argument('--weight_decay', type=float, default=1e-1, help='Weight decay [def: 1e-4]')
-parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
-parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
-
-args, unknown = parser.parse_known_args()
-print(args)
-args.device = torch.device(args.device)
-print(type(args.device), args.device, args.device.type)
-
 # TODO: investigation required!
 # if USER == "ubuntu":
 # 	args.dataset_dir = ddir
@@ -122,9 +102,59 @@ def zero_shot_clasification(vidx:int=110, model_fpth:str=f"path/to/models/clip.p
 	print("-"*70)
 	for value, index in zip(values, indices):
 		print(f"{index:<15}{class_names[int(index)]:<40}{value.item():.5f}")
+	
+print(f">> CLIP Model Architecture: {args.model_architecture}...")
+model_config = clip.get_config(
+	architecture=args.model_architecture, 
+	dropout=0,
+)
+print(json.dumps(model_config, indent=4, ensure_ascii=False))
+model, _ = clip.load(
+	name=args.model_architecture,
+	device=args.device,
+	jit=False, # training or finetuning => jit=False
+	random_weights=False, # finetuning => random_weights=False
+	dropout=0,
+	download_root=get_model_directory(path=DATASET_DIRECTORY),
+)
+model.name = args.model_architecture  # Custom attribute to store model name
+model_name = model.__class__.__name__
+print(f"Loaded {model_name} {model.name} in {args.device}")
+
+
+def i2t(image: str, texts: List(str)):
+
+	pass
+
+def t2i():
+	pass
+
+def i2i():
+	pass
+
 
 def main():
-	zero_shot_clasification(vidx=random.randint(0, len(val_df)))
+	parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
+	parser.add_argument('--processed_image_path', type=str, default="my_img.png", help='Path to resulted image with topk images')
+	parser.add_argument('--dataset_dir', type=str, default="myntradataset", help='Dataset DIR')
+	parser.add_argument('--image_size', type=int, default=160, help='Image size')
+	parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
+	parser.add_argument('--num_workers', type=int, default=multiprocessing.cpu_count(), help='Number of CPUs [def: max cpus]')
+	parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
+	parser.add_argument('--embedding_size', type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
+	parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
+	parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set')
+	parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning Rate')
+	parser.add_argument('--weight_decay', type=float, default=1e-1, help='Weight decay [def: 1e-4]')
+	parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
+	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
+
+	args, unknown = parser.parse_known_args()
+	print(args)
+	args.device = torch.device(args.device)
+	print(type(args.device), args.device, args.device.type)
+
+	# zero_shot_clasification(vidx=random.randint(0, len(val_df)))
 
 if __name__ == "__main__":
 	main()

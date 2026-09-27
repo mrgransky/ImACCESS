@@ -10,7 +10,7 @@
 #SBATCH --cpus-per-task=20
 #SBATCH --mem=264G
 #SBATCH --partition=gpularge
-#SBATCH --gres=gpu:gh200:2
+#SBATCH --gres=gpu:gh200:1
 #SBATCH --time=0-07:00:00
 #SBATCH --begin=07:00:00
 ##############################################################################
