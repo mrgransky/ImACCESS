@@ -308,7 +308,10 @@ def get_canonical_labels_with_parallel_mapping(
 	clusters_fname = os.path.join(output_dir, f"{label_source}_clusters.csv")
 
 	if verbose:
-		print(f"\n[{label_source.upper()}] Canonical Labels (Parallel Mapping: nw: {num_workers} bs: {batch_size})")
+		print(
+			f"\n[{label_source.upper()}] Canonical Labels "
+			f"(Parallel Mapping: nw: {num_workers} bs: {batch_size})"
+		)
 		print(f"Input: {len(labels)} {type(labels)} samples")
 		print(f"Examples:\n{labels[:7]}")
 		print(f"Cluster File: {clusters_fname}")
@@ -322,20 +325,34 @@ def get_canonical_labels_with_parallel_mapping(
 		verbose=verbose,
 	)
 
-	canonical_map = clustered_df.set_index('label')['canonical'].to_dict()
-	# Parallel mapping
-	chunksize  = max(1, len(labels) // (num_workers * 4))  # 4 chunks per worker
+	# EDIT 5: map from real rows only (exclude injected virtual hypernyms)
+	real_rows = (
+		clustered_df[~clustered_df["is_injected"]]
+		if "is_injected" in clustered_df.columns
+		else clustered_df
+	)
+	assert not real_rows["label"].duplicated().any(), "duplicate real label rows"
+	canonical_map = real_rows.set_index("label")["canonical"].to_dict()
+
+	chunksize = max(1, len(labels) // (num_workers * 4))
 	if verbose:
 		print(f"[{label_source.upper()}]")
-		print(f"  ├─ {len(clustered_df)} unique labels ==>> {clustered_df['cluster'].nunique()} clusters")
+		print(
+			f"  ├─ {len(real_rows)} real labels "
+			f"(+{len(clustered_df) - len(real_rows)} injected) "
+			f"==>> {clustered_df['cluster'].nunique()} clusters"
+		)
 		print(f"  ├─  canonical_map: {type(canonical_map)} {len(canonical_map)} entries")
-		print(f"  ├─  Mapping {len(labels):,} samples → canonical labels, workers={num_workers}, chunksize={chunksize}")
+		print(
+			f"  ├─  Mapping {len(labels):,} samples → canonical labels, "
+			f"workers={num_workers}, chunksize={chunksize}"
+		)
 
 	t0 = time.time()
 	with multiprocessing.Pool(
 		processes=num_workers,
-		initializer=init_worker_canonical,	# called ONCE per worker
-		initargs=(canonical_map,),					# dict sent ONCE per worker
+		initializer=init_worker_canonical,
+		initargs=(canonical_map,),
 	) as pool:
 		mapped_labels = pool.map(
 			parallel_canonical_mapping,
@@ -345,35 +362,38 @@ def get_canonical_labels_with_parallel_mapping(
 	elapsed = time.time() - t0
 
 	if verbose:
-		print(f"  ├─  Mapping Elapsed_t: {elapsed:.2f}s ({len(labels)/elapsed:,.0f} rows/sec)")
+		print(
+			f"  ├─  Mapping Elapsed_t: {elapsed:.2f}s "
+			f"({len(labels) / elapsed:,.0f} rows/sec)"
+		)
 
-	# Post-processing stats
 	missing_labels: set = set()
-	none_count     = 0
-	empty_count    = 0
+	none_count = 0
+	empty_count = 0
 	for original, mapped in zip(labels, mapped_labels):
 		if mapped is None:
 			none_count += 1
 			continue
 		if len(mapped) == 0:
 			empty_count += 1
-		
-		# Collect labels that were dropped (not in canonical_map)
 		if original is not None and isinstance(original, list):
 			for lbl in original:
 				if lbl not in canonical_map:
 					missing_labels.add(lbl)
-	
+
 	if verbose:
 		print(f"\n[{label_source.upper()}] Mapping summary:")
 		print(f"   Total samples   : {len(labels):,}")
 		print(f"   None (unparseable): {none_count:,}")
 		print(f"   Empty after map : {empty_count:,}")
-		print(f"   Labels not in canonical map (removed as problematic): {len(missing_labels):,}")
+		print(
+			f"   Labels not in canonical map (removed as problematic): "
+			f"{len(missing_labels):,}"
+		)
 		print(f"   Canonical labels : {len(canonical_map):,}")
 		if missing_labels:
 			print(f"   Sample missing  : {list(missing_labels)[:10]}...")
-		print("-"*100)
+		print("-" * 100)
 
 	return mapped_labels, canonical_map
 
@@ -389,14 +409,20 @@ def get_canonical_labels(
 ) -> Tuple[List[List[str]], dict]:
 
 	if verbose:
-		print("-"*50)
-		print(f"[CANOCALIZATION] Sequential Mapping")
+		print("-" * 50)
+		print("[CANONICALIZATION] Sequential Mapping")
 		print(f"  ├─ {label_source}")
 		print(f"  ├─ {model_id}")
 		print(f"  ├─ Batch size  : {batch_size}")
-		print(f"  ├─ labels      : {type(labels)} {len(labels)} {type(labels[0])} {len(labels[0])} {labels[0]}")
+		print(
+			f"  ├─ labels      : {type(labels)} {len(labels)} "
+			f"{type(labels[0])} {len(labels[0])} {labels[0]}"
+		)
 		print(f"  ├─ Output dir  : {output_dir}")
-		print(f"  └─ ||Clusters||: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
+		print(
+			f"  └─ ||Clusters||: {nc} "
+			f"{'Manually defined' if nc else '=> Adaptive Search'}"
+		)
 
 	clusters_fname = os.path.join(output_dir, f"clustering_{label_source}.csv")
 
@@ -419,9 +445,15 @@ def get_canonical_labels(
 		print(clustered_df.info(verbose=verbose, memory_usage="deep"))
 		print(clustered_df.head(50))
 
-	canonical_map = clustered_df.set_index('label')['canonical'].to_dict()
+	# EDIT 5: map from real rows only (exclude injected virtual hypernyms)
+	real_rows = (
+		clustered_df[~clustered_df["is_injected"]]
+		if "is_injected" in clustered_df.columns
+		else clustered_df
+	)
+	assert not real_rows["label"].duplicated().any(), "duplicate real label rows"
+	canonical_map = real_rows.set_index("label")["canonical"].to_dict()
 
-	# Build lowercase fallback map
 	lower_to_canonical = {k.lower(): v for k, v in canonical_map.items()}
 
 	canonical_labels = list()
@@ -431,7 +463,6 @@ def get_canonical_labels(
 		if sample_labels is None:
 			canonical_labels.append(None)
 			continue
-		
 		if not isinstance(sample_labels, list):
 			if isinstance(sample_labels, str):
 				try:
@@ -442,19 +473,16 @@ def get_canonical_labels(
 			else:
 				canonical_labels.append(None)
 				continue
-		
 		mapped = list()
 		for label in sample_labels:
 			if label in canonical_map:
 				mapped.append(canonical_map[label])
-			elif label.lower() in lower_to_canonical: # FALLBACK
+			elif label.lower() in lower_to_canonical:
 				mapped.append(lower_to_canonical[label.lower()])
 			else:
 				missing_labels.add(label)
-		
-		# Deduplicate while preserving order
 		canonical_labels.append(list(dict.fromkeys(mapped)))
-	
+
 	if verbose and missing_labels:
 		print(
 			f"[{label_source.upper()}] {len(missing_labels)} labels removed "
@@ -2564,81 +2592,65 @@ def _resolve_shared_canonicals(
 	verbose: bool = False,
 ) -> Dict[int, Dict]:
 	"""
-	Post-pass over all clusters whose final canonicals share a name
-	(compared case-insensitively). Three steps per group:
+	Post-pass over clusters whose canonicals share a name (case-insensitive).
 
-	1. Spelling: unify case variants ('nurse' / 'Nurse'). A real corpus
-		 spelling wins; otherwise the spelling backed by the most member labels.
+	Steps per group
+	---------------
+	1. Group surface (for name-evidence only).  Case/spacing unification is
+	   owned by _harmonize_final_canonicals; this function does NOT rename.
+	2. Primary neighbourhood by NAME EVIDENCE (not embedding closeness to
+	   the bare string).
+	3. Anchored membership: keep only clusters within `threshold` of the
+	   primary neighbourhood's mean centroid.  No chaining.
 
-	2. Primary group, chosen by NAME EVIDENCE, not embedding closeness.
-		 A cluster's name evidence is the number of images whose label contains
-		 the name ('Pneumonia Ward', 'general ward' for 'ward'). For each cluster,
-		 its neighbourhood is the set of group clusters with centroid similarity
-		 >= threshold. The neighbourhood with the most name evidence is the
-		 primary. This keeps 'tank' with the armoured-tank clusters and 'ward'
-		 with the hospital wards, rather than giving the name to whichever
-		 (possibly noisy) cluster happens to contain the bare word.
+	Demoted clusters get real_fallback (or real_runner_up) and virtual=False
+	so Step 7 does not double-inject.  If neither fallback differs from the
+	shared name, resolution is 'kept_no_alternative'.
 
-	3. Anchored membership, not chaining. The anchor is the mean centroid of
-		 the primary neighbourhood. A cluster keeps the name only if its own
-		 centroid is within threshold of the ANCHOR. Clusters are never linked
-		 through intermediates, so 'saddle tank' cannot bridge armoured tanks to
-		 fuel tanks. A large benign group (building x21) keeps the name for
-		 every cluster near the anchor; only outliers are demoted.
-
-	Demoted clusters get their stored real_fallback and are marked
-	virtual=False. That flag matters: Step 7 of cluster() injects every
-	virtual canonical as a new row, so a demoted cluster left virtual=True
-	would have its fallback label inserted twice. If the fallback equals the
-	shared name (a real-label canonical), the second-best real member
-	('real_runner_up') is used instead; only if neither differs from the
-	name is the cluster recorded as 'kept_no_alternative'.
-
-	Every cluster in a shared group gets these fields (all end up in the JSON):
-		shared_resolution         'kept' | 'demoted' | 'kept_no_alternative'
-		shared_group_size, shared_anchor_similarity, shared_name_evidence,
-		shared_threshold, shared_demoted_from (demoted only),
-		spelling_unified_from     (spelling changed only)
+	Fields written on every cluster in a multi-cluster group:
+	  shared_resolution, shared_group_size, shared_anchor_similarity,
+	  shared_name_evidence, shared_threshold, shared_demoted_from (demoted only).
 	"""
 	registry = _build_case_registry(original_label_counts)
 
 	groups: Dict[str, List[int]] = defaultdict(list)
 	for cid, meta in cluster_canonicals.items():
-		groups[meta['canonical'].lower()].append(cid)
+		groups[meta["canonical"].lower()].append(cid)
 
 	stats = Counter()
 	for key in sorted(groups):
 		cids = sorted(groups[key])
 
-		# ── 1. Spelling unification ───────────────────────────────────────
-		spellings = {cluster_canonicals[c]['canonical'] for c in cids}
-		if len(spellings) > 1:
-			if key in registry:
-				surface = registry[key]
-			else:
-				weight = Counter()
-				for c in cids:
-					weight[cluster_canonicals[c]['canonical']] += cluster_canonicals[c]['size']
-				surface = max(weight, key=lambda s: (weight[s], s))
-			for c in cids:
-				meta = cluster_canonicals[c]
-				if meta['canonical'] != surface:
-					meta['spelling_unified_from'] = meta['canonical']
-					meta['canonical'] = surface
-					stats['spelling_unified'] += 1
+		# ── 1. Group surface (name evidence only; no renaming) ──────────
+		spellings = {cluster_canonicals[c]["canonical"] for c in cids}
+		if key in registry:
+			surface = registry[key]
 		else:
-			surface = next(iter(spellings))
+			weight = Counter()
+			for c in cids:
+				weight[cluster_canonicals[c]["canonical"]] += cluster_canonicals[c]["size"]
+			surface = max(weight, key=lambda s: (weight[s], s))
+		# surface may differ in case from some members; that is intentional.
+		# Harmonization will unify display names later.
 
 		if len(cids) == 1:
 			continue
-		stats['shared_groups'] += 1
+		stats["shared_groups"] += 1
 
-		# ── 2. Name evidence and primary neighbourhood ────────────────────
+		# ── 2. Name evidence and primary neighbourhood ─────────────────
 		name_toks = _label_tokens(surface)
-		evidence = {c: sum(original_label_counts.get(m, 1)
-											 for m in cluster_members[c] if name_toks <= _label_tokens(m))
-								for c in cids}
-		volume = {c: sum(original_label_counts.get(m, 1) for m in cluster_members[c]) for c in cids}
+		evidence = {
+			c: sum(
+				original_label_counts.get(m, 1)
+				for m in cluster_members[c]
+				if name_toks <= _label_tokens(m)
+			)
+			for c in cids
+		}
+		volume = {
+			c: sum(original_label_counts.get(m, 1) for m in cluster_members[c])
+			for c in cids
+		}
 
 		V = np.vstack([cluster_centroids[c] for c in cids]).astype(float)
 		V /= np.linalg.norm(V, axis=1, keepdims=True) + 1e-12
@@ -2647,19 +2659,22 @@ def _resolve_shared_canonicals(
 		best = None
 		for i, c in enumerate(cids):
 			nb = [j for j in range(len(cids)) if S[i, j] >= threshold]
-			score = (sum(evidence[cids[j]] for j in nb),
-							 sum(volume[cids[j]] for j in nb),
-							 len(nb), -c)
+			score = (
+				sum(evidence[cids[j]] for j in nb),
+				sum(volume[cids[j]] for j in nb),
+				len(nb),
+				-c,
+			)
 			if best is None or score > best[0]:
 				best = (score, i, nb)
 		_, seed, nb = best
 
-		# ── 3. Anchored membership ────────────────────────────────────────
+		# ── 3. Anchored membership ─────────────────────────────────────
 		anchor = V[nb].mean(axis=0)
 		anchor /= np.linalg.norm(anchor) + 1e-12
 		anchor_sim = V @ anchor
 		keep = {j for j in range(len(cids)) if anchor_sim[j] >= threshold} | {seed}
-		stats['groups_kept_whole' if len(keep) == len(cids) else 'groups_split'] += 1
+		stats["groups_kept_whole" if len(keep) == len(cids) else "groups_split"] += 1
 
 		changes = []
 		for j, c in enumerate(cids):
@@ -2671,37 +2686,49 @@ def _resolve_shared_canonicals(
 				shared_threshold=float(threshold),
 			)
 			if j in keep:
-				meta['shared_resolution'] = 'kept'
+				meta["shared_resolution"] = "kept"
 				continue
-			# First real alternative that differs from the shared name. When the
-			# canonical is itself the real label (e.g. a noise cluster holding the
-			# bare word 'ward'), real_fallback equals the name, so fall back further
-			# to the second-best real member.
-			fallback = next((f for f in (meta.get('real_fallback'), meta.get('real_runner_up'))
-											 if f and f.lower() != key), None)
+
+			fallback = next(
+				(
+					f
+					for f in (meta.get("real_fallback"), meta.get("real_runner_up"))
+					if f and f.lower() != key
+				),
+				None,
+			)
 			if fallback is None:
-				meta['shared_resolution'] = 'kept_no_alternative'
-				stats['kept_no_alternative'] += 1
+				meta["shared_resolution"] = "kept_no_alternative"
+				stats["kept_no_alternative"] += 1
 				continue
-			meta['shared_resolution']   = 'demoted'
-			meta['shared_demoted_from'] = meta['canonical']
-			meta['canonical']           = fallback
-			meta['virtual']             = False          # prevents duplicate injection in Step 7
-			meta['score']               = meta.get('real_fallback_score', meta['score'])
-			stats['demoted'] += 1
+
+			meta["shared_resolution"] = "demoted"
+			meta["shared_demoted_from"] = meta["canonical"]
+			meta["canonical"] = fallback
+			meta["virtual"] = False
+			meta["score"] = meta.get("real_fallback_score", meta["score"])
+			stats["demoted"] += 1
 			changes.append((c, fallback, anchor_sim[j]))
 
 		if verbose and changes:
-			print(f"\n[SHARED NAME] {surface!r}: {len(cids)} clusters, kept {len(keep)} "
-						f"(primary evidence={evidence[cids[seed]]}, threshold={threshold:.2f})")
+			print(
+				f"\n[SHARED NAME] {surface!r}: {len(cids)} clusters, kept {len(keep)} "
+				f"(primary evidence={evidence[cids[seed]]}, threshold={threshold:.2f})"
+			)
 			for c, fb, s in changes:
 				print(f"    cluster {c:6d} -> {fb!r:40} (anchor sim {s:.3f})")
 
 	if verbose:
 		print("\n[SHARED-NAME RESOLUTION]")
-		for k in ('shared_groups', 'groups_kept_whole', 'groups_split',
-							'demoted', 'kept_no_alternative', 'spelling_unified'):
+		for k in (
+			"shared_groups",
+			"groups_kept_whole",
+			"groups_split",
+			"demoted",
+			"kept_no_alternative",
+		):
 			print(f"  {k:<22} {stats[k]:6d}")
+
 	return cluster_canonicals
 
 def report_shared_group_similarities(
@@ -2744,6 +2771,137 @@ def report_shared_group_similarities(
 						f"{cluster_members[c][:n_members]}")
 		out[name] = {'cluster_ids': cids, 'pairwise': S.tolist()}
 	return out
+
+def _harmonize_final_canonicals(
+	cluster_canonicals: Dict[int, Dict],
+	original_label_counts: Dict[str, int],
+	protected_plurals: Optional[set] = None,
+	verbose: bool = False,
+) -> Dict[int, Dict]:
+	"""
+	Global post-pass that unifies surface variants of the chosen canonicals:
+	case ('Nurse' / 'nurse'), spacing ('ice breaker' / 'icebreaker') and
+	attested singular/plural ('car' / 'cars').
+
+	It does NOT overwrite meta['canonical']. Internal steps (virtual-row
+	injection, remove_problematic_cluster_labels) require the canonical to be
+	a member of its cluster, and a harmonized name often is not ('wing tip' ->
+	'wingtip'). Instead each cluster gets a display name:
+
+	  meta['canonical_harmonized']   final name (equals 'canonical' if unchanged)
+	  meta['changed_by_harmonize']   bool
+	  meta['canonical_pre_harmonize']  old name, only when changed
+
+	cluster() applies the display names as a string rename after
+	remove_problematic_cluster_labels(). All clusters sharing a surface are in
+	the same group and get the same winner, so the rename is well defined.
+
+	Rules
+	-----
+	* Plural -> singular only when the singular is itself an attested canonical
+	  (compared on the spacing key, so 'icebreakers' finds 'ice breaker').
+	* Protected plurals (different words: arms, papers, grounds, ...) never map.
+	* All-caps acronyms never merge with ordinary words ('SPAR' vs 'spars',
+	  'CARE' vs 'care').
+	* Winner: singular form first, then a real corpus label, then corpus
+	  frequency, then total cluster size, then capitalisation, then lexicographic.
+	"""
+	HARMONIZE_PROTECTED_PLURALS = {
+		# plurale tantum
+		"pants", "shorts", "glasses", "scissors", "pliers", "tongs", "trousers",
+		"binoculars", "goggles", "barracks", "headquarters", "clothes", "belongings",
+		"remains", "surroundings", "outskirts", "archives", "overalls",
+		# protected plurals / proper names
+		"united nations", "united states", "howards", "reins", "airlines", "marines",
+		"stables", "lines", "life savers", "pyrotechnics", "general motors",
+		"marine corps", "corps",
+		# plural is a different word from the singular
+		"arms", "papers", "grounds", "works", "steelworks", "quarters", "customs",
+		"goods", "colors", "colours", "forces", "spectacles", "manners", "means",
+		"premises", "provisions", "letters", "minutes", "terms",
+	}
+
+	protected = HARMONIZE_PROTECTED_PLURALS if protected_plurals is None else protected_plurals
+
+	def _spacing_key(s: str) -> str:
+		return re.sub(r'\s+', '', s.lower())
+
+	def _is_acronym(s: str) -> bool:
+		letters = re.sub(r'[^A-Za-z]', '', s)
+		return len(letters) >= 2 and letters.isupper() and len(s.split()) == 1
+
+	def _cap_score(s: str) -> int:
+		return sum(1 for c in s if c.isupper())
+
+	def _singular_candidates(low: str):
+		out = []
+		if low.endswith("ies") and len(low) > 4:
+			out.append(low[:-3] + "y")                      # batteries -> battery
+		if low.endswith(("ches", "shes", "xes", "zes", "sses", "oes")) and len(low) > 4:
+			out.append(low[:-2])                            # trenches -> trench
+		if low.endswith("s") and not low.endswith("ss") and len(low) > 3:
+			out.append(low[:-1])                            # cars -> car
+		return out
+
+	surfaces = {cid: m['canonical'] for cid, m in cluster_canonicals.items() if m.get('canonical')}
+	distinct = set(surfaces.values())
+	attested_keys = {_spacing_key(s) for s in distinct if not _is_acronym(s)}
+
+	plural_of: Dict[str, str] = {}              # plural surface -> singular spacing key
+	for s in distinct:
+		low = s.lower()
+		if _is_acronym(s) or low in protected or low.endswith("ss"):
+			continue
+		for cand in _singular_candidates(low):
+			k = _spacing_key(cand)
+			if k in attested_keys and k != _spacing_key(low):
+				plural_of[s] = k
+				break
+
+	def _group_key(s: str) -> str:
+		if _is_acronym(s):
+			return "ACRONYM::" + s                  # merges only with identical acronyms
+		return plural_of.get(s, _spacing_key(s))
+
+	groups: Dict[str, list] = defaultdict(list)
+	for cid, s in surfaces.items():
+		groups[_group_key(s)].append(cid)
+
+	stats, examples = Counter(), []
+	for cids in groups.values():
+		variants = {cluster_canonicals[c]['canonical'] for c in cids}
+		if len(variants) == 1:
+			for c in cids:
+				m = cluster_canonicals[c]
+				m['canonical_harmonized'] = m['canonical']
+				m['changed_by_harmonize'] = False
+			continue
+
+		size = Counter()
+		for c in cids:
+			size[cluster_canonicals[c]['canonical']] += int(cluster_canonicals[c].get('size', 1))
+		pool = [s for s in variants if s not in plural_of] or list(variants)   # singular first
+		winner = max(pool, key=lambda s: (s in original_label_counts,
+		                                  original_label_counts.get(s, 0),
+		                                  size[s], _cap_score(s), s))
+		stats['groups_changed'] += 1
+		for c in cids:
+			m = cluster_canonicals[c]
+			m['canonical_harmonized'] = winner
+			m['changed_by_harmonize'] = m['canonical'] != winner
+			if m['changed_by_harmonize']:
+				m['canonical_pre_harmonize'] = m['canonical']
+				stats['clusters_renamed'] += 1
+		if len(examples) < 25:
+			examples.append((sorted(variants), winner))
+
+	if verbose:
+		print("\n[CANONICAL HARMONIZATION]")
+		print(f"  groups changed   {stats['groups_changed']:6d}")
+		print(f"  clusters renamed {stats['clusters_renamed']:6d}")
+		for variants, winner in examples:
+			print(f"    {variants} -> {winner!r}")
+	return cluster_canonicals
 
 def assign_canonical_labels(
 	df: pd.DataFrame,
@@ -3343,13 +3501,24 @@ def assign_canonical_labels(
 		verbose=verbose,
 	)
 
+	cluster_canonicals = _harmonize_final_canonicals(
+		cluster_canonicals,
+		original_label_counts=original_label_counts,
+		verbose=verbose,
+	)
+
+
 	# ── Write the debug JSON (final canonicals, after post-passes) ────────
 	for rec in selection_records:
-		final = cluster_canonicals[rec['cluster_id']]['canonical']
+		meta = cluster_canonicals[rec['cluster_id']]
+		final = meta.get('canonical_harmonized', meta['canonical'])
 		rec['canonical_selected'] = final
 		rec['changed_by_postpass'] = final != pre_postpass[rec['cluster_id']]
-		meta = cluster_canonicals[rec['cluster_id']]
 		rec['is_virtual'] = meta['virtual']          # final state, not pre-post-pass
+		rec['harmonize'] = {
+			'changed': bool(meta.get('changed_by_harmonize', False)),
+			'from':    meta.get('canonical_pre_harmonize'),
+		}
 		rec['shared'] = {
 			'resolution':        meta.get('shared_resolution'),
 			'group_size':        meta.get('shared_group_size'),
@@ -3380,11 +3549,13 @@ def assign_canonical_labels(
 			cid = rec['cluster_id']
 			cands = sorted(cands_by_cluster[cid], key=lambda r: r['rank'])
 
-			clusters_json.append({
+			clusters_json.append(
+				{
 				'cluster_id': _clean(cid),
 				'size': _clean(rec['cluster_size']),
 				'members': rec['members'].split(" | "),
 				'canonical': rec['canonical_selected'],
+				'harmonize': rec['harmonize'],
 				'canonical_pre_postpass': rec['canonical_pre_postpass'],
 				'changed_by_postpass': _clean(rec['changed_by_postpass']),
 				'is_virtual': _clean(rec['is_virtual']),
@@ -3757,30 +3928,63 @@ def cluster(
 		verbose=verbose,
 	)
 
-	# STEP 7 MAP CANONICALS + CLEAN PROBLEMATIC CLUSTERS	
-	df['canonical'] = df['cluster'].map(lambda c: cluster_canonicals[c]['canonical'])
+	# STEP 7 MAP CANONICALS + CLEAN PROBLEMATIC CLUSTERS
+	df["canonical"] = df["cluster"].map(lambda c: cluster_canonicals[c]["canonical"])
+	df["is_injected"] = False
 
-	# ── Inject virtual hypernyms as real rows ────────────────────────────────
-	# When a cluster's canonical is a virtual hypernym (not in the real label
-	# list), remove_problematic_cluster_labels would flag it as missing and
-	# drop the entire cluster.  Fix: insert the virtual hypernym as a genuine
-	# row so it is a legitimate cluster member from this point onward.
-	virtual_rows  = list()
-	virtual_embs  = list()
+	existing_labels = set(df["label"])
+	virtual_rows = []
+	virtual_embs = []
+
 	for cid, meta in cluster_canonicals.items():
-		if not meta['virtual']:
+		if not meta.get("virtual"):
 			continue
-		vh = meta['canonical']
-		# Encode once — already done inside assign_canonical_labels, but we
-		# need the embedding here too.  One short string per virtual cluster.
+		if meta.get("shared_demoted_from") and not meta.get("virtual"):
+			meta["inject_demoted"] = True
+		
+		vh = meta["canonical"]
+		members = df.loc[df["cluster"] == cid, "label"].tolist()
+		member_set = set(members)
+
+		if vh in existing_labels:
+			# Virtual name is already a real label elsewhere — cannot inject.
+			# Demote to a real member of *this* cluster so the invariant holds.
+			fallback = next(
+				(
+					f
+					for f in (meta.get("real_fallback"), meta.get("real_runner_up"))
+					if f and f in member_set and f != vh
+				),
+				None,
+			)
+			if fallback is None and members:
+				fallback = max(members, key=lambda l: label_freq_dict.get(l, 0))
+			if fallback is None:
+				fallback = vh  # should not happen; cluster would be empty
+
+			if verbose:
+				print(
+					f"[SKIP INJECT → DEMOTE] cluster {cid}: "
+					f"{vh!r} already in df -> {fallback!r}"
+				)
+			meta["canonical"] = fallback
+			meta["virtual"] = False
+			meta["shared_demoted_from"] = meta.get("shared_demoted_from") or vh
+			if meta.get("canonical_harmonized") == vh:
+				meta["canonical_harmonized"] = fallback
+			df.loc[df["cluster"] == cid, "canonical"] = fallback
+			continue
+
 		vh_emb = model.encode(
 			[vh],
 			batch_size=1,
 			convert_to_numpy=True,
 			normalize_embeddings=True,
-			precision='float32',
+			precision="float32",
 		)[0]
-		virtual_rows.append({'label': vh, 'cluster': cid, 'canonical': vh})
+		virtual_rows.append(
+			{"label": vh, "cluster": cid, "canonical": vh, "is_injected": True}
+		)
 		virtual_embs.append(vh_emb)
 
 	if virtual_rows:
@@ -3788,10 +3992,14 @@ def cluster(
 		df = pd.concat([df, virtual_df], ignore_index=True)
 		X = np.vstack([X, np.array(virtual_embs)])
 
-		if verbose:
-			print(f"\nInjected {len(virtual_rows)} virtual hypernym row(s) into df+X")
-			for r in virtual_rows:
-				print(f"cluster {r['cluster']:6d} canonical: {r['label']}")
+	if verbose:
+		print(f"\nInjected {len(virtual_rows)} virtual hypernym row(s) into df+X")
+		for r in virtual_rows:
+			print(f"  cluster {r['cluster']:6d} canonical: {r['label']}")
+
+
+
+
 
 	df, X_clean, removed_labels = remove_problematic_cluster_labels(
 		df=df,
@@ -3801,13 +4009,30 @@ def cluster(
 		verbose=verbose,
 	)
 
+	# ── Display names (harmonization) AFTER cleaning ──────────────────────
+	# Internal steps require member-safe canonicals.  Apply surface renames
+	# only for export / CLIP mapping.
+	df["canonical_internal"] = df["canonical"]
+	rename = {
+		m["canonical"]: m["canonical_harmonized"]
+		for m in cluster_canonicals.values()
+		if m.get("changed_by_harmonize") and m.get("canonical_harmonized")
+	}
+	if rename:
+		df["canonical"] = df["canonical"].replace(rename)
+		if verbose:
+			print(f"\n[HARMONIZE DISPLAY] {len(rename)} canonical surface rename(s)")
+			for old, new in list(rename.items())[:20]:
+				print(f"  {old!r} -> {new!r}")
+
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
 	df.to_csv(out_csv, index=False)
 
-	unique_labels_array = df['label'].values
-	cluster_labels = df['cluster'].values
-	canonical_map = df.groupby('cluster')['canonical'].first().to_dict()
-	
+	unique_labels_array = df["label"].values
+	cluster_labels = df["cluster"].values
+	# Quality metrics must use member-safe names, not display renames.
+	canonical_map = df.groupby("cluster")["canonical_internal"].first().to_dict()
+
 	if verbose:
 		print("\n[CLUSTER QUALITY]")
 		print(f"  ├─ Updated cluster_labels: {len(np.unique(cluster_labels))} unique clusters")
@@ -3818,10 +4043,10 @@ def cluster(
 		print(f"  ├─ df reports: {df['cluster'].nunique()} clusters")
 		print(f"  └─ cluster_labels reports: {len(np.unique(cluster_labels))} clusters")
 
-		if df['cluster'].nunique() != len(np.unique(cluster_labels)):
-			print(f"[WARNING] Mismatch detected! Analysis may be stale!")
-		else:
-			print(f"All consistent!")
+	if df["cluster"].nunique() != len(np.unique(cluster_labels)):
+		print("[WARNING] Mismatch detected! Analysis may be stale!")
+	else:
+		print("All consistent!")
 
 	results = analyze_cluster_quality(
 		embeddings=X_clean,
@@ -3834,19 +4059,24 @@ def cluster(
 	)
 
 	cluster_quality_csv = clusters_fname.replace(".csv", "_cluster_quality_metrics.csv")
-	results['per_cluster_metrics'].to_csv(cluster_quality_csv, index=False)
+	results["per_cluster_metrics"].to_csv(cluster_quality_csv, index=False)
 
-	if results['problematic_clusters']:
+	if results["problematic_clusters"]:
 		if verbose:
-			print(f"\n[WARNING] {len(results['problematic_clusters'])} types of problematic clusters detected! => Exporting for manual review")
+			print(
+				f"\n[WARNING] {len(results['problematic_clusters'])} types of "
+				f"problematic clusters detected! => Exporting for manual review"
+			)
 
-		all_problematic_ids = list()
-		for issue in results['problematic_clusters']:
-			if issue['severity'] in ['HIGH', 'MEDIUM']:
-				all_problematic_ids.extend(issue['cluster_ids'])
+		all_problematic_ids = []
+		for issue in results["problematic_clusters"]:
+			if issue["severity"] in ["HIGH", "MEDIUM"]:
+				all_problematic_ids.extend(issue["cluster_ids"])
 
 		if all_problematic_ids:
-			problematic_csv = clusters_fname.replace(".csv", "_problematic_clusters_review.csv")
+			problematic_csv = clusters_fname.replace(
+				".csv", "_problematic_clusters_review.csv"
+			)
 			export_problematic_clusters(
 				labels=unique_labels_array,
 				cluster_assignments=cluster_labels,
@@ -3856,14 +4086,13 @@ def cluster(
 			)
 
 	if verbose:
-		print("-"*50)
+		print("-" * 50)
 		print(f"Clustered {len(df)} labels into {df['cluster'].nunique()} clusters")
 		print(f"{df.shape} {list(df.columns)}")
 		print(df.info(verbose=verbose, memory_usage="deep"))
 		print(f"[TOTAL CLUSTERING ELAPSED TIME] {time.time()-st_t:.2f} sec.")
-		print("-"*50)
+		print("-" * 50)
 
-	# clear cache
 	if torch.cuda.is_available():
 		torch.cuda.empty_cache()
 	gc.collect()
