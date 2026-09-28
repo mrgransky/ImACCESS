@@ -148,28 +148,24 @@ def get_multi_label_stratified_split(
 	all_labels_flat = [l for labels in df_filtered[label_col] for l in labels]
 	label_counts = Counter(all_labels_flat)
 	initial_unique = len(label_counts)
-	print(f"   Total label occurrences (non-unique): {len(all_labels_flat)}")
-	print(f"   Total unique labels before filtering: {initial_unique}")
+	print(f"\tTotal label occurrences (non-unique): {len(all_labels_flat)}")
+	print(f"\tTotal unique labels before filtering: {initial_unique}")
 	rare_labels = {l for l, c in label_counts.items() if c < min_label_frequency}
 	kept_labels = set(label_counts.keys()) - rare_labels
-	print(f"   Rare labels (< {min_label_frequency}): {len(rare_labels)} ({len(rare_labels) / initial_unique * 100:.1f}%)")
-	print(f"   Labels to keep: {len(kept_labels)} ({len(kept_labels) / initial_unique * 100:.1f}%)")
+	print(f"\tRare labels (< {min_label_frequency}): {len(rare_labels)} ({len(rare_labels) / initial_unique * 100:.1f}%)")
+	print(f"\tLabels to keep: {len(kept_labels)} ({len(kept_labels) / initial_unique * 100:.1f}%)")
 
 	if rare_labels:
 		rare_freq_dist = Counter(label_counts[l] for l in rare_labels)
-		print(f"   Rare label frequency distribution:")
+		print(f"\tRare label frequency distribution:")
 		for freq in sorted(rare_freq_dist.keys()):
 			labels_at_freq = [l for l, c in label_counts.items() if c == freq]
 			print(
-				f"      freq={freq}: {rare_freq_dist[freq]} labels: "
-				f"{labels_at_freq[:20]}{'  ...' if len(labels_at_freq) > 20 else ''}"
+				f"\t  freq={freq}: {rare_freq_dist[freq]:5d} label(s) "
+				f"{labels_at_freq[:15]}{'  ...' if len(labels_at_freq) > 15 else ''}"
 			)
 		# x2-style flat example listing, useful for quick eyeballing in logs
-		rare_examples = sorted(rare_labels)[:20]
-		print(
-			f"   Rare labels being removed (examples): {rare_examples}"
-			f"{'  ...' if len(rare_labels) > 20 else ''}"
-		)
+		print(f"\tSample rare labels being removed: {sorted(rare_labels)[:15]}")
 
 	df_filtered[label_col] = df_filtered[label_col].apply(
 		lambda llist: [l for l in llist if l not in rare_labels]
@@ -178,17 +174,20 @@ def get_multi_label_stratified_split(
 	n_before = len(df_filtered)
 	df_filtered = df_filtered[df_filtered[label_col].apply(len) > 0].copy()  # .copy(): re-slice, avoid warning
 	n_after = len(df_filtered)
-	print(f"   Samples after rare-label filtering: {n_after} "
-				f"(removed {n_before - n_after} that became label-empty, "
-				f"{(n_before - n_after) / n_before * 100:.2f}%)")
+	print(
+		f"\tSamples after rare-label filtering: {n_after} "
+		f"(removed {n_before - n_after} that became label-empty, "
+		f"{(n_before - n_after) / n_before * 100:.2f}%)"
+	)
+
 	if n_after == 0:
-			raise ValueError(
-					"No samples remain after filtering rare labels. "
-					"Try lowering min_label_frequency or min_val_label_count."
-			)
+		raise ValueError(
+			"No samples remain after filtering rare labels. "
+			"Try lowering min_label_frequency or min_val_label_count."
+		)
 	final_unique = len({l for labels in df_filtered[label_col] for l in labels})
-	print(f"   Final unique labels: {final_unique}")
-	print(f"   Net sample retention: {n_after}/{n_input_rows} ({n_after / n_input_rows * 100:.1f}% of original input)")
+	print(f"\tFinal unique labels: {final_unique}")
+	print(f"\tNet sample retention: {n_after}/{n_input_rows} ({n_after / n_input_rows * 100:.1f}% of original input)")
 
 	# ── STEP 4: Binarise label matrix ─────────────────────────────────────────
 	print(f"\n[4/6] Binarizing label matrix ({n_after} samples x {final_unique} labels)...")
@@ -202,9 +201,11 @@ def get_multi_label_stratified_split(
 	print(f"   Non-zeros   : {label_matrix.count_nonzero()}")
 	print(f"   Data size   : {label_matrix.data.nbytes / 1e6:.3f} MB")
 	if len(unique_labels) == 0:
-			raise ValueError("No unique labels after processing. Cannot stratify.")
-	print(f"   Sample labels: {unique_labels.tolist()[:20]}"
-				f"{'  ...' if len(unique_labels) > 20 else ''}")
+		raise ValueError("No unique labels after processing. Cannot stratify.")
+	print(
+		f"   Sample labels: {unique_labels.tolist()[:15]}"
+		f"{'  ...' if len(unique_labels) > 15 else ''}"
+	)
 
 	# ── STEP 5: Iterative stratification ─────────────────────────────────────
 	print(f"\n[5/6] Iterative stratification (order={stratification_order}, "
@@ -243,10 +244,10 @@ def get_multi_label_stratified_split(
 	print(f"   Labels only in val    : {len(val_only)} ({len(val_only) / final_unique * 100:.1f}%)")
 
 	if train_only:
-		print(f"Train-only samples: {sorted(train_only)[:20]}")
+		print(f"Train-only samples: {sorted(train_only)[:15]}")
 
 	if val_only:
-		print(f"Val-only samples: {sorted(val_only)[:20]}")
+		print(f"Val-only samples: {sorted(val_only)}")
 
 	if not train_only and not val_only:
 		print("[OK] All labels present in both splits.")

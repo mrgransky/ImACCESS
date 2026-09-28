@@ -401,6 +401,19 @@ def get_canonical_labels_with_parallel_mapping(
 
 	return mapped_labels, canonical_map
 
+def _check_json_csv_consistency(df: pd.DataFrame, json_path: str) -> list:
+	with open(json_path, encoding="utf-8") as f:
+		js_canon = {c["cluster_id"]: c["canonical"] for c in json.load(f)["clusters"]}
+	csv_canon = df[~df["is_injected"]].groupby("cluster")["canonical"].first().to_dict()
+	mismatch = [(cid, js_canon[cid], csv_canon.get(cid)) for cid in js_canon if csv_canon.get(cid) != js_canon[cid]]
+
+	print(
+		f"[CONSISTENCY] JSON vs CSV mismatches: {len(mismatch)} | distinct canonicals "
+		f"JSON {len(set(js_canon.values()))}, CSV {len(set(csv_canon.values()))}"
+	)
+	
+	return mismatch
+
 def get_canonical_labels(
 	labels: List[List[str]],
 	label_source: str,
@@ -4008,6 +4021,14 @@ def cluster(
 
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
 	df.to_csv(out_csv, index=False)
+
+	if removed_labels:   # cluster ids were re-indexed, so JSON and CSV ids no longer line up
+		print("[CONSISTENCY] skipped: remove_problematic_cluster_labels removed clusters")
+	else:
+		_check_json_csv_consistency(
+			df, 
+			os.path.splitext(clusters_fname)[0] + "_canonical_selection.json"
+		)
 
 	unique_labels_array = df["label"].values
 	cluster_labels = df["cluster"].values
