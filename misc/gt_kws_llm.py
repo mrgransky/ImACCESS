@@ -47,7 +47,6 @@ with open('geographic_references.txt', 'r') as file_:
 	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
 STOPWORDS.update(geographic_references)
 
-
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be concrete, semantically atomic, visually grounded and reusable across archives.
 Response must be a Python list of double-quoted strings containing keywords derived strictly from the caption without any markdown, reasoning, thinking, or explanation.
