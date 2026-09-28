@@ -320,18 +320,20 @@ def get_canonical_labels_with_parallel_mapping(
 		labels=labels,
 		model_id=model_id,
 		nc=nc,
+		device=device,
 		batch_size=batch_size,
 		clusters_fname=clusters_fname,
 		verbose=verbose,
 	)
 
-	# EDIT 5: map from real rows only (exclude injected virtual hypernyms)
+	# map from real rows only (exclude injected virtual hypernyms)
 	real_rows = (
 		clustered_df[~clustered_df["is_injected"]]
 		if "is_injected" in clustered_df.columns
 		else clustered_df
 	)
-	assert not real_rows["label"].duplicated().any(), "duplicate real label rows"
+	dup = real_rows["label"].duplicated()
+	assert not dup.any(), f"duplicate real label rows: {real_rows.loc[dup, 'label'].head().tolist()}"
 	canonical_map = real_rows.set_index("label")["canonical"].to_dict()
 
 	chunksize = max(1, len(labels) // (num_workers * 4))
@@ -367,9 +369,11 @@ def get_canonical_labels_with_parallel_mapping(
 			f"({len(labels) / elapsed:,.0f} rows/sec)"
 		)
 
+
 	missing_labels: set = set()
 	none_count = 0
 	empty_count = 0
+	lower_keys = {k.lower() for k in canonical_map}   # built once, before the loop
 	for original, mapped in zip(labels, mapped_labels):
 		if mapped is None:
 			none_count += 1
@@ -378,7 +382,7 @@ def get_canonical_labels_with_parallel_mapping(
 			empty_count += 1
 		if original is not None and isinstance(original, list):
 			for lbl in original:
-				if lbl not in canonical_map:
+				if lbl not in canonical_map and lbl.lower() not in lower_keys:
 					missing_labels.add(lbl)
 
 	if verbose:
@@ -445,13 +449,14 @@ def get_canonical_labels(
 		print(clustered_df.info(verbose=verbose, memory_usage="deep"))
 		print(clustered_df.head(50))
 
-	# EDIT 5: map from real rows only (exclude injected virtual hypernyms)
+	# map from real rows only (exclude injected virtual hypernyms)
 	real_rows = (
 		clustered_df[~clustered_df["is_injected"]]
 		if "is_injected" in clustered_df.columns
 		else clustered_df
 	)
-	assert not real_rows["label"].duplicated().any(), "duplicate real label rows"
+	dup = real_rows["label"].duplicated()
+	assert not dup.any(), f"duplicate real label rows: {real_rows.loc[dup, 'label'].head().tolist()}"
 	canonical_map = real_rows.set_index("label")["canonical"].to_dict()
 
 	lower_to_canonical = {k.lower(): v for k, v in canonical_map.items()}
@@ -463,6 +468,7 @@ def get_canonical_labels(
 		if sample_labels is None:
 			canonical_labels.append(None)
 			continue
+		
 		if not isinstance(sample_labels, list):
 			if isinstance(sample_labels, str):
 				try:
@@ -473,6 +479,7 @@ def get_canonical_labels(
 			else:
 				canonical_labels.append(None)
 				continue
+		
 		mapped = list()
 		for label in sample_labels:
 			if label in canonical_map:
@@ -481,6 +488,7 @@ def get_canonical_labels(
 				mapped.append(lower_to_canonical[label.lower()])
 			else:
 				missing_labels.add(label)
+		
 		canonical_labels.append(list(dict.fromkeys(mapped)))
 
 	if verbose and missing_labels:
@@ -2750,6 +2758,7 @@ def report_shared_group_similarities(
 	can see where the natural break lies. If the stay and split groups overlap
 	heavily, centroid similarity is not a reliable signal on its own.
 	"""
+	print("-"*80)
 	out = {}
 	for name in names:
 		cids = sorted(
@@ -2757,19 +2766,28 @@ def report_shared_group_similarities(
 			if m['canonical'].lower() == name.lower()
 		)
 		if len(cids) < 2:
-			print(f"[SKIPPED] {name!r}: < {len(cids)} clusters!")
+			print(f"[SKIPPED] {repr(name):<45} < {len(cids)} clusters!")
 			continue
 		V = np.vstack([cluster_centroids[c] for c in cids]).astype(float)
 		V /= np.linalg.norm(V, axis=1, keepdims=True) + 1e-12
 		S = V @ V.T
 		off = S[~np.eye(len(cids), dtype=bool)]
 		mean_to_others = (S.sum(axis=1) - 1.0) / (len(cids) - 1)
-		print(f"\n[{name!r}] {len(cids)} clusters | pairwise sim min {off.min():.3f} "
-					f"median {np.median(off):.3f} max {off.max():.3f}")
+
+		print(
+			f"\n[{name!r}] {len(cids)} clusters | pairwise sim min {off.min():.3f} "
+			f"median {np.median(off):.3f} max {off.max():.3f}"
+		)
+
 		for i, c in sorted(enumerate(cids), key=lambda x: -mean_to_others[x[0]]):
-			print(f"    cluster {c:6d}  mean sim to others {mean_to_others[i]:.3f} | "
-						f"{cluster_members[c][:n_members]}")
+			print(
+				f"    cluster {c:6d}  mean sim to others {mean_to_others[i]:.3f} | "
+				f"{cluster_members[c][:n_members]}"
+			)
+		
 		out[name] = {'cluster_ids': cids, 'pairwise': S.tolist()}
+
+	print("-"*80)
 	return out
 
 def _harmonize_final_canonicals(
@@ -3507,7 +3525,6 @@ def assign_canonical_labels(
 		verbose=verbose,
 	)
 
-
 	# ── Write the debug JSON (final canonicals, after post-passes) ────────
 	for rec in selection_records:
 		meta = cluster_canonicals[rec['cluster_id']]
@@ -3898,7 +3915,6 @@ def cluster(
 		cluster_labels = fcluster(Z, best_k, criterion='maxclust') - 1
 
 	df = pd.DataFrame({'label': unique_labels, 'cluster': cluster_labels})
-	# sys.exit()
 
 	# STEP 5: LABEL FREQUENCY DICT
 	if verbose:
@@ -3928,78 +3944,43 @@ def cluster(
 		verbose=verbose,
 	)
 
-	# STEP 7 MAP CANONICALS + CLEAN PROBLEMATIC CLUSTERS
+	# STEP 7: MAP CANONICALS + INJECT VIRTUAL ROWS + CLEAN
 	df["canonical"] = df["cluster"].map(lambda c: cluster_canonicals[c]["canonical"])
 	df["is_injected"] = False
-
-	existing_labels = set(df["label"])
-	virtual_rows = []
-	virtual_embs = []
-
+ 
+	# Every virtual canonical is injected as a row of its OWN cluster, even when
+	# the same string is a real label in another cluster. Injected rows exist only
+	# so internal checks (remove_problematic_cluster_labels, the quality report)
+	# find the canonical among the cluster's rows. They are excluded from the
+	# label -> canonical mapping in get_canonical_labels (is_injected == False),
+	# so a duplicate string can never overwrite a real label's mapping.
+	real_labels = set(df["label"])
+	virtual_rows, virtual_texts = [], []
 	for cid, meta in cluster_canonicals.items():
 		if not meta.get("virtual"):
 			continue
-		if meta.get("shared_demoted_from") and not meta.get("virtual"):
-			meta["inject_demoted"] = True
-		
 		vh = meta["canonical"]
-		members = df.loc[df["cluster"] == cid, "label"].tolist()
-		member_set = set(members)
-
-		if vh in existing_labels:
-			# Virtual name is already a real label elsewhere — cannot inject.
-			# Demote to a real member of *this* cluster so the invariant holds.
-			fallback = next(
-				(
-					f
-					for f in (meta.get("real_fallback"), meta.get("real_runner_up"))
-					if f and f in member_set and f != vh
-				),
-				None,
-			)
-			if fallback is None and members:
-				fallback = max(members, key=lambda l: label_freq_dict.get(l, 0))
-			if fallback is None:
-				fallback = vh  # should not happen; cluster would be empty
-
-			if verbose:
-				print(
-					f"[SKIP INJECT → DEMOTE] cluster {cid:6d} "
-					f"{repr(vh):<45} already in df -> {fallback!r}"
-				)
-			meta["canonical"] = fallback
-			meta["virtual"] = False
-			meta["shared_demoted_from"] = meta.get("shared_demoted_from") or vh
-			if meta.get("canonical_harmonized") == vh:
-				meta["canonical_harmonized"] = fallback
-			df.loc[df["cluster"] == cid, "canonical"] = fallback
-			continue
-
-		vh_emb = model.encode(
-			[vh],
-			batch_size=1,
+		virtual_rows.append({"label": vh, "cluster": cid, "canonical": vh, "is_injected": True})
+		virtual_texts.append(vh)
+ 
+	if virtual_rows:
+		virtual_embs = model.encode(
+			virtual_texts,
+			batch_size=batch_size,
 			convert_to_numpy=True,
 			normalize_embeddings=True,
 			precision="float32",
-		)[0]
-		virtual_rows.append(
-			{"label": vh, "cluster": cid, "canonical": vh, "is_injected": True}
 		)
-		virtual_embs.append(vh_emb)
-
-	if virtual_rows:
-		virtual_df = pd.DataFrame(virtual_rows)
-		df = pd.concat([df, virtual_df], ignore_index=True)
-		X = np.vstack([X, np.array(virtual_embs)])
-
+		df = pd.concat([df, pd.DataFrame(virtual_rows)], ignore_index=True)
+		X = np.vstack([X, virtual_embs])
+ 
 	if verbose:
-		print(f"\nInjected {len(virtual_rows)} virtual hypernym row(s) into df+X")
-		for r in virtual_rows:
-			print(f"  cluster {r['cluster']:6d} canonical: {r['label']}")
-
-
-
-
+		shared = sum(1 for t in virtual_texts if t in real_labels)
+		print(
+			f"\n[INJECT] {len(virtual_rows)} virtual canonical row(s) injected "
+			f"({shared} share a string with a real label in another cluster; "
+			f"excluded from the label mapping via is_injected)"
+		)
 
 	df, X_clean, removed_labels = remove_problematic_cluster_labels(
 		df=df,
