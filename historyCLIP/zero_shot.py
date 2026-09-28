@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import Optional
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
 
@@ -16,7 +17,7 @@ from utils import *
 import clip
 
 # how to run:
-# i2t:  $ python zero_shot.py -i /path/to/query.jpg
+# i2t:  $ python zero_shot.py -i /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/images/mcs_36.jpg
 # t2i:  $ python zero_shot.py -t "damaged aircraft" -r /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images
 # i2i:  $ python zero_shot.py -i /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/images/mcs_36.jpg -r /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/images
 
@@ -407,7 +408,7 @@ def retrieval(
 	device: Union[str, torch.device],
 	query_image: Optional[str] = None,
 	query_text: Optional[str] = None,
-	labels: List[str] = ["tank", "aircraft", "soldiers", "naval ship", "damaged aircraft", "fuselage"],
+	labels: Optional[List[str]] = None,
 	reference_images: Optional[List[str]] = None,
 	top_k: int = 5,
 	batch_size: int = 32,
@@ -456,6 +457,19 @@ def retrieval(
 			cache_dir=cache_dir
 		)
 	elif query_image:
+		if labels is None:
+			# load from file:
+
+			ww_labels_path = os.path.join(MISC_DIR, 'query_labels.txt')
+			with open(ww_labels_path, 'r') as file_:
+				labels = set(
+					[	
+						line.strip()#.lower() 
+						for line in file_
+						if line.strip()
+					]	
+				)
+
 		i2t(model, preprocess, device, query_image, labels)
 	else:
 		raise ValueError("Provide query_image, query_text+reference_images, or query_image+reference_images")
@@ -465,7 +479,8 @@ def main():
 	parser.add_argument('--query_image', '-i', type=str, default=None, help='Path to the query image')
 	parser.add_argument('--query_text', '-t', type=str, default=None, help='Text query for text-to-image retrieval')
 	parser.add_argument('--reference_images', '-r', type=str, nargs='+', default=None, help='Reference image paths and/or directories for t2i / i2i retrieval')
-	parser.add_argument('--labels', '-l', type=str, nargs='+', default=["tank", "aircraft", "soldiers", "naval ship", "damaged aircraft", "fuselage"], help='Class labels for i2t zero-shot classification')
+	# parser.add_argument('--labels', '-l', type=str, nargs='+', default=["tank", "aircraft", "soldiers", "naval ship", "damaged aircraft", "fuselage"], help='Class labels for i2t zero-shot classification')
+	parser.add_argument('--labels', '-l', type=str, nargs='+', default=None, help='Class labels for i2t zero-shot classification')
 	parser.add_argument('--top_k', '-k', type=int, default=3, help='Number of top results to display')
 	parser.add_argument('--batch_size', '-bs', type=int, default=32, help='Batch size for encoding reference images')
 	parser.add_argument('--architecture', '-a', type=str, default="ViT-B/32", help='CLIP architecture')

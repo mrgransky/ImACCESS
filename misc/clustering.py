@@ -3964,8 +3964,8 @@ def cluster(
 
 			if verbose:
 				print(
-					f"[SKIP INJECT → DEMOTE] cluster {cid}: "
-					f"{vh!r} already in df -> {fallback!r}"
+					f"[SKIP INJECT → DEMOTE] cluster {cid:6d} "
+					f"{repr(vh):<45} already in df -> {fallback!r}"
 				)
 			meta["canonical"] = fallback
 			meta["virtual"] = False
@@ -4022,8 +4022,8 @@ def cluster(
 		df["canonical"] = df["canonical"].replace(rename)
 		if verbose:
 			print(f"\n[HARMONIZE DISPLAY] {len(rename)} canonical surface rename(s)")
-			for old, new in list(rename.items())[:20]:
-				print(f"  {old!r} -> {new!r}")
+			for old, new in list(rename.items()):
+				print(f"  {repr(old):<30} -> {new!r}")
 
 	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
 	df.to_csv(out_csv, index=False)

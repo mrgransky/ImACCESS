@@ -1014,6 +1014,7 @@ def plot_tier_importance_vs_cardinality(
 					whisker.set_color(SEGMENT_SPECS[TIER_ORDER[ti]]["color"])
 	for cap, ti in zip(bp["caps"], [0, 0, 1, 1, 2, 2]):
 					cap.set_color(SEGMENT_SPECS[TIER_ORDER[ti]]["color"])
+	
 	# Strip overlay
 	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
 					vals = card_df[col].values.astype(float)
@@ -1028,6 +1029,7 @@ def plot_tier_importance_vs_cardinality(
 									linewidths=0, 
 									zorder=2,
 					)
+	
 	# Mean diamond
 	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
 					mean_val = card_df[col].mean()
@@ -1052,9 +1054,9 @@ def plot_tier_importance_vs_cardinality(
 		"Torso": [f for f in freq_map.values() if tau_torso <= f < tau_head],
 		"Tail":  [f for f in freq_map.values() if f < tau_torso],
 	}
-	print("="*100)
-	print(tier_freqs)
-	print("="*100)
+	# print("="*100)
+	# print(tier_freqs)
+	# print("="*100)
 	
 	tier_weights = {}
 	for t, freqs in tier_freqs.items():
@@ -1064,12 +1066,12 @@ def plot_tier_importance_vs_cardinality(
 		else:
 			tier_weights[t] = 0.0
 
-	print(tier_weights)
-	print("="*100)
+	# print(tier_weights)
+	# print("="*100)
 	
 	# Normalize relative to Head (Head = 1.0)
 	head_w = tier_weights.get("Head", 1.0)
-	print(head_w)
+	# print(head_w)
 	if head_w > 0:
 		tier_weights_norm = {t: float(w / head_w) for t, w in tier_weights.items()}
 	else:
@@ -1077,8 +1079,8 @@ def plot_tier_importance_vs_cardinality(
 
 	weight_vals = [tier_weights_norm[t] for t in TIER_ORDER]
 
-	print(tier_weights_norm)
-	print("="*100)
+	# print(tier_weights_norm)
+	# print("="*100)
 	
 	# Plot line
 	ax_right.plot(
@@ -1156,10 +1158,12 @@ def plot_tier_importance_vs_cardinality(
 		facecolor="white",
 	)
 	for spine in ax_left.spines.values():
-					spine.set_linewidth(0.7)
+		spine.set_linewidth(0.7)
+	
 	plt.tight_layout()
 	plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
 	plt.close(fig)
+	
 	print(f"Saved importance vs cardinality plot → {output_path}")
 
 def plot_zipfian_curve(
@@ -1257,11 +1261,11 @@ def plot_zipfian_curve(
 		print(f"    TAIL  : rank {rank_torso_end+1:,} – {N:,}   ({n_tail:,} labels, {tier_label_pct['Tail']}% vocab)")
 
 		print(f"\n  [FREQUENCY AT BOUNDARY RANKS]")
-		print(f"    f(rank={rank_head_end:,})  = {int(freqs[rank_head_end-1]):,}   (should be >= τ_head={tau_head})")
-		print(f"    f(rank={rank_head_end+1:,})  = {int(freqs[rank_head_end]):,}   (should be <  τ_head={tau_head})")
-		print(f"    f(rank={rank_torso_end:,})  = {int(freqs[rank_torso_end-1]):,}   (should be >= τ_torso={tau_torso})")
+		print(f"    f(rank={rank_head_end:5d}) = {int(freqs[rank_head_end-1]):5d} (should be >= τ_head={tau_head})")
+		print(f"    f(rank={rank_head_end+1:5d}) = {int(freqs[rank_head_end]):5d} (should be <  τ_head={tau_head})")
+		print(f"    f(rank={rank_torso_end:5d}) = {int(freqs[rank_torso_end-1]):5d} (should be >= τ_torso={tau_torso})")
 		if rank_torso_end < N:
-			print(f"    f(rank={rank_torso_end+1:,})  = {int(freqs[rank_torso_end]):,}   (should be <  τ_torso={tau_torso})")
+			print(f"    f(rank={rank_torso_end+1:5d}) = {int(freqs[rank_torso_end]):5d} (should be <  τ_torso={tau_torso})")
 
 	# ── 2. Zipf / power-law fit on log-log scale ──────────────────────────────
 	#
@@ -5862,16 +5866,16 @@ def multilabel_eda(
 
 	print(f"{dataset_name}: {type(df)} {df.shape}\n{list(df.columns)}")
 	print(df.info(verbose=True, memory_usage="deep"))
-	print(
-		df[
-			[
-				'title', 
-				'description', 
-				'llm_canonical_labels', 'vlm_canonical_labels', 'multimodal_canonical_labels', 
-				'llm_based_labels', 'vlm_based_labels', 'multimodal_labels'
-			]
-		].head(10).to_string(index=False)
-	)
+	# print(
+	# 	df[
+	# 		[
+	# 			'title', 
+	# 			'description', 
+	# 			# 'llm_based_labels', 'vlm_based_labels', 'multimodal_labels'
+	# 			'llm_canonical_labels', 'vlm_canonical_labels', 'multimodal_canonical_labels', 
+	# 		]
+	# 	].head(10).to_string(index=False)
+	# )
 
 	all_individual_labels = list()
 	for labels in df[label_column].tolist():
