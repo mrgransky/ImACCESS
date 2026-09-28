@@ -115,7 +115,6 @@ def main():
 	# clip-adapter-v, clip-adapter-t, clip-adapter-vt:
 	parser.add_argument('--bottleneck_dim', type=int, default=256, help='Bottleneck dimension (used if strategy=adapter)')
 
-
 	parser.add_argument('--initial_beta', type=float, default=1.0, help='initial_beta')
 	parser.add_argument('--initial_alpha', type=float, default=1.0, help='initial_alpha')
 	parser.add_argument('--support_shots', type=int, default=16, help='support_shots')

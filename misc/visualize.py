@@ -4693,9 +4693,9 @@ def plot_retrieval_metrics_best_model(
 		DPI: int=300,
 	):
 	metrics = list(image_to_text_metrics.keys())  # ['mP', 'mAP', 'Recall']
-	suptitle_text = f"{dataset_name} Retrieval Performance Metrics [{best_model_name}]: "
-	for metric in metrics:
-		suptitle_text += f"{metric}@K | " 
+	suptitle_text = f"Retrieval Performance Metrics [{best_model_name}]"
+	# for metric in metrics:
+	# 	suptitle_text += f"{metric}@K | " 
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
 	modes = ['Image-to-Text', 'Text-to-Image']
 	

@@ -3,6 +3,8 @@
 
 # Usage:
 # 		python aggregate_metrics.py seed_1.json seed_2.json seed_42.json
+# 		python aggregate_metrics.py /home/farid/datasets/trash/results/h4/output_roihu/seed_1_performance.json /home/farid/datasets/trash/results/h4/output_roihu/seed_2_performance.json /home/farid/datasets/trash/results/h4/output_roihu/seed_42_performance.json
+
 
 # Output:
 # 		- A CSV file 'aggregated_metrics.csv' with all combinations:

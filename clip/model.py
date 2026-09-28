@@ -1,11 +1,7 @@
 from collections import OrderedDict, defaultdict
 from typing import Tuple, Union, List, Optional, Dict
 import numpy as np
-import math
 import torch
-import torch.nn.functional as F
-from torch import nn
-from torch.utils.data import DataLoader
 
 class Bottleneck(torch.nn.Module):
 		expansion = 4
@@ -13,29 +9,29 @@ class Bottleneck(torch.nn.Module):
 				super().__init__()
 
 				# all conv layers have stride 1. an avgpool is performed after the second convolution when stride > 1
-				self.conv1 = nn.Conv2d(inplanes, planes, 1, bias=False)
-				self.bn1 = nn.BatchNorm2d(planes)
-				self.relu1 = nn.ReLU(inplace=True)
+				self.conv1 = torch.nn.Conv2d(inplanes, planes, 1, bias=False)
+				self.bn1 = torch.nn.BatchNorm2d(planes)
+				self.relu1 = torch.nn.ReLU(inplace=True)
 
-				self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)
-				self.bn2 = nn.BatchNorm2d(planes)
-				self.relu2 = nn.ReLU(inplace=True)
+				self.conv2 = torch.nn.Conv2d(planes, planes, 3, padding=1, bias=False)
+				self.bn2 = torch.nn.BatchNorm2d(planes)
+				self.relu2 = torch.nn.ReLU(inplace=True)
 
-				self.avgpool = nn.AvgPool2d(stride) if stride > 1 else nn.Identity()
+				self.avgpool = torch.nn.AvgPool2d(stride) if stride > 1 else torch.nn.Identity()
 
-				self.conv3 = nn.Conv2d(planes, planes * self.expansion, 1, bias=False)
-				self.bn3 = nn.BatchNorm2d(planes * self.expansion)
-				self.relu3 = nn.ReLU(inplace=True)
+				self.conv3 = torch.nn.Conv2d(planes, planes * self.expansion, 1, bias=False)
+				self.bn3 = torch.nn.BatchNorm2d(planes * self.expansion)
+				self.relu3 = torch.nn.ReLU(inplace=True)
 
 				self.downsample = None
 				self.stride = stride
 
 				if stride > 1 or inplanes != planes * Bottleneck.expansion:
 						# downsampling layer is prepended with an avgpool, and the subsequent convolution has stride 1
-						self.downsample = nn.Sequential(OrderedDict([
-								("-1", nn.AvgPool2d(stride)),
-								("0", nn.Conv2d(inplanes, planes * self.expansion, 1, stride=1, bias=False)),
-								("1", nn.BatchNorm2d(planes * self.expansion))
+						self.downsample = torch.nn.Sequential(OrderedDict([
+								("-1", torch.nn.AvgPool2d(stride)),
+								("0", torch.nn.Conv2d(inplanes, planes * self.expansion, 1, stride=1, bias=False)),
+								("1", torch.nn.BatchNorm2d(planes * self.expansion))
 						]))
 
 		def forward(self, x: torch.Tensor):
@@ -62,18 +58,18 @@ class AttentionPool2d(torch.nn.Module):
 			output_dim: int = None,
 		):
 		super().__init__()
-		self.positional_embedding = nn.Parameter(torch.randn(spacial_dim ** 2 + 1, embed_dim) / embed_dim ** 0.5)
-		self.k_proj = nn.Linear(embed_dim, embed_dim)
-		self.q_proj = nn.Linear(embed_dim, embed_dim)
-		self.v_proj = nn.Linear(embed_dim, embed_dim)
-		self.c_proj = nn.Linear(embed_dim, output_dim or embed_dim)
+		self.positional_embedding = torch.nn.Parameter(torch.randn(spacial_dim ** 2 + 1, embed_dim) / embed_dim ** 0.5)
+		self.k_proj = torch.nn.Linear(embed_dim, embed_dim)
+		self.q_proj = torch.nn.Linear(embed_dim, embed_dim)
+		self.v_proj = torch.nn.Linear(embed_dim, embed_dim)
+		self.c_proj = torch.nn.Linear(embed_dim, output_dim or embed_dim)
 		self.num_heads = num_heads
 
 	def forward(self, x):
 		x = x.flatten(start_dim=2).permute(2, 0, 1)  # NCHW -> (HW)NC
 		x = torch.cat([x.mean(dim=0, keepdim=True), x], dim=0)  # (HW+1)NC
 		x = x + self.positional_embedding[:, None, :].to(x.dtype)  # (HW+1)NC
-		x, _ = F.multi_head_attention_forward(
+		x, _ = torch.nn.functional.multi_head_attention_forward(
 			query=x[:1], key=x, value=x,
 			embed_dim_to_check=x.shape[-1],
 			num_heads=self.num_heads,
@@ -114,16 +110,16 @@ class ModifiedResNet(torch.nn.Module):
 		self.input_resolution = input_resolution
 
 		# the 3-layer stem
-		self.conv1 = nn.Conv2d(3, width // 2, kernel_size=3, stride=2, padding=1, bias=False)
-		self.bn1 = nn.BatchNorm2d(width // 2)
-		self.relu1 = nn.ReLU(inplace=True)
-		self.conv2 = nn.Conv2d(width // 2, width // 2, kernel_size=3, padding=1, bias=False)
-		self.bn2 = nn.BatchNorm2d(width // 2)
-		self.relu2 = nn.ReLU(inplace=True)
-		self.conv3 = nn.Conv2d(width // 2, width, kernel_size=3, padding=1, bias=False)
-		self.bn3 = nn.BatchNorm2d(width)
-		self.relu3 = nn.ReLU(inplace=True)
-		self.avgpool = nn.AvgPool2d(2)
+		self.conv1 = torch.nn.Conv2d(3, width // 2, kernel_size=3, stride=2, padding=1, bias=False)
+		self.bn1 = torch.nn.BatchNorm2d(width // 2)
+		self.relu1 = torch.nn.ReLU(inplace=True)
+		self.conv2 = torch.nn.Conv2d(width // 2, width // 2, kernel_size=3, padding=1, bias=False)
+		self.bn2 = torch.nn.BatchNorm2d(width // 2)
+		self.relu2 = torch.nn.ReLU(inplace=True)
+		self.conv3 = torch.nn.Conv2d(width // 2, width, kernel_size=3, padding=1, bias=False)
+		self.bn3 = torch.nn.BatchNorm2d(width)
+		self.relu3 = torch.nn.ReLU(inplace=True)
+		self.avgpool = torch.nn.AvgPool2d(2)
 
 		# residual layers
 		self._inplanes = width  # this is a *mutable* variable used during construction
@@ -142,7 +138,7 @@ class ModifiedResNet(torch.nn.Module):
 		self._inplanes = planes * Bottleneck.expansion
 		for _ in range(1, blocks):
 			layers.append(Bottleneck(self._inplanes, planes))
-		return nn.Sequential(*layers)
+		return torch.nn.Sequential(*layers)
 
 	def forward(self, x):
 		def stem(x):
@@ -169,19 +165,19 @@ class ResidualAttentionBlock(torch.nn.Module):
 			attn_mask: torch.Tensor = None,
 		):
 		super().__init__()
-		self.attn = nn.MultiheadAttention(d_model, n_head) # self-attention
-		self.ln_1 = nn.LayerNorm(d_model)
-		self.mlp = nn.Sequential(
+		self.attn = torch.nn.MultiheadAttention(d_model, n_head) # self-attention
+		self.ln_1 = torch.nn.LayerNorm(d_model)
+		self.mlp = torch.nn.Sequential(
 			OrderedDict(
 				[
-					("c_fc", nn.Linear(d_model, d_model * 4)),
-					("gelu", nn.GELU()),
-					("dropout", nn.Dropout(dropout)),
-					("c_proj", nn.Linear(d_model * 4, d_model))
+					("c_fc", torch.nn.Linear(d_model, d_model * 4)),
+					("gelu", torch.nn.GELU()),
+					("dropout", torch.nn.Dropout(dropout)),
+					("c_proj", torch.nn.Linear(d_model * 4, d_model))
 				]
 			)
 		)
-		self.ln_2 = nn.LayerNorm(d_model)
+		self.ln_2 = torch.nn.LayerNorm(d_model)
 		self.attn_mask = attn_mask
 	
 	def attention(self, x: torch.Tensor):
@@ -207,7 +203,7 @@ class Transformer(torch.nn.Module):
 		assert width == heads * head_dim, f"width ({width}) must equal heads ({heads}) * head_dim ({head_dim})"
 		self.width = width
 		self.layers = layers
-		self.resblocks = nn.Sequential(
+		self.resblocks = torch.nn.Sequential(
 			*[
 				ResidualAttentionBlock(
 					d_model=width,
@@ -237,8 +233,8 @@ class VisionTransformer(torch.nn.Module):
 		assert width == heads * head_dim, f"width ({width}) must equal heads ({heads}) * head_dim ({head_dim})"
 		self.input_resolution = input_resolution
 		self.output_dim = output_dim
-		self.dropout = nn.Dropout(dropout)
-		self.conv1 = nn.Conv2d(
+		self.dropout = torch.nn.Dropout(dropout)
+		self.conv1 = torch.nn.Conv2d(
 			in_channels=3,
 			out_channels=width,
 			kernel_size=patch_size,
@@ -246,9 +242,9 @@ class VisionTransformer(torch.nn.Module):
 			bias=False,
 		)
 		scale = width ** -0.5
-		self.class_embedding = nn.Parameter(data=scale * torch.randn(width)) 
-		self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
-		self.ln_pre = nn.LayerNorm(width) 
+		self.class_embedding = torch.nn.Parameter(data=scale * torch.randn(width)) 
+		self.positional_embedding = torch.nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
+		self.ln_pre = torch.nn.LayerNorm(width) 
 		self.transformer = Transformer(
 			width=width, 
 			layers=layers, 
@@ -256,8 +252,8 @@ class VisionTransformer(torch.nn.Module):
 			head_dim=head_dim,
 			dropout=dropout,
 		)
-		self.ln_post = nn.LayerNorm(width)
-		self.proj = nn.Parameter(data=scale * torch.randn(width, output_dim)) # to be applied to the output of the transformer
+		self.ln_post = torch.nn.LayerNorm(width)
+		self.proj = torch.nn.Parameter(data=scale * torch.randn(width, output_dim)) # to be applied to the output of the transformer
 	
 	def forward(self, x: torch.Tensor):
 		x = self.conv1(x)  # shape = [*, width, grid, grid]
@@ -297,7 +293,7 @@ class CLIP(torch.nn.Module):
 			dropout: float,
 		):
 			super().__init__()
-			self.embed_dim = embed_dim  # Add this line
+			self.embed_dim = embed_dim
 			self.context_length = context_length
 
 			################################ vision encoder ################################
@@ -338,53 +334,57 @@ class CLIP(torch.nn.Module):
 			self.vocab_size = vocab_size
 
 			# token and positional embeddings
-			self.token_embedding = nn.Embedding(vocab_size, transformer_width)
-			self.positional_embedding = nn.Parameter(torch.empty(self.context_length, transformer_width))
+			self.token_embedding = torch.nn.Embedding(vocab_size, transformer_width)
+			self.positional_embedding = torch.nn.Parameter(torch.empty(self.context_length, transformer_width))
 
 			# layer normalization before transformer
-			self.ln_final = nn.LayerNorm(transformer_width)
+			self.ln_final = torch.nn.LayerNorm(transformer_width)
 
 			# projection for the vision transformer output
-			self.text_projection = nn.Parameter(torch.empty(transformer_width, embed_dim))
+			self.text_projection = torch.nn.Parameter(torch.empty(transformer_width, embed_dim))
 
 			# scale for cosine similarity
-			self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+			self.logit_scale = torch.nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
-			self.dropout = nn.Dropout(dropout)
+			self.dropout = torch.nn.Dropout(dropout)
 
 			self.initialize_parameters()
 
 	def initialize_parameters(self):
-		nn.init.normal_(self.token_embedding.weight, std=0.02)
-		nn.init.normal_(self.positional_embedding, std=0.01)
+		torch.nn.init.normal_(self.token_embedding.weight, std=0.02)
+		torch.nn.init.normal_(self.positional_embedding, std=0.01)
+
 		if isinstance(self.visual, ModifiedResNet):
 			if self.visual.attnpool is not None:
 				std = self.visual.attnpool.c_proj.in_features ** -0.5
-				nn.init.normal_(self.visual.attnpool.q_proj.weight, std=std)
-				nn.init.normal_(self.visual.attnpool.k_proj.weight, std=std)
-				nn.init.normal_(self.visual.attnpool.v_proj.weight, std=std)
-				nn.init.normal_(self.visual.attnpool.c_proj.weight, std=std)
+				torch.nn.init.normal_(self.visual.attnpool.q_proj.weight, std=std)
+				torch.nn.init.normal_(self.visual.attnpool.k_proj.weight, std=std)
+				torch.nn.init.normal_(self.visual.attnpool.v_proj.weight, std=std)
+				torch.nn.init.normal_(self.visual.attnpool.c_proj.weight, std=std)
 			for resnet_block in [self.visual.layer1, self.visual.layer2, self.visual.layer3, self.visual.layer4]:
 				for name, param in resnet_block.named_parameters():
 					if name.endswith("bn3.weight"):
-						nn.init.zeros_(param)
+						torch.nn.init.zeros_(param)
+
 		proj_std = (self.transformer.width ** -0.5) * ((2 * self.transformer.layers) ** -0.5)
 		attn_std = self.transformer.width ** -0.5
 		fc_std = (2 * self.transformer.width) ** -0.5
+
 		for block in self.transformer.resblocks:
-				nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
-				nn.init.normal_(block.attn.out_proj.weight, std=proj_std)
-				nn.init.normal_(block.mlp.c_fc.weight, std=fc_std)
-				nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
+			torch.nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
+			torch.nn.init.normal_(block.attn.out_proj.weight, std=proj_std)
+			torch.nn.init.normal_(block.mlp.c_fc.weight, std=fc_std)
+			torch.nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
+		
 		if self.text_projection is not None:
-				nn.init.normal_(self.text_projection, std=self.transformer.width ** -0.5)
+			torch.nn.init.normal_(self.text_projection, std=self.transformer.width ** -0.5)
 	
 	def build_attention_mask(self):
 		# lazily create causal attention mask, with full attention between the vision tokens
 		# pytorch uses additive attention mask; fill with -inf
 		mask = torch.empty(self.context_length, self.context_length)
 		mask.fill_(float("-inf"))
-		mask.triu_(1)  # zero out the lower diagonal
+		mask.triu_(1) # zero out the lower diagonal
 		return mask
 
 	@property
@@ -396,14 +396,19 @@ class CLIP(torch.nn.Module):
 
 	def encode_text(self, text):
 		x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
+
 		x = x + self.positional_embedding.type(self.dtype)
 		x = x.permute(1, 0, 2)  # NLD -> LND
+
 		x = self.transformer(x)
 		x = x.permute(1, 0, 2)  # LND -> NLD
+
 		x = self.ln_final(x).type(self.dtype) # [batch_size, n_ctx, transformer.width]
+
 		# take features from the eot embedding (eot_token is the highest number in each sequence)
 		x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
 		x = self.dropout(x)  # Apply dropout after projection to the embedding
+
 		return x
 
 	def forward(self, image, text):

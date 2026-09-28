@@ -9,7 +9,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc 'Boeing B-17 Flying Fortress of the 452nd Bomb Group Lady Stardust, B-17F Flying Fortress of the 452nd Bomb Group, 728th Bomb Squadron ""Lady Stardust"" nose art. Combat Wing Assignment: 45th CBW 7D - “A+” - 731st Bomb Squadron' -llm "Qwen/Qwen3.5-122B-A10B" -v
+# python gt_kws_llm.py -desc "Industries of War - Lumber - LOGGING IN THE Oregon FORESTS. High riggers, attaching block and tackle to top of sparthree to be used for loading logs onto cars below. Spartrees are used in woods, also for high leads, i.e., cables with running pulleys for bringing logs across gullies, etc. Photographer: Aircraft Production, Oregon." -llm "Qwen/Qwen3.5-122B-A10B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -68,7 +68,7 @@ EXCLUDE:
   - Ordinal numeral (fourth, 1st, 115th).
   - Roman numerals (I, II, IV, VIII).
   - Nationalities, ethnicities, or religions.
-  - Misspelled words, typos, or non-standard spellings.
+  - Typographical error, misprints, or irregular orthography.
   - Acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
   - Underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
 

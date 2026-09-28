@@ -1594,10 +1594,10 @@ def get_embeddings(
 	verbose: bool=False,
 ):
 	if verbose:
-		print("[EMBEDDINGS] from scratch [takes a while] ...")
+		print("[EMBEDDINGS] from scratch")
 
 	t0 = time.time()
-	all_image_embeds, all_labels = list(), []
+	all_image_embeds, all_labels = list(), list()
 	model = model.to(device)
 	model.eval()
 
@@ -1618,7 +1618,11 @@ def get_embeddings(
 			if device.type == "cuda":
 				images = images.half()
 
-			with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
+			with torch.amp.autocast(
+				device_type=device.type, 
+				dtype=torch.bfloat16 if device.type == 'cuda' else torch.float32,
+				enabled=torch.cuda.is_available(),
+			):
 				image_embeds = model.encode_image(images)
 				image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 
