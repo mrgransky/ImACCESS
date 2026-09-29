@@ -930,6 +930,7 @@ def _semantic_jaccard_cached(
 	traced = 0
 	missing_examples: List[str] = []
 	step = max(1, n_total // 10)
+	print(f"\n[sem-jaccard]")
 	for idx, (raw_a, raw_b) in enumerate(zip(sets_a, sets_b)):
 		a, b = set(raw_a), set(raw_b)
 		if not a and not b: # uninformative: exclude
@@ -975,7 +976,7 @@ def _semantic_jaccard_cached(
 			)
 		if verbose and (idx + 1) % step == 0:
 			print(
-				f"[sem-jaccard] {idx + 1:7d}/{n_total} "
+				f"  ├─ {idx + 1:7d}/{n_total} "
 				f"scored: {len(scores_match):<10}one_empty: {n_one_empty:<10}"
 				f"missing_emb: {n_missing_emb}"
 			)
@@ -1007,8 +1008,7 @@ def _semantic_jaccard_cached(
 		result['per_sample_upper'] = scores_upper
 
 	if verbose:
-		print("-" * 80)
-		print(f"[sem-jaccard] SUMMARY | threshold={threshold}")
+		print(f"\n[SUMMARY] | threshold={threshold}")
 		print(
 			f"  denominator accounting: total={n_total} scored={n_scored} "
 			f"both_empty={n_both_empty} one_empty={n_one_empty} "

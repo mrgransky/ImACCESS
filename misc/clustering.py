@@ -8,6 +8,7 @@ import json
 import time
 import gc
 import sys
+import hashlib
 import re
 import math
 import multiprocessing
@@ -53,6 +54,273 @@ cache_directory = {
 # Global variable for worker processes
 canonical_labels_global = None
 canonical_labels_global_lower = None
+
+def _nearest_cluster_neighbors(centroids: np.ndarray, chunk: int = 2048) -> Tuple[np.ndarray, np.ndarray]:
+	"""
+	For every row of `centroids` (n, d): the index and cosine similarity of the
+	most similar OTHER row. Chunked, so memory stays at chunk * n floats even
+	for ~10k clusters x 4096 dims.
+	"""
+	V = np.asarray(centroids, dtype=np.float32)
+	V = V / (np.linalg.norm(V, axis=1, keepdims=True) + 1e-12)
+	n = V.shape[0]
+	nn_idx = np.zeros(n, dtype=np.int64)
+	nn_sim = np.full(n, -1.0, dtype=np.float32)
+	if n < 2:
+		return nn_idx, nn_sim
+	for s in range(0, n, chunk):
+		S = V[s:s + chunk] @ V.T
+		rows = np.arange(S.shape[0])
+		S[rows, rows + s] = -np.inf                     # exclude the cluster itself
+		j = S.argmax(axis=1)
+		nn_idx[s:s + chunk] = j
+		nn_sim[s:s + chunk] = S[rows, j]
+	return nn_idx, nn_sim
+
+def _cluster_neighbor_info(
+	embedding_model_id: str,
+	cluster_centroids: Dict[int, np.ndarray],
+	cluster_canonicals: Dict[int, Dict],
+	cluster_members: Dict[int, List[str]],
+	review_min_sim: float = 0.88,
+	review_path: Optional[str] = None,
+	verbose: bool = False,
+) -> Tuple[Dict[int, Dict], Dict]:
+	"""
+	Measures how often two DIFFERENT clusters are near-duplicates of each other.
+
+	Returns
+	-------
+	info    : {cid: {cluster_id, similarity, mutual, canonical, same_canonical, members}}
+			  describing each cluster's nearest other cluster (goes into the JSON).
+	summary : counts of clusters whose nearest neighbour is at least X similar,
+			  overall and restricted to neighbours with a DIFFERENT final name.
+			  High similarity + different names is exactly the 'reconnaissance
+			  aircraft' / 'reconnaissance plane' situation; same-name pairs are
+			  already handled by _resolve_shared_canonicals.
+
+	If review_path is given, writes every neighbouring pair with similarity >=
+	review_min_sim and different final names, sorted by similarity, with both
+	clusters' members. That file is what you read to calibrate the merge threshold.
+	"""
+	ids = sorted(cluster_centroids)
+	nn_idx, nn_sim = _nearest_cluster_neighbors(np.vstack([cluster_centroids[c] for c in ids]))
+
+	def _name(c):
+		m = cluster_canonicals[c]
+		return m.get('canonical_harmonized', m['canonical'])
+
+	info, pairs = {}, {}
+	for pos, c in enumerate(ids):
+		npos = int(nn_idx[pos])
+		n = ids[npos]
+		sim = float(nn_sim[pos])
+		same = _name(n).lower() == _name(c).lower()
+		info[c] = {
+			'cluster_id': int(n),
+			'similarity': round(sim, 4),
+			'mutual': int(nn_idx[npos]) == pos,
+			'canonical': _name(n),
+			'same_canonical': same,
+			'members': cluster_members[n][:4],
+		}
+		if sim >= review_min_sim and not same:
+			pairs[(min(c, n), max(c, n))] = sim
+
+	sims = nn_sim.astype(float)
+	diff = np.array([not info[c]['same_canonical'] for c in ids])
+	levels = [0.98, 0.95, 0.92, 0.90, 0.88, 0.85, 0.80]
+	summary = {
+		'n_clusters': len(ids),
+		'median_nearest_similarity': round(float(np.median(sims)), 4),
+		'p90_nearest_similarity': round(float(np.percentile(sims, 90)), 4),
+		'nearest_at_or_above': {f'{t:.2f}': int((sims >= t).sum()) for t in levels},
+		'nearest_at_or_above_different_name': {f'{t:.2f}': int(((sims >= t) & diff).sum()) for t in levels},
+	}
+
+	if review_path:
+		def _side(c):
+			result = {
+				'cluster_id': int(c), 
+				'size': len(cluster_members[c]),
+				'canonical': _name(c), 
+				'members': cluster_members[c][:6]
+			}
+			return result
+
+		review = [
+			{'similarity': round(s, 6), 'a': _side(a), 'b': _side(b)}
+			for (a, b), s in sorted(pairs.items(), key=lambda kv: -kv[1])
+		]
+
+		with open(review_path, 'w', encoding='utf-8') as f:
+			pairs_results = {
+				'embedding': embedding_model_id,
+				'min_similarity': review_min_sim, 
+				'n_pairs': len(review), 
+				'pairs': review
+			}
+			json.dump(pairs_results, f, indent=2, ensure_ascii=False)
+
+	if verbose:
+		print("\n[CLUSTER NEIGHBOURS] nearest-other-cluster centroid similarity")
+		print(f"  median {summary['median_nearest_similarity']:.3f} | p90 {summary['p90_nearest_similarity']:.3f}")
+		print(f"  {'>= sim':>8} {'clusters':>9} {'with different name':>20}")
+		for t in levels:
+			k = f'{t:.2f}'
+			print(f"  {k:>8} {summary['nearest_at_or_above'][k]:>9} {summary['nearest_at_or_above_different_name'][k]:>20}")
+		if review_path:
+			print(f"  pairs >= {review_min_sim} with different names -> {review_path} ({len(pairs)} pairs)")
+		print("-"*120)
+	
+	return info, summary
+
+def _merge_close_clusters(
+	X: np.ndarray,
+	labels: np.ndarray,
+	label_texts: List[str],
+	threshold: float,
+	max_merged_size: int = 30,
+	max_rounds: int = 10,
+	report_path: Optional[str] = None,
+	verbose: bool = False,
+) -> np.ndarray:
+	"""
+	Second, conservative pass over the clusters produced by the tree cut.
+
+	Why: the tree is cut into a fixed number of clusters (about one per five
+	labels), so a concept with 11 labels ('reconnaissance aircraft', 'recon
+	plane', ...) can be split along its cheapest line and end up as two
+	clusters with two different names. Two clusters are merged only when
+
+	  * they are mutual nearest neighbours (each is the other's closest cluster),
+	  * their centroid cosine similarity is >= threshold, and
+	  * the merged cluster would hold at most max_merged_size labels.
+
+	Merged centroids are recomputed (size-weighted) and the process repeats for
+	up to max_rounds rounds. Because each round compares the RECOMPUTED centroid,
+	chains (A~B, B~C, A far from C) cannot form: after A+B merge, the merged
+	centroid must itself be close to C.
+
+	Returns new labels (contiguous, same row order). Leave the parameter off
+	(threshold=None in cluster()) until you have calibrated the threshold from
+	the neighbour report.
+	"""
+	ids = np.unique(labels)
+	members = [np.where(labels == c)[0] for c in ids]
+	sums = np.vstack([X[m].sum(axis=0) for m in members]).astype(np.float32)
+	sizes = np.array([len(m) for m in members])
+	n_before = len(members)
+	merges = []
+
+	for rnd in range(1, max_rounds + 1):
+		if len(members) < 2:
+			break
+		nn_idx, nn_sim = _nearest_cluster_neighbors(sums)
+		drop = set()
+		for i in range(len(members)):
+			j = int(nn_idx[i])
+			if not (i < j and int(nn_idx[j]) == i):
+				continue                                   # mutual pairs only: each cluster is in at most one pair
+			if nn_sim[i] < threshold or sizes[i] + sizes[j] > max_merged_size:
+				continue
+			merges.append({
+				'round': rnd,
+				'similarity': round(float(nn_sim[i]), 4),
+				'size_a': int(sizes[i]), 'size_b': int(sizes[j]),
+				'members_a': [label_texts[k] for k in members[i][:6]],
+				'members_b': [label_texts[k] for k in members[j][:6]],
+			})
+			members[i] = np.concatenate([members[i], members[j]])
+			sums[i] += sums[j]
+			sizes[i] += sizes[j]
+			drop.add(j)
+		if not drop:
+			break
+		keep = [k for k in range(len(members)) if k not in drop]
+		members = [members[k] for k in keep]
+		sums = sums[keep]
+		sizes = sizes[keep]
+
+	new_labels = np.empty_like(labels)
+	for new_id, m in enumerate(members):
+		new_labels[m] = new_id
+
+	if verbose:
+		rounds = max((m['round'] for m in merges), default=0)
+		print(f"\n[MERGE CLOSE CLUSTERS] threshold={threshold:.3f} max_size={max_merged_size}: "
+			  f"{n_before} -> {len(members)} clusters ({len(merges)} merges, {rounds} round(s))")
+		for m in sorted(merges, key=lambda m: m['similarity'])[:15]:
+			print(f"  {m['similarity']:.4f}  {m['members_a'][:3]}  +  {m['members_b'][:3]}")
+		if merges:
+			print("  (lowest-similarity merges shown; these are the borderline ones to review)")
+	if report_path:
+		with open(report_path, 'w', encoding='utf-8') as f:
+			json.dump({'threshold': threshold, 'max_merged_size': max_merged_size,
+					   'clusters_before': n_before, 'clusters_after': len(members),
+					   'merges': merges}, f, indent=2, ensure_ascii=False)
+	return new_labels
+
+def _validate_embeddings(X: np.ndarray, unique_labels: List[str]) -> None:
+	if np.isnan(X).any():
+		nan_rows = np.where(np.isnan(X).any(axis=1))[0]
+		print(f"\n❌ ERROR: {np.isnan(X).sum()} NaN values in embeddings!")
+		for idx in nan_rows[:10]:
+			print(f"  - {unique_labels[idx]}")
+		raise ValueError("Cannot proceed with NaN embeddings")
+	if np.isinf(X).any():
+		raise ValueError(f"Infinite values detected ({np.isinf(X).sum()}) - numerical overflow!")
+	if X.shape[0] == 0:
+		raise ValueError("No embeddings generated")
+	if np.allclose(X, 0):
+		raise ValueError("All embeddings are zero vectors")
+
+def _compute_linkage(X: np.ndarray, linkage_method: str, distance_metric: str, verbose: bool = False) -> np.ndarray:
+	if linkage_method == "ward":
+		return fastcluster.linkage(X, method='ward', metric='euclidean') if use_fastcluster \
+			else linkage(X, method='ward', metric='euclidean')
+	if distance_metric == "cosine":
+		distance_matrix = np.clip(1 - (X @ X.T), 0, 2)
+		np.fill_diagonal(distance_matrix, 0)
+		condensed_dist = squareform(distance_matrix, checks=False)
+		if verbose:
+			print(f"[LINKAGE] Using {linkage_method} linkage with {distance_metric} distance")
+		return fastcluster.linkage(condensed_dist, method=linkage_method) if use_fastcluster \
+			else linkage(condensed_dist, method=linkage_method)
+	if distance_metric == "euclidean":
+		if verbose:
+			print(f"[LINKAGE] Using {linkage_method} linkage with Euclidean distance")
+		return fastcluster.linkage(X, method=linkage_method, metric='euclidean') if use_fastcluster \
+			else linkage(X, method=linkage_method, metric='euclidean')
+	raise ValueError(f"Unsupported distance metric: {distance_metric}")
+
+def _cluster_cache_paths(
+	clusters_fname: str, model_id: str, dtype: Any,
+	linkage_method: str, distance_metric: str, unique_labels: List[str],
+) -> Tuple[str, str]:
+	"""
+	Cache file names for (embeddings, linkage). The key covers everything the two
+	depend on: the exact ordered label set, the model, its dtype, and the linkage
+	settings. A change in _post_process_ (different labels) therefore produces a
+	new key automatically, and stale files are simply never read.
+	"""
+	key = hashlib.sha1(
+		"\x1f".join([model_id, str(dtype), linkage_method, distance_metric, *unique_labels]).encode("utf-8")
+	).hexdigest()[:16]
+	stem = os.path.join(os.path.dirname(clusters_fname) or ".", f"cluster_cache_{key}")
+	return stem + "_X.npy", stem + "_Z.npy"
+
+def _save_npy_atomic(path: str, arr: np.ndarray) -> None:
+	"""Write to a temp file and rename, so a job killed by the scheduler mid-write never leaves a corrupt cache."""
+	tmp = path[:-4] + ".tmp.npy"
+	np.save(tmp, arr)
+	os.replace(tmp, path)
+
+
+
+
+
+
 
 def init_worker_canonical(canonical_dict):
 	global canonical_labels_global
@@ -1991,20 +2259,21 @@ def get_optimal_num_clusters(
 	max_consolidation=6.0,
 	target_singleton_ratio=0.015,
 	quality_vs_consolidation_weight=0.6,
-	verbose=True
+	min_singleton_merge_sim: Optional[float]=0.75,
+	verbose: bool=False,
 ):
 	num_samples = X.shape[0]
 	if verbose:
 		print("\n[ADAPTIVE OPTIMAL CLUSTER SELECTION]")
-		print(f"   ├─ Target intra-cluster similarity: {target_intra_similarity}")
-		print(f"   ├─ Min cluster size: {min_cluster_size}")
-		print(f"   ├─ Merge singletons: {merge_singletons}")
-		print(f"   ├─ Consolidation (Reduction ratio) range: {min_consolidation}x - {max_consolidation}x")
-		print(f"   ├─ Required and valid clusters range: {num_samples//max_consolidation} ≤ k ≤ {num_samples//min_consolidation}")
-		print(f"   ├─ Target singleton ratio: {target_singleton_ratio}")
-		print(f"   ├─ Quality weight: {quality_vs_consolidation_weight*100:.0f}%")
-		print(f"   ├─ Dataset: {type(X)} {X.shape} {X.dtype}")
-		print(f"   └─ Linkage matrix: {type(linkage_matrix)} {linkage_matrix.shape}")
+		print(f"   ├─ Target intra-cluster similarity       : {target_intra_similarity}")
+		print(f"   ├─ Min cluster size                      : {min_cluster_size}")
+		print(f"   ├─ Merge singletons                      : {merge_singletons}")
+		print(f"   ├─ Consolidation (Reduction ratio) range : {min_consolidation}x - {max_consolidation}x")
+		print(f"   ├─ Required and valid clusters range     : {num_samples//max_consolidation} ≤ k ≤ {num_samples//min_consolidation}")
+		print(f"   ├─ Target singleton ratio                : {target_singleton_ratio}")
+		print(f"   ├─ Quality weight                        : {quality_vs_consolidation_weight*100:.0f}%")
+		print(f"   ├─ Embeddings                            : {type(X)} {X.shape} {X.dtype}")
+		print(f"   └─ Linkage matrix                        : {type(linkage_matrix)} {linkage_matrix.shape}")
 	
 	valid_k_min = int(num_samples // max_consolidation)
 	valid_k_max = int(num_samples // min_consolidation)
@@ -2060,6 +2329,7 @@ def get_optimal_num_clusters(
 		# Cluster statistics
 		cluster_sizes = np.bincount(labels)
 		n_singletons = np.sum(cluster_sizes == 1)
+
 		singleton_ratio = n_singletons / n_clusters
 		consolidation = num_samples / n_clusters
 		
@@ -2083,14 +2353,14 @@ def get_optimal_num_clusters(
 			status = "✓ TARGET REACHED (quality + consolidation)"
 			reason = (
 				f"IntraSim {mean_intra_sim:.4f} ≥ target {target_intra_similarity:.4f} "
-				f"AND consol {consolidation:.1f}x in [{min_consolidation},{max_consolidation}]"
+				f"AND consol {consolidation:.2f}x in [{min_consolidation},{max_consolidation}]"
 			)
 			if plateau_k is None:
 				plateau_k = n_clusters
 		elif in_consol_range and in_singleton_range:
 			status = "✓ OPTIMAL RANGE (consolidation + singletons)"
 			reason = (
-				f"Consol {consolidation:.1f}x in [{min_consolidation},{max_consolidation}] "
+				f"Consol {consolidation:.2f}x in [{min_consolidation},{max_consolidation}] "
 				f"AND singleton {singleton_ratio:.4f} in [0.005,0.03]"
 			)
 			if plateau_k is None:
@@ -2100,7 +2370,7 @@ def get_optimal_num_clusters(
 			status = "↑ Improving quality"
 			reason = (
 				f"IntraSim {mean_intra_sim:.4f} > prev best {best_intra_sim:.4f}"
-				+ (f" | consol {consolidation:.1f}x outside [{min_consolidation},{max_consolidation}]" if not in_consol_range else "")
+				+ (f" | consol {consolidation:5.2f}x outside [{min_consolidation},{max_consolidation}]" if not in_consol_range else "")
 				+ (f" | singleton {singleton_ratio:.4f} outside [0.005,0.03]" if not in_singleton_range else "")
 			)
 		else:
@@ -2123,7 +2393,7 @@ def get_optimal_num_clusters(
 				break
 
 		if verbose:
-			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {singleton_ratio:<10.4f} {status:<50} {reason}")
+			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.2f} {singleton_ratio:<10.4f} {status:<50} {reason}")
 
 	if not coarse_results:
 		raise ValueError("No valid cluster configurations found in coarse search")
@@ -2292,7 +2562,7 @@ def get_optimal_num_clusters(
 			)
 
 		if verbose:
-			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.1f} {singleton_ratio:<10.4f} {score:<10.4f} {status:<20}{reason}")
+			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.2f} {singleton_ratio:<10.4f} {score:<10.4f} {status:<20}{reason}")
 	
 	if not fine_results:
 		raise ValueError("No valid cluster configurations found in fine search")
@@ -2332,6 +2602,7 @@ def get_optimal_num_clusters(
 				)
 
 
+	kept_singletons = [] # singletons left alone because their best cluster was too dissimilar
 	if len(singleton_clusters_indices) > 0 and merge_singletons:
 		if verbose:
 			print(f"\n[STAGE 3] MERGING {len(singleton_clusters_indices)} SINGLETON CLUSTERS")
@@ -2341,25 +2612,37 @@ def get_optimal_num_clusters(
 		
 		new_labels = labels.copy()
 		merged_count = 0
-		
+
+
 		for singleton_id in singleton_clusters_indices:
 			singleton_idx = np.where(labels == singleton_id)[0][0]
 			singleton_vec = X[singleton_idx].reshape(1, -1)
 			sims = cosine_similarity(singleton_vec, centroids)[0]
 			sorted_ids = np.argsort(sims)[::-1]
-			
+ 
 			# Find nearest non-singleton cluster
 			for nearest_id in sorted_ids:
-				if cluster_sizes[nearest_id] >= min_cluster_size:
-					new_labels[singleton_idx] = nearest_id
-					merged_count += 1
+				if cluster_sizes[nearest_id] < min_cluster_size:
+					continue
+				# Similarity floor: if even the best cluster is a weak match, the label
+				# stays alone (it then simply names itself) instead of being forced into
+				# a cluster it does not belong to (forced merges at sim 0.60-0.65 were seen).
+				if min_singleton_merge_sim is not None and sims[nearest_id] < min_singleton_merge_sim:
+					kept_singletons.append((label_texts[singleton_idx], float(sims[nearest_id]), int(nearest_id)))
 					if verbose:
 						print(
-							f"  ├─ Merged singleton cluster {singleton_id:5d} → "
-							f"cluster {nearest_id:5d} (sim={sims[nearest_id]:.4f})"
+							f"  ├─ Kept singleton cluster {singleton_id:5d} '{label_texts[singleton_idx]}' "
+							f"(best sim={sims[nearest_id]:.4f} < floor {min_singleton_merge_sim:.2f})"
 						)
 					break
-		
+				new_labels[singleton_idx] = nearest_id
+				merged_count += 1
+				if verbose:
+					print(
+						f"  ├─ Merged singleton cluster {singleton_id:5d} → "
+						f"cluster {nearest_id:5d} (sim={sims[nearest_id]:.4f})"
+					)
+				break
 		unique_new = np.unique(new_labels)
 		label_map = {old: new for new, old in enumerate(unique_new)}
 		labels = np.array([label_map[l] for l in new_labels])
@@ -2368,9 +2651,16 @@ def get_optimal_num_clusters(
 			print(f"  ├─ Total merged: {merged_count} singletons")
 			print(f"  └─ Final clusters: {len(unique_new)} (initial: {len(unique_labels)})")
 	
+
+
+
+
+
+
 	# FINAL STATISTICS
 	final_cluster_sizes = np.bincount(labels)
 	final_n_clusters = len(np.unique(labels))
+
 	final_singletons = np.sum(final_cluster_sizes == 1)
 	final_max_size = final_cluster_sizes.max()
 	
@@ -2389,14 +2679,15 @@ def get_optimal_num_clusters(
 	
 	stats = {
 		'n_clusters': final_n_clusters,
-		'n_singletons': final_singletons,
-		'singleton_ratio': final_singletons / final_n_clusters if final_n_clusters > 0 else 0,
 		'max_cluster_size': final_max_size,
+		'n_singletons': final_singletons,
 		'max_size_ratio': final_max_size / num_samples,
 		'mean_cluster_size': num_samples / final_n_clusters,
 		'consolidation_ratio': num_samples / final_n_clusters,
 		'mean_intra_similarity': final_mean_intra_sim,
 		'std_intra_similarity': final_std_intra_sim,
+		'singleton_ratio': final_singletons / final_n_clusters if final_n_clusters > 0 else 0,
+		'n_singletons_kept_by_floor': len(kept_singletons),
 	}
 	
 	if verbose:
@@ -2811,8 +3102,9 @@ def _harmonize_final_canonicals(
 ) -> Dict[int, Dict]:
 	"""
 	Global post-pass that unifies surface variants of the chosen canonicals:
-	case ('Nurse' / 'nurse'), spacing ('ice breaker' / 'icebreaker') and
-	attested singular/plural ('car' / 'cars').
+	1) case ('Nurse' / 'nurse'), 
+	2) spacing ('ice breaker' / 'icebreaker'),
+	3) attested singular/plural ('car' / 'cars').
 
 	It does NOT overwrite meta['canonical']. Internal steps (virtual-row
 	injection, remove_problematic_cluster_labels) require the canonical to be
@@ -2932,6 +3224,7 @@ def _harmonize_final_canonicals(
 		print(f"  clusters renamed {stats['clusters_renamed']:6d}")
 		for variants, winner in examples:
 			print(f"    {variants} -> {winner!r}")
+	
 	return cluster_canonicals
 
 def assign_canonical_labels(
@@ -2940,9 +3233,9 @@ def assign_canonical_labels(
 	model,
 	original_label_counts: Dict[str, int],
 	debug_json_path: Optional[str] = None,
-	debug_top_k: int = 6,
 	shared_threshold: float = 0.70,
 	shared_calibration_names: Optional[List[str]] = None,
+	neighbor_review_min_sim: float = 0.88,
 	verbose: bool = False,
 ) -> Dict[int, Dict]:
 	"""
@@ -3035,7 +3328,7 @@ def assign_canonical_labels(
 	}
 	FUNCTION_WORDS = PREPOSITIONS | {'the', 'a', 'an', 'and', 'or', 'to', 'as'}
  
-	# ── Token normalisation ───────────────────────────────────────────────
+	# Token normalisation
 	# Lowercase + strip trailing punctuation, so 'Ausf.' == 'Ausf' == 'ausf'.
 	_TRAILING_PUNCT = re.compile(r'[^\w]+$')
  
@@ -3072,9 +3365,12 @@ def assign_canonical_labels(
 			toks.pop()
 		return toks
  
-	# ── Virtual hypernym synthesis ────────────────────────────────────────
+	# Virtual hypernym synthesis
 	def _head_suffix_core(lbls: List[str], threshold: int):
-		"""Route 1: shared contiguous suffix of the members' head phrases."""
+		"""Route 1: longest head phrase suffix with support >= threshold.
+		shared contiguous suffix of the members' head phrases.
+		"""
+		
 		n = len(lbls)
 		hps = [_head_phrase(_norm_tokens(l)) for l in lbls]
 		max_len = max((len(h) for h in hps), default=0)
@@ -3219,34 +3515,6 @@ def assign_canonical_labels(
 			for c in candidates
 		])
  
-	def _print_candidate_table(rows, winner, pure_sim, nofreq):
-		order = sorted(range(len(rows)), key=lambda i: -rows[i]['composite'])
-		shown = order[:debug_top_k]
-
-		for extra in (winner, pure_sim, nofreq):
-			if extra not in shown:
-				shown.append(extra)
-
-		print(
-			f"  {'':3} {'candidate':<50} {'freq':>5} {'sim':>6} {'fScr':>5} "
-			f"{'head':>5} {'cont':>5} {'brev':>5} {'noFrq':>6} {'comp':>6}"
-		)
-		
-		for i in shown:
-			r = rows[i]
-			mark = ('*' if i == winner else ' ') + ('S' if i == pure_sim else ' ') + ('N' if i == nofreq else ' ')
-			name = (r['candidate'] + (' [V]' if r['is_virtual'] else ''))[:42]
-			print(
-				f"  {mark} {name:<50} {r['raw_freq']:>5} {r['sim']:>6.3f} "
-				f"{r['freq_score']:>5.2f} {r['head_score']:>5.2f} "
-				f"{r['cont_score']:>5.2f} {r['brevity_score']:>5.2f} "
-				f"{r['composite_no_freq']:>6.3f} {r['composite']:>6.3f}"
-			)
-		
-		if len(rows) > len(shown):
-			print(f"      ... {len(rows) - len(shown)} more candidate(s) in the selection JSON")
-		print("      (* selected, S pure-similarity winner, N winner without frequency term)")
- 
 	# Corpus-wide case registry: built once, needs visibility across ALL clusters.
 	case_registry = _build_case_registry(original_label_counts)
  
@@ -3275,7 +3543,6 @@ def assign_canonical_labels(
 		centroid = cluster_embeddings.mean(axis=0)   # real members only
 		cluster_centroids[cid] = centroid
 		cluster_members[cid]   = cluster_texts
-
 
 		# ── Virtual hypernym candidate ────────────────────────────────────
 		virtual_hypernym = None
@@ -3451,11 +3718,7 @@ def assign_canonical_labels(
 		for rank, i in enumerate(ranking, 1):
 			rows[i]['rank'] = rank
 		candidate_records.extend(rows)
- 
-		# if verbose and composite_idx is not None:
-		# 	_print_candidate_table(rows, best_idx, pure_sim_idx, nofreq_idx)
-		# 	print(f"[DECISION] method: {method} | freq guard: {freq_guard}")
- 
+  
 		runner_up = next((i for i in ranking if i != best_idx), None)
 		margin = (
 			combined_scores[best_idx] - combined_scores[runner_up]
@@ -3538,13 +3801,25 @@ def assign_canonical_labels(
 		verbose=verbose,
 	)
 
+	# ── Nearest-cluster diagnostics (final names, after all post-passes) ──
+	neighbor_info, neighbor_summary = _cluster_neighbor_info(
+		model.model_card_data.base_model,
+		cluster_centroids,
+		cluster_canonicals,
+		cluster_members,
+		review_min_sim=neighbor_review_min_sim,
+		review_path=(os.path.splitext(debug_json_path)[0] + "_neighbor_pairs.json") if debug_json_path else None,
+		verbose=verbose,
+	)
+
 	# ── Write the debug JSON (final canonicals, after post-passes) ────────
 	for rec in selection_records:
 		meta = cluster_canonicals[rec['cluster_id']]
 		final = meta.get('canonical_harmonized', meta['canonical'])
 		rec['canonical_selected'] = final
 		rec['changed_by_postpass'] = final != pre_postpass[rec['cluster_id']]
-		rec['is_virtual'] = meta['virtual']          # final state, not pre-post-pass
+		rec['is_virtual'] = meta['virtual'] # final state, not pre-post-pass
+		rec['nearest'] = neighbor_info[rec['cluster_id']]
 		rec['harmonize'] = {
 			'changed': bool(meta.get('changed_by_harmonize', False)),
 			'from':    meta.get('canonical_pre_harmonize'),
@@ -3591,6 +3866,7 @@ def assign_canonical_labels(
 				'is_virtual': _clean(rec['is_virtual']),
 				'selection_method': rec['selection_method'],
 				'freq_guard': rec['freq_guard'],
+				'nearest_cluster': rec['nearest'],
 				'shared_canonical': {
 					k: (_clean(v) if not isinstance(v, str) else v)
 					for k, v in rec['shared'].items()
@@ -3654,6 +3930,7 @@ def assign_canonical_labels(
 				'selection_method_counts': dict(method_counts.most_common()),
 				'virtual_winners': sum(1 for c in clusters_json if c['is_virtual']),
 				'changed_by_postpass': sum(1 for c in clusters_json if c['changed_by_postpass']),
+				'nearest_cluster_similarity': neighbor_summary,
 				'shared_resolution_counts': dict(
 					Counter(
 						rec['shared']['resolution']
@@ -3668,15 +3945,15 @@ def assign_canonical_labels(
 		with open(debug_json_path, 'w', encoding='utf-8') as f:
 			json.dump(payload, f, indent=2, ensure_ascii=False)
 
-		print(
-			f"[CANONICAL SELECTION] {len(clusters_json)} clusters, "
-			f"{len(candidate_records)} candidates -> {debug_json_path}"
-		)
+		if verbose:
+			print(f"[CANONICAL SELECTION]")
+			print(f"  ├─ {len(clusters_json)} clusters")
+			print(f"  ├─ {len(candidate_records)} candidates")
+			print(f"  ├─ {debug_json_path}")
  
 	if verbose and selection_records:
 		sel = pd.DataFrame(selection_records)
-		print("-" * 100)
-		print("[CANONICAL SELECTION] How canonicals were chosen:")
+		print("How canonicals were chosen:")
 		for m, cnt in sel['selection_method'].value_counts().items():
 			print(f"  {m:<34} {cnt:6d} ({cnt / len(sel) * 100:5.1f}%)")
 		routes = sel.loc[sel['virtual_entered_pool'], 'virtual_route'].value_counts()
@@ -3688,8 +3965,10 @@ def assign_canonical_labels(
 		dup = sel['canonical_selected'].value_counts()
 		dup = dup[dup > 1]
 		if len(dup):
-			print(f"  Canonicals shared by >1 cluster: {len(dup)} "
-					f"(top: {', '.join(f'{k!r}x{v}' for k, v in dup.head(8).items())})")
+			print(
+				f"  Canonicals shared by >1 cluster: {len(dup)} "
+				f"(top: {', '.join(f'{k!r}x{v}' for k, v in dup.head(8).items())})"
+			)
 		print(f"  Postpass (case-collision) changed: {int(sel['changed_by_postpass'].sum())} cluster(s)")
 	
 	if total_sim_loss and verbose:
@@ -3755,6 +4034,7 @@ def assign_canonical_labels(
 		print(f"  Total clusters analyzed: {total_clusters}")
 		print(f"  Virtual hypernym used as canonical: {virtual_used_count} ({virtual_used_count/total_clusters*100:.1f}%)")
 		print(f"  Clusters where score changed the canonical: {freq_changed_count} ({freq_changed_count/total_clusters*100:.1f}%)")
+		print("-"*100)
 
 	return cluster_canonicals
 
@@ -3767,17 +4047,24 @@ def cluster(
 	nc: Optional[int] = None,
 	linkage_method: str = "ward",
 	distance_metric: str = "euclidean",
+	min_consolidation: float = 3.8,
+	max_consolidation: float = 5.0,
+	min_singleton_merge_sim: Optional[float] = 0.75,
+	merge_close_clusters_threshold: Optional[float] = None,
+	merge_max_size: int = 30,
+	use_cache: bool = True,
 	verbose: bool = False,
 ):
 	st_t = time.time()
 	if verbose:
 		print(f"\n[AGGLOMERATIVE CLUSTERING] {len(labels)} samples")
-		print(f"   ├─ {model_id} | {device} | batch_size: {batch_size}")
-		print(f"   ├─ linkage: {linkage_method}")
-		print(f"   ├─ sample: {labels[:3]}")
+		print(f"  ├─ {model_id} | {device} | batch_size: {batch_size}")
+		print(f"  ├─ linkage: {linkage_method}")
+		print(f"  ├─ samples: {labels[:3]}")
 		requires_type_exchange = isinstance(labels[0], str)
-		print(f"   ├───> {type(labels[0])} requires_type_exchange? {requires_type_exchange}")
-		print(f"   └─ nc: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
+		print(f"  ├───> {type(labels[0])} requires_type_exchange? {requires_type_exchange}")
+		print(f"  ├─ merge_close_clusters_threshold: {merge_close_clusters_threshold}")
+		print(f"  └─ nc: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
 
 	# STEP 1: DEDUP + FLATTEN
 	documents = list()
@@ -3853,59 +4140,56 @@ def cluster(
 
 	if verbose:
 		print(
-			f"[ENCODING] {len(unique_labels)} unique labels with {model_id} | "
+			f"[ENCODING] {len(unique_labels)} unique labels | {model.model_card_data.base_model} | "
 			f"({sum(p.numel() for p in model.parameters()):,} parameters)"
 		)
 
-	X = model.encode(
-		unique_labels,
-		batch_size=batch_size,
-		show_progress_bar=False,#verbose
-		convert_to_numpy=True,
-		normalize_embeddings=True,
-		precision='float32',
+	x_path, z_path = _cluster_cache_paths(
+		clusters_fname, 
+		model_id, 
+		dtype, 
+		linkage_method, 
+		distance_metric, 
+		unique_labels
 	)
+	X = Z = None
+	if use_cache and os.path.exists(x_path) and os.path.exists(z_path):
+		try:
+			X_c, Z_c = np.load(x_path), np.load(z_path)
+			if X_c.shape[0] == len(unique_labels) and Z_c.shape == (len(unique_labels) - 1, 4):
+				X, Z = X_c, Z_c
+				print(f"[CACHE HIT] embeddings {X.shape} + linkage {Z.shape} <- {x_path}")
+			else:
+				print("[CACHE] cached shapes do not match the label set, recomputing")
+		except Exception as e:
+			print(f"[CACHE] could not load ({type(e).__name__}: {e}), recomputing")
+ 
+	if X is None:
+		X = model.encode(
+			unique_labels,
+			batch_size=batch_size,
+			show_progress_bar=False,#verbose
+			convert_to_numpy=True,
+			normalize_embeddings=True,
+			precision='float32',
+		)
+		_validate_embeddings(X, unique_labels)
+		if verbose:
+			print(f"[EMBEDDING] {type(X)} {X.shape} {X.dtype}")
+			print(f"[LINKAGE] {linkage_method} {X.shape} embeddings [takes a while...]")
+		t0 = time.time()
+		Z = _compute_linkage(X, linkage_method, distance_metric, verbose=verbose)
+		if verbose:
+			print(f"[LINKAGE] Z[{linkage_method}] {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes} | {time.time()-t0:.1f} sec")
+		if use_cache:
+			_save_npy_atomic(x_path, X)
+			_save_npy_atomic(z_path, Z)
+			print(f"[CACHE] saved -> {x_path} ({X.nbytes / 1e6:.0f} MB) and {z_path}")
 
-	if np.isnan(X).any():
-		nan_rows = np.where(np.isnan(X).any(axis=1))[0]
-		print(f"\n❌ ERROR: {np.isnan(X).sum()} NaN values in embeddings!")
-		for idx in nan_rows[:10]:
-			print(f"  - {unique_labels[idx]}")
-		raise ValueError("Cannot proceed with NaN embeddings")
-	if np.isinf(X).any():
-		raise ValueError(f"Infinite values detected ({np.isinf(X).sum()}) - numerical overflow!")
-	if X.shape[0] == 0:
-		raise ValueError("No embeddings generated")
-	if np.allclose(X, 0):
-		raise ValueError("All embeddings are zero vectors")
 
-	if verbose:
-		print(f"[EMBEDDING] {type(X)} {X.shape} {X.dtype}")
 
-	# STEP 3: LINKAGE MATRIX
-	if verbose:
-		print(f"[LINKAGE] {linkage_method} {X.shape} embeddings [takes a while...]")
-	
-	t0 = time.time()
-	if linkage_method == "ward":
-		Z = fastcluster.linkage(X, method='ward', metric='euclidean') if use_fastcluster \
-			else linkage(X, method='ward', metric='euclidean')
-	elif distance_metric == "cosine":
-		distance_matrix = np.clip(1 - (X @ X.T), 0, 2)
-		np.fill_diagonal(distance_matrix, 0)
-		condensed_dist = squareform(distance_matrix, checks=False)
-		Z = fastcluster.linkage(condensed_dist, method=linkage_method) if use_fastcluster \
-			else linkage(condensed_dist, method=linkage_method)
-		print(f"[LINKAGE] Using {linkage_method} linkage with {distance_metric} distance")
-	elif distance_metric == "euclidean":
-		Z = fastcluster.linkage(X, method=linkage_method, metric='euclidean') if use_fastcluster \
-			else linkage(X, method=linkage_method, metric='euclidean')
-		print(f"[LINKAGE] Using {linkage_method} linkage with Euclidean distance")
-	else:
-		raise ValueError(f"Unsupported distance metric: {distance_metric}")
 
-	if verbose:
-		print(f"[LINKAGE] Z[{linkage_method}] {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes} | {time.time()-t0:.1f} sec")
+
 
 	# STEP 4: OPTIMAL NUMBER OF CLUSTERS
 	if nc is None:
@@ -3913,12 +4197,12 @@ def cluster(
 			X=X,
 			linkage_matrix=Z,
 			label_texts=unique_labels,
-			target_intra_similarity=0.69,
-			min_consolidation=3.8,
-			max_consolidation=5.0,
+			min_consolidation=min_consolidation,
+			max_consolidation=max_consolidation,
 			target_singleton_ratio=0.015,
 			quality_vs_consolidation_weight=0.5,
 			merge_singletons=True,
+			min_singleton_merge_sim=min_singleton_merge_sim,
 			verbose=verbose,
 		)
 		best_k = stats['n_clusters']
@@ -3927,11 +4211,28 @@ def cluster(
 		print(f"\nUsing user-defined k={best_k} for {len(unique_labels)} labels")
 		cluster_labels = fcluster(Z, best_k, criterion='maxclust') - 1
 
+
+
+	# STEP 4b: OPTIONAL MERGE OF NEAR-DUPLICATE CLUSTERS (before canonical selection)
+	# Off by default. Calibrate the threshold first from <...>_neighbor_pairs.json.
+	if merge_close_clusters_threshold is not None:
+		cluster_labels = _merge_close_clusters(
+			X=X,
+			labels=cluster_labels,
+			label_texts=unique_labels,
+			threshold=merge_close_clusters_threshold,
+			max_merged_size=merge_max_size,
+			report_path=os.path.splitext(clusters_fname)[0] + "_cluster_merges.json",
+			verbose=verbose,
+		)
+ 
 	df = pd.DataFrame({'label': unique_labels, 'cluster': cluster_labels})
+
 
 	# STEP 5: LABEL FREQUENCY DICT
 	if verbose:
 		print(f"\n[CLUSTERING] {len(np.unique(cluster_labels))} clusters for {cluster_labels.shape} {type(cluster_labels)} labels")
+
 	label_freq_dict: dict = {}
 	for doc in documents:
 		for label in doc:
