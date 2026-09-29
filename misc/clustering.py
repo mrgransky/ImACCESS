@@ -4147,6 +4147,10 @@ def cluster(
 		distance_metric, 
 		unique_labels
 	)
+	if verbose:
+		print(f"[CACHE PATHS]")
+		print(f"  embeddings: {x_path}")
+		print(f"  linkage: {z_path}")
 
 	X = Z = None
 	if use_cache and os.path.exists(x_path) and os.path.exists(z_path):
