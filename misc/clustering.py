@@ -306,8 +306,17 @@ def _cluster_cache_paths(
 	new key automatically, and stale files are simply never read.
 	"""
 	key = hashlib.sha1(
-		"\x1f".join([model_id, str(dtype), linkage_method, distance_metric, *unique_labels]).encode("utf-8")
+		"\x1f".join(
+			[
+				model_id,
+				str(dtype),
+				linkage_method,
+				distance_metric,
+				*unique_labels
+			]
+		).encode("utf-8")
 	).hexdigest()[:16]
+
 	stem = os.path.join(os.path.dirname(clusters_fname) or ".", f"cluster_cache_{key}")
 
 	x_path = stem + "_X.npy"
@@ -320,6 +329,9 @@ def _cluster_cache_paths(
 		print(f"  ├─ {linkage_method}")
 		print(f"  ├─ {distance_metric}")
 		print(f"  ├─ {len(unique_labels)} labels")
+		print(f"  ├─ {key}")
+		print(f"  ├─ x_path exists: {os.path.exists(x_path)}")
+		print(f"  ├─ z_path exists: {os.path.exists(z_path)}")
 		print(f"  ├─ embeddings : {x_path}")
 		print(f"  └─ linkage    : {z_path}")
 
@@ -333,7 +345,189 @@ def _save_npy_atomic(path: str, arr: np.ndarray) -> None:
 
 
 
+def _load_or_compute_clustering_artifacts(
+	unique_labels: List[str],
+	model: SentenceTransformer,
+	x_path: str,
+	z_path: str,
+	batch_size: int,
+	linkage_method: str,
+	distance_metric: str,
+	use_cache: bool = True,
+	verbose: bool = False,
+) -> Tuple[np.ndarray, np.ndarray]:
+	"""
+	Load cached embeddings/linkage when valid; otherwise compute and
+	independently cache each artifact.
 
+	Embeddings and linkage are cached independently so that if linkage
+	computation fails after embeddings are saved, the next run can reuse X.
+	"""
+
+	X = None
+	Z = None
+
+	n_labels = len(unique_labels)
+
+	# ============================================================
+	# STEP 1: LOAD / COMPUTE EMBEDDINGS
+	# ============================================================
+
+	if use_cache and os.path.exists(x_path):
+
+		if verbose:
+			print("\n[CACHE HIT] Embeddings found:")
+			print(f"  {x_path}")
+
+		try:
+			X = np.load(x_path, mmap_mode=None)
+
+			expected_rows = n_labels
+
+			if X.ndim != 2 or X.shape[0] != expected_rows:
+				if verbose:
+					print(
+						f"[CACHE MISS] embedding shape mismatch: "
+						f"{X.shape} vs expected "
+						f"({expected_rows}, embedding_dim)"
+					)
+				X = None
+
+			else:
+				_validate_embeddings(X, unique_labels)
+
+				if verbose:
+					print(
+						f"[CACHE HIT] embeddings: "
+						f"{X.shape} {X.dtype} "
+						f"({X.nbytes / 1e6:.2f} MB)"
+					)
+
+		except Exception as e:
+			print(
+				f"[CACHE] Failed to load embeddings "
+				f"({type(e).__name__}: {e})"
+			)
+			X = None
+
+	if X is None:
+
+		if verbose:
+			print(
+				f"\n[EMBEDDING] Computing {n_labels} "
+				f"unique label embeddings..."
+			)
+
+		t0 = time.time()
+
+		X = model.encode(
+			unique_labels,
+			batch_size=batch_size,
+			show_progress_bar=False,
+			convert_to_numpy=True,
+			normalize_embeddings=True,
+			precision="float32",
+		)
+
+		_validate_embeddings(X, unique_labels)
+
+		if verbose:
+			print(
+				f"[EMBEDDING] {type(X)} {X.shape} {X.dtype} "
+				f"({X.nbytes / 1e6:.2f} MB)"
+			)
+			print(
+				f"[EMBEDDING] Encoding time: "
+				f"{time.time() - t0:.1f} sec"
+			)
+
+		if use_cache:
+			_save_npy_atomic(x_path, X)
+
+			if verbose:
+				print(
+					f"[CACHE SAVE] embeddings saved immediately:"
+				)
+				print(
+					f"  {x_path} "
+					f"({X.nbytes / 1e6:.2f} MB)"
+				)
+
+	# ============================================================
+	# STEP 2: LOAD / COMPUTE LINKAGE
+	# ============================================================
+
+	if use_cache and os.path.exists(z_path):
+
+		if verbose:
+			print("\n[CACHE HIT] Linkage found:")
+			print(f"  {z_path}")
+
+		try:
+			Z = np.load(z_path)
+
+			expected_shape = (n_labels - 1, 4)
+
+			if Z.shape != expected_shape:
+
+				if verbose:
+					print(
+						f"[CACHE MISS] linkage shape mismatch: "
+						f"{Z.shape} vs expected {expected_shape}"
+					)
+
+				Z = None
+
+			elif verbose:
+				print(
+					f"[CACHE HIT] linkage: "
+					f"{Z.shape} {Z.dtype} "
+					f"({Z.nbytes / 1e6:.2f} MB)"
+				)
+
+		except Exception as e:
+			print(
+				f"[CACHE] Failed to load linkage "
+				f"({type(e).__name__}: {e})"
+			)
+			Z = None
+
+	if Z is None:
+
+		if verbose:
+			print(
+				f"\n[LINKAGE] {linkage_method} "
+				f"{X.shape} embeddings [takes a while...]"
+			)
+
+		t0 = time.time()
+
+		Z = _compute_linkage(
+			X,
+			linkage_method,
+			distance_metric,
+			verbose=verbose,
+		)
+
+		if verbose:
+			print(
+				f"[LINKAGE] Z[{linkage_method}] "
+				f"{type(Z)} {Z.shape} {Z.dtype} "
+				f"{Z.strides} {Z.itemsize} {Z.nbytes} "
+				f"| {time.time() - t0:.1f} sec"
+			)
+
+		if use_cache:
+			_save_npy_atomic(z_path, Z)
+
+			if verbose:
+				print("[CACHE SAVE] linkage saved:")
+				print(
+					f"  {z_path} "
+					f"({Z.nbytes / 1e6:.2f} MB)"
+				)
+
+	return X, Z
 
 
 
@@ -4154,6 +4348,7 @@ def cluster(
 			f"({sum(p.numel() for p in model.parameters()):,} parameters)"
 		)
 
+	# STEP 3: LOAD / COMPUTE EMBEDDINGS + LINKAGE
 	x_path, z_path = _cluster_cache_paths(
 		clusters_fname, 
 		model_id, 
@@ -4163,54 +4358,17 @@ def cluster(
 		unique_labels,
 		verbose=verbose,
 	)
-
-	X = Z = None
-	if use_cache and os.path.exists(x_path) and os.path.exists(z_path):
-		if verbose:
-			print(f"[CACHE LOAD]")
-			print(f"  embeddings : {x_path}")
-			print(f"  linkage    : {z_path}")
-		try:
-			X_c, Z_c = np.load(x_path), np.load(z_path)
-			if X_c.shape[0] == len(unique_labels) and Z_c.shape == (len(unique_labels) - 1, 4):
-				X, Z = X_c, Z_c
-				if verbose:
-					print(f"[CACHE HIT] embeddings {X.shape} + linkage {Z.shape}")
-			else:
-				if verbose:
-					print("[CACHE] cached shapes do not match the label set, recomputing")
-		except Exception as e:
-			print(f"[CACHE] could not load ({type(e).__name__}: {e}), recomputing")
- 
-	if X is None:
-		X = model.encode(
-			unique_labels,
-			batch_size=batch_size,
-			show_progress_bar=False,#verbose
-			convert_to_numpy=True,
-			normalize_embeddings=True,
-			precision='float32',
-		)
-		_validate_embeddings(X, unique_labels)
-
-		if verbose:
-			print(f"[EMBEDDING] {type(X)} {X.shape} {X.dtype}")
-			print(f"[LINKAGE] {linkage_method} {X.shape} embeddings [takes a while...]")
-
-		t0 = time.time()
-		Z = _compute_linkage(X, linkage_method, distance_metric, verbose=verbose)
-
-		if verbose:
-			print(f"[LINKAGE] Z[{linkage_method}] {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes} | {time.time()-t0:.1f} sec")
-
-		if use_cache:
-			_save_npy_atomic(x_path, X)
-			_save_npy_atomic(z_path, Z)
-			if verbose:
-				print(f"[CACHE SAVE]")
-				print(f"  embeddings: {x_path} ({X.nbytes / 1e6:.2f} MB)")
-				print(f"  linkage: {z_path} ({Z.nbytes / 1e6:.2f} MB)")
-
+	X, Z = _load_or_compute_clustering_artifacts(
+		unique_labels=unique_labels,
+		model=model,
+		x_path=x_path,
+		z_path=z_path,
+		batch_size=batch_size,
+		linkage_method=linkage_method,
+		distance_metric=distance_metric,
+		use_cache=use_cache,
+		verbose=verbose,
+	)
 
 	# STEP 4: OPTIMAL NUMBER OF CLUSTERS
 	if nc is None:
