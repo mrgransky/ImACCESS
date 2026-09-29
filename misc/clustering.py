@@ -297,6 +297,7 @@ def _compute_linkage(X: np.ndarray, linkage_method: str, distance_metric: str, v
 def _cluster_cache_paths(
 	clusters_fname: str, model_id: str, dtype: Any,
 	linkage_method: str, distance_metric: str, unique_labels: List[str],
+	verbose: bool = False
 ) -> Tuple[str, str]:
 	"""
 	Cache file names for (embeddings, linkage). The key covers everything the two
@@ -308,7 +309,21 @@ def _cluster_cache_paths(
 		"\x1f".join([model_id, str(dtype), linkage_method, distance_metric, *unique_labels]).encode("utf-8")
 	).hexdigest()[:16]
 	stem = os.path.join(os.path.dirname(clusters_fname) or ".", f"cluster_cache_{key}")
-	return stem + "_X.npy", stem + "_Z.npy"
+
+	x_path = stem + "_X.npy"
+	z_path = stem + "_Z.npy"
+
+	if verbose:
+		print(f"[CACHE PATHS]")
+		print(f"  ├─ {model_id}")
+		print(f"  ├─ {dtype}")
+		print(f"  ├─ {linkage_method}")
+		print(f"  ├─ {distance_metric}")
+		print(f"  ├─ {len(unique_labels)} labels")
+		print(f"  ├─ embeddings : {x_path}")
+		print(f"  └─ linkage    : {z_path}")
+
+	return x_path, z_path
 
 def _save_npy_atomic(path: str, arr: np.ndarray) -> None:
 	"""Write to a temp file and rename, so a job killed by the scheduler mid-write never leaves a corrupt cache."""
@@ -4145,12 +4160,9 @@ def cluster(
 		dtype, 
 		linkage_method, 
 		distance_metric, 
-		unique_labels
+		unique_labels,
+		verbose=verbose,
 	)
-	if verbose:
-		print(f"[CACHE PATHS]")
-		print(f"  embeddings : {x_path}")
-		print(f"  linkage    : {z_path}")
 
 	X = Z = None
 	if use_cache and os.path.exists(x_path) and os.path.exists(z_path):
