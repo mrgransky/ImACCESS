@@ -58,18 +58,15 @@ Do not select a keyword merely because it appears multiple times.
 Prominence means visual salience and concrete recoverability, not textual frequency.
 
 STRINGENTLY EXCLUDE:
-  - Generic war terms ('World War I', 'post war era', 'Post-war', 'aftermath of World War II').
-  - Quantities, counts, measurements, or numeric expressions (1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
+  - Generic war terms.
+  - Roman numerals, ordinal numbers, quantities, counts, measurements, or numeric expressions.
   - Equipment identifiers, serial numbers, brands, or models.
   - Dates, times, years, decades, or any temporal references.
-  - Names of locations, neighborhoods, places, buildings, or structures (Plaza de Santiago, St. Louis Cathedral).
-  - Individual people's names or honorifics (A. A. Robinson, A. Philip Randolph, Barbara Briggs, Allan M. Hardy, Josef Dietrich, Mrs. Howard Russell). 
-  - Family relationship terms (mother, father, son, uncle).
-  - Generic human category nouns (man, men, woman, person, people, children).
-  - Geographical names such as continents, countries, states, provinces, cities, towns, islands, regions, roads, or landmarks.
-  - Ordinal numeral (fourth, 1st, 115th).
-  - Roman numerals (I, II, IV, VIII).
-  - Nationalities, ethnicities, or religions.
+  - Names of locations, neighborhoods, places, buildings, or structures.
+  - Individual people's names or honorifics.
+  - Family relationship terms.
+  - Generic human category nouns.
+  - Geographical names, nationalities, ethnicities, or religions.
   - Typographical error, misprints, or irregular orthography.
   - Acronyms, initialisms, phrasal verbs, possessive constructions, or descriptive clauses.
   - Underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
