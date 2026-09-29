@@ -47,12 +47,15 @@ with open('geographic_references.txt', 'r') as file_:
 	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
 STOPWORDS.update(geographic_references)
 
-PROMPT_TEMPLATE = """Extract no more than {k} keywords.
-Prominent keywords must be concrete, semantically atomic, visually grounded and reusable across archives.
+PROMPT_TEMPLATE = """Extract no more than {k} prominent keywords.
+They must be concrete, semantically atomic, visually grounded and reusable across archives.
 Response must be a Python list of double-quoted strings containing keywords derived strictly from the caption without any markdown, reasoning, thinking, or explanation.
 Prioritize multi-word noun phrases when the caption contains meaningful adjectives or descriptors.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
+Repetition in the caption does NOT make a keyword more important.
+Do not select a keyword merely because it appears multiple times.
+Prominence means visual salience and concrete recoverability, not textual frequency.
 
 STRINGENTLY EXCLUDE:
   - Generic war terms ('World War I', 'post war era', 'Post-war', 'aftermath of World War II').
@@ -68,7 +71,7 @@ STRINGENTLY EXCLUDE:
   - Roman numerals (I, II, IV, VIII).
   - Nationalities, ethnicities, or religions.
   - Typographical error, misprints, or irregular orthography.
-  - Acronyms, phrasal verbs, possessive constructions, or descriptive clauses.
+  - Acronyms, initialisms, phrasal verbs, possessive constructions, or descriptive clauses.
   - Underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
 
 Color handling:
