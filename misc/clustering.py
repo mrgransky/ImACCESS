@@ -55,7 +55,10 @@ cache_directory = {
 canonical_labels_global = None
 canonical_labels_global_lower = None
 
-def _nearest_cluster_neighbors(centroids: np.ndarray, chunk: int = 2048) -> Tuple[np.ndarray, np.ndarray]:
+def _nearest_cluster_neighbors(
+	centroids: np.ndarray, 
+	chunk: int = 2048
+) -> Tuple[np.ndarray, np.ndarray]:
 	"""
 	For every row of `centroids` (n, d): the index and cosine similarity of the
 	most similar OTHER row. Chunked, so memory stays at chunk * n floats even
@@ -63,9 +66,11 @@ def _nearest_cluster_neighbors(centroids: np.ndarray, chunk: int = 2048) -> Tupl
 	"""
 	V = np.asarray(centroids, dtype=np.float32)
 	V = V / (np.linalg.norm(V, axis=1, keepdims=True) + 1e-12)
+	
 	n = V.shape[0]
 	nn_idx = np.zeros(n, dtype=np.int64)
 	nn_sim = np.full(n, -1.0, dtype=np.float32)
+	
 	if n < 2:
 		return nn_idx, nn_sim
 	for s in range(0, n, chunk):
@@ -75,6 +80,7 @@ def _nearest_cluster_neighbors(centroids: np.ndarray, chunk: int = 2048) -> Tupl
 		j = S.argmax(axis=1)
 		nn_idx[s:s + chunk] = j
 		nn_sim[s:s + chunk] = S[rows, j]
+	
 	return nn_idx, nn_sim
 
 def _cluster_neighbor_info(
@@ -261,6 +267,8 @@ def _merge_close_clusters(
 						 'merges': merges}, f, indent=2, ensure_ascii=False)
 	return new_labels
 
+
+
 def _validate_embeddings(X: np.ndarray, unique_labels: List[str]) -> None:
 	if np.isnan(X).any():
 		nan_rows = np.where(np.isnan(X).any(axis=1))[0]
@@ -275,10 +283,17 @@ def _validate_embeddings(X: np.ndarray, unique_labels: List[str]) -> None:
 	if np.allclose(X, 0):
 		raise ValueError("All embeddings are zero vectors")
 
-def _compute_linkage(X: np.ndarray, linkage_method: str, distance_metric: str, verbose: bool = False) -> np.ndarray:
+def _compute_linkage(
+	X: np.ndarray, 
+	linkage_method: str, 
+	distance_metric: str, 
+	verbose: bool = False
+) -> np.ndarray:
+
 	if linkage_method == "ward":
 		return fastcluster.linkage(X, method='ward', metric='euclidean') if use_fastcluster \
 			else linkage(X, method='ward', metric='euclidean')
+
 	if distance_metric == "cosine":
 		distance_matrix = np.clip(1 - (X @ X.T), 0, 2)
 		np.fill_diagonal(distance_matrix, 0)
@@ -287,11 +302,13 @@ def _compute_linkage(X: np.ndarray, linkage_method: str, distance_metric: str, v
 			print(f"[LINKAGE] Using {linkage_method} linkage with {distance_metric} distance")
 		return fastcluster.linkage(condensed_dist, method=linkage_method) if use_fastcluster \
 			else linkage(condensed_dist, method=linkage_method)
+
 	if distance_metric == "euclidean":
 		if verbose:
 			print(f"[LINKAGE] Using {linkage_method} linkage with Euclidean distance")
 		return fastcluster.linkage(X, method=linkage_method, metric='euclidean') if use_fastcluster \
 			else linkage(X, method=linkage_method, metric='euclidean')
+	
 	raise ValueError(f"Unsupported distance metric: {distance_metric}")
 
 def _caching(
@@ -391,6 +408,7 @@ def _save_cache_manifest(
 	verbose: bool = False,
 ) -> str:
 	manifest_path = x_path.replace("_embeddings_X.npy", "_manifest.json")
+	
 	label_hash = hashlib.sha1(
 		"\x1f".join(unique_labels).encode("utf-8")
 	).hexdigest()
@@ -406,21 +424,24 @@ def _save_cache_manifest(
 		"embedding_dtype": str(embedding_dtype),
 		"created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
 	}
+	
 	if verbose:
 		print(json.dumps(manifest, indent=2))
 
 	tmp_path = manifest_path + ".tmp"
+	
 	try:
 		with open(tmp_path, "w", encoding="utf-8") as f:
 			json.dump(manifest, f, indent=2)
 		os.replace(tmp_path, manifest_path)
 	except Exception:
-			if os.path.exists(tmp_path):
-					try:
-							os.remove(tmp_path)
-					except OSError:
-							pass
-			raise
+		if os.path.exists(tmp_path):
+			try:
+				os.remove(tmp_path)
+			except OSError:
+				pass
+		raise
+	
 	return manifest_path
 
 def get_clustering_artifacts(
@@ -520,14 +541,8 @@ def get_clustering_artifacts(
 		_validate_embeddings(X, unique_labels)
 
 		if verbose:
-			print(
-				f"[EMBEDDING] {type(X)} {X.shape} {X.dtype} "
-				f"({X.nbytes / 1e6:.2f} MB)"
-			)
-			print(
-				f"[EMBEDDING] Encoding time: "
-				f"{time.time() - t0:.1f} sec"
-			)
+			print(f"[EMBEDDING] {type(X)} {X.shape} {X.dtype} ({X.nbytes / 1e6:.2f} MB)")
+			print(f"[EMBEDDING] Encoding time: {time.time() - t0:.1f} sec")
 
 		if use_cache:
 			_save_npy_atomic(x_path, X)
@@ -545,7 +560,7 @@ def get_clustering_artifacts(
 
 			if verbose:
 				print(f"[CACHE SAVE] embeddings: {x_path}  ({X.nbytes / 1e6:.2f} MB)")
-				print(f"[CACHE SAVE] manifest: {manifest_path}")
+				print(f"[CACHE SAVE] manifest  : {manifest_path}")
 
 	# ============================================================
 	# STEP 2: LOAD / COMPUTE LINKAGE
@@ -554,8 +569,7 @@ def get_clustering_artifacts(
 	if use_cache and os.path.exists(z_path):
 
 		if verbose:
-			print("\n[CACHE HIT] Linkage found:")
-			print(f"  {z_path}")
+			print(f"\n[CACHE HIT] Linkage found: {z_path}")
 
 		try:
 			Z = np.load(z_path)
@@ -573,17 +587,10 @@ def get_clustering_artifacts(
 				Z = None
 
 			elif verbose:
-				print(
-					f"[CACHE HIT] linkage: "
-					f"{Z.shape} {Z.dtype} "
-					f"({Z.nbytes / 1e6:.2f} MB)"
-				)
+				print(f"[CACHE HIT] linkage: {Z.shape} {Z.dtype} ({Z.nbytes / 1e6:.2f} MB)")
 
 		except Exception as e:
-			print(
-				f"[CACHE] Failed to load linkage "
-				f"({type(e).__name__}: {e})"
-			)
+			print(f"[CACHE] Failed to load linkage ({type(e).__name__}: {e})")
 			Z = None
 
 	if Z is None:
@@ -622,6 +629,8 @@ def get_clustering_artifacts(
 				)
 
 	return X, Z
+
+
 
 def init_worker_canonical(canonical_dict):
 	global canonical_labels_global
@@ -4340,9 +4349,9 @@ def cluster(
 	clusters_fname: str,
 	batch_size: int,
 	device: Union[torch.device, str],
-	nc: Optional[int] = None,
-	linkage_method: str = "ward",
-	distance_metric: str = "euclidean",
+	nc: Optional[int]=None,
+	linkage_method: str="ward",
+	distance_metric: str="euclidean",
 	min_consolidation: float = 3.8,
 	max_consolidation: float = 5.0,
 	min_singleton_merge_sim: Optional[float] = 0.75,
@@ -4350,7 +4359,8 @@ def cluster(
 	merge_max_size: int = 30,
 	use_cache: bool = True,
 	verbose: bool = False,
-):
+) -> pd.DataFrame:
+	
 	st_t = time.time()
 	if verbose:
 		print(f"\n[AGGLOMERATIVE CLUSTERING] {len(labels)} samples")
