@@ -4147,15 +4147,22 @@ def cluster(
 		distance_metric, 
 		unique_labels
 	)
+
 	X = Z = None
 	if use_cache and os.path.exists(x_path) and os.path.exists(z_path):
+		if verbose:
+			print(f"[CACHE LOAD]")
+			print(f"  embeddings: {x_path}")
+			print(f"  linkage: {z_path}")
 		try:
 			X_c, Z_c = np.load(x_path), np.load(z_path)
 			if X_c.shape[0] == len(unique_labels) and Z_c.shape == (len(unique_labels) - 1, 4):
 				X, Z = X_c, Z_c
-				print(f"[CACHE HIT] embeddings {X.shape} + linkage {Z.shape} <- {x_path}")
+				if verbose:
+					print(f"[CACHE HIT] embeddings {X.shape} + linkage {Z.shape}")
 			else:
-				print("[CACHE] cached shapes do not match the label set, recomputing")
+				if verbose:
+					print("[CACHE] cached shapes do not match the label set, recomputing")
 		except Exception as e:
 			print(f"[CACHE] could not load ({type(e).__name__}: {e}), recomputing")
  
@@ -4169,21 +4176,24 @@ def cluster(
 			precision='float32',
 		)
 		_validate_embeddings(X, unique_labels)
+
 		if verbose:
 			print(f"[EMBEDDING] {type(X)} {X.shape} {X.dtype}")
 			print(f"[LINKAGE] {linkage_method} {X.shape} embeddings [takes a while...]")
+
 		t0 = time.time()
 		Z = _compute_linkage(X, linkage_method, distance_metric, verbose=verbose)
+
 		if verbose:
 			print(f"[LINKAGE] Z[{linkage_method}] {type(Z)} {Z.shape} {Z.dtype} {Z.strides} {Z.itemsize} {Z.nbytes} | {time.time()-t0:.1f} sec")
+
 		if use_cache:
 			_save_npy_atomic(x_path, X)
 			_save_npy_atomic(z_path, Z)
-			print(f"[CACHE] saved -> {x_path} ({X.nbytes / 1e6:.0f} MB) and {z_path}")
-
-
-
-
+			if verbose:
+				print(f"[CACHE SAVE]")
+				print(f"  embeddings: {x_path} ({X.nbytes / 1e6:.2f} MB)")
+				print(f"  linkage: {z_path} ({Z.nbytes / 1e6:.2f} MB)")
 
 
 	# STEP 4: OPTIMAL NUMBER OF CLUSTERS

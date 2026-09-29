@@ -459,7 +459,7 @@ def auto_calibrate_semantic_threshold_(
 			print(f"      2. Loose Clustering Threshold:   > {best_th:.3f} (Groups related concepts, but merges siblings)")
 			print(f"      3. LLM-in-the-loop: Use threshold {best_th:.3f}, but pass pairs in the [{best_th:.2f}, {hard_neg_max:.2f}] range to an LLM to verify.")
 		else:
-			print(f"\n✅ EXCELLENT SEPARATION:")
+			print(f"\nEXCELLENT SEPARATION:")
 			print(f"   The lowest positive ({pos_min:.3f}) is higher than the highest hard negative ({hard_neg_max:.3f}).")
 			print(f"   Safe global threshold: {best_th:.4f}")
 		print(f"{'-'*110}")
@@ -675,7 +675,7 @@ def auto_calibrate_semantic_threshold(
 		print(f"  Optimal F1 Threshold: {best_th:.4f} (F1: {best_f1:.3f})")
 		
 		if overlap_exists:
-			print(f"\n  ⚠️  OVERLAP DETECTED (Danger Zone width: {danger_zone_width:.3f})")
+			print(f"\n  OVERLAP DETECTED (Danger Zone width: {danger_zone_width:.3f})")
 			print(f"     Lowest Positive: {pos_min:.3f} | Highest Hard Negative: {hard_neg_max:.3f}")
 			print(f"     → A single global threshold WILL cause false merges.")
 			print(f"     → RECOMMENDED STRATEGY:")
@@ -683,7 +683,7 @@ def auto_calibrate_semantic_threshold(
 			print(f"        2. Loose Cluster: > {best_th:.3f}")
 			print(f"        3. LLM-in-loop:   pairs in [{best_th:.3f}, {hard_neg_max:.3f}] need verification")
 		else:
-			print(f"\n  ✅ EXCELLENT SEPARATION (no overlap)")
+			print(f"\n  EXCELLENT SEPARATION (no overlap)")
 			print(f"     Safe global threshold: {best_th:.4f}")
 
 
@@ -704,9 +704,9 @@ def auto_calibrate_semantic_threshold(
 		'strict_dedup_threshold': float(hard_neg_max + 0.01) if overlap_exists else float(best_th),
 		'best_f1_score': float(best_f1),
 	}
-	if verbose:
-		pprint.pprint(diagnostics)
-		print(f"{'-'*90}")
+	# if verbose:
+	# 	pprint.pprint(diagnostics)
+	# 	print(f"{'-'*90}")
 
 	return float(best_th), diagnostics
 
