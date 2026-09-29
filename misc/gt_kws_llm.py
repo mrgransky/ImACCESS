@@ -62,9 +62,8 @@ STRINGENTLY EXCLUDE:
   - Equipment identifiers, serial numbers, brands, or models.
   - Dates, times, years, decades, or any temporal references.
   - Names of locations, neighborhoods, places, buildings, or structures.
-  - Individual people's names or honorifics.
+  - Generic human category nouns, individual persons' names or honorifics.
   - Family relationship terms.
-  - Generic human category nouns.
   - Geographical names, nationalities, ethnicities, or religions.
   - Typographical error, misprints, or irregular orthography.
   - Acronyms, initialisms, phrasal verbs, possessive constructions, or descriptive clauses.
