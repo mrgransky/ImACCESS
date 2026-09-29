@@ -51,10 +51,6 @@ cache_directory = {
 	"ubuntu": "/media/volume/models",
 }
 
-# Global variable for worker processes
-canonical_labels_global = None
-canonical_labels_global_lower = None
-
 def _nearest_cluster_neighbors(
 	centroids: np.ndarray, 
 	chunk: int = 2048
@@ -630,16 +626,6 @@ def get_clustering_artifacts(
 
 	return X, Z
 
-
-
-def init_worker_canonical(canonical_dict):
-	global canonical_labels_global
-	global canonical_labels_global_lower
-	canonical_labels_global = canonical_dict
-
-	# Build a lowercase fallback map for the worker
-	canonical_labels_global_lower = {k.lower(): v for k, v in canonical_dict.items()}
-
 def _build_case_registry(original_label_counts: Dict[str, int]) -> Dict[str, str]:
 	"""
 	Build a lowercase -> preferred-surface-form registry from the corpus-wide
@@ -843,141 +829,6 @@ def _normalize_label_case(
 				print(f"\t{surfaces} -> {repr(winner)}")
 
 	return normalized_documents
-
-def parallel_canonical_mapping(labels_str):
-	if isinstance(labels_str, str):
-		try:
-			labels = ast.literal_eval(labels_str)
-		except (ValueError, SyntaxError):
-			return None
-	elif labels_str is None or (isinstance(labels_str, float) and math.isnan(labels_str)):
-		return None
-	elif isinstance(labels_str, list):
-		labels = labels_str
-	else:
-		return None
-
-	# # Map to canonical labels using global dict
-	# return [canonical_labels_global.get(label, label) for label in labels]
-
-	# Map to canonical labels, SKIPPING labels not in dict
-	# (these are labels that were removed as problematic)
-	canonical_labels_ = list()
-	for label in labels:
-		if label in canonical_labels_global:
-			canonical_labels_.append(canonical_labels_global[label])
-		elif label.lower() in canonical_labels_global_lower: # FALLBACK
-			canonical_labels_.append(canonical_labels_global_lower[label.lower()])
-		# else: label was removed as problematic, skip it
-	
-	return canonical_labels_
-
-def get_canonical_labels_with_parallel_mapping(
-	labels: List[List[str]],
-	label_source: str,
-	output_dir: str,
-	model_id: str,
-	num_workers: int,
-	batch_size: int,
-	nc: int = None,
-	verbose: bool = False,
-) -> Tuple[List[List[str]], dict]:
-
-	clusters_fname = os.path.join(output_dir, f"{label_source}_clusters.csv")
-
-	if verbose:
-		print(
-			f"\n[{label_source.upper()}] Canonical Labels "
-			f"(Parallel Mapping: nw: {num_workers} bs: {batch_size})"
-		)
-		print(f"Input: {len(labels)} {type(labels)} samples")
-		print(f"Examples:\n{labels[:7]}")
-		print(f"Cluster File: {clusters_fname}")
-
-	clustered_df = cluster(
-		labels=labels,
-		model_id=model_id,
-		nc=nc,
-		device=device,
-		batch_size=batch_size,
-		clusters_fname=clusters_fname,
-		verbose=verbose,
-	)
-
-	# map from real rows only (exclude injected virtual hypernyms)
-	real_rows = (
-		clustered_df[~clustered_df["is_injected"]]
-		if "is_injected" in clustered_df.columns
-		else clustered_df
-	)
-	dup = real_rows["label"].duplicated()
-	assert not dup.any(), f"duplicate real label rows: {real_rows.loc[dup, 'label'].head().tolist()}"
-	canonical_map = real_rows.set_index("label")["canonical"].to_dict()
-
-	chunksize = max(1, len(labels) // (num_workers * 4))
-	if verbose:
-		print(f"[{label_source.upper()}]")
-		print(
-			f"  ├─ {len(real_rows)} real labels "
-			f"(+{len(clustered_df) - len(real_rows)} injected) "
-			f"==>> {clustered_df['cluster'].nunique()} clusters"
-		)
-		print(f"  ├─  canonical_map: {type(canonical_map)} {len(canonical_map)} entries")
-		print(
-			f"  ├─  Mapping {len(labels):,} samples → canonical labels, "
-			f"workers={num_workers}, chunksize={chunksize}"
-		)
-
-	t0 = time.time()
-	with multiprocessing.Pool(
-		processes=num_workers,
-		initializer=init_worker_canonical,
-		initargs=(canonical_map,),
-	) as pool:
-		mapped_labels = pool.map(
-			parallel_canonical_mapping,
-			labels,
-			chunksize=chunksize,
-		)
-	elapsed = time.time() - t0
-
-	if verbose:
-		print(
-			f"  ├─  Mapping Elapsed_t: {elapsed:.2f}s "
-			f"({len(labels) / elapsed:,.0f} rows/sec)"
-		)
-
-
-	missing_labels: set = set()
-	none_count = 0
-	empty_count = 0
-	lower_keys = {k.lower() for k in canonical_map}   # built once, before the loop
-	for original, mapped in zip(labels, mapped_labels):
-		if mapped is None:
-			none_count += 1
-			continue
-		if len(mapped) == 0:
-			empty_count += 1
-		if original is not None and isinstance(original, list):
-			for lbl in original:
-				if lbl not in canonical_map and lbl.lower() not in lower_keys:
-					missing_labels.add(lbl)
-
-	if verbose:
-		print(f"\n[{label_source.upper()}] Mapping summary:")
-		print(f"   Total samples   : {len(labels):,}")
-		print(f"   None (unparseable): {none_count:,}")
-		print(f"   Empty after map : {empty_count:,}")
-		print(
-			f"   Labels not in canonical map (removed as problematic): "
-			f"{len(missing_labels):,}"
-		)
-		print(f"   Canonical labels : {len(canonical_map):,}")
-		if missing_labels:
-			print(f"   Sample missing  : {list(missing_labels)[:10]}...")
-		print("-" * 100)
-
-	return mapped_labels, canonical_map
 
 def _check_json_csv_consistency(df: pd.DataFrame, json_path: str) -> list:
 	with open(json_path, encoding="utf-8") as f:

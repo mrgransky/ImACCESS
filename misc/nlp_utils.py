@@ -1664,21 +1664,33 @@ def _post_process_(
 			A candidate plural 'Xs' is ONLY rewritten to 'X' if the singular 'X' was
 			already independently extracted elsewhere in the dataset. Unattested terms
 			and protected entities ('As Pik', 'WASP', 'boss') are 100% immune from corruption.
+
 		2. Cross-Sample Casing Consensus:
 			Different models (or prompt variants) frequently output the exact same concept
 			in different casing across different images (e.g., Image A: 'locomotive',
 			Image B: 'Locomotive'). This step unifies all casing variants under the single
 			statistically dominant consensus representation across the corpus.
-		3. Unified Single-Pass Remapping:
+
+		3. Strict Total-Order Determinism (Reproducibility Guarantee):
+			All dictionary iterations and consensus resolution sorts are strictly ordered:
+				- Primary: Frequency count across the corpus.
+				- Secondary: Singular base preference (morphological base beats plural).
+				- Tertiary: Capitalization score (preserves meaningful capital letters).
+				- Quaternary: Lexicographical string comparison (ASCII total order).
+			Because no two strings share the same name, keys can never tie. The winner
+			is 100% immune to PYTHONHASHSEED, process scheduling, or input arrival order.
+
+		4. Unified Single-Pass Remapping:
 			Chains both morphological singulars and casing consensus into a single global
 			remapping table, updating all samples in `processed_batch` in one pass with
 			zero order-dependence or sequential bias.
-		4. Dynamic Acceptance Gate:
+
+		5. Dynamic Acceptance Gate:
 			Evaluates the statistical delta (relative reduction in singletons, number of
 			attested merges, total occurrence conservation). Automatically adopts the
 			harmonized batch if thresholds are met, or safely discards it if gains are
 			negligible.
-		
+
 		Harmonization Categories & Examples:
 		------------------------------------
 		A. Plural Harmonization (Requires singular to exist in dataset):
@@ -1697,30 +1709,33 @@ def _post_process_(
 					- 'torpedoes'               ──► 'torpedo'
 					- 'boxes'                   ──► 'box'
 			• Consonant + Y '-ies' -> '-y':
+					- 'antiquities'             ──► 'antiquity'
+					- 'funeral ceremonies'      ──► 'funeral ceremony'
 					- 'batteries'               ──► 'battery'
 					- 'armies'                  ──► 'army'
 					- 'factories'               ──► 'factory'
 			• Multi-Word Phrases with Plural Heads:
+					- 'Curtiss OX motors'       ──► 'Curtiss OX motor'
 					- 'anti-aircraft guns'      ──► 'anti-aircraft gun'
 					- 'fighter planes'          ──► 'fighter plane'
 					- 'quonset huts'            ──► 'quonset hut'
 					- 'passenger cars'          ──► 'passenger car'
-					- 'wooden crates'           ──► 'wooden crate'
-					- 'industrial smokestacks'  ──► 'industrial smokestack'
 			• Prepositional Phrases with Plural Head Noun:
 					- 'heroes of the war'       ──► 'hero of the war'
 					- 'prisoners of war'        ──► 'prisoner of war'
-		
-		B. Case Consensus Resolution (Majority Vote + Capitalization Tie-Breaker):
+
+		B. Case Consensus Resolution (Four-Tier Total Order):
 			• Frequency Majority Wins:
 					- 'steam locomotive' (175) vs 'Steam Locomotive' (3) ──► 'steam locomotive'
 					- 'aircraft' (49) vs 'Aircraft' (10)                 ──► 'aircraft'
-					- 'hangar' (20) vs 'Hangar' (3)                      ──► 'hangar'
-					- 'dock' (11) vs 'Dock' (2)                          ──► 'dock'
+			• Singular Base Beats Plural on Frequency Tie:
+					- 'antiquity' (1) vs 'antiquities' (1)               ──► 'antiquity'
+					- 'funeral ceremony' (1) vs 'funeral ceremonies' (1) ──► 'funeral ceremony'
 			• Capitalization Score Tie-Breaker:
-					- 'Locomotive' (63) vs 'locomotive' (58)             ──► 'Locomotive'
-					- 'Tank' (3) vs 'tank' (2)                           ──► 'Tank'
-		
+					- 'Locomotive' (63) vs 'locomotive' (63)             ──► 'Locomotive'
+			• Lexicographical String Tie-Breaker:
+					- Deterministic ASCII comparison ensures zero non-deterministic ties.
+
 		C. Protected Terms (Guaranteed NOT Touched):
 			• Plurale Tantum:
 					- 'barracks', 'scissors', 'binoculars', 'trousers', 'archives', 'headquarters'
@@ -1731,7 +1746,7 @@ def _post_process_(
 			• Unattested Plurals (No singular exists in dataset):
 					- If 'howitzers' appears, but 'howitzer' was never extracted in any sample,
 						'howitzers' is preserved as-is with zero blind guessing.
-		
+
 		Parameters:
 		-----------
 		processed_batch : List[List[str]]
@@ -1753,7 +1768,7 @@ def _post_process_(
 				Aborts adoption if occurrences drop beyond this threshold.
 		verbose : bool, default=False
 				If True, prints detailed mapping tables and comparative statistical deltas.
-		
+
 		Returns:
 		--------
 		Tuple[List[List[str]], Counter, bool]
@@ -1761,20 +1776,24 @@ def _post_process_(
 				- final_vocab: Updated global frequency Counter (or original vocab if rejected).
 				- was_adopted: True if the dynamic gate accepted Pass 2; False otherwise.
 		"""
-
 		if plurale_tantum is None:
-				plurale_tantum = set()
+			plurale_tantum = set()
 		if protected_plurals is None:
-				protected_plurals = set()
+			protected_plurals = set()
 		if not processed_batch or not vocab:
-				return processed_batch, vocab, False
-		
-		# STEP 1: Attested Plural-to-Singular Mapping (Multi-Candidate)
-		all_vocab_lower = {k.lower(): k for k in vocab.keys()}
+			return processed_batch, vocab, False
+
+		# =====================================================================
+		# STEP 1: Attested Plural-to-Singular Mapping (Deterministic Lookup)
+		# =====================================================================
+		# Build a deterministic lowercase -> surface mapping by sorting keys.
+		all_vocab_lower = {k.lower(): k for k in sorted(vocab.keys())}
 		plural_to_base_lower = {}
-		for label_lower, original_cased in all_vocab_lower.items():
+
+		# Iterate over sorted keys to guarantee deterministic candidate assignment
+		for label_lower in sorted(all_vocab_lower.keys()):
 			if (
-				label_lower not in plurale_tantum 
+				label_lower not in plurale_tantum
 				and label_lower not in protected_plurals
 			):
 				# Check all plausible morphological singulars in priority order
@@ -1783,104 +1802,135 @@ def _post_process_(
 					if singular_candidate in all_vocab_lower and singular_candidate != label_lower:
 						plural_to_base_lower[label_lower] = singular_candidate
 						break  # Found the attested singular; stop checking candidates
-		
-		# STEP 2: Case Consensus & Concept Aggregation
+
+		# =====================================================================
+		# STEP 2: Case Consensus & Concept Aggregation (Total-Order Resolution)
+		# =====================================================================
 		# Group all raw variants under their canonical base concept:
-		# e.g., 'Locomotive', 'locomotive', and 'Locomotives' all pool their counts!
+		# e.g., 'Locomotive', 'locomotive', and 'Locomotives' all pool their counts
 		canonical_clusters = defaultdict(lambda: Counter())
-		for raw_label, count in vocab.items():
-				lower_k = raw_label.lower()
-				# If it's an attested plural, route it to its singular base
-				canonical_base = plural_to_base_lower.get(lower_k, lower_k)
-				canonical_clusters[canonical_base][raw_label] += count
-		# Determine the consensus winner for each concept:
-		# Primary sort: highest frequency in corpus. Secondary: more capitalization
+		for raw_label in sorted(vocab.keys()):
+			count = vocab[raw_label]
+			lower_k = raw_label.lower()
+			# Route attested plurals to their singular base concept
+			canonical_base = plural_to_base_lower.get(lower_k, lower_k)
+			canonical_clusters[canonical_base][raw_label] += count
+
+		# Determine the consensus winner for each concept using a strict 4-tier total order:
+		# 1. Total Frequency: higher occurrence wins (e.g. 100 vs 1).
+		# 2. Singular Preference: base concept beats plural if frequencies tie (antiquity > antiquities).
+		# 3. Capitalization Score: prefer proper capitalization ('Locomotive' > 'locomotive').
+		# 4. Lexicographical String: deterministic ASCII tie-breaker prevents hash-order flips.
 		remapping_table = {}
 		plural_merge_count = 0
 		case_merge_count = 0
-		for canonical_base, variant_counts in canonical_clusters.items():
-				# Sort variants by (total_frequency, capitalization_score)
-				sorted_variants = sorted(
-						variant_counts.items(),
-						key=lambda item: (item[1], _capitalization_score(item[0])),
-						reverse=True
-				)
-				winner_cased = sorted_variants[0][0]
-				for variant, _ in sorted_variants:
-						if variant != winner_cased:
-								remapping_table[variant] = winner_cased
-								# Track merge types for diagnostics
-								if variant.lower() != winner_cased.lower():
-										plural_merge_count += 1
-								else:
-										case_merge_count += 1
+
+		for canonical_base in sorted(canonical_clusters.keys()):
+			variant_counts = canonical_clusters[canonical_base]
+
+			sorted_variants = sorted(
+				variant_counts.items(),
+				key=lambda item: (
+					item[1],                                   # 1. Frequency count (highest wins)
+					item[0].lower() == canonical_base,         # 2. Prefer singular base over plural
+					_capitalization_score(item[0]),            # 3. Prefer capitalized variant
+					item[0]                                    # 4. Total-order tie-breaker
+				),
+				reverse=True
+			)
+
+			winner_cased = sorted_variants[0][0]
+			for variant, _ in sorted_variants:
+				if variant != winner_cased:
+					remapping_table[variant] = winner_cased
+					# Track merge types for diagnostics
+					if variant.lower() != winner_cased.lower():
+						plural_merge_count += 1
+					else:
+						case_merge_count += 1
+
 		if not remapping_table:
-				if verbose:
-						print(f"\n[GLOBAL HARMONIZATION] No plural or casing variants to merge for '{col}'.")
-				return processed_batch, vocab, False
-		
+			if verbose:
+				print(f"\n[GLOBAL HARMONIZATION] No plural or casing variants to merge for '{col}'.")
+			return processed_batch, vocab, False
+
+		# =====================================================================
 		# STEP 3: Remap Batch & Calculate Candidate Vocab
+		# =====================================================================
 		candidate_batch = []
 		candidate_vocab = Counter()
+
 		for sample_labels in processed_batch:
-				if not sample_labels:
-						candidate_batch.append(sample_labels)
-						continue
-				# Remap and deduplicate within sample preserving original order
-				seen_lower = set()
-				remapped_sample = []
-				for lbl in sample_labels:
-						target = remapping_table.get(lbl, lbl)
-						if target.lower() not in seen_lower:
-								seen_lower.add(target.lower())
-								remapped_sample.append(target)
-				candidate_batch.append(remapped_sample)
-				candidate_vocab.update(remapped_sample)
-		
+			if not sample_labels:
+				candidate_batch.append(sample_labels)
+				continue
+
+			# Remap and deduplicate within sample while strictly preserving first-occurrence order
+			seen_lower = set()
+			remapped_sample = []
+			for lbl in sample_labels:
+				target = remapping_table.get(lbl, lbl)
+				if target.lower() not in seen_lower:
+					seen_lower.add(target.lower())
+					remapped_sample.append(target)
+
+			candidate_batch.append(remapped_sample)
+			candidate_vocab.update(remapped_sample)
+
+		# =====================================================================
 		# STEP 4: Statistical Delta & Dynamic Acceptance Gate
+		# =====================================================================
 		old_unique = len(vocab)
 		old_singletons = sum(1 for c in vocab.values() if c == 1)
 		old_occurrences = sum(vocab.values())
 		old_rate = (old_singletons / old_unique * 100) if old_unique > 0 else 0.0
+
 		new_unique = len(candidate_vocab)
 		new_singletons = sum(1 for c in candidate_vocab.values() if c == 1)
 		new_occurrences = sum(candidate_vocab.values())
 		new_rate = (new_singletons / new_unique * 100) if new_unique > 0 else 0.0
+
 		singleton_delta = old_singletons - new_singletons
 		rel_singleton_drop = (singleton_delta / old_singletons * 100) if old_singletons > 0 else 0.0
 		occurrence_loss = ((old_occurrences - new_occurrences) / old_occurrences * 100) if old_occurrences > 0 else 0.0
 		total_merges = len(remapping_table)
+
 		is_adopted = (
-				total_merges >= min_attested_merges
-				and rel_singleton_drop >= min_relative_singleton_drop
-				and occurrence_loss <= max_allowed_occurrence_loss
+			total_merges >= min_attested_merges
+			and rel_singleton_drop >= min_relative_singleton_drop
+			and occurrence_loss <= max_allowed_occurrence_loss
 		)
+
 		if is_adopted:
-				final_batch = candidate_batch
-				final_vocab = candidate_vocab
-				decision_msg = f"[ADOPTED] (Singletons reduced by {singleton_delta:,} / -{rel_singleton_drop:.2f}%)"
+			final_batch = candidate_batch
+			final_vocab = candidate_vocab
+			decision_msg = f"[ADOPTED] (Singletons reduced by {singleton_delta:,} / -{rel_singleton_drop:.2f}%)"
 		else:
-				final_batch = processed_batch
-				final_vocab = vocab
-				decision_msg = f"[REJECTED] (Statistical gain below threshold or guard triggered)"
-		
+			final_batch = processed_batch
+			final_vocab = vocab
+			decision_msg = f"[REJECTED] (Statistical gain below threshold or guard triggered)"
+
 		if verbose:
-				print("=" * 65)
-				print(f"📊 TWO-STEP GLOBAL HARMONIZATION ANALYSIS ({col})")
-				print(f"  ├─ min_relative_singleton_drop : {min_relative_singleton_drop}")
-				print(f"  ├─ min_attested_merges         : {min_attested_merges}")
-				print(f"  ├─ max_allowed_occurrence_loss : {max_allowed_occurrence_loss}")
-				print(f"  ├─ Attested Plural Merges      : {plural_merge_count:,}")
-				print(f"  ├─ Case Consensus Merges       : {case_merge_count:,}")
-				print(f"  ├─ Total Remapped Pairs        : {total_merges:,}")
-				print(f"  ├─ Unique Labels               : {old_unique:,} → {new_unique:,} ({new_unique - old_unique:+,})")
-				print(f"  ├─ Singletons (freq=1)         : {old_singletons:,} → {new_singletons:,} (-{singleton_delta:,})")
-				print(f"  ├─ Singleton Rate              : {old_rate:.2f}% → {new_rate:.2f}% ({new_rate - old_rate:+.2f}% pts)")
-				print(f"  ├─ Total Occurrences           : {old_occurrences:,} → {new_occurrences:,} (loss: {occurrence_loss:.2f}%)")
-				print(f"  └─ {decision_msg}")
-				print("=" * 65)
-		
+			print("=" * 65)
+			print(f"📊 TWO-STEP GLOBAL HARMONIZATION ANALYSIS ({col})")
+			print(f"  ├─ min_relative_singleton_drop : {min_relative_singleton_drop}")
+			print(f"  ├─ min_attested_merges         : {min_attested_merges}")
+			print(f"  ├─ max_allowed_occurrence_loss : {max_allowed_occurrence_loss}")
+			print(f"  ├─ Attested Plural Merges      : {plural_merge_count:,}")
+			print(f"  ├─ Case Consensus Merges       : {case_merge_count:,}")
+			print(f"  ├─ Total Remapped Pairs        : {total_merges:,}")
+			print(f"  ├─ Unique Labels               : {old_unique:,} → {new_unique:,} ({new_unique - old_unique:+,})")
+			print(f"  ├─ Singletons (freq=1)         : {old_singletons:,} → {new_singletons:,} (-{singleton_delta:,})")
+			print(f"  ├─ Singleton Rate              : {old_rate:.2f}% → {new_rate:.2f}% ({new_rate - old_rate:+.2f}% pts)")
+			print(f"  ├─ Total Occurrences           : {old_occurrences:,} → {new_occurrences:,} (loss: {occurrence_loss:.2f}%)")
+			print(f"  └─ {decision_msg}")
+			print("=" * 65)
+
 		return final_batch, final_vocab, is_adopted
+
+
+
+
 
 	processed_batch = list()
 	vocab = Counter()
@@ -2063,7 +2113,7 @@ def _post_process_(
 			if lemma_key in clean_dict_per_sample:
 				existing = clean_dict_per_sample[lemma_key]
 				# Prefer the version with MORE capitalization ('Officer Training Camp' > 'officer training camp')
-				if _capitalization_score(lemma) > _capitalization_score(existing):
+				if (_capitalization_score(lemma), lemma) > (_capitalization_score(existing), existing):
 					if verbose:
 						print(f"\t\t[REPLACED] {repr(existing)} → {repr(lemma)} (more capitals)")
 					clean_dict_per_sample[lemma_key] = lemma

@@ -66,35 +66,6 @@ from data_prep import get_multi_label_stratified_split, build_shared_eval_protoc
 # large models:
 # $ python gt_kws_multimodal.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3.5-4B" -vlm "Qwen/Qwen3.5-4B" -vlm_bs 16 -llm_bs 96 -nw 40 -v
 
-# from rapidfuzz import fuzz
-# import spacy
-
-# nlp = spacy.load("en_core_web_trf", disable=["parser", "ner"])
-
-# def normalize_label(label: str) -> str:
-# 	"""Normalize a label for comparison."""
-# 	doc = nlp(
-# 		label#.lower()
-# 	)
-# 	lemmatized = [token.lemma_ for token in doc]
-# 	return " ".join(lemmatized).strip()
-
-# def merge_similar(labels: List[str], threshold: int = 80) -> List[str]:
-# 	"""Merge labels that are fuzzy matches after normalization."""
-# 	# Normalize all labels first
-# 	normalized_labels = [normalize_label(label) for label in labels]
-# 	# normalized_labels = labels
-# 	unique_labels = list(set(normalized_labels))
-# 	merged = []
-# 	for label in unique_labels:
-# 		if not any(fuzz.ratio(label, m) > threshold for m in merged):
-# 			merged.append(label)
-
-# 	# Return the original labels (not normalized) for the merged set
-# 	# This requires mapping back to the original labels
-# 	# For simplicity, we return the normalized merged labels here
-# 	return merged
-
 def merge_labels(
 	llm_based_labels: List[List[str]], 
 	vlm_based_labels: List[List[str]], 
@@ -139,11 +110,9 @@ def merge_labels(
 			else:
 				vlm_labels = []
 		
-		# Combine and deduplicate labels for this sample
-		combined = list(set(llm_labels + vlm_labels))
-
-		# normalize + lemmatize
-		# combined = 
+		# Combine, deduplicate and sort the labels for this sample
+		# combined = list(set(llm_labels + vlm_labels))
+		combined = sorted(set(llm_labels + vlm_labels))
 
 		multimodal_labels.append(combined)
 
@@ -264,9 +233,6 @@ def get_multimodal_annotation(
 	finally:
 		# 2. Persist to disk so future pipeline runs are instantaneous
 		save_spacy_cache(cache_file)
-
-
-	# return
 
 	valid_mask = pd.Series(True, index=df.index) # default: keep all rows
 	is_full_dataset = "_chunk_" not in os.path.basename(csv_file)
@@ -493,5 +459,4 @@ def main():
 	)
 
 if __name__ == "__main__":
-	torch.multiprocessing.set_start_method('spawn', force=True)
 	main()
