@@ -335,7 +335,6 @@ def _post_process_(
 		"plot",
 		"issue",
 		"problem",
-		"tableau",
 		"sketch", 
 		"sketching", 
 		"schematic",
@@ -656,7 +655,13 @@ def _post_process_(
 		'linnaeus',
 		'douglas', 
 		'dorris',
-		'jim', 'tyler', 'Joe', 'william', 'derrick', 'baldwin', 'james', 'jameson',
+		'jim', 
+		'tyler', 
+		'Joe', 
+		'william', 
+		'baldwin', 
+		'james', 
+		'jameson',
 		'ethel',
 		'marina',
 		'christie',
@@ -2033,7 +2038,7 @@ def _post_process_(
 
 			if should_filter_label(lemma):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} Generic label")
+					print(f"\t[SKIPPED] {repr(lemma):<55} generic label")
 				continue
 
 			# only No. NNNNN ex) No. X1657 or No. 1657

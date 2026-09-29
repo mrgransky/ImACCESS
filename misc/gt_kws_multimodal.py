@@ -329,7 +329,10 @@ def get_multimodal_annotation(
 				# Print message and rows if any empty labels found
 				if empty_labels.any():
 					print(f"\n{col} {len(df[empty_labels])} rows with empty labels:")
-					print(df[empty_labels].head(50))
+					print(
+						df[empty_labels][
+							['doc_url', 'title', 'description', 'llm_canonical_labels', 'vlm_canonical_labels', 'multimodal_canonical_labels']
+						].head(50))
 
 		before_count = len(df)
 

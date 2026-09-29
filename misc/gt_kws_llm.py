@@ -54,7 +54,7 @@ Prioritize multi-word noun phrases when the caption contains meaningful adjectiv
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
 
-EXCLUDE:
+STRINGENTLY EXCLUDE:
   - Generic war terms ('World War I', 'post war era', 'Post-war', 'aftermath of World War II').
   - Quantities, counts, measurements, or numeric expressions (1 1/2 ton truck, 1 kilovolt, 7.3mm, 3 Dodge trucks).
   - Equipment identifiers, serial numbers, brands, or models.
