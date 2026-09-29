@@ -481,8 +481,7 @@ def get_clustering_artifacts(
 	if use_cache and os.path.exists(x_path):
 
 		if verbose:
-			print("\n[CACHE HIT] Embeddings found:")
-			print(f"  {x_path}")
+			print(f"\n[CACHE HIT] Embeddings found: {x_path}")
 
 		try:
 			X = np.load(x_path, mmap_mode=None)
@@ -2749,23 +2748,17 @@ def get_optimal_num_clusters(
 			print("[SINGLETONS BEFORE MERGING]")
 			for singleton_id in singleton_clusters_indices:
 				singleton_idx = np.where(labels == singleton_id)[0][0]
-				print(
-					f"  ├─ Singleton cluster {singleton_id:5d}: "
-					f"'{label_texts[singleton_idx]}'"
-				)
-
+				print(f"  ├─ Singleton cluster {singleton_id:5d} {label_texts[singleton_idx]}")
 
 	kept_singletons = [] # singletons left alone because their best cluster was too dissimilar
 	if len(singleton_clusters_indices) > 0 and merge_singletons:
 		if verbose:
 			print(f"\n[STAGE 3] MERGING {len(singleton_clusters_indices)} SINGLETON CLUSTERS")
-		
+
 		unique_labels = np.unique(labels)
-		centroids = np.array([X[labels == cid].mean(axis=0) for cid in unique_labels])
-		
+		centroids = np.array([X[labels == cid].mean(axis=0) for cid in unique_labels])		
 		new_labels = labels.copy()
 		merged_count = 0
-
 
 		for singleton_id in singleton_clusters_indices:
 			singleton_idx = np.where(labels == singleton_id)[0][0]
@@ -2777,38 +2770,39 @@ def get_optimal_num_clusters(
 			for nearest_id in sorted_ids:
 				if cluster_sizes[nearest_id] < min_cluster_size:
 					continue
+
 				# Similarity floor: if even the best cluster is a weak match, the label
 				# stays alone (it then simply names itself) instead of being forced into
 				# a cluster it does not belong to (forced merges at sim 0.60-0.65 were seen).
 				if min_singleton_merge_sim is not None and sims[nearest_id] < min_singleton_merge_sim:
 					kept_singletons.append((label_texts[singleton_idx], float(sims[nearest_id]), int(nearest_id)))
+					status = "KEPT"
 					if verbose:
 						print(
-							f"  ├─ Kept singleton cluster {singleton_id:5d} '{label_texts[singleton_idx]}' "
+							f"  ├─ [{status:7s}] singleton cluster {singleton_id:5d} {repr(label_texts[singleton_idx]):<40}"
 							f"(best sim={sims[nearest_id]:.4f} < floor {min_singleton_merge_sim:.2f})"
 						)
 					break
+
 				new_labels[singleton_idx] = nearest_id
 				merged_count += 1
+				status = "MERGED"
+
 				if verbose:
 					print(
-						f"  ├─ Merged singleton cluster {singleton_id:5d} → "
+						f"  ├─ [{status:7s}] singleton cluster {singleton_id:5d} → "
 						f"cluster {nearest_id:5d} (sim={sims[nearest_id]:.4f})"
 					)
+
 				break
+
 		unique_new = np.unique(new_labels)
 		label_map = {old: new for new, old in enumerate(unique_new)}
 		labels = np.array([label_map[l] for l in new_labels])
 		
 		if verbose:
-			print(f"  ├─ Total merged: {merged_count} singletons")
+			print(f"  ├─ Total merged: {merged_count} singleton(s)")
 			print(f"  └─ Final clusters: {len(unique_new)} (initial: {len(unique_labels)})")
-	
-
-
-
-
-
 
 	# FINAL STATISTICS
 	final_cluster_sizes = np.bincount(labels)
