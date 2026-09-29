@@ -717,18 +717,10 @@ def get_canonical_labels(
 		batch_size=batch_size,
 		device=device,
 		nc=nc,
+		merge_close_clusters_threshold=None,
 		clusters_fname=clusters_fname,
 		verbose=verbose,
 	)
-
-	if verbose:
-		print(
-			f"[{label_source}] Clustered into "
-			f"{clustered_df['cluster'].nunique()} clusters "
-			f"from {len(clustered_df)} unique labels"
-		)
-		print(clustered_df.info(verbose=verbose, memory_usage="deep"))
-		print(clustered_df.head(50))
 
 	# map from real rows only (exclude injected virtual hypernyms)
 	real_rows = (
@@ -1909,8 +1901,8 @@ def analyze_cluster_quality(
 		f"Clustering consolidated {n_samples:,} labels into {n_clusters:,} clusters "
 		f"({consolidation_impact['reduction_ratio']:.2f}x reduction, "
 		f"{consolidation_impact['reduction_percentage']:.1f}% decrease).\n"
-		f"QUALITY ASSESSMENT:\n"
-		f"  Mean intra-cluster similarity:    {global_summary['mean_intra_sim']:.4f}  (target >= 0.80)\n"
+		f"[QUALITY ASSESSMENT]\n"
+		f"  Mean intra-cluster similarity:    {global_summary['mean_intra_sim']:.4f} (target >= 0.80)\n"
 		f"  Coverage-weighted intra sim:      {global_summary['weighted_intra_sim']:.4f}\n"
 		f"  Mean canonical representativeness:{global_summary['mean_canon_rep']:.4f}  (target >= 0.85)\n"
 		f"  Clusters passing cohesion check:  {global_summary['pct_clusters_tight']*100:.1f}%\n"
@@ -3801,7 +3793,7 @@ def assign_canonical_labels(
 		verbose=verbose,
 	)
 
-	# ── Nearest-cluster diagnostics (final names, after all post-passes) ──
+	# Nearest-cluster diagnostics (final names, after all post-passes)
 	neighbor_info, neighbor_summary = _cluster_neighbor_info(
 		model.model_card_data.base_model,
 		cluster_centroids,
@@ -3812,7 +3804,7 @@ def assign_canonical_labels(
 		verbose=verbose,
 	)
 
-	# ── Write the debug JSON (final canonicals, after post-passes) ────────
+	# final canonicals, after post-passes
 	for rec in selection_records:
 		meta = cluster_canonicals[rec['cluster_id']]
 		final = meta.get('canonical_harmonized', meta['canonical'])
@@ -3984,44 +3976,47 @@ def assign_canonical_labels(
 		print(f"  Max     {np.max(total_freq_gain):.1f}x")
 		print(f"  Min     {np.min(total_freq_gain):.1f}x")
  
-		print(f"\nQUALITY ASSESSMENT:")
+		print(f"\ntrades with freq gain > 1.0")
 		excellent_trades    = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.03 and f > 10)
 		good_trades         = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.05 and f > 5)
 		questionable_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s > 0.10 or f < 2)
-		print(f"  Excellent trades (<3% sim loss, >10x freq gain): {excellent_trades:<10} ({excellent_trades/freq_changed_count*100:.1f}%)")
-		print(f"  Good trades (<5% sim loss, >5x freq gain):       {good_trades:<10} ({good_trades/freq_changed_count*100:.1f}%)")
-		print(f"  Questionable trades (>10% sim loss or <2x gain): {questionable_trades:<10} ({questionable_trades/freq_changed_count*100:.1f}%)")
+		print(f"  Excellent    (< 3% sim loss AND >10x freq gain) : {excellent_trades:<10} ({excellent_trades/freq_changed_count*100:.1f}%)")
+		print(f"  Good         (< 5% sim loss AND > 5x freq gain) : {good_trades:<10} ({good_trades/freq_changed_count*100:.1f}%)")
+		print(f"  Questionable (>10% sim loss  OR < 2x freq gain) : {questionable_trades:<10} ({questionable_trades/freq_changed_count*100:.1f}%)")
  
 		if questionable_trades > 0 and verbose:
-			print(f"\n[WARNING] {questionable_trades} questionable trades detected:")
-			print(f"\t=> Consider adjusting weighting if this is high\n")
+			print(f"\n[WARNING] {questionable_trades} questionable trades detected: (Consider adjusting weighting if this is high)\n")
 			print(f"{'Cluster':7s} {'Pure Sim Choice':<55} {'Score-Weighted Choice':<55} {'Sim Loss(%)':<15} {'Freq Gain'}")
-			print("-" * 140)
+			print("-" * 150)
 			for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True):
 				print(f"{ex['cluster_id']:7d} {ex['pure_choice'][:32]:<55} {ex['freq_choice'][:32]:<55} {ex['sim_loss']*100:<15.2f} {ex['freq_gain']:.2f}x")
  
 			high_loss_low_gain  = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] < 2]
 			high_loss_good_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] >= 2]
 			low_loss_low_gain   = [ex for ex in questionable_examples if ex['sim_loss'] <= 0.10 and ex['freq_gain'] < 2]
-			print(f"\nBREAKDOWN OF QUESTIONABLE TRADES:")
-			print(f"Type A: High loss (>10%)  + Low gain  (<2x) : {len(high_loss_low_gain):<10}{len(high_loss_low_gain)/questionable_trades:<10.4f}BAD")
-			print(f"Type B: High loss (>10%)  + Good gain (>=2x): {len(high_loss_good_gain):<10}{len(high_loss_good_gain)/questionable_trades:<10.4f}DEBATABLE")
-			print(f"Type C: Low loss  (<=10%) + Low gain  (<2x) : {len(low_loss_low_gain):<10}{len(low_loss_low_gain)/questionable_trades:<10.4f}UNNECESSARY")
+
+			print(f"\nQUESTIONABLE TRADES")
+			print(f"High loss (> 10%) + Low gain  (< 2x) : {len(high_loss_low_gain):<10}{len(high_loss_low_gain)/questionable_trades:<10.4f}BAD")
+			print(f"High loss (> 10%) + Good gain (>=2x) : {len(high_loss_good_gain):<10}{len(high_loss_good_gain)/questionable_trades:<10.4f}DEBATABLE")
+			print(f"Low loss  (<=10%) + Low gain  (< 2x) : {len(low_loss_low_gain):<10}{len(low_loss_low_gain)/questionable_trades:<10.4f}UNNECESSARY")
 		else:
 			print(f"\nAll trades are high-quality!")
  
 		avg_sim_loss_pct = np.mean(total_sim_loss) * 100
 		avg_freq_gain    = np.mean(total_freq_gain)
+
 		print(f"\nOVERALL VERDICT:")
 		if avg_sim_loss_pct < 3 and avg_freq_gain > 50:
-			print(f"  ✅ EXCELLENT: Small quality cost ({avg_sim_loss_pct:.1f}%) for huge frequency benefit ({avg_freq_gain:.0f}x)")
+			print(f"[EXCELLENT] Small quality cost ({avg_sim_loss_pct:.1f}%) for huge frequency benefit ({avg_freq_gain:.0f}x)")
 		elif avg_sim_loss_pct < 5 and avg_freq_gain > 10:
-			print(f"  ✅ GOOD: Acceptable quality cost ({avg_sim_loss_pct:.1f}%) for strong frequency benefit ({avg_freq_gain:.0f}x)")
+			print(f"[GOOD] Acceptable quality cost ({avg_sim_loss_pct:.1f}%) for strong frequency benefit ({avg_freq_gain:.0f}x)")
 		elif avg_sim_loss_pct < 8 and avg_freq_gain > 5:
-			print(f"  ⚠️  ACCEPTABLE: Moderate quality cost ({avg_sim_loss_pct:.1f}%) for moderate frequency benefit ({avg_freq_gain:.0f}x)")
+			print(f"[ACCEPTABLE] Moderate quality cost ({avg_sim_loss_pct:.1f}%) for moderate frequency benefit ({avg_freq_gain:.0f}x)")
 		else:
-			print(f"  ❌ POOR: High quality cost ({avg_sim_loss_pct:.1f}%) for limited frequency benefit ({avg_freq_gain:.0f}x)")
-			print(f"     Consider reducing frequency weight")
+			print(
+				f"[POOR] High quality cost ({avg_sim_loss_pct:.1f}%) for limited frequency benefit ({avg_freq_gain:.0f}x) "
+			  f"Consider reducing frequency weight"
+			)
 	else:
 		if verbose:
 			print("\n  ℹ️  Score-based selection made no changes (all clusters picked highest similarity)")
