@@ -4149,15 +4149,15 @@ def cluster(
 	)
 	if verbose:
 		print(f"[CACHE PATHS]")
-		print(f"  embeddings: {x_path}")
-		print(f"  linkage: {z_path}")
+		print(f"  embeddings : {x_path}")
+		print(f"  linkage    : {z_path}")
 
 	X = Z = None
 	if use_cache and os.path.exists(x_path) and os.path.exists(z_path):
 		if verbose:
 			print(f"[CACHE LOAD]")
-			print(f"  embeddings: {x_path}")
-			print(f"  linkage: {z_path}")
+			print(f"  embeddings : {x_path}")
+			print(f"  linkage    : {z_path}")
 		try:
 			X_c, Z_c = np.load(x_path), np.load(z_path)
 			if X_c.shape[0] == len(unique_labels) and Z_c.shape == (len(unique_labels) - 1, 4):
