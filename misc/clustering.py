@@ -92,12 +92,12 @@ def _cluster_neighbor_info(
 	Returns
 	-------
 	info    : {cid: {cluster_id, similarity, mutual, canonical, same_canonical, members}}
-			  describing each cluster's nearest other cluster (goes into the JSON).
+				describing each cluster's nearest other cluster (goes into the JSON).
 	summary : counts of clusters whose nearest neighbour is at least X similar,
-			  overall and restricted to neighbours with a DIFFERENT final name.
-			  High similarity + different names is exactly the 'reconnaissance
-			  aircraft' / 'reconnaissance plane' situation; same-name pairs are
-			  already handled by _resolve_shared_canonicals.
+				overall and restricted to neighbours with a DIFFERENT final name.
+				High similarity + different names is exactly the 'reconnaissance
+				aircraft' / 'reconnaissance plane' situation; same-name pairs are
+				already handled by _resolve_shared_canonicals.
 
 	If review_path is given, writes every neighbouring pair with similarity >=
 	review_min_sim and different final names, sorted by similarity, with both
@@ -193,9 +193,9 @@ def _merge_close_clusters(
 	plane', ...) can be split along its cheapest line and end up as two
 	clusters with two different names. Two clusters are merged only when
 
-	  * they are mutual nearest neighbours (each is the other's closest cluster),
-	  * their centroid cosine similarity is >= threshold, and
-	  * the merged cluster would hold at most max_merged_size labels.
+		* they are mutual nearest neighbours (each is the other's closest cluster),
+		* their centroid cosine similarity is >= threshold, and
+		* the merged cluster would hold at most max_merged_size labels.
 
 	Merged centroids are recomputed (size-weighted) and the process repeats for
 	up to max_rounds rounds. Because each round compares the RECOMPUTED centroid,
@@ -249,7 +249,7 @@ def _merge_close_clusters(
 	if verbose:
 		rounds = max((m['round'] for m in merges), default=0)
 		print(f"\n[MERGE CLOSE CLUSTERS] threshold={threshold:.3f} max_size={max_merged_size}: "
-			  f"{n_before} -> {len(members)} clusters ({len(merges)} merges, {rounds} round(s))")
+				f"{n_before} -> {len(members)} clusters ({len(merges)} merges, {rounds} round(s))")
 		for m in sorted(merges, key=lambda m: m['similarity'])[:15]:
 			print(f"  {m['similarity']:.4f}  {m['members_a'][:3]}  +  {m['members_b'][:3]}")
 		if merges:
@@ -257,8 +257,8 @@ def _merge_close_clusters(
 	if report_path:
 		with open(report_path, 'w', encoding='utf-8') as f:
 			json.dump({'threshold': threshold, 'max_merged_size': max_merged_size,
-					   'clusters_before': n_before, 'clusters_after': len(members),
-					   'merges': merges}, f, indent=2, ensure_ascii=False)
+						 'clusters_before': n_before, 'clusters_after': len(members),
+						 'merges': merges}, f, indent=2, ensure_ascii=False)
 	return new_labels
 
 def _validate_embeddings(X: np.ndarray, unique_labels: List[str]) -> None:
@@ -294,62 +294,139 @@ def _compute_linkage(X: np.ndarray, linkage_method: str, distance_metric: str, v
 			else linkage(X, method=linkage_method, metric='euclidean')
 	raise ValueError(f"Unsupported distance metric: {distance_metric}")
 
-def _cluster_cache_paths(
-	clusters_fname: str, model_id: str, dtype: Any,
-	linkage_method: str, distance_metric: str, unique_labels: List[str],
-	verbose: bool = False
+def _caching(
+	clusters_fname: str,
+	model: SentenceTransformer,
+	linkage_method: str,
+	distance_metric: str,
+	unique_labels: List[str],
+	verbose: bool = False,
 ) -> Tuple[str, str]:
-	"""
-	Cache file names for (embeddings, linkage). The key covers everything the two
-	depend on: the exact ordered label set, the model, its dtype, and the linkage
-	settings. A change in _post_process_ (different labels) therefore produces a
-	new key automatically, and stale files are simply never read.
-	"""
-	key = hashlib.sha1(
-		"\x1f".join(
-			[
-				model_id,
-				str(dtype),
-				linkage_method,
-				distance_metric,
-				*unique_labels
-			]
-		).encode("utf-8")
+
+	model_id = model.model_card_data.base_model 
+	dtype = next(model.parameters()).dtype
+
+	# ------------------------------------------------------------
+	# Canonical representation of the label set
+	# ------------------------------------------------------------
+	label_blob = "\x1f".join(unique_labels)
+	label_hash = hashlib.sha1(
+			label_blob.encode("utf-8")
 	).hexdigest()[:16]
-
-	stem = os.path.join(os.path.dirname(clusters_fname) or ".", f"cluster_cache_{key}")
-
-	x_path = stem + "_X.npy"
-	z_path = stem + "_Z.npy"
-
+	
+	# ------------------------------------------------------------
+	# Full cache key
+	# ------------------------------------------------------------
+	cache_blob = "\x1f".join(
+		[
+			model_id,
+			str(dtype),
+			linkage_method,
+			distance_metric,
+			label_blob,
+		]
+	)
+	
+	key = hashlib.sha1(
+		cache_blob.encode("utf-8")
+	).hexdigest()[:16]
+	
+	stem = os.path.join(
+		os.path.dirname(clusters_fname) or ".",
+		f"cache_{key}"
+	)
+	
+	x_path = stem + "_embeddings_X.npy"
+	z_path = stem + "_linkage_Z.npy"
+	
 	if verbose:
 		print(f"[CACHE PATHS]")
-		print(f"  ├─ {model_id}")
-		print(f"  ├─ {dtype}")
-		print(f"  ├─ {linkage_method}")
-		print(f"  ├─ {distance_metric}")
-		print(f"  ├─ {len(unique_labels)} labels")
-		print(f"  ├─ {key}")
-		print(f"  ├─ x_path exists: {os.path.exists(x_path)}")
-		print(f"  ├─ z_path exists: {os.path.exists(z_path)}")
-		print(f"  ├─ embeddings : {x_path}")
-		print(f"  └─ linkage    : {z_path}")
-
+		print(f"  ├─ model          : {model_id}")
+		print(f"  ├─ dtype          : {dtype}")
+		print(f"  ├─ linkage        : {linkage_method}")
+		print(f"  ├─ distance       : {distance_metric}")
+		print(f"  ├─ labels         : {len(unique_labels)}")
+		print(f"  ├─ label hash     : {label_hash}")
+		print(f"  ├─ cache key      : {key}")
+		print(f"  ├─ x_path exists  : {os.path.exists(x_path)}")
+		print(f"  ├─ z_path exists  : {os.path.exists(z_path)}")
+		print(f"  ├─ embeddings     : {x_path}")
+		print(f"  └─ linkage        : {z_path}")
+	
 	return x_path, z_path
 
 def _save_npy_atomic(path: str, arr: np.ndarray) -> None:
-	"""Write to a temp file and rename, so a job killed by the scheduler mid-write never leaves a corrupt cache."""
-	tmp = path[:-4] + ".tmp.npy"
-	np.save(tmp, arr)
-	os.replace(tmp, path)
+		"""
+		Atomically save a NumPy array.
 
+		The array is first written to a temporary .npy file and then
+		atomically renamed into place. This prevents partially written
+		cache files if the job is interrupted during the write.
+		"""
+		os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
 
+		tmp = path + ".tmp.npy"
 
-def _load_or_compute_clustering_artifacts(
+		try:
+				np.save(tmp, arr)
+				os.replace(tmp, path)
+
+		except Exception:
+				if os.path.exists(tmp):
+						try:
+								os.remove(tmp)
+						except OSError:
+								pass
+				raise
+
+def _save_cache_manifest(
+	x_path: str,
+	model_id: str,
+	dtype: Any,
+	linkage_method: str,
+	distance_metric: str,
+	unique_labels: List[str],
+	embedding_shape: tuple,
+	embedding_dtype: Any,
+	verbose: bool = False,
+) -> str:
+	manifest_path = x_path.replace("_embeddings_X.npy", "_manifest.json")
+	label_hash = hashlib.sha1(
+		"\x1f".join(unique_labels).encode("utf-8")
+	).hexdigest()
+	
+	manifest = {
+		"model_id": model_id,
+		"dtype": str(dtype),
+		"linkage_method": linkage_method,
+		"distance_metric": distance_metric,
+		"n_labels": len(unique_labels),
+		"label_hash": label_hash,
+		"embedding_shape": list(embedding_shape),
+		"embedding_dtype": str(embedding_dtype),
+		"created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+	}
+	if verbose:
+		print(json.dumps(manifest, indent=2))
+
+	tmp_path = manifest_path + ".tmp"
+	try:
+		with open(tmp_path, "w", encoding="utf-8") as f:
+			json.dump(manifest, f, indent=2)
+		os.replace(tmp_path, manifest_path)
+	except Exception:
+			if os.path.exists(tmp_path):
+					try:
+							os.remove(tmp_path)
+					except OSError:
+							pass
+			raise
+	return manifest_path
+
+def get_clustering_artifacts(
+	clusters_fname: str,
 	unique_labels: List[str],
 	model: SentenceTransformer,
-	x_path: str,
-	z_path: str,
 	batch_size: int,
 	linkage_method: str,
 	distance_metric: str,
@@ -363,6 +440,17 @@ def _load_or_compute_clustering_artifacts(
 	Embeddings and linkage are cached independently so that if linkage
 	computation fails after embeddings are saved, the next run can reuse X.
 	"""
+	model_id = model.model_card_data.base_model 
+	dtype = next(model.parameters()).dtype
+
+	x_path, z_path = _caching(
+		clusters_fname=clusters_fname,
+		model=model,
+		linkage_method=linkage_method,
+		distance_metric=distance_metric,
+		unique_labels=unique_labels,
+		verbose=verbose,
+	)
 
 	X = None
 	Z = None
@@ -443,15 +531,21 @@ def _load_or_compute_clustering_artifacts(
 
 		if use_cache:
 			_save_npy_atomic(x_path, X)
+			manifest_path = _save_cache_manifest(
+				x_path=x_path,
+				model_id=model_id,
+				dtype=dtype,
+				linkage_method=linkage_method,
+				distance_metric=distance_metric,
+				unique_labels=unique_labels,
+				embedding_shape=X.shape,
+				embedding_dtype=X.dtype,
+				verbose=verbose,
+			)
 
 			if verbose:
-				print(
-					f"[CACHE SAVE] embeddings saved immediately:"
-				)
-				print(
-					f"  {x_path} "
-					f"({X.nbytes / 1e6:.2f} MB)"
-				)
+				print(f"[CACHE SAVE] embeddings: {x_path}  ({X.nbytes / 1e6:.2f} MB)")
+				print(f"[CACHE SAVE] manifest: {manifest_path}")
 
 	# ============================================================
 	# STEP 2: LOAD / COMPUTE LINKAGE
@@ -528,8 +622,6 @@ def _load_or_compute_clustering_artifacts(
 				)
 
 	return X, Z
-
-
 
 def init_worker_canonical(canonical_dict):
 	global canonical_labels_global
@@ -3110,19 +3202,19 @@ def _resolve_shared_canonicals(
 	Steps per group
 	---------------
 	1. Group surface (for name-evidence only).  Case/spacing unification is
-	   owned by _harmonize_final_canonicals; this function does NOT rename.
+		 owned by _harmonize_final_canonicals; this function does NOT rename.
 	2. Primary neighbourhood by NAME EVIDENCE (not embedding closeness to
-	   the bare string).
+		 the bare string).
 	3. Anchored membership: keep only clusters within `threshold` of the
-	   primary neighbourhood's mean centroid.  No chaining.
+		 primary neighbourhood's mean centroid.  No chaining.
 
 	Demoted clusters get real_fallback (or real_runner_up) and virtual=False
 	so Step 7 does not double-inject.  If neither fallback differs from the
 	shared name, resolution is 'kept_no_alternative'.
 
 	Fields written on every cluster in a multi-cluster group:
-	  shared_resolution, shared_group_size, shared_anchor_similarity,
-	  shared_name_evidence, shared_threshold, shared_demoted_from (demoted only).
+		shared_resolution, shared_group_size, shared_anchor_similarity,
+		shared_name_evidence, shared_threshold, shared_demoted_from (demoted only).
 	"""
 	registry = _build_case_registry(original_label_counts)
 
@@ -3312,9 +3404,9 @@ def _harmonize_final_canonicals(
 	a member of its cluster, and a harmonized name often is not ('wing tip' ->
 	'wingtip'). Instead each cluster gets a display name:
 
-	  meta['canonical_harmonized']   final name (equals 'canonical' if unchanged)
-	  meta['changed_by_harmonize']   bool
-	  meta['canonical_pre_harmonize']  old name, only when changed
+		meta['canonical_harmonized']   final name (equals 'canonical' if unchanged)
+		meta['changed_by_harmonize']   bool
+		meta['canonical_pre_harmonize']  old name, only when changed
 
 	cluster() applies the display names as a string rename after
 	remove_problematic_cluster_labels(). All clusters sharing a surface are in
@@ -3323,12 +3415,12 @@ def _harmonize_final_canonicals(
 	Rules
 	-----
 	* Plural -> singular only when the singular is itself an attested canonical
-	  (compared on the spacing key, so 'icebreakers' finds 'ice breaker').
+		(compared on the spacing key, so 'icebreakers' finds 'ice breaker').
 	* Protected plurals (different words: arms, papers, grounds, ...) never map.
 	* All-caps acronyms never merge with ordinary words ('SPAR' vs 'spars',
-	  'CARE' vs 'care').
+		'CARE' vs 'care').
 	* Winner: singular form first, then a real corpus label, then corpus
-	  frequency, then total cluster size, then capitalisation, then lexicographic.
+		frequency, then total cluster size, then capitalisation, then lexicographic.
 	"""
 	HARMONIZE_PROTECTED_PLURALS = {
 		# plurale tantum
@@ -3406,8 +3498,8 @@ def _harmonize_final_canonicals(
 			size[cluster_canonicals[c]['canonical']] += int(cluster_canonicals[c].get('size', 1))
 		pool = [s for s in variants if s not in plural_of] or list(variants)   # singular first
 		winner = max(pool, key=lambda s: (s in original_label_counts,
-		                                  original_label_counts.get(s, 0),
-		                                  size[s], _cap_score(s), s))
+																			original_label_counts.get(s, 0),
+																			size[s], _cap_score(s), s))
 		stats['groups_changed'] += 1
 		for c in cids:
 			m = cluster_canonicals[c]
@@ -3919,7 +4011,7 @@ def assign_canonical_labels(
 		for rank, i in enumerate(ranking, 1):
 			rows[i]['rank'] = rank
 		candidate_records.extend(rows)
-  
+	
 		runner_up = next((i for i in ranking if i != best_idx), None)
 		margin = (
 			combined_scores[best_idx] - combined_scores[runner_up]
@@ -4224,7 +4316,7 @@ def assign_canonical_labels(
 		else:
 			print(
 				f"[POOR] High quality cost ({avg_sim_loss_pct:.1f}%) for limited frequency benefit ({avg_freq_gain:.0f}x) "
-			  f"Consider reducing frequency weight"
+				f"Consider reducing frequency weight"
 			)
 	else:
 		if verbose:
@@ -4301,6 +4393,8 @@ def cluster(
 
 	# sys.exit()
 
+
+
 	dtype = torch.float32
 	if torch.cuda.is_available():
 		dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
@@ -4345,24 +4439,15 @@ def cluster(
 	if verbose:
 		print(
 			f"[ENCODING] {len(unique_labels)} unique labels | {model.model_card_data.base_model} | "
+			f"dtype: {next(model.parameters()).dtype} "
 			f"({sum(p.numel() for p in model.parameters()):,} parameters)"
 		)
 
 	# STEP 3: LOAD / COMPUTE EMBEDDINGS + LINKAGE
-	x_path, z_path = _cluster_cache_paths(
-		clusters_fname, 
-		model_id, 
-		dtype, 
-		linkage_method, 
-		distance_metric, 
-		unique_labels,
-		verbose=verbose,
-	)
-	X, Z = _load_or_compute_clustering_artifacts(
+	X, Z = get_clustering_artifacts(
+		clusters_fname=clusters_fname,
 		unique_labels=unique_labels,
 		model=model,
-		x_path=x_path,
-		z_path=z_path,
 		batch_size=batch_size,
 		linkage_method=linkage_method,
 		distance_metric=distance_metric,
