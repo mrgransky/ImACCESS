@@ -9,7 +9,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "Industries of War - Lumber - LOGGING IN THE Oregon FORESTS. High riggers, attaching block and tackle to top of sparthree to be used for loading logs onto cars below. Spartrees are used in woods, also for high leads, i.e., cables with running pulleys for bringing logs across gullies, etc. Photographer: Aircraft Production, Oregon." -llm "Qwen/Qwen3.5-122B-A10B" -v
+# python gt_kws_llm.py -desc "William Green L President of the A.F.L., and John L. Lewis, President of the United Mine Workers. Long labor rivals, John L. Lewis right , the United Mine Workers President, and William Green, President of the A.F.L., are shown at the opening session of the Labor-Management conference. From: Beth Gore. Credit: Harris & Ewing." -llm "Qwen/Qwen3.5-122B-A10B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -48,7 +48,7 @@ with open('geographic_references.txt', 'r') as file_:
 STOPWORDS.update(geographic_references)
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
-Keywords must be concrete, semantically atomic, visually grounded and reusable across archives.
+Prominent keywords must be concrete, semantically atomic, visually grounded and reusable across archives.
 Response must be a Python list of double-quoted strings containing keywords derived strictly from the caption without any markdown, reasoning, thinking, or explanation.
 Prioritize multi-word noun phrases when the caption contains meaningful adjectives or descriptors.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
