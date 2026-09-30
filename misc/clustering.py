@@ -12,6 +12,8 @@ import hashlib
 import re
 import math
 import multiprocessing
+import packaging
+
 from sklearn.metrics import (
 	silhouette_score, 
 	davies_bouldin_score, 
@@ -52,10 +54,50 @@ cache_directory = {
 }
 
 CUSTOM_ENCODE_INSTRUCTION = (
-	"Instruct: Given a short label describing a historical photograph, "
+	"Instruct: Given a label describing a historical photograph, "
 	"retrieve labels that name the same concept\nQuery:"
 )
- 
+
+def get_model_kwargs(verbose: bool = True):
+	dtype = torch.float32
+	attention = "eager"
+	if torch.cuda.is_available():
+			dtype = (
+					torch.bfloat16
+					if torch.cuda.is_bf16_supported()
+					else torch.float32
+			)
+			major, minor = torch.cuda.get_device_capability()
+			compute_cap = major + minor / 10
+			if compute_cap >= 8.0:
+					try:
+							import flash_attn  # noqa: F401
+							attention = "flash_attention_2"
+					except ImportError:
+							if verbose:
+									print(
+											"[WARN] Flash Attention 2 not installed "
+											"(pip install flash-attn)"
+									)
+			if attention == "eager" and compute_cap >= 7.0 and packaging.version.parse(torch.__version__) >= packaging.version.parse("2.0.0"):
+					if verbose:
+							print(
+									f"[INFO] Using SDPA attention (compute {compute_cap}, "
+									f"PyTorch {torch.__version__})"
+							)
+					attention = "sdpa"
+
+	if verbose:
+		print(f"\n[MODEL KWARGS]")
+		print(f"  ├─ CUDA        : {torch.version.cuda}")
+		print(f"  ├─ PyTorch     : {torch.__version__}")
+		print(f"  ├─ compute_cap : {torch.cuda.get_device_capability()}")
+		print(f"  ├─ attention   : {attention}")
+		print(f"  └─ dtype       : {dtype}")
+		print("-"*40)
+
+	return attention, dtype
+
 def _encode_labels(
 	model,
 	texts: List[str],
@@ -340,6 +382,7 @@ def _caching(
 	linkage_method: str,
 	distance_metric: str,
 	unique_labels: List[str],
+	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
 ) -> Tuple[str, str]:
 
@@ -357,15 +400,13 @@ def _caching(
 	# ------------------------------------------------------------
 	# Full cache key
 	# ------------------------------------------------------------
-	cache_blob = "\x1f".join(
-		[
-			model_id,
-			str(dtype),
-			linkage_method,
-			distance_metric,
-			label_blob,
-		]
-	)
+	# The prompt changes every embedding, so it is part of the key. It is added ONLY when set:
+	# with encode_prompt=None the key is byte-for-byte what it was, so existing caches stay valid.
+	key_parts = [model_id, str(dtype), linkage_method, distance_metric]
+	if encode_prompt:
+		key_parts.append("PROMPT:" + encode_prompt)
+	key_parts.append(label_blob)
+	cache_blob = "\x1f".join(key_parts)
 	
 	key = hashlib.sha1(
 		cache_blob.encode("utf-8")
@@ -385,6 +426,7 @@ def _caching(
 		print(f"  ├─ dtype          : {dtype}")
 		print(f"  ├─ linkage        : {linkage_method}")
 		print(f"  ├─ distance       : {distance_metric}")
+		print(f"  ├─ encode prompt  : {encode_prompt!r}")
 		print(f"  ├─ labels         : {len(unique_labels)}")
 		print(f"  ├─ label hash     : {label_hash}")
 		print(f"  ├─ cache key      : {key}")
@@ -428,6 +470,7 @@ def _save_cache_manifest(
 	unique_labels: List[str],
 	embedding_shape: tuple,
 	embedding_dtype: Any,
+	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
 ) -> str:
 	manifest_path = x_path.replace("_embeddings_X.npy", "_manifest.json")
@@ -445,6 +488,7 @@ def _save_cache_manifest(
 		"label_hash": label_hash,
 		"embedding_shape": list(embedding_shape),
 		"embedding_dtype": str(embedding_dtype),
+		"encode_prompt": encode_prompt,
 		"created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
 	}
 	
@@ -475,6 +519,7 @@ def get_clustering_artifacts(
 	linkage_method: str,
 	distance_metric: str,
 	use_cache: bool = True,
+	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray]:
 	"""
@@ -493,6 +538,7 @@ def get_clustering_artifacts(
 		linkage_method=linkage_method,
 		distance_metric=distance_metric,
 		unique_labels=unique_labels,
+		encode_prompt=encode_prompt,
 		verbose=verbose,
 	)
 
@@ -508,7 +554,7 @@ def get_clustering_artifacts(
 	if use_cache and os.path.exists(x_path):
 
 		if verbose:
-			print(f"\n[CACHE HIT] Embeddings found: {x_path}")
+			print(f"\n[CACHE HIT] Embeddings {x_path}")
 
 		try:
 			X = np.load(x_path, mmap_mode=None)
@@ -551,14 +597,7 @@ def get_clustering_artifacts(
 
 		t0 = time.time()
 
-		X = model.encode(
-			unique_labels,
-			batch_size=batch_size,
-			show_progress_bar=False,
-			convert_to_numpy=True,
-			normalize_embeddings=True,
-			precision="float32",
-		)
+		X = _encode_labels(model, unique_labels, batch_size, encode_prompt)
 
 		_validate_embeddings(X, unique_labels)
 
@@ -577,6 +616,7 @@ def get_clustering_artifacts(
 				unique_labels=unique_labels,
 				embedding_shape=X.shape,
 				embedding_dtype=X.dtype,
+				encode_prompt=encode_prompt,
 				verbose=verbose,
 			)
 
@@ -591,7 +631,7 @@ def get_clustering_artifacts(
 	if use_cache and os.path.exists(z_path):
 
 		if verbose:
-			print(f"\n[CACHE HIT] Linkage found: {z_path}")
+			print(f"\n[CACHE HIT] Linkage {z_path}")
 
 		try:
 			Z = np.load(z_path)
@@ -837,8 +877,9 @@ def _normalize_label_case(
 	if verbose:
 		n_before = len(surface_freq)             # distinct RAW surface forms
 		n_after = len(set(winner_map.values()))  # distinct post-fold labels
-		print(f"\n[CASE NORMALISATION] {n_before:,} raw surface forms")
-		print(f"  Case-duplicate groups collapsed: {collapsed_groups:,}")
+		print(f"  ├─ {n_before:,} raw surface forms")
+		print(f"  └─ Case-duplicate groups collapsed: {collapsed_groups:,}")
+
 		if n_after < n_before:
 			print(f"  Unique labels after fold: {n_after:,} (was {n_before:,})")
 		if collapsed_groups > 0:
@@ -864,96 +905,6 @@ def _check_json_csv_consistency(df: pd.DataFrame, json_path: str) -> list:
 	)
 	
 	return mismatch
-
-def get_canonical_labels(
-	labels: List[List[str]],
-	label_source: str,
-	output_dir: str,
-	model_id: str,
-	batch_size: int,
-	device: Union[str, torch.device],
-	nc: int = None,
-	verbose: bool = False,
-) -> Tuple[List[List[str]], dict]:
-
-	if verbose:
-		print("-" * 50)
-		print("[CANONICALIZATION] Sequential Mapping")
-		print(f"  ├─ {label_source}")
-		print(f"  ├─ {model_id}")
-		print(f"  ├─ Batch size  : {batch_size}")
-		print(
-			f"  ├─ labels      : {type(labels)} {len(labels)} "
-			f"{type(labels[0])} {len(labels[0])} {labels[0]}"
-		)
-		print(f"  ├─ Output dir  : {output_dir}")
-		print(
-			f"  └─ ||Clusters||: {nc} "
-			f"{'Manually defined' if nc else '=> Adaptive Search'}"
-		)
-
-	clusters_fname = os.path.join(output_dir, f"clustering_{label_source}.csv")
-
-	clustered_df = cluster(
-		labels=labels,
-		model_id=model_id,
-		batch_size=batch_size,
-		device=device,
-		nc=nc,
-		merge_close_clusters_threshold=None,
-		clusters_fname=clusters_fname,
-		verbose=verbose,
-	)
-
-	# map from real rows only (exclude injected virtual hypernyms)
-	real_rows = (
-		clustered_df[~clustered_df["is_injected"]]
-		if "is_injected" in clustered_df.columns
-		else clustered_df
-	)
-	dup = real_rows["label"].duplicated()
-	assert not dup.any(), f"duplicate real label rows: {real_rows.loc[dup, 'label'].head().tolist()}"
-	canonical_map = real_rows.set_index("label")["canonical"].to_dict()
-
-	lower_to_canonical = {k.lower(): v for k, v in canonical_map.items()}
-
-	canonical_labels = list()
-	missing_labels = set()
-
-	for sample_labels in labels:
-		if sample_labels is None:
-			canonical_labels.append(None)
-			continue
-		
-		if not isinstance(sample_labels, list):
-			if isinstance(sample_labels, str):
-				try:
-					sample_labels = ast.literal_eval(sample_labels)
-				except (ValueError, SyntaxError):
-					canonical_labels.append(None)
-					continue
-			else:
-				canonical_labels.append(None)
-				continue
-		
-		mapped = list()
-		for label in sample_labels:
-			if label in canonical_map:
-				mapped.append(canonical_map[label])
-			elif label.lower() in lower_to_canonical:
-				mapped.append(lower_to_canonical[label.lower()])
-			else:
-				missing_labels.add(label)
-		
-		canonical_labels.append(list(dict.fromkeys(mapped)))
-
-	if verbose and missing_labels:
-		print(
-			f"[{label_source.upper()}] {len(missing_labels)} labels removed "
-			f"(not in canonical map): {list(missing_labels)[:10]}..."
-		)
-
-	return canonical_labels, canonical_map
 
 def dissolve_low_cohesion_clusters(
 		df,
@@ -2435,14 +2386,6 @@ def get_optimal_num_clusters(
 	target_singleton_ratio: float,
 	quality_vs_consolidation_weight: float,
 	min_singleton_merge_sim: Optional[float],
-	# min_cluster_size: int=2,
-	# merge_singletons: bool=True,
-	# target_intra_similarity=0.70,
-	# min_consolidation=4.0,  
-	# max_consolidation=6.0,
-	# target_singleton_ratio=0.015,
-	# quality_vs_consolidation_weight=0.6,
-	# min_singleton_merge_sim: Optional[float]=0.75,
 	verbose: bool=False,
 ):
 	num_samples = X.shape[0]
@@ -3414,6 +3357,7 @@ def assign_canonical_labels(
 	shared_threshold: float = 0.70,
 	shared_calibration_names: Optional[List[str]] = None,
 	neighbor_review_min_sim: float = 0.88,
+	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
 ) -> Dict[int, Dict]:
 	"""
@@ -3748,22 +3692,16 @@ def assign_canonical_labels(
 				print(f"Virtual: {vh_raw!r} [{vh_info['route']}] {vh_info['note']}")
 			else:
 				print(
-					f"Virtual: {virtual_hypernym!r} [{vh_info['route']}, support "
-					f"{vh_info['support']}/{cluster_size}, need {vh_info['threshold']}] "
-					f"{vh_info['note']}"
+					f"Virtual: {virtual_hypernym!r} [{vh_info['route']}, "
+					f"support {vh_info['support']}/{cluster_size}, "
+					f"need {vh_info['threshold']}] {vh_info['note']}"
 				)
  
-		candidates    = cluster_texts + ([virtual_hypernym] if virtual_hypernym else [])
+		candidates = cluster_texts + ([virtual_hypernym] if virtual_hypernym else [])
 		virtual_flags = [False] * cluster_size + ([True] if virtual_hypernym else [])
  
 		if virtual_hypernym is not None:
-			vh_emb = model.encode(
-				[virtual_hypernym],
-				batch_size=1,
-				convert_to_numpy=True,
-				normalize_embeddings=True,
-				precision='float32',
-			)[0]
+			vh_emb = _encode_labels(model, [virtual_hypernym], 1, encode_prompt)[0]
 			all_embeddings = np.vstack([cluster_embeddings, vh_emb[np.newaxis, :]])
 		else:
 			all_embeddings = cluster_embeddings
@@ -4237,10 +4175,19 @@ def cluster(
 	min_cluster_size: int = 2,
 	merge_singletons: bool = True,
 	use_cache: bool = True,
+	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
 ) -> pd.DataFrame:
 	
 	st_t = time.time()
+	if encode_prompt is not None:
+		# A prompted encoding is a different experiment: never overwrite the un-prompted outputs
+		# (CSV, canonical-selection JSON, neighbour files). Delete these 3 lines when you adopt it for good.
+		_stem, _ext = os.path.splitext(clusters_fname)
+		clusters_fname = f"{_stem}_instruction_based_prompt{_ext}"
+		if verbose:
+			print(f"[ENCODE PROMPT] {encode_prompt!r}\n[ENCODE PROMPT] outputs are written with the suffix _instr -> {clusters_fname}")
+
 	if verbose:
 		print(f"\n[AGGLOMERATIVE CLUSTERING] {len(labels)} samples")
 		print(f"  ├─ {model_id} | {device} | batch_size: {batch_size}")
@@ -4249,6 +4196,7 @@ def cluster(
 		requires_type_exchange = isinstance(labels[0], str)
 		print(f"  ├───> {type(labels[0])} requires_type_exchange? {requires_type_exchange}")
 		print(f"  ├─ merge_close_clusters_threshold: {merge_close_clusters_threshold}")
+		print(f"  ├─ encode_prompt: {encode_prompt!r}")
 		print(f"  └─ nc: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
 
 	# STEP 1: DEDUP + FLATTEN
@@ -4271,49 +4219,23 @@ def cluster(
 	# before computing unique_labels,
 	# so they are not embedded and clustered as if distinct.
 	documents = _normalize_label_case(documents, verbose=verbose)
-
-	unique_labels = sorted(set(label for doc in documents for label in doc))
-
-	if verbose:
-		print(f"Total {type(documents)} documents: {len(documents)}")
-		print(f"Unique {type(unique_labels)} labels: {len(unique_labels)}")
-		print(f"Sample unique labels: {unique_labels[:15]}")
-		print("-" * 100)
-
-	dtype = torch.float32
-	if torch.cuda.is_available():
-		dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
-
-	def _optimal_attn_impl() -> str:
-		if not torch.cuda.is_available():
-			return "eager"
-		major, minor = torch.cuda.get_device_capability()
-		compute_cap = major + minor / 10
-		if compute_cap >= 8.0:
-			try:
-				import flash_attn
-				# if verbose:
-					# print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
-				return "flash_attention_2"
-			except ImportError:
-				if verbose:
-					print(f"[WARN] Flash Attention 2 not installed (pip install flash-attn)")
-		if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
-			if verbose:
-				print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
-			return "sdpa"
-		if verbose:
-			print(f"[INFO] Using eager attention (compute {compute_cap})")
-		return "eager"
-
-	attn_impl = _optimal_attn_impl()
+	unique_labels = sorted(
+		set(
+			label 
+			for doc in documents 
+			for label in doc
+		)
+	)
 
 	if verbose:
-		print(f"[INFO] {model_id} (dtype: {dtype} attention: {attn_impl} {device})")
+		print("\n[DATASET SUMMARY]")
+		print(f"  ├─ Total documents: {len(documents)} {documents[:3]}")
+		print(f"  └─ Unique labels: {len(unique_labels)} {unique_labels[:15]}")
 
+	attention, dype = get_model_kwargs(verbose=verbose)
 	model = SentenceTransformer(
 		model_name_or_path=model_id,
-		model_kwargs={"attn_implementation": attn_impl, "dtype": dtype}, # no device_map
+		model_kwargs={"attn_implementation": attention, "dtype": dype}, # no device_map
 		trust_remote_code=True,
 		device=device, # single device
 		cache_folder=cache_directory[os.getenv('USER')],
@@ -4337,6 +4259,7 @@ def cluster(
 		linkage_method=linkage_method,
 		distance_metric=distance_metric,
 		use_cache=use_cache,
+		encode_prompt=encode_prompt,
 		verbose=verbose,
 	)
 
@@ -4362,10 +4285,9 @@ def cluster(
 		print(f"\nUsing user-defined k={best_k} for {len(unique_labels)} labels")
 		cluster_labels = fcluster(Z, best_k, criterion='maxclust') - 1
 
-
-
 	# STEP 4b: OPTIONAL MERGE OF NEAR-DUPLICATE CLUSTERS (before canonical selection)
-	# Off by default. Calibrate the threshold first from <...>_neighbor_pairs.json.
+	# Off by default. 
+	# Calibrate the threshold first from path/to/file..._neighbor_pairs.json.
 	if merge_close_clusters_threshold is not None:
 		cluster_labels = _merge_close_clusters(
 			X=X,
@@ -4378,7 +4300,6 @@ def cluster(
 		)
  
 	df = pd.DataFrame({'label': unique_labels, 'cluster': cluster_labels})
-
 
 	# STEP 5: LABEL FREQUENCY DICT
 	if verbose:
@@ -4402,7 +4323,9 @@ def cluster(
 		model=model,
 		original_label_counts=label_freq_dict,
 		debug_json_path=os.path.splitext(clusters_fname)[0] + "_canonical_selection.json",
-		shared_calibration_names=[ # detailed report
+		encode_prompt=encode_prompt,
+		# detailed report:
+		shared_calibration_names=[
 			'camera', 'suit', 'cap', 'camp', 'debris', 'building', 'hospital', # should stay together
 			'arm', 'press', 'bay', 'ward', 'tank', 'float', 'race', 'gear', 'party', # should split
 		],
@@ -4429,13 +4352,7 @@ def cluster(
 		virtual_texts.append(vh)
  
 	if virtual_rows:
-		virtual_embs = model.encode(
-			virtual_texts,
-			batch_size=batch_size,
-			convert_to_numpy=True,
-			normalize_embeddings=True,
-			precision="float32",
-		)
+		virtual_embs = _encode_labels(model, virtual_texts, batch_size, encode_prompt)
 		df = pd.concat([df, pd.DataFrame(virtual_rows)], ignore_index=True)
 		X = np.vstack([X, virtual_embs])
  
@@ -4552,3 +4469,96 @@ def cluster(
 	gc.collect()
 
 	return df
+
+def get_canonical_labels(
+	labels: List[List[str]],
+	label_source: str,
+	output_dir: str,
+	model_id: str,
+	batch_size: int,
+	device: Union[str, torch.device],
+	nc: int = None,
+	encode_prompt: Optional[str] = None,
+	verbose: bool = False,
+) -> Tuple[List[List[str]], dict]:
+
+	if verbose:
+		print("-" * 50)
+		print("[CANONICALIZATION] Sequential Mapping")
+		print(f"  ├─ {label_source}")
+		print(f"  ├─ {model_id}")
+		print(f"  ├─ Batch size  : {batch_size}")
+		print(
+			f"  ├─ labels      : {type(labels)} {len(labels)} "
+			f"{type(labels[0])} {len(labels[0])} {labels[0]}"
+		)
+		print(f"  ├─ Output dir  : {output_dir}")
+		print(
+			f"  └─ ||Clusters||: {nc} "
+			f"{'Manually defined' if nc else '=> Adaptive Search'}"
+		)
+
+	clusters_fname = os.path.join(output_dir, f"clustering_{label_source}.csv")
+
+	clustered_df = cluster(
+		labels=labels,
+		model_id=model_id,
+		batch_size=batch_size,
+		device=device,
+		nc=nc,
+		merge_close_clusters_threshold=None,
+		clusters_fname=clusters_fname,
+		encode_prompt=encode_prompt,
+		verbose=verbose,
+	)
+
+	# map from real rows only (exclude injected virtual hypernyms)
+	real_rows = (
+		clustered_df[~clustered_df["is_injected"]]
+		if "is_injected" in clustered_df.columns
+		else clustered_df
+	)
+	dup = real_rows["label"].duplicated()
+	assert not dup.any(), f"duplicate real label rows: {real_rows.loc[dup, 'label'].head().tolist()}"
+	canonical_map = real_rows.set_index("label")["canonical"].to_dict()
+
+	lower_to_canonical = {k.lower(): v for k, v in canonical_map.items()}
+
+	canonical_labels = list()
+	missing_labels = set()
+
+	for sample_labels in labels:
+		if sample_labels is None:
+			canonical_labels.append(None)
+			continue
+		
+		if not isinstance(sample_labels, list):
+			if isinstance(sample_labels, str):
+				try:
+					sample_labels = ast.literal_eval(sample_labels)
+				except (ValueError, SyntaxError):
+					canonical_labels.append(None)
+					continue
+			else:
+				canonical_labels.append(None)
+				continue
+		
+		mapped = list()
+		for label in sample_labels:
+			if label in canonical_map:
+				mapped.append(canonical_map[label])
+			elif label.lower() in lower_to_canonical:
+				mapped.append(lower_to_canonical[label.lower()])
+			else:
+				missing_labels.add(label)
+		
+		canonical_labels.append(list(dict.fromkeys(mapped)))
+
+	if verbose and missing_labels:
+		print(
+			f"[{label_source.upper()}] {len(missing_labels)} labels removed "
+			f"(not in canonical map): {list(missing_labels)[:10]}..."
+		)
+
+	return canonical_labels, canonical_map
+

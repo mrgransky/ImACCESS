@@ -359,12 +359,33 @@ def _post_process_(
 		"twentieth", "thirtieth", "hundredth",
 	}
 
+	# BASE COLORS (Safe as single words)
 	COLORS = {
 		"red", "orange", "yellow", "green", "blue", "indigo", "violet",
 		"purple", "pink", "brown", "black", "white", "gray", "grey",
-		"beige",
-		"teal", "cyan", "magenta", "crimson", "khaki",
+		"beige", "teal", "cyan", "magenta", "crimson", "khaki",
 		"turquoise", "lavender", "coral",
+		# New historical base colors
+		"drab", "slate", "ochre", "umber", "maroon",
+	}
+
+	# AMBIGUOUS COLORS (Only count as colors when mixed with other color words)
+	# This prevents filtering "sea plane", "olive tree", "neutral zone", "sky background"
+	AMBIGUOUS_COLORS = {
+		"olive", "neutral", "sea", "sky", "ocean", "gull"
+	}
+
+	# MODIFIERS (Shades and Finishes)
+	COLOR_MODIFIERS = {
+		"dark", "light", "medium", "pale", "extra", "deep", 
+		"bright", "mixed", "high",
+		"gloss", "glossy", "matte", "matt", "flat", "satin", 
+		"specular", "non-specular", "ns", "anti-searchlight"
+	}
+
+	# COLOR NOUNS (Words that describe the application of the paint)
+	COLOR_NOUNS = {
+		"paint", "finish", "scheme", "color", "colour", "shade", "tone", "overall"
 	}
 
 	IMAGE_DESCRIPTORS = {
@@ -711,7 +732,7 @@ def _post_process_(
 		r'\bflame[- ]thrower\b': 'flamethrower',
 	}
 
-	# 1. Date, Season, and Temporal Noise Patterns
+	# Date, Season, and Temporal Noise Patterns
 	# Matches: "1936", "1940s", "1930's", "November 1962", "Spring 1943", "circa 1942", "c. 1945"
 	_MONTHS_SEASONS = (
 		r'(?:january|february|march|april|may|june|july|august|september|'
@@ -727,7 +748,7 @@ def _post_process_(
 		re.IGNORECASE
 	)
 
-	# 2. Metadata, Serial Numbers, and Dimensions
+	# Metadata, Serial Numbers, and Dimensions
 	# "No. 1234", "Photo 12", "model 18", "50 feet", "100 ft", "12 mm"
 	METADATA_DIMENSION_RE = re.compile(
 		r'^(?:no\.?|number|model|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)\s*\d+$|'
@@ -735,7 +756,7 @@ def _post_process_(
 		re.IGNORECASE
 	)
 
-	# 3. High-Value Military/Aviation/Armor Designations
+	# High-Value Military/Aviation/Armor Designations
 	MILITARY_DESIGNATION_RE = re.compile(
 		r'\b(?:'
 		# 1. Interleaved military models (M4A1, M4A3E8, M32B1, A6M2, A6M5, B5N2, G4M1, H8K2, D3A1, C6N1, P1Y1, E16A1)
@@ -749,6 +770,105 @@ def _post_process_(
 		r')\b',
 		re.IGNORECASE
 	)
+
+	def is_color_descriptor(lemma: str) -> bool:
+		# ──────────────────────────────────────────────────────────────────
+		# Step 0: Normalize and tokenize
+		# ──────────────────────────────────────────────────────────────────
+		# Lowercase the entire label and split on whitespace.
+		# Example: "Dark Sea Grey" → ["dark", "sea", "grey"]
+		words = lemma.lower().split()
+		# Guard against empty strings or whitespace-only input.
+		# Without this, words[-1] would raise an IndexError.
+		if not words:
+				return False  # nothing to evaluate → keep the label
+		# ──────────────────────────────────────────────────────────────────
+		# Step 1: Single-word check
+		# ──────────────────────────────────────────────────────────────────
+		# A single word is a "pure color" only if it appears in the safe
+		# COLORS set (red, blue, black, drab, slate, …).
+		#
+		# This intentionally does NOT include AMBIGUOUS_COLORS here, because
+		# a standalone word like "sky" or "sea" is almost certainly an object,
+		# not a color.
+		#
+		#   "blue"   → in COLORS        → True  (filter)
+		#   "sky"    → NOT in COLORS    → False (keep)
+		#   "olive"  → NOT in COLORS    → False (keep)
+		if len(words) == 1:
+				return words[0] in COLORS
+		# ──────────────────────────────────────────────────────────────────
+		# Step 2: Positional disambiguation of ambiguous color words
+		# ──────────────────────────────────────────────────────────────────
+		# AMBIGUOUS_COLORS contains words that can be EITHER a color modifier
+		# OR a physical object, depending on position:
+		#
+		#   AMBIGUOUS_COLORS = {"sky", "sea", "ocean", "olive", "neutral", "gull"}
+		#
+		# English syntax rule:
+		#   • If the ambiguous word comes BEFORE the base color, it is a
+		#     color modifier:  "Sky Blue", "Sea Grey", "Olive Drab"
+		#   • If the ambiguous word comes LAST, it is the object being
+		#     described:       "blue sky", "grey sea", "green olive"
+		#
+		# We enforce this by REMOVING the last word of the phrase from the
+		# ambiguous set. If the last word is "sky", then "sky" is no longer
+		# recognized as a valid color component, so the phrase fails the
+		# "all words must be color-related" check below.
+		#
+		#   "Sky Blue"  → last word is "blue"  → "sky" stays in the set  → color
+		#   "blue sky"  → last word is "sky"   → "sky" removed from set  → object
+		effective_ambiguous = AMBIGUOUS_COLORS - {words[-1]}
+		# ──────────────────────────────────────────────────────────────────
+		# Step 3: Build the two reference sets for this phrase
+		# ──────────────────────────────────────────────────────────────────
+		# all_colors: the union of safe base colors and the positionally-
+		# validated ambiguous colors. Used to check "does this phrase
+		# contain at least one actual color?"
+		#
+		#   Example: COLORS ∪ {"sky", "sea", "olive"} (minus last word)
+		all_colors = COLORS | effective_ambiguous
+		# allowed_words: the complete vocabulary of words that may appear
+		# in a pure color descriptor. This is the superset used for the
+		# "every word must be color-related" check.
+		#
+		#   COLORS           → "red", "blue", "black", "drab", …
+		#   effective_ambig  → "sky", "sea", "olive" (positional)
+		#   COLOR_MODIFIERS  → "dark", "light", "gloss", "matte", …
+		#   COLOR_NOUNS      → "paint", "finish", "scheme", "color", …
+		allowed_words = all_colors | COLOR_MODIFIERS | COLOR_NOUNS
+		# ──────────────────────────────────────────────────────────────────
+		# Step 4: Two-condition decision
+		# ──────────────────────────────────────────────────────────────────
+		# Condition A: The phrase must contain AT LEAST ONE actual color.
+		# Without this, a phrase like "gloss finish" (all modifiers/nouns,
+		# no color) would incorrectly pass the "all words allowed" check.
+		#
+		#   "dark green"       → "green" ∈ all_colors  → True
+		#   "gloss black"      → "black" ∈ all_colors  → True
+		#   "gloss finish"     → no color present      → False (keep)
+		has_color = any(w in all_colors for w in words)
+		# Condition B: EVERY word in the phrase must belong to the allowed
+		# vocabulary. If even one word is outside (e.g. "tank", "plane",
+		# "velvet", "stars", "diamond"), the phrase describes an object,
+		# not a pure color.
+		#
+		#   "dark sea grey"    → all words allowed     → True  (filter)
+		#   "olive drab paint" → all words allowed     → True  (filter)
+		#   "blue sky"         → "sky" not allowed*    → False (keep)
+		#   "medium tank"      → "tank" not allowed    → False (keep)
+		#   "black velvet"     → "velvet" not allowed  → False (keep)
+		#
+		#   * "sky" was removed from effective_ambiguous in Step 2
+		#     because it is the last word.
+		all_valid = all(w in allowed_words for w in words)
+		# Both conditions must be satisfied simultaneously:
+		#   • There IS a color present          (has_color)
+		#   • There is NOTHING ELSE present     (all_valid)
+		#
+		# If either fails, the label is not a pure color descriptor
+		# and the function returns False (meaning: keep the label).
+		return has_color and all_valid
 
 	def should_keep_numeric_label(label: str, max_digit_ratio: float = 0.45) -> bool:
 		"""
@@ -1928,10 +2048,6 @@ def _post_process_(
 
 		return final_batch, final_vocab, is_adopted
 
-
-
-
-
 	processed_batch = list()
 	vocab = Counter()
 	for idx, labels in enumerate(labels_list):
@@ -2065,9 +2181,9 @@ def _post_process_(
 				continue
 
 			# Exclude pure color descriptors
-			if all(w.lower() in COLORS for w in lemma.split()):
+			if is_color_descriptor(lemma):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} Color descriptor")
+					print(f"\t[SKIPPED] {repr(lemma):<55} pure color descriptor")
 				continue
 
 			if any(w in HONORIFICS for w in lemma.lower().split()):

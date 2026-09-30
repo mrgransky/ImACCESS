@@ -22,7 +22,7 @@ from nlp_utils import (
 	load_spacy_cache, 
 	save_spacy_cache,
 )
-from clustering import get_canonical_labels
+from clustering import get_canonical_labels, CUSTOM_ENCODE_INSTRUCTION
 from data_prep import get_multi_label_stratified_split, build_shared_eval_protocol
 
 # LLM models:
@@ -248,6 +248,7 @@ def get_multimodal_annotation(
 			batch_size=batch_size,
 			device=device,
 			nc=nc,
+			encode_prompt=CUSTOM_ENCODE_INSTRUCTION,
 			verbose=verbose,
 		)
 		llm_canonical_labels, _ = get_canonical_labels(
@@ -258,6 +259,7 @@ def get_multimodal_annotation(
 			batch_size=batch_size,
 			device=device,
 			nc=nc,
+			encode_prompt=CUSTOM_ENCODE_INSTRUCTION,
 			verbose=False,
 		)
 		vlm_canonical_labels, _ = get_canonical_labels(
@@ -268,6 +270,7 @@ def get_multimodal_annotation(
 			batch_size=batch_size,
 			device=device,
 			nc=nc,
+			encode_prompt=CUSTOM_ENCODE_INSTRUCTION,
 			verbose=False,
 		)
 
