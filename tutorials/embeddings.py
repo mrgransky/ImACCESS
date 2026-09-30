@@ -15,7 +15,8 @@ sys.path.insert(0, MISC_DIR)
 from utils import *
 
 # Load the model
-model_id = "Qwen/Qwen3-Embedding-0.6B"
+# model_id = "Qwen/Qwen3-Embedding-0.6B" # local
+model_id = "Qwen/Qwen3-Embedding-8B" # HPC
 
 model = SentenceTransformer(
 	model_name_or_path=model_id,
