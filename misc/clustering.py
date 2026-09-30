@@ -51,6 +51,35 @@ cache_directory = {
 	"ubuntu": "/media/volume/models",
 }
 
+CUSTOM_ENCODE_INSTRUCTION = (
+	"Instruct: Given a short label describing a historical photograph, "
+	"retrieve labels that name the same concept\nQuery:"
+)
+ 
+def _encode_labels(
+	model,
+	texts: List[str],
+	batch_size: int,
+	prompt: Optional[str] = None,
+) -> np.ndarray:
+	"""
+	The single place where label text becomes a vector.
+ 
+	prompt=None keeps today's behaviour (no prompt). A string is prepended to every text
+	(sentence-transformers' `prompt=` argument). Routing all encode calls through here is what
+	guarantees that members, virtual hypernyms and injected rows share one embedding space.
+	"""
+	kw = {} if prompt is None else {"prompt": prompt}
+	return model.encode(
+		list(texts),
+		batch_size=batch_size,
+		show_progress_bar=False,
+		convert_to_numpy=True,
+		normalize_embeddings=True,
+		precision="float32",
+		**kw,
+	)
+
 def _nearest_cluster_neighbors(
 	centroids: np.ndarray, 
 	chunk: int = 2048
@@ -262,8 +291,6 @@ def _merge_close_clusters(
 						 'clusters_before': n_before, 'clusters_after': len(members),
 						 'merges': merges}, f, indent=2, ensure_ascii=False)
 	return new_labels
-
-
 
 def _validate_embeddings(X: np.ndarray, unique_labels: List[str]) -> None:
 	if np.isnan(X).any():

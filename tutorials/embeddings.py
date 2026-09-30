@@ -107,8 +107,9 @@ sys.path.insert(0, MISC_DIR)
 from utils import *
 import numpy as np
 
-# model_id = "Qwen/Qwen3-Embedding-0.6B" # local
 model_id = "Qwen/Qwen3-Embedding-8B" # HPC
+if USER == "farid":
+	model_id = "Qwen/Qwen3-Embedding-0.6B" # local
 
 # Task instruction in the same "Instruct: ...\nQuery:" format the model was trained with.
 # The text is appended directly after "Query:" (no space), exactly like the built-in "query" prompt.
@@ -116,7 +117,7 @@ model_id = "Qwen/Qwen3-Embedding-8B" # HPC
 EXPECTED_DIM = {"Qwen/Qwen3-Embedding-8B": 4096, "Qwen/Qwen3-Embedding-0.6B": 1024}
 
 CUSTOM_INSTRUCTION = (
-	"Instruct: Given a short label describing a historical photograph, "
+	"Instruct: Given a label describing a historical photograph, "
 	"retrieve labels that name the same concept\nQuery:"
 )
 
@@ -127,16 +128,20 @@ POS_PAIRS = [
 	("observation airplane", "observation plane"),
 	("outhouse", "latrine"),
 	("Bf 109", "Bf109"),
+	("Messerschmitt Bf 109", "Bf 109"),
+	("Messerschmitt Me 262", "Schwalbe"),
 	("icebreaker", "ice breaker"),
 	("sea burial", "burial at sea"),
 	("railway station", "train station"),
 	("clergyman", "clergy"),
 	("counter-attack", "counterattack"),
+	('Grey', 'Gray'),
 ]
 # Should look different (share words or spelling, different concept)
 NEG_PAIRS = [
 	("shell-shock", "shell deflector"),
 	("battle tank", "fuel tank"),
+	("armored tank", "Storage tank"),
 	("Ki-46", "Ki-61"),
 	("hospital", "hospital ship"),
 	("C-47", "C-46"),
