@@ -1679,17 +1679,6 @@ def analyze_cluster_quality(
 		Directory for CSV / JSON exports of problematic clusters.
 	verbose : bool
 		Print section-by-section progress.
-
-	Returns
-	-------
-	dict with keys:
-		'per_cluster_metrics'   — pd.DataFrame, one row per cluster
-		'global_summary'        — dict of dataset-level aggregates
-		'problematic_clusters'  — list of flagged issue dicts
-		'consolidation_impact'  — dict of reduction statistics
-		'size_distribution'     — dict of size percentiles
-		'recommendations'       — list of actionable strings
-		'summary'               — human-readable summary string
 	"""
 
 	# ── Input validation ──────────────────────────────────────────────────────
@@ -2052,7 +2041,8 @@ def analyze_cluster_quality(
 		print(f"{summary}")
 		print("-"*100)
 
-	return {
+
+	results = {
 		'global_summary':         global_summary,
 		'per_cluster_metrics':    cluster_df,
 		'problematic_clusters':   problematic_clusters,
@@ -2061,6 +2051,31 @@ def analyze_cluster_quality(
 		'recommendations':        recommendations,
 		'summary':                summary,
 	}
+
+	cluster_quality_csv = file_path.replace(".csv", "_cluster_quality_metrics.csv")
+	results["per_cluster_metrics"].to_csv(cluster_quality_csv, index=False)
+
+	if results["problematic_clusters"]:
+		if verbose:
+			print(f"[WARNING] {len(results['problematic_clusters'])} types of problematic clusters:")
+			print(json.dumps(results["problematic_clusters"], indent=2, ensure_ascii=False))
+
+		all_problematic_ids = []
+		for issue in results["problematic_clusters"]:
+			if issue["severity"] in ["HIGH", "MEDIUM"]:
+				all_problematic_ids.extend(issue["cluster_ids"])
+
+		if all_problematic_ids:
+			problematic_csv = file_path.replace(".csv", "_problematic_clusters_review.csv")
+			if verbose:
+				print(f"HIGH and MEDIUM severity clusters: {len(all_problematic_ids)} => Exporting to {problematic_csv}")
+			export_problematic_clusters(
+				labels=unique_labels_array,
+				cluster_assignments=cluster_labels,
+				canonical_labels=canonical_map,
+				problematic_cluster_ids=list(set(all_problematic_ids)),
+				output_path=problematic_csv,
+			)
 
 def generate_recommendations(
 	global_summary:         dict,
@@ -2879,10 +2894,8 @@ def remove_problematic_cluster_labels(
 		List of removed labels for reference.
 	"""
 	if verbose:
-		print("\nREMOVING PROBLEMATIC CLUSTER LABELS")
-		print(f"\tLow-cohesion threshold: {low_cohesion_threshold}")
-		print(f"\tPoor canonical threshold: {poor_canonical_threshold}")
-		print(df.shape, list(df.columns))
+		print("\nPROBLEMATIC CLUSTER LABELS")
+		print(f"[THRESHOLDS] Low-cohesion: {low_cohesion_threshold} Poor canonical: {poor_canonical_threshold}")
 		print(df.head(15))
 
 	problematic_cluster_ids = set()
@@ -2890,9 +2903,7 @@ def remove_problematic_cluster_labels(
 
 	
 	# PART 1: Identify Low-Cohesion Clusters
-	
 	low_cohesion_clusters = list()
-
 	for cluster_id in df['cluster'].unique():
 		cluster_mask   = df['cluster'] == cluster_id
 		cluster_labels = df[cluster_mask]['label'].tolist()
@@ -2918,19 +2929,14 @@ def remove_problematic_cluster_labels(
 			problematic_cluster_ids.add(cluster_id)
 			removed_labels.extend(cluster_labels)
 
-	if verbose:
-		print(f"\n[LOW COHESION] Found {len(low_cohesion_clusters)} clusters")
-		print(f"  Labels to remove: {sum(c['size'] for c in low_cohesion_clusters)}")
-		if low_cohesion_clusters:
-			print(f"  Examples:")
-			for cluster in low_cohesion_clusters[:15]:
-				print(f"    Cluster {cluster['cluster_id']}: {cluster['labels']} (sim={cluster['intra_sim']:.4f})")
+	if low_cohesion_clusters and verbose:
+		print(f"\n[LOW COHESION] Found {len(low_cohesion_clusters)} clusters")		
+		print(f"Labels to remove: {sum(c['size'] for c in low_cohesion_clusters)}")
+		for cluster in low_cohesion_clusters:
+			print(f"    Cluster {cluster['cluster_id']}: {cluster['labels']} (sim={cluster['intra_sim']:.4f})")
 
-	
 	# PART 2: Identify Poor Canonical Clusters
-	
 	poor_canonical_clusters = list()
-
 	for cluster_id in df['cluster'].unique():
 		if cluster_id in problematic_cluster_ids:
 			continue  # Already marked for removal
@@ -2953,35 +2959,32 @@ def remove_problematic_cluster_labels(
 		canonical_rep = cosine_similarity(canonical_emb, cluster_embeddings).mean()
 
 		if canonical_rep < poor_canonical_threshold:
-			poor_canonical_clusters.append({
-				'cluster_id':       cluster_id,
-				'canonical':        current_canonical,
-				'representativeness': canonical_rep,
-				'size':             cluster_size,
-				'labels':           cluster_labels,
-			})
+			poor_canonical_clusters.append(
+				{
+					'cluster_id':       cluster_id,
+					'canonical':        current_canonical,
+					'representativeness': canonical_rep,
+					'size':             cluster_size,
+					'labels':           cluster_labels,
+				}
+			)
 			problematic_cluster_ids.add(cluster_id)
 			removed_labels.extend(cluster_labels)
 
-	if verbose:
+	if poor_canonical_clusters and verbose:
 		print(f"\n[POOR CANONICAL] Found {len(poor_canonical_clusters)} clusters")
 		print(f"  Labels to remove: {sum(c['size'] for c in poor_canonical_clusters)}")
-		if poor_canonical_clusters:
-			print(f"  Examples:")
-			for cluster in poor_canonical_clusters[:5]:
-				print(f"    Cluster {cluster['cluster_id']}: {cluster['labels']} (rep={cluster['representativeness']:.4f})")
-
+		for cluster in poor_canonical_clusters:
+			print(f"    Cluster {cluster['cluster_id']}: {cluster['labels']} (rep={cluster['representativeness']:.4f})")
 	
 	# PART 3: Remove Problematic Labels
-	
 	if verbose:
 		print(f"\n[REMOVAL SUMMARY]")
-		print(f"  Total problematic clusters: {len(problematic_cluster_ids)}")
-		print(f"  Total labels to remove: {len(removed_labels)}")
-		print(f"  Percentage of labels: {len(removed_labels)/len(df)*100:.2f}%")
+		print(f"  ├─ Total problematic clusters: {len(problematic_cluster_ids)}")
+		print(f"  ├─ Total labels to remove: {len(removed_labels)} {len(removed_labels)/len(df)*100:.3f}%")
 
-	df_clean         = df[~df['cluster'].isin(problematic_cluster_ids)].copy()
-	kept_indices     = df_clean.index.tolist()
+	df_clean = df[~df['cluster'].isin(problematic_cluster_ids)].copy()
+	kept_indices = df_clean.index.tolist()
 	embeddings_clean = embeddings[kept_indices]
 
 	# Re-index cluster IDs to be contiguous
@@ -3003,11 +3006,11 @@ def remove_problematic_cluster_labels(
 
 		original_consolidation = len(df) / df['cluster'].nunique()
 		new_consolidation      = len(df_clean) / df_clean['cluster'].nunique()
-		print(f"\n  Original consolidation: {original_consolidation:.2f}x")
+		
+		print(f"  Original consolidation: {original_consolidation:.2f}x")
 		print(f"  New consolidation: {new_consolidation:.2f}x")
-		print(f"  Change: {(new_consolidation - original_consolidation):.2f}x")
-
-		print(f"\n{len(removed_labels)} problematic labels removed!")
+		print(f"  Change: {(new_consolidation - original_consolidation)}x")
+		print(f"   {len(removed_labels)} problematic labels removed!")
 		print("="*40)
 
 	return df_clean, embeddings_clean, removed_labels
@@ -4419,7 +4422,7 @@ def cluster(
 	else:
 		print("All consistent!")
 
-	results = analyze_cluster_quality(
+	analyze_cluster_quality(
 		embeddings=X_clean,
 		labels=unique_labels_array,
 		cluster_assignments=cluster_labels,
@@ -4429,44 +4432,12 @@ def cluster(
 		verbose=verbose,
 	)
 
-	cluster_quality_csv = clusters_fname.replace(".csv", "_cluster_quality_metrics.csv")
-	results["per_cluster_metrics"].to_csv(cluster_quality_csv, index=False)
-
-	if results["problematic_clusters"]:
-		if verbose:
-			print(
-				f"\n[WARNING] {len(results['problematic_clusters'])} types of "
-				f"problematic clusters detected! => Exporting for manual review"
-			)
-
-		all_problematic_ids = []
-		for issue in results["problematic_clusters"]:
-			if issue["severity"] in ["HIGH", "MEDIUM"]:
-				all_problematic_ids.extend(issue["cluster_ids"])
-
-		if all_problematic_ids:
-			problematic_csv = clusters_fname.replace(
-				".csv", "_problematic_clusters_review.csv"
-			)
-			export_problematic_clusters(
-				labels=unique_labels_array,
-				cluster_assignments=cluster_labels,
-				canonical_labels=canonical_map,
-				problematic_cluster_ids=list(set(all_problematic_ids)),
-				output_path=problematic_csv,
-			)
-
 	if verbose:
-		print("-" * 50)
-		print(f"Clustered {len(df)} labels into {df['cluster'].nunique()} clusters")
-		print(f"{df.shape} {list(df.columns)}")
-		print(df.info(verbose=verbose, memory_usage="deep"))
+		print("-" * 100)
+		print(f"[DONE] {len(df)} labels -> {df['cluster'].nunique()} clusters")
+		print(df.head(10))
 		print(f"[TOTAL CLUSTERING ELAPSED TIME] {time.time()-st_t:.2f} sec.")
-		print("-" * 50)
-
-	if torch.cuda.is_available():
-		torch.cuda.empty_cache()
-	gc.collect()
+		print("-" * 100)
 
 	return df
 
@@ -4482,6 +4453,7 @@ def get_canonical_labels(
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
 
+	clusters_fname = os.path.join(output_dir, f"clustering_{label_source}.csv")
 	if verbose:
 		print("-" * 50)
 		print("[CANONICALIZATION] Sequential Mapping")
@@ -4493,12 +4465,11 @@ def get_canonical_labels(
 			f"{type(labels[0])} {len(labels[0])} {labels[0]}"
 		)
 		print(f"  ├─ Output dir  : {output_dir}")
+		print(f"  ├─ Clusters file: {clusters_fname}")
 		print(
 			f"  └─ ||Clusters||: {nc} "
 			f"{'Manually defined' if nc else '=> Adaptive Search'}"
 		)
-
-	clusters_fname = os.path.join(output_dir, f"clustering_{label_source}.csv")
 
 	clustered_df = cluster(
 		labels=labels,
@@ -4555,10 +4526,10 @@ def get_canonical_labels(
 		canonical_labels.append(list(dict.fromkeys(mapped)))
 
 	if verbose and missing_labels:
-		print(
-			f"[{label_source.upper()}] {len(missing_labels)} labels removed "
-			f"(not in canonical map): {list(missing_labels)[:10]}..."
-		)
+		print(f"[{label_source.upper()}]")
+		print(f"  ├─ {len(missing_labels)} labels removed (not in canonical map)")
+		print(f"  └─ {list(missing_labels)}")
+		print("-"*100)
 
 	return canonical_labels, canonical_map
 

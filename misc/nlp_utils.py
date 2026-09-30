@@ -263,6 +263,7 @@ def _post_process_(
 		"stuka",
 		"wreck",
 		"frog",
+		"pomp",
 	}
 
 	PROTECTED_PLURALS = {
@@ -430,6 +431,9 @@ def _post_process_(
 	}
 
 	ALLOWED_ACRONYMS = {
+		"RATAN", # Radar and Television Aid to Navigation
+		"BOAC", # British Overseas Airways Corporation
+		"ARCH",
 		"HRPE", # Hampton Roads Port of Embarkation
 		"ICEM", # Intergovernmental Committee for European Migration
 		"UTTAS",
