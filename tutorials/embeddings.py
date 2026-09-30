@@ -20,8 +20,9 @@ model_id = "Qwen/Qwen3-Embedding-8B" # HPC
 
 model = SentenceTransformer(
 	model_name_or_path=model_id,
-	model_kwargs={"attn_implementation": "flash_attention_2", "device_map": "auto"}, # no device_map
+	model_kwargs={"attn_implementation": "flash_attention_2"}, # no device_map
 	trust_remote_code=True,
+	device="cuda:0" if torch.cuda.is_available() else "cpu",
 	cache_folder=cache_directory[os.getenv('USER')],
 	token=os.getenv("HUGGINGFACE_TOKEN"),
 	processor_kwargs={"padding_side": "left"}, # renamed from tokenizer_kwargs
