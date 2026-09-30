@@ -702,7 +702,7 @@ def parse_llm_response(
 
 	if not keywords_list: # len() == 0
 		if verbose:
-			print(f"[WARNING] Empty list extracted: {keywords_list} => skipping...")
+			print(f"[SKIPPING] Empty list extracted: {keywords_list}")
 		return None
 
 	if verbose:
