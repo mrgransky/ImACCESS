@@ -431,6 +431,7 @@ def _post_process_(
 	}
 
 	ALLOWED_ACRONYMS = {
+		"CTV", # Corpo de Truppe Volontarie !!! double check
 		"RATAN", # Radar and Television Aid to Navigation
 		"BOAC", # British Overseas Airways Corporation
 		"ARCH",
@@ -781,104 +782,23 @@ def _post_process_(
 		re.IGNORECASE
 	)
 
-	def is_color_descriptor(lemma: str) -> bool:
-		# ──────────────────────────────────────────────────────────────────
-		# Step 0: Normalize and tokenize
-		# ──────────────────────────────────────────────────────────────────
-		# Lowercase the entire label and split on whitespace.
-		# Example: "Dark Sea Grey" → ["dark", "sea", "grey"]
-		words = lemma.lower().split()
-		# Guard against empty strings or whitespace-only input.
-		# Without this, words[-1] would raise an IndexError.
-		if not words:
-				return False  # nothing to evaluate → keep the label
-		# ──────────────────────────────────────────────────────────────────
-		# Step 1: Single-word check
-		# ──────────────────────────────────────────────────────────────────
-		# A single word is a "pure color" only if it appears in the safe
-		# COLORS set (red, blue, black, drab, slate, …).
-		#
-		# This intentionally does NOT include AMBIGUOUS_COLORS here, because
-		# a standalone word like "sky" or "sea" is almost certainly an object,
-		# not a color.
-		#
-		#   "blue"   → in COLORS        → True  (filter)
-		#   "sky"    → NOT in COLORS    → False (keep)
-		#   "olive"  → NOT in COLORS    → False (keep)
-		if len(words) == 1:
-				return words[0] in COLORS
-		# ──────────────────────────────────────────────────────────────────
-		# Step 2: Positional disambiguation of ambiguous color words
-		# ──────────────────────────────────────────────────────────────────
-		# AMBIGUOUS_COLORS contains words that can be EITHER a color modifier
-		# OR a physical object, depending on position:
-		#
-		#   AMBIGUOUS_COLORS = {"sky", "sea", "ocean", "olive", "neutral", "gull"}
-		#
-		# English syntax rule:
-		#   • If the ambiguous word comes BEFORE the base color, it is a
-		#     color modifier:  "Sky Blue", "Sea Grey", "Olive Drab"
-		#   • If the ambiguous word comes LAST, it is the object being
-		#     described:       "blue sky", "grey sea", "green olive"
-		#
-		# We enforce this by REMOVING the last word of the phrase from the
-		# ambiguous set. If the last word is "sky", then "sky" is no longer
-		# recognized as a valid color component, so the phrase fails the
-		# "all words must be color-related" check below.
-		#
-		#   "Sky Blue"  → last word is "blue"  → "sky" stays in the set  → color
-		#   "blue sky"  → last word is "sky"   → "sky" removed from set  → object
-		effective_ambiguous = AMBIGUOUS_COLORS - {words[-1]}
-		# ──────────────────────────────────────────────────────────────────
-		# Step 3: Build the two reference sets for this phrase
-		# ──────────────────────────────────────────────────────────────────
-		# all_colors: the union of safe base colors and the positionally-
-		# validated ambiguous colors. Used to check "does this phrase
-		# contain at least one actual color?"
-		#
-		#   Example: COLORS ∪ {"sky", "sea", "olive"} (minus last word)
-		all_colors = COLORS | effective_ambiguous
-		# allowed_words: the complete vocabulary of words that may appear
-		# in a pure color descriptor. This is the superset used for the
-		# "every word must be color-related" check.
-		#
-		#   COLORS           → "red", "blue", "black", "drab", …
-		#   effective_ambig  → "sky", "sea", "olive" (positional)
-		#   COLOR_MODIFIERS  → "dark", "light", "gloss", "matte", …
-		#   COLOR_NOUNS      → "paint", "finish", "scheme", "color", …
-		allowed_words = all_colors | COLOR_MODIFIERS | COLOR_NOUNS
-		# ──────────────────────────────────────────────────────────────────
-		# Step 4: Two-condition decision
-		# ──────────────────────────────────────────────────────────────────
-		# Condition A: The phrase must contain AT LEAST ONE actual color.
-		# Without this, a phrase like "gloss finish" (all modifiers/nouns,
-		# no color) would incorrectly pass the "all words allowed" check.
-		#
-		#   "dark green"       → "green" ∈ all_colors  → True
-		#   "gloss black"      → "black" ∈ all_colors  → True
-		#   "gloss finish"     → no color present      → False (keep)
-		has_color = any(w in all_colors for w in words)
-		# Condition B: EVERY word in the phrase must belong to the allowed
-		# vocabulary. If even one word is outside (e.g. "tank", "plane",
-		# "velvet", "stars", "diamond"), the phrase describes an object,
-		# not a pure color.
-		#
-		#   "dark sea grey"    → all words allowed     → True  (filter)
-		#   "olive drab paint" → all words allowed     → True  (filter)
-		#   "blue sky"         → "sky" not allowed*    → False (keep)
-		#   "medium tank"      → "tank" not allowed    → False (keep)
-		#   "black velvet"     → "velvet" not allowed  → False (keep)
-		#
-		#   * "sky" was removed from effective_ambiguous in Step 2
-		#     because it is the last word.
-		all_valid = all(w in allowed_words for w in words)
-		# Both conditions must be satisfied simultaneously:
-		#   • There IS a color present          (has_color)
-		#   • There is NOTHING ELSE present     (all_valid)
-		#
-		# If either fails, the label is not a pure color descriptor
-		# and the function returns False (meaning: keep the label).
-		return has_color and all_valid
+	_ORDINAL_PATTERN = (
+		r'(?:\d{1,4}(?:st|nd|rd|th)|'
+		r'first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|'
+		r'eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|'
+		r'twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth)'
+	)
+
+	_ECHELON_PATTERN = (
+		r'(?:army|corps|div\.?|division|inf\.?|infantry|reg\.?|regt\.?|regiment|bn\.?|battalion|brig\.?|brigade|arty\.?|artillery)'
+	)
+
+	# Matches generic two-word echelons with digits OR words:
+	# "1st Div", "79th Division", "First Division", "First Battalion", "53rd Infantry", "fifth regiment", seventh army"
+	GENERIC_ECHELON_RE = re.compile(
+		rf'^{_ORDINAL_PATTERN}\s+{_ECHELON_PATTERN}$',
+		re.IGNORECASE
+	)
 
 	def should_keep_numeric_label(label: str, max_digit_ratio: float = 0.45) -> bool:
 		"""
@@ -890,26 +810,37 @@ def _post_process_(
 		"""
 		# If no digits exist, it's not a numeric label; keep it
 		if not any(c.isdigit() for c in label):
-				return True
+			return True
+		
 		# 1. Pure numbers, code strings, or punctuation with no letters ("1936", "2-8-4", "100/50") -> DROP
 		letters = [c for c in label if c.isalpha()]
 		if not letters:
 				return False
+		
 		# 2. Date expressions ("November 1962", "Spring 1943", "1940s", "circa 1944") -> DROP
 		if TEMPORAL_NOISE_RE.search(label):
 				return False
+		
 		# 3. Metadata or pure dimension markers ("No. 1234", "50 ft") -> DROP
 		if METADATA_DIMENSION_RE.search(label):
 				return False
-		# 4. Recognized military aircraft, armor, weapon, or unit pattern -> KEEP
+		
+		# 4. Discard generic numbered military echelons ──
+		# Prevents ungroundable administrative units from contaminating CLIP fine-tuning
+		if GENERIC_ECHELON_RE.match(label.strip()):
+			return False
+
+		# 5. Recognized military aircraft, armor, weapon, or unit pattern -> KEEP
 		if MILITARY_DESIGNATION_RE.search(label):
 				return True
-		# 5. Fallback: If label has lots of words but low digit ratio ("Boeing model 307 stratoliner") -> KEEP
+		
+		# 6. Fallback: If label has lots of words but low digit ratio ("Boeing model 307 stratoliner") -> KEEP
 		# But discard if digits dominate the string (> max_digit_ratio)
 		digit_count = sum(1 for c in label if c.isdigit())
 		digit_ratio = digit_count / len(label)
+		
 		if digit_ratio > max_digit_ratio:
-				return False
+			return False
 
 		return True
 
@@ -1035,6 +966,13 @@ def _post_process_(
 
 		# if all(w in IRRELEVANT_NAMES for w in words):
 		if lemma.lower() in IRRELEVANT_NAMES:
+			return True
+
+
+		# Filter generic two-word echelons (numeric OR spelled-out) ──
+		# Drops: "First Division", "First Battalion", "1st Div", "79th Division", "53rd Infantry"
+		# Keeps: "First Infantry Division", "First Infantry Brigade", "55th Infantry Brigade"
+		if GENERIC_ECHELON_RE.match(lemma.strip()):
 			return True
 
 		# Rule 2: Single-word generic terms
@@ -1440,6 +1378,105 @@ def _post_process_(
 		_SPACY_CACHE[cache_key] = result
 		_CACHE_DIRTY = True  # Flag that we have new data to save
 		return result
+
+	def is_color_descriptor(lemma: str) -> bool:
+		# ──────────────────────────────────────────────────────────────────
+		# Step 0: Normalize and tokenize
+		# ──────────────────────────────────────────────────────────────────
+		# Lowercase the entire label and split on whitespace.
+		# Example: "Dark Sea Grey" → ["dark", "sea", "grey"]
+		words = lemma.lower().split()
+		# Guard against empty strings or whitespace-only input.
+		# Without this, words[-1] would raise an IndexError.
+		if not words:
+				return False  # nothing to evaluate → keep the label
+		# ──────────────────────────────────────────────────────────────────
+		# Step 1: Single-word check
+		# ──────────────────────────────────────────────────────────────────
+		# A single word is a "pure color" only if it appears in the safe
+		# COLORS set (red, blue, black, drab, slate, …).
+		#
+		# This intentionally does NOT include AMBIGUOUS_COLORS here, because
+		# a standalone word like "sky" or "sea" is almost certainly an object,
+		# not a color.
+		#
+		#   "blue"   → in COLORS        → True  (filter)
+		#   "sky"    → NOT in COLORS    → False (keep)
+		#   "olive"  → NOT in COLORS    → False (keep)
+		if len(words) == 1:
+				return words[0] in COLORS
+		# ──────────────────────────────────────────────────────────────────
+		# Step 2: Positional disambiguation of ambiguous color words
+		# ──────────────────────────────────────────────────────────────────
+		# AMBIGUOUS_COLORS contains words that can be EITHER a color modifier
+		# OR a physical object, depending on position:
+		#
+		#   AMBIGUOUS_COLORS = {"sky", "sea", "ocean", "olive", "neutral", "gull"}
+		#
+		# English syntax rule:
+		#   • If the ambiguous word comes BEFORE the base color, it is a
+		#     color modifier:  "Sky Blue", "Sea Grey", "Olive Drab"
+		#   • If the ambiguous word comes LAST, it is the object being
+		#     described:       "blue sky", "grey sea", "green olive"
+		#
+		# We enforce this by REMOVING the last word of the phrase from the
+		# ambiguous set. If the last word is "sky", then "sky" is no longer
+		# recognized as a valid color component, so the phrase fails the
+		# "all words must be color-related" check below.
+		#
+		#   "Sky Blue"  → last word is "blue"  → "sky" stays in the set  → color
+		#   "blue sky"  → last word is "sky"   → "sky" removed from set  → object
+		effective_ambiguous = AMBIGUOUS_COLORS - {words[-1]}
+		# ──────────────────────────────────────────────────────────────────
+		# Step 3: Build the two reference sets for this phrase
+		# ──────────────────────────────────────────────────────────────────
+		# all_colors: the union of safe base colors and the positionally-
+		# validated ambiguous colors. Used to check "does this phrase
+		# contain at least one actual color?"
+		#
+		#   Example: COLORS ∪ {"sky", "sea", "olive"} (minus last word)
+		all_colors = COLORS | effective_ambiguous
+		# allowed_words: the complete vocabulary of words that may appear
+		# in a pure color descriptor. This is the superset used for the
+		# "every word must be color-related" check.
+		#
+		#   COLORS           → "red", "blue", "black", "drab", …
+		#   effective_ambig  → "sky", "sea", "olive" (positional)
+		#   COLOR_MODIFIERS  → "dark", "light", "gloss", "matte", …
+		#   COLOR_NOUNS      → "paint", "finish", "scheme", "color", …
+		allowed_words = all_colors | COLOR_MODIFIERS | COLOR_NOUNS
+		# ──────────────────────────────────────────────────────────────────
+		# Step 4: Two-condition decision
+		# ──────────────────────────────────────────────────────────────────
+		# Condition A: The phrase must contain AT LEAST ONE actual color.
+		# Without this, a phrase like "gloss finish" (all modifiers/nouns,
+		# no color) would incorrectly pass the "all words allowed" check.
+		#
+		#   "dark green"       → "green" ∈ all_colors  → True
+		#   "gloss black"      → "black" ∈ all_colors  → True
+		#   "gloss finish"     → no color present      → False (keep)
+		has_color = any(w in all_colors for w in words)
+		# Condition B: EVERY word in the phrase must belong to the allowed
+		# vocabulary. If even one word is outside (e.g. "tank", "plane",
+		# "velvet", "stars", "diamond"), the phrase describes an object,
+		# not a pure color.
+		#
+		#   "dark sea grey"    → all words allowed     → True  (filter)
+		#   "olive drab paint" → all words allowed     → True  (filter)
+		#   "blue sky"         → "sky" not allowed*    → False (keep)
+		#   "medium tank"      → "tank" not allowed    → False (keep)
+		#   "black velvet"     → "velvet" not allowed  → False (keep)
+		#
+		#   * "sky" was removed from effective_ambiguous in Step 2
+		#     because it is the last word.
+		all_valid = all(w in allowed_words for w in words)
+		# Both conditions must be satisfied simultaneously:
+		#   • There IS a color present          (has_color)
+		#   • There is NOTHING ELSE present     (all_valid)
+		#
+		# If either fails, the label is not a pure color descriptor
+		# and the function returns False (meaning: keep the label).
+		return has_color and all_valid
 
 	def is_stopword(phrase: str, verbose: bool = False) -> bool:
 		phrase_lower = phrase.lower()
