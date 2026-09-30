@@ -261,6 +261,8 @@ def _post_process_(
 		"runaway",
 		"snail",
 		"stuka",
+		"wreck",
+		"frog",
 	}
 
 	PROTECTED_PLURALS = {
@@ -428,6 +430,10 @@ def _post_process_(
 	}
 
 	ALLOWED_ACRONYMS = {
+		"HRPE", # Hampton Roads Port of Embarkation
+		"ICEM", # Intergovernmental Committee for European Migration
+		"UTTAS",
+		"BLDG",
 		"USOMC",
 		"DAF",
 		"SNJ",
@@ -2489,6 +2495,10 @@ def basic_clean(txt: str):
 		r'The following information was provided by digitizing partner Fold3:',
 		r'It was subsequently published in conjunction with an article.',
 		r'Original photograph is in a photo album of inaugural events.',
+		r'Original photograph is in oversize file.',
+		r'Original photo is in oversize file.',
+		r'Original photograph is filed in the oversize file.',
+		r'Color matted photo showing ',
 		r'Type: C-N \(Color Negative\) C-P \(Color Print\) ',
 		r'Picture documentation (small picture slideshow) about ',
 		r'Misc. shots of ',
