@@ -617,11 +617,7 @@ def get_clustering_artifacts(
 			_save_npy_atomic(z_path, Z)
 
 			if verbose:
-				print("[CACHE SAVE] linkage saved:")
-				print(
-					f"  {z_path} "
-					f"({Z.nbytes / 1e6:.2f} MB)"
-				)
+				print(f"[CACHE SAVE] linkage {z_path} ({Z.nbytes / 1e6:.2f} MB)")
 
 	return X, Z
 
@@ -2404,14 +2400,22 @@ def get_optimal_num_clusters(
 	X,
 	linkage_matrix,
 	label_texts,
-	min_cluster_size: int=2,
-	merge_singletons: bool=True,
-	target_intra_similarity=0.70,
-	min_consolidation=4.0,  
-	max_consolidation=6.0,
-	target_singleton_ratio=0.015,
-	quality_vs_consolidation_weight=0.6,
-	min_singleton_merge_sim: Optional[float]=0.75,
+	min_cluster_size: int,
+	merge_singletons: bool,
+	target_intra_similarity: float,
+	min_consolidation: float,
+	max_consolidation: float,
+	target_singleton_ratio: float,
+	quality_vs_consolidation_weight: float,
+	min_singleton_merge_sim: Optional[float],
+	# min_cluster_size: int=2,
+	# merge_singletons: bool=True,
+	# target_intra_similarity=0.70,
+	# min_consolidation=4.0,  
+	# max_consolidation=6.0,
+	# target_singleton_ratio=0.015,
+	# quality_vs_consolidation_weight=0.6,
+	# min_singleton_merge_sim: Optional[float]=0.75,
 	verbose: bool=False,
 ):
 	num_samples = X.shape[0]
@@ -2424,8 +2428,8 @@ def get_optimal_num_clusters(
 		print(f"   ├─ Required and valid clusters range     : {num_samples//max_consolidation} ≤ k ≤ {num_samples//min_consolidation}")
 		print(f"   ├─ Target singleton ratio                : {target_singleton_ratio}")
 		print(f"   ├─ Quality weight                        : {quality_vs_consolidation_weight*100:.0f}%")
-		print(f"   ├─ Embeddings                            : {type(X)} {X.shape} {X.dtype}")
-		print(f"   └─ Linkage matrix                        : {type(linkage_matrix)} {linkage_matrix.shape}")
+		print(f"   ├─ Embeddings (X)                        : {type(X)} {X.shape} {X.dtype}")
+		print(f"   └─ Linkage (Z)                           : {type(linkage_matrix)} {linkage_matrix.shape}")
 	
 	valid_k_min = int(num_samples // max_consolidation)
 	valid_k_max = int(num_samples // min_consolidation)
@@ -2748,7 +2752,7 @@ def get_optimal_num_clusters(
 			print("[SINGLETONS BEFORE MERGING]")
 			for singleton_id in singleton_clusters_indices:
 				singleton_idx = np.where(labels == singleton_id)[0][0]
-				print(f"  ├─ Singleton cluster {singleton_id:5d} {label_texts[singleton_idx]}")
+				print(f"  ├─ {singleton_id:5d} {label_texts[singleton_idx]}")
 
 	kept_singletons = [] # singletons left alone because their best cluster was too dissimilar
 	if len(singleton_clusters_indices) > 0 and merge_singletons:
@@ -2779,7 +2783,7 @@ def get_optimal_num_clusters(
 					status = "KEPT"
 					if verbose:
 						print(
-							f"  ├─ [{status:7s}] singleton cluster {singleton_id:5d} {repr(label_texts[singleton_idx]):<40}"
+							f"  ├─ [{status:7s}] singleton cluster {singleton_id:5d} {repr(label_texts[singleton_idx]):<65}"
 							f"(best sim={sims[nearest_id]:.4f} < floor {min_singleton_merge_sim:.2f})"
 						)
 					break
@@ -4197,11 +4201,14 @@ def cluster(
 	nc: Optional[int]=None,
 	linkage_method: str="ward",
 	distance_metric: str="euclidean",
+	target_intra_similarity: float = 0.69,
 	min_consolidation: float = 3.8,
 	max_consolidation: float = 5.0,
 	min_singleton_merge_sim: Optional[float] = 0.75,
 	merge_close_clusters_threshold: Optional[float] = None,
 	merge_max_size: int = 30,
+	min_cluster_size: int = 2,
+	merge_singletons: bool = True,
 	use_cache: bool = True,
 	verbose: bool = False,
 ) -> pd.DataFrame:
@@ -4245,10 +4252,6 @@ def cluster(
 		print(f"Unique {type(unique_labels)} labels: {len(unique_labels)}")
 		print(f"Sample unique labels: {unique_labels[:15]}")
 		print("-" * 100)
-
-	# sys.exit()
-
-
 
 	dtype = torch.float32
 	if torch.cuda.is_available():
@@ -4316,11 +4319,13 @@ def cluster(
 			X=X,
 			linkage_matrix=Z,
 			label_texts=unique_labels,
+			target_intra_similarity=target_intra_similarity,
 			min_consolidation=min_consolidation,
 			max_consolidation=max_consolidation,
 			target_singleton_ratio=0.015,
 			quality_vs_consolidation_weight=0.5,
-			merge_singletons=True,
+			merge_singletons=merge_singletons,
+			min_cluster_size=min_cluster_size,
 			min_singleton_merge_sim=min_singleton_merge_sim,
 			verbose=verbose,
 		)
