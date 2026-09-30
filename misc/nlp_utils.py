@@ -2498,7 +2498,6 @@ def basic_clean(txt: str):
 		r'Original photograph is in oversize file.',
 		r'Original photo is in oversize file.',
 		r'Original photograph is filed in the oversize file.',
-		r'Color matted photo showing ',
 		r'Type: C-N \(Color Negative\) C-P \(Color Print\) ',
 		r'Picture documentation (small picture slideshow) about ',
 		r'Misc. shots of ',
@@ -2653,6 +2652,7 @@ def basic_clean(txt: str):
 		r'Pix made about \d+', # Pix made about 1945
 		r'written in pencil \w+[\s-]\d+', # Written in pencil D 61, Written in pencil 38-22
 		# r'(?i)\b\d{1,2}\s+(?:Jan(?:uary|.)?|Feb(?:ruary|.)?|Mar(?:ch|.)?|Apr(?:il|.)?|May|Jun(?:e|.)?|Jul(?:y|.)?|Aug(?:ust|.)?|Sep(?:tember|.)?|Oct(?:ober|.)?|Nov(?:ember|.)?|Dec(?:ember|.)?)\s+\d{4}\b', # 15 November 1945
+		r'(?:^|["\s]|\.\s)(?!This|That)[A-Z]\w+\s+\w+\s+photo showing', # "John Smith photo showing", "This striking photo showing", "This is a photo showing", "Color matted photo showing", "An oversized photo showing"
 	]
 
 	for pattern in metadata_patterns:

@@ -1060,7 +1060,6 @@ curve
 graf
 schedule
 environment
-space
 furiou
 action
 imagery
@@ -1108,9 +1107,12 @@ damung
 decca air lines
 luoye
 photograph
+photo
+picture
+file
+oversized
+oversize
 framed
-black
-white
 sparthree
 hellograph
 list
