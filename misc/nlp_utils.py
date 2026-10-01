@@ -783,7 +783,8 @@ def _post_process_(
 	)
 
 	_ORDINAL_PATTERN = (
-		r'(?:\d{1,4}(?:st|nd|rd|th)|'
+		# Added '?' after (?:st|nd|rd|th) to catch bare numbers like "109 Infantry" or "27 Division"
+		r'(?:\d{1,4}(?:st|nd|rd|th)?|'
 		r'first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|'
 		r'eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|'
 		r'twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth)'
@@ -793,8 +794,8 @@ def _post_process_(
 		r'(?:army|corps|div\.?|division|inf\.?|infantry|reg\.?|regt\.?|regiment|bn\.?|battalion|brig\.?|brigade|arty\.?|artillery)'
 	)
 
-	# Matches generic two-word echelons with digits OR words:
-	# "1st Div", "79th Division", "First Division", "First Battalion", "53rd Infantry", "fifth regiment", seventh army"
+	# Matches generic two-word echelons with digits, ordinals, OR words:
+	# "1st Div", "109 Infantry", "79th Division", "First Division", "53rd Infantry", "Seventh Army"
 	GENERIC_ECHELON_RE = re.compile(
 		rf'^{_ORDINAL_PATTERN}\s+{_ECHELON_PATTERN}$',
 		re.IGNORECASE
