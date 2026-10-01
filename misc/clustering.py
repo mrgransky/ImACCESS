@@ -4235,10 +4235,10 @@ def cluster(
 		print(f"  ├─ Total documents: {len(documents)} {documents[:3]}")
 		print(f"  └─ Unique labels: {len(unique_labels)} {unique_labels[:15]}")
 
-	attention, dype = get_model_kwargs(verbose=verbose)
+	attention, dtype = get_model_kwargs(verbose=verbose)
 	model = SentenceTransformer(
 		model_name_or_path=model_id,
-		model_kwargs={"attn_implementation": attention, "dtype": dype}, # no device_map
+		model_kwargs={"attn_implementation": attention, "dtype": dtype}, # no device_map
 		trust_remote_code=True,
 		device=device, # single device
 		cache_folder=cache_directory[os.getenv('USER')],

@@ -193,7 +193,18 @@ def inspect_prompts(model):
 	print("=" * 100)
 	print("1. PROMPT INSPECTION")
 	print("=" * 100)
-	dim = model.get_sentence_embedding_dimension() if hasattr(model, "get_sentence_embedding_dimension") else "?"
+	if hasattr(model, "get_sentence_embedding_dimension"):
+		dim = model.get_sentence_embedding_dimension()
+	elif hasattr(model, "get_embedding_dimension"):
+		dim = model.get_embedding_dimension()
+	else:
+		dim = None
+	# dim = (
+	# 	model.get_sentence_embedding_dimension() 
+	# 	if hasattr(model, "get_sentence_embedding_dimension") 
+	# 	else "?"
+	# )
+	model_id = model.model_card_data.base_model 
 	print(f"encoder: {type(model).__name__} | model_id: {model_id} | embedding dim: {dim}")
 
 	print(f"default_prompt_name: {model.default_prompt_name}")
