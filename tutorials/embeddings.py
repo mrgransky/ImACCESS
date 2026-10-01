@@ -172,18 +172,95 @@ NEG_PAIRS = [
 	('pikes', 'Pik As'),
 ]
 
+def encode(
+    model,
+    texts,
+    prompt=None,
+    prompt_name=None,
+    normalize=True,
+):
+    """
+    Encode texts into float32 NumPy embeddings.
 
-def encode(model, texts, prompt=None, prompt_name=None):
-	"""L2-normalised float32 embeddings. prompt=None -> no prompt (what clustering.py does today)."""
-	kw = {}
-	if prompt is not None:
-		kw["prompt"] = prompt
-	if prompt_name is not None:
-		kw["prompt_name"] = prompt_name
-	return np.asarray(
-		model.encode(list(texts), normalize_embeddings=True, convert_to_numpy=True, **kw),
-		dtype=np.float32,
-	)
+    Parameters
+    ----------
+    model : SentenceTransformer
+        SentenceTransformer model.
+    texts : iterable[str]
+        Texts to encode.
+    prompt : str, optional
+        Explicit prompt to use.
+    prompt_name : str, optional
+        Name of a prompt defined by the model.
+    normalize : bool, default=True
+        Whether the final embeddings should be L2-normalized.
+
+        If the model already contains a SentenceTransformers Normalize
+        module, SentenceTransformer's encode(normalize_embeddings=True)
+        is not requested because normalization is already performed by
+        the model itself.
+
+    Returns
+    -------
+    np.ndarray
+        Float32 embeddings, shape (n_texts, embedding_dim).
+    """
+    # ------------------------------------------------------------------
+    # Resolve the Normalize class once, across sentence-transformers
+    # versions (>=6.0 moved it to sentence_transformer.modules).
+    # ------------------------------------------------------------------
+    try:
+        # sentence-transformers >= 6.0
+        from sentence_transformers.sentence_transformer.modules import Normalize
+    except ImportError:
+        # sentence-transformers < 6.0
+        from sentence_transformers.models import Normalize
+
+    def _has_internal_normalize(model) -> bool:
+        """
+        Return True if the SentenceTransformer pipeline already contains
+        a Normalize module.
+
+        Recursively inspects the full module hierarchy, so it also works
+        when Normalize is nested inside another module/container.
+        """
+        return any(isinstance(module, Normalize) for module in model.modules())
+
+    # ------------------------------------------------------------------
+    # Build encode() kwargs
+    # ------------------------------------------------------------------
+    kwargs = {"convert_to_numpy": True}
+
+    # Only ask SentenceTransformer.encode() to normalize when the model
+    # itself does not already contain a Normalize module.
+    if normalize and not _has_internal_normalize(model):
+        kwargs["normalize_embeddings"] = True
+
+    # Preserve explicit prompt handling.
+    if prompt is not None:
+        kwargs["prompt"] = prompt
+
+    if prompt_name is not None:
+        kwargs["prompt_name"] = prompt_name
+
+    # ------------------------------------------------------------------
+    # Encode and return as float32 NumPy array
+    # ------------------------------------------------------------------
+    embeddings = model.encode(list(texts), **kwargs)
+
+    return np.asarray(embeddings, dtype=np.float32)
+
+# def encode(model, texts, prompt=None, prompt_name=None):
+# 	"""L2-normalised float32 embeddings. prompt=None -> no prompt (what clustering.py does today)."""
+# 	kw = {}
+# 	if prompt is not None:
+# 		kw["prompt"] = prompt
+# 	if prompt_name is not None:
+# 		kw["prompt_name"] = prompt_name
+# 	return np.asarray(
+# 		model.encode(list(texts), normalize_embeddings=True, convert_to_numpy=True, **kw),
+# 		dtype=np.float32,
+# 	)
 
 def cos(a, b) -> float:
 	return float(np.dot(a, b))  # embeddings are L2-normalised
