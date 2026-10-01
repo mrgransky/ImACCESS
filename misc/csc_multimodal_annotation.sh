@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --account=project_2014707
+#SBATCH --account=project_2009043
 #SBATCH --job-name=mm_annot
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a.out
 #SBATCH --mail-user=farid.alijani@gmail.com
@@ -8,10 +8,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=264G
-#SBATCH --partition=gpularge
+#SBATCH --mem=224G
+#SBATCH --partition=gpumedium
 #SBATCH --gres=gpu:gh200:1
-#SBATCH --time=01-12:00:00
+#SBATCH --time=00-12:00:00
 #SBATCH --array=0
 
 set -euo pipefail
