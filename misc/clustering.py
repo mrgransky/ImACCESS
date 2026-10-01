@@ -118,30 +118,6 @@ def get_model_kwargs(verbose: bool = True):
 
 	return attention, dtype
 
-# def _encode_(
-# 	model,
-# 	texts: List[str],
-# 	batch_size: int,
-# 	prompt: Optional[str] = None,
-# ) -> np.ndarray:
-# 	"""
-# 	The single place where label text becomes a vector.
- 
-# 	prompt=None keeps today's behaviour (no prompt). A string is prepended to every text
-# 	(sentence-transformers' `prompt=` argument). Routing all encode calls through here is what
-# 	guarantees that members, virtual hypernyms and injected rows share one embedding space.
-# 	"""
-# 	kw = {} if prompt is None else {"prompt": prompt}
-# 	return model.encode(
-# 		list(texts),
-# 		batch_size=batch_size,
-# 		show_progress_bar=False,
-# 		convert_to_numpy=True,
-# 		normalize_embeddings=True,
-# 		precision="float32",
-# 		**kw,
-# 	)
-
 def _encode_(
 	model,
 	texts: List[str],
@@ -2984,8 +2960,8 @@ def remove_problematic_cluster_labels(
 	if low_cohesion_clusters and verbose:
 		print(f"\n[LOW COHESION] Found {len(low_cohesion_clusters)} clusters")		
 		print(f"Labels to remove: {sum(c['size'] for c in low_cohesion_clusters)}")
-		for cluster in low_cohesion_clusters:
-			print(f"    Cluster {cluster['cluster_id']}: {cluster['labels']} (sim={cluster['intra_sim']:.4f})")
+		for i, cluster in enumerate(low_cohesion_clusters):
+			print(f"{i+1:3d}/{len(low_cohesion_clusters)} Cluster {cluster['cluster_id']:6d} (sim: {cluster['intra_sim']:.4f}) {cluster['labels']}")
 
 	# PART 2: Identify Poor Canonical Clusters
 	poor_canonical_clusters = list()
@@ -3025,15 +3001,15 @@ def remove_problematic_cluster_labels(
 
 	if poor_canonical_clusters and verbose:
 		print(f"\n[POOR CANONICAL] Found {len(poor_canonical_clusters)} clusters")
-		print(f"  Labels to remove: {sum(c['size'] for c in poor_canonical_clusters)}")
-		for cluster in poor_canonical_clusters:
-			print(f"    Cluster {cluster['cluster_id']}: {cluster['labels']} (rep={cluster['representativeness']:.4f})")
+		print(f"Labels to remove: {sum(c['size'] for c in poor_canonical_clusters)}")
+		for i, cluster in enumerate(poor_canonical_clusters):
+			print(f"{i+1:3d}/{len(poor_canonical_clusters)} Cluster {cluster['cluster_id']:6d} (rep: {cluster['representativeness']:.4f}) {cluster['labels']}")
 	
 	# PART 3: Remove Problematic Labels
 	if verbose:
 		print(f"\n[REMOVAL SUMMARY]")
 		print(f"  ├─ Total problematic clusters: {len(problematic_cluster_ids)}")
-		print(f"  ├─ Total labels to remove: {len(removed_labels)} {len(removed_labels)/len(df)*100:.3f}%")
+		print(f"  ├─ Total labels to remove: {len(removed_labels)}/{len(df)} ({len(removed_labels)/len(df)*100:.3f}%)")
 
 	df_clean = df[~df['cluster'].isin(problematic_cluster_ids)].copy()
 	kept_indices = df_clean.index.tolist()
@@ -3047,22 +3023,15 @@ def remove_problematic_cluster_labels(
 
 	if verbose:
 		print(f"\n[RESULTS]")
-		print(f"  df original: {df.shape}")
-		print(f"  df clean: {df_clean.shape}")
-		print(f"  Removed labels: {len(df) - len(df_clean):,}")
-		print(f"  Original embeddings: {embeddings.shape}")
-		print(f"  Cleaned embeddings: {embeddings_clean.shape}")
-		print(f"  Original clusters: {df['cluster'].nunique():,}")
-		print(f"  Cleaned clusters: {df_clean['cluster'].nunique():,}")
-		print(f"  Removed clusters: {df['cluster'].nunique() - df_clean['cluster'].nunique():,}")
+		print(f"[df]            {df.shape} -> {df_clean.shape} (Removed labels: {len(df) - len(df_clean):,})")
+		print(f"[embeddings]    {embeddings.shape} -> {embeddings_clean.shape}")
+		print(f"[clusters]      {df['cluster'].nunique():,} -> {df_clean['cluster'].nunique():,} (Removed: {df['cluster'].nunique() - df_clean['cluster'].nunique():,})")
 
 		original_consolidation = len(df) / df['cluster'].nunique()
 		new_consolidation      = len(df_clean) / df_clean['cluster'].nunique()
 		
-		print(f"  Original consolidation: {original_consolidation:.2f}x")
-		print(f"  New consolidation: {new_consolidation:.2f}x")
-		print(f"  Change: {(new_consolidation - original_consolidation)}x")
-		print(f"   {len(removed_labels)} problematic labels removed!")
+		print(f"[consolidation] {original_consolidation:.2f}x -> New: {new_consolidation:.2f}x (diff: {(new_consolidation - original_consolidation):.3f}x)")
+		print(f"==>>> {len(removed_labels)} problematic labels removed!")
 		print("="*40)
 
 	return df_clean, embeddings_clean, removed_labels
@@ -3200,11 +3169,11 @@ def _resolve_shared_canonicals(
 
 		if verbose and changes:
 			print(
-				f"\n[SHARED NAME] {surface!r}: {len(cids)} clusters, kept {len(keep)} "
-				f"(primary evidence={evidence[cids[seed]]}, threshold={threshold:.2f})"
+				f"\n[SHARED NAME] {repr(surface):<20} ({len(cids)} clusters) kept {len(keep)} "
+				f"(primary evidence: {evidence[cids[seed]]}, th: {threshold:.2f})"
 			)
 			for c, fb, s in changes:
-				print(f"    cluster {c:6d} -> {fb!r:40} (anchor sim {s:.3f})")
+				print(f"cluster {c:6d} -> {fb!r:40} (anchor sim {s:.3f})")
 
 	if verbose:
 		print("\n[SHARED-NAME RESOLUTION]")
@@ -3245,9 +3214,11 @@ def report_shared_group_similarities(
 			c for c, m in cluster_canonicals.items()
 			if m['canonical'].lower() == name.lower()
 		)
+
 		if len(cids) < 2:
-			print(f"[SKIPPED] {repr(name):<45} < {len(cids)} clusters!")
+			print(f"SKIPPED {repr(name):<15} < {len(cids)} clusters!")
 			continue
+		
 		V = np.vstack([cluster_centroids[c] for c in cids]).astype(float)
 		V /= np.linalg.norm(V, axis=1, keepdims=True) + 1e-12
 		S = V @ V.T
@@ -3268,6 +3239,7 @@ def report_shared_group_similarities(
 		out[name] = {'cluster_ids': cids, 'pairwise': S.tolist()}
 
 	print("-"*80)
+
 	return out
 
 def _harmonize_final_canonicals(
@@ -4124,7 +4096,7 @@ def assign_canonical_labels(
  
 	if verbose and selection_records:
 		sel = pd.DataFrame(selection_records)
-		print("How canonicals were chosen:")
+		print("\nHow canonicals were chosen:")
 		for m, cnt in sel['selection_method'].value_counts().items():
 			print(f"  {m:<34} {cnt:6d} ({cnt / len(sel) * 100:5.1f}%)")
 		routes = sel.loc[sel['virtual_entered_pool'], 'virtual_route'].value_counts()
@@ -4365,11 +4337,13 @@ def cluster(
 		for label in doc:
 			label_freq_dict[label] = label_freq_dict.get(label, 0) + 1
 
+
 	if verbose:
 		print(f"  ├─ Frequency dict has {len(label_freq_dict)} labels")
 		print(f"  ├─ Total label instances: {sum(label_freq_dict.values())}")
 		print(f"  └─ Most frequent: {max(label_freq_dict.items(), key=lambda x: x[1])}")
 		print('-' * 80)
+
 
 	# STEP 6: CANONICAL SELECTION (with virtual hypernym synthesis)
 	cluster_canonicals = assign_canonical_labels(
@@ -4383,6 +4357,7 @@ def cluster(
 		shared_calibration_names=[
 			'camera', 'suit', 'cap', 'camp', 'debris', 'building', 'hospital', # should stay together
 			'arm', 'press', 'bay', 'ward', 'tank', 'float', 'race', 'gear', 'party', # should split
+			'hangar', 'bridge', 'sign', 'station',
 		],
 		verbose=verbose,
 	)

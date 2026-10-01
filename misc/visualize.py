@@ -6415,13 +6415,7 @@ def multilabel_eda(
 	
 	summary_df = pd.DataFrame(summary_stats)
 	print(summary_df.to_string(index=False))
-	
-	# Save summary to CSV
-	summary_df.to_csv(
-		os.path.join(output_dir, f"summary_statistics_{label_column}.csv"),
-		index=False
-	)
-	
+		
 	print(f"\nEDA Total Elapsed Time: {time.time()-eda_st:.1f} sec")
 	print("="*100)
 
