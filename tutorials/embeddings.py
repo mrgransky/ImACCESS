@@ -295,7 +295,7 @@ def main():
 		inspect_prompts(model)
 		shell_shock_demo(model)
 		pair_screen(model)
-		print(f"\n[done] {time.time() - t0:.1f} sec")
+		print(f"\n[DONE: {model_id}] {time.time() - t0:.1f} sec")
 
 
 if __name__ == "__main__":
