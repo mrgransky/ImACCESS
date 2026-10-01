@@ -172,81 +172,117 @@ NEG_PAIRS = [
 	('pikes', 'Pik As'),
 ]
 
+from typing import Any, Iterable, Optional
+import numpy as np
+
+
 def encode(
-    model,
-    texts,
-    prompt=None,
-    prompt_name=None,
-    normalize=True,
-):
+    model: Any,
+    texts: Iterable[str],
+    prompt: Optional[str] = None,
+    prompt_name: Optional[str] = None,
+    normalize: bool = True,
+    **kwargs: Any,
+) -> np.ndarray:
     """
-    Encode texts into float32 NumPy embeddings.
+    Encode an iterable of texts into float32 NumPy embeddings.
+
+    Encapsulates all necessary helpers:
+    1. Resolves the `Normalize` class cleanly across sentence-transformers versions.
+    2. Applies a one-time safety patch for rogue configuration keys (e.g., Octen).
+    3. Recursively inspects the model pipeline to prevent double normalization.
 
     Parameters
     ----------
     model : SentenceTransformer
-        SentenceTransformer model.
-    texts : iterable[str]
-        Texts to encode.
+        The instantiated SentenceTransformer model.
+    texts : Iterable[str]
+        Text sequences to encode.
     prompt : str, optional
-        Explicit prompt to use.
+        Explicit instruction prompt to prepend to each text.
     prompt_name : str, optional
-        Name of a prompt defined by the model.
+        Prompt name pre-configured inside the model repository.
     normalize : bool, default=True
-        Whether the final embeddings should be L2-normalized.
-
-        If the model already contains a SentenceTransformers Normalize
-        module, SentenceTransformer's encode(normalize_embeddings=True)
-        is not requested because normalization is already performed by
-        the model itself.
+        Whether final embeddings should be L2-normalized. If the model
+        architecture already contains an internal Normalize layer,
+        `normalize_embeddings=True` is omitted to avoid duplicate operations.
+    **kwargs : Any
+        Additional arguments passed directly to `model.encode` (e.g.
+        `batch_size`, `show_progress_bar`, `device`).
 
     Returns
     -------
     np.ndarray
-        Float32 embeddings, shape (n_texts, embedding_dim).
+        Float32 embeddings of shape (n_texts, embedding_dim).
     """
-    # ------------------------------------------------------------------
-    # Resolve the Normalize class once, across sentence-transformers
-    # versions (>=6.0 moved it to sentence_transformer.modules).
-    # ------------------------------------------------------------------
-    try:
-        # sentence-transformers >= 6.0
-        from sentence_transformers.sentence_transformer.modules import Normalize
-    except ImportError:
-        # sentence-transformers < 6.0
+
+    # -------------------------------------------------------------------------
+    # Helper 1: Resilient import across sentence-transformers versions
+    # -------------------------------------------------------------------------
+    def _resolve_normalize_class():
+        # >= 6.0 modern path
+        try:
+            from sentence_transformers.sentence_transformer.modules import Normalize
+            return Normalize
+        except ImportError:
+            pass
+
+        # intermediate / base path
+        try:
+            from sentence_transformers.base.modules import Normalize
+            return Normalize
+        except ImportError:
+            pass
+
+        # legacy fallback (< 6.0)
         from sentence_transformers.models import Normalize
+        return Normalize
 
-    def _has_internal_normalize(model) -> bool:
-        """
-        Return True if the SentenceTransformer pipeline already contains
-        a Normalize module.
+    # -------------------------------------------------------------------------
+    # Helper 2: One-time patch for malformed config.json in repos like Octen
+    # -------------------------------------------------------------------------
+    def _ensure_normalize_patched(norm_cls):
+        if not getattr(norm_cls, "_rogue_kwargs_patched", False):
+            orig_init = norm_cls.__init__
 
-        Recursively inspects the full module hierarchy, so it also works
-        when Normalize is nested inside another module/container.
-        """
-        return any(isinstance(module, Normalize) for module in model.modules())
+            def patched_init(self, *args, **kw):
+                # Discard invalid keyword arguments saved by rogue model configs
+                kw.pop("normalize_embeddings", None)
+                return orig_init(self, *args, **kw)
 
-    # ------------------------------------------------------------------
-    # Build encode() kwargs
-    # ------------------------------------------------------------------
-    kwargs = {"convert_to_numpy": True}
+            norm_cls.__init__ = patched_init
+            norm_cls._rogue_kwargs_patched = True
 
-    # Only ask SentenceTransformer.encode() to normalize when the model
-    # itself does not already contain a Normalize module.
-    if normalize and not _has_internal_normalize(model):
-        kwargs["normalize_embeddings"] = True
+    # -------------------------------------------------------------------------
+    # Helper 3: Recursive pipeline inspection
+    # -------------------------------------------------------------------------
+    def _has_internal_normalize(m, norm_cls) -> bool:
+        if hasattr(m, "modules"):
+            return any(isinstance(module, norm_cls) for module in m.modules())
+        return False
 
-    # Preserve explicit prompt handling.
+    # -------------------------------------------------------------------------
+    # Execution
+    # -------------------------------------------------------------------------
+    Normalize = _resolve_normalize_class()
+    _ensure_normalize_patched(Normalize)
+
+    encode_kwargs = {
+        "convert_to_numpy": True,
+        **kwargs,
+    }
+
+    # Only request external normalization if the model lacks an internal Normalize layer
+    if normalize and not _has_internal_normalize(model, Normalize):
+        encode_kwargs["normalize_embeddings"] = True
+
     if prompt is not None:
-        kwargs["prompt"] = prompt
+        encode_kwargs["prompt"] = prompt
 
     if prompt_name is not None:
-        kwargs["prompt_name"] = prompt_name
+        encode_kwargs["prompt_name"] = prompt_name
 
-    # ------------------------------------------------------------------
-    # Encode and return as float32 NumPy array
-    # ------------------------------------------------------------------
-    embeddings = model.encode(list(texts), **kwargs)
+    embeddings = model.encode(list(texts), **encode_kwargs)
 
     return np.asarray(embeddings, dtype=np.float32)
 
