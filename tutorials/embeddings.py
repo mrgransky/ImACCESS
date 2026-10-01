@@ -124,8 +124,6 @@ if USER == "farid":
 		"nvidia/Nemotron-3-Embed-1B-BF16",
 	]
 
-
-
 # Task instruction in the same "Instruct: ...\nQuery:" format the model was trained with.
 # The text is appended directly after "Query:" (no space), exactly like the built-in "query" prompt.
 # Output dimension of each real model; used to catch a stand-in/mock encoder

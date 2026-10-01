@@ -47,6 +47,26 @@ except ImportError:
 	use_fastcluster = False
 	print("[SCIPY] Using scipy (slower for large n)")
 
+# -------------------------------------------------------------------------
+# Ensure SentenceTransformer can load models with rogue configs (e.g. Octen)
+# Must execute BEFORE SentenceTransformer(...) is instantiated.
+# -------------------------------------------------------------------------
+try:
+	from sentence_transformers.sentence_transformer.modules import Normalize
+except ImportError:
+	try:
+		from sentence_transformers.base.modules import Normalize
+	except ImportError:
+		from sentence_transformers.models import Normalize
+
+if not getattr(Normalize, "_rogue_kwargs_patched", False):
+	_orig_norm_init = Normalize.__init__
+	def _patched_norm_init(self, *args, **kwargs):
+			kwargs.pop("normalize_embeddings", None)
+			return _orig_norm_init(self, *args, **kwargs)
+	Normalize.__init__ = _patched_norm_init
+	Normalize._rogue_kwargs_patched = True
+
 cache_directory = {
 	"farid": "/home/farid/datasets/models",
 	"alijanif": "/scratch/project_2004072/models",
@@ -98,29 +118,61 @@ def get_model_kwargs(verbose: bool = True):
 
 	return attention, dtype
 
-def _encode_labels(
+# def _encode_(
+# 	model,
+# 	texts: List[str],
+# 	batch_size: int,
+# 	prompt: Optional[str] = None,
+# ) -> np.ndarray:
+# 	"""
+# 	The single place where label text becomes a vector.
+ 
+# 	prompt=None keeps today's behaviour (no prompt). A string is prepended to every text
+# 	(sentence-transformers' `prompt=` argument). Routing all encode calls through here is what
+# 	guarantees that members, virtual hypernyms and injected rows share one embedding space.
+# 	"""
+# 	kw = {} if prompt is None else {"prompt": prompt}
+# 	return model.encode(
+# 		list(texts),
+# 		batch_size=batch_size,
+# 		show_progress_bar=False,
+# 		convert_to_numpy=True,
+# 		normalize_embeddings=True,
+# 		precision="float32",
+# 		**kw,
+# 	)
+
+def _encode_(
 	model,
 	texts: List[str],
-	batch_size: int,
+	batch_size: int = 128,
 	prompt: Optional[str] = None,
+	show_progress_bar: bool = False,
+	normalize: bool = True,
 ) -> np.ndarray:
 	"""
 	The single place where label text becomes a vector.
- 
-	prompt=None keeps today's behaviour (no prompt). A string is prepended to every text
-	(sentence-transformers' `prompt=` argument). Routing all encode calls through here is what
-	guarantees that members, virtual hypernyms and injected rows share one embedding space.
+	
+	Guarantees unit-norm float32 embeddings across standard models,
+	BF16 models (e.g., Nemotron), and models with internal Normalize layers (e.g., Octen).
 	"""
-	kw = {} if prompt is None else {"prompt": prompt}
-	return model.encode(
-		list(texts),
-		batch_size=batch_size,
-		show_progress_bar=False,
-		convert_to_numpy=True,
-		normalize_embeddings=True,
-		precision="float32",
-		**kw,
-	)
+	def _has_internal_normalize(m) -> bool:
+			if hasattr(m, "modules"):
+					return any(isinstance(mod, Normalize) for mod in m.modules())
+			return False
+	kw = {
+			"batch_size": batch_size,
+			"show_progress_bar": show_progress_bar,
+			"convert_to_numpy": True,
+			"precision": "float32",
+	}
+	if prompt is not None:
+			kw["prompt"] = prompt
+	# Only request external normalization if the model pipeline doesn't already do it
+	if normalize and not _has_internal_normalize(model):
+			kw["normalize_embeddings"] = True
+	embeddings = model.encode(list(texts), **kw)
+	return np.asarray(embeddings, dtype=np.float32)
 
 def _nearest_cluster_neighbors(
 	centroids: np.ndarray, 
@@ -597,7 +649,7 @@ def get_clustering_artifacts(
 
 		t0 = time.time()
 
-		X = _encode_labels(model, unique_labels, batch_size, encode_prompt)
+		X = _encode_(model, unique_labels, batch_size, encode_prompt)
 
 		_validate_embeddings(X, unique_labels)
 
@@ -3704,7 +3756,7 @@ def assign_canonical_labels(
 		virtual_flags = [False] * cluster_size + ([True] if virtual_hypernym else [])
  
 		if virtual_hypernym is not None:
-			vh_emb = _encode_labels(model, [virtual_hypernym], 1, encode_prompt)[0]
+			vh_emb = _encode_(model, [virtual_hypernym], 1, encode_prompt)[0]
 			all_embeddings = np.vstack([cluster_embeddings, vh_emb[np.newaxis, :]])
 		else:
 			all_embeddings = cluster_embeddings
@@ -4355,7 +4407,7 @@ def cluster(
 		virtual_texts.append(vh)
  
 	if virtual_rows:
-		virtual_embs = _encode_labels(model, virtual_texts, batch_size, encode_prompt)
+		virtual_embs = _encode_(model, virtual_texts, batch_size, encode_prompt)
 		df = pd.concat([df, pd.DataFrame(virtual_rows)], ignore_index=True)
 		X = np.vstack([X, virtual_embs])
  
