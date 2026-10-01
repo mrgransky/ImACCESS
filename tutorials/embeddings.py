@@ -78,11 +78,11 @@
 Does the prompt used to encode labels change how Qwen3-Embedding separates concepts?
 
 Three parts, all printed in one run:
-  1. Prompt inspection      what the model's config says (default prompt, "query"/"document").
-  2. Shell-shock example    your original experiment, plus the two SYMMETRIC encodings that
-                            clustering would actually use (every label gets the same prompt).
-  3. Pair screening         10 same-concept pairs and 12 hard negatives taken from the canonical
-                            selection findings, scored under three symmetric encodings.
+	1. Prompt inspection      what the model's config says (default prompt, "query"/"document").
+	2. Shell-shock example    your original experiment, plus the two SYMMETRIC encodings that
+														clustering would actually use (every label gets the same prompt).
+	3. Pair screening         10 same-concept pairs and 12 hard negatives taken from the canonical
+														selection findings, scored under three symmetric encodings.
 
 How to read part 3: a better encoding gives a higher AUC (positives score above negatives) and
 fewer positives that fall below the best negative. Compare AUC and ranks, NOT raw cosines: adding
@@ -105,7 +105,6 @@ MISC_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "misc")
 sys.path.insert(0, MISC_DIR)
 
 from utils import *
-import numpy as np
 
 # model_id = "Qwen/Qwen3-Embedding-8B" # HPC
 # if USER == "farid":
@@ -136,155 +135,216 @@ CUSTOM_INSTRUCTION = (
 	"retrieve labels that name the same concept\nQuery:"
 )
 
-# Should look alike (same concept, different surface form)
+# Synonyms, spelling variations, and highly related canonical labels that SHOULD cluster together.
 POS_PAIRS = [
-	("shell-shock", "shell shock"),
-	("reconnaissance aircraft", "reconnaissance plane"),
-	("observation airplane", "observation plane"),
-	("outhouse", "latrine"),
-	("Bf 109", "Bf109"),
-	("Messerschmitt Bf 109", "Bf 109"),
-	("Messerschmitt Me 262", "Schwalbe"),
-	("icebreaker", "ice breaker"),
-	("sea burial", "burial at sea"),
-	("railway station", "train station"),
-	("clergyman", "clergy"),
-	("counter-attack", "counterattack"),
-	('Grey', 'Gray'),
-	('Jagdgeschwader 53', 'Pik As'),
-	('Nuuanu Pali', 'Pali'),
+		# Originals
+		("shell-shock", "shell shock"),
+		("reconnaissance aircraft", "reconnaissance plane"),
+		("observation airplane", "observation plane"),
+		("outhouse", "latrine"),
+		("Bf 109", "Bf109"),
+		("Messerschmitt Bf 109", "Bf 109"),
+		("icebreaker", "ice breaker"),
+		("sea burial", "burial at sea"),
+		("railway station", "train station"),
+		("clergyman", "clergy"),
+		("counter-attack", "counterattack"),
+		('Grey', 'Gray'),
+		
+		# Aircraft & Vehicles
+		("M4 Sherman", "Sherman tank"),
+		("B-17G", "Flying Fortress"),
+		("P-47 Thunderbolt", "Thunderbolt"),
+		("P-51D Mustang", "Mustang"),
+		("Higgins boat", "LCVP"),
+		("hospital ship", "hospital boat"),
+		("seaplane", "flying boat"),
+		("U-Boat", "submarine"),
+		('Landing Ship, Tank', 'LST'),
+		
+		# Equipment & Structures
+		("field gun", "artillery piece"),
+		("lighthouse", "Light Station"),
+		("ruins", "rubble"),
+		("gas mask", "respirator"),
+		("barbed wire", "wire fence"),
+		("spectacles", "glasses"),
+		("casket", "wooden coffin"),
+		("medal", "military medal"),
+		("tarpaulin", "canvas cover"),
+		('quagmire', 'military disaster'),
+		('Corpo de Truppe Volontarie', 'CTV'),
+		
+		# People & Concepts
+		("soldier", "troops"),
+		("nurse", "Army Nurse"),
+		("Artillery", "Field Artillery"),
+		("Prisoners", "German prisoners"),
+		('Prisoner of war', 'POW'),
 ]
-# Should look different (share words or spelling, different concept)
+
+# Hard negatives: Lexical overlap, same broad category, but fundamentally DIFFERENT concepts.
 NEG_PAIRS = [
-	("shell-shock", "shell deflector"),
-	("battle tank", "fuel tank"),
-	("armored tank", "Storage tank"),
-	("Ki-46", "Ki-61"),
-	("hospital", "hospital ship"),
-	("C-47", "C-46"),
-	("patrol bomber", "reconnaissance aircraft"),
-	("AWACS aircraft", "reconnaissance aircraft"),
-	("cap", "cape"),
-	("camp", "camera"),
-	("hospital ward", "hospital"),
-	("shell shock", "shock absorber"),
-	("Sherman tank", "M3 tank"),
-	('pikes', 'Pik As'),
+		# Originals
+		("shell-shock", "shell deflector"),
+		("battle tank", "fuel tank"),
+		("armored tank", "Storage tank"),
+		("Ki-46", "Ki-61"),
+		("hospital", "hospital ship"),
+		("C-47", "C-46"),
+		("patrol bomber", "reconnaissance aircraft"),
+		("AWACS aircraft", "reconnaissance aircraft"),
+		("cap", "cape"),
+		("camp", "camera"),
+		("hospital ward", "hospital"),
+		("shell shock", "shock absorber"),
+		("Sherman tank", "M3 tank"),
+		('pikes', 'Pik As'),
+		
+		# Aircraft & Vehicles (Different roles/generations)
+		("B-17G", "B-24 Liberator"),
+		("P-47 Thunderbolt", "P-51D Mustang"),
+		("U-Boat", "destroyer"),
+		("landing craft", "cargo ship"),
+		("fighter plane", "bomber"),
+		("glider", "parachute"),
+		("aircraft carrier", "warship"),
+		
+		# Equipment & Weapons (Shared materials/functions)
+		("machine gun", "rifle"),
+		("gas mask", "helmet"),
+		("artillery piece", "tank gun"),
+		("barbed wire", "telegraph wire"),
+		("searchlight", "lighthouse"),
+		("torpedo", "depth charge"),
+		("fuel truck", "fuel tank"),
+		
+		# Structures & Locations (Different infrastructure)
+		("airfield", "shipyard"),
+		("barracks", "hospital"),
+		("trench", "foxhole"),
+		("bridge", "dam"),
+		("pillbox", "watchtower"),
+		("factory", "power plant"),
+		
+		# People & Units (Different branches/roles)
+		("infantry", "cavalry"),
+		("officer", "sergeant"),
+		("nurse", "medic"),
+		("prisoner", "guard"),
+		("pilot", "ground crew"),
+		('CCA Control Board', 'CTV'),
 ]
-
-from typing import Any, Iterable, Optional
-import numpy as np
-
 
 def encode(
-    model: Any,
-    texts: Iterable[str],
-    prompt: Optional[str] = None,
-    prompt_name: Optional[str] = None,
-    normalize: bool = True,
-    **kwargs: Any,
+		model: Any,
+		texts: Iterable[str],
+		prompt: Optional[str] = None,
+		prompt_name: Optional[str] = None,
+		normalize: bool = True,
+		**kwargs: Any,
 ) -> np.ndarray:
-    """
-    Encode an iterable of texts into float32 NumPy embeddings.
+		"""
+		Encode an iterable of texts into float32 NumPy embeddings.
 
-    Encapsulates all necessary helpers:
-    1. Resolves the `Normalize` class cleanly across sentence-transformers versions.
-    2. Applies a one-time safety patch for rogue configuration keys (e.g., Octen).
-    3. Recursively inspects the model pipeline to prevent double normalization.
+		Encapsulates all necessary helpers:
+		1. Resolves the `Normalize` class cleanly across sentence-transformers versions.
+		2. Applies a one-time safety patch for rogue configuration keys (e.g., Octen).
+		3. Recursively inspects the model pipeline to prevent double normalization.
 
-    Parameters
-    ----------
-    model : SentenceTransformer
-        The instantiated SentenceTransformer model.
-    texts : Iterable[str]
-        Text sequences to encode.
-    prompt : str, optional
-        Explicit instruction prompt to prepend to each text.
-    prompt_name : str, optional
-        Prompt name pre-configured inside the model repository.
-    normalize : bool, default=True
-        Whether final embeddings should be L2-normalized. If the model
-        architecture already contains an internal Normalize layer,
-        `normalize_embeddings=True` is omitted to avoid duplicate operations.
-    **kwargs : Any
-        Additional arguments passed directly to `model.encode` (e.g.
-        `batch_size`, `show_progress_bar`, `device`).
+		Parameters
+		----------
+		model : SentenceTransformer
+				The instantiated SentenceTransformer model.
+		texts : Iterable[str]
+				Text sequences to encode.
+		prompt : str, optional
+				Explicit instruction prompt to prepend to each text.
+		prompt_name : str, optional
+				Prompt name pre-configured inside the model repository.
+		normalize : bool, default=True
+				Whether final embeddings should be L2-normalized. If the model
+				architecture already contains an internal Normalize layer,
+				`normalize_embeddings=True` is omitted to avoid duplicate operations.
+		**kwargs : Any
+				Additional arguments passed directly to `model.encode` (e.g.
+				`batch_size`, `show_progress_bar`, `device`).
 
-    Returns
-    -------
-    np.ndarray
-        Float32 embeddings of shape (n_texts, embedding_dim).
-    """
+		Returns
+		-------
+		np.ndarray
+				Float32 embeddings of shape (n_texts, embedding_dim).
+		"""
 
-    # -------------------------------------------------------------------------
-    # Helper 1: Resilient import across sentence-transformers versions
-    # -------------------------------------------------------------------------
-    def _resolve_normalize_class():
-        # >= 6.0 modern path
-        try:
-            from sentence_transformers.sentence_transformer.modules import Normalize
-            return Normalize
-        except ImportError:
-            pass
+		# -------------------------------------------------------------------------
+		# Helper 1: Resilient import across sentence-transformers versions
+		# -------------------------------------------------------------------------
+		def _resolve_normalize_class():
+				# >= 6.0 modern path
+				try:
+						from sentence_transformers.sentence_transformer.modules import Normalize
+						return Normalize
+				except ImportError:
+						pass
 
-        # intermediate / base path
-        try:
-            from sentence_transformers.base.modules import Normalize
-            return Normalize
-        except ImportError:
-            pass
+				# intermediate / base path
+				try:
+						from sentence_transformers.base.modules import Normalize
+						return Normalize
+				except ImportError:
+						pass
 
-        # legacy fallback (< 6.0)
-        from sentence_transformers.models import Normalize
-        return Normalize
+				# legacy fallback (< 6.0)
+				from sentence_transformers.models import Normalize
+				return Normalize
 
-    # -------------------------------------------------------------------------
-    # Helper 2: One-time patch for malformed config.json in repos like Octen
-    # -------------------------------------------------------------------------
-    def _ensure_normalize_patched(norm_cls):
-        if not getattr(norm_cls, "_rogue_kwargs_patched", False):
-            orig_init = norm_cls.__init__
+		# -------------------------------------------------------------------------
+		# Helper 2: One-time patch for malformed config.json in repos like Octen
+		# -------------------------------------------------------------------------
+		def _ensure_normalize_patched(norm_cls):
+				if not getattr(norm_cls, "_rogue_kwargs_patched", False):
+						orig_init = norm_cls.__init__
 
-            def patched_init(self, *args, **kw):
-                # Discard invalid keyword arguments saved by rogue model configs
-                kw.pop("normalize_embeddings", None)
-                return orig_init(self, *args, **kw)
+						def patched_init(self, *args, **kw):
+								# Discard invalid keyword arguments saved by rogue model configs
+								kw.pop("normalize_embeddings", None)
+								return orig_init(self, *args, **kw)
 
-            norm_cls.__init__ = patched_init
-            norm_cls._rogue_kwargs_patched = True
+						norm_cls.__init__ = patched_init
+						norm_cls._rogue_kwargs_patched = True
 
-    # -------------------------------------------------------------------------
-    # Helper 3: Recursive pipeline inspection
-    # -------------------------------------------------------------------------
-    def _has_internal_normalize(m, norm_cls) -> bool:
-        if hasattr(m, "modules"):
-            return any(isinstance(module, norm_cls) for module in m.modules())
-        return False
+		# -------------------------------------------------------------------------
+		# Helper 3: Recursive pipeline inspection
+		# -------------------------------------------------------------------------
+		def _has_internal_normalize(m, norm_cls) -> bool:
+				if hasattr(m, "modules"):
+						return any(isinstance(module, norm_cls) for module in m.modules())
+				return False
 
-    # -------------------------------------------------------------------------
-    # Execution
-    # -------------------------------------------------------------------------
-    Normalize = _resolve_normalize_class()
-    _ensure_normalize_patched(Normalize)
+		# -------------------------------------------------------------------------
+		# Execution
+		# -------------------------------------------------------------------------
+		Normalize = _resolve_normalize_class()
+		_ensure_normalize_patched(Normalize)
 
-    encode_kwargs = {
-        "convert_to_numpy": True,
-        **kwargs,
-    }
+		encode_kwargs = {
+				"convert_to_numpy": True,
+				**kwargs,
+		}
 
-    # Only request external normalization if the model lacks an internal Normalize layer
-    if normalize and not _has_internal_normalize(model, Normalize):
-        encode_kwargs["normalize_embeddings"] = True
+		# Only request external normalization if the model lacks an internal Normalize layer
+		if normalize and not _has_internal_normalize(model, Normalize):
+				encode_kwargs["normalize_embeddings"] = True
 
-    if prompt is not None:
-        encode_kwargs["prompt"] = prompt
+		if prompt is not None:
+				encode_kwargs["prompt"] = prompt
 
-    if prompt_name is not None:
-        encode_kwargs["prompt_name"] = prompt_name
+		if prompt_name is not None:
+				encode_kwargs["prompt_name"] = prompt_name
 
-    embeddings = model.encode(list(texts), **encode_kwargs)
+		embeddings = model.encode(list(texts), **encode_kwargs)
 
-    return np.asarray(embeddings, dtype=np.float32)
+		return np.asarray(embeddings, dtype=np.float32)
 
 # def encode(model, texts, prompt=None, prompt_name=None):
 # 	"""L2-normalised float32 embeddings. prompt=None -> no prompt (what clustering.py does today)."""
