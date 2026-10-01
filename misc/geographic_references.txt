@@ -62,6 +62,7 @@ China
 Colombia
 Comoros
 Congo
+Continental United States
 Costa Rica
 Côte d’Ivoire
 Croatia
@@ -976,6 +977,7 @@ Morval
 Newfoundland
 New Zealander
 Nigerian
+North American
 Norwegian
 North Korean
 Okinawan
@@ -1000,6 +1002,7 @@ Sicilian
 Slovenian
 Slovak
 Spanish
+South American
 Swedish
 Swiss
 Syrian

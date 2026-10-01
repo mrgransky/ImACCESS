@@ -2084,9 +2084,9 @@ def analyze_cluster_quality(
 	results["per_cluster_metrics"].to_csv(cluster_quality_csv, index=False)
 
 	if results["problematic_clusters"]:
-		if verbose:
-			print(f"[WARNING] {len(results['problematic_clusters'])} types of problematic clusters:")
-			print(json.dumps(results["problematic_clusters"], indent=2, ensure_ascii=False))
+		# if verbose:
+		# 	print(f"[WARNING] {len(results['problematic_clusters'])} types of problematic clusters:")
+		# 	# print(json.dumps(results["problematic_clusters"], indent=2, ensure_ascii=False))
 
 		all_problematic_ids = []
 		for issue in results["problematic_clusters"]:
@@ -2922,14 +2922,12 @@ def remove_problematic_cluster_labels(
 		List of removed labels for reference.
 	"""
 	if verbose:
-		print("\nPROBLEMATIC CLUSTER LABELS")
-		print(f"[THRESHOLDS] Low-cohesion: {low_cohesion_threshold} Poor canonical: {poor_canonical_threshold}")
-		print(df.head(15))
+		print("="*100)
+		print("[PROBLEMATIC CLUSTER LABELS DETECTION]")
 
 	problematic_cluster_ids = set()
 	removed_labels = list()
 
-	
 	# PART 1: Identify Low-Cohesion Clusters
 	low_cohesion_clusters = list()
 	for cluster_id in df['cluster'].unique():
@@ -2942,26 +2940,29 @@ def remove_problematic_cluster_labels(
 
 		cluster_indices    = df[cluster_mask].index.tolist()
 		cluster_embeddings = embeddings[cluster_indices]
-
 		sim_matrix = cosine_similarity(cluster_embeddings)
-		n          = len(cluster_embeddings)
+		n = len(cluster_embeddings)
 		intra_sim  = (sim_matrix.sum() - n) / (n * (n - 1))
 
 		if intra_sim < low_cohesion_threshold:
-			low_cohesion_clusters.append({
-				'cluster_id': cluster_id,
-				'intra_sim':  intra_sim,
-				'size':       cluster_size,
-				'labels':     cluster_labels,
-			})
+			low_cohesion_clusters.append(
+				{
+					'cluster_id': cluster_id,
+					'intra_sim':  intra_sim,
+					'size':       cluster_size,
+					'labels':     cluster_labels,
+				}
+			)
 			problematic_cluster_ids.add(cluster_id)
 			removed_labels.extend(cluster_labels)
 
 	if low_cohesion_clusters and verbose:
-		print(f"\n[LOW COHESION] Found {len(low_cohesion_clusters)} clusters")		
-		print(f"Labels to remove: {sum(c['size'] for c in low_cohesion_clusters)}")
+		print(
+			f"\n[LOW COHESION] Found {len(low_cohesion_clusters)} clusters (th: {low_cohesion_threshold}) -> "
+			f"Labels to remove: {sum(c['size'] for c in low_cohesion_clusters)}"
+		)
 		for i, cluster in enumerate(low_cohesion_clusters):
-			print(f"{i+1:3d}/{len(low_cohesion_clusters)} Cluster {cluster['cluster_id']:6d} (sim: {cluster['intra_sim']:.4f}) {cluster['labels']}")
+			print(f"{i+1:3d}/{len(low_cohesion_clusters)} Cluster {cluster['cluster_id']:5d} sim: {cluster['intra_sim']:.3f} {cluster['labels']}")
 
 	# PART 2: Identify Poor Canonical Clusters
 	poor_canonical_clusters = list()
@@ -3000,10 +3001,11 @@ def remove_problematic_cluster_labels(
 			removed_labels.extend(cluster_labels)
 
 	if poor_canonical_clusters and verbose:
-		print(f"\n[POOR CANONICAL] Found {len(poor_canonical_clusters)} clusters")
-		print(f"Labels to remove: {sum(c['size'] for c in poor_canonical_clusters)}")
+		print(
+			f"\n[POOR CANONICAL] Found {len(poor_canonical_clusters)} clusters (th: {poor_canonical_threshold}) -> "
+			f"Labels to remove: {sum(c['size'] for c in poor_canonical_clusters)}")
 		for i, cluster in enumerate(poor_canonical_clusters):
-			print(f"{i+1:3d}/{len(poor_canonical_clusters)} Cluster {cluster['cluster_id']:6d} (rep: {cluster['representativeness']:.4f}) {cluster['labels']}")
+			print(f"{i+1:3d}/{len(poor_canonical_clusters)} Cluster {cluster['cluster_id']:5d} rep: {cluster['representativeness']:.3f} canonical: {cluster['canonical']:<40} {cluster['labels']}")
 	
 	# PART 3: Remove Problematic Labels
 	if verbose:
@@ -3032,7 +3034,7 @@ def remove_problematic_cluster_labels(
 		
 		print(f"[consolidation] {original_consolidation:.2f}x -> New: {new_consolidation:.2f}x (diff: {(new_consolidation - original_consolidation):.3f}x)")
 		print(f"==>>> {len(removed_labels)} problematic labels removed!")
-		print("="*40)
+		print("="*100)
 
 	return df_clean, embeddings_clean, removed_labels
 
@@ -4355,8 +4357,8 @@ def cluster(
 		encode_prompt=encode_prompt,
 		# detailed report:
 		shared_calibration_names=[
-			'camera', 'suit', 'cap', 'camp', 'debris', 'building', 'hospital', # should stay together
-			'arm', 'press', 'bay', 'ward', 'tank', 'float', 'race', 'gear', 'party', # should split
+			'camera', 'cap', 'camp', 'debris', 'building', 'hospital', # should stay together
+			'press', 'ward', 'tank', 'float', 'race', 'gear', 'party', # should split
 			'hangar', 'bridge', 'sign', 'station',
 		],
 		verbose=verbose,

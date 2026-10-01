@@ -364,6 +364,7 @@ def _post_process_(
 
 	# BASE COLORS (Safe as single words)
 	COLORS = {
+		"color",
 		"red", "orange", "yellow", "green", "blue", "indigo", "violet",
 		"purple", "pink", "brown", "black", "white", "gray", "grey",
 		"beige", "teal", "cyan", "magenta", "crimson", "khaki",
@@ -934,8 +935,10 @@ def _post_process_(
 		letters = [ch for ch in label if ch.isalpha()]
 		if not letters:
 			return False  # No letters; let downstream filters handle it
+		
 		upper_count = sum(1 for ch in letters if ch.isupper())
 		uppercase_ratio = upper_count / len(letters)
+
 
 		# 4. SINGLE-WORD ALL-CAPS CHECK
 		if len(words) == 1 and uppercase_ratio == 1.0 and len(label) <= min_meaningful_word_length:
@@ -946,7 +949,7 @@ def _post_process_(
 				if verbose:
 						print(f"\t[SKIPPED CASE] {repr(label):<50} unlisted acronym (len={len(label)} <= {min_meaningful_word_length})")
 				return True
-
+		
 		# 5. MULTI-WORD / PARTIAL HIGH UPPERCASE RATIO
 		if uppercase_ratio > uppercase_bound_thresh and len(label) <= min_meaningful_word_length:
 			if verbose:
@@ -959,6 +962,7 @@ def _post_process_(
 				print(f"\t[CASE PASSED] {repr(label):<55} len={len(label)} > {min_meaningful_word_length}")
 			else:
 				print(f"\t[CASE PASSED] {repr(label):<55} ratio={uppercase_ratio:.3f} <= {uppercase_bound_thresh}")
+		
 		return False
 
 	def should_filter_label(lemma: str) -> bool:
