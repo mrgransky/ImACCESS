@@ -3387,12 +3387,14 @@ def assign_canonical_labels(
 	shared_calibration_names: Optional[List[str]] = None,
 	neighbor_review_min_sim: float = 0.88,
 	encode_prompt: Optional[str] = None,
+	virtual_min_sim_ratio: Optional[float] = 0.70, # None disables the gate
+	min_distinct_concepts: int = 2, # 1 disables the variant rule
 	verbose: bool = False,
 ) -> Dict[int, Dict]:
 	"""
 	Assign a canonical label to every cluster using a five-signal composite
 	score, with optional virtual hypernym synthesis.
- 
+
 	Composite score (per candidate)
 	-------------------------------
 		0.30 * cosine similarity to the cluster centroid
@@ -3401,7 +3403,7 @@ def assign_canonical_labels(
 		+ 0.25 * lexical containment (fraction of members containing ALL of
 				 the candidate's tokens)
 		+ 0.10 * brevity (shorter -> more general)
- 
+
 	Virtual hypernym synthesis (two routes, tried in order)
 	--------------------------------------------------------
 	1. head_suffix : the members share a head noun phrase at the END of
@@ -3409,19 +3411,34 @@ def assign_canonical_labels(
 			 ['black aircraft', 'white aircraft']           -> 'aircraft'
 			 ['aerial view of harbor', 'aerial view of lake'] -> 'aerial view'
 		 A label's head phrase is everything before its first preposition,
-		 so 'aerial view of harbor' has head phrase 'aerial view'.
-	2. title_prefix : the members share a leading title followed by a
-		 proper-noun-like residual, e.g.
+		 after dropping a trailing version marker, so 'aerial view of harbor'
+		 has head phrase 'aerial view' and 'Ventura Mk II' has head 'ventura'.
+	2. title_prefix : the members share a leading designator, e.g.
 			 ['USS Arizona', 'USS Iowa']       -> 'USS'
-			 ['World War I', 'World War II']   -> 'World War'
-		 Rejected when any residual is lowercase: a shared lowercase
-		 prefix is a MODIFIER ('aerial cityscape', 'war paint'), not a
-		 category, so 'aerial' / 'war' are never synthesised from it.
- 
+			 ['Cruiser Mk I', 'Cruiser Mk II'] -> 'Cruiser'  (a dangling Mk / Ausf is dropped)
+		 Only vessel designators, 'Operation' and 'X Mk' / 'X Ausf' families
+		 are allowed: a shared lowercase prefix is a MODIFIER, not a category.
+
 	Both routes require JOINT support (the whole core, contiguous, in at
 	least max(2, ceil(0.5 * n)) members), prefer the core covering the
 	most members (ties -> longer core), and never end in a function word.
- 
+
+	Virtual hypernym quality gates
+	------------------------------
+	A synthesised head is only a good canonical if it still describes the images, so a candidate is
+	dropped (a real member then names the cluster) when:
+	  1. the members are only spelling / typo / hyphen variants of ONE concept
+		 ('torsion test machine' x3 -> not 'machine'); designation variants stay distinct
+		 (min_distinct_concepts);
+	  2. the core is a bare numeral, Roman numeral or single letter ('18', 'II', 'E'), a two-letter
+		 fragment ('Co', 'FA') or a corporate suffix ('company', 'Limited'); the next valid suffix is
+		 then considered ('Rubber Company');
+	  3. its cosine to the cluster centroid is below virtual_min_sim_ratio of the best real member's
+		 ('Act' for named laws, 'class' for mechanic classes). A ratio, not an absolute cosine, so
+		 the gate holds when the embedding space changes (prompted vs un-prompted).
+	Every rejection is counted in meta.virtual_gates.rejections of the JSON and keeps a note on the
+	cluster's virtual_hypernym.
+
 	Frequency guard
 	---------------
 	Applied only when frequency actually flipped the decision, i.e. the
@@ -3430,15 +3447,15 @@ def assign_canonical_labels(
 	otherwise the no-frequency winner is kept. Structural wins (e.g.
 	'Lighthouse' beating 'coastal lighthouse' on containment/brevity) are
 	no longer vetoed.
- 
+
 	Debug output (when debug_json_path is given)
 	--------------------------------------------
-	One JSON file: a 'meta' block (weights, thresholds, method counts) and a
+	One JSON file: a 'meta' block (weights, thresholds, method counts, virtual gates) and a
 	'clusters' list. Each cluster holds its members, the final canonical, how
 	it was chosen (method, frequency-guard outcome, margin to the runner-up),
-	the virtual-hypernym trace (route, support, note), and every candidate
-	sorted by rank with all five score components.
- 
+	the virtual-hypernym trace (route, support, note), its nearest other cluster, and every
+	candidate sorted by rank with all five score components.
+
 	Parameters
 	----------
 	df : pd.DataFrame
@@ -3446,27 +3463,54 @@ def assign_canonical_labels(
 	X : np.ndarray, shape (n_unique_labels, d)
 		L2-normalised embeddings; row order matches df['label'].
 	model : SentenceTransformer
-		Used only to encode virtual hypernym candidates.
+		Used to encode virtual hypernym candidates (and for its model id in the neighbour report).
 	original_label_counts : Dict[str, int]
 		Corpus frequency of every label.
 	debug_json_path : str, optional
 		Where to write the per-cluster selection JSON (see above).
-	debug_top_k : int
-		Number of candidates shown per cluster in the verbose table.
+	shared_threshold : float
+		Centroid-similarity threshold of the shared-name resolver.
+	shared_calibration_names : list of str, optional
+		Names whose shared-canonical groups are printed (verbose only) to calibrate shared_threshold.
+	neighbor_review_min_sim : float
+		Minimum similarity for the nearest-cluster review file.
+	encode_prompt : str, optional
+		Prompt used when encoding virtual hypernyms. Must equal the prompt used for X.
+	virtual_min_sim_ratio : float or None
+		Minimum (virtual cosine / best real member cosine) for a virtual to stay in the pool.
+		None disables the similarity gate.
+	min_distinct_concepts : int
+		Minimum number of distinct concepts (after collapsing spelling variants) a cluster needs
+		before a virtual may be synthesised.
 	verbose : bool
 		Print per-cluster decisions.
- 
+
 	Returns
 	-------
 	cluster_canonicals : Dict[int, Dict]
-		{cid: {'canonical', 'score', 'size', 'virtual',
-				 'real_fallback', 'real_fallback_score', 'method'}}
+		{
+			cid: {
+				'canonical',
+				'score',
+				'size',
+				'virtual',
+				'real_fallback',
+				'real_fallback_score',
+				'real_runner_up',
+				'method'
+			}
+		}
 	"""
- 
+
 	W_SIM, W_FREQ, W_HEAD, W_CONT, W_BREV = 0.30, 0.15, 0.20, 0.25, 0.10
 	MIN_SUPPORT     = 0.5
 	FREQ_GAIN_GUARD = 3.0
- 
+
+	# Virtual-hypernym quality gates (see the docstring). Each rejection is counted for the JSON.
+	VIRTUAL_MIN_SIM_RATIO = virtual_min_sim_ratio
+	MIN_DISTINCT_CONCEPTS = min_distinct_concepts
+	virtual_rejections    = Counter()
+
 	# Prepositions introduce a post-modifier: in 'aerial view of harbor' the
 	# head phrase is 'aerial view'. Function words can never start or end a
 	# synthesised hypernym ('aerial view of' is rejected).
@@ -3478,36 +3522,108 @@ def assign_canonical_labels(
 		'around',
 	}
 	FUNCTION_WORDS = PREPOSITIONS | {'the', 'a', 'an', 'and', 'or', 'to', 'as'}
- 
+
 	# Token normalisation
 	# Lowercase + strip trailing punctuation, so 'Ausf.' == 'Ausf' == 'ausf'.
 	_TRAILING_PUNCT = re.compile(r'[^\w]+$')
- 
+
 	def _norm_token(tok: str) -> str:
 		return _TRAILING_PUNCT.sub('', tok.lower())
- 
+
 	def _norm_tokens(label: str) -> List[str]:
 		return [_norm_token(t) for t in label.split() if _norm_token(t)]
- 
+
 	def _norm_token_set(label: str) -> set:
 		return set(_norm_tokens(label))
- 
+
 	def _token_pairs(label: str) -> List[Tuple[str, str]]:
 		"""(raw_token, normalised_token) pairs, aligned, empties dropped."""
 		return [(t, _norm_token(t)) for t in label.split() if _norm_token(t)]
- 
+
+	# ── Version tails and hygiene ─────────────────────────────────────────────
+	# 'Ventura II', 'Stalag 7A', 'Senate Resolution 77', 'Camp B': the trailing numeral / number /
+	# letter is a version marker, not part of the category. Roman numerals are matched strictly
+	# (I..XXXIX), so real words made of those letters ('mill', 'civil', 'mix') are never stripped.
+	_VERSION_RE = re.compile(r'^(?:(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})|\d+[a-z]{0,2}|[a-z])$')
+	_VERSION_MARKERS = {'mk', 'mark', 'type', 'typ', 'model', 'no', 'ausf', 'series'}
+	_LEGAL_SUFFIXES = {'co', 'corp', 'corporation', 'company', 'inc', 'ltd', 'limited', 'plc', 'gmbh',
+					   'ag', 'llc', 'bros', 'sons'}
+
+	def _is_version_token(tok: str) -> bool:
+		return bool(_VERSION_RE.match(tok))
+
+	def _strip_version_tail(toks: List[str]) -> List[str]:
+		toks = list(toks)
+		while len(toks) > 1 and _is_version_token(toks[-1]):
+			# 'He 111', 'Ju 87', 'Bf 109': a number right after a 1-3 letter code IS the designation, keep it
+			if toks[-1][0].isdigit() and re.fullmatch(r'[a-z]{1,3}', toks[-2]) and toks[-2] not in _VERSION_MARKERS:
+				break
+			toks.pop()
+			while len(toks) > 1 and toks[-1] in _VERSION_MARKERS:
+				toks.pop()
+		return toks
+
+	def _core_rejection(core: List[str]) -> Optional[str]:
+		"""Why a synthesised head can never be a canonical: bare numeral / Roman numeral / single letter,
+		a 2-letter fragment, or a corporate suffix. Alphanumeric designations ('He 111', 'C-82') stay valid."""
+		if all(_is_version_token(t) for t in core):
+			return 'numeral_or_letter'
+		if all(t in _LEGAL_SUFFIXES for t in core):
+			return 'corporate_suffix'
+		if len(re.sub(r'[^a-z]', '', ''.join(core))) < 3 and not any(ch.isdigit() for t in core for ch in t):
+			return 'too_short'
+		return None
+
+	def _crude_stem(tok: str) -> str:
+		for suf in ('ing', 'ed', 'es', 's'):
+			if len(tok) > len(suf) + 2 and tok.endswith(suf):
+				return tok[:-len(suf)]
+		return tok
+
+	def _distinct_concepts(lbls: List[str]) -> int:
+		"""Number of distinct concepts once spelling variants are collapsed: hyphen / spacing / possessive /
+		plural differences and typos ('Venezualan' / 'Venezuelan') merge. Numbers, Roman numerals and single
+		letters must match exactly, so 'A-4 Skyhawk' / 'A-4B Skyhawk' and 'Mk I' / 'Mk II' stay distinct."""
+		import difflib
+		keys = []
+		for l in lbls:
+			toks = re.findall(r"[a-z0-9]+", l.lower())
+			num = tuple(t for t in toks if any(ch.isdigit() for ch in t) or (len(t) > 1 and _is_version_token(t))
+						or (len(t) == 1 and t != 's'))
+			alpha = ''.join(_crude_stem(t) for t in toks if t not in num and len(t) > 1)
+			keys.append((num, alpha))
+		parent = list(range(len(keys)))
+
+		def find(i):
+			while parent[i] != i:
+				parent[i] = parent[parent[i]]
+				i = parent[i]
+			return i
+
+		for i in range(len(keys)):
+			for j in range(i + 1, len(keys)):
+				if keys[i][0] == keys[j][0] and (
+					keys[i][1] == keys[j][1]
+					or difflib.SequenceMatcher(None, keys[i][1], keys[j][1]).ratio() >= 0.90
+				):
+					parent[find(j)] = find(i)
+		return len({find(i) for i in range(len(keys))})
+
 	def _head_phrase(norm_toks: List[str]) -> List[str]:
-		"""Tokens before the first preposition (never the very first token)."""
-		for i, t in enumerate(norm_toks):
+		"""Tokens before the first preposition (never the very first token), after dropping a trailing
+		version marker. Used for BOTH synthesis and scoring, so a virtual 'Ventura' and the members
+		'Ventura II' / 'Ventura Mk V' agree on their head."""
+		toks = _strip_version_tail(norm_toks)
+		for i, t in enumerate(toks):
 			if i > 0 and t in PREPOSITIONS:
-				return norm_toks[:i]
-		return norm_toks
- 
+				return toks[:i]
+		return toks
+
 	def _head_token(label: str) -> str:
 		"""'aerial view of harbor' -> 'view'; 'coastal lighthouse' -> 'lighthouse'."""
 		hp = _head_phrase(_norm_tokens(label))
 		return hp[-1] if hp else ''
- 
+
 	def _trim_function_words(toks) -> List[str]:
 		toks = list(toks)
 		while toks and toks[0] in FUNCTION_WORDS:
@@ -3515,22 +3631,29 @@ def assign_canonical_labels(
 		while toks and toks[-1] in FUNCTION_WORDS:
 			toks.pop()
 		return toks
- 
+
 	# Virtual hypernym synthesis
 	def _head_suffix_core(lbls: List[str], threshold: int):
-		"""Route 1: longest head phrase suffix with support >= threshold.
-		shared contiguous suffix of the members' head phrases.
+		"""Route 1: shared contiguous suffix of the members' head phrases.
+
+		The winner is the suffix with the highest support (ties -> the longer one). Cores that can never
+		be a canonical (numerals, single letters, corporate suffixes) are skipped, so the next valid
+		suffix is considered: 'rubber company' instead of a bare 'company'.
 		"""
-		
 		n = len(lbls)
 		hps = [_head_phrase(_norm_tokens(l)) for l in lbls]
 		max_len = max((len(h) for h in hps), default=0)
-		best, best_below = None, None      # (support, length, core)
+		best, best_below, blocked = None, None, []        # (support, length, core)
 		for k in range(1, max_len + 1):
 			counts = Counter(tuple(h[-k:]) for h in hps if len(h) >= k)
 			for suffix, support in counts.items():
 				core = _trim_function_words(suffix)
 				if not core:
+					continue
+				why = _core_rejection(core)
+				if why:
+					if support >= threshold:
+						blocked.append((' '.join(core), why))
 					continue
 				cand = (support, len(core), tuple(core))
 				if support >= threshold:
@@ -3540,6 +3663,9 @@ def assign_canonical_labels(
 					best_below = cand
 		if best:
 			return list(best[2]), best[0], ''
+		if blocked:
+			virtual_rejections['hygiene:' + blocked[0][1]] += 1
+			return None, 0, f"head_suffix: rejected {blocked[0][0]!r} ({blocked[0][1]})"
 		if best_below:
 			note = (f"head_suffix: best '{' '.join(best_below[2])}' only "
 					f"{best_below[0]}/{n} (need {threshold})")
@@ -3626,6 +3752,11 @@ def assign_canonical_labels(
 		n = len(lbls)
 		threshold = max(2, int(np.ceil(MIN_SUPPORT * n)))
 		info = {'route': '', 'support': 0, 'threshold': threshold, 'note': ''}
+		k = _distinct_concepts(lbls)
+		if k < MIN_DISTINCT_CONCEPTS:
+			virtual_rejections['one_concept'] += 1
+			info['note'] = f"rejected: the {n} members are spelling variants of {k} concept (need >= {MIN_DISTINCT_CONCEPTS})"
+			return None, info
 		core, support, note_a = _head_suffix_core(lbls, threshold)
 		if core:
 			info.update(route='head_suffix', support=support,
@@ -3633,12 +3764,14 @@ def assign_canonical_labels(
 			return " ".join(core), info
 		core, support, note_b = _title_prefix_core(lbls, threshold)
 		if core:
+			while len(core) > 1 and core[-1] in ('mk', 'ausf'):      # 'Cruiser Mk' -> 'Cruiser'
+				core = core[:-1]
 			info.update(route='title_prefix', support=support,
 						note=f"shared title in {support}/{n}; {note_a}")
 			return " ".join(core), info
 		info['note'] = f"{note_a}; {note_b}"
 		return None, info
- 
+
 	def _restore_surface(vh: str, cluster_texts: List[str]) -> str:
 		"""Borrow each token's most frequent surface form from the members."""
 		restored = []
@@ -3656,7 +3789,7 @@ def assign_canonical_labels(
 				restored.append(ntok.title())
 		# strip trailing punctuation left over from a raw token like 'Ausf.'
 		return _TRAILING_PUNCT.sub('', " ".join(restored)) or " ".join(restored)
- 
+
 	def _containment_scores(candidates: List[str], cluster_lbls: List[str]) -> np.ndarray:
 		"""Fraction of members whose token set contains ALL candidate tokens."""
 		cluster_norm_sets = [_norm_token_set(lbl) for lbl in cluster_lbls]
@@ -3665,10 +3798,10 @@ def assign_canonical_labels(
 			/ max(len(cluster_lbls), 1)
 			for c in candidates
 		])
- 
+
 	# Corpus-wide case registry: built once, needs visibility across ALL clusters.
 	case_registry = _build_case_registry(original_label_counts)
- 
+
 	cluster_canonicals    = {}
 	virtual_used_count    = 0
 	freq_changed_count    = 0
@@ -3680,17 +3813,17 @@ def assign_canonical_labels(
 	cluster_centroids: Dict[int, np.ndarray] = {}
 	cluster_members:   Dict[int, List[str]]  = {}
 	n_clusters_total = df.cluster.nunique()
- 
+
 	for cid in sorted(df.cluster.unique()):
 		cluster_mask       = df.cluster == cid
 		cluster_texts      = df[cluster_mask]['label'].tolist()
 		cluster_indices    = df[cluster_mask].index.tolist()
 		cluster_embeddings = X[cluster_indices] # (n, d), L2-normalised
 		cluster_size       = len(cluster_texts)
- 
+
 		if verbose:
 			print(f"\n[Cluster {cid:5d}/{n_clusters_total}] {cluster_size} labels{'\n' if cluster_size>10 else ' '}{cluster_texts}")
- 
+
 		centroid = cluster_embeddings.mean(axis=0)   # real members only
 		cluster_centroids[cid] = centroid
 		cluster_members[cid]   = cluster_texts
@@ -3713,7 +3846,7 @@ def assign_canonical_labels(
 					if registry_hit is not None and registry_hit != virtual_hypernym:
 						vh_info['note'] += f" | respelled via corpus as {registry_hit!r}"
 						virtual_hypernym = registry_hit
- 
+
 		if verbose:
 			if vh_raw is None:
 				print(f"Virtual: none -- {vh_info['note']}")
@@ -3725,62 +3858,96 @@ def assign_canonical_labels(
 					f"support {vh_info['support']}/{cluster_size}, "
 					f"need {vh_info['threshold']}] {vh_info['note']}"
 				)
- 
+
 		candidates = cluster_texts + ([virtual_hypernym] if virtual_hypernym else [])
 		virtual_flags = [False] * cluster_size + ([True] if virtual_hypernym else [])
- 
+
 		if virtual_hypernym is not None:
 			vh_emb = _encode_(model, [virtual_hypernym], 1, encode_prompt)[0]
 			all_embeddings = np.vstack([cluster_embeddings, vh_emb[np.newaxis, :]])
 		else:
 			all_embeddings = cluster_embeddings
- 
+
 		# ── Score 1: cosine similarity to centroid ────────────────────────
 		similarities = cosine_similarity(centroid.reshape(1, -1), all_embeddings)[0]
 		pure_sim_idx = int(similarities[:cluster_size].argmax())   # real labels only
- 
+
+		# ── Similarity gate for the virtual hypernym ──────────────────────
+		# A virtual is a SUMMARY of the cluster. If its embedding is far from the centroid compared with
+		# the best real member ('Act' for named laws, 'machine' for three spellings of one test machine),
+		# it does not describe the images: drop it and let a real member win. The ratio (not an absolute
+		# cosine) keeps the gate valid when the embedding space changes (prompted vs un-prompted).
+		rejection_tag = ""
+		if virtual_hypernym is not None and VIRTUAL_MIN_SIM_RATIO is not None:
+			_best_real = float(similarities[:cluster_size].max())
+			_ratio = float(similarities[cluster_size]) / max(_best_real, 1e-12)
+
+			if _ratio < VIRTUAL_MIN_SIM_RATIO:
+				vh_info['note'] += (
+					f" | rejected: sim ratio {_ratio:.2f} < {VIRTUAL_MIN_SIM_RATIO:.2f} "
+					f"(virtual {similarities[cluster_size]:.3f} vs best member {_best_real:.3f})"
+				)
+				
+				virtual_rejections['similarity_ratio'] += 1
+
+				# if verbose:
+				# 	print(f"[REJECTED] {virtual_hypernym!r}: sim ratio {_ratio:.4f} < {VIRTUAL_MIN_SIM_RATIO}")
+
+				rejection_tag = f"[REJECTED VIRTUAL] {virtual_hypernym!r}: sim ratio {_ratio:.4f} < {VIRTUAL_MIN_SIM_RATIO}"
+
+				virtual_hypernym = None
+				candidates = cluster_texts
+				virtual_flags = [False] * cluster_size
+				all_embeddings = cluster_embeddings
+				similarities = similarities[:cluster_size]
+
 		raw_freqs = np.array(
 			[
 				0 if virtual_flags[i] else original_label_counts.get(c, 0)
 				for i, c in enumerate(candidates)
-			], 
+			],
 			dtype=float
 		)
- 
+
 		nan_vec = np.full(len(candidates), np.nan)
 		freq_scores = head_scores = cont_scores = brevity_scores = nan_vec
 		combined_scores = composite_no_freq = nan_vec
 		composite_idx = nofreq_idx = None
 		freq_guard = 'not_applicable'
- 
+
 		if original_label_counts and cluster_size > 1:
 			# ── Score 2: frequency (log-normalised; virtual gets 0) ───────
 			freq_scores = np.log1p(raw_freqs) / np.log1p(raw_freqs.max() + 1e-12)
- 
+
 			# ── Score 3: head-noun dominance (prepositional heads fixed) ──
 			head_counts = Counter(_head_token(l) for l in cluster_texts)
-			head_scores = np.array([head_counts.get(_head_token(c), 0) / cluster_size
-									for c in candidates])
- 
+			head_scores = np.array(
+				[
+					head_counts.get(_head_token(c), 0) / cluster_size
+					for c in candidates
+				]
+			)
+
 			# ── Score 4: containment (genuine joint containment, no floor) ─
 			cont_scores = _containment_scores(candidates, cluster_texts)
- 
+
 			# ── Score 5: brevity ─────────────────────────────────────────
 			token_lengths  = np.array([len(c.split()) for c in candidates], dtype=float)
 			brevity_scores = 1.0 - (token_lengths - 1.0) / max(token_lengths.max(), 1)
- 
+
 			composite_no_freq = (
 				W_SIM * similarities
 				+ W_HEAD * head_scores
 				+ W_CONT * cont_scores
 				+ W_BREV * brevity_scores
 			)
+
 			combined_scores = composite_no_freq + W_FREQ * freq_scores
- 
+
 			composite_idx = int(combined_scores.argmax())
 			nofreq_idx    = int(composite_no_freq.argmax())
 			best_idx      = composite_idx
- 
+
 			# ── Frequency guard: only when frequency flipped the decision ─
 			if composite_idx == nofreq_idx:
 				freq_guard = 'not_triggered'
@@ -3791,15 +3958,15 @@ def assign_canonical_labels(
 				else:
 					freq_guard = f'reverted ({gain:.1f}x < {FREQ_GAIN_GUARD:.0f}x)'
 					best_idx = nofreq_idx
- 
+
 			best_real_idx = int(combined_scores[:cluster_size].argmax())
 		else:
 			# Singleton or no frequency data: pure centroid similarity
 			best_idx      = pure_sim_idx
 			best_real_idx = pure_sim_idx   # (was previously left stale from the last cluster)
- 
+
 		is_virtual_pick = virtual_flags[best_idx]
- 
+
 		# ── Selection method (why this label won) ─────────────────────────
 		if composite_idx is None:
 			method = 'pure_similarity_fallback'
@@ -3813,7 +3980,7 @@ def assign_canonical_labels(
 			method = 'composite_agrees_with_similarity'
 		else:
 			method = 'composite_structural'
- 
+
 		# ── Bookkeeping for the summary statistics (unchanged semantics) ──
 		if is_virtual_pick:
 			virtual_used_count += 1
@@ -3838,40 +4005,47 @@ def assign_canonical_labels(
 					'cluster_size':   cluster_size,
 					'cluster_labels': cluster_texts,
 				})
- 
+
 		# ── Per-candidate rows (verbose table + selection JSON) ───────────
 		rows = []
 		for i, c in enumerate(candidates):
-			rows.append({
-				'cluster_id':        cid,
-				'candidate':         c,
-				'is_virtual':        virtual_flags[i],
-				'head_token':        _head_token(c),
-				'raw_freq':          int(raw_freqs[i]),
-				'sim':               float(similarities[i]),
-				'freq_score':        float(freq_scores[i]),
-				'head_score':        float(head_scores[i]),
-				'cont_score':        float(cont_scores[i]),
-				'brevity_score':     float(brevity_scores[i]),
-				'composite_no_freq': float(composite_no_freq[i]),
-				'composite':         float(combined_scores[i]),
-				'is_selected':       i == best_idx,
-				'is_pure_sim_winner': i == pure_sim_idx,
-				'is_no_freq_winner': nofreq_idx is not None and i == nofreq_idx,
-			})
+			rows.append(
+				{
+					'cluster_id':        cid,
+					'candidate':         c,
+					'is_virtual':        virtual_flags[i],
+					'head_token':        _head_token(c),
+					'raw_freq':          int(raw_freqs[i]),
+					'sim':               float(similarities[i]),
+					'freq_score':        float(freq_scores[i]),
+					'head_score':        float(head_scores[i]),
+					'cont_score':        float(cont_scores[i]),
+					'brevity_score':     float(brevity_scores[i]),
+					'composite_no_freq': float(composite_no_freq[i]),
+					'composite':         float(combined_scores[i]),
+					'is_selected':       i == best_idx,
+					'is_pure_sim_winner': i == pure_sim_idx,
+					'is_no_freq_winner': nofreq_idx is not None and i == nofreq_idx,
+				}
+			)
+
 		ranking = sorted(range(len(rows)), key=lambda i: -np.nan_to_num(rows[i]['composite'], nan=-1))
+
 		for rank, i in enumerate(ranking, 1):
 			rows[i]['rank'] = rank
+
 		candidate_records.extend(rows)
-	
+
 		runner_up = next((i for i in ranking if i != best_idx), None)
+
 		margin = (
 			combined_scores[best_idx] - combined_scores[runner_up]
-			if runner_up is not None and composite_idx is not None 
+			if runner_up is not None and composite_idx is not None
 			else np.nan
 		)
- 
+
 		canonical = candidates[best_idx]
+
 		cluster_canonicals[cid] = {
 			'canonical': canonical,
 			'score': float(similarities[best_idx]),
@@ -3886,14 +4060,14 @@ def assign_canonical_labels(
 			),
 			'method': method,
 		}
- 
+
 		selection_records.append(
 			{
 				'cluster_id':             cid,
 				'cluster_size':           cluster_size,
 				'members':                " | ".join(cluster_texts),
 				'member_freqs':           " | ".join(str(original_label_counts.get(t, 0)) for t in cluster_texts),
-				'canonical_selected':     canonical,      # overwritten after post-passes
+				'canonical_selected':     canonical, # overwritten after post-passes
 				'canonical_pre_postpass': canonical,
 				'changed_by_postpass':    False,
 				'selection_method':       method,
@@ -3916,16 +4090,19 @@ def assign_canonical_labels(
 				'margin_to_runner_up':    float(margin),
 			}
 		)
- 
+
 		if verbose:
 			tag = " [VIRTUAL]" if virtual_flags[best_idx] else ""
-			print(f"\t=> Selected Canonical: {canonical!r} (sim={similarities[best_idx]:.4f}){tag}")
- 
-	pre_postpass = {cid: meta['canonical'] for cid, meta in cluster_canonicals.items()}
+			print(f"\t=> Selected Canonical: {repr(canonical):<25} (sim={similarities[best_idx]:.4f}){tag} {rejection_tag}")
+
+	pre_postpass = {
+		cid: meta['canonical']
+		for cid, meta in cluster_canonicals.items()
+	}
 
 	if shared_calibration_names and verbose:
 		report_shared_group_similarities(
-			cluster_canonicals, 
+			cluster_canonicals,
 			cluster_centroids,
 			cluster_members,
 			names=shared_calibration_names,
@@ -3978,7 +4155,7 @@ def assign_canonical_labels(
 			'demoted_from':      meta.get('shared_demoted_from'),
 			'spelling_unified_from': meta.get('spelling_unified_from'),
 		}
- 
+
 	if debug_json_path:
 		def _clean(v, ndigits: int = 4):
 			"""numpy -> python; NaN -> None; floats rounded for readability."""
@@ -3989,11 +4166,11 @@ def assign_canonical_labels(
 			if isinstance(v, (np.floating, float)):
 				return None if np.isnan(v) else round(float(v), ndigits)
 			return v
- 
+
 		cands_by_cluster: Dict[int, List[Dict]] = defaultdict(list)
 		for r in candidate_records:
 			cands_by_cluster[r['cluster_id']].append(r)
- 
+
 		clusters_json = []
 		for rec in selection_records:
 			cid = rec['cluster_id']
@@ -4057,20 +4234,25 @@ def assign_canonical_labels(
 					for r in cands
 				],
 			})
- 
+
 		method_counts = Counter(rec['selection_method'] for rec in selection_records)
 		payload = {
 			'meta': {
 				'n_clusters': len(clusters_json),
 				'n_candidates': len(candidate_records),
 				'weights': {
-					'similarity': W_SIM, 
-					'frequency': W_FREQ, 
+					'similarity': W_SIM,
+					'frequency': W_FREQ,
 					'head': W_HEAD,
-					'containment': W_CONT, 
+					'containment': W_CONT,
 					'brevity': W_BREV
 				},
 				'min_support': MIN_SUPPORT,
+				'virtual_gates': {
+					'min_sim_ratio': VIRTUAL_MIN_SIM_RATIO,
+					'min_distinct_concepts': MIN_DISTINCT_CONCEPTS,
+					'rejections': dict(virtual_rejections),
+				},
 				'freq_gain_guard': FREQ_GAIN_GUARD,
 				'selection_method_counts': dict(method_counts.most_common()),
 				'virtual_winners': sum(1 for c in clusters_json if c['is_virtual']),
@@ -4095,7 +4277,7 @@ def assign_canonical_labels(
 			print(f"  ├─ {len(clusters_json)} clusters")
 			print(f"  ├─ {len(candidate_records)} candidates")
 			print(f"  ├─ {debug_json_path}")
- 
+
 	if verbose and selection_records:
 		sel = pd.DataFrame(selection_records)
 		print("\nHow canonicals were chosen:")
@@ -4115,20 +4297,22 @@ def assign_canonical_labels(
 				f"(top: {', '.join(f'{k!r}x{v}' for k, v in dup.head(8).items())})"
 			)
 		print(f"  Postpass (case-collision) changed: {int(sel['changed_by_postpass'].sum())} cluster(s)")
-	
+		if virtual_rejections:
+			print(f"  Virtual candidates rejected by the quality gates: {dict(virtual_rejections)}")
+
 	if total_sim_loss and verbose:
 		print(f"\nSIMILARITY LOSS IMPACT:")
 		print(f"  Average  {np.mean(total_sim_loss)*100:.2f}%")
 		print(f"  Median   {np.median(total_sim_loss)*100:.2f}%")
 		print(f"  Max      {np.max(total_sim_loss)*100:.2f}%")
 		print(f"  Min      {np.min(total_sim_loss)*100:.2f}%")
- 
+
 		print(f"\nFREQUENCY GAIN BENEFIT:")
 		print(f"  Average {np.mean(total_freq_gain):.1f}x")
 		print(f"  Median  {np.median(total_freq_gain):.1f}x")
 		print(f"  Max     {np.max(total_freq_gain):.1f}x")
 		print(f"  Min     {np.min(total_freq_gain):.1f}x")
- 
+
 		print(f"\ntrades with freq gain > 1.0")
 		excellent_trades    = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.03 and f > 10)
 		good_trades         = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.05 and f > 5)
@@ -4136,14 +4320,14 @@ def assign_canonical_labels(
 		print(f"  Excellent    (< 3% sim loss AND >10x freq gain) : {excellent_trades:<10} ({excellent_trades/freq_changed_count*100:.1f}%)")
 		print(f"  Good         (< 5% sim loss AND > 5x freq gain) : {good_trades:<10} ({good_trades/freq_changed_count*100:.1f}%)")
 		print(f"  Questionable (>10% sim loss  OR < 2x freq gain) : {questionable_trades:<10} ({questionable_trades/freq_changed_count*100:.1f}%)")
- 
+
 		if questionable_trades > 0 and verbose:
 			print(f"\n[WARNING] {questionable_trades} questionable trades detected: (Consider adjusting weighting if this is high)\n")
 			print(f"{'Cluster':7s} {'Pure Sim Choice':<55} {'Score-Weighted Choice':<55} {'Sim Loss(%)':<15} {'Freq Gain'}")
 			print("-" * 150)
 			for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True):
 				print(f"{ex['cluster_id']:7d} {ex['pure_choice'][:32]:<55} {ex['freq_choice'][:32]:<55} {ex['sim_loss']*100:<15.2f} {ex['freq_gain']:.2f}x")
- 
+
 			high_loss_low_gain  = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] < 2]
 			high_loss_good_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] >= 2]
 			low_loss_low_gain   = [ex for ex in questionable_examples if ex['sim_loss'] <= 0.10 and ex['freq_gain'] < 2]
@@ -4154,7 +4338,7 @@ def assign_canonical_labels(
 			print(f"Low loss  (<=10%) + Low gain  (< 2x) : {len(low_loss_low_gain):<10}{len(low_loss_low_gain)/questionable_trades:<10.4f}UNNECESSARY")
 		else:
 			print(f"\nAll trades are high-quality!")
- 
+
 		avg_sim_loss_pct = np.mean(total_sim_loss) * 100
 		avg_freq_gain    = np.mean(total_freq_gain)
 
@@ -4174,7 +4358,7 @@ def assign_canonical_labels(
 		if verbose:
 			print("\n  ℹ️  Score-based selection made no changes (all clusters picked highest similarity)")
 			print("=" * 100)
- 
+
 	if verbose:
 		print("-"*100)
 		print("[CLUSTERING] FREQUENCY WEIGHTING IMPACT")
@@ -4339,7 +4523,6 @@ def cluster(
 		for label in doc:
 			label_freq_dict[label] = label_freq_dict.get(label, 0) + 1
 
-
 	if verbose:
 		print(f"  ├─ Frequency dict has {len(label_freq_dict)} labels")
 		print(f"  ├─ Total label instances: {sum(label_freq_dict.values())}")
@@ -4481,8 +4664,9 @@ def get_canonical_labels(
 	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
-
+	
 	clusters_fname = os.path.join(output_dir, f"clustering_{label_source}.csv")
+	
 	if verbose:
 		print("-" * 50)
 		print("[CANONICALIZATION] Sequential Mapping")
