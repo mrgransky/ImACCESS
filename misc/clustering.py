@@ -4093,7 +4093,7 @@ def assign_canonical_labels(
 
 		if verbose:
 			tag = " [VIRTUAL]" if virtual_flags[best_idx] else ""
-			print(f"\t=> Selected Canonical: {repr(canonical):<25} (sim={similarities[best_idx]:.4f}){tag} {rejection_tag}")
+			print(f"\t=> Selected Canonical: {repr(canonical):<40} (sim={similarities[best_idx]:.4f}){tag} {rejection_tag}")
 
 	pre_postpass = {
 		cid: meta['canonical']
