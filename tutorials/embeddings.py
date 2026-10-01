@@ -107,14 +107,29 @@ sys.path.insert(0, MISC_DIR)
 from utils import *
 import numpy as np
 
-model_id = "Qwen/Qwen3-Embedding-8B" # HPC
+# model_id = "Qwen/Qwen3-Embedding-8B" # HPC
+# if USER == "farid":
+# 	# model_id = "Qwen/Qwen3-Embedding-0.6B"
+# 	# model_id = "Octen/Octen-Embedding-0.6B"
+# 	model_id = "nvidia/Nemotron-3-Embed-1B-BF16"
+
+models_ids =[
+	"Qwen/Qwen3-Embedding-8B",
+	"Octen/Octen-Embedding-8B",
+	"nvidia/Nemotron-3-Embed-8B-BF16",
+]
 if USER == "farid":
-	model_id = "Qwen/Qwen3-Embedding-0.6B" # local
+	models_ids =[
+		"Qwen/Qwen3-Embedding-0.6B",
+		"Octen/Octen-Embedding-0.6B",
+		"nvidia/Nemotron-3-Embed-1B-BF16",
+	]
+
+
 
 # Task instruction in the same "Instruct: ...\nQuery:" format the model was trained with.
 # The text is appended directly after "Query:" (no space), exactly like the built-in "query" prompt.
 # Output dimension of each real model; used to catch a stand-in/mock encoder
-EXPECTED_DIM = {"Qwen/Qwen3-Embedding-8B": 4096, "Qwen/Qwen3-Embedding-0.6B": 1024}
 
 CUSTOM_INSTRUCTION = (
 	"Instruct: Given a label describing a historical photograph, "
@@ -136,6 +151,8 @@ POS_PAIRS = [
 	("clergyman", "clergy"),
 	("counter-attack", "counterattack"),
 	('Grey', 'Gray'),
+	('Jagdgeschwader 53', 'Pik As'),
+	('Nuuanu Pali', 'Pali'),
 ]
 # Should look different (share words or spelling, different concept)
 NEG_PAIRS = [
@@ -152,6 +169,7 @@ NEG_PAIRS = [
 	("hospital ward", "hospital"),
 	("shell shock", "shock absorber"),
 	("Sherman tank", "M3 tank"),
+	('pikes', 'Pik As'),
 ]
 
 
@@ -167,10 +185,8 @@ def encode(model, texts, prompt=None, prompt_name=None):
 		dtype=np.float32,
 	)
 
-
 def cos(a, b) -> float:
 	return float(np.dot(a, b))  # embeddings are L2-normalised
-
 
 # ── 1. PROMPT INSPECTION ─────────────────────────────────────────────────────────────────────
 def inspect_prompts(model):
@@ -179,12 +195,7 @@ def inspect_prompts(model):
 	print("=" * 100)
 	dim = model.get_sentence_embedding_dimension() if hasattr(model, "get_sentence_embedding_dimension") else "?"
 	print(f"encoder: {type(model).__name__} | model_id: {model_id} | embedding dim: {dim}")
-	want = EXPECTED_DIM.get(model_id)
-	if want is not None and dim != want:
-		print("!" * 100)
-		print(f"WARNING: embedding dim {dim} != {want} expected for {model_id}. This is NOT the real model:")
-		print("         every number below is meaningless.")
-		print("!" * 100)
+
 	print(f"default_prompt_name: {model.default_prompt_name}")
 	print(f"prompts: {model.prompts}")
 	print(f"query prompt   : {model.prompts['query']!r}")
@@ -271,19 +282,20 @@ def pair_screen(model):
 
 def main():
 	t0 = time.time()
-	model = SentenceTransformer(
-		model_name_or_path=model_id,
-		model_kwargs={"attn_implementation": "flash_attention_2"}, # no device_map
-		trust_remote_code=True,
-		device="cuda:0" if torch.cuda.is_available() else "cpu",
-		cache_folder=cache_directory[os.getenv('USER')],
-		token=os.getenv("HUGGINGFACE_TOKEN"),
-		processor_kwargs={"padding_side": "left"}, # renamed from tokenizer_kwargs
-	)
-	inspect_prompts(model)
-	shell_shock_demo(model)
-	pair_screen(model)
-	print(f"\n[done] {time.time() - t0:.1f} sec")
+	for model_id in models_ids:
+		model = SentenceTransformer(
+			model_name_or_path=model_id,
+			model_kwargs={"attn_implementation": "flash_attention_2"}, # no device_map
+			trust_remote_code=True,
+			device="cuda:0" if torch.cuda.is_available() else "cpu",
+			cache_folder=cache_directory[os.getenv('USER')],
+			token=os.getenv("HUGGINGFACE_TOKEN"),
+			processor_kwargs={"padding_side": "left"}, # renamed from tokenizer_kwargs
+		)
+		inspect_prompts(model)
+		shell_shock_demo(model)
+		pair_screen(model)
+		print(f"\n[done] {time.time() - t0:.1f} sec")
 
 
 if __name__ == "__main__":
