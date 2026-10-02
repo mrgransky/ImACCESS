@@ -251,7 +251,7 @@ def lingua_is_english(
 			"hospital", "clinic", "medical", "medicine", "doctor",
 			"cultural", "festival", "culture",
 			# Military equipment
-			"howitzer", "missile", "missiles", "airplane", "aeroplane",
+			"howitzer", "", "missile", "missiles", "airplane", "aeroplane",
 			"submarine", "locomotive", "tank", "tanks", "cannon",
 			"explosion", "grenade", "aircraft", "bomber", "fighter",
 			"helicopter", "airfield", "runway", "cockpit", "propeller",
@@ -273,7 +273,11 @@ def lingua_is_english(
 		DOMAIN_ENGLISH_WORDS.update(GEOGRAPHIC_REFERENCES)
 
 		# Check if the text contains domain-specific English words
-		domain_word_count = sum(1 for w in words if w in DOMAIN_ENGLISH_WORDS)
+		domain_word_count = sum(
+			1 
+			for w in list(set(words))
+			if w in DOMAIN_ENGLISH_WORDS
+		)
 		if domain_word_count > 0:
 			# # For short texts (≤4 words), even 1 domain word is strong signal
 			# if len(words) <= 4 and domain_word_count >= 1:
