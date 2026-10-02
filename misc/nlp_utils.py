@@ -20,6 +20,7 @@ except Exception as e:
 import pandas as pd
 from collections import Counter, defaultdict
 from typing import List, Optional, Set, Any, Dict, Tuple
+
 # Install: pip install lingua-language-detector
 from lingua import Language, LanguageDetectorBuilder, IsoCode639_1
 
@@ -60,7 +61,6 @@ except LookupError:
 		quiet=False,
 		raise_on_error=True,
 	)
-
 # STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
 STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
 # Load custom stopwords from file
@@ -74,6 +74,7 @@ with open(meaningless_words_path, 'r') as file_:
 		]	
 	)
 STOPWORDS.update(MEANINGLESS_PHRASES)
+HISTORICAL_ENGLISH_LANGUAGE_VOCABULARY = set()
 
 geographic_references_path = os.path.join(MISC_DIR, 'geographic_references.txt')
 with open(geographic_references_path, 'r') as file_:
@@ -126,6 +127,214 @@ detector_all = (
 	.build()
 )
 
+# Module-level in-memory cache
+_SPACY_CACHE: Dict[str, Any] = {}
+_CACHE_DIRTY = False  # Tracks if new entities were added to avoid unnecessary disk writes
+
+import torch
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from transformers import logging as transformers_logging
+transformers_logging.set_verbosity_error()  # Only show errors, not warnings/info
+
+HOME: str = os.getenv('HOME') # echo $HOME
+USER: str = os.getenv('USER') # echo $USER
+cache_directory = {
+	"farid": "/home/farid/datasets/models",
+	"alijanif": "/scratch/project_2004072/models",
+	"ubuntu": "/media/volume/models",
+}
+
+language_model_ckpt = "papluca/xlm-roberta-base-language-detection"
+language_model_kwargs: Dict[str, Any] = {
+	"low_cpu_mem_usage": True,
+	"trust_remote_code": True,
+	"cache_dir": cache_directory[USER],
+	"dtype": torch.bfloat16,
+}
+language_model_tokenizer = AutoTokenizer.from_pretrained(
+	language_model_ckpt,
+	use_fast=True,
+	trust_remote_code=True,
+	cache_dir=cache_directory[USER],
+)
+if language_model_tokenizer.pad_token is None:
+	language_model_tokenizer.pad_token = tokenizer.eos_token
+	language_model_tokenizer.pad_token_id = tokenizer.eos_token_id
+
+if hasattr(language_model_tokenizer, "padding_side") and language_model_tokenizer.padding_side is not None:
+	language_model_tokenizer.padding_side = "left"
+
+language_detection_model = AutoModelForSequenceClassification.from_pretrained(
+	language_model_ckpt,
+	**language_model_kwargs
+)
+language_detection_model.eval()
+id2lang = language_detection_model.config.id2label
+
+def roberta_is_english(
+	text: str,
+	confidence_threshold: float,
+	min_chars: int = 20,
+	verbose: bool = False,
+) -> bool:
+	if not text or len(str(text).strip()) < min_chars:
+		if verbose: 
+			print(f"[SKIPPED] Text is too short or empty: {text} (min_chars={min_chars})")
+		return False
+
+	words = text.strip().split()
+	# Check if there is any intersection between the words and STOPWORDS
+	if any(word in STOPWORDS for word in words):
+		return True
+			# print(f"{text}")
+			# print(f"English, double check required!")
+			# print()
+
+	inputs = language_model_tokenizer(
+		text,
+		padding=True,
+		truncation=True,
+		max_length=512,
+		return_tensors="pt",
+	)
+	
+	with torch.no_grad():
+		logits = language_detection_model(**inputs).logits
+		probs = torch.softmax(logits, dim=-1)[0]
+	
+	# Get top prediction
+	top_prob, top_idx = torch.max(probs, dim=0)
+	top_lang = id2lang[top_idx.item()]
+	en_prob = probs[[i for i, lang in id2lang.items() if lang == "en"][0]].item()
+	decision = (top_lang == "en") and (top_prob.item() >= confidence_threshold)
+	
+	if verbose:
+		print(text)
+		print(f"Top Language: {top_lang} {top_prob.item():.4f} | eng_prob: {en_prob:.8f} (English? {decision})")
+		print("-"*100)
+	
+	return decision
+
+# def lingua_is_english(
+# 	text: str,
+# 	confidence_threshold: float,
+# 	use_shortlist: bool,  # use shortlist=True of European languages for detection
+# 	verbose: bool = False,
+# ) -> bool:
+# 	"""
+# 	Check if the given text is in English.
+	
+# 	Args:
+# 			text: The text to check
+# 			confidence_threshold: Minimum confidence score to consider text as English
+# 			use_shortlist: If True, use shortlisted European languages for detection.
+# 										If False, use all available languages.
+# 			verbose: Print detailed detection information
+	
+# 	Returns:
+# 			True if text is detected as English with confidence above threshold
+# 	"""
+
+# 	if not text or not str(text).strip():
+# 		return False
+	
+# 	words = text.lower().strip().split()
+# 	# Check if there is any intersection between the words and STOPWORDS
+# 	if any(word in STOPWORDS for word in words):
+# 		if verbose:
+# 			print(text)
+# 			print(f"\n[DETECTED] contains ENGLISH stopwords")
+# 			print("-"*100)
+# 		return True
+
+# 	# Select detector based on use_shortlist flag
+# 	detector = detector_shortlist if use_shortlist else detector_all
+# 	detector_type = "shortlisted languages" if use_shortlist else "all languages"
+	
+# 	if verbose:
+# 		print("-"*120)
+# 		print(f"Checking if text is in English (using {detector_type}):\n{text}")
+	
+# 	try:
+# 		cleaned_text = " ".join(str(text).split())
+# 		results = detector.compute_language_confidence_values(cleaned_text)
+# 		first_detected_language = results[0].language if results else None
+# 		# if verbose:
+# 		# 	print(f"All detected languages:")
+# 		# 	for res in results:
+# 		# 		print(f"  {res.language.name:<15} {res.value:.4f}")
+		
+# 		if not results:
+# 			return False
+		
+# 		for idx, res in enumerate(results):
+# 			if res.language == Language.ENGLISH:
+# 				score = res.value
+# 				if verbose:
+# 					print(f"\nis_english: {score > confidence_threshold} {score} ?> {confidence_threshold} | Detected First Language: {first_detected_language} | English_rank: {idx}/{len(results)}")
+# 					print("-"*120)
+
+# 				if score > confidence_threshold:
+# 					return True
+		
+# 		return False
+# 	except Exception as e:
+# 		if verbose:
+# 			print(f"Error: {e}")
+# 		return False
+
+def lingua_is_english(
+		text: str,
+		confidence_threshold: float = 0.5,
+		stopword_ratio_threshold: float = 0.10, # risk of false positives
+		use_shortlist: bool = True,
+		verbose: bool = False,
+) -> bool:
+	if not text or not str(text).strip():
+			return False
+	words = re.findall(r'\b[a-zA-Z]+\b', text.lower())
+	if not words:
+		return False
+	
+	if verbose:
+		print(text)
+	
+	# ── Phase 1: Stopword DENSITY check (not any()) ──
+	# Only trigger if a significant PORTION of the words are English stopwords.
+	# This prevents "De stad is mooi." from being classified as English
+	# just because "is" appears once.
+	stopword_count = sum(1 for w in words if w in STOPWORDS)
+	stopword_ratio = stopword_count / len(words)
+	if stopword_ratio >= stopword_ratio_threshold:
+		if verbose:
+			print(f"[ENGLISH by STOPWORD DENSITY] ratio {stopword_ratio:.3f} >= {stopword_ratio_threshold}")
+			print("-"*100)
+		return True
+	
+	# ── Phase 2: Lingua ML fallback ──
+	detector = detector_shortlist if use_shortlist else detector_all
+	cleaned_text = " ".join(str(text).split())
+	try:
+		results = detector.compute_language_confidence_values(cleaned_text)
+		if not results:
+				return False
+		# ONLY check the TOP-ranked language, not all of them
+		top_language = results[0].language
+		top_score = results[0].value
+		if top_language == Language.ENGLISH and top_score >= confidence_threshold:
+			if verbose:
+				print(f"[ENGLISH by LINGUA] score {top_score:.4f} >= {confidence_threshold}")
+				print("-"*100)
+			return True
+		if verbose:
+			print(f"[NOT ENGLISH by LINGUA] top={top_language.name} score={top_score:.4f}")
+			print("-"*100)
+		return False
+	except Exception as e:
+		if verbose:
+			print(f"Error: {e}")
+		return False
+
 def case_stats(s: str):
 	"""Return counts and percentages of lower/upper case letters."""
 	l = u = 0
@@ -152,10 +361,6 @@ def case_stats(s: str):
 	# 	print(stats)
 
 	return stats
-
-# Module-level in-memory cache
-_SPACY_CACHE: Dict[str, Any] = {}
-_CACHE_DIRTY = False  # Tracks if new entities were added to avoid unnecessary disk writes
 
 def load_spacy_cache(cache_path: str = "spacy_ner_cache.json") -> None:
 		"""Load persistent spaCy NER cache from disk into memory."""
@@ -324,12 +529,12 @@ def _post_process_(
 		"supply",
 	}
 
-	GENERIC_META_WORDS = {
+	GENERIC_METADATA_WORDS = {
 		"sample", 
 		"analysis", 
 		"section", 
 		"segment",
-		"identifier", 
+		"identifier",
 		"number",
 		"volume",
 		"numbered",
@@ -800,16 +1005,33 @@ def _post_process_(
 		r'twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth)'
 	)
 
+	# _ECHELON_PATTERN = (
+	# 	r'(?:army|corps|div\.?|division|inf\.?|infantry|reg\.?|regt\.?|regiment|bn\.?|battalion|brig\.?|brigade|arty\.?|artillery)'
+	# )
+
+	# # Matches generic two-word echelons with digits, ordinals, OR words:
+	# # "1st Div", "109 Infantry", "79th Division", "First Division", "53rd Infantry", "Seventh Army"
+	# GENERIC_ECHELON_RE = re.compile(
+	# 	rf'^{_ORDINAL_PATTERN}\s+{_ECHELON_PATTERN}$',
+	# 	re.IGNORECASE
+	# )
+
 	_ECHELON_PATTERN = (
-		r'(?:army|corps|div\.?|division|inf\.?|infantry|reg\.?|regt\.?|regiment|bn\.?|battalion|brig\.?|brigade|arty\.?|artillery)'
+		# Military echelons
+		r'army|corps|div\.?|division|inf\.?|infantry|reg\.?|regt\.?|regiment|'
+		r'bn\.?|battalion|brig\.?|brigade|arty\.?|artillery|'
+		# Abstract political, legal & temporal ordinal concepts
+		r'amendment|century|term|congress'
 	)
 
-	# Matches generic two-word echelons with digits, ordinals, OR words:
-	# "1st Div", "109 Infantry", "79th Division", "First Division", "53rd Infantry", "Seventh Army"
+	# Matches generic two-word ordinals:
+	# "1st Div", "109 Infantry", "First Division", "22nd Amendment", "20th Century", "Third Term"
 	GENERIC_ECHELON_RE = re.compile(
-		rf'^{_ORDINAL_PATTERN}\s+{_ECHELON_PATTERN}$',
+		rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})$',
 		re.IGNORECASE
 	)
+
+
 
 	def should_keep_numeric_label(label: str, max_digit_ratio: float = 0.45) -> bool:
 		"""
@@ -994,7 +1216,7 @@ def _post_process_(
 			word = words[0]
 			all_generic = (
 				GENERIC_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | 
-				GENERIC_TECH_WORDS | GENERIC_META_WORDS
+				GENERIC_TECH_WORDS | GENERIC_METADATA_WORDS
 			)
 			return word in all_generic
 		
@@ -1021,7 +1243,7 @@ def _post_process_(
 			GENERIC_PEOPLE_WORDS 
 			| GENERIC_FAMILY_WORDS 
 			| GENERIC_TECH_WORDS 
-			| GENERIC_META_WORDS 
+			| GENERIC_METADATA_WORDS 
 		)
 		
 		generic_count = sum(1 for w in words if w in all_generic)
@@ -2387,62 +2609,6 @@ def _post_process_(
 
 	return processed_batch
 
-def is_english(
-	text: str,
-	confidence_threshold: float,
-	use_shortlist: bool = True,  # use shortlist of European languages for detection
-	verbose: bool = False,
-) -> bool:
-	"""
-	Check if the given text is in English.
-	
-	Args:
-			text: The text to check
-			confidence_threshold: Minimum confidence score to consider text as English
-			use_shortlist: If True, use shortlisted European languages for detection.
-										If False, use all available languages.
-			verbose: Print detailed detection information
-	
-	Returns:
-			True if text is detected as English with confidence above threshold
-	"""
-	if not text or not str(text).strip():
-		return False
-	
-	# Select detector based on use_shortlist flag
-	detector = detector_shortlist if use_shortlist else detector_all
-	
-	if verbose:
-		detector_type = "shortlisted languages" if use_shortlist else "all languages"
-		print(f"\nChecking if text is in English (using {detector_type}):\n{text}\n")
-	
-	try:
-		cleaned_text = " ".join(str(text).split())
-		results = detector.compute_language_confidence_values(cleaned_text)
-		
-		if verbose:
-			print(f"All detected languages:")
-			for res in results:
-				print(f"  {res.language.name:<15} {res.value:.4f}")
-		
-		if not results:
-			return False
-		
-		for res in results:
-			if res.language == Language.ENGLISH:
-				score = res.value
-				if verbose:
-					print(f"\nEnglish confidence: {score:.6f} [English (> {confidence_threshold})? {score > confidence_threshold}]")
-				
-				if score > confidence_threshold:
-					return True
-		
-		return False
-	except Exception as e:
-		if verbose:
-			print(f"Error: {e}")
-		return False
-
 def basic_clean(txt: str):
 	# \b(?:No\.?\s+)?\d+\s+Squadron\b
 	if (
@@ -2871,7 +3037,8 @@ def get_enriched_description(
 	if eng_confidence_th:
 		df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
 			lambda x: x 
-			if isinstance(x, str) and is_english(text=x, confidence_threshold=eng_confidence_th, use_shortlist=True, verbose=verbose) 
+			if isinstance(x, str) and lingua_is_english(text=x, confidence_threshold=eng_confidence_th, use_shortlist=True, verbose=verbose) # using Lingua for language identification
+			# if isinstance(x, str) and roberta_is_english(text=x, confidence_threshold=eng_confidence_th, verbose=verbose) # Transformer model (RoBERTa) for language identification
 			else None
 		)
 

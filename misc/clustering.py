@@ -2761,7 +2761,7 @@ def get_optimal_num_clusters(
 	singleton_clusters_indices = np.where(cluster_sizes == 1)[0]
 	if len(singleton_clusters_indices) > 0:
 		if verbose:
-			print(f"[WARNING] Found {len(singleton_clusters_indices)} singleton cluster(s)")
+			print(f"[WARNING] {len(singleton_clusters_indices)} singleton cluster(s), e.g., containing only one label")
 			print("[SINGLETONS BEFORE MERGING]")
 			for singleton_id in singleton_clusters_indices:
 				singleton_idx = np.where(labels == singleton_id)[0][0]

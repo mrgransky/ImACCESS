@@ -1040,7 +1040,7 @@ def get_validation_metrics(
 	lora_params: Optional[Dict] = None,
 	is_training: bool = False,
 	model_hash: str = None,
-	min_number_samples: int = int(5e3),
+	min_number_samples: int = int(1e4),
 	class_embeds_override: Optional[torch.Tensor] = None,
 	verbose: bool = True,
 ) -> Dict:
@@ -1233,18 +1233,18 @@ def get_validation_metrics(
 		)
 
 		# ── 4. Inter-class similarity — are class embeddings separated? ─
-		n_cls_sample = min(min_number_samples, device_class_text_embeds.shape[0])
+		num_sampled_labels = min(min_number_samples, device_class_text_embeds.shape[0])
 		cls_sample_idx = torch.randperm(
 			device_class_text_embeds.shape[0],
 			device=device_class_text_embeds.device,
-		)[:n_cls_sample]
+		)[:num_sampled_labels]
 
 		cls_sample = sample_cls[cls_sample_idx]
 
 		inter_cls_sims = cls_sample @ cls_sample.T
 
 		off_diag_mask = ~torch.eye(
-			n_cls_sample, 
+			num_sampled_labels, 
 			dtype=torch.bool,
 			device=inter_cls_sims.device,
 		)
@@ -1253,7 +1253,7 @@ def get_validation_metrics(
 
 		print(
 			f"  Inter-class cosine similarity "
-			f"({n_cls_sample} sampled labels): "
+			f"({num_sampled_labels} sampled labels): "
 			f"(min, max): ({off_diag.min():.3f}, {off_diag.max():.3f}) "
 			f"μ±σ: {off_diag.mean():.3f} ± {off_diag.std():.3f}"
 		)
@@ -1261,11 +1261,11 @@ def get_validation_metrics(
 		print(f"    Fraction [sim > 0.9]: {(off_diag > 0.9).float().mean():.4f} (high → near-duplicate class embeddings)")
 
 		flat_sims = inter_cls_sims.masked_fill(~off_diag_mask, -1)
-		top_pairs = torch.triu(flat_sims, diagonal=1).flatten().topk(250)
-		row_idx = top_pairs.indices // n_cls_sample
-		col_idx = top_pairs.indices % n_cls_sample
+		top_pairs = torch.triu(flat_sims, diagonal=1).flatten().topk(500)
+		row_idx = top_pairs.indices // num_sampled_labels
+		col_idx = top_pairs.indices % num_sampled_labels
 
-		print(f"  Top-{len(top_pairs.values)} near-duplicate class pairs (sampled {n_cls_sample} labels):")
+		print(f"  Top-{len(top_pairs.values)} near-duplicate class pairs (sampled {num_sampled_labels} labels):")
 		for val, r, c in zip(top_pairs.values.tolist(), row_idx.tolist(), col_idx.tolist()):
 			global_r = cls_sample_idx[r].item()
 			global_c = cls_sample_idx[c].item()

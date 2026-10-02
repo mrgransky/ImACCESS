@@ -45,7 +45,12 @@ from data_prep import get_multi_label_stratified_split, build_shared_eval_protoc
 # $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/test.csv -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 12 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v
 
 # with nohup:
+# SMU
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 8 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v > logs/mm_annot_smu.txt & 
+
+# EUROPEANA:
+# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 8 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v > logs/mm_annot_europeana.txt & 
+
 
 # wwii_small
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/test.csv -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 8 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v > logs/mm_annot_wwii_small.txt & 
@@ -152,16 +157,6 @@ def get_multimodal_annotation(
 	OUTPUT_DIR = os.path.join(os.path.dirname(csv_file), "outputs")
 	os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-	vlm_based_labels = get_vlm_based_labels(
-		csv_file=csv_file,
-		model_id=vlm_model_id,
-		num_workers=num_workers,
-		batch_size=vlm_batch_size,
-		max_kws=max_keywords,
-		max_generated_tks=vlm_max_generated_tks,
-		quantization_bits=vlm_quantization_bits,
-		verbose=verbose,
-	)
 		
 	llm_based_labels = get_llm_based_labels(
 		csv_file=csv_file,
@@ -174,7 +169,18 @@ def get_multimodal_annotation(
 		quantization_bits=llm_quantization_bits,
 		verbose=verbose,
 	)
-	
+
+	vlm_based_labels = get_vlm_based_labels(
+		csv_file=csv_file,
+		model_id=vlm_model_id,
+		num_workers=num_workers,
+		batch_size=vlm_batch_size,
+		max_kws=max_keywords,
+		max_generated_tks=vlm_max_generated_tks,
+		quantization_bits=vlm_quantization_bits,
+		verbose=verbose,
+	)
+
 	if len(llm_based_labels) != len(vlm_based_labels):
 		raise ValueError(
 			f"LLM and VLM labels must have same length: "
