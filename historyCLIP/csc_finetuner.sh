@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=ft_seed_02
+#SBATCH --job-name=ft_seed_01
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -9,7 +9,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
 #SBATCH --mem=218G
-#SBATCH --partition=gpumedium
+#SBATCH --partition=gpularge
 #SBATCH --gres=gpu:gh200:1
 #SBATCH --time=0-07:00:00
 #SBATCH --begin=06:30:00
@@ -80,7 +80,7 @@
 
 # how to run:
 # !!!!!!! xxxx ensure the job name aligns with the seed value xxxx
-# SEED=2 sbatch csc_finetuner.sh
+# SEED=1 sbatch csc_finetuner.sh
 
 set -euo pipefail
 user="`whoami`"
