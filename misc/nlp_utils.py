@@ -243,16 +243,19 @@ def lingua_is_english(
 			"admiral", "captain", "colonel", "sergeant", "lieutenant",
 			"general", "major", "private", "corporal", "commander",
 			"president", "minister", "officer", "ambassador", "diplomat",
+			"commandant",
 			# Military units & concepts
 			"military", "marching", "association",
 			"infantry", "battalion", "regiment", "division", "brigade",
 			"squadron", "personnel", "troops", "soldiers", "soldier",
 			"hospital", "clinic", "medical", "medicine", "doctor",
+			"cultural", "festival", "culture",
 			# Military equipment
 			"howitzer", "missile", "missiles", "airplane", "aeroplane",
 			"submarine", "locomotive", "tank", "tanks", "cannon",
 			"explosion", "grenade", "aircraft", "bomber", "fighter",
 			"helicopter", "airfield", "runway", "cockpit", "propeller",
+			"shelter", "car", "vehicle",
 			# Naval
 			"navy", "fleet", "cruiser", "destroyer", "battleship",
 			"carrier", "torpedo", "warship", "frigate", "maritime",
@@ -260,23 +263,27 @@ def lingua_is_english(
 			"reservoir", "dam", "power", "station", "railway",
 			"bridge", "tunnel", "harbor", "lighthouse", "barracks",
 			# Descriptive
+			"museum", "monument", "statue", "massacre", 
 			"interior", "exterior", "construction", "transport",
 			"aerial", "panorama", "view", "entrance", "wreck",
 			"wreckage", "camouflage", "formation", "prototype",
+			"spring", "summer", "autumn", "winter", 
+			"morning", "afternoon", "evening",
 		}
+		DOMAIN_ENGLISH_WORDS.update(GEOGRAPHIC_REFERENCES)
 
 		# Check if the text contains domain-specific English words
 		domain_word_count = sum(1 for w in words if w in DOMAIN_ENGLISH_WORDS)
 		if domain_word_count > 0:
-			# For short texts (≤5 words), even 1 domain word is strong signal
-			if len(words) <= 5 and domain_word_count >= 1:
-				if verbose:
-					print(f"[ENGLISH by DOMAIN VOCAB] short text with domain words: {domain_word_count}/{len(words)}")
-					print("-" * 100)
-				return True
+			# # For short texts (≤4 words), even 1 domain word is strong signal
+			# if len(words) <= 4 and domain_word_count >= 1:
+			# 	if verbose:
+			# 		print(f"[ENGLISH by DOMAIN VOCAB] short text with domain words: {domain_word_count}/{len(words)}")
+			# 		print("-" * 100)
+			# 	return True
 			
 			# For longer texts, require ≥30% domain words OR domain + stopwords
-			elif domain_word_count / len(words) >= 0.30:
+			if domain_word_count / len(words) >= 0.30:
 				if verbose:
 					print(f"[ENGLISH by DOMAIN VOCAB] ratio {domain_word_count/len(words):.3f}")
 					print("-" * 100)
