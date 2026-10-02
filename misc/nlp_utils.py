@@ -215,125 +215,143 @@ def roberta_is_english(
 	
 	return decision
 
-# def lingua_is_english(
-# 	text: str,
-# 	confidence_threshold: float,
-# 	use_shortlist: bool,  # use shortlist=True of European languages for detection
-# 	verbose: bool = False,
-# ) -> bool:
-# 	"""
-# 	Check if the given text is in English.
-	
-# 	Args:
-# 			text: The text to check
-# 			confidence_threshold: Minimum confidence score to consider text as English
-# 			use_shortlist: If True, use shortlisted European languages for detection.
-# 										If False, use all available languages.
-# 			verbose: Print detailed detection information
-	
-# 	Returns:
-# 			True if text is detected as English with confidence above threshold
-# 	"""
-
-# 	if not text or not str(text).strip():
-# 		return False
-	
-# 	words = text.lower().strip().split()
-# 	# Check if there is any intersection between the words and STOPWORDS
-# 	if any(word in STOPWORDS for word in words):
-# 		if verbose:
-# 			print(text)
-# 			print(f"\n[DETECTED] contains ENGLISH stopwords")
-# 			print("-"*100)
-# 		return True
-
-# 	# Select detector based on use_shortlist flag
-# 	detector = detector_shortlist if use_shortlist else detector_all
-# 	detector_type = "shortlisted languages" if use_shortlist else "all languages"
-	
-# 	if verbose:
-# 		print("-"*120)
-# 		print(f"Checking if text is in English (using {detector_type}):\n{text}")
-	
-# 	try:
-# 		cleaned_text = " ".join(str(text).split())
-# 		results = detector.compute_language_confidence_values(cleaned_text)
-# 		first_detected_language = results[0].language if results else None
-# 		# if verbose:
-# 		# 	print(f"All detected languages:")
-# 		# 	for res in results:
-# 		# 		print(f"  {res.language.name:<15} {res.value:.4f}")
-		
-# 		if not results:
-# 			return False
-		
-# 		for idx, res in enumerate(results):
-# 			if res.language == Language.ENGLISH:
-# 				score = res.value
-# 				if verbose:
-# 					print(f"\nis_english: {score > confidence_threshold} {score} ?> {confidence_threshold} | Detected First Language: {first_detected_language} | English_rank: {idx}/{len(results)}")
-# 					print("-"*120)
-
-# 				if score > confidence_threshold:
-# 					return True
-		
-# 		return False
-# 	except Exception as e:
-# 		if verbose:
-# 			print(f"Error: {e}")
-# 		return False
-
 def lingua_is_english(
 		text: str,
 		confidence_threshold: float = 0.5,
-		stopword_ratio_threshold: float = 0.10, # risk of false positives
+		stopword_ratio_threshold: float = 0.10,
 		use_shortlist: bool = True,
 		verbose: bool = False,
 ) -> bool:
-	if not text or not str(text).strip():
-			return False
-	words = re.findall(r'\b[a-zA-Z]+\b', text.lower())
-	if not words:
-		return False
-	
-	if verbose:
-		print(text)
-	
-	# ── Phase 1: Stopword DENSITY check (not any()) ──
-	# Only trigger if a significant PORTION of the words are English stopwords.
-	# This prevents "De stad is mooi." from being classified as English
-	# just because "is" appears once.
-	stopword_count = sum(1 for w in words if w in STOPWORDS)
-	stopword_ratio = stopword_count / len(words)
-	if stopword_ratio >= stopword_ratio_threshold:
-		if verbose:
-			print(f"[ENGLISH by STOPWORD DENSITY] ratio {stopword_ratio:.3f} >= {stopword_ratio_threshold}")
-			print("-"*100)
-		return True
-	
-	# ── Phase 2: Lingua ML fallback ──
-	detector = detector_shortlist if use_shortlist else detector_all
-	cleaned_text = " ".join(str(text).split())
-	try:
-		results = detector.compute_language_confidence_values(cleaned_text)
-		if not results:
+		if not text or not str(text).strip():
 				return False
-		# ONLY check the TOP-ranked language, not all of them
-		top_language = results[0].language
-		top_score = results[0].value
-		if top_language == Language.ENGLISH and top_score >= confidence_threshold:
-			if verbose:
-				print(f"[ENGLISH by LINGUA] score {top_score:.4f} >= {confidence_threshold}")
-				print("-"*100)
-			return True
+
+		words = re.findall(r'\b[a-zA-Z]+\b', text.lower())
+		if not words:
+				return False
+
 		if verbose:
-			print(f"[NOT ENGLISH by LINGUA] top={top_language.name} score={top_score:.4f}")
-			print("-"*100)
-		return False
-	except Exception as e:
-		if verbose:
-			print(f"Error: {e}")
-		return False
+				print(text)
+
+		# ══════════════════════════════════════════════════════════
+		# PHASE 0: Domain-specific English vocabulary check
+		# ══════════════════════════════════════════════════════════
+		# Military/technical terms that are predominantly English in
+		# your WW1/WW2 archive context, even if they have cognates
+		# in other languages.
+		DOMAIN_ENGLISH_WORDS = {
+				# Military ranks & roles
+				"admiral", "captain", "colonel", "sergeant", "lieutenant",
+				"general", "major", "private", "corporal", "commander",
+				# Military units & concepts
+				"infantry", "battalion", "regiment", "division", "brigade",
+				"squadron", "personnel", "troops", "soldiers", "soldier",
+				# Military equipment
+				"howitzer", "missile", "missiles", "airplane", "aeroplane",
+				"submarine", "locomotive", "tank", "tanks", "cannon",
+				"explosion", "grenade", "aircraft", "bomber", "fighter",
+				"helicopter", "airfield", "runway", "cockpit", "propeller",
+				# Naval
+				"navy", "fleet", "cruiser", "destroyer", "battleship",
+				"carrier", "torpedo", "warship", "frigate",
+				# Infrastructure
+				"reservoir", "dam", "power", "station", "railway",
+				"bridge", "tunnel", "harbor", "lighthouse", "barracks",
+				# Descriptive
+				"interior", "exterior", "construction", "transport",
+				"aerial", "panorama", "view", "entrance", "wreck",
+				"wreckage", "camouflage", "formation", "prototype",
+		}
+
+		# Check if the text contains domain-specific English words
+		domain_word_count = sum(1 for w in words if w in DOMAIN_ENGLISH_WORDS)
+		if domain_word_count > 0:
+				# For short texts (≤5 words), even 1 domain word is strong signal
+				if len(words) <= 5 and domain_word_count >= 1:
+						if verbose:
+								print(f"[ENGLISH by DOMAIN VOCAB] short text with domain words: {domain_word_count}/{len(words)}")
+								print("-" * 100)
+						return True
+				# For longer texts, require ≥30% domain words OR domain + stopwords
+				elif domain_word_count / len(words) >= 0.30:
+						if verbose:
+								print(f"[ENGLISH by DOMAIN VOCAB] ratio {domain_word_count/len(words):.3f}")
+								print("-" * 100)
+						return True
+
+		# ══════════════════════════════════════════════════════════
+		# PHASE 1: Stopword DENSITY check
+		# ══════════════════════════════════════════════════════════
+		stopword_count = sum(1 for w in words if w in STOPWORDS)
+		stopword_ratio = stopword_count / len(words)
+
+		# Adaptive threshold: lower for short texts
+		effective_threshold = stopword_ratio_threshold
+		if len(words) <= 4:
+				effective_threshold = 0.05  # Even 1 stopword in 3-4 words is significant
+
+		if stopword_ratio >= effective_threshold:
+				if verbose:
+						print(f"[ENGLISH by STOPWORD DENSITY] ratio {stopword_ratio:.3f} >= {effective_threshold}")
+						print("-" * 100)
+				return True
+
+		# ══════════════════════════════════════════════════════════
+		# PHASE 2: English structural patterns (regex)
+		# ══════════════════════════════════════════════════════════
+		# Common English caption structures that indicate English
+		# regardless of proper nouns or technical terms.
+		ENGLISH_PATTERNS = [
+				r'\b(?:of|in|on|at|from|with|by|for|to|the|a|an)\b.*\b(?:of|in|on|at|from|with|by|for|to|the|a|an)\b',
+				r'\b(?:air\s+base|naval\s+air|power\s+station|train\s+station)\b',
+				r'\b(?:aircraft|airplane|aeroplane)\b',
+				r'\b(?:world\s+war|ww\s*[12])\b',
+				r'\b(?:photographer|photo|photograph|image|picture)\b',
+				r'\b(?:model|serial|prototype|variant|version)\b',
+				r'\b(?:squadron|division|regiment|battalion|corps)\b',
+		]
+
+		text_lower = text.lower()
+		pattern_matches = sum(1 for p in ENGLISH_PATTERNS if re.search(p, text_lower))
+		if pattern_matches >= 1 and len(words) >= 3:
+				if verbose:
+						print(f"[ENGLISH by STRUCTURAL PATTERN] {pattern_matches} pattern(s) matched")
+						print("-" * 100)
+				return True
+
+		# ══════════════════════════════════════════════════════════
+		# PHASE 3: Lingua ML fallback (with adjusted threshold for short texts)
+		# ══════════════════════════════════════════════════════════
+		detector = detector_shortlist if use_shortlist else detector_all
+		cleaned_text = " ".join(str(text).split())
+
+		try:
+				results = detector.compute_language_confidence_values(cleaned_text)
+				if not results:
+						return False
+
+				top_language = results[0].language
+				top_score = results[0].value
+
+				# Adaptive confidence threshold: lower for very short texts
+				effective_confidence = confidence_threshold
+				if len(words) <= 3:
+						effective_confidence = 0.30  # More lenient for 1-3 word texts
+
+				if top_language == Language.ENGLISH and top_score >= effective_confidence:
+						if verbose:
+								print(f"[ENGLISH by LINGUA] score {top_score:.4f} >= {effective_confidence}")
+								print("-" * 100)
+						return True
+
+				if verbose:
+						print(f"[NOT ENGLISH by LINGUA] top={top_language.name} score={top_score:.4f}")
+						print("-" * 100)
+				return False
+
+		except Exception as e:
+				if verbose:
+						print(f"Error: {e}")
+				return False
 
 def case_stats(s: str):
 	"""Return counts and percentages of lower/upper case letters."""

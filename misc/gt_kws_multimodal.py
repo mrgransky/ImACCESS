@@ -51,7 +51,6 @@ from data_prep import get_multi_label_stratified_split, build_shared_eval_protoc
 # EUROPEANA:
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 8 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v > logs/mm_annot_europeana.txt & 
 
-
 # wwii_small
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/test.csv -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 8 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v > logs/mm_annot_wwii_small.txt & 
 
@@ -64,9 +63,10 @@ from data_prep import get_multi_label_stratified_split, build_shared_eval_protoc
 # $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 12 -llm_bs 16 -nw 54 -v > /media/volume/ImACCESS/trash/multimodal_annotation_eu.txt &
 # $ nohup python -u gt_kws_multimodal.py -csv /media/volume/ImACCESS/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 10 -llm_bs 20 -nw 54 -v > /media/volume/ImACCESS/trash/multimodal_annotation_smu.txt &
 
-# How to run [Mahti/Puhti]
-# $ srun -J gpu_interactive_test --account=project_2004072 --partition=gputest --gres=gpu:v100:4 --time=0-00:15:00 --mem=64G --cpus-per-task=40 --pty /bin/bash -i
-# $ nohup python -u gt_kws_multimodal.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-8B-Instruct" -vlm_bs 32 -llm_bs 96 -nw 40 -v > /scratch/project_2004072/ImACCESS/trash/logs/multimodal_annotation_smu.txt &
+# How to run [Roihu]
+# $ srun -J gpu_interactive_test --account=project_2014707 --partition=gputest --gres=gpu:gh200:4 --time=0-00:15:00 --mem=64G --cpus-per-task=40 --pty /bin/bash -i
+# $ nohup python -u gt_kws_multimodal.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -v > /scratch/project_2004072/ImACCESS/trash/logs/language_check.txt &
+
 # $ python gt_kws_multimodal.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-8B-Instruct" -vlm_bs 32 -llm_bs 96 -nw 40 -v
 
 # large models:
