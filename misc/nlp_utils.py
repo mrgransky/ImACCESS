@@ -215,106 +215,103 @@ def roberta_is_english(
 	
 	return decision
 
-def lingua_is_english(
+
+try:
+	from fast_langdetect import detect as ft_detect
+	FASTTEXT_AVAILABLE = True
+except ImportError:
+	FASTTEXT_AVAILABLE = False
+	print("[WARNING] fast-langdetect not installed. Phase 4 (fastText) will be skipped.")
+
+
+def is_english_adv(
 		text: str,
-		confidence_threshold: float = 0.5,
+		confidence_threshold: float = 0.50,
 		stopword_ratio_threshold: float = 0.10,
+		fasttext_confidence_threshold: float = 0.55,
 		use_shortlist: bool = True,
 		verbose: bool = False,
 ) -> bool:
+		"""
+		Robust English detector combining:
+			0. Domain vocabulary
+			1. English stopword density
+			2. Structural English patterns
+			3. Lingua (top-1)
+			4. fastText fallback
+			5. Domain-vocabulary rescue
+		"""
 		if not text or not str(text).strip():
-			return False
+				return False
 
 		words = re.findall(r'\b[a-zA-Z]+\b', text.lower())
 		if not words:
 				return False
 
 		if verbose:
-				print(text)
+				print(f"\n{text}")
 
-		# ══════════════════════════════════════════════════════════
-		# PHASE 0: Domain-specific English vocabulary check
-		# ══════════════════════════════════════════════════════════
-		# Military/technical terms that are predominantly English in
-		# your WW1/WW2 archive context, even if they have cognates
-		# in other languages.
+		# ------------------------------------------------------------------
+		# PHASE 0: Domain-specific English vocabulary
+		# ------------------------------------------------------------------
 		DOMAIN_ENGLISH_WORDS = {
-			# Military ranks & roles
-			"admiral", "captain", "colonel", "sergeant", "lieutenant",
-			"general", "major", "private", "corporal", "commander",
-			"president", "minister", "officer", "ambassador", "diplomat",
-			"commandant",
-			# Military units & concepts
-			"military", "marching", "association",
-			"infantry", "battalion", "regiment", "division", "brigade",
-			"squadron", "personnel", "troops", "soldiers", "soldier",
-			"hospital", "clinic", "medical", "medicine", "doctor",
-			"cultural", "festival", "culture",
-			# Military equipment
-			"howitzer", "", "missile", "missiles", "airplane", "aeroplane",
-			"submarine", "locomotive", "tank", "tanks", "cannon",
-			"explosion", "grenade", "aircraft", "bomber", "fighter",
-			"helicopter", "airfield", "runway", "cockpit", "propeller",
-			"shelter", "car", "vehicle",
-			# Naval
-			"navy", "fleet", "cruiser", "destroyer", "battleship",
-			"carrier", "torpedo", "warship", "frigate", "maritime",
-			# Infrastructure
-			"reservoir", "dam", "power", "station", "railway",
-			"bridge", "tunnel", "harbor", "lighthouse", "barracks",
-			# Descriptive
-			"museum", "monument", "statue", "massacre", 
-			"interior", "exterior", "construction", "transport",
-			"aerial", "panorama", "view", "entrance", "wreck",
-			"wreckage", "camouflage", "formation", "prototype",
-			"spring", "summer", "autumn", "winter", 
-			"morning", "afternoon", "evening",
+				# ranks & roles
+				"admiral", "captain", "colonel", "sergeant", "lieutenant",
+				"general", "major", "private", "corporal", "commander",
+				"president", "minister", "officer", "ambassador", "diplomat",
+				"commandant",
+				# units & concepts
+				"military", "marching", "association",
+				"infantry", "battalion", "regiment", "division", "brigade",
+				"squadron", "personnel", "troops", "soldiers", "soldier",
+				"hospital", "clinic", "medical", "medicine", "doctor",
+				"cultural", "festival", "culture",
+				# equipment
+				"howitzer", "missile", "missiles", "airplane", "aeroplane",
+				"submarine", "locomotive", "tank", "tanks", "cannon",
+				"explosion", "grenade", "aircraft", "bomber", "fighter",
+				"helicopter", "airfield", "runway", "cockpit", "propeller",
+				"shelter", "car", "vehicle",
+				# naval
+				"navy", "fleet", "cruiser", "destroyer", "battleship",
+				"carrier", "torpedo", "warship", "frigate", "maritime",
+				# infrastructure
+				"reservoir", "dam", "power", "station", "railway",
+				"bridge", "tunnel", "harbor", "lighthouse", "barracks",
+				# descriptive / archival
+				"museum", "monument", "statue", "massacre",
+				"interior", "exterior", "construction", "transport",
+				"aerial", "panorama", "view", "entrance", "wreck",
+				"wreckage", "camouflage", "formation", "prototype",
+				"spring", "summer", "autumn", "winter",
+				"morning", "afternoon", "evening",
 		}
 		DOMAIN_ENGLISH_WORDS.update(GEOGRAPHIC_REFERENCES)
 
-		# Check if the text contains domain-specific English words
-		domain_word_count = sum(
-			1 
-			for w in list(set(words))
-			if w in DOMAIN_ENGLISH_WORDS
-		)
-		if domain_word_count > 0:
-			# # For short texts (≤4 words), even 1 domain word is strong signal
-			# if len(words) <= 4 and domain_word_count >= 1:
-			# 	if verbose:
-			# 		print(f"[ENGLISH by DOMAIN VOCAB] short text with domain words: {domain_word_count}/{len(words)}")
-			# 		print("-" * 100)
-			# 	return True
-			
-			# For longer texts, require ≥30% domain words OR domain + stopwords
-			if domain_word_count / len(words) >= 0.30:
-				if verbose:
-					print(f"[ENGLISH by DOMAIN VOCAB] ratio {domain_word_count/len(words):.3f}")
-					print("-" * 100)
-				return True
+		unique_words = set(words)
+		domain_word_count = sum(1 for w in unique_words if w in DOMAIN_ENGLISH_WORDS)
+		domain_ratio = domain_word_count / len(words) if words else 0.0
+		possibly_english = domain_ratio >= 0.50
 
-		# ══════════════════════════════════════════════════════════
-		# PHASE 1: Stopword DENSITY check
-		# ══════════════════════════════════════════════════════════
+		# ------------------------------------------------------------------
+		# PHASE 1: Stopword density (adaptive for short texts)
+		# ------------------------------------------------------------------
 		stopword_count = sum(1 for w in words if w in STOPWORDS)
 		stopword_ratio = stopword_count / len(words)
 
-		# Adaptive threshold: lower for short texts
 		effective_threshold = stopword_ratio_threshold
 		if len(words) <= 4:
-				effective_threshold = 0.05  # Even 1 stopword in 3-4 words is significant
+				effective_threshold = 0.05
 
 		if stopword_ratio >= effective_threshold:
-			if verbose:
-				print(f"[ENGLISH by STOPWORD DENSITY] ratio {stopword_ratio:.3f} >= {effective_threshold}")
-				print("-" * 100)
-			return True
+				if verbose:
+						print(f"[ENGLISH by STOPWORD DENSITY] ratio {stopword_ratio:.3f} >= {effective_threshold}")
+						print("-" * 100)
+				return True
 
-		# ══════════════════════════════════════════════════════════
-		# PHASE 2: English structural patterns (regex)
-		# ══════════════════════════════════════════════════════════
-		# Common English caption structures that indicate English
-		# regardless of proper nouns or technical terms.
+		# ------------------------------------------------------------------
+		# PHASE 2: English structural patterns
+		# ------------------------------------------------------------------
 		ENGLISH_PATTERNS = [
 				r'\b(?:of|in|on|at|from|with|by|for|to|the|a|an)\b.*\b(?:of|in|on|at|from|with|by|for|to|the|a|an)\b',
 				r'\b(?:air\s+base|naval\s+air|power\s+station|train\s+station)\b',
@@ -324,52 +321,222 @@ def lingua_is_english(
 				r'\b(?:model|serial|prototype|variant|version)\b',
 				r'\b(?:squadron|division|regiment|battalion|corps)\b',
 		]
-
 		text_lower = text.lower()
 		pattern_matches = sum(1 for p in ENGLISH_PATTERNS if re.search(p, text_lower))
+
 		if pattern_matches >= 1 and len(words) >= 3:
 				if verbose:
 						print(f"[ENGLISH by STRUCTURAL PATTERN] {pattern_matches} pattern(s) matched")
 						print("-" * 100)
 				return True
 
-		# ══════════════════════════════════════════════════════════
-		# PHASE 3: Lingua ML fallback (with adjusted threshold for short texts)
-		# ══════════════════════════════════════════════════════════
+		# ------------------------------------------------------------------
+		# PHASE 3: Lingua (top-1 only)
+		# ------------------------------------------------------------------
 		detector = detector_shortlist if use_shortlist else detector_all
 		cleaned_text = " ".join(str(text).split())
 
 		try:
 				results = detector.compute_language_confidence_values(cleaned_text)
-				# if not results:
-				# 		return False
+				if results:
+						top_language = results[0].language
+						top_score = results[0].value
 
-				top_language = results[0].language
-				top_score = results[0].value
+						if top_language == Language.ENGLISH and top_score >= confidence_threshold:
+								if verbose:
+										print(f"[ENGLISH by LINGUA] score {top_score:.4f} >= {confidence_threshold}")
+										print("-" * 100)
+								return True
 
-				# Adaptive confidence threshold: lower for very short texts
-				effective_confidence = confidence_threshold
-				if len(words) <= 3:
-						effective_confidence = 0.30  # More lenient for 1-3 word texts
-
-				if (
-					top_language == Language.ENGLISH 
-					# and top_score >= effective_confidence
-				):
-					if verbose:
-						print(f"[LINGUA] {top_language} (score {top_score:.4f} >= {effective_confidence})")
-						print("-" * 100)
-					return True
-
-				if verbose:
-						print(f"[LINGUA FAILURE] top={top_language.name} score={top_score:.4f}")
-						print("-" * 100)
-				return False
-
+						if verbose:
+								print(f"[LINGUA] top={top_language.name} score={top_score:.4f}")
 		except Exception as e:
 				if verbose:
-						print(f"Error: {e}")
-				return False
+						print(f"[LINGUA ERROR] {e}")
+
+		# ------------------------------------------------------------------
+		# PHASE 4: fastText fallback
+		# ------------------------------------------------------------------
+		if FASTTEXT_AVAILABLE:
+				try:
+						ft_results = ft_detect(cleaned_text, k=3)
+
+						if ft_results:
+								top_ft = ft_results[0]
+								ft_lang = top_ft.get("lang", "").lower()
+								ft_score = float(top_ft.get("score", 0.0))
+
+								if ft_lang == "en" and ft_score >= fasttext_confidence_threshold:
+										if verbose:
+												print(f"[ENGLISH by FASTTEXT] score {ft_score:.4f} >= {fasttext_confidence_threshold}")
+												print("-" * 100)
+										return True
+
+								if verbose:
+										print(f"[FASTTEXT] top={ft_lang} score={ft_score:.4f}")
+				except Exception as e:
+						if verbose:
+								print(f"[FASTTEXT ERROR] {e}")
+
+		# ------------------------------------------------------------------
+		# PHASE 5: Domain vocabulary rescue
+		# ------------------------------------------------------------------
+		if possibly_english:
+				if verbose:
+						print(f"[ENGLISH by DOMAIN VOCAB] ratio={domain_ratio:.3f}")
+						print("-" * 100)
+				return True
+
+		if verbose:
+				print(f"[NOT ENGLISH]")
+				print("-" * 100)
+
+		return False
+
+def is_english(
+	text: str,
+	confidence_threshold: float = 0.5,
+	stopword_ratio_threshold: float = 0.35,
+	use_shortlist: bool = True,
+	verbose: bool = False,
+) -> bool:
+	if not text or not str(text).strip():
+		return False
+	words = re.findall(r'\b[a-zA-Z]+\b', text.lower())
+	if not words:
+			return False
+	if verbose:
+		print(f"\n{text}")
+
+	# PHASE 0: Domain-specific English vocabulary check
+	# Military/technical terms that are predominantly English in
+	# your WW1/WW2 archive context, even if they have cognates
+	# in other languages.
+	DOMAIN_ENGLISH_WORDS = {
+		# Military ranks & roles
+		"admiral", "captain", "colonel", "sergeant", "lieutenant",
+		"general", "major", "private", "corporal", "commander",
+		"president", "minister", "officer", "ambassador", "diplomat",
+		"commandant",
+		# Military units & concepts
+		"military", "marching", "association",
+		"infantry", "battalion", "regiment", "division", "brigade",
+		"squadron", "personnel", "troops", "soldiers", "soldier",
+		"hospital", "clinic", "medical", "medicine", "doctor",
+		"cultural", "festival", "culture",
+		# Military equipment
+		"howitzer", "", "missile", "missiles", "airplane", "aeroplane",
+		"submarine", "locomotive", "tank", "tanks", "cannon",
+		"explosion", "grenade", "aircraft", "bomber", "fighter",
+		"helicopter", "airfield", "runway", "cockpit", "propeller",
+		"shelter", "car", "vehicle", "sailboat",
+		# Naval
+		"navy", "fleet", "cruiser", "destroyer", "battleship",
+		"carrier", "torpedo", "warship", "frigate", "maritime",
+		# Infrastructure
+		"reservoir", "dam", "power", "station", "railway",
+		"bridge", "tunnel", "harbor", "lighthouse", "barracks",
+		# Descriptive
+		"museum", "monument", "statue", "massacre", 
+		"interior", "exterior", "construction", "transport",
+		"aerial", "panorama", "view", "entrance", "wreck",
+		"wreckage", "camouflage", "formation", "prototype",
+		"spring", "summer", "autumn", "winter", 
+		"morning", "afternoon", "evening",
+	}
+	DOMAIN_ENGLISH_WORDS.update(GEOGRAPHIC_REFERENCES)
+	# Check if the text contains domain-specific English words
+	domain_word_count = sum(
+		1 
+		for w in list(set(words))
+		if w in DOMAIN_ENGLISH_WORDS
+	)
+	possibly_english: bool = False
+	if domain_word_count > 0:
+		# more than half is in our vocab => possibly English
+		domin_english_ratio = domain_word_count / len(words) 
+		if domin_english_ratio >= 0.50:
+			possibly_english = True
+
+	# PHASE 1: Stopword DENSITY check
+	stopword_count = sum(1 for w in words if w in STOPWORDS)
+	stopword_ratio = stopword_count / len(words)
+
+	if stopword_ratio >= stopword_ratio_threshold:
+		if verbose:
+			print(f"[ENGLISH by STOPWORD DENSITY] ratio {stopword_ratio:.3f} >= {stopword_ratio_threshold}")
+			print("-" * 100)
+		return True
+
+	# PHASE 2: English structural patterns (regex)
+	# Common English caption structures that indicate English
+	# regardless of proper nouns or technical terms.
+	ENGLISH_PATTERNS = [
+		r'\b(?:of|in|on|at|from|with|by|for|to|the|a|an)\b.*\b(?:of|in|on|at|from|with|by|for|to|the|a|an)\b',
+		r'\b(?:air\s+base|naval\s+air|power\s+station|train\s+station)\b',
+		r'\b(?:aircraft|airplane|aeroplane)\b',
+		r'\b(?:world\s+war|ww\s*[12])\b',
+		r'\b(?:photographer|photo|photograph|image|picture)\b',
+		r'\b(?:model|serial|prototype|variant|version)\b',
+		r'\b(?:squadron|division|regiment|battalion|corps)\b',
+	]
+	text_lower = text.lower()
+	pattern_matches = sum(1 for p in ENGLISH_PATTERNS if re.search(p, text_lower))
+	if pattern_matches >= 1 and len(words) >= 3:
+		if verbose:
+			print(f"[ENGLISH by STRUCTURAL PATTERN] {pattern_matches} pattern(s) matched")
+			print("-" * 100)
+		return True
+	# PHASE 3: Lingua ML fallback
+	detector = detector_shortlist if use_shortlist else detector_all
+	cleaned_text = " ".join(str(text).split())
+	results = detector.compute_language_confidence_values(cleaned_text)
+	top_language = results[0].language
+	top_score = results[0].value
+	
+	if top_language == Language.ENGLISH:
+		if verbose:
+			print(f"[LINGUA] {top_language} (score {top_score:.4f} >= {confidence_threshold})")
+			print("-" * 100)
+		return True
+	# if verbose:
+	# 		print(f"[LINGUA FAILURE] top={top_language.name} score={top_score:.4f}")
+	# 		print("-" * 100)
+	# return False
+
+	# PHASE 4: FASTTEXT fallback
+	if FASTTEXT_AVAILABLE:
+		try:
+			ft_results = ft_detect(
+				text=cleaned_text, 
+				k=3, 
+				low_memory=False, # higher accuracy
+			)
+			if ft_results:
+				top_ft = ft_results[0]
+				ft_lang = top_ft.get("lang", "").lower()
+				ft_score = float(top_ft.get("score", 0.0))
+				if ft_lang == "en" and ft_score >= fasttext_confidence_threshold:
+					if verbose:
+						print(f"[ENGLISH by FASTTEXT] score {ft_score:.4f} >= {fasttext_confidence_threshold}")
+						print("-" * 100)
+					return True
+				if verbose:
+					print(f"[FASTTEXT] top={ft_lang} score={ft_score:.4f}")
+		except Exception as e:
+			if verbose:
+				print(f"[FASTTEXT ERROR] {e}")
+
+	# PHASE 5: possible english:
+	if possibly_english:
+		if verbose:
+			print(f"[POSSIBLE ENGLISH] (ratio: {domin_english_ratio})")
+		return True
+
+	if verbose:
+		print(f"[FAILURE] text is not english! lingua: {top_language} score: {top_score:.4f}")
+
+	return False
 
 def case_stats(s: str):
 	"""Return counts and percentages of lower/upper case letters."""
@@ -2669,6 +2836,7 @@ def basic_clean(txt: str):
 		r"close up view of ",
 		r'View from atop ',
 		r"another view of ",
+		r'front photograph of ',
 		r'full view of ',
 		r"rear view of ",
 		r"front view of ",
@@ -3073,7 +3241,7 @@ def get_enriched_description(
 	if eng_confidence_th:
 		df_enriched['enriched_document_description'] = df_enriched['enriched_document_description'].apply(
 			lambda x: x 
-			if isinstance(x, str) and lingua_is_english(text=x, confidence_threshold=eng_confidence_th, use_shortlist=True, verbose=verbose) # using Lingua for language identification
+			if isinstance(x, str) and is_english(text=x, confidence_threshold=eng_confidence_th, use_shortlist=True, verbose=verbose) # using Lingua for language identification
 			# if isinstance(x, str) and roberta_is_english(text=x, confidence_threshold=eng_confidence_th, verbose=verbose) # Transformer model (RoBERTa) for language identification
 			else None
 		)

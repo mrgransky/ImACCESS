@@ -1248,7 +1248,7 @@ def get_llm_based_labels_slow(
 		eng_confidence_th=1e-2,
 		verbose=verbose
 	)
-	
+
 	if verbose:
 		print(f"[READY] {type(df)} {df.shape} {list(df.columns)} ({time.time() - st_t:.2f}s)")
 
@@ -1626,6 +1626,8 @@ def get_llm_based_labels(
 		raise ValueError(f"Error loading CSV file {csv_file}: {e}")
 
 	df = get_enriched_description(df=df, eng_confidence_th=1e-2, verbose=verbose)
+	sys.exit()
+	
 	inputs = df["enriched_document_description"].tolist()
 	if len(inputs) == 0:
 		return None
