@@ -1245,7 +1245,7 @@ def get_llm_based_labels_slow(
 	# regenerate enriched_document_description
 	df = get_enriched_description(
 		df=df,
-		eng_confidence_th=1e-2,
+		# eng_confidence_th=1e-2, # all languages are well covered!
 		verbose=verbose
 	)
 
@@ -1625,8 +1625,12 @@ def get_llm_based_labels(
 	except Exception as e:
 		raise ValueError(f"Error loading CSV file {csv_file}: {e}")
 
-	df = get_enriched_description(df=df, eng_confidence_th=1e-2, verbose=verbose)
-	sys.exit()
+	df = get_enriched_description(
+		df=df, 
+		# eng_confidence_th=1e-2,
+		verbose=verbose
+	)
+	# sys.exit()
 	
 	inputs = df["enriched_document_description"].tolist()
 	if len(inputs) == 0:

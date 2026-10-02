@@ -663,8 +663,8 @@ Geneva
 Glasgow
 Green Bay
 Greenock
+Haifa
 Hamburg
-Hong Kong
 Hampshire
 Hanoi
 Havana
@@ -673,6 +673,8 @@ Helsinki
 Helsingfors
 Hiroshima
 Hobsonville
+Hong Kong
+Hongkong
 Incheon
 Indochina
 Inverness
