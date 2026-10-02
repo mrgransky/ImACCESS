@@ -1,5 +1,4 @@
 import os
-from tabnanny import verbose
 import torch
 import pprint
 import ast
@@ -28,8 +27,6 @@ import matplotlib.ticker as mticker
 
 from PIL import Image, ImageDraw, ImageFont
 from collections import Counter
-from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.metrics import pairwise_distances
 from itertools import combinations # For pairwise label combinations
 from torch.utils.data import DataLoader, Dataset
 
@@ -2396,11 +2393,11 @@ def plot_qualitative_retrieval_t2i(
 	t2i results dict).  No I2T cross-lookup needed.
 
 	Each cell shows:
-	  • The retrieved image
-	  • A strategy-coloured spine  (which method)
-	  • A top-right corner triangle badge  green ✓ = hit  |  red ✗ = miss
-	  • The retrieved image's GT labels as a small text overlay (bottom strip)
-	  • The similarity score in the bottom-left corner
+		• The retrieved image
+		• A strategy-coloured spine  (which method)
+		• A top-right corner triangle badge  green ✓ = hit  |  red ✗ = miss
+		• The retrieved image's GT labels as a small text overlay (bottom strip)
+		• The similarity score in the bottom-left corner
 	"""
 	strategies = list(results_by_strategy.keys())
 	if not strategies:
@@ -2509,7 +2506,7 @@ def plot_qualitative_retrieval_t2i(
 
 			img_path   = match["retrieved_paths"][0]
 			img_score  = (match["retrieved_scores"][0]
-						  if match.get("retrieved_scores") else None)
+							if match.get("retrieved_scores") else None)
 
 			# ── Hit/miss: read pre-computed field directly ────────────────────
 			#
@@ -5461,170 +5458,6 @@ def plot_comparative_radar_chart(
 	
 	return dataset_values, benchmarks
 
-def get_top_labels_per_source(
-	processed_dfs: dict,
-	output_dir: str,
-	top_n: int=100,
-	DPI: int=200
-):
-	print(f"\n>> TOP-{top_n} MOST FREQUENT LABELS PER-SOURCE: {list(processed_dfs.keys())}")
-	
-	all_label_counts = {}
-	# PART 1: Individual Source Analysis
-	for col, lst in processed_dfs.items():
-		source_labels = list()
-
-		for labels in lst:
-			# Handle NaN and non-list values
-			if isinstance(labels, list):
-				# It is a valid list of labels, proceed
-				pass
-			elif pd.isna(labels):
-				# print(f"<!> {col} containing {labels} => skipping!")
-				continue
-			elif isinstance(labels, str):
-				try:
-					labels = ast.literal_eval(labels)  # Parse string representation of list
-				except Exception as e:
-					print(f"<!> {col} containing {labels} => skipping! {e}")
-					continue
-			else:
-				print(f"<!> {col} containing {type(labels)} {labels} => skipping!")
-				continue
-
-			source_labels.extend(labels)
-
-		print(f"\n{col} {type(source_labels)} {len(source_labels)} samples")
-		source_unique = sorted(list(set(source_labels)))
-		print(f"Total unique: {type(source_unique)} {len(source_unique)}")
-
-		# Count frequencies
-		source_counts = Counter(source_labels)
-		source_counts_df = pd.DataFrame(
-			source_counts.items(), 
-			columns=['Label', 'Count']
-		).sort_values(by='Count', ascending=False)
-		
-		# Store for later comparison
-		all_label_counts[col] = source_counts_df
-		
-		# Singleton analysis
-		source_singletons = source_counts_df[source_counts_df['Count'] == 1]['Label'].tolist()
-		print(
-			f"[SINGLETONS] {type(source_singletons)}: "
-			f"{len(source_singletons)}/{len(source_unique)} "
-			f"({len(source_singletons) / len(source_unique) * 100:.2f}%):"
-		)
-		print(source_singletons[:25])
-
-		# Create individual visualization for this source
-		plt.figure(figsize=(14, 12))
-		plot_data = source_counts_df.head(top_n)
-		sns.barplot(x='Count', y='Label', data=plot_data, palette='viridis')
-		# plt.title(
-		# 	f'Top-{top_n} Most Frequent Labels ({col})', 
-		# 	fontsize=11, 
-		# 	weight='bold'
-		# )
-		plt.xlabel('Samples', fontsize=10)
-		plt.ylabel('Label', fontsize=10)
-		plt.tight_layout()
-		plt.savefig(
-			fname=os.path.join(output_dir, f"top_{top_n}_most_frequent_labels_{col}.png"),
-			dpi=DPI,
-			bbox_inches='tight',
-		)
-		plt.close()
-	
-	# Create side-by-side comparison plot
-	n_sources = len(all_label_counts)
-	fig, axes = plt.subplots(1, n_sources, figsize=(8*n_sources, 11))
-	
-	if n_sources == 1:
-		axes = [axes]
-	
-	for idx, (source_name, counts_df) in enumerate(all_label_counts.items()):
-		ax = axes[idx]
-		plot_data = counts_df.head(top_n)
-		
-		# Create horizontal bar plot
-		y_pos = np.arange(len(plot_data))
-		ax.barh(y_pos, plot_data['Count'].values, color="#002d4d", alpha=0.8)
-		ax.set_yticks(y_pos)
-		ax.set_yticklabels(plot_data['Label'].values, fontsize=7)
-		ax.invert_yaxis()  # Top label at top
-		ax.set_xlabel('Frequency', fontsize=11)
-		ax.set_title(
-			f'{source_name} (Top-{len(plot_data)} Most Frequent Labels) [Total: {len(counts_df)}]',
-			fontsize=10,
-			weight='bold'
-		)
-		ax.grid(axis='x', alpha=0.5)
-	
-	plt.tight_layout()
-	plt.savefig(
-		fname=os.path.join(output_dir, f"top_{top_n}_comparative_labels_x{n_sources}_sources_{'_'.join(list(processed_dfs.keys()))}.png"),
-		dpi=DPI,
-		bbox_inches='tight'
-	)
-	plt.close()
-	
-	# Get top-N from each source
-	print(f"\n>> Top-{top_n} Label Agreement Between Sources")
-	llm_top_n = set(
-		all_label_counts[
-			next(k for k in processed_dfs.keys() if k.startswith("llm"))
-		].head(top_n)['Label'].values
-	)
-	vlm_top_n = set(
-		all_label_counts[
-			next(k for k in processed_dfs.keys() if k.startswith("vlm"))
-		].head(top_n)['Label'].values
-	)
-	
-	agreement = llm_top_n & vlm_top_n
-	llm_unique_top = llm_top_n - vlm_top_n
-	vlm_unique_top = vlm_top_n - llm_top_n
-	
-	print(f"  Agreed by both: {len(agreement)} labels")
-	print(f"  Only in LLM top-{top_n}: {len(llm_unique_top)} labels")
-	print(f"  Only in VLM top-{top_n}: {len(vlm_unique_top)} labels")
-	print(f"  Agreement rate: {len(agreement)/top_n*100:.1f}%")
-		
-	# Create agreement visualization
-	fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-	
-	# Pie chart of agreement
-	agreement_data = [len(agreement), len(llm_unique_top), len(vlm_unique_top)]
-	agreement_labels = [
-		f'Both ({len(agreement)})',
-		f'LLM-only ({len(llm_unique_top)})',
-		f'VLM-only ({len(vlm_unique_top)})'
-	]
-	colors = ['#2ca02c', '#1f77b4', '#ff7f0e']
-	
-	ax1.pie(agreement_data, labels=agreement_labels, autopct='%1.1f%%', colors=colors, startangle=90)
-	ax1.set_title(f'Agreement Among Top-{top_n} Labels', fontsize=12, weight='bold')
-	
-	# Venn-style bar chart
-	categories = ['Agreed', 'LLM-only', 'VLM-only']
-	ax2.bar(categories, agreement_data, color=colors, alpha=0.8, edgecolor='black')
-	ax2.set_ylabel('Number of Labels', fontsize=11)
-	ax2.set_title(f'Top-{top_n} Label Distribution', fontsize=12, weight='bold')
-	ax2.grid(axis='y', alpha=0.3)
-	for i, (cat, val) in enumerate(zip(categories, agreement_data)):
-		ax2.text(i, val, str(val), ha='center', va='bottom', fontsize=11, weight='bold')
-	
-	plt.tight_layout()
-	plt.savefig(
-		fname=os.path.join(output_dir, f"top_{top_n}_labels_agreement_{'_'.join(list(processed_dfs.keys()))}.png"),
-		dpi=DPI,
-		bbox_inches='tight'
-	)
-	plt.close()
-		
-	return all_label_counts
-
 def plot_multi_source_agreement(
 	processed_dfs, 
 	output_dir, 
@@ -5846,578 +5679,6 @@ def plot_multi_source_agreement(
 				bbox_inches='tight'
 			)
 			plt.close()
-
-def multilabel_eda(
-	df: pd.DataFrame,
-	label_column: str,
-	output_dir: str,
-	top_n: int=100,
-	n_top_labels_co_occurrence: int=50,
-	DPI: int=200,
-	verbose: bool=False
-):
-	print(f"\nMulti-label EDA {type(df)} {df.shape} (column: {label_column})")
-	eda_st = time.time()
-
-	dataset_dir = os.path.dirname(output_dir)
-	dataset_name = os.path.basename(dataset_dir) # HISTORY_X4
-	viz_dir = os.path.join(output_dir, "viz")
-	os.makedirs(viz_dir, exist_ok=True)
-
-	print(f"{dataset_name}: {type(df)} {df.shape}\n{list(df.columns)}")
-	print(df.info(verbose=True, memory_usage="deep"))
-	# print(
-	# 	df[
-	# 		[
-	# 			'title', 
-	# 			'description', 
-	# 			# 'llm_based_labels', 'vlm_based_labels', 'multimodal_labels'
-	# 			'llm_canonical_labels', 'vlm_canonical_labels', 'multimodal_canonical_labels', 
-	# 		]
-	# 	].head(10).to_string(index=False)
-	# )
-
-	all_individual_labels = list()
-	for labels in df[label_column].tolist():
-		if isinstance(labels, str):
-			labels = ast.literal_eval(labels)
-		all_individual_labels.extend(labels)
-	
-	unique_labels = sorted(list(set(all_individual_labels)))
-	
-	label_cardinality = df[label_column].apply(len)
-
-	if verbose:
-		print(f"\nLabel Cardinality ({label_column})")
-		print(f"  ├─ {type(df)} {df.shape}")
-		print(f"  ├─ unique labels: {len(unique_labels)}")
-		print(f"  └─ {unique_labels[:10]}")
-		print(label_cardinality.describe())
-
-	processed_dfs_raw_labels = {
-		"llm_based_labels": df["llm_based_labels"].tolist(),
-		"vlm_based_labels": df["vlm_based_labels"].tolist(),
-		"multimodal_labels": df["multimodal_labels"].tolist(),
-		# f"{label_column}": 	df[label_column].tolist(),
-	}
-
-	all_label_counts = get_top_labels_per_source(
-		processed_dfs=processed_dfs_raw_labels,
-		top_n=top_n,
-		output_dir=viz_dir,
-		DPI=DPI
-	)
-
-	plot_multi_source_agreement(
-		processed_dfs=processed_dfs_raw_labels,
-		output_dir=viz_dir,
-		DPI=DPI,
-	)
-
-
-	processed_dfs_canonical_labels = {
-		"llm_canonical_labels": df["llm_canonical_labels"].tolist(),
-		"vlm_canonical_labels": df["vlm_canonical_labels"].tolist(),
-		"multimodal_canonical_labels": df["multimodal_canonical_labels"].tolist(),
-		# f"{label_column}": 	df[label_column].tolist(),
-	}
-
-
-	all_label_counts = get_top_labels_per_source(
-		processed_dfs=processed_dfs_canonical_labels,
-		top_n=top_n,
-		output_dir=viz_dir,
-		DPI=DPI
-	)
-
-	plot_multi_source_agreement(
-		processed_dfs=processed_dfs_canonical_labels,
-		output_dir=viz_dir,
-		DPI=DPI,
-	)
-
-	print(f"\n[POWER LAW ANALYSIS] {label_column}")
-	print(type(all_label_counts), list(all_label_counts.keys()))
-	for k, v in all_label_counts.items():
-		print(k)
-		print(v)
-		print("-"*40)
-
-	freq_values = all_label_counts[label_column]['Count'].values
-	ranks = np.arange(1, len(freq_values) + 1)
-	
-	# Log-log plot to visualize power law
-	fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-	
-	# Linear scale
-	ax1.plot(ranks, freq_values, 'o', alpha=0.5, markersize=4)
-	ax1.set_xlabel('Rank')
-	ax1.set_ylabel('Frequency')
-	ax1.set_title('Rank-Frequency Plot (Linear Scale)')
-	ax1.grid(True, alpha=0.3)
-	
-	# Log-log scale
-	ax2.loglog(ranks, freq_values, 'o', alpha=0.5, markersize=4)
-	ax2.set_xlabel('Rank (log scale)')
-	ax2.set_ylabel('Frequency (log scale)')
-	ax2.set_title('Rank-Frequency Plot (Log-Log Scale)')
-	ax2.grid(True, alpha=0.3)
-	
-	# Fit power law
-	log_ranks = np.log(ranks)
-	log_freqs = np.log(freq_values)
-	coeffs = np.polyfit(log_ranks, log_freqs, 1)
-	alpha_estimate = -coeffs[0]
-	print(f"Estimated power law exponent (α): {alpha_estimate}")
-	print("Note: α ≈ 2 suggests Zipf's law. α > 1 suggests a power law distribution.")
-	
-	# Plot fitted line
-	fitted_freqs = np.exp(coeffs[1]) * ranks**coeffs[0]
-	ax2.plot(ranks, fitted_freqs, 'r-', linewidth=2, label=f'Power law fit (α≈{alpha_estimate:.2f})')
-	ax2.legend()
-	
-	plt.tight_layout()
-	plt.savefig(
-		fname=os.path.join(viz_dir, f"{label_column}_power_law_analysis.png"),
-		dpi=DPI,
-		bbox_inches='tight',
-	)
-	plt.close()
-	
-	print("\n>> LABEL DIVERSITY METRICS")	
-	# Calculate Shannon entropy
-	label_probs = all_label_counts[label_column]['Count'].values / all_label_counts[label_column]['Count'].sum()
-	shannon_entropy = scipy.stats.entropy(label_probs, base=2)
-	max_entropy = np.log2(len(unique_labels))
-	normalized_entropy = shannon_entropy / max_entropy if max_entropy > 0 else 0
-	
-	# Calculate Gini coefficient
-	sorted_counts = np.sort(all_label_counts[label_column]['Count'].values)
-	n = len(sorted_counts)
-	gini = (2 * np.sum((np.arange(1, n+1)) * sorted_counts)) / (n * np.sum(sorted_counts)) - (n + 1) / n
-	
-	# Calculate effective number of labels (Perplexity)
-	effective_labels = 2 ** shannon_entropy
-	
-	print(f"Shannon Entropy: {shannon_entropy:.3f} bits")
-	print(f"Maximum Possible Entropy: {max_entropy:.3f} bits")
-	print(f"Normalized Entropy: {normalized_entropy:.3f} (1.0 = perfectly uniform)")
-	print(f"Gini Coefficient: {gini:.3f} (0 = perfect equality, 1 = perfect inequality)")
-	print(f"Effective Number of Labels: {effective_labels:.1f} (perplexity measure: 2^H)")
-
-	# COMPARATIVE LORENZ CURVE PLOT
-	print("\n>> PLOTTING COMPARATIVE LORENZ CURVE")
-	
-	# 1. Get benchmark metrics (ensure these functions return 'freqs')
-	benchmarks = {
-		'MS-COCO': estimate_coco_metrics(),
-		'Open Images V7': estimate_openimages_v7_metrics(),
-		'NUS-WIDE': estimate_nus_wide_metrics(),
-		'MIRFLICKR-25K': estimate_mirflickr_metrics()
-	}
-	fig, ax = plt.subplots(figsize=(8, 8))
-	
-	# 2. Plot Perfect Equality Line
-	ax.plot(
-		[0, 1], [0, 1], 
-		color='#000000', 
-		linestyle='dashdot',
-		linewidth=2, 
-		label='Perfect Equality', 
-		alpha=0.75,
-	)
-	
-	# 3. Plot Main Dataset (HISTORY_X4)
-	# sorted_counts is already calculated above
-	cumulative_counts = np.cumsum(sorted_counts)
-	cumulative_proportions = cumulative_counts / cumulative_counts[-1]
-	# Prepend 0 to start curve at origin
-	cumulative_proportions = np.insert(cumulative_proportions, 0, 0)
-	label_proportions = np.arange(0, n+1) / n
-	
-	ax.plot(
-		label_proportions, 
-		cumulative_proportions, 
-		color='#d62728', 
-		linewidth=2.5,
-		label=f'{dataset_name} (Gini={gini:.3f})'
-	)
-	ax.fill_between(
-		label_proportions, 
-		cumulative_proportions, 
-		label_proportions, 
-		alpha=0.11,
-		color='#d62728'
-	)
-
-	# 4. Plot Benchmarks
-	for name, metrics in benchmarks.items():
-		if 'freqs' in metrics:
-			f = metrics['freqs']
-			
-			# Calculate Lorenz coordinates
-			sorted_f = np.sort(f)
-			cum_f = np.cumsum(sorted_f)
-			cum_p = cum_f / cum_f[-1]
-			cum_p = np.insert(cum_p, 0, 0)
-			x_p = np.arange(0, len(cum_p)) / (len(cum_p)-1)
-			
-			ax.plot(
-				x_p, 
-				cum_p, 
-				linestyle='--', 
-				linewidth=1.1,
-				label=f"{name} (Gini={metrics['gini']:.3f})", 
-				color=metrics.get('color', "#616161"), 
-				alpha=0.85,
-			)
-	ax.set_xlabel('Cumulative Proportion of Labels', fontsize=14)
-	ax.set_ylabel('Cumulative Proportion of Samples', fontsize=14)
-	# ax.set_title(f'Lorenz Curve: Label Imbalance Analysis', fontsize=14, weight='bold')
-	ax.legend(
-		loc='best',
-		fontsize=14,
-		frameon=False,
-		fancybox=True,
-		shadow=True,
-		edgecolor='black',
-		facecolor='white',
-	)
-	ax.grid(True, alpha=0.5)
-	ax.set_xlim(0, 1)
-	ax.set_ylim(0, 1)
-			
-	plt.tight_layout()
-	plt.savefig(
-		fname=os.path.join(viz_dir, f"{label_column}_diversity_metrics.png"),
-		dpi=DPI,
-		bbox_inches='tight',
-	)
-	plt.close()
-
-	print("\n>> LABEL IMBALANCE ANALYSIS")
-	
-	# Calculate imbalance ratio
-	max_freq = all_label_counts[label_column]['Count'].max()
-	min_freq = all_label_counts[label_column]['Count'].min()
-	imbalance_ratio = max_freq / min_freq
-	
-	# Calculate mean label frequency ratio (MeanLFR)
-	mean_freq = all_label_counts[label_column]['Count'].mean()
-	median_freq = all_label_counts[label_column]['Count'].median()
-	
-	# Identify severely imbalanced labels (< 1% of max frequency)
-	threshold = max_freq * 0.01
-	rare_labels = all_label_counts[label_column][all_label_counts[label_column]['Count'] < threshold]
-	
-	print(f"Imbalance Ratio (Max/Min): {imbalance_ratio:.3f}")
-	print(f"Label Frequency: mean: {mean_freq:.2f} | median: {median_freq:.2f} | max: {max_freq:.2f} | min: {min_freq:.2f}")
-	print(f"Number of rare labels (< 1% of max): {len(rare_labels)} ({len(rare_labels)/len(unique_labels)*100:.1f}%)")
-	
-	# Create imbalance visualization
-	fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-	
-	# Cumulative distribution
-	ax = axes[0, 0]
-	sorted_freqs = all_label_counts[label_column]['Count'].sort_values(ascending=False).values
-	cumsum_freqs = np.cumsum(sorted_freqs)
-	cumsum_pct = cumsum_freqs / cumsum_freqs[-1] * 100
-	ax.plot(np.arange(1, len(cumsum_pct)+1), cumsum_pct, linewidth=2)
-	ax.axhline(y=80, color='r', linestyle='--', label='80% threshold')
-	ax.set_xlabel('Number of Labels (ranked by frequency)')
-	ax.set_ylabel('Cumulative Percentage of Samples')
-	ax.set_title('Cumulative Label Coverage')
-	ax.legend()
-	ax.grid(True, alpha=0.3)
-	
-	# Find 80-20 point
-	idx_80 = np.argmax(cumsum_pct >= 80)
-	pct_labels_for_80 = (idx_80 + 1) / len(unique_labels) * 100
-	ax.text(0.5, 0.5, f'{pct_labels_for_80:.1f}% of labels\ncover 80% of samples', 
-		transform=ax.transAxes, 
-		ha='center', 
-		va='center',
-		bbox=dict(boxstyle='round', facecolor="#3F1515", alpha=0.5)
-	)
-	
-	# Frequency binning
-	ax = axes[0, 1]
-
-	# Define the potential bin edges
-	base_bins = [1, 5, 10, 50, 100, 500]
-
-	# Filter the bins to be strictly less than max_freq to ensure monotonicity
-	dynamic_bins = [b for b in base_bins if b < max_freq]
-	# Add the final bin edge to include the maximum frequency value
-	dynamic_bins.append(max_freq + 1)
-
-	# Handle the edge case where max_freq is 1
-	if not dynamic_bins:
-		dynamic_bins = [1, 2]
-
-	# Create corresponding labels dynamically
-	dynamic_labels = []
-	for i in range(len(dynamic_bins) - 1):
-		start = dynamic_bins[i]
-		end = dynamic_bins[i+1] - 1
-		if i == len(dynamic_bins) - 2: # This is the last bin
-			label = f'{start}+'
-		else:
-			label = f'{start}-{end}'
-		dynamic_labels.append(label)
-
-	all_label_counts[label_column]['freq_bin'] = pd.cut(all_label_counts[label_column]['Count'], bins=dynamic_bins, labels=dynamic_labels, right=False)
-	freq_bin_counts = all_label_counts[label_column]['freq_bin'].value_counts().sort_index()
-
-	ax.bar(range(len(freq_bin_counts)), freq_bin_counts.values, color='coral')
-	ax.set_xticks(range(len(freq_bin_counts)))
-	ax.set_xticklabels(freq_bin_counts.index, rotation=45)
-	ax.set_xlabel('Frequency Range')
-	ax.set_ylabel('Number of Labels')
-	ax.set_title('Label Distribution by Frequency Bins')
-	ax.grid(axis='y', alpha=0.3)
-	
-	# Box plot of frequencies
-	ax = axes[1, 0]
-	ax.boxplot([all_label_counts[label_column]['Count'].values], vert=False)
-	ax.set_xlabel('Label Frequency')
-	ax.set_title('Box Plot of Label Frequencies')
-	ax.set_xscale('log')
-	ax.grid(True, alpha=0.3)
-	
-	# Head vs Tail distribution
-	ax = axes[1, 1]
-	n_head = max(20, int(len(unique_labels) * 0.1))  # Top 10% or at least 20
-	head_coverage = all_label_counts[label_column].head(n_head)['Count'].sum() / all_label_counts[label_column]['Count'].sum() * 100
-	tail_coverage = 100 - head_coverage
-	ax.pie(
-		[head_coverage, tail_coverage], 
-		labels=[f'Top {n_head} labels', f'Remaining {len(unique_labels)-n_head} labels'],
-		autopct='%1.1f%%', 
-		startangle=90, 
-		colors=['#0072BD', '#FF7F0E']
-	)
-	ax.set_title('Sample Coverage: Head vs Tail Labels')
-	
-	plt.tight_layout()
-	plt.savefig(
-		fname=os.path.join(viz_dir, f"{label_column}_imbalance_analysis.png"),
-		dpi=DPI,
-		bbox_inches='tight',
-	)
-	plt.close()
-
-	# Unique Label Set Combinations
-	print("\n>> Unique Label Set Combinations")
-	def parse_and_create_tuple(x):
-		if isinstance(x, str):
-			try:
-				x = ast.literal_eval(x)
-			except:
-				return tuple()
-		
-		if isinstance(x, list) and len(x) > 0:
-				return tuple(sorted(x))
-		else:
-			return tuple()
-
-	label_sets = df[label_column].apply(parse_and_create_tuple)
-	unique_label_sets = Counter(label_sets)
-
-	print(f"Total number of unique label combinations: {len(unique_label_sets)}/{len(df)} ({len(unique_label_sets)/len(df)*100:.2f}%)")
-
-	# Display top 10
-	for label_set, count in unique_label_sets.most_common(10):
-		label_str = ', '.join(label_set)
-		print(f"{count:4d}x | {len(label_set):2d} labels | {label_str}")
-	
-	# print(f"{label_sets}")
-	unique_label_sets = Counter(label_sets)
-	unique_label_sets_df = pd.DataFrame(
-		unique_label_sets.items(), 
-		columns=['Label Set', 'Count']
-	).sort_values(by='Count', ascending=False)
-	# print(unique_label_sets_df.head(10))
-	
-	if len(unique_label_sets) > 0:
-		plt.figure(figsize=(12, 8))
-		top_n_combinations = unique_label_sets_df.head(min(20, len(unique_label_sets))).copy()
-		top_n_combinations['Label Set String'] = top_n_combinations['Label Set'].apply(lambda x: ', '.join(x))
-		sns.barplot(x='Count', y='Label Set String', data=top_n_combinations, palette='magma')
-		plt.title(f'Top {len(top_n_combinations)} Most Frequent Unique Label Combinations')
-		plt.xlabel('Number of Samples')
-		plt.ylabel('Label Combination')
-		plt.tight_layout()
-		plt.savefig(
-			fname=os.path.join(viz_dir, f"{label_column}_unique_label_combinations.png"),
-			dpi=DPI,
-			bbox_inches='tight',
-		)
-		plt.close()
-	
-	# Hierarchical Clustering of Labels
-	print("\n>> HIERARCHICAL CLUSTERING OF LABELS (Top Labels)")
-	if n_top_labels_co_occurrence > len(unique_labels):
-		print(
-			f"[WARNING] n_top_labels_co_occurrence ({n_top_labels_co_occurrence}) is greater than "
-			f"the total unique labels ({len(unique_labels)}). Adjusting to total unique labels."
-		)
-		n_top_labels_co_occurrence = len(unique_labels)
-	
-	print(f"Top {n_top_labels_co_occurrence} labels for correlation matrix:\n{all_label_counts[label_column]['Label'].head(n_top_labels_co_occurrence).tolist()}")
-	
-	if n_top_labels_co_occurrence >= 2:
-		print(f"Binarizing labels for correlation matrix (classes: {len(unique_labels)} sparse matrix) ...")
-		mlb = MultiLabelBinarizer(classes=unique_labels, sparse_output=True)
-
-		# Parse strings to lists
-		def parse_labels(x):
-			if isinstance(x, str):
-				return ast.literal_eval(x)  # "['a', 'b']" → ['a', 'b']
-			return x if isinstance(x, list) else []
-
-		parsed_labels = df[label_column].apply(parse_labels)
-		y_binarized = mlb.fit_transform(parsed_labels)
-
-		labels_in_order = mlb.classes_
-		
-		top_labels_for_correlation = all_label_counts[label_column]['Label'].head(n_top_labels_co_occurrence).tolist()
-		top_label_indices = [list(labels_in_order).index(lab) for lab in top_labels_for_correlation]
-		
-		y_subset = y_binarized[:, top_label_indices].toarray()
-
-		# Calculate Jaccard Similarity Matrix
-		jaccard_matrix = 1 - pairwise_distances(y_subset.T, metric='jaccard')
-		jaccard_df = pd.DataFrame(
-			jaccard_matrix, 
-			index=top_labels_for_correlation, 
-			columns=top_labels_for_correlation
-		)
-				
-		# Jaccard Similarity Heatmap
-		fig_heatmap, ax_heatmap = plt.subplots(figsize=(19, 17))
-		sns.heatmap(
-			jaccard_df, 
-			annot=True, 
-			fmt=".1f",
-			cmap='Blues',
-			linewidths=0.1, 
-			linecolor="#242B31",
-			cbar_kws={'label': 'Jaccard Similarity'},
-			ax=ax_heatmap,
-		)
-		ax_heatmap.set_title(f'Jaccard Similarity Heatmap')
-		plt.tight_layout()
-		plt.savefig(
-			fname=os.path.join(viz_dir, f"{label_column}_jaccard_similarity_heatmap.png"),
-			dpi=DPI,
-			bbox_inches='tight',
-		)
-		plt.close()
-				
-		# Network Visualization
-		fig_network = plt.figure(figsize=(20, 17))
-		ax_network = fig_network.add_subplot(1, 1, 1)
-		threshold = 0.01  # Only show edges with Jaccard threshold
-		
-		# Create adjacency list for strong connections
-		strong_connections = []
-		for i in range(n_top_labels_co_occurrence):
-			for j in range(i+1, n_top_labels_co_occurrence):
-				if jaccard_matrix[i, j] > threshold:
-					strong_connections.append((i, j, jaccard_matrix[i, j]))
-		
-		# Simple circular layout
-		angles = np.linspace(0, 2*np.pi, n_top_labels_co_occurrence, endpoint=False)
-		x = np.cos(angles)
-		y = np.sin(angles)
-		
-		# Draw edges
-		for i, j, weight in strong_connections:
-			ax_network.plot([x[i], x[j]], [y[i], y[j]], "#0A0502FF", alpha=weight, linewidth=weight*5.5, zorder=1)
-		
-		# Draw nodes
-		ax_network.scatter(x, y, s=250, c="#0B00A1", edgecolors="#000924", zorder=10, alpha=0.9)
-		
-		# Add labels
-		for idx, label in enumerate(top_labels_for_correlation):
-			ax_network.text(x[idx]*1.15, y[idx]*1.15, label, ha='center', va='center', fontsize=11)
-		
-		ax_network.set_xlim(-1.5, 1.5)
-		ax_network.set_ylim(-1.5, 1.5)
-		ax_network.axis('off')
-		ax_network.set_title(f'Label Co-occurrence Network (Jaccard > {threshold})')
-		plt.tight_layout()
-		plt.savefig(
-			fname=os.path.join(viz_dir, f"{label_column}_network_visualization.png"),
-			dpi=DPI,
-			bbox_inches='tight',
-		)
-		plt.close()
-	else:
-		print("Not enough unique labels to display correlation analyses (need at least 2).")
-	
-	summary_stats_dict = {
-		'Dataset Name': dataset_name,
-		'Total Samples': len(df),
-		'Unique Labels': len(unique_labels),
-		'Unique Label Combinations': len(unique_label_sets),
-		'Mean Label Cardinality': label_cardinality.mean(),
-		'Median Label Cardinality': label_cardinality.median(),
-		'Max Label Cardinality': int(label_cardinality.max()),
-		'Shannon Entropy': shannon_entropy,
-		'Normalized Entropy': normalized_entropy,
-		'Gini Coefficient': gini,
-		'Imbalance Ratio': imbalance_ratio,
-		'Power Law Exponent (α)': alpha_estimate,
-		'Effective # of Labels': effective_labels,
-		'freqs': freq_values,
-	}
-
-	plot_comparative_radar_chart(
-		summary_stats_dict=summary_stats_dict, 
-		label_col=label_column,
-		output_dir=viz_dir,
-	)
-
-	print("\nCOMPREHENSIVE SUMMARY STATISTICS")
-	
-	summary_stats = {
-		'Metric': [
-			'Total Samples',
-			'Unique Labels',
-			'Unique Label Combinations',
-			'Mean Label Cardinality',
-			'Median Label Cardinality',
-			'Max Label Cardinality',
-			'Shannon Entropy',
-			'Normalized Entropy',
-			'Gini Coefficient',
-			'Imbalance Ratio',
-			'Power Law Exponent (α)',
-			'Effective # of Labels'
-		],
-		'Value': [
-			len(df),
-			len(unique_labels),
-			len(unique_label_sets),
-			f"{label_cardinality.mean():.3f}",
-			f"{label_cardinality.median():.3f}",
-			int(label_cardinality.max()),
-			f"{shannon_entropy:.3f}",
-			f"{normalized_entropy:.3f}",
-			f"{gini:.3f}",
-			f"{imbalance_ratio:.3f}",
-			f"{alpha_estimate:.3f}",
-			f"{effective_labels:.3f}"
-		]
-	}
-	
-	summary_df = pd.DataFrame(summary_stats)
-	print(summary_df.to_string(index=False))
-		
-	print(f"\nEDA Total Elapsed Time: {time.time()-eda_st:.1f} sec")
-	print("="*100)
 
 def plot_label_distribution_pie_chart(
 		df: pd.DataFrame = None,
@@ -7477,3 +6738,358 @@ def plot_label_distribution(
 	plt.tight_layout()
 	plt.savefig(fpth, dpi=DPI, bbox_inches='tight')
 	plt.close()
+
+def plot_power_law_analysis(
+		ranks: np.ndarray,
+		freq_values: np.ndarray,
+		coeffs: np.ndarray,
+		alpha_estimate: float,
+		label_column: str,
+		output_dir: str,
+		dpi: int = 200,
+) -> None:
+		"""Plots linear and log-log rank-frequency plots with power law fit."""
+		fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+
+		# Linear scale
+		ax1.plot(ranks, freq_values, "o", alpha=0.5, markersize=4)
+		ax1.set_xlabel("Rank")
+		ax1.set_ylabel("Frequency")
+		ax1.set_title("Rank-Frequency Plot (Linear Scale)")
+		ax1.grid(True, alpha=0.3)
+
+		# Log-log scale
+		ax2.loglog(ranks, freq_values, "o", alpha=0.5, markersize=4)
+		ax2.set_xlabel("Rank (log scale)")
+		ax2.set_ylabel("Frequency (log scale)")
+		ax2.set_title("Rank-Frequency Plot (Log-Log Scale)")
+		ax2.grid(True, alpha=0.3)
+
+		# Plot fitted line
+		fitted_freqs = np.exp(coeffs[1]) * ranks ** coeffs[0]
+		ax2.plot(
+				ranks,
+				fitted_freqs,
+				"r-",
+				linewidth=2,
+				label=f"Power law fit (α≈{alpha_estimate:.2f})",
+		)
+		ax2.legend()
+
+		plt.tight_layout()
+		plt.savefig(
+				fname=os.path.join(output_dir, f"{label_column}_power_law_analysis.png"),
+				dpi=dpi,
+				bbox_inches="tight",
+		)
+		plt.close()
+
+
+def plot_comparative_lorenz_curve(
+		sorted_counts: np.ndarray,
+		gini: float,
+		dataset_name: str,
+		# benchmarks: dict,
+		label_column: str,
+		output_dir: str,
+		dpi: int = 200,
+) -> None:
+		"""Plots comparative Lorenz curves against benchmark datasets."""
+		benchmarks = {
+				"MS-COCO": estimate_coco_metrics(),
+				"Open Images V7": estimate_openimages_v7_metrics(),
+				"NUS-WIDE": estimate_nus_wide_metrics(),
+				"MIRFLICKR-25K": estimate_mirflickr_metrics(),
+		}
+
+		n = len(sorted_counts)
+		cumulative_counts = np.cumsum(sorted_counts)
+		cumulative_proportions = cumulative_counts / cumulative_counts[-1]
+		cumulative_proportions = np.insert(cumulative_proportions, 0, 0)
+		label_proportions = np.arange(0, n + 1) / n
+
+		fig, ax = plt.subplots(figsize=(8, 8))
+
+		# Perfect Equality Line
+		ax.plot(
+				[0, 1],
+				[0, 1],
+				color="#000000",
+				linestyle="dashdot",
+				linewidth=2,
+				label="Perfect Equality",
+				alpha=0.75,
+		)
+
+		# Main Dataset
+		ax.plot(
+				label_proportions,
+				cumulative_proportions,
+				color="#d62728",
+				linewidth=2.5,
+				label=f"{dataset_name} (Gini={gini:.3f})",
+		)
+		ax.fill_between(
+				label_proportions,
+				cumulative_proportions,
+				label_proportions,
+				alpha=0.11,
+				color="#d62728",
+		)
+
+		# Benchmarks
+		for name, metrics in benchmarks.items():
+				if "freqs" in metrics:
+						f = metrics["freqs"]
+						sorted_f = np.sort(f)
+						cum_f = np.cumsum(sorted_f)
+						cum_p = cum_f / cum_f[-1]
+						cum_p = np.insert(cum_p, 0, 0)
+						x_p = np.arange(0, len(cum_p)) / (len(cum_p) - 1)
+
+						ax.plot(
+								x_p,
+								cum_p,
+								linestyle="--",
+								linewidth=1.1,
+								label=f"{name} (Gini={metrics['gini']:.3f})",
+								color=metrics.get("color", "#616161"),
+								alpha=0.85,
+						)
+
+		ax.set_xlabel("Cumulative Proportion of Labels", fontsize=14)
+		ax.set_ylabel("Cumulative Proportion of Samples", fontsize=14)
+		ax.legend(
+				loc="best",
+				fontsize=14,
+				frameon=False,
+				fancybox=True,
+				shadow=True,
+				edgecolor="black",
+				facecolor="white",
+		)
+		ax.grid(True, alpha=0.5)
+		ax.set_xlim(0, 1)
+		ax.set_ylim(0, 1)
+
+		plt.tight_layout()
+		plt.savefig(
+				fname=os.path.join(output_dir, f"{label_column}_diversity_metrics.png"),
+				dpi=dpi,
+				bbox_inches="tight",
+		)
+		plt.close()
+
+
+def plot_imbalance_analysis(
+		counts_df: pd.DataFrame,
+		unique_labels_count: int,
+		label_column: str,
+		output_dir: str,
+		dpi: int = 200,
+) -> None:
+		"""Plots 2x2 multi-panel imbalance visualization (coverage, binning, box plot, head vs tail)."""
+		fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+		counts_series = counts_df["Count"]
+		max_freq = counts_series.max()
+
+		# 1. Cumulative Distribution
+		ax = axes[0, 0]
+		sorted_freqs = counts_series.sort_values(ascending=False).values
+		cumsum_freqs = np.cumsum(sorted_freqs)
+		cumsum_pct = cumsum_freqs / cumsum_freqs[-1] * 100
+		ax.plot(np.arange(1, len(cumsum_pct) + 1), cumsum_pct, linewidth=2)
+		ax.axhline(y=80, color="r", linestyle="--", label="80% threshold")
+		ax.set_xlabel("Number of Labels (ranked by frequency)")
+		ax.set_ylabel("Cumulative Percentage of Samples")
+		ax.set_title("Cumulative Label Coverage")
+		ax.legend()
+		ax.grid(True, alpha=0.3)
+
+		idx_80 = np.argmax(cumsum_pct >= 80)
+		pct_labels_for_80 = (idx_80 + 1) / unique_labels_count * 100
+		ax.text(
+				0.5,
+				0.5,
+				f"{pct_labels_for_80:.1f}% of labels\ncover 80% of samples",
+				transform=ax.transAxes,
+				ha="center",
+				va="center",
+				bbox=dict(boxstyle="round", facecolor="#3F1515", alpha=0.5),
+		)
+
+		# 2. Frequency Binning
+		ax = axes[0, 1]
+		base_bins = [1, 5, 10, 50, 100, 500]
+		dynamic_bins = [b for b in base_bins if b < max_freq]
+		dynamic_bins.append(max_freq + 1)
+		if not dynamic_bins:
+				dynamic_bins = [1, 2]
+
+		dynamic_labels = []
+		for i in range(len(dynamic_bins) - 1):
+				start = dynamic_bins[i]
+				end = dynamic_bins[i + 1] - 1
+				label = f"{start}+" if i == len(dynamic_bins) - 2 else f"{start}-{end}"
+				dynamic_labels.append(label)
+
+		freq_bin = pd.cut(
+				counts_series, bins=dynamic_bins, labels=dynamic_labels, right=False
+		)
+		freq_bin_counts = freq_bin.value_counts().sort_index()
+
+		ax.bar(range(len(freq_bin_counts)), freq_bin_counts.values, color="coral")
+		ax.set_xticks(range(len(freq_bin_counts)))
+		ax.set_xticklabels(freq_bin_counts.index, rotation=45)
+		ax.set_xlabel("Frequency Range")
+		ax.set_ylabel("Number of Labels")
+		ax.set_title("Label Distribution by Frequency Bins")
+		ax.grid(axis="y", alpha=0.3)
+
+		# 3. Box Plot of Frequencies
+		ax = axes[1, 0]
+		ax.boxplot([counts_series.values], vert=False)
+		ax.set_xlabel("Label Frequency")
+		ax.set_title("Box Plot of Label Frequencies")
+		ax.set_xscale("log")
+		ax.grid(True, alpha=0.3)
+
+		# 4. Head vs Tail Distribution
+		ax = axes[1, 1]
+		n_head = max(20, int(unique_labels_count * 0.1))
+		head_coverage = counts_df.head(n_head)["Count"].sum() / counts_series.sum() * 100
+		tail_coverage = 100 - head_coverage
+		ax.pie(
+				[head_coverage, tail_coverage],
+				labels=[f"Top {n_head} labels", f"Remaining {unique_labels_count - n_head} labels"],
+				autopct="%1.1f%%",
+				startangle=90,
+				colors=["#0072BD", "#FF7F0E"],
+		)
+		ax.set_title("Sample Coverage: Head vs Tail Labels")
+
+		plt.tight_layout()
+		plt.savefig(
+				fname=os.path.join(output_dir, f"{label_column}_imbalance_analysis.png"),
+				dpi=dpi,
+				bbox_inches="tight",
+		)
+		plt.close()
+
+
+def plot_unique_label_combinations(
+		unique_label_sets_df: pd.DataFrame,
+		label_column: str,
+		output_dir: str,
+		top_n: int = 20,
+		dpi: int = 200,
+) -> None:
+		"""Plots horizontal barplot of top unique label set combinations."""
+		if len(unique_label_sets_df) == 0:
+				return
+
+		plt.figure(figsize=(12, 8))
+		top_combinations = unique_label_sets_df.head(min(top_n, len(unique_label_sets_df))).copy()
+		top_combinations["Label Set String"] = top_combinations["Label Set"].apply(
+				lambda x: ", ".join(x)
+		)
+		sns.barplot(
+				x="Count", y="Label Set String", data=top_combinations, palette="magma"
+		)
+		plt.title(f"Top {len(top_combinations)} Most Frequent Unique Label Combinations")
+		plt.xlabel("Number of Samples")
+		plt.ylabel("Label Combination")
+		plt.tight_layout()
+		plt.savefig(
+				fname=os.path.join(output_dir, f"{label_column}_unique_label_combinations.png"),
+				dpi=dpi,
+				bbox_inches="tight",
+		)
+		plt.close()
+
+def plot_jaccard_heatmap(
+	jaccard_df: pd.DataFrame,
+	label_column: str,
+	output_dir: str,
+	dpi: int = 200,
+) -> None:
+	"""Plots Jaccard similarity heatmap for top co-occurring labels."""
+	fig_heatmap, ax_heatmap = plt.subplots(figsize=(19, 17))
+	sns.heatmap(
+			jaccard_df,
+			annot=True,
+			fmt=".1f",
+			cmap="Blues",
+			linewidths=0.1,
+			linecolor="#242B31",
+			cbar_kws={"label": "Jaccard Similarity"},
+			ax=ax_heatmap,
+	)
+	ax_heatmap.set_title("Jaccard Similarity Heatmap")
+	plt.tight_layout()
+	plt.savefig(
+			fname=os.path.join(output_dir, f"{label_column}_jaccard_similarity_heatmap.png"),
+			dpi=dpi,
+			bbox_inches="tight",
+	)
+	plt.close()
+
+def plot_label_cooccurrence_network(
+		jaccard_matrix: np.ndarray,
+		labels: list,
+		label_column: str,
+		output_dir: str,
+		threshold: float = 0.01,
+		dpi: int = 200,
+) -> None:
+		"""Plots a circular co-occurrence network of labels with edges weighted by Jaccard similarity."""
+		n_nodes = len(labels)
+		fig_network = plt.figure(figsize=(20, 17))
+		ax_network = fig_network.add_subplot(1, 1, 1)
+
+		strong_connections = [
+				(i, j, jaccard_matrix[i, j])
+				for i in range(n_nodes)
+				for j in range(i + 1, n_nodes)
+				if jaccard_matrix[i, j] > threshold
+		]
+
+		angles = np.linspace(0, 2 * np.pi, n_nodes, endpoint=False)
+		x = np.cos(angles)
+		y = np.sin(angles)
+
+		for i, j, weight in strong_connections:
+				ax_network.plot(
+						[x[i], x[j]],
+						[y[i], y[j]],
+						"#0A0502FF",
+						alpha=weight,
+						linewidth=weight * 5.5,
+						zorder=1,
+				)
+
+		ax_network.scatter(
+				x, y, s=250, c="#0B00A1", edgecolors="#000924", zorder=10, alpha=0.9
+		)
+
+		for idx, label in enumerate(labels):
+				ax_network.text(
+						x[idx] * 1.15,
+						y[idx] * 1.15,
+						label,
+						ha="center",
+						va="center",
+						fontsize=11,
+				)
+
+		ax_network.set_xlim(-1.5, 1.5)
+		ax_network.set_ylim(-1.5, 1.5)
+		ax_network.axis("off")
+		ax_network.set_title(f"Label Co-occurrence Network (Jaccard > {threshold})")
+		plt.tight_layout()
+		plt.savefig(
+				fname=os.path.join(output_dir, f"{label_column}_network_visualization.png"),
+				dpi=dpi,
+				bbox_inches="tight",
+		)
+		plt.close()

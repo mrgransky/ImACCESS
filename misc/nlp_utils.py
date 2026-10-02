@@ -432,6 +432,15 @@ def _post_process_(
 	}
 
 	ALLOWED_ACRONYMS = {
+		"TAZ", # Tous Azimuts
+		"RAD", # Reichsarbeitsdienst (Reich Labour Service)
+		"BAR", # Browning Automatic Rifle
+		"SLAC", # Stanford Linear Accelerator Center
+		"IBM", # International Business Machines
+		"SAAB", # Swedish Aeroplane AB
+		"SHAPE", # Supreme Headquarters Allied Powers Europe
+		"VCR", # Veterans of Foreign Wars
+		"ARVN", # Army of the Republic of Vietnam
 		"CTV", # Corpo de Truppe Volontarie !!! double check
 		"RATAN", # Radar and Television Aid to Navigation
 		"BOAC", # British Overseas Airways Corporation

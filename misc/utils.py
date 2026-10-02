@@ -69,6 +69,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import normalize, MultiLabelBinarizer
+from sklearn.metrics import pairwise_distances
+
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score, precision_recall_curve, roc_curve, auc, f1_score, hamming_loss

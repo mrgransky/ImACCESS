@@ -16,6 +16,7 @@ from utils import *
 from gt_kws_vlm import get_vlm_based_labels
 from gt_kws_llm import get_llm_based_labels
 import visualize as viz
+import exploratory_data_analysis as eda
 import label_statistics as stats
 from nlp_utils import (
 	_post_process_,
@@ -375,7 +376,7 @@ def get_multimodal_annotation(
 
 	# EDA, tier cardinality and stratified split only for full datasets:
 	if is_full_dataset:
-		viz.multilabel_eda(
+		eda.multilabel_eda(
 			df=df,
 			output_dir=OUTPUT_DIR,
 			label_column="multimodal_canonical_labels",
