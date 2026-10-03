@@ -2862,8 +2862,8 @@ def get_optimal_num_clusters(
 def remove_problematic_cluster_labels(
 	df,
 	embeddings,
-	low_cohesion_threshold=0.50,
-	poor_canonical_threshold=0.60,
+	low_cohesion_threshold: float=0.55,
+	poor_canonical_threshold: float=0.55,
 	verbose=False
 ):
 	"""
@@ -2943,7 +2943,7 @@ def remove_problematic_cluster_labels(
 
 	if low_cohesion_clusters and verbose:
 		print(
-			f"\n[LOW COHESION] Found {len(low_cohesion_clusters)} clusters (th: {low_cohesion_threshold}) -> "
+			f"\n[LOW COHESION] {len(low_cohesion_clusters)} clusters (th: {low_cohesion_threshold}) -> "
 			f"Labels to remove: {sum(c['size'] for c in low_cohesion_clusters)}"
 		)
 		for i, cluster in enumerate(low_cohesion_clusters):
@@ -2987,7 +2987,7 @@ def remove_problematic_cluster_labels(
 
 	if poor_canonical_clusters and verbose:
 		print(
-			f"\n[POOR CANONICAL] Found {len(poor_canonical_clusters)} clusters (th: {poor_canonical_threshold}) -> "
+			f"\n[POOR CANONICAL] {len(poor_canonical_clusters)} clusters (th: {poor_canonical_threshold}) -> "
 			f"Labels to remove: {sum(c['size'] for c in poor_canonical_clusters)}")
 		for i, cluster in enumerate(poor_canonical_clusters):
 			print(f"{i+1:3d}/{len(poor_canonical_clusters)} Cluster {cluster['cluster_id']:5d} rep: {cluster['representativeness']:.3f} canonical: {cluster['canonical']:<40} {cluster['labels']}")
@@ -4365,8 +4365,8 @@ def cluster(
 	linkage_method: str="ward",
 	distance_metric: str="euclidean",
 	target_intra_similarity: float = 0.69,
-	min_consolidation: float = 4.0,#3.8,
-	max_consolidation: float = 6.5,#5.0,
+	min_consolidation: float = 3.8, #4.0,
+	max_consolidation: float = 5.0, #6.5,
 	min_singleton_merge_sim: Optional[float] = 0.75,
 	merge_close_clusters_threshold: Optional[float] = None,
 	merge_max_size: int = 30,
