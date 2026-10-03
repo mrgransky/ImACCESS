@@ -38,7 +38,6 @@ from sentence_transformers import SentenceTransformer
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# For large datasets, use fastcluster if available
 try:
 	import fastcluster
 	use_fastcluster = True
@@ -47,10 +46,6 @@ except ImportError:
 	use_fastcluster = False
 	print("[SCIPY] Using scipy (slower for large n)")
 
-# -------------------------------------------------------------------------
-# Ensure SentenceTransformer can load models with rogue configs (e.g. Octen)
-# Must execute BEFORE SentenceTransformer(...) is instantiated.
-# -------------------------------------------------------------------------
 try:
 	from sentence_transformers.sentence_transformer.modules import Normalize
 except ImportError:
@@ -466,40 +461,30 @@ def _caching(
 	return x_path, z_path
 
 def _save_npy_atomic(path: str, arr: np.ndarray) -> None:
-		"""
-		Atomically save a NumPy array.
-
-		The array is first written to a temporary .npy file and then
-		atomically renamed into place. This prevents partially written
-		cache files if the job is interrupted during the write.
-		"""
-		os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-
-		tmp = path + ".tmp.npy"
-
-		try:
-				np.save(tmp, arr)
-				os.replace(tmp, path)
-
-		except Exception:
-				if os.path.exists(tmp):
-						try:
-								os.remove(tmp)
-						except OSError:
-								pass
-				raise
+	os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+	tmp = path + ".tmp.npy"
+	try:
+		np.save(tmp, arr)
+		os.replace(tmp, path)
+	except Exception:
+		if os.path.exists(tmp):
+			try:
+				os.remove(tmp)
+			except OSError:
+				pass
+		raise
 
 def _save_cache_manifest(
 	x_path: str,
 	model_id: str,
 	dtype: Any,
-	linkage_method: str,
 	distance_metric: str,
 	unique_labels: List[str],
 	embedding_shape: tuple,
 	embedding_dtype: Any,
-	encode_prompt: Optional[str] = None,
-	verbose: bool = False,
+	linkage_method: str,
+	encode_prompt: Optional[str]=None,
+	verbose: bool=False,
 ) -> str:
 	manifest_path = x_path.replace("_embeddings_X.npy", "_manifest.json")
 	
@@ -3387,7 +3372,7 @@ def assign_canonical_labels(
 	shared_calibration_names: Optional[List[str]] = None,
 	neighbor_review_min_sim: float = 0.88,
 	encode_prompt: Optional[str] = None,
-	virtual_min_sim_ratio: Optional[float] = 0.70, # None disables the gate
+	virtual_min_sim_ratio: Optional[float] = 0.60, # None disables the gate
 	min_distinct_concepts: int = 2, # 1 disables the variant rule
 	verbose: bool = False,
 ) -> Dict[int, Dict]:

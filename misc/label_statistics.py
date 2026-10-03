@@ -2057,7 +2057,6 @@ def get_singletons(df: pd.DataFrame, output_dir: str):
 			labels.extend(lbl)
 
 		print(f"  ├─ Total parsed {len(labels)} {type(labels)}")
-
 		unique_labels = sorted(list(set(labels)))
 		print(f"  ├─ unique {len(unique_labels)} {type(unique_labels)}")
 
@@ -2072,6 +2071,21 @@ def get_singletons(df: pd.DataFrame, output_dir: str):
 
 		print(f"  └─ Singleton(s) {len(label_singletons):6d}/{len(unique_labels):6d} ({len(label_singletons)/len(unique_labels)*100:.2f}%) {label_singletons[:10]}")
 
-		label_counts_df.to_csv(os.path.join(output_dir, f"unique_labels_{len(unique_labels)}_{col}.csv"), index=False)
+		unique_labels_singleton_fpath = os.path.join(output_dir, f"unique_labels_{len(unique_labels)}_{col}.csv")
+		label_counts_df.to_csv(unique_labels_singleton_fpath, index=False,)
+
+	result = viz.plot_label_similarity_heatmap(
+		df=df,
+		embedding_model="Octen/Octen-Embedding-0.6B",
+		output_dir=output_dir,
+		column="multimodal_canonical_labels",
+		batch_size=32,
+		device="cuda:0",
+		max_labels=100,
+		selection="frequency",
+		save_matrix=True,
+		save_embeddings=True,
+		annot=False,
+	)
 
 	print("="*100)
