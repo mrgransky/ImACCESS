@@ -3372,7 +3372,7 @@ def assign_canonical_labels(
 	shared_calibration_names: Optional[List[str]] = None,
 	neighbor_review_min_sim: float = 0.88,
 	encode_prompt: Optional[str] = None,
-	virtual_min_sim_ratio: Optional[float] = 0.60, # None disables the gate
+	virtual_min_sim_ratio: Optional[float] = 0.6, # None disables the gate
 	min_distinct_concepts: int = 2, # 1 disables the variant rule
 	verbose: bool = False,
 ) -> Dict[int, Dict]:

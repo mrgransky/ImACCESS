@@ -2080,8 +2080,6 @@ def get_singletons(df: pd.DataFrame, embedding_model: str, output_dir: str):
 		output_dir=output_dir,
 		column="multimodal_canonical_labels",
 		batch_size=32,
-		device="cuda:0",
-		max_labels=100,
 		selection="frequency",
 		save_matrix=True,
 		save_embeddings=True,
