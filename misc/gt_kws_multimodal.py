@@ -361,7 +361,7 @@ def get_multimodal_annotation(
 	df['vlm_based_labels'] = vlm_based_labels
 	df['multimodal_labels'] = multimodal_labels
 
-	stats.get_singletons(df=df, output_dir=OUTPUT_DIR)
+	stats.get_singletons(df=df, embedding_model=embedding_model_id, output_dir=OUTPUT_DIR)
 	stats.compute_entropy_vs_performance(df=df, verbose=verbose)
 	stats.get_cgd_taxonomy_supervision(
 		df=df,

@@ -3813,7 +3813,7 @@ def assign_canonical_labels(
 		cluster_centroids[cid] = centroid
 		cluster_members[cid]   = cluster_texts
 
-		# ── Virtual hypernym candidate ────────────────────────────────────
+		# Virtual hypernym candidate
 		virtual_hypernym = None
 		vh_raw = None
 		vh_info = {'route': '', 'support': 0, 'threshold': 0, 'note': 'cluster too small'}
@@ -4365,9 +4365,9 @@ def cluster(
 	linkage_method: str="ward",
 	distance_metric: str="euclidean",
 	target_intra_similarity: float = 0.69,
-	min_consolidation: float = 3.5, #3.8, #4.0,
+	min_consolidation: float = 3.0, #3.8, #4.0,
 	max_consolidation: float = 5.0, #5.0, #6.5,
-	min_singleton_merge_sim: Optional[float] = 0.75,
+	min_singleton_merge_sim: Optional[float] = 0.60,
 	merge_close_clusters_threshold: Optional[float] = None,
 	merge_max_size: int = 30,
 	min_cluster_size: int = 2,

@@ -2016,7 +2016,7 @@ def compute_entropy_vs_performance(
 
 	return merged
 
-def get_singletons(df: pd.DataFrame, output_dir: str):
+def get_singletons(df: pd.DataFrame, embedding_model: str, output_dir: str):
 	print("="*100)
 	print(f"[SINGETONS] {df.shape}")
 	print(df.info(verbose=True, memory_usage="deep"))
@@ -2076,7 +2076,7 @@ def get_singletons(df: pd.DataFrame, output_dir: str):
 
 	result = viz.plot_label_similarity_heatmap(
 		df=df,
-		embedding_model="Octen/Octen-Embedding-0.6B",
+		embedding_model=embedding_model,
 		output_dir=output_dir,
 		column="multimodal_canonical_labels",
 		batch_size=32,
