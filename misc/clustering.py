@@ -669,21 +669,12 @@ def get_clustering_artifacts(
 			Z = None
 
 	if Z is None:
-
 		if verbose:
-			print(
-				f"\n[LINKAGE] {linkage_method} "
-				f"{X.shape} embeddings [takes a while...]"
-			)
+			print(f"[LINKAGE] {linkage_method} {X.shape} embeddings [takes a while...]")
 
 		t0 = time.time()
 
-		Z = _compute_linkage(
-			X,
-			linkage_method,
-			distance_metric,
-			verbose=verbose,
-		)
+		Z = _compute_linkage(X, linkage_method, distance_metric, verbose=verbose,)
 
 		if verbose:
 			print(
@@ -2792,14 +2783,17 @@ def get_optimal_num_clusters(
 
 				if verbose:
 					print(
-						f"  ├─ [{status:7s}] singleton cluster {singleton_id:5d} → "
-						f"cluster {nearest_id:5d} (sim={sims[nearest_id]:.4f})"
+						f"  ├─ [{status:7s}] singleton cluster {singleton_id:5d} {repr(label_texts[singleton_idx]):<65} "
+						f"=> cluster {nearest_id:5d} (sim={sims[nearest_id]:.4f})"
 					)
 
 				break
 
 		unique_new = np.unique(new_labels)
-		label_map = {old: new for new, old in enumerate(unique_new)}
+		label_map = {
+			old: new 
+			for new, old in enumerate(unique_new)
+		}
 		labels = np.array([label_map[l] for l in new_labels])
 		
 		if verbose:
