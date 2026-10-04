@@ -3874,11 +3874,11 @@ def assign_canonical_labels(
 				)
 				
 				virtual_rejections['similarity_ratio'] += 1
-
-				# if verbose:
-				# 	print(f"[REJECTED] {virtual_hypernym!r}: sim ratio {_ratio:.4f} < {VIRTUAL_MIN_SIM_RATIO}")
-
-				rejection_virtual_tag = f"[REJECTED VIRTUAL] {virtual_hypernym!r}: sim ratio {_ratio:.4f} < {VIRTUAL_MIN_SIM_RATIO}"
+				rejection_virtual_tag = (
+					f"[REJECTED VIRTUAL] "
+					f"{repr(virtual_hypernym):<30}"
+					f"sim ratio {_ratio:.5f} < {VIRTUAL_MIN_SIM_RATIO}"
+				)
 
 				virtual_hypernym = None
 				candidates = cluster_texts
@@ -4078,7 +4078,7 @@ def assign_canonical_labels(
 
 		if verbose:
 			tag = " [VIRTUAL]" if virtual_flags[best_idx] else ""
-			print(f"\t=> Selected Canonical: {repr(canonical):<40} (sim={similarities[best_idx]:.4f}){tag} {rejection_virtual_tag}")
+			print(f"\t=> Selected Canonical: {repr(canonical):<60} (sim={similarities[best_idx]:.4f}){tag} {rejection_virtual_tag}")
 
 	pre_postpass = {
 		cid: meta['canonical']
