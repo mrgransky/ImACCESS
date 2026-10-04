@@ -6994,76 +6994,7 @@ def plot_label_similarity_heatmap(
 	fmt: str = ".2f",
 	save_matrix: bool = True,
 	save_embeddings: bool = False,
-	show: bool = False,
 ) -> Dict[str, Any]:
-	"""
-	Compute embeddings for unique labels in `df[column]`, calculate the
-	pairwise cosine-similarity matrix, and plot/save a heatmap.
-	Parameters
-	----------
-	df:
-			DataFrame containing the label column.
-	embedding_model:
-			Either:
-				- HuggingFace/SentenceTransformer model name, e.g.
-					"Octen/Octen-Embedding-0.6B"
-				- An already instantiated SentenceTransformer model.
-	output_dir:
-			Directory where heatmap and optional numerical results are saved.
-	column:
-			Column containing labels. Values may be:
-				- Python lists
-				- string representations of lists
-				- NaN/None
-	batch_size:
-			Batch size used during embedding.
-	device:
-			Device passed to SentenceTransformer, e.g. "cuda:0" or "cpu".
-	max_labels:
-			Maximum number of labels displayed in the heatmap.
-			None:
-					plot all labels.
-			Integer:
-					select a subset according to `selection`.
-	selection:
-			How labels are selected when `max_labels` is specified.
-			"frequency":
-					Select the most frequent labels.
-			"alphabetical":
-					Select alphabetically first labels.
-	figsize:
-			Matplotlib figure size. If None, it is determined automatically.
-	dpi:
-			Output figure resolution.
-	cmap:
-			Matplotlib/seaborn colormap.
-	vmin, vmax:
-			Color range for cosine similarity.
-	annot:
-			Whether to print similarity values inside cells.
-			Usually False for larger matrices.
-	fmt:
-			Annotation format.
-	save_matrix:
-			Save similarity matrix as CSV.
-	save_embeddings:
-			Save embeddings as .npy.
-	show:
-			Display the plot with plt.show().
-	Returns
-	-------
-	Dict[str, Any]
-			{
-					"column": column,
-					"labels": List[str],
-					"embeddings": np.ndarray,
-					"similarity_matrix": np.ndarray,
-					"figure_path": str,
-					"matrix_path": Optional[str],
-					"embedding_path": Optional[str],
-			}
-	"""
-
 	# 1. Validate input
 	if column not in df.columns:
 		raise ValueError(
@@ -7076,9 +7007,7 @@ def plot_label_similarity_heatmap(
 	print(f"[LABEL SIMILARITY HEATMAP] {column}")
 	print(f"DataFrame shape: {df.shape}")
 
-	# ------------------------------------------------------------------
 	# 2. Parse labels
-	# ------------------------------------------------------------------
 	raw_values = df[column].tolist()
 	labels_flat: List[str] = []
 	invalid_count = 0
@@ -7132,9 +7061,7 @@ def plot_label_similarity_heatmap(
 					if label:
 							labels_flat.append(label)
 
-	# ------------------------------------------------------------------
 	# 3. Compute unique labels and frequencies
-	# ------------------------------------------------------------------
 	label_counts = pd.Series(labels_flat).value_counts()
 	unique_labels_all = label_counts.index.tolist()
 	print(f"Parsed label occurrences : {len(labels_flat):,}")
@@ -7146,9 +7073,7 @@ def plot_label_similarity_heatmap(
 					f"No valid labels found in column '{column}'."
 			)
 
-	# ------------------------------------------------------------------
 	# 4. Select labels for visualization
-	# ------------------------------------------------------------------
 	if max_labels is None:
 		selected_labels = unique_labels_all
 	else:
@@ -7171,9 +7096,7 @@ def plot_label_similarity_heatmap(
 					f"using selection='{selection}'."
 			)
 
-	# ------------------------------------------------------------------
 	# 5. Load embedding model
-	# ------------------------------------------------------------------
 	if isinstance(embedding_model, str):
 			print(
 					f"\nLoading embedding model:\n"
@@ -7273,119 +7196,79 @@ def plot_label_similarity_heatmap(
 			None,
 	)
 	if isinstance(embedding_model, str):
-			model_tag = embedding_model.split("/")[-1]
+		model_tag = embedding_model.split("/")[-1]
 	else:
-			model_tag = "provided_model"
+		model_tag = "provided_model"
+	
 	model_tag = (
-			model_tag
-			.replace("/", "_")
-			.replace("\\", "_")
-			.replace(" ", "_")
-
+		model_tag
+		.replace("/", "_")
+		.replace("\\", "_")
+		.replace(" ", "_")
 	)
-	figure_path = os.path.join(viz_dir, f"label_similarity_heatmap_{safe_column}_{model_tag}.png",)
+
+	figure_path = os.path.join(viz_dir, f"{safe_column}_{model_tag}_label_similarity_heatmap.png",)
 	matrix_path = os.path.join(viz_dir, f"label_similarity_matrix_{safe_column}_{model_tag}.csv",)
 	embedding_path = os.path.join(viz_dir, f"label_embeddings_{safe_column}_{model_tag}.npy",)
-
-	# 11. Save similarity matrix
-	if save_matrix:
-			similarity_df = pd.DataFrame(
-					similarity_matrix,
-					index=selected_labels,
-					columns=selected_labels,
-			)
-			similarity_df.to_csv(matrix_path, index=True,)
-			print(f"Saved similarity matrix: {matrix_path}")
 	
-	# 12. Save embeddings
-	if save_embeddings:
-		np.save(embedding_path, embeddings,)
-		print(f"Saved embeddings: {embedding_path}")
-	
-	# 13. Determine figure size
 	if figsize is None:
-			# Reasonable automatic scaling.
-			#
-			# For large matrices, the figure becomes large enough that
-			# labels/cells remain inspectable when zooming into the PNG.
-			side = max(
-					8,
-					min(30, 0.22 * n_labels),
-			)
-			figsize = (side, side)
-	# ------------------------------------------------------------------
-	# 14. Plot heatmap
-	# ------------------------------------------------------------------
-	fig, ax = plt.subplots(
-			figsize=figsize,
-			dpi=dpi,
-	)
+		# Reasonable automatic scaling.
+		#
+		# For large matrices, the figure becomes large enough that
+		# labels/cells remain inspectable when zooming into the PNG.
+		side = max(18, min(30, 0.22 * n_labels),)
+		figsize = (side, side)
+	
+	fig, ax = plt.subplots(figsize=figsize, dpi=dpi,)
 	sns.heatmap(
-			similarity_matrix,
-			ax=ax,
-			cmap=cmap,
-			vmin=vmin,
-			vmax=vmax,
-			square=True,
-			xticklabels=selected_labels,
-			yticklabels=selected_labels,
-			annot=annot,
-			fmt=fmt,
-			cbar_kws={
-					"label": "Cosine Similarity",
-			},
+		similarity_matrix,
+		ax=ax,
+		cmap=cmap,
+		vmin=vmin,
+		vmax=vmax,
+		square=True,
+		xticklabels=selected_labels,
+		yticklabels=selected_labels,
+		annot=annot,
+		fmt=fmt,
+		cbar_kws={"label": "Cosine Similarity",},
 	)
-	ax.set_title(
-			"Pairwise Cosine Similarity of Unique Labels\n"
-			f"{column} | {model_tag}",
-			pad=12,
-	)
-	ax.set_xlabel("Label")
-	ax.set_ylabel("Label")
+
+	ax.set_title(f"Pairwise Cosine Similarity of Unique Labels {column} ({model_tag})", pad=8,)
+	# ax.set_xlabel("Label")
+	# ax.set_ylabel("Label")
+
 	# Rotate labels for readability.
-	plt.xticks(
-			rotation=90,
-			ha="center",
-	)
-	plt.yticks(
-			rotation=0,
-	)
+	plt.xticks(rotation=90,ha="center",)
+	plt.yticks(rotation=0,)
 	plt.tight_layout()
 	fig.savefig(
-			figure_path,
-			dpi=dpi,
-			bbox_inches="tight",
+		figure_path,
+		dpi=dpi,
+		bbox_inches="tight",
 	)
-	print(
-			f"\nSaved heatmap →\n"
-			f"  {figure_path}"
-	)
-	if show:
-			plt.show()
-	else:
-			plt.close(fig)
-	# ------------------------------------------------------------------
-	# 15. Return everything useful for downstream analysis
-	# ------------------------------------------------------------------
+	print(f"\nSaved heatmap: {figure_path}")
+	plt.close(fig)
+
 	print("=" * 100)
 	return {
-			"column": column,
-			"labels": selected_labels,
-			"label_counts": label_counts.loc[
-					selected_labels
-			],
-			"embeddings": embeddings,
-			"similarity_matrix": similarity_matrix,
-			"figure_path": figure_path,
-			"matrix_path": matrix_path if save_matrix else None,
-			"embedding_path": (
-					embedding_path if save_embeddings else None
-			),
-			"model_name": (
-					embedding_model
-					if isinstance(embedding_model, str)
-					else type(model).__name__
-			),
+		"column": column,
+		"labels": selected_labels,
+		"label_counts": label_counts.loc[
+			selected_labels
+		],
+		"embeddings": embeddings,
+		"similarity_matrix": similarity_matrix,
+		"figure_path": figure_path,
+		"matrix_path": matrix_path if save_matrix else None,
+		"embedding_path": (
+			embedding_path if save_embeddings else None
+		),
+		"model_name": (
+			embedding_model
+			if isinstance(embedding_model, str)
+			else type(model).__name__
+		),
 	}
 
 def plot_unique_label_combinations(
