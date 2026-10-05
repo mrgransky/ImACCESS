@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --account=project_2009043
+#SBATCH --account=project_2020458
 #SBATCH --job-name=ft_seed_42
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a.out
 #SBATCH --mail-user=farid.alijani@gmail.com
@@ -12,7 +12,7 @@
 #SBATCH --partition=gpularge
 #SBATCH --gres=gpu:gh200:1
 #SBATCH --time=0-07:00:00
-##SBATCH --begin=06:30:00
+#SBATCH --begin=23:55:00
 ##############################################################################
 # ARRAY INDEXING SCHEME
 # ──────────────────────────────────────────────────────────────────────────
