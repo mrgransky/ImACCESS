@@ -85,31 +85,6 @@ def summarize_canonical_selection(
 	print_summary=True,
 	return_text=False,
 ):
-	"""
-	One compact text summary of a canonical-selection JSON: everything needed to judge a run.
-
-	Sections: 1 cluster sizes | 2 how canonicals were chosen (+ virtual gates) | 3 vocabulary and tail |
-	4 names shared by several clusters and the shared-name resolver | 5 harmonization, duplicates and
-	synonym variants | 6 literal labels displaced by a virtual's name | 7 designation labels |
-	8 nearest-cluster structure | 9 decision boundary of the shared-name resolver.
-
-	Parameters
-	----------
-	path : str or Path
-		The *_canonical_selection.json file. Older schemas work: sections whose fields are missing are skipped.
-	benign, homonyms : sequences of str
-		Names reported in section 4. Benign names (building, room ...) should stay together; homonyms
-		(tank, float ...) should split. Together they show where shared_threshold sits for the embedding model.
-	detail : sequence of str
-		Names whose lowest anchor similarities are listed in section 9 (the resolver's decision boundary).
-		Pass () to leave section 9 out.
-	detail_rows : int
-		Rows listed per name in section 9.
-	print_summary : bool
-		Print the summary.
-	return_text : bool
-		Return the summary as a string (otherwise None, which avoids a duplicate echo in a REPL).
-	"""
 	path = pathlib.Path(path)
 	with path.open(encoding="utf-8") as f:
 		data = json.load(f)
@@ -1450,549 +1425,6 @@ def fix_poor_canonical_clusters(
 	
 	return df
 
-def automated_cluster_validation(
-	embeddings: np.ndarray,
-	labels: np.ndarray,
-	cluster_assignments: np.ndarray,
-	canonical_labels: Dict[int, str],
-	original_label_counts: Optional[Dict[str, int]] = None,
-	verbose: bool = True
-) -> Dict:
-		"""
-		Fully automated clustering quality assessment with ZERO human intervention.
-		
-		Evaluates two critical aspects:
-		1. Cluster Quality: Cohesion, separation, size distribution
-		2. Canonical Label Quality: Representativeness, generality, frequency alignment
-		
-		Parameters
-		----------
-		embeddings : np.ndarray, shape (n_samples, embedding_dim)
-				Normalized embeddings of all unique labels
-		labels : np.ndarray, shape (n_samples,)
-				Original label strings
-		cluster_assignments : np.ndarray, shape (n_samples,)
-				Cluster ID for each label
-		canonical_labels : Dict[int, str]
-				Mapping from cluster_id -> canonical label string
-		original_label_counts : Dict[str, int], optional
-				Frequency of each label in original dataset
-		verbose : bool, default=True
-				Print detailed analysis
-		
-		Returns
-		-------
-		results : Dict
-				{
-						'cluster_quality': Dict with automated metrics,
-						'canonical_quality': Dict with canonical assessment,
-						'recommendations': List[str] with actionable insights,
-						'overall_score': float in [0, 1] indicating quality,
-						'pass_threshold': bool indicating if clustering is acceptable
-				}
-		"""
-		
-		n_samples = len(labels)
-		n_clusters = len(np.unique(cluster_assignments))
-		
-		if verbose:
-			print("\nAUTOMATED CLUSTER VALIDATION (ZERO HUMAN INTERVENTION)")
-			print(f"Dataset: {n_samples:,} unique labels → {n_clusters:,} clusters")
-		
-		# Create DataFrame for analysis
-		df = pd.DataFrame(
-			{
-				'label': labels,
-				'cluster': cluster_assignments
-			}
-		)
-		df['canonical'] = df['cluster'].map(canonical_labels)
-		
-		results = {}
-		
-		
-		# PART 1: CLUSTER QUALITY METRICS (Automated)
-		
-		if verbose:
-			print("\n[PART 1/2] Automated Cluster Quality Assessment")
-		
-		cluster_quality = {}
-		
-		# Metric 1.1: Intra-cluster cohesion (higher is better)
-		intra_similarities = list()
-		for cid in range(n_clusters):
-				cluster_mask = cluster_assignments == cid
-				cluster_embeddings = embeddings[cluster_mask]
-				
-				if len(cluster_embeddings) > 1:
-						sim_matrix = cosine_similarity(cluster_embeddings)
-						# Average pairwise similarity (excluding diagonal)
-						intra_sim = (sim_matrix.sum() - len(cluster_embeddings)) / (
-								len(cluster_embeddings) * (len(cluster_embeddings) - 1)
-						)
-						intra_similarities.append(intra_sim)
-		
-		cluster_quality['mean_intra_similarity'] = np.mean(intra_similarities)
-		cluster_quality['min_intra_similarity'] = np.min(intra_similarities)
-		cluster_quality['std_intra_similarity'] = np.std(intra_similarities)
-		
-		# Metric 1.2: Inter-cluster separation (higher is better)
-		# Compute centroid for each cluster
-		cluster_centroids = list()
-		for cid in range(n_clusters):
-				cluster_mask = cluster_assignments == cid
-				cluster_embeddings = embeddings[cluster_mask]
-				centroid = cluster_embeddings.mean(axis=0)
-				cluster_centroids.append(centroid)
-		
-		cluster_centroids = np.array(cluster_centroids)
-		
-		# Average pairwise distance between centroids
-		if n_clusters > 1:
-				centroid_distances = 1 - cosine_similarity(cluster_centroids)
-				np.fill_diagonal(centroid_distances, 0)
-				inter_cluster_distance = centroid_distances.sum() / (n_clusters * (n_clusters - 1))
-				cluster_quality['mean_inter_cluster_distance'] = inter_cluster_distance
-		else:
-				cluster_quality['mean_inter_cluster_distance'] = 1.0
-		
-		# Metric 1.3: Dunn Index (ratio of min inter-cluster to max intra-cluster)
-		# Higher is better (well-separated, compact clusters)
-		if n_clusters > 1:
-				min_inter_distance = centroid_distances[centroid_distances > 0].min()
-				
-				# Max intra-cluster diameter
-				max_diameter = 0
-				for cid in range(n_clusters):
-						cluster_mask = cluster_assignments == cid
-						cluster_embeddings = embeddings[cluster_mask]
-						if len(cluster_embeddings) > 1:
-								pairwise_dists = 1 - cosine_similarity(cluster_embeddings)
-								max_diameter = max(max_diameter, pairwise_dists.max())
-				
-				dunn_index = min_inter_distance / (max_diameter + 1e-10)
-				cluster_quality['dunn_index'] = dunn_index
-		else:
-				cluster_quality['dunn_index'] = 1.0
-		
-		# Metric 1.4: Cluster size distribution quality
-		cluster_sizes = df.groupby('cluster').size().values
-		cluster_quality['size_mean'] = cluster_sizes.mean()
-		cluster_quality['size_median'] = np.median(cluster_sizes)
-		cluster_quality['size_std'] = cluster_sizes.std()
-		cluster_quality['size_cv'] = cluster_sizes.std() / (cluster_sizes.mean() + 1e-10)  # Coefficient of variation
-		cluster_quality['size_gini'] = _compute_gini(cluster_sizes)  # 0=equal, 1=unequal
-		
-		# Metric 1.5: Outlier cluster detection (clusters with very low cohesion)
-		low_cohesion_threshold = 0.5
-		n_low_cohesion = sum(1 for sim in intra_similarities if sim < low_cohesion_threshold)
-		cluster_quality['n_low_cohesion_clusters'] = n_low_cohesion
-		cluster_quality['pct_low_cohesion'] = n_low_cohesion / n_clusters
-		
-		# Metric 1.6: Silhouette coefficient (computed earlier, but add for completeness)
-		with warnings.catch_warnings():
-				warnings.simplefilter("ignore")
-				silhouette = silhouette_score(embeddings, cluster_assignments, metric='cosine')
-		cluster_quality['silhouette_score'] = silhouette
-		
-		if verbose:
-				print(f"\tIntra-cluster cohesion:")
-				print(f"\t\tMean: {cluster_quality['mean_intra_similarity']:.4f}")
-				print(f"\t\tMin:  {cluster_quality['min_intra_similarity']:.4f}")
-				print(f"\t\tStd:  {cluster_quality['std_intra_similarity']:.4f}")
-				print(f"\tInter-cluster separation: {cluster_quality['mean_inter_cluster_distance']:.4f}")
-				print(f"\tDunn Index: {cluster_quality['dunn_index']:.4f}")
-				print(f"\tSilhouette Score: {cluster_quality['silhouette_score']:.4f}")
-				print(f"\tSize distribution:")
-				print(f"\t\tMean: {cluster_quality['size_mean']:.1f}")
-				print(f"\t\tCV: {cluster_quality['size_cv']:.3f} (lower is more balanced)")
-				print(f"\t\tGini: {cluster_quality['size_gini']:.3f} (lower is more equal)")
-				print(f"\tLow cohesion clusters: {n_low_cohesion} ({cluster_quality['pct_low_cohesion']*100:.1f}%)")
-				print()
-		
-		results['cluster_quality'] = cluster_quality
-		
-		# PART 2: CANONICAL LABEL QUALITY METRICS (Automated)
-		if verbose:
-			print("\n[PART 2/2] Automated Canonical Label Quality Assessment")
-		
-		canonical_quality = {}
-		
-		# Metric 2.1: Canonical representativeness (how well canonical represents cluster)
-		canonical_representativeness_scores = list()
-		
-		for cid in range(n_clusters):
-				cluster_mask = cluster_assignments == cid
-				cluster_labels_list = labels[cluster_mask]
-				cluster_embeddings = embeddings[cluster_mask]
-				canonical = canonical_labels[cid]
-				
-				# Find canonical's embedding
-				canonical_idx = np.where(cluster_labels_list == canonical)[0]
-				if len(canonical_idx) > 0:
-						canonical_emb = cluster_embeddings[canonical_idx[0]].reshape(1, -1)
-						# Average similarity to all cluster members
-						similarities = cosine_similarity(canonical_emb, cluster_embeddings)[0]
-						avg_similarity = similarities.mean()
-						canonical_representativeness_scores.append(avg_similarity)
-				else:
-						# Canonical not in cluster (shouldn't happen)
-						canonical_representativeness_scores.append(0.0)
-		
-		canonical_quality['mean_representativeness'] = np.mean(canonical_representativeness_scores)
-		canonical_quality['min_representativeness'] = np.min(canonical_representativeness_scores)
-		canonical_quality['std_representativeness'] = np.std(canonical_representativeness_scores)
-		
-		# Metric 2.2: Canonical generality (shorter labels are usually more general)
-		canonical_lengths = [len(canonical_labels[cid].split()) for cid in range(n_clusters)]
-		cluster_avg_lengths = list()
-		
-		for cid in range(n_clusters):
-				cluster_mask = cluster_assignments == cid
-				cluster_labels_list = labels[cluster_mask]
-				avg_length = np.mean([len(lbl.split()) for lbl in cluster_labels_list])
-				cluster_avg_lengths.append(avg_length)
-		
-		# Canonical should be shorter than or equal to cluster average (more general)
-		canonical_generality_scores = list()
-		for can_len, cluster_len in zip(canonical_lengths, cluster_avg_lengths):
-				# Score: 1.0 if canonical is shorter, decreases if longer
-				generality = max(0, 1 - (can_len - cluster_len) / (cluster_len + 1e-10))
-				canonical_generality_scores.append(generality)
-		
-		canonical_quality['mean_generality_score'] = np.mean(canonical_generality_scores)
-		canonical_quality['canonical_avg_length'] = np.mean(canonical_lengths)
-		canonical_quality['cluster_avg_length'] = np.mean(cluster_avg_lengths)
-		
-		# Metric 2.3: Frequency alignment (if label counts available)
-		if original_label_counts:
-				frequency_alignment_scores = list()
-				
-				for cid in range(n_clusters):
-						cluster_mask = cluster_assignments == cid
-						cluster_labels_list = labels[cluster_mask]
-						canonical = canonical_labels[cid]
-						
-						# Get frequency of canonical vs cluster average
-						canonical_freq = original_label_counts.get(canonical, 0)
-						cluster_freqs = [original_label_counts.get(lbl, 0) for lbl in cluster_labels_list]
-						cluster_mean_freq = np.mean(cluster_freqs)
-						cluster_max_freq = np.max(cluster_freqs)
-						
-						# Canonical should be among the most frequent in cluster
-						# Score: ratio of canonical frequency to max frequency
-						if cluster_max_freq > 0:
-								freq_alignment = canonical_freq / cluster_max_freq
-						else:
-								freq_alignment = 1.0
-						
-						frequency_alignment_scores.append(freq_alignment)
-				
-				canonical_quality['mean_frequency_alignment'] = np.mean(frequency_alignment_scores)
-				canonical_quality['pct_canonical_is_most_frequent'] = sum(
-						1 for score in frequency_alignment_scores if score >= 0.99
-				) / n_clusters
-		else:
-				canonical_quality['mean_frequency_alignment'] = None
-				canonical_quality['pct_canonical_is_most_frequent'] = None
-		
-		# Metric 2.4: Canonical uniqueness (each canonical should be unique)
-		canonical_values = list(canonical_labels.values())
-		n_unique_canonicals = len(set(canonical_values))
-		canonical_quality['n_unique_canonicals'] = n_unique_canonicals
-		canonical_quality['canonical_uniqueness_ratio'] = n_unique_canonicals / n_clusters
-		
-		# Metric 2.5: Centroid vs alternatives comparison
-		# How much better is centroid-nearest vs random selection?
-		centroid_improvement_scores = list()
-		
-		for cid in range(n_clusters):
-				cluster_mask = cluster_assignments == cid
-				cluster_labels_list = labels[cluster_mask]
-				cluster_embeddings = embeddings[cluster_mask]
-				canonical = canonical_labels[cid]
-				
-				if len(cluster_embeddings) < 2:
-						continue
-				
-				# Current canonical representativeness
-				canonical_idx = np.where(cluster_labels_list == canonical)[0]
-				if len(canonical_idx) > 0:
-						canonical_emb = cluster_embeddings[canonical_idx[0]].reshape(1, -1)
-						current_score = cosine_similarity(canonical_emb, cluster_embeddings).mean()
-				else:
-						current_score = 0.0
-				
-				# Random baseline: average representativeness of random labels
-				random_scores = list()
-				for emb in cluster_embeddings[:min(10, len(cluster_embeddings))]:  # Sample 10
-						emb_reshaped = emb.reshape(1, -1)
-						random_score = cosine_similarity(emb_reshaped, cluster_embeddings).mean()
-						random_scores.append(random_score)
-				
-				random_baseline = np.mean(random_scores)
-				
-				# Improvement over random
-				if random_baseline > 0:
-						improvement = (current_score - random_baseline) / random_baseline
-				else:
-						improvement = 0.0
-				
-				centroid_improvement_scores.append(improvement)
-		
-		canonical_quality['mean_centroid_improvement'] = np.mean(centroid_improvement_scores) if centroid_improvement_scores else 0.0
-		
-		if verbose:
-				print(f"  ✓ Canonical representativeness:")
-				print(f"      Mean: {canonical_quality['mean_representativeness']:.4f}")
-				print(f"      Min:  {canonical_quality['min_representativeness']:.4f}")
-				print(f"      Std:  {canonical_quality['std_representativeness']:.4f}")
-				print(f"  ✓ Canonical generality:")
-				print(f"      Mean generality score: {canonical_quality['mean_generality_score']:.4f}")
-				print(f"      Canonical avg length: {canonical_quality['canonical_avg_length']:.2f} words")
-				print(f"      Cluster avg length: {canonical_quality['cluster_avg_length']:.2f} words")
-				if canonical_quality['mean_frequency_alignment'] is not None:
-						print(f"  ✓ Frequency alignment:")
-						print(f"      Mean alignment: {canonical_quality['mean_frequency_alignment']:.4f}")
-						print(f"      % canonical is most frequent: {canonical_quality['pct_canonical_is_most_frequent']*100:.1f}%")
-				print(f"  ✓ Canonical uniqueness: {n_unique_canonicals}/{n_clusters} ({canonical_quality['canonical_uniqueness_ratio']*100:.1f}%)")
-				print(f"  ✓ Centroid improvement over random: {canonical_quality['mean_centroid_improvement']*100:.1f}%")
-				print()
-		
-		results['canonical_quality'] = canonical_quality
-		
-		# PART 3: OVERALL QUALITY SCORE & AUTOMATED DECISION
-		if verbose:
-			print("\n[PART 3/3] Overall Quality Score & Automated Decision")
-		
-		# Compute weighted overall score (0-1 scale)
-		scores = {}
-		
-		# Cluster quality sub-scores
-		scores['cohesion'] = cluster_quality['mean_intra_similarity']  # 0-1
-		scores['separation'] = cluster_quality['mean_inter_cluster_distance']  # 0-1
-		scores['dunn'] = min(cluster_quality['dunn_index'] / 0.5, 1.0)  # Normalize to 0-1
-		scores['silhouette'] = (cluster_quality['silhouette_score'] + 1) / 2  # Convert [-1,1] to [0,1]
-		scores['size_balance'] = 1 - min(cluster_quality['size_gini'], 1.0)  # Invert Gini
-		scores['no_outliers'] = 1 - cluster_quality['pct_low_cohesion']
-		
-		# Canonical quality sub-scores
-		scores['representativeness'] = canonical_quality['mean_representativeness']
-		scores['generality'] = canonical_quality['mean_generality_score']
-		scores['uniqueness'] = canonical_quality['canonical_uniqueness_ratio']
-		scores['centroid_method'] = min(canonical_quality['mean_centroid_improvement'] / 0.2, 1.0)  # 20% improvement = score 1.0
-		
-		if canonical_quality['mean_frequency_alignment'] is not None:
-				scores['frequency'] = canonical_quality['mean_frequency_alignment']
-		
-		# Weighted overall score
-		weights = {
-				'cohesion': 0.20,
-				'separation': 0.10,
-				'dunn': 0.10,
-				'silhouette': 0.10,
-				'size_balance': 0.05,
-				'no_outliers': 0.05,
-				'representativeness': 0.20,
-				'generality': 0.10,
-				'uniqueness': 0.05,
-				'centroid_method': 0.05,
-		}
-		
-		if 'frequency' in scores:
-				weights['frequency'] = 0.10
-				# Renormalize other weights
-				total_weight = sum(weights.values())
-				for key in weights:
-						weights[key] /= total_weight
-		
-		overall_score = sum(scores[key] * weights[key] for key in scores)
-		
-		# Quality thresholds
-		excellent_threshold = 0.75
-		good_threshold = 0.65
-		acceptable_threshold = 0.55
-		
-		if overall_score >= excellent_threshold:
-				quality_level = "EXCELLENT"
-				decision = "PROCEED"
-		elif overall_score >= good_threshold:
-				quality_level = "GOOD"
-				decision = "PROCEED"
-		elif overall_score >= acceptable_threshold:
-				quality_level = "ACCEPTABLE"
-				decision = "PROCEED WITH CAUTION"
-		else:
-				quality_level = "POOR"
-				decision = "RE-CLUSTER RECOMMENDED"
-		
-		results['overall_score'] = overall_score
-		results['quality_level'] = quality_level
-		results['decision'] = decision
-		results['pass_threshold'] = overall_score >= acceptable_threshold
-		results['component_scores'] = scores
-		results['component_weights'] = weights
-		
-		if verbose:
-				print(f"  Component Scores:")
-				for key, score in scores.items():
-						weight_pct = weights[key] * 100
-						weighted_contribution = score * weights[key]
-						print(f"    {key:20s}: {score:.3f} (weight: {weight_pct:4.1f}%, contrib: {weighted_contribution:.3f})")
-				print()
-				print(f"  🎯 OVERALL QUALITY SCORE: {overall_score:.3f} / 1.000")
-				print(f"  📊 QUALITY LEVEL: {quality_level}")
-				print(f"  ✅ AUTOMATED DECISION: {decision}")
-				print()
-		
-		# PART 4: AUTOMATED RECOMMENDATIONS
-		recommendations = list()
-		
-		# Issue 1: Low cluster cohesion
-		if cluster_quality['mean_intra_similarity'] < 0.70:
-				recommendations.append({
-						'issue': 'Low Cluster Cohesion',
-						'metric': f"Mean intra-similarity = {cluster_quality['mean_intra_similarity']:.3f} (target: >0.70)",
-						'severity': 'HIGH',
-						'action': f"Increase n_clusters to {int(n_clusters * 1.5)}-{int(n_clusters * 2)} for tighter clusters"
-				})
-		
-		# Issue 2: Poor inter-cluster separation
-		if cluster_quality['mean_inter_cluster_distance'] < 0.20:
-				recommendations.append({
-						'issue': 'Poor Inter-Cluster Separation',
-						'metric': f"Mean inter-distance = {cluster_quality['mean_inter_cluster_distance']:.3f} (target: >0.20)",
-						'severity': 'MEDIUM',
-						'action': "Consider switching to 'average' linkage method for better separation"
-				})
-		
-		# Issue 3: Unbalanced cluster sizes
-		if cluster_quality['size_gini'] > 0.60:
-				recommendations.append({
-						'issue': 'Highly Unbalanced Cluster Sizes',
-						'metric': f"Gini coefficient = {cluster_quality['size_gini']:.3f} (target: <0.60)",
-						'severity': 'MEDIUM',
-						'action': "Enable split_oversized=True to break up large clusters"
-				})
-		
-		# Issue 4: Many outlier clusters
-		if cluster_quality['pct_low_cohesion'] > 0.10:
-				recommendations.append({
-						'issue': 'Many Outlier Clusters',
-						'metric': f"{cluster_quality['pct_low_cohesion']*100:.1f}% of clusters have cohesion <0.5",
-						'severity': 'HIGH',
-						'action': "Review low-cohesion clusters; may need manual splitting or different distance metric"
-				})
-		
-		# Issue 5: Poor canonical representativeness
-		if canonical_quality['mean_representativeness'] < 0.75:
-			recommendations.append(
-				{
-					'issue': 'Poor Canonical Representativeness',
-					'metric': f"Mean representativeness = {canonical_quality['mean_representativeness']:.3f} (target: >0.75)",
-					'severity': 'HIGH',
-					'action': "Switch to frequency-weighted centroid selection or alternative canonical selection method"
-				}
-			)
-		
-		# Issue 6: Canonicals too specific (too long)
-		if canonical_quality['canonical_avg_length'] > canonical_quality['cluster_avg_length'] * 1.2:
-				recommendations.append({
-						'issue': 'Canonicals Too Specific',
-						'metric': f"Canonical length ({canonical_quality['canonical_avg_length']:.2f}) > cluster avg ({canonical_quality['cluster_avg_length']:.2f})",
-						'severity': 'MEDIUM',
-						'action': "Prefer shorter labels in canonical selection; add length penalty to selection criteria"
-				})
-		
-		# Issue 7: Low frequency alignment
-		if canonical_quality.get('mean_frequency_alignment') and canonical_quality['mean_frequency_alignment'] < 0.50:
-				recommendations.append({
-						'issue': 'Low Frequency Alignment',
-						'metric': f"Mean frequency alignment = {canonical_quality['mean_frequency_alignment']:.3f} (target: >0.50)",
-						'severity': 'MEDIUM',
-						'action': "Weight canonical selection by label frequency to prefer common terms"
-				})
-		
-		# Issue 8: Centroid method not improving over random
-		if canonical_quality['mean_centroid_improvement'] < 0.05:
-				recommendations.append({
-						'issue': 'Centroid Method Not Effective',
-						'metric': f"Improvement over random = {canonical_quality['mean_centroid_improvement']*100:.1f}% (target: >5%)",
-						'severity': 'HIGH',
-						'action': "Consider alternative canonical selection: medoid, frequency-based, or length-weighted"
-				})
-		
-		# Sort by severity
-		severity_order = {'HIGH': 0, 'MEDIUM': 1, 'LOW': 2}
-		recommendations.sort(key=lambda x: severity_order[x['severity']])
-		
-		results['recommendations'] = recommendations
-		
-		if verbose:
-			print(f"\nAUTOMATED RECOMMENDATIONS:")
-			if not recommendations:
-				print(f"[OK] No critical issues detected. Clustering quality is acceptable.")
-			else:
-				for i, rec in enumerate(recommendations, 1):
-					print(f"\n[{i}] {rec['severity']:6s} | {rec['issue']}")
-					print(f"  Metric: {rec['metric']}")
-					print(f"  Action: {rec['action']}")
-			print()
-		
-		summary = f"""
-			AUTOMATED VALIDATION SUMMARY
-		
-			OVERALL QUALITY: {overall_score:.3f} / 1.000 ({quality_level})
-			DECISION: {decision}
-
-			CLUSTER QUALITY:
-				• Cohesion (intra-similarity): {cluster_quality['mean_intra_similarity']:.3f}
-				• Separation (inter-distance): {cluster_quality['mean_inter_cluster_distance']:.3f}
-				• Dunn Index: {cluster_quality['dunn_index']:.3f}
-				• Silhouette: {cluster_quality['silhouette_score']:.3f}
-				• Size balance (1-Gini): {1-cluster_quality['size_gini']:.3f}
-				• Low cohesion clusters: {cluster_quality['n_low_cohesion_clusters']} ({cluster_quality['pct_low_cohesion']*100:.1f}%)
-
-			CANONICAL QUALITY:
-				• Representativeness: {canonical_quality['mean_representativeness']:.3f}
-				• Generality score: {canonical_quality['mean_generality_score']:.3f}
-				• Uniqueness: {canonical_quality['canonical_uniqueness_ratio']*100:.1f}%
-				• Centroid improvement: {canonical_quality['mean_centroid_improvement']*100:.1f}%
-				{'• Frequency alignment: ' + f"{canonical_quality['mean_frequency_alignment']:.3f}" if canonical_quality['mean_frequency_alignment'] else ''}
-
-			ISSUES DETECTED: {len(recommendations)}
-			{'  • ' + recommendations[0]['issue'] if recommendations else '  • None'}
-
-			RECOMMENDATION: {decision}
-		"""
-		
-		results['summary'] = summary
-		
-		if verbose:
-			print(summary)
-		
-		return results
-
-def _compute_gini(values):
-		"""
-		Compute Gini coefficient for measuring inequality.
-		0 = perfect equality, 1 = perfect inequality
-		"""
-		values = np.array(values, dtype=float)
-		n = len(values)
-		
-		if n == 0:
-				return 0.0
-		
-		# Sort values
-		sorted_values = np.sort(values)
-		
-		# Compute Gini
-		index = np.arange(1, n + 1)
-		gini = (2 * np.sum(index * sorted_values)) / (n * np.sum(sorted_values)) - (n + 1) / n
-		
-		return gini
-
 def analyze_cluster_quality(
 	embeddings: np.ndarray,
 	labels: np.ndarray,
@@ -2923,6 +2355,7 @@ def get_optimal_num_clusters(
 		def score_coarse(r):
 			# Penalize if outside consolidation range
 			consol_penalty = 1.0
+			
 			if r['consolidation'] < min_consolidation:
 				consol_penalty = 0.5
 			elif r['consolidation'] > max_consolidation:
@@ -3387,9 +2820,10 @@ def _resolve_shared_canonicals(
 	cluster_centroids: Dict[int, np.ndarray],
 	cluster_members: Dict[int, List[str]],
 	original_label_counts: Dict[str, int],
-	threshold: float = 0.70,
+	threshold: float,
 	verbose: bool = False,
 ) -> Dict[int, Dict]:
+
 	"""
 	Post-pass over clusters whose canonicals share a name (case-insensitive).
 
@@ -3429,9 +2863,10 @@ def _resolve_shared_canonicals(
 			for c in cids:
 				weight[cluster_canonicals[c]["canonical"]] += cluster_canonicals[c]["size"]
 			surface = max(weight, key=lambda s: (weight[s], s))
+		
 		# surface may differ in case from some members; that is intentional.
 		# Harmonization will unify display names later.
-
+		
 		if len(cids) == 1:
 			continue
 		stats["shared_groups"] += 1
@@ -3446,6 +2881,7 @@ def _resolve_shared_canonicals(
 			)
 			for c in cids
 		}
+
 		volume = {
 			c: sum(original_label_counts.get(m, 1) for m in cluster_members[c])
 			for c in cids
@@ -3454,8 +2890,8 @@ def _resolve_shared_canonicals(
 		V = np.vstack([cluster_centroids[c] for c in cids]).astype(float)
 		V /= np.linalg.norm(V, axis=1, keepdims=True) + 1e-12
 		S = V @ V.T
-
 		best = None
+
 		for i, c in enumerate(cids):
 			nb = [j for j in range(len(cids)) if S[i, j] >= threshold]
 			score = (
@@ -3466,6 +2902,7 @@ def _resolve_shared_canonicals(
 			)
 			if best is None or score > best[0]:
 				best = (score, i, nb)
+
 		_, seed, nb = best
 
 		# ── 3. Anchored membership ─────────────────────────────────────
@@ -3511,8 +2948,8 @@ def _resolve_shared_canonicals(
 
 		if verbose and changes:
 			print(
-				f"\n[SHARED NAME] {repr(surface):<20} ({len(cids)} clusters) kept {len(keep)} "
-				f"(primary evidence: {evidence[cids[seed]]}, th: {threshold:.2f})"
+				f"\n[SHARED NAME] {repr(surface):<40} ({len(cids)} clusters) kept {len(keep)} "
+				f"(primary evidence: {evidence[cids[seed]]}, th: {threshold})"
 			)
 			for c, fb, s in changes:
 				print(f"cluster {c:6d} -> {fb!r:40} (anchor sim {s:.3f})")
@@ -3729,10 +3166,10 @@ def assign_canonical_labels(
 	model,
 	original_label_counts: Dict[str, int],
 	debug_json_path: Optional[str] = None,
-	shared_threshold: float = 0.70,
 	shared_calibration_names: Optional[List[str]] = None,
-	neighbor_review_min_sim: float = 0.88,
 	encode_prompt: Optional[str] = None,
+	neighbor_review_min_sim: float = 0.88,
+	shared_threshold: float = 0.70,
 	virtual_min_sim_ratio: Optional[float] = 0.60, # None to disable
 	min_distinct_concepts: int = 2,
 	verbose: bool = False,
@@ -3858,7 +3295,9 @@ def assign_canonical_labels(
 	FREQ_GAIN_GUARD = 3.0
 
 	# Virtual-hypernym quality gates (see the docstring). Each rejection is counted for the JSON.
-	VIRTUAL_MIN_SIM_RATIO = virtual_min_sim_ratio
+	VIRTUAL_MIN_SIM_RATIO = virtual_min_sim_ratio  # relative drop threshold (e.g. 0.60)
+	VIRTUAL_ABSOLUTE_SIM_FLOOR = 0.68              # absolute floor aligned with shared_threshold buffer
+	VIRTUAL_SIM_GAP_GUARD = 0.25                   # max allowable sim loss when virtual beats real on structure
 	MIN_DISTINCT_CONCEPTS = min_distinct_concepts
 	virtual_rejections    = Counter()
 
@@ -3893,7 +3332,9 @@ def assign_canonical_labels(
 		return set(_norm_tokens(label))
 
 	def _token_pairs(label: str) -> List[Tuple[str, str]]:
-		"""(raw_token, normalised_token) pairs, aligned, empties dropped."""
+		"""(raw_token, normalised_token) pairs, 
+		aligned, empties dropped.
+		"""
 		return [(t, _norm_token(t)) for t in label.split() if _norm_token(t)]
 
 	# ── Version tails and hygiene ─────────────────────────────────────────────
@@ -3902,8 +3343,7 @@ def assign_canonical_labels(
 	# (I..XXXIX), so real words made of those letters ('mill', 'civil', 'mix') are never stripped.
 	_VERSION_RE = re.compile(r'^(?:(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})|\d+[a-z]{0,2}|[a-z])$')
 	_VERSION_MARKERS = {'mk', 'mark', 'type', 'typ', 'model', 'no', 'ausf', 'series'}
-	_LEGAL_SUFFIXES = {'co', 'corp', 'corporation', 'company', 'inc', 'ltd', 'limited', 'plc', 'gmbh',
-						 'ag', 'llc', 'bros', 'sons'}
+	_LEGAL_SUFFIXES = {'co', 'corp', 'corporation', 'company', 'inc', 'ltd', 'limited', 'plc', 'gmbh', 'ag', 'llc', 'bros', 'sons'}
 
 	def _is_version_token(tok: str) -> bool:
 		return bool(_VERSION_RE.match(tok))
@@ -3945,9 +3385,20 @@ def assign_canonical_labels(
 		for l in lbls:
 			lbl_lower = (l == l.lower())
 			l = re.sub(r'(?:[A-Za-z]\.){2,}[A-Za-z]?', lambda mo: mo.group(0).replace('.', ''), l)   # 'U.S.S.' -> 'USS'
+
+			# Normalize number-unit spacing so '88mm', '88 mm', '105mm' parse consistent numbers
+			l = re.sub(r'(\d+)\s*(mm|cm|in|inch|inches|hp|ton|tons|pdr|pounder)\b', r'\1 \2', l, flags=re.IGNORECASE)
+
 			toks = re.findall(r"[a-z0-9]+", l.lower())
-			num = tuple(t for t in toks if any(ch.isdigit() for ch in t) or (len(t) > 1 and _is_version_token(t))
-						or (len(t) == 1 and t != 's'))
+
+			num = tuple(
+				t 
+				for t in toks 
+				if any(ch.isdigit() for ch in t) 
+				or (len(t) > 1 and _is_version_token(t))
+				or (len(t) == 1 and t != 's')
+			)
+			
 			alpha = ''.join(_crude_stem(t) for t in toks if t not in num and len(t) > 1)
 			keys.append((num, alpha, lbl_lower))
 		parent = list(range(len(keys)))
@@ -3969,6 +3420,7 @@ def assign_canonical_labels(
 					or (fuzzy_ok and difflib.SequenceMatcher(None, keys[i][1], keys[j][1]).ratio() >= 0.90)
 				):
 					parent[find(j)] = find(i)
+		
 		return len({find(i) for i in range(len(keys))})
 
 	def _head_phrase(norm_toks: List[str]) -> List[str]:
@@ -3982,8 +3434,12 @@ def assign_canonical_labels(
 		return toks
 
 	def _head_token(label: str) -> str:
-		"""'aerial view of harbor' -> 'view'; 'coastal lighthouse' -> 'lighthouse'."""
+		"""'aerial view of harbor' -> 'view'; 
+		'coastal lighthouse' -> 'lighthouse'.
+		"""
+
 		hp = _head_phrase(_norm_tokens(label))
+
 		return hp[-1] if hp else ''
 
 	def _trim_function_words(toks) -> List[str]:
@@ -4061,11 +3517,20 @@ def assign_canonical_labels(
 		max_len = max((len(p) for p in pairs), default=0)
 
 		DESIGNATOR_PREFIXES = {
-			'uss', 'hms', 'hmcs', 'hmas', 'hmnzs', 'usat', 'usns', 'uscgc', 'rms', 'mv',
+			'uss', 
+			'hms', 
+			'hmcs', 
+			'hmas', 
+			'hmnzs', 
+			'usat', 
+			'usns', 
+			'uscgc', 
+			'rms', 
+			'mv',
 		}
 		EXPLICIT_PREFIXES   = {'operation'}
 		DESIGNATION_ENDINGS = {'mk', 'ausf'}
-
+		
 		def _key_token(raw: str, norm: str) -> str:
 			"""Dot-insensitive key; undotted 'SS' gets a key that is never allowed."""
 			k = norm.replace('.', '')
@@ -4079,6 +3544,7 @@ def assign_canonical_labels(
 			if key[-1] in DESIGNATION_ENDINGS:
 				base = key[:-1]
 				return all(t not in FUNCTION_WORDS and t not in DESIGNATION_ENDINGS for t in base)
+			
 			return False
 
 		best, best_below = None, None            # (support, length, core_tuple)
@@ -4236,11 +3702,11 @@ def assign_canonical_labels(
 		else:
 			all_embeddings = cluster_embeddings
 
-		# ── Score 1: cosine similarity to centroid ────────────────────────
+		# Score 1: cosine similarity to centroid
 		similarities = cosine_similarity(centroid.reshape(1, -1), all_embeddings)[0]
 		pure_sim_idx = int(similarities[:cluster_size].argmax())   # real labels only
 
-		# ── Similarity gate for the virtual hypernym ──────────────────────
+		# Similarity gate for the virtual hypernym
 		# A virtual is a SUMMARY of the cluster. If its embedding is far from the centroid compared with
 		# the best real member ('Act' for named laws, 'machine' for three spellings of one test machine),
 		# it does not describe the images: drop it and let a real member win. The ratio (not an absolute
@@ -4249,15 +3715,24 @@ def assign_canonical_labels(
 		if virtual_hypernym is not None and VIRTUAL_MIN_SIM_RATIO is not None:
 			_best_real = float(similarities[:cluster_size].max())
 			_ratio = float(similarities[cluster_size]) / max(_best_real, 1e-12)
-			if _ratio < VIRTUAL_MIN_SIM_RATIO:
-				vh_info['note'] += (f" | rejected: sim ratio {_ratio:.2f} < {VIRTUAL_MIN_SIM_RATIO:.2f} "
-									f"(virtual {similarities[cluster_size]:.3f} vs best member {_best_real:.3f})")
+			_sim = float(similarities[cluster_size])
+			
+			if _ratio < VIRTUAL_MIN_SIM_RATIO or _sim < VIRTUAL_ABSOLUTE_SIM_FLOOR:
+				reason = (
+					f"sim ratio {_ratio:.2f} < {VIRTUAL_MIN_SIM_RATIO:.2f}"
+					if _ratio < VIRTUAL_MIN_SIM_RATIO
+					else f"abs sim {_sim:.3f} < {VIRTUAL_ABSOLUTE_SIM_FLOOR:.2f}"
+				)
+				vh_info['note'] += f" | rejected: {reason} (virtual {_sim:.3f} vs best member {_best_real:.3f})"
+				
 				virtual_rejections['similarity_ratio'] += 1
+
 				rejection_virtual_tag = (
-						f"[REJECTED VIRTUAL] "
-						f"{repr(virtual_hypernym):<30}"
-						f"sim ratio {_ratio:.5f} < {VIRTUAL_MIN_SIM_RATIO}"
-					)
+					f"[REJECTED VIRTUAL] "
+					f"{repr(virtual_hypernym):<30}"
+					f"sim ratio {_ratio:.5f} < {VIRTUAL_MIN_SIM_RATIO}"
+					f" or abs sim: {_sim:.5f} < {VIRTUAL_ABSOLUTE_SIM_FLOOR}"
+				)
 
 				virtual_hypernym = None
 				candidates = cluster_texts
@@ -4315,6 +3790,14 @@ def assign_canonical_labels(
 			# ── Frequency guard: only when frequency flipped the decision ─
 			if composite_idx == nofreq_idx:
 				freq_guard = 'not_triggered'
+			elif (
+				virtual_flags[nofreq_idx] 
+				and not virtual_flags[composite_idx]
+				and (similarities[composite_idx] - similarities[nofreq_idx]) > VIRTUAL_SIM_GAP_GUARD
+			):
+				sim_gap = similarities[composite_idx] - similarities[nofreq_idx]
+				freq_guard = f'passed (real-vs-virtual sim gap {sim_gap:.3f} > {VIRTUAL_SIM_GAP_GUARD:.2f})'
+				best_idx = composite_idx
 			else:
 				gain = raw_freqs[composite_idx] / max(raw_freqs[nofreq_idx], 1)
 				if gain >= FREQ_GAIN_GUARD:
