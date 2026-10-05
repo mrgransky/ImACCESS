@@ -2952,7 +2952,7 @@ def _resolve_shared_canonicals(
 				f"(primary evidence: {evidence[cids[seed]]}, th: {threshold})"
 			)
 			for c, fb, s in changes:
-				print(f"cluster {c:6d} -> {fb!r:40} (anchor sim {s:.3f})")
+				print(f"cluster {c:6d} -> {fb!r:40} (anchor sim {s:.5f})")
 
 	if verbose:
 		print("\n[SHARED-NAME RESOLUTION]")
