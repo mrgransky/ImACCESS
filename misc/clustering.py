@@ -2974,19 +2974,7 @@ def report_shared_group_similarities(
 	names: List[str],
 	n_members: int = 3,
 ) -> Dict[str, Dict]:
-	"""
-	Print centroid similarities for named shared-canonical groups, BEFORE the
-	post-pass. Run it once with groups you have already judged, e.g.
-
-		stay together : camera, suit, cap, camp, debris
-		should split  : tank, float, race, gear, party
-
-	and choose the threshold between the two sets. For each cluster it shows
-	its mean similarity to the rest of the group and its first members, so you
-	can see where the natural break lies. If the stay and split groups overlap
-	heavily, centroid similarity is not a reliable signal on its own.
-	"""
-	print("-"*80)
+	print("-"*120)
 	out = {}
 	for name in names:
 		cids = sorted(
@@ -3011,13 +2999,13 @@ def report_shared_group_similarities(
 
 		for i, c in sorted(enumerate(cids), key=lambda x: -mean_to_others[x[0]]):
 			print(
-				f"    cluster {c:6d}  mean sim to others {mean_to_others[i]:.3f} | "
+				f"    cluster {c:6d}  mean sim to others {mean_to_others[i]:.3f} "
 				f"{cluster_members[c][:n_members]}"
 			)
 		
 		out[name] = {'cluster_ids': cids, 'pairwise': S.tolist()}
 
-	print("-"*80)
+	print("-"*120)
 
 	return out
 
