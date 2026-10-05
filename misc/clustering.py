@@ -73,236 +73,366 @@ CUSTOM_ENCODE_INSTRUCTION = (
 	"retrieve labels that name the same concept\nQuery:"
 )
 
-def summarize_canonical_selection(path):
-		"""Return a compact text summary for a canonical-selection JSON file."""
-		path = pathlib.Path(path)
-		with path.open(encoding="utf-8") as f:
-			data = json.load(f)
+# Replaces BOTH summarize_canonical_selection() and summarize_shared_names().
+# Needs (already imported in clustering.py): json, pathlib, re, numpy as np, Counter, defaultdict.
 
-		clusters = data["clusters"]
-		meta = data.get("meta", {})
-		lines = []
+def summarize_canonical_selection(
+	path,
+	benign=("building", "room", "flag", "station", "plant", "sign", "camera", "suit", "cap", "camp", "debris", "hospital"),
+	homonyms=("tank", "float", "race", "gear", "party", "arm", "press", "ward"),
+	detail=("building", "tank"),
+	detail_rows=8,
+	print_summary=True,
+	return_text=False,
+):
+	"""
+	One compact text summary of a canonical-selection JSON: everything needed to judge a run.
 
-		def emit(text=""):
-				lines.append(text)
+	Sections: 1 cluster sizes | 2 how canonicals were chosen (+ virtual gates) | 3 vocabulary and tail |
+	4 names shared by several clusters and the shared-name resolver | 5 harmonization, duplicates and
+	synonym variants | 6 literal labels displaced by a virtual's name | 7 designation labels |
+	8 nearest-cluster structure | 9 decision boundary of the shared-name resolver.
 
-		def section(title):
-				emit("\n" + title)
+	Parameters
+	----------
+	path : str or Path
+		The *_canonical_selection.json file. Older schemas work: sections whose fields are missing are skipped.
+	benign, homonyms : sequences of str
+		Names reported in section 4. Benign names (building, room ...) should stay together; homonyms
+		(tank, float ...) should split. Together they show where shared_threshold sits for the embedding model.
+	detail : sequence of str
+		Names whose lowest anchor similarities are listed in section 9 (the resolver's decision boundary).
+		Pass () to leave section 9 out.
+	detail_rows : int
+		Rows listed per name in section 9.
+	print_summary : bool
+		Print the summary.
+	return_text : bool
+		Return the summary as a string (otherwise None, which avoids a duplicate echo in a REPL).
+	"""
+	path = pathlib.Path(path)
+	with path.open(encoding="utf-8") as f:
+		data = json.load(f)
 
-		def pct(a, b):
-				return f"{a / max(b, 1) * 100:.1f}%"
+	clusters = data["clusters"]
+	meta = data.get("meta", {})
+	lines = []
 
-		def instances(cluster):
-				return sum(
-						(candidate.get("corpus_freq") or 0)
-						for candidate in cluster.get("candidates", [])
-						if not candidate.get("is_virtual", False)
-				)
+	def emit(text=""):
+		lines.append(text)
 
-		n = len(clusters)
-		labels = sum(c.get("size", 0) for c in clusters)
-		total_instances = sum(instances(c) for c in clusters)
-		emit(f"RUN SUMMARY  {path.name}")
-		emit(
-				f"clusters {n:,} | labels {labels:,} "
-				f"({labels / max(n, 1):.2f} per cluster) | label instances {total_instances:,}"
+	def section(title):
+		emit("\n" + title)
+
+	def pct(a, b):
+		return f"{a / max(b, 1) * 100:.1f}%"
+
+	def instances(cluster):
+		return sum(
+			(candidate.get("corpus_freq") or 0)
+			for candidate in cluster.get("candidates", [])
+			if not candidate.get("is_virtual", False)
 		)
 
-		section("1. cluster sizes")
-		if clusters:
-				sizes = Counter(min(c.get("size", 0), 11) for c in clusters)
-				emit("   " + " | ".join(
-						f"{'11+' if k == 11 else k}: {sizes[k]}" for k in sorted(sizes)
-				) + f" | max {max(c.get('size', 0) for c in clusters)}")
-		else:
-				emit("   (no clusters)")
+	n = len(clusters)
+	labels = sum(c.get("size", 0) for c in clusters)
+	total_instances = sum(instances(c) for c in clusters)
+	emit(f"RUN SUMMARY  {path.name}")
+	emit(
+		f"clusters {n:,} | labels {labels:,} "
+		f"({labels / max(n, 1):.2f} per cluster) | label instances {total_instances:,}"
+	)
 
-		section("2. how canonicals were chosen")
-		for method, count in meta.get("selection_method_counts", {}).items():
-				emit(f"   {method:<34} {count:6d} ({pct(count, n)})")
-		virtual_gates = meta.get("virtual_gates")
-		if virtual_gates:
-				emit(
-						"   virtual gates: "
-						f"min_sim_ratio={virtual_gates.get('min_sim_ratio')} "
-						f"min_distinct={virtual_gates.get('min_distinct_concepts')} "
-						f"rejections={virtual_gates.get('rejections')}"
-				)
+	section("1. cluster sizes")
+	if clusters:
+		sizes = Counter(min(c.get("size", 0), 11) for c in clusters)
+		emit("   " + " | ".join(
+			f"{'11+' if k == 11 else k}: {sizes[k]}" for k in sorted(sizes)
+		) + f" | max {max(c.get('size', 0) for c in clusters)}")
+	else:
+		emit("   (no clusters)")
 
-		def is_degenerate_virtual(label):
-				return bool(
-						re.fullmatch(r"[\d.,/\- ]+", label)
-						or re.fullmatch(r"(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})", label.lower())
-						or (len(re.sub(r"[^A-Za-z]", "", label)) < 2
-								and not any(ch.isdigit() for ch in label))
-						or label.lower() in {
-								"co", "corp", "company", "inc", "ltd", "limited", "corporation"
-						}
-				)
+	section("2. how canonicals were chosen")
+	for method, count in meta.get("selection_method_counts", {}).items():
+		emit(f"   {method:<34} {count:6d} ({pct(count, n)})")
+	virtual_gates = meta.get("virtual_gates")
+	if virtual_gates:
+		emit(
+			"   virtual gates: "
+			f"min_sim_ratio={virtual_gates.get('min_sim_ratio')} "
+			f"min_distinct={virtual_gates.get('min_distinct_concepts')} "
+			f"rejections={virtual_gates.get('rejections')}"
+		)
 
-		degenerate = [
-				c.get("canonical", "") for c in clusters
-				if c.get("is_virtual") and is_degenerate_virtual(c.get("canonical", ""))
+	def is_degenerate_virtual(label):
+		return bool(
+			re.fullmatch(r"[\d.,/\- ]+", label)
+			or re.fullmatch(r"(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})", label.lower())
+			or (len(re.sub(r"[^A-Za-z]", "", label)) < 2
+				and not any(ch.isdigit() for ch in label))
+			or label.lower() in {
+				"co", "corp", "company", "inc", "ltd", "limited", "corporation"
+			}
+		)
+
+	degenerate = [
+		c.get("canonical", "") for c in clusters
+		if c.get("is_virtual") and is_degenerate_virtual(c.get("canonical", ""))
+	]
+	emit(
+		"   degenerate virtual canonicals (numerals / single letters / "
+		f"corporate suffixes): {len(degenerate)} {degenerate[:8]}"
+	)
+
+	section("3. vocabulary and tail")
+	class_instances = Counter()
+	for c in clusters:
+		class_instances[c.get("canonical", "")] += instances(c)
+	values = sorted(class_instances.values(), reverse=True)
+	total = sum(values)
+	if values:
+		tail = " | ".join(
+			f"<{k}: {sum(v < k for v in values) / len(values) * 100:.0f}%"
+			for k in (5, 10, 20, 50)
+		)
+		top_share = sum(values[:len(values) // 10]) / max(total, 1) * 100
+		largest_share = values[0] / max(total, 1) * 100
+		emit(
+			f"   classes {len(values):,} | {tail} | top 10% hold {top_share:.0f}% "
+			f"| largest {values[0]:,} ({largest_share:.1f}%)"
+		)
+		emit("   largest classes: " + ", ".join(
+			f"{name!r} {count:,}" for name, count in class_instances.most_common(8)
+		))
+	else:
+		emit("   (no class data)")
+
+	# ── 4. shared names and the shared-name resolver ─────────────────────────
+	section("4. names shared by several clusters and the shared-name resolver")
+	by_name = Counter(c.get("canonical", "") for c in clusters)
+	shared = {name: count for name, count in by_name.items() if count > 1}
+	emit(
+		f"   {len(shared)} names cover {sum(shared.values())} clusters | top: "
+		+ ", ".join(f"{name!r}x{count}" for name, count in by_name.most_common(8))
+	)
+	resolver_counts = meta.get("shared_resolution_counts")
+	if resolver_counts:
+		emit(f"   resolver outcomes: {resolver_counts}")
+
+	# a cluster in a shared group is KEPT when its centroid is within `threshold` of the group's anchor,
+	# otherwise DEMOTED to a real member; groups are keyed by the ORIGINAL shared name
+	groups = defaultdict(list)
+	for c in clusters:
+		s = c.get("shared_canonical") or {}
+		if s.get("group_size") is None or s.get("anchor_similarity") is None:
+			continue
+		groups[(s.get("demoted_from") or c.get("canonical", "")).lower()].append(c)
+
+	def anchor(c):
+		return c["shared_canonical"]["anchor_similarity"]
+
+	def demoted_flag(c):
+		return c["shared_canonical"].get("resolution") == "demoted"
+
+	if groups:
+		in_groups = [c for g in groups.values() for c in g]
+		demoted = [c for c in in_groups if demoted_flag(c)]
+		kept = [c for c in in_groups if not demoted_flag(c)]
+		thresholds = sorted({
+			(c.get("shared_canonical") or {}).get("threshold") for c in clusters
+		} - {None})
+		emit(
+			f"   threshold used {thresholds} | groups {len(groups)} | clusters in groups {len(in_groups)} "
+			f"| kept {len(kept)} | demoted {len(demoted)} ({pct(len(demoted), len(in_groups))})"
+		)
+		if demoted:
+			emit("   anchor similarity of DEMOTED clusters: " + " ".join(
+				f"p{p} {np.percentile([anchor(c) for c in demoted], p):.3f}" for p in (10, 50, 90)
+			))
+		if kept:
+			emit("   anchor similarity of KEPT clusters   : " + " ".join(
+				f"p{p} {np.percentile([anchor(c) for c in kept], p):.3f}" for p in (1, 5, 10, 50)
+			))
+		most_demoted = Counter({
+			name: sum(demoted_flag(c) for c in g) for name, g in groups.items()
+		}).most_common(10)
+		emit("   names with the most demotions: " + ", ".join(
+			f"{name!r} {count}" for name, count in most_demoted if count
+		))
+
+		def group_line(name):
+			g = groups.get(name)
+			if not g:
+				return f"   {name!r:12} (no shared group)"
+			sims = [anchor(c) for c in g]
+			d = sum(demoted_flag(c) for c in g)
+			return (
+				f"   {name!r:12} clusters {len(g):3d} | kept {len(g) - d:3d} demoted {d:3d} "
+				f"| anchor sim min {min(sims):.3f} median {np.median(sims):.3f}"
+			)
+
+		emit("   benign names (should stay together):")
+		for name in benign:
+			emit(group_line(name))
+		emit("   homonyms (should split):")
+		for name in homonyms:
+			emit(group_line(name))
+	else:
+		emit("   (no shared-name diagnostics in this schema)")
+		for name in homonyms:
+			if by_name.get(name):
+				emit(f"   homonym watch {name!r}: {by_name[name]} clusters;")
+
+	section("5. harmonization (lowercase -> Capitalised renames can cross word senses)")
+	harmonized = [c for c in clusters if c.get("harmonize", {}).get("changed")]
+	if harmonized:
+		flips = [
+			(c["harmonize"].get("from", ""), c.get("canonical", ""))
+			for c in harmonized
+			if c["harmonize"].get("from", "")[:1].islower()
+			and c.get("canonical", "")[:1].isupper()
 		]
 		emit(
-				"   degenerate virtual canonicals (numerals / single letters / "
-				f"corporate suffixes): {len(degenerate)} {degenerate[:8]}"
+			f"   clusters renamed {len(harmonized)} | lowercase->Capitalised "
+			f"flips {len(flips)}: {sorted(set(flips))[:14]}"
 		)
+	else:
+		emit("   (no harmonize field in this schema)")
 
-		section("3. vocabulary and tail")
-		class_instances = Counter()
-		for c in clusters:
-				class_instances[c.get("canonical", "")] += instances(c)
-		values = sorted(class_instances.values(), reverse=True)
-		total = sum(values)
-		if values:
-				tail = " | ".join(
-						f"<{k}: {sum(v < k for v in values) / len(values) * 100:.0f}%"
-						for k in (5, 10, 20, 50)
-				)
-				top_share = sum(values[:len(values) // 10]) / max(total, 1) * 100
-				largest_share = values[0] / max(total, 1) * 100
-				emit(
-						f"   classes {len(values):,} | {tail} | top 10% hold {top_share:.0f}% "
-						f"| largest {values[0]:,} ({largest_share:.1f}%)"
-				)
-				emit("   largest classes: " + ", ".join(
-						f"{name!r} {count:,}" for name, count in class_instances.most_common(8)
-				))
-		else:
-				emit("   (no class data)")
+	def punctuation_key(text):
+		return re.sub(r"[^a-z0-9]", "", text.lower())
 
-		section("4. names shared by several clusters")
-		by_name = Counter(c.get("canonical", "") for c in clusters)
-		shared = {name: count for name, count in by_name.items() if count > 1}
+	normalized = defaultdict(set)
+	for name in by_name:
+		normalized[punctuation_key(name)].add(name)
+	duplicates = [sorted(names) for names in normalized.values() if len(names) > 1]
+	emit(
+		"   names that differ only by case / spacing / punctuation: "
+		f"{len(duplicates)} groups {duplicates[:8]}"
+	)
+
+	# synonym variants of one concept under different names ('fighter aircraft' / 'fighter airplane')
+	synonym_map = {"airplane": "aircraft", "aeroplane": "aircraft", "plane": "aircraft", "automobile": "car"}
+	synonym_targets = set(synonym_map.values())
+
+	def synonym_tokens(name):
+		out = []
+		for token in re.findall(r"[a-z0-9]+", name.lower()):
+			base = token[:-1] if token.endswith("s") and (token[:-1] in synonym_map or token[:-1] in synonym_targets) else token
+			out.append(synonym_map.get(base, base))
+		return " ".join(out)
+
+	synonym_groups = defaultdict(set)
+	for name in by_name:
+		synonym_groups[synonym_tokens(name)].add(name)
+	synonym_variants = [
+		sorted(names) for names in synonym_groups.values()
+		if len({punctuation_key(x) for x in names}) > 1
+	]
+	synonym_variants.sort(key=lambda names: -sum(class_instances[x] for x in names))
+	emit(
+		"   synonym variants (aircraft/airplane/plane, car/automobile) under different names: "
+		f"{len(synonym_variants)} groups, {sum(class_instances[x] for names in synonym_variants for x in names):,} instances | top: "
+		+ "; ".join(
+			f"{names} {sum(class_instances[x] for x in names):,}" for names in synonym_variants[:5]
+		)
+	)
+
+	section("6. literal labels displaced by a virtual's name")
+	home = {
+		label: c for c in clusters for label in c.get("members", [])
+	}
+	frequencies = {
+		candidate.get("label", ""): candidate.get("corpus_freq") or 0
+		for c in clusters for candidate in c.get("candidates", [])
+		if not candidate.get("is_virtual", False)
+	}
+	displaced = {}
+	for c in clusters:
+		canonical = c.get("canonical", "")
+		if (c.get("is_virtual") and canonical in home
+				and home[canonical].get("canonical", "").lower() != canonical.lower()):
+			displaced[canonical] = home[canonical].get("canonical", "")
+	virtual_count = sum(bool(c.get("is_virtual")) for c in clusters)
+	displaced_instances = sum(frequencies.get(label, 0) for label in displaced)
+	top_displaced = sorted(
+		((label, frequencies.get(label, 0), target)
+		 for label, target in displaced.items()),
+		key=lambda item: -item[1],
+	)[:5]
+	emit(
+		f"   virtuals: {virtual_count} ({pct(virtual_count, n)}) | literal labels "
+		"that map to a different class than their own text: "
+		f"{len(displaced)} ({displaced_instances:,} instances) | top: {top_displaced}"
+	)
+
+	section("7. designation labels (B-17, Ki-46, Bf 109 ...): is the canonical the same family?")
+
+	def family(text):
+		match = re.search(
+			r"\b((?:Bf|Fw|Ju|He|Me|Do|Ar)[- ]?\d{2,3}|[A-Z]{1,3}[- ]?\d{1,4})",
+			text,
+		)
+		return re.sub(r"[- ]", "", match.group(1)).upper() if match else None
+
+	categories = Counter()
+	for c in clusters:
+		canonical_family = family(c.get("canonical", ""))
+		for label in c.get("members", []):
+			member_family = family(label)
+			if not member_family:
+				continue
+			weight = frequencies.get(label, 1)
+			categories[
+				"same family" if canonical_family == member_family
+				else "generic / named" if canonical_family is None
+				else "DIFFERENT family"
+			] += weight
+	category_total = sum(categories.values())
+	category_summary = " | ".join(
+		f"{name} {count / max(category_total, 1) * 100:.1f}%"
+		for name, count in categories.most_common()
+	)
+	mixed_families = sum(
+		len({family(label) for label in c.get("members", [])} - {None}) >= 2
+		for c in clusters
+	)
+	emit(f"   {category_summary} | clusters mixing >=2 families: {mixed_families}")
+
+	section("8. nearest-cluster structure")
+	nearest = meta.get("nearest_cluster_similarity")
+	if nearest:
 		emit(
-				f"   {len(shared)} names cover {sum(shared.values())} clusters | top: "
-				+ ", ".join(f"{name!r}x{count}" for name, count in by_name.most_common(8))
+			f"   median {nearest.get('median_nearest_similarity')} "
+			f"p90 {nearest.get('p90_nearest_similarity')} | "
+			f"nearest at/above level: {nearest.get('nearest_at_or_above')}"
 		)
-		resolver_counts = meta.get("shared_resolution_counts")
-		if resolver_counts:
-				emit(f"   shared-name resolver: {resolver_counts}")
-		for name in ("tank", "float", "race", "gear", "party", "arm", "press", "ward"):
-				if by_name.get(name):
-						emit(f"   homonym watch {name!r}: {by_name[name]} clusters;")
-
-		section("5. harmonization (lowercase -> Capitalised renames can cross word senses)")
-		harmonized = [c for c in clusters if c.get("harmonize", {}).get("changed")]
-		if harmonized:
-				flips = [
-						(c["harmonize"].get("from", ""), c.get("canonical", ""))
-						for c in harmonized
-						if c["harmonize"].get("from", "")[:1].islower()
-						and c.get("canonical", "")[:1].isupper()
-				]
-				emit(
-						f"   clusters renamed {len(harmonized)} | lowercase->Capitalised "
-						f"flips {len(flips)}: {sorted(set(flips))[:14]}"
-				)
-		else:
-				emit("   (no harmonize field in this schema)")
-
-		def punctuation_key(text):
-				return re.sub(r"[^a-z0-9]", "", text.lower())
-
-		normalized = defaultdict(set)
-		for name in by_name:
-				normalized[punctuation_key(name)].add(name)
-		duplicates = [sorted(names) for names in normalized.values() if len(names) > 1]
 		emit(
-				"   names that differ only by case / spacing / punctuation: "
-				f"{len(duplicates)} groups {duplicates[:8]}"
+			"   ... with a DIFFERENT name: "
+			f"{nearest.get('nearest_at_or_above_different_name')}"
 		)
-		aircraft_names = {"aircraft", "airplane", "plane", "aeroplane"}
-		aircraft = {
-				name: (by_name[name], class_instances[name])
-				for name in by_name if name.lower() in aircraft_names
-		}
-		emit(f"   aircraft/airplane/plane names (clusters, instances): {aircraft}")
-
-		section("6. literal labels displaced by a virtual's name")
-		home = {
-				label: c for c in clusters for label in c.get("members", [])
-		}
-		frequencies = {
-				candidate.get("label", ""): candidate.get("corpus_freq") or 0
-				for c in clusters for candidate in c.get("candidates", [])
-				if not candidate.get("is_virtual", False)
-		}
-		displaced = {}
-		for c in clusters:
-				canonical = c.get("canonical", "")
-				if (c.get("is_virtual") and canonical in home
-								and home[canonical].get("canonical", "").lower() != canonical.lower()):
-						displaced[canonical] = home[canonical].get("canonical", "")
-		virtual_count = sum(bool(c.get("is_virtual")) for c in clusters)
-		displaced_instances = sum(frequencies.get(label, 0) for label in displaced)
-		top_displaced = sorted(
-				((label, frequencies.get(label, 0), target)
-				 for label, target in displaced.items()),
-				key=lambda item: -item[1],
-		)[:5]
-		emit(
-				f"   virtuals: {virtual_count} ({pct(virtual_count, n)}) | literal labels "
-				"that map to a different class than their own text: "
-				f"{len(displaced)} ({displaced_instances:,} instances) | top: {top_displaced}"
+		mutual = sum(
+			bool(c.get("nearest_cluster", {}).get("mutual")) for c in clusters
 		)
+		emit(f"   mutual nearest neighbours {pct(mutual, n)}")
+	else:
+		emit("   (no neighbour diagnostics in this schema)")
 
-		section("7. designation labels (B-17, Ki-46, Bf 109 ...): is the canonical the same family?")
-
-		def family(text):
-				match = re.search(
-						r"\b((?:Bf|Fw|Ju|He|Me|Do|Ar)[- ]?\d{2,3}|[A-Z]{1,3}[- ]?\d{1,4})",
-						text,
-				)
-				return re.sub(r"[- ]", "", match.group(1)).upper() if match else None
-
-		categories = Counter()
-		for c in clusters:
-				canonical_family = family(c.get("canonical", ""))
-				for label in c.get("members", []):
-						member_family = family(label)
-						if not member_family:
-								continue
-						weight = frequencies.get(label, 1)
-						categories[
-								"same family" if canonical_family == member_family
-								else "generic / named" if canonical_family is None
-								else "DIFFERENT family"
-						] += weight
-		category_total = sum(categories.values())
-		category_summary = " | ".join(
-				f"{name} {count / max(category_total, 1) * 100:.1f}%"
-				for name, count in categories.most_common()
-		)
-		mixed_families = sum(
-				len({family(label) for label in c.get("members", [])} - {None}) >= 2
-				for c in clusters
-		)
-		emit(f"   {category_summary} | clusters mixing >=2 families: {mixed_families}")
-
-		section("8. nearest-cluster structure")
-		nearest = meta.get("nearest_cluster_similarity")
-		if nearest:
+	if groups and detail:
+		section("9. shared-name resolver: lowest anchor similarities (the decision boundary)")
+		for name in detail:
+			g = sorted(groups.get(name, []), key=anchor)
+			emit(f"   {name!r}:")
+			for c in g[:detail_rows]:
 				emit(
-						f"   median {nearest.get('median_nearest_similarity')} "
-						f"p90 {nearest.get('p90_nearest_similarity')} | "
-						f"nearest at/above level: {nearest.get('nearest_at_or_above')}"
+					f"      {anchor(c):.3f} {c['shared_canonical'].get('resolution', ''):8} "
+					f"-> {c.get('canonical', '')!r:30} | {c.get('members', [])[:3]}"
 				)
-				emit(
-						"   ... with a DIFFERENT name: "
-						f"{nearest.get('nearest_at_or_above_different_name')}"
-				)
-				mutual = sum(
-						bool(c.get("nearest_cluster", {}).get("mutual")) for c in clusters
-				)
-				emit(f"   mutual nearest neighbours {pct(mutual, n)}")
-		else:
-				emit("   (no neighbour diagnostics in this schema)")
 
-		summary = "\n".join(lines) + "\n"
-
+	summary = "\n".join(lines) + "\n"
+	if print_summary:
 		print(summary)
+	return summary if return_text else None
 
 def get_model_kwargs(verbose: bool = True):
 	dtype = torch.float32
