@@ -995,14 +995,15 @@ def _post_process_(
 	# High-Value Military/Aviation/Armor Designations
 	MILITARY_DESIGNATION_RE = re.compile(
 		r'\b(?:'
-		# 1. Interleaved military models (M4A1, M4A3E8, M32B1, A6M2, A6M5, B5N2, G4M1, H8K2, D3A1, C6N1, P1Y1, E16A1)
+		# 1. Compact and chained codes: M4, M10, MG34, ISU152, M1911, P51D, A6M2, B5N2, M4A3E8, M6A2E1
 		r'[A-Za-z]{1,4}\d{1,4}(?:[A-Za-z]{1,3}\d{0,3})*|'
 		# 2. Standard hyphenated/spaced models (B-17, B-17G, P-51, C-47, A-20, T-34, U-505, PT-109, F-6D-15-NA)
 		r'[A-Za-z]{1,4}[- ]\d{1,4}[A-Za-z]?(?:/\d{1,3})?|'
 		# 3. German models & wings (Bf 109, Fw 190, Ju 87, He 111, Me 262, Flak 18, Pak 40, JG 53)
 		r'(?:Bf|Fw|Ju|He|Me|Ar|Do|Hs|Ta|Flak|Pak|Kwk|JG|KG|ZG|StG|SG|LG|NJG)[- ]?\d{1,4}[A-Za-z]?|'
-		# 4. Standalone unit ordinals or numbered divisions (369th, 101st Airborne, 82nd, 761st Tank Battalion)
-		r'\d{1,4}(?:st|nd|rd|th)(?:\s+(?:Airborne|Infantry|Armored|Armoured|Division|Regiment|Battalion|Army|Corps|Squadron|Group|Wing|Fleet))?'
+		# 4. Numbered divisions/formations with MANDATORY descriptive branch (no trailing '?')
+		# e.g., '101st Airborne', '761st Tank Battalion', '1st Cavalry'
+		r'\d{1,4}(?:st|nd|rd|th)\s+(?:Airborne|Infantry|Armored|Armoured|Division|Regiment|Battalion|Army|Corps|Squadron|Group|Wing|Fleet)'
 		r')\b',
 		re.IGNORECASE
 	)
@@ -1014,17 +1015,6 @@ def _post_process_(
 		r'eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|'
 		r'twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth)'
 	)
-
-	# _ECHELON_PATTERN = (
-	# 	r'(?:army|corps|div\.?|division|inf\.?|infantry|reg\.?|regt\.?|regiment|bn\.?|battalion|brig\.?|brigade|arty\.?|artillery)'
-	# )
-
-	# # Matches generic two-word echelons with digits, ordinals, OR words:
-	# # "1st Div", "109 Infantry", "79th Division", "First Division", "53rd Infantry", "Seventh Army"
-	# GENERIC_ECHELON_RE = re.compile(
-	# 	rf'^{_ORDINAL_PATTERN}\s+{_ECHELON_PATTERN}$',
-	# 	re.IGNORECASE
-	# )
 
 	_ECHELON_PATTERN = (
 		# Military echelons
@@ -1041,16 +1031,7 @@ def _post_process_(
 		re.IGNORECASE
 	)
 
-
-
 	def should_keep_numeric_label(label: str, max_digit_ratio: float = 0.45) -> bool:
-		"""
-		keeps or drops a label that contains digits.
-
-		Returns:
-			True  -> valid historical/military concept (e.g. 'B-17G Flying Fortress', 'T-34')
-			False -> noise (e.g. '1936', '2-8-4', 'November 1962', 'No. 1234')
-		"""
 		# If no digits exist, it's not a numeric label; keep it
 		if not any(c.isdigit() for c in label):
 			return True
@@ -1058,30 +1039,33 @@ def _post_process_(
 		# 1. Pure numbers, code strings, or punctuation with no letters ("1936", "2-8-4", "100/50") -> DROP
 		letters = [c for c in label if c.isalpha()]
 		if not letters:
-				return False
-		
+			return False
+
+		# Drop standalone numeric ordinals ("369th", "1st", "2nd", "82nd") ──
+		if re.match(r'^\d{1,4}(?:st|nd|rd|th)$', label.strip(), re.IGNORECASE):
+			return False
+
 		# 2. Date expressions ("November 1962", "Spring 1943", "1940s", "circa 1944") -> DROP
 		if TEMPORAL_NOISE_RE.search(label):
-				return False
+			return False
 		
 		# 3. Metadata or pure dimension markers ("No. 1234", "50 ft") -> DROP
 		if METADATA_DIMENSION_RE.search(label):
-				return False
+			return False
 		
-		# 4. Discard generic numbered military echelons ──
+		# 4. Discard generic numbered military echelons
 		# Prevents ungroundable administrative units from contaminating CLIP fine-tuning
 		if GENERIC_ECHELON_RE.match(label.strip()):
 			return False
 
 		# 5. Recognized military aircraft, armor, weapon, or unit pattern -> KEEP
 		if MILITARY_DESIGNATION_RE.search(label):
-				return True
+			return True
 		
 		# 6. Fallback: If label has lots of words but low digit ratio ("Boeing model 307 stratoliner") -> KEEP
 		# But discard if digits dominate the string (> max_digit_ratio)
 		digit_count = sum(1 for c in label if c.isdigit())
 		digit_ratio = digit_count / len(label)
-		
 		if digit_ratio > max_digit_ratio:
 			return False
 
