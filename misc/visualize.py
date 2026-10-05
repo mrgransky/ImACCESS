@@ -7143,22 +7143,114 @@ def plot_label_similarity_heatmap(
 	#
 	#       S = E @ E.T
 	# ------------------------------------------------------------------
+
 	similarity_matrix = embeddings @ embeddings.T
+	print(f"Similarity matrix: {similarity_matrix.shape}")
+
+	# ------------------------------------------------------------------
+	# 9. Similarity diagnostics & Numerical bounds verification
+	# ------------------------------------------------------------------
+	raw_min = float(np.min(similarity_matrix))
+	raw_max = float(np.max(similarity_matrix))
+	n_below = int(np.sum(similarity_matrix < -1.0))
+	n_above = int(np.sum(similarity_matrix > 1.0))
+	max_lower_delta = float(max(0.0, -1.0 - raw_min))
+	max_upper_delta = float(max(0.0, raw_max - 1.0))
+	float_tol = 1e-4
+
+	print("\n[SIMILARITY MATRIX NUMERICAL & BOUNDS DIAGNOSTICS]")
+	print(f"  ├─ Raw dot-product range : [{raw_min:.8f}, {raw_max:.8f}]")
+	if n_below > 0 or n_above > 0:
+		print(
+			f"  ├─ Out-of-bounds count   : {n_below:,} elements < -1.0 (max Δ: {max_lower_delta:.2e}), "
+			f"{n_above:,} elements > +1.0 (max Δ: {max_upper_delta:.2e})"
+		)
+		if max_lower_delta > float_tol or max_upper_delta > float_tol:
+			print(
+				f"  ├─ [!] WARNING: Bounds violation exceeds float precision tolerance ({float_tol:.1e}). "
+				f"Check that embeddings are properly L2-normalized!"
+			)
+		else:
+			print(
+				f"  ├─ Bound sanity status   : Valid (violations are negligible float rounding noise; "
+				f"clipping to [-1.0, 1.0] is safe and appropriate)"
+			)
+	else:
+		print("  ├─ Bound sanity status   : Perfect (all raw dot products strictly lie in [-1.0, 1.0])")
+
 	# Numerical floating-point errors can occasionally produce values
 	# infinitesimally outside [-1, 1].
-	similarity_matrix = np.clip(similarity_matrix, -1.0, 1.0,)
-	print(f"Similarity matrix: {similarity_matrix.shape}")
-	
-	# 9. Similarity diagnostics
+	similarity_matrix = np.clip(similarity_matrix, -1.0, 1.0)
+	print(f"  ├─ Clipped range         : [{similarity_matrix.min():.8f}, {similarity_matrix.max():.8f}]")
+
+	# Diagonal self-similarity integrity check (e · e should equal 1.0)
+	diag = np.diagonal(similarity_matrix)
+	max_diag_err = float(np.max(np.abs(diag - 1.0)))
+	print(
+		f"  └─ Diagonal self-sim     : min={diag.min():.6f}, max={diag.max():.6f}, "
+		f"max deviation from 1.0: {max_diag_err:.2e}"
+	)
+
 	# Remove diagonal because self-similarity is always ~1.
-	off_diagonal_mask = ~np.eye(n_labels, dtype=bool,)
+	off_diagonal_mask = ~np.eye(n_labels, dtype=bool)
 	off_diagonal = similarity_matrix[off_diagonal_mask]
 
+	similarity_diagnostics: Dict[str, Any] = {
+		"raw_min": raw_min,
+		"raw_max": raw_max,
+		"n_below_lower": n_below,
+		"n_above_upper": n_above,
+		"max_lower_delta": max_lower_delta,
+		"max_upper_delta": max_upper_delta,
+		"diag_min": float(diag.min()),
+		"diag_max": float(diag.max()),
+		"max_diag_deviation": max_diag_err,
+	}
+
 	if len(off_diagonal) > 0:
+		percentiles = np.percentile(off_diagonal, [1, 5, 25, 50, 75, 95, 99])
+		p1, p5, p25, p50, p75, p95, p99 = [float(p) for p in percentiles]
+		neg_count = int(np.sum(off_diagonal < 0.0))
+		neg_ratio = float(neg_count / len(off_diagonal) * 100)
+		data_span = float(off_diagonal.max() - off_diagonal.min())
+		colormap_span = float(vmax - vmin)
+		utilization = (data_span / colormap_span * 100) if colormap_span > 0 else 0.0
+
+		similarity_diagnostics.update({
+			"off_diagonal_min": float(off_diagonal.min()),
+			"off_diagonal_max": float(off_diagonal.max()),
+			"off_diagonal_mean": float(off_diagonal.mean()),
+			"off_diagonal_std": float(off_diagonal.std()),
+			"percentiles": {
+				"p1": p1, "p5": p5, "p25": p25, "p50": p50,
+				"p75": p75, "p95": p95, "p99": p99,
+			},
+			"neg_pairs_count": neg_count,
+			"neg_pairs_percent": neg_ratio,
+			"colormap_utilization_pct": utilization,
+		})
+
 		print("\nPairwise similarity statistics (excluding diagonal):")
-		print(f"  ├─ (min, max): {off_diagonal.min():.6f}, {off_diagonal.max():.6f}")
-		print(f"  └─ μ±σ {off_diagonal.mean():.6f} ± {off_diagonal.std():.6f}")
-		
+		print(f"  ├─ Min / Max             : {off_diagonal.min():.6f}, {off_diagonal.max():.6f}")
+		print(f"  ├─ Mean ± Std            : {off_diagonal.mean():.6f} ± {off_diagonal.std():.6f}")
+		print(
+			f"  ├─ Percentiles [p1, p5, p25, p50, p75, p95, p99]:\n"
+			f"  │    [{p1:.4f}, {p5:.4f}, {p25:.4f}, {p50:.4f}, {p75:.4f}, {p95:.4f}, {p99:.4f}]"
+		)
+		print(f"  ├─ Negative pairs        : {neg_count:,} / {len(off_diagonal):,} ({neg_ratio:.2f}%)")
+		print(
+			f"  ├─ Colormap dynamic span : data [{off_diagonal.min():.2f}, {off_diagonal.max():.2f}] "
+			f"vs heatmap [{vmin:.2f}, {vmax:.2f}] (utilization: {utilization:.1f}%)"
+		)
+		if off_diagonal.min() >= 0.0 and vmin < 0.0:
+			print(
+				f"  └─ Visualization note    : Cosine similarities are entirely non-negative (>= 0.0), "
+				f"but heatmap vmin is {vmin}.\n"
+				f"                             Range [{vmin}, 0.0] is unused, compressing visual contrast.\n"
+				f"                             Consider setting vmin=0.0 (or dynamic vmin) to maximize contrast."
+			)
+		else:
+			print(f"  └─ Visualization note    : Heatmap bounds [vmin={vmin}, vmax={vmax}] span data appropriately.")
 
 	# 10. Build output paths
 	safe_column = (
@@ -7301,6 +7393,7 @@ def plot_label_similarity_heatmap(
 			if isinstance(embedding_model, str)
 			else type(model).__name__
 		),
+		"similarity_diagnostics": similarity_diagnostics,
 	}
 
 def plot_unique_label_combinations(
