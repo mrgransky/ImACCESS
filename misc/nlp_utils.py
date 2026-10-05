@@ -1062,7 +1062,8 @@ def _post_process_(
 		if MILITARY_DESIGNATION_RE.search(label):
 			return True
 		
-		# 6. Fallback: If label has lots of words but low digit ratio ("Boeing model 307 stratoliner") -> KEEP
+		# 6. Fallback: 
+		# If label has lots of words but low digit ratio ("Boeing model 307 stratoliner") -> KEEP
 		# But discard if digits dominate the string (> max_digit_ratio)
 		digit_count = sum(1 for c in label if c.isdigit())
 		digit_ratio = digit_count / len(label)
