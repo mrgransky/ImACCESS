@@ -6987,13 +6987,16 @@ def plot_label_similarity_heatmap(
 	selection: str = "frequency",
 	figsize: Optional[tuple] = None,
 	dpi: int = 200,
-	cmap: str = "viridis",
+	cmap: str = "Greys",
 	vmin: float = -1.0,
 	vmax: float = 1.0,
 	annot: bool = False,
 	fmt: str = ".2f",
-	save_matrix: bool = True,
-	save_embeddings: bool = False,
+	max_xticks: Optional[int] = 40,
+	xtick_step: Optional[int] = None,
+	max_yticks: Optional[int] = 40,
+	ytick_step: Optional[int] = None,
+	tick_fontsize: Optional[float] = None,
 ) -> Dict[str, Any]:
 	# 1. Validate input
 	if column not in df.columns:
@@ -7069,9 +7072,7 @@ def plot_label_similarity_heatmap(
 	print(f"Empty values              : {empty_count:,}")
 	print(f"Invalid values            : {invalid_count:,}")
 	if not unique_labels_all:
-			raise ValueError(
-					f"No valid labels found in column '{column}'."
-			)
+		raise ValueError(f"No valid labels found in column '{column}'.")
 
 	# 4. Select labels for visualization
 	if max_labels is None:
@@ -7150,38 +7151,14 @@ def plot_label_similarity_heatmap(
 	
 	# 9. Similarity diagnostics
 	# Remove diagonal because self-similarity is always ~1.
-	off_diagonal_mask = ~np.eye(
-			n_labels,
-			dtype=bool,
-	)
-	off_diagonal = similarity_matrix[
-			off_diagonal_mask
-	]
+	off_diagonal_mask = ~np.eye(n_labels, dtype=bool,)
+	off_diagonal = similarity_matrix[off_diagonal_mask]
+
 	if len(off_diagonal) > 0:
-			print(
-					"\nPairwise similarity statistics "
-					"(excluding diagonal):"
-			)
-			print(
-					f"  Minimum                : "
-					f"{off_diagonal.min():.6f}"
-			)
-			print(
-					f"  Maximum                : "
-					f"{off_diagonal.max():.6f}"
-			)
-			print(
-					f"  Mean                   : "
-					f"{off_diagonal.mean():.6f}"
-			)
-			print(
-					f"  Median                 : "
-					f"{np.median(off_diagonal):.6f}"
-			)
-			print(
-					f"  Std                    : "
-					f"{off_diagonal.std():.6f}"
-			)
+		print("\nPairwise similarity statistics (excluding diagonal):")
+		print(f"  ├─ (min, max): {off_diagonal.min():.6f}, {off_diagonal.max():.6f}")
+		print(f"  └─ μ±σ {off_diagonal.mean():.6f} ± {off_diagonal.std():.6f}")
+		
 
 	# 10. Build output paths
 	safe_column = (
@@ -7207,19 +7184,63 @@ def plot_label_similarity_heatmap(
 		.replace(" ", "_")
 	)
 
-	figure_path = os.path.join(viz_dir, f"{safe_column}_{model_tag}_label_similarity_heatmap.png",)
-	matrix_path = os.path.join(viz_dir, f"label_similarity_matrix_{safe_column}_{model_tag}.csv",)
-	embedding_path = os.path.join(viz_dir, f"label_embeddings_{safe_column}_{model_tag}.npy",)
-	
+	figure_path = os.path.join(viz_dir, f"{safe_column}_{model_tag}_label_similarity_heatmap.png",)	
+
+	def _tick_indices(
+		n: int,
+		step: Optional[int],
+		max_ticks: Optional[int],
+		axis_name: str,
+	) -> np.ndarray:
+		if n <= 0:
+			return np.array([], dtype=int)
+		if step is not None:
+			if step < 1:
+				raise ValueError(f"{axis_name} tick step must be >= 1.")
+			idx = np.arange(0, n, step)
+			if idx.size == 0 or idx[-1] != n - 1:
+				idx = np.append(idx, n - 1)
+			return idx
+		if max_ticks is None or max_ticks >= n:
+			return np.arange(n)
+		if max_ticks < 1:
+			raise ValueError(f"max_{axis_name}ticks must be >= 1 or None.")
+		if max_ticks == 1:
+			return np.array([0])
+		# Inclusive endpoints, unique after rounding.
+		return np.unique(
+			np.round(np.linspace(0, n - 1, max_ticks)).astype(int)
+		)
+
+	xtick_idx = _tick_indices(n_labels, xtick_step, max_xticks, "x")
+	ytick_idx = _tick_indices(n_labels, ytick_step, max_yticks, "y")
+	x_strategy = (
+		f"every {xtick_step}th, last included"
+		if xtick_step is not None
+		else ("all" if len(xtick_idx) == n_labels else "evenly spaced")
+	)
+	print(
+		f"X-axis labels shown        : "
+		f"{len(xtick_idx):,} / {n_labels:,} ({x_strategy})"
+	)
+	if len(ytick_idx) != n_labels:
+		y_strategy = (
+			f"every {ytick_step}th, last included"
+			if ytick_step is not None
+			else "evenly spaced"
+		)
+		print(
+			f"Y-axis labels shown        : "
+			f"{len(ytick_idx):,} / {n_labels:,} ({y_strategy})"
+		)
+
 	if figsize is None:
-		# Reasonable automatic scaling.
-		#
-		# For large matrices, the figure becomes large enough that
-		# labels/cells remain inspectable when zooming into the PNG.
-		side = max(18, min(30, 0.22 * n_labels),)
+		# Size from the full matrix so cells stay inspectable when zoomed.
+		# Tick thinning does not drop rows or columns.
+		side = max(15, min(19, 0.22 * n_labels))
 		figsize = (side, side)
-	
-	fig, ax = plt.subplots(figsize=figsize, dpi=dpi,)
+
+	fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
 	sns.heatmap(
 		similarity_matrix,
 		ax=ax,
@@ -7227,20 +7248,35 @@ def plot_label_similarity_heatmap(
 		vmin=vmin,
 		vmax=vmax,
 		square=True,
-		xticklabels=selected_labels,
-		yticklabels=selected_labels,
+		xticklabels=False,
+		yticklabels=False,
 		annot=annot,
 		fmt=fmt,
-		cbar_kws={"label": "Cosine Similarity",},
+		cbar_kws={"label": "Cosine Similarity"},
+	)
+	ax.set_title(
+		f"Pairwise Cosine Similarity of Unique Labels {column} ({model_tag})",
+		pad=8,
 	)
 
-	ax.set_title(f"Pairwise Cosine Similarity of Unique Labels {column} ({model_tag})", pad=8,)
-	# ax.set_xlabel("Label")
-	# ax.set_ylabel("Label")
+	x_kw = dict(rotation=90, ha="center")
+	y_kw = dict(rotation=0, va="center")
+	if tick_fontsize is not None:
+		x_kw["fontsize"] = tick_fontsize
+		y_kw["fontsize"] = tick_fontsize
 
-	# Rotate labels for readability.
-	plt.xticks(rotation=90,ha="center",)
-	plt.yticks(rotation=0,)
+	# Seaborn places category ticks at cell centers: 0.5, 1.5, ...
+	ax.set_xticks(xtick_idx + 0.5)
+	ax.set_xticklabels(
+		[selected_labels[i] for i in xtick_idx],
+		**x_kw,
+	)
+	ax.set_yticks(ytick_idx + 0.5)
+	ax.set_yticklabels(
+		[selected_labels[i] for i in ytick_idx],
+		**y_kw,
+	)
+
 	plt.tight_layout()
 	fig.savefig(
 		figure_path,
@@ -7260,10 +7296,6 @@ def plot_label_similarity_heatmap(
 		"embeddings": embeddings,
 		"similarity_matrix": similarity_matrix,
 		"figure_path": figure_path,
-		"matrix_path": matrix_path if save_matrix else None,
-		"embedding_path": (
-			embedding_path if save_embeddings else None
-		),
 		"model_name": (
 			embedding_model
 			if isinstance(embedding_model, str)

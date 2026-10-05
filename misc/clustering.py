@@ -4877,6 +4877,7 @@ def assign_canonical_labels(
 		# the best real member ('Act' for named laws, 'machine' for three spellings of one test machine),
 		# it does not describe the images: drop it and let a real member win. The ratio (not an absolute
 		# cosine) keeps the gate valid when the embedding space changes (prompted vs un-prompted).
+		rejection_virtual_tag: str = ""
 		if virtual_hypernym is not None and VIRTUAL_MIN_SIM_RATIO is not None:
 			_best_real = float(similarities[:cluster_size].max())
 			_ratio = float(similarities[cluster_size]) / max(_best_real, 1e-12)
@@ -4884,8 +4885,12 @@ def assign_canonical_labels(
 				vh_info['note'] += (f" | rejected: sim ratio {_ratio:.2f} < {VIRTUAL_MIN_SIM_RATIO:.2f} "
 									f"(virtual {similarities[cluster_size]:.3f} vs best member {_best_real:.3f})")
 				virtual_rejections['similarity_ratio'] += 1
-				if verbose:
-					print(f"[REJECT VIRTUAL] {virtual_hypernym!r}: sim ratio {_ratio:.2f} < {VIRTUAL_MIN_SIM_RATIO:.2f}")
+				rejection_virtual_tag = (
+						f"[REJECTED VIRTUAL] "
+						f"{repr(virtual_hypernym):<30}"
+						f"sim ratio {_ratio:.5f} < {VIRTUAL_MIN_SIM_RATIO}"
+					)
+
 				virtual_hypernym = None
 				candidates = cluster_texts
 				virtual_flags = [False] * cluster_size
@@ -5082,10 +5087,9 @@ def assign_canonical_labels(
 			}
 		)
 
-
 		if verbose:
 			tag = " [VIRTUAL]" if virtual_flags[best_idx] else ""
-			print(f"\t=> Selected Canonical: {repr(canonical):<25} (sim={similarities[best_idx]:.4f}){tag}")
+			print(f"\t=> Selected Canonical: {repr(canonical):<60} (sim={similarities[best_idx]:.4f}){tag} {rejection_virtual_tag}")
 
 	pre_postpass = {
 		cid: meta['canonical']

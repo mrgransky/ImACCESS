@@ -2074,15 +2074,14 @@ def get_singletons(df: pd.DataFrame, embedding_model: str, output_dir: str):
 		unique_labels_singleton_fpath = os.path.join(output_dir, f"unique_labels_{len(unique_labels)}_{col}.csv")
 		label_counts_df.to_csv(unique_labels_singleton_fpath, index=False,)
 
-	result = viz.plot_label_similarity_heatmap(
+	viz.plot_label_similarity_heatmap(
 		df=df,
 		embedding_model=embedding_model,
 		output_dir=output_dir,
 		column="multimodal_canonical_labels",
 		batch_size=32,
 		selection="frequency",
-		save_matrix=True,
-		save_embeddings=True,
+		# max_labels=120,
 		annot=False,
 	)
 
