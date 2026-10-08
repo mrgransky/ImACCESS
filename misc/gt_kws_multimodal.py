@@ -361,6 +361,33 @@ def get_multimodal_annotation(
 	df['vlm_based_labels'] = vlm_based_labels
 	df['multimodal_labels'] = multimodal_labels
 
+	# REARRANGE COLUMNS FOR BETTER DEBUGGING
+	desired_cols_order = [
+		'doc_url', 
+		'img_path', 
+		'title', 
+		'description', 
+		'llm_based_labels', 
+		'vlm_based_labels', 
+		'multimodal_labels', 
+		'llm_canonical_labels', 
+		'vlm_canonical_labels', 
+		'multimodal_canonical_labels'
+	]
+	# Only select columns that actually exist in df (prevents crash on chunked runs)
+	ordered_cols = [col for col in desired_cols_order if col in df.columns]
+	# In case there are other unexpected columns, append them to the end
+	extra_cols = [col for col in df.columns if col not in ordered_cols]
+	
+	df = df[ordered_cols + extra_cols]
+
+	df.to_csv(output_csv, index=False)
+	
+	if verbose:
+		print(f"\n[SAVED] {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
+		print(df.info(verbose=verbose, memory_usage="deep"))
+		print()
+
 	stats.get_singletons(df=df, embedding_model=embedding_model_id, output_dir=OUTPUT_DIR)
 	stats.compute_entropy_vs_performance(df=df, verbose=verbose)
 	stats.get_cgd_taxonomy_supervision(
@@ -374,11 +401,6 @@ def get_multimodal_annotation(
 		verbose=verbose,
 	)
 
-	df.to_csv(output_csv, index=False)
-	
-	if verbose:
-		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
-		print(df.info(verbose=verbose, memory_usage="deep"))
 
 	# EDA, tier cardinality and stratified split only for full datasets:
 	if is_full_dataset:

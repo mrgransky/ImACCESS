@@ -413,30 +413,30 @@ def get_model_kwargs(verbose: bool = True):
 	dtype = torch.float32
 	attention = "eager"
 	if torch.cuda.is_available():
-			dtype = (
-					torch.bfloat16
-					if torch.cuda.is_bf16_supported()
-					else torch.float32
-			)
-			major, minor = torch.cuda.get_device_capability()
-			compute_cap = major + minor / 10
-			if compute_cap >= 8.0:
-					try:
-							import flash_attn  # noqa: F401
-							attention = "flash_attention_2"
-					except ImportError:
-							if verbose:
-									print(
-											"[WARN] Flash Attention 2 not installed "
-											"(pip install flash-attn)"
-									)
-			if attention == "eager" and compute_cap >= 7.0 and packaging.version.parse(torch.__version__) >= packaging.version.parse("2.0.0"):
-					if verbose:
-							print(
-									f"[INFO] Using SDPA attention (compute {compute_cap}, "
-									f"PyTorch {torch.__version__})"
-							)
-					attention = "sdpa"
+		dtype = (
+			torch.bfloat16
+			if torch.cuda.is_bf16_supported()
+			else torch.float32
+		)
+		major, minor = torch.cuda.get_device_capability()
+		compute_cap = major + minor / 10
+		if compute_cap >= 8.0:
+			try:
+				import flash_attn
+				attention = "flash_attention_2"
+			except ImportError:
+				if verbose:
+					print(
+						"[WARN] Flash Attention 2 not installed "
+						"(pip install flash-attn)"
+					)
+		if attention == "eager" and compute_cap >= 7.0 and packaging.version.parse(torch.__version__) >= packaging.version.parse("2.0.0"):
+			if verbose:
+				print(
+					f"[INFO] Using SDPA attention (compute {compute_cap}, "
+					f"PyTorch {torch.__version__})"
+				)
+			attention = "sdpa"
 
 	if verbose:
 		print(f"\n[MODEL KWARGS]")
@@ -4216,8 +4216,8 @@ def cluster(
 	linkage_method: str="ward",
 	distance_metric: str="euclidean",
 	target_intra_similarity: float = 0.69,
-	min_consolidation: float = 3.0, #3.8, #4.0,
-	max_consolidation: float = 5.0, #5.0, #6.5,
+	min_consolidation: float = 4.8, #3.0, #3.8, #4.0,
+	max_consolidation: float = 6.8, #5.0, #5.0, #6.5,
 	min_singleton_merge_sim: Optional[float] = 0.60,
 	merge_close_clusters_threshold: Optional[float] = None,
 	merge_max_size: int = 30,
