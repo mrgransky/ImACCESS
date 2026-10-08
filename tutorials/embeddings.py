@@ -34,6 +34,7 @@ models_ids =[
 	"Qwen/Qwen3-Embedding-8B",
 	"Octen/Octen-Embedding-8B",
 	"nvidia/Nemotron-3-Embed-8B-BF16",
+	"google/embeddinggemma-2",
 ]
 if USER == "farid":
 	models_ids =[
