@@ -1025,8 +1025,6 @@ boyleston
 photog
 chev
 rare
-left
-right
 te hachapi
 object
 area

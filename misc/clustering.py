@@ -2215,12 +2215,13 @@ def get_optimal_num_clusters(
 	
 	valid_k_min = int(num_samples // max_consolidation)
 	valid_k_max = int(num_samples // min_consolidation)
+
 	if verbose:
 		print(f"\n[STAGE 1] COARSE SEARCH - Finding quality plateau: {valid_k_min} ≤ k ≤ {valid_k_max}")
 
 	# Adaptive coarse range based on dataset size
 	if num_samples > int(3e4):
-		coarse_step = 1000
+		coarse_step = 1500
 	elif num_samples > int(1e4):
 		coarse_step = 500
 	elif num_samples > int(5e3):
@@ -4216,8 +4217,8 @@ def cluster(
 	linkage_method: str="ward",
 	distance_metric: str="euclidean",
 	target_intra_similarity: float = 0.69,
-	min_consolidation: float = 4.8, #3.0, #3.8, #4.0,
-	max_consolidation: float = 6.8, #5.0, #5.0, #6.5,
+	min_consolidation: float = 5.0, #3.0, #3.8, #4.0,
+	max_consolidation: float = 7.5, #5.0, #5.0, #6.5,
 	min_singleton_merge_sim: Optional[float] = 0.60,
 	merge_close_clusters_threshold: Optional[float] = None,
 	merge_max_size: int = 30,
