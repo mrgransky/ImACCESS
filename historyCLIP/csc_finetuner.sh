@@ -70,7 +70,7 @@
 #   H4 + ViT-L/14@336px + lora_plus + all cols     : --array=12-14
 #   H4 + ViT-L/14@336px + lora_plus + multimodal   : --array=14
 ##############################################################################
-##SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
+#SBATCH --array=0-32 # first 11 strats, all cols, seed=SEED
 ##SBATCH --array=0-2 # only zero_shor for debugging label similarity
 ##SBATCH --array=12-14 # only LoRA+
 ##SBATCH --array=27-29 # only tip_adapter_f requires mem > 256G
@@ -78,7 +78,7 @@
 ##SBATCH --array=9-23 # low-rank adaptation
 ##SBATCH --array=3-5 # probe
 ##SBATCH --array=9-11 # lora
-#SBATCH --array=19-32 # customized
+##SBATCH --array=19-32 # customized
 
 # how to run:
 # !!!!!!! xxxx ensure the job name aligns with the seed value xxxx

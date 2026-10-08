@@ -24,7 +24,7 @@ from nlp_utils import (
 	save_spacy_cache,
 )
 from clustering import get_canonical_labels, CUSTOM_ENCODE_INSTRUCTION
-from data_prep import get_multi_label_stratified_split, build_shared_eval_protocol
+from data_prep import get_multi_label_stratified_split, build_shared_vocab_tier_spec
 
 # LLM models:
 # Qwen/Qwen3-4B-Instruct-2507
@@ -409,7 +409,7 @@ def get_multimodal_annotation(
 			verbose=verbose,
 		)
 
-		build_shared_eval_protocol(
+		build_shared_vocab_tier_spec(
 			train_df=train_df,
 			output_dir=OUTPUT_DIR,
 			verbose=verbose,

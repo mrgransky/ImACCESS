@@ -222,7 +222,7 @@ def _encode_images_batched(
 
 		batch = torch.stack(batch_tensors).to(device)
 
-		with torch.no_grad(), torch.amp.autocast(
+		with torch.inference_mode(), torch.amp.autocast(
 			device_type=device.type,
 			dtype=torch.bfloat16 if device.type == 'cuda' else torch.float32,
 			enabled=torch.cuda.is_available(),
@@ -255,7 +255,7 @@ def t2i(
 	# 1. Encode the text query
 	text_tokens = clip.tokenize([query_text]).to(device)
 	print(f"TOKENS: {text_tokens.shape}")
-	with torch.no_grad(), torch.amp.autocast(
+	with torch.inference_mode(), torch.amp.autocast(
 		device_type=device.type,
 		dtype=torch.bfloat16 if device.type == 'cuda' else torch.float32,
 		enabled=torch.cuda.is_available(),
@@ -310,7 +310,7 @@ def i2i(
 	# 1. Encode query image
 	query_img = Image.open(query_image_path).convert('RGB')
 	query_input = preprocess(query_img).unsqueeze(0).to(device)
-	with torch.no_grad(), torch.amp.autocast(
+	with torch.inference_mode(), torch.amp.autocast(
 		device_type=device.type,
 		dtype=torch.bfloat16 if device.type == 'cuda' else torch.float32,
 		enabled=torch.cuda.is_available(),
@@ -370,7 +370,7 @@ def i2t(
 	print(f"{query_image_path} {type(image)} {image.size}")
 	image_input = preprocess(image).unsqueeze(0).to(device)
 
-	with torch.no_grad(), torch.amp.autocast(
+	with torch.inference_mode(), torch.amp.autocast(
 		device_type=device.type,
 		dtype=torch.bfloat16 if device.type == 'cuda' else torch.float32,
 		enabled=torch.cuda.is_available(),
@@ -382,7 +382,7 @@ def i2t(
 
 	text_tokens = clip.tokenize(labels).to(device)
 
-	with torch.no_grad(), torch.amp.autocast(
+	with torch.inference_mode(), torch.amp.autocast(
 		device_type=device.type,
 		dtype=torch.bfloat16 if device.type == 'cuda' else torch.float32,
 		enabled=torch.cuda.is_available(),
@@ -425,12 +425,34 @@ def retrieval(
 		device=device,
 		jit=False,
 		random_weights=False,
-		dropout=0,
+		dropout=0.0,
 		download_root=cache_directory.get(USER),
 	)
+
+	# just for printing purpose of frozen and trainable params:
+	# 2. Freeze all parameters for Zero-Shot Evaluation
+	for param in model.parameters():
+		param.requires_grad = False
+
 	model.name = architecture
 	model_name = model.__class__.__name__
 	print(f"Loaded {model_name} {model.name} in {device}")
+	
+	# 3. Calculate parameter counts
+	total_params = sum(p.numel() for p in model.parameters())
+	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	frozen_params = total_params - trainable_params
+
+	# 4. Calculate percentages
+	trainable_pct = (trainable_params / total_params) * 100 if total_params > 0 else 0
+	frozen_pct = (frozen_params / total_params) * 100 if total_params > 0 else 0
+
+	print(
+		f"  {architecture} params | "
+		f"Total: {total_params:,} | "
+		f"Trainable: {trainable_params:,} ({trainable_pct:.2f}%) | "
+		f"Frozen: {frozen_params:,} ({frozen_pct:.2f}%)"
+	)
 
 	if query_text and reference_images:
 		t2i(

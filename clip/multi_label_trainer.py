@@ -1,3 +1,5 @@
+import json
+
 from utils import *
 from early_stopper import EarlyStopping
 import clip
@@ -7,13 +9,70 @@ from loss import *
 from evals import *
 import visualize as viz
 
+def get_text_embeddings(
+	model: torch.nn.Module,
+	loader: DataLoader,
+	dtype: torch.dtype,
+	verbose: bool = False,
+):
+	model.eval()
+	device = next(model.parameters()).device
+	all_class_embeds = []
+	text_batch_size = loader.batch_size
+	# This class order MUST be exactly the order used by get_validation_metrics()
+	# to construct class-text embeddings and similarity-matrix columns/rows.
+	try:
+		class_names = loader.dataset.dataset.classes
+	except AttributeError:
+		try:
+			class_names = loader.dataset.unique_labels
+		except AttributeError as error:
+			raise AttributeError(
+				"Could not recover validation class names. "
+				"The shared protocol can only be mapped if the class-name order "
+				"corresponding to the similarity-matrix columns is available."
+			) from error
+
+	num_classes = len(class_names)
+
+	if verbose:
+		print(f"\nPre-encoding {num_classes} label(s) (batch_size: {text_batch_size})")
+	with torch.inference_mode(), torch.amp.autocast(
+			device_type=device.type, 
+			enabled=torch.cuda.is_available(),
+			dtype=dtype,
+		):
+			for i in range(0, num_classes, text_batch_size):
+				end_idx = min(i + text_batch_size, num_classes)
+				batch_class_names = class_names[i:end_idx]
+
+				batch_class_texts = clip.tokenize(batch_class_names).to(device)
+				batch_embeds = model.encode_text(batch_class_texts)
+				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
+				all_class_embeds.append(batch_embeds.cpu()) # Move to CPU immediately to save GPU memory
+				
+				# Clean up
+				del batch_class_texts, batch_embeds
+				torch.cuda.empty_cache()
+	
+	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
+	
+	if verbose:
+		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
+		print(f"   ├─ {type(all_class_embeds)}")
+		print(f"   ├─ {all_class_embeds.shape}")
+		print(f"   ├─ {all_class_embeds.dtype}")
+		print(f"   └─ {all_class_embeds.device}")
+
+	return all_class_embeds
+
 def zero_shot_multi_label(
 	model: torch.nn.Module,
 	train_loader: DataLoader,
 	validation_loader: DataLoader,
 	device: str,
 	results_dir: str,
-	shared_protocol_path: str,
+	tier_spec_path: str,
 	num_epochs: int,
 	print_every: int,
 	learning_rate: float,
@@ -40,7 +99,7 @@ def zero_shot_multi_label(
 	   - Uses adaptive validation-support filtering.
 
 	2. Shared R1-C tiers:
-	   - Derived from the fixed shared_eval_protocol.json.
+	   - Derived from the fixed shared_vocab_tier_spec.json.
 	   - Uses the common vocabulary and common head/rare partitions shared
 	     across LLM, VLM, and multimodal supervision conditions.
 	   - Uses min_val_support=1; no run-specific adaptive tier alteration.
@@ -53,6 +112,21 @@ def zero_shot_multi_label(
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
+
+
+	# 1. Calculate parameter counts
+	# just for printing purpose of frozen and trainable params:
+	# Freeze all parameters for Zero-Shot Evaluation
+	for param in model.parameters():
+		param.requires_grad = False
+
+	total_params = sum(p.numel() for p in model.parameters())
+	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	frozen_params = total_params - trainable_params
+
+	# 2. Calculate percentages
+	trainable_pct = (trainable_params / total_params) * 100 if total_params > 0 else 0
+	frozen_pct = (frozen_params / total_params) * 100 if total_params > 0 else 0
 
 	model_arch = (
 		re.sub(r"[/@]", "-", model.name)
@@ -90,279 +164,70 @@ def zero_shot_multi_label(
 	torch.save(checkpoint, mdl_fpth)
 
 	if verbose:
-		print(f"[SAVED] Zero-shot checkpoint: {mdl_fpth}")
+		print(f"[SAVED] {mdl_fpth}")
 
-	# ── Compute/retrieve validation embeddings and similarity matrices ──
-	validation_results = get_validation_metrics(
-		model=model,
-		validation_loader=validation_loader,
-		device=device,
-		topK_values=topk_values,
-		cache_dir=results_dir,
-		is_training=False,
-		model_hash=get_model_hash(model),
-		temperature=temperature,
-		finetune_strategy=None,
-		verbose=verbose,
-	)
-
-	full_metrics = validation_results["full_metrics"]
-	i2t_similarity = validation_results["i2t_similarity"]
-	t2i_similarity = validation_results["t2i_similarity"]
-	device_labels = validation_results["device_labels"]
-
-	# This class order MUST be exactly the order used by get_validation_metrics()
-	# to construct class-text embeddings and similarity-matrix columns/rows.
-	try:
-		class_names = validation_loader.dataset.dataset.classes
-	except AttributeError:
-		try:
-			class_names = validation_loader.dataset.unique_labels
-		except AttributeError as error:
-			raise AttributeError(
-				"Could not recover validation class names. "
-				"The shared protocol can only be mapped if the class-name order "
-				"corresponding to the similarity-matrix columns is available."
-			) from error
-
-	num_classes = len(class_names)
-
-	if i2t_similarity.shape[1] != num_classes:
-		raise ValueError(
-			"Class-name / I2T similarity mismatch: "
-			f"{len(class_names)} class names but "
-			f"{i2t_similarity.shape[1]} similarity columns."
-		)
-
-	if t2i_similarity.shape[0] != num_classes:
-		raise ValueError(
-			"Class-name / T2I similarity mismatch: "
-			f"{len(class_names)} class names but "
-			f"{t2i_similarity.shape[0]} similarity rows."
-		)
-
-	if verbose:
-		print(f"\n[Evaluation class space]")
-		print(f"  ├─ Class names             : {num_classes:,}")
-		print(f"  ├─ I2T similarity          : {tuple(i2t_similarity.shape)}")
-		print(f"  ├─ T2I similarity          : {tuple(t2i_similarity.shape)}")
-		print(f"  └─ Validation labels       : {tuple(device_labels.shape)}")
-
-	# A. ORIGINAL PER-RUN TIERED EVALUATION
-	# These masks belong to the zero-shot run's training-label configuration.
-	# They are retained as descriptive, within-run results, but must NOT be
-	# used for cross-supervision-condition claims.
 	per_run_masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
-		num_classes=num_classes,
 		pw_mode=pw_mode,
 		device=device,
 		verbose=verbose,
 	)
 
-	per_run_active_mask = per_run_masks["active_mask"]
-	per_run_head_mask = per_run_masks["head_mask"]
-	per_run_rare_mask = per_run_masks["rare_mask"]
-	train_freq = per_run_masks["train_freq"]
-
-	# use_fixed_masks=True => min_val_support=1 prevents a run-specific 
-	# adaptive support threshold from redefining a shared tier.
-	tiered_i2t = compute_tiered_retrieval_metrics(
-		similarity_matrix=i2t_similarity,
-		query_labels=device_labels,
-		topK_values=topk_values,
-		head_mask=per_run_head_mask,
-		rare_mask=per_run_rare_mask,
-		active_mask=per_run_active_mask,
-		mode="Image-to-Text",
-		use_fixed_masks=True,
-		verbose=verbose,
-	)
-
-	tiered_t2i = compute_tiered_retrieval_metrics(
-		similarity_matrix=t2i_similarity,
-		query_labels=device_labels,
-		topK_values=topk_values,
-		head_mask=per_run_head_mask,
-		rare_mask=per_run_rare_mask,
-		active_mask=per_run_active_mask,
-		mode="Text-to-Image",
-		use_fixed_masks=True,
-		verbose=verbose,
-	)
-
-	# B. SHARED-PROTOCOL EVALUATION — R1-C
-	if not shared_protocol_path:
-		raise ValueError(
-			"shared_protocol_path is required for R1-C shared-tier evaluation."
-		)
-
-	if not os.path.isfile(shared_protocol_path):
-		raise FileNotFoundError(
-			f"Shared evaluation protocol was not found: {shared_protocol_path}"
-		)
-
-	with open(shared_protocol_path, "r", encoding="utf-8") as file:
-		shared_protocol = json.load(file)
-
-	required_protocol_keys = {
-		"shared_class_names",
-		"head_mask",
-		"rare_mask",
-		"n_classes",
-		"n_head_classes",
-		"n_rare_classes",
-	}
-	missing_protocol_keys = required_protocol_keys - set(shared_protocol)
-	if missing_protocol_keys:
-		raise ValueError(
-			"Invalid shared evaluation protocol: missing keys "
-			f"{sorted(missing_protocol_keys)}"
-		)
-
-	if verbose:
-		print(f"\n[Shared Protocol: R1-C]")
-		print(f"  ├─ Path                    : {shared_protocol_path}")
-		print(f"  ├─ Protocol name           : {shared_protocol.get('protocol_name', 'unknown')}")
-		print(f"  ├─ Shared classes expected : {shared_protocol['n_classes']:,}")
-		print(f"  ├─ Shared head classes     : {shared_protocol['n_head_classes']:,}")
-		print(f"  └─ Shared rare classes     : {shared_protocol['n_rare_classes']:,}")
-
-	shared_masks = build_shared_masks_from_protocol(
-		shared_protocol=shared_protocol,
-		class_names=class_names,
+	results = evaluate_best_model(
+		model=model,
+		validation_loader=validation_loader,
+		active_mask=per_run_masks["active_mask"],
+		head_mask=per_run_masks["head_mask"],
+		rare_mask=per_run_masks["rare_mask"],
+		early_stopping=None,
+		checkpoint_path=None,
+		finetune_strategy=None,
 		device=device,
+		cache_dir=results_dir,
+		temperature=temperature,
+		use_fixed_masks=True,
+		topk_values=topk_values,
+		embeddings_cache=None,
+		lora_params=None,
+		class_embeds_override=None,
+		tier_spec_path=tier_spec_path,
 		verbose=verbose,
 	)
 
-	shared_active_mask = shared_masks["shared_mask"]
-	shared_head_mask = shared_masks["head_mask"]
-	shared_rare_mask = shared_masks["rare_mask"]
+	final_tiered_i2t = results.get('tiered_i2t', {})
+	final_tiered_t2i = results.get('tiered_t2i', {})
 
-	expected_shared_classes = int(shared_protocol["n_classes"])
-	mapped_shared_classes = int(shared_active_mask.sum().item())
-
-	if mapped_shared_classes != expected_shared_classes:
-		raise ValueError(
-			"Shared-protocol mapping is incomplete: "
-			f"mapped {mapped_shared_classes}/{expected_shared_classes} shared classes. "
-			"Do not report these results: the baseline is not being evaluated "
-			"over the same vocabulary as the supervision conditions."
-		)
-
-	if (shared_head_mask & shared_rare_mask).any():
-		overlap_indices = torch.where(shared_head_mask & shared_rare_mask)[0].tolist()
-		overlap_names = [class_names[index] for index in overlap_indices[:10]]
-		raise ValueError(
-			"Invalid shared protocol: head and rare masks overlap. "
-			f"Examples: {overlap_names}"
-		)
+	final_shared_tiered_i2t = results.get('shared_tiered_i2t', {})
+	final_shared_tiered_t2i = results.get('shared_tiered_t2i', {})
 
 	if verbose:
-		shared_val_support = device_labels[:, shared_active_mask].sum(dim=0)
-		zero_support_shared = int((shared_val_support == 0).sum().item())
-		zero_support_head = int(
-			(device_labels[:, shared_head_mask].sum(dim=0) == 0).sum().item()
+		print(f"\n{mode.upper()} {model_arch}")
+		print(f"{mdl_fpth}")
+		print(
+			f"Total: {total_params:,} "
+			f"Trainable: {trainable_params:,} ({trainable_pct:.2f}%) "
+			f"Frozen: {frozen_params:,} ({frozen_pct:.2f}%)"
 		)
-		zero_support_rare = int(
-			(device_labels[:, shared_rare_mask].sum(dim=0) == 0).sum().item()
-		)
+		print(f"pw_mode: {pw_mode}")
 
-		print(f"\n[Shared-protocol validation support]")
-		print(f"  ├─ Shared classes mapped   : {mapped_shared_classes:,}")
-		print(f"  ├─ Shared classes with 0 val positives : {zero_support_shared:,}")
-		print(f"  ├─ Head classes with 0 val positives   : {zero_support_head:,}")
-		print(f"  └─ Rare classes with 0 val positives   : {zero_support_rare:,}")
+		print(f"{'='*50}")
+		print("[Tiered] I2T Retrieval")
+		for tier, m in final_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n[Tiered] T2I Retrieval")
+		for tier, m in final_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
 
-		if zero_support_rare > 0:
-			print(
-				f"  [WARNING] {zero_support_rare} fixed shared-rare class(es) "
-				f"have no positive validation samples in this run. They remain "
-				f"part of the fixed protocol but cannot contribute T2I positives."
-			)
+		print("\n[Shared Tiered] I2T Retrieval")
+		for tier, m in final_shared_tiered_i2t.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print("\n[Shared Tiered] T2I Retrieval")
+		for tier, m in final_shared_tiered_t2i.items():
+			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
+		print(f"{'='*50}")
 
-	# use_fixed_masks=True => min_val_support=1 prevents a run-specific 
-	# adaptive support threshold from redefining a shared tier.
-	shared_tiered_i2t = compute_tiered_retrieval_metrics(
-		similarity_matrix=i2t_similarity,
-		query_labels=device_labels,
-		topK_values=topk_values,
-		head_mask=shared_head_mask,
-		rare_mask=shared_rare_mask,
-		active_mask=shared_active_mask,
-		mode="Image-to-Text",
-		use_fixed_masks=True,
-		verbose=verbose,
-	)
-
-	shared_tiered_t2i = compute_tiered_retrieval_metrics(
-		similarity_matrix=t2i_similarity,
-		query_labels=device_labels,
-		topK_values=topk_values,
-		head_mask=shared_head_mask,
-		rare_mask=shared_rare_mask,
-		active_mask=shared_active_mask,
-		mode="Text-to-Image",
-		use_fixed_masks=True,
-		verbose=verbose,
-	)
-
-	def print_tier_summary(title: str, tiered_metrics: Dict) -> None:
-		print(f"\n{title}")
-		for tier_name, metrics in tiered_metrics.items():
-			print(
-				f"  {tier_name:8s} "
-				f"mAP@10={metrics['mAP'].get('10'):.4f}  "
-				f"R@10={metrics['Recall'].get('10'):.4f}"
-			)
-
-	if verbose:
-		print(f"\n{'=' * 70}")
-
-		print_tier_summary(
-			f"{mode.upper()} original per-run I2T tiers",
-			tiered_i2t,
-		)
-
-		print_tier_summary(
-			f"{mode.upper()} original per-run T2I tiers",
-			tiered_t2i,
-		)
-
-		print_tier_summary(
-			f"{mode.upper()} fixed shared-protocol I2T tiers",
-			shared_tiered_i2t,
-		)
-
-		print_tier_summary(
-			f"{mode.upper()} fixed shared-protocol T2I tiers",
-			shared_tiered_t2i,
-		)
-
-		print(f"{'=' * 70}")
-
-	del i2t_similarity, t2i_similarity
-	torch.cuda.empty_cache()
-
-	result = {
-		"full_metrics": full_metrics,
-		"img2txt_metrics": validation_results["img2txt_metrics"],
-		"txt2img_metrics": validation_results["txt2img_metrics"],
-
-		# Original within-run tiers: descriptive only; not cross-condition comparable.
-		"tiered_i2t": tiered_i2t,
-		"tiered_t2i": tiered_t2i,
-
-		# common-vocabulary tiers: use these for R1-C comparisons/tables.
-		"shared_tiered_i2t": shared_tiered_i2t,
-		"shared_tiered_t2i": shared_tiered_t2i,
-
-		"model_loaded_from": "zero_shot_base_model",
-		"shared_protocol_path": shared_protocol_path,
-	}
-
-	return result
+	return results
 
 def probe_multi_label(
 	model: torch.nn.Module,
@@ -374,7 +239,7 @@ def probe_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
-	shared_protocol_path: str,
+	tier_spec_path: str,
 	patience: int = 10,
 	min_delta: float = 1e-4,
 	cumulative_delta: float = 5e-3,
@@ -414,12 +279,6 @@ def probe_multi_label(
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 
-	try:
-		class_names = validation_loader.dataset.unique_labels
-	except AttributeError:
-		class_names = validation_loader.dataset.dataset.classes	
-	num_classes = len(class_names)
-
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_multi_label', '', mode)
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
@@ -428,7 +287,7 @@ def probe_multi_label(
 	if verbose:
 		print(f"\n{mode.upper()} [Multi-Label]")
 		print(f"   ├─ {model_name} {model_arch}")
-		print(f"   ├─ {dataset_name} {num_classes} classes")
+		print(f"   ├─ {dataset_name}")
 		print(f"   ├─ Batch size : {train_loader.batch_size}")
 		print(f"   ├─ Device     : {type(device)} {device}")
 		print(f"   ├─ Temperature: {temperature}")
@@ -463,11 +322,11 @@ def probe_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
-		num_classes=num_classes,
 		pw_mode=pw_mode,
 		device=device,
 		verbose=verbose,
 	)
+
 	pos_weight = masks["pos_weight"]
 	active_mask = masks["active_mask"]
 	head_mask = masks["head_mask"]
@@ -480,14 +339,13 @@ def probe_multi_label(
 	# as i2t_sim — so criterion_i2t with pos_weight applies directly.
 	# No criterion_t2i needed: the probe has no T2I direction.
 	criterion = torch.nn.BCEWithLogitsLoss(
-		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
+		pos_weight=pos_weight,
 		reduction='none',
 	)
 	if verbose:
 		print(f"\n{criterion.__class__.__name__}")
 		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"   ├─ samples: {N} label(s): {num_classes}")
-		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
 
@@ -574,8 +432,7 @@ def probe_multi_label(
 		def extract_features(loader, desc):
 			feats, lbls = [], []
 
-			with torch.no_grad():
-				with torch.amp.autocast(
+			with torch.no_grad(), torch.amp.autocast(
 					device_type=device.type, 
 					enabled=torch.cuda.is_available(),
 					dtype=amp_dtype,
@@ -858,7 +715,7 @@ def probe_multi_label(
 		temperature=temperature,
 		class_embeds_override=probe.weight.detach().clone(),
 		use_fixed_masks=True,
-		shared_protocol_path=shared_protocol_path,
+		tier_spec_path=tier_spec_path,
 		verbose=verbose,
 	)
 
@@ -968,7 +825,7 @@ def full_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
-	shared_protocol_path: str,
+	tier_spec_path: str,
 	patience: int,
 	min_delta: float,
 	cumulative_delta: float,
@@ -1008,19 +865,13 @@ def full_finetune_multi_label(
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 
-	try:
-		class_names = validation_loader.dataset.unique_labels
-	except AttributeError:
-		class_names = validation_loader.dataset.dataset.classes
-	num_classes = len(class_names)
-	
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
 
 	if verbose:
 		print(f"{mode.upper()}-FT")
 		print(f"  ├─ {model_name} {model_arch}")
-		print(f"  ├─ {dataset_name} {num_classes} classes")
+		print(f"  ├─ {dataset_name}")
 		print(f"  ├─ Epochs: {num_epochs}  Batch size: {train_loader.batch_size}  Device: {type(device)} {device}")
 		print(f"  ├─ Learning rate: {learning_rate}  Weight decay: {weight_decay}  Patience: {patience}")
 		print(f"  ├─ Loss weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
@@ -1074,7 +925,6 @@ def full_finetune_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
-		num_classes=num_classes,
 		pw_mode=pw_mode,
 		# pw_max_cap=100.0,
 		device=device,
@@ -1090,60 +940,30 @@ def full_finetune_multi_label(
 	# sys.exit()
 	# I2T: pos_weight applies — rows are images, cols are classes
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
-		pos_weight=pos_weight,   # [num_classes], broadcasts over last dim correctly
+		pos_weight=pos_weight,
 		reduction='none',
 	)
 
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
 		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"   ├─ samples: {N} label(s): {num_classes}")
-		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
 
 	# T2I: no pos_weight — rows are classes, cols are batch images
 	# The imbalance is already corrected via I2T; T2I provides directional symmetry
-	criterion_t2i = torch.nn.BCEWithLogitsLoss(
-		reduction='none',
-	)
-
+	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none',)
 	if verbose:
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 
-	model.eval()
-	all_class_embeds = []
-	text_batch_size = validation_loader.batch_size
-	if verbose:
-		print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
-	with torch.no_grad():
-		with torch.amp.autocast(
-			device_type=device.type, 
-			enabled=torch.cuda.is_available(),
-			dtype=amp_dtype,
-		):
-			for i in range(0, num_classes, text_batch_size):
-				end_idx = min(i + text_batch_size, num_classes)
-				batch_class_names = class_names[i:end_idx]
-
-				batch_class_texts = clip.tokenize(batch_class_names).to(device)
-				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
-				all_class_embeds.append(batch_embeds.cpu()) # Move to CPU immediately to save GPU memory
-				
-				# Clean up
-				del batch_class_texts, batch_embeds
-				torch.cuda.empty_cache()
-	
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
-	
-	if verbose:
-		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
-		print(f"   ├─ {type(all_class_embeds)}")
-		print(f"   ├─ {all_class_embeds.shape}")
-		print(f"   ├─ {all_class_embeds.dtype}")
-		print(f"   └─ {all_class_embeds.device}")
+	all_class_embeds = get_text_embeddings(
+		model=model,
+		loader=validation_loader,
+		dtype=amp_dtype,
+		verbose=verbose,
+	)
 
 	# Optimizer
 	full_params = [p for p in model.parameters() if p.requires_grad]
@@ -1440,7 +1260,7 @@ def full_finetune_multi_label(
 		topk_values=topk_values,
 		temperature=temperature,
 		use_fixed_masks=True,
-		shared_protocol_path=shared_protocol_path,
+		tier_spec_path=tier_spec_path,
 		verbose=verbose,
 	)
 
@@ -1559,7 +1379,7 @@ def lora_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
-	shared_protocol_path: str,
+	tier_spec_path: str,
 	lora_rank: int,
 	lora_alpha: float,
 	lora_dropout: float,
@@ -1604,19 +1424,13 @@ def lora_finetune_multi_label(
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 	
-	try:
-		class_names = validation_loader.dataset.unique_labels
-	except AttributeError:
-		class_names = validation_loader.dataset.dataset.classes
-	num_classes = len(class_names)
-	
 	if verbose:
 		print(f"\n{mode.upper()}")
 		print(f"   ├─ {model_name} {model_arch}")
 		print(f"   ├─ Rank: {lora_rank}")
 		print(f"   ├─ Alpha: {lora_alpha}")
 		print(f"   ├─ Dropout: {lora_dropout}")
-		print(f"   ├─ {dataset_name} classes: {num_classes}")
+		print(f"   ├─ {dataset_name}")
 		print(f"   ├─ Batch size : {train_loader.batch_size}")
 		print(f"   ├─ Device     : {type(device)} {device}")
 		print(f"   ├─ Temperature: {temperature}")
@@ -1667,12 +1481,9 @@ def lora_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode, verbose=verbose)
 	get_parameters_info_orig(model=model, mode=mode)
 
-
-
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
-		num_classes=num_classes,
 		pw_mode=pw_mode, # orig: sqrt
 		# pw_max_cap=50.0,
 		device=device,
@@ -1696,8 +1507,7 @@ def lora_finetune_multi_label(
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
 		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"   ├─ samples: {N} label(s): {num_classes}")
-		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
 
@@ -1710,35 +1520,12 @@ def lora_finetune_multi_label(
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 	
-	# ── Pre-encode class texts (frozen text encoder — valid for entire run) ──
-	model.eval()
-	all_class_embeds = []
-	text_batch_size = validation_loader.batch_size
-	if verbose:
-		print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
-	with torch.no_grad():
-		with torch.amp.autocast(
-			device_type=device.type, 
-			enabled=torch.cuda.is_available(),
-			dtype=amp_dtype,
-		):
-			for i in range(0, num_classes, text_batch_size):
-				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
-				embeds = model.encode_text(batch_tokens)
-				embeds = torch.nn.functional.normalize(embeds, dim=-1)
-				all_class_embeds.append(embeds.cpu())
-
-				del batch_tokens, embeds
-				torch.cuda.empty_cache()
-	
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
-	
-	if verbose:
-		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
-		print(f"   ├─ {type(all_class_embeds)}")
-		print(f"   ├─ {all_class_embeds.shape}")
-		print(f"   ├─ {all_class_embeds.dtype}")
-		print(f"   └─ {all_class_embeds.device}")
+	all_class_embeds = get_text_embeddings(
+		model=model,
+		loader=validation_loader,
+		dtype=amp_dtype,
+		verbose=verbose,
+	)
 
 	# Optimizer — LoRA parameters only
 	lora_params = [p for p in model.parameters() if p.requires_grad]	
@@ -2014,7 +1801,7 @@ def lora_finetune_multi_label(
 		temperature=temperature,
 		topk_values=topk_values,
 		use_fixed_masks=True,
-		shared_protocol_path=shared_protocol_path,
+		tier_spec_path=tier_spec_path,
 		verbose=verbose,
 	)
 
@@ -2128,7 +1915,7 @@ def lora_plus_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
-	shared_protocol_path: str,
+	tier_spec_path: str,
 	lora_rank: int,
 	lora_alpha: float,
 	lora_dropout: float,
@@ -2227,13 +2014,6 @@ def lora_plus_finetune_multi_label(
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 	
-	# Get dataset information
-	try:
-		class_names = validation_loader.dataset.unique_labels
-	except AttributeError:
-		class_names = validation_loader.dataset.dataset.classes
-	num_classes = len(class_names)	
-
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_finetune_multi_label', '', mode)
 	
@@ -2242,7 +2022,7 @@ def lora_plus_finetune_multi_label(
 	
 	if verbose:
 		print(f"\n{mode.upper()} {model_name} {model_arch}")
-		print(f"   ├─ {dataset_name} {num_classes} classes")
+		print(f"   ├─ {dataset_name}")
 		print(f"   ├─ Batch size: {train_loader.batch_size}  Device: {type(device)} {device}")
 		if quantized:
 			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
@@ -2379,11 +2159,9 @@ def lora_plus_finetune_multi_label(
 		else:
 			print(f"  └─ GradScaler: disabled")
 
-
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
-		num_classes=num_classes,
 		pw_mode=pw_mode, #orig: "sqrt",
 		# pw_max_cap=50.0,
 		device=device,
@@ -2408,8 +2186,7 @@ def lora_plus_finetune_multi_label(
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
 		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"   ├─ samples: {N} x label(s): {num_classes}")
-		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
 
@@ -2421,34 +2198,12 @@ def lora_plus_finetune_multi_label(
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 
-	# Pre-encode class texts (frozen text encoder — valid for entire run)
-	model.eval()
-	all_class_embeds = []
-	text_batch_size = validation_loader.batch_size
-	print(f"\nPre-encoding {num_classes} class texts (batch_size: {text_batch_size})")
-	with torch.no_grad():
-		with torch.amp.autocast(
-			device_type=device.type, 
-			enabled=amp_enabled,#torch.cuda.is_available(),
-			dtype=amp_dtype,
-		):
-			for i in range(0, num_classes, text_batch_size):
-				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
-				embeds = model.encode_text(batch_tokens)
-				embeds = torch.nn.functional.normalize(embeds, dim=-1)
-				all_class_embeds.append(embeds.cpu())
-
-				del batch_tokens, embeds
-				torch.cuda.empty_cache()
-
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
-
-	if verbose:
-		print(f"All {num_classes} labels Embeddings (frozen text encoder)")
-		print(f"   ├─ {type(all_class_embeds)}")
-		print(f"   ├─ {all_class_embeds.shape} [n_labels, embed_dim]")
-		print(f"   ├─ {all_class_embeds.dtype}")
-		print(f"   └─ {all_class_embeds.device}")
+	all_class_embeds = get_text_embeddings(
+		model=model,
+		loader=validation_loader,
+		dtype=amp_dtype,
+		verbose=verbose,
+	)
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -2842,7 +2597,7 @@ def lora_plus_finetune_multi_label(
 		temperature=temperature,
 		topk_values=topk_values,
 		use_fixed_masks=True,
-		shared_protocol_path=shared_protocol_path,
+		tier_spec_path=tier_spec_path,
 		verbose=verbose,
 	)
 	
@@ -2967,7 +2722,7 @@ def rslora_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
-	shared_protocol_path: str,
+	tier_spec_path: str,
 	lora_rank: int,
 	lora_alpha: float,
 	lora_dropout: float,
@@ -3027,19 +2782,12 @@ def rslora_finetune_multi_label(
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 
-	try:
-		class_names = validation_loader.dataset.unique_labels
-	except AttributeError:
-		class_names = validation_loader.dataset.dataset.classes
-	num_classes = len(class_names)
-
 	if verbose:
 		print(f"\n{mode.upper()}")
-		print(f"   ├─ {model_name} {model_arch}")
+		print(f"   ├─ {dataset_name} | {model_name} {model_arch}")
 		print(f"   ├─ Rank           : {lora_rank}")
 		print(f"   ├─ Alpha (input)  : {lora_alpha}")
 		print(f"   ├─ Dropout        : {lora_dropout}")
-		print(f"   ├─ Dataset        : {dataset_name}  classes: {num_classes}")
 		print(f"   ├─ Batch size     : {train_loader.batch_size}")
 		print(f"   ├─ Device         : {type(device)} {device}")
 		print(f"   ├─ Temperature    : {temperature}")
@@ -3075,7 +2823,6 @@ def rslora_finetune_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
-		num_classes=num_classes,
 		pw_mode=pw_mode, # orig: "sqrt",
 		# pw_max_cap=50.0,
 		device=device,
@@ -3088,8 +2835,6 @@ def rslora_finetune_multi_label(
 	N           = masks["N"]
 	train_freq  = masks["train_freq"]
 
-	# sys.exit()
-
 	# Criteria
 	criterion_i2t = torch.nn.BCEWithLogitsLoss(
 		pos_weight=pos_weight,
@@ -3098,7 +2843,6 @@ def rslora_finetune_multi_label(
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
 		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"   ├─ samples: {N} classes: {num_classes}")
 		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item()}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item()}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min()}, {train_freq.max()}]")
@@ -3108,35 +2852,12 @@ def rslora_finetune_multi_label(
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 
-	# Pre-encode class texts (frozen text encoder)
-	model.eval()
-	all_class_embeds = []
-	text_batch_size = validation_loader.batch_size
-	if verbose:
-		print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
-	with torch.no_grad():
-		with torch.amp.autocast(
-			device_type=device.type, 
-			enabled=torch.cuda.is_available(),
-			dtype=amp_dtype,
-		):
-			for i in range(0, num_classes, text_batch_size):
-				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
-				embeds = model.encode_text(batch_tokens)
-				embeds = torch.nn.functional.normalize(embeds, dim=-1)
-				all_class_embeds.append(embeds.cpu())
-
-				del batch_tokens, embeds
-				torch.cuda.empty_cache()
-
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
-
-	if verbose:
-		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
-		print(f"   ├─ {type(all_class_embeds)}")
-		print(f"   ├─ {all_class_embeds.shape}")
-		print(f"   ├─ {all_class_embeds.dtype}")
-		print(f"   └─ {all_class_embeds.device}")
+	all_class_embeds = get_text_embeddings(
+		model=model,
+		loader=validation_loader,
+		dtype=amp_dtype,
+		verbose=verbose,
+	)
 
 	early_stopping = EarlyStopping(
 		patience=patience,
@@ -3464,7 +3185,7 @@ def rslora_finetune_multi_label(
 		temperature=temperature,
 		topk_values=topk_values,
 		use_fixed_masks=True,
-		shared_protocol_path=shared_protocol_path,
+		tier_spec_path=tier_spec_path,
 		verbose=verbose,
 	)
 
@@ -3580,7 +3301,7 @@ def dora_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
-	shared_protocol_path: str,
+	tier_spec_path: str,
 	lora_rank: int,
 	lora_alpha: float,
 	lora_dropout: float,
@@ -3650,12 +3371,6 @@ def dora_finetune_multi_label(
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 
-	try:
-		class_names = validation_loader.dataset.unique_labels
-	except AttributeError:
-		class_names = validation_loader.dataset.dataset.classes
-	num_classes = len(class_names)
-
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_finetune_multi_label', '', mode)
 
@@ -3664,11 +3379,11 @@ def dora_finetune_multi_label(
 
 	if verbose:
 		print(f"\n{mode.upper()} [Multi-Label]")
+		print(f"   ├─ {model_name} {model_arch}")
+		print(f"   ├─ {dataset_name}")
 		print(f"   ├─ Rank: {lora_rank}")
 		print(f"   ├─ Alpha: {lora_alpha}")
 		print(f"   ├─ Dropout: {lora_dropout}")
-		print(f"   ├─ Model      : {model_name} {model_arch}")
-		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
 		print(f"   ├─ Batch size : {train_loader.batch_size}")
 		print(f"   ├─ Device     : {type(device)} {device}")
 		print(f"   ├─ Learning rate: {learning_rate}  Weight decay: {weight_decay}")
@@ -3704,12 +3419,9 @@ def dora_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode, verbose=verbose)
 	get_parameters_info_orig(model=model, mode=mode)
 
-
-
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
-		num_classes=num_classes,
 		pw_mode=pw_mode, # orig: "sqrt",
 		# pw_max_cap=50.0,
 		device=device,
@@ -3732,50 +3444,23 @@ def dora_finetune_multi_label(
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
 		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"   ├─ samples: {N}")
-		print(f"   ├─ label(s): {num_classes}")
-		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
 
 	# T2I: no pos_weight — rows are classes, cols are batch images
 	# The imbalance is already corrected via I2T; T2I provides directional symmetry
-	criterion_t2i = torch.nn.BCEWithLogitsLoss(
-		reduction='none',
-	)
-
+	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none',)
 	if verbose:
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 
-	model.eval()
-	all_class_embeds = []
-	text_batch_size = validation_loader.batch_size
-	if verbose:
-		print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
-	with torch.no_grad():
-		with torch.amp.autocast(
-			device_type=device.type, 
-			enabled=torch.cuda.is_available(),
-			dtype=amp_dtype,
-		):
-			for i in range(0, num_classes, text_batch_size):
-				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
-				embeds = model.encode_text(batch_tokens)
-				embeds = torch.nn.functional.normalize(embeds, dim=-1)
-				all_class_embeds.append(embeds.cpu())
-
-				del batch_tokens, embeds
-				torch.cuda.empty_cache()
-	
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
-
-	if verbose:
-		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
-		print(f"   ├─ {type(all_class_embeds)}")
-		print(f"   ├─ {all_class_embeds.shape}")
-		print(f"   ├─ {all_class_embeds.dtype}")
-		print(f"   └─ {all_class_embeds.device}")
+	all_class_embeds = get_text_embeddings(
+		model=model,
+		loader=validation_loader,
+		dtype=amp_dtype,
+		verbose=verbose,
+	)
 
 	# Optimizer setup
 	dora_params = [p for p in model.parameters() if p.requires_grad]
@@ -4089,7 +3774,7 @@ def dora_finetune_multi_label(
 		temperature=temperature,
 		topk_values=topk_values,
 		use_fixed_masks=True,
-		shared_protocol_path=shared_protocol_path,
+		tier_spec_path=tier_spec_path,
 		verbose=verbose,
 	)
 
@@ -4210,7 +3895,7 @@ def vera_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
-	shared_protocol_path: str,
+	tier_spec_path: str,
 	lora_rank: int,
 	lora_alpha: float,
 	lora_dropout: float,
@@ -4311,13 +3996,6 @@ def vera_finetune_multi_label(
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 
-	# Get dataset information
-	try:
-		class_names = validation_loader.dataset.unique_labels
-	except AttributeError:
-		class_names = validation_loader.dataset.dataset.classes
-	num_classes = len(class_names)
-
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_finetune_multi_label', '', mode)
 
@@ -4326,11 +4004,11 @@ def vera_finetune_multi_label(
 
 	if verbose:
 		print(f"\n{mode.upper()} [Multi-Label]")
+		print(f"   ├─ {model_name} {model_arch}")
+		print(f"   ├─ {dataset_name}")
 		print(f"   ├─ Rank: {lora_rank}")
 		print(f"   ├─ Alpha: {lora_alpha} (not used in VeRA)")
 		print(f"   ├─ Dropout: {lora_dropout}")
-		print(f"   ├─ Model      : {model_name} {model_arch}")
-		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
 		print(f"   ├─ Batch size : {train_loader.batch_size}")
 		print(f"   ├─ Device     : {type(device)} {device}")
 		print(f"   ├─ Learning rate: {learning_rate}  Weight decay: {weight_decay}")
@@ -4350,7 +4028,6 @@ def vera_finetune_multi_label(
 		if verbose:
 			print(f"   └─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 
-	# Apply VeRA to the model
 	model = get_injected_peft_clip(
 		clip_model=model,
 		method=mode,
@@ -4367,11 +4044,9 @@ def vera_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode, verbose=verbose)
 	get_parameters_info_orig(model=model, mode=mode)
 
-
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
-		num_classes=num_classes,
 		pw_mode=pw_mode,# orig: "log",
 		device=device,
 		verbose=verbose,
@@ -4392,9 +4067,7 @@ def vera_finetune_multi_label(
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
 		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"   ├─ samples: {N}")
-		print(f"   ├─ labels: {num_classes}")
-		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
 
@@ -4407,35 +4080,14 @@ def vera_finetune_multi_label(
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 
-	model.eval()
-	all_class_embeds = []
-	text_batch_size = validation_loader.batch_size
-	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
-	with torch.no_grad():
-		with torch.amp.autocast(
-			device_type=device.type, 
-			enabled=torch.cuda.is_available(),
-			dtype=amp_dtype,
-		):
-			for i in range(0, num_classes, text_batch_size):
-				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
-				embeds = model.encode_text(batch_tokens)
-				embeds = torch.nn.functional.normalize(embeds, dim=-1)
-				all_class_embeds.append(embeds.cpu())
+	all_class_embeds = get_text_embeddings(
+		model=model,
+		loader=validation_loader,
+		dtype=amp_dtype,
+		verbose=verbose,
+	)
 
-				del batch_tokens, embeds
-				torch.cuda.empty_cache()
-	
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
-	
-	if verbose:
-		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
-		print(f"   ├─ {type(all_class_embeds)}")
-		print(f"   ├─ {all_class_embeds.shape}")
-		print(f"   ├─ {all_class_embeds.dtype}")
-		print(f"   └─ {all_class_embeds.device}")
-
-	# Optimizer setup
+	# Optimizer
 	vera_params = [p for p in model.parameters() if p.requires_grad]
 
 	optimizer = torch.optim.AdamW(
@@ -4792,7 +4444,7 @@ def vera_finetune_multi_label(
 		temperature=temperature,
 		topk_values=topk_values,
 		use_fixed_masks=True,
-		shared_protocol_path=shared_protocol_path,
+		tier_spec_path=tier_spec_path,
 		verbose=verbose,
 	)
 
@@ -4911,7 +4563,7 @@ def ia3_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
-	shared_protocol_path: str,
+	tier_spec_path: str,
 	patience: int,
 	min_delta: float,
 	cumulative_delta: float,
@@ -5001,13 +4653,6 @@ def ia3_finetune_multi_label(
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 
-	# Get dataset information
-	try:
-		class_names = validation_loader.dataset.unique_labels
-	except AttributeError:
-		class_names = validation_loader.dataset.dataset.classes
-	num_classes = len(class_names)
-
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_finetune_multi_label', '', mode)
 
@@ -5017,7 +4662,7 @@ def ia3_finetune_multi_label(
 	if verbose:
 		print(f"\n{mode.upper()} [Multi-Label]")
 		print(f"   ├─ Model      : {model_name} {model_arch}")
-		print(f"   ├─ Dataset    : {dataset_name}  classes: {num_classes}")
+		print(f"   ├─ Dataset    : {dataset_name}")
 		print(f"   ├─ Batch size : {train_loader.batch_size}")
 		print(f"   ├─ Device     : {type(device)} {device}")
 		print(f"   ├─ Learning rate: {learning_rate}  Weight decay: {weight_decay}")
@@ -5052,11 +4697,9 @@ def ia3_finetune_multi_label(
 	get_parameters_info(model=model, mode=mode, verbose=verbose)
 	get_parameters_info_orig(model=model, mode=mode)
 
-
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
-		num_classes=num_classes,
 		pw_mode=pw_mode, # orig: "log",
 		device=device,
 		verbose=verbose,
@@ -5078,49 +4721,25 @@ def ia3_finetune_multi_label(
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
 		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
 		print(f"   ├─ samples: {N}")
-		print(f"   ├─ label(s): {num_classes}")
-		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
 
 	# T2I: no pos_weight — rows are classes, cols are batch images
 	# The imbalance is already corrected via I2T; T2I provides directional symmetry
-	criterion_t2i = torch.nn.BCEWithLogitsLoss(
-		reduction='none',
-	)
+	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none',)
 	if verbose:
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
 	
-	model.eval()
-	all_class_embeds = []
-	text_batch_size = validation_loader.batch_size
-	print(f"\nPre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
-	with torch.no_grad():
-		with torch.amp.autocast(
-			device_type=device.type, 
-			enabled=torch.cuda.is_available(),
-			dtype=amp_dtype,
-		):
-			for i in range(0, num_classes, text_batch_size):
-				batch_tokens = clip.tokenize(class_names[i:i+text_batch_size]).to(device)
-				embeds = model.encode_text(batch_tokens)
-				embeds = torch.nn.functional.normalize(embeds, dim=-1)
-				all_class_embeds.append(embeds.cpu())
+	all_class_embeds = get_text_embeddings(
+		model=model,
+		loader=validation_loader,
+		dtype=amp_dtype,
+		verbose=verbose,
+	)
 
-				del batch_tokens, embeds
-				torch.cuda.empty_cache()
-	
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device).detach()
-
-	if verbose:
-		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
-		print(f"   ├─ {type(all_class_embeds)}")
-		print(f"   ├─ {all_class_embeds.shape}")
-		print(f"   ├─ {all_class_embeds.dtype}")
-		print(f"   └─ {all_class_embeds.device}")
-
-	# Optimizer setup
+	# Optimizer
 	ia3_params = [p for p in model.parameters() if p.requires_grad]
 	optimizer = torch.optim.AdamW(
 		params=ia3_params,
@@ -5425,7 +5044,7 @@ def ia3_finetune_multi_label(
 		temperature=temperature,
 		topk_values=topk_values,
 		use_fixed_masks=True,
-		shared_protocol_path=shared_protocol_path,
+		tier_spec_path=tier_spec_path,
 		verbose=verbose,
 	)
 
@@ -5542,7 +5161,7 @@ def clip_adapter_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
-	shared_protocol_path: str,
+	tier_spec_path: str,
 	clip_adapter_method: str,  # "clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"
 	bottleneck_dim: int = 256,
 	activation: str = "relu",
@@ -5591,12 +5210,6 @@ def clip_adapter_finetune_multi_label(
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 
-	try:
-		class_names = validation_loader.dataset.unique_labels
-	except AttributeError:
-		class_names = validation_loader.dataset.dataset.classes
-	num_classes = len(class_names)
-
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_finetune_multi_label', '', mode)
 
@@ -5615,11 +5228,11 @@ def clip_adapter_finetune_multi_label(
 
 	if verbose:
 		print(f"{mode.upper()} [Multi-Label] variant: {clip_adapter_method} bottleneck={bottleneck_dim} act={activation}")
-		print(f"   ├─ {dataset_name} with {num_classes} labels")
+		print(f"   ├─ {dataset_name}")
 		print(f"   ├─ {model_name} {model_arch}")
 		print(f"   ├─ Batch size : {train_loader.batch_size}")
 		print(f"   ├─ Temperature: {temperature}")
-		print(f"   ├─ Loss weights: I2T={loss_weights['i2t']}, T2I={loss_weights['t2i']}")
+		print(f"   ├─ Loss weights: {loss_weights}")
 		print(f"   ├─ Text adapter active: {text_adapter_active}")
 	
 	if torch.cuda.is_available():
@@ -5670,7 +5283,6 @@ def clip_adapter_finetune_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
-		num_classes=num_classes,
 		pw_mode="log",
 		device=device,
 		verbose=verbose,
@@ -5687,7 +5299,7 @@ def clip_adapter_finetune_multi_label(
 	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none')
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}  pos_weight range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"   ├─ N={N}  classes={num_classes}  active={active_mask.sum().item():,}")
+		print(f"   ├─ N={N} active={active_mask.sum().item():,}")
 		print(f"[T2I] {criterion_t2i.__class__.__name__} no pos_weight")
 
 	# Optimizer
@@ -5764,36 +5376,13 @@ def clip_adapter_finetune_multi_label(
 		f".pth"
 	)
 
-	# Pre-encode class texts
-	# clip_adapter_v: text encoder is fully frozen → encode once, reuse forever.
-	# clip_adapter_t / clip_adapter_vt: text adapter changes every step →
-	#   we keep the raw tokens and re-encode at the start of each epoch.
-	text_batch_size = validation_loader.batch_size
-	all_class_tokens = clip.tokenize(class_names).to(device)  # always kept
-
-	def encode_class_texts() -> torch.Tensor:
-		"""Encode all class names through the current text encoder (with adapter if active)."""
-		model.eval()
-		embeds_list = []
-		with torch.no_grad():
-			with torch.amp.autocast(
-				device_type=device.type, 
-				enabled=torch.cuda.is_available(),
-				dtype=amp_dtype,
-			):
-				for i in range(0, num_classes, text_batch_size):
-					batch_tokens = all_class_tokens[i:i+text_batch_size]
-					e = model.encode_text(batch_tokens)
-					e = torch.nn.functional.normalize(e, dim=-1)
-					embeds_list.append(e.cpu())
-		return torch.cat(embeds_list, dim=0).to(device).detach()
-
 	if not text_adapter_active:
-		# clip_adapter_v: encode once, frozen for entire run
-		print(f"\n>> Pre-encoding {num_classes} class texts (vision-only adapter — encode once)...")
-		all_class_embeds = encode_class_texts()
-		if verbose:
-			print(f"all_class_embeds: {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+		all_class_embeds = get_text_embeddings(
+			model=model,
+			loader=validation_loader,
+			dtype=amp_dtype,
+			verbose=verbose,
+		)
 	else:
 		# clip_adapter_t / clip_adapter_vt: will encode at start of each epoch
 		all_class_embeds = None
@@ -6033,7 +5622,7 @@ def clip_adapter_finetune_multi_label(
 		topk_values=topk_values,
 		temperature=temperature,
 		use_fixed_masks=True,
-		shared_protocol_path=shared_protocol_path,
+		tier_spec_path=tier_spec_path,
 		verbose=verbose,
 	)
 
@@ -6153,7 +5742,7 @@ def tip_adapter_finetune_multi_label(
 	weight_decay: float,
 	device: str,
 	results_dir: str,
-	shared_protocol_path: str,
+	tier_spec_path: str,
 	tip_adapter_method: str,  # "tip_adapter" or "tip_adapter_f"
 	patience: int,
 	min_delta: float,
@@ -6304,15 +5893,11 @@ def tip_adapter_finetune_multi_label(
 			images = images.to(device, non_blocking=True)
 			label_vectors = label_vectors.to(device, non_blocking=True)
 			
-			# # Extract features for the batch immediately using the GPU
-			# batch_features = model.encode_image(images)
-			# batch_features = torch.nn.functional.normalize(batch_features, dim=-1).cpu()
-
 			# Half-precision inference for speed + lower VRAM
 			with torch.amp.autocast(
 				device_type=device.type,
 				enabled=torch.cuda.is_available(),
-				dtype=torch.float16,  # bf16 on GH200, fp16 on cap<8 GPUs — same as training loop
+				dtype=amp_dtype,
 			):
 				batch_features = model.encode_image(images)
 
@@ -6374,44 +5959,12 @@ def tip_adapter_finetune_multi_label(
 		print(f"Support label vectors shape: {support_label_vectors.shape}")
 		print("-"*100)
 	
-	# === PRE-ENCODE CLASS EMBEDDINGS ===
-	if verbose:
-		print("\nPre-encoding class embeddings for all classes...")
-	
-	# Pre-encode in batches
-	text_batch_size = train_loader.batch_size
-	all_class_embeds = []
-	model.eval()
-	
-	with torch.no_grad():
-		with torch.amp.autocast(
-			device_type=device.type, 
-			enabled=torch.cuda.is_available(),
-			dtype=amp_dtype,
-		):
-			for i in range(0, num_classes, text_batch_size):
-				end_idx = min(i + text_batch_size, num_classes)
-
-				batch_class_names = class_names[i:end_idx]
-
-				batch_class_texts = clip.tokenize(batch_class_names).to(device)
-
-				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
-
-				all_class_embeds.append(batch_embeds.cpu())
-
-				del batch_class_texts, batch_embeds
-				torch.cuda.empty_cache()
-	
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
-
-	if verbose:
-		print(f"All {num_classes} classes Embeddings (frozen text encoder)")
-		print(f"   ├─ {type(all_class_embeds)}")
-		print(f"   ├─ {all_class_embeds.shape}")
-		print(f"   ├─ {all_class_embeds.dtype}")
-		print(f"   └─ {all_class_embeds.device}")
+	all_class_embeds = get_text_embeddings(
+		model=model,
+		loader=validation_loader,
+		dtype=amp_dtype,
+		verbose=verbose,
+	)
 
 	model = get_adapter_peft_clip(
 		clip_model=model,
@@ -6480,7 +6033,6 @@ def tip_adapter_finetune_multi_label(
 	masks = compute_loss_masks(
 		train_loader=train_loader,
 		validation_loader=validation_loader,
-		num_classes=num_classes,
 		pw_mode=pw_mode,#"log",
 		device=device,
 		verbose=verbose,
@@ -6501,16 +6053,13 @@ def tip_adapter_finetune_multi_label(
 	if verbose:
 		print(f"\n[I2T] {criterion_i2t.__class__.__name__}")
 		print(f"   ├─ pos_weight: {type(pos_weight)} {pos_weight.shape} {pos_weight.dtype} {pos_weight.device} range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
-		print(f"   ├─ samples: {N} x label(s): {num_classes}")
-		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,} / {num_classes:,}")
+		print(f"   ├─ Active classes (freq > 0): {active_mask.sum().item():,}")
 		print(f"   ├─ active_mask: {type(active_mask)} {active_mask.shape} {active_mask.dtype} {active_mask.device} True count: {active_mask.sum().item():,}")
 		print(f"   └─ train_freq: {type(train_freq)} {train_freq.shape} {train_freq.dtype} {train_freq.device} range: [{train_freq.min():.2f}, {train_freq.max():.2f}]")
 
 	# T2I: no pos_weight — rows are classes, cols are batch images
 	# The imbalance is already corrected via I2T; T2I provides directional symmetry
-	criterion_t2i = torch.nn.BCEWithLogitsLoss(
-		reduction='none',
-	)
+	criterion_t2i = torch.nn.BCEWithLogitsLoss(reduction='none',)
 	if verbose:
 		print(f"\n[T2I] {criterion_t2i.__class__.__name__}")
 		print(f"   └─ no pos_weight (imbalance already corrected by I2T)")
@@ -6644,7 +6193,7 @@ def tip_adapter_finetune_multi_label(
 			topk_values=topk_values,
 			temperature=temperature,
 			use_fixed_masks=True,
-			shared_protocol_path=shared_protocol_path,
+			tier_spec_path=tier_spec_path,
 			verbose=verbose,
 		)
 		
@@ -6920,7 +6469,7 @@ def tip_adapter_finetune_multi_label(
 		lora_params=None,
 		temperature=temperature,
 		use_fixed_masks=True,
-		shared_protocol_path=shared_protocol_path,
+		tier_spec_path=tier_spec_path,
 		verbose=verbose,
 	)
 	

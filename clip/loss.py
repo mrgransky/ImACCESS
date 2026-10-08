@@ -37,15 +37,6 @@ def diagnose_train_val_coverage(
 		print(f"  ├─ Active in val only         : {val_only}")
 		print(f"  └─ Inactive in both           : {neither}")
 
-		if train_only > 0:
-			print(f"\n{train_only} labels trained on but absent from val.")
-
-		if val_only > 0:
-			print(
-				f"{val_only} labels ONLY present in val with no training samples => "
-				f"pos_weight defaults to 1.0 for these."
-			)
-		
 		# Train-only class frequency analysis
 		if train_only > 0:
 			train_only_mask  = (train_active & ~val_active)
@@ -70,13 +61,16 @@ def diagnose_train_val_coverage(
 				f" [NOTE]: these labels will appear in rare tier evaluation "
 				f"but model has no positive training signal for them."
 			)
-	
+			print(
+				f"{val_only} label(s) ONLY present in val with no training samples => "
+				f"pos_weight defaults to 1.0 for these."
+			)
+			
 	return val_freq
 
 def compute_loss_masks(
 	train_loader: DataLoader,
 	validation_loader: DataLoader,
-	num_classes: int,
 	device: torch.device,
 	pw_mode: str = "log", # "log" | "sqrt" | "linear"
 	pw_max_cap: Optional[float]=None,
@@ -110,6 +104,24 @@ def compute_loss_masks(
 			N            int                         — total training samples
 	"""
 	
+	# This class order MUST be exactly the order used by get_validation_metrics()
+	# to construct class-text embeddings and similarity-matrix columns/rows.
+	try:
+		class_names = validation_loader.dataset.dataset.classes
+	except AttributeError:
+		try:
+			class_names = validation_loader.dataset.unique_labels
+		except AttributeError as error:
+			raise AttributeError(
+				"Could not recover validation class names. "
+				"The shared protocol can only be mapped if the class-name order "
+				"corresponding to the similarity-matrix columns is available."
+			) from error
+
+	num_classes = len(class_names)
+
+
+
 	# 1. Count label frequencies
 	N = len(train_loader.dataset)
 	train_loader_name = getattr(train_loader, 'name', 'UNNAMED_LOADER')

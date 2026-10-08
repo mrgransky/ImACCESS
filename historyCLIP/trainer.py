@@ -28,7 +28,7 @@ from historyXN_dataset_loader import get_single_label_dataloaders, get_multi_lab
 # multi-label [local]:
 # python trainer.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -v -c multimodal_canonical_labels -stg rslora -lor 4 -loa 8 -lod 0.05
 
-# multi-label [Puhti]:
+# multi-label [Roihu]:
 # $ python trainer.py -csv /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_multimodal.csv -c multimodal_canonical_labels -stg full
 
 # Pouta:
@@ -80,7 +80,7 @@ def main():
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
 	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=14, help='Number of CPUs [def: max cpus]')
-	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
+	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 5, 10, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--log_dir', type=str, default=None, help='Directory to store log files (if not specified, logs will go to stdout)')
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 	parser.add_argument('--print_every', type=int, default=100, help='Print loss')
@@ -204,10 +204,10 @@ def main():
 		) # ex) multimodal_canonical_labels
 		os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 
-		shared_protocol_path = os.path.join(OUTPUT_DIRECTORY, "shared_eval_protocol.json")
-		if not os.path.exists(shared_protocol_path):
+		tier_spec_path = os.path.join(OUTPUT_DIRECTORY, "shared_vocab_tier_spec.json")
+		if not os.path.exists(tier_spec_path):
 			raise FileNotFoundError(
-				f"Shared evaluation protocol not found: {shared_protocol_path}\n"
+				f"Shared evaluation protocol not found: {tier_spec_path}\n"
 				"Build it once from the final training split before running fine-tuning."
 			)
 
@@ -289,7 +289,7 @@ def main():
 			pairwise_imp_threshold=args.pairwise_imp_threshold,
 			topk_values=args.topK_values,
 			print_every=args.print_every,
-			shared_protocol_path=shared_protocol_path,
+			tier_spec_path=tier_spec_path,
 			verbose=args.verbose,
 			**(
 					{

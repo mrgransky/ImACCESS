@@ -191,11 +191,14 @@ class LoRALinear(torch.nn.Module):
 			print(f"[INITIALIZATION] {self.__class__.__name__}")
 			print(f"\tLayer config: in_features={self.in_features}, out_features={self.out_features}, rank={self.rank}")
 			print(f"\tRank: {self.rank} Alpha: {self.alpha} Dropout: {dropout}")
+			
 			if self.rslora:
 				print(f"\trsLoRA={self.rslora} Scaling Factor (α/√r): {self.scale}")
 			else:
 				print(f"\tScaling Factor (α/r): {self.scale}")
+			
 			print(f"\tCompression ratio (d=max(in_features, out_features)/r): {compression_ratio:.2f}x")
+			
 			if quantized:
 				print(f"\tQuantization bits: {quantization_bits}")
 
@@ -329,6 +332,7 @@ class LoRALinear(torch.nn.Module):
 			statement += f"  └─ rsLoRA: Scaling Factor (α/√r): {self.scale}\n"
 		else:
 			statement += f"  └─ Scaling Factor (α/r): {self.scale}\n"
+		
 		return statement
 
 class DoRALinear(torch.nn.Module):

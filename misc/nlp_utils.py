@@ -926,6 +926,8 @@ def _post_process_(
 
 	ALLOWED_ACRONYMS = _normalize_(ALLOWED_ACRONYMS)
 
+
+
 	# Common archival/military/aviation compound nouns that VLMs frequently hyphenate or space out
 	CANONICAL_COMPOUNDS = {
 		# -off compounds
@@ -946,7 +948,7 @@ def _post_process_(
 		r'\bdug[- ]out\b': 'dugout',        # Trenches / military dugouts
 		r'\blook[- ]out\b': 'lookout',
 		r'\bhide[- ]out\b': 'hideout',
-		
+
 		# -up compounds
 		r'\bpin[- ]up\b': 'pinup',          # Nose art / morale topic
 		r'\bmock[- ]up\b': 'mockup',        # Aircraft / weapon prototypes
@@ -968,27 +970,53 @@ def _post_process_(
 		r'\bflame[- ]thrower\b': 'flamethrower',
 	}
 
-	# Date, Season, and Temporal Noise Patterns
-	# Matches: "1936", "1940s", "1930's", "November 1962", "Spring 1943", "circa 1942", "c. 1945"
+	TIME_UNITS = {
+		"second", "seconds", "sec", "secs",
+		"minute", "minutes", "min", "mins",
+		"hour", "hours", "hr", "hrs",
+		"day", "days",
+		"week", "weeks",
+		"month", "months",
+		"year", "years", "yr", "yrs",
+		"decade", "decades", "century", "centuries",
+	}
+
+	# Expanded to include European/German month names common in Europeana (mai, oktober, etc.)
 	_MONTHS_SEASONS = (
 		r'(?:january|february|march|april|may|june|july|august|september|'
 		r'october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|'
+		r'mai|oktober|dezember|märz|marz|'
 		r'spring|summer|autumn|fall|winter)'
 	)
 
 	TEMPORAL_NOISE_RE = re.compile(
-		rf'(?:^|\b)(?:c\.|circa|early|mid|late)?\s*'
-		rf'(?:\d{{1,2}}\s+)?{_MONTHS_SEASONS}\.?\s+(?:\d{{1,2}},?\s+)?(?:18|19|20)\d{{2}}\b|'
+		rf'(?:'
+		# 1. Dates with a 4-digit year: "November 1962", "12 August 1945", "circa 1944"
+		rf'(?:^|\b)(?:c\.|circa|early|mid|late)?\s*(?:\d{{1,2}}\.?\s+)?{_MONTHS_SEASONS}\.?\s+(?:\d{{1,2}},?\s+)?(?:18|19|20)\d{{2}}\b|'
 		rf'\b(?:18|19|20)\d{{2}}\s+{_MONTHS_SEASONS}\b|'
-		rf'^\b(?:18|19|20)\d{{2}}(?:s|\'s)?\b$',
+		rf'^\b(?:18|19|20)\d{{2}}(?:s|\'s)?\b|'
+		# 2. Calendar dates WITHOUT a year: "1 October", "1. Mai", "October 1st", "4th of July"
+		rf'^\d{{1,2}}\.?(?:st|nd|rd|th)?\s+(?:of\s+)?{_MONTHS_SEASONS}\.?$|'
+		rf'^{_MONTHS_SEASONS}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?$'
+		rf')',
 		re.IGNORECASE
+	)
+
+
+	# Metadata, Dimensions, and Time Units
+	# Matches: "No. 1234", "Photo 12", "50 feet", "12 mm", "14 months", "1 day", "14 years"
+	_MEASUREMENT_AND_TIME_UNITS = (
+		r'(?:feet|foot|ft|inch|inches|in|meters?|m|mm|cm|miles?|km|'
+		r'lbs?|pounds?|kg|tons?|'
+		# Time units:
+		r'seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?|yrs?|decades?)'
 	)
 
 	# Metadata, Serial Numbers, and Dimensions
 	# "No. 1234", "Photo 12", "model 18", "50 feet", "100 ft", "12 mm"
 	METADATA_DIMENSION_RE = re.compile(
 		r'^(?:no\.?|number|model|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)\s*\d+$|'
-		r'^\d+\s*(?:feet|foot|ft|inch|inches|in|meters?|m|mm|cm|miles?|km|lbs?|pounds?|kg|tons?)$',
+		rf'^\d+\s*{_MEASUREMENT_AND_TIME_UNITS}$',
 		re.IGNORECASE
 	)
 
@@ -1199,7 +1227,6 @@ def _post_process_(
 		if lemma.lower() in IRRELEVANT_NAMES:
 			return True
 
-
 		# Filter generic two-word echelons (numeric OR spelled-out) ──
 		# Drops: "First Division", "First Battalion", "1st Div", "79th Division", "53rd Infantry"
 		# Keeps: "First Infantry Division", "First Infantry Brigade", "55th Infantry Brigade"
@@ -1211,11 +1238,12 @@ def _post_process_(
 			word = words[0]
 			all_generic = (
 				GENERIC_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | 
-				GENERIC_TECH_WORDS | GENERIC_METADATA_WORDS
+				GENERIC_TECH_WORDS | GENERIC_METADATA_WORDS |
+				TIME_UNITS  # ◄── [ADD HERE]: drops standalone "year", "months", "days"
 			)
 			return word in all_generic
 		
-		# Rule 3: quantified plurals (your main concern!)
+		# Rule 3: Quantified numbers + nouns (people and time durations)
 		if len(words) == 2:
 			first_word = words[0]
 			second_word = words[1]
@@ -1225,13 +1253,18 @@ def _post_process_(
 				or first_word in NUMBER_WORDS
 			)
 
-			is_generic_person = (
-				second_word in GENERIC_PEOPLE_WORDS 
-				or second_word in GENERIC_FAMILY_WORDS
-			)
-			
-			if is_number and is_generic_person:
-				return True  # Remove "three men", "two women"
+			if is_number:
+				# ── [ADD HERE]: Filter durations ("three years", "14 months", "1 day") ──
+				if second_word in TIME_UNITS:
+					return True
+
+				# Filter quantified people ("three men", "two women")
+				is_generic_person = (
+					second_word in GENERIC_PEOPLE_WORDS 
+					or second_word in GENERIC_FAMILY_WORDS
+				)
+				if is_generic_person:
+					return True
 		
 		# Rule 4: Multi-word compounds - keep if has specific words
 		all_generic = (
@@ -1249,6 +1282,7 @@ def _post_process_(
 		
 		# Has specific words → Keep
 		return False
+
 
 	def _extract_geopolitical_entities(
 		text: str, 

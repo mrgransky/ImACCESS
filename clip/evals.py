@@ -1,8 +1,7 @@
-import json
-
 from utils import *
 from data_prep import diagnose_tier_masks
 import clip
+from early_stopper import EarlyStopping
 
 def check_lora_weight_health(model, optimizer=None, verbose=True):
 	issues = []
@@ -249,9 +248,10 @@ def compute_tiered_retrieval_metrics(
 	mode: str = "Image-to-Text",
 	verbose: bool = False,
 ) -> Dict:
+
 	if verbose:
 		print("-"*80)
-		print(f"Tiered retrieval metrics")
+		print(f"TIERD RETRIEVAL METRICS")
 
 	if use_fixed_masks:
 		# R1-C shared-vocabulary benchmark: no adaptive filtering,
@@ -276,14 +276,14 @@ def compute_tiered_retrieval_metrics(
 	supported_mask = val_support >= min_val_support  # [C]
 
 	if verbose:
-		print(f"  ├─ {mode}")
-		print(f"  ├─ Similarity matrix: {similarity_matrix.shape} {similarity_matrix.device}")
-		print(f"  ├─ Query labels: {query_labels.shape} {query_labels.device}")
-		print(f"  ├─ use_fixed_masks: {use_fixed_masks} => min_val_support: {min_val_support}")
-		print(f"  ├─ Head mask: {head_mask.shape} (min, max): ({head_mask.min().item():.2f}, {head_mask.max().item():.2f})")
-		print(f"  ├─ Rare mask: {rare_mask.shape} (min, max): ({rare_mask.min().item():.2f}, {rare_mask.max().item():.2f})")
-		print(f"  ├─ Supported mask: {supported_mask.shape} (min, max): ({supported_mask.min().item():.2f}, {supported_mask.max().item():.2f})")
-		print(f"  └─ Active mask: {active_mask.shape} (min, max): ({active_mask.min().item():.2f}, {active_mask.max().item():.2f})")
+		print(f"  ├─ {mode.upper()}")
+		print(f"  ├─ Similarity      : {similarity_matrix.shape} {similarity_matrix.device}")
+		print(f"  ├─ Query labels    : {query_labels.shape} {query_labels.device}")
+		print(f"  ├─ use_fixed_masks : {use_fixed_masks} => min_val_support: {min_val_support}")
+		print(f"  ├─ Head mask       : {head_mask.shape} (min, max): ({head_mask.min().item():.2f}, {head_mask.max().item():.2f})")
+		print(f"  ├─ Rare mask       : {rare_mask.shape} (min, max): ({rare_mask.min().item():.2f}, {rare_mask.max().item():.2f})")
+		print(f"  ├─ Supported Mask  : {supported_mask.shape} (min, max): ({supported_mask.min().item():.2f}, {supported_mask.max().item():.2f})")
+		print(f"  └─ Active mask     : {active_mask.shape} (min, max): ({active_mask.min().item():.2f}, {active_mask.max().item():.2f})")
 
 	# Shared protocol validation
 	if use_fixed_masks and verbose:
@@ -292,7 +292,6 @@ def compute_tiered_retrieval_metrics(
 		shared_rare_supported = rare_mask & active_mask & supported_mask
 
 		print(f"\nShared Protocol Validation")
-		print(f"  ├─ {mode}")
 		print(f"  ├─ Shared labels in run              : {active_mask.sum().item()}")
 		print(f"  ├─ Shared labels with val support ≥1 : {shared_supported.sum().item()}")
 		print(f"  ├─ Shared head labels with support   : {shared_head_supported.sum().item()}")
@@ -307,8 +306,8 @@ def compute_tiered_retrieval_metrics(
 				query_labels[:, rare_mask & active_mask].sum(dim=1) > 0
 			).sum().item()
 
-			print(f"  ├─ images with ≥1 shared-head label : {head_positive_images}")
-			print(f"  └─ images with ≥1 shared-rare label : {rare_positive_images}")
+			print(f"  ├─ images with ≥1 shared-head label  : {head_positive_images}")
+			print(f"  └─ images with ≥1 shared-rare label  : {rare_positive_images}")
 
 	tiers = {
 		"overall": active_mask & supported_mask,
@@ -317,11 +316,12 @@ def compute_tiered_retrieval_metrics(
 	}
 
 	if verbose:
-		print(f"\nsupported_mask: {supported_mask.shape} {supported_mask.sum().item()}")
+		print(f"\nSupported_Mask: {supported_mask.shape} {supported_mask.sum().item()}")
 		print(f"  ├─ Active classes before filter : {active_mask.sum().item()}")
 		print(f"  ├─ Active classes after  filter : {(active_mask & supported_mask).sum().item()}")
 		print(f"  ├─ Head   classes after  filter : {(head_mask & active_mask & supported_mask).sum().item()}")
 		print(f"  └─ Rare   classes after  filter : {(rare_mask & active_mask & supported_mask).sum().item()}")
+		print()
 
 	results = {}
 	for tier_name, tier_mask in tiers.items():
@@ -339,12 +339,13 @@ def compute_tiered_retrieval_metrics(
 			continue
 
 		if mode == "Image-to-Text":
-			# Filter columns to tier classes
-			tier_sim = similarity_matrix[:, tier_indices]       # [N, tier]
-			tier_query_labels = query_labels[:, tier_indices]   # [N, tier]
-			# Further filter rows to images that have ≥1 positive in this tier
-			# This avoids diluting mAP with images that have no tier labels
-			has_tier_label = tier_query_labels.sum(dim=1) > 0   # [N]
+			pool_idx  = torch.where(tiers["overall"])[0]              # same candidate pool for every tier
+			in_tier   = tier_mask[pool_idx]
+			pool_sim  = similarity_matrix[:, pool_idx].clone()
+			pool_lab  = query_labels[:, pool_idx]
+			tier_lab  = pool_lab * in_tier.to(pool_lab.dtype)         # only this tier's positives are relevant
+			has_tier_label = tier_lab.sum(dim=1) > 0
+
 			if has_tier_label.sum() == 0:
 				if verbose:
 					print(f"  [{tier_name.upper():8s}] SKIP — no images have labels in this tier")
@@ -354,20 +355,21 @@ def compute_tiered_retrieval_metrics(
 					"mP": {str(k): 0.0 for k in topK_values},
 				}
 				continue
-			tier_sim = tier_sim[has_tier_label]
-			tier_query_labels = tier_query_labels[has_tier_label]
-			tier_candidate_labels = torch.arange(
-				len(tier_indices),
-				device=similarity_matrix.device,
-			)
+
+			pool_sim[(pool_lab > 0) & ~in_tier] = float("-inf")       # other-tier positives: ignored, not negatives
+			tier_sim, tier_query_labels = pool_sim[has_tier_label], tier_lab[has_tier_label]
+			tier_candidate_labels = torch.arange(len(pool_idx), device=similarity_matrix.device)
+
 		else:  # Text-to-Image
 			# Queries are classes (rows), candidates are images (cols)
-			tier_sim = similarity_matrix[tier_indices, :]       # [tier, N]
+			tier_sim = similarity_matrix[tier_indices, :] # [tier, N]
+
 			tier_query_labels = torch.arange(
 				len(tier_indices),
 				device=similarity_matrix.device,
 			)
-			tier_candidate_labels = query_labels[:, tier_indices]  # [N, tier]
+
+			tier_candidate_labels = query_labels[:, tier_indices] # [N, tier]
 
 		tier_metrics = compute_retrieval_metrics_from_similarity(
 			similarity_matrix=tier_sim,
@@ -375,18 +377,19 @@ def compute_tiered_retrieval_metrics(
 			candidate_labels=tier_candidate_labels,
 			topK_values=topK_values,
 			mode=mode,
-			verbose=verbose,
+			verbose=False, # debugging retrieval metrics
 		)
 
 		results[tier_name] = tier_metrics
 
 		if verbose:
 			n_queries = tier_sim.shape[0]
+			k=10
 			print(
-				f"  [{tier_name.upper():8s}] "
-				f"mAP@10={tier_metrics['mAP'].get('10', 0):.4f}  "
-				f"R@10={tier_metrics['Recall'].get('10', 0):.4f}  "
-				f"({tier_indices.shape[0]} classes, {n_queries} queries)"
+				f"{tier_name.upper():10s}"
+				f"mAP@{k}={tier_metrics['mAP'].get(str(k), 0):.4f} "
+				f"Recall@{k}={tier_metrics['Recall'].get(str(k), 0):.4f} "
+				f"{tier_indices.shape[0]:6d} classes {n_queries:6d} queries"
 			)
 
 	return results
@@ -441,7 +444,7 @@ def compute_multilabel_mrr(
 		device = similarity_matrix.device
 		
 		# Get sorted indices (highest similarity first)
-		sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
+		sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True, stable=True)
 		
 		reciprocal_ranks = list()
 		
@@ -504,16 +507,15 @@ def compute_retrieval_metrics_from_similarity(
 	query_labels: torch.Tensor,
 	candidate_labels: torch.Tensor,
 	topK_values: List[int],
-	mode: str = "Image-to-Text",
+	mode: str,
 	class_counts: Optional[torch.Tensor] = None,
 	cache_dir: str = None,
 	cache_key: str = None,
 	is_training: bool = False,
 	chunk_size: int = 1000,
-	verbose: bool = False,
 	debug_query_indices: Optional[List[int]] = None,
-	debug_max_rank_print: int = 20,
 	strict: bool = True,
+	verbose: bool = False,
 ) -> Dict:
 	"""
 	Compute retrieval metrics (mP, mAP, Recall, HitRate)
@@ -579,7 +581,6 @@ def compute_retrieval_metrics_from_similarity(
 			debug_query_indices: Query rows to fully decompose (numerator/denominator/
 				per-rank precision). Requires verbose=True. If None and verbose=True,
 				defaults to the highest-R_q query (the "Head" query) plus query 0.
-			debug_max_rank_print: Cap on how many ranks are printed per debug query.
 			strict: Raise on alignment-invariant violations instead of warning.
 
 	Returns:
@@ -597,20 +598,18 @@ def compute_retrieval_metrics_from_similarity(
 		print(f"  [!! ALIGNMENT WARNING !!] [{mode}] {msg}")
 
 	if verbose:
-		print("-" * 85)
+		print("-" * 120)
 		print(f"[{mode.upper()} RETRIEVAL METRICS]")
 		print(f"  ├─ METRIC_VERSION={METRIC_VERSION}")
 		print(f"  ├─ similarity_matrix: {tuple(similarity_matrix.shape)} [num_queries x num_candidates]")
 		print(f"  ├─ dtype/device: {similarity_matrix.dtype} / {similarity_matrix.device}")
 		print(f"  ├─ Top-K requested: {topK_values} | max_effective_K: {max_effective_K}")
+
 		if any(K > num_candidates for K in topK_values):
 			dropped_effective = [K for K in topK_values if K > num_candidates]
-			print(
-				f"  ├─ [K clamp] requested K={dropped_effective} > "
-				f"num_candidates={num_candidates} "
-				f"=> compute at effective_K=min(K, num_candidates) but still "
-				f"report under the REQUESTED K key."
-			)
+			print(f"  ├─ [K clamp] requested K={dropped_effective} > num_candidates={num_candidates}")
+			print(f"  │   compute at effective_K = min(K, num_candidates) but still report under the REQUESTED K key.")
+		
 		print(f"  ├─ query_labels: {tuple(query_labels.shape)} ({query_labels.dtype})")
 		print(f"  └─ candidate_labels: {tuple(candidate_labels.shape)} ({candidate_labels.dtype})")
 
@@ -622,10 +621,11 @@ def compute_retrieval_metrics_from_similarity(
 		else len(query_labels.shape) == 2
 	)
 
-	# ── Similarity-matrix health check ───────────────────────────────────────
+	# Similarity-matrix health check
 	# Catches NaN/Inf, degenerate (constant) rows, and collapsed embeddings
 	# before they silently turn into "zero recall" downstream.
 	if verbose:
+		print(f"\n[SIMILARITY MATRIX HEALTH]")
 		n_nan = torch.isnan(similarity_matrix).sum().item()
 		n_inf = torch.isinf(similarity_matrix).sum().item()
 		sm_min = similarity_matrix.min().item()
@@ -634,16 +634,15 @@ def compute_retrieval_metrics_from_similarity(
 		sm_std = similarity_matrix.std().item()
 		row_span = (similarity_matrix.max(dim=1).values - similarity_matrix.min(dim=1).values)
 		n_flat_rows = (row_span < 1e-6).sum().item()
-		print(f"\n[SIMILARITY HEALTH] ({mode})")
-		print(f"  ├─ min/max: ({sm_min:.4f}, {sm_max:.4f})  μ±σ: {sm_mean:.4f} ± {sm_std:.4f}")
-		print(f"  ├─ NaN: {n_nan}  Inf: {n_inf}")
+		print(f"  ├─ {similarity_matrix.shape}")
+		print(f"  ├─ (min, max): ({sm_min:.4f}, {sm_max:.4f}) μ±σ: {sm_mean:.4f} ± {sm_std:.4f} NaN: {n_nan}  Inf: {n_inf}")
 		print(f"  └─ degenerate rows (max-min < 1e-6): {n_flat_rows} / {num_queries}")
 		if n_nan or n_inf:
 			print("      ^ NaN/Inf present -> argsort order is undefined; metrics are meaningless.")
 		if n_flat_rows:
 			print("      ^ flat rows -> ranking is arbitrary for those queries (embedding collapse?).")
 
-	# ── Axis-alignment invariants ────────────────────────────────────────────
+	# Axis-alignment invariants
 	# The single most common source of "mysteriously low" retrieval numbers is
 	# a query/candidate axis mismatch, NOT the metric formula. Assert loudly.
 	if mode == "Image-to-Text":
@@ -689,10 +688,8 @@ def compute_retrieval_metrics_from_similarity(
 		else:
 			relevant_per_query = candidate_labels.sum(dim=0).float()
 			print(f"\n[SANITY CHECK] Relevant items per query (out of {similarity_matrix.shape[1]} images):")
-		print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()})")
-		print(f"  ├─ μ±σ: {relevant_per_query.mean():.2f} ± {relevant_per_query.std():.2f}")
+		print(f"  ├─ (min, max): ({relevant_per_query.min()}, {relevant_per_query.max()}) μ±σ: {relevant_per_query.mean():.2f} ± {relevant_per_query.std():.2f}")
 		print(f"  └─ zero-relevant queries: {(relevant_per_query == 0).sum().item()}")
-		print("-" * 85)
 
 	# ── Cache — versioned so old (incorrect-denominator) caches are never reused ──
 	cache_file = None
@@ -717,7 +714,7 @@ def compute_retrieval_metrics_from_similarity(
 
 	all_sorted_indices = torch.cat(
 		[
-			torch.argsort(similarity_matrix[i:i + chunk_size], dim=1, descending=True)[:, :max_effective_K]
+			torch.argsort(similarity_matrix[i:i + chunk_size], dim=1, descending=True, stable=True)[:, :max_effective_K]
 			for i in range(0, similarity_matrix.shape[0], chunk_size)
 		],
 		dim=0
@@ -753,16 +750,16 @@ def compute_retrieval_metrics_from_similarity(
 	has_relevant = relevant_counts > 0
 
 	if verbose:
-		print(f"\n[R_q CONSTRUCTION] ({mode})")
+		print(f"\n[R_q CONSTRUCTION]")
 		print(f"  ├─ source: {rq_source}")
-		print(f"  ├─ shape: {tuple(relevant_counts.shape)} (must equal num_queries={num_queries}) "
-			  f"-> {'OK' if relevant_counts.numel() == num_queries else 'MISMATCH'}")
-		print(f"  ├─ (min, max): ({relevant_counts.min().item():.1f}, {relevant_counts.max().item():.1f})")
-		print(f"  ├─ μ±σ: {relevant_counts.mean().item():.2f} ± {relevant_counts.std().item():.2f}")
-		print(f"  └─ queries with R_q=0 (excluded from mAP/Recall): "
-			  f"{(~has_relevant).sum().item()} / {num_queries}")
+		print(
+			f"  ├─ {relevant_counts.shape} (must equal num_queries={num_queries}) "
+			f"-> {'OK' if relevant_counts.numel() == num_queries else 'MISMATCH'}"
+		)
+		print(f"  ├─ (min, max): ({relevant_counts.min().item():.1f}, {relevant_counts.max().item():.1f}) μ±σ: {relevant_counts.mean().item():.2f} ± {relevant_counts.std().item():.2f}")
+		print(f"  ├─ queries with R_q=0 (excluded from mAP/Recall): {(~has_relevant).sum().item()} / {num_queries}")
 
-	# ── Pick the queries to fully decompose ──────────────────────────────────
+	# Pick the queries to fully decompose
 	if verbose:
 		if debug_query_indices is None:
 			# Head query = largest R_q (the case where a wrongly-uncapped
@@ -770,10 +767,12 @@ def compute_retrieval_metrics_from_similarity(
 			head_idx = int(torch.argmax(relevant_counts).item())
 			debug_query_indices = sorted({0, head_idx})
 		debug_query_indices = [q for q in debug_query_indices if 0 <= q < num_queries]
+		print(f"  └─ debug_query_indices: {debug_query_indices}")
 	else:
 		debug_query_indices = []
-
+	
 	metrics = {"mP": {}, "mAP": {}, "Recall": {}, "HitRate": {}}
+
 	for requested_K in topK_values:
 		effective_K = min(requested_K, num_candidates)
 		top_k_indices = all_sorted_indices[:, :effective_K]
@@ -827,7 +826,8 @@ def compute_retrieval_metrics_from_similarity(
 			)
 			metrics["Recall"][key] = (
 				recall_per_query[has_relevant].mean().item()
-				if has_relevant.any() else 0.0
+				if has_relevant.any() 
+				else 0.0
 			)
 		else:  # Text-to-Image
 			if is_multi_label:
@@ -838,21 +838,28 @@ def compute_retrieval_metrics_from_similarity(
 					torch.zeros_like(retrieved_counts),
 				)
 				metrics["Recall"][key] = (
-					recall_per_query[has_relevant].mean().item() if has_relevant.any() else 0.0
+					recall_per_query[has_relevant].mean().item() 
+					if has_relevant.any() 
+					else 0.0
 				)
 			else:
 				recalled = correct_mask.sum(dim=1).float()
 				recall_per_query = recalled / relevant_counts.clamp(min=1)
 				metrics["Recall"][key] = recall_per_query.mean().item()
 
-		# ── Standard truncated AP@K: AP@K(q) = sum P(r)*rel(r) / min(R_q, requested_K) ──
+		# AP@K: AP@K(q) = sum P(r)*rel(r) / min(R_q, requested_K)
 		positions = torch.arange(1, effective_K + 1, device=device, dtype=torch.float32).unsqueeze(0)
 		cumulative_correct = correct_mask.float().cumsum(dim=1)
 		precisions = cumulative_correct / positions
 
 		ap_denominator = relevant_counts.clamp(min=1).clamp(max=requested_K)  # min(R_q, requested_K)
 		ap_numerator = (precisions * correct_mask.float()).sum(dim=1)
-		ap_scores = ap_numerator / ap_denominator
+		# ap_scores = ap_numerator / ap_denominator
+		ap_scores = torch.where(
+			has_relevant,
+			ap_numerator / ap_denominator,
+			torch.zeros_like(ap_numerator),
+		)
 
 		metrics["mAP"][key] = (
 			ap_scores[has_relevant].mean().item()
@@ -860,89 +867,97 @@ def compute_retrieval_metrics_from_similarity(
 			else 0.0
 		)
 
-		# ── Aggregate diagnostics for this K ────────────────────────────────
+		# Aggregate diagnostics for this K
 		if verbose:
 			hits_per_query = correct_mask.float().sum(dim=1)
 			denom_max = ap_denominator.max().item()
-			print(f"\n[K={requested_K}] ({mode})  effective_K={effective_K}")
-			print(f"  ├─ hits/query: (min,max)=({hits_per_query.min().item():.0f},"
-				  f"{hits_per_query.max().item():.0f})  μ={hits_per_query.mean().item():.3f}")
-			print(f"  ├─ queries with 0 hits: "
-				  f"{(hits_per_query == 0).sum().item()} / {num_queries}")
-			print(f"  ├─ AP denominator = min(R_q, {requested_K}): "
-				  f"(min,max)=({ap_denominator.min().item():.1f},{denom_max:.1f})  "
-				  f"μ={ap_denominator.mean().item():.3f}")
+			print(f"\nrequested_K={requested_K} effective_K={effective_K}")
+			print(
+				f"  ├─ hits/query: "
+				f"(min, max): ({hits_per_query.min().item():.3f}, {hits_per_query.max().item():.3f}) "
+				f"μ±σ: {hits_per_query.mean().item():.3f} ± {hits_per_query.std().item():.3f}"
+			)
+			
+			print(f"  ├─ queries with 0 hits: {(hits_per_query == 0).sum().item()} / {num_queries}")
+			print(
+				f"  ├─ AP denominator = min(R_q, {requested_K}): "
+				f"(min, max): ({ap_denominator.min().item():.1f}, {denom_max:.1f}) "
+				f"μ±σ: {ap_denominator.mean().item():.3f} ± {ap_denominator.std().item():.3f}"
+			)
+
 			if denom_max > requested_K + 1e-6:
-				print(f"  │   [!! BUG !!] denominator exceeds requested_K={requested_K} "
-					  f"-> the min(R_q, K) cap is NOT being applied.")
+				print(
+					f"  │   [!! BUG !!] denominator exceeds requested_K={requested_K} "
+					f"-> the min(R_q, K) cap is NOT being applied."
+				)
 			else:
-				print(f"  │   OK: denominator never exceeds requested_K={requested_K} "
-					  f"(cap is applied).")
-			print(f"  ├─ AP numerator: (min,max)="
-				  f"({ap_numerator.min().item():.4f},{ap_numerator.max().item():.4f})  "
-				  f"μ={ap_numerator.mean().item():.4f}")
+				print(f"  │   [OK] denominator never exceeds requested_K={requested_K} (cap is applied).")
+			
+			print(
+				f"  ├─ AP numerator: "
+				f"(min,max): ({ap_numerator.min().item():.4f}, {ap_numerator.max().item():.4f}) "
+				f"μ±σ: {ap_numerator.mean().item():.4f} ± {ap_numerator.std().item():.4f}"
+			)
+			
 			if (ap_scores > 1.0 + 1e-6).any():
 				n_bad = (ap_scores > 1.0 + 1e-6).sum().item()
-				print(f"  │   [!! BUG !!] {n_bad} queries have AP > 1.0 "
-					  f"-> numerator/denominator inconsistency.")
+				print(f"  │   [!! BUG !!] {n_bad} queries have AP > 1.0 -> numerator/denominator inconsistency.")
+			
 			print(f"  ├─ mP@{requested_K}:       {metrics['mP'][key]:.6f}")
 			print(f"  ├─ mAP@{requested_K}:      {metrics['mAP'][key]:.6f}")
-			print(f"  ├─ Recall@{requested_K}:   {metrics['Recall'][key]:.6f}   "
-				  f"(|hits| / R_q)")
-			print(f"  └─ HitRate@{requested_K}:  {metrics['HitRate'][key]:.6f}   "
-				  f"(>=1 hit; == old I2T 'Recall')")
+			print(f"  ├─ Recall@{requested_K} :  {metrics['Recall'][key]:.6f}  (|hits| / R_q)")
+			print(f"  └─ HitRate@{requested_K}:  {metrics['HitRate'][key]:.6f} (>=1 hit; == old I2T 'Recall')")
+
 			if metrics["HitRate"][key] > metrics["Recall"][key] + 1e-9:
 				delta = metrics["HitRate"][key] - metrics["Recall"][key]
-				print(f"      ^ HitRate exceeds Recall by {delta:.6f} — this gap is exactly "
-					  f"the inflation the old I2T branch reported as 'Recall'.")
+				print(
+					f"      ^ HitRate exceeds Recall by {delta:.6f} "
+					f"this gap is exactly the inflation the old I2T branch reported as 'Recall'."
+				)
 
-		# ── Per-query decomposition ─────────────────────────────────────────
+		# Per-query decomposition
 		for q in debug_query_indices:
 			q_hits = correct_mask[q].float()
 			q_prec = precisions[q]
 			q_rank_hits = torch.nonzero(q_hits, as_tuple=False).flatten() + 1  # 1-indexed ranks
-			n_print = min(effective_K, debug_max_rank_print)
 
-			print(f"\n  [QUERY DEBUG] q={q}  mode={mode}  requested_K={requested_K}  "
-				  f"effective_K={effective_K}")
-			print(f"    ├─ R_q (total relevant):        {relevant_counts[q].item():.1f}")
-			print(f"    ├─ has_relevant (in mean?):     {bool(has_relevant[q].item())}")
-			print(f"    ├─ hits in top-K:               {q_hits.sum().item():.0f}")
-			print(f"    ├─ hit ranks (1-indexed):       "
-				  f"{q_rank_hits[:debug_max_rank_print].tolist()}"
-				  f"{' ...' if q_rank_hits.numel() > debug_max_rank_print else ''}")
-			print(f"    ├─ rel(r) first {n_print}:      {q_hits[:n_print].int().tolist()}")
-			print(f"    ├─ P(r)  first {n_print}:      "
-				  f"{[round(v, 4) for v in q_prec[:n_print].tolist()]}")
-			print(f"    ├─ retrieved cand. idx:         "
-				  f"{top_k_indices[q][:n_print].tolist()}")
-			print(f"    ├─ top-K sims:                  "
-				  f"{[round(v, 4) for v in similarity_matrix[q][top_k_indices[q][:n_print]].tolist()]}")
-			print(f"    ├─ AP numerator  Σ P(r)·rel(r): {ap_numerator[q].item():.6f}")
-			print(f"    ├─ AP denominator min(R_q,K):   {ap_denominator[q].item():.6f}"
-				  f"   [expected {min(relevant_counts[q].item(), requested_K):.6f}]")
-			print(f"    ├─ AP@{requested_K}:                     {ap_scores[q].item():.6f}")
-			print(f"    ├─ Recall@{requested_K} (this q):        "
-				  f"{(q_hits.sum() / max(relevant_counts[q].item(), 1.0)).item():.6f}")
-			print(f"    └─ HitRate@{requested_K} (this q):       "
-				  f"{float(bool(q_hits.any().item())):.1f}")
+			print(f"\nQUERY: {q}")
+			print(f"  ├─ R_q (total relevant)   : {relevant_counts[q].item():.1f}")
+			print(f"  ├─ has_relevant (in mean?): {bool(has_relevant[q].item())}")
+			print(f"  ├─ hits in top-K          : {q_hits.sum().item():.0f}")
+			print(f"  ├─ hit ranks (1-indexed)  : {q_rank_hits[:effective_K].tolist()}")
+			print(f"  ├─ P(r)[:{effective_K}] = {[round(v, 4) for v in q_prec[:effective_K].tolist()]} rel(r)[:{effective_K}] = {q_hits[:effective_K].int().tolist()}")
+			print(f"  ├─ retrieved cand. idx    : {top_k_indices[q][:effective_K].tolist()}")
+			print(f"  ├─ top-K sims             : {[round(v, 4) for v in similarity_matrix[q][top_k_indices[q][:effective_K]].tolist()]}")
+			exp_denom = min(max(relevant_counts[q].item(), 1.0), float(requested_K))
+			print(
+				f"  ├─ AP@{requested_K} = Σ P(r)·rel(r) / min(R_q, K) = "
+				f"{ap_numerator[q].item()} / ({ap_denominator[q].item()} [expected: {exp_denom}]) "
+				f"= {ap_scores[q].item()}"
+			)
+			# when R_q == 0, flag it explicitly as excluded:
+			if not bool(has_relevant[q].item()):
+				print(f"  │   ^ R_q=0 (no relevant items exist) AP@{requested_K}: undefined; QUERY: {q} EXCLUDED from mAP mean.")
+
+			print(f"  ├─ Recall@{requested_K}:  {(q_hits.sum() / max(relevant_counts[q].item(), 1.0)).item():.6f}")
+			print(f"  └─ HitRate@{requested_K}: {float(bool(q_hits.any().item())):.1f}")
 
 			# Hard invariants for this query.
-			exp_denom = min(max(relevant_counts[q].item(), 1.0), float(requested_K))
 			if abs(ap_denominator[q].item() - exp_denom) > 1e-5:
-				print(f"       [!! BUG !!] denominator {ap_denominator[q].item():.6f} != "
-					  f"min(R_q, requested_K)={exp_denom:.6f}")
+				print(
+					f"       [!! BUG !!] denominator {ap_denominator[q].item():.6f} != "
+					f"min(R_q, requested_K)={exp_denom:.6f}"
+				)
+			
 			if ap_scores[q].item() > 1.0 + 1e-6:
 				print(f"       [!! BUG !!] AP@{requested_K}={ap_scores[q].item():.6f} > 1.0")
+			
 			if q_hits.sum().item() > relevant_counts[q].item() + 1e-6:
-				print(f"       [!! BUG !!] hits ({q_hits.sum().item():.0f}) > R_q "
-					  f"({relevant_counts[q].item():.1f}) -> correctness mask is counting "
-					  f"items that are not actually relevant (index-mapping error?).")
-
-	if verbose:
-		print("\n[FINAL METRICS]")
-		print(json.dumps(metrics, indent=2, ensure_ascii=False))
-		print("-" * 85)
+				print(
+					f"       [!! BUG !!] hits ({q_hits.sum().item():.0f}) > R_q "
+					f"({relevant_counts[q].item():.1f}) -> correctness mask is counting "
+					f"items that are not actually relevant (index-mapping error?)."
+				)
 
 	if cache_file:
 		try:
@@ -954,6 +969,9 @@ def compute_retrieval_metrics_from_similarity(
 			if verbose:
 				print(f"Cache write failed: {e}")
 
+	# if verbose:
+	# 	print(metrics)
+	# 	print()
 	return metrics
 
 def compute_multilabel_correctness(
@@ -1040,7 +1058,7 @@ def get_validation_metrics(
 	lora_params: Optional[Dict] = None,
 	is_training: bool = False,
 	model_hash: str = None,
-	min_number_samples: int = int(1e4),
+	min_number_samples: int = int(2e4),
 	class_embeds_override: Optional[torch.Tensor] = None,
 	verbose: bool = True,
 ) -> Dict:
@@ -1067,7 +1085,9 @@ def get_validation_metrics(
 	
 	n_classes = len(class_names)
 	num_samples = len(validation_loader.dataset)
-	
+
+	n_collide = len(class_names) - len({n.lower() for n in class_names})
+
 	if verbose:
 		print(f"  ├─ {dataset_name}")
 		print(f"  ├─ {model_class_name} {model_arch_name}")
@@ -1077,7 +1097,10 @@ def get_validation_metrics(
 		print(f"  ├─ chunk_size: {chunk_size}")
 		print(f"  ├─ temperature: {temperature}")
 		print(f"  └─ nw: {num_workers}")
-	
+		if n_collide:
+			print(f"[WARNING] {n_collide} class names collide after lowercasing -> identical text embeddings / ranking ties")
+
+
 	cache_file = os.path.join(
 		cache_dir,
 		# f"{dataset_name}_"
@@ -1234,6 +1257,7 @@ def get_validation_metrics(
 
 		# ── 4. Inter-class similarity — are class embeddings separated? ─
 		num_sampled_labels = min(min_number_samples, device_class_text_embeds.shape[0])
+
 		cls_sample_idx = torch.randperm(
 			device_class_text_embeds.shape[0],
 			device=device_class_text_embeds.device,
@@ -1261,7 +1285,8 @@ def get_validation_metrics(
 		print(f"    Fraction [sim > 0.9]: {(off_diag > 0.9).float().mean():.4f} (high → near-duplicate class embeddings)")
 
 		flat_sims = inter_cls_sims.masked_fill(~off_diag_mask, -1)
-		top_pairs = torch.triu(flat_sims, diagonal=1).flatten().topk(500)
+		print(f"flat_sims: {flat_sims.shape}")
+		top_pairs = torch.triu(flat_sims, diagonal=1).flatten().topk(min(1000, num_sampled_labels))
 		row_idx = top_pairs.indices // num_sampled_labels
 		col_idx = top_pairs.indices % num_sampled_labels
 
@@ -1315,6 +1340,11 @@ def get_validation_metrics(
 	if model_hash:
 		cache_key_base += f"_{model_hash}"
 
+	val_sig = hashlib.md5(
+		(str(class_names) + str(tuple(topK_values))).encode() + device_labels.cpu().numpy().tobytes()
+	).hexdigest()[:10]
+	cache_key_base += f"_val_{val_sig}"
+
 	if lora_params:
 		lora_rank = lora_params.get("lora_rank")
 		lora_alpha = lora_params.get("lora_alpha")
@@ -1327,6 +1357,13 @@ def get_validation_metrics(
 		if lora_plus_lambda is not None:
 			cache_key_base += f"_lmbd_{lora_plus_lambda}"
 	
+	# Prepare class counts for single-label datasets
+	class_counts = None
+	if len(device_labels.shape) == 1:  # Single-label
+		if verbose:
+			print(f"Single-label dataset detected. class counts with bincount...")
+		class_counts = torch.bincount(device_labels.long(), minlength=n_classes)
+
 	img2txt_metrics = compute_retrieval_metrics_from_similarity(
 		similarity_matrix=i2t_similarity,
 		query_labels=device_labels,
@@ -1336,17 +1373,10 @@ def get_validation_metrics(
 		cache_dir=cache_dir,
 		cache_key=f"{cache_key_base}_i2t",
 		is_training=is_training,
-		verbose=verbose,
 		chunk_size=chunk_size,
+		verbose=False, # debugging retrieval metrics
 	)
-	
-	# Prepare class counts for single-label datasets
-	class_counts = None
-	if len(device_labels.shape) == 1:  # Single-label
-		if verbose:
-			print(f"Single-label dataset detected. class counts with bincount...")
-		class_counts = torch.bincount(device_labels.long(), minlength=n_classes)
-	
+
 	txt2img_metrics = compute_retrieval_metrics_from_similarity(
 		similarity_matrix=t2i_similarity,
 		query_labels=torch.arange(n_classes, device=device),
@@ -1357,15 +1387,15 @@ def get_validation_metrics(
 		cache_dir=cache_dir,
 		cache_key=f"{cache_key_base}_t2i",
 		is_training=is_training,
-		verbose=verbose,
 		chunk_size=chunk_size,
+		verbose=False, # debugging retrieval metrics
 	)
 
 	if verbose:
 		# print(f"{type(model)} I2T: {type(img2txt_metrics)} T2I: {type(txt2img_metrics)}")
-		print(f"\nValidation Elapsed Time: {time.time() - start_time:.1f}s")
-	
-	return {
+		print(f"\n[Validation ELAPSED TIME] {time.time() - start_time:.1f} sec")
+
+	results = {
 		"full_metrics": full_metrics,
 		"img2txt_metrics": img2txt_metrics,
 		"txt2img_metrics": txt2img_metrics,
@@ -1373,6 +1403,8 @@ def get_validation_metrics(
 		"t2i_similarity": t2i_similarity,
 		"device_labels": device_labels,
 	}
+
+	return results
 
 def compute_full_set_metrics_from_cache(
 		i2t_similarity: torch.Tensor,
@@ -1475,8 +1507,9 @@ def compute_full_set_metrics_from_cache(
 					average='weighted',
 					zero_division=0
 				)
-			except:
-				f1_score_val = 0.0
+			except Exception as e:
+				print(f"Error computing F1 score: {e}")
+				f1_score_val = None
 		
 		return {
 				"img2txt_acc": float(img2txt_acc),
@@ -1492,87 +1525,100 @@ def compute_full_set_metrics_from_cache(
 		}
 
 def _prepare_labels_tensor(
-		validation_loader: DataLoader, 
-		num_samples: int, 
-		n_classes: int, 
-		device: str,
-	) -> torch.Tensor:
+	validation_loader: DataLoader,
+	num_samples: int,
+	n_classes: int,
+	device: str,
+) -> torch.Tensor:
 	"""
 	Prepare labels tensor for validation metrics computation.
 	Handles both single-label and multi-label datasets.
+
+	Multi-label sources, chosen ONCE for the whole dataset, in this order:
+		1. data_frame['label_vector']          — precomputed vectors (fastest)
+		2. dataset.labels + dataset.label_dict  — parse label lists (cheap)
+		3. dataset[i]                           — __getitem__ (slow: decodes every image)
+	Any sample that fails extraction raises at the end; rows are never
+	silently left as zeros.
 	"""
 	dataset = validation_loader.dataset
-	
+
 	is_multi_label = (
-		(hasattr(dataset, 'label_dict') 
-	 and dataset.label_dict is not None) 
-	 or 'MultiLabel' in dataset.__class__.__name__
+		(hasattr(dataset, 'label_dict') and dataset.label_dict is not None)
+		or 'MultiLabel' in dataset.__class__.__name__
 	) and not hasattr(dataset, 'labels_int')
 
-	if is_multi_label:
-		# Multi-label dataset - create label vectors [num_samples, num_classes]
-		all_labels = torch.zeros(num_samples, n_classes, dtype=torch.float32)
-		
-		for i in range(num_samples):
-			try:
-				# Method 1: Use pre-computed label vectors from DataFrame
-				if hasattr(dataset, 'data_frame') and 'label_vector' in dataset.data_frame.columns:
-					label_vector = dataset.data_frame.iloc[i]['label_vector']
-					if isinstance(label_vector, np.ndarray):
-						all_labels[i] = torch.tensor(label_vector, dtype=torch.float32)
-					elif isinstance(label_vector, torch.Tensor):
-						all_labels[i] = label_vector.clone().detach().float()
-					else:
-						# Fallback to method 2
-						raise ValueError("Invalid label_vector type")
-				
-				# Method 2: Get from dataset's __getitem__ method
-				elif hasattr(dataset, '__getitem__'):
-					try:
-						_, _, label_vector = dataset[i]
-						if isinstance(label_vector, torch.Tensor) and label_vector.shape == (n_classes,):
-							all_labels[i] = label_vector.float()
-						else:
-							raise ValueError("Invalid label vector from __getitem__")
-					except:
-						# Fallback to method 3
-						raise ValueError("Could not get label from __getitem__")
-				
-				# Method 3: Parse from string representation (fallback)
-				else:
-					if hasattr(dataset, 'labels') and hasattr(dataset, 'label_dict'):
-						labels_str = dataset.labels[i]
-						import ast
-						labels = ast.literal_eval(labels_str)
-						for label in labels:
-							if label in dataset.label_dict:
-								all_labels[i][dataset.label_dict[label]] = 1.0
-					else:
-						raise ValueError("Cannot extract labels from multi-label dataset")
-						
-			except Exception as e:
-				print(f"Warning: Error processing sample {i}: {e}")
-				# Leave as zeros for this sample
-				continue
-	
-	else:
-		# Single-label dataset - use integer labels [num_samples]
+	# ── Single-label: integer class indices [num_samples] ────────────────────
+	if not is_multi_label:
 		if not hasattr(dataset, 'labels_int'):
 			raise AttributeError(
 				f"Single-label dataset {type(dataset)} missing 'labels_int' attribute. "
 				"This attribute should contain integer class indices."
 			)
-		
-		# Validate first sample to determine tensor type
 		sample_label = dataset.labels_int[0]
-		if isinstance(sample_label, (int, np.integer)):
-			# Single-label: use long dtype for proper indexing
-			all_labels = torch.zeros(num_samples, dtype=torch.long)
-			for i in range(num_samples):
-				all_labels[i] = dataset.labels_int[i]
-		else:
+		if not isinstance(sample_label, (int, np.integer)):
 			raise ValueError(f"Unexpected label type in single-label dataset: {type(sample_label)}")
-	
+		all_labels = torch.as_tensor(
+			[int(dataset.labels_int[i]) for i in range(num_samples)],
+			dtype=torch.long,
+		)
+		return all_labels.to(device)
+
+	# ── Multi-label: choose the label source once ────────────────────────────
+	if hasattr(dataset, 'data_frame') and 'label_vector' in dataset.data_frame.columns:
+		source = "label_vector"
+		label_vectors = dataset.data_frame['label_vector'].tolist()
+	elif hasattr(dataset, 'labels') and getattr(dataset, 'label_dict', None) is not None:
+		source = "label_strings"
+	else:
+		source = "getitem"
+
+	all_labels = torch.zeros(num_samples, n_classes, dtype=torch.float32)
+	failures = []     # (sample index, error message)
+	n_unknown = 0     # label strings not present in label_dict
+
+	for i in range(num_samples):
+		try:
+			if source == "label_vector":
+				vec = torch.as_tensor(label_vectors[i], dtype=torch.float32).flatten()
+
+			elif source == "label_strings":
+				raw = dataset.labels[i]
+				labels = ast.literal_eval(raw) if isinstance(raw, str) else list(raw)
+				vec = torch.zeros(n_classes, dtype=torch.float32)
+				for label in labels:
+					idx = dataset.label_dict.get(label)
+					if idx is None:
+						n_unknown += 1
+					else:
+						vec[idx] = 1.0
+
+			else:  # getitem
+				_, _, vec = dataset[i]
+				vec = torch.as_tensor(vec, dtype=torch.float32).flatten()
+
+			if vec.shape != (n_classes,):
+				raise ValueError(f"label vector has shape {tuple(vec.shape)}, expected ({n_classes},)")
+
+			all_labels[i] = vec
+
+		except Exception as e:
+			failures.append((i, f"{type(e).__name__}: {e}"))
+
+	if failures:
+		preview = "; ".join(f"[{i}] {msg}" for i, msg in failures[:5])
+		raise RuntimeError(
+			f"Label extraction failed for {len(failures)}/{num_samples} samples "
+			f"(source={source}). First failures: {preview}"
+		)
+
+	if n_unknown:
+		print(f"[WARNING] {n_unknown} label occurrences not found in label_dict (source={source}); they were ignored.")
+
+	n_empty = int((all_labels.sum(dim=1) == 0).sum())
+	if n_empty:
+		print(f"[WARNING] {n_empty}/{num_samples} samples have no positive labels.")
+
 	return all_labels.to(device)
 
 def _validate_cache_compatibility(
@@ -1744,25 +1790,25 @@ def _compute_singlelabel_i2t_accuracy(i2t_similarity, labels, valid_k_values):
 def _compute_t2i_accuracy(t2i_similarity, labels, topK_values, is_multi_label, num_samples, n_classes):
 	"""Compute text-to-image accuracy."""
 	txt2img_topk_acc = {}
-	
+	n_eval = int((labels.sum(dim=0) > 0).sum()) if is_multi_label else int((torch.bincount(labels.long(), minlength=n_classes) > 0).sum())
 	for k in topK_values:
-			effective_k = min(k, num_samples)
-			topk_indices = t2i_similarity.topk(effective_k, dim=1)[1]
-			
-			class_correct = 0
-			for class_idx in range(n_classes):
-					retrieved_samples = topk_indices[class_idx]
-					
-					if is_multi_label:
-							retrieved_labels = labels[retrieved_samples]
-							if retrieved_labels[:, class_idx].any():
-									class_correct += 1
-					else:
-							retrieved_labels = labels[retrieved_samples]
-							if class_idx in retrieved_labels:
-									class_correct += 1
-			
-			txt2img_topk_acc[k] = class_correct / n_classes
+		effective_k = min(k, num_samples)
+		topk_indices = t2i_similarity.topk(effective_k, dim=1)[1]
+		
+		class_correct = 0
+		for class_idx in range(n_classes):
+				retrieved_samples = topk_indices[class_idx]
+				
+				if is_multi_label:
+						retrieved_labels = labels[retrieved_samples]
+						if retrieved_labels[:, class_idx].any():
+								class_correct += 1
+				else:
+						retrieved_labels = labels[retrieved_samples]
+						if class_idx in retrieved_labels:
+								class_correct += 1
+		
+		txt2img_topk_acc[k] = class_correct / max(n_eval, 1)
 	
 	return txt2img_topk_acc
 
@@ -2049,17 +2095,18 @@ def get_multilabel_alignment_score(
 					print(f"[LOW] (μ = {miss_ranks_t.mean():.1f} ≤50) images close but other classes rank higher (inter-class confusion).")
 				else:
 					print(f"[MODERATE] (50 < μ = {miss_ranks_t.mean():.1f} < 100) images close but other classes rank higher (inter-class confusion).")
+				print()
 
 	return score
 
-def build_shared_masks_from_protocol(
+def map_tier_spec_to_class_masks(
 	shared_protocol: Dict,
 	class_names: List[str],
 	device: str,
 	verbose: bool = True,
 ) -> Dict[str, torch.Tensor]:
 	"""
-	Map the static shared_eval_protocol.json label lists onto THIS run's
+	Map the static shared_vocab_tier_spec.json label lists onto THIS run's
 	class index space. By construction, shared_vocab is the intersection
 	of llm/vlm/multimodal vocabularies, so every shared label must exist
 	in class_names — a mismatch here signals a bug upstream, not a
@@ -2072,20 +2119,20 @@ def build_shared_masks_from_protocol(
 		print("\nBuilding shared masks from Shared Protocol")
 		# print(json.dumps(shared_protocol, indent=2, ensure_ascii=False))
 
-	shared_vocab = shared_protocol["shared_class_names"]
+	shared_vocab = shared_protocol["intersection_labels"]
 	protocol_head_mask = shared_protocol["head_mask"]
 	protocol_rare_mask = shared_protocol["rare_mask"]
 
 	if len(protocol_head_mask) != len(shared_vocab):
 		raise ValueError(
 			"Shared protocol schema error: head_mask length does not match "
-			f"shared_class_names length: "
+			f"intersection_labels length: "
 			f"{len(protocol_head_mask)} != {len(shared_vocab)}"
 		)
 	if len(protocol_rare_mask) != len(shared_vocab):
 		raise ValueError(
 			"Shared protocol schema error: rare_mask length does not match "
-			f"shared_class_names length: "
+			f"intersection_labels length: "
 			f"{len(protocol_rare_mask)} != {len(shared_vocab)}"
 		)
 	protocol_overlap = [
@@ -2101,7 +2148,7 @@ def build_shared_masks_from_protocol(
 		raise ValueError(
 			"Shared protocol JSON contains overlapping head/rare labels: "
 			f"{protocol_overlap}. "
-			"Regenerate shared_eval_protocol.json using the disjoint builder."
+			"Regenerate shared_vocab_tier_spec.json using the disjoint builder."
 		)
 
 	head_labels  = {
@@ -2122,14 +2169,21 @@ def build_shared_masks_from_protocol(
 	missing = []
 	for label in shared_vocab:
 		idx = name_to_idx.get(label)
+
 		if idx is None:
 			missing.append(label)
 			continue
+
 		shared_mask[idx] = True
+
 		if label in head_labels:
 			head_mask[idx] = True
+
 		if label in rare_labels:
 			rare_mask[idx] = True
+
+	if missing:
+		raise ValueError(f"{len(missing)}/{len(shared_vocab)} shared labels missing from this run: {missing[:20]}")
 
 	if verbose:
 		print(f"\n[Shared masked labels from Shared Protocol]")
@@ -2146,8 +2200,6 @@ def build_shared_masks_from_protocol(
 		if rare_mask.sum().item() == 0:
 			print("  [WARNING] Shared rare mask is empty in this run.")
 
-		if missing:
-			print(f"  [WARNING] Missing shared labels: {missing}")
 
 		protocol_freq = shared_protocol.get("shared_train_freq")
 		if protocol_freq is not None:
@@ -2162,12 +2214,17 @@ def build_shared_masks_from_protocol(
 				rare_mask=rare_mask,
 				active_mask=shared_mask,
 				tag="SHARED EVAL PROTOCOL — CONSUMER",
-				max_rows=60,
 			)
 
-	return {"shared_mask": shared_mask, "head_mask": head_mask, "rare_mask": rare_mask}
+	masks = {
+		"shared_mask": shared_mask, 
+		"head_mask": head_mask, 
+		"rare_mask": rare_mask
+	}
 
-def evaluate_shared_protocol(
+	return masks
+
+def evaluate_on_shared_tiers(
 	i2t_similarity: torch.Tensor,
 	t2i_similarity: torch.Tensor,
 	device_labels: torch.Tensor,
@@ -2186,7 +2243,7 @@ def evaluate_shared_protocol(
 	if verbose:
 		print(f"\n[EVALUATION] shared protocol")
 
-	masks = build_shared_masks_from_protocol(
+	masks = map_tier_spec_to_class_masks(
 		shared_protocol=shared_protocol,
 		class_names=class_names,
 		device=device,
@@ -2196,19 +2253,19 @@ def evaluate_shared_protocol(
 	if masks["shared_mask"].sum().item() == 0:
 		raise RuntimeError(
 			"Shared protocol evaluation has zero matched labels. "
-			"Check shared_class_names and this run's class_names."
+			"Check intersection_labels and this run's class_names."
 		)
 
 	if masks["head_mask"].sum().item() == 0:
 		raise RuntimeError(
 			"Shared protocol contains no head labels for this run. "
-			"Check the JSON head_mask and its alignment with shared_class_names."
+			"Check the JSON head_mask and its alignment with intersection_labels."
 		)
 
 	if masks["rare_mask"].sum().item() == 0:
 		raise RuntimeError(
 			"Shared protocol contains no rare labels for this run. "
-			"Check the JSON rare_mask and its alignment with shared_class_names."
+			"Check the JSON rare_mask and its alignment with intersection_labels."
 		)
 
 	overlap_mask = masks["head_mask"] & masks["rare_mask"]
@@ -2230,7 +2287,7 @@ def evaluate_shared_protocol(
 
 	if verbose:
 		print("\n[SHARED PROTOCOL EVALUATION]")
-		print(f"  ├─ Protocol name       : {shared_protocol.get('protocol_name', 'unknown')}")
+		print(f"  ├─ {shared_protocol.get('protocol_name', 'unknown')}")
 		print(f"  ├─ Shared classes      : {int(masks['shared_mask'].sum().item())}")
 		print(f"  ├─ Head classes        : {int(masks['head_mask'].sum().item())}")
 		print(f"  ├─ Rare classes        : {int(masks['rare_mask'].sum().item())}")
@@ -2263,24 +2320,52 @@ def evaluate_shared_protocol(
 
 	return shared_tiered_i2t, shared_tiered_t2i
 
+def translate_state_dict_keys(state_dict: dict, key_mappings: dict) -> dict:
+	"""
+	Rename checkpoint keys by replacing the first matching prefix.
+
+	Mappings are applied longest-prefix-first, so 'probe.clip_model.' wins
+	over 'clip_model.' and a key is never rewritten twice.
+	"""
+	ordered = sorted(key_mappings.items(), key=lambda kv: len(kv[0]), reverse=True)
+	translated = {}
+	for key, value in state_dict.items():
+		new_key = key
+		for old_prefix, new_prefix in ordered:
+			if key.startswith(old_prefix):
+				new_key = new_prefix + key[len(old_prefix):]
+				break
+		translated[new_key] = value
+	return translated
+
+def _load_state_dict_checked(model, state_dict, min_match: float = 0.5):
+	res = model.load_state_dict(state_dict, strict=False)
+	matched = len(state_dict) - len(res.unexpected_keys)
+	if matched == 0 or matched / len(state_dict) < min_match:
+			raise RuntimeError(
+					f"Checkpoint matched only {matched}/{len(state_dict)} keys "
+					f"(unexpected e.g. {res.unexpected_keys[:5]}); check key_mappings."
+			)
+	return res, matched
+
 def evaluate_best_model(
-	model,
-	validation_loader,
-	active_mask,
-	head_mask,
-	rare_mask,
-	early_stopping,
-	checkpoint_path,
-	finetune_strategy,
-	device,
+	model: torch.nn.Module,
+	validation_loader: DataLoader,
+	active_mask: torch.Tensor,
+	head_mask: torch.Tensor,
+	rare_mask: torch.Tensor,
+	device: Union[torch.device, str],
 	cache_dir: str,
 	temperature: float,
 	use_fixed_masks: bool,
-	topk_values: list[int] = [1, 5, 10],
+	topk_values: list[int],
+	early_stopping: Optional[EarlyStopping]=None,
+	finetune_strategy: Optional[str] = None,
+	checkpoint_path: Optional[str] = None,
 	embeddings_cache=None,
 	lora_params: Optional[Dict] = None,
 	class_embeds_override: Optional[torch.Tensor] = None,
-	shared_protocol_path: str = None,
+	tier_spec_path: str = None,
 	verbose: bool = False,
 ):
 	model_source = "current"
@@ -2290,51 +2375,49 @@ def evaluate_best_model(
 		print(f"\n[BEST MODEL EVALUATION]")
 		print(f"  ├─ {dataset_name}")
 		print(f"  ├─  {type(model)} {model.__class__.__name__} {model.name}")
-		print(f"  ├─  Finetune strategy: {finetune_strategy}")
+		if finetune_strategy:
+			print(f"  ├─  Finetune strategy: {finetune_strategy}")
 		print(f"  └─  Checkpoint path: {checkpoint_path}")
 
 	if checkpoint_path is not None and os.path.exists(checkpoint_path):
 		if verbose:
 			print(f"\n[LOADING] {checkpoint_path}")
 
+		key_mappings = {
+			'clip_model.': 'clip.',  # Map clip_model.* to clip.*
+			'probe.clip_model.': 'clip.',  # Map probe.clip_model.* to clip.*
+			'probe.probe.': 'probe.',  # Map probe.probe.* to probe.*
+		}
+
 		try:
 			checkpoint = torch.load(checkpoint_path, map_location=device)
-			if 'model_state_dict' in checkpoint:
+
+			if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
 				state_dict = checkpoint['model_state_dict']
-				key_mappings = {
-					'clip_model.': 'clip.',  # Map clip_model.* to clip.*
-					'probe.clip_model.': 'clip.',  # Map probe.clip_model.* to clip.*
-					'probe.probe.': 'probe.',  # Map probe.probe.* to probe.*
-				}				
-				translated_state_dict = translate_state_dict_keys(state_dict, key_mappings)
-				try:
-					model.load_state_dict(translated_state_dict, strict=False)
-					best_epoch = checkpoint.get('epoch', 'unknown')
-					if verbose:
-						print(f"[LOADED] checkpoint weights (ep: {best_epoch+1}): best_val_loss: {checkpoint.get('best_val_loss', 'unknown')}")
-					model_source = "checkpoint"
-				except Exception as e:
-					if verbose:
-						print(f"Translated state dict loading failed: {e}")
-						print("Attempting flexible loading with strict=False...")
-					# Fall back to partial loading
-					missing_keys, unexpected_keys = model.load_state_dict(translated_state_dict, strict=False)
-					if verbose and (missing_keys or unexpected_keys):
-						print(f"Missing keys: {len(missing_keys)}, Unexpected keys: {len(unexpected_keys)}")
-					model_source = "checkpoint_partial"		
+				best_epoch = checkpoint.get('epoch')
+				ep_str = best_epoch + 1 if isinstance(best_epoch, int) else 'unknown'
+				best_val = checkpoint.get('best_val_loss', 'unknown')
 			elif isinstance(checkpoint, dict) and 'epoch' not in checkpoint:
-				# Handle direct state dictionary
-				translated_state_dict = translate_state_dict_keys(checkpoint, key_mappings)
-				model.load_state_dict(translated_state_dict, strict=False)
-				if verbose:
-					print("[LOADED] weights from direct state dictionary")
-				model_source = "checkpoint"
+				state_dict, ep_str, best_val = checkpoint, 'n/a', 'n/a'    # raw state dict
 			else:
-				if verbose:
-					print("Warning: Loaded file format not recognized as a model checkpoint.")
-		except Exception as e:
+				raise ValueError(
+					"Unrecognized checkpoint format "
+				  "(expected 'model_state_dict' or a raw state dict)."
+				)
+
 			if verbose:
-				print(f"<!> Error loading checkpoint: {e} => Proceeding with current model weights.")
+				print(f"[CKPT KEYS] {len(state_dict)} keys, e.g. {list(state_dict.keys())[:5]}")
+				print(f"[MODEL KEYS] e.g. {list(model.state_dict().keys())[:5]}")
+
+			translated_state_dict = translate_state_dict_keys(state_dict, key_mappings)
+			_, matched = _load_state_dict_checked(model, translated_state_dict)
+			model_source = "checkpoint"
+			if verbose:
+				print(f"[LOADED] checkpoint weights (ep: {ep_str}), "
+				      f"matched {matched}/{len(translated_state_dict)} keys, best_val_loss: {best_val}")
+		except Exception as e:
+			raise RuntimeError(f"Failed to load checkpoint {checkpoint_path}: {e}") from e
+
 	else:
 		if verbose:
 			if checkpoint_path is None:
@@ -2375,7 +2458,7 @@ def evaluate_best_model(
 		topK_values=topk_values,
 		finetune_strategy=finetune_strategy,
 		cache_dir=cache_dir,
-		embeddings_cache=embeddings_cache,
+		embeddings_cache=embeddings_cache if model_source == "current" else None,
 		lora_params=lora_params,
 		is_training=False, # Use cache for final evaluation/inference
 		model_hash=get_model_hash(model),
@@ -2420,26 +2503,26 @@ def evaluate_best_model(
 	except AttributeError:
 		class_names = validation_loader.dataset.unique_labels
 
-	if shared_protocol_path:
+	if tier_spec_path:
 		# load json file:
-		with open(shared_protocol_path, "r") as f:
+		with open(tier_spec_path, "r") as f:
 			shared_protocol = json.load(f)
 
 		if verbose:
-			print("\n[LOADED SHARED PROTOCOL]")
-			print(f"  ├─ path              : {shared_protocol_path}")
-			print(f"  ├─ protocol_name     : {shared_protocol.get('protocol_name')}")
+			k=15
+			print("-"*120)
+			print("[FIXED SHARED LABEL PROTOCOL]")
+			print(f"  ├─ {tier_spec_path}")
+			print(f"  ├─ {shared_protocol.get('protocol_name')}")
 			print(f"  ├─ n_classes         : {shared_protocol.get('n_classes')}")
 			print(f"  ├─ n_head_classes    : {shared_protocol.get('n_head_classes')}")
 			print(f"  ├─ n_rare_classes    : {shared_protocol.get('n_rare_classes')}")
 			print(f"  ├─ tiers_disjoint    : {shared_protocol.get('tiers_disjoint')}")
-			print(f"  ├─ Head labels count : {len(shared_protocol.get('head_labels', []))}")
-			print(f"  ├─ Rare labels count : {len(shared_protocol.get('rare_labels', []))}")
-			print(f"  ├─ head_labels       : {shared_protocol.get('head_labels')}")
-			print(f"  └─ rare_labels       : {shared_protocol.get('rare_labels')}")
+			print(f"  ├─ head_labels [:{k}] : {shared_protocol.get('head_labels')[:k]}")
+			print(f"  └─ rare_labels [:{k}] : {shared_protocol.get('rare_labels')[:k]}")
 
 		# get the shared protocol:
-		shared_tiered_i2t, shared_tiered_t2i = evaluate_shared_protocol(
+		shared_tiered_i2t, shared_tiered_t2i = evaluate_on_shared_tiers(
 			i2t_similarity=i2t_similarity,
 			t2i_similarity=t2i_similarity,
 			device_labels=device_labels,
@@ -2457,8 +2540,8 @@ def evaluate_best_model(
 	# Clean up large tensors immediately after use
 	del i2t_similarity, t2i_similarity
 	torch.cuda.empty_cache()
-	
-	return {
+
+	results = {
 		"full_metrics":      full_metrics,
 		"img2txt_metrics":   validation_results["img2txt_metrics"],
 		"txt2img_metrics":   validation_results["txt2img_metrics"],
@@ -2468,3 +2551,5 @@ def evaluate_best_model(
 		"shared_tiered_t2i": shared_tiered_t2i,
 		"model_loaded_from": model_source,
 	}
+
+	return results
