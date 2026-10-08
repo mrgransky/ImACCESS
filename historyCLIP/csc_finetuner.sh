@@ -12,7 +12,7 @@
 #SBATCH --partition=gpularge
 #SBATCH --gres=gpu:gh200:1
 #SBATCH --time=0-04:45:00
-#SBATCH --begin=20:15:00
+#SBATCH --begin=02:15:00
 
 ##############################################################################
 # ARRAY INDEXING SCHEME
