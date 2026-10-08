@@ -75,7 +75,7 @@ DATASETS=(
 CSV_FILE=${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv
 LLM_BATCH_SIZES=(28 6 18 16 28)
 VLM_BATCH_SIZES=(128 48 48 32 48)
-
+GENERAL_BATCH_SIZE=1024
 echo "Running Multimodal Annotation on $CSV_FILE"
 echo "MLM: $MLM_MODEL"
 echo "[LLM] batch sizes: ${LLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} max generated tokens: $LLM_MAX_GENERATED_TOKENS"
@@ -94,6 +94,7 @@ python -u gt_kws_multimodal.py \
 	--embedding_model_id $TEXT_EMBEDDING_MODEL \
 	--clip_architecture $CLIP_MODEL \
 	--max_keywords 3 \
+	--batch_size $GENERAL_BATCH_SIZE \
 	--verbose \
 	# --llm_use_quantization \
 	# --vlm_use_quantization \
