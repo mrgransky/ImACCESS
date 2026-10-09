@@ -2633,8 +2633,9 @@ def get_optimal_num_clusters(
 def remove_problematic_cluster_labels(
 	df,
 	embeddings,
-	low_cohesion_threshold: float=0.55,
-	poor_canonical_threshold: float=0.55,
+	low_cohesion_threshold: float,
+	poor_canonical_threshold: float,
+	min_labels_per_cluster: int = 2,
 	verbose=False
 ):
 	"""
@@ -2644,14 +2645,16 @@ def remove_problematic_cluster_labels(
 		1. Low-cohesion clusters (intra_sim < threshold)
 		2. Poor canonical clusters (canonical_rep < threshold)
 
+	Amputation rather than surgery:
 	This is an aggressive but clean approach that eliminates
 	problematic labels entirely rather than trying to fix them.
 
 	Invariant (enforced by the caller — Step 8 of cluster())
 	---------------------------------------------------------
 	Every cluster's canonical is guaranteed to be a real row in df before
-	this function is called.  Virtual hypernyms are injected as genuine rows
-	into df+X in Step 8, so the lookup `cluster_labels.index(canonical)` is
+	this function is called. 
+	Virtual hypernyms are injected as genuine rows into df+X in Step 8, 
+	so the lookup `cluster_labels.index(canonical)` is
 	always safe and the old "canonical not in cluster_labels" guard is gone.
 
 	Parameters
@@ -2679,7 +2682,7 @@ def remove_problematic_cluster_labels(
 	"""
 	if verbose:
 		print("="*100)
-		print("[PROBLEMATIC CLUSTER LABELS DETECTION]")
+		print(f"[DETECTION] Problematic clusters and labels in {len(df['cluster'].unique())} clusters")
 
 	problematic_cluster_ids = set()
 	removed_labels = list()
@@ -2687,17 +2690,19 @@ def remove_problematic_cluster_labels(
 	# PART 1: Identify Low-Cohesion Clusters
 	low_cohesion_clusters = list()
 	for cluster_id in df['cluster'].unique():
-		cluster_mask   = df['cluster'] == cluster_id
+		cluster_mask = df['cluster'] == cluster_id
 		cluster_labels = df[cluster_mask]['label'].tolist()
-		cluster_size   = len(cluster_labels)
+		cluster_size = len(cluster_labels)
 
-		if cluster_size < 2:
+		if cluster_size < min_labels_per_cluster:
 			continue
 
-		cluster_indices    = df[cluster_mask].index.tolist()
+		cluster_indices = df[cluster_mask].index.tolist()
 		cluster_embeddings = embeddings[cluster_indices]
-		sim_matrix = sklearn.metrics.pairwise.cosine_similarity(cluster_embeddings)
+
 		n = len(cluster_embeddings)
+		sim_matrix = sklearn.metrics.pairwise.cosine_similarity(cluster_embeddings)
+
 		intra_sim  = (sim_matrix.sum() - n) / (n * (n - 1))
 
 		if intra_sim < low_cohesion_threshold:
@@ -2718,7 +2723,7 @@ def remove_problematic_cluster_labels(
 			f"Labels to remove: {sum(c['size'] for c in low_cohesion_clusters)}"
 		)
 		for i, cluster in enumerate(low_cohesion_clusters):
-			print(f"{i+1:3d}/{len(low_cohesion_clusters)} Cluster {cluster['cluster_id']:5d} sim: {cluster['intra_sim']:.3f} {cluster['labels']}")
+			print(f"{i+1:3d}/{len(low_cohesion_clusters)} Cluster {cluster['cluster_id']:5d} intra_sim: {cluster['intra_sim']:.3f} {cluster['labels']}")
 
 	# PART 2: Identify Poor Canonical Clusters:
 	poor_canonical_clusters = list()
@@ -2730,10 +2735,10 @@ def remove_problematic_cluster_labels(
 		cluster_labels = df[cluster_mask]['label'].tolist()
 		cluster_size = len(cluster_labels)
 
-		if cluster_size < 2:
+		if cluster_size < min_labels_per_cluster:
 			continue
 
-		cluster_indices    = df[cluster_mask].index.tolist()
+		cluster_indices = df[cluster_mask].index.tolist()
 		cluster_embeddings = embeddings[cluster_indices]
 
 		# Canonical is guaranteed to be in cluster_labels (see docstring invariant).
@@ -2741,15 +2746,16 @@ def remove_problematic_cluster_labels(
 		canonical_idx = cluster_labels.index(current_canonical)
 		canonical_emb = cluster_embeddings[canonical_idx].reshape(1, -1)
 
-		canonical_rep = sklearn.metrics.pairwise.cosine_similarity(canonical_emb, cluster_embeddings).mean()
-		if canonical_rep < poor_canonical_threshold:
+		canonical_representativeness = sklearn.metrics.pairwise.cosine_similarity(canonical_emb, cluster_embeddings).mean()
+
+		if canonical_representativeness < poor_canonical_threshold:
 			poor_canonical_clusters.append(
 				{
-					'cluster_id':       cluster_id,
-					'canonical':        current_canonical,
-					'representativeness': canonical_rep,
-					'size':             cluster_size,
-					'labels':           cluster_labels,
+					'cluster_id': cluster_id,
+					'canonical': current_canonical,
+					'canonical_representativeness': canonical_representativeness,
+					'size': cluster_size,
+					'labels': cluster_labels,
 				}
 			)
 			problematic_cluster_ids.add(cluster_id)
@@ -2760,7 +2766,7 @@ def remove_problematic_cluster_labels(
 			f"\n[POOR CANONICAL] {len(poor_canonical_clusters)} clusters (th: {poor_canonical_threshold}) -> "
 			f"Labels to remove: {sum(c['size'] for c in poor_canonical_clusters)}")
 		for i, cluster in enumerate(poor_canonical_clusters):
-			print(f"{i+1:3d}/{len(poor_canonical_clusters)} Cluster {cluster['cluster_id']:5d} rep: {cluster['representativeness']:.3f} canonical: {cluster['canonical']:<27} {cluster['labels']}")
+			print(f"{i+1:3d}/{len(poor_canonical_clusters)} Cluster {cluster['cluster_id']:5d} rep: {cluster['canonical_representativeness']:.3f} canonical: {cluster['canonical']:<27} {cluster['labels']}")
 	
 	if verbose:
 		print(f"\n[REMOVAL SUMMARY]")
@@ -4408,13 +4414,10 @@ def cluster(
 		df=df,
 		embeddings=X,
 		low_cohesion_threshold=0.50,
-		poor_canonical_threshold=0.60,
+		poor_canonical_threshold=0.55,
 		verbose=verbose,
 	)
 
-	# ── Display names (harmonization) AFTER cleaning ──────────────────────
-	# Internal steps require member-safe canonicals.  Apply surface renames
-	# only for export / CLIP mapping.
 	df["canonical_internal"] = df["canonical"]
 	rename = {
 		m["canonical"]: m["canonical_harmonized"]
