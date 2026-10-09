@@ -57,6 +57,7 @@ Returning fewer keywords — or an empty list [] — is always better than retur
 Do not select a keyword merely because it appears multiple times. Repetition does not imply significance.
 
 STRINGENTLY EXCLUDE:
+  - Typographical error, misprints, or irregular orthography.
   - Generic war terms.
   - Roman numerals, ordinal numbers, quantities, counts, measurements, or numeric expressions.
   - Equipment identifiers, serial numbers, brands, or models.
@@ -64,8 +65,7 @@ STRINGENTLY EXCLUDE:
   - Names of locations, neighborhoods, places, buildings, or structures.
   - Generic human category nouns, individual person names, or honorifics.
   - Family relationship terms.
-  - Geographical names, nationalities, ethnicities, or religions.
-  - Typographical error, misprints, or irregular orthography.
+  - Geographical names, locations, nationalities, ethnicities, or religions.
   - Acronyms, initialisms, phrasal verbs, possessive constructions, or descriptive clauses.
   - Underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
 
