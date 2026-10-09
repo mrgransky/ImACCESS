@@ -9,7 +9,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "William Green L President of the A.F.L., and John L. Lewis, President of the United Mine Workers. Long labor rivals, John L. Lewis right , the United Mine Workers President, and William Green, President of the A.F.L., are shown at the opening session of the Labor-Management conference. From: Beth Gore. Credit: Harris & Ewing." -llm "Qwen/Qwen3.5-122B-A10B" -v
+# python gt_kws_llm.py -desc "William Green L President of the A.F.L., and John L. Lewis, President of the United Mine Workers. Long labor rivals, John L. Lewis right , the United Mine Workers President, and William Green, President of the A.F.L., are shown at the opening session of the Labor-Management conference. From: Beth Gore. Credit: Harris & Ewing." -llm "Qwen/Qwen3.8-27B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -147,58 +147,7 @@ def _load_llm_(
 			print(f"[INFO] No architecture specified in config")
 			print(f"[INFO] Will use AutoModelForCausalLM\n")
 	
-	dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
-
-	if verbose:
-		print(f"[INFO] {model_id} Dtype selection: {dtype}")
-
-	def _optimal_attn_impl() -> str:
-		if not torch.cuda.is_available():
-			return "eager"
-		
-		# Bypass flash-attn for gpt-oss to prevent transformers hub_kernels version-locking crashes
-		if getattr(config, "model_type", None) == "gpt_oss" or "gpt-oss" in model_id.lower():
-			if verbose:
-				print("[INFO] gpt_oss detected: defaulting to 'sdpa' to bypass hub `kernels` requirement")
-			return "eager"
-
-		# Custom/non-standard architectures often don't support sdpa/flash
-		if use_auto_model or (config.architectures and config.architectures[0] not in dir(tfs)):
-			if verbose:
-				print(f"[INFO] Custom architecture — defaulting to 'eager' attention")
-			return "eager"
-		
-		# model config for FlashAttention dimension limits
-		max_head_dim = getattr(config, "head_dim", 0)
-		if hasattr(config, "text_config"):
-			max_head_dim = max(max_head_dim, getattr(config.text_config, "head_dim", 0))
-			max_head_dim = max(max_head_dim, getattr(config.text_config, "global_head_dim", 0))
-		
-		major, minor = torch.cuda.get_device_capability()
-		compute_cap = major + minor / 10
-		if compute_cap >= 8.0:
-			if max_head_dim <= 256:
-				try:
-					import flash_attn
-					if verbose: print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
-					return "flash_attention_2"
-				except ImportError:
-					if verbose: print(f"[WARN] Flash Attention 2 not installed")
-			else:
-				if verbose: print(f"[INFO] Bypassing Flash Attention 2: max head_dim ({max_head_dim}) > 256")
-		
-		# ── SDPA: probe whether this architecture actually supports it ──
-		if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
-			sdpa_supported = getattr(model_cls, "_supports_sdpa", False)
-			if sdpa_supported:
-				if verbose: print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
-				return "sdpa"
-			else:
-				if verbose: print(f"[INFO] {config.architectures[0]} does not declare _supports_sdpa — falling back to 'eager'")
-
-		return "eager"
-
-	attn_impl = _optimal_attn_impl()
+	attention, dtype = get_model_kwargs(verbose=verbose)
 
 	# ========== Quantization config ==========
 	quantization_config = None
@@ -408,7 +357,7 @@ def _load_llm_(
 		# "low_cpu_mem_usage": False, # avoid illegal memory access during weight materialization
 		"trust_remote_code": True,
 		"cache_dir": cache_directory[USER],
-		"attn_implementation": attn_impl,
+		"attn_implementation": attention,
 		"dtype": dtype,
 	}
 	

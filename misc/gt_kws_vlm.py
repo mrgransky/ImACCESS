@@ -23,12 +23,12 @@ from utils import *
 
 # how to run:
 # local:
-# python gt_kws_vlm.py -i "/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/45496890.jpg" -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
+# python gt_kws_vlm.py -i /home/farid/datasets/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/283745.jpg -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
+# python gt_kws_vlm.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # Roihu:
 # python gt_kws_vlm.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/45496890.jpg -vlm "Qwen/Qwen3.5-4B" -v
 
-# python gt_kws_vlm.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be semantically atomic, visually grounded, and and reusable across archives.
@@ -121,49 +121,8 @@ def _load_vlm_(
 	
 	if model_cls is None:
 		raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
-		
-	dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
-	if verbose:
-		print(f"[INFO] {model_id} Dtype selection: {dtype}")
-	
-	# ========== Optimal attention implementation ==========
-	def _optimal_attn_impl() -> str:
-		if not torch.cuda.is_available():
-			return "eager"
-		
-		# model config for FlashAttention dimension limits
-		max_head_dim = getattr(config, "head_dim", 0)
-		if hasattr(config, "text_config"):
-			max_head_dim = max(max_head_dim, getattr(config.text_config, "head_dim", 0))
-			max_head_dim = max(max_head_dim, getattr(config.text_config, "global_head_dim", 0))
 
-		major, minor = torch.cuda.get_device_capability()
-		compute_cap = major + minor / 10
-		
-		if compute_cap >= 8.0:
-			# Only use Flash Attention 2 if the head dimensions are supported
-			if max_head_dim <= 256:
-				try:
-					import flash_attn
-					if verbose: print(f"[INFO] Flash Attention 2 available (compute {compute_cap})")
-					return "flash_attention_2"
-				except ImportError:
-					if verbose: print(f"[WARN] Flash Attention 2 not installed")
-			else:
-				if verbose: print(f"[INFO] Bypassing Flash Attention 2: max head_dim ({max_head_dim}) > 256")
-		
-		# Fallback to SDPA (which handles >256 dimensions automatically)
-		if compute_cap >= 7.0 and torch.__version__ >= "2.0.0":
-			if verbose: print(f"[INFO] Using SDPA attention (compute {compute_cap}, PyTorch {torch.__version__})")
-			return "sdpa"		
-		
-		return "eager"
-
-	attn_impl = _optimal_attn_impl()
-
-	if verbose:
-		print(f"[INFO] {model_id} Attention implementation: {attn_impl}")
-	
+	attention, dtype = get_model_kwargs(verbose=verbose)
 	# ========== Quantization config ==========
 	quantization_config = None
 	if quantization_bits is not None:
@@ -427,8 +386,8 @@ def _load_vlm_(
 		"low_cpu_mem_usage": True,
 		"trust_remote_code": True,
 		"cache_dir": cache_directory[USER],
-		"attn_implementation": attn_impl,
-		"torch_dtype": dtype,  # <-- use torch_dtype (not "dtype")
+		"attn_implementation": attention,
+		"dtype": dtype,
 	}
 	
 	if quantization_bits is not None:

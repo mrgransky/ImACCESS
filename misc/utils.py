@@ -23,6 +23,7 @@ from typing import Tuple, Union, List, Dict, Any, Optional, Callable, TypedDict,
 import certifi
 import networkx as nx
 import scipy
+import sklearn
 import hashlib
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 import huggingface_hub
@@ -52,6 +53,8 @@ import traceback
 import builtins
 import platform
 import shutil
+import packaging
+import pathlib
 from sklearn.feature_extraction.text import TfidfVectorizer
 import concurrent.futures
 # from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, TimeoutError
@@ -187,6 +190,46 @@ def extract_per_k_metrics(eval_result: Dict, tier_key: str) -> Dict:
 			}
 
 	return out
+
+def get_model_kwargs(verbose: bool = True):
+	dtype = torch.float32
+	attention = "eager"
+	if torch.cuda.is_available():
+		dtype = (
+			torch.bfloat16
+			if torch.cuda.is_bf16_supported()
+			else torch.float32
+		)
+		major, minor = torch.cuda.get_device_capability()
+		compute_cap = major + minor / 10
+		if compute_cap >= 8.0:
+			try:
+				import flash_attn
+				attention = "flash_attention_2"
+			except ImportError:
+				if verbose:
+					print(
+						"[WARN] Flash Attention 2 not installed "
+						"(pip install flash-attn)"
+					)
+		if attention == "eager" and compute_cap >= 7.0 and packaging.version.parse(torch.__version__) >= packaging.version.parse("2.0.0"):
+			if verbose:
+				print(
+					f"[INFO] Using SDPA attention (compute {compute_cap}, "
+					f"PyTorch {torch.__version__})"
+				)
+			attention = "sdpa"
+
+	if verbose:
+		print(f"\n[MODEL KWARGS]")
+		print(f"  ├─ CUDA        : {torch.version.cuda}")
+		print(f"  ├─ PyTorch     : {torch.__version__}")
+		print(f"  ├─ compute_cap : {torch.cuda.get_device_capability()}")
+		print(f"  ├─ attention   : {attention}")
+		print(f"  └─ dtype       : {dtype}")
+		print("-"*40)
+
+	return attention, dtype
 
 def clean_cache(directory: str, strategy: str, verbose: bool = False):
 	# Clean up any available JSON/PT/PTH files before finishing

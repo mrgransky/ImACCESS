@@ -1,25 +1,4 @@
-import torch
-import numpy as np
-import pandas as pd
-import os
-import ast
-import json
-import time
-import hashlib
-import re
-import packaging
-import pathlib
-import sklearn
-from scipy.stats import entropy
-from scipy.spatial.distance import pdist, squareform
-from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
-
-from collections import Counter, defaultdict
-from typing import List, Tuple, Dict, Set, Any, Optional, Union, Callable, Iterable
-
-from sentence_transformers import SentenceTransformer
-import matplotlib.pyplot as plt
-import seaborn as sns
+from utils import *
 
 try:
 	import fastcluster
@@ -40,24 +19,15 @@ except ImportError:
 if not getattr(Normalize, "_rogue_kwargs_patched", False):
 	_orig_norm_init = Normalize.__init__
 	def _patched_norm_init(self, *args, **kwargs):
-			kwargs.pop("normalize_embeddings", None)
-			return _orig_norm_init(self, *args, **kwargs)
+		kwargs.pop("normalize_embeddings", None)
+		return _orig_norm_init(self, *args, **kwargs)
 	Normalize.__init__ = _patched_norm_init
 	Normalize._rogue_kwargs_patched = True
-
-cache_directory = {
-	"farid": "/home/farid/datasets/models",
-	"alijanif": "/scratch/project_2004072/models",
-	"ubuntu": "/media/volume/models",
-}
 
 CUSTOM_ENCODE_INSTRUCTION = (
 	"Instruct: Given a label describing a historical photograph, "
 	"retrieve labels that name the same concept\nQuery:"
 )
-
-# Replaces BOTH summarize_canonical_selection() and summarize_shared_names().
-# Needs (already imported in clustering.py): json, pathlib, re, numpy as np, Counter, defaultdict.
 
 def summarize_canonical_selection(
 	path,
@@ -165,7 +135,7 @@ def summarize_canonical_selection(
 	else:
 		emit("   (no class data)")
 
-	# ── 4. shared names and the shared-name resolver ─────────────────────────
+	# 4. shared names and the shared-name resolver
 	section("4. names shared by several clusters and the shared-name resolver")
 	by_name = Counter(c.get("canonical", "") for c in clusters)
 	shared = {name: count for name, count in by_name.items() if count > 1}
@@ -384,53 +354,13 @@ def summarize_canonical_selection(
 			for c in g[:detail_rows]:
 				emit(
 					f"      {anchor(c):.3f} {c['shared_canonical'].get('resolution', ''):8} "
-					f"-> {c.get('canonical', '')!r:30} | {c.get('members', [])[:3]}"
+					f"-> {c.get('canonical', '')!r:30} {c.get('members', [])[:7]}"
 				)
 
 	summary = "\n".join(lines) + "\n"
 	if print_summary:
 		print(summary)
 	return summary if return_text else None
-
-def get_model_kwargs(verbose: bool = True):
-	dtype = torch.float32
-	attention = "eager"
-	if torch.cuda.is_available():
-		dtype = (
-			torch.bfloat16
-			if torch.cuda.is_bf16_supported()
-			else torch.float32
-		)
-		major, minor = torch.cuda.get_device_capability()
-		compute_cap = major + minor / 10
-		if compute_cap >= 8.0:
-			try:
-				import flash_attn
-				attention = "flash_attention_2"
-			except ImportError:
-				if verbose:
-					print(
-						"[WARN] Flash Attention 2 not installed "
-						"(pip install flash-attn)"
-					)
-		if attention == "eager" and compute_cap >= 7.0 and packaging.version.parse(torch.__version__) >= packaging.version.parse("2.0.0"):
-			if verbose:
-				print(
-					f"[INFO] Using SDPA attention (compute {compute_cap}, "
-					f"PyTorch {torch.__version__})"
-				)
-			attention = "sdpa"
-
-	if verbose:
-		print(f"\n[MODEL KWARGS]")
-		print(f"  ├─ CUDA        : {torch.version.cuda}")
-		print(f"  ├─ PyTorch     : {torch.__version__}")
-		print(f"  ├─ compute_cap : {torch.cuda.get_device_capability()}")
-		print(f"  ├─ attention   : {attention}")
-		print(f"  └─ dtype       : {dtype}")
-		print("-"*40)
-
-	return attention, dtype
 
 def _encode_(
 	model,
@@ -706,16 +636,18 @@ def _compute_linkage(
 		distance_matrix = np.clip(1 - (X @ X.T), 0, 2)
 		np.fill_diagonal(distance_matrix, 0)
 		condensed_dist = squareform(distance_matrix, checks=False)
+		
 		if verbose:
 			print(f"[LINKAGE] Using {linkage_method} linkage with {distance_metric} distance")
+		
 		return fastcluster.linkage(condensed_dist, method=linkage_method) if use_fastcluster \
-			else linkage(condensed_dist, method=linkage_method)
+			else scipy.cluster.hierarchy.linkage(condensed_dist, method=linkage_method)
 
 	if distance_metric == "euclidean":
 		if verbose:
 			print(f"[LINKAGE] Using {linkage_method} linkage with Euclidean distance")
 		return fastcluster.linkage(X, method=linkage_method, metric='euclidean') if use_fastcluster \
-			else linkage(X, method=linkage_method, metric='euclidean')
+			else scipy.cluster.hierarchy.linkage(X, method=linkage_method, metric='euclidean')
 	
 	raise ValueError(f"Unsupported distance metric: {distance_metric}")
 
@@ -1530,7 +1462,7 @@ def get_optimal_super_clusters(
 	best_n_clusters = None
 	print(f"[SUPER-CLUSTERS] Testing {len(candidate_distances)} distance thresholds...")
 	for dist in candidate_distances:
-			labels = fcluster(linkage_matrix, t=dist, criterion='distance')
+			labels = scipy.cluster.hierarchy.fcluster(linkage_matrix, t=dist, criterion='distance')
 			n_clusters = len(np.unique(labels))
 			if n_clusters < min_clusters or n_clusters > max_clusters:
 					continue
@@ -1559,14 +1491,14 @@ def get_optimal_super_clusters(
 
 	print(f"[SUPER-CLUSTERS] Optimal distance: {super_cluster_distance:.4f} ({n_super_clusters} super-clusters)")
 
-	super_cluster_labels = fcluster(linkage_matrix, t=super_cluster_distance, criterion='distance') - 1
+	super_cluster_labels = scipy.cluster.hierarchy.fcluster(linkage_matrix, t=super_cluster_distance, criterion='distance') - 1
 
 	print(f"\n[VERIFICATION] super-cluster alignment...")
 	print(f"  ├─ Distance threshold: {super_cluster_distance:.4f}")
 	print(f"  ├─ Expected clusters: {n_super_clusters}")
 
 	# Recompute to verify
-	labels_check = fcluster(linkage_matrix, t=super_cluster_distance, criterion='distance')
+	labels_check = scipy.cluster.hierarchy.fcluster(linkage_matrix, t=super_cluster_distance, criterion='distance')
 	n_clusters_check = len(np.unique(labels_check))
 	print(f"  ├─ Actual clusters from fcluster: {n_clusters_check}")
 
@@ -1616,7 +1548,7 @@ def get_optimal_super_clusters(
 	
 	# 2D cluster visualizations
 	plt.figure(figsize=(10, 7))
-	dendrogram(
+	scipy.cluster.hierarchy.dendrogram(
 		linkage_matrix, 
 		truncate_mode='lastp', 
 		p=40, 
@@ -1642,7 +1574,7 @@ def get_optimal_super_clusters(
 	plt.close()
 
 	plt.figure(figsize=(24, 15))
-	dendrogram(
+	scipy.cluster.hierarchy.dendrogram(
 		linkage_matrix,
 		color_threshold=super_cluster_distance,
 		leaf_font_size=8
@@ -1759,7 +1691,7 @@ def get_optimal_num_clusters(
 	plateau_k = None
 	
 	for n_clusters in coarse_range:
-		labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
+		labels = scipy.cluster.hierarchy.fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
 		
 		if len(np.unique(labels)) < 2:
 			continue
@@ -1921,7 +1853,7 @@ def get_optimal_num_clusters(
 	fine_results = list()
 	
 	for n_clusters in fine_range:
-		labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
+		labels = scipy.cluster.hierarchy.fcluster(linkage_matrix, n_clusters, criterion='maxclust') - 1
 		
 		if len(np.unique(labels)) < 2:
 			continue
@@ -2036,7 +1968,7 @@ def get_optimal_num_clusters(
 		print()
 	
 	# STAGE 3: POST-PROCESSING - Merge singletons
-	labels = fcluster(
+	labels = scipy.cluster.hierarchy.fcluster(
 		linkage_matrix, 
 		best['k'], 
 		criterion='maxclust'
@@ -3860,7 +3792,7 @@ def cluster(
 	else:
 		best_k = nc
 		print(f"\nUsing user-defined k={best_k} for {len(unique_labels)} labels")
-		cluster_labels = fcluster(Z, best_k, criterion='maxclust') - 1
+		cluster_labels = scipy.cluster.hierarchy.fcluster(Z, best_k, criterion='maxclust') - 1
 
 	# STEP 4b: OPTIONAL MERGE OF NEAR-DUPLICATE CLUSTERS (before canonical selection)
 	# Off by default. 
