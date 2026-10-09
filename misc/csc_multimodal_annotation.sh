@@ -49,7 +49,7 @@ if [ "$NUM_GPUS" -gt 1 ]; then
 	echo "LARGE models (multi-GPU configuration)"
 	#MLM_MODEL="Qwen/Qwen3.6-35B-A3B" # not a good model
 	# MLM_MODEL="Qwen/Qwen3.5-122B-A10B" # too detailed
-	MLM_MODEL="Qwen/Qwen3.6-27B"
+	MLM_MODEL="Qwen/Qwen3.8-27B"
 	LLM_MAX_GENERATED_TOKENS=192
 	VLM_MAX_GENERATED_TOKENS=164
 else

@@ -56,7 +56,7 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
 Do not select a keyword merely because it appears multiple times. Repetition does not imply significance.
 
-STRINGENTLY EXCLUDE:
+STRINGENTLY exclude keywords that fall into the following categories:
   - Typographical error, misprints, or irregular orthography.
   - Generic war terms.
   - Roman numerals, ordinal numbers, quantities, counts, measurements, or numeric expressions.
