@@ -2303,8 +2303,8 @@ def remove_problematic_cluster_labels(
 	
 	if verbose:
 		print(f"\n[REMOVAL SUMMARY]")
-		print(f"  ├─ problematic clusters: {len(problematic_cluster_ids)} = {len(poor_canonical_clusters)} (poor canonical) + {len(low_cohesion_clusters)} (low cohesion)")
-		print(f"  ├─ problematic labels  : {len(removed_labels)} = {sum(c['size'] for c in poor_canonical_clusters)} (poor canonical) + {sum(c['size'] for c in low_cohesion_clusters)} (low cohesion)")
+		print(f"  ├─ problematic clusters: {len(problematic_cluster_ids):6d} = {len(poor_canonical_clusters)} (poor canonical) + {len(low_cohesion_clusters)} (low cohesion)")
+		print(f"  ├─ problematic labels  : {len(removed_labels):6d} = {sum(c['size'] for c in poor_canonical_clusters)} (poor canonical) + {sum(c['size'] for c in low_cohesion_clusters)} (low cohesion)")
 		print(f"  ├─ labels to remove    : {len(removed_labels)}/{len(df)} ({len(removed_labels)/len(df)*100:.3f}%)")
 		print(f"  └─ clusters to remove  : {len(problematic_cluster_ids)}/{len(df['cluster'].unique())} ({len(problematic_cluster_ids)/len(df['cluster'].unique())*100:.3f}%)")
 
@@ -2332,7 +2332,6 @@ def remove_problematic_cluster_labels(
 		new_consolidation      = len(df_clean) / df_clean['cluster'].nunique()
 		
 		print(f"[consolidation] {original_consolidation:.2f}x -> New: {new_consolidation:.2f}x (diff: {(new_consolidation - original_consolidation):.3f}x)")
-		print(f"==>>> {len(removed_labels)} problematic labels removed!")
 		print("="*100)
 
 	return df_clean, embeddings_clean, removed_labels
@@ -3743,8 +3742,8 @@ def cluster(
 	linkage_method: str="ward",
 	distance_metric: str="euclidean",
 	target_intra_similarity: float = 0.69,
-	min_consolidation: float = 5.0,  #3.0, #3.8, #4.0,
-	max_consolidation: float = 7.5,  #5.0, #5.0, #6.5,
+	min_consolidation: float = 3.8, #5.0, #3.0, #4.0,
+	max_consolidation: float = 5.0, #7.5, #5.0, #6.5,
 	min_singleton_merge_sim: Optional[float] = 0.60,
 	merge_close_clusters_threshold: Optional[float] = None,
 	merge_max_size: int = 30,
