@@ -50,7 +50,7 @@ STOPWORDS.update(geographic_references)
 PROMPT_TEMPLATE = """
 Extract no more than {k} prominent keywords, where prominence means visual salience and concrete recoverability rather than textual frequency. 
 Each keyword must be concrete, semantically atomic, visually grounded, and reusable across archives.
-Response must be a Python list of double-quoted strings containing keywords derived strictly from the caption.
+Response must be a Python list of double-quoted strings containing keywords derived from the caption.
 Prioritize multi-word noun phrases when the caption contains meaningful adjectives or descriptors.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 Phrase repetition does not imply significance.
