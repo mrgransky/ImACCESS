@@ -9,7 +9,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "William Green L President of the A.F.L., and John L. Lewis, President of the United Mine Workers. Long labor rivals, John L. Lewis right , the United Mine Workers President, and William Green, President of the A.F.L., are shown at the opening session of the Labor-Management conference. From: Beth Gore. Credit: Harris & Ewing." -llm "Qwen/Qwen3.8-27B" -v
+# python gt_kws_llm.py -desc "THE “CIAUSSINE CROT” (GASTALDI REFUGE). BEEF VALLEYS, THREE WALKERS AT THE GASTALDI SHELTER WITH BHESSANESE IN THE BACKGROUND" -llm "Qwen/Qwen3.8-27B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -55,6 +55,12 @@ Prioritize multi-word noun phrases when the caption contains meaningful adjectiv
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
 Do not select a keyword merely because it appears multiple times. Repetition does not imply significance.
+
+TYPO & OCR HANDLING (CRITICAL):
+  - Archival captions frequently contain severe typos, OCR glitches, and garbled text (e.g., "Bheissanese", "Beef Valleys", "Miltiano", "sparthree").
+  - NEVER output a non-dictionary word, garbled string, or capitalized nonsense.
+  - If a word is clearly a typo or OCR error, silently correct it to its standard English equivalent or discard it entirely. NEVER copy typos verbatim.
+  - Reject any unknown capitalized words, as they are almost certainly mangled proper nouns, locations, or names.
 
 STRINGENTLY EXCLUDE:
   - Generic war terms.
