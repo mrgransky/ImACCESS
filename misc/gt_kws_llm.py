@@ -50,17 +50,11 @@ STOPWORDS.update(geographic_references)
 PROMPT_TEMPLATE = """
 Extract no more than {k} prominent keywords, where prominence means visual salience and concrete recoverability rather than textual frequency. 
 Each keyword must be concrete, semantically atomic, visually grounded, and reusable across archives.
-Response must be a Python list of double-quoted strings containing keywords derived strictly from the caption without any markdown, reasoning, thinking, or explanation.
+Response must be a Python list of double-quoted strings containing keywords derived strictly from the caption.
 Prioritize multi-word noun phrases when the caption contains meaningful adjectives or descriptors.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
 Do not select a keyword merely because it appears multiple times. Repetition does not imply significance.
-
-TYPO & OCR HANDLING (CRITICAL):
-  - Archival captions frequently contain severe typos, OCR glitches, and garbled text (e.g., "Bheissanese", "Beef Valleys", "Miltiano", "sparthree").
-  - NEVER output a non-dictionary word, garbled string, or capitalized nonsense.
-  - If a word is clearly a typo or OCR error, silently correct it to its standard English equivalent or discard it entirely. NEVER copy typos verbatim.
-  - Reject any unknown capitalized words, as they are almost certainly mangled proper nouns, locations, or names.
 
 STRINGENTLY EXCLUDE:
   - Generic war terms.
