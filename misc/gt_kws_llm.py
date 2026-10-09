@@ -53,8 +53,8 @@ Each keyword must be concrete, semantically atomic, visually grounded, and reusa
 Response must be a Python list of double-quoted strings containing keywords derived strictly from the caption.
 Prioritize multi-word noun phrases when the caption contains meaningful adjectives or descriptors.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
+Phrase repetition does not imply significance.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
-Do not select a keyword merely because it appears multiple times. Repetition does not imply significance.
 
 STRINGENTLY exclude keywords containing:
   - typographical error, misprints, or irregular orthography
@@ -62,12 +62,12 @@ STRINGENTLY exclude keywords containing:
   - roman numerals, ordinal numbers, quantities, counts, measurements, or numeric expressions
   - equipment identifiers, serial numbers, brands, or models
   - dates, times, years, decades, or any temporal references
-  - names of locations, neighborhoods, places, buildings, or structures
+  - locations, neighborhoods, places, buildings, or structures
   - generic human category nouns, individual person names, or honorifics
   - family relationship terms
-  - geographical names, locations, nationalities, ethnicities, or religions
+  - geographical names, nationalities, ethnicities, or religions
   - acronyms, initialisms, phrasal verbs, possessive constructions, or descriptive clauses
-  - underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words
+  - underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
 
 Color handling:
   - Remove color only if it is purely descriptive (white truck, blue sky).
