@@ -32,7 +32,7 @@ from utils import *
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be semantically atomic, visually grounded, and and reusable across archives.
-Response must be a Python list of double-quoted strings containing keywords derived strictly from the visual content of the image.
+Response must be a Python list of double-quoted strings containing keywords derived from the visual content of the image.
 Prioritize multi-word noun phrases when possible.
 
 Constraints:

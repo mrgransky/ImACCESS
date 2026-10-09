@@ -10,8 +10,8 @@
 #SBATCH --cpus-per-task=20
 #SBATCH --mem=224G
 #SBATCH --partition=gpularge
-#SBATCH --gres=gpu:gh200:1
-#SBATCH --time=00-03:00:00
+#SBATCH --gres=gpu:gh200:4
+#SBATCH --time=01-12:00:00
 #SBATCH --array=0
 
 set -euo pipefail
@@ -49,7 +49,7 @@ if [ "$NUM_GPUS" -gt 1 ]; then
 	echo "LARGE models (multi-GPU configuration)"
 	#MLM_MODEL="Qwen/Qwen3.6-35B-A3B" # not a good model
 	# MLM_MODEL="Qwen/Qwen3.5-122B-A10B" # too detailed
-	MLM_MODEL="Qwen/Qwen3.8-27B"
+	MLM_MODEL="Qwen/Qwen3.6-27B"
 	LLM_MAX_GENERATED_TOKENS=192
 	VLM_MAX_GENERATED_TOKENS=164
 else
