@@ -56,18 +56,18 @@ Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
 Do not select a keyword merely because it appears multiple times. Repetition does not imply significance.
 
-STRINGENTLY exclude keywords that fall into the following categories:
-  - Typographical error, misprints, or irregular orthography.
-  - Generic war terms.
-  - Roman numerals, ordinal numbers, quantities, counts, measurements, or numeric expressions.
-  - Equipment identifiers, serial numbers, brands, or models.
-  - Dates, times, years, decades, or any temporal references.
-  - Names of locations, neighborhoods, places, buildings, or structures.
-  - Generic human category nouns, individual person names, or honorifics.
-  - Family relationship terms.
-  - Geographical names, locations, nationalities, ethnicities, or religions.
-  - Acronyms, initialisms, phrasal verbs, possessive constructions, or descriptive clauses.
-  - Underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
+STRINGENTLY exclude keywords containing:
+  - typographical error, misprints, or irregular orthography
+  - generic war terms
+  - roman numerals, ordinal numbers, quantities, counts, measurements, or numeric expressions
+  - equipment identifiers, serial numbers, brands, or models
+  - dates, times, years, decades, or any temporal references
+  - names of locations, neighborhoods, places, buildings, or structures
+  - generic human category nouns, individual person names, or honorifics
+  - family relationship terms
+  - geographical names, locations, nationalities, ethnicities, or religions
+  - acronyms, initialisms, phrasal verbs, possessive constructions, or descriptive clauses
+  - underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words
 
 Color handling:
   - Remove color only if it is purely descriptive (white truck, blue sky).
