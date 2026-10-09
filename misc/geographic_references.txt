@@ -573,6 +573,8 @@ Asansol
 Athens
 Baghdad
 Bagdad
+Bagneres de Luchon
+Bagnères-de-Luchon
 Bangalore
 Bangkok
 Barcelona
@@ -668,6 +670,7 @@ Hamburg
 Hampshire
 Hanoi
 Havana
+Harrogate
 Helensburgh
 Helsinki
 Helsingfors
@@ -711,6 +714,7 @@ Liverpool
 Lindholmen
 Llandovery
 London
+Luchon
 Madras
 Madrid
 Majuro
