@@ -1,35 +1,18 @@
 import torch
 import numpy as np
 import pandas as pd
-import warnings
 import os
 import ast
 import json
 import time
-import gc
-import sys
 import hashlib
 import re
-import math
-import multiprocessing
 import packaging
 import pathlib
-from sklearn.metrics import (
-	silhouette_score, 
-	davies_bouldin_score, 
-	calinski_harabasz_score
-)
+import sklearn
 from scipy.stats import entropy
 from scipy.spatial.distance import pdist, squareform
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
-
-from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
-from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
-from sklearn.utils import resample
-from sklearn.metrics import adjusted_rand_score
-from sklearn.cluster import AgglomerativeClustering
 
 from collections import Counter, defaultdict
 from typing import List, Tuple, Dict, Set, Any, Optional, Union, Callable, Iterable
@@ -614,9 +597,10 @@ def _merge_close_clusters(
 	threshold: float,
 	max_merged_size: int = 30,
 	max_rounds: int = 10,
-	report_path: Optional[str] = None,
+	report_path: Optional[str]=None,
 	verbose: bool = False,
 ) -> np.ndarray:
+
 	"""
 	Second, conservative pass over the clusters produced by the tree cut.
 
@@ -1256,8 +1240,6 @@ def dissolve_low_cohesion_clusters(
 		Dissolve clusters with intra-similarity < threshold.
 		Ensures cluster IDs remain contiguous (0, 1, 2, ..., n-1).
 		"""
-		from sklearn.metrics.pairwise import cosine_similarity
-		import numpy as np
 		
 		if verbose:
 				print(f"\n[DISSOLUTION] Analyzing clusters...")
@@ -1277,7 +1259,7 @@ def dissolve_low_cohesion_clusters(
 				cluster_indices = df[cluster_mask].index.tolist()
 				cluster_embeddings = embeddings[cluster_indices]
 				
-				sim_matrix = cosine_similarity(cluster_embeddings)
+				sim_matrix = sklearn.metrics.pairwise.cosine_similarity(cluster_embeddings)
 				n = len(cluster_embeddings)
 				intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
 				
@@ -1369,7 +1351,7 @@ def fix_poor_canonical_clusters(
 		canonical_emb = cluster_embeddings[canonical_idx].reshape(1, -1)
 		
 		# Compute representativeness (avg similarity to all members)
-		canonical_rep = cosine_similarity(canonical_emb, cluster_embeddings).mean()
+		canonical_rep = sklearn.metrics.pairwise.cosine_similarity(canonical_emb, cluster_embeddings).mean()
 		
 		if canonical_rep < threshold:
 			poor_canonical_clusters.append(
@@ -1403,7 +1385,7 @@ def fix_poor_canonical_clusters(
 		
 		# Method 1: Centroid-nearest (most representative)
 		centroid = cluster_embeddings.mean(axis=0, keepdims=True)
-		similarities = cosine_similarity(centroid, cluster_embeddings)[0]
+		similarities = sklearn.metrics.pairwise.cosine_similarity(centroid, cluster_embeddings)[0]
 		best_idx = similarities.argmax()
 		new_canonical = cluster_labels[best_idx]
 		new_rep = similarities[best_idx]
@@ -1514,7 +1496,7 @@ def analyze_cluster_quality(
 
 		# ── Intra-cluster cohesion ────────────────────────────────────────
 		if cluster_size > 1:
-			S      = cosine_similarity(cembs)
+			S      = sklearn.metrics.pairwise.cosine_similarity(cembs)
 			n      = cluster_size
 			# Mean pairwise similarity, diagonal excluded
 			intra_sim = (S.sum() - n) / (n * (n - 1))
@@ -1534,7 +1516,7 @@ def analyze_cluster_quality(
 		canon_idx = np.where(clbls == canonical)[0]
 		if len(canon_idx) > 0:
 			canon_emb  = cembs[canon_idx[0]].reshape(1, -1)
-			canon_rep  = float(cosine_similarity(canon_emb, cembs).mean())
+			canon_rep  = float(sklearn.metrics.pairwise.cosine_similarity(canon_emb, cembs).mean())
 		else:
 			canon_rep  = 0.0   # should not happen after Step 8 fix
 
@@ -2258,7 +2240,7 @@ def get_optimal_num_clusters(
 			cluster_X = X[cluster_mask]
 			
 			if len(cluster_X) > 1:
-				sim_matrix = cosine_similarity(cluster_X)
+				sim_matrix = sklearn.metrics.pairwise.cosine_similarity(cluster_X)
 				n = len(cluster_X)
 				intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
 				intra_sims.append(intra_sim)
@@ -2420,7 +2402,7 @@ def get_optimal_num_clusters(
 			cluster_X = X[cluster_mask]
 			
 			if len(cluster_X) > 1:
-				sim_matrix = cosine_similarity(cluster_X)
+				sim_matrix = sklearn.metrics.pairwise.cosine_similarity(cluster_X)
 				n = len(cluster_X)
 				intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
 				intra_sims.append(intra_sim)
@@ -2544,14 +2526,14 @@ def get_optimal_num_clusters(
 			print(f"\n[STAGE 3] MERGING {len(singleton_clusters_indices)} SINGLETON CLUSTERS")
 
 		unique_labels = np.unique(labels)
-		centroids = np.array([X[labels == cid].mean(axis=0) for cid in unique_labels])		
+		centroids = np.array([X[labels == cid].mean(axis=0) for cid in unique_labels])
 		new_labels = labels.copy()
 		merged_count = 0
 
 		for singleton_id in singleton_clusters_indices:
 			singleton_idx = np.where(labels == singleton_id)[0][0]
 			singleton_vec = X[singleton_idx].reshape(1, -1)
-			sims = cosine_similarity(singleton_vec, centroids)[0]
+			sims = sklearn.metrics.pairwise.cosine_similarity(singleton_vec, centroids)[0]
 			sorted_ids = np.argsort(sims)[::-1]
  
 			# Find nearest non-singleton cluster
@@ -2607,7 +2589,7 @@ def get_optimal_num_clusters(
 	for cid in np.unique(labels):
 		cluster_X = X[labels == cid]
 		if len(cluster_X) > 1:
-			sim_matrix = cosine_similarity(cluster_X)
+			sim_matrix = sklearn.metrics.pairwise.cosine_similarity(cluster_X)
 			n = len(cluster_X)
 			intra_sim = (sim_matrix.sum() - n) / (n * (n - 1))
 			final_intra_sims.append(intra_sim)
@@ -2714,7 +2696,7 @@ def remove_problematic_cluster_labels(
 
 		cluster_indices    = df[cluster_mask].index.tolist()
 		cluster_embeddings = embeddings[cluster_indices]
-		sim_matrix = cosine_similarity(cluster_embeddings)
+		sim_matrix = sklearn.metrics.pairwise.cosine_similarity(cluster_embeddings)
 		n = len(cluster_embeddings)
 		intra_sim  = (sim_matrix.sum() - n) / (n * (n - 1))
 
@@ -2738,15 +2720,15 @@ def remove_problematic_cluster_labels(
 		for i, cluster in enumerate(low_cohesion_clusters):
 			print(f"{i+1:3d}/{len(low_cohesion_clusters)} Cluster {cluster['cluster_id']:5d} sim: {cluster['intra_sim']:.3f} {cluster['labels']}")
 
-	# PART 2: Identify Poor Canonical Clusters
+	# PART 2: Identify Poor Canonical Clusters:
 	poor_canonical_clusters = list()
 	for cluster_id in df['cluster'].unique():
 		if cluster_id in problematic_cluster_ids:
 			continue  # Already marked for removal
 
-		cluster_mask   = df['cluster'] == cluster_id
+		cluster_mask = df['cluster'] == cluster_id
 		cluster_labels = df[cluster_mask]['label'].tolist()
-		cluster_size   = len(cluster_labels)
+		cluster_size = len(cluster_labels)
 
 		if cluster_size < 2:
 			continue
@@ -2756,11 +2738,10 @@ def remove_problematic_cluster_labels(
 
 		# Canonical is guaranteed to be in cluster_labels (see docstring invariant).
 		current_canonical = df[cluster_mask]['canonical'].iloc[0]
-		canonical_idx     = cluster_labels.index(current_canonical)
-		canonical_emb     = cluster_embeddings[canonical_idx].reshape(1, -1)
+		canonical_idx = cluster_labels.index(current_canonical)
+		canonical_emb = cluster_embeddings[canonical_idx].reshape(1, -1)
 
-		canonical_rep = cosine_similarity(canonical_emb, cluster_embeddings).mean()
-
+		canonical_rep = sklearn.metrics.pairwise.cosine_similarity(canonical_emb, cluster_embeddings).mean()
 		if canonical_rep < poor_canonical_threshold:
 			poor_canonical_clusters.append(
 				{
@@ -2779,29 +2760,34 @@ def remove_problematic_cluster_labels(
 			f"\n[POOR CANONICAL] {len(poor_canonical_clusters)} clusters (th: {poor_canonical_threshold}) -> "
 			f"Labels to remove: {sum(c['size'] for c in poor_canonical_clusters)}")
 		for i, cluster in enumerate(poor_canonical_clusters):
-			print(f"{i+1:3d}/{len(poor_canonical_clusters)} Cluster {cluster['cluster_id']:5d} rep: {cluster['representativeness']:.3f} canonical: {cluster['canonical']:<40} {cluster['labels']}")
+			print(f"{i+1:3d}/{len(poor_canonical_clusters)} Cluster {cluster['cluster_id']:5d} rep: {cluster['representativeness']:.3f} canonical: {cluster['canonical']:<27} {cluster['labels']}")
 	
-	# PART 3: Remove Problematic Labels
 	if verbose:
 		print(f"\n[REMOVAL SUMMARY]")
-		print(f"  ├─ Total problematic clusters: {len(problematic_cluster_ids)}")
-		print(f"  ├─ Total labels to remove: {len(removed_labels)}/{len(df)} ({len(removed_labels)/len(df)*100:.3f}%)")
+		print(f"  ├─ problematic clusters: {len(problematic_cluster_ids)} = {len(poor_canonical_clusters)} (poor canonical) + {len(low_cohesion_clusters)} (low cohesion)")
+		print(f"  ├─ problematic labels  : {len(removed_labels)} = {sum(c['size'] for c in poor_canonical_clusters)} (poor canonical) + {sum(c['size'] for c in low_cohesion_clusters)} (low cohesion)")
+		print(f"  ├─ labels to remove    : {len(removed_labels)}/{len(df)} ({len(removed_labels)/len(df)*100:.3f}%)")
+		print(f"  └─ clusters to remove  : {len(problematic_cluster_ids)}/{len(df['cluster'].unique())} ({len(problematic_cluster_ids)/len(df['cluster'].unique())*100:.3f}%)")
 
+	# PART 3: Remove Problematic Labels
 	df_clean = df[~df['cluster'].isin(problematic_cluster_ids)].copy()
 	kept_indices = df_clean.index.tolist()
 	embeddings_clean = embeddings[kept_indices]
 
 	# Re-index cluster IDs to be contiguous
 	unique_clusters  = sorted(df_clean['cluster'].unique())
-	cluster_mapping  = {old_id: new_id for new_id, old_id in enumerate(unique_clusters)}
+	cluster_mapping  = {
+		old_id: new_id 
+		for new_id, old_id in enumerate(unique_clusters)
+	}
 	df_clean['cluster'] = df_clean['cluster'].map(cluster_mapping)
 	df_clean = df_clean.reset_index(drop=True)
 
 	if verbose:
 		print(f"\n[RESULTS]")
-		print(f"[df]            {df.shape} -> {df_clean.shape} (Removed labels: {len(df) - len(df_clean):,})")
-		print(f"[embeddings]    {embeddings.shape} -> {embeddings_clean.shape}")
-		print(f"[clusters]      {df['cluster'].nunique():,} -> {df_clean['cluster'].nunique():,} (Removed: {df['cluster'].nunique() - df_clean['cluster'].nunique():,})")
+		print(f"df         {df.shape} -> {df_clean.shape} (Removed labels: {len(df) - len(df_clean):,})")
+		print(f"embeddings {embeddings.shape} -> {embeddings_clean.shape}")
+		print(f"clusters   {df['cluster'].nunique():,} -> {df_clean['cluster'].nunique():,} (Removed: {df['cluster'].nunique() - df_clean['cluster'].nunique():,})")
 
 		original_consolidation = len(df) / df['cluster'].nunique()
 		new_consolidation      = len(df_clean) / df_clean['cluster'].nunique()
@@ -3692,7 +3678,7 @@ def assign_canonical_labels(
 			all_embeddings = cluster_embeddings
 
 		# Score 1: cosine similarity to centroid
-		similarities = cosine_similarity(centroid.reshape(1, -1), all_embeddings)[0]
+		similarities = sklearn.metrics.pairwise.cosine_similarity(centroid.reshape(1, -1), all_embeddings)[0]
 		pure_sim_idx = int(similarities[:cluster_size].argmax())   # real labels only
 
 		# Similarity gate for the virtual hypernym
@@ -4213,7 +4199,7 @@ def cluster(
 	clusters_fname: str,
 	batch_size: int,
 	device: Union[torch.device, str],
-	nc: Optional[int]=None,
+	nc: int,
 	linkage_method: str="ward",
 	distance_metric: str="euclidean",
 	target_intra_similarity: float = 0.69,
@@ -4299,6 +4285,8 @@ def cluster(
 			f"dtype: {next(model.parameters()).dtype} "
 			f"({sum(p.numel() for p in model.parameters()):,} parameters)"
 		)
+
+
 
 	# STEP 3: LOAD / COMPUTE EMBEDDINGS + LINKAGE
 	X, Z = get_clustering_artifacts(
@@ -4497,7 +4485,7 @@ def get_canonical_labels(
 	model_id: str,
 	batch_size: int,
 	device: Union[str, torch.device],
-	nc: int = None,
+	nc: Optional[int]=None,
 	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:

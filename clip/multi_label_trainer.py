@@ -66,6 +66,85 @@ def get_text_embeddings(
 
 	return all_class_embeds
 
+def print_final_evaluation_summary(
+	mode: str,
+	model_arch: str,
+	mdl_fpth: str,
+	method: Optional[str] = None,
+	pw_mode: str = "log",
+	actual_trained_epochs:Optional[int]=None,
+	model: Optional[torch.nn.Module] = None,
+	frozen_params: Optional[int] = None,
+	early_stopping: Optional[Any] = None,
+	eval_results: Optional[Dict[str, Any]] = None,
+	model_source: Optional[str] = None,
+	final_tiered_i2t: Optional[Dict[str, Any]] = None,
+	final_tiered_t2i: Optional[Dict[str, Any]] = None,
+	final_shared_tiered_i2t: Optional[Dict[str, Any]] = None,
+	final_shared_tiered_t2i: Optional[Dict[str, Any]] = None,
+	extra_lines: Optional[List[str]] = None,
+	verbose: bool = True,
+) -> None:
+	if not verbose:
+		return
+
+	# Extract tiered metrics and source from eval_results dict if provided
+	if eval_results is not None:
+		if model_source is None:
+			model_source = eval_results.get("model_loaded_from", "unknown")
+		if final_tiered_i2t is None:
+			final_tiered_i2t = eval_results.get("tiered_i2t", {})
+		if final_tiered_t2i is None:
+			final_tiered_t2i = eval_results.get("tiered_t2i", {})
+		if final_shared_tiered_i2t is None:
+			final_shared_tiered_i2t = eval_results.get("shared_tiered_i2t", {})
+		if final_shared_tiered_t2i is None:
+			final_shared_tiered_t2i = eval_results.get("shared_tiered_t2i", {})
+
+	final_tiered_i2t = final_tiered_i2t or {}
+	final_tiered_t2i = final_tiered_t2i or {}
+	final_shared_tiered_i2t = final_shared_tiered_i2t or {}
+	final_shared_tiered_t2i = final_shared_tiered_t2i or {}
+
+	# Compute parameter count if model is passed and frozen_params wasn't explicitly supplied
+	if frozen_params is None and model is not None:
+		frozen_params = sum(p.numel() for p in model.parameters())
+
+	print(f"{'='*50}")
+	print(f"{mode.upper()} Final evaluation from: {model_source}")
+	if method:
+		print(f"  Method: {method}")
+	print(f"  pw_mode: {pw_mode}")
+	if frozen_params is not None:
+		print(f"  {model_arch} frozen params: {frozen_params:,}")
+	
+	if extra_lines:
+		for line in extra_lines:
+			print(f"  {line}")
+
+	if actual_trained_epochs:
+		print(f"  Epochs trained: {actual_trained_epochs}")
+	if early_stopping is not None and hasattr(early_stopping, "get_best_score"):
+		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch() + 1}")
+	print(f"  Best model: {mdl_fpth}")
+
+	# print each retrieval block cleanly
+	def _print_tier_block(title: str, metrics: Dict[str, Any], k: int = 10):
+		k = str(k)
+		if metrics:
+			print(title)
+			for tier, m in metrics.items():
+				m_ap = m.get("mAP", {}).get(k, 0) if isinstance(m.get("mAP"), dict) else 0
+				rec = m.get("Recall", {}).get(k, 0) if isinstance(m.get("Recall"), dict) else 0
+				print(f"  {tier:8s} mAP@{k}={m_ap:.3f}  R@{k}={rec:.3f}")
+
+	print(f"{'='*50}")
+	_print_tier_block("[Tiered] I2T Retrieval", final_tiered_i2t)
+	_print_tier_block("\n[Tiered] T2I Retrieval", final_tiered_t2i)
+	_print_tier_block("\n[Shared Tiered] I2T Retrieval", final_shared_tiered_i2t)
+	_print_tier_block("\n[Shared Tiered] T2I Retrieval", final_shared_tiered_t2i)
+	print(f"{'='*50}")
+
 def zero_shot_multi_label(
 	model: torch.nn.Module,
 	train_loader: DataLoader,
@@ -84,8 +163,8 @@ def zero_shot_multi_label(
 	volatility_threshold: float,
 	slope_threshold: float,
 	pairwise_imp_threshold: float,
+	topk_values: List[int],
 	loss_weights: Dict[str, float] = None,
-	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
 	temperature: float = 1.0, # not change ranking when it is a positive scalar
 	pw_mode: str = "log",
 	verbose: bool = True,
@@ -174,7 +253,7 @@ def zero_shot_multi_label(
 		verbose=verbose,
 	)
 
-	results = evaluate_best_model(
+	best_model_eval_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
 		active_mask=per_run_masks["active_mask"],
@@ -195,39 +274,17 @@ def zero_shot_multi_label(
 		verbose=verbose,
 	)
 
-	final_tiered_i2t = results.get('tiered_i2t', {})
-	final_tiered_t2i = results.get('tiered_t2i', {})
+	print_final_evaluation_summary(
+		mode=mode,
+		model_arch=model_arch,
+		model=model,
+		mdl_fpth=mdl_fpth,
+		pw_mode=pw_mode,
+		eval_results=best_model_eval_results,
+		verbose=verbose,
+	)
 
-	final_shared_tiered_i2t = results.get('shared_tiered_i2t', {})
-	final_shared_tiered_t2i = results.get('shared_tiered_t2i', {})
-
-	if verbose:
-		print(f"\n{mode.upper()} {model_arch}")
-		print(f"{mdl_fpth}")
-		print(
-			f"Total: {total_params:,} "
-			f"Trainable: {trainable_params:,} ({trainable_pct:.2f}%) "
-			f"Frozen: {frozen_params:,} ({frozen_pct:.2f}%)"
-		)
-		print(f"pw_mode: {pw_mode}")
-
-		print(f"{'='*50}")
-		print("[Tiered] I2T Retrieval")
-		for tier, m in final_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Tiered] T2I Retrieval")
-		for tier, m in final_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print("\n[Shared Tiered] I2T Retrieval")
-		for tier, m in final_shared_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Shared Tiered] T2I Retrieval")
-		for tier, m in final_shared_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"{'='*50}")
-
-	return results
+	return best_model_eval_results
 
 def probe_multi_label(
 	model: torch.nn.Module,
@@ -240,11 +297,11 @@ def probe_multi_label(
 	device: str,
 	results_dir: str,
 	tier_spec_path: str,
+	topk_values: List[int],
 	patience: int = 10,
 	min_delta: float = 1e-4,
 	cumulative_delta: float = 5e-3,
 	minimum_epochs: int = 20,
-	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,
 	volatility_threshold: float = 15.0,
 	slope_threshold: float = 1e-4,
@@ -719,18 +776,6 @@ def probe_multi_label(
 		verbose=verbose,
 	)
 
-	final_metrics_full = best_model_eval_results["full_metrics"]
-	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
-	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
-
-	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
-	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
-
-	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
-	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
-
-	model_source = best_model_eval_results["model_loaded_from"]
-
 	# Update model path
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
@@ -738,31 +783,17 @@ def probe_multi_label(
 		actual_epochs=actual_trained_epochs
 	)
 
-	if verbose:
-		print(f"{'='*50}")
-		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  pw_mode: {pw_mode}")
-		print(f"  {probe.probe_type} | Params: {sum(p.numel() for p in probe.probe.parameters()):,}")
-		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
-		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
-		print(f"  Best model: {mdl_fpth}")
-
-		print(f"{'='*50}")
-		print("[Tiered] I2T Retrieval")
-		for tier, m in final_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Tiered] T2I Retrieval")
-		for tier, m in final_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print("\n[Shared Tiered] I2T Retrieval")
-		for tier, m in final_shared_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Shared Tiered] T2I Retrieval")
-		for tier, m in final_shared_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"{'='*50}")
+	print_final_evaluation_summary(
+		mode=mode,
+		model_arch=model_arch,
+		model=model,
+		actual_trained_epochs=actual_trained_epochs,
+		early_stopping=early_stopping,
+		mdl_fpth=mdl_fpth,
+		pw_mode=pw_mode,
+		eval_results=best_model_eval_results,
+		verbose=verbose,
+	)
 
 	# Generate plots
 	file_base_name = (
@@ -808,8 +839,8 @@ def probe_multi_label(
 	
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
+		image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
+		text_to_image_metrics=best_model_eval_results["txt2img_metrics"],
 		fname=plot_paths["retrieval_best"],
 	)
 	
@@ -833,8 +864,8 @@ def full_finetune_multi_label(
 	volatility_threshold: float,
 	slope_threshold: float,
 	pairwise_imp_threshold: float,
+	topk_values: List[int],
 	temperature: float = 0.07,
-	topk_values: List[int] = [1, 5, 10, 15, 20],
 	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
 	pw_mode: str = "log",
 	verbose: bool=True,
@@ -1053,8 +1084,6 @@ def full_finetune_multi_label(
 	learning_rates_history = list()
 	weight_decays_history = list()
 	train_start_time = time.time()
-	final_img2txt_metrics = None
-	final_txt2img_metrics = None
 
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
@@ -1264,49 +1293,23 @@ def full_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	final_metrics_full = best_model_eval_results["full_metrics"]
-	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
-	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
-
-	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
-	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
-
-	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
-	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
-	
-	model_source = best_model_eval_results["model_loaded_from"]
-
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
 		original_path=mdl_fpth, 
 		actual_epochs=actual_trained_epochs
 	)
 
-	if verbose:
-		print(f"{'='*50}")
-		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  pw_mode: {pw_mode}")
-		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
-		print(f"  pw_mode: {pw_mode}")
-		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
-		print(f"  Best model: {mdl_fpth}")
-
-		print(f"{'='*50}")
-		print("[Tiered] I2T Retrieval")
-		for tier, m in final_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Tiered] T2I Retrieval")
-		for tier, m in final_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print("\n[Shared Tiered] I2T Retrieval")
-		for tier, m in final_shared_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Shared Tiered] T2I Retrieval")
-		for tier, m in final_shared_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"{'='*50}")
+	print_final_evaluation_summary(
+		mode=mode,
+		model_arch=model_arch,
+		model=model,
+		actual_trained_epochs=actual_trained_epochs,
+		early_stopping=early_stopping,
+		mdl_fpth=mdl_fpth,
+		pw_mode=pw_mode,
+		eval_results=best_model_eval_results,
+		verbose=verbose,
+	)
 
 	# Generate plots
 	file_base_name = (
@@ -1349,8 +1352,8 @@ def full_finetune_multi_label(
 	
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
+		image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
+		text_to_image_metrics=best_model_eval_results["txt2img_metrics"],
 		fname=plot_paths["retrieval_best"],
 	)
 
@@ -1390,7 +1393,7 @@ def lora_finetune_multi_label(
 	volatility_threshold: float,
 	slope_threshold: float,
 	pairwise_imp_threshold: float,
-	topk_values: List[int] = [1, 5, 10, 15, 20],
+	topk_values: List[int],
 	loss_weights: Dict[str, float] = None,
 	temperature: float = 0.07,
 	quantization_bits: int = 8,
@@ -1805,48 +1808,23 @@ def lora_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	final_metrics_full = best_model_eval_results["full_metrics"]
-	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
-	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
-
-	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
-	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
-
-	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
-	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
-
-	model_source = best_model_eval_results["model_loaded_from"]
-
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
 		original_path=mdl_fpth, 
 		actual_epochs=actual_trained_epochs
 	)
 
-	if verbose:
-		print(f"{'='*50}")
-		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  pw_mode: {pw_mode}")
-		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
-		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
-		print(f"  Best model: {mdl_fpth}")
-
-		print(f"{'='*50}")
-		print("[Tiered] I2T Retrieval")
-		for tier, m in final_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Tiered] T2I Retrieval")
-		for tier, m in final_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print("\n[Shared Tiered] I2T Retrieval")
-		for tier, m in final_shared_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Shared Tiered] T2I Retrieval")
-		for tier, m in final_shared_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"{'='*50}")
+	print_final_evaluation_summary(
+		mode=mode,
+		model_arch=model_arch,
+		model=model,
+		actual_trained_epochs=actual_trained_epochs,
+		early_stopping=early_stopping,
+		mdl_fpth=mdl_fpth,
+		pw_mode=pw_mode,
+		eval_results=best_model_eval_results,
+		verbose=verbose,
+	)
 
 	# Generate plots
 	file_base_name = (
@@ -1885,8 +1863,8 @@ def lora_finetune_multi_label(
 
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
+		image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
+		text_to_image_metrics=best_model_eval_results["txt2img_metrics"],
 		fname=plot_paths["retrieval_best"],
 	)
 
@@ -1927,7 +1905,7 @@ def lora_plus_finetune_multi_label(
 	volatility_threshold: float,
 	slope_threshold: float,
 	pairwise_imp_threshold: float,
-	topk_values: List[int]=[1, 5, 10, 15, 20],
+	topk_values: List[int],
 	quantization_bits: int=8,
 	quantized: bool=False,
 	loss_weights: Dict[str, float]=None,
@@ -2601,49 +2579,26 @@ def lora_plus_finetune_multi_label(
 		verbose=verbose,
 	)
 	
-	final_metrics_full = best_model_eval_results["full_metrics"]
-	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
-	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
-
-	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
-	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
-
-	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
-	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
-
-	model_source = best_model_eval_results["model_loaded_from"]
-
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
 		original_path=mdl_fpth, 
 		actual_epochs=actual_trained_epochs
 	)
 
-	if verbose:
-		print(f"{'='*50}")
-		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  pw_mode: {pw_mode}")
-		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
-		print(f"  Rank: {lora_rank} Alpha: {lora_alpha} Dropout: {lora_dropout} Lambda: {lora_plus_lambda} B_MAX_NORM: {B_MAX_NORM}")
-		print(f"  Total trained epochs: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
-		print(f"  Best model: {mdl_fpth}")
-
-		print(f"{'='*50}")
-		print("[Tiered] I2T Retrieval")
-		for tier, m in final_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Tiered] T2I Retrieval")
-		for tier, m in final_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print("\n[Shared Tiered] I2T Retrieval")
-		for tier, m in final_shared_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Shared Tiered] T2I Retrieval")
-		for tier, m in final_shared_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"{'='*50}")
+	print_final_evaluation_summary(
+		mode=mode,
+		model_arch=model_arch,
+		model=model,
+		actual_trained_epochs=actual_trained_epochs,
+		early_stopping=early_stopping,
+		mdl_fpth=mdl_fpth,
+		pw_mode=pw_mode,
+		eval_results=best_model_eval_results,
+		extra_lines=[
+			f"Rank: {lora_rank} Alpha: {lora_alpha} Dropout: {lora_dropout} Lambda: {lora_plus_lambda} B_MAX_NORM: {B_MAX_NORM}"
+		],
+		verbose=verbose,
+	)
 
 	# Generate plots
 	file_base_name = (
@@ -2692,8 +2647,8 @@ def lora_plus_finetune_multi_label(
 	
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
+		image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
+		text_to_image_metrics=best_model_eval_results["txt2img_metrics"],
 		fname=plot_paths["retrieval_best"],
 	)
 	
@@ -2733,7 +2688,7 @@ def rslora_finetune_multi_label(
 	volatility_threshold: float,
 	slope_threshold: float,
 	pairwise_imp_threshold: float,
-	topk_values: List[int] = [1, 5, 10, 15, 20],
+	topk_values: List[int],
 	loss_weights: Dict[str, float] = None,
 	temperature: float = 0.07,
 	quantization_bits: int = 8,
@@ -3189,48 +3144,23 @@ def rslora_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	final_metrics_full    = best_model_eval_results["full_metrics"]
-	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
-	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
-
-	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
-	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
-
-	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
-	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
-
-	model_source = best_model_eval_results["model_loaded_from"]
-
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
 		original_path=mdl_fpth,
 		actual_epochs=actual_trained_epochs
 	)
 
-	if verbose:
-		print(f"{'='*50}")
-		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  pw_mode: {pw_mode}")
-		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
-		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
-		print(f"  Best model: {mdl_fpth}")
-
-		print(f"{'='*50}")
-		print("[Tiered] I2T Retrieval")
-		for tier, m in final_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Tiered] T2I Retrieval")
-		for tier, m in final_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print("\n[Shared Tiered] I2T Retrieval")
-		for tier, m in final_shared_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Shared Tiered] T2I Retrieval")
-		for tier, m in final_shared_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"{'='*50}")
+	print_final_evaluation_summary(
+		mode=mode,
+		model_arch=model_arch,
+		model=model,
+		actual_trained_epochs=actual_trained_epochs,
+		early_stopping=early_stopping,
+		mdl_fpth=mdl_fpth,
+		pw_mode=pw_mode,
+		eval_results=best_model_eval_results,
+		verbose=verbose,
+	)
 
 	file_base_name = (
 		f"{mode}_"
@@ -3271,8 +3201,8 @@ def rslora_finetune_multi_label(
 
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
+		image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
+		text_to_image_metrics=best_model_eval_results["txt2img_metrics"],
 		fname=plot_paths["retrieval_best"],
 	)
 
@@ -3312,7 +3242,7 @@ def dora_finetune_multi_label(
 	volatility_threshold: float,
 	slope_threshold: float,
 	pairwise_imp_threshold: float,
-	topk_values: List[int] = [1, 3, 5, 10, 15, 20],
+	topk_values: List[int],
 	quantization_bits: int = 8,
 	quantized: bool = False,
 	temperature: float = 0.07,
@@ -3553,8 +3483,6 @@ def dora_finetune_multi_label(
 	weight_decays_history = list()
 	
 	train_start_time = time.time()
-	final_img2txt_metrics = None
-	final_txt2img_metrics = None
 
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
@@ -3778,48 +3706,23 @@ def dora_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	final_metrics_full = best_model_eval_results["full_metrics"]
-	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
-	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
-
-	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
-	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
-
-	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
-	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
-
-	model_source = best_model_eval_results["model_loaded_from"]
-
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
 		original_path=mdl_fpth, 
 		actual_epochs=actual_trained_epochs
 	)
 
-	if verbose:
-		print(f"{'='*50}")
-		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  pw_mode: {pw_mode}")
-		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
-		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
-		print(f"  Best model: {mdl_fpth}")
-
-		print(f"{'='*50}")
-		print("[Tiered] I2T Retrieval")
-		for tier, m in final_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Tiered] T2I Retrieval")
-		for tier, m in final_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print("\n[Shared Tiered] I2T Retrieval")
-		for tier, m in final_shared_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Shared Tiered] T2I Retrieval")
-		for tier, m in final_shared_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"{'='*50}")
+	print_final_evaluation_summary(
+		mode=mode,
+		model_arch=model_arch,
+		model=model,
+		actual_trained_epochs=actual_trained_epochs,
+		early_stopping=early_stopping,
+		mdl_fpth=mdl_fpth,
+		pw_mode=pw_mode,
+		eval_results=best_model_eval_results,
+		verbose=verbose,
+	)
 
 	# Generate plots
 	file_base_name = (
@@ -3865,8 +3768,8 @@ def dora_finetune_multi_label(
 
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
+		image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
+		text_to_image_metrics=best_model_eval_results["txt2img_metrics"],
 		fname=plot_paths["retrieval_best"],
 	)
 
@@ -3906,7 +3809,7 @@ def vera_finetune_multi_label(
 	volatility_threshold: float,
 	slope_threshold: float,
 	pairwise_imp_threshold: float,
-	topk_values: List[int] = [1, 5, 10, 15, 20],
+	topk_values: List[int],
 	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
 	temperature: float = 0.07,
 	quantization_bits: int = 8,
@@ -4177,8 +4080,6 @@ def vera_finetune_multi_label(
 	learning_rates_history = list()
 	weight_decays_history = list()
 	train_start_time = time.time()
-	final_img2txt_metrics = None
-	final_txt2img_metrics = None
 
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
@@ -4448,48 +4349,23 @@ def vera_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	final_metrics_full = best_model_eval_results["full_metrics"]
-	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
-	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
-
-	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
-	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
-
-	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
-	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
-
-	model_source = best_model_eval_results["model_loaded_from"]
-
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
 		original_path=mdl_fpth, 
 		actual_epochs=actual_trained_epochs
 	)
 
-	if verbose:
-		print(f"{'='*50}")
-		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  pw_mode: {pw_mode}")
-		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
-		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
-		print(f"  Best model: {mdl_fpth}")
-
-		print(f"{'='*50}")
-		print("[Tiered] I2T Retrieval")
-		for tier, m in final_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Tiered] T2I Retrieval")
-		for tier, m in final_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print("\n[Shared Tiered] I2T Retrieval")
-		for tier, m in final_shared_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Shared Tiered] T2I Retrieval")
-		for tier, m in final_shared_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"{'='*50}")
+	print_final_evaluation_summary(
+		mode=mode,
+		model_arch=model_arch,
+		model=model,
+		actual_trained_epochs=actual_trained_epochs,
+		early_stopping=early_stopping,
+		mdl_fpth=mdl_fpth,
+		pw_mode=pw_mode,
+		eval_results=best_model_eval_results,
+		verbose=verbose,
+	)
 
 	# Generate plots
 	file_base_name = (
@@ -4533,8 +4409,8 @@ def vera_finetune_multi_label(
 
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
+		image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
+		text_to_image_metrics=best_model_eval_results["txt2img_metrics"],
 		fname=plot_paths["retrieval_best"],
 	)
 
@@ -4571,7 +4447,7 @@ def ia3_finetune_multi_label(
 	volatility_threshold: float,
 	slope_threshold: float,
 	pairwise_imp_threshold: float,
-	topk_values: List[int] = [1, 5, 10, 15, 20],
+	topk_values: List[int],
 	loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
 	temperature: float = 0.07,
 	quantization_bits: int = 8,
@@ -4824,8 +4700,6 @@ def ia3_finetune_multi_label(
 	learning_rates_history = list()
 	weight_decays_history = list()
 	train_start_time = time.time()
-	final_img2txt_metrics = None
-	final_txt2img_metrics = None
 
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
@@ -5048,17 +4922,6 @@ def ia3_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	final_metrics_full = best_model_eval_results["full_metrics"]
-	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
-	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
-
-	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
-	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
-
-	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
-	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
-
-	model_source = best_model_eval_results["model_loaded_from"]
 
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
@@ -5066,30 +4929,17 @@ def ia3_finetune_multi_label(
 		actual_epochs=actual_trained_epochs
 	)
 
-	if verbose:
-		print(f"{'='*50}")
-		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  pw_mode: {pw_mode}")
-		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
-		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
-		print(f"  Best model: {mdl_fpth}")
-
-		print(f"{'='*50}")
-		print("[Tiered] I2T Retrieval")
-		for tier, m in final_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Tiered] T2I Retrieval")
-		for tier, m in final_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print("\n[Shared Tiered] I2T Retrieval")
-		for tier, m in final_shared_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Shared Tiered] T2I Retrieval")
-		for tier, m in final_shared_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"{'='*50}")
+	print_final_evaluation_summary(
+		mode=mode,
+		model_arch=model_arch,
+		model=model,
+		actual_trained_epochs=actual_trained_epochs,
+		early_stopping=early_stopping,
+		mdl_fpth=mdl_fpth,
+		pw_mode=pw_mode,
+		eval_results=best_model_eval_results,
+		verbose=verbose,
+	)
 
 	# Generate plots
 	file_base_name = (
@@ -5131,8 +4981,8 @@ def ia3_finetune_multi_label(
 
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
+		image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
+		text_to_image_metrics=best_model_eval_results["img2txt_metrics"],
 		fname=plot_paths["retrieval_best"],
 	)
 
@@ -5163,6 +5013,7 @@ def clip_adapter_finetune_multi_label(
 	results_dir: str,
 	tier_spec_path: str,
 	clip_adapter_method: str,  # "clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"
+	topk_values: List[int],
 	bottleneck_dim: int = 256,
 	activation: str = "relu",
 	patience: int = 7,
@@ -5172,7 +5023,6 @@ def clip_adapter_finetune_multi_label(
 	volatility_threshold: float = 0.02,
 	slope_threshold: float = 1e-3,
 	pairwise_imp_threshold: float = 0.01,
-	topk_values: List[int] = [1, 5, 10, 15, 20],
 	temperature: float = 0.07,
 	loss_weights: Dict[str, float] = None,
 	pw_mode: str = "log",
@@ -5626,53 +5476,24 @@ def clip_adapter_finetune_multi_label(
 		verbose=verbose,
 	)
 
-	final_metrics_full = best_model_eval_results["full_metrics"]
-	final_img2txt = best_model_eval_results["img2txt_metrics"]
-	final_txt2img = best_model_eval_results["txt2img_metrics"]
-
-	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
-	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
-
-	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
-	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
-
-	model_source = best_model_eval_results["model_loaded_from"]
-
 	actual_trained_epochs = len(training_losses)
 	mdl_fpth = get_updated_model_name(
 		original_path=mdl_fpth, 
 		actual_epochs=actual_trained_epochs
 	)
 
-	if verbose:
-		print(f"{'='*50}")
-		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  {clip_adapter_method}")
-		print(f"  pw_mode: {pw_mode}")
-		print(f"  {model_arch} frozen params: {sum(p.numel() for p in model.parameters()):,}")
-		print(f"  Epochs trained: {actual_trained_epochs}")
-		print(f"  Best val loss: {early_stopping.get_best_score():.6f} @ Epoch {early_stopping.get_best_epoch()+1}")
-		print(f"  Bottleneck: {bottleneck_dim}  Activation: {activation}")
-		print(f"  Learning rate: {learning_rate}  Weight decay: {weight_decay}")
-		print(f"  Batch size: {train_loader.batch_size}")
-		print(f"  Temperature: {temperature}")
-		print(f"  Best model: {mdl_fpth}")
-
-		print(f"{'='*50}")
-		print("[Tiered] I2T Retrieval")
-		for tier, m in final_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Tiered] T2I Retrieval")
-		for tier, m in final_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print("\n[Shared Tiered] I2T Retrieval")
-		for tier, m in final_shared_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Shared Tiered] T2I Retrieval")
-		for tier, m in final_shared_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"{'='*50}")
+	print_final_evaluation_summary(
+		mode=mode,
+		method=clip_adapter_method,
+		model_arch=model_arch,
+		model=model,
+		actual_trained_epochs=actual_trained_epochs,
+		early_stopping=early_stopping,
+		mdl_fpth=mdl_fpth,
+		pw_mode=pw_mode,
+		eval_results=best_model_eval_results,
+		verbose=verbose,
+	)
 
 	# Generate plots
 	file_base_name = (
@@ -5712,8 +5533,8 @@ def clip_adapter_finetune_multi_label(
 	
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt,
-		text_to_image_metrics=final_txt2img,
+		image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
+		text_to_image_metrics=best_model_eval_results["txt2img_metrics"],
 		fname=plot_paths["retrieval_best"],
 	)
 	
@@ -5743,7 +5564,7 @@ def tip_adapter_finetune_multi_label(
 	device: str,
 	results_dir: str,
 	tier_spec_path: str,
-	tip_adapter_method: str,  # "tip_adapter" or "tip_adapter_f"
+	tip_adapter_method: str, # "tip_adapter" or "tip_adapter_f"
 	patience: int,
 	min_delta: float,
 	cumulative_delta: float,
@@ -5751,13 +5572,13 @@ def tip_adapter_finetune_multi_label(
 	volatility_threshold: float,
 	slope_threshold: float,
 	pairwise_imp_threshold: float,
-	topk_values: List[int]=[1, 5, 10, 15, 20],
+	topk_values: List[int],
 	initial_beta: float=1.0,
 	initial_alpha: float=1.0,
 	support_shots: int=16,  # Number of support samples per class
-	temperature: float = 0.07,
+	temperature: float=0.07,
 	loss_weights: Dict[str, float]=None,
-	pw_mode: str = "log",
+	pw_mode: str="log",
 	verbose: bool=True,
 ):
 	"""
@@ -6171,8 +5992,6 @@ def tip_adapter_finetune_multi_label(
 	alphas = []
 	betas = []
 	train_start_time = time.time()
-	final_img2txt_metrics = None
-	final_txt2img_metrics = None
 	
 	# If training-free, skip training loop
 	if num_epochs == 0 or not trainable_parameters:
@@ -6197,32 +6016,18 @@ def tip_adapter_finetune_multi_label(
 			verbose=verbose,
 		)
 		
-		final_metrics_full = best_model_eval_results["full_metrics"]
-		final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
-		final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
-
-		final_tiered_i2t = best_model_eval_results["tiered_i2t"]
-		final_tiered_t2i = best_model_eval_results["tiered_t2i"]		
-
-		final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
-		final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
-
-		if verbose:
-			print(f"{'='*50}")
-			print("[Tiered] I2T Retrieval")
-			for tier, m in final_tiered_i2t.items():
-				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-			print("\n[Tiered] T2I Retrieval")
-			for tier, m in final_tiered_t2i.items():
-				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-			print("\n[Shared Tiered] I2T Retrieval")
-			for tier, m in final_shared_tiered_i2t.items():
-				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-			print("\n[Shared Tiered] T2I Retrieval")
-			for tier, m in final_shared_tiered_t2i.items():
-				print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-			print(f"{'='*50}")
+		print_final_evaluation_summary(
+			mode=mode,
+			method=tip_adapter_method,
+			model_arch=model_arch,
+			model=model,
+			actual_trained_epochs=actual_trained_epochs,
+			early_stopping=early_stopping,
+			mdl_fpth=mdl_fpth,
+			pw_mode=pw_mode,
+			eval_results=best_model_eval_results,
+			verbose=verbose,
+		)
 
 		# Generate best model plot only
 		file_base_name = (
@@ -6238,12 +6043,12 @@ def tip_adapter_finetune_multi_label(
 		
 		viz.plot_retrieval_metrics_best_model(
 			dataset_name=dataset_name,
-			image_to_text_metrics=final_img2txt_metrics,
-			text_to_image_metrics=final_txt2img_metrics,
+			image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
+			text_to_image_metrics=best_model_eval_results["txt2img_metrics"],
 			fname=os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 		)
 		
-		return final_metrics_full, final_img2txt_metrics, final_txt2img_metrics, mdl_fpth
+		return best_model_eval_results
 	
 	# Training loop (for Tip-Adapter-F or trainable beta/alpha)
 	for epoch in range(num_epochs):
@@ -6473,48 +6278,25 @@ def tip_adapter_finetune_multi_label(
 		verbose=verbose,
 	)
 	
-	final_metrics_full = best_model_eval_results["full_metrics"]
-	final_img2txt_metrics = best_model_eval_results["img2txt_metrics"]
-	final_txt2img_metrics = best_model_eval_results["txt2img_metrics"]
-
-	final_tiered_i2t = best_model_eval_results["tiered_i2t"]
-	final_tiered_t2i = best_model_eval_results["tiered_t2i"]
-
-	final_shared_tiered_i2t = best_model_eval_results["shared_tiered_i2t"]
-	final_shared_tiered_t2i = best_model_eval_results["shared_tiered_t2i"]
-
-	model_source = best_model_eval_results["model_loaded_from"]
-
 	actual_trained_epochs = len(training_losses) if training_losses else 0
 	if num_epochs > 0:
-		mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
+		mdl_fpth = get_updated_model_name(
+			original_path=mdl_fpth, 
+			actual_epochs=actual_trained_epochs
+		)
 
-	if verbose:
-		print(f"{'='*50}")
-		print(f"{mode.upper()} Final evaluation from: {model_source}")
-		print(f"  ├─ {model_arch}")
-		print(f"  ├─ {tip_adapter_method}")
-		print(f"  ├─ Beta[init]: {initial_beta}")
-		print(f"  ├─ Alpha[init]: {initial_alpha}")
-		print(f"  ├─ Epochs trained: {actual_trained_epochs}")
-		print(f"  ├─ Support Shots: {support_shots}")
-		print(f"  └─ Best model saved to: {mdl_fpth if num_epochs > 0 else 'N/A (training-free)'}")
-
-		print(f"{'='*50}")
-		print("[Tiered] I2T Retrieval")
-		for tier, m in final_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Tiered] T2I Retrieval")
-		for tier, m in final_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-
-		print("\n[Shared Tiered] I2T Retrieval")
-		for tier, m in final_shared_tiered_i2t.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print("\n[Shared Tiered] T2I Retrieval")
-		for tier, m in final_shared_tiered_t2i.items():
-			print(f"  {tier:8s} mAP@10={m['mAP'].get('10',0):.4f}  R@10={m['Recall'].get('10',0):.4f}")
-		print(f"{'='*50}")
+	print_final_evaluation_summary(
+		mode=mode,
+		method=tip_adapter_method,
+		model_arch=model_arch,
+		model=model,
+		actual_trained_epochs=actual_trained_epochs,
+		early_stopping=early_stopping,
+		mdl_fpth=mdl_fpth,
+		pw_mode=pw_mode,
+		eval_results=best_model_eval_results,
+		verbose=verbose,
+	)
 
 	# Generate plots
 	file_base_name = (
@@ -6569,8 +6351,8 @@ def tip_adapter_finetune_multi_label(
 	
 	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
-		image_to_text_metrics=final_img2txt_metrics,
-		text_to_image_metrics=final_txt2img_metrics,
+		image_to_text_metrics=best_model_eval_results["img2txt_metrics"],
+		text_to_image_metrics=best_model_eval_results["txt2img_metrics"],
 		fname=plot_paths["retrieval_best"],
 	)
 	
