@@ -3653,13 +3653,13 @@ def assign_canonical_labels(
 		trade_roi  = log2_gains / (sim_losses * 100)  # doublings per 1% sim loss
 
 		print("\nCANONICAL SELECTION TRADEOFF ANALYSIS (100% Partitioned):")
-		print(f"  ├─ Free Upgrades      (s <= 2%, f >= 1x)       {len(free_upgrades):<5d} ({len(free_upgrades)/n_trades*100:5.1f}%) [Semantic drift < noise floor]")
-		print(f"  ├─ High-Yield Trades  (s <= 5%, f >= 5x)       {len(high_yield_trades):<5d} ({len(high_yield_trades)/n_trades*100:5.1f}%) [High frequency consolidation]")
-		print(f"  ├─ Fair / Modest      (s <= 8%, f >= 2x)       {len(fair_trades):<5d} ({len(fair_trades)/n_trades*100:5.1f}%) [Balanced compromise]")
-		print(f"  ├─ Structural/Brevity (f <  1x, s <= 5%)       {len(structural_picks):<5d} ({len(structural_picks)/n_trades*100:5.1f}%) [Driven by head-token / brevity]")
-		print(f"  ├─ Mild Adjustments   (s <= 8%, f in 1-2x)     {len(other_mild_trades):<5d} ({len(other_mild_trades)/n_trades*100:5.1f}%) [Benign low-loss variations]")
-		print(f"  ├─ High Loss & Gain   (s >  8%, f >= 5x)       {len(high_loss_good_gain):<5d} ({len(high_loss_good_gain)/n_trades*100:5.1f}%) [Aggressive trade, inspectable]")
-		print(f"  └─ Truly Questionable (s > 8% & f < 2x / >12%) {len(truly_questionable):<5d} ({len(truly_questionable)/n_trades*100:5.1f}%) [Poor ROI or high semantic loss]")
+		print(f"  ├─ Free Upgrades      (s <= 2%,  f >= 1x)       {len(free_upgrades):<5d} ({len(free_upgrades)/n_trades*100:5.1f}%) [Semantic drift < noise floor]")
+		print(f"  ├─ High-Yield Trades  (s <= 5%,  f >= 5x)       {len(high_yield_trades):<5d} ({len(high_yield_trades)/n_trades*100:5.1f}%) [High frequency consolidation]")
+		print(f"  ├─ Fair / Modest      (s <= 8%,  f >= 2x)       {len(fair_trades):<5d} ({len(fair_trades)/n_trades*100:5.1f}%) [Balanced compromise]")
+		print(f"  ├─ Structural/Brevity (f <  1x,  s <= 5%)       {len(structural_picks):<5d} ({len(structural_picks)/n_trades*100:5.1f}%) [Driven by head-token / brevity]")
+		print(f"  ├─ Mild Adjustments   (s <= 8%,  f in 1-2x)     {len(other_mild_trades):<5d} ({len(other_mild_trades)/n_trades*100:5.1f}%) [Benign low-loss variations]")
+		print(f"  ├─ High Loss & Gain   (s >  8%,  f >= 5x)       {len(high_loss_good_gain):<5d} ({len(high_loss_good_gain)/n_trades*100:5.1f}%) [Aggressive trade, inspectable]")
+		print(f"  └─ Truly Questionable (s >  8% & f < 2x / >12%) {len(truly_questionable):<5d} ({len(truly_questionable)/n_trades*100:5.1f}%) [Poor ROI or high semantic loss]")
 
 		print(f"\n  Average Trade ROI: {np.median(trade_roi):.2f} frequency doublings per 1% similarity loss (Median)")
 
