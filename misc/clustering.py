@@ -2235,10 +2235,10 @@ def remove_problematic_cluster_labels(
 	
 	if verbose:
 		print(f"\n[REMOVAL SUMMARY]")
-		print(f"  ├─ problematic clusters: {len(problematic_cluster_ids):6d} = {len(poor_canonical_clusters)} (poor canonical) + {len(low_cohesion_clusters)} (low cohesion)")
-		print(f"  ├─ problematic labels  : {len(removed_labels):6d} = {sum(c['size'] for c in poor_canonical_clusters)} (poor canonical) + {sum(c['size'] for c in low_cohesion_clusters)} (low cohesion)")
-		print(f"  ├─ labels to remove    : {len(removed_labels)}/{len(df)} ({len(removed_labels)/len(df)*100:.3f}%)")
-		print(f"  └─ clusters to remove  : {len(problematic_cluster_ids)}/{len(df['cluster'].unique())} ({len(problematic_cluster_ids)/len(df['cluster'].unique())*100:.3f}%)")
+		print(f"  ├─ problematic clusters {len(problematic_cluster_ids):6d} = {len(poor_canonical_clusters)} (poor canonical) + {len(low_cohesion_clusters)} (low cohesion)")
+		print(f"  ├─ problematic labels   {len(removed_labels):6d} = {sum(c['size'] for c in poor_canonical_clusters)} (poor canonical) + {sum(c['size'] for c in low_cohesion_clusters)} (low cohesion)")
+		print(f"  ├─ labels to remove     {len(removed_labels)}/{len(df)} ({len(removed_labels)/len(df)*100:.3f}%)")
+		print(f"  └─ clusters to remove   {len(problematic_cluster_ids)}/{len(df['cluster'].unique())} ({len(problematic_cluster_ids)/len(df['cluster'].unique())*100:.3f}%)")
 
 	# PART 3: Remove Problematic Labels
 	df_clean = df[~df['cluster'].isin(problematic_cluster_ids)].copy()
@@ -2973,7 +2973,9 @@ def assign_canonical_labels(
 			'rms', 
 			'mv',
 		}
+
 		EXPLICIT_PREFIXES   = {'operation'}
+
 		DESIGNATION_ENDINGS = {'mk', 'ausf'}
 		
 		def _key_token(raw: str, norm: str) -> str:
@@ -3020,7 +3022,6 @@ def assign_canonical_labels(
 		else:
 			note = "title_prefix: no allowed designator prefix"
 		return None, 0, note
-
 
 	def _virtual_hypernym(lbls: List[str]):
 		n = len(lbls)
@@ -3077,8 +3078,7 @@ def assign_canonical_labels(
 			/ max(len(cluster_lbls), 1)
 			for c in candidates
 		])
-
-	# Corpus-wide case registry: built once, needs visibility across ALL clusters.
+	
 	case_registry = _build_case_registry(original_label_counts)
 
 	cluster_canonicals    = {}
@@ -3097,7 +3097,7 @@ def assign_canonical_labels(
 		cluster_mask       = df.cluster == cid
 		cluster_texts      = df[cluster_mask]['label'].tolist()
 		cluster_indices    = df[cluster_mask].index.tolist()
-		cluster_embeddings = X[cluster_indices] # (n, d), L2-normalised
+		cluster_embeddings = X[cluster_indices] # (n, d) L2-normalised
 		cluster_size       = len(cluster_texts)
 
 		if verbose:
@@ -3108,7 +3108,7 @@ def assign_canonical_labels(
 		cluster_centroids[cid] = centroid
 		cluster_members[cid]   = cluster_texts
 
-		# ── Virtual hypernym candidate ────────────────────────────────────
+		# Virtual hypernym candidate
 		virtual_hypernym = None
 		vh_raw = None
 		vh_info = {'route': '', 'support': 0, 'threshold': 0, 'note': 'cluster too small'}
@@ -3150,7 +3150,7 @@ def assign_canonical_labels(
 
 		# Score 1: cosine similarity to centroid
 		similarities = sklearn.metrics.pairwise.cosine_similarity(centroid.reshape(1, -1), all_embeddings)[0]
-		pure_sim_idx = int(similarities[:cluster_size].argmax())   # real labels only
+		pure_sim_idx = int(similarities[:cluster_size].argmax()) # real labels only
 
 		# Similarity gate for the virtual hypernym
 		# A virtual is a SUMMARY of the cluster. If its embedding is far from the centroid compared with
@@ -3201,10 +3201,10 @@ def assign_canonical_labels(
 		freq_guard = 'not_applicable'
 
 		if original_label_counts and cluster_size > 1:
-			# ── Score 2: frequency (log-normalised; virtual gets 0) ───────
+			# Score 2: frequency (log-normalised; virtual gets 0)
 			freq_scores = np.log1p(raw_freqs) / np.log1p(raw_freqs.max() + 1e-12)
 
-			# ── Score 3: head-noun dominance (prepositional heads fixed) ──
+			# Score 3: head-noun dominance (prepositional heads fixed)
 			head_counts = Counter(_head_token(l) for l in cluster_texts)
 			head_scores = np.array(
 				[
@@ -3213,10 +3213,10 @@ def assign_canonical_labels(
 				]
 			)
 
-			# ── Score 4: containment (genuine joint containment, no floor) ─
+			# Score 4: containment (genuine joint containment, no floor)
 			cont_scores = _containment_scores(candidates, cluster_texts)
 
-			# ── Score 5: brevity ─────────────────────────────────────────
+			# Score 5: brevity
 			token_lengths  = np.array([len(c.split()) for c in candidates], dtype=float)
 			brevity_scores = 1.0 - (token_lengths - 1.0) / max(token_lengths.max(), 1)
 
@@ -3260,7 +3260,7 @@ def assign_canonical_labels(
 
 		is_virtual_pick = virtual_flags[best_idx]
 
-		# ── Selection method (why this label won) ─────────────────────────
+		# (why this label won)
 		if composite_idx is None:
 			method = 'pure_similarity_fallback'
 		elif is_virtual_pick:
@@ -3274,7 +3274,6 @@ def assign_canonical_labels(
 		else:
 			method = 'composite_structural'
 
-		# ── Bookkeeping for the summary statistics (unchanged semantics) ──
 		if is_virtual_pick:
 			virtual_used_count += 1
 		elif best_idx != pure_sim_idx and composite_idx is not None:
@@ -3570,57 +3569,59 @@ def assign_canonical_labels(
 			print(f"  ├─ {len(clusters_json)} clusters")
 			print(f"  ├─ {len(candidate_records)} candidates")
 			print(f"  ├─ {debug_json_path}")
-			summarize_canonical_selection(path=debug_json_path)
 
 	if verbose and selection_records:
 		sel = pd.DataFrame(selection_records)
 		print("\nHow canonicals were chosen:")
+
 		for m, cnt in sel['selection_method'].value_counts().items():
 			print(f"  {m:<34} {cnt:6d} ({cnt / len(sel) * 100:5.1f}%)")
+
 		routes = sel.loc[sel['virtual_entered_pool'], 'virtual_route'].value_counts()
+
 		if len(routes):
 			print("  Virtual candidates entering the pool, by route:")
 			for r, cnt in routes.items():
 				won = int(((sel['virtual_route'] == r) & sel['is_virtual']).sum())
 				print(f"    {r:<14} {cnt:6d} entered, {won:6d} won")
+
 		dup = sel['canonical_selected'].value_counts()
 		dup = dup[dup > 1]
+
 		if len(dup):
 			print(
 				f"  Canonicals shared by >1 cluster: {len(dup)} "
 				f"(top: {', '.join(f'{k!r}x{v}' for k, v in dup.head(8).items())})"
 			)
+		
 		print(f"  Postpass (case-collision) changed: {int(sel['changed_by_postpass'].sum())} cluster(s)")
 		if virtual_rejections:
 			print(f"  Virtual candidates rejected by the quality gates: {dict(virtual_rejections)}")
 
 	if total_sim_loss and verbose:
-		print(f"\nSIMILARITY LOSS IMPACT:")
-		print(f"  Average  {np.mean(total_sim_loss)*100:.2f}%")
-		print(f"  Median   {np.median(total_sim_loss)*100:.2f}%")
-		print(f"  Max      {np.max(total_sim_loss)*100:.2f}%")
-		print(f"  Min      {np.min(total_sim_loss)*100:.2f}%")
+		print(f"\nSIMILARITY LOSS IMPACT")
+		print(f"  (min, max): ({np.min(total_sim_loss)*100:.2f}, {np.max(total_sim_loss)*100:.2f})")
+		print(f"  μ±σ: {np.mean(total_sim_loss)*100:.2f} ± {np.std(total_sim_loss)*100:.2f} (Median: {np.median(total_sim_loss)*100:.2f}%)")
 
 		print(f"\nFREQUENCY GAIN BENEFIT:")
-		print(f"  Average {np.mean(total_freq_gain):.1f}x")
-		print(f"  Median  {np.median(total_freq_gain):.1f}x")
-		print(f"  Max     {np.max(total_freq_gain):.1f}x")
-		print(f"  Min     {np.min(total_freq_gain):.1f}x")
+		print(f"  (min, max): ({np.min(total_freq_gain)}, {np.max(total_freq_gain)})")
+		print(f"  μ±σ: {np.mean(total_freq_gain):.1f} ± {np.std(total_freq_gain):.1f} (Median: {np.median(total_freq_gain):.1f}x)")
 
 		print(f"\ntrades with freq gain > 1.0")
 		excellent_trades    = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.03 and f > 10)
 		good_trades         = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.05 and f > 5)
 		questionable_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s > 0.10 or f < 2)
+
 		print(f"  Excellent    (< 3% sim loss AND >10x freq gain) : {excellent_trades:<10} ({excellent_trades/freq_changed_count*100:.1f}%)")
 		print(f"  Good         (< 5% sim loss AND > 5x freq gain) : {good_trades:<10} ({good_trades/freq_changed_count*100:.1f}%)")
 		print(f"  Questionable (>10% sim loss  OR < 2x freq gain) : {questionable_trades:<10} ({questionable_trades/freq_changed_count*100:.1f}%)")
 
 		if questionable_trades > 0 and verbose:
 			print(f"\n[WARNING] {questionable_trades} questionable trades detected: (Consider adjusting weighting if this is high)\n")
-			print(f"{'Cluster':7s} {'Pure Sim Choice':<55} {'Score-Weighted Choice':<55} {'Sim Loss(%)':<15} {'Freq Gain'}")
+			print(f"{'Cluster':7s} {'Pure Sim Choice':<40} {'Score-Weighted Choice':<40} {'Sim Loss(%)':<15} {'Freq Gain'}")
 			print("-" * 150)
 			for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True):
-				print(f"{ex['cluster_id']:7d} {ex['pure_choice'][:32]:<55} {ex['freq_choice'][:32]:<55} {ex['sim_loss']*100:<15.2f} {ex['freq_gain']:.2f}x")
+				print(f"{ex['cluster_id']:7d} {ex['pure_choice']:<40} {ex['freq_choice'][:32]:<40} {ex['sim_loss']*100:<15.2f} {ex['freq_gain']:.2f}x")
 
 			high_loss_low_gain  = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] < 2]
 			high_loss_good_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] >= 2]
@@ -3660,6 +3661,7 @@ def assign_canonical_labels(
 		print(f"  Total clusters analyzed: {total_clusters}")
 		print(f"  Virtual hypernym used as canonical: {virtual_used_count} ({virtual_used_count/total_clusters*100:.1f}%)")
 		print(f"  Clusters where score changed the canonical: {freq_changed_count} ({freq_changed_count/total_clusters*100:.1f}%)")
+		summarize_canonical_selection(path=debug_json_path)
 		print("-"*100)
 
 	return cluster_canonicals
