@@ -3303,7 +3303,7 @@ def assign_canonical_labels(
 					}
 				)
 
-		# ── Per-candidate rows (verbose table + selection JSON) ───────────
+		# Per-candidate rows (verbose table + selection JSON)
 		rows = []
 		for i, c in enumerate(candidates):
 			rows.append(
@@ -3716,8 +3716,8 @@ def cluster(
 	linkage_method: str="ward",
 	distance_metric: str="euclidean",
 	target_intra_similarity: float = 0.69,
-	min_consolidation: float = 3.8, #5.0, #3.0, #4.0,
-	max_consolidation: float = 5.0, #7.5, #5.0, #6.5,
+	min_consolidation: float = 5.0, #3.0, #4.0, # 3.8,
+	max_consolidation: float = 7.5, #5.0, #6.5, # 5.0,
 	min_singleton_merge_sim: Optional[float] = 0.60,
 	merge_close_clusters_threshold: Optional[float] = None,
 	merge_max_size: int = 30,
