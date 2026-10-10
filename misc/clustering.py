@@ -2130,9 +2130,9 @@ def remove_problematic_cluster_labels(
 	embeddings : np.ndarray
 		Label embeddings in the same row-order as df.
 	low_cohesion_threshold : float
-		Intra-similarity threshold for low-cohesion detection (default: 0.50).
+		Intra-similarity threshold for low-cohesion detection.
 	poor_canonical_threshold : float
-		Canonical representativeness threshold (default: 0.60).
+		Canonical representativeness threshold.
 	verbose : bool
 		Print detailed statistics.
 
@@ -2263,7 +2263,7 @@ def remove_problematic_cluster_labels(
 		original_consolidation = len(df) / df['cluster'].nunique()
 		new_consolidation      = len(df_clean) / df_clean['cluster'].nunique()
 		
-		print(f"[consolidation] {original_consolidation:.2f}x -> New: {new_consolidation:.2f}x (diff: {(new_consolidation - original_consolidation):.3f}x)")
+		print(f"[consolidation] {original_consolidation:.4f}x -> New: {new_consolidation:.4f}x (diff: {(new_consolidation - original_consolidation):.5f}x)")
 		print("="*100)
 
 	return df_clean, embeddings_clean, removed_labels
@@ -3279,24 +3279,29 @@ def assign_canonical_labels(
 		elif best_idx != pure_sim_idx and composite_idx is not None:
 			freq_changed_count += 1
 			real_freqs = np.array([original_label_counts.get(t, 1) for t in cluster_texts])
-			sim_loss   = (similarities[pure_sim_idx] - similarities[best_idx]) / (similarities[pure_sim_idx] + 1e-12)
-			freq_gain  = real_freqs[best_idx] / max(real_freqs[pure_sim_idx], 1)
+
+			sim_loss  = (similarities[pure_sim_idx] - similarities[best_idx]) / (similarities[pure_sim_idx] + 1e-12)
+			freq_gain = real_freqs[best_idx] / max(real_freqs[pure_sim_idx], 1)
+
 			total_sim_loss.append(sim_loss)
 			total_freq_gain.append(freq_gain)
+
 			if sim_loss > 0.10 or freq_gain < 3.0:
-				questionable_examples.append({
-					'cluster_id':     cid,
-					'pure_choice':    cluster_texts[pure_sim_idx],
-					'freq_choice':    candidates[best_idx],
-					'pure_freq':      real_freqs[pure_sim_idx],
-					'freq_freq':      real_freqs[best_idx],
-					'pure_sim':       similarities[pure_sim_idx],
-					'freq_sim':       similarities[best_idx],
-					'sim_loss':       sim_loss,
-					'freq_gain':      freq_gain,
-					'cluster_size':   cluster_size,
-					'cluster_labels': cluster_texts,
-				})
+				questionable_examples.append(
+					{
+						'cluster_id':     cid,
+						'pure_choice':    cluster_texts[pure_sim_idx],
+						'freq_choice':    candidates[best_idx],
+						'pure_freq':      real_freqs[pure_sim_idx],
+						'freq_freq':      real_freqs[best_idx],
+						'pure_sim':       similarities[pure_sim_idx],
+						'freq_sim':       similarities[best_idx],
+						'sim_loss':       sim_loss,
+						'freq_gain':      freq_gain,
+						'cluster_size':   cluster_size,
+						'cluster_labels': cluster_texts,
+					}
+				)
 
 		# ── Per-candidate rows (verbose table + selection JSON) ───────────
 		rows = []
@@ -3355,31 +3360,31 @@ def assign_canonical_labels(
 
 		selection_records.append(
 			{
-				'cluster_id':             cid,
-				'cluster_size':           cluster_size,
-				'members':                " | ".join(cluster_texts),
-				'member_freqs':           " | ".join(str(original_label_counts.get(t, 0)) for t in cluster_texts),
-				'canonical_selected':     canonical, # overwritten after post-passes
-				'canonical_pre_postpass': canonical,
-				'changed_by_postpass':    False,
-				'selection_method':       method,
-				'is_virtual':             virtual_flags[best_idx],
-				'freq_guard':             freq_guard,
-				'virtual_candidate':      virtual_hypernym if virtual_hypernym else (vh_raw or ''),
-				'virtual_entered_pool':   virtual_hypernym is not None,
-				'virtual_route':          vh_info['route'],
-				'virtual_support':        vh_info['support'],
-				'virtual_threshold':      vh_info['threshold'],
-				'virtual_note':           vh_info['note'],
-				'pure_sim_label':         cluster_texts[pure_sim_idx],
-				'pure_sim_score':         float(similarities[pure_sim_idx]),
-				'no_freq_winner':         candidates[nofreq_idx] if nofreq_idx is not None else '',
+				'cluster_id':                 cid,
+				'cluster_size':               cluster_size,
+				'members':                    " | ".join(cluster_texts),
+				'member_freqs':               " | ".join(str(original_label_counts.get(t, 0)) for t in cluster_texts),
+				'canonical_selected':         canonical, # overwritten after post-passes
+				'canonical_pre_postpass':     canonical,
+				'changed_by_postpass':        False,
+				'selection_method':           method,
+				'is_virtual':                 virtual_flags[best_idx],
+				'freq_guard':                 freq_guard,
+				'virtual_candidate':          virtual_hypernym if virtual_hypernym else (vh_raw or ''),
+				'virtual_entered_pool':       virtual_hypernym is not None,
+				'virtual_route':              vh_info['route'],
+				'virtual_support':            vh_info['support'],
+				'virtual_threshold':          vh_info['threshold'],
+				'virtual_note':               vh_info['note'],
+				'pure_sim_label':             cluster_texts[pure_sim_idx],
+				'pure_sim_score':             float(similarities[pure_sim_idx]),
+				'no_freq_winner':             candidates[nofreq_idx] if nofreq_idx is not None else '',
 				'composite_winner_pre_guard': candidates[composite_idx] if composite_idx is not None else '',
-				'canonical_sim':          float(similarities[best_idx]),
-				'canonical_composite':    float(combined_scores[best_idx]),
-				'canonical_freq':         int(raw_freqs[best_idx]),
-				'runner_up':              candidates[runner_up] if runner_up is not None else '',
-				'margin_to_runner_up':    float(margin),
+				'canonical_sim':              float(similarities[best_idx]),
+				'canonical_composite':        float(combined_scores[best_idx]),
+				'canonical_freq':             int(raw_freqs[best_idx]),
+				'runner_up':                  candidates[runner_up] if runner_up is not None else '',
+				'margin_to_runner_up':        float(margin),
 			}
 		)
 
@@ -3599,40 +3604,104 @@ def assign_canonical_labels(
 			print(f"  Virtual candidates rejected by the quality gates: {dict(virtual_rejections)}")
 
 	if total_sim_loss and verbose:
-		print(f"\nSIMILARITY LOSS IMPACT")
-		print(f"  (min, max): ({np.min(total_sim_loss)*100:.2f}, {np.max(total_sim_loss)*100:.2f})")
-		print(f"  μ±σ: {np.mean(total_sim_loss)*100:.2f} ± {np.std(total_sim_loss)*100:.2f} (Median: {np.median(total_sim_loss)*100:.2f}%)")
+		print(
+			f"\nSIMILARITY LOSS "
+			f"(min, max): ({np.min(total_sim_loss)}, {np.max(total_sim_loss)}) "
+			f"μ±σ: {np.mean(total_sim_loss)} ± {np.std(total_sim_loss)} (Median: {np.median(total_sim_loss)})"
+		)
 
-		print(f"\nFREQUENCY GAIN BENEFIT:")
-		print(f"  (min, max): ({np.min(total_freq_gain)}, {np.max(total_freq_gain)})")
-		print(f"  μ±σ: {np.mean(total_freq_gain):.1f} ± {np.std(total_freq_gain):.1f} (Median: {np.median(total_freq_gain):.1f}x)")
+		print(
+			f"FREQUENCY GAIN  "
+		  f"(min, max): ({np.min(total_freq_gain)}, {np.max(total_freq_gain)}) "
+			f"μ±σ: {np.mean(total_freq_gain)} ± {np.std(total_freq_gain)} (Median: {np.median(total_freq_gain)}x)"
+		)
 
-		print(f"\ntrades with freq gain > 1.0")
 		excellent_trades    = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.03 and f > 10)
 		good_trades         = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s < 0.05 and f > 5)
 		questionable_trades = sum(1 for s, f in zip(total_sim_loss, total_freq_gain) if s > 0.10 or f < 2)
 
-		print(f"  Excellent    (< 3% sim loss AND >10x freq gain) : {excellent_trades:<10} ({excellent_trades/freq_changed_count*100:.1f}%)")
-		print(f"  Good         (< 5% sim loss AND > 5x freq gain) : {good_trades:<10} ({good_trades/freq_changed_count*100:.1f}%)")
-		print(f"  Questionable (>10% sim loss  OR < 2x freq gain) : {questionable_trades:<10} ({questionable_trades/freq_changed_count*100:.1f}%)")
+		print(f"  Excellent    (< 3% sim loss AND >10x freq gain) {excellent_trades:<10} ({excellent_trades/freq_changed_count*100:.1f}%)")
+		print(f"  Good         (< 5% sim loss AND > 5x freq gain) {good_trades:<10} ({good_trades/freq_changed_count*100:.1f}%)")
+		print(f"  Questionable (>10% sim loss  OR < 2x freq gain) {questionable_trades:<10} ({questionable_trades/freq_changed_count*100:.1f}%)")
 
 		if questionable_trades > 0 and verbose:
 			print(f"\n[WARNING] {questionable_trades} questionable trades detected: (Consider adjusting weighting if this is high)\n")
-			print(f"{'Cluster':7s} {'Pure Sim Choice':<40} {'Score-Weighted Choice':<40} {'Sim Loss(%)':<15} {'Freq Gain'}")
+			print(f"{'Cluster':7s} {'Pure Sim Choice':<40} {'Score-Weighted Choice':<50} {'Sim Loss(%)':<15} {'Freq Gain'}")
 			print("-" * 150)
-			for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True):
-				print(f"{ex['cluster_id']:7d} {ex['pure_choice']:<40} {ex['freq_choice'][:32]:<40} {ex['sim_loss']*100:<15.2f} {ex['freq_gain']:.2f}x")
 
-			high_loss_low_gain  = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] < 2]
-			high_loss_good_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.10 and ex['freq_gain'] >= 2]
-			low_loss_low_gain   = [ex for ex in questionable_examples if ex['sim_loss'] <= 0.10 and ex['freq_gain'] < 2]
+			for ex in sorted(questionable_examples, key=lambda x: x['sim_loss'], reverse=True):
+				print(f"{ex['cluster_id']:7d} {ex['pure_choice']:<40} {ex['freq_choice'][:32]:<50} {ex['sim_loss']*100:<15.2f} {ex['freq_gain']:.2f}x")
+
+			high_loss_low_gain  = [ex for ex in questionable_examples if ex['sim_loss'] > 0.1 and ex['freq_gain'] < 2]
+			high_loss_good_gain = [ex for ex in questionable_examples if ex['sim_loss'] > 0.1 and ex['freq_gain'] >= 2]
+			low_loss_low_gain   = [ex for ex in questionable_examples if ex['sim_loss'] <= 0.1 and ex['freq_gain'] < 2]
 
 			print(f"\nQUESTIONABLE TRADES")
-			print(f"High loss (> 10%) + Low gain  (< 2x) : {len(high_loss_low_gain):<10}{len(high_loss_low_gain)/questionable_trades:<10.4f}BAD")
-			print(f"High loss (> 10%) + Good gain (>=2x) : {len(high_loss_good_gain):<10}{len(high_loss_good_gain)/questionable_trades:<10.4f}DEBATABLE")
-			print(f"Low loss  (<=10%) + Low gain  (< 2x) : {len(low_loss_low_gain):<10}{len(low_loss_low_gain)/questionable_trades:<10.4f}UNNECESSARY")
+			print(f"High loss (> 10%) + Low gain  (< 2x) {len(high_loss_low_gain):<10}{len(high_loss_low_gain)/questionable_trades:<10.4f}BAD")
+			print(f"High loss (> 10%) + Good gain (>=2x) {len(high_loss_good_gain):<10}{len(high_loss_good_gain)/questionable_trades:<10.4f}DEBATABLE")
+			print(f"Low loss  (<=10%) + Low gain  (< 2x) {len(low_loss_low_gain):<10}{len(low_loss_low_gain)/questionable_trades:<10.4f}UNNECESSARY")
 		else:
 			print(f"\nAll trades are high-quality!")
+
+		# ------------------------------------------------------------------
+		# Dynamic, Mutually Exclusive Trade Categorization (100% Partition)
+		# ------------------------------------------------------------------
+		trades = list(zip(total_sim_loss, total_freq_gain))
+		n_trades = len(trades)
+
+		free_upgrades      = []  # s <= 2%, f >= 1.0 (negligible loss, free gain)
+		high_yield_trades  = []  # s <= 5%, f >= 5.0 (great consolidation)
+		fair_trades        = []  # s <= 8%, f >= 2.0 (balanced trade)
+		structural_picks   = []  # f < 1.0, s <= 5%  (picked for brevity/head-token, not freq)
+		high_loss_good_gain= []  # s > 8%, f >= 5.0  (aggressive consolidation, check semantics)
+		truly_questionable = []  # s > 8% AND f < 2.0, or s > 12% (destructive / poor ROI)
+		other_mild_trades  = []  # remaining benign low-loss trades
+
+		for idx, (s, f) in enumerate(trades):
+			ex = questionable_examples[idx] if idx < len(questionable_examples) else None
+			item = {'sim_loss': s, 'freq_gain': f, 'example': ex}
+
+			if s <= 0.02 and f >= 1.0:
+				free_upgrades.append(item)
+			elif s <= 0.05 and f >= 5.0:
+				high_yield_trades.append(item)
+			elif f < 1.0 and s <= 0.05:
+				structural_picks.append(item)
+			elif s <= 0.08 and f >= 2.0:
+				fair_trades.append(item)
+			elif s > 0.08 and f >= 5.0:
+				high_loss_good_gain.append(item)
+			elif (s > 0.08 and f < 2.0) or (s > 0.12):
+				truly_questionable.append(item)
+			else:
+				other_mild_trades.append(item)
+
+		# Trade Efficiency (ROI): doublings of frequency per 1% similarity lost
+		log2_gains = np.log2(np.maximum(total_freq_gain, 0.01))
+		sim_losses = np.maximum(total_sim_loss, 0.005)
+		trade_roi  = log2_gains / (sim_losses * 100)  # doublings per 1% sim loss
+
+		print("\nCANONICAL SELECTION TRADEOFF ANALYSIS (100% Partitioned):")
+		print(f"  ├─ 🌟 Free Upgrades      (s <= 2%, f >= 1x)       {len(free_upgrades):<5d} ({len(free_upgrades)/n_trades*100:5.1f}%) [Semantic drift < noise floor]")
+		print(f"  ├─ 🚀 High-Yield Trades  (s <= 5%, f >= 5x)       {len(high_yield_trades):<5d} ({len(high_yield_trades)/n_trades*100:5.1f}%) [High frequency consolidation]")
+		print(f"  ├─ ⚖️  Fair / Modest     (s <= 8%, f >= 2x)       {len(fair_trades):<5d} ({len(fair_trades)/n_trades*100:5.1f}%) [Balanced compromise]")
+		print(f"  ├─ 🏷️  Structural/Brevity(f <  1x, s <= 5%)       {len(structural_picks):<5d} ({len(structural_picks)/n_trades*100:5.1f}%) [Driven by head-token / brevity]")
+		print(f"  ├─ ℹ️  Mild Adjustments  (s <= 8%, f in 1-2x)     {len(other_mild_trades):<5d} ({len(other_mild_trades)/n_trades*100:5.1f}%) [Benign low-loss variations]")
+		print(f"  ├─ 🔍 High Loss & Gain   (s >  8%, f >= 5x)       {len(high_loss_good_gain):<5d} ({len(high_loss_good_gain)/n_trades*100:5.1f}%) [Aggressive trade, inspectable]")
+		print(f"  └─ 🛑 Truly Questionable (s > 8% & f < 2x / >12%) {len(truly_questionable):<5d} ({len(truly_questionable)/n_trades*100:5.1f}%) [Poor ROI or high semantic loss]")
+
+		print(f"\n  Average Trade ROI: {np.median(trade_roi):.2f} frequency doublings per 1% similarity loss (Median)")
+
+		if len(truly_questionable) > 0 and verbose:
+			print(f"\n[WARNING] {len(truly_questionable)} genuinely questionable trades detected:")
+			print(f"{'Sim Loss(%)':<15} {'Freq Gain':<15} {'ROI (doublings/1% loss)'}")
+			print("-" * 60)
+			for t in sorted(truly_questionable, key=lambda x: x['sim_loss'], reverse=True)[:15]:
+				roi = np.log2(max(t['freq_gain'], 0.01)) / (max(t['sim_loss'], 0.005) * 100)
+				print(f"{t['sim_loss']*100:<15.2f} {t['freq_gain']:<15.2f}x {roi:<10.2f}")
+		else:
+			print("\n  ✅ Zero destructive trades detected. All canonical selections maintain strong semantic integrity.")
+
 
 		avg_sim_loss_pct = np.mean(total_sim_loss) * 100
 		avg_freq_gain    = np.mean(total_freq_gain)
