@@ -415,7 +415,7 @@ def _nearest_cluster_neighbors(
 	for s in range(0, n, chunk):
 		S = V[s:s + chunk] @ V.T
 		rows = np.arange(S.shape[0])
-		S[rows, rows + s] = -np.inf                     # exclude the cluster itself
+		S[rows, rows + s] = -np.inf # exclude the cluster itself
 		j = S.argmax(axis=1)
 		nn_idx[s:s + chunk] = j
 		nn_sim[s:s + chunk] = S[rows, j]
@@ -1163,10 +1163,10 @@ def _check_json_csv_consistency(df: pd.DataFrame, json_path: str) -> list:
 	return mismatch
 
 def dissolve_low_cohesion_clusters(
-		df,
-		embeddings,
-		threshold=0.5,
-		verbose=True
+	df,
+	embeddings,
+	threshold=0.5,
+	verbose=True
 ):
 		"""
 		Dissolve clusters with intra-similarity < threshold.
@@ -1397,49 +1397,6 @@ def generate_recommendations(
 		recs.append("No issues detected. Clustering quality is acceptable.")
 
 	return recs
-
-def export_problematic_clusters(
-		labels: np.ndarray,
-		cluster_assignments: np.ndarray,
-		canonical_labels: Dict[int, str],
-		problematic_cluster_ids: List[int],
-		output_path: str = 'problematic_clusters_review.csv'
-) -> None:
-		"""
-		Export problematic clusters to CSV for manual review.
-		
-		Parameters
-		----------
-		labels : np.ndarray
-				Original label strings
-		cluster_assignments : np.ndarray
-				Cluster ID for each label
-		canonical_labels : Dict[int, str]
-				Mapping from cluster_id -> canonical label
-		problematic_cluster_ids : List[int]
-				List of cluster IDs flagged as problematic
-		output_path : str
-				Output CSV file path
-		"""
-		
-		review_data = list()
-		
-		for cluster_id in problematic_cluster_ids:
-				mask = cluster_assignments == cluster_id
-				cluster_labels = labels[mask]
-				canonical = canonical_labels.get(cluster_id, "UNKNOWN")
-				
-				for label in cluster_labels:
-						review_data.append({
-								'cluster_id': cluster_id,
-								'canonical_label': canonical,
-								'original_label': label,
-								'is_canonical': label == canonical
-						})
-		
-		df = pd.DataFrame(review_data)
-		df.to_csv(output_path, index=False)
-		print(f"✅ Exported {len(df)} labels from {len(problematic_cluster_ids)} problematic clusters to: {output_path}")
 
 def get_optimal_super_clusters(
 	linkage_matrix,
