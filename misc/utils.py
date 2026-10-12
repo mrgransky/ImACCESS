@@ -60,10 +60,6 @@ import concurrent.futures
 # from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, TimeoutError
 warnings.filterwarnings('ignore')
 
-# from skimage.filters.rank import entropy
-# from skimage.morphology import disk
-# from skimage.measure import shannon_entropy
-# from skimage.transform import resize
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
@@ -244,6 +240,7 @@ def clean_cache(directory: str, strategy: str, verbose: bool = False):
 	if cleanup_files:
 		if verbose:
 			print(f"Cleaning cache in {directory}")
+
 		for f in cleanup_files:
 			if os.path.basename(f).startswith(f"{strategy}_ViT"):
 				if verbose:
@@ -252,81 +249,77 @@ def clean_cache(directory: str, strategy: str, verbose: bool = False):
 					os.remove(f)
 				except Exception as e:
 					if verbose:
-						print(f"Warning: Failed to remove {f}: {e}")
+						print(f"[WARNING] Failed to remove {f}: {e}")
 
 def save_tiered_retrieval_metrics(
-		best_model_result: Dict,
-		strategy: str,
-		dataset_directory: str,
-		column: str,
-		seed: int,
-		strategy_hyperparams: Optional[Dict[str, Any]] = None,
-		verbose: bool = True,
+	best_model_result: Dict,
+	strategy: str,
+	dataset_directory: str,
+	column: str,
+	seed: int,
+	strategy_hyperparams: Optional[Dict[str, Any]] = None,
+	verbose: bool = True,
 ):
-		output_dir = os.path.join(dataset_directory, "outputs")
-		os.makedirs(output_dir, exist_ok=True)
+	output_dir = os.path.join(dataset_directory, "outputs")
+	os.makedirs(output_dir, exist_ok=True)
+	result_dir = os.path.join(output_dir, column, f"seed_{seed}")
+	os.makedirs(result_dir, exist_ok=True)
+	per_k = extract_per_k_metrics(best_model_result, tier_key="tiered")
+	shared_per_k = extract_per_k_metrics(best_model_result, tier_key="shared_tiered")
+	# Inject hyperparameters into the combined dictionary
+	combined = {
+		"hyperparameters": strategy_hyperparams if strategy_hyperparams is not None else {},
+		"standard": per_k,
+	}
 
-		result_dir = os.path.join(output_dir, column, f"seed_{seed}")
-		os.makedirs(result_dir, exist_ok=True)
+	if shared_per_k is not None:
+		combined["shared"] = shared_per_k
 
-		per_k = extract_per_k_metrics(best_model_result, tier_key="tiered")
-		shared_per_k = extract_per_k_metrics(best_model_result, tier_key="shared_tiered")
+	# Save to accumulated retrieval metrics JSON
+	retrieval_tiered_fpath = os.path.join(result_dir, f"retrieval_metrics_accumulated.json")
+	retrieval_accumulated = {}
+	if os.path.exists(retrieval_tiered_fpath):
+			if verbose:
+					print(f"Loading existing results from {retrieval_tiered_fpath}")
+			with open(retrieval_tiered_fpath) as f:
+					retrieval_accumulated = json.load(f)
+	retrieval_accumulated[strategy] = combined
+	with open(retrieval_tiered_fpath, "w") as f:
+			json.dump(retrieval_accumulated, f, indent=2)
 
-		# Inject hyperparameters into the combined dictionary
-		combined = {
-			"hyperparameters": strategy_hyperparams if strategy_hyperparams is not None else {},
-			"standard": per_k,
-		}
-		if shared_per_k is not None:
-				combined["shared"] = shared_per_k
-
-		# Save to accumulated retrieval metrics JSON
-		retrieval_tiered_fpath = os.path.join(result_dir, f"retrieval_metrics_accumulated.json")
-		retrieval_accumulated = {}
-		if os.path.exists(retrieval_tiered_fpath):
-				if verbose:
-						print(f"Loading existing results from {retrieval_tiered_fpath}")
-				with open(retrieval_tiered_fpath) as f:
-						retrieval_accumulated = json.load(f)
-
-		retrieval_accumulated[strategy] = combined
-
-		with open(retrieval_tiered_fpath, "w") as f:
-				json.dump(retrieval_accumulated, f, indent=2)
-
-		# Save to accumulated performance metrics JSON
-		performance_fpath = os.path.join(output_dir, f"seed_{seed}_performance.json")
-		performance_accumulated = {}
-		if os.path.exists(performance_fpath):
-				if verbose:
-						print(f"Loading existing results from {performance_fpath}")
-				with open(performance_fpath) as f:
-						performance_accumulated = json.load(f)
-
-		if column not in performance_accumulated:
-				performance_accumulated[column] = {}
-
-		performance_accumulated[column][strategy] = combined
-
-		with open(performance_fpath, "w") as f:
-				json.dump(performance_accumulated, f, indent=2)
-
-		if verbose:
-				print(f"\nRetrieval Tiered Metrics:")
-				collected_retrieval_methods = list(retrieval_accumulated.keys())
-				n_methods = len(collected_retrieval_methods)
-				print(f"'{strategy}' strategy results appended to {retrieval_tiered_fpath}")
-				print(f">> {n_methods} collected method(s): {collected_retrieval_methods}")
-				if shared_per_k is None:
-						print(f"[NOTE] No shared-vocabulary protocol results present for this run "
-									f"(shared_protocol_path was not provided to evaluate_best_model)")
-				
-				print(f"\nPerformance Metrics:")
-				collected_columns = list(performance_accumulated.keys())
-				n_columns = len(collected_columns)
-				print(f"'{column}' column results appended to {performance_fpath}")
-				print(f">> {n_columns} collected column(s): {collected_columns}")
-				print("="*120)
+	# Save to accumulated performance metrics JSON
+	performance_fpath = os.path.join(output_dir, f"seed_{seed}_performance.json")
+	performance_accumulated = {}
+	if os.path.exists(performance_fpath):
+			if verbose:
+					print(f"Loading existing results from {performance_fpath}")
+			with open(performance_fpath) as f:
+					performance_accumulated = json.load(f)
+	if column not in performance_accumulated:
+			performance_accumulated[column] = {}
+	performance_accumulated[column][strategy] = combined
+	
+	with open(performance_fpath, "w") as f:
+		json.dump(performance_accumulated, f, indent=2)
+	
+	if verbose:
+		print(f"\nRetrieval Tiered Metrics:")
+		collected_retrieval_methods = list(retrieval_accumulated.keys())
+		n_methods = len(collected_retrieval_methods)
+		print(f"'{strategy}' strategy results appended to {retrieval_tiered_fpath}")
+		print(f">> {n_methods} collected method(s): {collected_retrieval_methods}")
+		if shared_per_k is None:
+			print(
+				f"[NOTE] No shared-vocabulary protocol results present for this run "
+				f"(shared_protocol_path was not provided to evaluate_best_model)"
+			)
+		
+		print(f"\nPerformance Metrics:")
+		collected_columns = list(performance_accumulated.keys())
+		n_columns = len(collected_columns)
+		print(f"'{column}' column results appended to {performance_fpath}")
+		print(f">> {n_columns} collected column(s): {collected_columns}")
+		print("="*120)
 
 def check_and_cleanup_gpu_memory(
 	batch_idx: int,

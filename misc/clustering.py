@@ -377,21 +377,26 @@ def _encode_(
 	BF16 models (e.g., Nemotron), and models with internal Normalize layers (e.g., Octen).
 	"""
 	def _has_internal_normalize(m) -> bool:
-			if hasattr(m, "modules"):
-					return any(isinstance(mod, Normalize) for mod in m.modules())
-			return False
+		if hasattr(m, "modules"):
+			return any(isinstance(mod, Normalize) for mod in m.modules())
+		return False
+
 	kw = {
-			"batch_size": batch_size,
-			"show_progress_bar": show_progress_bar,
-			"convert_to_numpy": True,
-			"precision": "float32",
+		"batch_size": batch_size,
+		"show_progress_bar": show_progress_bar,
+		"convert_to_numpy": True,
+		"precision": "float32",
 	}
+	
 	if prompt is not None:
-			kw["prompt"] = prompt
+		kw["prompt"] = prompt
+	
 	# Only request external normalization if the model pipeline doesn't already do it
 	if normalize and not _has_internal_normalize(model):
-			kw["normalize_embeddings"] = True
+		kw["normalize_embeddings"] = True
+
 	embeddings = model.encode(list(texts), **kw)
+	
 	return np.asarray(embeddings, dtype=np.float32)
 
 def _nearest_cluster_neighbors(
@@ -3755,8 +3760,6 @@ def cluster(
 			f"dtype: {next(model.parameters()).dtype} "
 			f"({sum(p.numel() for p in model.parameters()):,} parameters)"
 		)
-
-
 
 	# STEP 3: LOAD / COMPUTE EMBEDDINGS + LINKAGE
 	X, Z = get_clustering_artifacts(
