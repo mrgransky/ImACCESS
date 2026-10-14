@@ -2246,7 +2246,6 @@ def _resolve_shared_canonicals(
 	threshold: float,
 	verbose: bool = False,
 ) -> Dict[int, Dict]:
-
 	"""
 	Post-pass over clusters whose canonicals share a name (case-insensitive).
 
@@ -2500,6 +2499,10 @@ def _harmonize_final_canonicals(
 	* Winner: singular form first, then a real corpus label, then corpus
 		frequency, then total cluster size, then capitalisation, then lexicographic.
 	"""
+	if verbose:
+		print("\n[CANONICAL HARMONIZATION]")
+		print(f"  ├─ unique labels {len(original_label_counts)}")
+		print(f"  └─ Clusters      {len(cluster_canonicals)}")
 
 	HARMONIZE_PROTECTED_PLURALS = {
 		# plurale tantum
@@ -2604,7 +2607,6 @@ def _harmonize_final_canonicals(
 		examples.append((sorted(variants), winner))
 
 	if verbose:
-		print("\n[CANONICAL HARMONIZATION]")
 		print(f"  groups changed   {stats['groups_changed']:6d}")
 		print(f"  clusters renamed {stats['clusters_renamed']:6d}")
 		for variants, winner in examples:
