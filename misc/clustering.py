@@ -2500,9 +2500,9 @@ def _harmonize_final_canonicals(
 		frequency, then total cluster size, then capitalisation, then lexicographic.
 	"""
 	if verbose:
-		print("\n[CANONICAL HARMONIZATION]")
-		print(f"  ├─ unique labels {len(original_label_counts)}")
-		print(f"  ├─ Clusters      {len(cluster_canonicals)}")
+		print("\n[CANONICAL LABEL HARMONIZATION]")
+		print(f"  ├─ unique labels    {len(original_label_counts)}")
+		print(f"  ├─ Clusters         {len(cluster_canonicals)}")
 
 	HARMONIZE_PROTECTED_PLURALS = {
 		# plurale tantum
@@ -2610,7 +2610,7 @@ def _harmonize_final_canonicals(
 		print(f"  ├─ changed group(s)   {stats['groups_changed']}")
 		print(f"  └─ renamed cluster(s) {stats['clusters_renamed']}")
 		for variants, winner in examples:
-			print(f"{variants} -> {winner!r}")
+			print(f"{repr(winner):<35}{variants}")
 
 	return cluster_canonicals
 
