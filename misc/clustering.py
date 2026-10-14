@@ -1977,7 +1977,7 @@ def get_optimal_num_clusters(
 					if verbose:
 						print(
 							f"  ├─ [{status:7s}] singleton cluster {singleton_id:5d} {repr(label_texts[singleton_idx]):<65}"
-							f"(best sim={sims[nearest_id]:.4f} < floor {min_singleton_merge_sim:.2f})"
+							f"best sim={sims[nearest_id]:.4f} < floor {min_singleton_merge_sim}"
 						)
 					break
 
@@ -1988,7 +1988,7 @@ def get_optimal_num_clusters(
 				if verbose:
 					print(
 						f"  ├─ [{status:7s}] singleton cluster {singleton_id:5d} {repr(label_texts[singleton_idx]):<65} "
-						f"=> cluster {nearest_id:5d} (sim={sims[nearest_id]:.4f})"
+						f"=> cluster {nearest_id:5d} sim: {sims[nearest_id]:.4f}"
 					)
 
 				break
@@ -2628,8 +2628,6 @@ def _harmonize_final_canonicals(
 
 	return cluster_canonicals
 
-# ── Post-pass bookkeeping ────────────────────────────────────────────────
-
 def _finalize_selection_records(
 	selection_records: List[Dict],
 	cluster_canonicals: Dict[int, Dict],
@@ -2658,8 +2656,6 @@ def _finalize_selection_records(
 			'demoted_from':          meta.get('shared_demoted_from'),
 			'spelling_unified_from': meta.get('spelling_unified_from'),
 		}
-
-# ── Debug JSON construction ──────────────────────────────────────────────
 
 def _clean(v, ndigits: int = 4):
 	"""numpy -> python; NaN -> None; floats rounded for readability."""
@@ -3338,6 +3334,10 @@ def assign_canonical_labels(
 	verbose: bool = False,
 ) -> Dict[int, Dict]:
 	"""
+	The most intricate block which has:
+	1) per-cluster loop 
+	2) global post-passes.
+
 	Assign a canonical label to every cluster using a five-signal composite
 	score, with optional virtual hypernym synthesis.
 
@@ -3453,7 +3453,23 @@ def assign_canonical_labels(
 		}
 	"""
 
+	if verbose:
+		print(f"[CANONICAL SELECTION]")
+		print(f"  ├─ df: {df.shape} {list(df.columns)}")
+		print(f"  ├─ X:  {X.shape}")
+		print(f"  ├─ virtual_min_sim_ratio: {virtual_min_sim_ratio}")
+		print(f"  └─ min_distinct_concepts: {min_distinct_concepts}")
+		print()
+
 	W_SIM, W_FREQ, W_HEAD, W_CONT, W_BREV = 0.30, 0.15, 0.20, 0.25, 0.10
+	weights = {
+		'sim': W_SIM, 
+		'freq': W_FREQ, 
+		'head': W_HEAD, 
+		'cont': W_CONT, # containment
+		'brev': W_BREV  # brevity
+	}
+
 	MIN_SUPPORT     = 0.5
 	FREQ_GAIN_GUARD = 3.0
 
@@ -3613,7 +3629,6 @@ def assign_canonical_labels(
 			toks.pop()
 		return toks
 
-	# Virtual hypernym synthesis
 	def _head_suffix_core(lbls: List[str], threshold: int):
 		"""Route 1: shared contiguous suffix of the members' head phrases.
 
@@ -3799,28 +3814,21 @@ def assign_canonical_labels(
 	
 	case_registry = _build_case_registry(original_label_counts)
 
-	cluster_canonicals    = {}
-	virtual_used_count    = 0
-	freq_changed_count    = 0
-	selection_records     = [] # one per cluster -> debug CSV
-	candidate_records     = [] # one per candidate -> nested into the JSON
+	cluster_canonicals = {}
+	virtual_used_count = 0
+	freq_changed_count = 0
+	selection_records  = [] # one per cluster -> debug CSV
+	candidate_records  = [] # one per candidate -> nested into the JSON
 	cluster_centroids: Dict[int, np.ndarray] = {}
 	cluster_members:  Dict[int, List[str]]  = {}
 	n_clusters_total: int = df.cluster.nunique()
 	tradeoff_records: List[Dict] = [] # one per real pick (differs from pure similarity)
-	weights = {
-		'sim': W_SIM, 
-		'freq': W_FREQ, 
-		'head': W_HEAD, 
-		'cont': W_CONT, # containment
-		'brev': W_BREV  # brevity
-	}
 
 	for cid in sorted(df.cluster.unique()):
 		cluster_mask       = df.cluster == cid
 		cluster_texts      = df[cluster_mask]['label'].tolist()
 		cluster_indices    = df[cluster_mask].index.tolist()
-		cluster_embeddings = X[cluster_indices]  # (n, d) L2-normalised
+		cluster_embeddings = X[cluster_indices] # (n, d) L2-normalised
 		cluster_size       = len(cluster_texts)
 
 		if verbose:
@@ -3833,7 +3841,7 @@ def assign_canonical_labels(
 
 		# ── Virtual hypernym: synthesise, then gate on similarity ────
 		virtual_hypernym, vh_raw, vh_info = _synthesize_virtual(
-			cluster_texts,
+			cluster_texts=cluster_texts,
 			synth_fn=_virtual_hypernym,
 			restore_fn=_restore_surface,
 			norm_token_set_fn=_norm_token_set,
@@ -3844,12 +3852,18 @@ def assign_canonical_labels(
 			_print_virtual_trace(vh_raw, virtual_hypernym, vh_info, cluster_size)
 
 		similarities = _centroid_similarities(
-			centroid, cluster_embeddings, virtual_hypernym, model, encode_prompt
+			centroid, 
+			cluster_embeddings, 
+			virtual_hypernym, 
+			model, 
+			encode_prompt
 		)
 		pure_sim_idx = int(similarities[:cluster_size].argmax())  # real labels only
 
 		virtual_hypernym, similarities, rejection_virtual_tag = _gate_virtual_by_similarity(
-			virtual_hypernym, similarities, cluster_size,
+			virtual_hypernym,
+			similarities,
+			cluster_size,
 			min_sim_ratio=VIRTUAL_MIN_SIM_RATIO,
 			abs_floor=VIRTUAL_ABSOLUTE_SIM_FLOOR,
 			vh_info=vh_info,
