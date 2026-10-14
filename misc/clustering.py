@@ -2541,9 +2541,23 @@ def _harmonize_final_canonicals(
 			out.append(low[:-1])                            # cars -> car
 		return out
 
-	surfaces = {cid: m['canonical'] for cid, m in cluster_canonicals.items() if m.get('canonical')}
+	def _group_key(s: str) -> str:
+		if _is_acronym(s):
+			return "ACRONYM::" + _spacing_key(s)
+		return plural_of.get(s, _spacing_key(s))
+
+	surfaces = {
+		cid: m['canonical'] 
+		for cid, m in cluster_canonicals.items() 
+		if m.get('canonical')
+	}
+	
 	distinct = set(surfaces.values())
-	attested_keys = {_spacing_key(s) for s in distinct if not _is_acronym(s)}
+	attested_keys = {
+		_spacing_key(s) 
+		for s in distinct 
+		if not _is_acronym(s)
+	}
 
 	plural_of: Dict[str, str] = {} # plural surface -> singular spacing key
 	for s in distinct:
@@ -2556,18 +2570,16 @@ def _harmonize_final_canonicals(
 				plural_of[s] = k
 				break
 
-	def _group_key(s: str) -> str:
-		if _is_acronym(s):
-			return "ACRONYM::" + _spacing_key(s)
-		return plural_of.get(s, _spacing_key(s))
-
 	groups: Dict[str, list] = defaultdict(list)
 	for cid, s in surfaces.items():
 		groups[_group_key(s)].append(cid)
 
 	stats, examples = Counter(), []
 	for cids in groups.values():
-		variants = {cluster_canonicals[c]['canonical'] for c in cids}
+		variants = {
+			cluster_canonicals[c]['canonical'] 
+			for c in cids
+		}
 		if len(variants) == 1:
 			for c in cids:
 				m = cluster_canonicals[c]
@@ -2597,6 +2609,7 @@ def _harmonize_final_canonicals(
 		)
 
 		stats['groups_changed'] += 1
+
 		for c in cids:
 			m = cluster_canonicals[c]
 			m['canonical_harmonized'] = winner
@@ -2604,6 +2617,7 @@ def _harmonize_final_canonicals(
 			if m['changed_by_harmonize']:
 				m['canonical_pre_harmonize'] = m['canonical']
 				stats['clusters_renamed'] += 1
+
 		examples.append((sorted(variants), winner))
 
 	if verbose:
@@ -2613,6 +2627,701 @@ def _harmonize_final_canonicals(
 			print(f"{repr(winner):<20}{variants}")
 
 	return cluster_canonicals
+
+# ── Post-pass bookkeeping ────────────────────────────────────────────────
+
+def _finalize_selection_records(
+	selection_records: List[Dict],
+	cluster_canonicals: Dict[int, Dict],
+	pre_postpass: Dict[int, str],
+	neighbor_info: Dict[int, Dict],
+) -> None:
+	"""In place: stamp final (post-resolver, post-harmonize) state onto each record."""
+	for rec in selection_records:
+		cid = rec['cluster_id']
+		meta = cluster_canonicals[cid]
+		final = meta.get('canonical_harmonized', meta['canonical'])
+		rec['canonical_selected'] = final
+		rec['changed_by_postpass'] = final != pre_postpass[cid]
+		rec['is_virtual'] = meta['virtual']  # final state, not pre-post-pass
+		rec['nearest'] = neighbor_info[cid]
+		rec['harmonize'] = {
+			'changed': bool(meta.get('changed_by_harmonize', False)),
+			'from':    meta.get('canonical_pre_harmonize'),
+		}
+		rec['shared'] = {
+			'resolution':            meta.get('shared_resolution'),
+			'group_size':            meta.get('shared_group_size'),
+			'anchor_similarity':     meta.get('shared_anchor_similarity'),
+			'name_evidence':         meta.get('shared_name_evidence'),
+			'threshold':             meta.get('shared_threshold'),
+			'demoted_from':          meta.get('shared_demoted_from'),
+			'spelling_unified_from': meta.get('spelling_unified_from'),
+		}
+
+# ── Debug JSON construction ──────────────────────────────────────────────
+
+def _clean(v, ndigits: int = 4):
+	"""numpy -> python; NaN -> None; floats rounded for readability."""
+	if isinstance(v, (np.bool_, bool)):
+		return bool(v)
+	if isinstance(v, (np.integer, int)):
+		return int(v)
+	if isinstance(v, (np.floating, float)):
+		return None if np.isnan(v) else round(float(v), ndigits)
+	return v
+
+def _candidate_json(r: Dict) -> Dict:
+	return {
+		'rank': _clean(r['rank']),
+		'label': r['candidate'],
+		'is_virtual': _clean(r['is_virtual']),
+		'roles': [
+			role for role, flag in (
+				('selected', r['is_selected']),
+				('pure_similarity_winner', r['is_pure_sim_winner']),
+				('no_frequency_winner', r['is_no_freq_winner']),
+			) if flag
+		],
+		'head_token': r['head_token'],
+		'corpus_freq': _clean(r['raw_freq']),
+		'scores': {
+			'similarity':  _clean(r['sim']),
+			'frequency':   _clean(r['freq_score']),
+			'head':        _clean(r['head_score']),
+			'containment': _clean(r['cont_score']),
+			'brevity':     _clean(r['brevity_score']),
+		},
+		'composite_without_frequency': _clean(r['composite_no_freq']),
+		'composite': _clean(r['composite']),
+	}
+
+def _cluster_json(rec: Dict, cands: List[Dict]) -> Dict:
+	return {
+		'cluster_id': _clean(rec['cluster_id']),
+		'size': _clean(rec['cluster_size']),
+		'members': rec['members'].split(" | "),
+		'canonical': rec['canonical_selected'],
+		'harmonize': rec['harmonize'],
+		'canonical_pre_postpass': rec['canonical_pre_postpass'],
+		'changed_by_postpass': _clean(rec['changed_by_postpass']),
+		'is_virtual': _clean(rec['is_virtual']),
+		'selection_method': rec['selection_method'],
+		'freq_guard': rec['freq_guard'],
+		'nearest_cluster': rec['nearest'],
+		'shared_canonical': {
+			k: (v if isinstance(v, str) else _clean(v))
+			for k, v in rec['shared'].items()
+		},
+		'margin_to_runner_up': _clean(rec['margin_to_runner_up']),
+		'winners': {
+			'selected': rec['canonical_pre_postpass'],
+			'composite_before_guard': rec['composite_winner_pre_guard'] or None,
+			'without_frequency': rec['no_freq_winner'] or None,
+			'pure_similarity': rec['pure_sim_label'],
+			'runner_up': rec['runner_up'] or None,
+		},
+		'virtual_hypernym': {
+			'candidate': rec['virtual_candidate'] or None,
+			'entered_pool': _clean(rec['virtual_entered_pool']),
+			'route': rec['virtual_route'] or None,
+			'support': _clean(rec['virtual_support']),
+			'threshold': _clean(rec['virtual_threshold']),
+			'note': rec['virtual_note'],
+		},
+		'candidates': [_candidate_json(r) for r in cands],
+	}
+
+def _build_clusters_json(
+	selection_records: List[Dict],
+	candidate_records: List[Dict],
+) -> List[Dict]:
+	by_cluster: Dict[int, List[Dict]] = defaultdict(list)
+	for r in candidate_records:
+		by_cluster[r['cluster_id']].append(r)
+	return [
+		_cluster_json(rec, sorted(by_cluster[rec['cluster_id']], key=lambda r: r['rank']))
+		for rec in selection_records
+	]
+
+def _build_debug_payload(
+	clusters_json: List[Dict],
+	selection_records: List[Dict],
+	n_candidates: int,
+	neighbor_summary: Dict,
+	weights: Dict[str, float],
+	min_support: float,
+	virtual_gates: Dict[str, Any],
+	freq_gain_guard: float,
+) -> Dict:
+	method_counts = Counter(rec['selection_method'] for rec in selection_records)
+	resolution_counts = Counter(
+		rec['shared']['resolution']
+		for rec in selection_records
+		if rec['shared'].get('resolution')
+	)
+	return {
+		'meta': {
+			'n_clusters': len(clusters_json),
+			'n_candidates': n_candidates,
+			'weights': weights,
+			'min_support': min_support,
+			'virtual_gates': virtual_gates,
+			'freq_gain_guard': freq_gain_guard,
+			'selection_method_counts': dict(method_counts.most_common()),
+			'virtual_winners': sum(1 for c in clusters_json if c['is_virtual']),
+			'changed_by_postpass': sum(1 for c in clusters_json if c['changed_by_postpass']),
+			'nearest_cluster_similarity': neighbor_summary,
+			'shared_resolution_counts': dict(resolution_counts.most_common()),
+		},
+		'clusters': clusters_json,
+	}
+
+def _write_debug_json(
+	path: str,
+	payload: Dict,
+	verbose: bool = False,
+) -> None:
+	with open(path, 'w', encoding='utf-8') as f:
+		json.dump(payload, f, indent=2, ensure_ascii=False)
+	if verbose:
+		print(f"[CANONICAL SELECTION]")
+		print(f"  ├─ {len(payload['clusters'])} clusters")
+		print(f"  ├─ {payload['meta']['n_candidates']} candidates")
+		print(f"  ├─ {path}")
+
+def _print_selection_overview(
+	selection_records: List[Dict],
+	virtual_rejections: Counter,
+) -> None:
+	sel = pd.DataFrame(selection_records)
+	print("\nHow canonicals were chosen:")
+	for m, cnt in sel['selection_method'].value_counts().items():
+		print(f"  {m:<34} {cnt:6d} ({cnt / len(sel) * 100:5.1f}%)")
+
+	routes = sel.loc[sel['virtual_entered_pool'], 'virtual_route'].value_counts()
+	if len(routes):
+		print("  Virtual candidates entering the pool, by route:")
+		for r, cnt in routes.items():
+			won = int(((sel['virtual_route'] == r) & sel['is_virtual']).sum())
+			print(f"    {r:<14} {cnt:6d} entered, {won:6d} won")
+
+	dup = sel['canonical_selected'].value_counts()
+	dup = dup[dup > 1]
+	if len(dup):
+		print(
+			f"  Canonicals shared by >1 cluster: {len(dup)} "
+			f"(top: {', '.join(f'{k!r}x{v}' for k, v in dup.head(8).items())})"
+		)
+
+	print(f"  Postpass (case-collision) changed: {int(sel['changed_by_postpass'].sum())} cluster(s)")
+	if virtual_rejections:
+		print(f"  Virtual candidates rejected by the quality gates: {dict(virtual_rejections)}")
+
+def _categorize_trades(
+	total_sim_loss: List[float],
+	total_freq_gain: List[float],
+	questionable_examples: List[Dict],
+) -> Dict[str, List[Dict]]:
+	"""Mutually exclusive partition of every (sim_loss, freq_gain) trade."""
+	buckets: Dict[str, List[Dict]] = {
+		'free_upgrades': [],       # s <= 2%, f >= 1.0
+		'high_yield': [],          # s <= 5%, f >= 5.0
+		'structural': [],          # f < 1.0, s <= 5%
+		'fair': [],                # s <= 8%, f >= 2.0
+		'high_loss_good_gain': [], # s > 8%, f >= 5.0
+		'questionable': [],        # (s > 8% and f < 2.0) or s > 12%
+		'other_mild': [],
+	}
+	for idx, (s, f) in enumerate(zip(total_sim_loss, total_freq_gain)):
+		ex = questionable_examples[idx] if idx < len(questionable_examples) else None
+		item = {'sim_loss': s, 'freq_gain': f, 'example': ex}
+		if s <= 0.02 and f >= 1.0:
+			buckets['free_upgrades'].append(item)
+		elif s <= 0.05 and f >= 5.0:
+			buckets['high_yield'].append(item)
+		elif f < 1.0 and s <= 0.05:
+			buckets['structural'].append(item)
+		elif s <= 0.08 and f >= 2.0:
+			buckets['fair'].append(item)
+		elif s > 0.08 and f >= 5.0:
+			buckets['high_loss_good_gain'].append(item)
+		elif (s > 0.08 and f < 2.0) or s > 0.12:
+			buckets['questionable'].append(item)
+		else:
+			buckets['other_mild'].append(item)
+	return buckets
+
+def _print_tradeoff_analysis(
+	total_sim_loss: List[float],
+	total_freq_gain: List[float],
+	questionable_examples: List[Dict],
+) -> None:
+	print(
+		f"\nSIMILARITY LOSS "
+		f"(min, max): ({np.min(total_sim_loss)}, {np.max(total_sim_loss)}) "
+		f"μ±σ: {np.mean(total_sim_loss)} ± {np.std(total_sim_loss)} (Median: {np.median(total_sim_loss)})"
+	)
+	print(
+		f"FREQUENCY GAIN  "
+		f"(min, max): ({np.min(total_freq_gain)}, {np.max(total_freq_gain)}) "
+		f"μ±σ: {np.mean(total_freq_gain)} ± {np.std(total_freq_gain)} (Median: {np.median(total_freq_gain)}x)"
+	)
+
+	b = _categorize_trades(total_sim_loss, total_freq_gain, questionable_examples)
+	n_trades = len(total_sim_loss)
+
+	log2_gains = np.log2(np.maximum(total_freq_gain, 0.01))
+	sim_losses = np.maximum(total_sim_loss, 0.005)
+	trade_roi = log2_gains / (sim_losses * 100)  # doublings per 1% sim loss
+
+	rows = [
+		("Free Upgrades      (s <= 2%,  f >= 1x)      ", 'free_upgrades',       "[Semantic drift < noise floor]"),
+		("High-Yield Trades  (s <= 5%,  f >= 5x)      ", 'high_yield',          "[High frequency consolidation]"),
+		("Fair / Modest      (s <= 8%,  f >= 2x)      ", 'fair',                "[Balanced compromise]"),
+		("Structural/Brevity (f <  1x,  s <= 5%)      ", 'structural',          "[Driven by head-token / brevity]"),
+		("Mild Adjustments   (s <= 8%,  f in 1-2x)    ", 'other_mild',          "[Benign low-loss variations]"),
+		("High Loss & Gain   (s >  8%,  f >= 5x)      ", 'high_loss_good_gain', "[Aggressive trade, inspectable]"),
+		("Truly Questionable (s >  8% & f < 2x / >12%)", 'questionable',        "[Poor ROI or high semantic loss]"),
+	]
+	print("\nCANONICAL SELECTION TRADEOFF ANALYSIS (100% Partitioned):")
+	for i, (title, key, note) in enumerate(rows):
+		branch = "└─" if i == len(rows) - 1 else "├─"
+		cnt = len(b[key])
+		print(f"  {branch} {title} {cnt:<5d} ({cnt / n_trades * 100:5.1f}%) {note}")
+	print(f"\n  Average Trade ROI: {np.median(trade_roi):.2f} frequency doublings per 1% similarity loss (Median)")
+
+	questionable = b['questionable']
+	if questionable:
+		print(f"\n[WARNING] {len(questionable)} genuinely questionable trades detected:")
+		print(f"{'Sim Loss(%)':<15} {'Freq Gain':<15} {'ROI (doublings/1% loss)'}")
+		print("-" * 60)
+		for t in sorted(questionable, key=lambda x: x['sim_loss'], reverse=True)[:15]:
+			roi = np.log2(max(t['freq_gain'], 0.01)) / (max(t['sim_loss'], 0.005) * 100)
+			print(f"{t['sim_loss']*100:<15.2f} {t['freq_gain']:<15.2f}x {roi:<10.2f}")
+	else:
+		print("\n  ✅ Zero destructive trades detected. All canonical selections maintain strong semantic integrity.")
+
+	_print_overall_verdict(
+		avg_sim_loss_pct=np.mean(total_sim_loss) * 100,
+		avg_freq_gain=np.mean(total_freq_gain),
+	)
+
+def _print_overall_verdict(avg_sim_loss_pct: float, avg_freq_gain: float) -> None:
+	print(f"\nOVERALL VERDICT:")
+	if avg_sim_loss_pct < 3 and avg_freq_gain > 50:
+		print(f"[EXCELLENT] Small quality cost ({avg_sim_loss_pct:.1f}%) for huge frequency benefit ({avg_freq_gain:.0f}x)")
+	elif avg_sim_loss_pct < 5 and avg_freq_gain > 10:
+		print(f"[GOOD] Acceptable quality cost ({avg_sim_loss_pct:.1f}%) for strong frequency benefit ({avg_freq_gain:.0f}x)")
+	elif avg_sim_loss_pct < 8 and avg_freq_gain > 5:
+		print(f"[ACCEPTABLE] Moderate quality cost ({avg_sim_loss_pct:.1f}%) for moderate frequency benefit ({avg_freq_gain:.0f}x)")
+	else:
+		print(
+			f"[POOR] High quality cost ({avg_sim_loss_pct:.1f}%) for limited frequency benefit ({avg_freq_gain:.0f}x) "
+			f"Consider reducing frequency weight"
+		)
+
+def _print_frequency_impact(
+	n_clusters: int,
+	virtual_used_count: int,
+	freq_changed_count: int,
+	debug_json_path: Optional[str],
+) -> None:
+	print("-" * 100)
+	print("[CLUSTERING] FREQUENCY WEIGHTING IMPACT")
+	print(f"  Total clusters analyzed: {n_clusters}")
+	print(f"  Virtual hypernym used as canonical: {virtual_used_count} ({virtual_used_count / n_clusters * 100:.1f}%)")
+	print(f"  Clusters where score changed the canonical: {freq_changed_count} ({freq_changed_count / n_clusters * 100:.1f}%)")
+	if debug_json_path:  # summarize_canonical_selection reads the JSON
+		summarize_canonical_selection(path=debug_json_path)
+	print("-" * 100)
+
+def _synthesize_virtual(
+	cluster_texts: List[str],
+	synth_fn: Callable,
+	restore_fn: Callable,
+	norm_token_set_fn: Callable,
+	norm_tokens_fn: Callable,
+	case_registry: Dict[str, str],
+) -> Tuple[Optional[str], Optional[str], Dict]:
+	"""Returns (virtual_hypernym, vh_raw, vh_info). virtual_hypernym is None if absent or suppressed."""
+	vh_info = {'route': '', 'support': 0, 'threshold': 0, 'note': 'cluster too small'}
+	if len(cluster_texts) < 2:
+		return None, None, vh_info
+
+	vh_raw, vh_info = synth_fn(cluster_texts)
+	if vh_raw is None:
+		return None, None, vh_info
+
+	norm_vh = set(norm_tokens_fn(vh_raw))
+	twin = next((l for l in cluster_texts if norm_token_set_fn(l) == norm_vh), None)
+	if twin is not None:
+		vh_info['note'] += f" | suppressed: identical to real member {twin!r}"
+		return None, vh_raw, vh_info
+
+	virtual_hypernym = restore_fn(vh_raw, cluster_texts)
+	# Align with an existing corpus spelling ('industrial' -> 'Industrial')
+	registry_hit = case_registry.get(virtual_hypernym.lower())
+	if registry_hit is not None and registry_hit != virtual_hypernym:
+		vh_info['note'] += f" | respelled via corpus as {registry_hit!r}"
+		virtual_hypernym = registry_hit
+	return virtual_hypernym, vh_raw, vh_info
+
+def _print_virtual_trace(
+	vh_raw: Optional[str],
+	virtual_hypernym: Optional[str],
+	vh_info: Dict,
+	cluster_size: int,
+) -> None:
+	if vh_raw is None:
+		print(f"Virtual: none -- {vh_info['note']}")
+	elif virtual_hypernym is None:
+		print(f"Virtual: {vh_raw!r} [{vh_info['route']}] {vh_info['note']}")
+	else:
+		print(
+			f"Virtual: {virtual_hypernym!r} [{vh_info['route']}, "
+			f"support {vh_info['support']}/{cluster_size}, "
+			f"need {vh_info['threshold']}] {vh_info['note']}"
+		)
+
+def _centroid_similarities(
+	centroid: np.ndarray,
+	cluster_embeddings: np.ndarray,
+	virtual_hypernym: Optional[str],
+	model,
+	encode_prompt: Optional[str],
+) -> np.ndarray:
+	"""Cosine of centroid to every real member (+ the virtual, last, if present)."""
+	if virtual_hypernym is not None:
+		vh_emb = _encode_(model, [virtual_hypernym], 1, encode_prompt)[0]
+		all_embeddings = np.vstack([cluster_embeddings, vh_emb[np.newaxis, :]])
+	else:
+		all_embeddings = cluster_embeddings
+	
+	centroid_sim = sklearn.metrics.pairwise.cosine_similarity(centroid.reshape(1, -1), all_embeddings)[0]
+
+	return centroid_sim
+
+def _gate_virtual_by_similarity(
+	virtual_hypernym: Optional[str],
+	similarities: np.ndarray,
+	cluster_size: int,
+	min_sim_ratio: Optional[float],
+	abs_floor: float,
+	vh_info: Dict,
+	virtual_rejections: Counter,
+) -> Tuple[Optional[str], np.ndarray, str]:
+	"""
+	A virtual is a SUMMARY of the cluster. If its embedding is far from the centroid compared with
+	the best real member, drop it and let a real member win.
+	Returns (virtual_hypernym or None, similarities, rejection_tag). The tag is '' if nothing was rejected.
+	"""
+	if virtual_hypernym is None or min_sim_ratio is None:
+		return virtual_hypernym, similarities, ""
+
+	best_real = float(similarities[:cluster_size].max())
+	sim = float(similarities[cluster_size])
+	ratio = sim / max(best_real, 1e-12)
+
+	if ratio >= min_sim_ratio and sim >= abs_floor:
+		return virtual_hypernym, similarities, ""
+
+	reason = (
+		f"sim ratio {ratio:.2f} < {min_sim_ratio:.2f}"
+		if ratio < min_sim_ratio
+		else f"abs sim {sim:.3f} < {abs_floor:.2f}"
+	)
+	vh_info['note'] += f" | rejected: {reason} (virtual {sim:.3f} vs best member {best_real:.3f})"
+	virtual_rejections['similarity_ratio'] += 1
+	tag = (
+		f"[REJECTED VIRTUAL] "
+		f"{repr(virtual_hypernym):<30}"
+		f"sim ratio {ratio:.5f} < {min_sim_ratio}"
+		f" or abs sim: {sim:.5f} < {abs_floor}"
+	)
+	return None, similarities[:cluster_size], tag
+
+def _build_candidate_pool(
+	cluster_texts: List[str],
+	virtual_hypernym: Optional[str],
+) -> Tuple[List[str], List[bool]]:
+	n = len(cluster_texts)
+	if virtual_hypernym:
+		return cluster_texts + [virtual_hypernym], [False] * n + [True]
+	return list(cluster_texts), [False] * n
+
+def _score_candidates(
+	candidates: List[str],
+	cluster_texts: List[str],
+	similarities: np.ndarray,
+	raw_freqs: np.ndarray,
+	head_token_fn: Callable,
+	containment_fn: Callable,
+	weights: Dict[str, float],
+) -> Dict[str, np.ndarray]:
+	"""Signals 2-5 and both composites (with / without the frequency term)."""
+	cluster_size = len(cluster_texts)
+
+	freq_scores = np.log1p(raw_freqs) / np.log1p(raw_freqs.max() + 1e-12)
+
+	head_counts = Counter(head_token_fn(l) for l in cluster_texts)
+	head_scores = np.array(
+		[head_counts.get(head_token_fn(c), 0) / cluster_size for c in candidates]
+	)
+
+	cont_scores = containment_fn(candidates, cluster_texts)
+
+	token_lengths = np.array([len(c.split()) for c in candidates], dtype=float)
+	brevity_scores = 1.0 - (token_lengths - 1.0) / max(token_lengths.max(), 1)
+
+	composite_no_freq = (
+		weights['sim'] * similarities
+		+ weights['head'] * head_scores
+		+ weights['cont'] * cont_scores
+		+ weights['brev'] * brevity_scores
+	)
+	combined_scores = composite_no_freq + weights['freq'] * freq_scores
+
+	return {
+		'freq_scores': freq_scores,
+		'head_scores': head_scores,
+		'cont_scores': cont_scores,
+		'brevity_scores': brevity_scores,
+		'composite_no_freq': composite_no_freq,
+		'combined_scores': combined_scores,
+	}
+
+def _unscored(n: int) -> Dict[str, np.ndarray]:
+	"""All-NaN scores for singletons / no frequency data."""
+	nan_vec = np.full(n, np.nan)
+	return {
+		k: nan_vec for k in (
+			'freq_scores', 'head_scores', 'cont_scores', 'brevity_scores',
+			'composite_no_freq', 'combined_scores',
+		)
+	}
+
+def _pick_best_candidate(
+	scored: bool,
+	scores: Dict[str, np.ndarray],
+	similarities: np.ndarray,
+	raw_freqs: np.ndarray,
+	virtual_flags: List[bool],
+	cluster_size: int,
+	pure_sim_idx: int,
+	freq_gain_guard: float,
+	sim_gap_guard: float,
+) -> Dict[str, Any]:
+	"""
+	Composite argmax + frequency guard (only when frequency flipped the decision).
+	Returns best_idx, best_real_idx, composite_idx, nofreq_idx, freq_guard.
+	"""
+	if not scored:
+		# Singleton or no frequency data: pure centroid similarity
+		return {
+			'best_idx': pure_sim_idx,
+			'best_real_idx': pure_sim_idx,
+			'composite_idx': None,
+			'nofreq_idx': None,
+			'freq_guard': 'not_applicable',
+		}
+
+	combined = scores['combined_scores']
+	composite_idx = int(combined.argmax())
+	nofreq_idx = int(scores['composite_no_freq'].argmax())
+	best_idx = composite_idx
+
+	if composite_idx == nofreq_idx:
+		freq_guard = 'not_triggered'
+	elif (
+		virtual_flags[nofreq_idx]
+		and not virtual_flags[composite_idx]
+		and (similarities[composite_idx] - similarities[nofreq_idx]) > sim_gap_guard
+	):
+		sim_gap = similarities[composite_idx] - similarities[nofreq_idx]
+		freq_guard = f'passed (real-vs-virtual sim gap {sim_gap:.3f} > {sim_gap_guard:.2f})'
+		best_idx = composite_idx
+	else:
+		gain = raw_freqs[composite_idx] / max(raw_freqs[nofreq_idx], 1)
+		if gain >= freq_gain_guard:
+			freq_guard = f'passed ({gain:.1f}x)'
+		else:
+			freq_guard = f'reverted ({gain:.1f}x < {freq_gain_guard:.0f}x)'
+			best_idx = nofreq_idx
+
+	return {
+		'best_idx': best_idx,
+		'best_real_idx': int(combined[:cluster_size].argmax()),
+		'composite_idx': composite_idx,
+		'nofreq_idx': nofreq_idx,
+		'freq_guard': freq_guard,
+	}
+
+def _label_selection_method(
+	composite_idx: Optional[int],
+	is_virtual_pick: bool,
+	freq_guard: str,
+	best_idx: int,
+	pure_sim_idx: int,
+) -> str:
+	"""Why this label won."""
+	if composite_idx is None:
+		return 'pure_similarity_fallback'
+	if is_virtual_pick:
+		return 'virtual_hypernym'
+	if freq_guard.startswith('reverted'):
+		return 'freq_guard_revert'
+	if freq_guard.startswith('passed'):
+		return 'composite_frequency'
+	if best_idx == pure_sim_idx:
+		return 'composite_agrees_with_similarity'
+	return 'composite_structural'
+
+def _tradeoff_for_pick(
+	cid: int,
+	cluster_texts: List[str],
+	candidates: List[str],
+	similarities: np.ndarray,
+	original_label_counts: Dict[str, int],
+	best_idx: int,
+	pure_sim_idx: int,
+) -> Dict:
+	real_freqs = np.array([original_label_counts.get(t, 1) for t in cluster_texts])
+	sim_loss = float((similarities[pure_sim_idx] - similarities[best_idx]) / (similarities[pure_sim_idx] + 1e-12))
+	freq_gain = float(real_freqs[best_idx] / max(real_freqs[pure_sim_idx], 1))
+	return {
+		'cluster_id':     cid,
+		'pure_choice':    cluster_texts[pure_sim_idx],
+		'freq_choice':    candidates[best_idx],
+		'pure_freq':      real_freqs[pure_sim_idx],
+		'freq_freq':      real_freqs[best_idx],
+		'pure_sim':       similarities[pure_sim_idx],
+		'freq_sim':       similarities[best_idx],
+		'sim_loss':       sim_loss,
+		'freq_gain':      freq_gain,
+		'cluster_size':   len(cluster_texts),
+		'cluster_labels': cluster_texts,
+		'questionable':   sim_loss > 0.10 or freq_gain < 3.0,
+	}
+
+def _build_candidate_rows(
+	cid: int,
+	candidates: List[str],
+	virtual_flags: List[bool],
+	raw_freqs: np.ndarray,
+	similarities: np.ndarray,
+	scores: Dict[str, np.ndarray],
+	best_idx: int,
+	pure_sim_idx: int,
+	nofreq_idx: Optional[int],
+	head_token_fn: Callable,
+) -> Tuple[List[Dict], List[int]]:
+	"""One row per candidate (verbose table + JSON), with 'rank' filled in. Also returns the ranking."""
+	rows = [
+		{
+			'cluster_id':         cid,
+			'candidate':          c,
+			'is_virtual':         virtual_flags[i],
+			'head_token':         head_token_fn(c),
+			'raw_freq':           int(raw_freqs[i]),
+			'sim':                float(similarities[i]),
+			'freq_score':         float(scores['freq_scores'][i]),
+			'head_score':         float(scores['head_scores'][i]),
+			'cont_score':         float(scores['cont_scores'][i]),
+			'brevity_score':      float(scores['brevity_scores'][i]),
+			'composite_no_freq':  float(scores['composite_no_freq'][i]),
+			'composite':          float(scores['combined_scores'][i]),
+			'is_selected':        i == best_idx,
+			'is_pure_sim_winner': i == pure_sim_idx,
+			'is_no_freq_winner':  nofreq_idx is not None and i == nofreq_idx,
+		}
+		for i, c in enumerate(candidates)
+	]
+	ranking = sorted(range(len(rows)), key=lambda i: -np.nan_to_num(rows[i]['composite'], nan=-1))
+	for rank, i in enumerate(ranking, 1):
+		rows[i]['rank'] = rank
+	return rows, ranking
+
+def _build_canonical_entry(
+	candidates: List[str],
+	cluster_texts: List[str],
+	virtual_flags: List[bool],
+	similarities: np.ndarray,
+	combined_scores: np.ndarray,
+	best_idx: int,
+	best_real_idx: int,
+	composite_idx: Optional[int],
+	method: str,
+) -> Dict:
+	cluster_size = len(cluster_texts)
+	return {
+		'canonical': candidates[best_idx],
+		'score': float(similarities[best_idx]),
+		'size': cluster_size,
+		'virtual': virtual_flags[best_idx],
+		'real_fallback': cluster_texts[best_real_idx],
+		'real_fallback_score': float(similarities[best_real_idx]),
+		'real_runner_up': (
+			cluster_texts[int(np.argsort(-combined_scores[:cluster_size])[1])]
+			if composite_idx is not None and cluster_size > 1
+			else None
+		),
+		'method': method,
+	}
+
+def _build_selection_record(
+	cid: int,
+	cluster_texts: List[str],
+	original_label_counts: Dict[str, int],
+	candidates: List[str],
+	virtual_flags: List[bool],
+	virtual_hypernym: Optional[str],
+	vh_raw: Optional[str],
+	vh_info: Dict,
+	similarities: np.ndarray,
+	combined_scores: np.ndarray,
+	raw_freqs: np.ndarray,
+	best_idx: int,
+	pure_sim_idx: int,
+	composite_idx: Optional[int],
+	nofreq_idx: Optional[int],
+	runner_up: Optional[int],
+	method: str,
+	freq_guard: str,
+) -> Dict:
+	canonical = candidates[best_idx]
+	margin = (
+		combined_scores[best_idx] - combined_scores[runner_up]
+		if runner_up is not None and composite_idx is not None
+		else np.nan
+	)
+	return {
+		'cluster_id':                 cid,
+		'cluster_size':               len(cluster_texts),
+		'members':                    " | ".join(cluster_texts),
+		'member_freqs':               " | ".join(str(original_label_counts.get(t, 0)) for t in cluster_texts),
+		'canonical_selected':         canonical,  # overwritten after post-passes
+		'canonical_pre_postpass':     canonical,
+		'changed_by_postpass':        False,
+		'selection_method':           method,
+		'is_virtual':                 virtual_flags[best_idx],
+		'freq_guard':                 freq_guard,
+		'virtual_candidate':          virtual_hypernym if virtual_hypernym else (vh_raw or ''),
+		'virtual_entered_pool':       virtual_hypernym is not None,
+		'virtual_route':              vh_info['route'],
+		'virtual_support':            vh_info['support'],
+		'virtual_threshold':          vh_info['threshold'],
+		'virtual_note':               vh_info['note'],
+		'pure_sim_label':             cluster_texts[pure_sim_idx],
+		'pure_sim_score':             float(similarities[pure_sim_idx]),
+		'no_freq_winner':             candidates[nofreq_idx] if nofreq_idx is not None else '',
+		'composite_winner_pre_guard': candidates[composite_idx] if composite_idx is not None else '',
+		'canonical_sim':              float(similarities[best_idx]),
+		'canonical_composite':        float(combined_scores[best_idx]),
+		'canonical_freq':             int(raw_freqs[best_idx]),
+		'runner_up':                  candidates[runner_up] if runner_up is not None else '',
+		'margin_to_runner_up':        float(margin),
+	}
 
 def assign_canonical_labels(
 	df: pd.DataFrame,
@@ -3093,313 +3802,138 @@ def assign_canonical_labels(
 	cluster_canonicals    = {}
 	virtual_used_count    = 0
 	freq_changed_count    = 0
-	total_sim_loss        = []
-	total_freq_gain       = []
-	questionable_examples = []
-	selection_records     = []   # one per cluster -> debug CSV
-	candidate_records     = []   # one per candidate -> nested into the JSON
+	selection_records     = [] # one per cluster -> debug CSV
+	candidate_records     = [] # one per candidate -> nested into the JSON
 	cluster_centroids: Dict[int, np.ndarray] = {}
-	cluster_members:   Dict[int, List[str]]  = {}
-	n_clusters_total = df.cluster.nunique()
+	cluster_members:  Dict[int, List[str]]  = {}
+	n_clusters_total: int = df.cluster.nunique()
+	tradeoff_records: List[Dict] = [] # one per real pick (differs from pure similarity)
+	weights = {
+		'sim': W_SIM, 
+		'freq': W_FREQ, 
+		'head': W_HEAD, 
+		'cont': W_CONT, # containment
+		'brev': W_BREV  # brevity
+	}
 
 	for cid in sorted(df.cluster.unique()):
 		cluster_mask       = df.cluster == cid
 		cluster_texts      = df[cluster_mask]['label'].tolist()
 		cluster_indices    = df[cluster_mask].index.tolist()
-		cluster_embeddings = X[cluster_indices] # (n, d) L2-normalised
+		cluster_embeddings = X[cluster_indices]  # (n, d) L2-normalised
 		cluster_size       = len(cluster_texts)
 
 		if verbose:
 			nl = '\n' if cluster_size > 10 else ' '
 			print(f"\n[Cluster {cid:5d}/{n_clusters_total}] {cluster_size} labels{nl}{cluster_texts}")
 
-		centroid = cluster_embeddings.mean(axis=0)   # real members only
+		centroid = cluster_embeddings.mean(axis=0)  # real members only
 		cluster_centroids[cid] = centroid
 		cluster_members[cid]   = cluster_texts
 
-		# Virtual hypernym candidate
-		virtual_hypernym = None
-		vh_raw = None
-		vh_info = {'route': '', 'support': 0, 'threshold': 0, 'note': 'cluster too small'}
-		if cluster_size >= 2:
-			vh_raw, vh_info = _virtual_hypernym(cluster_texts)
-			if vh_raw is not None:
-				norm_vh = set(_norm_tokens(vh_raw))
-				twin = next((l for l in cluster_texts if _norm_token_set(l) == norm_vh), None)
-				if twin is not None:
-					vh_info['note'] += f" | suppressed: identical to real member {twin!r}"
-				else:
-					virtual_hypernym = _restore_surface(vh_raw, cluster_texts)
-					# Align with an existing corpus spelling ('industrial' -> 'Industrial')
-					registry_hit = case_registry.get(virtual_hypernym.lower())
-					if registry_hit is not None and registry_hit != virtual_hypernym:
-						vh_info['note'] += f" | respelled via corpus as {registry_hit!r}"
-						virtual_hypernym = registry_hit
-
+		# ── Virtual hypernym: synthesise, then gate on similarity ────
+		virtual_hypernym, vh_raw, vh_info = _synthesize_virtual(
+			cluster_texts,
+			synth_fn=_virtual_hypernym,
+			restore_fn=_restore_surface,
+			norm_token_set_fn=_norm_token_set,
+			norm_tokens_fn=_norm_tokens,
+			case_registry=case_registry,
+		)
 		if verbose:
-			if vh_raw is None:
-				print(f"Virtual: none -- {vh_info['note']}")
-			elif virtual_hypernym is None:
-				print(f"Virtual: {vh_raw!r} [{vh_info['route']}] {vh_info['note']}")
-			else:
-				print(
-					f"Virtual: {virtual_hypernym!r} [{vh_info['route']}, "
-					f"support {vh_info['support']}/{cluster_size}, "
-					f"need {vh_info['threshold']}] {vh_info['note']}"
-				)
+			_print_virtual_trace(vh_raw, virtual_hypernym, vh_info, cluster_size)
 
-		candidates = cluster_texts + ([virtual_hypernym] if virtual_hypernym else [])
-		virtual_flags = [False] * cluster_size + ([True] if virtual_hypernym else [])
+		similarities = _centroid_similarities(
+			centroid, cluster_embeddings, virtual_hypernym, model, encode_prompt
+		)
+		pure_sim_idx = int(similarities[:cluster_size].argmax())  # real labels only
 
-		if virtual_hypernym is not None:
-			vh_emb = _encode_(model, [virtual_hypernym], 1, encode_prompt)[0]
-			all_embeddings = np.vstack([cluster_embeddings, vh_emb[np.newaxis, :]])
-		else:
-			all_embeddings = cluster_embeddings
-
-		# Score 1: cosine similarity to centroid
-		similarities = sklearn.metrics.pairwise.cosine_similarity(centroid.reshape(1, -1), all_embeddings)[0]
-		pure_sim_idx = int(similarities[:cluster_size].argmax()) # real labels only
-
-		# Similarity gate for the virtual hypernym
-		# A virtual is a SUMMARY of the cluster. If its embedding is far from the centroid compared with
-		# the best real member ('Act' for named laws, 'machine' for three spellings of one test machine),
-		# it does not describe the images: drop it and let a real member win. The ratio (not an absolute
-		# cosine) keeps the gate valid when the embedding space changes (prompted vs un-prompted).
-		rejection_virtual_tag: str = ""
-		if virtual_hypernym is not None and VIRTUAL_MIN_SIM_RATIO is not None:
-			_best_real = float(similarities[:cluster_size].max())
-			_ratio = float(similarities[cluster_size]) / max(_best_real, 1e-12)
-			_sim = float(similarities[cluster_size])
-			
-			if _ratio < VIRTUAL_MIN_SIM_RATIO or _sim < VIRTUAL_ABSOLUTE_SIM_FLOOR:
-				reason = (
-					f"sim ratio {_ratio:.2f} < {VIRTUAL_MIN_SIM_RATIO:.2f}"
-					if _ratio < VIRTUAL_MIN_SIM_RATIO
-					else f"abs sim {_sim:.3f} < {VIRTUAL_ABSOLUTE_SIM_FLOOR:.2f}"
-				)
-				vh_info['note'] += f" | rejected: {reason} (virtual {_sim:.3f} vs best member {_best_real:.3f})"
-				
-				virtual_rejections['similarity_ratio'] += 1
-
-				rejection_virtual_tag = (
-					f"[REJECTED VIRTUAL] "
-					f"{repr(virtual_hypernym):<30}"
-					f"sim ratio {_ratio:.5f} < {VIRTUAL_MIN_SIM_RATIO}"
-					f" or abs sim: {_sim:.5f} < {VIRTUAL_ABSOLUTE_SIM_FLOOR}"
-				)
-
-				virtual_hypernym = None
-				candidates = cluster_texts
-				virtual_flags = [False] * cluster_size
-				all_embeddings = cluster_embeddings
-				similarities = similarities[:cluster_size]
+		virtual_hypernym, similarities, rejection_virtual_tag = _gate_virtual_by_similarity(
+			virtual_hypernym, similarities, cluster_size,
+			min_sim_ratio=VIRTUAL_MIN_SIM_RATIO,
+			abs_floor=VIRTUAL_ABSOLUTE_SIM_FLOOR,
+			vh_info=vh_info,
+			virtual_rejections=virtual_rejections,
+		)
+		candidates, virtual_flags = _build_candidate_pool(cluster_texts, virtual_hypernym)
 
 		raw_freqs = np.array(
-			[
-				0 if virtual_flags[i] else original_label_counts.get(c, 0)
-				for i, c in enumerate(candidates)
-			],
-			dtype=float
+			[0 if virtual_flags[i] else original_label_counts.get(c, 0) for i, c in enumerate(candidates)],
+			dtype=float,
 		)
 
-		nan_vec = np.full(len(candidates), np.nan)
-		freq_scores = head_scores = cont_scores = brevity_scores = nan_vec
-		combined_scores = composite_no_freq = nan_vec
-		composite_idx = nofreq_idx = None
-		freq_guard = 'not_applicable'
-
-		if original_label_counts and cluster_size > 1:
-			# Score 2: frequency (log-normalised; virtual gets 0)
-			freq_scores = np.log1p(raw_freqs) / np.log1p(raw_freqs.max() + 1e-12)
-
-			# Score 3: head-noun dominance (prepositional heads fixed)
-			head_counts = Counter(_head_token(l) for l in cluster_texts)
-			head_scores = np.array(
-				[
-					head_counts.get(_head_token(c), 0) / cluster_size
-					for c in candidates
-				]
+		# ── Scoring + frequency guard ────
+		scored = bool(original_label_counts) and cluster_size > 1
+		scores = (
+			_score_candidates(
+				candidates, cluster_texts, similarities, raw_freqs,
+				head_token_fn=_head_token,
+				containment_fn=_containment_scores,
+				weights=weights,
 			)
-
-			# Score 4: containment (genuine joint containment, no floor)
-			cont_scores = _containment_scores(candidates, cluster_texts)
-
-			# Score 5: brevity
-			token_lengths  = np.array([len(c.split()) for c in candidates], dtype=float)
-			brevity_scores = 1.0 - (token_lengths - 1.0) / max(token_lengths.max(), 1)
-
-			composite_no_freq = (
-				W_SIM * similarities
-				+ W_HEAD * head_scores
-				+ W_CONT * cont_scores
-				+ W_BREV * brevity_scores
-			)
-
-			combined_scores = composite_no_freq + W_FREQ * freq_scores
-
-			composite_idx = int(combined_scores.argmax())
-			nofreq_idx    = int(composite_no_freq.argmax())
-			best_idx      = composite_idx
-
-			# ── Frequency guard: only when frequency flipped the decision ─
-			if composite_idx == nofreq_idx:
-				freq_guard = 'not_triggered'
-			elif (
-				virtual_flags[nofreq_idx] 
-				and not virtual_flags[composite_idx]
-				and (similarities[composite_idx] - similarities[nofreq_idx]) > VIRTUAL_SIM_GAP_GUARD
-			):
-				sim_gap = similarities[composite_idx] - similarities[nofreq_idx]
-				freq_guard = f'passed (real-vs-virtual sim gap {sim_gap:.3f} > {VIRTUAL_SIM_GAP_GUARD:.2f})'
-				best_idx = composite_idx
-			else:
-				gain = raw_freqs[composite_idx] / max(raw_freqs[nofreq_idx], 1)
-				if gain >= FREQ_GAIN_GUARD:
-					freq_guard = f'passed ({gain:.1f}x)'
-				else:
-					freq_guard = f'reverted ({gain:.1f}x < {FREQ_GAIN_GUARD:.0f}x)'
-					best_idx = nofreq_idx
-
-			best_real_idx = int(combined_scores[:cluster_size].argmax())
-		else:
-			# Singleton or no frequency data: pure centroid similarity
-			best_idx      = pure_sim_idx
-			best_real_idx = pure_sim_idx   # (was previously left stale from the last cluster)
-
+			if scored else _unscored(len(candidates))
+		)
+		pick = _pick_best_candidate(
+			scored, scores, similarities, raw_freqs, virtual_flags,
+			cluster_size, pure_sim_idx,
+			freq_gain_guard=FREQ_GAIN_GUARD,
+			sim_gap_guard=VIRTUAL_SIM_GAP_GUARD,
+		)
+		best_idx      = pick['best_idx']
+		composite_idx = pick['composite_idx']
+		nofreq_idx    = pick['nofreq_idx']
+		freq_guard    = pick['freq_guard']
 		is_virtual_pick = virtual_flags[best_idx]
 
-		# (why this label won)
-		if composite_idx is None:
-			method = 'pure_similarity_fallback'
-		elif is_virtual_pick:
-			method = 'virtual_hypernym'
-		elif freq_guard.startswith('reverted'):
-			method = 'freq_guard_revert'
-		elif freq_guard.startswith('passed'):
-			method = 'composite_frequency'
-		elif best_idx == pure_sim_idx:
-			method = 'composite_agrees_with_similarity'
-		else:
-			method = 'composite_structural'
+		method = _label_selection_method(
+			composite_idx, is_virtual_pick, freq_guard, best_idx, pure_sim_idx
+		)
 
+		# statistics block
 		if is_virtual_pick:
 			virtual_used_count += 1
 		elif best_idx != pure_sim_idx and composite_idx is not None:
 			freq_changed_count += 1
-			real_freqs = np.array([original_label_counts.get(t, 1) for t in cluster_texts])
-
-			sim_loss  = (similarities[pure_sim_idx] - similarities[best_idx]) / (similarities[pure_sim_idx] + 1e-12)
-			freq_gain = real_freqs[best_idx] / max(real_freqs[pure_sim_idx], 1)
-
-			total_sim_loss.append(sim_loss)
-			total_freq_gain.append(freq_gain)
-
-			if sim_loss > 0.10 or freq_gain < 3.0:
-				questionable_examples.append(
-					{
-						'cluster_id':     cid,
-						'pure_choice':    cluster_texts[pure_sim_idx],
-						'freq_choice':    candidates[best_idx],
-						'pure_freq':      real_freqs[pure_sim_idx],
-						'freq_freq':      real_freqs[best_idx],
-						'pure_sim':       similarities[pure_sim_idx],
-						'freq_sim':       similarities[best_idx],
-						'sim_loss':       sim_loss,
-						'freq_gain':      freq_gain,
-						'cluster_size':   cluster_size,
-						'cluster_labels': cluster_texts,
-					}
-				)
-
-		# Per-candidate rows (verbose table + selection JSON)
-		rows = []
-		for i, c in enumerate(candidates):
-			rows.append(
-				{
-					'cluster_id':        cid,
-					'candidate':         c,
-					'is_virtual':        virtual_flags[i],
-					'head_token':        _head_token(c),
-					'raw_freq':          int(raw_freqs[i]),
-					'sim':               float(similarities[i]),
-					'freq_score':        float(freq_scores[i]),
-					'head_score':        float(head_scores[i]),
-					'cont_score':        float(cont_scores[i]),
-					'brevity_score':     float(brevity_scores[i]),
-					'composite_no_freq': float(composite_no_freq[i]),
-					'composite':         float(combined_scores[i]),
-					'is_selected':       i == best_idx,
-					'is_pure_sim_winner': i == pure_sim_idx,
-					'is_no_freq_winner': nofreq_idx is not None and i == nofreq_idx,
-				}
+			tradeoff_record = _tradeoff_for_pick(
+				cid, 
+				cluster_texts, 
+				candidates, 
+				similarities,
+				original_label_counts, 
+				best_idx, 
+				pure_sim_idx,
 			)
+			tradeoff_records.append(tradeoff_record)
 
-		ranking = sorted(range(len(rows)), key=lambda i: -np.nan_to_num(rows[i]['composite'], nan=-1))
-
-		for rank, i in enumerate(ranking, 1):
-			rows[i]['rank'] = rank
-
+		# ── Records ────
+		rows, ranking = _build_candidate_rows(
+			cid, candidates, virtual_flags, raw_freqs, similarities, scores,
+			best_idx, pure_sim_idx, nofreq_idx, head_token_fn=_head_token,
+		)
 		candidate_records.extend(rows)
-
 		runner_up = next((i for i in ranking if i != best_idx), None)
 
-		margin = (
-			combined_scores[best_idx] - combined_scores[runner_up]
-			if runner_up is not None and composite_idx is not None
-			else np.nan
+		cluster_canonicals[cid] = _build_canonical_entry(
+			candidates, cluster_texts, virtual_flags, similarities,
+			scores['combined_scores'], best_idx, pick['best_real_idx'],
+			composite_idx, method,
 		)
-
-		canonical = candidates[best_idx]
-
-		cluster_canonicals[cid] = {
-			'canonical': canonical,
-			'score': float(similarities[best_idx]),
-			'size': cluster_size,
-			'virtual': virtual_flags[best_idx],
-			'real_fallback': cluster_texts[best_real_idx],
-			'real_fallback_score': float(similarities[best_real_idx]),
-			'real_runner_up': (
-				cluster_texts[int(np.argsort(-combined_scores[:cluster_size])[1])]
-				if composite_idx is not None and cluster_size > 1
-				else None
-			),
-			'method': method,
-		}
-
 		selection_records.append(
-			{
-				'cluster_id':                 cid,
-				'cluster_size':               cluster_size,
-				'members':                    " | ".join(cluster_texts),
-				'member_freqs':               " | ".join(str(original_label_counts.get(t, 0)) for t in cluster_texts),
-				'canonical_selected':         canonical, # overwritten after post-passes
-				'canonical_pre_postpass':     canonical,
-				'changed_by_postpass':        False,
-				'selection_method':           method,
-				'is_virtual':                 virtual_flags[best_idx],
-				'freq_guard':                 freq_guard,
-				'virtual_candidate':          virtual_hypernym if virtual_hypernym else (vh_raw or ''),
-				'virtual_entered_pool':       virtual_hypernym is not None,
-				'virtual_route':              vh_info['route'],
-				'virtual_support':            vh_info['support'],
-				'virtual_threshold':          vh_info['threshold'],
-				'virtual_note':               vh_info['note'],
-				'pure_sim_label':             cluster_texts[pure_sim_idx],
-				'pure_sim_score':             float(similarities[pure_sim_idx]),
-				'no_freq_winner':             candidates[nofreq_idx] if nofreq_idx is not None else '',
-				'composite_winner_pre_guard': candidates[composite_idx] if composite_idx is not None else '',
-				'canonical_sim':              float(similarities[best_idx]),
-				'canonical_composite':        float(combined_scores[best_idx]),
-				'canonical_freq':             int(raw_freqs[best_idx]),
-				'runner_up':                  candidates[runner_up] if runner_up is not None else '',
-				'margin_to_runner_up':        float(margin),
-			}
+			_build_selection_record(
+				cid, cluster_texts, original_label_counts,
+				candidates, virtual_flags, virtual_hypernym, vh_raw, vh_info,
+				similarities, scores['combined_scores'], raw_freqs,
+				best_idx, pure_sim_idx, composite_idx, nofreq_idx, runner_up,
+				method, freq_guard,
+			)
 		)
 
 		if verbose:
-			tag = " [VIRTUAL]" if virtual_flags[best_idx] else ""
-			print(f"\t=> Selected Canonical: {repr(canonical):<60} (sim={similarities[best_idx]:.4f}){tag} {rejection_virtual_tag}")
+			tag = " [VIRTUAL]" if is_virtual_pick else ""
+			print(
+				f"\t=> Selected Canonical: {repr(candidates[best_idx]):<60} "
+				f"(sim={similarities[best_idx]:.4f}){tag} {rejection_virtual_tag}"
+			)
 
 	pre_postpass = {
 		cid: meta['canonical']
@@ -3429,7 +3963,8 @@ def assign_canonical_labels(
 		verbose=verbose,
 	)
 
-	# Nearest-cluster diagnostics (final names, after all post-passes)
+	# Nearest-cluster diagnostics 
+	# (final names, after all post-passes)
 	neighbor_info, neighbor_summary = _cluster_neighbor_info(
 		model.model_card_data.base_model,
 		cluster_centroids,
@@ -3440,278 +3975,51 @@ def assign_canonical_labels(
 		verbose=verbose,
 	)
 
-	# final canonicals, after post-passes
-	for rec in selection_records:
-		meta = cluster_canonicals[rec['cluster_id']]
-		final = meta.get('canonical_harmonized', meta['canonical'])
-		rec['canonical_selected'] = final
-		rec['changed_by_postpass'] = final != pre_postpass[rec['cluster_id']]
-		rec['is_virtual'] = meta['virtual'] # final state, not pre-post-pass
-		rec['nearest'] = neighbor_info[rec['cluster_id']]
-		rec['harmonize'] = {
-			'changed': bool(meta.get('changed_by_harmonize', False)),
-			'from':    meta.get('canonical_pre_harmonize'),
-		}
-		rec['shared'] = {
-			'resolution':        meta.get('shared_resolution'),
-			'group_size':        meta.get('shared_group_size'),
-			'anchor_similarity': meta.get('shared_anchor_similarity'),
-			'name_evidence':     meta.get('shared_name_evidence'),
-			'threshold':         meta.get('shared_threshold'),
-			'demoted_from':      meta.get('shared_demoted_from'),
-			'spelling_unified_from': meta.get('spelling_unified_from'),
-		}
+	# stamp final state onto the per-cluster records
+	_finalize_selection_records(
+		selection_records=selection_records,
+		cluster_canonicals=cluster_canonicals,
+		pre_postpass=pre_postpass,
+		neighbor_info=neighbor_info,
+	)
 
 	if debug_json_path:
-		def _clean(v, ndigits: int = 4):
-			"""numpy -> python; NaN -> None; floats rounded for readability."""
-			if isinstance(v, (np.bool_, bool)):
-				return bool(v)
-			if isinstance(v, (np.integer, int)):
-				return int(v)
-			if isinstance(v, (np.floating, float)):
-				return None if np.isnan(v) else round(float(v), ndigits)
-			return v
-
-		cands_by_cluster: Dict[int, List[Dict]] = defaultdict(list)
-		for r in candidate_records:
-			cands_by_cluster[r['cluster_id']].append(r)
-
-		clusters_json = []
-		for rec in selection_records:
-			cid = rec['cluster_id']
-			cands = sorted(cands_by_cluster[cid], key=lambda r: r['rank'])
-
-			clusters_json.append(
-				{
-				'cluster_id': _clean(cid),
-				'size': _clean(rec['cluster_size']),
-				'members': rec['members'].split(" | "),
-				'canonical': rec['canonical_selected'],
-				'harmonize': rec['harmonize'],
-				'canonical_pre_postpass': rec['canonical_pre_postpass'],
-				'changed_by_postpass': _clean(rec['changed_by_postpass']),
-				'is_virtual': _clean(rec['is_virtual']),
-				'selection_method': rec['selection_method'],
-				'freq_guard': rec['freq_guard'],
-				'nearest_cluster': rec['nearest'],
-				'shared_canonical': {
-					k: (_clean(v) if not isinstance(v, str) else v)
-					for k, v in rec['shared'].items()
-				},
-				'margin_to_runner_up': _clean(rec['margin_to_runner_up']),
-				'winners': {
-					'selected': rec['canonical_pre_postpass'],
-					'composite_before_guard': rec['composite_winner_pre_guard'] or None,
-					'without_frequency': rec['no_freq_winner'] or None,
-					'pure_similarity': rec['pure_sim_label'],
-					'runner_up': rec['runner_up'] or None,
-				},
-				'virtual_hypernym': {
-					'candidate': rec['virtual_candidate'] or None,
-					'entered_pool': _clean(rec['virtual_entered_pool']),
-					'route': rec['virtual_route'] or None,
-					'support': _clean(rec['virtual_support']),
-					'threshold': _clean(rec['virtual_threshold']),
-					'note': rec['virtual_note'],
-				},
-				'candidates': [
-					{
-						'rank': _clean(r['rank']),
-						'label': r['candidate'],
-						'is_virtual': _clean(r['is_virtual']),
-						'roles': [role for role, flag in (
-							('selected', r['is_selected']),
-							('pure_similarity_winner', r['is_pure_sim_winner']),
-							('no_frequency_winner', r['is_no_freq_winner']),
-						) if flag],
-						'head_token': r['head_token'],
-						'corpus_freq': _clean(r['raw_freq']),
-						'scores': {
-							'similarity': _clean(r['sim']),
-							'frequency': _clean(r['freq_score']),
-							'head': _clean(r['head_score']),
-							'containment': _clean(r['cont_score']),
-							'brevity': _clean(r['brevity_score']),
-						},
-						'composite_without_frequency': _clean(r['composite_no_freq']),
-						'composite': _clean(r['composite']),
-					}
-					for r in cands
-				],
-			})
-
-		method_counts = Counter(rec['selection_method'] for rec in selection_records)
-		payload = {
-			'meta': {
-				'n_clusters': len(clusters_json),
-				'n_candidates': len(candidate_records),
-				'weights': {
-					'similarity': W_SIM,
-					'frequency': W_FREQ,
-					'head': W_HEAD,
-					'containment': W_CONT,
-					'brevity': W_BREV
-				},
-				'min_support': MIN_SUPPORT,
-				'virtual_gates': {
-					'min_sim_ratio': VIRTUAL_MIN_SIM_RATIO,
-					'min_distinct_concepts': MIN_DISTINCT_CONCEPTS,
-					'rejections': dict(virtual_rejections),
-				},
-				'freq_gain_guard': FREQ_GAIN_GUARD,
-				'selection_method_counts': dict(method_counts.most_common()),
-				'virtual_winners': sum(1 for c in clusters_json if c['is_virtual']),
-				'changed_by_postpass': sum(1 for c in clusters_json if c['changed_by_postpass']),
-				'nearest_cluster_similarity': neighbor_summary,
-				'shared_resolution_counts': dict(
-					Counter(
-						rec['shared']['resolution']
-						for rec in selection_records
-						if rec['shared'].get('resolution')
-					).most_common()
-				),
+		clusters_json = _build_clusters_json(selection_records, candidate_records)
+		payload = _build_debug_payload(
+			clusters_json=clusters_json,
+			selection_records=selection_records,
+			n_candidates=len(candidate_records),
+			neighbor_summary=neighbor_summary,
+			weights=weights,
+			min_support=MIN_SUPPORT,
+			virtual_gates={
+				'min_sim_ratio': VIRTUAL_MIN_SIM_RATIO,
+				'min_distinct_concepts': MIN_DISTINCT_CONCEPTS,
+				'rejections': dict(virtual_rejections),
 			},
-			'clusters': clusters_json,
-		}
-
-		with open(debug_json_path, 'w', encoding='utf-8') as f:
-			json.dump(payload, f, indent=2, ensure_ascii=False)
-
-		if verbose:
-			print(f"[CANONICAL SELECTION]")
-			print(f"  ├─ {len(clusters_json)} clusters")
-			print(f"  ├─ {len(candidate_records)} candidates")
-			print(f"  ├─ {debug_json_path}")
-
-	if verbose and selection_records:
-		sel = pd.DataFrame(selection_records)
-		print("\nHow canonicals were chosen:")
-
-		for m, cnt in sel['selection_method'].value_counts().items():
-			print(f"  {m:<34} {cnt:6d} ({cnt / len(sel) * 100:5.1f}%)")
-
-		routes = sel.loc[sel['virtual_entered_pool'], 'virtual_route'].value_counts()
-
-		if len(routes):
-			print("  Virtual candidates entering the pool, by route:")
-			for r, cnt in routes.items():
-				won = int(((sel['virtual_route'] == r) & sel['is_virtual']).sum())
-				print(f"    {r:<14} {cnt:6d} entered, {won:6d} won")
-
-		dup = sel['canonical_selected'].value_counts()
-		dup = dup[dup > 1]
-
-		if len(dup):
-			print(
-				f"  Canonicals shared by >1 cluster: {len(dup)} "
-				f"(top: {', '.join(f'{k!r}x{v}' for k, v in dup.head(8).items())})"
-			)
-		
-		print(f"  Postpass (case-collision) changed: {int(sel['changed_by_postpass'].sum())} cluster(s)")
-		if virtual_rejections:
-			print(f"  Virtual candidates rejected by the quality gates: {dict(virtual_rejections)}")
-
-	if total_sim_loss and verbose:
-		print(
-			f"\nSIMILARITY LOSS "
-			f"(min, max): ({np.min(total_sim_loss)}, {np.max(total_sim_loss)}) "
-			f"μ±σ: {np.mean(total_sim_loss)} ± {np.std(total_sim_loss)} (Median: {np.median(total_sim_loss)})"
+			freq_gain_guard=FREQ_GAIN_GUARD,
 		)
-
-		print(
-			f"FREQUENCY GAIN  "
-		  f"(min, max): ({np.min(total_freq_gain)}, {np.max(total_freq_gain)}) "
-			f"μ±σ: {np.mean(total_freq_gain)} ± {np.std(total_freq_gain)} (Median: {np.median(total_freq_gain)}x)"
-		)
-
-		# Dynamic, Mutually Exclusive Trade Categorization (100% Partition)
-		trades = list(zip(total_sim_loss, total_freq_gain))
-		n_trades = len(trades)
-
-		free_upgrades      = []  # s <= 2%, f >= 1.0 (negligible loss, free gain)
-		high_yield_trades  = []  # s <= 5%, f >= 5.0 (great consolidation)
-		fair_trades        = []  # s <= 8%, f >= 2.0 (balanced trade)
-		structural_picks   = []  # f < 1.0, s <= 5%  (picked for brevity/head-token, not freq)
-		high_loss_good_gain= []  # s > 8%, f >= 5.0  (aggressive consolidation, check semantics)
-		truly_questionable = []  # s > 8% AND f < 2.0, or s > 12% (destructive / poor ROI)
-		other_mild_trades  = []  # remaining benign low-loss trades
-
-		for idx, (s, f) in enumerate(trades):
-			ex = questionable_examples[idx] if idx < len(questionable_examples) else None
-			item = {'sim_loss': s, 'freq_gain': f, 'example': ex}
-
-			if s <= 0.02 and f >= 1.0:
-				free_upgrades.append(item)
-			elif s <= 0.05 and f >= 5.0:
-				high_yield_trades.append(item)
-			elif f < 1.0 and s <= 0.05:
-				structural_picks.append(item)
-			elif s <= 0.08 and f >= 2.0:
-				fair_trades.append(item)
-			elif s > 0.08 and f >= 5.0:
-				high_loss_good_gain.append(item)
-			elif (s > 0.08 and f < 2.0) or (s > 0.12):
-				truly_questionable.append(item)
-			else:
-				other_mild_trades.append(item)
-
-		# Trade Efficiency (ROI): doublings of frequency per 1% similarity lost
-		log2_gains = np.log2(np.maximum(total_freq_gain, 0.01))
-		sim_losses = np.maximum(total_sim_loss, 0.005)
-		trade_roi  = log2_gains / (sim_losses * 100)  # doublings per 1% sim loss
-
-		print("\nCANONICAL SELECTION TRADEOFF ANALYSIS (100% Partitioned):")
-		print(f"  ├─ Free Upgrades      (s <= 2%,  f >= 1x)       {len(free_upgrades):<5d} ({len(free_upgrades)/n_trades*100:5.1f}%) [Semantic drift < noise floor]")
-		print(f"  ├─ High-Yield Trades  (s <= 5%,  f >= 5x)       {len(high_yield_trades):<5d} ({len(high_yield_trades)/n_trades*100:5.1f}%) [High frequency consolidation]")
-		print(f"  ├─ Fair / Modest      (s <= 8%,  f >= 2x)       {len(fair_trades):<5d} ({len(fair_trades)/n_trades*100:5.1f}%) [Balanced compromise]")
-		print(f"  ├─ Structural/Brevity (f <  1x,  s <= 5%)       {len(structural_picks):<5d} ({len(structural_picks)/n_trades*100:5.1f}%) [Driven by head-token / brevity]")
-		print(f"  ├─ Mild Adjustments   (s <= 8%,  f in 1-2x)     {len(other_mild_trades):<5d} ({len(other_mild_trades)/n_trades*100:5.1f}%) [Benign low-loss variations]")
-		print(f"  ├─ High Loss & Gain   (s >  8%,  f >= 5x)       {len(high_loss_good_gain):<5d} ({len(high_loss_good_gain)/n_trades*100:5.1f}%) [Aggressive trade, inspectable]")
-		print(f"  └─ Truly Questionable (s >  8% & f < 2x / >12%) {len(truly_questionable):<5d} ({len(truly_questionable)/n_trades*100:5.1f}%) [Poor ROI or high semantic loss]")
-
-		print(f"\n  Average Trade ROI: {np.median(trade_roi):.2f} frequency doublings per 1% similarity loss (Median)")
-
-		if len(truly_questionable) > 0 and verbose:
-			print(f"\n[WARNING] {len(truly_questionable)} genuinely questionable trades detected:")
-			print(f"{'Sim Loss(%)':<15} {'Freq Gain':<15} {'ROI (doublings/1% loss)'}")
-			print("-" * 60)
-			for t in sorted(truly_questionable, key=lambda x: x['sim_loss'], reverse=True)[:15]:
-				roi = np.log2(max(t['freq_gain'], 0.01)) / (max(t['sim_loss'], 0.005) * 100)
-				print(f"{t['sim_loss']*100:<15.2f} {t['freq_gain']:<15.2f}x {roi:<10.2f}")
-		else:
-			print("\n  ✅ Zero destructive trades detected. All canonical selections maintain strong semantic integrity.")
-
-
-		avg_sim_loss_pct = np.mean(total_sim_loss) * 100
-		avg_freq_gain    = np.mean(total_freq_gain)
-
-		print(f"\nOVERALL VERDICT:")
-		if avg_sim_loss_pct < 3 and avg_freq_gain > 50:
-			print(f"[EXCELLENT] Small quality cost ({avg_sim_loss_pct:.1f}%) for huge frequency benefit ({avg_freq_gain:.0f}x)")
-		elif avg_sim_loss_pct < 5 and avg_freq_gain > 10:
-			print(f"[GOOD] Acceptable quality cost ({avg_sim_loss_pct:.1f}%) for strong frequency benefit ({avg_freq_gain:.0f}x)")
-		elif avg_sim_loss_pct < 8 and avg_freq_gain > 5:
-			print(f"[ACCEPTABLE] Moderate quality cost ({avg_sim_loss_pct:.1f}%) for moderate frequency benefit ({avg_freq_gain:.0f}x)")
-		else:
-			print(
-				f"[POOR] High quality cost ({avg_sim_loss_pct:.1f}%) for limited frequency benefit ({avg_freq_gain:.0f}x) "
-				f"Consider reducing frequency weight"
-			)
-	else:
-		if verbose:
-			print("\n  ℹ️  Score-based selection made no changes (all clusters picked highest similarity)")
-			print("=" * 100)
+		_write_debug_json(debug_json_path, payload, verbose=verbose)
 
 	if verbose:
-		print("-"*100)
-		print("[CLUSTERING] FREQUENCY WEIGHTING IMPACT")
-		total_clusters = len(df.cluster.unique())
-		print(f"  Total clusters analyzed: {total_clusters}")
-		print(f"  Virtual hypernym used as canonical: {virtual_used_count} ({virtual_used_count/total_clusters*100:.1f}%)")
-		print(f"  Clusters where score changed the canonical: {freq_changed_count} ({freq_changed_count/total_clusters*100:.1f}%)")
-		summarize_canonical_selection(path=debug_json_path)
-		print("-"*100)
+		if selection_records:
+			_print_selection_overview(selection_records, virtual_rejections)
+		if tradeoff_records:
+			_print_tradeoff_analysis(
+				total_sim_loss=[r['sim_loss'] for r in tradeoff_records],
+				total_freq_gain=[r['freq_gain'] for r in tradeoff_records],
+				questionable_examples=[r for r in tradeoff_records if r['questionable']],
+			)
+		else:
+			print("\nScore-based selection made no changes (all clusters picked highest similarity)")
+			print("=" * 100)
+
+		_print_frequency_impact(
+			n_clusters=df.cluster.nunique(),
+			virtual_used_count=virtual_used_count,
+			freq_changed_count=freq_changed_count,
+			debug_json_path=debug_json_path,
+		)
 
 	return cluster_canonicals
 
