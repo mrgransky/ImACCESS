@@ -2610,7 +2610,7 @@ def _harmonize_final_canonicals(
 		print(f"  ├─ changed group(s)   {stats['groups_changed']}")
 		print(f"  └─ renamed cluster(s) {stats['clusters_renamed']}")
 		for variants, winner in examples:
-			print(f"{repr(winner):<35}{variants}")
+			print(f"{repr(winner):<20}{variants}")
 
 	return cluster_canonicals
 
