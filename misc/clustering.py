@@ -2502,7 +2502,7 @@ def _harmonize_final_canonicals(
 	if verbose:
 		print("\n[CANONICAL HARMONIZATION]")
 		print(f"  ├─ unique labels {len(original_label_counts)}")
-		print(f"  └─ Clusters      {len(cluster_canonicals)}")
+		print(f"  ├─ Clusters      {len(cluster_canonicals)}")
 
 	HARMONIZE_PROTECTED_PLURALS = {
 		# plurale tantum
@@ -2583,7 +2583,7 @@ def _harmonize_final_canonicals(
 			s 
 			for s in variants 
 			if s not in plural_of
-		] or list(variants)   # singular first
+		] or list(variants) # singular first
 
 		winner = max(
 			pool, 
@@ -2607,11 +2607,11 @@ def _harmonize_final_canonicals(
 		examples.append((sorted(variants), winner))
 
 	if verbose:
-		print(f"  groups changed   {stats['groups_changed']:6d}")
-		print(f"  clusters renamed {stats['clusters_renamed']:6d}")
+		print(f"  ├─ changed group(s)   {stats['groups_changed']}")
+		print(f"  └─ renamed cluster(s) {stats['clusters_renamed']}")
 		for variants, winner in examples:
-			print(f"    {variants} -> {winner!r}")
-	
+			print(f"{variants} -> {winner!r}")
+
 	return cluster_canonicals
 
 def assign_canonical_labels(
