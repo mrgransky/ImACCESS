@@ -2016,7 +2016,13 @@ def compute_entropy_vs_performance(
 
 	return merged
 
-def get_singletons(df: pd.DataFrame, embedding_model: str, output_dir: str):
+def get_singletons(
+	df: pd.DataFrame, 
+	embedding_model_id: str, 
+	output_dir: str, 
+	device: Union[str, torch.device], 
+	verbose: bool=False
+):
 	print("="*100)
 	print(f"[SINGETONS] {df.shape}")
 	print(df.info(verbose=True, memory_usage="deep"))
@@ -2073,6 +2079,17 @@ def get_singletons(df: pd.DataFrame, embedding_model: str, output_dir: str):
 
 		unique_labels_singleton_fpath = os.path.join(output_dir, f"unique_labels_{len(unique_labels)}_{col}.csv")
 		label_counts_df.to_csv(unique_labels_singleton_fpath, index=False,)
+
+	attention, dtype = get_model_kwargs(verbose=verbose)
+	embedding_model = SentenceTransformer(
+		model_name_or_path=embedding_model_id,
+		model_kwargs={"attn_implementation": attention, "dtype": dtype}, # no device_map
+		trust_remote_code=True,
+		device=device, # single device
+		cache_folder=cache_directory[os.getenv('USER')],
+		token=os.getenv("HUGGINGFACE_TOKEN"),
+		processor_kwargs={"padding_side": "left"}, # renamed from tokenizer_kwargs
+	)
 
 	viz.plot_label_similarity_heatmap(
 		df=df,

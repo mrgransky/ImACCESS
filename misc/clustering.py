@@ -2150,7 +2150,12 @@ def remove_problematic_cluster_labels(
 			f"Labels to remove: {sum(c['size'] for c in low_cohesion_clusters)}"
 		)
 		for i, cluster in enumerate(low_cohesion_clusters):
-			print(f"{i+1:3d}/{len(low_cohesion_clusters)} Cluster {cluster['cluster_id']:5d} intra_sim: {cluster['intra_sim']:.3f} {cluster['labels']}")
+			print(
+				f"{i+1:3d}/{len(low_cohesion_clusters)} "
+				f"Cluster {cluster['cluster_id']:5d} "
+				f"intra_sim: {cluster['intra_sim']:.5f} "
+				f"{cluster['labels']}"
+			)
 
 	# PART 2: Identify Poor Canonical Clusters:
 	poor_canonical_clusters = list()
@@ -2260,21 +2265,34 @@ def _resolve_shared_canonicals(
 	shared name, resolution is 'kept_no_alternative'.
 
 	Fields written on every cluster in a multi-cluster group:
-		shared_resolution, shared_group_size, shared_anchor_similarity,
-		shared_name_evidence, shared_threshold, shared_demoted_from (demoted only).
+		shared_resolution, 
+		shared_group_size, 
+		shared_anchor_similarity,
+		shared_name_evidence, 
+		shared_threshold, 
+		shared_demoted_from 
+	(demoted only).
 	"""
-	registry = _build_case_registry(original_label_counts)
+	if verbose:
+		print("-"*130)
+		print(f"[RESOLVE SHARED CANONICALS]")
+		print(f"  ├─ unique labels {len(original_label_counts)}")
+		print(f"  ├─ Clusters      {len(cluster_canonicals)}")
+		print(f"  ├─ Centroids     {len(cluster_centroids)}")
+		print(f"  └─ threshold     {threshold}")
 
-	groups: Dict[str, List[int]] = defaultdict(list)
+	# 0. Grouping (before the loop)
+	registry = _build_case_registry(original_label_counts)
+	groups: Dict[str, List[int]] = defaultdict(list) # {dance': [1143, 2176], 'institute': [1618, 1619]}
 	for cid, meta in cluster_canonicals.items():
-		groups[meta["canonical"].lower()].append(cid)
+		canonical_label_lower = meta["canonical"].lower()
+		groups[canonical_label_lower].append(int(cid))
 
 	stats = Counter()
 	for key in sorted(groups):
 		cids = sorted(groups[key])
 
-		# ── 1. Group surface (name evidence only; no renaming) ──────────
-		spellings = {cluster_canonicals[c]["canonical"] for c in cids}
+		# 1. Group surface (name evidence only; no renaming)
 		if key in registry:
 			surface = registry[key]
 		else:
@@ -2288,10 +2306,14 @@ def _resolve_shared_canonicals(
 		
 		if len(cids) == 1:
 			continue
+
 		stats["shared_groups"] += 1
 
-		# ── 2. Name evidence and primary neighbourhood ─────────────────
-		name_toks = _label_tokens(surface)
+		# 2. Name evidence and primary neighbourhood
+		# 2a. Evidence scoring
+		name_toks = _label_tokens(surface) # e.g. {'dance'}
+
+		# evidence[c] = Σ count(m) for m in members[c] if name_toks ⊆ tokens(m)
 		evidence = {
 			c: sum(
 				original_label_counts.get(m, 1)
@@ -2301,8 +2323,18 @@ def _resolve_shared_canonicals(
 			for c in cids
 		}
 
+		# 2b. Seed selection via neighbourhood scoring
+		# V = normalize(centroids)          # rows are unit vectors
+		# S = V @ V.T                       # pairwise cosine matrix
+		# for each candidate i:
+		#     nb = {j : S[i,j] >= 0.7}      # includes i itself (S[i,i]=1.0)
+		#     score = (Σ evidence in nb, Σ volume in nb, |nb|, -cid)
+		# seed = argmax score                # lexicographic tuple comparison
 		volume = {
-			c: sum(original_label_counts.get(m, 1) for m in cluster_members[c])
+			c: sum(
+				original_label_counts.get(m, 1) 
+				for m in cluster_members[c]
+			)
 			for c in cids
 		}
 
@@ -2324,11 +2356,11 @@ def _resolve_shared_canonicals(
 
 		_, seed, nb = best
 
-		# ── 3. Anchored membership ─────────────────────────────────────
+		# 3. Anchored membership threshold cut
 		anchor = V[nb].mean(axis=0)
 		anchor /= np.linalg.norm(anchor) + 1e-12
-		anchor_sim = V @ anchor
-		keep = {j for j in range(len(cids)) if anchor_sim[j] >= threshold} | {seed}
+		anchor_sim = V @ anchor # cosine of every cluster to the anchor
+		keep = {j for j in range(len(cids)) if anchor_sim[j] >= threshold} | {seed} # seed is force-kept
 		stats["groups_kept_whole" if len(keep) == len(cids) else "groups_split"] += 1
 
 		changes = []
@@ -2366,23 +2398,20 @@ def _resolve_shared_canonicals(
 			changes.append((c, fallback, anchor_sim[j]))
 
 		if verbose and changes:
-			print(
-				f"\n[SHARED NAME] {repr(surface):<40} ({len(cids)} clusters) kept {len(keep)} "
-				f"(primary evidence: {evidence[cids[seed]]}, th: {threshold})"
-			)
-			for c, fb, s in changes:
-				print(f"cluster {c:6d} -> {fb!r:40} (anchor sim {s:.5f})")
+			demoted_ids = [c for c, _, _ in changes]
+			print(f"\n{len(cids)} clusters: {cids} SHARED CANONICAL LABEL: {repr(surface)}")
+			for j, c in enumerate(cids):
+				tag = "KEPT" if j in keep else "DEMOTED" if c in demoted_ids else "KEPT_NO_ALT"
+				members = cluster_members[c]
+				print(
+					f"cluster {c:6d} "
+					f"anchor_sim: {anchor_sim[j]:.3f} "
+					f"evidence: {evidence[c]:<5}{tag:<8}{members}"
+				)
 
 	if verbose:
-		print("\n[SHARED-NAME RESOLUTION]")
-		for k in (
-			"shared_groups",
-			"groups_kept_whole",
-			"groups_split",
-			"demoted",
-			"kept_no_alternative",
-		):
-			print(f"  {k:<22} {stats[k]:6d}")
+		print(f"\nRESOLUTION: {stats}")
+		print("-"*130)
 
 	return cluster_canonicals
 
@@ -2440,17 +2469,20 @@ def _harmonize_final_canonicals(
 	2) spacing and punctuation ('ice breaker' / 'icebreaker', 'dug-out' / 'dugout'),
 	3) attested singular/plural ('car' / 'cars').
 
-	It does NOT overwrite meta['canonical']. Internal steps (virtual-row
-	injection, remove_problematic_cluster_labels) require the canonical to be
-	a member of its cluster, and a harmonized name often is not ('wing tip' ->
-	'wingtip'). Instead each cluster gets a display name:
+	It does NOT overwrite meta['canonical']. 
+	Internal steps (virtual-row injection, remove_problematic_cluster_labels) 
+	require the canonical to be a member of its cluster, 
+	and a harmonized name often is not ('wing tip' -> 'wingtip').
+
+	Instead each cluster gets a display name:
 
 		meta['canonical_harmonized']   final name (equals 'canonical' if unchanged)
 		meta['changed_by_harmonize']   bool
 		meta['canonical_pre_harmonize']  old name, only when changed
 
 	cluster() applies the display names as a string rename after
-	remove_problematic_cluster_labels(). All clusters sharing a surface are in
+	remove_problematic_cluster_labels(). 
+	All clusters sharing a surface are in
 	the same group and get the same winner, so the rename is well defined.
 
 	Rules
@@ -2462,9 +2494,10 @@ def _harmonize_final_canonicals(
 		(compared on the same key, so 'icebreakers' finds 'ice breaker' and
 		'gun-mounts' finds 'gun mount').
 	* Protected plurals (different words: arms, papers, grounds, ...) never map.
-	* All-caps acronyms never merge with ordinary words ('SPAR' vs 'spars',
-		'CARE' vs 'care'). They are compared on their letters, so a dotted acronym
-		and its plain form do merge ('A.E.F.' / 'AEF', 'L.C.V.P.' / 'LCVP').
+	* All-caps acronyms never merge with ordinary words 
+		('SPAR' vs 'spars', 'CARE' vs 'care'). 
+		They are compared on their letters, so a dotted acronym and its plain form do merge 
+		('A.E.F.' / 'AEF', 'L.C.V.P.' / 'LCVP').
 	* Winner: singular form first, then a real corpus label, then corpus
 		frequency, then total cluster size, then capitalisation, then lexicographic.
 	"""
@@ -2510,7 +2543,7 @@ def _harmonize_final_canonicals(
 	distinct = set(surfaces.values())
 	attested_keys = {_spacing_key(s) for s in distinct if not _is_acronym(s)}
 
-	plural_of: Dict[str, str] = {}              # plural surface -> singular spacing key
+	plural_of: Dict[str, str] = {} # plural surface -> singular spacing key
 	for s in distinct:
 		low = s.lower()
 		if _is_acronym(s) or low in protected or low.endswith("ss"):
@@ -2543,10 +2576,24 @@ def _harmonize_final_canonicals(
 		size = Counter()
 		for c in cids:
 			size[cluster_canonicals[c]['canonical']] += int(cluster_canonicals[c].get('size', 1))
-		pool = [s for s in variants if s not in plural_of] or list(variants)   # singular first
-		winner = max(pool, key=lambda s: (s in original_label_counts,
-																			original_label_counts.get(s, 0),
-																			size[s], _cap_score(s), s))
+		
+		pool = [
+			s 
+			for s in variants 
+			if s not in plural_of
+		] or list(variants)   # singular first
+
+		winner = max(
+			pool, 
+			key=lambda s: (
+				s in original_label_counts,
+				original_label_counts.get(s, 0),
+				size[s], 
+				_cap_score(s), 
+				s
+			)
+		)
+
 		stats['groups_changed'] += 1
 		for c in cids:
 			m = cluster_canonicals[c]
@@ -2555,8 +2602,7 @@ def _harmonize_final_canonicals(
 			if m['changed_by_harmonize']:
 				m['canonical_pre_harmonize'] = m['canonical']
 				stats['clusters_renamed'] += 1
-		if len(examples) < 25:
-			examples.append((sorted(variants), winner))
+		examples.append((sorted(variants), winner))
 
 	if verbose:
 		print("\n[CANONICAL HARMONIZATION]")
@@ -3684,6 +3730,8 @@ def cluster(
 	merge_close_clusters_threshold: Optional[float] = None,
 	merge_max_size: int = 30,
 	min_cluster_size: int = 2,
+	low_cohesion_threshold=0.55,
+	poor_canonical_threshold=0.55,
 	merge_singletons: bool = True,
 	use_cache: bool = True,
 	encode_prompt: Optional[str] = None,
@@ -3827,7 +3875,6 @@ def cluster(
 		print(f"  └─ Most frequent: {max(label_freq_dict.items(), key=lambda x: x[1])}")
 		print('-' * 80)
 
-
 	# STEP 6: CANONICAL SELECTION (with virtual hypernym synthesis)
 	cluster_canonicals = assign_canonical_labels(
 		df=df,
@@ -3836,12 +3883,12 @@ def cluster(
 		original_label_counts=label_freq_dict,
 		debug_json_path=os.path.splitext(clusters_fname)[0] + "_canonical_selection.json",
 		encode_prompt=encode_prompt,
-		# detailed report:
-		shared_calibration_names=[
-			'camera', 'cap', 'camp', 'debris', 'building', 'hospital', # should stay together
-			'press', 'ward', 'tank', 'float', 'race', 'gear', 'party', # should split
-			'hangar', 'bridge', 'sign', 'station',
-		],
+		# # detailed report:
+		# shared_calibration_names=[
+		# 	'camera', 'cap', 'camp', 'debris', 'building', 'hospital', # should stay together
+		# 	'press', 'ward', 'tank', 'float', 'race', 'gear', 'party', # should split
+		# 	'hangar', 'bridge', 'sign', 'station',
+		# ],
 		verbose=verbose,
 	)
 
@@ -3880,8 +3927,8 @@ def cluster(
 	df, X_clean, removed_labels = remove_problematic_cluster_labels(
 		df=df,
 		embeddings=X,
-		low_cohesion_threshold=0.50,
-		poor_canonical_threshold=0.55,
+		low_cohesion_threshold=low_cohesion_threshold,
+		poor_canonical_threshold=poor_canonical_threshold,
 		verbose=verbose,
 	)
 

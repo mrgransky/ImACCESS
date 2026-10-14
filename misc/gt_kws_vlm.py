@@ -27,8 +27,7 @@ from utils import *
 # python gt_kws_vlm.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # Roihu:
-# python gt_kws_vlm.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/45496890.jpg -vlm "Qwen/Qwen3.5-4B" -v
-
+# python gt_kws_vlm.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/31483442.jpg -vlm "Qwen/Qwen3.6-27B" -v
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be semantically atomic, visually grounded, and and reusable across archives.
@@ -46,7 +45,7 @@ Constraints:
   - Refrain from using counting expressions ('a trio of men', 'various individuals', or 'a cluster of youths').
   - Avoid vague and generic descriptor or container nouns which lack detail ('equipment', 'instrument', 'system', 'scene', 'group', 'crowd', or 'event').
   - Avoid purely demographic descriptors without contextual role.
-  - Text/OCR extraction from the image is not allowed."""
+  - Text/OCR extraction from the image is strictly forbidden."""
 
 def _load_vlm_(
 	model_id: str,

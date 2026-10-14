@@ -382,13 +382,23 @@ def get_multimodal_annotation(
 	df = df[ordered_cols + extra_cols]
 
 	df.to_csv(output_csv, index=False)
-	
+
+	# empty cache
+	if torch.cuda.is_available():
+		torch.cuda.empty_cache()
+	gc.collect()
+
 	if verbose:
 		print(f"\n[SAVED] {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
 		print(df.info(verbose=verbose, memory_usage="deep"))
 		print()
 
-	stats.get_singletons(df=df, embedding_model=embedding_model_id, output_dir=OUTPUT_DIR)
+	stats.get_singletons(
+		df=df, 
+		embedding_model_id=embedding_model_id,
+		device=device,
+		output_dir=OUTPUT_DIR,
+	)
 	stats.compute_entropy_vs_performance(df=df, verbose=verbose)
 	stats.get_cgd_taxonomy_supervision(
 		df=df,
