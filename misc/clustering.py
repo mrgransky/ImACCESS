@@ -2222,15 +2222,14 @@ def remove_problematic_cluster_labels(
 	df_clean = df_clean.reset_index(drop=True)
 
 	if verbose:
-		print(f"\n[RESULTS]")
-		print(f"df         {df.shape} -> {df_clean.shape} (Removed labels: {len(df) - len(df_clean):,})")
-		print(f"embeddings {embeddings.shape} -> {embeddings_clean.shape}")
-		print(f"clusters   {df['cluster'].nunique():,} -> {df_clean['cluster'].nunique():,} (Removed: {df['cluster'].nunique() - df_clean['cluster'].nunique():,})")
-
 		original_consolidation = len(df) / df['cluster'].nunique()
 		new_consolidation      = len(df_clean) / df_clean['cluster'].nunique()
-		
-		print(f"[consolidation] {original_consolidation:.4f}x -> New: {new_consolidation:.4f}x (diff: {(new_consolidation - original_consolidation):.5f}x)")
+
+		print(f"\n[RESULTS]")
+		print(f"df            {df.shape} -> {df_clean.shape} (Removed labels: {len(df) - len(df_clean):,})")
+		print(f"embeddings    {embeddings.shape} -> {embeddings_clean.shape}")
+		print(f"clusters      {df['cluster'].nunique():,} -> {df_clean['cluster'].nunique():,} (Removed: {df['cluster'].nunique() - df_clean['cluster'].nunique():,})")		
+		print(f"consolidation {original_consolidation:.4f}x -> New: {new_consolidation:.4f}x (diff: {(new_consolidation - original_consolidation):.5f}x)")
 		print("="*100)
 
 	return df_clean, embeddings_clean, removed_labels
@@ -3730,7 +3729,7 @@ def cluster(
 	merge_close_clusters_threshold: Optional[float] = None,
 	merge_max_size: int = 30,
 	min_cluster_size: int = 2,
-	low_cohesion_threshold=0.55,
+	low_cohesion_threshold=0.52,
 	poor_canonical_threshold=0.55,
 	merge_singletons: bool = True,
 	use_cache: bool = True,

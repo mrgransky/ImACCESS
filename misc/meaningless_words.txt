@@ -968,6 +968,7 @@ left
 unidentified
 perfect
 view
+Cote de Chercq
 looking e
 looking s
 looking w
