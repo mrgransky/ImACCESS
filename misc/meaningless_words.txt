@@ -594,10 +594,8 @@ ones
 onto
 open
 ord
-order
 ordered
 ordering
-orders
 org
 others
 otherwise
@@ -1042,10 +1040,6 @@ worst
 fig
 rot
 plot
-plotting
-figure
-figurine
-curve
 graf
 furiou
 action
