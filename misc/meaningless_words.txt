@@ -253,15 +253,12 @@ call
 came
 cant
 cannot
-case
-cases
 cause
 causes
 certainly
 clear
 clearly
 cmon
-collection
 com
 come
 comes
@@ -449,7 +446,6 @@ inasmuch
 inc
 inc.
 indeed
-index
 indicate
 indicated
 indicates
@@ -821,7 +817,6 @@ turned
 turning
 turns
 twas
-type
 undoing
 unfortunately
 unless
@@ -1057,8 +1052,6 @@ figure
 figurine
 curve
 graf
-schedule
-environment
 furiou
 action
 imagery
@@ -1105,13 +1098,9 @@ rune
 damung
 decca air lines
 luoye
-photograph
-photo
-picture
 file
 oversized
 oversize
-framed
 sparthree
 hellograph
 list
