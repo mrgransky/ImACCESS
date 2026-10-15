@@ -50,7 +50,7 @@ STOPWORDS.update(geographic_references)
 PROMPT_TEMPLATE = """
 Extract no more than {k} prominent keywords, where prominence means visual salience and concrete recoverability rather than textual frequency. 
 Phrase repetition does not imply significance.
-Each keyword must be concrete, semantically atomic, visually grounded, and reusable across archives.
+Keywords must be concrete, semantically atomic, visually grounded, and reusable across archives.
 Prioritize multi-word phrases when the caption contains meaningful descriptors.
 Opt for fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
