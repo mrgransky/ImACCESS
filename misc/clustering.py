@@ -2442,14 +2442,13 @@ def _attested_core(
 		return (member, False) if member is not None else (label, True)
 	return None
 
-LOW_MARGIN_RATIO = 1.5  # evidence decisions closer than this are flagged as coin flips
-
 def _resolve_shared_canonicals(
 	cluster_canonicals: Dict[int, Dict],
 	cluster_centroids: Dict[int, np.ndarray],
 	cluster_members: Dict[int, List[str]],
 	original_label_counts: Dict[str, int],
 	threshold: float,
+	low_margin_ratio: float=1.5, # evidence decisions closer than this are flagged as coin flips
 	verbose: bool = False,
 ) -> Dict[int, Dict]:
 	"""
@@ -2478,7 +2477,7 @@ def _resolve_shared_canonicals(
 		shared_margin, shared_low_margin
 		shared_demoted_from (demoted only)
 	`shared_margin` is evidence(seed neighbourhood) / evidence(best other neighbourhood),
-	None when the group is kept whole. `shared_low_margin` is True when it is < LOW_MARGIN_RATIO.
+	None when the group is kept whole. `shared_low_margin` is True when it is < low_margin_ratio.
 	"""
 	if verbose:
 		print("-"*130)
@@ -2555,13 +2554,13 @@ def _resolve_shared_canonicals(
 		keep = {j for j in range(len(cids)) if anchor_sim[j] >= threshold} | {seed}
 		stats["groups_kept_whole" if len(keep) == len(cids) else "groups_split"] += 1
 
-		# Margin: how decisive was the evidence for the winning neighbourhood?
+		# How decisive was the evidence for the winning neighbourhood?
 		margin = None
 		if len(keep) < len(cids):
 			nb_set = set(nb)
 			others = [t[0][0] for t in scored if t[1] not in nb_set]
 			margin = best[0][0] / max(max(others), 1) if others else None
-		low_margin = margin is not None and margin < LOW_MARGIN_RATIO
+		low_margin = margin is not None and margin < low_margin_ratio
 
 		changes = []
 		for j, c in enumerate(cids):
@@ -2617,8 +2616,10 @@ def _resolve_shared_canonicals(
 
 		if verbose and changes:
 			demoted_ids = [c for c, _, _ in changes]
-			flag = f"  [LOW MARGIN {margin:.2f}x]" if low_margin else ""
-			print(f"\n{len(cids)} clusters: {cids} SHARED CANONICAL LABEL: {repr(surface)}{flag}")
+			flag = f"[LOW MARGIN {margin:.2f}x < {low_margin_ratio}x]" if low_margin else ""
+
+			print(f"\n{len(cids)} clusters: {cids} SHARED CANONICAL LABEL: {repr(surface):<30}{flag}")
+
 			for j, c in enumerate(cids):
 				tag = "KEPT" if j in keep else "DEMOTED" if c in demoted_ids else "KEPT_NO_ALT"
 				print(
@@ -2721,8 +2722,8 @@ def _harmonize_final_canonicals(
 	"""
 	if verbose:
 		print("\n[CANONICAL LABEL HARMONIZATION]")
-		print(f"  ├─ unique labels    {len(original_label_counts)}")
-		print(f"  ├─ Clusters         {len(cluster_canonicals)}")
+		print(f"  ├─ unique labels      {len(original_label_counts)}")
+		print(f"  ├─ Clusters           {len(cluster_canonicals)}")
 
 	keys, plural_of = _canonical_group_keys(cluster_canonicals, protected_plurals)
 	surfaces = {cid: m['canonical'] for cid, m in cluster_canonicals.items() if m.get('canonical')}
@@ -3159,9 +3160,11 @@ def _gate_virtual_by_similarity(
 	virtual_rejections: Counter,
 ) -> Tuple[Optional[str], np.ndarray, str]:
 	"""
-	A virtual is a SUMMARY of the cluster. If its embedding is far from the centroid compared with
+	A virtual is a SUMMARY of the cluster. 
+	If its embedding is far from the centroid compared with
 	the best real member, drop it and let a real member win.
-	Returns (virtual_hypernym or None, similarities, rejection_tag). The tag is '' if nothing was rejected.
+	Returns (virtual_hypernym or None, similarities, rejection_tag). 
+	The tag is '' if nothing was rejected.
 	"""
 	if virtual_hypernym is None or min_sim_ratio is None:
 		return virtual_hypernym, similarities, ""
@@ -3174,18 +3177,25 @@ def _gate_virtual_by_similarity(
 		return virtual_hypernym, similarities, ""
 
 	reason = (
-		f"sim ratio {ratio:.2f} < {min_sim_ratio:.2f}"
+		f"sim ratio {ratio:.2f} < {min_sim_ratio}"
 		if ratio < min_sim_ratio
-		else f"abs sim {sim:.3f} < {abs_floor:.2f}"
+		else f"abs sim {sim:.3f} < {abs_floor}"
 	)
-	vh_info['note'] += f" | rejected: {reason} (virtual {sim:.3f} vs best member {best_real:.3f})"
+
+	vh_info['note'] += (
+		f" | rejected: {reason} "
+    f"(virtual {sim:.3f} vs best member {best_real:.3f})"
+  )
+
 	virtual_rejections['similarity_ratio'] += 1
+
 	tag = (
 		f"[REJECTED VIRTUAL] "
 		f"{repr(virtual_hypernym):<30}"
 		f"sim ratio {ratio:.5f} < {min_sim_ratio}"
 		f" or abs sim: {sim:.5f} < {abs_floor}"
 	)
+
 	return None, similarities[:cluster_size], tag
 
 def _build_candidate_pool(

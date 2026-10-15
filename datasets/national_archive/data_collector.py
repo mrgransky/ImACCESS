@@ -408,6 +408,7 @@ def get_dframe_old(query: str, docs: List=[Dict], verbose: bool=False) -> pd.Dat
 			"lithographic print" not in doc_description.lower(),
 			"advertisement for" not in doc_description.lower(),
 			"photographer: american red cross activities" not in doc_description.lower(),
+			"this file unit" not in doc_description.lower(),
 		] if doc_description is not None else []
 
 		if (
