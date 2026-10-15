@@ -2081,6 +2081,15 @@ def get_singletons(
 		unique_labels_singleton_fpath = os.path.join(output_dir, f"unique_labels_{len(unique_labels)}_{col}.csv")
 		label_counts_df.to_csv(unique_labels_singleton_fpath, index=False,)
 
+		# Second file: same data, sorted alphabetically by label (case-insensitive)
+		label_alpha_df = label_counts_df.sort_values(
+			by="Label",
+			key=lambda s: s.str.lower(),
+			kind="stable",
+		)
+		unique_labels_alpha_fpath = os.path.join(output_dir, f"unique_labels_{len(unique_labels)}_{col}_alphabetical.csv")
+		label_alpha_df.to_csv(unique_labels_alpha_fpath, index=False)
+
 	attention, dtype = get_model_kwargs(verbose=verbose)
 	embedding_model = SentenceTransformer(
 		model_name_or_path=embedding_model_id,

@@ -2234,9 +2234,215 @@ def remove_problematic_cluster_labels(
 
 	return df_clean, embeddings_clean, removed_labels
 
+_HARMONIZE_PROTECTED_PLURALS = {
+	# plurale tantum
+	"pants", "shorts", "glasses", "scissors", "pliers", "tongs", "trousers",
+	"binoculars", "goggles", "barracks", "headquarters", "clothes", "belongings",
+	"remains", "surroundings", "outskirts", "archives", "overalls",
+	# protected plurals / proper names
+	"united nations", "united states", "howards", "reins", "airlines", "marines",
+	"stables", "lines", "life savers", "pyrotechnics", "general motors",
+	"marine corps", "corps",
+	# plural is a different word from the singular
+	"arms", "papers", "grounds", "works", "steelworks", "quarters", "customs",
+	"goods", "colors", "colours", "forces", "spectacles", "manners", "means",
+	"premises", "provisions", "letters", "minutes", "terms",
+
+	"breeches", "pantaloons", "tights", "drawers", "leggings", "bloomers",
+	"braces", "suspenders", "bifocals",
+}
+
+def _spacing_key(s: str) -> str:
+	"""Lowercase, letters and digits only ('ice breaker' == 'icebreaker'; 'C-46' != 'C-47')."""
+	return re.sub(r'[^a-z0-9]', '', s.lower())
+
+def _is_acronym(s: str) -> bool:
+	letters = re.sub(r'[^A-Za-z]', '', s)
+	return len(letters) >= 2 and letters.isupper() and len(s.split()) == 1
+
+def _cap_score(s: str) -> int:
+	return sum(1 for c in s if c.isupper())
+
+def _singular_candidates(low: str) -> List[str]:
+	out = []
+	if low.endswith("ies") and len(low) > 4:
+		out.append(low[:-3] + "y")                      # batteries -> battery
+	if low.endswith(("ches", "shes", "xes", "zes", "sses", "oes")) and len(low) > 4:
+		out.append(low[:-2])                            # trenches -> trench
+	if low.endswith("s") and not low.endswith("ss") and len(low) > 3:
+		out.append(low[:-1])                            # cars -> car
+	return out
+
+def _canonical_group_keys(
+	cluster_canonicals: Dict[int, Dict],
+	protected_plurals: Optional[set] = None,
+) -> Tuple[Dict[int, str], Dict[str, str]]:
+	"""
+	Single definition of "these canonicals are the same name", shared by
+	_resolve_shared_canonicals and _harmonize_final_canonicals.
+
+	Two canonicals have the same key when they differ only by case, spacing/punctuation,
+	dotted-acronym form, or an attested singular/plural ('tank' / 'tanks' / 'Tank').
+	A plural maps to its singular only if the singular is itself a canonical of some
+	cluster and the plural is not protected ('arms', 'quarters', ...).
+
+	Returns (keys, plural_of): keys[cid] -> group key; plural_of[surface] -> singular spacing key.
+	"""
+	protected = _HARMONIZE_PROTECTED_PLURALS if protected_plurals is None else protected_plurals
+
+	surfaces = {cid: m['canonical'] for cid, m in cluster_canonicals.items() if m.get('canonical')}
+	distinct = set(surfaces.values())
+	attested_keys = {_spacing_key(s) for s in distinct if not _is_acronym(s)}
+
+	plural_of: Dict[str, str] = {}
+	for s in distinct:
+		low = s.lower()
+		if _is_acronym(s) or low in protected or low.endswith("ss"):
+			continue
+		for cand in _singular_candidates(low):
+			k = _spacing_key(cand)
+			if k in attested_keys and k != _spacing_key(low):
+				plural_of[s] = k
+				break
+
+	keys = {
+		cid: ("ACRONYM::" + _spacing_key(s)) if _is_acronym(s) else plural_of.get(s, _spacing_key(s))
+		for cid, s in surfaces.items()
+	}
+	return keys, plural_of
+
+def _pick_group_surface(
+	variants,
+	size_by_surface: Dict[str, int],
+	plural_of: Dict[str, str],
+	original_label_counts: Dict[str, int],
+) -> str:
+	"""Winner among surface variants: singular first, real corpus label, frequency, size, capitalisation, lexicographic."""
+	pool = [s for s in variants if s not in plural_of] or list(variants)
+	return max(
+		pool,
+		key=lambda s: (
+			s in original_label_counts,
+			original_label_counts.get(s, 0),
+			size_by_surface[s],
+			_cap_score(s),
+			s,
+		),
+	)
+
 def _label_tokens(label: str) -> set:
 	"""Lowercased tokens with trailing punctuation stripped (same as selection)."""
 	return {t for t in (re.sub(r'[^\w]+$', '', w.lower()) for w in label.split()) if t}
+
+def _tokens_match(a: str, b: str) -> bool:
+	"""Equal, or regular plural of each other ('tank'/'tanks', 'battery'/'batteries', 'trench'/'trenches').
+	Deliberately no fuzzy matching and no -ing stripping ('stand' != 'standing')."""
+	if a == b:
+		return True
+	if len(a) < 3 or len(b) < 3:
+		return False
+	for x, y in ((a, b), (b, a)):
+		if y == x + "s" or y == x + "es":
+			return True
+		if x.endswith("y") and y == x[:-1] + "ies":
+			return True
+	return False
+
+def _name_matches_label(name_toks: set, label: str) -> bool:
+	"""True if every token of the canonical name is matched (plural-aware) by some token of `label`."""
+	if not name_toks:
+		return False
+	label_toks = _label_tokens(label)
+	return all(any(_tokens_match(n, l) for l in label_toks) for n in name_toks)
+
+_CORE_PREPOSITIONS = frozenset(
+	"of in on at with over under near from by for during into onto across along above below "
+	"behind beside between inside outside through toward towards upon within without after "
+	"before around against".split()
+)
+
+def _stem_token(t: str) -> str:
+	"""Crude plural stemmer used only to compare phrases ('tanks' -> 'tank', 'batteries' -> 'battery')."""
+	if t.endswith("ies") and len(t) > 4:
+		return t[:-3] + "y"
+	if t.endswith(("ches", "shes", "xes", "zes", "sses")) and len(t) > 4:
+		return t[:-2]
+	if t.endswith("s") and not t.endswith("ss") and len(t) > 3:
+		return t[:-1]
+	return t
+
+def _stem_seq(label: str) -> List[str]:
+	return [_stem_token(t) for t in re.findall(r"[a-z0-9]+", label.lower())]
+
+def _head_phrase_stems(label: str) -> List[str]:
+	"""Stemmed tokens before the first preposition ('storage tank room' keeps all; 'tank of water' -> ['tank'])."""
+	out = []
+	for t in re.findall(r"[a-z0-9]+", label.lower()):
+		if out and t in _CORE_PREPOSITIONS:
+			break
+		out.append(_stem_token(t))
+	return out
+
+def _build_label_index(original_label_counts: Dict[str, int]) -> Dict[str, str]:
+	"""stem-key -> most frequent corpus surface ('storagetank' -> 'storage tank')."""
+	best: Dict[str, Tuple[int, str]] = {}
+	for label, cnt in original_label_counts.items():
+		key = "".join(_stem_seq(label))
+		if key and (key not in best or (cnt, label) > best[key]):
+			best[key] = (cnt, label)
+	return {k: v[1] for k, v in best.items()}
+
+def _attested_core(
+	members: List[str],
+	surface: str,
+	label_index: Dict[str, str],
+	taken_keys: set,
+	min_support_frac: float = 0.5,
+) -> Optional[Tuple[str, bool]]:
+	"""
+	For a cluster demoted from the shared name `surface`, look for a QUALIFIED core:
+	the name plus 1-2 qualifier words, taken from the END of the members' head phrases
+	('storage tank', 'dressing station'), which is
+
+	  * strictly longer than the shared name (a bare name is what we are leaving),
+	  * supported by >= max(2, ceil(min_support_frac * n)) members (joint, contiguous),
+	  * ATTESTED: it is itself a corpus label (plural-insensitive), and
+	  * not already the canonical of another cluster (that would create a new shared name).
+
+	Returns (surface_label, is_virtual) or None. is_virtual is True when the label is
+	not one of this cluster's members, in which case it must be injected like a virtual.
+	"""
+	name = _stem_seq(surface)
+	n = len(members)
+	if not name or n < 2:
+		return None
+	need = max(2, -(-int(min_support_frac * 100) * n // 100))  # ceil without importing math
+	heads = [_head_phrase_stems(m) for m in members]
+	L = len(name)
+
+	cands = set()
+	for h in heads:
+		if len(h) > L and h[-L:] == name:
+			for q in (1, 2):
+				if len(h) >= L + q:
+					cands.add(tuple(h[-(L + q):]))
+	scored = []
+	for c in cands:
+		support = sum(1 for h in heads if len(h) >= len(c) and tuple(h[-len(c):]) == c)
+		if support >= need:
+			scored.append((support, len(c), c))
+	for support, _, c in sorted(scored, key=lambda t: (-t[0], -t[1], t[2])):
+		key = "".join(c)
+		if key in taken_keys:
+			continue
+		label = label_index.get(key)
+		if label is None:
+			continue
+		member = next((m for m in members if "".join(_stem_seq(m)) == key), None)
+		return (member, False) if member is not None else (label, True)
+	return None
+
+LOW_MARGIN_RATIO = 1.5  # evidence decisions closer than this are flagged as coin flips
 
 def _resolve_shared_canonicals(
 	cluster_canonicals: Dict[int, Dict],
@@ -2247,29 +2453,32 @@ def _resolve_shared_canonicals(
 	verbose: bool = False,
 ) -> Dict[int, Dict]:
 	"""
-	Post-pass over clusters whose canonicals share a name (case-insensitive).
+	Post-pass over clusters whose canonicals share a NAME.
+
+	"Share a name" is decided by _canonical_group_keys (the same definition harmonize
+	uses): case, spacing/punctuation, dotted acronyms and attested singular/plural all
+	collapse, so 'tank' / 'tanks' / 'Tank' are ONE group. Previously the resolver grouped
+	on the exact lowercase string and clusters later renamed by harmonize bypassed it.
 
 	Steps per group
 	---------------
-	1. Group surface (for name-evidence only).  Case/spacing unification is
-		 owned by _harmonize_final_canonicals; this function does NOT rename.
-	2. Primary neighbourhood by NAME EVIDENCE (not embedding closeness to
-		 the bare string).
-	3. Anchored membership: keep only clusters within `threshold` of the
-		 primary neighbourhood's mean centroid.  No chaining.
-
-	Demoted clusters get real_fallback (or real_runner_up) and virtual=False
-	so Step 7 does not double-inject.  If neither fallback differs from the
-	shared name, resolution is 'kept_no_alternative'.
+	1. Group surface (name evidence only). Renaming is owned by _harmonize_final_canonicals.
+	2. Primary neighbourhood by NAME EVIDENCE: evidence[c] = sum of corpus counts of the
+	   members of c that contain the name (plural-aware token match).
+	3. Anchored membership: keep clusters within `threshold` of the primary neighbourhood's
+	   mean centroid. No chaining.
+	4. Demoted clusters get, in order: an ATTESTED qualified core (see _attested_core: the name plus
+	   1-2 qualifiers, a corpus label, majority support), else real_fallback, else real_runner_up.
+	   A fallback in the same name group does not count. If none remains the cluster is
+	   'kept_no_alternative'. shared_fallback_kind records which one was used.
 
 	Fields written on every cluster in a multi-cluster group:
-		shared_resolution, 
-		shared_group_size, 
-		shared_anchor_similarity,
-		shared_name_evidence, 
-		shared_threshold, 
-		shared_demoted_from 
-	(demoted only).
+		shared_resolution, shared_group_size, shared_anchor_similarity,
+		shared_name_evidence, shared_threshold, shared_key, shared_surface,
+		shared_margin, shared_low_margin
+		shared_demoted_from (demoted only)
+	`shared_margin` is evidence(seed neighbourhood) / evidence(best other neighbourhood),
+	None when the group is kept whole. `shared_low_margin` is True when it is < LOW_MARGIN_RATIO.
 	"""
 	if verbose:
 		print("-"*130)
@@ -2279,68 +2488,54 @@ def _resolve_shared_canonicals(
 		print(f"  ├─ Centroids     {len(cluster_centroids)}")
 		print(f"  └─ threshold     {threshold}")
 
-	# 0. Grouping (before the loop)
-	registry = _build_case_registry(original_label_counts)
-	groups: Dict[str, List[int]] = defaultdict(list) # {dance': [1143, 2176], 'institute': [1618, 1619]}
-	for cid, meta in cluster_canonicals.items():
-		canonical_label_lower = meta["canonical"].lower()
-		groups[canonical_label_lower].append(int(cid))
+	# 0. Grouping on the harmonize key (before the loop)
+	keys, plural_of = _canonical_group_keys(cluster_canonicals)
+	label_index = _build_label_index(original_label_counts)  # stem-key -> corpus surface (for attested cores)
+	canonical_keys = {_spacing_key(m["canonical"]) for m in cluster_canonicals.values() if m.get("canonical")}
+	groups: Dict[str, List[int]] = defaultdict(list)
+	for cid in cluster_canonicals:
+		if cid in keys:
+			groups[keys[cid]].append(int(cid))
 
 	stats = Counter()
 	for key in sorted(groups):
 		cids = sorted(groups[key])
-
-		# 1. Group surface (name evidence only; no renaming)
-		if key in registry:
-			surface = registry[key]
-		else:
-			weight = Counter()
-			for c in cids:
-				weight[cluster_canonicals[c]["canonical"]] += cluster_canonicals[c]["size"]
-			surface = max(weight, key=lambda s: (weight[s], s))
-		
-		# surface may differ in case from some members; that is intentional.
-		# Harmonization will unify display names later.
-		
 		if len(cids) == 1:
 			continue
+
+		# 1. Group surface and all its spelling variants
+		variants = sorted({cluster_canonicals[c]["canonical"] for c in cids})
+		size_by_surface = Counter()
+		for c in cids:
+			size_by_surface[cluster_canonicals[c]["canonical"]] += int(cluster_canonicals[c]["size"])
+		surface = _pick_group_surface(variants, size_by_surface, plural_of, original_label_counts)
+		if len(variants) > 1:
+			stats["groups_with_variants"] += 1
+		if len({v.lower() for v in variants}) > 1:
+			stats["groups_beyond_exact_match"] += 1
 
 		stats["shared_groups"] += 1
 
 		# 2. Name evidence and primary neighbourhood
-		# 2a. Evidence scoring
-		name_toks = _label_tokens(surface) # e.g. {'dance'}
-
-		# evidence[c] = Σ count(m) for m in members[c] if name_toks ⊆ tokens(m)
+		name_tok_sets = [_label_tokens(v) for v in variants]
 		evidence = {
 			c: sum(
 				original_label_counts.get(m, 1)
 				for m in cluster_members[c]
-				if name_toks <= _label_tokens(m)
+				if any(_name_matches_label(nt, m) for nt in name_tok_sets)
 			)
 			for c in cids
 		}
-
-		# 2b. Seed selection via neighbourhood scoring
-		# V = normalize(centroids)          # rows are unit vectors
-		# S = V @ V.T                       # pairwise cosine matrix
-		# for each candidate i:
-		#     nb = {j : S[i,j] >= 0.7}      # includes i itself (S[i,i]=1.0)
-		#     score = (Σ evidence in nb, Σ volume in nb, |nb|, -cid)
-		# seed = argmax score                # lexicographic tuple comparison
 		volume = {
-			c: sum(
-				original_label_counts.get(m, 1) 
-				for m in cluster_members[c]
-			)
+			c: sum(original_label_counts.get(m, 1) for m in cluster_members[c])
 			for c in cids
 		}
 
 		V = np.vstack([cluster_centroids[c] for c in cids]).astype(float)
 		V /= np.linalg.norm(V, axis=1, keepdims=True) + 1e-12
 		S = V @ V.T
-		best = None
 
+		scored = []
 		for i, c in enumerate(cids):
 			nb = [j for j in range(len(cids)) if S[i, j] >= threshold]
 			score = (
@@ -2349,17 +2544,24 @@ def _resolve_shared_canonicals(
 				len(nb),
 				-c,
 			)
-			if best is None or score > best[0]:
-				best = (score, i, nb)
-
+			scored.append((score, i, nb))
+		best = max(scored, key=lambda t: t[0])
 		_, seed, nb = best
 
 		# 3. Anchored membership threshold cut
 		anchor = V[nb].mean(axis=0)
 		anchor /= np.linalg.norm(anchor) + 1e-12
-		anchor_sim = V @ anchor # cosine of every cluster to the anchor
-		keep = {j for j in range(len(cids)) if anchor_sim[j] >= threshold} | {seed} # seed is force-kept
+		anchor_sim = V @ anchor
+		keep = {j for j in range(len(cids)) if anchor_sim[j] >= threshold} | {seed}
 		stats["groups_kept_whole" if len(keep) == len(cids) else "groups_split"] += 1
+
+		# Margin: how decisive was the evidence for the winning neighbourhood?
+		margin = None
+		if len(keep) < len(cids):
+			nb_set = set(nb)
+			others = [t[0][0] for t in scored if t[1] not in nb_set]
+			margin = best[0][0] / max(max(others), 1) if others else None
+		low_margin = margin is not None and margin < LOW_MARGIN_RATIO
 
 		changes = []
 		for j, c in enumerate(cids):
@@ -2369,19 +2571,33 @@ def _resolve_shared_canonicals(
 				shared_anchor_similarity=float(anchor_sim[j]),
 				shared_name_evidence=int(evidence[c]),
 				shared_threshold=float(threshold),
+				shared_key=key,
+				shared_surface=surface,
+				shared_margin=None if margin is None else float(margin),
+				shared_low_margin=bool(low_margin),
 			)
 			if j in keep:
 				meta["shared_resolution"] = "kept"
 				continue
 
-			fallback = next(
-				(
-					f
-					for f in (meta.get("real_fallback"), meta.get("real_runner_up"))
-					if f and f.lower() != key
-				),
-				None,
+			same_name = {key} | {_spacing_key(v) for v in variants}
+			fallback, kind, as_virtual = None, None, False
+
+			# 4a. An ATTESTED qualified core with majority support beats a synthesized/bare name
+			core = _attested_core(
+				cluster_members[c], surface, label_index, taken_keys=canonical_keys - {_spacing_key(meta["canonical"])},
 			)
+			if core is not None:
+				fallback, as_virtual = core
+				kind = "attested_core"
+			else:
+				# 4b. Otherwise the best real member, then the real runner-up
+				for field in ("real_fallback", "real_runner_up"):
+					f = meta.get(field)
+					if f and _spacing_key(f) not in same_name and plural_of.get(f, _spacing_key(f)) != key:
+						fallback, kind = f, field
+						break
+
 			if fallback is None:
 				meta["shared_resolution"] = "kept_no_alternative"
 				stats["kept_no_alternative"] += 1
@@ -2389,22 +2605,26 @@ def _resolve_shared_canonicals(
 
 			meta["shared_resolution"] = "demoted"
 			meta["shared_demoted_from"] = meta["canonical"]
+			meta["shared_fallback_kind"] = kind
 			meta["canonical"] = fallback
-			meta["virtual"] = False
+			meta["virtual"] = as_virtual  # an attested core that is not a member is injected like a virtual
 			meta["score"] = meta.get("real_fallback_score", meta["score"])
+			stats["demoted_" + kind] += 1
 			stats["demoted"] += 1
+			if low_margin:
+				stats["demoted_low_margin"] += 1
 			changes.append((c, fallback, anchor_sim[j]))
 
 		if verbose and changes:
 			demoted_ids = [c for c, _, _ in changes]
-			print(f"\n{len(cids)} clusters: {cids} SHARED CANONICAL LABEL: {repr(surface)}")
+			flag = f"  [LOW MARGIN {margin:.2f}x]" if low_margin else ""
+			print(f"\n{len(cids)} clusters: {cids} SHARED CANONICAL LABEL: {repr(surface)}{flag}")
 			for j, c in enumerate(cids):
 				tag = "KEPT" if j in keep else "DEMOTED" if c in demoted_ids else "KEPT_NO_ALT"
-				members = cluster_members[c]
 				print(
 					f"cluster {c:6d} "
-					f"anchor_sim: {anchor_sim[j]:.3f} "
-					f"evidence: {evidence[c]:<5}{tag:<8}{members}"
+					f"anchor_sim: {anchor_sim[j]:.4f} "
+					f"evidence: {evidence[c]:<5}{tag:<12}{cluster_members[c]}"
 				)
 
 	if verbose:
@@ -2504,75 +2724,12 @@ def _harmonize_final_canonicals(
 		print(f"  ├─ unique labels    {len(original_label_counts)}")
 		print(f"  ├─ Clusters         {len(cluster_canonicals)}")
 
-	HARMONIZE_PROTECTED_PLURALS = {
-		# plurale tantum
-		"pants", "shorts", "glasses", "scissors", "pliers", "tongs", "trousers",
-		"binoculars", "goggles", "barracks", "headquarters", "clothes", "belongings",
-		"remains", "surroundings", "outskirts", "archives", "overalls",
-		# protected plurals / proper names
-		"united nations", "united states", "howards", "reins", "airlines", "marines",
-		"stables", "lines", "life savers", "pyrotechnics", "general motors",
-		"marine corps", "corps",
-		# plural is a different word from the singular
-		"arms", "papers", "grounds", "works", "steelworks", "quarters", "customs",
-		"goods", "colors", "colours", "forces", "spectacles", "manners", "means",
-		"premises", "provisions", "letters", "minutes", "terms",
-	}
-
-	protected = HARMONIZE_PROTECTED_PLURALS if protected_plurals is None else protected_plurals
-
-	def _spacing_key(s: str) -> str:
-		return re.sub(r'[^a-z0-9]', '', s.lower())
-
-	def _is_acronym(s: str) -> bool:
-		letters = re.sub(r'[^A-Za-z]', '', s)
-		return len(letters) >= 2 and letters.isupper() and len(s.split()) == 1
-
-	def _cap_score(s: str) -> int:
-		return sum(1 for c in s if c.isupper())
-
-	def _singular_candidates(low: str):
-		out = []
-		if low.endswith("ies") and len(low) > 4:
-			out.append(low[:-3] + "y")                      # batteries -> battery
-		if low.endswith(("ches", "shes", "xes", "zes", "sses", "oes")) and len(low) > 4:
-			out.append(low[:-2])                            # trenches -> trench
-		if low.endswith("s") and not low.endswith("ss") and len(low) > 3:
-			out.append(low[:-1])                            # cars -> car
-		return out
-
-	def _group_key(s: str) -> str:
-		if _is_acronym(s):
-			return "ACRONYM::" + _spacing_key(s)
-		return plural_of.get(s, _spacing_key(s))
-
-	surfaces = {
-		cid: m['canonical'] 
-		for cid, m in cluster_canonicals.items() 
-		if m.get('canonical')
-	}
-	
-	distinct = set(surfaces.values())
-	attested_keys = {
-		_spacing_key(s) 
-		for s in distinct 
-		if not _is_acronym(s)
-	}
-
-	plural_of: Dict[str, str] = {} # plural surface -> singular spacing key
-	for s in distinct:
-		low = s.lower()
-		if _is_acronym(s) or low in protected or low.endswith("ss"):
-			continue
-		for cand in _singular_candidates(low):
-			k = _spacing_key(cand)
-			if k in attested_keys and k != _spacing_key(low):
-				plural_of[s] = k
-				break
+	keys, plural_of = _canonical_group_keys(cluster_canonicals, protected_plurals)
+	surfaces = {cid: m['canonical'] for cid, m in cluster_canonicals.items() if m.get('canonical')}
 
 	groups: Dict[str, list] = defaultdict(list)
-	for cid, s in surfaces.items():
-		groups[_group_key(s)].append(cid)
+	for cid in surfaces:
+		groups[keys[cid]].append(cid)
 
 	stats, examples = Counter(), []
 	for cids in groups.values():
@@ -2591,22 +2748,7 @@ def _harmonize_final_canonicals(
 		for c in cids:
 			size[cluster_canonicals[c]['canonical']] += int(cluster_canonicals[c].get('size', 1))
 		
-		pool = [
-			s 
-			for s in variants 
-			if s not in plural_of
-		] or list(variants) # singular first
-
-		winner = max(
-			pool, 
-			key=lambda s: (
-				s in original_label_counts,
-				original_label_counts.get(s, 0),
-				size[s], 
-				_cap_score(s), 
-				s
-			)
-		)
+		winner = _pick_group_surface(variants, size, plural_of, original_label_counts)
 
 		stats['groups_changed'] += 1
 
@@ -2654,6 +2796,10 @@ def _finalize_selection_records(
 			'name_evidence':         meta.get('shared_name_evidence'),
 			'threshold':             meta.get('shared_threshold'),
 			'demoted_from':          meta.get('shared_demoted_from'),
+			'group_key':             meta.get('shared_key'),
+			'fallback_kind':         meta.get('shared_fallback_kind'),
+			'margin':                meta.get('shared_margin'),
+			'low_margin':            meta.get('shared_low_margin'),
 			'spelling_unified_from': meta.get('spelling_unified_from'),
 		}
 
@@ -2690,6 +2836,7 @@ def _candidate_json(r: Dict) -> Dict:
 		},
 		'composite_without_frequency': _clean(r['composite_no_freq']),
 		'composite': _clean(r['composite']),
+		'eligible': _clean(r.get('eligible', True)),
 	}
 
 def _cluster_json(rec: Dict, cands: List[Dict]) -> Dict:
@@ -2710,6 +2857,10 @@ def _cluster_json(rec: Dict, cands: List[Dict]) -> Dict:
 			for k, v in rec['shared'].items()
 		},
 		'margin_to_runner_up': _clean(rec['margin_to_runner_up']),
+		'numeric': {
+			'ineligible': _clean(rec.get('numeric_ineligible', 0)),
+			'unresolved': _clean(rec.get('numeric_unresolved', False)),
+		},
 		'winners': {
 			'selected': rec['canonical_pre_postpass'],
 			'composite_before_guard': rec['composite_winner_pre_guard'] or None,
@@ -3046,6 +3197,89 @@ def _build_candidate_pool(
 		return cluster_texts + [virtual_hypernym], [False] * n + [True]
 	return list(cluster_texts), [False] * n
 
+# Unit aliases -> canonical unit. Only numbers followed by one of these (or an ordinal) take part
+# in the signature, so designations ('Ki-46', 'Bf 109', 'Hill 272') are never touched.
+_NUM_UNITS = {
+	"mm": "mm", "cm": "cm", "km": "km", "inch": "inch", "inches": "inch",
+	"ft": "ft", "foot": "ft", "feet": "ft", "yd": "yd", "yard": "yd", "yards": "yd", "mile": "mile", "miles": "mile",
+	"lb": "lb", "lbs": "lb", "pound": "lb", "pounds": "lb", "pdr": "pdr", "pounder": "pdr", "kg": "kg",
+	"ton": "ton", "tons": "ton", "tonne": "ton", "tonnes": "ton", "gallon": "gallon", "gallons": "gallon",
+	"barrel": "barrel", "barrels": "barrel", "hp": "hp", "kw": "kw", "mw": "mw", "kv": "kv", "volt": "volt", "volts": "volt",
+	"mph": "mph", "knot": "knot", "knots": "knot", "kt": "knot", "cc": "cc",
+	"gun": "gun", "guns": "gun", "cal": "cal", "caliber": "cal", "calibre": "cal",
+	"day": "day", "days": "day", "hour": "hour", "hours": "hour", "minute": "minute", "minutes": "minute",
+	"year": "year", "years": "year", "man": "man", "men": "man", "car": "car", "cars": "car",
+	"story": "story", "storey": "story", "floor": "floor", "seat": "seat", "seater": "seat", "wheel": "wheel", "wheeler": "wheel",
+}
+_NUM_WORDS = {
+	"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+	"eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
+	"eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
+	"seventy": 70, "eighty": 80, "ninety": 90, "hundred": 100,
+}
+_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
+_NUM_WORD_RE = re.compile(
+	r'(?<![A-Za-z])(?:(' + "|".join(_TENS) + r')[\s-]+(one|two|three|four|five|six|seven|eight|nine)|(' + "|".join(_NUM_WORDS) + r'))(?=[\s-]*[A-Za-z])',
+	re.I,
+)
+
+def _words_to_digits(label: str) -> str:
+	"""'six inch gun' -> '6 inch gun', 'twenty-one gun salute' -> '21 gun salute' (only the number words;
+	whether a unit follows is decided later), so spelled-out numbers cannot slip past the signature."""
+	def sub(m):
+		if m.group(1):
+			return str(_TENS[m.group(1).lower()] + _NUM_WORDS[m.group(2).lower()])
+		return str(_NUM_WORDS[m.group(3).lower()])
+	return _NUM_WORD_RE.sub(sub, label)
+
+_ORDINAL_RE = re.compile(r'(?<![A-Za-z0-9])(\d+)(?:st|nd|rd|th)(?![A-Za-z0-9])', re.I)
+_NUM_UNIT_RE = re.compile(r'(?<![A-Za-z0-9])(\d{1,3}(?:,\d{3})+|\d*\.?\d+)\s*-?\s*([A-Za-z]+)')
+
+def _numeric_signature(label: str) -> Dict[str, frozenset]:
+	"""unit -> set of values, for number+unit pairs and ordinals: '10-ton trailers' -> {'ton': {10.0}};
+	'18th century dress' -> {'ord': {18.0}}; 'French 75' / 'Ki-46' / 'Hill 272' -> {} (no unit)."""
+	sig: Dict[str, set] = defaultdict(set)
+	label = _words_to_digits(label)
+	for m in _ORDINAL_RE.finditer(label):
+		sig["ord"].add(float(m.group(1)))
+	rest = _ORDINAL_RE.sub(" ", label)
+	for m in _NUM_UNIT_RE.finditer(rest):
+		unit = _NUM_UNITS.get(m.group(2).lower())
+		if unit:
+			sig[unit].add(float(m.group(1).replace(",", "")))
+	return {u: frozenset(v) for u, v in sig.items()}
+
+def _numeric_conflict(cand: Dict[str, frozenset], member: Dict[str, frozenset]) -> bool:
+	"""True when a candidate's numeric claim is not backed by a member that states numbers.
+
+	* cardinal units (ton, mm, gun, ...): every (unit, values) the candidate states must be stated
+	  identically by the member, so '17 Pounder Guns' cannot name a cluster that holds '170mm gun'
+	  and '10-ton trailers' cannot name one that holds '1-tons aanhangwagen'.
+	* ordinals ('18th'): they conflict only when both labels state a different one.
+	A label that is silent ('French 75', 'gun salute') never conflicts.
+	"""
+	for u, vals in cand.items():
+		if u == "ord":
+			if "ord" in member and member["ord"] != vals:
+				return True
+		elif member.get(u) != vals:
+			return True
+	return False
+
+def _numeric_eligibility(candidates: List[str], cluster_texts: List[str]) -> np.ndarray:
+	"""eligible[i] is False when candidate i makes a numeric claim that a number-bearing member does not back."""
+	member_sigs = [s for s in (_numeric_signature(m) for m in cluster_texts) if s]
+	if not member_sigs:
+		return np.ones(len(candidates), dtype=bool)
+	out = np.ones(len(candidates), dtype=bool)
+	for i, c in enumerate(candidates):
+		sc = _numeric_signature(c)
+		if sc and any(_numeric_conflict(sc, s) for s in member_sigs):
+			out[i] = False
+	return out
+
+INELIGIBLE_SCORE = -1.0  # below any real composite (weights sum to 1, sim >= -1)
+
 def _score_candidates(
 	candidates: List[str],
 	cluster_texts: List[str],
@@ -3078,6 +3312,17 @@ def _score_candidates(
 	)
 	combined_scores = composite_no_freq + weights['freq'] * freq_scores
 
+	# Numeric-signature eligibility: a candidate that states a number contradicting a member
+	# ('10-ton trailers' vs '1-tons aanhangwagen') cannot name the cluster. If EVERY candidate
+	# conflicts the mask is skipped and the cluster is flagged instead of left without a name.
+	eligible = _numeric_eligibility(candidates, cluster_texts)
+	unresolved = not eligible.any()
+	if unresolved:
+		eligible = np.ones(len(candidates), dtype=bool)
+	elif not eligible.all():
+		composite_no_freq = np.where(eligible, composite_no_freq, INELIGIBLE_SCORE)
+		combined_scores = np.where(eligible, combined_scores, INELIGIBLE_SCORE)
+
 	return {
 		'freq_scores': freq_scores,
 		'head_scores': head_scores,
@@ -3085,17 +3330,22 @@ def _score_candidates(
 		'brevity_scores': brevity_scores,
 		'composite_no_freq': composite_no_freq,
 		'combined_scores': combined_scores,
+		'eligible': eligible,
+		'numeric_unresolved': unresolved,
 	}
 
 def _unscored(n: int) -> Dict[str, np.ndarray]:
 	"""All-NaN scores for singletons / no frequency data."""
 	nan_vec = np.full(n, np.nan)
-	return {
+	out = {
 		k: nan_vec for k in (
 			'freq_scores', 'head_scores', 'cont_scores', 'brevity_scores',
 			'composite_no_freq', 'combined_scores',
 		)
 	}
+	out['eligible'] = np.ones(n, dtype=bool)
+	out['numeric_unresolved'] = False
+	return out
 
 def _pick_best_candidate(
 	scored: bool,
@@ -3227,6 +3477,7 @@ def _build_candidate_rows(
 			'brevity_score':      float(scores['brevity_scores'][i]),
 			'composite_no_freq':  float(scores['composite_no_freq'][i]),
 			'composite':          float(scores['combined_scores'][i]),
+			'eligible':           bool(scores['eligible'][i]),
 			'is_selected':        i == best_idx,
 			'is_pure_sim_winner': i == pure_sim_idx,
 			'is_no_freq_winner':  nofreq_idx is not None and i == nofreq_idx,
@@ -3248,8 +3499,12 @@ def _build_canonical_entry(
 	best_real_idx: int,
 	composite_idx: Optional[int],
 	method: str,
+	eligible: Optional[np.ndarray] = None,
 ) -> Dict:
 	cluster_size = len(cluster_texts)
+	order = [int(i) for i in np.argsort(-combined_scores[:cluster_size])]
+	if eligible is not None:
+		order = [i for i in order if eligible[i]]
 	return {
 		'canonical': candidates[best_idx],
 		'score': float(similarities[best_idx]),
@@ -3258,8 +3513,8 @@ def _build_canonical_entry(
 		'real_fallback': cluster_texts[best_real_idx],
 		'real_fallback_score': float(similarities[best_real_idx]),
 		'real_runner_up': (
-			cluster_texts[int(np.argsort(-combined_scores[:cluster_size])[1])]
-			if composite_idx is not None and cluster_size > 1
+			cluster_texts[order[1]]
+			if composite_idx is not None and len(order) > 1
 			else None
 		),
 		'method': method,
@@ -3925,12 +4180,13 @@ def assign_canonical_labels(
 			best_idx, pure_sim_idx, nofreq_idx, head_token_fn=_head_token,
 		)
 		candidate_records.extend(rows)
-		runner_up = next((i for i in ranking if i != best_idx), None)
+		runner_up = next((i for i in ranking if i != best_idx and scores['eligible'][i]), None)
 
 		cluster_canonicals[cid] = _build_canonical_entry(
 			candidates, cluster_texts, virtual_flags, similarities,
 			scores['combined_scores'], best_idx, pick['best_real_idx'],
 			composite_idx, method,
+			eligible=scores['eligible'],
 		)
 		selection_records.append(
 			_build_selection_record(
@@ -3942,8 +4198,16 @@ def assign_canonical_labels(
 			)
 		)
 
+		selection_records[-1]['numeric_ineligible'] = int((~scores['eligible']).sum() + (len(candidates) if scores['numeric_unresolved'] else 0))
+		selection_records[-1]['numeric_unresolved'] = bool(scores['numeric_unresolved'])
+
 		if verbose:
 			tag = " [VIRTUAL]" if is_virtual_pick else ""
+			if scores['numeric_unresolved']:
+				tag += " [NUMERIC CONFLICT: no eligible candidate, mask skipped]"
+			elif not scores['eligible'].all():
+				dropped = [c for c, ok in zip(candidates, scores['eligible']) if not ok]
+				tag += f" [NUMERIC: excluded {dropped}]"
 			print(
 				f"\t=> Selected Canonical: {repr(candidates[best_idx]):<45}"
 				f"(sim={similarities[best_idx]:.4f}){tag} {rejection_virtual_tag}"
@@ -4402,4 +4666,3 @@ def get_canonical_labels(
 		print("-"*100)
 
 	return canonical_labels, canonical_map
-
