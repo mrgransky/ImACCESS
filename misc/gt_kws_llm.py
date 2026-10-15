@@ -9,7 +9,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "THE “CIAUSSINE CROT” (GASTALDI REFUGE). BEEF VALLEYS, THREE WALKERS AT THE GASTALDI SHELTER WITH BHESSANESE IN THE BACKGROUND" -llm "Qwen/Qwen3.8-27B" -v
+# python gt_kws_llm.py -desc "THE “Motor Vehicles - Motor Trucks - Parts - Miscellaneous - Making trucks for war use. Drawbar with new Web in plant of Troy Wagon Works Co., Troy, Ohio. Photographer: Troy Wagon Works Co." -llm "Qwen/Qwen3.8-27B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
