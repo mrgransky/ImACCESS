@@ -54,7 +54,6 @@ Keywords must be concrete, semantically atomic, and reusable across archives.
 When the caption contains meaningful descriptors, prefer multiword expressions of two to three words that function as a single semantic unit over isolated single words.
 Return fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
-Response must be a Python list of double-quoted strings containing keywords derived from the caption.
 
 STRINGENTLY exclude keywords containing:
   - typographical error, misprints, or irregular orthography
@@ -73,7 +72,9 @@ Color handling:
   - Remove color only if it is purely descriptive (white truck, blue sky).
   - Preserve color terms when they are part of a standardized or semantic label (Red Cross, Blue Cross gas shell, Green Berets).
 
-Caption: {caption}"""
+Caption: {caption}
+
+Output ONLY a a Python list of double-quoted strings containing keywords derived from the caption."""
 
 
 def _load_llm_(
