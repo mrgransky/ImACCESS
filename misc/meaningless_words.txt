@@ -380,7 +380,6 @@ giving
 goes
 going
 gone
-good
 got
 gotten
 great
@@ -580,8 +579,6 @@ novel
 now
 nowhere
 null
-volume
-volumes
 obtain
 obtained
 obviously
@@ -1026,8 +1023,6 @@ area
 hour
 minute
 time
-month
-year
 co
 eastbound
 westbound
