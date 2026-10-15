@@ -48,11 +48,11 @@ with open('geographic_references.txt', 'r') as file_:
 STOPWORDS.update(geographic_references)
 
 PROMPT_TEMPLATE = """
-Extract no more than {k} prominent keywords, where prominence means visual salience and concrete recoverability rather than textual frequency. 
-Phrase repetition does not imply significance.
-Keywords must be concrete, semantically atomic, visually grounded, and reusable across archives.
-When the caption contains meaningful descriptors, prefer multiword expressions that function as a single semantic unit over isolated single words.
-Opt for fewer keywords if the caption is short or lacks sufficient information.
+Extract no more than {k} prominent keywords from the caption below.
+Prominence means concrete objects, activities, or scenes explicitly described in the caption, not how often a phrase repeats.
+Keywords must be concrete, semantically atomic, and reusable across archives.
+When the caption contains meaningful descriptors, prefer multiword expressions of two to three words that function as a single semantic unit over isolated single words.
+Return fewer keywords if the caption is short or lacks sufficient information.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
 Response must be a Python list of double-quoted strings containing keywords derived from the caption.
 
