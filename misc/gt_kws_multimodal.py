@@ -142,7 +142,7 @@ def get_multimodal_annotation(
 	embedding_model_id: str,
 	clip_architecture: str,
 	max_keywords: int,
-	device: str,
+	device: Union[str, torch.device],
 	batch_size: int,
 	num_workers: int,
 	llm_quantization_bits: Optional[int] = None,
@@ -150,9 +150,6 @@ def get_multimodal_annotation(
 	nc: int = None,
 	verbose: bool = False,
 ):
-	if not isinstance(device, torch.device):
-		device = torch.device(device)
-
 	output_csv = csv_file.replace(".csv", "_multimodal.csv")
 	OUTPUT_DIR = os.path.join(os.path.dirname(csv_file), "outputs")
 	os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -207,6 +204,9 @@ def get_multimodal_annotation(
 			# 'enriched_document_description', # misleading
 		],
 	)
+
+	if torch.cuda.is_available():
+		torch.cuda.empty_cache()
 
 	# post processing for both chunked and full dataset:
 	# 1. Load cache from disk once at script start

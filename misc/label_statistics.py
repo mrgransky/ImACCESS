@@ -1122,7 +1122,8 @@ def compute_clip_visual_grounding(
 		text_embeds.append(e.cpu())
 
 	text_embeds = torch.cat(text_embeds, dim=0)  # [n_labels, dim]
-	print(f"[ELAPSED] {time.time() - t0:.1f}sec for {n_labels} labels: {text_embeds.shape} {text_embeds.dtype} {text_embeds.device}")
+	print(f"{n_labels} labels: {text_embeds.shape} {text_embeds.dtype} {text_embeds.device}")
+	print(f"[ELAPSED] {time.time() - t0:.1f} s")
 
 	# 3. Encode all images. Track which rows actually produced a real
 	#    embedding — a failed row stays untouched rather than becoming

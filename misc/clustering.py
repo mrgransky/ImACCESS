@@ -3945,7 +3945,7 @@ def assign_canonical_labels(
 		if verbose:
 			tag = " [VIRTUAL]" if is_virtual_pick else ""
 			print(
-				f"\t=> Selected Canonical: {repr(candidates[best_idx]):<60} "
+				f"\t=> Selected Canonical: {repr(candidates[best_idx]):<45}"
 				f"(sim={similarities[best_idx]:.4f}){tag} {rejection_virtual_tag}"
 			)
 
