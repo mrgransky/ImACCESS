@@ -525,7 +525,6 @@ mightnt
 mil
 million
 minus
-miss
 moreover
 mostly
 move
@@ -623,10 +622,6 @@ possible
 possibly
 potentially
 predominantly
-present
-presented
-presenting
-presents
 presumably
 previously
 primarily
@@ -690,7 +685,6 @@ shouldn
 shouldn't
 shouldnt
 showed
-showing
 shown
 showns
 side
@@ -724,7 +718,6 @@ specify
 specifying
 state
 states
-still
 strongly
 substantially
 successfully
@@ -1014,8 +1007,6 @@ photog
 chev
 rare
 te hachapi
-object
-area
 hour
 minute
 time
@@ -1040,18 +1031,12 @@ rot
 plot
 graf
 furiou
-action
-imagery
-graphic
 pre
 aramaco
 overview
 viewpoint
 perspective
 portion
-print
-reprint
-reproduction
 open
 direction
 upward
@@ -1076,10 +1061,7 @@ september
 october
 november
 december
-lsis
 frontal
-top
-peak
 hyrib
 rune
 damung

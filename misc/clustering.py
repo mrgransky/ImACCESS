@@ -2109,7 +2109,12 @@ def remove_problematic_cluster_labels(
 	"""
 	if verbose:
 		print("="*100)
-		print(f"[DETECTION] Problematic clusters and labels in {len(df['cluster'].unique())} clusters")
+		print(f"[DETECTION] Problematic clusters and labels")
+		print(f"  ├─ {len(df['cluster'].unique())} clusters")
+		print(f"  ├─ embedding: {type(embeddings)} {embeddings.shape}")
+		print(f"  ├─ Low cohesion threshold: {low_cohesion_threshold}")
+		print(f"  ├─ Poor canonical threshold: {poor_canonical_threshold}")
+		print(f"  └─ min_labels_per_cluster: {min_labels_per_cluster}")
 
 	problematic_cluster_ids = set()
 	removed_labels = list()
@@ -2229,7 +2234,7 @@ def remove_problematic_cluster_labels(
 		print(f"df            {df.shape} -> {df_clean.shape} (Removed labels: {len(df) - len(df_clean):,})")
 		print(f"embeddings    {embeddings.shape} -> {embeddings_clean.shape}")
 		print(f"clusters      {df['cluster'].nunique():,} -> {df_clean['cluster'].nunique():,} (Removed: {df['cluster'].nunique() - df_clean['cluster'].nunique():,})")		
-		print(f"consolidation {original_consolidation:.4f}x -> New: {new_consolidation:.4f}x (diff: {(new_consolidation - original_consolidation):.5f}x)")
+		print(f"consolidation {original_consolidation:.4f}x -> {new_consolidation:.4f}x (diff: {(new_consolidation - original_consolidation):.5f}x)")
 		print("="*100)
 
 	return df_clean, embeddings_clean, removed_labels

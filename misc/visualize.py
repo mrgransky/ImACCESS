@@ -185,7 +185,6 @@ def plot_tier_cardinality_boxplot(
 	tier_data = [card_df[c].values for c in col_keys]
 	fig, ax = plt.subplots(figsize=figsize)
 
-	# Boxplot
 	bp = ax.boxplot(
 		tier_data,
 		positions=positions,
@@ -232,42 +231,43 @@ def plot_tier_cardinality_boxplot(
 	for pos, col, tier in zip(positions, col_keys, TIER_ORDER):
 			mean_val = card_df[col].mean()
 			std_val = card_df[col].std()
+			median = card_df[col].median()
 			
 			# Shaded region
 			ax.fill_between(
-					[pos - 0.35, pos + 0.35],
-					[mean_val - std_val] * 2,
-					[mean_val + std_val] * 2,
-					color=SEGMENT_SPECS[tier]['color'],
-					alpha=0.12,
-					zorder=1
+				[pos - 0.35, pos + 0.35],
+				[mean_val - std_val] * 2,
+				[mean_val + std_val] * 2,
+				color=SEGMENT_SPECS[tier]['color'],
+				alpha=0.12,
+				zorder=1
 			)
 			
 			# Error bar
 			ax.errorbar(
-					pos,
-					mean_val,
-					yerr=std_val,
-					fmt='none',
-					ecolor=SEGMENT_SPECS[tier]['color'],
-					elinewidth=2,
-					capsize=6,
-					capthick=2,
-					alpha=0.7,
-					zorder=4
+				pos,
+				mean_val,
+				yerr=std_val,
+				fmt='none',
+				ecolor=SEGMENT_SPECS[tier]['color'],
+				elinewidth=2,
+				capsize=6,
+				capthick=2,
+				alpha=0.7,
+				zorder=4
 			)
 			
 			# Mean marker
 			ax.scatter(
-					pos,
-					mean_val,
-					s=100,
-					marker="D",
-					color=SEGMENT_SPECS[tier]["color"],
-					edgecolors="none",
-					# linewidths=1.5,
-					zorder=5,
-					label = f"{tier.upper()} (μ ± σ = {mean_val:.2f} ± {std_val:.2f})"
+				pos,
+				mean_val,
+				s=100,
+				marker="D",
+				color=SEGMENT_SPECS[tier]["color"],
+				edgecolors="none",
+				# linewidths=1.5,
+				zorder=5,
+				label = f"{tier.upper():<6}(μ ± σ = {mean_val:.2f} ± {std_val:.2f} median = {median:.1f})"
 			)
 
 	# Sparsity badges
@@ -306,11 +306,11 @@ def plot_tier_cardinality_boxplot(
 			f"{tier_label_counts[t]:,} labels\n~{tier_label_pct[t]}% of vocab"
 			for t in TIER_ORDER
 		],
-		fontsize=10,
+		fontsize=11,
 	)
 	print(ax.get_ylim())
 	ax.set_ylim(ax.get_ylim()[0], ax.get_ylim()[1] * 1.11)
-	ax.grid(linestyle="--", linewidth=0.3, alpha=0.5, zorder=0)
+	ax.grid(linestyle="--", linewidth=0.5, alpha=0.5, zorder=0)
 
 	# Legend
 	handles, labels = ax.get_legend_handles_labels()
@@ -318,7 +318,7 @@ def plot_tier_cardinality_boxplot(
 		handles, 
 		labels,
 		loc="best",
-		title="◆ = mean cardinality",
+		title="◆ = Mean Cardinality",
 		fontsize=8.0,
 		frameon=False,
 		title_fontsize=10.0,
@@ -326,7 +326,8 @@ def plot_tier_cardinality_boxplot(
 		shadow=True,
 	)
 	for spine in ax.spines.values():
-		spine.set_linewidth(0.7)
+		spine.set_linewidth(0.6)
+		spine.set_color("#080505")
 
 	plt.tight_layout()
 	plt.savefig(output_path, dpi=dpi)
