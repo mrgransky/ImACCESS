@@ -60,7 +60,8 @@ else
 fi
 
 # better performance with custom instruction prompt
-TEXT_EMBEDDING_MODEL="Octen/Octen-Embedding-8B" 
+TEXT_EMBEDDING_MODEL="Qwen/Qwen3-VL-Embedding-8B"
+# TEXT_EMBEDDING_MODEL="Octen/Octen-Embedding-8B"
 # TEXT_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
 
 CLIP_MODEL="ViT-L/14@336px"

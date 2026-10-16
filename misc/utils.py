@@ -1849,7 +1849,7 @@ def get_synchronized_df_img(
 	successful_rows = []
 	
 	with requests.Session() as session:
-		with ThreadPoolExecutor(max_workers=nw) as executor:
+		with concurrent.futures.ThreadPoolExecutor(max_workers=nw) as executor:
 			futures = {
 				executor.submit(
 					download_image, 
