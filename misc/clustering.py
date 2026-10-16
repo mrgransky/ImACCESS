@@ -1610,21 +1610,21 @@ def get_optimal_num_clusters(
 	verbose: bool=False,
 ):
 	num_samples = X.shape[0]
+	valid_k_min = int(num_samples // max_consolidation)
+	valid_k_max = int(num_samples // min_consolidation)
 	if verbose:
 		print("\n[ADAPTIVE OPTIMAL CLUSTER SELECTION]")
+		print(f"   ├─ num_samples                           : {num_samples}")
 		print(f"   ├─ Target intra-cluster similarity       : {target_intra_similarity}")
 		print(f"   ├─ Min cluster size                      : {min_cluster_size}")
 		print(f"   ├─ Merge singletons                      : {merge_singletons}")
 		print(f"   ├─ Consolidation (Reduction ratio) range : {min_consolidation}x - {max_consolidation}x")
-		print(f"   ├─ Required and valid clusters range     : {num_samples//max_consolidation} ≤ k ≤ {num_samples//min_consolidation}")
+		print(f"   ├─ Required and valid clusters range     : {valid_k_min} ≤ k ≤ {valid_k_max}")
 		print(f"   ├─ Target singleton ratio                : {target_singleton_ratio}")
 		print(f"   ├─ Quality weight                        : {quality_vs_consolidation_weight*100:.0f}%")
 		print(f"   ├─ Embeddings (X)                        : {type(X)} {X.shape} {X.dtype}")
 		print(f"   └─ Linkage (Z)                           : {type(linkage_matrix)} {linkage_matrix.shape}")
 	
-	valid_k_min = int(num_samples // max_consolidation)
-	valid_k_max = int(num_samples // min_consolidation)
-
 	if verbose:
 		print(f"\n[STAGE 1] COARSE SEARCH - Finding quality plateau: {valid_k_min} ≤ k ≤ {valid_k_max}")
 
@@ -1644,7 +1644,7 @@ def get_optimal_num_clusters(
 	coarse_range = range(coarse_start, coarse_end, coarse_step)  # explicit +1, drop overshoot
 
 	if verbose:
-		print(f"Testing {len(coarse_range)} configurations: {list(coarse_range)} (step={coarse_step})")
+		print(f"\t{len(coarse_range)} Testing Config {list(coarse_range)} (step={coarse_step})")
 		print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Status':<50} {'Reason'}")
 		print("-" * 200)
 	
@@ -1658,7 +1658,7 @@ def get_optimal_num_clusters(
 		if len(np.unique(labels)) < 2:
 			continue
 		
-		# Compute mean intra-cluster similarity
+		# Mean intra-cluster Cosine similarity
 		unique_labels = np.unique(labels)
 		intra_sims = list()
 		
@@ -1700,8 +1700,8 @@ def get_optimal_num_clusters(
 		if mean_intra_sim >= target_intra_similarity and in_consol_range:
 			status = "✓ TARGET REACHED (quality + consolidation)"
 			reason = (
-				f"IntraSim {mean_intra_sim:.4f} ≥ target {target_intra_similarity:.4f} "
-				f"AND consol {consolidation:.2f}x in [{min_consolidation},{max_consolidation}]"
+				f"IntraSim {mean_intra_sim:.4f} ≥ {target_intra_similarity} "
+				f"AND consol {consolidation:.2f}x in [{min_consolidation}, {max_consolidation}]"
 			)
 			if plateau_k is None:
 				plateau_k = n_clusters
@@ -1715,7 +1715,7 @@ def get_optimal_num_clusters(
 				plateau_k = n_clusters
 		elif mean_intra_sim > best_intra_sim:
 			best_intra_sim = mean_intra_sim
-			status = "↑ Improving quality"
+			status = "↑ Staying on track"
 			reason = (
 				f"IntraSim {mean_intra_sim:.4f} > prev best {best_intra_sim:.4f}"
 				+ (f" | consol {consolidation:5.2f}x outside [{min_consolidation},{max_consolidation}]" if not in_consol_range else "")
@@ -1736,8 +1736,6 @@ def get_optimal_num_clusters(
 				for r in recent
 			)
 			if both_optimal and plateau_k is not None:
-				if verbose:
-					print(f"\n[STAGE 1] Optimal range detected. Moving to fine search.")
 				break
 
 		if verbose:
@@ -1755,9 +1753,6 @@ def get_optimal_num_clusters(
 			print(f"           Max observed: {max_observed_intra:.4f} (gap={gap*100:.1f}%)")
 			print(f"           Auto-adjusting target → {adjusted_target:.4f}")
 		target_intra_similarity = adjusted_target
-	else:
-		if verbose:
-			print(f"Target intra-sim {target_intra_similarity:.2f} is achievable.")
 
 	# Determine search region for Stage 2
 	if plateau_k is None:
@@ -1779,12 +1774,10 @@ def get_optimal_num_clusters(
 		
 		best_coarse = max(coarse_results, key=score_coarse)
 		plateau_k = best_coarse['k']
-	
-	if verbose:
-		print(f"[DONE] Plateau region centered around k={plateau_k}")
-	
+		
 	if verbose:
 		print(f"\n[STAGE 2] FINE SEARCH - Optimizing around plateau: k={plateau_k}")
+	
 	# Fine search range: ±20% around plateau with smaller steps
 	fine_min = max(int(plateau_k * 0.8), valid_k_min)  # Never go below valid zone
 	_step_proxy = max(1, (valid_k_max - valid_k_min) // 20)  # temporary, only for fine_max
@@ -1795,7 +1788,7 @@ def get_optimal_num_clusters(
 	)
 	
 	if verbose:
-		print(f"[PROPOSAL] range(Pareto Principle [80:20]): {fine_min} ≤ k ≤ {fine_max}")
+		print(f"Pareto Principle [80:20]: {fine_min} ≤ k ≤ {fine_max}")
 
 	# Guard: if plateau_k was outside valid range, just search the valid range
 	if fine_min >= fine_max:
@@ -1808,7 +1801,7 @@ def get_optimal_num_clusters(
 	fine_range = range(fine_min, fine_max + 1, fine_step)
 	
 	if verbose:
-		print(f"Testing {len(fine_range)} configurations: {list(fine_range)} (step={fine_step})")
+		print(f"\t{len(fine_range)} Testing Config {list(fine_range)} (step={fine_step})")
 		print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Score':<10} {'Status':<20} {'Reason'}")
 		print("-" * 150)
 	
@@ -1921,7 +1914,8 @@ def get_optimal_num_clusters(
 	best = max(fine_results, key=lambda x: x['composite_score'])
 	
 	if verbose:
-		print(f"\n[STAGE 2] Selected k={best['k']} (highest composite score)")
+		print(f"\n[STAGE 2]")
+		print(f"  ├─ k={best['k']} (highest composite score)")
 		print(f"  ├─ Composite score: {best['composite_score']:.4f}")
 		print(f"  ├─ Quality score: {best['quality_score']:.4f}")
 		print(f"  ├─ Consolidation score: {best['consol_score']:.4f}")
@@ -4325,9 +4319,9 @@ def cluster(
 	nc: int,
 	linkage_method: str="ward",
 	distance_metric: str="euclidean",
-	target_intra_similarity: float = 0.69,
-	min_consolidation: float = 3.5, #4.0, # 3.8, #5.0, 
-	max_consolidation: float = 6.0, #6.5, # 5.0, #7.5, 
+	target_intra_similarity: float = 0.75, # 0.69,
+	min_consolidation: float = 4.5, #3.5, #4.0, # 3.8, #5.0, 
+	max_consolidation: float = 7.5, #6.0, #6.5, # 5.0, #7.5, 
 	min_singleton_merge_sim: Optional[float] = 0.60,
 	merge_close_clusters_threshold: Optional[float] = None,
 	merge_max_size: int = 30,
