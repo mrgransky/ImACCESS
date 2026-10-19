@@ -4581,7 +4581,7 @@ def cluster(
 		print(f"[TOTAL CLUSTERING ELAPSED TIME] {time.time()-st_t:.2f} sec.")
 		print("-" * 100)
 	
-	sys.exit()
+	# sys.exit()
 
 	return df
 
