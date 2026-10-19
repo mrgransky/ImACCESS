@@ -748,6 +748,7 @@ Orlando
 Oslo
 Oostende
 Ostend
+Galleryda
 Gijon
 Girona
 Granada
@@ -828,6 +829,7 @@ Stumholmen
 Stuttgart
 Sunderland
 Sydney
+Tallinn
 Tarragona
 Tehachapi
 Tel Aviv

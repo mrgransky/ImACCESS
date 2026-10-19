@@ -76,7 +76,6 @@ Caption: {caption}
 
 Output ONLY a a Python list of double-quoted strings containing keywords derived from the caption."""
 
-
 def _load_llm_(
 	model_id: str,
 	quantization_bits: Optional[int] = None,
@@ -84,7 +83,6 @@ def _load_llm_(
 	verbose: bool = False,
 ):
 	if verbose:
-		print(f"\n{'='*110}")
 		print(f"[LOADING] {model_id} on cache_dir: {cache_directory.get(USER)}")
 	
 	# ========== Version and CUDA info ==========
@@ -178,7 +176,8 @@ def _load_llm_(
 		tokenizer = tfs.AutoTokenizer.from_pretrained(
 			model_id, 
 			use_fast=True, 
-			trust_remote_code=True, 
+			trust_remote_code=True,
+			token=hf_tk,
 			cache_dir=cache_directory[USER],
 		)
 	except (KeyError, ValueError, OSError) as exc:
@@ -195,7 +194,8 @@ def _load_llm_(
 			try:
 				tokenizer = TokCls.from_pretrained(
 					model_id, 
-					trust_remote_code=True, 
+					trust_remote_code=True,
+					token=hf_tk,
 					cache_dir=cache_directory[USER]
 				)
 				break
@@ -206,7 +206,8 @@ def _load_llm_(
 				tokenizer = tfs.AutoTokenizer.from_pretrained(
 					model_id, 
 					use_fast=False, 
-					trust_remote_code=True, 
+					trust_remote_code=True,
+					token=hf_tk,
 					cache_dir=cache_directory[USER]
 				)
 			except Exception as final_exc:
@@ -357,6 +358,7 @@ def _load_llm_(
 		"low_cpu_mem_usage": True,
 		# "low_cpu_mem_usage": False, # avoid illegal memory access during weight materialization
 		"trust_remote_code": True,
+		"token": hf_tk,
 		"cache_dir": cache_directory[USER],
 		"attn_implementation": attention,
 		"dtype": dtype,
@@ -1523,7 +1525,7 @@ def get_llm_based_labels(
 	max_generated_tks: int,
 	max_kws: int,
 	csv_file: str,
-	num_workers: int = 12,              # Retained for signature compatibility
+	num_workers: int = 12, # Retained for signature compatibility
 	do_dedup: bool = True,
 	max_retries: int = 2,
 	quantization_bits: Optional[int] = None,
@@ -1580,6 +1582,7 @@ def get_llm_based_labels(
 		# eng_confidence_th=1e-2,
 		verbose=verbose
 	)
+	print(df.head())
 	# sys.exit()
 	
 	inputs = df["enriched_document_description"].tolist()

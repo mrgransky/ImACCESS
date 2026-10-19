@@ -130,8 +130,6 @@ cache_directory = {
 }
 
 hf_tk: str = os.getenv("HUGGINGFACE_TOKEN")
-anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY")
-
 
 os.environ["HF_HOME"] = cache_directory[USER]
 os.environ["TRANSFORMERS_CACHE"] = cache_directory[USER]

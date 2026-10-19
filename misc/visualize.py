@@ -9,6 +9,7 @@ import time
 import random
 import json
 import scipy
+import sklearn
 import numpy as np
 import pandas as pd
 
@@ -31,9 +32,17 @@ from itertools import combinations # For pairwise label combinations
 from torch.utils.data import DataLoader, Dataset
 
 from sentence_transformers import SentenceTransformer
-
+import pacmap
+import phate
 from typing import Tuple, Union, List, Dict, Any, Optional
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
+
+use_umap = False
+try:
+	import umap
+	use_umap = True
+except ImportError:
+	pass
 
 dtypes = {
 	'doc_id': str, 
@@ -168,6 +177,265 @@ def _assign_tier(
 		return "Tail"
 	else:
 		return "Torso"
+
+def plot_dimensional_reduction_(
+	embedding: np.ndarray,
+	clusters_fname: str,
+	strip_sample_n: int = 2000,
+	figsize: Tuple[float, float] = (15, 11),
+	dpi: int = 200,
+	random_seed: int = 0,
+	cmap = plt.colormaps.get_cmap('managua')
+) -> None:
+
+	file_base_name = os.path.basename(clusters_fname)
+	viz_dir = os.path.join(os.path.dirname(clusters_fname), "viz")
+	print(viz_dir)
+	os.makedirs(viz_dir, exist_ok=True)
+	color = "#011e33"
+	lw = 0.5
+	ms = 10
+	alpha = 0.9
+	scale = 10
+	marker = "o"
+
+	# Dimensionality Reduction (optional, for visualization)
+	pca = sklearn.decomposition.PCA(n_components=2, random_state=random_seed)
+	X_pca = pca.fit_transform(embedding)
+	print(f"PCA projected embedding: {type(X_pca)} {X_pca.shape}")
+	emb_file_name = file_base_name.replace(".csv", f"_pca_projection_{embedding.shape[0]}_labels_embedding_{embedding.shape[1]}d.png")
+	print(emb_file_name)
+	plt.figure(figsize=figsize, dpi=dpi)
+
+	scatter = plt.scatter(
+		X_pca[:, 0], 
+		X_pca[:, 1], 
+		marker=marker,
+		edgecolors=color,
+		facecolors='none',
+		s=scale,
+		linewidths=lw,
+		alpha=alpha,
+	)
+	plt.title(f"PCA {embedding.shape[0]} labels - {embedding.shape[1]} dimensions")
+	plt.xlabel("PCA 1")
+	plt.ylabel("PCA 2")
+	plt.tight_layout()
+	plt.savefig(os.path.join(viz_dir, emb_file_name), dpi=dpi)
+	plt.close()
+
+	# TSNE visualization
+	tsne = sklearn.manifold.TSNE(
+		n_components=2,
+		random_state=random_seed,
+		init="random",
+		learning_rate='auto',
+		max_iter=1000,
+	)
+	X_tsne = tsne.fit_transform(embedding)
+	print(f"t-SNE projected embeddings: {type(X_tsne)} {X_tsne.shape}")
+
+	emb_file_name = file_base_name.replace(".csv", f"_t-SNE_projection_{embedding.shape[0]}_labels_embedding_{embedding.shape[1]}d.png")
+	print(emb_file_name)
+	plt.figure(figsize=figsize, dpi=dpi)
+
+	scatter = plt.scatter(
+		X_tsne[:, 0], 
+		X_tsne[:, 1], 
+		edgecolors=color,
+		facecolors='none',
+		s=scale,
+		linewidths=lw,
+		alpha=alpha,
+	)
+	plt.title(f"t-SNE {embedding.shape[0]} labels - {embedding.shape[1]} dimensions")
+	plt.xlabel("t-SNE 1")
+	plt.ylabel("t-SNE 2")
+	plt.tight_layout()
+	plt.savefig(os.path.join(viz_dir, emb_file_name), dpi=dpi)
+	plt.close()
+
+	# UMAP visualization
+	if use_umap:
+		emb_file_name = file_base_name.replace(".csv", f"_umap_projection_{embedding.shape[0]}_labels_embedding_{embedding.shape[1]}d.png")
+		umap_model = umap.UMAP(
+			n_components=2,
+			random_state=random_seed,
+			# n_neighbors=15,
+			# min_dist=0.1,
+		)
+		X_umap = umap_model.fit_transform(embedding)
+		print(f"UMAP projected embeddings: {type(X_umap)} {X_umap.shape}")
+		plt.figure(figsize=figsize)
+		scatter = plt.scatter(
+			X_umap[:, 0],
+			X_umap[:, 1],
+			edgecolors=color,
+			facecolors='none',
+			s=scale,
+			linewidths=lw,
+			alpha=alpha,
+		)
+		plt.title(f"UMAP - {embedding.shape[0]} labels - {embedding.shape[1]} dimensions")
+		plt.xlabel("UMAP 1")
+		plt.ylabel("UMAP 2")
+		plt.tight_layout()
+		plt.savefig(os.path.join(viz_dir, emb_file_name), dpi=dpi)
+		plt.close()
+
+def plot_dimensional_reduction(
+	embedding: np.ndarray,
+	clusters_fname: str,
+	figsize: Tuple[float, float] = (16, 11),
+	dpi: int = 200,
+	random_seed: int = 0,
+	n_components: int = 2,
+	cmap = plt.colormaps.get_cmap('managua'),
+	cluster_labels: np.ndarray = None  # Optional: pass true labels to color by cluster
+) -> None:
+	file_base_name = os.path.basename(clusters_fname)
+	viz_dir = os.path.join(os.path.dirname(clusters_fname), "viz")
+	os.makedirs(viz_dir, exist_ok=True)
+	
+	# Solid dots, no edges, alpha blending to reveal density
+	dot_size = 15
+	dot_alpha = 0.65
+	edge_width = 0
+	min_neighbors = int(np.ceil(n_components * (1 + (n_components + 1) / 2))) + 1
+	n_neighbors = max(20, min_neighbors + 5)
+	
+	def save_plot(X_proj, method_name, file_suffix):
+		plt.figure(figsize=figsize, dpi=dpi)
+		
+		# Color logic: If cluster labels are provided, color by cluster. 
+		# Otherwise, color by the Y-axis coordinate to add topographic depth.
+		if cluster_labels is not None:
+			colors = cluster_labels
+		else:
+			colors = "#134ECC" #X_proj[:, 1]  # Color by Y-axis
+		
+		scatter = plt.scatter(
+			X_proj[:, 0],
+			X_proj[:, 1],
+			c=colors,
+			cmap=cmap,
+			s=dot_size,
+			linewidths=edge_width,
+			alpha=dot_alpha,
+			rasterized=True  # Keeps vector PDFs small and fast
+		)
+				
+		plt.title(f"{method_name} Projection ({embedding.shape[0]} samples, {embedding.shape[1]}d)", fontsize=14)
+		plt.xlabel(f"{method_name} Component 1", fontsize=12)
+		plt.ylabel(f"{method_name} Component 2", fontsize=12)
+		
+		# Hide ticks: The absolute values on UMAP/t-SNE axes are meaningless
+		plt.xticks([])
+		plt.yticks([])
+		plt.grid(False)
+		
+		plt.tight_layout()
+		out_path = os.path.join(viz_dir, file_base_name.replace(".csv", f"_{file_suffix}.png"))
+		plt.savefig(out_path, dpi=dpi, bbox_inches='tight')
+		plt.close()
+		print(f"Saved {method_name} → {out_path}")
+	
+	# 1. PCA
+	pca = sklearn.decomposition.PCA(n_components=2, random_state=random_seed)
+	X_pca = pca.fit_transform(embedding)
+	save_plot(X_pca, "PCA", f"pca_{embedding.shape[0]}_samples")
+	
+	# sub_sample_size = min(embedding.shape[0], int(1e4))
+	# if embedding.shape[0] > sub_sample_size:
+	# 	idx = np.random.default_rng(random_seed).choice(
+	# 		embedding.shape[0], 
+	# 		sub_sample_size,
+	# 		replace=False
+	# 	)
+	# 	embedding = embedding[idx]
+
+	# 2. t-SNE
+	tsne = sklearn.manifold.TSNE(
+		n_components=2,
+		random_state=random_seed,
+		init="pca", # PCA init is generally more stable than 'random'
+		learning_rate='auto',
+		max_iter=1000,
+	)
+	X_tsne = tsne.fit_transform(embedding)
+	save_plot(X_tsne, "t-SNE", f"tsne_{embedding.shape[0]}_samples")
+
+	# 3. UMAP (Tuned for Clustering)
+	print("Fitting UMAP (this may take a moment)...")
+	umap_model = umap.UMAP(
+		n_components=2,
+		random_state=random_seed,
+		metric="cosine",      # cosine for text/CLIP embeddings
+		n_neighbors=n_neighbors,       # Balances local clusters and global structure
+		min_dist=0.05,        # Forces tight, well-separated clusters
+		densmap=True,         # Preserves local density variations
+		n_jobs=-1             # Uses all CPU cores for speed
+	)
+	X_umap = umap_model.fit_transform(embedding)
+	save_plot(X_umap, "UMAP", f"umap_{embedding.shape[0]}_samples")
+
+	# 4. PaCMAP (Tuned for Clustering)
+	print("Fitting PaCMAP (this may take a moment)...")
+	pacmap_model = pacmap.PaCMAP(
+		n_components=2,
+		random_state=random_seed,
+		n_neighbors=n_neighbors, # Balances local clusters and global structure
+	)
+	X_pacmap = pacmap_model.fit_transform(embedding, init="pca")
+	save_plot(X_pacmap, "PaCMAP", f"pacmap_{embedding.shape[0]}_samples")
+
+	# 5. PHATE (Tuned for Clustering)
+	print("Fitting PHATE (this may take a moment)...")
+	phate_model = phate.PHATE(
+		n_components=2,
+		random_state=random_seed,
+	)
+	X_phate = phate_model.fit_transform(embedding)
+	save_plot(X_phate, "PHATE", f"phate_{embedding.shape[0]}_samples")
+
+	# 6. SpectralEmbedding
+	print("Fitting SpectralEmbedding (this may take a moment)...")
+	se_model = sklearn.manifold.SpectralEmbedding(
+		n_components=2,
+		affinity="nearest_neighbors",
+		eigen_solver="arpack",
+		random_state=random_seed,
+		n_neighbors=n_neighbors, # Balances local clusters and global structure
+	)
+	X_se = se_model.fit_transform(embedding)
+	save_plot(X_se, "SpectralEmbedding", f"se_{embedding.shape[0]}_samples")
+
+	# 7. Isomap
+	print("Fitting Isomap (this may take a moment)...")
+	isomap_model = sklearn.manifold.Isomap(
+		n_components=2,
+		n_neighbors=n_neighbors, # Balances local clusters and global structure
+	)
+	X_isomap = isomap_model.fit_transform(embedding)
+	save_plot(X_isomap, "Isomap", f"isomap_{embedding.shape[0]}_samples")
+
+	# 8. LocallyLinearEmbedding
+	methods = ["modified", "standard", "hessian", "ltsa"]
+	for method in methods:
+		print(f"Fitting LocallyLinearEmbedding (method: {method}) (this may take a moment)...")
+		try:
+			lle_model = sklearn.manifold.LocallyLinearEmbedding(
+				n_components=2,
+				method=method,
+				n_neighbors=n_neighbors, # Balances local clusters and global structure
+				random_state=random_seed,
+				n_jobs=-1,
+			)
+			X_lle = lle_model.fit_transform(embedding)
+			save_plot(X_lle, "LocallyLinearEmbedding", f"lle_{method}_{embedding.shape[0]}_samples")
+		except Exception as e:
+			print(e)
+			continue
 
 def plot_tier_cardinality_boxplot(
 	card_df: pd.DataFrame,
