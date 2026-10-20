@@ -7,11 +7,11 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
+#SBATCH --cpus-per-task=20
 #SBATCH --mem=204G
 #SBATCH --partition=gpumedium
 #SBATCH --gres=gpu:gh200:1
-#SBATCH --time=00-03:00:00
+#SBATCH --time=00-05:00:00
 #SBATCH --array=0
 ##SBATCH --begin=06:00:00
 
@@ -98,7 +98,7 @@ python -u gt_kws_multimodal.py \
 	--max_keywords 3 \
 	--batch_size $GENERAL_BATCH_SIZE \
 	--verbose \
-	# --num_clusters 10000 \
+	--num_clusters 10000 \
 	# --llm_use_quantization \
 	# --vlm_use_quantization \
 

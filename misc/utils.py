@@ -216,12 +216,10 @@ def get_model_kwargs(verbose: bool = True):
 
 	if verbose:
 		print(f"\n[MODEL KWARGS]")
-		print(f"  ├─ CUDA        : {torch.version.cuda}")
-		print(f"  ├─ PyTorch     : {torch.__version__}")
-		print(f"  ├─ compute_cap : {torch.cuda.get_device_capability()}")
-		print(f"  ├─ attention   : {attention}")
-		print(f"  └─ dtype       : {dtype}")
-		print("-"*40)
+		print(f"  ├─ CUDA     {torch.version.cuda} compute_cap : {torch.cuda.get_device_capability()}")
+		print(f"  ├─ PyTorch  {torch.__version__}")
+		print(f"  └─ {attention} {dtype}")
+		print("-"*50)
 
 	return attention, dtype
 

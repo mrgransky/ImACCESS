@@ -1057,22 +1057,6 @@ def _post_process_(
 		re.IGNORECASE
 	)
 
-	# _ORDINAL_PATTERN = (
-	# 	# Added '?' after (?:st|nd|rd|th) to catch bare numbers like "109 Infantry" or "27 Division"
-	# 	r'(?:\d{1,4}(?:st|nd|rd|th)?|'
-	# 	r'first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|'
-	# 	r'eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|'
-	# 	r'twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth)'
-	# )
-	
-	# _ECHELON_PATTERN = (
-	# 	# Military echelons
-	# 	r'army|corps|div\.?|division|inf\.?|infantry|reg\.?|regt\.?|regiment|'
-	# 	r'bn\.?|battalion|brig\.?|brigade|arty\.?|artillery|'
-	# 	# Abstract political, legal & temporal ordinal concepts
-	# 	r'amendment|century|term|congress'
-	# )
-
 	_ORDINAL_PATTERN = (
 		r'(?:\d{1,4}(?:st|nd|rd|th)?|'
 		r'first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|'
@@ -1100,8 +1084,6 @@ def _post_process_(
 		rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})$',
 		re.IGNORECASE
 	)
-
-
 
 	def should_keep_numeric_label(label: str, max_digit_ratio: float = 0.45) -> bool:
 		# If no digits exist, it's not a numeric label; keep it
