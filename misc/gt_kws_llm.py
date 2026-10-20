@@ -56,7 +56,7 @@ If the caption lacks sufficient information, returning fewer keywords or even an
 
 STRINGENTLY exclude keywords containing:
   - typographical error, misprints, or irregular orthography
-  - acronyms, shorthands, initialisms, phrasal verbs, possessive constructions, or descriptive clauses
+  - acronyms, shorthands, or initialisms
   - generic war terms
   - generic human category nouns, individual person names, or honorifics
   - roman numerals, ordinal numbers, quantities, counts, measurements, or numeric expressions
