@@ -9,7 +9,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "Parade of the Los Aguiluchos column towards the front of Aragon. Parade of the Republican fighters column Los Aguiluchos marching towards the front of Aragon. Barcelona." -llm "Qwen/Qwen3.6-27B" -v
+# python gt_kws_llm.py -desc "Terrain covered by the 35th Division in the First World War in the Battle of the Argonne. The lower part of the picture is the German side of Vaquois Hill, a German stronghold for three years, the futile attempts to storm costing the French over 30,000 lives during that time. The 70th Infantry Brigade, following an intensive all-night barrage, stormed and reduced the Hill by frontal assault the morning of September 26, 1918, continuing on to Cheppy and Charpentry the same day. The farthest advance of the Division was Exermont, just above and beyond the top of the picture." -llm "Qwen/Qwen3.6-27B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -52,7 +52,7 @@ STOPWORDS.update(geographic_references)
 PROMPT_TEMPLATE = """
 Extract no more than {k} prominent keywords.
 When caption contains meaningful descriptors, prioritize multiword expressions that function as a single semantic unit over isolated single words.
-When caption is short or lacks sufficient information, returning fewer keywords or even an empty list [] is always better than returning one excluded term.
+When caption lacks sufficient information, returning fewer keywords or even an empty list [] is always better than returning excluded terms.
 
 STRINGENTLY exclude keywords containing:
   - typographical error, misprints, or irregular orthography
