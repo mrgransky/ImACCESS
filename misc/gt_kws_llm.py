@@ -9,7 +9,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "Parade of the Los Aguiluchos column towards the front of Aragon. Parade of the Republican fighters column Los Aguiluchos marching towards the front of Aragon. Barcelona." -llm "Qwen/Qwen3.6-27B" -v
+# python gt_kws_llm.py -desc "3d Cav moving up Pa ave to begin evacuation of Camp Glassford" -llm "Qwen/Qwen3.6-27B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -56,15 +56,15 @@ If the caption lacks sufficient information, returning fewer keywords or even an
 
 STRINGENTLY exclude keywords containing:
   - typographical error, misprints, or irregular orthography
+  - acronyms, shorthands, initialisms, phrasal verbs, possessive constructions, or descriptive clauses
   - generic war terms
+  - generic human category nouns, individual person names, or honorifics
   - roman numerals, ordinal numbers, quantities, counts, measurements, or numeric expressions
   - equipment identifiers, serial numbers, brands, or models
   - dates, times, years, decades, or any temporal references
   - locations, neighborhoods, places, buildings, or structures
-  - generic human category nouns, individual person names, or honorifics
   - family relationship terms
   - geographical names, nationalities, ethnicities, or religions
-  - acronyms, shorthands, initialisms, phrasal verbs, possessive constructions, or descriptive clauses
   - underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
 
 Color handling:
