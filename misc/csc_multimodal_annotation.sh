@@ -98,7 +98,7 @@ python -u gt_kws_multimodal.py \
 	--max_keywords 3 \
 	--batch_size $GENERAL_BATCH_SIZE \
 	--verbose \
-	--num_clusters 10000 \
+	--num_clusters 8000 \
 	# --llm_use_quantization \
 	# --vlm_use_quantization \
 
