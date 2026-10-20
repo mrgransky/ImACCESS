@@ -35,17 +35,18 @@ Response must be a Python list of double-quoted strings containing keywords deri
 Prioritize multi-word noun phrases when possible.
 
 Constraints:
+  - Avoid Text or OCR extraction.
   - Refrain from using underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
-  - Exclude generic war terms ('World War I', 'Vietnam War', 'post war era', 'Post-war','war damage', 'aftermath of World War II', 'War', 'battle').
-  - Exclude human human category nouns and classifications ('person', 'people', 'men', 'women', 'children', 'boy', 'girl').
-  - Exclude geographical locations (continents, countries, states, provinces, cities, towns, islands, regions, or roads).
+  - Exclude generic war terms.
+  - Avoid typographical error, misprints, or irregular orthography.
+  - Exclude human human category nouns and classifications.
+  - Exclude geographical locations.
   - Exclude dates, times, years, decades, or any temporal references.
-  - Exclude generic keywords for image characteristics ('photograph', 'image', 'black and white photograph', 'stereoscopy', 'stereograph').
-  - Refrain from using common environmental details (sky, lighting, ground texture).
-  - Refrain from using counting expressions ('a trio of men', 'various individuals', or 'a cluster of youths').
-  - Avoid vague and generic descriptor or container nouns which lack detail ('equipment', 'instrument', 'system', 'scene', 'group', 'crowd', or 'event').
-  - Avoid purely demographic descriptors without contextual role.
-  - Text/OCR extraction from the image is strictly forbidden."""
+  - Exclude generic keywords for image characteristics.
+  - Refrain from using common environmental details.
+  - Refrain from using counting expressions.
+  - Avoid vague and generic descriptor or container nouns which lack detail.
+  - Avoid purely demographic descriptors without contextual role."""
 
 def _load_vlm_(
 	model_id: str,

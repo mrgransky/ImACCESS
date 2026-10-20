@@ -861,10 +861,7 @@ def get_clustering_artifacts(
 	if X is None:
 
 		if verbose:
-			print(
-				f"\n[EMBEDDING] Computing {n_labels} "
-				f"unique label embeddings..."
-			)
+			print(f"\n[EMBEDDING] {n_labels} unique labels...")
 
 		t0 = time.time()
 
@@ -4680,7 +4677,7 @@ def get_canonical_labels(
 	if verbose and missing_labels:
 		print(f"[{label_source.upper()}]")
 		print(f"  ├─ {len(missing_labels)} labels removed (not in canonical map)")
-		print(f"  └─ {list(missing_labels[:10])}")
+		print(f"  └─ {list(missing_labels)[:10]}")
 		print("-"*100)
 
 	sys.exit()
