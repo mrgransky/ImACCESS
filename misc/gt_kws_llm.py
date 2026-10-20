@@ -50,9 +50,9 @@ STOPWORDS.update(geographic_references)
 # Keywords must be concrete, semantically atomic, and reusable across archives.
 
 PROMPT_TEMPLATE = """
-Extract no more than {k} prominent keywords from the caption below.
-When the caption contains meaningful descriptors, prioritize multiword expressions that function as a single semantic unit over isolated single words.
-Returning fewer keywords — or an empty list [] — is always better than returning one excluded term if the caption is short or lacks sufficient information.
+Extract no more than {k} prominent keywords.
+When caption contains meaningful descriptors, prioritize multiword expressions that function as a single semantic unit over isolated single words.
+When caption is short or lacks sufficient information, returning fewer keywords or even an empty list [] is always better than returning one excluded term.
 
 STRINGENTLY exclude keywords containing:
   - typographical error, misprints, or irregular orthography
