@@ -1073,13 +1073,6 @@ def _post_process_(
 	# 	r'amendment|century|term|congress'
 	# )
 
-	# # Matches generic two-word ordinals:
-	# # "1st Div", "109 Infantry", "First Division", "22nd Amendment", "20th Century", "Third Term"
-	# GENERIC_ECHELON_RE = re.compile(
-	# 	rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})$',
-	# 	re.IGNORECASE
-	# )
-
 	_ORDINAL_PATTERN = (
 		r'(?:\d{1,4}(?:st|nd|rd|th)?|'
 		r'first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|'
@@ -1094,7 +1087,7 @@ def _post_process_(
 		# 1. Ground echelons: "79th Division", "1st Div", "53rd Infantry", "7th Artillery"
 		r'army|corps|div\.?|division|inf\.?|infantry|reg\.?|regt\.?|regiment|'
 		r'bn\.?|battalion|brig\.?|brigade|arty\.?|artillery|'
-		# 2. NEW: Air echelons with or without mission roles:
+		# 2. Air echelons with or without mission roles:
 		# "56th Fighter Group", "20th Pursuit Group", "389th Bomb Group", "94th Fighter Squadron", "4th Wing"
 		rf'(?:{_AIR_ROLES})?(?:group|squadron|sqdn\.?|wing)|'
 		# 3. Abstract political, legal & temporal concepts
@@ -1102,6 +1095,7 @@ def _post_process_(
 	)
 
 	# Matches generic echelons with digits, ordinals, OR words:
+	# "1st Div", "109 Infantry", "First Division", "22nd Amendment", "20th Century", "Third Term"
 	GENERIC_ECHELON_RE = re.compile(
 		rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})$',
 		re.IGNORECASE
