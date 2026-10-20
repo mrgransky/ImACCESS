@@ -513,20 +513,31 @@ def get_dframe(query: str, docs: List[Dict] = None, verbose: bool = False) -> Op
 
 		# Term blacklists
 		title_blacklisted_terms = [
-				"wildflowers", "-sc-", "yard sub-surface survey", "blueprint", "notes", "page",
-				"exhibit", "ad:", "sheets", "report", "book", "map", "memorandum", "portrait of",
-				"poster", "scroll", "drawing", "sketch of", "layout", "postcard", "diary",
-				"table:", "sketch", "letter", "telegrams", "art treasures", "spanish bayonet",
-				"chart", "inboard profile", "reasons why", "we can do it!", "traffic statistics:",
-				"data card kit", "painting", "clipping from", "photomechanical print",
-				"roman surveying", "copy of german secret order", "prospectus", "guest log of"
+			"wildflowers", "-sc-", "yard sub-surface survey", "blueprint", "notes", "page",
+			"exhibit", "ad:", "sheets", "report", "book", "map", "memorandum", "portrait of",
+			"poster", "scroll", "drawing", "sketch of", "layout", "postcard", "diary",
+			"table:", "sketch", "letter", "telegrams", "art treasures", "spanish bayonet",
+			"chart", "inboard profile", "reasons why", "we can do it!", "traffic statistics:",
+			"data card kit", "painting", "clipping from", "photomechanical print",
+			"roman surveying", "copy of german secret order", "prospectus", "guest log of"
 		]
 
 		desc_blacklisted_terms = [
-				"certificate", "bookmark", "literary digest", "drawing", "sketch of", "newspaper",
-				"sketch", "report", "attachment", "illustrated family record",
-				"it is a plan that is labeled", "lithographic print", "advertisement for",
-				"photographer: american red cross activities"
+			"certificate", 
+			"bookmark", 
+			"literary digest", 
+			"drawing", 
+			"sketch of", 
+			"newspaper",
+			"sketch", 
+			"report", 
+			"attachment", 
+			"illustrated family record",
+			"it is a plan that is labeled", 
+			"lithographic print", 
+			"advertisement for",
+			"photographer: american red cross activities",
+			"this file unit",
 		]
 
 		for idx, doc in enumerate(docs):
@@ -813,8 +824,6 @@ def main():
 		VAL_SPLIT_PCT=args.val_split_pct,
 		fname=os.path.join(OUTPUT_DIRECTORY, f'simple_random_split_stratified_single_label_distribution_train_val_{args.val_split_pct}_pct.png'),
 	)
-
-
 
 	if args.img_mean_std and os.listdir(IMAGE_DIRECTORY):
 		try:
