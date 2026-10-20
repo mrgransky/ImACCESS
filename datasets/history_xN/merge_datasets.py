@@ -1,10 +1,3 @@
-# import os
-# import sys
-# current_dir = os.path.dirname(os.path.abspath(__file__))
-# parent_dir = os.path.dirname(current_dir)
-# project_dir = os.path.dirname(parent_dir)
-# sys.path.insert(0, project_dir)
-
 import sys
 import os
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
@@ -18,7 +11,6 @@ sys.path.insert(0, MISC_DIR)
 
 for p in sys.path:
 	print(p)
-
 
 from utils import *
 import visualize as viz
@@ -76,8 +68,10 @@ def merge_datasets(
 	dataset_name = f"history_x{len(datasets)}".upper()
 	HISTORY_XN_DIRECTORY = os.path.join(ddir, dataset_name)
 	OUTPUT_DIRECTORY = os.path.join(HISTORY_XN_DIRECTORY, "outputs")
+	VIZUALIZATION_DIRECTORY = os.path.join(OUTPUT_DIRECTORY, "viz")
 	os.makedirs(HISTORY_XN_DIRECTORY, exist_ok=True)
 	os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
+	os.makedirs(VIZUALIZATION_DIRECTORY, exist_ok=True)
 
 	# 1. Load and merge single-label dataframes
 	if verbose:
@@ -133,14 +127,14 @@ def merge_datasets(
 		print("\nGenerating label distribution plots...")
 	viz.plot_label_distribution(
 		df=merged_single_label_df,
-		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_{num_unique_labels}_labels_dist.png"),
+		fpth=os.path.join(VIZUALIZATION_DIRECTORY, f"{dataset_name}_single_label_{num_unique_labels}_labels_dist.png"),
 		FIGURE_SIZE=(15, 8),
 		DPI=300,
 		label_column='label',
 	)
 	viz.plot_label_distribution_pie_chart(
 		df=merged_single_label_df,
-		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_pie_chart_{merged_single_label_df.shape[0]}_samples.png"),
+		fpth=os.path.join(VIZUALIZATION_DIRECTORY, f"{dataset_name}_single_label_pie_chart_{merged_single_label_df.shape[0]}_samples.png"),
 		figure_size=(7, 11),
 		DPI=300,
 	)
@@ -148,7 +142,7 @@ def merge_datasets(
 		merged_df=merged_single_label_df,
 		FIGURE_SIZE=(15, 8),
 		DPI=300,
-		fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_grouped_bar_chart_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png")
+		fname=os.path.join(VIZUALIZATION_DIRECTORY, f"{dataset_name}_grouped_bar_chart_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png")
 	)
 
 	single_label_train_df, single_label_val_df = get_single_label_stratified_split(
@@ -169,7 +163,7 @@ def merge_datasets(
 		val_df=single_label_val_df,
 		dataset_name=dataset_name,
 		VAL_SPLIT_PCT=val_split_pct,
-		fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_train_val_label_dist_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png"),
+		fname=os.path.join(VIZUALIZATION_DIRECTORY, f"{dataset_name}_train_val_label_dist_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png"),
 		FIGURE_SIZE=(15, 8),
 		DPI=250,
 	)
@@ -177,13 +171,13 @@ def merge_datasets(
 	viz.plot_year_distribution(
 		df=merged_single_label_df,
 		dname=dataset_name,
-		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_year_dist_{merged_single_label_df.shape[0]}_samples.png"),
+		fpth=os.path.join(VIZUALIZATION_DIRECTORY, f"{dataset_name}_year_dist_{merged_single_label_df.shape[0]}_samples.png"),
 		BINs=bins,
 	)
 
 	viz.plot_long_tailed_distribution(
 		df=merged_single_label_df,
-		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_long_tailed_dist_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png"),
+		fpth=os.path.join(VIZUALIZATION_DIRECTORY, f"{dataset_name}_long_tailed_dist_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png"),
 		head_threshold=head_threshold,
 		tail_threshold=tail_threshold,
 	)
@@ -192,7 +186,7 @@ def merge_datasets(
 		metadata_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'),
 		metadata_train_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'),
 		metadata_val_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'),
-		save_path=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_head_torso_tail_samples_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png"),
+		save_path=os.path.join(VIZUALIZATION_DIRECTORY, f"{dataset_name}_head_torso_tail_samples_{merged_single_label_df.shape[0]}_samples_{num_unique_labels}_labels.png"),
 		head_threshold=head_threshold,
 		tail_threshold=tail_threshold,
 	)
