@@ -239,7 +239,7 @@ def merge_datasets(
 	# 2.2 Add enriched_document_description column to merged_multi_label_df
 	merged_multi_label_df = get_enriched_description(
 		df=merged_multi_label_df,
-		eng_confidence_th=1e-2,
+		# eng_confidence_th=1e-2,
 		verbose=verbose
 	)
 
