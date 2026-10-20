@@ -52,7 +52,7 @@ STOPWORDS.update(geographic_references)
 PROMPT_TEMPLATE = """
 Extract no more than {k} prominent keywords.
 When caption contains meaningful descriptors, prioritize multiword expressions that function as a single semantic unit over isolated single words.
-When caption lacks sufficient information, returning fewer keywords or even an empty list [] is always better than returning excluded terms.
+When caption lacks sufficient information, returning fewer keywords or even an empty list [] is better than excluded terms.
 
 STRINGENTLY exclude keywords containing:
   - typographical error, misprints, or irregular orthography
