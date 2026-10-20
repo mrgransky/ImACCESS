@@ -228,6 +228,7 @@ def is_english(
 
 	if verbose:
 		print(f"\n{text}")
+		print(f"Found {len(words)} words:\n{words}")
 
 	# PHASE 0: Domain-specific English vocabulary check
 	# Military/technical terms that are predominantly English in
@@ -287,7 +288,7 @@ def is_english(
 
 	# PHASE 1: Stopword DENSITY check
 	stopword_count = sum(1 for w in words if w in STOPWORDS)
-	stopword_ratio = stopword_count / len(words)
+	stopword_ratio = stopword_count / len(words) if len(words) > 0 else 0.0
 
 	if stopword_ratio >= stopword_ratio_threshold:
 		if verbose:
