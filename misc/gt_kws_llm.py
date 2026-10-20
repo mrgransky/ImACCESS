@@ -59,7 +59,7 @@ STRINGENTLY exclude keywords containing:
   - acronyms, shorthands, or initialisms
   - generic war terms
   - generic human category nouns, individual person names, or honorifics
-  - roman numerals, ordinal numbers, quantities, counts, measurements, or numeric expressions
+  - roman numerals, ordinal numbers, quantities, counts, or measurements
   - equipment identifiers, serial numbers, brands, or models
   - dates, times, years, decades, or any temporal references
   - locations, neighborhoods, places, buildings, or structures
