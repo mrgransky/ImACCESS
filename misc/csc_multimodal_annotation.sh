@@ -13,6 +13,7 @@
 #SBATCH --gres=gpu:gh200:1
 #SBATCH --time=00-03:00:00
 #SBATCH --array=0
+#SBATCH --begin=06:00:00
 
 set -euo pipefail
 

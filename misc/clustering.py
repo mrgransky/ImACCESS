@@ -679,9 +679,16 @@ def _caching(
 	# Full cache key
 	# The prompt changes every embedding, so it is part of the key. It is added ONLY when set:
 	# with encode_prompt=None the key is byte-for-byte what it was, so existing caches stay valid.
-	key_parts = [model_id, str(dtype), linkage_method, distance_metric]
+	key_parts = [
+		model_id, 
+		str(dtype), 
+		linkage_method, 
+		distance_metric
+	]
+
 	if encode_prompt:
 		key_parts.append("PROMPT:" + encode_prompt)
+
 	key_parts.append(label_blob)
 	cache_blob = "\x1f".join(key_parts)
 	
@@ -938,10 +945,10 @@ def get_clustering_artifacts(
 			if verbose:
 				print(f"[CACHE SAVE] linkage {z_path} ({Z.nbytes / 1e6:.2f} MB)")
 
-	viz.plot_dimensional_reduction(
-		embedding=X,
-		clusters_fname=clusters_fname,
-	)
+	# viz.plot_dimensional_reduction(
+	# 	embedding=X,
+	# 	clusters_fname=clusters_fname,
+	# )
 
 	return X, Z
 
