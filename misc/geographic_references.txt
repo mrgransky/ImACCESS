@@ -381,6 +381,7 @@ Cleveland
 Chicago
 Columbia
 Columbus
+Coronado
 CA.
 CZ.
 C.Z.

@@ -49,11 +49,10 @@ STOPWORDS.update(geographic_references)
 
 PROMPT_TEMPLATE = """
 Extract no more than {k} prominent keywords from the caption below.
-Prominence means concrete objects, activities, or scenes explicitly described in the caption, not how often a phrase repeats.
 Keywords must be concrete, semantically atomic, and reusable across archives.
-When the caption contains meaningful descriptors, prefer multiword expressions of two to three words that function as a single semantic unit over isolated single words.
+When the caption contains meaningful descriptors, prioritize multiword expressions that function as a single semantic unit over isolated single words.
 Return fewer keywords if the caption is short or lacks sufficient information.
-Returning fewer keywords — or an empty list [] — is always better than returning one excluded term.
+Fewer keywords — or an empty list [] — is always better than returning one excluded term.
 
 STRINGENTLY exclude keywords containing:
   - typographical error, misprints, or irregular orthography

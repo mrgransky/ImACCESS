@@ -408,6 +408,14 @@ def save_spacy_cache(cache_path: str = "spacy_ner_cache.json") -> None:
 		except Exception as e:
 				print(f"[CACHE] Warning: Failed to save spaCy cache to {cache_path}: {e}")
 
+def get_normalized(texts: set) -> set:
+	"""Precompute ONCE when the module loads."""
+	return {
+		re.sub(r"[^A-Za-z0-9]", "", text).upper()
+		for text in texts
+		if text
+	}
+
 def _post_process_(
 	labels_list: List[List[str]],
 	col: str,
@@ -436,14 +444,6 @@ def _post_process_(
 		if verbose:
 			print("\tEmpty input, returning as-is")
 		return labels_list
-
-	def _normalize_(allowed_acronyms: set) -> set:
-		"""Precompute ONCE when the module loads."""
-		return {
-			re.sub(r"[^A-Za-z0-9]", "", acr).upper()
-			for acr in allowed_acronyms
-			if acr
-		}
 
 	# CONTEXT-AWARE FILTERING
 	PROTECTED_ABBREVIATIONS = {
@@ -930,7 +930,7 @@ def _post_process_(
 		'christie',
 	}
 
-	ALLOWED_ACRONYMS = _normalize_(ALLOWED_ACRONYMS)
+	ALLOWED_ACRONYMS = get_normalized(texts=ALLOWED_ACRONYMS)
 
 	# Common archival/military/aviation compound nouns 
 	# that VLMs frequently hyphenate or space out
