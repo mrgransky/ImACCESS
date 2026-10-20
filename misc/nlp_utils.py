@@ -588,10 +588,16 @@ def _post_process_(
 		"drab", "slate", "ochre", "umber", "maroon",
 	}
 
-	# AMBIGUOUS COLORS (Only count as colors when mixed with other color words)
-	# This prevents filtering "sea plane", "olive tree", "neutral zone", "sky background"
+	# AMBIGUOUS COLORS 
+	# (Only count as colors when mixed with other color words)
+	# prevents filtering "sea plane", "olive tree", "neutral zone", "sky background"
 	AMBIGUOUS_COLORS = {
-		"olive", "neutral", "sea", "sky", "ocean", "gull"
+		"olive", 
+		"neutral", 
+		"sea", 
+		"sky", 
+		"ocean", 
+		"gull",
 	}
 
 	# MODIFIERS (Shades and Finishes)
@@ -926,9 +932,9 @@ def _post_process_(
 
 	ALLOWED_ACRONYMS = _normalize_(ALLOWED_ACRONYMS)
 
+	# Common archival/military/aviation compound nouns 
+	# that VLMs frequently hyphenate or space out
 
-
-	# Common archival/military/aviation compound nouns that VLMs frequently hyphenate or space out
 	CANONICAL_COMPOUNDS = {
 		# -off compounds
 		r'\btake[- ]off\b': 'takeoff',
@@ -989,19 +995,34 @@ def _post_process_(
 		r'spring|summer|autumn|fall|winter)'
 	)
 
+	# Expanded historical year regex: covers years from 1400 to 2099
+	_YEAR_4DIGIT = r'(?:1[4-9]|20)\d{2}'
+
+	# Chronological catalog subdivisions / museum subject facets appended with years:
+	# Matches: "Battles 1691", "Wars 1702", "Siege 1689", "Costume 1750", "Fashion 1910", "Exhibition 1900"
+	_CATALOG_FACET_WORDS = (
+		# 1. Military events / conflicts
+		r'battles?|wars?|sieges?|campaigns?|conflicts?|treaties|rebellions?|revolutions?|expeditions?|'
+		# 2. Museum, clothing & cultural subject headings
+		r'costumes?|fashions?|clothing|dress(?:es)?|portraits?|paintings?|prints?|engravings?|drawings?|maps?|'
+		# 3. Civil & historical events
+		r'exhibitions?|expositions?|fairs?|olympics?|elections?'
+	)
+
 	TEMPORAL_NOISE_RE = re.compile(
 		rf'(?:'
 		# 1. Dates with a 4-digit year: "November 1962", "12 August 1945", "circa 1944"
-		rf'(?:^|\b)(?:c\.|circa|early|mid|late)?\s*(?:\d{{1,2}}\.?\s+)?{_MONTHS_SEASONS}\.?\s+(?:\d{{1,2}},?\s+)?(?:18|19|20)\d{{2}}\b|'
-		rf'\b(?:18|19|20)\d{{2}}\s+{_MONTHS_SEASONS}\b|'
-		rf'^\b(?:18|19|20)\d{{2}}(?:s|\'s)?\b|'
+		rf'(?:^|\b)(?:c\.|circa|early|mid|late)?\s*(?:\d{{1,2}}\.?\s+)?{_MONTHS_SEASONS}\.?\s+(?:\d{{1,2}},?\s+)?{_YEAR_4DIGIT}\b|'
+		rf'\b{_YEAR_4DIGIT}\s+{_MONTHS_SEASONS}\b|'
+		rf'^\b{_YEAR_4DIGIT}(?:s|\'s)?\b|'
 		# 2. Calendar dates WITHOUT a year: "1 October", "1. Mai", "October 1st", "4th of July"
 		rf'^\d{{1,2}}\.?(?:st|nd|rd|th)?\s+(?:of\s+)?{_MONTHS_SEASONS}\.?$|'
-		rf'^{_MONTHS_SEASONS}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?$'
+		rf'^{_MONTHS_SEASONS}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?$|'
+		# 3. Chronological catalog facets: "Battles 1691", "Siege 1689", "Costume 1750", "Exhibition 1900"
+		rf'^(?:{_CATALOG_FACET_WORDS})\s+{_YEAR_4DIGIT}(?:[-–]\d{{2,4}})?$'
 		rf')',
 		re.IGNORECASE
 	)
-
 
 	# Metadata, Dimensions, and Time Units
 	# Matches: "No. 1234", "Photo 12", "50 feet", "12 mm", "14 months", "1 day", "14 years"
@@ -1043,7 +1064,7 @@ def _post_process_(
 		r'eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|'
 		r'twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth)'
 	)
-
+	
 	_ECHELON_PATTERN = (
 		# Military echelons
 		r'army|corps|div\.?|division|inf\.?|infantry|reg\.?|regt\.?|regiment|'
@@ -1282,7 +1303,6 @@ def _post_process_(
 		
 		# Has specific words → Keep
 		return False
-
 
 	def _extract_geopolitical_entities(
 		text: str, 
