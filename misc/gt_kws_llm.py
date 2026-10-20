@@ -9,7 +9,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "THE “Motor Vehicles - Motor Trucks - Parts - Miscellaneous - Making trucks for war use. Drawbar with new Web in plant of Troy Wagon Works Co., Troy, Ohio. Photographer: Troy Wagon Works Co." -llm "Qwen/Qwen3.8-27B" -v
+# python gt_kws_llm.py -desc "Parade of the Los Aguiluchos column towards the front of Aragon. Parade of the Republican fighters column Los Aguiluchos marching towards the front of Aragon. Barcelona." -llm "Qwen/Qwen3.6-27B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -51,8 +51,7 @@ PROMPT_TEMPLATE = """
 Extract no more than {k} prominent keywords from the caption below.
 Keywords must be concrete, semantically atomic, and reusable across archives.
 When the caption contains meaningful descriptors, prioritize multiword expressions that function as a single semantic unit over isolated single words.
-Return fewer keywords if the caption is short or lacks sufficient information.
-Fewer keywords — or an empty list [] — is always better than returning one excluded term.
+Returning fewer keywords — or an empty list [] — is always better than returning one excluded term if the caption is short or lacks sufficient information.
 
 STRINGENTLY exclude keywords containing:
   - typographical error, misprints, or irregular orthography

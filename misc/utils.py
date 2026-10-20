@@ -218,7 +218,7 @@ def get_model_kwargs(verbose: bool = True):
 		print(f"\n[MODEL KWARGS]")
 		print(f"  ├─ CUDA     {torch.version.cuda} compute_cap : {torch.cuda.get_device_capability()}")
 		print(f"  ├─ PyTorch  {torch.__version__}")
-		print(f"  └─ {attention} {dtype}")
+		print(f"  └─ {attention} | {dtype}")
 		print("-"*50)
 
 	return attention, dtype
