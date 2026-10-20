@@ -3173,7 +3173,9 @@ def _gate_virtual_by_similarity(
 	if virtual_hypernym is None or min_sim_ratio is None:
 		return virtual_hypernym, similarities, ""
 
+	# highest similarity score among the real cluster members
 	best_real = float(similarities[:cluster_size].max())
+
 	sim = float(similarities[cluster_size])
 	ratio = sim / max(best_real, 1e-12)
 
@@ -3195,9 +3197,11 @@ def _gate_virtual_by_similarity(
 
 	tag = (
 		f"[REJECTED VIRTUAL] "
-		f"{repr(virtual_hypernym):<30}"
-		f"sim ratio {ratio:.5f} < {min_sim_ratio}"
-		f" or abs sim: {sim:.5f} < {abs_floor}"
+		f"{repr(virtual_hypernym):<25}"
+		f"{reason} "
+		f"(virtual={sim:.5f}, best_real={best_real:.5f})"
+		# f"sim ratio {ratio:.5f} < {min_sim_ratio}"
+		# f" or abs sim: {sim:.5f} < {abs_floor}"
 	)
 
 	return None, similarities[:cluster_size], tag
