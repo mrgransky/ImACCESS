@@ -47,9 +47,10 @@ with open('geographic_references.txt', 'r') as file_:
 	geographic_references = set([line.strip().lower() for line in file_ if line.strip()])
 STOPWORDS.update(geographic_references)
 
+# Keywords must be concrete, semantically atomic, and reusable across archives.
+
 PROMPT_TEMPLATE = """
 Extract no more than {k} prominent keywords from the caption below.
-Keywords must be concrete, semantically atomic, and reusable across archives.
 When the caption contains meaningful descriptors, prioritize multiword expressions that function as a single semantic unit over isolated single words.
 Returning fewer keywords — or an empty list [] — is always better than returning one excluded term if the caption is short or lacks sufficient information.
 
