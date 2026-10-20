@@ -64,7 +64,7 @@ STRINGENTLY exclude keywords containing:
   - generic human category nouns, individual person names, or honorifics
   - family relationship terms
   - geographical names, nationalities, ethnicities, or religions
-  - acronyms, initialisms, phrasal verbs, possessive constructions, or descriptive clauses
+  - acronyms, shorthands, initialisms, phrasal verbs, possessive constructions, or descriptive clauses
   - underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
 
 Color handling:
