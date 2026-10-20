@@ -3159,7 +3159,7 @@ def _gate_virtual_by_similarity(
 	similarities: np.ndarray,
 	cluster_size: int,
 	min_sim_ratio: Optional[float],
-	abs_floor: float,
+	abs_floor: float, # min acceptable virtual-label similarity
 	vh_info: Dict,
 	virtual_rejections: Counter,
 ) -> Tuple[Optional[str], np.ndarray, str]:
@@ -3173,10 +3173,12 @@ def _gate_virtual_by_similarity(
 	if virtual_hypernym is None or min_sim_ratio is None:
 		return virtual_hypernym, similarities, ""
 
-	# highest similarity score among the real cluster members
+	# highest centroid similarity among the original labels
 	best_real = float(similarities[:cluster_size].max())
 
+	# similarity between the virtual label and the cluster centroid
 	sim = float(similarities[cluster_size])
+
 	ratio = sim / max(best_real, 1e-12)
 
 	if ratio >= min_sim_ratio and sim >= abs_floor:

@@ -1057,28 +1057,57 @@ def _post_process_(
 		re.IGNORECASE
 	)
 
+	# _ORDINAL_PATTERN = (
+	# 	# Added '?' after (?:st|nd|rd|th) to catch bare numbers like "109 Infantry" or "27 Division"
+	# 	r'(?:\d{1,4}(?:st|nd|rd|th)?|'
+	# 	r'first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|'
+	# 	r'eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|'
+	# 	r'twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth)'
+	# )
+	
+	# _ECHELON_PATTERN = (
+	# 	# Military echelons
+	# 	r'army|corps|div\.?|division|inf\.?|infantry|reg\.?|regt\.?|regiment|'
+	# 	r'bn\.?|battalion|brig\.?|brigade|arty\.?|artillery|'
+	# 	# Abstract political, legal & temporal ordinal concepts
+	# 	r'amendment|century|term|congress'
+	# )
+
+	# # Matches generic two-word ordinals:
+	# # "1st Div", "109 Infantry", "First Division", "22nd Amendment", "20th Century", "Third Term"
+	# GENERIC_ECHELON_RE = re.compile(
+	# 	rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})$',
+	# 	re.IGNORECASE
+	# )
+
 	_ORDINAL_PATTERN = (
-		# Added '?' after (?:st|nd|rd|th) to catch bare numbers like "109 Infantry" or "27 Division"
 		r'(?:\d{1,4}(?:st|nd|rd|th)?|'
 		r'first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|'
 		r'eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|'
 		r'twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth)'
 	)
-	
+
+	# Modifiers that precede aviation echelons (e.g. "Fighter Group", "Bomb Squadron")
+	_AIR_ROLES = r'(?:fighter|pursuit|bomb|bombardment|reconnaissance|recon|observation|transport|troop\s+carrier)\s+'
+
 	_ECHELON_PATTERN = (
-		# Military echelons
+		# 1. Ground echelons: "79th Division", "1st Div", "53rd Infantry", "7th Artillery"
 		r'army|corps|div\.?|division|inf\.?|infantry|reg\.?|regt\.?|regiment|'
 		r'bn\.?|battalion|brig\.?|brigade|arty\.?|artillery|'
-		# Abstract political, legal & temporal ordinal concepts
+		# 2. NEW: Air echelons with or without mission roles:
+		# "56th Fighter Group", "20th Pursuit Group", "389th Bomb Group", "94th Fighter Squadron", "4th Wing"
+		rf'(?:{_AIR_ROLES})?(?:group|squadron|sqdn\.?|wing)|'
+		# 3. Abstract political, legal & temporal concepts
 		r'amendment|century|term|congress'
 	)
 
-	# Matches generic two-word ordinals:
-	# "1st Div", "109 Infantry", "First Division", "22nd Amendment", "20th Century", "Third Term"
+	# Matches generic echelons with digits, ordinals, OR words:
 	GENERIC_ECHELON_RE = re.compile(
 		rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})$',
 		re.IGNORECASE
 	)
+
+
 
 	def should_keep_numeric_label(label: str, max_digit_ratio: float = 0.45) -> bool:
 		# If no digits exist, it's not a numeric label; keep it
