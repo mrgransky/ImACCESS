@@ -1027,7 +1027,7 @@ def _post_process_(
 	# Metadata, Dimensions, and Time Units
 	# Matches: "No. 1234", "Photo 12", "50 feet", "12 mm", "14 months", "1 day", "14 years"
 	_MEASUREMENT_AND_TIME_UNITS = (
-		r'(?:feet|foot|ft|inch|inches|in|meters?|m|mm|cm|miles?|km|'
+		r'(?:feet|foot|ft|inch|inches|in|long|meters?|m|mm|cm|miles?|km|'
 		r'lbs?|pounds?|kg|tons?|'
 		# Time units:
 		r'seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?|yrs?|decades?)'

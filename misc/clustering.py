@@ -4334,7 +4334,7 @@ def cluster(
 	merge_close_clusters_threshold: Optional[float] = None,
 	merge_max_size: int = 30,
 	min_cluster_size: int = 2,
-	low_cohesion_threshold=0.60,
+	low_cohesion_threshold=0.59,
 	poor_canonical_threshold=0.60,
 	merge_singletons: bool = True,
 	use_cache: bool = True,
@@ -4680,7 +4680,9 @@ def get_canonical_labels(
 	if verbose and missing_labels:
 		print(f"[{label_source.upper()}]")
 		print(f"  ├─ {len(missing_labels)} labels removed (not in canonical map)")
-		print(f"  └─ {list(missing_labels)}")
+		print(f"  └─ {list(missing_labels[:10])}")
 		print("-"*100)
+
+	sys.exit()
 
 	return canonical_labels, canonical_map
