@@ -32,8 +32,7 @@ from itertools import combinations # For pairwise label combinations
 from torch.utils.data import DataLoader, Dataset
 
 from sentence_transformers import SentenceTransformer
-import pacmap
-import phate
+
 from typing import Tuple, Union, List, Dict, Any, Optional
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
@@ -41,6 +40,12 @@ use_umap = False
 try:
 	import umap
 	use_umap = True
+except ImportError:
+	pass
+
+try:
+	import pacmap
+	import phate
 except ImportError:
 	pass
 
