@@ -925,6 +925,7 @@ def get_vlm_based_labels_single(
 		use_cache=True,
 		eos_token_id=processor.tokenizer.eos_token_id,
 		pad_token_id=processor.tokenizer.pad_token_id,
+		do_sample=False, # Disables sampling for deterministic output
 	)
 	tt = time.time()
 	with torch.inference_mode(), torch.amp.autocast(
