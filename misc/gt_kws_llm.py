@@ -458,7 +458,7 @@ def parse_llm_response(
 	if verbose:
 		# print(f"\nRaw Caption:\n{caption}")
 		nl = '' if isinstance(ast.literal_eval(llm_response), list) else '\n'
-		print(f"{model_id} LLM RESPONSE {nl}{llm_response}\n")
+		print(f"\n{model_id} LLM RESPONSE {nl}{llm_response}\n")
 
 	# Step 1: Find the assistant's response
 	# Try multiple patterns for different model families
@@ -661,7 +661,7 @@ def parse_llm_response(
 	
 	# Step 4: Post-process keywords
 	if verbose:
-		print(f"\n[POST-PROCESSING] {keywords_list} (max allowed: {max_kws})")
+		print(f"\n[POST-PROCESSING] {keywords_list}")
 	
 	processed = []
 	seen = set()

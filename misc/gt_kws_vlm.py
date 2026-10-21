@@ -539,7 +539,7 @@ def parse_vlm_response(
 
 	if verbose:
 		nl = '' if isinstance(ast.literal_eval(raw_response), list) else '\n'
-		print(f"{model_id} VLM RESPONSE: {nl}{raw_response}\n")
+		print(f"\n{model_id} VLM RESPONSE: {nl}{raw_response}\n")
 
 	# ------------------------------------------------------------------
 	# Step 0: strip reasoning blocks so <think>...</think> content can
