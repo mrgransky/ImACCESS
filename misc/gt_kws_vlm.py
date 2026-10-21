@@ -54,6 +54,7 @@ Output ONLY a a Python list of double-quoted strings containing keywords derived
 def _load_vlm_(
 	model_id: str,
 	quantization_bits: Optional[int] = None,  # None => no quantization; 4 or 8 => quantize
+	inferece_overhead: float = 1.1,
 	force_multi_gpu: bool = False,
 	verbose: bool = False,
 ) -> Tuple[tfs.PreTrainedTokenizerBase, torch.nn.Module]:
@@ -266,13 +267,12 @@ def _load_vlm_(
 		# ========== PRE-FLIGHT VRAM VALIDATION ==========
 		# Account for overhead: model weights + activations + gradients + overhead
 		# Rule of thumb: need X.Xx model size for inference (2x for training)
-		INFERENCE_OVERHEAD_MULTIPLIER = 1.15
-		required_vram = adjusted_size * INFERENCE_OVERHEAD_MULTIPLIER
+		required_vram = adjusted_size * inferece_overhead
 		usable_vram = total_vram_available - (n_gpus * vram_buffer_gb)
 
 		if verbose:
 			print(f"\n[VRAM CHECK] Pre-flight validation:")
-			print(f"\t• Estimated Model size (fp16): {adjusted_size:.2f} GB (with {INFERENCE_OVERHEAD_MULTIPLIER}x overhead): {required_vram:.2f} GB")
+			print(f"\t• Estimated Model size (fp16): {adjusted_size:.2f} GB (with {inferece_overhead}x overhead): {required_vram:.2f} GB")
 			print(f"\t• Available VRAM (total):      {total_vram_available:.2f} GB")
 			print(f"\t• Available VRAM (usable):     {usable_vram:.2f} GB ({n_gpus}x GPU(s), {vram_buffer_gb:.2f} GB buffer per GPU)")
 
@@ -292,7 +292,7 @@ def _load_vlm_(
 				print("\n1. ✅ ENABLE QUANTIZATION (Recommended):")
 				print("   quantization_bits=8")
 				quant8_size = estimated_size_gb * 0.5
-				quant8_required = quant8_size * INFERENCE_OVERHEAD_MULTIPLIER
+				quant8_required = quant8_size * inferece_overhead
 				quant8_fits = "✅ YES" if quant8_required < usable_vram else "❌ NO, try 4-bit"
 				print(f"   → Reduces size to ~{quant8_size:.1f} GB")
 				print(f"   → Required VRAM: ~{quant8_required:.1f} GB")
@@ -301,7 +301,7 @@ def _load_vlm_(
 				print("\n2. ⚠️  ENABLE 4-BIT QUANTIZATION (More aggressive):")
 				print("   quantization_bits=4")
 				quant4_size = estimated_size_gb * 0.25
-				quant4_required = quant4_size * INFERENCE_OVERHEAD_MULTIPLIER
+				quant4_required = quant4_size * inferece_overhead
 				print(f"   → Reduces size to ~{quant4_size:.1f} GB")
 				print(f"   → Required VRAM: ~{quant4_required:.1f} GB")
 				print(f"   → Will fit: ✅ YES")
@@ -310,7 +310,7 @@ def _load_vlm_(
 					print("\n1. ⚠️  TRY 4-BIT QUANTIZATION:")
 					print("   quantization_bits=4")
 					quant4_size = estimated_size_gb * 0.25
-					quant4_required = quant4_size * INFERENCE_OVERHEAD_MULTIPLIER
+					quant4_required = quant4_size * inferece_overhead
 					print(f"   → Reduces size to ~{quant4_size:.1f} GB")
 					print(f"   → Required VRAM: ~{quant4_required:.1f} GB")
 				
@@ -365,7 +365,13 @@ def _load_vlm_(
 				max_memory[i] = f"{max(1, gpu_vram[i] - buffer):.0f}GB"
 			
 			total_usable = sum(float(v.replace('GB', '')) for v in max_memory.values())
-			strategy_desc = f"{model_id} is too large ({adjusted_size:.2f} GB + {INFERENCE_OVERHEAD_MULTIPLIER:.1f}x overhead = {required_vram:.2f} GB) to fit in a single GPU ({single_gpu_capacity:.2f} GB) => Multi-GPU [Model Parallelism] ({n_gpus} Available GPUs, {total_usable:.0f}GB total)"
+			strategy_desc = (
+				f"{model_id} is too large ({adjusted_size:.2f} GB "
+				f"+ {inferece_overhead}x overhead = "
+				f"{required_vram:.2f} GB) to fit in a single GPU "
+				f"({single_gpu_capacity:.2f} GB) => Multi-GPU [Model Parallelism] "
+				f"({n_gpus} Available GPUs, {total_usable:.0f}GB total)"
+			)
 			
 			if verbose:
 				print(f"[INFO] Using multi-GPU strategy:")

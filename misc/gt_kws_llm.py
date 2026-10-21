@@ -78,6 +78,7 @@ Output ONLY a a Python list of double-quoted strings containing keywords derived
 def _load_llm_(
 	model_id: str,
 	quantization_bits: Optional[int] = None,
+	inferece_overhead: float = 1.1,
 	force_multi_gpu: bool = False,
 	verbose: bool = False,
 ):
@@ -300,13 +301,12 @@ def _load_llm_(
 			adjusted_size = estimated_size_gb * 0.25
 		
 		# ========== PRE-FLIGHT VRAM VALIDATION ==========
-		INFERENCE_OVERHEAD_MULTIPLIER = 1.15
-		required_vram = adjusted_size * INFERENCE_OVERHEAD_MULTIPLIER
+		required_vram = adjusted_size * inferece_overhead
 		usable_vram = total_vram_available - (n_gpus * vram_buffer_gb)
 
 		if verbose:
 			print(f"\n[VRAM CHECK] Pre-flight validation:")
-			print(f"\t• Estimated Model size (fp16) {adjusted_size:.2f} GB (with {INFERENCE_OVERHEAD_MULTIPLIER}x overhead): {required_vram:.2f} GB")
+			print(f"\t• Estimated Model size (fp16) {adjusted_size:.2f} GB (with {inferece_overhead}x overhead): {required_vram:.2f} GB")
 			print(f"\t• Available VRAM (total)      {total_vram_available:.2f} GB")
 			print(f"\t• Available VRAM (usable)     {usable_vram:.1f} GB ({n_gpus}x GPU(s), {vram_buffer_gb:.1f} GB buffer per GPU)")
 
