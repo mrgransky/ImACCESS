@@ -151,7 +151,7 @@ def _load_vlm_(
 	# ========== Processor loading ==========
 	processor = tfs.AutoProcessor.from_pretrained(
 		model_id,
-		use_fast=True,
+		# use_fast=True,
 		trust_remote_code=True,
 		cache_dir=cache_directory,
 		quantization_config=quantization_config,

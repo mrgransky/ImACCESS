@@ -174,7 +174,7 @@ def _load_llm_(
 	try:
 		tokenizer = tfs.AutoTokenizer.from_pretrained(
 			model_id, 
-			use_fast=True, 
+			# use_fast=True,
 			trust_remote_code=True,
 			token=hf_tk,
 			cache_dir=cache_directory,
@@ -204,7 +204,7 @@ def _load_llm_(
 			try:
 				tokenizer = tfs.AutoTokenizer.from_pretrained(
 					model_id, 
-					use_fast=False, 
+					# use_fast=False, 
 					trust_remote_code=True,
 					token=hf_tk,
 					cache_dir=cache_directory,
