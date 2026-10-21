@@ -1087,7 +1087,7 @@ def compute_clip_visual_grounding(
 	model, _ = clip.load(
 		name=architecture, 
 		device=device,
-		download_root=cache_directory.get(USER),
+		download_root=cache_directory,
 	)
 
 	preprocess = clip.get_preprocess(
