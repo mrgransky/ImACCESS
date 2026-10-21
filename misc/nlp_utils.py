@@ -6,7 +6,8 @@ import math
 import json
 import nltk
 import time
-from functools import lru_cache
+import pathlib
+
 # Load spaCy model at module level (after other imports)
 try:
 	import spacy
@@ -28,14 +29,42 @@ import warnings
 warnings.filterwarnings('ignore')
 
 MISC_DIR = os.path.dirname(os.path.abspath(__file__))
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-# os.environ["PYTHONHASHSEED"] = "0"
 
-cache_directory = {
-	"farid": "/home/farid/datasets/models",
-	"alijanif": "/scratch/project_2004072/models",
-	"ubuntu": "/media/volume/models",
-}
+# cache_directory = {
+# 	"farid": "/home/farid/datasets/models", # local laptop
+# 	"alijanif": "/scratch/project_2004072/models", # Roihu
+# 	"ubuntu": "/media/volume/models", # VIRTUAL linux
+# }
+
+def get_cache_directory() -> pathlib.Path:
+	"""Return the appropriate model/checkpoint cache directory."""
+	# # Explicit override, useful for testing or custom jobs
+	# env_cache_dir = os.environ.get("IMACCESS_CACHE_DIR")
+	# if env_cache_dir:
+	# 	return pathlib.Path(env_cache_dir)
+
+	user = os.environ.get("USER", "")
+	# Local laptop
+	if user == "farid":
+		return pathlib.Path("/home/farid/datasets/models")
+
+	# HPC systems: distinguish by project ID / hostname
+	hostname = os.environ.get("HOSTNAME", "")
+	if "lumi" in hostname.lower() or pathlib.Path("/scratch/project_462001213").exists():
+		return pathlib.Path("/scratch/project_462001213/models")
+	if "roihu" in hostname.lower() or Path("/scratch/project_2004072").exists():
+		return pathlib.Path("/scratch/project_2004072/models")
+	
+	# Virtual Linux machine
+	if user == "ubuntu":
+		return pathlib.Path("/media/volume/models")
+	
+	raise RuntimeError(
+		"Unable to determine cache directory. "
+		"Set IMACCESS_CACHE_DIR explicitly."
+	)
+
+cache_directory = get_cache_directory()
 
 nltk_modules = [
 	'punkt',
