@@ -416,6 +416,8 @@ def _load_llm_(
 
 		print(f"{'='*75}")
 		print(model.config)
+		if hasattr(model, "generation_config"):
+			print(f"\n[DEFAULT GEN CONFIG]{type(model.generation_config)}\n{model.generation_config}")
 		print(f"{'='*75}")
 
 	return tokenizer, model
@@ -753,9 +755,6 @@ def query_local_llm(
 			print(f"[ELAPSED TIME] Tokenization: {time.time() - tokenization_start:.4f} sec")
 
 		t0 = time.time()
-		if hasattr(model, "generation_config"):
-			print(f"[DEFAULT GEN CONFIG] {type(model.generation_config)} {model.generation_config}")
-
 		gen_kwargs = dict(
 			max_new_tokens=max_generated_tks,
 			pad_token_id=tokenizer.pad_token_id,

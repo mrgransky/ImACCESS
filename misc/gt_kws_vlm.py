@@ -495,6 +495,8 @@ def _load_vlm_(
 
 		print(f"{'='*110}\n")
 		print(model.config)
+		if hasattr(model, "generation_config"):
+			print(f"\n[DEFAULT GEN CONFIG] {type(model.generation_config)}\n{model.generation_config}")
 		print(f"{'='*110}\n")
 
 	return processor, model
@@ -875,8 +877,6 @@ def get_vlm_based_labels_single(
 	)
 	device = next(model.parameters()).device
 
-	if hasattr(model, "generation_config"):
-		print(f"[DEFAULT GEN CONFIG] {type(model.generation_config)} {model.generation_config}")
 
 	messages = [
 		{"role": "system", "content": "You are an expert image tagger and function as an archivist whose expertise lies in the 20th century."},
@@ -930,7 +930,7 @@ def get_vlm_based_labels_single(
 	generation_time = time.time() - tt
 
 	if verbose:
-		print(f"\n[GEN CONFIG] {gen_kwargs}")
+		print(f"\n[USER ASSIGNED GEN CONFIG] {gen_kwargs}")
 		print(f"[RESPONSE] {type(outputs)} {outputs.shape}")
 		breakdown = get_token_breakdown(input_single, outputs, verbose=verbose)
 		print(f"   • Generation time:   {generation_time:.2f} sec")
@@ -1065,7 +1065,7 @@ def get_vlm_based_labels(
 		# HuggingFace ignores it or throws a warning when sampling is disabled.
 	)
 	if verbose:
-		print(f"\n[GEN CONFIG] {gen_kwargs}")
+		print(f"\n[USER ASSIGNED GEN CONFIG] {gen_kwargs}")
 			
 	# ========== Process batches ==========
 	def _load_(p: str) -> Optional[Image.Image]:
