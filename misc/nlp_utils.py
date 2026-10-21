@@ -53,7 +53,7 @@ def get_cache_directory() -> pathlib.Path:
 	hostname = os.environ.get("HOSTNAME", "")
 	if "lumi" in hostname.lower() or pathlib.Path("/scratch/project_462001213").exists():
 		return pathlib.Path("/scratch/project_462001213/models")
-	if "roihu" in hostname.lower() or Path("/scratch/project_2004072").exists():
+	if "roihu" in hostname.lower() or pathlib.Path("/scratch/project_2004072").exists():
 		return pathlib.Path("/scratch/project_2004072/models")
 	
 	# Virtual Linux machine
