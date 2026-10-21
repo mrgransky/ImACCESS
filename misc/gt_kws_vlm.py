@@ -33,7 +33,7 @@ from utils import *
 # Keywords must be semantically atomic, visually grounded, and and reusable across archives.
 
 PROMPT_TEMPLATE = """Extract no more than {k} prominent keywords.
-Prioritize multi-word keywords when possible.
+Prioritize multi-word keywords whenever possible.
 
 Constraints:
   - Avoid Text or OCR extraction.

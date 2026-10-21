@@ -51,7 +51,7 @@ STOPWORDS.update(geographic_references)
 
 PROMPT_TEMPLATE = """
 Extract no more than {k} prominent keywords from the caption below.
-If the caption contains meaningful descriptors, prioritize multiword keywords.
+If the caption contains meaningful descriptors, prioritize multi-word keywords.
 If the caption lacks sufficient information, returning fewer keywords or even an empty list [] is better than excluded terms.
 
 STRINGENTLY exclude keywords containing:
