@@ -285,9 +285,9 @@ def _load_llm_(
 			total_vram_available += vram_gb
 				
 		# ADAPTIVE BUFFER
-		if gpu_vram[0] < 10: vram_buffer_gb = 0.7
+		if gpu_vram[0] < 10: vram_buffer_gb = 0.5
 		elif gpu_vram[0] < 20: vram_buffer_gb = 2.0
-		else: vram_buffer_gb = 3.5
+		else: vram_buffer_gb = 3.0
 
 		# Reduce buffer if quantization is used
 		if quantization_bits is not None:
@@ -301,15 +301,15 @@ def _load_llm_(
 			adjusted_size = estimated_size_gb * 0.25
 		
 		# ========== PRE-FLIGHT VRAM VALIDATION ==========
-		INFERENCE_OVERHEAD_MULTIPLIER = 1.2
+		INFERENCE_OVERHEAD_MULTIPLIER = 1.15
 		required_vram = adjusted_size * INFERENCE_OVERHEAD_MULTIPLIER
 		usable_vram = total_vram_available - (n_gpus * vram_buffer_gb)
 
 		if verbose:
 			print(f"\n[VRAM CHECK] Pre-flight validation:")
-			print(f"\t• Estimated Model size (fp16): {adjusted_size:.2f} GB (with {INFERENCE_OVERHEAD_MULTIPLIER}x overhead): {required_vram:.2f} GB")
-			print(f"\t• Available VRAM (total):      {total_vram_available:.1f} GB")
-			print(f"\t• Available VRAM (usable):     {usable_vram:.1f} GB ({n_gpus}x GPU(s), {vram_buffer_gb:.1f} GB buffer per GPU)")
+			print(f"\t• Estimated Model size (fp16) {adjusted_size:.2f} GB (with {INFERENCE_OVERHEAD_MULTIPLIER}x overhead): {required_vram:.2f} GB")
+			print(f"\t• Available VRAM (total)      {total_vram_available:.2f} GB")
+			print(f"\t• Available VRAM (usable)     {usable_vram:.1f} GB ({n_gpus}x GPU(s), {vram_buffer_gb:.1f} GB buffer per GPU)")
 
 		if required_vram > usable_vram:
 			print("\n" + "="*80 + "\n❌ INSUFFICIENT VRAM ERROR\n" + "="*80)
