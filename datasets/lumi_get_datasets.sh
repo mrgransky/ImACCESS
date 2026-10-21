@@ -2,7 +2,7 @@
 
 #SBATCH --account=project_462001213
 #SBATCH --job-name=dataset_collection
-#SBATCH --output=/scratch/project_462001213/ImACCESS/trash/logs/%x.out
+#SBATCH --output=/scratch/project_462001213/ImACCESS/trash/logs/%x_%a.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --cpus-per-task=10
