@@ -31,19 +31,7 @@ warnings.filterwarnings('ignore')
 
 MISC_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# cache_directory = {
-# 	"farid": "/home/farid/datasets/models", # local laptop
-# 	"alijanif": "/scratch/project_2004072/models", # Roihu
-# 	"ubuntu": "/media/volume/models", # VIRTUAL linux
-# }
-
 def get_cache_directory() -> pathlib.Path:
-	"""Return the appropriate model/checkpoint cache directory."""
-	# # Explicit override, useful for testing or custom jobs
-	# env_cache_dir = os.environ.get("IMACCESS_CACHE_DIR")
-	# if env_cache_dir:
-	# 	return pathlib.Path(env_cache_dir)
-
 	user = os.getenv('USER')
 	# Local laptop
 	if user == "farid":
@@ -165,26 +153,18 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from transformers import logging as transformers_logging
 transformers_logging.set_verbosity_error()  # Only show errors, not warnings/info
 
-# HOME: str = os.getenv('HOME') # echo $HOME
-# USER: str = os.getenv('USER') # echo $USER
-# cache_directory = {
-# 	"farid": "/home/farid/datasets/models",
-# 	"alijanif": "/scratch/project_2004072/models",
-# 	"ubuntu": "/media/volume/models",
-# }
-
 language_model_ckpt = "papluca/xlm-roberta-base-language-detection"
 language_model_kwargs: Dict[str, Any] = {
 	"low_cpu_mem_usage": True,
 	"trust_remote_code": True,
-	"cache_dir": cache_directory,#cache_directory[USER],
+	"cache_dir": cache_directory,
 	"dtype": torch.bfloat16,
 }
 language_model_tokenizer = AutoTokenizer.from_pretrained(
 	language_model_ckpt,
 	use_fast=True,
 	trust_remote_code=True,
-	cache_dir=cache_directory,#cache_directory[USER],
+	cache_dir=cache_directory,
 )
 if language_model_tokenizer.pad_token is None:
 	language_model_tokenizer.pad_token = tokenizer.eos_token

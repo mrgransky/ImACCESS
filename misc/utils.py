@@ -121,22 +121,8 @@ except LookupError:
 		raise_on_error=True,
 	)
 
-# HOME: str = os.getenv('HOME') # echo $HOME
-# USER: str = os.getenv('USER') # echo $USER
-
-# cache_directory = {
-# 	"farid": "/home/farid/datasets/models",
-# 	"alijanif": "/scratch/project_2004072/models",
-# 	"ubuntu": "/media/volume/models",
-# }
-
 def get_cache_directory() -> pathlib.Path:
 	"""Return the appropriate model/checkpoint cache directory."""
-	# # Explicit override, useful for testing or custom jobs
-	# env_cache_dir = os.environ.get("IMACCESS_CACHE_DIR")
-	# if env_cache_dir:
-	# 	return pathlib.Path(env_cache_dir)
-
 	user = os.environ.get("USER", "")
 	# Local laptop
 	if user == "farid":
@@ -161,11 +147,6 @@ def get_cache_directory() -> pathlib.Path:
 cache_directory = get_cache_directory()
 
 hf_tk: str = os.getenv("HUGGINGFACE_TOKEN")
-# os.environ["HF_HOME"] = cache_directory[USER]
-# os.environ["TRANSFORMERS_CACHE"] = cache_directory[USER]
-# os.environ["HF_HUB_CACHE"] = cache_directory[USER]
-# os.environ["HF_DATASETS_CACHE"] = cache_directory[USER]
-# os.environ["TRANSFORMERS_VERBOSITY"] = "info"
 
 import transformers as tfs
 

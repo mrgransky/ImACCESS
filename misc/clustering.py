@@ -4686,6 +4686,6 @@ def get_canonical_labels(
 		print(f"  └─ {list(missing_labels)[:10]}")
 		print("-"*100)
 
-	sys.exit()
+	# sys.exit()
 
 	return canonical_labels, canonical_map

@@ -28,6 +28,7 @@ from utils import *
 
 # Roihu:
 # python gt_kws_vlm.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/31483442.jpg -vlm "Qwen/Qwen3.6-27B" -v
+# python gt_kws_vlm.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/26382063.jpg -vlm "Qwen/Qwen3.5-122B-A10B" -v
 
 PROMPT_TEMPLATE = """Extract no more than {k} keywords.
 Keywords must be semantically atomic, visually grounded, and and reusable across archives.
@@ -77,7 +78,7 @@ def _load_vlm_(
 		raise ValueError(f"quantization_bits must be None, 4, or 8 (got {quantization_bits})")
 	if verbose:
 		print(f"\n{'='*110}")
-		print(f"[MODEL] Loading {model_id} on cache_dir: {cache_directory.get(USER)}")
+		print(f"[MODEL] Loading {model_id} on cache_dir: {cache_directory}")
 
 	# ========== Version and CUDA info ==========
 	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
@@ -150,7 +151,7 @@ def _load_vlm_(
 		model_id,
 		use_fast=True,
 		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
+		cache_dir=cache_directory,
 		quantization_config=quantization_config,
 	)
 	if verbose:
@@ -236,9 +237,9 @@ def _load_vlm_(
 			total_vram_available += vram_gb
 		
 		# ADAPTIVE BUFFER: Scale based on GPU size
-		if gpu_vram[0] < 10: vram_buffer_gb = 0.7
+		if gpu_vram[0] < 10: vram_buffer_gb = 0.5
 		elif gpu_vram[0] < 20: vram_buffer_gb = 2.0
-		else: vram_buffer_gb = 3.5
+		else: vram_buffer_gb = 3.0
 
 		if verbose:
 			print(f"[INFO] VRAM buffer: {vram_buffer_gb:.2f} GB")
@@ -263,7 +264,7 @@ def _load_vlm_(
 		# ========== PRE-FLIGHT VRAM VALIDATION ==========
 		# Account for overhead: model weights + activations + gradients + overhead
 		# Rule of thumb: need X.Xx model size for inference (2x for training)
-		INFERENCE_OVERHEAD_MULTIPLIER = 1.2
+		INFERENCE_OVERHEAD_MULTIPLIER = 1.15
 		required_vram = adjusted_size * INFERENCE_OVERHEAD_MULTIPLIER
 		usable_vram = total_vram_available - (n_gpus * vram_buffer_gb)
 
@@ -385,7 +386,7 @@ def _load_vlm_(
 	base_model_kwargs: Dict[str, Any] = {
 		"low_cpu_mem_usage": True,
 		"trust_remote_code": True,
-		"cache_dir": cache_directory[USER],
+		"cache_dir": cache_directory,
 		"attn_implementation": attention,
 		"dtype": dtype,
 	}

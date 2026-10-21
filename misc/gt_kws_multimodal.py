@@ -47,6 +47,7 @@ from data_prep import get_multi_label_stratified_split, build_shared_vocab_tier_
 # with nohup:
 # SMU
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 8 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v > logs/mm_annot_smu.txt & 
+# $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3.5-2B" -llm_bs 4 -vlm "Qwen/Qwen3.5-2B" -vlm_bs 2 -nw 12 -v > logs/mm_annot_smu.txt & 
 
 # EUROPEANA:
 # $ nohup python -u gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 8 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v > logs/mm_annot_europeana.txt & 

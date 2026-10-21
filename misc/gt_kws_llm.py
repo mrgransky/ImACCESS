@@ -82,7 +82,7 @@ def _load_llm_(
 	verbose: bool = False,
 ):
 	if verbose:
-		print(f"[LOADING] {model_id} on cache_dir: {cache_directory.get(USER)}")
+		print(f"[LOADING] {model_id} on cache_dir: {cache_directory}")
 	
 	# ========== Version and CUDA info ==========
 	n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
@@ -177,7 +177,7 @@ def _load_llm_(
 			use_fast=True, 
 			trust_remote_code=True,
 			token=hf_tk,
-			cache_dir=cache_directory[USER],
+			cache_dir=cache_directory,
 		)
 	except (KeyError, ValueError, OSError) as exc:
 		if verbose: print(f"[WARN] AutoTokenizer failed: {exc}. Trying fallbacks...")
@@ -195,7 +195,7 @@ def _load_llm_(
 					model_id, 
 					trust_remote_code=True,
 					token=hf_tk,
-					cache_dir=cache_directory[USER]
+					cache_dir=cache_directory,
 				)
 				break
 			except Exception as e: fallback_exc = e
@@ -207,7 +207,7 @@ def _load_llm_(
 					use_fast=False, 
 					trust_remote_code=True,
 					token=hf_tk,
-					cache_dir=cache_directory[USER]
+					cache_dir=cache_directory,
 				)
 			except Exception as final_exc:
 				raise RuntimeError(f"Failed to load tokenizer for '{model_id}'. Final error: {final_exc}") from final_exc
@@ -268,11 +268,10 @@ def _load_llm_(
 			"No file sizes, parameter count, or safetensors metadata available."
 		)
 
-	estimated_size_gb = get_estimated_gb_size(model_id)
-	
+	estimated_size_gb = get_estimated_gb_size(model_id=model_id)
 	if verbose:
-		print(f"\n[INFO] {model_id} Estimated size: {estimated_size_gb:.2f} GB (fp16)")
-	
+		print(f"\n[INFO] {model_id} estimated size: {estimated_size_gb:.2f} GiB (fp16)")
+
 	if n_gpus > 0:
 		total_vram_available = 0
 		gpu_vram = []
@@ -358,7 +357,7 @@ def _load_llm_(
 		# "low_cpu_mem_usage": False, # avoid illegal memory access during weight materialization
 		"trust_remote_code": True,
 		"token": hf_tk,
-		"cache_dir": cache_directory[USER],
+		"cache_dir": cache_directory,
 		"attn_implementation": attention,
 		"dtype": dtype,
 	}

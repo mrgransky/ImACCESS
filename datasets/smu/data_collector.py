@@ -202,10 +202,15 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 		end_date=end_date,
 		query=query.lower()
 	)
-	if doc_hits is None:
+	if not doc_hits:
 		return
 
 	print(f"Analyzing {len(doc_hits)} {type(doc_hits)} document(s) for query: « {query} » might take a while...")
+
+	if doc_hits:
+		print(doc_hits[0].get("metadataFields"))
+	else:
+		print(f"No hits for query: {query!r}")
 
 	df_st_time = time.time()
 	data = []
@@ -213,6 +218,8 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 		# Safely extract doc_date from metadataFields
 		metadata_fields = doc.get("metadataFields", [])
 		doc_date = metadata_fields[3].get("value") if len(metadata_fields) > 3 else None
+		print(doc.get("itemId"), doc.get("metadataFields"))
+
 		
 		if not doc_date:
 			print(f"Skipping document with missing date: {doc.get('itemId')}")
@@ -225,9 +232,18 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 		doc_combined_identifier = f'{doc_collection}_{doc_id}' # agr_19
 		doc_page_url = f"{SMU_BASE_URL}/collection/{doc.get('collectionAlias')}/id/{doc.get('itemId')}"
 		doc_img_link = f"{SMU_BASE_URL}/api/singleitem/image/{doc_collection}/{doc_id}/default.jpg"
-		doc_title = doc.get("title")
-		if "mock" in doc_title.lower() or "schedule" in doc_title.lower() or "circuit board" in doc_title.lower():
+
+		# doc_title = doc.get("title")
+		# if "mock" in doc_title.lower() or "schedule" in doc_title.lower() or "circuit board" in doc_title.lower():
+		# 	continue
+
+		doc_title = doc.get("title") or ""
+		title_lower = doc_title.lower()
+
+		if any(term in title_lower for term in ("mock", "schedule", "circuit board")):
 			continue
+
+
 		doc_detailed_metadata = scrape_item_metadata(doc_url=doc_page_url)
 		doc_description = doc_detailed_metadata.get("description", None)
 		doc_note = doc_detailed_metadata.get("notes", None)
@@ -258,17 +274,37 @@ def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 			'img_url': doc_img_link
 		}
 		data.append(row)
-	df = pd.DataFrame(data)
+
+	columns = [
+			"id",
+			"doc_url",
+			"user_query",
+			"title",
+			"description",
+			"note",
+			"keywords",
+			"raw_doc_date",
+			"img_path",
+			"img_url",
+	]
+
+	df = pd.DataFrame(data, columns=columns)
+
+	if df.empty:
+		print(f"No documents with usable metadata for query: {query!r}")
+		save_pickle(pkl=df, fname=df_file_path)
+		return df
+
+	# df = pd.DataFrame(data)
 
 	print("-"*50)
 	print(df.shape)
 	print(df.info(verbose=True, memory_usage='deep'))
 	print("-"*50)
 
-
-
 	# Apply the function to the 'raw_doc_date' and 'doc_year' columns
-	df['doc_date'] = df.apply(lambda row: get_doc_year(row['raw_doc_date']), axis=1)
+	# df['doc_date'] = df.apply(lambda row: get_doc_year(row['raw_doc_date']), axis=1)
+	df["doc_date"] = df["raw_doc_date"].map(get_doc_year)
 
 	# Filter the DataFrame based on the validity check
 	df = df[
