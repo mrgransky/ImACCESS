@@ -49,7 +49,7 @@ Constraints:
   - Avoid vague and generic descriptor or container nouns which lack detail.
   - Avoid purely demographic descriptors without contextual role.
 
-Response must be a Python list of double-quoted strings containing keywords derived from the visual content of the image."""
+Output ONLY a a Python list of double-quoted strings containing keywords derived from the visual content of the image."""
 
 def _load_vlm_(
 	model_id: str,
