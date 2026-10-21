@@ -30,10 +30,10 @@ from utils import *
 # python gt_kws_vlm.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/31483442.jpg -vlm "Qwen/Qwen3.6-27B" -v
 # python gt_kws_vlm.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/26382063.jpg -vlm "Qwen/Qwen3.5-122B-A10B" -v
 
-PROMPT_TEMPLATE = """Extract no more than {k} keywords.
-Keywords must be semantically atomic, visually grounded, and and reusable across archives.
-Response must be a Python list of double-quoted strings containing keywords derived from the visual content of the image.
-Prioritize multi-word noun phrases when possible.
+# Keywords must be semantically atomic, visually grounded, and and reusable across archives.
+
+PROMPT_TEMPLATE = """Extract no more than {k} prominent keywords.
+Prioritize multi-word keywords when possible.
 
 Constraints:
   - Avoid Text or OCR extraction.
@@ -47,7 +47,9 @@ Constraints:
   - Refrain from using common environmental details.
   - Refrain from using counting expressions.
   - Avoid vague and generic descriptor or container nouns which lack detail.
-  - Avoid purely demographic descriptors without contextual role."""
+  - Avoid purely demographic descriptors without contextual role.
+
+Response must be a Python list of double-quoted strings containing keywords derived from the visual content of the image."""
 
 def _load_vlm_(
 	model_id: str,
