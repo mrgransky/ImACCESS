@@ -457,8 +457,8 @@ def parse_llm_response(
 ):
 	if verbose:
 		# print(f"\nRaw Caption:\n{caption}")
-		print(f"\n[LLM: {model_id} RESPONSE]")
-		print(llm_response)
+		nl = '' if isinstance(ast.literal_eval(llm_response), list) else '\n'
+		print(f"{model_id} LLM RESPONSE {nl}{llm_response}\n")
 
 	# Step 1: Find the assistant's response
 	# Try multiple patterns for different model families
@@ -775,7 +775,7 @@ def query_local_llm(
 			outputs = model.generate(**tokenized_prompt, **gen_kwargs)
 		
 		if verbose:
-			print(f"\n[GEN CONFIG] {gen_kwargs}")
+			print(f"\n[USER ASSIGNED GEN CONFIG] {gen_kwargs}")
 			print(f"[RESPONSE] {type(outputs)} {outputs.shape}")
 			print(f"[ELAPSED TIME] model.generate(..): {time.time() - t0:.4f} sec")
 			print("="*100)
