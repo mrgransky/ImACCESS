@@ -419,7 +419,7 @@ def _load_vlm_(
 			)	
 	except Exception as e:
 		if verbose:
-			print(f"[ERROR] Failed to load model: {e}")
+			print(f"[ERROR] Failed to load {model_id}\n{e}")
 		raise e
 	
 	model.eval()
