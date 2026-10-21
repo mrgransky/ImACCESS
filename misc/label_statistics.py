@@ -1302,7 +1302,7 @@ def get_embedding_model(
 	model = SentenceTransformer(
 		model_name_or_path=embedding_model_id,
 		trust_remote_code=True,
-		cache_folder=cache_directory.get(os.getenv('USER'), None),
+		cache_folder=cache_directory,
 		model_kwargs=model_kwargs,
 		token=os.getenv("HUGGINGFACE_TOKEN"),
 		tokenizer_kwargs={"padding_side": "left"},
@@ -2096,7 +2096,7 @@ def get_singletons(
 		model_kwargs={"attn_implementation": attention, "dtype": dtype}, # no device_map
 		trust_remote_code=True,
 		device=device, # single device
-		cache_folder=cache_directory[os.getenv('USER')],
+		cache_folder=cache_directory,
 		token=os.getenv("HUGGINGFACE_TOKEN"),
 		processor_kwargs={"padding_side": "left"}, # renamed from tokenizer_kwargs
 	)

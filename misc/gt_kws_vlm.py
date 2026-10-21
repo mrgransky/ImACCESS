@@ -538,7 +538,8 @@ def parse_vlm_response(
 		return None
 
 	if verbose:
-		print(f"[VLM: {model_id}] [RESPONSE]\n{raw_response}\n")
+		nl = '' if isinstance(ast.literal_eval(raw_response), list) else '\n'
+		print(f"{model_id} VLM RESPONSE: {nl}{raw_response}\n")
 
 	# ------------------------------------------------------------------
 	# Step 0: strip reasoning blocks so <think>...</think> content can
@@ -872,6 +873,10 @@ def get_vlm_based_labels_single(
 		quantization_bits=quantization_bits,
 		verbose=verbose
 	)
+	device = next(model.parameters()).device
+
+	if hasattr(model, "generation_config"):
+		print(f"[DEFAULT GEN CONFIG] {type(model.generation_config)} {model.generation_config}")
 
 	messages = [
 		{"role": "system", "content": "You are an expert image tagger and function as an archivist whose expertise lies in the 20th century."},
@@ -896,48 +901,50 @@ def get_vlm_based_labels_single(
 		text=chat_prompt,
 		padding=True,
 		return_tensors="pt"
-	).to(next(model.parameters()).device)
+	).to(device)
 
 	if verbose:
-		print(f"[INPUT] Pixel: {input_single.pixel_values.shape} {input_single.pixel_values.dtype} {input_single.pixel_values.device}")
+		print(f"[INPUT] {type(input_single)} {list(input_single.keys())}")
+		print(f"Pixel: {input_single.pixel_values.shape} {input_single.pixel_values.dtype} {input_single.pixel_values.device}")
+		print(f"input_ids: {input_single.input_ids.shape} {input_single.input_ids.dtype} {input_single.input_ids.device}")
 
 	if input_single.pixel_values.numel() == 0:
 		raise ValueError(f"Pixel values of {image_path} are empty: {input_single.pixel_values.shape}")
 
+	prompt_len = input_single.input_ids.shape[1]
+
+	# ========== Generate response ==========
 	gen_kwargs = dict(
 		max_new_tokens=max_generated_tks, 
 		use_cache=True,
 		eos_token_id=processor.tokenizer.eos_token_id,
 		pad_token_id=processor.tokenizer.pad_token_id,
 	)
-	# Use model’s built-in defaults unless the user overrides
-	if hasattr(model, "generation_config"):
-		gen_config = model.generation_config
-		gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
-		gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
-	else:
-		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
-
-	if verbose:
-		print(f"[GEN CONFIG] Using generation parameters:")
-		print(json.dumps(gen_kwargs, indent=2, ensure_ascii=False))
-
-	# ========== Generate response ==========
 	tt = time.time()
-	with torch.no_grad():
+	with torch.inference_mode(), torch.amp.autocast(
+		device_type=device.type, 
+		enabled=torch.cuda.is_available(),
+		dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+	):
 		outputs = model.generate(**input_single, **gen_kwargs)
 	generation_time = time.time() - tt
 
 	if verbose:
+		print(f"\n[GEN CONFIG] {gen_kwargs}")
 		print(f"[RESPONSE] {type(outputs)} {outputs.shape}")
-		breakdown = get_token_breakdown(input_single, outputs)
-		print(f"   • Generation time:   {generation_time:.2f}s")
+		breakdown = get_token_breakdown(input_single, outputs, verbose=verbose)
+		print(f"   • Generation time:   {generation_time:.2f} sec")
 		print(f"   • Generation ratio:  {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
 		print(f"   • Time per token:    {generation_time / breakdown['generated_tokens']:.3f}s")
 		print(f"   • Tokens per second: {breakdown['generated_tokens'] / generation_time:.1f}")
+		print("="*100)
 
-	# Decode response
-	response = processor.decode(outputs[0], skip_special_tokens=True)
+	# # Decode response (with prompt)
+	# response = processor.decode(outputs[0], skip_special_tokens=True)
+
+	# Critical: Slice off prompt tokens to decode ONLY newly generated text
+	generated_tokens = outputs[0, prompt_len:]
+	response = processor.decode(generated_tokens, skip_special_tokens=True)
 
 	# ========== Parse the response ==========
 	try:
@@ -1044,6 +1051,8 @@ def get_vlm_based_labels(
 		verbose=verbose,
 	)
 
+	device = next(model.parameters()).device
+
 	# ========== Prepare generation kwargs ==========
 	# FORCE deterministic (greedy) decoding to prevent label drift between runs
 	gen_kwargs = dict(
@@ -1055,11 +1064,8 @@ def get_vlm_based_labels(
 		# Note: Do NOT set `temperature` when do_sample=False. 
 		# HuggingFace ignores it or throws a warning when sampling is disabled.
 	)
-
 	if verbose:
-		print(f"\n[GEN CONFIG] Using generation parameters (FORCED DETERMINISTIC):")
-		print(json.dumps(gen_kwargs, indent=2, ensure_ascii=False))
-		print("="*100)
+		print(f"\n[GEN CONFIG] {gen_kwargs}")
 			
 	# ========== Process batches ==========
 	def _load_(p: str) -> Optional[Image.Image]:
@@ -1079,7 +1085,7 @@ def get_vlm_based_labels(
 	if verbose:
 		print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
 
-	generated_tokens = list()
+	gen_tks = list()
 	for b in tqdm(range(total_batches), desc="Processing (visual) batches", ncols=120):
 		batch_indices = valid_indices[b * batch_size:(b + 1) * batch_size]
 		batch_paths = [verified_paths[i] for i in batch_indices]
@@ -1122,34 +1128,48 @@ def get_vlm_based_labels(
 				processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True, enable_thinking=False,)
 				for m in messages
 			]
-			if verbose:
-				print(f"\n[BATCH {b}] Chat templates built: {type(chat_texts)} {len(chat_texts)} => Processing batch inputs in {next(model.parameters()).device}...")
+			# if verbose:
+			# 	print(f"\n[BATCH {b}] Chat templates built: {type(chat_texts)} {len(chat_texts)} => Processing batch inputs in {device}...")
+
 			inputs = processor(
 				text=chat_texts,
 				images=[img for _, img in valid_pairs],
 				return_tensors="pt",
 				padding=True,
-			).to(next(model.parameters()).device)
+			).to(device)
 
-			if verbose:
-				print(f"\n[BATCH {b}] Generating responses for {len(valid_pairs)} images [takes a while]...")
+			prompt_len = inputs.input_ids.shape[1]
 
 			# Generate response
-			tt = time.time()
-			with torch.no_grad():
-				outputs = model.generate(**inputs, **gen_kwargs)
-			generation_time = time.time() - tt
-			breakdown = get_token_breakdown(inputs, outputs)
-			generated_tokens.append(breakdown['generated_tokens'])
-			if verbose: 
-				print(f"\n[BATCH {b}]")
-				print(f"[RESPONSE] {type(outputs)} {outputs.shape}")
-				print(f"   • Generation time:   {generation_time:.2f}s")
-				print(f"   • Generation ratio:  {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
-				print(f"   • Time per token:    {generation_time / breakdown['generated_tokens']:.3f}s")
-				print(f"   • Tokens per second: {breakdown['generated_tokens'] / generation_time:.1f}")
+			# if verbose:
+			# 	print(f"\n[BATCH {b}] Generating responses for {len(valid_pairs)} images [takes a while]...")
 
-			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
+			# tt = time.time()
+			with torch.inference_mode(), torch.amp.autocast(
+				device_type=device.type, 
+				enabled=torch.cuda.is_available(),
+				dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+			):
+				outputs = model.generate(**inputs, **gen_kwargs)
+
+			# generation_time = time.time() - tt
+			breakdown = get_token_breakdown(inputs, outputs)
+			gen_tks.append(breakdown['generated_tokens'])
+
+			# if verbose:
+			# 	print(f"\n[BATCH {b}]")
+			# 	print(f"[RESPONSE] {type(outputs)} {outputs.shape}")
+			# 	print(f"   • Generation time:   {generation_time:.2f}s")
+			# 	print(f"   • Generation ratio:  {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
+			# 	print(f"   • Time per token:    {generation_time / breakdown['generated_tokens']:.3f}s")
+			# 	print(f"   • Tokens per second: {breakdown['generated_tokens'] / generation_time:.1f}")
+
+			# # Decode response (with prompt)
+			# decoded = processor.batch_decode(outputs, skip_special_tokens=True)
+
+			# Critical: Slice off prompt tokens to decode ONLY newly generated text
+			generated_tokens = outputs[:, prompt_len:]
+			decoded = processor.batch_decode(generated_tokens, skip_special_tokens=True)
 
 			if verbose:
 				print(f"\n[BATCH {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
@@ -1210,7 +1230,7 @@ def get_vlm_based_labels(
 						images=[img],
 						return_tensors="pt",
 						padding=True,
-					).to(next(model.parameters()).device)
+					).to(device)
 					
 					if verbose:
 						print(f"[INPUT] Pixel: {input_single.pixel_values.shape} {input_single.pixel_values.dtype} {input_single.pixel_values.device}")
@@ -1218,10 +1238,21 @@ def get_vlm_based_labels(
 					if input_single.pixel_values.numel() == 0:
 						raise ValueError(f"Pixel values of {uniq_idx} are empty: {input_single.pixel_values.shape}")
 
-					with torch.no_grad():
+					prompt_len = input_single.input_ids.shape[1]
+
+					with torch.inference_mode(), torch.amp.autocast(
+						device_type=device.type, 
+						enabled=torch.cuda.is_available(),
+						dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+					):
 						out_single = model.generate(**input_single, **gen_kwargs)
 
-					decoded_single = processor.decode(out_single[0], skip_special_tokens=True)
+					# # with prompt
+					# decoded_single = processor.decode(out_single[0], skip_special_tokens=True)
+
+					# Critical: Slice off prompt tokens to decode ONLY newly generated text
+					generated_tokens = out_single[0, prompt_len:]
+					decoded_single = processor.decode(generated_tokens, skip_special_tokens=True)
 
 					if verbose:
 						print(f"\n[Sequential Fallback] image {uniq_idx}:\n{type(decoded_single)} {len(decoded_single)}\n")
@@ -1278,11 +1309,6 @@ def get_vlm_based_labels(
 
 	df.to_csv(output_csv, index=False)
 
-	# try:
-	# 	df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-	# except Exception as e:
-	# 	print(f"Failed to write Excel file: {e}")
-
 	elapsed = time.time() - t0
 
 	if verbose:
@@ -1292,9 +1318,9 @@ def get_vlm_based_labels(
 		print(f"[TIME] {elapsed/3600:.2f}h | avg {len(final)/elapsed:.2f}/s")
 		print(f"[SAVE] {output_csv}")
 		print(
-			f"Generated Tokens in {len(generated_tokens)} batches: "
-			f"(min, max): ({min(generated_tokens)}, {max(generated_tokens)}) "
-			f"μ±σ: {np.mean(generated_tokens):.2f} ± {np.std(generated_tokens):.2f}"
+			f"Generated Tokens in {len(gen_tks)} batches: "
+			f"(min, max): ({min(gen_tks)}, {max(gen_tks)}) "
+			f"μ±σ: {np.mean(gen_tks):.2f} ± {np.std(gen_tks):.2f}"
 		)
 		print("-"*100)
 

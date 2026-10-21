@@ -43,6 +43,7 @@ from data_prep import get_multi_label_stratified_split, build_shared_vocab_tier_
 
 # how to run [local] interactive:
 # $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/test.csv -llm "Qwen/Qwen3.5-4B" -llm_qb 4 -llm_bs 12 -vlm "Qwen/Qwen3.5-4B" -vlm_qb 4 -vlm_bs 6 -nw 12 -v
+# $ python gt_kws_multimodal.py -csv /home/farid/datasets/WW_DATASETs/WWII_1939-09-01_1945-09-02/test.csv -llm "Qwen/Qwen3.5-2B" -llm_bs 4 -vlm "Qwen/Qwen3.5-2B" -vlm_bs 6 -nw 4 -v
 
 # with nohup:
 # SMU

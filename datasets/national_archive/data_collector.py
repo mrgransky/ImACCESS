@@ -1,6 +1,5 @@
 import sys
 import os
-from tabnanny import verbose
 
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
@@ -620,10 +619,10 @@ def main():
 	)
 
 	# === MAIN USAGE ===
-	results = validate_text_cleaning_pipeline(
-		df=multi_label_final_df,
-		text_column='enriched_document_description'
-	)
+	# results = validate_text_cleaning_pipeline(
+	# 	df=multi_label_final_df,
+	# 	text_column='enriched_document_description'
+	# )
 
 	print(f"Saving full MULTI-LABEL dataset: {type(multi_label_final_df)} {multi_label_final_df.shape} {list(multi_label_final_df.columns)}")
 	multi_label_fpath = os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv")
@@ -650,7 +649,6 @@ def main():
 	except Exception as e:
 		print(f"Failed to write final single-label Excel file: {e}")
 	
-
 	# stratified splitting [single-label]:
 	train_df, val_df = get_single_label_stratified_split(
 		csv_file=single_label_fpath,

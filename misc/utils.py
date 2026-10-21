@@ -1252,6 +1252,7 @@ def get_conversation_token_breakdown(text: str, model_name: str) -> dict:
 def get_token_breakdown(
 	inputs,  # actual inputs tensor from processor
 	outputs, # generated outputs tensor
+	verbose: bool = False,
 ) -> dict:
 	"""
 	Token counting from actual model tensors.
@@ -1273,11 +1274,13 @@ def get_token_breakdown(
 		'total_tokens': output_length,
 	}
 	
-	print(f"[TOKEN BREAKDOWN]")
-	print(f"   • Input:     {breakdown['input_tokens']}")
-	print(f"   • Generated: {breakdown['generated_tokens']}")
-	print(f"   • Total:     {breakdown['total_tokens']}")
-	print(f"   • Ratio:     {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
+	if verbose:
+		print(f"[TOKEN BREAKDOWN]")
+		print(f"   • Input:     {breakdown['input_tokens']}")
+		print(f"   • Generated: {breakdown['generated_tokens']}")
+		print(f"   • Total:     {breakdown['total_tokens']}")
+		print(f"   • Ratio:     {breakdown['generated_tokens'] / breakdown['input_tokens']:.2%}")
+		print()
 	
 	return breakdown
 

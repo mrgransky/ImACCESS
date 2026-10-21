@@ -709,7 +709,7 @@ def query_local_llm(
 	model: tfs.PreTrainedModel,
 	tokenizer: tfs.PreTrainedTokenizer, 
 	text: str,
-	device: str,
+	device: Union[str, torch.device],
 	max_generated_tks: int,
 	max_kws: int,
 	verbose: bool=False,
@@ -732,49 +732,60 @@ def query_local_llm(
 
 	tokenization_start = time.time()
 	try:
-		inputs = tokenizer(
+		tokenized_prompt = tokenizer(
 			prompt,
 			return_tensors="pt", 
 			truncation=True, 
 			max_length=4096, 
 			padding=True
 		)
-		if device != 'cpu':
-			inputs = {k: v.to(device) for k, v in inputs.items()}
 
-		if "token_type_ids" in inputs and not hasattr(model.config, "type_vocab_size"):
-			inputs.pop("token_type_ids")
+		tokenized_prompt.pop("token_type_ids", None)
+		prompt_len = tokenized_prompt["input_ids"].shape[1]
+		if device.type != "cpu":
+			tokenized_prompt = {k: v.to(device) for k, v in tokenized_prompt.items()}
 
 		if verbose:
-			print(type(inputs), len(inputs), list(inputs.keys()))
-
-			token_ids = inputs.get("input_ids", None) 
+			print(f"tokenized_prompt: {type(tokenized_prompt)} {list(tokenized_prompt.keys())}")
+			token_ids = tokenized_prompt.get("input_ids", None)
+			print(f"prompt_len: {prompt_len}")
 			print(type(token_ids), token_ids.shape, token_ids.dtype, token_ids.device)
-
-		if verbose:
-			print(f"[ELAPSED_t] Tokenization: {time.time() - tokenization_start:.4f} sec")
-			print(f"Generating {max_generated_tks} tokens [model.generate(..)]")
+			print(f"[ELAPSED TIME] Tokenization: {time.time() - tokenization_start:.4f} sec")
 
 		t0 = time.time()
-		with torch.no_grad():
-			with torch.amp.autocast(
-				device_type=device.type, 
-				enabled=torch.cuda.is_available(),
-				dtype=torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 and torch.cuda.is_bf16_supported() else torch.float16,
-			):
-				outputs = model.generate(
-					**inputs,
-					max_new_tokens=max_generated_tks,
-					temperature=TEMPERATURE,
-					top_p=TOP_P,
-					do_sample=TEMPERATURE > 0.0,
-					pad_token_id=tokenizer.pad_token_id,
-					eos_token_id=tokenizer.eos_token_id,
-					use_cache=True,
-				)
+		if hasattr(model, "generation_config"):
+			print(f"[DEFAULT GEN CONFIG] {type(model.generation_config)} {model.generation_config}")
+
+		gen_kwargs = dict(
+			max_new_tokens=max_generated_tks,
+			pad_token_id=tokenizer.pad_token_id,
+			eos_token_id=tokenizer.eos_token_id,
+			use_cache=True,
+			do_sample=False, # CRITICAL: Disables sampling for deterministic output
+			# temperature=TEMPERATURE,
+			# top_p=TOP_P,
+			# do_sample=TEMPERATURE > 0.0,
+		)
+
+		with torch.inference_mode(), torch.amp.autocast(
+			device_type=device.type, 
+			enabled=torch.cuda.is_available(),
+			dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+		):
+			outputs = model.generate(**tokenized_prompt, **gen_kwargs)
+		
 		if verbose:
-			print(f"[ELAPSED_t] model.generate(..): {time.time() - t0:.4f} sec")
-		raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)	
+			print(f"\n[GEN CONFIG] {gen_kwargs}")
+			print(f"[RESPONSE] {type(outputs)} {outputs.shape}")
+			print(f"[ELAPSED TIME] model.generate(..): {time.time() - t0:.4f} sec")
+			print("="*100)
+
+		# with prompt
+		# raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)	
+
+		# Critical: Slice off prompt tokens to decode ONLY newly generated text
+		generated_tokens = outputs[0, prompt_len:]
+		raw_llm_response = tokenizer.decode(generated_tokens, skip_special_tokens=True)
 	except Exception as e:
 		print(f"[ERROR] {e}")
 		return None
@@ -914,25 +925,35 @@ def _generate_one_batch(
 		padding=True,
 	)
 
-	# Critical fix: Fast tokenizers often add token_type_ids, causing causal models to crash
+	# Critical: Fast tokenizers often add token_type_ids, causing causal models to crash
 	tokenized.pop("token_type_ids", None)
 	prompt_len = tokenized["input_ids"].shape[1]
 	if device.type != "cpu":
 		tokenized = {k: v.to(device) for k, v in tokenized.items()}
 
-	sampling = temperature > 1e-4
+	# sampling = temperature > 1e-4
 
-	gen_kwargs: Dict[str, Any] = {
-		**tokenized,
-		"max_new_tokens": max_generated_tks,
-		"do_sample": sampling,
-		"pad_token_id": tokenizer.pad_token_id,
-		"eos_token_id": tokenizer.eos_token_id,
-		"use_cache": True,
-	}
-	if sampling:
-		gen_kwargs["temperature"] = temperature
-		gen_kwargs["top_p"] = top_p
+	# gen_kwargs: Dict[str, Any] = {
+	# 	"max_new_tokens": max_generated_tks,
+	# 	"do_sample": sampling,
+	# 	"pad_token_id": tokenizer.pad_token_id,
+	# 	"eos_token_id": tokenizer.eos_token_id,
+	# 	"use_cache": True,
+	# }
+	# if sampling:
+	# 	gen_kwargs["temperature"] = temperature
+	# 	gen_kwargs["top_p"] = top_p
+
+	gen_kwargs = dict(
+		max_new_tokens=max_generated_tks,
+		pad_token_id=tokenizer.pad_token_id,
+		eos_token_id=tokenizer.eos_token_id,
+		use_cache=True,
+		do_sample=False, # CRITICAL: Disables sampling for deterministic output
+		# do_sample=sampling,
+		# temperature=temperature,
+		# top_p=top_p,
+	)
 
 	use_amp = torch.cuda.is_available()
 	amp_dtype = (
@@ -940,11 +961,17 @@ def _generate_one_batch(
 		if (use_amp and torch.cuda.is_bf16_supported())
 		else torch.float16
 	)
-	with torch.no_grad():
-		with torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=amp_dtype):
-			outputs = model.generate(**gen_kwargs)
+	with torch.inference_mode(), torch.amp.autocast(
+		device_type=device.type, 
+		enabled=torch.cuda.is_available(),
+		dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+	):
+		outputs = model.generate(**tokenized, **gen_kwargs)
 
-	# Critical fix: Slice off prompt tokens to decode ONLY newly generated text
+	# Decode response (with prompt)
+	# decoded = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+	# Critical: Slice off prompt tokens to decode ONLY newly generated text
 	generated_tokens = outputs[:, prompt_len:]
 	decoded = tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
 
@@ -1342,26 +1369,30 @@ def get_llm_based_labels_slow(
 							max_length=4096,
 							padding=True,
 						)
+
 						if device.type != "cpu":
 							tokenized = {k: v.to(device) for k, v in tokenized.items()}
+
 						gen_kwargs = dict(
-							**tokenized,
 							max_new_tokens=max_generated_tks,
-							do_sample=TEMPERATURE > 0.0,
-							temperature=TEMPERATURE,
-							top_p=TOP_P,
 							pad_token_id=tokenizer.pad_token_id,
 							eos_token_id=tokenizer.eos_token_id,
 							use_cache=True,
+							do_sample=False, # CRITICAL: Disables sampling for deterministic output
+							# do_sample=TEMPERATURE > 0.0,
+							# temperature=TEMPERATURE,
+							# top_p=TOP_P,
 						)
-						with torch.no_grad():
-							with torch.amp.autocast(
-								device_type=device.type,
-								enabled=torch.cuda.is_available(),
-								dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-							):
-								outputs = model.generate(**gen_kwargs)
+
+						with torch.inference_mode(), torch.amp.autocast(
+							device_type=device.type,
+							enabled=torch.cuda.is_available(),
+							dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+						):
+							outputs = model.generate(**tokenized, **gen_kwargs)
+						
 						decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+
 						parsed_dict = _parse_batch_parallel(
 							decoded_batch=decoded,
 							batch_indices=current_indices,
@@ -1370,6 +1401,7 @@ def get_llm_based_labels_slow(
 							max_kws_=max_kws,
 							verbose_=verbose,
 						)
+
 						for idx, parsed in parsed_dict.items():
 							unique_results[idx] = parsed
 						break  # Success
