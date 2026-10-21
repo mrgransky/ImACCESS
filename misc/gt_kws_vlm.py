@@ -41,7 +41,7 @@ Constraints:
   - Exclude generic war terms.
   - Avoid typographical error, misprints, or irregular orthography.
   - Exclude human human category nouns and classifications.
-  - Exclude geographical locations.
+  - Exclude geographical names.
   - Exclude dates, times, years, decades, or any temporal references.
   - Exclude generic keywords for image characteristics.
   - Refrain from using common environmental details.
