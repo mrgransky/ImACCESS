@@ -4404,7 +4404,7 @@ def cluster(
 		model_kwargs={"attn_implementation": attention, "dtype": dtype}, # no device_map
 		trust_remote_code=True,
 		device=device, # single device
-		cache_folder=cache_directory[os.getenv('USER')],
+		cache_folder=cache_directory,#cache_directory[os.getenv('USER')],
 		token=os.getenv("HUGGINGFACE_TOKEN"),
 		processor_kwargs={"padding_side": "left"}, # renamed from tokenizer_kwargs
 	)
