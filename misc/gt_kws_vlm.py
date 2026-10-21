@@ -929,6 +929,9 @@ def get_vlm_based_labels_single(
 		# eos_token_id=processor.tokenizer.eos_token_id,
 		# pad_token_id=processor.tokenizer.pad_token_id,
 		do_sample=False, # Disables sampling for deterministic output (triggers Greedy Search)
+		temperature=None,
+		top_p=None,
+		top_k=None,
 	)
 	effective_gen_config.update(**gen_kwargs)
 	if verbose:
@@ -942,7 +945,11 @@ def get_vlm_based_labels_single(
 		enabled=torch.cuda.is_available(),
 		dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 	):
-		outputs = model.generate(**input_single, generation_config=effective_gen_config)
+		outputs = model.generate(
+			**input_single, 
+			generation_config=effective_gen_config
+		)
+	
 	generation_time = time.time() - tt
 
 	if verbose:
@@ -1070,6 +1077,9 @@ def get_vlm_based_labels(
 
 	# ========== Prepare generation kwargs ==========
 	# FORCE deterministic (greedy) decoding to prevent label drift between runs
+	# Build and inspect the exact merged configuration
+	effective_gen_config = copy.deepcopy(model.generation_config)
+
 	gen_kwargs = dict(
 		max_new_tokens=max_generated_tks, 
 		use_cache=True,
@@ -1079,8 +1089,11 @@ def get_vlm_based_labels(
 		# Note: Do NOT set `temperature` when do_sample=False. 
 		# HuggingFace ignores it or throws a warning when sampling is disabled.
 	)
+	effective_gen_config.update(**gen_kwargs)
 	if verbose:
-		print(f"\n[USER ASSIGNED GEN CONFIG] {gen_kwargs}")
+		print(f"[USER ASSIGNED GENERATION CONFIG] {gen_kwargs}")
+		print("[RESOLVED EFFECTIVE GENERATION CONFIG]")
+		print(effective_gen_config)
 			
 	# ========== Process batches ==========
 	def _load_(p: str) -> Optional[Image.Image]:
@@ -1165,7 +1178,10 @@ def get_vlm_based_labels(
 				enabled=torch.cuda.is_available(),
 				dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 			):
-				outputs = model.generate(**inputs, **gen_kwargs)
+				outputs = model.generate(
+					**inputs, 
+					generation_config=effective_gen_config
+				)
 
 			# generation_time = time.time() - tt
 			breakdown = get_token_breakdown(inputs, outputs)
@@ -1260,7 +1276,10 @@ def get_vlm_based_labels(
 						enabled=torch.cuda.is_available(),
 						dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 					):
-						out_single = model.generate(**input_single, **gen_kwargs)
+						out_single = model.generate(
+							**input_single, 
+							generation_config=effective_gen_config
+						)
 
 					# # with prompt
 					# decoded_single = processor.decode(out_single[0], skip_special_tokens=True)

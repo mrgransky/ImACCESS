@@ -761,9 +761,9 @@ def query_local_llm(
 			# eos_token_id=tokenizer.eos_token_id,
 			use_cache=True,
 			do_sample=False, # CRITICAL: Disables sampling for deterministic output
-			# temperature=TEMPERATURE,
-			# top_p=TOP_P,
-			# do_sample=TEMPERATURE > 0.0,
+			temperature=None,
+			top_p=None,
+			top_k=None,
 		)
 		effective_gen_config.update(**gen_kwargs)
 		if verbose:
@@ -777,7 +777,10 @@ def query_local_llm(
 			enabled=torch.cuda.is_available(),
 			dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 		):
-			outputs = model.generate(**tokenized_prompt, generation_config=effective_gen_config)
+			outputs = model.generate(
+				**tokenized_prompt, 
+				generation_config=effective_gen_config
+			)
 		
 		if verbose:
 			print(f"\n[USER ASSIGNED GEN CONFIG] {gen_kwargs}")
@@ -912,6 +915,7 @@ def _generate_one_batch(
 	max_length: int,
 	temperature: float,
 	top_p: float = TOP_P,
+	verbose: bool = False,
 ) -> List[str]:
 	"""
 	Executes a single tokenize -> generate -> decode pass.
@@ -936,29 +940,25 @@ def _generate_one_batch(
 	if device.type != "cpu":
 		tokenized = {k: v.to(device) for k, v in tokenized.items()}
 
-	# sampling = temperature > 1e-4
-
-	# gen_kwargs: Dict[str, Any] = {
-	# 	"max_new_tokens": max_generated_tks,
-	# 	"do_sample": sampling,
-	# 	"pad_token_id": tokenizer.pad_token_id,
-	# 	"eos_token_id": tokenizer.eos_token_id,
-	# 	"use_cache": True,
-	# }
-	# if sampling:
-	# 	gen_kwargs["temperature"] = temperature
-	# 	gen_kwargs["top_p"] = top_p
+	# ========== Generate response ==========
+	# Build and inspect the exact merged configuration
+	effective_gen_config = copy.deepcopy(model.generation_config)
 
 	gen_kwargs = dict(
 		max_new_tokens=max_generated_tks,
-		pad_token_id=tokenizer.pad_token_id,
-		eos_token_id=tokenizer.eos_token_id,
+		# pad_token_id=tokenizer.pad_token_id,
+		# eos_token_id=tokenizer.eos_token_id,
 		use_cache=True,
-		do_sample=False, # CRITICAL: Disables sampling for deterministic output
-		# do_sample=sampling,
-		# temperature=temperature,
-		# top_p=top_p,
+		do_sample=False, # Disables sampling for deterministic output (triggers Greedy Search)
+		temperature=None,
+		top_p=None,
+		top_k=None,
 	)
+	effective_gen_config.update(**gen_kwargs)
+	# if verbose:
+	# 	print(f"[USER ASSIGNED GENERATION CONFIG] {gen_kwargs}")
+	# 	print("[RESOLVED EFFECTIVE GENERATION CONFIG]")
+	# 	print(effective_gen_config)
 
 	use_amp = torch.cuda.is_available()
 	amp_dtype = (
@@ -971,7 +971,10 @@ def _generate_one_batch(
 		enabled=torch.cuda.is_available(),
 		dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 	):
-		outputs = model.generate(**tokenized, **gen_kwargs)
+		outputs = model.generate(
+			**tokenized, 
+			generation_config=effective_gen_config
+		)
 
 	# Decode response (with prompt)
 	# decoded = tokenizer.decode(outputs[0], skip_special_tokens=True)
@@ -1103,6 +1106,7 @@ def _run_generation_pass(
 					max_generated_tks=max_generated_tks,
 					max_length=max_length,
 					temperature=temperature,
+					verbose=verbose,
 				)
 
 				# Store completions immediately before parsing so failures can be salvaged
@@ -1378,24 +1382,36 @@ def get_llm_based_labels_slow(
 						if device.type != "cpu":
 							tokenized = {k: v.to(device) for k, v in tokenized.items()}
 
+						# ========== Generate response ==========
+						# Build and inspect the exact merged configuration
+						effective_gen_config = copy.deepcopy(model.generation_config)
+
 						gen_kwargs = dict(
 							max_new_tokens=max_generated_tks,
-							pad_token_id=tokenizer.pad_token_id,
-							eos_token_id=tokenizer.eos_token_id,
+							# pad_token_id=tokenizer.pad_token_id,
+							# eos_token_id=tokenizer.eos_token_id,
 							use_cache=True,
-							do_sample=False, # CRITICAL: Disables sampling for deterministic output
-							# do_sample=TEMPERATURE > 0.0,
-							# temperature=TEMPERATURE,
-							# top_p=TOP_P,
+							do_sample=False, # Disables sampling for deterministic output (triggers Greedy Search)
+							temperature=None,
+							top_p=None,
+							top_k=None,
 						)
+						effective_gen_config.update(**gen_kwargs)
+						# if verbose:
+						# 	print(f"[USER ASSIGNED GENERATION CONFIG] {gen_kwargs}")
+						# 	print("[RESOLVED EFFECTIVE GENERATION CONFIG]")
+						# 	print(effective_gen_config)
 
 						with torch.inference_mode(), torch.amp.autocast(
 							device_type=device.type,
 							enabled=torch.cuda.is_available(),
 							dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 						):
-							outputs = model.generate(**tokenized, **gen_kwargs)
-						
+							outputs = model.generate(
+								**tokenized, 
+								generation_config=effective_gen_config
+							)
+
 						decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
 						parsed_dict = _parse_batch_parallel(
