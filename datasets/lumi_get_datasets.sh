@@ -6,10 +6,10 @@
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=160G
+#SBATCH --mem=96G
 #SBATCH --array=0-3
 #SBATCH --partition=small
-#SBATCH --time=0-23:55:00
+#SBATCH --time=0-10:55:00
 
 set -euo pipefail
 
