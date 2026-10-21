@@ -4337,7 +4337,7 @@ def cluster(
 	merge_close_clusters_threshold: Optional[float] = None,
 	merge_max_size: int = 30,
 	min_cluster_size: int = 2,
-	low_cohesion_threshold=0.59,
+	low_cohesion_threshold=0.60,
 	poor_canonical_threshold=0.60,
 	merge_singletons: bool = True,
 	use_cache: bool = True,
