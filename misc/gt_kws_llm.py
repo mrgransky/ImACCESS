@@ -417,7 +417,7 @@ def _load_llm_(
 		print(f"{'='*75}")
 		print(model.config)
 		if hasattr(model, "generation_config"):
-			print(f"\n[DEFAULT GEN CONFIG]{type(model.generation_config)}\n{model.generation_config}")
+			print(f"\n[DEFAULT GEN CONFIG] {type(model.generation_config)}\n{model.generation_config}")
 		print(f"{'='*75}")
 
 	return tokenizer, model
