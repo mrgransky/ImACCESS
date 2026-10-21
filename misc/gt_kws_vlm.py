@@ -920,24 +920,32 @@ def get_vlm_based_labels_single(
 	prompt_len = input_single.input_ids.shape[1]
 
 	# ========== Generate response ==========
+	# Build and inspect the exact merged configuration
+	effective_gen_config = copy.deepcopy(model.generation_config)
+
 	gen_kwargs = dict(
 		max_new_tokens=max_generated_tks, 
 		use_cache=True,
-		eos_token_id=processor.tokenizer.eos_token_id,
-		pad_token_id=processor.tokenizer.pad_token_id,
-		do_sample=False, # Disables sampling for deterministic output
+		# eos_token_id=processor.tokenizer.eos_token_id,
+		# pad_token_id=processor.tokenizer.pad_token_id,
+		do_sample=False, # Disables sampling for deterministic output (triggers Greedy Search)
 	)
+	effective_gen_config.update(**gen_kwargs)
+	if verbose:
+		print(f"[USER ASSIGNED GENERATION CONFIG] {gen_kwargs}")
+		print("[RESOLVED EFFECTIVE GENERATION CONFIG]")
+		print(effective_gen_config)
+
 	tt = time.time()
 	with torch.inference_mode(), torch.amp.autocast(
 		device_type=device.type, 
 		enabled=torch.cuda.is_available(),
 		dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 	):
-		outputs = model.generate(**input_single, **gen_kwargs)
+		outputs = model.generate(**input_single, generation_config=effective_gen_config)
 	generation_time = time.time() - tt
 
 	if verbose:
-		print(f"\n[USER ASSIGNED GEN CONFIG] {gen_kwargs}")
 		print(f"[RESPONSE] {type(outputs)} {outputs.shape}")
 		breakdown = get_token_breakdown(input_single, outputs, verbose=verbose)
 		print(f"   • Generation time:   {generation_time:.2f} sec")

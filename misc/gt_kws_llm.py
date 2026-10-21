@@ -2,10 +2,7 @@ from utils import *
 from nlp_utils import get_enriched_description
 
 # how to run [local]:
-# python gt_kws_llm.py -csv /home/farid/datasets/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -qb 8 -v -bs 2
-
 # with description:
-# small model for local testing:
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
@@ -754,24 +751,33 @@ def query_local_llm(
 			print(type(token_ids), token_ids.shape, token_ids.dtype, token_ids.device)
 			print(f"[ELAPSED TIME] Tokenization: {time.time() - tokenization_start:.4f} sec")
 
-		t0 = time.time()
+
+		# ========== Generate response ==========
+		# Build and inspect the exact merged configuration
+		effective_gen_config = copy.deepcopy(model.generation_config)
 		gen_kwargs = dict(
 			max_new_tokens=max_generated_tks,
-			pad_token_id=tokenizer.pad_token_id,
-			eos_token_id=tokenizer.eos_token_id,
+			# pad_token_id=tokenizer.pad_token_id,
+			# eos_token_id=tokenizer.eos_token_id,
 			use_cache=True,
 			do_sample=False, # CRITICAL: Disables sampling for deterministic output
 			# temperature=TEMPERATURE,
 			# top_p=TOP_P,
 			# do_sample=TEMPERATURE > 0.0,
 		)
+		effective_gen_config.update(**gen_kwargs)
+		if verbose:
+			print(f"[USER ASSIGNED GENERATION CONFIG] {gen_kwargs}")
+			print("[RESOLVED EFFECTIVE GENERATION CONFIG]")
+			print(effective_gen_config)
 
+		t0 = time.time()
 		with torch.inference_mode(), torch.amp.autocast(
 			device_type=device.type, 
 			enabled=torch.cuda.is_available(),
 			dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 		):
-			outputs = model.generate(**tokenized_prompt, **gen_kwargs)
+			outputs = model.generate(**tokenized_prompt, generation_config=effective_gen_config)
 		
 		if verbose:
 			print(f"\n[USER ASSIGNED GEN CONFIG] {gen_kwargs}")

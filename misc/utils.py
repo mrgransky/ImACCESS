@@ -55,6 +55,7 @@ import platform
 import shutil
 import packaging
 import pathlib
+import copy
 from sklearn.feature_extraction.text import TfidfVectorizer
 import concurrent.futures
 # from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, TimeoutError
