@@ -2051,8 +2051,7 @@ def get_clustered_labels(
 	}
 	
 	if verbose:
-		print(f"\n[STATISTICS]\n{json.dumps(stats, indent=2, ensure_ascii=False)}))")
-		print("-"*100)
+		print(f"\n[STATISTICS]\n{json.dumps(stats, indent=2, ensure_ascii=False)}")
 
 	return labels
 
@@ -3734,6 +3733,7 @@ def assign_canonical_labels(
 		print(f"  ├─ X:  {X.shape}")
 		print(f"  ├─ virtual_min_sim_ratio: {virtual_min_sim_ratio}")
 		print(f"  └─ min_distinct_concepts: {min_distinct_concepts}")
+		print(df.head(10))
 		print()
 
 	W_SIM, W_FREQ, W_HEAD, W_CONT, W_BREV = 0.30, 0.15, 0.20, 0.25, 0.10
@@ -4587,7 +4587,7 @@ def cluster(
 	if verbose:
 		print("-" * 100)
 		print(f"[DONE] {len(df)} labels -> {df['cluster'].nunique()} clusters")
-		print(df.head(10))
+		print(df.head(20))
 		print(f"[TOTAL CLUSTERING ELAPSED TIME] {time.time()-st_t:.2f} sec.")
 		print("-" * 100)
 	
