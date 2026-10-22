@@ -484,7 +484,7 @@ def _estimate_dynamic_neighbor_thresholds(
 		'sigma_mad': round(sigma_mad, 4),
 	}
 
-def get_cluster_nearest_neighbor(
+def get_cluster_medoid_nearest_neighbor(
 	embedding_model_id: str,
 	X: np.ndarray,
 	labels: np.ndarray,
@@ -496,7 +496,7 @@ def get_cluster_nearest_neighbor(
 ) -> Tuple[Dict[int, Dict], Dict]:
 	"""
 	Pre-merge cluster proximity diagnostics computed directly on member centroids
-	after `get_clustered_labels()` and before `_merge_close_clusters()`.
+	after `get_clustered_labels()` and before `merge_cluster_medoid_nearest_neighbor()`.
 
 	If `threshold` is None (default), it is derived dynamically from the
 	clusters via three intrinsic signals (robust MAD fence, Kneedle upper-tail
@@ -556,7 +556,7 @@ def get_cluster_nearest_neighbor(
 		merge_ok = bool(is_mutual and (max_merged_size is None or comb_size <= max_merged_size))
 		info[c] = {
 			'cluster_id': int(n),
-			'similarity': round(sim, 4),
+			'similarity': round(sim, 6),
 			'mutual': is_mutual,
 			'combined_size': comb_size,
 			'merge_eligible': merge_ok,
@@ -753,8 +753,8 @@ def get_cluster_nearest_neighbor(
 				else:
 					status_tag = "one-way"
 				print(f"    {rank}. sim={s:.4f} [{status_tag}]")
-				print(f"       Cluster {a:6d} ({len(cluster_members[a]):3d} labels, medoid: {repr(cluster_medoids[a]):<20} sim={cluster_medoid_sims[a]:.4f}) {cluster_members[a][:7]}")
-				print(f"       Cluster {b:6d} ({len(cluster_members[b]):3d} labels, medoid: {repr(cluster_medoids[b]):<20} sim={cluster_medoid_sims[b]:.4f}) {cluster_members[b][:7]}")
+				print(f"       Cluster {a:6d} ({len(cluster_members[a]):3d} labels, medoid: {repr(cluster_medoids[a]):<28} sim={cluster_medoid_sims[a]:.4f}) {cluster_members[a][:7]}")
+				print(f"       Cluster {b:6d} ({len(cluster_members[b]):3d} labels, medoid: {repr(cluster_medoids[b]):<28} sim={cluster_medoid_sims[b]:.4f}) {cluster_members[b][:7]}")
 				print()
 
 		if review_path:
@@ -763,7 +763,7 @@ def get_cluster_nearest_neighbor(
 
 	return summary
 
-def _merge_close_clusters(
+def merge_cluster_medoid_nearest_neighbor(
 	X: np.ndarray,
 	labels: np.ndarray,
 	label_texts: List[str],
@@ -822,10 +822,17 @@ def _merge_close_clusters(
 
 			merge = {
 				'round': rnd,
-				'similarity': round(float(nn_sim[i]), 5),
-				'size_a': int(sizes[i]), 'size_b': int(sizes[j]),
-				'members_a': [label_texts[k] for k in members[i][:top_k_members]],
-				'members_b': [label_texts[k] for k in members[j][:top_k_members]],
+				'similarity': round(float(nn_sim[i]), 7),
+				'size_a': int(sizes[i]), 
+				'size_b': int(sizes[j]),
+				'members_a': [
+					label_texts[k] 
+					for k in members[i]#[:top_k_members]
+				],
+				'members_b': [
+					label_texts[k] 
+					for k in members[j]#[:top_k_members]
+				],
 			}
 
 			merges.append(merge)
@@ -851,7 +858,7 @@ def _merge_close_clusters(
 		rounds = max((m['round'] for m in merges), default=0)
 		size_limit_str = f"max_size={max_merged_size}" if max_merged_size is not None else "no size limit"
 		print(
-			f"\n[MERGE CLOSE CLUSTERS] threshold={threshold:.3f} ({size_limit_str}): "
+			f"\n[MERGE CLOSE CLUSTERS] threshold={threshold:.5f} ({size_limit_str}): "
 			f"{n_before} -> {len(members)} clusters ({len(merges)} merges, {rounds} round(s))"
 		)
 		
@@ -4698,7 +4705,7 @@ def cluster(
 	)
 
 	# STEP 4a: PRE-MERGE CLUSTER NEIGHBOUR DIAGNOSTICS & DYNAMIC THRESHOLDING
-	neighbor_summary = get_cluster_nearest_neighbor(
+	neighbor_summary = get_cluster_medoid_nearest_neighbor(
 		embedding_model_id=model.model_card_data.base_model,
 		X=X,
 		labels=clustered_labels,
@@ -4716,7 +4723,7 @@ def cluster(
 			if merge_close_clusters_threshold is not None
 			else float(neighbor_summary['threshold'])
 		)
-		clustered_labels = _merge_close_clusters(
+		clustered_labels = merge_cluster_medoid_nearest_neighbor(
 			X=X,
 			labels=clustered_labels,
 			label_texts=unique_labels,
@@ -4856,7 +4863,7 @@ def cluster(
 		print(f"[TOTAL CLUSTERING ELAPSED TIME] {time.time()-st_t:.2f} sec.")
 		print("-" * 100)
 	
-	# sys.exit()
+	sys.exit()
 
 	return df
 
@@ -4868,7 +4875,7 @@ def get_canonical_labels(
 	batch_size: int,
 	device: Union[str, torch.device],
 	nc: Optional[int]=None,
-	merge_near_duplicate_clusters: bool = False,
+	merge_near_duplicate_clusters: bool = True,
 	merge_close_clusters_threshold: Optional[float] = None,
 	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
