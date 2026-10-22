@@ -11,7 +11,7 @@
 #SBATCH --mem=264G
 #SBATCH --partition=standard-g
 #SBATCH --gres=gpu:mi250:8
-#SBATCH --time=00-04:00:00
+#SBATCH --time=2-00:00:00
 #SBATCH --array=0
 ##SBATCH --begin=06:00:00
 
