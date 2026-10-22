@@ -484,7 +484,7 @@ def _estimate_dynamic_neighbor_thresholds(
 		'sigma_mad': round(sigma_mad, 4),
 	}
 
-def _cluster_neighbor_info(
+def get_cluster_nearest_neighbor(
 	embedding_model_id: str,
 	X: np.ndarray,
 	labels: np.ndarray,
@@ -514,6 +514,7 @@ def _cluster_neighbor_info(
 
 	cluster_members: Dict[int, List[str]] = {}
 	cluster_medoids: Dict[int, str] = {}
+	cluster_medoid_sims: Dict[int, float] = {}
 	sizes = np.zeros(n_clusters, dtype=np.int64)
 	centroid_list = []
 
@@ -528,8 +529,19 @@ def _cluster_neighbor_info(
 		centroid_list.append(centroid)
 
 		unit_c = centroid / (np.linalg.norm(centroid) + 1e-12)
-		medoid_local = int(np.argmax(emb_c @ unit_c))
+		sims_to_centroid = emb_c @ unit_c
+		medoid_local = int(np.argmax(sims_to_centroid))
 		cluster_medoids[c] = members_c[medoid_local]
+
+		# Average similarity of the medoid to all OTHER members in the cluster
+		if len(m_idx) > 1:
+			medoid_emb = emb_c[medoid_local]
+			medoid_sims_to_others = emb_c @ medoid_emb
+			# Exclude self-similarity (which equals 1.0)
+			avg_medoid_sim = float((medoid_sims_to_others.sum() - 1.0) / (len(m_idx) - 1))
+		else:
+			avg_medoid_sim = 1.0
+		cluster_medoid_sims[c] = round(avg_medoid_sim, 4)
 
 	centroids = np.vstack(centroid_list) if n_clusters > 0 else np.empty((0, X.shape[1]), dtype=np.float32)
 	nn_idx, nn_sim = _nearest_cluster_neighbors(centroids=centroids, chunk=4096)
@@ -549,6 +561,7 @@ def _cluster_neighbor_info(
 			'combined_size': comb_size,
 			'merge_eligible': merge_ok,
 			'medoid': cluster_medoids[n],
+			'medoid_similarity': cluster_medoid_sims[n],
 			'members': cluster_members[n][:4],
 		}
 
@@ -594,12 +607,13 @@ def _cluster_neighbor_info(
 				'cluster_id': int(c),
 				'size': len(cluster_members[c]),
 				'medoid': cluster_medoids[c],
-				'members': cluster_members[c][:top_k_members],
+				'medoid_similarity': cluster_medoid_sims[c],
+				'members': cluster_members[c]#[:top_k_members],
 			}
 
 		review = [
 			{
-				'similarity': float(round(s, 5)),
+				'similarity': float(round(s, 6)),
 				'mutual': bool(info[a]['cluster_id'] == b and info[b]['cluster_id'] == a),
 				'merge_eligible': bool(
 					info[a]['cluster_id'] == b
@@ -739,15 +753,15 @@ def _cluster_neighbor_info(
 				else:
 					status_tag = "one-way"
 				print(f"    {rank}. sim={s:.4f} [{status_tag}]")
-				print(f"       Cluster {a:6d} ({len(cluster_members[a]):3d} labels, medoid: {repr(cluster_medoids[a]):<20}) {cluster_members[a][:7]}")
-				print(f"       Cluster {b:6d} ({len(cluster_members[b]):3d} labels, medoid: {repr(cluster_medoids[b]):<20}) {cluster_members[b][:7]}")
+				print(f"       Cluster {a:6d} ({len(cluster_members[a]):3d} labels, medoid: {repr(cluster_medoids[a]):<20} sim={cluster_medoid_sims[a]:.4f}) {cluster_members[a][:7]}")
+				print(f"       Cluster {b:6d} ({len(cluster_members[b]):3d} labels, medoid: {repr(cluster_medoids[b]):<20} sim={cluster_medoid_sims[b]:.4f}) {cluster_members[b][:7]}")
 				print()
 
 		if review_path:
 			print(f"\n[SAVED] {review_path}")
 		print("=" * 120 + "\n")
 
-	return info, summary
+	return summary
 
 def _merge_close_clusters(
 	X: np.ndarray,
@@ -4684,7 +4698,7 @@ def cluster(
 	)
 
 	# STEP 4a: PRE-MERGE CLUSTER NEIGHBOUR DIAGNOSTICS & DYNAMIC THRESHOLDING
-	_, neighbor_summary = _cluster_neighbor_info(
+	neighbor_summary = get_cluster_nearest_neighbor(
 		embedding_model_id=model.model_card_data.base_model,
 		X=X,
 		labels=clustered_labels,
