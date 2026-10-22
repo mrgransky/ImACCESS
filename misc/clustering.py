@@ -489,7 +489,7 @@ def _cluster_neighbor_info(
 	X: np.ndarray,
 	labels: np.ndarray,
 	label_texts: List[str],
-	max_merged_size: int = 30,
+	max_merged_size: Optional[int] = None,
 	threshold: Optional[float] = None,
 	review_path: Optional[str] = None,
 	verbose: bool = False,
@@ -541,7 +541,7 @@ def _cluster_neighbor_info(
 		sim = float(nn_sim[pos])
 		is_mutual = bool(int(nn_idx[npos]) == pos)
 		comb_size = int(sizes[pos] + sizes[npos])
-		merge_ok = bool(is_mutual and comb_size <= max_merged_size)
+		merge_ok = bool(is_mutual and (max_merged_size is None or comb_size <= max_merged_size))
 		info[c] = {
 			'cluster_id': int(n),
 			'similarity': round(sim, 4),
@@ -573,7 +573,7 @@ def _cluster_neighbor_info(
 		'n_clusters': n_clusters,
 		'threshold': round(active_threshold, 4),
 		'threshold_mode': 'dynamic' if is_dynamic_thresh else 'manual',
-		'max_merged_size': int(max_merged_size),
+		'max_merged_size': int(max_merged_size) if max_merged_size is not None else None,
 		'dynamic_thresholds': dyn,
 		'min_nearest_similarity': round(float(np.min(sims)), 4) if n_clusters else 0.0,
 		'p25_nearest_similarity': round(float(np.percentile(sims, 25)), 4) if n_clusters else 0.0,
@@ -604,7 +604,7 @@ def _cluster_neighbor_info(
 				'merge_eligible': bool(
 					info[a]['cluster_id'] == b
 					and info[b]['cluster_id'] == a
-					and (len(cluster_members[a]) + len(cluster_members[b]) <= max_merged_size)
+					and (max_merged_size is None or len(cluster_members[a]) + len(cluster_members[b]) <= max_merged_size)
 				),
 				'combined_size': int(len(cluster_members[a]) + len(cluster_members[b])),
 				'a': _side(a),
@@ -618,7 +618,7 @@ def _cluster_neighbor_info(
 				'embedding': embedding_model_id,
 				'threshold': float(round(active_threshold, 4)),
 				'threshold_mode': summary['threshold_mode'],
-				'max_merged_size': int(max_merged_size),
+				'max_merged_size': summary['max_merged_size'],
 				'dynamic_thresholds': dyn,
 				'n_pairs': len(review),
 				'n_merge_eligible_pairs': sum(1 for r in review if r['merge_eligible']),
@@ -629,12 +629,14 @@ def _cluster_neighbor_info(
 	if verbose:
 		n_mutual_total = int(mutual_mask.sum())
 		n_eligible_total = int(eligible_mask.sum()) // 2
+		size_limit_str = f"<= max_merged_size={max_merged_size}" if max_merged_size is not None else "no size limit"
+		size_header_str = f"Mergeable Pairs (<={max_merged_size})" if max_merged_size is not None else "Mergeable Pairs (all mutual)"
 		print("\n" + "=" * 120)
 		print("[CLUSTER NEIGHBOURS] Pre-Merge 1-Nearest-Neighbor Centroid Cosine Similarity Diagnostics")
 		print(
 			f"Total Clusters: {n_clusters:,} | "
 			f"Mutual 1-NN: {n_mutual_total:,}/{n_clusters:,} ({100.0 * n_mutual_total / max(n_clusters, 1):.1f}%) "
-			f"[{n_mutual_total // 2:,} mutual pairs, {n_eligible_total:,} pairs <= max_merged_size={max_merged_size}]"
+			f"[{n_mutual_total // 2:,} mutual pairs, {n_eligible_total:,} pairs ({size_limit_str})]"
 		)
 		if n_clusters > 1:
 			print(
@@ -660,9 +662,9 @@ def _cluster_neighbor_info(
 		print("-" * 120)
 		print(
 			f"  {'>= Sim':<8} {'All Clusters':>16} {'Mutual 1-NN':>18} {'One-Way 1-NN':>18} "
-			f"{f'Mergeable Pairs (<={max_merged_size})':>24}  {'Intrinsic Landmark / Role'}"
+			f"{size_header_str:>28}  {'Intrinsic Landmark / Role'}"
 		)
-		print(f"  {'-'*8:<8} {'-'*16:>16} {'-'*18:>18} {'-'*18:>18} {'-'*24:>24}  {'-'*32}")
+		print(f"  {'-'*8:<8} {'-'*16:>16} {'-'*18:>18} {'-'*18:>18} {'-'*28:>28}  {'-'*32}")
 
 		raw_rows = [(t, None) for t in levels]
 		if n_clusters > 1:
@@ -701,7 +703,7 @@ def _cluster_neighbor_info(
 			print(
 				f"  {val_r:<8.4f} {f'{n_all:,} ({pct_all:5.1f}%)':>16} "
 				f"{f'{n_mut:,} ({pct_mut:5.1f}%)':>18} {f'{n_one:,} ({pct_one:5.1f}%)':>18} "
-				f"{f'{n_mrg_pairs:,} pairs':>24}  {tag_str}"
+				f"{f'{n_mrg_pairs:,} pairs':>28}  {tag_str}"
 			)
 
 		print("-" * 120)
@@ -713,13 +715,14 @@ def _cluster_neighbor_info(
 				1 for (a, b) in pairs
 				if info[a]['cluster_id'] == b
 				and info[b]['cluster_id'] == a
-				and (len(cluster_members[a]) + len(cluster_members[b]) <= max_merged_size)
+				and (max_merged_size is None or len(cluster_members[a]) + len(cluster_members[b]) <= max_merged_size)
 			)
 			n_size_blocked = n_mut_pairs - n_mrg_pairs
 			n_asym_pairs = len(pairs) - n_mut_pairs
+			size_note = f" (all {n_mut_pairs:,} mutual pairs mergeable; no size limit)" if max_merged_size is None else f" ({n_size_blocked:,} mutual pairs blocked by size > {max_merged_size})"
 			print(f"  Candidate Pairs at Active Threshold (similarity >= {active_threshold:.4f} [{summary['threshold_mode']}]):")
 			print(f"    • Unique pairs extracted  : {len(pairs):,} ({n_mut_pairs:,} mutual 1-NN, {n_asym_pairs:,} one-way 1-NN)")
-			print(f"    • Step 4b merge-eligible  : {n_mrg_pairs:,} mutual pairs with combined size <= {max_merged_size} ({n_size_blocked:,} mutual pairs blocked by size)")
+			print(f"    • Step 4b merge-eligible  : {n_mrg_pairs:,} mutual pairs{size_note}")
 			print(f"    • Individual clusters     : {n_cand_clusters:,} ({100.0 * n_cand_clusters / max(n_clusters, 1):.1f}% of total clusters)")
 
 			top_k = min(5, len(pairs))
@@ -728,15 +731,17 @@ def _cluster_neighbor_info(
 			for rank, ((a, b), s) in enumerate(sorted_pairs, start=1):
 				is_mut = info[a]['cluster_id'] == b and info[b]['cluster_id'] == a
 				comb_sz = len(cluster_members[a]) + len(cluster_members[b])
-				if is_mut and comb_sz <= max_merged_size:
-					status_tag = f"mutual, merge-eligible (combined={comb_sz}<={max_merged_size})"
+				if is_mut and (max_merged_size is None or comb_sz <= max_merged_size):
+					limit_desc = f"<={max_merged_size}" if max_merged_size is not None else "no limit"
+					status_tag = f"mutual, merge-eligible (combined={comb_sz}, {limit_desc})"
 				elif is_mut:
 					status_tag = f"mutual, size-blocked (combined={comb_sz}>{max_merged_size})"
 				else:
 					status_tag = "one-way"
 				print(f"    {rank}. sim={s:.4f} [{status_tag}]")
-				print(f"       Cluster {a} ({len(cluster_members[a])} labels, medoid=\"{cluster_medoids[a]}\"): {cluster_members[a][:4]}")
-				print(f"       Cluster {b} ({len(cluster_members[b])} labels, medoid=\"{cluster_medoids[b]}\"): {cluster_members[b][:4]}")
+				print(f"       Cluster {a:6d} ({len(cluster_members[a]):3d} labels, medoid: {repr(cluster_medoids[a]):<20}) {cluster_members[a][:7]}")
+				print(f"       Cluster {b:6d} ({len(cluster_members[b]):3d} labels, medoid: {repr(cluster_medoids[b]):<20}) {cluster_members[b][:7]}")
+				print()
 
 		if review_path:
 			print(f"\n[SAVED] {review_path}")
@@ -749,7 +754,7 @@ def _merge_close_clusters(
 	labels: np.ndarray,
 	label_texts: List[str],
 	threshold: float,
-	max_merged_size: int = 30,
+	max_merged_size: Optional[int] = None,
 	max_rounds: int = 10,
 	report_path: Optional[str]=None,
 	verbose: bool = False,
@@ -765,16 +770,14 @@ def _merge_close_clusters(
 
 		* they are mutual nearest neighbours (each is the other's closest cluster),
 		* their centroid cosine similarity is >= threshold, and
-		* the merged cluster would hold at most max_merged_size labels.
+		* (if max_merged_size is given) the merged cluster would hold at most max_merged_size labels.
 
 	Merged centroids are recomputed (size-weighted) and the process repeats for
 	up to max_rounds rounds. Because each round compares the RECOMPUTED centroid,
 	chains (A~B, B~C, A far from C) cannot form: after A+B merge, the merged
 	centroid must itself be close to C.
 
-	Returns new labels (contiguous, same row order). Leave the parameter off
-	(threshold=None in cluster()) until you have calibrated the threshold from
-	the neighbour report.
+	Returns new labels (contiguous, same row order).
 	"""
 
 	ids = np.unique(labels)
@@ -798,7 +801,9 @@ def _merge_close_clusters(
 			if not (i < j and int(nn_idx[j]) == i):
 				continue # mutual pairs only: each cluster is in at most one pair
 			
-			if nn_sim[i] < threshold or sizes[i] + sizes[j] > max_merged_size:
+			if nn_sim[i] < threshold:
+				continue
+			if max_merged_size is not None and sizes[i] + sizes[j] > max_merged_size:
 				continue
 
 			merge = {
@@ -830,8 +835,9 @@ def _merge_close_clusters(
 
 	if verbose:
 		rounds = max((m['round'] for m in merges), default=0)
+		size_limit_str = f"max_size={max_merged_size}" if max_merged_size is not None else "no size limit"
 		print(
-			f"\n[MERGE CLOSE CLUSTERS] threshold={threshold:.3f} max_size={max_merged_size}: "
+			f"\n[MERGE CLOSE CLUSTERS] threshold={threshold:.3f} ({size_limit_str}): "
 			f"{n_before} -> {len(members)} clusters ({len(merges)} merges, {rounds} round(s))"
 		)
 		
@@ -852,13 +858,7 @@ def _merge_close_clusters(
 				'rounds': rounds,
 			}
 
-			json.dump(
-				new_result,
-				f, 
-				indent=2, 
-				ensure_ascii=False, 
-				default=_json_default
-			)
+			json.dump(new_result, f, indent=2, ensure_ascii=False, default=_json_default)
 	
 	return new_labels
 
@@ -4572,7 +4572,7 @@ def cluster(
 	min_singleton_merge_sim: Optional[float] = 0.60,
 	merge_near_duplicate_clusters: bool = False,
 	merge_close_clusters_threshold: Optional[float] = None,
-	merge_max_size: int = 30,
+	merge_max_size: Optional[int] = None,
 	min_cluster_size: int = 2,
 	low_cohesion_threshold=0.60,
 	poor_canonical_threshold=0.60,
