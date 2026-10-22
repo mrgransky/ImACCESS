@@ -20,15 +20,24 @@ from utils import *
 # Qwen/Qwen3-VL-8B-Instruct # only fits Puhti and Mahti
 # Qwen/Qwen3-VL-32B-Instruct # multiple gpus required
 # Qwen/Qwen3-VL-30B-A3B-Instruct # multiple gpus required
+#############
+# how to run
+#############
 
-# how to run:
 # local:
+# one image:
 # python gt_kws_vlm.py -i /home/farid/datasets/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/283745.jpg -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
+
+# csv:
 # python gt_kws_vlm.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
+
 
 # Roihu:
 # python gt_kws_vlm.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/31483442.jpg -vlm "Qwen/Qwen3.6-27B" -v
-# python gt_kws_vlm.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/26382063.jpg -vlm "Qwen/Qwen3.5-122B-A10B" -v
+# python gt_kws_vlm.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/26382063.jpg -vlm "Qwen/Qwen3.6-35B-A3B" -v
+
+# LUMI:
+# python gt_kws_vlm.py -i /scratch/project_462001213/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/26382063.jpg -vlm "Qwen/Qwen3.6-35B-A3B" -v
 
 # Keywords must be semantically atomic, visually grounded, and and reusable across archives.
 
@@ -109,6 +118,12 @@ def _load_vlm_(
 	
 	# ========== Load config ==========
 	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+	# ROCm: Disable grouped_mm for MoE models on AMD GPUs
+	if getattr(torch.version, "hip", None) is not None:
+		config._experts_implementation = "eager"
+		if hasattr(config, "text_config") and config.text_config is not None:
+			config.text_config._experts_implementation = "eager"
+
 	if verbose:
 		print(f"[INFO] {model_id} Config summary")
 		print(f"   • model_type        : {config.model_type}")
@@ -392,6 +407,7 @@ def _load_vlm_(
 	
 	# ========== Base Model Loading Kwargs ==========
 	base_model_kwargs: Dict[str, Any] = {
+		"config": config,
 		"low_cpu_mem_usage": True,
 		"trust_remote_code": True,
 		"cache_dir": cache_directory,
@@ -502,11 +518,9 @@ def _load_vlm_(
 				print(f"\nAll layers on GPU - optimal performance!")
 		print(f"[MODEL] Loading of {model_id} complete!")
 
-		print(f"{'='*110}\n")
 		print(model.config)
 		if hasattr(model, "generation_config"):
 			print(f"\n[DEFAULT GEN CONFIG] {type(model.generation_config)}\n{model.generation_config}")
-		print(f"{'='*110}\n")
 
 	return processor, model
 
