@@ -108,6 +108,12 @@ def _load_llm_(
 	
 	# ========== Load config ==========
 	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+	# ROCm: Disable grouped_mm for MoE models on AMD GPUs
+	if getattr(torch.version, "hip", None) is not None:
+		config._experts_implementation = "eager"
+		if hasattr(config, "text_config") and config.text_config is not None:
+			config.text_config._experts_implementation = "eager"
+
 	# FP8 support
 	if hasattr(config, "quantization_config"):
 		q_cfg = config.quantization_config
@@ -119,8 +125,8 @@ def _load_llm_(
 		else:
 			raise ValueError(f"Unknown quantization config type: {type(q_cfg)}")
 
-	if verbose:
-		print(pprint.pprint(config.to_dict()))
+	# if verbose:
+	# 	print(pprint.pprint(config.to_dict()))
 	
 	# ========== Determine model class ==========
 	model_cls = None
@@ -322,6 +328,7 @@ def _load_llm_(
 		# Decision: Single GPU vs Multi GPU
 		single_gpu_capacity = gpu_vram[0] - vram_buffer_gb
 		is_large_model = adjusted_size >= 20
+
 		if verbose:
 			print(f"\t• Single GPU capacity: {single_gpu_capacity:.1f} GB (GPU VRAM: {gpu_vram[0]:.1f} GB - {vram_buffer_gb:.1f} GB buffer)")
 			print(f"\t• is {model_id} Large? ({adjusted_size:.1f} > 20GB) : {is_large_model}")
@@ -350,6 +357,7 @@ def _load_llm_(
 
 	# ========== Model loading kwargs ==========
 	model_kwargs: Dict[str, Any] = {
+		"config": config,
 		"low_cpu_mem_usage": True,
 		# "low_cpu_mem_usage": False, # avoid illegal memory access during weight materialization
 		"trust_remote_code": True,
@@ -359,27 +367,25 @@ def _load_llm_(
 		"dtype": dtype,
 	}
 	
-	if quantization_config:
+	if quantization_bits is not None:
 		model_kwargs["quantization_config"] = quantization_config
 	
 	if n_gpus > 0:
-		model_kwargs["device_map"] = "auto"
-		model_kwargs["max_memory"] = max_memory
+		model_kwargs.update(device_map="auto", max_memory=max_memory)
+		# model_kwargs["device_map"] = "auto"
+		# model_kwargs["max_memory"] = max_memory
 	
-		if torch.cuda.is_available():
-			cur = torch.cuda.current_device()
-			print("[DEBUG] CUDA memory BEFORE model load")
-			print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-			print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
+		# if torch.cuda.is_available():
+		# 	cur = torch.cuda.current_device()
+		# 	print("[DEBUG] CUDA memory BEFORE model load")
+		# 	print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+		# 	print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
 
 	# ========== Load Model ==========
 	if verbose:
-		print("-"*70)
-		print(f"[LOADING] {model_id}")
+		print(f"\n[LOADING] {model_id}")
 		model_loader_name = "AutoModelForCausalLM" if use_auto_model else model_cls.__name__
-		print(f"[KWARGS] {model_loader_name}")
 		pprint.pprint(model_kwargs)
-		print("-"*70)
 
 	loader = tfs.AutoModelForCausalLM if use_auto_model else model_cls
 	try:
@@ -411,11 +417,8 @@ def _load_llm_(
 			elif not any(v == "cpu" for v in dm.values()):
 				print(f"\n[OK] All layers on GPU - optimal performance!")
 
-		print(f"{'='*75}")
-		print(model.config)
 		if hasattr(model, "generation_config"):
 			print(f"\n[DEFAULT GEN CONFIG] {type(model.generation_config)}\n{model.generation_config}")
-		print(f"{'='*75}")
 
 	return tokenizer, model
 
@@ -786,7 +789,6 @@ def query_local_llm(
 			print(f"\n[USER ASSIGNED GEN CONFIG] {gen_kwargs}")
 			print(f"[RESPONSE] {type(outputs)} {outputs.shape}")
 			print(f"[ELAPSED TIME] model.generate(..): {time.time() - t0:.4f} sec")
-			print("="*100)
 
 		# with prompt
 		# raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)	

@@ -123,13 +123,6 @@ def _load_vlm_(
 		config._experts_implementation = "eager"
 		if hasattr(config, "text_config") and config.text_config is not None:
 			config.text_config._experts_implementation = "eager"
-
-	if verbose:
-		print(f"[INFO] {model_id} Config summary")
-		print(f"   • model_type        : {config.model_type}")
-		print(f"   • architectures     : {config.architectures}")
-		print(f"   • dtype (if set)    : {config.dtype}")
-		print()
 	
 	# ========== Determine model class ==========
 	model_cls = None
@@ -142,6 +135,7 @@ def _load_vlm_(
 		raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
 
 	attention, dtype = get_model_kwargs(model_cls=model_cls, verbose=verbose)
+
 	# ========== Quantization config ==========
 	quantization_config = None
 	if quantization_bits is not None:
@@ -170,6 +164,7 @@ def _load_vlm_(
 		# use_fast=True,
 		trust_remote_code=True,
 		cache_dir=cache_directory,
+		token=hf_tk,
 		quantization_config=quantization_config,
 	)
 	if verbose:
@@ -182,6 +177,7 @@ def _load_vlm_(
 		tokenizer = processor.text_tokenizer
 	else:
 		raise ValueError("Unable to locate tokenizer in processor")
+	
 	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
 		tokenizer.padding_side = "left"
 
@@ -406,7 +402,7 @@ def _load_vlm_(
 			print(f"Max memory per GPU: {max_memory}")
 	
 	# ========== Base Model Loading Kwargs ==========
-	base_model_kwargs: Dict[str, Any] = {
+	model_kwargs: Dict[str, Any] = {
 		"config": config,
 		"low_cpu_mem_usage": True,
 		"trust_remote_code": True,
@@ -416,30 +412,29 @@ def _load_vlm_(
 	}
 	
 	if quantization_bits is not None:
-		base_model_kwargs["quantization_config"] = quantization_config
+		model_kwargs["quantization_config"] = quantization_config
 	
 	# ========== Load Model ==========
 	model = None
-	load_kwargs = dict(base_model_kwargs)
 	if n_gpus > 0:
-		load_kwargs.update(device_map="auto", max_memory=max_memory)
+		model_kwargs.update(device_map="auto", max_memory=max_memory)
 
 	if verbose:
-		print(f"\n[LOADING] {model_id} | cache_dir: {cache_directory}")
-		print(f"{pprint.pformat(load_kwargs)}\n")
+		print(f"\n[LOADING] {model_id}")
+		print(f"{pprint.pformat(model_kwargs)}\n")
 
 	while True:
 		try:
-			model = model_cls.from_pretrained(model_id, **load_kwargs)
+			model = model_cls.from_pretrained(model_id, **model_kwargs)
 			break
 		except (ImportError, ValueError) as e:
 			err_text = str(e).lower()
-			curr_attn = load_kwargs.get("attn_implementation")
+			curr_attn = model_kwargs.get("attn_implementation")
 			if any(term in err_text for term in ["kernel", "flash", "attn"]) and curr_attn != "eager":
 				fallback = "sdpa" if curr_attn == "flash_attention_2" else "eager"
 				if verbose:
 					print(f"\n[WARN] Failed with attn_implementation='{curr_attn}'. Retrying with '{fallback}'...")
-				load_kwargs["attn_implementation"] = fallback
+				model_kwargs["attn_implementation"] = fallback
 			else:
 				if verbose:
 					print(f"[ERROR] Failed to load {model_id}\n{e}")
