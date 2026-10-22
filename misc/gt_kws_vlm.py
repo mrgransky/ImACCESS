@@ -424,6 +424,10 @@ def _load_vlm_(
 	if n_gpus > 0:
 		load_kwargs.update(device_map="auto", max_memory=max_memory)
 
+	if verbose:
+		print(f"\n[LOADING] {model_id} | cache_dir: {cache_directory}")
+		print(f"{pprint.pformat(load_kwargs)}\n")
+
 	while True:
 		try:
 			model = model_cls.from_pretrained(model_id, **load_kwargs)
@@ -518,7 +522,7 @@ def _load_vlm_(
 				print(f"\nAll layers on GPU - optimal performance!")
 		print(f"[MODEL] Loading of {model_id} complete!")
 
-		print(model.config)
+		# print(model.config)
 		if hasattr(model, "generation_config"):
 			print(f"\n[DEFAULT GEN CONFIG] {type(model.generation_config)}\n{model.generation_config}")
 
