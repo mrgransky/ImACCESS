@@ -90,10 +90,10 @@ def _load_llm_(
 		if torch.cuda.is_available():
 			cur = torch.cuda.current_device()
 			major, minor = torch.cuda.get_device_capability(cur)
-			print(f"[INFO] Compute capability     : {major}.{minor}")
-			print(f"[INFO] BF16 support?          : {torch.cuda.is_bf16_supported()}")
-			print(f"[INFO] CUDA memory allocated  : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-			print(f"[INFO] CUDA memory reserved   : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
+			print(f"[INFO] Compute capability    {major}.{minor}")
+			print(f"[INFO] BF16 support?         {torch.cuda.is_bf16_supported()}")
+			print(f"[INFO] CUDA memory allocated {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+			print(f"[INFO] CUDA memory reserved  {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
 		else:
 			print("[INFO] Running on CPU only")
 
@@ -108,25 +108,22 @@ def _load_llm_(
 	
 	# ========== Load config ==========
 	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+
 	# ROCm: Disable grouped_mm for MoE models on AMD GPUs
 	if getattr(torch.version, "hip", None) is not None:
 		config._experts_implementation = "eager"
 		if hasattr(config, "text_config") and config.text_config is not None:
 			config.text_config._experts_implementation = "eager"
-
+	
 	# FP8 support
-	if hasattr(config, "quantization_config"):
-		q_cfg = config.quantization_config
+	q_cfg = getattr(config, "quantization_config", None)
+	if q_cfg is not None:
 		if isinstance(q_cfg, dict):
 			if q_cfg.get("layer_overrides") is None:
 				q_cfg["layer_overrides"] = {}
-		elif hasattr(q_cfg, "layer_overrides") and q_cfg.layer_overrides is None:
-			q_cfg.layer_overrides = {}
-		else:
-			raise ValueError(f"Unknown quantization config type: {type(q_cfg)}")
-
-	# if verbose:
-	# 	print(pprint.pprint(config.to_dict()))
+		elif hasattr(q_cfg, "layer_overrides"):
+			if q_cfg.layer_overrides is None:
+				q_cfg.layer_overrides = {}
 	
 	# ========== Determine model class ==========
 	model_cls = None
@@ -384,24 +381,29 @@ def _load_llm_(
 	# ========== Load Model ==========
 	if verbose:
 		print(f"\n[LOADING] {model_id}")
-		model_loader_name = "AutoModelForCausalLM" if use_auto_model else model_cls.__name__
 		pprint.pprint(model_kwargs)
 
 	loader = tfs.AutoModelForCausalLM if use_auto_model else model_cls
-	try:
-		model = loader.from_pretrained(model_id, **model_kwargs)
-	except (ImportError, ValueError) as e:
-		# if verbose: print(f"[ERROR] loading model {model_id}\n{e}")
-		err_text = str(e).lower()
-		if any(term in err_text for term in ["kernel", "flash", "attn"]) and model_kwargs.get("attn_implementation") != "eager":
-			fallback = "sdpa" if model_kwargs["attn_implementation"] != "sdpa" else "eager"
-			if verbose:
-				print(f"\n[WARN] Failed with attn_implementation='{model_kwargs['attn_implementation']}'. Retrying with '{fallback}'...")
-			model_kwargs["attn_implementation"] = fallback
+
+	while True:
+		try:
+			curr_attn = model_kwargs.get("attn_implementation")
+			config._attn_implementation = curr_attn
+			if hasattr(config, "text_config") and config.text_config is not None:
+				config.text_config._attn_implementation = curr_attn
 			model = loader.from_pretrained(model_id, **model_kwargs)
-		else:
-			if verbose: print(f"[ERROR] loading model {model_id}\n{e}")
-			raise e
+			break
+		except (ImportError, ValueError) as e:
+			err_text = str(e).lower()
+			curr_attn = model_kwargs.get("attn_implementation")
+			if any(term in err_text for term in ["kernel", "flash", "attn"]) and curr_attn != "eager":
+				fallback = "sdpa" if curr_attn == "flash_attention_2" else "eager"
+				if verbose:
+					print(f"\n[WARN] Failed with attn_implementation='{model_kwargs['attn_implementation']}'. Retrying with '{fallback}'...")
+				model_kwargs["attn_implementation"] = fallback
+			else:
+				if verbose: print(f"[ERROR] loading model {model_id}\n{e}")
+				raise e
 
 
 	model.eval()

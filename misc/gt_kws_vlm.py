@@ -425,6 +425,11 @@ def _load_vlm_(
 
 	while True:
 		try:
+			curr_attn = model_kwargs.get("attn_implementation")
+			config._attn_implementation = curr_attn
+			if hasattr(config, "text_config") and config.text_config is not None:
+				config.text_config._attn_implementation = curr_attn
+
 			model = model_cls.from_pretrained(model_id, **model_kwargs)
 			break
 		except (ImportError, ValueError) as e:
