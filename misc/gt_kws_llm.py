@@ -143,7 +143,7 @@ def _load_llm_(
 			print(f"[INFO] No architecture specified in config")
 			print(f"[INFO] Will use AutoModelForCausalLM\n")
 	
-	attention, dtype = get_model_kwargs(verbose=verbose)
+	attention, dtype = get_model_kwargs(model_cls=model_cls, verbose=verbose)
 
 	# ========== Quantization config ==========
 	quantization_config = None
@@ -158,7 +158,7 @@ def _load_llm_(
 			quantization_config = tfs.BitsAndBytesConfig(
 				load_in_4bit=True,
 				bnb_4bit_quant_type="nf4",
-				bnb_4bit_compute_dtype=torch.bfloat16,
+				bnb_4bit_compute_dtype=dtype,
 				bnb_4bit_use_double_quant=True,
 			)
 		else:

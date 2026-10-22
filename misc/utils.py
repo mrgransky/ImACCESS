@@ -197,7 +197,7 @@ def extract_per_k_metrics(eval_result: Dict, tier_key: str) -> Dict:
 
 	return out
 
-def get_model_kwargs(verbose: bool = True):
+def get_model_kwargs(model_cls: Optional[Any] = None, verbose: bool = True):
 	dtype = torch.float32
 	attention = "eager"
 	if torch.cuda.is_available():
@@ -208,7 +208,35 @@ def get_model_kwargs(verbose: bool = True):
 		)
 		major, minor = torch.cuda.get_device_capability()
 		compute_cap = major + minor / 10
-		if compute_cap >= 8.0:
+
+		# Check model architecture capabilities if model_cls is provided
+		supports_fa2 = True
+		supports_sdpa = True
+		if model_cls is not None:
+			if isinstance(model_cls, str):
+				try:
+					import transformers as tfs
+					model_cls = getattr(tfs, model_cls, None)
+				except ImportError:
+					model_cls = None
+
+			if model_cls is not None:
+				# Hugging Face unified _supports_flash_attn_2 into _supports_flash_attn in newer versions
+				supports_fa2 = bool(
+					getattr(model_cls, "_supports_flash_attn", False)
+					or getattr(model_cls, "_supports_flash_attn_2", False)
+				)
+				supports_sdpa = bool(getattr(model_cls, "_supports_sdpa", True))
+
+				if verbose:
+					cls_name = getattr(model_cls, "__name__", str(model_cls))
+					print(f"\n[MODEL ATTENTION CAPABILITIES] {cls_name}")
+					print(f"  ├─ _supports_flash_attn   : {getattr(model_cls, '_supports_flash_attn', 'Not set')}")
+					print(f"  ├─ _supports_flash_attn_2 : {getattr(model_cls, '_supports_flash_attn_2', 'Not set')}")
+					print(f"  ├─ _supports_sdpa         : {getattr(model_cls, '_supports_sdpa', 'Not set')}")
+					print(f"  └─ Resolved supports_fa2  : {supports_fa2}")
+
+		if compute_cap >= 8.0 and supports_fa2:
 			try:
 				import flash_attn
 				attention = "flash_attention_2"
@@ -218,8 +246,15 @@ def get_model_kwargs(verbose: bool = True):
 						"[WARN] Flash Attention 2 not installed "
 						"(pip install flash-attn)"
 					)
-		if attention == "eager" and compute_cap >= 7.0 and packaging.version.parse(torch.__version__) >= packaging.version.parse("2.0.0"):
-			if verbose:
+
+		if attention == "eager" and supports_sdpa and compute_cap >= 7.0 and packaging.version.parse(torch.__version__) >= packaging.version.parse("2.0.0"):
+			if verbose and not supports_fa2 and model_cls is not None:
+				cls_name = getattr(model_cls, "__name__", str(model_cls))
+				print(
+					f"[INFO] {cls_name} does not support Flash Attention 2. "
+					f"Selecting SDPA attention."
+				)
+			elif verbose:
 				print(
 					f"[INFO] Using SDPA attention (compute {compute_cap}, "
 					f"PyTorch {torch.__version__})"
@@ -228,7 +263,9 @@ def get_model_kwargs(verbose: bool = True):
 
 	if verbose:
 		print(f"\n[MODEL KWARGS]")
-		print(f"  ├─ CUDA     {torch.version.cuda} compute_cap : {torch.cuda.get_device_capability()}")
+		cuda_ver = getattr(torch.version, 'cuda', None) or getattr(torch.version, 'hip', 'N/A')
+		dev_cap = torch.cuda.get_device_capability() if torch.cuda.is_available() else "N/A"
+		print(f"  ├─ Accelerator (CUDA/HIP): {cuda_ver} compute_cap : {dev_cap}")
 		print(f"  ├─ PyTorch  {torch.__version__}")
 		print(f"  └─ {attention} | {dtype}")
 		print("-"*50)

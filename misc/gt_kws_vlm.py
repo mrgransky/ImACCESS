@@ -126,7 +126,7 @@ def _load_vlm_(
 	if model_cls is None:
 		raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
 
-	attention, dtype = get_model_kwargs(verbose=verbose)
+	attention, dtype = get_model_kwargs(model_cls=model_cls, verbose=verbose)
 	# ========== Quantization config ==========
 	quantization_config = None
 	if quantization_bits is not None:
@@ -140,7 +140,7 @@ def _load_vlm_(
 			quantization_config = tfs.BitsAndBytesConfig(
 				load_in_4bit=True,
 				bnb_4bit_quant_type="nf4",
-				bnb_4bit_compute_dtype=torch.bfloat16,
+				bnb_4bit_compute_dtype=dtype,
 				bnb_4bit_use_double_quant=True,
 			)
 		else:
@@ -404,23 +404,26 @@ def _load_vlm_(
 	
 	# ========== Load Model ==========
 	model = None
-	try:
-		if n_gpus > 0:
-			model = model_cls.from_pretrained(
-				model_id,
-				**base_model_kwargs,
-				device_map="auto",
-				max_memory=max_memory,
-			)
-		else:
-			model = model_cls.from_pretrained(
-				model_id,
-				**base_model_kwargs,
-			)	
-	except Exception as e:
-		if verbose:
-			print(f"[ERROR] Failed to load {model_id}\n{e}")
-		raise e
+	load_kwargs = dict(base_model_kwargs)
+	if n_gpus > 0:
+		load_kwargs.update(device_map="auto", max_memory=max_memory)
+
+	while True:
+		try:
+			model = model_cls.from_pretrained(model_id, **load_kwargs)
+			break
+		except (ImportError, ValueError) as e:
+			err_text = str(e).lower()
+			curr_attn = load_kwargs.get("attn_implementation")
+			if any(term in err_text for term in ["kernel", "flash", "attn"]) and curr_attn != "eager":
+				fallback = "sdpa" if curr_attn == "flash_attention_2" else "eager"
+				if verbose:
+					print(f"\n[WARN] Failed with attn_implementation='{curr_attn}'. Retrying with '{fallback}'...")
+				load_kwargs["attn_implementation"] = fallback
+			else:
+				if verbose:
+					print(f"[ERROR] Failed to load {model_id}\n{e}")
+				raise e
 	
 	model.eval()
 	
