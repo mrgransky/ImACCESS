@@ -1,0 +1,107 @@
+#!/bin/bash
+
+#SBATCH --account=project_462001213
+#SBATCH --job-name=mm_annot
+#SBATCH --output=/scratch/project_462001213/ImACCESS/trash/logs/%x_%a.out
+#SBATCH --mail-user=farid.alijani@gmail.com
+#SBATCH --mail-type=END,FAIL
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=264G
+#SBATCH --partition=standard-g
+#SBATCH --gres=gpu:mi250:8
+#SBATCH --time=00-04:00:00
+#SBATCH --array=0
+##SBATCH --begin=06:00:00
+
+set -euo pipefail
+
+user="`whoami`"
+stars=$(printf '%*s' 100 '')
+txt="$user began Slurm job: `date`"
+ch="#"
+echo -e "${txt//?/$ch}\n${txt}\n${txt//?/$ch}"
+echo "${stars// /*}"
+echo "CPUS/NODE: $SLURM_JOB_CPUS_PER_NODE"
+echo "HOST: $SLURM_SUBMIT_HOST @ $SLURM_JOB_ACCOUNT, CLUSTER: $SLURM_CLUSTER_NAME"
+echo "JOBname: $SLURM_JOB_NAME, ID: $SLURM_JOB_ID, WRK_DIR: $SLURM_SUBMIT_DIR"
+echo "nNODES: $SLURM_NNODES, NODELIST: $SLURM_JOB_NODELIST, NODE_ID: $SLURM_NODEID"
+echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_NPROCS"
+echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
+echo "GPU(s): $SLURM_GPUS_ON_NODE Partition: $SLURM_JOB_PARTITION"
+echo "${stars// /*}"
+echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
+echo "${stars// /*}"
+
+# Extract GPU count more simply (format: "gpu:type:count")
+NUM_GPUS="${SLURM_GPUS_ON_NODE##*:}"  # Get everything after the last colon
+
+# Validate it's a number, fallback to 1
+if ! [[ "$NUM_GPUS" =~ ^[0-9]+$ ]]; then
+	echo "Warning: Could not parse GPU count from GRES, using 1"
+	NUM_GPUS=1
+fi
+
+echo "Detected $NUM_GPUS GPUs, selecting model configuration"
+
+# Select model configuration based on GPU count
+if [ "$NUM_GPUS" -gt 1 ]; then
+	echo "LARGE models (multi-GPU configuration)"
+	#MLM_MODEL="Qwen/Qwen3.6-35B-A3B" # not a good model
+	# MLM_MODEL="Qwen/Qwen3.5-122B-A10B" # too detailed
+	MLM_MODEL="Qwen/Qwen3.8-27B"
+	LLM_MAX_GENERATED_TOKENS=192
+	VLM_MAX_GENERATED_TOKENS=164
+else
+	echo "SMALL models (single-GPU configuration)"
+	MLM_MODEL="Qwen/Qwen3.5-9B"
+	LLM_MAX_GENERATED_TOKENS=256
+	VLM_MAX_GENERATED_TOKENS=96
+fi
+
+# better performance with custom instruction prompt
+TEXT_EMBEDDING_MODEL="Qwen/Qwen3-VL-Embedding-8B"
+# TEXT_EMBEDDING_MODEL="Octen/Octen-Embedding-8B"
+# TEXT_EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
+
+CLIP_MODEL="ViT-L/14@336px"
+DATASET_DIRECTORY="/scratch/project_462001213/ImACCESS/WW_DATASETs"
+DATASETS=(
+	${DATASET_DIRECTORY}/HISTORY_X4
+	${DATASET_DIRECTORY}/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
+	${DATASET_DIRECTORY}/EUROPEANA_1900-01-01_1970-12-31
+	${DATASET_DIRECTORY}/WWII_1939-09-01_1945-09-02
+	${DATASET_DIRECTORY}/SMU_1900-01-01_1970-12-31
+)
+CSV_FILE=${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv
+LLM_BATCH_SIZES=(28 6 18 16 28)
+VLM_BATCH_SIZES=(128 48 48 32 48)
+GENERAL_BATCH_SIZE=1024
+echo "Running Multimodal Annotation on $CSV_FILE"
+echo "MLM: $MLM_MODEL"
+echo "[LLM] batch sizes: ${LLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} max generated tokens: $LLM_MAX_GENERATED_TOKENS"
+echo "[VLM] batch sizes: ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} max generated tokens: $VLM_MAX_GENERATED_TOKENS"
+echo "CLIP: $CLIP_MODEL"
+
+python -u gt_kws_multimodal.py \
+	--csv_file $CSV_FILE \
+	--num_workers $SLURM_CPUS_PER_TASK \
+	--llm_model_id $MLM_MODEL \
+	--llm_batch_size ${LLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
+	--llm_max_generated_tks $LLM_MAX_GENERATED_TOKENS \
+	--vlm_model_id $MLM_MODEL \
+	--vlm_batch_size ${VLM_BATCH_SIZES[$SLURM_ARRAY_TASK_ID]} \
+	--vlm_max_generated_tks $VLM_MAX_GENERATED_TOKENS \
+	--embedding_model_id $TEXT_EMBEDDING_MODEL \
+	--clip_architecture $CLIP_MODEL \
+	--max_keywords 3 \
+	--batch_size $GENERAL_BATCH_SIZE \
+	--verbose \
+	# --num_clusters 15000 \
+	# --llm_use_quantization \
+	# --vlm_use_quantization \
+
+done_txt="$user finished Slurm job: `date`"
+echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
+echo "${stars// /*}"
