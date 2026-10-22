@@ -2017,6 +2017,220 @@ def compute_entropy_vs_performance(
 
 	return merged
 
+@torch.no_grad()
+def diagnose_inter_label_similarity(
+	labels: Union[List[str], pd.Series, np.ndarray],
+	embeddings: Optional[Union[torch.Tensor, np.ndarray]] = None,
+	embedding_model: Optional[Any] = None,
+	output_dir: Optional[str] = None,
+	column_name: str = "canonical_labels",
+	min_number_samples: int = int(2e4),
+	top_k_pairs: int = 100,
+	min_similarity_threshold: float = 0.80,
+	batch_size: int = 64,
+	device: Optional[Union[str, torch.device]] = None,
+	verbose: bool = True,
+) -> Dict[str, Any]:
+	"""
+	Investigate and debug inter-label similarity and near-duplicate labels
+	(derived from Section 4: 'Inter-class similarity — are class embeddings separated?').
+
+	Computes pairwise cosine similarities across label embeddings, reports distribution
+	statistics (mean, std, fractions > 0.5, > 0.8, and > 0.9), extracts top near-duplicate
+	pairs, and optionally exports them to a CSV file for post-clustering debugging.
+	"""
+	if not verbose and output_dir is None:
+		return {}
+
+	# 1. Parse labels list
+	if isinstance(labels, (pd.Series, np.ndarray)):
+		labels_list = [str(x).strip() for x in labels.tolist() if x is not None and pd.notna(x)]
+	elif isinstance(labels, (list, tuple, set)):
+		labels_list = [str(x).strip() for x in labels if x is not None and pd.notna(x)]
+	else:
+		labels_list = []
+
+	n_labels = len(labels_list)
+	if n_labels < 2:
+		if verbose:
+			print(f"[Inter-Label Similarity] Need at least 2 labels, got {n_labels}.")
+		return {}
+
+	# 2. Obtain or compute normalized embeddings
+	if embeddings is None:
+		if embedding_model is None:
+			raise ValueError("Either `embeddings` or `embedding_model` must be provided to diagnose_inter_label_similarity.")
+		if verbose:
+			print(f"\nEncoding {n_labels:,} labels using {type(embedding_model)} for inter-label diagnostics...")
+		embeds = embedding_model.encode(
+			labels_list,
+			batch_size=batch_size,
+			show_progress_bar=verbose,
+			convert_to_tensor=True,
+			normalize_embeddings=True,
+		)
+	else:
+		if verbose:
+			print(f"[EMBEDDING] {type(embeddings)} {embeddings.shape}")
+		if isinstance(embeddings, np.ndarray):
+			embeds = torch.from_numpy(embeddings)
+		elif isinstance(embeddings, torch.Tensor):
+			embeds = embeddings
+		else:
+			embeds = torch.as_tensor(embeddings)
+
+		if device is not None:
+			embeds = embeds.to(device)
+		elif torch.cuda.is_available() and embeds.device.type == "cpu":
+			embeds = embeds.to("cuda")
+
+		embeds = torch.nn.functional.normalize(embeds.float(), dim=-1)
+
+	# 3. Sample labels for efficiency if label set is huge
+	num_sampled = min(min_number_samples, n_labels)
+	if num_sampled < n_labels:
+		sample_idx = torch.randperm(n_labels, device=embeds.device)[:num_sampled]
+		sample_embeds = embeds[sample_idx]
+		sample_labels = [labels_list[i] for i in sample_idx.cpu().tolist()]
+		sample_global_idx = sample_idx.cpu().tolist()
+	else:
+		sample_embeds = embeds
+		sample_labels = labels_list
+		sample_global_idx = list(range(n_labels))
+
+	# ── 4. Inter-class similarity — are class embeddings separated? ─
+	inter_cls_sims = sample_embeds @ sample_embeds.T
+
+	off_diag_mask = ~torch.eye(
+		num_sampled,
+		dtype=torch.bool,
+		device=inter_cls_sims.device,
+	)
+	off_diag = inter_cls_sims[off_diag_mask]
+
+	min_sim = float(off_diag.min().item()) if off_diag.numel() > 0 else 0.0
+	max_sim = float(off_diag.max().item()) if off_diag.numel() > 0 else 0.0
+
+	mean_sim = float(off_diag.mean().item()) if off_diag.numel() > 0 else 0.0
+	std_sim = float(off_diag.std().item()) if off_diag.numel() > 0 else 0.0
+
+	# ── Off-diagonal symmetric statistics (Percentages) ───────────
+	frac_gt_05 = float((off_diag > 0.5).float().mean().item()) if off_diag.numel() > 0 else 0.0
+	frac_gt_08 = float((off_diag > 0.8).float().mean().item()) if off_diag.numel() > 0 else 0.0
+	frac_gt_09 = float((off_diag > 0.9).float().mean().item()) if off_diag.numel() > 0 else 0.0
+
+	# ── Unique Undirected Pairs (divided by 2 or via triu) ─────────
+	# Total unique pairs = N * (N - 1) / 2 = 46,360
+	pairs_gt_05 = (off_diag > 0.5).sum().item() // 2 if off_diag.numel() > 0 else 0
+	pairs_gt_08 = (off_diag > 0.8).sum().item() // 2 if off_diag.numel() > 0 else 0
+	pairs_gt_09 = (off_diag > 0.9).sum().item() // 2 if off_diag.numel() > 0 else 0
+
+	# ── Distinct labels involved in at least one near-duplicate pair ─
+	# Checks if a row has any neighbor with sim > threshold
+	labels_gt_09 = int((inter_cls_sims.masked_fill(~off_diag_mask, -1.0) > 0.9).any(dim=1).sum().item())
+
+	if verbose:
+		total_possible_pairs = (num_sampled * (num_sampled - 1)) // 2
+		print(f"\n[INTER-LABEL SIMILARITY DIAGNOSTICS] {column_name}")
+		print(f"  ├─ Labels analyzed      : {num_sampled:,} (total unique labels: {n_labels:,})")
+		print(f"  ├─ Unique pairs total   : {total_possible_pairs:,}")
+		print(f"  ├─ Cosine similarity    : (min, max): ({min_sim:.4f}, {max_sim:.4f}) μ±σ: {mean_sim:.4f} ± {std_sim:.4f}")
+		print(f"  ├─ sim > 0.5: {pairs_gt_05:6d} pairs ({frac_gt_05 * 100:.4f}%) (general semantic proximity / clustering)")
+		print(f"  ├─ sim > 0.8: {pairs_gt_08:6d} pairs ({frac_gt_08 * 100:.4f}%) (high semantic similarity)")
+		print(f"  └─ sim > 0.9: {pairs_gt_09:6d} pairs ({frac_gt_09 * 100:.4f}%) ({labels_gt_09} distinct labels — merge candidates)")
+
+
+	# 5. Extract top near-duplicate pairs
+	flat_sims = inter_cls_sims.masked_fill(~off_diag_mask, -1.0)
+	num_possible_pairs = (num_sampled * (num_sampled - 1)) // 2
+	k_pairs = min(top_k_pairs, num_possible_pairs)
+
+	triu_sims = torch.triu(flat_sims, diagonal=1)
+	top_pairs_records: List[Dict[str, Any]] = []
+
+	if k_pairs > 0:
+		top_pairs = triu_sims.flatten().topk(k_pairs)
+		row_idx = top_pairs.indices // num_sampled
+		col_idx = top_pairs.indices % num_sampled
+
+		if verbose:
+			print(f"\n  Top-{k_pairs} near-duplicate label pairs (sampled {num_sampled:,} labels):")
+			print(f"  {'Similarity':<12s} {'Label 1':<45s} <-> {'Label 2'}")
+			print("  " + "-" * 110)
+
+		for val, r, c in zip(top_pairs.values.tolist(), row_idx.tolist(), col_idx.tolist()):
+			if val < 0.0:
+				continue
+			global_r = sample_global_idx[r]
+			global_c = sample_global_idx[c]
+			name_r = sample_labels[r]
+			name_c = sample_labels[c]
+			if verbose:
+				print(f"  {val:<12.6f} {repr(name_r):<45s} <-> {repr(name_c)}")
+			top_pairs_records.append({
+				"similarity": round(val, 6),
+				"label_1": name_r,
+				"label_2": name_c,
+				"label_1_idx": global_r,
+				"label_2_idx": global_c,
+			})
+
+	# 6. Extract all pairs above min_similarity_threshold for full debug reporting
+	high_sim_mask = triu_sims >= min_similarity_threshold
+	high_sim_indices = torch.nonzero(high_sim_mask)
+	n_high_sim = high_sim_indices.shape[0]
+
+	all_near_duplicates: List[Dict[str, Any]] = []
+	if n_high_sim > 0:
+		high_sim_vals = triu_sims[high_sim_indices[:, 0], high_sim_indices[:, 1]]
+		sorted_order = torch.argsort(high_sim_vals, descending=True)
+		for idx in sorted_order.tolist():
+			r = high_sim_indices[idx, 0].item()
+			c = high_sim_indices[idx, 1].item()
+			val = high_sim_vals[idx].item()
+			all_near_duplicates.append({
+				"similarity": round(val, 6),
+				"label_1": sample_labels[r],
+				"label_2": sample_labels[c],
+				"label_1_idx": sample_global_idx[r],
+				"label_2_idx": sample_global_idx[c],
+			})
+
+		if verbose:
+			print(f"\n  Total label pairs with similarity >= {min_similarity_threshold:.2f}: {n_high_sim:,}")
+
+	# 7. Optionally export to CSV for post-clustering inspection
+	csv_path = None
+	export_records = all_near_duplicates if all_near_duplicates else top_pairs_records
+	if output_dir is not None and export_records:
+		os.makedirs(output_dir, exist_ok=True)
+		csv_path = os.path.join(output_dir, f"near_duplicate_labels_{column_name}.csv")
+		pd.DataFrame(export_records).to_csv(csv_path, index=False)
+		if verbose:
+			print(f"  Saved {len(export_records):,} near-duplicate pairs to:\n    {csv_path}")
+
+	# 8. Clean up diagnostic tensors
+	del inter_cls_sims, off_diag, flat_sims, triu_sims
+	if torch.cuda.is_available():
+		torch.cuda.empty_cache()
+	gc.collect()
+
+	return {
+		"column": column_name,
+		"num_labels": n_labels,
+		"num_sampled": num_sampled,
+		"min_similarity": min_sim,
+		"max_similarity": max_sim,
+		"mean_similarity": mean_sim,
+		"std_similarity": std_sim,
+		"fraction_gt_05": frac_gt_05,
+		"fraction_gt_08": frac_gt_08,
+		"fraction_gt_09": frac_gt_09,
+		"top_near_duplicate_pairs": top_pairs_records,
+		"all_above_threshold_count": n_high_sim,
+		"csv_path": csv_path,
+	}
+
 def get_singletons(
 	df: pd.DataFrame, 
 	embedding_model_id: str, 
@@ -2101,7 +2315,7 @@ def get_singletons(
 		processor_kwargs={"padding_side": "left"}, # renamed from tokenizer_kwargs
 	)
 
-	viz.plot_label_similarity_heatmap(
+	heatmap_res = viz.plot_label_similarity_heatmap(
 		df=df,
 		embedding_model=embedding_model,
 		output_dir=output_dir,
@@ -2111,5 +2325,16 @@ def get_singletons(
 		# max_labels=120,
 		annot=False,
 	)
+
+	# Inter-class similarity diagnostics (Section 4) to investigate near-duplicate labels after clustering
+	if "multimodal_canonical_labels" in df.columns:
+		diagnose_inter_label_similarity(
+			labels=heatmap_res.get("labels", []),
+			embeddings=heatmap_res.get("embeddings", None),
+			embedding_model=embedding_model,
+			output_dir=output_dir,
+			column_name="multimodal_canonical_labels",
+			verbose=True,
+		)
 
 	print("="*100)

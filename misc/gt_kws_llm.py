@@ -6,7 +6,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "3d Cav moving up Pa ave to begin evacuation of Camp Glassford" -llm "Qwen/Qwen3.6-27B" -v
+# python gt_kws_llm.py -desc "3d Cav moving up Pa ave to begin evacuation of Camp Glassford" -llm "Qwen/Qwen3.5-122B-A10B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -1651,12 +1651,6 @@ def get_llm_based_labels(
 		verbose=verbose,
 	)
 
-	# Ensure left-padding for causal/decoder LLM batch inference
-	tokenizer.padding_side = "left"
-	if tokenizer.pad_token is None:
-		tokenizer.pad_token = tokenizer.eos_token
-		tokenizer.pad_token_id = tokenizer.eos_token_id
-
 	# 4. Input Deduplication
 	if do_dedup:
 		unique_map: Dict[str, int] = {}
@@ -1698,49 +1692,53 @@ def get_llm_based_labels(
 
 	# 6. Atomic checkpointing helpers
 	def _save_checkpoint() -> None:
-			if not ckpt_path:
-					return
-			tmp_path = f"{ckpt_path}.tmp"
-			try:
-					with open(tmp_path, "wb") as f:
-							pickle.dump(
-									{"results": unique_results, "raw": raw_responses},
-									f, protocol=pickle.HIGHEST_PROTOCOL,
-							)
-					os.replace(tmp_path, ckpt_path)
-			except Exception as err:
-					if verbose:
-							print(f"[CHECKPOINT WARN] Failed to save checkpoint: {err}")
+		if not ckpt_path:
+			return
+		
+		tmp_path = f"{ckpt_path}.tmp"
+		
+		try:
+			with open(tmp_path, "wb") as f:
+				pickle.dump(
+					{"results": unique_results, "raw": raw_responses},
+					f, protocol=pickle.HIGHEST_PROTOCOL,
+				)
+			os.replace(tmp_path, ckpt_path)
+		except Exception as err:
+			if verbose:
+				print(f"[CHECKPOINT WARN] Failed to save checkpoint: {err}")
 
 	# Resume from checkpoint if present
 	if ckpt_path and os.path.exists(ckpt_path):
-			try:
-					with open(ckpt_path, "rb") as f:
-							saved = pickle.load(f)
-					saved_res = saved.get("results", [])
-					saved_raw = saved.get("raw", [])
-					if len(saved_res) == len(unique_results):
-							for i, r in enumerate(saved_res):
-									if r is not None and unique_results[i] is None:
-											unique_results[i] = r
-							for i, r in enumerate(saved_raw):
-									if i < len(raw_responses) and r is not None and raw_responses[i] is None:
-											raw_responses[i] = r
-							if verbose:
-									recovered_cnt = sum(r is not None for r in unique_results)
-									print(f"[RESUME] Restored {recovered_cnt} item(s) from {ckpt_path}")
-					elif verbose:
-							print("[RESUME] Checkpoint size mismatch with current dataset. Starting fresh.")
-			except Exception as e:
-					if verbose:
-							print(f"[RESUME WARN] Checkpoint unreadable ({e}). Starting fresh.")
+		try:
+			with open(ckpt_path, "rb") as f:
+				saved = pickle.load(f)
+			
+			saved_res = saved.get("results", [])
+			saved_raw = saved.get("raw", [])
+			
+			if len(saved_res) == len(unique_results):
+				for i, r in enumerate(saved_res):
+					if r is not None and unique_results[i] is None:
+						unique_results[i] = r
+				for i, r in enumerate(saved_raw):
+					if i < len(raw_responses) and r is not None and raw_responses[i] is None:
+						raw_responses[i] = r
+				if verbose:
+					recovered_cnt = sum(r is not None for r in unique_results)
+					print(f"[RESUME] Restored {recovered_cnt} item(s) from {ckpt_path}")
+			elif verbose:
+				print("[RESUME] Checkpoint size mismatch with current dataset. Starting fresh.")
+		except Exception as e:
+			if verbose:
+				print(f"[RESUME WARN] Checkpoint unreadable ({e}). Starting fresh.")
+	
 	valid_indices = [i for i, p in enumerate(unique_prompts) if p is not None]
+	
 	if not valid_indices:
-			return None
+		return None
 
-	# =========================================================================
 	# PASS 1: Main Batched Generation
-	# =========================================================================
 	_run_generation_pass(
 		tokenizer=tokenizer,
 		model=model,
@@ -1762,9 +1760,7 @@ def get_llm_based_labels(
 		verbose=verbose,
 	)
 
-	# =========================================================================
 	# OPTIMIZED TWO-STAGE FALLBACK LADDER
-	# =========================================================================
 	failed = [
 		i for i, r in enumerate(unique_results)
 		if r is None and unique_inputs[i] is not None

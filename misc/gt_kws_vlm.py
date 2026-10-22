@@ -31,13 +31,12 @@ from utils import *
 # csv:
 # python gt_kws_vlm.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/test.csv -vlm "Qwen/Qwen3.5-4B" -qb 4 -v
 
-
 # Roihu:
 # python gt_kws_vlm.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/31483442.jpg -vlm "Qwen/Qwen3.6-27B" -v
 # python gt_kws_vlm.py -i /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/26382063.jpg -vlm "Qwen/Qwen3.6-35B-A3B" -v
 
 # LUMI:
-# python gt_kws_vlm.py -i /scratch/project_462001213/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/26382063.jpg -vlm "Qwen/Qwen3.6-35B-A3B" -v
+# python gt_kws_vlm.py -i /scratch/project_462001213/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/images/26382063.jpg -vlm "Qwen/Qwen3.5-122B-A10B" -v
 
 # Keywords must be semantically atomic, visually grounded, and and reusable across archives.
 

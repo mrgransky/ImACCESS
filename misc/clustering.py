@@ -418,6 +418,7 @@ def _nearest_cluster_neighbors(
 	
 	if n < 2:
 		return nn_idx, nn_sim
+	
 	for s in range(0, n, chunk):
 		S = V[s:s + chunk] @ V.T
 		rows = np.arange(S.shape[0])
@@ -428,31 +429,99 @@ def _nearest_cluster_neighbors(
 	
 	return nn_idx, nn_sim
 
+def _json_default(obj):
+	if isinstance(obj, np.generic):
+		return obj.item()
+	if isinstance(obj, np.ndarray):
+		return obj.tolist()
+	raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+def _estimate_dynamic_neighbor_thresholds(
+	sims: np.ndarray,
+	same_mask: np.ndarray,
+	mutual_mask: np.ndarray,
+) -> Dict[str, Any]:
+	"""
+	Derive data-driven similarity thresholds from the intrinsic 1-NN cluster distribution:
+	  1. t_mad         : Robust upper dispersion fence = median(sims) + 1.0 * sigma_MAD,
+	                     where sigma_MAD = 1.4826 * median(|sims - median(sims)|).
+	  2. t_elbow       : Kneedle maximum-curvature inflection point on the sorted upper tail
+	                     (sims >= median), separating background concept spacing from split duplicates.
+	  3. t_same_median : Median 1-NN similarity among clusters whose nearest neighbour converged
+	                     to the SAME canonical name (self-supervised positive anchor).
+	  4. review_min_sim: Consensus median of the active estimators.
+	  5. suggested_merge_threshold: Conservative auto-merge cutoff for Step 4b
+	                     (max of Kneedle elbow and 75th percentile of mutual same-name pairs).
+	"""
+	n = len(sims)
+	if n < 2:
+		return {
+			'review_min_sim': 0.88,
+			'suggested_merge_threshold': 0.92,
+			't_mad': None,
+			't_elbow': None,
+			't_same_median': None,
+			'sigma_mad': 0.0,
+		}
+
+	med = float(np.median(sims))
+	mad = float(np.median(np.abs(sims - med)))
+	sigma_mad = 1.4826 * mad
+	t_mad = float(np.clip(med + 1.0 * sigma_mad, med, float(np.max(sims))))
+
+	upper = np.sort(sims[sims >= med])
+	if len(upper) >= 3 and (upper[-1] > upper[0]):
+		x = np.linspace(0.0, 1.0, len(upper))
+		y = (upper - upper[0]) / (upper[-1] - upper[0])
+		t_elbow = float(upper[int(np.argmax(x - y))])
+	else:
+		t_elbow = float(np.percentile(sims, 90))
+
+	n_same = int(same_mask.sum())
+	t_same = float(np.median(sims[same_mask])) if n_same >= 5 else None
+
+	estimators = [t_mad, t_elbow] + ([t_same] if t_same is not None else [])
+	dynamic_review = round(float(np.median(estimators)), 4)
+
+	same_mut = same_mask & mutual_mask
+	if int(same_mut.sum()) >= 5:
+		t_merge = max(t_elbow, float(np.percentile(sims[same_mut], 75)))
+	else:
+		t_merge = max(t_elbow, float(np.percentile(sims, 95)))
+	t_merge = round(float(t_merge), 4)
+
+	return {
+		'review_min_sim': dynamic_review,
+		'suggested_merge_threshold': t_merge,
+		't_mad': round(t_mad, 4),
+		't_elbow': round(t_elbow, 4),
+		't_same_median': round(t_same, 4) if t_same is not None else None,
+		'sigma_mad': round(sigma_mad, 4),
+	}
+
 def _cluster_neighbor_info(
 	embedding_model_id: str,
 	cluster_centroids: Dict[int, np.ndarray],
 	cluster_canonicals: Dict[int, Dict],
 	cluster_members: Dict[int, List[str]],
-	review_min_sim: float = 0.88,
+	review_min_sim: Optional[float] = None,
 	review_path: Optional[str] = None,
 	verbose: bool = False,
 ) -> Tuple[Dict[int, Dict], Dict]:
 	"""
 	Measures how often two DIFFERENT clusters are near-duplicates of each other.
 
+	If `review_min_sim` is None (default), it is derived dynamically from the
+	clusters via three intrinsic signals (robust MAD fence, Kneedle upper-tail
+	elbow, and the median similarity of same-canonical neighbour pairs).
+
 	Returns
 	-------
 	info    : {cid: {cluster_id, similarity, mutual, canonical, same_canonical, members}}
 				describing each cluster's nearest other cluster (goes into the JSON).
 	summary : counts of clusters whose nearest neighbour is at least X similar,
-				overall and restricted to neighbours with a DIFFERENT final name.
-				High similarity + different names is exactly the 'reconnaissance
-				aircraft' / 'reconnaissance plane' situation; same-name pairs are
-				already handled by _resolve_shared_canonicals.
-
-	If review_path is given, writes every neighbouring pair with similarity >=
-	review_min_sim and different final names, sorted by similarity, with both
-	clusters' members. That file is what you read to calibrate the merge threshold.
+				overall and restricted to neighbours with a DIFFERENT final name,
+				plus dynamic threshold diagnostics.
 	"""
 	ids = sorted(cluster_centroids)
 	nn_idx, nn_sim = _nearest_cluster_neighbors(np.vstack([cluster_centroids[c] for c in ids]))
@@ -461,7 +530,7 @@ def _cluster_neighbor_info(
 		m = cluster_canonicals[c]
 		return m.get('canonical_harmonized', m['canonical'])
 
-	info, pairs = {}, {}
+	info = {}
 	for pos, c in enumerate(ids):
 		npos = int(nn_idx[pos])
 		n = ids[npos]
@@ -475,54 +544,165 @@ def _cluster_neighbor_info(
 			'same_canonical': same,
 			'members': cluster_members[n][:4],
 		}
-		if sim >= review_min_sim and not same:
-			pairs[(min(c, n), max(c, n))] = sim
 
 	sims = nn_sim.astype(float)
-	diff = np.array([not info[c]['same_canonical'] for c in ids])
+	same_mask = np.array([bool(info[c]['same_canonical']) for c in ids], dtype=bool)
+	diff = ~same_mask
+	mutual_mask = np.array([bool(info[c]['mutual']) for c in ids], dtype=bool)
+	n_clusters = len(ids)
+
+	dyn = _estimate_dynamic_neighbor_thresholds(sims, same_mask, mutual_mask)
+	is_dynamic_sim = review_min_sim is None
+	active_review_sim = float(dyn['review_min_sim'] if is_dynamic_sim else review_min_sim)
+
+	pairs = {}
+	for pos, c in enumerate(ids):
+		n = info[c]['cluster_id']
+		sim = float(nn_sim[pos])
+		if sim >= active_review_sim and not info[c]['same_canonical']:
+			pairs[(min(c, n), max(c, n))] = sim
+
 	levels = [0.98, 0.95, 0.92, 0.90, 0.88, 0.85, 0.80]
 	summary = {
-		'n_clusters': len(ids),
-		'median_nearest_similarity': round(float(np.median(sims)), 4),
-		'p90_nearest_similarity': round(float(np.percentile(sims, 90)), 4),
+		'n_clusters': n_clusters,
+		'review_min_sim': round(active_review_sim, 4),
+		'review_min_sim_mode': 'dynamic' if is_dynamic_sim else 'manual',
+		'dynamic_thresholds': dyn,
+		'min_nearest_similarity': round(float(np.min(sims)), 4) if n_clusters else 0.0,
+		'p25_nearest_similarity': round(float(np.percentile(sims, 25)), 4) if n_clusters else 0.0,
+		'median_nearest_similarity': round(float(np.median(sims)), 4) if n_clusters else 0.0,
+		'p75_nearest_similarity': round(float(np.percentile(sims, 75)), 4) if n_clusters else 0.0,
+		'p90_nearest_similarity': round(float(np.percentile(sims, 90)), 4) if n_clusters else 0.0,
+		'p95_nearest_similarity': round(float(np.percentile(sims, 95)), 4) if n_clusters else 0.0,
+		'max_nearest_similarity': round(float(np.max(sims)), 4) if n_clusters else 0.0,
 		'nearest_at_or_above': {f'{t:.2f}': int((sims >= t).sum()) for t in levels},
 		'nearest_at_or_above_different_name': {f'{t:.2f}': int(((sims >= t) & diff).sum()) for t in levels},
+		'nearest_at_or_above_same_name': {f'{t:.2f}': int(((sims >= t) & same_mask).sum()) for t in levels},
 	}
 
 	if review_path:
-		def _side(c):
+		def _side(c, top_k_members: int=10):
 			result = {
 				'cluster_id': int(c), 
 				'size': len(cluster_members[c]),
 				'canonical': _name(c), 
-				'members': cluster_members[c][:6]
+				'members': cluster_members[c][:top_k_members]
 			}
 			return result
 
 		review = [
-			{'similarity': round(s, 6), 'a': _side(a), 'b': _side(b)}
+			{
+				'similarity': float(round(s, 5)), 
+				'mutual': bool(info[a]['cluster_id'] == b and info[b]['cluster_id'] == a),
+				'a': _side(a), 
+				'b': _side(b)
+			}
 			for (a, b), s in sorted(pairs.items(), key=lambda kv: -kv[1])
 		]
 
 		with open(review_path, 'w', encoding='utf-8') as f:
 			pairs_results = {
 				'embedding': embedding_model_id,
-				'min_similarity': review_min_sim, 
+				'min_similarity': float(round(active_review_sim, 4)),
+				'min_similarity_mode': summary['review_min_sim_mode'],
+				'dynamic_thresholds': dyn,
 				'n_pairs': len(review), 
 				'pairs': review
 			}
-			json.dump(pairs_results, f, indent=2, ensure_ascii=False)
+			json.dump(pairs_results, f, indent=2, ensure_ascii=False, default=_json_default)
 
 	if verbose:
-		print("\n[CLUSTER NEIGHBOURS] nearest-other-cluster centroid similarity")
-		print(f"  median {summary['median_nearest_similarity']:.3f} | p90 {summary['p90_nearest_similarity']:.3f}")
-		print(f"  {'>= sim':>8} {'clusters':>9} {'with different name':>20}")
-		for t in levels:
-			k = f'{t:.2f}'
-			print(f"  {k:>8} {summary['nearest_at_or_above'][k]:>9} {summary['nearest_at_or_above_different_name'][k]:>20}")
+		n_mutual_total = int(mutual_mask.sum())
+		print("\n" + "=" * 105)
+		print("[CLUSTER NEIGHBOURS] 1-Nearest-Neighbor Centroid Cosine Similarity Diagnostics")
+		print(f"Total Clusters: {n_clusters:,} | Mutual 1-NN: {n_mutual_total:,}/{n_clusters:,} ({100.0 * n_mutual_total / max(n_clusters, 1):.1f}%)")
+		if n_clusters > 1:
+			print(
+				f"Distribution: min={summary['min_nearest_similarity']:.3f} | "
+				f"p25={summary['p25_nearest_similarity']:.3f} | "
+				f"median={summary['median_nearest_similarity']:.3f} | "
+				f"p75={summary['p75_nearest_similarity']:.3f} | "
+				f"p90={summary['p90_nearest_similarity']:.3f} | "
+				f"p95={summary['p95_nearest_similarity']:.3f} | "
+				f"max={summary['max_nearest_similarity']:.3f}"
+			)
+			t_same_str = f"{dyn['t_same_median']:.4f}" if dyn['t_same_median'] is not None else "N/A (<5 pairs)"
+			print(
+				f"Intrinsic Estimators: "
+				f"MAD fence={dyn['t_mad']:.4f} (med+1.0*MAD, σ={dyn['sigma_mad']:.4f}) | "
+				f"Kneedle elbow={dyn['t_elbow']:.4f} | "
+				f"Same-canonical med={t_same_str}"
+			)
+			print(
+				f"Selected Thresholds : "
+				f"review_min_sim={active_review_sim:.4f} ({summary['review_min_sim_mode']}) | "
+				f"suggested merge_close_clusters_threshold={dyn['suggested_merge_threshold']:.4f}"
+			)
+		print("-" * 105)
+		print(f"  {'>= Sim':<8} {'All Clusters':>16} {'Diff Canonical':>18} {'Same Canonical':>18}  {'Intrinsic Landmark / Role'}")
+		print(f"  {'-'*8:<8} {'-'*16:>16} {'-'*18:>18} {'-'*18:>18}  {'-'*38}")
+
+		raw_rows = [(t, None) for t in levels]
+		if n_clusters > 1:
+			raw_rows.extend([
+				(summary['p95_nearest_similarity'], 'p95 (top 5% tail)'),
+				(dyn['suggested_merge_threshold'], 'suggested auto-merge'),
+				(dyn['t_elbow'], 'kneedle elbow'),
+				(summary['p90_nearest_similarity'], 'p90 (top 10% tail)'),
+				(active_review_sim, f"ACTIVE review_min_sim ({summary['review_min_sim_mode']})"),
+				(dyn['t_mad'], 'median + 1.0*MAD'),
+				( summary['p75_nearest_similarity'], 'p75 (upper quartile)'),
+				(summary['median_nearest_similarity'], 'p50 (median)'),
+			])
+			if dyn['t_same_median'] is not None:
+				raw_rows.append((dyn['t_same_median'], 'same-canonical median'))
+
+		merged_rows = []
+		for val, tag in sorted(raw_rows, key=lambda r: -r[0]):
+			if val is None:
+				continue
+			val_r = round(float(val), 4)
+			if merged_rows and abs(merged_rows[-1][0] - val_r) < 0.0005:
+				if tag and tag not in merged_rows[-1][1]:
+					merged_rows[-1][1].append(tag)
+			else:
+				merged_rows.append((val_r, [tag] if tag else []))
+
+		for val_r, tags in merged_rows:
+			n_all = int((sims >= val_r).sum())
+			n_diff = int(((sims >= val_r) & diff).sum())
+			n_same = int(((sims >= val_r) & same_mask).sum())
+			pct_all = 100.0 * n_all / max(n_clusters, 1)
+			pct_diff = 100.0 * n_diff / max(n_clusters, 1)
+			pct_same = 100.0 * n_same / max(n_clusters, 1)
+			tag_str = f"<- {', '.join(tags)}" if tags else ""
+			print(f"  {val_r:<8.4f} {f'{n_all:,} ({pct_all:5.1f}%)':>16} {f'{n_diff:,} ({pct_diff:5.1f}%)':>18} {f'{n_same:,} ({pct_same:5.1f}%)':>18}  {tag_str}")
+
+		print("-" * 105)
+
+		if pairs:
+			n_diff_clusters = int(((sims >= active_review_sim) & diff).sum())
+			n_mut_pairs = sum(1 for (a, b) in pairs if info[a]['cluster_id'] == b and info[b]['cluster_id'] == a)
+			n_asym_pairs = len(pairs) - n_mut_pairs
+			print(f"  Review Candidates (similarity >= {active_review_sim:.4f} [{summary['review_min_sim_mode']}] with different canonical):")
+			print(f"    • Unique pairs extracted : {len(pairs):,} ({n_mut_pairs:,} mutual 1-NN, {n_asym_pairs:,} one-way 1-NN)")
+			print(f"    • Individual clusters    : {n_diff_clusters:,} ({100.0 * n_diff_clusters / max(n_clusters, 1):.1f}% of total clusters)")
+
+			# Top-5 Preview
+			top_k = min(5, len(pairs))
+			sorted_pairs = sorted(pairs.items(), key=lambda kv: -kv[1])[:top_k]
+			print(f"\n  Top {top_k} Closest Neighbor Pairs (Different Canonicals):")
+			for rank, ((a, b), s) in enumerate(sorted_pairs, start=1):
+				mut_tag = "mutual" if (info[a]['cluster_id'] == b and info[b]['cluster_id'] == a) else "one-way"
+				a_name, a_sz = _name(a), len(cluster_members[a])
+				b_name, b_sz = _name(b), len(cluster_members[b])
+				print(f"    {rank}. sim={s:.4f} [{mut_tag}]")
+				print(f"       Cluster {a} ({a_sz} labels): \"{a_name}\"")
+				print(f"       Cluster {b} ({b_sz} labels): \"{b_name}\"")
+
 		if review_path:
-			print(f"  pairs >= {review_min_sim} with different names -> {review_path} ({len(pairs)} pairs)")
-		print("-"*120)
+			print(f"\n[SAVED] {review_path}")
+		print(f"(Tip: suggested Step 4b `merge_close_clusters_threshold={dyn['suggested_merge_threshold']:.4f}` in cluster())")
 	
 	return info, summary
 
@@ -610,7 +790,7 @@ def _merge_close_clusters(
 		with open(report_path, 'w', encoding='utf-8') as f:
 			json.dump({'threshold': threshold, 'max_merged_size': max_merged_size,
 						 'clusters_before': n_before, 'clusters_after': len(members),
-						 'merges': merges}, f, indent=2, ensure_ascii=False)
+						 'merges': merges}, f, indent=2, ensure_ascii=False, default=_json_default)
 	return new_labels
 
 def _validate_embeddings(X: np.ndarray, unique_labels: List[str]) -> None:
@@ -2934,7 +3114,7 @@ def _write_debug_json(
 	verbose: bool = False,
 ) -> None:
 	with open(path, 'w', encoding='utf-8') as f:
-		json.dump(payload, f, indent=2, ensure_ascii=False)
+		json.dump(payload, f, indent=2, ensure_ascii=False, default=_json_default)
 	if verbose:
 		print(f"[CANONICAL SELECTION]")
 		print(f"  ├─ {len(payload['clusters'])} clusters")
@@ -3601,7 +3781,7 @@ def assign_canonical_labels(
 	debug_json_path: Optional[str] = None,
 	shared_calibration_names: Optional[List[str]] = None,
 	encode_prompt: Optional[str] = None,
-	neighbor_review_min_sim: float = 0.88,
+	neighbor_review_min_sim: Optional[float] = None,
 	shared_threshold: float = 0.70,
 	virtual_min_sim_ratio: Optional[float] = 0.60, # None to disable
 	min_distinct_concepts: int = 2,
@@ -4162,12 +4342,14 @@ def assign_canonical_labels(
 			)
 			if scored else _unscored(len(candidates))
 		)
+
 		pick = _pick_best_candidate(
 			scored, scores, similarities, raw_freqs, virtual_flags,
 			cluster_size, pure_sim_idx,
 			freq_gain_guard=FREQ_GAIN_GUARD,
 			sim_gap_guard=VIRTUAL_SIM_GAP_GUARD,
 		)
+
 		best_idx      = pick['best_idx']
 		composite_idx = pick['composite_idx']
 		nofreq_idx    = pick['nofreq_idx']
@@ -4175,7 +4357,11 @@ def assign_canonical_labels(
 		is_virtual_pick = virtual_flags[best_idx]
 
 		method = _label_selection_method(
-			composite_idx, is_virtual_pick, freq_guard, best_idx, pure_sim_idx
+			composite_idx, 
+			is_virtual_pick, 
+			freq_guard, 
+			best_idx, 
+			pure_sim_idx
 		)
 
 		# statistics block
@@ -4247,7 +4433,7 @@ def assign_canonical_labels(
 		)
 
 	cluster_canonicals = _resolve_shared_canonicals(
-		cluster_canonicals,
+		cluster_canonicals=cluster_canonicals,
 		cluster_centroids=cluster_centroids,
 		cluster_members=cluster_members,
 		original_label_counts=original_label_counts,
@@ -4256,7 +4442,7 @@ def assign_canonical_labels(
 	)
 
 	cluster_canonicals = _harmonize_final_canonicals(
-		cluster_canonicals,
+		cluster_canonicals=cluster_canonicals,
 		original_label_counts=original_label_counts,
 		verbose=verbose,
 	)
@@ -4283,6 +4469,7 @@ def assign_canonical_labels(
 
 	if debug_json_path:
 		clusters_json = _build_clusters_json(selection_records, candidate_records)
+
 		payload = _build_debug_payload(
 			clusters_json=clusters_json,
 			selection_records=selection_records,
