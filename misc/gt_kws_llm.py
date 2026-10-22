@@ -761,9 +761,9 @@ def query_local_llm(
 			# eos_token_id=tokenizer.eos_token_id,
 			use_cache=True,
 			do_sample=False, # CRITICAL: Disables sampling for deterministic output
-			temperature=None,
-			top_p=None,
-			top_k=None,
+			# temperature=None,
+			# top_p=None,
+			# top_k=None,
 		)
 		effective_gen_config.update(**gen_kwargs)
 		if verbose:
@@ -950,9 +950,9 @@ def _generate_one_batch(
 		# eos_token_id=tokenizer.eos_token_id,
 		use_cache=True,
 		do_sample=False, # Disables sampling for deterministic output (triggers Greedy Search)
-		temperature=None,
-		top_p=None,
-		top_k=None,
+		# temperature=None,
+		# top_p=None,
+		# top_k=None,
 	)
 	effective_gen_config.update(**gen_kwargs)
 	# if verbose:
@@ -1392,9 +1392,9 @@ def get_llm_based_labels_slow(
 							# eos_token_id=tokenizer.eos_token_id,
 							use_cache=True,
 							do_sample=False, # Disables sampling for deterministic output (triggers Greedy Search)
-							temperature=None,
-							top_p=None,
-							top_k=None,
+							# temperature=None,
+							# top_p=None,
+							# top_k=None,
 						)
 						effective_gen_config.update(**gen_kwargs)
 						# if verbose:
