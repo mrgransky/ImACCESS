@@ -400,10 +400,7 @@ def _encode_(
 	
 	return np.asarray(embeddings, dtype=np.float32)
 
-def _nearest_cluster_neighbors(
-	centroids: np.ndarray, 
-	chunk: int = 2048
-) -> Tuple[np.ndarray, np.ndarray]:
+def _nearest_cluster_neighbors(centroids: np.ndarray, chunk: int = 2048) -> Tuple[np.ndarray, np.ndarray]:
 	"""
 	For every row of `centroids` (n, d): the index and cosine similarity of the
 	most similar OTHER row. Chunked, so memory stays at chunk * n floats even
@@ -438,29 +435,25 @@ def _json_default(obj):
 
 def _estimate_dynamic_neighbor_thresholds(
 	sims: np.ndarray,
-	same_mask: np.ndarray,
 	mutual_mask: np.ndarray,
 ) -> Dict[str, Any]:
 	"""
-	Derive data-driven similarity thresholds from the intrinsic 1-NN cluster distribution:
-	  1. t_mad         : Robust upper dispersion fence = median(sims) + 1.0 * sigma_MAD,
-	                     where sigma_MAD = 1.4826 * median(|sims - median(sims)|).
-	  2. t_elbow       : Kneedle maximum-curvature inflection point on the sorted upper tail
-	                     (sims >= median), separating background concept spacing from split duplicates.
-	  3. t_same_median : Median 1-NN similarity among clusters whose nearest neighbour converged
-	                     to the SAME canonical name (self-supervised positive anchor).
-	  4. review_min_sim: Consensus median of the active estimators.
-	  5. suggested_merge_threshold: Conservative auto-merge cutoff for Step 4b
-	                     (max of Kneedle elbow and 75th percentile of mutual same-name pairs).
+	Derive data-driven similarity thresholds from the intrinsic 1-NN cluster distribution
+	(prior to canonical selection, directly on member centroids):
+	  1. t_mad        : Robust upper dispersion fence = median(sims) + 1.0 * sigma_MAD,
+	                    where sigma_MAD = 1.4826 * median(|sims - median(sims)|).
+	  2. t_elbow      : Kneedle maximum-curvature inflection point on the sorted upper tail
+	                    (sims >= median), separating background concept spacing from split duplicates.
+	  3. t_mutual_p75 : 75th percentile of mutual 1-NN similarities (reciprocal closest pairs).
+	  4. threshold    : Consensus median of the active estimators (used for review & Step 4b merge).
 	"""
 	n = len(sims)
 	if n < 2:
 		return {
-			'review_min_sim': 0.88,
-			'suggested_merge_threshold': 0.92,
+			'threshold': 0.88,
 			't_mad': None,
 			't_elbow': None,
-			't_same_median': None,
+			't_mutual_p75': None,
 			'sigma_mad': 0.0,
 		}
 
@@ -477,96 +470,110 @@ def _estimate_dynamic_neighbor_thresholds(
 	else:
 		t_elbow = float(np.percentile(sims, 90))
 
-	n_same = int(same_mask.sum())
-	t_same = float(np.median(sims[same_mask])) if n_same >= 5 else None
+	n_mut = int(mutual_mask.sum())
+	t_mut_p75 = float(np.percentile(sims[mutual_mask], 75)) if n_mut >= 5 else None
 
-	estimators = [t_mad, t_elbow] + ([t_same] if t_same is not None else [])
-	dynamic_review = round(float(np.median(estimators)), 4)
-
-	same_mut = same_mask & mutual_mask
-	if int(same_mut.sum()) >= 5:
-		t_merge = max(t_elbow, float(np.percentile(sims[same_mut], 75)))
-	else:
-		t_merge = max(t_elbow, float(np.percentile(sims, 95)))
-	t_merge = round(float(t_merge), 4)
+	estimators = [t_mad, t_elbow] + ([t_mut_p75] if t_mut_p75 is not None else [])
+	dynamic_threshold = round(float(np.median(estimators)), 4)
 
 	return {
-		'review_min_sim': dynamic_review,
-		'suggested_merge_threshold': t_merge,
+		'threshold': dynamic_threshold,
 		't_mad': round(t_mad, 4),
 		't_elbow': round(t_elbow, 4),
-		't_same_median': round(t_same, 4) if t_same is not None else None,
+		't_mutual_p75': round(t_mut_p75, 4) if t_mut_p75 is not None else None,
 		'sigma_mad': round(sigma_mad, 4),
 	}
 
 def _cluster_neighbor_info(
 	embedding_model_id: str,
-	cluster_centroids: Dict[int, np.ndarray],
-	cluster_canonicals: Dict[int, Dict],
-	cluster_members: Dict[int, List[str]],
-	review_min_sim: Optional[float] = None,
+	X: np.ndarray,
+	labels: np.ndarray,
+	label_texts: List[str],
+	max_merged_size: int = 30,
+	threshold: Optional[float] = None,
 	review_path: Optional[str] = None,
 	verbose: bool = False,
 ) -> Tuple[Dict[int, Dict], Dict]:
 	"""
-	Measures how often two DIFFERENT clusters are near-duplicates of each other.
+	Pre-merge cluster proximity diagnostics computed directly on member centroids
+	after `get_clustered_labels()` and before `_merge_close_clusters()`.
 
-	If `review_min_sim` is None (default), it is derived dynamically from the
+	If `threshold` is None (default), it is derived dynamically from the
 	clusters via three intrinsic signals (robust MAD fence, Kneedle upper-tail
-	elbow, and the median similarity of same-canonical neighbour pairs).
+	elbow, and the 75th percentile of mutual 1-NN similarities).
 
 	Returns
 	-------
-	info    : {cid: {cluster_id, similarity, mutual, canonical, same_canonical, members}}
-				describing each cluster's nearest other cluster (goes into the JSON).
-	summary : counts of clusters whose nearest neighbour is at least X similar,
-				overall and restricted to neighbours with a DIFFERENT final name,
-				plus dynamic threshold diagnostics.
+	info    : {cid: {cluster_id, similarity, mutual, merge_eligible, medoid, members}}
+				describing each cluster's nearest other cluster.
+	summary : distribution quantiles, counts at similarity levels (overall, mutual,
+				one-way, and merge-eligible mutual pairs), and resolved threshold.
 	"""
-	ids = sorted(cluster_centroids)
-	nn_idx, nn_sim = _nearest_cluster_neighbors(np.vstack([cluster_centroids[c] for c in ids]))
+	ids = [int(c) for c in np.unique(labels)]
+	n_clusters = len(ids)
 
-	def _name(c):
-		m = cluster_canonicals[c]
-		return m.get('canonical_harmonized', m['canonical'])
+	cluster_members: Dict[int, List[str]] = {}
+	cluster_medoids: Dict[int, str] = {}
+	sizes = np.zeros(n_clusters, dtype=np.int64)
+	centroid_list = []
 
-	info = {}
+	for pos, c in enumerate(ids):
+		m_idx = np.where(labels == c)[0]
+		members_c = [label_texts[i] for i in m_idx]
+		cluster_members[c] = members_c
+		sizes[pos] = len(m_idx)
+
+		emb_c = X[m_idx]
+		centroid = emb_c.mean(axis=0).astype(np.float32)
+		centroid_list.append(centroid)
+
+		unit_c = centroid / (np.linalg.norm(centroid) + 1e-12)
+		medoid_local = int(np.argmax(emb_c @ unit_c))
+		cluster_medoids[c] = members_c[medoid_local]
+
+	centroids = np.vstack(centroid_list) if n_clusters > 0 else np.empty((0, X.shape[1]), dtype=np.float32)
+	nn_idx, nn_sim = _nearest_cluster_neighbors(centroids=centroids, chunk=4096)
+
+	info: Dict[int, Dict] = {}
 	for pos, c in enumerate(ids):
 		npos = int(nn_idx[pos])
 		n = ids[npos]
 		sim = float(nn_sim[pos])
-		same = _name(n).lower() == _name(c).lower()
+		is_mutual = bool(int(nn_idx[npos]) == pos)
+		comb_size = int(sizes[pos] + sizes[npos])
+		merge_ok = bool(is_mutual and comb_size <= max_merged_size)
 		info[c] = {
 			'cluster_id': int(n),
 			'similarity': round(sim, 4),
-			'mutual': int(nn_idx[npos]) == pos,
-			'canonical': _name(n),
-			'same_canonical': same,
+			'mutual': is_mutual,
+			'combined_size': comb_size,
+			'merge_eligible': merge_ok,
+			'medoid': cluster_medoids[n],
 			'members': cluster_members[n][:4],
 		}
 
 	sims = nn_sim.astype(float)
-	same_mask = np.array([bool(info[c]['same_canonical']) for c in ids], dtype=bool)
-	diff = ~same_mask
 	mutual_mask = np.array([bool(info[c]['mutual']) for c in ids], dtype=bool)
-	n_clusters = len(ids)
+	oneway_mask = ~mutual_mask
+	eligible_mask = np.array([bool(info[c]['merge_eligible']) for c in ids], dtype=bool)
 
-	dyn = _estimate_dynamic_neighbor_thresholds(sims, same_mask, mutual_mask)
-	is_dynamic_sim = review_min_sim is None
-	active_review_sim = float(dyn['review_min_sim'] if is_dynamic_sim else review_min_sim)
+	dyn = _estimate_dynamic_neighbor_thresholds(sims, mutual_mask)
+	is_dynamic_thresh = threshold is None
+	active_threshold = float(dyn['threshold'] if is_dynamic_thresh else threshold)
 
 	pairs = {}
 	for pos, c in enumerate(ids):
 		n = info[c]['cluster_id']
 		sim = float(nn_sim[pos])
-		if sim >= active_review_sim and not info[c]['same_canonical']:
+		if sim >= active_threshold:
 			pairs[(min(c, n), max(c, n))] = sim
 
 	levels = [0.98, 0.95, 0.92, 0.90, 0.88, 0.85, 0.80]
 	summary = {
 		'n_clusters': n_clusters,
-		'review_min_sim': round(active_review_sim, 4),
-		'review_min_sim_mode': 'dynamic' if is_dynamic_sim else 'manual',
+		'threshold': round(active_threshold, 4),
+		'threshold_mode': 'dynamic' if is_dynamic_thresh else 'manual',
+		'max_merged_size': int(max_merged_size),
 		'dynamic_thresholds': dyn,
 		'min_nearest_similarity': round(float(np.min(sims)), 4) if n_clusters else 0.0,
 		'p25_nearest_similarity': round(float(np.percentile(sims, 25)), 4) if n_clusters else 0.0,
@@ -576,26 +583,32 @@ def _cluster_neighbor_info(
 		'p95_nearest_similarity': round(float(np.percentile(sims, 95)), 4) if n_clusters else 0.0,
 		'max_nearest_similarity': round(float(np.max(sims)), 4) if n_clusters else 0.0,
 		'nearest_at_or_above': {f'{t:.2f}': int((sims >= t).sum()) for t in levels},
-		'nearest_at_or_above_different_name': {f'{t:.2f}': int(((sims >= t) & diff).sum()) for t in levels},
-		'nearest_at_or_above_same_name': {f'{t:.2f}': int(((sims >= t) & same_mask).sum()) for t in levels},
+		'nearest_at_or_above_mutual': {f'{t:.2f}': int(((sims >= t) & mutual_mask).sum()) for t in levels},
+		'nearest_at_or_above_oneway': {f'{t:.2f}': int(((sims >= t) & oneway_mask).sum()) for t in levels},
+		'mergeable_pairs_at_or_above': {f'{t:.2f}': int(((sims >= t) & eligible_mask).sum()) // 2 for t in levels},
 	}
 
 	if review_path:
-		def _side(c, top_k_members: int=10):
-			result = {
-				'cluster_id': int(c), 
+		def _side(c, top_k_members: int = 10):
+			return {
+				'cluster_id': int(c),
 				'size': len(cluster_members[c]),
-				'canonical': _name(c), 
-				'members': cluster_members[c][:top_k_members]
+				'medoid': cluster_medoids[c],
+				'members': cluster_members[c][:top_k_members],
 			}
-			return result
 
 		review = [
 			{
-				'similarity': float(round(s, 5)), 
+				'similarity': float(round(s, 5)),
 				'mutual': bool(info[a]['cluster_id'] == b and info[b]['cluster_id'] == a),
-				'a': _side(a), 
-				'b': _side(b)
+				'merge_eligible': bool(
+					info[a]['cluster_id'] == b
+					and info[b]['cluster_id'] == a
+					and (len(cluster_members[a]) + len(cluster_members[b]) <= max_merged_size)
+				),
+				'combined_size': int(len(cluster_members[a]) + len(cluster_members[b])),
+				'a': _side(a),
+				'b': _side(b),
 			}
 			for (a, b), s in sorted(pairs.items(), key=lambda kv: -kv[1])
 		]
@@ -603,19 +616,26 @@ def _cluster_neighbor_info(
 		with open(review_path, 'w', encoding='utf-8') as f:
 			pairs_results = {
 				'embedding': embedding_model_id,
-				'min_similarity': float(round(active_review_sim, 4)),
-				'min_similarity_mode': summary['review_min_sim_mode'],
+				'threshold': float(round(active_threshold, 4)),
+				'threshold_mode': summary['threshold_mode'],
+				'max_merged_size': int(max_merged_size),
 				'dynamic_thresholds': dyn,
-				'n_pairs': len(review), 
-				'pairs': review
+				'n_pairs': len(review),
+				'n_merge_eligible_pairs': sum(1 for r in review if r['merge_eligible']),
+				'pairs': review,
 			}
 			json.dump(pairs_results, f, indent=2, ensure_ascii=False, default=_json_default)
 
 	if verbose:
 		n_mutual_total = int(mutual_mask.sum())
-		print("\n" + "=" * 105)
-		print("[CLUSTER NEIGHBOURS] 1-Nearest-Neighbor Centroid Cosine Similarity Diagnostics")
-		print(f"Total Clusters: {n_clusters:,} | Mutual 1-NN: {n_mutual_total:,}/{n_clusters:,} ({100.0 * n_mutual_total / max(n_clusters, 1):.1f}%)")
+		n_eligible_total = int(eligible_mask.sum()) // 2
+		print("\n" + "=" * 120)
+		print("[CLUSTER NEIGHBOURS] Pre-Merge 1-Nearest-Neighbor Centroid Cosine Similarity Diagnostics")
+		print(
+			f"Total Clusters: {n_clusters:,} | "
+			f"Mutual 1-NN: {n_mutual_total:,}/{n_clusters:,} ({100.0 * n_mutual_total / max(n_clusters, 1):.1f}%) "
+			f"[{n_mutual_total // 2:,} mutual pairs, {n_eligible_total:,} pairs <= max_merged_size={max_merged_size}]"
+		)
 		if n_clusters > 1:
 			print(
 				f"Distribution: min={summary['min_nearest_similarity']:.3f} | "
@@ -626,43 +646,44 @@ def _cluster_neighbor_info(
 				f"p95={summary['p95_nearest_similarity']:.3f} | "
 				f"max={summary['max_nearest_similarity']:.3f}"
 			)
-			t_same_str = f"{dyn['t_same_median']:.4f}" if dyn['t_same_median'] is not None else "N/A (<5 pairs)"
+			t_mut_str = f"{dyn['t_mutual_p75']:.4f}" if dyn['t_mutual_p75'] is not None else "N/A (<5 mutual)"
 			print(
 				f"Intrinsic Estimators: "
 				f"MAD fence={dyn['t_mad']:.4f} (med+1.0*MAD, σ={dyn['sigma_mad']:.4f}) | "
 				f"Kneedle elbow={dyn['t_elbow']:.4f} | "
-				f"Same-canonical med={t_same_str}"
+				f"Mutual 1-NN p75={t_mut_str}"
 			)
 			print(
-				f"Selected Thresholds : "
-				f"review_min_sim={active_review_sim:.4f} ({summary['review_min_sim_mode']}) | "
-				f"suggested merge_close_clusters_threshold={dyn['suggested_merge_threshold']:.4f}"
+				f"Active Threshold    : "
+				f"threshold={active_threshold:.4f} ({summary['threshold_mode']})"
 			)
-		print("-" * 105)
-		print(f"  {'>= Sim':<8} {'All Clusters':>16} {'Diff Canonical':>18} {'Same Canonical':>18}  {'Intrinsic Landmark / Role'}")
-		print(f"  {'-'*8:<8} {'-'*16:>16} {'-'*18:>18} {'-'*18:>18}  {'-'*38}")
+		print("-" * 120)
+		print(
+			f"  {'>= Sim':<8} {'All Clusters':>16} {'Mutual 1-NN':>18} {'One-Way 1-NN':>18} "
+			f"{f'Mergeable Pairs (<={max_merged_size})':>24}  {'Intrinsic Landmark / Role'}"
+		)
+		print(f"  {'-'*8:<8} {'-'*16:>16} {'-'*18:>18} {'-'*18:>18} {'-'*24:>24}  {'-'*32}")
 
 		raw_rows = [(t, None) for t in levels]
 		if n_clusters > 1:
 			raw_rows.extend([
 				(summary['p95_nearest_similarity'], 'p95 (top 5% tail)'),
-				(dyn['suggested_merge_threshold'], 'suggested auto-merge'),
 				(dyn['t_elbow'], 'kneedle elbow'),
 				(summary['p90_nearest_similarity'], 'p90 (top 10% tail)'),
-				(active_review_sim, f"ACTIVE review_min_sim ({summary['review_min_sim_mode']})"),
+				(active_threshold, f"ACTIVE threshold ({summary['threshold_mode']})"),
 				(dyn['t_mad'], 'median + 1.0*MAD'),
-				( summary['p75_nearest_similarity'], 'p75 (upper quartile)'),
+				(summary['p75_nearest_similarity'], 'p75 (upper quartile)'),
 				(summary['median_nearest_similarity'], 'p50 (median)'),
 			])
-			if dyn['t_same_median'] is not None:
-				raw_rows.append((dyn['t_same_median'], 'same-canonical median'))
+			if dyn['t_mutual_p75'] is not None:
+				raw_rows.append((dyn['t_mutual_p75'], 'mutual 1-NN p75'))
 
 		merged_rows = []
 		for val, tag in sorted(raw_rows, key=lambda r: -r[0]):
 			if val is None:
 				continue
 			val_r = round(float(val), 4)
-			if merged_rows and abs(merged_rows[-1][0] - val_r) < 0.0005:
+			if merged_rows and abs(merged_rows[-1][0] - val_r) < 1e-6:
 				if tag and tag not in merged_rows[-1][1]:
 					merged_rows[-1][1].append(tag)
 			else:
@@ -670,40 +691,57 @@ def _cluster_neighbor_info(
 
 		for val_r, tags in merged_rows:
 			n_all = int((sims >= val_r).sum())
-			n_diff = int(((sims >= val_r) & diff).sum())
-			n_same = int(((sims >= val_r) & same_mask).sum())
+			n_mut = int(((sims >= val_r) & mutual_mask).sum())
+			n_one = int(((sims >= val_r) & oneway_mask).sum())
+			n_mrg_pairs = int(((sims >= val_r) & eligible_mask).sum()) // 2
 			pct_all = 100.0 * n_all / max(n_clusters, 1)
-			pct_diff = 100.0 * n_diff / max(n_clusters, 1)
-			pct_same = 100.0 * n_same / max(n_clusters, 1)
+			pct_mut = 100.0 * n_mut / max(n_clusters, 1)
+			pct_one = 100.0 * n_one / max(n_clusters, 1)
 			tag_str = f"<- {', '.join(tags)}" if tags else ""
-			print(f"  {val_r:<8.4f} {f'{n_all:,} ({pct_all:5.1f}%)':>16} {f'{n_diff:,} ({pct_diff:5.1f}%)':>18} {f'{n_same:,} ({pct_same:5.1f}%)':>18}  {tag_str}")
+			print(
+				f"  {val_r:<8.4f} {f'{n_all:,} ({pct_all:5.1f}%)':>16} "
+				f"{f'{n_mut:,} ({pct_mut:5.1f}%)':>18} {f'{n_one:,} ({pct_one:5.1f}%)':>18} "
+				f"{f'{n_mrg_pairs:,} pairs':>24}  {tag_str}"
+			)
 
-		print("-" * 105)
+		print("-" * 120)
 
 		if pairs:
-			n_diff_clusters = int(((sims >= active_review_sim) & diff).sum())
+			n_cand_clusters = int((sims >= active_threshold).sum())
 			n_mut_pairs = sum(1 for (a, b) in pairs if info[a]['cluster_id'] == b and info[b]['cluster_id'] == a)
+			n_mrg_pairs = sum(
+				1 for (a, b) in pairs
+				if info[a]['cluster_id'] == b
+				and info[b]['cluster_id'] == a
+				and (len(cluster_members[a]) + len(cluster_members[b]) <= max_merged_size)
+			)
+			n_size_blocked = n_mut_pairs - n_mrg_pairs
 			n_asym_pairs = len(pairs) - n_mut_pairs
-			print(f"  Review Candidates (similarity >= {active_review_sim:.4f} [{summary['review_min_sim_mode']}] with different canonical):")
-			print(f"    • Unique pairs extracted : {len(pairs):,} ({n_mut_pairs:,} mutual 1-NN, {n_asym_pairs:,} one-way 1-NN)")
-			print(f"    • Individual clusters    : {n_diff_clusters:,} ({100.0 * n_diff_clusters / max(n_clusters, 1):.1f}% of total clusters)")
+			print(f"  Candidate Pairs at Active Threshold (similarity >= {active_threshold:.4f} [{summary['threshold_mode']}]):")
+			print(f"    • Unique pairs extracted  : {len(pairs):,} ({n_mut_pairs:,} mutual 1-NN, {n_asym_pairs:,} one-way 1-NN)")
+			print(f"    • Step 4b merge-eligible  : {n_mrg_pairs:,} mutual pairs with combined size <= {max_merged_size} ({n_size_blocked:,} mutual pairs blocked by size)")
+			print(f"    • Individual clusters     : {n_cand_clusters:,} ({100.0 * n_cand_clusters / max(n_clusters, 1):.1f}% of total clusters)")
 
-			# Top-5 Preview
 			top_k = min(5, len(pairs))
 			sorted_pairs = sorted(pairs.items(), key=lambda kv: -kv[1])[:top_k]
-			print(f"\n  Top {top_k} Closest Neighbor Pairs (Different Canonicals):")
+			print(f"\n  Top {top_k} Closest Neighbor Pairs:")
 			for rank, ((a, b), s) in enumerate(sorted_pairs, start=1):
-				mut_tag = "mutual" if (info[a]['cluster_id'] == b and info[b]['cluster_id'] == a) else "one-way"
-				a_name, a_sz = _name(a), len(cluster_members[a])
-				b_name, b_sz = _name(b), len(cluster_members[b])
-				print(f"    {rank}. sim={s:.4f} [{mut_tag}]")
-				print(f"       Cluster {a} ({a_sz} labels): \"{a_name}\"")
-				print(f"       Cluster {b} ({b_sz} labels): \"{b_name}\"")
+				is_mut = info[a]['cluster_id'] == b and info[b]['cluster_id'] == a
+				comb_sz = len(cluster_members[a]) + len(cluster_members[b])
+				if is_mut and comb_sz <= max_merged_size:
+					status_tag = f"mutual, merge-eligible (combined={comb_sz}<={max_merged_size})"
+				elif is_mut:
+					status_tag = f"mutual, size-blocked (combined={comb_sz}>{max_merged_size})"
+				else:
+					status_tag = "one-way"
+				print(f"    {rank}. sim={s:.4f} [{status_tag}]")
+				print(f"       Cluster {a} ({len(cluster_members[a])} labels, medoid=\"{cluster_medoids[a]}\"): {cluster_members[a][:4]}")
+				print(f"       Cluster {b} ({len(cluster_members[b])} labels, medoid=\"{cluster_medoids[b]}\"): {cluster_members[b][:4]}")
 
 		if review_path:
 			print(f"\n[SAVED] {review_path}")
-		print(f"(Tip: suggested Step 4b `merge_close_clusters_threshold={dyn['suggested_merge_threshold']:.4f}` in cluster())")
-	
+		print("=" * 120 + "\n")
+
 	return info, summary
 
 def _merge_close_clusters(
@@ -738,37 +776,49 @@ def _merge_close_clusters(
 	(threshold=None in cluster()) until you have calibrated the threshold from
 	the neighbour report.
 	"""
+
 	ids = np.unique(labels)
 	members = [np.where(labels == c)[0] for c in ids]
 	sums = np.vstack([X[m].sum(axis=0) for m in members]).astype(np.float32)
 	sizes = np.array([len(m) for m in members])
 	n_before = len(members)
 	merges = []
+	top_k_members = 10
 
 	for rnd in range(1, max_rounds + 1):
 		if len(members) < 2:
 			break
-		nn_idx, nn_sim = _nearest_cluster_neighbors(sums)
+
+		nn_idx, nn_sim = _nearest_cluster_neighbors(centroids=sums, chunk=4096)
 		drop = set()
+
 		for i in range(len(members)):
 			j = int(nn_idx[i])
+			
 			if not (i < j and int(nn_idx[j]) == i):
-				continue                                   # mutual pairs only: each cluster is in at most one pair
+				continue # mutual pairs only: each cluster is in at most one pair
+			
 			if nn_sim[i] < threshold or sizes[i] + sizes[j] > max_merged_size:
 				continue
-			merges.append({
+
+			merge = {
 				'round': rnd,
-				'similarity': round(float(nn_sim[i]), 4),
+				'similarity': round(float(nn_sim[i]), 5),
 				'size_a': int(sizes[i]), 'size_b': int(sizes[j]),
-				'members_a': [label_texts[k] for k in members[i][:6]],
-				'members_b': [label_texts[k] for k in members[j][:6]],
-			})
+				'members_a': [label_texts[k] for k in members[i][:top_k_members]],
+				'members_b': [label_texts[k] for k in members[j][:top_k_members]],
+			}
+
+			merges.append(merge)
+			
 			members[i] = np.concatenate([members[i], members[j]])
 			sums[i] += sums[j]
 			sizes[i] += sizes[j]
 			drop.add(j)
+		
 		if not drop:
 			break
+		
 		keep = [k for k in range(len(members)) if k not in drop]
 		members = [members[k] for k in keep]
 		sums = sums[keep]
@@ -780,17 +830,36 @@ def _merge_close_clusters(
 
 	if verbose:
 		rounds = max((m['round'] for m in merges), default=0)
-		print(f"\n[MERGE CLOSE CLUSTERS] threshold={threshold:.3f} max_size={max_merged_size}: "
-				f"{n_before} -> {len(members)} clusters ({len(merges)} merges, {rounds} round(s))")
+		print(
+			f"\n[MERGE CLOSE CLUSTERS] threshold={threshold:.3f} max_size={max_merged_size}: "
+			f"{n_before} -> {len(members)} clusters ({len(merges)} merges, {rounds} round(s))"
+		)
+		
 		for m in sorted(merges, key=lambda m: m['similarity'])[:15]:
 			print(f"  {m['similarity']:.4f}  {m['members_a'][:3]}  +  {m['members_b'][:3]}")
+		
 		if merges:
 			print("  (lowest-similarity merges shown; these are the borderline ones to review)")
+
 	if report_path:
 		with open(report_path, 'w', encoding='utf-8') as f:
-			json.dump({'threshold': threshold, 'max_merged_size': max_merged_size,
-						 'clusters_before': n_before, 'clusters_after': len(members),
-						 'merges': merges}, f, indent=2, ensure_ascii=False, default=_json_default)
+			new_result = {
+				'threshold': threshold,
+				'max_merged_size': max_merged_size,
+				'clusters_before': n_before,
+				'clusters_after': len(members),
+				'merges': merges,
+				'rounds': rounds,
+			}
+
+			json.dump(
+				new_result,
+				f, 
+				indent=2, 
+				ensure_ascii=False, 
+				default=_json_default
+			)
+	
 	return new_labels
 
 def _validate_embeddings(X: np.ndarray, unique_labels: List[str]) -> None:
@@ -2958,7 +3027,6 @@ def _finalize_selection_records(
 	selection_records: List[Dict],
 	cluster_canonicals: Dict[int, Dict],
 	pre_postpass: Dict[int, str],
-	neighbor_info: Dict[int, Dict],
 ) -> None:
 	"""In place: stamp final (post-resolver, post-harmonize) state onto each record."""
 	for rec in selection_records:
@@ -2968,7 +3036,6 @@ def _finalize_selection_records(
 		rec['canonical_selected'] = final
 		rec['changed_by_postpass'] = final != pre_postpass[cid]
 		rec['is_virtual'] = meta['virtual']  # final state, not pre-post-pass
-		rec['nearest'] = neighbor_info[cid]
 		rec['harmonize'] = {
 			'changed': bool(meta.get('changed_by_harmonize', False)),
 			'from':    meta.get('canonical_pre_harmonize'),
@@ -3035,7 +3102,6 @@ def _cluster_json(rec: Dict, cands: List[Dict]) -> Dict:
 		'is_virtual': _clean(rec['is_virtual']),
 		'selection_method': rec['selection_method'],
 		'freq_guard': rec['freq_guard'],
-		'nearest_cluster': rec['nearest'],
 		'shared_canonical': {
 			k: (v if isinstance(v, str) else _clean(v))
 			for k, v in rec['shared'].items()
@@ -3079,7 +3145,6 @@ def _build_debug_payload(
 	clusters_json: List[Dict],
 	selection_records: List[Dict],
 	n_candidates: int,
-	neighbor_summary: Dict,
 	weights: Dict[str, float],
 	min_support: float,
 	virtual_gates: Dict[str, Any],
@@ -3102,7 +3167,6 @@ def _build_debug_payload(
 			'selection_method_counts': dict(method_counts.most_common()),
 			'virtual_winners': sum(1 for c in clusters_json if c['is_virtual']),
 			'changed_by_postpass': sum(1 for c in clusters_json if c['changed_by_postpass']),
-			'nearest_cluster_similarity': neighbor_summary,
 			'shared_resolution_counts': dict(resolution_counts.most_common()),
 		},
 		'clusters': clusters_json,
@@ -3781,7 +3845,6 @@ def assign_canonical_labels(
 	debug_json_path: Optional[str] = None,
 	shared_calibration_names: Optional[List[str]] = None,
 	encode_prompt: Optional[str] = None,
-	neighbor_review_min_sim: Optional[float] = None,
 	shared_threshold: float = 0.70,
 	virtual_min_sim_ratio: Optional[float] = 0.60, # None to disable
 	min_distinct_concepts: int = 2,
@@ -4447,24 +4510,11 @@ def assign_canonical_labels(
 		verbose=verbose,
 	)
 
-	# Nearest-cluster diagnostics 
-	# (final names, after all post-passes)
-	neighbor_info, neighbor_summary = _cluster_neighbor_info(
-		model.model_card_data.base_model,
-		cluster_centroids,
-		cluster_canonicals,
-		cluster_members,
-		review_min_sim=neighbor_review_min_sim,
-		review_path=(os.path.splitext(debug_json_path)[0] + "_neighbor_pairs.json") if debug_json_path else None,
-		verbose=verbose,
-	)
-
 	# stamp final state onto the per-cluster records
 	_finalize_selection_records(
 		selection_records=selection_records,
 		cluster_canonicals=cluster_canonicals,
 		pre_postpass=pre_postpass,
-		neighbor_info=neighbor_info,
 	)
 
 	if debug_json_path:
@@ -4474,7 +4524,6 @@ def assign_canonical_labels(
 			clusters_json=clusters_json,
 			selection_records=selection_records,
 			n_candidates=len(candidate_records),
-			neighbor_summary=neighbor_summary,
 			weights=weights,
 			min_support=MIN_SUPPORT,
 			virtual_gates={
@@ -4521,6 +4570,7 @@ def cluster(
 	min_consolidation: float = 4.5, #3.5, #4.0, # 3.8, #5.0, 
 	max_consolidation: float = 7.5, #6.0, #6.5, # 5.0, #7.5, 
 	min_singleton_merge_sim: Optional[float] = 0.60,
+	merge_near_duplicate_clusters: bool = False,
 	merge_close_clusters_threshold: Optional[float] = None,
 	merge_max_size: int = 30,
 	min_cluster_size: int = 2,
@@ -4548,7 +4598,7 @@ def cluster(
 		print(f"  ├─ samples: {labels[:3]}")
 		requires_type_exchange = isinstance(labels[0], str)
 		print(f"  ├───> {type(labels[0])} requires_type_exchange? {requires_type_exchange}")
-		print(f"  ├─ merge_close_clusters_threshold: {merge_close_clusters_threshold}")
+		print(f"  ├─ merge_near_duplicate_clusters: {merge_near_duplicate_clusters} (threshold: {merge_close_clusters_threshold if merge_close_clusters_threshold is not None else 'dynamic'})")
 		print(f"  ├─ encode_prompt: {encode_prompt!r}")
 		print(f"  └─ nc: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
 
@@ -4633,16 +4683,30 @@ def cluster(
 		verbose=verbose,
 	)
 
-	# sys.exit()
+	# STEP 4a: PRE-MERGE CLUSTER NEIGHBOUR DIAGNOSTICS & DYNAMIC THRESHOLDING
+	_, neighbor_summary = _cluster_neighbor_info(
+		embedding_model_id=model.model_card_data.base_model,
+		X=X,
+		labels=clustered_labels,
+		label_texts=unique_labels,
+		max_merged_size=merge_max_size,
+		threshold=merge_close_clusters_threshold,
+		review_path=os.path.splitext(clusters_fname)[0] + "_neighbor_pairs.json",
+		verbose=verbose,
+	)
+
 	# STEP 4b: OPTIONAL MERGE OF NEAR-DUPLICATE CLUSTERS (before canonical selection)
-	# Off by default. 
-	# Calibrate the threshold first from path/to/file..._neighbor_pairs.json.
-	if merge_close_clusters_threshold is not None:
+	if merge_near_duplicate_clusters:
+		active_merge_threshold = (
+			float(merge_close_clusters_threshold)
+			if merge_close_clusters_threshold is not None
+			else float(neighbor_summary['threshold'])
+		)
 		clustered_labels = _merge_close_clusters(
 			X=X,
 			labels=clustered_labels,
 			label_texts=unique_labels,
-			threshold=merge_close_clusters_threshold,
+			threshold=active_merge_threshold,
 			max_merged_size=merge_max_size,
 			report_path=os.path.splitext(clusters_fname)[0] + "_cluster_merges.json",
 			verbose=verbose,
@@ -4790,6 +4854,8 @@ def get_canonical_labels(
 	batch_size: int,
 	device: Union[str, torch.device],
 	nc: Optional[int]=None,
+	merge_near_duplicate_clusters: bool = False,
+	merge_close_clusters_threshold: Optional[float] = None,
 	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
@@ -4819,7 +4885,8 @@ def get_canonical_labels(
 		batch_size=batch_size,
 		device=device,
 		nc=nc,
-		merge_close_clusters_threshold=None,
+		merge_near_duplicate_clusters=merge_near_duplicate_clusters,
+		merge_close_clusters_threshold=merge_close_clusters_threshold,
 		clusters_fname=clusters_fname,
 		encode_prompt=encode_prompt,
 		verbose=verbose,
