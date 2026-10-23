@@ -1559,15 +1559,19 @@ def get_cluster_canonical_nearest_neighbor(
 				for (a, b), (c_sim, cent_sim) in pairs.items()
 				if cluster_canon_strs[a].lower() != cluster_canon_strs[b].lower()
 			]
-			top_k = min(10, len(synonym_pairs))
+
+			top_k = min(25, len(synonym_pairs))
+
 			if top_k > 0:
 				sorted_syn = sorted(synonym_pairs, key=lambda kv: (-kv[1][0], -kv[1][1]))[:top_k]
 				print(f"\n  Top {top_k} Closest Synonym Canonical Neighbor Pairs (Distinct Canonicals):")
+
 				for rank, ((a, b), (c_sim, cent_sim)) in enumerate(sorted_syn, start=1):
 					is_mut = info[a]['cluster_id'] == b and info[b]['cluster_id'] == a
 					comb_sz = len(cluster_members[a]) + len(cluster_members[b])
 					cent_ok = cent_sim >= min_centroid_similarity
 					size_ok = max_merged_size is None or comb_sz <= max_merged_size
+					
 					if is_mut and cent_ok and size_ok:
 						status_tag = f"mutual (A<->B), merge-eligible (combined={comb_sz})"
 					elif is_mut and not cent_ok:
@@ -1583,6 +1587,7 @@ def get_cluster_canonical_nearest_neighbor(
 
 					v_tag_a = " [VIRTUAL]" if cluster_is_virtual[a] else ""
 					v_tag_b = " [VIRTUAL]" if cluster_is_virtual[b] else ""
+					
 					print(f"    {rank:2d}. canon_sim={c_sim:.4f} | centroid_sim={cent_sim:.4f} [{status_tag}]")
 					print(
 						f"        Cluster {a:6d} ({len(cluster_members[a]):3d} labels, canonical={repr(cluster_canon_strs[a]) + v_tag_a:<34} "
@@ -1592,6 +1597,7 @@ def get_cluster_canonical_nearest_neighbor(
 						f"        Cluster {b:6d} ({len(cluster_members[b]):3d} labels, canonical={repr(cluster_canon_strs[b]) + v_tag_b:<34} "
 						f"medoid={repr(cluster_medoids[b]):<26}) {cluster_members[b][:5]}"
 					)
+					print()
 
 		if review_path:
 			print(f"\n[SAVED] {review_path}")
@@ -1967,8 +1973,8 @@ def merge_cluster_canonical_nearest_neighbor(
 		print("=" * 120)
 		print("[MERGE CANONICAL CLUSTERS] Multi-Round 1-NN Canonical Label Merging Diagnostics")
 		print(
-			f"Policy: canonical_threshold >= {threshold:.5f} | "
-			f"min_centroid_similarity >= {min_centroid_similarity:.2f} | "
+			f"Policy: canonical_threshold >= {threshold} | "
+			f"min_centroid_similarity >= {min_centroid_similarity} | "
 			f"Size Limit: {size_limit_str} | Max Rounds: {max_rounds}"
 		)
 		print(
@@ -2037,8 +2043,9 @@ def merge_cluster_canonical_nearest_neighbor(
 			display_pool = synonym_merges if synonym_merges else merges
 			sorted_by_sim = sorted(display_pool, key=lambda m: (m['canonical_similarity'], m['centroid_similarity']), reverse=True)
 
-			print("Top 5 Closest Canonical Synonym Merges (Highest Confidence):")
-			for rank, m in enumerate(sorted_by_sim[:5], 1):
+			topk = min(25, len(synonym_merges))
+			print(f"Top {topk} Closest Canonical Synonym Merges (Highest Confidence):")
+			for rank, m in enumerate(sorted_by_sim[:topk], 1):
 				comb_sz = m['merged']['size']
 				ca, cb, cm = m['cluster_a'], m['cluster_b'], m['merged']
 				va = " [VIRTUAL]" if ca['is_virtual'] else ""
@@ -2049,11 +2056,11 @@ def merge_cluster_canonical_nearest_neighbor(
 					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
 					f"     Cluster {ca['id']} (canonical={repr(ca['canonical']) + va}, sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f}, medoid={repr(ca['medoid'])}): {ca['members'][:3]}\n"
 					f"     Cluster {cb['id']} (canonical={repr(cb['canonical']) + vb}, sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f}, medoid={repr(cb['medoid'])}): {cb['members'][:3]}\n"
-					f"     -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})"
+					f"     -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)
 
-			print("\nTop 5 Borderline Canonical Merges (Near Cutoff Threshold):")
-			borderline = sorted(display_pool, key=lambda m: (m['canonical_similarity'], m['centroid_similarity']))[:5]
+			print(f"\nTop {topk} Borderline Canonical Merges (Near Cutoff Threshold):")
+			borderline = sorted(display_pool, key=lambda m: (m['canonical_similarity'], m['centroid_similarity']))[:topk]
 			for rank, m in enumerate(borderline, 1):
 				comb_sz = m['merged']['size']
 				ca, cb, cm = m['cluster_a'], m['cluster_b'], m['merged']
@@ -2065,7 +2072,7 @@ def merge_cluster_canonical_nearest_neighbor(
 					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
 					f"     Cluster {ca['id']} (canonical={repr(ca['canonical']) + va}, sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f}, medoid={repr(ca['medoid'])}): {ca['members'][:3]}\n"
 					f"     Cluster {cb['id']} (canonical={repr(cb['canonical']) + vb}, sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f}, medoid={repr(cb['medoid'])}): {cb['members'][:3]}\n"
-					f"     -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})"
+					f"     -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)
 			print("  (lowest-similarity canonical merges shown; these are the borderline ones to review)")
 
@@ -2073,12 +2080,12 @@ def merge_cluster_canonical_nearest_neighbor(
 			print("-" * 120)
 			print(
 				f"Centroid Coherence Guard Blocked {len(centroid_blocked_pairs)} Mutual Canonical Pair(s) "
-				f"(canonical_sim >= {threshold:.4f} but centroid_sim < {min_centroid_similarity:.2f}):"
+				f"(canonical_sim >= {threshold:.4f} but centroid_sim < {min_centroid_similarity}):"
 			)
 			for rank, bp in enumerate(sorted(centroid_blocked_pairs, key=lambda x: -x['canonical_similarity'])[:5], 1):
 				ca, cb = bp['cluster_a'], bp['cluster_b']
 				print(
-					f"  {rank}. [BLOCKED] canon_sim={bp['canonical_similarity']:.4f} | centroid_sim={bp['centroid_similarity']:.4f} < {min_centroid_similarity:.2f}\n"
+					f"  {rank}. [BLOCKED] canon_sim={bp['canonical_similarity']:.4f} | centroid_sim={bp['centroid_similarity']:.4f} < {min_centroid_similarity}\n"
 					f"     Cluster {ca['id']} (canonical={repr(ca['canonical'])}, medoid={repr(ca['medoid'])}): {ca['members'][:3]}\n"
 					f"     Cluster {cb['id']} (canonical={repr(cb['canonical'])}, medoid={repr(cb['medoid'])}): {cb['members'][:3]}"
 				)
