@@ -854,8 +854,9 @@ def merge_cluster_medoid_nearest_neighbor(
 	for new_id, m in enumerate(members):
 		new_labels[m] = new_id
 
+	rounds = max((m['round'] for m in merges), default=0)
+
 	if verbose:
-		rounds = max((m['round'] for m in merges), default=0)
 		size_limit_str = f"max_size={max_merged_size}" if max_merged_size is not None else "no size limit"
 		print(
 			f"\n[MERGE CLOSE CLUSTERS] threshold={threshold:.5f} ({size_limit_str}): "
