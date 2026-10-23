@@ -611,26 +611,53 @@ def get_cluster_medoid_nearest_neighbor(
 				'members': cluster_members[c]#[:top_k_members],
 			}
 
-		review = [
-			{
-				'similarity': float(round(s, 6)),
-				'mutual': bool(info[a]['cluster_id'] == b and info[b]['cluster_id'] == a),
-				'merge_eligible': bool(
-					info[a]['cluster_id'] == b
-					and info[b]['cluster_id'] == a
-					and (max_merged_size is None or len(cluster_members[a]) + len(cluster_members[b]) <= max_merged_size)
-				),
-				'combined_size': int(len(cluster_members[a]) + len(cluster_members[b])),
+		review = []
+		for (a, b), s in sorted(pairs.items(), key=lambda kv: -kv[1]):
+			a_to_b = bool(info[a]['cluster_id'] == b)
+			b_to_a = bool(info[b]['cluster_id'] == a)
+			is_mutual = bool(a_to_b and b_to_a)
+			comb_sz = int(len(cluster_members[a]) + len(cluster_members[b]))
+			merge_ok = bool(is_mutual and (max_merged_size is None or comb_sz <= max_merged_size))
+
+			record = {
+				'similarity': float(s),
+				'mutual': is_mutual,
+				'a_to_b': a_to_b,
+				'b_to_a': b_to_a,
+			}
+
+			if not a_to_b:
+				pref_id = int(info[a]['cluster_id'])
+				pref_sim = float(info[a]['similarity'])
+				record['a_prefers'] = {
+					'cluster_id': pref_id,
+					'medoid': cluster_medoids[pref_id],
+					'similarity': pref_sim,
+					'margin_over_b': float(round(pref_sim - float(s), 6)),
+				}
+
+			if not b_to_a:
+				pref_id = int(info[b]['cluster_id'])
+				pref_sim = float(info[b]['similarity'])
+				record['b_prefers'] = {
+					'cluster_id': pref_id,
+					'medoid': cluster_medoids[pref_id],
+					'similarity': pref_sim,
+					'margin_over_a': float(round(pref_sim - float(s), 6)),
+				}
+
+			record.update({
+				'merge_eligible': merge_ok,
+				'combined_size': comb_sz,
 				'a': _side(a),
 				'b': _side(b),
-			}
-			for (a, b), s in sorted(pairs.items(), key=lambda kv: -kv[1])
-		]
+			})
+			review.append(record)
 
 		with open(review_path, 'w', encoding='utf-8') as f:
 			pairs_results = {
 				'embedding': embedding_model_id,
-				'threshold': float(round(active_threshold, 4)),
+				'threshold': float(active_threshold),
 				'threshold_mode': summary['threshold_mode'],
 				'max_merged_size': summary['max_merged_size'],
 				'dynamic_thresholds': dyn,
@@ -747,11 +774,15 @@ def get_cluster_medoid_nearest_neighbor(
 				comb_sz = len(cluster_members[a]) + len(cluster_members[b])
 				if is_mut and (max_merged_size is None or comb_sz <= max_merged_size):
 					limit_desc = f"<={max_merged_size}" if max_merged_size is not None else "no limit"
-					status_tag = f"mutual, merge-eligible (combined={comb_sz}, {limit_desc})"
+					status_tag = f"mutual (A<->B), merge-eligible (combined={comb_sz}, {limit_desc})"
 				elif is_mut:
-					status_tag = f"mutual, size-blocked (combined={comb_sz}>{max_merged_size})"
+					status_tag = f"mutual (A<->B), size-blocked (combined={comb_sz}>{max_merged_size})"
+				elif info[a]['cluster_id'] == b:
+					pref_b = int(info[b]['cluster_id'])
+					status_tag = f"one-way (A->B, B prefers C{pref_b} '{cluster_medoids[pref_b]}' sim={info[b]['similarity']:.4f})"
 				else:
-					status_tag = "one-way"
+					pref_a = int(info[a]['cluster_id'])
+					status_tag = f"one-way (B->A, A prefers C{pref_a} '{cluster_medoids[pref_a]}' sim={info[a]['similarity']:.4f})"
 				print(f"    {rank}. sim={s:.4f} [{status_tag}]")
 				print(f"       Cluster {a:6d} ({len(cluster_members[a]):3d} labels, medoid: {repr(cluster_medoids[a]):<28} sim={cluster_medoid_sims[a]:.4f}) {cluster_members[a][:7]}")
 				print(f"       Cluster {b:6d} ({len(cluster_members[b]):3d} labels, medoid: {repr(cluster_medoids[b]):<28} sim={cluster_medoid_sims[b]:.4f}) {cluster_members[b][:7]}")
@@ -795,19 +826,43 @@ def merge_cluster_medoid_nearest_neighbor(
 	"""
 
 	ids = np.unique(labels)
+	cluster_ids = [int(c) for c in ids]
 	members = [np.where(labels == c)[0] for c in ids]
+	initial_sizes = np.array([len(m) for m in members])
 	sums = np.vstack([X[m].sum(axis=0) for m in members]).astype(np.float32)
 	sizes = np.array([len(m) for m in members])
 	n_before = len(members)
 	merges = []
-	top_k_members = 10
+	round_progression = []
+	termination_reason = "max_rounds_reached"
+
+	def _get_medoid_info(m_indices: np.ndarray, sum_vec: np.ndarray) -> Tuple[str, float]:
+		if len(m_indices) == 0:
+			return "", 0.0
+		emb = X[m_indices]
+		norm = np.linalg.norm(sum_vec)
+		unit = sum_vec / (norm + 1e-12)
+		sims = emb @ unit
+		local_idx = int(np.argmax(sims))
+		medoid_text = label_texts[m_indices[local_idx]]
+		if len(m_indices) > 1:
+			med_emb = emb[local_idx]
+			med_sims = emb @ med_emb
+			avg_sim = float((med_sims.sum() - 1.0) / (len(m_indices) - 1))
+		else:
+			avg_sim = 1.0
+		return medoid_text, round(avg_sim, 4)
 
 	for rnd in range(1, max_rounds + 1):
 		if len(members) < 2:
+			termination_reason = "insufficient_clusters"
 			break
 
 		nn_idx, nn_sim = _nearest_cluster_neighbors(centroids=sums, chunk=4096)
 		drop = set()
+		round_merges = 0
+		round_sims = []
+		clusters_in_round = len(members)
 
 		for i in range(len(members)):
 			j = int(nn_idx[i])
@@ -820,33 +875,75 @@ def merge_cluster_medoid_nearest_neighbor(
 			if max_merged_size is not None and sizes[i] + sizes[j] > max_merged_size:
 				continue
 
+			sim_val = float(nn_sim[i])
+			round_sims.append(sim_val)
+			round_merges += 1
+
+			# Compute medoids for cluster A, cluster B, and the merged cluster
+			merged_indices = np.concatenate([members[i], members[j]])
+			merged_sum = sums[i] + sums[j]
+			med_a, med_a_sim = _get_medoid_info(members[i], sums[i])
+			med_b, med_b_sim = _get_medoid_info(members[j], sums[j])
+			med_merged, med_merged_sim = _get_medoid_info(merged_indices, merged_sum)
+
+			members_a_texts = [label_texts[k] for k in members[i]]
+			members_b_texts = [label_texts[k] for k in members[j]]
+
 			merge = {
+				'merge_id': len(merges) + 1,
 				'round': rnd,
-				'similarity': round(float(nn_sim[i]), 7),
-				'size_a': int(sizes[i]), 
+				'similarity': round(sim_val, 6),
+				'cluster_a': {
+					'id': cluster_ids[i],
+					'size': int(sizes[i]),
+					'medoid': med_a,
+					'medoid_similarity': med_a_sim,
+					'members': members_a_texts,
+				},
+				'cluster_b': {
+					'id': cluster_ids[j],
+					'size': int(sizes[j]),
+					'medoid': med_b,
+					'medoid_similarity': med_b_sim,
+					'members': members_b_texts,
+				},
+				'merged': {
+					'size': int(sizes[i] + sizes[j]),
+					'medoid': med_merged,
+					'medoid_similarity': med_merged_sim,
+				},
+				# Backward-compatible convenience keys
+				'size_a': int(sizes[i]),
 				'size_b': int(sizes[j]),
-				'members_a': [
-					label_texts[k] 
-					for k in members[i]#[:top_k_members]
-				],
-				'members_b': [
-					label_texts[k] 
-					for k in members[j]#[:top_k_members]
-				],
+				'members_a': members_a_texts,
+				'members_b': members_b_texts,
 			}
 
 			merges.append(merge)
 			
-			members[i] = np.concatenate([members[i], members[j]])
-			sums[i] += sums[j]
+			members[i] = merged_indices
+			sums[i] = merged_sum
 			sizes[i] += sizes[j]
+			# cluster_ids[i] remains the target cluster id
 			drop.add(j)
 		
 		if not drop:
+			termination_reason = "converged_no_more_pairs"
 			break
+
+		round_progression.append({
+			'round': rnd,
+			'clusters_in': clusters_in_round,
+			'merges': round_merges,
+			'clusters_out': clusters_in_round - round_merges,
+			'min_similarity': round(float(min(round_sims)), 6) if round_sims else None,
+			'median_similarity': round(float(np.median(round_sims)), 6) if round_sims else None,
+			'max_similarity': round(float(max(round_sims)), 6) if round_sims else None,
+		})
 		
 		keep = [k for k in range(len(members)) if k not in drop]
 		members = [members[k] for k in keep]
+		cluster_ids = [cluster_ids[k] for k in keep]
 		sums = sums[keep]
 		sizes = sizes[keep]
 
@@ -854,30 +951,152 @@ def merge_cluster_medoid_nearest_neighbor(
 	for new_id, m in enumerate(members):
 		new_labels[m] = new_id
 
-	rounds = max((m['round'] for m in merges), default=0)
+	rounds_completed = len(round_progression)
+	final_sizes = np.array([len(m) for m in members])
+	all_sims = [m['similarity'] for m in merges]
+
+	if all_sims:
+		merge_sim_stats = {
+			'count': len(all_sims),
+			'min': round(float(np.min(all_sims)), 4),
+			'p25': round(float(np.percentile(all_sims, 25)), 4),
+			'median': round(float(np.median(all_sims)), 4),
+			'mean': round(float(np.mean(all_sims)), 4),
+			'p75': round(float(np.percentile(all_sims, 75)), 4),
+			'p90': round(float(np.percentile(all_sims, 90)), 4),
+			'max': round(float(np.max(all_sims)), 4),
+		}
+	else:
+		merge_sim_stats = {}
+
+	size_stats = {
+		'before': {
+			'min': int(np.min(initial_sizes)) if len(initial_sizes) > 0 else 0,
+			'median': float(np.median(initial_sizes)) if len(initial_sizes) > 0 else 0.0,
+			'mean': round(float(np.mean(initial_sizes)), 2) if len(initial_sizes) > 0 else 0.0,
+			'p75': float(np.percentile(initial_sizes, 75)) if len(initial_sizes) > 0 else 0.0,
+			'p90': float(np.percentile(initial_sizes, 90)) if len(initial_sizes) > 0 else 0.0,
+			'max': int(np.max(initial_sizes)) if len(initial_sizes) > 0 else 0,
+		},
+		'after': {
+			'min': int(np.min(final_sizes)) if len(final_sizes) > 0 else 0,
+			'median': float(np.median(final_sizes)) if len(final_sizes) > 0 else 0.0,
+			'mean': round(float(np.mean(final_sizes)), 2) if len(final_sizes) > 0 else 0.0,
+			'p75': float(np.percentile(final_sizes, 75)) if len(final_sizes) > 0 else 0.0,
+			'p90': float(np.percentile(final_sizes, 90)) if len(final_sizes) > 0 else 0.0,
+			'max': int(np.max(final_sizes)) if len(final_sizes) > 0 else 0,
+		}
+	}
 
 	if verbose:
 		size_limit_str = f"max_size={max_merged_size}" if max_merged_size is not None else "no size limit"
+		reduction_count = n_before - len(members)
+		reduction_pct = (1.0 - len(members) / max(1, n_before)) * 100.0
+
+		print("\n" + "=" * 120)
+		print(f"[MERGE CLOSE CLUSTERS] Conservative Multi-Round 1-NN Mutual Pair Merging Diagnostics")
+		print(f"Policy: threshold >= {threshold:.5f} | Size Limit: {size_limit_str} | Max Rounds: {max_rounds}")
 		print(
-			f"\n[MERGE CLOSE CLUSTERS] threshold={threshold:.5f} ({size_limit_str}): "
-			f"{n_before} -> {len(members)} clusters ({len(merges)} merges, {rounds} round(s))"
+			f"Reduction: {n_before:,} -> {len(members):,} clusters "
+			f"(-{reduction_count:,} clusters, -{reduction_pct:.2f}%) "
+			f"across {rounds_completed} round(s) (status: {termination_reason})"
 		)
-		
-		for m in sorted(merges, key=lambda m: m['similarity'])[:15]:
-			print(f"  {m['similarity']:.4f}  {m['members_a'][:3]}  +  {m['members_b'][:3]}")
-		
+		print("-" * 120)
+
+		if round_progression:
+			print("Round-by-Round Progression:")
+			print(
+				f"  {'Round':<9} {'Clusters In':>13} {'Merges Done':>13} {'Clusters Out':>14} "
+				f"{'Sim Min':>12} {'Sim Med':>12} {'Sim Max':>12}"
+			)
+			print(
+				f"  {'-'*9} {'-'*13} {'-'*13} {'-'*14} {'-'*12} {'-'*12} {'-'*12}"
+			)
+			for rp in round_progression:
+				sim_min_s = f"{rp['min_similarity']:.4f}" if rp['min_similarity'] is not None else "-"
+				sim_med_s = f"{rp['median_similarity']:.4f}" if rp['median_similarity'] is not None else "-"
+				sim_max_s = f"{rp['max_similarity']:.4f}" if rp['max_similarity'] is not None else "-"
+				print(
+					f"  Round {rp['round']:<3} {rp['clusters_in']:>13,} {rp['merges']:>13,} {rp['clusters_out']:>14,} "
+					f"{sim_min_s:>12} {sim_med_s:>12} {sim_max_s:>12}"
+				)
+			print("-" * 120)
+
+		print("Cluster Size Distributions:")
+		print(
+			f"  Before Merge: min={size_stats['before']['min']} | median={size_stats['before']['median']:.1f} | "
+			f"mean={size_stats['before']['mean']:.2f} | p75={size_stats['before']['p75']:.1f} | "
+			f"p90={size_stats['before']['p90']:.1f} | max={size_stats['before']['max']}"
+		)
+		print(
+			f"  After Merge : min={size_stats['after']['min']} | median={size_stats['after']['median']:.1f} | "
+			f"mean={size_stats['after']['mean']:.2f} | p75={size_stats['after']['p75']:.1f} | "
+			f"p90={size_stats['after']['p90']:.1f} | max={size_stats['after']['max']}"
+		)
+
+		if merge_sim_stats:
+			print(
+				f"\nMerge Similarity Percentiles (N={merge_sim_stats['count']:,}):\n"
+				f"  min={merge_sim_stats['min']:.4f} | p25={merge_sim_stats['p25']:.4f} | "
+				f"median={merge_sim_stats['median']:.4f} | mean={merge_sim_stats['mean']:.4f} | "
+				f"p75={merge_sim_stats['p75']:.4f} | p90={merge_sim_stats['p90']:.4f} | max={merge_sim_stats['max']:.4f}"
+			)
+
 		if merges:
+			print("-" * 120)
+			sorted_by_sim = sorted(merges, key=lambda m: m['similarity'], reverse=True)
+			
+			print("Top 5 Closest Merges (Highest Similarity / Highest Confidence):")
+			for rank, m in enumerate(sorted_by_sim[:5], 1):
+				comb_sz = m['merged']['size']
+				ca, cb = m['cluster_a'], m['cluster_b']
+				print(
+					f"  {rank}. sim={m['similarity']:.4f} (Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
+					f"     Cluster {ca['id']} (medoid=\"{ca['medoid']}\"): {ca['members'][:3]}\n"
+					f"     Cluster {cb['id']} (medoid=\"{cb['medoid']}\"): {cb['members'][:3]}\n"
+					f"     -> Merged medoid: \"{m['merged']['medoid']}\""
+				)
+
+			print("\nTop 5 Borderline Merges (Near Cutoff Threshold):")
+			borderline = sorted(merges, key=lambda m: m['similarity'])[:5]
+			for rank, m in enumerate(borderline, 1):
+				comb_sz = m['merged']['size']
+				ca, cb = m['cluster_a'], m['cluster_b']
+				print(
+					f"  {rank}. sim={m['similarity']:.4f} (Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
+					f"     Cluster {ca['id']} (medoid=\"{ca['medoid']}\"): {ca['members'][:3]}\n"
+					f"     Cluster {cb['id']} (medoid=\"{cb['medoid']}\"): {cb['members'][:3]}\n"
+					f"     -> Merged medoid: \"{m['merged']['medoid']}\""
+				)
 			print("  (lowest-similarity merges shown; these are the borderline ones to review)")
+
+		if report_path:
+			print(f"\n[SAVED] {report_path}")
+		print("=" * 120 + "\n")
 
 	if report_path:
 		with open(report_path, 'w', encoding='utf-8') as f:
 			new_result = {
+				'meta': {
+					'threshold': threshold,
+					'max_merged_size': max_merged_size,
+					'max_rounds': max_rounds,
+					'rounds_completed': rounds_completed,
+					'termination_reason': termination_reason,
+					'clusters_before': n_before,
+					'clusters_after': len(members),
+					'total_merges': len(merges),
+					'reduction_pct': round((1.0 - len(members) / max(1, n_before)) * 100, 2),
+					'round_progression': round_progression,
+					'cluster_size_stats': size_stats,
+					'merge_similarity_stats': merge_sim_stats,
+				},
 				'threshold': threshold,
 				'max_merged_size': max_merged_size,
 				'clusters_before': n_before,
 				'clusters_after': len(members),
+				'rounds': rounds_completed,
 				'merges': merges,
-				'rounds': rounds,
 			}
 
 			json.dump(new_result, f, indent=2, ensure_ascii=False, default=_json_default)
