@@ -911,12 +911,8 @@ def merge_cluster_medoid_nearest_neighbor(
 					'size': int(sizes[i] + sizes[j]),
 					'medoid': med_merged,
 					'medoid_similarity': med_merged_sim,
+					'members': members_a_texts + members_b_texts,
 				},
-				# Backward-compatible convenience keys
-				'size_a': int(sizes[i]),
-				'size_b': int(sizes[j]),
-				'members_a': members_a_texts,
-				'members_b': members_b_texts,
 			}
 
 			merges.append(merge)
@@ -993,7 +989,7 @@ def merge_cluster_medoid_nearest_neighbor(
 		reduction_count = n_before - len(members)
 		reduction_pct = (1.0 - len(members) / max(1, n_before)) * 100.0
 
-		print("\n" + "=" * 120)
+		print("=" * 120)
 		print(f"[MERGE CLOSE CLUSTERS] Conservative Multi-Round 1-NN Mutual Pair Merging Diagnostics")
 		print(f"Policy: threshold >= {threshold:.5f} | Size Limit: {size_limit_str} | Max Rounds: {max_rounds}")
 		print(
