@@ -556,7 +556,7 @@ def get_cluster_medoid_nearest_neighbor(
 		merge_ok = bool(is_mutual and (max_merged_size is None or comb_size <= max_merged_size))
 		info[c] = {
 			'cluster_id': int(n),
-			'similarity': round(sim, 6),
+			'similarity': sim,
 			'mutual': is_mutual,
 			'combined_size': comb_size,
 			'merge_eligible': merge_ok,
@@ -633,7 +633,7 @@ def get_cluster_medoid_nearest_neighbor(
 					'cluster_id': pref_id,
 					'medoid': cluster_medoids[pref_id],
 					'similarity': pref_sim,
-					'margin_over_b': float(round(pref_sim - float(s), 6)),
+					'margin_over_b': float(round(pref_sim - float(s), 7)),
 				}
 
 			if not b_to_a:
@@ -1068,6 +1068,8 @@ def merge_cluster_medoid_nearest_neighbor(
 					f"     Cluster {cb['id']} (medoid=\"{cb['medoid']}\"): {cb['members'][:3]}\n"
 					f"     -> Merged medoid: \"{m['merged']['medoid']}\""
 				)
+				print()
+
 			print("  (lowest-similarity merges shown; these are the borderline ones to review)")
 
 		if report_path:
