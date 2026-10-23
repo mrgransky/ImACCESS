@@ -1101,6 +1101,1026 @@ def merge_cluster_medoid_nearest_neighbor(
 	
 	return new_labels
 
+def _build_canonical_embedding_lookup(
+	cluster_canonicals: Dict[int, Dict],
+	label_texts: List[str],
+	X: np.ndarray,
+	model,
+	batch_size: int = 128,
+	encode_prompt: Optional[str] = None,
+	verbose: bool = False,
+) -> Dict[str, np.ndarray]:
+	"""
+	Build a unit-normalized embedding lookup dictionary for all canonical labels
+	(both internal 'canonical' and display 'canonical_harmonized').
+	Real canonicals present in `label_texts` slice their vector directly from `X`;
+	virtual or harmonized canonicals absent from `label_texts` are batch-encoded once.
+	"""
+	label_to_idx = {lbl: idx for idx, lbl in enumerate(label_texts)}
+	needed: set = set()
+	for meta in cluster_canonicals.values():
+		c_int = meta.get("canonical")
+		c_har = meta.get("canonical_harmonized", c_int)
+		if c_int:
+			needed.add(c_int)
+		if c_har:
+			needed.add(c_har)
+
+	unique_canonicals = sorted(needed)
+	canonical_emb_map: Dict[str, np.ndarray] = {}
+	missing_texts: List[str] = []
+
+	for c_str in unique_canonicals:
+		idx = label_to_idx.get(c_str)
+		if idx is not None:
+			vec = np.asarray(X[idx], dtype=np.float32)
+			canonical_emb_map[c_str] = vec / (np.linalg.norm(vec) + 1e-12)
+		else:
+			missing_texts.append(c_str)
+
+	if missing_texts:
+		encoded = _encode_(model, missing_texts, batch_size, encode_prompt)
+		for c_str, vec in zip(missing_texts, encoded):
+			v = np.asarray(vec, dtype=np.float32)
+			canonical_emb_map[c_str] = v / (np.linalg.norm(v) + 1e-12)
+
+	if verbose:
+		n_in_x = len(unique_canonicals) - len(missing_texts)
+		print(
+			f"\n[CANONICAL EMBEDDING LOOKUP] {len(cluster_canonicals):,} clusters -> "
+			f"{len(unique_canonicals):,} unique canonical strings "
+			f"({n_in_x:,} indexed in X, {len(missing_texts):,} virtual/harmonized encoded on-the-fly)"
+		)
+
+	return canonical_emb_map
+
+def _nearest_canonical_neighbors(
+	canon_embs: np.ndarray,
+	unit_centroids: np.ndarray,
+	chunk: int = 2048,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+	"""
+	For every cluster row (n, d): find the index of the most similar OTHER cluster
+	in canonical embedding space, breaking exact canonical ties (e.g. identical
+	canonical strings with sim=1.0) via member-centroid cosine similarity.
+
+	Returns
+	-------
+	nn_idx          : (n,) int64 index of nearest neighbor cluster
+	nn_canon_sim    : (n,) float32 pure canonical-to-canonical cosine similarity
+	nn_centroid_sim : (n,) float32 member-centroid cosine similarity for that pair
+	"""
+	C = np.asarray(canon_embs, dtype=np.float32)
+	C = C / (np.linalg.norm(C, axis=1, keepdims=True) + 1e-12)
+
+	U = np.asarray(unit_centroids, dtype=np.float32)
+	U = U / (np.linalg.norm(U, axis=1, keepdims=True) + 1e-12)
+
+	n = C.shape[0]
+	nn_idx = np.zeros(n, dtype=np.int64)
+	nn_canon_sim = np.full(n, -1.0, dtype=np.float32)
+	nn_centroid_sim = np.full(n, -1.0, dtype=np.float32)
+
+	if n < 2:
+		return nn_idx, nn_canon_sim, nn_centroid_sim
+
+	for s in range(0, n, chunk):
+		S_canon = C[s:s + chunk] @ C.T
+		S_cent = U[s:s + chunk] @ U.T
+		# Tiny centroid tie-breaker resolves identical canonical strings (sim=1.0)
+		# in favor of the cluster with the closest member centroid.
+		S_score = S_canon + 1e-6 * S_cent
+		rows = np.arange(S_score.shape[0])
+		S_score[rows, rows + s] = -np.inf
+		j = S_score.argmax(axis=1)
+		nn_idx[s:s + chunk] = j
+		nn_canon_sim[s:s + chunk] = np.clip(S_canon[rows, j], -1.0, 1.0)
+		nn_centroid_sim[s:s + chunk] = np.clip(S_cent[rows, j], -1.0, 1.0)
+
+	return nn_idx, nn_canon_sim, nn_centroid_sim
+
+def get_cluster_canonical_nearest_neighbor(
+	embedding_model_id: str,
+	X: np.ndarray,
+	labels: np.ndarray,
+	label_texts: List[str],
+	cluster_canonicals: Dict[int, Dict],
+	canonical_emb_map: Dict[str, np.ndarray],
+	max_merged_size: Optional[int] = None,
+	threshold: Optional[float] = None,
+	min_centroid_similarity: float = 0.70,
+	review_path: Optional[str] = None,
+	verbose: bool = False,
+) -> Dict[str, Any]:
+	"""
+	Post-canonical cluster proximity diagnostics computed directly on per-cluster
+	canonical label embeddings (after `assign_canonical_labels()` and before
+	`merge_cluster_canonical_nearest_neighbor()`).
+
+	If `threshold` is None (default), it is derived dynamically from the
+	non-identical canonical 1-NN similarity distribution via three intrinsic
+	signals (MAD fence, Kneedle elbow, and Mutual 1-NN p75).
+	"""
+	ids = [int(c) for c in np.unique(labels)]
+	n_clusters = len(ids)
+
+	cluster_members: Dict[int, List[str]] = {}
+	cluster_medoids: Dict[int, str] = {}
+	cluster_medoid_sims: Dict[int, float] = {}
+	cluster_canon_strs: Dict[int, str] = {}
+	cluster_is_virtual: Dict[int, bool] = {}
+	cluster_canon_cent_sims: Dict[int, float] = {}
+	cluster_canon_mem_sims: Dict[int, float] = {}
+
+	sizes = np.zeros(n_clusters, dtype=np.int64)
+	unit_centroid_list = []
+	canon_emb_list = []
+
+	for pos, c in enumerate(ids):
+		m_idx = np.where(labels == c)[0]
+		members_c = [label_texts[i] for i in m_idx]
+		cluster_members[c] = members_c
+		sizes[pos] = len(m_idx)
+
+		emb_c = X[m_idx]
+		centroid = emb_c.mean(axis=0).astype(np.float32)
+		unit_c = centroid / (np.linalg.norm(centroid) + 1e-12)
+		unit_centroid_list.append(unit_c)
+
+		sims_to_centroid = emb_c @ unit_c
+		medoid_local = int(np.argmax(sims_to_centroid))
+		cluster_medoids[c] = members_c[medoid_local]
+
+		if len(m_idx) > 1:
+			medoid_emb = emb_c[medoid_local]
+			medoid_sims_to_others = emb_c @ medoid_emb
+			avg_medoid_sim = float((medoid_sims_to_others.sum() - 1.0) / (len(m_idx) - 1))
+		else:
+			avg_medoid_sim = 1.0
+		cluster_medoid_sims[c] = round(avg_medoid_sim, 4)
+
+		meta = cluster_canonicals.get(c, {})
+		canon_str = meta.get("canonical_harmonized") or meta.get("canonical") or cluster_medoids[c]
+		is_virt = bool(meta.get("virtual", False))
+		cluster_canon_strs[c] = canon_str
+		cluster_is_virtual[c] = is_virt
+
+		c_emb = canonical_emb_map[canon_str]
+		canon_emb_list.append(c_emb)
+		cluster_canon_cent_sims[c] = round(float(c_emb @ unit_c), 4)
+		cluster_canon_mem_sims[c] = round(float((emb_c @ c_emb).mean()), 4)
+
+	unit_centroids = np.vstack(unit_centroid_list) if n_clusters > 0 else np.empty((0, X.shape[1]), dtype=np.float32)
+	canon_embs = np.vstack(canon_emb_list) if n_clusters > 0 else np.empty((0, X.shape[1]), dtype=np.float32)
+
+	nn_idx, nn_canon_sim, nn_centroid_sim = _nearest_canonical_neighbors(
+		canon_embs=canon_embs,
+		unit_centroids=unit_centroids,
+		chunk=4096,
+	)
+
+	info: Dict[int, Dict] = {}
+	for pos, c in enumerate(ids):
+		npos = int(nn_idx[pos])
+		n = ids[npos]
+		c_sim = float(nn_canon_sim[pos])
+		cent_sim = float(nn_centroid_sim[pos])
+		is_mutual = bool(int(nn_idx[npos]) == pos)
+		comb_size = int(sizes[pos] + sizes[npos])
+		size_ok = bool(max_merged_size is None or comb_size <= max_merged_size)
+		centroid_ok = bool(cent_sim >= min_centroid_similarity)
+		merge_ok = bool(is_mutual and size_ok and centroid_ok)
+		info[c] = {
+			'cluster_id': int(n),
+			'canonical_similarity': c_sim,
+			'centroid_similarity': cent_sim,
+			'same_canonical_string': bool(cluster_canon_strs[c].lower() == cluster_canon_strs[n].lower()),
+			'mutual': is_mutual,
+			'combined_size': comb_size,
+			'centroid_guard_passed': centroid_ok,
+			'merge_eligible': merge_ok,
+			'canonical': cluster_canon_strs[n],
+			'is_virtual': cluster_is_virtual[n],
+			'medoid': cluster_medoids[n],
+			'medoid_similarity': cluster_medoid_sims[n],
+			'members': cluster_members[n][:4],
+		}
+
+	sims = nn_canon_sim.astype(float)
+	cent_sims = nn_centroid_sim.astype(float)
+	mutual_mask = np.array([bool(info[c]['mutual']) for c in ids], dtype=bool)
+	oneway_mask = ~mutual_mask
+	eligible_mask = np.array([bool(info[c]['merge_eligible']) for c in ids], dtype=bool)
+
+	# Estimate dynamic threshold on non-identical canonical pairs (sims < 0.9999)
+	# so exact duplicate strings (sim=1.0) do not skew synonym threshold detection.
+	non_ident_mask = sims < 0.9999
+	if int(non_ident_mask.sum()) >= 10:
+		dyn = _estimate_dynamic_neighbor_thresholds(sims[non_ident_mask], mutual_mask[non_ident_mask])
+	else:
+		dyn = _estimate_dynamic_neighbor_thresholds(sims, mutual_mask)
+
+	is_dynamic_thresh = threshold is None
+	active_threshold = float(dyn['threshold'] if is_dynamic_thresh else threshold)
+
+	pairs: Dict[Tuple[int, int], Tuple[float, float]] = {}
+	for pos, c in enumerate(ids):
+		n = info[c]['cluster_id']
+		c_sim = float(nn_canon_sim[pos])
+		cent_sim = float(nn_centroid_sim[pos])
+		if c_sim >= active_threshold:
+			pairs[(min(c, n), max(c, n))] = (c_sim, cent_sim)
+
+	levels = [0.98, 0.95, 0.92, 0.90, 0.88, 0.85, 0.80]
+	n_unique_canon_before = len({s.lower() for s in cluster_canon_strs.values()})
+	summary = {
+		'n_clusters': n_clusters,
+		'n_unique_canonicals': n_unique_canon_before,
+		'threshold': round(active_threshold, 4),
+		'threshold_mode': 'dynamic' if is_dynamic_thresh else 'manual',
+		'min_centroid_similarity': round(float(min_centroid_similarity), 4),
+		'max_merged_size': int(max_merged_size) if max_merged_size is not None else None,
+		'dynamic_thresholds': dyn,
+		'min_nearest_similarity': round(float(np.min(sims)), 4) if n_clusters else 0.0,
+		'p25_nearest_similarity': round(float(np.percentile(sims, 25)), 4) if n_clusters else 0.0,
+		'median_nearest_similarity': round(float(np.median(sims)), 4) if n_clusters else 0.0,
+		'p75_nearest_similarity': round(float(np.percentile(sims, 75)), 4) if n_clusters else 0.0,
+		'p90_nearest_similarity': round(float(np.percentile(sims, 90)), 4) if n_clusters else 0.0,
+		'p95_nearest_similarity': round(float(np.percentile(sims, 95)), 4) if n_clusters else 0.0,
+		'max_nearest_similarity': round(float(np.max(sims)), 4) if n_clusters else 0.0,
+		'nearest_at_or_above': {f'{t:.2f}': int((sims >= t).sum()) for t in levels},
+		'nearest_at_or_above_mutual': {f'{t:.2f}': int(((sims >= t) & mutual_mask).sum()) for t in levels},
+		'nearest_at_or_above_oneway': {f'{t:.2f}': int(((sims >= t) & oneway_mask).sum()) for t in levels},
+		'mergeable_pairs_at_or_above': {f'{t:.2f}': int(((sims >= t) & eligible_mask).sum()) // 2 for t in levels},
+	}
+
+	if review_path:
+		def _side(c: int):
+			return {
+				'cluster_id': int(c),
+				'size': len(cluster_members[c]),
+				'canonical': cluster_canon_strs[c],
+				'is_virtual': cluster_is_virtual[c],
+				'canonical_to_centroid_similarity': cluster_canon_cent_sims[c],
+				'canonical_to_members_similarity': cluster_canon_mem_sims[c],
+				'medoid': cluster_medoids[c],
+				'medoid_similarity': cluster_medoid_sims[c],
+				'members': cluster_members[c],
+			}
+
+		review = []
+		for (a, b), (c_sim, cent_sim) in sorted(pairs.items(), key=lambda kv: (-kv[1][0], -kv[1][1])):
+			a_to_b = bool(info[a]['cluster_id'] == b)
+			b_to_a = bool(info[b]['cluster_id'] == a)
+			is_mutual = bool(a_to_b and b_to_a)
+			comb_sz = int(len(cluster_members[a]) + len(cluster_members[b]))
+			size_ok = bool(max_merged_size is None or comb_sz <= max_merged_size)
+			centroid_ok = bool(cent_sim >= min_centroid_similarity)
+			merge_ok = bool(is_mutual and size_ok and centroid_ok)
+			same_canon = bool(cluster_canon_strs[a].lower() == cluster_canon_strs[b].lower())
+
+			record = {
+				'canonical_similarity': round(float(c_sim), 6),
+				'centroid_similarity': round(float(cent_sim), 6),
+				'same_canonical_string': same_canon,
+				'mutual': is_mutual,
+				'a_to_b': a_to_b,
+				'b_to_a': b_to_a,
+			}
+
+			if not a_to_b:
+				pref_id = int(info[a]['cluster_id'])
+				pref_sim = float(info[a]['canonical_similarity'])
+				record['a_prefers'] = {
+					'cluster_id': pref_id,
+					'canonical': cluster_canon_strs[pref_id],
+					'is_virtual': cluster_is_virtual[pref_id],
+					'medoid': cluster_medoids[pref_id],
+					'canonical_similarity': round(pref_sim, 6),
+					'centroid_similarity': round(float(info[a]['centroid_similarity']), 6),
+					'margin_over_b': float(round(pref_sim - float(c_sim), 6)),
+				}
+
+			if not b_to_a:
+				pref_id = int(info[b]['cluster_id'])
+				pref_sim = float(info[b]['canonical_similarity'])
+				record['b_prefers'] = {
+					'cluster_id': pref_id,
+					'canonical': cluster_canon_strs[pref_id],
+					'is_virtual': cluster_is_virtual[pref_id],
+					'medoid': cluster_medoids[pref_id],
+					'canonical_similarity': round(pref_sim, 6),
+					'centroid_similarity': round(float(info[b]['centroid_similarity']), 6),
+					'margin_over_a': float(round(pref_sim - float(c_sim), 6)),
+				}
+
+			record.update({
+				'merge_eligible': merge_ok,
+				'centroid_guard_passed': centroid_ok,
+				'size_guard_passed': size_ok,
+				'combined_size': comb_sz,
+				'a': _side(a),
+				'b': _side(b),
+			})
+			review.append(record)
+
+		with open(review_path, 'w', encoding='utf-8') as f:
+			pairs_results = {
+				'embedding': embedding_model_id,
+				'threshold': float(active_threshold),
+				'threshold_mode': summary['threshold_mode'],
+				'min_centroid_similarity': float(min_centroid_similarity),
+				'max_merged_size': summary['max_merged_size'],
+				'dynamic_thresholds': dyn,
+				'n_clusters': n_clusters,
+				'n_unique_canonicals': n_unique_canon_before,
+				'n_pairs': len(review),
+				'n_merge_eligible_pairs': sum(1 for r in review if r['merge_eligible']),
+				'n_centroid_blocked_pairs': sum(1 for r in review if r['mutual'] and not r['centroid_guard_passed']),
+				'pairs': review,
+			}
+			json.dump(pairs_results, f, indent=2, ensure_ascii=False, default=_json_default)
+
+	if verbose:
+		n_mutual_total = int(mutual_mask.sum())
+		n_eligible_total = int(eligible_mask.sum()) // 2
+		size_limit_str = f"<= max_merged_size={max_merged_size}" if max_merged_size is not None else "no size limit"
+		size_header_str = f"Mergeable Pairs (<={max_merged_size})" if max_merged_size is not None else f"Mergeable (cent>={min_centroid_similarity:.2f})"
+		print("\n" + "=" * 120)
+		print("[CANONICAL NEIGHBOURS] Pre-Merge 1-Nearest-Neighbor Canonical Label Cosine Similarity Diagnostics")
+		print(
+			f"Total Clusters: {n_clusters:,} (Unique Canonicals: {n_unique_canon_before:,}) | "
+			f"Mutual 1-NN: {n_mutual_total:,}/{n_clusters:,} ({100.0 * n_mutual_total / max(n_clusters, 1):.1f}%) "
+			f"[{n_mutual_total // 2:,} mutual pairs, {n_eligible_total:,} eligible pairs ({size_limit_str}, centroid_sim>={min_centroid_similarity:.2f})]"
+		)
+		if n_clusters > 1:
+			print(
+				f"Distribution: min={summary['min_nearest_similarity']:.3f} | "
+				f"p25={summary['p25_nearest_similarity']:.3f} | "
+				f"median={summary['median_nearest_similarity']:.3f} | "
+				f"p75={summary['p75_nearest_similarity']:.3f} | "
+				f"p90={summary['p90_nearest_similarity']:.3f} | "
+				f"p95={summary['p95_nearest_similarity']:.3f} | "
+				f"max={summary['max_nearest_similarity']:.3f}"
+			)
+			t_mut_str = f"{dyn['t_mutual_p75']:.4f}" if dyn['t_mutual_p75'] is not None else "N/A (<5 mutual)"
+			print(
+				f"Intrinsic Estimators (non-identical canonicals): "
+				f"MAD fence={dyn['t_mad']:.4f} (med+1.0*MAD, σ={dyn['sigma_mad']:.4f}) | "
+				f"Kneedle elbow={dyn['t_elbow']:.4f} | "
+				f"Mutual 1-NN p75={t_mut_str}"
+			)
+			print(
+				f"Active Threshold    : "
+				f"canonical_threshold={active_threshold:.4f} ({summary['threshold_mode']}) | "
+				f"min_centroid_similarity={min_centroid_similarity:.4f}"
+			)
+		print("-" * 120)
+		print(
+			f"  {'>= Sim':<8} {'All Clusters':>16} {'Mutual 1-NN':>18} {'One-Way 1-NN':>18} "
+			f"{size_header_str:>28}  {'Intrinsic Landmark / Role'}"
+		)
+		print(f"  {'-'*8:<8} {'-'*16:>16} {'-'*18:>18} {'-'*18:>18} {'-'*28:>28}  {'-'*32}")
+
+		raw_rows = [(t, None) for t in levels]
+		if n_clusters > 1:
+			raw_rows.extend([
+				(summary['p95_nearest_similarity'], 'p95 (top 5% tail)'),
+				(dyn['t_elbow'], 'kneedle elbow'),
+				(summary['p90_nearest_similarity'], 'p90 (top 10% tail)'),
+				(active_threshold, f"ACTIVE threshold ({summary['threshold_mode']})"),
+				(dyn['t_mad'], 'median + 1.0*MAD'),
+				(summary['p75_nearest_similarity'], 'p75 (upper quartile)'),
+				(summary['median_nearest_similarity'], 'p50 (median)'),
+			])
+			if dyn['t_mutual_p75'] is not None:
+				raw_rows.append((dyn['t_mutual_p75'], 'mutual 1-NN p75'))
+
+		merged_rows = []
+		for val, tag in sorted(raw_rows, key=lambda r: -r[0]):
+			if val is None:
+				continue
+			val_r = round(float(val), 4)
+			if merged_rows and abs(merged_rows[-1][0] - val_r) < 1e-6:
+				if tag and tag not in merged_rows[-1][1]:
+					merged_rows[-1][1].append(tag)
+			else:
+				merged_rows.append((val_r, [tag] if tag else []))
+
+		for val_r, tags in merged_rows:
+			n_all = int((sims >= val_r).sum())
+			n_mut = int(((sims >= val_r) & mutual_mask).sum())
+			n_one = int(((sims >= val_r) & oneway_mask).sum())
+			n_mrg_pairs = int(((sims >= val_r) & eligible_mask).sum()) // 2
+			pct_all = 100.0 * n_all / max(n_clusters, 1)
+			pct_mut = 100.0 * n_mut / max(n_clusters, 1)
+			pct_one = 100.0 * n_one / max(n_clusters, 1)
+			tag_str = f"<- {', '.join(tags)}" if tags else ""
+			print(
+				f"  {val_r:<8.4f} {f'{n_all:,} ({pct_all:5.1f}%)':>16} "
+				f"{f'{n_mut:,} ({pct_mut:5.1f}%)':>18} {f'{n_one:,} ({pct_one:5.1f}%)':>18} "
+				f"{f'{n_mrg_pairs:,} pairs':>28}  {tag_str}"
+			)
+
+		print("-" * 120)
+
+		if pairs:
+			n_cand_clusters = int((sims >= active_threshold).sum())
+			n_mut_pairs = sum(1 for (a, b) in pairs if info[a]['cluster_id'] == b and info[b]['cluster_id'] == a)
+			n_cent_blocked = sum(
+				1 for (a, b), (_, cent_s) in pairs.items()
+				if info[a]['cluster_id'] == b and info[b]['cluster_id'] == a and cent_s < min_centroid_similarity
+			)
+			n_mrg_pairs = sum(
+				1 for (a, b), (_, cent_s) in pairs.items()
+				if info[a]['cluster_id'] == b
+				and info[b]['cluster_id'] == a
+				and cent_s >= min_centroid_similarity
+				and (max_merged_size is None or len(cluster_members[a]) + len(cluster_members[b]) <= max_merged_size)
+			)
+			n_size_blocked = (n_mut_pairs - n_cent_blocked) - n_mrg_pairs
+			n_asym_pairs = len(pairs) - n_mut_pairs
+			n_same_canon = sum(1 for (a, b) in pairs if cluster_canon_strs[a].lower() == cluster_canon_strs[b].lower())
+			n_synonym_pairs = len(pairs) - n_same_canon
+
+			print(f"  Candidate Canonical Pairs at Active Threshold (canonical_similarity >= {active_threshold:.4f} [{summary['threshold_mode']}]):")
+			print(f"    • Unique pairs extracted  : {len(pairs):,} ({n_mut_pairs:,} mutual 1-NN, {n_asym_pairs:,} one-way 1-NN)")
+			print(f"    • Lexical breakdown       : {n_synonym_pairs:,} distinct synonym pairs, {n_same_canon:,} identical-canonical pairs")
+			print(
+				f"    • Step 6b merge-eligible  : {n_mrg_pairs:,} mutual pairs "
+				f"({n_cent_blocked:,} blocked by centroid_sim < {min_centroid_similarity:.2f}, "
+				f"{n_size_blocked:,} blocked by size)"
+			)
+			print(f"    • Individual clusters     : {n_cand_clusters:,} ({100.0 * n_cand_clusters / max(n_clusters, 1):.1f}% of total clusters)")
+
+			# Show top synonym pairs (distinct canonical strings)
+			synonym_pairs = [
+				((a, b), (c_sim, cent_sim))
+				for (a, b), (c_sim, cent_sim) in pairs.items()
+				if cluster_canon_strs[a].lower() != cluster_canon_strs[b].lower()
+			]
+			top_k = min(10, len(synonym_pairs))
+			if top_k > 0:
+				sorted_syn = sorted(synonym_pairs, key=lambda kv: (-kv[1][0], -kv[1][1]))[:top_k]
+				print(f"\n  Top {top_k} Closest Synonym Canonical Neighbor Pairs (Distinct Canonicals):")
+				for rank, ((a, b), (c_sim, cent_sim)) in enumerate(sorted_syn, start=1):
+					is_mut = info[a]['cluster_id'] == b and info[b]['cluster_id'] == a
+					comb_sz = len(cluster_members[a]) + len(cluster_members[b])
+					cent_ok = cent_sim >= min_centroid_similarity
+					size_ok = max_merged_size is None or comb_sz <= max_merged_size
+					if is_mut and cent_ok and size_ok:
+						status_tag = f"mutual (A<->B), merge-eligible (combined={comb_sz})"
+					elif is_mut and not cent_ok:
+						status_tag = f"mutual (A<->B), CENTROID-BLOCKED (centroid_sim={cent_sim:.4f} < {min_centroid_similarity:.2f})"
+					elif is_mut:
+						status_tag = f"mutual (A<->B), size-blocked (combined={comb_sz}>{max_merged_size})"
+					elif info[a]['cluster_id'] == b:
+						pref_b = int(info[b]['cluster_id'])
+						status_tag = f"one-way (A->B, B prefers C{pref_b} {cluster_canon_strs[pref_b]!r} sim={info[b]['canonical_similarity']:.4f})"
+					else:
+						pref_a = int(info[a]['cluster_id'])
+						status_tag = f"one-way (B->A, A prefers C{pref_a} {cluster_canon_strs[pref_a]!r} sim={info[a]['canonical_similarity']:.4f})"
+
+					v_tag_a = " [VIRTUAL]" if cluster_is_virtual[a] else ""
+					v_tag_b = " [VIRTUAL]" if cluster_is_virtual[b] else ""
+					print(f"    {rank:2d}. canon_sim={c_sim:.4f} | centroid_sim={cent_sim:.4f} [{status_tag}]")
+					print(
+						f"        Cluster {a:6d} ({len(cluster_members[a]):3d} labels, canonical={repr(cluster_canon_strs[a]) + v_tag_a:<34} "
+						f"medoid={repr(cluster_medoids[a]):<26}) {cluster_members[a][:5]}"
+					)
+					print(
+						f"        Cluster {b:6d} ({len(cluster_members[b]):3d} labels, canonical={repr(cluster_canon_strs[b]) + v_tag_b:<34} "
+						f"medoid={repr(cluster_medoids[b]):<26}) {cluster_members[b][:5]}"
+					)
+
+		if review_path:
+			print(f"\n[SAVED] {review_path}")
+		print("=" * 120 + "\n")
+
+	return summary
+
+def merge_cluster_canonical_nearest_neighbor(
+	X: np.ndarray,
+	labels: np.ndarray,
+	label_texts: List[str],
+	cluster_canonicals: Dict[int, Dict],
+	canonical_emb_map: Dict[str, np.ndarray],
+	threshold: float,
+	min_centroid_similarity: float = 0.70,
+	max_merged_size: Optional[int] = None,
+	max_rounds: int = 10,
+	report_path: Optional[str] = None,
+	verbose: bool = False,
+) -> Tuple[np.ndarray, Dict[int, Dict]]:
+	"""
+	Conservative multi-round pass over clusters using their assigned canonical labels.
+
+	Two clusters A and B are merged in a round only when:
+		1. Their canonical labels (cA, cB) are mutual 1-nearest neighbors in canonical embedding space,
+		2. Their canonical cosine similarity is >= threshold,
+		3. Their real-member centroid cosine similarity is >= min_centroid_similarity (prevents merging
+		   unrelated clusters that happen to share polysemous or surface-similar canonicals), and
+		4. (if max_merged_size is set) their combined size is <= max_merged_size.
+
+	Winning Canonical Selection (Centroid Closeness):
+		When A and B merge into AB, the combined real-member centroid u_AB is computed from X.
+		All canonical candidates accumulated from the merging clusters (cA, cB, ...) are scored
+		by cosine similarity against u_AB. The canonical label closest to u_AB wins (with ties
+		broken by larger constituent cluster size).
+
+	Returns
+	-------
+	new_labels             : contiguous re-indexed cluster array (same length as `labels`)
+	new_cluster_canonicals : updated {new_cid: meta_dict} aligned with `new_labels`
+	"""
+	ids = [int(c) for c in np.unique(labels)]
+	cluster_ids = list(ids)
+	members = [np.where(labels == c)[0] for c in ids]
+	initial_sizes = np.array([len(m) for m in members])
+	sums = np.vstack([X[m].sum(axis=0) for m in members]).astype(np.float32)
+	unit_centroids = sums / (np.linalg.norm(sums, axis=1, keepdims=True) + 1e-12)
+	sizes = np.array([len(m) for m in members])
+	n_before = len(members)
+
+	def _get_medoid_info(m_indices: np.ndarray, sum_vec: np.ndarray) -> Tuple[str, float]:
+		if len(m_indices) == 0:
+			return "", 0.0
+		emb = X[m_indices]
+		norm = np.linalg.norm(sum_vec)
+		unit = sum_vec / (norm + 1e-12)
+		sims = emb @ unit
+		local_idx = int(np.argmax(sims))
+		medoid_text = label_texts[m_indices[local_idx]]
+		if len(m_indices) > 1:
+			med_emb = emb[local_idx]
+			med_sims = emb @ med_emb
+			avg_sim = float((med_sims.sum() - 1.0) / (len(m_indices) - 1))
+		else:
+			avg_sim = 1.0
+		return medoid_text, round(avg_sim, 4)
+
+	# Initialize canonical state per cluster
+	canon_strs: List[str] = []
+	canon_embs_list: List[np.ndarray] = []
+	canon_metas: List[Dict] = []
+	candidate_canonicals: List[List[str]] = []
+
+	for pos, c in enumerate(ids):
+		meta = dict(cluster_canonicals.get(c, {}))
+		c_str = meta.get("canonical_harmonized") or meta.get("canonical")
+		if not c_str:
+			c_str, _ = _get_medoid_info(members[pos], sums[pos])
+		canon_strs.append(c_str)
+		canon_embs_list.append(canonical_emb_map[c_str])
+		canon_metas.append(meta)
+		candidate_canonicals.append([c_str])
+
+	canon_embs = np.vstack(canon_embs_list) if n_before > 0 else np.empty((0, X.shape[1]), dtype=np.float32)
+	n_unique_canon_before = len({s.lower() for s in canon_strs})
+
+	merges = []
+	centroid_blocked_pairs = []
+	seen_blocked_keys = set()
+	round_progression = []
+	termination_reason = "max_rounds_reached"
+
+	for rnd in range(1, max_rounds + 1):
+		if len(members) < 2:
+			termination_reason = "insufficient_clusters"
+			break
+
+		nn_idx, nn_canon_sim, nn_centroid_sim = _nearest_canonical_neighbors(
+			canon_embs=canon_embs,
+			unit_centroids=unit_centroids,
+			chunk=4096,
+		)
+		drop = set()
+		round_merges = 0
+		round_centroid_blocked = 0
+		round_canon_sims = []
+		round_cent_sims = []
+		clusters_in_round = len(members)
+
+		for i in range(len(members)):
+			j = int(nn_idx[i])
+
+			if not (i < j and int(nn_idx[j]) == i):
+				continue  # mutual 1-NN pairs only
+
+			c_sim_val = float(nn_canon_sim[i])
+			cent_sim_val = float(nn_centroid_sim[i])
+
+			if c_sim_val < threshold:
+				continue
+			if max_merged_size is not None and sizes[i] + sizes[j] > max_merged_size:
+				continue
+
+			# Guard against merging unrelated clusters with polysemous/surface-similar canonicals
+			if cent_sim_val < min_centroid_similarity:
+				round_centroid_blocked += 1
+				bkey = (min(cluster_ids[i], cluster_ids[j]), max(cluster_ids[i], cluster_ids[j]))
+				if bkey not in seen_blocked_keys:
+					seen_blocked_keys.add(bkey)
+					med_a, med_a_sim = _get_medoid_info(members[i], sums[i])
+					med_b, med_b_sim = _get_medoid_info(members[j], sums[j])
+					centroid_blocked_pairs.append({
+						'round': rnd,
+						'canonical_similarity': round(c_sim_val, 6),
+						'centroid_similarity': round(cent_sim_val, 6),
+						'min_centroid_similarity': round(float(min_centroid_similarity), 4),
+						'cluster_a': {
+							'id': cluster_ids[i],
+							'size': int(sizes[i]),
+							'canonical': canon_strs[i],
+							'medoid': med_a,
+							'medoid_similarity': med_a_sim,
+							'members': [label_texts[k] for k in members[i]],
+						},
+						'cluster_b': {
+							'id': cluster_ids[j],
+							'size': int(sizes[j]),
+							'canonical': canon_strs[j],
+							'medoid': med_b,
+							'medoid_similarity': med_b_sim,
+							'members': [label_texts[k] for k in members[j]],
+						},
+					})
+				continue
+
+			round_canon_sims.append(c_sim_val)
+			round_cent_sims.append(cent_sim_val)
+			round_merges += 1
+
+			merged_indices = np.concatenate([members[i], members[j]])
+			merged_sum = sums[i] + sums[j]
+			unit_merged = merged_sum / (np.linalg.norm(merged_sum) + 1e-12)
+
+			med_a, med_a_sim = _get_medoid_info(members[i], sums[i])
+			med_b, med_b_sim = _get_medoid_info(members[j], sums[j])
+			med_merged, med_merged_sim = _get_medoid_info(merged_indices, merged_sum)
+
+			members_a_texts = [label_texts[k] for k in members[i]]
+			members_b_texts = [label_texts[k] for k in members[j]]
+			merged_members_texts = members_a_texts + members_b_texts
+			merged_members_set = set(merged_members_texts)
+
+			# Option 2: Winner Selection by closeness to the merged real-member centroid
+			canon_a = canon_strs[i]
+			canon_b = canon_strs[j]
+			emb_a = canon_embs[i]
+			emb_b = canon_embs[j]
+			sim_a_to_merged = float(emb_a @ unit_merged)
+			sim_b_to_merged = float(emb_b @ unit_merged)
+
+			# Evaluate all candidate canonicals accumulated across this merge history
+			cand_pool = list(dict.fromkeys(candidate_canonicals[i] + candidate_canonicals[j]))
+			cand_scores = {}
+			for cand in cand_pool:
+				cand_scores[cand] = float(canonical_emb_map[cand] @ unit_merged)
+
+			# Tie-break identical similarity (e.g. when canon_a == canon_b) by larger cluster size
+			if abs(sim_a_to_merged - sim_b_to_merged) < 1e-6:
+				if sizes[i] >= sizes[j]:
+					winning_canon = canon_a
+					winner_from = "cluster_a_tiebreak_size" if canon_a != canon_b else "identical_canonical"
+				else:
+					winning_canon = canon_b
+					winner_from = "cluster_b_tiebreak_size"
+			elif sim_a_to_merged > sim_b_to_merged:
+				winning_canon = canon_a
+				winner_from = "cluster_a"
+			else:
+				winning_canon = canon_b
+				winner_from = "cluster_b"
+
+			# Check if an earlier constituent canonical in cand_pool strictly beats both
+			best_pool_cand = max(cand_pool, key=lambda c: cand_scores[c])
+			if cand_scores[best_pool_cand] > max(sim_a_to_merged, sim_b_to_merged) + 1e-6:
+				winning_canon = best_pool_cand
+				winner_from = "constituent_pool"
+
+			winning_sim_to_merged = cand_scores[winning_canon]
+			runner_up_sim = min(sim_a_to_merged, sim_b_to_merged)
+			winner_margin = round(float(abs(sim_a_to_merged - sim_b_to_merged)), 6)
+
+			is_virt_a = canon_a not in set(members_a_texts)
+			is_virt_b = canon_b not in set(members_b_texts)
+			is_virt_merged = winning_canon not in merged_members_set
+
+			merge = {
+				'merge_id': len(merges) + 1,
+				'round': rnd,
+				'canonical_similarity': round(c_sim_val, 6),
+				'centroid_similarity': round(cent_sim_val, 6),
+				'same_canonical_string': bool(canon_a.lower() == canon_b.lower()),
+				'cluster_a': {
+					'id': cluster_ids[i],
+					'size': int(sizes[i]),
+					'canonical': canon_a,
+					'is_virtual': is_virt_a,
+					'canonical_to_merged_centroid_sim': round(sim_a_to_merged, 4),
+					'medoid': med_a,
+					'medoid_similarity': med_a_sim,
+					'members': members_a_texts,
+				},
+				'cluster_b': {
+					'id': cluster_ids[j],
+					'size': int(sizes[j]),
+					'canonical': canon_b,
+					'is_virtual': is_virt_b,
+					'canonical_to_merged_centroid_sim': round(sim_b_to_merged, 4),
+					'medoid': med_b,
+					'medoid_similarity': med_b_sim,
+					'members': members_b_texts,
+				},
+				'merged': {
+					'size': int(sizes[i] + sizes[j]),
+					'canonical': winning_canon,
+					'is_virtual': is_virt_merged,
+					'winner_from': winner_from,
+					'winner_margin': winner_margin,
+					'canonical_to_merged_centroid_sim': round(winning_sim_to_merged, 4),
+					'medoid': med_merged,
+					'medoid_similarity': med_merged_sim,
+					'medoid_agrees_with_canonical': bool(med_merged.lower() == winning_canon.lower()),
+					'candidate_pool_scores': {k: round(v, 4) for k, v in cand_scores.items()},
+					'members': merged_members_texts,
+				},
+			}
+
+			merges.append(merge)
+
+			members[i] = merged_indices
+			sums[i] = merged_sum
+			unit_centroids[i] = unit_merged
+			sizes[i] += sizes[j]
+			canon_strs[i] = winning_canon
+			canon_embs[i] = canonical_emb_map[winning_canon]
+			candidate_canonicals[i] = cand_pool
+			drop.add(j)
+
+		if not drop:
+			termination_reason = "converged_no_more_pairs"
+			break
+
+		round_progression.append({
+			'round': rnd,
+			'clusters_in': clusters_in_round,
+			'merges': round_merges,
+			'centroid_blocked': round_centroid_blocked,
+			'clusters_out': clusters_in_round - round_merges,
+			'min_canonical_similarity': round(float(min(round_canon_sims)), 6) if round_canon_sims else None,
+			'median_canonical_similarity': round(float(np.median(round_canon_sims)), 6) if round_canon_sims else None,
+			'max_canonical_similarity': round(float(max(round_canon_sims)), 6) if round_canon_sims else None,
+			'min_centroid_similarity': round(float(min(round_cent_sims)), 6) if round_cent_sims else None,
+			'median_centroid_similarity': round(float(np.median(round_cent_sims)), 6) if round_cent_sims else None,
+		})
+
+		keep = [k for k in range(len(members)) if k not in drop]
+		members = [members[k] for k in keep]
+		cluster_ids = [cluster_ids[k] for k in keep]
+		sums = sums[keep]
+		unit_centroids = unit_centroids[keep]
+		sizes = sizes[keep]
+		canon_strs = [canon_strs[k] for k in keep]
+		canon_embs = canon_embs[keep]
+		canon_metas = [canon_metas[k] for k in keep]
+		candidate_canonicals = [candidate_canonicals[k] for k in keep]
+
+	new_labels = np.empty_like(labels)
+	new_cluster_canonicals: Dict[int, Dict] = {}
+
+	for new_id, m in enumerate(members):
+		new_labels[m] = new_id
+		merged_member_set = {label_texts[k] for k in m}
+		w_canon = canon_strs[new_id]
+		is_virt_now = w_canon not in merged_member_set
+		meta = dict(canon_metas[new_id])
+		meta.update({
+			'canonical': w_canon,
+			'canonical_harmonized': w_canon,
+			'changed_by_harmonize': False,
+			'virtual': is_virt_now,
+			'size': int(len(m)),
+			'score': round(float(canon_embs[new_id] @ unit_centroids[new_id]), 4),
+		})
+		new_cluster_canonicals[new_id] = meta
+
+	rounds_completed = len(round_progression)
+	final_sizes = np.array([len(m) for m in members])
+	n_unique_canon_after = len({s.lower() for s in canon_strs})
+	all_canon_sims = [m['canonical_similarity'] for m in merges]
+	all_cent_sims = [m['centroid_similarity'] for m in merges]
+
+	if all_canon_sims:
+		merge_sim_stats = {
+			'count': len(all_canon_sims),
+			'synonym_merges': sum(1 for m in merges if not m['same_canonical_string']),
+			'identical_canonical_merges': sum(1 for m in merges if m['same_canonical_string']),
+			'canonical_similarity': {
+				'min': round(float(np.min(all_canon_sims)), 4),
+				'p25': round(float(np.percentile(all_canon_sims, 25)), 4),
+				'median': round(float(np.median(all_canon_sims)), 4),
+				'mean': round(float(np.mean(all_canon_sims)), 4),
+				'p75': round(float(np.percentile(all_canon_sims, 75)), 4),
+				'p90': round(float(np.percentile(all_canon_sims, 90)), 4),
+				'max': round(float(np.max(all_canon_sims)), 4),
+			},
+			'centroid_similarity': {
+				'min': round(float(np.min(all_cent_sims)), 4),
+				'p25': round(float(np.percentile(all_cent_sims, 25)), 4),
+				'median': round(float(np.median(all_cent_sims)), 4),
+				'mean': round(float(np.mean(all_cent_sims)), 4),
+				'p75': round(float(np.percentile(all_cent_sims, 75)), 4),
+				'p90': round(float(np.percentile(all_cent_sims, 90)), 4),
+				'max': round(float(np.max(all_cent_sims)), 4),
+			},
+		}
+	else:
+		merge_sim_stats = {}
+
+	size_stats = {
+		'before': {
+			'min': int(np.min(initial_sizes)) if len(initial_sizes) > 0 else 0,
+			'median': float(np.median(initial_sizes)) if len(initial_sizes) > 0 else 0.0,
+			'mean': round(float(np.mean(initial_sizes)), 2) if len(initial_sizes) > 0 else 0.0,
+			'p75': float(np.percentile(initial_sizes, 75)) if len(initial_sizes) > 0 else 0.0,
+			'p90': float(np.percentile(initial_sizes, 90)) if len(initial_sizes) > 0 else 0.0,
+			'max': int(np.max(initial_sizes)) if len(initial_sizes) > 0 else 0,
+		},
+		'after': {
+			'min': int(np.min(final_sizes)) if len(final_sizes) > 0 else 0,
+			'median': float(np.median(final_sizes)) if len(final_sizes) > 0 else 0.0,
+			'mean': round(float(np.mean(final_sizes)), 2) if len(final_sizes) > 0 else 0.0,
+			'p75': float(np.percentile(final_sizes, 75)) if len(final_sizes) > 0 else 0.0,
+			'p90': float(np.percentile(final_sizes, 90)) if len(final_sizes) > 0 else 0.0,
+			'max': int(np.max(final_sizes)) if len(final_sizes) > 0 else 0,
+		},
+	}
+
+	if verbose:
+		size_limit_str = f"max_size={max_merged_size}" if max_merged_size is not None else "no size limit"
+		reduction_count = n_before - len(members)
+		reduction_pct = (1.0 - len(members) / max(1, n_before)) * 100.0
+		canon_red = n_unique_canon_before - n_unique_canon_after
+
+		print("=" * 120)
+		print("[MERGE CANONICAL CLUSTERS] Multi-Round 1-NN Canonical Label Merging Diagnostics")
+		print(
+			f"Policy: canonical_threshold >= {threshold:.5f} | "
+			f"min_centroid_similarity >= {min_centroid_similarity:.2f} | "
+			f"Size Limit: {size_limit_str} | Max Rounds: {max_rounds}"
+		)
+		print(
+			f"Cluster Reduction  : {n_before:,} -> {len(members):,} clusters "
+			f"(-{reduction_count:,} clusters, -{reduction_pct:.2f}%) "
+			f"across {rounds_completed} round(s) (status: {termination_reason})"
+		)
+		print(
+			f"Canonical Reduction: {n_unique_canon_before:,} -> {n_unique_canon_after:,} unique canonical labels "
+			f"(-{canon_red:,} near-duplicate canonicals consolidated)"
+		)
+		print("-" * 120)
+
+		if round_progression:
+			print("Round-by-Round Progression:")
+			print(
+				f"  {'Round':<9} {'Clusters In':>13} {'Merges Done':>13} {'Cent Blocked':>13} {'Clusters Out':>14} "
+				f"{'Canon Min':>11} {'Canon Med':>11} {'Canon Max':>11} {'Cent Med':>11}"
+			)
+			print(
+				f"  {'-'*9} {'-'*13} {'-'*13} {'-'*13} {'-'*14} {'-'*11} {'-'*11} {'-'*11} {'-'*11}"
+			)
+			for rp in round_progression:
+				c_min_s = f"{rp['min_canonical_similarity']:.4f}" if rp['min_canonical_similarity'] is not None else "-"
+				c_med_s = f"{rp['median_canonical_similarity']:.4f}" if rp['median_canonical_similarity'] is not None else "-"
+				c_max_s = f"{rp['max_canonical_similarity']:.4f}" if rp['max_canonical_similarity'] is not None else "-"
+				ct_med_s = f"{rp['median_centroid_similarity']:.4f}" if rp['median_centroid_similarity'] is not None else "-"
+				print(
+					f"  Round {rp['round']:<3} {rp['clusters_in']:>13,} {rp['merges']:>13,} {rp['centroid_blocked']:>13,} "
+					f"{rp['clusters_out']:>14,} {c_min_s:>11} {c_med_s:>11} {c_max_s:>11} {ct_med_s:>11}"
+				)
+			print("-" * 120)
+
+		print("Cluster Size Distributions:")
+		print(
+			f"  Before Merge: min={size_stats['before']['min']} | median={size_stats['before']['median']:.1f} | "
+			f"mean={size_stats['before']['mean']:.2f} | p75={size_stats['before']['p75']:.1f} | "
+			f"p90={size_stats['before']['p90']:.1f} | max={size_stats['before']['max']}"
+		)
+		print(
+			f"  After Merge : min={size_stats['after']['min']} | median={size_stats['after']['median']:.1f} | "
+			f"mean={size_stats['after']['mean']:.2f} | p75={size_stats['after']['p75']:.1f} | "
+			f"p90={size_stats['after']['p90']:.1f} | max={size_stats['after']['max']}"
+		)
+
+		if merge_sim_stats:
+			cs = merge_sim_stats['canonical_similarity']
+			cts = merge_sim_stats['centroid_similarity']
+			n_virt_winners = sum(1 for m in merges if m['merged']['is_virtual'])
+			n_med_agree = sum(1 for m in merges if m['merged']['medoid_agrees_with_canonical'])
+			print(
+				f"\nMerge Similarity Percentiles (N={merge_sim_stats['count']:,}: "
+				f"{merge_sim_stats['synonym_merges']:,} synonym merges, "
+				f"{merge_sim_stats['identical_canonical_merges']:,} identical-canonical merges):\n"
+				f"  Canonical Sim: min={cs['min']:.4f} | p25={cs['p25']:.4f} | median={cs['median']:.4f} | "
+				f"mean={cs['mean']:.4f} | p75={cs['p75']:.4f} | p90={cs['p90']:.4f} | max={cs['max']:.4f}\n"
+				f"  Centroid Sim : min={cts['min']:.4f} | p25={cts['p25']:.4f} | median={cts['median']:.4f} | "
+				f"mean={cts['mean']:.4f} | p75={cts['p75']:.4f} | p90={cts['p90']:.4f} | max={cts['max']:.4f}\n"
+				f"  Winner Stats : {n_virt_winners:,}/{len(merges):,} virtual canonical winners | "
+				f"{n_med_agree:,}/{len(merges):,} ({100.0 * n_med_agree / max(1, len(merges)):.1f}%) agree with raw member medoid"
+			)
+
+		if merges:
+			print("-" * 120)
+			synonym_merges = [m for m in merges if not m['same_canonical_string']]
+			display_pool = synonym_merges if synonym_merges else merges
+			sorted_by_sim = sorted(display_pool, key=lambda m: (m['canonical_similarity'], m['centroid_similarity']), reverse=True)
+
+			print("Top 5 Closest Canonical Synonym Merges (Highest Confidence):")
+			for rank, m in enumerate(sorted_by_sim[:5], 1):
+				comb_sz = m['merged']['size']
+				ca, cb, cm = m['cluster_a'], m['cluster_b'], m['merged']
+				va = " [VIRTUAL]" if ca['is_virtual'] else ""
+				vb = " [VIRTUAL]" if cb['is_virtual'] else ""
+				vm = " [VIRTUAL]" if cm['is_virtual'] else ""
+				print(
+					f"  {rank}. canon_sim={m['canonical_similarity']:.4f} | centroid_sim={m['centroid_similarity']:.4f} "
+					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
+					f"     Cluster {ca['id']} (canonical={repr(ca['canonical']) + va}, sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f}, medoid={repr(ca['medoid'])}): {ca['members'][:3]}\n"
+					f"     Cluster {cb['id']} (canonical={repr(cb['canonical']) + vb}, sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f}, medoid={repr(cb['medoid'])}): {cb['members'][:3]}\n"
+					f"     -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})"
+				)
+
+			print("\nTop 5 Borderline Canonical Merges (Near Cutoff Threshold):")
+			borderline = sorted(display_pool, key=lambda m: (m['canonical_similarity'], m['centroid_similarity']))[:5]
+			for rank, m in enumerate(borderline, 1):
+				comb_sz = m['merged']['size']
+				ca, cb, cm = m['cluster_a'], m['cluster_b'], m['merged']
+				va = " [VIRTUAL]" if ca['is_virtual'] else ""
+				vb = " [VIRTUAL]" if cb['is_virtual'] else ""
+				vm = " [VIRTUAL]" if cm['is_virtual'] else ""
+				print(
+					f"  {rank}. canon_sim={m['canonical_similarity']:.4f} | centroid_sim={m['centroid_similarity']:.4f} "
+					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
+					f"     Cluster {ca['id']} (canonical={repr(ca['canonical']) + va}, sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f}, medoid={repr(ca['medoid'])}): {ca['members'][:3]}\n"
+					f"     Cluster {cb['id']} (canonical={repr(cb['canonical']) + vb}, sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f}, medoid={repr(cb['medoid'])}): {cb['members'][:3]}\n"
+					f"     -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})"
+				)
+			print("  (lowest-similarity canonical merges shown; these are the borderline ones to review)")
+
+		if centroid_blocked_pairs:
+			print("-" * 120)
+			print(
+				f"Centroid Coherence Guard Blocked {len(centroid_blocked_pairs)} Mutual Canonical Pair(s) "
+				f"(canonical_sim >= {threshold:.4f} but centroid_sim < {min_centroid_similarity:.2f}):"
+			)
+			for rank, bp in enumerate(sorted(centroid_blocked_pairs, key=lambda x: -x['canonical_similarity'])[:5], 1):
+				ca, cb = bp['cluster_a'], bp['cluster_b']
+				print(
+					f"  {rank}. [BLOCKED] canon_sim={bp['canonical_similarity']:.4f} | centroid_sim={bp['centroid_similarity']:.4f} < {min_centroid_similarity:.2f}\n"
+					f"     Cluster {ca['id']} (canonical={repr(ca['canonical'])}, medoid={repr(ca['medoid'])}): {ca['members'][:3]}\n"
+					f"     Cluster {cb['id']} (canonical={repr(cb['canonical'])}, medoid={repr(cb['medoid'])}): {cb['members'][:3]}"
+				)
+
+		if report_path:
+			print(f"\n[SAVED] {report_path}")
+		print("=" * 120 + "\n")
+
+	if report_path:
+		with open(report_path, 'w', encoding='utf-8') as f:
+			new_result = {
+				'meta': {
+					'threshold': threshold,
+					'min_centroid_similarity': min_centroid_similarity,
+					'max_merged_size': max_merged_size,
+					'max_rounds': max_rounds,
+					'rounds_completed': rounds_completed,
+					'termination_reason': termination_reason,
+					'clusters_before': n_before,
+					'clusters_after': len(members),
+					'unique_canonicals_before': n_unique_canon_before,
+					'unique_canonicals_after': n_unique_canon_after,
+					'total_merges': len(merges),
+					'total_centroid_blocked_pairs': len(centroid_blocked_pairs),
+					'reduction_pct': round((1.0 - len(members) / max(1, n_before)) * 100, 2),
+					'round_progression': round_progression,
+					'cluster_size_stats': size_stats,
+					'merge_similarity_stats': merge_sim_stats,
+				},
+				'threshold': threshold,
+				'min_centroid_similarity': min_centroid_similarity,
+				'max_merged_size': max_merged_size,
+				'clusters_before': n_before,
+				'clusters_after': len(members),
+				'rounds': rounds_completed,
+				'merges': merges,
+				'centroid_blocked_pairs': centroid_blocked_pairs,
+			}
+			json.dump(new_result, f, indent=2, ensure_ascii=False, default=_json_default)
+
+	return new_labels, new_cluster_canonicals
+
 def _validate_embeddings(X: np.ndarray, unique_labels: List[str]) -> None:
 	if np.isnan(X).any():
 		nan_rows = np.where(np.isnan(X).any(axis=1))[0]
@@ -4809,8 +5829,11 @@ def cluster(
 	min_consolidation: float = 4.5, #3.5, #4.0, # 3.8, #5.0, 
 	max_consolidation: float = 7.5, #6.0, #6.5, # 5.0, #7.5, 
 	min_singleton_merge_sim: Optional[float] = 0.60,
-	merge_near_duplicate_clusters: bool = False,
+	merge_near_duplicate_clusters_medoid: bool = False,
+	merge_near_duplicate_clusters_canonical: bool = False,
 	merge_close_clusters_threshold: Optional[float] = None,
+	merge_canonical_clusters_threshold: Optional[float] = None,
+	merge_canonical_min_centroid_sim: float = 0.70,
 	merge_max_size: Optional[int] = None,
 	min_cluster_size: int = 2,
 	low_cohesion_threshold=0.60,
@@ -4837,7 +5860,8 @@ def cluster(
 		print(f"  ├─ samples: {labels[:3]}")
 		requires_type_exchange = isinstance(labels[0], str)
 		print(f"  ├───> {type(labels[0])} requires_type_exchange? {requires_type_exchange}")
-		print(f"  ├─ merge_near_duplicate_clusters: {merge_near_duplicate_clusters} (threshold: {merge_close_clusters_threshold if merge_close_clusters_threshold is not None else 'dynamic'})")
+		print(f"  ├─ merge_near_duplicate_clusters_medoid: {merge_near_duplicate_clusters_medoid} (threshold: {merge_close_clusters_threshold if merge_close_clusters_threshold is not None else 'dynamic'})")
+		print(f"  ├─ merge_near_duplicate_clusters_canonical: {merge_near_duplicate_clusters_canonical} (threshold: {merge_canonical_clusters_threshold if merge_canonical_clusters_threshold is not None else 'dynamic'}, min_centroid_sim: {merge_canonical_min_centroid_sim})")
 		print(f"  ├─ encode_prompt: {encode_prompt!r}")
 		print(f"  └─ nc: {nc} {f'Manually defined' if nc else '=> Adaptive Search'}")
 
@@ -4935,7 +5959,7 @@ def cluster(
 	)
 
 	# STEP 4b: OPTIONAL MERGE OF NEAR-DUPLICATE CLUSTERS (before canonical selection)
-	if merge_near_duplicate_clusters:
+	if merge_near_duplicate_clusters_medoid:
 		active_merge_threshold = (
 			float(merge_close_clusters_threshold)
 			if merge_close_clusters_threshold is not None
@@ -4985,6 +6009,55 @@ def cluster(
 		verbose=verbose,
 	)
 
+	# STEP 6a: POST-CANONICAL NEIGHBOUR DIAGNOSTICS & DYNAMIC THRESHOLDING
+	canonical_emb_map = _build_canonical_embedding_lookup(
+		cluster_canonicals=cluster_canonicals,
+		label_texts=unique_labels,
+		X=X,
+		model=model,
+		batch_size=batch_size,
+		encode_prompt=encode_prompt,
+		verbose=verbose,
+	)
+
+	canonical_neighbor_summary = get_cluster_canonical_nearest_neighbor(
+		embedding_model_id=model.model_card_data.base_model,
+		X=X,
+		labels=clustered_labels,
+		label_texts=unique_labels,
+		cluster_canonicals=cluster_canonicals,
+		canonical_emb_map=canonical_emb_map,
+		max_merged_size=merge_max_size,
+		threshold=merge_canonical_clusters_threshold,
+		min_centroid_similarity=merge_canonical_min_centroid_sim,
+		review_path=os.path.splitext(clusters_fname)[0] + "_canonical_neighbor_pairs.json",
+		verbose=verbose,
+	)
+
+	# STEP 6b: OPTIONAL MERGE OF NEAR-DUPLICATE CANONICAL CLUSTERS (before virtual row injection)
+	canonical_merges_done = 0
+	if merge_near_duplicate_clusters_canonical:
+		active_canonical_threshold = (
+			float(merge_canonical_clusters_threshold)
+			if merge_canonical_clusters_threshold is not None
+			else float(canonical_neighbor_summary['threshold'])
+		)
+		n_clusters_pre_canon_merge = len(np.unique(clustered_labels))
+		clustered_labels, cluster_canonicals = merge_cluster_canonical_nearest_neighbor(
+			X=X,
+			labels=clustered_labels,
+			label_texts=unique_labels,
+			cluster_canonicals=cluster_canonicals,
+			canonical_emb_map=canonical_emb_map,
+			threshold=active_canonical_threshold,
+			min_centroid_similarity=merge_canonical_min_centroid_sim,
+			max_merged_size=merge_max_size,
+			report_path=os.path.splitext(clusters_fname)[0] + "_canonical_cluster_merges.json",
+			verbose=verbose,
+		)
+		df["cluster"] = clustered_labels
+		canonical_merges_done = n_clusters_pre_canon_merge - len(np.unique(clustered_labels))
+
 	# STEP 7: MAP CANONICALS + INJECT VIRTUAL ROWS + CLEAN
 	df["canonical"] = df["cluster"].map(lambda c: cluster_canonicals[c]["canonical"])
 	df["is_injected"] = False
@@ -5005,7 +6078,10 @@ def cluster(
 		virtual_texts.append(vh)
  
 	if virtual_rows:
-		virtual_embs = _encode_(model, virtual_texts, batch_size, encode_prompt)
+		if all(vh in canonical_emb_map for vh in virtual_texts):
+			virtual_embs = np.vstack([canonical_emb_map[vh] for vh in virtual_texts]).astype(np.float32)
+		else:
+			virtual_embs = _encode_(model, virtual_texts, batch_size, encode_prompt)
 		df = pd.concat([df, pd.DataFrame(virtual_rows)], ignore_index=True)
 		X = np.vstack([X, virtual_embs])
  
@@ -5045,8 +6121,13 @@ def cluster(
 	df.to_csv(out_csv, index=False)
 
 	# cluster ids were re-indexed, so JSON and CSV ids no longer line up
-	if removed_labels:
-		print("[CONSISTENCY] skipped: remove_problematic_clustered_labels removed clusters")
+	if removed_labels or canonical_merges_done > 0:
+		reason = (
+			"remove_problematic_clustered_labels removed clusters"
+			if removed_labels
+			else f"merge_cluster_canonical_nearest_neighbor merged {canonical_merges_done} cluster(s)"
+		)
+		print(f"[CONSISTENCY] skipped pre-merge JSON vs post-merge CSV id check ({reason})")
 	else:
 		_check_json_csv_consistency(
 			df, 
@@ -5093,8 +6174,11 @@ def get_canonical_labels(
 	batch_size: int,
 	device: Union[str, torch.device],
 	nc: Optional[int]=None,
-	merge_near_duplicate_clusters: bool = True,
+	merge_near_duplicate_clusters_medoid: bool = True,
+	merge_near_duplicate_clusters_canonical: bool = True,
 	merge_close_clusters_threshold: Optional[float] = None,
+	merge_canonical_clusters_threshold: Optional[float] = None,
+	merge_canonical_min_centroid_sim: float = 0.70,
 	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
@@ -5124,8 +6208,11 @@ def get_canonical_labels(
 		batch_size=batch_size,
 		device=device,
 		nc=nc,
-		merge_near_duplicate_clusters=merge_near_duplicate_clusters,
+		merge_near_duplicate_clusters_medoid=merge_near_duplicate_clusters_medoid,
+		merge_near_duplicate_clusters_canonical=merge_near_duplicate_clusters_canonical,
 		merge_close_clusters_threshold=merge_close_clusters_threshold,
+		merge_canonical_clusters_threshold=merge_canonical_clusters_threshold,
+		merge_canonical_min_centroid_sim=merge_canonical_min_centroid_sim,
 		clusters_fname=clusters_fname,
 		encode_prompt=encode_prompt,
 		verbose=verbose,
