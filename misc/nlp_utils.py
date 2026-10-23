@@ -1067,29 +1067,69 @@ def _post_process_(
 		re.IGNORECASE
 	)
 
+	# =====================================================================
+	# ORDINAL & ECHELON PATTERNS (Administrative Unit Filter)
+	# =====================================================================
+	# Matches:
+	#   - Digits with standard suffixes: "1st", "2nd", "3rd", "79th"
+	#   - Military 'd' suffix: "162d", "332d"
+	#   - Bare numbers: "109 Infantry", "27 Division"
+	#   - Roman numerals: "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "VIIIth", "X"
+	#   - Word ordinals: "First", "Second", "Third", ..., "Seventy-First", "Thirty-Fifth"
 	_ORDINAL_PATTERN = (
-		r'(?:\d{1,4}(?:st|nd|rd|th)?|'
+		r'(?:'
+		r'\d{1,4}(?:st|nd|rd|th|d)?|'
+		r'(?:X{0,3})(?:IX|IV|V?I{0,3})(?:st|nd|rd|th)?|'
 		r'first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|'
 		r'eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|'
-		r'twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth)'
+		r'twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth|'
+		r'(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[- ](?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)'
+		r')'
 	)
 
-	# Modifiers that precede aviation echelons (e.g. "Fighter Group", "Bomb Squadron")
-	_AIR_ROLES = r'(?:fighter|pursuit|bomb|bombardment|reconnaissance|recon|observation|transport|troop\s+carrier)\s+'
+	# Modifiers that precede aviation echelons (e.g. "Fighter Group", "Tactical Fighter Wing", "Bomb Squadron")
+	_AIR_ROLES = (
+		r'(?:(?:tactical\s+)?fighter(?:\s+bomber)?|pursuit|bomb(?:er)?|bombardment|'
+		r'reconnaissance|recon|observation|transport|troop\s+carrier|air\s+commando)\s+'
+	)
+
+	# Modifiers that precede ground echelons (e.g. "Infantry Division", "Armored Brigade", "Parachute Battalion")
+	_GROUND_ROLES = (
+		r'(?:infantry|inf\.?|armored|armoured|cavalry|cav\.?|'
+		r'airborne|parachute(?:\s+infantry|\s+artillery)?|glider(?:\s+infantry)?|'
+		r'engineer|engineers|combat\s+engineer|engr\.?|'
+		r'artillery|field\s+artillery|arty\.?|transportation|colored\s+infantry|'
+		r'[A-Za-z]+(?:\s+[A-Za-z]+)?)\s+'  # catches state/regional qualifiers like "71st New York Infantry"
+	)
 
 	_ECHELON_PATTERN = (
-		# 1. Ground echelons: "79th Division", "1st Div", "53rd Infantry", "7th Artillery"
-		r'army|corps|div\.?|division|inf\.?|infantry|reg\.?|regt\.?|regiment|'
-		r'bn\.?|battalion|brig\.?|brigade|arty\.?|artillery|'
-		# 2. Air echelons with or without mission roles:
-		# "56th Fighter Group", "20th Pursuit Group", "389th Bomb Group", "94th Fighter Squadron", "4th Wing"
-		rf'(?:{_AIR_ROLES})?(?:group|squadron|sqdn\.?|wing)|'
-		# 3. Abstract political, legal & temporal concepts
-		r'amendment|century|term|congress'
+		# 1. High command echelons: "Third Army", "12th Army Group", "V Corps", "VII Army Corps", "8th Army Headquarters"
+		r'(?:army\s+group|army(?:\s+headquarters|\s+hq)?|(?:army\s+)?corps(?:\s+headquarters|\s+hq)?)|'
+		
+		# 2. Ground echelons (with or without branch role):
+		#    "79th Division", "102nd Infantry Division", "3rd Armored Division", "101st Airborne Division",
+		#    "73rd Infantry Brigade", "111th Infantry Regiment", "555th Parachute Infantry Battalion"
+		rf'(?:{_GROUND_ROLES})?(?:div\.?|division|brig\.?|brigade|reg\.?|regt\.?|regiment|bn\.?|battalion)(?:\s+artillery|\s+infantry)?|'
+		
+		# 3. Reversed regiment notation: "328th Regiment Infantry", "71st Regiment Infantry"
+		r'(?:reg\.?|regt\.?|regiment)\s+infantry|'
+		
+		# 4. Standalone combat branches acting as echelons:
+		#    "53rd Infantry", "27th Marines", "102nd Engineers", "9th Cavalry", "9th Field Artillery"
+		r'infantry|inf\.?|marines|cavalry|cav\.?|engineers?|engr\.?|engrs\.?|arty\.?|artillery|field\s+artillery|'
+		
+		# 5. Air echelons (with or without mission role):
+		#    "56th Fighter Group", "20th Pursuit Group", "50th Tactical Fighter Wing", "First Tactical AF"
+		rf'(?:{_AIR_ROLES})?(?:group|squadron|sqdn\.?|wing)|tactical\s+af|'
+		
+		# 6. Naval formations: "6th Fleet", "Fifth Fleet", "Third Fleet Landing Force"
+		r'fleet(?:\s+landing\s+force)?|'
+		
+		# 7. Administrative districts & abstract concepts: "16th Dist", "22nd Amendment", "20th Century", "Third Term"
+		r'dist\.?|district|amendment|century|term|congress'
 	)
 
-	# Matches generic echelons with digits, ordinals, OR words:
-	# "1st Div", "109 Infantry", "First Division", "22nd Amendment", "20th Century", "Third Term"
+	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations:
 	GENERIC_ECHELON_RE = re.compile(
 		rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})$',
 		re.IGNORECASE
