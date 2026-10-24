@@ -2086,7 +2086,7 @@ def merge_cluster_canonical_nearest_neighbor(
 				print(
 					f"  {rank}. [BLOCKED] canon_sim={bp['canonical_similarity']:.4f} | centroid_sim={bp['centroid_similarity']:.4f} < {min_centroid_similarity}\n"
 					f"     Cluster {ca['id']} (canonical={repr(ca['canonical'])}, medoid={repr(ca['medoid'])}): {ca['members'][:3]}\n"
-					f"     Cluster {cb['id']} (canonical={repr(cb['canonical'])}, medoid={repr(cb['medoid'])}): {cb['members'][:3]}"
+					f"     Cluster {cb['id']} (canonical={repr(cb['canonical'])}, medoid={repr(cb['medoid'])}): {cb['members'][:3]}\n"
 				)
 
 		if report_path:
@@ -3636,6 +3636,8 @@ def remove_problematic_clustered_labels(
 		cluster_mask = df['cluster'] == cluster_id
 		clustered_labels = df[cluster_mask]['label'].tolist()
 		cluster_size = len(clustered_labels)
+		current_canonical = df[cluster_mask]['canonical'].iloc[0]
+		canonical_idx = clustered_labels.index(current_canonical)
 
 		if cluster_size < min_labels_per_cluster:
 			continue
@@ -3655,21 +3657,20 @@ def remove_problematic_clustered_labels(
 					'intra_sim':  intra_sim,
 					'size':       cluster_size,
 					'labels':     clustered_labels,
+					'canonical':  current_canonical,
 				}
 			)
 			problematic_cluster_ids.add(cluster_id)
 			removed_labels.extend(clustered_labels)
 
 	if low_cohesion_clusters and verbose:
-		print(
-			f"\n[LOW COHESION] {len(low_cohesion_clusters)} clusters (th: {low_cohesion_threshold}) -> "
-			f"Labels to remove: {sum(c['size'] for c in low_cohesion_clusters)}"
-		)
+		print(f"\n[LOW COHESION] {len(low_cohesion_clusters)} clusters ( < {low_cohesion_threshold})")
 		for i, cluster in enumerate(low_cohesion_clusters):
 			print(
 				f"{i+1:3d}/{len(low_cohesion_clusters)} "
 				f"Cluster {cluster['cluster_id']:5d} "
 				f"intra_sim: {cluster['intra_sim']:.5f} "
+				f"canonical: {cluster['canonical']:<25} "
 				f"{cluster['labels']}"
 			)
 
@@ -5844,7 +5845,7 @@ def cluster(
 	merge_canonical_min_centroid_sim: float = 0.70,
 	merge_max_size: Optional[int] = None,
 	min_cluster_size: int = 2,
-	low_cohesion_threshold=0.60,
+	low_cohesion_threshold=0.56,
 	poor_canonical_threshold=0.60,
 	merge_singletons: bool = True,
 	use_cache: bool = True,
