@@ -3145,23 +3145,20 @@ def get_clustered_labels(
 	valid_k_max = int(num_samples // min_consolidation)
 	if verbose:
 		print("\n[ADAPTIVE OPTIMAL CLUSTER SELECTION]")
-		print(f"   ├─ num_samples                           : {num_samples}")
-		print(f"   ├─ Target intra-cluster similarity       : {target_intra_similarity}")
-		print(f"   ├─ Min cluster size                      : {min_cluster_size}")
-		print(f"   ├─ Merge singletons                      : {merge_singletons}")
-		print(f"   ├─ Consolidation (Reduction ratio) range : {min_consolidation}x - {max_consolidation}x")
-		print(f"   ├─ Required and valid clusters range     : {valid_k_min} ≤ k ≤ {valid_k_max}")
-		print(f"   ├─ Target singleton ratio                : {target_singleton_ratio}")
-		print(f"   ├─ Quality weight                        : {quality_vs_consolidation_weight*100:.0f}%")
-		print(f"   ├─ Embeddings (X)                        : {type(X)} {X.shape} {X.dtype}")
-		print(f"   └─ Linkage (Z)                           : {type(linkage_matrix)} {linkage_matrix.shape}")
+		print(f"  ├─ num_samples                     {num_samples}")
+		print(f"  ├─ Embeddings (X)                  {type(X)} {X.shape} {X.dtype}")
+		print(f"  ├─ Linkage (Z)                     {type(linkage_matrix)} {linkage_matrix.shape}")
+		print(f"  ├─ Min cluster size                {min_cluster_size}")
+		print(f"  ├─ Merge singletons                {merge_singletons}")
+		print(f"  ├─ Consolidation                   {min_consolidation}x - {max_consolidation}x")
+		print(f"  ├─ Required clusters               {valid_k_min} ≤ k ≤ {valid_k_max}")
+		print(f"  ├─ Target singleton ratio          {target_singleton_ratio}")
+		print(f"  ├─ Quality weight                  {quality_vs_consolidation_weight*100}%")
+		print(f"  └─ Target intra-cluster similarity {target_intra_similarity}")
 	
-	if verbose:
-		print(f"\n[STAGE 1] COARSE SEARCH - Finding quality plateau: {valid_k_min} ≤ k ≤ {valid_k_max}")
-
 	# Adaptive coarse range based on dataset size
 	if num_samples > int(3e4):
-		coarse_step = 1000
+		coarse_step = 1200
 	elif num_samples > int(1e4):
 		coarse_step = 500
 	elif num_samples > int(5e3):
@@ -3175,6 +3172,7 @@ def get_clustered_labels(
 	coarse_range = range(coarse_start, coarse_end, coarse_step)  # explicit +1, drop overshoot
 
 	if verbose:
+		print(f"\n[STAGE 1] COARSE SEARCH - Finding quality plateau: {valid_k_min} ≤ k ≤ {valid_k_max}")
 		print(f"\t{len(coarse_range)} Testing Config {list(coarse_range)} (step={coarse_step})")
 		print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Status':<50} {'Reason'}")
 		print("-" * 200)
@@ -5978,7 +5976,7 @@ def cluster(
 			label_texts=unique_labels,
 			threshold=active_merge_threshold,
 			max_merged_size=merge_max_size,
-			report_path=os.path.splitext(clusters_fname)[0] + "_cluster_merges.json",
+			report_path=os.path.splitext(clusters_fname)[0] + "_medoid_merges.json",
 			verbose=verbose,
 		)
  
@@ -6059,7 +6057,7 @@ def cluster(
 			threshold=active_canonical_threshold,
 			min_centroid_similarity=merge_canonical_min_centroid_sim,
 			max_merged_size=merge_max_size,
-			report_path=os.path.splitext(clusters_fname)[0] + "_canonical_cluster_merges.json",
+			report_path=os.path.splitext(clusters_fname)[0] + "_canonical_merges.json",
 			verbose=verbose,
 		)
 		df["cluster"] = clustered_labels
