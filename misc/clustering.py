@@ -1050,7 +1050,7 @@ def merge_cluster_medoid_nearest_neighbor(
 					f"  {rank}. sim={m['similarity']:.4f} (Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
 					f"     Cluster {ca['id']} (medoid=\"{ca['medoid']}\"): {ca['members'][:3]}\n"
 					f"     Cluster {cb['id']} (medoid=\"{cb['medoid']}\"): {cb['members'][:3]}\n"
-					f"     -> Merged medoid: \"{m['merged']['medoid']}\""
+					f"     -> Merged medoid: {m['merged']['medoid']}\n"
 				)
 
 			print("\nTop 5 Borderline Merges (Near Cutoff Threshold):")
@@ -1062,9 +1062,8 @@ def merge_cluster_medoid_nearest_neighbor(
 					f"  {rank}. sim={m['similarity']:.4f} (Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
 					f"     Cluster {ca['id']} (medoid=\"{ca['medoid']}\"): {ca['members'][:3]}\n"
 					f"     Cluster {cb['id']} (medoid=\"{cb['medoid']}\"): {cb['members'][:3]}\n"
-					f"     -> Merged medoid: \"{m['merged']['medoid']}\""
+					f"     -> Merged medoid: {m['merged']['medoid']}\n"
 				)
-				print()
 
 			print("  (lowest-similarity merges shown; these are the borderline ones to review)")
 
@@ -3119,6 +3118,8 @@ def get_clustered_labels(
 	target_intra_similarity: float,
 	min_consolidation: float,
 	max_consolidation: float,
+	min_singleton_ratio: float,
+	max_singleton_ratio: float,
 	target_singleton_ratio: float,
 	quality_vs_consolidation_weight: float,
 	min_singleton_merge_sim: Optional[float],
@@ -3164,7 +3165,7 @@ def get_clustered_labels(
 	elif num_samples > int(5e3):
 		coarse_step = 100
 	else:
-		coarse_step = max(1, (valid_k_max - valid_k_min) // 10)  # ~10 steps in valid zone
+		coarse_step = max(1, (valid_k_max - valid_k_min) // 5)  # ~5 steps in valid zone
 	
 	# Extend range to cover from 10% of valid_k_min up to valid_k_max
 	coarse_start = max(10, valid_k_min // 2)
@@ -3222,7 +3223,7 @@ def get_clustered_labels(
 		
 		# Check if in target range
 		in_consol_range = min_consolidation <= consolidation <= max_consolidation
-		in_singleton_range = 0.005 <= singleton_ratio <= 0.03  # 0.5%-3% acceptable
+		in_singleton_range = min_singleton_ratio <= singleton_ratio <= max_singleton_ratio
 
 		status = ""
 		reason = ""
@@ -3237,8 +3238,8 @@ def get_clustered_labels(
 		elif in_consol_range and in_singleton_range:
 			status = "✓ OPTIMAL RANGE (consolidation + singletons)"
 			reason = (
-				f"Consol {consolidation:.2f}x in [{min_consolidation},{max_consolidation}] "
-				f"AND singleton {singleton_ratio:.4f} in [0.005,0.03]"
+				f"Consol {consolidation:.2f}x in [{min_consolidation}, {max_consolidation}] "
+				f"AND singleton: {n_singletons} {singleton_ratio*100:.3f}%"
 			)
 			if plateau_k is None:
 				plateau_k = n_clusters
@@ -5833,6 +5834,8 @@ def cluster(
 	target_intra_similarity: float = 0.8, # 0.69,
 	min_consolidation: float = 4.0, #3.5, #4.0, # 3.8, #5.0, 
 	max_consolidation: float = 7.5, #6.0, #6.5, # 5.0, #7.5, 
+	min_singleton_ratio: float = 1.5e-2, # 1.5%
+	max_singleton_ratio: float = 3.0e-2, # 3.0%
 	min_singleton_merge_sim: Optional[float] = 0.60,
 	merge_near_duplicate_clusters_medoid: bool = False,
 	merge_near_duplicate_clusters_canonical: bool = False,
@@ -5942,6 +5945,8 @@ def cluster(
 		target_intra_similarity=target_intra_similarity,
 		min_consolidation=min_consolidation,
 		max_consolidation=max_consolidation,
+		min_singleton_ratio=min_singleton_ratio,
+		max_singleton_ratio=max_singleton_ratio,
 		target_singleton_ratio=0.015,
 		quality_vs_consolidation_weight=0.5,
 		merge_singletons=merge_singletons,
