@@ -1129,7 +1129,7 @@ def _post_process_(
 		
 		# 7. Administrative districts & abstract concepts
 		# "16th Dist", "22nd Amendment", "20th Century", "Third Term", "Congress", "1st FG", "38th Parallel"
-		r'dist\.?|district|amendment|century|term|congress|fg|parallel'
+		r'dist\.?|district|amendment|century|term|congress|fg|fs|parallel'
 	)
 
 	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations:
