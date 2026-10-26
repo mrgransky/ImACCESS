@@ -2239,7 +2239,7 @@ def get_singletons(
 	verbose: bool=False
 ):
 	print("="*100)
-	print(f"[SINGETONS] {df.shape}")
+	print(f"[SINGLETONS] {df.shape}")
 	print(df.info(verbose=True, memory_usage="deep"))
 
 	COLUMNs = [

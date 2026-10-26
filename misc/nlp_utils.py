@@ -1103,19 +1103,21 @@ def _post_process_(
 	)
 
 	_ECHELON_PATTERN = (
-		# 1. High command echelons: "Third Army", "12th Army Group", "V Corps", "VII Army Corps", "8th Army Headquarters"
+		# 1. High command echelons
+		# "Third Army", "12th Army Group", "V Corps", "VII Army Corps", "8th Army Headquarters"
 		r'(?:army\s+group|army(?:\s+headquarters|\s+hq)?|(?:army\s+)?corps(?:\s+headquarters|\s+hq)?)|'
 		
 		# 2. Ground echelons (with or without branch role):
-		#    "79th Division", "102nd Infantry Division", "3rd Armored Division", "101st Airborne Division",
-		#    "73rd Infantry Brigade", "111th Infantry Regiment", "555th Parachute Infantry Battalion"
+		# "79th Division", "102nd Infantry Division", "3rd Armored Division", "101st Airborne Division",
+		# "73rd Infantry Brigade", "111th Infantry Regiment", "555th Parachute Infantry Battalion"
 		rf'(?:{_GROUND_ROLES})?(?:div\.?|division|brig\.?|brigade|reg\.?|regt\.?|regiment|bn\.?|battalion)(?:\s+artillery|\s+infantry)?|'
 		
-		# 3. Reversed regiment notation: "328th Regiment Infantry", "71st Regiment Infantry"
+		# 3. Reversed regiment notation
+		# "328th Regiment Infantry", "71st Regiment Infantry"
 		r'(?:reg\.?|regt\.?|regiment)\s+infantry|'
 		
 		# 4. Standalone combat branches acting as echelons:
-		#    "53rd Infantry", "27th Marines", "102nd Engineers", "9th Cavalry", "9th Field Artillery"
+		# "53rd Infantry", "27th Marines", "102nd Engineers", "9th Cavalry", "9th Field Artillery"
 		r'infantry|inf\.?|marines|cavalry|cav\.?|engineers?|engr\.?|engrs\.?|arty\.?|artillery|field\s+artillery|'
 		
 		# 5. Air echelons (with or without mission role):
@@ -1125,8 +1127,9 @@ def _post_process_(
 		# 6. Naval formations: "6th Fleet", "Fifth Fleet", "Third Fleet Landing Force"
 		r'fleet(?:\s+landing\s+force)?|'
 		
-		# 7. Administrative districts & abstract concepts: "16th Dist", "22nd Amendment", "20th Century", "Third Term"
-		r'dist\.?|district|amendment|century|term|congress'
+		# 7. Administrative districts & abstract concepts
+		# "16th Dist", "22nd Amendment", "20th Century", "Third Term", "Congress", "1st FG", "38th Parallel"
+		r'dist\.?|district|amendment|century|term|congress|fg|parallel'
 	)
 
 	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations:
