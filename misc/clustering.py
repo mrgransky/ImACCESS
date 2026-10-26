@@ -696,10 +696,7 @@ def get_cluster_medoid_nearest_neighbor(
 				f"Kneedle elbow={dyn['t_elbow']:.4f} | "
 				f"Mutual 1-NN p75={t_mut_str}"
 			)
-			print(
-				f"Active Threshold    : "
-				f"threshold={active_threshold:.4f} ({summary['threshold_mode']})"
-			)
+			print(f"Active Threshold: {active_threshold:.4f} ({summary['threshold_mode']})")
 		print("-" * 120)
 		print(
 			f"  {'>= Sim':<8} {'All Clusters':>16} {'Mutual 1-NN':>18} {'One-Way 1-NN':>18} "
@@ -2042,7 +2039,7 @@ def merge_cluster_canonical_nearest_neighbor(
 			display_pool = synonym_merges if synonym_merges else merges
 			sorted_by_sim = sorted(display_pool, key=lambda m: (m['canonical_similarity'], m['centroid_similarity']), reverse=True)
 
-			topk = min(25, len(synonym_merges))
+			topk = min(10, len(synonym_merges))
 			print(f"Top {topk} Closest Canonical Synonym Merges (Highest Confidence):")
 			for rank, m in enumerate(sorted_by_sim[:topk], 1):
 				comb_sz = m['merged']['size']
@@ -2053,8 +2050,8 @@ def merge_cluster_canonical_nearest_neighbor(
 				print(
 					f"  {rank}. canon_sim={m['canonical_similarity']:.4f} | centroid_sim={m['centroid_similarity']:.4f} "
 					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"     Cluster {ca['id']} (canonical={repr(ca['canonical']) + va}, sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f}, medoid={repr(ca['medoid'])}): {ca['members'][:3]}\n"
-					f"     Cluster {cb['id']} (canonical={repr(cb['canonical']) + vb}, sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f}, medoid={repr(cb['medoid'])}): {cb['members'][:3]}\n"
+					f"     Cluster {ca['id']:6d} canonical: {repr(ca['canonical']) + va:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(ca['medoid']):<35} {ca['members'][:3]}\n"
+					f"     Cluster {cb['id']:6d} canonical: {repr(cb['canonical']) + vb:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(cb['medoid']):<35} {cb['members'][:3]}\n"
 					f"     -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)
 
@@ -2069,24 +2066,24 @@ def merge_cluster_canonical_nearest_neighbor(
 				print(
 					f"  {rank}. canon_sim={m['canonical_similarity']:.4f} | centroid_sim={m['centroid_similarity']:.4f} "
 					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"     Cluster {ca['id']} (canonical={repr(ca['canonical']) + va}, sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f}, medoid={repr(ca['medoid'])}): {ca['members'][:3]}\n"
-					f"     Cluster {cb['id']} (canonical={repr(cb['canonical']) + vb}, sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f}, medoid={repr(cb['medoid'])}): {cb['members'][:3]}\n"
+					f"     Cluster {ca['id']:6d} canonical: {repr(ca['canonical']) + va:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid={repr(ca['medoid']):<35} {ca['members'][:3]}\n"
+					f"     Cluster {cb['id']:6d} canonical: {repr(cb['canonical']) + vb:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid={repr(cb['medoid']):<35} {cb['members'][:3]}\n"
 					f"     -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)
-			print("  (lowest-similarity canonical merges shown; these are the borderline ones to review)")
+			print("  (lowest-similarity canonical merges shown; borderline ones to review)")
 
 		if centroid_blocked_pairs:
 			print("-" * 120)
 			print(
-				f"Centroid Coherence Guard Blocked {len(centroid_blocked_pairs)} Mutual Canonical Pair(s) "
+				f"[BLOCKED] Centroid Coherence Guard Blocked {len(centroid_blocked_pairs)} Mutual Canonical Pair(s) "
 				f"(canonical_sim >= {threshold:.4f} but centroid_sim < {min_centroid_similarity}):"
 			)
-			for rank, bp in enumerate(sorted(centroid_blocked_pairs, key=lambda x: -x['canonical_similarity'])[:5], 1):
+			for rank, bp in enumerate(sorted(centroid_blocked_pairs, key=lambda x: -x['canonical_similarity']), 1):
 				ca, cb = bp['cluster_a'], bp['cluster_b']
 				print(
-					f"  {rank}. [BLOCKED] canon_sim={bp['canonical_similarity']:.4f} | centroid_sim={bp['centroid_similarity']:.4f} < {min_centroid_similarity}\n"
-					f"     Cluster {ca['id']} (canonical={repr(ca['canonical'])}, medoid={repr(ca['medoid'])}): {ca['members'][:3]}\n"
-					f"     Cluster {cb['id']} (canonical={repr(cb['canonical'])}, medoid={repr(cb['medoid'])}): {cb['members'][:3]}\n"
+					f"  {rank}. canon_sim={bp['canonical_similarity']:.4f} | centroid_sim={bp['centroid_similarity']:.4f} < {min_centroid_similarity}\n"
+					f"     Cluster {ca['id']:6d} canonical: {repr(ca['canonical']):<35} medoid: {repr(ca['medoid']):<35} {ca['members'][:3]}\n"
+					f"     Cluster {cb['id']:6d} canonical: {repr(cb['canonical']):<35} medoid: {repr(cb['medoid']):<35} {cb['members'][:3]}\n"
 				)
 
 		if report_path:
@@ -2668,16 +2665,17 @@ def _normalize_label_case(
 
 	return normalized_documents
 
-def _check_json_csv_consistency(df: pd.DataFrame, json_path: str) -> list:
+def _check_json_csv_consistency(df: pd.DataFrame, json_path: str, verbose: bool = False) -> list:
 	with open(json_path, encoding="utf-8") as f:
 		js_canon = {c["cluster_id"]: c["canonical"] for c in json.load(f)["clusters"]}
 	csv_canon = df[~df["is_injected"]].groupby("cluster")["canonical"].first().to_dict()
 	mismatch = [(cid, js_canon[cid], csv_canon.get(cid)) for cid in js_canon if csv_canon.get(cid) != js_canon[cid]]
 
-	print(
-		f"[CONSISTENCY] JSON vs CSV mismatches: {len(mismatch)} | distinct canonicals "
-		f"JSON {len(set(js_canon.values()))}, CSV {len(set(csv_canon.values()))}"
-	)
+	if verbose:
+		print(
+			f"[CONSISTENCY] JSON vs CSV mismatches: {len(mismatch)} | distinct canonicals "
+			f"JSON {len(set(js_canon.values()))}, CSV {len(set(csv_canon.values()))}"
+		)
 	
 	return mismatch
 
@@ -5823,6 +5821,119 @@ def assign_canonical_labels(
 
 	return cluster_canonicals
 
+def map_inject_and_clean_clusters(
+	df: pd.DataFrame,
+	X: np.ndarray,
+	cluster_canonicals: Dict[int, Dict],
+	canonical_emb_map: Dict[str, np.ndarray],
+	model: Any,
+	batch_size: int,
+	encode_prompt: Optional[str] = None,
+	low_cohesion_threshold: float = 0.52,
+	poor_canonical_threshold: float = 0.55,
+	clusters_fname: Optional[str] = None,
+	verbose: bool = False,
+) -> Tuple[pd.DataFrame, np.ndarray, List[str]]:
+	"""
+	STEP 7: Map canonical labels, inject virtual canonical rows for validation,
+	filter problematic clusters, harmonize display surfaces, and export CSV.
+
+	Parameters
+	----------
+	df : pd.DataFrame
+		DataFrame containing 'label' and 'cluster' assignments.
+	X : np.ndarray
+		Embedding matrix aligned with rows of df.
+	cluster_canonicals : Dict[int, Dict]
+		Mapping of cluster IDs to canonical metadata.
+	canonical_emb_map : Dict[str, np.ndarray]
+		Lookup dictionary for precomputed canonical embeddings.
+	model : Any
+		SentenceTransformer model for encoding virtual canonicals if not in canonical_emb_map.
+	batch_size : int
+		Batch size for fallback encoding.
+	encode_prompt : Optional[str]
+		Prompt for fallback encoding.
+	low_cohesion_threshold : float
+		Cosine intra-similarity threshold to drop low-cohesion clusters.
+	poor_canonical_threshold : float
+		Representativeness threshold to drop poorly represented canonical clusters.
+	clusters_fname : Optional[str]
+		Base CSV path used to export the final consolidated DataFrame.
+	verbose : bool
+		Whether to print injection, cleaning, and harmonization summaries.
+
+	Returns
+	-------
+	df : pd.DataFrame
+		Final cleaned and harmonized DataFrame.
+	X_clean : np.ndarray
+		Embedding matrix aligned with cleaned df.
+	removed_labels : List[str]
+		List of labels removed by low-cohesion / poor-canonical filters.
+	"""
+	df["canonical"] = df["cluster"].map(lambda c: cluster_canonicals[c]["canonical"])
+	df["is_injected"] = False
+
+	# Every virtual canonical is injected as a row of its OWN cluster, even when
+	# the same string is a real label in another cluster. Injected rows exist only
+	# so internal checks (remove_problematic_clustered_labels, the quality report)
+	# find the canonical among the cluster's rows. They are excluded from the
+	# label -> canonical mapping in get_canonical_labels (is_injected == False),
+	# so a duplicate string can never overwrite a real label's mapping.
+	real_labels = set(df["label"])
+	virtual_rows, virtual_texts = [], []
+	for cid, meta in cluster_canonicals.items():
+		if not meta.get("virtual"):
+			continue
+		vh = meta["canonical"]
+		virtual_rows.append({"label": vh, "cluster": cid, "canonical": vh, "is_injected": True})
+		virtual_texts.append(vh)
+
+	if virtual_rows:
+		if all(vh in canonical_emb_map for vh in virtual_texts):
+			virtual_embs = np.vstack([canonical_emb_map[vh] for vh in virtual_texts]).astype(np.float32)
+		else:
+			virtual_embs = _encode_(model, virtual_texts, batch_size, encode_prompt)
+		df = pd.concat([df, pd.DataFrame(virtual_rows)], ignore_index=True)
+		X = np.vstack([X, virtual_embs])
+
+	if verbose:
+		shared = sum(1 for t in virtual_texts if t in real_labels)
+		print(
+			f"\n[INJECT] {len(virtual_rows)} virtual canonical row(s) injected "
+			f"({shared} share a string with a real label in another cluster; "
+			f"excluded from the label mapping via is_injected)"
+		)
+		print(df.info(verbose=verbose, memory_usage=True))
+
+	df, X_clean, removed_labels = remove_problematic_clustered_labels(
+		df=df,
+		embeddings=X,
+		low_cohesion_threshold=low_cohesion_threshold,
+		poor_canonical_threshold=poor_canonical_threshold,
+		verbose=verbose,
+	)
+
+	df["canonical_internal"] = df["canonical"]
+	rename = {
+		m["canonical"]: m["canonical_harmonized"]
+		for m in cluster_canonicals.values()
+		if m.get("changed_by_harmonize") and m.get("canonical_harmonized")
+	}
+	if rename:
+		df["canonical"] = df["canonical"].replace(rename)
+		if verbose:
+			print(f"\n[HARMONIZE DISPLAY] {len(rename)} canonical surface rename(s)")
+			for old, new in list(rename.items()):
+				print(f"  {repr(old):<30} -> {new!r}")
+
+	if clusters_fname is not None:
+		out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
+		df.to_csv(out_csv, index=False)
+
+	return df, X_clean, removed_labels
+
 def cluster(
 	labels: List[List[str]],
 	model_id: str,
@@ -5965,7 +6076,7 @@ def cluster(
 		label_texts=unique_labels,
 		max_merged_size=merge_max_size,
 		threshold=merge_close_clusters_threshold,
-		review_path=os.path.splitext(clusters_fname)[0] + "_neighbor_pairs.json",
+		review_path=os.path.splitext(clusters_fname)[0] + "_medoid_neighbor_pairs.json",
 		verbose=verbose,
 	)
 
@@ -6070,66 +6181,19 @@ def cluster(
 		canonical_merges_done = n_clusters_pre_canon_merge - len(np.unique(clustered_labels))
 
 	# STEP 7: MAP CANONICALS + INJECT VIRTUAL ROWS + CLEAN
-	df["canonical"] = df["cluster"].map(lambda c: cluster_canonicals[c]["canonical"])
-	df["is_injected"] = False
- 
-	# Every virtual canonical is injected as a row of its OWN cluster, even when
-	# the same string is a real label in another cluster. Injected rows exist only
-	# so internal checks (remove_problematic_clustered_labels, the quality report)
-	# find the canonical among the cluster's rows. They are excluded from the
-	# label -> canonical mapping in get_canonical_labels (is_injected == False),
-	# so a duplicate string can never overwrite a real label's mapping.
-	real_labels = set(df["label"])
-	virtual_rows, virtual_texts = [], []
-	for cid, meta in cluster_canonicals.items():
-		if not meta.get("virtual"):
-			continue
-		vh = meta["canonical"]
-		virtual_rows.append({"label": vh, "cluster": cid, "canonical": vh, "is_injected": True})
-		virtual_texts.append(vh)
- 
-	if virtual_rows:
-		if all(vh in canonical_emb_map for vh in virtual_texts):
-			virtual_embs = np.vstack([canonical_emb_map[vh] for vh in virtual_texts]).astype(np.float32)
-		else:
-			virtual_embs = _encode_(model, virtual_texts, batch_size, encode_prompt)
-		df = pd.concat([df, pd.DataFrame(virtual_rows)], ignore_index=True)
-		X = np.vstack([X, virtual_embs])
- 
-	if verbose:
-		shared = sum(1 for t in virtual_texts if t in real_labels)
-		print(
-			f"\n[INJECT] {len(virtual_rows)} virtual canonical row(s) injected "
-			f"({shared} share a string with a real label in another cluster; "
-			f"excluded from the label mapping via is_injected)"
-		)
-		print(df.info(verbose=verbose, memory_usage=True))
-
-	# sys.exit()
-
-	df, X_clean, removed_labels = remove_problematic_clustered_labels(
+	df, X_clean, removed_labels = map_inject_and_clean_clusters(
 		df=df,
-		embeddings=X,
+		X=X,
+		cluster_canonicals=cluster_canonicals,
+		canonical_emb_map=canonical_emb_map,
+		model=model,
+		batch_size=batch_size,
+		encode_prompt=encode_prompt,
 		low_cohesion_threshold=low_cohesion_threshold,
 		poor_canonical_threshold=poor_canonical_threshold,
+		clusters_fname=clusters_fname,
 		verbose=verbose,
 	)
-
-	df["canonical_internal"] = df["canonical"]
-	rename = {
-		m["canonical"]: m["canonical_harmonized"]
-		for m in cluster_canonicals.values()
-		if m.get("changed_by_harmonize") and m.get("canonical_harmonized")
-	}
-	if rename:
-		df["canonical"] = df["canonical"].replace(rename)
-		if verbose:
-			print(f"\n[HARMONIZE DISPLAY] {len(rename)} canonical surface rename(s)")
-			for old, new in list(rename.items()):
-				print(f"  {repr(old):<30} -> {new!r}")
-
-	out_csv = clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")
-	df.to_csv(out_csv, index=False)
 
 	# cluster ids were re-indexed, so JSON and CSV ids no longer line up
 	if removed_labels or canonical_merges_done > 0:
@@ -6138,39 +6202,36 @@ def cluster(
 			if removed_labels
 			else f"merge_cluster_canonical_nearest_neighbor merged {canonical_merges_done} cluster(s)"
 		)
-		print(f"[CONSISTENCY] skipped pre-merge JSON vs post-merge CSV id check ({reason})")
+		print(f"[CONSISTENCY] skipped pre-merge JSON vs post-merge CSV id check\n{reason}")
 	else:
 		_check_json_csv_consistency(
 			df, 
-			os.path.splitext(clusters_fname)[0] + "_canonical_selection.json"
+			os.path.splitext(clusters_fname)[0] + "_canonical_selection.json",
+			verbose=verbose,
 		)
 
-	unique_labels_array = df["label"].values
-	clustered_labels = df["cluster"].values
-	
-	# Quality metrics must use member-safe names, not display renames.
-	canonical_map = df.groupby("cluster")["canonical_internal"].first().to_dict()
-
 	if verbose:
-		print("\n[CLUSTER QUALITY]")
-		print(f"  ├─ Updated clustered_labels: {len(np.unique(clustered_labels))} unique clusters")
-		print(f"  ├─ Updated canonical_map: {len(canonical_map)} mappings")
-		print(f"  ├─ unique_labels_array: {type(unique_labels_array)} {unique_labels_array.shape}")
-		print(f"  ├─ clustered_labels: {type(clustered_labels)} {clustered_labels.shape}")
-		print(f"  ├─ label_freq_dict: {len(label_freq_dict)} labels with frequencies")
-		print(f"  ├─ df reports: {df['cluster'].nunique()} clusters")
-		print(f"  └─ clustered_labels reports: {len(np.unique(clustered_labels))} clusters")
-	
-	if df["cluster"].nunique() != len(np.unique(clustered_labels)):
-		print("[WARNING] Mismatch detected! Analysis may be stale!")
-	else:
-		print("All consistent!")
+		unique_labels_array = df["label"].values
+		clustered_labels = df["cluster"].values
+		
+		# Quality metrics must use member-safe names, not display renames.
+		canonical_map = df.groupby("cluster")["canonical_internal"].first().to_dict()
 
-	if verbose:
 		print("-" * 100)
-		print(f"[DONE] {len(df)} labels -> {df['cluster'].nunique()} clusters")
+		print("[CLUSTER QUALITY]")
+		print(f"  ├─ Updated clustered_labels {len(np.unique(clustered_labels))} unique clusters")
+		print(f"  ├─ Updated canonical_map    {len(canonical_map)} mappings")
+		print(f"  ├─ unique_labels_array      {type(unique_labels_array)} {unique_labels_array.shape}")
+		print(f"  ├─ clustered_labels         {type(clustered_labels)} {clustered_labels.shape}")
+		print(f"  ├─ label_freq_dict          {len(label_freq_dict)} labels with frequencies")
+		print(f"  ├─ df reports               {df['cluster'].nunique()} clusters")
+		print(f"  └─ {len(df)} labels -> {df['cluster'].nunique()} clusters")
+	
+		if df["cluster"].nunique() != len(np.unique(clustered_labels)):
+			print("[WARNING] Mismatch detected! Analysis may be stale!")
+
 		print(df.head(20))
-		print(f"[TOTAL CLUSTERING ELAPSED TIME] {time.time()-st_t:.2f} sec.")
+		print(f"[TOTAL CLUSTERING ELAPSED TIME] {time.time()-st_t:.2f} sec")
 		print("-" * 100)
 	
 	# sys.exit()
