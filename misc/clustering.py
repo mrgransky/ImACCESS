@@ -436,6 +436,7 @@ def _json_default(obj):
 def _estimate_dynamic_neighbor_thresholds(
 	sims: np.ndarray,
 	mutual_mask: np.ndarray,
+	verbose: bool = False,
 ) -> Dict[str, Any]:
 	"""
 	Data‑driven heuristic that turns a distribution of pairwise similarity scores into a handful 
@@ -497,9 +498,8 @@ def _estimate_dynamic_neighbor_thresholds(
 			"t_mutual_p75": t_mut_p75,
 			"sigma_mad": sigma,
 	}
-
-
 	"""
+
 	n = len(sims)
 	if n < 2:
 		return {
@@ -509,6 +509,11 @@ def _estimate_dynamic_neighbor_thresholds(
 			't_mutual_p75': None,
 			'sigma_mad': 0.0,
 		}
+
+	if verbose:
+		print(f"[DYNAMIC] threshold estimation")
+		print(f"  ├─ sims        {type(sims)} {sims.shape}")
+		print(f"  ├─ mutual_mask {type(mutual_mask)} {mutual_mask.shape} True: {mutual_mask.sum()}")
 
 	# Stage 1: Estimator 1 — Robust Statistical Dispersion Fence (t_mad)
 	med = float(np.median(sims))
@@ -540,6 +545,9 @@ def _estimate_dynamic_neighbor_thresholds(
 		't_mutual_p75': round(t_mut_p75, 4) if t_mut_p75 is not None else None,
 		'sigma_mad': round(sigma_mad, 4),
 	}
+
+	if verbose:
+		print(f"  └─ {result}")
 
 	return result
 
@@ -629,7 +637,7 @@ def get_cluster_medoid_nearest_neighbor(
 	oneway_mask = ~mutual_mask
 	eligible_mask = np.array([bool(info[c]['merge_eligible']) for c in ids], dtype=bool)
 
-	dyn = _estimate_dynamic_neighbor_thresholds(sims, mutual_mask)
+	dyn = _estimate_dynamic_neighbor_thresholds(sims, mutual_mask, verbose=verbose)
 	is_dynamic_thresh = threshold is None
 	active_threshold = float(dyn['threshold'] if is_dynamic_thresh else threshold)
 
@@ -1376,7 +1384,7 @@ def get_cluster_canonical_nearest_neighbor(
 	oneway_mask = ~mutual_mask
 	eligible_mask = np.array([bool(info[c]['merge_eligible']) for c in ids], dtype=bool)
 
-	dyn = _estimate_dynamic_neighbor_thresholds(sims, mutual_mask)
+	dyn = _estimate_dynamic_neighbor_thresholds(sims, mutual_mask, verbose=verbose)
 
 	is_dynamic_thresh = threshold is None
 	active_threshold = float(dyn['threshold'] if is_dynamic_thresh else threshold)
@@ -1601,15 +1609,15 @@ def get_cluster_canonical_nearest_neighbor(
 			n_same_canon = sum(1 for (a, b) in pairs if cluster_canon_strs[a].lower() == cluster_canon_strs[b].lower())
 			n_synonym_pairs = len(pairs) - n_same_canon
 
-			print(f"  Candidate Canonical Pairs at Active Threshold (canonical_similarity >= {active_threshold:.4f} [{summary['threshold_mode']}]):")
-			print(f"    • Unique pairs extracted  : {len(pairs):,} ({n_mut_pairs:,} mutual 1-NN, {n_asym_pairs:,} one-way 1-NN)")
-			print(f"    • Lexical breakdown       : {n_synonym_pairs:,} distinct synonym pairs, {n_same_canon:,} identical-canonical pairs")
+			print(f"Candidate Canonical Pairs at Active Threshold (canonical_similarity >= {active_threshold:.4f} [{summary['threshold_mode']}]):")
+			print(f"  ├─ Unique pairs extracted {len(pairs):,} ({n_mut_pairs:,} mutual 1-NN, {n_asym_pairs:,} one-way 1-NN)")
+			print(f"  ├─ Lexical breakdown      {n_synonym_pairs:,} distinct synonym pairs, {n_same_canon:,} identical-canonical pairs")
 			print(
-				f"    • Step 6b merge-eligible  : {n_mrg_pairs:,} mutual pairs "
+				f"  ├─ Step 6b merge-eligible {n_mrg_pairs:,} mutual pairs "
 				f"({n_cent_blocked:,} blocked by centroid_sim < {min_centroid_similarity:.2f}, "
 				f"{n_size_blocked:,} blocked by size)"
 			)
-			print(f"    • Individual clusters     : {n_cand_clusters:,} ({100.0 * n_cand_clusters / max(n_clusters, 1):.1f}% of total clusters)")
+			print(f"  └─ Individual clusters    {n_cand_clusters:,} ({100.0 * n_cand_clusters / max(n_clusters, 1):.1f}% of total clusters)")
 
 			# Show top synonym pairs (distinct canonical strings)
 			synonym_pairs = [
@@ -1757,6 +1765,7 @@ def merge_cluster_canonical_nearest_neighbor(
 		dyn_init = _estimate_dynamic_neighbor_thresholds(
 			sims=nn_canon_sim_init.astype(float),
 			mutual_mask=mutual_mask_init,
+			verbose=verbose,
 		)
 		threshold = float(dyn_init['threshold'])
 		threshold_mode = "dynamic"
@@ -2051,7 +2060,7 @@ def merge_cluster_canonical_nearest_neighbor(
 		canon_red = n_unique_canon_before - n_unique_canon_after
 
 		print("=" * 120)
-		print("[MERGE CLUSTERS (with canonical neighbors)] Multi-Round 1-NN Canonical Label Merging Diagnostics")
+		print("[MERGE CLUSTERS (with canonical neighbors)]\nMulti-Round 1-NN Canonical Label Merging Diagnostics")
 		print(
 			f"Policy: canonical_threshold >= {threshold:.5f} ({threshold_mode}) | "
 			f"min_centroid_similarity >= {min_centroid_similarity:.2f} | "
@@ -3345,7 +3354,7 @@ def get_clustered_labels(
 
 		# Early stopping: If in optimal range for 2 consecutive steps
 		if len(coarse_results) >= 2:
-			recent = coarse_results[-2:]
+			recent = coarse_results[-2:] # # Looks at the last TWO evaluations
 			both_optimal = all(
 				r['intra_sim'] >= target_intra_similarity * 0.95 and
 				min_consolidation <= r['consolidation'] <= max_consolidation
