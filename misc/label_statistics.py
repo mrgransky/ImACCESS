@@ -2205,7 +2205,7 @@ def diagnose_inter_label_similarity(
 	export_records = all_near_duplicates if all_near_duplicates else top_pairs_records
 	if output_dir is not None and export_records:
 		os.makedirs(output_dir, exist_ok=True)
-		csv_path = os.path.join(output_dir, f"near_duplicate_labels_{column_name}.csv")
+		csv_path = os.path.join(output_dir, f"clustered_near_duplicate_labels_{column_name}.csv")
 		pd.DataFrame(export_records).to_csv(csv_path, index=False)
 		if verbose:
 			print(f"  Saved {len(export_records):,} near-duplicate pairs to:\n    {csv_path}")

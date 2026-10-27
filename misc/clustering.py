@@ -1529,9 +1529,9 @@ def get_cluster_canonical_nearest_neighbor(
 				f"Mutual 1-NN p75={t_mut_str}"
 			)
 			print(
-				f"Active Threshold    : "
-				f"canonical_threshold={active_threshold:.4f} ({summary['threshold_mode']}) | "
-				f"min_centroid_similarity={min_centroid_similarity:.4f}"
+				f"Active Threshold "
+				f"canonical_threshold={active_threshold:.4f} ({summary['threshold_mode']}) "
+				f"min_centroid_similarity={min_centroid_similarity}"
 			)
 		print("-" * 120)
 		print(
@@ -6282,7 +6282,8 @@ def cluster(
 			if removed_labels
 			else f"merge_cluster_canonical_nearest_neighbor merged {canonical_merges_done} cluster(s)"
 		)
-		print(f"[CONSISTENCY] skipped pre-merge JSON vs post-merge CSV id check\n{reason}")
+		if verbose:
+			print(f"[CONSISTENCY] skipped pre-merge JSON vs post-merge CSV id check\n{reason}")
 	else:
 		_check_json_csv_consistency(
 			df, 
