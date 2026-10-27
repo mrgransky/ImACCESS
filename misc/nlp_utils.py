@@ -105,6 +105,16 @@ with open(geographic_references_path, 'r') as file_:
 	)
 # STOPWORDS.update(GEOGRAPHIC_REFERENCES)
 
+# 2-letter postal codes for US states + DC
+US_STATE_CODES = {
+	'al', 'ak', 'az', 'ar', 'ca', 'co', 'ct', 'de', 'fl', 'ga',
+	'hi', 'id', 'il', 'in', 'ia', 'ks', 'ky', 'la', 'me', 'md',
+	'ma', 'mi', 'mn', 'ms', 'mo', 'mt', 'ne', 'nv', 'nh', 'nj',
+	'nm', 'ny', 'nc', 'nd', 'oh', 'ok', 'or', 'pa', 'ri', 'sc',
+	'sd', 'tn', 'tx', 'ut', 'vt', 'va', 'wa', 'wv', 'wi', 'wy',
+	'dc'
+}
+
 # This DRASTICALLY improves accuracy on short text.
 languages_to_check = [
 	IsoCode639_1.EN, # English
@@ -1822,16 +1832,57 @@ def _post_process_(
 		return has_color and all_valid
 
 	def is_stopword(phrase: str, verbose: bool = False) -> bool:
-		phrase_lower = phrase.lower()
-		words = phrase_lower.split()
-		if all(word in STOPWORDS for word in words) or phrase_lower in STOPWORDS:
+		phrase_lower = phrase.lower().strip()
+		
+		# Replace word-to-word hyphens with spaces (e.g. 'African-American' -> 'african american')
+		# Keeps model numbers like 'B-17', 'P-51', 'U-505' intact
+		clean_phrase = re.sub(r'(?<=[a-z])-(?=[a-z])', ' ', phrase_lower)
+		words = clean_phrase.split()
+
+		if not words:
+			return False
+
+		# 1. Existing Stopwords check
+		if all(word in STOPWORDS for word in words) or phrase_lower in STOPWORDS or clean_phrase in STOPWORDS:
 			if verbose:
 				print(f"\t[SKIPPED] {repr(phrase):<55} stopword")
 			return True
 
-		if phrase_lower in GEOGRAPHIC_REFERENCES:
+		# 2. Direct full-string match in geographic references
+		if phrase_lower in GEOGRAPHIC_REFERENCES or clean_phrase in GEOGRAPHIC_REFERENCES:
 			if verbose:
 				print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference")
+			return True
+
+		# 3. Comma-separated: "City, Country" or "City, State/Code"
+		if ',' in phrase_lower:
+			parts = [p.strip() for p in phrase_lower.split(',')]
+			if len(parts) == 2:
+				prefix, suffix = parts[0], parts[1].rstrip('.')
+				is_suffix_geo = (suffix in US_STATE_CODES or suffix in GEOGRAPHIC_REFERENCES)
+				is_prefix_geo = prefix in GEOGRAPHIC_REFERENCES
+				
+				if (is_suffix_geo and is_prefix_geo) or (suffix in US_STATE_CODES and len(prefix) >= 3):
+					if verbose:
+						print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference (comma-separated location)")
+					return True
+
+		# 4. Suffix Stripping (handles both space and hyphen-separated compounds)
+		for n_words in (1, 2):
+			if len(words) > n_words:
+				suffix = " ".join(words[-n_words:]).strip(",. ")
+				prefix = " ".join(words[:-n_words]).strip(",. ")
+				
+				if (suffix in US_STATE_CODES or suffix in GEOGRAPHIC_REFERENCES) and prefix in GEOGRAPHIC_REFERENCES:
+					if verbose:
+						print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference (stripped suffix '{suffix}')")
+					return True
+
+		# 5. Composite check: all tokens are geographic references
+		clean_tokens = [w.strip(",. ") for w in words if w.strip(",. ")]
+		if len(clean_tokens) >= 2 and all(tok in GEOGRAPHIC_REFERENCES for tok in clean_tokens):
+			if verbose:
+				print(f"\t[SKIPPED] {repr(phrase):<55} composite geographic reference")
 			return True
 
 		return False
@@ -2442,6 +2493,7 @@ def _post_process_(
 	vocab = Counter()
 	for idx, labels in enumerate(labels_list):
 		t0 = time.time()
+
 		if labels is None:
 			processed_batch.append(None)
 			continue
@@ -2631,6 +2683,7 @@ def _post_process_(
 			# SINGULAR / PLURAL WITHIN-SAMPLE COLLAPSING
 			# 2A: Plural arrives, but singular is ALREADY stored 
 			# (e.g. current is 'Locomotives', 'locomotive' is stored)
+
 			if (
 				lemma_key.endswith('s') 
 				and not lemma_key.endswith('ss') 
@@ -2677,7 +2730,7 @@ def _post_process_(
 		processed_batch.append(results_per_sample)
 		
 		if verbose and results_per_sample:
-			print(f"[FINAL] {results_per_sample} {len(current_items)} → {len(results_per_sample)} (removed {len(current_items) - len(results_per_sample)})", end="\t")
+			print(f"[FINAL] {results_per_sample} {len(current_items)} → {len(results_per_sample)} (removed {len(current_items) - len(results_per_sample)})", end=" ")
 			print(f"[ELAPSED] {time.time() - t0:.5f} sec")
 			print('-'*150)
 
@@ -2690,11 +2743,11 @@ def _post_process_(
 
 		print("=" * 50)
 		print(f"[POST-PROCESSED] {len(processed_batch)} samples")
-		print(f"📊 DATASET STATISTICS ({col}):")
-		print(f"  ├─ Unique Labels      : {total_unique:,}")
-		print(f"  ├─ Total Occurrences  : {total_occurrences:,}")
-		print(f"  ├─ Singletons (freq=1): {singletons:,}")
-		print(f"  └─ Singleton Rate     : {singleton_rate:.2f}%")
+		print(f"📊 DATASET STATISTICS ({col})")
+		print(f"  ├─ Unique Labels       {total_unique:,}")
+		print(f"  ├─ Total Occurrences   {total_occurrences:,}")
+		print(f"  ├─ Singletons (freq=1) {singletons:,}")
+		print(f"  └─ Singleton Rate      {singleton_rate:.2f}%")
 		print(f"[TOTAL ELAPSED TIME] {time.time() - pp_st:.1f} sec")
 		# print(json.dumps(vocab, indent=2))
 		print("=" * 50)

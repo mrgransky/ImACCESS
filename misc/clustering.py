@@ -3166,7 +3166,7 @@ def get_clustered_labels(
 	
 	# Adaptive coarse range based on dataset size
 	if num_samples > int(3e4):
-		coarse_step = 1200
+		coarse_step = 1000
 	elif num_samples > int(1e4):
 		coarse_step = 500
 	elif num_samples > int(5e3):
@@ -5952,9 +5952,9 @@ def cluster(
 	nc: int,
 	linkage_method: str="ward",
 	distance_metric: str="euclidean",
-	target_intra_similarity: float = 0.8, # 0.69,
+	target_intra_similarity: float = 0.75, # 0.69,
 	min_consolidation: float = 4.0, #3.5, #4.0, # 3.8, #5.0, 
-	max_consolidation: float = 7.5, #6.0, #6.5, # 5.0, #7.5, 
+	max_consolidation: float = 8.0, #6.0, #6.5, # 5.0, #7.5, 
 	min_singleton_ratio: float = 1.5e-2, # 1.5%
 	max_singleton_ratio: float = 3.0e-2, # 3.0%
 	min_singleton_merge_sim: Optional[float] = 0.60,

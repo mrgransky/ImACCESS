@@ -347,22 +347,15 @@ Arlington
 Austin Texas
 Bakersfield
 Baltimore
-Baltimore, MD
 Beaufort
 Beaumont
 Bedford
 Berkeley
 Beverly Hills
 Blanco
-Blanco, TX
-Blanco, Texas
-Blanco Texas
 Boston
 Boylestone
 Brewster
-Brewster, NY
-Brewster NY
-Brewster New York
 Bridgeport
 Brook
 Brooklyn
@@ -409,10 +402,6 @@ Halifax
 Hollywood
 GA.
 Houston
-Houston TX
-Houston, TX
-Houston, Texas
-Houston Texas
 Ill.
 Key West
 L.A.
@@ -444,11 +433,6 @@ Jacksonville
 Kings Point
 Leadvale
 Montclair
-Montclair NJ
-Montclair, NJ
-Montclair, New Jersey
-Montclair New Jersey
-Marshall, Texas
 New York City
 Las Vegas
 Long Beach
@@ -583,6 +567,7 @@ Bagnères-de-Luchon
 Bangalore
 Bangkok
 Barcelona
+Barneville-Carteret
 Basel
 Bavaria
 Beijing
@@ -751,6 +736,7 @@ Orlando
 Oslo
 Oostende
 Ostend
+Ostia
 Galleryda
 Gijon
 Girona
@@ -920,7 +906,6 @@ Wonsan
 
 Afghan
 African
-African-American
 Algerian
 American
 Arab

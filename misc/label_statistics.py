@@ -866,9 +866,9 @@ def _semantic_jaccard_cached(
 	sets_b: List[Set[str]],
 	emb_cache: Dict[str, np.ndarray],
 	threshold: float = 0.7,
-	verbose: bool = False,
 	max_traced_samples: int = 10,
 	return_per_sample: bool = False,
+	verbose: bool = False,
 ) -> Dict:
 	"""
 	Semantic label agreement via thresholded cosine matching.
@@ -1514,14 +1514,15 @@ def get_cgd_taxonomy_supervision(
 			print(f"\n  👁️  AXIS 2 - Visual Grounding (G)")
 
 		visual_grounding = clip_grounding[source_col]["visual_grounding_clip"]
-		# descriptive measure of inter-source agreement: 
+
+		# descriptive measure of inter-source agreement:
 		# Cross-Modal Concordance
 		vlm_concordance = _semantic_jaccard_cached(
 			sets_a=parsed_sets[source_col],
 			sets_b=anchor_sets,
 			emb_cache=emb_cache,
 			threshold=semantic_threshold,
-			verbose=verbose,
+			verbose=False,
 		)["jaccard_matching"]
 
 		if verbose:
