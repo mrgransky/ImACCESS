@@ -306,11 +306,18 @@ def get_multimodal_annotation(
 				
 				# Print message and rows if any empty labels found
 				if empty_labels.any():
-					print(f"\n{col} {len(df[empty_labels])} rows with empty labels:")
-					print(
-						df[empty_labels][
-							['doc_url', 'title', 'description', 'llm_canonical_labels', 'vlm_canonical_labels', 'multimodal_canonical_labels']
-						].head(50))
+					print(f"{col:<30} rows with empty labels: {len(df[empty_labels])}")
+					# print(
+					# 	df[empty_labels][
+					# 		[
+					# 			'doc_url', 
+					# 			# 'title', 
+					# 			# 'description', 
+					# 			'llm_canonical_labels', 
+					# 			'vlm_canonical_labels', 
+					# 			'multimodal_canonical_labels'
+					# 		]
+					# 	].head(50))
 
 		before_count = len(df)
 
@@ -322,17 +329,17 @@ def get_multimodal_annotation(
 		after_count = len(df)
 
 		if verbose:
-			print(f"\n[DONE] Canonical Mapping (before: {before_count:,} after: {after_count:,})")
+			print(f"Canonical Mapping ({before_count:,} -> {after_count:,})")
 			if before_count != after_count:
 				removed = before_count - after_count
 				print(f"   Removed {removed:,} samples with no valid labels ({removed/before_count*100:.2f}%)")
 			
 			# Show some statistics
 			label_counts = df['multimodal_canonical_labels'].apply(len)
-			print(f"\nLabels per sample:")
-			print(f"  ├─ (min, max): ({label_counts.min()}, {label_counts.max()})")
-			print(f"  ├─ μ±σ: {label_counts.mean():.2f} ± {label_counts.std():.2f}")
-			print(f"  ├─ Median: {label_counts.median()}")
+			print(f"Labels per sample:")
+			print(f"  ├─ (min, max) ({label_counts.min()}, {label_counts.max()})")
+			print(f"  ├─ μ±σ        {label_counts.mean():.2f} ± {label_counts.std():.2f}")
+			print(f"  ├─ Median     {label_counts.median()}")
 				
 		# helper to handle None values
 		def safe_dedup(labels):

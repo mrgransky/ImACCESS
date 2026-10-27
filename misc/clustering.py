@@ -2127,14 +2127,16 @@ def merge_cluster_canonical_nearest_neighbor(
 			)
 
 		if merges:
-			print("-" * 120)
+			topk = min(10, len(merges))
 			synonym_merges = [m for m in merges if not m['same_canonical_string']]
 			display_pool = synonym_merges if synonym_merges else merges
-			sorted_by_sim = sorted(display_pool, key=lambda m: (m['canonical_similarity'], m['centroid_similarity']), reverse=True)
+			topk_confident_merges = sorted(display_pool, key=lambda m: (m['canonical_similarity'], m['centroid_similarity']), reverse=True)[:topk]
+			topk_borderline_merges = sorted(display_pool, key=lambda m: (m['canonical_similarity'], m['centroid_similarity']), reverse=False)[:topk]
 
-			topk = min(10, len(synonym_merges))
-			print(f"Top {topk} Closest Canonical Synonym Merges (Highest Confidence):")
-			for rank, m in enumerate(sorted_by_sim[:topk], 1):
+			print("-" * 120)
+
+			print(f"Top-{topk} Closest Canonical Synonym Merges (Highest Confidence / Similarity)")
+			for rank, m in enumerate(topk_confident_merges, 1):
 				comb_sz = m['merged']['size']
 				ca, cb, cm = m['cluster_a'], m['cluster_b'], m['merged']
 				va = " [VIRTUAL]" if ca['is_virtual'] else ""
@@ -2143,14 +2145,13 @@ def merge_cluster_canonical_nearest_neighbor(
 				print(
 					f"  {rank}. canon_sim={m['canonical_similarity']:.4f} | centroid_sim={m['centroid_similarity']:.4f} "
 					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"     Cluster {ca['id']:6d} canonical: {repr(ca['canonical']) + va:<40} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(ca['medoid']):<40} {ca['members'][:3]}\n"
-					f"     Cluster {cb['id']:6d} canonical: {repr(cb['canonical']) + vb:<40} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(cb['medoid']):<40} {cb['members'][:3]}\n"
-					f"     -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
+					f"   Cluster {ca['id']:6d} canonical: {repr(ca['canonical']) + va:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(ca['medoid']):<40} {ca['members'][:3]}\n"
+					f"   Cluster {cb['id']:6d} canonical: {repr(cb['canonical']) + vb:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(cb['medoid']):<40} {cb['members'][:3]}\n"
+					f"   -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)
 
-			print(f"\nTop {topk} Borderline Canonical Merges (Near Cutoff Threshold):")
-			borderline = sorted(display_pool, key=lambda m: (m['canonical_similarity'], m['centroid_similarity']))[:topk]
-			for rank, m in enumerate(borderline, 1):
+			print(f"\nTop-{topk} Borderline Canonical Merges (Near Cutoff Threshold)")
+			for rank, m in enumerate(topk_borderline_merges, 1):
 				comb_sz = m['merged']['size']
 				ca, cb, cm = m['cluster_a'], m['cluster_b'], m['merged']
 				va = " [VIRTUAL]" if ca['is_virtual'] else ""
@@ -2159,11 +2160,11 @@ def merge_cluster_canonical_nearest_neighbor(
 				print(
 					f"  {rank}. canon_sim={m['canonical_similarity']:.4f} | centroid_sim={m['centroid_similarity']:.4f} "
 					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"     Cluster {ca['id']:6d} canonical: {repr(ca['canonical']) + va:<40} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid={repr(ca['medoid']):<40} {ca['members'][:3]}\n"
-					f"     Cluster {cb['id']:6d} canonical: {repr(cb['canonical']) + vb:<40} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid={repr(cb['medoid']):<40} {cb['members'][:3]}\n"
-					f"     -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
+					f"   Cluster {ca['id']:6d} canonical: {repr(ca['canonical']) + va:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid={repr(ca['medoid']):<40} {ca['members'][:3]}\n"
+					f"   Cluster {cb['id']:6d} canonical: {repr(cb['canonical']) + vb:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid={repr(cb['medoid']):<40} {cb['members'][:3]}\n"
+					f"   -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)
-			print("  (lowest-similarity canonical merges shown; borderline ones to review)")
+			print(f"  (lowest-similarity canonical merges; borderline to review) threshold: {threshold}")
 
 		if centroid_blocked_pairs:
 			print("-" * 120)
@@ -2174,14 +2175,13 @@ def merge_cluster_canonical_nearest_neighbor(
 			for rank, bp in enumerate(sorted(centroid_blocked_pairs, key=lambda x: -x['canonical_similarity']), 1):
 				ca, cb = bp['cluster_a'], bp['cluster_b']
 				print(
-					f"  {rank}. canon_sim={bp['canonical_similarity']:.4f} centroid_sim={bp['centroid_similarity']:.4f} < {min_centroid_similarity}\n"
-					f"     Cluster {ca['id']:6d} canonical: {repr(ca['canonical']):<25} medoid: {repr(ca['medoid']):<40} {ca['members'][:3]}\n"
-					f"     Cluster {cb['id']:6d} canonical: {repr(cb['canonical']):<25} medoid: {repr(cb['medoid']):<40} {cb['members'][:3]}\n"
+					f"  {rank}. canonical_simarity={bp['canonical_similarity']:.4f} centroid_similarity={bp['centroid_similarity']:.4f} < {min_centroid_similarity}\n"
+					f"     Cluster {ca['id']:6d} canonical: {repr(ca['canonical']):<25} medoid: {repr(ca['medoid']):<45} {ca['members'][:5]}\n"
+					f"     Cluster {cb['id']:6d} canonical: {repr(cb['canonical']):<25} medoid: {repr(cb['medoid']):<45} {cb['members'][:5]}\n"
 				)
 
 		if report_path:
 			print(f"\n[SAVED] {report_path}")
-		print("=" * 120 + "\n")
 
 	if report_path:
 		with open(report_path, 'w', encoding='utf-8') as f:
@@ -2310,19 +2310,19 @@ def _caching(
 	z_path = stem + "_linkage_Z.npy"
 	
 	if verbose:
-		print(f"[CACHE PATHS]")
-		print(f"  ├─ model          : {model_id}")
-		print(f"  ├─ dtype          : {dtype}")
-		print(f"  ├─ linkage        : {linkage_method}")
-		print(f"  ├─ distance       : {distance_metric}")
-		print(f"  ├─ encode prompt  : {encode_prompt!r}")
-		print(f"  ├─ labels         : {len(unique_labels)}")
-		print(f"  ├─ label hash     : {label_hash}")
-		print(f"  ├─ cache key      : {key}")
-		print(f"  ├─ x_path exists  : {os.path.exists(x_path)}")
-		print(f"  ├─ z_path exists  : {os.path.exists(z_path)}")
-		print(f"  ├─ embeddings     : {x_path}")
-		print(f"  └─ linkage        : {z_path}")
+		print(f"[CACHE]")
+		print(f"  ├─ model          {model_id}")
+		print(f"  ├─ dtype          {dtype}")
+		print(f"  ├─ linkage        {linkage_method}")
+		print(f"  ├─ distance       {distance_metric}")
+		print(f"  ├─ encode prompt  {encode_prompt!r}")
+		print(f"  ├─ labels         {len(unique_labels)}")
+		print(f"  ├─ label hash     {label_hash}")
+		print(f"  ├─ cache key      {key}")
+		print(f"  ├─ x_path exists  {os.path.exists(x_path)}")
+		print(f"  ├─ z_path exists  {os.path.exists(z_path)}")
+		print(f"  ├─ embeddings     {x_path}")
+		print(f"  └─ linkage        {z_path}")
 	
 	return x_path, z_path
 

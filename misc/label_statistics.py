@@ -1165,7 +1165,7 @@ def compute_clip_visual_grounding(
 	failure_rate = n_failed / n_rows if n_rows else 0.0
 
 	print(f"Image loading: {n_valid}/{n_rows} succeeded ({n_failed} failed, {failure_rate*100:.2f}%)")
-	print(f"[ELAPSED] {time.time() - t0:.1f}sec for {n_rows} images: {image_embeds.shape} {image_embeds.dtype} {image_embeds.device}")
+	print(f"[ELAPSED] {time.time() - t0:.1f} s for {n_rows} images: {image_embeds.shape} {image_embeds.dtype} {image_embeds.device}")
 
 	if failure_rate > max_failure_rate:
 		raise RuntimeError(
