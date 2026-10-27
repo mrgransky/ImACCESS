@@ -785,10 +785,9 @@ def get_cluster_medoid_nearest_neighbor(
 					pref_a = int(info[a]['cluster_id'])
 					status_tag = f"one-way (B->A, A prefers C{pref_a} '{cluster_medoids[pref_a]}' sim={info[a]['similarity']:.4f})"
 				
-				print(f"    {rank}. sim={s:.4f}")
-				print(f"    {status_tag}")
-				print(f"       Cluster {a:6d} ({len(cluster_members[a]):3d} labels, medoid: {repr(cluster_medoids[a]):<28} sim={cluster_medoid_sims[a]:.4f}) {cluster_members[a][:7]}")
-				print(f"       Cluster {b:6d} ({len(cluster_members[b]):3d} labels, medoid: {repr(cluster_medoids[b]):<28} sim={cluster_medoid_sims[b]:.4f}) {cluster_members[b][:7]}")
+				print(f"    {rank}. sim={s:.4f} {status_tag}")
+				print(f"       Cluster {a:5d} ({len(cluster_members[a]):3d} labels, medoid: {repr(cluster_medoids[a]):<35} sim={cluster_medoid_sims[a]:.4f}) {cluster_members[a][:7]}")
+				print(f"       Cluster {b:5d} ({len(cluster_members[b]):3d} labels, medoid: {repr(cluster_medoids[b]):<35} sim={cluster_medoid_sims[b]:.4f}) {cluster_members[b][:7]}")
 				print()
 
 		if review_path:
@@ -993,7 +992,7 @@ def merge_cluster_medoid_nearest_neighbor(
 		reduction_pct = (1.0 - len(members) / max(1, n_before)) * 100.0
 
 		print("=" * 120)
-		print(f"[MERGE CLOSE CLUSTERS] Conservative Multi-Round 1-NN Mutual Pair Merging Diagnostics")
+		print(f"[MERGE CLUSTERS (medoid similarity)] Conservative Multi-Round 1-NN Mutual Pair Merging Diagnostics")
 		print(f"Policy: threshold >= {threshold:.5f} | Size Limit: {size_limit_str} | Max Rounds: {max_rounds}")
 		print(
 			f"Reduction: {n_before:,} -> {len(members):,} clusters "
@@ -1036,39 +1035,43 @@ def merge_cluster_medoid_nearest_neighbor(
 		if merge_sim_stats:
 			print(
 				f"\nMerge Similarity Percentiles (N={merge_sim_stats['count']:,}):\n"
-				f"  min={merge_sim_stats['min']:.4f} | p25={merge_sim_stats['p25']:.4f} | "
-				f"median={merge_sim_stats['median']:.4f} | mean={merge_sim_stats['mean']:.4f} | "
-				f"p75={merge_sim_stats['p75']:.4f} | p90={merge_sim_stats['p90']:.4f} | max={merge_sim_stats['max']:.4f}"
+				f"  min={merge_sim_stats['min']:.4f} "
+				f"p25={merge_sim_stats['p25']:.4f} "
+				f"median={merge_sim_stats['median']:.4f} "
+				f"mean={merge_sim_stats['mean']:.4f} "
+				f"p75={merge_sim_stats['p75']:.4f} "
+				f"p90={merge_sim_stats['p90']:.4f} "
+				f"max={merge_sim_stats['max']:.4f}"
 			)
 
 		if merges:
-			print("-" * 120)
-			sorted_by_sim = sorted(merges, key=lambda m: m['similarity'], reverse=True)
+			topk = min(10, len(merges))
+			topk_confident_merges = sorted(merges, key=lambda m: m['similarity'], reverse=True)[:topk]
+			topk_borderline_merges = sorted(merges, key=lambda m: m['similarity'], reverse=False)[:topk]
 			
-			print("Top 5 Closest Merges (Highest Similarity / Highest Confidence):")
-			for rank, m in enumerate(sorted_by_sim[:5], 1):
+			print(f"\nTop-{topk} Closest Merges (Highest Similarity / Highest Confidence):")
+			for rank, m in enumerate(topk_confident_merges, 1):
 				comb_sz = m['merged']['size']
 				ca, cb = m['cluster_a'], m['cluster_b']
 				print(
 					f"  {rank}. sim={m['similarity']:.4f} (Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"     Cluster {ca['id']} (medoid=\"{ca['medoid']}\"): {ca['members'][:3]}\n"
-					f"     Cluster {cb['id']} (medoid=\"{cb['medoid']}\"): {cb['members'][:3]}\n"
+					f"     Cluster {ca['id']:5d} medoid: {ca['medoid']:<35} {ca['members'][:3]}\n"
+					f"     Cluster {cb['id']:5d} medoid: {cb['medoid']:<35} {cb['members'][:3]}\n"
 					f"     -> Merged medoid: {m['merged']['medoid']}\n"
 				)
 
-			print("\nTop 5 Borderline Merges (Near Cutoff Threshold):")
-			borderline = sorted(merges, key=lambda m: m['similarity'])[:5]
-			for rank, m in enumerate(borderline, 1):
+			print(f"\nTop-{topk} Borderline Merges (Near Cutoff Threshold):")
+			for rank, m in enumerate(topk_borderline_merges, 1):
 				comb_sz = m['merged']['size']
 				ca, cb = m['cluster_a'], m['cluster_b']
 				print(
 					f"  {rank}. sim={m['similarity']:.4f} (Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"     Cluster {ca['id']} (medoid=\"{ca['medoid']}\"): {ca['members'][:3]}\n"
-					f"     Cluster {cb['id']} (medoid=\"{cb['medoid']}\"): {cb['members'][:3]}\n"
+					f"     Cluster {ca['id']:5d} medoid: {ca['medoid']:<35} {ca['members'][:3]}\n"
+					f"     Cluster {cb['id']:5d} medoid: {cb['medoid']:<35} {cb['members'][:3]}\n"
 					f"     -> Merged medoid: {m['merged']['medoid']}\n"
 				)
 
-			print("  (lowest-similarity merges shown; these are the borderline ones to review)")
+			print(f"  (lowest-similarity merges shown; borderline merges to review) cutoff threshold: {threshold:.6f}")
 
 		if report_path:
 			print(f"\n[SAVED] {report_path}")
