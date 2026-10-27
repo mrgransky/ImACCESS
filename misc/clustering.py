@@ -3925,6 +3925,7 @@ _PROTECTED_WORD_ACRONYMS = {
 _COMMON_ACRONYMS = {
 	"FBI", "CIA", "NASA", "NATO", "RAF", "USAF", "DDT", "TNT",
 	"UN", "US", "USA", "UK", "USSR", "LCVP", "HBIM", "AEF",
+	"USN", "USS", "HMS", "RMS", "EU",
 }
 
 def _is_acronym(s: str) -> bool:
@@ -3980,6 +3981,7 @@ def _singular_candidates(low: str) -> List[str]:
 def _canonical_group_keys(
 	cluster_canonicals: Dict[int, Dict],
 	protected_plurals: Optional[set] = None,
+	verbose: bool = False,
 ) -> Tuple[Dict[int, str], Dict[str, str]]:
 	"""
 	Single definition of "these canonicals are the same name", shared by
@@ -4014,6 +4016,18 @@ def _canonical_group_keys(
 		cid: ("ACRONYM::" + _spacing_key(s)) if _is_acronym(s) else plural_of.get(s, _spacing_key(s))
 		for cid, s in surfaces.items()
 	}
+
+	if verbose:
+		acronyms = sorted({s for s in distinct if _is_acronym(s)})
+		caps_words = sorted({
+			s for s in distinct
+			if s.isupper() and len(re.sub(r'[^A-Za-z]', '', s)) >= 2 and not _is_acronym(s)
+		})
+		print(f"  ├─ Dictionary loaded  : {len(_ENGLISH_WORDS):,} words available")
+		print(f"  ├─ Detected acronyms  : {len(acronyms)} {acronyms[:15] if len(acronyms) > 15 else acronyms}")
+		if caps_words:
+			print(f"  ├─ All-caps words kept: {len(caps_words)} (treated as words, e.g. {caps_words[:10]})")
+
 	return keys, plural_of
 
 def _pick_group_surface(
@@ -4431,7 +4445,7 @@ def _harmonize_final_canonicals(
 		print(f"  ├─ unique labels      {len(original_label_counts)}")
 		print(f"  ├─ Clusters           {len(cluster_canonicals)}")
 
-	keys, plural_of = _canonical_group_keys(cluster_canonicals, protected_plurals)
+	keys, plural_of = _canonical_group_keys(cluster_canonicals, protected_plurals, verbose=verbose)
 	surfaces = {cid: m['canonical'] for cid, m in cluster_canonicals.items() if m.get('canonical')}
 
 	groups: Dict[str, list] = defaultdict(list)
