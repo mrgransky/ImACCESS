@@ -976,8 +976,8 @@ Newfoundland
 New Zealander
 Nigerian
 North American
-Norwegian
 North Korean
+Norwegian
 Okinawan
 Palestinian
 Papuan
@@ -994,7 +994,6 @@ San Diegan
 Scandinavian
 Scottish
 Scottish American
-Scottish Americans
 Senegalese
 Serbian
 Siberian

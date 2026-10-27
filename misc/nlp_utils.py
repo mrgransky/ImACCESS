@@ -1835,11 +1835,24 @@ def _post_process_(
 		phrase_lower = phrase.lower().strip()
 		
 		# Replace word-to-word hyphens with spaces (e.g. 'African-American' -> 'african american')
-		# Keeps model numbers like 'B-17', 'P-51', 'U-505' intact
 		clean_phrase = re.sub(r'(?<=[a-z])-(?=[a-z])', ' ', phrase_lower)
 		words = clean_phrase.split()
 
 		if not words:
+			return False
+
+		# Helper: checks if term or its morphological singular is in GEOGRAPHIC_REFERENCES
+		def is_in_geo(term: str) -> bool:
+			if term in GEOGRAPHIC_REFERENCES or term in US_STATE_CODES:
+				return True
+			# If plural, test morphological singular candidates against GEOGRAPHIC_REFERENCES
+			if term.endswith('s') and not term.endswith('ss'):
+				if term[:-1] in GEOGRAPHIC_REFERENCES:  # 'americans' -> 'american', 'russians' -> 'russian'
+					return True
+				if term.endswith('ies') and len(term) > 4 and (term[:-3] + 'y') in GEOGRAPHIC_REFERENCES:
+					return True
+				if term.endswith('es') and len(term) > 3 and term[:-2] in GEOGRAPHIC_REFERENCES:
+					return True
 			return False
 
 		# 1. Existing Stopwords check
@@ -1848,10 +1861,10 @@ def _post_process_(
 				print(f"\t[SKIPPED] {repr(phrase):<55} stopword")
 			return True
 
-		# 2. Direct full-string match in geographic references
-		if phrase_lower in GEOGRAPHIC_REFERENCES or clean_phrase in GEOGRAPHIC_REFERENCES:
+		# 2. Direct / Singularized full-string match (e.g. 'Americans', 'Russians', 'North Koreans')
+		if is_in_geo(phrase_lower) or is_in_geo(clean_phrase):
 			if verbose:
-				print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference")
+				print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference / demonym")
 			return True
 
 		# 3. Comma-separated: "City, Country" or "City, State/Code"
@@ -1859,28 +1872,25 @@ def _post_process_(
 			parts = [p.strip() for p in phrase_lower.split(',')]
 			if len(parts) == 2:
 				prefix, suffix = parts[0], parts[1].rstrip('.')
-				is_suffix_geo = (suffix in US_STATE_CODES or suffix in GEOGRAPHIC_REFERENCES)
-				is_prefix_geo = prefix in GEOGRAPHIC_REFERENCES
-				
-				if (is_suffix_geo and is_prefix_geo) or (suffix in US_STATE_CODES and len(prefix) >= 3):
+				if (is_in_geo(suffix) and is_in_geo(prefix)) or (suffix in US_STATE_CODES and len(prefix) >= 3):
 					if verbose:
 						print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference (comma-separated location)")
 					return True
 
-		# 4. Suffix Stripping (handles both space and hyphen-separated compounds)
+		# 4. Suffix Stripping for multi-word demonyms/places (e.g. 'Scottish Americans', 'Rome Italy')
 		for n_words in (1, 2):
 			if len(words) > n_words:
 				suffix = " ".join(words[-n_words:]).strip(",. ")
 				prefix = " ".join(words[:-n_words]).strip(",. ")
 				
-				if (suffix in US_STATE_CODES or suffix in GEOGRAPHIC_REFERENCES) and prefix in GEOGRAPHIC_REFERENCES:
+				if is_in_geo(suffix) and is_in_geo(prefix):
 					if verbose:
 						print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference (stripped suffix '{suffix}')")
 					return True
 
-		# 5. Composite check: all tokens are geographic references
+		# 5. Composite check: all tokens are geographic references / demonyms
 		clean_tokens = [w.strip(",. ") for w in words if w.strip(",. ")]
-		if len(clean_tokens) >= 2 and all(tok in GEOGRAPHIC_REFERENCES for tok in clean_tokens):
+		if len(clean_tokens) >= 2 and all(is_in_geo(tok) for tok in clean_tokens):
 			if verbose:
 				print(f"\t[SKIPPED] {repr(phrase):<55} composite geographic reference")
 			return True

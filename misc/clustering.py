@@ -3865,9 +3865,104 @@ def _spacing_key(s: str) -> str:
 	"""Lowercase, letters and digits only ('ice breaker' == 'icebreaker'; 'C-46' != 'C-47')."""
 	return re.sub(r'[^a-z0-9]', '', s.lower())
 
+def _load_english_words() -> set:
+	words: set = set()
+
+	# (a) System dict (present on Debian/Ubuntu, absent on Cray/RHEL)
+	for path in ("/usr/share/dict/words", "/usr/dict/words"):
+		if os.path.exists(path):
+			try:
+				with open(path, encoding="utf-8", errors="ignore") as f:
+					words |= {w.strip().lower() for w in f if w.strip().isalpha()}
+				if words:
+					return words
+			except OSError:
+				pass
+
+	# (b) wordfreq (if installed)
+	try:
+		from wordfreq import top_n_list
+		words |= {w.lower() for w in top_n_list("en", 60_000) if w.isalpha()}
+		if words:
+			return words
+	except ImportError:
+		pass
+
+	# (c) NLTK word corpus (verified available on LUMI and Roihu)
+	try:
+		from nltk.corpus import words as _nltk_words
+		words |= {w.lower() for w in _nltk_words.words() if w.isalpha()}
+		if words:
+			return words
+	except (ImportError, LookupError):
+		pass
+
+	# (d) WordNet lemmas
+	try:
+		from nltk.corpus import wordnet as _wn
+		words |= {w.lower() for w in _wn.words() if w.isalpha()}
+		if words:
+			return words
+	except (ImportError, LookupError):
+		pass
+
+	warnings.warn(
+		"No English wordlist found. Acronym detection may produce false positives "
+		"for shouting words ('MODEL', 'HELLO').",
+		RuntimeWarning,
+	)
+	return words
+
+_ENGLISH_WORDS: set = _load_english_words()
+
+# Known acronyms that happen to spell ordinary English words
+_PROTECTED_WORD_ACRONYMS = {
+	"CARE", "SPAR", "SPARS", "WAVE", "WAVES", "SEAL", "SEALS",
+	"AID", "AIDS", "NOW", "WHO", "CORE", "ACT", "RAM", "ROM",
+}
+
+# High-frequency acronyms that wordfreq/dictionaries often contain
+_COMMON_ACRONYMS = {
+	"FBI", "CIA", "NASA", "NATO", "RAF", "USAF", "DDT", "TNT",
+	"UN", "US", "USA", "UK", "USSR", "LCVP", "HBIM", "AEF",
+}
+
 def _is_acronym(s: str) -> bool:
+	"""
+	Returns True for true acronyms ('NASA', 'FBI', 'A.E.F.', 'LCVP', 'SPAR'),
+	and False for ordinary English words in uppercase ('MODEL', 'PLANE', 'HELLO')
+	or alphanumeric designations ('A1B', 'F-16').
+	"""
+	# 1. Must be a single whitespace-separated token
+	if len(s.split()) != 1:
+		return False
+
+	# 2. Reject alphanumeric designations with numbers (A1B, F-16, C-46)
+	if any(c.isdigit() for c in s):
+		return False
+
+	# 3. Extract pure letters
 	letters = re.sub(r'[^A-Za-z]', '', s)
-	return len(letters) >= 2 and letters.isupper() and len(s.split()) == 1
+	if len(letters) < 2 or not letters.isupper():
+		return False
+
+	# 4. Dotted abbreviations are always acronyms: 'A.E.F.', 'U.S.', 'L.C.V.P.'
+	if '.' in s:
+		return True
+
+	# 5. Protected acronyms (bypass dictionary so 'CARE' stays an acronym)
+	if letters in _PROTECTED_WORD_ACRONYMS or letters in _COMMON_ACRONYMS:
+		return True
+
+	# 6. Length ceiling: acronyms are rarely > 6 chars (avoids screaming words)
+	if len(letters) > 6:
+		return False
+
+	# 7. Ordinary English dictionary word check ('MODEL', 'PLANE', 'HELLO' -> False)
+	if _ENGLISH_WORDS and s.lower() in _ENGLISH_WORDS:
+		return False
+
+	return True
 
 def _cap_score(s: str) -> int:
 	return sum(1 for c in s if c.isupper())
@@ -3908,6 +4003,7 @@ def _canonical_group_keys(
 		low = s.lower()
 		if _is_acronym(s) or low in protected or low.endswith("ss"):
 			continue
+
 		for cand in _singular_candidates(low):
 			k = _spacing_key(cand)
 			if k in attested_keys and k != _spacing_key(low):
