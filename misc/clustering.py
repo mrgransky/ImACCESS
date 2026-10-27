@@ -438,6 +438,10 @@ def _estimate_dynamic_neighbor_thresholds(
 	mutual_mask: np.ndarray,
 ) -> Dict[str, Any]:
 	"""
+	Data‑driven heuristic that turns a distribution of pairwise similarity scores into a handful 
+	of threshold values that are later used to decide whether two clusters 
+	(or two “member centroids”) should be merged.
+
 	Derive data-driven similarity thresholds from the intrinsic 1-NN cluster distribution
 	(prior to canonical selection, directly on member centroids):
 	  1. t_mad        : Robust upper dispersion fence = median(sims) + 1.0 * sigma_MAD,
@@ -446,6 +450,55 @@ def _estimate_dynamic_neighbor_thresholds(
 	                    (sims >= median), separating background concept spacing from split duplicates.
 	  3. t_mutual_p75 : 75th percentile of mutual 1-NN similarities (reciprocal closest pairs).
 	  4. threshold    : Consensus median of the active estimators (used for review & Step 4b merge).
+
+	
+	Full Algorithmic Pipeline (Step‑by‑Step):
+
+	INPUT: sims (array of similarity scores), mutual_mask (bool mask)
+
+	IF len(sims) < 2:
+			RETURN constant fallback dict
+
+	# 1️⃣ Robust statistics
+	med   = median(sims)
+	mad   = median(|sims - med|)
+	sigma = 1.4826 * mad
+	t_mad = clip(med + sigma, lower=med, upper=max(sims))
+
+	# 2️⃣ Upper‑tail elbow (Kneedle)
+	upper = sort(sims where sims >= med)
+	IF len(upper) >= 3 AND upper[-1] > upper[0]:
+			x = linspace(0, 1, len(upper))
+			y = (upper - upper[0]) / (upper[-1] - upper[0])
+			idx_elbow = argmax(x - y)
+			t_elbow = upper[idx_elbow]
+	ELSE:
+			t_elbow = percentile(sims, 90)
+
+	# 3️⃣ Mutual 1‑NN 75th percentile (if enough data)
+	n_mut = sum(mutual_mask)
+	IF n_mut >= 5:
+			t_mut_p75 = percentile(sims[mutual_mask], 75)
+	ELSE:
+			t_mut_p75 = None
+
+	# 4️⃣ Consensus threshold
+	estimators = [t_mad, t_elbow]
+	IF t_mut_p75 is not None:
+			estimators.append(t_mut_p75)
+
+	threshold = median(estimators)   # robust aggregation
+	ROUND all numbers to 4 decimals
+
+	RETURN {
+			"threshold": threshold,
+			"t_mad": t_mad,
+			"t_elbow": t_elbow,
+			"t_mutual_p75": t_mut_p75,
+			"sigma_mad": sigma,
+	}
+
+
 	"""
 	n = len(sims)
 	if n < 2:
@@ -457,11 +510,13 @@ def _estimate_dynamic_neighbor_thresholds(
 			'sigma_mad': 0.0,
 		}
 
+	# Stage 1: Estimator 1 — Robust Statistical Dispersion Fence (t_mad)
 	med = float(np.median(sims))
-	mad = float(np.median(np.abs(sims - med)))
+	mad = float(np.median(np.abs(sims - med))) # Median Absolute Deviation (MAD)
 	sigma_mad = 1.4826 * mad
 	t_mad = float(np.clip(med + 1.0 * sigma_mad, med, float(np.max(sims))))
 
+	# Stage 2: Estimator 2 — Kneedle Maximum-Curvature Elbow (t_elbow)
 	upper = np.sort(sims[sims >= med])
 	if len(upper) >= 3 and (upper[-1] > upper[0]):
 		x = np.linspace(0.0, 1.0, len(upper))
@@ -470,19 +525,23 @@ def _estimate_dynamic_neighbor_thresholds(
 	else:
 		t_elbow = float(np.percentile(sims, 90))
 
+	# Stage 3: Estimator 3 — Topological Mutual 1-NN Quartile (t_mutual_p75)
 	n_mut = int(mutual_mask.sum())
 	t_mut_p75 = float(np.percentile(sims[mutual_mask], 75)) if n_mut >= 5 else None
 
+	# Stage 4: Consensus Ensemble Aggregation (threshold)
 	estimators = [t_mad, t_elbow] + ([t_mut_p75] if t_mut_p75 is not None else [])
 	dynamic_threshold = round(float(np.median(estimators)), 4)
 
-	return {
+	result = {
 		'threshold': dynamic_threshold,
 		't_mad': round(t_mad, 4),
 		't_elbow': round(t_elbow, 4),
 		't_mutual_p75': round(t_mut_p75, 4) if t_mut_p75 is not None else None,
 		'sigma_mad': round(sigma_mad, 4),
 	}
+
+	return result
 
 def get_cluster_medoid_nearest_neighbor(
 	embedding_model_id: str,
@@ -602,13 +661,13 @@ def get_cluster_medoid_nearest_neighbor(
 	}
 
 	if review_path:
-		def _side(c, top_k_members: int = 10):
+		def _side(c):
 			return {
 				'cluster_id': int(c),
 				'size': len(cluster_members[c]),
 				'medoid': cluster_medoids[c],
 				'medoid_similarity': cluster_medoid_sims[c],
-				'members': cluster_members[c]#[:top_k_members],
+				'members': cluster_members[c]
 			}
 
 		review = []
@@ -766,7 +825,7 @@ def get_cluster_medoid_nearest_neighbor(
 			print(f"    • Step 4b merge-eligible {n_mrg_pairs:,} mutual pairs{size_note}")
 			print(f"    • Individual clusters    {n_cand_clusters:,} ({100.0 * n_cand_clusters / max(n_clusters, 1):.1f}% of total clusters)")
 
-			top_k = min(30, len(pairs))
+			top_k = min(10, len(pairs))
 			sorted_pairs = sorted(pairs.items(), key=lambda kv: -kv[1])[:top_k]
 			print(f"\n  Top {top_k} Closest Neighbor Pairs:")
 			for rank, ((a, b), s) in enumerate(sorted_pairs, start=1):
@@ -1317,13 +1376,7 @@ def get_cluster_canonical_nearest_neighbor(
 	oneway_mask = ~mutual_mask
 	eligible_mask = np.array([bool(info[c]['merge_eligible']) for c in ids], dtype=bool)
 
-	# Estimate dynamic threshold on non-identical canonical pairs (sims < 0.9999)
-	# so exact duplicate strings (sim=1.0) do not skew synonym threshold detection.
-	non_ident_mask = sims < 0.9999
-	if int(non_ident_mask.sum()) >= 10:
-		dyn = _estimate_dynamic_neighbor_thresholds(sims[non_ident_mask], mutual_mask[non_ident_mask])
-	else:
-		dyn = _estimate_dynamic_neighbor_thresholds(sims, mutual_mask)
+	dyn = _estimate_dynamic_neighbor_thresholds(sims, mutual_mask)
 
 	is_dynamic_thresh = threshold is None
 	active_threshold = float(dyn['threshold'] if is_dynamic_thresh else threshold)
@@ -1470,7 +1523,7 @@ def get_cluster_canonical_nearest_neighbor(
 			)
 			t_mut_str = f"{dyn['t_mutual_p75']:.4f}" if dyn['t_mutual_p75'] is not None else "N/A (<5 mutual)"
 			print(
-				f"Intrinsic Estimators (non-identical canonicals): "
+				f"Intrinsic Estimators: "
 				f"MAD fence={dyn['t_mad']:.4f} (med+1.0*MAD, σ={dyn['sigma_mad']:.4f}) | "
 				f"Kneedle elbow={dyn['t_elbow']:.4f} | "
 				f"Mutual 1-NN p75={t_mut_str}"
@@ -1565,11 +1618,11 @@ def get_cluster_canonical_nearest_neighbor(
 				if cluster_canon_strs[a].lower() != cluster_canon_strs[b].lower()
 			]
 
-			top_k = min(25, len(synonym_pairs))
+			top_k = min(10, len(synonym_pairs))
 
 			if top_k > 0:
 				sorted_syn = sorted(synonym_pairs, key=lambda kv: (-kv[1][0], -kv[1][1]))[:top_k]
-				print(f"\n  Top {top_k} Closest Synonym Canonical Neighbor Pairs (Distinct Canonicals):")
+				print(f"\n  Top-{top_k} Closest Synonym Canonical Neighbor Pairs (Distinct Canonicals):")
 
 				for rank, ((a, b), (c_sim, cent_sim)) in enumerate(sorted_syn, start=1):
 					is_mut = info[a]['cluster_id'] == b and info[b]['cluster_id'] == a
@@ -1593,18 +1646,17 @@ def get_cluster_canonical_nearest_neighbor(
 					v_tag_a = " [VIRTUAL]" if cluster_is_virtual[a] else ""
 					v_tag_b = " [VIRTUAL]" if cluster_is_virtual[b] else ""
 					
-					print(f"    {rank:2d}. canon_sim={c_sim:.4f} centroid_sim={cent_sim:.4f}")
-					print(f"    {status_tag}")
+					print(f"  {rank:2d}. canon_sim={c_sim:.4f} centroid_sim={cent_sim:.4f} {status_tag}")
 					print(
-						f"        Cluster {a:6d} ({len(cluster_members[a]):3d} labels, "
+						f"      Cluster {a:6d} ({len(cluster_members[a]):3d} labels, "
 						f"canonical={repr(cluster_canon_strs[a]) + v_tag_a:<34} "
-						f"medoid={repr(cluster_medoids[a]):<26}) {cluster_members[a][:5]}"
+						f"medoid={repr(cluster_medoids[a]):<35}) {cluster_members[a][:5]}"
 					)
 
 					print(
-						f"        Cluster {b:6d} ({len(cluster_members[b]):3d} labels, "
+						f"      Cluster {b:6d} ({len(cluster_members[b]):3d} labels, "
 						f"canonical={repr(cluster_canon_strs[b]) + v_tag_b:<34} "
-						f"medoid={repr(cluster_medoids[b]):<26}) {cluster_members[b][:5]}\n"
+						f"medoid={repr(cluster_medoids[b]):<35}) {cluster_members[b][:5]}\n"
 					)
 
 		if review_path:
@@ -1619,7 +1671,7 @@ def merge_cluster_canonical_nearest_neighbor(
 	label_texts: List[str],
 	cluster_canonicals: Dict[int, Dict],
 	canonical_emb_map: Dict[str, np.ndarray],
-	threshold: float,
+	threshold: Optional[float] = None,
 	min_centroid_similarity: float = 0.70,
 	max_merged_size: Optional[int] = None,
 	max_rounds: int = 10,
@@ -1631,7 +1683,7 @@ def merge_cluster_canonical_nearest_neighbor(
 
 	Two clusters A and B are merged in a round only when:
 		1. Their canonical labels (cA, cB) are mutual 1-nearest neighbors in canonical embedding space,
-		2. Their canonical cosine similarity is >= threshold,
+		2. Their canonical cosine similarity is >= threshold (derived dynamically if threshold=None),
 		3. Their real-member centroid cosine similarity is >= min_centroid_similarity (prevents merging
 		   unrelated clusters that happen to share polysemous or surface-similar canonicals), and
 		4. (if max_merged_size is set) their combined size is <= max_merged_size.
@@ -1691,6 +1743,26 @@ def merge_cluster_canonical_nearest_neighbor(
 
 	canon_embs = np.vstack(canon_embs_list) if n_before > 0 else np.empty((0, X.shape[1]), dtype=np.float32)
 	n_unique_canon_before = len({s.lower() for s in canon_strs})
+
+	if threshold is None:
+		nn_idx_init, nn_canon_sim_init, _ = _nearest_canonical_neighbors(
+			canon_embs=canon_embs,
+			unit_centroids=unit_centroids,
+			chunk=4096,
+		)
+		mutual_mask_init = np.array([
+			bool(int(nn_idx_init[int(nn_idx_init[pos])]) == pos)
+			for pos in range(n_before)
+		], dtype=bool)
+		dyn_init = _estimate_dynamic_neighbor_thresholds(
+			sims=nn_canon_sim_init.astype(float),
+			mutual_mask=mutual_mask_init,
+		)
+		threshold = float(dyn_init['threshold'])
+		threshold_mode = "dynamic"
+	else:
+		threshold = float(threshold)
+		threshold_mode = "manual"
 
 	merges = []
 	centroid_blocked_pairs = []
@@ -1979,10 +2051,10 @@ def merge_cluster_canonical_nearest_neighbor(
 		canon_red = n_unique_canon_before - n_unique_canon_after
 
 		print("=" * 120)
-		print("[MERGE CANONICAL CLUSTERS] Multi-Round 1-NN Canonical Label Merging Diagnostics")
+		print("[MERGE CLUSTERS (with canonical neighbors)] Multi-Round 1-NN Canonical Label Merging Diagnostics")
 		print(
-			f"Policy: canonical_threshold >= {threshold} | "
-			f"min_centroid_similarity >= {min_centroid_similarity} | "
+			f"Policy: canonical_threshold >= {threshold:.5f} ({threshold_mode}) | "
+			f"min_centroid_similarity >= {min_centroid_similarity:.2f} | "
 			f"Size Limit: {size_limit_str} | Max Rounds: {max_rounds}"
 		)
 		print(
@@ -2051,7 +2123,7 @@ def merge_cluster_canonical_nearest_neighbor(
 			display_pool = synonym_merges if synonym_merges else merges
 			sorted_by_sim = sorted(display_pool, key=lambda m: (m['canonical_similarity'], m['centroid_similarity']), reverse=True)
 
-			topk = min(30, len(synonym_merges))
+			topk = min(10, len(synonym_merges))
 			print(f"Top {topk} Closest Canonical Synonym Merges (Highest Confidence):")
 			for rank, m in enumerate(sorted_by_sim[:topk], 1):
 				comb_sz = m['merged']['size']
@@ -2107,6 +2179,7 @@ def merge_cluster_canonical_nearest_neighbor(
 			new_result = {
 				'meta': {
 					'threshold': threshold,
+					'threshold_mode': threshold_mode,
 					'min_centroid_similarity': min_centroid_similarity,
 					'max_merged_size': max_merged_size,
 					'max_rounds': max_rounds,
@@ -6171,11 +6244,6 @@ def cluster(
 	# STEP 6b: OPTIONAL MERGE OF NEAR-DUPLICATE CANONICAL CLUSTERS (before virtual row injection)
 	canonical_merges_done = 0
 	if merge_near_duplicate_clusters_canonical:
-		active_canonical_threshold = (
-			float(merge_canonical_clusters_threshold)
-			if merge_canonical_clusters_threshold is not None
-			else float(canonical_neighbor_summary['threshold'])
-		)
 		n_clusters_pre_canon_merge = len(np.unique(clustered_labels))
 		clustered_labels, cluster_canonicals = merge_cluster_canonical_nearest_neighbor(
 			X=X,
@@ -6183,10 +6251,10 @@ def cluster(
 			label_texts=unique_labels,
 			cluster_canonicals=cluster_canonicals,
 			canonical_emb_map=canonical_emb_map,
-			threshold=active_canonical_threshold,
+			threshold=merge_canonical_clusters_threshold,
 			min_centroid_similarity=merge_canonical_min_centroid_sim,
 			max_merged_size=merge_max_size,
-			report_path=os.path.splitext(clusters_fname)[0] + "_canonical_merges.json",
+			report_path=os.path.splitext(clusters_fname)[0] + "_canonical_cluster_merges.json",
 			verbose=verbose,
 		)
 		df["cluster"] = clustered_labels
