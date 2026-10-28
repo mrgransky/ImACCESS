@@ -203,18 +203,21 @@ Russia
 Russland
 Rwanda
 
-St. Fongest
-St. Justina
+Saint-Jean-de-Luz
+Saint-Nazaire
 Saint Kitts and Nevis
 Saint Lucia
 Saint Louis
-St Louis
-Saint-Nazaire
 Saint Paul
+Saint Vincent and the Grenadines
+St. Croix
+St. Fongest
+St. Justina
 St. Paul
 St. Nazaire
+St. Quentin
+St Louis
 St Nazaire
-Saint Vincent and the Grenadines
 Samoa
 San Andrea
 San Andreas
@@ -533,6 +536,7 @@ Trinidad, CO
 Trinidad
 Tulsa
 Ukiah
+Virgin Islands
 Waterbury
 Wash. D.C.
 Washington, D.C.

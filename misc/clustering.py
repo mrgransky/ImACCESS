@@ -835,7 +835,7 @@ def get_cluster_medoid_nearest_neighbor(
 			print(f"    • Step 4b merge-eligible {n_mrg_pairs:,} mutual pairs{size_note}")
 			print(f"    • Individual clusters    {n_cand_clusters:,} ({100.0 * n_cand_clusters / max(n_clusters, 1):.1f}% of total clusters)")
 
-			top_k = min(10, len(pairs))
+			top_k = min(5, len(pairs))
 			sorted_pairs = sorted(pairs.items(), key=lambda kv: -kv[1])[:top_k]
 			print(f"\n  Top {top_k} Closest Neighbor Pairs:")
 			for rank, ((a, b), s) in enumerate(sorted_pairs, start=1):
@@ -1631,7 +1631,7 @@ def get_cluster_canonical_nearest_neighbor(
 				if cluster_canon_strs[a].lower() != cluster_canon_strs[b].lower()
 			]
 
-			top_k = min(10, len(synonym_pairs))
+			top_k = min(5, len(synonym_pairs))
 
 			if top_k > 0:
 				sorted_syn = sorted(synonym_pairs, key=lambda kv: (-kv[1][0], -kv[1][1]))[:top_k]
@@ -2964,65 +2964,6 @@ def fix_poor_canonical_clusters(
 	
 	return df
 
-def generate_recommendations(
-	global_summary:         dict,
-	cluster_df:             pd.DataFrame,
-	problematic_clusters:   list,
-	consolidation_impact:   dict,
-) -> list:
-	recs = []
-
-	mean_sim = global_summary['mean_intra_sim']
-	if mean_sim < 0.75:
-		recs.append(
-			f"Mean intra-cluster similarity is low ({mean_sim:.3f}, target >= 0.80). "
-			f"Consider raising cluster_intra_similarity_threshold in get_clustered_labels()."
-		)
-	elif mean_sim >= 0.82:
-		recs.append(
-			f"Cohesion is strong (mean intra_sim = {mean_sim:.3f}). "
-			f"No changes to clustering parameters needed."
-		)
-
-	mean_rep = global_summary['mean_canon_rep']
-	if mean_rep < 0.82:
-		recs.append(
-			f"Avg canonical representativeness is {mean_rep:.3f} (target >= 0.85). "
-			f"Review the canonical selection weights in assign_canonical_labels()."
-		)
-
-	high_sev = [p for p in problematic_clusters if p['severity'] == 'HIGH']
-	if high_sev:
-		total_labels = sum(p['count'] for p in high_sev)
-		recs.append(
-			f"{len(high_sev)} HIGH-severity issue type(s) covering ~{total_labels} clusters. "
-			f"Check low_cohesion_clusters.json for manual review."
-		)
-
-	singleton_pct = consolidation_impact['singleton_percentage']
-	if singleton_pct > 15:
-		recs.append(
-			f"High singleton rate ({singleton_pct:.1f}%). "
-			f"Consider lowering min_consolidation in get_clustered_labels()."
-		)
-
-	ratio = consolidation_impact['reduction_ratio']
-	if ratio < 2.0:
-		recs.append(
-			f"Consolidation ratio is only {ratio:.1f}x. "
-			f"Increase max_consolidation or lower cluster_intra_similarity_threshold."
-		)
-	elif ratio > 8.0:
-		recs.append(
-			f"High consolidation ratio ({ratio:.1f}x) — "
-			f"clusters may be over-merged. Check very_large_clusters.csv."
-		)
-
-	if not recs:
-		recs.append("No issues detected. Clustering quality is acceptable.")
-
-	return recs
-
 def get_optimal_super_clusters(
 	linkage_matrix,
 	embeddings,
@@ -3770,21 +3711,22 @@ def remove_problematic_clustered_labels(
 			removed_labels.extend(clustered_labels)
 
 	if low_cohesion_clusters and verbose:
-		print(f"\n[LOW COHESION] {len(low_cohesion_clusters)} clusters ( < {low_cohesion_threshold})")
+		print(f"\n[LOW COHESION] {len(low_cohesion_clusters)} clusters (th < {low_cohesion_threshold})")
+		low_cohesion_clusters.sort(key=lambda c: (c['intra_sim'], c['size']), reverse=True)
 		for i, cluster in enumerate(low_cohesion_clusters):
 			print(
-				f"{i+1:3d}/{len(low_cohesion_clusters)} "
+				f"[{i+1:4d}/{len(low_cohesion_clusters)}] "
 				f"Cluster {cluster['cluster_id']:5d} "
-				f"intra_sim: {cluster['intra_sim']:.5f} "
-				f"canonical: {cluster['canonical']:<35}"
-				f"{cluster['labels']}"
+				f"intra_sim: {cluster['intra_sim']:.4f} "
+				f"canonical: {cluster['canonical']!r:<35} "
+				f"{cluster['labels'][:15]}"
 			)
 
 	# PART 2: Identify Poor Canonical Clusters:
 	poor_canonical_clusters = list()
 	for cluster_id in df['cluster'].unique():
 		if cluster_id in problematic_cluster_ids:
-			continue  # Already marked for removal
+			continue # Already marked for removal
 
 		cluster_mask = df['cluster'] == cluster_id
 		clustered_labels = df[cluster_mask]['label'].tolist()
@@ -3817,11 +3759,16 @@ def remove_problematic_clustered_labels(
 			removed_labels.extend(clustered_labels)
 
 	if poor_canonical_clusters and verbose:
-		print(
-			f"\n[POOR CANONICAL] {len(poor_canonical_clusters)} clusters (th: {poor_canonical_threshold}) -> "
-			f"Labels to remove: {sum(c['size'] for c in poor_canonical_clusters)}")
+		print(f"\n[POOR CANONICAL] {len(poor_canonical_clusters)} clusters (th < {poor_canonical_threshold})")
+		poor_canonical_clusters.sort(key=lambda c: (c['canonical_representativeness'], c['size']), reverse=True)
 		for i, cluster in enumerate(poor_canonical_clusters):
-			print(f"{i+1:3d}/{len(poor_canonical_clusters)} Cluster {cluster['cluster_id']:5d} rep: {cluster['canonical_representativeness']:.3f} canonical: {cluster['canonical']:<27} {cluster['labels']}")
+			print(
+				f"[{i+1:4d}/{len(poor_canonical_clusters)}] "
+				f"Cluster {cluster['cluster_id']:5d} "
+				f"rep: {cluster['canonical_representativeness']:.5f} "
+				f"canonical: {cluster['canonical']!r:<27} "
+				f"{cluster['labels'][:15]}"
+			)
 	
 	if verbose:
 		print(f"\n[REMOVAL SUMMARY]")
@@ -6500,6 +6447,7 @@ def cluster(
 	canonical_merges_done = 0
 	if merge_near_duplicate_clusters_canonical:
 		n_clusters_pre_canon_merge = len(np.unique(clustered_labels))
+
 		clustered_labels, cluster_canonicals = merge_cluster_canonical_nearest_neighbor(
 			X=X,
 			labels=clustered_labels,
@@ -6512,12 +6460,14 @@ def cluster(
 			report_path=os.path.splitext(clusters_fname)[0] + "_canonical_cluster_merges.json",
 			verbose=verbose,
 		)
+
 		df["cluster"] = clustered_labels
+
 		canonical_merges_done = n_clusters_pre_canon_merge - len(np.unique(clustered_labels))
 
 	# STEP 7: MAP CANONICALS + INJECT VIRTUAL ROWS + CLEAN
 	low_cohesion_threshold: float = 0.80 * cluster_intra_similarity_threshold
-	poor_canonical_threshold: float = 0.90 * cluster_intra_similarity_threshold
+	poor_canonical_threshold: float = 0.85 * cluster_intra_similarity_threshold
 
 	df, X_clean, removed_labels = map_inject_and_clean_clusters(
 		df=df,
