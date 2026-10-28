@@ -3825,10 +3825,10 @@ def remove_problematic_clustered_labels(
 	
 	if verbose:
 		print(f"\n[REMOVAL SUMMARY]")
-		print(f"  ├─ problematic clusters {len(problematic_cluster_ids):6d} = {len(poor_canonical_clusters)} (poor canonical) + {len(low_cohesion_clusters)} (low cohesion)")
-		print(f"  ├─ problematic labels   {len(removed_labels):6d} = {sum(c['size'] for c in poor_canonical_clusters)} (poor canonical) + {sum(c['size'] for c in low_cohesion_clusters)} (low cohesion)")
-		print(f"  ├─ labels to remove     {len(removed_labels):6d}/{len(df):<10}({len(removed_labels)/len(df)*100:.3f}%)")
-		print(f"  └─ clusters to remove   {len(problematic_cluster_ids):6d}/{len(df['cluster'].unique()):<10}({len(problematic_cluster_ids)/len(df['cluster'].unique())*100:.3f}%)")
+		print(f"  ├─ problematic clusters {len(problematic_cluster_ids):5d} = {len(poor_canonical_clusters):5d} (poor canonical) + {len(low_cohesion_clusters):5d} (low cohesion)")
+		print(f"  ├─ problematic labels   {len(removed_labels):5d} = {sum(c['size'] for c in poor_canonical_clusters):5d} (poor canonical) + {sum(c['size'] for c in low_cohesion_clusters):5d} (low cohesion)")
+		print(f"  ├─ labels to remove     {len(removed_labels):5d} / {len(df):<7}({len(removed_labels)/len(df)*100:.3f}%)")
+		print(f"  └─ clusters to remove   {len(problematic_cluster_ids):5d} / {len(df['cluster'].unique()):<7}({len(problematic_cluster_ids)/len(df['cluster'].unique())*100:.3f}%)")
 
 	# PART 3: Remove Problematic Labels
 	df_clean = df[~df['cluster'].isin(problematic_cluster_ids)].copy()
@@ -6516,8 +6516,8 @@ def cluster(
 		canonical_merges_done = n_clusters_pre_canon_merge - len(np.unique(clustered_labels))
 
 	# STEP 7: MAP CANONICALS + INJECT VIRTUAL ROWS + CLEAN
-	low_cohesion_threshold: float = 0.95 * cluster_intra_similarity_threshold
-	poor_canonical_threshold: float = 0.95 * cluster_intra_similarity_threshold
+	low_cohesion_threshold: float = 0.80 * cluster_intra_similarity_threshold
+	poor_canonical_threshold: float = 0.90 * cluster_intra_similarity_threshold
 
 	df, X_clean, removed_labels = map_inject_and_clean_clusters(
 		df=df,
