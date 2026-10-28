@@ -6,7 +6,6 @@ import json
 import textwrap
 import numpy as np
 import pandas as pd
-import torch
 import threading
 import queue
 import pickle
@@ -25,7 +24,6 @@ import networkx as nx
 import scipy
 import sklearn
 import hashlib
-from torch.utils.data import Dataset, DataLoader, TensorDataset
 import huggingface_hub
 import io
 import pprint
@@ -77,7 +75,6 @@ from sklearn.metrics import silhouette_score, precision_recall_curve, roc_curve,
 from sklearn.neighbors import NearestNeighbors
 
 from requests.exceptions import RequestException
-import torchvision.transforms as T
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
 import functools
 
@@ -147,9 +144,12 @@ def get_cache_directory() -> pathlib.Path:
 
 cache_directory = get_cache_directory()
 
-hf_tk: str = os.getenv("HUGGINGFACE_TOKEN")
+os.environ["MIOPEN_FIND_MODE"] = "FAST"
+os.environ["MIOPEN_LOG_LEVEL"] = "3"
 
+import torch
 import transformers as tfs
+# from torch.utils.data import Dataset, DataLoader, TensorDataset
 
 dtypes = {
 	'doc_id': str, 'id': str, 'label': str, 'title': str,
@@ -1952,8 +1952,7 @@ def get_synchronized_df_img(
 		print(f"Failed to write Excel file: {e}")
 	return synched_df
 
-def process_rgb_image(image_path: str, transform: T.Compose):
-	# logging.info(f"Processing: {image_path}")
+def process_rgb_image(image_path: str, transform):
 	try:
 		with Image.open(image_path) as img:
 			img = img.convert('RGB')

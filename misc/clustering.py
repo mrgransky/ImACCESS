@@ -2976,7 +2976,7 @@ def generate_recommendations(
 	if mean_sim < 0.75:
 		recs.append(
 			f"Mean intra-cluster similarity is low ({mean_sim:.3f}, target >= 0.80). "
-			f"Consider raising target_intra_similarity in get_clustered_labels()."
+			f"Consider raising cluster_intra_similarity_threshold in get_clustered_labels()."
 		)
 	elif mean_sim >= 0.82:
 		recs.append(
@@ -3010,7 +3010,7 @@ def generate_recommendations(
 	if ratio < 2.0:
 		recs.append(
 			f"Consolidation ratio is only {ratio:.1f}x. "
-			f"Increase max_consolidation or lower target_intra_similarity."
+			f"Increase max_consolidation or lower cluster_intra_similarity_threshold."
 		)
 	elif ratio > 8.0:
 		recs.append(
@@ -3221,7 +3221,7 @@ def get_clustered_labels(
 	label_texts: List[str],
 	min_cluster_size: int,
 	merge_singletons: bool,
-	target_intra_similarity: float,
+	cluster_intra_similarity_threshold: float,
 	min_consolidation: float,
 	max_consolidation: float,
 	min_singleton_ratio: float,
@@ -3252,16 +3252,16 @@ def get_clustered_labels(
 	valid_k_max = int(num_samples // min_consolidation)
 	if verbose:
 		print("\n[ADAPTIVE OPTIMAL CLUSTER SELECTION]")
-		print(f"  ├─ num_samples                     {num_samples}")
-		print(f"  ├─ Embeddings (X)                  {type(X)} {X.shape} {X.dtype}")
-		print(f"  ├─ Linkage (Z)                     {type(linkage_matrix)} {linkage_matrix.shape}")
-		print(f"  ├─ Min cluster size                {min_cluster_size}")
-		print(f"  ├─ Merge singletons                {merge_singletons}")
-		print(f"  ├─ Consolidation                   {min_consolidation}x - {max_consolidation}x")
-		print(f"  ├─ Required clusters               {valid_k_min} ≤ k ≤ {valid_k_max}")
-		print(f"  ├─ Target singleton ratio          {target_singleton_ratio}")
-		print(f"  ├─ Quality weight                  {quality_vs_consolidation_weight*100}%")
-		print(f"  └─ Target intra-cluster similarity {target_intra_similarity}")
+		print(f"  ├─ num_samples              {num_samples}")
+		print(f"  ├─ Embeddings (X)           {type(X)} {X.shape} {X.dtype}")
+		print(f"  ├─ Linkage (Z)              {type(linkage_matrix)} {linkage_matrix.shape}")
+		print(f"  ├─ Min cluster size         {min_cluster_size}")
+		print(f"  ├─ Merge singletons         {merge_singletons}")
+		print(f"  ├─ Consolidation            {min_consolidation}x - {max_consolidation}x")
+		print(f"  ├─ Required clusters        {valid_k_min} ≤ k ≤ {valid_k_max}")
+		print(f"  ├─ Target singleton ratio   {target_singleton_ratio}")
+		print(f"  ├─ Quality weight           {quality_vs_consolidation_weight*100}%")
+		print(f"  └─ Cluster intra-sim thresh {cluster_intra_similarity_threshold}")
 	
 	# Adaptive coarse range based on dataset size
 	if num_samples > int(3e4):
@@ -3333,10 +3333,10 @@ def get_clustered_labels(
 
 		status = ""
 		reason = ""
-		if mean_intra_sim >= target_intra_similarity and in_consol_range:
+		if mean_intra_sim >= cluster_intra_similarity_threshold and in_consol_range:
 			status = "✓ TARGET REACHED (quality + consolidation)"
 			reason = (
-				f"IntraSim {mean_intra_sim:.4f} ≥ {target_intra_similarity} "
+				f"IntraSim {mean_intra_sim:.4f} ≥ {cluster_intra_similarity_threshold} "
 				f"AND consol {consolidation:.2f}x in [{min_consolidation}, {max_consolidation}]"
 			)
 			if plateau_k is None:
@@ -3370,7 +3370,7 @@ def get_clustered_labels(
 		if len(coarse_results) >= 2:
 			recent = coarse_results[-2:] # # Looks at the last TWO evaluations
 			both_optimal = all(
-				r['intra_sim'] >= target_intra_similarity * 0.95 and
+				r['intra_sim'] >= cluster_intra_similarity_threshold * 0.95 and
 				min_consolidation <= r['consolidation'] <= max_consolidation
 				for r in recent
 			)
@@ -3381,14 +3381,14 @@ def get_clustered_labels(
 		raise ValueError("No valid cluster configurations found in coarse search")
 	
 	max_observed_intra = max(r['intra_sim'] for r in coarse_results)
-	gap = (target_intra_similarity - max_observed_intra) / target_intra_similarity
+	gap = (cluster_intra_similarity_threshold - max_observed_intra) / cluster_intra_similarity_threshold
 	if gap > 0.10:  # Target is >10% above what's achievable
 		adjusted_target = max_observed_intra * 1.02  # 2% headroom above observed max
 		if verbose:
-			print(f"\n[STAGE 1] ⚠ Target intra-sim {target_intra_similarity:.2f} unreachable.")
+			print(f"\n[STAGE 1] ⚠ Target intra-sim {cluster_intra_similarity_threshold:.2f} unreachable.")
 			print(f"           Max observed: {max_observed_intra:.4f} (gap={gap*100:.1f}%)")
 			print(f"           Auto-adjusting target → {adjusted_target:.4f}")
-		target_intra_similarity = adjusted_target
+		cluster_intra_similarity_threshold = adjusted_target
 
 	# Determine search region for Stage 2
 	if plateau_k is None:
@@ -3476,7 +3476,7 @@ def get_clustered_labels(
 		
 		# COMPOSITE SCORING FUNCTION (Key Innovation!)
 		# Quality component (normalized to 0-1)
-		quality_score = mean_intra_sim / target_intra_similarity
+		quality_score = mean_intra_sim / cluster_intra_similarity_threshold
 		quality_score = min(1.0, quality_score)  # Cap at 1.0
 		
 		# Consolidation component (penalize if outside range)
@@ -4123,7 +4123,7 @@ def _canonical_group_keys(
 		if irreg_matches:
 			print(f"  ├─ Irregular plural matches (attested in cluster canonicals):")
 			for surf, d in sorted(irreg_matches.items()):
-				print(f"  │    {surf!r:<30} -> singular {d['singular_candidate']!r:<25} (group key: {d['target_key']!r}, rule: {d['rule']})")
+				print(f"  │    {surf!r:<20} -> {d['singular_candidate']!r:<20} (group key: {d['target_key']!r}, rule: {d['rule']})")
 		else:
 			print(f"  ├─ Irregular plural matches : none attested in current canonicals")
 
@@ -6294,7 +6294,7 @@ def cluster(
 	nc: int,
 	linkage_method: str="ward",
 	distance_metric: str="euclidean",
-	target_intra_similarity: float = 0.75, # 0.69,
+	cluster_intra_similarity_threshold: float = 0.75, # 0.69,
 	min_consolidation: float = 4.0, #3.5, #4.0, # 3.8, #5.0, 
 	max_consolidation: float = 8.0, #6.0, #6.5, # 5.0, #7.5, 
 	min_singleton_ratio: float = 1.5e-2, # 1.5%
@@ -6307,8 +6307,6 @@ def cluster(
 	merge_canonical_min_centroid_sim: float = 0.65,
 	merge_max_size: Optional[int] = None,
 	min_cluster_size: int = 2,
-	low_cohesion_threshold=0.60,
-	poor_canonical_threshold=0.60,
 	merge_singletons: bool = True,
 	use_cache: bool = True,
 	encode_prompt: Optional[str] = None,
@@ -6405,7 +6403,7 @@ def cluster(
 		X=X,
 		linkage_matrix=Z,
 		label_texts=unique_labels,
-		target_intra_similarity=target_intra_similarity,
+		cluster_intra_similarity_threshold=cluster_intra_similarity_threshold,
 		min_consolidation=min_consolidation,
 		max_consolidation=max_consolidation,
 		min_singleton_ratio=min_singleton_ratio,
@@ -6518,6 +6516,9 @@ def cluster(
 		canonical_merges_done = n_clusters_pre_canon_merge - len(np.unique(clustered_labels))
 
 	# STEP 7: MAP CANONICALS + INJECT VIRTUAL ROWS + CLEAN
+	low_cohesion_threshold: float = 0.95 * cluster_intra_similarity_threshold
+	poor_canonical_threshold: float = 0.95 * cluster_intra_similarity_threshold
+
 	df, X_clean, removed_labels = map_inject_and_clean_clusters(
 		df=df,
 		X=X,
