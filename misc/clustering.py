@@ -576,6 +576,10 @@ def get_cluster_medoid_nearest_neighbor(
 	summary : distribution quantiles, counts at similarity levels (overall, mutual,
 				one-way, and merge-eligible mutual pairs), and resolved threshold.
 	"""
+	if verbose:
+		print("\n" + "=" * 120)
+		print("[CLUSTER medoid NEAREST NEIGHBOURS]\nPre-Merge 1-Nearest-Neighbor Centroid Cosine Similarity Diagnostics")
+
 	ids = [int(c) for c in np.unique(labels)]
 	n_clusters = len(ids)
 
@@ -739,8 +743,6 @@ def get_cluster_medoid_nearest_neighbor(
 		n_eligible_total = int(eligible_mask.sum()) // 2
 		size_limit_str = f"<= max_merged_size={max_merged_size}" if max_merged_size is not None else "no size limit"
 		size_header_str = f"Mergeable Pairs (<={max_merged_size})" if max_merged_size is not None else "Mergeable Pairs (all mutual)"
-		print("\n" + "=" * 120)
-		print("[CLUSTER NEIGHBOURS] Pre-Merge 1-Nearest-Neighbor Centroid Cosine Similarity Diagnostics")
 		print(
 			f"Total Clusters: {n_clusters:,} | "
 			f"Mutual 1-NN: {n_mutual_total:,}/{n_clusters:,} ({100.0 * n_mutual_total / max(n_clusters, 1):.1f}%) "
@@ -3656,7 +3658,7 @@ def get_clustered_labels(
 	}
 	
 	if verbose:
-		print(f"\n[STATISTICS]\n{json.dumps(stats, indent=2, ensure_ascii=False)}")
+		print(f"\n[STATISTICS]\n{json.dumps(stats, indent=2, ensure_ascii=False)}\n")
 
 	return labels
 
@@ -4093,13 +4095,19 @@ _CORE_PREPOSITIONS = frozenset(
 )
 
 def _stem_token(t: str) -> str:
-	"""Crude plural stemmer used only to compare phrases ('tanks' -> 'tank', 'batteries' -> 'battery')."""
+	"""
+	Crude plural stemmer used only to compare phrases 
+	('tanks' -> 'tank', 'batteries' -> 'battery').
+	"""
 	if t.endswith("ies") and len(t) > 4:
 		return t[:-3] + "y"
+	
 	if t.endswith(("ches", "shes", "xes", "zes", "sses")) and len(t) > 4:
 		return t[:-2]
+	
 	if t.endswith("s") and not t.endswith("ss") and len(t) > 3:
 		return t[:-1]
+	
 	return t
 
 def _stem_seq(label: str) -> List[str]:
@@ -4215,10 +4223,15 @@ def _resolve_shared_canonicals(
 		print(f"[RESOLVE SHARED CANONICALS]")
 		print(f"  ├─ unique labels {len(original_label_counts)}")
 		print(f"  ├─ Clusters      {len(cluster_canonicals)} with {len(cluster_centroids)} centroids")
-		print(f"  └─ threshold     {threshold}")
+		print(f"  ├─ demotion th   {threshold}")
 
 	# 0. Grouping on the harmonize key (before the loop)
-	keys, plural_of = _canonical_group_keys(cluster_canonicals)
+	keys, plural_of = _canonical_group_keys(
+		cluster_canonicals=cluster_canonicals, 
+		protected_plurals=None, 
+		verbose=verbose
+	)
+
 	label_index = _build_label_index(original_label_counts)  # stem-key -> corpus surface (for attested cores)
 	canonical_keys = {_spacing_key(m["canonical"]) for m in cluster_canonicals.values() if m.get("canonical")}
 	groups: Dict[str, List[int]] = defaultdict(list)
@@ -4237,6 +4250,7 @@ def _resolve_shared_canonicals(
 		size_by_surface = Counter()
 		for c in cids:
 			size_by_surface[cluster_canonicals[c]["canonical"]] += int(cluster_canonicals[c]["size"])
+		
 		surface = _pick_group_surface(variants, size_by_surface, plural_of, original_label_counts)
 		if len(variants) > 1:
 			stats["groups_with_variants"] += 1
@@ -4314,7 +4328,10 @@ def _resolve_shared_canonicals(
 
 			# 4a. An ATTESTED qualified core with majority support beats a synthesized/bare name
 			core = _attested_core(
-				cluster_members[c], surface, label_index, taken_keys=canonical_keys - {_spacing_key(meta["canonical"])},
+				cluster_members[c], 
+				surface, 
+				label_index, 
+				taken_keys=canonical_keys - {_spacing_key(meta["canonical"])},
 			)
 			if core is not None:
 				fallback, as_virtual = core
@@ -4353,15 +4370,16 @@ def _resolve_shared_canonicals(
 			print(f"\n{len(cids)} clusters: {cids} SHARED CANONICAL LABEL: {repr(surface):<30}{flag}")
 
 			for j, c in enumerate(cids):
-				tag = "KEPT" if j in keep else "DEMOTED" if c in demoted_ids else "KEPT_NO_ALT"
+				tag = "KEPT" if j in keep else f"DEMOTED (th < {threshold})" if c in demoted_ids else "KEPT_NO_ALT"
 				print(
-					f"cluster {c:6d} "
+					f"cluster {c:5d} "
 					f"anchor_sim: {anchor_sim[j]:.4f} "
-					f"evidence: {evidence[c]:<5}{tag:<12}{cluster_members[c]}"
+					f"evidence: {evidence[c]:<5}{tag:<20}{cluster_members[c]}"
 				)
 
 	if verbose:
-		print(f"\nRESOLUTION: {stats}")
+		print(f"\nRESOLVED SHARED CANONICALS")
+		print(json.dumps(stats, indent=2, ensure_ascii=False))
 		print("-"*130)
 
 	return cluster_canonicals
@@ -4458,9 +4476,17 @@ def _harmonize_final_canonicals(
 		print(f"  ├─ unique labels {len(original_label_counts)}")
 		print(f"  ├─ Clusters      {len(cluster_canonicals)}")
 
-
-	keys, plural_of = _canonical_group_keys(cluster_canonicals, protected_plurals, verbose=verbose)
-	surfaces = {cid: m['canonical'] for cid, m in cluster_canonicals.items() if m.get('canonical')}
+	keys, plural_of = _canonical_group_keys(
+		cluster_canonicals=cluster_canonicals,
+		protected_plurals=protected_plurals,
+		verbose=False, # intentional
+	)
+	
+	surfaces = {
+		cid: m['canonical'] 
+		for cid, m in cluster_canonicals.items() 
+		if m.get('canonical')
+	}
 
 	groups: Dict[str, list] = defaultdict(list)
 	for cid in surfaces:
@@ -4499,7 +4525,7 @@ def _harmonize_final_canonicals(
 
 	if verbose:
 		print(f"  ├─ changed group(s)   {stats['groups_changed']}")
-		print(f"  └─ renamed cluster(s) {stats['clusters_renamed']}")
+		print(f"  └─ renamed cluster(s) {stats['clusters_renamed']}\n")
 		for variants, winner in examples:
 			print(f"{repr(winner):<20}{variants}")
 		print("-"*120)
