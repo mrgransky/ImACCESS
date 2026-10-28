@@ -2189,8 +2189,8 @@ def merge_cluster_canonical_nearest_neighbor(
 
 				print(
 					f"  {rank}. canonical_similarity={bp['canonical_similarity']:.4f} centroid_similarity={bp['centroid_similarity']:.4f} < {min_centroid_similarity}\n"
-					f"     Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<30} medoid: {repr(ca['medoid']):<37} {ca['members'][:5]}\n"
-					f"     Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<30} medoid: {repr(cb['medoid']):<37} {cb['members'][:5]}\n"
+					f"     Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<30} medoid: {repr(ca['medoid']):<42} {ca['members'][:7]}\n"
+					f"     Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<30} medoid: {repr(cb['medoid']):<42} {cb['members'][:7]}\n"
 				)
 
 		if report_path:
