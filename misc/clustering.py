@@ -4114,7 +4114,7 @@ def _canonical_group_keys(
 	if verbose:
 		print("[CANONICAL GROUP KEYS] Lexical Equivalence Indexing:")
 		acronyms = sorted({s for s in distinct if _is_acronym(s)})
-		print(f"  ├─ Acronyms identified : {len(acronyms)}")
+		print(f"  ├─ Acronyms {len(acronyms)}")
 		for acr in acronyms:
 			print(f"  │    {acr}")
 
@@ -4134,11 +4134,9 @@ def _canonical_group_keys(
 			}
 		)
 		if caps_words:
-			print(f"  ├─ Uppercase Words (non-acronym) : {len(caps_words)}")
-			for w in caps_words[:10]:
+			print(f"  ├─ Uppercase Words (non-acronym) {len(caps_words)}")
+			for w in caps_words:
 				print(f"  │    {w}")
-			if len(caps_words) > 10:
-				print(f"  │    ... ({len(caps_words) - 10} more)")
 
 	return keys, plural_of
 
@@ -4469,17 +4467,17 @@ def _resolve_shared_canonicals(
 			changes.append((c, fallback, anchor_sim[j]))
 
 		if verbose and changes:
-			demoted_ids = [c for c, _, _ in changes]
+			demoted = {c: fb for c, fb, _ in changes}
 			flag = f"[LOW MARGIN {margin:.2f}x < {low_margin_ratio}x]" if low_margin else ""
 
 			print(f"\n{len(cids)} clusters: {cids} SHARED CANONICAL LABEL: {repr(surface):<30}{flag}")
 
 			for j, c in enumerate(cids):
-				tag = "KEPT" if j in keep else f"DEMOTED (th < {threshold})" if c in demoted_ids else "KEPT_NO_ALT"
+				tag = "KEPT" if j in keep else f"DEMOTED (< {threshold}) {demoted[c]}" if c in demoted else "KEPT_NO_ALT"
 				print(
 					f"cluster {c:5d} "
 					f"anchor_sim: {anchor_sim[j]:.4f} "
-					f"evidence: {evidence[c]:<5}{tag:<20}{cluster_members[c]}"
+					f"evidence: {evidence[c]:<5}{tag:<40} {cluster_members[c]}"
 				)
 
 	if verbose:
@@ -6377,9 +6375,9 @@ def cluster(
 		model_kwargs={"attn_implementation": attention, "dtype": dtype}, # no device_map
 		trust_remote_code=True,
 		device=device, # single device
-		cache_folder=cache_directory,#cache_directory[os.getenv('USER')],
+		cache_folder=cache_directory,
 		token=os.getenv("HUGGINGFACE_TOKEN"),
-		processor_kwargs={"padding_side": "left"}, # renamed from tokenizer_kwargs
+		processor_kwargs={"padding_side": "left"},
 	)
 
 	if verbose:

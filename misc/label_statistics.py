@@ -1305,7 +1305,7 @@ def get_embedding_model(
 		cache_folder=cache_directory,
 		model_kwargs=model_kwargs,
 		token=os.getenv("HUGGINGFACE_TOKEN"),
-		tokenizer_kwargs={"padding_side": "left"},
+		processor_kwargs={"padding_side": "left"},
 	).to(device)
 
 	if verbose:
@@ -2313,7 +2313,7 @@ def get_singletons(
 		device=device, # single device
 		cache_folder=cache_directory,
 		token=os.getenv("HUGGINGFACE_TOKEN"),
-		processor_kwargs={"padding_side": "left"}, # renamed from tokenizer_kwargs
+		processor_kwargs={"padding_side": "left"},
 	)
 
 	heatmap_res = viz.plot_label_similarity_heatmap(
