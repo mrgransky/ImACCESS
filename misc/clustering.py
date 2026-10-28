@@ -1295,6 +1295,11 @@ def get_cluster_canonical_nearest_neighbor(
 	non-identical canonical 1-NN similarity distribution via three intrinsic
 	signals (MAD fence, Kneedle elbow, and Mutual 1-NN p75).
 	"""
+
+	if verbose:
+		print("\n" + "=" * 120)
+		print("[CLUSTERS canonical NEAREST NEIGHBOURS]\nPre-Merge 1-Nearest-Neighbor Canonical Label Cosine Similarity Diagnostics")
+
 	ids = [int(c) for c in np.unique(labels)]
 	n_clusters = len(ids)
 
@@ -1514,8 +1519,6 @@ def get_cluster_canonical_nearest_neighbor(
 		n_eligible_total = int(eligible_mask.sum()) // 2
 		size_limit_str = f"<= max_merged_size={max_merged_size}" if max_merged_size is not None else "no size limit"
 		size_header_str = f"Mergeable Pairs (<={max_merged_size})" if max_merged_size is not None else f"Mergeable (cent>={min_centroid_similarity:.2f})"
-		print("\n" + "=" * 120)
-		print("[CANONICAL NEIGHBOURS] Pre-Merge 1-Nearest-Neighbor Canonical Label Cosine Similarity Diagnostics")
 		print(
 			f"Total Clusters: {n_clusters:,} (Unique Canonicals: {n_unique_canon_before:,}) | "
 			f"Mutual 1-NN: {n_mutual_total:,}/{n_clusters:,} ({100.0 * n_mutual_total / max(n_clusters, 1):.1f}%) "
@@ -1708,6 +1711,11 @@ def merge_cluster_canonical_nearest_neighbor(
 	new_labels             : contiguous re-indexed cluster array (same length as `labels`)
 	new_cluster_canonicals : updated {new_cid: meta_dict} aligned with `new_labels`
 	"""
+
+	if verbose:
+		print("\n" + "=" * 120)
+		print("[MERGE CLUSTERS (canonical nearest neighbors)]\nMulti-Round 1-NN Canonical Label Merging Diagnostics")
+
 	ids = [int(c) for c in np.unique(labels)]
 	cluster_ids = list(ids)
 	members = [np.where(labels == c)[0] for c in ids]
@@ -1819,6 +1827,8 @@ def merge_cluster_canonical_nearest_neighbor(
 					seen_blocked_keys.add(bkey)
 					med_a, med_a_sim = _get_medoid_info(members[i], sums[i])
 					med_b, med_b_sim = _get_medoid_info(members[j], sums[j])
+					members_a = [label_texts[k] for k in members[i]]
+					members_b = [label_texts[k] for k in members[j]]
 					centroid_blocked_pairs.append({
 						'round': rnd,
 						'canonical_similarity': round(c_sim_val, 6),
@@ -1828,17 +1838,19 @@ def merge_cluster_canonical_nearest_neighbor(
 							'id': cluster_ids[i],
 							'size': int(sizes[i]),
 							'canonical': canon_strs[i],
+							'is_virtual': canon_strs[i] not in set(members_a),
 							'medoid': med_a,
 							'medoid_similarity': med_a_sim,
-							'members': [label_texts[k] for k in members[i]],
+							'members': members_a,
 						},
 						'cluster_b': {
 							'id': cluster_ids[j],
 							'size': int(sizes[j]),
 							'canonical': canon_strs[j],
+							'is_virtual': canon_strs[j] not in set(members_b),
 							'medoid': med_b,
 							'medoid_similarity': med_b_sim,
-							'members': [label_texts[k] for k in members[j]],
+							'members': members_b,
 						},
 					})
 				continue
@@ -2060,8 +2072,6 @@ def merge_cluster_canonical_nearest_neighbor(
 		reduction_pct = (1.0 - len(members) / max(1, n_before)) * 100.0
 		canon_red = n_unique_canon_before - n_unique_canon_after
 
-		print("=" * 120)
-		print("[MERGE CLUSTERS (with canonical neighbors)]\nMulti-Round 1-NN Canonical Label Merging Diagnostics")
 		print(
 			f"Policy: canonical_threshold >= {threshold:.5f} ({threshold_mode}) | "
 			f"min_centroid_similarity >= {min_centroid_similarity:.2f} | "
@@ -2140,14 +2150,14 @@ def merge_cluster_canonical_nearest_neighbor(
 			for rank, m in enumerate(topk_confident_merges, 1):
 				comb_sz = m['merged']['size']
 				ca, cb, cm = m['cluster_a'], m['cluster_b'], m['merged']
-				va = " [VIRTUAL]" if ca['is_virtual'] else ""
-				vb = " [VIRTUAL]" if cb['is_virtual'] else ""
-				vm = " [VIRTUAL]" if cm['is_virtual'] else ""
+				va = " [VIRTUAL]" if ca.get('is_virtual', False) else ""
+				vb = " [VIRTUAL]" if cb.get('is_virtual', False) else ""
+				vm = " [VIRTUAL]" if cm.get('is_virtual', False) else ""
 				print(
 					f"  {rank}. canon_sim={m['canonical_similarity']:.4f} | centroid_sim={m['centroid_similarity']:.4f} "
 					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"   Cluster {ca['id']:6d} canonical: {repr(ca['canonical']) + va:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(ca['medoid']):<40} {ca['members'][:3]}\n"
-					f"   Cluster {cb['id']:6d} canonical: {repr(cb['canonical']) + vb:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(cb['medoid']):<40} {cb['members'][:3]}\n"
+					f"   Cluster {ca['id']:5d} canonical: {repr(ca['canonical']) + va:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(ca['medoid']):<40} {ca['members'][:3]}\n"
+					f"   Cluster {cb['id']:5d} canonical: {repr(cb['canonical']) + vb:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(cb['medoid']):<40} {cb['members'][:3]}\n"
 					f"   -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)
 
@@ -2155,34 +2165,37 @@ def merge_cluster_canonical_nearest_neighbor(
 			for rank, m in enumerate(topk_borderline_merges, 1):
 				comb_sz = m['merged']['size']
 				ca, cb, cm = m['cluster_a'], m['cluster_b'], m['merged']
-				va = " [VIRTUAL]" if ca['is_virtual'] else ""
-				vb = " [VIRTUAL]" if cb['is_virtual'] else ""
-				vm = " [VIRTUAL]" if cm['is_virtual'] else ""
+				va = " [VIRTUAL]" if ca.get('is_virtual', False) else ""
+				vb = " [VIRTUAL]" if cb.get('is_virtual', False) else ""
+				vm = " [VIRTUAL]" if cm.get('is_virtual', False) else ""
 				print(
 					f"  {rank}. canon_sim={m['canonical_similarity']:.4f} | centroid_sim={m['centroid_similarity']:.4f} "
 					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"   Cluster {ca['id']:6d} canonical: {repr(ca['canonical']) + va:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid={repr(ca['medoid']):<40} {ca['members'][:3]}\n"
-					f"   Cluster {cb['id']:6d} canonical: {repr(cb['canonical']) + vb:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid={repr(cb['medoid']):<40} {cb['members'][:3]}\n"
+					f"   Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid={repr(ca['medoid']):<40} {ca['members'][:3]}\n"
+					f"   Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid={repr(cb['medoid']):<40} {cb['members'][:3]}\n"
 					f"   -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)
 			print(f"  (lowest-similarity canonical merges; borderline to review) threshold: {threshold}")
 
 		if centroid_blocked_pairs:
 			print("-" * 120)
-			print(
-				f"[BLOCKED] Centroid Coherence Guard Blocked {len(centroid_blocked_pairs)} Mutual Canonical Pair(s) "
-				f"(canonical_sim >= {threshold:.4f} but centroid_sim < {min_centroid_similarity}):"
-			)
+			print(f"[BLOCKED] Centroid Coherence Guard Blocked {len(centroid_blocked_pairs)} Mutual Canonical Pair(s)")
+			print(f"canonical_sim >= {threshold:.4f} BUT centroid_sim < {min_centroid_similarity}")
+
 			for rank, bp in enumerate(sorted(centroid_blocked_pairs, key=lambda x: -x['canonical_similarity']), 1):
 				ca, cb = bp['cluster_a'], bp['cluster_b']
+				va = " [VIRTUAL]" if ca.get('is_virtual', False) else ""
+				vb = " [VIRTUAL]" if cb.get('is_virtual', False) else ""
+
 				print(
-					f"  {rank}. canonical_simarity={bp['canonical_similarity']:.4f} centroid_similarity={bp['centroid_similarity']:.4f} < {min_centroid_similarity}\n"
-					f"     Cluster {ca['id']:6d} canonical: {repr(ca['canonical']):<25} medoid: {repr(ca['medoid']):<45} {ca['members'][:5]}\n"
-					f"     Cluster {cb['id']:6d} canonical: {repr(cb['canonical']):<25} medoid: {repr(cb['medoid']):<45} {cb['members'][:5]}\n"
+					f"  {rank}. canonical_similarity={bp['canonical_similarity']:.4f} centroid_similarity={bp['centroid_similarity']:.4f} < {min_centroid_similarity}\n"
+					f"     Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<30} medoid: {repr(ca['medoid']):<37} {ca['members'][:5]}\n"
+					f"     Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<30} medoid: {repr(cb['medoid']):<37} {cb['members'][:5]}\n"
 				)
 
 		if report_path:
 			print(f"\n[SAVED] {report_path}")
+			print("-" * 120)
 
 	if report_path:
 		with open(report_path, 'w', encoding='utf-8') as f:
@@ -3969,15 +3982,83 @@ def _is_acronym(s: str) -> bool:
 def _cap_score(s: str) -> int:
 	return sum(1 for c in s if c.isupper())
 
+# Non-plural English words ending in -men that should not be mapped to -man
+_NON_PLURAL_MEN = frozenset({
+	"abdomen", "acumen", "albumen", "amen", "bitumen", "cyclamen",
+	"dolmen", "foramen", "hymen", "lumen", "numen", "omen",
+	"ramen", "regimen", "rumen", "semen", "specimen", "stamen",
+	"flamen",
+})
+
+# Known irregular English noun plurals -> singular lemma
+_IRREGULAR_NOUN_PLURALS = {
+	"people": "person",
+	"children": "child",
+	"feet": "foot",
+	"teeth": "tooth",
+	"geese": "goose",
+	"mice": "mouse",
+	"oxen": "ox",
+}
+
+# Known -ves irregular plurals -> singular lemma
+_IRREGULAR_VES_PLURALS = {
+	"shelves": "shelf",
+	"knives": "knife",
+	"wolves": "wolf",
+	"leaves": "leaf",
+	"halves": "half",
+	"calves": "calf",
+	"scarves": "scarf",
+	"lives": "life",
+	"wives": "wife",
+	"loaves": "loaf",
+	"thieves": "thief",
+	"sheaves": "sheaf",
+}
+
 def _singular_candidates(low: str) -> List[str]:
+	"""
+	Propose candidate singular roots for `low`, covering:
+	  1. Regular suffix rules (-ies -> -y, -ches/-shes/-xes/-zes/-sses/-oes -> strip -es, -s -> strip -s)
+	  2. Irregular ablaut plurals: -men -> -man & -women -> -woman (congressmen -> congressman, servicemen -> serviceman, women -> woman)
+	  3. Irregular f/fe plurals: -ves -> -f / -fe (shelves -> shelf, knives -> knife)
+	  4. Irregular root plurals: children -> child, people -> person, feet -> foot, etc.
+	Multi-word compound phrases ('freshmen congressmen', 'school children') are supported via last-token inspection.
+	"""
 	out = []
-	if low.endswith("ies") and len(low) > 4:
-		out.append(low[:-3] + "y")                      # batteries -> battery
-	if low.endswith(("ches", "shes", "xes", "zes", "sses", "oes")) and len(low) > 4:
-		out.append(low[:-2])                            # trenches -> trench
-	if low.endswith("s") and not low.endswith("ss") and len(low) > 3:
-		out.append(low[:-1])                            # cars -> car
-	return out
+	words = low.split()
+	last = words[-1] if words else ""
+	prefix = (" ".join(words[:-1]) + " ") if len(words) > 1 else ""
+
+	# 1. Regular -ies -> -y (batteries -> battery, field batteries -> field battery)
+	if low.endswith("ies") and len(last) > 4:
+		out.append(low[:-3] + "y")
+
+	# 2. Sibilant plurals -ches, -shes, -xes, -zes, -sses, -oes (trenches -> trench)
+	elif low.endswith(("ches", "shes", "xes", "zes", "sses", "oes")) and len(last) > 4:
+		out.append(low[:-2])
+
+	# 3. Irregular f/fe plurals: -ves -> -f / -fe (shelves -> shelf, knives -> knife)
+	elif last in _IRREGULAR_VES_PLURALS:
+		out.append(prefix + _IRREGULAR_VES_PLURALS[last])
+
+	# 4. Standard -s (cars -> car, freight cars -> freight car)
+	elif low.endswith("s") and not low.endswith("ss") and len(last) > 3:
+		out.append(low[:-1])
+
+	# 5. Irregular -women -> -woman & -men -> -man
+	# Supports compounds ('congressmen' -> 'congressman', 'spokesmen' -> 'spokesman', 'freshmen' -> 'freshman', 'women' -> 'woman', 'men' -> 'man')
+	if last.endswith("women") and len(last) >= 5:
+		out.append(low[:-2] + "an")
+	elif last.endswith("men") and len(last) >= 3 and last not in _NON_PLURAL_MEN:
+		out.append(low[:-2] + "an")
+
+	# 6. Irregular root plurals (children -> child, people -> person)
+	if last in _IRREGULAR_NOUN_PLURALS:
+		out.append(prefix + _IRREGULAR_NOUN_PLURALS[last])
+
+	return [c for c in dict.fromkeys(out) if c and c != low]
 
 def _canonical_group_keys(
 	cluster_canonicals: Dict[int, Dict],
@@ -4002,6 +4083,8 @@ def _canonical_group_keys(
 	attested_keys = {_spacing_key(s) for s in distinct if not _is_acronym(s)}
 
 	plural_of: Dict[str, str] = {}
+	plural_details: Dict[str, Dict[str, str]] = {}
+
 	for s in distinct:
 		low = s.lower()
 		if _is_acronym(s) or low in protected or low.endswith("ss"):
@@ -4011,6 +4094,16 @@ def _canonical_group_keys(
 			k = _spacing_key(cand)
 			if k in attested_keys and k != _spacing_key(low):
 				plural_of[s] = k
+				last_cand = cand.split()[-1]
+				if last_cand.endswith("man"):
+					rule = "irregular_men"
+				elif last_cand in _IRREGULAR_VES_PLURALS.values() or cand.endswith(("f", "fe")):
+					rule = "irregular_ves"
+				elif last_cand in _IRREGULAR_NOUN_PLURALS.values():
+					rule = "irregular_root"
+				else:
+					rule = "regular_s"
+				plural_details[s] = {'singular_candidate': cand, 'target_key': k, 'rule': rule}
 				break
 
 	keys = {
@@ -4019,10 +4112,20 @@ def _canonical_group_keys(
 	}
 
 	if verbose:
+		print("[CANONICAL GROUP KEYS] Lexical Equivalence Indexing:")
 		acronyms = sorted({s for s in distinct if _is_acronym(s)})
-		print(f"  ├─ ACCRONYMS     {len(acronyms)}")
+		print(f"  ├─ Acronyms identified : {len(acronyms)}")
 		for acr in acronyms:
-			print(f"  ├─── {acr}")
+			print(f"  │    {acr}")
+
+		irreg_matches = {s: d for s, d in plural_details.items() if d['rule'] != 'regular_s'}
+		print(f"  ├─ Plural -> Singular mappings : {len(plural_of):,} total ({len(plural_of) - len(irreg_matches):,} regular, {len(irreg_matches):,} irregular)")
+		if irreg_matches:
+			print(f"  ├─ Irregular plural matches (attested in cluster canonicals):")
+			for surf, d in sorted(irreg_matches.items()):
+				print(f"  │    {surf!r:<30} -> singular {d['singular_candidate']!r:<25} (group key: {d['target_key']!r}, rule: {d['rule']})")
+		else:
+			print(f"  ├─ Irregular plural matches : none attested in current canonicals")
 
 		caps_words = sorted(
 			{
@@ -4031,9 +4134,11 @@ def _canonical_group_keys(
 			}
 		)
 		if caps_words:
-			print(f"  ├─ WORDS         {len(caps_words)}")
-			for w in caps_words:
-				print(f"  ├─── {w}")
+			print(f"  ├─ Uppercase Words (non-acronym) : {len(caps_words)}")
+			for w in caps_words[:10]:
+				print(f"  │    {w}")
+			if len(caps_words) > 10:
+				print(f"  │    ... ({len(caps_words) - 10} more)")
 
 	return keys, plural_of
 
@@ -4416,7 +4521,7 @@ def report_shared_group_similarities(
 
 		for i, c in sorted(enumerate(cids), key=lambda x: -mean_to_others[x[0]]):
 			print(
-				f"    cluster {c:6d}  mean sim to others {mean_to_others[i]:.3f} "
+				f"    cluster {c:6d} mean sim to others {mean_to_others[i]:.3f} "
 				f"{cluster_members[c][:n_members]}"
 			)
 		
@@ -4688,8 +4793,9 @@ def _write_debug_json(
 ) -> None:
 	with open(path, 'w', encoding='utf-8') as f:
 		json.dump(payload, f, indent=2, ensure_ascii=False, default=_json_default)
+	
 	if verbose:
-		print(f"[CANONICAL SELECTION]")
+		print(f"[CLUSTERS WITH CANONICALS]")
 		print(f"  ├─ {len(payload['clusters'])} clusters")
 		print(f"  ├─ {payload['meta']['n_candidates']} candidates")
 		print(f"  ├─ {path}")
@@ -5478,15 +5584,17 @@ def assign_canonical_labels(
 			}
 		}
 	"""
-
 	if verbose:
 		print(f"[CANONICAL SELECTION]")
 		print(f"  ├─ df: {df.shape} {list(df.columns)}")
 		print(f"  ├─ X:  {X.shape}")
 		print(f"  ├─ virtual_min_sim_ratio: {virtual_min_sim_ratio}")
-		print(f"  └─ min_distinct_concepts: {min_distinct_concepts}")
+		print(f"  ├─ min_distinct_concepts: {min_distinct_concepts}")
+		print(f"  ├─ Frequency dict has     {len(original_label_counts)} labels")
+		print(f"  ├─ Total label instances  {sum(original_label_counts.values())}")
+		print(f"  └─ Most frequent          {max(original_label_counts.items(), key=lambda x: x[1])}")
 		print(df.head(10))
-		print()
+		print('-' * 80)
 
 	W_SIM, W_FREQ, W_HEAD, W_CONT, W_BREV = 0.30, 0.15, 0.20, 0.25, 0.10
 	weights = {
@@ -6345,19 +6453,10 @@ def cluster(
 	df = pd.DataFrame({'label': unique_labels, 'cluster': clustered_labels})
 
 	# STEP 5: LABEL FREQUENCY DICT
-	if verbose:
-		print(f"\n[CLUSTERING] {len(np.unique(clustered_labels))} clusters for {clustered_labels.shape} {type(clustered_labels)} labels")
-
 	label_freq_dict: dict = {}
 	for doc in documents:
 		for label in doc:
 			label_freq_dict[label] = label_freq_dict.get(label, 0) + 1
-
-	if verbose:
-		print(f"  ├─ Frequency dict has {len(label_freq_dict)} labels")
-		print(f"  ├─ Total label instances: {sum(label_freq_dict.values())}")
-		print(f"  └─ Most frequent: {max(label_freq_dict.items(), key=lambda x: x[1])}")
-		print('-' * 80)
 
 	# STEP 6: CANONICAL SELECTION (with virtual hypernym synthesis)
 	cluster_canonicals = assign_canonical_labels(
