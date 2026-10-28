@@ -1630,7 +1630,7 @@ def get_cluster_canonical_nearest_neighbor(
 
 			if top_k > 0:
 				sorted_syn = sorted(synonym_pairs, key=lambda kv: (-kv[1][0], -kv[1][1]))[:top_k]
-				print(f"\n  Top-{top_k} Closest Synonym Canonical Neighbor Pairs (Distinct Canonicals):")
+				print(f"\nTop-{top_k} Closest Synonym Canonical Neighbor Pairs (Distinct Canonicals):")
 
 				for rank, ((a, b), (c_sim, cent_sim)) in enumerate(sorted_syn, start=1):
 					is_mut = info[a]['cluster_id'] == b and info[b]['cluster_id'] == a
@@ -1656,20 +1656,19 @@ def get_cluster_canonical_nearest_neighbor(
 					
 					print(f"  {rank:2d}. canon_sim={c_sim:.4f} centroid_sim={cent_sim:.4f} {status_tag}")
 					print(
-						f"      Cluster {a:6d} ({len(cluster_members[a]):3d} labels, "
+						f"    Cluster {a:5d} ({len(cluster_members[a]):3d} labels) "
 						f"canonical={repr(cluster_canon_strs[a]) + v_tag_a:<34} "
-						f"medoid={repr(cluster_medoids[a]):<35}) {cluster_members[a][:5]}"
+						f"medoid={repr(cluster_medoids[a]):<35} {cluster_members[a][:5]}"
 					)
 
 					print(
-						f"      Cluster {b:6d} ({len(cluster_members[b]):3d} labels, "
+						f"    Cluster {b:5d} ({len(cluster_members[b]):3d} labels) "
 						f"canonical={repr(cluster_canon_strs[b]) + v_tag_b:<34} "
-						f"medoid={repr(cluster_medoids[b]):<35}) {cluster_members[b][:5]}\n"
+						f"medoid={repr(cluster_medoids[b]):<35} {cluster_members[b][:5]}\n"
 					)
 
 		if review_path:
 			print(f"\n[SAVED] {review_path}")
-		print("=" * 120 + "\n")
 
 	return summary
 
@@ -4019,14 +4018,15 @@ def _canonical_group_keys(
 
 	if verbose:
 		acronyms = sorted({s for s in distinct if _is_acronym(s)})
-		caps_words = sorted({
-			s for s in distinct
-			if s.isupper() and len(re.sub(r'[^A-Za-z]', '', s)) >= 2 and not _is_acronym(s)
-		})
-		print(f"  ├─ Dictionary loaded  : {len(_ENGLISH_WORDS):,} words available")
-		print(f"  ├─ Detected acronyms  : {len(acronyms)} {acronyms[:15] if len(acronyms) > 15 else acronyms}")
+		caps_words = sorted(
+			{
+				s for s in distinct
+				if s.isupper() and len(re.sub(r'[^A-Za-z]', '', s)) >= 2 and not _is_acronym(s)
+			}
+		)
+		print(f"  ├─ ACCRONYMS  {len(acronyms)} {acronyms[:25]}")
 		if caps_words:
-			print(f"  ├─ All-caps words kept: {len(caps_words)} (treated as words, e.g. {caps_words[:10]})")
+			print(f"  ├─ WORDS      {len(caps_words)} {caps_words[:25]}")
 
 	return keys, plural_of
 
@@ -4036,7 +4036,14 @@ def _pick_group_surface(
 	plural_of: Dict[str, str],
 	original_label_counts: Dict[str, int],
 ) -> str:
-	"""Winner among surface variants: singular first, real corpus label, frequency, size, capitalisation, lexicographic."""
+	"""
+	Winner among surface variants: 
+	singular first, 
+	real corpus label, 
+	frequency, size, 
+	capitalisation, 
+	lexicographic.
+	"""
 	pool = [s for s in variants if s not in plural_of] or list(variants)
 	return max(
 		pool,
@@ -4441,9 +4448,10 @@ def _harmonize_final_canonicals(
 		frequency, then total cluster size, then capitalisation, then lexicographic.
 	"""
 	if verbose:
-		print("\n[CANONICAL LABEL HARMONIZATION]")
-		print(f"  ├─ unique labels      {len(original_label_counts)}")
-		print(f"  ├─ Clusters           {len(cluster_canonicals)}")
+		print("[CANONICAL LABEL HARMONIZATION]")
+		print(f"  ├─ Dictionary    {len(_ENGLISH_WORDS):,} words")
+		print(f"  ├─ unique labels {len(original_label_counts)}")
+		print(f"  ├─ Clusters      {len(cluster_canonicals)}")
 
 	keys, plural_of = _canonical_group_keys(cluster_canonicals, protected_plurals, verbose=verbose)
 	surfaces = {cid: m['canonical'] for cid, m in cluster_canonicals.items() if m.get('canonical')}
@@ -4488,6 +4496,7 @@ def _harmonize_final_canonicals(
 		print(f"  └─ renamed cluster(s) {stats['clusters_renamed']}")
 		for variants, winner in examples:
 			print(f"{repr(winner):<20}{variants}")
+		print("-"*120)
 
 	return cluster_canonicals
 
