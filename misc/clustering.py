@@ -4018,15 +4018,20 @@ def _canonical_group_keys(
 
 	if verbose:
 		acronyms = sorted({s for s in distinct if _is_acronym(s)})
+		print(f"  ├─ ACCRONYMS     {len(acronyms)}")
+		for acr in acronyms:
+			print(f"  ├─── {acr}")
+
 		caps_words = sorted(
 			{
 				s for s in distinct
 				if s.isupper() and len(re.sub(r'[^A-Za-z]', '', s)) >= 2 and not _is_acronym(s)
 			}
 		)
-		print(f"  ├─ ACCRONYMS  {len(acronyms)} {acronyms[:25]}")
 		if caps_words:
-			print(f"  ├─ WORDS      {len(caps_words)} {caps_words[:25]}")
+			print(f"  ├─ WORDS         {len(caps_words)}")
+			for w in caps_words:
+				print(f"  ├─── {w}")
 
 	return keys, plural_of
 
@@ -4449,9 +4454,10 @@ def _harmonize_final_canonicals(
 	"""
 	if verbose:
 		print("[CANONICAL LABEL HARMONIZATION]")
-		print(f"  ├─ Dictionary    {len(_ENGLISH_WORDS):,} words")
+		print(f"  ├─ Vocabs (Dict) {len(_ENGLISH_WORDS)}")
 		print(f"  ├─ unique labels {len(original_label_counts)}")
 		print(f"  ├─ Clusters      {len(cluster_canonicals)}")
+
 
 	keys, plural_of = _canonical_group_keys(cluster_canonicals, protected_plurals, verbose=verbose)
 	surfaces = {cid: m['canonical'] for cid, m in cluster_canonicals.items() if m.get('canonical')}
