@@ -507,6 +507,8 @@ San Diego
 San Antonio
 San Jose
 San Juan
+Scarsdale
+Scottdale
 Austin
 Indianapolis
 Nashville
@@ -557,12 +559,13 @@ Acheson
 Adinkerke
 Aegean
 Agadir
-Anzio
 Alborg
 Alicante
 Algiers
 Alsace
+altenberg
 Ankara
+Anzio
 Amsterdam
 Antwerp
 Apennines
@@ -657,6 +660,7 @@ Ft. Worth
 Fowlmere
 Frankfurt
 Frihavn
+Frosinone
 Gallipoli
 Gambut
 Gander
@@ -665,12 +669,15 @@ Geneva
 Glasgow
 Green Bay
 Greenock
+Guadalajara
 Haifa
+Halmaheras
 Hamburg
 Hampshire
 Hanoi
 Havana
 Harrogate
+Hausen
 Helensburgh
 Helsinki
 Helsingfors
@@ -759,11 +766,13 @@ Madison
 Malaga
 Managua
 Manchester
+Marcus Island
 Marseille
 Montpellier
 Norfolk
 Murcia
 Nuremberg
+Oberhofen
 Orel
 Orly
 Ottawa
@@ -789,6 +798,7 @@ Quito
 Rabat
 Rome
 Reykjavik
+Russell Islands
 San Gimignano
 San Sebastian
 Sevilla
@@ -840,6 +850,7 @@ Tallinn
 Tarragona
 Tehachapi
 Tel Aviv
+Tesseney
 Tokio
 Tokyo
 Townsville
@@ -932,6 +943,8 @@ Arabic
 Arabian
 Armenian
 Asian
+Athenian
+Athenians
 Aussie
 Australian
 Austrian

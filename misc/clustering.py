@@ -2233,7 +2233,7 @@ def merge_cluster_canonical_nearest_neighbor(
 				vm = " [VIRTUAL]" if cm.get('is_virtual', False) else ""
 				print(
 					f" {rank}. "
-					f"canonical_to_canonical_sim={m['canonical_similarity']:.4f} >= {threshold:.5f} "
+					f"canonical_to_canonical_sim={m['canonical_similarity']:.5f} >= {threshold:.5f} "
 					f"centroid_sim={m['centroid_similarity']:.4f} "
 					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
 					f"  Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {ca['medoid']!r:<40}{ca['members'][:3]}\n"

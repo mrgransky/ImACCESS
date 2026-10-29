@@ -55,13 +55,13 @@ STRINGENTLY exclude keywords containing:
   - typographical error, misprints, or irregular orthography
   - acronyms, shorthands, or initialisms
   - generic war terms
-  - generic human category nouns, individual person names, or honorifics
+  - generic human category nouns, individual names, or honorifics
   - roman numerals, ordinal numbers, quantities, counts, or measurements
-  - equipment identifiers, serial numbers, brands, or models
+  - equipment/infrastructure identifiers, serial numbers, brands, or models
   - dates, times, years, decades, or any temporal references
   - locations, neighborhoods, places, buildings, or structures
   - family relationship terms
-  - geographical place, country, commune, municipality, district, borough, or town
+  - geographical place, country, commune, municipality, island, district, borough, or town
   - nationalities, ethnicities, or religions
   - underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
 
