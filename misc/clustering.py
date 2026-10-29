@@ -1698,7 +1698,9 @@ def get_cluster_canonical_nearest_neighbor(
 						margin_b = pref_sim_b - c_sim
 						status_tag = (
 							f"one-way (A->B: a_to_b_sim={c_sim:.4f}; "
-							f"B prefers C{pref_b} {cluster_canon_strs[pref_b]!r}: b_1nn_sim={pref_sim_b:.4f} vs b_to_a_sim={c_sim:.4f}, margin=+{margin_b:.4f})"
+							f"B prefers C{pref_b} {cluster_canon_strs[pref_b]!r}: "
+							f"b_1nn_sim={pref_sim_b:.4f} vs b_to_a_sim={c_sim:.4f}, "
+							f"margin=+{margin_b:.4f})"
 						)
 					elif info[b]['cluster_id'] == a:
 						pref_a = int(info[a]['cluster_id'])
@@ -1706,7 +1708,9 @@ def get_cluster_canonical_nearest_neighbor(
 						margin_a = pref_sim_a - c_sim
 						status_tag = (
 							f"one-way (B->A: b_to_a_sim={c_sim:.4f}; "
-							f"A prefers C{pref_a} {cluster_canon_strs[pref_a]!r}: a_1nn_sim={pref_sim_a:.4f} vs a_to_b_sim={c_sim:.4f}, margin=+{margin_a:.4f})"
+							f"A prefers C{pref_a} {cluster_canon_strs[pref_a]!r}: "
+							f"a_1nn_sim={pref_sim_a:.4f} vs a_to_b_sim={c_sim:.4f}, "
+							f"margin=+{margin_a:.4f})"
 						)
 					else:
 						pref_a = int(info[a]['cluster_id'])
@@ -1716,18 +1720,11 @@ def get_cluster_canonical_nearest_neighbor(
 					v_tag_a = " [VIRTUAL]" if cluster_is_virtual[a] else ""
 					v_tag_b = " [VIRTUAL]" if cluster_is_virtual[b] else ""
 					
-					print(f"  {rank:2d}. canonical_to_canonical_sim={c_sim:.4f} centroid_sim={cent_sim:.4f} {status_tag}")
-					print(
-						f"    Cluster {a:5d} ({len(cluster_members[a]):3d} labels) "
-						f"canonical={repr(cluster_canon_strs[a]) + v_tag_a:<34} "
-						f"medoid={repr(cluster_medoids[a]):<35} {cluster_members[a][:5]}"
-					)
-
-					print(
-						f"    Cluster {b:5d} ({len(cluster_members[b]):3d} labels) "
-						f"canonical={repr(cluster_canon_strs[b]) + v_tag_b:<34} "
-						f"medoid={repr(cluster_medoids[b]):<35} {cluster_members[b][:5]}\n"
-					)
+					print(f" {rank:2d}. canonical_to_canonical_sim={c_sim:.4f} centroid_sim={cent_sim:.4f}")
+					print(f"  {status_tag}")
+					print(f"  Cluster {a:5d} ({len(cluster_members[a]):3d} labels) canonical: {cluster_canon_strs[a] + v_tag_a!r:<35}medoid: {cluster_medoids[a]!r:<40}{cluster_members[a][:9]}")
+					print(f"  Cluster {b:5d} ({len(cluster_members[b]):3d} labels) canonical: {cluster_canon_strs[b] + v_tag_b!r:<35}medoid: {cluster_medoids[b]!r:<40}{cluster_members[b][:9]}")
+					print()
 
 		if review_path:
 			print(f"\n[SAVED] {review_path}")
@@ -2209,7 +2206,6 @@ def merge_cluster_canonical_nearest_neighbor(
 			topk_borderline_merges = sorted(display_pool, key=lambda m: (m['canonical_similarity'], m['centroid_similarity']), reverse=False)[:topk]
 
 			print("-" * 120)
-
 			print(f"Top-{topk} Closest Canonical Synonym Merges (Highest Confidence / Similarity)")
 			for rank, m in enumerate(topk_confident_merges, 1):
 				comb_sz = m['merged']['size']
@@ -2218,11 +2214,14 @@ def merge_cluster_canonical_nearest_neighbor(
 				vb = " [VIRTUAL]" if cb.get('is_virtual', False) else ""
 				vm = " [VIRTUAL]" if cm.get('is_virtual', False) else ""
 				print(
-					f"  {rank}. canonical_to_canonical_sim={m['canonical_similarity']:.4f} | centroid_sim={m['centroid_similarity']:.4f} "
+					f" {rank}. "
+					f"canonical_to_canonical_sim={m['canonical_similarity']:.4f} >= {threshold:5f} "
+					f"centroid_sim={m['centroid_similarity']:.4f} "
 					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"   Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(ca['medoid']):<40} {ca['members'][:3]}\n"
-					f"   Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(cb['medoid']):<40} {cb['members'][:3]}\n"
-					f"   -> Winning canonical: {cm['canonical'] + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
+					f"  Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(ca['medoid']):<40} {ca['members'][:3]}\n"
+					f"  Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(cb['medoid']):<40} {cb['members'][:3]}\n"
+					f"  -> Winning canonical: {cm['canonical'] + vm} "
+					f"(from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)
 
 			print(f"\nTop-{topk} Borderline Canonical Merges (Near Cutoff Threshold)")
@@ -2233,18 +2232,20 @@ def merge_cluster_canonical_nearest_neighbor(
 				vb = " [VIRTUAL]" if cb.get('is_virtual', False) else ""
 				vm = " [VIRTUAL]" if cm.get('is_virtual', False) else ""
 				print(
-					f"  {rank}. canonical_to_canonical_sim={m['canonical_similarity']:.4f} | centroid_sim={m['centroid_similarity']:.4f} "
+					f" {rank}. "
+					f"canonical_to_canonical_sim={m['canonical_similarity']:.4f} >= {threshold:.5f} "
+					f"centroid_sim={m['centroid_similarity']:.4f} "
 					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"   Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {ca['medoid']!r:<40}{ca['members'][:3]}\n"
-					f"   Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {cb['medoid']!r:<40}{cb['members'][:3]}\n"
-					f"   -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
+					f"  Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {ca['medoid']!r:<40}{ca['members'][:3]}\n"
+					f"  Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {cb['medoid']!r:<40}{cb['members'][:3]}\n"
+					f"  -> Winning canonical: {cm['canonical'] + vm} "
+					f"(from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)
-			print(f"  (lowest-similarity canonical merges; borderline to review) threshold: {threshold}")
+			print(f"  (lowest-similarity canonical merges; borderline to review) threshold: {threshold:.5f}")
 
 		if centroid_blocked_pairs:
 			print("-" * 120)
 			print(f"[BLOCKED] Centroid Coherence Guard Blocked {len(centroid_blocked_pairs)} Mutual Canonical Pair(s)")
-			# print(f"canonical_to_canonical_sim >= {threshold:.4f} BUT centroid_sim < {min_centroid_similarity}\n")
 
 			for rank, bp in enumerate(sorted(centroid_blocked_pairs, key=lambda x: -x['canonical_similarity']), 1):
 				ca, cb = bp['cluster_a'], bp['cluster_b']
@@ -4489,7 +4490,7 @@ def _resolve_shared_canonicals(
 					f"cluster {c:5d} "
 					f"anchor_sim: {anchor_sim[j]:.4f} "
 					f"evidence: {evidence[c]:<5}{tag:<40}"
-					f"{cluster_members[c][:15]}"
+					f"{cluster_members[c][:12]}"
 				)
 
 	if verbose:
@@ -6297,6 +6298,245 @@ def map_inject_and_clean_clusters(
 
 	return df, X_clean, removed_labels
 
+def export_consolidated_clusters_json(
+	df: pd.DataFrame,
+	X: np.ndarray,
+	clusters_fname: str,
+	canonical_selection_json_path: Optional[str] = None,
+	canonical_merges_json_path: Optional[str] = None,
+	removed_labels: Optional[List[str]] = None,
+	canonical_merges_done: int = 0,
+	verbose: bool = False,
+) -> str:
+	"""
+	Export a comprehensive, post-merge, post-filtering consolidated JSON file
+	aligned 1-to-1 with the final clustered DataFrame and output CSV.
+
+	Parameters
+	----------
+	df : pd.DataFrame
+		Final cleaned and harmonized DataFrame.
+	X : np.ndarray
+		Embedding matrix aligned with rows of df.
+	clusters_fname : str
+		Base CSV path used to derive the final JSON filename.
+	canonical_selection_json_path : Optional[str]
+		Path to initial Step 6 canonical selection JSON (pre-merge).
+	canonical_merges_json_path : Optional[str]
+		Path to Step 6b canonical merges JSON.
+	removed_labels : Optional[List[str]]
+		Labels removed during Step 7 cleaning.
+	canonical_merges_done : int
+		Number of cluster merges performed in Step 6b.
+	verbose : bool
+		Whether to print console diagnostics.
+
+	Returns
+	-------
+	output_json_path : str
+		Path to the written consolidated JSON file.
+	"""
+	if clusters_fname.endswith(".csv"):
+		output_json_path = clusters_fname.replace(".csv", "_semantic_consolidation_clusters.json")
+	else:
+		output_json_path = os.path.splitext(clusters_fname)[0] + "_semantic_consolidation_clusters.json"
+
+	step6_clusters_by_id: Dict[int, Dict] = {}
+	if canonical_selection_json_path and os.path.exists(canonical_selection_json_path):
+		try:
+			with open(canonical_selection_json_path, "r", encoding="utf-8") as f:
+				step6_data = json.load(f)
+			for c in step6_data.get("clusters", []):
+				step6_clusters_by_id[int(c["cluster_id"])] = c
+		except Exception as e:
+			if verbose:
+				print(f"[CONSOLIDATED JSON] Warning: Failed to read {canonical_selection_json_path}: {e}")
+
+	merges_list: List[Dict] = []
+	if canonical_merges_json_path and os.path.exists(canonical_merges_json_path):
+		try:
+			with open(canonical_merges_json_path, "r", encoding="utf-8") as f:
+				merges_data = json.load(f)
+			merges_list = merges_data.get("merges", [])
+		except Exception as e:
+			if verbose:
+				print(f"[CONSOLIDATED JSON] Warning: Failed to read {canonical_merges_json_path}: {e}")
+
+	norms = np.linalg.norm(X, axis=1, keepdims=True)
+	norms = np.where(norms == 0, 1.0, norms)
+	X_norm = (X / norms).astype(np.float32)
+
+	final_clusters: List[Dict] = []
+	unique_cids = sorted(int(c) for c in df["cluster"].unique())
+	n_merged_clusters = 0
+
+	for cid in unique_cids:
+		c_mask = df["cluster"] == cid
+		real_mask = c_mask & (~df["is_injected"])
+		real_indices = np.where(real_mask)[0]
+		real_members = df.loc[real_mask, "label"].tolist()
+
+		canonical = df.loc[c_mask, "canonical"].iloc[0]
+		canonical_internal = (
+			df.loc[c_mask, "canonical_internal"].iloc[0]
+			if "canonical_internal" in df.columns
+			else canonical
+		)
+		has_injected = bool(df.loc[c_mask, "is_injected"].any())
+		is_virtual = bool(has_injected or canonical not in set(real_members))
+		cluster_size = len(real_members)
+
+		# Cohesion and medoid
+		if len(real_indices) > 0:
+			cluster_embs = X_norm[real_indices]
+			cent_vec = cluster_embs.sum(axis=0)
+			cent_norm = np.linalg.norm(cent_vec)
+			if cent_norm > 0:
+				cent_vec = cent_vec / cent_norm
+			sims_to_cent = cluster_embs @ cent_vec
+			best_local_idx = int(np.argmax(sims_to_cent))
+			medoid = real_members[best_local_idx]
+			medoid_sim = round(float(sims_to_cent[best_local_idx]), 4)
+
+			if len(real_indices) > 1:
+				sim_matrix = cluster_embs @ cluster_embs.T
+				n_pts = len(real_indices)
+				intra_cohesion = round(
+					float(np.clip((sim_matrix.sum() - n_pts) / (n_pts * (n_pts - 1)), -1.0, 1.0)), 
+					4
+				)
+			else:
+				intra_cohesion = 1.0
+
+			# Canonical representativeness (similarity to real members)
+			c_row_mask = c_mask & (df["label"] == canonical)
+			if c_row_mask.any():
+				c_idx = np.where(c_row_mask)[0][0]
+				c_emb = X_norm[c_idx]
+				sims_to_canon = cluster_embs @ c_emb
+				canon_rep = round(float(np.mean(sims_to_canon)), 4)
+			else:
+				canon_rep = None
+		else:
+			medoid = canonical
+			medoid_sim = 1.0
+			intra_cohesion = 1.0
+			canon_rep = 1.0
+
+		# Trace provenance from Step 6 & Step 6b
+		real_set = set(real_members)
+		contributing_step6 = [
+			c for c in step6_clusters_by_id.values()
+			if set(c.get("members", [])) & real_set
+		]
+
+		if len(contributing_step6) > 1:
+			n_merged_clusters += 1
+			cids = [c["cluster_id"] for c in contributing_step6]
+			const_canonicals = [c["canonical"] for c in contributing_step6]
+			cids_set = set(cids)
+
+			relevant_merges = []
+			for m in merges_list:
+				m_a_id = m.get("cluster_a", {}).get("id")
+				m_b_id = m.get("cluster_b", {}).get("id")
+				if m_a_id in cids_set or m_b_id in cids_set:
+					relevant_merges.append({
+						"round": m.get("round"),
+						"canonical_similarity": m.get("canonical_similarity"),
+						"centroid_similarity": m.get("centroid_similarity"),
+						"cluster_a": {"id": m_a_id, "canonical": m.get("cluster_a", {}).get("canonical")},
+						"cluster_b": {"id": m_b_id, "canonical": m.get("cluster_b", {}).get("canonical")},
+						"winning_canonical": m.get("merged", {}).get("canonical"),
+						"winner_from": m.get("merged", {}).get("winner_from"),
+						"winner_margin": m.get("merged", {}).get("winner_margin"),
+					})
+
+			construction = {
+				"was_merged": True,
+				"constituent_step6_cids": cids,
+				"constituent_initial_canonicals": const_canonicals,
+				"winning_canonical": canonical,
+				"merge_events": relevant_merges,
+			}
+		elif len(contributing_step6) == 1:
+			c = contributing_step6[0]
+			construction = {
+				"was_merged": False,
+				"step6_cluster_id": c["cluster_id"],
+				"initial_canonical": c["canonical"],
+				"selection_method": c.get("selection_method"),
+			}
+		else:
+			construction = {
+				"was_merged": False,
+				"note": "untracked (Step 6 reference absent)",
+			}
+
+		cluster_record = {
+			"cluster_id": cid,
+			"size": cluster_size,
+			"canonical": canonical,
+			"canonical_internal": canonical_internal,
+			"is_virtual": is_virtual,
+			"intra_cohesion": intra_cohesion,
+			"canonical_representativeness": canon_rep,
+			"medoid": medoid,
+			"medoid_similarity": medoid_sim,
+			"members": real_members,
+			"construction": construction,
+		}
+		final_clusters.append(cluster_record)
+
+	removed_clusters_list: List[Dict] = []
+	if removed_labels and step6_clusters_by_id:
+		removed_set = set(removed_labels)
+		for s6_id, s6_c in step6_clusters_by_id.items():
+			s6_members = s6_c.get("members", [])
+			overlap = [lbl for lbl in s6_members if lbl in removed_set]
+			if overlap:
+				removed_clusters_list.append({
+					"original_step6_cluster_id": int(s6_id),
+					"canonical": s6_c.get("canonical"),
+					"size": len(s6_members),
+					"removed_labels_count": len(overlap),
+					"removed_labels": overlap,
+					"reason": "low_cohesion_or_poor_canonical_guard",
+				})
+
+	meta = {
+		"source_csv": os.path.basename(clusters_fname) if clusters_fname else None,
+		"final_csv": os.path.basename(clusters_fname.replace(".csv", "_semantic_consolidation_agglomerative.csv")) if clusters_fname else None,
+		"output_json": os.path.basename(output_json_path),
+		"total_final_clusters": len(final_clusters),
+		"total_labels": int((~df["is_injected"]).sum()),
+		"total_injected_virtual_rows": int(df["is_injected"].sum()),
+		"unique_canonicals": int(len({c["canonical"].lower() for c in final_clusters})),
+		"clusters_from_merges": n_merged_clusters,
+		"canonical_merges_done": int(canonical_merges_done),
+		"problematic_labels_removed": len(removed_labels) if removed_labels else 0,
+		"problematic_clusters_removed": len(removed_clusters_list),
+	}
+
+	payload = {
+		"meta": meta,
+		"clusters": final_clusters,
+		"removed_clusters": removed_clusters_list,
+	}
+
+	with open(output_json_path, "w", encoding="utf-8") as f:
+		json.dump(payload, f, indent=2, ensure_ascii=False, default=_json_default)
+
+	if verbose:
+		print("[CONSOLIDATED CLUSTERS JSON]")
+		print(f"  ├─ Final clusters saved     {len(final_clusters):,}")
+		print(f"  ├─ Unique canonical labels  {meta['unique_canonicals']:,}")
+		print(f"  ├─ Clusters from merges     {n_merged_clusters:,}")
+		print(f"  ├─ Problematic clusters rm  {len(removed_clusters_list):,} ({meta['problematic_labels_removed']:,} labels)")
+		print(f"  └─ {output_json_path}")
+
+	return output_json_path
+
 def cluster(
 	labels: List[List[str]],
 	model_id: str,
@@ -6548,21 +6788,26 @@ def cluster(
 		verbose=verbose,
 	)
 
-	# cluster ids were re-indexed, so JSON and CSV ids no longer line up
-	if removed_labels or canonical_merges_done > 0:
-		reason = (
-			"remove_problematic_clustered_labels removed clusters"
-			if removed_labels
-			else f"merge_cluster_canonical_nearest_neighbor merged {canonical_merges_done} cluster(s)"
-		)
-		if verbose:
-			print(f"[CONSISTENCY] skipped pre-merge JSON vs post-merge CSV id check\n{reason}")
-	else:
-		_check_json_csv_consistency(
-			df, 
-			os.path.splitext(clusters_fname)[0] + "_canonical_selection.json",
-			verbose=verbose,
-		)
+	# STEP 8: EXPORT FINAL CONSOLIDATED CLUSTERS JSON (Debugging & Diagnosis)
+	canonical_selection_json = os.path.splitext(clusters_fname)[0] + "_canonical_selection.json"
+	canonical_merges_json = os.path.splitext(clusters_fname)[0] + "_canonical_nearest_neighbor_merges.json"
+
+	final_clusters_json_path = export_consolidated_clusters_json(
+		df=df,
+		X=X_clean,
+		clusters_fname=clusters_fname,
+		canonical_selection_json_path=canonical_selection_json,
+		canonical_merges_json_path=canonical_merges_json,
+		removed_labels=removed_labels,
+		canonical_merges_done=canonical_merges_done,
+		verbose=verbose,
+	)
+
+	_check_json_csv_consistency(
+		df, 
+		final_clusters_json_path,
+		verbose=verbose,
+	)
 
 	if verbose:
 		unique_labels_array = df["label"].values

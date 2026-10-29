@@ -2291,7 +2291,7 @@ def get_singletons(
 		
 		label_singletons = label_counts_df[label_counts_df['Count'] == 1]['Label'].tolist()
 
-		print(f"  └─ Singleton(s) {len(label_singletons):6d}/{len(unique_labels):6d} ({len(label_singletons)/len(unique_labels)*100:.2f}%) {label_singletons[:10]}")
+		print(f"  └─ Singleton(s) {len(label_singletons):6d}/{len(unique_labels):6d} ({len(label_singletons)/len(unique_labels)*100:.2f}%) {label_singletons[:7]}")
 
 		unique_labels_singleton_fpath = os.path.join(output_dir, f"unique_labels_{len(unique_labels)}_{col}.csv")
 		label_counts_df.to_csv(unique_labels_singleton_fpath, index=False,)
