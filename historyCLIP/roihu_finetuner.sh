@@ -11,8 +11,8 @@
 #SBATCH --mem=218G
 #SBATCH --partition=gpumedium
 #SBATCH --gres=gpu:gh200:1
-#SBATCH --time=0-04:45:00
-#SBATCH --begin=02:15:00
+#SBATCH --time=0-07:45:00
+#SBATCH --begin=07:35:00
 
 ##############################################################################
 # ARRAY INDEXING SCHEME
