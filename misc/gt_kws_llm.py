@@ -102,7 +102,7 @@ def _load_llm_(
 	try:
 		if verbose:
 			print(f"[LOGIN INFO] HuggingFace Hub...")
-		huggingface_hub.login(token=hf_tk)
+		huggingface_hub.login(token=os.getenv("HUGGINGFACE_TOKEN"))
 	except Exception as e:
 		print(f"<!> Failed to login to HuggingFace Hub:\n{e}")
 		raise e
@@ -178,7 +178,7 @@ def _load_llm_(
 			model_id, 
 			# use_fast=True,
 			trust_remote_code=True,
-			token=hf_tk,
+			token=os.getenv("HUGGINGFACE_TOKEN"),
 			cache_dir=cache_directory,
 		)
 	except (KeyError, ValueError, OSError) as exc:
@@ -196,7 +196,7 @@ def _load_llm_(
 				tokenizer = TokCls.from_pretrained(
 					model_id, 
 					trust_remote_code=True,
-					token=hf_tk,
+					token=os.getenv("HUGGINGFACE_TOKEN"),
 					cache_dir=cache_directory,
 				)
 				break
@@ -208,7 +208,7 @@ def _load_llm_(
 					model_id, 
 					# use_fast=False, 
 					trust_remote_code=True,
-					token=hf_tk,
+					token=os.getenv("HUGGINGFACE_TOKEN"),
 					cache_dir=cache_directory,
 				)
 			except Exception as final_exc:
@@ -223,7 +223,7 @@ def _load_llm_(
 	
 	def get_estimated_gb_size(model_id: str) -> float:
 		try:
-			info = huggingface_hub.model_info(model_id, token=hf_tk, files_metadata=True)
+			info = huggingface_hub.model_info(model_id, token=os.getenv("HUGGINGFACE_TOKEN"), files_metadata=True)
 		except Exception as e:
 			raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
 
@@ -359,7 +359,7 @@ def _load_llm_(
 		"low_cpu_mem_usage": True,
 		# "low_cpu_mem_usage": False, # avoid illegal memory access during weight materialization
 		"trust_remote_code": True,
-		"token": hf_tk,
+		"token": os.getenv("HUGGINGFACE_TOKEN"),
 		"cache_dir": cache_directory,
 		"attn_implementation": attention,
 		"dtype": dtype,

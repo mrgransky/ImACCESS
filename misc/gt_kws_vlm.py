@@ -110,7 +110,7 @@ def _load_vlm_(
 	try:
 		if verbose:
 			print(f"[INFO] Logging in to HuggingFace Hub...")
-		huggingface_hub.login(token=hf_tk)
+		huggingface_hub.login(token=os.getenv("HUGGINGFACE_TOKEN"))
 	except Exception as e:
 		print(f"<!> Failed to login to HuggingFace Hub: {e}")
 		raise e
@@ -163,7 +163,7 @@ def _load_vlm_(
 		# use_fast=True,
 		trust_remote_code=True,
 		cache_dir=cache_directory,
-		token=hf_tk,
+		token=os.getenv("HUGGINGFACE_TOKEN"),
 		quantization_config=quantization_config,
 	)
 	if verbose:
@@ -182,7 +182,7 @@ def _load_vlm_(
 
 	def get_estimated_gb_size(model_id: str) -> float:
 		try:
-			info = huggingface_hub.model_info(model_id, token=hf_tk, files_metadata=True)
+			info = huggingface_hub.model_info(model_id, token=os.getenv("HUGGINGFACE_TOKEN"), files_metadata=True)
 		except Exception as e:
 			raise ValueError(f"Failed to fetch model info for {model_id}: {e}")
 
