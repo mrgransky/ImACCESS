@@ -149,7 +149,6 @@ os.environ["MIOPEN_LOG_LEVEL"] = "3"
 
 import torch
 import transformers as tfs
-# from torch.utils.data import Dataset, DataLoader, TensorDataset
 
 dtypes = {
 	'doc_id': str, 'id': str, 'label': str, 'title': str,

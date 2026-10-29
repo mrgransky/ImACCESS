@@ -813,7 +813,7 @@ class MultiLabelProbe(torch.nn.Module):
 
 def get_probe_clip(
 	clip_model: torch.nn.Module,
-	validation_loader: DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	device: torch.device,
 	hidden_dim: Optional[int] = None,
 	dropout: float = 0.1,
@@ -827,7 +827,7 @@ def get_probe_clip(
 	
 	Args:
 			clip_model: The CLIP model to create a probe for
-			validation_loader: DataLoader to detect dataset type and get class information
+			validation_loader: torch.utils.data.DataLoader to detect dataset type and get class information
 			device: Device to place the probe on
 			hidden_dim: Optional hidden dimension for MLP probe (None = linear probe)
 			dropout: Dropout rate for the probe
@@ -842,7 +842,7 @@ def get_probe_clip(
 			ValueError: If dataset type cannot be determined or class information is missing
 	"""
 	
-	# Step 1: Detect dataset type by inspecting the DataLoader
+	# Step 1: Detect dataset type by inspecting the torch.utils.data.DataLoader
 	dataset_info = _detect_dataset_type(validation_loader, verbose)
 	
 	# Step 2: Extract class information
@@ -902,12 +902,17 @@ def get_probe_clip(
 		
 	return probe
 
-def _detect_dataset_type(validation_loader: DataLoader, verbose: bool=False,)->Dict:
+def _detect_dataset_type(
+	validation_loader: torch.utils.data.DataLoader, 
+	verbose: bool=False,
+)->Dict:
 	"""
-	Detect whether the dataset is single-label or multi-label by inspecting the DataLoader.
+	Detect whether the dataset is 
+	single-label or 
+	multi-label by inspecting the torch.utils.data.DataLoader.
 	
 	Args:
-		validation_loader: DataLoader to inspect
+		validation_loader: torch.utils.data.DataLoader to inspect
 		verbose: Whether to print detection details
 		
 	Returns:
@@ -936,7 +941,7 @@ def _detect_dataset_type(validation_loader: DataLoader, verbose: bool=False,)->D
 		is_multilabel = True
 		detection_method = "_num_classes_without_labels_int"
 	
-	# Method 2: Inspect a sample from the DataLoader
+	# Method 2: Inspect a sample from the torch.utils.data.DataLoader
 	try:
 		sample_batch = next(iter(validation_loader))
 		
@@ -986,12 +991,12 @@ def _detect_dataset_type(validation_loader: DataLoader, verbose: bool=False,)->D
 	
 	return dataset_info
 
-def _extract_class_names(validation_loader: DataLoader, dataset_info: Dict, verbose: bool = True) -> List[str]:
+def _extract_class_names(validation_loader: torch.utils.data.DataLoader, dataset_info: Dict, verbose: bool = True) -> List[str]:
 	"""
 	Extract class names from the dataset.
 	
 	Args:
-		validation_loader: DataLoader to extract class names from
+		validation_loader: torch.utils.data.DataLoader to extract class names from
 		dataset_info: Dataset information from _detect_dataset_type
 		verbose: Whether to print extraction details
 		

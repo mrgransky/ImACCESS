@@ -11,7 +11,7 @@ import visualize as viz
 
 def get_text_embeddings(
 	model: torch.nn.Module,
-	loader: DataLoader,
+	loader: torch.utils.data.DataLoader,
 	dtype: torch.dtype,
 	verbose: bool = False,
 ):
@@ -147,8 +147,8 @@ def print_final_evaluation_summary(
 
 def zero_shot_multi_label(
 	model: torch.nn.Module,
-	train_loader: DataLoader,
-	validation_loader: DataLoader,
+	train_loader: torch.utils.data.DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	device: str,
 	results_dir: str,
 	tier_spec_path: str,
@@ -510,15 +510,15 @@ def probe_multi_label(
 
 		print(f"Cached — train: {train_feats.shape}, val: {val_feats.shape}")
 		
-		train_feature_loader = DataLoader(
-			TensorDataset(train_feats, train_lbls),
+		train_feature_loader = torch.utils.data.DataLoader(
+			torch.utils.data.TensorDataset(train_feats, train_lbls),
 			batch_size=train_loader.batch_size,
 			shuffle=True,
 			num_workers=0,
 		)
 
-		val_feature_loader = DataLoader(
-			TensorDataset(val_feats, val_lbls),
+		val_feature_loader = torch.utils.data.DataLoader(
+			torch.utils.data.TensorDataset(val_feats, val_lbls),
 			batch_size=validation_loader.batch_size,
 			shuffle=False,
 			num_workers=0,
@@ -848,8 +848,8 @@ def probe_multi_label(
 
 def full_finetune_multi_label(
 	model: torch.nn.Module,
-	train_loader: DataLoader,
-	validation_loader: DataLoader,
+	train_loader: torch.utils.data.DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	num_epochs: int,
 	print_every: int,
 	learning_rate: float,
@@ -1374,8 +1374,8 @@ def full_finetune_multi_label(
 
 def lora_finetune_multi_label(
 	model: torch.nn.Module,
-	train_loader: DataLoader,
-	validation_loader: DataLoader,
+	train_loader: torch.utils.data.DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	num_epochs: int,
 	print_every: int,
 	learning_rate: float,
@@ -1885,8 +1885,8 @@ def lora_finetune_multi_label(
 
 def lora_plus_finetune_multi_label(
 	model: torch.nn.Module,
-	train_loader: DataLoader,
-	validation_loader: DataLoader,
+	train_loader: torch.utils.data.DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	num_epochs: int,
 	print_every: int,
 	learning_rate: float,
@@ -1926,8 +1926,8 @@ def lora_plus_finetune_multi_label(
 	
 	Args:
 		model: CLIP model to fine-tune with LoRA+
-		train_loader: Training DataLoader (must provide multi-label vectors)
-		validation_loader: Validation DataLoader  
+		train_loader: Training torch.utils.data.DataLoader (must provide multi-label vectors)
+		validation_loader: Validation torch.utils.data.DataLoader  
 		num_epochs: Number of training epochs
 		print_every: Print loss every N batches
 		learning_rate: Base learning rate for LoRA A parameters
@@ -2669,8 +2669,8 @@ def lora_plus_finetune_multi_label(
 
 def rslora_finetune_multi_label(
 	model: torch.nn.Module,
-	train_loader: DataLoader,
-	validation_loader: DataLoader,
+	train_loader: torch.utils.data.DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	num_epochs: int,
 	print_every: int,
 	learning_rate: float,
@@ -3223,8 +3223,8 @@ def rslora_finetune_multi_label(
 
 def dora_finetune_multi_label(
 	model: torch.nn.Module,
-	train_loader: DataLoader,
-	validation_loader: DataLoader,
+	train_loader: torch.utils.data.DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	num_epochs: int,
 	print_every: int,
 	learning_rate: float,
@@ -3790,8 +3790,8 @@ def dora_finetune_multi_label(
 
 def vera_finetune_multi_label(
 	model: torch.nn.Module,
-	train_loader: DataLoader,
-	validation_loader: DataLoader,
+	train_loader: torch.utils.data.DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	num_epochs: int,
 	print_every: int,
 	learning_rate: float,
@@ -3834,8 +3834,8 @@ def vera_finetune_multi_label(
 	
 	Args:
 		model: CLIP model to fine-tune with VeRA
-		train_loader: Training DataLoader (must provide multi-label vectors)
-		validation_loader: Validation DataLoader  
+		train_loader: Training torch.utils.data.DataLoader (must provide multi-label vectors)
+		validation_loader: Validation torch.utils.data.DataLoader  
 		num_epochs: Number of training epochs
 		print_every: Print loss every N batches
 		learning_rate: Learning rate for VeRA parameters
@@ -4431,8 +4431,8 @@ def vera_finetune_multi_label(
 
 def ia3_finetune_multi_label(
 	model: torch.nn.Module,
-	train_loader: DataLoader,
-	validation_loader: DataLoader,
+	train_loader: torch.utils.data.DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	num_epochs: int,
 	print_every: int,
 	learning_rate: float,
@@ -4467,8 +4467,8 @@ def ia3_finetune_multi_label(
 	
 	Args:
 			model: CLIP model to fine-tune with (IA)³
-			train_loader: Training DataLoader (must provide multi-label vectors)
-			validation_loader: Validation DataLoader  
+			train_loader: Training torch.utils.data.DataLoader (must provide multi-label vectors)
+			validation_loader: Validation torch.utils.data.DataLoader  
 			num_epochs: Number of training epochs
 			print_every: Print loss every N batches
 			learning_rate: Learning rate for (IA)³ parameters
@@ -5003,8 +5003,8 @@ def ia3_finetune_multi_label(
 
 def clip_adapter_finetune_multi_label(
 	model: torch.nn.Module,
-	train_loader: DataLoader,
-	validation_loader: DataLoader,
+	train_loader: torch.utils.data.DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	num_epochs: int,
 	print_every: int,
 	learning_rate: float,
@@ -5555,8 +5555,8 @@ def clip_adapter_finetune_multi_label(
 
 def tip_adapter_finetune_multi_label(
 	model: torch.nn.Module,
-	train_loader: DataLoader,
-	validation_loader: DataLoader,
+	train_loader: torch.utils.data.DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	num_epochs: int,
 	print_every: int,
 	learning_rate: float,
@@ -5595,8 +5595,8 @@ def tip_adapter_finetune_multi_label(
 	
 	Args:
 		model: Pre-trained CLIP model.
-		train_loader: DataLoader for training data (multi-label format).
-		validation_loader: DataLoader for validation data (multi-label format).
+		train_loader: torch.utils.data.DataLoader for training data (multi-label format).
+		validation_loader: torch.utils.data.DataLoader for validation data (multi-label format).
 		num_epochs: Number of training epochs.
 		print_every: Print training stats every N batches.
 		learning_rate: Learning rate for the optimizer.

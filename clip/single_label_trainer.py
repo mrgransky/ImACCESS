@@ -7,8 +7,8 @@ import visualize as viz
 
 def progressive_finetune_single_label(
 		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
+		train_loader: torch.utils.data.DataLoader,
+		validation_loader: torch.utils.data.DataLoader,
 		num_epochs: int,
 		print_every: int,
 		learning_rate: float,
@@ -162,7 +162,7 @@ def progressive_finetune_single_label(
 	)
 
 	# Embedding drift: get a fixed batch of validation data and original embeddings
-	val_subset_loader = DataLoader(
+	val_subset_loader = torch.utils.data.DataLoader(
 		validation_loader.dataset, 
 		batch_size=validation_loader.batch_size,
 		shuffle=False
@@ -580,8 +580,8 @@ def progressive_finetune_single_label(
 
 def full_finetune_single_label(
 		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
+		train_loader: torch.utils.data.DataLoader,
+		validation_loader: torch.utils.data.DataLoader,
 		num_epochs: int,
 		print_every: int,
 		learning_rate: float,
@@ -964,8 +964,8 @@ def full_finetune_single_label(
 
 def lora_finetune_single_label(
 		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
+		train_loader: torch.utils.data.DataLoader,
+		validation_loader: torch.utils.data.DataLoader,
 		num_epochs: int,
 		print_every: int,
 		learning_rate: float,
@@ -1353,8 +1353,8 @@ def lora_finetune_single_label(
 
 def lora_plus_finetune_single_label(
 		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
+		train_loader: torch.utils.data.DataLoader,
+		validation_loader: torch.utils.data.DataLoader,
 		num_epochs: int,
 		print_every: int,
 		learning_rate: float,
@@ -1781,8 +1781,8 @@ def lora_plus_finetune_single_label(
 
 def vera_finetune_single_label(
 		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
+		train_loader: torch.utils.data.DataLoader,
+		validation_loader: torch.utils.data.DataLoader,
 		num_epochs: int,
 		print_every: int,
 		learning_rate: float,
@@ -2168,8 +2168,8 @@ def vera_finetune_single_label(
 
 def dora_finetune_single_label(
 		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
+		train_loader: torch.utils.data.DataLoader,
+		validation_loader: torch.utils.data.DataLoader,
 		num_epochs: int,
 		print_every: int,
 		learning_rate: float,
@@ -2554,8 +2554,8 @@ def dora_finetune_single_label(
 
 def ia3_finetune_single_label(
 		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
+		train_loader: torch.utils.data.DataLoader,
+		validation_loader: torch.utils.data.DataLoader,
 		num_epochs: int,
 		print_every: int,
 		learning_rate: float,
@@ -2941,8 +2941,8 @@ def ia3_finetune_single_label(
 
 def clip_adapter_finetune_single_label(
 		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
+		train_loader: torch.utils.data.DataLoader,
+		validation_loader: torch.utils.data.DataLoader,
 		num_epochs: int,
 		print_every: int,
 		learning_rate: float,
@@ -2968,8 +2968,8 @@ def clip_adapter_finetune_single_label(
 
 		Args:
 				model: Pre-trained CLIP model.
-				train_loader: DataLoader for training data.
-				validation_loader: DataLoader for validation data.
+				train_loader: torch.utils.data.DataLoader for training data.
+				validation_loader: torch.utils.data.DataLoader for validation data.
 				num_epochs: Number of training epochs.
 				print_every: Print training stats every N batches.
 				learning_rate: Learning rate for the optimizer.
@@ -3376,8 +3376,8 @@ def clip_adapter_finetune_single_label(
 
 def tip_adapter_finetune_single_label(
 		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
+		train_loader: torch.utils.data.DataLoader,
+		validation_loader: torch.utils.data.DataLoader,
 		num_epochs: int,
 		print_every: int,
 		learning_rate: float,
@@ -3407,8 +3407,8 @@ def tip_adapter_finetune_single_label(
 	
 	Args:
 		model: Pre-trained CLIP model.
-		train_loader: DataLoader for training data.
-		validation_loader: DataLoader for validation data.
+		train_loader: torch.utils.data.DataLoader for training data.
+		validation_loader: torch.utils.data.DataLoader for validation data.
 		num_epochs: Number of training epochs.
 		print_every: Print training stats every N batches.
 		learning_rate: Learning rate for the optimizer.
@@ -3962,8 +3962,8 @@ def tip_adapter_finetune_single_label(
 
 def probe_single_label(
 		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
+		train_loader: torch.utils.data.DataLoader,
+		validation_loader: torch.utils.data.DataLoader,
 		num_epochs: int,
 		learning_rate: float,
 		weight_decay: float,
@@ -4185,20 +4185,20 @@ def probe_single_label(
 	val_feature_dataset = TensorDataset(val_features, val_labels)
 	
 	# Create new dataloaders for features
-	train_feature_loader = DataLoader(
-			train_feature_dataset,
-			batch_size=train_loader.batch_size,
-			shuffle=True,
-			num_workers=0,  # Features are already in memory
-			pin_memory=False
+	train_feature_loader = torch.utils.data.DataLoader(
+		train_feature_dataset,
+		batch_size=train_loader.batch_size,
+		shuffle=True,
+		num_workers=0,  # Features are already in memory
+		pin_memory=False
 	)
 	
-	val_feature_loader = DataLoader(
-			val_feature_dataset,
-			batch_size=validation_loader.batch_size,
-			shuffle=False,
-			num_workers=0,
-			pin_memory=False
+	val_feature_loader = torch.utils.data.DataLoader(
+		val_feature_dataset,
+		batch_size=validation_loader.batch_size,
+		shuffle=False,
+		num_workers=0,
+		pin_memory=False
 	)
 	
 	# =====================================

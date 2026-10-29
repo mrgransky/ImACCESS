@@ -69,8 +69,8 @@ def diagnose_train_val_coverage(
 	return val_freq
 
 def compute_loss_masks(
-	train_loader: DataLoader,
-	validation_loader: DataLoader,
+	train_loader: torch.utils.data.DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	device: torch.device,
 	pw_mode: str = "log", # "log" | "sqrt" | "linear"
 	pw_max_cap: Optional[float]=None,
@@ -84,7 +84,7 @@ def compute_loss_masks(
 		1. pos_weight  — loss weighting, depends on pw_mode (training only)
 		2. head/rare   — evaluation tiers, based purely on frequency (all strategies)
 	Args:
-			loader           : DataLoader whose .dataset has .labels and .label_dict
+			loader           : torch.utils.data.DataLoader whose .dataset has .labels and .label_dict
 			num_classes      : Total number of classes (including inactive)
 			device           : Target device for returned tensors
 			pareto_threshold : Cumulative frequency fraction defining "head" classes (default 80%)
@@ -249,7 +249,7 @@ def compute_loss_masks(
 
 def compute_multilabel_validation_loss(
 	model: torch.nn.Module,
-	validation_loader: DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	criterion_i2t,      # BCEWithLogitsLoss with pos_weight, reduction='none'
 	criterion_t2i,      # BCEWithLogitsLoss plain, reduction='none'
 	active_mask,        # [num_classes] bool

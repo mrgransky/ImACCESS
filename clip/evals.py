@@ -1230,7 +1230,7 @@ def diagnose_embedding_geometry(
 @torch.no_grad()
 def get_validation_metrics(
 	model: torch.nn.Module,
-	validation_loader: DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	device: str,
 	topK_values: List[int],
 	cache_dir: str,
@@ -1613,7 +1613,7 @@ def compute_full_set_metrics_from_cache(
 		}
 
 def _prepare_labels_tensor(
-	validation_loader: DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	num_samples: int,
 	n_classes: int,
 	device: str,
@@ -1721,7 +1721,7 @@ def _validate_cache_compatibility(
 
 def get_embeddings(
 	model: torch.nn.Module,
-	validation_loader: DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	device: torch.device,
 	cache_file: str,
 	max_batches=None,
@@ -2438,7 +2438,7 @@ def _load_state_dict_checked(model, state_dict, min_match: float = 0.5):
 
 def evaluate_best_model(
 	model: torch.nn.Module,
-	validation_loader: DataLoader,
+	validation_loader: torch.utils.data.DataLoader,
 	active_mask: torch.Tensor,
 	head_mask: torch.Tensor,
 	rare_mask: torch.Tensor,

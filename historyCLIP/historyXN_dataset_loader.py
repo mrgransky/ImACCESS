@@ -88,7 +88,7 @@ def get_single_label_dataloaders(
 	input_resolution: int,
 	col:str='label',
 	memory_threshold_gib: float = 500.0,  # Minimum available memory (GiB) to preload images
-)-> Tuple[DataLoader, DataLoader]:
+)-> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
 	ddir = os.path.dirname(metadata_fpth)
 	dataset_name = os.path.basename(ddir)
 
@@ -119,7 +119,7 @@ def get_single_label_dataloaders(
 	# print("labels:", train_dataset.labels[:10])
 	# print("label_int:", train_dataset.labels_int[:10])
 
-	train_loader = DataLoader(
+	train_loader = torch.utils.data.DataLoader(
 		dataset=train_dataset,
 		batch_size=batch_size,
 		shuffle=True,
@@ -144,7 +144,7 @@ def get_single_label_dataloaders(
 	# print("labels:", validation_dataset.labels[:10])
 	# print("label_int:", validation_dataset.labels_int[:10])
 
-	val_loader = DataLoader(
+	val_loader = torch.utils.data.DataLoader(
 		dataset=validation_dataset,
 		batch_size=batch_size,
 		shuffle=False,
@@ -157,7 +157,7 @@ def get_single_label_dataloaders(
 
 	return train_loader, val_loader
 
-class HistoricalArchivesSingleLabelDataset(Dataset):
+class HistoricalArchivesSingleLabelDataset(torch.utils.data.Dataset):
 	def __init__(
 		self,
 		dataset_name: str,
@@ -500,7 +500,7 @@ def get_cache_size(
 	
 	return cache_size
 
-class HistoricalArchivesMultiLabelDataset(Dataset):
+class HistoricalArchivesMultiLabelDataset(torch.utils.data.Dataset):
 	def __init__(
 			self,
 			dataset_name: str,
@@ -670,7 +670,7 @@ def get_multi_label_dataloaders(
 	input_resolution: int,
 	col:str,
 	cache_size: int = None,
-) -> Tuple[DataLoader, DataLoader]:
+) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
 	ddir = os.path.dirname(metadata_fpth)
 	dataset_name = os.path.basename(ddir)
 	print(f"\nCreating multi-label dataloaders for {dataset_name} from {metadata_fpth}")
@@ -769,7 +769,7 @@ def get_multi_label_dataloaders(
 	print(val_dataset)
 	
 	# Create dataloaders
-	train_loader = DataLoader(
+	train_loader = torch.utils.data.DataLoader(
 		dataset=train_dataset,
 		batch_size=batch_size,
 		shuffle=True,
@@ -781,7 +781,7 @@ def get_multi_label_dataloaders(
 	)
 	train_loader.name = f"{dataset_name.lower()}_multilabel_train".upper()
 	
-	val_loader = DataLoader(
+	val_loader = torch.utils.data.DataLoader(
 		dataset=val_dataset,
 		batch_size=batch_size,
 		shuffle=False,
