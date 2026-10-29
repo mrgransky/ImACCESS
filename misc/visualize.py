@@ -7193,13 +7193,14 @@ def plot_label_similarity_heatmap(
 	# 6. Compute embeddings
 	print(f"\nEncoding {n_labels:,} unique labels | batch_size={batch_size}...")
 	embeddings = model.encode(
-			selected_labels,
-			batch_size=batch_size,
-			show_progress_bar=True,
-			convert_to_numpy=True,
-			normalize_embeddings=True,
+		selected_labels,
+		batch_size=batch_size,
+		show_progress_bar=True,
+		convert_to_numpy=True,
+		normalize_embeddings=True,
 	)
 	embeddings = np.asarray(embeddings, dtype=np.float32)
+	embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
 	print(f"Embedding: {embeddings.shape} {embeddings.dtype}")
 
 	# 7. Numerical sanity checks
