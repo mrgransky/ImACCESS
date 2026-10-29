@@ -82,7 +82,7 @@
 
 # how to run:
 # !!!!!!! xxxx ensure the job name aligns with the seed value xxxx
-# SEED=42 sbatch csc_finetuner.sh
+# SEED=42 sbatch roihu_finetuner.sh
 
 set -euo pipefail
 user="`whoami`"
