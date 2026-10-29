@@ -673,6 +673,7 @@ def _post_process_(
 	}
 
 	ALLOWED_ACRONYMS = {
+		"ARC", # American Red Cross
 		"TAZ", # Tous Azimuts
 		"RAD", # Reichsarbeitsdienst (Reich Labour Service)
 		"BAR", # Browning Automatic Rifle
@@ -952,9 +953,6 @@ def _post_process_(
 
 	ALLOWED_ACRONYMS = get_normalized(texts=ALLOWED_ACRONYMS)
 
-	# Common archival/military/aviation compound nouns 
-	# that VLMs frequently hyphenate or space out
-
 	CANONICAL_COMPOUNDS = {
 		# -off compounds
 		r'\btake[- ]off\b': 'takeoff',
@@ -1045,19 +1043,19 @@ def _post_process_(
 	)
 
 	# Metadata, Dimensions, and Time Units
-	# Matches: "No. 1234", "Photo 12", "50 feet", "12 mm", "14 months", "1 day", "14 years"
+	# Matches: "No. 1234", "Photo 12", "50 feet", "12 mm", "14 months", "1 day", "14 years", "83-Footer", "25-meter"
 	_MEASUREMENT_AND_TIME_UNITS = (
-		r'(?:feet|foot|ft|inch|inches|in|long|meters?|m|mm|cm|miles?|km|'
+		r'(?:feet|foot|ft|footers?|inch|inches|in|long|meters?|metres?|m|mm|cm|miles?|km|'
 		r'lbs?|pounds?|kg|tons?|'
 		# Time units:
 		r'seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?|yrs?|decades?)'
 	)
 
 	# Metadata, Serial Numbers, and Dimensions
-	# "No. 1234", "Photo 12", "model 18", "50 feet", "100 ft", "12 mm"
+	# "No. 1234", "Photo 12", "model 18", "50 feet", "100 ft", "12 mm", "83-Footer", "25-meter"
 	METADATA_DIMENSION_RE = re.compile(
 		r'^(?:no\.?|number|model|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)\s*\d+$|'
-		rf'^\d+\s*{_MEASUREMENT_AND_TIME_UNITS}$',
+		rf'^\d+[- ]*{_MEASUREMENT_AND_TIME_UNITS}$',
 		re.IGNORECASE
 	)
 
@@ -1077,9 +1075,7 @@ def _post_process_(
 		re.IGNORECASE
 	)
 
-	# =====================================================================
 	# ORDINAL & ECHELON PATTERNS (Administrative Unit Filter)
-	# =====================================================================
 	# Matches:
 	#   - Digits with standard suffixes: "1st", "2nd", "3rd", "79th"
 	#   - Military 'd' suffix: "162d", "332d"
@@ -1097,13 +1093,15 @@ def _post_process_(
 		r')'
 	)
 
-	# Modifiers that precede aviation echelons (e.g. "Fighter Group", "Tactical Fighter Wing", "Bomb Squadron")
+	# Modifiers that precede aviation echelons
+	# "Fighter Group", "Tactical Fighter Wing", "Bomb Squadron"
 	_AIR_ROLES = (
 		r'(?:(?:tactical\s+)?fighter(?:\s+bomber)?|pursuit|bomb(?:er)?|bombardment|'
 		r'reconnaissance|recon|observation|transport|troop\s+carrier|air\s+commando)\s+'
 	)
 
-	# Modifiers that precede ground echelons (e.g. "Infantry Division", "Armored Brigade", "Parachute Battalion")
+	# Modifiers that precede ground echelons
+	# "Infantry Division", "Armored Brigade", "Parachute Battalion"
 	_GROUND_ROLES = (
 		r'(?:infantry|inf\.?|armored|armoured|cavalry|cav\.?|'
 		r'airborne|parachute(?:\s+infantry|\s+artillery)?|glider(?:\s+infantry)?|'
@@ -1131,20 +1129,20 @@ def _post_process_(
 		r'infantry|inf\.?|marines|cavalry|cav\.?|engineers?|engr\.?|engrs\.?|arty\.?|artillery|field\s+artillery|'
 		
 		# 5. Air echelons (with or without mission role):
-		#    "56th Fighter Group", "20th Pursuit Group", "50th Tactical Fighter Wing", "First Tactical AF"
+		# "56th Fighter Group", "20th Pursuit Group", "50th Tactical Fighter Wing", "First Tactical AF"
 		rf'(?:{_AIR_ROLES})?(?:group|squadron|sqdn\.?|wing)|tactical\s+af|'
 		
 		# 6. Naval formations: "6th Fleet", "Fifth Fleet", "Third Fleet Landing Force"
 		r'fleet(?:\s+landing\s+force)?|'
 		
 		# 7. Administrative districts & abstract concepts
-		# "16th Dist", "22nd Amendment", "20th Century", "Third Term", "Congress", "1st FG", "38th Parallel"
-		r'dist\.?|district|amendment|century|term|congress|fg|fs|parallel'
+		# "16th Dist", "22nd Amendment", "20th Century", "Third Term", "Congress", "1st FG", "38th Parallel", "3rd order"
+		r'dist\.?|district|amendment|century|term|congress|fg|fs|nfs|trs|parallel|orders?'
 	)
 
-	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations:
+	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations, plus veteran/alumni associations:
 	GENERIC_ECHELON_RE = re.compile(
-		rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})$',
+		rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})(?:\s+(?:association|assn\.?|society|veterans?))?$',
 		re.IGNORECASE
 	)
 
@@ -2665,14 +2663,9 @@ def _post_process_(
 					print(f"\t[SKIPPED] {repr(lemma):<55} Only No. NNNNN")
 				continue
 
-			if re.match(r'^\d+\sfeet$', lemma, re.IGNORECASE) or re.match(r'^\d+\sft$', lemma, re.IGNORECASE):
+			if METADATA_DIMENSION_RE.match(lemma):
 				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} Only NNNNN feet/ft")
-				continue
-
-			if re.match(r'^\d+\sfoot$', lemma, re.IGNORECASE):
-				if verbose:
-					print(f"\t[SKIPPED] {repr(lemma):<55} Only NNNNN foot")
+					print(f"\t[SKIPPED] {repr(lemma):<55} dimension/measurement")
 				continue
 
 			lemma_key = lemma.lower().strip()

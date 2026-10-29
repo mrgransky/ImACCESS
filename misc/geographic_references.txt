@@ -126,6 +126,7 @@ Jordan
 Kazakhstan
 Kenya
 Korea
+Kosova
 Kosovo
 Kiribati
 Kuwait
@@ -204,8 +205,10 @@ Russland
 Rwanda
 
 Saint-Jean-de-Luz
+Saint-Laurent-sur-Mer
 Saint-Nazaire
 Saint Kitts and Nevis
+Saint Laurent Sur-Mere
 Saint Lucia
 Saint Louis
 Saint Paul
@@ -213,6 +216,7 @@ Saint Vincent and the Grenadines
 St. Croix
 St. Fongest
 St. Justina
+St. Juvin
 St. Paul
 St. Nazaire
 St. Quentin
@@ -612,6 +616,7 @@ Carlisle
 Catania
 Cebu City
 Chania
+Charkow
 Christiansted
 Christianshavn
 Cleveland
@@ -637,6 +642,7 @@ Dubrovnik
 Dunkirk
 Dunkerque
 Duxford
+Ekeberg
 Eindhoven
 Essex
 Exeter
@@ -692,12 +698,13 @@ Kobe
 Koblenz
 Kurland
 Kyoto
+La Crosse
 Lafayette
 Lakewood
 Lancaster
 Langley
 Lapland
-La Crosse
+Lausanne
 Leipzig
 Lexington
 Liatorp
@@ -708,6 +715,7 @@ Lindholmen
 Llandovery
 London
 Luchon
+Lviv
 Madras
 Madrid
 Majuro
@@ -766,15 +774,19 @@ Lleida
 Luqa
 Oviedo
 Oxford
-Paris
+Pallanza
 Palermo
+Paris
 Perth
+Pescara
 Pisa
 Porto
 Prague
+Punta del Este
 Quito
 Rabat
 Rome
+Reykjavik
 San Gimignano
 San Sebastian
 Sevilla
@@ -810,6 +822,7 @@ Sidi Barrani
 Siena
 Shacktown 
 Shantytown
+Sorbonne
 Southampton
 Stalingrad
 Stavanger
@@ -883,7 +896,8 @@ Grottaglie
 Messina
 Otranto
 Padua
-torino
+Torino
+Toronto
 Aichi
 Kanoya
 Naha

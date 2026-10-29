@@ -1114,7 +1114,7 @@ def merge_cluster_medoid_nearest_neighbor(
 			)
 
 		if merges:
-			topk = min(10, len(merges))
+			topk = min(5, len(merges))
 			topk_confident_merges = sorted(merges, key=lambda m: m['similarity'], reverse=True)[:topk]
 			topk_borderline_merges = sorted(merges, key=lambda m: m['similarity'], reverse=False)[:topk]
 			
@@ -2138,7 +2138,7 @@ def merge_cluster_canonical_nearest_neighbor(
 			)
 
 		if merges:
-			topk = min(10, len(merges))
+			topk = min(5, len(merges))
 			synonym_merges = [m for m in merges if not m['same_canonical_string']]
 			display_pool = synonym_merges if synonym_merges else merges
 			topk_confident_merges = sorted(display_pool, key=lambda m: (m['canonical_similarity'], m['centroid_similarity']), reverse=True)[:topk]
@@ -3718,8 +3718,8 @@ def remove_problematic_clustered_labels(
 				f"[{i+1:4d}/{len(low_cohesion_clusters)}] "
 				f"Cluster {cluster['cluster_id']:5d} "
 				f"intra_sim: {cluster['intra_sim']:.4f} "
-				f"canonical: {cluster['canonical']!r:<35} "
-				f"{cluster['labels'][:15]}"
+				f"canonical: {cluster['canonical']!r:<40}"
+				f"{cluster['labels'][:11]}"
 			)
 
 	# PART 2: Identify Poor Canonical Clusters:
@@ -3767,7 +3767,7 @@ def remove_problematic_clustered_labels(
 				f"Cluster {cluster['cluster_id']:5d} "
 				f"rep: {cluster['canonical_representativeness']:.5f} "
 				f"canonical: {cluster['canonical']!r:<27} "
-				f"{cluster['labels'][:15]}"
+				f"{cluster['labels'][:12]}"
 			)
 	
 	if verbose:
@@ -4417,14 +4417,15 @@ def _resolve_shared_canonicals(
 			demoted = {c: fb for c, fb, _ in changes}
 			flag = f"[LOW MARGIN {margin:.2f}x < {low_margin_ratio}x]" if low_margin else ""
 
-			print(f"\n{len(cids)} clusters: {cids} SHARED CANONICAL LABEL: {repr(surface):<30}{flag}")
+			print(f"\n{len(cids)} clusters: {cids} SHARED CANONICAL LABEL: {repr(surface):<25}{flag}")
 
 			for j, c in enumerate(cids):
 				tag = "KEPT" if j in keep else f"DEMOTED (< {threshold}) {demoted[c]}" if c in demoted else "KEPT_NO_ALT"
 				print(
 					f"cluster {c:5d} "
 					f"anchor_sim: {anchor_sim[j]:.4f} "
-					f"evidence: {evidence[c]:<5}{tag:<40} {cluster_members[c]}"
+					f"evidence: {evidence[c]:<5}{tag:<40}"
+					f"{cluster_members[c][:15]}"
 				)
 
 	if verbose:
