@@ -458,6 +458,7 @@ Glendale, CA
 Glendale, Calif
 Glendale Calif
 Guntersville
+La Junta
 Kingston
 Madera
 Manhattan
@@ -673,6 +674,7 @@ Harrogate
 Helensburgh
 Helsinki
 Helsingfors
+Hendon
 Hiroshima
 Hobsonville
 Hong Kong

@@ -536,14 +536,14 @@ def _estimate_dynamic_neighbor_thresholds(
 
 	# Stage 4: Consensus Ensemble Aggregation (threshold)
 	estimators = [t_mad, t_elbow] + ([t_mut_p75] if t_mut_p75 is not None else [])
-	dynamic_threshold = round(float(np.median(estimators)), 4)
+	dynamic_threshold = float(np.median(estimators))
 
 	result = {
 		'threshold': dynamic_threshold,
-		't_mad': round(t_mad, 4),
-		't_elbow': round(t_elbow, 4),
-		't_mutual_p75': round(t_mut_p75, 4) if t_mut_p75 is not None else None,
-		'sigma_mad': round(sigma_mad, 4),
+		't_mad': t_mad,
+		't_elbow': t_elbow,
+		't_mutual_p75': t_mut_p75 if t_mut_p75 is not None else None,
+		'sigma_mad': sigma_mad,
 	}
 
 	if verbose:
@@ -690,31 +690,40 @@ def get_cluster_medoid_nearest_neighbor(
 			comb_sz = int(len(cluster_members[a]) + len(cluster_members[b]))
 			merge_ok = bool(is_mutual and (max_merged_size is None or comb_sz <= max_merged_size))
 
+			pref_id_a = int(info[a]['cluster_id'])
+			pref_sim_a = float(info[a]['similarity'])
+			pref_id_b = int(info[b]['cluster_id'])
+			pref_sim_b = float(info[b]['similarity'])
+
 			record = {
 				'similarity': float(s),
 				'mutual': is_mutual,
 				'a_to_b': a_to_b,
 				'b_to_a': b_to_a,
+				'a_to_b_sim': round(float(s), 6),
+				'b_to_a_sim': round(float(s), 6),
+				'a_1nn_target': pref_id_a,
+				'a_1nn_sim': round(pref_sim_a, 6),
+				'b_1nn_target': pref_id_b,
+				'b_1nn_sim': round(pref_sim_b, 6),
 			}
 
 			if not a_to_b:
-				pref_id = int(info[a]['cluster_id'])
-				pref_sim = float(info[a]['similarity'])
 				record['a_prefers'] = {
-					'cluster_id': pref_id,
-					'medoid': cluster_medoids[pref_id],
-					'similarity': pref_sim,
-					'margin_over_b': float(round(pref_sim - float(s), 7)),
+					'cluster_id': pref_id_a,
+					'medoid': cluster_medoids[pref_id_a],
+					'similarity': pref_sim_a,
+					'pair_similarity': round(float(s), 6),
+					'margin_over_b': float(round(pref_sim_a - float(s), 6)),
 				}
 
 			if not b_to_a:
-				pref_id = int(info[b]['cluster_id'])
-				pref_sim = float(info[b]['similarity'])
 				record['b_prefers'] = {
-					'cluster_id': pref_id,
-					'medoid': cluster_medoids[pref_id],
-					'similarity': pref_sim,
-					'margin_over_a': float(round(pref_sim - float(s), 6)),
+					'cluster_id': pref_id_b,
+					'medoid': cluster_medoids[pref_id_b],
+					'similarity': pref_sim_b,
+					'pair_similarity': round(float(s), 6),
+					'margin_over_a': float(round(pref_sim_b - float(s), 6)),
 				}
 
 			record.update({
@@ -844,15 +853,29 @@ def get_cluster_medoid_nearest_neighbor(
 
 				if is_mut and (max_merged_size is None or comb_sz <= max_merged_size):
 					limit_desc = f"<={max_merged_size}" if max_merged_size is not None else "no limit"
-					status_tag = f"mutual (A<->B), merge-eligible (combined={comb_sz}, {limit_desc})"
+					status_tag = f"mutual (A<->B, a_to_b_sim={s:.4f}, b_to_a_sim={s:.4f}), merge-eligible (combined={comb_sz}, {limit_desc})"
 				elif is_mut:
-					status_tag = f"mutual (A<->B), size-blocked (combined={comb_sz}>{max_merged_size})"
+					status_tag = f"mutual (A<->B, a_to_b_sim={s:.4f}, b_to_a_sim={s:.4f}), size-blocked (combined={comb_sz}>{max_merged_size})"
 				elif info[a]['cluster_id'] == b:
 					pref_b = int(info[b]['cluster_id'])
-					status_tag = f"one-way (A->B, B prefers C{pref_b} '{cluster_medoids[pref_b]}' sim={info[b]['similarity']:.4f})"
+					pref_sim_b = float(info[b]['similarity'])
+					margin_b = pref_sim_b - s
+					status_tag = (
+						f"one-way (A->B: a_to_b_sim={s:.4f}; "
+						f"B prefers C{pref_b} '{cluster_medoids[pref_b]}': b_1nn_sim={pref_sim_b:.4f} vs b_to_a_sim={s:.4f}, margin=+{margin_b:.4f})"
+					)
+				elif info[b]['cluster_id'] == a:
+					pref_a = int(info[a]['cluster_id'])
+					pref_sim_a = float(info[a]['similarity'])
+					margin_a = pref_sim_a - s
+					status_tag = (
+						f"one-way (B->A: b_to_a_sim={s:.4f}; "
+						f"A prefers C{pref_a} '{cluster_medoids[pref_a]}': a_1nn_sim={pref_sim_a:.4f} vs a_to_b_sim={s:.4f}, margin=+{margin_a:.4f})"
+					)
 				else:
 					pref_a = int(info[a]['cluster_id'])
-					status_tag = f"one-way (B->A, A prefers C{pref_a} '{cluster_medoids[pref_a]}' sim={info[a]['similarity']:.4f})"
+					pref_b = int(info[b]['cluster_id'])
+					status_tag = f"neither (a_to_b_sim={s:.4f}, A prefers C{pref_a}, B prefers C{pref_b})"
 				
 				print(f"    {rank}. sim={s:.4f} {status_tag}")
 				print(f"       Cluster {a:5d} ({len(cluster_members[a]):3d} labels, medoid: {repr(cluster_medoids[a]):<35} sim={cluster_medoid_sims[a]:.4f}) {cluster_members[a][:7]}")
@@ -1241,7 +1264,7 @@ def _nearest_canonical_neighbors(
 	Returns
 	-------
 	nn_idx          : (n,) int64 index of nearest neighbor cluster
-	nn_canon_sim    : (n,) float32 pure canonical-to-canonical cosine similarity
+	nn_canonical_sim    : (n,) float32 pure canonical-to-canonical cosine similarity
 	nn_centroid_sim : (n,) float32 member-centroid cosine similarity for that pair
 	"""
 	C = np.asarray(canon_embs, dtype=np.float32)
@@ -1252,26 +1275,37 @@ def _nearest_canonical_neighbors(
 
 	n = C.shape[0]
 	nn_idx = np.zeros(n, dtype=np.int64)
-	nn_canon_sim = np.full(n, -1.0, dtype=np.float32)
+	nn_canonical_sim = np.full(n, -1.0, dtype=np.float32)
 	nn_centroid_sim = np.full(n, -1.0, dtype=np.float32)
 
 	if n < 2:
-		return nn_idx, nn_canon_sim, nn_centroid_sim
+		return nn_idx, nn_canonical_sim, nn_centroid_sim
 
 	for s in range(0, n, chunk):
-		S_canon = C[s:s + chunk] @ C.T
-		S_cent = U[s:s + chunk] @ U.T
+		# S_canon[i, j] = cosine_similarity(
+		# 	embedding(canonical_label_of_cluster_i),
+		# 	embedding(canonical_label_of_cluster_j)
+		# )
+		S_canon = C[s:s + chunk] @ C.T # canonical-to-canonical similarity matrix
+
+		# S_centr[i, j] = cosine_similarity(
+		# 	unit_centroid_of_cluster_i,   # ← average of ALL member embeddings, normalized
+		# 	unit_centroid_of_cluster_j    # ← average of ALL member embeddings, normalized
+		# )
+		S_centr = U[s:s + chunk] @ U.T # centroid-to-centroid similarity matrix
+
 		# Tiny centroid tie-breaker resolves identical canonical strings (sim=1.0)
 		# in favor of the cluster with the closest member centroid.
-		S_score = S_canon + 1e-6 * S_cent
+		S_score = S_canon + 1e-6 * S_centr # canonical dominates, centroid breaks ties
+
 		rows = np.arange(S_score.shape[0])
 		S_score[rows, rows + s] = -np.inf
 		j = S_score.argmax(axis=1)
 		nn_idx[s:s + chunk] = j
-		nn_canon_sim[s:s + chunk] = np.clip(S_canon[rows, j], -1.0, 1.0)
-		nn_centroid_sim[s:s + chunk] = np.clip(S_cent[rows, j], -1.0, 1.0)
+		nn_canonical_sim[s:s + chunk] = np.clip(S_canon[rows, j], -1.0, 1.0)
+		nn_centroid_sim[s:s + chunk] = np.clip(S_centr[rows, j], -1.0, 1.0)
 
-	return nn_idx, nn_canon_sim, nn_centroid_sim
+	return nn_idx, nn_canonical_sim, nn_centroid_sim
 
 def get_cluster_canonical_nearest_neighbor(
 	embedding_model_id: str,
@@ -1452,6 +1486,11 @@ def get_cluster_canonical_nearest_neighbor(
 			merge_ok = bool(is_mutual and size_ok and centroid_ok)
 			same_canon = bool(cluster_canon_strs[a].lower() == cluster_canon_strs[b].lower())
 
+			pref_id_a = int(info[a]['cluster_id'])
+			pref_sim_a = float(info[a]['canonical_similarity'])
+			pref_id_b = int(info[b]['cluster_id'])
+			pref_sim_b = float(info[b]['canonical_similarity'])
+
 			record = {
 				'canonical_similarity': round(float(c_sim), 6),
 				'centroid_similarity': round(float(cent_sim), 6),
@@ -1459,32 +1498,36 @@ def get_cluster_canonical_nearest_neighbor(
 				'mutual': is_mutual,
 				'a_to_b': a_to_b,
 				'b_to_a': b_to_a,
+				'a_to_b_sim': round(float(c_sim), 6),
+				'b_to_a_sim': round(float(c_sim), 6),
+				'a_1nn_target': pref_id_a,
+				'a_1nn_sim': round(pref_sim_a, 6),
+				'b_1nn_target': pref_id_b,
+				'b_1nn_sim': round(pref_sim_b, 6),
 			}
 
 			if not a_to_b:
-				pref_id = int(info[a]['cluster_id'])
-				pref_sim = float(info[a]['canonical_similarity'])
 				record['a_prefers'] = {
-					'cluster_id': pref_id,
-					'canonical': cluster_canon_strs[pref_id],
-					'is_virtual': cluster_is_virtual[pref_id],
-					'medoid': cluster_medoids[pref_id],
-					'canonical_similarity': round(pref_sim, 6),
+					'cluster_id': pref_id_a,
+					'canonical': cluster_canon_strs[pref_id_a],
+					'is_virtual': cluster_is_virtual[pref_id_a],
+					'medoid': cluster_medoids[pref_id_a],
+					'canonical_similarity': round(pref_sim_a, 6),
 					'centroid_similarity': round(float(info[a]['centroid_similarity']), 6),
-					'margin_over_b': float(round(pref_sim - float(c_sim), 6)),
+					'pair_canonical_similarity': round(float(c_sim), 6),
+					'margin_over_b': float(round(pref_sim_a - float(c_sim), 6)),
 				}
 
 			if not b_to_a:
-				pref_id = int(info[b]['cluster_id'])
-				pref_sim = float(info[b]['canonical_similarity'])
 				record['b_prefers'] = {
-					'cluster_id': pref_id,
-					'canonical': cluster_canon_strs[pref_id],
-					'is_virtual': cluster_is_virtual[pref_id],
-					'medoid': cluster_medoids[pref_id],
-					'canonical_similarity': round(pref_sim, 6),
+					'cluster_id': pref_id_b,
+					'canonical': cluster_canon_strs[pref_id_b],
+					'is_virtual': cluster_is_virtual[pref_id_b],
+					'medoid': cluster_medoids[pref_id_b],
+					'canonical_similarity': round(pref_sim_b, 6),
 					'centroid_similarity': round(float(info[b]['centroid_similarity']), 6),
-					'margin_over_a': float(round(pref_sim - float(c_sim), 6)),
+					'pair_canonical_similarity': round(float(c_sim), 6),
+					'margin_over_a': float(round(pref_sim_b - float(c_sim), 6)),
 				}
 
 			record.update({
@@ -1644,22 +1687,36 @@ def get_cluster_canonical_nearest_neighbor(
 					size_ok = max_merged_size is None or comb_sz <= max_merged_size
 					
 					if is_mut and cent_ok and size_ok:
-						status_tag = f"mutual (A<->B), merge-eligible (combined={comb_sz})"
+						status_tag = f"mutual (A<->B, a_to_b_sim={c_sim:.4f}, b_to_a_sim={c_sim:.4f}), merge-eligible (combined={comb_sz})"
 					elif is_mut and not cent_ok:
-						status_tag = f"mutual (A<->B), CENTROID-BLOCKED (centroid_sim={cent_sim:.4f} < {min_centroid_similarity:.2f})"
+						status_tag = f"mutual (A<->B, a_to_b_sim={c_sim:.4f}, b_to_a_sim={c_sim:.4f}), CENTROID-BLOCKED (centroid_sim={cent_sim:.4f} < {min_centroid_similarity:.2f})"
 					elif is_mut:
-						status_tag = f"mutual (A<->B), size-blocked (combined={comb_sz}>{max_merged_size})"
+						status_tag = f"mutual (A<->B, a_to_b_sim={c_sim:.4f}, b_to_a_sim={c_sim:.4f}), size-blocked (combined={comb_sz}>{max_merged_size})"
 					elif info[a]['cluster_id'] == b:
 						pref_b = int(info[b]['cluster_id'])
-						status_tag = f"one-way (A->B, B prefers C{pref_b} {cluster_canon_strs[pref_b]!r} sim={info[b]['canonical_similarity']:.4f})"
+						pref_sim_b = float(info[b]['canonical_similarity'])
+						margin_b = pref_sim_b - c_sim
+						status_tag = (
+							f"one-way (A->B: a_to_b_sim={c_sim:.4f}; "
+							f"B prefers C{pref_b} {cluster_canon_strs[pref_b]!r}: b_1nn_sim={pref_sim_b:.4f} vs b_to_a_sim={c_sim:.4f}, margin=+{margin_b:.4f})"
+						)
+					elif info[b]['cluster_id'] == a:
+						pref_a = int(info[a]['cluster_id'])
+						pref_sim_a = float(info[a]['canonical_similarity'])
+						margin_a = pref_sim_a - c_sim
+						status_tag = (
+							f"one-way (B->A: b_to_a_sim={c_sim:.4f}; "
+							f"A prefers C{pref_a} {cluster_canon_strs[pref_a]!r}: a_1nn_sim={pref_sim_a:.4f} vs a_to_b_sim={c_sim:.4f}, margin=+{margin_a:.4f})"
+						)
 					else:
 						pref_a = int(info[a]['cluster_id'])
-						status_tag = f"one-way (B->A, A prefers C{pref_a} {cluster_canon_strs[pref_a]!r} sim={info[a]['canonical_similarity']:.4f})"
+						pref_b = int(info[b]['cluster_id'])
+						status_tag = f"neither (a_to_b_sim={c_sim:.4f}, A prefers C{pref_a}, B prefers C{pref_b})"
 
 					v_tag_a = " [VIRTUAL]" if cluster_is_virtual[a] else ""
 					v_tag_b = " [VIRTUAL]" if cluster_is_virtual[b] else ""
 					
-					print(f"  {rank:2d}. canon_sim={c_sim:.4f} centroid_sim={cent_sim:.4f} {status_tag}")
+					print(f"  {rank:2d}. canonical_to_canonical_sim={c_sim:.4f} centroid_sim={cent_sim:.4f} {status_tag}")
 					print(
 						f"    Cluster {a:5d} ({len(cluster_members[a]):3d} labels) "
 						f"canonical={repr(cluster_canon_strs[a]) + v_tag_a:<34} "
@@ -1767,10 +1824,15 @@ def merge_cluster_canonical_nearest_neighbor(
 			unit_centroids=unit_centroids,
 			chunk=4096,
 		)
-		mutual_mask_init = np.array([
-			bool(int(nn_idx_init[int(nn_idx_init[pos])]) == pos)
-			for pos in range(n_before)
-		], dtype=bool)
+
+		mutual_mask_init = np.array(
+			[
+				bool(int(nn_idx_init[int(nn_idx_init[pos])]) == pos)
+				for pos in range(n_before)
+			], 
+			dtype=bool
+		)
+
 		dyn_init = _estimate_dynamic_neighbor_thresholds(
 			sims=nn_canon_sim_init.astype(float),
 			mutual_mask=mutual_mask_init,
@@ -1779,7 +1841,7 @@ def merge_cluster_canonical_nearest_neighbor(
 		threshold = float(dyn_init['threshold'])
 		threshold_mode = "dynamic"
 	else:
-		threshold = float(threshold)
+		# threshold = float(threshold)
 		threshold_mode = "manual"
 
 	merges = []
@@ -1831,9 +1893,9 @@ def merge_cluster_canonical_nearest_neighbor(
 					members_b = [label_texts[k] for k in members[j]]
 					centroid_blocked_pairs.append({
 						'round': rnd,
-						'canonical_similarity': round(c_sim_val, 6),
-						'centroid_similarity': round(cent_sim_val, 6),
-						'min_centroid_similarity': round(float(min_centroid_similarity), 4),
+						'canonical_similarity': c_sim_val,
+						'centroid_similarity':  cent_sim_val,
+						'min_centroid_similarity': min_centroid_similarity,
 						'cluster_a': {
 							'id': cluster_ids[i],
 							'size': int(sizes[i]),
@@ -1947,7 +2009,7 @@ def merge_cluster_canonical_nearest_neighbor(
 					'is_virtual': is_virt_merged,
 					'winner_from': winner_from,
 					'winner_margin': winner_margin,
-					'canonical_to_merged_centroid_sim': round(winning_sim_to_merged, 4),
+					'canonical_to_merged_centroid_sim': winning_sim_to_merged,
 					'medoid': med_merged,
 					'medoid_similarity': med_merged_sim,
 					'medoid_agrees_with_canonical': bool(med_merged.lower() == winning_canon.lower()),
@@ -1971,18 +2033,20 @@ def merge_cluster_canonical_nearest_neighbor(
 			termination_reason = "converged_no_more_pairs"
 			break
 
-		round_progression.append({
-			'round': rnd,
-			'clusters_in': clusters_in_round,
-			'merges': round_merges,
-			'centroid_blocked': round_centroid_blocked,
-			'clusters_out': clusters_in_round - round_merges,
-			'min_canonical_similarity': round(float(min(round_canon_sims)), 6) if round_canon_sims else None,
-			'median_canonical_similarity': round(float(np.median(round_canon_sims)), 6) if round_canon_sims else None,
-			'max_canonical_similarity': round(float(max(round_canon_sims)), 6) if round_canon_sims else None,
-			'min_centroid_similarity': round(float(min(round_cent_sims)), 6) if round_cent_sims else None,
-			'median_centroid_similarity': round(float(np.median(round_cent_sims)), 6) if round_cent_sims else None,
-		})
+		round_progression.append(
+			{
+				'round': rnd,
+				'clusters_in': clusters_in_round,
+				'merges': round_merges,
+				'centroid_blocked': round_centroid_blocked,
+				'clusters_out': clusters_in_round - round_merges,
+				'min_canonical_similarity': round(float(min(round_canon_sims)), 6) if round_canon_sims else None,
+				'median_canonical_similarity': round(float(np.median(round_canon_sims)), 6) if round_canon_sims else None,
+				'max_canonical_similarity': round(float(max(round_canon_sims)), 6) if round_canon_sims else None,
+				'min_centroid_similarity': round(float(min(round_cent_sims)), 6) if round_cent_sims else None,
+				'median_centroid_similarity': round(float(np.median(round_cent_sims)), 6) if round_cent_sims else None,
+			}
+		)
 
 		keep = [k for k in range(len(members)) if k not in drop]
 		members = [members[k] for k in keep]
@@ -2074,7 +2138,7 @@ def merge_cluster_canonical_nearest_neighbor(
 
 		print(
 			f"Policy: canonical_threshold >= {threshold:.5f} ({threshold_mode}) | "
-			f"min_centroid_similarity >= {min_centroid_similarity:.2f} | "
+			f"min_centroid_similarity >= {min_centroid_similarity} | "
 			f"Size Limit: {size_limit_str} | Max Rounds: {max_rounds}"
 		)
 		print(
@@ -2154,11 +2218,11 @@ def merge_cluster_canonical_nearest_neighbor(
 				vb = " [VIRTUAL]" if cb.get('is_virtual', False) else ""
 				vm = " [VIRTUAL]" if cm.get('is_virtual', False) else ""
 				print(
-					f"  {rank}. canon_sim={m['canonical_similarity']:.4f} | centroid_sim={m['centroid_similarity']:.4f} "
+					f"  {rank}. canonical_to_canonical_sim={m['canonical_similarity']:.4f} | centroid_sim={m['centroid_similarity']:.4f} "
 					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"   Cluster {ca['id']:5d} canonical: {repr(ca['canonical']) + va:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(ca['medoid']):<40} {ca['members'][:3]}\n"
-					f"   Cluster {cb['id']:5d} canonical: {repr(cb['canonical']) + vb:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(cb['medoid']):<40} {cb['members'][:3]}\n"
-					f"   -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
+					f"   Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(ca['medoid']):<40} {ca['members'][:3]}\n"
+					f"   Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(cb['medoid']):<40} {cb['members'][:3]}\n"
+					f"   -> Winning canonical: {cm['canonical'] + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)
 
 			print(f"\nTop-{topk} Borderline Canonical Merges (Near Cutoff Threshold)")
@@ -2169,10 +2233,10 @@ def merge_cluster_canonical_nearest_neighbor(
 				vb = " [VIRTUAL]" if cb.get('is_virtual', False) else ""
 				vm = " [VIRTUAL]" if cm.get('is_virtual', False) else ""
 				print(
-					f"  {rank}. canon_sim={m['canonical_similarity']:.4f} | centroid_sim={m['centroid_similarity']:.4f} "
+					f"  {rank}. canonical_to_canonical_sim={m['canonical_similarity']:.4f} | centroid_sim={m['centroid_similarity']:.4f} "
 					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"   Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid={repr(ca['medoid']):<40} {ca['members'][:3]}\n"
-					f"   Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid={repr(cb['medoid']):<40} {cb['members'][:3]}\n"
+					f"   Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {ca['medoid']!r:<40}{ca['members'][:3]}\n"
+					f"   Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {cb['medoid']!r:<40}{cb['members'][:3]}\n"
 					f"   -> Winning canonical: {repr(cm['canonical']) + vm} (from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)
 			print(f"  (lowest-similarity canonical merges; borderline to review) threshold: {threshold}")
@@ -2180,7 +2244,7 @@ def merge_cluster_canonical_nearest_neighbor(
 		if centroid_blocked_pairs:
 			print("-" * 120)
 			print(f"[BLOCKED] Centroid Coherence Guard Blocked {len(centroid_blocked_pairs)} Mutual Canonical Pair(s)")
-			print(f"canonical_sim >= {threshold:.4f} BUT centroid_sim < {min_centroid_similarity}")
+			# print(f"canonical_to_canonical_sim >= {threshold:.4f} BUT centroid_sim < {min_centroid_similarity}\n")
 
 			for rank, bp in enumerate(sorted(centroid_blocked_pairs, key=lambda x: -x['canonical_similarity']), 1):
 				ca, cb = bp['cluster_a'], bp['cluster_b']
@@ -2188,9 +2252,9 @@ def merge_cluster_canonical_nearest_neighbor(
 				vb = " [VIRTUAL]" if cb.get('is_virtual', False) else ""
 
 				print(
-					f"  {rank}. canonical_similarity={bp['canonical_similarity']:.4f} centroid_similarity={bp['centroid_similarity']:.4f} < {min_centroid_similarity}\n"
-					f"     Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<30} medoid: {repr(ca['medoid']):<42} {ca['members'][:7]}\n"
-					f"     Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<30} medoid: {repr(cb['medoid']):<42} {cb['members'][:7]}\n"
+					f" {rank}. canonical_to_canonical_sim={bp['canonical_similarity']:.4f} >= {threshold:.4f} BUT centroid_similarity={bp['centroid_similarity']:.4f} < {min_centroid_similarity}\n"
+					f"   Cluster {ca['id']:5d} ({len(ca['members']):4d} labels) canonical: {ca['canonical'] + va:<25}medoid: {ca['medoid']!r:<45}{ca['members'][:9]}\n"
+					f"   Cluster {cb['id']:5d} ({len(cb['members']):4d} labels) canonical: {cb['canonical'] + vb:<25}medoid: {cb['medoid']!r:<45}{cb['members'][:9]}\n"
 				)
 
 		if report_path:
@@ -3718,8 +3782,8 @@ def remove_problematic_clustered_labels(
 				f"[{i+1:4d}/{len(low_cohesion_clusters)}] "
 				f"Cluster {cluster['cluster_id']:5d} "
 				f"intra_sim: {cluster['intra_sim']:.4f} "
-				f"canonical: {cluster['canonical']!r:<40}"
-				f"{cluster['labels'][:11]}"
+				f"canonical: {cluster['canonical']!r:<37}"
+				f"{cluster['labels'][:10]}"
 			)
 
 	# PART 2: Identify Poor Canonical Clusters:
@@ -6373,7 +6437,7 @@ def cluster(
 		label_texts=unique_labels,
 		max_merged_size=merge_max_size,
 		threshold=merge_close_clusters_threshold,
-		review_path=os.path.splitext(clusters_fname)[0] + "_medoid_neighbor_pairs.json",
+		review_path=os.path.splitext(clusters_fname)[0] + "_medoid_nearest_neighbor_pairs.json",
 		verbose=verbose,
 	)
 
@@ -6390,7 +6454,7 @@ def cluster(
 			label_texts=unique_labels,
 			threshold=active_merge_threshold,
 			max_merged_size=merge_max_size,
-			report_path=os.path.splitext(clusters_fname)[0] + "_medoid_merges.json",
+			report_path=os.path.splitext(clusters_fname)[0] + "_medoid_nearest_neighbor_merges.json",
 			verbose=verbose,
 		)
  
@@ -6440,7 +6504,7 @@ def cluster(
 		max_merged_size=merge_max_size,
 		threshold=merge_canonical_clusters_threshold,
 		min_centroid_similarity=merge_canonical_min_centroid_sim,
-		review_path=os.path.splitext(clusters_fname)[0] + "_canonical_neighbor_pairs.json",
+		review_path=os.path.splitext(clusters_fname)[0] + "_canonical_nearest_neighbor_pairs.json",
 		verbose=verbose,
 	)
 
@@ -6458,7 +6522,7 @@ def cluster(
 			threshold=merge_canonical_clusters_threshold,
 			min_centroid_similarity=merge_canonical_min_centroid_sim,
 			max_merged_size=merge_max_size,
-			report_path=os.path.splitext(clusters_fname)[0] + "_canonical_cluster_merges.json",
+			report_path=os.path.splitext(clusters_fname)[0] + "_canonical_nearest_neighbor_merges.json",
 			verbose=verbose,
 		)
 

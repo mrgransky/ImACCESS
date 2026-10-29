@@ -61,7 +61,8 @@ STRINGENTLY exclude keywords containing:
   - dates, times, years, decades, or any temporal references
   - locations, neighborhoods, places, buildings, or structures
   - family relationship terms
-  - geographical names, countries, commune, municipalities, district, nationalities, ethnicities, or religions
+  - geographical place, country, commune, municipality, district, borough, or town
+  - nationalities, ethnicities, or religions
   - underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
 
 Color handling:
