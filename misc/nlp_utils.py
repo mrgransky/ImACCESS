@@ -641,6 +641,11 @@ def _post_process_(
 		'B and W',
 		'album',
 		'photograph',
+		'photographs',
+		'photo',
+		'photos',
+		'picture',
+		'pictures',
 	}
 
 	WW_THEATRE_PHRASES = re.compile(
@@ -1140,9 +1145,9 @@ def _post_process_(
 		r'dist\.?|district|amendment|century|term|congress|fg|fs|nfs|trs|parallel|orders?'
 	)
 
-	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations, plus veteran/alumni associations:
+	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations, plus veteran/alumni associations and photo collections:
 	GENERIC_ECHELON_RE = re.compile(
-		rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})(?:\s+(?:association|assn\.?|society|veterans?))?$',
+		rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})(?:\s+(?:association|assn\.?|society|veterans?|photos?|photographs?|pics?|pictures?|images?))?$',
 		re.IGNORECASE
 	)
 
