@@ -402,29 +402,44 @@ def _encode_(
 
 def _nearest_cluster_neighbors(centroids: np.ndarray, chunk: int = 2048) -> Tuple[np.ndarray, np.ndarray]:
 	"""
-	For every row of `centroids` (n, d): the index and cosine similarity of the
-	most similar OTHER row. Chunked, so memory stays at chunk * n floats even
-	for ~10k clusters x 4096 dims.
+	For every row of `centroids` (0..n_clusters-1): find the index and cosine
+	similarity of the most similar OTHER cluster centroid. Chunked to ensure
+	memory stays bounded at O(chunk * n_clusters).
+
+	Geometric Workflow:
+	-------------------
+	Cluster A: [a₁, a₂, ..., aₘ] ───> Average & Normalize ───> Unit Centroid Û_A
+	                                                               │
+	                                               cosine similarity = Û_A • Û_B
+	                                                               │
+	Cluster B: [b₁, b₂, ..., bₙ] ───> Average & Normalize ───> Unit Centroid Û_B
 	"""
-	V = np.asarray(centroids, dtype=np.float32)
-	V = V / (np.linalg.norm(V, axis=1, keepdims=True) + 1e-12)
-	
-	n = V.shape[0]
-	nn_idx = np.zeros(n, dtype=np.int64)
-	nn_sim = np.full(n, -1.0, dtype=np.float32)
-	
-	if n < 2:
-		return nn_idx, nn_sim
-	
-	for s in range(0, n, chunk):
-		S = V[s:s + chunk] @ V.T
-		rows = np.arange(S.shape[0])
-		S[rows, rows + s] = -np.inf # exclude the cluster itself
-		j = S.argmax(axis=1)
-		nn_idx[s:s + chunk] = j
-		nn_sim[s:s + chunk] = S[rows, j]
-	
-	return nn_idx, nn_sim
+	unit_centroids = np.asarray(centroids, dtype=np.float32)
+	unit_centroids = unit_centroids / (np.linalg.norm(unit_centroids, axis=1, keepdims=True) + 1e-12)
+
+	n_clusters = unit_centroids.shape[0]
+	nearest_cluster_indices = np.zeros(n_clusters, dtype=np.int64)
+	nearest_similarities = np.full(n_clusters, -1.0, dtype=np.float32)
+
+	if n_clusters < 2:
+		return nearest_cluster_indices, nearest_similarities
+
+	for chunk_start in range(0, n_clusters, chunk):
+		chunk_end = min(chunk_start + chunk, n_clusters)
+		centroid_chunk = unit_centroids[chunk_start:chunk_end]
+		sim_matrix = centroid_chunk @ unit_centroids.T
+
+		chunk_rows = np.arange(chunk_end - chunk_start)
+		global_diagonal_cols = chunk_rows + chunk_start
+		sim_matrix[chunk_rows, global_diagonal_cols] = -np.inf # exclude self-comparison
+
+		best_neighbor_indices = sim_matrix.argmax(axis=1)
+		nearest_cluster_indices[chunk_start:chunk_end] = best_neighbor_indices
+		nearest_similarities[chunk_start:chunk_end] = np.clip(
+			sim_matrix[chunk_rows, best_neighbor_indices], -1.0, 1.0
+		)
+
+	return nearest_cluster_indices, nearest_similarities
 
 def _json_default(obj):
 	if isinstance(obj, np.generic):
@@ -562,19 +577,19 @@ def get_cluster_medoid_nearest_neighbor(
 	verbose: bool = False,
 ) -> Tuple[Dict[int, Dict], Dict]:
 	"""
-	Pre-merge cluster proximity diagnostics computed directly on member centroids
-	after `get_clustered_labels()` and before `merge_cluster_medoid_nearest_neighbor()`.
+	Pre-merge cluster proximity diagnostics computed directly on member centroids.
 
 	If `threshold` is None (default), it is derived dynamically from the
-	clusters via three intrinsic signals (robust MAD fence, Kneedle upper-tail
-	elbow, and the 75th percentile of mutual 1-NN similarities).
+	clusters via three intrinsic signals 
+	(robust MAD fence, Kneedle upper-tail elbow, 
+	and the 75th percentile of mutual 1-NN similarities).
 
 	Returns
 	-------
-	info    : {cid: {cluster_id, similarity, mutual, merge_eligible, medoid, members}}
-				describing each cluster's nearest other cluster.
+	info : {cid: {cluster_id, similarity, mutual, merge_eligible, medoid, members}}
+		describing each cluster's nearest other cluster.
 	summary : distribution quantiles, counts at similarity levels (overall, mutual,
-				one-way, and merge-eligible mutual pairs), and resolved threshold.
+		one-way, and merge-eligible mutual pairs), and resolved threshold.
 	"""
 	if verbose:
 		print("\n" + "=" * 120)
@@ -596,15 +611,18 @@ def get_cluster_medoid_nearest_neighbor(
 		sizes[pos] = len(m_idx)
 
 		emb_c = X[m_idx]
+
+		# 1. Compute the synthetic centroid
 		centroid = emb_c.mean(axis=0).astype(np.float32)
+		unit_c = centroid / (np.linalg.norm(centroid) + 1e-12)
 		centroid_list.append(centroid)
 
-		unit_c = centroid / (np.linalg.norm(centroid) + 1e-12)
+		# 2. Find the medoid: member with highest cosine similarity to the centroid
 		sims_to_centroid = emb_c @ unit_c
 		medoid_local = int(np.argmax(sims_to_centroid))
 		cluster_medoids[c] = members_c[medoid_local]
 
-		# Average similarity of the medoid to all OTHER members in the cluster
+		# 3. Compute its average similarity to all OTHER members (excluding self-similarity of 1.0)
 		if len(m_idx) > 1:
 			medoid_emb = emb_c[medoid_local]
 			medoid_sims_to_others = emb_c @ medoid_emb
@@ -612,7 +630,8 @@ def get_cluster_medoid_nearest_neighbor(
 			avg_medoid_sim = float((medoid_sims_to_others.sum() - 1.0) / (len(m_idx) - 1))
 		else:
 			avg_medoid_sim = 1.0
-		cluster_medoid_sims[c] = round(avg_medoid_sim, 4)
+		
+		cluster_medoid_sims[c] = avg_medoid_sim
 
 	centroids = np.vstack(centroid_list) if n_clusters > 0 else np.empty((0, X.shape[1]), dtype=np.float32)
 	nn_idx, nn_sim = _nearest_cluster_neighbors(centroids=centroids, chunk=4096)
@@ -892,10 +911,10 @@ def merge_cluster_medoid_nearest_neighbor(
 	X: np.ndarray,
 	labels: np.ndarray,
 	label_texts: List[str],
-	threshold: float,
+	threshold: Optional[float] = None,
 	max_merged_size: Optional[int] = None,
 	max_rounds: int = 10,
-	report_path: Optional[str]=None,
+	report_path: Optional[str] = None,
 	verbose: bool = False,
 ) -> np.ndarray:
 
@@ -911,6 +930,9 @@ def merge_cluster_medoid_nearest_neighbor(
 		* their centroid cosine similarity is >= threshold, and
 		* (if max_merged_size is given) the merged cluster would hold at most max_merged_size labels.
 
+	If `threshold` is None (default), it is derived dynamically from the
+	clusters via _estimate_dynamic_neighbor_thresholds().
+
 	Merged centroids are recomputed (size-weighted) and the process repeats for
 	up to max_rounds rounds. Because each round compares the RECOMPUTED centroid,
 	chains (A~B, B~C, A far from C) cannot form: after A+B merge, the merged
@@ -918,6 +940,9 @@ def merge_cluster_medoid_nearest_neighbor(
 
 	Returns new labels (contiguous, same row order).
 	"""
+	if verbose:
+		print("=" * 120)
+		print(f"[MERGE CLUSTERS (medoid similarity)]\nConservative Multi-Round 1-NN Mutual Pair Merging Diagnostics")
 
 	ids = np.unique(labels)
 	cluster_ids = [int(c) for c in ids]
@@ -929,6 +954,30 @@ def merge_cluster_medoid_nearest_neighbor(
 	merges = []
 	round_progression = []
 	termination_reason = "max_rounds_reached"
+
+	is_dynamic_thresh = threshold is None
+	dyn = None
+	nn_idx_init, nn_sim_init = None, None
+	if is_dynamic_thresh:
+		if len(members) < 2:
+			dyn = _estimate_dynamic_neighbor_thresholds(
+				sims=np.array([], dtype=float),
+				mutual_mask=np.array([], dtype=bool),
+				verbose=verbose,
+			)
+			threshold = float(dyn['threshold'])
+		else:
+			nn_idx_init, nn_sim_init = _nearest_cluster_neighbors(centroids=sums, chunk=4096)
+			sims = nn_sim_init.astype(float)
+			mutual_mask = np.array([int(nn_idx_init[int(nn_idx_init[i])]) == i for i in range(len(members))], dtype=bool)
+			dyn = _estimate_dynamic_neighbor_thresholds(
+				sims=sims,
+				mutual_mask=mutual_mask,
+				verbose=verbose,
+			)
+			threshold = float(dyn['threshold'])
+	else:
+		threshold = float(threshold)
 
 	def _get_medoid_info(m_indices: np.ndarray, sum_vec: np.ndarray) -> Tuple[str, float]:
 		if len(m_indices) == 0:
@@ -952,7 +1001,10 @@ def merge_cluster_medoid_nearest_neighbor(
 			termination_reason = "insufficient_clusters"
 			break
 
-		nn_idx, nn_sim = _nearest_cluster_neighbors(centroids=sums, chunk=4096)
+		if rnd == 1 and nn_idx_init is not None:
+			nn_idx, nn_sim = nn_idx_init, nn_sim_init
+		else:
+			nn_idx, nn_sim = _nearest_cluster_neighbors(centroids=sums, chunk=4096)
 		drop = set()
 		round_merges = 0
 		round_sims = []
@@ -1083,9 +1135,8 @@ def merge_cluster_medoid_nearest_neighbor(
 		reduction_count = n_before - len(members)
 		reduction_pct = (1.0 - len(members) / max(1, n_before)) * 100.0
 
-		print("=" * 120)
-		print(f"[MERGE CLUSTERS (medoid similarity)] Conservative Multi-Round 1-NN Mutual Pair Merging Diagnostics")
-		print(f"Policy: threshold >= {threshold:.5f} | Size Limit: {size_limit_str} | Max Rounds: {max_rounds}")
+		mode_str = f" ({'dynamic' if is_dynamic_thresh else 'manual'})"
+		print(f"Policy: threshold >= {threshold:.5f}{mode_str} | Size Limit: {size_limit_str} | Max Rounds: {max_rounds}")
 		print(
 			f"Reduction: {n_before:,} -> {len(members):,} clusters "
 			f"(-{reduction_count:,} clusters, -{reduction_pct:.2f}%) "
@@ -1174,6 +1225,8 @@ def merge_cluster_medoid_nearest_neighbor(
 			new_result = {
 				'meta': {
 					'threshold': threshold,
+					'threshold_mode': 'dynamic' if is_dynamic_thresh else 'manual',
+					'dynamic_thresholds': dyn,
 					'max_merged_size': max_merged_size,
 					'max_rounds': max_rounds,
 					'rounds_completed': rounds_completed,
@@ -1187,6 +1240,8 @@ def merge_cluster_medoid_nearest_neighbor(
 					'merge_similarity_stats': merge_sim_stats,
 				},
 				'threshold': threshold,
+				'threshold_mode': 'dynamic' if is_dynamic_thresh else 'manual',
+				'dynamic_thresholds': dyn,
 				'max_merged_size': max_merged_size,
 				'clusters_before': n_before,
 				'clusters_after': len(members),
@@ -1257,55 +1312,80 @@ def _nearest_canonical_neighbors(
 	chunk: int = 2048,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 	"""
-	For every cluster row (n, d): find the index of the most similar OTHER cluster
-	in canonical embedding space, breaking exact canonical ties (e.g. identical
-	canonical strings with sim=1.0) via member-centroid cosine similarity.
+	For every cluster row (0..n_clusters-1): find the index of the most similar OTHER
+	cluster in canonical embedding space, breaking exact canonical ties (e.g. identical
+	canonical strings with similarity=1.0) via member-centroid cosine similarity.
+
+	Geometric Workflow:
+	-------------------
+	For any pair of clusters (Cluster A and Cluster B):
+
+	1. Canonical Label Similarity (Primary Metric):
+	   Canonical A: e(canonical_A) ───> Normalize ───> Ĉ_A
+	                                                    │
+	                                    cosine similarity = Ĉ_A • Ĉ_B
+	                                                    │
+	   Canonical B: e(canonical_B) ───> Normalize ───> Ĉ_B
+
+	2. Member-Centroid Cosine Similarity (Semantic Guard & Tie-Breaker):
+	   Cluster A: [a₁, a₂, ..., aₘ] ───> Average & Normalize ───> Unit Centroid Û_A
+	                                                                  │
+	                                                  cosine similarity = Û_A • Û_B
+	                                                                  │
+	   Cluster B: [b₁, b₂, ..., bₙ] ───> Average & Normalize ───> Unit Centroid Û_B
 
 	Returns
 	-------
-	nn_idx          : (n,) int64 index of nearest neighbor cluster
-	nn_canonical_sim    : (n,) float32 pure canonical-to-canonical cosine similarity
-	nn_centroid_sim : (n,) float32 member-centroid cosine similarity for that pair
+	nearest_cluster_indices   : (n,) int64 index of nearest neighbor cluster
+	nearest_canonical_sims    : (n,) float32 pure canonical-to-canonical cosine similarity
+	nearest_centroid_sims     : (n,) float32 member-centroid cosine similarity for that pair
 	"""
-	C = np.asarray(canon_embs, dtype=np.float32)
-	C = C / (np.linalg.norm(C, axis=1, keepdims=True) + 1e-12)
+	canonical_embs_norm = np.asarray(canon_embs, dtype=np.float32)
+	canonical_embs_norm = canonical_embs_norm / (np.linalg.norm(canonical_embs_norm, axis=1, keepdims=True) + 1e-12)
 
-	U = np.asarray(unit_centroids, dtype=np.float32)
-	U = U / (np.linalg.norm(U, axis=1, keepdims=True) + 1e-12)
+	unit_centroids_norm = np.asarray(unit_centroids, dtype=np.float32)
+	unit_centroids_norm = unit_centroids_norm / (np.linalg.norm(unit_centroids_norm, axis=1, keepdims=True) + 1e-12)
 
-	n = C.shape[0]
-	nn_idx = np.zeros(n, dtype=np.int64)
-	nn_canonical_sim = np.full(n, -1.0, dtype=np.float32)
-	nn_centroid_sim = np.full(n, -1.0, dtype=np.float32)
+	n_clusters = canonical_embs_norm.shape[0]
+	nearest_cluster_indices = np.zeros(n_clusters, dtype=np.int64)
+	nearest_canonical_sims = np.full(n_clusters, -1.0, dtype=np.float32)
+	nearest_centroid_sims = np.full(n_clusters, -1.0, dtype=np.float32)
 
-	if n < 2:
-		return nn_idx, nn_canonical_sim, nn_centroid_sim
+	if n_clusters < 2:
+		return nearest_cluster_indices, nearest_canonical_sims, nearest_centroid_sims
 
-	for s in range(0, n, chunk):
-		# S_canon[i, j] = cosine_similarity(
-		# 	embedding(canonical_label_of_cluster_i),
-		# 	embedding(canonical_label_of_cluster_j)
-		# )
-		S_canon = C[s:s + chunk] @ C.T # canonical-to-canonical similarity matrix
+	for chunk_start in range(0, n_clusters, chunk):
+		chunk_end = min(chunk_start + chunk, n_clusters)
+		canonical_chunk = canonical_embs_norm[chunk_start:chunk_end]
+		centroid_chunk = unit_centroids_norm[chunk_start:chunk_end]
 
-		# S_centr[i, j] = cosine_similarity(
-		# 	unit_centroid_of_cluster_i,   # ← average of ALL member embeddings, normalized
-		# 	unit_centroid_of_cluster_j    # ← average of ALL member embeddings, normalized
-		# )
-		S_centr = U[s:s + chunk] @ U.T # centroid-to-centroid similarity matrix
+		# 1. Pairwise canonical-to-canonical cosine similarity:
+		#    sim_canonical_matrix[i, j] = Ĉ_i • Ĉ_j
+		sim_canonical_matrix = canonical_chunk @ canonical_embs_norm.T
 
-		# Tiny centroid tie-breaker resolves identical canonical strings (sim=1.0)
-		# in favor of the cluster with the closest member centroid.
-		S_score = S_canon + 1e-6 * S_centr # canonical dominates, centroid breaks ties
+		# 2. Pairwise member-centroid cosine similarity:
+		#    sim_centroid_matrix[i, j] = Û_i • Û_j  (average of all member embeddings)
+		sim_centroid_matrix = centroid_chunk @ unit_centroids_norm.T
 
-		rows = np.arange(S_score.shape[0])
-		S_score[rows, rows + s] = -np.inf
-		j = S_score.argmax(axis=1)
-		nn_idx[s:s + chunk] = j
-		nn_canonical_sim[s:s + chunk] = np.clip(S_canon[rows, j], -1.0, 1.0)
-		nn_centroid_sim[s:s + chunk] = np.clip(S_centr[rows, j], -1.0, 1.0)
+		# 3. Combined ranking score: canonical similarity dominates,
+		#    with a 1e-6 centroid tie-breaker to resolve identical canonical strings (sim=1.0)
+		ranking_scores = sim_canonical_matrix + 1e-6 * sim_centroid_matrix
 
-	return nn_idx, nn_canonical_sim, nn_centroid_sim
+		chunk_rows = np.arange(chunk_end - chunk_start)
+		global_diagonal_cols = chunk_rows + chunk_start
+		ranking_scores[chunk_rows, global_diagonal_cols] = -np.inf  # exclude self-comparison
+
+		best_neighbor_indices = ranking_scores.argmax(axis=1)
+
+		nearest_cluster_indices[chunk_start:chunk_end] = best_neighbor_indices
+		nearest_canonical_sims[chunk_start:chunk_end] = np.clip(
+			sim_canonical_matrix[chunk_rows, best_neighbor_indices], -1.0, 1.0
+		)
+		nearest_centroid_sims[chunk_start:chunk_end] = np.clip(
+			sim_centroid_matrix[chunk_rows, best_neighbor_indices], -1.0, 1.0
+		)
+
+	return nearest_cluster_indices, nearest_canonical_sims, nearest_centroid_sims
 
 def get_cluster_canonical_nearest_neighbor(
 	embedding_model_id: str,
@@ -1356,21 +1436,26 @@ def get_cluster_canonical_nearest_neighbor(
 		sizes[pos] = len(m_idx)
 
 		emb_c = X[m_idx]
+
+		# 1. Compute the synthetic centroid
 		centroid = emb_c.mean(axis=0).astype(np.float32)
 		unit_c = centroid / (np.linalg.norm(centroid) + 1e-12)
 		unit_centroid_list.append(unit_c)
 
+		# 2. Find the medoid: member with highest cosine similarity to the centroid
 		sims_to_centroid = emb_c @ unit_c
 		medoid_local = int(np.argmax(sims_to_centroid))
 		cluster_medoids[c] = members_c[medoid_local]
 
+		# 3. Compute its average similarity to all OTHER members (excluding self-similarity of 1.0)
 		if len(m_idx) > 1:
 			medoid_emb = emb_c[medoid_local]
 			medoid_sims_to_others = emb_c @ medoid_emb
 			avg_medoid_sim = float((medoid_sims_to_others.sum() - 1.0) / (len(m_idx) - 1))
 		else:
 			avg_medoid_sim = 1.0
-		cluster_medoid_sims[c] = round(avg_medoid_sim, 4)
+
+		cluster_medoid_sims[c] = avg_medoid_sim
 
 		meta = cluster_canonicals.get(c, {})
 		canon_str = meta.get("canonical_harmonized") or meta.get("canonical") or cluster_medoids[c]
@@ -2236,8 +2321,8 @@ def merge_cluster_canonical_nearest_neighbor(
 					f"canonical_to_canonical_sim={m['canonical_similarity']:.5f} >= {threshold:.5f} "
 					f"centroid_sim={m['centroid_similarity']:.4f} "
 					f"(Rnd {m['round']}) | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"  Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {ca['medoid']!r:<40}{ca['members'][:3]}\n"
-					f"  Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {cb['medoid']!r:<40}{cb['members'][:3]}\n"
+					f"  Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<30}sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {ca['medoid']!r:<35}{ca['members'][:5]}\n"
+					f"  Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<30}sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {cb['medoid']!r:<35}{cb['members'][:5]}\n"
 					f"  -> Winning canonical: {cm['canonical'] + vm} "
 					f"(from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)
@@ -2254,8 +2339,8 @@ def merge_cluster_canonical_nearest_neighbor(
 
 				print(
 					f" {rank}. canonical_to_canonical_sim={bp['canonical_similarity']:.4f} >= {threshold:.4f} BUT centroid_similarity={bp['centroid_similarity']:.4f} < {min_centroid_similarity}\n"
-					f"   Cluster {ca['id']:5d} ({len(ca['members']):4d} labels) canonical: {ca['canonical'] + va:<25}medoid: {ca['medoid']!r:<45}{ca['members'][:9]}\n"
-					f"   Cluster {cb['id']:5d} ({len(cb['members']):4d} labels) canonical: {cb['canonical'] + vb:<25}medoid: {cb['medoid']!r:<45}{cb['members'][:9]}\n"
+					f"   Cluster {ca['id']:5d} ({len(ca['members']):4d} labels) canonical: {ca['canonical'] + va:<25}medoid: {ca['medoid']!r:<35}{ca['members'][:9]}\n"
+					f"   Cluster {cb['id']:5d} ({len(cb['members']):4d} labels) canonical: {cb['canonical'] + vb:<25}medoid: {cb['medoid']!r:<35}{cb['members'][:9]}\n"
 				)
 
 		if report_path:
@@ -6683,16 +6768,11 @@ def cluster(
 
 	# STEP 4b: OPTIONAL MERGE OF NEAR-DUPLICATE CLUSTERS (before canonical selection)
 	if merge_near_duplicate_clusters_medoid:
-		active_merge_threshold = (
-			float(merge_close_clusters_threshold)
-			if merge_close_clusters_threshold is not None
-			else float(neighbor_summary['threshold'])
-		)
 		clustered_labels = merge_cluster_medoid_nearest_neighbor(
 			X=X,
 			labels=clustered_labels,
 			label_texts=unique_labels,
-			threshold=active_merge_threshold,
+			threshold=merge_close_clusters_threshold,
 			max_merged_size=merge_max_size,
 			report_path=os.path.splitext(clusters_fname)[0] + "_medoid_nearest_neighbor_merges.json",
 			verbose=verbose,
