@@ -547,13 +547,13 @@ class HistoricalArchivesMultiLabelDataset(torch.utils.data.Dataset):
 			self.text_cache[idx] = self._tokenize_labels(self.labels[idx])
 	
 	def _tokenize_labels(self, labels_str):
-			"""Tokenize label string."""
-			try:
-					labels = ast.literal_eval(labels_str)
-					text_desc = self._create_text_description(labels)
-					return clip.tokenize(text_desc).squeeze(0)
-			except (ValueError, SyntaxError):
-					return clip.tokenize("").squeeze(0)
+		"""Tokenize label string."""
+		try:
+			labels = ast.literal_eval(labels_str)
+			text_desc = self._create_text_description(labels)
+			return clip.tokenize(text_desc, truncate=True).squeeze(0)
+		except (ValueError, SyntaxError):
+			return clip.tokenize("").squeeze(0)
 	
 	def _create_text_description(self, labels: list) -> str:
 		"""Create text description from labels."""
