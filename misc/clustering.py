@@ -26,8 +26,8 @@ if not getattr(Normalize, "_rogue_kwargs_patched", False):
 	Normalize._rogue_kwargs_patched = True
 
 CUSTOM_ENCODE_INSTRUCTION = (
-	"Instruct: Given a label describing a historical photograph, "
-	"retrieve labels that name the same concept\nQuery:"
+	"Instruct: Given a keyword which describes a historical archive, "
+	"retrieve keywords matching the similar concept\nQuery:"
 )
 
 def summarize_canonical_selection(
@@ -6754,29 +6754,29 @@ def cluster(
 		verbose=verbose,
 	)
 
-	# STEP 4a: PRE-MERGE CLUSTER NEIGHBOUR DIAGNOSTICS & DYNAMIC THRESHOLDING
-	neighbor_summary = get_cluster_medoid_nearest_neighbor(
-		embedding_model_id=model.model_card_data.base_model,
-		X=X,
-		labels=clustered_labels,
-		label_texts=unique_labels,
-		max_merged_size=merge_max_size,
-		threshold=merge_close_clusters_threshold,
-		review_path=os.path.splitext(clusters_fname)[0] + "_medoid_nearest_neighbor_pairs.json",
-		verbose=verbose,
-	)
+	# # STEP 4a: PRE-MERGE CLUSTER NEIGHBOUR DIAGNOSTICS & DYNAMIC THRESHOLDING
+	# neighbor_summary = get_cluster_medoid_nearest_neighbor(
+	# 	embedding_model_id=model.model_card_data.base_model,
+	# 	X=X,
+	# 	labels=clustered_labels,
+	# 	label_texts=unique_labels,
+	# 	max_merged_size=merge_max_size,
+	# 	threshold=merge_close_clusters_threshold,
+	# 	review_path=os.path.splitext(clusters_fname)[0] + "_medoid_nearest_neighbor_pairs.json",
+	# 	verbose=verbose,
+	# )
 
-	# STEP 4b: OPTIONAL MERGE OF NEAR-DUPLICATE CLUSTERS (before canonical selection)
-	if merge_near_duplicate_clusters_medoid:
-		clustered_labels = merge_cluster_medoid_nearest_neighbor(
-			X=X,
-			labels=clustered_labels,
-			label_texts=unique_labels,
-			threshold=merge_close_clusters_threshold,
-			max_merged_size=merge_max_size,
-			report_path=os.path.splitext(clusters_fname)[0] + "_medoid_nearest_neighbor_merges.json",
-			verbose=verbose,
-		)
+	# # STEP 4b: OPTIONAL MERGE OF NEAR-DUPLICATE CLUSTERS (before canonical selection)
+	# if merge_near_duplicate_clusters_medoid:
+	# 	clustered_labels = merge_cluster_medoid_nearest_neighbor(
+	# 		X=X,
+	# 		labels=clustered_labels,
+	# 		label_texts=unique_labels,
+	# 		threshold=merge_close_clusters_threshold,
+	# 		max_merged_size=merge_max_size,
+	# 		report_path=os.path.splitext(clusters_fname)[0] + "_medoid_nearest_neighbor_merges.json",
+	# 		verbose=verbose,
+	# 	)
  
 	df = pd.DataFrame({'label': unique_labels, 'cluster': clustered_labels})
 
@@ -6851,7 +6851,7 @@ def cluster(
 		canonical_merges_done = n_clusters_pre_canon_merge - len(np.unique(clustered_labels))
 
 	# STEP 7: MAP CANONICALS + INJECT VIRTUAL ROWS + CLEAN
-	low_cohesion_threshold: float = 0.80 * cluster_intra_similarity_threshold
+	low_cohesion_threshold: float = 0.85 * cluster_intra_similarity_threshold
 	poor_canonical_threshold: float = 0.85 * cluster_intra_similarity_threshold
 
 	df, X_clean, removed_labels = map_inject_and_clean_clusters(

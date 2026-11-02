@@ -301,6 +301,8 @@ Arizona
 Arkansas
 California
 Colorado
+Conn.
+Conn
 Connecticut
 Delaware
 Edgewater
@@ -555,10 +557,13 @@ Winslow
 Aachen
 Aalborg
 Abadan
+Abbeville
 Acheson
 Adinkerke
 Aegean
 Agadir
+Amfreville
+Amifontaine
 Alborg
 Alicante
 Algiers
@@ -589,6 +594,7 @@ Berlin
 Berline
 Bermuda
 Bilbao
+Blenheim
 Borsberg
 Bogota
 Bombay
@@ -614,6 +620,7 @@ Cambridge
 Campbell
 Canberra
 Canso
+Cantigny
 Caceres
 Caracas
 Cardiff
@@ -637,6 +644,7 @@ Crimea
 Calcutta
 Czernovitz
 Czernowitz
+Dahlem
 Dardanelles
 Delhi
 Dessau
