@@ -864,7 +864,6 @@ def _post_process_(
 		'LCA',
 	}
 
-	
 	ALLOWED_SINGLE_LETTERS = {
 		"a", 
 		"b", 
@@ -1123,8 +1122,8 @@ def _post_process_(
 		
 		# 2. Ground echelons (with or without branch role):
 		# "79th Division", "102nd Infantry Division", "3rd Armored Division", "101st Airborne Division",
-		# "73rd Infantry Brigade", "111th Infantry Regiment", "555th Parachute Infantry Battalion"
-		rf'(?:{_GROUND_ROLES})?(?:div\.?|division|brig\.?|brigade|reg\.?|regt\.?|regiment|bn\.?|battalion)(?:\s+artillery|\s+infantry)?|'
+		# "73rd Infantry Brigade", "111th Infantry Regiment", "555th Parachute Infantry Battalion", "328th Infantry Detachment"
+		rf'(?:{_GROUND_ROLES})?(?:div\.?|division|brig\.?|brigade|reg\.?|regt\.?|regiment|bn\.?|battalion|det\.?|detachments?|company|co\.?|battery|bty\.?|troop|platoon|plt\.?|squad)(?:\s+artillery|\s+infantry)?|'
 		
 		# 3. Reversed regiment notation
 		# "328th Regiment Infantry", "71st Regiment Infantry"
@@ -1132,7 +1131,7 @@ def _post_process_(
 		
 		# 4. Standalone combat branches acting as echelons:
 		# "53rd Infantry", "27th Marines", "102nd Engineers", "9th Cavalry", "9th Field Artillery"
-		r'infantry|inf\.?|marines|cavalry|cav\.?|engineers?|engr\.?|engrs\.?|arty\.?|artillery|field\s+artillery|'
+		r'infantry|inf\.?|marines|cavalry|cav\.?|engineers?|engr\.?|engrs\.?|arty\.?|artillery|field\s+artillery|detachments?|det\.?|'
 		
 		# 5. Air echelons (with or without mission role):
 		# "56th Fighter Group", "20th Pursuit Group", "50th Tactical Fighter Wing", "First Tactical AF"
@@ -1146,9 +1145,10 @@ def _post_process_(
 		r'dist\.?|district|amendment|century|term|congress|fg|fs|nfs|trs|parallel|orders?'
 	)
 
-	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations, plus veteran/alumni associations and photo collections:
+	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations, plus veteran/alumni associations, photo collections, and exhibits:
 	GENERIC_ECHELON_RE = re.compile(
-		rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})(?:\s+(?:association|assn\.?|society|veterans?|photos?|photographs?|pics?|pictures?|images?))?$',
+		rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})'
+		rf'(?:\s+(?:association|assn\.?|society|veterans?|photos?|photographs?|pics?|pictures?|images?|exhibits?|exhibitions?|displays?|memorials?|monuments?|museums?|reunions?))?$',
 		re.IGNORECASE
 	)
 

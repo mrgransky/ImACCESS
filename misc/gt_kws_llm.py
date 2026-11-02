@@ -50,9 +50,10 @@ PROMPT_TEMPLATE = """
 Extract no more than {k} prominent keywords from the caption below.
 If the caption contains meaningful descriptors, prioritize multi-word keywords.
 If the caption lacks sufficient information, returning fewer keywords or even an empty list [] is better than excluded terms.
+The caption may contain typos, misprints, or machine-translation errors. Never return a keyword that is misspelled or malformed. If a term looks corrupted, skip it.
 
 STRINGENTLY exclude keywords containing:
-  - typographical error, misprints, or irregular orthography
+  - typographical error, misprints, translation failures, or irregular orthography
   - acronyms, shorthands, or initialisms
   - generic war terms
   - generic human category nouns, individual names, or honorifics
@@ -71,7 +72,7 @@ Color handling:
 
 Caption: {caption}
 
-Output ONLY a a Python list of double-quoted strings containing keywords derived from the caption."""
+Output ONLY a Python list of double-quoted strings containing keywords derived from the caption."""
 
 def _load_llm_(
 	model_id: str,

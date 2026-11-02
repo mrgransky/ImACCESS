@@ -2256,7 +2256,7 @@ def get_singletons(
 
 		label_list: List[List[str]] = df[col].tolist()
 
-		print(f"  ├─ {len(label_list)} {type(label_list)} {label_list[:5]}")
+		print(f"  ├─ {len(label_list)} {label_list[:4]}")
 		labels = list()
 
 		for i, lbl in enumerate(label_list):
