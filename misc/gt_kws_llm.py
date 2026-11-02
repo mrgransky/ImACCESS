@@ -6,7 +6,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "3d Cav moving up Pa ave to begin evacuation of Camp Glassford" -llm "Qwen/Qwen3.5-122B-A10B" -v
+# python gt_kws_llm.py -desc "Top of a locomotive of the company MZA. Top of a locomotive of the company Ferrocarriles de Madrid in Zaragoza y in Alicante (MZA), outside the French Station, in Barcelona." -llm "Qwen/Qwen3.5-122B-A10B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -49,8 +49,8 @@ STOPWORDS.update(geographic_references)
 PROMPT_TEMPLATE = """
 Extract no more than {k} prominent keywords from the caption below.
 If the caption contains meaningful descriptors, prioritize multi-word keywords.
-If the caption lacks sufficient information, returning fewer keywords or even an empty list [] is better than excluded terms.
-The caption may contain typos, misprints, or machine-translation errors. Never return a keyword that is misspelled or malformed. If a term looks corrupted, skip it.
+If the caption lacks sufficient information, returning fewer keywords or even an empty list [] is better than excluded keywords.
+The caption may contain typos, misprints, or machine-translation errors. Never return a keyword that is misspelled or malformed. If a keyword looks corrupted, skip it.
 
 STRINGENTLY exclude keywords containing:
   - typographical error, misprints, translation failures, or irregular orthography
