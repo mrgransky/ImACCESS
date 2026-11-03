@@ -57,11 +57,11 @@ STRINGENTLY exclude keywords containing:
   - acronyms, shorthands, or initialisms
   - generic war terms
   - generic human category nouns, individual names, or honorifics
+  - family relationship terms
   - roman numerals, ordinal numbers, quantities, counts, or measurements
   - equipment/infrastructure identifiers, serial numbers, brands, or models
   - dates, times, years, decades, or any temporal references
-  - locations, neighborhoods, places, buildings, or structures
-  - family relationship terms
+  - locations, neighborhoods, places, buildings, directional terms, or structures,
   - geographical place, country, commune, municipality, island, district, borough, or town
   - nationalities, ethnicities, or religions
   - underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
