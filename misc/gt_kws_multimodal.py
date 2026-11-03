@@ -149,6 +149,8 @@ def get_multimodal_annotation(
 	batch_size: int,
 	num_workers: int,
 	intra_sim: float,
+	min_consolidation: float,
+	max_consolidation: float,
 	llm_quantization_bits: Optional[int] = None,
 	vlm_quantization_bits: Optional[int] = None,
 	nc: int = None,
@@ -258,6 +260,8 @@ def get_multimodal_annotation(
 			batch_size=batch_size,
 			device=device,
 			cluster_intra_similarity_threshold=intra_sim,
+			min_consolidation=min_consolidation,
+			max_consolidation=max_consolidation,
 			nc=nc,
 			encode_prompt=CUSTOM_ENCODE_INSTRUCTION,
 			verbose=verbose,
@@ -270,6 +274,8 @@ def get_multimodal_annotation(
 			batch_size=batch_size,
 			device=device,
 			cluster_intra_similarity_threshold=intra_sim,
+			min_consolidation=min_consolidation,
+			max_consolidation=max_consolidation,
 			nc=nc,
 			encode_prompt=CUSTOM_ENCODE_INSTRUCTION,
 			verbose=False,
@@ -282,6 +288,8 @@ def get_multimodal_annotation(
 			batch_size=batch_size,
 			device=device,
 			cluster_intra_similarity_threshold=intra_sim,
+			min_consolidation=min_consolidation,
+			max_consolidation=max_consolidation,
 			nc=nc,
 			encode_prompt=CUSTOM_ENCODE_INSTRUCTION,
 			verbose=False,
@@ -481,6 +489,8 @@ def main():
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
 	parser.add_argument("--num_clusters", '-nc', type=int, default=None, help="Number of clusters")
 	parser.add_argument("--intra_similarity", '-isim', type=float, default=0.70, help="Cluster intra similarity")
+	parser.add_argument("--min_consolidation", '-min_con', type=float, default=4.0, help="min consolidation")
+	parser.add_argument("--max_consolidation", '-max_con', type=float, default=8.0, help="min consolidation")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility [Default: 42]")
 
@@ -499,6 +509,8 @@ def main():
 		vlm_model_id=args.vlm_model_id,
 		device=args.device,
 		intra_sim=args.intra_similarity,
+		min_consolidation=args.min_consolidation,
+		max_consolidation=args.max_consolidation,
 		num_workers=args.num_workers,
 		batch_size=args.batch_size,
 		llm_batch_size=args.llm_batch_size,
