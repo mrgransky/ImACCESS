@@ -62,7 +62,7 @@ STRINGENTLY exclude keywords containing:
   - equipment/infrastructure identifiers, serial numbers, brands, or models
   - dates, times, years, decades, or any temporal references
   - geographical place, country, commune, municipality, island, district, borough, or town
-  - locations, buildings, or directional terms
+  - locations, buildings, routes, or directional terms
   - nationalities, ethnicities, or religions
   - underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
 

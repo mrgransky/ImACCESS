@@ -6632,8 +6632,8 @@ def cluster(
 	cluster_intra_similarity_threshold: float,
 	linkage_method: str="ward",
 	distance_metric: str="euclidean",
-	min_consolidation: float = 4.0, #3.5, #4.0, # 3.8, #5.0, 
-	max_consolidation: float = 8.0, #6.0, #6.5, # 5.0, #7.5, 
+	min_consolidation: float = 7.0, #3.5, #4.0, # 3.8, #5.0, 
+	max_consolidation: float = 10.0, #6.0, #6.5, # 5.0, #7.5, 
 	min_singleton_ratio: float = 1.5e-2, # 1.5%
 	max_singleton_ratio: float = 3.0e-2, # 3.0%
 	min_singleton_merge_sim: Optional[float] = 0.60,

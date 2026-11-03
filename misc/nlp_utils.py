@@ -1122,12 +1122,13 @@ def _post_process_(
 		
 		# 2. Ground echelons (with or without branch role):
 		# "79th Division", "102nd Infantry Division", "3rd Armored Division", "101st Airborne Division",
-		# "73rd Infantry Brigade", "111th Infantry Regiment", "555th Parachute Infantry Battalion", "328th Infantry Detachment"
-		rf'(?:{_GROUND_ROLES})?(?:div\.?|division|brig\.?|brigade|reg\.?|regt\.?|regiment|bn\.?|battalion|det\.?|detachments?|company|co\.?|battery|bty\.?|troop|platoon|plt\.?|squad)(?:\s+artillery|\s+infantry)?|'
+		# "73rd Infantry Brigade", "111th Infantry Regiment", "555th Parachute Infantry Battalion", "328th Infantry Detachment",
+		# and reversed branch notation: "5th Regiment Marines", "Fifth Division Marines", "Fourth Division Marine"
+		rf'(?:{_GROUND_ROLES})?(?:div\.?|division|brig\.?|brigade|reg\.?|regt\.?|regiment|bn\.?|battalion|det\.?|detachments?|company|co\.?|battery|bty\.?|troop|platoon|plt\.?|squad)(?:\s+(?:artillery|infantry|marines?|cavalry|engineers?))?|'
 		
-		# 3. Reversed regiment notation
-		# "328th Regiment Infantry", "71st Regiment Infantry"
-		r'(?:reg\.?|regt\.?|regiment)\s+infantry|'
+		# 3. Reversed regiment / division notation
+		# "328th Regiment Infantry", "71st Regiment Infantry", "5th Regiment Marines"
+		r'(?:reg\.?|regt\.?|regiment|div\.?|division|bn\.?|battalion)\s+(?:infantry|marines?)|'
 		
 		# 4. Standalone combat branches acting as echelons:
 		# "53rd Infantry", "27th Marines", "102nd Engineers", "9th Cavalry", "9th Field Artillery"

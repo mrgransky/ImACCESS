@@ -2,6 +2,12 @@ Southern
 Northern
 Western
 Eastern
+Territory of
+Island of
+North of
+South of
+East of
+West of
 
 Africa
 America
@@ -57,6 +63,7 @@ Canada
 Cape Verde
 Central African Republic
 Chad
+Czecho-Slovak
 Czecho Slav
 Czechoslovakia
 Czechoslovak Republic
@@ -172,6 +179,8 @@ Namibia
 Nauru
 Nepal
 Netherlands
+Niederlanden
+Niederlande
 New Caledonia
 New Guinea
 New Zealand
@@ -380,6 +389,10 @@ Brownwood
 Buffalo
 Burbank
 Burlington
+CA.
+Calif
+Calif.
+Cal.
 Centerville
 Centerville California
 Castroville
@@ -392,12 +405,9 @@ Chicago
 Columbia
 Columbus
 Coronado
-CA.
+County of Maui
 CZ.
 C.Z.
-Calif
-Calif.
-Cal.
 D.C.
 Dandridge
 Dakota
@@ -416,11 +426,13 @@ Gilbertsville
 Guadalcanal
 Hartford
 Halifax
+Hoboken
 Hollywood
 Hoopeston
 GA.
 Houston
 Ill.
+Ithaca
 Key West
 L.A.
 L. A.
@@ -452,6 +464,7 @@ Kings Point
 Leadvale
 Montclair
 New York City
+Lanai
 Las Vegas
 Long Beach
 Los Angeles
@@ -474,6 +487,7 @@ La Junta
 Kingston
 Madera
 Manhattan
+Maui County
 Maui
 McFarland
 Minneapolis
@@ -535,17 +549,18 @@ Salt Lake City
 Savannah
 Sandusky
 San Francisco
-San Francisco, CA
+San Francisco
 San Francisco, Calif.
 San Jacinto
 San Jacinto, Texas
 San Jose
 Scotia
-Scotia, CA
+Scotia
 Seattle
 Spadra
 Spadra, CA.
 Somerville
+Syracuse
 Tampa
 Tarrytown
 Texas City
@@ -713,6 +728,7 @@ Istanbul
 Istambul
 Iwo Jima
 Jerusalem
+Kalgan
 Karelia
 Karachi
 Karlskrona
@@ -770,6 +786,7 @@ Nagasaki
 Nagoya
 Naples
 New Delhi
+North Coates
 Okinawa
 Oran
 Orlando
@@ -855,6 +872,7 @@ Sidi Barrani
 Siena
 Shacktown 
 Shantytown
+Skagen
 Sorbonne
 Southampton
 Stalingrad
@@ -936,6 +954,7 @@ Aichi
 Kanoya
 Naha
 Yokosuka
+Upernavik
 Chongqing
 Mukden
 Nanking
@@ -954,6 +973,8 @@ Pantelleria
 Dieppe
 Willits
 Wonsan
+Öland
+Åland
 
 Afghan
 African
@@ -1012,6 +1033,7 @@ Japanese
 Jewish
 Jordanian
 Korean
+Koreans
 Kurd
 Kurdish
 Lebanese
