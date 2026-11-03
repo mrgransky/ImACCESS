@@ -148,6 +148,7 @@ def get_multimodal_annotation(
 	device: Union[str, torch.device],
 	batch_size: int,
 	num_workers: int,
+	intra_sim: float,
 	llm_quantization_bits: Optional[int] = None,
 	vlm_quantization_bits: Optional[int] = None,
 	nc: int = None,
@@ -256,6 +257,7 @@ def get_multimodal_annotation(
 			output_dir=OUTPUT_DIR,
 			batch_size=batch_size,
 			device=device,
+			cluster_intra_similarity_threshold=intra_sim,
 			nc=nc,
 			encode_prompt=CUSTOM_ENCODE_INSTRUCTION,
 			verbose=verbose,
@@ -267,6 +269,7 @@ def get_multimodal_annotation(
 			output_dir=OUTPUT_DIR,
 			batch_size=batch_size,
 			device=device,
+			cluster_intra_similarity_threshold=intra_sim,
 			nc=nc,
 			encode_prompt=CUSTOM_ENCODE_INSTRUCTION,
 			verbose=False,
@@ -278,6 +281,7 @@ def get_multimodal_annotation(
 			output_dir=OUTPUT_DIR,
 			batch_size=batch_size,
 			device=device,
+			cluster_intra_similarity_threshold=intra_sim,
 			nc=nc,
 			encode_prompt=CUSTOM_ENCODE_INSTRUCTION,
 			verbose=False,
@@ -476,6 +480,7 @@ def main():
 	parser.add_argument("--clip_architecture", '-clip_arch', type=str, default="ViT-B/32", help="CLIP architecture [Default: ViT-B/32]")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=3, help="Max number of keywords to extract")
 	parser.add_argument("--num_clusters", '-nc', type=int, default=None, help="Number of clusters")
+	parser.add_argument("--intra_similarity", '-isim', type=float, default=0.70, help="Cluster intra similarity")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility [Default: 42]")
 
@@ -493,6 +498,7 @@ def main():
 		llm_model_id=args.llm_model_id,
 		vlm_model_id=args.vlm_model_id,
 		device=args.device,
+		intra_sim=args.intra_similarity,
 		num_workers=args.num_workers,
 		batch_size=args.batch_size,
 		llm_batch_size=args.llm_batch_size,

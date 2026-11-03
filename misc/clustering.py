@@ -3961,7 +3961,7 @@ _HARMONIZE_PROTECTED_PLURALS = {
 	"remains", "surroundings", "outskirts", "archives", "overalls",
 	# protected plurals / proper names
 	"united nations", "united states", "howards", "reins", "airlines", "marines",
-	"stables", "lines", "life savers", "pyrotechnics", "general motors",
+	"lines", "life savers", "pyrotechnics", "general motors",
 	"marine corps", "corps",
 	# plural is a different word from the singular
 	"arms", "papers", "grounds", "works", "steelworks", "quarters", "customs",
@@ -6629,9 +6629,9 @@ def cluster(
 	batch_size: int,
 	device: Union[torch.device, str],
 	nc: int,
+	cluster_intra_similarity_threshold: float,
 	linkage_method: str="ward",
 	distance_metric: str="euclidean",
-	cluster_intra_similarity_threshold: float = 0.75, # 0.69,
 	min_consolidation: float = 4.0, #3.5, #4.0, # 3.8, #5.0, 
 	max_consolidation: float = 8.0, #6.0, #6.5, # 5.0, #7.5, 
 	min_singleton_ratio: float = 1.5e-2, # 1.5%
@@ -6755,7 +6755,7 @@ def cluster(
 	)
 
 	# # STEP 4a: PRE-MERGE CLUSTER NEIGHBOUR DIAGNOSTICS & DYNAMIC THRESHOLDING
-	# neighbor_summary = get_cluster_medoid_nearest_neighbor(
+	# get_cluster_medoid_nearest_neighbor(
 	# 	embedding_model_id=model.model_card_data.base_model,
 	# 	X=X,
 	# 	labels=clustered_labels,
@@ -6778,6 +6778,7 @@ def cluster(
 	# 		verbose=verbose,
 	# 	)
  
+	# # STEP 4c: CREATE A DATAFRAME
 	df = pd.DataFrame({'label': unique_labels, 'cluster': clustered_labels})
 
 	# STEP 5: LABEL FREQUENCY DICT
@@ -6814,7 +6815,7 @@ def cluster(
 		verbose=verbose,
 	)
 
-	canonical_neighbor_summary = get_cluster_canonical_nearest_neighbor(
+	get_cluster_canonical_nearest_neighbor(
 		embedding_model_id=model.model_card_data.base_model,
 		X=X,
 		labels=clustered_labels,
@@ -6924,6 +6925,7 @@ def get_canonical_labels(
 	model_id: str,
 	batch_size: int,
 	device: Union[str, torch.device],
+	cluster_intra_similarity_threshold: float,
 	nc: Optional[int]=None,
 	merge_near_duplicate_clusters_medoid: bool = True,
 	merge_near_duplicate_clusters_canonical: bool = True,
@@ -6943,7 +6945,7 @@ def get_canonical_labels(
 		print(f"  ├─ {model_id}")
 		print(f"  ├─ Batch size  : {batch_size}")
 		print(
-			f"  ├─ labels      : {type(labels)} {len(labels)} "
+			f"  ├─ labels      : {len(labels)} "
 			f"{type(labels[0])} {len(labels[0])} {labels[0]}"
 		)
 		print(f"  ├─ Output dir  : {output_dir}")
@@ -6959,6 +6961,7 @@ def get_canonical_labels(
 		batch_size=batch_size,
 		device=device,
 		nc=nc,
+		cluster_intra_similarity_threshold=cluster_intra_similarity_threshold,
 		merge_near_duplicate_clusters_medoid=merge_near_duplicate_clusters_medoid,
 		merge_near_duplicate_clusters_canonical=merge_near_duplicate_clusters_canonical,
 		merge_close_clusters_threshold=merge_close_clusters_threshold,

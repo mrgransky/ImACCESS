@@ -723,6 +723,7 @@ Lancaster
 Langley
 Lapland
 Lausanne
+Le Mans
 Leipzig
 Lexington
 Liatorp
@@ -778,6 +779,7 @@ Manchester
 Marcus Island
 Marseille
 Montpellier
+Nice
 Norfolk
 Murcia
 Nuremberg
