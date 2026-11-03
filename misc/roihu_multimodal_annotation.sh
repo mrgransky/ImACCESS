@@ -10,8 +10,8 @@
 #SBATCH --cpus-per-task=40
 #SBATCH --mem=204G
 #SBATCH --partition=gpumedium
-#SBATCH --gres=gpu:gh200:1
-#SBATCH --time=00-07:00:00
+#SBATCH --gres=gpu:gh200:4
+#SBATCH --time=01-12:00:00
 #SBATCH --array=0
 ##SBATCH --begin=06:00:00
 
@@ -51,8 +51,8 @@ if [ "$NUM_GPUS" -gt 1 ]; then
 	#MLM_MODEL="Qwen/Qwen3.6-35B-A3B" # not a good model
 	MLM_MODEL="Qwen/Qwen3.5-122B-A10B" # too detailed
 	# MLM_MODEL="Qwen/Qwen3.6-27B"
-	LLM_MAX_GENERATED_TOKENS=192
-	VLM_MAX_GENERATED_TOKENS=192
+	LLM_MAX_GENERATED_TOKENS=256
+	VLM_MAX_GENERATED_TOKENS=256
 else
 	echo "SMALL models (single-GPU configuration)"
 	MLM_MODEL="Qwen/Qwen3.5-9B"
@@ -75,7 +75,7 @@ DATASETS=(
 	${DATASET_DIRECTORY}/SMU_1900-01-01_1970-12-31
 )
 CSV_FILE=${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv
-LLM_BATCH_SIZES=(24 6 18 16 28)
+LLM_BATCH_SIZES=(32 6 18 16 28)
 VLM_BATCH_SIZES=(96 48 48 32 48)
 GENERAL_BATCH_SIZE=2048
 

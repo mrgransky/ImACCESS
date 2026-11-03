@@ -3861,7 +3861,7 @@ def remove_problematic_clustered_labels(
 			removed_labels.extend(clustered_labels)
 
 	if low_cohesion_clusters and verbose:
-		print(f"\n[LOW COHESION] {len(low_cohesion_clusters)} clusters (th < {low_cohesion_threshold})")
+		print(f"\nLow Cohesion Clusters (th < {low_cohesion_threshold})")
 		low_cohesion_clusters.sort(key=lambda c: (c['intra_sim'], c['size']), reverse=True)
 		for i, cluster in enumerate(low_cohesion_clusters):
 			print(
@@ -6852,8 +6852,8 @@ def cluster(
 		canonical_merges_done = n_clusters_pre_canon_merge - len(np.unique(clustered_labels))
 
 	# STEP 7: MAP CANONICALS + INJECT VIRTUAL ROWS + CLEAN
-	low_cohesion_threshold: float = 0.85 * cluster_intra_similarity_threshold
-	poor_canonical_threshold: float = 0.85 * cluster_intra_similarity_threshold
+	low_cohesion_threshold: float = 0.875 * cluster_intra_similarity_threshold
+	poor_canonical_threshold: float = 0.875 * cluster_intra_similarity_threshold
 
 	df, X_clean, removed_labels = map_inject_and_clean_clusters(
 		df=df,

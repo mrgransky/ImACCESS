@@ -227,6 +227,7 @@ Saint Lucia
 Saint Louis
 Saint Paul
 Saint Vincent and the Grenadines
+St. Augustine
 St. Croix
 St. Fongest
 St. Justina
@@ -322,6 +323,7 @@ Connecticut
 Delaware
 Edgewater
 Florida
+Gambier
 Georgia
 Hawaii
 Idaho
@@ -533,6 +535,7 @@ San Diego
 San Antonio
 San Jose
 San Juan
+San Pedro
 Scarsdale
 Scottdale
 Austin
@@ -699,6 +702,7 @@ Gallipoli
 Gambut
 Gander
 Gaza
+Gärdesång
 Geneva
 Glasgow
 Green Bay
@@ -715,6 +719,7 @@ Hausen
 Helensburgh
 Helsinki
 Helsingfors
+Henderson
 Hendon
 Hiroshima
 Hobsonville
@@ -724,6 +729,7 @@ Incheon
 Indochina
 Inverness
 Ipswich
+Isle Royale
 Istanbul
 Istambul
 Iwo Jima
@@ -861,6 +867,8 @@ Salonika
 Saloniki
 Salzburg
 Santander
+Santiago
+Santo Domingo
 Seclin
 Sevastopol
 Seoul

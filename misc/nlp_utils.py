@@ -1146,10 +1146,10 @@ def _post_process_(
 		r'dist\.?|district|amendment|century|term|congress|fg|fs|nfs|trs|parallel|orders?'
 	)
 
-	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations, plus veteran/alumni associations, photo collections, and exhibits:
+	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations, plus veteran/alumni associations, photo collections, exhibits, events/tournaments, and sectors/zones:
 	GENERIC_ECHELON_RE = re.compile(
 		rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})'
-		rf'(?:\s+(?:association|assn\.?|society|veterans?|photos?|photographs?|pics?|pictures?|images?|exhibits?|exhibitions?|displays?|memorials?|monuments?|museums?|reunions?))?$',
+		rf'(?:\s+(?:association|assn\.?|society|veterans?|photos?|photographs?|pics?|pictures?|images?|exhibits?|exhibitions?|displays?|memorials?|monuments?|museums?|reunions?|tournaments?|competitions?|games?|parades?|reviews?|ceremonies?|events?|sectors?|areas?|zones?|lines?|positions?|perimeters?|posts?|camps?))?$',
 		re.IGNORECASE
 	)
 
