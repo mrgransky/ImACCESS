@@ -298,6 +298,7 @@ Palestine
 Alabama
 Alaska
 Arizona
+Arkansas City
 Arkansas
 California
 Colorado
@@ -337,6 +338,7 @@ Ohio
 Oklahoma
 Oregon
 Pennsylvania
+Peoria
 Rhode Island
 South Carolina
 South Dakota
@@ -380,6 +382,7 @@ Cayuta
 Cincinnati
 City of S.F.
 Cleveland
+Clintonsville
 Chicago
 Columbia
 Columbus
@@ -409,6 +412,7 @@ Guadalcanal
 Hartford
 Halifax
 Hollywood
+Hoopeston
 GA.
 Houston
 Ill.
@@ -453,6 +457,7 @@ Atlanta
 Dallas
 Denver
 Detroit
+Galesburg
 Grandview
 Glendale
 Glendale CA
