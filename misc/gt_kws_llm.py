@@ -6,7 +6,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "Top of a locomotive of the company MZA. Top of a locomotive of the company Ferrocarriles de Madrid in Zaragoza y in Alicante (MZA), outside the French Station, in Barcelona." -llm "Qwen/Qwen3.5-122B-A10B" -v
+# python gt_kws_llm.py -desc "President Harry S. Truman and Others Approaching Antwerp, Belgium. President Harry S. Truman seated, left and Press Secretary Charles Ross seated, right on a boat approaching Antwerp, Belgium. President Truman is en route to the Potsdam Conference. Standing behind President Truman, from left to right, is Captain James Vardaman, Secretary of State James Byrnes, and Admiral William D. Leahy. Others are unidentified. From the album: President's Trip to the Berlin Conference. Credit: U.S. Navy." -llm "Qwen/Qwen3.5-122B-A10B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
