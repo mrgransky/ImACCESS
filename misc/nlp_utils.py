@@ -1059,9 +1059,9 @@ def _post_process_(
 	)
 
 	# Metadata, Serial Numbers, and Dimensions
-	# "No. 1234", "Photo 12", "model 18", "50 feet", "100 ft", "12 mm", "83-Footer", "25-meter"
+	# "No. 1234", "Photo 12", "model 18", "Type 92", "Type 95", "Type 97", "50 feet", "100 ft", "12 mm", "83-Footer", "25-meter"
 	METADATA_DIMENSION_RE = re.compile(
-		r'^(?:no\.?|number|model|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)\s*\d+$|'
+		r'^(?:no\.?|number|model|type|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)[- ]*\d+[A-Za-z]?$|'
 		rf'^\d+[- ]*{_MEASUREMENT_AND_TIME_UNITS}$',
 		re.IGNORECASE
 	)
