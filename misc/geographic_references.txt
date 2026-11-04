@@ -4,6 +4,7 @@ Western
 Eastern
 Territory of
 Island of
+City of
 North of
 South of
 East of
@@ -597,6 +598,7 @@ Alicante
 Algiers
 Almeria
 Alsace
+Altstadt
 altenberg
 Ankara
 Anzio
@@ -622,6 +624,7 @@ Berlin
 Berline
 Bermuda
 Bilbao
+Björkholmen
 Blenheim
 Borsberg
 Bogota
@@ -641,6 +644,7 @@ Buna
 Bucharest
 Budapest
 Burma
+Bydgoszcz
 Cadiz
 Cairo
 Calgary
@@ -653,10 +657,13 @@ Caceres
 Caracas
 Cardiff
 Carlisle
+Castillejos
 Catania
 Cebu City
+Chambéry
 Chania
 Charkow
+Chorzowie
 Christiansted
 Christianshavn
 Cleveland
@@ -667,6 +674,7 @@ Cornay
 Corpus Christi
 Corsica
 Cordoba
+Costa Brava
 Coventry
 Crimea
 Calcutta
@@ -696,14 +704,17 @@ Fort Worth
 Ft. Worth
 Fowlmere
 Frankfurt
+Frederiksholm
 Frihavn
 Frosinone
 Gallipoli
+Gallegos
 Gambut
 Gander
 Gaza
 Gärdesång
 Geneva
+Girona
 Glasgow
 Green Bay
 Greenock
@@ -719,6 +730,7 @@ Hausen
 Helensburgh
 Helsinki
 Helsingfors
+Helsingør
 Henderson
 Hendon
 Hiroshima
@@ -740,12 +752,15 @@ Karachi
 Karlskrona
 Kasaan
 Kastrup
+Kazimierz
 Kiev
 Kirkuk
 Kirkby
 Kirkwood
 Kobe
+København
 Koblenz
+Kreuzberg
 Kurland
 Kyoto
 La Crosse
@@ -767,6 +782,8 @@ Llandovery
 London
 Luchon
 Lviv
+Lövvik
+Lübeck
 Madras
 Madrid
 Majuro
@@ -893,6 +910,8 @@ Stumholmen
 Stuttgart
 Sunderland
 Sydney
+Szczecin
+Szczecinek
 Tallinn
 Tarragona
 Tehachapi
@@ -900,6 +919,7 @@ Tel Aviv
 Tesseney
 Tokio
 Tokyo
+Tossa de Mar
 Townsville
 Transylvania
 Trondheim
@@ -923,6 +943,7 @@ Wellington
 Wyncote
 York
 Ypres
+Zamość
 Zaporoze
 Zaragoza
 Zeebrugge
@@ -980,6 +1001,7 @@ Crete
 Pantelleria
 Dieppe
 Willits
+Wilna
 Wonsan
 Öland
 Åland
