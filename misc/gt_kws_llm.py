@@ -25,12 +25,10 @@ if not hasattr(tfs.utils, "FlashAttentionKwargs"):
 	tfs.utils.FlashAttentionKwargs = FlashAttentionKwargs
 
 # Hyperparameter defaults from module scope (falls back if undefined)
-TEMPERATURE = 1e-8
-TOP_P = 0.9
 MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
-RETRY_BATCH_SIZE = 8       # Safe micro-batch size for retries
-RETRY_MAX_LENGTH = 4096    # Full prompt length preserved to avoid cutting off captions
+RETRY_BATCH_SIZE = 8    # Safe micro-batch size for retries
+RETRY_MAX_LENGTH = 4096 # Full prompt length preserved to avoid cutting off captions
 
 # STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
 STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
@@ -432,8 +430,8 @@ def get_prompt(
 	max_kws: int,
 	verbose: bool = False,
 ):
-	if verbose:
-		print(f"Generating prompt for text (length: {len(description.split()):7d}) max_kws: {max_kws}")
+	# if verbose:
+	# 	print(f"Generating prompt for text (length: {len(description.split()):7d}) max_kws: {max_kws}")
 
 	messages = [
 		{"role": "system", "content": "You are an archivist whose expertise lies in the 20th century."},
@@ -919,8 +917,6 @@ def _generate_one_batch(
 	prompts: List[str],
 	max_generated_tks: int,
 	max_length: int,
-	temperature: float,
-	top_p: float = TOP_P,
 	verbose: bool = False,
 ) -> List[str]:
 	"""
@@ -966,12 +962,6 @@ def _generate_one_batch(
 	# 	print("[RESOLVED EFFECTIVE GENERATION CONFIG]")
 	# 	print(effective_gen_config)
 
-	use_amp = torch.cuda.is_available()
-	amp_dtype = (
-		torch.bfloat16
-		if (use_amp and torch.cuda.is_bf16_supported())
-		else torch.float16
-	)
 	with torch.inference_mode(), torch.amp.autocast(
 		device_type=device.type, 
 		enabled=torch.cuda.is_available(),
@@ -1034,22 +1024,24 @@ def parse_lenient(text: Optional[str], max_kws: int) -> Optional[List[str]]:
 		return kws[:max_kws] if kws else None
 
 def _lenient_salvage(
-		indices: List[int],
-		results: List[Optional[List[str]]],
-		raw_responses: List[Optional[str]],
-		max_kws: int,
+	indices: List[int],
+	results: List[Optional[List[str]]],
+	raw_responses: List[Optional[str]],
+	max_kws: int,
 ) -> List[int]:
-		"""
-		Cohort A pass: Free CPU re-parse of retained raw generations.
-		Returns the list of indices that remain unresolved.
-		"""
-		for idx in indices:
-				if results[idx] is None and raw_responses[idx] is not None:
-						salvaged = parse_lenient(raw_responses[idx], max_kws=max_kws)
-						if salvaged:
-								results[idx] = salvaged
+	"""
+	Cohort A pass: Free CPU re-parse of retained raw generations.
+	Returns the list of indices that remain unresolved.
+	"""
+	for idx in indices:
+		if results[idx] is None and raw_responses[idx] is not None:
+			salvaged = parse_lenient(raw_responses[idx], max_kws=max_kws)
+			if salvaged:
+				results[idx] = salvaged
 
-		return [i for i in indices if results[i] is None]
+	lenient_result = [i for i in indices if results[i] is None]
+
+	return lenient_result
 
 def _run_generation_pass(
 	*,
@@ -1066,7 +1058,6 @@ def _run_generation_pass(
 	max_kws: int,
 	model_id: str,
 	max_retries: int,
-	temperature: float,
 	pass_name: str,
 	checkpoint_fn: Optional[Callable[[], None]] = None,
 	checkpoint_every: int = 50,
@@ -1082,16 +1073,14 @@ def _run_generation_pass(
 
 	# Length-homogeneous batching minimizes padding tokens and memory spikes
 	todo.sort(key=lambda i: len(prompts[i] or ""))
+
+	if verbose:
+		print(f"[{pass_name.upper()}] prompts={len(todo)} bs={batch_size} max_length={max_length}")
+
 	queue: deque = deque(
 		(todo[i:i + batch_size], [prompts[j] for j in todo[i:i + batch_size]])
 		for i in range(0, len(todo), batch_size)
 	)
-
-	if verbose:
-		print(
-			f"[{pass_name.upper()}] {len(todo)} prompts | batch_size={batch_size} | "
-			f"temp={temperature} | max_length={max_length}"
-		)
 
 	pbar = tqdm(total=len(todo), desc=pass_name, ncols=100)
 	n_pops = 0
@@ -1111,7 +1100,6 @@ def _run_generation_pass(
 					prompts=cur_prompts,
 					max_generated_tks=max_generated_tks,
 					max_length=max_length,
-					temperature=temperature,
 					verbose=verbose,
 				)
 
@@ -1433,42 +1421,44 @@ def get_llm_based_labels_slow(
 							unique_results[idx] = parsed
 						break  # Success
 					except RuntimeError as e:
-							err_msg = str(e).lower()
-							is_oom = "out of memory" in err_msg or "cuda out of memory" in err_msg
-							if not is_oom:
-								raise  # Re-raise non-OOM errors
-							if verbose:
-								print(f"  ❌ OOM on sub-batch size={current_size}, attempt {attempt+1}")
-							# Heavy cleanup only on OOM
-							if tokenized is not None:
-								del tokenized
-							if outputs is not None:
-								del outputs
-							if decoded is not None:
-								del decoded
-							tokenized = outputs = decoded = None
-							gc.collect()
-							if torch.cuda.is_available():
-								torch.cuda.empty_cache()
-								torch.cuda.synchronize()
-							if attempt < max_retries:
-									sleep_time = EXP_BACKOFF ** attempt
-									time.sleep(sleep_time)
+						err_msg = str(e).lower()
+						is_oom = "out of memory" in err_msg or "cuda out of memory" in err_msg
+						if not is_oom:
+							raise  # Re-raise non-OOM errors
+						if verbose:
+							print(f"  ❌ OOM on sub-batch size={current_size}, attempt {attempt+1}")
+						# Heavy cleanup only on OOM
+						if tokenized is not None:
+							del tokenized
+						if outputs is not None:
+							del outputs
+						if decoded is not None:
+							del decoded
+						tokenized = outputs = decoded = None
+						
+						if torch.cuda.is_available():
+							torch.cuda.empty_cache()
+							torch.cuda.synchronize()
+						gc.collect()
+						
+						if attempt < max_retries:
+							sleep_time = EXP_BACKOFF ** attempt
+							time.sleep(sleep_time)
+						else:
+							# Retries exhausted → split
+							if current_size > 1:
+								left_idx, left_prompt, right_idx, right_prompt = _split_batch(current_indices, current_prompts)
+								queue.appendleft((right_idx, right_prompt))
+								queue.appendleft((left_idx, left_prompt))
+								if verbose:
+									print(f"Splitting size {current_size} → {len(left_idx)} + {len(right_idx)}")
 							else:
-								# Retries exhausted → split
-								if current_size > 1:
-									left_idx, left_prompt, right_idx, right_prompt = _split_batch(current_indices, current_prompts)
-									queue.appendleft((right_idx, right_prompt))
-									queue.appendleft((left_idx, left_prompt))
+									# Truly failed single sample
+									idx = current_indices[0]
+									unique_results[idx] = None
 									if verbose:
-										print(f"Splitting size {current_size} → {len(left_idx)} + {len(right_idx)}")
-								else:
-										# Truly failed single sample
-										idx = current_indices[0]
-										unique_results[idx] = None
-										if verbose:
-											print(f"  💥 Single sample {idx} failed with OOM")
-								break
+										print(f"  💥 Single sample {idx} failed with OOM")
+							break
 					finally:
 						# Lightweight guaranteed cleanup (no heavy GC here)
 						if tokenized is not None:
@@ -1755,7 +1745,6 @@ def get_llm_based_labels(
 		max_kws=max_kws,
 		model_id=model_id,
 		max_retries=max_retries,
-		temperature=TEMPERATURE,
 		pass_name="main",
 		checkpoint_fn=_save_checkpoint,
 		checkpoint_every=50,
@@ -1777,14 +1766,12 @@ def get_llm_based_labels(
 
 	# --- Cohort B: Micro-Batch GPU Retry with Flipped Decoding Mode ---
 	if failed:
-		# Flipped decoding: if primary was deterministic (temp near 0), sample mildly to escape loops
-		is_greedy = TEMPERATURE < 1e-4
-		retry_temperature = 0.7 if is_greedy else 0.0
 		if verbose:
 			print(
 				f"[FALLBACK-B] {len(failed)} item(s) sent to GPU micro-batch retry "
-				f"(bs={RETRY_BATCH_SIZE}, temp={retry_temperature}, max_len={RETRY_MAX_LENGTH})"
+				f"(bs={RETRY_BATCH_SIZE}, max_len={RETRY_MAX_LENGTH})"
 			)
+
 		failed = _run_generation_pass(
 			tokenizer=tokenizer,
 			model=model,
@@ -1799,7 +1786,6 @@ def get_llm_based_labels(
 			max_kws=max_kws,
 			model_id=model_id,
 			max_retries=max_retries,
-			temperature=retry_temperature,
 			pass_name="retry",
 			checkpoint_fn=_save_checkpoint,
 			checkpoint_every=25,
@@ -1846,7 +1832,7 @@ def get_llm_based_labels(
 		valid_count = len(results) - n_null
 		rate = (n_ok / valid_count) * 100 if valid_count else 0.0
 		print(f"\n[SUMMARY] {n_ok}/{valid_count} successful ({rate:.2f}%) | {n_null} null inputs | {valid_count - n_ok} failed")
-		print(f"[ELAPSED TIME] {time.time() - st_t:.1f} sec\n{'=' * 100}")
+		print(f"[ELAPSED TIME] {time.time() - st_t:.1f} sec.\n{'=' * 100}")
 
 	return results
 

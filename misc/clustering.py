@@ -6170,28 +6170,51 @@ def assign_canonical_labels(
 			composite_idx, method,
 			eligible=scores['eligible'],
 		)
-		selection_records.append(
-			_build_selection_record(
-				cid, cluster_texts, original_label_counts,
-				candidates, virtual_flags, virtual_hypernym, vh_raw, vh_info,
-				similarities, scores['combined_scores'], raw_freqs,
-				best_idx, pure_sim_idx, composite_idx, nofreq_idx, runner_up,
-				method, freq_guard,
-			)
+
+		selected_rec = _build_selection_record(
+			cid,
+			cluster_texts,
+			original_label_counts,
+			candidates,
+			virtual_flags,
+			virtual_hypernym,
+			vh_raw,
+			vh_info,
+			similarities,
+			scores['combined_scores'],
+			raw_freqs,
+			best_idx,
+			pure_sim_idx,
+			composite_idx,
+			nofreq_idx,
+			runner_up,
+			method,
+			freq_guard,
 		)
+
+		selection_records.append(selected_rec)
 
 		selection_records[-1]['numeric_ineligible'] = int((~scores['eligible']).sum() + (len(candidates) if scores['numeric_unresolved'] else 0))
 		selection_records[-1]['numeric_unresolved'] = bool(scores['numeric_unresolved'])
 
 		if verbose:
-			tag = " [VIRTUAL]" if is_virtual_pick else ""
+			if is_virtual_pick:
+				best_real_sim = float(similarities[pure_sim_idx])
+				ratio = float(similarities[best_idx]) / max(best_real_sim, 1e-12)
+				tag = (
+					f" [VIRTUAL] (virtual={similarities[best_idx]:.5f}, "
+					f"best_real={best_real_sim:.5f}, ratio={ratio:.3f}, "
+					f"best_real={repr(cluster_texts[pure_sim_idx])})"
+				)
+			else:
+				tag = ""
 			if scores['numeric_unresolved']:
 				tag += " [NUMERIC CONFLICT: no eligible candidate, mask skipped]"
 			elif not scores['eligible'].all():
 				dropped = [c for c, ok in zip(candidates, scores['eligible']) if not ok]
 				tag += f" [NUMERIC: excluded {dropped}]"
 			print(
-				f"\t=> Selected Canonical: {repr(candidates[best_idx]):<45}"
+				f"  => Selected Canonical {candidates[best_idx]!r:<45}"
 				f"(sim={similarities[best_idx]:.4f}){tag} {rejection_virtual_tag}"
 			)
 
