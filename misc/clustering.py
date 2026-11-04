@@ -3869,7 +3869,7 @@ def remove_problematic_clustered_labels(
 				f"Cluster {cluster['cluster_id']:5d} "
 				f"intra_sim: {cluster['intra_sim']:.4f} "
 				f"canonical: {cluster['canonical']!r:<37}"
-				f"{cluster['labels'][:10]}"
+				f"{cluster['labels'][:7]}"
 			)
 
 	# PART 2: Identify Poor Canonical Clusters:
@@ -5557,7 +5557,8 @@ def assign_canonical_labels(
 	shared_calibration_names: Optional[List[str]] = None,
 	encode_prompt: Optional[str] = None,
 	shared_threshold: float = 0.70,
-	virtual_min_sim_ratio: Optional[float] = 0.60, # None to disable
+	virtual_min_sim_ratio: Optional[float] = 0.60, # relative drop threshold (e.g. 0.60)
+	virtual_abs_sim: float = 0.72, # absolute floor aligned with shared_threshold buffer
 	min_distinct_concepts: int = 2,
 	verbose: bool = False,
 ) -> Dict[int, Dict]:
@@ -5684,11 +5685,12 @@ def assign_canonical_labels(
 		print(f"[CANONICAL SELECTION]")
 		print(f"  ├─ df: {df.shape} {list(df.columns)}")
 		print(f"  ├─ X:  {X.shape}")
-		print(f"  ├─ virtual_min_sim_ratio: {virtual_min_sim_ratio}")
-		print(f"  ├─ min_distinct_concepts: {min_distinct_concepts}")
-		print(f"  ├─ Frequency dict has     {len(original_label_counts)} labels")
-		print(f"  ├─ Total label instances  {sum(original_label_counts.values())}")
-		print(f"  └─ Most frequent          {max(original_label_counts.items(), key=lambda x: x[1])}")
+		print(f"  ├─ virtual_min_sim_ratio {virtual_min_sim_ratio}")
+		print(f"  ├─ virtual_abs_sim       {virtual_abs_sim}")
+		print(f"  ├─ min_distinct_concepts {min_distinct_concepts}")
+		print(f"  ├─ Frequency dict has    {len(original_label_counts)} labels")
+		print(f"  ├─ Total label instances {sum(original_label_counts.values())}")
+		print(f"  └─ Most frequent         {max(original_label_counts.items(), key=lambda x: x[1])}")
 		print(df.head(10))
 		print('-' * 80)
 
@@ -5705,8 +5707,6 @@ def assign_canonical_labels(
 	FREQ_GAIN_GUARD = 3.0
 
 	# Virtual-hypernym quality gates (see the docstring). Each rejection is counted for the JSON.
-	VIRTUAL_MIN_SIM_RATIO = virtual_min_sim_ratio  # relative drop threshold (e.g. 0.60)
-	VIRTUAL_ABSOLUTE_SIM_FLOOR = 0.68              # absolute floor aligned with shared_threshold buffer
 	VIRTUAL_SIM_GAP_GUARD = 0.25                   # max allowable sim loss when virtual beats real on structure
 	MIN_DISTINCT_CONCEPTS = min_distinct_concepts
 	virtual_rejections    = Counter()
@@ -6095,8 +6095,8 @@ def assign_canonical_labels(
 			virtual_hypernym,
 			similarities,
 			cluster_size,
-			min_sim_ratio=VIRTUAL_MIN_SIM_RATIO,
-			abs_floor=VIRTUAL_ABSOLUTE_SIM_FLOOR,
+			min_sim_ratio=virtual_min_sim_ratio,
+			abs_floor=virtual_abs_sim,
 			vh_info=vh_info,
 			virtual_rejections=virtual_rejections,
 		)
@@ -6263,7 +6263,7 @@ def assign_canonical_labels(
 			weights=weights,
 			min_support=MIN_SUPPORT,
 			virtual_gates={
-				'min_sim_ratio': VIRTUAL_MIN_SIM_RATIO,
+				'min_sim_ratio': virtual_min_sim_ratio,
 				'min_distinct_concepts': MIN_DISTINCT_CONCEPTS,
 				'rejections': dict(virtual_rejections),
 			},

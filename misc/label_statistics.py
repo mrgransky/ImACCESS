@@ -2025,8 +2025,8 @@ def diagnose_inter_label_similarity(
 	embedding_model: Optional[Any] = None,
 	output_dir: Optional[str] = None,
 	column_name: str = "canonical_labels",
-	min_number_samples: int = int(2e4),
-	top_k_pairs: int = 100,
+	min_number_samples: int = int(5e4),
+	top_k_pairs: int = 200,
 	min_similarity_threshold: float = 0.80,
 	batch_size: int = 64,
 	device: Optional[Union[str, torch.device]] = None,
@@ -2156,25 +2156,30 @@ def diagnose_inter_label_similarity(
 
 		if verbose:
 			print(f"\n  Top-{k_pairs} near-duplicate label pairs (sampled {num_sampled:,} labels):")
-			print(f"  {'Similarity':<12s} {'Label 1':<45s} <-> {'Label 2'}")
+			print(f"  {'Sim':<12s}{'Label 1':<45s} <-> {'Label 2'}")
 			print("  " + "-" * 110)
 
 		for val, r, c in zip(top_pairs.values.tolist(), row_idx.tolist(), col_idx.tolist()):
 			if val < 0.0:
 				continue
+
 			global_r = sample_global_idx[r]
 			global_c = sample_global_idx[c]
 			name_r = sample_labels[r]
 			name_c = sample_labels[c]
+
 			if verbose:
 				print(f"  {val:<12.6f} {repr(name_r):<45s} <-> {repr(name_c)}")
-			top_pairs_records.append({
-				"similarity": round(val, 6),
+
+			top_pair_rec = {
+				"similarity": val,
 				"label_1": name_r,
 				"label_2": name_c,
 				"label_1_idx": global_r,
 				"label_2_idx": global_c,
-			})
+			}
+
+			top_pairs_records.append(top_pair_rec)
 
 	# 6. Extract all pairs above min_similarity_threshold for full debug reporting
 	high_sim_mask = triu_sims >= min_similarity_threshold
@@ -2189,13 +2194,16 @@ def diagnose_inter_label_similarity(
 			r = high_sim_indices[idx, 0].item()
 			c = high_sim_indices[idx, 1].item()
 			val = high_sim_vals[idx].item()
-			all_near_duplicates.append({
-				"similarity": round(val, 6),
+
+			all_near_duplicate = {
+				"similarity": val,
 				"label_1": sample_labels[r],
 				"label_2": sample_labels[c],
 				"label_1_idx": sample_global_idx[r],
 				"label_2_idx": sample_global_idx[c],
-			})
+			}
+
+			all_near_duplicates.append(all_near_duplicate)
 
 		if verbose:
 			print(f"\n  Total label pairs with similarity >= {min_similarity_threshold:.2f}: {n_high_sim:,}")

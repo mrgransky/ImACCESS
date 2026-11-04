@@ -5,10 +5,12 @@ Eastern
 Territory of
 Island of
 City of
+State of
 North of
 South of
 East of
 West of
+continent
 
 Africa
 America
@@ -322,6 +324,7 @@ Conn.
 Conn
 Connecticut
 Delaware
+Edgemont
 Edgewater
 Florida
 Gambier
@@ -585,12 +588,15 @@ Winslow
 
 Aachen
 Aalborg
+Aarhus
 Abadan
 Abbeville
 Acheson
 Adinkerke
 Aegean
 Agadir
+Aguas Buenas
+Augusta
 Amfreville
 Amifontaine
 Alborg
@@ -605,6 +611,7 @@ Anzio
 Amsterdam
 Antwerp
 Apennines
+Araxos
 Asansol
 Athens
 Baghdad
@@ -616,6 +623,7 @@ Bangkok
 Barcelona
 Barneville-Carteret
 Basel
+Besigheim
 Bavaria
 Beijing
 Belfast
@@ -624,6 +632,7 @@ Berlin
 Berline
 Bermuda
 Bilbao
+Bitterfeld
 Björkholmen
 Blenheim
 Borsberg
@@ -647,6 +656,7 @@ Burma
 Bydgoszcz
 Cadiz
 Cairo
+Calabria
 Calgary
 Cambridge
 Campbell
@@ -657,12 +667,14 @@ Caceres
 Caracas
 Cardiff
 Carlisle
+Castelló
 Castillejos
 Catania
 Cebu City
 Chambéry
 Chania
 Charkow
+Chemnitz
 Chorzowie
 Christiansted
 Christianshavn
@@ -684,6 +696,7 @@ Dahlem
 Dardanelles
 Delhi
 Dessau
+Dettelbach
 Dorchester
 Dresden
 Dublin
@@ -691,8 +704,10 @@ Dubrovnik
 Dunkirk
 Dunkerque
 Duxford
+El Hamma
 Ekeberg
 Eindhoven
+Erivan
 Essex
 Exeter
 Farnborough
@@ -705,6 +720,7 @@ Ft. Worth
 Fowlmere
 Frankfurt
 Frederiksholm
+Friedrichstadt
 Frihavn
 Frosinone
 Gallipoli
@@ -712,8 +728,11 @@ Gallegos
 Gambut
 Gander
 Gaza
+Gaziantep
 Gärdesång
 Geneva
+Georgenburg
+Georgikon
 Girona
 Glasgow
 Green Bay
@@ -737,6 +756,7 @@ Hiroshima
 Hobsonville
 Hong Kong
 Hongkong
+Horsens
 Incheon
 Indochina
 Inverness
@@ -757,6 +777,8 @@ Kiev
 Kirkuk
 Kirkby
 Kirkwood
+Kjøbenhavn
+Kobenhavns
 Kobe
 København
 Koblenz
@@ -791,6 +813,7 @@ Manila
 Manston
 Mariupol
 Marrakech
+Martorell
 Medina
 Melbourne
 Mesopotamian
@@ -810,6 +833,7 @@ Nagoya
 Naples
 New Delhi
 North Coates
+Nørrebro
 Okinawa
 Oran
 Orlando
@@ -839,6 +863,7 @@ Orly
 Ottawa
 Panama
 Palma de Mallorca
+Passau
 Jaen
 Lima
 Lisbon
@@ -873,6 +898,7 @@ Péronne
 Plymouth
 Praha
 Radlett
+Rathen
 Ravenna
 Rio de Janeiro
 Rockies
@@ -887,10 +913,12 @@ Santander
 Santiago
 Santo Domingo
 Seclin
-Sevastopol
+Senftenberg
 Seoul
+Sevastopol
 Shanghai
 Schiphol
+Schönefeld
 Sinai
 Sicily
 Sidi Barrani
@@ -930,9 +958,11 @@ Uman
 Valladolid
 Valparaíso
 Vancouver
+Vanløse
 Venice
 Vera Cruz
 Verona
+Vetschau
 Vienna
 Volgograd
 Waco
@@ -1099,14 +1129,15 @@ Russian
 San Diegan
 Scandinavian
 Scottish
-Scottish American
 Senegalese
 Serbian
 Siberian
 Sicilian
+Slavic
 Slovenian
 Slovak
 Spanish
+South African
 South American
 Swedish
 Swiss

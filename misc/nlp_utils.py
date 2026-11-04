@@ -1042,7 +1042,9 @@ def _post_process_(
 		rf'^\d{{1,2}}\.?(?:st|nd|rd|th)?\s+(?:of\s+)?{_MONTHS_SEASONS}\.?$|'
 		rf'^{_MONTHS_SEASONS}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?$|'
 		# 3. Chronological catalog facets: "Battles 1691", "Siege 1689", "Costume 1750", "Exhibition 1900"
-		rf'^(?:{_CATALOG_FACET_WORDS})\s+{_YEAR_4DIGIT}(?:[-–]\d{{2,4}})?$'
+		rf'^(?:{_CATALOG_FACET_WORDS})\s+{_YEAR_4DIGIT}(?:[-–]\d{{2,4}})?$|'
+		# 4. Century expressions: "19th-century", "18th cent.", "12th century", "3rd century", "mid-19th century"
+		rf'^(?:c\.|circa|early|mid|late)?[- ]*(?:\d{{1,2}}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|twenty[- ]first)[- ]+(?:centur(?:y|ies)|cent\.?)$'
 		rf')',
 		re.IGNORECASE
 	)
@@ -1142,13 +1144,13 @@ def _post_process_(
 		r'fleet(?:\s+landing\s+force)?|'
 		
 		# 7. Administrative districts & abstract concepts
-		# "16th Dist", "22nd Amendment", "20th Century", "Third Term", "Congress", "1st FG", "38th Parallel", "3rd order"
-		r'dist\.?|district|amendment|century|term|congress|fg|fs|nfs|trs|parallel|orders?'
+		# "16th Dist", "22nd Amendment", "20th Century", "19th-century", "18th cent.", "Third Term", "Congress", "1st FG", "38th Parallel", "3rd order"
+		r'dist\.?|district|amendment|centur(?:y|ies)|cent\.?|term|congress|fg|fs|nfs|trs|parallel|orders?'
 	)
 
 	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations, plus veteran/alumni associations, photo collections, exhibits, events/tournaments, and sectors/zones:
 	GENERIC_ECHELON_RE = re.compile(
-		rf'^{_ORDINAL_PATTERN}\s+(?:{_ECHELON_PATTERN})'
+		rf'^{_ORDINAL_PATTERN}[- ]+(?:{_ECHELON_PATTERN})'
 		rf'(?:\s+(?:association|assn\.?|society|veterans?|photos?|photographs?|pics?|pictures?|images?|exhibits?|exhibitions?|displays?|memorials?|monuments?|museums?|reunions?|tournaments?|competitions?|games?|parades?|reviews?|ceremonies?|events?|sectors?|areas?|zones?|lines?|positions?|perimeters?|posts?|camps?))?$',
 		re.IGNORECASE
 	)
@@ -1321,10 +1323,10 @@ def _post_process_(
 		if lemma.lower() in IRRELEVANT_NAMES:
 			return True
 
-		# Filter generic two-word echelons (numeric OR spelled-out) ──
-		# Drops: "First Division", "First Battalion", "1st Div", "79th Division", "53rd Infantry"
+		# Filter generic two-word echelons and temporal noise (numeric OR spelled-out) ──
+		# Drops: "First Division", "First Battalion", "1st Div", "79th Division", "53rd Infantry", "19th-century", "18th cent."
 		# Keeps: "First Infantry Division", "First Infantry Brigade", "55th Infantry Brigade"
-		if GENERIC_ECHELON_RE.match(lemma.strip()):
+		if GENERIC_ECHELON_RE.match(lemma.strip()) or TEMPORAL_NOISE_RE.search(lemma.strip()):
 			return True
 
 		# Rule 2: Single-word generic terms
