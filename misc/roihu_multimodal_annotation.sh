@@ -99,8 +99,8 @@ python -u gt_kws_multimodal.py \
 	--max_keywords 3 \
 	--batch_size $GENERAL_BATCH_SIZE \
 	--intra_similarity 0.79 \
-	--min_consolidation 7.5 \
-	--max_consolidation 13.0 \
+	--min_consolidation 7.0 \
+	--max_consolidation 13.5 \
 	--verbose \
 	# --num_clusters 15000 \
 	# --llm_use_quantization \
