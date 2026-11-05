@@ -2200,6 +2200,7 @@ def merge_cluster_canonical_nearest_neighbor(
 			unit_centroids=unit_centroids,
 			chunk=4096,
 		)
+
 		drop = set()
 		round_merges = 0
 		round_centroid_blocked = 0
@@ -2226,14 +2227,21 @@ def merge_cluster_canonical_nearest_neighbor(
 
 			if cent_sim_val < min_centroid_similarity:
 				round_centroid_blocked += 1
-				bkey = (min(cluster_ids[i], cluster_ids[j]), max(cluster_ids[i], cluster_ids[j]))
+				bkey = (
+					min(cluster_ids[i], cluster_ids[j]), 
+					max(cluster_ids[i], cluster_ids[j])
+				)
+				
 				if bkey not in seen_blocked_keys:
 					seen_blocked_keys.add(bkey)
+
 					med_a, med_a_sim = _get_medoid_info(members[i], sums[i])
 					med_b, med_b_sim = _get_medoid_info(members[j], sums[j])
+
 					members_a = [label_texts[k] for k in members[i]]
 					members_b = [label_texts[k] for k in members[j]]
-					centroid_blocked_pairs.append({
+
+					centroid_blocked_pair = {
 						'phase': 2,
 						'round': len(round_progression) + 1,
 						'canonical_similarity': c_sim_val,
@@ -2257,7 +2265,9 @@ def merge_cluster_canonical_nearest_neighbor(
 							'medoid_similarity': med_b_sim,
 							'members': members_b,
 						},
-					})
+					}
+					centroid_blocked_pairs.append(centroid_blocked_pair)
+				
 				continue
 
 			_apply_merge(i, j, c_sim_val, cent_sim_val, rnd_num=len(round_progression) + 1, phase_num=2)

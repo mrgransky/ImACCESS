@@ -17,10 +17,12 @@ North
 South
 East
 West
+Central
 
 Africa
 America
 Asia
+Asiatic
 Balcan
 Balkan
 Baltic
@@ -702,6 +704,7 @@ Cordoba
 Costa Brava
 Coventry
 Crimea
+Crimée'
 Calcutta
 Czernovitz
 Czernowitz
@@ -733,6 +736,7 @@ Ft. Collins
 Fort Worth
 Ft. Worth
 Fowlmere
+Frankfort
 Frankfurt
 Frederiksholm
 Friedrichstadt
@@ -1093,6 +1097,7 @@ Egyptian
 English
 Eritrean
 European
+European and Asiatic Russia
 Finnish
 Filipino
 Flemish
