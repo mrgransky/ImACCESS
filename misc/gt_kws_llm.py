@@ -45,7 +45,7 @@ STOPWORDS.update(geographic_references)
 # Keywords must be concrete, semantically atomic, and reusable across archives.
 
 PROMPT_TEMPLATE = """
-Extract no more than {k} prominent keywords from the caption below.
+Extract no more than {k} prominent and concrete keywords from the caption below.
 If the caption contains meaningful descriptors, prioritize multi-word keywords.
 If the caption lacks sufficient information, returning fewer keywords or even an empty list [] is better than excluded keywords.
 The caption may contain typos, misprints, or machine-translation errors. Never return a keyword that is misspelled or malformed. If a keyword looks corrupted, skip it.
@@ -53,7 +53,6 @@ The caption may contain typos, misprints, or machine-translation errors. Never r
 STRINGENTLY exclude keywords containing:
   - typographical error, misprints, translation failures, or irregular orthography
   - acronyms, shorthands, or initialisms
-  - generic war terms
   - generic human category nouns, individual names, or honorifics
   - family relationship terms
   - roman numerals, ordinal numbers, quantities, counts, or measurements

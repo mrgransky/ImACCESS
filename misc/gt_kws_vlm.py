@@ -42,6 +42,7 @@ from utils import *
 
 PROMPT_TEMPLATE = """Extract no more than {k} prominent keywords.
 Prioritize multi-word keywords whenever possible.
+Never return a keyword that is misspelled or malformed. If a keyword looks corrupted, skip it.
 
 Constraints:
   - Avoid Text or OCR extraction.
