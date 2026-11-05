@@ -6,7 +6,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "President Harry S. Truman and Others Approaching Antwerp, Belgium. President Harry S. Truman seated, left and Press Secretary Charles Ross seated, right on a boat approaching Antwerp, Belgium. President Truman is en route to the Potsdam Conference. Standing behind President Truman, from left to right, is Captain James Vardaman, Secretary of State James Byrnes, and Admiral William D. Leahy. Others are unidentified. From the album: President's Trip to the Berlin Conference. Credit: U.S. Navy." -llm "Qwen/Qwen3.5-122B-A10B" -v
+# python gt_kws_llm.py -desc "Exterior of Building #325. After explosion and fire, Picatinny Arsenal, July 10, 1926." -llm "Qwen/Qwen3.5-122B-A10B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -57,10 +57,10 @@ STRINGENTLY exclude keywords containing:
   - generic human category nouns, individual names, or honorifics
   - family relationship terms
   - roman numerals, ordinal numbers, quantities, counts, or measurements
-  - equipment/infrastructure identifiers, serial numbers, brands, building numbers, or models
+  - infrastructure identifiers, serial numbers, brands, building numbers, or models
   - dates, times, years, decades, or any temporal references
   - geographical place, country, commune, municipality, island, district, borough, or town
-  - locations, buildings, routes, or directional terms
+  - locations, routes, or directional terms
   - nationalities, ethnicities, or religions
   - underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
 
