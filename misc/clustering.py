@@ -3356,7 +3356,7 @@ def get_clustered_labels(
 	
 	# Adaptive coarse range based on dataset size
 	if num_samples > int(3e4):
-		coarse_step = 1000
+		coarse_step = 900
 	elif num_samples > int(1e4):
 		coarse_step = 500
 	elif num_samples > int(5e3):
@@ -5752,8 +5752,31 @@ def assign_canonical_labels(
 	# letter is a version marker, not part of the category. Roman numerals are matched strictly
 	# (I..XXXIX), so real words made of those letters ('mill', 'civil', 'mix') are never stripped.
 	_VERSION_RE = re.compile(r'^(?:(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})|\d+[a-z]{0,2}|[a-z])$')
-	_VERSION_MARKERS = {'mk', 'mark', 'type', 'typ', 'model', 'no', 'ausf', 'series'}
-	_LEGAL_SUFFIXES = {'co', 'corp', 'corporation', 'company', 'inc', 'ltd', 'limited', 'plc', 'gmbh', 'ag', 'llc', 'bros', 'sons'}
+	_VERSION_MARKERS = {
+		# 'mk', 
+		'mark', 
+		'type', 
+		'typ', 
+		'model', 
+		'no', 
+		'ausf', 
+		'series'
+	}
+	_LEGAL_SUFFIXES = {
+		'co', 
+		'corp', 
+		'corporation', 
+		'company', 
+		'inc', 
+		'ltd', 
+		'limited', 
+		'plc', 
+		'gmbh', 
+		'ag', 
+		'llc', 
+		'bros', 
+		'sons'
+	}
 
 	def _is_version_token(tok: str) -> bool:
 		return bool(_VERSION_RE.match(tok))
@@ -6002,13 +6025,21 @@ def assign_canonical_labels(
 						note=f"shared head phrase in {support}/{n}")
 			return " ".join(core), info
 		core, support, note_b = _title_prefix_core(lbls, threshold)
+
 		if core:
-			while len(core) > 1 and core[-1] in ('mk', 'ausf'):      # 'Cruiser Mk' -> 'Cruiser'
-				core = core[:-1]
-			info.update(route='title_prefix', support=support,
-						note=f"shared title in {support}/{n}; {note_a}")
+			# while len(core) > 1 and core[-1] in ('mk', 'ausf'):      # 'Cruiser Mk' -> 'Cruiser'
+			# 	core = core[:-1]
+
+			info.update(
+				route='title_prefix', 
+				support=support,
+				note=f"shared title in {support}/{n}; {note_a}"
+			)
+
 			return " ".join(core), info
+
 		info['note'] = f"{note_a}; {note_b}"
+
 		return None, info
 
 	def _restore_surface(vh: str, cluster_texts: List[str]) -> str:

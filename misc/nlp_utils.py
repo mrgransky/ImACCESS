@@ -1182,6 +1182,10 @@ def _post_process_(
 		if GENERIC_ECHELON_RE.match(label.strip()):
 			return False
 
+		# 4b. Discard geographic references combined with years/numbers (e.g. 'Pittsburgh 1910')
+		if is_stopword(label):
+			return False
+
 		# 5. Recognized military aircraft, armor, weapon, or unit pattern -> KEEP
 		if MILITARY_DESIGNATION_RE.search(label):
 			return True
@@ -1862,45 +1866,65 @@ def _post_process_(
 					return True
 			return False
 
+		def is_geo_location(text: str) -> bool:
+			t = text.lower().strip()
+			if is_in_geo(t):
+				return True
+			if ',' in t:
+				parts = [p.strip() for p in t.split(',')]
+				if len(parts) == 2:
+					prefix, suffix = parts[0], parts[1].rstrip('.')
+					if (is_in_geo(suffix) and is_in_geo(prefix)) or (suffix in US_STATE_CODES and len(prefix) >= 3):
+						return True
+			tokens = t.split()
+			for n in (1, 2):
+				if len(tokens) > n:
+					suffix = " ".join(tokens[-n:]).strip(",. ")
+					prefix = " ".join(tokens[:-n]).strip(",. ")
+					if is_in_geo(suffix) and is_in_geo(prefix):
+						return True
+			clean_toks = [w.strip(",. ") for w in tokens if w.strip(",. ")]
+			if len(clean_toks) >= 2 and all(is_in_geo(tok) for tok in clean_toks):
+				return True
+			return False
+
 		# 1. Existing Stopwords check
 		if all(word in STOPWORDS for word in words) or phrase_lower in STOPWORDS or clean_phrase in STOPWORDS:
 			if verbose:
 				print(f"\t[SKIPPED] {repr(phrase):<55} stopword")
 			return True
 
-		# 2. Direct / Singularized full-string match (e.g. 'Americans', 'Russians', 'North Koreans')
-		if is_in_geo(phrase_lower) or is_in_geo(clean_phrase):
+		# 2. Direct / Multi-word / Comma-separated geographic location match (e.g. 'Americans', 'Rome Italy', 'Blanco, TX')
+		if is_geo_location(phrase_lower) or is_geo_location(clean_phrase):
 			if verbose:
 				print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference / demonym")
 			return True
 
-		# 3. Comma-separated: "City, Country" or "City, State/Code"
-		if ',' in phrase_lower:
-			parts = [p.strip() for p in phrase_lower.split(',')]
-			if len(parts) == 2:
-				prefix, suffix = parts[0], parts[1].rstrip('.')
-				if (is_in_geo(suffix) and is_in_geo(prefix)) or (suffix in US_STATE_CODES and len(prefix) >= 3):
-					if verbose:
-						print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference (comma-separated location)")
-					return True
-
-		# 4. Suffix Stripping for multi-word demonyms/places (e.g. 'Scottish Americans', 'Rome Italy')
-		for n_words in (1, 2):
-			if len(words) > n_words:
-				suffix = " ".join(words[-n_words:]).strip(",. ")
-				prefix = " ".join(words[:-n_words]).strip(",. ")
-				
-				if is_in_geo(suffix) and is_in_geo(prefix):
-					if verbose:
-						print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference (stripped suffix '{suffix}')")
-					return True
-
-		# 5. Composite check: all tokens are geographic references / demonyms
-		clean_tokens = [w.strip(",. ") for w in words if w.strip(",. ")]
-		if len(clean_tokens) >= 2 and all(is_in_geo(tok) for tok in clean_tokens):
-			if verbose:
-				print(f"\t[SKIPPED] {repr(phrase):<55} composite geographic reference")
-			return True
+		# 3. Geographic reference combined with a year/decade
+		# e.g., 'Pittsburgh 1910', 'Pittsburgh, 1910', 'Paris circa 1944', '1910 Pittsburgh', 'Ostia, Italy 1944'
+		_GEO_YEAR_PATTERN = re.compile(
+			r'^(?:c\.\s*|circa\s+)?(?:1[4-9]|20)\d{2}(?:s|\'s)?(?:[-–](?:1[4-9]|20)?\d{2})?$',
+			re.IGNORECASE
+		)
+		if len(words) >= 2:
+			# Trailing year
+			for n in (1, 2):
+				if len(words) > n:
+					year_part = " ".join(words[-n:]).strip(",. ")
+					place_part = " ".join(words[:-n]).strip(",. ")
+					if _GEO_YEAR_PATTERN.match(year_part) and is_geo_location(place_part):
+						if verbose:
+							print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference with year ({year_part})")
+						return True
+			# Leading year
+			for n in (1, 2):
+				if len(words) > n:
+					year_part = " ".join(words[:n]).strip(",. ")
+					place_part = " ".join(words[n:]).strip(",. ")
+					if _GEO_YEAR_PATTERN.match(year_part) and is_geo_location(place_part):
+						if verbose:
+							print(f"\t[SKIPPED] {repr(phrase):<55} geographic reference with year ({year_part})")
+						return True
 
 		return False
 

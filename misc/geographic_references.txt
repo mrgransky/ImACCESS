@@ -2,15 +2,21 @@ Southern
 Northern
 Western
 Eastern
-Territory of
 Island of
 City of
+Territory of
+Valley of 
 State of
 North of
 South of
 East of
 West of
 continent
+district
+North
+South
+East
+West
 
 Africa
 America
@@ -110,6 +116,7 @@ Georgia
 Germany
 Ghana
 Gibraltar
+Gibralter
 Great Britain
 Greece
 Greenland
@@ -375,13 +382,16 @@ Wyoming
 Aberdeen
 Alturas
 Arlington
-Austin Texas
+Atlanta
+Atlantic City
+Austin
 Bakersfield
 Baltimore
 Beaufort
 Beaumont
 Bedford
 Berkeley
+Betlehem
 Beverly Hills
 Blanco
 Boston
@@ -478,11 +488,11 @@ Los Angeles
 City of Las Vegas
 Philadelphia
 Seattle
-Atlanta
 Dallas
 Denver
 Detroit
 Galesburg
+Gary
 Grandview
 Glendale
 Glendale CA
@@ -543,7 +553,9 @@ San Juan
 San Pedro
 Scarsdale
 Scottdale
-Austin
+Scottsdale
+Youngstown
+
 Indianapolis
 Nashville
 Niagara
