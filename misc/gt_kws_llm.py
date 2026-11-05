@@ -56,7 +56,7 @@ STRINGENTLY exclude keywords containing:
   - generic human category nouns, individual names, or honorifics
   - family relationship terms
   - roman numerals, ordinal numbers, quantities, counts, or measurements
-  - infrastructure identifiers, serial numbers, brands, building numbers, or models
+  - infrastructure/facility identifier, serial number, brand, building number, structure designation, or model
   - dates, times, years, decades, or any temporal references
   - geographical place, country, commune, municipality, island, district, borough, or town
   - locations, routes, or directional terms
