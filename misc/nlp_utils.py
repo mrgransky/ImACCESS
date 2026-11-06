@@ -582,6 +582,8 @@ def _post_process_(
 		"series",
 		"model", 
 		"nickname",
+		"class",
+		"classes",
 	}
 
 	NUMBER_WORDS = {
@@ -1059,9 +1061,12 @@ def _post_process_(
 	)
 
 	# Metadata, Serial Numbers, and Dimensions
-	# "No. 1234", "Photo 12", "model 18", "Type 92", "Type 95", "Type 97", "50 feet", "100 ft", "12 mm", "83-Footer", "25-meter"
+	# "No. 1234", "Photo 12", "model 18", "Type 92", "Building #10", "Building 41", "Building One", "100-class", "3rd Class", "Class 5", "50 feet", "100 ft", "12 mm", "83-Footer", "25-meter"
+	_PREFIXES = r'(?:bldg\.?|building|class|no\.?|number|model|type|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)'
+	_NUM_OR_WORD = r'(?:\d+[A-Za-z]?|one|two|three|four|five|six|seven|eight|nine|ten)'
 	METADATA_DIMENSION_RE = re.compile(
-		r'^(?:no\.?|number|model|type|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)[- ]*\d+[A-Za-z]?$|'
+		rf'^{_PREFIXES}[- ]*(?:#|no\.?|number)?[- ]*{_NUM_OR_WORD}$|'
+		rf'^(?:\d{{1,4}}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|\d+)[- ]*class(?:es)?$|'
 		rf'^\d+[- ]*{_MEASUREMENT_AND_TIME_UNITS}$',
 		re.IGNORECASE
 	)
