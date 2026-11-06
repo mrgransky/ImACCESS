@@ -3521,16 +3521,16 @@ def get_clustered_labels(
 	valid_k_max = int(num_samples // min_consolidation)
 	if verbose:
 		print("\n[ADAPTIVE OPTIMAL CLUSTER SELECTION]")
-		print(f"  ├─ num_samples              {num_samples}")
-		print(f"  ├─ Embeddings (X)           {type(X)} {X.shape} {X.dtype}")
-		print(f"  ├─ Linkage (Z)              {type(linkage_matrix)} {linkage_matrix.shape}")
-		print(f"  ├─ Min cluster size         {min_cluster_size}")
-		print(f"  ├─ Merge singletons         {merge_singletons}")
-		print(f"  ├─ Consolidation            {min_consolidation}x - {max_consolidation}x")
-		print(f"  ├─ Required clusters        {valid_k_min} ≤ k ≤ {valid_k_max}")
-		print(f"  ├─ Target singleton ratio   {target_singleton_ratio}")
-		print(f"  ├─ Quality weight           {quality_vs_consolidation_weight*100}%")
-		print(f"  └─ Cluster intra-sim thresh {cluster_intra_similarity_threshold}")
+		print(f"  ├─ num_samples            {num_samples}")
+		print(f"  ├─ Embeddings (X)         {type(X)} {X.shape} {X.dtype}")
+		print(f"  ├─ Linkage    (Z)         {type(linkage_matrix)} {linkage_matrix.shape} [Cluster_A, Cluster_B, Merge_Distance, New_Cluster_Size]")
+		print(f"  ├─ Min cluster size       {min_cluster_size}")
+		print(f"  ├─ Merge singletons       {merge_singletons}")
+		print(f"  ├─ Consolidation          {min_consolidation}x - {max_consolidation}x")
+		print(f"  ├─ Required clusters      {valid_k_min} ≤ k ≤ {valid_k_max}")
+		print(f"  ├─ Target singleton ratio {target_singleton_ratio}")
+		print(f"  ├─ Quality weight         {quality_vs_consolidation_weight*100}%")
+		print(f"  └─ Cluster intra-sim th   {cluster_intra_similarity_threshold}")
 	
 	# Adaptive coarse range based on dataset size
 	if num_samples > int(3e4):
@@ -3550,8 +3550,8 @@ def get_clustered_labels(
 	if verbose:
 		print(f"\n[STAGE 1] COARSE SEARCH - Finding quality plateau: {valid_k_min} ≤ k ≤ {valid_k_max}")
 		print(f"\t{len(coarse_range)} Testing Config {list(coarse_range)} (step={coarse_step})")
-		print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Status':<50} {'Reason'}")
-		print("-" * 200)
+		print(f"\n{'k':<7} {'IntraSim (±Std)':<17} {'MinSim':<8} {'ΔThresh':<9} {'Consol':<8} {'Med/MaxSz':<11} {'SingleR':<9} {'Status':<36} {'Reason'}")
+		print("-" * 190)
 	
 	coarse_results = list()
 	best_intra_sim = 0
@@ -3578,6 +3578,8 @@ def get_clustered_labels(
 				intra_sims.append(intra_sim)
 		
 		mean_intra_sim = np.mean(intra_sims) if intra_sims else 0
+		std_intra_sim = np.std(intra_sims) if intra_sims else 0.0
+		min_intra_sim = np.min(intra_sims) if intra_sims else 0.0
 		
 		# Cluster statistics
 		cluster_sizes = np.bincount(labels)
@@ -3585,14 +3587,22 @@ def get_clustered_labels(
 
 		singleton_ratio = n_singletons / n_clusters
 		consolidation = num_samples / n_clusters
+		max_sz = int(np.max(cluster_sizes)) if len(cluster_sizes) > 0 else 0
+		med_sz = int(np.median(cluster_sizes)) if len(cluster_sizes) > 0 else 0
+		delta_thresh = mean_intra_sim - cluster_intra_similarity_threshold
 		
 		coarse_results.append(
 			{
 				'k': n_clusters,
 				'intra_sim': mean_intra_sim,
+				'std_intra_sim': std_intra_sim,
+				'min_intra_sim': min_intra_sim,
 				'consolidation': consolidation,
 				'singleton_ratio': singleton_ratio,
-				'n_singletons': n_singletons
+				'n_singletons': n_singletons,
+				'med_size': med_sz,
+				'max_size': max_sz,
+				'delta_thresh': delta_thresh,
 			}
 		)
 		
@@ -3603,18 +3613,18 @@ def get_clustered_labels(
 		status = ""
 		reason = ""
 		if mean_intra_sim >= cluster_intra_similarity_threshold and in_consol_range:
-			status = "✓ TARGET REACHED (quality + consolidation)"
+			status = "✓ TARGET REACHED"
 			reason = (
-				f"IntraSim {mean_intra_sim:.4f} ≥ {cluster_intra_similarity_threshold} "
+				f"IntraSim {mean_intra_sim:.4f} ≥ {cluster_intra_similarity_threshold:.2f} (Δ={delta_thresh:+.4f}) "
 				f"AND consol {consolidation:.2f}x in [{min_consolidation}, {max_consolidation}]"
 			)
 			if plateau_k is None:
 				plateau_k = n_clusters
 		elif in_consol_range and in_singleton_range:
-			status = "✓ OPTIMAL RANGE (consolidation + singletons)"
+			status = "✓ OPTIMAL RANGE"
 			reason = (
 				f"Consol {consolidation:.2f}x in [{min_consolidation}, {max_consolidation}] "
-				f"AND singleton: {n_singletons} {singleton_ratio*100:.3f}%"
+				f"AND singleton: {n_singletons} ({singleton_ratio*100:.2f}%)"
 			)
 			if plateau_k is None:
 				plateau_k = n_clusters
@@ -3622,9 +3632,9 @@ def get_clustered_labels(
 			best_intra_sim = mean_intra_sim
 			status = "↑ Staying on track"
 			reason = (
-				f"IntraSim {mean_intra_sim:.4f} > prev best {best_intra_sim:.4f}"
+				f"IntraSim {mean_intra_sim:.4f} > prev best {best_intra_sim:.4f} (gap={-delta_thresh:+.4f})"
 				+ (f" | consol {consolidation:5.2f}x outside [{min_consolidation},{max_consolidation}]" if not in_consol_range else "")
-				+ (f" | singleton {singleton_ratio:.4f} outside [0.005,0.03]" if not in_singleton_range else "")
+				+ (f" | singleton {singleton_ratio:.4f} outside [{min_singleton_ratio:.3f},{max_singleton_ratio:.3f}]" if not in_singleton_range else "")
 			)
 		else:
 			status = "→ Plateau region"
@@ -3633,7 +3643,13 @@ def get_clustered_labels(
 			)
 		
 		if verbose:
-			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.2f} {singleton_ratio:<10.4f} {status:<50} {reason}")
+			intra_fmt = f"{mean_intra_sim:.4f} (±{std_intra_sim:.3f})"
+			min_fmt = f"{min_intra_sim:.4f}"
+			delta_fmt = f"{delta_thresh:+.4f}"
+			consol_fmt = f"{consolidation:5.2f}x"
+			sz_fmt = f"{med_sz:3d} / {max_sz:<4d}"
+			sing_fmt = f"{singleton_ratio:.4f}"
+			print(f"{n_clusters:<7} {intra_fmt:<17} {min_fmt:<8} {delta_fmt:<9} {consol_fmt:<8} {sz_fmt:<11} {sing_fmt:<9} {status:<36} {reason}")
 
 		# Early stopping: If in optimal range for 2 consecutive steps
 		if len(coarse_results) >= 2:
@@ -3707,8 +3723,8 @@ def get_clustered_labels(
 	
 	if verbose:
 		print(f"\t{len(fine_range)} Testing Config {list(fine_range)} (step={fine_step})")
-		print(f"\n{'k':<8} {'IntraSim':<12} {'Consol':<10} {'SingleR':<10} {'Score':<10} {'Status':<20} {'Reason'}")
-		print("-" * 150)
+		print(f"\n{'k':<7} {'IntraSim (±Std)':<17} {'MinSim':<8} {'ΔThresh':<9} {'Consol':<8} {'Med/MaxSz':<11} {'QualScr':<8} {'ConsScr':<8} {'SingScr':<8} {'Score':<8} {'Status':<14} {'Reason'}")
+		print("-" * 185)
 	
 	fine_results = list()
 	for n_clusters in fine_range:
@@ -3736,12 +3752,17 @@ def get_clustered_labels(
 				intra_sims.append(intra_sim)
 		
 		mean_intra_sim = np.mean(intra_sims) if intra_sims else 0
+		std_intra_sim = np.std(intra_sims) if intra_sims else 0.0
+		min_intra_sim = np.min(intra_sims) if intra_sims else 0.0
 		
 		# Compute statistics
 		cluster_sizes = np.bincount(labels)
 		n_singletons = np.sum(cluster_sizes == 1)
 		singleton_ratio = n_singletons / n_clusters
 		consolidation = num_samples / n_clusters
+		max_sz = int(np.max(cluster_sizes)) if len(cluster_sizes) > 0 else 0
+		med_sz = int(np.median(cluster_sizes)) if len(cluster_sizes) > 0 else 0
+		delta_thresh = mean_intra_sim - cluster_intra_similarity_threshold
 		
 		# COMPOSITE SCORING FUNCTION (Key Innovation!)
 		# Quality component (normalized to 0-1)
@@ -3771,9 +3792,14 @@ def get_clustered_labels(
 			{
 				'k': n_clusters,
 				'intra_sim': mean_intra_sim,
+				'std_intra_sim': std_intra_sim,
+				'min_intra_sim': min_intra_sim,
 				'consolidation': consolidation,
 				'singleton_ratio': singleton_ratio,
 				'n_singletons': n_singletons,
+				'med_size': med_sz,
+				'max_size': max_sz,
+				'delta_thresh': delta_thresh,
 				'quality_score': quality_score,
 				'consol_score': consol_score,
 				'singleton_score': singleton_score,
@@ -3812,31 +3838,78 @@ def get_clustered_labels(
 			)
 
 		if verbose:
-			print(f"{n_clusters:<8} {mean_intra_sim:<12.4f} {consolidation:<10.2f} {singleton_ratio:<10.4f} {score:<10.4f} {status:<20}{reason}")
+			intra_fmt = f"{mean_intra_sim:.4f} (±{std_intra_sim:.3f})"
+			min_fmt = f"{min_intra_sim:.4f}"
+			delta_fmt = f"{delta_thresh:+.4f}"
+			consol_fmt = f"{consolidation:5.2f}x"
+			sz_fmt = f"{med_sz:3d} / {max_sz:<4d}"
+			qual_fmt = f"{quality_score:.4f}"
+			cons_fmt = f"{consol_score:.4f}"
+			sing_fmt = f"{singleton_score:.4f}"
+			comp_fmt = f"{score:.4f}"
+			print(f"{n_clusters:<7} {intra_fmt:<17} {min_fmt:<8} {delta_fmt:<9} {consol_fmt:<8} {sz_fmt:<11} {qual_fmt:<8} {cons_fmt:<8} {sing_fmt:<8} {comp_fmt:<8} {status:<14} {reason}")
 	
 	if not fine_results:
 		raise ValueError("No valid cluster configurations found in fine search")
 	
 	# SELECT BEST CONFIGURATION
 	# Priority: Highest composite score
-	best = max(fine_results, key=lambda x: x['composite_score'])
+	# Tie-breaker: Highest consolidation (lowest k, most parsimonious taxonomy)
+	best = max(fine_results, key=lambda x: (round(x['composite_score'], 5), x['consolidation']))
 	
-	if verbose:
-		print(f"\n[STAGE 2]")
-		print(f"  ├─ k={best['k']} (highest composite score)")
-		print(f"  ├─ Composite score: {best['composite_score']:.4f}")
-		print(f"  ├─ Quality score: {best['quality_score']:.4f}")
-		print(f"  ├─ Consolidation score: {best['consol_score']:.4f}")
-		print(f"  ├─ Singleton score: {best['singleton_score']:.4f}")
-		print(f"  └─ Intra-similarity: {best['intra_sim']:.4f}")
-		print()
-	
-	# STAGE 3: Merge singletons
+	# STAGE 3: Merge singletons (slice linkage tree at best k)
 	labels = scipy.cluster.hierarchy.fcluster(
 		linkage_matrix, 
 		best['k'], 
 		criterion='maxclust'
 	) - 1 # <class 'numpy.ndarray'> (num_samples,)
+
+	if verbose:
+		unique_best_labels = np.unique(labels)
+		best_intra_sims = {}
+		for cid in unique_best_labels:
+			cluster_mask = labels == cid
+			cluster_X = X[cluster_mask]
+			if len(cluster_X) > 1:
+				sim_matrix = sklearn.metrics.pairwise.cosine_similarity(cluster_X)
+				n = len(cluster_X)
+				best_intra_sims[cid] = float((sim_matrix.sum() - n) / (n * (n - 1)))
+			else:
+				best_intra_sims[cid] = 1.0
+
+		sim_vals = list(best_intra_sims.values())
+		p10_sim = float(np.percentile(sim_vals, 10)) if sim_vals else 0.0
+		med_sim = float(np.median(sim_vals)) if sim_vals else 0.0
+		p90_sim = float(np.percentile(sim_vals, 90)) if sim_vals else 0.0
+
+		cluster_sizes_best = np.bincount(labels)
+		p10_sz = float(np.percentile(cluster_sizes_best, 10))
+		med_sz_best = float(np.median(cluster_sizes_best))
+		p90_sz_best = float(np.percentile(cluster_sizes_best, 90))
+
+		sorted_by_sim = sorted(best_intra_sims.items(), key=lambda x: x[1])
+		lowest_cid, lowest_sim = sorted_by_sim[0]
+		highest_cid, highest_sim = sorted_by_sim[-1]
+		med_cid, med_sim_val = sorted_by_sim[len(sorted_by_sim) // 2]
+
+		def _sample_cluster_repr(cid, sim):
+			m_idxs = np.where(labels == cid)[0]
+			sz = len(m_idxs)
+			members_preview = [label_texts[idx] for idx in m_idxs[:5]]
+			return f"Cluster {cid:5d} (size={sz:2d}, intra_sim={sim:.4f}): {members_preview}"
+
+		print(f"\n[STAGE 2] WINNER SELECTION: k={best['k']}")
+		print(f"  ├─ Selection Rationale    Highest composite score ({best['composite_score']:.4f}) with parsimony tie-breaker (lowest k in tie)")
+		print(f"  ├─ Quality Score          {best['quality_score']:.4f} (mean intra-sim {best['intra_sim']:.4f} ≥ threshold {cluster_intra_similarity_threshold:.4f}, margin={best['delta_thresh']:+.4f})")
+		print(f"  ├─ Consolidation Score    {best['consol_score']:.4f} ({best['consolidation']:.2f}x in [{min_consolidation:.1f}x, {max_consolidation:.1f}x] target range)")
+		print(f"  ├─ Singleton Score        {best['singleton_score']:.4f} ({best['n_singletons']} singletons, ratio: {best['singleton_ratio']:.4f}, target: {target_singleton_ratio:.4f})")
+		print(f"  ├─ Intra-Sim Distribution min={min(sim_vals):.4f} | p10={p10_sim:.4f} | median={med_sim:.4f} | mean={best['intra_sim']:.4f} | p90={p90_sim:.4f} | max={max(sim_vals):.4f} | std={best.get('std_intra_sim', 0):.4f}")
+		print(f"  ├─ Cluster Size Dist      min={int(min(cluster_sizes_best))} | p10={int(p10_sz)} | median={int(med_sz_best)} | mean={best['consolidation']:.2f} | p90={int(p90_sz_best)} | max={int(max(cluster_sizes_best))}")
+		print(f"  └─ Semantic Cohesion Samples (from chosen cut k={best['k']}):")
+		print(f"     ├─ [HIGH COHESION]   {_sample_cluster_repr(highest_cid, highest_sim)}")
+		print(f"     ├─ [MEDIAN COHESION] {_sample_cluster_repr(med_cid, med_sim_val)}")
+		print(f"     └─ [LOWEST COHESION] {_sample_cluster_repr(lowest_cid, lowest_sim)}")
+		print()
 
 	# Count number of occurrences of each value in array of non-negative ints.
 	cluster_sizes = np.bincount(labels)

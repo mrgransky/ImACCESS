@@ -804,7 +804,6 @@ def get_vlm_based_labels_single(
 	)
 	device = next(model.parameters()).device
 
-
 	messages = [
 		# {"role": "system", "content": "You are an expert image tagger and function as an archivist whose expertise lies in the 20th century."},
 		{"role": "system", "content": "You are an expert archivist and visual annotator specializing in identifying concrete, visually observable subject matter in 20th-century historical photographs."},
