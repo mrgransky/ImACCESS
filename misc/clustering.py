@@ -2472,8 +2472,8 @@ def merge_cluster_canonical_nearest_neighbor(
 					f"canonical_to_canonical_sim={m['canonical_similarity']:.4f} >= {threshold:.5f} "
 					f"centroid_sim={m['centroid_similarity']:.4f} "
 					f"{phase_lbl} | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"  Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<35} sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(ca['medoid']):<40} {ca['members'][:3]}\n"
-					f"  Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<35} sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(cb['medoid']):<40} {cb['members'][:3]}\n"
+					f"  Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<25}sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(ca['medoid']):<40} {ca['members'][:5]}\n"
+					f"  Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<25}sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {repr(cb['medoid']):<40} {cb['members'][:5]}\n"
 					f"  -> Winning canonical: {cm['canonical'] + vm} "
 					f"(from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)
@@ -2489,10 +2489,10 @@ def merge_cluster_canonical_nearest_neighbor(
 				print(
 					f" {rank}. "
 					f"canonical_to_canonical_sim={m['canonical_similarity']:.5f} >= {threshold:.5f} "
-					f"centroid_sim={m['centroid_similarity']:.4f} "
-					f"{phase_lbl} | Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
-					f"  Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<30}sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {ca['medoid']!r:<35}{ca['members'][:5]}\n"
-					f"  Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<30}sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {cb['medoid']!r:<35}{cb['members'][:5]}\n"
+					f"AND centroid_sim={m['centroid_similarity']:.4f} > {min_centroid_similarity} "
+					f"{phase_lbl} Combined size: {comb_sz} ({ca['size']} + {cb['size']})\n"
+					f"  Cluster {ca['id']:5d} canonical: {ca['canonical'] + va!r:<25}sim_to_merged={ca['canonical_to_merged_centroid_sim']:.4f} medoid: {ca['medoid']!r:<35}{ca['members'][:5]}\n"
+					f"  Cluster {cb['id']:5d} canonical: {cb['canonical'] + vb!r:<25}sim_to_merged={cb['canonical_to_merged_centroid_sim']:.4f} medoid: {cb['medoid']!r:<35}{cb['members'][:5]}\n"
 					f"  -> Winning canonical: {cm['canonical'] + vm} "
 					f"(from {cm['winner_from']}, margin=+{cm['winner_margin']:.4f}, merged_medoid={repr(cm['medoid'])})\n"
 				)

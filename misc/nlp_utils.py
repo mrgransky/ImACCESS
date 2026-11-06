@@ -1109,8 +1109,11 @@ def _post_process_(
 	# "Fighter Group", "Tactical Fighter Wing", "Bomb Squadron"
 	_AIR_ROLES = (
 		r'(?:(?:tactical\s+)?fighter(?:\s+bomber)?|pursuit|bomb(?:er)?|bombardment|'
-		r'reconnaissance|recon|observation|transport|troop\s+carrier|air\s+commando)\s+'
+		r'reconnaissance|recon|observation|transport|troop\s+carrier|air\s+commando|'
+		r'photo(?:graphic)?(?:\s+reconnaissance|\s+recon)?)\s+'
 	)
+
+	_NATIONALITY_MODIFIERS = r'(?:U\.?S\.?(?:A\.?)?|United States|British|Royal|French|German|Soviet|Russian|Allied)'
 
 	# Modifiers that precede ground echelons
 	# "Infantry Division", "Armored Brigade", "Parachute Battalion"
@@ -1118,8 +1121,10 @@ def _post_process_(
 		r'(?:infantry|inf\.?|armored|armoured|cavalry|cav\.?|'
 		r'airborne|parachute(?:\s+infantry|\s+artillery)?|glider(?:\s+infantry)?|'
 		r'engineer|engineers|combat\s+engineer|engr\.?|'
-		r'artillery|field\s+artillery|arty\.?|transportation|colored\s+infantry|'
-		r'[A-Za-z]+(?:\s+[A-Za-z]+)?)\s+'  # catches state/regional qualifiers like "71st New York Infantry"
+		r'c\.?a\.?(?:\s+corps)?|coast\s+artillery|f\.?a\.?|field\s+artillery|a\.?a\.?|anti[- ]aircraft|'
+		r'artillery|arty\.?|transportation|colored\s+infantry|'
+		rf'{_NATIONALITY_MODIFIERS}|'
+		r'(?:[A-Za-z]\.?)+(?:\s+(?:[A-Za-z]\.?)+)?)\s+'  # catches state/regional qualifiers like "71st New York Infantry", "62nd C.A. Corps"
 	)
 
 	_ECHELON_PATTERN = (
@@ -1130,19 +1135,20 @@ def _post_process_(
 		# 2. Ground echelons (with or without branch role):
 		# "79th Division", "102nd Infantry Division", "3rd Armored Division", "101st Airborne Division",
 		# "73rd Infantry Brigade", "111th Infantry Regiment", "555th Parachute Infantry Battalion", "328th Infantry Detachment",
+		# "14th Cavalry Group", "35th Artillery Group", "62nd C.A. Corps",
 		# and reversed branch notation: "5th Regiment Marines", "Fifth Division Marines", "Fourth Division Marine"
-		rf'(?:{_GROUND_ROLES})?(?:div\.?|division|brig\.?|brigade|reg\.?|regt\.?|regiment|bn\.?|battalion|det\.?|detachments?|company|co\.?|battery|bty\.?|troop|platoon|plt\.?|squad)(?:\s+(?:artillery|infantry|marines?|cavalry|engineers?))?|'
+		rf'(?:{_GROUND_ROLES})?(?:div\.?|division|brig\.?|brigade|reg\.?|regt\.?|regiment|bn\.?|battalion|group|groups|corps|det\.?|detachments?|company|co\.?|battery|bty\.?|troop|platoon|plt\.?|squad)(?:\s+(?:artillery|infantry|marines?|cavalry|engineers?))?|'
 		
 		# 3. Reversed regiment / division notation
 		# "328th Regiment Infantry", "71st Regiment Infantry", "5th Regiment Marines"
 		r'(?:reg\.?|regt\.?|regiment|div\.?|division|bn\.?|battalion)\s+(?:infantry|marines?)|'
 		
 		# 4. Standalone combat branches acting as echelons:
-		# "53rd Infantry", "27th Marines", "102nd Engineers", "9th Cavalry", "9th Field Artillery"
-		r'infantry|inf\.?|marines|cavalry|cav\.?|engineers?|engr\.?|engrs\.?|arty\.?|artillery|field\s+artillery|detachments?|det\.?|'
+		# "53rd Infantry", "27th Marines", "102nd Engineers", "9th Cavalry", "9th Field Artillery", "10th Armored"
+		r'infantry|inf\.?|armored|armoured|marines|cavalry|cav\.?|engineers?|engr\.?|engrs\.?|arty\.?|artillery|field\s+artillery|detachments?|det\.?|'
 		
 		# 5. Air echelons (with or without mission role):
-		# "56th Fighter Group", "20th Pursuit Group", "50th Tactical Fighter Wing", "First Tactical AF"
+		# "56th Fighter Group", "20th Pursuit Group", "50th Tactical Fighter Wing", "7th Photo Group", "First Tactical AF"
 		rf'(?:{_AIR_ROLES})?(?:group|squadron|sqdn\.?|wing)|tactical\s+af|'
 		
 		# 6. Naval formations: "6th Fleet", "Fifth Fleet", "Third Fleet Landing Force"
@@ -1150,13 +1156,20 @@ def _post_process_(
 		
 		# 7. Administrative districts & abstract concepts
 		# "16th Dist", "22nd Amendment", "20th Century", "19th-century", "18th cent.", "Third Term", "Congress", "1st FG", "38th Parallel", "3rd order"
-		r'dist\.?|district|amendment|centur(?:y|ies)|cent\.?|term|congress|fg|fs|bs|bg|bw|prg|nfs|trs|parallel|orders?'
+		r'dist\.?|district|amendment|centur(?:y|ies)|cent\.?|term|congress|fg|fs|bs|bg|bw|prg|nfs|trs|id|pir|rac|armor|assault|parallel|orders?'
+	)
+
+	_SUFFIX = (
+		r'(?:\s+(?:association|assn\.?|society|veterans?|photos?|photographs?|pics?|pictures?|images?|'
+		r'exhibits?|exhibitions?|displays?|memorials?|monuments?|museums?|reunions?|'
+		r'tournaments?|competitions?|games?|parades?|reviews?|inspections?|drills?|'
+		r'maneuvers?|manoeuvres?|exercises?|ceremonies?|events?|sectors?|areas?|zones?|'
+		r'lines?|positions?|perimeters?|posts?|camps?|spearheads?|expeditions?))?'
 	)
 
 	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations, plus veteran/alumni associations, photo collections, exhibits, events/tournaments, and sectors/zones:
 	GENERIC_ECHELON_RE = re.compile(
-		rf'^{_ORDINAL_PATTERN}[- ]+(?:{_ECHELON_PATTERN})'
-		rf'(?:\s+(?:association|assn\.?|society|veterans?|photos?|photographs?|pics?|pictures?|images?|exhibits?|exhibitions?|displays?|memorials?|monuments?|museums?|reunions?|tournaments?|competitions?|games?|parades?|reviews?|ceremonies?|events?|sectors?|areas?|zones?|lines?|positions?|perimeters?|posts?|camps?))?$',
+		rf'^(?:{_NATIONALITY_MODIFIERS}\s+)?{_ORDINAL_PATTERN}[- ]+(?:{_NATIONALITY_MODIFIERS}\s+)?(?:{_ECHELON_PATTERN}){_SUFFIX}$',
 		re.IGNORECASE
 	)
 

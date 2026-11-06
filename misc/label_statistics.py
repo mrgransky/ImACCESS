@@ -2133,13 +2133,12 @@ def diagnose_inter_label_similarity(
 	if verbose:
 		total_possible_pairs = (num_sampled * (num_sampled - 1)) // 2
 		print(f"\n[INTER-LABEL SIMILARITY DIAGNOSTICS] {column_name}")
-		print(f"  ├─ Labels analyzed      : {num_sampled:,} (total unique labels: {n_labels:,})")
-		print(f"  ├─ Unique pairs total   : {total_possible_pairs:,}")
-		print(f"  ├─ Cosine similarity    : (min, max): ({min_sim:.4f}, {max_sim:.4f}) μ±σ: {mean_sim:.4f} ± {std_sim:.4f}")
-		print(f"  ├─ sim > 0.5: {pairs_gt_05:6d} pairs ({frac_gt_05 * 100:.4f}%) (general semantic proximity / clustering)")
-		print(f"  ├─ sim > 0.8: {pairs_gt_08:6d} pairs ({frac_gt_08 * 100:.4f}%) (high semantic similarity)")
-		print(f"  └─ sim > 0.9: {pairs_gt_09:6d} pairs ({frac_gt_09 * 100:.4f}%) ({labels_gt_09} distinct labels — merge candidates)")
-
+		print(f"  ├─ Labels analyzed (N) {num_sampled:,} (total unique labels: {n_labels:,})")
+		print(f"  ├─ Unique pairs total  {total_possible_pairs:,} (N(N-1)/2)")
+		print(f"  ├─ Cosine similarity   (min, max): ({min_sim:.4f}, {max_sim:.4f}) μ±σ: {mean_sim:.4f} ± {std_sim:.4f}")
+		print(f"  ├─ sim > 0.5: {pairs_gt_05:6d} pairs ({frac_gt_05 * 100:.6f}%) (general semantic proximity / clustering)")
+		print(f"  ├─ sim > 0.8: {pairs_gt_08:6d} pairs ({frac_gt_08 * 100:.6f}%) (high semantic similarity)")
+		print(f"  └─ sim > 0.9: {pairs_gt_09:6d} pairs ({frac_gt_09 * 100:.6f}%) ({labels_gt_09} distinct labels — merge candidates)")
 
 	# 5. Extract top near-duplicate pairs
 	flat_sims = inter_cls_sims.masked_fill(~off_diag_mask, -1.0)
@@ -2155,7 +2154,7 @@ def diagnose_inter_label_similarity(
 		col_idx = top_pairs.indices % num_sampled
 
 		if verbose:
-			print(f"\n  Top-{k_pairs} near-duplicate label pairs (sampled {num_sampled:,} labels):")
+			print(f"\n  Top-{k_pairs} label pairs (sampled {num_sampled:,} labels)")
 			print(f"  {'Sim':<12s}{'Label 1':<45s} <-> {'Label 2'}")
 			print("  " + "-" * 110)
 
@@ -2205,9 +2204,6 @@ def diagnose_inter_label_similarity(
 
 			all_near_duplicates.append(all_near_duplicate)
 
-		if verbose:
-			print(f"\n  Total label pairs with similarity >= {min_similarity_threshold:.2f}: {n_high_sim:,}")
-
 	# 7. Optionally export to CSV for post-clustering inspection
 	csv_path = None
 	export_records = all_near_duplicates if all_near_duplicates else top_pairs_records
@@ -2216,7 +2212,7 @@ def diagnose_inter_label_similarity(
 		csv_path = os.path.join(output_dir, f"clustered_near_duplicate_labels_{column_name}.csv")
 		pd.DataFrame(export_records).to_csv(csv_path, index=False)
 		if verbose:
-			print(f"  Saved {len(export_records):,} near-duplicate pairs to:\n    {csv_path}")
+			print(f"[SAVED] {len(export_records):,} near-duplicate pairs (th > {min_similarity_threshold}): {csv_path}")
 
 	# 8. Clean up diagnostic tensors
 	del inter_cls_sims, off_diag, flat_sims, triu_sims

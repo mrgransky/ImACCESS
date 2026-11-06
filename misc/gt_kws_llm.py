@@ -53,8 +53,10 @@ The caption may contain typos, misprints, or machine-translation errors. Never r
 STRINGENTLY exclude keywords containing:
   - typographical error, misprints, translation failures, or irregular orthography
   - acronyms, shorthands, or initialisms
+  - generic building, room, facility, or classification numbers and markers
   - generic human category nouns, individual names, or honorifics
   - family relationship terms
+  - military units, echelons, or administrative formations
   - roman numerals, ordinal numbers, quantities, counts, or measurements
   - infrastructure/facility identifier, serial number, brand, building number, structure designation, or model
   - dates, times, years, decades, or any temporal references
@@ -433,7 +435,8 @@ def get_prompt(
 	# 	print(f"Generating prompt for text (length: {len(description.split()):7d}) max_kws: {max_kws}")
 
 	messages = [
-		{"role": "system", "content": "You are an archivist whose expertise lies in the 20th century."},
+		# {"role": "system", "content": "You are an archivist whose expertise lies in the 20th century."},
+		{"role": "system", "content": "You are an expert archivist and visual annotator specializing in identifying concrete, visually observable subject matter in 20th-century historical photographs."},
 		{"role": "user", "content": PROMPT_TEMPLATE.format(k=max_kws, caption=description.strip())},
 	]
 	try:
