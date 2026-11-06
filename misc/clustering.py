@@ -4120,7 +4120,8 @@ def remove_problematic_clustered_labels(
 		active_low_cohesion = float(low_cohesion_threshold)
 		low_mode = "manual"
 	else:
-		# Statistical 2.5-Sigma floor: bounded between 0.55 (noise floor) and 0.65 (normal concept boundary)
+		# Statistical 2.5-Sigma floor: 
+		# bounded between 0.55 (noise floor) and 0.65 (normal concept boundary)
 		active_low_cohesion = max(0.55, mu_intra - outlier_sigma_multiplier * sigma_intra)
 		active_low_cohesion = min(active_low_cohesion, 0.65)
 		low_mode = f"dynamic: μ - {outlier_sigma_multiplier:.1f}σ"
@@ -4139,10 +4140,10 @@ def remove_problematic_clustered_labels(
 		print(f"  ├─ clusters                  {len(df['cluster'].unique())}")
 		print(f"  ├─ X                         {type(embeddings)} {embeddings.shape}")
 		if all_intra:
-			print(f"  ├─ Cohesion Distribution    mean={mu_intra:.4f} (std={sigma_intra:.4f}) | min={min(all_intra):.4f} | median={float(np.median(all_intra)):.4f} | max={max(all_intra):.4f}")
+			print(f"  ├─ Cohesion Distribution    mean={mu_intra:.4f} (std={sigma_intra:.4f}) min={min(all_intra):.4f} median={float(np.median(all_intra)):.4f} max={max(all_intra):.4f}")
 		if all_rep:
-			print(f"  ├─ Representativeness Dist  mean={mu_rep:.4f} (std={sigma_rep:.4f}) | min={min(all_rep):.4f} | median={float(np.median(all_rep)):.4f} | max={max(all_rep):.4f}")
-		print(f"  ├─ [threshold] Low cohesion: {active_low_cohesion:.5f} ({low_mode}) | Poor canonical: {active_poor_canonical:.5f} ({poor_mode})")
+			print(f"  ├─ Representativeness Dist  mean={mu_rep:.4f} (std={sigma_rep:.4f}) min={min(all_rep):.4f} median={float(np.median(all_rep)):.4f} max={max(all_rep):.4f}")
+		print(f"  ├─ [threshold] Low cohesion: {active_low_cohesion:.5f} ({low_mode}) Poor canonical: {active_poor_canonical:.5f} ({poor_mode})")
 		print(f"  └─ min_labels_per_cluster    {min_labels_per_cluster}")
 
 	problematic_cluster_ids = set()

@@ -704,6 +704,7 @@ Corsica
 Cordoba
 Costa Brava
 Coventry
+Cracow
 Crimea
 Crimée'
 Calcutta
@@ -823,6 +824,7 @@ Libourne
 Lille
 Liverpool
 Lindholmen
+Llívia
 Llandovery
 London
 Luchon
@@ -990,6 +992,8 @@ Vera Cruz
 Verona
 Vetschau
 Vienna
+Vilanova
+Vinnytsia
 Volgograd
 Waco
 Warnemunde
@@ -1062,6 +1066,7 @@ Wilna
 Wonsan
 Öland
 Åland
+Åbo
 
 Afghan
 African
