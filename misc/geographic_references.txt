@@ -649,6 +649,7 @@ Bermuda
 Bilbao
 Bitterfeld
 Björkholmen
+Blekinge
 Blenheim
 Borsberg
 Bogota
@@ -931,6 +932,7 @@ Rotterdam
 Salonica
 Salonika
 Saloniki
+Saltholm
 Salzburg
 Santander
 Santiago
@@ -960,6 +962,7 @@ Strömsund
 Stumholmen
 Stuttgart
 Sunderland
+Sundsvall
 Sydney
 Szczecin
 Szczecinek

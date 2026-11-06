@@ -420,7 +420,7 @@ def get_multimodal_annotation(
 		device=device,
 		output_dir=OUTPUT_DIR,
 	)
-	sys.exit()
+	# sys.exit()
 
 	stats.compute_entropy_vs_performance(df=df, verbose=verbose)
 	stats.get_cgd_taxonomy_supervision(
