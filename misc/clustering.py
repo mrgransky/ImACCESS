@@ -3895,8 +3895,8 @@ def get_clustered_labels(
 		def _sample_cluster_repr(cid, sim):
 			m_idxs = np.where(labels == cid)[0]
 			sz = len(m_idxs)
-			members_preview = [label_texts[idx] for idx in m_idxs[:5]]
-			return f"Cluster {cid:5d} (size={sz:2d}, intra_sim={sim:.4f}): {members_preview}"
+			members_preview = [label_texts[idx] for idx in m_idxs[:8]]
+			return f"Cluster {cid:5d} (size={sz:2d} intra_sim={sim:.4f}) {members_preview}"
 
 		print(f"\n[STAGE 2] WINNER SELECTION: k={best['k']}")
 		print(f"  ├─ Selection Rationale    Highest composite score ({best['composite_score']:.4f}) with parsimony tie-breaker (lowest k in tie)")
@@ -4020,8 +4020,9 @@ def get_clustered_labels(
 def remove_problematic_clustered_labels(
 	df,
 	embeddings,
-	low_cohesion_threshold: float,
-	poor_canonical_threshold: float,
+	low_cohesion_threshold: Optional[float] = None,
+	poor_canonical_threshold: Optional[float] = None,
+	outlier_sigma_multiplier: float = 2.5,
 	min_labels_per_cluster: int = 2,
 	verbose=False
 ):
@@ -4032,9 +4033,11 @@ def remove_problematic_clustered_labels(
 		1. Low-cohesion clusters (intra_sim < threshold)
 		2. Poor canonical clusters (canonical_rep < threshold)
 
-	Amputation rather than surgery:
-	This is an aggressive but clean approach that eliminates
-	problematic labels entirely rather than trying to fix them.
+	When thresholds are None, they are derived adaptively using the
+	Statistical 2.5-Sigma Rule from the empirical cluster cohesion distribution:
+	    active_threshold = max(0.55, min(0.65, μ - 2.5 * σ))
+	This surgically filters true noise/outlier clusters while preserving
+	valid domain concepts that have natural lexical diversity.
 
 	Invariant (enforced by the caller — Step 8 of cluster())
 	---------------------------------------------------------
@@ -4051,10 +4054,14 @@ def remove_problematic_clustered_labels(
 		df.index must be 0-based and contiguous (reset_index applied upstream).
 	embeddings : np.ndarray
 		Label embeddings in the same row-order as df.
-	low_cohesion_threshold : float
-		Intra-similarity threshold for low-cohesion detection.
-	poor_canonical_threshold : float
-		Canonical representativeness threshold.
+	low_cohesion_threshold : Optional[float]
+		Intra-similarity threshold for low-cohesion detection. If None, derived via 2.5-sigma rule.
+	poor_canonical_threshold : Optional[float]
+		Canonical representativeness threshold. If None, derived via 2.5-sigma rule.
+	outlier_sigma_multiplier : float
+		Sigma multiplier for adaptive threshold derivation (default: 2.5).
+	min_labels_per_cluster : int
+		Minimum labels per cluster to be evaluated (default: 2).
 	verbose : bool
 		Print detailed statistics.
 
@@ -4067,12 +4074,75 @@ def remove_problematic_clustered_labels(
 	removed_labels : list
 		List of removed labels for reference.
 	"""
+	# Pre-compute cluster metrics in a single pass over clusters
+	cluster_records = list()
+	for cluster_id in df['cluster'].unique():
+		cluster_mask = df['cluster'] == cluster_id
+		clustered_labels = df[cluster_mask]['label'].tolist()
+		cluster_size = len(clustered_labels)
+
+		if cluster_size < min_labels_per_cluster:
+			continue
+
+		current_canonical = df[cluster_mask]['canonical'].iloc[0]
+		canonical_idx = clustered_labels.index(current_canonical)
+		cluster_indices = df[cluster_mask].index.tolist()
+		cluster_embeddings = embeddings[cluster_indices]
+
+		n = len(cluster_embeddings)
+		sim_matrix = sklearn.metrics.pairwise.cosine_similarity(cluster_embeddings)
+		intra_sim = float((sim_matrix.sum() - n) / (n * (n - 1)))
+
+		canonical_emb = cluster_embeddings[canonical_idx].reshape(1, -1)
+		canonical_rep = float(sklearn.metrics.pairwise.cosine_similarity(canonical_emb, cluster_embeddings).mean())
+
+		cluster_records.append(
+			{
+				'cluster_id': cluster_id,
+				'intra_sim': intra_sim,
+				'canonical_rep': canonical_rep,
+				'size': cluster_size,
+				'labels': clustered_labels,
+				'canonical': current_canonical,
+			}
+		)
+
+	# Compute distribution statistics
+	all_intra = [r['intra_sim'] for r in cluster_records]
+	mu_intra = float(np.mean(all_intra)) if all_intra else 0.79
+	sigma_intra = float(np.std(all_intra)) if all_intra else 0.06
+
+	all_rep = [r['canonical_rep'] for r in cluster_records]
+	mu_rep = float(np.mean(all_rep)) if all_rep else 0.80
+	sigma_rep = float(np.std(all_rep)) if all_rep else 0.06
+
+	if low_cohesion_threshold is not None:
+		active_low_cohesion = float(low_cohesion_threshold)
+		low_mode = "manual"
+	else:
+		# Statistical 2.5-Sigma floor: bounded between 0.55 (noise floor) and 0.65 (normal concept boundary)
+		active_low_cohesion = max(0.55, mu_intra - outlier_sigma_multiplier * sigma_intra)
+		active_low_cohesion = min(active_low_cohesion, 0.65)
+		low_mode = f"dynamic: μ - {outlier_sigma_multiplier:.1f}σ"
+
+	if poor_canonical_threshold is not None:
+		active_poor_canonical = float(poor_canonical_threshold)
+		poor_mode = "manual"
+	else:
+		active_poor_canonical = max(0.55, mu_rep - outlier_sigma_multiplier * sigma_rep)
+		active_poor_canonical = min(active_poor_canonical, 0.65)
+		poor_mode = f"dynamic: μ - {outlier_sigma_multiplier:.1f}σ"
+
 	if verbose:
-		print("="*100)
+		print("=" * 100)
 		print(f"[DETECTION] Problematic clusters and labels")
 		print(f"  ├─ clusters                  {len(df['cluster'].unique())}")
 		print(f"  ├─ X                         {type(embeddings)} {embeddings.shape}")
-		print(f"  ├─ [threshold] Low cohesion: {low_cohesion_threshold} Poor canonical: {poor_canonical_threshold}")
+		if all_intra:
+			print(f"  ├─ Cohesion Distribution    mean={mu_intra:.4f} (std={sigma_intra:.4f}) | min={min(all_intra):.4f} | median={float(np.median(all_intra)):.4f} | max={max(all_intra):.4f}")
+		if all_rep:
+			print(f"  ├─ Representativeness Dist  mean={mu_rep:.4f} (std={sigma_rep:.4f}) | min={min(all_rep):.4f} | median={float(np.median(all_rep)):.4f} | max={max(all_rep):.4f}")
+		print(f"  ├─ [threshold] Low cohesion: {active_low_cohesion:.5f} ({low_mode}) | Poor canonical: {active_poor_canonical:.5f} ({poor_mode})")
 		print(f"  └─ min_labels_per_cluster    {min_labels_per_cluster}")
 
 	problematic_cluster_ids = set()
@@ -4080,39 +4150,22 @@ def remove_problematic_clustered_labels(
 
 	# PART 1: Identify Low-Cohesion Clusters
 	low_cohesion_clusters = list()
-	for cluster_id in df['cluster'].unique():
-		cluster_mask = df['cluster'] == cluster_id
-		clustered_labels = df[cluster_mask]['label'].tolist()
-		cluster_size = len(clustered_labels)
-		current_canonical = df[cluster_mask]['canonical'].iloc[0]
-		canonical_idx = clustered_labels.index(current_canonical)
-
-		if cluster_size < min_labels_per_cluster:
-			continue
-
-		cluster_indices = df[cluster_mask].index.tolist()
-		cluster_embeddings = embeddings[cluster_indices]
-
-		n = len(cluster_embeddings)
-		sim_matrix = sklearn.metrics.pairwise.cosine_similarity(cluster_embeddings)
-
-		intra_sim  = (sim_matrix.sum() - n) / (n * (n - 1))
-
-		if intra_sim < low_cohesion_threshold:
+	for r in cluster_records:
+		if r['intra_sim'] < active_low_cohesion:
 			low_cohesion_clusters.append(
 				{
-					'cluster_id': cluster_id,
-					'intra_sim':  intra_sim,
-					'size':       cluster_size,
-					'labels':     clustered_labels,
-					'canonical':  current_canonical,
+					'cluster_id': r['cluster_id'],
+					'intra_sim': r['intra_sim'],
+					'size': r['size'],
+					'labels': r['labels'],
+					'canonical': r['canonical'],
 				}
 			)
-			problematic_cluster_ids.add(cluster_id)
-			removed_labels.extend(clustered_labels)
+			problematic_cluster_ids.add(r['cluster_id'])
+			removed_labels.extend(r['labels'])
 
 	if low_cohesion_clusters and verbose:
-		print(f"\nLow Cohesion Clusters (th < {low_cohesion_threshold})")
+		print(f"\nLow Cohesion Clusters (th < {active_low_cohesion:.5f})")
 		low_cohesion_clusters.sort(key=lambda c: (c['intra_sim'], c['size']), reverse=True)
 		for i, cluster in enumerate(low_cohesion_clusters):
 			print(
@@ -4125,42 +4178,25 @@ def remove_problematic_clustered_labels(
 
 	# PART 2: Identify Poor Canonical Clusters:
 	poor_canonical_clusters = list()
-	for cluster_id in df['cluster'].unique():
-		if cluster_id in problematic_cluster_ids:
+	for r in cluster_records:
+		if r['cluster_id'] in problematic_cluster_ids:
 			continue # Already marked for removal
 
-		cluster_mask = df['cluster'] == cluster_id
-		clustered_labels = df[cluster_mask]['label'].tolist()
-		cluster_size = len(clustered_labels)
-
-		if cluster_size < min_labels_per_cluster:
-			continue
-
-		cluster_indices = df[cluster_mask].index.tolist()
-		cluster_embeddings = embeddings[cluster_indices]
-
-		# Canonical is guaranteed to be in clustered_labels (see docstring invariant).
-		current_canonical = df[cluster_mask]['canonical'].iloc[0]
-		canonical_idx = clustered_labels.index(current_canonical)
-		canonical_emb = cluster_embeddings[canonical_idx].reshape(1, -1)
-
-		canonical_representativeness = sklearn.metrics.pairwise.cosine_similarity(canonical_emb, cluster_embeddings).mean()
-
-		if canonical_representativeness < poor_canonical_threshold:
+		if r['canonical_rep'] < active_poor_canonical:
 			poor_canonical_clusters.append(
 				{
-					'cluster_id': cluster_id,
-					'canonical': current_canonical,
-					'canonical_representativeness': canonical_representativeness,
-					'size': cluster_size,
-					'labels': clustered_labels,
+					'cluster_id': r['cluster_id'],
+					'canonical': r['canonical'],
+					'canonical_representativeness': r['canonical_rep'],
+					'size': r['size'],
+					'labels': r['labels'],
 				}
 			)
-			problematic_cluster_ids.add(cluster_id)
-			removed_labels.extend(clustered_labels)
+			problematic_cluster_ids.add(r['cluster_id'])
+			removed_labels.extend(r['labels'])
 
 	if poor_canonical_clusters and verbose:
-		print(f"\n[POOR CANONICAL] {len(poor_canonical_clusters)} clusters (th < {poor_canonical_threshold})")
+		print(f"\n[POOR CANONICAL] {len(poor_canonical_clusters)} clusters (th < {active_poor_canonical:.5f})")
 		poor_canonical_clusters.sort(key=lambda c: (c['canonical_representativeness'], c['size']), reverse=True)
 		for i, cluster in enumerate(poor_canonical_clusters):
 			print(
@@ -6582,8 +6618,9 @@ def map_inject_and_clean_clusters(
 	canonical_emb_map: Dict[str, np.ndarray],
 	model: Any,
 	batch_size: int,
-	low_cohesion_threshold: float,
-	poor_canonical_threshold: float,
+	low_cohesion_threshold: Optional[float] = None,
+	poor_canonical_threshold: Optional[float] = None,
+	outlier_sigma_multiplier: float = 2.5,
 	encode_prompt: Optional[str] = None,
 	clusters_fname: Optional[str] = None,
 	verbose: bool = False,
@@ -6606,12 +6643,14 @@ def map_inject_and_clean_clusters(
 		SentenceTransformer model for encoding virtual canonicals if not in canonical_emb_map.
 	batch_size : int
 		Batch size for fallback encoding.
+	low_cohesion_threshold : Optional[float]
+		Cosine intra-similarity threshold to drop low-cohesion clusters (None for dynamic 2.5-sigma rule).
+	poor_canonical_threshold : Optional[float]
+		Representativeness threshold to drop poorly represented canonical clusters (None for dynamic 2.5-sigma rule).
+	outlier_sigma_multiplier : float
+		Sigma multiplier for adaptive threshold derivation (default: 2.5).
 	encode_prompt : Optional[str]
 		Prompt for fallback encoding.
-	low_cohesion_threshold : float
-		Cosine intra-similarity threshold to drop low-cohesion clusters.
-	poor_canonical_threshold : float
-		Representativeness threshold to drop poorly represented canonical clusters.
 	clusters_fname : Optional[str]
 		Base CSV path used to export the final consolidated DataFrame.
 	verbose : bool
@@ -6666,6 +6705,7 @@ def map_inject_and_clean_clusters(
 		embeddings=X,
 		low_cohesion_threshold=low_cohesion_threshold,
 		poor_canonical_threshold=poor_canonical_threshold,
+		outlier_sigma_multiplier=outlier_sigma_multiplier,
 		verbose=verbose,
 	)
 
@@ -6950,6 +6990,9 @@ def cluster(
 	merge_max_size: Optional[int] = None,
 	min_cluster_size: int = 2,
 	merge_singletons: bool = True,
+	low_cohesion_threshold: Optional[float] = None,
+	poor_canonical_threshold: Optional[float] = None,
+	outlier_sigma_multiplier: float = 2.5,
 	use_cache: bool = True,
 	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
@@ -7157,9 +7200,8 @@ def cluster(
 		canonical_merges_done = n_clusters_pre_canon_merge - len(np.unique(clustered_labels))
 
 	# STEP 7: MAP CANONICALS + INJECT VIRTUAL ROWS + CLEAN
-	low_cohesion_threshold: float = 0.875 * cluster_intra_similarity_threshold
-	poor_canonical_threshold: float = 0.875 * cluster_intra_similarity_threshold
-
+	# Statistical 2.5-Sigma Rule: adaptively removes true outlier clusters while preserving
+	# legitimate domain concepts with natural lexical diversity.
 	df, X_clean, removed_labels = map_inject_and_clean_clusters(
 		df=df,
 		X=X,
@@ -7170,6 +7212,7 @@ def cluster(
 		encode_prompt=encode_prompt,
 		low_cohesion_threshold=low_cohesion_threshold,
 		poor_canonical_threshold=poor_canonical_threshold,
+		outlier_sigma_multiplier=outlier_sigma_multiplier,
 		clusters_fname=clusters_fname,
 		verbose=verbose,
 	)
