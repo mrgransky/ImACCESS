@@ -12,7 +12,7 @@
 #SBATCH --partition=standard-g
 #SBATCH --gres=gpu:mi250:1
 #SBATCH --time=2-00:00:00
-#SBATCH --begin=07:35:00
+#SBATCH --begin=09:35:00
 
 ##############################################################################
 # ARRAY INDEXING SCHEME
