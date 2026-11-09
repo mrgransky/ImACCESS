@@ -46,16 +46,18 @@ Never return a keyword that is misspelled or malformed. If a keyword looks corru
 
 Constraints:
   - Avoid Text or OCR extraction.
-  - Refrain from using underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
-  - Exclude generic war terms.
-  - Avoid typographical error, misprints, or irregular orthography.
-  - Exclude human human category nouns and classifications.
-  - Exclude geographical names.
-  - Exclude dates, times, years, decades, or any temporal references.
-  - Exclude generic keywords for image characteristics.
-  - Refrain from using common environmental details.
-  - Refrain from using counting expressions.
-  - Avoid vague and generic descriptor or container nouns which lack detail.
+  - Refrain from using underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words
+  - Exclude generic war terms
+  - Exclude geographical place, country, commune, municipality, island, district, borough, or town
+  - Exclude locations, routes, or directional terms
+  - Avoid typographical error, misprints, or irregular orthography
+  - Exclude human human category nouns and classifications
+  - Exclude geographical names
+  - Exclude dates, times, years, decades, or any temporal references
+  - Exclude generic keywords for image characteristics
+  - Refrain from using common environmental details
+  - Refrain from using counting expressions
+  - Avoid vague and generic descriptor or container nouns which lack detail
   - Avoid purely demographic descriptors without contextual role.
 
 Output ONLY a a Python list of double-quoted strings containing keywords derived from the visual content of the image."""
