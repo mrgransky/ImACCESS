@@ -6,7 +6,7 @@ from nlp_utils import get_enriched_description
 # python gt_kws_llm.py -desc "Exhausted Marine weeping atop of Hill 200" -llm "Qwen/Qwen3.5-4B" -qb 4 -v
 
 # large model:
-# python gt_kws_llm.py -desc "Exterior of Building #325. After explosion and fire, Picatinny Arsenal, July 10, 1926." -llm "Qwen/Qwen3.5-122B-A10B" -v
+# python gt_kws_llm.py -desc "Exterior of Building #325. After explosion and fire, Picatinny Arsenal, July 10, 1926." -llm "NousResearch/Arete-27B" -v
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):

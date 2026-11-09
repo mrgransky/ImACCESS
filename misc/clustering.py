@@ -5026,7 +5026,6 @@ def _finalize_selection_records(
 	cluster_canonicals: Dict[int, Dict],
 	pre_postpass: Dict[int, str],
 ) -> None:
-	"""In place: stamp final (post-resolver, post-harmonize) state onto each record."""
 	for rec in selection_records:
 		cid = rec['cluster_id']
 		meta = cluster_canonicals[cid]
