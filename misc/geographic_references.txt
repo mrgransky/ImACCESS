@@ -14,6 +14,8 @@ South of
 East of
 West of
 continent
+Island
+Islands
 district
 near
 North
@@ -666,6 +668,8 @@ Berck
 Berlin
 Berline
 Bermuda
+Betio
+Betio Island
 Bilbao
 Bitterfeld
 Björkholmen
