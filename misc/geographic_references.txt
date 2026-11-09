@@ -15,6 +15,7 @@ East of
 West of
 continent
 district
+near
 North
 South
 East
@@ -240,6 +241,7 @@ Saint Laurent Sur-Mere
 Saint Lucia
 Saint Louis
 Saint Paul
+Saint-Sauveur-le-Vicomte
 Saint Vincent and the Grenadines
 St. Augustine
 St. Croix
@@ -251,6 +253,7 @@ St. Nazaire
 St. Quentin
 St Louis
 St Nazaire
+St Sauveur Le Vicomte
 Samoa
 San Andrea
 San Andreas
@@ -617,6 +620,7 @@ Aisne
 Aegean
 Agadir
 Aguas Buenas
+Angers
 Augusta
 Amfreville
 Amifontaine
@@ -648,9 +652,11 @@ Basel
 Beaully
 Besigheim
 Bavaria
+Beauroins
 Beijing
 Belfast
 Bellefonte
+Berck
 Berlin
 Berline
 Bermuda
@@ -695,6 +701,7 @@ Castelló
 Castillejos
 Catania
 Cebu City
+Cernay
 Chambéry
 Chalons
 Chania
@@ -729,12 +736,15 @@ Calcutta
 Czernovitz
 Czernowitz
 Dahlem
+Dampierre
+Damvillers
 Dardanelles
 Delhi
 Dessau
 Dettelbach
 Dijon
 Dorchester
+Doullens
 Dresden
 Dublin
 Dubrovnik
@@ -748,10 +758,12 @@ Eindhoven
 Erivan
 Essex
 Exeter
+Famechon
 Farnborough
 Flensborg
 Flensburg
 Freiberg
+Fresnes
 Fort Collins
 Ft. Collins
 Forbach
@@ -762,6 +774,7 @@ Fowlmere
 Frankfort
 Frankfurt
 Frederiksholm
+Fres
 Friedrichstadt
 Frihavn
 Frosinone
@@ -778,9 +791,12 @@ Georgikon
 Girona
 Gironde
 Glasgow
+Gondrecourt
+Gondrecourt-le-Château
 Green Bay
 Greenock
 Guadalajara
+Guyancourt
 Haifa
 Halmaheras
 Hamburg
@@ -795,6 +811,7 @@ Helsingfors
 Helsingør
 Henderson
 Hendon
+Hennecourt
 Hiddensee
 Hirschfelde
 Hiroshima
@@ -811,6 +828,9 @@ Istanbul
 Istambul
 Iwo Jima
 Jerusalem
+Jouy
+Jouy-en-Josas
+Juvencourt
 Kalgan
 Karelia
 Karachi
@@ -844,15 +864,18 @@ Leipzig
 Lexington
 Liatorp
 Libourne
+Ligny-en-Barrois
 Lille
-Liverpool
 Lindholmen
+Lisieux
+Liverpool
 Llívia
 Llandovery
 Loire Inferieure
 Loire Inférieure
 London
 Lorraine
+Lucelle
 Luchon
 Lviv
 Lövvik
@@ -878,22 +901,29 @@ Milwaukee
 Minsk
 Montreal
 Moncton
+Montdidier
+Montmedy
 Moscov
 Moscow
 Munich
 Nagasaki
 Nagoya
 Naples
+Neuilly
+Neuilly-sur-Seine
 New Delhi
 North Coates
 Nørrebro
 Okinawa
+Oostende
+Oppy-le-Ville
 Oran
+Orne
 Orlando
 Oslo
-Oostende
 Ostend
 Ostia
+Oulchy le Château
 Galleryda
 Gijon
 Girona
@@ -930,6 +960,7 @@ Palermo
 Paris
 Perth
 Pescara
+Pignicourt
 Pisa
 Porto
 Prague
@@ -971,8 +1002,10 @@ Salzburg
 Santander
 Santiago
 Santo Domingo
+Savenay
 Seclin
 Senftenberg
+Senlis
 Seoul
 Sevastopol
 Shanghai
@@ -986,6 +1019,7 @@ Shacktown
 Shantytown
 Skagen
 Sorbonne
+Souilly
 Southampton
 Stalingrad
 Stavanger
@@ -1009,6 +1043,7 @@ Tokio
 Tokyo
 Tossa de Mar
 Touraine
+Toussus-le-Noble
 Townsville
 Transylvania
 Trondheim
@@ -1016,12 +1051,17 @@ Truro
 Tunis
 Tuscany
 Uman
+Valenciennes
 Valladolid
 Valparaíso
 Vancouver
 Vanløse
+Varennes
+Vaudesincourt
+Vaux
 Venice
 Vera Cruz
+Verneuil
 Verona
 Vetschau
 Vienna
