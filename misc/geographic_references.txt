@@ -437,6 +437,7 @@ Duluth
 Echo
 Echo, UT
 Echo UT
+El Dorado
 El Paso
 Ephrata
 Evansville
