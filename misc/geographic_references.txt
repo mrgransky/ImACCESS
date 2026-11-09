@@ -236,9 +236,13 @@ Rwanda
 Saint-Jean-de-Luz
 Saint-Laurent-sur-Mer
 Saint-Nazaire
+Sainte-Mère-Église
 Saint Kitts and Nevis
 Saint Laurent Sur-Mere
 Saint Lucia
+Saint Lo
+Saint-Lo
+Saint-Lô
 Saint Louis
 Saint Paul
 Saint-Sauveur-le-Vicomte
@@ -248,8 +252,10 @@ St. Croix
 St. Fongest
 St. Justina
 St. Juvin
-St. Paul
+St. Mere Eglise
+St. Mere-Eglise
 St. Nazaire
+St. Paul
 St. Quentin
 St Louis
 St Nazaire
@@ -672,8 +678,9 @@ Bordaux
 Bordeaux
 Bosphorus
 Bougainville
-Bremen
 Brasilia
+Bremen
+Brest
 Brisbane
 Bristol
 Brough
@@ -696,6 +703,7 @@ Cantigny
 Caceres
 Caracas
 Cardiff
+Carentan
 Carlisle
 Castelló
 Castillejos
@@ -712,6 +720,7 @@ Chateauroux
 Châteauroux
 Chaumont
 Chemnitz
+Cherbourg
 Chevillon
 Chorzowie
 Christiansted
@@ -760,6 +769,8 @@ Essex
 Exeter
 Famechon
 Farnborough
+Finistere
+Finistère
 Flensborg
 Flensburg
 Freiberg
