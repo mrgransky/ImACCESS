@@ -52,7 +52,7 @@ The caption may contain typos, misprints, or machine-translation errors. Never r
 
 STRINGENTLY exclude keywords containing:
   - typographical error, misprints, translation failures, or irregular orthography
-  - acronyms, shorthands, or initialisms
+  - acronym, abbreviation, shorthand, or initialism
   - generic building, room, facility, or classification numbers and markers
   - generic human category nouns, individual names, or honorifics
   - family relationship terms

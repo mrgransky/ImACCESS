@@ -690,6 +690,7 @@ Bristol
 Brough
 Brussels
 Buenos Aires
+Bujaraloz
 Buna
 Bucharest
 Budapest
@@ -989,7 +990,11 @@ Rome
 Ronneby
 Reykjavik
 Russell Islands
+San Cristobal
+San Fabian
 San Gimignano
+San Miguel
+San Narciso
 San Sebastian
 Sevilla
 Seville
