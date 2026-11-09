@@ -5,7 +5,9 @@ Eastern
 Island of
 City of
 Territory of
-Valley of 
+Town of
+Valley of
+village of
 State of
 North of
 South of
@@ -641,7 +643,9 @@ Bangalore
 Bangkok
 Barcelona
 Barneville-Carteret
+Barneville
 Basel
+Beaully
 Besigheim
 Bavaria
 Beijing
@@ -709,6 +713,7 @@ Clermont-Ferrand
 Cleveland
 Coblenz
 Cologne
+Combles
 Copenhagen
 Cornay
 Corpus Christi
