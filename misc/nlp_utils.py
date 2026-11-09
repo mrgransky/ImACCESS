@@ -899,6 +899,7 @@ def _post_process_(
 		"prof", "prof.", "proffs", "proffs.", "professor",
 		"sir",
 		"shah",
+		"khan",
 		"sultan",
 		"emir",
 		'czar',
