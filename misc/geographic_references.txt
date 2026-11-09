@@ -249,6 +249,7 @@ Saint Louis
 Saint Paul
 Saint-Sauveur-le-Vicomte
 Saint Vincent and the Grenadines
+St. Avold
 St. Augustine
 St. Croix
 St. Fongest
@@ -260,8 +261,10 @@ St. Nazaire
 St. Paul
 St. Quentin
 St. Trond
+St. Romaine
 St Louis
 St Nazaire
+St Paul
 St Sauveur Le Vicomte
 Samoa
 San Andrea
@@ -556,7 +559,6 @@ Redwood
 Richmond
 St. Louis
 St. Lo
-City of St. Louis
 Sand Point
 Sandpoint
 Sands Point
@@ -582,6 +584,7 @@ Niagara Falls
 Portland
 City of Portland
 Pacific Beach
+Rumigny
 Sacramento
 Spartanburg
 Salt Lake City
@@ -623,6 +626,7 @@ Aalborg
 Aarhus
 Abadan
 Abbeville
+Abri
 Acheson
 Adinkerke
 Aisne
