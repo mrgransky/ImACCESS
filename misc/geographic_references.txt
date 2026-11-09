@@ -611,6 +611,7 @@ Abadan
 Abbeville
 Acheson
 Adinkerke
+Aisne
 Aegean
 Agadir
 Aguas Buenas
@@ -691,12 +692,20 @@ Castillejos
 Catania
 Cebu City
 Chambéry
+Chalons
 Chania
 Charkow
+Chatel Chehery
+Chatel-Chéhéry
+Chateauroux
+Châteauroux
+Chaumont
 Chemnitz
+Chevillon
 Chorzowie
 Christiansted
 Christianshavn
+Clermont-Ferrand
 Cleveland
 Coblenz
 Cologne
@@ -706,6 +715,7 @@ Corpus Christi
 Corsica
 Cordoba
 Costa Brava
+Cote d'Or
 Coventry
 Cracow
 Crimea
@@ -718,6 +728,7 @@ Dardanelles
 Delhi
 Dessau
 Dettelbach
+Dijon
 Dorchester
 Dresden
 Dublin
@@ -738,6 +749,7 @@ Flensburg
 Freiberg
 Fort Collins
 Ft. Collins
+Forbach
 Formosa
 Fort Worth
 Ft. Worth
@@ -759,6 +771,7 @@ Geneva
 Georgenburg
 Georgikon
 Girona
+Gironde
 Glasgow
 Green Bay
 Greenock
@@ -818,6 +831,7 @@ Lafayette
 Lakewood
 Lancaster
 Langley
+Langres
 Lapland
 Lausanne
 Le Mans
@@ -830,7 +844,10 @@ Liverpool
 Lindholmen
 Llívia
 Llandovery
+Loire Inferieure
+Loire Inférieure
 London
+Lorraine
 Luchon
 Lviv
 Lövvik
@@ -846,6 +863,8 @@ Martorell
 Medina
 Melbourne
 Mesopotamian
+Meurthe-et-Moselle
+Meurthe et Moselle
 Mexico City
 Milan
 Milovice
@@ -893,6 +912,7 @@ Ottawa
 Panama
 Palma de Mallorca
 Passau
+Pirmasens
 Jaen
 Lima
 Lisbon
@@ -911,6 +931,8 @@ Prague
 Punta del Este
 Quito
 Rabat
+Rethel
+Romaigne
 Rome
 Ronneby
 Reykjavik
@@ -919,6 +941,7 @@ San Gimignano
 San Sebastian
 Sevilla
 Seville
+Soisson
 Stralsund
 Strathpeffer
 Valencia
@@ -954,7 +977,7 @@ Sinai
 Sicily
 Sidi Barrani
 Siena
-Shacktown 
+Shacktown
 Shantytown
 Skagen
 Sorbonne
@@ -980,6 +1003,7 @@ Tesseney
 Tokio
 Tokyo
 Tossa de Mar
+Touraine
 Townsville
 Transylvania
 Trondheim
