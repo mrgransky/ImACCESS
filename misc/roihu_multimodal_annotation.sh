@@ -7,11 +7,11 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
+#SBATCH --cpus-per-task=20
 #SBATCH --mem=204G
 #SBATCH --partition=gpumedium
-#SBATCH --gres=gpu:gh200:1
-#SBATCH --time=00-06:00:00
+#SBATCH --gres=gpu:gh200:4
+#SBATCH --time=01-12:00:00
 #SBATCH --array=0
 ##SBATCH --begin=06:00:00
 
@@ -48,8 +48,8 @@ echo "Detected $NUM_GPUS GPUs, selecting model configuration"
 # Select model configuration based on GPU count
 if [ "$NUM_GPUS" -gt 1 ]; then
 	echo "LARGE models (multi-GPU configuration)"
-	#MLM_MODEL="Qwen/Qwen3.6-35B-A3B" # not a good model
-	MLM_MODEL="Qwen/Qwen3.5-122B-A10B" # too detailed
+	MLM_MODEL="Qwen/Qwen3.6-35B-A3B" # not a good model
+	# MLM_MODEL="Qwen/Qwen3.5-122B-A10B" # too detailed
 	# MLM_MODEL="Qwen/Qwen3.6-27B"
 	LLM_MAX_GENERATED_TOKENS=256
 	VLM_MAX_GENERATED_TOKENS=256

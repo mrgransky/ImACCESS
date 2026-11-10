@@ -23,6 +23,9 @@ South
 East
 West
 Central
+Downtown
+street
+st
 
 Africa
 America
@@ -417,6 +420,7 @@ Blanco
 Boston
 Boulder
 Boylestone
+Brattleboro
 Brewster
 Bridgeport
 Brook
@@ -430,6 +434,7 @@ CA.
 Calif
 Calif.
 Cal.
+Caldwell
 Centerville
 Centerville
 Castroville
@@ -438,10 +443,12 @@ Cincinnati
 City of S.F.
 Cleveland
 Clintonsville
+Clintonville
 Chesapeake
 Chicago
 Columbia
 Columbus
+Concord
 Coronado
 County of Maui
 CZ.
@@ -450,7 +457,6 @@ D.C.
 Dandridge
 Dakota
 Davenport
-Downtown Houston
 Duluth
 Echo
 Echo, UT
@@ -476,6 +482,7 @@ Ithaca
 Key West
 L.A.
 L. A.
+Mass
 Mass.
 Mich.
 MO.
@@ -506,14 +513,17 @@ Montclair
 New York City
 Lanai
 Las Vegas
+Lawrence
 Long Beach
 Los Angeles
-City of Las Vegas
+Las Vegas
+Penna
 Philadelphia
 Seattle
 Dallas
 Denver
 Detroit
+Franklin
 Galesburg
 Gary
 Grandview
@@ -523,10 +533,13 @@ Glendale, CA
 Glendale, Calif
 Glendale Calif
 Guntersville
-La Junta
+Hackensack
+Hampton
 Kingston
+La Junta
 Madera
 Manhattan
+Marcy
 Maui County
 Maui
 McFarland
@@ -549,14 +562,18 @@ Owego
 Oakland
 Ocoee
 Palm Beach
+Pekin
+Perth Amboy
 Phoenix
 Pittsburgh
+Plainfield
 Portsmouth
 Pomona
 Princeton
 Provo
 P. Rico
 Redwood
+Raleigh
 Richmond
 St. Louis
 St. Lo
@@ -576,7 +593,12 @@ San Pedro
 Scarsdale
 Scottdale
 Scottsdale
+Spencer
+Springfield
+Terre Haute
+Wheeling
 Youngstown
+Yungstown
 
 Indianapolis
 Nashville
@@ -636,6 +658,8 @@ Agadir
 Aguas Buenas
 Angers
 Augusta
+Aix La Chapelle
+Aix-la-Chapelle
 Amfreville
 Amifontaine
 Alborg
@@ -650,7 +674,11 @@ Anzio
 Amsterdam
 Antwerp
 Apennines
+Archangel
+Arhangels
 Araxos
+Arhangelsk
+Arkhangel'sk
 Asansol
 Athens
 Baghdad
@@ -683,6 +711,7 @@ Blekinge
 Blenheim
 Borsberg
 Bogota
+Bolingbroke
 Bombay
 Bordaux
 Bordeaux
@@ -710,6 +739,7 @@ Cambridge
 Campbell
 Canberra
 Canso
+Canterbury
 Cantigny
 Caceres
 Caracas
@@ -756,6 +786,7 @@ Calcutta
 Czernovitz
 Czernowitz
 Dahlem
+Dairen
 Dampierre
 Damvillers
 Dardanelles
@@ -813,11 +844,13 @@ Georgikon
 Girona
 Gironde
 Glasgow
+Golden Horseshoe
 Gondrecourt
 Gondrecourt-le-Château
 Green Bay
 Greenock
 Guadalajara
+Guilford
 Guyancourt
 Haifa
 Halmaheras
@@ -829,6 +862,7 @@ Harrogate
 Hausen
 Helensburgh
 Helsinki
+Helsingborg
 Helsingfors
 Helsingør
 Henderson
@@ -860,6 +894,7 @@ Karlskrona
 Kasaan
 Kastrup
 Kazimierz
+Keflavik
 Kiev
 Kirkuk
 Kirkby
@@ -873,6 +908,7 @@ Koblenz
 Kreuzberg
 Kurland
 Kyoto
+Kyushu
 La Crosse
 Lafayette
 Lakewood
@@ -883,7 +919,9 @@ Lapland
 Lausanne
 Le Mans
 Leipzig
+Leuven
 Lexington
+Liaoyang
 Liatorp
 Libourne
 Ligny-en-Barrois
@@ -923,6 +961,7 @@ Milwaukee
 Minsk
 Montreal
 Moncton
+Monschau
 Montdidier
 Montmedy
 Moscov
@@ -935,6 +974,7 @@ Navassa Island
 Neuilly
 Neuilly-sur-Seine
 New Delhi
+Nijmegen
 North Coates
 Nørrebro
 Okinawa
@@ -1021,6 +1061,7 @@ Rockies
 Rochester
 Rovaniemi
 Rotterdam
+Salisbury
 Salonica
 Salonika
 Saloniki
@@ -1029,6 +1070,7 @@ Salzburg
 Santander
 Santiago
 Santo Domingo
+Saratov
 Savenay
 Seclin
 Senftenberg
@@ -1058,6 +1100,7 @@ Stumholmen
 Stuttgart
 Sunderland
 Sundsvall
+Sverige
 Sydney
 Szczecin
 Szczecinek
@@ -1069,6 +1112,9 @@ Tel Aviv
 Tesseney
 Tokio
 Tokyo
+Tromso
+Tromsö
+Tromsø
 Tossa de Mar
 Touraine
 Toussus-le-Noble

@@ -40,15 +40,14 @@ from utils import *
 
 # Keywords must be semantically atomic, visually grounded, and and reusable across archives.
 
-PROMPT_TEMPLATE = """Extract no more than {k} prominent keywords.
+PROMPT_TEMPLATE = """Extract no more than {k} prominent, concrete and visually grounded keywords from the image.
 Prioritize multi-word keywords whenever possible.
-Never return a keyword that is misspelled or malformed. If a keyword looks corrupted, skip it.
+Never return a keyword that is misspelled or malformed. If the keyword looks corrupted, skip it.
 
 Constraints:
   - Avoid Text or OCR extraction.
   - Refrain from using underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words
-  - Exclude generic war terms
-  - Exclude geographical place, country, commune, municipality, island, district, borough, or town
+  - Exclude geographical place, country, commune, neighborhood, municipality, island, district, borough, or town
   - Exclude locations, routes, or directional terms
   - Avoid typographical error, misprints, or irregular orthography
   - Exclude human human category nouns and classifications

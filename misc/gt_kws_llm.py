@@ -45,7 +45,7 @@ STOPWORDS.update(geographic_references)
 # Keywords must be concrete, semantically atomic, and reusable across archives.
 
 PROMPT_TEMPLATE = """
-Extract no more than {k} prominent and concrete keywords from the caption below.
+Extract no more than {k} prominent, concrete and visually grounded keywords from the caption below.
 If the caption contains meaningful descriptors, prioritize multi-word keywords.
 If the caption lacks sufficient information, returning fewer keywords or even an empty list [] is better than excluded keywords.
 The caption may contain typos, misprints, or machine-translation errors. Never return a keyword that is misspelled or malformed. If a keyword looks corrupted, skip it.
@@ -60,7 +60,7 @@ STRINGENTLY exclude keywords containing:
   - roman numerals, ordinal numbers, quantities, counts, or measurements
   - infrastructure/facility identifier, serial number, brand, building number, structure designation, or model
   - dates, times, years, decades, or any temporal references
-  - geographical place, country, commune, municipality, island, district, borough, or town
+  - geographical place, country, commune, neighborhood, municipality, island, district, borough, or town
   - locations, routes, or directional terms
   - nationalities, ethnicities, or religions
   - underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.
