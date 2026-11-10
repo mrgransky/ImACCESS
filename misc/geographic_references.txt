@@ -751,6 +751,7 @@ Castillejos
 Catania
 Cebu City
 Cernay
+Cimiez
 Chambéry
 Chalons
 Chania
@@ -763,9 +764,13 @@ Chaumont
 Chemnitz
 Cherbourg
 Chevillon
+Chongju
+Chonju
 Chorzowie
 Christiansted
 Christianshavn
+Chuncheon
+Chunchon
 Clermont-Ferrand
 Cleveland
 Coblenz
@@ -802,10 +807,12 @@ Dubrovnik
 Dunkirk
 Dunkerque
 Duxford
+Eindhoven
 El Estero
 El Hamma
 Ekeberg
-Eindhoven
+Embermesnil
+Emberménil
 Erivan
 Essex
 Exeter
@@ -883,6 +890,7 @@ Isle Royale
 Istanbul
 Istambul
 Iwo Jima
+Jaen
 Jerusalem
 Jouy
 Jouy-en-Josas
@@ -929,6 +937,10 @@ Lille
 Lindholmen
 Lisieux
 Liverpool
+Lima
+Lisbon
+Lleida
+Luqa
 Llívia
 Llandovery
 Loire Inferieure
@@ -1011,11 +1023,8 @@ Panama
 Palma de Mallorca
 Passau
 Pirmasens
-Jaen
-Lima
-Lisbon
-Lleida
-Luqa
+Prussia
+Rhenish
 Oviedo
 Oxford
 Pallanza
