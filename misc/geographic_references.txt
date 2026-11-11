@@ -2,8 +2,10 @@ Southern
 Northern
 Western
 Eastern
+Beach of
 Island of
 City of
+Coast of
 Territory of
 Town of
 Valley of
@@ -14,6 +16,8 @@ South of
 East of
 West of
 continent
+beach
+coast
 Island
 Islands
 district
@@ -404,6 +408,7 @@ Wyoming
 
 Aberdeen
 Alturas
+Anchorage
 Arlington
 Atlanta
 Atlantic City
@@ -653,11 +658,13 @@ Abadan
 Abbeville
 Abri
 Acheson
+Adak
 Adinkerke
 Aisne
 Aegean
 Agadir
 Aguas Buenas
+Aleutian islanders
 Angers
 Augusta
 Aix La Chapelle
@@ -683,6 +690,7 @@ Arhangelsk
 Arkhangel'sk
 Asansol
 Athens
+Attu
 Baghdad
 Bagdad
 Bagneres de Luchon
@@ -891,6 +899,7 @@ Incheon
 Indochina
 Inverness
 Ipswich
+Islay
 Isle Royale
 Istanbul
 Istambul
@@ -1235,6 +1244,8 @@ Wonsan
 
 Afghan
 African
+Aleutian
+Aleuts
 Algerian
 American
 Arab
@@ -1290,6 +1301,7 @@ Israeli
 Japanese
 Jewish
 Jordanian
+Kodiak
 Korean
 Koreans
 Kurd

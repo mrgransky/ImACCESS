@@ -6396,30 +6396,40 @@ def assign_canonical_labels(
 		n = len(lbls)
 		threshold = max(2, int(np.ceil(MIN_SUPPORT * n)))
 		info = {'route': '', 'support': 0, 'threshold': threshold, 'note': ''}
+
 		k = _distinct_concepts(lbls)
+
 		if k < MIN_DISTINCT_CONCEPTS:
 			virtual_rejections['one_concept'] += 1
 			info['note'] = f"rejected: the {n} members are spelling variants of {k} concept (need >= {MIN_DISTINCT_CONCEPTS})"
 			return None, info
+
+		# Route 1 (head_suffix) 
+		# Preserves shared multi-token trailing heads (['aerial view'], ['aircraft']).
 		core, support, note_a = _head_suffix_core(lbls, threshold)
 		if core:
-			info.update(route='head_suffix', support=support,
-						note=f"shared head phrase in {support}/{n}")
+			info.update(
+				route='head_suffix', 
+				support=support,
+				note=f"shared head phrase in {support}/{n}"
+			)
 			return " ".join(core), info
-		core, support, note_b = _title_prefix_core(lbls, threshold)
 
+		# Route 2 (title_prefix)
+		# Preserves ship/operation prefixes (['USS'], ['Cruiser']).
+		core, support, note_b = _title_prefix_core(lbls, threshold)
 		if core:
 			# while len(core) > 1 and core[-1] in ('mk', 'ausf'):      # 'Cruiser Mk' -> 'Cruiser'
 			# 	core = core[:-1]
-
 			info.update(
 				route='title_prefix', 
 				support=support,
 				note=f"shared title in {support}/{n}; {note_a}"
 			)
-
 			return " ".join(core), info
 
+		# Route 3 (dominant_token) 
+		# Captures pervasive root concepts (['birthday'], ['wolf']).
 		core, support, note_c = _dominant_token_core(lbls, threshold)
 		if core:
 			dom_threshold = max(threshold, int(np.ceil(0.60 * n)))

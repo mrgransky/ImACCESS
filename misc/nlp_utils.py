@@ -1063,10 +1063,10 @@ def _post_process_(
 	)
 
 	# Metadata, Dimensions, and Time Units
-	# Matches: "No. 1234", "Photo 12", "50 feet", "12 mm", "14 months", "1 day", "14 years", "83-Footer", "25-meter"
+	# Matches: "No. 1234", "Photo 12", "50 feet", "12 mm", "14 months", "1 day", "14 years", "83-Footer", "25-meter", "1000 pounders", "fifteen pounder", "one-pounder"
 	_MEASUREMENT_AND_TIME_UNITS = (
-		r'(?:feet|foot|ft|footers?|inch|inches|in|long|meters?|metres?|m|mm|cm|miles?|km|'
-		r'lbs?|pounds?|kg|tons?|'
+		r'(?:feet|foot|ft|footers?|inch|inches|in|inchers?|long|meters?|metres?|m|mm|cm|miles?|km|'
+		r'lbs?|pounds?|pounders?|pdr\.?|kg|tons?|tonners?|'
 		# Time units:
 		r'seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?|yrs?|decades?)'
 	)
@@ -1074,11 +1074,17 @@ def _post_process_(
 	# Metadata, Serial Numbers, and Dimensions
 	# "No. 1234", "Photo 12", "model 18", "Type 92", "Building #10", "Building 41", "Building One", "100-class", "3rd Class", "Class 5", "50 feet", "100 ft", "12 mm", "83-Footer", "25-meter"
 	_PREFIXES = r'(?:bldg\.?|building|class|no\.?|number|model|type|photo|negative|plate|box|series|item|vol\.?|volume|fig\.?|figure)'
-	_NUM_OR_WORD = r'(?:\d+[A-Za-z]?|one|two|three|four|five|six|seven|eight|nine|ten)'
+	_NUM_OR_WORD = (
+		r'(?:\d+[A-Za-z]?|'
+		r'one|two|three|four|five|six|seven|eight|nine|ten|'
+		r'eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|'
+		r'twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|'
+		r'hundred|thousand)'
+	)
 	METADATA_DIMENSION_RE = re.compile(
 		rf'^{_PREFIXES}[- ]*(?:#|no\.?|number)?[- ]*{_NUM_OR_WORD}$|'
 		rf'^(?:\d{{1,4}}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|\d+)[- ]*class(?:es)?$|'
-		rf'^\d+[- ]*{_MEASUREMENT_AND_TIME_UNITS}$',
+		rf'^(?:{_NUM_OR_WORD}[- ]*)+{_MEASUREMENT_AND_TIME_UNITS}$',
 		re.IGNORECASE
 	)
 
@@ -1177,9 +1183,10 @@ def _post_process_(
 		r'maneuvers?|manoeuvres?|exercises?|ceremon(?:y|ies)|events?|sectors?|areas?|zones?|'
 		r'lines?|positions?|perimeters?|posts?|camps?|spearheads?|expeditions?|formations?|'
 		r'bands?|band\s+members?|riflem[ae]n|fighters?|plaques?|labels?|members?|soldiers?|troops?|'
-		r'personnel|officers?|men|guards?|infantrym[ae]n|markers?|patch(?:es)?|insignia|badges?|crests?|banners?|flags?|'
+		r'personnel|officers?|presidents?|commanders?|generals?|colonels?|captains?|chiefs?|leaders?|directors?|chairm[ae]n|secretar(?:y|ies)|chaplains?|historians?|'
+		r'army|navy|men|guards?|infantrym[ae]n|markers?|patch(?:es)?|insignia|badges?|crests?|banners?|flags?|'
 		r'headquarters|hq|ng|national\s+guard|rac|rtr|raf|usmc|usaf|usn|'
-		r'rainbow|earthquakers|screaming\s+eagles|all\s+american|big\s+red\s+one|hell\s+on\s+wheels|polar\s+bear|red\s+bull|timberwolf|iron\s+division))?'
+		r'rainbow|earthquakers|screaming\s+eagles|all\s+american|big\s+red\s+one|hell\s+on\s+wheels|polar\s+bear|red\s+bull|timberwolf|iron\s+division)){0,3}'
 	)
 
 	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations, plus veteran/alumni associations, photo collections, exhibits, events/tournaments, and sectors/zones:
@@ -1372,7 +1379,7 @@ def _post_process_(
 		# Filter generic two-word echelons and temporal noise (numeric OR spelled-out) ──
 		# Drops: "First Division", "First Battalion", "1st Div", "79th Division", "53rd Infantry", "19th-century", "18th cent."
 		# Keeps: "First Infantry Division", "First Infantry Brigade", "55th Infantry Brigade"
-		if GENERIC_ECHELON_RE.match(lemma.strip()) or TEMPORAL_NOISE_RE.search(lemma.strip()):
+		if GENERIC_ECHELON_RE.match(lemma.strip()) or TEMPORAL_NOISE_RE.search(lemma.strip()) or METADATA_DIMENSION_RE.match(lemma.strip()):
 			return True
 
 		# Rule 2: Single-word generic terms
