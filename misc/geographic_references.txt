@@ -897,6 +897,7 @@ Hongkong
 Horsens
 Incheon
 Indochina
+Insterburg
 Inverness
 Ipswich
 Islay
@@ -925,13 +926,14 @@ Kjøbenhavn
 Kobenhavns
 Kobe
 Kohlfurt
-København
+Kulmbach
 Koblenz
 Kreuzberg
 Kungsholm
 Kurland
 Kyoto
 Kyushu
+København
 La Crosse
 Lafayette
 Lakewood
@@ -1190,8 +1192,7 @@ Kursk
 Shitomir
 Smolensk
 Vladivostok
-Insterburg
-Kulmbach
+Verba
 Volkel
 Weimar
 Znojmo
