@@ -84,6 +84,13 @@ def summarize_canonical_selection(
 	section("2. how canonicals were chosen")
 	for method, count in meta.get("selection_method_counts", {}).items():
 		emit(f"   {method:<34} {count:6d} ({pct(count, n)})")
+	route_counts = meta.get("virtual_route_counts", {})
+	winner_routes = meta.get("virtual_winner_route_counts", {})
+	if route_counts:
+		emit("   virtual candidates entering pool by route:")
+		for r, count in route_counts.items():
+			won = winner_routes.get(r, 0)
+			emit(f"     {r:<16} {count:6d} entered, {won:6d} won")
 	virtual_gates = meta.get("virtual_gates")
 	if virtual_gates:
 		emit(
@@ -3534,7 +3541,7 @@ def get_clustered_labels(
 	
 	# Adaptive coarse range based on dataset size
 	if num_samples > int(3e4):
-		coarse_step = 900
+		coarse_step = 800
 	elif num_samples > int(1e4):
 		coarse_step = 500
 	elif num_samples > int(5e3):
@@ -5153,6 +5160,14 @@ def _build_debug_payload(
 		for rec in selection_records
 		if rec['shared'].get('resolution')
 	)
+	virtual_route_counts = Counter(
+		rec['virtual_route'] for rec in selection_records
+		if rec.get('virtual_entered_pool') and rec.get('virtual_route')
+	)
+	virtual_winner_route_counts = Counter(
+		rec['virtual_route'] for rec in selection_records
+		if rec.get('is_virtual') and rec.get('virtual_route')
+	)
 	return {
 		'meta': {
 			'n_clusters': len(clusters_json),
@@ -5163,6 +5178,8 @@ def _build_debug_payload(
 			'freq_gain_guard': freq_gain_guard,
 			'selection_method_counts': dict(method_counts.most_common()),
 			'virtual_winners': sum(1 for c in clusters_json if c['is_virtual']),
+			'virtual_route_counts': dict(virtual_route_counts.most_common()),
+			'virtual_winner_route_counts': dict(virtual_winner_route_counts.most_common()),
 			'changed_by_postpass': sum(1 for c in clusters_json if c['changed_by_postpass']),
 			'shared_resolution_counts': dict(resolution_counts.most_common()),
 		},
@@ -5866,7 +5883,7 @@ def assign_canonical_labels(
 				 the candidate's tokens)
 		+ 0.10 * brevity (shorter -> more general)
 
-	Virtual hypernym synthesis (two routes, tried in order)
+	Virtual hypernym synthesis (three routes, tried in order)
 	--------------------------------------------------------
 	1. head_suffix : the members share a head noun phrase at the END of
 		 their head phrase, e.g.
@@ -5880,10 +5897,16 @@ def assign_canonical_labels(
 			 ['Cruiser Mk I', 'Cruiser Mk II'] -> 'Cruiser'  (a dangling Mk / Ausf is dropped)
 		 Only vessel designators, 'Operation' and 'X Mk' / 'X Ausf' families
 		 are allowed: a shared lowercase prefix is a MODIFIER, not a category.
+	3. dominant_token : when member labels share a dominant content token across a
+		 supermajority (>= 60% and >= threshold) of the cluster, even if it appears
+		 as an adjunct or modifier rather than as a strict trailing head suffix across
+		 all members (e.g. ['70th Birthday', '76th Birthday Banquet', '80th Birthday Party',
+		 '80th birthday cake'] -> 'Birthday'). Numerals, ordinals, version markers, corporate
+		 suffixes, designator prefixes, and function words are excluded.
 
-	Both routes require JOINT support (the whole core, contiguous, in at
-	least max(2, ceil(0.5 * n)) members), prefer the core covering the
-	most members (ties -> longer core), and never end in a function word.
+	All routes require support (in at least max(2, ceil(0.5 * n)) members, or >= 60% for
+	dominant_token), prefer the core covering the most members (ties -> longer core / head token),
+	and never end in a function word.
 
 	Virtual hypernym quality gates
 	------------------------------
@@ -6297,6 +6320,78 @@ def assign_canonical_labels(
 			note = "title_prefix: no allowed designator prefix"
 		return None, 0, note
 
+	def _dominant_token_core(lbls: List[str], threshold: int):
+		"""Route 3: dominant content token shared across cluster members.
+
+		When members combine a core semantic noun with varied modifiers, adjuncts, or
+		different head nouns (e.g. '70th Birthday', '76th Birthday Banquet',
+		'80th Birthday Party', '80th birthday cake'), Route 1 fails because the trailing
+		syntactic head is not identical across members. Route 3 extracts a dominant content
+		token that appears in a substantial supermajority (>= 60% and >= threshold) of members.
+		Numerals, version markers, corporate suffixes, designator prefixes, and function words
+		are excluded.
+		"""
+		n = len(lbls)
+		dom_threshold = max(threshold, int(np.ceil(0.60 * n)))
+
+		token_member_counts: Counter = Counter()
+		token_head_counts: Counter = Counter()
+
+		for l in lbls:
+			toks = _norm_tokens(l)
+			unique_toks = set(toks)
+			hp_tok = _head_token(l)
+			for t in unique_toks:
+				# Skip function words (prepositions, articles, conjunctions)
+				if t in FUNCTION_WORDS:
+					continue
+				# Skip numbers / ordinals (e.g. '70th', '76th', '1945')
+				if any(ch.isdigit() for ch in t):
+					continue
+				# Skip version markers / tokens (e.g. 'mk', 'ausf', 'type', 'model')
+				if _is_version_token(t) or t in _VERSION_MARKERS:
+					continue
+				# Skip corporate / legal suffixes
+				if t in _LEGAL_SUFFIXES:
+					continue
+				# Skip vessel / designator prefixes (handled by Route 2)
+				if t in {'uss', 'hms', 'hmcs', 'hmas', 'hmnzs', 'usat', 'usns', 'uscgc', 'rms', 'mv', 'operation'}:
+					continue
+				# Skip short fragments (< 3 alpha characters)
+				if len(re.sub(r'[^a-z]', '', t)) < 3:
+					continue
+
+				token_member_counts[t] += 1
+				if t == hp_tok:
+					token_head_counts[t] += 1
+
+		best, best_below, blocked = None, None, []
+		for tok, support in token_member_counts.items():
+			why = _core_rejection([tok])
+			if why:
+				if support >= dom_threshold:
+					blocked.append((tok, why))
+				continue
+			# Candidate tuple: (support, head_count, length, token)
+			cand = (support, token_head_counts.get(tok, 0), len(tok), tok)
+			if support >= dom_threshold:
+				if best is None or cand > best:
+					best = cand
+			elif best_below is None or cand > best_below:
+				best_below = cand
+
+		if best:
+			return [best[3]], best[0], ''
+		if blocked:
+			virtual_rejections['hygiene:' + blocked[0][1]] += 1
+			return None, 0, f"dominant_token: rejected {blocked[0][0]!r} ({blocked[0][1]})"
+		if best_below:
+			note = (f"dominant_token: best '{best_below[3]}' only "
+					f"{best_below[0]}/{n} (need {dom_threshold})")
+		else:
+			note = "dominant_token: no shared content token"
+		return None, 0, note
+
 	def _virtual_hypernym(lbls: List[str]):
 		n = len(lbls)
 		threshold = max(2, int(np.ceil(MIN_SUPPORT * n)))
@@ -6325,7 +6420,18 @@ def assign_canonical_labels(
 
 			return " ".join(core), info
 
-		info['note'] = f"{note_a}; {note_b}"
+		core, support, note_c = _dominant_token_core(lbls, threshold)
+		if core:
+			dom_threshold = max(threshold, int(np.ceil(0.60 * n)))
+			info.update(
+				route='dominant_token',
+				support=support,
+				threshold=dom_threshold,
+				note=f"dominant root token in {support}/{n}; {note_a}; {note_b}"
+			)
+			return " ".join(core), info
+
+		info['note'] = f"{note_a}; {note_b}; {note_c}"
 
 		return None, info
 
@@ -6519,8 +6625,9 @@ def assign_canonical_labels(
 			if is_virtual_pick:
 				best_real_sim = float(similarities[pure_sim_idx])
 				ratio = float(similarities[best_idx]) / max(best_real_sim, 1e-12)
+				route_tag = f" [{vh_info['route']}]" if vh_info.get('route') else ""
 				tag = (
-					f" [VIRTUAL] (virtual={similarities[best_idx]:.5f}, "
+					f" [VIRTUAL{route_tag}] (virtual={similarities[best_idx]:.5f}, "
 					f"best_real={best_real_sim:.5f}, ratio={ratio:.3f}, "
 					f"best_real={repr(cluster_texts[pure_sim_idx])})"
 				)
