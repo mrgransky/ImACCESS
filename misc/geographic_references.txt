@@ -473,8 +473,10 @@ Guadalcanal
 Hartford
 Halifax
 Hoboken
+Hoffmanville
 Hollywood
 Hoopeston
+Hopkinsville
 GA.
 Houston
 Ill.
@@ -808,6 +810,7 @@ Dunkirk
 Dunkerque
 Duxford
 Eindhoven
+El Alamein
 El Estero
 El Hamma
 Ekeberg
@@ -825,7 +828,9 @@ Flensburg
 Freiberg
 Fresnes
 Fort Collins
+Fort McPherson
 Ft. Collins
+Ft. McPherson
 Forbach
 Formosa
 Fort Worth
@@ -914,6 +919,7 @@ Kohlfurt
 København
 Koblenz
 Kreuzberg
+Kungsholm
 Kurland
 Kyoto
 Kyushu

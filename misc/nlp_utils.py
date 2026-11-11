@@ -539,7 +539,17 @@ def _post_process_(
 	}
 
 	GENERIC_PEOPLE_WORDS = {
-		"people", "person", "individual",
+		"people", "person", "individual", "individuals",
+		"man", "men", "woman", "women", "child", "children", "boy", "boys", "girl", "girls",
+		"officer", "officers", "soldier", "soldiers", "troop", "troops",
+		"sailor", "sailors", "marine", "marines", "airman", "airmen",
+		"infantryman", "infantrymen", "rifleman", "riflemen",
+		"recruit", "recruits", "cadet", "cadets", "crew", "crews",
+		"staff", "worker", "workers", "civilian", "civilians",
+		"prisoner", "prisoners", "patient", "patients", "victim", "victims",
+		"refugee", "refugees", "veteran", "veterans", "member", "members",
+		"volunteer", "volunteers", "student", "students", "agent", "agents",
+		"casualty", "casualties", "wounded", "dead",
 	}
 
 	GENERIC_FAMILY_WORDS = {
@@ -1037,10 +1047,10 @@ def _post_process_(
 
 	TEMPORAL_NOISE_RE = re.compile(
 		rf'(?:'
-		# 1. Dates with a 4-digit year: "November 1962", "12 August 1945", "circa 1944"
+		# 1. Dates with a 4-digit year: "November 1962", "12 August 1945", "circa 1944", "early 1900", "est 1857"
 		rf'(?:^|\b)(?:c\.|circa|early|mid|late)?\s*(?:\d{{1,2}}\.?\s+)?{_MONTHS_SEASONS}\.?\s+(?:\d{{1,2}},?\s+)?{_YEAR_4DIGIT}\b|'
 		rf'\b{_YEAR_4DIGIT}\s+{_MONTHS_SEASONS}\b|'
-		rf'^\b{_YEAR_4DIGIT}(?:s|\'s)?\b|'
+		rf'^(?:(?:c\.?|ca\.?|circa|early|mid|late|est\.?|established|founded|built|around|about|approx\.?|post|pre)[- ]+)?{_YEAR_4DIGIT}(?:s|\'s)?\b|'
 		# 2. Calendar dates WITHOUT a year: "1 October", "1. Mai", "October 1st", "4th of July"
 		rf'^\d{{1,2}}\.?(?:st|nd|rd|th)?\s+(?:of\s+)?{_MONTHS_SEASONS}\.?$|'
 		rf'^{_MONTHS_SEASONS}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?$|'
@@ -1097,8 +1107,8 @@ def _post_process_(
 	#   - Word ordinals: "First", "Second", "Third", ..., "Seventy-First", "Thirty-Fifth"
 	_ORDINAL_PATTERN = (
 		r'(?:'
-		r'\d{1,4}(?:st|nd|rd|th|d)?|'
-		r'(?:X{0,3})(?:IX|IV|V?I{0,3})(?:st|nd|rd|th)?|'
+		r'\d{1,4}(?:st|nd|rd|th|d)?\.?|'
+		r'(?:X{1,3}(?:IX|IV|V?I{0,3})|IX|IV|V?I{1,3}|V)(?:st|nd|rd|th)?\.?|'
 		r'first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|'
 		r'eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|'
 		r'twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth|'
@@ -1136,17 +1146,17 @@ def _post_process_(
 		# 2. Ground echelons (with or without branch role):
 		# "79th Division", "102nd Infantry Division", "3rd Armored Division", "101st Airborne Division",
 		# "73rd Infantry Brigade", "111th Infantry Regiment", "555th Parachute Infantry Battalion", "328th Infantry Detachment",
-		# "14th Cavalry Group", "35th Artillery Group", "62nd C.A. Corps",
+		# "14th Cavalry Group", "35th Artillery Group", "62nd C.A. Corps", "150th Rgt RAC", "1st Battalion RTR",
 		# and reversed branch notation: "5th Regiment Marines", "Fifth Division Marines", "Fourth Division Marine"
-		rf'(?:{_GROUND_ROLES})?(?:div\.?|division|brig\.?|brigade|reg\.?|regt\.?|regiment|bn\.?|battalion|group|groups|corps|det\.?|detachments?|company|co\.?|battery|bty\.?|troop|platoon|plt\.?|squad)(?:\s+(?:artillery|infantry|marines?|cavalry|engineers?))?|'
+		rf'(?:{_GROUND_ROLES})?(?:div\.?|division|brig\.?|brigade|reg\.?|regt\.?|rgt\.?|regiment|bn\.?|battalion|group|groups|corps|det\.?|detachments?|company|co\.?|battery|bty\.?|troop|platoon|plt\.?|squad)(?:\s+(?:artillery|infantry|marines?|cavalry|engineers?))?|'
 		
 		# 3. Reversed regiment / division notation
 		# "328th Regiment Infantry", "71st Regiment Infantry", "5th Regiment Marines"
-		r'(?:reg\.?|regt\.?|regiment|div\.?|division|bn\.?|battalion)\s+(?:infantry|marines?)|'
+		r'(?:reg\.?|regt\.?|rgt\.?|regiment|div\.?|division|bn\.?|battalion)\s+(?:infantry|marines?)|'
 		
-		# 4. Standalone combat branches acting as echelons:
-		# "53rd Infantry", "27th Marines", "102nd Engineers", "9th Cavalry", "9th Field Artillery", "10th Armored"
-		r'infantry|inf\.?|armored|armoured|marines|cavalry|cav\.?|engineers?|engr\.?|engrs\.?|arty\.?|artillery|field\s+artillery|detachments?|det\.?|'
+		# 4. Standalone combat branches acting as echelons (with optional leading role modifier):
+		# "53rd Infantry", "1st Engineer Infantry", "27th Marines", "3rd Campaign", "102nd Engineers", "9th Cavalry", "9th Field Artillery", "129th F.A.", "10th Armored"
+		rf'(?:{_GROUND_ROLES})?(?:infantry|inf\.?|armored|armoured|campaign|marines|cavalry|cav\.?|engineers?|engr\.?|engrs\.?|arty\.?|artillery|f\.?a\.?|field\s+artillery|c\.?a\.?|coast\s+artillery|a\.?a\.?|anti[- ]aircraft|detachments?|det\.?)|'
 		
 		# 5. Air echelons (with or without mission role):
 		# "56th Fighter Group", "20th Pursuit Group", "50th Tactical Fighter Wing", "7th Photo Group", "First Tactical AF"
@@ -1155,22 +1165,29 @@ def _post_process_(
 		# 6. Naval formations: "6th Fleet", "Fifth Fleet", "Third Fleet Landing Force"
 		r'fleet(?:\s+landing\s+force)?|'
 		
-		# 7. Administrative districts & abstract concepts
-		# "16th Dist", "22nd Amendment", "20th Century", "19th-century", "18th cent.", "Third Term", "Congress", "1st FG", "38th Parallel", "3rd order"
-		r'dist\.?|district|amendment|centur(?:y|ies)|cent\.?|term|congress|fg|fs|bs|bg|bw|prg|nfs|trs|id|pir|rac|armor|assault|parallel|orders?'
+		# 7. Administrative districts, military unit acronyms & abstract concepts
+		# "16th Dist", "22nd Amendment", "20th Century", "19th-century", "18th cent.", "Third Term", "Congress", "1st FG", "14th PRS", "15thTRS", "1ST P.C.", "1st CBW", "1st GMTAP", "51st MTAP", "67th TRG", "7th RTR", "38th Parallel", "3rd order"
+		r'dist\.?|district|amendment|centur(?:y|ies)|cent\.?|term|congress|fg|fs|bs|bg|bw|cbw|prg|prs|trg|trs|nfs|id|pir|rac|rtr|gmtap|mtap|p\.?c\.?|(?:[a-z]\.){2,4}|armor|assault|parallel|orders?'
 	)
 
 	_SUFFIX = (
-		r'(?:\s+(?:association|assn\.?|society|veterans?|photos?|photographs?|pics?|pictures?|images?|'
+		r'(?:\s+(?:associations?|assn\.?|societ(?:y|ies)|veterans?|photos?|photographs?|pics?|pictures?|images?|'
 		r'exhibits?|exhibitions?|displays?|memorials?|monuments?|museums?|reunions?|'
 		r'tournaments?|competitions?|games?|parades?|reviews?|inspections?|drills?|'
-		r'maneuvers?|manoeuvres?|exercises?|ceremonies?|events?|sectors?|areas?|zones?|'
-		r'lines?|positions?|perimeters?|posts?|camps?|spearheads?|expeditions?))?'
+		r'maneuvers?|manoeuvres?|exercises?|ceremon(?:y|ies)|events?|sectors?|areas?|zones?|'
+		r'lines?|positions?|perimeters?|posts?|camps?|spearheads?|expeditions?|formations?|'
+		r'bands?|band\s+members?|riflem[ae]n|fighters?|plaques?|labels?|members?|soldiers?|troops?|'
+		r'personnel|officers?|men|guards?|infantrym[ae]n|markers?|patch(?:es)?|insignia|badges?|crests?|banners?|flags?|'
+		r'headquarters|hq|ng|national\s+guard|rac|rtr|raf|usmc|usaf|usn|'
+		r'rainbow|earthquakers|screaming\s+eagles|all\s+american|big\s+red\s+one|hell\s+on\s+wheels|polar\s+bear|red\s+bull|timberwolf|iron\s+division))?'
 	)
 
 	# Matches generic numbered/ordinal echelons across 2-token and 3-token variations, plus veteran/alumni associations, photo collections, exhibits, events/tournaments, and sectors/zones:
 	GENERIC_ECHELON_RE = re.compile(
-		rf'^(?:{_NATIONALITY_MODIFIERS}\s+)?{_ORDINAL_PATTERN}[- ]+(?:{_NATIONALITY_MODIFIERS}\s+)?(?:{_ECHELON_PATTERN}){_SUFFIX}$',
+		rf'^(?:{_NATIONALITY_MODIFIERS}\s+)?(?:'
+		rf'{_ORDINAL_PATTERN}[- ]*(?:{_NATIONALITY_MODIFIERS}\s+)?(?:{_ECHELON_PATTERN})|'
+		rf'\d{{1,4}}(?:st|nd|rd|th|d)\.?[- ]*(?:[A-Za-z]\.?){{2,6}}'
+		rf'){_SUFFIX}$',
 		re.IGNORECASE
 	)
 
@@ -1187,6 +1204,12 @@ def _post_process_(
 		# Drop standalone numeric ordinals ("369th", "1st", "2nd", "82nd") ──
 		if re.match(r'^\d{1,4}(?:st|nd|rd|th)$', label.strip(), re.IGNORECASE):
 			return False
+
+		# 1b. Quantified generic headcounts or time units ("105 officers", "3 men", "20 soldiers", "10 days") -> DROP
+		parts = label.strip().split()
+		if len(parts) == 2 and (parts[0].isdigit() or parts[0].lower() in NUMBER_WORDS):
+			if parts[1].lower() in (GENERIC_PEOPLE_WORDS | GENERIC_FAMILY_WORDS | TIME_UNITS):
+				return False
 
 		# 2. Date expressions ("November 1962", "Spring 1943", "1940s", "circa 1944") -> DROP
 		if TEMPORAL_NOISE_RE.search(label):
