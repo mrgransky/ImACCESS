@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2004072
-#SBATCH --job-name=ft_seed_01
+#SBATCH --job-name=ft_seed_42
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -12,7 +12,7 @@
 #SBATCH --partition=gpumedium
 #SBATCH --gres=gpu:gh200:1
 #SBATCH --time=0-08:45:00
-#SBATCH --begin=09:35:00
+#SBATCH --begin=09:05:00
 
 ##############################################################################
 # ARRAY INDEXING SCHEME
@@ -82,7 +82,7 @@
 
 # how to run:
 # !!!!!!! xxxx ensure the job name aligns with the seed value xxxx
-# SEED=1 sbatch roihu_finetuner.sh
+# SEED=42 sbatch roihu_finetuner.sh
 
 set -euo pipefail
 user="`whoami`"
