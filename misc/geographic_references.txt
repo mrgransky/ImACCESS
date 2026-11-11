@@ -6,6 +6,8 @@ Beach of
 Island of
 City of
 Coast of
+Commonwealth of
+province of
 Territory of
 Town of
 Valley of
@@ -30,6 +32,8 @@ Central
 Downtown
 street
 st
+State
+States
 
 Africa
 America
@@ -268,6 +272,7 @@ St. Mere-Eglise
 St. Nazaire
 St. Paul
 St. Quentin
+St. Thomas
 St. Trond
 St. Romaine
 St Louis
@@ -364,35 +369,44 @@ Florida
 Gambier
 Georgia
 Hawaii
+Hilo
 Idaho
 Illinois
 Indiana
 Iowa
+Kailua
+Kalaupapa
 Kansas
 Kansas City
 Kentucky
 Louisiana
 Maine
+Marblehead
 Maryland
 Massachusetts
 Michigan
 Minnesota
 Mississippi
 Missouri
+Moanaloa
 Montana
+Nawiliwili
 Nebraska
 Nevada
+New England
 New Hampshire
 New Jersey
 New Mexico
 New York
 North Carolina
 North Dakota
+Oahu
 Ohio
 Oklahoma
 Oregon
 Pennsylvania
 Peoria
+Quincy
 Rhode Island
 South Carolina
 South Dakota
@@ -413,8 +427,11 @@ Arlington
 Atlanta
 Atlantic City
 Austin
+Balboa
 Bakersfield
 Baltimore
+Bassingbourn
+Bassingbourne
 Beaufort
 Beaumont
 Bedford
@@ -451,6 +468,7 @@ Clintonsville
 Clintonville
 Chesapeake
 Chicago
+Clinton
 Columbia
 Columbus
 Concord
@@ -604,6 +622,7 @@ Spencer
 Springfield
 Terre Haute
 Wheeling
+Yorktown
 Youngstown
 Yungstown
 
@@ -643,6 +662,7 @@ Trinidad
 Tulsa
 Ukiah
 Virgin Islands
+Waterbeach
 Waterbury
 Wash. D.C.
 Washington, D.C.
@@ -656,6 +676,7 @@ Aalborg
 Aarhus
 Abadan
 Abbeville
+Aboukir
 Abri
 Acheson
 Adak
@@ -702,12 +723,14 @@ Barneville-Carteret
 Barneville
 Basel
 Beaully
+Beaulieu
 Besigheim
 Bavaria
 Beauroins
 Beijing
 Belfast
 Bellefonte
+Benbecula
 Berck
 Berlin
 Berline
@@ -715,6 +738,7 @@ Bermuda
 Betio
 Betio Island
 Bilbao
+Binfield
 Bitterfeld
 Björkholmen
 Blekinge
@@ -745,6 +769,7 @@ Cadiz
 Cairo
 Calabria
 Calgary
+Calshot
 Cambridge
 Campbell
 Canberra
@@ -766,6 +791,8 @@ Chambéry
 Chalons
 Chania
 Charkow
+Charlotte Amalie
+Charlottesville
 Chatel Chehery
 Chatel-Chéhéry
 Chateauroux
@@ -785,6 +812,7 @@ Clermont-Ferrand
 Cleveland
 Coblenz
 Cologne
+Coltishall
 Combles
 Copenhagen
 Cornay
@@ -805,22 +833,27 @@ Dairen
 Dampierre
 Damvillers
 Dardanelles
+Dartford
 Delhi
 Dessau
 Dettelbach
 Dijon
 Dorchester
 Doullens
+Dover
 Dresden
 Dublin
 Dubrovnik
+Dumbarton
 Dunkirk
 Dunkerque
 Duxford
+Edinburgh
 Eindhoven
 El Alamein
 El Estero
 El Hamma
+Elvington
 Ekeberg
 Embermesnil
 Emberménil
@@ -829,6 +862,7 @@ Essex
 Exeter
 Famechon
 Farnborough
+Felixstowe
 Finistere
 Finistère
 Flensborg
@@ -847,6 +881,7 @@ Fowlmere
 Frankfort
 Frankfurt
 Frederiksholm
+Frederiksted
 Fres
 Friedrichstadt
 Frihavn
@@ -873,6 +908,7 @@ Guadalajara
 Guilford
 Guyancourt
 Haifa
+Halesworth
 Halmaheras
 Hamburg
 Hampshire
@@ -895,6 +931,7 @@ Hobsonville
 Hong Kong
 Hongkong
 Horsens
+Hudson
 Incheon
 Indochina
 Insterburg
@@ -910,6 +947,7 @@ Jerusalem
 Jouy
 Jouy-en-Josas
 Juvencourt
+Kalafrana
 Kalgan
 Karelia
 Karachi
@@ -922,6 +960,7 @@ Kiev
 Kirkuk
 Kirkby
 Kirkwood
+Kirmington
 Kjøbenhavn
 Kobenhavns
 Kobe
@@ -944,6 +983,7 @@ Lapland
 Lausanne
 Le Mans
 Leipzig
+Lerwick
 Leuven
 Lexington
 Liaoyang
@@ -1003,6 +1043,7 @@ Navassa Island
 Neuilly
 Neuilly-sur-Seine
 New Delhi
+Newport News
 Nijmegen
 North Coates
 Nørrebro
@@ -1068,10 +1109,12 @@ San Gimignano
 San Miguel
 San Narciso
 San Sebastian
+Sanford
 Sevilla
 Seville
 Soisson
 Stralsund
+Stranraer
 Strathpeffer
 Valencia
 Pamplona
@@ -1113,6 +1156,8 @@ Siena
 Shacktown
 Shantytown
 Skagen
+Skellingthorpe
+Snaith
 Sorbonne
 Souilly
 Southampton
@@ -1130,12 +1175,14 @@ Sverige
 Sydney
 Szczecin
 Szczecinek
+Ta Kali
 Tallinn
 Tarawa
 Tarragona
 Tehachapi
 Tel Aviv
 Tesseney
+Thurleigh
 Tokio
 Tokyo
 Tromso
@@ -1177,6 +1224,7 @@ Waterloo
 Wellington
 Westhampnett
 Wyncote
+Wyton
 York
 Ypres
 Zalaegerszeg
@@ -1200,12 +1248,15 @@ Doberitz
 Biarritz
 Brest
 Cannes
+Mendlesham
 Menton
 Vannes
 Vichy
 Graz
 Trieste
 Wien
+Woodbridge
+Woodford
 Genoa
 Güstrow
 Gustrow
@@ -1239,6 +1290,7 @@ Dieppe
 Willits
 Wilna
 Wonsan
+Zeebrygge
 Öland
 Åland
 Åbo

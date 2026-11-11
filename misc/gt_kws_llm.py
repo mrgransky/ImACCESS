@@ -61,7 +61,7 @@ STRINGENTLY exclude keywords containing:
   - roman numerals, ordinal numbers, quantities, counts, or measurements
   - infrastructure/facility identifier, serial number, brand, building number, structure designation, or model
   - dates, times, years, decades, or any temporal references
-  - geographical place, country, commune, neighborhood, municipality, island, district, borough, or town
+  - geographical place, country, commune, neighborhood, municipality, island, district, civil parish, borough, or town
   - locations, routes, or directional terms
   - nationalities, ethnicities, or religions
   - underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words.

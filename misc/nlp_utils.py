@@ -1123,11 +1123,12 @@ def _post_process_(
 	)
 
 	# Modifiers that precede aviation echelons
-	# "Fighter Group", "Tactical Fighter Wing", "Bomb Squadron"
+	# "Fighter Group", "Tactical Fighter Wing", "Bomb Squadron", "Special Sqn", "Fighter Training Squadron"
 	_AIR_ROLES = (
 		r'(?:(?:tactical\s+)?fighter(?:\s+bomber)?|pursuit|bomb(?:er)?|bombardment|'
 		r'reconnaissance|recon|observation|transport|troop\s+carrier|air\s+commando|'
-		r'photo(?:graphic)?(?:\s+reconnaissance|\s+recon)?)\s+'
+		r'photo(?:graphic)?(?:\s+reconnaissance|\s+recon)?|'
+		r'special|training|fighter\s+training)\s+'
 	)
 
 	_NATIONALITY_MODIFIERS = r'(?:U\.?S\.?(?:A\.?)?|United States|British|Royal|French|German|Soviet|Russian|Allied)'
@@ -1141,7 +1142,7 @@ def _post_process_(
 		r'c\.?a\.?(?:\s+corps)?|coast\s+artillery|f\.?a\.?|field\s+artillery|a\.?a\.?|anti[- ]aircraft|'
 		r'artillery|arty\.?|transportation|colored\s+infantry|'
 		rf'{_NATIONALITY_MODIFIERS}|'
-		r'(?:[A-Za-z]\.?)+(?:\s+(?:[A-Za-z]\.?)+)?)\s+'  # catches state/regional qualifiers like "71st New York Infantry", "62nd C.A. Corps"
+		r'(?:[A-Za-z]\.?)+(?:\s+(?:[A-Za-z]\.?)+)?)\s+' # catches state/regional qualifiers like "71st New York Infantry", "62nd C.A. Corps"
 	)
 
 	_ECHELON_PATTERN = (
@@ -1165,10 +1166,11 @@ def _post_process_(
 		rf'(?:{_GROUND_ROLES})?(?:infantry|inf\.?|armored|armoured|campaign|marines|cavalry|cav\.?|engineers?|engr\.?|engrs\.?|arty\.?|artillery|f\.?a\.?|field\s+artillery|c\.?a\.?|coast\s+artillery|a\.?a\.?|anti[- ]aircraft|detachments?|det\.?)|'
 		
 		# 5. Air echelons (with or without mission role):
-		# "56th Fighter Group", "20th Pursuit Group", "50th Tactical Fighter Wing", "7th Photo Group", "First Tactical AF"
-		rf'(?:{_AIR_ROLES})?(?:group|squadron|sqdn\.?|wing)|tactical\s+af|'
+		# "56th Fighter Group", "20th Pursuit Group", "50th Tactical Fighter Wing", "7th Photo Group", "First Tactical AF", "40 Sqn", "551st Fighter Training Squadron"
+		rf'(?:{_AIR_ROLES})?(?:group|squadron|sqdn\.?|sqn\.?|wing)|tactical\s+af|'
 		
-		# 6. Naval formations: "6th Fleet", "Fifth Fleet", "Third Fleet Landing Force"
+		# 6. Naval formations: 
+		# "6th Fleet", "Fifth Fleet", "Third Fleet Landing Force"
 		r'fleet(?:\s+landing\s+force)?|'
 		
 		# 7. Administrative districts, military unit acronyms & abstract concepts
@@ -1193,6 +1195,8 @@ def _post_process_(
 	GENERIC_ECHELON_RE = re.compile(
 		rf'^(?:{_NATIONALITY_MODIFIERS}\s+)?(?:'
 		rf'{_ORDINAL_PATTERN}[- ]*(?:{_NATIONALITY_MODIFIERS}\s+)?(?:{_ECHELON_PATTERN})|'
+		rf'(?:(?:no\.?\s*)?\d{{1,4}}(?:st|nd|rd|th|d)?\.?)[- ]*(?:{_NATIONALITY_MODIFIERS}\s+)?(?:{_ECHELON_PATTERN})|'
+		rf'(?:squadron|sqdn\.?|sqn\.?)\s+\d{{1,4}}|'
 		rf'\d{{1,4}}(?:st|nd|rd|th|d)\.?[- ]*(?:[A-Za-z]\.?){{2,6}}'
 		rf'){_SUFFIX}$',
 		re.IGNORECASE
