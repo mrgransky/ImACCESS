@@ -687,6 +687,7 @@ Agadir
 Aguas Buenas
 Aleutian islanders
 Angers
+Angmagssalik
 Augusta
 Aix La Chapelle
 Aix-la-Chapelle
@@ -735,8 +736,8 @@ Berck
 Berlin
 Berline
 Bermuda
+Bessens
 Betio
-Betio Island
 Bilbao
 Binfield
 Bitterfeld
@@ -814,6 +815,7 @@ Coblenz
 Cologne
 Coltishall
 Combles
+Contay
 Copenhagen
 Cornay
 Corpus Christi
@@ -857,8 +859,14 @@ Elvington
 Ekeberg
 Embermesnil
 Emberménil
+Engebi
+Engers
 Erivan
+Essen
 Essex
+Etain
+Etraye
+Étraye
 Exeter
 Famechon
 Farnborough
@@ -913,6 +921,8 @@ Halmaheras
 Hamburg
 Hampshire
 Hanoi
+Hango
+Hangö
 Havana
 Harrogate
 Hausen
@@ -924,14 +934,17 @@ Helsingør
 Henderson
 Hendon
 Hennecourt
+Hep Duc
 Hiddensee
 Hirschfelde
 Hiroshima
 Hobsonville
 Hong Kong
 Hongkong
+Högforsen
 Horsens
 Hudson
+Hue
 Incheon
 Indochina
 Insterburg
@@ -939,6 +952,7 @@ Inverness
 Ipswich
 Islay
 Isle Royale
+Iskar
 Istanbul
 Istambul
 Iwo Jima
@@ -1035,6 +1049,7 @@ Montdidier
 Montmedy
 Moscov
 Moscow
+Moselle
 Munich
 Nagasaki
 Nagoya
@@ -1068,6 +1083,8 @@ Managua
 Manchester
 Marcus Island
 Marseille
+Masevaux
+Massavaux
 Montpellier
 Nice
 Norfolk
@@ -1158,6 +1175,7 @@ Shantytown
 Skagen
 Skellingthorpe
 Snaith
+Sommerance
 Sorbonne
 Souilly
 Southampton
@@ -1169,13 +1187,16 @@ Strasburg
 Strömsund
 Stumholmen
 Stuttgart
+Sumay
 Sunderland
 Sundsvall
 Sverige
 Sydney
 Szczecin
 Szczecinek
+Sännselet
 Ta Kali
+Tadji
 Tallinn
 Tarawa
 Tarragona
@@ -1202,7 +1223,10 @@ Valenciennes
 Valladolid
 Valparaíso
 Vancouver
+Vanlay
 Vanløse
+Van Port
+Vanport
 Varennes
 Vaudesincourt
 Vaux
@@ -1233,6 +1257,9 @@ Zaporoze
 Zaragoza
 Zeebrugge
 Zillebeke
+Zhizdra
+Zhovkva
+Zolkva
 Åre
 Östersund
 Artemowsk
@@ -1359,7 +1386,11 @@ Korean
 Koreans
 Kurd
 Kurdish
+Kuuipo
+Kvissle
+Lapp
 Lebanese
+Leintrey
 Luxembourgian
 Macedonian
 Malian
@@ -1377,9 +1408,15 @@ Nigerian
 North American
 North Korean
 Norwegian
+Näverede
 Okinawan
 Palestinian
 Papuan
+Pinwe
+Pinnwe
+Pali
+Pau
+Pukavik
 Pusan
 Persian
 Polish
@@ -1389,7 +1426,9 @@ Quebec
 Romanian
 Roumanian
 Russian
+Sami
 San Diegan
+Sangatte
 Scandinavian
 Scottish
 Senegalese

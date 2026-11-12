@@ -58,6 +58,7 @@ STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
 # print(STOPWORDS, type(STOPWORDS))
 useless_collection_terms = [
+	"Middle Ages",
 	"History of Langley Field",
 	"Airplanes - Instruments",
 	"Awards",

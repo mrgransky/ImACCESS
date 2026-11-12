@@ -1047,9 +1047,8 @@ def _post_process_(
 
 	TEMPORAL_NOISE_RE = re.compile(
 		rf'(?:'
-		# 1. Dates with a 4-digit year: "November 1962", "12 August 1945", "circa 1944", "early 1900", "est 1857"
-		rf'(?:^|\b)(?:c\.|circa|early|mid|late)?\s*(?:\d{{1,2}}\.?\s+)?{_MONTHS_SEASONS}\.?\s+(?:\d{{1,2}},?\s+)?{_YEAR_4DIGIT}\b|'
-		rf'\b{_YEAR_4DIGIT}\s+{_MONTHS_SEASONS}\b|'
+		# 1. Dates with a 4-digit year: "November 1962", "12 August 1945", "August 3rd, 1918", "spring of 1940", "circa 1944", "early 1900", "est 1857"
+		rf'(?:^|\b)(?:c\.|circa|early|mid|late|in|during)?\s*(?:(?:\d{{1,2}}(?:st|nd|rd|th)?\.?\s+(?:of\s+)?)?{_MONTHS_SEASONS}\.?(?:\s+\d{{1,2}}(?:st|nd|rd|th)?)?(?:,?\s+(?:of\s+)?|,?\s*){_YEAR_4DIGIT}\b|{_YEAR_4DIGIT}\s+(?:of\s+)?{_MONTHS_SEASONS}\b)|'
 		rf'^(?:(?:c\.?|ca\.?|circa|early|mid|late|est\.?|established|founded|built|around|about|approx\.?|post|pre)[- ]+)?{_YEAR_4DIGIT}(?:s|\'s)?\b|'
 		# 2. Calendar dates WITHOUT a year: "1 October", "1. Mai", "October 1st", "4th of July"
 		rf'^\d{{1,2}}\.?(?:st|nd|rd|th)?\s+(?:of\s+)?{_MONTHS_SEASONS}\.?$|'

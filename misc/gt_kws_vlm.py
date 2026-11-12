@@ -42,22 +42,28 @@ from utils import *
 
 PROMPT_TEMPLATE = """Extract no more than {k} prominent, concrete and visually grounded keywords from the image.
 Prioritize multi-word keywords whenever possible.
-Never return a keyword that is misspelled or malformed. If the keyword looks corrupted, skip it.
+
+STRICT PROHIBITION:
+  - Never derive a keyword that is misspelled or malformed. If the keyword looks corrupted, skip it.
+  - NEVER derive a keyword from any written text, lettering, or marking visible in the image.
+  - This includes names painted on hulls or fuselages, signage, labels, plates, banners, watermarks, and captions.
+  - Discard any candidate keyword that matches or paraphrases visible lettering before output.
 
 Constraints:
-  - Avoid Text or OCR extraction.
-  - Refrain from using underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words
   - Exclude geographical place, country, commune, neighborhood, municipality, island, district, borough, or town
   - Exclude locations, routes, or directional terms
-  - Avoid typographical error, misprints, or irregular orthography
   - Exclude human human category nouns and classifications
   - Exclude geographical names
   - Exclude dates, times, years, decades, or any temporal references
   - Exclude generic keywords for image characteristics
   - Refrain from using common environmental details
+  - Refrain from using underscores, snake_case, camelCase, kebab-case, slashes, or punctuation to join words
   - Refrain from using counting expressions
+  - Avoid typographical error, misprints, or irregular orthography
   - Avoid vague and generic descriptor or container nouns which lack detail
   - Avoid purely demographic descriptors without contextual role.
+
+Reminder: no keyword may correspond to text visible anywhere in the image.
 
 Output ONLY a a Python list of double-quoted strings containing keywords derived from the visual content of the image."""
 
