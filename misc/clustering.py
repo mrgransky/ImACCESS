@@ -26,8 +26,8 @@ if not getattr(Normalize, "_rogue_kwargs_patched", False):
 	Normalize._rogue_kwargs_patched = True
 
 CUSTOM_ENCODE_INSTRUCTION = (
-	"Instruct: Given a keyword which describes a historical archive, "
-	"retrieve keywords matching the similar concept\nQuery:"
+	"Instruct: Represent the historical archival keyword focusing on its entity category "
+	"rather than its geographic affinity.\nQuery: "
 )
 
 def summarize_canonical_selection(
@@ -71,6 +71,17 @@ def summarize_canonical_selection(
 		f"clusters {n:,} | labels {labels:,} "
 		f"({labels / max(n, 1):.2f} per cluster) | label instances {total_instances:,}"
 	)
+	aug_meta = meta.get("feature_space_augmentation")
+	if aug_meta and aug_meta.get("enabled"):
+		n_uheads = aug_meta.get("head_extraction", {}).get("n_unique_normalized_heads", 0)
+		emit(
+			f"feature_space_augmentation: {aug_meta.get('method')} | "
+			f"alpha={aug_meta.get('full_weight')} beta={aug_meta.get('head_weight')} | "
+			f"dims={aug_meta.get('base_dim')}+{aug_meta.get('head_subspace_dim')}="
+			f"{aug_meta.get('augmented_dim')} | "
+			f"unique_heads={n_uheads:,} "
+			f"(SVD energy={aug_meta.get('svd_explained_energy_pct', 0.0):.2f}%)"
+		)
 
 	section("1. cluster sizes")
 	if clusters:
@@ -2581,6 +2592,450 @@ def _validate_embeddings(X: np.ndarray, unique_labels: List[str]) -> None:
 	if np.allclose(X, 0):
 		raise ValueError("All embeddings are zero vectors")
 
+_AUG_TRAILING_PUNCT = re.compile(r'[^\w]+$')
+_AUG_DOTTED_ACRONYM = re.compile(r'^(?:[a-z]\.)+[a-z]?$')
+_AUG_VERSION_RE = re.compile(r'^(?:(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})|\d+[a-z]{0,2}|[a-z])$')
+_AUG_VERSION_MARKERS = frozenset({'mark', 'type', 'typ', 'model', 'no', 'ausf', 'series'})
+
+_AUG_APPOSITIVE_TITLES = frozenset({
+	'ambassador', 'ambassadors', 'consul', 'diplomat', 'president', 'general',
+	'admiral', 'minister', 'senator', 'governor', 'mayor', 'colonel', 'captain',
+	'lieutenant', 'commander', 'king', 'queen', 'prince', 'princess', 'emperor',
+	'empress', 'pope', 'bishop', 'archbishop', 'cardinal', 'chancellor', 'premier',
+	'secretary', 'commissioner', 'judge', 'justice', 'doctor', 'professor',
+})
+
+_AUG_POSTPOSITIVE_GENERAL_TITLES = frozenset({
+	'consul', 'secretary', 'attorney', 'solicitor', 'advocate', 'inspector',
+	'postmaster', 'governor', 'surgeon', 'director', 'comptroller', 'vicar',
+})
+
+_AUG_FACILITY_EVENT_FOLLOWERS = frozenset({
+	'hotel', 'bridge', 'building', 'palace', 'residence', 'house', 'office',
+	'embassy', 'consulate', 'legation', 'mission', 'delegation', 'commission',
+	'committee', 'conference', 'meeting', 'summit', 'reception', 'banquet',
+	'luncheon', 'dinner', 'party', 'ball', 'visit', 'tour', 'arrival', 'departure',
+	'car', 'plane', 'aircraft', 'ship', 'yacht', 'train', 'hospital', 'school',
+	'university', 'college', 'library', 'museum', 'park', 'square', 'street',
+	'avenue', 'boulevard', 'memorial', 'monument', 'statue', 'portrait', 'bust',
+	'tomb', 'grave', 'funeral', 'wedding', 'wife', 'family', 'staff', 'guard',
+	'escort', 'trophy', 'cup', 'medal', 'award', 'prize', 'flag', 'seal', 'coat',
+	'uniform', 'hat', 'cap', 'helmet', 'sword', 'rifle', 'tank', 'division',
+	'regiment', 'battalion', 'brigade', 'corps', 'army', 'fleet', 'squadron',
+})
+
+def _aug_norm_token(tok: str) -> str:
+	t = _AUG_TRAILING_PUNCT.sub('', tok.lower())
+	return t.replace('.', '') if _AUG_DOTTED_ACRONYM.match(t) else t
+
+def _aug_strip_version_tail(toks: List[str]) -> List[str]:
+	toks = list(toks)
+	while len(toks) > 1 and bool(_AUG_VERSION_RE.match(toks[-1])):
+		if toks[-1][0].isdigit() and re.fullmatch(r'[a-z]{1,3}', toks[-2]) and toks[-2] not in _AUG_VERSION_MARKERS:
+			break
+		toks.pop()
+		while len(toks) > 1 and toks[-1] in _AUG_VERSION_MARKERS:
+			toks.pop()
+	return toks
+
+def _extract_syntactic_head_tokens(
+	unique_labels: List[str],
+) -> Tuple[List[str], Dict[str, str], Dict[str, Any]]:
+	"""
+	Extract corpus-normalized syntactic head tokens for Option B (Embedding Feature Space Augmentation).
+
+	Handles:
+	1. Prepositional post-modifier truncation (via _CORE_PREPOSITIONS including 'to', e.g. 'Ambassador to Cuba' -> 'ambassador').
+	2. Trailing version/designation marker stripping ('Ventura Mk II' -> 'ventura').
+	3. Romance post-positive 'general' stripping after civil/diplomatic titles ('Cuban Consul General' -> 'consul').
+	4. Corpus-aware appositive title fallback ('Cuban Ambassador Guillermo Belt' -> 'ambassador' when 'belt' is a
+	   singleton surname in the corpus, while preserving recurring historical figures like 'Roosevelt').
+	5. Corpus-aware plural-to-singular unification ('Ambassadors' -> 'ambassador', 'Embassies' -> 'embassy').
+	"""
+	parsed_phrases: List[List[Tuple[str, str]]] = []
+	raw_heads: List[str] = []
+	surface_counts: Dict[str, Counter] = defaultdict(Counter)
+	single_word_vocab: set = set()
+
+	for lbl in unique_labels:
+		raw_pairs = [(t, _aug_norm_token(t)) for t in lbl.split() if _aug_norm_token(t)]
+		if not raw_pairs:
+			parsed_phrases.append([])
+			raw_heads.append(lbl.lower().strip() or "unknown")
+			continue
+
+		if len(raw_pairs) == 1:
+			single_word_vocab.add(raw_pairs[0][1])
+
+		for rt, nt in raw_pairs:
+			clean_rt = _AUG_TRAILING_PUNCT.sub('', rt) or rt
+			surface_counts[nt][clean_rt] += 1
+
+		# 1. Truncate before first preposition (never at index 0)
+		cut = len(raw_pairs)
+		for i, (_, nt) in enumerate(raw_pairs):
+			if i > 0 and nt in _CORE_PREPOSITIONS:
+				cut = i
+				break
+		hp_pairs = raw_pairs[:cut]
+
+		# 2. Strip trailing version markers
+		norm_seq = _aug_strip_version_tail([nt for _, nt in hp_pairs])
+		hp_pairs = hp_pairs[:len(norm_seq)]
+
+		# 3. Strip post-positive 'general' after civil/diplomatic titles ('Consul General' -> 'Consul')
+		if len(hp_pairs) >= 2 and hp_pairs[-1][1] == 'general' and hp_pairs[-2][1] in _AUG_POSTPOSITIVE_GENERAL_TITLES:
+			hp_pairs = hp_pairs[:-1]
+
+		parsed_phrases.append(hp_pairs)
+		raw_heads.append(hp_pairs[-1][1] if hp_pairs else raw_pairs[-1][1])
+
+	raw_head_counts = Counter(raw_heads)
+	known_vocab = set(raw_head_counts.keys()) | single_word_vocab
+
+	final_heads: List[str] = []
+	n_appositive_normalized = 0
+	n_plural_normalized = 0
+	appositive_examples: List[Dict[str, str]] = []
+	plural_examples: List[Dict[str, str]] = []
+
+	for idx, (lbl, hp_pairs, h_raw) in enumerate(zip(unique_labels, parsed_phrases, raw_heads)):
+		h = h_raw
+
+		# 4. Corpus-aware appositive title fallback:
+		# If the phrase contains an explicit title/role noun followed by capitalized personal name tokens
+		# whose trailing surname is a singleton head in the corpus (raw_head_counts[h] == 1),
+		# fall back to the title noun (e.g. 'Cuban Ambassador Guillermo Belt' -> 'ambassador').
+		if len(hp_pairs) >= 2 and raw_head_counts[h] == 1:
+			for i, (rt, nt) in enumerate(hp_pairs[:-1]):
+				stem_nt = _stem_token(nt)
+				if nt in _AUG_APPOSITIVE_TITLES or stem_nt in _AUG_APPOSITIVE_TITLES:
+					tail = hp_pairs[i + 1:]
+					if tail and all(
+						tp[0][:1].isupper()
+						and tp[1] not in _AUG_FACILITY_EVENT_FOLLOWERS
+						and not any(ch.isdigit() for ch in tp[1])
+						for tp in tail
+					):
+						target_title = stem_nt if stem_nt in known_vocab else nt
+						if raw_head_counts.get(target_title, 0) >= 2 or target_title in _AUG_APPOSITIVE_TITLES:
+							h = target_title
+							n_appositive_normalized += 1
+							if len(appositive_examples) < 10:
+								appositive_examples.append({"label": lbl, "from_head": h_raw, "to_head": h})
+							break
+
+		# 5. Corpus-aware plural-to-singular normalization ('ambassadors' -> 'ambassador', 'embassies' -> 'embassy')
+		stem_h = _stem_token(h)
+		if stem_h != h and len(stem_h) >= 3 and stem_h in known_vocab:
+			if len(plural_examples) < 10 and h != stem_h:
+				plural_examples.append({"label": lbl, "from_head": h, "to_head": stem_h})
+			h = stem_h
+			n_plural_normalized += 1
+
+		final_heads.append(h)
+
+	# Preferred surface form for each normalized head token
+	head_surface_map: Dict[str, str] = {}
+	for h in set(final_heads):
+		if h in surface_counts and surface_counts[h]:
+			head_surface_map[h] = max(surface_counts[h].items(), key=lambda kv: (kv[1], kv[0]))[0]
+		else:
+			head_surface_map[h] = h
+
+	head_counts = Counter(final_heads)
+	stats = {
+		"n_labels": len(unique_labels),
+		"n_unique_raw_heads": len(raw_head_counts),
+		"n_unique_normalized_heads": len(head_counts),
+		"consolidation_factor": round(len(unique_labels) / max(len(head_counts), 1), 2),
+		"n_appositive_title_normalized": n_appositive_normalized,
+		"n_plural_singular_normalized": n_plural_normalized,
+		"top_syntactic_heads": [
+			{"head_token": k, "surface": head_surface_map.get(k, k), "count": int(v), "pct": round(v / max(len(unique_labels), 1) * 100, 2)}
+			for k, v in head_counts.most_common(15)
+		],
+		"appositive_examples": appositive_examples[:6],
+		"plural_examples": plural_examples[:6],
+	}
+	return final_heads, head_surface_map, stats
+
+def _print_augmentation_diagnostics(aug_info: Dict[str, Any], cached: bool = False) -> None:
+	if not aug_info or not aug_info.get("enabled", False):
+		return
+	tag = " [CACHED]" if cached else ""
+	print("\n" + "=" * 110)
+	print(f"[HYBRID FEATURE SPACE AUGMENTATION (Option B)]{tag}")
+	print(f"  ├─ Mathematical Model       X_tilde = [ sqrt(1 - β²) · X_full  ||  β · H_head_proj ]  (Direct-Sum Hilbert Space)")
+	print(f"  ├─ Subspace Dimensions      Full: {aug_info['base_dim']}D  ⊕  Head: {aug_info['head_subspace_dim']}D  =>  Augmented: {aug_info['augmented_dim']}D")
+	print(f"  ├─ Weighting Parameters     β (head_weight) = {aug_info['head_weight']:.4f}  |  α = sqrt(1 - β²) = {aug_info['full_weight']:.4f}")
+	print(f"  ├─ Variance Allocation      Full-Phrase Semantics: {aug_info['full_variance_pct']:.1f}%  |  Syntactic-Head Semantics: {aug_info['head_variance_pct']:.1f}%")
+	print(f"  ├─ SVD Head Subspace        Retained {aug_info['svd_explained_energy_pct']:.2f}% Gram energy in {aug_info['head_subspace_dim']}D (elapsed: {aug_info.get('elapsed_sec', 0.0):.2f}s)")
+	h_stats = aug_info.get("head_extraction", {})
+	if h_stats:
+		print(f"  ├─ Syntactic Head Vocab     {h_stats['n_unique_normalized_heads']:,} unique heads from {h_stats['n_labels']:,} labels ({h_stats['consolidation_factor']}x label-to-head ratio)")
+		print(f"  ├─ Linguistic Normalizations Plural->Singular: {h_stats['n_plural_singular_normalized']:,}  |  Appositive Title Fallback: {h_stats['n_appositive_title_normalized']:,}")
+		print(f"  ├─ Head Embedding Lookup    Indexed in X: {aug_info.get('n_heads_indexed_in_X', 0):,}  |  Encoded on-the-fly: {aug_info.get('n_heads_encoded_on_fly', 0):,}")
+		top_heads = h_stats.get("top_syntactic_heads", [])[:10]
+		if top_heads:
+			top_str = ", ".join(f"{h['head_token']!r}:{h['count']}" for h in top_heads)
+			print(f"  ├─ Top Syntactic Heads      {top_str}")
+	bench = aug_info.get("disentanglement_benchmark", {})
+	if bench and bench.get("n_same_head_pairs", 0) > 0:
+		print(f"  └─ Semantic Disentanglement Verification (Same-Head/Diff-Modifier vs. Same-Modifier/Diff-Head):")
+		print(f"     ├─ Same-Head / Diff-Modifier ({bench['n_same_head_pairs']:,} pairs)     : Pre-Aug Cosine = {bench['same_head_cos_before']:.4f}  ->  Post-Aug Cosine = {bench['same_head_cos_after']:.4f} ({bench['same_head_delta']:+.4f})")
+		print(f"     ├─ Same-Modifier / Diff-Head ({bench['n_same_modifier_pairs']:,} pairs) : Pre-Aug Cosine = {bench['same_modifier_cos_before']:.4f}  ->  Post-Aug Cosine = {bench['same_modifier_cos_after']:.4f} ({bench['same_modifier_delta']:+.4f})")
+		print(f"     └─ Entity Separation Margin (SameHead - SameMod) : Pre-Aug = {bench['margin_before']:+.4f}  ->  Post-Aug = {bench['margin_after']:+.4f} (Gain = {bench['margin_gain']:+.4f})")
+		examples = bench.get("example_pairs", [])
+		if examples:
+			print("-" * 110)
+			print(f"     {'Pair Type':<26} {'Label A':<30} {'Label B':<30} {'PreCos':<8} {'PostCos':<8} {'ΔCos'}")
+			print("     " + "-" * 105)
+			for ex in examples:
+				print(
+					f"     {ex['pair_type']:<26} {ex['label_a'][:29]:<30} {ex['label_b'][:29]:<30} "
+					f"{ex['cos_before']:<8.4f} {ex['cos_after']:<8.4f} {ex['delta']:+.4f}"
+				)
+	print("=" * 110)
+
+def _build_augmented_feature_space(
+	X: np.ndarray,
+	unique_labels: List[str],
+	model: SentenceTransformer,
+	batch_size: int,
+	encode_prompt: Optional[str] = None,
+	head_weight: float = 0.45,
+	head_subspace_dim: int = 256,
+	verbose: bool = False,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+	"""
+	Option B: Embedding Feature Space Augmentation.
+	Constructs the orthogonal direct-sum representation:
+		X_tilde_i = [ sqrt(1 - β²) * X_i  ||  β * H_head(i) ]
+	where X_i is the unit-normalized full-label embedding in R^D and H_head(i)
+	is the unit-normalized SVD-compressed syntactic head embedding in R^{d_head}.
+	"""
+	t0 = time.time()
+	n_labels, base_dim = X.shape
+	if head_weight <= 0.0 or head_weight >= 1.0:
+		info = {
+			"enabled": False,
+			"head_weight": 0.0,
+			"full_weight": 1.0,
+			"base_dim": int(base_dim),
+			"head_subspace_dim": 0,
+			"augmented_dim": int(base_dim),
+		}
+		return X, info
+
+	# Ensure base X rows are unit L2-normalized
+	x_norms = np.linalg.norm(X, axis=1, keepdims=True)
+	x_norms = np.where(x_norms == 0, 1.0, x_norms)
+	X_unit = (X / x_norms).astype(np.float32, copy=False)
+
+	# 1. Extract corpus-normalized syntactic head tokens
+	head_tokens, head_surface_map, head_stats = _extract_syntactic_head_tokens(unique_labels)
+	unique_heads = sorted(set(head_tokens))
+	head_to_uidx = {h: i for i, h in enumerate(unique_heads)}
+	n_unique_heads = len(unique_heads)
+
+	# 2. Resolve head embeddings: reuse rows from X_unit when head exists as a standalone label, encode missing
+	label_lower_to_idx = {lbl.lower(): idx for idx, lbl in enumerate(unique_labels)}
+	U_head = np.zeros((n_unique_heads, base_dim), dtype=np.float32)
+	missing_uidx: List[int] = []
+	missing_surfaces: List[str] = []
+
+	for uidx, h in enumerate(unique_heads):
+		surf = head_surface_map.get(h, h)
+		if surf.lower() in label_lower_to_idx:
+			U_head[uidx] = X_unit[label_lower_to_idx[surf.lower()]]
+		elif h in label_lower_to_idx:
+			U_head[uidx] = X_unit[label_lower_to_idx[h]]
+		else:
+			missing_uidx.append(uidx)
+			missing_surfaces.append(surf)
+
+	n_indexed_in_X = n_unique_heads - len(missing_uidx)
+	n_encoded_on_fly = len(missing_uidx)
+
+	if missing_surfaces:
+		encoded_missing = _encode_(model, missing_surfaces, batch_size, encode_prompt)
+		m_norms = np.linalg.norm(encoded_missing, axis=1, keepdims=True)
+		m_norms = np.where(m_norms == 0, 1.0, m_norms)
+		U_head[missing_uidx] = (encoded_missing / m_norms).astype(np.float32)
+
+	# 3. Compress head embedding matrix U_head (K, D) -> U_proj (K, d_head) via 2-pass randomized SVD
+	d_head = min(int(head_subspace_dim), n_unique_heads, base_dim)
+	if d_head < base_dim:
+		if n_unique_heads > d_head:
+			rng = np.random.default_rng(42)
+			oversample = min(16, max(1, n_unique_heads - d_head))
+			q_dim = d_head + oversample
+			omega = rng.standard_normal((base_dim, q_dim)).astype(np.float32)
+			Y = U_head @ omega
+			for _ in range(2):
+				Q, _ = np.linalg.qr(Y, mode='reduced')
+				Z_sub = U_head.T @ Q
+				Q_z, _ = np.linalg.qr(Z_sub, mode='reduced')
+				Y = U_head @ Q_z
+			Q, _ = np.linalg.qr(Y, mode='reduced')
+			B = Q.T @ U_head
+			_, S_sub, Vt_sub = np.linalg.svd(B, full_matrices=False)
+		else:
+			# Exact thin SVD when K <= d_head: zero information loss in K dimensions
+			_, S_sub, Vt_sub = np.linalg.svd(U_head, full_matrices=False)
+		total_energy = float(np.sum(U_head ** 2))
+		retained_energy = float(np.sum(S_sub[:d_head] ** 2))
+		explained_energy_pct = round(min(100.0, retained_energy / max(total_energy, 1e-12) * 100.0), 2)
+		U_proj = (U_head @ Vt_sub[:d_head].T).astype(np.float32)
+	else:
+		U_proj = U_head.copy()
+		d_head = U_proj.shape[1]
+		explained_energy_pct = 100.0
+
+	# Unit-normalize projected head vectors so ||H_head(i)||_2 = 1.0
+	p_norms = np.linalg.norm(U_proj, axis=1, keepdims=True)
+	p_norms = np.where(p_norms == 0, 1.0, p_norms)
+	U_proj = (U_proj / p_norms).astype(np.float32)
+
+	# 4. Assemble X_aug = [ sqrt(1 - β²) * X_unit  ||  β * H_proj ] in R^{D + d_head}
+	beta = float(head_weight)
+	alpha = float(np.sqrt(max(0.0, 1.0 - beta * beta)))
+	head_row_indices = np.array([head_to_uidx[h] for h in head_tokens], dtype=np.int32)
+
+	X_aug = np.empty((n_labels, base_dim + d_head), dtype=np.float32)
+	X_aug[:, :base_dim] = alpha * X_unit
+	X_aug[:, base_dim:] = beta * U_proj[head_row_indices]
+
+	# 5. Compute Semantic Disentanglement Benchmark (Same-Head/Diff-Mod vs Same-Mod/Diff-Head)
+	by_head: Dict[str, List[int]] = defaultdict(list)
+	by_modifier: Dict[str, List[int]] = defaultdict(list)
+	for idx, (lbl, h) in enumerate(zip(unique_labels, head_tokens)):
+		toks = [_aug_norm_token(t) for t in lbl.split() if _aug_norm_token(t)]
+		if len(toks) == 2 and toks[1] != toks[0]:
+			by_head[h].append(idx)
+			by_modifier[toks[0]].append(idx)
+
+	rng_bench = np.random.default_rng(42)
+	same_head_pairs: List[Tuple[int, int]] = []
+	for h, idxs in by_head.items():
+		if len(idxs) >= 2:
+			for _ in range(min(6, len(idxs))):
+				i1, i2 = rng_bench.choice(idxs, size=2, replace=False)
+				if unique_labels[i1].split()[0].lower() != unique_labels[i2].split()[0].lower():
+					same_head_pairs.append((int(i1), int(i2)))
+					if len(same_head_pairs) >= 1500:
+						break
+		if len(same_head_pairs) >= 1500:
+			break
+
+	same_mod_pairs: List[Tuple[int, int]] = []
+	for mod, idxs in by_modifier.items():
+		if len(idxs) >= 2:
+			for a_i in range(len(idxs)):
+				for b_i in range(a_i + 1, min(len(idxs), a_i + 4)):
+					i1, i2 = idxs[a_i], idxs[b_i]
+					if head_tokens[i1] != head_tokens[i2]:
+						same_mod_pairs.append((int(i1), int(i2)))
+						if len(same_mod_pairs) >= 1500:
+							break
+				if len(same_mod_pairs) >= 1500:
+					break
+		if len(same_mod_pairs) >= 1500:
+			break
+
+	def _eval_pairs(pairs: List[Tuple[int, int]]) -> Tuple[float, float]:
+		if not pairs:
+			return 0.0, 0.0
+		p_arr = np.array(pairs, dtype=np.int32)
+		idx_a, idx_b = p_arr[:, 0], p_arr[:, 1]
+		cos_before = np.sum(X_unit[idx_a] * X_unit[idx_b], axis=1)
+		cos_after = np.sum(X_aug[idx_a] * X_aug[idx_b], axis=1)
+		return float(np.mean(cos_before)), float(np.mean(cos_after))
+
+	sh_before, sh_after = _eval_pairs(same_head_pairs)
+	sm_before, sm_after = _eval_pairs(same_mod_pairs)
+
+	# Collect illustrative example pairs (prioritizing diplomatic/institutional pairs if present)
+	example_pairs: List[Dict[str, Any]] = []
+	target_Anchors = [
+		("Same-Modifier / Diff-Head", "Cuban Ambassador", "Cuban Embassy"),
+		("Same-Modifier / Diff-Head", "German Ambassador", "German Embassy"),
+		("Same-Modifier / Diff-Head", "Turkish Ambassador", "Turkish Embassy"),
+		("Same-Head / Diff-Modifier", "Cuban Ambassador", "Brazilian Ambassador"),
+		("Same-Head / Diff-Modifier", "Cuban Embassy", "Peruvian Embassy"),
+		("Same-Head / Diff-Modifier", "German Ambassador", "French Ambassador"),
+	]
+	for ptype, la, lb in target_Anchors:
+		ia = label_lower_to_idx.get(la.lower())
+		ib = label_lower_to_idx.get(lb.lower())
+		if ia is not None and ib is not None:
+			cb = float(np.dot(X_unit[ia], X_unit[ib]))
+			ca = float(np.dot(X_aug[ia], X_aug[ib]))
+			example_pairs.append({
+				"pair_type": ptype,
+				"label_a": unique_labels[ia],
+				"label_b": unique_labels[ib],
+				"head_a": head_tokens[ia],
+				"head_b": head_tokens[ib],
+				"cos_before": round(cb, 4),
+				"cos_after": round(ca, 4),
+				"delta": round(ca - cb, 4),
+			})
+
+	if len(example_pairs) < 4:
+		for ptype, plist in [("Same-Modifier / Diff-Head", same_mod_pairs[:3]), ("Same-Head / Diff-Modifier", same_head_pairs[:3])]:
+			for ia, ib in plist:
+				cb = float(np.dot(X_unit[ia], X_unit[ib]))
+				ca = float(np.dot(X_aug[ia], X_aug[ib]))
+				example_pairs.append({
+					"pair_type": ptype,
+					"label_a": unique_labels[ia],
+					"label_b": unique_labels[ib],
+					"head_a": head_tokens[ia],
+					"head_b": head_tokens[ib],
+					"cos_before": round(cb, 4),
+					"cos_after": round(ca, 4),
+					"delta": round(ca - cb, 4),
+				})
+
+	elapsed = round(time.time() - t0, 2)
+	aug_info = {
+		"enabled": True,
+		"method": "direct_sum_syntactic_head_augmentation",
+		"head_weight": round(beta, 4),
+		"full_weight": round(alpha, 4),
+		"full_variance_pct": round(alpha * alpha * 100.0, 2),
+		"head_variance_pct": round(beta * beta * 100.0, 2),
+		"base_dim": int(base_dim),
+		"head_subspace_dim": int(d_head),
+		"augmented_dim": int(base_dim + d_head),
+		"svd_explained_energy_pct": explained_energy_pct,
+		"n_heads_indexed_in_X": int(n_indexed_in_X),
+		"n_heads_encoded_on_fly": int(n_encoded_on_fly),
+		"elapsed_sec": elapsed,
+		"head_extraction": head_stats,
+		"disentanglement_benchmark": {
+			"n_same_head_pairs": len(same_head_pairs),
+			"n_same_modifier_pairs": len(same_mod_pairs),
+			"same_head_cos_before": round(sh_before, 4),
+			"same_head_cos_after": round(sh_after, 4),
+			"same_head_delta": round(sh_after - sh_before, 4),
+			"same_modifier_cos_before": round(sm_before, 4),
+			"same_modifier_cos_after": round(sm_after, 4),
+			"same_modifier_delta": round(sm_after - sm_before, 4),
+			"margin_before": round(sh_before - sm_before, 4),
+			"margin_after": round(sh_after - sm_after, 4),
+			"margin_gain": round((sh_after - sm_after) - (sh_before - sm_before), 4),
+			"example_pairs": example_pairs,
+		},
+	}
+
+	if verbose:
+		_print_augmentation_diagnostics(aug_info, cached=False)
+
+	return X_aug, aug_info
+
 def _compute_linkage(
 	X: np.ndarray, 
 	linkage_method: str, 
@@ -2589,8 +3044,12 @@ def _compute_linkage(
 ) -> np.ndarray:
 
 	if linkage_method == "ward":
-		return fastcluster.linkage(X, method='ward', metric='euclidean') if use_fastcluster \
-			else linkage(X, method='ward', metric='euclidean')
+		if use_fastcluster:
+			if verbose:
+				print(f"[LINKAGE] {linkage_method} distance_metric: euclidean (fastcluster) on shape {X.shape}")
+			return fastcluster.linkage(X, method=linkage_method, metric='euclidean')
+		else:
+			return linkage(X, method='ward', metric='euclidean')
 
 	if distance_metric == "cosine":
 		distance_matrix = np.clip(1 - (X @ X.T), 0, 2)
@@ -2598,14 +3057,14 @@ def _compute_linkage(
 		condensed_dist = squareform(distance_matrix, checks=False)
 		
 		if verbose:
-			print(f"[LINKAGE] Using {linkage_method} linkage with {distance_metric} distance")
+			print(f"[LINKAGE] {linkage_method} linkage with {distance_metric} distance")
 		
 		return fastcluster.linkage(condensed_dist, method=linkage_method) if use_fastcluster \
 			else scipy.cluster.hierarchy.linkage(condensed_dist, method=linkage_method)
 
 	if distance_metric == "euclidean":
 		if verbose:
-			print(f"[LINKAGE] Using {linkage_method} linkage with Euclidean distance")
+			print(f"[LINKAGE] {linkage_method} linkage with {distance_metric} distance")
 		return fastcluster.linkage(X, method=linkage_method, metric='euclidean') if use_fastcluster \
 			else scipy.cluster.hierarchy.linkage(X, method=linkage_method, metric='euclidean')
 	
@@ -2618,6 +3077,8 @@ def _caching(
 	distance_metric: str,
 	unique_labels: List[str],
 	encode_prompt: Optional[str] = None,
+	head_augmentation_weight: float = 0.45,
+	head_subspace_dim: int = 256,
 	verbose: bool = False,
 ) -> Tuple[str, str]:
 
@@ -2630,9 +3091,9 @@ def _caching(
 			label_blob.encode("utf-8")
 	).hexdigest()[:16]
 	
-	# Full cache key
+	# Full cache key for raw embeddings X
 	# The prompt changes every embedding, so it is part of the key. It is added ONLY when set:
-	# with encode_prompt=None the key is byte-for-byte what it was, so existing caches stay valid.
+	# with encode_prompt=None the key is byte-for-byte what it was, so existing X caches stay valid.
 	key_parts = [
 		model_id, 
 		str(dtype), 
@@ -2656,7 +3117,10 @@ def _caching(
 	)
 	
 	x_path = stem + "_embeddings_X.npy"
-	z_path = stem + "_linkage_Z.npy"
+	if head_augmentation_weight and head_augmentation_weight > 0.0:
+		z_path = f"{stem}_headaug_w{head_augmentation_weight:.2f}_d{head_subspace_dim}_linkage_Z.npy"
+	else:
+		z_path = stem + "_linkage_Z.npy"
 	
 	if verbose:
 		print(f"[CACHE]")
@@ -2665,6 +3129,7 @@ def _caching(
 		print(f"  ├─ linkage        {linkage_method}")
 		print(f"  ├─ distance       {distance_metric}")
 		print(f"  ├─ encode prompt  {encode_prompt!r}")
+		print(f"  ├─ head aug (β)   {head_augmentation_weight:.2f} (subspace_dim={head_subspace_dim})")
 		print(f"  ├─ labels         {len(unique_labels)}")
 		print(f"  ├─ label hash     {label_hash}")
 		print(f"  ├─ cache key      {key}")
@@ -2699,6 +3164,7 @@ def _save_cache_manifest(
 	embedding_dtype: Any,
 	linkage_method: str,
 	encode_prompt: Optional[str]=None,
+	feature_space_augmentation: Optional[Dict[str, Any]]=None,
 	verbose: bool=False,
 ) -> str:
 	manifest_path = x_path.replace("_embeddings_X.npy", "_manifest.json")
@@ -2717,6 +3183,7 @@ def _save_cache_manifest(
 		"embedding_shape": list(embedding_shape),
 		"embedding_dtype": str(embedding_dtype),
 		"encode_prompt": encode_prompt,
+		"feature_space_augmentation": feature_space_augmentation,
 		"created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
 	}
 	
@@ -2748,14 +3215,19 @@ def get_clustering_artifacts(
 	distance_metric: str,
 	use_cache: bool = True,
 	encode_prompt: Optional[str] = None,
+	head_augmentation_weight: float = 0.45,
+	head_subspace_dim: int = 256,
+	return_augmentation_info: bool = False,
 	verbose: bool = False,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray, Dict[str, Any]]]:
 	"""
 	Load cached embeddings/linkage when valid; otherwise compute and
 	independently cache each artifact.
 
-	Embeddings and linkage are cached independently so that if linkage
-	computation fails after embeddings are saved, the next run can reuse X.
+	When head_augmentation_weight > 0, constructs the Option B Hybrid Feature Space
+	Augmentation X_tilde = [sqrt(1 - β²) X || β H_head] prior to computing the
+	hierarchical linkage Z, while returning the un-distorted base embeddings X
+	for downstream similarity evaluation and canonical selection.
 	"""
 	model_id = model.model_card_data.base_model 
 	dtype = next(model.parameters()).dtype
@@ -2767,11 +3239,19 @@ def get_clustering_artifacts(
 		distance_metric=distance_metric,
 		unique_labels=unique_labels,
 		encode_prompt=encode_prompt,
+		head_augmentation_weight=head_augmentation_weight,
+		head_subspace_dim=head_subspace_dim,
 		verbose=verbose,
 	)
+	z_aug_meta_path = z_path.replace("_linkage_Z.npy", "_augmentation_meta.json")
 
 	X = None
 	Z = None
+	augmentation_info: Dict[str, Any] = {
+		"enabled": bool(head_augmentation_weight and head_augmentation_weight > 0.0),
+		"head_weight": float(head_augmentation_weight or 0.0),
+		"head_subspace_dim": int(head_subspace_dim),
+	}
 
 	n_labels = len(unique_labels)
 
@@ -2867,20 +3347,55 @@ def get_clustering_artifacts(
 
 				Z = None
 
-			elif verbose:
-				print(f"[CACHE HIT] linkage: {Z.shape} {Z.dtype} ({Z.nbytes / 1e6:.2f} MB)")
+			else:
+				if verbose:
+					print(f"[CACHE HIT] linkage: {Z.shape} {Z.dtype} ({Z.nbytes / 1e6:.2f} MB)")
+				if os.path.exists(z_aug_meta_path):
+					try:
+						with open(z_aug_meta_path, "r", encoding="utf-8") as f:
+							augmentation_info = json.load(f)
+						if verbose:
+							_print_augmentation_diagnostics(augmentation_info, cached=True)
+					except Exception as e:
+						if verbose:
+							print(f"[CACHE] Warning: could not read {z_aug_meta_path}: {e}")
 
 		except Exception as e:
 			print(f"[CACHE] Failed to load linkage ({type(e).__name__}: {e})")
 			Z = None
 
 	if Z is None:
+		if head_augmentation_weight and head_augmentation_weight > 0.0:
+			X_for_linkage, augmentation_info = _build_augmented_feature_space(
+				X=X,
+				unique_labels=unique_labels,
+				model=model,
+				batch_size=batch_size,
+				encode_prompt=encode_prompt,
+				head_weight=head_augmentation_weight,
+				head_subspace_dim=head_subspace_dim,
+				verbose=verbose,
+			)
+		else:
+			X_for_linkage = X
+			augmentation_info = {
+				"enabled": False,
+				"head_weight": 0.0,
+				"full_weight": 1.0,
+				"base_dim": int(X.shape[1]),
+				"head_subspace_dim": 0,
+				"augmented_dim": int(X.shape[1]),
+			}
+
 		if verbose:
-			print(f"[LINKAGE] {linkage_method} {X.shape} embeddings [takes a while...]")
+			print(f"[LINKAGE] {linkage_method} {X_for_linkage.shape} embeddings [takes a while...]")
 
 		t0 = time.time()
 
-		Z = _compute_linkage(X, linkage_method, distance_metric, verbose=verbose,)
+		Z = _compute_linkage(X_for_linkage, linkage_method, distance_metric, verbose=verbose)
+
+		if X_for_linkage is not X:
+			del X_for_linkage
 
 		if verbose:
 			print(
@@ -2892,14 +3407,19 @@ def get_clustering_artifacts(
 
 		if use_cache:
 			_save_npy_atomic(z_path, Z)
+			try:
+				with open(z_aug_meta_path, "w", encoding="utf-8") as f:
+					json.dump(augmentation_info, f, indent=2, ensure_ascii=False, default=_json_default)
+			except Exception as e:
+				if verbose:
+					print(f"[CACHE] Warning: failed to save augmentation metadata {z_aug_meta_path}: {e}")
 
 			if verbose:
 				print(f"[CACHE SAVE] linkage {z_path} ({Z.nbytes / 1e6:.2f} MB)")
+				print(f"[CACHE SAVE] aug meta {z_aug_meta_path}")
 
-	# viz.plot_dimensional_reduction(
-	# 	embedding=X,
-	# 	clusters_fname=clusters_fname,
-	# )
+	if return_augmentation_info:
+		return X, Z, augmentation_info
 
 	return X, Z
 
@@ -4586,7 +5106,7 @@ def _name_matches_label(name_toks: set, label: str) -> bool:
 _CORE_PREPOSITIONS = frozenset(
 	"of in on at with over under near from by for during into onto across along above below "
 	"behind beside between inside outside through toward towards upon within without after "
-	"before around against".split()
+	"before around against to".split()
 )
 
 def _stem_token(t: str) -> str:
@@ -5153,6 +5673,7 @@ def _build_debug_payload(
 	min_support: float,
 	virtual_gates: Dict[str, Any],
 	freq_gain_guard: float,
+	feature_space_augmentation: Optional[Dict[str, Any]] = None,
 ) -> Dict:
 	method_counts = Counter(rec['selection_method'] for rec in selection_records)
 	resolution_counts = Counter(
@@ -5176,6 +5697,7 @@ def _build_debug_payload(
 			'min_support': min_support,
 			'virtual_gates': virtual_gates,
 			'freq_gain_guard': freq_gain_guard,
+			'feature_space_augmentation': feature_space_augmentation,
 			'selection_method_counts': dict(method_counts.most_common()),
 			'virtual_winners': sum(1 for c in clusters_json if c['is_virtual']),
 			'virtual_route_counts': dict(virtual_route_counts.most_common()),
@@ -5864,6 +6386,7 @@ def assign_canonical_labels(
 	virtual_min_sim_ratio: Optional[float] = 0.60, # relative drop threshold (e.g. 0.60)
 	virtual_abs_sim: float = 0.72, # absolute floor aligned with shared_threshold buffer
 	min_distinct_concepts: int = 2,
+	feature_space_augmentation: Optional[Dict[str, Any]] = None,
 	verbose: bool = False,
 ) -> Dict[int, Dict]:
 	"""
@@ -6710,6 +7233,7 @@ def assign_canonical_labels(
 				'rejections': dict(virtual_rejections),
 			},
 			freq_gain_guard=FREQ_GAIN_GUARD,
+			feature_space_augmentation=feature_space_augmentation,
 		)
 		_write_debug_json(debug_json_path, payload, verbose=verbose)
 
@@ -6860,6 +7384,7 @@ def export_consolidated_clusters_json(
 	canonical_merges_json_path: Optional[str] = None,
 	removed_labels: Optional[List[str]] = None,
 	canonical_merges_done: int = 0,
+	feature_space_augmentation: Optional[Dict[str, Any]] = None,
 	verbose: bool = False,
 ) -> str:
 	"""
@@ -6896,10 +7421,12 @@ def export_consolidated_clusters_json(
 		output_json_path = os.path.splitext(clusters_fname)[0] + "_semantic_consolidation_clusters.json"
 
 	step6_clusters_by_id: Dict[int, Dict] = {}
+	step6_aug_info: Optional[Dict[str, Any]] = None
 	if canonical_selection_json_path and os.path.exists(canonical_selection_json_path):
 		try:
 			with open(canonical_selection_json_path, "r", encoding="utf-8") as f:
 				step6_data = json.load(f)
+			step6_aug_info = step6_data.get("meta", {}).get("feature_space_augmentation")
 			for c in step6_data.get("clusters", []):
 				step6_clusters_by_id[int(c["cluster_id"])] = c
 		except Exception as e:
@@ -7070,6 +7597,7 @@ def export_consolidated_clusters_json(
 		"canonical_merges_done": int(canonical_merges_done),
 		"problematic_labels_removed": len(removed_labels) if removed_labels else 0,
 		"problematic_clusters_removed": len(removed_clusters_list),
+		"feature_space_augmentation": feature_space_augmentation if feature_space_augmentation is not None else step6_aug_info,
 	}
 
 	payload = {
@@ -7117,6 +7645,8 @@ def cluster(
 	low_cohesion_threshold: Optional[float] = None,
 	poor_canonical_threshold: Optional[float] = None,
 	outlier_sigma_multiplier: float = 2.5,
+	head_augmentation_weight: float = 0.45,
+	head_subspace_dim: int = 256,
 	use_cache: bool = True,
 	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
@@ -7134,7 +7664,7 @@ def cluster(
 	if verbose:
 		print(f"\n[AGGLOMERATIVE CLUSTERING] {len(labels)} samples")
 		print(f"  ├─ {model_id} | {device} | batch_size: {batch_size}")
-		print(f"  ├─ linkage: {linkage_method}")
+		print(f"  ├─ linkage: {linkage_method} (head_augmentation_weight={head_augmentation_weight}, head_subspace_dim={head_subspace_dim})")
 		print(f"  ├─ samples: {labels[:3]}")
 		requires_type_exchange = isinstance(labels[0], str)
 		print(f"  ├───> {type(labels[0])} requires_type_exchange? {requires_type_exchange}")
@@ -7195,7 +7725,7 @@ def cluster(
 		)
 
 	# STEP 3: LOAD / COMPUTE EMBEDDINGS + LINKAGE
-	X, Z = get_clustering_artifacts(
+	X, Z, augmentation_info = get_clustering_artifacts(
 		clusters_fname=clusters_fname,
 		unique_labels=unique_labels,
 		model=model,
@@ -7204,6 +7734,9 @@ def cluster(
 		distance_metric=distance_metric,
 		use_cache=use_cache,
 		encode_prompt=encode_prompt,
+		head_augmentation_weight=head_augmentation_weight,
+		head_subspace_dim=head_subspace_dim,
+		return_augmentation_info=True,
 		verbose=verbose,
 	)
 
@@ -7267,6 +7800,7 @@ def cluster(
 		original_label_counts=label_freq_dict,
 		debug_json_path=os.path.splitext(clusters_fname)[0] + "_canonical_selection.json",
 		encode_prompt=encode_prompt,
+		feature_space_augmentation=augmentation_info,
 		# # detailed report:
 		# shared_calibration_names=[
 		# 	'camera', 'cap', 'camp', 'debris', 'building', 'hospital', # should stay together
@@ -7353,6 +7887,7 @@ def cluster(
 		canonical_merges_json_path=canonical_merges_json,
 		removed_labels=removed_labels,
 		canonical_merges_done=canonical_merges_done,
+		feature_space_augmentation=augmentation_info,
 		verbose=verbose,
 	)
 
@@ -7406,6 +7941,8 @@ def get_canonical_labels(
 	merge_close_clusters_threshold: Optional[float] = None,
 	merge_canonical_clusters_threshold: Optional[float] = None,
 	merge_canonical_min_centroid_sim: float = 0.70,
+	head_augmentation_weight: float = 0.45,
+	head_subspace_dim: int = 256,
 	encode_prompt: Optional[str] = None,
 	verbose: bool = False,
 ) -> Tuple[List[List[str]], dict]:
@@ -7443,6 +7980,8 @@ def get_canonical_labels(
 		merge_close_clusters_threshold=merge_close_clusters_threshold,
 		merge_canonical_clusters_threshold=merge_canonical_clusters_threshold,
 		merge_canonical_min_centroid_sim=merge_canonical_min_centroid_sim,
+		head_augmentation_weight=head_augmentation_weight,
+		head_subspace_dim=head_subspace_dim,
 		clusters_fname=clusters_fname,
 		encode_prompt=encode_prompt,
 		verbose=verbose,
