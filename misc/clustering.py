@@ -2774,7 +2774,7 @@ def _print_augmentation_diagnostics(aug_info: Dict[str, Any], cached: bool = Fal
 	h_stats = aug_info.get("head_extraction", {})
 	if h_stats:
 		print(f"  ├─ Syntactic Head Vocab     {h_stats['n_unique_normalized_heads']:,} unique heads from {h_stats['n_labels']:,} labels ({h_stats['consolidation_factor']}x label-to-head ratio)")
-		print(f"  ├─ Linguistic Normalizations Plural->Singular: {h_stats['n_plural_singular_normalized']:,}  |  Appositive Title Fallback: {h_stats['n_appositive_title_normalized']:,}")
+		print(f"  ├─ Linguistic Norm          Plural->Singular: {h_stats['n_plural_singular_normalized']:,}  |  Appositive Title Fallback: {h_stats['n_appositive_title_normalized']:,}")
 		print(f"  ├─ Head Embedding Lookup    Indexed in X: {aug_info.get('n_heads_indexed_in_X', 0):,}  |  Encoded on-the-fly: {aug_info.get('n_heads_encoded_on_fly', 0):,}")
 		top_heads = h_stats.get("top_syntactic_heads", [])[:10]
 		if top_heads:
