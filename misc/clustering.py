@@ -4329,7 +4329,7 @@ def get_clustered_labels(
 		if mean_intra_sim >= cluster_intra_similarity_threshold and in_consol_range:
 			status = "✓ TARGET REACHED"
 			reason = (
-				f"IntraSim {mean_intra_sim:.4f} ≥ {cluster_intra_similarity_threshold:.2f} (Δ={delta_thresh:+.4f}) "
+				f"IntraSim {mean_intra_sim:.4f} ≥ {cluster_intra_similarity_threshold} (Δ={delta_thresh:+.5f}) "
 				f"AND consol {consolidation:.2f}x in [{min_consolidation}, {max_consolidation}]"
 			)
 			if plateau_k is None:
@@ -4384,7 +4384,7 @@ def get_clustered_labels(
 	if gap > 0.10:  # Target is >10% above what's achievable
 		adjusted_target = max_observed_intra * 1.02  # 2% headroom above observed max
 		if verbose:
-			print(f"\n[STAGE 1] ⚠ Target intra-sim {cluster_intra_similarity_threshold:.2f} unreachable.")
+			print(f"\n[STAGE 1] ⚠ Target intra-sim {cluster_intra_similarity_threshold} unreachable.")
 			print(f"           Max observed: {max_observed_intra:.4f} (gap={gap*100:.1f}%)")
 			print(f"           Auto-adjusting target → {adjusted_target:.4f}")
 		cluster_intra_similarity_threshold = adjusted_target
@@ -4614,7 +4614,7 @@ def get_clustered_labels(
 
 		print(f"\n[STAGE 2] WINNER SELECTION: k={best['k']}")
 		print(f"  ├─ Selection Rationale    Highest composite score ({best['composite_score']:.4f}) with parsimony tie-breaker (lowest k in tie)")
-		print(f"  ├─ Quality Score          {best['quality_score']:.4f} (mean intra-sim {best['intra_sim']:.4f} ≥ threshold {cluster_intra_similarity_threshold:.4f}, margin={best['delta_thresh']:+.4f})")
+		print(f"  ├─ Quality Score          {best['quality_score']:.4f} (mean intra-sim {best['intra_sim']:.4f} ≥ threshold {cluster_intra_similarity_threshold}, margin={best['delta_thresh']:+.4f})")
 		print(f"  ├─ Consolidation Score    {best['consol_score']:.4f} ({best['consolidation']:.2f}x in [{min_consolidation:.1f}x, {max_consolidation:.1f}x] target range)")
 		print(f"  ├─ Singleton Score        {best['singleton_score']:.4f} ({best['n_singletons']} singletons, ratio: {best['singleton_ratio']:.4f}, target: {target_singleton_ratio:.4f})")
 		print(f"  ├─ Intra-Sim Distribution min={min(sim_vals):.4f} | p10={p10_sim:.4f} | median={med_sim:.4f} | mean={best['intra_sim']:.4f} | p90={p90_sim:.4f} | max={max(sim_vals):.4f} | std={best.get('std_intra_sim', 0):.4f}")
@@ -6811,17 +6811,6 @@ def assign_canonical_labels(
 	def _is_version_token(tok: str) -> bool:
 		return bool(_VERSION_RE.match(tok))
 
-	def _strip_version_tail(toks: List[str]) -> List[str]:
-		toks = list(toks)
-		while len(toks) > 1 and _is_version_token(toks[-1]):
-			# 'He 111', 'Ju 87', 'Bf 109': a number right after a 1-3 letter code IS the designation, keep it
-			if toks[-1][0].isdigit() and re.fullmatch(r'[a-z]{1,3}', toks[-2]) and toks[-2] not in _VERSION_MARKERS:
-				break
-			toks.pop()
-			while len(toks) > 1 and toks[-1] in _VERSION_MARKERS:
-				toks.pop()
-		return toks
-
 	def _core_rejection(core: List[str]) -> Optional[str]:
 		"""Why a synthesised head can never be a canonical: bare numeral / Roman numeral / single letter,
 		a 2-letter fragment, or a corporate suffix. Alphanumeric designations ('He 111', 'C-82') stay valid."""
@@ -6904,15 +6893,20 @@ def assign_canonical_labels(
 		return hp
 
 	def _head_token(label: str) -> str:
-		"""Normalized syntactic head token, unified with Step 3's _extract_syntactic_head_tokens."""
+		"""
+		Normalized syntactic head token, 
+		unified with Step 3's _extract_syntactic_head_tokens.
+		"""
 		if label in label_head_map:
 			return label_head_map[label]
+
 		_, h = _extract_single_syntactic_head(
 			label,
 			known_vocab=corpus_head_vocab,
 			raw_head_counts=corpus_raw_head_counts,
 			untitled_head_counts=corpus_untitled_head_counts,
 		)
+
 		return h
 
 	def _trim_function_words(toks) -> List[str]:
