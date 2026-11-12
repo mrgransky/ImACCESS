@@ -2624,6 +2624,19 @@ _AUG_FACILITY_EVENT_FOLLOWERS = frozenset({
 	'regiment', 'battalion', 'brigade', 'corps', 'army', 'fleet', 'squadron',
 })
 
+_AUG_HEAD_INITIAL_FACILITIES = frozenset({
+	'hotel', 'interhotel', 'motel', 'hostel', 'hostal', 'pension', 'pensionat',
+	'villa', 'chateau', 'schloss', 'palazzo', 'albergo', 'resort', 'camp',
+	'fort', 'mount', 'lake', 'port', 'cape', 'river', 'rue', 'via', 'bahnhof', 'gare',
+})
+
+_FACILITY_OCCUPATION_OR_PART_FOLLOWERS = frozenset({
+	'manager', 'staff', 'clerk', 'porter', 'waiter', 'waitress', 'maid', 'cook',
+	'chef', 'director', 'owner', 'guest', 'employee', 'worker', 'boy', 'room',
+	'lobby', 'suite', 'reservation', 'building', 'car', 'bus', 'service', 'services',
+	'department', 'office', 'branch',
+})
+
 def _aug_norm_token(tok: str) -> str:
 	t = _AUG_TRAILING_PUNCT.sub('', tok.lower())
 	return t.replace('.', '') if _AUG_DOTTED_ACRONYM.match(t) else t
@@ -2647,22 +2660,108 @@ def _aug_strip_version_tail(toks: List[str]) -> List[str]:
 			break
 	return toks
 
+def _extract_single_syntactic_head(
+	label: str,
+	known_vocab: Optional[set] = None,
+	raw_head_counts: Optional[Counter] = None,
+	untitled_head_counts: Optional[Counter] = None,
+) -> Tuple[List[str], str]:
+	"""
+	Extract the syntactic head phrase and normalized head token for a single label.
+	Applies the exact same 6 syntactic rules as _extract_syntactic_head_tokens:
+	1. Prepositional post-modifier truncation
+	2. Version marker stripping
+	3. Romance post-positive 'general' stripping
+	4. Head-initial facility noun extraction
+	5. Appositive title fallback
+	6. Morphological plural-to-singular normalization
+	"""
+	raw_pairs = [(t, _aug_norm_token(t)) for t in label.split() if _aug_norm_token(t)]
+	if not raw_pairs:
+		clean = label.lower().strip() or "unknown"
+		return [clean], clean
+
+	# 1. Truncate before first preposition (never at index 0)
+	cut = len(raw_pairs)
+	for i, (_, nt) in enumerate(raw_pairs):
+		if i > 0 and nt in _CORE_PREPOSITIONS:
+			cut = i
+			break
+	hp_pairs = raw_pairs[:cut]
+
+	# 2. Strip trailing version markers
+	norm_seq = _aug_strip_version_tail([nt for _, nt in hp_pairs])
+	hp_pairs = hp_pairs[:len(norm_seq)]
+
+	# 3. Strip post-positive 'general' after civil/diplomatic titles
+	if len(hp_pairs) >= 2 and hp_pairs[-1][1] == 'general' and hp_pairs[-2][1] in _AUG_POSTPOSITIVE_GENERAL_TITLES:
+		hp_pairs = hp_pairs[:-1]
+
+	# 4. Check for head-initial facility nouns ('Hotel Ambassador', 'Grand Hotel Ambassador', 'Camp David')
+	fac_head_idx = None
+	for i, (_, nt) in enumerate(hp_pairs):
+		if nt in _AUG_HEAD_INITIAL_FACILITIES:
+			if i == len(hp_pairs) - 1:
+				fac_head_idx = i
+				break
+			if hp_pairs[i + 1][1] not in _FACILITY_OCCUPATION_OR_PART_FOLLOWERS:
+				fac_head_idx = i
+				break
+	if fac_head_idx is not None and fac_head_idx < len(hp_pairs) - 1:
+		hp_pairs = hp_pairs[:fac_head_idx + 1]
+
+	h = hp_pairs[-1][1] if hp_pairs else raw_pairs[-1][1]
+
+	# 5. Appositive title fallback
+	if fac_head_idx is None and len(hp_pairs) >= 2:
+		is_candidate_appositive = True
+		if raw_head_counts is not None and untitled_head_counts is not None:
+			is_candidate_appositive = (raw_head_counts[h] == 1 or (raw_head_counts[h] <= 2 and untitled_head_counts[h] == 0))
+		if is_candidate_appositive:
+			for i, (rt, nt) in enumerate(hp_pairs[:-1]):
+				stem_nt = _stem_token(nt)
+				if nt in _AUG_APPOSITIVE_TITLES or stem_nt in _AUG_APPOSITIVE_TITLES:
+					tail = hp_pairs[i + 1:]
+					if tail and all(
+						tp[0][:1].isupper()
+						and tp[1] not in _AUG_FACILITY_EVENT_FOLLOWERS
+						and not any(ch.isdigit() for ch in tp[1])
+						for tp in tail
+					):
+						target_title = stem_nt if (known_vocab and stem_nt in known_vocab) else nt
+						h = target_title
+						hp_pairs = hp_pairs[:i + 1]
+						break
+
+	# 6. Morphological plural-to-singular
+	stem_h = _stem_token(h)
+	if stem_h != h and len(stem_h) >= 3:
+		if known_vocab is None or stem_h in known_vocab:
+			h = stem_h
+			if hp_pairs:
+				hp_pairs[-1] = (hp_pairs[-1][0], stem_h)
+
+	return [nt for _, nt in hp_pairs], h
+
 def _extract_syntactic_head_tokens(
 	unique_labels: List[str],
 ) -> Tuple[List[str], Dict[str, str], Dict[str, Any]]:
 	"""
-	Extract corpus-normalized syntactic head tokens for Option B (Embedding Feature Space Augmentation).
+	Extract corpus-normalized syntactic head tokens for Option B (Embedding Feature Space Augmentation)
+	and Step 6 (Canonical Selection).
 
 	Handles:
 	1. Prepositional post-modifier truncation (via _CORE_PREPOSITIONS including 'to', e.g. 'Ambassador to Cuba' -> 'ambassador').
 	2. Trailing version/designation marker stripping ('Ventura Mk II' -> 'ventura').
 	3. Romance post-positive 'general' stripping after civil/diplomatic titles ('Cuban Consul General' -> 'consul').
-	4. Corpus-aware appositive title fallback ('Cuban Ambassador Guillermo Belt' -> 'ambassador' when 'belt' is a
+	4. Head-initial facility noun extraction ('Hotel Ambassador' -> 'hotel', 'Camp David' -> 'camp').
+	5. Corpus-aware appositive title fallback ('Cuban Ambassador Guillermo Belt' -> 'ambassador' when 'belt' is a
 	   singleton surname in the corpus, while preserving recurring historical figures like 'Roosevelt').
-	5. Corpus-aware plural-to-singular unification ('Ambassadors' -> 'ambassador', 'Embassies' -> 'embassy').
+	6. Corpus-aware plural-to-singular unification ('Ambassadors' -> 'ambassador', 'Embassies' -> 'embassy').
 	"""
 	parsed_phrases: List[List[Tuple[str, str]]] = []
 	raw_heads: List[str] = []
+	fac_initial_flags: List[bool] = []
 	surface_counts: Dict[str, Counter] = defaultdict(Counter)
 	single_word_vocab: set = set()
 
@@ -2671,6 +2770,7 @@ def _extract_syntactic_head_tokens(
 		if not raw_pairs:
 			parsed_phrases.append([])
 			raw_heads.append(lbl.lower().strip() or "unknown")
+			fac_initial_flags.append(False)
 			continue
 
 		if len(raw_pairs) == 1:
@@ -2696,6 +2796,22 @@ def _extract_syntactic_head_tokens(
 		if len(hp_pairs) >= 2 and hp_pairs[-1][1] == 'general' and hp_pairs[-2][1] in _AUG_POSTPOSITIVE_GENERAL_TITLES:
 			hp_pairs = hp_pairs[:-1]
 
+		# 4. Check for head-initial facility nouns ('Hotel Ambassador', 'Grand Hotel Ambassador', 'Camp David')
+		fac_head_idx = None
+		for i, (_, nt) in enumerate(hp_pairs):
+			if nt in _AUG_HEAD_INITIAL_FACILITIES:
+				if i == len(hp_pairs) - 1:
+					fac_head_idx = i
+					break
+				if hp_pairs[i + 1][1] not in _FACILITY_OCCUPATION_OR_PART_FOLLOWERS:
+					fac_head_idx = i
+					break
+		is_fac_initial = False
+		if fac_head_idx is not None and fac_head_idx < len(hp_pairs) - 1:
+			hp_pairs = hp_pairs[:fac_head_idx + 1]
+			is_fac_initial = True
+
+		fac_initial_flags.append(is_fac_initial)
 		parsed_phrases.append(hp_pairs)
 		raw_heads.append(hp_pairs[-1][1] if hp_pairs else raw_pairs[-1][1])
 
@@ -2711,21 +2827,23 @@ def _extract_syntactic_head_tokens(
 			untitled_head_counts[h_raw] += 1
 
 	final_heads: List[str] = []
+	final_parsed_phrases: List[List[Tuple[str, str]]] = []
 	n_appositive_normalized = 0
 	n_plural_normalized = 0
 	appositive_examples: List[Dict[str, str]] = []
 	plural_examples: List[Dict[str, str]] = []
 
-	for idx, (lbl, hp_pairs, h_raw) in enumerate(zip(unique_labels, parsed_phrases, raw_heads)):
+	for idx, (lbl, hp_pairs, h_raw, is_fac) in enumerate(zip(unique_labels, parsed_phrases, raw_heads, fac_initial_flags)):
 		h = h_raw
+		res_pairs = list(hp_pairs)
 
-		# 4. Corpus-aware appositive title fallback:
+		# 5. Corpus-aware appositive title fallback:
 		# If the phrase contains an explicit title/role noun followed by capitalized personal name tokens
 		# whose trailing surname is a singleton head in the corpus (raw_head_counts[h] == 1), OR appears
 		# at most twice and exclusively with a title (untitled_head_counts[h] == 0, e.g. 'Ambassador Wallace'
 		# + 'Ambassador Hugh C. Wallace'), fall back to the title noun ('ambassador'), while preserving
 		# recurring historical figures that also appear untitled ('President Roosevelt' + 'Franklin D. Roosevelt').
-		if len(hp_pairs) >= 2 and (raw_head_counts[h] == 1 or (raw_head_counts[h] <= 2 and untitled_head_counts[h] == 0)):
+		if not is_fac and len(hp_pairs) >= 2 and (raw_head_counts[h] == 1 or (raw_head_counts[h] <= 2 and untitled_head_counts[h] == 0)):
 			for i, (rt, nt) in enumerate(hp_pairs[:-1]):
 				stem_nt = _stem_token(nt)
 				if nt in _AUG_APPOSITIVE_TITLES or stem_nt in _AUG_APPOSITIVE_TITLES:
@@ -2739,20 +2857,24 @@ def _extract_syntactic_head_tokens(
 						target_title = stem_nt if stem_nt in known_vocab else nt
 						if raw_head_counts.get(target_title, 0) >= 2 or target_title in _AUG_APPOSITIVE_TITLES:
 							h = target_title
+							res_pairs = hp_pairs[:i + 1]
 							n_appositive_normalized += 1
 							if len(appositive_examples) < 10:
 								appositive_examples.append({"label": lbl, "from_head": h_raw, "to_head": h})
 							break
 
-		# 5. Corpus-aware plural-to-singular normalization ('ambassadors' -> 'ambassador', 'embassies' -> 'embassy')
+		# 6. Corpus-aware plural-to-singular normalization ('ambassadors' -> 'ambassador', 'embassies' -> 'embassy')
 		stem_h = _stem_token(h)
 		if stem_h != h and len(stem_h) >= 3 and stem_h in known_vocab:
 			if len(plural_examples) < 10 and h != stem_h:
 				plural_examples.append({"label": lbl, "from_head": h, "to_head": stem_h})
 			h = stem_h
+			if res_pairs:
+				res_pairs[-1] = (res_pairs[-1][0], stem_h)
 			n_plural_normalized += 1
 
 		final_heads.append(h)
+		final_parsed_phrases.append(res_pairs)
 
 	# Preferred surface form for each normalized head token
 	head_surface_map: Dict[str, str] = {}
@@ -2776,6 +2898,10 @@ def _extract_syntactic_head_tokens(
 		],
 		"appositive_examples": appositive_examples[:6],
 		"plural_examples": plural_examples[:6],
+		"label_to_head": dict(zip(unique_labels, final_heads)),
+		"label_to_head_phrase": {lbl: [nt for _, nt in p] for lbl, p in zip(unique_labels, final_parsed_phrases)},
+		"raw_head_counts": raw_head_counts,
+		"untitled_head_counts": untitled_head_counts,
 	}
 	return final_heads, head_surface_map, stats
 
@@ -6607,6 +6733,15 @@ def assign_canonical_labels(
 	MIN_DISTINCT_CONCEPTS = min_distinct_concepts
 	virtual_rejections    = Counter()
 
+	# Build unified syntactic head mapping across all unique labels in df
+	unique_corpus_labels = list(dict.fromkeys(df['label'].dropna().tolist()))
+	corpus_heads, corpus_head_surfaces, corpus_head_stats = _extract_syntactic_head_tokens(unique_corpus_labels)
+	label_head_map: Dict[str, str] = corpus_head_stats.get("label_to_head", dict(zip(unique_corpus_labels, corpus_heads)))
+	label_head_phrase_map: Dict[str, List[str]] = corpus_head_stats.get("label_to_head_phrase", {})
+	corpus_head_vocab: set = set(corpus_heads)
+	corpus_raw_head_counts: Counter = corpus_head_stats.get("raw_head_counts", Counter())
+	corpus_untitled_head_counts: Counter = corpus_head_stats.get("untitled_head_counts", Counter())
+
 	# Prepositions introduce a post-modifier: in 'aerial view of harbor' the
 	# head phrase is 'aerial view'. Function words can never start or end a
 	# synthesised hypernym ('aerial view of' is rejected).
@@ -6753,24 +6888,34 @@ def assign_canonical_labels(
 		
 		return len({find(i) for i in range(len(keys))})
 
-	def _head_phrase(norm_toks: List[str]) -> List[str]:
-		"""Tokens before the first preposition (never the very first token), after dropping a trailing
-		version marker. Used for BOTH synthesis and scoring, so a virtual 'Ventura' and the members
-		'Ventura II' / 'Ventura Mk V' agree on their head."""
-		toks = _strip_version_tail(norm_toks)
-		for i, t in enumerate(toks):
-			if i > 0 and t in PREPOSITIONS:
-				return toks[:i]
-		return toks
+	def _head_phrase(norm_toks_or_label: Union[List[str], str]) -> List[str]:
+		"""Tokens before the first preposition, stripped of version markers, postpositive titles,
+		and head-initial modifiers. Unified with Step 3's syntactic head extraction."""
+		if isinstance(norm_toks_or_label, str):
+			lbl = norm_toks_or_label
+		else:
+			lbl = " ".join(norm_toks_or_label)
+		if lbl in label_head_phrase_map:
+			return label_head_phrase_map[lbl]
+		hp, _ = _extract_single_syntactic_head(
+			lbl,
+			known_vocab=corpus_head_vocab,
+			raw_head_counts=corpus_raw_head_counts,
+			untitled_head_counts=corpus_untitled_head_counts,
+		)
+		return hp
 
 	def _head_token(label: str) -> str:
-		"""'aerial view of harbor' -> 'view'; 
-		'coastal lighthouse' -> 'lighthouse'.
-		"""
-
-		hp = _head_phrase(_norm_tokens(label))
-
-		return hp[-1] if hp else ''
+		"""Normalized syntactic head token, unified with Step 3's _extract_syntactic_head_tokens."""
+		if label in label_head_map:
+			return label_head_map[label]
+		_, h = _extract_single_syntactic_head(
+			label,
+			known_vocab=corpus_head_vocab,
+			raw_head_counts=corpus_raw_head_counts,
+			untitled_head_counts=corpus_untitled_head_counts,
+		)
+		return h
 
 	def _trim_function_words(toks) -> List[str]:
 		toks = list(toks)
@@ -6788,7 +6933,7 @@ def assign_canonical_labels(
 		suffix is considered: 'rubber company' instead of a bare 'company'.
 		"""
 		n = len(lbls)
-		hps = [_head_phrase(_norm_tokens(l)) for l in lbls]
+		hps = [_head_phrase(l) for l in lbls]
 		max_len = max((len(h) for h in hps), default=0)
 		best, best_below, blocked = None, None, []        # (support, length, core)
 		for k in range(1, max_len + 1):
@@ -6949,7 +7094,7 @@ def assign_canonical_labels(
 					continue
 
 				token_member_counts[t] += 1
-				if t == hp_tok or t in _AUG_APPOSITIVE_TITLES or _stem_token(t) in _AUG_APPOSITIVE_TITLES:
+				if t == hp_tok or _stem_token(t) == hp_tok or _stem_token(hp_tok) == t:
 					token_head_counts[t] += 1
 
 		best, best_below, blocked = None, None, []
