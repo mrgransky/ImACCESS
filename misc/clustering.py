@@ -6029,9 +6029,9 @@ def assign_canonical_labels(
 		'for', 'during', 'into', 'onto', 'across', 'along', 'above', 'below',
 		'behind', 'beside', 'between', 'inside', 'outside', 'through',
 		'toward', 'towards', 'upon', 'within', 'without', 'after', 'before',
-		'around',
+		'around', 'to',
 	}
-	FUNCTION_WORDS = PREPOSITIONS | {'the', 'a', 'an', 'and', 'or', 'to', 'as'}
+	FUNCTION_WORDS = PREPOSITIONS | {'the', 'a', 'an', 'and', 'or', 'as'}
 
 	# Token normalisation
 	# Lowercase + strip trailing punctuation, so 'Ausf.' == 'Ausf' == 'ausf'.
@@ -6367,13 +6367,20 @@ def assign_canonical_labels(
 
 		best, best_below, blocked = None, None, []
 		for tok, support in token_member_counts.items():
+			# A dominant hypernym must function as the syntactic head noun in at least
+			# one member label, preventing bare adjectives/nationalities (e.g. 'German',
+			# 'Latin') from being synthesized when they only ever appear as modifiers.
+			head_cnt = token_head_counts.get(tok, 0)
+			if head_cnt < 1:
+				continue
+
 			why = _core_rejection([tok])
 			if why:
 				if support >= dom_threshold:
 					blocked.append((tok, why))
 				continue
 			# Candidate tuple: (support, head_count, length, token)
-			cand = (support, token_head_counts.get(tok, 0), len(tok), tok)
+			cand = (support, head_cnt, len(tok), tok)
 			if support >= dom_threshold:
 				if best is None or cand > best:
 					best = cand
