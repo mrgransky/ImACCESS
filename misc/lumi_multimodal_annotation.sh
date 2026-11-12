@@ -97,9 +97,9 @@ python -u gt_kws_multimodal.py \
 	--clip_architecture $CLIP_MODEL \
 	--max_keywords 3 \
 	--batch_size $GENERAL_BATCH_SIZE \
-	--intra_similarity 0.79 \
-	--min_consolidation 6.5 \
-	--max_consolidation 10.5 \
+	--intra_similarity 0.80 \
+	--min_consolidation 7.0 \
+	--max_consolidation 10.0 \
 	--verbose \
 	# --num_clusters 15000 \
 	# --llm_use_quantization \
