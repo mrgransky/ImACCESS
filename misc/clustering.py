@@ -2743,9 +2743,7 @@ def _extract_single_syntactic_head(
 
 	return [nt for _, nt in hp_pairs], h
 
-def _extract_syntactic_head_tokens(
-	unique_labels: List[str],
-) -> Tuple[List[str], Dict[str, str], Dict[str, Any]]:
+def _extract_syntactic_head_tokens(unique_labels: List[str]) -> Tuple[List[str], Dict[str, str], Dict[str, Any]]:
 	"""
 	Extract corpus-normalized syntactic head tokens for Option B (Embedding Feature Space Augmentation)
 	and Step 6 (Canonical Selection).
